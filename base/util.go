@@ -779,15 +779,6 @@ func sanitizeRequestURLQueryParams(urlStr string, values url.Values) string {
 	return urlStr
 }
 
-func GetGoCBBucketFromBaseBucket(baseBucket Bucket) (bucket CouchbaseBucketGoCB, err error) {
-	switch baseBucket := baseBucket.(type) {
-	case *CouchbaseBucketGoCB:
-		return *baseBucket, nil
-	default:
-		return CouchbaseBucketGoCB{}, RedactErrorf("baseBucket %v was not a CouchbaseBucketGoCB.  Was type: %T", MD(baseBucket), baseBucket)
-	}
-}
-
 // StdlibDurationPtr returns a pointer to the given time.Duration literal.
 func StdlibDurationPtr(value time.Duration) *time.Duration {
 	return &value

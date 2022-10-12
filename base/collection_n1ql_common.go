@@ -363,8 +363,6 @@ func AsN1QLStore(bucket Bucket) (N1QLStore, bool) {
 
 	var underlyingBucket Bucket
 	switch typedBucket := bucket.(type) {
-	case *CouchbaseBucketGoCB:
-		return typedBucket, true
 	case *Collection:
 		return typedBucket, true
 	case *LoggingBucket:

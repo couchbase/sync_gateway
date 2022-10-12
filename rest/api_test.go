@@ -5807,65 +5807,6 @@ func TestTombstonedBulkDocsWithExistingTombstone(t *testing.T) {
 	assert.Nil(t, body)
 }
 
-// This test is skipped usually as it requires code to be manually injected into bucket_gocb.go
-func TestPutTombstoneWithoutCreateAsDeletedFlagCasFailure(t *testing.T) {
-	t.Skip("Requires manual intervention to run")
-
-	// In order to run this test obviously remove the above skip and then:
-	// Insert the below as global vars in base:
-	// ==========================
-	// var RunXattrCallback bool
-	// var UpdateXattrCallback func()
-	// ==========================
-
-	// Insert the below into UpdateTombstoneXattr in bucket_gocb.go before the 'if requiresBodyRemoval' check
-	// and after the first 'Kick off retry loop' block
-	// ==========================
-	// if RunXattrCallback {
-	//		RunXattrCallback = false
-	//		UpdateXattrCallback()
-	//	}
-	// ==========================
-
-	// Finally uncomment the lines below setting the callback to true and the callback
-
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("Couchbase buckets only")
-	}
-
-	rt := NewRestTester(t, &RestTesterConfig{DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{AutoImport: true}}})
-	defer rt.Close()
-
-	gocbBucket, ok := base.AsGoCBBucket(rt.Bucket())
-	assert.True(t, ok)
-
-	// Force it to fall into the non CreateAsDeleted flag handling
-	gocbBucket.OverrideClusterCompatVersion(5, 5)
-
-	// base.RunXattrCallback = true
-	// base.UpdateXattrCallback = func() {
-	// 	response := rt.SendAdminRequest("PUT", "/db/doc", `{"val": "update"}`)
-	// 	RequireStatus(t, response, http.StatusCreated)
-	// }
-
-	response := rt.SendAdminRequest("PUT", "/db/doc", `{"_deleted": true, "val": "original"}`)
-	RequireStatus(t, response, http.StatusCreated)
-
-	response = rt.SendAdminRequest("GET", "/db/doc", "")
-	RequireStatus(t, response, http.StatusOK)
-
-	var body db.Body
-	err := json.Unmarshal(response.BodyBytes(), &body)
-	assert.NoError(t, err)
-
-	assert.Equal(t, "update", body["val"])
-
-	// If xattrs being used ensure that this doc operation wasn't treated as an import (cas set correctly)
-	if base.TestUseXattrs() {
-		assert.Equal(t, 0, int(rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value()))
-	}
-}
-
 func TestUptimeStat(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
@@ -8066,15 +8007,15 @@ func TestRevocationWithUserXattrs(t *testing.T) {
 
 	defer rt.Close()
 
-	gocbBucket, ok := base.AsGoCBBucket(rt.Bucket())
-	if !ok {
+	collection, err := base.AsCollection(rt.Bucket())
+	if err != nil {
 		t.Skip("Test requires Couchbase Bucket")
 	}
 
 	resp := rt.SendAdminRequest("PUT", "/db/accessDoc", `{}`)
 	RequireStatus(t, resp, http.StatusCreated)
 
-	_, err := gocbBucket.WriteUserXattr("accessDoc", xattrKey, map[string]interface{}{"userChannels": map[string]interface{}{"user": "a"}})
+	_, err = collection.WriteUserXattr("accessDoc", xattrKey, map[string]interface{}{"userChannels": map[string]interface{}{"user": "a"}})
 	assert.NoError(t, err)
 
 	_ = rt.CreateDocReturnRev(t, "doc", "", map[string]interface{}{"channels": []string{"a"}})
@@ -8082,7 +8023,7 @@ func TestRevocationWithUserXattrs(t *testing.T) {
 	changes := revocationTester.getChanges(0, 2)
 	assert.Len(t, changes.Results, 2)
 
-	_, err = gocbBucket.WriteUserXattr("accessDoc", xattrKey, map[string]interface{}{})
+	_, err = collection.WriteUserXattr("accessDoc", xattrKey, map[string]interface{}{})
 	assert.NoError(t, err)
 
 	changes = revocationTester.getChanges(changes.Last_Seq, 1)

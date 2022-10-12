@@ -17,12 +17,13 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
-	"math"
 	"math/big"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/couchbaselabs/walrus"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -37,59 +38,17 @@ func TestGetGoCBConnString(t *testing.T) {
 		bucketSpec      BucketSpec
 		expectedConnStr string
 	}{
-		{
-			name: "v1 default values",
-			bucketSpec: BucketSpec{
-				CouchbaseDriver: GoCB,
-				Server:          "http://localhost:8091",
-			},
-			expectedConnStr: "http://localhost:8091?http_idle_conn_timeout=90000&http_max_idle_conns=64000&http_max_idle_conns_per_host=256&kv_pool_size=2&n1ql_timeout=75000&operation_tracing=false",
-		},
-		{
-			name: "v1 no CA cert path",
-			bucketSpec: BucketSpec{
-				CouchbaseDriver:      GoCB,
-				Server:               "http://localhost:8091?custom=true&kv_pool_size=3",
-				ViewQueryTimeoutSecs: &queryTimeout,
-				Certpath:             "/myCertPath",
-				Keypath:              "/my/key/path",
-			},
-			expectedConnStr: "http://localhost:8091?certpath=%2FmyCertPath&custom=true&http_idle_conn_timeout=90000&http_max_idle_conns=64000&http_max_idle_conns_per_host=256&keypath=%2Fmy%2Fkey%2Fpath&kv_pool_size=3&n1ql_timeout=30000&operation_tracing=false",
-		},
-		{
-			name: "v1 missing keypath should omit certpath",
-			bucketSpec: BucketSpec{
-				CouchbaseDriver:      GoCB,
-				Server:               "http://localhost:8091?custom=true&kv_pool_size=3",
-				ViewQueryTimeoutSecs: &queryTimeout,
-				Certpath:             "/myCertPath",
-			},
-			expectedConnStr: "http://localhost:8091?custom=true&http_idle_conn_timeout=90000&http_max_idle_conns=64000&http_max_idle_conns_per_host=256&kv_pool_size=3&n1ql_timeout=30000&operation_tracing=false",
-		},
-		{
-			name: "v1 all values",
-			bucketSpec: BucketSpec{
-				CouchbaseDriver:      GoCB,
-				Server:               "http://localhost:8091?custom=true&kv_pool_size=3",
-				ViewQueryTimeoutSecs: &queryTimeout,
-				Certpath:             "/myCertPath",
-				Keypath:              "/my/key/path",
-				CACertPath:           "./myCACertPath",
-			},
-			expectedConnStr: "http://localhost:8091?cacertpath=.%2FmyCACertPath&certpath=%2FmyCertPath&custom=true&http_idle_conn_timeout=90000&http_max_idle_conns=64000&http_max_idle_conns_per_host=256&keypath=%2Fmy%2Fkey%2Fpath&kv_pool_size=3&n1ql_timeout=30000&operation_tracing=false",
-		},
+
 		{
 			name: "v2 default values",
 			bucketSpec: BucketSpec{
-				CouchbaseDriver: GoCBv2,
-				Server:          "http://localhost:8091",
+				Server: "http://localhost:8091",
 			},
 			expectedConnStr: "http://localhost:8091?idle_http_connection_timeout=90000&kv_pool_size=2&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
 		},
 		{
 			name: "v2 no CA cert path",
 			bucketSpec: BucketSpec{
-				CouchbaseDriver:      GoCBv2,
 				Server:               "http://localhost:8091?custom=true&kv_pool_size=3",
 				ViewQueryTimeoutSecs: &queryTimeout,
 			},
@@ -98,7 +57,6 @@ func TestGetGoCBConnString(t *testing.T) {
 		{
 			name: "v2 all values",
 			bucketSpec: BucketSpec{
-				CouchbaseDriver:      GoCBv2,
 				Server:               "http://localhost:8091?custom=true&kv_pool_size=3",
 				ViewQueryTimeoutSecs: &queryTimeout,
 				Certpath:             "/myCertPath",
@@ -312,20 +270,6 @@ func TestGetStatsVbSeqno(t *testing.T) {
 	}
 }
 
-func TestChooseCouchbaseDriver(t *testing.T) {
-	assert.Equal(t, GoCBv2, ChooseCouchbaseDriver(DataBucket))
-	assert.Equal(t, GoCBv2, ChooseCouchbaseDriver(IndexBucket))
-	unknownCouchbaseBucketType := CouchbaseBucketType(math.MaxInt8)
-	assert.Equal(t, GoCBv2, ChooseCouchbaseDriver(unknownCouchbaseBucketType))
-}
-
-func TestCouchbaseDriverToString(t *testing.T) {
-	assert.Equal(t, "GoCB", GoCB.String())
-	assert.Equal(t, "GoCBCustomSGTranscoder", GoCBCustomSGTranscoder.String())
-	unknownCouchbaseDriver := CouchbaseDriver(math.MaxInt8)
-	assert.Equal(t, "UnknownCouchbaseDriver", unknownCouchbaseDriver.String())
-}
-
 func TestIsTLS(t *testing.T) {
 	fakeBucketSpec := &BucketSpec{}
 	fakeBucketSpec.Server = "http://localhost:8091"
@@ -507,32 +451,32 @@ func TestBaseBucket(t *testing.T) {
 		bucket Bucket
 	}{
 		{
-			name:   "gocb",
-			bucket: &CouchbaseBucketGoCB{},
+			name:   "walrus",
+			bucket: &walrus.WalrusBucket{},
 		},
 		{
 			name:   "leaky",
-			bucket: &LeakyBucket{bucket: &CouchbaseBucketGoCB{}},
+			bucket: &LeakyBucket{bucket: &walrus.WalrusBucket{}},
 		},
 		{
 			name:   "logging",
-			bucket: &LoggingBucket{bucket: &CouchbaseBucketGoCB{}},
+			bucket: &LoggingBucket{bucket: &walrus.WalrusBucket{}},
 		},
 		{
 			name:   "leakyLogging",
-			bucket: &LeakyBucket{bucket: &LoggingBucket{bucket: &CouchbaseBucketGoCB{}}},
+			bucket: &LeakyBucket{bucket: &LoggingBucket{bucket: &walrus.WalrusBucket{}}},
 		},
 		{
 			name:   "loggingLeaky",
-			bucket: &LoggingBucket{bucket: &LeakyBucket{bucket: &CouchbaseBucketGoCB{}}},
+			bucket: &LoggingBucket{bucket: &LeakyBucket{bucket: &walrus.WalrusBucket{}}},
 		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			baseBucket := GetBaseBucket(test.bucket)
-			_, ok := baseBucket.(*CouchbaseBucketGoCB)
-			assert.True(t, ok, "Base bucket wasn't gocb")
+			_, ok := baseBucket.(*walrus.WalrusBucket)
+			assert.True(t, ok, "Base bucket wasn't walrus bucket")
 		})
 	}
 }

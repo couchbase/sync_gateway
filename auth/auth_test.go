@@ -2660,74 +2660,74 @@ func TestInvalidateChannels(t *testing.T) {
 
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			base.ForAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
+			bucket := base.GetTestBucket(t)
+			defer bucket.Close()
 
-				leakyBucket := base.NewLeakyBucket(bucket, base.LeakyBucketConfig{})
+			leakyBucket := base.NewLeakyBucket(bucket, base.LeakyBucketConfig{})
 
-				auth := NewAuthenticator(leakyBucket, nil, DefaultAuthenticatorOptions())
+			auth := NewAuthenticator(leakyBucket, nil, DefaultAuthenticatorOptions())
 
-				// Invalidate channels on non-existent user / role and ensure no error
-				err := auth.InvalidateChannels(testCase.name, testCase.isUser, 0)
+			// Invalidate channels on non-existent user / role and ensure no error
+			err := auth.InvalidateChannels(testCase.name, testCase.isUser, 0)
+			assert.NoError(t, err)
+
+			// Create user / role
+			var princ Principal
+			if testCase.isUser {
+				princ, err = auth.NewUser(testCase.name, "pass", nil)
+			} else {
+				princ, err = auth.NewRole(testCase.name, nil)
+			}
+			assert.NoError(t, err)
+
+			err = auth.Save(princ)
+			assert.NoError(t, err)
+
+			// Invalidate channels at invalSeq but cause cas retry by setting to 5
+			enableRetry := false
+			// If subdoc operations are supported, perform an initial invalidation at seq 5
+			if leakyBucket.IsSupported(sgbucket.DataStoreFeatureSubdocOperations) {
+				err := auth.InvalidateChannels(testCase.name, testCase.isUser, 5)
 				assert.NoError(t, err)
 
-				// Create user / role
-				var princ Principal
-				if testCase.isUser {
-					princ, err = auth.NewUser(testCase.name, "pass", nil)
-				} else {
-					princ, err = auth.NewRole(testCase.name, nil)
-				}
-				assert.NoError(t, err)
+			} else {
+				// If subdoc ops aren't supported, use leakyBucket to invalidate
+				leakyBucket.SetUpdateCallback(func(key string) {
+					if enableRetry {
+						enableRetry = false
+						err = auth.InvalidateChannels(testCase.name, testCase.isUser, 5)
+						assert.NoError(t, err)
+					}
+				})
+			}
 
-				err = auth.Save(princ)
-				assert.NoError(t, err)
+			enableRetry = true
+			err = auth.InvalidateChannels(testCase.name, testCase.isUser, 10)
+			assert.NoError(t, err)
 
-				// Invalidate channels at invalSeq but cause cas retry by setting to 5
-				enableRetry := false
-				// If subdoc operations are supported, perform an initial invalidation at seq 5
-				if leakyBucket.IsSupported(sgbucket.DataStoreFeatureSubdocOperations) {
-					err := auth.InvalidateChannels(testCase.name, testCase.isUser, 5)
-					assert.NoError(t, err)
+			// Ensure the inval seq was set to 5 (raw get to avoid rebuild)
+			var princCheck Principal
+			var docID string
+			if testCase.isUser {
+				princCheck = &userImpl{}
+				docID = docIDForUser(testCase.name)
+			} else {
+				princCheck = &roleImpl{}
+				docID = docIDForRole(testCase.name)
+			}
+			_, err = leakyBucket.Get(docID, &princCheck)
+			assert.NoError(t, err)
 
-				} else {
-					// If subdoc ops aren't supported, use leakyBucket to invalidate
-					leakyBucket.SetUpdateCallback(func(key string) {
-						if enableRetry {
-							enableRetry = false
-							err = auth.InvalidateChannels(testCase.name, testCase.isUser, 5)
-							assert.NoError(t, err)
-						}
-					})
-				}
+			expectedValue := uint64(5)
+			assert.Equal(t, expectedValue, princCheck.GetChannelInvalSeq())
 
-				enableRetry = true
-				err = auth.InvalidateChannels(testCase.name, testCase.isUser, 10)
-				assert.NoError(t, err)
+			// Invalidate again and ensure existing value remains
+			err = auth.InvalidateChannels(testCase.name, testCase.isUser, 20)
+			assert.NoError(t, err)
 
-				// Ensure the inval seq was set to 5 (raw get to avoid rebuild)
-				var princCheck Principal
-				var docID string
-				if testCase.isUser {
-					princCheck = &userImpl{}
-					docID = docIDForUser(testCase.name)
-				} else {
-					princCheck = &roleImpl{}
-					docID = docIDForRole(testCase.name)
-				}
-				_, err = leakyBucket.Get(docID, &princCheck)
-				assert.NoError(t, err)
-
-				expectedValue := uint64(5)
-				assert.Equal(t, expectedValue, princCheck.GetChannelInvalSeq())
-
-				// Invalidate again and ensure existing value remains
-				err = auth.InvalidateChannels(testCase.name, testCase.isUser, 20)
-				assert.NoError(t, err)
-
-				_, err = leakyBucket.Get(docID, &princCheck)
-				assert.NoError(t, err)
-				assert.Equal(t, expectedValue, princCheck.GetChannelInvalSeq())
-			})
+			_, err = leakyBucket.Get(docID, &princCheck)
+			assert.NoError(t, err)
+			assert.Equal(t, expectedValue, princCheck.GetChannelInvalSeq())
 		})
 	}
 }

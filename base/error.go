@@ -20,7 +20,6 @@ import (
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbaselabs/walrus"
 	pkgerrors "github.com/pkg/errors"
-	gocbv1 "gopkg.in/couchbase/gocb.v1"
 )
 
 type sgError struct {
@@ -92,19 +91,17 @@ func ErrorAsHTTPStatus(err error) (int, string) {
 
 	// Check for SGErrors
 	switch unwrappedErr {
-	case gocbv1.ErrKeyNotFound, ErrNotFound:
+	case gocb.ErrDocumentNotFound, ErrNotFound:
 		return http.StatusNotFound, "missing"
-	case gocbv1.ErrKeyExists, ErrAlreadyExists:
+	case gocb.ErrDocumentExists, ErrAlreadyExists:
 		return http.StatusConflict, "Conflict"
-	case gocbv1.ErrTimeout, gocb.ErrTimeout:
+	case gocb.ErrTimeout:
 		return http.StatusServiceUnavailable, "Database timeout error (gocb.ErrTimeout)"
-	case gocbv1.ErrOverload, gocb.ErrOverload:
+	case gocb.ErrOverload:
 		return http.StatusServiceUnavailable, "Database server is over capacity (gocb.ErrOverload)"
-	case gocbv1.ErrBusy:
-		return http.StatusServiceUnavailable, "Database server is over capacity (gocb.ErrBusy)"
-	case gocbv1.ErrTmpFail, gocb.ErrTemporaryFailure:
-		return http.StatusServiceUnavailable, "Database server is over capacity (gocb.ErrTmpFail)"
-	case gocbv1.ErrTooBig:
+	case gocb.ErrTemporaryFailure:
+		return http.StatusServiceUnavailable, "Database server is over capacity (gocb.ErrTemporaryFailure)"
+	case gocb.ErrValueTooLarge:
 		return http.StatusRequestEntityTooLarge, "Document too large!"
 	case ErrViewTimeoutError:
 		return http.StatusServiceUnavailable, unwrappedErr.Error()
@@ -194,10 +191,6 @@ func IsDocNotFoundError(err error) bool {
 	}
 
 	if unwrappedErr == ErrNotFound {
-		return true
-	}
-
-	if unwrappedErr == gocbv1.ErrKeyNotFound {
 		return true
 	}
 

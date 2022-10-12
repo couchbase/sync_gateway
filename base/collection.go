@@ -652,11 +652,7 @@ func (c *Collection) isRecoverableReadError(err error) bool {
 		return false
 	}
 
-	if isGoCBTimeoutError(err) {
-		return true
-	}
-
-	if errors.Is(err, gocb.ErrTemporaryFailure) || errors.Is(err, gocb.ErrOverload) {
+	if errors.Is(err, gocb.ErrTemporaryFailure) || errors.Is(err, gocb.ErrOverload) || errors.Is(err, gocb.ErrTimeout) {
 		return true
 	}
 	return false

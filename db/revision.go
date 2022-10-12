@@ -302,7 +302,7 @@ func (db *Database) setOldRevisionJSON(ctx context.Context, docid string, revid 
 	nonJSONBytes := make([]byte, 1, len(body)+1)
 	nonJSONBytes[0] = nonJSONPrefix
 	nonJSONBytes = append(nonJSONBytes, body...)
-	err := db.Bucket.SetRaw(oldRevisionKey(docid, revid), expiry, nil, base.BinaryDocument(nonJSONBytes))
+	err := db.Bucket.SetRaw(oldRevisionKey(docid, revid), expiry, nil, nonJSONBytes)
 	if err == nil {
 		base.DebugfCtx(ctx, base.KeyCRUD, "Backed up revision body %q/%q (%d bytes, ttl:%d)", base.UD(docid), revid, len(body), expiry)
 	} else {

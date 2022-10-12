@@ -21,7 +21,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/couchbase/go-couchbase"
 	"github.com/couchbase/gocb/v2"
 	"github.com/couchbase/gocbcore/v10"
 	"github.com/couchbase/gocbcore/v10/memd"
@@ -29,7 +28,6 @@ import (
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbaselabs/walrus"
 	pkgerrors "github.com/pkg/errors"
-	gocbV1 "gopkg.in/couchbase/gocb.v1"
 	"gopkg.in/couchbaselabs/gocbconnstr.v1"
 )
 
@@ -40,17 +38,6 @@ const (
 
 const (
 	DefaultPool = "default"
-)
-
-const (
-	GoCB                   CouchbaseDriver = iota // Use GoCB driver with default Transcoder
-	GoCBCustomSGTranscoder                        // Use GoCB driver with a custom Transcoder
-	GoCBv2                                        // Use gocb v2 driver
-)
-
-const (
-	DataBucket CouchbaseBucketType = iota
-	IndexBucket
 )
 
 const DefaultViewTimeoutSecs = 75 // 75s
@@ -95,50 +82,6 @@ func GetBaseBucket(b Bucket) Bucket {
 	return b
 }
 
-func ChooseCouchbaseDriver(bucketType CouchbaseBucketType) CouchbaseDriver {
-
-	// Otherwise use the default driver for the bucket type
-	// return DefaultDriverForBucketType[bucketType]
-	switch bucketType {
-	case DataBucket:
-		return GoCBv2
-	case IndexBucket:
-		return GoCBv2
-	default:
-		// If a new bucket type is added and this method isn't updated, flag a warning (or, could panic)
-		WarnfCtx(context.Background(), "Unexpected bucket type: %v", bucketType)
-		return GoCBv2
-	}
-
-}
-
-func (couchbaseDriver CouchbaseDriver) String() string {
-	switch couchbaseDriver {
-	case GoCB:
-		return "GoCB"
-	case GoCBCustomSGTranscoder:
-		return "GoCBCustomSGTranscoder"
-	case GoCBv2:
-		return "GoCBv2"
-	default:
-		return "UnknownCouchbaseDriver"
-	}
-}
-
-func AsCouchbaseDriver(d string) CouchbaseDriver {
-	switch d {
-	case "GoCB":
-		return GoCB
-	case "GoCBCustomSGTranscoder":
-		return GoCBCustomSGTranscoder
-	case "GoCBv2":
-		return GoCBv2
-	default:
-		return GoCBv2
-	}
-
-}
-
 func init() {
 	// Increase max memcached request size to 20M bytes, to support large docs (attachments!)
 	// arriving in a tap feed. (see issues #210, #333, #342)
@@ -149,15 +92,16 @@ type Bucket sgbucket.DataStore
 type FeedArguments sgbucket.FeedArguments
 type TapFeed sgbucket.MutationFeed
 
-type AuthHandler couchbase.AuthHandler
-type CouchbaseDriver int
+type AuthHandler interface {
+	GetCredentials() (string, string, string)
+}
+
 type CouchbaseBucketType int
 
 // Full specification of how to connect to a bucket
 type BucketSpec struct {
 	Server, BucketName, FeedType  string
 	Auth                          AuthHandler
-	CouchbaseDriver               CouchbaseDriver
 	Certpath, Keypath, CACertPath string         // X.509 auth parameters
 	TLSSkipVerify                 bool           // Use insecureSkipVerify when secure scheme (couchbases) is used and cacertpath is undefined
 	KvTLSPort                     int            // Port to use for memcached over TLS.  Required for cbdatasource auth when using TLS
@@ -207,7 +151,7 @@ func (p *GoCBConnStringParams) FillDefaults() {
 	}
 }
 
-// GetGoCBConnString builds a gocb (v1 or v2 depending on the BucketSpec.CouchbaseDriver) connection string based on BucketSpec.Server.
+// GetGoCBConnString builds a gocb connection string based on BucketSpec.Server.
 func (spec *BucketSpec) GetGoCBConnString(params *GoCBConnStringParams) (string, error) {
 	if params == nil {
 		params = &GoCBConnStringParams{}
@@ -233,11 +177,7 @@ func (spec *BucketSpec) GetGoCBConnString(params *GoCBConnStringParams) (string,
 		spec.KvPoolSize, _ = strconv.Atoi(poolSizeFromConnStr)
 	}
 
-	if spec.CouchbaseDriver == GoCBv2 {
-		addGoCBv2ConnValues(spec, &asValues)
-	} else {
-		addGoCBv1ConnValues(spec, &asValues)
-	}
+	addGoCBv2ConnValues(spec, &asValues)
 
 	connSpec.Options = asValues
 	return connSpec.String(), nil
@@ -251,25 +191,6 @@ func addGoCBv2ConnValues(spec *BucketSpec, connValues *url.Values) {
 
 	if spec.CACertPath != "" {
 		connValues.Set("ca_cert_path", spec.CACertPath)
-	}
-}
-
-// addGoCBv1ConnValues adds URL values for GoCBv1 based on the bucket spec and default SG values.
-func addGoCBv1ConnValues(spec *BucketSpec, connValues *url.Values) {
-	connValues.Set("http_max_idle_conns_per_host", strconv.Itoa(DefaultHttpMaxIdleConnsPerHost))
-	connValues.Set("http_max_idle_conns", DefaultHttpMaxIdleConns)
-	connValues.Set("http_idle_conn_timeout", DefaultHttpIdleConnTimeoutMilliseconds)
-
-	connValues.Set("n1ql_timeout", fmt.Sprintf("%d", spec.GetViewQueryTimeoutMs()))
-
-	connValues.Set("operation_tracing", "false")
-
-	if spec.Certpath != "" && spec.Keypath != "" {
-		connValues.Set("certpath", spec.Certpath)
-		connValues.Set("keypath", spec.Keypath)
-	}
-	if spec.CACertPath != "" {
-		connValues.Set("cacertpath", spec.CACertPath)
 	}
 }
 
@@ -338,19 +259,6 @@ func (b BucketSpec) GocbcoreAuthProvider() (gocbcore.AuthProvider, error) {
 	return GoCBCoreAuthConfig(username, password, b.Certpath, b.Keypath)
 }
 
-type couchbaseFeedImpl struct {
-	*couchbase.TapFeed
-	events chan sgbucket.FeedEvent
-}
-
-func (feed *couchbaseFeedImpl) Events() <-chan sgbucket.FeedEvent {
-	return feed.events
-}
-
-func (feed *couchbaseFeedImpl) WriteEvents() chan<- sgbucket.FeedEvent {
-	return feed.events
-}
-
 func GetStatsVbSeqno(stats map[string]map[string]string, maxVbno uint16, useAbsHighSeqNo bool) (uuids map[uint16]uint64, highSeqnos map[uint16]uint64, seqErr error) {
 
 	// GetStats response is in the form map[serverURI]map[]
@@ -405,21 +313,9 @@ func GetBucket(spec BucketSpec) (bucket Bucket, err error) {
 		if spec.Auth != nil {
 			username, _, _ = spec.Auth.GetCredentials()
 		}
-		InfofCtx(context.TODO(), KeyAll, "%v Opening Couchbase database %s on <%s> as user %q", spec.CouchbaseDriver, MD(spec.BucketName), SD(spec.Server), UD(username))
+		InfofCtx(context.TODO(), KeyAll, "Opening Couchbase database %s on <%s> as user %q", MD(spec.BucketName), SD(spec.Server), UD(username))
 
-		switch spec.CouchbaseDriver {
-		case GoCB, GoCBCustomSGTranscoder:
-			if strings.ToLower(spec.FeedType) == TapFeedType {
-				return nil, fmt.Errorf("unsupported feed type: %v", spec.FeedType)
-			} else {
-				bucket, err = GetCouchbaseBucketGoCB(spec)
-			}
-		case GoCBv2:
-			bucket, err = GetCouchbaseCollection(spec)
-		default:
-			return nil, fmt.Errorf("%w: unexpected CouchbaseDriver: %v", ErrFatalBucketConnection, spec.CouchbaseDriver)
-		}
-
+		bucket, err = GetCouchbaseCollection(spec)
 		if err != nil {
 			return nil, err
 		}
@@ -468,11 +364,6 @@ func IsCasMismatch(err error) bool {
 
 	unwrappedErr := pkgerrors.Cause(err)
 
-	// GoCB handling
-	if unwrappedErr == gocbV1.ErrKeyExists || unwrappedErr == gocbV1.ErrNotStored {
-		return true
-	}
-
 	// GoCB V2 handling
 	if isKVError(unwrappedErr, memd.StatusKeyExists) || isKVError(unwrappedErr, memd.StatusNotStored) {
 		return true
@@ -490,12 +381,6 @@ func IsCasMismatch(err error) bool {
 // (DCP for any couchbase bucket, TAP otherwise)
 func GetFeedType(bucket Bucket) (feedType string) {
 	switch typedBucket := bucket.(type) {
-	case *CouchbaseBucketGoCB:
-		if typedBucket.Spec.FeedType != "" {
-			return strings.ToLower(typedBucket.Spec.FeedType)
-		} else {
-			return DcpFeedType
-		}
 	case *Collection:
 		return DcpFeedType
 	case *LeakyBucket:

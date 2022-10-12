@@ -19,8 +19,6 @@ import (
 	"github.com/couchbase/gocb/v2"
 	"github.com/couchbase/gocbcore/v10"
 	"github.com/couchbase/goutils/logging"
-	gocbv1 "gopkg.in/couchbase/gocb.v1"
-	gocbcorev7 "gopkg.in/couchbase/gocbcore.v7"
 )
 
 // This file implements wrappers around the loggers of external packages
@@ -28,9 +26,6 @@ import (
 func initExternalLoggers() {
 	gocb.SetLogger(GoCBLogger{})
 	gocbcore.SetLogger(GoCBCoreLogger{})
-
-	gocbv1.SetLogger(GoCBV1Logger{})
-	gocbcorev7.SetLogger(GoCBCoreV7Logger{})
 
 	logging.SetLogger(CBGoUtilsLogger{})
 	clog.SetLoggerCallback(ClogCallback)
@@ -66,21 +61,12 @@ func (GoCBLogger) Log(level gocb.LogLevel, offset int, format string, v ...inter
 	return nil
 }
 
-type GoCBV1Logger struct{}
 type GoCBCoreLogger struct{}
 type GoCBCoreV7Logger struct{}
 
-var _ gocbv1.Logger = GoCBV1Logger{}
 var _ gocbcore.Logger = GoCBCoreLogger{}
-var _ gocbcorev7.Logger = GoCBCoreV7Logger{}
 
-func (GoCBV1Logger) Log(level gocbv1.LogLevel, offset int, format string, v ...interface{}) error {
-	return GoCBLogger{}.Log(gocb.LogLevel(level), offset, format, v...)
-}
 func (GoCBCoreLogger) Log(level gocbcore.LogLevel, offset int, format string, v ...interface{}) error {
-	return GoCBLogger{}.Log(gocb.LogLevel(level), offset, format, v...)
-}
-func (GoCBCoreV7Logger) Log(level gocbcorev7.LogLevel, offset int, format string, v ...interface{}) error {
 	return GoCBLogger{}.Log(gocb.LogLevel(level), offset, format, v...)
 }
 
