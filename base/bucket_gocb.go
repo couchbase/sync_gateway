@@ -13,14 +13,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	sgbucket "github.com/couchbase/sg-bucket"
-	pkgerrors "github.com/pkg/errors"
 	"io"
 	"math/rand"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
+
+	sgbucket "github.com/couchbase/sg-bucket"
+	pkgerrors "github.com/pkg/errors"
 )
 
 const (

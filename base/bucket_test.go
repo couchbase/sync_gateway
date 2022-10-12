@@ -17,12 +17,13 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
-	"github.com/couchbaselabs/walrus"
 	"math/big"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/couchbaselabs/walrus"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
