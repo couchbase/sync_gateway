@@ -1982,16 +1982,7 @@ func TestCouchbaseServerIncorrectLogin(t *testing.T) {
 // TestCouchbaseServerIncorrectX509Login tries to open a bucket using an example X509 Cert/Key
 // to make sure that we get back a "no access" error.
 func TestCouchbaseServerIncorrectX509Login(t *testing.T) {
-	if UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server")
-	}
-
-	// TODO ADAM: why not
-	/*
-		if TestClusterDriver() == GoCBv2 {
-			t.Skip("This test doesn't work using GoCBv2")
-		}
-	*/
+	t.Skip("Disabled pending CBG-2473")
 
 	testBucket := GetTestBucket(t)
 	defer testBucket.Close()
@@ -2026,8 +2017,8 @@ func TestCouchbaseServerIncorrectX509Login(t *testing.T) {
 	require.Error(t, err)
 
 	// And also check it's an access error
-	// TODO ADAM: restore
 	/*
+		TODO: CBG-2473
 		errCause := pkgerrors.Cause(err)
 			kvErr, ok := errCause.(*gocbcore.KvError)
 			require.Truef(t, ok, "Expected error type gocbcore.KvError, but got %#v", errCause)
