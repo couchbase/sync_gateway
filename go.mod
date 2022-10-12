@@ -35,8 +35,6 @@ require (
 	golang.org/x/exp v0.0.0-20220722155223-a9213eeb770e
 	golang.org/x/net v0.0.0-20220919232410-f2f64ebce3c1
 	golang.org/x/oauth2 v0.0.0-20211104180415-d3ed0bb246c8
-	gopkg.in/couchbase/gocb.v1 v1.6.7
-	gopkg.in/couchbase/gocbcore.v7 v7.1.18
 	gopkg.in/couchbaselabs/gocbconnstr.v1 v1.0.4
 	gopkg.in/square/go-jose.v2 v2.6.0
 )
@@ -70,6 +68,8 @@ require (
 	golang.org/x/text v0.3.7 // indirect
 	google.golang.org/appengine v1.6.6 // indirect
 	google.golang.org/protobuf v1.26.0 // indirect
+	gopkg.in/couchbase/gocb.v1 v1.6.7 // indirect
+	gopkg.in/couchbase/gocbcore.v7 v7.1.18 // indirect
 	gopkg.in/couchbaselabs/jsonx.v1 v1.0.1 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.0.0 // indirect
 	gopkg.in/sourcemap.v1 v1.0.5 // indirect
