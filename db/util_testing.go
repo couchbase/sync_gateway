@@ -150,7 +150,7 @@ func (sw *StatWaiter) Wait() {
 		}
 	}
 
-	sw.tb.Errorf("StatWaiter.Wait timed out waiting for stat to reach %d (actual: %d) %s", sw.targetCount, actualCount, base.GetCallersName(2, true))
+	sw.tb.Fatalf("StatWaiter.Wait timed out waiting for stat to reach %d (actual: %d) %s", sw.targetCount, actualCount, base.GetCallersName(2, true))
 }
 
 func AssertEqualBodies(t *testing.T, expected, actual Body) {
