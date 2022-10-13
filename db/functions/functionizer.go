@@ -10,55 +10,56 @@ import (
 )
 
 /* TypeScript Upstream interface:
-export interface Upstream {
+export interface NativeAPI {
 	query(fnName: string,
 		n1ql: string,
-		args: Args | undefined,
-		user: User) : Promise<any[]>;
-	get(docID: string, user: User) : Promise<object | null>;
-	save(docID: string, doc: object, user: User) : Promise<string>;
-	delete(docID: string, user: User) : Promise<boolean>;
-} */
+		argsJSON: string | undefined,
+		asAdmin: boolean) : string;
+	get(docID: string,
+		asAdmin: boolean) : string | null;
+	save(docJSON: string,
+		docID: string,
+		asAdmin: boolean) : string;
+	delete(docID: string,
+		revID: string | undefined,
+		asAdmin: boolean) : boolean;
+}
 
-/* TypeScript Database (API) interface:
-export type Credentials = [string, string[], string[]];
-export interface Database {
-    // Creates an execution context given a user's name, roles and channels.
-    makeContext(credentials: Credentials | null) : Context;
-
-    // Calls a named function.
-    callFunction(name: string, args: Args | undefined, credentials: Credentials | null) : Promise<any>;
-
-    // Runs a N1QL query. Called by functions of type "query".
-    query(fnName: string, n1ql: string, args: Args | undefined, context: Context) : Promise<any[]>;
-
-    // Runs a GraphQL query.
-    graphql(query: string, args: Args | undefined, context: Context) : Promise<gq.ExecutionResult>;
-
-    // The compiled GraphQL schema.
-    readonly schema?: gq.GraphQLSchema;
-} */
+// TypeScript exported API:
+export class API {
+	callFunction(name: string,
+				argsJSON: string | undefined,
+				user: string | undefined,
+				roles?: string[],
+				channels?: string[]) : Promise<string>;
+	graphql(query: string,
+			variablesJSON: string | undefined,
+			user: string | undefined,
+			roles?: string[],
+			channels?: string[]) : Promise<string>;
+}
+*/
 
 // The interface the JS code calls -- provides query and CRUD operations.
-type Upstream interface {
+type FunctionizerDelegate interface {
 	query(fnName string, n1ql string, args map[string]any, asAdmin bool) (rows []any, err error)
 	get(docID string, asAdmin bool) (doc map[string]any, err error)
 	save(docID string, doc map[string]any, asAdmin bool) (revID string, err error)
-	delete(docID string, doc map[string]any) (err error)
+	delete(docID string, doc map[string]any, asAdmin bool) (err error)
 }
 
 type Functionizer struct {
-	upstream           Upstream
-	vm                 *v8.Isolate        // A V8 virtual machine. NOT THREAD SAFE.
-	global             *v8.ObjectTemplate // The global namespace (a template)
-	script             *v8.UnboundScript  // The compiled JS code; a template run in each new context
-	jsUpstreamTemplate *v8.ObjectTemplate
+	delegate         FunctionizerDelegate
+	vm               *v8.Isolate        // A V8 virtual machine. NOT THREAD SAFE.
+	global           *v8.ObjectTemplate // The global namespace (a template)
+	script           *v8.UnboundScript  // The compiled JS code; a template run in each new context
+	jsNativeTemplate *v8.ObjectTemplate
 }
 
-func NewFunctionizer(sourceCode string, sourceFilename string, upstream Upstream) (*Functionizer, error) {
+func NewFunctionizer(sourceCode string, sourceFilename string, delegate FunctionizerDelegate) (*Functionizer, error) {
 	vm := v8.NewIsolate()
 	fnz := &Functionizer{
-		upstream: upstream,
+		delegate: delegate,
 		vm:       vm,
 		global:   v8.NewObjectTemplate(vm),
 	}
@@ -68,28 +69,28 @@ func NewFunctionizer(sourceCode string, sourceFilename string, upstream Upstream
 		return nil, err
 	}
 
-	// Create the JS "upstream" object template, with Go callback methods:
-	fnz.jsUpstreamTemplate = v8.NewObjectTemplate(vm)
-	fnz.jsUpstreamTemplate.SetInternalFieldCount(1)
+	// Create the JS "NativeAPI" object template, with Go callback methods:
+	fnz.jsNativeTemplate = v8.NewObjectTemplate(vm)
+	fnz.jsNativeTemplate.SetInternalFieldCount(1)
 
-	fnz.defineFunction(fnz.jsUpstreamTemplate, "query", func(info *v8.FunctionCallbackInfo) *v8.Value {
+	fnz.defineFunction(fnz.jsNativeTemplate, "query", func(info *v8.FunctionCallbackInfo) *v8.Value {
 		var rows []any
 		fnName := info.Args()[0].String()
 		n1ql := info.Args()[1].String()
-		args, err := v8ObjectToGo(info.Args()[2])
+		args, err := v8JSONToGo(info.Args()[2])
 		if err == nil {
 			asAdmin := info.Args()[3].Boolean()
-			rows, err = fnz.upstream.query(fnName, n1ql, args, asAdmin)
+			rows, err = fnz.delegate.query(fnName, n1ql, args, asAdmin)
 		}
-		return returnObjectToV8(info, rows, err)
+		return returnJSONToV8(info, rows, err)
 	})
-	fnz.defineFunction(fnz.jsUpstreamTemplate, "get", func(info *v8.FunctionCallbackInfo) *v8.Value {
+	fnz.defineFunction(fnz.jsNativeTemplate, "get", func(info *v8.FunctionCallbackInfo) *v8.Value {
 		return v8Throw(vm, fmt.Errorf("get is unimplemented")) //TODO
 	})
-	fnz.defineFunction(fnz.jsUpstreamTemplate, "save", func(info *v8.FunctionCallbackInfo) *v8.Value {
+	fnz.defineFunction(fnz.jsNativeTemplate, "save", func(info *v8.FunctionCallbackInfo) *v8.Value {
 		return v8Throw(vm, fmt.Errorf("save is unimplemented")) //TODO
 	})
-	fnz.defineFunction(fnz.jsUpstreamTemplate, "delete", func(info *v8.FunctionCallbackInfo) *v8.Value {
+	fnz.defineFunction(fnz.jsNativeTemplate, "delete", func(info *v8.FunctionCallbackInfo) *v8.Value {
 		return v8Throw(vm, fmt.Errorf("delete is unimplemented")) //TODO
 	})
 
@@ -108,15 +109,15 @@ func (fnz *Functionizer) defineFunction(owner *v8.ObjectTemplate, name string, c
 //////// CONTEXT:
 
 type FunContext struct {
-	fnz       *Functionizer
 	ctx       *v8.Context
+	iso       *v8.Isolate
 	api       *v8.Object
 	graphqlFn *v8.Function
 
 	dbc *db.Database
 }
 
-func (fnz *Functionizer) newContext(dbc *db.Database) (*FunContext, error) {
+func (fnz *Functionizer) NewContext(dbc *db.Database) (*FunContext, error) {
 	// Create a context and run the script in it, returning the JS initializer function:
 	ctx := v8.NewContext(fnz.vm, fnz.global)
 	result, err := fnz.script.Run(ctx)
@@ -125,8 +126,8 @@ func (fnz *Functionizer) newContext(dbc *db.Database) (*FunContext, error) {
 	}
 
 	fct := &FunContext{
-		fnz: fnz,
 		ctx: ctx,
+		iso: fnz.vm,
 		dbc: dbc,
 	}
 
@@ -137,7 +138,7 @@ func (fnz *Functionizer) newContext(dbc *db.Database) (*FunContext, error) {
 
 	// Instantiate my Upstream object with the native callbacks.
 	// The object's internal field 0 points to the FunContext.
-	upstream, err := fnz.jsUpstreamTemplate.NewInstance(ctx)
+	upstream, err := fnz.jsNativeTemplate.NewInstance(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -154,17 +155,43 @@ func (fnz *Functionizer) newContext(dbc *db.Database) (*FunContext, error) {
 	return fct, nil
 }
 
-func (fnc *FunContext) newFnContext() (*v8.Object, error) {
-
+// Performs a GraphQL query. Returns a JSON string.
+func (fnc *FunContext) CallGraphql(query string, operationName string, variables map[string]any) (string, error) {
+	result, err := fnc.graphqlFn.Call(fnc.api,
+		goToV8String(fnc.iso, query),
+		goToV8String(fnc.iso, operationName),
+		mustSucceed(goToV8JSON(fnc.ctx, variables)),
+		fnc.makeCredentials())
+	if err != nil {
+		return "", err
+	}
+	return result.String(), nil
 }
 
-// Invokes a GraphQL query
-func (fnc *FunContext) graphql(query string, operationName string, variables map[string]any, mutationAllowed bool) {
+// Calls a named function. Returns a JSON string.
+func (fnc *FunContext) CallFunction(name string, args map[string]any) (string, error) {
 	result, err := fnc.graphqlFn.Call(fnc.api,
-		goToV8String(fnc.ctx.Isolate(), query),
-		goToV8String(fnc.ctx.Isolate(), operationName),
-		mustSucceed(goToV8Object(fnc.ctx, variables)),
-		mustSucceed(fnc.newFnContext()))
+		goToV8String(fnc.iso, name),
+		mustSucceed(goToV8JSON(fnc.ctx, args)),
+		fnc.makeCredentials())
+	if err != nil {
+		return "", err
+	}
+	return result.String(), nil
+}
+
+func (fnc *FunContext) makeCredentials() *v8.Value {
+	if user := fnc.dbc.User(); user != nil {
+		credentials := []any{
+			user.Name(),
+			user.Channels().AllKeys(),
+			user.RoleNames().AllKeys(),
+		}
+		jsonCred := mustSucceed(json.Marshal(credentials))
+		return goToV8String(fnc.iso, string(jsonCred))
+	} else {
+		return v8.Undefined(fnc.iso)
+	}
 }
 
 //////// UTILITIES
@@ -174,32 +201,30 @@ func goToV8String(i *v8.Isolate, str string) *v8.Value {
 }
 
 // Converts a V8 object represented as a Value into a Go map.
-func v8ObjectToGo(val *v8.Value) (map[string]any, error) {
+func v8JSONToGo(val *v8.Value) (map[string]any, error) {
 	var err error
-	if obj, err := val.AsObject(); err == nil {
-		if jsonBytes, err := obj.MarshalJSON(); err == nil {
-			var result map[string]any
-			if err = json.Unmarshal(jsonBytes, &result); err == nil {
-				return result, nil
-			}
-		}
+	jsonStr := val.String()
+	var result map[string]any
+	if err = json.Unmarshal([]byte(jsonStr), &result); err == nil {
+		return result, nil
 	}
 	return nil, err
 }
 
-func goToV8Object(ctx *v8.Context, obj any) (*v8.Value, error) {
+func goToV8JSON(ctx *v8.Context, obj any) (*v8.Value, error) {
 	var err error
-	if jsonBytes, err := json.Marshal(obj); err == nil {
-		if val, err := v8.JSONParse(ctx, string(jsonBytes)); err == nil {
-			return val, nil
-		}
+	if obj == nil {
+		return nil, nil
+	}
+	if jsonBytes, err := json.Marshal(obj); err != nil {
+		return v8.NewValue(ctx.Isolate(), string(jsonBytes))
 	}
 	return nil, err
 }
 
-func returnObjectToV8(info *v8.FunctionCallbackInfo, result any, err error) *v8.Value {
+func returnJSONToV8(info *v8.FunctionCallbackInfo, result any, err error) *v8.Value {
 	if err == nil {
-		if v8obj, err := goToV8Object(info.Context(), result); err == nil {
+		if v8obj, err := goToV8JSON(info.Context(), result); err == nil {
 			return v8obj
 		}
 	}
