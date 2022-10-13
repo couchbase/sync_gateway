@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"reflect"
 	"regexp"
+	"strconv"
 	"strings"
 
 	sgbucket "github.com/couchbase/sg-bucket"
@@ -114,6 +115,13 @@ func compileFunction(name string, typeName string, fnConfig *FunctionConfig) (*f
 	default:
 		err = fmt.Errorf("%s %q has unrecognized 'type' %q", typeName, name, fnConfig.Type)
 	}
+
+	if err == nil {
+		if err = fnConfig.validateAllow(); err != nil {
+			err = base.HTTPErrorf(http.StatusInternalServerError, "%s %q has an illegal 'allow' pattern: %v", typeName, name, err)
+
+		}
+	}
 	return userFn, err
 }
 
@@ -211,11 +219,45 @@ func (fn *functionImpl) checkArguments(args map[string]any) error {
 
 //////// AUTHORIZATION:
 
+// Looks for bad '$' patterns in the config's Allow strings.
+func (fn *FunctionConfig) validateAllow() error {
+	if fn.Allow != nil {
+		// Construct an args object with a value for each declared argument:
+		fakeArgs := map[string]any{}
+		for _, argName := range fn.Args {
+			fakeArgs[argName] = "x"
+		}
+		// Subroutine that tests a pattern by trying to expand it with the args.
+		// If the result is a 500 error, something's wrong with the pattern itself.
+		checkPattern := func(pattern string) error {
+			_, err := expandPattern(pattern, fakeArgs, nil)
+			if err, ok := err.(*base.HTTPError); ok {
+				if err != nil && err.Status >= http.StatusInternalServerError {
+					return err
+				}
+			}
+			return nil
+		}
+		// Test each role and channel string:
+		for _, str := range fn.Allow.Roles {
+			if err := checkPattern(str); err != nil {
+				return err
+			}
+		}
+		for _, str := range fn.Allow.Channels {
+			if err := checkPattern(str); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 // Authorizes a User against the function config's Allow object:
 // - The user's name must be contained in Users, OR
 // - The user must have a role contained in Roles, OR
 // - The user must have access to a channel contained in Channels.
-// In Roles and Channels, patterns of the form `$param` or `$(param)` are expanded using `args`.
+// In Roles and Channels, patterns of the form `${param}` are expanded using `args` and `user`.
 func (fn *functionImpl) authorize(user auth.User, args map[string]any) error {
 	allow := fn.Allow
 	if user == nil {
@@ -226,7 +268,7 @@ func (fn *functionImpl) authorize(user auth.User, args map[string]any) error {
 		}
 		userRoles := user.RoleNames()
 		for _, rolePattern := range allow.Roles {
-			if role, err := allow.expandPattern(rolePattern, args, user); err != nil {
+			if role, err := expandPattern(rolePattern, args, user); err != nil {
 				return err
 			} else if userRoles.Contains(role) {
 				return nil // User has one of the allowed roles
@@ -236,7 +278,7 @@ func (fn *functionImpl) authorize(user auth.User, args map[string]any) error {
 		for _, channelPattern := range allow.Channels {
 			if channelPattern == channels.AllChannelWildcard {
 				return nil
-			} else if channel, err := allow.expandPattern(channelPattern, args, user); err != nil {
+			} else if channel, err := expandPattern(channelPattern, args, user); err != nil {
 				return err
 			} else if user.CanSeeChannel(channel) {
 				return nil // User has access to one of the allowed channels
@@ -246,57 +288,128 @@ func (fn *functionImpl) authorize(user auth.User, args map[string]any) error {
 	return user.UnauthError(fmt.Sprintf("you are not allowed to call %s %q", fn.typeName, fn.name))
 }
 
-// Expands patterns of the form `$param` or `$(param)` in `pattern`, looking up each such
+// Expands patterns of the form `${param}` in `pattern`, looking up each such
 // `param` in the `args` map and substituting its value.
-// (`$$` is replaced with `$`.)
+// (`\$` is replaced with `$`.)
 // It is an error if any `param` has no value, or if its value is not a string or integer.
-func (allow *Allow) expandPattern(pattern string, args map[string]any, user auth.User) (string, error) {
+func expandPattern(pattern string, args map[string]any, user auth.User) (string, error) {
 	if strings.IndexByte(pattern, '$') < 0 {
 		return pattern, nil
 	}
+	badConfig := false
 	var err error
-	channel := kChannelPropertyRegexp.ReplaceAllStringFunc(pattern, func(arg string) string {
-		arg = arg[1:]
-		if arg == "$" {
-			return arg
+	channel := kChannelPropertyRegexp.ReplaceAllStringFunc(pattern, func(matched string) string {
+		if badConfig {
+			return ""
+		} else if matched == "\\$" {
+			return "$"
+		} else if !strings.HasPrefix(matched, "${") || !strings.HasSuffix(matched, "}") {
+			err = base.HTTPErrorf(http.StatusInternalServerError, "missing curly-brace in pattern %q", matched)
+			badConfig = true
+			return ""
 		}
-		if arg[0] == '(' {
-			arg = arg[1 : len(arg)-1]
-		}
-		// Look up the parameter:
-		if strings.HasPrefix(arg, "user.") {
-			// Treat "user." the same as "context.user.":
-			arg = "context." + arg
-		}
-		if strings.HasPrefix(arg, "context.user.") {
-			// Hacky special case for "context.user.":
-			if user == nil {
+		arg := matched[2 : len(matched)-1]
+
+		// Look up the argument:
+		if strings.HasPrefix(arg, "args.") {
+			var rval reflect.Value
+			rval, err = evalKeyPath(args, arg[5:])
+			if err != nil {
+				if err := err.(*base.HTTPError); err != nil && err.Status >= http.StatusInternalServerError {
+					badConfig = true
+				}
 				return ""
 			}
-			switch arg {
-			case "context.user.name":
-				return user.Name()
-			case "context.user.email":
-				return user.Email()
+
+			// Convert `rval` to a string:
+			for rval.Kind() == reflect.Interface {
+				rval = rval.Elem()
 			}
-		}
-		if value, found := args[arg]; !found {
-			logCtx := context.TODO()
-			base.WarnfCtx(logCtx, "Bad config: Invalid channel/role pattern %q in 'allow'", pattern)
-			err = base.HTTPErrorf(http.StatusInternalServerError, "Server query configuration is invalid; details in log")
-			return ""
-		} else if valueStr, ok := value.(string); ok {
-			return valueStr
-		} else if reflect.ValueOf(value).CanInt() || reflect.ValueOf(value).CanUint() || reflect.ValueOf(value).CanFloat() {
-			return fmt.Sprintf("%v", value)
+			if rval.Kind() == reflect.String {
+				return rval.String()
+			} else if rval.CanInt() || rval.CanUint() || rval.CanFloat() {
+				return fmt.Sprintf("%v", rval)
+			} else {
+				err = base.HTTPErrorf(http.StatusBadRequest, "argument %q must be a string or number, not %v", arg, rval.Kind())
+				return ""
+			}
+		} else if arg == "context.user.name" {
+			if user == nil {
+				return ""
+			} else {
+				return user.Name()
+			}
 		} else {
-			err = base.HTTPErrorf(http.StatusBadRequest, "Value of parameter '%s' must be a string or int", arg)
+			err = base.HTTPErrorf(http.StatusInternalServerError, "invalid variable expression %q", matched)
+			badConfig = true
 			return ""
 		}
 	})
 	return channel, err
 }
 
-// Regexp that matches a property pattern -- either `$xxx` or `$(xxx)` where `xxx` is one or more
-// alphanumeric characters or underscore. It also matches `$$` so it can be replaced with `$`.
-var kChannelPropertyRegexp = regexp.MustCompile(`\$(\w+|\([^)]+\)|\$)`)
+// Evaluates a "key path", like "points[3].x.y" on a JSON-based map.
+func evalKeyPath(root map[string]any, keyPath string) (reflect.Value, error) {
+	// Handle the first path component specially because we can access `root` without reflection:
+	var value reflect.Value
+	i := strings.IndexAny(keyPath, ".[")
+	if i < 0 {
+		i = len(keyPath)
+	}
+	key := keyPath[0:i]
+	keyPath = keyPath[i:]
+	firstVal := root[key]
+	if firstVal == nil {
+		return value, base.HTTPErrorf(http.StatusInternalServerError, "parameter %q is not declared in 'args'", key)
+	}
+
+	value = reflect.ValueOf(firstVal)
+	if len(keyPath) == 0 {
+		return value, nil
+	}
+
+	for len(keyPath) > 0 {
+		ch := keyPath[0]
+		keyPath = keyPath[1:]
+		if ch == '.' {
+			i = strings.IndexAny(keyPath, ".[")
+			if i < 0 {
+				i = len(keyPath)
+			}
+			key = keyPath[0:i]
+			keyPath = keyPath[i:]
+
+			if value.Kind() != reflect.Map {
+				return value, base.HTTPErrorf(http.StatusBadRequest, "value is not a map")
+			}
+			value = value.MapIndex(reflect.ValueOf(key))
+		} else if ch == '[' {
+			i = strings.IndexByte(keyPath, ']')
+			if i < 0 {
+				return value, base.HTTPErrorf(http.StatusInternalServerError, "missing ']")
+			}
+			key = keyPath[0:i]
+			keyPath = keyPath[i+1:]
+
+			index, err := strconv.ParseUint(key, 10, 8)
+			if err != nil {
+				return value, err
+			}
+			if value.Kind() != reflect.Array && value.Kind() != reflect.Slice {
+				return value, base.HTTPErrorf(http.StatusBadRequest, "value is a %v not an array", value.Type())
+			} else if uint64(value.Len()) <= index {
+				return value, base.HTTPErrorf(http.StatusBadRequest, "array index out of range")
+			}
+			value = value.Index(int(index))
+		} else {
+			return value, base.HTTPErrorf(http.StatusInternalServerError, "invalid character after a ']'")
+		}
+		for value.Kind() == reflect.Interface || value.Kind() == reflect.Pointer {
+			value = value.Elem()
+		}
+	}
+	return value, nil
+}
+
+// Regexp that matches a property pattern `${...}`, or a backslash-escaped `$`.
+var kChannelPropertyRegexp = regexp.MustCompile(`(\\\$)|(\${?[^{}]*}?)`)

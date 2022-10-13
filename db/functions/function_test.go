@@ -77,7 +77,7 @@ var kUserFunctionConfig = FunctionsConfig{
 		"user_only": &FunctionConfig{
 			Type:  "javascript",
 			Code:  `function(context, args) {if (!context.user.name) throw "No user"; return context.user.name;}`,
-			Allow: &Allow{Channels: []string{"user-$(context.user.name)"}},
+			Allow: &Allow{Channels: []string{"user-${context.user.name}"}},
 		},
 		"alice_only": &FunctionConfig{
 			Type:  "javascript",
@@ -455,75 +455,136 @@ func TestUserFunctionAllow(t *testing.T) {
 
 	authenticator := auth.NewAuthenticator(db.Bucket, db, auth.DefaultAuthenticatorOptions())
 	user, err := authenticator.NewUser("maurice", "pass", base.SetOf("city-Paris"))
-	_ = user.SetEmail("maurice@academie.fr")
 	assert.NoError(t, err)
 
 	params := map[string]any{
 		"CITY":  "Paris",
 		"BREAD": "Baguette",
 		"YEAR":  2020,
+		"WINE":  map[string]any{"blanc": "Sauterne", "rouge": "Bordeaux"},
 		"WORDS": []string{"ouais", "fromage", "amour", "vachement"},
 	}
 
-	allow := Allow{}
-
-	ch, err := allow.expandPattern("someChannel", params, user)
+	ch, err := expandPattern("someChannel", params, user)
 	assert.NoError(t, err)
 	assert.Equal(t, ch, "someChannel")
 
-	ch, err = allow.expandPattern("sales-$CITY-all", params, user)
+	ch, err = expandPattern("sales-${args.CITY}-all", params, user)
 	assert.NoError(t, err)
-	assert.Equal(t, ch, "sales-Paris-all")
+	assert.Equal(t, "sales-Paris-all", ch)
 
-	ch, err = allow.expandPattern("sales$(CITY)All", params, user)
+	ch, err = expandPattern("sales${args.CITY}All", params, user)
 	assert.NoError(t, err)
-	assert.Equal(t, ch, "salesParisAll")
+	assert.Equal(t, "salesParisAll", ch)
 
-	ch, err = allow.expandPattern("sales$CITY-$BREAD", params, user)
+	ch, err = expandPattern("sales${args.CITY}-${args.BREAD}", params, user)
 	assert.NoError(t, err)
-	assert.Equal(t, ch, "salesParis-Baguette")
+	assert.Equal(t, "salesParis-Baguette", ch)
 
-	ch, err = allow.expandPattern("sales-upTo-$YEAR", params, user)
+	ch, err = expandPattern("sales-upTo-${args.YEAR}", params, user)
 	assert.NoError(t, err)
-	assert.Equal(t, ch, "sales-upTo-2020")
+	assert.Equal(t, "sales-upTo-2020", ch)
 
-	ch, err = allow.expandPattern("employee-$(context.user.name)", params, user)
+	ch, err = expandPattern("wines-${args.WINE.blanc}", params, user)
 	assert.NoError(t, err)
-	assert.Equal(t, ch, "employee-maurice")
+	assert.Equal(t, "wines-Sauterne", ch)
 
-	ch, err = allow.expandPattern("employee-$(user.name)", params, user)
+	ch, err = expandPattern("${args.WORDS[2]}", params, user)
 	assert.NoError(t, err)
-	assert.Equal(t, ch, "employee-maurice")
+	assert.Equal(t, "amour", ch)
 
-	ch, err = allow.expandPattern("$(context.user.email)", params, user)
+	ch, err = expandPattern("employee-${context.user.name}", params, user)
 	assert.NoError(t, err)
-	assert.Equal(t, ch, "maurice@academie.fr")
+	assert.Equal(t, "employee-maurice", ch)
 
-	ch, err = allow.expandPattern("$(user.email)", params, user)
+	// Escaped `\$`:
+	ch, err = expandPattern(`expen\$ive`, params, user)
 	assert.NoError(t, err)
-	assert.Equal(t, ch, "maurice@academie.fr")
+	assert.Equal(t, "expen$ive", ch)
+	ch, err = expandPattern(`\$wow`, params, user)
+	assert.NoError(t, err)
+	assert.Equal(t, "$wow", ch)
+	ch, err = expandPattern(`\${wow}`, params, user)
+	assert.NoError(t, err)
+	assert.Equal(t, "${wow}", ch)
 
-	// Should replace `$$` with `$`
-	ch, err = allow.expandPattern("expen$$ive", params, user)
-	assert.NoError(t, err)
-	assert.Equal(t, ch, "expen$ive")
-
-	// No-ops since the `$` does not match a pattern:
-	ch, err = allow.expandPattern("$+wow", params, user)
-	assert.NoError(t, err)
-	assert.Equal(t, ch, "$+wow")
-
-	ch, err = allow.expandPattern("foobar$", params, user)
-	assert.NoError(t, err)
-	assert.Equal(t, ch, "foobar$")
+	// error: missing brace
+	_, err = expandPattern("$wow", params, user)
+	assert.NotNil(t, err)
+	_, err = expandPattern("foobar$", params, user)
+	assert.NotNil(t, err)
+	_, err = expandPattern("$w{ow}", params, user)
+	assert.NotNil(t, err)
+	_, err = expandPattern("knows-${args.CITY", params, user)
+	assert.NotNil(t, err)
+	_, err = expandPattern("knows-${args.CITY-${args.CITY}", params, user)
+	assert.NotNil(t, err)
 
 	// error: param value is not a string
-	_, err = allow.expandPattern("knows-$WORDS", params, user)
+	_, err = expandPattern("knows-${args.WORDS}", params, user)
 	assert.NotNil(t, err)
 
 	// error: undefined parameter
-	_, err = allow.expandPattern("sales-upTo-$FOO", params, user)
+	_, err = expandPattern("sales-upTo-${}", params, user)
 	assert.NotNil(t, err)
+	_, err = expandPattern("sales-upTo-${args.FOO}", params, user)
+	assert.NotNil(t, err)
+
+	// error: not an arg or user
+	_, err = expandPattern("sales-upTo-${FOO}", params, user)
+	assert.NotNil(t, err)
+	_, err = expandPattern("sales-upTo-${context.user}", params, user)
+	assert.NotNil(t, err)
+	_, err = expandPattern("sales-upTo-${context.bar.FOO}", params, user)
+	assert.NotNil(t, err)
+
+	// error: missing map item
+	_, err = expandPattern("wines-${args.WINE.plonk}", params, user)
+	assert.NotNil(t, err)
+	_, err = expandPattern("wines-${args.WINE.blanc.x}", params, user)
+	assert.NotNil(t, err)
+}
+
+func TestKeyPath(t *testing.T) {
+	args := map[string]any{
+		"CITY":  "Paris",
+		"BREAD": "Baguette",
+		"YEAR":  2020,
+		"WINE": map[string]any{"blanc": "Sauterne", "rouge": "Bordeaux",
+			"nested": map[string]any{"Z": 321}},
+		"WORDS": []any{"ouais", "fromage", "amour", "vachement",
+			map[string]any{"X": 123},
+			[]any{"arrayInArray"}},
+	}
+
+	val, err := evalKeyPath(args, "CITY")
+	if assert.NoError(t, err) {
+		assert.Equal(t, "Paris", val.Interface())
+	}
+	val, err = evalKeyPath(args, "YEAR")
+	if assert.NoError(t, err) {
+		assert.Equal(t, 2020, val.Interface())
+	}
+	val, err = evalKeyPath(args, "WINE.blanc")
+	if assert.NoError(t, err) {
+		assert.Equal(t, "Sauterne", val.Interface())
+	}
+	val, err = evalKeyPath(args, "WINE.nested.Z")
+	if assert.NoError(t, err) {
+		assert.Equal(t, 321, val.Interface())
+	}
+	val, err = evalKeyPath(args, "WORDS[1]")
+	if assert.NoError(t, err) {
+		assert.Equal(t, "fromage", val.Interface())
+	}
+	val, err = evalKeyPath(args, "WORDS[4].X")
+	if assert.NoError(t, err) {
+		assert.Equal(t, 123, val.Interface())
+	}
+	val, err = evalKeyPath(args, "WORDS[5][0]")
+	if assert.NoError(t, err) {
+		assert.Equal(t, "arrayInArray", val.Interface())
+	}
 }
 
 //////// UTILITY FUNCTIONS:
