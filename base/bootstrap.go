@@ -77,7 +77,8 @@ func NewCouchbaseCluster(server, username, password,
 	clusterOptions := gocb.ClusterOptions{
 		Authenticator:  authenticatorConfig,
 		SecurityConfig: securityConfig,
-		RetryStrategy:  &goCBv2FailFastRetryStrategy{},
+		TimeoutsConfig: GoCBv2TimeoutsConfig(nil, nil),
+		RetryStrategy:  gocb.NewBestEffortRetryStrategy(nil),
 	}
 
 	var configPersistence ConfigPersistence
