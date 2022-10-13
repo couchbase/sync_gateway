@@ -78,8 +78,8 @@ type StartupConfig struct {
 	Replicator  ReplicatorConfig   `json:"replicator,omitempty"`
 	Unsupported UnsupportedConfig  `json:"unsupported,omitempty"`
 
-	DatabaseCredentials PerDatabaseCredentialsConfig    `json:"database_credentials,omitempty" help:"A map of database name to credentials, that can be used instead of the bootstrap ones. Cannot be used in conjunction with bucket_credentials."`
-	BucketCredentials   base.PerBucketCredentialsConfig `json:"bucket_credentials,omitempty" help:"A map of bucket names to credentials, that can be used instead of the bootstrap ones. Cannot be used in conjunction with database_credentials."`
+	DatabaseCredentials PerDatabaseCredentialsConfig    `json:"database_credentials,omitempty" help:"A map of database name to credentials, that can be used instead of the bootstrap ones. This will override bucket_credentials that target the bucket that the database is in."`
+	BucketCredentials   base.PerBucketCredentialsConfig `json:"bucket_credentials,omitempty" help:"A map of bucket names to credentials, that can be used instead of the bootstrap ones."`
 
 	MaxFileDescriptors         uint64 `json:"max_file_descriptors,omitempty" help:"Max # of open file descriptors (RLIMIT_NOFILE)"`
 	CouchbaseKeepaliveInterval *int   `json:"couchbase_keepalive_interval,omitempty" help:"TCP keep-alive interval between SG and Couchbase server"`
