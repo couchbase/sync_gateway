@@ -152,6 +152,10 @@ func (h *handler) handleGraphQL() error {
 	var operationName string
 	var variables map[string]interface{}
 	canMutate := false
+
+	if h.db.Options.GraphQL == nil {
+		return base.HTTPErrorf(http.StatusServiceUnavailable, "GraphQL is not configured")
+	}
 	maxSize := h.db.Options.GraphQL.MaxRequestSize()
 
 	if h.rq.Method == "POST" {

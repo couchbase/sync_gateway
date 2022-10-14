@@ -91,7 +91,7 @@ func testConcurrently(t *testing.T, rt *RestTester, testFunc func() bool) bool {
 	return assert.LessOrEqual(t, concurrentDuration, 1.1*numTasks*sequentialDuration)
 }
 
-func TestUserQueries(t *testing.T) {
+func TestFunctions(t *testing.T) {
 	rt := NewRestTester(t, &RestTesterConfig{GuestEnabled: true, EnableUserQueries: true})
 	defer rt.Close()
 	rt.DatabaseConfig = kGraphQLTestConfig
@@ -107,7 +107,7 @@ func TestUserQueries(t *testing.T) {
 	})
 }
 
-func TestUserQueriesConcurrently(t *testing.T) {
+func TestFunctionsConcurrently(t *testing.T) {
 	rt := NewRestTester(t, &RestTesterConfig{GuestEnabled: true, EnableUserQueries: true})
 	defer rt.Close()
 	rt.DatabaseConfig = kGraphQLTestConfig

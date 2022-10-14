@@ -135,8 +135,8 @@ func TestFunctionsConfigMVCC(t *testing.T) {
 
 	t.Run("Functions", func(t *testing.T) {
 		runTest(t, "/db/_config/functions", `{
-			"zzz": {"type": "javascript", "code": "function(){return 69;}"}
-		}`)
+			"definitions": {
+				"zzz": {"type": "javascript", "code": "function(){return 69;}"} } }`)
 	})
 
 	t.Run("GraphQL", func(t *testing.T) {
@@ -235,11 +235,11 @@ func TestFunctionsConfigPut(t *testing.T) {
 	})
 	t.Run("ReplaceAll", func(t *testing.T) {
 		response := rt.SendAdminRequest("PUT", "/db/_config/functions", `{
-			"sum": {"type": "javascript",
-					"code": "function(context,args){return args.numero + args.numero;}",
-					"args": ["numero"],
-					"allow": {"channels": ["*"]}}
-		}`)
+			"definitions": {
+				"sum": {"type": "javascript",
+						"code": "function(context,args){return args.numero + args.numero;}",
+						"args": ["numero"],
+						"allow": {"channels": ["*"]}} } }`)
 		assert.Equal(t, 200, response.Result().StatusCode)
 
 		assert.NotNil(t, rt.GetDatabase().Options.UserFunctions.Definitions["sum"])
@@ -256,7 +256,7 @@ func TestFunctionsConfigPut(t *testing.T) {
 		response := rt.SendAdminRequest("DELETE", "/db/_config/functions", "")
 		assert.Equal(t, 200, response.Result().StatusCode)
 
-		assert.Equal(t, 0, len(rt.GetDatabase().Options.UserFunctions.Definitions))
+		assert.Nil(t, rt.GetDatabase().Options.UserFunctions)
 
 		response = rt.SendAdminRequest("GET", "/db/_function/square?numero=13", "")
 		assert.Equal(t, 404, response.Result().StatusCode)
