@@ -102,6 +102,7 @@ var kTestGraphQLConfig = GraphQLConfig{
 							if (Object.keys(info) != "selectedFieldNames") throw "Unexpected info";
 							if (!context.user) throw "Missing context.user";
 							if (!context.admin) throw "Missing context.admin";
+							context.requireMutating();
 							var task = context.user.function("getTask", {id: args.id});
 							if (!task) return undefined;
 							task.done = true;
@@ -110,6 +111,7 @@ var kTestGraphQLConfig = GraphQLConfig{
 			"addTag": {
 				Type: "javascript",
 				Code: `function(parent, args, context, info) {
+							context.requireMutating();
 							var task = context.user.function("getTask", {id: args.id});
 							if (!task) return undefined;
 							if (!task.tags) task.tags = [];
@@ -188,10 +190,10 @@ func assertGraphQLError(t *testing.T, expectedErrorText string, result *graphql.
 	if !assert.NoError(t, err) || !assert.NotNil(t, result) {
 		return
 	}
-	if !assert.NotZero(t, len(result.Errors)) {
+	if len(result.Errors) == 0 {
 		data, err := json.Marshal(result.Data)
 		assert.NoError(t, err)
-		t.Logf("Expected GraphQL error but got none; data is %s", string(data))
+		assert.NotZero(t, len(result.Errors), "Expected GraphQL error but got none; data is %s", string(data))
 		return
 	}
 	for _, err := range result.Errors {
@@ -245,8 +247,8 @@ func testUserGraphQLCommon(t *testing.T, ctx context.Context, db *db.Database) {
 	result, err = db.UserGraphQLQuery(`query{ task(foo:69) {id,title,done} }`, "", nil, false, ctx)
 	assertGraphQLError(t, "Unknown argument \"foo\"", result, err)
 
-	// Mutation when no mutations allowed:
-	result, err = db.UserGraphQLQuery(`mutation{ complete(id:"a") {done} }`, "", nil, false, ctx)
+	// Mutation when no mutations allowed (mutationAllowed = false):
+	result, err = db.UserGraphQLQuery(`mutation{ complete(id:"b") {done} }`, "", nil, false, ctx)
 	assertGraphQLError(t, "403", result, err)
 
 	// Infinite regress:

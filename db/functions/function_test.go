@@ -117,15 +117,31 @@ var kUserFunctionConfig = FunctionsConfig{
 			Allow: allowAll,
 		},
 		"putDoc": &FunctionConfig{
+			Type:     "javascript",
+			Code:     `function(context, args) {return context.user.defaultCollection.save(args.doc, args.docID);}`,
+			Args:     []string{"docID", "doc"},
+			Mutating: true,
+			Allow:    allowAll,
+		},
+		"delDoc": &FunctionConfig{
+			Type:     "javascript",
+			Code:     `function(context, args) {return context.user.defaultCollection.delete(args.docID);}`,
+			Args:     []string{"docID"},
+			Mutating: true,
+			Allow:    allowAll,
+		},
+
+		"illegal_putDoc": &FunctionConfig{
 			Type:  "javascript",
-			Code:  `function(context, args) {return context.user.defaultCollection.save(args.doc, args.docID);}`,
+			Code:  `function(context, args) {context.user.function("putDoc", args);}`,
 			Args:  []string{"docID", "doc"},
 			Allow: allowAll,
 		},
-		"delDoc": &FunctionConfig{
+
+		"legal_putDoc": &FunctionConfig{
 			Type:  "javascript",
-			Code:  `function(context, args) {return context.user.defaultCollection.delete(args.docID);}`,
-			Args:  []string{"docID"},
+			Code:  `function(context, args) {context.admin.function("putDoc", args);}`,
+			Args:  []string{"docID", "doc"},
 			Allow: allowAll,
 		},
 	},
@@ -338,7 +354,7 @@ func TestUserFunctionsCRUD(t *testing.T) {
 		"doc":   body,
 	}
 
-	// Illegal mutation:
+	// Illegal mutation (passing mutationAllowed = false):
 	_, err = db.CallUserFunction("putDoc", docParams, false, ctx)
 	assertHTTPError(t, err, 403)
 
@@ -384,6 +400,14 @@ func TestUserFunctionsCRUD(t *testing.T) {
 	assert.True(t, ok)
 	assert.NotEmpty(t, revID)
 	assert.True(t, strings.HasPrefix(revID, "3-"))
+
+	// Illegal mutation (a non-mutating function calling putDoc)
+	_, err = db.CallUserFunction("illegal_putDoc", docParams, true, ctx)
+	assertHTTPError(t, err, 403)
+
+	// Legal mutation (a non-mutating function calling putDoc, but via 'admin')
+	_, err = db.CallUserFunction("legal_putDoc", docParams, true, ctx)
+	assert.NoError(t, err)
 
 	// Delete doc:
 	_, err = db.CallUserFunction("delDoc", map[string]any{"docID": docID}, true, ctx)
@@ -605,7 +629,7 @@ func assertHTTPError(t *testing.T, err error, status int) bool {
 	var httpErr *base.HTTPError
 	return assert.Error(t, err) &&
 		assert.ErrorAs(t, err, &httpErr) &&
-		assert.Equal(t, status, httpErr.Status)
+		assert.Equal(t, status, httpErr.Status, "Error is: %#v", err)
 }
 
 //////// SETUP FUNCTIONS

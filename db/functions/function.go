@@ -42,10 +42,11 @@ type FunctionsDefs = map[string]*FunctionConfig
 // Defines a JavaScript or N1QL function that a client can invoke by name.
 // (Its name is the key in the FunctionsDefs.)
 type FunctionConfig struct {
-	Type  string   `json:"type"`
-	Code  string   `json:"code"`            // Javascript function or N1QL 'SELECT'
-	Args  []string `json:"args,omitempty"`  // Names of parameters/arguments
-	Allow *Allow   `json:"allow,omitempty"` // Permissions (admin-only if nil)
+	Type     string   `json:"type"`
+	Code     string   `json:"code"`               // Javascript function or N1QL 'SELECT'
+	Args     []string `json:"args,omitempty"`     // Names of parameters/arguments
+	Mutating bool     `json:"mutating,omitempty"` // Allowed to modify database?
+	Allow    *Allow   `json:"allow,omitempty"`    // Permissions (admin-only if nil)
 }
 
 // Permissions for a function
@@ -59,12 +60,12 @@ type Allow struct {
 
 // implements UserFunction. Used for both JS and N1QL.
 type functionImpl struct {
-	*FunctionConfig
-	name           string
-	typeName       string
-	checkArgs      bool
-	allowByDefault bool
-	compiled       *sgbucket.JSServer // Compiled form of the function; nil for N1QL
+	*FunctionConfig                    // Inherits from FunctionConfig
+	name            string             // Name of function
+	typeName        string             // "function" or "resolver"
+	checkArgs       bool               // If true, args must be checked against Args
+	allowByDefault  bool               // If true, a missing Allow means allow, not forbid
+	compiled        *sgbucket.JSServer // Compiled form of the function; nil for N1QL
 }
 
 // Compiles the functions in a UserFunctionConfigMap, returning UserFunctions.
@@ -141,14 +142,6 @@ func (fn *functionImpl) N1QLQueryName() (string, bool) {
 	}
 }
 
-func (fn *functionImpl) CheckArgs(check bool) {
-	fn.checkArgs = check
-}
-
-func (fn *functionImpl) AllowByDefault(allow bool) {
-	fn.allowByDefault = allow
-}
-
 // Creates an Invocation of a UserFunction.
 func (fn *functionImpl) Invoke(db *db.Database, args map[string]any, mutationAllowed bool, ctx context.Context) (db.UserFunctionInvocation, error) {
 	if ctx == nil {
@@ -175,6 +168,17 @@ func (fn *functionImpl) Invoke(db *db.Database, args map[string]any, mutationAll
 		}
 	}
 
+	if (!fn.Mutating || !mutationAllowed) && ctx.Value(readOnlyKey) == nil {
+		// Add a value to the Context to indicate that mutations aren't allowed:
+		var why string
+		if !fn.Mutating {
+			why = fmt.Sprintf("%s %q", fn.typeName, fn.name)
+		} else {
+			why = "a read-only API call"
+		}
+		ctx = context.WithValue(ctx, readOnlyKey, why)
+	}
+
 	if fn.isN1QL() {
 		return &n1qlInvocation{
 			functionImpl: fn,
@@ -184,11 +188,10 @@ func (fn *functionImpl) Invoke(db *db.Database, args map[string]any, mutationAll
 		}, nil
 	} else {
 		return &jsInvocation{
-			functionImpl:    fn,
-			db:              db,
-			ctx:             ctx,
-			args:            args,
-			mutationAllowed: mutationAllowed,
+			functionImpl: fn,
+			db:           db,
+			ctx:          ctx,
+			args:         args,
 		}, nil
 	}
 }

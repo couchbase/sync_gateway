@@ -13,7 +13,6 @@ package functions
 import (
 	"context"
 	"fmt"
-	"net/http"
 	"os"
 
 	gqltools "github.com/bhoriuchi/graphql-go-tools"
@@ -50,7 +49,9 @@ func (gq *graphQLImpl) Query(db *db.Database, query string, operationName string
 		return nil, err
 	}
 	ctx = context.WithValue(ctx, dbKey, db)
-	ctx = context.WithValue(ctx, mutAllowedKey, mutationAllowed)
+	if !mutationAllowed && ctx.Value(readOnlyKey) == nil {
+		ctx = context.WithValue(ctx, readOnlyKey, "a read-only GraphQL API call")
+	}
 	result := graphql.Do(graphql.Params{
 		Schema:         gq.schema,
 		RequestString:  query,
@@ -79,8 +80,8 @@ func (gq *graphQLImpl) N1QLQueryNames() []string {
 
 type gqContextKey string
 
-var dbKey = gqContextKey("db")                 // Context key to access the db.Database instance
-var mutAllowedKey = gqContextKey("mutAllowed") // Context key to access `mutationAllowed`
+var dbKey = gqContextKey("db")             // Context key to access the db.Database instance
+var readOnlyKey = gqContextKey("readOnly") // Context key preventing mutation; val is fn name
 
 //////// GRAPHQL INITIALIZATION:
 
@@ -226,15 +227,14 @@ func (config *GraphQLConfig) compileFieldResolver(typeName string, fieldName str
 	if err != nil {
 		return nil, err
 	}
-	userFn.CheckArgs(false)
-	userFn.AllowByDefault(true)
+	userFn.checkArgs = false
+	userFn.allowByDefault = true
+	userFn.Mutating = isMutation
 
 	return func(params graphql.ResolveParams) (any, error) {
-		db := params.Context.Value(dbKey).(*db.Database)
-		if isMutation && !params.Context.Value(mutAllowedKey).(bool) {
-			return nil, base.HTTPErrorf(http.StatusForbidden, "a read-only request is not allowed to call a GraphQL mutation")
-		}
-		invocation, err := userFn.Invoke(db, params.Args, isMutation, params.Context)
+		ctx := params.Context
+		db := ctx.Value(dbKey).(*db.Database)
+		invocation, err := userFn.Invoke(db, params.Args, isMutation, ctx)
 		if err != nil {
 			return nil, err
 		}

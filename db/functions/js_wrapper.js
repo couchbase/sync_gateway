@@ -85,6 +85,10 @@ function() {    var userFn = (%s);  // <-- substitutes the JS function
                     return;
             }
             throw("HTTP: 401 Unauthorized");
+        },
+
+        requireMutating: function() {
+            _requireMutating();
         }
     };
 

@@ -11,6 +11,7 @@ licenses/APL2.txt.
 package functions
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -70,6 +71,38 @@ func (runner *jsRunner) defineNativeCallbacks() {
 		docID, err := runner.do_save(doc, docID, sudo)
 		return ottoResult(call, docID, err)
 	})
+
+	// Implementation of the '_requireMutating()' callback:
+	runner.DefineNativeFunction("_requireMutating", func(call otto.FunctionCall) otto.Value {
+		err := runner.checkMutationAllowed("requireMutating")
+		return ottoResult(call, nil, err)
+	})
+}
+
+func (runner *jsRunner) checkMutationAllowed(what string) error {
+	if roFn, ok := runner.ctx.Value(readOnlyKey).(string); ok {
+		name := fmt.Sprintf("%s %q", runner.kind, runner.name)
+		if name == roFn {
+			return base.HTTPErrorf(http.StatusForbidden, "%q called from non-mutating %s", what, roFn)
+		} else {
+			return base.HTTPErrorf(http.StatusForbidden, "%q called by %s %q from non-mutating %s", what, runner.kind, runner.name, roFn)
+		}
+	} else {
+		return nil
+	}
+}
+
+// Enters admin/sudo mode, and returns a function that when called will exit it.
+func (runner *jsRunner) enterSudo() func() {
+	user := runner.currentDB.User()
+	ctx := runner.ctx
+	runner.currentDB.SetUser(nil)
+	runner.ctx = context.WithValue(ctx, readOnlyKey, nil)
+	// Return the 'exitSudo' function that the caller will defer:
+	return func() {
+		runner.currentDB.SetUser(user)
+		runner.ctx = ctx
+	}
 }
 
 //////// DATABASE CALLBACK FUNCTION IMPLEMENTATIONS:
@@ -77,6 +110,11 @@ func (runner *jsRunner) defineNativeCallbacks() {
 // Implementation of JS `user.delete(doc)` function
 // Parameter can be either a docID or a document body with _id (and optionally _rev)
 func (runner *jsRunner) do_delete(docID string, body map[string]any, sudo bool) (bool, error) {
+	if !sudo {
+		if err := runner.checkMutationAllowed("user.delete"); err != nil {
+			return false, err
+		}
+	}
 	tombstone := map[string]any{"_deleted": true}
 	if body != nil {
 		if _id, ok := body["_id"].(string); ok {
@@ -97,19 +135,17 @@ func (runner *jsRunner) do_delete(docID string, body map[string]any, sudo bool) 
 // Implementation of JS `user.function(name, params)` function
 func (runner *jsRunner) do_func(funcName string, params map[string]any, sudo bool) (any, error) {
 	if sudo {
-		user := runner.currentDB.User()
-		runner.currentDB.SetUser(nil)
-		defer func() { runner.currentDB.SetUser(user) }()
+		exitSudo := runner.enterSudo()
+		defer exitSudo()
 	}
-	return runner.currentDB.CallUserFunction(funcName, params, runner.mutationAllowed, runner.ctx)
+	return runner.currentDB.CallUserFunction(funcName, params, true, runner.ctx)
 }
 
 // Implementation of JS `user.get(docID, docType?)` function
 func (runner *jsRunner) do_get(docID string, docType *string, sudo bool) (any, error) {
 	if err := runner.currentDB.CheckTimeout(runner.ctx); err != nil {
 		return nil, err
-	}
-	if sudo {
+	} else if sudo {
 		user := runner.currentDB.User()
 		runner.currentDB.SetUser(nil)
 		defer func() { runner.currentDB.SetUser(user) }()
@@ -138,24 +174,21 @@ func (runner *jsRunner) do_get(docID string, docType *string, sudo bool) (any, e
 // Implementation of JS `user.graphql(query, params)` function
 func (runner *jsRunner) do_graphql(query string, params map[string]any, sudo bool) (any, error) {
 	if sudo {
-		user := runner.currentDB.User()
-		runner.currentDB.SetUser(nil)
-		defer func() { runner.currentDB.SetUser(user) }()
+		exitSudo := runner.enterSudo()
+		defer exitSudo()
 	}
-	return runner.currentDB.UserGraphQLQuery(query, "", params, runner.mutationAllowed, runner.ctx)
+	return runner.currentDB.UserGraphQLQuery(query, "", params, true, runner.ctx)
 }
 
 // Implementation of JS `user.save(body, docID?)` function
 func (runner *jsRunner) do_save(body map[string]any, docIDPtr *string, sudo bool) (*string, error) {
 	if err := runner.currentDB.CheckTimeout(runner.ctx); err != nil {
 		return nil, err
-	} else if !runner.mutationAllowed {
-		return nil, base.HTTPErrorf(http.StatusForbidden, "a read-only request is not allowed to mutate the database")
-	}
-	if sudo {
-		user := runner.currentDB.User()
-		runner.currentDB.SetUser(nil)
-		defer func() { runner.currentDB.SetUser(user) }()
+	} else if sudo {
+		exitSudo := runner.enterSudo()
+		defer exitSudo()
+	} else if err := runner.checkMutationAllowed("user.put"); err != nil {
+		return nil, err
 	}
 
 	// The optional `docID` parameter takes precedence over a `_id` key in the body.
