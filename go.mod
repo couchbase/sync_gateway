@@ -7,7 +7,7 @@ require (
 	github.com/coreos/go-oidc v2.2.1+incompatible
 	github.com/couchbase/cbgt v1.2.4
 	github.com/couchbase/clog v0.1.0
-	github.com/couchbase/go-blip v0.0.0-20220810102707-e9964d569180
+	github.com/couchbase/go-blip v0.0.0-20221014135304-5098341ee90f
 	github.com/couchbase/go-couchbase v0.1.1
 	github.com/couchbase/gocb/v2 v2.5.3-0.20220803131303-46b466983d0f
 	github.com/couchbase/gocbcore/v10 v10.1.5-0.20220809160836-bf53e9527651
@@ -50,7 +50,7 @@ require (
 	github.com/golang/protobuf v1.5.2 // indirect
 	github.com/golang/snappy v0.0.4 // indirect
 	github.com/google/pprof v0.0.0-20211214055906-6f57359322fd // indirect
-	github.com/klauspost/compress v1.15.2 // indirect
+	github.com/klauspost/compress v1.15.11 // indirect
 	github.com/matttproud/golang_protobuf_extensions v1.0.1 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect
