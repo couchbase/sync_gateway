@@ -955,8 +955,9 @@ func TestReplicationConcurrentPush(t *testing.T) {
 	defer teardown()
 	// Create push replications, verify running
 	activeRT.createReplication("rep_ABC", remoteURLString, db.ActiveReplicatorTypePush, []string{"ABC"}, true, db.ConflictResolverDefault)
-	activeRT.WaitForReplicationStatus("rep_ABC", db.ReplicationStateRunning)
 	activeRT.createReplication("rep_DEF", remoteURLString, db.ActiveReplicatorTypePush, []string{"DEF"}, true, db.ConflictResolverDefault)
+	activeRT.waitForAssignedReplications(2)
+	activeRT.WaitForReplicationStatus("rep_ABC", db.ReplicationStateRunning)
 	activeRT.WaitForReplicationStatus("rep_DEF", db.ReplicationStateRunning)
 
 	// Create docs on active
