@@ -335,7 +335,7 @@ func assertResp(t *testing.T, resp *http.Response, status int, body string) {
 // Development-time test, expects locally running Couchbase Server and designed for long-running memory profiling
 func DevTestFetchConfigManual(t *testing.T) {
 
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
+	base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP)
 
 	serverErr := make(chan error, 0)
 
@@ -362,22 +362,19 @@ func DevTestFetchConfigManual(t *testing.T) {
 	// Start SG with no databases, high frequency polling
 	config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(time.Second)
 
-	ctx := base.TestCtx(t)
-	sc, err := SetupServerContext(ctx, &config, true)
+	sc, err := setupServerContext(&config, true)
 	require.NoError(t, err)
 
 	defer func() {
-		sc.Close(ctx)
+		sc.Close()
 		require.NoError(t, <-serverErr)
 	}()
 
 	go func() {
-		serverErr <- StartServer(ctx, &config, sc)
+		serverErr <- startServer(&config, sc)
 	}()
-	require.NoError(t, sc.WaitForRESTAPIs())
+	require.NoError(t, sc.waitForRESTAPIs())
 
 	// Sleep to wait for bucket polling iterations, or allow manual modification to server accessibility
-
-	time.Sleep(15 * time.Second)
-
+	time.Sleep(900 * time.Second)
 }
