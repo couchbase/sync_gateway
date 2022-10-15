@@ -391,37 +391,35 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions
 		base.DebugfCtx(bh.loggingCtx, base.KeySync, "    Sending %d changes", len(changes))
 		for _, change := range changes {
 			if !strings.HasPrefix(change.ID, "_") {
-				for _, item := range change.Changes {
-					changeRow := bh.buildChangesRow(change, item["rev"])
-
-					// If change is a removal and we're running with protocol V3 and change change is not a tombstone
-					// fall into 3.0 removal handling
-					if change.allRemoved && bh.blipContext.ActiveSubprotocol() == BlipCBMobileReplicationV3 && !change.Deleted {
-
-						// If client doesn't want removals / revocations, don't send change
-						if !opts.revocations {
-							continue
-						}
-
-						// If the user has access to the doc through another channel don't send change
-						userHasAccessToDoc, err := UserHasDocAccess(bh.loggingCtx, bh.collection, change.ID, item["rev"])
-						if err == nil && userHasAccessToDoc {
-							continue
-						}
-
-						// If we can't determine user access due to an error, log error and fall through to send change anyway.
-						// In the event of an error we should be cautious and send a revocation anyway, even if the user
-						// may actually have an alternate access method. This is the safer approach security-wise and
-						// also allows for a recovery if the user notices they are missing a doc they should have access
-						// to. A recovery option would be to trigger a mutation of the document for it to be sent in a
-						// subsequent changes request. If we were to avoid sending a removal there is no recovery
-						// option to then trigger that removal later on.
-						if err != nil {
-							base.WarnfCtx(bh.loggingCtx, "Unable to determine whether user has access to %s/%s, will send removal: %v", base.UD(change.ID), base.UD(item["rev"]), err)
-						}
-
+				// If change is a removal and we're running with protocol V3 and change change is not a tombstone
+				// fall into 3.0 removal handling.
+				// Changes with change.Revoked=true have already evaluated UserHasDocAccess in changes.go, don't check again.
+				if change.allRemoved && bh.blipContext.ActiveSubprotocol() == BlipCBMobileReplicationV3 && !change.Deleted && !change.Revoked {
+					// If client doesn't want removals / revocations, don't send change
+					if !opts.revocations {
+						continue
 					}
 
+					// If the user has access to the doc through another channel don't send change
+					userHasAccessToDoc, err := UserHasDocAccess(bh.loggingCtx, bh.collection, change.ID)
+					if err == nil && userHasAccessToDoc {
+						continue
+					}
+
+					// If we can't determine user access due to an error, log error and fall through to send change anyway.
+					// In the event of an error we should be cautious and send a revocation anyway, even if the user
+					// may actually have an alternate access method. This is the safer approach security-wise and
+					// also allows for a recovery if the user notices they are missing a doc they should have access
+					// to. A recovery option would be to trigger a mutation of the document for it to be sent in a
+					// subsequent changes request. If we were to avoid sending a removal there is no recovery
+					// option to then trigger that removal later on.
+					if err != nil {
+						base.WarnfCtx(bh.loggingCtx, "Unable to determine whether user has access to %s, will send removal: %v", base.UD(change.ID), err)
+					}
+
+				}
+				for _, item := range change.Changes {
+					changeRow := bh.buildChangesRow(change, item["rev"])
 					pendingChanges = append(pendingChanges, changeRow)
 					if err := sendPendingChangesAt(opts.batchSize); err != nil {
 						return err
