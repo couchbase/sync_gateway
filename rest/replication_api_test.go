@@ -1767,6 +1767,9 @@ func TestDBReplicationStatsTeardown(t *testing.T) {
 
 // Repros CBG-2450 - BLIP can't handle doc IDs containing a null byte
 func TestReplicatorDocIDNullBytePrefix(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server (due to importing documents)")
+	}
 	base.RequireNumTestBuckets(t, 2)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
