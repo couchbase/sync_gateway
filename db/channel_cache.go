@@ -39,7 +39,7 @@ type ChannelCache interface {
 	Init(initialSequence uint64)
 
 	// Adds an entry to the cache, returns set of channels it was added to
-	AddToCache(change *LogEntry) []string
+	AddToCache(change *LogEntry) []channels.ID
 
 	// Notifies the cache of a principal update.  Updates the cache's high sequence
 	AddPrincipal(change *LogEntry)
@@ -48,10 +48,10 @@ type ChannelCache interface {
 	Remove(docIDs []string, startTime time.Time) (count int)
 
 	// Returns set of changes for a given channel, within the bounds specified in options
-	GetChanges(channelName string, options ChangesOptions) ([]*LogEntry, error)
+	GetChanges(ch channels.ID, options ChangesOptions) ([]*LogEntry, error)
 
 	// Returns the set of all cached data for a given channel (intended for diagnostic usage)
-	GetCachedChanges(channelName string) []*LogEntry
+	GetCachedChanges(ch channels.ID) []*LogEntry
 
 	// Clear reinitializes the cache to an empty state
 	Clear()
@@ -64,10 +64,10 @@ type ChannelCache interface {
 	GetHighCacheSequence() uint64
 
 	// Access to individual channel cache
-	getSingleChannelCache(channelName string) SingleChannelCache
+	getSingleChannelCache(ch channels.ID) SingleChannelCache
 
 	// Access to individual bypass channel cache
-	getBypassChannelCache(channelName string) SingleChannelCache
+	getBypassChannelCache(ch channels.ID) SingleChannelCache
 
 	// Stop stops the channel cache and it's background tasks.
 	Stop()
@@ -174,9 +174,9 @@ func (c *channelCacheImpl) updateHighCacheSequence(sequence uint64) {
 
 // GetSingleChannelCache will create the cache for the channel if it doesn't exist.  If the cache is at
 // capacity, will return a bypass channel cache.
-func (c *channelCacheImpl) getSingleChannelCache(channelName string) SingleChannelCache {
+func (c *channelCacheImpl) getSingleChannelCache(ch channels.ID) SingleChannelCache {
 
-	return c.getChannelCache(channelName)
+	return c.getChannelCache(ch)
 }
 
 func (c *channelCacheImpl) AddPrincipal(change *LogEntry) {
@@ -185,14 +185,14 @@ func (c *channelCacheImpl) AddPrincipal(change *LogEntry) {
 
 // Adds an entry to the appropriate channels' caches, returning the affected channels.  lateSequence
 // flag indicates whether it was a change arriving out of sequence
-func (c *channelCacheImpl) AddToCache(change *LogEntry) (updatedChannels []string) {
+func (c *channelCacheImpl) AddToCache(change *LogEntry) (updatedChannels []channels.ID) {
 
 	ch := change.Channels
 	change.Channels = nil // not needed anymore, so free some memory
 
 	// updatedChannels tracks the set of channels that should be notified of the change.  This includes
 	// the change's active channels, as well as any channel removals for the active revision.
-	updatedChannels = make([]string, 0, len(ch))
+	updatedChannels = make([]channels.ID, 0, len(ch))
 
 	// If it's a late sequence, we want to add to all channel late queues within a single write lock,
 	// to avoid a changes feed seeing the same late sequence in different iteration loops (and sending
@@ -214,7 +214,7 @@ func (c *channelCacheImpl) AddToCache(change *LogEntry) (updatedChannels []strin
 			if channelName == channels.UserStarChannel {
 				explicitStarChannel = true
 			}
-			channelCache, ok := c.getActiveChannelCache(channelName)
+			channelCache, ok := c.getActiveChannelCache(channels.ID{Name: channelName, CollectionID: change.CollectionID})
 			if ok {
 				channelCache.addToCache(change, removal != nil)
 				if change.Skipped {
@@ -222,19 +222,20 @@ func (c *channelCacheImpl) AddToCache(change *LogEntry) (updatedChannels []strin
 				}
 			}
 			// Need to notify even if channel isn't active, for case where number of connected changes channels exceeds cache capacity
-			updatedChannels = append(updatedChannels, channelName)
+			updatedChannels = append(updatedChannels, channels.ID{
+				Name: channelName, CollectionID: change.CollectionID})
 		}
 	}
 
 	if EnableStarChannelLog && !explicitStarChannel {
-		channelCache, ok := c.getActiveChannelCache(channels.UserStarChannel)
+		channelCache, ok := c.getActiveChannelCache(channels.ID{Name: channels.UserStarChannel, CollectionID: change.CollectionID})
 		if ok {
 			channelCache.addToCache(change, false)
 			if change.Skipped {
 				channelCache.AddLateSequence(change)
 			}
 		}
-		updatedChannels = append(updatedChannels, channels.UserStarChannel)
+		updatedChannels = append(updatedChannels, channels.ID{Name: channels.UserStarChannel, CollectionID: change.CollectionID})
 	}
 
 	c.updateHighCacheSequence(change.Sequence)
@@ -265,14 +266,14 @@ func (c *channelCacheImpl) Remove(docIDs []string, startTime time.Time) (count i
 	return count
 }
 
-func (c *channelCacheImpl) GetChanges(channelName string, options ChangesOptions) ([]*LogEntry, error) {
+func (c *channelCacheImpl) GetChanges(ch channels.ID, options ChangesOptions) ([]*LogEntry, error) {
 
-	return c.getChannelCache(channelName).GetChanges(options)
+	return c.getChannelCache(ch).GetChanges(options)
 }
 
-func (c *channelCacheImpl) GetCachedChanges(channelName string) []*LogEntry {
+func (c *channelCacheImpl) GetCachedChanges(channel channels.ID) []*LogEntry {
 	options := ChangesOptions{Since: SequenceID{Seq: 0}}
-	_, changes := c.getChannelCache(channelName).GetCachedChanges(options)
+	_, changes := c.getChannelCache(channel).GetCachedChanges(options)
 	return changes
 }
 
@@ -292,21 +293,21 @@ func (c *channelCacheImpl) cleanAgedItems(ctx context.Context) error {
 	return nil
 }
 
-func (c *channelCacheImpl) getChannelCache(channelName string) SingleChannelCache {
+func (c *channelCacheImpl) getChannelCache(channel channels.ID) SingleChannelCache {
 
-	cacheValue, found := c.channelCaches.Get(channelName)
+	cacheValue, found := c.channelCaches.Get(channel.String())
 	if found {
 		return AsSingleChannelCache(cacheValue)
 	}
 
 	// Attempt to add a singleChannelCache for the channel name.  If unsuccessful, return a bypass channel cache
-	singleChannelCache, ok := c.addChannelCache(channelName)
+	singleChannelCache, ok := c.addChannelCache(channel)
 	if ok {
 		return singleChannelCache
 	}
 
 	bypassChannelCache := &bypassChannelCache{
-		channelName:  channelName,
+		channel:      channel,
 		queryHandler: c.queryHandler,
 	}
 	c.cacheStats.ChannelCacheBypassCount.Add(1)
@@ -314,9 +315,9 @@ func (c *channelCacheImpl) getChannelCache(channelName string) SingleChannelCach
 
 }
 
-func (c *channelCacheImpl) getBypassChannelCache(channelName string) SingleChannelCache {
+func (c *channelCacheImpl) getBypassChannelCache(ch channels.ID) SingleChannelCache {
 	bypassChannelCache := &bypassChannelCache{
-		channelName:  channelName,
+		channel:      ch,
 		queryHandler: c.queryHandler,
 	}
 	return bypassChannelCache
@@ -341,7 +342,7 @@ func AsSingleChannelCache(cacheValue interface{}) *singleChannelCacheImpl {
 //	//     4. addChannelCache initializes cache with validFrom=10 and adds to c.channelCaches
 //	//  This scenario would result in sequence 11 missing from the cache.  Locking seqLock ensures that
 //	//  step 3 blocks until step 4 is complete (and so sees the channel as active)
-func (c *channelCacheImpl) addChannelCache(channelName string) (*singleChannelCacheImpl, bool) {
+func (c *channelCacheImpl) addChannelCache(channel channels.ID) (*singleChannelCacheImpl, bool) {
 
 	// Return nil if the cache at capacity.
 	if c.channelCaches.Length() >= c.maxChannels {
@@ -353,8 +354,8 @@ func (c *channelCacheImpl) addChannelCache(channelName string) (*singleChannelCa
 	// Everything after the current high sequence will be added to the cache via the feed
 	validFrom := c.GetHighCacheSequence() + 1
 
-	singleChannelCache := newChannelCacheWithOptions(c.queryHandler, channelName, validFrom, c.options, c.cacheStats)
-	cacheValue, created, cacheSize := c.channelCaches.GetOrInsert(channelName, singleChannelCache)
+	singleChannelCache := newChannelCacheWithOptions(c.queryHandler, channel, validFrom, c.options, c.cacheStats)
+	cacheValue, created, cacheSize := c.channelCaches.GetOrInsert(channel.String(), singleChannelCache)
 	c.validFromLock.Unlock()
 
 	singleChannelCache = AsSingleChannelCache(cacheValue)
@@ -371,9 +372,9 @@ func (c *channelCacheImpl) addChannelCache(channelName string) (*singleChannelCa
 	return singleChannelCache, true
 }
 
-func (c *channelCacheImpl) getActiveChannelCache(channelName string) (*singleChannelCacheImpl, bool) {
+func (c *channelCacheImpl) getActiveChannelCache(channel channels.ID) (*singleChannelCacheImpl, bool) {
 
-	cacheValue, found := c.channelCaches.Get(channelName)
+	cacheValue, found := c.channelCaches.Get(channel.String())
 	if !found {
 		return nil, false
 	}
@@ -465,12 +466,12 @@ func (c *channelCacheImpl) compactChannelCache() {
 			}
 
 			// Determine whether NRU channel is active, to establish eviction priority
-			isActive := c.activeChannels.IsActive(singleChannelCache.channelName)
+			isActive := c.activeChannels.IsActive(singleChannelCache.channel)
 			if !isActive {
-				base.TracefCtx(logCtx, base.KeyCache, "Marking inactive cache entry %q for eviction ", base.UD(singleChannelCache.channelName))
+				base.TracefCtx(logCtx, base.KeyCache, "Marking inactive cache entry %q for eviction ", base.UD(singleChannelCache.channel))
 				inactiveEvictionCandidates = append(inactiveEvictionCandidates, elem)
 			} else {
-				base.TracefCtx(logCtx, base.KeyCache, "Marking NRU cache entry %q for eviction", base.UD(singleChannelCache.channelName))
+				base.TracefCtx(logCtx, base.KeyCache, "Marking NRU cache entry %q for eviction", base.UD(singleChannelCache.channel))
 				nruEvictionCandidates = append(nruEvictionCandidates, elem)
 			}
 

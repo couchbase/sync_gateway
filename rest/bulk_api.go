@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/channels"
 	ch "github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
 	pkgerrors "github.com/pkg/errors"
@@ -307,7 +308,11 @@ func (h *handler) handleDumpChannel() error {
 	since := h.getIntQuery("since", 0)
 	base.InfofCtx(h.ctx(), base.KeyHTTP, "Dump channel %q", base.UD(channelName))
 
-	chanLog := h.db.GetChangeLog(channelName, since)
+	collectionID, err := h.db.GetSingleCollectionID()
+	if err != nil {
+		return err
+	}
+	chanLog := h.db.GetChangeLog(channels.ID{Name: channelName, CollectionID: collectionID}, since)
 	if chanLog == nil {
 		return base.HTTPErrorf(http.StatusNotFound, "no such channel")
 	}

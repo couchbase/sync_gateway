@@ -293,14 +293,14 @@ func (listener *changeListener) NewWaiter(keys []string) *ChangeWaiter {
 	}
 }
 
-func (listener *changeListener) NewWaiterWithChannels(chans base.Set, user auth.User) *ChangeWaiter {
+func (listener *changeListener) NewWaiterWithChannels(chans channels.Set, user auth.User) *ChangeWaiter {
 	waitKeys := make([]string, 0, 5)
 	for channel := range chans {
-		waitKeys = append(waitKeys, channel)
+		waitKeys = append(waitKeys, channel.String())
 	}
 	var userKeys []string
 	if user != nil {
-		userKeys = []string{base.UserPrefix + user.Name()}
+		userKeys = append(userKeys, base.UserPrefix+user.Name())
 		for role := range user.RoleNames() {
 			userKeys = append(userKeys, base.RolePrefix+role)
 		}
@@ -351,27 +351,17 @@ func (waiter *ChangeWaiter) RefreshUserCount() bool {
 }
 
 // Updates the set of channel keys in the ChangeWaiter (maintains the existing set of user keys)
-func (waiter *ChangeWaiter) UpdateChannels(chans channels.TimedSet) {
+func (waiter *ChangeWaiter) UpdateChannels(chans channels.Set) {
 	initialCapacity := len(chans) + len(waiter.userKeys)
 	updatedKeys := make([]string, 0, initialCapacity)
 	for channel := range chans {
-		updatedKeys = append(updatedKeys, channel)
+		updatedKeys = append(updatedKeys, channel.String())
 	}
 	if len(waiter.userKeys) > 0 {
 		updatedKeys = append(updatedKeys, waiter.userKeys...)
 	}
 	waiter.keys = updatedKeys
 
-}
-
-// Returns the set of user keys for this ChangeWaiter
-func (waiter *ChangeWaiter) GetUserKeys() (result []string) {
-	if len(waiter.userKeys) == 0 {
-		return result
-	}
-	result = make([]string, len(waiter.userKeys))
-	copy(result, waiter.userKeys)
-	return result
 }
 
 // Refresh user keys refreshes the waiter's userKeys (users and roles).  Required
@@ -387,7 +377,8 @@ func (waiter *ChangeWaiter) RefreshUserKeys(user auth.User) {
 		}
 		waiter.userKeys = []string{base.UserPrefix + user.Name()}
 		for role := range user.RoleNames() {
-			waiter.userKeys = append(waiter.userKeys, base.RolePrefix+role)
+			waiter.userKeys = append(waiter.userKeys,
+				base.RolePrefix+role)
 		}
 		waiter.lastUserCount = waiter.listener.CurrentCount(waiter.userKeys)
 
@@ -395,5 +386,5 @@ func (waiter *ChangeWaiter) RefreshUserKeys(user auth.User) {
 }
 
 func (db *Database) NewUserWaiter() *ChangeWaiter {
-	return db.mutationListener.NewWaiterWithChannels(base.Set{}, db.User())
+	return db.mutationListener.NewWaiterWithChannels(channels.Set{}, db.User())
 }

@@ -58,12 +58,13 @@ func et(seq uint64, docid string, revid string) *LogEntry {
 	return entry
 }
 
-func logEntry(seq uint64, docid string, revid string, channelNames []string) *LogEntry {
+func logEntry(seq uint64, docid string, revid string, channelNames []string, collectionID uint32) *LogEntry {
 	entry := &LogEntry{
 		Sequence:     seq,
 		DocID:        docid,
 		RevID:        revid,
 		TimeReceived: time.Now(),
+		CollectionID: collectionID,
 	}
 	channelMap := make(channels.ChannelMap)
 	for _, channelName := range channelNames {
@@ -117,12 +118,15 @@ func TestLateSequenceHandling(t *testing.T) {
 	context, ctx := setupTestDBWithCacheOptions(t, DefaultCacheOptions())
 	defer context.Close(ctx)
 
+	collectionID, err := context.GetSingleCollectionID()
+	require.NoError(t, err)
+
 	stats, err := base.NewSyncGatewayStats()
 	require.NoError(t, err)
 	dbstats, err := stats.NewDBStats("", false, false, false)
 	require.NoError(t, err)
 
-	cache := newSingleChannelCache(context, "Test1", 0, dbstats.CacheStats)
+	cache := newSingleChannelCache(context, channels.ID{Name: "Test1", CollectionID: collectionID}, 0, dbstats.CacheStats)
 	assert.True(t, cache != nil)
 
 	// Empty late sequence cache should return empty set
@@ -190,12 +194,15 @@ func TestLateSequenceHandlingWithMultipleListeners(t *testing.T) {
 	require.NoError(t, err)
 	defer context.Close(ctx)
 
+	collectionID, err := context.GetSingleCollectionID()
+	require.NoError(t, err)
+
 	stats, err := base.NewSyncGatewayStats()
 	require.NoError(t, err)
 	dbstats, err := stats.NewDBStats("", false, false, false)
 	require.NoError(t, err)
 
-	cache := newSingleChannelCache(context, "Test1", 0, dbstats.CacheStats)
+	cache := newSingleChannelCache(context, channels.ID{Name: "Test1", CollectionID: collectionID}, 0, dbstats.CacheStats)
 	assert.True(t, cache != nil)
 
 	// Add Listener before late entries arrive
@@ -250,11 +257,14 @@ func TestLateSequenceErrorRecovery(t *testing.T) {
 		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
 	}
 
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyChanges, base.KeyCache)
+	base.SetUpTestLogging(t, base.LevelTrace, base.KeyChanges, base.KeyCache)
 
 	db, ctx := setupTestDBWithCacheOptions(t, shortWaitCache())
 	defer db.Close(ctx)
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
+
+	collectionID, err := db.GetSingleCollectionID()
+	require.NoError(t, err)
 
 	// Create a user with access to channel ABC
 	authenticator := db.Authenticator(ctx)
@@ -312,7 +322,7 @@ func TestLateSequenceErrorRecovery(t *testing.T) {
 	// Modify the cache's late logs to remove the changes feed's lateFeedHandler sequence from the
 	// cache's lateLogs.  This will trigger an error on the next feed iteration, which should trigger
 	// rollback to resend all changes since low sequence (1)
-	abcCache := db.changeCache.getChannelCache().getSingleChannelCache("ABC").(*singleChannelCacheImpl)
+	abcCache := db.changeCache.getChannelCache().getSingleChannelCache(channels.ID{Name: "ABC", CollectionID: collectionID}).(*singleChannelCacheImpl)
 	abcCache.lateLogs[0].logEntry.Sequence = 1
 
 	// Write sequence 3.  Error should trigger rollback that resends everything since low sequence (1)
@@ -551,13 +561,18 @@ func TestChannelCacheBufferingWithUserDoc(t *testing.T) {
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
+
+	collectionID, err := db.GetSingleCollectionID()
+	require.NoError(t, err)
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
 	// Simulate seq 1 (user doc) being delayed - write 2 first
 	WriteDirect(db, []string{"ABC"}, 2)
 
 	// Start wait for doc in ABC
-	waiter := db.mutationListener.NewWaiterWithChannels(channels.BaseSetOf(t, "ABC"), nil)
+	chans := channels.SetOfNoValidate(
+		channels.ID{Name: "ABC", CollectionID: collectionID})
+	waiter := db.mutationListener.NewWaiterWithChannels(chans, nil)
 
 	successChan := make(chan bool)
 	go func() {
@@ -619,17 +634,21 @@ func TestChannelCacheBackfill(t *testing.T) {
 	WriteDirect(db, []string{"ABC", "NBC", "PBS", "TBS"}, 3)
 	WriteDirect(db, []string{"CBS"}, 7)
 	require.NoError(t, db.changeCache.waitForSequence(ctx, 7, base.DefaultWaitForSequence))
+
+	collectionID, err := db.GetSingleCollectionID()
+	require.NoError(t, err)
+
 	// verify insert at start (PBS)
-	pbsCache := db.changeCache.getChannelCache().getSingleChannelCache("PBS").(*singleChannelCacheImpl)
+	pbsCache := db.changeCache.getChannelCache().getSingleChannelCache(channels.ID{Name: "PBS", CollectionID: collectionID}).(*singleChannelCacheImpl)
 	assert.True(t, verifyCacheSequences(pbsCache, []uint64{3, 5, 6}))
 	// verify insert at middle (ABC)
-	abcCache := db.changeCache.getChannelCache().getSingleChannelCache("ABC").(*singleChannelCacheImpl)
+	abcCache := db.changeCache.getChannelCache().getSingleChannelCache(channels.ID{Name: "ABC", CollectionID: collectionID}).(*singleChannelCacheImpl)
 	assert.True(t, verifyCacheSequences(abcCache, []uint64{1, 2, 3, 5, 6}))
 	// verify insert at end (NBC)
-	nbcCache := db.changeCache.getChannelCache().getSingleChannelCache("NBC").(*singleChannelCacheImpl)
+	nbcCache := db.changeCache.getChannelCache().getSingleChannelCache(channels.ID{Name: "NBC", CollectionID: collectionID}).(*singleChannelCacheImpl)
 	assert.True(t, verifyCacheSequences(nbcCache, []uint64{1, 3}))
 	// verify insert to empty cache (TBS)
-	tbsCache := db.changeCache.getChannelCache().getSingleChannelCache("TBS").(*singleChannelCacheImpl)
+	tbsCache := db.changeCache.getChannelCache().getSingleChannelCache(channels.ID{Name: "TBS", CollectionID: collectionID}).(*singleChannelCacheImpl)
 	assert.True(t, verifyCacheSequences(tbsCache, []uint64{3}))
 
 	// verify changes has three entries (needs to resend all since previous LowSeq, which
@@ -1314,7 +1333,11 @@ func TestSkippedViewRetrieval(t *testing.T) {
 
 	// Validate expected entries
 	require.NoError(t, db.changeCache.waitForSequence(ctx, 15, base.DefaultWaitForSequence))
-	entries, err := db.changeCache.GetChanges("ABC", getChangesOptionsWithSeq(SequenceID{Seq: 2}))
+
+	collectionID, err := db.GetSingleCollectionID()
+	require.NoError(t, err)
+
+	entries, err := db.changeCache.GetChanges(channels.ID{Name: "ABC", CollectionID: collectionID}, getChangesOptionsWithSeq(SequenceID{Seq: 2}))
 	assert.NoError(t, err, "Get Changes returned error")
 	assert.Equal(t, 6, len(entries))
 	log.Printf("entries: %v", entries)
@@ -1369,7 +1392,6 @@ func TestStopChangeCache(t *testing.T) {
 
 // Test size config
 func TestChannelCacheSize(t *testing.T) {
-
 	if base.TestUseXattrs() {
 		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
 	}
@@ -1404,7 +1426,10 @@ func TestChannelCacheSize(t *testing.T) {
 	assert.Equal(t, 750, len(changes))
 
 	// Validate that cache stores the expected number of values
-	abcCache := db.changeCache.getChannelCache().getSingleChannelCache("ABC").(*singleChannelCacheImpl)
+	collectionID, err := db.GetSingleCollectionID()
+	require.NoError(t, err)
+
+	abcCache := db.changeCache.getChannelCache().getSingleChannelCache(channels.ID{Name: "ABC", CollectionID: collectionID}).(*singleChannelCacheImpl)
 	assert.Equal(t, 600, len(abcCache.logs))
 }
 
@@ -1604,17 +1629,20 @@ func TestLateArrivingSequenceTriggersOnChange(t *testing.T) {
 	db, ctx := setupTestDBWithCacheOptions(t, options)
 	defer db.Close(ctx)
 
+	collectionID, err := db.GetSingleCollectionID()
+	require.NoError(t, err)
+
 	// -------- Setup notifyChange callback ----------------
 
 	//  Detect whether the 2nd was ignored using an notifyChange listener callback and make sure it was not added to the ABC channel
 	waitForOnChangeCallback := sync.WaitGroup{}
 	waitForOnChangeCallback.Add(1)
-	db.changeCache.notifyChange = func(channels base.Set) {
-		// defer waitForOnChangeCallback.Done()
-		log.Printf("channelsChanged: %v", channels)
-		// goassert.True(t, channels.Contains("ABC"))
-		if channels.Contains("ABC") {
-			waitForOnChangeCallback.Done()
+	db.changeCache.notifyChange = func(chans base.Set) {
+		expectedChan := channels.ID{Name: "ABC", CollectionID: collectionID}
+		for ch := range chans {
+			if ch == expectedChan.String() {
+				waitForOnChangeCallback.Done()
+			}
 		}
 
 	}
@@ -1793,19 +1821,22 @@ func TestNotifyForInactiveChannel(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 
+	collectionID, err := db.GetSingleCollectionID()
+	require.NoError(t, err)
+
 	// -------- Setup notifyChange callback ----------------
 
 	notifyChannel := make(chan struct{})
-	db.changeCache.notifyChange = func(channels base.Set) {
-		log.Printf("channelsChanged: %v", channels)
-		if channels.Contains("zero") {
+	db.changeCache.notifyChange = func(chans base.Set) {
+		expectedChan := channels.ID{Name: "zero", CollectionID: collectionID}
+		if chans.Contains(expectedChan.String()) {
 			notifyChannel <- struct{}{}
 		}
 	}
 
 	// Write a document to channel zero
 	body := Body{"channels": []string{"zero"}}
-	_, _, err := db.Put(ctx, "inactiveCacheNotify", body)
+	_, _, err = db.Put(ctx, "inactiveCacheNotify", body)
 	assert.NoError(t, err)
 
 	// Wait for notify to arrive
@@ -1985,6 +2016,8 @@ func BenchmarkProcessEntry(b *testing.B) {
 			context, err := NewDatabaseContext(ctx, "db", base.GetTestBucket(b), false, DatabaseContextOptions{})
 			require.NoError(b, err)
 			defer context.Close(ctx)
+			collectionID, err := context.GetSingleCollectionID()
+			require.NoError(b, err)
 
 			ctx = context.AddDatabaseLogContext(ctx)
 			changeCache := &changeCache{}
@@ -2001,8 +2034,8 @@ func BenchmarkProcessEntry(b *testing.B) {
 
 			if bm.warmCacheCount > 0 {
 				for i := 0; i < bm.warmCacheCount; i++ {
-					channelName := fmt.Sprintf("channel_%d", i)
-					_, err := changeCache.GetChanges(channelName, getChangesOptionsWithZeroSeq())
+					channel := channels.ID{Name: fmt.Sprintf("channel_%d", i), CollectionID: collectionID}
+					_, err := changeCache.GetChanges(channel, getChangesOptionsWithZeroSeq())
 					if err != nil {
 						log.Printf("GetChanges failed for changeCache: %v", err)
 						b.Fail()
@@ -2214,6 +2247,9 @@ func BenchmarkDocChanged(b *testing.B) {
 			require.NoError(b, err)
 			defer context.Close(ctx)
 
+			collectionID, err := context.GetSingleCollectionID()
+			require.NoError(b, err)
+
 			ctx = context.AddDatabaseLogContext(ctx)
 			changeCache := &changeCache{}
 			if err := changeCache.Init(ctx, context, nil, nil); err != nil {
@@ -2228,8 +2264,8 @@ func BenchmarkDocChanged(b *testing.B) {
 
 			if bm.warmCacheCount > 0 {
 				for i := 0; i < bm.warmCacheCount; i++ {
-					channelName := fmt.Sprintf("channel_%d", i)
-					_, err := changeCache.GetChanges(channelName, getChangesOptionsWithZeroSeq())
+					channel := channels.ID{Name: fmt.Sprintf("channel_%d", i), CollectionID: collectionID}
+					_, err := changeCache.GetChanges(channel, getChangesOptionsWithZeroSeq())
 					if err != nil {
 						log.Printf("GetChanges failed for changeCache: %v", err)
 						b.Fail()

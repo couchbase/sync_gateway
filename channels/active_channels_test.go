@@ -16,6 +16,7 @@ import (
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestActiveChannelsConcurrency(t *testing.T) {
@@ -23,21 +24,31 @@ func TestActiveChannelsConcurrency(t *testing.T) {
 	ac := NewActiveChannels(activeChannelStat)
 	var wg sync.WaitGroup
 
+	ABCChan := ID{Name: "ABC"}
+	DEFChan := ID{Name: "DEF"}
+	GHIChan := ID{Name: "GHI"}
+	JKLChan := ID{Name: "JKL"}
+	MNOChan := ID{Name: "MNO"}
 	// Concurrent Incr, Decr
 	for i := 0; i < 50; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			ac.IncrChannels(TimedSetFromString("ABC:1,DEF:2,GHI:3,JKL:1,MNO:1"))
-			ac.DecrChannels(TimedSetFromString("ABC:1,DEF:2"))
+			activeChans, err := SetOf(ABCChan, DEFChan, GHIChan, JKLChan, MNOChan)
+			require.NoError(t, err)
+			ac.IncrChannels(activeChans)
+			inactiveChans, err := SetOf(ABCChan, DEFChan)
+			require.NoError(t, err)
+
+			ac.DecrChannels(inactiveChans)
 		}()
 	}
 	wg.Wait()
-	assert.False(t, ac.IsActive("ABC"))
-	assert.False(t, ac.IsActive("DEF"))
-	assert.True(t, ac.IsActive("GHI"))
-	assert.True(t, ac.IsActive("JKL"))
-	assert.True(t, ac.IsActive("MNO"))
+	assert.False(t, ac.IsActive(ABCChan))
+	assert.False(t, ac.IsActive(DEFChan))
+	assert.True(t, ac.IsActive(GHIChan))
+	assert.True(t, ac.IsActive(JKLChan))
+	assert.True(t, ac.IsActive(MNOChan))
 	assert.Equal(t, int64(3), activeChannelStat.Value())
 
 	// Concurrent UpdateChanged
@@ -45,18 +56,18 @@ func TestActiveChannelsConcurrency(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			changedKeys := ChangedKeys{"ABC": true, "DEF": true, "GHI": false, "MNO": true}
+			changedKeys := ChangedChannels{ABCChan: true, DEFChan: true, GHIChan: false, MNOChan: true}
 			ac.UpdateChanged(changedKeys)
-			changedKeys = ChangedKeys{"DEF": false}
+			changedKeys = ChangedChannels{DEFChan: false}
 			ac.UpdateChanged(changedKeys)
 		}()
 	}
 	wg.Wait()
-	assert.True(t, ac.IsActive("ABC"))
-	assert.False(t, ac.IsActive("DEF"))
-	assert.False(t, ac.IsActive("GHI"))
-	assert.True(t, ac.IsActive("JKL"))
-	assert.True(t, ac.IsActive("MNO"))
+	assert.True(t, ac.IsActive(ABCChan))
+	assert.False(t, ac.IsActive(DEFChan))
+	assert.False(t, ac.IsActive(GHIChan))
+	assert.True(t, ac.IsActive(JKLChan))
+	assert.True(t, ac.IsActive(MNOChan))
 	assert.Equal(t, int64(3), activeChannelStat.Value())
 
 }

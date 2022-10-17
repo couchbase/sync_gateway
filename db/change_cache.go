@@ -298,11 +298,19 @@ func (c *changeCache) InsertPendingEntries(ctx context.Context) error {
 	c.lock.Lock()
 	changedChannels := c._addPendingLogs()
 	if c.notifyChange != nil && len(changedChannels) > 0 {
-		c.notifyChange(changedChannels)
+		c.notifyChannels(changedChannels)
 	}
 	c.lock.Unlock()
 
 	return nil
+}
+
+func (c *changeCache) notifyChannels(chans channels.Set) {
+	serializedChans := base.Set{}
+	for ch := range chans {
+		serializedChans.Add(ch.String())
+	}
+	c.notifyChange(serializedChans)
 }
 
 // Cleanup function, invoked periodically.
@@ -365,7 +373,7 @@ func (c *changeCache) CleanSkippedSequenceQueue(ctx context.Context) error {
 	}
 
 	// Issue processEntry for found entries.  Standard processEntry handling will remove these sequences from the skipped seq queue.
-	changedChannelsCombined := base.Set{}
+	changedChannelsCombined := channels.Set{}
 	for _, entry := range foundEntries {
 		entry.Skipped = true
 		// Need to populate the actual channels for this entry - the entry returned from the * channel
@@ -384,7 +392,7 @@ func (c *changeCache) CleanSkippedSequenceQueue(ctx context.Context) error {
 	// Since the calls to processEntry() above may unblock pending sequences, if there were any changed channels we need
 	// to notify any change listeners that are working changes feeds for these channels
 	if c.notifyChange != nil && len(changedChannelsCombined) > 0 {
-		c.notifyChange(changedChannelsCombined)
+		c.notifyChannels(changedChannelsCombined)
 	}
 
 	// Purge sequences not found from the skipped sequence queue
@@ -404,7 +412,7 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 
 	docID := string(event.Key)
 	docJSON := event.Value
-	changedChannelsCombined := base.Set{}
+	changedChannelsCombined := channels.Set{}
 
 	// ** This method does not directly access any state of c, so it doesn't lock.
 	// Is this a user/role doc?
@@ -509,6 +517,7 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 		change := &LogEntry{
 			Sequence:     seq,
 			TimeReceived: event.TimeReceived,
+			CollectionID: event.CollectionID,
 		}
 		changedChannels := c.processEntry(change)
 		changedChannelsCombined = changedChannelsCombined.Update(changedChannels)
@@ -532,6 +541,7 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 				change := &LogEntry{
 					Sequence:     seq,
 					TimeReceived: event.TimeReceived,
+					CollectionID: event.CollectionID,
 				}
 
 				// if the doc was removed from one or more channels at this sequence
@@ -557,6 +567,7 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 		TimeReceived: event.TimeReceived,
 		TimeSaved:    syncData.TimeSaved,
 		Channels:     syncData.Channels,
+		CollectionID: event.CollectionID,
 	}
 
 	millisecondLatency := int(feedLatency / time.Millisecond)
@@ -573,7 +584,7 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 
 	// Notify change listeners for all of the changed channels
 	if c.notifyChange != nil && len(changedChannelsCombined) > 0 {
-		c.notifyChange(changedChannelsCombined)
+		c.notifyChannels(changedChannelsCombined)
 	}
 
 }
@@ -618,7 +629,7 @@ func (c *changeCache) releaseUnusedSequence(sequence uint64, timeReceived time.T
 	// to notify any change listeners that are working changes feeds for these channels
 	changedChannels := c.processEntry(change)
 	if c.notifyChange != nil && len(changedChannels) > 0 {
-		c.notifyChange(changedChannels)
+		c.notifyChannels(changedChannels)
 	}
 }
 
@@ -679,12 +690,12 @@ func (c *changeCache) processPrincipalDoc(docID string, docJSON []byte, isUser b
 
 	changedChannels := c.processEntry(change)
 	if c.notifyChange != nil && len(changedChannels) > 0 {
-		c.notifyChange(changedChannels)
+		c.notifyChannels(changedChannels)
 	}
 }
 
 // Handles a newly-arrived LogEntry.
-func (c *changeCache) processEntry(change *LogEntry) base.Set {
+func (c *changeCache) processEntry(change *LogEntry) channels.Set {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	if c.logsDisabled {
@@ -713,10 +724,10 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 	}
 	c.receivedSeqs[sequence] = struct{}{}
 
-	var changedChannels base.Set
+	var changedChannels channels.Set
 	if sequence == c.nextSequence || c.nextSequence == 0 {
 		// This is the expected next sequence so we can add it now:
-		changedChannels = base.SetFromArray(c._addToCache(change))
+		changedChannels = channels.SetFromArrayNoValidate(c._addToCache(change))
 		// Also add any pending sequences that are now contiguous:
 		changedChannels = changedChannels.Update(c._addPendingLogs())
 	} else if sequence > c.nextSequence {
@@ -761,7 +772,7 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 
 // Adds an entry to the appropriate channels' caches, returning the affected channels.  lateSequence
 // flag indicates whether it was a change arriving out of sequence
-func (c *changeCache) _addToCache(change *LogEntry) []string {
+func (c *changeCache) _addToCache(change *LogEntry) []channels.ID {
 
 	if change.Sequence >= c.nextSequence {
 		c.nextSequence = change.Sequence + 1
@@ -796,8 +807,8 @@ func (c *changeCache) _addToCache(change *LogEntry) []string {
 // Add the first change(s) from pendingLogs if they're the next sequence.  If not, and we've been
 // waiting too long for nextSequence, move nextSequence to skipped queue.
 // Returns the channels that changed.
-func (c *changeCache) _addPendingLogs() base.Set {
-	var changedChannels base.Set
+func (c *changeCache) _addPendingLogs() channels.Set {
+	var changedChannels channels.Set
 
 	for len(c.pendingLogs) > 0 {
 		change := c.pendingLogs[0]
@@ -831,12 +842,12 @@ func (c *changeCache) getChannelCache() ChannelCache {
 
 // ////// CHANGE ACCESS:
 
-func (c *changeCache) GetChanges(channelName string, options ChangesOptions) ([]*LogEntry, error) {
+func (c *changeCache) GetChanges(channel channels.ID, options ChangesOptions) ([]*LogEntry, error) {
 
 	if c.IsStopped() {
 		return nil, base.HTTPErrorf(503, "Database closed")
 	}
-	return c.channelCache.GetChanges(channelName, options)
+	return c.channelCache.GetChanges(channel, options)
 }
 
 // Returns the sequence number the cache is up-to-date with.

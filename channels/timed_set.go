@@ -390,3 +390,31 @@ func TimedSetFromString(encoded string) TimedSet {
 	}
 	return set
 }
+
+type CollectionByTimedSet map[uint32]TimedSet
+
+// AtSequenceByCollection creates a map of collectionID to a map of channel IDs to sequences.
+func AtSequenceByCollection(chans Set, sequence uint64) CollectionByTimedSet {
+	collectionByTimedSet := CollectionByTimedSet{}
+	for ch := range chans {
+		val, exists := collectionByTimedSet[ch.CollectionID]
+		if !exists {
+			val = make(TimedSet)
+		}
+		val[ch.Name] = NewVbSimpleSequence(sequence)
+		collectionByTimedSet[ch.CollectionID] = val
+
+	}
+	return collectionByTimedSet
+}
+
+// GetChannels returns the set of channel IDs.
+func (c CollectionByTimedSet) GetChannels() Set {
+	chans := Set{}
+	for collectionID, timedSet := range c {
+		for chanName := range timedSet {
+			chans.Add(ID{Name: chanName, CollectionID: collectionID})
+		}
+	}
+	return chans
+}

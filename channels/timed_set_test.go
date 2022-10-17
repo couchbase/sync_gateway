@@ -15,6 +15,7 @@ import (
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestTimedSetMarshal(t *testing.T) {
@@ -167,4 +168,20 @@ func TestTimedSetCompareKeys(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestCollectionByTimedSet(t *testing.T) {
+	chans, err := SetOf(
+		ID{Name: "A", CollectionID: 2},
+		ID{Name: "B", CollectionID: 2},
+		ID{Name: "B", CollectionID: 1},
+		ID{Name: "C", CollectionID: 1},
+	)
+	require.NoError(t, err)
+	collectionByTimedSet := AtSequenceByCollection(chans, 42)
+	require.Equal(t, CollectionByTimedSet{
+		1: TimedSetFromString("B:42,C:42"),
+		2: TimedSetFromString("A:42,B:42"),
+	}, collectionByTimedSet)
+	require.Equal(t, chans, collectionByTimedSet.GetChannels())
 }

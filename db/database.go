@@ -1901,3 +1901,15 @@ func (dbCtx *DatabaseContext) AddDatabaseLogContext(ctx context.Context) context
 	}
 	return ctx
 }
+
+// GetSingleCollectionID returns a collectionID. This is a shim for single collections.
+func (dbCtx *DatabaseContext) GetSingleCollectionID() (uint32, error) {
+	collection, err := base.AsCollection(dbCtx.Bucket)
+	if err != nil {
+		return 0, nil
+	}
+	if !collection.IsSupported(sgbucket.DataStoreFeatureCollections) {
+		return 0, nil
+	}
+	return collection.GetCollectionID()
+}

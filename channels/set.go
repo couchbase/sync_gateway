@@ -9,6 +9,7 @@
 package channels
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -26,6 +27,20 @@ const (
 const UserStarChannel = "*"     // user channel for "can access all docs"
 const DocumentStarChannel = "!" // doc channel for "visible to all users"
 const AllChannelWildcard = "*"  // wildcard for 'all channels'
+
+// ID represents a single channel inside a collection
+type ID struct {
+	Name         string // name of channel
+	CollectionID uint32 // collection it belongs to
+}
+
+func (c ID) String() string {
+	return fmt.Sprintf("%d.%s", c.CollectionID, c.Name)
+}
+
+type Set map[ID]present
+
+type present struct{}
 
 func illegalChannelError(name string) error {
 	return base.HTTPErrorf(400, "Illegal channel name %q", name)
@@ -54,6 +69,18 @@ func SetFromArray(names []string, mode StarMode) (base.Set, error) {
 	return result, nil
 }
 
+// SetOf creates a new Set. Returns an error if any names are invalid.
+func SetOf(chans ...ID) (Set, error) {
+	result := make(Set, len(chans))
+	for _, ch := range chans {
+		if !IsValidChannel(ch.Name) {
+			return nil, illegalChannelError(ch.Name)
+		}
+		result[ch] = present{}
+	}
+	return result, nil
+}
+
 // If the set contains "*", returns a set of only "*". Else returns the original set.
 func ExpandingStar(set base.Set) base.Set {
 	if _, exists := set[UserStarChannel]; exists {
@@ -65,4 +92,74 @@ func ExpandingStar(set base.Set) base.Set {
 // Returns a set with any "*" channel removed.
 func IgnoringStar(set base.Set) base.Set {
 	return set.Removing(UserStarChannel)
+}
+
+// SetFromArrayNoValidate creates a set of channels without validating they are valid names.
+func SetFromArrayNoValidate(chans []ID) Set {
+	result := make(Set, len(chans))
+	for _, ch := range chans {
+		result[ch] = present{}
+	}
+	return result
+}
+
+// SetOfNoValidate creates a new Set from inline channels.
+func SetOfNoValidate(chans ...ID) Set {
+	return SetFromArrayNoValidate(chans)
+}
+
+// SetOfFromSingleCollection creates a new Set from series of strings
+func SetOfFromSingleCollection(chans []string, collectionID uint32) Set {
+	result := make(Set, len(chans))
+	for _, chanName := range chans {
+		result[ID{Name: chanName, CollectionID: collectionID}] = present{}
+	}
+	return result
+}
+
+// Update adds all elements from other set and returns the union of the sets.
+func (s Set) Update(other Set) Set {
+	if len(s) == 0 {
+		return other
+	} else if len(other) == 0 {
+		return s
+	}
+	for ch := range other {
+		s[ch] = present{}
+	}
+	return s
+}
+
+// Add a channel to a set.
+func (s Set) Add(value ID) Set {
+	s[value] = present{}
+	return s
+}
+
+// UpdateWithSlice adds channels to a Set.
+func (s Set) UpdateWithSlice(slice []ID) Set {
+	if len(slice) == 0 {
+		return s
+	} else if len(s) == 0 {
+		s = make(Set, len(slice))
+	}
+	for _, ch := range slice {
+		s[ch] = present{}
+	}
+	return s
+}
+
+// Contains returns true if the set includes the channel.
+func (s Set) Contains(ch ID) bool {
+	_, exists := s[ch]
+	return exists
+}
+
+// ToSerializedStrings returns a base set with the serialized form of channel IDs.
+func (s Set) ToSerializedStrings() base.Set {
+	serializedChans := base.Set{}
+	for ch := range s {
+		serializedChans.Add(ch.String())
+	}
+	return serializedChans
 }

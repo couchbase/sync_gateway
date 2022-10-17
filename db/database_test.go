@@ -802,8 +802,11 @@ func TestAllDocsOnly(t *testing.T) {
 
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
+	collectionID, err := db.GetSingleCollectionID()
+	require.NoError(t, err)
+
 	// Trigger creation of the channel cache for channel "all"
-	db.changeCache.getChannelCache().getSingleChannelCache("all")
+	db.changeCache.getChannelCache().getSingleChannelCache(channels.ID{Name: "all", CollectionID: collectionID})
 
 	ids := make([]AllDocsEntry, 100)
 	for i := 0; i < 100; i++ {
@@ -846,7 +849,8 @@ func TestAllDocsOnly(t *testing.T) {
 	// There are 101 sequences overall, so the 1st one it has should be #52.
 	err = db.changeCache.waitForSequence(ctx, 101, base.DefaultWaitForSequence)
 	require.NoError(t, err)
-	changeLog := db.GetChangeLog("all", 0)
+
+	changeLog := db.GetChangeLog(channels.ID{Name: "all", CollectionID: collectionID}, 0)
 	require.Len(t, changeLog, 50)
 	assert.Equal(t, "alldoc-51", changeLog[0].DocID)
 
@@ -977,19 +981,23 @@ func TestConflicts(t *testing.T) {
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
 	// Instantiate channel cache for channel 'all'
-	db.changeCache.getChannelCache().getSingleChannelCache("all")
+	collectionID, err := db.GetSingleCollectionID()
+	require.NoError(t, err)
+
+	allChannel := channels.ID{Name: "all", CollectionID: collectionID}
+	db.changeCache.getChannelCache().getSingleChannelCache(allChannel)
 
 	cacheWaiter := db.NewDCPCachingCountWaiter(t)
 
 	// Create rev 1 of "doc":
 	body := Body{"n": 1, "channels": []string{"all", "1"}}
-	_, _, err := db.PutExistingRevWithBody(ctx, "doc", body, []string{"1-a"}, false)
+	_, _, err = db.PutExistingRevWithBody(ctx, "doc", body, []string{"1-a"}, false)
 	assert.NoError(t, err, "add 1-a")
 
 	// Wait for rev to be cached
 	cacheWaiter.AddAndWait(1)
 
-	changeLog := db.GetChangeLog("all", 0)
+	changeLog := db.GetChangeLog(channels.ID{Name: "all", CollectionID: collectionID}, 0)
 	assert.Equal(t, 1, len(changeLog))
 
 	// Create two conflicting changes:
@@ -1023,7 +1031,7 @@ func TestConflicts(t *testing.T) {
 
 	// Verify the change-log of the "all" channel:
 	cacheWaiter.Wait()
-	changeLog = db.GetChangeLog("all", 0)
+	changeLog = db.GetChangeLog(allChannel, 0)
 	assert.Equal(t, 1, len(changeLog))
 	assert.Equal(t, uint64(3), changeLog[0].Sequence)
 	assert.Equal(t, "doc", changeLog[0].DocID)
