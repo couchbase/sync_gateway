@@ -7736,8 +7736,8 @@ func TestUserHasDocAccessDocNotFound(t *testing.T) {
 	assert.NoError(t, err)
 	assert.True(t, userHasDocAccess)
 
-	err = rt.GetDatabase().Bucket.Delete("doc")
-	assert.NoError(t, err)
+	// Purge the document from the bucket to force 'not found'
+	err = database.Purge(ctx, "doc")
 
 	userHasDocAccess, err = db.UserHasDocAccess(ctx, database, "doc")
 	assert.NoError(t, err)
