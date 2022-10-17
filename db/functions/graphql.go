@@ -125,7 +125,7 @@ func (config *GraphQLConfig) compileSchema() (schema graphql.Schema, err error) 
 	// Assemble the resolvers:
 	resolvers := map[string]any{}
 ResolverLoop:
-	for name, resolver := range config.Resolvers {
+	for typeName, resolver := range config.Resolvers {
 		fieldMap := map[string]*gqltools.FieldResolve{}
 		var typeNameResolver graphql.ResolveTypeFn
 		for fieldName, fnConfig := range resolver {
@@ -134,11 +134,11 @@ ResolverLoop:
 			} else if fieldName == "__typename" {
 				// The "__typename" resolver returns the name of the concrete type of an
 				// instance of an interface.
-				typeNameResolver, err = config.compileTypeNameResolver(name, fnConfig)
+				typeNameResolver, err = config.compileTypeNameResolver(typeName, fnConfig)
 				resolverCount += 1
 			} else {
 				var fn graphql.FieldResolveFn
-				fn, err = config.compileFieldResolver(name, fieldName, fnConfig)
+				fn, err = config.compileFieldResolver(typeName, fieldName, fnConfig)
 				fieldMap[fieldName] = &gqltools.FieldResolve{Resolve: fn}
 				resolverCount += 1
 			}
@@ -152,11 +152,11 @@ ResolverLoop:
 			}
 		}
 		if typeNameResolver == nil {
-			resolvers[name] = &gqltools.ObjectResolver{
+			resolvers[typeName] = &gqltools.ObjectResolver{
 				Fields: fieldMap,
 			}
 		} else {
-			resolvers[name] = &gqltools.InterfaceResolver{
+			resolvers[typeName] = &gqltools.InterfaceResolver{
 				Fields:      fieldMap,
 				ResolveType: typeNameResolver,
 			}
@@ -227,8 +227,8 @@ func (config *GraphQLConfig) compileFieldResolver(typeName string, fieldName str
 	if err != nil {
 		return nil, err
 	}
-	userFn.checkArgs = false
-	userFn.allowByDefault = true
+	userFn.checkArgs = false                                                // graphql-go does this
+	userFn.allowByDefault = (typeName != "Query" && typeName != "Mutation") // not at top level
 	userFn.Mutating = isMutation
 
 	return func(params graphql.ResolveParams) (any, error) {

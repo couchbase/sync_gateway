@@ -52,12 +52,14 @@ var kTestGraphQLConfig = GraphQLConfig{
 	Resolvers: map[string]GraphQLResolverConfig{
 		"Query": {
 			"square": {
-				Type: "javascript",
-				Code: `function(parent, args, context, info) {return args.n * args.n;}`,
+				Type:  "javascript",
+				Code:  `function(parent, args, context, info) {return args.n * args.n;}`,
+				Allow: allowAll,
 			},
 			"infinite": {
-				Type: "javascript",
-				Code: `function(parent, args, context, info) {return context.user.function("infinite");}`,
+				Type:  "javascript",
+				Code:  `function(parent, args, context, info) {return context.user.function("infinite");}`,
+				Allow: allowAll,
 			},
 			"task": {
 				Type: "javascript",
@@ -68,6 +70,7 @@ var kTestGraphQLConfig = GraphQLConfig{
 						if (!context.user) throw "Missing context.user";
 						if (!context.admin) throw "Missing context.admin";
 						return context.user.function("getTask", {id: args.id});}`,
+				Allow: allowAll,
 			},
 			"tasks": {
 				Type: "javascript",
@@ -78,6 +81,7 @@ var kTestGraphQLConfig = GraphQLConfig{
 						if (!context.user) throw "Missing context.user";
 						if (!context.admin) throw "Missing context.admin";
 						return context.user.function("all");}`,
+				Allow: allowAll,
 			},
 			"toDo": {
 				Type: "javascript",
@@ -91,6 +95,7 @@ var kTestGraphQLConfig = GraphQLConfig{
 						for (var i = 0; i < all.length; i++)
 							if (!all[i].done) result.push(all[i]);
 						return result;}`,
+				Allow: allowAll,
 			},
 		},
 		"Mutation": {
@@ -107,6 +112,7 @@ var kTestGraphQLConfig = GraphQLConfig{
 							if (!task) return undefined;
 							task.done = true;
 							return task;}`,
+				Allow: allowAll,
 			},
 			"addTag": {
 				Type: "javascript",
@@ -117,6 +123,7 @@ var kTestGraphQLConfig = GraphQLConfig{
 							if (!task.tags) task.tags = [];
 							task.tags.push(args.tag);
 							return task;}`,
+				Allow: allowAll,
 			},
 		},
 		"Task": {
@@ -290,8 +297,9 @@ var kTestGraphQLConfigWithN1QL = GraphQLConfig{
 	Resolvers: map[string]GraphQLResolverConfig{
 		"Query": {
 			"square": {
-				Type: "javascript",
-				Code: `function(parent, args, context, info) {return args.n * args.n;}`,
+				Type:  "javascript",
+				Code:  `function(parent, args, context, info) {return args.n * args.n;}`,
+				Allow: allowAll,
 			},
 			"infinite": {
 				Type: "javascript",
@@ -299,20 +307,24 @@ var kTestGraphQLConfigWithN1QL = GraphQLConfig{
 						var result = context.user.graphql("query{ infinite }");
 						if (result.errors) throw "GraphQL query failed: " + result.errors[0].message;
 						return -1;}`,
+				Allow: allowAll,
 			},
 			"task": {
 				// This tests the ability of the resolver to return the 1st result row when the
 				// GraphQL return type is not a List.
-				Type: "query",
-				Code: `SELECT db.*, meta().id as id FROM $_keyspace AS db WHERE meta().id = $args.id AND type = "task"`,
+				Type:  "query",
+				Code:  `SELECT db.*, meta().id as id FROM $_keyspace AS db WHERE meta().id = $args.id AND type = "task"`,
+				Allow: allowAll,
 			},
 			"tasks": {
-				Type: "query",
-				Code: `SELECT db.*, meta().id as id FROM $_keyspace AS db WHERE type = "task" ORDER BY title`,
+				Type:  "query",
+				Code:  `SELECT db.*, meta().id as id FROM $_keyspace AS db WHERE type = "task" ORDER BY title`,
+				Allow: allowAll,
 			},
 			"toDo": {
-				Type: "query",
-				Code: `SELECT db.*, meta().id as id FROM $_keyspace AS db WHERE type = "task" AND NOT done ORDER BY title`,
+				Type:  "query",
+				Code:  `SELECT db.*, meta().id as id FROM $_keyspace AS db WHERE type = "task" AND NOT done ORDER BY title`,
+				Allow: allowAll,
 			},
 		},
 		"Mutation": {
@@ -327,6 +339,7 @@ var kTestGraphQLConfigWithN1QL = GraphQLConfig{
 					  context.user.defaultCollection.save(task, args.id);
 					}
 					return task;}`,
+				Allow: allowAll,
 			},
 			"addTag": {
 				Type: "javascript",
@@ -338,6 +351,7 @@ var kTestGraphQLConfigWithN1QL = GraphQLConfig{
 							task.tags.push(args.tag);
 							context.user.defaultCollection.save(task, args.id);
 							return task;}`,
+				Allow: allowAll,
 			},
 		},
 		"Task": {
@@ -355,8 +369,9 @@ var kTestGraphQLConfigWithN1QL = GraphQLConfig{
 			"description": {
 				// This tests the magic $parent parameter,
 				// and returning the single column of the single row when the result is a scalar.
-				Type: "query",
-				Code: `SELECT $parent.description`,
+				Type:  "query",
+				Code:  `SELECT $parent.description`,
+				Allow: allowAll,
 			},
 		},
 	},
