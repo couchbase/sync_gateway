@@ -855,7 +855,7 @@ func TestAllDocsOnly(t *testing.T) {
 	changesCtx, changesCtxCancel := context.WithCancel(context.Background())
 	options.ChangesCtx = changesCtx
 	defer changesCtxCancel()
-	changes, err := db.GetChanges(ctx, channels.SetOf(t, "all"), options)
+	changes, err := db.GetChanges(ctx, channels.BaseSetOf(t, "all"), options)
 	assert.NoError(t, err, "Couldn't GetChanges")
 	require.Len(t, changes, 100)
 
@@ -868,7 +868,7 @@ func TestAllDocsOnly(t *testing.T) {
 			// The last entry in the changes response should be the deleted document
 			assert.True(t, change.Deleted)
 			assert.Equal(t, "alldoc-23", change.ID)
-			assert.Equal(t, channels.SetOf(t, "all"), change.Removed)
+			assert.Equal(t, channels.BaseSetOf(t, "all"), change.Removed)
 		} else {
 			// Verify correct ordering for all other documents
 			assert.Equal(t, fmt.Sprintf("alldoc-%02d", docIndex), change.ID)
@@ -883,7 +883,7 @@ func TestAllDocsOnly(t *testing.T) {
 	assert.True(t, sortedSeqAsc(changes), "Sequences should be ascending for all entries in the changes response")
 
 	options.IncludeDocs = true
-	changes, err = db.GetChanges(ctx, channels.SetOf(t, "KFJC"), options)
+	changes, err = db.GetChanges(ctx, channels.BaseSetOf(t, "KFJC"), options)
 	assert.NoError(t, err, "Couldn't GetChanges")
 	assert.Len(t, changes, 10)
 	for i, change := range changes {
@@ -910,7 +910,7 @@ func TestUpdatePrincipal(t *testing.T) {
 
 	// Create a user with access to channel ABC
 	authenticator := db.Authenticator(ctx)
-	user, _ := authenticator.NewUser("naomi", "letmein", channels.SetOf(t, "ABC"))
+	user, _ := authenticator.NewUser("naomi", "letmein", channels.BaseSetOf(t, "ABC"))
 	assert.NoError(t, authenticator.Save(user))
 
 	// Validate that a call to UpdatePrincipals with no changes to the user doesn't allocate a sequence
@@ -1035,7 +1035,7 @@ func TestConflicts(t *testing.T) {
 		Conflicts:  true,
 		ChangesCtx: context.Background(),
 	}
-	changes, err := db.GetChanges(ctx, channels.SetOf(t, "all"), options)
+	changes, err := db.GetChanges(ctx, channels.BaseSetOf(t, "all"), options)
 	assert.NoError(t, err, "Couldn't GetChanges")
 	assert.Equal(t, 1, len(changes))
 	assert.Equal(t, &ChangeEntry{
@@ -1066,7 +1066,7 @@ func TestConflicts(t *testing.T) {
 	cacheWaiter.AddAndWait(1)
 
 	// Verify the _changes feed:
-	changes, err = db.GetChanges(ctx, channels.SetOf(t, "all"), options)
+	changes, err = db.GetChanges(ctx, channels.BaseSetOf(t, "all"), options)
 	assert.NoError(t, err, "Couldn't GetChanges")
 	assert.Equal(t, 1, len(changes))
 	assert.Equal(t, &ChangeEntry{
@@ -1418,7 +1418,7 @@ func TestAccessFunctionDb(t *testing.T) {
 	var err error
 	db.ChannelMapper = channels.NewChannelMapper(`function(doc){access(doc.users,doc.userChannels);}`, 0)
 
-	user, _ := authenticator.NewUser("naomi", "letmein", channels.SetOf(t, "Netflix"))
+	user, _ := authenticator.NewUser("naomi", "letmein", channels.BaseSetOf(t, "Netflix"))
 	user.SetExplicitRoles(channels.TimedSet{"animefan": channels.NewVbSimpleSequence(1), "tumblr": channels.NewVbSimpleSequence(1)}, 1)
 	assert.NoError(t, authenticator.Save(user), "Save")
 
@@ -1437,7 +1437,7 @@ func TestAccessFunctionDb(t *testing.T) {
 
 	user, err = authenticator.GetUser("naomi")
 	assert.NoError(t, err, "GetUser")
-	expected := channels.AtSequence(channels.SetOf(t, "Hulu", "Netflix", "!"), 1)
+	expected := channels.AtSequence(channels.BaseSetOf(t, "Hulu", "Netflix", "!"), 1)
 	assert.Equal(t, expected, user.Channels())
 
 	expected.AddChannel("CrunchyRoll", 2)
@@ -1505,7 +1505,7 @@ func TestUpdateDesignDoc(t *testing.T) {
 	assert.NotEqual(t, mapFunction, retrievedView.Map) // SG should wrap the map function, so they shouldn't be equal
 
 	authenticator := auth.NewAuthenticator(db.Bucket, db, auth.DefaultAuthenticatorOptions())
-	db.user, _ = authenticator.NewUser("naomi", "letmein", channels.SetOf(t, "Netflix"))
+	db.user, _ = authenticator.NewUser("naomi", "letmein", channels.BaseSetOf(t, "Netflix"))
 	err = db.PutDesignDoc("_design/pwn3d", sgbucket.DesignDoc{})
 	assertHTTPError(t, err, 403)
 }
@@ -2473,16 +2473,16 @@ func TestGetAllUsers(t *testing.T) {
 	log.Printf("Creating users...")
 	// Create users
 	authenticator := db.Authenticator(ctx)
-	user, _ := authenticator.NewUser("userA", "letmein", channels.SetOf(t, "ABC"))
+	user, _ := authenticator.NewUser("userA", "letmein", channels.BaseSetOf(t, "ABC"))
 	_ = user.SetEmail("userA@test.org")
 	assert.NoError(t, authenticator.Save(user))
-	user, _ = authenticator.NewUser("userB", "letmein", channels.SetOf(t, "ABC"))
+	user, _ = authenticator.NewUser("userB", "letmein", channels.BaseSetOf(t, "ABC"))
 	_ = user.SetEmail("userB@test.org")
 	assert.NoError(t, authenticator.Save(user))
-	user, _ = authenticator.NewUser("userC", "letmein", channels.SetOf(t, "ABC"))
+	user, _ = authenticator.NewUser("userC", "letmein", channels.BaseSetOf(t, "ABC"))
 	user.SetDisabled(true)
 	assert.NoError(t, authenticator.Save(user))
-	user, _ = authenticator.NewUser("userD", "letmein", channels.SetOf(t, "ABC"))
+	user, _ = authenticator.NewUser("userD", "letmein", channels.BaseSetOf(t, "ABC"))
 	assert.NoError(t, authenticator.Save(user))
 
 	log.Printf("Getting users...")

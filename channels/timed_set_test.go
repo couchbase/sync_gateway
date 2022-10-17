@@ -30,12 +30,12 @@ func TestTimedSetMarshal(t *testing.T) {
 	assert.NoError(t, err, "Marshal")
 	assert.Equal(t, `{"Channels":{}}`, string(bytes))
 
-	str.Channels = AtSequence(SetOf(t, "a"), 17)
+	str.Channels = AtSequence(BaseSetOf(t, "a"), 17)
 	bytes, err = base.JSONMarshal(str)
 	assert.NoError(t, err, "Marshal")
 	assert.Equal(t, `{"Channels":{"a":17}}`, string(bytes))
 
-	str.Channels = AtSequence(SetOf(t, "a", "b"), 17)
+	str.Channels = AtSequence(BaseSetOf(t, "a", "b"), 17)
 	bytes, err = base.JSONMarshal(str)
 	assert.NoError(t, err, "Marshal")
 	// Ordering of JSON keys can vary - so just check each channel is present with the correct sequence

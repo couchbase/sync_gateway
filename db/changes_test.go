@@ -99,7 +99,7 @@ func TestChangesAfterChannelAdded(t *testing.T) {
 
 	// Create a user with access to channel ABC
 	authenticator := db.Authenticator(base.TestCtx(t))
-	user, _ := authenticator.NewUser("naomi", "letmein", channels.SetOf(t, "ABC"))
+	user, _ := authenticator.NewUser("naomi", "letmein", channels.BaseSetOf(t, "ABC"))
 	require.NoError(t, authenticator.Save(user))
 
 	cacheWaiter := db.NewDCPCachingCountWaiter(t)
@@ -207,7 +207,7 @@ func TestDocDeletionFromChannelCoalescedRemoved(t *testing.T) {
 
 	// Create a user with access to channel A
 	authenticator := db.Authenticator(base.TestCtx(t))
-	user, _ := authenticator.NewUser("alice", "letmein", channels.SetOf(t, "A"))
+	user, _ := authenticator.NewUser("alice", "letmein", channels.BaseSetOf(t, "A"))
 	require.NoError(t, authenticator.Save(user))
 
 	cacheWaiter := db.NewDCPCachingCountWaiter(t)
@@ -288,7 +288,7 @@ func TestDocDeletionFromChannelCoalesced(t *testing.T) {
 
 	// Create a user with access to channel A
 	authenticator := db.Authenticator(base.TestCtx(t))
-	user, _ := authenticator.NewUser("alice", "letmein", channels.SetOf(t, "A"))
+	user, _ := authenticator.NewUser("alice", "letmein", channels.BaseSetOf(t, "A"))
 	require.NoError(t, authenticator.Save(user))
 
 	cacheWaiter := db.NewDCPCachingCountWaiter(t)
