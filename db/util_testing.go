@@ -133,7 +133,7 @@ func (sw *StatWaiter) AddAndWait(count int) {
 	sw.Wait()
 }
 
-// Wait uses backoff retry for up to ~27s
+// Wait uses backoff retry for up to ~33s
 func (sw *StatWaiter) Wait() {
 	actualCount := sw.stat.Value()
 	if actualCount >= sw.targetCount {
@@ -141,7 +141,7 @@ func (sw *StatWaiter) Wait() {
 	}
 
 	waitTime := 1 * time.Millisecond
-	for i := 0; i < 13; i++ {
+	for i := 0; i < 14; i++ {
 		waitTime = waitTime * 2
 		time.Sleep(waitTime)
 		actualCount = sw.stat.Value()
@@ -150,7 +150,7 @@ func (sw *StatWaiter) Wait() {
 		}
 	}
 
-	sw.tb.Errorf("StatWaiter.Wait timed out waiting for stat to reach %d (actual: %d) %s", sw.targetCount, actualCount, base.GetCallersName(2, true))
+	sw.tb.Fatalf("StatWaiter.Wait timed out waiting for stat to reach %d (actual: %d) %s", sw.targetCount, actualCount, base.GetCallersName(2, true))
 }
 
 func AssertEqualBodies(t *testing.T, expected, actual Body) {
