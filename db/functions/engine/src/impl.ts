@@ -41,8 +41,8 @@ class DatabaseImpl implements Database {
         this.functions = {}
         if (functions) {
             console.log("Compiling functions...")
-            for (let fnName of Object.getOwnPropertyNames(functions)) {
-                let fnConfig = functions[fnName];
+            for (let fnName of Object.getOwnPropertyNames(functions.definitions)) {
+                let fnConfig = functions.definitions[fnName];
                 this.functions[fnName] = CompileFn(fnName, fnConfig, this);
             }
         }

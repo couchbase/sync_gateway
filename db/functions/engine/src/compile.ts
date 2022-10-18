@@ -229,12 +229,14 @@ export function CompileFn(fnName: string,
             return db.query(fnName, n1ql, args, context);
         };
     case "javascript":
-        let code = compileToJS(fnName, fnConfig, 2) as JSFn;
+        let code = compileToJS(fnName, fnConfig, 2);
         return function(context, args) {
             console.log(`FUNC ${fnName}`);
             checkArgs(args);
             allow.authorize(context.user, args);
-            return code(context, args);
+            let result = code(context, args);
+            if (!(result instanceof Promise)) result = Promise.resolve(result)
+            return result
         };
     default:
         throw `Function ${fnName} has an unknown or missing type`;

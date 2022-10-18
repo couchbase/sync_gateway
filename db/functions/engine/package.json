@@ -2,26 +2,29 @@
   "name": "sg_js_engine",
   "version": "0.2.0",
   "description": "Function and GraphQL engine for Couchbase Sync Gateway",
-  "main": "main.js",
+  "main": "dst/engine.js",
+  "private": true,
   "scripts": {
-    "main": "tsc && node js/main.js",
-    "test": "jest"
+    "test": "jest",
+    "build": "webpack --mode=production --node-env=production",
+    "build:dev": "webpack --mode=development",
+    "build:prod": "webpack --mode=production --node-env=production",
+    "watch": "webpack --watch"
   },
   "author": "Couchbase, Inc.",
   "license": "Couchbase BSL",
   "dependencies": {
-    "express": "^4.18.1",
-    "express-graphql": "^0.12.0",
     "graphql": "^15.8.0",
     "source-map-support": "^0.5.21"
   },
   "devDependencies": {
-    "@types/couchbase": "^2.4.4",
-    "@types/express": "^4.17.14",
     "@types/jest": "^29.1.1",
     "@types/node": "^18.7.23",
     "jest": "^29.1.2",
     "ts-jest": "^29.0.3",
-    "typescript": "^4.8.4"
+    "ts-loader": "^9.4.1",
+    "typescript": "^4.8.4",
+    "webpack": "^5.74.0",
+    "webpack-cli": "^4.10.0"
   }
 }

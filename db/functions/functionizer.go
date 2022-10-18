@@ -1,11 +1,11 @@
 package functions
 
 import (
+	_ "embed"
 	"encoding/json"
 	"fmt"
 	"log"
 
-	"github.com/couchbase/sync_gateway/db"
 	v8 "rogchap.com/v8go"
 )
 
@@ -38,7 +38,23 @@ export class API {
 			roles?: string[],
 			channels?: string[]) : Promise<string>;
 }
+
+export type Config = {
+    functions?: FunctionsConfig;
+    graphql?:   GraphQLConfig;
+}
+
 */
+
+// The JavaScript code run in a context, that defines the API.
+//
+//go:embed engine/dist/main.js
+var kJavaScriptCode string
+
+type jsConfig struct {
+	Functions *FunctionsConfig `json:"functions,omitempty"`
+	Graphql   *GraphQLConfig   `json:"graphql,omitempty"`
+}
 
 // The interface the JS code calls -- provides query and CRUD operations.
 type FunctionizerDelegate interface {
@@ -48,23 +64,35 @@ type FunctionizerDelegate interface {
 	delete(docID string, doc map[string]any, asAdmin bool) (err error)
 }
 
+// Represents a V8 JavaScript VM.
 type Functionizer struct {
 	delegate         FunctionizerDelegate
+	jsonConfig       *v8.Value
 	vm               *v8.Isolate        // A V8 virtual machine. NOT THREAD SAFE.
 	global           *v8.ObjectTemplate // The global namespace (a template)
 	script           *v8.UnboundScript  // The compiled JS code; a template run in each new context
 	jsNativeTemplate *v8.ObjectTemplate
 }
 
-func NewFunctionizer(sourceCode string, sourceFilename string, delegate FunctionizerDelegate) (*Functionizer, error) {
+func NewFunctionizer(functions *FunctionsConfig, graphql *GraphQLConfig, delegate FunctionizerDelegate) (*Functionizer, error) {
+	// Encode the config as JSON:
+	config := jsConfig{functions, graphql}
+	jsonConfig, err := json.Marshal(config)
+	if err != nil {
+		return nil, err
+	}
+
+	// Create a V8 VM ("isolate"):
 	vm := v8.NewIsolate()
 	fnz := &Functionizer{
-		delegate: delegate,
-		vm:       vm,
-		global:   v8.NewObjectTemplate(vm),
+		delegate:   delegate,
+		vm:         vm,
+		global:     v8.NewObjectTemplate(vm),
+		jsonConfig: goToV8String(vm, string(jsonConfig)),
 	}
-	var err error
-	fnz.script, err = vm.CompileUnboundScript(sourceCode, sourceFilename, v8.CompileOptions{})
+
+	// Compile the engine's JS code:
+	fnz.script, err = vm.CompileUnboundScript(kJavaScriptCode+"\n SG_Engine.main;", "main.js", v8.CompileOptions{})
 	if err != nil {
 		return nil, err
 	}
@@ -106,21 +134,34 @@ func (fnz *Functionizer) defineFunction(owner *v8.ObjectTemplate, name string, c
 	owner.Set(name, fn, v8.ReadOnly)
 }
 
+//
 //////// CONTEXT:
+//
 
-type FunContext struct {
-	ctx       *v8.Context
-	iso       *v8.Isolate
-	api       *v8.Object
-	graphqlFn *v8.Function
-
-	dbc *db.Database
+type UserCredentials struct {
+	Name     string
+	Roles    []string
+	Channels []string
 }
 
-func (fnz *Functionizer) NewContext(dbc *db.Database) (*FunContext, error) {
+// An execution context in a VM (Functionizer).
+type FunContext struct {
+	ctx        *v8.Context
+	iso        *v8.Isolate
+	api        *v8.Object
+	functionFn *v8.Function
+	graphqlFn  *v8.Function
+	user       *UserCredentials
+}
+
+func (fnz *Functionizer) NewContext(username *string, roles []string, channels []string) (*FunContext, error) {
 	// Create a context and run the script in it, returning the JS initializer function:
 	ctx := v8.NewContext(fnz.vm, fnz.global)
 	result, err := fnz.script.Run(ctx)
+	if err != nil {
+		return nil, err
+	}
+	initFn, err := result.AsFunction()
 	if err != nil {
 		return nil, err
 	}
@@ -128,12 +169,9 @@ func (fnz *Functionizer) NewContext(dbc *db.Database) (*FunContext, error) {
 	fct := &FunContext{
 		ctx: ctx,
 		iso: fnz.vm,
-		dbc: dbc,
 	}
-
-	initFn, err := result.AsFunction()
-	if err != nil {
-		return nil, err
+	if username != nil {
+		fct.user = &UserCredentials{*username, roles, channels}
 	}
 
 	// Instantiate my Upstream object with the native callbacks.
@@ -145,14 +183,19 @@ func (fnz *Functionizer) NewContext(dbc *db.Database) (*FunContext, error) {
 	upstream.SetInternalField(0, fct)
 
 	// Call the JS initializer, passing it the Upstream, to get back the API object:
-	apiVal, err := initFn.Call(nil, upstream)
+	apiVal, err := initFn.Call(initFn, fnz.jsonConfig, upstream)
 	if err != nil {
 		return nil, err
 	}
 	fct.api = mustSucceed(apiVal.AsObject())
+	fct.functionFn = mustGetV8Fn(fct.api, "callFunction")
 	fct.graphqlFn = mustGetV8Fn(fct.api, "graphql")
-
 	return fct, nil
+}
+
+func (fnc *FunContext) Close() {
+	fnc.ctx.Close()
+	fnc.ctx = nil
 }
 
 // Performs a GraphQL query. Returns a JSON string.
@@ -170,10 +213,13 @@ func (fnc *FunContext) CallGraphql(query string, operationName string, variables
 
 // Calls a named function. Returns a JSON string.
 func (fnc *FunContext) CallFunction(name string, args map[string]any) (string, error) {
-	result, err := fnc.graphqlFn.Call(fnc.api,
+	result, err := fnc.functionFn.Call(fnc.api,
 		goToV8String(fnc.iso, name),
 		mustSucceed(goToV8JSON(fnc.ctx, args)),
 		fnc.makeCredentials())
+	if err == nil {
+		result, err = resolvePromise(result)
+	}
 	if err != nil {
 		return "", err
 	}
@@ -181,11 +227,13 @@ func (fnc *FunContext) CallFunction(name string, args map[string]any) (string, e
 }
 
 func (fnc *FunContext) makeCredentials() *v8.Value {
-	if user := fnc.dbc.User(); user != nil {
-		credentials := []any{
-			user.Name(),
-			user.Channels().AllKeys(),
-			user.RoleNames().AllKeys(),
+	if fnc.user != nil {
+		credentials := []any{fnc.user.Name, fnc.user.Channels, fnc.user.Roles}
+		if credentials[1] == nil {
+			credentials[1] = []string{}
+		}
+		if credentials[2] == nil {
+			credentials[2] = []string{}
 		}
 		jsonCred := mustSucceed(json.Marshal(credentials))
 		return goToV8String(fnc.iso, string(jsonCred))
@@ -212,14 +260,13 @@ func v8JSONToGo(val *v8.Value) (map[string]any, error) {
 }
 
 func goToV8JSON(ctx *v8.Context, obj any) (*v8.Value, error) {
-	var err error
 	if obj == nil {
-		return nil, nil
-	}
-	if jsonBytes, err := json.Marshal(obj); err != nil {
+		return v8.Undefined(ctx.Isolate()), nil
+	} else if jsonBytes, err := json.Marshal(obj); err != nil {
+		return nil, err
+	} else {
 		return v8.NewValue(ctx.Isolate(), string(jsonBytes))
 	}
-	return nil, err
 }
 
 func returnJSONToV8(info *v8.FunctionCallbackInfo, result any, err error) *v8.Value {
@@ -238,6 +285,22 @@ func v8Throw(i *v8.Isolate, err error) *v8.Value {
 func mustGetV8Fn(owner *v8.Object, name string) *v8.Function {
 	fnVal := mustSucceed(owner.Get(name))
 	return mustSucceed(fnVal.AsFunction())
+}
+
+func resolvePromise(val *v8.Value) (*v8.Value, error) {
+	if !val.IsPromise() {
+		return val, nil
+	}
+	switch p, _ := val.AsPromise(); p.State() {
+	case v8.Fulfilled:
+		return p.Result(), nil
+	case v8.Rejected:
+		errVal := p.Result()
+		return nil, fmt.Errorf("Promise rejected: %s", errVal.DetailString())
+	default:
+		log.Fatalf("Promise still pending!!")
+		return nil, nil
+	}
 }
 
 func mustSucceed[T any](result T, err error) T {

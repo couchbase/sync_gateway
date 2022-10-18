@@ -36,7 +36,9 @@ export type FunctionConfig = {
 };
 
 /** Functions configuration: maps function name to its config. */
-export type FunctionsConfig = Record<string,FunctionConfig>;
+export type FunctionsConfig = {
+    definitions: Record<string,FunctionConfig>
+};
 
 export type FieldMap = Record<string,FunctionConfig>;
 export type ResolverMap = Record<string,FieldMap>;
@@ -46,7 +48,6 @@ export type GraphQLConfig = {
     schema?:     string,        // The schema itself
     schemaFile?: string,        // Path to schema file (only if schema is not given)
     resolvers:   ResolverMap,   // GraphQL resolver functions
-    graphiql?:   boolean;       // If true, enables "GraphiQL" browser GUI
 };
 
 export type Config = {
