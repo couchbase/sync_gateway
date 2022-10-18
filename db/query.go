@@ -165,8 +165,27 @@ var QueryPrincipals = SGQuery{
 		base.KeyspaceQueryAlias,
 		base.KeyspaceQueryToken, base.KeyspaceQueryAlias,
 		base.KeyspaceQueryAlias, SyncDocWildcard,
-		base.KeyspaceQueryAlias, `\\_sync:user:%`,
-		base.KeyspaceQueryAlias, `\\_sync:role:%`,
+		base.KeyspaceQueryAlias, SyncUserWildcard,
+		base.KeyspaceQueryAlias, SyncRoleWildcard,
+		base.KeyspaceQueryAlias, QueryParamStartKey,
+		base.KeyspaceQueryAlias),
+	adhoc: false,
+}
+
+var QueryPrincipalsUsingRoleIdx = SGQuery{
+	name: QueryTypePrincipals,
+	statement: fmt.Sprintf(
+		"SELECT META(%s).id "+
+			"FROM %s AS %s "+
+			"USE INDEX($idx) "+
+			"WHERE (META(%s).id LIKE '%s' "+
+			"OR META(%s).id LIKE '%s') "+
+			"AND META(%s).id >= $%s "+ // Uses >= for inclusive startKey
+			"ORDER BY META(%s).id",
+		base.KeyspaceQueryAlias,
+		base.KeyspaceQueryToken, base.KeyspaceQueryAlias,
+		base.KeyspaceQueryAlias, SyncUserWildcard,
+		base.KeyspaceQueryAlias, SyncRoleWildcard,
 		base.KeyspaceQueryAlias, QueryParamStartKey,
 		base.KeyspaceQueryAlias),
 	adhoc: false,
@@ -186,7 +205,26 @@ var QueryRolesExcludeDeleted = SGQuery{
 		base.KeyspaceQueryAlias,
 		base.KeyspaceQueryToken, base.KeyspaceQueryAlias,
 		base.KeyspaceQueryAlias, SyncDocWildcard,
-		base.KeyspaceQueryAlias, `\\_sync:role:%`,
+		base.KeyspaceQueryAlias, SyncRoleWildcard,
+		base.KeyspaceQueryAlias, base.KeyspaceQueryAlias,
+		base.KeyspaceQueryAlias, QueryParamStartKey,
+		base.KeyspaceQueryAlias),
+	adhoc: false,
+}
+
+var QueryRolesExcludeDeletedUsingRoleIdx = SGQuery{
+	name: QueryTypeRolesExcludeDeleted,
+	statement: fmt.Sprintf(
+		"SELECT META(%s).id "+
+			"FROM %s AS %s "+
+			"USE INDEX($idx) "+
+			"WHERE META(%s).id LIKE '%s' "+
+			"AND (%s.deleted IS MISSING OR %s.deleted = false) "+
+			"AND META(%s).id >= $%s "+ // Uses >= for inclusive startKey
+			"ORDER BY META(%s).id",
+		base.KeyspaceQueryAlias,
+		base.KeyspaceQueryToken, base.KeyspaceQueryAlias,
+		base.KeyspaceQueryAlias, SyncRoleWildcard,
 		base.KeyspaceQueryAlias, base.KeyspaceQueryAlias,
 		base.KeyspaceQueryAlias, QueryParamStartKey,
 		base.KeyspaceQueryAlias),
@@ -214,7 +252,7 @@ var QueryUsers = SGQuery{
 		base.KeyspaceQueryAlias,
 		base.KeyspaceQueryAlias,
 		base.KeyspaceQueryToken, base.KeyspaceQueryAlias,
-		base.KeyspaceQueryAlias, `\\_sync:user:%`,
+		base.KeyspaceQueryAlias, SyncUserWildcard,
 		base.KeyspaceQueryAlias, QueryParamStartKey,
 		base.KeyspaceQueryAlias),
 	adhoc: false,
@@ -232,9 +270,24 @@ var QuerySessions = SGQuery{
 		base.KeyspaceQueryAlias,
 		base.KeyspaceQueryToken, base.KeyspaceQueryAlias,
 		base.KeyspaceQueryAlias, SyncDocWildcard,
-		base.KeyspaceQueryAlias, `\\_sync:session:%`),
+		base.KeyspaceQueryAlias, SyncSessionWildcard),
 	adhoc: false,
 }
+
+var QuerySessionsUsingSessionIdx = SGQuery{
+	name: QueryTypeSessions,
+	statement: fmt.Sprintf(
+		"SELECT META(%s).id "+
+			"FROM %s AS %s "+
+			"USE INDEX($idx) "+
+			"WHERE META(%s).id LIKE '%s' "+
+			"AND username = $userName",
+		base.KeyspaceQueryAlias,
+		base.KeyspaceQueryToken, base.KeyspaceQueryAlias,
+		base.KeyspaceQueryAlias, SyncSessionWildcard),
+	adhoc: false,
+}
+
 var QueryTombstones = SGQuery{
 	name: QueryTypeTombstones,
 	statement: fmt.Sprintf(
@@ -500,6 +553,9 @@ func (context *DatabaseContext) QueryPrincipals(ctx context.Context, startKey st
 	}
 
 	queryStatement := replaceIndexTokensQuery(QueryPrincipals.statement, sgIndexes[IndexSyncDocs], context.UseXattrs())
+	if context.Options.Serverless {
+		queryStatement = replaceIndexTokensQuery(QueryPrincipalsUsingRoleIdx.statement, sgIndexes[IndexSyncRole], context.UseXattrs())
+	}
 
 	params := make(map[string]interface{})
 	params[QueryParamStartKey] = startKey
@@ -521,6 +577,9 @@ func (context *DatabaseContext) QueryUsers(ctx context.Context, startKey string,
 	}
 
 	queryStatement := replaceIndexTokensQuery(QueryUsers.statement, sgIndexes[IndexSyncDocs], context.UseXattrs())
+	if context.Options.Serverless {
+		queryStatement = replaceIndexTokensQuery(QueryUsers.statement, sgIndexes[IndexSyncUser], context.UseXattrs())
+	}
 
 	params := make(map[string]interface{})
 	params[QueryParamStartKey] = startKey
@@ -552,6 +611,9 @@ func (context *DatabaseContext) QueryRoles(ctx context.Context, startKey string,
 	}
 
 	queryStatement := replaceIndexTokensQuery(QueryRolesExcludeDeleted.statement, sgIndexes[IndexSyncDocs], context.UseXattrs())
+	if context.Options.Serverless {
+		queryStatement = replaceIndexTokensQuery(QueryRolesExcludeDeletedUsingRoleIdx.statement, sgIndexes[IndexSyncRoleExcludeDeleted], context.UseXattrs())
+	}
 
 	params := make(map[string]interface{})
 	params[QueryParamStartKey] = startKey
@@ -576,6 +638,10 @@ func (context *DatabaseContext) QuerySessions(ctx context.Context, userName stri
 	}
 
 	queryStatement := replaceIndexTokensQuery(QuerySessions.statement, sgIndexes[IndexSyncDocs], context.UseXattrs())
+
+	if context.Options.Serverless {
+		queryStatement = replaceIndexTokensQuery(QuerySessionsUsingSessionIdx.statement, sgIndexes[IndexSyncSession], context.UseXattrs())
+	}
 
 	// N1QL Query
 	params := make(map[string]interface{}, 1)
