@@ -560,12 +560,6 @@ func (bsc *BlipSyncContext) sendNoRev(sender *blip.Sender, docID, revID string, 
 
 // Pushes a revision body to the client
 func (bsc *BlipSyncContext) sendRevision(sender *blip.Sender, docID, revID string, seq SequenceID, knownRevs map[string]bool, maxHistory int, handleChangesResponseDb *Database) error {
-	// Check if document has a null byte prefixed to the doc id which will cause BLIP to stop replicating (CBG-2450)
-	if len(docID) != 0 && docID[0] == 0 {
-		base.WarnfCtx(bsc.loggingCtx, "skipping sending revision for document %q due to a null byte at the start of the doc id", base.MD(docID))
-		return nil
-	}
-
 	var collectionIdx *int
 	if coll, ok := bsc.getCollectionIndexForDB(handleChangesResponseDb); ok {
 		collectionIdx = &coll

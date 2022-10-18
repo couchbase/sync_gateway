@@ -1765,8 +1765,8 @@ func TestDBReplicationStatsTeardown(t *testing.T) {
 
 }
 
-// Repros CBG-2450 - BLIP can't handle doc IDs containing a null byte
-func TestReplicatorDocIDNullBytePrefix(t *testing.T) {
+// Repros CBG-2450 - Make sure doc that have an ID prefixed with a null byte don't get sent over BLIP
+func TestReplicateDocIDNullCharPrefix(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server (due to importing documents)")
 	}
@@ -1841,10 +1841,11 @@ func TestReplicatorDocIDNullBytePrefix(t *testing.T) {
 	assert.NoError(t, ar.Start(rt1.Context()))
 
 	err = rt1.WaitForCondition(func() bool {
-		return ar.GetStatus().PullReplicationStatus.DocsCheckedPull >= 2
+		return ar.GetStatus().PullReplicationStatus.DocsRead >= 1
 	})
 	require.NoError(t, err)
-	// Only 1 document should have been handled (in handleRev)
+	// Only 1 document should have been handled and checked
+	assert.EqualValues(t, 1, ar.GetStatus().PullReplicationStatus.DocsCheckedPull)
 	assert.EqualValues(t, 1, ar.GetStatus().PullReplicationStatus.DocsRead)
 
 	// Make sure changes have arrived over the changes feed
@@ -1867,9 +1868,10 @@ func TestReplicatorDocIDNullBytePrefix(t *testing.T) {
 	require.NoError(t, err)
 
 	err = rt1.WaitForCondition(func() bool {
-		return ar.GetStatus().PullReplicationStatus.DocsCheckedPull >= 3
+		return ar.GetStatus().PullReplicationStatus.DocsRead >= 2
 	})
 	require.NoError(t, err)
+	assert.EqualValues(t, 2, ar.GetStatus().PullReplicationStatus.DocsCheckedPull)
 	assert.EqualValues(t, 2, ar.GetStatus().PullReplicationStatus.DocsRead)
 
 	// Make sure changes have arrived over the changes feed
@@ -1881,6 +1883,4 @@ func TestReplicatorDocIDNullBytePrefix(t *testing.T) {
 	repDoc, err = rt1.GetDatabase().GetDocument(base.TestCtx(t), "after", db.DocUnmarshalAll)
 	require.NoError(t, err)
 	require.Equal(t, baseDoc.RevID, repDoc.RevID)
-
-	fmt.Printf("Status: %+v\n", ar.GetStatus())
 }
