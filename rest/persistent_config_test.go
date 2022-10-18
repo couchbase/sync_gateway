@@ -89,7 +89,7 @@ func TestAutomaticConfigUpgrade(t *testing.T) {
 
 	assert.Equal(t, config, string(writtenBackupFile))
 
-	cbs, err := createCouchbaseClusterFromStartupConfig(startupConfig)
+	cbs, err := createCouchbaseClusterFromStartupConfig(startupConfig, base.PerUseClusterConnections)
 	require.NoError(t, err)
 
 	var dbConfig DbConfig
@@ -217,7 +217,7 @@ func TestAutomaticConfigUpgradeExistingConfigAndNewGroup(t *testing.T) {
 	startupConfig, _, _, _, err := automaticConfigUpgrade(updatedConfigPath)
 	require.NoError(t, err)
 
-	cbs, err := createCouchbaseClusterFromStartupConfig(startupConfig)
+	cbs, err := createCouchbaseClusterFromStartupConfig(startupConfig, base.PerUseClusterConnections)
 	require.NoError(t, err)
 
 	var dbConfig DbConfig

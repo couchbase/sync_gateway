@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
@@ -329,4 +330,51 @@ func assertResp(t *testing.T, resp *http.Response, status int, body string) {
 	assert.Equal(t, status, resp.StatusCode)
 	b, _ := ioutil.ReadAll(resp.Body)
 	assert.Equal(t, body, string(b))
+}
+
+// Development-time test, expects locally running Couchbase Server and designed for long-running memory profiling
+func DevTestFetchConfigManual(t *testing.T) {
+
+	base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP)
+
+	serverErr := make(chan error, 0)
+
+	config := DefaultStartupConfig("")
+
+	logLevel := base.LevelInfo
+	config.Logging.Console = &base.ConsoleLoggerConfig{
+		LogLevel: &logLevel,
+		LogKeys:  []string{"HTTP", "Config", "CRUD", "DCP", "Sync"},
+	}
+
+	config.API.AdminInterfaceAuthentication = base.BoolPtr(false)
+
+	config.API.PublicInterface = "127.0.0.1:4984"
+	config.API.AdminInterface = "127.0.0.1:4985"
+	config.API.MetricsInterface = "127.0.0.1:4986"
+
+	config.Bootstrap.Server = "couchbase://localhost"
+	config.Bootstrap.Username = "configUser"
+	config.Bootstrap.Password = "password"
+	config.Bootstrap.ServerTLSSkipVerify = base.BoolPtr(true)
+	config.Bootstrap.UseTLSServer = base.BoolPtr(false)
+
+	// Start SG with no databases, high frequency polling
+	config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(time.Second)
+
+	sc, err := setupServerContext(&config, true)
+	require.NoError(t, err)
+
+	defer func() {
+		sc.Close()
+		require.NoError(t, <-serverErr)
+	}()
+
+	go func() {
+		serverErr <- startServer(&config, sc)
+	}()
+	require.NoError(t, sc.waitForRESTAPIs())
+
+	// Sleep to wait for bucket polling iterations, or allow manual modification to server accessibility
+	time.Sleep(900 * time.Second)
 }
