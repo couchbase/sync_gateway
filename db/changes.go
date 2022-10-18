@@ -896,6 +896,12 @@ func (db *Database) SimpleMultiChangesFeed(ctx context.Context, chans base.Set, 
 					}
 				}
 
+				// Check if document has a null byte prefixed to the doc id which will cause BLIP to stop replicating (CBG-2450)
+				if len(minEntry.ID) > 0 && minEntry.ID[0] == '\x00' {
+					base.WarnfCtx(ctx, "doc %q will not be included in the changes feed due to the id starting with a null character", base.UD(minEntry.ID))
+					continue
+				}
+
 				// Don't send any entries later than the cached sequence at the start of this iteration, unless they are part of a revocation triggered
 				// at or before the cached sequence
 				isValidRevocation := minEntry.Revoked == true && minEntry.Seq.TriggeredBy <= currentCachedSequence
