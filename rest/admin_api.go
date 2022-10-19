@@ -45,9 +45,12 @@ func (h *handler) handleCreateDB() error {
 	if err != nil {
 		return err
 	}
-	config.Name = dbName
 
 	validateOIDC := !h.getBoolQuery(paramDisableOIDCValidation)
+
+	if dbName != config.Name {
+		return base.HTTPErrorf(http.StatusBadRequest, "Name in path (%s) is not the same name in the JSON body (%s)", dbName, config.Name)
+	}
 
 	if h.server.persistentConfig {
 		if err := config.validatePersistentDbConfig(); err != nil {
