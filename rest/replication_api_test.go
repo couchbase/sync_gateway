@@ -517,7 +517,7 @@ func TestPushReplicationAPI(t *testing.T) {
 	base.LongRunningTest(t)
 
 	base.RequireNumTestBuckets(t, 2)
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)
 
 	rt1, rt2, remoteURLString, teardown := setupSGRPeers(t)
 	defer teardown()
