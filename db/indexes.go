@@ -56,7 +56,6 @@ const (
 	IndexUser
 	IndexSession
 	IndexRole
-	IndexRoleExcludeDeleted
 	indexTypeCount // Used for iteration
 )
 
@@ -70,44 +69,41 @@ const (
 var (
 	// Simple index names - input to indexNameFormat
 	indexNames = map[SGIndexType]string{
-		IndexAccess:             "access",
-		IndexRoleAccess:         "roleAccess",
-		IndexChannels:           "channels",
-		IndexAllDocs:            "allDocs",
-		IndexTombstones:         "tombstones",
-		IndexSyncDocs:           "syncDocs",
-		IndexUser:               "syncUser",
-		IndexSession:            "syncSession",
-		IndexRole:               "syncRole",
-		IndexRoleExcludeDeleted: "syncRoleExcludeDeleted",
+		IndexAccess:     "access",
+		IndexRoleAccess: "roleAccess",
+		IndexChannels:   "channels",
+		IndexAllDocs:    "allDocs",
+		IndexTombstones: "tombstones",
+		IndexSyncDocs:   "syncDocs",
+		IndexUser:       "syncUser",
+		IndexSession:    "syncSession",
+		IndexRole:       "syncRole",
 	}
 
 	// Index versions - must be incremented when index definition changes
 	indexVersions = map[SGIndexType]int{
-		IndexAccess:             1,
-		IndexRoleAccess:         1,
-		IndexChannels:           1,
-		IndexAllDocs:            1,
-		IndexTombstones:         1,
-		IndexSyncDocs:           1,
-		IndexUser:               1,
-		IndexSession:            1,
-		IndexRole:               1,
-		IndexRoleExcludeDeleted: 1,
+		IndexAccess:     1,
+		IndexRoleAccess: 1,
+		IndexChannels:   1,
+		IndexAllDocs:    1,
+		IndexTombstones: 1,
+		IndexSyncDocs:   1,
+		IndexUser:       1,
+		IndexSession:    1,
+		IndexRole:       1,
 	}
 
 	// Previous index versions - must be appended to when index version changes
 	indexPreviousVersions = map[SGIndexType][]int{
-		IndexAccess:             {},
-		IndexRoleAccess:         {},
-		IndexChannels:           {},
-		IndexAllDocs:            {},
-		IndexTombstones:         {},
-		IndexSyncDocs:           {},
-		IndexUser:               {},
-		IndexSession:            {},
-		IndexRole:               {},
-		IndexRoleExcludeDeleted: {},
+		IndexAccess:     {},
+		IndexRoleAccess: {},
+		IndexChannels:   {},
+		IndexAllDocs:    {},
+		IndexTombstones: {},
+		IndexSyncDocs:   {},
+		IndexUser:       {},
+		IndexSession:    {},
+		IndexRole:       {},
 	}
 
 	// Expressions used to create index.
@@ -117,22 +113,20 @@ var (
 		IndexRoleAccess: "ALL (ARRAY (op.name) FOR op IN OBJECT_PAIRS($sync.role_access) END)",
 		IndexChannels: "ALL (ARRAY [op.name, LEAST($sync.sequence,op.val.seq), IFMISSING(op.val.rev,null), IFMISSING(op.val.del,null)] FOR op IN OBJECT_PAIRS($sync.channels) END), " +
 			"$sync.rev, $sync.sequence, $sync.flags",
-		IndexAllDocs:            "$sync.sequence, $sync.rev, $sync.flags, $sync.deleted",
-		IndexTombstones:         "$sync.tombstoned_at",
-		IndexSyncDocs:           "META().id",
-		IndexUser:               "META().id, name, email, disabled",
-		IndexSession:            "META().id, username",
-		IndexRole:               "META().id",
-		IndexRoleExcludeDeleted: "META().id, deleted",
+		IndexAllDocs:    "$sync.sequence, $sync.rev, $sync.flags, $sync.deleted",
+		IndexTombstones: "$sync.tombstoned_at",
+		IndexSyncDocs:   "META().id",
+		IndexUser:       "META().id, name, email, disabled",
+		IndexSession:    "META().id, username",
+		IndexRole:       "META().id, deleted",
 	}
 
 	indexFilterExpressions = map[SGIndexType]string{
-		IndexAllDocs:            fmt.Sprintf("META().id NOT LIKE '%s'", SyncDocWildcard),
-		IndexSyncDocs:           fmt.Sprintf("META().id LIKE '%s'", SyncDocWildcard),
-		IndexUser:               fmt.Sprintf("META().id LIKE '%s'", SyncUserWildcard),
-		IndexSession:            fmt.Sprintf("META().id LIKE '%s'", SyncSessionWildcard),
-		IndexRole:               fmt.Sprintf("META().id LIKE '%s'", SyncRoleWildcard),
-		IndexRoleExcludeDeleted: fmt.Sprintf("META().id LIKE '%s' AND (deleted IS MISSING OR deleted = false)", SyncRoleWildcard),
+		IndexAllDocs:  fmt.Sprintf("META().id NOT LIKE '%s'", SyncDocWildcard),
+		IndexSyncDocs: fmt.Sprintf("META().id LIKE '%s'", SyncDocWildcard),
+		IndexUser:     fmt.Sprintf("META().id LIKE '%s'", SyncUserWildcard),
+		IndexSession:  fmt.Sprintf("META().id LIKE '%s'", SyncSessionWildcard),
+		IndexRole:     fmt.Sprintf("META().id LIKE '%s'", SyncRoleWildcard),
 	}
 
 	// Index flags - used to identify any custom handling
