@@ -138,7 +138,7 @@ func TestPostUpgradeIndexesSimple(t *testing.T) {
 	log.Printf("removedIndexes: %+v", removedIndexes)
 	assert.NoError(t, removeErr, "Unexpected error running removeObsoleteIndexes in setup case")
 
-	err := InitializeIndexes(n1qlStore, db.UseXattrs(), 0, false)
+	err := InitializeIndexes(n1qlStore, db.UseXattrs(), 0, false, false)
 	assert.NoError(t, err)
 
 	// Running w/ opposite xattrs flag should preview removal of the indexes associated with this db context
@@ -157,7 +157,7 @@ func TestPostUpgradeIndexesSimple(t *testing.T) {
 	assert.NoError(t, removeErr, "Unexpected error running removeObsoleteIndexes in post-cleanup no-op")
 
 	// Restore indexes after test
-	err = InitializeIndexes(n1qlStore, db.UseXattrs(), 0, false)
+	err = InitializeIndexes(n1qlStore, db.UseXattrs(), 0, false, false)
 	assert.NoError(t, err)
 }
 
@@ -199,7 +199,7 @@ func TestPostUpgradeIndexesVersionChange(t *testing.T) {
 	assert.NoError(t, removeErr, "Unexpected error running removeObsoleteIndexes with hacked sgIndexes")
 
 	// Restore indexes after test
-	err := InitializeIndexes(n1qlStore, db.UseXattrs(), 0, false)
+	err := InitializeIndexes(n1qlStore, db.UseXattrs(), 0, false, false)
 	assert.NoError(t, err)
 
 	validateErr := validateAllIndexesOnline(db.Bucket, db.UseXattrs())
@@ -253,7 +253,7 @@ func TestRemoveIndexesUseViewsTrueAndFalse(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Restore indexes after test
-	err = InitializeIndexes(n1QLStore, db.UseXattrs(), 0, false)
+	err = InitializeIndexes(n1QLStore, db.UseXattrs(), 0, false, false)
 	assert.NoError(t, err)
 
 	validateErr := validateAllIndexesOnline(db.Bucket, db.UseXattrs())
@@ -300,7 +300,7 @@ func TestRemoveObsoleteIndexOnError(t *testing.T) {
 
 	// Restore indexes after test
 	n1qlStore, _ := base.AsN1QLStore(db.Bucket)
-	err := InitializeIndexes(n1qlStore, db.UseXattrs(), 0, false)
+	err := InitializeIndexes(n1qlStore, db.UseXattrs(), 0, false, false)
 	assert.NoError(t, err)
 
 	validateErr := validateAllIndexesOnline(db.Bucket, db.UseXattrs())
@@ -324,7 +324,7 @@ func dropAndInitializeIndexes(ctx context.Context, n1qlStore base.N1QLStore, buc
 		return dropErr
 	}
 
-	initErr := InitializeIndexes(n1qlStore, xattrs, 0, true)
+	initErr := InitializeIndexes(n1qlStore, xattrs, 0, true, false)
 	if initErr != nil {
 		return initErr
 	}

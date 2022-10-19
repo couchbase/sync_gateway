@@ -138,6 +138,22 @@ var (
 		IndexTombstones: IdxFlagXattrOnly | IdxFlagIndexTombstones,
 	}
 
+	// Signal to always create index
+	indexAlwaysCreate = map[SGIndexType]bool{
+		IndexAccess:     true,
+		IndexRoleAccess: true,
+		IndexChannels:   true,
+		IndexAllDocs:    true,
+		IndexTombstones: true,
+	}
+
+	// Only create when running Serverless mode
+	indexForServerless = map[SGIndexType]bool{
+		IndexUser:    true,
+		IndexSession: true,
+		IndexRole:    true,
+	}
+
 	// Queries used to check readiness on startup.  Only required for critical indexes.
 	readinessQueries = map[SGIndexType]string{
 		IndexAccess: "SELECT $sync.access.foo as val " +
@@ -167,12 +183,14 @@ func init() {
 	sgIndexes = make(map[SGIndexType]SGIndex, indexTypeCount)
 	for i := SGIndexType(0); i < indexTypeCount; i++ {
 		sgIndex := SGIndex{
-			simpleName:       indexNames[i],
-			version:          indexVersions[i],
-			previousVersions: indexPreviousVersions[i],
-			expression:       indexExpressions[i],
-			filterExpression: indexFilterExpressions[i],
-			flags:            indexFlags[i],
+			simpleName:        indexNames[i],
+			version:           indexVersions[i],
+			previousVersions:  indexPreviousVersions[i],
+			expression:        indexExpressions[i],
+			filterExpression:  indexFilterExpressions[i],
+			flags:             indexFlags[i],
+			ForServerlessOnly: indexForServerless[i],
+			AlwaysCreate:      indexAlwaysCreate[i],
 		}
 		// If a readiness query is specified for this index, mark the index as required and add to SGIndex
 		readinessQuery, ok := readinessQueries[i]
@@ -187,14 +205,16 @@ func init() {
 
 // SGIndex is used to manage the set of constants associated with each index definition
 type SGIndex struct {
-	simpleName       string       // Simplified index name (used to build fullIndexName)
-	expression       string       // Expression used to create index
-	filterExpression string       // (Optional) Filter expression used to create index
-	version          int          // Index version.  Must be incremented any time the index definition changes
-	previousVersions []int        // Previous versions of the index that will be removed during post_upgrade cleanup
-	required         bool         // Whether SG blocks on startup until this index is ready
-	readinessQuery   string       // Query used to determine view readiness
-	flags            SGIndexFlags // Additional index options
+	simpleName        string       // Simplified index name (used to build fullIndexName)
+	expression        string       // Expression used to create index
+	filterExpression  string       // (Optional) Filter expression used to create index
+	version           int          // Index version.  Must be incremented any time the index definition changes
+	previousVersions  []int        // Previous versions of the index that will be removed during post_upgrade cleanup
+	required          bool         // Whether SG blocks on startup until this index is ready
+	readinessQuery    string       // Query used to determine view readiness
+	flags             SGIndexFlags // Additional index options
+	ForServerlessOnly bool         // Signal to create only when running in index
+	AlwaysCreate      bool         // Signal to always create index independent of Serverless mode
 }
 
 func (i *SGIndex) fullIndexName(useXattrs bool) string {
@@ -217,6 +237,18 @@ func (i *SGIndex) shouldIndexTombstones(useXattrs bool) bool {
 
 func (i *SGIndex) isXattrOnly() bool {
 	return i.flags&IdxFlagXattrOnly != 0
+}
+
+// shouldCreateForServerless returns if given index should be created based on Serverless mode
+func (i *SGIndex) shouldCreateForServerless(isServerless bool) bool {
+	if i.AlwaysCreate {
+		return true
+	}
+
+	if isServerless {
+		return i.ForServerlessOnly
+	}
+	return !i.ForServerlessOnly
 }
 
 // Creates index associated with specified SGIndex if not already present.  Always defers build - a subsequent BUILD INDEX
@@ -304,7 +336,7 @@ func (i *SGIndex) createIfNeeded(bucket base.N1QLStore, useXattrs bool, numRepli
 }
 
 // Initializes Sync Gateway indexes for bucket.  Creates required indexes if not found, then waits for index readiness.
-func InitializeIndexes(bucket base.N1QLStore, useXattrs bool, numReplicas uint, failFast bool) error {
+func InitializeIndexes(bucket base.N1QLStore, useXattrs bool, numReplicas uint, failFast bool, isServerless bool) error {
 
 	base.InfofCtx(context.TODO(), base.KeyAll, "Initializing indexes with numReplicas: %d...", numReplicas)
 
@@ -312,6 +344,12 @@ func InitializeIndexes(bucket base.N1QLStore, useXattrs bool, numReplicas uint, 
 	deferredIndexes := make([]string, 0)
 	allSGIndexes := make([]string, 0)
 	for _, sgIndex := range sgIndexes {
+
+		if !sgIndex.shouldCreateForServerless(isServerless) {
+			base.DebugfCtx(context.TODO(), base.KeyAll, "Skipping index for Serverless: %s...", sgIndex.simpleName)
+			continue
+		}
+
 		fullIndexName := sgIndex.fullIndexName(useXattrs)
 		isDeferred, err := sgIndex.createIfNeeded(bucket, useXattrs, numReplicas)
 		if err != nil {
