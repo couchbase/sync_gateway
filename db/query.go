@@ -616,7 +616,7 @@ func (context *DatabaseContext) QueryRoles(ctx context.Context, startKey string,
 
 	var queryStatement string
 	if context.Options.Serverless {
-		queryStatement = replaceIndexTokensQuery(QueryRolesExcludeDeletedUsingRoleIdx.statement, sgIndexes[IndexRoleExcludeDeleted], context.UseXattrs())
+		queryStatement = replaceIndexTokensQuery(QueryRolesExcludeDeletedUsingRoleIdx.statement, sgIndexes[IndexRole], context.UseXattrs())
 	} else {
 		queryStatement = replaceIndexTokensQuery(QueryRolesExcludeDeleted.statement, sgIndexes[IndexSyncDocs], context.UseXattrs())
 	}
