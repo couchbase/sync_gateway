@@ -415,48 +415,6 @@ func TestActiveOnlyCacheUpdate(t *testing.T) {
 
 }
 
-// Make sure docs that have an ID prefixed with a null byte don't end up in the changes feed (CBG-2450)
-func TestDocIDNullCharPrefix(t *testing.T) {
-	db, ctx := setupTestDB(t)
-	defer db.Close(ctx)
-
-	cacheWaiter := db.NewDCPCachingCountWaiter(t)
-
-	revid1, _, err := db.Put(ctx, "before", Body{"doc": 1})
-	require.NoError(t, err)
-	cacheWaiter.AddAndWait(1)
-
-	_, _, err = db.Put(ctx, "\x00during", Body{"doc": 2})
-	require.NoError(t, err)
-	cacheWaiter.AddAndWait(1)
-
-	revid3, _, err := db.Put(ctx, "after", Body{"doc": 3})
-	require.NoError(t, err)
-	cacheWaiter.AddAndWait(1)
-
-	changes, err := db.GetChanges(ctx, base.SetOf("*"), getChangesOptionsWithZeroSeq())
-	assert.NoError(t, err, "Couldn't GetChanges")
-	printChanges(changes)
-
-	assert.Equal(t, 2, len(changes))
-	expected := []*ChangeEntry{
-		{
-			Seq:     SequenceID{Seq: 1},
-			ID:      "before",
-			Changes: []ChangeRev{{"rev": revid1}},
-		},
-		{
-			Seq:     SequenceID{Seq: 3},
-			ID:      "after",
-			Changes: []ChangeRev{{"rev": revid3}},
-		},
-	}
-	assert.Equal(t, expected, changes)
-
-	lastSeq := getLastSeq(changes)
-	assert.Equal(t, "3", lastSeq.String())
-}
-
 // Benchmark to validate fix for https://github.com/couchbase/sync_gateway/issues/2428
 func BenchmarkChangesFeedDocUnmarshalling(b *testing.B) {
 	base.SetUpBenchmarkLogging(b, base.LevelWarn, base.KeyHTTP)
