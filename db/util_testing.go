@@ -302,7 +302,7 @@ var viewsAndGSIBucketInit base.TBPBucketInitFunc = func(ctx context.Context, b b
 		return err
 	}
 	tbp.Logf(ctx, "creating SG bucket indexes")
-	if err := InitializeIndexes(n1qlStore, base.TestUseXattrs(), 0, false); err != nil {
+	if err := InitializeIndexes(n1qlStore, base.TestUseXattrs(), 0, false, false); err != nil {
 		return err
 	}
 
