@@ -552,9 +552,11 @@ func (context *DatabaseContext) QueryPrincipals(ctx context.Context, startKey st
 		return context.ViewQueryWithStats(ctx, DesignDocSyncGateway(), ViewPrincipals, opts)
 	}
 
-	queryStatement := replaceIndexTokensQuery(QueryPrincipals.statement, sgIndexes[IndexSyncDocs], context.UseXattrs())
+	var queryStatement string
 	if context.Options.Serverless {
-		queryStatement = replaceIndexTokensQuery(QueryPrincipalsUsingRoleIdx.statement, sgIndexes[IndexSyncRole], context.UseXattrs())
+		queryStatement = replaceIndexTokensQuery(QueryPrincipalsUsingRoleIdx.statement, sgIndexes[IndexRole], context.UseXattrs())
+	} else {
+		queryStatement = replaceIndexTokensQuery(QueryPrincipals.statement, sgIndexes[IndexSyncDocs], context.UseXattrs())
 	}
 
 	params := make(map[string]interface{})
@@ -576,9 +578,11 @@ func (context *DatabaseContext) QueryUsers(ctx context.Context, startKey string,
 		return nil, errors.New("QueryUsers does not support views")
 	}
 
-	queryStatement := replaceIndexTokensQuery(QueryUsers.statement, sgIndexes[IndexSyncDocs], context.UseXattrs())
+	var queryStatement string
 	if context.Options.Serverless {
-		queryStatement = replaceIndexTokensQuery(QueryUsers.statement, sgIndexes[IndexSyncUser], context.UseXattrs())
+		queryStatement = replaceIndexTokensQuery(QueryUsers.statement, sgIndexes[IndexUser], context.UseXattrs())
+	} else {
+		queryStatement = replaceIndexTokensQuery(QueryUsers.statement, sgIndexes[IndexSyncDocs], context.UseXattrs())
 	}
 
 	params := make(map[string]interface{})
@@ -610,9 +614,11 @@ func (context *DatabaseContext) QueryRoles(ctx context.Context, startKey string,
 		return context.ViewQueryWithStats(ctx, DesignDocSyncGateway(), ViewRolesExcludeDeleted, opts)
 	}
 
-	queryStatement := replaceIndexTokensQuery(QueryRolesExcludeDeleted.statement, sgIndexes[IndexSyncDocs], context.UseXattrs())
+	var queryStatement string
 	if context.Options.Serverless {
-		queryStatement = replaceIndexTokensQuery(QueryRolesExcludeDeletedUsingRoleIdx.statement, sgIndexes[IndexSyncRoleExcludeDeleted], context.UseXattrs())
+		queryStatement = replaceIndexTokensQuery(QueryRolesExcludeDeletedUsingRoleIdx.statement, sgIndexes[IndexRoleExcludeDeleted], context.UseXattrs())
+	} else {
+		queryStatement = replaceIndexTokensQuery(QueryRolesExcludeDeleted.statement, sgIndexes[IndexSyncDocs], context.UseXattrs())
 	}
 
 	params := make(map[string]interface{})
@@ -637,10 +643,11 @@ func (context *DatabaseContext) QuerySessions(ctx context.Context, userName stri
 		return context.ViewQueryWithStats(ctx, DesignDocSyncHousekeeping(), ViewSessions, opts)
 	}
 
-	queryStatement := replaceIndexTokensQuery(QuerySessions.statement, sgIndexes[IndexSyncDocs], context.UseXattrs())
-
+	var queryStatement string
 	if context.Options.Serverless {
-		queryStatement = replaceIndexTokensQuery(QuerySessionsUsingSessionIdx.statement, sgIndexes[IndexSyncSession], context.UseXattrs())
+		queryStatement = replaceIndexTokensQuery(QuerySessionsUsingSessionIdx.statement, sgIndexes[IndexSession], context.UseXattrs())
+	} else {
+		queryStatement = replaceIndexTokensQuery(QuerySessions.statement, sgIndexes[IndexSyncDocs], context.UseXattrs())
 	}
 
 	// N1QL Query
