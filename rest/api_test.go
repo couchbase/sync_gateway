@@ -7763,19 +7763,18 @@ func TestUserHasDocAccessDocNotFound(t *testing.T) {
 
 	resp := rt.SendAdminRequest("PUT", "/db/doc", `{"channels": ["A"]}`)
 	assertStatus(t, resp, http.StatusCreated)
-	revID := respRevID(t, resp)
 
 	database, err := db.CreateDatabase(rt.GetDatabase())
 	assert.NoError(t, err)
 
-	userHasDocAccess, err := db.UserHasDocAccess(database, "doc", revID)
+	userHasDocAccess, err := db.UserHasDocAccess(database, "doc")
 	assert.NoError(t, err)
 	assert.True(t, userHasDocAccess)
 
-	err = rt.GetDatabase().Bucket.Delete("doc")
-	assert.NoError(t, err)
+	// Purge the document from the bucket to force 'not found'
+	err = database.Purge("doc")
 
-	userHasDocAccess, err = db.UserHasDocAccess(database, "doc", revID)
+	userHasDocAccess, err = db.UserHasDocAccess(database, "doc")
 	assert.NoError(t, err)
 	assert.False(t, userHasDocAccess)
 }

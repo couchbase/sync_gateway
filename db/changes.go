@@ -257,7 +257,7 @@ func (db *Database) buildRevokedFeed(channelName string, options ChangesOptions,
 					}
 				}
 
-				userHasAccessToDoc, err := UserHasDocAccess(db, logEntry.DocID, logEntry.RevID)
+				userHasAccessToDoc, err := UserHasDocAccess(db, logEntry.DocID)
 				if err != nil {
 					change := ChangeEntry{
 						Err: base.ErrChannelFeed,
@@ -302,8 +302,9 @@ func (db *Database) buildRevokedFeed(channelName string, options ChangesOptions,
 	return feed
 }
 
-func UserHasDocAccess(db *Database, docID, revID string) (bool, error) {
-	rev, err := db.revisionCache.Get(docID, revID, false, false)
+// UserHasDocAccess checks whether the user has access to the active revision of the document
+func UserHasDocAccess(db *Database, docID string) (bool, error) {
+	currentRev, err := db.revisionCache.GetActive(docID, false)
 	if err != nil {
 		if base.IsDocNotFoundError(err) {
 			return false, nil
@@ -311,12 +312,12 @@ func UserHasDocAccess(db *Database, docID, revID string) (bool, error) {
 		return false, err
 	}
 
-	isAuthorized, _ := db.authorizeUserForChannels(rev.DocID, rev.RevID, rev.Channels, rev.Deleted, nil)
-	if isAuthorized {
+	if db.user == nil {
 		return true, nil
 	}
 
-	return false, nil
+	authErr := db.user.AuthorizeAnyChannel(currentRev.Channels)
+	return authErr == nil, nil
 }
 
 // Checks if a document needs to be revoked. This is used in the case where the since < doc sequence
