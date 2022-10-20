@@ -2860,7 +2860,7 @@ func TestActiveOnlyContinuous(t *testing.T) {
 	require.NoError(t, base.JSONUnmarshal(resp.Body.Bytes(), &docResp))
 
 	// start an initial pull
-	require.NoError(t, btc.StartPullSince("true", "0", "true"))
+	require.NoError(t, btc.StartPullSince("true", "0", "true", ""))
 
 	rev, found := btc.WaitForRev("doc1", docResp.Rev)
 	assert.True(t, found)
@@ -3473,7 +3473,7 @@ func TestRevocationMessage(t *testing.T) {
 	require.NoError(t, err)
 
 	// Start a pull since 5 to receive revocation and removal
-	err = btc.StartPullSince("false", "5", "false")
+	err = btc.StartPullSince("false", "5", "false", "")
 	assert.NoError(t, err)
 
 	// Wait for doc1 rev2 - This is the last rev we expect so we can be sure replication is complete here
@@ -3583,7 +3583,7 @@ func TestRevocationNoRev(t *testing.T) {
 	_, err = rt.WaitForChanges(3, "/db/_changes?since="+lastSeq, "user", true)
 	require.NoError(t, err)
 
-	err = btc.StartPullSince("false", lastSeq, "false")
+	err = btc.StartPullSince("false", lastSeq, "false", "")
 	assert.NoError(t, err)
 
 	_, ok = btc.WaitForRev("docmarker", waitRevID)
@@ -3702,15 +3702,113 @@ func TestRemovedMessageWithAlternateAccess(t *testing.T) {
 	var messageBody []interface{}
 	err = highestSeqMsg.ReadJSONBody(&messageBody)
 	assert.NoError(t, err)
-	require.Len(t, messageBody, 2)
-	require.Len(t, messageBody[0], 4)
-	require.Len(t, messageBody[1], 3)
+	require.Len(t, messageBody, 3)
+	require.Len(t, messageBody[0], 4) // Rev 2 of doc, being sent as removal from channel A
+	require.Len(t, messageBody[1], 4) // Rev 3 of doc, being sent as removal from channel B
+	require.Len(t, messageBody[2], 3)
 
 	deletedFlags, err := messageBody[0].([]interface{})[3].(json.Number).Int64()
 	docID := messageBody[0].([]interface{})[1]
 	require.NoError(t, err)
 	assert.Equal(t, "doc", docID)
 	assert.Equal(t, int64(4), deletedFlags)
+}
+
+// TestRemovedMessageWithAlternateAccessAndChannelFilteredReplication tests the following scenario:
+//   User has access to channel A and B
+//     Document rev 1 is in A and B
+//     Document rev 2 is in channel C
+//     Document rev 3 is in channel B
+//   User issues changes requests with since=0 for channel A
+//     Revocation should not be issued because the user currently has access to channel B, even though they didn't
+//     have access to the removal revision (rev 2).  CBG-2277
+
+func TestRemovedMessageWithAlternateAccessAndChannelFilteredReplication(t *testing.T) {
+	defer db.SuspendSequenceBatching()()
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
+
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	resp := rt.SendAdminRequest("PUT", "/db/_user/user", `{"admin_channels": ["A", "B"], "password": "test"}`)
+	assertStatus(t, resp, http.StatusCreated)
+
+	btc, err := NewBlipTesterClientOptsWithRT(t, rt, &BlipTesterClientOpts{
+		Username:        "user",
+		Channels:        []string{"*"},
+		ClientDeltas:    false,
+		SendRevocations: true,
+	})
+	assert.NoError(t, err)
+	defer btc.Close()
+
+	docRevID := rt.createDocReturnRev(t, "doc", "", map[string]interface{}{"channels": []string{"A", "B"}})
+
+	changes, err := rt.WaitForChanges(1, "/db/_changes?since=0&revocations=true", "user", true)
+	require.NoError(t, err)
+	assert.Equal(t, 1, len(changes.Results))
+	assert.Equal(t, "doc", changes.Results[0].ID)
+	assert.Equal(t, "1-9b49fa26d87ad363b2b08de73ff029a9", changes.Results[0].Changes[0]["rev"])
+
+	err = btc.StartOneshotPull()
+	assert.NoError(t, err)
+
+	_, ok := btc.WaitForRev("doc", "1-9b49fa26d87ad363b2b08de73ff029a9")
+	assert.True(t, ok)
+
+	docRevID = rt.createDocReturnRev(t, "doc", docRevID, map[string]interface{}{"channels": []string{"C"}})
+
+	// At this point changes should send revocation, as document isn't in any of the user's channels
+	changes, err = rt.WaitForChanges(1, "/db/_changes?filter=sync_gateway/bychannel&channels=A&since=0&revocations=true", "user", true)
+	require.NoError(t, err)
+	assert.Equal(t, 1, len(changes.Results))
+	assert.Equal(t, "doc", changes.Results[0].ID)
+	assert.Equal(t, docRevID, changes.Results[0].Changes[0]["rev"])
+
+	err = btc.StartOneshotPullFiltered("A")
+	assert.NoError(t, err)
+
+	_, ok = btc.WaitForRev("doc", docRevID)
+	assert.True(t, ok)
+
+	_ = rt.createDocReturnRev(t, "doc", docRevID, map[string]interface{}{"channels": []string{"B"}})
+	markerDocRevID := rt.createDocReturnRev(t, "docmarker", "", map[string]interface{}{"channels": []string{"A"}})
+
+	// Revocation should not be sent over blip, as document is now in user's channels - only marker document should be received
+	changes, err = rt.WaitForChanges(1, "/db/_changes?filter=sync_gateway/bychannel&channels=A&since=0&revocations=true", "user", true)
+	require.NoError(t, err)
+	assert.Len(t, changes.Results, 2) // _changes still gets two results, as we don't support 3.0 removal handling over REST API
+	assert.Equal(t, "doc", changes.Results[0].ID)
+	assert.Equal(t, "docmarker", changes.Results[1].ID)
+
+	err = btc.StartOneshotPullFiltered("A")
+	assert.NoError(t, err)
+
+	_, ok = btc.WaitForRev("docmarker", markerDocRevID)
+	assert.True(t, ok)
+
+	messages := btc.pullReplication.GetMessages()
+
+	var highestMsgSeq uint32
+	var highestSeqMsg blip.Message
+	// Grab most recent changes message
+	for _, message := range messages {
+		messageBody, err := message.Body()
+		require.NoError(t, err)
+		if message.Properties["Profile"] == db.MessageChanges && string(messageBody) != "null" {
+			if highestMsgSeq < uint32(message.SerialNumber()) {
+				highestMsgSeq = uint32(message.SerialNumber())
+				highestSeqMsg = message
+			}
+		}
+	}
+
+	var messageBody []interface{}
+	err = highestSeqMsg.ReadJSONBody(&messageBody)
+	assert.NoError(t, err)
+	require.Len(t, messageBody, 1)
+	require.Len(t, messageBody[0], 3) // marker doc
+	require.Equal(t, "docmarker", messageBody[0].([]interface{})[1])
 }
 
 func TestBlipPushPullNewAttachmentCommonAncestor(t *testing.T) {

@@ -521,27 +521,28 @@ func NewBlipTesterClientOptsWithRT(tb testing.TB, rt *RestTester, opts *BlipTest
 
 // StartPull will begin a continuous pull replication since 0 between the client and server
 func (btc *BlipTesterClient) StartPull() (err error) {
-	return btc.StartPullSince("true", "0", "false")
+	return btc.StartPullSince("true", "0", "false", "")
 }
 
 func (btc *BlipTesterClient) StartOneshotPull() (err error) {
-	return btc.StartPullSince("false", "0", "false")
+	return btc.StartPullSince("false", "0", "false", "")
+}
+
+func (btc *BlipTesterClient) StartOneshotPullFiltered(channels string) (err error) {
+	return btc.StartPullSince("false", "0", "false", channels)
 }
 
 // StartPullSince will begin a pull replication between the client and server with the given params.
-func (btc *BlipTesterClient) StartPullSince(continuous, since, activeOnly string) (err error) {
-	getCheckpointRequest := blip.NewRequest()
-	getCheckpointRequest.SetProfile(db.MessageGetCheckpoint)
-	getCheckpointRequest.Properties[db.BlipClient] = btc.pullReplication.id
-	if err := btc.pullReplication.sendMsg(getCheckpointRequest); err != nil {
-		return err
-	}
-
+func (btc *BlipTesterClient) StartPullSince(continuous, since, activeOnly string, channels string) (err error) {
 	subChangesRequest := blip.NewRequest()
 	subChangesRequest.SetProfile(db.MessageSubChanges)
 	subChangesRequest.Properties[db.SubChangesContinuous] = continuous
 	subChangesRequest.Properties[db.SubChangesSince] = since
 	subChangesRequest.Properties[db.SubChangesActiveOnly] = activeOnly
+	if channels != "" {
+		subChangesRequest.Properties[db.SubChangesFilter] = base.ByChannelFilter
+		subChangesRequest.Properties[db.SubChangesChannels] = channels
+	}
 	subChangesRequest.SetNoReply(true)
 
 	if btc.BlipTesterClientOpts.SendRevocations {
