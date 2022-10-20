@@ -401,3 +401,34 @@ func (dbc *DatabaseContext) GetPrincipalForTest(tb testing.TB, name string, isUs
 func TestBucketPoolWithIndexes(m *testing.M, memWatermarkThresholdMB uint64) {
 	base.TestBucketPoolMain(m, viewsAndGSIBucketReadier, viewsAndGSIBucketInit, memWatermarkThresholdMB)
 }
+
+// Parse the plan looking for use of the fetch operation (appears as the key/value pair "#operator":"Fetch")
+// If there's no fetch operator in the plan, we can assume the query is covered by the index.
+// The plan returned by an EXPLAIN is a nested hierarchy with operators potentially appearing at different
+// depths, so need to traverse the JSON object.
+// https://docs.couchbase.com/server/6.0/n1ql/n1ql-language-reference/explain.html
+func IsCovered(plan map[string]interface{}) bool {
+	for key, value := range plan {
+		switch value := value.(type) {
+		case string:
+			if key == "#operator" && value == "Fetch" {
+				return false
+			}
+		case map[string]interface{}:
+			if !IsCovered(value) {
+				return false
+			}
+		case []interface{}:
+			for _, arrayValue := range value {
+				jsonArrayValue, ok := arrayValue.(map[string]interface{})
+				if ok {
+					if !IsCovered(jsonArrayValue) {
+						return false
+					}
+				}
+			}
+		default:
+		}
+	}
+	return true
+}

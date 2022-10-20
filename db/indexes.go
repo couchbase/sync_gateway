@@ -570,3 +570,19 @@ func copySGIndexes(inputMap map[SGIndexType]SGIndex) map[SGIndexType]SGIndex {
 
 	return outputMap
 }
+
+// GetIndexesName returns names of the indexes that would be created for given Serverless mode and Xattr flag
+// it meant to be used in tests to know which indexes to drop as a part of manual cleanup
+func GetIndexesName(isServerless, xattr bool) []string {
+	indexesName := make([]string, 0)
+
+	for _, sgIndex := range sgIndexes {
+		if sgIndex.isXattrOnly() && !xattr {
+			continue
+		}
+		if sgIndex.shouldCreate(isServerless) {
+			indexesName = append(indexesName, sgIndex.fullIndexName(xattr))
+		}
+	}
+	return indexesName
+}
