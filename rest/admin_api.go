@@ -48,6 +48,10 @@ func (h *handler) handleCreateDB() error {
 
 	validateOIDC := !h.getBoolQuery(paramDisableOIDCValidation)
 
+	if config.Name == "" {
+		config.Name = dbName
+	}
+
 	if dbName != config.Name {
 		return base.HTTPErrorf(http.StatusBadRequest, "Name in path (%s) is not the same name in the JSON body (%s)", dbName, config.Name)
 	}
