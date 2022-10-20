@@ -178,13 +178,11 @@ var QueryPrincipalsUsingRoleIdx = SGQuery{
 		"SELECT META(%s).id "+
 			"FROM %s AS %s "+
 			"USE INDEX($idx) "+
-			"WHERE (META(%s).id LIKE '%s' "+
-			"OR META(%s).id LIKE '%s') "+
+			"WHERE META(%s).id LIKE '%s' "+
 			"AND META(%s).id >= $%s "+ // Uses >= for inclusive startKey
 			"ORDER BY META(%s).id",
 		base.KeyspaceQueryAlias,
 		base.KeyspaceQueryToken, base.KeyspaceQueryAlias,
-		base.KeyspaceQueryAlias, SyncUserWildcard,
 		base.KeyspaceQueryAlias, SyncRoleWildcard,
 		base.KeyspaceQueryAlias, QueryParamStartKey,
 		base.KeyspaceQueryAlias),
@@ -551,7 +549,14 @@ func (context *DatabaseContext) QueryPrincipals(ctx context.Context, startKey st
 
 		return context.ViewQueryWithStats(ctx, DesignDocSyncGateway(), ViewPrincipals, opts)
 	}
+	queryStatement, params := context.BuildPrincipalsQuery(startKey, limit)
+	// N1QL Query
+	return context.N1QLQueryWithStats(ctx, QueryPrincipals.name, queryStatement, params, base.RequestPlus, QueryPrincipals.adhoc)
+}
 
+// BuildPrincipalsQuery builds the query statement and query parameters for a Principals N1QL query. Also used by unit tests to validate
+// query is covering.
+func (context *DatabaseContext) BuildPrincipalsQuery(startKey string, limit int) (string, map[string]interface{}) {
 	var queryStatement string
 	if context.Options.Serverless {
 		queryStatement = replaceIndexTokensQuery(QueryPrincipalsUsingRoleIdx.statement, sgIndexes[IndexRole], context.UseXattrs())
@@ -565,9 +570,7 @@ func (context *DatabaseContext) QueryPrincipals(ctx context.Context, startKey st
 	if limit > 0 {
 		queryStatement = fmt.Sprintf("%s LIMIT %d", queryStatement, limit)
 	}
-
-	// N1QL Query
-	return context.N1QLQueryWithStats(ctx, QueryPrincipals.name, queryStatement, params, base.RequestPlus, QueryPrincipals.adhoc)
+	return queryStatement, params
 }
 
 // Query to retrieve user details, using the syncDocs index
@@ -578,6 +581,15 @@ func (context *DatabaseContext) QueryUsers(ctx context.Context, startKey string,
 		return nil, errors.New("QueryUsers does not support views")
 	}
 
+	queryStatement, params := context.BuildUsersQuery(startKey, limit)
+
+	// N1QL Query
+	return context.N1QLQueryWithStats(ctx, QueryTypeUsers, queryStatement, params, base.RequestPlus, QueryUsers.adhoc)
+}
+
+// BuildUsersQuery builds the query statement and query parameters for a Users N1QL query. Also used by unit tests to validate
+// query is covering.
+func (context *DatabaseContext) BuildUsersQuery(startKey string, limit int) (string, map[string]interface{}) {
 	var queryStatement string
 	if context.Options.Serverless {
 		queryStatement = replaceIndexTokensQuery(QueryUsers.statement, sgIndexes[IndexUser], context.UseXattrs())
@@ -591,9 +603,7 @@ func (context *DatabaseContext) QueryUsers(ctx context.Context, startKey string,
 	if limit > 0 {
 		queryStatement = fmt.Sprintf("%s LIMIT %d", queryStatement, limit)
 	}
-
-	// N1QL Query
-	return context.N1QLQueryWithStats(ctx, QueryTypeUsers, queryStatement, params, base.RequestPlus, QueryUsers.adhoc)
+	return queryStatement, params
 }
 
 // Retrieves role ids using the syncDocs index, excluding deleted roles
@@ -614,6 +624,16 @@ func (context *DatabaseContext) QueryRoles(ctx context.Context, startKey string,
 		return context.ViewQueryWithStats(ctx, DesignDocSyncGateway(), ViewRolesExcludeDeleted, opts)
 	}
 
+	queryStatement, params := context.BuildRolesQuery(startKey, limit)
+
+	// N1QL Query
+	return context.N1QLQueryWithStats(ctx, QueryRolesExcludeDeleted.name, queryStatement, params, base.RequestPlus, QueryRolesExcludeDeleted.adhoc)
+}
+
+// BuildRolesQuery builds the query statement and query parameters for a Roles N1QL query. Also used by unit tests to validate
+// query is covering.
+func (context *DatabaseContext) BuildRolesQuery(startKey string, limit int) (string, map[string]interface{}) {
+
 	var queryStatement string
 	if context.Options.Serverless {
 		queryStatement = replaceIndexTokensQuery(QueryRolesExcludeDeletedUsingRoleIdx.statement, sgIndexes[IndexRole], context.UseXattrs())
@@ -628,8 +648,7 @@ func (context *DatabaseContext) QueryRoles(ctx context.Context, startKey string,
 		queryStatement = fmt.Sprintf("%s LIMIT %d", queryStatement, limit)
 	}
 
-	// N1QL Query
-	return context.N1QLQueryWithStats(ctx, QueryRolesExcludeDeleted.name, queryStatement, params, base.RequestPlus, QueryRolesExcludeDeleted.adhoc)
+	return queryStatement, params
 }
 
 // Query to retrieve the set of sessions, using the syncDocs index
@@ -643,6 +662,13 @@ func (context *DatabaseContext) QuerySessions(ctx context.Context, userName stri
 		return context.ViewQueryWithStats(ctx, DesignDocSyncHousekeeping(), ViewSessions, opts)
 	}
 
+	queryStatement, params := context.BuildSessionsQuery(userName)
+	return context.N1QLQueryWithStats(ctx, QueryTypeSessions, queryStatement, params, base.RequestPlus, QuerySessions.adhoc)
+}
+
+// BuildSessionsQuery builds the query statement and query parameters for a Sessions N1QL query. Also used by unit tests to validate
+// query is covering.
+func (context *DatabaseContext) BuildSessionsQuery(userName string) (string, map[string]interface{}) {
 	var queryStatement string
 	if context.Options.Serverless {
 		queryStatement = replaceIndexTokensQuery(QuerySessionsUsingSessionIdx.statement, sgIndexes[IndexSession], context.UseXattrs())
@@ -650,10 +676,9 @@ func (context *DatabaseContext) QuerySessions(ctx context.Context, userName stri
 		queryStatement = replaceIndexTokensQuery(QuerySessions.statement, sgIndexes[IndexSyncDocs], context.UseXattrs())
 	}
 
-	// N1QL Query
 	params := make(map[string]interface{}, 1)
 	params[QueryParamUserName] = userName
-	return context.N1QLQueryWithStats(ctx, QueryTypeSessions, queryStatement, params, base.RequestPlus, QuerySessions.adhoc)
+	return queryStatement, params
 }
 
 type AllDocsViewQueryRow struct {
