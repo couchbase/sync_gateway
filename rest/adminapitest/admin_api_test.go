@@ -2141,6 +2141,46 @@ func TestHandleCreateDB(t *testing.T) {
 	rest.RequireStatus(t, resp, http.StatusBadRequest)
 }
 
+func TestHandleCreateDBNoJsonName(t *testing.T) {
+	rt := rest.NewRestTester(t, nil)
+	defer rt.Close()
+
+	bucket := "albums"
+	kvTLSPort := 11207
+	resource := fmt.Sprintf("/%s/", bucket)
+
+	bucketConfig := rest.BucketConfig{Bucket: &bucket, KvTLSPort: kvTLSPort}
+	dbConfig := &rest.DbConfig{BucketConfig: bucketConfig, SGReplicateEnabled: base.BoolPtr(false)}
+
+	reqBody, err := base.JSONMarshal(dbConfig)
+	assert.NoError(t, err, "Error unmarshalling changes response")
+
+	resp := rt.SendAdminRequest(http.MethodPut, resource, string(reqBody))
+	rest.RequireStatus(t, resp, http.StatusCreated)
+	resp = rt.SendAdminRequest(http.MethodGet, resource, string(reqBody))
+	assert.Contains(t, resp.Body.String(), "\"db_name\":\"albums\"")
+}
+
+func TestHandleCreateDBDifferentJsonName(t *testing.T) {
+	rt := rest.NewRestTester(t, nil)
+	defer rt.Close()
+
+	bucket := "albums"
+	kvTLSPort := 11207
+	resource := fmt.Sprintf("/%s/", bucket)
+
+	bucketConfig := rest.BucketConfig{Bucket: &bucket, KvTLSPort: kvTLSPort}
+	dbConfig := &rest.DbConfig{BucketConfig: bucketConfig, Name: "dummy", SGReplicateEnabled: base.BoolPtr(false)}
+
+	reqBody, err := base.JSONMarshal(dbConfig)
+	assert.NoError(t, err, "Error unmarshalling changes response")
+
+	resp := rt.SendAdminRequest(http.MethodPut, resource, string(reqBody))
+	rest.RequireStatus(t, resp, http.StatusBadRequest)
+	assert.Contains(t, resp.Body.String(), "is not the same name")
+
+}
+
 func TestHandlePutDbConfigWithBackticks(t *testing.T) {
 	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
