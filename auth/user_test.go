@@ -255,11 +255,11 @@ func TestCanSeeChannelSince(t *testing.T) {
 	user, err := auth.NewUser("user", "password", freeChannels)
 	assert.Nil(t, err)
 
-	role, err := auth.NewRole("music", channels.SetOf(t, "Spotify", "Youtube"))
+	role, err := auth.NewRole("music", channels.BaseSetOf(t, "Spotify", "Youtube"))
 	assert.Nil(t, err)
 	assert.Equal(t, nil, auth.Save(role))
 
-	role, err = auth.NewRole("video", channels.SetOf(t, "Netflix", "Hulu"))
+	role, err = auth.NewRole("video", channels.BaseSetOf(t, "Netflix", "Hulu"))
 	assert.Nil(t, err)
 	assert.Equal(t, nil, auth.Save(role))
 
@@ -280,15 +280,15 @@ func TestGetAddedChannels(t *testing.T) {
 
 	auth := NewAuthenticator(testBucket, nil, DefaultAuthenticatorOptions())
 
-	role, err := auth.NewRole("music", channels.SetOf(t, "Spotify", "Youtube"))
+	role, err := auth.NewRole("music", channels.BaseSetOf(t, "Spotify", "Youtube"))
 	assert.Nil(t, err)
 	assert.Equal(t, nil, auth.Save(role))
 
-	role, err = auth.NewRole("video", channels.SetOf(t, "Netflix", "Hulu"))
+	role, err = auth.NewRole("video", channels.BaseSetOf(t, "Netflix", "Hulu"))
 	assert.Nil(t, err)
 	assert.Equal(t, nil, auth.Save(role))
 
-	user, err := auth.NewUser("alice", "password", channels.SetOf(t, "ESPN", "HBO", "FX", "AMC"))
+	user, err := auth.NewUser("alice", "password", channels.BaseSetOf(t, "ESPN", "HBO", "FX", "AMC"))
 	assert.Nil(t, err)
 	require.NoError(t, user.SetEmail("alice@couchbase.com"))
 
@@ -300,7 +300,7 @@ func TestGetAddedChannels(t *testing.T) {
 		"ESPN": channels.NewVbSimpleSequence(0x5),
 		"HBO":  channels.NewVbSimpleSequence(0x6)})
 
-	expectedChannels := channels.SetOf(t, "!", "AMC", "FX", "Hulu", "Netflix", "Spotify", "Youtube")
+	expectedChannels := channels.BaseSetOf(t, "!", "AMC", "FX", "Hulu", "Netflix", "Spotify", "Youtube")
 	log.Printf("Added Channels: %v", addedChannels)
 	assert.Equal(t, expectedChannels, addedChannels)
 }

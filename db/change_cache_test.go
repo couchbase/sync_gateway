@@ -259,7 +259,7 @@ func TestLateSequenceErrorRecovery(t *testing.T) {
 	// Create a user with access to channel ABC
 	authenticator := db.Authenticator(ctx)
 	require.NotNil(t, authenticator, "db.Authenticator(db.Ctx) returned nil")
-	user, err := authenticator.NewUser("naomi", "letmein", channels.SetOf(t, "ABC"))
+	user, err := authenticator.NewUser("naomi", "letmein", channels.BaseSetOf(t, "ABC"))
 	require.NoError(t, err, "Error creating new user")
 	require.NoError(t, authenticator.Save(user))
 
@@ -557,7 +557,7 @@ func TestChannelCacheBufferingWithUserDoc(t *testing.T) {
 	WriteDirect(db, []string{"ABC"}, 2)
 
 	// Start wait for doc in ABC
-	waiter := db.mutationListener.NewWaiterWithChannels(channels.SetOf(t, "ABC"), nil)
+	waiter := db.mutationListener.NewWaiterWithChannels(channels.BaseSetOf(t, "ABC"), nil)
 
 	successChan := make(chan bool)
 	go func() {
@@ -593,7 +593,7 @@ func TestChannelCacheBackfill(t *testing.T) {
 
 	// Create a user with access to channel ABC
 	authenticator := db.Authenticator(ctx)
-	user, _ := authenticator.NewUser("naomi", "letmein", channels.SetOf(t, "ABC", "PBS", "NBC", "TBS"))
+	user, _ := authenticator.NewUser("naomi", "letmein", channels.BaseSetOf(t, "ABC", "PBS", "NBC", "TBS"))
 	require.NoError(t, authenticator.Save(user))
 
 	// Simulate seq 3 being delayed - write 1,2,4,5
@@ -659,7 +659,7 @@ func TestContinuousChangesBackfill(t *testing.T) {
 
 	// Create a user with access to channel ABC
 	authenticator := db.Authenticator(ctx)
-	user, _ := authenticator.NewUser("naomi", "letmein", channels.SetOf(t, "ABC", "PBS", "NBC", "CBS"))
+	user, _ := authenticator.NewUser("naomi", "letmein", channels.BaseSetOf(t, "ABC", "PBS", "NBC", "CBS"))
 	require.NoError(t, authenticator.Save(user))
 
 	// Simulate seq 3 and 4 being delayed - write 1,2,5,6
@@ -761,7 +761,7 @@ func TestLowSequenceHandling(t *testing.T) {
 	// Create a user with access to channel ABC
 	authenticator := db.Authenticator(ctx)
 	assert.True(t, authenticator != nil, "db.Authenticator(ctx) returned nil")
-	user, err := authenticator.NewUser("naomi", "letmein", channels.SetOf(t, "ABC", "PBS", "NBC", "TBS"))
+	user, err := authenticator.NewUser("naomi", "letmein", channels.BaseSetOf(t, "ABC", "PBS", "NBC", "TBS"))
 	assert.NoError(t, err, fmt.Sprintf("Error creating new user: %v", err))
 	require.NoError(t, authenticator.Save(user))
 
@@ -826,7 +826,7 @@ func TestLowSequenceHandlingAcrossChannels(t *testing.T) {
 
 	// Create a user with access to channel ABC
 	authenticator := db.Authenticator(ctx)
-	user, err := authenticator.NewUser("naomi", "letmein", channels.SetOf(t, "ABC"))
+	user, err := authenticator.NewUser("naomi", "letmein", channels.BaseSetOf(t, "ABC"))
 	assert.NoError(t, err, fmt.Sprintf("db.Authenticator(db.Ctx) returned err: %v", err))
 	require.NoError(t, authenticator.Save(user))
 
@@ -880,7 +880,7 @@ func TestLowSequenceHandlingWithAccessGrant(t *testing.T) {
 
 	// Create a user with access to channel ABC
 	authenticator := db.Authenticator(ctx)
-	user, _ := authenticator.NewUser("naomi", "letmein", channels.SetOf(t, "ABC"))
+	user, _ := authenticator.NewUser("naomi", "letmein", channels.BaseSetOf(t, "ABC"))
 	require.NoError(t, authenticator.Save(user))
 
 	// Simulate seq 3 and 4 being delayed - write 1,2,5,6
@@ -1084,7 +1084,7 @@ func TestLowSequenceHandlingNoDuplicates(t *testing.T) {
 	// Create a user with access to channel ABC
 	authenticator := db.Authenticator(ctx)
 	assert.True(t, authenticator != nil, "db.Authenticator(db.Ctx) returned nil")
-	user, err := authenticator.NewUser("naomi", "letmein", channels.SetOf(t, "ABC", "PBS", "NBC", "TBS"))
+	user, err := authenticator.NewUser("naomi", "letmein", channels.BaseSetOf(t, "ABC", "PBS", "NBC", "TBS"))
 	assert.NoError(t, err, fmt.Sprintf("Error creating new user: %v", err))
 	require.NoError(t, authenticator.Save(user))
 
@@ -1179,7 +1179,7 @@ func TestChannelRace(t *testing.T) {
 
 	// Create a user with access to channels "Odd", "Even"
 	authenticator := db.Authenticator(ctx)
-	user, _ := authenticator.NewUser("naomi", "letmein", channels.SetOf(t, "Even", "Odd"))
+	user, _ := authenticator.NewUser("naomi", "letmein", channels.BaseSetOf(t, "Even", "Odd"))
 	require.NoError(t, authenticator.Save(user))
 
 	// Write initial sequences
@@ -1388,7 +1388,7 @@ func TestChannelCacheSize(t *testing.T) {
 
 	// Create a user with access to channel ABC
 	authenticator := db.Authenticator(ctx)
-	user, _ := authenticator.NewUser("naomi", "letmein", channels.SetOf(t, "ABC"))
+	user, _ := authenticator.NewUser("naomi", "letmein", channels.BaseSetOf(t, "ABC"))
 	require.NoError(t, authenticator.Save(user))
 
 	// Write 750 docs to channel ABC
@@ -1702,7 +1702,7 @@ func TestInitializeEmptyCache(t *testing.T) {
 	}
 
 	// Issue getChanges for empty channel
-	changes, err := db.GetChanges(ctx, channels.SetOf(t, "zero"), getChangesOptionsWithCtxOnly())
+	changes, err := db.GetChanges(ctx, channels.BaseSetOf(t, "zero"), getChangesOptionsWithCtxOnly())
 	assert.NoError(t, err, "Couldn't GetChanges")
 	changesCount := len(changes)
 	assert.Equal(t, 0, changesCount)
@@ -1720,7 +1720,7 @@ func TestInitializeEmptyCache(t *testing.T) {
 	cacheWaiter.Add(docCount)
 	cacheWaiter.Wait()
 
-	changes, err = db.GetChanges(ctx, channels.SetOf(t, "zero"), getChangesOptionsWithCtxOnly())
+	changes, err = db.GetChanges(ctx, channels.BaseSetOf(t, "zero"), getChangesOptionsWithCtxOnly())
 	assert.NoError(t, err, "Couldn't GetChanges")
 	changesCount = len(changes)
 	assert.Equal(t, 10, changesCount)
@@ -1766,7 +1766,7 @@ func TestInitializeCacheUnderLoad(t *testing.T) {
 
 	// Wait for writes to be in progress, then getChanges for channel zero
 	writesInProgress.Wait()
-	changes, err := db.GetChanges(ctx, channels.SetOf(t, "zero"), getChangesOptionsWithCtxOnly())
+	changes, err := db.GetChanges(ctx, channels.BaseSetOf(t, "zero"), getChangesOptionsWithCtxOnly())
 	require.NoError(t, err, "Couldn't GetChanges")
 	firstChangesCount := len(changes)
 	var lastSeq SequenceID
@@ -1777,7 +1777,7 @@ func TestInitializeCacheUnderLoad(t *testing.T) {
 	// Wait for all writes to be cached, then getChanges again
 	cacheWaiter.Wait()
 
-	changes, err = db.GetChanges(ctx, channels.SetOf(t, "zero"), getChangesOptionsWithSeq(lastSeq))
+	changes, err = db.GetChanges(ctx, channels.BaseSetOf(t, "zero"), getChangesOptionsWithSeq(lastSeq))
 	require.NoError(t, err, "Couldn't GetChanges")
 	secondChangesCount := len(changes)
 	assert.Equal(t, docCount, firstChangesCount+secondChangesCount)
@@ -1862,7 +1862,7 @@ func TestChangeCache_InsertPendingEntries(t *testing.T) {
 
 	// Create a user with access to some channels
 	authenticator := db.Authenticator(ctx)
-	user, _ := authenticator.NewUser("naomi", "letmein", channels.SetOf(t, "ABC", "PBS", "NBC", "TBS"))
+	user, _ := authenticator.NewUser("naomi", "letmein", channels.BaseSetOf(t, "ABC", "PBS", "NBC", "TBS"))
 	require.NoError(t, authenticator.Save(user))
 
 	// Simulate seq 3 + 4 being delayed - write 1,2,5,6

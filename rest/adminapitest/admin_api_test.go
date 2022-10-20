@@ -785,7 +785,7 @@ func TestSessionTtlGreaterThan30Days(t *testing.T) {
 	response := rt.SendRequest("PUT", "/db/doc", `{"hi": "there"}`)
 	rest.RequireStatus(t, response, 401)
 
-	user, err = a.NewUser("pupshaw", "letmein", channels.SetOf(t, "*"))
+	user, err = a.NewUser("pupshaw", "letmein", channels.BaseSetOf(t, "*"))
 	assert.NoError(t, a.Save(user))
 
 	// create a session with the maximum offset ttl value (30days) 2592000 seconds
@@ -2344,7 +2344,7 @@ func TestSessionExpirationDateTimeFormat(t *testing.T) {
 	defer rt.Close()
 
 	authenticator := auth.NewAuthenticator(rt.Bucket(), nil, auth.DefaultAuthenticatorOptions())
-	user, err := authenticator.NewUser("alice", "letMe!n", channels.SetOf(t, "*"))
+	user, err := authenticator.NewUser("alice", "letMe!n", channels.BaseSetOf(t, "*"))
 	assert.NoError(t, err, "Couldn't create new user")
 	assert.NoError(t, authenticator.Save(user), "Couldn't save new user")
 
@@ -2440,7 +2440,7 @@ func TestUserAndRoleResponseContentType(t *testing.T) {
 
 	// Create a new user and save to database to create user session.
 	authenticator := auth.NewAuthenticator(rt.Bucket(), nil, auth.DefaultAuthenticatorOptions())
-	user, err := authenticator.NewUser("eve", "cGFzc3dvcmQ=", channels.SetOf(t, "*"))
+	user, err := authenticator.NewUser("eve", "cGFzc3dvcmQ=", channels.BaseSetOf(t, "*"))
 	assert.NoError(t, err, "Couldn't create new user")
 	assert.NoError(t, authenticator.Save(user), "Couldn't save new user")
 

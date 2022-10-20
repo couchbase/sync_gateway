@@ -42,7 +42,7 @@ func TestSetFromArray(t *testing.T) {
 	for _, cas := range cases {
 		channels, err := SetFromArray(cas[0], RemoveStar)
 		assert.NoError(t, err, "SetFromArray failed")
-		assert.Equal(t, SetOf(t, cas[1]...), channels)
+		assert.Equal(t, BaseSetOf(t, cas[1]...), channels)
 	}
 }
 
@@ -59,7 +59,7 @@ func TestSetFromArrayWithStar(t *testing.T) {
 	for _, cas := range cases {
 		channels, err := SetFromArray(cas[0], ExpandStar)
 		assert.NoError(t, err, "SetFromArray failed")
-		assert.Equal(t, SetOf(t, cas[1]...), channels)
+		assert.Equal(t, BaseSetOf(t, cas[1]...), channels)
 	}
 }
 
