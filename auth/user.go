@@ -20,7 +20,6 @@ import (
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/couchbase/sync_gateway/channels"
 	ch "github.com/couchbase/sync_gateway/channels"
 )
 
@@ -589,7 +588,7 @@ func (user *userImpl) ExpandWildCardChannel(channels base.Set) base.Set {
 	return channels
 }
 
-func (user *userImpl) FilterToAvailableChannels(channels channels.Set) (filtered ch.TimedSet, removed []string) {
+func (user *userImpl) FilterToAvailableChannels(channels ch.Set) (filtered ch.TimedSet, removed []string) {
 	filtered = ch.TimedSet{}
 	for channel := range channels {
 		if channel.Name == ch.AllChannelWildcard {
