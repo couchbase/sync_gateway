@@ -3,18 +3,21 @@ import * as gq from 'graphql';
 
 //////// CONFIGURATION
 
+type MaybePromise<T> = T | Promise<T>
+
+export type JSONObject = { [key: string]: undefined }
 
 /** Named arguments to a function call. */
-export type Args = {[key:string]:any};
+export type Args = { [key:string]: any};
 
-/** JavaScript function. */
-export type JSFn = (context: Context, args?: Args) => Promise<any>;
+/** JavaScript function. May return a Promise. */
+export type JSFn = (context: Context, args?: Args) => unknown;
 
 /** JavaScript GraphQL resolver function. */
 export type ResolverFn = (source: any,
                           args: Args,
                           context: Context,
-                          info: ResolveInfo) => any;
+                          info: ResolveInfo) => undefined;
 
 export interface ResolveInfo extends gq.GraphQLResolveInfo {
     readonly selectedFieldNames : string[];
@@ -60,9 +63,18 @@ export type Config = {
 
 
 /** Context object passed to all functions. */
-export class Context {
-    constructor(readonly user: User,
-                readonly admin: User) { }
+export interface Context {
+    readonly user: User;
+    readonly admin: User;
+
+    checkUser(name: string | string[]) : boolean;
+    requireUser(name: string | string[]) : void;
+    checkAdmin() : boolean;
+    requireAdmin() : void;
+    checkRole(role: string | string[]) : boolean;
+    requireRole(role: string | string[]) : void;
+    checkAccess(channel: string | string[]) : boolean;
+    requireAccess(channel: string | string[]) : void;
 }
 
 
@@ -75,17 +87,10 @@ export class Context {
 
     readonly isAdmin : boolean;
 
-    checkUser(name: string | string[]) : boolean;
-    requireUser(name: string | string[]) : void;
-    checkRole(role: string | string[]) : boolean;
-    requireRole(role: string | string[]) : void;
-    checkAccess(channel: string | string[]) : boolean;
-    requireAccess(channel: string | string[]) : void;
-
     readonly defaultCollection: CRUD;
 
-    func(name: string, args?: Args) : Promise<any>;
-    graphql(query: string, args?: Args) : Promise<any>;
+    function(name: string, args?: Args) : unknown;
+    graphql(query: string, args?: Args) : Promise<JSONObject | null | undefined>;
 };
 
 
@@ -97,10 +102,10 @@ export interface Document {
 
 /** The type of the `User.defaultCollection` object. Exposes database CRUD APIs. */
 export interface CRUD {
-    get(docID: string) : Promise<Document | null>;
-    save(doc: Document, docID?: string) : Promise<string>;
-    delete(docID: string) : Promise<boolean>;
-    delete(doc: Document) : Promise<boolean>;
+    get(docID: string) : Document | null;
+    save(doc: Document, docID?: string) : string | null;
+    delete(docID: string) : boolean;
+    delete(doc: Document) : boolean;
 }
 
 
@@ -115,7 +120,7 @@ export class HTTPError extends Error {
     }
 
     override toString() {
-        return `${this.status} ${super.toString()}`;
+        return `[${this.status}] ${super.toString()}`;
     }
 }
 
@@ -133,10 +138,10 @@ export interface Database {
     makeContext(credentials: Credentials | null) : Context;
 
     /** Calls a named function. */
-    callFunction(name: string, args: Args | undefined, credentials: Credentials | null) : Promise<any>;
+    callFunction(name: string, args: Args | undefined, credentials: Credentials | null) : MaybePromise<unknown>;
 
     /** Runs a N1QL query. Called by functions of type "query". */
-    query(fnName: string, n1ql: string, args: Args | undefined, context: Context) : Promise<any[]>;
+    query(fnName: string, n1ql: string, args: Args | undefined, context: Context) : JSONObject[];
 
     /** Runs a GraphQL query. */
     graphql(query: string, args: Args | undefined, context: Context) : Promise<gq.ExecutionResult>;

@@ -20,15 +20,25 @@ import (
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/stretchr/testify/assert"
+	v8 "rogchap.com/v8go"
 )
+
+const kUserFunctionMaxCallDepth = 20
 
 var allowAll = &Allow{Channels: []string{"*"}}
 
-var kUserFunctionConfig = FunctionsConfig{
+var kTestFunctionsConfig = FunctionsConfig{
 	Definitions: FunctionsDefs{
 		"square": &FunctionConfig{
 			Type:  "javascript",
 			Code:  "function(context, args) {return args.numero * args.numero;}",
+			Args:  []string{"numero"},
+			Allow: &Allow{Channels: []string{"wonderland"}},
+		},
+		"cube": &FunctionConfig{
+			Type: "javascript",
+			Code: `function(context, args) {let square = context.user.function("square",args);
+					console.log("cube: square is", square); return square * args.numero;}`,
 			Args:  []string{"numero"},
 			Allow: &Allow{Channels: []string{"wonderland"}},
 		},
@@ -173,7 +183,7 @@ func addUserAlice(t *testing.T, db *db.Database) auth.User {
 // Unit test for JS user functions.
 func TestUserFunctions(t *testing.T) {
 	//base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
-	db, ctx := setupTestDBWithFunctions(t, &kUserFunctionConfig, nil)
+	db, ctx := setupTestDBWithFunctions(t, &kTestFunctionsConfig, nil)
 	defer db.Close(ctx)
 
 	assert.NotNil(t, db.Options.UserFunctions)
@@ -218,7 +228,7 @@ func testUserFunctionsCommon(t *testing.T, ctx context.Context, db *db.Database)
 	assert.EqualValues(t, "OK", result)
 
 	// Max call depth:
-	result, err = db.CallUserFunction("factorial", map[string]any{"n": 20}, true, ctx)
+	result, err = db.CallUserFunction("factorial", map[string]any{"n": kUserFunctionMaxCallDepth}, true, ctx)
 	assert.NoError(t, err)
 	assert.EqualValues(t, 2.43290200817664e+18, result)
 
@@ -240,7 +250,7 @@ func testUserFunctionsCommon(t *testing.T, ctx context.Context, db *db.Database)
 	_, err = db.CallUserFunction("exceptional", nil, true, ctx)
 	assert.ErrorContains(t, err, "oops")
 	assert.ErrorContains(t, err, "exceptional")
-	jserr := err.(*jsError)
+	jserr := err.(*v8.JSError)
 	assert.NotNil(t, jserr)
 
 	// Call depth limit:
@@ -279,7 +289,7 @@ func testUserFunctionsAsAdmin(t *testing.T, ctx context.Context, db *db.Database
 	// Checking `context.user.name`:
 	_, err = db.CallUserFunction("user_only", nil, true, ctx)
 	assert.ErrorContains(t, err, "No user")
-	jserr := err.(*jsError)
+	jserr := err.(*v8.JSError)
 	assert.NotNil(t, jserr)
 
 	// No such function:
@@ -330,7 +340,7 @@ func testUserFunctionsAsUser(t *testing.T, ctx context.Context, db *db.Database)
 // Test CRUD operations
 func TestUserFunctionsCRUD(t *testing.T) {
 	//base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
-	db, ctx := setupTestDBWithFunctions(t, &kUserFunctionConfig, nil)
+	db, ctx := setupTestDBWithFunctions(t, &kTestFunctionsConfig, nil)
 	defer db.Close(ctx)
 
 	body := map[string]any{"key": "value"}
@@ -430,8 +440,11 @@ func TestUserFunctionSyntaxError(t *testing.T) {
 		},
 	}
 
-	_, err := CompileFunctions(kUserFunctionBadConfig)
+	_, _, err := CompileFunctions(&kUserFunctionBadConfig, nil)
 	assert.Error(t, err)
+
+	err2 := ValidateFunctions(nil, &kUserFunctionBadConfig, nil)
+	assert.Equal(t, err, err2)
 }
 
 func TestUserFunctionsMaxFunctionCount(t *testing.T) {
@@ -451,7 +464,7 @@ func TestUserFunctionsMaxFunctionCount(t *testing.T) {
 			},
 		},
 	}
-	_, err := CompileFunctions(twoFunctionConfig)
+	_, _, err := CompileFunctions(&twoFunctionConfig, nil)
 	assert.ErrorContains(t, err, "too many functions declared (> 1)")
 }
 
@@ -467,148 +480,8 @@ func TestUserFunctionsMaxCodeSize(t *testing.T) {
 			},
 		},
 	}
-	_, err := CompileFunctions(functionConfig)
+	_, _, err := CompileFunctions(&functionConfig, nil)
 	assert.ErrorContains(t, err, "function code too large (> 20 bytes)")
-}
-
-// Low-level test of channel-name parameter expansion for user query/function auth
-func TestUserFunctionAllow(t *testing.T) {
-	//base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
-	db, ctx := setupTestDBWithFunctions(t, &kUserFunctionConfig, nil)
-	defer db.Close(ctx)
-
-	authenticator := auth.NewAuthenticator(db.Bucket, db, auth.DefaultAuthenticatorOptions())
-	user, err := authenticator.NewUser("maurice", "pass", base.SetOf("city-Paris"))
-	assert.NoError(t, err)
-
-	params := map[string]any{
-		"CITY":  "Paris",
-		"BREAD": "Baguette",
-		"YEAR":  2020,
-		"WINE":  map[string]any{"blanc": "Sauterne", "rouge": "Bordeaux"},
-		"WORDS": []string{"ouais", "fromage", "amour", "vachement"},
-	}
-
-	ch, err := expandPattern("someChannel", params, user)
-	assert.NoError(t, err)
-	assert.Equal(t, ch, "someChannel")
-
-	ch, err = expandPattern("sales-${args.CITY}-all", params, user)
-	assert.NoError(t, err)
-	assert.Equal(t, "sales-Paris-all", ch)
-
-	ch, err = expandPattern("sales${args.CITY}All", params, user)
-	assert.NoError(t, err)
-	assert.Equal(t, "salesParisAll", ch)
-
-	ch, err = expandPattern("sales${args.CITY}-${args.BREAD}", params, user)
-	assert.NoError(t, err)
-	assert.Equal(t, "salesParis-Baguette", ch)
-
-	ch, err = expandPattern("sales-upTo-${args.YEAR}", params, user)
-	assert.NoError(t, err)
-	assert.Equal(t, "sales-upTo-2020", ch)
-
-	ch, err = expandPattern("wines-${args.WINE.blanc}", params, user)
-	assert.NoError(t, err)
-	assert.Equal(t, "wines-Sauterne", ch)
-
-	ch, err = expandPattern("${args.WORDS[2]}", params, user)
-	assert.NoError(t, err)
-	assert.Equal(t, "amour", ch)
-
-	ch, err = expandPattern("employee-${context.user.name}", params, user)
-	assert.NoError(t, err)
-	assert.Equal(t, "employee-maurice", ch)
-
-	// Escaped `\$`:
-	ch, err = expandPattern(`expen\$ive`, params, user)
-	assert.NoError(t, err)
-	assert.Equal(t, "expen$ive", ch)
-	ch, err = expandPattern(`\$wow`, params, user)
-	assert.NoError(t, err)
-	assert.Equal(t, "$wow", ch)
-	ch, err = expandPattern(`\${wow}`, params, user)
-	assert.NoError(t, err)
-	assert.Equal(t, "${wow}", ch)
-
-	// error: missing brace
-	_, err = expandPattern("$wow", params, user)
-	assert.NotNil(t, err)
-	_, err = expandPattern("foobar$", params, user)
-	assert.NotNil(t, err)
-	_, err = expandPattern("$w{ow}", params, user)
-	assert.NotNil(t, err)
-	_, err = expandPattern("knows-${args.CITY", params, user)
-	assert.NotNil(t, err)
-	_, err = expandPattern("knows-${args.CITY-${args.CITY}", params, user)
-	assert.NotNil(t, err)
-
-	// error: param value is not a string
-	_, err = expandPattern("knows-${args.WORDS}", params, user)
-	assert.NotNil(t, err)
-
-	// error: undefined parameter
-	_, err = expandPattern("sales-upTo-${}", params, user)
-	assert.NotNil(t, err)
-	_, err = expandPattern("sales-upTo-${args.FOO}", params, user)
-	assert.NotNil(t, err)
-
-	// error: not an arg or user
-	_, err = expandPattern("sales-upTo-${FOO}", params, user)
-	assert.NotNil(t, err)
-	_, err = expandPattern("sales-upTo-${context.user}", params, user)
-	assert.NotNil(t, err)
-	_, err = expandPattern("sales-upTo-${context.bar.FOO}", params, user)
-	assert.NotNil(t, err)
-
-	// error: missing map item
-	_, err = expandPattern("wines-${args.WINE.plonk}", params, user)
-	assert.NotNil(t, err)
-	_, err = expandPattern("wines-${args.WINE.blanc.x}", params, user)
-	assert.NotNil(t, err)
-}
-
-func TestKeyPath(t *testing.T) {
-	args := map[string]any{
-		"CITY":  "Paris",
-		"BREAD": "Baguette",
-		"YEAR":  2020,
-		"WINE": map[string]any{"blanc": "Sauterne", "rouge": "Bordeaux",
-			"nested": map[string]any{"Z": 321}},
-		"WORDS": []any{"ouais", "fromage", "amour", "vachement",
-			map[string]any{"X": 123},
-			[]any{"arrayInArray"}},
-	}
-
-	val, err := evalKeyPath(args, "CITY")
-	if assert.NoError(t, err) {
-		assert.Equal(t, "Paris", val.Interface())
-	}
-	val, err = evalKeyPath(args, "YEAR")
-	if assert.NoError(t, err) {
-		assert.Equal(t, 2020, val.Interface())
-	}
-	val, err = evalKeyPath(args, "WINE.blanc")
-	if assert.NoError(t, err) {
-		assert.Equal(t, "Sauterne", val.Interface())
-	}
-	val, err = evalKeyPath(args, "WINE.nested.Z")
-	if assert.NoError(t, err) {
-		assert.Equal(t, 321, val.Interface())
-	}
-	val, err = evalKeyPath(args, "WORDS[1]")
-	if assert.NoError(t, err) {
-		assert.Equal(t, "fromage", val.Interface())
-	}
-	val, err = evalKeyPath(args, "WORDS[4].X")
-	if assert.NoError(t, err) {
-		assert.Equal(t, 123, val.Interface())
-	}
-	val, err = evalKeyPath(args, "WORDS[5][0]")
-	if assert.NoError(t, err) {
-		assert.Equal(t, "arrayInArray", val.Interface())
-	}
 }
 
 //////// UTILITY FUNCTIONS:
@@ -628,7 +501,7 @@ func AddOptionsFromEnvironmentVariables(dbcOptions *db.DatabaseContextOptions) {
 func assertHTTPError(t *testing.T, err error, status int) bool {
 	var httpErr *base.HTTPError
 	return assert.Error(t, err) &&
-		assert.ErrorAs(t, err, &httpErr) &&
+		assert.ErrorAs(t, err, &httpErr, "Error is %T, %v", err, err) &&
 		assert.Equal(t, status, httpErr.Status, "Error is: %#v", err)
 }
 
@@ -641,11 +514,11 @@ func setupTestDBWithFunctions(t *testing.T, fnConfig *FunctionsConfig, gqConfig 
 	}
 	var err error
 	if fnConfig != nil {
-		options.UserFunctions, err = CompileFunctions(*fnConfig)
+		options.UserFunctions, _, err = CompileFunctions(fnConfig, nil)
 		assert.NoError(t, err)
 	}
 	if gqConfig != nil {
-		options.GraphQL, err = CompileGraphQL(gqConfig)
+		_, options.GraphQL, err = CompileFunctions(nil, gqConfig)
 		assert.NoError(t, err)
 	}
 	return setupTestDBWithOptions(t, options)

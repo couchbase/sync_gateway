@@ -18,7 +18,6 @@ import (
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
-	"github.com/graphql-go/graphql"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -175,14 +174,13 @@ var kTestGraphQLUserFunctionsConfig = FunctionsConfig{
 	},
 }
 
-func assertGraphQLResult(t *testing.T, expected string, result *graphql.Result, err error) {
+func assertGraphQLResult(t *testing.T, expected string, result *db.GraphQLResult, err error) {
 	if !assert.NoError(t, err) || !assert.NotNil(t, result) {
 		return
 	}
 	if !assert.Zerof(t, len(result.Errors), "Unexpected GraphQL errors: %v", result.Errors) {
 		for _, err := range result.Errors {
 			t.Logf("\t%v", err)
-			t.Logf("\t\t%T %#v", err.OriginalError(), err.OriginalError())
 		}
 		return
 	}
@@ -193,7 +191,7 @@ func assertGraphQLResult(t *testing.T, expected string, result *graphql.Result, 
 
 // Per the spec, GraphQL errors are not indicated via `err`, rather through an `errors`
 // property in the `result` object.
-func assertGraphQLError(t *testing.T, expectedErrorText string, result *graphql.Result, err error) {
+func assertGraphQLError(t *testing.T, expectedErrorText string, result *db.GraphQLResult, err error) {
 	if !assert.NoError(t, err) || !assert.NotNil(t, result) {
 		return
 	}
@@ -441,7 +439,7 @@ func TestGraphQLMaxSchemaSize(t *testing.T) {
 			},
 		},
 	}
-	_, err := CompileGraphQL(&config)
+	_, _, err := CompileFunctions(nil, &config)
 	assert.ErrorContains(t, err, "GraphQL schema too large (> 20 bytes)")
 }
 
@@ -473,6 +471,6 @@ func TestGraphQLMaxResolverCount(t *testing.T) {
 			},
 		},
 	}
-	_, err := CompileGraphQL(&config)
+	_, _, err := CompileFunctions(nil, &config)
 	assert.ErrorContains(t, err, "too many GraphQL resolvers (> 1)")
 }

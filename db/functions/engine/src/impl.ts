@@ -1,4 +1,4 @@
-import { AllowConfig, Args, Context, Credentials, Database, Document, FunctionsConfig, GraphQLConfig, CRUD, User, JSFn, HTTPError } from './types'
+import { AllowConfig, Args, Context, Credentials, Database, Document, FunctionsConfig, GraphQLConfig, CRUD, User, JSFn, HTTPError, JSONObject } from './types'
 import { CompileFn, CompileResolver, CompileTypeNameResolver } from './compile'
 
 import * as gq from 'graphql';
@@ -9,10 +9,10 @@ export interface Upstream {
     query(fnName: string,
           n1ql: string,
           args: Args | undefined,
-          user: User) : Promise<any[]>;
-    get(docID: string, user: User) : Promise<Document | null>;
-    save(doc: Document, docID: string | undefined, user: User) : Promise<string>;
-    delete(docID: string, revID: string | undefined, user: User) : Promise<boolean>;
+          user: User) : JSONObject[];
+    get(docID: string, user: User) : Document | null;
+    save(doc: Document, docID: string | undefined, user: User) : string | null;
+    delete(docID: string, revID: string | undefined, user: User) : boolean;
 }
 
 
@@ -35,12 +35,12 @@ class DatabaseImpl implements Database {
                 private upstream: Upstream)
     {
         let adminUser = new UserImpl(this, null);
-        this.adminContext = new Context(adminUser, adminUser);
+        this.adminContext = new ContextImpl(adminUser, adminUser);
         adminUser.context = this.adminContext;
 
         this.functions = {}
         if (functions) {
-            console.log("Compiling functions...")
+            console.debug("Compiling functions...")
             for (let fnName of Object.getOwnPropertyNames(functions.definitions)) {
                 let fnConfig = functions.definitions[fnName];
                 this.functions[fnName] = CompileFn(fnName, fnConfig, this);
@@ -48,20 +48,20 @@ class DatabaseImpl implements Database {
         }
 
         if (graphql) {
-            console.log("Compiling GraphQL schema and resolvers...")
-            if (!graphql.schema) throw "GraphQL schema is missing";
+            console.debug("Compiling GraphQL schema and resolvers...")
+            if (!graphql.schema) throw new HTTPError(500, "GraphQL schema is missing");
             this.schema = gq.buildSchema(graphql.schema);
             for (let typeName of Object.getOwnPropertyNames(graphql.resolvers)) {
                 let fields = graphql.resolvers[typeName];
                 let schemaType = this.schema.getType(typeName);
                 if (!schemaType) {
-                    throw `GraphQL schema has no type '${typeName}'`;
+                    throw new HTTPError(500, `GraphQL schema has no type '${typeName}'`);
                 } else if (schemaType instanceof gq.GraphQLObjectType) {
                     let schemaFields = schemaType.getFields();
                     for (let fieldName of Object.getOwnPropertyNames(fields)) {
                         let schemaField = schemaFields[fieldName];
                         if (!schemaField) {
-                            throw `GraphQL type ${typeName} has no field ${fieldName}`;
+                            throw new HTTPError(500, `GraphQL type ${typeName} has no field ${fieldName}`);
                         }
                         let fnConfig = fields[fieldName];
                         schemaField.resolve = CompileResolver(typeName, fieldName, fnConfig, this);
@@ -71,11 +71,11 @@ class DatabaseImpl implements Database {
                         if (fieldName == "__typename") {
                             schemaType.resolveType = CompileTypeNameResolver(typeName,fields[fieldName], this);
                         } else {
-                            throw `GraphQL interface type ${typeName} may only have a '__typename' resolver`;
+                            throw new HTTPError(500, `GraphQL interface type ${typeName} may only have a '__typename' resolver`);
                         }
                     }
                 } else {
-                    throw `GraphQL type ${typeName} is a not an object or interface, and cannot have resolvers`;
+                    throw new HTTPError(500, `GraphQL type ${typeName} is a not an object or interface, and cannot have resolvers`);
                 }
             }
         }
@@ -85,7 +85,7 @@ class DatabaseImpl implements Database {
     makeContext(credentials: Credentials | null) {
         if (credentials) {
             let user = new UserImpl(this, credentials);
-            let ctx = new Context(user, this.adminContext.user);
+            let ctx = new ContextImpl(user, this.adminContext.user);
             user.context = ctx;
             return ctx;
         } else {
@@ -110,16 +110,16 @@ class DatabaseImpl implements Database {
     }
 
 
-    async query(fnName: string,
+    query(fnName: string,
                 n1ql: string,
                 args: Args | undefined,
-                context: Context) {
+                context: Context) : JSONObject[] {
         return this.upstream.query(fnName, n1ql, args, context.user);
     }
 
 
     async graphql(query: string, args: Args | undefined, context: Context) : Promise<gq.ExecutionResult> {
-        console.log(`GRAPHQL ${query}`);
+        console.debug(`GRAPHQL ${query}`);
         if (!this.schema) throw new HTTPError(404, "No GraphQL schema");
         return gq.graphql({
             schema: this.schema,
@@ -130,23 +130,84 @@ class DatabaseImpl implements Database {
     }
 
 
-    get(docID: string, user: User) : Promise<Document | null> {
+    get(docID: string, user: User) : Document | null {
         return this.upstream.get(docID, user);
     }
 
-    save(doc: Document, docID: string | undefined, user: User) : Promise<string> {
+    save(doc: Document, docID: string | undefined, user: User) : string | null {
         return this.upstream.save(doc, docID, user);
     }
 
-    delete(docID: string, revID: string | undefined, user: User) : Promise<boolean> {
+    delete(docID: string, revID: string | undefined, user: User) : boolean {
         return this.upstream.delete(docID, revID, user);
     }
 
 
     readonly schema?: gq.GraphQLSchema;     // Compiled GraphQL schema (with resolvers)
 
-    private adminContext: Context;          // The admin Context (only one is needed)
+    private adminContext: ContextImpl;          // The admin Context (only one is needed)
     private functions: Record<string,JSFn>; // Compiled JS functions
+}
+
+
+//////// CONTEXT IMPLEMENTATION
+
+
+class ContextImpl implements Context {
+    constructor(readonly user: User,
+        readonly admin: User) { }
+
+    checkUser(name: string | string[]) : boolean {
+        return this.user.isAdmin || match(name, this.user.name!);
+    }
+
+    requireUser(name: string | string[]) {
+        if (!this.checkUser(name)) throw new HTTPError(403, "Permission denied (user)");
+    }
+
+    checkAdmin() : boolean {
+        return this.user.isAdmin;
+    }
+
+    requireAdmin() {
+        if (!this.checkAdmin()) throw new HTTPError(403, "Permission denied (admin only)");
+    }
+
+    checkRole(role: string | string[]) : boolean {
+        if (this.user.isAdmin) return true;
+        for (let myRole of this.user.roles!) {
+            if (match(role, myRole))  return true;
+        }
+        return false;
+    }
+
+    requireRole(role: string | string[]) {
+        if (!this.checkRole(role)) throw new HTTPError(403, "Permission denied (role)");
+    }
+
+    checkAccess(channel: string | string[]) : boolean {
+        if (this.user.isAdmin) return true;
+        for (let myChannel of this.user.channels!) {
+            if (match(channel, myChannel))  return true;
+        }
+        return false;
+    }
+
+    requireAccess(channel: string | string[]) {
+        if (!this.checkAccess(channel)) throw new HTTPError(403, "Permission denied (channel)");
+    }
+
+    checkAllowed(allow: AllowConfig | undefined) : boolean {
+        return this.user.isAdmin
+            || (allow !== undefined && (
+                    (allow.users !== undefined    && allow.users.includes(this.user.name!)) ||
+                    (allow.roles !== undefined    && this.checkRole(allow.roles)) ||
+                    (allow.channels !== undefined && this.checkAccess(allow.channels))));
+    }
+
+    requireAllowed(allow: AllowConfig | undefined) {
+        if (!this.checkAllowed(allow)) throw new HTTPError(403, "Permission denied");
+    }
 }
 
 
@@ -162,22 +223,22 @@ class CRUDImpl implements CRUD {
     }
 
 
-    get(docID: string) : Promise<Document | null> {
+    get(docID: string) : Document | null {
         return this.db.get(docID, this.user);
     }
 
 
-    save(doc: Document, docID?: string) : Promise<string> {
+    save(doc: Document, docID?: string) : string | null {
         return this.db.save(doc, docID, this.user);
     }
 
 
-    delete(docOrID: string | Document) : Promise<boolean> {
+    delete(docOrID: string | Document) : boolean {
         if (typeof docOrID === 'string') {
             return this.db.delete(docOrID, undefined, this.user);
         } else {
             let id = docOrID['_id'];
-            if (!id) throw "delete() called on object with no '_id' property";
+            if (!id) throw "delete() called with doc object that has no '_id' property";
             return this.db.delete(id, docOrID._rev, this.user);
         }
     }
@@ -189,6 +250,10 @@ class CRUDImpl implements CRUD {
 
 
 //////// USER IMPLEMENTATION
+
+
+export let CallDepth = 1;
+export const MaxCallDepth = 20;
 
 
 class UserImpl implements User {
@@ -210,74 +275,33 @@ class UserImpl implements User {
 
     get isAdmin() {return this.name === undefined;}
 
-    checkUser(name: string | string[]) : boolean {
-        return this.isAdmin || match(name, this.name!);
-    }
-
-    requireUser(name: string | string[]) {
-        if (!this.checkUser(name)) throw new HTTPError(403, "Permission denied (user)");
-    }
-
-    checkRole(role: string | string[]) : boolean {
-        if (this.isAdmin) return true;
-        for (let myRole of this.roles!) {
-            if (match(role, myRole))  return true;
-        }
-        return false;
-    }
-
-    requireRole(role: string | string[]) {
-        if (!this.checkRole(role)) throw new HTTPError(403, "Permission denied (role)");
-    }
-
-    checkAccess(channel: string | string[]) : boolean {
-        if (this.isAdmin) return true;
-        for (let myChannel of this.channels!) {
-            if (match(channel, myChannel))  return true;
-        }
-        return false;
-    }
-
-    requireAccess(channel: string | string[]) {
-        if (!this.checkAccess(channel)) throw new HTTPError(403, "Permission denied (channel)");
-    }
-
-    checkAllowed(allow: AllowConfig | undefined) : boolean {
-        return this.isAdmin
-            || (allow !== undefined && (
-                    (allow.users !== undefined    && allow.users.includes(this.name!)) ||
-                    (allow.roles !== undefined    && this.checkRole(allow.roles)) ||
-                    (allow.channels !== undefined && this.checkAccess(allow.channels))));
-    }
-
-    requireAllowed(allow: AllowConfig | undefined) {
-        if (!this.checkAllowed(allow)) throw new HTTPError(403, "Permission denied");
-    }
-
 
     // API:
 
     readonly defaultCollection: CRUD;
 
 
-    async func(name: string, args?: Args) : Promise<any> {
+    function(name: string, args?: Args) : unknown {
         let fn = this.db.getFunction(name);
+        if (++CallDepth > MaxCallDepth) throw new HTTPError(500, "User function recursion too deep");
         try {
-            return await fn(this.context, args);
-        } catch (x) {
-            if (x instanceof HTTPError) {
-                throw new HTTPError(x.status, `${x.message} (in function ${name})`);
-            } else {
-                throw new Error(`${x} (in function ${name})`);
-            }
+            return fn(this.context, args);
+        } finally {
+            --CallDepth;
         }
     }
 
 
-    async graphql(query: string, args?: Args) : Promise<any> {
-        let result = await this.db.graphql(query, args, this.context);
-        if (result.errors) throw "GraphQL error"; //TODO: Expose the errors
-        return result.data;
+    async graphql(query: string, args?: Args) : Promise<JSONObject | null> {
+        if (++CallDepth > MaxCallDepth) throw new HTTPError(500, "User function recursion too deep");
+        try {
+            let result = await this.db.graphql(query, args, this.context);
+            if (result.errors) throw "GraphQL error"; //TODO: Expose the errors
+            if (result.data === undefined) return null;
+            return result.data;
+        } finally {
+            --CallDepth;
+        }
     }
 
 

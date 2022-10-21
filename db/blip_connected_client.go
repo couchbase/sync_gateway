@@ -137,13 +137,13 @@ func (bh *blipHandler) handleFunction(rq *blip.Message) error {
 
 		} else {
 			// Write the single result to the response:
-			result, err := fn.Run()
+			result, err := fn.RunAsJSON()
 			if err != nil {
 				return err
 			}
 			response := rq.Response()
 			response.SetCompressed(true)
-			_ = response.SetJSONBody(result)
+			response.SetBody(result)
 			return nil
 		}
 	})

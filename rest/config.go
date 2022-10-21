@@ -888,15 +888,8 @@ func (dbConfig *DbConfig) validateVersion(ctx context.Context, isEnterpriseEditi
 		}
 	}
 
-	if dbConfig.UserFunctions != nil {
-		if err := functions.ValidateFunctions(ctx, *dbConfig.UserFunctions); err != nil {
-			multiError = multiError.Append(err)
-		}
-	}
-	if dbConfig.GraphQL != nil {
-		if err := dbConfig.GraphQL.Validate(ctx); err != nil {
-			multiError = multiError.Append(err)
-		}
+	if err := functions.ValidateFunctions(ctx, dbConfig.UserFunctions, dbConfig.GraphQL); err != nil {
+		multiError = multiError.Append(err)
 	}
 
 	return multiError.ErrorOrNil()

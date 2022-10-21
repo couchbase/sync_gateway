@@ -11,13 +11,17 @@ function nonEmpty<T>(a: T[] | undefined) : a is T[] {
 //////// PATTERN SUBSTITUTION (in 'allow')
 
 
-const kPatternRegex = /\$(\w+|\([^)]+\)|\$)/g;
+const kPatternRegex = /\${([^}]+)}|(\\\$)/g;
 
 /** A string that may change based on the current user and args. */
 export abstract class Pattern {
     constructor(protected str: string) { }
 
     abstract expand(user: User, args?: Args) : string;
+
+    toString() : string {
+        return this.str;
+    }
 }
 
 class NonPattern extends Pattern {
@@ -32,37 +36,37 @@ class DollarPattern extends Pattern {
     constructor(str: string) {super(str);}
 
     override expand(user: User, args?: Args) : string {
-        return this.str.replace(kPatternRegex, (match, varName) => {
-            if (varName === '$') {
-                return varName;     // $$ -> $
-            }
-            if (varName[0] == '(') {
-                varName = varName.slice(1, -1);
-            }
-            if (varName.startsWith("user.")) {
-                varName = "context." + varName;
-            }
-            if (varName.startsWith("context.user.")) {
+        let result = this.str.replace(kPatternRegex, (match, expr, none) => {
+            if (none) {
+                return '$';     // \$ -> $
+            } else if (expr.startsWith("context.user.name")) {
                 if (!user) {
                     return "";
-                } else if (varName === "context.user.name") {
+                } else {
                     return user.name ?? "";
-                } else if (varName === "context.user.email") {
-                    return ""; //TODO
                 }
-            }
-            let value = args ? args[varName] : undefined;
-            switch(typeof(value)) {
-            case "undefined":
-                throw new HTTPError(503, `Bad config: Invalid channel/role pattern '$${varName} in 'allow'`);
-            case "string":
-                return value;
-            case "number":
-                return String(value);
-            default:
-                throw new HTTPError(400, `Value of arg '${varName}' must be a string or number`);
+            } else if (expr.startsWith("args.")) {
+                let varName = expr.slice(5)
+                let value = args ? args[varName] : undefined;
+                switch(typeof(value)) {
+                case "undefined":
+                    throw new HTTPError(503, "Bad config: Unknown arg in channel/role pattern '${" + expr + "} in 'allow'");
+                case "string":
+                    return value;
+                case "number":
+                    return String(value);
+                default:
+                    throw new HTTPError(400, "Value of arg '" + varName + "' must be a string or number");
+                }
+            } else {
+                throw new HTTPError(503, "Bad config: Invalid channel/role pattern '${" + expr + "} in 'allow'");
             }
         });
+        return result;
+    }
+
+    override toString() : string {
+        return "Pattern<" + this.str + ">";
     }
 }
 
@@ -125,11 +129,14 @@ class AllowByConfig extends Allow {
     }
 
     authorize(user: User, args?: Args) {
+        console.assert(user.defaultCollection !== undefined);
         if (!user.isAdmin
                 && !(this.users    && Match1(this.users, user.name!, user, args))
                 && !(this.roles    && Match(this.roles, user.roles, user, args))
-                && !(this.channels && Match(this.channels, user.channels, user, args)))
-            this.fail();
+                && !(this.channels && Match(this.channels, user.channels, user, args))) {
+            throw new HTTPError(403, `Access forbidden to function '${this.name}' ... user = ${user.name} ... user.channels=${user.channels} ... this.users=${this.users} ... this.channels=${this.channels}`);
+            //this.fail();
+        }
     }
 
     private users?:    Pattern[];
@@ -169,7 +176,7 @@ export function CompileParams(fnName: string, parameters: string[] | undefined):
             if (args) {
                 let argNames = Object.getOwnPropertyNames(args);
                 if (argNames.length > 0) {
-                    throw `Undeclared arguments '${argNames.join("', '")}' passed to ${fnName}`;
+                    throw new HTTPError(400, `Undeclared arguments '${argNames.join("', '")}' passed to ${fnName}`);
                 }
             }
         }
@@ -180,22 +187,22 @@ export function CompileParams(fnName: string, parameters: string[] | undefined):
         }
         let nParams = paramSet.size;
         if (nParams != parameters.length) {
-            throw `Function/resolver ${fnName} has duplicate arg names`;
+            throw new HTTPError(500, `Function/resolver ${fnName} has duplicate arg names`);
         }
         return (args?: Args) : void => {
             if (!args) {
-                throw `Function "${fnName}" called without arguments, but takes ${nParams}`;
+                throw new HTTPError(400, `Function "${fnName}" called without arguments, but requires ${parameters}`);
             }
             for (let param of parameters) {
                 if (args[param] === undefined) {
-                    throw `Missing argument "${param}" in call to ${fnName}`;
+                    throw new HTTPError(400, `Missing argument "${param}" in call to ${fnName}`);
                 }
             }
             let argNames = Object.getOwnPropertyNames(args);
             if (argNames.length != nParams) {
                 for (let arg of argNames) {
                     if (!paramSet.has(arg)) {
-                        throw `Undeclared argument "${arg}" passed to ${fnName}`;
+                        throw new HTTPError(400, `Undeclared argument "${arg}" passed to ${fnName}`);
                     }
                 }
             }
@@ -210,6 +217,16 @@ export function CompileParams(fnName: string, parameters: string[] | undefined):
 // Returns the N1QL query string from a FunctionConfig.
 function preprocessN1QL(config: FunctionConfig) : string {
     return config.code.replace(/\$_keyspace\b/g, `_default`);
+}
+
+
+function rethrow(x: unknown, fnName: string) {
+    if (x instanceof Error) {
+        x.message = `${x.message} (thrown by function ${fnName})`
+        throw x;
+    } else {
+        throw Error(`${x} (thrown by function ${fnName})`);
+    }
 }
 
 
@@ -229,17 +246,19 @@ export function CompileFn(fnName: string,
             return db.query(fnName, n1ql, args, context);
         };
     case "javascript":
-        let code = compileToJS(fnName, fnConfig, 2);
+        let code = compileToJS(fnName, fnConfig, 2) as JSFn;
         return function(context, args) {
-            console.log(`FUNC ${fnName}`);
+            console.debug(`FUNC ${fnName}`);
             checkArgs(args);
             allow.authorize(context.user, args);
-            let result = code(context, args);
-            if (!(result instanceof Promise)) result = Promise.resolve(result)
-            return result
+            try {
+                return code(context, args);
+            } catch (x) {
+                rethrow(x, fnName);
+            }
         };
     default:
-        throw `Function ${fnName} has an unknown or missing type`;
+        throw new HTTPError(500, `Function ${fnName} has an unknown or missing type`);
     }
 }
 
@@ -253,7 +272,7 @@ export function CompileResolver(typeName: string,
     let fnName = `${typeName}.${fieldName}`;
     let allow = CompileAllow(fnName, fnConfig.allow, true);
     if (fnConfig.args) {
-        throw `GraphQL resolver ${fnName} should not have an 'args' declaration`;
+        throw new HTTPError(500, `GraphQL resolver ${fnName} should not have an 'args' declaration`);
     }
     switch (fnConfig.type) {
     case "query":
@@ -266,11 +285,15 @@ export function CompileResolver(typeName: string,
         let code = compileToJS(fnName, fnConfig, 4) as ResolverFn;
         return function(source, args, context, info) {
             allow.authorize(context.user, args);
-            return code(source, args, context, upgradeInfo(info));
+            try {
+                return code(source, args, context, upgradeInfo(info));
+            } catch (x) {
+                rethrow(x, fnName);
+            }
         }
     default:
-        throw `Resolver function ${fnName} has an unknown or missing type`;
-        }
+        throw new HTTPError(500, `Resolver function ${fnName} has an unknown or missing type`);
+    }
 }
 
 
@@ -281,9 +304,9 @@ export function CompileTypeNameResolver(typeName: string,
 {
     let fnName = `${typeName}.__typename`;
     if (fnConfig.type != "javascript") {
-        throw `Type-name resolver ${fnName} must be implemented in JavaScript`;
+        throw new HTTPError(500, `Type-name resolver ${fnName} must be implemented in JavaScript`);
     } else if (fnConfig.allow !== undefined) {
-        throw `Type-name resolver ${fnName} must not have an 'allow' config`;
+        throw new HTTPError(500, `Type-name resolver ${fnName} must not have an 'allow' config`);
     }
     return compileToJS(fnName, fnConfig, 4) as gq.GraphQLTypeResolver<any,Context>;
 }
@@ -296,12 +319,12 @@ function compileToJS(name: string, fnConfig: FunctionConfig, nArgs: number) : Fu
     try {
         fn = Function(`"use strict"; return (${fnConfig.code})`)()
     } catch (x) {
-        throw `Function ${name} failed to compile: ${x}`;
+        throw new HTTPError(500, `Function ${name} failed to compile: ${x}`);
     }
     if (typeof(fn) !== 'function') {
-        throw `Function ${name}'s code does not compile to a JS function`;
+        throw new HTTPError(500, `Function ${name}'s code does not compile to a JS function`);
     } else if (fn.length != nArgs) {
-        throw `Function ${name} should have ${nArgs} JavaScript arguments`;
+        throw new HTTPError(500, `Function ${name} should have ${nArgs} JavaScript arguments`);
     }
     return fn;
 }

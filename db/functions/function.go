@@ -12,19 +12,14 @@ package functions
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
-	"reflect"
-	"regexp"
-	"strconv"
-	"strings"
 
 	sgbucket "github.com/couchbase/sg-bucket"
-	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
-	_ "github.com/robertkrimen/otto/underscore"
 )
 
 //////// CONFIGURATION TYPES:
@@ -56,74 +51,71 @@ type Allow struct {
 	Users    base.Set `json:"users,omitempty"`    // Names of user(s) that have access
 }
 
-//////// INITIALIZATION:
-
-// implements UserFunction. Used for both JS and N1QL.
-type functionImpl struct {
-	*FunctionConfig                    // Inherits from FunctionConfig
-	name            string             // Name of function
-	typeName        string             // "function" or "resolver"
-	checkArgs       bool               // If true, args must be checked against Args
-	allowByDefault  bool               // If true, a missing Allow means allow, not forbid
-	compiled        *sgbucket.JSServer // Compiled form of the function; nil for N1QL
+// Configuration for GraphQL.
+type GraphQLConfig struct {
+	Schema           *string         `json:"schema,omitempty"`             // Schema in SDL syntax
+	SchemaFile       *string         `json:"schemaFile,omitempty"`         // Path of schema file
+	Resolvers        GraphQLTypesMap `json:"resolvers"`                    // Defines query/mutation code
+	MaxSchemaSize    *int            `json:"max_schema_size,omitempty"`    // Maximum length (in bytes) of GraphQL schema; default is 0, for unlimited
+	MaxResolverCount *int            `json:"max_resolver_count,omitempty"` // Maximum number of GraphQL resolvers; default is 0, for unlimited
+	MaxCodeSize      *int            `json:"max_code_size,omitempty"`      // Maximum length (in bytes) of a function's code
+	MaxRequestSize   *int            `json:"max_request_size,omitempty"`   // Maximum size of the encoded query & arguments
 }
 
+// Maps GraphQL type names (incl. "Query") to their resolvers.
+type GraphQLTypesMap map[string]GraphQLResolverConfig
+
+// Maps GraphQL field names to the resolvers that implement them.
+type GraphQLResolverConfig map[string]FunctionConfig
+
+//////// INITIALIZATION:
+
 // Compiles the functions in a UserFunctionConfigMap, returning UserFunctions.
-func CompileFunctions(config FunctionsConfig) (*db.UserFunctions, error) {
-	if config.MaxFunctionCount != nil && len(config.Definitions) > *config.MaxFunctionCount {
-		return nil, fmt.Errorf("too many functions declared (> %d)", *config.MaxFunctionCount)
+func CompileFunctions(fnConfig *FunctionsConfig, gqConfig *GraphQLConfig) (fns *db.UserFunctions, gq db.GraphQL, err error) {
+	if fnConfig == nil && gqConfig == nil {
+		return
 	}
-	fns := db.UserFunctions{
-		MaxRequestSize: config.MaxRequestSize,
-		Definitions:    map[string]db.UserFunction{},
+
+	env, err := NewEnvironment(fnConfig, gqConfig)
+	if err != nil {
+		return
 	}
-	var multiError *base.MultiError
-	for name, fnConfig := range config.Definitions {
-		if config.MaxCodeSize != nil && len(fnConfig.Code) > *config.MaxCodeSize {
-			multiError = multiError.Append(fmt.Errorf("function code too large (> %d bytes)", *config.MaxCodeSize))
-		} else if userFn, err := compileFunction(name, "function", fnConfig); err == nil {
-			fns.Definitions[name] = userFn
-		} else {
-			multiError = multiError.Append(err)
+
+	if fnConfig != nil {
+		fns = &db.UserFunctions{
+			MaxRequestSize: fnConfig.MaxRequestSize,
+			Definitions:    map[string]db.UserFunction{},
+		}
+		for name, fnConfig := range fnConfig.Definitions {
+			fns.Definitions[name] = &functionImpl{
+				FunctionConfig: fnConfig,
+				name:           name,
+				env:            env,
+			}
 		}
 	}
-	return &fns, multiError.ErrorOrNil()
+	if gqConfig != nil {
+		gq = &graphQLImpl{
+			config: gqConfig,
+			env:    env,
+		}
+	}
+	return
 }
 
 // Validates a FunctionsConfig.
-func ValidateFunctions(ctx context.Context, config FunctionsConfig) error {
-	_, err := CompileFunctions(config)
+func ValidateFunctions(ctx context.Context, fnConfig *FunctionsConfig, gqConfig *GraphQLConfig) error {
+	_, _, err := CompileFunctions(fnConfig, gqConfig)
 	return err
 }
 
-// Creates a functionImpl from a UserFunctionConfig.
-func compileFunction(name string, typeName string, fnConfig *FunctionConfig) (*functionImpl, error) {
-	userFn := &functionImpl{
-		FunctionConfig: fnConfig,
-		name:           name,
-		typeName:       typeName,
-		checkArgs:      true,
-	}
-	var err error
-	switch fnConfig.Type {
-	case "javascript":
-		userFn.compiled, err = newFunctionJSServer(name, typeName, fnConfig.Code)
-	case "query":
-		err = validateN1QLQuery(fnConfig.Code)
-		if err != nil {
-			err = fmt.Errorf("%s %q invalid query: %v", typeName, name, err)
-		}
-	default:
-		err = fmt.Errorf("%s %q has unrecognized 'type' %q", typeName, name, fnConfig.Type)
-	}
+//////// FUNCTIONIMPL
 
-	if err == nil {
-		if err = fnConfig.validateAllow(); err != nil {
-			err = base.HTTPErrorf(http.StatusInternalServerError, "%s %q has an illegal 'allow' pattern: %v", typeName, name, err)
-
-		}
-	}
-	return userFn, err
+// implements UserFunction.
+type functionImpl struct {
+	*FunctionConfig              // Inherits from FunctionConfig
+	name            string       // Name of function
+	env             *Environment // The V8 VM
 }
 
 func (fn *functionImpl) Name() string {
@@ -131,7 +123,7 @@ func (fn *functionImpl) Name() string {
 }
 
 func (fn *functionImpl) isN1QL() bool {
-	return fn.compiled == nil
+	return fn.Type == "query"
 }
 
 func (fn *functionImpl) N1QLQueryName() (string, bool) {
@@ -143,276 +135,173 @@ func (fn *functionImpl) N1QLQueryName() (string, bool) {
 }
 
 // Creates an Invocation of a UserFunction.
-func (fn *functionImpl) Invoke(db *db.Database, args map[string]any, mutationAllowed bool, ctx context.Context) (db.UserFunctionInvocation, error) {
+func (fn *functionImpl) invoke(delegate EvaluatorDelegate, user *UserCredentials, args map[string]any, mutationAllowed bool) (db.UserFunctionInvocation, error) {
+	eval, err := fn.env.NewEvaluator(delegate, user)
+	if err != nil {
+		return nil, err
+	}
+	return &functionInvocation{
+		functionImpl: fn,
+		eval:         eval,
+		args:         args,
+	}, nil
+}
+
+// Creates an Invocation of a UserFunction.
+func (fn *functionImpl) Invoke(dbc *db.Database, args map[string]any, mutationAllowed bool, ctx context.Context) (db.UserFunctionInvocation, error) {
 	if ctx == nil {
 		return nil, fmt.Errorf("missing context to UserFunction.Invoke")
 	}
-
-	if err := db.CheckTimeout(ctx); err != nil {
+	if err := dbc.CheckTimeout(ctx); err != nil {
 		return nil, err
 	}
-
-	if args == nil {
-		args = map[string]any{}
+	delegate := &databaseDelegate{
+		dbc: dbc,
+		ctx: ctx,
+		fn:  fn,
 	}
-	if fn.checkArgs {
-		if err := fn.checkArguments(args); err != nil {
-			return nil, err
+	var user *UserCredentials
+	if dbUser := dbc.User(); dbUser != nil {
+		user = &UserCredentials{
+			Name:     dbUser.Name(),
+			Roles:    dbUser.RoleNames().AllKeys(),
+			Channels: dbUser.Channels().AllKeys(),
 		}
 	}
+	return fn.invoke(delegate, user, args, mutationAllowed)
+}
 
-	// Check that the user is authorized:
-	if fn.Allow != nil || !fn.allowByDefault {
-		if err := fn.authorize(db.User(), args); err != nil {
-			return nil, err
-		}
-	}
+// Implements UserFunctionInvocation
+type functionInvocation struct {
+	*functionImpl
+	dbc  *db.Database
+	eval *Evaluator
+	args map[string]any
+}
 
-	if (!fn.Mutating || !mutationAllowed) && ctx.Value(readOnlyKey) == nil {
-		// Add a value to the Context to indicate that mutations aren't allowed:
-		var why string
-		if !fn.Mutating {
-			why = fmt.Sprintf("%s %q", fn.typeName, fn.name)
-		} else {
-			why = "a read-only API call"
-		}
-		ctx = context.WithValue(ctx, readOnlyKey, why)
-	}
+func (inv *functionInvocation) Iterate() (sgbucket.QueryResultIterator, error) {
+	return nil, nil
+}
 
-	if fn.isN1QL() {
-		return &n1qlInvocation{
-			functionImpl: fn,
-			db:           db,
-			args:         args,
-			ctx:          ctx,
-		}, nil
+func (inv *functionInvocation) Run() (interface{}, error) {
+	if resultJSON, err := inv.RunAsJSON(); err != nil {
+		return nil, err
 	} else {
-		return &jsInvocation{
-			functionImpl: fn,
-			db:           db,
-			ctx:          ctx,
-			args:         args,
-		}, nil
+		var result any
+		err := json.Unmarshal([]byte(resultJSON), &result)
+		return result, err
 	}
 }
 
-//////// FUNCTION PARAMETERS/ARGUMENTS:
-
-// Checks that `args` contains exactly the same keys as the list `parameterNames`.
-// Adds the special "context" parameter containing user data.
-func (fn *functionImpl) checkArguments(args map[string]any) error {
-	// Make sure each specified parameter has a value in `args`:
-	for _, paramName := range fn.Args {
-		if _, found := args[paramName]; !found {
-			return base.HTTPErrorf(http.StatusBadRequest, "%s %q parameter %q is missing", fn.typeName, fn.name, paramName)
-		}
+func (inv *functionInvocation) RunAsJSON() ([]byte, error) {
+	defer inv.eval.Close()
+	if resultJSON, err := inv.eval.CallFunction(inv.name, inv.args); err != nil {
+		return nil, err
+	} else {
+		return []byte(resultJSON), nil
 	}
-
-	// Any extra parameters in `args` are illegal:
-	if len(args) > len(fn.Args) {
-		for _, paramName := range fn.Args {
-			delete(args, paramName)
-		}
-		for badKey := range args {
-			return base.HTTPErrorf(http.StatusBadRequest, "%s %q has no parameter %q", fn.typeName, fn.name, badKey)
-		}
-	}
-	return nil
 }
 
-//////// AUTHORIZATION:
+//////// GRAPHQLIMPL
 
-// Looks for bad '$' patterns in the config's Allow strings.
-func (fn *FunctionConfig) validateAllow() error {
-	if fn.Allow != nil {
-		// Construct an args object with a value for each declared argument:
-		fakeArgs := map[string]any{}
-		for _, argName := range fn.Args {
-			fakeArgs[argName] = "x"
-		}
-		// Subroutine that tests a pattern by trying to expand it with the args.
-		// If the result is a 500 error, something's wrong with the pattern itself.
-		checkPattern := func(pattern string) error {
-			_, err := expandPattern(pattern, fakeArgs, nil)
-			if err, ok := err.(*base.HTTPError); ok {
-				if err != nil && err.Status >= http.StatusInternalServerError {
-					return err
-				}
-			}
-			return nil
-		}
-		// Test each role and channel string:
-		for _, str := range fn.Allow.Roles {
-			if err := checkPattern(str); err != nil {
-				return err
-			}
-		}
-		for _, str := range fn.Allow.Channels {
-			if err := checkPattern(str); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
+// Implementation of db.graphQLImpl interface.
+type graphQLImpl struct {
+	config *GraphQLConfig
+	env    *Environment // The V8 VM
 }
 
-// Authorizes a User against the function config's Allow object:
-// - The user's name must be contained in Users, OR
-// - The user must have a role contained in Roles, OR
-// - The user must have access to a channel contained in Channels.
-// In Roles and Channels, patterns of the form `${param}` are expanded using `args` and `user`.
-func (fn *functionImpl) authorize(user auth.User, args map[string]any) error {
-	allow := fn.Allow
-	if user == nil {
-		return nil // User is admin
-	} else if allow != nil { // No Allow object means admin-only
-		if allow.Users.Contains(user.Name()) {
-			return nil // User is explicitly allowed
-		}
-		userRoles := user.RoleNames()
-		for _, rolePattern := range allow.Roles {
-			if role, err := expandPattern(rolePattern, args, user); err != nil {
-				return err
-			} else if userRoles.Contains(role) {
-				return nil // User has one of the allowed roles
-			}
-		}
-		// Check if the user has access to one of the given channels.
-		for _, channelPattern := range allow.Channels {
-			if channelPattern == channels.AllChannelWildcard {
-				return nil
-			} else if channel, err := expandPattern(channelPattern, args, user); err != nil {
-				return err
-			} else if user.CanSeeChannel(channel) {
-				return nil // User has access to one of the allowed channels
-			}
-		}
-	}
-	return user.UnauthError(fmt.Sprintf("you are not allowed to call %s %q", fn.typeName, fn.name))
+func (gq *graphQLImpl) MaxRequestSize() *int {
+	return gq.config.MaxRequestSize
 }
 
-// Expands patterns of the form `${param}` in `pattern`, looking up each such
-// `param` in the `args` map and substituting its value.
-// (`\$` is replaced with `$`.)
-// It is an error if any `param` has no value, or if its value is not a string or integer.
-func expandPattern(pattern string, args map[string]any, user auth.User) (string, error) {
-	if strings.IndexByte(pattern, '$') < 0 {
-		return pattern, nil
+func (gq *graphQLImpl) query(delegate EvaluatorDelegate, user *UserCredentials, query string, operationName string, variables map[string]interface{}, mutationAllowed bool, ctx context.Context) ([]byte, error) {
+	eval, err := gq.env.NewEvaluator(delegate, user)
+	if err != nil {
+		return nil, err
 	}
-	badConfig := false
-	var err error
-	channel := kChannelPropertyRegexp.ReplaceAllStringFunc(pattern, func(matched string) string {
-		if badConfig {
-			return ""
-		} else if matched == "\\$" {
-			return "$"
-		} else if !strings.HasPrefix(matched, "${") || !strings.HasSuffix(matched, "}") {
-			err = base.HTTPErrorf(http.StatusInternalServerError, "missing curly-brace in pattern %q", matched)
-			badConfig = true
-			return ""
-		}
-		arg := matched[2 : len(matched)-1]
-
-		// Look up the argument:
-		if strings.HasPrefix(arg, "args.") {
-			var rval reflect.Value
-			rval, err = evalKeyPath(args, arg[5:])
-			if err != nil {
-				if err := err.(*base.HTTPError); err != nil && err.Status >= http.StatusInternalServerError {
-					badConfig = true
-				}
-				return ""
-			}
-
-			// Convert `rval` to a string:
-			for rval.Kind() == reflect.Interface {
-				rval = rval.Elem()
-			}
-			if rval.Kind() == reflect.String {
-				return rval.String()
-			} else if rval.CanInt() || rval.CanUint() || rval.CanFloat() {
-				return fmt.Sprintf("%v", rval)
-			} else {
-				err = base.HTTPErrorf(http.StatusBadRequest, "argument %q must be a string or number, not %v", arg, rval.Kind())
-				return ""
-			}
-		} else if arg == "context.user.name" {
-			if user == nil {
-				return ""
-			} else {
-				return user.Name()
-			}
-		} else {
-			err = base.HTTPErrorf(http.StatusInternalServerError, "invalid variable expression %q", matched)
-			badConfig = true
-			return ""
-		}
-	})
-	return channel, err
+	defer eval.Close()
+	return eval.CallGraphQL(query, operationName, variables)
 }
 
-// Evaluates a "key path", like "points[3].x.y" on a JSON-based map.
-func evalKeyPath(root map[string]any, keyPath string) (reflect.Value, error) {
-	// Handle the first path component specially because we can access `root` without reflection:
-	var value reflect.Value
-	i := strings.IndexAny(keyPath, ".[")
-	if i < 0 {
-		i = len(keyPath)
+func (gq *graphQLImpl) QueryAsJSON(dbc *db.Database, query string, operationName string, variables map[string]interface{}, mutationAllowed bool, ctx context.Context) ([]byte, error) {
+	if ctx == nil {
+		return nil, fmt.Errorf("missing context to UserFunction.Invoke")
 	}
-	key := keyPath[0:i]
-	keyPath = keyPath[i:]
-	firstVal := root[key]
-	if firstVal == nil {
-		return value, base.HTTPErrorf(http.StatusInternalServerError, "parameter %q is not declared in 'args'", key)
+	if err := dbc.CheckTimeout(ctx); err != nil {
+		return nil, err
 	}
-
-	value = reflect.ValueOf(firstVal)
-	if len(keyPath) == 0 {
-		return value, nil
+	delegate := &databaseDelegate{
+		dbc: dbc,
+		ctx: ctx,
+		fn:  nil,
 	}
-
-	for len(keyPath) > 0 {
-		ch := keyPath[0]
-		keyPath = keyPath[1:]
-		if ch == '.' {
-			i = strings.IndexAny(keyPath, ".[")
-			if i < 0 {
-				i = len(keyPath)
-			}
-			key = keyPath[0:i]
-			keyPath = keyPath[i:]
-
-			if value.Kind() != reflect.Map {
-				return value, base.HTTPErrorf(http.StatusBadRequest, "value is not a map")
-			}
-			value = value.MapIndex(reflect.ValueOf(key))
-		} else if ch == '[' {
-			i = strings.IndexByte(keyPath, ']')
-			if i < 0 {
-				return value, base.HTTPErrorf(http.StatusInternalServerError, "missing ']")
-			}
-			key = keyPath[0:i]
-			keyPath = keyPath[i+1:]
-
-			index, err := strconv.ParseUint(key, 10, 8)
-			if err != nil {
-				return value, err
-			}
-			if value.Kind() != reflect.Array && value.Kind() != reflect.Slice {
-				return value, base.HTTPErrorf(http.StatusBadRequest, "value is a %v not an array", value.Type())
-			} else if uint64(value.Len()) <= index {
-				return value, base.HTTPErrorf(http.StatusBadRequest, "array index out of range")
-			}
-			value = value.Index(int(index))
-		} else {
-			return value, base.HTTPErrorf(http.StatusInternalServerError, "invalid character after a ']'")
-		}
-		for value.Kind() == reflect.Interface || value.Kind() == reflect.Pointer {
-			value = value.Elem()
+	var user *UserCredentials
+	if dbUser := dbc.User(); dbUser != nil {
+		user = &UserCredentials{
+			Name:     dbUser.Name(),
+			Roles:    dbUser.RoleNames().AllKeys(),
+			Channels: dbUser.Channels().AllKeys(),
 		}
 	}
-	return value, nil
+	return gq.query(delegate, user, query, operationName, variables, mutationAllowed, ctx)
 }
 
-// Regexp that matches a property pattern `${...}`, or a backslash-escaped `$`.
-var kChannelPropertyRegexp = regexp.MustCompile(`(\\\$)|(\${?[^{}]*}?)`)
+func (gq *graphQLImpl) Query(dbc *db.Database, query string, operationName string, variables map[string]interface{}, mutationAllowed bool, ctx context.Context) (*db.GraphQLResult, error) {
+	resultJson, err := gq.QueryAsJSON(dbc, query, operationName, variables, mutationAllowed, ctx)
+	if err != nil {
+		return nil, err
+	}
+	var result db.GraphQLResult
+	err = json.Unmarshal(resultJson, &result)
+	return &result, err
+}
+
+// Returns the names of all N1QL queries used.
+func (gq *graphQLImpl) N1QLQueryNames() []string {
+	queryNames := []string{}
+	for typeName, resolvers := range gq.config.Resolvers {
+		for fieldName, resolver := range resolvers {
+			if resolver.Type == "query" {
+				queryNames = append(queryNames, db.QueryTypeUserFunctionPrefix+graphQLResolverName(typeName, fieldName))
+			}
+		}
+	}
+	return queryNames
+}
+
+func graphQLResolverName(typeName string, fieldName string) string {
+	return typeName + ":" + fieldName
+}
+
+//////// DATABASE EVALUATOR DELEGATE:
+
+type databaseDelegate struct {
+	dbc *db.Database
+	ctx context.Context
+	fn  *functionImpl
+}
+
+func (d *databaseDelegate) query(fnName string, n1ql string, args map[string]any, asAdmin bool) (rows []any, err error) {
+	return nil, base.HTTPErrorf(http.StatusNotImplemented, "query unimplemented")
+}
+
+func (d *databaseDelegate) get(docID string, asAdmin bool) (doc map[string]any, err error) {
+	return nil, base.HTTPErrorf(http.StatusNotImplemented, "get unimplemented")
+}
+
+func (d *databaseDelegate) save(doc map[string]any, docID string, asAdmin bool) (revID string, err error) {
+	return "", base.HTTPErrorf(http.StatusNotImplemented, "save unimplemented")
+}
+
+func (d *databaseDelegate) delete(docID string, revID string, asAdmin bool) (bool, error) {
+	return false, base.HTTPErrorf(http.StatusNotImplemented, "delete unimplemented")
+}
+
+func (d *databaseDelegate) log(level JSLogLevel, message string) {
+	log.Printf("JS LOG: (%d) %s", level, message) //TEMP
+	if level < JSLogError {
+		base.InfofCtx(d.ctx, base.KeyJavascript, "function", d.fn.Name, base.UD(message))
+	} else {
+		base.ErrorfCtx(d.ctx, base.KeyJavascript.String()+": %s %s: %s", "function", d.fn.Name, base.UD(message))
+	}
+}
