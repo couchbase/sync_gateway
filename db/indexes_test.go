@@ -61,14 +61,14 @@ func TestInitializeIndexes(t *testing.T) {
 
 			// Make sure we can drop and reinitialize twice
 			for i := 0; i < 2; i++ {
-				err := dropAndInitializeIndexes(base.TestCtx(t), n1qlStore, b, test.xattrs)
+				err := dropAndInitializeIndexes(base.TestCtx(t), n1qlStore, b, test.xattrs, db.Options.Serverless)
 				require.NoError(t, err, "Error dropping and initialising all indexes on bucket")
 			}
 			// check to see if current indexes match what is expected by the rest of the test
 			// if not we drop and reinitialize these indexes using the overall test environment variables for XATTRS
-			err := validateAllIndexesOnline(b, base.TestUseXattrs())
+			err := validateAllIndexesOnline(b, base.TestUseXattrs(), db.Options.Serverless)
 			if err != nil {
-				err = dropAndInitializeIndexes(base.TestCtx(t), n1qlStore, b, base.TestUseXattrs())
+				err = dropAndInitializeIndexes(base.TestCtx(t), n1qlStore, b, base.TestUseXattrs(), db.Options.Serverless)
 				require.NoError(t, err)
 			}
 		})
@@ -77,7 +77,7 @@ func TestInitializeIndexes(t *testing.T) {
 }
 
 // Reset bucket state
-func validateAllIndexesOnline(bucket base.Bucket, xattrs bool) error {
+func validateAllIndexesOnline(bucket base.Bucket, xattrs, isServerless bool) error {
 	col, err := base.AsCollection(bucket)
 	if err != nil {
 		return err
@@ -91,7 +91,7 @@ func validateAllIndexesOnline(bucket base.Bucket, xattrs bool) error {
 		CollectionName: col.Name(),
 	}
 	// Watch and wait some time for indexes to come online
-	err = mgr.WatchIndexes(bucket.GetName(), sgIndexNames(xattrs), 10*time.Second, &watchOption)
+	err = mgr.WatchIndexes(bucket.GetName(), sgIndexNames(xattrs, isServerless), 10*time.Second, &watchOption)
 	if err != nil {
 		return err
 	}
@@ -99,7 +99,7 @@ func validateAllIndexesOnline(bucket base.Bucket, xattrs bool) error {
 }
 
 // sgIndexNames returns all the names of sync gateway indexes based on XATTRS being enabled or not
-func sgIndexNames(xattrs bool) []string {
+func sgIndexNames(xattrs, isServerless bool) []string {
 	allSGIndexes := make([]string, 0)
 
 	for _, sgIndex := range sgIndexes {
@@ -107,7 +107,9 @@ func sgIndexNames(xattrs bool) []string {
 		if sgIndex.isXattrOnly() && !xattrs {
 			continue
 		}
-		allSGIndexes = append(allSGIndexes, fullIndexName)
+		if sgIndex.shouldCreate(isServerless) {
+			allSGIndexes = append(allSGIndexes, fullIndexName)
+		}
 	}
 	return allSGIndexes
 }
@@ -130,6 +132,12 @@ func TestPostUpgradeIndexesSimple(t *testing.T) {
 	expectedIndexes := int(indexTypeCount)
 	if !db.UseXattrs() {
 		expectedIndexes--
+	}
+
+	for _, sgIndex := range sgIndexes {
+		if !sgIndex.shouldCreate(db.Options.Serverless) {
+			expectedIndexes--
+		}
 	}
 
 	// We don't know the current state of the bucket (may already have xattrs enabled), so run
@@ -202,7 +210,7 @@ func TestPostUpgradeIndexesVersionChange(t *testing.T) {
 	err := InitializeIndexes(n1qlStore, db.UseXattrs(), 0, false, false)
 	assert.NoError(t, err)
 
-	validateErr := validateAllIndexesOnline(db.Bucket, db.UseXattrs())
+	validateErr := validateAllIndexesOnline(db.Bucket, db.UseXattrs(), db.Options.Serverless)
 	assert.NoError(t, validateErr, "Error validating indexes online")
 }
 
@@ -228,6 +236,12 @@ func TestRemoveIndexesUseViewsTrueAndFalse(t *testing.T) {
 
 	if !db.UseXattrs() {
 		expectedIndexes--
+	}
+
+	for _, sgIndex := range copiedIndexes {
+		if !sgIndex.shouldCreate(db.Options.Serverless) {
+			expectedIndexes--
+		}
 	}
 
 	removedIndexes, removeErr := removeObsoleteIndexes(n1QLStore, false, db.UseXattrs(), true, copiedIndexes)
@@ -256,7 +270,7 @@ func TestRemoveIndexesUseViewsTrueAndFalse(t *testing.T) {
 	err = InitializeIndexes(n1QLStore, db.UseXattrs(), 0, false, false)
 	assert.NoError(t, err)
 
-	validateErr := validateAllIndexesOnline(db.Bucket, db.UseXattrs())
+	validateErr := validateAllIndexesOnline(db.Bucket, db.UseXattrs(), db.Options.Serverless)
 	assert.NoError(t, validateErr, "Error validating indexes online")
 }
 
@@ -303,7 +317,7 @@ func TestRemoveObsoleteIndexOnError(t *testing.T) {
 	err := InitializeIndexes(n1qlStore, db.UseXattrs(), 0, false, false)
 	assert.NoError(t, err)
 
-	validateErr := validateAllIndexesOnline(db.Bucket, db.UseXattrs())
+	validateErr := validateAllIndexesOnline(db.Bucket, db.UseXattrs(), db.Options.Serverless)
 	assert.NoError(t, validateErr, "Error validating indexes online")
 
 }
@@ -318,7 +332,7 @@ func TestIsIndexerError(t *testing.T) {
 }
 
 // dropAndInitializeIndexes drops and reinitialize all sync gateway indexes
-func dropAndInitializeIndexes(ctx context.Context, n1qlStore base.N1QLStore, bucket base.Bucket, xattrs bool) error {
+func dropAndInitializeIndexes(ctx context.Context, n1qlStore base.N1QLStore, bucket base.Bucket, xattrs, isServerless bool) error {
 	dropErr := base.DropAllIndexes(ctx, n1qlStore)
 	if dropErr != nil {
 		return dropErr
@@ -335,7 +349,7 @@ func dropAndInitializeIndexes(ctx context.Context, n1qlStore base.N1QLStore, buc
 		return err
 	}
 
-	validateErr := validateAllIndexesOnline(bucket, xattrs)
+	validateErr := validateAllIndexesOnline(bucket, xattrs, isServerless)
 	if validateErr != nil {
 		return validateErr
 	}
