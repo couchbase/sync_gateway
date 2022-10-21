@@ -83,9 +83,9 @@ var (
 		IndexAllDocs:    "allDocs",
 		IndexTombstones: "tombstones",
 		IndexSyncDocs:   "syncDocs",
-		IndexUser:       "syncUser",
-		IndexSession:    "syncSession",
-		IndexRole:       "syncRole",
+		IndexUser:       "users",
+		IndexSession:    "sessions",
+		IndexRole:       "roles",
 	}
 
 	// Index versions - must be incremented when index definition changes
