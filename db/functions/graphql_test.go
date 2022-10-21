@@ -56,16 +56,17 @@ var kTestGraphQLConfig = GraphQLConfig{
 				Allow: allowAll,
 			},
 			"infinite": {
-				Type:  "javascript",
-				Code:  `function(parent, args, context, info) {return context.user.function("infinite");}`,
+				Type: "javascript",
+				Code: `async function(parent, args, context, info) {
+							return await context.user.function("infinite");}`,
 				Allow: allowAll,
 			},
 			"task": {
 				Type: "javascript",
 				Code: `function(parent, args, context, info) {
-						if (Object.keys(parent).length != 0) throw "Unexpected parent";
+						if (parent !== undefined) throw "Unexpectedly-defined parent";
 						if (Object.keys(args).length != 1) throw "Unexpected args";
-						if (Object.keys(info) != "selectedFieldNames") throw "Unexpected info";
+						if (!info.selectedFieldNames) throw "No info.selectedFieldNames";
 						if (!context.user) throw "Missing context.user";
 						if (!context.admin) throw "Missing context.admin";
 						return context.user.function("getTask", {id: args.id});}`,
@@ -74,9 +75,9 @@ var kTestGraphQLConfig = GraphQLConfig{
 			"tasks": {
 				Type: "javascript",
 				Code: `function(parent, args, context, info) {
-						if (Object.keys(parent).length != 0) throw "Unexpected parent";
+						if (parent !== undefined) throw "Unexpectedly-defined parent";
 						if (Object.keys(args).length != 0) throw "Unexpected args";
-						if (Object.keys(info) != "selectedFieldNames") throw "Unexpected info";
+						if (!info.selectedFieldNames) throw "No info.selectedFieldNames";
 						if (!context.user) throw "Missing context.user";
 						if (!context.admin) throw "Missing context.admin";
 						return context.user.function("all");}`,
@@ -85,9 +86,9 @@ var kTestGraphQLConfig = GraphQLConfig{
 			"toDo": {
 				Type: "javascript",
 				Code: `function(parent, args, context, info) {
-						if (Object.keys(parent).length != 0) throw "Unexpected parent";
+						if (parent !== undefined) throw "Unexpectedly-defined parent";
 						if (Object.keys(args).length != 1) throw "Unexpected args";
-						if (Object.keys(info) != "selectedFieldNames") throw "Unexpected info";
+						if (!info.selectedFieldNames) throw "No info.selectedFieldNames";
 						if (!context.user) throw "Missing context.user";
 						if (!context.admin) throw "Missing context.admin";
 						var result=new Array(); var all = context.user.function("all");
@@ -101,9 +102,9 @@ var kTestGraphQLConfig = GraphQLConfig{
 			"complete": {
 				Type: "javascript",
 				Code: `function(parent, args, context, info) {
-							if (Object.keys(parent).length != 0) throw "Unexpected parent";
+							if (parent !== undefined) throw "Unexpectedly-defined parent";
 							if (Object.keys(args).length != 1) throw "Unexpected args";
-							if (Object.keys(info) != "selectedFieldNames") throw "Unexpected info";
+							if (!info.selectedFieldNames) throw "No info.selectedFieldNames";
 							if (!context.user) throw "Missing context.user";
 							if (!context.admin) throw "Missing context.admin";
 							context.requireMutating();
@@ -131,7 +132,6 @@ var kTestGraphQLConfig = GraphQLConfig{
 				Code: `function(parent, args, context, info) {
 								if (!parent.id) throw "Invalid parent";
 								if (Object.keys(args).length != 0) throw "Unexpected args";
-								if (Object.keys(info) != "selectedFieldNames") throw "Unexpected info";
 								if (!context.user) throw "Missing context.user";
 								if (!context.admin) throw "Missing context.admin";
 								return "TOP SECRET!";}`,
@@ -165,8 +165,8 @@ var kTestGraphQLUserFunctionsConfig = FunctionsConfig{
 		},
 		"infinite": {
 			Type: "javascript",
-			Code: `function(context, args) {
-				var result = context.user.graphql("query{ infinite }");
+			Code: `async function(context, args) {
+				var result = await context.user.graphql("query{ infinite }");
 				if (result.errors) throw "GraphQL query failed:" + result.errors[0].message;
 				return -1;}`,
 			Allow: &Allow{Channels: []string{"*"}},
@@ -206,8 +206,7 @@ func assertGraphQLError(t *testing.T, expectedErrorText string, result *db.Graph
 			return
 		}
 	}
-	t.Logf("GraphQL error did not contain expected string %q: actually %#v", expectedErrorText, result.Errors)
-	t.Fail()
+	assert.FailNowf(t, "GraphQL error did not contain expected string", "Expected to find %q: actually %#v", expectedErrorText, result.Errors)
 }
 
 // Unit test for GraphQL queries.

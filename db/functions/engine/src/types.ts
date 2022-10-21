@@ -32,10 +32,11 @@ export type AllowConfig = {
 
 /** Defines a function or GraphQL resolver. */
 export type FunctionConfig = {
-    type:   "query" | "javascript",         // Language the 'code' is in
-    code:   string,                         // The function's JavaScript code or N1QL query
-    args?:  string[],                       // Names of parameters (not used by GraphQL)
-    allow?: AllowConfig,                    // Who's allowed to call this
+    type:       "query" | "javascript", // Language the 'code' is in
+    code:       string,                 // The function's JavaScript code or N1QL query
+    args?:      string[],               // Names of parameters (not used by GraphQL)
+    mutating?:  boolean,                // Is function allowed to modify the database?
+    allow?:     AllowConfig,            // Who's allowed to call this
 };
 
 /** Functions configuration: maps function name to its config. */
@@ -75,6 +76,8 @@ export interface Context {
     requireRole(role: string | string[]) : void;
     checkAccess(channel: string | string[]) : boolean;
     requireAccess(channel: string | string[]) : void;
+    checkMutating() : boolean;
+    requireMutating() : void;
 }
 
 
@@ -86,6 +89,8 @@ export interface Context {
     readonly channels?: string[];
 
     readonly isAdmin : boolean;
+
+    readonly canMutate : boolean;
 
     readonly defaultCollection: CRUD;
 
@@ -114,13 +119,9 @@ export interface CRUD {
 
 /** An exception that conveys an HTTP status. */
 export class HTTPError extends Error {
-    constructor(readonly status: number, message: string) {
-        super(message);
-        this.status = status;
-    }
-
-    override toString() {
-        return `[${this.status}] ${super.toString()}`;
+    constructor(readonly status: number,
+                readonly baseMessage: string) {
+        super(`[${status}] ${baseMessage}`);    // unpackJSError() in evaluator.go parses this
     }
 }
 
@@ -135,16 +136,25 @@ export type Credentials = [string, string[], string[]];
 /** Top-level object that stores the compiled state for a database. */
 export interface Database {
     /** Creates an execution context given a user's name, roles and channels. */
-    makeContext(credentials: Credentials | null) : Context;
+    makeContext(credentials: Credentials | null,
+                mutationAllowed: boolean) : Context;
 
     /** Calls a named function. */
-    callFunction(name: string, args: Args | undefined, credentials: Credentials | null) : MaybePromise<unknown>;
+    callFunction(context: Context,
+                 name: string,
+                 args?: Args) : MaybePromise<unknown>;
 
     /** Runs a N1QL query. Called by functions of type "query". */
-    query(fnName: string, n1ql: string, args: Args | undefined, context: Context) : JSONObject[];
+    query(context: Context,
+          fnName: string,
+          n1ql: string,
+          args?: Args) : JSONObject[];
 
     /** Runs a GraphQL query. */
-    graphql(query: string, args: Args | undefined, context: Context) : Promise<gq.ExecutionResult>;
+    graphql(context: Context,
+            query: string,
+            variableValues?: Args,
+            operationName?: string) : Promise<gq.ExecutionResult>;
 
     /** The compiled GraphQL schema. */
     readonly schema?: gq.GraphQLSchema;

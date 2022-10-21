@@ -1,6 +1,7 @@
 import { AllowConfig, Args, Context, Database, FunctionConfig, User, JSFn, ResolverFn, HTTPError, ResolveInfo } from './types'
 
 import * as gq from 'graphql';
+import { BeginReadOnly, EndReadOnly } from "./impl";
 
 
 function nonEmpty<T>(a: T[] | undefined) : a is T[] {
@@ -220,12 +221,12 @@ function preprocessN1QL(config: FunctionConfig) : string {
 }
 
 
-function rethrow(x: unknown, fnName: string) {
+function rethrow(x: unknown, what: string, fnName: string) {
     if (x instanceof Error) {
-        x.message = `${x.message} (thrown by function ${fnName})`
+        x.message = `${x.message} (thrown by ${what} ${fnName})`
         throw x;
     } else {
-        throw Error(`${x} (thrown by function ${fnName})`);
+        throw Error(`${x} (thrown by ${what} ${fnName})`);
     }
 }
 
@@ -243,18 +244,22 @@ export function CompileFn(fnName: string,
         return async function(context, args) {
             checkArgs(args);
             allow.authorize(context.user, args);
-            return db.query(fnName, n1ql, args, context);
+            return db.query(context, fnName, n1ql, args);
         };
     case "javascript":
+        let mutating = fnConfig.mutating ?? false;
         let code = compileToJS(fnName, fnConfig, 2) as JSFn;
         return function(context, args) {
             console.debug(`FUNC ${fnName}`);
             checkArgs(args);
             allow.authorize(context.user, args);
+            if (!mutating) BeginReadOnly(context);
             try {
                 return code(context, args);
             } catch (x) {
-                rethrow(x, fnName);
+                rethrow(x, "function", fnName);
+            } finally {
+                if (!mutating) EndReadOnly(context);
             }
         };
     default:
@@ -270,6 +275,7 @@ export function CompileResolver(typeName: string,
                                 db: Database) : gq.GraphQLFieldResolver<any,Context>
 {
     let fnName = `${typeName}.${fieldName}`;
+    let mutating = (typeName == "Mutation");
     let allow = CompileAllow(fnName, fnConfig.allow, true);
     if (fnConfig.args) {
         throw new HTTPError(500, `GraphQL resolver ${fnName} should not have an 'args' declaration`);
@@ -279,16 +285,20 @@ export function CompileResolver(typeName: string,
         let n1ql = preprocessN1QL(fnConfig);
         return async function(source, args, context, info) {
             allow.authorize(context.user, args);
-            return db.query(fnName, n1ql, args, context);
+            return db.query(context, fnName, n1ql, args);
         };
     case "javascript":
         let code = compileToJS(fnName, fnConfig, 4) as ResolverFn;
         return function(source, args, context, info) {
+            console.debug(`RESOLVE ${fnName}`);
             allow.authorize(context.user, args);
+            if (!mutating) BeginReadOnly(context);
             try {
                 return code(source, args, context, upgradeInfo(info));
             } catch (x) {
-                rethrow(x, fnName);
+                rethrow(x, "resolver", fnName);
+            } finally {
+                if (!mutating) EndReadOnly(context);
             }
         }
     default:

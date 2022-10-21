@@ -14,8 +14,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
-	"net/http"
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
@@ -140,6 +138,7 @@ func (fn *functionImpl) invoke(delegate EvaluatorDelegate, user *UserCredentials
 	if err != nil {
 		return nil, err
 	}
+	eval.SetMutationAllowed(mutationAllowed)
 	return &functionInvocation{
 		functionImpl: fn,
 		eval:         eval,
@@ -158,7 +157,6 @@ func (fn *functionImpl) Invoke(dbc *db.Database, args map[string]any, mutationAl
 	delegate := &databaseDelegate{
 		dbc: dbc,
 		ctx: ctx,
-		fn:  fn,
 	}
 	var user *UserCredentials
 	if dbUser := dbc.User(); dbUser != nil {
@@ -195,11 +193,7 @@ func (inv *functionInvocation) Run() (interface{}, error) {
 
 func (inv *functionInvocation) RunAsJSON() ([]byte, error) {
 	defer inv.eval.Close()
-	if resultJSON, err := inv.eval.CallFunction(inv.name, inv.args); err != nil {
-		return nil, err
-	} else {
-		return []byte(resultJSON), nil
-	}
+	return inv.eval.CallFunction(inv.name, inv.args)
 }
 
 //////// GRAPHQLIMPL
@@ -220,6 +214,7 @@ func (gq *graphQLImpl) query(delegate EvaluatorDelegate, user *UserCredentials, 
 		return nil, err
 	}
 	defer eval.Close()
+	eval.SetMutationAllowed(mutationAllowed)
 	return eval.CallGraphQL(query, operationName, variables)
 }
 
@@ -233,7 +228,6 @@ func (gq *graphQLImpl) QueryAsJSON(dbc *db.Database, query string, operationName
 	delegate := &databaseDelegate{
 		dbc: dbc,
 		ctx: ctx,
-		fn:  nil,
 	}
 	var user *UserCredentials
 	if dbUser := dbc.User(); dbUser != nil {
@@ -271,37 +265,4 @@ func (gq *graphQLImpl) N1QLQueryNames() []string {
 
 func graphQLResolverName(typeName string, fieldName string) string {
 	return typeName + ":" + fieldName
-}
-
-//////// DATABASE EVALUATOR DELEGATE:
-
-type databaseDelegate struct {
-	dbc *db.Database
-	ctx context.Context
-	fn  *functionImpl
-}
-
-func (d *databaseDelegate) query(fnName string, n1ql string, args map[string]any, asAdmin bool) (rows []any, err error) {
-	return nil, base.HTTPErrorf(http.StatusNotImplemented, "query unimplemented")
-}
-
-func (d *databaseDelegate) get(docID string, asAdmin bool) (doc map[string]any, err error) {
-	return nil, base.HTTPErrorf(http.StatusNotImplemented, "get unimplemented")
-}
-
-func (d *databaseDelegate) save(doc map[string]any, docID string, asAdmin bool) (revID string, err error) {
-	return "", base.HTTPErrorf(http.StatusNotImplemented, "save unimplemented")
-}
-
-func (d *databaseDelegate) delete(docID string, revID string, asAdmin bool) (bool, error) {
-	return false, base.HTTPErrorf(http.StatusNotImplemented, "delete unimplemented")
-}
-
-func (d *databaseDelegate) log(level JSLogLevel, message string) {
-	log.Printf("JS LOG: (%d) %s", level, message) //TEMP
-	if level < JSLogError {
-		base.InfofCtx(d.ctx, base.KeyJavascript, "function", d.fn.Name, base.UD(message))
-	} else {
-		base.ErrorfCtx(d.ctx, base.KeyJavascript.String()+": %s %s: %s", "function", d.fn.Name, base.UD(message))
-	}
 }

@@ -513,14 +513,8 @@ func setupTestDBWithFunctions(t *testing.T, fnConfig *FunctionsConfig, gqConfig 
 		CacheOptions: &cacheOptions,
 	}
 	var err error
-	if fnConfig != nil {
-		options.UserFunctions, _, err = CompileFunctions(fnConfig, nil)
-		assert.NoError(t, err)
-	}
-	if gqConfig != nil {
-		_, options.GraphQL, err = CompileFunctions(nil, gqConfig)
-		assert.NoError(t, err)
-	}
+	options.UserFunctions, options.GraphQL, err = CompileFunctions(fnConfig, gqConfig)
+	assert.NoError(t, err)
 	return setupTestDBWithOptions(t, options)
 }
 

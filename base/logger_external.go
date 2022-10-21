@@ -50,13 +50,13 @@ var _ gocb.Logger = GoCBLogger{}
 func (GoCBLogger) Log(level gocb.LogLevel, offset int, format string, v ...interface{}) error {
 	switch level {
 	case gocb.LogError:
-		logTo(context.TODO(), LevelError, KeyAll, KeyGoCB.String()+": "+format, v...)
+		LogfTo(context.TODO(), LevelError, KeyAll, KeyGoCB.String()+": "+format, v...)
 	case gocb.LogWarn:
-		logTo(context.TODO(), LevelWarn, KeyAll, KeyGoCB.String()+": "+format, v...)
+		LogfTo(context.TODO(), LevelWarn, KeyAll, KeyGoCB.String()+": "+format, v...)
 	case gocb.LogInfo:
-		logTo(context.TODO(), LevelDebug, KeyGoCB, format, v...)
+		LogfTo(context.TODO(), LevelDebug, KeyGoCB, format, v...)
 	case gocb.LogDebug, gocb.LogTrace:
-		logTo(context.TODO(), LevelTrace, KeyGoCB, format, v...)
+		LogfTo(context.TODO(), LevelTrace, KeyGoCB, format, v...)
 	}
 	return nil
 }
@@ -81,21 +81,21 @@ func (GoCBCoreLogger) Log(level gocbcore.LogLevel, offset int, format string, v 
 func ClogCallback(level, format string, v ...interface{}) string {
 	switch level {
 	case "ERRO", "FATA", "CRIT":
-		logTo(context.TODO(), LevelError, KeyAll, KeyDCP.String()+": "+format, v...)
+		LogfTo(context.TODO(), LevelError, KeyAll, KeyDCP.String()+": "+format, v...)
 	case "WARN":
 		// TODO: cbgt currently logs a lot of what we'd consider info as WARN,
 		//    (i.e. diagnostic information that's not actionable by users), so
 		//    routing to Info pending potential enhancements on cbgt side.
-		logTo(context.TODO(), LevelInfo, KeyDCP, format, v...)
+		LogfTo(context.TODO(), LevelInfo, KeyDCP, format, v...)
 	case "INFO":
 		// TODO: cbgt currently logs a lot of what we'd consider debug as INFO,
 		//    (i.e. janitor work and partition status), so
 		//    routing to Debug pending potential enhancements on cbgt side.
-		logTo(context.TODO(), LevelDebug, KeyDCP, format, v...)
+		LogfTo(context.TODO(), LevelDebug, KeyDCP, format, v...)
 	case "DEBU":
-		logTo(context.TODO(), LevelDebug, KeyDCP, format, v...)
+		LogfTo(context.TODO(), LevelDebug, KeyDCP, format, v...)
 	case "TRAC":
-		logTo(context.TODO(), LevelTrace, KeyDCP, format, v...)
+		LogfTo(context.TODO(), LevelTrace, KeyDCP, format, v...)
 	}
 	return ""
 }
@@ -136,41 +136,41 @@ func (CBGoUtilsLogger) Level() logging.Level {
 }
 
 func (CBGoUtilsLogger) Fatalf(fmt string, args ...interface{}) {
-	logTo(context.TODO(), LevelError, KeyAll, "CBGoUtilsLogger: "+fmt, args...)
+	LogfTo(context.TODO(), LevelError, KeyAll, "CBGoUtilsLogger: "+fmt, args...)
 	FlushLogBuffers()
 	os.Exit(1)
 }
 
 func (CBGoUtilsLogger) Severef(fmt string, args ...interface{}) {
-	logTo(context.TODO(), LevelError, KeyAll, "CBGoUtilsLogger: "+fmt, args...)
+	LogfTo(context.TODO(), LevelError, KeyAll, "CBGoUtilsLogger: "+fmt, args...)
 }
 
 func (CBGoUtilsLogger) Errorf(fmt string, args ...interface{}) {
-	logTo(context.TODO(), LevelError, KeyAll, "CBGoUtilsLogger: "+fmt, args...)
+	LogfTo(context.TODO(), LevelError, KeyAll, "CBGoUtilsLogger: "+fmt, args...)
 }
 
 func (CBGoUtilsLogger) Warnf(fmt string, args ...interface{}) {
-	logTo(context.TODO(), LevelWarn, KeyAll, "CBGoUtilsLogger: "+fmt, args...)
+	LogfTo(context.TODO(), LevelWarn, KeyAll, "CBGoUtilsLogger: "+fmt, args...)
 }
 
 func (CBGoUtilsLogger) Infof(fmt string, args ...interface{}) {
-	logTo(context.TODO(), LevelInfo, KeyAll, "CBGoUtilsLogger: "+fmt, args...)
+	LogfTo(context.TODO(), LevelInfo, KeyAll, "CBGoUtilsLogger: "+fmt, args...)
 }
 
 func (CBGoUtilsLogger) Requestf(rlevel logging.Level, fmt string, args ...interface{}) {
-	logTo(context.TODO(), LevelTrace, KeyAll, "CBGoUtilsLogger: "+fmt, args...)
+	LogfTo(context.TODO(), LevelTrace, KeyAll, "CBGoUtilsLogger: "+fmt, args...)
 }
 
 func (CBGoUtilsLogger) Tracef(fmt string, args ...interface{}) {
-	logTo(context.TODO(), LevelTrace, KeyAll, "CBGoUtilsLogger: "+fmt, args...)
+	LogfTo(context.TODO(), LevelTrace, KeyAll, "CBGoUtilsLogger: "+fmt, args...)
 }
 
 func (CBGoUtilsLogger) Debugf(fmt string, args ...interface{}) {
-	logTo(context.TODO(), LevelDebug, KeyAll, "CBGoUtilsLogger: "+fmt, args...)
+	LogfTo(context.TODO(), LevelDebug, KeyAll, "CBGoUtilsLogger: "+fmt, args...)
 }
 
 func (CBGoUtilsLogger) Logf(level logging.Level, fmt string, args ...interface{}) {
-	logTo(context.TODO(), LevelInfo, KeyAll, "CBGoUtilsLogger: "+fmt, args...)
+	LogfTo(context.TODO(), LevelInfo, KeyAll, "CBGoUtilsLogger: "+fmt, args...)
 }
 
 // go-couchbase/gomemcached don't use Pair/Map logs, so these are all stubs

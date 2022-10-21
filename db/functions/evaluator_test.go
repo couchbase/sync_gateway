@@ -34,11 +34,11 @@ func TestEvaluator(t *testing.T) {
 
 	result, err := eval.CallFunction("square", map[string]any{"numero": 13})
 	assert.NoError(t, err)
-	assert.Equal(t, "169", result)
+	assert.Equal(t, "169", string(result))
 
 	result, err = eval.CallFunction("cube", map[string]any{"numero": 13})
 	assert.NoError(t, err)
-	assert.Equal(t, "2197", result)
+	assert.Equal(t, "2197", string(result))
 }
 
 //////// MOCK EVALUATOR DELEGATE (CRUD FUNCTIONS)
@@ -57,27 +57,27 @@ func (d *mockEvaluatorDelegate) get(docID string, asAdmin bool) (doc map[string]
 	return d.docs[docID], nil
 }
 
-func (d *mockEvaluatorDelegate) save(doc map[string]any, docID string, asAdmin bool) (revID string, err error) {
+func (d *mockEvaluatorDelegate) save(doc map[string]any, docID string, asAdmin bool) (saved bool, err error) {
 	existingDoc := d.docs[docID]
 	curRevID, curExists := existingDoc["_rev"].(string)
-	revID, exists := doc["_rev"].(string)
-	if exists != curExists || revID != curRevID {
-		return "", nil
+	if revID, exists := doc["_rev"].(string); exists {
+		if revID != curRevID || !curExists {
+			return false, nil
+		}
 	}
 
-	gen, err := strconv.ParseUint(revID, 10, 64)
-	if err != nil {
-		return "", err
+	var gen uint64
+	if curExists {
+		gen, _ = strconv.ParseUint(curRevID, 10, 64)
 	}
-	revID = strconv.FormatUint(gen+1, 10)
+	doc["_id"] = docID
+	doc["_rev"] = strconv.FormatUint(gen+1, 10)
 
 	if d.docs == nil {
 		d.docs = map[string]mockDoc{}
 	}
 	d.docs[docID] = doc
-	doc["_id"] = docID
-	doc["_rev"] = revID
-	return revID, nil
+	return true, nil
 }
 
 func (d *mockEvaluatorDelegate) delete(docID string, revID string, asAdmin bool) (bool, error) {
@@ -95,6 +95,8 @@ func (d *mockEvaluatorDelegate) delete(docID string, revID string, asAdmin bool)
 	return true, nil
 }
 
-func (d *mockEvaluatorDelegate) log(level JSLogLevel, message string) {
-	log.Printf("JAVASCRIPT %s: %s", JSLogLevelNames[level], message)
+var logLevelNames = []string{"none", "error", "warning", "info", "debug", "trace"}
+
+func (d *mockEvaluatorDelegate) log(level base.LogLevel, message string) {
+	log.Printf("JAVASCRIPT %s: %s", logLevelNames[level], message)
 }

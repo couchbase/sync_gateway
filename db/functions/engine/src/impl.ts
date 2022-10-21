@@ -35,7 +35,7 @@ class DatabaseImpl implements Database {
                 private upstream: Upstream)
     {
         let adminUser = new UserImpl(this, null);
-        this.adminContext = new ContextImpl(adminUser, adminUser);
+        this.adminContext = new ContextImpl(adminUser, adminUser, true);
         adminUser.context = this.adminContext;
 
         this.functions = {}
@@ -82,10 +82,10 @@ class DatabaseImpl implements Database {
     }
 
 
-    makeContext(credentials: Credentials | null) {
-        if (credentials) {
+    makeContext(credentials: Credentials | null, mutationAllowed: boolean) {
+        if (credentials || !mutationAllowed) {
             let user = new UserImpl(this, credentials);
-            let ctx = new ContextImpl(user, this.adminContext.user);
+            let ctx = new ContextImpl(user, this.adminContext.user, mutationAllowed);
             user.context = ctx;
             return ctx;
         } else {
@@ -101,31 +101,34 @@ class DatabaseImpl implements Database {
     }
 
 
-    callFunction(name: string,
-                 args: Args | undefined,
-                 credentials: Credentials | null)
+    callFunction(context: Context,
+                 name: string,
+                 args: Args | undefined)
     {
-        let ctx = this.makeContext(credentials);
-        return this.getFunction(name)(ctx, args);
+        return this.getFunction(name)(context, args);
     }
 
 
-    query(fnName: string,
-                n1ql: string,
-                args: Args | undefined,
-                context: Context) : JSONObject[] {
+    query(context: Context,
+          fnName: string,
+          n1ql: string,
+          args: Args | undefined) : JSONObject[] {
         return this.upstream.query(fnName, n1ql, args, context.user);
     }
 
 
-    async graphql(query: string, args: Args | undefined, context: Context) : Promise<gq.ExecutionResult> {
+    async graphql(context: Context,
+                  query: string,
+                  variableValues?: Args,
+                  operationName?: string) : Promise<gq.ExecutionResult> {
         console.debug(`GRAPHQL ${query}`);
         if (!this.schema) throw new HTTPError(404, "No GraphQL schema");
         return gq.graphql({
+            contextValue: context,
             schema: this.schema,
             source: query,
-            variableValues: args,
-            contextValue: context,
+            variableValues: variableValues,
+            operationName: operationName,
         });
     }
 
@@ -155,7 +158,13 @@ class DatabaseImpl implements Database {
 
 class ContextImpl implements Context {
     constructor(readonly user: User,
-        readonly admin: User) { }
+                readonly admin: User,
+                mutationAllowed: boolean) {
+        if (!mutationAllowed) {
+            console.debug("++++ Context starts read-only");
+            this.readOnlyLevel++;
+        }
+    }
 
     checkUser(name: string | string[]) : boolean {
         return this.user.isAdmin || match(name, this.user.name!);
@@ -208,6 +217,30 @@ class ContextImpl implements Context {
     requireAllowed(allow: AllowConfig | undefined) {
         if (!this.checkAllowed(allow)) throw new HTTPError(403, "Permission denied");
     }
+
+    checkMutating() : boolean {
+        return this.readOnlyLevel == 0;
+    }
+
+    requireMutating() : void {
+        if (!this.checkMutating()) throw new HTTPError(403, "Permission denied (mutating)");
+    }
+
+    readOnlyLevel = 0;
+}
+
+export function BeginReadOnly(context: Context) {
+    if (!context.user.isAdmin) {
+        console.debug("++++ BeginReadOnly");
+        (context as ContextImpl).readOnlyLevel++;
+    }
+}
+
+export function EndReadOnly(context: Context) {
+    if (!context.user.isAdmin) {
+        console.debug("---- EndReadOnly");
+        (context as ContextImpl).readOnlyLevel--;
+    }
 }
 
 
@@ -216,7 +249,7 @@ class ContextImpl implements Context {
 
 class CRUDImpl implements CRUD {
 
-    constructor(db: DatabaseImpl, collectionName: string, user: User) {
+    constructor(db: DatabaseImpl, collectionName: string, user: UserImpl) {
         this.db = db;
         // this.collection = collectionName;
         this.user = user;
@@ -229,11 +262,15 @@ class CRUDImpl implements CRUD {
 
 
     save(doc: Document, docID?: string) : string | null {
+        if (!this.user.canMutate)
+            throw new HTTPError(403, "save() is not allowed in a read-only context");
         return this.db.save(doc, docID, this.user);
     }
 
 
     delete(docOrID: string | Document) : boolean {
+        if (!this.user.canMutate)
+            throw new HTTPError(403, "delete() is not allowed in a read-only context");
         if (typeof docOrID === 'string') {
             return this.db.delete(docOrID, undefined, this.user);
         } else {
@@ -245,7 +282,7 @@ class CRUDImpl implements CRUD {
 
     private db: DatabaseImpl;
     // private collection: string;  // TODO: support collections
-    private user: User;                        // The User I access it as
+    private user: UserImpl;         // The User I access it as
 }
 
 
@@ -258,8 +295,9 @@ export const MaxCallDepth = 20;
 
 class UserImpl implements User {
 
-    constructor(db: DatabaseImpl, credentials: Credentials | null) {
-        this.db = db;
+    constructor(private db: DatabaseImpl,
+                credentials: Credentials | null)
+    {
         if (credentials) {
             [this.name, this.roles, this.channels] = credentials;
         }
@@ -275,6 +313,10 @@ class UserImpl implements User {
 
     get isAdmin() {return this.name === undefined;}
 
+    get canMutate() : boolean {
+        return this.isAdmin || this.context.checkMutating();
+    }
+
 
     // API:
 
@@ -283,7 +325,10 @@ class UserImpl implements User {
 
     function(name: string, args?: Args) : unknown {
         let fn = this.db.getFunction(name);
-        if (++CallDepth > MaxCallDepth) throw new HTTPError(500, "User function recursion too deep");
+        if (++CallDepth > MaxCallDepth) {
+            console.error("User function recursion too deep");
+            throw new HTTPError(508, "User function recursion too deep");
+        }
         try {
             return fn(this.context, args);
         } finally {
@@ -293,10 +338,18 @@ class UserImpl implements User {
 
 
     async graphql(query: string, args?: Args) : Promise<JSONObject | null> {
-        if (++CallDepth > MaxCallDepth) throw new HTTPError(500, "User function recursion too deep");
+        if (++CallDepth > MaxCallDepth) {
+            console.error("User function recursion too deep");
+            throw new HTTPError(508, "User function recursion too deep");
+        }
         try {
-            let result = await this.db.graphql(query, args, this.context);
-            if (result.errors) throw "GraphQL error"; //TODO: Expose the errors
+            let result = await this.db.graphql(this.context, query, args);
+            if (result.errors) {
+                let err = result.errors[0];
+                if (err.originalError)
+                    throw err.originalError;
+                throw Error(err.message);
+            }
             if (result.data === undefined) return null;
             return result.data;
         } finally {
@@ -317,8 +370,7 @@ class UserImpl implements User {
         }
     }
 
-    private db: DatabaseImpl;
-    context!: Context;
+    context!: ContextImpl;
 };
 
 

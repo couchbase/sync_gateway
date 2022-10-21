@@ -1,16 +1,6 @@
 import { Args, User, Config, Database, Context, Credentials, Document, JSONObject } from './types'
 import { MakeDatabase, Upstream } from "./impl";
 
-declare let sg_console: {
-    debug: any;
-    log: any;
-    error: any;
-}
-
-console.debug = sg_console.debug;
-console.log = sg_console.log;
-console.error = sg_console.error;
-
 
 /** The interface the native code needs to implement. */
 export interface NativeAPI {
@@ -26,6 +16,7 @@ export interface NativeAPI {
     delete(docID: string,
            revID: string | undefined,
            asAdmin: boolean) : boolean;
+    log(sgLogLevel: number, ...args: any) : void;
 }
 
 
@@ -65,9 +56,14 @@ class UpstreamNativeImpl implements Upstream {
 }
 
 
-/** The API this module implements. */
+/** The API this module implements, and the native code calls. */
 export class API {
     constructor(configJSON: string, native: NativeAPI) {
+        console.debug = (...args: any) => native.log(4, ...args);
+        console.log   = (...args: any) => native.log(3, ...args);
+        console.warn  = (...args: any) => native.log(2, ...args);
+        console.error = (...args: any) => native.log(1, ...args);
+
         let config = JSON.parse(configJSON) as Config;
         this.db = MakeDatabase(config.functions, config.graphql, new UpstreamNativeImpl(native));
     }
@@ -76,11 +72,14 @@ export class API {
     callFunction(name: string,
                  argsJSON: string | undefined,
                  user: string | undefined,
-                 roles?: string,
-                 channels?: string) : string | Promise<string>
+                 roles: string | undefined,
+                 channels: string | undefined,
+                 mutationAllowed: boolean) : string | Promise<string>
     {
+        console.debug(`>>>> callFunction(${name}) user=${user} mutationAllowed=${mutationAllowed}`);
         let args = argsJSON ? JSON.parse(argsJSON) : undefined;
-        let result = this.db.callFunction(name, args, this.makeCredentials(user, roles, channels));
+        let context = this.makeContext(user, roles, channels, mutationAllowed);
+        let result = this.db.callFunction(context, name, args);
         if (result instanceof Promise) {
             return result.then( result => JSON.stringify(result) );
         } else {
@@ -90,26 +89,33 @@ export class API {
 
     /** Runs a GraphQL query. */
     graphql(query: string,
+            operationName: string | undefined,
             variablesJSON: string | undefined,
             user: string | undefined,
-            roles?: string,
-            channels?: string) : Promise<string>
+            roles: string | undefined,
+            channels: string | undefined,
+            mutationAllowed: boolean) : Promise<string>
     {
+        if (operationName === "") operationName = undefined;
+        console.debug(`>>>> graphql("${query}") user=${user} mutationAllowed=${mutationAllowed}`);
         let vars = variablesJSON ? JSON.parse(variablesJSON) : undefined;
-        return this.db.graphql(query, vars, this.makeContext(user, roles, channels))
+        let context = this.makeContext(user, roles, channels, mutationAllowed);
+        return this.db.graphql(context, query, vars, operationName)
             .then( result => JSON.stringify(result) );
     }
 
-    private makeCredentials(user?: string, roles?: string, channels?: string) : Credentials | null {
-        if (user === undefined) return null;
-        return [user,
-                roles?.split(',') ?? [],
-                channels?.split(',') ?? []];
-    }
-
-    private makeContext(user?: string, roles?: string, channels?: string) : Context {
-        let cred = this.makeCredentials(user, roles, channels)
-        return this.db.makeContext(cred);
+    private makeContext(user: string | undefined,
+                        roles: string | undefined,
+                        channels: string | undefined,
+                        mutationAllowed: boolean) : Context
+    {
+        var credentials: Credentials | null = null;
+        if (user !== undefined) {
+            credentials = [user,
+                           roles?.split(',') ?? [],
+                           channels?.split(',') ?? []];
+        }
+        return this.db.makeContext(credentials, mutationAllowed)
     }
 
     private db: Database;

@@ -29,12 +29,14 @@ export class API {
 				argsJSON: string | undefined,
 				user?: string,
 				roles?: string,
-				channels?: string) : Promise<string>;
+				channels?: string,
+				mutationAllowed: boolean) : strong | Promise<string>;
 	graphql(query: string,
 			variablesJSON: string | undefined,
 			user?: string,
 			roles?: string,
-			channels?: string) : Promise<string>;
+			channels?: string,
+            mutationAllowed: boolean) : Promise<string>;
 }
 
 export type Config = {
@@ -54,16 +56,6 @@ type jsConfig struct {
 	Graphql   *GraphQLConfig   `json:"graphql,omitempty"`
 }
 
-type JSLogLevel uint8
-
-const (
-	JSLogDebug JSLogLevel = iota
-	JSLogInfo
-	JSLogError
-)
-
-var JSLogLevelNames = []string{"debug", "info", "error"}
-
 // Represents a V8 JavaScript VM.
 type Environment struct {
 	jsonConfig       *v8.Value          // JSON-encoded functions/graphql config
@@ -76,8 +68,7 @@ type Environment struct {
 
 func NewEnvironment(functions *FunctionsConfig, graphql *GraphQLConfig) (*Environment, error) {
 	// Encode the config as JSON:
-	config := jsConfig{functions, graphql}
-	jsonConfig, err := json.Marshal(config)
+	jsonConfig, err := json.Marshal(jsConfig{functions, graphql})
 	if err != nil {
 		return nil, err
 	}
@@ -90,13 +81,6 @@ func NewEnvironment(functions *FunctionsConfig, graphql *GraphQLConfig) (*Enviro
 		jsonConfig: goToV8String(vm, string(jsonConfig)),
 	}
 
-	// Create some global functions:
-	console := v8.NewObjectTemplate(vm)
-	env.global.Set("sg_console", console, v8.ReadOnly) //FIXME: Name needs to be "console"
-	env.defineMethod(console, "debug", env.defineLogger(JSLogDebug))
-	env.defineMethod(console, "log", env.defineLogger(JSLogInfo))
-	env.defineMethod(console, "error", env.defineLogger(JSLogError))
-
 	// Compile the engine's JS code:
 	env.script, err = vm.CompileUnboundScript(kJavaScriptCode+"\n SG_Engine.main;", "main.js", v8.CompileOptions{})
 	if err != nil {
@@ -105,11 +89,11 @@ func NewEnvironment(functions *FunctionsConfig, graphql *GraphQLConfig) (*Enviro
 
 	// Create the JS "NativeAPI" object template, with Go callback methods:
 	env.jsNativeTemplate = v8.NewObjectTemplate(vm)
-	env.jsNativeTemplate.SetInternalFieldCount(1)
 	env.defineMethod(env.jsNativeTemplate, "query", doQuery)
 	env.defineMethod(env.jsNativeTemplate, "get", doGet)
 	env.defineMethod(env.jsNativeTemplate, "save", doSave)
 	env.defineMethod(env.jsNativeTemplate, "delete", doDelete)
+	env.defineMethod(env.jsNativeTemplate, "log", doLog)
 
 	return env, nil
 }
@@ -141,15 +125,9 @@ func (env *Environment) defineMethod(owner *v8.ObjectTemplate, name string, call
 	})
 }
 
-func (env *Environment) defineLogger(level JSLogLevel) v8Method {
-	return func(eval *Evaluator, info *v8.FunctionCallbackInfo) (*v8.Value, error) {
-		message := []string{}
-		for _, arg := range info.Args() {
-			message = append(message, arg.DetailString())
-		}
-		eval.delegate.log(level, strings.Join(message, " "))
-		return nil, nil
-	}
+func (env *Environment) defineFunction(owner *v8.ObjectTemplate, name string, callback v8.FunctionCallback) {
+	fn := v8.NewFunctionTemplate(env.vm, callback)
+	owner.Set(name, fn, v8.ReadOnly)
 }
 
 //
@@ -160,9 +138,9 @@ func (env *Environment) defineLogger(level JSLogLevel) v8Method {
 type EvaluatorDelegate interface {
 	query(fnName string, n1ql string, args map[string]any, asAdmin bool) (rows []any, err error)
 	get(docID string, asAdmin bool) (doc map[string]any, err error)
-	save(doc map[string]any, docID string, asAdmin bool) (revID string, err error)
+	save(doc map[string]any, docID string, asAdmin bool) (saved bool, err error)
 	delete(docID string, revID string, asAdmin bool) (ok bool, err error)
-	log(level JSLogLevel, message string)
+	log(level base.LogLevel, message string)
 }
 
 type UserCredentials struct {
@@ -171,20 +149,17 @@ type UserCredentials struct {
 	Channels []string
 }
 
-func (cred *UserCredentials) joinChannels() string {
-	return strings.Join(cred.Channels, ",")
-}
-
-// An execution context in a VM (Functionizer).
+// An execution context in a VM (Environment).
 type Evaluator struct {
-	env        *Environment
-	ctx        *v8.Context
-	iso        *v8.Isolate
-	api        *v8.Object
-	functionFn *v8.Function
-	graphqlFn  *v8.Function
-	delegate   EvaluatorDelegate // Provides CRUD API
-	user       *UserCredentials
+	env             *Environment
+	ctx             *v8.Context
+	iso             *v8.Isolate
+	api             *v8.Object
+	functionFn      *v8.Function
+	graphqlFn       *v8.Function
+	delegate        EvaluatorDelegate // Provides CRUD API
+	user            *UserCredentials
+	mutationAllowed bool
 }
 
 func (env *Environment) NewEvaluator(delegate EvaluatorDelegate, user *UserCredentials) (*Evaluator, error) {
@@ -237,34 +212,52 @@ func (eval *Evaluator) Close() {
 	eval.env = nil
 }
 
-// Performs a GraphQL query. Returns a JSON string.
-func (eval *Evaluator) CallGraphQL(query string, operationName string, variables map[string]any) ([]byte, error) {
-	user, roles, channels := eval.v8Credentials()
-	result, err := eval.graphqlFn.Call(eval.api,
-		goToV8String(eval.iso, query),
-		goToV8String(eval.iso, operationName),
-		mustSucceed(goToV8JSON(eval.ctx, variables)),
-		user, roles, channels)
-	if err != nil {
-		return nil, unpackJSError(err)
-	}
-	return []byte(result.String()), nil
+func (eval *Evaluator) SetMutationAllowed(allowed bool) {
+	eval.mutationAllowed = allowed
 }
 
 // Calls a named function. Returns a JSON string.
-func (eval *Evaluator) CallFunction(name string, args map[string]any) (string, error) {
+func (eval *Evaluator) CallFunction(name string, args map[string]any) ([]byte, error) {
 	user, roles, channels := eval.v8Credentials()
-	result, err := eval.functionFn.Call(eval.api,
+	// Calling JS method API.callFunction (api.ts)
+	v8Result, err := eval.functionFn.Call(eval.api,
 		goToV8String(eval.iso, name),
 		mustSucceed(goToV8JSON(eval.ctx, args)),
-		user, roles, channels)
+		user, roles, channels,
+		mustSucceed(v8.NewValue(eval.iso, eval.mutationAllowed)))
+
+	var result string
 	if err == nil {
-		result, err = resolvePromise(result)
+		if v8Result, err = resolvePromise(v8Result); err == nil {
+			result, err = v8ToGoString(v8Result)
+			if err == nil {
+				return []byte(result), nil
+			}
+		}
 	}
-	if err != nil {
-		return "", unpackJSError(err)
+	return nil, unpackJSError(err)
+}
+
+// Performs a GraphQL query. Returns a JSON string.
+func (eval *Evaluator) CallGraphQL(query string, operationName string, variables map[string]any) ([]byte, error) {
+	user, roles, channels := eval.v8Credentials()
+	// Calling JS method API.callGraphQL (api.ts)
+	v8Result, err := eval.graphqlFn.Call(eval.api,
+		goToV8String(eval.iso, query),
+		goToV8String(eval.iso, operationName),
+		mustSucceed(goToV8JSON(eval.ctx, variables)),
+		user, roles, channels,
+		mustSucceed(v8.NewValue(eval.iso, eval.mutationAllowed)))
+	var result string
+	if err == nil {
+		if v8Result, err = resolvePromise(v8Result); err == nil {
+			result, err = v8ToGoString(v8Result)
+			if err == nil {
+				return []byte(result), nil
+			}
+		}
 	}
-	return result.String(), nil
+	return nil, unpackJSError(err)
 }
 
 func (eval *Evaluator) v8Credentials() (user *v8.Value, roles *v8.Value, channels *v8.Value) {
@@ -288,7 +281,7 @@ func (eval *Evaluator) v8Credentials() (user *v8.Value, roles *v8.Value, channel
 	return
 }
 
-//////// NATIVE METHOD IMPLEMENTATIONS:
+//////// NATIVE CALLBACK IMPLEMENTATIONS:
 
 // 	query(fnName: string, n1ql: string, argsJSON: string | undefined, asAdmin: boolean) : string;
 func doQuery(eval *Evaluator, info *v8.FunctionCallbackInfo) (*v8.Value, error) {
@@ -332,11 +325,10 @@ func doSave(eval *Evaluator, info *v8.FunctionCallbackInfo) (*v8.Value, error) {
 	}
 	asAdmin := info.Args()[2].Boolean()
 
-	docID, err = eval.delegate.save(doc, docID, asAdmin)
-	if len(docID) == 0 {
-		return v8.Null(info.Context().Isolate()), err
-	} else {
+	if saved, err := eval.delegate.save(doc, docID, asAdmin); saved {
 		return returnValueToV8(info, docID, err)
+	} else {
+		return v8.Null(info.Context().Isolate()), err
 	}
 }
 
@@ -353,9 +345,18 @@ func doDelete(eval *Evaluator, info *v8.FunctionCallbackInfo) (*v8.Value, error)
 	return returnValueToV8(info, ok, err)
 }
 
-func (env *Environment) defineFunction(owner *v8.ObjectTemplate, name string, callback v8.FunctionCallback) {
-	fn := v8.NewFunctionTemplate(env.vm, callback)
-	owner.Set(name, fn, v8.ReadOnly)
+func doLog(eval *Evaluator, info *v8.FunctionCallbackInfo) (*v8.Value, error) {
+	var level base.LogLevel
+	var message []string
+	for i, arg := range info.Args() {
+		if i == 0 {
+			level = base.LogLevel(arg.Integer())
+		} else {
+			message = append(message, arg.DetailString())
+		}
+	}
+	eval.delegate.log(level, strings.Join(message, " "))
+	return nil, nil
 }
 
 //////// UTILITIES
@@ -364,13 +365,22 @@ func goToV8String(i *v8.Isolate, str string) *v8.Value {
 	return mustSucceed(v8.NewValue(i, str))
 }
 
-// Converts a V8 object represented as a Value into a Go map.
+func v8ToGoString(val *v8.Value) (string, error) {
+	if val.IsString() {
+		return val.String(), nil
+	} else {
+		return "", fmt.Errorf("JavaScript returned non-string")
+	}
+}
+
+// Converts a V8 string of JSON into a Go map.
 func v8JSONToGo(val *v8.Value) (map[string]any, error) {
 	var err error
-	jsonStr := val.String()
-	var result map[string]any
-	if err = json.Unmarshal([]byte(jsonStr), &result); err == nil {
-		return result, nil
+	if jsonStr, err := v8ToGoString(val); err == nil {
+		var result map[string]any
+		if err = json.Unmarshal([]byte(jsonStr), &result); err == nil {
+			return result, nil
+		}
 	}
 	return nil, err
 }
@@ -425,6 +435,7 @@ func resolvePromise(val *v8.Value) (*v8.Value, error) {
 	}
 }
 
+// This detects the way HTTP statuses are encoded into error messages by the class HTTPError in types.ts.
 var kHTTPErrRegexp = regexp.MustCompile(`^\[(\d\d\d)\]\s+(.*)`)
 
 func unpackJSError(err error) error {
@@ -443,10 +454,4 @@ func mustSucceed[T any](result T, err error) T {
 		log.Fatalf("ASSERTION FAILURE: expected a %T, got %v", result, err)
 	}
 	return result
-}
-
-func assertNoErr(err error, what string, args ...any) {
-	if err != nil {
-		log.Fatalf("ASSERTION FAILURE: %s (error: %v)", fmt.Sprintf(what, args...), err) //TEMP
-	}
 }

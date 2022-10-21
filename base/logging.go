@@ -132,7 +132,7 @@ func PanicfCtx(ctx context.Context, format string, args ...interface{}) {
 	if errorLogger == nil {
 		log.Panicf(format, args...)
 	}
-	logTo(ctx, LevelError, KeyAll, format, args...)
+	LogfTo(ctx, LevelError, KeyAll, format, args...)
 	FlushLogBuffers()
 	panic(fmt.Sprintf(format, args...))
 }
@@ -143,34 +143,34 @@ func FatalfCtx(ctx context.Context, format string, args ...interface{}) {
 	if errorLogger == nil {
 		log.Fatalf(format, args...)
 	}
-	logTo(ctx, LevelError, KeyAll, format, args...)
+	LogfTo(ctx, LevelError, KeyAll, format, args...)
 	FlushLogBuffers()
 	os.Exit(1)
 }
 
 // ErrorfCtx logs the given formatted string and args to the error log level and given log key.
 func ErrorfCtx(ctx context.Context, format string, args ...interface{}) {
-	logTo(ctx, LevelError, KeyAll, format, args...)
+	LogfTo(ctx, LevelError, KeyAll, format, args...)
 }
 
 // WarnfCtx logs the given formatted string and args to the warn log level and given log key.
 func WarnfCtx(ctx context.Context, format string, args ...interface{}) {
-	logTo(ctx, LevelWarn, KeyAll, format, args...)
+	LogfTo(ctx, LevelWarn, KeyAll, format, args...)
 }
 
 // InfofCtx logs the given formatted string and args to the info log level and given log key.
 func InfofCtx(ctx context.Context, logKey LogKey, format string, args ...interface{}) {
-	logTo(ctx, LevelInfo, logKey, format, args...)
+	LogfTo(ctx, LevelInfo, logKey, format, args...)
 }
 
 // DebugfCtx logs the given formatted string and args to the debug log level with an optional log key.
 func DebugfCtx(ctx context.Context, logKey LogKey, format string, args ...interface{}) {
-	logTo(ctx, LevelDebug, logKey, format, args...)
+	LogfTo(ctx, LevelDebug, logKey, format, args...)
 }
 
 // TracefCtx logs the given formatted string and args to the trace log level with an optional log key.
 func TracefCtx(ctx context.Context, logKey LogKey, format string, args ...interface{}) {
-	logTo(ctx, LevelTrace, logKey, format, args...)
+	LogfTo(ctx, LevelTrace, logKey, format, args...)
 }
 
 // RecordStats writes the given stats JSON content to a stats log file, if enabled.
@@ -181,9 +181,9 @@ func RecordStats(statsJson string) {
 	}
 }
 
-// logTo is the "core" logging function. All other logging functions (like Debugf(), WarnfCtx(), etc.) end up here.
+// LogfTo is the "core" logging function. All other logging functions (like Debugf(), WarnfCtx(), etc.) end up here.
 // The function will fan out the log to all of the various outputs for them to decide if they should log it or not.
-func logTo(ctx context.Context, logLevel LogLevel, logKey LogKey, format string, args ...interface{}) {
+func LogfTo(ctx context.Context, logLevel LogLevel, logKey LogKey, format string, args ...interface{}) {
 	// Defensive bounds-check for log level. All callers of this function should be within this range.
 	if logLevel < LevelNone || logLevel >= levelCount {
 		return
@@ -243,7 +243,7 @@ var consoleFOutput io.Writer = os.Stderr
 // Consolef logs the given formatted string and args to the given log level and log key,
 // as well as making sure the message is *always* logged to stdout.
 func Consolef(logLevel LogLevel, logKey LogKey, format string, args ...interface{}) {
-	logTo(context.Background(), logLevel, logKey, format, args...)
+	LogfTo(context.Background(), logLevel, logKey, format, args...)
 
 	// If the above logTo didn't already log to stderr, do it directly here
 	if !consoleLogger.isStderr || !consoleLogger.shouldLog(logLevel, logKey) {
