@@ -113,6 +113,7 @@ type TestBucketPool struct {
 	unclosedBucketsLock sync.Mutex
 
 	useNamedCollections bool
+	useExistingBucket   bool
 }
 
 // shouldUseNamedCollections returns true if cluster will be created with named collections
@@ -142,10 +143,12 @@ func shouldUseNamedCollections(cluster tbpCluster) (bool, error) {
 // NewTestBucketPool initializes a new TestBucketPool. To be called from TestMain for packages requiring test buckets.
 func NewTestBucketPool(bucketReadierFunc TBPBucketReadierFunc, bucketInitFunc TBPBucketInitFunc) *TestBucketPool {
 	// We can safely skip setup when we want Walrus buckets to be used. They'll be created on-demand via GetTestBucketAndSpec.
-	if !TestUseCouchbaseServer() {
+	if !TestUseCouchbaseServer() || TestUseExistingBucket() {
 		tbp := TestBucketPool{
-			bucketInitFunc:  bucketInitFunc,
-			unclosedBuckets: make(map[string]map[string]struct{}),
+			bucketInitFunc:    bucketInitFunc,
+			unclosedBuckets:   make(map[string]map[string]struct{}),
+			integrationMode:   TestUseCouchbaseServer(),
+			useExistingBucket: TestUseExistingBucket(),
 		}
 		tbp.verbose.Set(tbpVerbose())
 		return &tbp
@@ -174,6 +177,7 @@ func NewTestBucketPool(bucketReadierFunc TBPBucketReadierFunc, bucketInitFunc TB
 		preserveBuckets:        preserveBuckets,
 		bucketInitFunc:         bucketInitFunc,
 		unclosedBuckets:        make(map[string]map[string]struct{}),
+		useExistingBucket:      TestUseExistingBucket(),
 	}
 
 	tbp.cluster = newTestCluster(UnitTestUrl(), tbp.Logf)
@@ -318,6 +322,44 @@ func (tbp *TestBucketPool) GetWalrusTestBucket(t testing.TB, url string) (b Buck
 	}
 }
 
+// GetExistingBucket opens a bucket conection to an existing bucket
+func (tbp *TestBucketPool) GetExistingBucket(t testing.TB) (b Bucket, s BucketSpec, teardown func()) {
+	testCtx := TestCtx(t)
+
+	bucketCluster := initV2Cluster(UnitTestUrl())
+
+	var useNamedCollections bool
+	useDefaultCollectionString, isSet := os.LookupEnv(tbpUseDefaultCollection)
+	if isSet {
+		useDefaultCollection, _ := strconv.ParseBool(useDefaultCollectionString)
+		useNamedCollections = !useDefaultCollection
+	} else {
+		if !TestsDisableGSI() {
+			useNamedCollections = true
+		}
+	}
+
+	bucketName := tbpBucketName(TestUseExistingBucketName())
+	bucketSpec := getBucketSpec(bucketName, useNamedCollections)
+
+	bucket := bucketCluster.Bucket(bucketSpec.BucketName)
+	err := bucket.WaitUntilReady(10*time.Second, nil)
+	if err != nil {
+		return nil, bucketSpec, nil
+	}
+	DebugfCtx(context.TODO(), KeySGTest, "opened bucket %s", bucketName)
+
+	bucketFromSpec, err := GetCollectionFromCluster(bucketCluster, bucketSpec, 10)
+	if err != nil {
+		tbp.Fatalf(testCtx, "couldn't get existing collection from cluster: %v", err)
+	}
+
+	return bucketFromSpec, bucketSpec, func() {
+		tbp.Logf(testCtx, "Teardown called - Closing connection to existing bucket")
+		bucketFromSpec.Close()
+	}
+}
+
 // GetTestBucketAndSpec returns a bucket to be used during a test.
 // The returned teardownFn MUST be called once the test is done,
 // which closes the bucket, readies it for a new test, and releases back into the pool.
@@ -329,6 +371,11 @@ func (tbp *TestBucketPool) getTestBucketAndSpec(t testing.TB, collectionType tbp
 	if !tbp.integrationMode {
 		tbp.Logf(ctx, "Getting walrus test bucket - tbp.integrationMode is not set")
 		return tbp.GetWalrusTestBucket(t, kTestWalrusURL)
+	}
+
+	if tbp.useExistingBucket {
+		tbp.Logf(ctx, "Using predefined bucket")
+		return tbp.GetExistingBucket(t)
 	}
 
 	if atomic.LoadUint32(&tbp.preservedBucketCount) >= uint32(cap(tbp.readyBucketPool)) {

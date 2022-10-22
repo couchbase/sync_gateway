@@ -397,7 +397,7 @@ func (dbc *DatabaseContext) GetPrincipalForTest(tb testing.TB, name string, isUs
 	return
 }
 
-// TestBucketPoolWithIndexes runs a TestMain for packages that do not require creation of indexes
+// TestBucketPoolWithIndexes runs a TestMain for packages that require creation of indexes
 func TestBucketPoolWithIndexes(m *testing.M, memWatermarkThresholdMB uint64) {
 	base.TestBucketPoolMain(m, viewsAndGSIBucketReadier, viewsAndGSIBucketInit, memWatermarkThresholdMB)
 }
