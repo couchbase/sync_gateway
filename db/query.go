@@ -558,7 +558,7 @@ func (context *DatabaseContext) QueryPrincipals(ctx context.Context, startKey st
 // query is covering.
 func (context *DatabaseContext) BuildPrincipalsQuery(startKey string, limit int) (string, map[string]interface{}) {
 	var queryStatement string
-	if context.Options.Serverless {
+	if context.IsServerless() {
 		queryStatement = replaceIndexTokensQuery(QueryPrincipalsUsingRoleIdx.statement, sgIndexes[IndexRole], context.UseXattrs())
 	} else {
 		queryStatement = replaceIndexTokensQuery(QueryPrincipals.statement, sgIndexes[IndexSyncDocs], context.UseXattrs())
@@ -591,7 +591,7 @@ func (context *DatabaseContext) QueryUsers(ctx context.Context, startKey string,
 // query is covering.
 func (context *DatabaseContext) BuildUsersQuery(startKey string, limit int) (string, map[string]interface{}) {
 	var queryStatement string
-	if context.Options.Serverless {
+	if context.IsServerless() {
 		queryStatement = replaceIndexTokensQuery(QueryUsers.statement, sgIndexes[IndexUser], context.UseXattrs())
 	} else {
 		queryStatement = replaceIndexTokensQuery(QueryUsers.statement, sgIndexes[IndexSyncDocs], context.UseXattrs())
@@ -635,7 +635,7 @@ func (context *DatabaseContext) QueryRoles(ctx context.Context, startKey string,
 func (context *DatabaseContext) BuildRolesQuery(startKey string, limit int) (string, map[string]interface{}) {
 
 	var queryStatement string
-	if context.Options.Serverless {
+	if context.IsServerless() {
 		queryStatement = replaceIndexTokensQuery(QueryRolesExcludeDeletedUsingRoleIdx.statement, sgIndexes[IndexRole], context.UseXattrs())
 	} else {
 		queryStatement = replaceIndexTokensQuery(QueryRolesExcludeDeleted.statement, sgIndexes[IndexSyncDocs], context.UseXattrs())
@@ -670,7 +670,7 @@ func (context *DatabaseContext) QuerySessions(ctx context.Context, userName stri
 // query is covering.
 func (context *DatabaseContext) BuildSessionsQuery(userName string) (string, map[string]interface{}) {
 	var queryStatement string
-	if context.Options.Serverless {
+	if context.IsServerless() {
 		queryStatement = replaceIndexTokensQuery(QuerySessionsUsingSessionIdx.statement, sgIndexes[IndexSession], context.UseXattrs())
 	} else {
 		queryStatement = replaceIndexTokensQuery(QuerySessions.statement, sgIndexes[IndexSyncDocs], context.UseXattrs())

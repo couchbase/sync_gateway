@@ -401,6 +401,30 @@ func TestGetRemovedAsUser(t *testing.T) {
 	assertHTTPError(t, err, 404)
 }
 
+func TestIsServerless(t *testing.T) {
+	testCases := []struct {
+		title      string
+		serverless bool
+	}{
+		{
+			serverless: true,
+		},
+		{
+			serverless: false,
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(fmt.Sprintf("TestIsServerless with Serverless=%t", testCase.serverless), func(t *testing.T) {
+			db, ctx := setupTestDB(t)
+			defer db.Close(ctx)
+
+			db.Options.Serverless = testCase.serverless
+			assert.Equal(t, testCase.serverless, db.IsServerless())
+		})
+	}
+}
+
 // Test removal handling for unavailable multi-channel revisions.
 func TestGetRemovalMultiChannel(t *testing.T) {
 	db, ctx := setupTestDB(t)
