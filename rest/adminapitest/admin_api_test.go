@@ -2194,8 +2194,13 @@ func TestHandleCreateDBJsonName(t *testing.T) {
 				rest.RequireStatus(t, resp, http.StatusBadRequest)
 			} else {
 				rest.RequireStatus(t, resp, http.StatusCreated)
-				resp := rt.SendAdminRequest(http.MethodGet, "/db1/", "")
-				assert.Contains(t, resp.Body.String(), "\"db_name\":\"db1\"")
+				resp = rt.SendAdminRequest(http.MethodGet, "/db1/", "")
+				rest.RequireStatus(t, resp, http.StatusOK)
+
+				var dbStatus map[string]any
+				err := json.Unmarshal(resp.BodyBytes(), &dbStatus)
+				require.NoError(t, err)
+				assert.EqualValues(t, dbStatus["db_name"], "db1")
 			}
 		})
 	}
