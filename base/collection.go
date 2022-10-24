@@ -29,6 +29,7 @@ import (
 
 var ErrCollectionsUnsupported = errors.New("collections not supported")
 
+// DefaultCollectionID represents _default._default collection
 const DefaultCollectionID = 0x0
 
 var _ sgbucket.KVStore = &Collection{}

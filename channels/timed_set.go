@@ -391,11 +391,12 @@ func TimedSetFromString(encoded string) TimedSet {
 	return set
 }
 
-type CollectionByTimedSet map[uint32]TimedSet
+// TimedSetByCollectionID is a map of kv collectionIDs to TimedSets
+type TimedSetByCollectionID map[uint32]TimedSet
 
 // AtSequenceByCollection creates a map of collectionID to a map of channel IDs to sequences.
-func AtSequenceByCollection(chans Set, sequence uint64) CollectionByTimedSet {
-	collectionByTimedSet := CollectionByTimedSet{}
+func AtSequenceByCollection(chans Set, sequence uint64) TimedSetByCollectionID {
+	collectionByTimedSet := TimedSetByCollectionID{}
 	for ch := range chans {
 		val, exists := collectionByTimedSet[ch.CollectionID]
 		if !exists {
@@ -409,11 +410,11 @@ func AtSequenceByCollection(chans Set, sequence uint64) CollectionByTimedSet {
 }
 
 // GetChannels returns the set of channel IDs.
-func (c CollectionByTimedSet) GetChannels() Set {
+func (c TimedSetByCollectionID) GetChannels() Set {
 	chans := Set{}
 	for collectionID, timedSet := range c {
 		for chanName := range timedSet {
-			chans.Add(ID{Name: chanName, CollectionID: collectionID})
+			chans.Add(NewID(chanName, collectionID))
 		}
 	}
 	return chans

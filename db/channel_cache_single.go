@@ -101,7 +101,7 @@ type SingleChannelCache interface {
 }
 
 type singleChannelCacheImpl struct {
-	channel          channels.ID          // The channel
+	channelID        channels.ID          // The channel
 	queryHandler     ChannelQueryHandler  // Database connection (used for view queries)
 	logs             LogEntries           // Log entries in sequence order
 	validFrom        uint64               // First sequence that logs is valid for, not necessarily the seq number of a change entry.
@@ -118,7 +118,7 @@ type singleChannelCacheImpl struct {
 }
 
 func newSingleChannelCache(queryHandler ChannelQueryHandler, channel channels.ID, validFrom uint64, cacheStats *base.CacheStats) *singleChannelCacheImpl {
-	cache := &singleChannelCacheImpl{queryHandler: queryHandler, channel: channel, validFrom: validFrom}
+	cache := &singleChannelCacheImpl{queryHandler: queryHandler, channelID: channel, validFrom: validFrom}
 	cache.initializeLateLogs()
 	cache.cachedDocIDs = make(map[string]struct{})
 	cache.cacheStats = cacheStats
@@ -155,7 +155,7 @@ func newChannelCacheWithOptions(queryHandler ChannelQueryHandler, channel channe
 	}
 
 	base.DebugfCtx(context.Background(), base.KeyCache, "Initialized cache for channel %q with min:%v max:%v age:%v, validFrom: %d",
-		base.UD(cache.channel), cache.options.ChannelCacheMinLength, cache.options.ChannelCacheMaxLength, cache.options.ChannelCacheAge, validFrom)
+		base.UD(cache.ChannelID), cache.options.ChannelCacheMinLength, cache.options.ChannelCacheMaxLength, cache.options.ChannelCacheAge, validFrom)
 
 	return cache
 }
@@ -171,7 +171,7 @@ type ChannelCacheOptions struct {
 }
 
 func (c *singleChannelCacheImpl) ChannelID() channels.ID {
-	return c.channel
+	return c.channelID
 }
 
 func (c *singleChannelCacheImpl) LateSequenceUUID() uuid.UUID {
@@ -189,7 +189,7 @@ func (c *singleChannelCacheImpl) addToCache(change *LogEntry, isRemoval bool) {
 
 	if c.wouldBeImmediatelyPruned(change) {
 		base.InfofCtx(context.TODO(), base.KeyCache, "Not adding change #%d doc %q / %q ==> channel %q, since it will be immediately pruned",
-			change.Sequence, base.UD(change.DocID), change.RevID, base.UD(c.channel))
+			change.Sequence, base.UD(change.DocID), change.RevID, base.UD(c.channelID))
 		return
 	}
 
@@ -246,7 +246,7 @@ func (c *singleChannelCacheImpl) Remove(docIDs []string, startTime time.Time) (c
 			// This is to ensure that resurrected documents do not accidentally get removed.
 			if c.logs[i].TimeReceived.After(startTime) {
 				base.DebugfCtx(logCtx, base.KeyCache, "Skipping removal of doc %q from cache %q - received after purge",
-					base.UD(docID), base.UD(c.channel))
+					base.UD(docID), base.UD(c.channelID))
 				continue
 			}
 
@@ -260,7 +260,7 @@ func (c *singleChannelCacheImpl) Remove(docIDs []string, startTime time.Time) (c
 			delete(c.cachedDocIDs, docID)
 			count++
 
-			base.TracefCtx(logCtx, base.KeyCache, "Removed doc %q from cache %q", base.UD(docID), base.UD(c.channel))
+			base.TracefCtx(logCtx, base.KeyCache, "Removed doc %q from cache %q", base.UD(docID), base.UD(c.channelID))
 		}
 	}
 
@@ -281,7 +281,7 @@ func (c *singleChannelCacheImpl) _pruneCacheLength() (pruned int) {
 	}
 
 	if pruned > 0 {
-		base.DebugfCtx(context.TODO(), base.KeyCache, "Pruned %d entries from channel %q", pruned, base.UD(c.channel))
+		base.DebugfCtx(context.TODO(), base.KeyCache, "Pruned %d entries from channel %q", pruned, base.UD(c.channelID))
 	}
 
 	return pruned
@@ -306,7 +306,7 @@ func (c *singleChannelCacheImpl) pruneCacheAge(ctx context.Context) {
 		c.logs = c.logs[1:]
 		pruned++
 	}
-	base.DebugfCtx(ctx, base.KeyCache, "Pruned %d old entries from channel %q", pruned, base.UD(c.channel))
+	base.DebugfCtx(ctx, base.KeyCache, "Pruned %d old entries from channel %q", pruned, base.UD(c.channelID))
 
 }
 
@@ -372,10 +372,10 @@ func (c *singleChannelCacheImpl) GetChanges(options ChangesOptions) ([]*LogEntry
 	numFromCache := len(resultFromCache)
 	if numFromCache > 0 {
 		base.InfofCtx(options.LoggingCtx, base.KeyCache, "GetCachedChanges(%q, %s) --> %d changes valid from #%d",
-			base.UD(c.channel), options.Since.String(), numFromCache, cacheValidFrom)
+			base.UD(c.channelID), options.Since.String(), numFromCache, cacheValidFrom)
 	} else {
 		base.DebugfCtx(options.LoggingCtx, base.KeyCache, "GetCachedChanges(%q, %s) --> nothing cached",
-			base.UD(c.channel), options.Since.String())
+			base.UD(c.channelID), options.Since.String())
 	}
 	startSeq := options.Since.SafeSequence() + 1
 	if cacheValidFrom <= startSeq {
@@ -396,7 +396,7 @@ func (c *singleChannelCacheImpl) GetChanges(options ChangesOptions) ([]*LogEntry
 	cacheValidFrom, resultFromCache = c.GetCachedChanges(options)
 	if len(resultFromCache) > numFromCache {
 		base.InfofCtx(options.LoggingCtx, base.KeyCache, "2nd GetCachedChanges(%q, %s) got %d more, valid from #%d!",
-			base.UD(c.channel), options.Since.String(), len(resultFromCache)-numFromCache, cacheValidFrom)
+			base.UD(c.channelID), options.Since.String(), len(resultFromCache)-numFromCache, cacheValidFrom)
 	}
 	if cacheValidFrom <= startSeq {
 		c.cacheStats.ChannelCacheHits.Add(1)
@@ -413,8 +413,7 @@ func (c *singleChannelCacheImpl) GetChanges(options ChangesOptions) ([]*LogEntry
 	// overlap, which helps confirm that we've got everything.
 	c.cacheStats.ChannelCacheMisses.Add(1)
 	endSeq := cacheValidFrom
-	// TOR: make sure queryhandler knows what collection it needs
-	resultFromQuery, err := c.queryHandler.getChangesInChannelFromQuery(options.LoggingCtx, c.channel.Name, startSeq, endSeq, options.Limit, options.ActiveOnly)
+	resultFromQuery, err := c.queryHandler.getChangesInChannelFromQuery(options.LoggingCtx, c.channelID.Name, startSeq, endSeq, options.Limit, options.ActiveOnly)
 	if err != nil {
 		return nil, err
 	}
@@ -446,7 +445,7 @@ func (c *singleChannelCacheImpl) GetChanges(options ChangesOptions) ([]*LogEntry
 		}
 		result = append(result, resultFromCache[0:n]...)
 	}
-	base.InfofCtx(options.LoggingCtx, base.KeyCache, "GetChangesInChannel(%q) --> %d rows", base.UD(c.channel), len(result))
+	base.InfofCtx(options.LoggingCtx, base.KeyCache, "GetChangesInChannel(%q) --> %d rows", base.UD(c.channelID), len(result))
 
 	return result, nil
 }
@@ -583,7 +582,7 @@ func (c *singleChannelCacheImpl) prependChanges(changes LogEntries, changesValid
 	if len(changes) == 0 {
 		if changesValidFrom < c.validFrom && changesValidTo >= c.validFrom {
 			base.DebugfCtx(logCtx, base.KeyCache, " changesValidFrom (%d) < c.validFrom < changesValidTo (%d), setting c.validFrom from %v -> %v for %q",
-				changesValidFrom, changesValidTo, c.validFrom, changesValidFrom, base.UD(c.channel))
+				changesValidFrom, changesValidTo, c.validFrom, changesValidFrom, base.UD(c.channelID))
 			c.validFrom = changesValidFrom
 		}
 		return 0
@@ -603,7 +602,7 @@ func (c *singleChannelCacheImpl) prependChanges(changes LogEntries, changesValid
 		c.logs = make(LogEntries, len(changes))
 		copy(c.logs, changes)
 		base.InfofCtx(logCtx, base.KeyCache, "  Initialized cache of %q with %d entries from query (#%d--#%d)",
-			base.UD(c.channel), len(changes), changes[0].Sequence, changes[len(changes)-1].Sequence)
+			base.UD(c.channelID), len(changes), changes[0].Sequence, changes[len(changes)-1].Sequence)
 
 		for _, change := range changes {
 			c.cachedDocIDs[change.DocID] = struct{}{}
@@ -658,7 +657,7 @@ func (c *singleChannelCacheImpl) prependChanges(changes LogEntries, changesValid
 	if numToPrepend > 0 {
 		c.logs = append(entriesToPrepend, c.logs...)
 		base.InfofCtx(logCtx, base.KeyCache, "  Added %d entries from query (#%d--#%d) to cache of %q",
-			numToPrepend, entriesToPrepend[0].Sequence, entriesToPrepend[numToPrepend-1].Sequence, base.UD(c.channel))
+			numToPrepend, entriesToPrepend[0].Sequence, entriesToPrepend[numToPrepend-1].Sequence, base.UD(c.channelID))
 	}
 	base.DebugfCtx(logCtx, base.KeyCache, " Backfill cache from query c.validFrom from %v -> %v",
 		c.validFrom, changesValidFrom)

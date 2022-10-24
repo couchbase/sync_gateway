@@ -241,7 +241,6 @@ func (db *Database) buildRevokedFeed(ctx context.Context, ch channels.ID, option
 				// Otherwise: we need to determine whether a previous revision of the document was in the channel prior
 				// to the since value, and only send a revocation if that was the case
 				if logEntry.Sequence > sinceVal {
-					// FIXME: should this be a channelID?
 					requiresRevocation, err := db.wasDocInChannelPriorToRevocation(ctx, logEntry.DocID, singleChannelCache.ChannelID().Name, revocationSinceSeq)
 					if err != nil {
 						change := ChangeEntry{
@@ -472,7 +471,6 @@ func makeChangeEntry(logEntry *LogEntry, seqID SequenceID, channel channels.ID) 
 	}
 
 	if logEntry.Flags&channels.Removed != 0 {
-		// FIXME: Because this corresponds to a DocID, do we implicitly know what this is? I'm loathe to change ChangeEntry because it looks like it is serialized
 		change.Removed = base.SetOf(channel.Name)
 	}
 
@@ -592,7 +590,7 @@ func (db *Database) checkForUserUpdates(ctx context.Context, userChangeCount uin
 			}
 
 			for channelName, changed := range singleCollectionChannels {
-				changedChannels[channels.ID{Name: channelName, CollectionID: singleCollectionID}] = changed
+				changedChannels[channels.NewID(channelName, singleCollectionID)] = changed
 			}
 			if len(changedChannels) > 0 {
 				base.DebugfCtx(ctx, base.KeyChanges, "Modified channel set after user reload: %v", base.UD(changedChannels))
@@ -666,7 +664,7 @@ func (db *Database) SimpleMultiChangesFeed(ctx context.Context, chans channels.S
 
 		// Restrict to available channels, expand wild-card, and find since when these channels
 		// have been available to the user:
-		channelsSince := channels.CollectionByTimedSet{}
+		channelsSince := channels.TimedSetByCollectionID{}
 		if db.user != nil {
 			chansSince, channelsRemoved := db.user.FilterToAvailableChannels(chans)
 			if len(channelsRemoved) > 0 {
@@ -702,7 +700,7 @@ func (db *Database) SimpleMultiChangesFeed(ctx context.Context, chans channels.S
 			if changeWaiter != nil {
 				changeWaiter.UpdateChannels(activeChannels)
 			}
-			base.DebugfCtx(ctx, base.KeyChanges, "MultiChangesFeed: channels expand to %#v ... %s", base.UD(activeChannels.ToSerializedStrings()), base.UD(to))
+			base.DebugfCtx(ctx, base.KeyChanges, "MultiChangesFeed: channels expand to %#v ... %s", base.UD(activeChannels), base.UD(to))
 
 			// lowSequence is used to send composite keys to clients, so that they can obtain any currently
 			// skipped sequences in a future iteration or request.
@@ -735,7 +733,7 @@ func (db *Database) SimpleMultiChangesFeed(ctx context.Context, chans channels.S
 				for chanName, vbSeqAddedAt := range chanSeq {
 					chanOpts := options
 
-					chanID := channels.ID{Name: chanName, CollectionID: collectionID}
+					chanID := channels.NewID(chanName, collectionID)
 					// Obtain a SingleChannelCache instance to use for both normal and late feeds.  Required to ensure consistency
 					// if cache is evicted during processing
 					singleChannelCache := db.changeCache.getChannelCache().getSingleChannelCache(chanID)
@@ -773,7 +771,6 @@ func (db *Database) SimpleMultiChangesFeed(ctx context.Context, chans channels.S
 					// Check whether requires backfill based on changedChannels in this _changes feed
 					isNewChannel := false
 					if changedChannels != nil {
-						// FIXME: doesn't seem right
 						isNewChannel, _ = changedChannels[chanID]
 					}
 
@@ -842,8 +839,7 @@ func (db *Database) SimpleMultiChangesFeed(ctx context.Context, chans channels.S
 							}
 						}
 
-						// FIXME: multiple collections
-						feed := db.buildRevokedFeed(ctx, channels.ID{Name: channel, CollectionID: collectionID}, options, revokedSeq, revocationSinceSeq, revokeFrom, to)
+						feed := db.buildRevokedFeed(ctx, channels.NewID(channel, collectionID), options, revokedSeq, revocationSinceSeq, revokeFrom, to)
 						feeds = append(feeds, feed)
 					}
 				}
@@ -1039,14 +1035,13 @@ func (db *Database) SimpleMultiChangesFeed(ctx context.Context, chans channels.S
 				singleCollectionChannels := newChannelsSince.CompareKeys(channelsSince[singleCollectionID])
 
 				for channelName, changed := range singleCollectionChannels {
-					changedChannels[channels.ID{Name: channelName, CollectionID: singleCollectionID}] = changed
+					changedChannels[channels.NewID(channelName, singleCollectionID)] = changed
 				}
 
 				if len(changedChannels) > 0 {
 					db.activeChannels.UpdateChanged(changedChannels)
 				}
-				// TOR: think it is safe to delete this, at the end of the loop
-				channelsSince = channels.CollectionByTimedSet{}
+				channelsSince = channels.TimedSetByCollectionID{}
 				channelsSince[singleCollectionID] = newChannelsSince
 			}
 

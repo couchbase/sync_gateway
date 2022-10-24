@@ -17,6 +17,7 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 )
 
+// ChanngedChannels contains each modified channel with true if active, and false if inactive
 type ChangedChannels map[ID]bool
 
 // activeChannels is a concurrency-safe map of active replications per channel, modified via
@@ -101,7 +102,7 @@ func (ac *ActiveChannels) _incr(channel ID) {
 func (ac *ActiveChannels) _decr(channel ID) {
 	current, ok := ac.channelCounts[channel]
 	if !ok {
-		base.WarnfCtx(context.Background(), "Attempt made to decrement inactive channel %s - will be ignored", base.UD(channel.String()))
+		base.WarnfCtx(context.Background(), "Attempt made to decrement inactive channel %s - will be ignored", base.UD(channel))
 		return
 	}
 	if current <= 1 {

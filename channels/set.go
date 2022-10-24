@@ -9,7 +9,7 @@
 package channels
 
 import (
-	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -30,12 +30,22 @@ const AllChannelWildcard = "*"  // wildcard for 'all channels'
 
 // ID represents a single channel inside a collection
 type ID struct {
-	Name         string // name of channel
-	CollectionID uint32 // collection it belongs to
+	Name          string // name of channel
+	CollectionID  uint32 // collection it belongs to
+	serialization string // private method for logging and matching inside changeWaiter notification
 }
 
 func (c ID) String() string {
-	return fmt.Sprintf("%d.%s", c.CollectionID, c.Name)
+	return c.serialization
+}
+
+// NewID returns a new ChannelID
+func NewID(channelName string, collectionID uint32) ID {
+	return ID{
+		Name:          channelName,
+		CollectionID:  collectionID,
+		serialization: strconv.FormatUint(uint64(collectionID), 10) + "." + channelName,
+	}
 }
 
 type Set map[ID]present
@@ -112,7 +122,7 @@ func SetOfNoValidate(chans ...ID) Set {
 func SetOfFromSingleCollection(chans []string, collectionID uint32) Set {
 	result := make(Set, len(chans))
 	for _, chanName := range chans {
-		result[ID{Name: chanName, CollectionID: collectionID}] = present{}
+		result[NewID(chanName, collectionID)] = present{}
 	}
 	return result
 }
@@ -156,7 +166,7 @@ func (s Set) Contains(ch ID) bool {
 }
 
 // ToSerializedStrings returns a base set with the serialized form of channel IDs.
-func (s Set) ToSerializedStrings() base.Set {
+func (s Set) GoString() base.Set {
 	serializedChans := base.Set{}
 	for ch := range s {
 		serializedChans.Add(ch.String())

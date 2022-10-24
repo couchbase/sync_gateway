@@ -1902,7 +1902,7 @@ func (dbCtx *DatabaseContext) AddDatabaseLogContext(ctx context.Context) context
 	return ctx
 }
 
-// GetSingleCollectionID returns a collectionID. This is a shim for single collections.
+// GetSingleCollectionID returns a collectionID. This is a temporary shim for single collections, and will be removed when a database can support multiple collecitons.
 func (dbCtx *DatabaseContext) GetSingleCollectionID() (uint32, error) {
 	collection, err := base.AsCollection(dbCtx.Bucket)
 	if err != nil {

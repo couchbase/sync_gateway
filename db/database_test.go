@@ -806,7 +806,7 @@ func TestAllDocsOnly(t *testing.T) {
 	require.NoError(t, err)
 
 	// Trigger creation of the channel cache for channel "all"
-	db.changeCache.getChannelCache().getSingleChannelCache(channels.ID{Name: "all", CollectionID: collectionID})
+	db.changeCache.getChannelCache().getSingleChannelCache(channels.NewID("all", collectionID))
 
 	ids := make([]AllDocsEntry, 100)
 	for i := 0; i < 100; i++ {
@@ -850,7 +850,7 @@ func TestAllDocsOnly(t *testing.T) {
 	err = db.changeCache.waitForSequence(ctx, 101, base.DefaultWaitForSequence)
 	require.NoError(t, err)
 
-	changeLog := db.GetChangeLog(channels.ID{Name: "all", CollectionID: collectionID}, 0)
+	changeLog := db.GetChangeLog(channels.NewID("all", collectionID), 0)
 	require.Len(t, changeLog, 50)
 	assert.Equal(t, "alldoc-51", changeLog[0].DocID)
 
@@ -984,7 +984,7 @@ func TestConflicts(t *testing.T) {
 	collectionID, err := db.GetSingleCollectionID()
 	require.NoError(t, err)
 
-	allChannel := channels.ID{Name: "all", CollectionID: collectionID}
+	allChannel := channels.NewID("all", collectionID)
 	db.changeCache.getChannelCache().getSingleChannelCache(allChannel)
 
 	cacheWaiter := db.NewDCPCachingCountWaiter(t)
@@ -997,7 +997,7 @@ func TestConflicts(t *testing.T) {
 	// Wait for rev to be cached
 	cacheWaiter.AddAndWait(1)
 
-	changeLog := db.GetChangeLog(channels.ID{Name: "all", CollectionID: collectionID}, 0)
+	changeLog := db.GetChangeLog(channels.NewID("all", collectionID), 0)
 	assert.Equal(t, 1, len(changeLog))
 
 	// Create two conflicting changes:

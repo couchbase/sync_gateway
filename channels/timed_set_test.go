@@ -170,16 +170,16 @@ func TestTimedSetCompareKeys(t *testing.T) {
 	}
 }
 
-func TestCollectionByTimedSet(t *testing.T) {
+func TestTimedSetByCollectionID(t *testing.T) {
 	chans, err := SetOf(
-		ID{Name: "A", CollectionID: 2},
-		ID{Name: "B", CollectionID: 2},
-		ID{Name: "B", CollectionID: 1},
-		ID{Name: "C", CollectionID: 1},
+		NewID("A", 2),
+		NewID("B", 2),
+		NewID("B", 1),
+		NewID("C", 1),
 	)
 	require.NoError(t, err)
 	collectionByTimedSet := AtSequenceByCollection(chans, 42)
-	require.Equal(t, CollectionByTimedSet{
+	require.Equal(t, TimedSetByCollectionID{
 		1: TimedSetFromString("B:42,C:42"),
 		2: TimedSetFromString("A:42,B:42"),
 	}, collectionByTimedSet)

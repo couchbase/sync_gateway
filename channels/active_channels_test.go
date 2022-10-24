@@ -24,11 +24,11 @@ func TestActiveChannelsConcurrency(t *testing.T) {
 	ac := NewActiveChannels(activeChannelStat)
 	var wg sync.WaitGroup
 
-	ABCChan := ID{Name: "ABC"}
-	DEFChan := ID{Name: "DEF"}
-	GHIChan := ID{Name: "GHI"}
-	JKLChan := ID{Name: "JKL"}
-	MNOChan := ID{Name: "MNO"}
+	ABCChan := NewID("ABC", base.DefaultCollectionID)
+	DEFChan := NewID("DEF", base.DefaultCollectionID)
+	GHIChan := NewID("GHI", base.DefaultCollectionID)
+	JKLChan := NewID("JKL", base.DefaultCollectionID)
+	MNOChan := NewID("MNO", base.DefaultCollectionID)
 	// Concurrent Incr, Decr
 	for i := 0; i < 50; i++ {
 		wg.Add(1)
