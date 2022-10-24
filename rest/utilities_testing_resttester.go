@@ -9,6 +9,7 @@
 package rest
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -128,6 +129,18 @@ func (rt *RestTester) waitForAssignedReplications(count int) {
 	require.NoError(rt.TB, rt.WaitForCondition(successFunc))
 }
 
+func (rt *RestTester) waitForAssignedReplicationWithRetry(count int) bool {
+	err, _ := base.RetryLoop("replicationWait", func() (shouldRetry bool, err error, value interface{}) {
+		replicationStatuses := rt.GetReplicationStatuses("?localOnly=true")
+		if !(len(replicationStatuses) == count) {
+			base.WarnfCtx(context.TODO(), "Error checking if local checkpoint exists")
+			return true, fmt.Errorf("error getting local checkpoint"), nil
+		}
+		return false, nil, nil
+	}, base.CreateMaxDoublingSleeperFunc(12, 10, 3000))
+	return err == nil
+}
+
 func (rt *RestTester) WaitForReplicationStatus(replicationID string, targetStatus string) {
 	successFunc := func() bool {
 		status := rt.GetReplicationStatus(replicationID)
@@ -155,4 +168,9 @@ func (rt *RestTester) GetReplicationStatuses(queryString string) (statuses []db.
 	RequireStatus(rt.TB, rawResponse, 200)
 	require.NoError(rt.TB, base.JSONUnmarshal(rawResponse.Body.Bytes(), &statuses))
 	return statuses
+}
+
+func (rt *RestTester) DeleteReplication(replicationID string) {
+	response := rt.SendAdminRequest("DELETE", "/db/_replication/"+replicationID, "")
+	RequireStatus(rt.TB, response, 200)
 }

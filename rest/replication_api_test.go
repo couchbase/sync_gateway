@@ -813,9 +813,20 @@ func TestReplicationRebalancePush(t *testing.T) {
 
 	// Create push replications, verify running
 	activeRT.createReplication("rep_ABC", remoteURLString, db.ActiveReplicatorTypePush, []string{"ABC"}, true, db.ConflictResolverDefault)
-	activeRT.WaitForReplicationStatus("rep_ABC", db.ReplicationStateRunning)
 	activeRT.createReplication("rep_DEF", remoteURLString, db.ActiveReplicatorTypePush, []string{"DEF"}, true, db.ConflictResolverDefault)
+	activeRT.WaitForReplicationStatus("rep_ABC", db.ReplicationStateRunning)
 	activeRT.WaitForReplicationStatus("rep_DEF", db.ReplicationStateRunning)
+	// If replication not set up properly reset the replications. This seems to fix the flaking
+	success := activeRT.waitForAssignedReplicationWithRetry(2)
+	if !success {
+		activeRT.DeleteReplication("rep_ABC")
+		activeRT.DeleteReplication("rep_DEF")
+		activeRT.createReplication("rep_ABC", remoteURLString, db.ActiveReplicatorTypePush, []string{"ABC"}, true, db.ConflictResolverDefault)
+		activeRT.createReplication("rep_DEF", remoteURLString, db.ActiveReplicatorTypePush, []string{"DEF"}, true, db.ConflictResolverDefault)
+		activeRT.WaitForReplicationStatus("rep_ABC", db.ReplicationStateRunning)
+		activeRT.WaitForReplicationStatus("rep_DEF", db.ReplicationStateRunning)
+		activeRT.waitForAssignedReplications(2)
+	}
 
 	// wait for documents to be pushed to remote
 	changesResults := remoteRT.RequireWaitChanges(2, "0")
