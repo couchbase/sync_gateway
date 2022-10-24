@@ -2141,44 +2141,71 @@ func TestHandleCreateDB(t *testing.T) {
 	rest.RequireStatus(t, resp, http.StatusBadRequest)
 }
 
-func TestHandleCreateDBNoJsonName(t *testing.T) {
-	rt := rest.NewRestTester(t, nil)
-	defer rt.Close()
+func TestHandleCreateDBJsonName(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server")
+	}
+	testCases := []struct {
+		name        string
+		JSONname    string
+		expectError bool
+	}{
+		{
+			name:        "Name match",
+			JSONname:    "db1",
+			expectError: false,
+		},
+		{
+			name:        "Name mismatch",
+			JSONname:    "dummy",
+			expectError: true,
+		},
+		{
+			name:        "No JSON Name",
+			JSONname:    "",
+			expectError: false,
+		},
+	}
 
-	bucket := "albums"
-	kvTLSPort := 11207
-	resource := fmt.Sprintf("/%s/", bucket)
+	for _, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+			tb := base.GetTestBucket(t)
+			defer tb.Close()
 
-	bucketConfig := rest.BucketConfig{Bucket: &bucket, KvTLSPort: kvTLSPort}
-	dbConfig := &rest.DbConfig{BucketConfig: bucketConfig, SGReplicateEnabled: base.BoolPtr(false)}
+			rt := rest.NewRestTester(t, &rest.RestTesterConfig{
+				CustomTestBucket: tb,
+				PersistentConfig: true,
+				MutateStartupConfig: func(config *rest.StartupConfig) {
+					config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(0)
+				},
+			})
+			defer rt.Close()
 
-	reqBody, err := base.JSONMarshal(dbConfig)
-	assert.NoError(t, err, "Error unmarshalling changes response")
-
-	resp := rt.SendAdminRequest(http.MethodPut, resource, string(reqBody))
-	rest.RequireStatus(t, resp, http.StatusCreated)
-	resp = rt.SendAdminRequest(http.MethodGet, resource, string(reqBody))
-	assert.Contains(t, resp.Body.String(), "\"db_name\":\"albums\"")
-}
-
-func TestHandleCreateDBDifferentJsonName(t *testing.T) {
-	rt := rest.NewRestTester(t, nil)
-	defer rt.Close()
-
-	bucket := "albums"
-	kvTLSPort := 11207
-	resource := fmt.Sprintf("/%s/", bucket)
-
-	bucketConfig := rest.BucketConfig{Bucket: &bucket, KvTLSPort: kvTLSPort}
-	dbConfig := &rest.DbConfig{BucketConfig: bucketConfig, Name: "dummy", SGReplicateEnabled: base.BoolPtr(false)}
-
-	reqBody, err := base.JSONMarshal(dbConfig)
-	assert.NoError(t, err, "Error unmarshalling changes response")
-
-	resp := rt.SendAdminRequest(http.MethodPut, resource, string(reqBody))
-	rest.RequireStatus(t, resp, http.StatusBadRequest)
-	assert.Contains(t, resp.Body.String(), "is not the same name")
-
+			var resp *rest.TestResponse
+			if test.name != "No JSON Name" {
+				resp = rt.SendAdminRequest(http.MethodPut, "/db1/",
+					fmt.Sprintf(
+						`{"bucket": "%s", "name": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "use_views": %t}`,
+						tb.GetName(), test.JSONname, base.TestUseXattrs(), base.TestsDisableGSI(),
+					),
+				)
+			} else {
+				resp = rt.SendAdminRequest(http.MethodPut, "/db1/",
+					fmt.Sprintf(
+						`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "use_views": %t}`,
+						tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(),
+					),
+				)
+			}
+			if test.name == "Name mismatch" {
+				rest.RequireStatus(t, resp, http.StatusBadRequest)
+			} else {
+				rest.RequireStatus(t, resp, http.StatusCreated)
+				resp := rt.SendAdminRequest(http.MethodGet, "/db1/", "")
+				assert.Contains(t, resp.Body.String(), "\"db_name\":\"db1\"")
+			}
+		})
+	}
 }
 
 func TestHandlePutDbConfigWithBackticks(t *testing.T) {
