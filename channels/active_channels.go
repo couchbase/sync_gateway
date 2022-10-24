@@ -56,19 +56,23 @@ func (ac *ActiveChannels) UpdateChanged(changedChannels ChangedChannels) {
 }
 
 // Active channel counts track channels being replicated by an active changes request.
-func (ac *ActiveChannels) IncrChannels(chans Set) {
+func (ac *ActiveChannels) IncrChannels(timedSetByCollection TimedSetByCollectionID) {
 	ac.lock.Lock()
 	defer ac.lock.Unlock()
-	for channelName, _ := range chans {
-		ac._incr(channelName)
+	for collectionID, timedSetByChannel := range timedSetByCollection {
+		for channelName, _ := range timedSetByChannel {
+			ac._incr(NewID(channelName, collectionID))
+		}
 	}
 }
 
-func (ac *ActiveChannels) DecrChannels(chans Set) {
+func (ac *ActiveChannels) DecrChannels(timedSetByCollection TimedSetByCollectionID) {
 	ac.lock.Lock()
 	defer ac.lock.Unlock()
-	for channel, _ := range chans {
-		ac._decr(channel)
+	for collectionID, timedSetByChannel := range timedSetByCollection {
+		for channelName, _ := range timedSetByChannel {
+			ac._decr(NewID(channelName, collectionID))
+		}
 	}
 }
 

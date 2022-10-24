@@ -34,13 +34,16 @@ func TestActiveChannelsConcurrency(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+			const seqNo uint64 = 0
 			activeChans, err := SetOf(ABCChan, DEFChan, GHIChan, JKLChan, MNOChan)
 			require.NoError(t, err)
-			ac.IncrChannels(activeChans)
+			activeChansTimedSet := AtSequenceByCollection(activeChans, seqNo)
+			ac.IncrChannels(activeChansTimedSet)
 			inactiveChans, err := SetOf(ABCChan, DEFChan)
 			require.NoError(t, err)
+			inactiveChansTimedSet := AtSequenceByCollection(inactiveChans, seqNo)
 
-			ac.DecrChannels(inactiveChans)
+			ac.DecrChannels(inactiveChansTimedSet)
 		}()
 	}
 	wg.Wait()

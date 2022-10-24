@@ -676,9 +676,8 @@ func (db *Database) SimpleMultiChangesFeed(ctx context.Context, chans channels.S
 		}
 
 		// Mark channel set as active, schedule defer
-		activeChannels := channelsSince.GetChannels()
-		db.activeChannels.IncrChannels(activeChannels)
-		defer db.activeChannels.DecrChannels(activeChannels)
+		db.activeChannels.IncrChannels(channelsSince)
+		defer db.activeChannels.DecrChannels(channelsSince)
 
 		// For a continuous feed, initialise the lateSequenceFeeds that track late-arriving sequences
 		// to the channel caches.
@@ -698,9 +697,9 @@ func (db *Database) SimpleMultiChangesFeed(ctx context.Context, chans channels.S
 		for {
 			// Updates the ChangeWaiter to the current set of available channels
 			if changeWaiter != nil {
-				changeWaiter.UpdateChannels(activeChannels)
+				changeWaiter.UpdateChannels(channelsSince)
 			}
-			base.DebugfCtx(ctx, base.KeyChanges, "MultiChangesFeed: channels expand to %#v ... %s", base.UD(activeChannels), base.UD(to))
+			base.DebugfCtx(ctx, base.KeyChanges, "MultiChangesFeed: channels expand to %#v ... %s", base.UD(channelsSince), base.UD(to))
 
 			// lowSequence is used to send composite keys to clients, so that they can obtain any currently
 			// skipped sequences in a future iteration or request.

@@ -408,14 +408,3 @@ func AtSequenceByCollection(chans Set, sequence uint64) TimedSetByCollectionID {
 	}
 	return collectionByTimedSet
 }
-
-// GetChannels returns the set of channel IDs.
-func (c TimedSetByCollectionID) GetChannels() Set {
-	chans := Set{}
-	for collectionID, timedSet := range c {
-		for chanName := range timedSet {
-			chans.Add(NewID(chanName, collectionID))
-		}
-	}
-	return chans
-}

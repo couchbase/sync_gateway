@@ -362,11 +362,14 @@ func (waiter *ChangeWaiter) RefreshUserCount() bool {
 }
 
 // Updates the set of channel keys in the ChangeWaiter (maintains the existing set of user keys)
-func (waiter *ChangeWaiter) UpdateChannels(chans channels.Set) {
-	initialCapacity := len(chans) + len(waiter.userKeys)
+func (waiter *ChangeWaiter) UpdateChannels(timedSetByCollectionID channels.TimedSetByCollectionID) {
+	// This capacity is not right can not accomodate channels without iteration.
+	initialCapacity := len(waiter.userKeys)
 	updatedKeys := make([]string, 0, initialCapacity)
-	for channel := range chans {
-		updatedKeys = append(updatedKeys, channel.String())
+	for collectionID, timedSetByChannel := range timedSetByCollectionID {
+		for channelName, _ := range timedSetByChannel {
+			updatedKeys = append(updatedKeys, channels.NewID(channelName, collectionID).String())
+		}
 	}
 	if len(waiter.userKeys) > 0 {
 		updatedKeys = append(updatedKeys, waiter.userKeys...)

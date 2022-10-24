@@ -183,5 +183,4 @@ func TestTimedSetByCollectionID(t *testing.T) {
 		1: TimedSetFromString("B:42,C:42"),
 		2: TimedSetFromString("A:42,B:42"),
 	}, collectionByTimedSet)
-	require.Equal(t, chans, collectionByTimedSet.GetChannels())
 }

@@ -11,7 +11,6 @@ package channels
 import (
 	"testing"
 
-	"github.com/couchbase/sync_gateway/base"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -382,35 +381,6 @@ func TestSetContains(t *testing.T) {
 	for _, test := range testCases {
 		t.Run(test.name, func(t *testing.T) {
 			require.Equal(t, test.contains, test.inputSet.Contains(test.inputID))
-		})
-	}
-}
-
-func TestSetString(t *testing.T) {
-	testCases := []struct {
-		name     string
-		inputSet Set
-		output   base.Set
-	}{
-		{
-			name:     "empty",
-			inputSet: Set{},
-			output:   base.Set{},
-		},
-		{
-			name: "values",
-			inputSet: Set{
-				NewID("A", 1):                        present{},
-				NewID("B", 2):                        present{},
-				NewID("C", 1):                        present{},
-				NewID("D", base.DefaultCollectionID): present{},
-			},
-			output: base.SetOf("1.A", "2.B", "1.C", "0.D"),
-		},
-	}
-	for _, test := range testCases {
-		t.Run(test.name, func(t *testing.T) {
-			require.Equal(t, test.output, test.inputSet.GoString())
 		})
 	}
 }

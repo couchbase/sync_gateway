@@ -164,12 +164,3 @@ func (s Set) Contains(ch ID) bool {
 	_, exists := s[ch]
 	return exists
 }
-
-// ToSerializedStrings returns a base set with the serialized form of channel IDs.
-func (s Set) GoString() base.Set {
-	serializedChans := base.Set{}
-	for ch := range s {
-		serializedChans.Add(ch.String())
-	}
-	return serializedChans
-}
