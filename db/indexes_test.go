@@ -61,14 +61,14 @@ func TestInitializeIndexes(t *testing.T) {
 
 			// Make sure we can drop and reinitialize twice
 			for i := 0; i < 2; i++ {
-				err := dropAndInitializeIndexes(base.TestCtx(t), n1qlStore, b, test.xattrs, db.Options.Serverless)
+				err := dropAndInitializeIndexes(base.TestCtx(t), n1qlStore, b, test.xattrs, db.IsServerless())
 				require.NoError(t, err, "Error dropping and initialising all indexes on bucket")
 			}
 			// check to see if current indexes match what is expected by the rest of the test
 			// if not we drop and reinitialize these indexes using the overall test environment variables for XATTRS
-			err := validateAllIndexesOnline(b, base.TestUseXattrs(), db.Options.Serverless)
+			err := validateAllIndexesOnline(b, base.TestUseXattrs(), db.IsServerless())
 			if err != nil {
-				err = dropAndInitializeIndexes(base.TestCtx(t), n1qlStore, b, base.TestUseXattrs(), db.Options.Serverless)
+				err = dropAndInitializeIndexes(base.TestCtx(t), n1qlStore, b, base.TestUseXattrs(), db.IsServerless())
 				require.NoError(t, err)
 			}
 		})
@@ -135,7 +135,7 @@ func TestPostUpgradeIndexesSimple(t *testing.T) {
 	}
 
 	for _, sgIndex := range sgIndexes {
-		if !sgIndex.shouldCreate(db.Options.Serverless) {
+		if !sgIndex.shouldCreate(db.IsServerless()) {
 			expectedIndexes--
 		}
 	}
@@ -210,7 +210,7 @@ func TestPostUpgradeIndexesVersionChange(t *testing.T) {
 	err := InitializeIndexes(n1qlStore, db.UseXattrs(), 0, false, false)
 	assert.NoError(t, err)
 
-	validateErr := validateAllIndexesOnline(db.Bucket, db.UseXattrs(), db.Options.Serverless)
+	validateErr := validateAllIndexesOnline(db.Bucket, db.UseXattrs(), db.IsServerless())
 	assert.NoError(t, validateErr, "Error validating indexes online")
 }
 
@@ -239,7 +239,7 @@ func TestRemoveIndexesUseViewsTrueAndFalse(t *testing.T) {
 	}
 
 	for _, sgIndex := range copiedIndexes {
-		if !sgIndex.shouldCreate(db.Options.Serverless) {
+		if !sgIndex.shouldCreate(db.IsServerless()) {
 			expectedIndexes--
 		}
 	}
@@ -270,7 +270,7 @@ func TestRemoveIndexesUseViewsTrueAndFalse(t *testing.T) {
 	err = InitializeIndexes(n1QLStore, db.UseXattrs(), 0, false, false)
 	assert.NoError(t, err)
 
-	validateErr := validateAllIndexesOnline(db.Bucket, db.UseXattrs(), db.Options.Serverless)
+	validateErr := validateAllIndexesOnline(db.Bucket, db.UseXattrs(), db.IsServerless())
 	assert.NoError(t, validateErr, "Error validating indexes online")
 }
 
@@ -317,7 +317,7 @@ func TestRemoveObsoleteIndexOnError(t *testing.T) {
 	err := InitializeIndexes(n1qlStore, db.UseXattrs(), 0, false, false)
 	assert.NoError(t, err)
 
-	validateErr := validateAllIndexesOnline(db.Bucket, db.UseXattrs(), db.Options.Serverless)
+	validateErr := validateAllIndexesOnline(db.Bucket, db.UseXattrs(), db.IsServerless())
 	assert.NoError(t, validateErr, "Error validating indexes online")
 
 }

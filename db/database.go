@@ -870,6 +870,10 @@ func (context *DatabaseContext) Authenticator(ctx context.Context) *auth.Authent
 	return authenticator
 }
 
+func (context *DatabaseContext) IsServerless() bool {
+	return context.Options.Serverless
+}
+
 // Makes a Database object given its name and bucket.
 func GetDatabase(context *DatabaseContext, user auth.User) (*Database, error) {
 	return &Database{DatabaseContext: context, user: user}, nil
