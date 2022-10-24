@@ -2175,29 +2175,22 @@ func TestHandleCreateDBJsonName(t *testing.T) {
 			rt := rest.NewRestTester(t, &rest.RestTesterConfig{
 				CustomTestBucket: tb,
 				PersistentConfig: true,
-				MutateStartupConfig: func(config *rest.StartupConfig) {
-					config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(0)
-				},
 			})
 			defer rt.Close()
 
 			var resp *rest.TestResponse
-			if test.name != "No JSON Name" {
-				resp = rt.SendAdminRequest(http.MethodPut, "/db1/",
-					fmt.Sprintf(
-						`{"bucket": "%s", "name": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "use_views": %t}`,
-						tb.GetName(), test.JSONname, base.TestUseXattrs(), base.TestsDisableGSI(),
-					),
-				)
-			} else {
-				resp = rt.SendAdminRequest(http.MethodPut, "/db1/",
-					fmt.Sprintf(
-						`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "use_views": %t}`,
-						tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(),
-					),
-				)
+			DbConfigJson := ""
+			if test.JSONname != "" {
+				DbConfigJson = `"name": "` + test.JSONname + `",`
+
 			}
-			if test.name == "Name mismatch" {
+			resp = rt.SendAdminRequest(http.MethodPut, "/db1/",
+				fmt.Sprintf(
+					`{"bucket": "%s", %s "num_index_replicas": 0, "enable_shared_bucket_access": %t, "use_views": %t}`,
+					tb.GetName(), DbConfigJson, base.TestUseXattrs(), base.TestsDisableGSI(),
+				),
+			)
+			if test.expectError {
 				rest.RequireStatus(t, resp, http.StatusBadRequest)
 			} else {
 				rest.RequireStatus(t, resp, http.StatusCreated)
