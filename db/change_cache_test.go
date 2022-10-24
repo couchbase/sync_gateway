@@ -1637,10 +1637,10 @@ func TestLateArrivingSequenceTriggersOnChange(t *testing.T) {
 	//  Detect whether the 2nd was ignored using an notifyChange listener callback and make sure it was not added to the ABC channel
 	waitForOnChangeCallback := sync.WaitGroup{}
 	waitForOnChangeCallback.Add(1)
-	db.changeCache.notifyChange = func(chans base.Set) {
+	db.changeCache.notifyChange = func(chans channels.Set) {
 		expectedChan := channels.NewID("ABC", collectionID)
 		for ch := range chans {
-			if ch == expectedChan.String() {
+			if ch == expectedChan {
 				waitForOnChangeCallback.Done()
 			}
 		}
@@ -1827,9 +1827,9 @@ func TestNotifyForInactiveChannel(t *testing.T) {
 	// -------- Setup notifyChange callback ----------------
 
 	notifyChannel := make(chan struct{})
-	db.changeCache.notifyChange = func(chans base.Set) {
+	db.changeCache.notifyChange = func(chans channels.Set) {
 		expectedChan := channels.NewID("zero", collectionID)
-		if chans.Contains(expectedChan.String()) {
+		if chans.Contains(expectedChan) {
 			notifyChannel <- struct{}{}
 		}
 	}

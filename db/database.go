@@ -414,7 +414,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 	dbContext.changeCache = &changeCache{}
 
 	// Callback that is invoked whenever a set of channels is changed in the ChangeCache
-	notifyChange := func(changedChannels base.Set) {
+	notifyChange := func(changedChannels channels.Set) {
 		dbContext.mutationListener.Notify(changedChannels)
 	}
 

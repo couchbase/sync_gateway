@@ -118,7 +118,7 @@ func (listener *changeListener) ProcessFeedEvent(event sgbucket.FeedEvent) bool 
 			if listener.OnDocChanged != nil && event.Opcode == sgbucket.FeedOpMutation {
 				listener.OnDocChanged(event)
 			}
-			listener.Notify(base.SetOf(key))
+			listener.notifyUser(key)
 		} else if strings.HasPrefix(key, base.UnusedSeqPrefix) || strings.HasPrefix(key, base.UnusedSeqRangePrefix) { // SG unused sequence marker docs
 			if listener.OnDocChanged != nil && event.Opcode == sgbucket.FeedOpMutation {
 				listener.OnDocChanged(event)
@@ -181,7 +181,7 @@ func (listener changeListener) TapFeed() base.TapFeed {
 //////// NOTIFICATIONS:
 
 // Changes the counter, notifying waiting clients.
-func (listener *changeListener) Notify(keys base.Set) {
+func (listener *changeListener) Notify(keys channels.Set) {
 
 	if len(keys) == 0 {
 		return
@@ -189,10 +189,21 @@ func (listener *changeListener) Notify(keys base.Set) {
 	listener.tapNotifier.L.Lock()
 	listener.counter++
 	for key := range keys {
-		listener.keyCounts[key] = listener.counter
+		listener.keyCounts[key.String()] = listener.counter
 	}
 	base.DebugfCtx(context.TODO(), base.KeyChanges, "Notifying that %q changed (keys=%q) count=%d",
 		base.MD(listener.bucketName), base.UD(keys), listener.counter)
+	listener.tapNotifier.Broadcast()
+	listener.tapNotifier.L.Unlock()
+}
+
+// Changes the counter, notifying waiting clients. Only use for single update is updating user, which might be collection scoped in the future.
+func (listener *changeListener) notifyUser(key string) {
+	listener.tapNotifier.L.Lock()
+	listener.counter++
+	listener.keyCounts[key] = listener.counter
+	base.DebugfCtx(context.TODO(), base.KeyChanges, "Notifying that %q changed (keys=%q) count=%d",
+		base.MD(listener.bucketName), base.UD(key), listener.counter)
 	listener.tapNotifier.Broadcast()
 	listener.tapNotifier.L.Unlock()
 }

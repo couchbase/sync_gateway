@@ -56,7 +56,7 @@ type changeCache struct {
 	initialSequence    uint64                  // DB's current sequence at startup time. Should use getInitialSequence() rather than accessing directly.
 	receivedSeqs       map[uint64]struct{}     // Set of all sequences received
 	pendingLogs        LogPriorityQueue        // Out-of-sequence entries waiting to be cached
-	notifyChange       func(base.Set)          // Client callback that notifies of channel changes
+	notifyChange       func(channels.Set)      // Client callback that notifies of channel changes
 	stopped            bool                    // Set by the Stop method
 	skippedSeqs        *SkippedSequenceList    // Skipped sequences still pending on the TAP feed
 	lock               sync.RWMutex            // Coordinates access to struct fields
@@ -157,7 +157,7 @@ func DefaultCacheOptions() CacheOptions {
 // notifyChange is an optional function that will be called to notify of channel changes.
 // After calling Init(), you must call .Start() to start useing the cache, otherwise it will be in a locked state
 // and callers will block on trying to obtain the lock.
-func (c *changeCache) Init(logCtx context.Context, dbcontext *DatabaseContext, notifyChange func(base.Set), options *CacheOptions) error {
+func (c *changeCache) Init(logCtx context.Context, dbcontext *DatabaseContext, notifyChange func(channels.Set), options *CacheOptions) error {
 	c.context = dbcontext
 	c.logCtx = logCtx
 
@@ -298,19 +298,11 @@ func (c *changeCache) InsertPendingEntries(ctx context.Context) error {
 	c.lock.Lock()
 	changedChannels := c._addPendingLogs()
 	if c.notifyChange != nil && len(changedChannels) > 0 {
-		c.notifyChannels(changedChannels)
+		c.notifyChange(changedChannels)
 	}
 	c.lock.Unlock()
 
 	return nil
-}
-
-func (c *changeCache) notifyChannels(chans channels.Set) {
-	serializedChans := base.Set{}
-	for ch := range chans {
-		serializedChans.Add(ch.String())
-	}
-	c.notifyChange(serializedChans)
 }
 
 // Cleanup function, invoked periodically.
@@ -392,7 +384,7 @@ func (c *changeCache) CleanSkippedSequenceQueue(ctx context.Context) error {
 	// Since the calls to processEntry() above may unblock pending sequences, if there were any changed channels we need
 	// to notify any change listeners that are working changes feeds for these channels
 	if c.notifyChange != nil && len(changedChannelsCombined) > 0 {
-		c.notifyChannels(changedChannelsCombined)
+		c.notifyChange(changedChannelsCombined)
 	}
 
 	// Purge sequences not found from the skipped sequence queue
@@ -584,7 +576,7 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 
 	// Notify change listeners for all of the changed channels
 	if c.notifyChange != nil && len(changedChannelsCombined) > 0 {
-		c.notifyChannels(changedChannelsCombined)
+		c.notifyChange(changedChannelsCombined)
 	}
 
 }
@@ -629,7 +621,7 @@ func (c *changeCache) releaseUnusedSequence(sequence uint64, timeReceived time.T
 	// to notify any change listeners that are working changes feeds for these channels
 	changedChannels := c.processEntry(change)
 	if c.notifyChange != nil && len(changedChannels) > 0 {
-		c.notifyChannels(changedChannels)
+		c.notifyChange(changedChannels)
 	}
 }
 
@@ -690,7 +682,7 @@ func (c *changeCache) processPrincipalDoc(docID string, docJSON []byte, isUser b
 
 	changedChannels := c.processEntry(change)
 	if c.notifyChange != nil && len(changedChannels) > 0 {
-		c.notifyChannels(changedChannels)
+		c.notifyChange(changedChannels)
 	}
 }
 
