@@ -194,7 +194,7 @@ func init() {
 			expression:       indexExpressions[i],
 			filterExpression: indexFilterExpressions[i],
 			flags:            indexFlags[i],
-			CreationMode:     indexCreationModes[i],
+			creationMode:     indexCreationModes[i],
 		}
 		// If a readiness query is specified for this index, mark the index as required and add to SGIndex
 		readinessQuery, ok := readinessQueries[i]
@@ -217,7 +217,7 @@ type SGIndex struct {
 	required         bool              // Whether SG blocks on startup until this index is ready
 	readinessQuery   string            // Query used to determine view readiness
 	flags            SGIndexFlags      // Additional index options
-	CreationMode     IndexCreationMode // Signal when to create indexes
+	creationMode     IndexCreationMode // Signal when to create indexes
 }
 
 func (i *SGIndex) fullIndexName(useXattrs bool) string {
@@ -244,15 +244,15 @@ func (i *SGIndex) isXattrOnly() bool {
 
 // shouldCreate returns if given index should be created based on Serverless mode
 func (i *SGIndex) shouldCreate(isServerless bool) bool {
-	if i.CreationMode == Always {
+	if i.creationMode == Always {
 		return true
 	}
 
 	if isServerless {
-		return i.CreationMode == Serverless
+		return i.creationMode == Serverless
 	}
 
-	return i.CreationMode == Dedicated
+	return i.creationMode == Dedicated
 }
 
 // Creates index associated with specified SGIndex if not already present.  Always defers build - a subsequent BUILD INDEX
