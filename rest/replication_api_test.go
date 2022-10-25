@@ -811,10 +811,13 @@ func TestReplicationRebalancePush(t *testing.T) {
 	_ = activeRT.PutDoc(docABC1, `{"source":"activeRT","channels":["ABC"]}`)
 	_ = activeRT.PutDoc(docDEF1, `{"source":"activeRT","channels":["DEF"]}`)
 
+	// This seems to fix the flaking. Wait until the change-cache has caught up with the latest writes to the database.
+	require.NoError(t, activeRT.WaitForPendingChanges())
+
 	// Create push replications, verify running
 	activeRT.createReplication("rep_ABC", remoteURLString, db.ActiveReplicatorTypePush, []string{"ABC"}, true, db.ConflictResolverDefault)
-	activeRT.WaitForReplicationStatus("rep_ABC", db.ReplicationStateRunning)
 	activeRT.createReplication("rep_DEF", remoteURLString, db.ActiveReplicatorTypePush, []string{"DEF"}, true, db.ConflictResolverDefault)
+	activeRT.WaitForReplicationStatus("rep_ABC", db.ReplicationStateRunning)
 	activeRT.WaitForReplicationStatus("rep_DEF", db.ReplicationStateRunning)
 
 	// wait for documents to be pushed to remote
