@@ -1,4 +1,4 @@
-import { AllowConfig, Args, Context, Credentials, Database, Document, FunctionsConfig, GraphQLConfig, CRUD, User, JSFn, HTTPError, JSONObject } from './types'
+import { AllowConfig, Args, Context, Credentials, Database, Document, FunctionsConfig, GraphQLConfig, CRUD, User, JSFn, HTTPError, JSONObject, FunctionConfig } from './types'
 import { CompileFn, CompileResolver, CompileTypeNameResolver } from './compile'
 
 import * as gq from 'graphql';
@@ -22,75 +22,140 @@ export interface Upstream {
 /** Constructs a Database instance. */
 export function MakeDatabase(functions: FunctionsConfig | undefined,
                              graphql: GraphQLConfig | undefined,
-                             upstream: Upstream) : Database
+                             upstream: Upstream) : [Database | null, string[] | null]
 {
-    return new DatabaseImpl(functions, graphql, upstream);
+    let db : Database | null;
+    db = new DatabaseImpl(upstream);
+    let errors = db.configure(functions, graphql);
+    if (errors) db = null;
+    return [db, errors];
 }
 
 
 class DatabaseImpl implements Database {
 
-    constructor(functions: FunctionsConfig | undefined,
-                graphql: GraphQLConfig | undefined,
-                private upstream: Upstream)
-    {
-        let adminUser = new UserImpl(this, null);
-        this.adminContext = new ContextImpl(adminUser, adminUser, true);
-        adminUser.context = this.adminContext;
+    constructor(private upstream: Upstream) {
+        // Create a context for "context.admin"
+        let superUser = new UserImpl(this, null, true);
+        this.superUserContext = new ContextImpl(superUser, superUser, true);
+        superUser.context = this.superUserContext;
+    }
 
-        this.functions = {}
+    configure(functions: FunctionsConfig | undefined,
+              graphql: GraphQLConfig | undefined) : string[] | null
+    {
+        // Collect all errors/exceptions in an array to return at the end:
+        let errors = new ErrorList;
+        console.log("Initializing GraphQL/functions...");
+
         if (functions) {
-            console.debug("Compiling functions...")
+            let nFuncs = 0;
+            let maxSize = functions.max_code_size;
             for (let fnName of Object.getOwnPropertyNames(functions.definitions)) {
                 let fnConfig = functions.definitions[fnName];
-                this.functions[fnName] = CompileFn(fnName, fnConfig, this);
+                if (maxSize !== undefined && fnConfig.code.length > maxSize) {
+                    errors.complain(`function ${fnName}: code is too large (> ${maxSize} bytes)`)
+                } else {
+                    errors.try(`function ${fnName}: `, () => {
+                        this.functions[fnName] = CompileFn(fnName, fnConfig, this);
+                        ++nFuncs;
+                    });
+                }
+            }
+            if (functions.max_function_count !== undefined && nFuncs > functions.max_function_count) {
+                errors.complain(`too many functions (> ${functions!.max_function_count})`);
             }
         }
 
         if (graphql) {
-            console.debug("Compiling GraphQL schema and resolvers...")
-            if (!graphql.schema) throw new HTTPError(500, "GraphQL schema is missing");
-            this.schema = gq.buildSchema(graphql.schema);
-            for (let typeName of Object.getOwnPropertyNames(graphql.resolvers)) {
-                let fields = graphql.resolvers[typeName];
-                let schemaType = this.schema.getType(typeName);
-                if (!schemaType) {
-                    throw new HTTPError(500, `GraphQL schema has no type '${typeName}'`);
-                } else if (schemaType instanceof gq.GraphQLObjectType) {
-                    let schemaFields = schemaType.getFields();
-                    for (let fieldName of Object.getOwnPropertyNames(fields)) {
-                        let schemaField = schemaFields[fieldName];
-                        if (!schemaField) {
-                            throw new HTTPError(500, `GraphQL type ${typeName} has no field ${fieldName}`);
-                        }
-                        let fnConfig = fields[fieldName];
-                        schemaField.resolve = CompileResolver(typeName, fieldName, fnConfig, this);
-                    }
-                } else if (schemaType instanceof gq.GraphQLInterfaceType) {
-                    for (let fieldName of Object.getOwnPropertyNames(fields)) {
-                        if (fieldName == "__typename") {
-                            schemaType.resolveType = CompileTypeNameResolver(typeName,fields[fieldName], this);
-                        } else {
-                            throw new HTTPError(500, `GraphQL interface type ${typeName} may only have a '__typename' resolver`);
-                        }
-                    }
-                } else {
-                    throw new HTTPError(500, `GraphQL type ${typeName} is a not an object or interface, and cannot have resolvers`);
+            if (!graphql.schema) {
+                errors.complain("GraphQL schema is missing");
+            } else if (graphql.max_schema_size !== undefined && graphql.schema.length > graphql.max_schema_size) {
+                errors.complain(`GraphQL schema too large (> ${graphql.max_schema_size} bytes)`);
+            } else {
+                errors.try(`GraphQL schema: `,  () => {
+                    this.schema = gq.buildSchema(graphql.schema!);
+                });
+                if (this.schema) {
+                    this.configureResolvers(graphql, errors)
                 }
             }
         }
+
+        if (errors.errors.length > 0) {
+            console.error(`Found ${errors.errors.length} error[s] in configuration!`);
+            return errors.errors;
+        }
+        return null;
+    }
+
+
+    private configureResolvers(graphql: GraphQLConfig, errors: ErrorList) {
+        let remainingResolvers = graphql.max_resolver_count ?? 1e9;
+
+        function canAddResolver(typeName: string, fieldName: string, config: FunctionConfig) {
+            if (--remainingResolvers == 0) {
+                errors.complain(`too many GraphQL resolvers (> ${graphql!.max_resolver_count!})`);
+                return false;
+            }
+            let maxSize = graphql!.max_code_size;
+            if (maxSize !== undefined && config.code.length > maxSize) {
+                errors.complain(`GraphQL resolver ${typeName}.${fieldName}: code is too large (> ${maxSize} bytes)`);
+                return false;
+            }
+            return true;
+        }
+
+        for (let typeName of Object.getOwnPropertyNames(graphql.resolvers)) {
+            let fields = graphql.resolvers[typeName];
+            let schemaType = this.schema!.getType(typeName);
+            if (!schemaType) {
+                errors.complain(`GraphQL resolver type '${typeName}': no such type in the schema`);
+            } else if (schemaType instanceof gq.GraphQLObjectType) {
+                let schemaFields = schemaType.getFields();
+                for (let fieldName of Object.getOwnPropertyNames(fields)) {
+                    let fnConfig = fields[fieldName];
+                    if (canAddResolver(typeName, fieldName, fnConfig)) {
+                        let schemaField = schemaFields[fieldName];
+                        if (schemaField) {
+                            errors.try(`GraphQL resolver ${typeName}.${fieldName}: `,
+                                      () => {
+                                CompileResolver(schemaField, typeName, fieldName, fnConfig, this);
+                            });
+                        } else {
+                            errors.complain(`GraphQL resolver ${typeName}.${fieldName}: no such field in the schema`);
+                        }
+                    }
+                }
+            } else if (schemaType instanceof gq.GraphQLInterfaceType) {
+                let ifType = schemaType;
+                for (let fieldName of Object.getOwnPropertyNames(fields)) {
+                    let fnConfig = fields[fieldName];
+                    if (canAddResolver(typeName, fieldName, fnConfig)) {
+                        if (fieldName == "__typename") {
+                            errors.try(`GraphQL resolver ${typeName}.${fieldName}: `,
+                                       () => {
+                                ifType.resolveType = CompileTypeNameResolver(typeName,
+                                                                            fnConfig, this);
+                            });
+                        } else {
+                            errors.complain(`GraphQL resolver ${typeName}.${fieldName}: interface types may only have a '__typename' resolver`);
+                        }
+                    }
+                }
+            } else {
+                errors.complain(`GraphQL type ${typeName}: not an object or interface, so cannot have resolvers`);
+            }
+        }
+
     }
 
 
     makeContext(credentials: Credentials | null, mutationAllowed: boolean) {
-        if (credentials || !mutationAllowed) {
-            let user = new UserImpl(this, credentials);
-            let ctx = new ContextImpl(user, this.adminContext.user, mutationAllowed);
-            user.context = ctx;
-            return ctx;
-        } else {
-            return this.adminContext;
-        }
+        let user = new UserImpl(this, credentials);
+        let ctx = new ContextImpl(user, this.superUserContext.user, mutationAllowed);
+        user.context = ctx;
+        return ctx;
     }
 
 
@@ -109,6 +174,7 @@ class DatabaseImpl implements Database {
     }
 
 
+    // note: `args` are top-level N1QL args, not the "args" object
     query(context: Context,
           fnName: string,
           n1ql: string,
@@ -117,7 +183,7 @@ class DatabaseImpl implements Database {
     }
 
 
-    async graphql(context: Context,
+    graphql(context: Context,
                   query: string,
                   variableValues?: Args,
                   operationName?: string) : Promise<gq.ExecutionResult> {
@@ -146,10 +212,33 @@ class DatabaseImpl implements Database {
     }
 
 
-    readonly schema?: gq.GraphQLSchema;     // Compiled GraphQL schema (with resolvers)
+    private superUserContext: ContextImpl;       // The admin Context (only one is needed)
+    private functions: Record<string,JSFn> = {}; // Compiled JS functions
+    private schema?: gq.GraphQLSchema;           // Compiled GraphQL schema (with resolvers)
+}
 
-    private adminContext: ContextImpl;          // The admin Context (only one is needed)
-    private functions: Record<string,JSFn>; // Compiled JS functions
+
+class ErrorList {
+    /** adds an error message to `errors`. */
+    complain(msg: string) {
+        console.error(msg);
+        this.errors.push(msg);
+    }
+    /** calls a function, catching any exception and adding it to `errors`. */
+    try(msg: string, fn: ()=>void) {
+        try {
+            fn();
+        } catch (err) {
+            if (err instanceof Error) {
+                msg += err.message;
+            } else {
+                msg += String(err);
+            }
+            this.complain(msg);
+        }
+    };
+
+    errors: string[] = [];
 }
 
 
@@ -161,7 +250,6 @@ class ContextImpl implements Context {
                 readonly admin: User,
                 mutationAllowed: boolean) {
         if (!mutationAllowed) {
-            console.debug("++++ Context starts read-only");
             this.readOnlyLevel++;
         }
     }
@@ -230,15 +318,13 @@ class ContextImpl implements Context {
 }
 
 export function BeginReadOnly(context: Context) {
-    if (!context.user.isAdmin) {
-        console.debug("++++ BeginReadOnly");
+    if (!context.user.isSuperUser) {
         (context as ContextImpl).readOnlyLevel++;
     }
 }
 
 export function EndReadOnly(context: Context) {
-    if (!context.user.isAdmin) {
-        console.debug("---- EndReadOnly");
+    if (!context.user.isSuperUser) {
         (context as ContextImpl).readOnlyLevel--;
     }
 }
@@ -296,10 +382,12 @@ export const MaxCallDepth = 20;
 class UserImpl implements User {
 
     constructor(private db: DatabaseImpl,
-                credentials: Credentials | null)
+                credentials: Credentials | null,
+                readonly isSuperUser = false)
     {
         if (credentials) {
             [this.name, this.roles, this.channels] = credentials;
+            isSuperUser = false;
         }
         this.defaultCollection = new CRUDImpl(db, '_default', this);
     }
@@ -313,9 +401,7 @@ class UserImpl implements User {
 
     get isAdmin() {return this.name === undefined;}
 
-    get canMutate() : boolean {
-        return this.isAdmin || this.context.checkMutating();
-    }
+    get canMutate() : boolean {return this.isSuperUser || this.context.checkMutating();}
 
 
     // API:
@@ -326,8 +412,9 @@ class UserImpl implements User {
     function(name: string, args?: Args) : unknown {
         let fn = this.db.getFunction(name);
         if (++CallDepth > MaxCallDepth) {
-            console.error("User function recursion too deep");
-            throw new HTTPError(508, "User function recursion too deep");
+            let msg = `User function recursion too deep (calling function("${name}")`;
+            console.error(msg);
+            throw new HTTPError(508, msg);
         }
         try {
             return fn(this.context, args);
@@ -339,8 +426,9 @@ class UserImpl implements User {
 
     async graphql(query: string, args?: Args) : Promise<JSONObject | null> {
         if (++CallDepth > MaxCallDepth) {
-            console.error("User function recursion too deep");
-            throw new HTTPError(508, "User function recursion too deep");
+            let msg = `User function recursion too deep (calling graphql())`;
+            console.error(msg);
+            throw new HTTPError(508, msg);
         }
         try {
             let result = await this.db.graphql(this.context, query, args);

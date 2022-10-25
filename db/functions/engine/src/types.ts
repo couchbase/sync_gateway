@@ -41,7 +41,10 @@ export type FunctionConfig = {
 
 /** Functions configuration: maps function name to its config. */
 export type FunctionsConfig = {
-    definitions: Record<string,FunctionConfig>
+    definitions:         Record<string,FunctionConfig>
+    max_function_count?: number;
+    max_code_size?:      number;
+    max_request_size?:   number;
 };
 
 export type FieldMap = Record<string,FunctionConfig>;
@@ -49,14 +52,21 @@ export type ResolverMap = Record<string,FieldMap>;
 
 /** GraphQL configuration. */
 export type GraphQLConfig = {
-    schema?:     string,        // The schema itself
-    schemaFile?: string,        // Path to schema file (only if schema is not given)
-    resolvers:   ResolverMap,   // GraphQL resolver functions
+    schema?:             string,        // The schema itself
+    schemaFile?:         string,        // Path to schema file (only if schema is not given)
+    resolvers:           ResolverMap,   // GraphQL resolver functions
+    max_code_size?:      number;
+    max_request_size?:   number;
+    max_resolver_count?: number;
+    max_schema_size?:    number;
 };
 
+
+/** Top-level configuration. */
 export type Config = {
-    functions?: FunctionsConfig;
-    graphql?:   GraphQLConfig;
+    functions?:     FunctionsConfig;
+    graphql?:       GraphQLConfig;
+    keyspaceName:   string;
 }
 
 
@@ -88,7 +98,8 @@ export interface Context {
     readonly roles?: string[];
     readonly channels?: string[];
 
-    readonly isAdmin : boolean;
+    readonly isAdmin : boolean;         // This is an admin user
+    readonly isSuperUser : boolean;     // This is the magic "context.admin" user
 
     readonly canMutate : boolean;
 
@@ -135,6 +146,10 @@ export type Credentials = [string, string[], string[]];
 
 /** Top-level object that stores the compiled state for a database. */
 export interface Database {
+    /** Sets the configuration. Returns all errors found. */
+    configure(functions: FunctionsConfig | undefined,
+              graphql: GraphQLConfig | undefined) : string[] | null;
+
     /** Creates an execution context given a user's name, roles and channels. */
     makeContext(credentials: Credentials | null,
                 mutationAllowed: boolean) : Context;
@@ -155,7 +170,4 @@ export interface Database {
             query: string,
             variableValues?: Args,
             operationName?: string) : Promise<gq.ExecutionResult>;
-
-    /** The compiled GraphQL schema. */
-    readonly schema?: gq.GraphQLSchema;
 }

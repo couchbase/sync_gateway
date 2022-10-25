@@ -43,7 +43,7 @@ var kUserN1QLFunctionsConfig = FunctionsConfig{
 		},
 		"user_parts": &FunctionConfig{
 			Type:  "query",
-			Code:  "SELECT $user.name AS name, $user.email AS email",
+			Code:  "SELECT $user.name AS name, $user.roles AS roles",
 			Allow: &Allow{Channels: []string{"user-${context.user.name}"}},
 		},
 		"admin_only": &FunctionConfig{
@@ -189,17 +189,17 @@ func testUserQueriesAsUser(t *testing.T, ctx context.Context, db *db.Database) {
 	assert.NoError(t, err)
 	// (Can't compare the entire result string because the order of items in the "channels" array
 	// is undefined and can change from one run to another.)
-	iter, err := fn.Iterate()
+	result, err := fn.RunAsJSON()
 	assert.NoError(t, err)
-	resultStr := queryResultString(t, iter)
-	assert.True(t, strings.HasPrefix(resultStr, `[{"user":{"channels":["`))
-	assert.True(t, strings.HasSuffix(resultStr, `"],"email":"","name":"alice","roles":["hero"]}}]`))
+	resultStr := string(result)
+	assert.True(t, strings.HasPrefix(resultStr, `[{"user":{"channels":["`), "result is %s", resultStr)
+	assert.True(t, strings.HasSuffix(resultStr, `"],"name":"alice","roles":["hero"]}}]`), "result is %s", resultStr)
 
 	fn, err = db.GetUserFunction("user_parts", nil, false, ctx)
 	assert.NoError(t, err)
-	iter, err = fn.Iterate()
+	result, err = fn.RunAsJSON()
 	assert.NoError(t, err)
-	assertQueryResults(t, `[{"email":"","name":"alice"}]`, iter)
+	assert.Equal(t, `[{"name":"alice","roles":["hero"]}]`, string(result))
 
 	// ERRORS:
 
@@ -228,8 +228,8 @@ func TestUserN1QLQueriesInvalid(t *testing.T) {
 		},
 	}
 
-	_, _, err := CompileFunctions(&kBadN1QLFunctionsConfig, nil)
-	assert.ErrorContains(t, err, "only SELECT queries are allowed") // See fn validateN1QLQuery
+	err := ValidateFunctions(context.TODO(), &kBadN1QLFunctionsConfig, nil)
+	assert.ErrorContains(t, err, "only SELECT queries are allowed")
 
 	var kOKN1QLFunctionsConfig = FunctionsConfig{
 		Definitions: FunctionsDefs{
@@ -248,6 +248,6 @@ func TestUserN1QLQueriesInvalid(t *testing.T) {
 		},
 	}
 
-	_, _, err = CompileFunctions(&kOKN1QLFunctionsConfig, nil)
+	err = ValidateFunctions(context.TODO(), &kOKN1QLFunctionsConfig, nil)
 	assert.NoError(t, err)
 }

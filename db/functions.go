@@ -93,7 +93,6 @@ type FormattedError struct {
 	Locations  []SourceLocation       `json:"locations"`
 	Path       []interface{}          `json:"path,omitempty"`
 	Extensions map[string]interface{} `json:"extensions,omitempty"`
-	// contains filtered or unexported fields
 }
 
 func (err *FormattedError) Error() string {

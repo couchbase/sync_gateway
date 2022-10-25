@@ -178,7 +178,7 @@ func assertGraphQLResult(t *testing.T, expected string, result *db.GraphQLResult
 	if !assert.NoError(t, err) || !assert.NotNil(t, result) {
 		return
 	}
-	if !assert.Zerof(t, len(result.Errors), "Unexpected GraphQL errors: %v", result.Errors) {
+	if !assert.Zerof(t, len(result.Errors), "Unexpected GraphQL errors: %#v", result.Errors) {
 		for _, err := range result.Errors {
 			t.Logf("\t%v", err)
 		}
@@ -300,10 +300,10 @@ var kTestGraphQLConfigWithN1QL = GraphQLConfig{
 			},
 			"infinite": {
 				Type: "javascript",
-				Code: `function(parent, args, context, info) {
-						var result = context.user.graphql("query{ infinite }");
-						if (result.errors) throw "GraphQL query failed: " + result.errors[0].message;
-						return -1;}`,
+				Code: `async function(parent, args, context, info) {
+					var result = await context.user.graphql("query{ infinite }");
+					if (result.errors) throw "GraphQL query failed:" + result.errors[0].message;
+					return -1;}`,
 				Allow: allowAll,
 			},
 			"task": {
@@ -357,7 +357,7 @@ var kTestGraphQLConfigWithN1QL = GraphQLConfig{
 				Code: `function(parent, args, context, info) {
 								if (!parent.id) throw "Invalid parent";
 								if (Object.keys(args).length != 0) throw "Unexpected args";
-								if (Object.keys(info) != "selectedFieldNames") throw "Unexpected info";
+								if (!info.selectedFieldNames) throw "No info.selectedFieldNames";
 								if (!context.user) throw "Missing context.user";
 								if (!context.admin) throw "Missing context.admin";
 								return "TOP SECRET!";}`,
@@ -416,7 +416,7 @@ func TestUserGraphQLWithN1QL(t *testing.T) {
 	assertGraphQLResult(t, `{"task":{"description":"Bass ale please","title":"Beer"}}`, result, err)
 }
 
-func TestGraphQLMaxSchemaSize(t *testing.T) {
+func TestUserGraphQLMaxSchemaSize(t *testing.T) {
 	var schema = `
 	type Task {
 		id: ID!
@@ -438,12 +438,18 @@ func TestGraphQLMaxSchemaSize(t *testing.T) {
 			},
 		},
 	}
-	_, _, err := CompileFunctions(nil, &config)
+	err := ValidateFunctions(context.TODO(), nil, &config)
 	assert.ErrorContains(t, err, "GraphQL schema too large (> 20 bytes)")
 }
 
-func TestGraphQLMaxResolverCount(t *testing.T) {
+func TestUserGraphQLMaxResolverCount(t *testing.T) {
 	var schema = `
+	type Query {
+		foo: String!
+	}
+	type Mutation {
+		bar: String!
+	}
 	type Task {
 		id: ID!
 		title: String!
@@ -470,6 +476,6 @@ func TestGraphQLMaxResolverCount(t *testing.T) {
 			},
 		},
 	}
-	_, _, err := CompileFunctions(nil, &config)
+	err := ValidateFunctions(context.TODO(), nil, &config)
 	assert.ErrorContains(t, err, "too many GraphQL resolvers (> 1)")
 }

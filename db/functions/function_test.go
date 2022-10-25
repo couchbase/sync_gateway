@@ -143,14 +143,14 @@ var kTestFunctionsConfig = FunctionsConfig{
 
 		"illegal_putDoc": &FunctionConfig{
 			Type:  "javascript",
-			Code:  `function(context, args) {context.user.function("putDoc", args);}`,
+			Code:  `function(context, args) {return context.user.function("putDoc", args);}`,
 			Args:  []string{"docID", "doc"},
 			Allow: allowAll,
 		},
 
 		"legal_putDoc": &FunctionConfig{
 			Type:  "javascript",
-			Code:  `function(context, args) {context.admin.function("putDoc", args);}`,
+			Code:  `function(context, args) {return context.admin.function("putDoc", args);}`,
 			Args:  []string{"docID", "doc"},
 			Allow: allowAll,
 		},
@@ -398,7 +398,7 @@ func TestUserFunctionsCRUD(t *testing.T) {
 
 	// Update document without revID:
 	body["key3"] = 4
-	delete(body, "_revid")
+	delete(body, "_rev")
 	result, err = db.CallUserFunction("putDoc", docParams, true, ctx)
 	assert.NoError(t, err)
 	assert.Equal(t, docID, result)
@@ -426,7 +426,7 @@ func TestUserFunctionsCRUD(t *testing.T) {
 
 // Test that JS syntax errors are detected when the db opens.
 func TestUserFunctionSyntaxError(t *testing.T) {
-	var kUserFunctionBadConfig = FunctionsConfig{
+	var functionConfig = FunctionsConfig{
 		Definitions: FunctionsDefs{
 			"square": &FunctionConfig{
 				Code:  "return args.numero * args.numero;",
@@ -440,15 +440,12 @@ func TestUserFunctionSyntaxError(t *testing.T) {
 		},
 	}
 
-	_, _, err := CompileFunctions(&kUserFunctionBadConfig, nil)
+	err := ValidateFunctions(context.TODO(), &functionConfig, nil)
 	assert.Error(t, err)
-
-	err2 := ValidateFunctions(nil, &kUserFunctionBadConfig, nil)
-	assert.Equal(t, err, err2)
 }
 
 func TestUserFunctionsMaxFunctionCount(t *testing.T) {
-	var twoFunctionConfig = FunctionsConfig{
+	var functionConfig = FunctionsConfig{
 		MaxFunctionCount: base.IntPtr(1),
 		Definitions: FunctionsDefs{
 			"square": &FunctionConfig{
@@ -464,8 +461,8 @@ func TestUserFunctionsMaxFunctionCount(t *testing.T) {
 			},
 		},
 	}
-	_, _, err := CompileFunctions(&twoFunctionConfig, nil)
-	assert.ErrorContains(t, err, "too many functions declared (> 1)")
+	err := ValidateFunctions(context.TODO(), &functionConfig, nil)
+	assert.ErrorContains(t, err, "too many functions (> 1)")
 }
 
 func TestUserFunctionsMaxCodeSize(t *testing.T) {
@@ -480,8 +477,8 @@ func TestUserFunctionsMaxCodeSize(t *testing.T) {
 			},
 		},
 	}
-	_, _, err := CompileFunctions(&functionConfig, nil)
-	assert.ErrorContains(t, err, "function code too large (> 20 bytes)")
+	err := ValidateFunctions(context.TODO(), &functionConfig, nil)
+	assert.ErrorContains(t, err, "function square: code is too large (> 20 bytes)")
 }
 
 //////// UTILITY FUNCTIONS:

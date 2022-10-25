@@ -65,8 +65,14 @@ export class API {
         console.error = (...args: any) => native.log(1, ...args);
 
         let config = JSON.parse(configJSON) as Config;
-        this.db = MakeDatabase(config.functions, config.graphql, new UpstreamNativeImpl(native));
+        let [db, errors] = MakeDatabase(config.functions, config.graphql,
+                                        new UpstreamNativeImpl(native));
+        if (db !== null)  this.db = db;
+        this.errors = errors;
     }
+
+    /** Configuration errors. If there are errors, the API must not be called. */
+    readonly errors: string[] | null;
 
     /** Calls a named function. */
     callFunction(name: string,
@@ -76,7 +82,6 @@ export class API {
                  channels: string | undefined,
                  mutationAllowed: boolean) : string | Promise<string>
     {
-        console.debug(`>>>> callFunction(${name}) user=${user} mutationAllowed=${mutationAllowed}`);
         let args = argsJSON ? JSON.parse(argsJSON) : undefined;
         let context = this.makeContext(user, roles, channels, mutationAllowed);
         let result = this.db.callFunction(context, name, args);
@@ -97,7 +102,6 @@ export class API {
             mutationAllowed: boolean) : Promise<string>
     {
         if (operationName === "") operationName = undefined;
-        console.debug(`>>>> graphql("${query}") user=${user} mutationAllowed=${mutationAllowed}`);
         let vars = variablesJSON ? JSON.parse(variablesJSON) : undefined;
         let context = this.makeContext(user, roles, channels, mutationAllowed);
         return this.db.graphql(context, query, vars, operationName)
@@ -118,7 +122,7 @@ export class API {
         return this.db.makeContext(credentials, mutationAllowed)
     }
 
-    private db: Database;
+    private db!: Database;
 };
 
 

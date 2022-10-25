@@ -216,12 +216,14 @@ export function CompileParams(fnName: string, parameters: string[] | undefined):
 
 
 // Returns the N1QL query string from a FunctionConfig.
-function preprocessN1QL(config: FunctionConfig) : string {
-    return config.code.replace(/\$_keyspace\b/g, `_default`);
+function checkN1QL(config: FunctionConfig) : string {
+    if (!config.code.match(/^\s*\(*SELECT\b/i))
+        throw new HTTPError(500, "only SELECT queries are allowed");
+    return config.code;
 }
 
 
-function rethrow(x: unknown, what: string, fnName: string) {
+function rethrow(x: unknown, what: string, fnName: string) : never {
     if (x instanceof Error) {
         x.message = `${x.message} (thrown by ${what} ${fnName})`
         throw x;
@@ -240,10 +242,12 @@ export function CompileFn(fnName: string,
     let checkArgs = CompileParams(fnName, fnConfig.args);
     switch (fnConfig.type) {
     case "query":
-        let n1ql = preprocessN1QL(fnConfig);
-        return async function(context, args) {
+        let n1ql = checkN1QL(fnConfig);
+        return function(context, args) {
             checkArgs(args);
             allow.authorize(context.user, args);
+            console.debug(`QUERY ${fnName}`);
+            if (args) args = {args: args};
             return db.query(context, fnName, n1ql, args);
         };
     case "javascript":
@@ -263,33 +267,66 @@ export function CompileFn(fnName: string,
             }
         };
     default:
-        throw new HTTPError(500, `Function ${fnName} has an unknown or missing type`);
+        throw new HTTPError(500, `unknown or missing 'type'`);
     }
 }
 
 
 /** Compiles a FunctionConfig to a GraphQL resolver. */
-export function CompileResolver(typeName: string,
+export function CompileResolver(field: gq.GraphQLField<any,Context>,
+                                typeName: string,
                                 fieldName: string,
                                 fnConfig: FunctionConfig,
-                                db: Database) : gq.GraphQLFieldResolver<any,Context>
+                                db: Database)
 {
     let fnName = `${typeName}.${fieldName}`;
     let mutating = (typeName == "Mutation");
     let allow = CompileAllow(fnName, fnConfig.allow, true);
     if (fnConfig.args) {
-        throw new HTTPError(500, `GraphQL resolver ${fnName} should not have an 'args' declaration`);
+        throw new HTTPError(500, `should not have an 'args' declaration`);
     }
     switch (fnConfig.type) {
     case "query":
-        let n1ql = preprocessN1QL(fnConfig);
-        return async function(source, args, context, info) {
+        let n1ql = checkN1QL(fnConfig);
+        let fieldType = field.type;
+        if (gq.isNonNullType(fieldType))
+            fieldType = fieldType.ofType;
+        let returnsGraphQLList = gq.isListType(fieldType);
+        let returnsGraphQLScalar = gq.isScalarType(fieldType);
+        field.resolve = function(parent, args, context, info) {
             allow.authorize(context.user, args);
-            return db.query(context, fnName, n1ql, args);
+            try {
+                let result = db.query(context, fnName, n1ql, {args: args, parent: parent});
+                if (returnsGraphQLList) {
+                    // Resolver returns a list, so just return the array of rows
+                    return result;
+                } else if (result.length == 0) {
+                    return null;
+                } else {
+                    // GraphQL result is not a list (array), but N1QL always returns an array.
+                    // So use the first row of the result as the value.
+                    let row = result[0];
+                    if (!returnsGraphQLScalar) {
+                        return row
+                    } else {
+                        // GraphQL result type is a scalar, but a N1QL row is always an object.
+                        // Use the single field of the object, if any, as the result:
+                        let cols = Object.getOwnPropertyNames(row);
+                        if (cols.length == 1) {
+                            return row[cols[0]];
+                        } else {
+                            throw new HTTPError(500, `resolver returns scalar type ${field.type}, but its N1QL query returns ${cols.length} columns, not 1`);
+                        }
+                    }
+                }
+            } catch (x) {
+                rethrow(x, "resolver", fnName);
+            }
         };
+        break;
     case "javascript":
         let code = compileToJS(fnName, fnConfig, 4) as ResolverFn;
-        return function(source, args, context, info) {
+        field.resolve = function(source, args, context, info) {
             console.debug(`RESOLVE ${fnName}`);
             allow.authorize(context.user, args);
             if (!mutating) BeginReadOnly(context);
@@ -300,9 +337,10 @@ export function CompileResolver(typeName: string,
             } finally {
                 if (!mutating) EndReadOnly(context);
             }
-        }
+        };
+        break;
     default:
-        throw new HTTPError(500, `Resolver function ${fnName} has an unknown or missing type`);
+        throw new HTTPError(500, `unknown or missing 'type'`);
     }
 }
 
@@ -314,9 +352,9 @@ export function CompileTypeNameResolver(typeName: string,
 {
     let fnName = `${typeName}.__typename`;
     if (fnConfig.type != "javascript") {
-        throw new HTTPError(500, `Type-name resolver ${fnName} must be implemented in JavaScript`);
+        throw new HTTPError(500, `type-name resolvers must be implemented in JavaScript`);
     } else if (fnConfig.allow !== undefined) {
-        throw new HTTPError(500, `Type-name resolver ${fnName} must not have an 'allow' config`);
+        throw new HTTPError(500, `type-name resolver must not have an 'allow' config`);
     }
     return compileToJS(fnName, fnConfig, 4) as gq.GraphQLTypeResolver<any,Context>;
 }
@@ -329,12 +367,12 @@ function compileToJS(name: string, fnConfig: FunctionConfig, nArgs: number) : Fu
     try {
         fn = Function(`"use strict"; return (${fnConfig.code})`)()
     } catch (x) {
-        throw new HTTPError(500, `Function ${name} failed to compile: ${x}`);
+        throw new HTTPError(500, `failed to compile: ${x}`);
     }
     if (typeof(fn) !== 'function') {
-        throw new HTTPError(500, `Function ${name}'s code does not compile to a JS function`);
+        throw new HTTPError(500, `code does not compile to a JS function`);
     } else if (fn.length != nArgs) {
-        throw new HTTPError(500, `Function ${name} should have ${nArgs} JavaScript arguments`);
+        throw new HTTPError(500, `should have ${nArgs} JavaScript arguments`);
     }
     return fn;
 }

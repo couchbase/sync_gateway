@@ -54,8 +54,8 @@ type GraphQLConfig struct {
 	Schema           *string         `json:"schema,omitempty"`             // Schema in SDL syntax
 	SchemaFile       *string         `json:"schemaFile,omitempty"`         // Path of schema file
 	Resolvers        GraphQLTypesMap `json:"resolvers"`                    // Defines query/mutation code
-	MaxSchemaSize    *int            `json:"max_schema_size,omitempty"`    // Maximum length (in bytes) of GraphQL schema; default is 0, for unlimited
-	MaxResolverCount *int            `json:"max_resolver_count,omitempty"` // Maximum number of GraphQL resolvers; default is 0, for unlimited
+	MaxSchemaSize    *int            `json:"max_schema_size,omitempty"`    // Maximum length (in bytes) of GraphQL schema
+	MaxResolverCount *int            `json:"max_resolver_count,omitempty"` // Maximum number of GraphQL resolvers
 	MaxCodeSize      *int            `json:"max_code_size,omitempty"`      // Maximum length (in bytes) of a function's code
 	MaxRequestSize   *int            `json:"max_request_size,omitempty"`   // Maximum size of the encoded query & arguments
 }
@@ -103,8 +103,23 @@ func CompileFunctions(fnConfig *FunctionsConfig, gqConfig *GraphQLConfig) (fns *
 
 // Validates a FunctionsConfig.
 func ValidateFunctions(ctx context.Context, fnConfig *FunctionsConfig, gqConfig *GraphQLConfig) error {
-	_, _, err := CompileFunctions(fnConfig, gqConfig)
-	return err
+	// To validate, we have to create an Evaluator, because that's when the JavaScript code
+	// runs and reads the configuration.
+	if fnConfig == nil && gqConfig == nil {
+		return nil
+	} else if env, err := NewEnvironment(fnConfig, gqConfig); err != nil {
+		return err
+	} else {
+		delegate := &databaseDelegate{
+			ctx: ctx,
+		}
+		if eval, err := env.NewEvaluator(delegate, nil); err != nil {
+			return err
+		} else {
+			eval.Close()
+			return nil
+		}
+	}
 }
 
 //////// FUNCTIONIMPL
@@ -155,24 +170,22 @@ func (fn *functionImpl) Invoke(dbc *db.Database, args map[string]any, mutationAl
 		return nil, err
 	}
 	delegate := &databaseDelegate{
-		dbc: dbc,
+		db:  dbc,
 		ctx: ctx,
 	}
-	var user *UserCredentials
 	if dbUser := dbc.User(); dbUser != nil {
-		user = &UserCredentials{
+		delegate.user = &UserCredentials{
 			Name:     dbUser.Name(),
 			Roles:    dbUser.RoleNames().AllKeys(),
 			Channels: dbUser.Channels().AllKeys(),
 		}
 	}
-	return fn.invoke(delegate, user, args, mutationAllowed)
+	return fn.invoke(delegate, delegate.user, args, mutationAllowed)
 }
 
 // Implements UserFunctionInvocation
 type functionInvocation struct {
 	*functionImpl
-	dbc  *db.Database
 	eval *Evaluator
 	args map[string]any
 }
@@ -184,6 +197,8 @@ func (inv *functionInvocation) Iterate() (sgbucket.QueryResultIterator, error) {
 func (inv *functionInvocation) Run() (interface{}, error) {
 	if resultJSON, err := inv.RunAsJSON(); err != nil {
 		return nil, err
+	} else if resultJSON == nil {
+		return nil, nil
 	} else {
 		var result any
 		err := json.Unmarshal([]byte(resultJSON), &result)
@@ -226,28 +241,30 @@ func (gq *graphQLImpl) QueryAsJSON(dbc *db.Database, query string, operationName
 		return nil, err
 	}
 	delegate := &databaseDelegate{
-		dbc: dbc,
+		db:  dbc,
 		ctx: ctx,
 	}
-	var user *UserCredentials
 	if dbUser := dbc.User(); dbUser != nil {
-		user = &UserCredentials{
+		delegate.user = &UserCredentials{
 			Name:     dbUser.Name(),
 			Roles:    dbUser.RoleNames().AllKeys(),
 			Channels: dbUser.Channels().AllKeys(),
 		}
 	}
-	return gq.query(delegate, user, query, operationName, variables, mutationAllowed, ctx)
+	return gq.query(delegate, delegate.user, query, operationName, variables, mutationAllowed, ctx)
 }
 
 func (gq *graphQLImpl) Query(dbc *db.Database, query string, operationName string, variables map[string]interface{}, mutationAllowed bool, ctx context.Context) (*db.GraphQLResult, error) {
-	resultJson, err := gq.QueryAsJSON(dbc, query, operationName, variables, mutationAllowed, ctx)
+	resultJSON, err := gq.QueryAsJSON(dbc, query, operationName, variables, mutationAllowed, ctx)
 	if err != nil {
 		return nil, err
+	} else if resultJSON == nil {
+		return nil, nil
+	} else {
+		var result db.GraphQLResult
+		err = json.Unmarshal(resultJSON, &result)
+		return &result, err
 	}
-	var result db.GraphQLResult
-	err = json.Unmarshal(resultJson, &result)
-	return &result, err
 }
 
 // Returns the names of all N1QL queries used.
@@ -264,5 +281,5 @@ func (gq *graphQLImpl) N1QLQueryNames() []string {
 }
 
 func graphQLResolverName(typeName string, fieldName string) string {
-	return typeName + ":" + fieldName
+	return typeName + "." + fieldName
 }

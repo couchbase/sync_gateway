@@ -4,9 +4,6 @@ import (
 	_ "embed"
 	"encoding/json"
 	"fmt"
-	"log"
-	"regexp"
-	"strconv"
 	"strings"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -89,11 +86,11 @@ func NewEnvironment(functions *FunctionsConfig, graphql *GraphQLConfig) (*Enviro
 
 	// Create the JS "NativeAPI" object template, with Go callback methods:
 	env.jsNativeTemplate = v8.NewObjectTemplate(vm)
-	env.defineMethod(env.jsNativeTemplate, "query", doQuery)
-	env.defineMethod(env.jsNativeTemplate, "get", doGet)
-	env.defineMethod(env.jsNativeTemplate, "save", doSave)
-	env.defineMethod(env.jsNativeTemplate, "delete", doDelete)
-	env.defineMethod(env.jsNativeTemplate, "log", doLog)
+	env.defineEvaluatorCallback(env.jsNativeTemplate, "query", doQuery)
+	env.defineEvaluatorCallback(env.jsNativeTemplate, "get", doGet)
+	env.defineEvaluatorCallback(env.jsNativeTemplate, "save", doSave)
+	env.defineEvaluatorCallback(env.jsNativeTemplate, "delete", doDelete)
+	env.defineEvaluatorCallback(env.jsNativeTemplate, "log", doLog)
 
 	return env, nil
 }
@@ -102,7 +99,9 @@ func (env *Environment) Close() {
 	env.vm.Dispose()
 }
 
+// Returns the Evaluator that owns the given V8 Context.
 func (env *Environment) getEvaluator(ctx *v8.Context) *Evaluator {
+	// (This is kind of a hack, because we expect only one Evaluator at a time.)
 	if env.curEvaluator == nil {
 		panic(fmt.Sprintf("Unknown v8.Context passed to Environment.getEvaluator: %v, expected none", ctx))
 	}
@@ -112,35 +111,26 @@ func (env *Environment) getEvaluator(ctx *v8.Context) *Evaluator {
 	return env.curEvaluator
 }
 
-type v8Method = func(*Evaluator, *v8.FunctionCallbackInfo) (*v8.Value, error)
-
-func (env *Environment) defineMethod(owner *v8.ObjectTemplate, name string, callback v8Method) {
-	env.defineFunction(owner, name, func(info *v8.FunctionCallbackInfo) *v8.Value {
-		eval := env.getEvaluator(info.Context())
-		if result, err := callback(eval, info); err == nil {
-			return result
-		} else {
-			return v8Throw(info.Context().Isolate(), err)
-		}
-	})
-}
-
-func (env *Environment) defineFunction(owner *v8.ObjectTemplate, name string, callback v8.FunctionCallback) {
-	fn := v8.NewFunctionTemplate(env.vm, callback)
-	owner.Set(name, fn, v8.ReadOnly)
-}
-
 //
 //////// EVALUATOR:
 //
 
 // The interface the JS code calls -- provides query and CRUD operations.
 type EvaluatorDelegate interface {
-	query(fnName string, n1ql string, args map[string]any, asAdmin bool) (rows []any, err error)
-	get(docID string, asAdmin bool) (doc map[string]any, err error)
-	save(doc map[string]any, docID string, asAdmin bool) (saved bool, err error)
-	delete(docID string, revID string, asAdmin bool) (ok bool, err error)
+	// Return an error if evaluation has gone on too long.
+	checkTimeout() error
+
+	// Log a message
 	log(level base.LogLevel, message string)
+
+	// Perform a N1QL query.
+	query(fnName string, n1ql string, args map[string]any, asAdmin bool) (rowsAsJSON string, err error)
+	// Get a document.
+	get(docID string, asAdmin bool) (doc map[string]any, err error)
+	// Save/create a document.
+	save(doc map[string]any, docID string, asAdmin bool) (saved bool, err error)
+	// Delete a document.
+	delete(docID string, revID string, asAdmin bool) (ok bool, err error)
 }
 
 type UserCredentials struct {
@@ -190,13 +180,29 @@ func (env *Environment) NewEvaluator(delegate EvaluatorDelegate, user *UserCrede
 	}
 	upstream.SetInternalField(0, eval)
 
-	// Call the JS initializer, passing it the Upstream, to get back the API object:
+	// Call the JS initialization code, passing it the Upstream and the configuration.
+	// This returns the JS `API` object.
 	env.curEvaluator = eval
 	apiVal, err := initFn.Call(initFn, env.jsonConfig, upstream)
 	if err != nil {
 		return nil, err
 	}
 	eval.api = mustSucceed(apiVal.AsObject())
+
+	// Check the API.errors property for configuration errors:
+	if errorsVal, err := eval.api.Get("errors"); err != nil {
+		return nil, err
+	} else if errorsObj, _ := errorsVal.AsObject(); errorsObj != nil {
+		var errors base.MultiError
+		var i uint32
+		for i = 0; errorsObj.HasIdx(i); i++ {
+			if errorVal, err := errorsObj.GetIdx(i); err == nil {
+				errors.Append(fmt.Errorf(errorVal.String()))
+			}
+		}
+		return nil, &errors
+	}
+
 	eval.functionFn = mustGetV8Fn(eval.api, "callFunction")
 	eval.graphqlFn = mustGetV8Fn(eval.api, "graphql")
 	return eval, nil
@@ -216,6 +222,10 @@ func (eval *Evaluator) SetMutationAllowed(allowed bool) {
 	eval.mutationAllowed = allowed
 }
 
+func (eval *Evaluator) GetUser() *UserCredentials {
+	return eval.user
+}
+
 // Calls a named function. Returns a JSON string.
 func (eval *Evaluator) CallFunction(name string, args map[string]any) ([]byte, error) {
 	user, roles, channels := eval.v8Credentials()
@@ -226,12 +236,12 @@ func (eval *Evaluator) CallFunction(name string, args map[string]any) ([]byte, e
 		user, roles, channels,
 		mustSucceed(v8.NewValue(eval.iso, eval.mutationAllowed)))
 
-	var result string
+	var result []byte
 	if err == nil {
-		if v8Result, err = resolvePromise(v8Result); err == nil {
+		if v8Result, err = eval.resolvePromise(v8Result); err == nil {
 			result, err = v8ToGoString(v8Result)
 			if err == nil {
-				return []byte(result), nil
+				return result, nil
 			}
 		}
 	}
@@ -248,18 +258,19 @@ func (eval *Evaluator) CallGraphQL(query string, operationName string, variables
 		mustSucceed(goToV8JSON(eval.ctx, variables)),
 		user, roles, channels,
 		mustSucceed(v8.NewValue(eval.iso, eval.mutationAllowed)))
-	var result string
+	var result []byte
 	if err == nil {
-		if v8Result, err = resolvePromise(v8Result); err == nil {
+		if v8Result, err = eval.resolvePromise(v8Result); err == nil {
 			result, err = v8ToGoString(v8Result)
 			if err == nil {
-				return []byte(result), nil
+				return result, nil
 			}
 		}
 	}
 	return nil, unpackJSError(err)
 }
 
+// Encodes credentials as 3 parameters to pass to JS.
 func (eval *Evaluator) v8Credentials() (user *v8.Value, roles *v8.Value, channels *v8.Value) {
 	undef := v8.Undefined(eval.iso)
 	user = undef
@@ -281,11 +292,64 @@ func (eval *Evaluator) v8Credentials() (user *v8.Value, roles *v8.Value, channel
 	return
 }
 
+func (eval *Evaluator) resolvePromise(val *v8.Value) (*v8.Value, error) {
+	if !val.IsPromise() {
+		return val, nil
+	}
+	for {
+		switch p, _ := val.AsPromise(); p.State() {
+		case v8.Fulfilled:
+			return p.Result(), nil
+		case v8.Rejected:
+			errStr := p.Result().DetailString()
+			err := unpackJSErrorStr(errStr)
+			if err == nil {
+				err = fmt.Errorf("%s", errStr)
+			}
+			return nil, err
+		case v8.Pending:
+			eval.ctx.PerformMicrotaskCheckpoint() // run VM to make progress on the promise
+			if err := eval.delegate.checkTimeout(); err != nil {
+				return nil, err
+			}
+			// go round the loop again...
+		default:
+			return nil, fmt.Errorf("illegal v8.Promise state %d", p)
+		}
+	}
+}
+
 //////// NATIVE CALLBACK IMPLEMENTATIONS:
 
+// For convenience, Evaluator callbacks get passed the Evaluator instance,
+// and get to return Go values -- allowed values are nil, numbers, bool, string.
+type evaluatorCallback = func(*Evaluator, *v8.FunctionCallbackInfo) (any, error)
+
+// Registers a Go function as a Java function property of an owner object.
+func (env *Environment) defineEvaluatorCallback(owner *v8.ObjectTemplate, name string, callback evaluatorCallback) {
+	fn := v8.NewFunctionTemplate(env.vm, func(info *v8.FunctionCallbackInfo) *v8.Value {
+		eval := env.getEvaluator(info.Context())
+		var err error
+		if err = eval.delegate.checkTimeout(); err == nil {
+			var result any
+			if result, err = callback(eval, info); err == nil { // Finally call the fn!
+				if result != nil {
+					var v8Result *v8.Value
+					if v8Result, err = v8.NewValue(env.vm, result); err == nil {
+						return v8Result
+					}
+				} else {
+					return v8.Undefined(env.vm)
+				}
+			}
+		}
+		return v8Throw(env.vm, err)
+	})
+	owner.Set(name, fn, v8.ReadOnly)
+}
+
 // 	query(fnName: string, n1ql: string, argsJSON: string | undefined, asAdmin: boolean) : string;
-func doQuery(eval *Evaluator, info *v8.FunctionCallbackInfo) (*v8.Value, error) {
-	var rows []any
+func doQuery(eval *Evaluator, info *v8.FunctionCallbackInfo) (any, error) {
 	fnName := info.Args()[0].String()
 	n1ql := info.Args()[1].String()
 	args, err := v8JSONToGo(info.Args()[2])
@@ -293,21 +357,18 @@ func doQuery(eval *Evaluator, info *v8.FunctionCallbackInfo) (*v8.Value, error) 
 		return nil, err
 	}
 	asAdmin := info.Args()[3].Boolean()
-	rows, err = eval.delegate.query(fnName, n1ql, args, asAdmin)
-	return returnJSONToV8(info, rows, err)
+	return eval.delegate.query(fnName, n1ql, args, asAdmin)
 }
 
 // 	get(docID: string, asAdmin: boolean) : string | null;
-func doGet(eval *Evaluator, info *v8.FunctionCallbackInfo) (*v8.Value, error) {
+func doGet(eval *Evaluator, info *v8.FunctionCallbackInfo) (any, error) {
 	docID := info.Args()[0].String()
 	asAdmin := info.Args()[1].Boolean()
-
-	result, err := eval.delegate.get(docID, asAdmin)
-	return returnJSONToV8(info, result, err)
+	return returnAsJSON(eval.delegate.get(docID, asAdmin))
 }
 
 // 	save(docJSON: string, docID: string | undefined, asAdmin: boolean) : string;
-func doSave(eval *Evaluator, info *v8.FunctionCallbackInfo) (*v8.Value, error) {
+func doSave(eval *Evaluator, info *v8.FunctionCallbackInfo) (any, error) {
 	var docID string
 	doc, err := v8JSONToGo(info.Args()[0])
 	if err != nil {
@@ -325,27 +386,26 @@ func doSave(eval *Evaluator, info *v8.FunctionCallbackInfo) (*v8.Value, error) {
 	}
 	asAdmin := info.Args()[2].Boolean()
 
-	if saved, err := eval.delegate.save(doc, docID, asAdmin); saved {
-		return returnValueToV8(info, docID, err)
+	if saved, err := eval.delegate.save(doc, docID, asAdmin); saved && err == nil {
+		return docID, nil
 	} else {
-		return v8.Null(info.Context().Isolate()), err
+		return nil, err
 	}
 }
 
 // 	delete(docID: string, revID: string | undefined, asAdmin: boolean) : boolean;
-func doDelete(eval *Evaluator, info *v8.FunctionCallbackInfo) (*v8.Value, error) {
+func doDelete(eval *Evaluator, info *v8.FunctionCallbackInfo) (any, error) {
 	docID := info.Args()[0].String()
 	var revID string
 	if arg1 := info.Args()[1]; arg1.IsString() {
 		revID = arg1.String()
 	}
 	asAdmin := info.Args()[2].Boolean()
-
-	ok, err := eval.delegate.delete(docID, revID, asAdmin)
-	return returnValueToV8(info, ok, err)
+	return eval.delegate.delete(docID, revID, asAdmin)
 }
 
-func doLog(eval *Evaluator, info *v8.FunctionCallbackInfo) (*v8.Value, error) {
+//  log(level: number, ...args: string[])
+func doLog(eval *Evaluator, info *v8.FunctionCallbackInfo) (any, error) {
 	var level base.LogLevel
 	var message []string
 	for i, arg := range info.Args() {
@@ -357,101 +417,4 @@ func doLog(eval *Evaluator, info *v8.FunctionCallbackInfo) (*v8.Value, error) {
 	}
 	eval.delegate.log(level, strings.Join(message, " "))
 	return nil, nil
-}
-
-//////// UTILITIES
-
-func goToV8String(i *v8.Isolate, str string) *v8.Value {
-	return mustSucceed(v8.NewValue(i, str))
-}
-
-func v8ToGoString(val *v8.Value) (string, error) {
-	if val.IsString() {
-		return val.String(), nil
-	} else {
-		return "", fmt.Errorf("JavaScript returned non-string")
-	}
-}
-
-// Converts a V8 string of JSON into a Go map.
-func v8JSONToGo(val *v8.Value) (map[string]any, error) {
-	var err error
-	if jsonStr, err := v8ToGoString(val); err == nil {
-		var result map[string]any
-		if err = json.Unmarshal([]byte(jsonStr), &result); err == nil {
-			return result, nil
-		}
-	}
-	return nil, err
-}
-
-func goToV8JSON(ctx *v8.Context, obj any) (*v8.Value, error) {
-	if obj == nil {
-		return v8.Null(ctx.Isolate()), nil
-	} else if jsonBytes, err := json.Marshal(obj); err != nil {
-		return nil, err
-	} else {
-		return v8.NewValue(ctx.Isolate(), string(jsonBytes))
-	}
-}
-
-func returnJSONToV8(info *v8.FunctionCallbackInfo, result any, err error) (*v8.Value, error) {
-	if err == nil {
-		return goToV8JSON(info.Context(), result)
-	}
-	return nil, err
-}
-
-// 'result' must be a number, bool or string
-func returnValueToV8(info *v8.FunctionCallbackInfo, result any, err error) (*v8.Value, error) {
-	if err == nil {
-		return v8.NewValue(info.Context().Isolate(), result)
-	}
-	return nil, err
-}
-
-func v8Throw(i *v8.Isolate, err error) *v8.Value {
-	return i.ThrowException(goToV8String(i, err.Error()))
-}
-
-func mustGetV8Fn(owner *v8.Object, name string) *v8.Function {
-	fnVal := mustSucceed(owner.Get(name))
-	return mustSucceed(fnVal.AsFunction())
-}
-
-func resolvePromise(val *v8.Value) (*v8.Value, error) {
-	if !val.IsPromise() {
-		return val, nil
-	}
-	switch p, _ := val.AsPromise(); p.State() {
-	case v8.Fulfilled:
-		return p.Result(), nil
-	case v8.Rejected:
-		errVal := p.Result()
-		return nil, fmt.Errorf("promise rejected: %s", errVal.DetailString())
-	default:
-		log.Fatalf("Promise still pending!!") //FIXME
-		return nil, nil
-	}
-}
-
-// This detects the way HTTP statuses are encoded into error messages by the class HTTPError in types.ts.
-var kHTTPErrRegexp = regexp.MustCompile(`^\[(\d\d\d)\]\s+(.*)`)
-
-func unpackJSError(err error) error {
-	if jsErr, ok := err.(*v8.JSError); ok {
-		if m := kHTTPErrRegexp.FindStringSubmatch(jsErr.Message); m != nil {
-			if status, err := strconv.ParseUint(m[1], 10, 16); err == nil {
-				return &base.HTTPError{Status: int(status), Message: m[2]}
-			}
-		}
-	}
-	return err
-}
-
-func mustSucceed[T any](result T, err error) T {
-	if err != nil {
-		log.Fatalf("ASSERTION FAILURE: expected a %T, got %v", result, err)
-	}
-	return result
 }

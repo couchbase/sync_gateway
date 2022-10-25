@@ -20,6 +20,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+// A basic bring-up test of the Evaluator and TypeScript engine.
 func TestEvaluator(t *testing.T) {
 	env, err := NewEnvironment(&kTestFunctionsConfig, &kTestGraphQLConfig)
 	if !assert.NoError(t, err) {
@@ -49,8 +50,16 @@ type mockEvaluatorDelegate struct {
 	docs map[string]mockDoc
 }
 
-func (d *mockEvaluatorDelegate) query(fnName string, n1ql string, args map[string]any, asAdmin bool) (rows []any, err error) {
-	return nil, base.HTTPErrorf(http.StatusNotImplemented, "query unimplemented")
+var logLevelNames = []string{"none", "error", "warning", "info", "debug", "trace"}
+
+func (d *mockEvaluatorDelegate) log(level base.LogLevel, message string) {
+	log.Printf("JAVASCRIPT %s: %s", logLevelNames[level], message)
+}
+
+func (d *mockEvaluatorDelegate) checkTimeout() error { return nil }
+
+func (d *mockEvaluatorDelegate) query(fnName string, n1ql string, args map[string]any, asAdmin bool) (rowsJSON string, err error) {
+	return "", base.HTTPErrorf(http.StatusNotImplemented, "query unimplemented")
 }
 
 func (d *mockEvaluatorDelegate) get(docID string, asAdmin bool) (doc map[string]any, err error) {
@@ -93,10 +102,4 @@ func (d *mockEvaluatorDelegate) delete(docID string, revID string, asAdmin bool)
 	}
 	delete(d.docs, docID)
 	return true, nil
-}
-
-var logLevelNames = []string{"none", "error", "warning", "info", "debug", "trace"}
-
-func (d *mockEvaluatorDelegate) log(level base.LogLevel, message string) {
-	log.Printf("JAVASCRIPT %s: %s", logLevelNames[level], message)
 }

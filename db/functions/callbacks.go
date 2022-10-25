@@ -1,34 +1,55 @@
 package functions
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"log"
 	"net/http"
 
+	"github.com/couchbase/gocb/v2"
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 )
 
-//////// DATABASE EVALUATOR DELEGATE:
-
-type databaseDelegate struct {
-	dbc *db.Database    // The database (with user)
-	ctx context.Context // Context for logging, timeouts etc.
+type n1qlUserArgument struct {
+	Name     *string  `json:"name,omitempty"`
+	Channels []string `json:"channels,omitempty"`
+	Roles    []string `json:"roles,omitempty"`
 }
 
-func (d *databaseDelegate) query(fnName string, n1ql string, args map[string]any, asAdmin bool) (rows []any, err error) {
-	return nil, base.HTTPErrorf(http.StatusNotImplemented, "query unimplemented")
+//////// DATABASE EVALUATOR DELEGATE:
+
+// Implementation of EvaluatorDelegate.
+type databaseDelegate struct {
+	db   *db.Database    // The database (with user)
+	ctx  context.Context // Context for logging, timeouts etc.
+	user *UserCredentials
+}
+
+// Temporarily makes the db user an admin. Returns a fn that will revert the upgrade.
+// Must be called as `defer d.asAdmin()()`
+func (d *databaseDelegate) asAdmin() func() {
+	user := d.db.User()
+	d.db.SetUser(nil)
+	return func() { d.db.SetUser(user) } // this is what will be run by `defer`
+}
+
+func (d *databaseDelegate) checkTimeout() error {
+	return d.db.CheckTimeout(d.ctx)
+}
+
+func (d *databaseDelegate) log(level base.LogLevel, message string) {
+	log.Printf("JS LOG: (%d) %s", level, message) //TEMP
+	base.LogfTo(d.ctx, level, base.KeyJavascript, "%s", base.UD(message))
 }
 
 func (d *databaseDelegate) get(docID string, asAdmin bool) (doc map[string]any, err error) {
-	if err := d.dbc.CheckTimeout(d.ctx); err != nil {
-		return nil, err
-	} else if asAdmin {
-		user := d.dbc.User()
-		d.dbc.SetUser(nil)
-		defer func() { d.dbc.SetUser(user) }()
+	if asAdmin {
+		defer d.asAdmin()()
 	}
-	rev, err := d.dbc.GetRev(d.ctx, docID, "", false, nil)
+	rev, err := d.db.GetRev(d.ctx, docID, "", false, nil)
 	if err != nil {
 		status, _ := base.ErrorAsHTTPStatus(err)
 		if status == http.StatusNotFound {
@@ -47,18 +68,13 @@ func (d *databaseDelegate) get(docID string, asAdmin bool) (doc map[string]any, 
 }
 
 func (d *databaseDelegate) save(body map[string]any, docID string, asAdmin bool) (bool, error) {
-	if err := d.dbc.CheckTimeout(d.ctx); err != nil {
-		return false, err
-	} else if asAdmin {
-		user := d.dbc.User()
-		d.dbc.SetUser(nil)
-		defer func() { d.dbc.SetUser(user) }()
+	if asAdmin {
+		defer d.asAdmin()()
 	}
-
 	delete(body, "_id")
 	if _, found := body["_rev"]; found {
 		// If caller provided `_rev` property, use MVCC as normal:
-		if _, _, err := d.dbc.Put(d.ctx, docID, body); err != nil {
+		if _, _, err := d.db.Put(d.ctx, docID, body); err != nil {
 			if status, _ := base.ErrorAsHTTPStatus(err); status == http.StatusConflict {
 				err = nil // conflict: no error, but returns false
 			}
@@ -69,7 +85,7 @@ func (d *databaseDelegate) save(body map[string]any, docID string, asAdmin bool)
 		// If caller didn't provide a `_rev` property, fall back to "last writer wins":
 		// get the current revision if any, and pass it to Put so that the save always succeeds.
 		for {
-			rev, err := d.dbc.GetRev(d.ctx, docID, "", false, []string{})
+			rev, err := d.db.GetRev(d.ctx, docID, "", false, []string{})
 			if err != nil {
 				if status, _ := base.ErrorAsHTTPStatus(err); status != http.StatusNotFound {
 					return false, err
@@ -84,7 +100,7 @@ func (d *databaseDelegate) save(body map[string]any, docID string, asAdmin bool)
 				body["_rev"] = rev.RevID
 			}
 
-			_, _, err = d.dbc.Put(d.ctx, docID, body)
+			_, _, err = d.db.Put(d.ctx, docID, body)
 			if err == nil {
 				break // success!
 			} else if status, _ := base.ErrorAsHTTPStatus(err); status != http.StatusConflict {
@@ -105,7 +121,84 @@ func (d *databaseDelegate) delete(docID string, revID string, asAdmin bool) (boo
 	return d.save(tombstone, docID, asAdmin)
 }
 
-func (d *databaseDelegate) log(level base.LogLevel, message string) {
-	log.Printf("JS LOG: (%d) %s", level, message) //TEMP
-	base.LogfTo(d.ctx, level, base.KeyJavascript, "%s", base.UD(message))
+func (d *databaseDelegate) query(fnName string, n1ql string, args map[string]any, asAdmin bool) (string, error) {
+	var userArg n1qlUserArgument
+	if asAdmin {
+		defer d.asAdmin()()
+	} else if d.user != nil {
+		userArg.Name = base.StringPtr(d.user.Name)
+		userArg.Channels = d.user.Channels
+		userArg.Roles = d.user.Roles
+	}
+	if args == nil {
+		args = map[string]any{}
+	}
+	args["user"] = &userArg
+
+	// Run the N1QL query:
+	rows, err := d.db.N1QLQueryWithStats(d.ctx,
+		db.QueryTypeUserFunctionPrefix+fnName,
+		n1ql,
+		args,
+		base.RequestPlus,
+		false)
+
+	var rowsJSON string
+	if err == nil {
+		// JSON-encode the iterator (see below):
+		rowsJSON, err = d.writeRowsToJSON(rows)
+	}
+	if err != nil {
+		// Return a friendlier error:
+		var qe *gocb.QueryError
+		if errors.As(err, &qe) {
+			base.WarnfCtx(d.ctx, "Error running query %q: %v", fnName, err)
+			return "", base.HTTPErrorf(http.StatusInternalServerError, "Query %q: %s", fnName, qe.Errors[0].Message)
+		} else {
+			base.WarnfCtx(d.ctx, "Unknown error running query %q: %T %#v", fnName, err, err)
+			return "", base.HTTPErrorf(http.StatusInternalServerError, "Unknown error running query %q (see logs)", fnName)
+		}
+	}
+	return rowsJSON, nil
+}
+
+// Subroutine of `query` that encodes the QueryResultIterator as a JSON array.
+// Guarantees to close the iterator.
+func (d *databaseDelegate) writeRowsToJSON(rows sgbucket.QueryResultIterator) (string, error) {
+	defer func() {
+		if rows != nil {
+			_ = rows.Close() // only called if there's an error already
+		}
+	}()
+
+	var out bytes.Buffer
+	out.Write([]byte(`[`))
+	first := true
+	var row interface{}
+	for rows.Next(&row) {
+		if first {
+			first = false
+		} else {
+			if _, err := out.Write([]byte(`,`)); err != nil {
+				return "", err
+			}
+		}
+		enc := base.JSONEncoderCanonical(&out)
+		if err := enc.Encode(row); err != nil {
+			return "", err
+		}
+		// The iterator streams results as the query engine produces them, so this loop may take most of the query's time; check for timeout after each iteration:
+		if err := d.db.CheckTimeout(d.ctx); err != nil {
+			return "", err
+		}
+	}
+	err := rows.Close()
+	rows = nil // prevent double-close on exit
+	if err != nil {
+		return "", err
+	}
+	if _, err := out.Write([]byte("]\n")); err != nil {
+		return "", err
+	}
+	return out.String(), nil
 }
