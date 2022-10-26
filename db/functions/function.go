@@ -66,6 +66,8 @@ type GraphQLTypesMap map[string]GraphQLResolverConfig
 // Maps GraphQL field names to the resolvers that implement them.
 type GraphQLResolverConfig map[string]FunctionConfig
 
+const kMaxCachedV8Environments = 4
+
 //////// INITIALIZATION:
 
 // Compiles the functions in a UserFunctionConfigMap, returning UserFunctions.
@@ -74,7 +76,7 @@ func CompileFunctions(fnConfig *FunctionsConfig, gqConfig *GraphQLConfig) (fns *
 		return
 	}
 
-	env, err := newEnvironment(fnConfig, gqConfig)
+	env, err := newEnvironmentPool(fnConfig, gqConfig, kMaxCachedV8Environments)
 	if err != nil {
 		return
 	}
@@ -126,9 +128,9 @@ func ValidateFunctions(ctx context.Context, fnConfig *FunctionsConfig, gqConfig 
 
 // implements UserFunction.
 type functionImpl struct {
-	*FunctionConfig              // Inherits from FunctionConfig
-	name            string       // Name of function
-	env             *environment // The V8 VM
+	*FunctionConfig                  // Inherits from FunctionConfig
+	name            string           // Name of function
+	env             *environmentPool // The V8 VM
 }
 
 func (fn *functionImpl) Name() string {
@@ -149,10 +151,11 @@ func (fn *functionImpl) N1QLQueryName() (string, bool) {
 
 // Creates an Invocation of a UserFunction.
 func (fn *functionImpl) invoke(delegate evaluatorDelegate, user *userCredentials, args map[string]any, mutationAllowed bool) (db.UserFunctionInvocation, error) {
-	eval, err := fn.env.newEvaluator(delegate, user)
+	eval, err := fn.env.getEvaluator(delegate, user)
 	if err != nil {
 		return nil, err
 	}
+
 	eval.setMutationAllowed(mutationAllowed)
 	return &functionInvocation{
 		functionImpl: fn,
@@ -207,7 +210,7 @@ func (inv *functionInvocation) Run() (interface{}, error) {
 }
 
 func (inv *functionInvocation) RunAsJSON() ([]byte, error) {
-	defer inv.eval.close()
+	defer inv.env.returnEvaluator(inv.eval)
 	return inv.eval.callFunction(inv.name, inv.args)
 }
 
@@ -216,7 +219,7 @@ func (inv *functionInvocation) RunAsJSON() ([]byte, error) {
 // Implementation of db.graphQLImpl interface.
 type graphQLImpl struct {
 	config *GraphQLConfig
-	env    *environment // The V8 VM
+	env    *environmentPool // The V8 VM
 }
 
 func (gq *graphQLImpl) MaxRequestSize() *int {
@@ -224,11 +227,12 @@ func (gq *graphQLImpl) MaxRequestSize() *int {
 }
 
 func (gq *graphQLImpl) query(delegate evaluatorDelegate, user *userCredentials, query string, operationName string, variables map[string]interface{}, mutationAllowed bool, ctx context.Context) ([]byte, error) {
-	eval, err := gq.env.newEvaluator(delegate, user)
+	eval, err := gq.env.getEvaluator(delegate, user)
 	if err != nil {
 		return nil, err
 	}
-	defer eval.close()
+	defer gq.env.returnEvaluator(eval)
+
 	eval.setMutationAllowed(mutationAllowed)
 	return eval.callGraphQL(query, operationName, variables)
 }
