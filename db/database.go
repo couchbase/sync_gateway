@@ -1002,8 +1002,87 @@ func (db *Database) processForEachDocIDResults(callback ForEachDocIDFunc, limit 
 	return nil
 }
 
-// Returns the IDs of all users and roles
+// Returns the IDs of all users and roles, including deleted Roles
 func (db *DatabaseContext) AllPrincipalIDs(ctx context.Context) (users, roles []string, err error) {
+
+	// If running in Serverless mode, we can leverage `users` and `roles` index
+	// to fetch users and roles
+	if db.IsServerless() {
+		users, err := db.GetUserNames(ctx)
+		if err != nil {
+			return nil, nil, err
+		}
+
+		roles, err := db.GetRoleIDs(ctx, true)
+		if err != nil {
+			return nil, nil, err
+		}
+		return users, roles, err
+	}
+
+	return db.getAllPrincipalIDs(ctx)
+}
+
+// Returns the Names of all users
+func (db *DatabaseContext) GetUserNames(ctx context.Context) (users []string, err error) {
+	startKey := base.UserPrefix
+	limit := db.Options.QueryPaginationLimit
+
+	users = []string{}
+
+outerLoop:
+	for {
+		results, err := db.QueryUsers(ctx, startKey, limit)
+		if err != nil {
+			return nil, err
+		}
+
+		var principalName string
+
+		resultCount := 0
+
+		for {
+			// startKey is inclusive for views, so need to skip first result if using non-empty startKey, as this results in an overlapping result
+			var skipAddition bool
+			if resultCount == 0 && startKey != base.UserPrefix {
+				skipAddition = true
+			}
+
+			if db.Options.UseViews {
+				// TODO: discuss what to do when using Views?
+			} else {
+				var queryRow QueryUsersRow
+				found := results.Next(&queryRow)
+				if !found {
+					break
+				}
+				principalName = queryRow.Name
+				startKey = base.UserPrefix + queryRow.Name
+
+			}
+			resultCount++
+
+			if principalName != "" && !skipAddition {
+				users = append(users, principalName)
+			}
+		}
+
+		closeErr := results.Close()
+		if closeErr != nil {
+			return nil, closeErr
+		}
+
+		if resultCount < limit {
+			break outerLoop
+		}
+
+	}
+
+	return users, nil
+}
+
+// Returns the IDs of all users and roles using syncDocs index
+func (db *DatabaseContext) getAllPrincipalIDs(ctx context.Context) (users, roles []string, err error) {
 
 	startKey := ""
 	limit := db.Options.QueryPaginationLimit
@@ -1158,8 +1237,8 @@ outerLoop:
 	return users, nil
 }
 
-// Returns the IDs of all roles, excluding deleted.
-func (db *DatabaseContext) GetRoleIDs(ctx context.Context) (roles []string, err error) {
+// Returns the IDs of all roles. Includes deleted roles based on given flag
+func (db *DatabaseContext) GetRoleIDs(ctx context.Context, includeDeleted bool) (roles []string, err error) {
 
 	startKey := ""
 	limit := db.Options.QueryPaginationLimit
@@ -1168,7 +1247,13 @@ func (db *DatabaseContext) GetRoleIDs(ctx context.Context) (roles []string, err 
 
 outerLoop:
 	for {
-		results, err := db.QueryRoles(ctx, startKey, limit)
+		var results sgbucket.QueryResultIterator
+		var err error
+		if includeDeleted {
+			results, err = db.QueryAllRoles(ctx, startKey, limit)
+		} else {
+			results, err = db.QueryRoles(ctx, startKey, limit)
+		}
 		if err != nil {
 			return nil, err
 		}

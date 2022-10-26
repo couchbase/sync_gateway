@@ -17,7 +17,6 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func TestRoleQuery(t *testing.T) {
@@ -51,14 +50,20 @@ func TestRoleQuery(t *testing.T) {
 			}(n1QLStore, testCase.isServerless)
 
 			authenticator := db.Authenticator(ctx)
-			require.NotNil(t, authenticator, "db.Authenticator(ctx) returned nil")
+			assert.NotNil(t, authenticator, "db.Authenticator(ctx) returned nil")
 
 			// Add roles
 			for i := 1; i <= 5; i++ {
 				role, err := authenticator.NewRole(fmt.Sprintf("role%d", i), base.SetOf("ABC"))
-				require.NoError(t, err, "Error creating new role")
-				require.NoError(t, authenticator.Save(role))
+				assert.NoError(t, err, "Error creating new role")
+				assert.NoError(t, authenticator.Save(role))
 			}
+
+			// Delete 1 role
+			role1, err := authenticator.NewRole("role1", base.SetOf("ABC"))
+			assert.NoError(t, err)
+			err = authenticator.DeleteRole(role1, false, 0)
+			assert.NoError(t, err)
 
 			// Standard query
 			results, queryErr := db.QueryRoles(ctx, "", 0)
@@ -68,7 +73,7 @@ func TestRoleQuery(t *testing.T) {
 			for results.Next(&row) {
 				rowCount++
 			}
-			assert.Equal(t, 5, rowCount)
+			assert.Equal(t, 4, rowCount)
 			assert.NoError(t, results.Close())
 		})
 	}
@@ -161,49 +166,6 @@ func TestBuildSessionsQuery(t *testing.T) {
 	}
 }
 
-func TestBuildPrincipalsQuery(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() || base.TestsDisableGSI() {
-		t.Skip("This test is Couchbase Server and UseViews=false only")
-	}
-
-	testCases := []struct {
-		isServerless bool
-	}{
-		{
-			isServerless: false,
-		},
-		{
-			isServerless: true,
-		},
-	}
-
-	for _, testCase := range testCases {
-		t.Run(fmt.Sprintf("TestBuildPrincipalsQuery in Serverless=%t", testCase.isServerless), func(t *testing.T) {
-			dbContextConfig := getDatabaseContextOptions(testCase.isServerless)
-
-			database, ctx := setupTestDBForBucketWithOptions(t, dbContextConfig)
-			defer database.Close(ctx)
-
-			n1QLStore, reset, err := setupN1QLStore(database.Bucket, testCase.isServerless)
-			assert.NoError(t, err, "Unable to get n1QLStore for testBucket")
-			defer func(n1QLStore base.N1QLStore, isServerless bool) {
-				err := reset(n1QLStore, isServerless)
-				assert.NoError(t, err, "Reset fn shouldn't return error")
-			}(n1QLStore, testCase.isServerless)
-
-			// Sessions
-			roleStatement, _ := database.BuildPrincipalsQuery("", 0)
-			plan, explainErr := n1QLStore.ExplainQuery(roleStatement, nil)
-			assert.NoError(t, explainErr, "Error generating explain for principal query")
-
-			covered := db.IsCovered(plan)
-			planJSON, err := base.JSONMarshal(plan)
-			assert.NoError(t, err)
-			assert.True(t, covered, "Principals query should be covered by index. Plan: %s", planJSON)
-		})
-	}
-}
-
 func TestBuildUsersQuery(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() || base.TestsDisableGSI() {
 		t.Skip("This test is Couchbase Server and UseViews=false only")
@@ -243,6 +205,74 @@ func TestBuildUsersQuery(t *testing.T) {
 			planJSON, err := base.JSONMarshal(plan)
 			assert.NoError(t, err)
 			assert.Equal(t, testCase.isServerless, covered, "Users query covered by index; expectedToBeCovered: %t, Plan: %s", testCase.isServerless, planJSON)
+		})
+	}
+}
+
+func TestQueryAllRoles(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() || base.TestsDisableGSI() {
+		t.Skip("This test is Couchbase Server and UseViews=false only")
+	}
+
+	testCases := []struct {
+		isServerless bool
+		expectError  bool
+	}{
+		{
+			isServerless: false,
+			expectError:  true,
+		},
+		{
+			isServerless: true,
+			expectError:  false,
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(fmt.Sprintf("TestQueryAllRoles in Serverless=%t", testCase.isServerless), func(t *testing.T) {
+			dbContextConfig := getDatabaseContextOptions(testCase.isServerless)
+
+			database, ctx := setupTestDBForBucketWithOptions(t, dbContextConfig)
+			defer database.Close(ctx)
+
+			n1QLStore, reset, err := setupN1QLStore(database.Bucket, testCase.isServerless)
+			assert.NoError(t, err, "Unable to get n1QLStore for testBucket")
+			defer func(n1QLStore base.N1QLStore, isServerless bool) {
+				err := reset(n1QLStore, isServerless)
+				assert.NoError(t, err, "Reset fn shouldn't return error")
+			}(n1QLStore, testCase.isServerless)
+
+			authenticator := database.Authenticator(ctx)
+			assert.NotNil(t, authenticator, "db.Authenticator(ctx) returned nil")
+
+			// Add roles
+			for i := 1; i <= 5; i++ {
+				role, err := authenticator.NewRole(fmt.Sprintf("role%d", i), base.SetOf("ABC"))
+				assert.NoError(t, err, "Error creating new role")
+				assert.NoError(t, authenticator.Save(role))
+			}
+
+			// Delete 1 role
+			role1, err := authenticator.NewRole("role1", base.SetOf("ABC"))
+			assert.NoError(t, err)
+			err = authenticator.DeleteRole(role1, false, 0)
+			assert.NoError(t, err)
+
+			// Standard query
+			results, queryErr := database.QueryAllRoles(ctx, "", 0)
+			if testCase.expectError {
+				assert.Error(t, queryErr, "Query error")
+			} else {
+				assert.NoError(t, queryErr, "Query error")
+
+				var row map[string]interface{}
+				rowCount := 0
+				for results.Next(&row) {
+					rowCount++
+				}
+				assert.Equal(t, 5, rowCount)
+				assert.NoError(t, results.Close())
+			}
 		})
 	}
 }

@@ -2565,7 +2565,7 @@ func TestGetRoleIDs(t *testing.T) {
 	assert.ElementsMatch(t, []string{user1.Name()}, users)
 	assert.ElementsMatch(t, []string{role1.Name(), role2.Name()}, roles)
 
-	roles, err = db.GetRoleIDs(ctx)
+	roles, err = db.GetRoleIDs(ctx, false)
 	require.NoError(t, err)
 	assert.ElementsMatch(t, []string{role1.Name()}, roles)
 }

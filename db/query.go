@@ -35,6 +35,7 @@ const (
 	QueryTypeChannelsStar        = "channelsStar"
 	QueryTypeSequences           = "sequences"
 	QueryTypePrincipals          = "principals"
+	QueryTypeRoles               = "roles"
 	QueryTypeRolesExcludeDeleted = "rolesExcludeDeleted"
 	QueryTypeSessions            = "sessions"
 	QueryTypeTombstones          = "tombstones"
@@ -172,8 +173,8 @@ var QueryPrincipals = SGQuery{
 	adhoc: false,
 }
 
-var QueryPrincipalsUsingRoleIdx = SGQuery{
-	name: QueryTypePrincipals,
+var QueryAllRolesUsingRoleIdx = SGQuery{
+	name: QueryTypeRoles,
 	statement: fmt.Sprintf(
 		"SELECT META(%s).id "+
 			"FROM %s AS %s "+
@@ -549,20 +550,8 @@ func (context *DatabaseContext) QueryPrincipals(ctx context.Context, startKey st
 
 		return context.ViewQueryWithStats(ctx, DesignDocSyncGateway(), ViewPrincipals, opts)
 	}
-	queryStatement, params := context.BuildPrincipalsQuery(startKey, limit)
-	// N1QL Query
-	return context.N1QLQueryWithStats(ctx, QueryPrincipals.name, queryStatement, params, base.RequestPlus, QueryPrincipals.adhoc)
-}
 
-// BuildPrincipalsQuery builds the query statement and query parameters for a Principals N1QL query. Also used by unit tests to validate
-// query is covering.
-func (context *DatabaseContext) BuildPrincipalsQuery(startKey string, limit int) (string, map[string]interface{}) {
-	var queryStatement string
-	if context.IsServerless() {
-		queryStatement = replaceIndexTokensQuery(QueryPrincipalsUsingRoleIdx.statement, sgIndexes[IndexRole], context.UseXattrs())
-	} else {
-		queryStatement = replaceIndexTokensQuery(QueryPrincipals.statement, sgIndexes[IndexSyncDocs], context.UseXattrs())
-	}
+	queryStatement := replaceIndexTokensQuery(QueryPrincipals.statement, sgIndexes[IndexSyncDocs], context.UseXattrs())
 
 	params := make(map[string]interface{})
 	params[QueryParamStartKey] = startKey
@@ -570,10 +559,12 @@ func (context *DatabaseContext) BuildPrincipalsQuery(startKey string, limit int)
 	if limit > 0 {
 		queryStatement = fmt.Sprintf("%s LIMIT %d", queryStatement, limit)
 	}
-	return queryStatement, params
+
+	// N1QL Query
+	return context.N1QLQueryWithStats(ctx, QueryPrincipals.name, queryStatement, params, base.RequestPlus, QueryPrincipals.adhoc)
 }
 
-// Query to retrieve user details, using the syncDocs index
+// Query to retrieve user details, using the syncDocs or users index
 func (context *DatabaseContext) QueryUsers(ctx context.Context, startKey string, limit int) (sgbucket.QueryResultIterator, error) {
 
 	// View Query
@@ -606,7 +597,7 @@ func (context *DatabaseContext) BuildUsersQuery(startKey string, limit int) (str
 	return queryStatement, params
 }
 
-// Retrieves role ids using the syncDocs index, excluding deleted roles
+// Retrieves role ids using the syncDocs or roles index, excluding deleted roles
 func (context *DatabaseContext) QueryRoles(ctx context.Context, startKey string, limit int) (sgbucket.QueryResultIterator, error) {
 
 	// View Query
@@ -649,6 +640,41 @@ func (context *DatabaseContext) BuildRolesQuery(startKey string, limit int) (str
 	}
 
 	return queryStatement, params
+}
+
+// Retrieves role ids using the roles index
+func (context *DatabaseContext) QueryAllRoles(ctx context.Context, startKey string, limit int) (sgbucket.QueryResultIterator, error) {
+
+	if !context.IsServerless() {
+		return nil, fmt.Errorf("QueryAllRoles is only supported in Serverless mode")
+	}
+
+	// View Query
+	if context.Options.UseViews {
+		opts := map[string]interface{}{"stale": false}
+
+		if limit > 0 {
+			opts[QueryParamLimit] = limit
+		}
+
+		if startKey != "" {
+			opts[QueryParamStartKey] = startKey
+		}
+
+		return context.ViewQueryWithStats(ctx, DesignDocSyncGateway(), ViewRolesExcludeDeleted, opts)
+	}
+
+	queryStatement := replaceIndexTokensQuery(QueryAllRolesUsingRoleIdx.statement, sgIndexes[IndexRole], context.UseXattrs())
+
+	params := make(map[string]interface{})
+	params[QueryParamStartKey] = startKey
+
+	if limit > 0 {
+		queryStatement = fmt.Sprintf("%s LIMIT %d", queryStatement, limit)
+	}
+
+	// N1QL Query
+	return context.N1QLQueryWithStats(ctx, QueryRolesExcludeDeleted.name, queryStatement, params, base.RequestPlus, QueryRolesExcludeDeleted.adhoc)
 }
 
 // Query to retrieve the set of sessions, using the syncDocs index
