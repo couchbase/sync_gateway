@@ -645,23 +645,9 @@ func (context *DatabaseContext) BuildRolesQuery(startKey string, limit int) (str
 // Retrieves role ids using the roles index
 func (context *DatabaseContext) QueryAllRoles(ctx context.Context, startKey string, limit int) (sgbucket.QueryResultIterator, error) {
 
-	if !context.IsServerless() {
-		return nil, fmt.Errorf("QueryAllRoles is only supported in Serverless mode")
-	}
-
 	// View Query
 	if context.Options.UseViews {
-		opts := map[string]interface{}{"stale": false}
-
-		if limit > 0 {
-			opts[QueryParamLimit] = limit
-		}
-
-		if startKey != "" {
-			opts[QueryParamStartKey] = startKey
-		}
-
-		return context.ViewQueryWithStats(ctx, DesignDocSyncGateway(), ViewRolesExcludeDeleted, opts)
+		return nil, fmt.Errorf("QueryAllRoles doesn't support views")
 	}
 
 	queryStatement := replaceIndexTokensQuery(QueryAllRolesUsingRoleIdx.statement, sgIndexes[IndexRole], context.UseXattrs())

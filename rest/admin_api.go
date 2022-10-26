@@ -1379,7 +1379,13 @@ func (h *handler) getUsers() error {
 	var bytes []byte
 	var marshalErr error
 	if nameOnly {
-		users, err := h.db.GetUserNames(h.ctx())
+		var users []string
+		var err error
+		if h.db.Options.UseViews {
+			users, _, err = h.db.AllPrincipalIDs(h.ctx())
+		} else {
+			users, err = h.db.GetUserNames(h.ctx())
+		}
 		if err != nil {
 			return err
 		}
@@ -1404,7 +1410,16 @@ func (h *handler) getUsers() error {
 
 func (h *handler) getRoles() error {
 	includeDeleted, _ := h.getOptBoolQuery(paramDeleted, false)
-	roles, err := h.db.GetRoleIDs(h.ctx(), includeDeleted)
+
+	var roles []string
+	var err error
+
+	// GetRoleIDs supports Views only when includeDeleted=false
+	if h.db.Options.UseViews && includeDeleted {
+		_, roles, err = h.db.AllPrincipalIDs(h.ctx())
+	} else {
+		roles, err = h.db.GetRoleIDs(h.ctx(), includeDeleted)
+	}
 	if err != nil {
 		return err
 	}

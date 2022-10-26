@@ -1005,22 +1005,22 @@ func (db *Database) processForEachDocIDResults(callback ForEachDocIDFunc, limit 
 // Returns the IDs of all users and roles, including deleted Roles
 func (db *DatabaseContext) AllPrincipalIDs(ctx context.Context) (users, roles []string, err error) {
 
-	// If running in Serverless mode, we can leverage `users` and `roles` index
-	// to fetch users and roles
-	if db.IsServerless() {
-		users, err := db.GetUserNames(ctx)
-		if err != nil {
-			return nil, nil, err
-		}
-
-		roles, err := db.GetRoleIDs(ctx, true)
-		if err != nil {
-			return nil, nil, err
-		}
-		return users, roles, err
+	if !db.IsServerless() || db.Options.UseViews {
+		return db.getAllPrincipalIDs(ctx)
 	}
 
-	return db.getAllPrincipalIDs(ctx)
+	// If running in Serverless mode, we can leverage `users` and `roles` index
+	// to fetch users and roles
+	users, err = db.GetUserNames(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	roles, err = db.GetRoleIDs(ctx, true)
+	if err != nil {
+		return nil, nil, err
+	}
+	return users, roles, err
 }
 
 // Returns the Names of all users
@@ -1048,18 +1048,14 @@ outerLoop:
 				skipAddition = true
 			}
 
-			if db.Options.UseViews {
-				// TODO: discuss what to do when using Views?
-			} else {
-				var queryRow QueryUsersRow
-				found := results.Next(&queryRow)
-				if !found {
-					break
-				}
-				principalName = queryRow.Name
-				startKey = base.UserPrefix + queryRow.Name
-
+			var queryRow QueryUsersRow
+			found := results.Next(&queryRow)
+			if !found {
+				break
 			}
+			principalName = queryRow.Name
+			startKey = base.UserPrefix + queryRow.Name
+
 			resultCount++
 
 			if principalName != "" && !skipAddition {
@@ -1270,26 +1266,17 @@ outerLoop:
 				skipAddition = true
 			}
 
-			if db.Options.UseViews {
-				var viewRow principalsViewRow
-				found := results.Next(&viewRow)
-				if !found {
-					break
-				}
-				roleName = viewRow.Key
-				startKey = roleName
-			} else {
-				var queryRow QueryIdRow
-				found := results.Next(&queryRow)
-				if !found {
-					break
-				}
-				if len(queryRow.Id) < lenRoleKeyPrefix {
-					continue
-				}
-				roleName = queryRow.Id[lenRoleKeyPrefix:]
-				startKey = queryRow.Id
+			var queryRow QueryIdRow
+			found := results.Next(&queryRow)
+			if !found {
+				break
 			}
+			if len(queryRow.Id) < lenRoleKeyPrefix {
+				continue
+			}
+			roleName = queryRow.Id[lenRoleKeyPrefix:]
+			startKey = queryRow.Id
+
 			resultCount++
 
 			if roleName != "" && !skipAddition {
@@ -1902,6 +1889,7 @@ func initDatabaseStats(dbName string, autoImport bool, options DatabaseContextOp
 			QueryTypeSequences,
 			QueryTypePrincipals,
 			QueryTypeRolesExcludeDeleted,
+			QueryTypeRoles,
 			QueryTypeSessions,
 			QueryTypeTombstones,
 			QueryTypeResync,
