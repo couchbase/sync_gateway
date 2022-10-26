@@ -157,7 +157,7 @@ type User interface {
 	// to, annotated with the sequence number at which access was granted.
 	// Returns a string array containing any channels filtered out due to the user not having access
 	// to them.
-	FilterToAvailableChannels(channels base.Set) (filtered ch.TimedSet, removed []string)
+	FilterToAvailableChannels(channels ch.Set) (filtered ch.TimedSet, removed []string)
 
 	setRolesSince(ch.TimedSet)
 }

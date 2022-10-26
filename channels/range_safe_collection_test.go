@@ -8,13 +8,14 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-package base
+package channels
 
 import (
 	"fmt"
 	"sync"
 	"testing"
 
+	"github.com/couchbase/sync_gateway/base"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -23,47 +24,51 @@ func TestRangeSafeCollection(t *testing.T) {
 	rsc := NewRangeSafeCollection()
 	assert.Equal(t, rsc.Length(), 0)
 
+	key1 := NewID("key1", base.DefaultCollectionID)
 	// Insert item
-	actual, created, length := rsc.GetOrInsert("key1", "value1")
+	actual, created, length := rsc.GetOrInsert(key1, "value1")
 	assert.Equal(t, "value1", actual.(string))
 	assert.True(t, created)
 	assert.Equal(t, 1, length)
 
 	// Attempt to re-insert the same key
-	actual, created, length = rsc.GetOrInsert("key1", "value2")
+	actual, created, length = rsc.GetOrInsert(key1, "value2")
 	assert.Equal(t, "value1", actual.(string))
 	assert.False(t, created)
 	assert.Equal(t, 1, length)
 
 	// Insert a second item
-	actual, created, length = rsc.GetOrInsert("key2", "value2")
+	key2 := NewID("key2", base.DefaultCollectionID)
+	actual, created, length = rsc.GetOrInsert(key2, "value2")
 	assert.Equal(t, "value2", actual.(string))
 	assert.True(t, created)
 	assert.Equal(t, 2, length)
 
 	// Get an item
-	value, ok := rsc.Get("key2")
+	value, ok := rsc.Get(key2)
 	assert.Equal(t, "value2", value.(string))
 	assert.True(t, ok)
 
 	// Attempt to get a non-existent item
-	value, ok = rsc.Get("key3")
+	key3 := NewID("key3", base.DefaultCollectionID)
+	value, ok = rsc.Get(key3)
 	assert.False(t, ok)
+	assert.Nil(t, value)
 
 	// Remove an item
-	length = rsc.Remove("key1")
+	length = rsc.Remove(key1)
 	assert.Equal(t, 1, length)
 
 	// Attempt to remove a non-existent item
-	length = rsc.Remove("key1")
+	length = rsc.Remove(key1)
 	assert.Equal(t, 1, length)
 
 	// Remove the last item
-	length = rsc.Remove("key2")
+	length = rsc.Remove(key2)
 	assert.Equal(t, 0, length)
 
 	// Attempt to remove from empty set
-	length = rsc.Remove("key3")
+	length = rsc.Remove(key3)
 	assert.Equal(t, 0, length)
 
 }
@@ -75,7 +80,8 @@ func TestRangeSafeCollectionRange(t *testing.T) {
 
 	// Add  elements to the set
 	for i := 0; i < 10; i++ {
-		rsc.GetOrInsert(fmt.Sprintf("key_%d", i), fmt.Sprintf("value_%d", i))
+
+		rsc.GetOrInsert(NewID(fmt.Sprintf("key_%d", i), base.DefaultCollectionID), fmt.Sprintf("value_%d", i))
 	}
 
 	// Simple range
@@ -92,7 +98,7 @@ func TestRangeSafeCollectionRange(t *testing.T) {
 	count = 0
 	appendFunc := func(value interface{}) bool {
 		count++
-		rsc.GetOrInsert(fmt.Sprintf("key2_%d", count), fmt.Sprintf("value2_%d", count))
+		rsc.GetOrInsert(NewID(fmt.Sprintf("key2_%d", count), base.DefaultCollectionID), fmt.Sprintf("value2_%d", count))
 		return true
 	}
 
@@ -135,9 +141,9 @@ func TestRangeSafeCollectionRange(t *testing.T) {
 
 	// Remove a few times
 	go func() {
-		rsc.Remove("key2_1")
-		rsc.Remove("key2_2")
-		rsc.Remove("key2_3")
+		rsc.Remove(NewID("key2_1", base.DefaultCollectionID))
+		rsc.Remove(NewID("key2_2", base.DefaultCollectionID))
+		rsc.Remove(NewID("key2_3", base.DefaultCollectionID))
 		wg.Done()
 	}()
 

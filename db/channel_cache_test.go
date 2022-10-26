@@ -35,21 +35,24 @@ func TestChannelCacheMaxSize(t *testing.T) {
 	defer dbCtx.Close(ctx)
 	cache := dbCtx.changeCache.getChannelCache()
 
+	collectionID, err := dbCtx.GetSingleCollectionID()
+	require.NoError(t, err)
+
 	// Make channels active
-	_, err = cache.GetChanges("TestA", getChangesOptionsWithCtxOnly())
+	_, err = cache.GetChanges(channels.NewID("TestA", collectionID), getChangesOptionsWithCtxOnly())
 	require.NoError(t, err)
-	_, err = cache.GetChanges("TestB", getChangesOptionsWithCtxOnly())
+	_, err = cache.GetChanges(channels.NewID("TestB", collectionID), getChangesOptionsWithCtxOnly())
 	require.NoError(t, err)
-	_, err = cache.GetChanges("TestC", getChangesOptionsWithCtxOnly())
+	_, err = cache.GetChanges(channels.NewID("TestC", collectionID), getChangesOptionsWithCtxOnly())
 	require.NoError(t, err)
-	_, err = cache.GetChanges("TestD", getChangesOptionsWithCtxOnly())
+	_, err = cache.GetChanges(channels.NewID("TestD", collectionID), getChangesOptionsWithCtxOnly())
 	require.NoError(t, err)
 
 	// Add some entries to caches, leaving some empty caches
-	cache.AddToCache(logEntry(1, "doc1", "1-a", []string{"TestB", "TestC", "TestD"}))
-	cache.AddToCache(logEntry(2, "doc2", "1-a", []string{"TestB", "TestC", "TestD"}))
-	cache.AddToCache(logEntry(3, "doc3", "1-a", []string{"TestB", "TestC", "TestD"}))
-	cache.AddToCache(logEntry(4, "doc4", "1-a", []string{"TestC"}))
+	cache.AddToCache(logEntry(1, "doc1", "1-a", []string{"TestB", "TestC", "TestD"}, collectionID))
+	cache.AddToCache(logEntry(2, "doc2", "1-a", []string{"TestB", "TestC", "TestD"}, collectionID))
+	cache.AddToCache(logEntry(3, "doc3", "1-a", []string{"TestB", "TestC", "TestD"}, collectionID))
+	cache.AddToCache(logEntry(4, "doc4", "1-a", []string{"TestC"}, collectionID))
 
 	dbCtx.UpdateCalculatedStats()
 
@@ -93,16 +96,18 @@ func TestChannelCacheSimpleCompact(t *testing.T) {
 	require.NoError(t, err, "Background task error whilst creating channel cache")
 	defer cache.Stop()
 
+	require.NoError(t, err)
+
 	// Add 16 channels to the cache.  Shouldn't trigger compaction (hwm is not exceeded)
 	for i := 1; i <= 16; i++ {
 		channelName := fmt.Sprintf("chan_%d", i)
-		cache.addChannelCache(channelName)
+		cache.addChannelCache(channels.NewID(channelName, base.DefaultCollectionID))
 	}
 	// Validate cache size
 	assert.Equal(t, 16, cache.channelCaches.Length())
 
 	// Add another channel to cache
-	cache.addChannelCache("chan_17")
+	cache.addChannelCache(channels.NewID("chan_17", base.DefaultCollectionID))
 
 	assert.True(t, waitForCompaction(cache), "Compaction didn't complete in expected time")
 
@@ -135,11 +140,11 @@ func TestChannelCacheCompactInactiveChannels(t *testing.T) {
 	// Add 16 channels to the cache.  Mark odd channels as active, even channels as inactive.
 	// Shouldn't trigger compaction (hwm is not exceeded)
 	for i := 1; i <= 18; i++ {
-		channelName := fmt.Sprintf("chan_%d", i)
-		cache.addChannelCache(channelName)
+		channel := channels.NewID(fmt.Sprintf("chan_%d", i), base.DefaultCollectionID)
+		cache.addChannelCache(channel)
 		if i%2 == 1 {
-			log.Printf("Marking channel %s as active", channelName)
-			activeChannels.IncrChannel(channelName)
+			log.Printf("Marking channel %q as active", channel)
+			activeChannels.IncrChannel(channel)
 		}
 	}
 	// Validate cache size
@@ -147,7 +152,7 @@ func TestChannelCacheCompactInactiveChannels(t *testing.T) {
 
 	log.Printf("adding 19th element to cache...")
 	// Add another channel to cache, should trigger compaction
-	cache.addChannelCache("chan_19")
+	cache.addChannelCache(channels.NewID("chan_19", base.DefaultCollectionID))
 
 	assert.True(t, waitForCompaction(cache), "Compaction didn't complete in expected time")
 
@@ -156,12 +161,12 @@ func TestChannelCacheCompactInactiveChannels(t *testing.T) {
 
 	// Validate active channels have been retained in cache
 	for i := 1; i <= 19; i++ {
-		channelName := fmt.Sprintf("chan_%d", i)
-		_, isCached := cache.channelCaches.Get(channelName)
+		channel := channels.NewID(fmt.Sprintf("chan_%d", i), base.DefaultCollectionID)
+		_, isCached := cache.channelCaches.Get(channel)
 		if i%2 == 1 {
-			assert.True(t, isCached, fmt.Sprintf("Channel %s was active, should be retained in cache", channelName))
+			assert.True(t, isCached, fmt.Sprintf("Channel %q was active, should be retained in cache", channel))
 		} else {
-			assert.False(t, isCached, fmt.Sprintf("Channel %s was inactive, should be evicted from cache", channelName))
+			assert.False(t, isCached, fmt.Sprintf("Channel %q was inactive, should be evicted from cache", channel))
 		}
 	}
 
@@ -194,18 +199,18 @@ func TestChannelCacheCompactNRU(t *testing.T) {
 	// Add 18 channels to the cache.  Mark channels 1-10 as active
 	// Shouldn't trigger compaction (hwm is not exceeded)
 	for i := 1; i <= 18; i++ {
-		channelName := fmt.Sprintf("chan_%d", i)
-		cache.addChannelCache(channelName)
+		channel := channels.NewID(fmt.Sprintf("chan_%d", i), base.DefaultCollectionID)
+		cache.addChannelCache(channel)
 		if i <= 10 {
-			log.Printf("Marking channel %s as active", channelName)
-			activeChannels.IncrChannel(channelName)
+			log.Printf("Marking channel %q as active", channel)
+			activeChannels.IncrChannel(channel)
 		}
 	}
 	// Validate cache size
 	assert.Equal(t, 18, cache.channelCaches.Length())
 
 	// Add another channel to cache, should trigger compaction
-	cache.addChannelCache("chan_19")
+	cache.addChannelCache(channels.NewID("chan_19", base.DefaultCollectionID))
 	assert.True(t, waitForCompaction(cache), "Compaction didn't complete in expected time")
 
 	// Expect channels 1-10, 11-15 to be evicted, and all to be marked as NRU during compaction
@@ -213,20 +218,20 @@ func TestChannelCacheCompactNRU(t *testing.T) {
 
 	// Validate recently used channels have been retained in cache
 	for i := 1; i <= 19; i++ {
-		channelName := fmt.Sprintf("chan_%d", i)
-		_, isCached := cache.channelCaches.Get(channelName)
+		channel := channels.NewID(fmt.Sprintf("chan_%d", i), base.DefaultCollectionID)
+		_, isCached := cache.channelCaches.Get(channel)
 		if i <= 10 || i > 15 {
-			assert.True(t, isCached, fmt.Sprintf("Expected %s to be cached", channelName))
+			assert.True(t, isCached, fmt.Sprintf("Expected %q to be cached", channel))
 		} else {
-			assert.False(t, isCached, fmt.Sprintf("Expected %s to not be cached", channelName))
+			assert.False(t, isCached, fmt.Sprintf("Expected %q to not be cached", channel))
 		}
 	}
 
 	// Mark channels 1-5 as recently used
 	for i := 1; i <= 5; i++ {
-		channelName := fmt.Sprintf("chan_%d", i)
-		cacheElement, isCached := cache.channelCaches.Get(channelName)
-		assert.True(t, isCached, fmt.Sprintf("Expected %s to be cached during recently used update", channelName))
+		channel := channels.NewID(fmt.Sprintf("chan_%d", i), base.DefaultCollectionID)
+		cacheElement, isCached := cache.channelCaches.Get(channel)
+		assert.True(t, isCached, fmt.Sprintf("Expected %s to be cached during recently used update", channel))
 		AsSingleChannelCache(cacheElement).recentlyUsed.Set(true)
 	}
 
@@ -235,12 +240,12 @@ func TestChannelCacheCompactNRU(t *testing.T) {
 	//    Channels 6-14: inactive, not recently used
 	//    Channels 15-19: inactive, recently used (first compact since creation)
 	for i := 1; i <= 19; i++ {
-		channelName := fmt.Sprintf("chan_%d", i)
+		channel := channels.NewID(fmt.Sprintf("chan_%d", i), base.DefaultCollectionID)
 		if i <= 10 {
-			log.Printf("Marking channel %s as inactive", channelName)
-			activeChannels.DecrChannel(channelName)
+			log.Printf("Marking channel %q as inactive", channel)
+			activeChannels.DecrChannel(channel)
 		} else {
-			cache.addChannelCache(channelName)
+			cache.addChannelCache(channel)
 		}
 	}
 
@@ -254,12 +259,12 @@ func TestChannelCacheCompactNRU(t *testing.T) {
 	assert.Equal(t, 14, cache.channelCaches.Length())
 	// Validate recently used channels have been retained in cache
 	for i := 1; i <= 19; i++ {
-		channelName := fmt.Sprintf("chan_%d", i)
-		_, isCached := cache.channelCaches.Get(channelName)
+		channel := channels.NewID(fmt.Sprintf("chan_%d", i), base.DefaultCollectionID)
+		_, isCached := cache.channelCaches.Get(channel)
 		if i <= 5 || i >= 11 {
-			assert.True(t, isCached, fmt.Sprintf("Expected %s to be cached", channelName))
+			assert.True(t, isCached, fmt.Sprintf("Expected %s to be cached", channel))
 		} else {
-			assert.False(t, isCached, fmt.Sprintf("Expected %s to not be cached", channelName))
+			assert.False(t, isCached, fmt.Sprintf("Expected %s to not be cached", channel))
 		}
 	}
 }
@@ -268,7 +273,7 @@ func TestChannelCacheCompactNRU(t *testing.T) {
 // or equal to the CompactHighWatermark
 func TestChannelCacheHighLoadCacheHit(t *testing.T) {
 
-	base.SetUpTestLogging(t, base.LevelWarn, base.KeyCache)
+	base.SetUpTestLogging(t, base.LevelTrace, base.KeyCache)
 
 	// Define cache with max channels 20, watermarks 50/90
 	options := DefaultCacheOptions().ChannelCacheOptions
@@ -315,13 +320,13 @@ func TestChannelCacheHighLoadCacheHit(t *testing.T) {
 			changesSuccessCount := 0
 			for i := 0; i < getChangesCount; i++ {
 				channelNumber := rand.Intn(channelCount) + 1
-				channelName := fmt.Sprintf("chan_%d", channelNumber)
+				channel := channels.NewID(fmt.Sprintf("chan_%d", channelNumber), base.DefaultCollectionID)
 				options := getChangesOptionsWithCtxOnly()
-				changes, err := cache.GetChanges(channelName, options)
+				changes, err := cache.GetChanges(channel, options)
 				if len(changes) == 1 {
 					changesSuccessCount++
 				}
-				assert.NoError(t, err, fmt.Sprintf("Error getting changes for channel %s", channelName))
+				assert.NoError(t, err, fmt.Sprintf("Error getting changes for channel %s", channel))
 				assert.True(t, len(changes) == 1, "Expected one change per channel")
 			}
 			assert.Equal(t, changesSuccessCount, getChangesCount)
@@ -389,13 +394,13 @@ func TestChannelCacheHighLoadCacheMiss(t *testing.T) {
 			changesSuccessCount := 0
 			for i := 0; i < getChangesCount; i++ {
 				channelNumber := rand.Intn(channelCount) + 1
-				channelName := fmt.Sprintf("chan_%d", channelNumber)
+				channel := channels.NewID(fmt.Sprintf("chan_%d", channelNumber), base.DefaultCollectionID)
 				options := getChangesOptionsWithCtxOnly()
-				changes, err := cache.GetChanges(channelName, options)
+				changes, err := cache.GetChanges(channel, options)
 				if len(changes) == 1 {
 					changesSuccessCount++
 				}
-				assert.NoError(t, err, fmt.Sprintf("Error getting changes for channel %s", channelName))
+				assert.NoError(t, err, fmt.Sprintf("Error getting changes for channel %q", channel))
 				assert.True(t, len(changes) == 1, "Expected one change per channel")
 			}
 			assert.Equal(t, changesSuccessCount, getChangesCount)
@@ -449,10 +454,10 @@ func TestChannelCacheBypass(t *testing.T) {
 
 	// Issue queries for all channels.  First 20 should end up in the cache, remaining 80 should trigger bypass
 	for c := 1; c <= channelCount; c++ {
-		channelName := fmt.Sprintf("chan_%d", c)
+		channel := channels.NewID(fmt.Sprintf("chan_%d", c), base.DefaultCollectionID)
 		options := getChangesOptionsWithCtxOnly()
-		changes, err := cache.GetChanges(channelName, options)
-		assert.NoError(t, err, fmt.Sprintf("Error getting changes for channel %s", channelName))
+		changes, err := cache.GetChanges(channel, options)
+		assert.NoError(t, err, fmt.Sprintf("Error getting changes for channel %q", channel))
 		assert.True(t, len(changes) == 1, "Expected one change per channel")
 	}
 
@@ -471,9 +476,6 @@ func waitForCompaction(cache *channelCacheImpl) (compactionComplete bool) {
 		}
 	}
 	return false
-}
-
-type testActiveChannels struct {
 }
 
 type testQueryHandler struct {

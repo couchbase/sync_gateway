@@ -414,7 +414,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 	dbContext.changeCache = &changeCache{}
 
 	// Callback that is invoked whenever a set of channels is changed in the ChangeCache
-	notifyChange := func(changedChannels base.Set) {
+	notifyChange := func(changedChannels channels.Set) {
 		dbContext.mutationListener.Notify(changedChannels)
 	}
 
@@ -1900,4 +1900,16 @@ func (dbCtx *DatabaseContext) AddDatabaseLogContext(ctx context.Context) context
 		return base.LogContextWith(ctx, &base.DatabaseLogContext{DatabaseName: dbCtx.Name})
 	}
 	return ctx
+}
+
+// GetSingleCollectionID returns a collectionID. This is a temporary shim for single collections, and will be removed when a database can support multiple collecitons.
+func (dbCtx *DatabaseContext) GetSingleCollectionID() (uint32, error) {
+	collection, err := base.AsCollection(dbCtx.Bucket)
+	if err != nil {
+		return 0, nil
+	}
+	if !collection.IsSupported(sgbucket.DataStoreFeatureCollections) {
+		return 0, nil
+	}
+	return collection.GetCollectionID()
 }
