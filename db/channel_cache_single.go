@@ -155,7 +155,7 @@ func newChannelCacheWithOptions(queryHandler ChannelQueryHandler, channel channe
 	}
 
 	base.DebugfCtx(context.Background(), base.KeyCache, "Initialized cache for channel %q with min:%v max:%v age:%v, validFrom: %d",
-		base.UD(cache.ChannelID), cache.options.ChannelCacheMinLength, cache.options.ChannelCacheMaxLength, cache.options.ChannelCacheAge, validFrom)
+		base.UD(cache.channelID), cache.options.ChannelCacheMinLength, cache.options.ChannelCacheMaxLength, cache.options.ChannelCacheAge, validFrom)
 
 	return cache
 }
