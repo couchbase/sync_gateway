@@ -322,7 +322,7 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 				return base.HTTPErrorf(http.StatusNotFound, "keyspace %s.%s.%s not found", base.MD(keyspaceDb), base.MD(base.StringDefault(keyspaceScope, "")), base.MD(base.StringDefault(keyspaceCollection, "")))
 			}
 		} else {
-			if keyspaceScope != nil || keyspaceCollection != nil {
+			if keyspaceScope != nil && *keyspaceScope != base.DefaultScope || keyspaceCollection != nil && *keyspaceCollection != base.DefaultCollection {
 				// request tried specifying a named collection on a non-named collections database
 				return base.HTTPErrorf(http.StatusNotFound, "keyspace %s.%s.%s not found", base.MD(keyspaceDb), base.MD(base.StringDefault(keyspaceScope, "")), base.MD(base.StringDefault(keyspaceCollection, "")))
 			}

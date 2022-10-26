@@ -113,6 +113,32 @@ func TestCollectionsPutDocInKeyspace(t *testing.T) {
 	}
 }
 
+// TestNoCollectionsPutDocWithKeyspace ensures that a keyspace can't be used to insert a doc on a database not configured for collections.
+func TestNoCollectionsPutDocWithKeyspace(t *testing.T) {
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	// can't put doc into invalid keyspaces
+	response := rt.SendAdminRequest("PUT", "/db.invalidScope.invalidCollection/doc1", "{}")
+	RequireStatus(t, response, http.StatusNotFound)
+
+	response = rt.SendAdminRequest("PUT", "/db.invalidCollection/doc1", "{}")
+	RequireStatus(t, response, http.StatusNotFound)
+
+	// can put doc into _default scope/collection explicitly ... or implicitly (tested elsewhere e.g: TestPutEmptyDoc)
+	response = rt.SendAdminRequest("PUT", "/db._default._default/doc1", "{}")
+	RequireStatus(t, response, http.StatusCreated)
+
+	// retrieve doc in both ways (_default._default and no fully-qualified keyspace)
+	response = rt.SendAdminRequest("GET", "/db._default._default/doc1", "")
+	RequireStatus(t, response, http.StatusOK)
+	assert.Equal(t, `{"_id":"doc1","_rev":"1-ca9ad22802b66f662ff171f226211d5c"}`, string(response.BodyBytes()))
+
+	response = rt.SendAdminRequest("GET", "/db/doc1", "")
+	RequireStatus(t, response, http.StatusOK)
+	assert.Equal(t, `{"_id":"doc1","_rev":"1-ca9ad22802b66f662ff171f226211d5c"}`, string(response.BodyBytes()))
+}
+
 func TestSingleCollectionDCP(t *testing.T) {
 	base.TestRequiresCollections(t)
 	if !base.TestUseXattrs() {
