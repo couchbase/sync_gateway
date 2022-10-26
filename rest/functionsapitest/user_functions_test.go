@@ -9,6 +9,8 @@
 package functionsapitest
 
 import (
+	"encoding/json"
+	"fmt"
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -203,4 +205,198 @@ func TestFunctionsConfigPutOne(t *testing.T) {
 		response = rt.SendAdminRequest("GET", "/db/_function/square?n=13", "")
 		assert.Equal(t, 404, response.Result().StatusCode)
 	})
+}
+
+var kUserFunctionConfig = &functions.FunctionsConfig{
+	Definitions: functions.FunctionsDefs{
+		"square": {
+			Type:  "javascript",
+			Code:  "function(context,args) {return args.n * args.n;}",
+			Args:  []string{"n"},
+			Allow: &functions.Allow{Channels: []string{"*"}},
+		},
+		"squareN1QL": {
+			Type:  "query",
+			Code:  "SELECT $args.n * $args.n AS square",
+			Args:  []string{"n"},
+			Allow: &functions.Allow{Channels: []string{"*"}},
+		},
+	},
+}
+
+func TestSaveAndGet(t *testing.T) {
+	// Setting up tester Config
+	rt := rest.NewRestTesterForUserQueries(t, rest.DbConfig{})
+	defer rt.Close()
+
+	request, err := json.Marshal(kUserFunctionConfig)
+	assert.NoError(t, err)
+
+	// Save The Function
+	t.Run("Save The Functions", func(t *testing.T) {
+		response := rt.SendAdminRequest("PUT", "/db/_config/functions", string(request))
+		assert.Equal(t, 200, response.Result().StatusCode)
+	})
+
+	// Get The Function Definition and match with the one posted
+	t.Run("Get All Functions And Check Schema", func(t *testing.T) {
+		response := rt.SendAdminRequest("GET", "/db/_config/functions", "")
+		assert.NotNil(t, response)
+
+		var responseUserFunctionsConfig functions.FunctionsConfig
+		err := json.Unmarshal(response.BodyBytes(), &responseUserFunctionsConfig)
+		assert.NoError(t, err)
+		assert.Equal(t, kUserFunctionConfig, &responseUserFunctionsConfig)
+
+	})
+
+	t.Run("Get and Check Schema Of A Specific Function", func(t *testing.T) {
+		for functionName, functionDefinition := range kUserFunctionConfig.Definitions {
+			response := rt.SendAdminRequest("GET", fmt.Sprintf("/db/_config/functions/%s", functionName), "")
+			assert.NotNil(t, response)
+
+			var responseUserFunctionConfig functions.FunctionConfig
+			err := json.Unmarshal(response.BodyBytes(), &responseUserFunctionConfig)
+			assert.NoError(t, err)
+			assert.Equal(t, functionDefinition, &responseUserFunctionConfig)
+		}
+
+		// Check For Non-Existent Function
+		response := rt.SendAdminRequest("GET", fmt.Sprintf("/db/_config/functions/%s", "nonExistent"), "")
+		assert.NotNil(t, response)
+		assert.Equal(t, 404, response.Result().StatusCode)
+	})
+
+	// GET: Run a Function and check the value
+	t.Run("Run the Function and match evaluated result", func(t *testing.T) {
+		functionNameToBeChecked := "square"
+		response := rt.SendAdminRequest("GET", fmt.Sprintf("/db/_function/%s?n=4", functionNameToBeChecked), "")
+		assert.NotNil(t, response)
+		assert.Equal(t, "16", response.Body.String())
+
+		functionNameToBeChecked = "squareN1QL"
+		response = rt.SendAdminRequest("GET", fmt.Sprintf("/db/_function/%s?n=4", functionNameToBeChecked), "")
+		assert.NotNil(t, response)
+
+		expectedEvaluatedResponse := map[string]any{"square": float64(16)}
+		var actualEvaluatedResponse []map[string]any
+		err := json.Unmarshal(response.BodyBytes(), &actualEvaluatedResponse)
+		assert.NoError(t, err)
+		assert.Equal(t, expectedEvaluatedResponse["square"], actualEvaluatedResponse[0]["square"])
+	})
+
+	// POST: Run a Function and check the Value
+	t.Run("Run The Function and Match Evaluated Result via POST", func(t *testing.T) {
+
+		functionNameToBeChecked := "square"
+		requestBody := `{"n": 4}`
+
+		response := rt.SendAdminRequest("POST", fmt.Sprintf("/db/_function/%s", functionNameToBeChecked), requestBody)
+		assert.NotNil(t, response)
+		assert.Equal(t, "16", response.Body.String())
+
+		functionNameToBeChecked = "squareN1QL"
+		response = rt.SendAdminRequest("POST", fmt.Sprintf("/db/_function/%s", functionNameToBeChecked), requestBody)
+		assert.NotNil(t, response)
+
+		expectedEvaluatedResponse := map[string]any{"square": float64(16)}
+		var actualEvaluatedResponse []map[string]any
+		err := json.Unmarshal(response.BodyBytes(), &actualEvaluatedResponse)
+		assert.NoError(t, err)
+		assert.Equal(t, expectedEvaluatedResponse["square"], actualEvaluatedResponse[0]["square"])
+	})
+
+}
+
+func TestSaveAndUpdateAndGet(t *testing.T) {
+	// Cloning the userFunctionConfig Map
+	var kUserFunctionConfigCopy = &functions.FunctionsConfig{
+		MaxFunctionCount: kUserFunctionConfig.MaxFunctionCount,
+		MaxCodeSize:      kUserFunctionConfig.MaxCodeSize,
+		MaxRequestSize:   kUserFunctionConfig.MaxRequestSize,
+		Definitions:      map[string]*functions.FunctionConfig{},
+	}
+	for functionName, functionConfig := range kUserFunctionConfig.Definitions {
+		kUserFunctionConfigCopy.Definitions[functionName] = functionConfig
+	}
+
+	// Setting up tester Config
+	rt := rest.NewRestTesterForUserQueries(t, rest.DbConfig{})
+	defer rt.Close()
+
+	request, err := json.Marshal(kUserFunctionConfigCopy)
+	assert.NoError(t, err)
+
+	// Save The Function
+	t.Run("Save The Functions", func(t *testing.T) {
+		response := rt.SendAdminRequest("PUT", "/db/_config/functions", string(request))
+		assert.Equal(t, 200, response.Result().StatusCode)
+	})
+
+	// Get The Function Definition and match with the one posted
+	t.Run("Get All Functions And Check Schema", func(t *testing.T) {
+		response := rt.SendAdminRequest("GET", "/db/_config/functions", "")
+		assert.NotNil(t, response)
+
+		var responseUserFunctionsConfig functions.FunctionsConfig
+		err := json.Unmarshal(response.BodyBytes(), &responseUserFunctionsConfig)
+		assert.NoError(t, err)
+		assert.Equal(t, kUserFunctionConfigCopy, &responseUserFunctionsConfig)
+	})
+
+	// Update a Function
+	t.Run("Update The Function", func(t *testing.T) {
+		functionName := "square"
+
+		// Change multiplication sign to Addition sign
+		kUserFunctionConfigCopy.Definitions[functionName].Code = `function(context,args) {return args.n + args.n}`
+		requestBody, err := json.Marshal(kUserFunctionConfigCopy.Definitions[functionName])
+		assert.NoError(t, err)
+
+		response := rt.SendAdminRequest("PUT", fmt.Sprintf("/db/_config/functions/%s", functionName), string(requestBody))
+		assert.Equal(t, 200, response.Result().StatusCode)
+
+		functionName = "squareN1QL"
+
+		// Change multiplication sign to Addition sign
+		kUserFunctionConfigCopy.Definitions[functionName].Code = `SELECT $args.n + $args.n AS square`
+		requestBody, err = json.Marshal(kUserFunctionConfigCopy.Definitions[functionName])
+		assert.NoError(t, err)
+
+		response = rt.SendAdminRequest("PUT", fmt.Sprintf("/db/_config/functions/%s", functionName), string(requestBody))
+		assert.Equal(t, 200, response.Result().StatusCode)
+	})
+
+	// Get the Updated Function
+	t.Run("GET The Updated Function", func(t *testing.T) {
+		for fnName, fnBody := range kUserFunctionConfigCopy.Definitions {
+			functionName := fnName
+			response := rt.SendAdminRequest("GET", fmt.Sprintf("/db/_config/functions/%s", functionName), "")
+			assert.NotNil(t, response)
+
+			var responseUserFunctionConfig functions.FunctionConfig
+			err := json.Unmarshal(response.BodyBytes(), &responseUserFunctionConfig)
+			assert.NoError(t, err)
+			assert.Equal(t, fnBody, &responseUserFunctionConfig)
+		}
+	})
+
+	// GET : Evaluate the Updated Function
+	t.Run("Run the Function and match evaluated result", func(t *testing.T) {
+		functionNameToBeChecked := "square"
+		response := rt.SendAdminRequest("GET", fmt.Sprintf("/db/_function/%s?n=4", functionNameToBeChecked), "")
+		assert.NotNil(t, response)
+		assert.Equal(t, "8", response.Body.String())
+
+		functionNameToBeChecked = "squareN1QL"
+		response = rt.SendAdminRequest("GET", fmt.Sprintf("/db/_function/%s?n=4", functionNameToBeChecked), "")
+		assert.NotNil(t, response)
+
+		expectedEvaluatedResponse := map[string]any{"square": float64(8)}
+		var actualEvaluatedResponse []map[string]any
+		err := json.Unmarshal(response.BodyBytes(), &actualEvaluatedResponse)
+		assert.NoError(t, err)
+		assert.Equal(t, expectedEvaluatedResponse["square"], actualEvaluatedResponse[0]["square"])
+	})
+
 }
