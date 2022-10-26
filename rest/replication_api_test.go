@@ -1712,7 +1712,7 @@ func TestDBReplicationStatsTeardown(t *testing.T) {
 	tb := base.GetTestBucket(t)
 	defer tb.Close()
 	rt := NewRestTester(t, &RestTesterConfig{
-		persistentConfig: true,
+		PersistentConfig: true,
 		CustomTestBucket: tb,
 	})
 	defer rt.Close()

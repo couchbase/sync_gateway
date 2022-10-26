@@ -2141,6 +2141,71 @@ func TestHandleCreateDB(t *testing.T) {
 	rest.RequireStatus(t, resp, http.StatusBadRequest)
 }
 
+func TestHandleCreateDBJsonName(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server")
+	}
+	testCases := []struct {
+		name        string
+		JSONname    string
+		expectError bool
+	}{
+		{
+			name:        "Name match",
+			JSONname:    "db1",
+			expectError: false,
+		},
+		{
+			name:        "Name mismatch",
+			JSONname:    "dummy",
+			expectError: true,
+		},
+		{
+			name:        "No JSON Name",
+			JSONname:    "",
+			expectError: false,
+		},
+	}
+
+	for _, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+			tb := base.GetTestBucket(t)
+			defer tb.Close()
+
+			rt := rest.NewRestTester(t, &rest.RestTesterConfig{
+				CustomTestBucket: tb,
+				PersistentConfig: true,
+			})
+			defer rt.Close()
+
+			var resp *rest.TestResponse
+			DbConfigJson := ""
+			if test.JSONname != "" {
+				DbConfigJson = `"name": "` + test.JSONname + `",`
+
+			}
+			resp = rt.SendAdminRequest(http.MethodPut, "/db1/",
+				fmt.Sprintf(
+					`{"bucket": "%s", %s "num_index_replicas": 0, "enable_shared_bucket_access": %t, "use_views": %t}`,
+					tb.GetName(), DbConfigJson, base.TestUseXattrs(), base.TestsDisableGSI(),
+				),
+			)
+			if test.expectError {
+				rest.RequireStatus(t, resp, http.StatusBadRequest)
+			} else {
+				rest.RequireStatus(t, resp, http.StatusCreated)
+				resp = rt.SendAdminRequest(http.MethodGet, "/db1/", "")
+				rest.RequireStatus(t, resp, http.StatusOK)
+
+				var dbStatus map[string]any
+				err := json.Unmarshal(resp.BodyBytes(), &dbStatus)
+				require.NoError(t, err)
+				assert.EqualValues(t, dbStatus["db_name"], "db1")
+			}
+		})
+	}
+}
+
 func TestHandlePutDbConfigWithBackticks(t *testing.T) {
 	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
