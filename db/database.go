@@ -1011,16 +1011,54 @@ func (db *DatabaseContext) AllPrincipalIDs(ctx context.Context) (users, roles []
 
 	// If running in Serverless mode, we can leverage `users` and `roles` index
 	// to fetch users and roles
-	users, err = db.GetUserNames(ctx)
-	if err != nil {
-		return nil, nil, err
-	}
+	usersCh := db.getUserNamesInBackground(ctx)
+	rolesCh := db.getRoleIDsInBackground(ctx)
 
-	roles, err = db.GetRoleIDs(ctx, true)
-	if err != nil {
-		return nil, nil, err
+	userData := <-usersCh
+	if userData.err != nil {
+		return nil, nil, userData.err
 	}
+	users = userData.value
+
+	rolesData := <-rolesCh
+	if rolesData.err != nil {
+		return nil, nil, rolesData.err
+	}
+	roles = rolesData.value
+
 	return users, roles, err
+}
+
+// used to send users/roles data from background fetch
+type data struct {
+	value []string
+	err   error
+}
+
+func (db *DatabaseContext) getUserNamesInBackground(ctx context.Context) <-chan data {
+	ch := make(chan data, 1)
+	go func() {
+		defer close(ch)
+		users, err := db.GetUserNames(ctx)
+		ch <- data{
+			value: users,
+			err:   err,
+		}
+	}()
+	return ch
+}
+
+func (db *DatabaseContext) getRoleIDsInBackground(ctx context.Context) <-chan data {
+	ch := make(chan data, 1)
+	go func() {
+		defer close(ch)
+		roles, err := db.GetRoleIDs(ctx, true)
+		ch <- data{
+			value: roles,
+			err:   err,
+		}
+	}()
+	return ch
 }
 
 // Returns the Names of all users
