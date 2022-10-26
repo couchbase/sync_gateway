@@ -11,6 +11,7 @@ package functionsapitest
 import (
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -19,6 +20,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+//////// FUNCTIONS CONFIG API TESTS (ADMIN ENDPOINTS)
 
 // When there's no existing config, API calls return 404:
 func TestFunctionsConfigGetMissing(t *testing.T) {
@@ -206,6 +209,8 @@ func TestFunctionsConfigPutOne(t *testing.T) {
 		assert.Equal(t, 404, response.Result().StatusCode)
 	})
 }
+
+//////// FUNCTIONS CONFIG AND EXECUTION COMBINATIONS
 
 var kUserFunctionConfig = &functions.FunctionsConfig{
 	Definitions: functions.FunctionsDefs{
@@ -407,5 +412,233 @@ func TestSaveAndUpdateAndGet(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Equal(t, expectedEvaluatedResponse["square"], actualEvaluatedResponse[0]["square"])
 	})
+}
 
+//////// FUNCTIONS EXECUTION API TESTS
+
+/// AUTH TESTS
+func TestUserFunctions(t *testing.T) {
+	allowAll := &functions.Allow{Channels: []string{"*"}}
+
+	kUserFunctionAuthTestConfig := functions.FunctionsConfig{
+		Definitions: functions.FunctionsDefs{
+			"square": &functions.FunctionConfig{
+				Type:  "javascript",
+				Code:  "function(context, args) {return args.numero * args.numero;}",
+				Args:  []string{"numero"},
+				Allow: &functions.Allow{Channels: []string{"wonderland"}},
+			},
+			"exceptional": &functions.FunctionConfig{
+				Type:  "javascript",
+				Code:  `function(context, args) {throw "oops";}`,
+				Allow: allowAll,
+			},
+			"call_fn": &functions.FunctionConfig{
+				Type:  "javascript",
+				Code:  `function(context, args) {return context.user.function("square", {numero: 7});}`,
+				Allow: allowAll,
+			},
+			"factorial": &functions.FunctionConfig{
+				Type: "javascript",
+				Args: []string{"n"},
+				Code: `function(context, args) {if (args.n <= 1) return 1;
+						else return args.n * context.user.function("factorial", {n: args.n-1});}`,
+				Allow: allowAll,
+			},
+			"great_and_terrible": &functions.FunctionConfig{
+				Type:  "javascript",
+				Code:  `function(context, args) {return "I am OZ the great and terrible";}`,
+				Allow: &functions.Allow{Channels: []string{"oz", "narnia"}},
+			},
+			"call_forbidden": &functions.FunctionConfig{
+				Type:  "javascript",
+				Code:  `function(context, args) {return context.user.function("great_and_terrible");}`,
+				Allow: allowAll,
+			},
+			"sudo_call_forbidden": &functions.FunctionConfig{
+				Type:  "javascript",
+				Code:  `function(context, args) {return context.admin.function("great_and_terrible");}`,
+				Allow: allowAll,
+			},
+			"admin_only": &functions.FunctionConfig{
+				Type:  "javascript",
+				Code:  `function(context, args) {return "OK";}`,
+				Allow: nil, // no 'allow' property means admin-only
+			},
+			"require_admin": &functions.FunctionConfig{
+				Type:  "javascript",
+				Code:  `function(context, args) {context.requireAdmin(); return "OK";}`,
+				Allow: allowAll,
+			},
+			"user_only": &functions.FunctionConfig{
+				Type:  "javascript",
+				Code:  `function(context, args) {if (!context.user.name) throw "No user"; return context.user.name;}`,
+				Allow: &functions.Allow{Channels: []string{"user-$${context.user.name}"}},
+			},
+			"alice_only": &functions.FunctionConfig{
+				Type:  "javascript",
+				Code:  `function(context, args) {context.requireUser("alice"); return "OK";}`,
+				Allow: allowAll,
+			},
+			"pevensies_only": &functions.FunctionConfig{
+				Type:  "javascript",
+				Code:  `function(context, args) {context.requireUser(["peter","jane","eustace","lucy"]); return "OK";}`,
+				Allow: allowAll,
+			},
+			"wonderland_only": &functions.FunctionConfig{
+				Type:  "javascript",
+				Code:  `function(context, args) {context.requireAccess("wonderland"); context.requireAccess(["wonderland", "snark"]); return "OK";}`,
+				Allow: allowAll,
+			},
+			"narnia_only": &functions.FunctionConfig{
+				Type:  "javascript",
+				Code:  `function(context, args) {context.requireAccess("narnia"); return "OK";}`,
+				Allow: allowAll,
+			},
+			"hero_only": &functions.FunctionConfig{
+				Type:  "javascript",
+				Code:  `function(context, args) {context.requireRole(["hero", "antihero"]); return "OK";}`,
+				Allow: allowAll,
+			},
+			"villain_only": &functions.FunctionConfig{
+				Type:  "javascript",
+				Code:  `function(context, args) {context.requireRole(["villain"]); return "OK";}`,
+				Allow: allowAll,
+			},
+		},
+	}
+
+	rt := rest.NewRestTesterForUserQueries(t, rest.DbConfig{
+		UserFunctions: &kUserFunctionAuthTestConfig,
+	})
+	if rt == nil {
+		return
+	}
+	defer rt.Close()
+
+	t.Run("AsAdmin", func(t *testing.T) { testUserFunctionsAsAdmin(t, rt) })
+
+	resp := rt.SendAdminRequest("POST", "/db/_role/", `{"name":"hero", "admin_channels":["heroes"]}`)
+	rest.RequireStatus(t, resp, http.StatusCreated)
+	resp = rt.SendAdminRequest("POST", "/db/_role/", `{"name":"villain", "admin_channels":["villains"]}`)
+	rest.RequireStatus(t, resp, http.StatusCreated)
+
+	resp = rt.SendAdminRequest("POST", "/db/_user/", `{"name":"alice", "password":"pass", "admin_channels":["wonderland", "lookingglass", "city-London", "user-alice"], "admin_roles": ["hero"]}`)
+	rest.RequireStatus(t, resp, http.StatusCreated)
+
+	t.Run("AsUser", func(t *testing.T) { testUserFunctionsAsUser(t, rt) })
+}
+
+func testUserFunctionsCommon(t *testing.T, rt *rest.RestTester, sendReqFn func(string, string, string) *rest.TestResponse) {
+	// Basic call passing a parameter:
+	response := sendReqFn("POST", "/db/_function/square", `{"numero": 42}`)
+	assert.Equal(t, 200, response.Result().StatusCode)
+	assert.EqualValues(t, "1764", string(response.BodyBytes()))
+
+	response = sendReqFn("GET", "/db/_function/square?numero=42", "")
+	assert.Equal(t, 200, response.Result().StatusCode)
+	assert.EqualValues(t, "1764", string(response.BodyBytes()))
+
+	// Function that calls a function:
+	response = sendReqFn("GET", "/db/_function/call_fn", "")
+	assert.Equal(t, 200, response.Result().StatusCode)
+	assert.EqualValues(t, "49", string(response.BodyBytes()))
+
+	// `requireUser` test that passes:
+	response = sendReqFn("GET", "/db/_function/alice_only", "")
+	assert.Equal(t, 200, response.Result().StatusCode)
+	assert.EqualValues(t, "\"OK\"", string(response.BodyBytes()))
+
+	// `requireChannel` test that passes:
+	response = sendReqFn("GET", "/db/_function/wonderland_only", "")
+	assert.Equal(t, 200, response.Result().StatusCode)
+	assert.EqualValues(t, "\"OK\"", string(response.BodyBytes()))
+
+	// `requireRole` test that passes:
+	response = sendReqFn("GET", "/db/_function/hero_only", "")
+	assert.Equal(t, 200, response.Result().StatusCode)
+	assert.EqualValues(t, "\"OK\"", string(response.BodyBytes()))
+
+	// Max call depth:
+	response = sendReqFn("GET", "/db/_function/factorial?n=20", "")
+	assert.Equal(t, 200, response.Result().StatusCode)
+	assert.EqualValues(t, "2432902008176640000", string(response.BodyBytes()))
+}
+
+func testUserFunctionsAsAdmin(t *testing.T, rt *rest.RestTester) {
+	testUserFunctionsCommon(t, rt, rt.SendAdminRequest)
+
+	// Admin-only (success):
+	response := rt.SendAdminRequest("GET", "/db/_function/admin_only", "")
+	assert.Equal(t, 200, response.Result().StatusCode)
+	assert.EqualValues(t, "\"OK\"", string(response.BodyBytes()))
+
+	response = rt.SendAdminRequest("GET", "/db/_function/require_admin", "")
+	assert.Equal(t, 200, response.Result().StatusCode)
+	assert.EqualValues(t, "\"OK\"", string(response.BodyBytes()))
+
+	response = rt.SendAdminRequest("GET", "/db/_function/pevensies_only", "")
+	assert.Equal(t, 200, response.Result().StatusCode)
+	assert.EqualValues(t, "\"OK\"", string(response.BodyBytes()))
+
+	response = rt.SendAdminRequest("GET", "/db/_function/narnia_only", "")
+	assert.Equal(t, 200, response.Result().StatusCode)
+	assert.EqualValues(t, "\"OK\"", string(response.BodyBytes()))
+
+	response = rt.SendAdminRequest("GET", "/db/_function/villain_only", "")
+	assert.Equal(t, 200, response.Result().StatusCode)
+	assert.EqualValues(t, "\"OK\"", string(response.BodyBytes()))
+
+	// ERRORS:
+	// Checking `context.user.name`:
+	response = rt.SendAdminRequest("GET", "/db/_function/user_only", "")
+	assert.Equal(t, 500, response.Result().StatusCode)
+	assert.Contains(t, string(response.BodyBytes()), "No user")
+
+	// No such function:
+	response = rt.SendAdminRequest("GET", "/db/_function/xxxx", "")
+	assert.Equal(t, 404, response.Result().StatusCode)
+}
+
+func testUserFunctionsAsUser(t *testing.T, rt *rest.RestTester) {
+	username := "alice"
+	password := "pass"
+	sendReqFn := func(method, resource, body string) *rest.TestResponse {
+		return rt.SendUserRequestWithHeaders(method, resource, body, nil, username, password)
+	}
+	testUserFunctionsCommon(t, rt, sendReqFn)
+
+	// Checking `context.user.name`:
+	response := sendReqFn("GET", "/db/_function/user_only", "")
+	assert.Equal(t, 200, response.Result().StatusCode)
+	assert.EqualValues(t, "\"alice\"", string(response.BodyBytes()))
+
+	// Checking `context.admin.func`
+	response = sendReqFn("GET", "/db/_function/sudo_call_forbidden", "")
+	assert.Equal(t, 200, response.Result().StatusCode)
+
+	response = sendReqFn("GET", "/db/_function/xxxx", "")
+	assert.Equal(t, 403, response.Result().StatusCode)
+
+	response = sendReqFn("GET", "/db/_function/great_and_terrible", "")
+	assert.Equal(t, 403, response.Result().StatusCode)
+
+	response = sendReqFn("GET", "/db/_function/call_forbidden", "")
+	assert.Equal(t, 403, response.Result().StatusCode)
+	assert.Contains(t, string(response.BodyBytes()), "great_and_terrible")
+
+	response = sendReqFn("GET", "/db/_function/admin_only", "")
+	assert.Equal(t, 403, response.Result().StatusCode)
+
+	response = sendReqFn("GET", "/db/_function/require_admin", "")
+	assert.Equal(t, 403, response.Result().StatusCode)
+
+	response = sendReqFn("GET", "/db/_function/pevensies_only", "")
+	assert.Equal(t, 403, response.Result().StatusCode)
+
+	response = sendReqFn("GET", "/db/_function/narnia_only", "")
+	assert.Equal(t, 403, response.Result().StatusCode)
+
+	response = sendReqFn("GET", "/db/_function/villain_only", "")
+	assert.Equal(t, 403, response.Result().StatusCode)
 }
