@@ -115,7 +115,12 @@ func TestCollectionsPutDocInKeyspace(t *testing.T) {
 
 // TestNoCollectionsPutDocWithKeyspace ensures that a keyspace can't be used to insert a doc on a database not configured for collections.
 func TestNoCollectionsPutDocWithKeyspace(t *testing.T) {
-	rt := NewRestTester(t, nil)
+	tb := base.GetTestBucketDefaultCollection(t)
+	defer tb.Close()
+
+	rt := NewRestTester(t, &RestTesterConfig{
+		CustomTestBucket: tb,
+	})
 	defer rt.Close()
 
 	// can't put doc into invalid keyspaces
