@@ -189,6 +189,12 @@ func assertGraphQLResult(t *testing.T, expected string, result *db.GraphQLResult
 	assert.Equal(t, expected, string(j))
 }
 
+func assertGraphQLNoErrors(t *testing.T, result *db.GraphQLResult, err error) bool {
+	return assert.NoError(t, err) &&
+		assert.NotNil(t, result) &&
+		assert.Zerof(t, len(result.Errors), "Unexpected GraphQL errors: %v", result.Errors)
+}
+
 // Per the spec, GraphQL errors are not indicated via `err`, rather through an `errors`
 // property in the `result` object.
 func assertGraphQLError(t *testing.T, expectedErrorText string, result *db.GraphQLResult, err error) {
@@ -414,6 +420,74 @@ func TestUserGraphQLWithN1QL(t *testing.T) {
 	// Test the N1QL resolver that uses $parent:
 	result, err := db.UserGraphQLQuery(`query{ task(id:"b") {description,title} }`, "", nil, false, ctx)
 	assertGraphQLResult(t, `{"task":{"description":"Bass ale please","title":"Beer"}}`, result, err)
+}
+
+// A placeholder GraphQL resolver function (should never be called!)
+var kDummyFieldResolver = FunctionConfig{
+	Type:  "javascript",
+	Code:  `function(parent, args, context, info) {throw 'unimplemented';}`,
+	Allow: allowAll,
+}
+
+var kDummyTypeResolver = FunctionConfig{
+	Type: "javascript",
+	Code: `function(context,value) {throw 'unimplemented';}`,
+}
+
+func TestUserGraphQLTypeNameResolver(t *testing.T) {
+	var schema = `
+	interface Node {
+		id: ID!
+	}
+	type Task implements Node {
+		id: ID!
+		title: String!
+	}
+	type Person implements Node {
+		id: ID!
+		name: String!
+	}
+	type Query {
+		node(id: ID!) : Node
+	}`
+
+	config := GraphQLConfig{
+		Schema: &schema,
+		Resolvers: map[string]GraphQLResolverConfig{
+			"Node": {
+				"__typename": {
+					Type: "javascript",
+					Code: `function(context,value) {return value.type;}`,
+				},
+			},
+			"Query": {
+				"node": {
+					Type: "javascript",
+					Code: `function(context, args) {
+								switch (args.id) {
+									case "1234": return {"type":"Task", "title": "Buy mangos"};
+									case "4321": return {"type":"Person", "name": "Alice"};
+									default: return null;
+								}
+							}`,
+				},
+			},
+		},
+	}
+
+	db, ctx := setupTestDBWithFunctions(t, nil, &config)
+	defer db.Close(ctx)
+
+	const kQuery = `query($id:ID!) { node(id:$id) {
+						... on Task {title}
+						... on Person {name}
+					} }`
+
+	result, err := db.UserGraphQLQuery(kQuery, "", map[string]any{"id": "1234"}, true, ctx)
+	assertGraphQLResult(t, `{"node":{"title":"Buy mangos"}}`, result, err)
+
+	result, err = db.UserGraphQLQuery(kQuery, "", map[string]any{"id": "4321"}, true, ctx)
+	assertGraphQLResult(t, `{"node":{"name":"Alice"}}`, result, err)
 }
 
 func TestUserGraphQLMaxSchemaSize(t *testing.T) {

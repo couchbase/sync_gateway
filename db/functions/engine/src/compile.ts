@@ -1,4 +1,4 @@
-import { AllowConfig, Args, Context, Database, FunctionConfig, User, JSFn, ResolverFn, HTTPError, ResolveInfo } from './types'
+import { AllowConfig, Args, Context, Database, FunctionConfig, User, JSFn, ResolverFn, HTTPError, ResolveInfo, EntityReferenceResolver, TypeResolverFn } from './types'
 
 import * as gq from 'graphql';
 import { BeginReadOnly, EndReadOnly } from "./impl";
@@ -356,7 +356,34 @@ export function CompileTypeNameResolver(typeName: string,
     } else if (fnConfig.allow !== undefined) {
         throw new HTTPError(500, `type-name resolver must not have an 'allow' config`);
     }
-    return compileToJS(fnName, fnConfig, 4) as gq.GraphQLTypeResolver<any,Context>;
+    let fn = compileToJS(fnName, fnConfig, 4) as TypeResolverFn;
+    return (value, context, info) => {
+        return fn(context, value, info as ResolveInfo);
+    }
+
+}
+
+
+export type ApolloEntityReferenceResolver = (reference: object,
+                                             context: Context,
+                                             info: ResolveInfo) => any;
+
+
+/** Compiles a FunctionConfig to a GraphQL Subgraph `_resolveReference` resolver. */
+export function CompileEntityReferenceResolver(typeName: string,
+    fnConfig: FunctionConfig,
+    db: Database) : ApolloEntityReferenceResolver
+{
+    let fnName = `${typeName}._resolveReference`;
+    if (fnConfig.type != "javascript") {
+        throw new HTTPError(500, `entity reference resolvers must be implemented in JavaScript`);
+    } else if (fnConfig.allow !== undefined) {
+        throw new HTTPError(500, `entity reference resolver must not have an 'allow' config`);
+    }
+    let code = compileToJS(fnName, fnConfig, 3) as EntityReferenceResolver;
+    return function(ref, context, info) {
+        return code(context, ref, info);    // Apollo's library has the params swapped
+    }
 }
 
 
@@ -371,8 +398,8 @@ function compileToJS(name: string, fnConfig: FunctionConfig, nArgs: number) : Fu
     }
     if (typeof(fn) !== 'function') {
         throw new HTTPError(500, `code does not compile to a JS function`);
-    } else if (fn.length != nArgs) {
-        throw new HTTPError(500, `should have ${nArgs} JavaScript arguments`);
+    } else if (fn.length < 2 || fn.length > nArgs) {
+        throw new HTTPError(500, `should have 2-${nArgs} JavaScript arguments`);
     }
     return fn;
 }

@@ -1,11 +1,12 @@
 import * as gq from 'graphql';
+import { ObjMap } from "graphql/jsutils/ObjMap";
 
 
 //////// CONFIGURATION
 
 type MaybePromise<T> = T | Promise<T>
 
-export type JSONObject = { [key: string]: undefined }
+export type JSONObject = ObjMap<unknown>;
 
 /** Named arguments to a function call. */
 export type Args = { [key:string]: any};
@@ -18,6 +19,14 @@ export type ResolverFn = (source: any,
                           args: Args,
                           context: Context,
                           info: ResolveInfo) => undefined;
+
+export type TypeResolverFn = (value: any, context: Context, info: ResolveInfo) => undefined;
+
+/** Entity-reference resolver, for Apollo subgraphs. */
+export type EntityReferenceResolver = (context: Context,
+                                       reference: object,
+                                       info: ResolveInfo) => any;
+
 
 /** GraphQL resolver `info` parameter. */
 export interface ResolveInfo extends gq.GraphQLResolveInfo {
@@ -59,6 +68,7 @@ export type GraphQLConfig = {
     schema?:             string,        // The schema itself
     schemaFile?:         string,        // Path to schema file (only if schema is not given)
     resolvers:           ResolverMap,   // GraphQL resolver functions
+    subgraph?:           boolean,       // Enables Apollo Federation subgraph support
     max_code_size?:      number;        // Maximum size in bytes of a function's `code`
     max_request_size?:   number;        // Maximum size in bytes of an incoming request
     max_resolver_count?: number;        // Maximum number of resolvers

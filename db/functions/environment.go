@@ -54,6 +54,11 @@ func newEnvironmentFromJSON(jsonConfig string) (*environment, error) {
 		jsonConfig: goToV8String(vm, string(jsonConfig)),
 	}
 
+	// Create the top-level 'process' namespace that Apollo's libraries expect.
+	processTemplate := v8.NewObjectTemplate(env.vm)
+	env.global.Set("process", processTemplate)
+	processTemplate.Set("env", v8.NewObjectTemplate(env.vm))
+
 	// Compile the engine's JS code. This code just defines a library; to get access to the entry point, we append the expression `SG_Engine.main` so the result of running the script is a pointer to the `main` function. (The script runs later, in `NewEvaluator`.)
 	var err error
 	env.script, err = vm.CompileUnboundScript(kJavaScriptCode+"\n SG_Engine.main;", "main.js", v8.CompileOptions{})

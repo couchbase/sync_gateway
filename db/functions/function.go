@@ -54,6 +54,7 @@ type GraphQLConfig struct {
 	Schema           *string         `json:"schema,omitempty"`             // Schema in SDL syntax
 	SchemaFile       *string         `json:"schemaFile,omitempty"`         // Path of schema file
 	Resolvers        GraphQLTypesMap `json:"resolvers"`                    // Defines query/mutation code
+	Subgraph         bool            `json:"subgraph,omitempty"`           // Enable Apollo Subgraph support
 	MaxSchemaSize    *int            `json:"max_schema_size,omitempty"`    // Maximum length (in bytes) of GraphQL schema
 	MaxResolverCount *int            `json:"max_resolver_count,omitempty"` // Maximum number of GraphQL resolvers
 	MaxCodeSize      *int            `json:"max_code_size,omitempty"`      // Maximum length (in bytes) of a function's code

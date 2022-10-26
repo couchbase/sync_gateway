@@ -1,7 +1,9 @@
 import { AllowConfig, Args, Context, Credentials, Database, Document, FunctionsConfig, GraphQLConfig, CRUD, User, JSFn, HTTPError, JSONObject, FunctionConfig } from './types'
-import { CompileFn, CompileResolver, CompileTypeNameResolver } from './compile'
+import { CompileEntityReferenceResolver, CompileFn, CompileResolver, CompileTypeNameResolver } from './compile'
 
 import * as gq from 'graphql';
+import { buildSubgraphSchema } from '@apollo/subgraph';
+import { GraphQLResolverMap } from "@apollo/subgraph/dist/schema-helper";
 
 
 /** Abstract interface to the N1QL query and CRUD implementation. Used by Database. */
@@ -17,6 +19,10 @@ export interface Upstream {
 
 
 //////// DATABASE IMPLEMENTATION
+
+
+// https://www.apollographql.com/docs/federation/building-supergraphs/subgraphs-apollo-server/
+const kFederationImportsStr = `extend schema @link(url: "https://specs.apollo.dev/federation/v2.0", import: ["@key", "@shareable"])`;
 
 
 /** Constructs a Database instance. */
@@ -74,7 +80,17 @@ class DatabaseImpl implements Database {
                 errors.complain(`GraphQL schema too large (> ${graphql.max_schema_size} bytes)`);
             } else {
                 errors.try(`GraphQL schema: `,  () => {
-                    this.schema = gq.buildSchema(graphql.schema!);
+                    if (graphql.subgraph) {
+                        // Prepend the required "extend schema..." declaration:
+                        let document = gq.parse(kFederationImportsStr + "\n\n" + graphql.schema!);
+                        // Create a map with just the __resolveReference resolver fns, so the
+                        // subgraph code can store them in the schema:
+                        let resolvers = this.createApolloResolverMap(graphql,errors);
+                        this.schema = buildSubgraphSchema({ typeDefs: document,
+                                                            resolvers: resolvers });
+                    } else {
+                        this.schema = gq.buildSchema(graphql.schema!);
+                    }
                 });
                 if (this.schema) {
                     this.configureResolvers(graphql, errors)
@@ -92,6 +108,8 @@ class DatabaseImpl implements Database {
 
     private configureResolvers(graphql: GraphQLConfig, errors: ErrorList) {
         let remainingResolvers = graphql.max_resolver_count ?? 1e9;
+
+        if (!graphql.resolvers)  return;
 
         function canAddResolver(typeName: string, fieldName: string, config: FunctionConfig) {
             if (--remainingResolvers == 0) {
@@ -116,6 +134,7 @@ class DatabaseImpl implements Database {
                 for (let fieldName of Object.getOwnPropertyNames(fields)) {
                     let fnConfig = fields[fieldName];
                     if (canAddResolver(typeName, fieldName, fnConfig)) {
+                        if (graphql.subgraph && fieldName == '__resolveReference')  continue;
                         let schemaField = schemaFields[fieldName];
                         if (schemaField) {
                             errors.try(`GraphQL resolver ${typeName}.${fieldName}: `,
@@ -127,7 +146,8 @@ class DatabaseImpl implements Database {
                         }
                     }
                 }
-            } else if (schemaType instanceof gq.GraphQLInterfaceType) {
+            } else if (schemaType instanceof gq.GraphQLInterfaceType
+                            || schemaType instanceof gq.GraphQLUnionType) {
                 let ifType = schemaType;
                 for (let fieldName of Object.getOwnPropertyNames(fields)) {
                     let fnConfig = fields[fieldName];
@@ -136,10 +156,10 @@ class DatabaseImpl implements Database {
                             errors.try(`GraphQL resolver ${typeName}.${fieldName}: `,
                                        () => {
                                 ifType.resolveType = CompileTypeNameResolver(typeName,
-                                                                            fnConfig, this);
+                                                                             fnConfig, this);
                             });
                         } else {
-                            errors.complain(`GraphQL resolver ${typeName}.${fieldName}: interface types may only have a '__typename' resolver`);
+                            errors.complain(`GraphQL resolver ${typeName}.${fieldName}: abstract types may only have a '__typename' resolver`);
                         }
                     }
                 }
@@ -147,7 +167,20 @@ class DatabaseImpl implements Database {
                 errors.complain(`GraphQL type ${typeName}: not an object or interface, so cannot have resolvers`);
             }
         }
+    }
 
+    createApolloResolverMap(graphql: GraphQLConfig, errors: ErrorList) : GraphQLResolverMap<unknown> {
+        let result : GraphQLResolverMap<unknown> = {}
+        for (let [typeName, resolvers] of Object.entries(graphql.resolvers)) {
+            let resolveRef = resolvers['__resolveReference'];
+            if (resolveRef) {
+                let resolverFn = CompileEntityReferenceResolver(typeName, resolveRef, this);
+                result[typeName] = {
+                    '__resolveReference': resolverFn as gq.GraphQLFieldResolver<any,unknown>
+                };
+            }
+        }
+        return result;
     }
 
 

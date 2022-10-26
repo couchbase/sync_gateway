@@ -7,33 +7,46 @@ const isProduction = process.env.NODE_ENV == 'production';
 
 const config = {
     entry: './src/api.ts',                          // <-- main module
+
     output: {
         path: path.resolve(__dirname, 'dist'),      // <-- JS output directory
         library: 'SG_Engine',                       // <-- expose as global `SG_Engine` object
     },
-    plugins: [
-        // Add your plugins here
-        // Learn more about plugins from https://webpack.js.org/configuration/plugins/
-    ],
+
     module: {
         rules: [
             {
-                test: /\.(ts|tsx)$/i,
+                test: /\.(ts|tsx)$/i,               // Transpile TypeScript to JS
                 loader: 'ts-loader',
                 exclude: ['/node_modules/'],
             },
-            {
-                test: /\.(eot|svg|ttf|woff|woff2|png|jpg|gif)$/i,
-                type: 'asset',
-            },
-
-            // Add your rules for custom modules here
-            // Learn more about loaders from https://webpack.js.org/loaders/
         ],
     },
+
     resolve: {
         extensions: ['.tsx', '.ts', '.jsx', '.js', '...'],
+
+        fallback: {
+            // @apollo modules call node.js APIs. Substitute browser-compatible alternatives:
+            "assert":   require.resolve("assert/"),
+            "console":  require.resolve("console-browserify"),
+            "path":     require.resolve("path-browserify"),
+            "url":      path.resolve(__dirname, 'polyfill/url.js'),
+            "util":     require.resolve("util/"),
+            // Omit this module entirely (any calls will throw):
+            "fs":       false,
+        }
     },
+
+    devtool: 'inline-source-map',       // put JS source map in the code itself
+
+    // optimization: {
+    //     minimize: false,                // turn off size minimization; leave code readable
+    // },
+
+    ignoreWarnings: [                   // Suppress Web-specific warnings about big code
+        /asset size limit/, /entrypoint size limit/, /limit the size/
+    ],
 };
 
 module.exports = () => {

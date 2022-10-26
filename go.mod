@@ -3,7 +3,6 @@ module github.com/couchbase/sync_gateway
 go 1.18
 
 require (
-	github.com/bhoriuchi/graphql-go-tools v1.0.0
 	github.com/coreos/go-oidc v2.2.1+incompatible
 	github.com/couchbase/cbgt v1.2.4
 	github.com/couchbase/clog v0.1.0
@@ -20,7 +19,6 @@ require (
 	github.com/felixge/fgprof v0.9.2
 	github.com/google/uuid v1.3.0
 	github.com/gorilla/mux v1.8.0
-	github.com/graphql-go/graphql v0.8.0
 	github.com/imdario/mergo v0.3.12
 	github.com/json-iterator/go v1.1.12
 	github.com/kardianos/service v1.2.1
