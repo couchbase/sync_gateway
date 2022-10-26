@@ -9,6 +9,8 @@
 package channels
 
 import (
+	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -163,4 +165,14 @@ func (s Set) UpdateWithSlice(slice []ID) Set {
 func (s Set) Contains(ch ID) bool {
 	_, exists := s[ch]
 	return exists
+}
+
+// Convert to String(), necessary for logging.
+func (s Set) String() string {
+	keys := make([]string, len(s))
+	for ch := range s {
+		keys = append(keys, ch.String())
+	}
+	sort.Strings(keys)
+	return fmt.Sprintf("{%s}", strings.Join(keys, ", "))
 }
