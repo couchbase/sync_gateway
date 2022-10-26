@@ -216,15 +216,12 @@ func TestQueryAllRoles(t *testing.T) {
 
 	testCases := []struct {
 		isServerless bool
-		expectError  bool
 	}{
 		{
 			isServerless: false,
-			expectError:  true,
 		},
 		{
 			isServerless: true,
-			expectError:  false,
 		},
 	}
 
@@ -260,19 +257,15 @@ func TestQueryAllRoles(t *testing.T) {
 
 			// Standard query
 			results, queryErr := database.QueryAllRoles(ctx, "", 0)
-			if testCase.expectError {
-				assert.Error(t, queryErr, "Query error")
-			} else {
-				assert.NoError(t, queryErr, "Query error")
+			assert.NoError(t, queryErr, "Query error")
 
-				var row map[string]interface{}
-				rowCount := 0
-				for results.Next(&row) {
-					rowCount++
-				}
-				assert.Equal(t, 5, rowCount)
-				assert.NoError(t, results.Close())
+			var row map[string]interface{}
+			rowCount := 0
+			for results.Next(&row) {
+				rowCount++
 			}
+			assert.Equal(t, 5, rowCount)
+			assert.NoError(t, results.Close())
 		})
 	}
 }

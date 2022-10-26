@@ -103,27 +103,22 @@ func TestGetRoleIDs(t *testing.T) {
 	testCases := []struct {
 		isServerless   bool
 		includeDeleted bool
-		expectError    bool
 	}{
 		{
 			isServerless:   false,
 			includeDeleted: false,
-			expectError:    false,
 		},
 		{
 			isServerless:   false,
 			includeDeleted: true,
-			expectError:    true, // GetRoleIDS should be called in serverless mode with includeDelete
 		},
 		{
 			isServerless:   true,
 			includeDeleted: false,
-			expectError:    false,
 		},
 		{
 			isServerless:   true,
 			includeDeleted: true,
-			expectError:    false,
 		},
 	}
 
@@ -168,17 +163,13 @@ func TestGetRoleIDs(t *testing.T) {
 
 			// assert roles
 			roles, err := db.GetRoleIDs(ctx, testCase.includeDeleted)
-			if testCase.expectError {
-				assert.Error(t, err)
-			} else {
-				expectedRoles := []string{role1.Name()}
-				if testCase.includeDeleted {
-					expectedRoles = append(expectedRoles, role2.Name())
-				}
-
-				assert.NoError(t, err)
-				assert.ElementsMatch(t, expectedRoles, roles)
+			expectedRoles := []string{role1.Name()}
+			if testCase.includeDeleted {
+				expectedRoles = append(expectedRoles, role2.Name())
 			}
+
+			assert.NoError(t, err)
+			assert.ElementsMatch(t, expectedRoles, roles)
 		})
 	}
 }
