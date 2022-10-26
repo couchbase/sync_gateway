@@ -28,7 +28,7 @@ func v8ToGoString(val *v8.Value) ([]byte, error) {
 	}
 }
 
-// Converts a JS string of JSON into a Go map.
+// Converts & parses a JS string of JSON into a Go map.
 func v8JSONToGo(val *v8.Value) (map[string]any, error) {
 	if jsonStr, err := v8ToGoString(val); err != nil {
 		return nil, err
@@ -44,8 +44,8 @@ func v8JSONToGo(val *v8.Value) (map[string]any, error) {
 }
 
 // Converts a result and error to a JSON-encoded string and error.
-// If the input has an error, just passes it through.
-// Otherwise it JSON-encodes the result and returns it.
+// - If `err` is non-nil on input, just passes it through.
+// - Otherwise it JSON-encodes the `result` and returns it.
 func returnAsJSON(result any, err error) (any, error) {
 	if result == nil || err != nil {
 		return nil, err
@@ -57,16 +57,17 @@ func returnAsJSON(result any, err error) (any, error) {
 }
 
 // Encodes a Go value to JSON and returns the string as a V8 value.
-func goToV8JSON(ctx *v8.Context, obj any) (*v8.Value, error) {
-	if obj == nil {
+func goToV8JSON(ctx *v8.Context, val any) (*v8.Value, error) {
+	if val == nil {
 		return v8.Null(ctx.Isolate()), nil
-	} else if jsonBytes, err := json.Marshal(obj); err != nil {
+	} else if jsonBytes, err := json.Marshal(val); err != nil {
 		return nil, err
 	} else {
 		return v8.NewValue(ctx.Isolate(), string(jsonBytes))
 	}
 }
 
+// Returns an error back to a V8 caller.
 // Calls v8.Isolate.ThrowException, with the Go error's string as the message.
 func v8Throw(i *v8.Isolate, err error) *v8.Value {
 	var errStr string
@@ -87,7 +88,7 @@ func mustGetV8Fn(owner *v8.Object, name string) *v8.Function {
 // (This detects the way HTTP statuses are encoded into error messages by the class HTTPError in types.ts.)
 var kHTTPErrRegexp = regexp.MustCompile(`^(Error:\s*)?\[(\d\d\d)\]\s+(.*)`)
 
-// Looks for an HTTP status in an error message; if so, returns it as an HTTPError; else nil.
+// Looks for an HTTP status in an error message and returns it as an HTTPError; else returns nil.
 func unpackJSErrorStr(jsErrMessage string) error {
 	if m := kHTTPErrRegexp.FindStringSubmatch(jsErrMessage); m != nil {
 		if status, err := strconv.ParseUint(m[2], 10, 16); err == nil {

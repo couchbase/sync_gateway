@@ -22,22 +22,22 @@ import (
 
 // A basic bring-up test of the Evaluator and TypeScript engine.
 func TestEvaluator(t *testing.T) {
-	env, err := NewEnvironment(&kTestFunctionsConfig, &kTestGraphQLConfig)
+	env, err := newEnvironment(&kTestFunctionsConfig, &kTestGraphQLConfig)
 	if !assert.NoError(t, err) {
 		return
 	}
-	defer env.Close()
+	defer env.close()
 
 	delegate := mockEvaluatorDelegate{}
-	eval, err := env.NewEvaluator(&delegate, nil)
+	eval, err := env.newEvaluator(&delegate, nil)
 	assert.NoError(t, err)
-	defer eval.Close()
+	defer eval.close()
 
-	result, err := eval.CallFunction("square", map[string]any{"numero": 13})
+	result, err := eval.callFunction("square", map[string]any{"numero": 13})
 	assert.NoError(t, err)
 	assert.Equal(t, "169", string(result))
 
-	result, err = eval.CallFunction("cube", map[string]any{"numero": 13})
+	result, err = eval.callFunction("cube", map[string]any{"numero": 13})
 	assert.NoError(t, err)
 	assert.Equal(t, "2197", string(result))
 }

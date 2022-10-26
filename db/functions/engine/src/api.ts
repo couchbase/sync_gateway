@@ -2,7 +2,9 @@ import { Args, User, Config, Database, Context, Credentials, Document, JSONObjec
 import { MakeDatabase, Upstream } from "./impl";
 
 
-/** The interface the native code needs to implement. */
+/** The interface the native code needs to implement.
+ *  See evaluator.go, functions `doQuery`, `doGet`, etc.
+ */
 export interface NativeAPI {
     query(fnName: string,
           n1ql: string,
@@ -56,8 +58,11 @@ class UpstreamNativeImpl implements Upstream {
 }
 
 
-/** The API this module implements, and the native code calls. */
+/** The API this module implements, and the native code (evaluator.go) calls. */
 export class API {
+    /** Constructs an instance and parses the configuration.
+     *  Should not throw exceptions, but sets the `errors` property if config is invalid.
+     */
     constructor(configJSON: string, native: NativeAPI) {
         console.debug = (...args: any) => native.log(4, ...args);
         console.log   = (...args: any) => native.log(3, ...args);
@@ -126,6 +131,7 @@ export class API {
 };
 
 
+/** Main entry point, called by Go `NewEvaluator()`. */
 export function main(configJSON: string, native: NativeAPI) : API {
     return new API(configJSON, native);
 }

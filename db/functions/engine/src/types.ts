@@ -19,7 +19,11 @@ export type ResolverFn = (source: any,
                           context: Context,
                           info: ResolveInfo) => undefined;
 
+/** GraphQL resolver `info` parameter. */
 export interface ResolveInfo extends gq.GraphQLResolveInfo {
+    /** The names of the fields of the returned object that will be used.
+     *  The resolver implementation may omit any fields not included in this list;
+     *  this can be a significant optimization. */
     readonly selectedFieldNames : string[];
 };
 
@@ -41,10 +45,10 @@ export type FunctionConfig = {
 
 /** Functions configuration: maps function name to its config. */
 export type FunctionsConfig = {
-    definitions:         Record<string,FunctionConfig>
-    max_function_count?: number;
-    max_code_size?:      number;
-    max_request_size?:   number;
+    definitions:         Record<string,FunctionConfig>  // Names & definitions of the functions
+    max_function_count?: number;                        // Maximum number of functions
+    max_code_size?:      number;                        // Maximum size in bytes of a fn's `code`
+    max_request_size?:   number;                        // Maximum size in bytes of a request
 };
 
 export type FieldMap = Record<string,FunctionConfig>;
@@ -55,10 +59,10 @@ export type GraphQLConfig = {
     schema?:             string,        // The schema itself
     schemaFile?:         string,        // Path to schema file (only if schema is not given)
     resolvers:           ResolverMap,   // GraphQL resolver functions
-    max_code_size?:      number;
-    max_request_size?:   number;
-    max_resolver_count?: number;
-    max_schema_size?:    number;
+    max_code_size?:      number;        // Maximum size in bytes of a function's `code`
+    max_request_size?:   number;        // Maximum size in bytes of an incoming request
+    max_resolver_count?: number;        // Maximum number of resolvers
+    max_schema_size?:    number;        // Maximum size in bytes of the schema
 };
 
 
@@ -66,14 +70,13 @@ export type GraphQLConfig = {
 export type Config = {
     functions?:     FunctionsConfig;
     graphql?:       GraphQLConfig;
-    keyspaceName:   string;
 }
 
 
 //////// RUNTIME CONTEXT
 
 
-/** Context object passed to all functions. */
+/** Type of the `context` parameter passed to all functions. */
 export interface Context {
     readonly user: User;
     readonly admin: User;
@@ -110,9 +113,10 @@ export interface Context {
 };
 
 
+/** Shape of a Couchbase document, used in the CRUD API. */
 export interface Document {
-    _id? : string;
-    _rev? : string;
+    _id? : string;      // Document ID (primary key)
+    _rev? : string;     // Revision ID (used for MVCC)
 };
 
 

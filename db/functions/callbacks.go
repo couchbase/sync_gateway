@@ -13,6 +13,8 @@ import (
 	"github.com/couchbase/sync_gateway/db"
 )
 
+const kAlwaysLog = false
+
 type n1qlUserArgument struct {
 	Name     *string  `json:"name,omitempty"`
 	Channels []string `json:"channels,omitempty"`
@@ -21,19 +23,19 @@ type n1qlUserArgument struct {
 
 //////// DATABASE EVALUATOR DELEGATE:
 
-// Implementation of EvaluatorDelegate.
+// The "real" implementation of EvaluatorDelegate.
 type databaseDelegate struct {
-	db   *db.Database    // The database (with user)
-	ctx  context.Context // Context for logging, timeouts etc.
-	user *UserCredentials
+	db   *db.Database     // The database (with user)
+	ctx  context.Context  // Context for logging, timeouts etc.
+	user *userCredentials // User's info
 }
 
-// Temporarily makes the db user an admin. Returns a fn that will revert the upgrade.
+// Temporarily gives the `db.Database` admin powers. Returns a fn that will revert the upgrade.
 // Must be called as `defer d.asAdmin()()`
 func (d *databaseDelegate) asAdmin() func() {
 	user := d.db.User()
 	d.db.SetUser(nil)
-	return func() { d.db.SetUser(user) } // this is what will be run by `defer`
+	return func() { d.db.SetUser(user) } // <-- this is what will be run by `defer`
 }
 
 func (d *databaseDelegate) checkTimeout() error {
@@ -41,7 +43,9 @@ func (d *databaseDelegate) checkTimeout() error {
 }
 
 func (d *databaseDelegate) log(level base.LogLevel, message string) {
-	log.Printf("JS LOG: (%d) %s", level, message) //TEMP
+	if kAlwaysLog {
+		log.Printf("JS LOG: (%d) %s", level, message)
+	}
 	base.LogfTo(d.ctx, level, base.KeyJavascript, "%s", base.UD(message))
 }
 

@@ -6,10 +6,10 @@ const isProduction = process.env.NODE_ENV == 'production';
 
 
 const config = {
-    entry: './src/api.ts',
+    entry: './src/api.ts',                          // <-- main module
     output: {
-        path: path.resolve(__dirname, 'dist'),
-        library: 'SG_Engine',
+        path: path.resolve(__dirname, 'dist'),      // <-- JS output directory
+        library: 'SG_Engine',                       // <-- expose as global `SG_Engine` object
     },
     plugins: [
         // Add your plugins here
@@ -39,8 +39,6 @@ const config = {
 module.exports = () => {
     if (isProduction) {
         config.mode = 'production';
-
-
     } else {
         config.mode = 'development';
     }
