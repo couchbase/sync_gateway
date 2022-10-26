@@ -306,6 +306,15 @@ func TestSaveAndGet(t *testing.T) {
 		assert.Equal(t, expectedEvaluatedResponse["square"], actualEvaluatedResponse[0]["square"])
 	})
 
+	t.Run("Test For Able to Run Function for Non-Admin Users", func(t *testing.T) {
+		response := rt.SendAdminRequest("POST", "/db/_user/", `{"name":"ritik","email":"ritik.raj@couchbase.com", "password":"letmein", "admin_channels":["*"]}`)
+		assert.Equal(t, 201, response.Result().StatusCode)
+
+		response = rt.SendUserRequestWithHeaders("GET", fmt.Sprintf("/db/_function/%s?n=4", "square"), "", nil, "ritik", "letmein")
+		assert.NotNil(t, response)
+		assert.Equal(t, "16", response.Body.String())
+	})
+
 }
 
 func TestSaveAndUpdateAndGet(t *testing.T) {
