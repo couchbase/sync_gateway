@@ -87,7 +87,7 @@ var kTestGraphQLConfig = GraphQLConfig{
 				Type: "javascript",
 				Code: `function(parent, args, context, info) {
 						if (Object.keys(parent).length != 0) throw "Unexpected parent";
-						if (Object.keys(args).length != 1) throw "Unexpected args";
+						if (Object.keys(args).length != 0) throw "Unexpected args";
 						if (Object.keys(info) != "selectedFieldNames") throw "Unexpected info";
 						if (!context.user) throw "Missing context.user";
 						if (!context.admin) throw "Missing context.admin";
