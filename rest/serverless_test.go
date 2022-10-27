@@ -226,7 +226,7 @@ func TestServerlessSuspendDatabase(t *testing.T) {
 
 	// Update config in bucket to see if unsuspending check for updates
 	cas, err := sc.BootstrapContext.Connection.UpdateConfig(tb.GetName(), sc.Config.Bootstrap.ConfigGroupID,
-		func(rawBucketConfig []byte) (updatedConfig []byte, err error) {
+		func(rawBucketConfig []byte, rawBucketConfigCas uint64) (updatedConfig []byte, err error) {
 			return json.Marshal(sc.dbConfigs["db"])
 		},
 	)
@@ -333,7 +333,7 @@ func TestServerlessFetchConfigsLimited(t *testing.T) {
 
 	// Update database config in the bucket
 	newCas, err := sc.BootstrapContext.Connection.UpdateConfig(tb.GetName(), sc.Config.Bootstrap.ConfigGroupID,
-		func(rawBucketConfig []byte) (updatedConfig []byte, err error) {
+		func(rawBucketConfig []byte, rawBucketConfigCas uint64) (updatedConfig []byte, err error) {
 			return json.Marshal(sc.dbConfigs["db"])
 		},
 	)
@@ -356,7 +356,7 @@ func TestServerlessFetchConfigsLimited(t *testing.T) {
 
 	// Update database config in the bucket again to test caching disable case
 	newCas, err = sc.BootstrapContext.Connection.UpdateConfig(tb.GetName(), sc.Config.Bootstrap.ConfigGroupID,
-		func(rawBucketConfig []byte) (updatedConfig []byte, err error) {
+		func(rawBucketConfig []byte, rawBucketConfigCas uint64) (updatedConfig []byte, err error) {
 			return json.Marshal(sc.dbConfigs["db"])
 		},
 	)
@@ -399,7 +399,7 @@ func TestServerlessUpdateSuspendedDb(t *testing.T) {
 	assert.NoError(t, sc.suspendDatabase(t, rt.Context(), "db"))
 	// Update database config
 	newCas, err := sc.BootstrapContext.Connection.UpdateConfig(tb.GetName(), sc.Config.Bootstrap.ConfigGroupID,
-		func(rawBucketConfig []byte) (updatedConfig []byte, err error) {
+		func(rawBucketConfig []byte, rawBucketConfigCas uint64) (updatedConfig []byte, err error) {
 			return json.Marshal(sc.dbConfigs["db"])
 		},
 	)
