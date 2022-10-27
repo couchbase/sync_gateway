@@ -415,6 +415,56 @@ func TestSaveAndUpdateAndGet(t *testing.T) {
 	})
 }
 
+/// ILLEGAL SYNTAX TESTS
+
+func TestIllegalSyntax(t *testing.T) {
+	rt := rest.NewRestTesterForUserQueries(t, rest.DbConfig{})
+	if rt == nil {
+		return
+	}
+	defer rt.Close()
+
+	response := rt.SendAdminRequest("PUT", "/db/_config/functions", `{
+		"definitions": {
+			"syntax_error": {
+				"type": "javascript",
+				"code": "returm )42(",
+				"allow": {"channels": ["*"]}}
+		}
+	}`)
+	assert.Equal(t, 400, response.Result().StatusCode)
+	assert.Contains(t, string(response.BodyBytes()), "Error compiling function")
+
+	// Can only register SELECT queries
+	response = rt.SendAdminRequest("PUT", "/db/_config/functions", `{
+		"definitions": {
+			"evil_n1ql_mutation": {
+				"type": "query",
+				"code": "DROP COLLECTION Students",
+				"allow": {"channels": ["*"]}}
+		}
+	}`)
+	assert.Equal(t, 400, response.Result().StatusCode)
+	assert.Contains(t, string(response.BodyBytes()), "only SELECT queries are allowed")
+
+	// A bad SELECT query can be registered to config
+	// But, executing it will result in an error
+	response = rt.SendAdminRequest("PUT", "/db/_config/functions", `{
+		"definitions": {
+			"bad_n1ql_syntax": {
+				"type": "query",
+				"code": "SELECT )22( AS Students :",
+				"allow": {"channels": ["*"]}}
+		}
+	}`)
+	assert.Equal(t, 200, response.Result().StatusCode)
+
+	response = rt.SendAdminRequest("GET", "/db/_function/bad_n1ql_syntax", "")
+	assert.Equal(t, 500, response.Result().StatusCode)
+	assert.Contains(t, string(response.BodyBytes()), "Internal Server Error")
+	assert.Contains(t, string(response.BodyBytes()), "syntax error")
+}
+
 //////// FUNCTIONS EXECUTION API TESTS
 
 /// AUTH TESTS
