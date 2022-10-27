@@ -49,7 +49,7 @@ func (h *handler) mutateDbConfig(mutator func(*DbConfig) error) error {
 		var updatedDbConfig *DatabaseConfig
 		cas, err := h.server.BootstrapContext.Connection.UpdateConfig(
 			bucket, h.server.Config.Bootstrap.ConfigGroupID,
-			func(rawBucketConfig []byte) (newConfig []byte, err error) {
+			func(rawBucketConfig []byte, rawBucketConfigCas uint64) (newConfig []byte, err error) {
 				var bucketDbConfig DatabaseConfig
 				if err := base.JSONUnmarshal(rawBucketConfig, &bucketDbConfig); err != nil {
 					return nil, err

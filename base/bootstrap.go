@@ -29,7 +29,7 @@ type BootstrapConnection interface {
 	// InsertConfig saves a new database config for a given bucket and config group ID.
 	InsertConfig(bucket, groupID string, value interface{}) (newCAS uint64, err error)
 	// UpdateConfig updates an existing database config for a given bucket and config group ID. updateCallback can return nil to remove the config.
-	UpdateConfig(bucket, groupID string, updateCallback func(rawBucketConfig []byte) (updatedConfig []byte, err error)) (newCAS uint64, err error)
+	UpdateConfig(bucket, groupID string, updateCallback func(rawBucketConfig []byte, rawBucketConfigCas uint64) (updatedConfig []byte, err error)) (newCAS uint64, err error)
 	// Close releases any long-lived connections
 	Close()
 }
@@ -244,7 +244,7 @@ func (cc *CouchbaseCluster) InsertConfig(location, groupID string, value interfa
 	return cc.configPersistence.insertConfig(b.DefaultCollection(), docID, value)
 }
 
-func (cc *CouchbaseCluster) UpdateConfig(location, groupID string, updateCallback func(bucketConfig []byte) (newConfig []byte, err error)) (newCAS uint64, err error) {
+func (cc *CouchbaseCluster) UpdateConfig(location, groupID string, updateCallback func(bucketConfig []byte, rawBucketConfigCas uint64) (newConfig []byte, err error)) (newCAS uint64, err error) {
 	if cc == nil {
 		return 0, errors.New("nil CouchbaseCluster")
 	}
@@ -267,8 +267,7 @@ func (cc *CouchbaseCluster) UpdateConfig(location, groupID string, updateCallbac
 		if err != nil {
 			return 0, err
 		}
-
-		newConfig, err := updateCallback(bucketValue)
+		newConfig, err := updateCallback(bucketValue, uint64(cas))
 		if err != nil {
 			return 0, err
 		}

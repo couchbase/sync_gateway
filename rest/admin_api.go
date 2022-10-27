@@ -530,7 +530,7 @@ func (h *handler) handlePutDbConfig() (err error) {
 	var updatedDbConfig *DatabaseConfig
 	cas, err := h.server.BootstrapContext.Connection.UpdateConfig(
 		bucket, h.server.Config.Bootstrap.ConfigGroupID,
-		func(rawBucketConfig []byte) (newConfig []byte, err error) {
+		func(rawBucketConfig []byte, rawBucketConfigCas uint64) (newConfig []byte, err error) {
 			var bucketDbConfig DatabaseConfig
 			if err := base.JSONUnmarshal(rawBucketConfig, &bucketDbConfig); err != nil {
 				return nil, err
@@ -539,6 +539,8 @@ func (h *handler) handlePutDbConfig() (err error) {
 			if h.headerDoesNotMatchEtag(bucketDbConfig.Version) {
 				return nil, base.HTTPErrorf(http.StatusPreconditionFailed, "Provided If-Match header does not match current config version")
 			}
+
+			bucketDbConfig.cas = rawBucketConfigCas
 
 			oldBucketDbConfig := bucketDbConfig.DbConfig
 
@@ -573,6 +575,7 @@ func (h *handler) handlePutDbConfig() (err error) {
 			if err = base.DeepCopyInefficient(&tmpConfig, bucketDbConfig); err != nil {
 				return nil, err
 			}
+			tmpConfig.cas = rawBucketConfigCas
 			dbCreds, _ := h.server.Config.DatabaseCredentials[dbName]
 			bucketCreds, _ := h.server.Config.BucketCredentials[bucket]
 			if err := tmpConfig.setup(dbName, h.server.Config.Bootstrap, dbCreds, bucketCreds, h.server.Config.IsServerless()); err != nil {
@@ -596,8 +599,10 @@ func (h *handler) handlePutDbConfig() (err error) {
 		return err
 	}
 	// store the cas in the loaded config after a successful update
-	h.server.dbConfigs[dbName].cfgCas = cas
 	h.setEtag(updatedDbConfig.Version)
+	h.server.lock.Lock()
+	defer h.server.lock.Unlock()
+	h.server.dbConfigs[dbName].cfgCas = cas
 
 	return base.HTTPErrorf(http.StatusCreated, "updated")
 
@@ -645,7 +650,7 @@ func (h *handler) handleDeleteDbConfigSync() error {
 	var updatedDbConfig *DatabaseConfig
 	cas, err := h.server.BootstrapContext.Connection.UpdateConfig(
 		bucket, h.server.Config.Bootstrap.ConfigGroupID,
-		func(rawBucketConfig []byte) (newConfig []byte, err error) {
+		func(rawBucketConfig []byte, rawBucketConfigCas uint64) (newConfig []byte, err error) {
 			var bucketDbConfig DatabaseConfig
 			if err := base.JSONUnmarshal(rawBucketConfig, &bucketDbConfig); err != nil {
 				return nil, err
@@ -706,7 +711,7 @@ func (h *handler) handlePutDbConfigSync() error {
 	var updatedDbConfig *DatabaseConfig
 	cas, err := h.server.BootstrapContext.Connection.UpdateConfig(
 		bucket, h.server.Config.Bootstrap.ConfigGroupID,
-		func(rawBucketConfig []byte) (newConfig []byte, err error) {
+		func(rawBucketConfig []byte, rawBucketConfigCas uint64) (newConfig []byte, err error) {
 			var bucketDbConfig DatabaseConfig
 			if err := base.JSONUnmarshal(rawBucketConfig, &bucketDbConfig); err != nil {
 				return nil, err
@@ -795,7 +800,7 @@ func (h *handler) handleDeleteDbConfigImportFilter() error {
 	var updatedDbConfig *DatabaseConfig
 	cas, err := h.server.BootstrapContext.Connection.UpdateConfig(
 		bucket, h.server.Config.Bootstrap.ConfigGroupID,
-		func(rawBucketConfig []byte) (newConfig []byte, err error) {
+		func(rawBucketConfig []byte, rawBucketConfigCas uint64) (newConfig []byte, err error) {
 			var bucketDbConfig DatabaseConfig
 			if err := base.JSONUnmarshal(rawBucketConfig, &bucketDbConfig); err != nil {
 				return nil, err
@@ -857,7 +862,7 @@ func (h *handler) handlePutDbConfigImportFilter() error {
 	var updatedDbConfig *DatabaseConfig
 	cas, err := h.server.BootstrapContext.Connection.UpdateConfig(
 		bucket, h.server.Config.Bootstrap.ConfigGroupID,
-		func(rawBucketConfig []byte) (newConfig []byte, err error) {
+		func(rawBucketConfig []byte, rawBucketConfigCas uint64) (newConfig []byte, err error) {
 			var bucketDbConfig DatabaseConfig
 			if err := base.JSONUnmarshal(rawBucketConfig, &bucketDbConfig); err != nil {
 				return nil, err
@@ -913,7 +918,7 @@ func (h *handler) handleDeleteDB() error {
 
 	if h.server.persistentConfig {
 		bucket := h.db.Bucket.GetName()
-		_, err := h.server.BootstrapContext.Connection.UpdateConfig(bucket, h.server.Config.Bootstrap.ConfigGroupID, func(rawBucketConfig []byte) (updatedConfig []byte, err error) {
+		_, err := h.server.BootstrapContext.Connection.UpdateConfig(bucket, h.server.Config.Bootstrap.ConfigGroupID, func(rawBucketConfig []byte, rawBucketConfigCas uint64) (updatedConfig []byte, err error) {
 			return nil, nil
 		})
 		if err != nil {
