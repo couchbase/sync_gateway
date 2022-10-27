@@ -153,6 +153,7 @@ type UnsupportedConfig struct {
 	Serverless        ServerlessConfig     `json:"serverless,omitempty"`
 	HTTP2             *HTTP2Config         `json:"http2,omitempty"`
 	UserQueries       *bool                `json:"user_queries,omitempty" help:"Feature flag for user N1QL/JS/GraphQL queries"`
+	UseXattrConfig    *bool                `json:"use_xattr_config,omitempty"       help:"Store database configurations in system xattrs"`
 }
 
 type ServerlessConfig struct {

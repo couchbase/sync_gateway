@@ -79,7 +79,7 @@ func (h *handler) mutateDbConfig(mutator func(*DbConfig) error) error {
 		if err != nil {
 			return err
 		}
-		updatedDbConfig.cas = cas
+		updatedDbConfig.cfgCas = cas
 
 		dbCreds := h.server.Config.DatabaseCredentials[dbName]
 		bucketCreds := h.server.Config.BucketCredentials[bucket]
