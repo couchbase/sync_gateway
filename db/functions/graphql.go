@@ -33,6 +33,7 @@ type GraphQLConfig struct {
 	MaxResolverCount *int            `json:"max_resolver_count,omitempty"` // Maximum number of GraphQL resolvers; default is 0, for unlimited
 	MaxCodeSize      *int            `json:"max_code_size,omitempty"`      // Maximum length (in bytes) of a function's code
 	MaxRequestSize   *int            `json:"max_request_size,omitempty"`   // Maximum size of the encoded query & arguments
+	Subgraph         bool            `json:"subgraph,omitempty"`           // Enables Apollo federation
 }
 
 // Maps GraphQL type names (incl. "Query") to their resolvers.
@@ -85,7 +86,7 @@ var readOnlyKey = gqContextKey("readOnly") // Context key preventing mutation; v
 
 //////// GRAPHQL INITIALIZATION:
 
-// Implementation of db.graphQLImpl interface.
+// Implementation of db.GraphQL interface.
 type graphQLImpl struct {
 	config *GraphQLConfig
 	schema graphql.Schema // The compiled GraphQL schema object
@@ -125,17 +126,24 @@ func (config *GraphQLConfig) compileSchema() (schema graphql.Schema, err error) 
 	// Assemble the resolvers:
 	resolvers := map[string]any{}
 ResolverLoop:
-	for typeName, resolver := range config.Resolvers {
+	for typeName, resolverConfig := range config.Resolvers {
 		fieldMap := map[string]*gqltools.FieldResolve{}
 		var typeNameResolver graphql.ResolveTypeFn
-		for fieldName, fnConfig := range resolver {
+		for fieldName, fnConfig := range resolverConfig {
 			if fnConfig.Args != nil {
-				err = fmt.Errorf("'args' is not valid in a GraphQL resolver config")
+				err = fmt.Errorf("%s.%s: 'args' is not valid in a GraphQL resolver config", typeName, fieldName)
 			} else if fieldName == "__typename" {
 				// The "__typename" resolver returns the name of the concrete type of an
 				// instance of an interface.
 				typeNameResolver, err = config.compileTypeNameResolver(typeName, fnConfig)
 				resolverCount += 1
+			} else if fieldName == "__resolveReference" {
+				// ignore these here; they're handled in addSubgraphExtensions
+				if config.Subgraph {
+					err = nil
+				} else {
+					err = fmt.Errorf("%s.__resolveReference: This resolver is valid only when 'subgraph' is enabled in the configuration", typeName)
+				}
 			} else {
 				var fn graphql.FieldResolveFn
 				fn, err = config.compileFieldResolver(typeName, fieldName, fnConfig)
@@ -152,16 +160,36 @@ ResolverLoop:
 			}
 		}
 		if typeNameResolver == nil {
+			// Object type:
 			resolvers[typeName] = &gqltools.ObjectResolver{
 				Fields: fieldMap,
 			}
+		} else if config.Subgraph && typeName == "_Entity" {
+			// Subgraph `_Entity` union:
+			if len(fieldMap) == 0 {
+				resolvers[typeName] = &gqltools.UnionResolver{
+					ResolveType: typeNameResolver,
+				}
+			} else {
+				multiError = multiError.Append(fmt.Errorf("union type '_Entity' cannot have field resolvers"))
+			}
 		} else {
+			// Interface type:
 			resolvers[typeName] = &gqltools.InterfaceResolver{
 				Fields:      fieldMap,
 				ResolveType: typeNameResolver,
 			}
 		}
 	}
+
+	if config.Subgraph {
+		// Add Apollo Federation subgraph protocol extensions:
+		schemaSource, err = config.addSubgraphExtensions(schemaSource, resolvers)
+		if err != nil {
+			multiError = multiError.Append(err)
+		}
+	}
+
 	if multiError != nil {
 		return schema, multiError.ErrorOrNil()
 	}
@@ -220,7 +248,7 @@ func (config *GraphQLConfig) compileFieldResolver(typeName string, fieldName str
 	name := graphQLResolverName(typeName, fieldName)
 	isMutation := typeName == "Mutation"
 	if isMutation && fnConfig.Type == "query" {
-		return nil, fmt.Errorf("GraphQL mutations must be implemented in JavaScript")
+		return nil, fmt.Errorf("%s: GraphQL mutations must be implemented in JavaScript", name)
 	}
 
 	userFn, err := compileFunction(name, "GraphQL resolver", &fnConfig)
@@ -270,17 +298,17 @@ func resolverInfo(params graphql.ResolveParams) map[string]any {
 //////// TYPE-NAME RESOLVER:
 
 func (config *GraphQLConfig) compileTypeNameResolver(interfaceName string, fnConfig FunctionConfig) (graphql.ResolveTypeFn, error) {
+	name := interfaceName + ".__typename"
 	if fnConfig.Type != "javascript" {
-		return nil, fmt.Errorf("a GraphQL '__typename__' resolver must be JavaScript")
+		return nil, fmt.Errorf("%s: a '__typename' resolver must be JavaScript", name)
 	} else if fnConfig.Allow != nil {
-		return nil, fmt.Errorf("'allow' is not valid in a GraphQL '__typename__' resolver")
+		return nil, fmt.Errorf("%s: 'allow' is not valid in a GraphQL '__typename' resolver", name)
 	}
 
 	fn, err := compileFunction(interfaceName, "GraphQL type-name resolver", &fnConfig)
 	if err != nil {
 		return nil, err
 	}
-	name := interfaceName + ".__typename"
 
 	return func(params graphql.ResolveTypeParams) *graphql.Object {
 		db_ := params.Context.Value(dbKey).(*db.Database)

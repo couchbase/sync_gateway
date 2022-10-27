@@ -175,20 +175,19 @@ var kTestGraphQLUserFunctionsConfig = FunctionsConfig{
 	},
 }
 
-func assertGraphQLResult(t *testing.T, expected string, result *graphql.Result, err error) {
-	if !assert.NoError(t, err) || !assert.NotNil(t, result) {
-		return
-	}
-	if !assert.Zerof(t, len(result.Errors), "Unexpected GraphQL errors: %v", result.Errors) {
-		for _, err := range result.Errors {
-			t.Logf("\t%v", err)
-			t.Logf("\t\t%T %#v", err.OriginalError(), err.OriginalError())
-		}
-		return
+func assertGraphQLResult(t *testing.T, expected string, result *graphql.Result, err error) bool {
+	if !assertGraphQLNoErrors(t, result, err) {
+		return false
 	}
 	j, err := json.Marshal(result.Data)
-	assert.NoError(t, err)
-	assert.Equal(t, expected, string(j))
+	return assert.NoError(t, err) &&
+		assert.Equal(t, expected, string(j))
+}
+
+func assertGraphQLNoErrors(t *testing.T, result *graphql.Result, err error) bool {
+	return assert.NoError(t, err) &&
+		assert.NotNil(t, result) &&
+		assert.Zerof(t, len(result.Errors), "Unexpected GraphQL errors: %v", result.Errors)
 }
 
 // Per the spec, GraphQL errors are not indicated via `err`, rather through an `errors`
@@ -475,4 +474,105 @@ func TestGraphQLMaxResolverCount(t *testing.T) {
 	}
 	_, err := CompileGraphQL(&config)
 	assert.ErrorContains(t, err, "too many GraphQL resolvers (> 1)")
+}
+
+//////// APOLLO FEDERATION (SUBGRAPHS)
+
+func TestGraphQLSubgraph(t *testing.T) {
+	// Subgraph schema definition:
+	var kSchemaStr = `
+	scalar FieldSet
+	directive @key(fields: FieldSet!, resolvable: Boolean = true)  on OBJECT | INTERFACE
+
+	type Task @key(fields: "id") {
+		id: ID!
+		title: String!
+	}
+	type Person @key(fields: "id", resolvable: true) {
+		id: ID!
+		name: String!
+	}
+	type Wombat @key(fields: "id", resolvable: false) {  # (Not added to _Entities enum!)
+		id: ID!
+		name: String!
+	}
+	type Query {
+		tasks: [Task!]!
+	}`
+
+	// GraphQL configuration:
+	var config = GraphQLConfig{
+		Schema:   &kSchemaStr,
+		Subgraph: true,
+		Resolvers: map[string]GraphQLResolverConfig{
+			"_Entity": {
+				"__typename": {
+					Type: "javascript",
+					Code: `function(context, value) {return value.type;}`,
+				},
+			},
+			"Task": {
+				"__resolveReference": {
+					Type: "javascript",
+					Code: `function(context, value) {
+						return {type: "Task", id: value.id, title: "Task-"+value.id};
+					}`,
+				},
+			},
+			"Person": {
+				"__resolveReference": {
+					Type: "javascript",
+					Code: `function(context, value) {
+						return {type: "Person", id: value.id, name: "Bob "+value.id};
+					}`,
+				},
+			},
+		},
+	}
+
+	// Compile the schema:
+	var gq db.GraphQL
+	var err error
+	t.Run("CompileSchema", func(t *testing.T) {
+		gq, err = CompileGraphQL(&config)
+		assert.NoError(t, err)
+	})
+	if err != nil {
+		return
+	}
+
+	db, ctx := setupTestDBWithFunctions(t, nil, &kTestGraphQLConfigWithN1QL)
+	defer db.Close(ctx)
+
+	// Handle a `_service` query:
+	t.Run("ServiceQuery", func(t *testing.T) {
+		result, err := gq.Query(db, `query { _service { sdl } }`,
+			"", nil, false, context.TODO())
+		if !assertGraphQLNoErrors(t, result, err) {
+			return
+		}
+		sdl, ok := result.Data.(map[string]any)["_service"].(map[string]any)["sdl"].(string)
+		assert.True(t, ok, "No 'sdl' key in result: %#v", result)
+		assert.True(t, strings.HasPrefix(sdl, "union _Entity = Person | Task\n"), "Unexpected sdl: %s", sdl)
+	})
+
+	// Handle an `_entities` query:
+	t.Run("EntitiesQuery", func(t *testing.T) {
+		vars := map[string]any{
+			"reprs": []any{
+				map[string]any{"__typename": "Task", "id": "001"},
+				map[string]any{"__typename": "Person", "id": "1138"},
+			},
+		}
+
+		result, err := gq.Query(db, `
+		query($reprs: [_Any!]!) {
+			_entities(representations: $reprs) {
+				...on Task { title }
+				...on Person { name }
+			}
+		}`,
+			"", vars, false, context.TODO())
+		assertGraphQLResult(t, `{"_entities":[{"title":"Task-001"},{"name":"Bob 1138"}]}`, result, err)
+	})
 }
