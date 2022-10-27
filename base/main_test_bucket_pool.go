@@ -337,14 +337,13 @@ func (tbp *TestBucketPool) GetExistingBucket(t testing.TB) (b Bucket, s BucketSp
 	bucketSpec := getBucketSpec(bucketName, useNamedCollections)
 
 	bucket := bucketCluster.Bucket(bucketSpec.BucketName)
-	// TODO: Constant?
-	err = bucket.WaitUntilReady(10*time.Second, nil)
+	err = bucket.WaitUntilReady(waitForReadyBucketTimeout, nil)
 	if err != nil {
 		return nil, bucketSpec, nil
 	}
 	DebugfCtx(context.TODO(), KeySGTest, "opened bucket %s", bucketName)
 
-	bucketFromSpec, err := GetCollectionFromCluster(bucketCluster, bucketSpec, 10)
+	bucketFromSpec, err := GetCollectionFromCluster(bucketCluster, bucketSpec, waitForReadyBucketTimeout)
 	if err != nil {
 		tbp.Fatalf(testCtx, "couldn't get existing collection from cluster: %v", err)
 	}
@@ -587,7 +586,7 @@ func (tbp *TestBucketPool) createTestBuckets(numBuckets int, bucketQuotaMB int, 
 				tbp.Fatalf(ctx, "Couldn't create test bucket: %v", err)
 			}
 
-			namedCollection, defaultCollection, err := tbp.cluster.openTestBucket(tbpBucketName(bucketName), 10*numBuckets, tbp.UsingNamedCollections())
+			namedCollection, defaultCollection, err := tbp.cluster.openTestBucket(tbpBucketName(bucketName), waitForReadyBucketTimeout, tbp.UsingNamedCollections())
 			ctx = updateContextWithKeyspace(ctx, defaultCollection)
 			if err != nil {
 				tbp.Fatalf(ctx, "Timed out trying to open new bucket: %v", err)
@@ -683,7 +682,7 @@ loop:
 				defer tbp.bucketReadierWaitGroup.Done()
 
 				start := time.Now()
-				namedCollection, defaultCollection, err := tbp.cluster.openTestBucket(testBucketName, 5, tbp.UsingNamedCollections())
+				namedCollection, defaultCollection, err := tbp.cluster.openTestBucket(testBucketName, waitForReadyBucketTimeout, tbp.UsingNamedCollections())
 				ctx = updateContextWithKeyspace(ctx, defaultCollection)
 				if err != nil {
 					tbp.Logf(ctx, "Couldn't open bucket to get ready, got error: %v", err)
