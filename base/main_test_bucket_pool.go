@@ -328,22 +328,17 @@ func (tbp *TestBucketPool) GetExistingBucket(t testing.TB) (b Bucket, s BucketSp
 
 	bucketCluster := initV2Cluster(UnitTestUrl())
 
-	var useNamedCollections bool
-	useDefaultCollectionString, isSet := os.LookupEnv(tbpUseDefaultCollection)
-	if isSet {
-		useDefaultCollection, _ := strconv.ParseBool(useDefaultCollectionString)
-		useNamedCollections = !useDefaultCollection
-	} else {
-		if !TestsDisableGSI() {
-			useNamedCollections = true
-		}
+	useNamedCollections, err := shouldUseNamedCollections(tbp.cluster)
+	if err != nil {
+		tbp.Fatalf(testCtx, "couldn't check if named collections should be used: %v", err)
 	}
 
 	bucketName := tbpBucketName(TestUseExistingBucketName())
 	bucketSpec := getBucketSpec(bucketName, useNamedCollections)
 
 	bucket := bucketCluster.Bucket(bucketSpec.BucketName)
-	err := bucket.WaitUntilReady(10*time.Second, nil)
+	// TODO: Constant?
+	err = bucket.WaitUntilReady(10*time.Second, nil)
 	if err != nil {
 		return nil, bucketSpec, nil
 	}
