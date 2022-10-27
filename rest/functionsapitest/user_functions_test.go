@@ -449,7 +449,7 @@ func TestSaveAndDeleteAndGet(t *testing.T) {
 		assert.Equal(t, 200, response.Result().StatusCode)
 	})
 
-	// Get & Check for the remainign functions
+	// Get & Check for the remaining functions
 	t.Run("Get remaining functions and check schema", func(t *testing.T) {
 		var kUserFunctionConfigCopy = &functions.FunctionsConfig{
 			MaxFunctionCount: kUserFunctionConfig.MaxFunctionCount,
@@ -491,13 +491,13 @@ func TestDeleteNonExisting(t *testing.T) {
 	defer rt.Close()
 
 	//Delete All Non-Existing functions
-	t.Run("Delete All Non-existing functions and check HTTP Status COde", func(t *testing.T) {
+	t.Run("Delete All Non-existing functions and check HTTP Status Code", func(t *testing.T) {
 		response := rt.SendAdminRequest("DELETE", "/db/_config/functions", "")
 		assert.Equal(t, 404, response.Result().StatusCode)
 	})
 
 	//Delete a specific non-exisiting function
-	t.Run("Delete a non-existing function and check HTTP Status COde", func(t *testing.T) {
+	t.Run("Delete a non-existing function and check HTTP Status Code", func(t *testing.T) {
 		response := rt.SendAdminRequest("DELETE", "/db/_config/functions/foo", "")
 		assert.Equal(t, 404, response.Result().StatusCode)
 	})
