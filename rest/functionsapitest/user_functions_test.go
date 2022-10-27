@@ -415,6 +415,94 @@ func TestSaveAndUpdateAndGet(t *testing.T) {
 	})
 }
 
+func TestSaveAndDeleteAndGet(t *testing.T) {
+	// Setting up tester Config
+	rt := rest.NewRestTesterForUserQueries(t, rest.DbConfig{})
+	defer rt.Close()
+
+	request, err := json.Marshal(kUserFunctionConfig)
+	assert.NoError(t, err)
+
+	// Save the function
+	t.Run("Save The Functions", func(t *testing.T) {
+		response := rt.SendAdminRequest("PUT", "/db/_config/functions", string(request))
+		assert.Equal(t, 200, response.Result().StatusCode)
+	})
+
+	// Get The Function Definition and match with the one posted
+	t.Run("Get All Functions And Check Schema", func(t *testing.T) {
+		response := rt.SendAdminRequest("GET", "/db/_config/functions", "")
+		assert.NotNil(t, response)
+
+		var responseUserFunctionsConfig functions.FunctionsConfig
+		err := json.Unmarshal(response.BodyBytes(), &responseUserFunctionsConfig)
+		assert.NoError(t, err)
+		assert.Equal(t, kUserFunctionConfig, &responseUserFunctionsConfig)
+
+	})
+
+	functionNameToBeDeleted := "square"
+
+	// Delete a specific function
+	t.Run("Delete A Specific Function", func(t *testing.T) {
+		response := rt.SendAdminRequest("DELETE", fmt.Sprintf("/db/_config/functions/%s", functionNameToBeDeleted), "")
+		assert.Equal(t, 200, response.Result().StatusCode)
+	})
+
+	// Get & Check for the remaining functions
+	t.Run("Get remaining functions and check schema", func(t *testing.T) {
+		var kUserFunctionConfigCopy = &functions.FunctionsConfig{
+			MaxFunctionCount: kUserFunctionConfig.MaxFunctionCount,
+			MaxCodeSize:      kUserFunctionConfig.MaxCodeSize,
+			MaxRequestSize:   kUserFunctionConfig.MaxRequestSize,
+			Definitions:      map[string]*functions.FunctionConfig{},
+		}
+		for functionName, functionConfig := range kUserFunctionConfig.Definitions {
+			if functionName != functionNameToBeDeleted {
+				kUserFunctionConfigCopy.Definitions[functionName] = functionConfig
+			}
+		}
+		response := rt.SendAdminRequest("GET", "/db/_config/functions", "")
+		assert.NotNil(t, response)
+
+		var responseUserFunctionsConfig functions.FunctionsConfig
+		err := json.Unmarshal(response.BodyBytes(), &responseUserFunctionsConfig)
+		assert.NoError(t, err)
+		assert.Equal(t, kUserFunctionConfigCopy, &responseUserFunctionsConfig)
+
+	})
+
+	// Delete All functions
+	t.Run("Delete all functions", func(t *testing.T) {
+		response := rt.SendAdminRequest("DELETE", "/db/_config/functions", "")
+		assert.Equal(t, 200, response.Result().StatusCode)
+	})
+
+	// Try to Get All the Non-Existing Functions
+	t.Run("Get All Non-exisitng Functions And Check HTTP Status", func(t *testing.T) {
+		response := rt.SendAdminRequest("GET", "/db/_config/functions", "")
+		assert.Equal(t, 404, response.Result().StatusCode)
+
+	})
+}
+func TestDeleteNonExisting(t *testing.T) {
+	// Setting up tester Config
+	rt := rest.NewRestTesterForUserQueries(t, rest.DbConfig{})
+	defer rt.Close()
+
+	//Delete All Non-Existing functions
+	t.Run("Delete All Non-existing functions and check HTTP Status Code", func(t *testing.T) {
+		response := rt.SendAdminRequest("DELETE", "/db/_config/functions", "")
+		assert.Equal(t, 404, response.Result().StatusCode)
+	})
+
+	//Delete a specific non-exisiting function
+	t.Run("Delete a non-existing function and check HTTP Status Code", func(t *testing.T) {
+		response := rt.SendAdminRequest("DELETE", "/db/_config/functions/foo", "")
+		assert.Equal(t, 404, response.Result().StatusCode)
+	})
+}
+
 /// ILLEGAL SYNTAX TESTS
 
 func TestIllegalSyntax(t *testing.T) {
