@@ -540,7 +540,7 @@ func (h *handler) handlePutDbConfig() (err error) {
 				return nil, base.HTTPErrorf(http.StatusPreconditionFailed, "Provided If-Match header does not match current config version")
 			}
 
-			bucketDbConfig.cas = rawBucketConfigCas
+			bucketDbConfig.cfgCas = rawBucketConfigCas
 
 			oldBucketDbConfig := bucketDbConfig.DbConfig
 
@@ -575,7 +575,7 @@ func (h *handler) handlePutDbConfig() (err error) {
 			if err = base.DeepCopyInefficient(&tmpConfig, bucketDbConfig); err != nil {
 				return nil, err
 			}
-			tmpConfig.cas = rawBucketConfigCas
+			tmpConfig.cfgCas = rawBucketConfigCas
 			dbCreds, _ := h.server.Config.DatabaseCredentials[dbName]
 			bucketCreds, _ := h.server.Config.BucketCredentials[bucket]
 			if err := tmpConfig.setup(dbName, h.server.Config.Bootstrap, dbCreds, bucketCreds, h.server.Config.IsServerless()); err != nil {
