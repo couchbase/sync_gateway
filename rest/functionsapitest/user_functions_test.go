@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -417,9 +418,27 @@ func TestSaveAndUpdateAndGet(t *testing.T) {
 //////// FUNCTIONS EXECUTION API TESTS
 
 /// AUTH TESTS
-func TestUserFunctions(t *testing.T) {
-	allowAll := &functions.Allow{Channels: []string{"*"}}
 
+var allowAll = &functions.Allow{Channels: []string{"*"}}
+
+func createUserAlice(t *testing.T, rt *rest.RestTester) (string, string) {
+	resp := rt.SendAdminRequest("POST", "/db/_role/", `{"name":"hero", "admin_channels":["heroes"]}`)
+	rest.RequireStatus(t, resp, http.StatusCreated)
+	resp = rt.SendAdminRequest("POST", "/db/_role/", `{"name":"villain", "admin_channels":["villains"]}`)
+	rest.RequireStatus(t, resp, http.StatusCreated)
+
+	username := "alice"
+	password := "pass"
+
+	userDetails := fmt.Sprintf(`{"name":"%s", "password":"%s", "admin_channels":["wonderland", "lookingglass", "city-London", "user-alice"], "admin_roles": ["hero"]}`, username, password)
+	t.Logf("shaad: %+v\n", userDetails)
+	resp = rt.SendAdminRequest("POST", "/db/_user/", userDetails)
+	rest.RequireStatus(t, resp, http.StatusCreated)
+
+	return username, password
+}
+
+func TestUserFunctions(t *testing.T) {
 	kUserFunctionAuthTestConfig := functions.FunctionsConfig{
 		Definitions: functions.FunctionsDefs{
 			"square": &functions.FunctionConfig{
@@ -517,15 +536,6 @@ func TestUserFunctions(t *testing.T) {
 	defer rt.Close()
 
 	t.Run("AsAdmin", func(t *testing.T) { testUserFunctionsAsAdmin(t, rt) })
-
-	resp := rt.SendAdminRequest("POST", "/db/_role/", `{"name":"hero", "admin_channels":["heroes"]}`)
-	rest.RequireStatus(t, resp, http.StatusCreated)
-	resp = rt.SendAdminRequest("POST", "/db/_role/", `{"name":"villain", "admin_channels":["villains"]}`)
-	rest.RequireStatus(t, resp, http.StatusCreated)
-
-	resp = rt.SendAdminRequest("POST", "/db/_user/", `{"name":"alice", "password":"pass", "admin_channels":["wonderland", "lookingglass", "city-London", "user-alice"], "admin_roles": ["hero"]}`)
-	rest.RequireStatus(t, resp, http.StatusCreated)
-
 	t.Run("AsUser", func(t *testing.T) { testUserFunctionsAsUser(t, rt) })
 }
 
@@ -601,8 +611,7 @@ func testUserFunctionsAsAdmin(t *testing.T, rt *rest.RestTester) {
 }
 
 func testUserFunctionsAsUser(t *testing.T, rt *rest.RestTester) {
-	username := "alice"
-	password := "pass"
+	username, password := createUserAlice(t, rt)
 	sendReqFn := func(method, resource, body string) *rest.TestResponse {
 		return rt.SendUserRequestWithHeaders(method, resource, body, nil, username, password)
 	}
@@ -640,5 +649,159 @@ func testUserFunctionsAsUser(t *testing.T, rt *rest.RestTester) {
 	assert.Equal(t, 403, response.Result().StatusCode)
 
 	response = sendReqFn("GET", "/db/_function/villain_only", "")
+	assert.Equal(t, 403, response.Result().StatusCode)
+}
+
+func TestUserN1QLQueries(t *testing.T) {
+	var kUserN1QLFunctionsAuthTestConfig = functions.FunctionsConfig{
+		Definitions: functions.FunctionsDefs{
+			"airports_in_city": &functions.FunctionConfig{
+				Type:  "query",
+				Code:  `SELECT $$args.city AS city`,
+				Args:  []string{"city"},
+				Allow: &functions.Allow{Channels: []string{"city-$${args.city}", "allcities"}},
+			},
+			"square": &functions.FunctionConfig{
+				Type:  "query",
+				Code:  "SELECT $$args.numero * $$args.numero AS square",
+				Args:  []string{"numero"},
+				Allow: &functions.Allow{Channels: []string{"wonderland"}},
+			},
+			"user": &functions.FunctionConfig{
+				Type: "query",
+				//todo: if instead of our_user we want to use the word user
+				// we can't use it direclty as "user" is a reserved keyword in n1ql
+				// n1ql expects backticks for such cases to avoid conflict with reserved keywords
+				// eg `user`
+				// but, our JSON parsing for DB config preprocess backticks,
+				// how to get around this ???
+				Code:  "SELECT $$user AS our_user",
+				Allow: allowAll,
+			},
+			"user_parts": &functions.FunctionConfig{
+				Type:  "query",
+				Code:  "SELECT $$user.name AS name, $$user.email AS email",
+				Allow: &functions.Allow{Channels: []string{"user-$${context.user.name}"}},
+			},
+			"admin_only": &functions.FunctionConfig{
+				Type:  "query",
+				Code:  `SELECT "ok" AS status`,
+				Allow: nil, // no 'allow' property means admin-only
+			},
+			"inject": &functions.FunctionConfig{
+				Type:  "query",
+				Code:  `SELECT $$args.foo`,
+				Args:  []string{"foo"},
+				Allow: &functions.Allow{Channels: []string{"*"}},
+			},
+			"syntax_error": &functions.FunctionConfig{
+				Type:  "query",
+				Code:  "SELECT OOK? FR0M OOK!",
+				Allow: allowAll,
+			},
+		},
+	}
+
+	rt := rest.NewRestTesterForUserQueries(t, rest.DbConfig{
+		UserFunctions: &kUserN1QLFunctionsAuthTestConfig,
+	})
+	if rt == nil {
+		return
+	}
+	defer rt.Close()
+
+	t.Run("AsAdmin", func(t *testing.T) { testUserQueriesAsAdmin(t, rt) })
+	t.Run("AsUser", func(t *testing.T) { testUserQueriesAsUser(t, rt) })
+}
+
+func testUserQueriesCommon(t *testing.T, rt *rest.RestTester, sendReqFn func(string, string, string) *rest.TestResponse) {
+	// dynamic channel list
+	response := sendReqFn("POST", "/db/_function/airports_in_city", `{"city": "London"}`)
+	assert.Equal(t, 200, response.Result().StatusCode)
+	assert.EqualValues(t, "[{\"city\":\"London\"}\n]\n", string(response.BodyBytes()))
+
+	response = sendReqFn("POST", "/db/_function/square", `{"numero": 16}`)
+	assert.Equal(t, 200, response.Result().StatusCode)
+	assert.EqualValues(t, "[{\"square\":256}\n]\n", string(response.BodyBytes()))
+
+	response = sendReqFn("POST", "/db/_function/inject", `{"foo": "1337 as pwned"}`)
+	assert.Equal(t, 200, response.Result().StatusCode)
+	assert.EqualValues(t, "[{\"foo\":\"1337 as pwned\"}\n]\n", string(response.BodyBytes()))
+
+	// ERRORS:
+
+	// Missing a parameter:
+	response = sendReqFn("GET", "/db/_function/square", "")
+	assert.Equal(t, 400, response.Result().StatusCode)
+	assert.Contains(t, string(response.BodyBytes()), "numero")
+	assert.Contains(t, string(response.BodyBytes()), "square")
+
+	// Extra parameter:
+	response = sendReqFn("POST", "/db/_function/square", `{"numero": 42, "number": 0}`)
+	assert.Equal(t, 400, response.Result().StatusCode)
+	assert.Contains(t, string(response.BodyBytes()), "number")
+	assert.Contains(t, string(response.BodyBytes()), "square")
+
+	// Function definition has a syntax error:
+	response = sendReqFn("GET", "/db/_function/syntax_error", "")
+	assert.Equal(t, 500, response.Result().StatusCode)
+	assert.Contains(t, string(response.BodyBytes()), "syntax_error")
+}
+
+func testUserQueriesAsAdmin(t *testing.T, rt *rest.RestTester) {
+	testUserQueriesCommon(t, rt, rt.SendAdminRequest)
+
+	// Admin-only (success):
+	response := rt.SendAdminRequest("GET", "/db/_function/user", "")
+	assert.Equal(t, 200, response.Result().StatusCode)
+	assert.EqualValues(t, "[{\"our_user\":{}}\n]\n", string(response.BodyBytes()))
+
+	response = rt.SendAdminRequest("GET", "/db/_function/user_parts", "")
+	assert.Equal(t, 200, response.Result().StatusCode)
+	assert.EqualValues(t, "[{}\n]\n", string(response.BodyBytes()))
+
+	// admin only:
+	response = rt.SendAdminRequest("GET", "/db/_function/admin_only", "")
+	assert.Equal(t, 200, response.Result().StatusCode)
+	assert.EqualValues(t, "[{\"status\":\"ok\"}\n]\n", string(response.BodyBytes()))
+
+	// ERRORS:
+
+	// No such query:
+	response = rt.SendAdminRequest("GET", "/db/_function/xxxx", "")
+	assert.Equal(t, 404, response.Result().StatusCode)
+}
+
+func testUserQueriesAsUser(t *testing.T, rt *rest.RestTester) {
+	username, password := createUserAlice(t, rt)
+	sendReqFn := func(method, resource, body string) *rest.TestResponse {
+		return rt.SendUserRequestWithHeaders(method, resource, body, nil, username, password)
+	}
+	testUserQueriesCommon(t, rt, sendReqFn)
+
+	response := sendReqFn("GET", "/db/_function/user", "")
+	assert.Equal(t, 200, response.Result().StatusCode)
+	assert.True(t, strings.HasPrefix(string(response.BodyBytes()), `[{"our_user":{"channels":["`))
+	assert.True(t, strings.HasSuffix(string(response.BodyBytes()), "\"],\"email\":\"\",\"name\":\"alice\",\"roles\":[\"hero\"]}}\n]\n"))
+
+	response = sendReqFn("GET", "/db/_function/user_parts", "")
+	assert.Equal(t, 200, response.Result().StatusCode)
+	assert.EqualValues(t, "[{\"email\":\"\",\"name\":\"alice\"}\n]\n", string(response.BodyBytes()))
+
+	// ERRORS:
+
+	// Not allowed (admin only):
+	response = sendReqFn("GET", "/db/_function/admin_only", "")
+	assert.Equal(t, 403, response.Result().StatusCode)
+
+	// Not allowed (dynamic channel list):
+	response = sendReqFn("GET", "/db/_function/airports_in_city?city=Chicago", "")
+	assert.Equal(t, 403, response.Result().StatusCode)
+
+	response = sendReqFn("POST", "/db/_function/airports_in_city", `{"city": "Chicago"}`)
+	assert.Equal(t, 403, response.Result().StatusCode)
+
+	// No such query:
+	response = sendReqFn("GET", "/db/_function/xxxx", "")
 	assert.Equal(t, 403, response.Result().StatusCode)
 }
