@@ -211,6 +211,111 @@ func TestFunctionsConfigPutOne(t *testing.T) {
 	})
 }
 
+func TestUserFunctionsMaxFunctionCount(t *testing.T) {
+	var testFunctionConfig = functions.FunctionsConfig{
+		Definitions: functions.FunctionsDefs{
+			"square": &functions.FunctionConfig{
+				Type:  "javascript",
+				Code:  "function(context, args) {return args.numero * args.numero;}",
+				Args:  []string{"numero"},
+				Allow: &functions.Allow{Channels: []string{"wonderland"}},
+			},
+			"exceptional": &functions.FunctionConfig{
+				Type:  "javascript",
+				Code:  `function(context, args) {throw "oops";}`,
+				Allow: allowAll,
+			},
+			"squareN1ql": &functions.FunctionConfig{
+				Type:  "query",
+				Code:  "SELECT $$args.numero * $$args.numero AS square",
+				Args:  []string{"numero"},
+				Allow: &functions.Allow{Channels: []string{"wonderland"}},
+			},
+		},
+	}
+
+	rt := rest.NewRestTesterForUserQueries(t, rest.DbConfig{})
+	if rt == nil {
+		return
+	}
+	defer rt.Close()
+
+	// positive cases
+	t.Run("function count equals MaxFunctionCount", func(t *testing.T) {
+		testFunctionConfig.MaxFunctionCount = base.IntPtr(3)
+
+		request, err := json.Marshal(testFunctionConfig)
+		assert.NoError(t, err)
+
+		response := rt.SendAdminRequest("PUT", "/db/_config/functions", string(request))
+		assert.Equal(t, 200, response.Result().StatusCode)
+	})
+
+	t.Run("function count greater than MaxFunctionCount", func(t *testing.T) {
+		testFunctionConfig.MaxFunctionCount = base.IntPtr(4)
+
+		request, err := json.Marshal(testFunctionConfig)
+		assert.NoError(t, err)
+
+		response := rt.SendAdminRequest("PUT", "/db/_config/functions", string(request))
+		assert.Equal(t, 200, response.Result().StatusCode)
+	})
+
+	// negative cases
+	t.Run("function count less than MaxFunctionCount", func(t *testing.T) {
+		testFunctionConfig.MaxFunctionCount = base.IntPtr(2)
+
+		request, err := json.Marshal(testFunctionConfig)
+		assert.NoError(t, err)
+
+		response := rt.SendAdminRequest("PUT", "/db/_config/functions", string(request))
+		assert.Equal(t, 400, response.Result().StatusCode)
+		assert.Contains(t, string(response.BodyBytes()), "too many functions declared")
+	})
+}
+
+func TestUserFunctionsMaxCodeSize(t *testing.T) {
+	var testFunctionConfig = functions.FunctionsConfig{
+		Definitions: functions.FunctionsDefs{
+			"square": &functions.FunctionConfig{
+				Type:  "javascript",
+				Code:  "function(context, args) {return args.numero * args.numero;}",
+				Args:  []string{"numero"},
+				Allow: &functions.Allow{Channels: []string{"wonderland"}},
+			},
+		},
+	}
+
+	rt := rest.NewRestTesterForUserQueries(t, rest.DbConfig{})
+	if rt == nil {
+		return
+	}
+	defer rt.Close()
+
+	// positive cases
+	t.Run("function size greater than MaxCodeSize", func(t *testing.T) {
+		testFunctionConfig.MaxCodeSize = base.IntPtr(100)
+
+		request, err := json.Marshal(testFunctionConfig)
+		assert.NoError(t, err)
+
+		response := rt.SendAdminRequest("PUT", "/db/_config/functions", string(request))
+		assert.Equal(t, 200, response.Result().StatusCode)
+	})
+
+	// negative cases
+	t.Run("function size less than MaxCodeSize", func(t *testing.T) {
+		testFunctionConfig.MaxCodeSize = base.IntPtr(20)
+
+		request, err := json.Marshal(testFunctionConfig)
+		assert.NoError(t, err)
+
+		response := rt.SendAdminRequest("PUT", "/db/_config/functions", string(request))
+		assert.Equal(t, 400, response.Result().StatusCode)
+		assert.Contains(t, string(response.BodyBytes()), "function code too large")
+	})
+}
+
 //////// FUNCTIONS CONFIG AND EXECUTION COMBINATIONS
 
 var kUserFunctionConfig = &functions.FunctionsConfig{
@@ -512,52 +617,83 @@ func TestIllegalSyntax(t *testing.T) {
 	}
 	defer rt.Close()
 
-	response := rt.SendAdminRequest("PUT", "/db/_config/functions", `{
-		"definitions": {
-			"syntax_error": {
-				"type": "javascript",
-				"code": "returm )42(",
-				"allow": {"channels": ["*"]}}
+	// positive cases
+	t.Run("n1ql queries lower and upper case", func(t *testing.T) {
+		var kN1QLFunctionsConfig = functions.FunctionsConfig{
+			Definitions: functions.FunctionsDefs{
+				"lowercase": &functions.FunctionConfig{
+					Type:  "query",
+					Code:  `seleCt $args.city AS city`,
+					Args:  []string{"city"},
+					Allow: allowAll,
+				},
+				"parens": &functions.FunctionConfig{
+					Type:  "query",
+					Code:  `  (select $args.city AS city)`,
+					Args:  []string{"city"},
+					Allow: allowAll,
+				},
+			},
 		}
-	}`)
-	assert.Equal(t, 400, response.Result().StatusCode)
-	assert.Contains(t, string(response.BodyBytes()), "Error compiling function")
 
-	// Can only register SELECT queries
-	response = rt.SendAdminRequest("PUT", "/db/_config/functions", `{
-		"definitions": {
-			"evil_n1ql_mutation": {
-				"type": "query",
-				"code": "DROP COLLECTION Students",
-				"allow": {"channels": ["*"]}}
-		}
-	}`)
-	assert.Equal(t, 400, response.Result().StatusCode)
-	assert.Contains(t, string(response.BodyBytes()), "only SELECT queries are allowed")
+		request, err := json.Marshal(kN1QLFunctionsConfig)
+		assert.NoError(t, err)
 
-	// A bad SELECT query can be registered to config
-	// But, executing it will result in an error
-	response = rt.SendAdminRequest("PUT", "/db/_config/functions", `{
-		"definitions": {
-			"bad_n1ql_syntax": {
-				"type": "query",
-				"code": "SELECT )22( AS Students :",
-				"allow": {"channels": ["*"]}}
-		}
-	}`)
-	assert.Equal(t, 200, response.Result().StatusCode)
+		response := rt.SendAdminRequest("PUT", "/db/_config/functions", string(request))
+		assert.Equal(t, 200, response.Result().StatusCode)
+	})
 
-	response = rt.SendAdminRequest("GET", "/db/_function/bad_n1ql_syntax", "")
-	assert.Equal(t, 500, response.Result().StatusCode)
-	assert.Contains(t, string(response.BodyBytes()), "Internal Server Error")
-	assert.Contains(t, string(response.BodyBytes()), "syntax error")
+	// negative cases
+	t.Run("bad js syntax", func(t *testing.T) {
+		response := rt.SendAdminRequest("PUT", "/db/_config/functions", `{
+			"definitions": {
+				"syntax_error": {
+					"type": "javascript",
+					"code": "returm )42(",
+					"allow": {"channels": ["*"]}}
+			}
+		}`)
+		assert.Equal(t, 400, response.Result().StatusCode)
+		assert.Contains(t, string(response.BodyBytes()), "Error compiling function")
+	})
+
+	t.Run("drop n1ql query", func(t *testing.T) {
+		// Can only register SELECT queries
+		response := rt.SendAdminRequest("PUT", "/db/_config/functions", `{
+			"definitions": {
+				"evil_n1ql_mutation": {
+					"type": "query",
+					"code": "DROP COLLECTION Students",
+					"allow": {"channels": ["*"]}}
+			}
+		}`)
+		assert.Equal(t, 400, response.Result().StatusCode)
+		assert.Contains(t, string(response.BodyBytes()), "only SELECT queries are allowed")
+	})
+
+	t.Run("select n1ql query with bad syntax", func(t *testing.T) {
+		// A bad SELECT query can be registered to config
+		// But, executing it will result in an error
+		response := rt.SendAdminRequest("PUT", "/db/_config/functions", `{
+			"definitions": {
+				"bad_n1ql_syntax": {
+					"type": "query",
+					"code": "SELECT )22( AS Students :",
+					"allow": {"channels": ["*"]}}
+			}
+		}`)
+		assert.Equal(t, 200, response.Result().StatusCode)
+
+		response = rt.SendAdminRequest("GET", "/db/_function/bad_n1ql_syntax", "")
+		assert.Equal(t, 500, response.Result().StatusCode)
+		assert.Contains(t, string(response.BodyBytes()), "Internal Server Error")
+		assert.Contains(t, string(response.BodyBytes()), "syntax error")
+	})
 }
 
 //////// FUNCTIONS EXECUTION API TESTS
 
 /// AUTH TESTS
-
-var allowAll = &functions.Allow{Channels: []string{"*"}}
 
 func createUserAlice(t *testing.T, rt *rest.RestTester) (string, string) {
 	resp := rt.SendAdminRequest("POST", "/db/_role/", `{"name":"hero", "admin_channels":["heroes"]}`)
