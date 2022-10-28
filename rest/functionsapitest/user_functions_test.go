@@ -1079,3 +1079,113 @@ func testUserQueriesAsUser(t *testing.T, rt *rest.RestTester) {
 	response = sendReqFn("GET", "/db/_function/xxxx", "")
 	assert.Equal(t, 403, response.Result().StatusCode)
 }
+
+var kUserMutabilityFunctionsTestConfig = &functions.FunctionsConfig{
+	Definitions: functions.FunctionsDefs{
+		"putDocMutabilityFalse": {
+			Type:  "javascript",
+			Code:  "function(context,args) { return context.user.defaultCollection.save(args.doc, args.docID); }",
+			Args:  []string{"doc", "docID", "funcName"},
+			Allow: &functions.Allow{Channels: []string{"*"}},
+		},
+		"putDocMutabilityTrue": {
+			Type:     "javascript",
+			Code:     "function(context,args) { return context.user.defaultCollection.save(args.doc, args.docID); }",
+			Args:     []string{"doc", "docID", "funcName"},
+			Allow:    &functions.Allow{Channels: []string{"*"}},
+			Mutating: true,
+		},
+		"callerMutabilityFalse": {
+			Type:     "javascript",
+			Code:     "function(context,args) { return context.user.function(args.funcName, args); }",
+			Args:     []string{"doc", "docID", "funcName"},
+			Allow:    &functions.Allow{Channels: []string{"*"}},
+			Mutating: false,
+		},
+		"callerMutabilityTrue": {
+			Type:     "javascript",
+			Code:     "function(context,args) { return context.user.function(args.funcName, args); }",
+			Args:     []string{"doc", "docID", "funcName"},
+			Allow:    &functions.Allow{Channels: []string{"*"}},
+			Mutating: true,
+		},
+		//using admin priviledge overides the mutating flag
+		"callerOverride": {
+			Type:     "javascript",
+			Code:     "function(context,args) { return context.admin.function(args.funcName, args); }",
+			Args:     []string{"doc", "docID", "funcName"},
+			Allow:    &functions.Allow{Channels: []string{"*"}},
+			Mutating: false,
+		},
+	},
+}
+
+func TestFunctionMutability(t *testing.T) {
+	rt := rest.NewRestTesterForUserQueries(t, rest.DbConfig{})
+	defer rt.Close()
+
+	request, err := json.Marshal(kUserMutabilityFunctionsTestConfig)
+	assert.NoError(t, err)
+
+	var body string = `{
+		"doc": {"key": 123},
+		"docID": "Test123",
+		"funcName": "%s"
+	}`
+	var putFuncName string
+	var callerFuncName string
+
+	response := rt.SendAdminRequest("PUT", "/db/_config/functions", string(request))
+	assert.Equal(t, 200, response.Result().StatusCode)
+
+	//function with a mutating value of true calls another function w/ a mutating value of false
+	t.Run("Func with mutating True calls another function with a mutating value of False", func(t *testing.T) {
+		putFuncName = "putDocMutabilityFalse"
+		callerFuncName = "callerMutabilityTrue"
+		response := rt.SendAdminRequest("POST", fmt.Sprintf("/db/_function/%s", callerFuncName), fmt.Sprintf(body, putFuncName))
+		assert.Equal(t, http.StatusForbidden, response.Result().StatusCode)
+	})
+
+	//function with a mutating value of false calls another function w/ a mutating value of true
+	t.Run("Func with mutating False calls another function with a mutating value of True", func(t *testing.T) {
+		putFuncName = "putDocMutabilityTrue"
+		callerFuncName = "callerMutabilityFalse"
+		response := rt.SendAdminRequest("POST", fmt.Sprintf("/db/_function/%s", callerFuncName), fmt.Sprintf(body, putFuncName))
+		assert.Equal(t, http.StatusForbidden, response.Result().StatusCode)
+	})
+
+	//function with a mutating value of false calls another function w/ a mutating value of false
+	t.Run("Func with mutating False calls another function with a mutating value of False", func(t *testing.T) {
+		putFuncName = "putDocMutabilityFalse"
+		callerFuncName = "callerMutabilityFalse"
+		response := rt.SendAdminRequest("POST", fmt.Sprintf("/db/_function/%s", callerFuncName), fmt.Sprintf(body, putFuncName))
+		assert.Equal(t, http.StatusForbidden, response.Result().StatusCode)
+	})
+
+	//function with a mutating value of true calls another function w/ a mutating value of false
+	t.Run("Func with mutating True calls another function with a mutating value of True", func(t *testing.T) {
+		putFuncName = "putDocMutabilityTrue"
+		callerFuncName = "callerMutabilityTrue"
+		response := rt.SendAdminRequest("POST", fmt.Sprintf("/db/_function/%s", callerFuncName), fmt.Sprintf(body, putFuncName))
+		assert.Equal(t, http.StatusOK, response.Result().StatusCode)
+		assert.EqualValues(t, "\"Test123\"", string(response.BodyBytes()))
+	})
+
+	//Admin call for the function has to call a mutating function to Override
+	//Admin function call to a Non-mutating function
+	t.Run("Admin function call to a Non-mutating function", func(t *testing.T) {
+		putFuncName = "putDocMutabilityFalse"
+		callerFuncName = "callerOverride"
+		response := rt.SendAdminRequest("POST", fmt.Sprintf("/db/_function/%s", callerFuncName), fmt.Sprintf(body, putFuncName))
+		assert.Equal(t, http.StatusForbidden, response.Result().StatusCode)
+	})
+
+	//Admin function call to a mutating function
+	t.Run("Admin function call to a mutating function", func(t *testing.T) {
+		putFuncName = "putDocMutabilityTrue"
+		callerFuncName = "callerOverride"
+		response := rt.SendAdminRequest("POST", fmt.Sprintf("/db/_function/%s", callerFuncName), fmt.Sprintf(body, putFuncName))
+		assert.Equal(t, http.StatusOK, response.Result().StatusCode)
+		assert.EqualValues(t, "\"Test123\"", string(response.BodyBytes()))
+	})
+}
