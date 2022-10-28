@@ -9,6 +9,8 @@
 package functionsapitest
 
 import (
+	"encoding/json"
+	"os"
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -296,7 +298,6 @@ func TestGraphQLMutationsAdminOnly(t *testing.T) {
 }
 
 // Test for GraphQL mutations Custom User
-
 func TestGraphQLMutationsCustomUser(t *testing.T) {
 	rt := rest.NewRestTesterForUserQueries(t, rest.DbConfig{
 		GraphQL:       &kTestGraphQLConfig,
@@ -333,4 +334,153 @@ func TestGraphQLMutationsCustomUser(t *testing.T) {
 		assert.Equal(t, 200, response.Result().StatusCode)
 	})
 
+}
+
+// This function checks for failure when invalid GraphQL configuration
+// values are provided.
+func TestInvalidGraphQLConfigurationValues(t *testing.T) {
+	rt := rest.NewRestTesterForUserQueries(t, rest.DbConfig{
+		GraphQL: &functions.GraphQLConfig{
+			Schema:    base.StringPtr(kDummyGraphQLSchema),
+			Resolvers: nil,
+		},
+	})
+	if rt == nil {
+		return
+	}
+	defer rt.Close()
+
+	// The max_schema_size allowed here is 20 bytes and the given schema is 32 bytes.
+	// Hence, this will be a bad request
+	t.Run("Check max_schema_size allowed", func(t *testing.T) {
+		response := rt.SendAdminRequest("PUT", "/db/_config/graphql", `{
+			"schema": "type Query {sum(n: Int!) : Int!}",
+			"resolvers": {
+				"Query": {
+					"sum": {
+						"type": "javascript",
+						"code": "function(context,args){return args.n + args.n;}"
+					}
+				}
+			},
+			"max_schema_size" : 20
+		}`)
+
+		var responseMap map[string]interface{}
+		json.Unmarshal([]byte(string(response.BodyBytes())), &responseMap)
+
+		assert.Equal(t, 400, response.Result().StatusCode)
+		assert.Contains(t, responseMap["reason"], "GraphQL schema too large")
+		assert.Contains(t, responseMap["error"], "Bad Request")
+	})
+
+	// The max_resolver_count allowed here is 1 and we have provided
+	// 2 resolvers (sum and square). Hence, this will be a bad request
+	t.Run("Check max_resolver_count allowed", func(t *testing.T) {
+		response := rt.SendAdminRequest("PUT", "/db/_config/graphql", `{
+			"schema": "type Query {sum(n: Int!) : Int! \n square(n: Int!) : Int!}",
+			"resolvers": {
+				"Query": {
+					"sum": {
+						"type": "javascript",
+						"code": "function(context,args){return args.n + args.n;}"
+					},
+					"square": {
+						"type": "javascript",
+						"code": "function(context,args){return args.n * args.n;}"
+					}
+				}
+			},
+			"max_resolver_count" : 1
+		}`)
+
+		var responseMap map[string]interface{}
+		json.Unmarshal([]byte(string(response.BodyBytes())), &responseMap)
+
+		assert.Equal(t, 400, response.Result().StatusCode)
+		assert.Contains(t, responseMap["reason"], "too many GraphQL resolvers")
+		assert.Contains(t, responseMap["error"], "Bad Request")
+
+	})
+
+	// The maximum length in bytes of the JSON-encoded arguments passed to
+	// a function at runtime (max_request_size) allowed here is 5 but we
+	// have supplied larger arguments in the POST request.
+	t.Run("Check max_request_size allowed", func(t *testing.T) {
+		response := rt.SendAdminRequest("PUT", "/db/_config/graphql", `{
+			"schema": "type Query {sum(n: Int!) : Int!}",
+			"resolvers": {
+				"Query": {
+					"sum": {
+						"type": "javascript",
+						"code": "function(context,args){return args.n + args.n;}"
+					}
+				}
+			},
+			"max_request_size" : 5
+		}`)
+		assert.Equal(t, 200, response.Result().StatusCode)
+
+		response = rt.SendAdminRequest("POST", "/db/_graphql", `{"query": "query($numberToBeSquared:Int!){ square(n:$numberToBeSquared) }", "variables": {"numberToBeSquared": 4}}`)
+
+		var responseMap map[string]interface{}
+		json.Unmarshal([]byte(string(response.BodyBytes())), &responseMap)
+
+		assert.Equal(t, 413, response.Result().StatusCode)
+		assert.Contains(t, responseMap["reason"], "Arguments too large")
+		assert.Contains(t, responseMap["error"], "Request Entity Too Large")
+	})
+
+	// Only one out of schema and schemaFile is allowed to be present
+	// but we have provided both of them. Hence, this will be a bad request.
+	t.Run("Provide both schema and schema file", func(t *testing.T) {
+		response := rt.SendAdminRequest("PUT", "/db/_config/graphql", `{
+			"schema": "type Query {sum(n: Int!) : Int!}",
+			"schemaFile": "someInvalidPath/someInvalidFileName",
+			"resolvers": {
+				"Query": {
+					"sum": {
+						"type": "javascript",
+						"code": "function(context,args){return args.n + args.n;}"
+					}
+				}
+			}
+		}`)
+
+		var responseMap map[string]interface{}
+		json.Unmarshal([]byte(string(response.BodyBytes())), &responseMap)
+
+		assert.Equal(t, 400, response.Result().StatusCode)
+		assert.Contains(t, responseMap["reason"], "GraphQL config: only one of `schema` and `schemaFile` may be used")
+		assert.Contains(t, responseMap["error"], "Bad Request")
+	})
+
+	// Flow: Create a file with a bogus schema --> Send the request --> Capture the error --> Delete the created file
+	t.Run("Provide invalid schema file", func(t *testing.T) {
+		bogusSchema := "obviously not a valid schema ^_^"
+		err := os.WriteFile("schema.graphql", []byte(bogusSchema), 0666)
+		assert.NoError(t, err)
+
+		response := rt.SendAdminRequest("PUT", "/db/_config/graphql", `{
+			"schemaFile": "schema.graphql",
+			"resolvers": {
+				"Query": {
+					"sum": {
+						"type": "javascript",
+						"code": "function(context,args){return args.n + args.n;}"
+					}
+				}
+			}
+		}`)
+		var responseMap map[string]interface{}
+		json.Unmarshal([]byte(string(response.BodyBytes())), &responseMap)
+
+		assert.Equal(t, 400, response.Result().StatusCode)
+		assert.Contains(t, responseMap["reason"], "Syntax Error GraphQL")
+		assert.Contains(t, responseMap["reason"], "Unexpected Name")
+		assert.Contains(t, responseMap["error"], "Bad Request")
+
+		err = os.Remove("schema.graphql")
+		assert.NoError(t, err)
+	})
 }
