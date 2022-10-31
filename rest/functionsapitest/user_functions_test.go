@@ -937,7 +937,7 @@ func testUserFunctionsAsUser(t *testing.T, rt *rest.RestTester) {
 		assert.Equal(t, 403, response.Result().StatusCode)
 	})
 
-	t.Run("Admin-only", func(t *testing.T) {
+	t.Run("specific channels only", func(t *testing.T) {
 		response := sendReqFn("GET", "/db/_function/great_and_terrible", "")
 		assert.Equal(t, 403, response.Result().StatusCode)
 	})
