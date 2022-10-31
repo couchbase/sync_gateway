@@ -43,7 +43,6 @@ type N1QLStore interface {
 	ExplainQuery(statement string, params map[string]interface{}) (plan map[string]interface{}, err error)
 	GetIndexMeta(indexName string) (exists bool, meta *IndexMeta, err error)
 	Query(statement string, params map[string]interface{}, consistency ConsistencyMode, adhoc bool) (results sgbucket.QueryResultIterator, err error)
-	//WaitForIndexOnline(indexName string) error
 	IsErrNoResults(error) bool
 	EscapedKeyspace() string
 	IndexMetaBucketID() string

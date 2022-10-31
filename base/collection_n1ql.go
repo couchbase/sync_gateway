@@ -141,8 +141,6 @@ func (c *Collection) WaitForIndexOnline(indexNames []string, watchPrimary bool) 
 	go func() {
 		waitErr = mgr.WatchIndexes(c.BucketName(), indexNames, waitTime, &watchOption)
 		waitChan = true
-		g, _ := mgr.GetAllIndexes(c.BucketName(), nil)
-		fmt.Println(g)
 		wg.Done()
 	}()
 	go func() {
