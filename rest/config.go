@@ -855,8 +855,7 @@ func (dbConfig *DbConfig) validateVersion(ctx context.Context, isEnterpriseEditi
 		for scopeName, scopeConfig := range dbConfig.Scopes {
 			// WIP: Collections Phase 1 - Only allow a single collection
 			if len(scopeConfig.Collections) != 1 {
-				multiError = multiError.Append(fmt.Errorf("WIP Collections Phase 1 only supports a single collection - had %d", len(scopeConfig.Collections)))
-				continue
+				base.WarnfCtx(ctx, "WIP Collections Phase 1 only supports a single collection - had %d", len(scopeConfig.Collections))
 			}
 
 			if len(scopeConfig.Collections) == 0 {
