@@ -1141,7 +1141,7 @@ func TestFunctionMutability(t *testing.T) {
 	response := rt.SendAdminRequest("PUT", "/db/_config/functions", string(request))
 	assert.Equal(t, 200, response.Result().StatusCode)
 
-	//function with a mutating value of true calls another function w/ a mutating value of false
+	//Negative Cases
 	t.Run("Func with mutating True calls another function with a mutating value of False", func(t *testing.T) {
 		putFuncName = "putDocMutabilityFalse"
 		callerFuncName = "callerMutabilityTrue"
@@ -1149,7 +1149,6 @@ func TestFunctionMutability(t *testing.T) {
 		assert.Equal(t, http.StatusForbidden, response.Result().StatusCode)
 	})
 
-	//function with a mutating value of false calls another function w/ a mutating value of true
 	t.Run("Func with mutating False calls another function with a mutating value of True", func(t *testing.T) {
 		putFuncName = "putDocMutabilityTrue"
 		callerFuncName = "callerMutabilityFalse"
@@ -1157,7 +1156,6 @@ func TestFunctionMutability(t *testing.T) {
 		assert.Equal(t, http.StatusForbidden, response.Result().StatusCode)
 	})
 
-	//function with a mutating value of false calls another function w/ a mutating value of false
 	t.Run("Func with mutating False calls another function with a mutating value of False", func(t *testing.T) {
 		putFuncName = "putDocMutabilityFalse"
 		callerFuncName = "callerMutabilityFalse"
@@ -1165,7 +1163,15 @@ func TestFunctionMutability(t *testing.T) {
 		assert.Equal(t, http.StatusForbidden, response.Result().StatusCode)
 	})
 
-	//function with a mutating value of true calls another function w/ a mutating value of false
+	//Mutability of the function being called is false. Will fail as once you’ve lost the ability to mutate, you can’t get it back.
+	t.Run("context.admin to call a Non-mutating function", func(t *testing.T) {
+		putFuncName = "putDocMutabilityFalse"
+		callerFuncName = "callerOverride"
+		response := rt.SendAdminRequest("POST", fmt.Sprintf("/db/_function/%s", callerFuncName), fmt.Sprintf(body, putFuncName))
+		assert.Equal(t, http.StatusForbidden, response.Result().StatusCode)
+	})
+
+	//Positive Cases
 	t.Run("Func with mutating True calls another function with a mutating value of True", func(t *testing.T) {
 		putFuncName = "putDocMutabilityTrue"
 		callerFuncName = "callerMutabilityTrue"
@@ -1174,17 +1180,8 @@ func TestFunctionMutability(t *testing.T) {
 		assert.EqualValues(t, "\"Test123\"", string(response.BodyBytes()))
 	})
 
-	//Admin call for the function has to call a mutating function to Override
-	//context.admin to call a Non-mutating function
-	t.Run("Admin function call to a Non-mutating function", func(t *testing.T) {
-		putFuncName = "putDocMutabilityFalse"
-		callerFuncName = "callerOverride"
-		response := rt.SendAdminRequest("POST", fmt.Sprintf("/db/_function/%s", callerFuncName), fmt.Sprintf(body, putFuncName))
-		assert.Equal(t, http.StatusForbidden, response.Result().StatusCode)
-	})
-
-	//context.admin to call a mutating function
-	t.Run("Admin function call to a mutating function", func(t *testing.T) {
+	//using context.admin priviledge overides its own mutatibility flag, it acts as though the REST API were called by an administrator.
+	t.Run("context.admin to call a mutating function", func(t *testing.T) {
 		putFuncName = "putDocMutabilityTrue"
 		callerFuncName = "callerOverride"
 		response := rt.SendAdminRequest("POST", fmt.Sprintf("/db/_function/%s", callerFuncName), fmt.Sprintf(body, putFuncName))
