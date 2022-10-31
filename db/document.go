@@ -662,7 +662,7 @@ func (doc *Document) newestRevID() string {
 type RevLoaderFunc func(key string) ([]byte, error)
 
 // RevisionBodyLoader retrieves a non-winning revision body stored outside the document metadata
-func (db *DatabaseContext) RevisionBodyLoader(key string) ([]byte, error) {
+func (db *DatabaseCollection) RevisionBodyLoader(key string) ([]byte, error) {
 	body, _, err := db.Bucket.GetRaw(key)
 	return body, err
 }

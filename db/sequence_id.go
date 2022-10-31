@@ -68,7 +68,7 @@ func (s SequenceID) intSeqToString() string {
 
 // Currently accepts a plain string, but in the future might accept generic JSON objects.
 // Calling this with a JSON string will result in an error.
-func (dbc *DatabaseContext) ParseSequenceID(str string) (s SequenceID, err error) {
+func (dbc *DatabaseCollection) ParseSequenceID(str string) (s SequenceID, err error) {
 	return parseIntegerSequenceID(str)
 }
 

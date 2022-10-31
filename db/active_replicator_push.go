@@ -85,14 +85,19 @@ func (apr *ActivePushReplicator) _connect() error {
 		return err
 	}
 
+	singleCollection := &DatabaseCollectionWithUser{
+		DatabaseCollection: apr.config.ActiveDB.GetSingleDatabaseCollection(),
+		user:               apr.config.ActiveDB.user,
+	}
 	bh := blipHandler{
 		BlipSyncContext: apr.blipSyncContext,
 		db:              apr.config.ActiveDB,
-		collection:      apr.config.ActiveDB,
-		serialNumber:    apr.blipSyncContext.incrementSerialNumber(),
+		// FIXME: this is probably an array of collections
+		collection:   singleCollection,
+		serialNumber: apr.blipSyncContext.incrementSerialNumber(),
 	}
 
-	seq, err := apr.config.ActiveDB.ParseSequenceID(apr.Checkpointer.lastCheckpointSeq)
+	seq, err := singleCollection.ParseSequenceID(apr.Checkpointer.lastCheckpointSeq)
 	if err != nil {
 		base.WarnfCtx(apr.ctx, "couldn't parse checkpointed sequence ID, starting push from seq:0")
 	}

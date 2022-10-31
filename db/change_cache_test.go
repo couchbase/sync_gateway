@@ -1005,14 +1005,15 @@ func TestChannelQueryCancellation(t *testing.T) {
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 	defer db.Close(ctx)
 
+	collection := db.GetSingleDatabaseCollectionWithUser()
 	// Write a handful of docs/sequences to the bucket
-	_, _, err := db.Put(ctx, "key1", Body{"channels": "ABC"})
+	_, _, err := collection.Put(ctx, "key1", Body{"channels": "ABC"})
 	assert.NoError(t, err, "Put failed with error: %v", err)
-	_, _, err = db.Put(ctx, "key2", Body{"channels": "ABC"})
+	_, _, err = collection.Put(ctx, "key2", Body{"channels": "ABC"})
 	assert.NoError(t, err, "Put failed with error: %v", err)
-	_, _, err = db.Put(ctx, "key3", Body{"channels": "ABC"})
+	_, _, err = collection.Put(ctx, "key3", Body{"channels": "ABC"})
 	assert.NoError(t, err, "Put failed with error: %v", err)
-	_, _, err = db.Put(ctx, "key4", Body{"channels": "ABC"})
+	_, _, err = collection.Put(ctx, "key4", Body{"channels": "ABC"})
 	assert.NoError(t, err, "Put failed with error: %v", err)
 	require.NoError(t, db.changeCache.waitForSequence(ctx, 4, base.DefaultWaitForSequence))
 
@@ -1716,6 +1717,7 @@ func TestInitializeEmptyCache(t *testing.T) {
 	db, ctx := setupTestDBWithCacheOptions(t, cacheOptions)
 	defer db.Close(ctx)
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
+	collection := db.GetSingleDatabaseCollectionWithUser()
 
 	cacheWaiter := db.NewDCPCachingCountWaiter(t)
 	docCount := 0
@@ -1724,7 +1726,7 @@ func TestInitializeEmptyCache(t *testing.T) {
 		channels := []string{"islands"}
 		body := Body{"serialnumber": int64(i), "channels": channels}
 		docID := fmt.Sprintf("loadCache-ch-%d", i)
-		_, _, err := db.Put(ctx, docID, body)
+		_, _, err := collection.Put(ctx, docID, body)
 		assert.NoError(t, err, "Couldn't create document")
 		docCount++
 	}
@@ -1740,7 +1742,7 @@ func TestInitializeEmptyCache(t *testing.T) {
 		channels := []string{"zero"}
 		body := Body{"serialnumber": int64(i), "channels": channels}
 		docID := fmt.Sprintf("loadCache-z-%d", i)
-		_, _, err := db.Put(ctx, docID, body)
+		_, _, err := collection.Put(ctx, docID, body)
 		assert.NoError(t, err, "Couldn't create document")
 		docCount++
 	}
@@ -1767,6 +1769,7 @@ func TestInitializeCacheUnderLoad(t *testing.T) {
 	db, ctx := setupTestDBWithCacheOptions(t, cacheOptions)
 	defer db.Close(ctx)
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
+	collection := db.GetSingleDatabaseCollectionWithUser()
 
 	// Writes [docCount] documents.  Use wait group (writesDone)to identify when all docs have been written.
 	// Use another waitGroup (writesInProgress) to trigger getChanges midway through writes
@@ -1784,7 +1787,7 @@ func TestInitializeCacheUnderLoad(t *testing.T) {
 			channels := []string{"zero"}
 			body := Body{"serialnumber": int64(i), "channels": channels}
 			docID := fmt.Sprintf("loadCache-%d", i)
-			_, _, err := db.Put(ctx, docID, body)
+			_, _, err := collection.Put(ctx, docID, body)
 			require.NoError(t, err, "Couldn't create document")
 			if i < inProgressCount {
 				writesInProgress.Done()
@@ -1820,6 +1823,7 @@ func TestNotifyForInactiveChannel(t *testing.T) {
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
+	collection := db.GetSingleDatabaseCollectionWithUser()
 
 	collectionID, err := db.GetSingleCollectionID()
 	require.NoError(t, err)
@@ -1836,7 +1840,7 @@ func TestNotifyForInactiveChannel(t *testing.T) {
 
 	// Write a document to channel zero
 	body := Body{"channels": []string{"zero"}}
-	_, _, err = db.Put(ctx, "inactiveCacheNotify", body)
+	_, _, err = collection.Put(ctx, "inactiveCacheNotify", body)
 	assert.NoError(t, err)
 
 	// Wait for notify to arrive

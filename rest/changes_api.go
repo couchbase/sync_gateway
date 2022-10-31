@@ -46,8 +46,9 @@ func (h *handler) handleRevsDiff() error {
 
 	_, _ = h.response.Write([]byte("{"))
 	first := true
+	collection := h.db.GetSingleDatabaseCollectionWithUser()
 	for docid, revs := range input {
-		missing, possible := h.db.RevDiff(h.ctx(), docid, revs)
+		missing, possible := collection.RevDiff(h.ctx(), docid, revs)
 		if missing != nil {
 			docOutput := map[string]interface{}{"missing": missing}
 			if possible != nil {
@@ -84,7 +85,8 @@ func (h *handler) updateChangesOptionsFromQuery(feed *string, options *db.Change
 	}
 
 	if _, ok := values["since"]; ok {
-		if options.Since, err = h.db.ParseSequenceID(h.getJSONStringQuery("since")); err != nil {
+		collection := h.db.GetSingleDatabaseCollectionWithUser()
+		if options.Since, err = collection.ParseSequenceID(h.getJSONStringQuery("since")); err != nil {
 			return nil, nil, err
 		}
 	}
@@ -172,7 +174,8 @@ func (h *handler) handleChanges() error {
 		// GET request has parameters in URL:
 		feed = h.getQuery("feed")
 		var err error
-		if options.Since, err = h.db.ParseSequenceID(h.getJSONStringQuery("since")); err != nil {
+		collection := h.db.GetSingleDatabaseCollectionWithUser()
+		if options.Since, err = collection.ParseSequenceID(h.getJSONStringQuery("since")); err != nil {
 			return err
 		}
 		options.Limit = int(h.getIntQuery("limit", 0))
@@ -576,7 +579,8 @@ func (h *handler) readChangesOptionsFromJSON(jsonData []byte) (feed string, opti
 
 	// Initialize since clock and hasher ahead of unmarshalling sequence
 	if h.db != nil {
-		input.Since = h.db.CreateZeroSinceValue()
+		collection := h.db.GetSingleDatabaseCollectionWithUser()
+		input.Since = collection.CreateZeroSinceValue()
 	}
 
 	if err = base.JSONUnmarshal(jsonData, &input); err != nil {

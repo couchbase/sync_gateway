@@ -63,7 +63,7 @@ const maxAttachmentSizeBytes = 20 * 1024 * 1024
 // Given Attachments Meta to be stored in the database, storeAttachments goes through the map, finds attachments with
 // inline bodies, copies the bodies into the Couchbase db, and replaces the bodies with the 'digest' attributes which
 // are the keys to retrieving them.
-func (db *Database) storeAttachments(ctx context.Context, doc *Document, newAttachmentsMeta AttachmentsMeta, generation int, parentRev string, docHistory []string) (AttachmentData, error) {
+func (db *DatabaseCollectionWithUser) storeAttachments(ctx context.Context, doc *Document, newAttachmentsMeta AttachmentsMeta, generation int, parentRev string, docHistory []string) (AttachmentData, error) {
 	if len(newAttachmentsMeta) == 0 {
 		return nil, nil
 	}
@@ -159,7 +159,7 @@ func retrieveV2AttachmentKeys(docID string, docAttachments AttachmentsMeta) (att
 // Attempts to retrieve ancestor attachments for a document. First attempts to find and use a non-pruned ancestor.
 // If no non-pruned ancestor is available, checks whether the currently active doc has a common ancestor with the new revision.
 // If it does, can use the attachments on the active revision with revpos earlier than that common ancestor.
-func (db *Database) retrieveAncestorAttachments(ctx context.Context, doc *Document, parentRev string, docHistory []string) map[string]interface{} {
+func (db *DatabaseCollectionWithUser) retrieveAncestorAttachments(ctx context.Context, doc *Document, parentRev string, docHistory []string) map[string]interface{} {
 
 	// Attempt to find a non-pruned parent or ancestor
 	if ancestorAttachments, foundAncestor := db.getAvailableRevAttachments(ctx, doc, parentRev); foundAncestor {
@@ -189,7 +189,7 @@ func (db *Database) retrieveAncestorAttachments(ctx context.Context, doc *Docume
 // marshaller will convert that to base64.
 // If minRevpos is > 0, then only attachments that have been changed in a revision of that
 // generation or later are loaded.
-func (db *Database) loadAttachmentsData(attachments AttachmentsMeta, minRevpos int, docid string) (newAttachments AttachmentsMeta, err error) {
+func (db *DatabaseCollection) loadAttachmentsData(attachments AttachmentsMeta, minRevpos int, docid string) (newAttachments AttachmentsMeta, err error) {
 	newAttachments = attachments.ShallowCopy()
 
 	for attachmentName, value := range newAttachments {
@@ -230,13 +230,13 @@ func DeleteAttachmentVersion(attachments AttachmentsMeta) {
 }
 
 // GetAttachment retrieves an attachment given its key.
-func (db *Database) GetAttachment(key string) ([]byte, error) {
+func (db *DatabaseCollection) GetAttachment(key string) ([]byte, error) {
 	v, _, err := db.Bucket.GetRaw(key)
 	return v, err
 }
 
 // Stores a base64-encoded attachment and returns the key to get it by.
-func (db *Database) setAttachment(ctx context.Context, key string, value []byte) error {
+func (db *DatabaseCollectionWithUser) setAttachment(ctx context.Context, key string, value []byte) error {
 	_, err := db.Bucket.AddRaw(key, 0, value)
 	if err == nil {
 		base.InfofCtx(ctx, base.KeyCRUD, "\tAdded attachment %q", base.UD(key))
@@ -244,7 +244,7 @@ func (db *Database) setAttachment(ctx context.Context, key string, value []byte)
 	return err
 }
 
-func (db *Database) setAttachments(ctx context.Context, attachments AttachmentData) error {
+func (db *DatabaseCollectionWithUser) setAttachments(ctx context.Context, attachments AttachmentData) error {
 	for key, data := range attachments {
 		attachmentSize := int64(len(data))
 		if attachmentSize > int64(maxAttachmentSizeBytes) {
@@ -253,8 +253,8 @@ func (db *Database) setAttachments(ctx context.Context, attachments AttachmentDa
 		_, err := db.Bucket.AddRaw(key, 0, data)
 		if err == nil {
 			base.InfofCtx(ctx, base.KeyCRUD, "\tAdded attachment %q", base.UD(key))
-			db.DbStats.CBLReplicationPush().AttachmentPushCount.Add(1)
-			db.DbStats.CBLReplicationPush().AttachmentPushBytes.Add(attachmentSize)
+			db.dbStats().CBLReplicationPush().AttachmentPushCount.Add(1)
+			db.dbStats().CBLReplicationPush().AttachmentPushBytes.Add(attachmentSize)
 		} else {
 			return err
 		}
@@ -269,7 +269,7 @@ type AttachmentCallback func(name string, digest string, knownData []byte, meta 
 // The callback is told whether the attachment body is known to the database, according
 // to its digest. If the attachment isn't known, the callback can return data for it, which will
 // be added to the metadata as a "data" property.
-func (db *Database) ForEachStubAttachment(body Body, minRevpos int, docID string, existingDigests map[string]string, callback AttachmentCallback) error {
+func (db *DatabaseCollection) ForEachStubAttachment(body Body, minRevpos int, docID string, existingDigests map[string]string, callback AttachmentCallback) error {
 	atts := GetBodyAttachments(body)
 	if atts == nil && body[BodyAttachments] != nil {
 		return base.HTTPErrorf(http.StatusBadRequest, "Invalid _attachments")

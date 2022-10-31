@@ -56,9 +56,9 @@ const maxInFlightChangesBatches = 2
 
 type blipHandler struct {
 	*BlipSyncContext
-	db            *Database // Handler-specific copy of the BlipSyncContext's blipContextDb
-	collection    *Database // Handler-specific copy of the BlipSyncContext's collection specific DB
-	collectionIdx *int      // index into BlipSyncContext.collectionMapping for the collection
+	db            *Database                   // Handler-specific copy of the BlipSyncContext's blipContextDb
+	collection    *DatabaseCollectionWithUser // Handler-specific copy of the BlipSyncContext's collection specific DB
+	collectionIdx *int                        // index into BlipSyncContext.collectionMapping for the collection
 
 	serialNumber uint64 // This blip handler's serial number to differentiate logs w/ other handlers
 }
@@ -104,6 +104,18 @@ func userBlipHandler(next blipHandlerFunc) blipHandlerFunc {
 	}
 }
 
+func (bh *blipHandler) updateUser() {
+	// refresh the handler's database with the new BlipSyncContext database
+	bh.db = bh._copyContextDatabase()
+	for _, col := range bh.collectionMapping {
+		col = &DatabaseCollectionWithUser{
+			DatabaseCollection: col.DatabaseCollection,
+			user:               bh.db.user,
+		}
+	}
+
+}
+
 func (bh *blipHandler) refreshUser() error {
 
 	bc := bh.BlipSyncContext
@@ -125,7 +137,7 @@ func (bh *blipHandler) refreshUser() error {
 			bc.blipContextDb.SetUser(newUser)
 
 			// refresh the handler's database with the new BlipSyncContext database
-			bh.db = bh._copyContextDatabase()
+			bh.updateUser()
 		}
 	}
 	return nil
@@ -136,7 +148,11 @@ func collectionBlipHandler(next blipHandlerFunc) blipHandlerFunc {
 	return func(bh *blipHandler, bm *blip.Message) error {
 		collectionIndexStr, ok := bm.Properties[BlipCollection]
 		if !ok {
-			bh.collection = bh.db
+			bh.collection = &DatabaseCollectionWithUser{
+				DatabaseCollection: bh.db.GetSingleDatabaseCollection(),
+				user:               bh.db.user,
+			}
+
 			return next(bh, bm)
 		}
 		if len(bh.collectionMapping) == 0 {
@@ -385,8 +401,9 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions
 
 	// Create a distinct database instance for changes, to avoid races between reloadUser invocation in changes.go
 	// and BlipSyncContext user access.
-	changesDb := bh.copyContextDatabase()
-	_, forceClose := generateBlipSyncChanges(bh.loggingCtx, changesDb, channelSet, options, opts.docIDs, func(changes []*ChangeEntry) error {
+	bh.updateUser()
+	changesDB := bh.copyContextDatabase()
+	_, forceClose := generateBlipSyncChanges(bh.loggingCtx, changesDB, channelSet, options, opts.docIDs, func(changes []*ChangeEntry) error {
 		base.DebugfCtx(bh.loggingCtx, base.KeySync, "    Sending %d changes", len(changes))
 		for _, change := range changes {
 			if !strings.HasPrefix(change.ID, "_") {
@@ -400,7 +417,7 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions
 					}
 
 					// If the user has access to the doc through another channel don't send change
-					userHasAccessToDoc, err := UserHasDocAccess(bh.loggingCtx, bh.collection, change.ID)
+					userHasAccessToDoc, err := UserHasDocAccess(bh.loggingCtx, changesDB.GetSingleDatabaseCollectionWithUser(), change.ID)
 					if err == nil && userHasAccessToDoc {
 						continue
 					}
@@ -502,7 +519,7 @@ func (bh *blipHandler) sendBatchOfChanges(sender *blip.Sender, changeArray [][]i
 		if err := bh.refreshUser(); err != nil {
 			return err
 		}
-		handleChangesResponseDb := bh.copyContextDatabase()
+		handleChangesResponseCollection := bh.collection
 
 		sendTime := time.Now()
 		if !bh.sendBLIPMessage(sender, outrq) {
@@ -514,8 +531,8 @@ func (bh *blipHandler) sendBatchOfChanges(sender *blip.Sender, changeArray [][]i
 
 		bh.replicationStats.SendChangesCount.Add(int64(len(changeArray)))
 		// Spawn a goroutine to await the client's response:
-		go func(bh *blipHandler, sender *blip.Sender, response *blip.Message, changeArray [][]interface{}, sendTime time.Time, database *Database) {
-			if err := bh.handleChangesResponse(sender, response, changeArray, sendTime, database); err != nil {
+		go func(bh *blipHandler, sender *blip.Sender, response *blip.Message, changeArray [][]interface{}, sendTime time.Time, collection *DatabaseCollectionWithUser) {
+			if err := bh.handleChangesResponse(sender, response, changeArray, sendTime, collection); err != nil {
 				base.WarnfCtx(bh.loggingCtx, "Error from bh.handleChangesResponse: %v", err)
 				if bh.fatalErrorCallback != nil {
 					bh.fatalErrorCallback(err)
@@ -529,7 +546,7 @@ func (bh *blipHandler) sendBatchOfChanges(sender *blip.Sender, changeArray [][]i
 			}
 
 			atomic.AddInt64(&bh.changesPendingResponseCount, -1)
-		}(bh, sender, outrq.Response(), changeArray, sendTime, handleChangesResponseDb)
+		}(bh, sender, outrq.Response(), changeArray, sendTime, handleChangesResponseCollection)
 	} else {
 		outrq.SetNoReply(true)
 		if !bh.sendBLIPMessage(sender, outrq) {
@@ -757,27 +774,27 @@ func (bh *blipHandler) handleProposeChanges(rq *blip.Message) error {
 
 // ////// DOCUMENTS:
 
-func (bsc *BlipSyncContext) sendRevAsDelta(sender *blip.Sender, docID, revID string, deltaSrcRevID string, seq SequenceID, knownRevs map[string]bool, maxHistory int, handleChangesResponseDb *Database) error {
+func (bsc *BlipSyncContext) sendRevAsDelta(sender *blip.Sender, docID, revID string, deltaSrcRevID string, seq SequenceID, knownRevs map[string]bool, maxHistory int, handleChangesResponseCollection *DatabaseCollectionWithUser) error {
 	var collectionIdx *int
-	if coll, ok := bsc.getCollectionIndexForDB(handleChangesResponseDb); ok {
+	if coll, ok := bsc.getCollectionIndexForDB(handleChangesResponseCollection); ok {
 		collectionIdx = &coll
 	}
 
 	bsc.replicationStats.SendRevDeltaRequestedCount.Add(1)
 
-	revDelta, redactedRev, err := handleChangesResponseDb.GetDelta(bsc.loggingCtx, docID, deltaSrcRevID, revID)
+	revDelta, redactedRev, err := handleChangesResponseCollection.GetDelta(bsc.loggingCtx, docID, deltaSrcRevID, revID)
 	if err == ErrForbidden { // nolint: gocritic // can't convert if/else if to switch since base.IsFleeceDeltaError is not switchable
 		return err
 	} else if base.IsFleeceDeltaError(err) {
 		// Something went wrong in the diffing library. We want to know about this!
 		base.WarnfCtx(bsc.loggingCtx, "Falling back to full body replication. Error generating delta from %s to %s for key %s - err: %v", deltaSrcRevID, revID, base.UD(docID), err)
-		return bsc.sendRevision(sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseDb)
+		return bsc.sendRevision(sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseCollection)
 	} else if err == base.ErrDeltaSourceIsTombstone {
 		base.TracefCtx(bsc.loggingCtx, base.KeySync, "Falling back to full body replication. Delta source %s is tombstone. Unable to generate delta to %s for key %s", deltaSrcRevID, revID, base.UD(docID))
-		return bsc.sendRevision(sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseDb)
+		return bsc.sendRevision(sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseCollection)
 	} else if err != nil {
 		base.DebugfCtx(bsc.loggingCtx, base.KeySync, "Falling back to full body replication. Couldn't get delta from %s to %s for key %s - err: %v", deltaSrcRevID, revID, base.UD(docID), err)
-		return bsc.sendRevision(sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseDb)
+		return bsc.sendRevision(sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseCollection)
 	}
 
 	if redactedRev != nil {
@@ -788,12 +805,12 @@ func (bsc *BlipSyncContext) sendRevAsDelta(sender *blip.Sender, docID, revID str
 
 	if revDelta == nil {
 		base.DebugfCtx(bsc.loggingCtx, base.KeySync, "Falling back to full body replication. Couldn't get delta from %s to %s for key %s", deltaSrcRevID, revID, base.UD(docID))
-		return bsc.sendRevision(sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseDb)
+		return bsc.sendRevision(sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseCollection)
 	}
 
 	resendFullRevisionFunc := func() error {
 		base.InfofCtx(bsc.loggingCtx, base.KeySync, "Resending revision as full body. Peer couldn't process delta %s from %s to %s for key %s", base.UD(revDelta.DeltaBytes), deltaSrcRevID, revID, base.UD(docID))
-		return bsc.sendRevision(sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseDb)
+		return bsc.sendRevision(sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseCollection)
 	}
 
 	base.TracefCtx(bsc.loggingCtx, base.KeySync, "docID: %s - delta: %v", base.UD(docID), base.UD(string(revDelta.DeltaBytes)))

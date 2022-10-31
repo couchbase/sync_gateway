@@ -32,17 +32,18 @@ func TestQueryChannelsStatsView(t *testing.T) {
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
+	collection := db.GetSingleDatabaseCollectionWithUser()
 
 	// docID -> Sequence
 	docSeqMap := make(map[string]uint64, 3)
 
-	_, doc, err := db.Put(ctx, "queryTestDoc1", Body{"channels": []string{"ABC"}})
+	_, doc, err := collection.Put(ctx, "queryTestDoc1", Body{"channels": []string{"ABC"}})
 	require.NoError(t, err, "Put queryDoc1")
 	docSeqMap["queryTestDoc1"] = doc.Sequence
-	_, doc, err = db.Put(ctx, "queryTestDoc2", Body{"channels": []string{"ABC"}})
+	_, doc, err = collection.Put(ctx, "queryTestDoc2", Body{"channels": []string{"ABC"}})
 	require.NoError(t, err, "Put queryDoc2")
 	docSeqMap["queryTestDoc2"] = doc.Sequence
-	_, doc, err = db.Put(ctx, "queryTestDoc3", Body{"channels": []string{"ABC"}})
+	_, doc, err = collection.Put(ctx, "queryTestDoc3", Body{"channels": []string{"ABC"}})
 	require.NoError(t, err, "Put queryDoc3")
 	docSeqMap["queryTestDoc3"] = doc.Sequence
 
@@ -86,17 +87,18 @@ func TestQueryChannelsStatsN1ql(t *testing.T) {
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
+	collection := db.GetSingleDatabaseCollectionWithUser()
 
 	// docID -> Sequence
 	docSeqMap := make(map[string]uint64, 3)
 
-	_, doc, err := db.Put(ctx, "queryTestDoc1", Body{"channels": []string{"ABC"}})
+	_, doc, err := collection.Put(ctx, "queryTestDoc1", Body{"channels": []string{"ABC"}})
 	require.NoError(t, err, "Put queryDoc1")
 	docSeqMap["queryTestDoc1"] = doc.Sequence
-	_, doc, err = db.Put(ctx, "queryTestDoc2", Body{"channels": []string{"ABC"}})
+	_, doc, err = collection.Put(ctx, "queryTestDoc2", Body{"channels": []string{"ABC"}})
 	require.NoError(t, err, "Put queryDoc2")
 	docSeqMap["queryTestDoc2"] = doc.Sequence
-	_, doc, err = db.Put(ctx, "queryTestDoc3", Body{"channels": []string{"ABC"}})
+	_, doc, err = collection.Put(ctx, "queryTestDoc3", Body{"channels": []string{"ABC"}})
 	require.NoError(t, err, "Put queryDoc3")
 	docSeqMap["queryTestDoc3"] = doc.Sequence
 
@@ -134,6 +136,7 @@ func TestQuerySequencesStatsView(t *testing.T) {
 
 	db, ctx := setupTestDBWithViewsEnabled(t)
 	defer db.Close(ctx)
+	collection := db.GetSingleDatabaseCollectionWithUser()
 
 	// docID -> Sequence
 	docSeqMap := make(map[string]uint64, 20)
@@ -141,7 +144,7 @@ func TestQuerySequencesStatsView(t *testing.T) {
 	// Add docs without channel assignment (will only be assigned to the star channel)
 	for i := 1; i <= 10; i++ {
 		docID := fmt.Sprintf("queryTestDoc%d", i)
-		_, doc, err := db.Put(ctx, docID, Body{"nochannels": true})
+		_, doc, err := collection.Put(ctx, docID, Body{"nochannels": true})
 		assert.NoError(t, err, "Put queryDoc")
 		docSeqMap[docID] = doc.Sequence
 	}
@@ -189,7 +192,7 @@ func TestQuerySequencesStatsView(t *testing.T) {
 	// Add some docs in different channels, to validate query handling when non-star channel docs are present
 	for i := 1; i <= 10; i++ {
 		docID := fmt.Sprintf("queryTestDocChanneled%d", i)
-		_, doc, err := db.Put(ctx, docID, Body{"channels": []string{fmt.Sprintf("ABC%d", i)}})
+		_, doc, err := collection.Put(ctx, docID, Body{"channels": []string{fmt.Sprintf("ABC%d", i)}})
 		require.NoError(t, err, "Put queryDoc")
 		docSeqMap[docID] = doc.Sequence
 	}
@@ -229,6 +232,7 @@ func TestQuerySequencesStatsN1ql(t *testing.T) {
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
+	collection := db.GetSingleDatabaseCollectionWithUser()
 
 	// docID -> Sequence
 	docSeqMap := make(map[string]uint64, 20)
@@ -236,7 +240,7 @@ func TestQuerySequencesStatsN1ql(t *testing.T) {
 	// Add docs without channel assignment (will only be assigned to the star channel)
 	for i := 1; i <= 10; i++ {
 		docID := fmt.Sprintf("queryTestDoc%d", i)
-		_, doc, err := db.Put(ctx, docID, Body{"nochannels": true})
+		_, doc, err := collection.Put(ctx, docID, Body{"nochannels": true})
 		require.NoError(t, err, "Put queryDoc")
 		docSeqMap[docID] = doc.Sequence
 	}
@@ -282,7 +286,7 @@ func TestQuerySequencesStatsN1ql(t *testing.T) {
 	// Add some docs in different channels, to validate query handling when non-star channel docs are present
 	for i := 1; i <= 10; i++ {
 		docID := fmt.Sprintf("queryTestDocChanneled%d", i)
-		_, doc, err := db.Put(ctx, docID, Body{"channels": []string{fmt.Sprintf("ABC%d", i)}})
+		_, doc, err := collection.Put(ctx, docID, Body{"channels": []string{fmt.Sprintf("ABC%d", i)}})
 		require.NoError(t, err, "Put queryDoc")
 		docSeqMap[docID] = doc.Sequence
 	}
@@ -376,10 +380,11 @@ func TestAllDocsQuery(t *testing.T) {
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
+	collection := db.GetSingleDatabaseCollectionWithUser()
 
 	// Add docs with channel assignment
 	for i := 1; i <= 10; i++ {
-		_, _, err := db.Put(ctx, fmt.Sprintf("allDocsTest%d", i), Body{"channels": []string{"ABC"}})
+		_, _, err := collection.Put(ctx, fmt.Sprintf("allDocsTest%d", i), Body{"channels": []string{"ABC"}})
 		assert.NoError(t, err, "Put allDocsTest doc")
 	}
 
@@ -442,13 +447,14 @@ func TestAccessQuery(t *testing.T) {
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
+	collection := db.GetSingleDatabaseCollectionWithUser()
 
 	db.ChannelMapper = channels.NewChannelMapper(`function(doc, oldDoc) {
 	access(doc.accessUser, doc.accessChannel)
 }`, 0)
 	// Add docs with access grants assignment
 	for i := 1; i <= 5; i++ {
-		_, _, err := db.Put(ctx, fmt.Sprintf("accessTest%d", i), Body{"accessUser": "user1", "accessChannel": fmt.Sprintf("channel%d", i)})
+		_, _, err := collection.Put(ctx, fmt.Sprintf("accessTest%d", i), Body{"accessUser": "user1", "accessChannel": fmt.Sprintf("channel%d", i)})
 		assert.NoError(t, err, "Put accessTest doc")
 	}
 
@@ -487,13 +493,14 @@ func TestRoleAccessQuery(t *testing.T) {
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
+	collection := db.GetSingleDatabaseCollectionWithUser()
 
 	db.ChannelMapper = channels.NewChannelMapper(`function(doc, oldDoc) {
 	role(doc.accessUser, "role:" + doc.accessChannel)
 }`, 0)
 	// Add docs with access grants assignment
 	for i := 1; i <= 5; i++ {
-		_, _, err := db.Put(ctx, fmt.Sprintf("accessTest%d", i), Body{"accessUser": "user1", "accessChannel": fmt.Sprintf("channel%d", i)})
+		_, _, err := collection.Put(ctx, fmt.Sprintf("accessTest%d", i), Body{"accessUser": "user1", "accessChannel": fmt.Sprintf("channel%d", i)})
 		assert.NoError(t, err, "Put accessTest doc")
 	}
 
@@ -573,6 +580,7 @@ func TestQueryChannelsActiveOnlyWithLimit(t *testing.T) {
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
+	collection := db.GetSingleDatabaseCollectionWithUser()
 
 	docIdFlagMap := make(map[string]uint8)
 	var startSeq, endSeq uint64
@@ -587,7 +595,7 @@ func TestQueryChannelsActiveOnlyWithLimit(t *testing.T) {
 	// Create 10 added documents
 	for i := 1; i <= 10; i++ {
 		id := "created" + strconv.Itoa(i)
-		doc, revId, err := db.PutExistingRevWithBody(ctx, id, body, []string{"1-a"}, false)
+		doc, revId, err := collection.PutExistingRevWithBody(ctx, id, body, []string{"1-a"}, false)
 		require.NoError(t, err, "Couldn't create document")
 		require.Equal(t, "1-a", revId)
 		docIdFlagMap[doc.ID] = uint8(0x0)
@@ -600,12 +608,12 @@ func TestQueryChannelsActiveOnlyWithLimit(t *testing.T) {
 	// Create 10 deleted documents
 	for i := 1; i <= 10; i++ {
 		id := "deleted" + strconv.Itoa(i)
-		doc, revId, err := db.PutExistingRevWithBody(ctx, id, body, []string{"1-a"}, false)
+		doc, revId, err := collection.PutExistingRevWithBody(ctx, id, body, []string{"1-a"}, false)
 		require.NoError(t, err, "Couldn't create document")
 		require.Equal(t, "1-a", revId)
 
 		body[BodyDeleted] = true
-		doc, revId, err = db.PutExistingRevWithBody(ctx, id, body, []string{"2-a", "1-a"}, false)
+		doc, revId, err = collection.PutExistingRevWithBody(ctx, id, body, []string{"2-a", "1-a"}, false)
 		require.NoError(t, err, "Couldn't create document")
 		require.Equal(t, "2-a", revId, "Couldn't create tombstone revision")
 
@@ -617,22 +625,22 @@ func TestQueryChannelsActiveOnlyWithLimit(t *testing.T) {
 	for i := 1; i <= 10; i++ {
 		body["sound"] = "meow"
 		id := "branched" + strconv.Itoa(i)
-		doc, revId, err := db.PutExistingRevWithBody(ctx, id, body, []string{"1-a"}, false)
+		doc, revId, err := collection.PutExistingRevWithBody(ctx, id, body, []string{"1-a"}, false)
 		require.NoError(t, err, "Couldn't create document revision 1-a")
 		require.Equal(t, "1-a", revId)
 
 		body["sound"] = "bark"
-		doc, revId, err = db.PutExistingRevWithBody(ctx, id, body, []string{"2-b", "1-a"}, false)
+		doc, revId, err = collection.PutExistingRevWithBody(ctx, id, body, []string{"2-b", "1-a"}, false)
 		require.NoError(t, err, "Couldn't create revision 2-b")
 		require.Equal(t, "2-b", revId)
 
 		body["sound"] = "bleat"
-		doc, revId, err = db.PutExistingRevWithBody(ctx, id, body, []string{"2-a", "1-a"}, false)
+		doc, revId, err = collection.PutExistingRevWithBody(ctx, id, body, []string{"2-a", "1-a"}, false)
 		require.NoError(t, err, "Couldn't create revision 2-a")
 		require.Equal(t, "2-a", revId)
 
 		body[BodyDeleted] = true
-		doc, revId, err = db.PutExistingRevWithBody(ctx, id, body, []string{"3-a", "2-a"}, false)
+		doc, revId, err = collection.PutExistingRevWithBody(ctx, id, body, []string{"3-a", "2-a"}, false)
 		require.NoError(t, err, "Couldn't create document")
 		require.Equal(t, "3-a", revId, "Couldn't create tombstone revision")
 
@@ -644,27 +652,27 @@ func TestQueryChannelsActiveOnlyWithLimit(t *testing.T) {
 	for i := 1; i <= 10; i++ {
 		body["sound"] = "meow"
 		id := "branched|deleted" + strconv.Itoa(i)
-		doc, revId, err := db.PutExistingRevWithBody(ctx, id, body, []string{"1-a"}, false)
+		doc, revId, err := collection.PutExistingRevWithBody(ctx, id, body, []string{"1-a"}, false)
 		require.NoError(t, err, "Couldn't create document revision 1-a")
 		require.Equal(t, "1-a", revId)
 
 		body["sound"] = "bark"
-		doc, revId, err = db.PutExistingRevWithBody(ctx, id, body, []string{"2-b", "1-a"}, false)
+		doc, revId, err = collection.PutExistingRevWithBody(ctx, id, body, []string{"2-b", "1-a"}, false)
 		require.NoError(t, err, "Couldn't create revision 2-b")
 		require.Equal(t, "2-b", revId)
 
 		body["sound"] = "bleat"
-		doc, revId, err = db.PutExistingRevWithBody(ctx, id, body, []string{"2-a", "1-a"}, false)
+		doc, revId, err = collection.PutExistingRevWithBody(ctx, id, body, []string{"2-a", "1-a"}, false)
 		require.NoError(t, err, "Couldn't create revision 2-a")
 		require.Equal(t, "2-a", revId)
 
 		body[BodyDeleted] = true
-		doc, revId, err = db.PutExistingRevWithBody(ctx, id, body, []string{"3-a", "2-a"}, false)
+		doc, revId, err = collection.PutExistingRevWithBody(ctx, id, body, []string{"3-a", "2-a"}, false)
 		require.NoError(t, err, "Couldn't create document")
 		require.Equal(t, "3-a", revId, "Couldn't create tombstone revision")
 
 		body[BodyDeleted] = true
-		doc, revId, err = db.PutExistingRevWithBody(ctx, id, body, []string{"3-b", "2-b"}, false)
+		doc, revId, err = collection.PutExistingRevWithBody(ctx, id, body, []string{"3-b", "2-b"}, false)
 		require.NoError(t, err, "Couldn't create document")
 		require.Equal(t, "3-b", revId, "Couldn't create tombstone revision")
 
@@ -676,17 +684,17 @@ func TestQueryChannelsActiveOnlyWithLimit(t *testing.T) {
 	for i := 1; i <= 10; i++ {
 		body["sound"] = "meow"
 		id := "branched|conflict" + strconv.Itoa(i)
-		doc, revId, err := db.PutExistingRevWithBody(ctx, id, body, []string{"1-a"}, false)
+		doc, revId, err := collection.PutExistingRevWithBody(ctx, id, body, []string{"1-a"}, false)
 		require.NoError(t, err, "Couldn't create document revision 1-a")
 		require.Equal(t, "1-a", revId)
 
 		body["sound"] = "bark"
-		doc, revId, err = db.PutExistingRevWithBody(ctx, id, body, []string{"2-b", "1-a"}, false)
+		doc, revId, err = collection.PutExistingRevWithBody(ctx, id, body, []string{"2-b", "1-a"}, false)
 		require.NoError(t, err, "Couldn't create revision 2-b")
 		require.Equal(t, "2-b", revId)
 
 		body["sound"] = "bleat"
-		doc, revId, err = db.PutExistingRevWithBody(ctx, id, body, []string{"2-a", "1-a"}, false)
+		doc, revId, err = collection.PutExistingRevWithBody(ctx, id, body, []string{"2-a", "1-a"}, false)
 		require.NoError(t, err, "Couldn't create revision 2-a")
 		require.Equal(t, "2-a", revId)
 

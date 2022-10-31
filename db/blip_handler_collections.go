@@ -74,13 +74,16 @@ func (bh *blipHandler) handleGetCollections(rq *blip.Message) error {
 			continue
 		}
 		key := CheckpointDocIDPrefix + requestBody.CheckpointIDs[i]
-		collectionDB := &Database{DatabaseContext: collection.CollectionCtx, user: bh.blipContextDb.User()}
-		value, err := collectionDB.GetSpecial(DocTypeLocal, key)
+		value, err := collection.GetSpecial(DocTypeLocal, key)
+		collectionWithUser := &DatabaseCollectionWithUser{
+			DatabaseCollection: collection,
+			user:               bh.db.user,
+		}
 		if err != nil {
 			status, _ := base.ErrorAsHTTPStatus(err)
 			if status == http.StatusNotFound {
 				checkpoints[i] = Body{}
-				bh.collectionMapping = append(bh.collectionMapping, collectionDB)
+				bh.collectionMapping = append(bh.collectionMapping, collectionWithUser)
 			} else {
 				errMsg := fmt.Sprintf("Unable to fetch client checkpoint %q for collection %s: %s", key, scopeAndCollection, err)
 				base.WarnfCtx(bh.loggingCtx, errMsg)
@@ -90,7 +93,7 @@ func (bh *blipHandler) handleGetCollections(rq *blip.Message) error {
 		}
 		delete(value, BodyId)
 		checkpoints[i] = value
-		bh.collectionMapping = append(bh.collectionMapping, collectionDB)
+		bh.collectionMapping = append(bh.collectionMapping, collectionWithUser)
 	}
 	response := rq.Response()
 	if response == nil {
@@ -99,12 +102,12 @@ func (bh *blipHandler) handleGetCollections(rq *blip.Message) error {
 	return response.SetJSONBody(checkpoints)
 }
 
-func (bsc *BlipSyncContext) getCollectionIndexForDB(db *Database) (int, bool) {
+func (bsc *BlipSyncContext) getCollectionIndexForDB(collection *DatabaseCollectionWithUser) (int, bool) {
 	if bsc.collectionMapping == nil {
 		return 0, false
 	}
-	for i, iDB := range bsc.collectionMapping {
-		if iDB.BucketSpec.Scope == db.BucketSpec.Scope && iDB.BucketSpec.Collection == db.BucketSpec.Collection {
+	for i, iCollection := range bsc.collectionMapping {
+		if iCollection.ScopeName() == collection.ScopeName() && iCollection.Name() == collection.Name() {
 			return i, true
 		}
 	}
