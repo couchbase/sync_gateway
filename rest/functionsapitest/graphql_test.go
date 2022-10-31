@@ -10,10 +10,12 @@ package functionsapitest
 
 import (
 	"encoding/json"
-	"github.com/graphql-go/graphql"
+	"fmt"
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/graphql-go/graphql"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db/functions"
@@ -31,26 +33,26 @@ var allowAll = &functions.Allow{Channels: []string{"*"}}
 
 // The GraphQL schema:
 var kTestGraphQLSchema = `
-        type Task {
-            id: ID!
-            title: String!
-            description: String
-            done: Boolean
-            tags: [String!]
-            secretNotes: String     # Admin-only
-        }
-        type Query {
-            square(n: Int!): Int!
-            infinite: Int!
-            task(id: ID!): Task
-            tasks: [Task!]!
-			tasksClone: [Task!]!
-            toDo: [Task!]!
-        }
-        type Mutation {
-            complete(id: ID!): Task
-            addTag(id: ID!, tag: String!): Task
-        }
+    type Task {
+        id: ID!
+        title: String!
+        description: String
+        done: Boolean
+        tags: [String!]
+        secretNotes: String     # Admin-only
+    }
+    type Query {
+        square(n: Int!): Int!
+        infinite: Int!
+        task(id: ID!): Task
+        tasks: [Task!]!
+		tasksClone: [Task!]!
+        toDo: [Task!]!
+    }
+    type Mutation {
+        complete(id: ID!): Task
+        addTag(id: ID!, tag: String!): Task
+    }
     `
 
 // The GraphQL configuration:
@@ -71,23 +73,23 @@ var kTestGraphQLConfig = functions.GraphQLConfig{
 			"task": {
 				Type: "javascript",
 				Code: `function(parent, args, context, info) {
-                            if (Object.keys(parent).length != 0) throw "Unexpected parent";
-                            if (Object.keys(args).length != 1) throw "Unexpected args";
-                            if (Object.keys(info) != "selectedFieldNames") throw "Unexpected info";
-                            if (!context.user) throw "Missing context.user";
-                            if (!context.admin) throw "Missing context.admin";
-                            return context.user.function("getTask", {id: args.id});}`,
+                        if (Object.keys(parent).length != 0) throw "Unexpected parent";
+                        if (Object.keys(args).length != 1) throw "Unexpected args";
+                        if (Object.keys(info) != "selectedFieldNames") throw "Unexpected info";
+                        if (!context.user) throw "Missing context.user";
+                        if (!context.admin) throw "Missing context.admin";
+                        return context.user.function("getTask", {id: args.id});}`,
 				Allow: allowAll,
 			},
 			"tasks": {
 				Type: "javascript",
 				Code: `function(parent, args, context, info) {
-                            if (Object.keys(parent).length != 0) throw "Unexpected parent";
-                            if (Object.keys(args).length != 0) throw "Unexpected args";
-                            if (Object.keys(info) != "selectedFieldNames") throw "Unexpected info";
-                            if (!context.user) throw "Missing context.user";
-                            if (!context.admin) throw "Missing context.admin";
-                            return context.user.function("all");}`,
+                        if (Object.keys(parent).length != 0) throw "Unexpected parent";
+                        if (Object.keys(args).length != 0) throw "Unexpected args";
+                        if (Object.keys(info) != "selectedFieldNames") throw "Unexpected info";
+                        if (!context.user) throw "Missing context.user";
+                        if (!context.admin) throw "Missing context.admin";
+                        return context.user.function("all");}`,
 				Allow: allowAll,
 			},
 			"tasksClone": {
@@ -104,15 +106,15 @@ var kTestGraphQLConfig = functions.GraphQLConfig{
 			"toDo": {
 				Type: "javascript",
 				Code: `function(parent, args, context, info) {
-                            if (Object.keys(parent).length != 0) throw "Unexpected parent";
-                            if (Object.keys(args).length != 0) throw "Unexpected args";
-                            if (Object.keys(info) != "selectedFieldNames") throw "Unexpected info";
-                            if (!context.user) throw "Missing context.user";
-                            if (!context.admin) throw "Missing context.admin";
-                            var result=new Array(); var all = context.user.function("all");
-                            for (var i = 0; i < all.length; i++)
-                                if (!all[i].done) result.push(all[i]);
-                            return result;}`,
+                        if (Object.keys(parent).length != 0) throw "Unexpected parent";
+                        if (Object.keys(args).length != 0) throw "Unexpected args";
+                        if (Object.keys(info) != "selectedFieldNames") throw "Unexpected info";
+                        if (!context.user) throw "Missing context.user";
+                        if (!context.admin) throw "Missing context.admin";
+                        var result=new Array(); var all = context.user.function("all");
+                        for (var i = 0; i < all.length; i++)
+                            if (!all[i].done) result.push(all[i]);
+                        return result;}`,
 				Allow: allowAll,
 			},
 		},
@@ -120,27 +122,27 @@ var kTestGraphQLConfig = functions.GraphQLConfig{
 			"complete": {
 				Type: "javascript",
 				Code: `function(parent, args, context, info) {
-                                if (Object.keys(parent).length != 0) throw "Unexpected parent";
-                                if (Object.keys(args).length != 1) throw "Unexpected args";
-                                if (Object.keys(info) != "selectedFieldNames") throw "Unexpected info";
-                                if (!context.user) throw "Missing context.user";
-                                if (!context.admin) throw "Missing context.admin";
-                                context.requireMutating();
-                                var task = context.user.function("getTask", {id: args.id});
-                                if (!task) return undefined;
-                                task.done = true;
-                                return task;}`,
+                        	if (Object.keys(parent).length != 0) throw "Unexpected parent";
+                        	if (Object.keys(args).length != 1) throw "Unexpected args";
+                        	if (Object.keys(info) != "selectedFieldNames") throw "Unexpected info";
+                        	if (!context.user) throw "Missing context.user";
+                        	if (!context.admin) throw "Missing context.admin";
+                        	context.requireMutating();
+                        	var task = context.user.function("getTask", {id: args.id});
+                        	if (!task) return undefined;
+                        	task.done = true;
+                        	return task;}`,
 				Allow: allowAll,
 			},
 			"addTag": {
 				Type: "javascript",
 				Code: `function(parent, args, context, info) {
-                                context.requireMutating();
-                                var task = context.user.function("getTask", {id: args.id});
-                                if (!task) return undefined;
-                                if (!task.tags) task.tags = [];
-                                task.tags.push(args.tag);
-                                return task;}`,
+                        	context.requireMutating();
+                        	var task = context.user.function("getTask", {id: args.id});
+                        	if (!task) return undefined;
+                        	if (!task.tags) task.tags = [];
+                        	task.tags.push(args.tag);
+                        	return task;}`,
 				Allow: allowAll,
 			},
 		},
@@ -148,12 +150,12 @@ var kTestGraphQLConfig = functions.GraphQLConfig{
 			"secretNotes": {
 				Type: "javascript",
 				Code: `function(parent, args, context, info) {
-                                    if (!parent.id) throw "Invalid parent";
-                                    if (Object.keys(args).length != 0) throw "Unexpected args";
-                                    if (Object.keys(info) != "selectedFieldNames") throw "Unexpected info";
-                                    if (!context.user) throw "Missing context.user";
-                                    if (!context.admin) throw "Missing context.admin";
-                                    return "TOP SECRET!";}`,
+                        		if (!parent.id) throw "Invalid parent";
+                        		if (Object.keys(args).length != 0) throw "Unexpected args";
+                        		if (Object.keys(info) != "selectedFieldNames") throw "Unexpected info";
+                                if (!context.user) throw "Missing context.user";
+                                if (!context.admin) throw "Missing context.admin";
+                                return "TOP SECRET!";}`,
 				Allow: &functions.Allow{Users: base.Set{}}, // only admins
 			},
 		},
@@ -166,19 +168,19 @@ var kTestGraphQLUserFunctionsConfig = functions.FunctionsConfig{
 		"all": {
 			Type: "javascript",
 			Code: `function(context, args) {
-                            return [
-                            {id: "a", "title": "Applesauce", done:true, tags:["fruit","soft"]},
-                            {id: "b", "title": "Beer", done:false,description: "Bass ale please"},
-                            {id: "m", "title": "Mangoes",done:false} ];}`,
+                        return [
+                        {id: "a", "title": "Applesauce", done:true, tags:["fruit","soft"]},
+                        {id: "b", "title": "Beer", done:false,description: "Bass ale please"},
+                        {id: "m", "title": "Mangoes",done:false} ];}`,
 			Allow: &functions.Allow{Channels: []string{"*"}},
 		},
 		"getTask": {
 			Type: "javascript",
 			Code: `function(context, args) {
-                            var all = context.user.function("all");
-                            for (var i = 0; i < all.length; i++)
-                                if (all[i].id == args.id) return all[i];
-                            return undefined;}`,
+                        var all = context.user.function("all");
+                        for (var i = 0; i < all.length; i++)
+                            if (all[i].id == args.id) return all[i];
+                        return undefined;}`,
 			Args:  []string{"id"},
 			Allow: &functions.Allow{Channels: []string{"*"}},
 		},
@@ -194,9 +196,9 @@ var kTestGraphQLUserFunctionsConfig = functions.FunctionsConfig{
 		"infinite": {
 			Type: "javascript",
 			Code: `function(context, args) {
-                    var result = context.user.graphql("query{ infinite }");
-                    if (result.errors) throw "GraphQL query failed:" + result.errors[0].message;
-                    return -1;}`,
+                    	var result = context.user.graphql("query{ infinite }");
+                    	if (result.errors) throw "GraphQL query failed:" + result.errors[0].message;
+                    	return -1;}`,
 			Allow: &functions.Allow{Channels: []string{"*"}},
 		},
 	},
@@ -432,16 +434,13 @@ func TestGraphQLQueryCustomUser(t *testing.T) {
 	defer rt.Close()
 
 	t.Run("AsUser - square", func(t *testing.T) {
-		//user Created
 		response := rt.SendAdminRequest("POST", "/db/_user/", `{"name":"janhavi", "password":"password"}`)
 		assert.Equal(t, 201, response.Result().StatusCode)
 
-		//request sent by the custom user
 		response = rt.SendUserRequestWithHeaders("POST", "/db/_graphql", `{"query": "query{ square(n:2) }"}`, nil, "janhavi", "password")
 		assert.Equal(t, 200, response.Result().StatusCode)
 		assert.Equal(t, `{"data":{"square":4}}`, string(response.BodyBytes()))
 
-		//custom user deleted by the Admin
 		response = rt.SendAdminRequest("DELETE", "/db/_user/janhavi", "")
 		assert.Equal(t, 200, response.Result().StatusCode)
 	})
@@ -506,7 +505,7 @@ func TestGraphQLQueryCustomUser(t *testing.T) {
 		assert.Equal(t, 200, response.Result().StatusCode)
 	})
 
-	//Check If User is not able to call Resolver within which Function  is not accessible to user
+	//Check If User is not able to call Resolver within which Function is not accessible to user
 	t.Run("AsUser - valid channel check", func(t *testing.T) {
 		graphQLRequestBodyWithInvalidResolver := `{"query": "query{ taskClone { id } }"}`
 		response := rt.SendAdminRequest("POST", "/db/_graphql", graphQLRequestBodyWithInvalidResolver)
@@ -547,10 +546,9 @@ func TestValidGraphQLConfigurationValues(t *testing.T) {
 	defer rt.Close()
 
 	//If max_schema_size >= given schema size then Valid
-	//here max_schema_size allowed is 34 bytes and given schema size is also 34 bytes
-	//hence it is a valid config
 	t.Run("Check max_schema_size allowed", func(t *testing.T) {
-		response := rt.SendAdminRequest("PUT", "/db/_config/graphql", `{
+		schema := `type Query {sum(n: Int!) : Int!}`
+		response := rt.SendAdminRequest("PUT", "/db/_config/graphql", fmt.Sprintf(`{
 			"schema": "type Query {sum(n: Int!) : Int!}",
 			"resolvers": {
 				"Query": {
@@ -560,8 +558,8 @@ func TestValidGraphQLConfigurationValues(t *testing.T) {
 					}
 				}
 			},
-			"max_schema_size" : 34
-		}`)
+			"max_schema_size" : %d
+		}`, len(schema)))
 		assert.Equal(t, 200, response.Result().StatusCode)
 	})
 
@@ -588,9 +586,9 @@ func TestValidGraphQLConfigurationValues(t *testing.T) {
 	})
 
 	//If max_request_size >= length of JSON-encoded arguments passed to a function then Valid
-	//here max_request_size allowed is 114 and size of arguments is also 114, hence it is a valid config
 	t.Run("Check max_request_size allowed", func(t *testing.T) {
-		response := rt.SendAdminRequest("PUT", "/db/_config/graphql", `{
+		requestQuery := `{"query": "query($numberToBeSquared:Int!){ square(n:$numberToBeSquared) }", "variables": {"numberToBeSquared": 4}}`
+		response := rt.SendAdminRequest("PUT", "/db/_config/graphql", fmt.Sprintf(`{
 			"schema": "type Query {square(n: Int!) : Int!}",
 			"resolvers": {
 				"Query": {
@@ -600,11 +598,11 @@ func TestValidGraphQLConfigurationValues(t *testing.T) {
 					}
 				}
 			},
-			"max_request_size" : 114
-		}`)
+			"max_request_size" : %d
+		}`, len(requestQuery)))
 		assert.Equal(t, 200, response.Result().StatusCode)
 
-		response = rt.SendAdminRequest("POST", "/db/_graphql", `{"query": "query($numberToBeSquared:Int!){ square(n:$numberToBeSquared) }", "variables": {"numberToBeSquared": 4}}`)
+		response = rt.SendAdminRequest("POST", "/db/_graphql", requestQuery)
 		assert.Equal(t, 200, response.Result().StatusCode)
 		assert.Equal(t, `{"data":{"square":16}}`, string(response.BodyBytes()))
 	})
@@ -663,7 +661,8 @@ func TestInvalidGraphQLConfigurationValues(t *testing.T) {
 		}`)
 
 		var responseMap map[string]interface{}
-		json.Unmarshal([]byte(string(response.BodyBytes())), &responseMap)
+		err := json.Unmarshal([]byte(string(response.BodyBytes())), &responseMap)
+		assert.NoError(t, err)
 
 		assert.Equal(t, 400, response.Result().StatusCode)
 		assert.Contains(t, responseMap["reason"], "GraphQL schema too large")
@@ -691,7 +690,8 @@ func TestInvalidGraphQLConfigurationValues(t *testing.T) {
 		}`)
 
 		var responseMap map[string]interface{}
-		json.Unmarshal([]byte(string(response.BodyBytes())), &responseMap)
+		err := json.Unmarshal([]byte(string(response.BodyBytes())), &responseMap)
+		assert.NoError(t, err)
 
 		assert.Equal(t, 400, response.Result().StatusCode)
 		assert.Contains(t, responseMap["reason"], "too many GraphQL resolvers")
@@ -720,7 +720,8 @@ func TestInvalidGraphQLConfigurationValues(t *testing.T) {
 		response = rt.SendAdminRequest("POST", "/db/_graphql", `{"query": "query($numberToBeSquared:Int!){ square(n:$numberToBeSquared) }", "variables": {"numberToBeSquared": 4}}`)
 
 		var responseMap map[string]interface{}
-		json.Unmarshal([]byte(string(response.BodyBytes())), &responseMap)
+		err := json.Unmarshal([]byte(string(response.BodyBytes())), &responseMap)
+		assert.NoError(t, err)
 
 		assert.Equal(t, 413, response.Result().StatusCode)
 		assert.Contains(t, responseMap["reason"], "Arguments too large")
@@ -744,7 +745,8 @@ func TestInvalidGraphQLConfigurationValues(t *testing.T) {
 		}`)
 
 		var responseMap map[string]interface{}
-		json.Unmarshal([]byte(string(response.BodyBytes())), &responseMap)
+		err := json.Unmarshal([]byte(string(response.BodyBytes())), &responseMap)
+		assert.NoError(t, err)
 
 		assert.Equal(t, 400, response.Result().StatusCode)
 		assert.Contains(t, responseMap["reason"], "GraphQL config: only one of `schema` and `schemaFile` may be used")
@@ -769,7 +771,8 @@ func TestInvalidGraphQLConfigurationValues(t *testing.T) {
 			}
 		}`)
 		var responseMap map[string]interface{}
-		json.Unmarshal([]byte(string(response.BodyBytes())), &responseMap)
+		err = json.Unmarshal([]byte(string(response.BodyBytes())), &responseMap)
+		assert.NoError(t, err)
 
 		assert.Equal(t, 400, response.Result().StatusCode)
 		assert.Contains(t, responseMap["reason"], "Syntax Error GraphQL")

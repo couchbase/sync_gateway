@@ -316,6 +316,149 @@ func TestUserFunctionsMaxCodeSize(t *testing.T) {
 	})
 }
 
+func TestFunctionsConfigAsPartOfDBConfig(t *testing.T) {
+	userFuncConfigSingleDollar := functions.FunctionsConfig{
+		Definitions: functions.FunctionsDefs{
+			"airports_in_city": &functions.FunctionConfig{
+				Type:  "query",
+				Code:  `SELECT $args.city AS city`,
+				Args:  []string{"city"},
+				Allow: &functions.Allow{Channels: []string{"city-${args.city}", "allcities"}},
+			},
+			"user_only": &functions.FunctionConfig{
+				Type:  "javascript",
+				Code:  `function(context, args) {if (!context.user.name) throw "No user"; return context.user.name;}`,
+				Allow: &functions.Allow{Channels: []string{"user-${context.user.name}"}},
+			},
+		},
+	}
+
+	userFuncConfigDoubleDollar := functions.FunctionsConfig{
+		Definitions: functions.FunctionsDefs{
+			"airports_in_city": &functions.FunctionConfig{
+				Type:  "query",
+				Code:  `SELECT $$args.city AS city`,
+				Args:  []string{"city"},
+				Allow: &functions.Allow{Channels: []string{"city-$${args.city}", "allcities"}},
+			},
+			"user_only": &functions.FunctionConfig{
+				Type:  "javascript",
+				Code:  `function(context, args) {if (!context.user.name) throw "No user"; return context.user.name;}`,
+				Allow: &functions.Allow{Channels: []string{"user-$${context.user.name}"}},
+			},
+		},
+	}
+
+	n1qlBackTickTestCfgSingleDollar := functions.FunctionsConfig{
+		Definitions: functions.FunctionsDefs{
+			"user": &functions.FunctionConfig{
+				Type:  "query",
+				Code:  "SELECT $user AS `user`", // use backticks for n1ql reserved keywords
+				Allow: allowAll,
+			},
+		},
+	}
+
+	n1qlBackTickTestCfgDoubleDollar := functions.FunctionsConfig{
+		Definitions: functions.FunctionsDefs{
+			"user": &functions.FunctionConfig{
+				Type:  "query",
+				Code:  "SELECT $$user AS `user`", // use backticks for n1ql reserved keywords
+				Allow: allowAll,
+			},
+		},
+	}
+
+	rt := rest.NewRestTesterForUserQueries(t, rest.DbConfig{})
+	if rt == nil {
+		return
+	}
+	defer rt.Close()
+
+	t.Run("using admin end point", func(t *testing.T) {
+
+		// positive cases:
+		t.Run("using single dollar", func(t *testing.T) {
+			request, err := json.Marshal(userFuncConfigSingleDollar)
+			assert.NoError(t, err)
+			response := rt.SendAdminRequest("PUT", "/db/_config/functions", string(request))
+			assert.Equal(t, 200, response.Result().StatusCode)
+		})
+
+		t.Run("using single dollar and backtick", func(t *testing.T) {
+			request, err := json.Marshal(n1qlBackTickTestCfgSingleDollar)
+			assert.NoError(t, err)
+			response := rt.SendAdminRequest("PUT", "/db/_config/functions", string(request))
+			assert.Equal(t, 200, response.Result().StatusCode)
+		})
+
+		// negative cases:
+		t.Run("using double dollar", func(t *testing.T) {
+			request, err := json.Marshal(userFuncConfigDoubleDollar)
+			assert.NoError(t, err)
+			response := rt.SendAdminRequest("PUT", "/db/_config/functions", string(request))
+			assert.Equal(t, 400, response.Result().StatusCode)
+			assert.Contains(t, string(response.BodyBytes()), "illegal 'allow' pattern")
+		})
+
+		t.Run("using double and backtick", func(t *testing.T) {
+			// configure query
+			request, err := json.Marshal(n1qlBackTickTestCfgDoubleDollar)
+			assert.NoError(t, err)
+			response := rt.SendAdminRequest("PUT", "/db/_config/functions", string(request))
+			assert.Equal(t, 200, response.Result().StatusCode)
+
+			// execute query
+			response = rt.SendAdminRequest("GET", "/db/_function/user", "")
+			assert.Equal(t, 500, response.Result().StatusCode)
+			assert.Contains(t, string(response.BodyBytes()), "Internal Server Error")
+			assert.Contains(t, string(response.BodyBytes()), "syntax error")
+		})
+	})
+
+	t.Run("using DB Config", func(t *testing.T) {
+		createDB := func(t *testing.T, funcCfg functions.FunctionsConfig) (*rest.TestResponse, error) {
+			dbCfg := rest.GetBasicDbCfg(rt.TestBucket)
+			dbCfg.UserFunctions = &funcCfg
+
+			rt.SendAdminRequest(http.MethodDelete, "/db/", "")
+
+			resp, err := rt.CreateDatabase("db", dbCfg)
+			return resp, err
+		}
+
+		// positive cases:
+		t.Run("using double dollar", func(t *testing.T) {
+			resp, err := createDB(t, userFuncConfigDoubleDollar)
+			assert.NoError(t, err)
+			assert.Equal(t, 201, resp.Result().StatusCode)
+		})
+
+		// negative cases:
+		t.Run("using single dollar", func(t *testing.T) {
+			resp, err := createDB(t, userFuncConfigSingleDollar)
+			assert.NoError(t, err)
+			assert.Equal(t, 500, resp.Result().StatusCode)
+			assert.Contains(t, string(resp.BodyBytes()), "undefined environment variable")
+		})
+
+		t.Run("using single dollar and backtick", func(t *testing.T) {
+			resp, err := createDB(t, n1qlBackTickTestCfgSingleDollar)
+			assert.NoError(t, err)
+			assert.Equal(t, 500, resp.Result().StatusCode)
+			assert.Contains(t, string(resp.BodyBytes()), "undefined environment variable")
+		})
+
+		t.Run("using double dollar and backtick", func(t *testing.T) {
+			resp, err := createDB(t, n1qlBackTickTestCfgDoubleDollar)
+			assert.NoError(t, err)
+			assert.Equal(t, 400, resp.Result().StatusCode)
+			assert.Contains(t, string(resp.BodyBytes()), "Bad Request")
+		})
+	})
+
+}
+
 //////// FUNCTIONS CONFIG AND EXECUTION COMBINATIONS
 
 var kUserFunctionConfig = &functions.FunctionsConfig{
@@ -335,15 +478,20 @@ var kUserFunctionConfig = &functions.FunctionsConfig{
 	},
 }
 
+// // TESTING PATHS A DEVELOPER MIGHT TRY TO GO THROUGH WHILE INTERACTING WITH THE FUNCTIONS API.
+// // these include both negative and positive cases
+// // e.g. PUT -> GET -> DELETE, or GET(negative) -> PUT -> GET or DELETE(negative)->PUT
 func TestSaveAndGet(t *testing.T) {
 	// Setting up tester Config
 	rt := rest.NewRestTesterForUserQueries(t, rest.DbConfig{})
+	if rt == nil {
+		return
+	}
 	defer rt.Close()
 
 	request, err := json.Marshal(kUserFunctionConfig)
 	assert.NoError(t, err)
 
-	// Save The Function
 	t.Run("Save The Functions", func(t *testing.T) {
 		response := rt.SendAdminRequest("PUT", "/db/_config/functions", string(request))
 		assert.Equal(t, 200, response.Result().StatusCode)
@@ -442,6 +590,9 @@ func TestSaveAndUpdateAndGet(t *testing.T) {
 
 	// Setting up tester Config
 	rt := rest.NewRestTesterForUserQueries(t, rest.DbConfig{})
+	if rt == nil {
+		return
+	}
 	defer rt.Close()
 
 	request, err := json.Marshal(kUserFunctionConfigCopy)
@@ -523,12 +674,14 @@ func TestSaveAndUpdateAndGet(t *testing.T) {
 func TestSaveAndDeleteAndGet(t *testing.T) {
 	// Setting up tester Config
 	rt := rest.NewRestTesterForUserQueries(t, rest.DbConfig{})
+	if rt == nil {
+		return
+	}
 	defer rt.Close()
 
 	request, err := json.Marshal(kUserFunctionConfig)
 	assert.NoError(t, err)
 
-	// Save the function
 	t.Run("Save The Functions", func(t *testing.T) {
 		response := rt.SendAdminRequest("PUT", "/db/_config/functions", string(request))
 		assert.Equal(t, 200, response.Result().StatusCode)
@@ -548,13 +701,11 @@ func TestSaveAndDeleteAndGet(t *testing.T) {
 
 	functionNameToBeDeleted := "square"
 
-	// Delete a specific function
 	t.Run("Delete A Specific Function", func(t *testing.T) {
 		response := rt.SendAdminRequest("DELETE", fmt.Sprintf("/db/_config/functions/%s", functionNameToBeDeleted), "")
 		assert.Equal(t, 200, response.Result().StatusCode)
 	})
 
-	// Get & Check for the remaining functions
 	t.Run("Get remaining functions and check schema", func(t *testing.T) {
 		var kUserFunctionConfigCopy = &functions.FunctionsConfig{
 			MaxFunctionCount: kUserFunctionConfig.MaxFunctionCount,
@@ -583,7 +734,6 @@ func TestSaveAndDeleteAndGet(t *testing.T) {
 		assert.Equal(t, 200, response.Result().StatusCode)
 	})
 
-	// Try to Get All the Non-Existing Functions
 	t.Run("Get All Non-exisitng Functions And Check HTTP Status", func(t *testing.T) {
 		response := rt.SendAdminRequest("GET", "/db/_config/functions", "")
 		assert.Equal(t, 404, response.Result().StatusCode)
@@ -593,15 +743,17 @@ func TestSaveAndDeleteAndGet(t *testing.T) {
 func TestDeleteNonExisting(t *testing.T) {
 	// Setting up tester Config
 	rt := rest.NewRestTesterForUserQueries(t, rest.DbConfig{})
+	if rt == nil {
+		return
+	}
 	defer rt.Close()
 
-	//Delete All Non-Existing functions
+	// NEGATIVE CASES
 	t.Run("Delete All Non-existing functions and check HTTP Status Code", func(t *testing.T) {
 		response := rt.SendAdminRequest("DELETE", "/db/_config/functions", "")
 		assert.Equal(t, 404, response.Result().StatusCode)
 	})
 
-	//Delete a specific non-exisiting function
 	t.Run("Delete a non-existing function and check HTTP Status Code", func(t *testing.T) {
 		response := rt.SendAdminRequest("DELETE", "/db/_config/functions/foo", "")
 		assert.Equal(t, 404, response.Result().StatusCode)
@@ -705,7 +857,6 @@ func createUserAlice(t *testing.T, rt *rest.RestTester) (string, string) {
 	password := "pass"
 
 	userDetails := fmt.Sprintf(`{"name":"%s", "password":"%s", "admin_channels":["wonderland", "lookingglass", "city-London", "user-alice"], "admin_roles": ["hero"]}`, username, password)
-	t.Logf("shaad: %+v\n", userDetails)
 	resp = rt.SendAdminRequest("POST", "/db/_user/", userDetails)
 	rest.RequireStatus(t, resp, http.StatusCreated)
 
