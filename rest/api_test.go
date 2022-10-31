@@ -6143,6 +6143,8 @@ func TestRemovingUserXattr(t *testing.T) {
 		t.Skipf("test is EE only - user xattrs")
 	}
 
+	defer db.SuspendSequenceBatching()()
+
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	testCases := []struct {
