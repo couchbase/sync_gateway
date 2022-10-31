@@ -507,7 +507,7 @@ func TestGraphQLQueryCustomUser(t *testing.T) {
 	})
 
 	//Check If User is not able to call Resolver within which Function  is not accessible to user
-	t.Run("User should receive error if the Function in Resolver does not belong to user channel", func(t *testing.T) {
+	t.Run("AsUser - valid channel check", func(t *testing.T) {
 		graphQLRequestBodyWithInvalidResolver := `{"query": "query{ taskClone { id } }"}`
 		response := rt.SendAdminRequest("POST", "/db/_graphql", graphQLRequestBodyWithInvalidResolver)
 		assert.Equal(t, 200, response.Result().StatusCode)
@@ -526,7 +526,7 @@ func TestGraphQLQueryCustomUser(t *testing.T) {
 		userResponse = rt.SendAdminRequest("PUT", "/db/_user/dummy", `{"name":"dummy","email":"dummy@couchbase.com", "password":"letmein", "admin_channels":["!","wonderland"]}`)
 		assert.Equal(t, 200, userResponse.Result().StatusCode)
 
-		// Now the function allCLone will be accessible
+		// Now the function allClone will be accessible
 		response = rt.SendUserRequestWithHeaders("POST", "/db/_graphql", graphQLRequestBody, nil, "dummy", "letmein")
 		assert.Equal(t, 200, userResponse.Result().StatusCode)
 		assert.Equal(t, `{"data":{"tasksClone":[{"id":"a"},{"id":"b"},{"id":"m"}]}}`, response.Body.String())
