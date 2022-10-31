@@ -964,7 +964,7 @@ func TestUserFunctions(t *testing.T) {
 	t.Run("AsUser", func(t *testing.T) { testUserFunctionsAsUser(t, rt) })
 }
 
-func TestFunctionAsGuest(t *testing.T) {
+func TestJSFunctionAsGuest(t *testing.T) {
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{GuestEnabled: true, EnableUserQueries: true})
 	if rt == nil {
 		return
@@ -1156,49 +1156,50 @@ func testUserFunctionsAsUser(t *testing.T, rt *rest.RestTester) {
 	})
 }
 
-func TestUserN1QLQueries(t *testing.T) {
-	var kUserN1QLFunctionsAuthTestConfig = functions.FunctionsConfig{
-		Definitions: functions.FunctionsDefs{
-			"airports_in_city": &functions.FunctionConfig{
-				Type:  "query",
-				Code:  `SELECT $args.city AS city`,
-				Args:  []string{"city"},
-				Allow: &functions.Allow{Channels: []string{"city-${args.city}", "allcities"}},
-			},
-			"square": &functions.FunctionConfig{
-				Type:  "query",
-				Code:  "SELECT $args.numero * $args.numero AS square",
-				Args:  []string{"numero"},
-				Allow: &functions.Allow{Channels: []string{"wonderland"}},
-			},
-			"user": &functions.FunctionConfig{
-				Type:  "query",
-				Code:  "SELECT $user AS `user`", // use backticks for n1ql reserved keywords
-				Allow: allowAll,
-			},
-			"user_parts": &functions.FunctionConfig{
-				Type:  "query",
-				Code:  "SELECT $user.name AS name, $user.email AS email",
-				Allow: &functions.Allow{Channels: []string{"user-${context.user.name}"}},
-			},
-			"admin_only": &functions.FunctionConfig{
-				Type:  "query",
-				Code:  `SELECT "ok" AS status`,
-				Allow: nil, // no 'allow' property means admin-only
-			},
-			"inject": &functions.FunctionConfig{
-				Type:  "query",
-				Code:  `SELECT $args.foo`,
-				Args:  []string{"foo"},
-				Allow: &functions.Allow{Channels: []string{"*"}},
-			},
-			"syntax_error": &functions.FunctionConfig{
-				Type:  "query",
-				Code:  "SELECT OOK? FR0M OOK!",
-				Allow: allowAll,
-			},
+var kUserN1QLFunctionsAuthTestConfig = functions.FunctionsConfig{
+	Definitions: functions.FunctionsDefs{
+		"airports_in_city": &functions.FunctionConfig{
+			Type:  "query",
+			Code:  `SELECT $args.city AS city`,
+			Args:  []string{"city"},
+			Allow: &functions.Allow{Channels: []string{"city-${args.city}", "allcities"}},
 		},
-	}
+		"square": &functions.FunctionConfig{
+			Type:  "query",
+			Code:  "SELECT $args.numero * $args.numero AS square",
+			Args:  []string{"numero"},
+			Allow: &functions.Allow{Channels: []string{"wonderland"}},
+		},
+		"user": &functions.FunctionConfig{
+			Type:  "query",
+			Code:  "SELECT $user AS `user`", // use backticks for n1ql reserved keywords
+			Allow: allowAll,
+		},
+		"user_parts": &functions.FunctionConfig{
+			Type:  "query",
+			Code:  "SELECT $user.name AS name, $user.email AS email",
+			Allow: &functions.Allow{Channels: []string{"user-${context.user.name}"}},
+		},
+		"admin_only": &functions.FunctionConfig{
+			Type:  "query",
+			Code:  `SELECT "ok" AS status`,
+			Allow: nil, // no 'allow' property means admin-only
+		},
+		"inject": &functions.FunctionConfig{
+			Type:  "query",
+			Code:  `SELECT $args.foo`,
+			Args:  []string{"foo"},
+			Allow: &functions.Allow{Channels: []string{"*"}},
+		},
+		"syntax_error": &functions.FunctionConfig{
+			Type:  "query",
+			Code:  "SELECT OOK? FR0M OOK!",
+			Allow: allowAll,
+		},
+	},
+}
+
+func TestUserN1QLQueries(t *testing.T) {
 
 	rt := rest.NewRestTesterForUserQueries(t, rest.DbConfig{})
 	if rt == nil {
@@ -1214,6 +1215,22 @@ func TestUserN1QLQueries(t *testing.T) {
 
 	t.Run("AsAdmin", func(t *testing.T) { testUserQueriesAsAdmin(t, rt) })
 	t.Run("AsUser", func(t *testing.T) { testUserQueriesAsUser(t, rt) })
+}
+
+func TestN1QLFunctionAsGuest(t *testing.T) {
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{GuestEnabled: true, EnableUserQueries: true})
+	if rt == nil {
+		return
+	}
+	defer rt.Close()
+
+	rt.DatabaseConfig = &rest.DatabaseConfig{
+		DbConfig: rest.DbConfig{
+			UserFunctions: &kUserN1QLFunctionsAuthTestConfig,
+		},
+	}
+
+	testUserQueriesCommon(t, rt, rt.SendRequest)
 }
 
 func testUserQueriesCommon(t *testing.T, rt *rest.RestTester, sendReqFn func(string, string, string) *rest.TestResponse) {
