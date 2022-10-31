@@ -814,74 +814,102 @@ func TestUserFunctions(t *testing.T) {
 }
 
 func testUserFunctionsCommon(t *testing.T, rt *rest.RestTester, sendReqFn func(string, string, string) *rest.TestResponse) {
-	// Basic call passing a parameter:
-	response := sendReqFn("POST", "/db/_function/square", `{"numero": 42}`)
-	assert.Equal(t, 200, response.Result().StatusCode)
-	assert.EqualValues(t, "1764", string(response.BodyBytes()))
+	t.Run("commons/passing a param through body", func(t *testing.T) {
+		response := sendReqFn("POST", "/db/_function/square", `{"numero": 42}`)
+		assert.Equal(t, 200, response.Result().StatusCode)
+		assert.EqualValues(t, "1764", string(response.BodyBytes()))
+	})
 
-	response = sendReqFn("GET", "/db/_function/square?numero=42", "")
-	assert.Equal(t, 200, response.Result().StatusCode)
-	assert.EqualValues(t, "1764", string(response.BodyBytes()))
+	t.Run("commons/passing a param through query params", func(t *testing.T) {
+		response := sendReqFn("GET", "/db/_function/square?numero=42", "")
+		assert.Equal(t, 200, response.Result().StatusCode)
+		assert.EqualValues(t, "1764", string(response.BodyBytes()))
+	})
 
-	// Function that calls a function:
-	response = sendReqFn("GET", "/db/_function/call_fn", "")
-	assert.Equal(t, 200, response.Result().StatusCode)
-	assert.EqualValues(t, "49", string(response.BodyBytes()))
+	t.Run("commons/function that calls a function", func(t *testing.T) {
+		response := sendReqFn("GET", "/db/_function/call_fn", "")
+		assert.Equal(t, 200, response.Result().StatusCode)
+		assert.EqualValues(t, "49", string(response.BodyBytes()))
+	})
 
-	// `requireUser` test that passes:
-	response = sendReqFn("GET", "/db/_function/alice_only", "")
-	assert.Equal(t, 200, response.Result().StatusCode)
-	assert.EqualValues(t, "\"OK\"", string(response.BodyBytes()))
+	t.Run("commons/`requireUser`", func(t *testing.T) {
+		response := sendReqFn("GET", "/db/_function/alice_only", "")
+		assert.Equal(t, 200, response.Result().StatusCode)
+		assert.EqualValues(t, "\"OK\"", string(response.BodyBytes()))
+	})
 
-	// `requireChannel` test that passes:
-	response = sendReqFn("GET", "/db/_function/wonderland_only", "")
-	assert.Equal(t, 200, response.Result().StatusCode)
-	assert.EqualValues(t, "\"OK\"", string(response.BodyBytes()))
+	t.Run("commons/`requireChannel`", func(t *testing.T) {
+		response := sendReqFn("GET", "/db/_function/wonderland_only", "")
+		assert.Equal(t, 200, response.Result().StatusCode)
+		assert.EqualValues(t, "\"OK\"", string(response.BodyBytes()))
+	})
 
-	// `requireRole` test that passes:
-	response = sendReqFn("GET", "/db/_function/hero_only", "")
-	assert.Equal(t, 200, response.Result().StatusCode)
-	assert.EqualValues(t, "\"OK\"", string(response.BodyBytes()))
+	t.Run("commons/`requireRole`", func(t *testing.T) {
+		response := sendReqFn("GET", "/db/_function/hero_only", "")
+		assert.Equal(t, 200, response.Result().StatusCode)
+		assert.EqualValues(t, "\"OK\"", string(response.BodyBytes()))
+	})
 
-	// Max call depth:
-	response = sendReqFn("GET", "/db/_function/factorial?n=20", "")
-	assert.Equal(t, 200, response.Result().StatusCode)
-	assert.EqualValues(t, "2432902008176640000", string(response.BodyBytes()))
+	t.Run("commons/equals max call depth", func(t *testing.T) {
+		response := sendReqFn("GET", "/db/_function/factorial?n=20", "")
+		assert.Equal(t, 200, response.Result().StatusCode)
+		assert.EqualValues(t, "2432902008176640000", string(response.BodyBytes()))
+	})
+
+	// negative cases
+	t.Run("commons/exceeding max call depth", func(t *testing.T) {
+		response := sendReqFn("GET", "/db/_function/factorial?n=30", "")
+		assert.Equal(t, 508, response.Result().StatusCode)
+		assert.Contains(t, string(response.BodyBytes()), "Loop Detected")
+		assert.Contains(t, string(response.BodyBytes()), "recursion too deep")
+	})
 }
 
 func testUserFunctionsAsAdmin(t *testing.T, rt *rest.RestTester) {
 	testUserFunctionsCommon(t, rt, rt.SendAdminRequest)
 
-	// Admin-only (success):
-	response := rt.SendAdminRequest("GET", "/db/_function/admin_only", "")
-	assert.Equal(t, 200, response.Result().StatusCode)
-	assert.EqualValues(t, "\"OK\"", string(response.BodyBytes()))
+	// positive cases :
+	t.Run("Admin-only", func(t *testing.T) {
+		response := rt.SendAdminRequest("GET", "/db/_function/admin_only", "")
+		assert.Equal(t, 200, response.Result().StatusCode)
+		assert.EqualValues(t, "\"OK\"", string(response.BodyBytes()))
+	})
 
-	response = rt.SendAdminRequest("GET", "/db/_function/require_admin", "")
-	assert.Equal(t, 200, response.Result().StatusCode)
-	assert.EqualValues(t, "\"OK\"", string(response.BodyBytes()))
+	t.Run("`requireAdmin`", func(t *testing.T) {
+		response := rt.SendAdminRequest("GET", "/db/_function/require_admin", "")
+		assert.Equal(t, 200, response.Result().StatusCode)
+		assert.EqualValues(t, "\"OK\"", string(response.BodyBytes()))
+	})
 
-	response = rt.SendAdminRequest("GET", "/db/_function/pevensies_only", "")
-	assert.Equal(t, 200, response.Result().StatusCode)
-	assert.EqualValues(t, "\"OK\"", string(response.BodyBytes()))
+	t.Run("`requireUser`", func(t *testing.T) {
+		response := rt.SendAdminRequest("GET", "/db/_function/pevensies_only", "")
+		assert.Equal(t, 200, response.Result().StatusCode)
+		assert.EqualValues(t, "\"OK\"", string(response.BodyBytes()))
+	})
 
-	response = rt.SendAdminRequest("GET", "/db/_function/narnia_only", "")
-	assert.Equal(t, 200, response.Result().StatusCode)
-	assert.EqualValues(t, "\"OK\"", string(response.BodyBytes()))
+	t.Run("`requireAccess`", func(t *testing.T) {
+		response := rt.SendAdminRequest("GET", "/db/_function/narnia_only", "")
+		assert.Equal(t, 200, response.Result().StatusCode)
+		assert.EqualValues(t, "\"OK\"", string(response.BodyBytes()))
+	})
 
-	response = rt.SendAdminRequest("GET", "/db/_function/villain_only", "")
-	assert.Equal(t, 200, response.Result().StatusCode)
-	assert.EqualValues(t, "\"OK\"", string(response.BodyBytes()))
+	t.Run("`requireRole`", func(t *testing.T) {
+		response := rt.SendAdminRequest("GET", "/db/_function/villain_only", "")
+		assert.Equal(t, 200, response.Result().StatusCode)
+		assert.EqualValues(t, "\"OK\"", string(response.BodyBytes()))
+	})
 
-	// ERRORS:
-	// Checking `context.user.name`:
-	response = rt.SendAdminRequest("GET", "/db/_function/user_only", "")
-	assert.Equal(t, 500, response.Result().StatusCode)
-	assert.Contains(t, string(response.BodyBytes()), "No user")
+	// negative cases:
+	t.Run("user only `context.user.name`", func(t *testing.T) {
+		response := rt.SendAdminRequest("GET", "/db/_function/user_only", "")
+		assert.Equal(t, 500, response.Result().StatusCode)
+		assert.Contains(t, string(response.BodyBytes()), "No user")
+	})
 
-	// No such function:
-	response = rt.SendAdminRequest("GET", "/db/_function/xxxx", "")
-	assert.Equal(t, 404, response.Result().StatusCode)
+	t.Run("function not configured", func(t *testing.T) {
+		response := rt.SendAdminRequest("GET", "/db/_function/xxxx", "")
+		assert.Equal(t, 404, response.Result().StatusCode)
+	})
 }
 
 func testUserFunctionsAsUser(t *testing.T, rt *rest.RestTester) {
@@ -891,39 +919,59 @@ func testUserFunctionsAsUser(t *testing.T, rt *rest.RestTester) {
 	}
 	testUserFunctionsCommon(t, rt, sendReqFn)
 
-	// Checking `context.user.name`:
-	response := sendReqFn("GET", "/db/_function/user_only", "")
-	assert.Equal(t, 200, response.Result().StatusCode)
-	assert.EqualValues(t, "\"alice\"", string(response.BodyBytes()))
+	// positive cases:
+	t.Run("user only (`context.user.name`)", func(t *testing.T) {
+		response := sendReqFn("GET", "/db/_function/user_only", "")
+		assert.Equal(t, 200, response.Result().StatusCode)
+		assert.EqualValues(t, "\"alice\"", string(response.BodyBytes()))
+	})
 
-	// Checking `context.admin.func`
-	response = sendReqFn("GET", "/db/_function/sudo_call_forbidden", "")
-	assert.Equal(t, 200, response.Result().StatusCode)
+	t.Run("calling other function `context.admin.function`", func(t *testing.T) {
+		response := sendReqFn("GET", "/db/_function/sudo_call_forbidden", "")
+		assert.Equal(t, 200, response.Result().StatusCode)
+	})
 
-	response = sendReqFn("GET", "/db/_function/xxxx", "")
-	assert.Equal(t, 403, response.Result().StatusCode)
+	// negative cases
+	t.Run("function not configured", func(t *testing.T) {
+		response := sendReqFn("GET", "/db/_function/xxxx", "")
+		assert.Equal(t, 403, response.Result().StatusCode)
+	})
 
-	response = sendReqFn("GET", "/db/_function/great_and_terrible", "")
-	assert.Equal(t, 403, response.Result().StatusCode)
+	t.Run("specific channels only", func(t *testing.T) {
+		response := sendReqFn("GET", "/db/_function/great_and_terrible", "")
+		assert.Equal(t, 403, response.Result().StatusCode)
+	})
 
-	response = sendReqFn("GET", "/db/_function/call_forbidden", "")
-	assert.Equal(t, 403, response.Result().StatusCode)
-	assert.Contains(t, string(response.BodyBytes()), "great_and_terrible")
+	t.Run("unauthorized channels", func(t *testing.T) {
+		response := sendReqFn("GET", "/db/_function/call_forbidden", "")
+		assert.Equal(t, 403, response.Result().StatusCode)
+		assert.Contains(t, string(response.BodyBytes()), "great_and_terrible")
+	})
 
-	response = sendReqFn("GET", "/db/_function/admin_only", "")
-	assert.Equal(t, 403, response.Result().StatusCode)
+	t.Run("admin-only", func(t *testing.T) {
+		response := sendReqFn("GET", "/db/_function/admin_only", "")
+		assert.Equal(t, 403, response.Result().StatusCode)
+	})
 
-	response = sendReqFn("GET", "/db/_function/require_admin", "")
-	assert.Equal(t, 403, response.Result().StatusCode)
+	t.Run("`requireAdmin`", func(t *testing.T) {
+		response := sendReqFn("GET", "/db/_function/require_admin", "")
+		assert.Equal(t, 403, response.Result().StatusCode)
+	})
 
-	response = sendReqFn("GET", "/db/_function/pevensies_only", "")
-	assert.Equal(t, 403, response.Result().StatusCode)
+	t.Run("`requireUser`", func(t *testing.T) {
+		response := sendReqFn("GET", "/db/_function/pevensies_only", "")
+		assert.Equal(t, 403, response.Result().StatusCode)
+	})
 
-	response = sendReqFn("GET", "/db/_function/narnia_only", "")
-	assert.Equal(t, 403, response.Result().StatusCode)
+	t.Run("`requireAccess`", func(t *testing.T) {
+		response := sendReqFn("GET", "/db/_function/narnia_only", "")
+		assert.Equal(t, 403, response.Result().StatusCode)
+	})
 
-	response = sendReqFn("GET", "/db/_function/villain_only", "")
-	assert.Equal(t, 403, response.Result().StatusCode)
+	t.Run("`requireRole`", func(t *testing.T) {
+		response := sendReqFn("GET", "/db/_function/villain_only", "")
+		assert.Equal(t, 403, response.Result().StatusCode)
+	})
 }
 
 func TestUserN1QLQueries(t *testing.T) {
@@ -931,31 +979,25 @@ func TestUserN1QLQueries(t *testing.T) {
 		Definitions: functions.FunctionsDefs{
 			"airports_in_city": &functions.FunctionConfig{
 				Type:  "query",
-				Code:  `SELECT $$args.city AS city`,
+				Code:  `SELECT $args.city AS city`,
 				Args:  []string{"city"},
-				Allow: &functions.Allow{Channels: []string{"city-$${args.city}", "allcities"}},
+				Allow: &functions.Allow{Channels: []string{"city-${args.city}", "allcities"}},
 			},
 			"square": &functions.FunctionConfig{
 				Type:  "query",
-				Code:  "SELECT $$args.numero * $$args.numero AS square",
+				Code:  "SELECT $args.numero * $args.numero AS square",
 				Args:  []string{"numero"},
 				Allow: &functions.Allow{Channels: []string{"wonderland"}},
 			},
 			"user": &functions.FunctionConfig{
-				Type: "query",
-				//todo: if instead of our_user we want to use the word user
-				// we can't use it direclty as "user" is a reserved keyword in n1ql
-				// n1ql expects backticks for such cases to avoid conflict with reserved keywords
-				// eg `user`
-				// but, our JSON parsing for DB config preprocess backticks,
-				// how to get around this ???
-				Code:  "SELECT $$user AS our_user",
+				Type:  "query",
+				Code:  "SELECT $user AS `user`", // use backticks for n1ql reserved keywords
 				Allow: allowAll,
 			},
 			"user_parts": &functions.FunctionConfig{
 				Type:  "query",
-				Code:  "SELECT $$user.name AS name, $$user.email AS email",
-				Allow: &functions.Allow{Channels: []string{"user-$${context.user.name}"}},
+				Code:  "SELECT $user.name AS name, $user.email AS email",
+				Allow: &functions.Allow{Channels: []string{"user-${context.user.name}"}},
 			},
 			"admin_only": &functions.FunctionConfig{
 				Type:  "query",
@@ -964,7 +1006,7 @@ func TestUserN1QLQueries(t *testing.T) {
 			},
 			"inject": &functions.FunctionConfig{
 				Type:  "query",
-				Code:  `SELECT $$args.foo`,
+				Code:  `SELECT $args.foo`,
 				Args:  []string{"foo"},
 				Allow: &functions.Allow{Channels: []string{"*"}},
 			},
@@ -976,74 +1018,92 @@ func TestUserN1QLQueries(t *testing.T) {
 		},
 	}
 
-	rt := rest.NewRestTesterForUserQueries(t, rest.DbConfig{
-		UserFunctions: &kUserN1QLFunctionsAuthTestConfig,
-	})
+	rt := rest.NewRestTesterForUserQueries(t, rest.DbConfig{})
 	if rt == nil {
 		return
 	}
 	defer rt.Close()
+
+	// Configure User Queries
+	request, err := json.Marshal(kUserN1QLFunctionsAuthTestConfig)
+	assert.NoError(t, err)
+	response := rt.SendAdminRequest("PUT", "/db/_config/functions", string(request))
+	assert.Equal(t, 200, response.Result().StatusCode)
 
 	t.Run("AsAdmin", func(t *testing.T) { testUserQueriesAsAdmin(t, rt) })
 	t.Run("AsUser", func(t *testing.T) { testUserQueriesAsUser(t, rt) })
 }
 
 func testUserQueriesCommon(t *testing.T, rt *rest.RestTester, sendReqFn func(string, string, string) *rest.TestResponse) {
-	// dynamic channel list
-	response := sendReqFn("POST", "/db/_function/airports_in_city", `{"city": "London"}`)
-	assert.Equal(t, 200, response.Result().StatusCode)
-	assert.EqualValues(t, "[{\"city\":\"London\"}\n]\n", string(response.BodyBytes()))
+	// positive cases:
+	t.Run("commons/dynamic channel list", func(t *testing.T) {
+		response := sendReqFn("POST", "/db/_function/airports_in_city", `{"city": "London"}`)
+		assert.Equal(t, 200, response.Result().StatusCode)
+		assert.EqualValues(t, "[{\"city\":\"London\"}\n]\n", string(response.BodyBytes()))
+	})
 
-	response = sendReqFn("POST", "/db/_function/square", `{"numero": 16}`)
-	assert.Equal(t, 200, response.Result().StatusCode)
-	assert.EqualValues(t, "[{\"square\":256}\n]\n", string(response.BodyBytes()))
+	t.Run("commons/passing a param through body", func(t *testing.T) {
+		response := sendReqFn("POST", "/db/_function/square", `{"numero": 16}`)
+		assert.Equal(t, 200, response.Result().StatusCode)
+		assert.EqualValues(t, "[{\"square\":256}\n]\n", string(response.BodyBytes()))
+	})
 
-	response = sendReqFn("POST", "/db/_function/inject", `{"foo": "1337 as pwned"}`)
-	assert.Equal(t, 200, response.Result().StatusCode)
-	assert.EqualValues(t, "[{\"foo\":\"1337 as pwned\"}\n]\n", string(response.BodyBytes()))
+	t.Run("commons/query injection through params", func(t *testing.T) {
+		response := sendReqFn("POST", "/db/_function/inject", `{"foo": "1337 as pwned"}`)
+		assert.Equal(t, 200, response.Result().StatusCode)
+		assert.EqualValues(t, "[{\"foo\":\"1337 as pwned\"}\n]\n", string(response.BodyBytes()))
+	})
 
-	// ERRORS:
+	// negative cases:
+	t.Run("commons/missing a parameter", func(t *testing.T) {
+		response := sendReqFn("GET", "/db/_function/square", "")
+		assert.Equal(t, 400, response.Result().StatusCode)
+		assert.Contains(t, string(response.BodyBytes()), "numero")
+		assert.Contains(t, string(response.BodyBytes()), "square")
+	})
 
-	// Missing a parameter:
-	response = sendReqFn("GET", "/db/_function/square", "")
-	assert.Equal(t, 400, response.Result().StatusCode)
-	assert.Contains(t, string(response.BodyBytes()), "numero")
-	assert.Contains(t, string(response.BodyBytes()), "square")
+	t.Run("commons/extra parameter", func(t *testing.T) {
+		response := sendReqFn("POST", "/db/_function/square", `{"numero": 42, "number": 0}`)
+		assert.Equal(t, 400, response.Result().StatusCode)
+		assert.Contains(t, string(response.BodyBytes()), "number")
+		assert.Contains(t, string(response.BodyBytes()), "square")
+	})
 
-	// Extra parameter:
-	response = sendReqFn("POST", "/db/_function/square", `{"numero": 42, "number": 0}`)
-	assert.Equal(t, 400, response.Result().StatusCode)
-	assert.Contains(t, string(response.BodyBytes()), "number")
-	assert.Contains(t, string(response.BodyBytes()), "square")
-
-	// Function definition has a syntax error:
-	response = sendReqFn("GET", "/db/_function/syntax_error", "")
-	assert.Equal(t, 500, response.Result().StatusCode)
-	assert.Contains(t, string(response.BodyBytes()), "syntax_error")
+	t.Run("commons/query syntax error", func(t *testing.T) {
+		response := sendReqFn("GET", "/db/_function/syntax_error", "")
+		assert.Equal(t, 500, response.Result().StatusCode)
+		assert.Contains(t, string(response.BodyBytes()), "syntax_error")
+	})
 }
 
 func testUserQueriesAsAdmin(t *testing.T, rt *rest.RestTester) {
 	testUserQueriesCommon(t, rt, rt.SendAdminRequest)
 
-	// Admin-only (success):
-	response := rt.SendAdminRequest("GET", "/db/_function/user", "")
-	assert.Equal(t, 200, response.Result().StatusCode)
-	assert.EqualValues(t, "[{\"our_user\":{}}\n]\n", string(response.BodyBytes()))
+	// positive cases:
+	t.Run("select user", func(t *testing.T) {
+		response := rt.SendAdminRequest("GET", "/db/_function/user", "")
+		assert.Equal(t, 200, response.Result().StatusCode)
+		assert.EqualValues(t, "[{\"user\":{}}\n]\n", string(response.BodyBytes()))
+	})
 
-	response = rt.SendAdminRequest("GET", "/db/_function/user_parts", "")
-	assert.Equal(t, 200, response.Result().StatusCode)
-	assert.EqualValues(t, "[{}\n]\n", string(response.BodyBytes()))
+	t.Run("select user parts (user.name and user.email)", func(t *testing.T) {
+		response := rt.SendAdminRequest("GET", "/db/_function/user_parts", "")
+		assert.Equal(t, 200, response.Result().StatusCode)
+		assert.EqualValues(t, "[{}\n]\n", string(response.BodyBytes()))
+	})
 
-	// admin only:
-	response = rt.SendAdminRequest("GET", "/db/_function/admin_only", "")
-	assert.Equal(t, 200, response.Result().StatusCode)
-	assert.EqualValues(t, "[{\"status\":\"ok\"}\n]\n", string(response.BodyBytes()))
+	t.Run("admin only", func(t *testing.T) {
+		response := rt.SendAdminRequest("GET", "/db/_function/admin_only", "")
+		assert.Equal(t, 200, response.Result().StatusCode)
+		assert.EqualValues(t, "[{\"status\":\"ok\"}\n]\n", string(response.BodyBytes()))
+	})
 
-	// ERRORS:
+	//negative cases:
 
-	// No such query:
-	response = rt.SendAdminRequest("GET", "/db/_function/xxxx", "")
-	assert.Equal(t, 404, response.Result().StatusCode)
+	t.Run("unconfigured query", func(t *testing.T) {
+		response := rt.SendAdminRequest("GET", "/db/_function/xxxx", "")
+		assert.Equal(t, 404, response.Result().StatusCode)
+	})
 }
 
 func testUserQueriesAsUser(t *testing.T, rt *rest.RestTester) {
@@ -1053,29 +1113,38 @@ func testUserQueriesAsUser(t *testing.T, rt *rest.RestTester) {
 	}
 	testUserQueriesCommon(t, rt, sendReqFn)
 
-	response := sendReqFn("GET", "/db/_function/user", "")
-	assert.Equal(t, 200, response.Result().StatusCode)
-	assert.True(t, strings.HasPrefix(string(response.BodyBytes()), `[{"our_user":{"channels":["`))
-	assert.True(t, strings.HasSuffix(string(response.BodyBytes()), "\"],\"email\":\"\",\"name\":\"alice\",\"roles\":[\"hero\"]}}\n]\n"))
+	// positive cases:
+	t.Run("select user", func(t *testing.T) {
+		response := sendReqFn("GET", "/db/_function/user", "")
+		assert.Equal(t, 200, response.Result().StatusCode)
+		assert.True(t, strings.HasPrefix(string(response.BodyBytes()), `[{"user":{"channels":["`))
+		assert.True(t, strings.HasSuffix(string(response.BodyBytes()), "\"],\"email\":\"\",\"name\":\"alice\",\"roles\":[\"hero\"]}}\n]\n"))
+	})
 
-	response = sendReqFn("GET", "/db/_function/user_parts", "")
-	assert.Equal(t, 200, response.Result().StatusCode)
-	assert.EqualValues(t, "[{\"email\":\"\",\"name\":\"alice\"}\n]\n", string(response.BodyBytes()))
+	t.Run("select user parts (user.name and user.email)", func(t *testing.T) {
+		response := sendReqFn("GET", "/db/_function/user_parts", "")
+		assert.Equal(t, 200, response.Result().StatusCode)
+		assert.EqualValues(t, "[{\"email\":\"\",\"name\":\"alice\"}\n]\n", string(response.BodyBytes()))
+	})
 
-	// ERRORS:
+	//negative cases:
+	t.Run("admin only", func(t *testing.T) {
+		response := sendReqFn("GET", "/db/_function/admin_only", "")
+		assert.Equal(t, 403, response.Result().StatusCode)
+	})
 
-	// Not allowed (admin only):
-	response = sendReqFn("GET", "/db/_function/admin_only", "")
-	assert.Equal(t, 403, response.Result().StatusCode)
+	t.Run("unauthorized dynamic channel list through query params", func(t *testing.T) {
+		response := sendReqFn("GET", "/db/_function/airports_in_city?city=Chicago", "")
+		assert.Equal(t, 403, response.Result().StatusCode)
+	})
 
-	// Not allowed (dynamic channel list):
-	response = sendReqFn("GET", "/db/_function/airports_in_city?city=Chicago", "")
-	assert.Equal(t, 403, response.Result().StatusCode)
+	t.Run("unauthorized dynamic channel list through body", func(t *testing.T) {
+		response := sendReqFn("POST", "/db/_function/airports_in_city", `{"city": "Chicago"}`)
+		assert.Equal(t, 403, response.Result().StatusCode)
+	})
 
-	response = sendReqFn("POST", "/db/_function/airports_in_city", `{"city": "Chicago"}`)
-	assert.Equal(t, 403, response.Result().StatusCode)
-
-	// No such query:
-	response = sendReqFn("GET", "/db/_function/xxxx", "")
-	assert.Equal(t, 403, response.Result().StatusCode)
+	t.Run("unconfigured query", func(t *testing.T) {
+		response := sendReqFn("GET", "/db/_function/xxxx", "")
+		assert.Equal(t, 403, response.Result().StatusCode)
+	})
 }
