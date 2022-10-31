@@ -17,7 +17,6 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	//Todo: memWatermarkThresholdMB = ?? 
 	memWatermarkThresholdMB := uint64(8192)
 	db.TestBucketPoolWithIndexes(m, memWatermarkThresholdMB)
 }
