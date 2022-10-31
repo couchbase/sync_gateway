@@ -863,95 +863,95 @@ func createUserAlice(t *testing.T, rt *rest.RestTester) (string, string) {
 	return username, password
 }
 
-func TestUserFunctions(t *testing.T) {
-	kUserFunctionAuthTestConfig := functions.FunctionsConfig{
-		Definitions: functions.FunctionsDefs{
-			"square": &functions.FunctionConfig{
-				Type:  "javascript",
-				Code:  "function(context, args) {return args.numero * args.numero;}",
-				Args:  []string{"numero"},
-				Allow: &functions.Allow{Channels: []string{"wonderland"}},
-			},
-			"exceptional": &functions.FunctionConfig{
-				Type:  "javascript",
-				Code:  `function(context, args) {throw "oops";}`,
-				Allow: allowAll,
-			},
-			"call_fn": &functions.FunctionConfig{
-				Type:  "javascript",
-				Code:  `function(context, args) {return context.user.function("square", {numero: 7});}`,
-				Allow: allowAll,
-			},
-			"factorial": &functions.FunctionConfig{
-				Type: "javascript",
-				Args: []string{"n"},
-				Code: `function(context, args) {if (args.n <= 1) return 1;
-						else return args.n * context.user.function("factorial", {n: args.n-1});}`,
-				Allow: allowAll,
-			},
-			"great_and_terrible": &functions.FunctionConfig{
-				Type:  "javascript",
-				Code:  `function(context, args) {return "I am OZ the great and terrible";}`,
-				Allow: &functions.Allow{Channels: []string{"oz", "narnia"}},
-			},
-			"call_forbidden": &functions.FunctionConfig{
-				Type:  "javascript",
-				Code:  `function(context, args) {return context.user.function("great_and_terrible");}`,
-				Allow: allowAll,
-			},
-			"sudo_call_forbidden": &functions.FunctionConfig{
-				Type:  "javascript",
-				Code:  `function(context, args) {return context.admin.function("great_and_terrible");}`,
-				Allow: allowAll,
-			},
-			"admin_only": &functions.FunctionConfig{
-				Type:  "javascript",
-				Code:  `function(context, args) {return "OK";}`,
-				Allow: nil, // no 'allow' property means admin-only
-			},
-			"require_admin": &functions.FunctionConfig{
-				Type:  "javascript",
-				Code:  `function(context, args) {context.requireAdmin(); return "OK";}`,
-				Allow: allowAll,
-			},
-			"user_only": &functions.FunctionConfig{
-				Type:  "javascript",
-				Code:  `function(context, args) {if (!context.user.name) throw "No user"; return context.user.name;}`,
-				Allow: &functions.Allow{Channels: []string{"user-$${context.user.name}"}},
-			},
-			"alice_only": &functions.FunctionConfig{
-				Type:  "javascript",
-				Code:  `function(context, args) {context.requireUser("alice"); return "OK";}`,
-				Allow: allowAll,
-			},
-			"pevensies_only": &functions.FunctionConfig{
-				Type:  "javascript",
-				Code:  `function(context, args) {context.requireUser(["peter","jane","eustace","lucy"]); return "OK";}`,
-				Allow: allowAll,
-			},
-			"wonderland_only": &functions.FunctionConfig{
-				Type:  "javascript",
-				Code:  `function(context, args) {context.requireAccess("wonderland"); context.requireAccess(["wonderland", "snark"]); return "OK";}`,
-				Allow: allowAll,
-			},
-			"narnia_only": &functions.FunctionConfig{
-				Type:  "javascript",
-				Code:  `function(context, args) {context.requireAccess("narnia"); return "OK";}`,
-				Allow: allowAll,
-			},
-			"hero_only": &functions.FunctionConfig{
-				Type:  "javascript",
-				Code:  `function(context, args) {context.requireRole(["hero", "antihero"]); return "OK";}`,
-				Allow: allowAll,
-			},
-			"villain_only": &functions.FunctionConfig{
-				Type:  "javascript",
-				Code:  `function(context, args) {context.requireRole(["villain"]); return "OK";}`,
-				Allow: allowAll,
-			},
+var kUserFunctionAuthTestConfig = functions.FunctionsConfig{
+	Definitions: functions.FunctionsDefs{
+		"square": &functions.FunctionConfig{
+			Type:  "javascript",
+			Code:  "function(context, args) {return args.numero * args.numero;}",
+			Args:  []string{"numero"},
+			Allow: &functions.Allow{Channels: []string{"wonderland"}},
 		},
-	}
+		"exceptional": &functions.FunctionConfig{
+			Type:  "javascript",
+			Code:  `function(context, args) {throw "oops";}`,
+			Allow: allowAll,
+		},
+		"call_fn": &functions.FunctionConfig{
+			Type:  "javascript",
+			Code:  `function(context, args) {return context.user.function("square", {numero: 7});}`,
+			Allow: allowAll,
+		},
+		"factorial": &functions.FunctionConfig{
+			Type: "javascript",
+			Args: []string{"n"},
+			Code: `function(context, args) {if (args.n <= 1) return 1;
+						else return args.n * context.user.function("factorial", {n: args.n-1});}`,
+			Allow: allowAll,
+		},
+		"great_and_terrible": &functions.FunctionConfig{
+			Type:  "javascript",
+			Code:  `function(context, args) {return "I am OZ the great and terrible";}`,
+			Allow: &functions.Allow{Channels: []string{"oz", "narnia"}},
+		},
+		"call_forbidden": &functions.FunctionConfig{
+			Type:  "javascript",
+			Code:  `function(context, args) {return context.user.function("great_and_terrible");}`,
+			Allow: allowAll,
+		},
+		"sudo_call_forbidden": &functions.FunctionConfig{
+			Type:  "javascript",
+			Code:  `function(context, args) {return context.admin.function("great_and_terrible");}`,
+			Allow: allowAll,
+		},
+		"admin_only": &functions.FunctionConfig{
+			Type:  "javascript",
+			Code:  `function(context, args) {return "OK";}`,
+			Allow: nil, // no 'allow' property means admin-only
+		},
+		"require_admin": &functions.FunctionConfig{
+			Type:  "javascript",
+			Code:  `function(context, args) {context.requireAdmin(); return "OK";}`,
+			Allow: allowAll,
+		},
+		"user_only": &functions.FunctionConfig{
+			Type:  "javascript",
+			Code:  `function(context, args) {if (!context.user.name) throw "No user"; return context.user.name;}`,
+			Allow: &functions.Allow{Channels: []string{"user-$${context.user.name}"}},
+		},
+		"alice_only": &functions.FunctionConfig{
+			Type:  "javascript",
+			Code:  `function(context, args) {context.requireUser("alice"); return "OK";}`,
+			Allow: allowAll,
+		},
+		"pevensies_only": &functions.FunctionConfig{
+			Type:  "javascript",
+			Code:  `function(context, args) {context.requireUser(["peter","jane","eustace","lucy"]); return "OK";}`,
+			Allow: allowAll,
+		},
+		"wonderland_only": &functions.FunctionConfig{
+			Type:  "javascript",
+			Code:  `function(context, args) {context.requireAccess("wonderland"); context.requireAccess(["wonderland", "snark"]); return "OK";}`,
+			Allow: allowAll,
+		},
+		"narnia_only": &functions.FunctionConfig{
+			Type:  "javascript",
+			Code:  `function(context, args) {context.requireAccess("narnia"); return "OK";}`,
+			Allow: allowAll,
+		},
+		"hero_only": &functions.FunctionConfig{
+			Type:  "javascript",
+			Code:  `function(context, args) {context.requireRole(["hero", "antihero"]); return "OK";}`,
+			Allow: allowAll,
+		},
+		"villain_only": &functions.FunctionConfig{
+			Type:  "javascript",
+			Code:  `function(context, args) {context.requireRole(["villain"]); return "OK";}`,
+			Allow: allowAll,
+		},
+	},
+}
 
+func TestUserFunctions(t *testing.T) {
 	rt := rest.NewRestTesterForUserQueries(t, rest.DbConfig{
 		UserFunctions: &kUserFunctionAuthTestConfig,
 	})
@@ -964,7 +964,30 @@ func TestUserFunctions(t *testing.T) {
 	t.Run("AsUser", func(t *testing.T) { testUserFunctionsAsUser(t, rt) })
 }
 
-func testUserFunctionsCommon(t *testing.T, rt *rest.RestTester, sendReqFn func(string, string, string) *rest.TestResponse) {
+func TestJSFunctionAsGuest(t *testing.T) {
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{GuestEnabled: true, EnableUserQueries: true})
+	if rt == nil {
+		return
+	}
+	defer rt.Close()
+
+	// Updating kUserFunctionAuthTestConfig because $ and $$ in user_only functionConfig
+	kUserFunctionAuthTestConfig.Definitions["user_only"] = &functions.FunctionConfig{
+		Type:  "javascript",
+		Code:  `function(context, args) {if (!context.user.name) throw "No user"; return context.user.name;}`,
+		Allow: &functions.Allow{Channels: []string{"user-${context.user.name}"}},
+	}
+
+	rt.DatabaseConfig = &rest.DatabaseConfig{
+		DbConfig: rest.DbConfig{
+			UserFunctions: &kUserFunctionAuthTestConfig,
+		},
+	}
+
+	testUserFunctionsCommon(t, rt, rt.SendRequest, true)
+}
+
+func testUserFunctionsCommon(t *testing.T, rt *rest.RestTester, sendReqFn func(string, string, string) *rest.TestResponse, isGuest bool) {
 	t.Run("commons/passing a param through body", func(t *testing.T) {
 		response := sendReqFn("POST", "/db/_function/square", `{"numero": 42}`)
 		assert.Equal(t, 200, response.Result().StatusCode)
@@ -991,14 +1014,22 @@ func testUserFunctionsCommon(t *testing.T, rt *rest.RestTester, sendReqFn func(s
 
 	t.Run("commons/`requireChannel`", func(t *testing.T) {
 		response := sendReqFn("GET", "/db/_function/wonderland_only", "")
-		assert.Equal(t, 200, response.Result().StatusCode)
-		assert.EqualValues(t, "\"OK\"", string(response.BodyBytes()))
+		if isGuest {
+			assert.Equal(t, 401, response.Result().StatusCode)
+		} else {
+			assert.Equal(t, 200, response.Result().StatusCode)
+			assert.EqualValues(t, "\"OK\"", string(response.BodyBytes()))
+		}
 	})
 
 	t.Run("commons/`requireRole`", func(t *testing.T) {
 		response := sendReqFn("GET", "/db/_function/hero_only", "")
-		assert.Equal(t, 200, response.Result().StatusCode)
-		assert.EqualValues(t, "\"OK\"", string(response.BodyBytes()))
+		if isGuest {
+			assert.Equal(t, 401, response.Result().StatusCode)
+		} else {
+			assert.Equal(t, 200, response.Result().StatusCode)
+			assert.EqualValues(t, "\"OK\"", string(response.BodyBytes()))
+		}
 	})
 
 	t.Run("commons/equals max call depth", func(t *testing.T) {
@@ -1017,7 +1048,7 @@ func testUserFunctionsCommon(t *testing.T, rt *rest.RestTester, sendReqFn func(s
 }
 
 func testUserFunctionsAsAdmin(t *testing.T, rt *rest.RestTester) {
-	testUserFunctionsCommon(t, rt, rt.SendAdminRequest)
+	testUserFunctionsCommon(t, rt, rt.SendAdminRequest, false)
 
 	// positive cases :
 	t.Run("Admin-only", func(t *testing.T) {
@@ -1068,7 +1099,7 @@ func testUserFunctionsAsUser(t *testing.T, rt *rest.RestTester) {
 	sendReqFn := func(method, resource, body string) *rest.TestResponse {
 		return rt.SendUserRequestWithHeaders(method, resource, body, nil, username, password)
 	}
-	testUserFunctionsCommon(t, rt, sendReqFn)
+	testUserFunctionsCommon(t, rt, sendReqFn, false)
 
 	// positive cases:
 	t.Run("user only (`context.user.name`)", func(t *testing.T) {
@@ -1125,49 +1156,50 @@ func testUserFunctionsAsUser(t *testing.T, rt *rest.RestTester) {
 	})
 }
 
-func TestUserN1QLQueries(t *testing.T) {
-	var kUserN1QLFunctionsAuthTestConfig = functions.FunctionsConfig{
-		Definitions: functions.FunctionsDefs{
-			"airports_in_city": &functions.FunctionConfig{
-				Type:  "query",
-				Code:  `SELECT $args.city AS city`,
-				Args:  []string{"city"},
-				Allow: &functions.Allow{Channels: []string{"city-${args.city}", "allcities"}},
-			},
-			"square": &functions.FunctionConfig{
-				Type:  "query",
-				Code:  "SELECT $args.numero * $args.numero AS square",
-				Args:  []string{"numero"},
-				Allow: &functions.Allow{Channels: []string{"wonderland"}},
-			},
-			"user": &functions.FunctionConfig{
-				Type:  "query",
-				Code:  "SELECT $user AS `user`", // use backticks for n1ql reserved keywords
-				Allow: allowAll,
-			},
-			"user_parts": &functions.FunctionConfig{
-				Type:  "query",
-				Code:  "SELECT $user.name AS name, $user.email AS email",
-				Allow: &functions.Allow{Channels: []string{"user-${context.user.name}"}},
-			},
-			"admin_only": &functions.FunctionConfig{
-				Type:  "query",
-				Code:  `SELECT "ok" AS status`,
-				Allow: nil, // no 'allow' property means admin-only
-			},
-			"inject": &functions.FunctionConfig{
-				Type:  "query",
-				Code:  `SELECT $args.foo`,
-				Args:  []string{"foo"},
-				Allow: &functions.Allow{Channels: []string{"*"}},
-			},
-			"syntax_error": &functions.FunctionConfig{
-				Type:  "query",
-				Code:  "SELECT OOK? FR0M OOK!",
-				Allow: allowAll,
-			},
+var kUserN1QLFunctionsAuthTestConfig = functions.FunctionsConfig{
+	Definitions: functions.FunctionsDefs{
+		"airports_in_city": &functions.FunctionConfig{
+			Type:  "query",
+			Code:  `SELECT $args.city AS city`,
+			Args:  []string{"city"},
+			Allow: &functions.Allow{Channels: []string{"city-${args.city}", "allcities"}},
 		},
-	}
+		"square": &functions.FunctionConfig{
+			Type:  "query",
+			Code:  "SELECT $args.numero * $args.numero AS square",
+			Args:  []string{"numero"},
+			Allow: &functions.Allow{Channels: []string{"wonderland"}},
+		},
+		"user": &functions.FunctionConfig{
+			Type:  "query",
+			Code:  "SELECT $user AS `user`", // use backticks for n1ql reserved keywords
+			Allow: allowAll,
+		},
+		"user_parts": &functions.FunctionConfig{
+			Type:  "query",
+			Code:  "SELECT $user.name AS name, $user.email AS email",
+			Allow: &functions.Allow{Channels: []string{"user-${context.user.name}"}},
+		},
+		"admin_only": &functions.FunctionConfig{
+			Type:  "query",
+			Code:  `SELECT "ok" AS status`,
+			Allow: nil, // no 'allow' property means admin-only
+		},
+		"inject": &functions.FunctionConfig{
+			Type:  "query",
+			Code:  `SELECT $args.foo`,
+			Args:  []string{"foo"},
+			Allow: &functions.Allow{Channels: []string{"*"}},
+		},
+		"syntax_error": &functions.FunctionConfig{
+			Type:  "query",
+			Code:  "SELECT OOK? FR0M OOK!",
+			Allow: allowAll,
+		},
+	},
+}
+
+func TestUserN1QLQueries(t *testing.T) {
 
 	rt := rest.NewRestTesterForUserQueries(t, rest.DbConfig{})
 	if rt == nil {
@@ -1183,6 +1215,22 @@ func TestUserN1QLQueries(t *testing.T) {
 
 	t.Run("AsAdmin", func(t *testing.T) { testUserQueriesAsAdmin(t, rt) })
 	t.Run("AsUser", func(t *testing.T) { testUserQueriesAsUser(t, rt) })
+}
+
+func TestN1QLFunctionAsGuest(t *testing.T) {
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{GuestEnabled: true, EnableUserQueries: true})
+	if rt == nil {
+		return
+	}
+	defer rt.Close()
+
+	rt.DatabaseConfig = &rest.DatabaseConfig{
+		DbConfig: rest.DbConfig{
+			UserFunctions: &kUserN1QLFunctionsAuthTestConfig,
+		},
+	}
+
+	testUserQueriesCommon(t, rt, rt.SendRequest)
 }
 
 func testUserQueriesCommon(t *testing.T, rt *rest.RestTester, sendReqFn func(string, string, string) *rest.TestResponse) {
