@@ -628,6 +628,24 @@ func TestValidGraphQLConfigurationValues(t *testing.T) {
 		err = os.Remove("schema.graphql")
 		assert.NoError(t, err)
 	})
+
+	t.Run("Check max_code_size allowed", func(t *testing.T) {
+		squareCode := "function(context,args){return args.n * args.n;}"
+		response := rt.SendAdminRequest("PUT", "/db/_config/graphql", fmt.Sprintf(`{
+			"schema": "type Query {square(n: Int!) : Int!}",
+			"resolvers": {
+				"Query": {
+					"square": {
+						"type": "javascript",
+						"code": "function(context,args){return args.n * args.n;}"
+					}
+				}
+			},
+			"max_code_size" : %d
+		}`, len(squareCode)))
+
+		assert.Equal(t, 200, response.Result().StatusCode)
+	})
 }
 
 // This function checks for failure when invalid GraphQL configuration
@@ -781,6 +799,33 @@ func TestInvalidGraphQLConfigurationValues(t *testing.T) {
 
 		err = os.Remove("schema.graphql")
 		assert.NoError(t, err)
+	})
+	t.Run("Check max_code_size allowed", func(t *testing.T) {
+		response := rt.SendAdminRequest("PUT", "/db/_config/graphql", `{
+			"schema": "type Query {sum(n: Int!) : Int!  square(n: Int!) : Int!}",
+			"resolvers": {
+				"Query": {
+					"sum": {
+						"type": "javascript",
+						"code": "function(context,args){return args.n + args.n;}"
+					},
+					"square": {
+						"type": "javascript",
+						"code": "function(context,args){return args.n * args.n;}"
+
+					}
+				}
+			},
+			"max_code_size" : 3
+		}`)
+
+		var responseMap map[string]interface{}
+		json.Unmarshal([]byte(string(response.BodyBytes())), &responseMap)
+
+		assert.Equal(t, 400, response.Result().StatusCode)
+		assert.Contains(t, responseMap["reason"], "resolver sum code too large")
+		assert.Contains(t, responseMap["error"], "Bad Request")
+
 	})
 }
 
