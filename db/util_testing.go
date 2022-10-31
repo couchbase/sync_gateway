@@ -271,30 +271,28 @@ var viewsAndGSIBucketInit base.TBPBucketInitFunc = func(ctx context.Context, b b
 	}
 	tbp.Logf(ctx, "Starting bucket init function")
 
-	// Exit early if we're not using GSI.
 	n1qlStore, ok := base.AsN1QLStore(b)
 	if !ok {
 		return fmt.Errorf("bucket %T was not a N1QL store", b)
 	}
 
-	if !base.TestsDisableGSI() {
-		if empty, err := isIndexEmpty(n1qlStore, base.TestUseXattrs()); empty && err == nil {
-			tbp.Logf(ctx, "indexes already created, and already empty - skipping")
-			return nil
-		} else {
-			tbp.Logf(ctx, "indexes not empty (or doesn't exist) - %v %v", empty, err)
-		}
-
-		tbp.Logf(ctx, "dropping existing bucket indexes")
-		if err := base.DropAllIndexes(ctx, n1qlStore); err != nil {
-			tbp.Logf(ctx, "Failed to drop bucket indexes: %v", err)
-			return err
-		}
-		tbp.Logf(ctx, "creating SG bucket indexes")
-		if err := InitializeIndexes(n1qlStore, base.TestUseXattrs(), 0, false); err != nil {
-			return err
-		}
+	if empty, err := isIndexEmpty(n1qlStore, base.TestUseXattrs()); empty && err == nil {
+		tbp.Logf(ctx, "indexes already created, and already empty - skipping")
+		return nil
+	} else {
+		tbp.Logf(ctx, "indexes not empty (or doesn't exist) - %v %v", empty, err)
 	}
+
+	tbp.Logf(ctx, "dropping existing bucket indexes")
+	if err := base.DropAllIndexes(ctx, n1qlStore); err != nil {
+		tbp.Logf(ctx, "Failed to drop bucket indexes: %v", err)
+		return err
+	}
+	tbp.Logf(ctx, "creating SG bucket indexes")
+	if err := InitializeIndexes(n1qlStore, base.TestUseXattrs(), 0, false); err != nil {
+		return err
+	}
+
 	err := n1qlStore.CreatePrimaryIndex(base.PrimaryIndexName, nil)
 	if err != nil {
 		return err
