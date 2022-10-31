@@ -476,3 +476,21 @@ func TestGraphQLMaxResolverCount(t *testing.T) {
 	_, err := CompileGraphQL(&config)
 	assert.ErrorContains(t, err, "too many GraphQL resolvers (> 1)")
 }
+
+func TestGraphQLMaxCodeSize(t *testing.T) {
+	var schema = `type Query {sum(n: Int!) : Int!}`
+	var config = GraphQLConfig{
+		MaxCodeSize: base.IntPtr(2),
+		Schema:      &schema,
+		Resolvers: map[string]GraphQLResolverConfig{
+			"Query": {
+				"sum": {
+					Type: "javascript",
+					Code: `function(parent, args, context, info) {return args.n + args.n;}`,
+				},
+			},
+		},
+	}
+	_, err := CompileGraphQL(&config)
+	assert.ErrorContains(t, err, "resolver sum code too large (> 2 bytes)")
+}

@@ -150,6 +150,11 @@ ResolverLoop:
 				multiError = multiError.Append(err)
 				break ResolverLoop // stop
 			}
+			if config.MaxCodeSize != nil && len(fnConfig.Code) > *config.MaxCodeSize {
+				err = fmt.Errorf("resolver %s code too large (> %d bytes)", fieldName, *config.MaxCodeSize)
+				multiError = multiError.Append(err)
+				break ResolverLoop // stop
+			}
 		}
 		if typeNameResolver == nil {
 			resolvers[typeName] = &gqltools.ObjectResolver{
