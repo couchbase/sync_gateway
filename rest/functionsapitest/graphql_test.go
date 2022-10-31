@@ -11,7 +11,6 @@ package functionsapitest
 import (
 	"encoding/json"
 	"github.com/graphql-go/graphql"
-	"net/http"
 	"os"
 	"strings"
 	"testing"
@@ -511,25 +510,25 @@ func TestGraphQLQueryCustomUser(t *testing.T) {
 	t.Run("User should receive error if the Function in Resolver does not belong to user channel", func(t *testing.T) {
 		graphQLRequestBodyWithInvalidResolver := `{"query": "query{ taskClone { id } }"}`
 		response := rt.SendAdminRequest("POST", "/db/_graphql", graphQLRequestBodyWithInvalidResolver)
-		assert.Equal(t, http.StatusOK, response.Result().StatusCode)
+		assert.Equal(t, 200, response.Result().StatusCode)
 		testErrorMessage(t, response, "Cannot query field \"taskClone\"")
 
 		//Create a User With Specific Channel
 		userResponse := rt.SendAdminRequest("POST", "/db/_user/", `{"name":"dummy","email":"dummy@couchbase.com", "password":"letmein", "admin_channels":["!"]}`)
-		assert.Equal(t, http.StatusCreated, userResponse.Result().StatusCode)
+		assert.Equal(t, 201, userResponse.Result().StatusCode)
 
 		graphQLRequestBody := `{"query": "query{ tasksClone { id } }"}`
 		response = rt.SendUserRequestWithHeaders("POST", "/db/_graphql", graphQLRequestBody, nil, "dummy", "letmein")
-		assert.Equal(t, http.StatusOK, response.Result().StatusCode)
+		assert.Equal(t, 200, response.Result().StatusCode)
 		testErrorMessage(t, response, "403")
 
 		//Update The Dummy User
 		userResponse = rt.SendAdminRequest("PUT", "/db/_user/dummy", `{"name":"dummy","email":"dummy@couchbase.com", "password":"letmein", "admin_channels":["!","wonderland"]}`)
-		assert.Equal(t, http.StatusOK, userResponse.Result().StatusCode)
+		assert.Equal(t, 200, userResponse.Result().StatusCode)
 
 		// Now the function allCLone will be accessible
 		response = rt.SendUserRequestWithHeaders("POST", "/db/_graphql", graphQLRequestBody, nil, "dummy", "letmein")
-		assert.Equal(t, http.StatusOK, userResponse.Result().StatusCode)
+		assert.Equal(t, 200, userResponse.Result().StatusCode)
 		assert.Equal(t, `{"data":{"tasksClone":[{"id":"a"},{"id":"b"},{"id":"m"}]}}`, response.Body.String())
 	})
 }
