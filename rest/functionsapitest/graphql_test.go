@@ -10,7 +10,6 @@ package functionsapitest
 
 import (
 	"encoding/json"
-	"fmt"
 	"os"
 	"testing"
 
@@ -560,7 +559,6 @@ func TestGraphQLQueriesGuest(t *testing.T) {
 	t.Run("AsGuest - secretNotes", func(t *testing.T) {
 		response := rt.SendRequest("POST", "/db/_graphql", `{"query": "query($id:ID!){ task(id:$id) { secretNotes } }" , "variables": {"id": "a"}}`)
 		assert.Equal(t, 200, response.Result().StatusCode)
-		fmt.Println(string(response.BodyBytes()))
 		assert.Contains(t, string(response.BodyBytes()), "401")
 	})
 }
