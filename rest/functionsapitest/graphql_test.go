@@ -10,7 +10,10 @@ package functionsapitest
 
 import (
 	"encoding/json"
+	"github.com/graphql-go/graphql"
+	"net/http"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -42,6 +45,7 @@ var kTestGraphQLSchema = `
             infinite: Int!
             task(id: ID!): Task
             tasks: [Task!]!
+			tasksClone: [Task!]!
             toDo: [Task!]!
         }
         type Mutation {
@@ -85,6 +89,17 @@ var kTestGraphQLConfig = functions.GraphQLConfig{
                             if (!context.user) throw "Missing context.user";
                             if (!context.admin) throw "Missing context.admin";
                             return context.user.function("all");}`,
+				Allow: allowAll,
+			},
+			"tasksClone": {
+				Type: "javascript",
+				Code: `function(parent, args, context, info) {
+						if (Object.keys(parent).length != 0) throw "Unexpected parent";
+						if (Object.keys(args).length != 0) throw "Unexpected args";
+						if (Object.keys(info) != "selectedFieldNames") throw "Unexpected info";
+						if (!context.user) throw "Missing context.user";
+						if (!context.admin) throw "Missing context.admin";
+						return context.user.function("allClone");}`,
 				Allow: allowAll,
 			},
 			"toDo": {
@@ -167,6 +182,15 @@ var kTestGraphQLUserFunctionsConfig = functions.FunctionsConfig{
                             return undefined;}`,
 			Args:  []string{"id"},
 			Allow: &functions.Allow{Channels: []string{"*"}},
+		},
+		"allClone": {
+			Type: "javascript",
+			Code: `function(context, args) {
+						return [
+						{id: "a", "title": "Applesauce", done:true, tags:["fruit","soft"]},
+						{id: "b", "title": "Beer", description: "Bass ale please"},
+						{id: "m", "title": "Mangoes"} ];}`,
+			Allow: &functions.Allow{Channels: []string{"wonderland"}},
 		},
 		"infinite": {
 			Type: "javascript",
@@ -383,6 +407,20 @@ func TestGraphQLQueryAdminOnly(t *testing.T) {
 	})
 }
 
+func testErrorMessage(t *testing.T, response *rest.TestResponse, expectedErrorText string) {
+	graphQLResponse := graphql.Result{}
+	err := json.Unmarshal(response.BodyBytes(), &graphQLResponse)
+	assert.NoError(t, err)
+	assert.NotZero(t, len(graphQLResponse.Errors), "Expected GraphQL error but got none; data is %s", graphQLResponse.Data)
+	for _, err = range graphQLResponse.Errors {
+		if strings.Contains(err.Error(), expectedErrorText) {
+			return
+		}
+	}
+	t.Logf("GraphQL error did not contain expected string %q: actually %#v", expectedErrorText, graphQLResponse.Errors)
+	t.Fail()
+}
+
 // Test for GraphQL Query: Custom User
 func TestGraphQLQueryCustomUser(t *testing.T) {
 	rt := rest.NewRestTesterForUserQueries(t, rest.DbConfig{
@@ -469,6 +507,31 @@ func TestGraphQLQueryCustomUser(t *testing.T) {
 		assert.Equal(t, 200, response.Result().StatusCode)
 	})
 
+	//Check If User is not able to call Resolver within which Function  is not accessible to user
+	t.Run("User should receive error if the Function in Resolver does not belong to user channel", func(t *testing.T) {
+		graphQLRequestBodyWithInvalidResolver := `{"query": "query{ taskClone { id } }"}`
+		response := rt.SendAdminRequest("POST", "/db/_graphql", graphQLRequestBodyWithInvalidResolver)
+		assert.Equal(t, http.StatusOK, response.Result().StatusCode)
+		testErrorMessage(t, response, "Cannot query field \"taskClone\"")
+
+		//Create a User With Specific Channel
+		userResponse := rt.SendAdminRequest("POST", "/db/_user/", `{"name":"dummy","email":"dummy@couchbase.com", "password":"letmein", "admin_channels":["!"]}`)
+		assert.Equal(t, http.StatusCreated, userResponse.Result().StatusCode)
+
+		graphQLRequestBody := `{"query": "query{ tasksClone { id } }"}`
+		response = rt.SendUserRequestWithHeaders("POST", "/db/_graphql", graphQLRequestBody, nil, "dummy", "letmein")
+		assert.Equal(t, http.StatusOK, response.Result().StatusCode)
+		testErrorMessage(t, response, "403")
+
+		//Update The Dummy User
+		userResponse = rt.SendAdminRequest("PUT", "/db/_user/dummy", `{"name":"dummy","email":"dummy@couchbase.com", "password":"letmein", "admin_channels":["!","wonderland"]}`)
+		assert.Equal(t, http.StatusOK, userResponse.Result().StatusCode)
+
+		// Now the function allCLone will be accessible
+		response = rt.SendUserRequestWithHeaders("POST", "/db/_graphql", graphQLRequestBody, nil, "dummy", "letmein")
+		assert.Equal(t, http.StatusOK, userResponse.Result().StatusCode)
+		assert.Equal(t, `{"data":{"tasksClone":[{"id":"a"},{"id":"b"},{"id":"m"}]}}`, response.Body.String())
+	})
 }
 
 // Test for GraphQL Valid Configuration Schema
