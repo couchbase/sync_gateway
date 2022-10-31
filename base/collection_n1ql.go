@@ -143,6 +143,7 @@ func (c *Collection) WaitForIndexOnline(indexNames []string, watchPrimary bool) 
 		waitChan = true
 		wg.Done()
 	}()
+	// create a separate goroutine to log periodically to console while waiting for watch indexes to complete
 	go func() {
 		for {
 			if !waitChan {
