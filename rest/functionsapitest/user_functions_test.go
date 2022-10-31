@@ -1218,6 +1218,10 @@ func TestUserN1QLQueries(t *testing.T) {
 }
 
 func TestN1QLFunctionAsGuest(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test requires persistent configs")
+	}
+
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{GuestEnabled: true, EnableUserQueries: true})
 	if rt == nil {
 		return
