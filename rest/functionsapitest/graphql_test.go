@@ -10,6 +10,7 @@ package functionsapitest
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"testing"
 
@@ -492,10 +493,11 @@ func TestGraphQLMutationsGuest(t *testing.T) {
 		return
 	}
 	defer rt.Close()
-	rt.DatabaseConfig = &rest.DatabaseConfig{DbConfig: rest.DbConfig{
-		GraphQL:       &kTestGraphQLConfig,
-		UserFunctions: &kTestGraphQLUserFunctionsConfig,
-	},
+	rt.DatabaseConfig = &rest.DatabaseConfig{
+		DbConfig: rest.DbConfig{
+			GraphQL:       &kTestGraphQLConfig,
+			UserFunctions: &kTestGraphQLUserFunctionsConfig,
+		},
 	}
 
 	t.Run("AsGuest - Add Tag", func(t *testing.T) {
@@ -519,10 +521,11 @@ func TestGraphQLQueriesGuest(t *testing.T) {
 		return
 	}
 	defer rt.Close()
-	rt.DatabaseConfig = &rest.DatabaseConfig{DbConfig: rest.DbConfig{
-		GraphQL:       &kTestGraphQLConfig,
-		UserFunctions: &kTestGraphQLUserFunctionsConfig,
-	},
+	rt.DatabaseConfig = &rest.DatabaseConfig{
+		DbConfig: rest.DbConfig{
+			GraphQL:       &kTestGraphQLConfig,
+			UserFunctions: &kTestGraphQLUserFunctionsConfig,
+		},
 	}
 
 	t.Run("AsGuest - square", func(t *testing.T) {
@@ -557,6 +560,7 @@ func TestGraphQLQueriesGuest(t *testing.T) {
 	t.Run("AsGuest - secretNotes", func(t *testing.T) {
 		response := rt.SendRequest("POST", "/db/_graphql", `{"query": "query($id:ID!){ task(id:$id) { secretNotes } }" , "variables": {"id": "a"}}`)
 		assert.Equal(t, 200, response.Result().StatusCode)
-		assert.Contains(t, string(response.BodyBytes()), "login required: you are not allowed to call GraphQL resolver")
+		fmt.Println(string(response.BodyBytes()))
+		assert.Contains(t, string(response.BodyBytes()), "401")
 	})
 }
