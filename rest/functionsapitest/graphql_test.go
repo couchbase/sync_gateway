@@ -661,7 +661,8 @@ func TestInvalidGraphQLConfigurationValues(t *testing.T) {
 		}`)
 
 		var responseMap map[string]interface{}
-		json.Unmarshal([]byte(string(response.BodyBytes())), &responseMap)
+		err := json.Unmarshal([]byte(string(response.BodyBytes())), &responseMap)
+		assert.NoError(t, err)
 
 		assert.Equal(t, 400, response.Result().StatusCode)
 		assert.Contains(t, responseMap["reason"], "GraphQL schema too large")
@@ -689,7 +690,8 @@ func TestInvalidGraphQLConfigurationValues(t *testing.T) {
 		}`)
 
 		var responseMap map[string]interface{}
-		json.Unmarshal([]byte(string(response.BodyBytes())), &responseMap)
+		err := json.Unmarshal([]byte(string(response.BodyBytes())), &responseMap)
+		assert.NoError(t, err)
 
 		assert.Equal(t, 400, response.Result().StatusCode)
 		assert.Contains(t, responseMap["reason"], "too many GraphQL resolvers")
@@ -718,7 +720,8 @@ func TestInvalidGraphQLConfigurationValues(t *testing.T) {
 		response = rt.SendAdminRequest("POST", "/db/_graphql", `{"query": "query($numberToBeSquared:Int!){ square(n:$numberToBeSquared) }", "variables": {"numberToBeSquared": 4}}`)
 
 		var responseMap map[string]interface{}
-		json.Unmarshal([]byte(string(response.BodyBytes())), &responseMap)
+		err := json.Unmarshal([]byte(string(response.BodyBytes())), &responseMap)
+		assert.NoError(t, err)
 
 		assert.Equal(t, 413, response.Result().StatusCode)
 		assert.Contains(t, responseMap["reason"], "Arguments too large")
@@ -742,7 +745,8 @@ func TestInvalidGraphQLConfigurationValues(t *testing.T) {
 		}`)
 
 		var responseMap map[string]interface{}
-		json.Unmarshal([]byte(string(response.BodyBytes())), &responseMap)
+		err := json.Unmarshal([]byte(string(response.BodyBytes())), &responseMap)
+		assert.NoError(t, err)
 
 		assert.Equal(t, 400, response.Result().StatusCode)
 		assert.Contains(t, responseMap["reason"], "GraphQL config: only one of `schema` and `schemaFile` may be used")
@@ -767,7 +771,8 @@ func TestInvalidGraphQLConfigurationValues(t *testing.T) {
 			}
 		}`)
 		var responseMap map[string]interface{}
-		json.Unmarshal([]byte(string(response.BodyBytes())), &responseMap)
+		err = json.Unmarshal([]byte(string(response.BodyBytes())), &responseMap)
+		assert.NoError(t, err)
 
 		assert.Equal(t, 400, response.Result().StatusCode)
 		assert.Contains(t, responseMap["reason"], "Syntax Error GraphQL")
