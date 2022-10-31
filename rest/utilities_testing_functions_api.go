@@ -15,6 +15,17 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func GetBasicDbCfg(tb *base.TestBucket) DbConfig {
+	return DbConfig{
+		BucketConfig: BucketConfig{
+			Bucket: base.StringPtr(tb.GetName()),
+		},
+		NumIndexReplicas: base.UintPtr(0),
+		UseViews:         base.BoolPtr(base.TestsDisableGSI()),
+		EnableXattrs:     base.BoolPtr(base.TestUseXattrs()),
+	}
+}
+
 // Creates a new RestTester using persistent config, and a database "db".
 // Only the user-query-related fields are copied from `queryConfig`; the rest are ignored.
 func NewRestTesterForUserQueries(t *testing.T, queryConfig DbConfig) *RestTester {
@@ -30,14 +41,7 @@ func NewRestTesterForUserQueries(t *testing.T, queryConfig DbConfig) *RestTester
 	})
 
 	_ = rt.Bucket() // initializes the bucket as a side effect
-	dbConfig := DbConfig{
-		BucketConfig: BucketConfig{
-			Bucket: base.StringPtr(rt.TestBucket.GetName()),
-		},
-		NumIndexReplicas: base.UintPtr(0),
-		UseViews:         base.BoolPtr(base.TestsDisableGSI()),
-		EnableXattrs:     base.BoolPtr(base.TestUseXattrs()),
-	}
+	dbConfig := GetBasicDbCfg(rt.TestBucket)
 
 	dbConfig.UserFunctions = queryConfig.UserFunctions
 	dbConfig.GraphQL = queryConfig.GraphQL
