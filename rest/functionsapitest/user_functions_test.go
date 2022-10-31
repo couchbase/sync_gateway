@@ -1148,3 +1148,113 @@ func testUserQueriesAsUser(t *testing.T, rt *rest.RestTester) {
 		assert.Equal(t, 403, response.Result().StatusCode)
 	})
 }
+
+var kUserMutabilityFunctionsTestConfig = &functions.FunctionsConfig{
+	Definitions: functions.FunctionsDefs{
+		"putDocMutabilityFalse": {
+			Type:  "javascript",
+			Code:  "function(context,args) { return context.user.defaultCollection.save(args.doc, args.docID); }",
+			Args:  []string{"doc", "docID"},
+			Allow: &functions.Allow{Channels: []string{"*"}},
+		},
+		"putDocMutabilityTrue": {
+			Type:     "javascript",
+			Code:     "function(context,args) { return context.user.defaultCollection.save(args.doc, args.docID); }",
+			Args:     []string{"doc", "docID"},
+			Allow:    &functions.Allow{Channels: []string{"*"}},
+			Mutating: true,
+		},
+		"callerMutabilityFalse": {
+			Type:     "javascript",
+			Code:     "function(context,args) { var funcName = args.funcName; delete args.funcName; return context.user.function(funcName, args);}",
+			Args:     []string{"doc", "docID", "funcName"},
+			Allow:    &functions.Allow{Channels: []string{"*"}},
+			Mutating: false,
+		},
+		"callerMutabilityTrue": {
+			Type:     "javascript",
+			Code:     "function(context,args) { var funcName = args.funcName; delete args.funcName; return context.user.function(funcName, args);}",
+			Args:     []string{"doc", "docID", "funcName"},
+			Allow:    &functions.Allow{Channels: []string{"*"}},
+			Mutating: true,
+		},
+		//using context.admin priviledge overides its own mutatibility flag, it acts as though the REST API were called by an administrator.
+		"callerOverride": {
+			Type:     "javascript",
+			Code:     "function(context,args) { var funcName = args.funcName; delete args.funcName; return context.admin.function(funcName, args);}",
+			Args:     []string{"doc", "docID", "funcName"},
+			Allow:    &functions.Allow{Channels: []string{"*"}},
+			Mutating: false,
+		},
+	},
+}
+
+func TestFunctionMutability(t *testing.T) {
+	rt := rest.NewRestTesterForUserQueries(t, rest.DbConfig{})
+	if rt == nil {
+		return
+	}
+	defer rt.Close()
+
+	request, err := json.Marshal(kUserMutabilityFunctionsTestConfig)
+	assert.NoError(t, err)
+
+	var body string = `{
+		"doc": {"key": 123},
+		"docID": "Test123",
+		"funcName": "%s"
+	}`
+	var putFuncName string
+	var callerFuncName string
+
+	response := rt.SendAdminRequest("PUT", "/db/_config/functions", string(request))
+	assert.Equal(t, 200, response.Result().StatusCode)
+
+	//Negative Cases
+	t.Run("Func with mutating True calls another function with a mutating value of False", func(t *testing.T) {
+		putFuncName = "putDocMutabilityFalse"
+		callerFuncName = "callerMutabilityTrue"
+		response := rt.SendAdminRequest("POST", fmt.Sprintf("/db/_function/%s", callerFuncName), fmt.Sprintf(body, putFuncName))
+		assert.Equal(t, http.StatusForbidden, response.Result().StatusCode)
+	})
+
+	t.Run("Func with mutating False calls another function with a mutating value of True", func(t *testing.T) {
+		putFuncName = "putDocMutabilityTrue"
+		callerFuncName = "callerMutabilityFalse"
+		response := rt.SendAdminRequest("POST", fmt.Sprintf("/db/_function/%s", callerFuncName), fmt.Sprintf(body, putFuncName))
+		assert.Equal(t, http.StatusForbidden, response.Result().StatusCode)
+	})
+
+	t.Run("Func with mutating False calls another function with a mutating value of False", func(t *testing.T) {
+		putFuncName = "putDocMutabilityFalse"
+		callerFuncName = "callerMutabilityFalse"
+		response := rt.SendAdminRequest("POST", fmt.Sprintf("/db/_function/%s", callerFuncName), fmt.Sprintf(body, putFuncName))
+		assert.Equal(t, http.StatusForbidden, response.Result().StatusCode)
+	})
+
+	//Mutability of the function being called is false. Will fail as once you’ve lost the ability to mutate, you can’t get it back.
+	t.Run("context.admin to call a Non-mutating function", func(t *testing.T) {
+		putFuncName = "putDocMutabilityFalse"
+		callerFuncName = "callerOverride"
+		response := rt.SendAdminRequest("POST", fmt.Sprintf("/db/_function/%s", callerFuncName), fmt.Sprintf(body, putFuncName))
+		assert.Equal(t, http.StatusForbidden, response.Result().StatusCode)
+	})
+
+	//Positive Cases
+	t.Run("Func with mutating True calls another function with a mutating value of True", func(t *testing.T) {
+		putFuncName = "putDocMutabilityTrue"
+		callerFuncName = "callerMutabilityTrue"
+		response := rt.SendAdminRequest("POST", fmt.Sprintf("/db/_function/%s", callerFuncName), fmt.Sprintf(body, putFuncName))
+		assert.Equal(t, http.StatusOK, response.Result().StatusCode)
+		assert.EqualValues(t, "\"Test123\"", string(response.BodyBytes()))
+	})
+
+	//using context.admin priviledge overides its own mutatibility flag, it acts as though the REST API were called by an administrator.
+	t.Run("context.admin to call a mutating function", func(t *testing.T) {
+		putFuncName = "putDocMutabilityTrue"
+		callerFuncName = "callerOverride"
+		response := rt.SendAdminRequest("POST", fmt.Sprintf("/db/_function/%s", callerFuncName), fmt.Sprintf(body, putFuncName))
+		assert.Equal(t, http.StatusOK, response.Result().StatusCode)
+		assert.EqualValues(t, "\"Test123\"", string(response.BodyBytes()))
+	})
+}
