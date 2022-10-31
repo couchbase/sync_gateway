@@ -43,7 +43,7 @@ type N1QLStore interface {
 	ExplainQuery(statement string, params map[string]interface{}) (plan map[string]interface{}, err error)
 	GetIndexMeta(indexName string) (exists bool, meta *IndexMeta, err error)
 	Query(statement string, params map[string]interface{}, consistency ConsistencyMode, adhoc bool) (results sgbucket.QueryResultIterator, err error)
-	WaitForIndexOnline(indexName string) error
+	//WaitForIndexOnline(indexName string) error
 	IsErrNoResults(error) bool
 	EscapedKeyspace() string
 	IndexMetaBucketID() string
@@ -241,7 +241,7 @@ func buildIndexes(s N1QLStore, indexNames []string) error {
 		InfofCtx(context.TODO(), KeyQuery, "Indexer error creating index - waiting for background build.  Error:%v", err)
 		// Wait for bucket to be created in background before returning
 		for _, indexName := range indexNames {
-			waitErr := s.WaitForIndexOnline(indexName)
+			waitErr := WaitForIndexOnline(s, indexName)
 			if waitErr != nil {
 				return waitErr
 			}

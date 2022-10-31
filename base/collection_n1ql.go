@@ -15,6 +15,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/couchbase/gocb/v2"
@@ -23,6 +24,8 @@ import (
 )
 
 var _ N1QLStore = &Collection{}
+
+const waitTime = 100 * time.Second
 
 // IsDefaultScopeCollection returns true if the given Collection is on the _default._default scope and collection.
 func (c *Collection) IsDefaultScopeCollection() bool {
@@ -119,8 +122,45 @@ func (c *Collection) CreatePrimaryIndex(indexName string, options *N1qlIndexOpti
 	return CreatePrimaryIndex(c, indexName, options)
 }
 
-func (c *Collection) WaitForIndexOnline(indexName string) error {
-	return WaitForIndexOnline(c, indexName)
+// WaitForIndexOnline takes set of indexes and watches them till they're online.
+func (c *Collection) WaitForIndexOnline(indexNames []string, watchPrimary bool) error {
+	waitChan := false
+	var waitErr error
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+	cluster := c.cluster
+	mgr := cluster.QueryIndexes()
+
+	watchOption := gocb.WatchQueryIndexOptions{
+		WatchPrimary:   watchPrimary,
+		RetryStrategy:  gocb.NewBestEffortRetryStrategy(nil),
+		ScopeName:      c.ScopeName(),
+		CollectionName: c.Name(),
+	}
+
+	go func() {
+		waitErr = mgr.WatchIndexes(c.BucketName(), indexNames, waitTime, &watchOption)
+		waitChan = true
+		g, _ := mgr.GetAllIndexes(c.BucketName(), nil)
+		fmt.Println(g)
+		wg.Done()
+	}()
+	go func() {
+		for {
+			if !waitChan {
+				InfofCtx(context.TODO(), KeyBucket, "Waiting for Indexes to come online for %s", MD(c.BucketName()))
+			} else {
+				return
+			}
+			time.Sleep(5 * time.Second)
+		}
+	}()
+	wg.Wait()
+	if waitErr != nil {
+		return waitErr
+	}
+
+	return nil
 }
 
 func (c *Collection) GetIndexMeta(indexName string) (exists bool, meta *IndexMeta, err error) {

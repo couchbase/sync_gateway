@@ -571,12 +571,13 @@ func (b *LeakyBucket) CreatePrimaryIndex(indexName string, options *N1qlIndexOpt
 	return n1qlStore.CreatePrimaryIndex(indexName, options)
 }
 
-func (b *LeakyBucket) WaitForIndexOnline(indexName string) error {
-	n1qlStore, ok := AsN1QLStore(b.bucket)
-	if !ok {
-		return errors.New("Not N1QL Store")
+func (b *LeakyBucket) WaitForIndexOnline(indexNames []string) error {
+	bucket := b.GetUnderlyingBucket()
+	col, err := AsCollection(bucket)
+	if err != nil {
+		return err
 	}
-	return n1qlStore.WaitForIndexOnline(indexName)
+	return col.WaitForIndexOnline(indexNames, false)
 }
 
 func (b *LeakyBucket) GetIndexMeta(indexName string) (exists bool, meta *IndexMeta, err error) {
