@@ -21,34 +21,34 @@ import (
 )
 
 const kDummyGraphQLSchema = `
-	type Query {
-		square(n: Int!) : Int!
-	}`
+    type Query {
+        square(n: Int!) : Int!
+    }`
 
 var allowAll = &functions.Allow{Channels: []string{"*"}}
 
 // The GraphQL schema:
 var kTestGraphQLSchema = `
-		type Task {
-			id: ID!
-			title: String!
-			description: String
-			done: Boolean
-			tags: [String!]
-			secretNotes: String		# Admin-only
-		}
-		type Query {
-			square(n: Int!): Int!
-			infinite: Int!
-			task(id: ID!): Task
-			tasks: [Task!]!
-			toDo: [Task!]!
-		}
-		type Mutation {
-			complete(id: ID!): Task
-			addTag(id: ID!, tag: String!): Task
-		}
-	`
+        type Task {
+            id: ID!
+            title: String!
+            description: String
+            done: Boolean
+            tags: [String!]
+            secretNotes: String     # Admin-only
+        }
+        type Query {
+            square(n: Int!): Int!
+            infinite: Int!
+            task(id: ID!): Task
+            tasks: [Task!]!
+            toDo: [Task!]!
+        }
+        type Mutation {
+            complete(id: ID!): Task
+            addTag(id: ID!, tag: String!): Task
+        }
+    `
 
 // The GraphQL configuration:
 var kTestGraphQLConfig = functions.GraphQLConfig{
@@ -68,37 +68,37 @@ var kTestGraphQLConfig = functions.GraphQLConfig{
 			"task": {
 				Type: "javascript",
 				Code: `function(parent, args, context, info) {
-							if (Object.keys(parent).length != 0) throw "Unexpected parent";
-							if (Object.keys(args).length != 1) throw "Unexpected args";
-							if (Object.keys(info) != "selectedFieldNames") throw "Unexpected info";
-							if (!context.user) throw "Missing context.user";
-							if (!context.admin) throw "Missing context.admin";
-							return context.user.function("getTask", {id: args.id});}`,
+                            if (Object.keys(parent).length != 0) throw "Unexpected parent";
+                            if (Object.keys(args).length != 1) throw "Unexpected args";
+                            if (Object.keys(info) != "selectedFieldNames") throw "Unexpected info";
+                            if (!context.user) throw "Missing context.user";
+                            if (!context.admin) throw "Missing context.admin";
+                            return context.user.function("getTask", {id: args.id});}`,
 				Allow: allowAll,
 			},
 			"tasks": {
 				Type: "javascript",
 				Code: `function(parent, args, context, info) {
-							if (Object.keys(parent).length != 0) throw "Unexpected parent";
-							if (Object.keys(args).length != 0) throw "Unexpected args";
-							if (Object.keys(info) != "selectedFieldNames") throw "Unexpected info";
-							if (!context.user) throw "Missing context.user";
-							if (!context.admin) throw "Missing context.admin";
-							return context.user.function("all");}`,
+                            if (Object.keys(parent).length != 0) throw "Unexpected parent";
+                            if (Object.keys(args).length != 0) throw "Unexpected args";
+                            if (Object.keys(info) != "selectedFieldNames") throw "Unexpected info";
+                            if (!context.user) throw "Missing context.user";
+                            if (!context.admin) throw "Missing context.admin";
+                            return context.user.function("all");}`,
 				Allow: allowAll,
 			},
 			"toDo": {
 				Type: "javascript",
 				Code: `function(parent, args, context, info) {
-							if (Object.keys(parent).length != 0) throw "Unexpected parent";
-							if (Object.keys(args).length != 0) throw "Unexpected args";
-							if (Object.keys(info) != "selectedFieldNames") throw "Unexpected info";
-							if (!context.user) throw "Missing context.user";
-							if (!context.admin) throw "Missing context.admin";
-							var result=new Array(); var all = context.user.function("all");
-							for (var i = 0; i < all.length; i++)
-								if (!all[i].done) result.push(all[i]);
-							return result;}`,
+                            if (Object.keys(parent).length != 0) throw "Unexpected parent";
+                            if (Object.keys(args).length != 0) throw "Unexpected args";
+                            if (Object.keys(info) != "selectedFieldNames") throw "Unexpected info";
+                            if (!context.user) throw "Missing context.user";
+                            if (!context.admin) throw "Missing context.admin";
+                            var result=new Array(); var all = context.user.function("all");
+                            for (var i = 0; i < all.length; i++)
+                                if (!all[i].done) result.push(all[i]);
+                            return result;}`,
 				Allow: allowAll,
 			},
 		},
@@ -106,27 +106,27 @@ var kTestGraphQLConfig = functions.GraphQLConfig{
 			"complete": {
 				Type: "javascript",
 				Code: `function(parent, args, context, info) {
-								if (Object.keys(parent).length != 0) throw "Unexpected parent";
-								if (Object.keys(args).length != 1) throw "Unexpected args";
-								if (Object.keys(info) != "selectedFieldNames") throw "Unexpected info";
-								if (!context.user) throw "Missing context.user";
-								if (!context.admin) throw "Missing context.admin";
-								context.requireMutating();
-								var task = context.user.function("getTask", {id: args.id});
-								if (!task) return undefined;
-								task.done = true;
-								return task;}`,
+                                if (Object.keys(parent).length != 0) throw "Unexpected parent";
+                                if (Object.keys(args).length != 1) throw "Unexpected args";
+                                if (Object.keys(info) != "selectedFieldNames") throw "Unexpected info";
+                                if (!context.user) throw "Missing context.user";
+                                if (!context.admin) throw "Missing context.admin";
+                                context.requireMutating();
+                                var task = context.user.function("getTask", {id: args.id});
+                                if (!task) return undefined;
+                                task.done = true;
+                                return task;}`,
 				Allow: allowAll,
 			},
 			"addTag": {
 				Type: "javascript",
 				Code: `function(parent, args, context, info) {
-								context.requireMutating();
-								var task = context.user.function("getTask", {id: args.id});
-								if (!task) return undefined;
-								if (!task.tags) task.tags = [];
-								task.tags.push(args.tag);
-								return task;}`,
+                                context.requireMutating();
+                                var task = context.user.function("getTask", {id: args.id});
+                                if (!task) return undefined;
+                                if (!task.tags) task.tags = [];
+                                task.tags.push(args.tag);
+                                return task;}`,
 				Allow: allowAll,
 			},
 		},
@@ -134,12 +134,12 @@ var kTestGraphQLConfig = functions.GraphQLConfig{
 			"secretNotes": {
 				Type: "javascript",
 				Code: `function(parent, args, context, info) {
-									if (!parent.id) throw "Invalid parent";
-									if (Object.keys(args).length != 0) throw "Unexpected args";
-									if (Object.keys(info) != "selectedFieldNames") throw "Unexpected info";
-									if (!context.user) throw "Missing context.user";
-									if (!context.admin) throw "Missing context.admin";
-									return "TOP SECRET!";}`,
+                                    if (!parent.id) throw "Invalid parent";
+                                    if (Object.keys(args).length != 0) throw "Unexpected args";
+                                    if (Object.keys(info) != "selectedFieldNames") throw "Unexpected info";
+                                    if (!context.user) throw "Missing context.user";
+                                    if (!context.admin) throw "Missing context.admin";
+                                    return "TOP SECRET!";}`,
 				Allow: &functions.Allow{Users: base.Set{}}, // only admins
 			},
 		},
@@ -152,28 +152,28 @@ var kTestGraphQLUserFunctionsConfig = functions.FunctionsConfig{
 		"all": {
 			Type: "javascript",
 			Code: `function(context, args) {
-							return [
-							{id: "a", "title": "Applesauce", done:true, tags:["fruit","soft"]},
-							{id: "b", "title": "Beer", description: "Bass ale please"},
-							{id: "m", "title": "Mangoes"} ];}`,
+                            return [
+                            {id: "a", "title": "Applesauce", done:true, tags:["fruit","soft"]},
+                            {id: "b", "title": "Beer", done:false,description: "Bass ale please"},
+                            {id: "m", "title": "Mangoes",done:false} ];}`,
 			Allow: &functions.Allow{Channels: []string{"*"}},
 		},
 		"getTask": {
 			Type: "javascript",
 			Code: `function(context, args) {
-							var all = context.user.function("all");
-							for (var i = 0; i < all.length; i++)
-								if (all[i].id == args.id) return all[i];
-							return undefined;}`,
+                            var all = context.user.function("all");
+                            for (var i = 0; i < all.length; i++)
+                                if (all[i].id == args.id) return all[i];
+                            return undefined;}`,
 			Args:  []string{"id"},
 			Allow: &functions.Allow{Channels: []string{"*"}},
 		},
 		"infinite": {
 			Type: "javascript",
 			Code: `function(context, args) {
-					var result = context.user.graphql("query{ infinite }");
-					if (result.errors) throw "GraphQL query failed:" + result.errors[0].message;
-					return -1;}`,
+                    var result = context.user.graphql("query{ infinite }");
+                    if (result.errors) throw "GraphQL query failed:" + result.errors[0].message;
+                    return -1;}`,
 			Allow: &functions.Allow{Channels: []string{"*"}},
 		},
 	},
@@ -198,7 +198,7 @@ func TestFunctionsConfigGraphQLGetEmpty(t *testing.T) {
 func TestFunctionsConfigGraphQLGet(t *testing.T) {
 	rt := rest.NewRestTesterForUserQueries(t, rest.DbConfig{
 		GraphQL: &functions.GraphQLConfig{
-			Schema:    base.StringPtr(kDummyGraphQLSchema),
+			Schema:    base.StringPtr(kTestGraphQLSchema),
 			Resolvers: nil,
 		},
 	})
@@ -215,14 +215,14 @@ func TestFunctionsConfigGraphQLGet(t *testing.T) {
 		response := rt.SendAdminRequest("GET", "/db/_config/graphql", "")
 		var body functions.GraphQLConfig
 		require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
-		assert.Equal(t, base.StringPtr(kDummyGraphQLSchema), body.Schema)
+		assert.Equal(t, base.StringPtr(kTestGraphQLSchema), body.Schema)
 	})
 }
 
 func TestFunctionsConfigGraphQLPut(t *testing.T) {
 	rt := rest.NewRestTesterForUserQueries(t, rest.DbConfig{
 		GraphQL: &functions.GraphQLConfig{
-			Schema:    base.StringPtr(kDummyGraphQLSchema),
+			Schema:    base.StringPtr(kTestGraphQLSchema),
 			Resolvers: nil,
 		},
 	})
@@ -239,22 +239,22 @@ func TestFunctionsConfigGraphQLPut(t *testing.T) {
 	})
 	t.Run("ReplaceBogus", func(t *testing.T) {
 		response := rt.SendAdminRequest("PUT", "/db/_config/graphql", `{
-			"schema": "obviously not a valid schema ^_^"
-		}`)
+            "schema": "obviously not a valid schema ^_^"
+        }`)
 		assert.Equal(t, 400, response.Result().StatusCode)
 	})
 	t.Run("Replace", func(t *testing.T) {
 		response := rt.SendAdminRequest("PUT", "/db/_config/graphql", `{
-			"schema": "type Query {sum(n: Int!) : Int!}",
-			"resolvers": {
-				"Query": {
-					"sum": {
-						"type": "javascript",
-						"code": "function(context,args){return args.n + args.n;}"
-					}
-				}
-			}
-		}`)
+            "schema": "type Query {sum(n: Int!) : Int!}",
+            "resolvers": {
+                "Query": {
+                    "sum": {
+                        "type": "javascript",
+                        "code": "function(context,args){return args.n + args.n;}"
+                    }
+                }
+            }
+        }`)
 		assert.Equal(t, 200, response.Result().StatusCode)
 
 		response = rt.SendAdminRequest("POST", "/db/_graphql", `{"query": "query{ sum(n:3) }"}`)
@@ -333,7 +333,241 @@ func TestGraphQLMutationsCustomUser(t *testing.T) {
 		response = rt.SendAdminRequest("DELETE", "/db/_user/jinesh", "")
 		assert.Equal(t, 200, response.Result().StatusCode)
 	})
+}
 
+// Test for GraphQL Query: Admin-only
+func TestGraphQLQueryAdminOnly(t *testing.T) {
+	rt := rest.NewRestTesterForUserQueries(t, rest.DbConfig{
+		GraphQL:       &kTestGraphQLConfig,
+		UserFunctions: &kTestGraphQLUserFunctionsConfig,
+	})
+	if rt == nil {
+		return
+	}
+	defer rt.Close()
+
+	t.Run("AsAdmin - square", func(t *testing.T) {
+		response := rt.SendAdminRequest("POST", "/db/_graphql", `{"query": "query{ square(n:2) }"}`)
+		assert.Equal(t, 200, response.Result().StatusCode)
+		assert.Equal(t, `{"data":{"square":4}}`, string(response.BodyBytes()))
+	})
+
+	t.Run("AsAdmin - Infinite", func(t *testing.T) {
+		response := rt.SendAdminRequest("POST", "/db/_graphql", `{"query": "query{ infinite }"}`)
+		assert.Equal(t, 200, response.Result().StatusCode)
+		assert.Contains(t, string(response.BodyBytes()), "GraphQL query failed")
+	})
+
+	t.Run("AsAdmin - task", func(t *testing.T) {
+		response := rt.SendAdminRequest("POST", "/db/_graphql", `{"query": "query($id:ID!){ task(id:$id) { id , title } }" , "variables": {"id": "a"}}`)
+		assert.Equal(t, 200, response.Result().StatusCode)
+		assert.Equal(t, `{"data":{"task":{"id":"a","title":"Applesauce"}}}`, string(response.BodyBytes()))
+	})
+
+	t.Run("AsAdmin - tasks", func(t *testing.T) {
+		response := rt.SendAdminRequest("POST", "/db/_graphql", `{"query": "query{tasks{title}}"}`)
+		assert.Equal(t, 200, response.Result().StatusCode)
+		assert.Equal(t, `{"data":{"tasks":[{"title":"Applesauce"},{"title":"Beer"},{"title":"Mangoes"}]}}`, string(response.BodyBytes()))
+
+	})
+	t.Run("AsAdmin - toDo", func(t *testing.T) {
+		response := rt.SendAdminRequest("POST", "/db/_graphql", `{"query": "query{toDo{title}}"}`)
+		assert.Equal(t, 200, response.Result().StatusCode)
+		assert.Equal(t, `{"data":{"toDo":[{"title":"Beer"},{"title":"Mangoes"}]}}`, string(response.BodyBytes()))
+	})
+
+	t.Run("AsAdmin - secretNotes", func(t *testing.T) {
+		response := rt.SendAdminRequest("POST", "/db/_graphql", `{"query": "query($id:ID!){ task(id:$id) { secretNotes } }" , "variables": {"id": "a"}}`)
+		assert.Equal(t, 200, response.Result().StatusCode)
+		assert.Equal(t, `{"data":{"task":{"secretNotes":"TOP SECRET!"}}}`, string(response.BodyBytes()))
+	})
+}
+
+// Test for GraphQL Query: Custom User
+func TestGraphQLQueryCustomUser(t *testing.T) {
+	rt := rest.NewRestTesterForUserQueries(t, rest.DbConfig{
+		GraphQL:       &kTestGraphQLConfig,
+		UserFunctions: &kTestGraphQLUserFunctionsConfig,
+	})
+	if rt == nil {
+		return
+	}
+	defer rt.Close()
+
+	t.Run("AsUser - square", func(t *testing.T) {
+		//user Created
+		response := rt.SendAdminRequest("POST", "/db/_user/", `{"name":"janhavi", "password":"password"}`)
+		assert.Equal(t, 201, response.Result().StatusCode)
+
+		//request sent by the custom user
+		response = rt.SendUserRequestWithHeaders("POST", "/db/_graphql", `{"query": "query{ square(n:2) }"}`, nil, "janhavi", "password")
+		assert.Equal(t, 200, response.Result().StatusCode)
+		assert.Equal(t, `{"data":{"square":4}}`, string(response.BodyBytes()))
+
+		//custom user deleted by the Admin
+		response = rt.SendAdminRequest("DELETE", "/db/_user/janhavi", "")
+		assert.Equal(t, 200, response.Result().StatusCode)
+	})
+
+	t.Run("AsUser - infinite", func(t *testing.T) {
+		response := rt.SendAdminRequest("POST", "/db/_user/", `{"name":"janhavi", "password":"password"}`)
+		assert.Equal(t, 201, response.Result().StatusCode)
+
+		response = rt.SendUserRequestWithHeaders("POST", "/db/_graphql", `{"query": "query{ infinite }"}`, nil, "janhavi", "password")
+		assert.Equal(t, 200, response.Result().StatusCode)
+
+		response = rt.SendAdminRequest("DELETE", "/db/_user/janhavi", "")
+		assert.Equal(t, 200, response.Result().StatusCode)
+	})
+
+	t.Run("AsUser - task", func(t *testing.T) {
+		response := rt.SendAdminRequest("POST", "/db/_user/", `{"name":"janhavi", "password":"password"}`)
+		assert.Equal(t, 201, response.Result().StatusCode)
+
+		response = rt.SendUserRequestWithHeaders("POST", "/db/_graphql", `{"query": "query($id:ID!){ task(id:$id) { id , title } }" , "variables": {"id": "a"}}`, nil, "janhavi", "password")
+		assert.Equal(t, 200, response.Result().StatusCode)
+		assert.Equal(t, `{"data":{"task":{"id":"a","title":"Applesauce"}}}`, string(response.BodyBytes()))
+
+		response = rt.SendAdminRequest("DELETE", "/db/_user/janhavi", "")
+		assert.Equal(t, 200, response.Result().StatusCode)
+	})
+
+	t.Run("AsUser - tasks", func(t *testing.T) {
+		response := rt.SendAdminRequest("POST", "/db/_user/", `{"name":"janhavi", "password":"password"}`)
+		assert.Equal(t, 201, response.Result().StatusCode)
+
+		response = rt.SendUserRequestWithHeaders("POST", "/db/_graphql", `{"query": "query{tasks{title}}"}`, nil, "janhavi", "password")
+		assert.Equal(t, 200, response.Result().StatusCode)
+		assert.Equal(t, `{"data":{"tasks":[{"title":"Applesauce"},{"title":"Beer"},{"title":"Mangoes"}]}}`, string(response.BodyBytes()))
+
+		response = rt.SendAdminRequest("DELETE", "/db/_user/janhavi", "")
+		assert.Equal(t, 200, response.Result().StatusCode)
+	})
+
+	t.Run("AsUser - toDo", func(t *testing.T) {
+		response := rt.SendAdminRequest("POST", "/db/_user/", `{"name":"janhavi", "password":"password"}`)
+		assert.Equal(t, 201, response.Result().StatusCode)
+
+		response = rt.SendUserRequestWithHeaders("POST", "/db/_graphql", `{"query": "query{toDo{title}}"}`, nil, "janhavi", "password")
+		assert.Equal(t, 200, response.Result().StatusCode)
+		assert.Equal(t, `{"data":{"toDo":[{"title":"Beer"},{"title":"Mangoes"}]}}`, string(response.BodyBytes()))
+
+		response = rt.SendAdminRequest("DELETE", "/db/_user/janhavi", "")
+		assert.Equal(t, 200, response.Result().StatusCode)
+	})
+
+	//secretNotes(Admin-only field)-> custom user cannot access it
+	t.Run("AsUser - secretNotes", func(t *testing.T) {
+		response := rt.SendAdminRequest("POST", "/db/_user/", `{"name":"janhavi", "password":"password"}`)
+		assert.Equal(t, 201, response.Result().StatusCode)
+
+		response = rt.SendUserRequestWithHeaders("POST", "/db/_graphql", `{"query": "query($id:ID!){ task(id:$id) { secretNotes } }" , "variables": {"id": "a"}}`, nil, "janhavi", "password")
+		assert.Equal(t, 200, response.Result().StatusCode)
+		assert.Contains(t, string(response.BodyBytes()), "403 you are not allowed to call GraphQL resolver")
+
+		response = rt.SendAdminRequest("DELETE", "/db/_user/janhavi", "")
+		assert.Equal(t, 200, response.Result().StatusCode)
+	})
+
+}
+
+// Test for GraphQL Valid Configuration Schema
+func TestValidGraphQLConfigurationValues(t *testing.T) {
+	rt := rest.NewRestTesterForUserQueries(t, rest.DbConfig{
+		GraphQL: &functions.GraphQLConfig{
+			Schema:    base.StringPtr(kDummyGraphQLSchema),
+			Resolvers: nil,
+		},
+	})
+	if rt == nil {
+		return
+	}
+	defer rt.Close()
+
+	//If max_schema_size >= given schema size then Valid
+	//here max_schema_size allowed is 34 bytes and given schema size is also 34 bytes
+	//hence it is a valid config
+	t.Run("Check max_schema_size allowed", func(t *testing.T) {
+		response := rt.SendAdminRequest("PUT", "/db/_config/graphql", `{
+			"schema": "type Query {sum(n: Int!) : Int!}",
+			"resolvers": {
+				"Query": {
+					"sum": {
+						"type": "javascript",
+						"code": "function(context,args){return args.n + args.n;}"
+					}
+				}
+			},
+			"max_schema_size" : 34
+		}`)
+		assert.Equal(t, 200, response.Result().StatusCode)
+	})
+
+	//If max_resolver_count >= given number of resolvers then Valid
+	//here max_resolver_count allowed is 2 and total resolvers are also 2, hence it is a valid config
+	t.Run("Check max_resolver_count allowed", func(t *testing.T) {
+		response := rt.SendAdminRequest("PUT", "/db/_config/graphql", `{
+			"schema": "type Query {sum(n: Int!) : Int! \n square(n: Int!) : Int!}",
+			"resolvers": {
+				"Query": {
+					"sum": {
+						"type": "javascript",
+						"code": "function(context,args){return args.n + args.n;}"
+					},
+					"square": {
+						"type": "javascript",
+						"code": "function(context,args){return args.n * args.n;}"
+					}
+				}
+			},
+			"max_resolver_count" : 2
+		}`)
+		assert.Equal(t, 200, response.Result().StatusCode)
+	})
+
+	//If max_request_size >= length of JSON-encoded arguments passed to a function then Valid
+	//here max_request_size allowed is 114 and size of arguments is also 114, hence it is a valid config
+	t.Run("Check max_request_size allowed", func(t *testing.T) {
+		response := rt.SendAdminRequest("PUT", "/db/_config/graphql", `{
+			"schema": "type Query {square(n: Int!) : Int!}",
+			"resolvers": {
+				"Query": {
+					"square": {
+						"type": "javascript",
+						"code": "function(context,args){return args.n * args.n;}"
+					}
+				}
+			},
+			"max_request_size" : 114
+		}`)
+		assert.Equal(t, 200, response.Result().StatusCode)
+
+		response = rt.SendAdminRequest("POST", "/db/_graphql", `{"query": "query($numberToBeSquared:Int!){ square(n:$numberToBeSquared) }", "variables": {"numberToBeSquared": 4}}`)
+		assert.Equal(t, 200, response.Result().StatusCode)
+		assert.Equal(t, `{"data":{"square":16}}`, string(response.BodyBytes()))
+	})
+
+	//only one out of the schema or schemaFile is allowed
+	//here only SchemaFile is provided, hence it is a valid config
+	t.Run("Provide only schema or schema file", func(t *testing.T) {
+		validSchema := "type Query {sum(n: Int!) : Int!}"
+		err := os.WriteFile("schema.graphql", []byte(validSchema), 0666)
+		assert.NoError(t, err)
+		response := rt.SendAdminRequest("PUT", "/db/_config/graphql", `{
+			"schemaFile": "schema.graphql",
+			"resolvers": {
+				"Query": {
+					"sum": {
+						"type": "javascript",
+						"code": "function(context,args){return args.n + args.n;}"
+					}
+				}
+			}
+		}`)
+		assert.Equal(t, 200, response.Result().StatusCode)
+		err = os.Remove("schema.graphql")
+		assert.NoError(t, err)
+	})
 }
 
 // This function checks for failure when invalid GraphQL configuration
@@ -408,12 +642,12 @@ func TestInvalidGraphQLConfigurationValues(t *testing.T) {
 	// have supplied larger arguments in the POST request.
 	t.Run("Check max_request_size allowed", func(t *testing.T) {
 		response := rt.SendAdminRequest("PUT", "/db/_config/graphql", `{
-			"schema": "type Query {sum(n: Int!) : Int!}",
+			"schema": "type Query {square(n: Int!) : Int!}",
 			"resolvers": {
 				"Query": {
-					"sum": {
+					"square": {
 						"type": "javascript",
-						"code": "function(context,args){return args.n + args.n;}"
+						"code": "function(context,args){return args.n * args.n;}"
 					}
 				}
 			},
