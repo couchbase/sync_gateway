@@ -796,7 +796,7 @@ func TestMigrateBodyAttachments(t *testing.T) {
 		var body Body
 		assert.NoError(t, base.JSONUnmarshal([]byte(rev1input), &body))
 		_, _, err = db.Put(ctx, "doc1", body)
-		assert.NoError(t, err, "Couldn't create document")
+		require.NoError(t, err, "Couldn't create document")
 
 		gotbody, err := db.Get1xRevBody(ctx, "doc1", "", false, []string{})
 		assert.NoError(t, err, "Couldn't get document")

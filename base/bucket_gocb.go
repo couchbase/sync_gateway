@@ -190,6 +190,7 @@ func QueryBucketItemCount(n1qlStore N1QLStore) (itemCount int, err error) {
 	}
 	return val.Count, nil
 }
+
 func isMinimumVersion(major, minor, requiredMajor, requiredMinor uint64) bool {
 	if major < requiredMajor {
 		return false
