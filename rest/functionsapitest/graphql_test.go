@@ -9,8 +9,6 @@
 package functionsapitest
 
 import (
-	"encoding/json"
-	"os"
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -425,138 +423,71 @@ func TestInvalidGraphQLConfigurationValues(t *testing.T) {
 		return
 	}
 	defer rt.Close()
+	rt.DatabaseConfig = &rest.DatabaseConfig{DbConfig: rest.DbConfig{
+		GraphQL:       &kTestGraphQLConfig,
+		UserFunctions: &kTestGraphQLUserFunctionsConfig,
+	},
+	}
 
-	// The max_schema_size allowed here is 20 bytes and the given schema is 32 bytes.
-	// Hence, this will be a bad request
-	t.Run("Check max_schema_size allowed", func(t *testing.T) {
-		response := rt.SendAdminRequest("PUT", "/db/_config/graphql", `{
-			"schema": "type Query {sum(n: Int!) : Int!}",
-			"resolvers": {
-				"Query": {
-					"sum": {
-						"type": "javascript",
-						"code": "function(context,args){return args.n + args.n;}"
-					}
-				}
-			},
-			"max_schema_size" : 20
-		}`)
-
-		var responseMap map[string]interface{}
-		json.Unmarshal([]byte(string(response.BodyBytes())), &responseMap)
-
-		assert.Equal(t, 400, response.Result().StatusCode)
-		assert.Contains(t, responseMap["reason"], "GraphQL schema too large")
-		assert.Contains(t, responseMap["error"], "Bad Request")
-	})
-
-	// The max_resolver_count allowed here is 1 and we have provided
-	// 2 resolvers (sum and square). Hence, this will be a bad request
-	t.Run("Check max_resolver_count allowed", func(t *testing.T) {
-		response := rt.SendAdminRequest("PUT", "/db/_config/graphql", `{
-			"schema": "type Query {sum(n: Int!) : Int! \n square(n: Int!) : Int!}",
-			"resolvers": {
-				"Query": {
-					"sum": {
-						"type": "javascript",
-						"code": "function(context,args){return args.n + args.n;}"
-					},
-					"square": {
-						"type": "javascript",
-						"code": "function(context,args){return args.n * args.n;}"
-					}
-				}
-			},
-			"max_resolver_count" : 1
-		}`)
-
-		var responseMap map[string]interface{}
-		json.Unmarshal([]byte(string(response.BodyBytes())), &responseMap)
-
-		assert.Equal(t, 400, response.Result().StatusCode)
-		assert.Contains(t, responseMap["reason"], "too many GraphQL resolvers")
-		assert.Contains(t, responseMap["error"], "Bad Request")
-
-	})
-
-	// The maximum length in bytes of the JSON-encoded arguments passed to
-	// a function at runtime (max_request_size) allowed here is 5 but we
-	// have supplied larger arguments in the POST request.
-	t.Run("Check max_request_size allowed", func(t *testing.T) {
-		response := rt.SendAdminRequest("PUT", "/db/_config/graphql", `{
-			"schema": "type Query {sum(n: Int!) : Int!}",
-			"resolvers": {
-				"Query": {
-					"sum": {
-						"type": "javascript",
-						"code": "function(context,args){return args.n + args.n;}"
-					}
-				}
-			},
-			"max_request_size" : 5
-		}`)
+	t.Run("AsGuest - Add Tag", func(t *testing.T) {
+		response := rt.SendRequest("POST", "/db/_graphql", `{"query": "mutation($id:ID!, $tag: String!){ addTag(id:$id, tag:$tag) {id,title,done,tags} }" , "variables": {"id": "a", "tag":"cool"}}`)
 		assert.Equal(t, 200, response.Result().StatusCode)
-
-		response = rt.SendAdminRequest("POST", "/db/_graphql", `{"query": "query($numberToBeSquared:Int!){ square(n:$numberToBeSquared) }", "variables": {"numberToBeSquared": 4}}`)
-
-		var responseMap map[string]interface{}
-		json.Unmarshal([]byte(string(response.BodyBytes())), &responseMap)
-
-		assert.Equal(t, 413, response.Result().StatusCode)
-		assert.Contains(t, responseMap["reason"], "Arguments too large")
-		assert.Contains(t, responseMap["error"], "Request Entity Too Large")
+		assert.Equal(t, `{"data":{"addTag":{"done":true,"id":"a","tags":["fruit","soft","cool"],"title":"Applesauce"}}}`, string(response.BodyBytes()))
 	})
 
-	// Only one out of schema and schemaFile is allowed to be present
-	// but we have provided both of them. Hence, this will be a bad request.
-	t.Run("Provide both schema and schema file", func(t *testing.T) {
-		response := rt.SendAdminRequest("PUT", "/db/_config/graphql", `{
-			"schema": "type Query {sum(n: Int!) : Int!}",
-			"schemaFile": "someInvalidPath/someInvalidFileName",
-			"resolvers": {
-				"Query": {
-					"sum": {
-						"type": "javascript",
-						"code": "function(context,args){return args.n + args.n;}"
-					}
-				}
-			}
-		}`)
+	t.Run("AsGuest - Complete", func(t *testing.T) {
+		response := rt.SendRequest("POST", "/db/_graphql", `{"query":"mutation($id: ID!){ complete(id:$id) {done} }", "variables" : {"id":"b"}}`)
 
-		var responseMap map[string]interface{}
-		json.Unmarshal([]byte(string(response.BodyBytes())), &responseMap)
+		assert.Equal(t, 200, response.Result().StatusCode)
+		assert.Equal(t, `{"data":{"complete":{"done":true}}}`, string(response.BodyBytes()))
+	})
+}
 
-		assert.Equal(t, 400, response.Result().StatusCode)
-		assert.Contains(t, responseMap["reason"], "GraphQL config: only one of `schema` and `schemaFile` may be used")
-		assert.Contains(t, responseMap["error"], "Bad Request")
+// Test for GraphQL queries via Guest user
+func TestGraphQLQueriesGuest(t *testing.T) {
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{GuestEnabled: true, EnableUserQueries: true})
+	if rt == nil {
+		return
+	}
+	defer rt.Close()
+	rt.DatabaseConfig = &rest.DatabaseConfig{DbConfig: rest.DbConfig{
+		GraphQL:       &kTestGraphQLConfig,
+		UserFunctions: &kTestGraphQLUserFunctionsConfig,
+	},
+	}
+
+	t.Run("AsGuest - square", func(t *testing.T) {
+		response := rt.SendRequest("POST", "/db/_graphql", `{"query": "query{ square(n:2) }"}`)
+		assert.Equal(t, 200, response.Result().StatusCode)
+		assert.Equal(t, `{"data":{"square":4}}`, string(response.BodyBytes()))
 	})
 
-	// Flow: Create a file with a bogus schema --> Send the request --> Capture the error --> Delete the created file
-	t.Run("Provide invalid schema file", func(t *testing.T) {
-		bogusSchema := "obviously not a valid schema ^_^"
-		err := os.WriteFile("schema.graphql", []byte(bogusSchema), 0666)
-		assert.NoError(t, err)
+	t.Run("AsGuest - Infinite", func(t *testing.T) {
+		response := rt.SendRequest("POST", "/db/_graphql", `{"query": "query{ infinite }"}`)
+		assert.Equal(t, 200, response.Result().StatusCode)
+		assert.Contains(t, string(response.BodyBytes()), "GraphQL query failed")
+	})
 
-		response := rt.SendAdminRequest("PUT", "/db/_config/graphql", `{
-			"schemaFile": "schema.graphql",
-			"resolvers": {
-				"Query": {
-					"sum": {
-						"type": "javascript",
-						"code": "function(context,args){return args.n + args.n;}"
-					}
-				}
-			}
-		}`)
-		var responseMap map[string]interface{}
-		json.Unmarshal([]byte(string(response.BodyBytes())), &responseMap)
+	t.Run("AsGuest - task", func(t *testing.T) {
+		response := rt.SendRequest("POST", "/db/_graphql", `{"query": "query($id:ID!){ task(id:$id) { id , title } }" , "variables": {"id": "a"}}`)
+		assert.Equal(t, 200, response.Result().StatusCode)
+		assert.Equal(t, `{"data":{"task":{"id":"a","title":"Applesauce"}}}`, string(response.BodyBytes()))
+	})
+	t.Run("AsGuest - tasks", func(t *testing.T) {
+		response := rt.SendRequest("POST", "/db/_graphql", `{"query": "query{tasks{title}}"}`)
+		assert.Equal(t, 200, response.Result().StatusCode)
+		assert.Equal(t, `{"data":{"tasks":[{"title":"Applesauce"},{"title":"Beer"},{"title":"Mangoes"}]}}`, string(response.BodyBytes()))
 
-		assert.Equal(t, 400, response.Result().StatusCode)
-		assert.Contains(t, responseMap["reason"], "Syntax Error GraphQL")
-		assert.Contains(t, responseMap["reason"], "Unexpected Name")
-		assert.Contains(t, responseMap["error"], "Bad Request")
+	})
+	t.Run("AsGuest - toDo", func(t *testing.T) {
+		response := rt.SendRequest("POST", "/db/_graphql", `{"query": "query{toDo{title}}"}`)
+		assert.Equal(t, 200, response.Result().StatusCode)
+		assert.Equal(t, `{"data":{"toDo":[{"title":"Beer"},{"title":"Mangoes"}]}}`, string(response.BodyBytes()))
+	})
 
-		err = os.Remove("schema.graphql")
-		assert.NoError(t, err)
+	t.Run("AsGuest - secretNotes", func(t *testing.T) {
+		response := rt.SendRequest("POST", "/db/_graphql", `{"query": "query($id:ID!){ task(id:$id) { secretNotes } }" , "variables": {"id": "a"}}`)
+		assert.Equal(t, 200, response.Result().StatusCode)
+		assert.Contains(t, string(response.BodyBytes()), "login required: you are not allowed to call GraphQL resolver")
 	})
 }
