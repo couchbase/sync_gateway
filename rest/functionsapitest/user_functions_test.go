@@ -335,15 +335,20 @@ var kUserFunctionConfig = &functions.FunctionsConfig{
 	},
 }
 
+// // TESTING PATHS A DEVELOPER MIGHT TRY TO GO THROUGH WHILE INTERACTING WITH THE FUNCTIONS API.
+// // these include both negative and positive cases
+// // e.g. PUT -> GET -> DELETE, or GET(negative) -> PUT -> GET or DELETE(negative)->PUT
 func TestSaveAndGet(t *testing.T) {
 	// Setting up tester Config
 	rt := rest.NewRestTesterForUserQueries(t, rest.DbConfig{})
+	if rt == nil {
+		return
+	}
 	defer rt.Close()
 
 	request, err := json.Marshal(kUserFunctionConfig)
 	assert.NoError(t, err)
 
-	// Save The Function
 	t.Run("Save The Functions", func(t *testing.T) {
 		response := rt.SendAdminRequest("PUT", "/db/_config/functions", string(request))
 		assert.Equal(t, 200, response.Result().StatusCode)
@@ -442,6 +447,9 @@ func TestSaveAndUpdateAndGet(t *testing.T) {
 
 	// Setting up tester Config
 	rt := rest.NewRestTesterForUserQueries(t, rest.DbConfig{})
+	if rt == nil {
+		return
+	}
 	defer rt.Close()
 
 	request, err := json.Marshal(kUserFunctionConfigCopy)
@@ -523,12 +531,14 @@ func TestSaveAndUpdateAndGet(t *testing.T) {
 func TestSaveAndDeleteAndGet(t *testing.T) {
 	// Setting up tester Config
 	rt := rest.NewRestTesterForUserQueries(t, rest.DbConfig{})
+	if rt == nil {
+		return
+	}
 	defer rt.Close()
 
 	request, err := json.Marshal(kUserFunctionConfig)
 	assert.NoError(t, err)
 
-	// Save the function
 	t.Run("Save The Functions", func(t *testing.T) {
 		response := rt.SendAdminRequest("PUT", "/db/_config/functions", string(request))
 		assert.Equal(t, 200, response.Result().StatusCode)
@@ -548,13 +558,12 @@ func TestSaveAndDeleteAndGet(t *testing.T) {
 
 	functionNameToBeDeleted := "square"
 
-	// Delete a specific function
 	t.Run("Delete A Specific Function", func(t *testing.T) {
 		response := rt.SendAdminRequest("DELETE", fmt.Sprintf("/db/_config/functions/%s", functionNameToBeDeleted), "")
 		assert.Equal(t, 200, response.Result().StatusCode)
 	})
 
-	// Get & Check for the remaining functions
+	// Get & Check if the remaining functions are available
 	t.Run("Get remaining functions and check schema", func(t *testing.T) {
 		var kUserFunctionConfigCopy = &functions.FunctionsConfig{
 			MaxFunctionCount: kUserFunctionConfig.MaxFunctionCount,
@@ -583,7 +592,6 @@ func TestSaveAndDeleteAndGet(t *testing.T) {
 		assert.Equal(t, 200, response.Result().StatusCode)
 	})
 
-	// Try to Get All the Non-Existing Functions
 	t.Run("Get All Non-exisitng Functions And Check HTTP Status", func(t *testing.T) {
 		response := rt.SendAdminRequest("GET", "/db/_config/functions", "")
 		assert.Equal(t, 404, response.Result().StatusCode)
@@ -593,15 +601,19 @@ func TestSaveAndDeleteAndGet(t *testing.T) {
 func TestDeleteNonExisting(t *testing.T) {
 	// Setting up tester Config
 	rt := rest.NewRestTesterForUserQueries(t, rest.DbConfig{})
+	if rt == nil {
+		return
+	}
 	defer rt.Close()
 
-	//Delete All Non-Existing functions
+	// NEGATIVE CASES
+	//Try to Delete All Non-Existing functions
 	t.Run("Delete All Non-existing functions and check HTTP Status Code", func(t *testing.T) {
 		response := rt.SendAdminRequest("DELETE", "/db/_config/functions", "")
 		assert.Equal(t, 404, response.Result().StatusCode)
 	})
 
-	//Delete a specific non-exisiting function
+	//Try to Delete a specific non-exisiting function
 	t.Run("Delete a non-existing function and check HTTP Status Code", func(t *testing.T) {
 		response := rt.SendAdminRequest("DELETE", "/db/_config/functions/foo", "")
 		assert.Equal(t, 404, response.Result().StatusCode)
