@@ -1085,34 +1085,34 @@ var kUserMutabilityFunctionsTestConfig = &functions.FunctionsConfig{
 		"putDocMutabilityFalse": {
 			Type:  "javascript",
 			Code:  "function(context,args) { return context.user.defaultCollection.save(args.doc, args.docID); }",
-			Args:  []string{"doc", "docID", "funcName"},
+			Args:  []string{"doc", "docID"},
 			Allow: &functions.Allow{Channels: []string{"*"}},
 		},
 		"putDocMutabilityTrue": {
 			Type:     "javascript",
 			Code:     "function(context,args) { return context.user.defaultCollection.save(args.doc, args.docID); }",
-			Args:     []string{"doc", "docID", "funcName"},
+			Args:     []string{"doc", "docID"},
 			Allow:    &functions.Allow{Channels: []string{"*"}},
 			Mutating: true,
 		},
 		"callerMutabilityFalse": {
 			Type:     "javascript",
-			Code:     "function(context,args) { return context.user.function(args.funcName, args); }",
+			Code:     "function(context,args) { var funcName = args.funcName; delete args.funcName; return context.user.function(funcName, args);}",
 			Args:     []string{"doc", "docID", "funcName"},
 			Allow:    &functions.Allow{Channels: []string{"*"}},
 			Mutating: false,
 		},
 		"callerMutabilityTrue": {
 			Type:     "javascript",
-			Code:     "function(context,args) { return context.user.function(args.funcName, args); }",
+			Code:     "function(context,args) { var funcName = args.funcName; delete args.funcName; return context.user.function(funcName, args);}",
 			Args:     []string{"doc", "docID", "funcName"},
 			Allow:    &functions.Allow{Channels: []string{"*"}},
 			Mutating: true,
 		},
-		//using admin priviledge overides the mutating flag
+		//using context.admin priviledge overides its own mutatibility flag, it acts as though the REST API were called by an administrator.
 		"callerOverride": {
 			Type:     "javascript",
-			Code:     "function(context,args) { return context.admin.function(args.funcName, args); }",
+			Code:     "function(context,args) { var funcName = args.funcName; delete args.funcName; return context.admin.function(funcName, args);}",
 			Args:     []string{"doc", "docID", "funcName"},
 			Allow:    &functions.Allow{Channels: []string{"*"}},
 			Mutating: false,
@@ -1122,6 +1122,9 @@ var kUserMutabilityFunctionsTestConfig = &functions.FunctionsConfig{
 
 func TestFunctionMutability(t *testing.T) {
 	rt := rest.NewRestTesterForUserQueries(t, rest.DbConfig{})
+	if rt == nil {
+		return
+	}
 	defer rt.Close()
 
 	request, err := json.Marshal(kUserMutabilityFunctionsTestConfig)
@@ -1172,7 +1175,7 @@ func TestFunctionMutability(t *testing.T) {
 	})
 
 	//Admin call for the function has to call a mutating function to Override
-	//Admin function call to a Non-mutating function
+	//context.admin to call a Non-mutating function
 	t.Run("Admin function call to a Non-mutating function", func(t *testing.T) {
 		putFuncName = "putDocMutabilityFalse"
 		callerFuncName = "callerOverride"
@@ -1180,7 +1183,7 @@ func TestFunctionMutability(t *testing.T) {
 		assert.Equal(t, http.StatusForbidden, response.Result().StatusCode)
 	})
 
-	//Admin function call to a mutating function
+	//context.admin to call a mutating function
 	t.Run("Admin function call to a mutating function", func(t *testing.T) {
 		putFuncName = "putDocMutabilityTrue"
 		callerFuncName = "callerOverride"
