@@ -92,9 +92,10 @@ func initV2Cluster(server string) *gocb.Cluster {
 	if err != nil {
 		FatalfCtx(context.TODO(), "Couldn't connect to %q: %v", server, err)
 	}
-	err = cluster.WaitUntilReady(1*time.Minute, nil)
+	const clusterReadyTimeout = 90 * time.Second
+	err = cluster.WaitUntilReady(clusterReadyTimeout, nil)
 	if err != nil {
-		FatalfCtx(context.TODO(), "Cluster not ready: %v", err)
+		FatalfCtx(context.TODO(), "Cluster not ready after %ds: %v", int(clusterReadyTimeout.Seconds()), err)
 	}
 	return cluster
 }
