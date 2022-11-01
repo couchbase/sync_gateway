@@ -33,7 +33,7 @@ func getDatabaseContextOptions(isServerless bool) db.DatabaseContextOptions {
 func setupTestDBForBucketWithOptions(t testing.TB, dbcOptions db.DatabaseContextOptions) (*db.Database, context.Context) {
 	ctx := base.TestCtx(t)
 	tBucket := base.GetTestBucket(t)
-	AddOptionsFromEnvironmentVariables(&dbcOptions)
+	db.AddOptionsFromEnvironmentVariables(&dbcOptions)
 	dbCtx, err := db.NewDatabaseContext(ctx, "db", tBucket, false, dbcOptions)
 	require.NoError(t, err, "Couldn't create context for database 'db'")
 	db, err := db.CreateDatabase(dbCtx)
@@ -66,16 +66,4 @@ var clearIndexes resetN1QLStoreFn = func(n1QLStore base.N1QLStore, isServerless 
 		}
 	}
 	return nil
-}
-
-// If certain environment variables are set, for example to turn on XATTR support, then update
-// the DatabaseContextOptions accordingly
-func AddOptionsFromEnvironmentVariables(dbcOptions *db.DatabaseContextOptions) {
-	if base.TestUseXattrs() {
-		dbcOptions.EnableXattr = true
-	}
-
-	if base.TestsDisableGSI() {
-		dbcOptions.UseViews = true
-	}
 }

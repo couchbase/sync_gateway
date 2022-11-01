@@ -163,18 +163,6 @@ func setupTestDefaultCollectionDBWithOptions(t testing.TB, dbcOptions DatabaseCo
 	return setupTestDBWithOptions(t, dbcOptions)
 }
 
-// If certain environment variables are set, for example to turn on XATTR support, then update
-// the DatabaseContextOptions accordingly
-func AddOptionsFromEnvironmentVariables(dbcOptions *DatabaseContextOptions) {
-	if base.TestUseXattrs() {
-		dbcOptions.EnableXattr = true
-	}
-
-	if base.TestsDisableGSI() {
-		dbcOptions.UseViews = true
-	}
-}
-
 func assertHTTPError(t *testing.T, err error, status int) bool {
 	var httpErr *base.HTTPError
 	return assert.Error(t, err) &&

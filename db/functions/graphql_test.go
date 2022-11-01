@@ -425,7 +425,7 @@ func setupTestDBWithOptions(t testing.TB, dbcOptions db.DatabaseContextOptions) 
 
 func setupTestDBForBucketWithOptions(t testing.TB, tBucket base.Bucket, dbcOptions db.DatabaseContextOptions) (*db.Database, context.Context) {
 	ctx := base.TestCtx(t)
-	AddOptionsFromEnvironmentVariables(&dbcOptions)
+	db.AddOptionsFromEnvironmentVariables(&dbcOptions)
 	dbCtx, err := db.NewDatabaseContext(ctx, "db", tBucket, false, dbcOptions)
 	assert.NoError(t, err, "Couldn't create context for database 'db'")
 	db, err := db.CreateDatabase(dbCtx)

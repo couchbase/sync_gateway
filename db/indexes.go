@@ -66,10 +66,10 @@ const (
 	IdxFlagIndexTombstones                           // When xattrs=true, index should be created with {“retain_deleted_xattr”:true} in order to index tombstones
 )
 
-type IndexCreationMode int
+type indexCreationMode int
 
 const (
-	Always IndexCreationMode = iota
+	Always indexCreationMode = iota
 	Serverless
 	Dedicated
 )
@@ -126,7 +126,7 @@ var (
 		IndexSyncDocs:   "META().id",
 		IndexUser:       "META().id, name, email, disabled",
 		IndexSession:    "META().id, username",
-		IndexRole:       "META().id, deleted",
+		IndexRole:       "META().id, name, deleted",
 	}
 
 	indexFilterExpressions = map[SGIndexType]string{
@@ -147,7 +147,7 @@ var (
 	}
 
 	// mode for when to create index
-	indexCreationModes = map[SGIndexType]IndexCreationMode{
+	indexCreationModes = map[SGIndexType]indexCreationMode{
 		IndexAccess:     Always,
 		IndexRoleAccess: Always,
 		IndexChannels:   Always,
@@ -217,7 +217,7 @@ type SGIndex struct {
 	required         bool              // Whether SG blocks on startup until this index is ready
 	readinessQuery   string            // Query used to determine view readiness
 	flags            SGIndexFlags      // Additional index options
-	creationMode     IndexCreationMode // Signal when to create indexes
+	creationMode     indexCreationMode // Signal when to create indexes
 }
 
 func (i *SGIndex) fullIndexName(useXattrs bool) string {
