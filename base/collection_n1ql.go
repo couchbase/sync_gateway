@@ -15,7 +15,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/couchbase/gocb/v2"
@@ -25,7 +24,7 @@ import (
 
 var _ N1QLStore = &Collection{}
 
-const waitTime = 100 * time.Second
+const waitTime = 5 * time.Second
 
 // IsDefaultScopeCollection returns true if the given Collection is on the _default._default scope and collection.
 func (c *Collection) IsDefaultScopeCollection() bool {
@@ -123,43 +122,49 @@ func (c *Collection) CreatePrimaryIndex(indexName string, options *N1qlIndexOpti
 }
 
 // WaitForIndexOnline takes set of indexes and watches them till they're online.
-func (c *Collection) WaitForIndexOnline(indexNames []string, watchPrimary bool) error {
-	waitChan := false
+func (c *Collection) WaitForIndexesOnline(indexNames []string, watchPrimary bool) error {
+	logCtx := context.TODO()
+	mgr := c.cluster.QueryIndexes()
+	maxNumAttempts := 250
+	retrySleeper := CreateMaxDoublingSleeperFunc(maxNumAttempts, 100, 5000)
+	retryCount := 0
 	var waitErr error
-	wg := sync.WaitGroup{}
-	wg.Add(1)
-	cluster := c.cluster
-	mgr := cluster.QueryIndexes()
 
 	watchOption := gocb.WatchQueryIndexOptions{
 		WatchPrimary:   watchPrimary,
-		RetryStrategy:  gocb.NewBestEffortRetryStrategy(nil),
+		RetryStrategy:  &goCBv2FailFastRetryStrategy{},
+		ScopeName:      c.ScopeName(),
+		CollectionName: c.Name(),
+	}
+	indexOption := gocb.GetAllQueryIndexesOptions{
 		ScopeName:      c.ScopeName(),
 		CollectionName: c.Name(),
 	}
 
-	go func() {
+	for {
 		waitErr = mgr.WatchIndexes(c.BucketName(), indexNames, waitTime, &watchOption)
-		waitChan = true
-		wg.Done()
-	}()
-	// create a separate goroutine to log periodically to console while waiting for watch indexes to complete
-	go func() {
-		for {
-			if !waitChan {
-				InfofCtx(context.TODO(), KeyBucket, "Waiting for Indexes to come online for %s", MD(c.BucketName()))
-			} else {
-				return
-			}
-			time.Sleep(5 * time.Second)
-		}
-	}()
-	wg.Wait()
-	if waitErr != nil {
-		return waitErr
-	}
 
-	return nil
+		currIndexes, err := mgr.GetAllIndexes(c.BucketName(), &indexOption)
+		if err != nil {
+			return err
+		}
+		for i := 0; i < len(currIndexes); i++ {
+			if currIndexes[i].State == IndexStateOnline {
+				InfofCtx(logCtx, KeyAll, "Index %s is online", MD(currIndexes[i].Name))
+			}
+		}
+
+		if waitErr == nil {
+			return nil
+		}
+
+		shouldContinue, sleepMs := retrySleeper(retryCount)
+		if !shouldContinue {
+			return err
+		}
+		InfofCtx(logCtx, KeyAll, "Indexes for bucket %s not ready - retrying...", MD(c.BucketName()))
+		time.Sleep(time.Millisecond * time.Duration(sleepMs))
+	}
 }
 
 func (c *Collection) GetIndexMeta(indexName string) (exists bool, meta *IndexMeta, err error) {
@@ -173,7 +178,11 @@ func (c *Collection) DropIndex(indexName string) error {
 
 // Issues a build command for any deferred sync gateway indexes associated with the bucket.
 func (c *Collection) BuildDeferredIndexes(indexSet []string) error {
-	return BuildDeferredIndexes(c, indexSet)
+	bucket, err := GetBucket(c.Spec)
+	if err != nil {
+		return err
+	}
+	return BuildDeferredIndexes(bucket, c, indexSet)
 }
 
 func (c *Collection) runQuery(statement string, n1qlOptions *gocb.QueryOptions) (*gocb.QueryResult, error) {

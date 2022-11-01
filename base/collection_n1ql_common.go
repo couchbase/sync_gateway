@@ -173,7 +173,7 @@ func waitForIndexExistence(store N1QLStore, indexName string, shouldExist bool) 
 }
 
 // BuildDeferredIndexes issues a build command for any deferred sync gateway indexes associated with the bucket.
-func BuildDeferredIndexes(s N1QLStore, indexSet []string) error {
+func BuildDeferredIndexes(bucket Bucket, s N1QLStore, indexSet []string) error {
 
 	if len(indexSet) == 0 {
 		return nil
@@ -217,33 +217,35 @@ func BuildDeferredIndexes(s N1QLStore, indexSet []string) error {
 	}
 
 	InfofCtx(context.TODO(), KeyQuery, "Building deferred indexes: %v", deferredIndexes)
-	buildErr := buildIndexes(s, deferredIndexes)
+	buildErr := buildIndexes(bucket, s, deferredIndexes)
 	return buildErr
 }
 
 // BuildIndexes executes a BUILD INDEX statement in the current bucket, using the form:
 //
 //	BUILD INDEX ON `bucket.Name`(`index1`, `index2`, ...)
-func buildIndexes(s N1QLStore, indexNames []string) error {
+func buildIndexes(bucket Bucket, s N1QLStore, indexNames []string) error {
 	if len(indexNames) == 0 {
 		return nil
+	}
+	col, err := AsCollection(bucket)
+	if err != nil {
+		return err
 	}
 
 	// Not using strings.Join because we want to escape each index name
 	indexNameList := StringSliceToN1QLArray(indexNames, "`")
 
 	buildStatement := fmt.Sprintf("BUILD INDEX ON %s(%s)", s.EscapedKeyspace(), indexNameList)
-	err := s.executeStatement(buildStatement)
+	err = s.executeStatement(buildStatement)
 
 	// If indexer reports build will be completed in the background, wait to validate build actually happens.
 	if IsIndexerRetryBuildError(err) {
 		InfofCtx(context.TODO(), KeyQuery, "Indexer error creating index - waiting for background build.  Error:%v", err)
 		// Wait for bucket to be created in background before returning
-		for _, indexName := range indexNames {
-			waitErr := WaitForIndexOnline(s, indexName)
-			if waitErr != nil {
-				return waitErr
-			}
+		waitErr := col.WaitForIndexesOnline(indexNames, false)
+		if waitErr != nil {
+			return waitErr
 		}
 		return nil
 	}
@@ -262,9 +264,9 @@ func WaitForIndexOnline(store N1QLStore, indexName string) error {
 	}
 
 	// Kick off retry loop
-	err, _ := RetryLoop("WaitForIndexOnline", worker, CreateMaxDoublingSleeperFunc(25, 100, 15000))
+	err, _ := RetryLoop("WaitForIndexesOnline", worker, CreateMaxDoublingSleeperFunc(25, 100, 15000))
 	if err != nil {
-		return pkgerrors.Wrapf(err, "WaitForIndexOnline for index %s", MD(indexName).Redact())
+		return pkgerrors.Wrapf(err, "WaitForIndexesOnline for index %s", MD(indexName).Redact())
 	}
 	return nil
 }

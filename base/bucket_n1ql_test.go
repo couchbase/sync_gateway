@@ -60,7 +60,7 @@ func TestN1qlQuery(t *testing.T) {
 	}
 
 	// Wait for index readiness
-	onlineErr := col.WaitForIndexOnline([]string{"testIndex_value"}, false)
+	onlineErr := col.WaitForIndexesOnline([]string{"testIndex_value"}, false)
 	if onlineErr != nil {
 		t.Fatalf("Error waiting for index to come online: %v", err)
 	}
@@ -81,7 +81,7 @@ func TestN1qlQuery(t *testing.T) {
 		}
 	}()
 
-	readyErr := col.WaitForIndexOnline([]string{"testIndex_value"}, false)
+	readyErr := col.WaitForIndexesOnline([]string{"testIndex_value"}, false)
 	require.NoError(t, readyErr, "Error validating index online")
 
 	// Query the index
@@ -170,7 +170,7 @@ func TestN1qlFilterExpression(t *testing.T) {
 	}
 
 	// Wait for index readiness
-	readyErr := col.WaitForIndexOnline([]string{"testIndex_filtered_value"}, false)
+	readyErr := col.WaitForIndexesOnline([]string{"testIndex_filtered_value"}, false)
 	require.NoError(t, readyErr, "Error validating index online")
 
 	// Defer index teardown
@@ -241,7 +241,7 @@ func TestIndexMeta(t *testing.T) {
 		t.Fatalf("Error creating index: %s", err)
 	}
 
-	readyErr := col.WaitForIndexOnline([]string{"testIndex_value"}, false)
+	readyErr := col.WaitForIndexesOnline([]string{"testIndex_value"}, false)
 	require.NoError(t, readyErr, "Error validating index online")
 
 	// Defer index teardown
@@ -293,7 +293,7 @@ func TestMalformedN1qlQuery(t *testing.T) {
 		t.Fatalf("Error creating index: %s", err)
 	}
 
-	readyErr := col.WaitForIndexOnline([]string{"testIndex_value_malformed"}, false)
+	readyErr := col.WaitForIndexesOnline([]string{"testIndex_value_malformed"}, false)
 	assert.NoError(t, readyErr, "Error validating index online")
 
 	// Defer index teardown
@@ -355,7 +355,7 @@ func TestCreateAndDropIndex(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Error creating index: %s", err)
 	}
-	readyErr := col.WaitForIndexOnline([]string{"testIndex_sequence"}, false)
+	readyErr := col.WaitForIndexesOnline([]string{"testIndex_sequence"}, false)
 	assert.NoError(t, readyErr, "Error validating index online")
 
 	// Drop the index
@@ -385,7 +385,7 @@ func TestCreateDuplicateIndex(t *testing.T) {
 		t.Fatalf("Error creating index: %s", err)
 	}
 
-	readyErr := col.WaitForIndexOnline([]string{"testIndexDuplicateSequence"}, false)
+	readyErr := col.WaitForIndexesOnline([]string{"testIndexDuplicateSequence"}, false)
 	assert.NoError(t, readyErr, "Error validating index online")
 
 	// Attempt to create duplicate, validate duplicate error
@@ -419,7 +419,7 @@ func TestCreateAndDropIndexSpecialCharacters(t *testing.T) {
 		t.Fatalf("Error creating index: %s", err)
 	}
 
-	readyErr := col.WaitForIndexOnline([]string{"testIndex-sequence"}, false)
+	readyErr := col.WaitForIndexesOnline([]string{"testIndex-sequence"}, false)
 	assert.NoError(t, readyErr, "Error validating index online")
 
 	// Drop the index
@@ -465,10 +465,10 @@ func TestDeferredCreateIndex(t *testing.T) {
 		}
 	}()
 
-	buildErr := buildIndexes(n1qlStore, []string{indexName})
+	buildErr := buildIndexes(bucket, n1qlStore, []string{indexName})
 	assert.NoError(t, buildErr, "Error building indexes")
 
-	readyErr := col.WaitForIndexOnline([]string{indexName}, false)
+	readyErr := col.WaitForIndexesOnline([]string{indexName}, false)
 	assert.NoError(t, readyErr, "Error validating index online")
 
 }
@@ -527,9 +527,9 @@ func TestBuildDeferredIndexes(t *testing.T) {
 	buildErr := n1qlStore.BuildDeferredIndexes([]string{deferredIndexName, nonDeferredIndexName})
 	assert.NoError(t, buildErr, "Error building indexes")
 
-	readyErr := col.WaitForIndexOnline([]string{deferredIndexName}, false)
+	readyErr := col.WaitForIndexesOnline([]string{deferredIndexName}, false)
 	assert.NoError(t, readyErr, "Error validating index online")
-	readyErr = col.WaitForIndexOnline([]string{nonDeferredIndexName}, false)
+	readyErr = col.WaitForIndexesOnline([]string{nonDeferredIndexName}, false)
 	assert.NoError(t, readyErr, "Error validating index online")
 
 	// Ensure no errors from no-op scenarios
@@ -646,7 +646,7 @@ func TestWaitForBucketExistence(t *testing.T) {
 		wg.Done()
 	}()
 	wg.Wait()
-	assert.NoError(t, col.WaitForIndexOnline([]string{indexName}, false))
+	assert.NoError(t, col.WaitForIndexesOnline([]string{indexName}, false))
 
 	// Drop the index;
 	err = n1qlStore.DropIndex(indexName)

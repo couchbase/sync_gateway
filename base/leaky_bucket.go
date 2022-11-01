@@ -560,7 +560,8 @@ func (b *LeakyBucket) BuildDeferredIndexes(indexSet []string) error {
 	if !ok {
 		return errors.New("Not N1QL Store")
 	}
-	return n1qlStore.BuildDeferredIndexes(indexSet)
+	bucket := b.GetUnderlyingBucket()
+	return BuildDeferredIndexes(bucket, n1qlStore, indexSet)
 }
 
 func (b *LeakyBucket) CreatePrimaryIndex(indexName string, options *N1qlIndexOptions) error {
@@ -577,7 +578,7 @@ func (b *LeakyBucket) WaitForIndexOnline(indexNames []string) error {
 	if err != nil {
 		return err
 	}
-	return col.WaitForIndexOnline(indexNames, false)
+	return col.WaitForIndexesOnline(indexNames, false)
 }
 
 func (b *LeakyBucket) GetIndexMeta(indexName string) (exists bool, meta *IndexMeta, err error) {

@@ -119,6 +119,7 @@ func TestPostUpgradeIndexesSimple(t *testing.T) {
 	if base.TestsDisableGSI() {
 		t.Skip("This test only works with Couchbase Server and UseViews=false")
 	}
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)

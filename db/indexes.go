@@ -367,7 +367,7 @@ func InitializeIndexes(bucket base.N1QLStore, useXattrs bool, numReplicas uint, 
 
 	// Issue BUILD INDEX for any deferred indexes.
 	if len(deferredIndexes) > 0 {
-		buildErr := n1QLStore.BuildDeferredIndexes(deferredIndexes)
+		buildErr := base.BuildDeferredIndexes(bucket, n1QLStore, deferredIndexes)
 		if buildErr != nil {
 			base.InfofCtx(context.TODO(), base.KeyQuery, "Error building deferred indexes.  Error: %v", buildErr)
 			return buildErr
@@ -388,6 +388,9 @@ func waitForIndexes(bucket base.Bucket, useXattrs bool) error {
 	logCtx := context.TODO()
 	base.InfofCtx(logCtx, base.KeyAll, "Verifying index availability for bucket %s...", base.MD(bucket.GetName()))
 	collection, err := base.AsCollection(bucket)
+	if err != nil {
+		return err
+	}
 	var indexes []string
 
 	for _, sgIndex := range sgIndexes {
@@ -398,7 +401,7 @@ func waitForIndexes(bucket base.Bucket, useXattrs bool) error {
 		indexes = append(indexes, fullIndexName)
 	}
 
-	err = collection.WaitForIndexOnline(indexes, false)
+	err = collection.WaitForIndexesOnline(indexes, false)
 	if err != nil {
 		return err
 	}
