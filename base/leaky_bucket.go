@@ -282,6 +282,15 @@ func (b *LeakyBucket) GetWithXattr(k string, xattr string, userXattrKey string, 
 	return b.bucket.GetWithXattr(k, xattr, userXattrKey, rv, xv, uxv)
 }
 
+func (b *LeakyBucket) WaitForIndexesOnline(indexNames []string, watchPrimary bool) error {
+	bucket := b.GetUnderlyingBucket()
+	col, err := AsCollection(bucket)
+	if err != nil {
+		return err
+	}
+	return col.WaitForIndexesOnline(indexNames, watchPrimary)
+}
+
 func (b *LeakyBucket) DeleteWithXattr(k string, xattr string) error {
 	return b.bucket.DeleteWithXattr(k, xattr)
 }

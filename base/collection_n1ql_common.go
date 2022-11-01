@@ -48,6 +48,7 @@ type N1QLStore interface {
 	IndexMetaBucketID() string
 	IndexMetaScopeID() string
 	IndexMetaKeyspaceID() string
+	WaitForIndexesOnline(indexNames []string, watchPrimary bool) error
 
 	// executeQuery performs the specified query without any built-in retry handling and returns the resultset
 	executeQuery(statement string) (sgbucket.QueryResultIterator, error)
@@ -217,33 +218,29 @@ func BuildDeferredIndexes(bucket Bucket, s N1QLStore, indexSet []string) error {
 	}
 
 	InfofCtx(context.TODO(), KeyQuery, "Building deferred indexes: %v", deferredIndexes)
-	buildErr := buildIndexes(bucket, s, deferredIndexes)
+	buildErr := buildIndexes(s, deferredIndexes)
 	return buildErr
 }
 
 // BuildIndexes executes a BUILD INDEX statement in the current bucket, using the form:
 //
 //	BUILD INDEX ON `bucket.Name`(`index1`, `index2`, ...)
-func buildIndexes(bucket Bucket, s N1QLStore, indexNames []string) error {
+func buildIndexes(s N1QLStore, indexNames []string) error {
 	if len(indexNames) == 0 {
 		return nil
-	}
-	col, err := AsCollection(bucket)
-	if err != nil {
-		return err
 	}
 
 	// Not using strings.Join because we want to escape each index name
 	indexNameList := StringSliceToN1QLArray(indexNames, "`")
 
 	buildStatement := fmt.Sprintf("BUILD INDEX ON %s(%s)", s.EscapedKeyspace(), indexNameList)
-	err = s.executeStatement(buildStatement)
+	err := s.executeStatement(buildStatement)
 
 	// If indexer reports build will be completed in the background, wait to validate build actually happens.
 	if IsIndexerRetryBuildError(err) {
 		InfofCtx(context.TODO(), KeyQuery, "Indexer error creating index - waiting for background build.  Error:%v", err)
 		// Wait for bucket to be created in background before returning
-		waitErr := col.WaitForIndexesOnline(indexNames, false)
+		waitErr := s.WaitForIndexesOnline(indexNames, false)
 		if waitErr != nil {
 			return waitErr
 		}

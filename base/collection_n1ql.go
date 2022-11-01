@@ -125,39 +125,41 @@ func (c *Collection) CreatePrimaryIndex(indexName string, options *N1qlIndexOpti
 func (c *Collection) WaitForIndexesOnline(indexNames []string, watchPrimary bool) error {
 	logCtx := context.TODO()
 	mgr := c.cluster.QueryIndexes()
-	maxNumAttempts := 250
+	maxNumAttempts := 150 * len(indexNames)
 	retrySleeper := CreateMaxDoublingSleeperFunc(maxNumAttempts, 100, 5000)
 	retryCount := 0
-	var waitErr error
 
-	watchOption := gocb.WatchQueryIndexOptions{
-		WatchPrimary:   watchPrimary,
-		RetryStrategy:  &goCBv2FailFastRetryStrategy{},
-		ScopeName:      c.ScopeName(),
-		CollectionName: c.Name(),
-	}
 	indexOption := gocb.GetAllQueryIndexesOptions{
 		ScopeName:      c.ScopeName(),
 		CollectionName: c.Name(),
 	}
 
 	for {
-		waitErr = mgr.WatchIndexes(c.BucketName(), indexNames, waitTime, &watchOption)
-
+		onlineIndexCount := 0
+		var onlineIndexList []string
 		currIndexes, err := mgr.GetAllIndexes(c.BucketName(), &indexOption)
 		if err != nil {
 			return err
 		}
+
 		for i := 0; i < len(currIndexes); i++ {
 			if currIndexes[i].State == IndexStateOnline {
+				onlineIndexList = append(onlineIndexList, currIndexes[i].Name)
 				InfofCtx(logCtx, KeyAll, "Index %s is online", MD(currIndexes[i].Name))
 			}
 		}
 
-		if waitErr == nil {
+		for _, currVal := range onlineIndexList {
+			for _, listVal := range indexNames {
+				if currVal == listVal {
+					onlineIndexCount++
+				}
+			}
+		}
+		if onlineIndexCount == len(indexNames) {
 			return nil
 		}
-
+		retryCount++
 		shouldContinue, sleepMs := retrySleeper(retryCount)
 		if !shouldContinue {
 			return err

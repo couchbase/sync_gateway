@@ -465,7 +465,7 @@ func TestDeferredCreateIndex(t *testing.T) {
 		}
 	}()
 
-	buildErr := buildIndexes(bucket, n1qlStore, []string{indexName})
+	buildErr := buildIndexes(n1qlStore, []string{indexName})
 	assert.NoError(t, buildErr, "Error building indexes")
 
 	readyErr := col.WaitForIndexesOnline([]string{indexName}, false)
