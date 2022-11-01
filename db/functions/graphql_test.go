@@ -576,3 +576,123 @@ func TestGraphQLSubgraph(t *testing.T) {
 		assertGraphQLResult(t, `{"_entities":[{"title":"Task-001"},{"name":"Bob 1138"}]}`, result, err)
 	})
 }
+
+func TestGraphQLApolloCompatibilitySubgraph(t *testing.T) {
+	// Subgraph schema definition; see https://github.com/apollographql/apollo-federation-subgraph-compatibility/blob/main/CONTRIBUTORS.md
+	// (I had to comment out a few things to get it to compile with graphql-go)
+	var kSchemaStr = `
+	#extend schema
+	#@link(
+	#  url: "https://specs.apollo.dev/federation/v2.0",
+	#  import: ["@extends", "@external", "@inaccessible", "@key", "@override", "@provides", "@requires", "@shareable", "@tag"]
+	#)
+
+  type Product @key(fields: "id") @key(fields: "sku package") @key(fields: "sku variation { id }") {
+	id: ID!
+	sku: String
+	package: String
+	variation: ProductVariation
+	dimensions: ProductDimension
+	createdBy: User @provides(fields: "totalProductsCreated")
+	notes: String @tag(name: "internal")
+	research: [ProductResearch!]!
+  }
+
+  type DeprecatedProduct @key(fields: "sku package") {
+	sku: String!
+	package: String!
+	reason: String
+	createdBy: User
+  }
+
+  type ProductVariation {
+	id: ID!
+  }
+
+  type ProductResearch @key(fields: "study { caseNumber }") {
+	study: CaseStudy!
+	outcome: String
+  }
+
+  type CaseStudy {
+	caseNumber: ID!
+	description: String
+  }
+
+  type ProductDimension @shareable {
+	size: String
+	weight: Float
+	unit: String @inaccessible
+  }
+
+  #extend
+   type Query {
+	product(id: ID!): Product
+	deprecatedProduct(sku: String!, package: String!): DeprecatedProduct @deprecated(reason: "Use product query instead")
+  }
+
+  #extend
+   type User @key(fields: "email") {
+	averageProductsCreatedPerYear: Int @requires(fields: "totalProductsCreated yearsOfEmployment")
+	email: ID! @external
+	name: String @override(from: "users")
+	totalProductsCreated: Int @external
+	yearsOfEmployment: Int! @external
+  }`
+
+	var config = GraphQLConfig{
+		Schema:   &kSchemaStr,
+		Subgraph: true,
+		Resolvers: map[string]GraphQLResolverConfig{
+			"_Entity": {
+				"__typename": {
+					Type: "javascript",
+					Code: `function(context, value) {return value.type;}`,
+				},
+			},
+			"Product": {
+				"__resolveReference": {
+					Type: "javascript",
+					Code: `function(context, value) {
+						return {};
+					}`,
+				},
+			},
+			"DeprecatedProduct": {
+				"__resolveReference": {
+					Type: "javascript",
+					Code: `function(context, value) {
+						return {};
+					}`,
+				},
+			},
+			"ProductResearch": {
+				"__resolveReference": {
+					Type: "javascript",
+					Code: `function(context, value) {
+						return {};
+					}`,
+				},
+			},
+			"User": {
+				"__resolveReference": {
+					Type: "javascript",
+					Code: `function(context, value) {
+						return {};
+					}`,
+				},
+			},
+		},
+	}
+
+	// Compile the schema:
+	//var gq db.GraphQL
+	var err error
+	t.Run("CompileSchema", func(t *testing.T) {
+		_, err = CompileGraphQL(&config)
+		assert.NoError(t, err)
+	})
+	if err != nil {
+		return
+	}
+}

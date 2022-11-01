@@ -42,7 +42,8 @@ func (config *GraphQLConfig) addSubgraphExtensions(schemaSource string, resolver
 	entityNames, err := findEntityNames(schemaSource, resolvers)
 	if err != nil {
 		multiError = multiError.Append(err)
-	} else if len(entityNames) == 0 {
+	}
+	if len(entityNames) == 0 {
 		// This is not strictly an error, but almost certainly a mistake...
 		multiError = multiError.Append(fmt.Errorf("subgraph schema does not define any Entity types (those with @key directives)"))
 	}
@@ -98,12 +99,12 @@ func (config *GraphQLConfig) addSubgraphExtensions(schemaSource string, resolver
 // Finds the subgraph schema's "Entities" -- object types that have the `@key` directive -- and returns a sorted array of their names.
 func findEntityNames(schemaSource string, resolvers map[string]any) ([]string, error) {
 	// Callback that will process object types that have the `@key` directive:
-	var entityNames []string
+	entityKeys := base.Set{}
 	keyVisitor := gqltools.SchemaDirectiveVisitor{
 		VisitObject: func(p gqltools.VisitObjectParams) error {
 			// ignore directives with `resolvable:false`
 			if resolvable, found := p.Args["resolvable"].(bool); resolvable || !found {
-				entityNames = append(entityNames, p.Config.Name)
+				entityKeys.Add(p.Config.Name)
 			}
 			return nil
 		},
@@ -118,6 +119,8 @@ func findEntityNames(schemaSource string, resolvers map[string]any) ([]string, e
 		},
 		Debug: true, // This enables logging of unresolved-type errors
 	})
+
+	entityNames := entityKeys.ToArray()
 	sort.Strings(entityNames)
 	return entityNames, err
 }
