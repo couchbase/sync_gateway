@@ -220,16 +220,8 @@ func TestRemoveIndexesUseViewsTrueAndFalse(t *testing.T) {
 	if base.TestsDisableGSI() {
 		t.Skip("This test only works with Couchbase Server and UseViews=false")
 	}
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	col, _ := base.AsCollection(db.Bucket)
-	lol := col.GetCluster().QueryIndexes()
-	indexOption := gocb.GetAllQueryIndexesOptions{
-		ScopeName:      col.ScopeName(),
-		CollectionName: col.Name(),
-	}
-	fmt.Println(lol.GetAllIndexes(db.Bucket.GetName(), &indexOption))
 
 	require.True(t, db.Bucket.IsSupported(sgbucket.DataStoreFeatureN1ql))
 	n1QLStore, ok := base.AsN1QLStore(db.Bucket)
