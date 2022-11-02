@@ -21,6 +21,73 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+//////// ALL ADMIN USER QUERY APIS:
+
+// When feature flag is not enabled, all API calls return 404:
+func TestFunctionsConfigGetWithoutFeatureFlag(t *testing.T) {
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{EnableUserQueries: false})
+	defer rt.Close()
+
+	t.Run("Functions, Non-Admin", func(t *testing.T) {
+		response := rt.SendRequest("GET", "/db/_config/functions", "")
+		assert.Equal(t, 404, response.Result().StatusCode)
+	})
+	t.Run("All Functions", func(t *testing.T) {
+		response := rt.SendAdminRequest("GET", "/db/_config/functions", "")
+		assert.Equal(t, 404, response.Result().StatusCode)
+	})
+	t.Run("Single Function", func(t *testing.T) {
+		response := rt.SendAdminRequest("GET", "/db/_config/functions/cube", "")
+		assert.Equal(t, 404, response.Result().StatusCode)
+	})
+}
+
+// Test use of "Etag" and "If-Match" headers to safely update function/query/graphql config.
+func TestFunctionsConfigMVCC(t *testing.T) {
+	rt := rest.NewRestTesterForUserQueries(t, rest.DbConfig{
+		UserFunctions: &functions.FunctionsConfig{
+			Definitions: functions.FunctionsDefs{
+				"xxx": {
+					Type: "javascript",
+					Code: "function(){return 42;}",
+				},
+				"xxxN1QL": {
+					Type: "query",
+					Code: "SELECT 42",
+				},
+				"yyy": {
+					Type: "query",
+					Code: "SELECT 999",
+				},
+			},
+		},
+	})
+	if rt == nil {
+		return
+	}
+	defer rt.Close()
+
+	t.Run("Function", func(t *testing.T) {
+		runTestFunctionsConfigMVCC(t, rt, "/db/_config/functions/xxx", `{
+			"type": "javascript",
+			"code": "function(){return 69;}"
+		}`)
+	})
+
+	t.Run("Query", func(t *testing.T) {
+		runTestFunctionsConfigMVCC(t, rt, "/db/_config/functions/xxxN1QL", `{
+			"type": "query",
+			"code": "select 69"
+		}`)
+	})
+
+	t.Run("Functions", func(t *testing.T) {
+		runTestFunctionsConfigMVCC(t, rt, "/db/_config/functions", `{
+			"definitions": {
+				"zzz": {"type": "javascript", "code": "function(){return 69;}"} } }`)
+	})
+}
+
 //////// FUNCTIONS CONFIG API TESTS (ADMIN ENDPOINTS)
 
 // When there's no existing config, API calls return 404:
