@@ -432,9 +432,7 @@ func (db *DatabaseCollectionWithUser) GetDelta(ctx context.Context, docID, fromR
 
 func (db *DatabaseCollectionWithUser) authorizeUserForChannels(docID, revID string, channels base.Set, isDeleted bool, history Revisions) (isAuthorized bool, redactedRev DocumentRevision) {
 	if db.user != nil {
-		fmt.Println("channels=", channels)
 		if err := db.user.AuthorizeAnyChannel(channels); err != nil {
-			fmt.Println("err=", err)
 			// On access failure, return (only) the doc history and deletion/removal
 			// status instead of returning an error. For justification see the comment in
 			// the getRevFromDoc method, below
