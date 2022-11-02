@@ -10,11 +10,15 @@ package functionsapitest
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 
 	"github.com/graphql-go/graphql"
 
+	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/db"
+	"github.com/couchbase/sync_gateway/db/functions"
 	"github.com/couchbase/sync_gateway/rest"
 	"github.com/stretchr/testify/assert"
 )
@@ -127,6 +131,44 @@ func TestGraphQLQueryAdminOnly(t *testing.T) {
 		response := rt.SendAdminRequest("POST", "/db/_graphql", `{"query": "query($id:ID!){ task(id:$id) { secretNotes } }" , "variables": {"id": "a"}}`)
 		assert.Equal(t, 200, response.Result().StatusCode)
 		assert.Equal(t, `{"data":{"task":{"secretNotes":"TOP SECRET!"}}}`, string(response.BodyBytes()))
+	})
+}
+func TestContextDeadline(t *testing.T) {
+	rt := rest.NewRestTesterForUserQueries(t, rest.DbConfig{
+		GraphQL: &functions.GraphQLConfig{
+			Schema: base.StringPtr(`type Query{checkContextDeadline(Timeout: Int!): Int}`),
+			Resolvers: map[string]functions.GraphQLResolverConfig{
+				"Query": {
+					"checkContextDeadline": {
+						Type: "javascript",
+						Code: `function(parent, args, context, info) {
+									var start = new Date().getTime();
+									while (new Date().getTime() < start + args.Timeout);
+									return 0;
+								}`,
+						Allow: allowAll,
+					},
+				},
+			},
+		},
+	})
+	if rt == nil {
+		return
+	}
+	defer rt.Close()
+	t.Run("AsAdmin - exceedContextDeadline", func(t *testing.T) {
+		requestQuery := fmt.Sprintf(`{"query": "query{ checkContextDeadline(Timeout:%d) }"}`, db.UserFunctionTimeout.Milliseconds()*2)
+		response := rt.SendAdminRequest("POST", "/db/_graphql", requestQuery)
+
+		assert.Equal(t, 200, response.Result().StatusCode)
+		testErrorMessage(t, response, "context deadline exceeded")
+	})
+	t.Run("AsAdmin - doNotExceedContextDeadline", func(t *testing.T) {
+		requestQuery := fmt.Sprintf(`{"query": "query{ checkContextDeadline(Timeout:%d) }"}`, db.UserFunctionTimeout.Milliseconds()/2)
+		response := rt.SendAdminRequest("POST", "/db/_graphql", requestQuery)
+
+		assert.Equal(t, 200, response.Result().StatusCode)
+		assert.Equal(t, `{"data":{"checkContextDeadline":0}}`, string(response.BodyBytes()))
 	})
 }
 
