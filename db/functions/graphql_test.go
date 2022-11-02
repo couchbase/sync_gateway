@@ -414,24 +414,7 @@ func setupTestDBWithFunctions(t *testing.T, fnConfig FunctionConfigMap, gqConfig
 		options.GraphQL, err = CompileGraphQL(gqConfig)
 		assert.NoError(t, err)
 	}
-	return setupTestDBWithOptions(t, options)
-}
-
-func setupTestDBWithOptions(t testing.TB, dbcOptions db.DatabaseContextOptions) (*db.Database, context.Context) {
-
-	tBucket := base.GetTestBucket(t)
-	return setupTestDBForBucketWithOptions(t, tBucket, dbcOptions)
-}
-
-func setupTestDBForBucketWithOptions(t testing.TB, tBucket base.Bucket, dbcOptions db.DatabaseContextOptions) (*db.Database, context.Context) {
-	ctx := base.TestCtx(t)
-	db.AddOptionsFromEnvironmentVariables(&dbcOptions)
-	dbCtx, err := db.NewDatabaseContext(ctx, "db", tBucket, false, dbcOptions)
-	assert.NoError(t, err, "Couldn't create context for database 'db'")
-	db, err := db.CreateDatabase(dbCtx)
-	assert.NoError(t, err, "Couldn't create database 'db'")
-	ctx = db.AddDatabaseLogContext(ctx)
-	return db, ctx
+	return db.SetupTestDBWithOptions(t, options)
 }
 
 // createPrimaryIndex returns true if there was no index created before

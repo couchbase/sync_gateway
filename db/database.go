@@ -1006,7 +1006,7 @@ func (db *Database) processForEachDocIDResults(callback ForEachDocIDFunc, limit 
 func (db *DatabaseContext) AllPrincipalIDs(ctx context.Context) (users, roles []string, err error) {
 
 	if !db.IsServerless() || db.Options.UseViews {
-		return db.getAllPrincipalIDs(ctx)
+		return db.getAllPrincipalIDsSyncDocs(ctx)
 	}
 
 	// If running in Serverless mode, we can leverage `users` and `roles` index
@@ -1116,7 +1116,7 @@ outerLoop:
 }
 
 // Returns the IDs of all users and roles using syncDocs index
-func (db *DatabaseContext) getAllPrincipalIDs(ctx context.Context) (users, roles []string, err error) {
+func (db *DatabaseContext) getAllPrincipalIDsSyncDocs(ctx context.Context) (users, roles []string, err error) {
 
 	startKey := ""
 	limit := db.Options.QueryPaginationLimit

@@ -21,6 +21,7 @@ import (
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // Workaround SG #3570 by doing a polling loop until the star channel query returns 0 results.
@@ -443,4 +444,22 @@ func AddOptionsFromEnvironmentVariables(dbcOptions *DatabaseContextOptions) {
 	if base.TestsDisableGSI() {
 		dbcOptions.UseViews = true
 	}
+}
+
+// Sets up test db with the specified database context options.  Note that environment variables can
+// override somedbcOptions properties.
+func SetupTestDBWithOptions(t testing.TB, dbcOptions DatabaseContextOptions) (*Database, context.Context) {
+	tBucket := base.GetTestBucket(t)
+	return SetupTestDBForBucketWithOptions(t, tBucket, dbcOptions)
+}
+
+func SetupTestDBForBucketWithOptions(t testing.TB, tBucket base.Bucket, dbcOptions DatabaseContextOptions) (*Database, context.Context) {
+	ctx := base.TestCtx(t)
+	AddOptionsFromEnvironmentVariables(&dbcOptions)
+	dbCtx, err := NewDatabaseContext(ctx, "db", tBucket, false, dbcOptions)
+	require.NoError(t, err, "Couldn't create context for database 'db'")
+	db, err := CreateDatabase(dbCtx)
+	require.NoError(t, err, "Couldn't create database 'db'")
+	ctx = db.AddDatabaseLogContext(ctx)
+	return db, ctx
 }

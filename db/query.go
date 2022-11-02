@@ -621,7 +621,7 @@ func (context *DatabaseContext) BuildRolesQuery(startKey string, limit int) (str
 	return queryStatement, params
 }
 
-// Retrieves role ids using the roles index
+// Retrieves role ids using the roles index, includes deleted roles
 func (context *DatabaseContext) QueryAllRoles(ctx context.Context, startKey string, limit int) (sgbucket.QueryResultIterator, error) {
 
 	// View Query
