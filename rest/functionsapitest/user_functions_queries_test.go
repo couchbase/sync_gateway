@@ -15,6 +15,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/couchbase/sync_gateway/db"
+
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db/functions"
 	"github.com/couchbase/sync_gateway/rest"
@@ -637,5 +639,46 @@ func TestFunctionMutability(t *testing.T) {
 		response := rt.SendAdminRequest("POST", fmt.Sprintf("/db/_function/%s", callerFuncName), fmt.Sprintf(body, putFuncName))
 		assert.Equal(t, http.StatusOK, response.Result().StatusCode)
 		assert.EqualValues(t, "\"Test123\"", string(response.BodyBytes()))
+	})
+}
+
+func TestFunctionTimeout(t *testing.T) {
+	kUserTimeoutFunctionsTestConfig := &functions.FunctionsConfig{
+		Definitions: functions.FunctionsDefs{
+			"sleep": {
+				Type: "javascript",
+				Code: `function(context,args) {
+					// simulating sleep using a while loop
+					// can't use setTimeout in Otto interpreter
+					var start = new Date().getTime();
+					var ms = parseInt(args.ms)
+					while (new Date().getTime() < start + ms);
+				}`,
+				Args:  []string{"ms"},
+				Allow: allowAll,
+			},
+		},
+	}
+
+	rt := rest.NewRestTesterForUserQueries(t, rest.DbConfig{
+		UserFunctions: kUserTimeoutFunctionsTestConfig,
+	})
+	if rt == nil {
+		return
+	}
+	defer rt.Close()
+
+	// positive case:
+	reqBody := fmt.Sprintf(`{"ms": %d}`, db.UserFunctionTimeout.Milliseconds()/2)
+	t.Run("under time limit", func(t *testing.T) {
+		response := rt.SendAdminRequest("POST", "/db/_function/sleep", reqBody)
+		assert.Equal(t, 200, response.Result().StatusCode)
+	})
+
+	// negative case:
+	reqBody = fmt.Sprintf(`{"ms": %d}`, 2*db.UserFunctionTimeout.Milliseconds())
+	t.Run("over time limit", func(t *testing.T) {
+		response := rt.SendAdminRequest("POST", "/db/_function/sleep", reqBody)
+		assert.Equal(t, 500, response.Result().StatusCode)
 	})
 }
