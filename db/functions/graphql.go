@@ -171,7 +171,7 @@ ResolverLoop:
 					ResolveType: typeNameResolver,
 				}
 			} else {
-				multiError = multiError.Append(fmt.Errorf("union type '_Entity' cannot have field resolvers"))
+				multiError = multiError.Append(fmt.Errorf("_Entity: GraphQL union type cannot have field resolvers"))
 			}
 		} else {
 			// Interface type:
@@ -200,12 +200,39 @@ ResolverLoop:
 		Resolvers: resolvers,
 		Debug:     true, // This enables logging of unresolved-type errors
 	})
-
-	if err == nil && len(schema.TypeMap()) == 0 {
-		base.WarnfCtx(context.Background(), "GraphQL Schema object has no registered TypeMap -- this probably means the schema has unresolved types. See gqltools warnings above")
-		err = fmt.Errorf("GraphQL Schema object has no registered TypeMap -- this probably means the schema has unresolved types")
+	if err != nil {
+		return schema, err
 	}
-	return schema, err
+
+	// Check that all fields of `Query` and (if present) `Mutation` have resolvers:
+	for _, objType := range []*graphql.Object{schema.QueryType(), schema.MutationType()} {
+		if objType != nil {
+			typeName := objType.Name()
+			for fieldName, _ := range objType.Fields() {
+				if _, found := config.Resolvers[typeName][fieldName]; !found {
+					if !config.isSpecialSubgraphField(fieldName) {
+						multiError = multiError.Append(fmt.Errorf("%s.%s: Missing top-level GraphQL resolver", typeName, fieldName))
+					}
+				}
+			}
+		}
+	}
+
+	// Check that all interface types have a '__typename' resolver:
+	for typeName, typeObj := range schema.TypeMap() {
+		if _, ok := typeObj.(*graphql.Interface); ok {
+			if _, found := config.Resolvers[typeName]["__typename"]; !found {
+				multiError = multiError.Append(fmt.Errorf("%s: GraphQL interface must implement a '__typename' resolver", typeName))
+			}
+		}
+	}
+
+	if len(schema.TypeMap()) == 0 {
+		base.WarnfCtx(context.Background(), "GraphQL Schema object has no registered TypeMap -- this probably means the schema has undefined types. See gqltools warnings above")
+		err = fmt.Errorf("GraphQL Schema object has no registered TypeMap -- this probably means the schema has undefined types")
+	}
+
+	return schema, multiError.ErrorOrNil()
 }
 
 // Reads the schema, either directly from the config or from an external file.
@@ -221,7 +248,7 @@ func (config *GraphQLConfig) getSchema() (string, error) {
 		}
 		src, err := os.ReadFile(*config.SchemaFile)
 		if err != nil {
-			return "", fmt.Errorf("GraphQL config: cann't read file %s: %w", *config.SchemaFile, err)
+			return "", fmt.Errorf("GraphQL config: can't read file %s: %w", *config.SchemaFile, err)
 		}
 		return string(src), nil
 	}

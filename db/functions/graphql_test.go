@@ -418,6 +418,88 @@ func TestUserGraphQLWithN1QL(t *testing.T) {
 	assertGraphQLResult(t, `{"task":{"description":"Bass ale please","title":"Beer"}}`, result, err)
 }
 
+//////// CONFIGURATION ERROR TESTS
+
+// A placeholder GraphQL resolver function (should never be called!)
+var kDummyFieldResolver = FunctionConfig{
+	Type:  "javascript",
+	Code:  `function(parent, args, context, info) {throw 'unimplemented';}`,
+	Allow: allowAll,
+}
+
+var kDummyTypeResolver = FunctionConfig{
+	Type: "javascript",
+	Code: `function(context,value) {throw 'unimplemented';}`,
+}
+
+// All top-level fields (those of Query & Mutation) must have JS resolvers.
+func TestGraphQLMissingFieldResolvers(t *testing.T) {
+	var schema = `
+	type Query {
+		secrets: [String!]!
+		scandals: [String!]!
+	}
+	type Mutation {
+		crush(strength:Int!): Boolean
+		mangle : String!
+		destroy(utterly:Boolean): Boolean
+	}`
+	var config = GraphQLConfig{
+		Schema: &schema,
+		Resolvers: map[string]GraphQLResolverConfig{
+			"Query": {
+				"secrets": kDummyFieldResolver,
+			},
+		},
+	}
+	_, err := CompileGraphQL(&config)
+	assert.ErrorContains(t, err, "Query.scandals: Missing")
+	assert.NotContains(t, err.Error(), "Query.secrets")
+	assert.ErrorContains(t, err, "Mutation.crush: Missing")
+	assert.ErrorContains(t, err, "Mutation.mangle: Missing")
+	assert.ErrorContains(t, err, "Mutation.destroy: Missing")
+}
+
+// Every interface type in the schema must have a JS __typename resolver.
+func TestGraphQLMissingTypeResolvers(t *testing.T) {
+	var schema = `
+		interface Node {
+			id:             ID
+		}
+		interface Location {
+			geo:            Geo
+		}
+		type Geo {
+			lat:            Float!
+			lon:            Float!
+		}
+		type Airport implements Node & Location {
+			id:             ID!
+			geo:            Geo
+		}
+		type Hotel implements Node & Location {
+			id:             ID!
+			geo:            Geo
+		}
+		type Query {
+			locationsNear(geo: Geo!): [Location!]!
+		}`
+	var config = GraphQLConfig{
+		Schema: &schema,
+		Resolvers: map[string]GraphQLResolverConfig{
+			"Query": {
+				"locationsNear": kDummyFieldResolver,
+			},
+			"Node": {
+				"__typename": kDummyTypeResolver,
+			},
+		},
+	}
+	_, err := CompileGraphQL(&config)
+	assert.ErrorContains(t, err, "Location: GraphQL interface must implement a '__typename' resolver")
+	assert.NotContains(t, err.Error(), "Node:")
+}
+
 func TestGraphQLMaxSchemaSize(t *testing.T) {
 	var schema = `
 	type Task {
@@ -433,10 +515,7 @@ func TestGraphQLMaxSchemaSize(t *testing.T) {
 		Schema:        &schema,
 		Resolvers: map[string]GraphQLResolverConfig{
 			"Query": {
-				"square": {
-					Type: "javascript",
-					Code: `function(parent, args, context, info) {return args.n * args.n;}`,
-				},
+				"square": kDummyFieldResolver,
 			},
 		},
 	}
@@ -459,16 +538,10 @@ func TestGraphQLMaxResolverCount(t *testing.T) {
 		Schema:           &schema,
 		Resolvers: map[string]GraphQLResolverConfig{
 			"Query": {
-				"square": {
-					Type: "javascript",
-					Code: `function(parent, args, context, info) {return args.n * args.n;}`,
-				},
+				"square": kDummyFieldResolver,
 			},
 			"Mutation": {
-				"complete": {
-					Type: "javascript",
-					Code: `function(parent, args, context, info) { }`,
-				},
+				"complete": kDummyFieldResolver,
 			},
 		},
 	}
@@ -505,11 +578,8 @@ func TestGraphQLSubgraph(t *testing.T) {
 		Schema:   &kSchemaStr,
 		Subgraph: true,
 		Resolvers: map[string]GraphQLResolverConfig{
-			"_Entity": {
-				"__typename": {
-					Type: "javascript",
-					Code: `function(context, value) {return value.type;}`,
-				},
+			"Query": {
+				"tasks": kDummyFieldResolver,
 			},
 			"Task": {
 				"__resolveReference": {
@@ -525,6 +595,12 @@ func TestGraphQLSubgraph(t *testing.T) {
 					Code: `function(context, value) {
 						return {type: "Person", id: value.id, name: "Bob "+value.id};
 					}`,
+				},
+			},
+			"_Entity": {
+				"__typename": {
+					Type: "javascript",
+					Code: `function(context, value) {return value.type;}`,
 				},
 			},
 		},
@@ -644,6 +720,10 @@ func TestGraphQLApolloCompatibilitySubgraph(t *testing.T) {
 		Schema:   &kSchemaStr,
 		Subgraph: true,
 		Resolvers: map[string]GraphQLResolverConfig{
+			"Query": {
+				"product":           kDummyFieldResolver,
+				"deprecatedProduct": kDummyFieldResolver,
+			},
 			"_Entity": {
 				"__typename": {
 					Type: "javascript",

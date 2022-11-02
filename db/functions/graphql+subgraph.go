@@ -96,6 +96,10 @@ func (config *GraphQLConfig) addSubgraphExtensions(schemaSource string, resolver
 	return schemaSource, multiError.ErrorOrNil()
 }
 
+func (config *GraphQLConfig) isSpecialSubgraphField(fieldName string) bool {
+	return config.Subgraph && (fieldName == "_entities" || fieldName == "_service")
+}
+
 // Finds the subgraph schema's "Entities" -- object types that have the `@key` directive -- and returns a sorted array of their names.
 func findEntityNames(schemaSource string, resolvers map[string]any) ([]string, error) {
 	// Callback that will process object types that have the `@key` directive:
