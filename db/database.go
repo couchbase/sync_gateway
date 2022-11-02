@@ -1052,7 +1052,7 @@ func (db *DatabaseContext) getRoleIDsInBackground(ctx context.Context) <-chan da
 	ch := make(chan data, 1)
 	go func() {
 		defer close(ch)
-		roles, err := db.GetRoleIDs(ctx, true)
+		roles, err := db.getRoleIDsUsingIndex(ctx, true)
 		ch <- data{
 			value: roles,
 			err:   err,
@@ -1271,8 +1271,7 @@ outerLoop:
 	return users, nil
 }
 
-// Returns the IDs of all roles. Includes deleted roles based on given flag
-func (db *DatabaseContext) GetRoleIDs(ctx context.Context, includeDeleted bool) (roles []string, err error) {
+func (db *DatabaseContext) getRoleIDsUsingIndex(ctx context.Context, includeDeleted bool) (roles []string, err error) {
 
 	startKey := ""
 	limit := db.Options.QueryPaginationLimit
@@ -1331,6 +1330,26 @@ outerLoop:
 			break outerLoop
 		}
 
+	}
+
+	return roles, nil
+}
+
+// GetRoleIDs returns IDs of all roles, Includes deleted roles based on given flag
+//
+// It choses which View/Index to use based on combination of useViews and includeDeleted
+// When Views is enabled and includeDeleted is true, ViewPrincipal is used to fetch roles
+// when View is enabled and includeDelete is false, ViewRolesExcludeDelete is used
+// Otherwise RoleIndex is used to fetch roles
+func (db *DatabaseContext) GetRoleIDs(ctx context.Context, useViews, includeDeleted bool) (roles []string, err error) {
+	if useViews && includeDeleted {
+		_, roles, err = db.AllPrincipalIDs(ctx)
+	} else {
+		roles, err = db.getRoleIDsUsingIndex(ctx, includeDeleted)
+	}
+
+	if err != nil {
+		return nil, err
 	}
 
 	return roles, nil

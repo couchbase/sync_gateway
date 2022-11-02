@@ -341,7 +341,7 @@ func TestAllPrincipalIDs(t *testing.T) {
 			assert.ElementsMatch(t, []string{user1.Name()}, users)
 			assert.ElementsMatch(t, []string{role1.Name(), role2.Name()}, roles)
 
-			roles, err = db.GetRoleIDs(ctx, false)
+			roles, err = db.GetRoleIDs(ctx, db.UseViews(), false)
 			assert.NoError(t, err)
 			assert.ElementsMatch(t, []string{role1.Name()}, roles)
 		})
@@ -415,7 +415,7 @@ func TestGetRoleIDs(t *testing.T) {
 			t.Log("role2:", role2.Name())
 
 			// assert roles
-			roles, err := database.GetRoleIDs(ctx, testCase.includeDeleted)
+			roles, err := database.GetRoleIDs(ctx, database.UseViews(), testCase.includeDeleted)
 			expectedRoles := []string{role1.Name()}
 			if testCase.includeDeleted {
 				expectedRoles = append(expectedRoles, role2.Name())

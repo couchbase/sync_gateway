@@ -1411,15 +1411,8 @@ func (h *handler) getUsers() error {
 func (h *handler) getRoles() error {
 	includeDeleted, _ := h.getOptBoolQuery(paramDeleted, false)
 
-	var roles []string
-	var err error
+	roles, err := h.db.GetRoleIDs(h.ctx(), h.db.Options.UseViews, includeDeleted)
 
-	// GetRoleIDs supports Views only when includeDeleted=false
-	if h.db.Options.UseViews && includeDeleted {
-		_, roles, err = h.db.AllPrincipalIDs(h.ctx())
-	} else {
-		roles, err = h.db.GetRoleIDs(h.ctx(), includeDeleted)
-	}
 	if err != nil {
 		return err
 	}
