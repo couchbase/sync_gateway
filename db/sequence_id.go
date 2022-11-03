@@ -68,7 +68,7 @@ func (s SequenceID) intSeqToString() string {
 
 // Currently accepts a plain string, but in the future might accept generic JSON objects.
 // Calling this with a JSON string will result in an error.
-func (dbc *DatabaseCollection) ParseSequenceID(str string) (s SequenceID, err error) {
+func ParseSequenceID(str string) (s SequenceID, err error) {
 	return parseIntegerSequenceID(str)
 }
 
@@ -174,4 +174,9 @@ func (s SequenceID) Before(s2 SequenceID) bool {
 	} else {
 		return s.TriggeredBy < s2.TriggeredBy // both triggered, but by different sequences
 	}
+}
+
+// Create a zero'd out since value (eg, initial since value) based on the sequence type
+func CreateZeroSinceValue() SequenceID {
+	return SequenceID{}
 }

@@ -97,7 +97,7 @@ func (apr *ActivePushReplicator) _connect() error {
 		serialNumber: apr.blipSyncContext.incrementSerialNumber(),
 	}
 
-	seq, err := singleCollection.ParseSequenceID(apr.Checkpointer.lastCheckpointSeq)
+	seq, err := ParseSequenceID(apr.Checkpointer.lastCheckpointSeq)
 	if err != nil {
 		base.WarnfCtx(apr.ctx, "couldn't parse checkpointed sequence ID, starting push from seq:0")
 	}

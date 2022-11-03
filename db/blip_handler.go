@@ -236,12 +236,12 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 	bh.changesCtxLock.Lock()
 	defer bh.changesCtxLock.Unlock()
 
-	defaultSince := bh.collection.CreateZeroSinceValue()
+	defaultSince := CreateZeroSinceValue()
 	latestSeq := func() (SequenceID, error) {
 		seq, err := bh.collection.LastSequence()
 		return SequenceID{Seq: seq}, err
 	}
-	subChangesParams, err := NewSubChangesParams(bh.loggingCtx, rq, defaultSince, latestSeq, bh.collection.ParseSequenceID)
+	subChangesParams, err := NewSubChangesParams(bh.loggingCtx, rq, defaultSince, latestSeq, ParseSequenceID)
 	if err != nil {
 		return base.HTTPErrorf(http.StatusBadRequest, "Invalid subChanges parameters")
 	}

@@ -16,6 +16,7 @@ import (
 	"net/http"
 
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/db"
 	"github.com/robertkrimen/otto"
 )
 
@@ -91,7 +92,7 @@ func (runner *jsRunner) do_func(funcName string, params map[string]any, sudo boo
 
 // Implementation of JS `user.get(docID, docType)` function
 func (runner *jsRunner) do_get(docID string, docType *string, sudo bool) (any, error) {
-	if err := runner.currentDB.CheckTimeout(runner.ctx); err != nil {
+	if err := db.CheckTimeout(runner.ctx); err != nil {
 		return nil, err
 	}
 	if sudo {
@@ -133,7 +134,7 @@ func (runner *jsRunner) do_graphql(query string, params map[string]any, sudo boo
 
 // Implementation of JS `user.save(docID, body)` function
 func (runner *jsRunner) do_save(docIDPtr *string, body map[string]any, sudo bool) (*string, error) {
-	if err := runner.currentDB.CheckTimeout(runner.ctx); err != nil {
+	if err := db.CheckTimeout(runner.ctx); err != nil {
 		return nil, err
 	}
 	if !runner.mutationAllowed {

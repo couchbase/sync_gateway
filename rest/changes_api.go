@@ -85,8 +85,7 @@ func (h *handler) updateChangesOptionsFromQuery(feed *string, options *db.Change
 	}
 
 	if _, ok := values["since"]; ok {
-		collection := h.db.GetSingleDatabaseCollectionWithUser()
-		if options.Since, err = collection.ParseSequenceID(h.getJSONStringQuery("since")); err != nil {
+		if options.Since, err = db.ParseSequenceID(h.getJSONStringQuery("since")); err != nil {
 			return nil, nil, err
 		}
 	}
@@ -174,8 +173,7 @@ func (h *handler) handleChanges() error {
 		// GET request has parameters in URL:
 		feed = h.getQuery("feed")
 		var err error
-		collection := h.db.GetSingleDatabaseCollectionWithUser()
-		if options.Since, err = collection.ParseSequenceID(h.getJSONStringQuery("since")); err != nil {
+		if options.Since, err = db.ParseSequenceID(h.getJSONStringQuery("since")); err != nil {
 			return err
 		}
 		options.Limit = int(h.getIntQuery("limit", 0))
@@ -579,8 +577,7 @@ func (h *handler) readChangesOptionsFromJSON(jsonData []byte) (feed string, opti
 
 	// Initialize since clock and hasher ahead of unmarshalling sequence
 	if h.db != nil {
-		collection := h.db.GetSingleDatabaseCollectionWithUser()
-		input.Since = collection.CreateZeroSinceValue()
+		input.Since = db.CreateZeroSinceValue()
 	}
 
 	if err = base.JSONUnmarshal(jsonData, &input); err != nil {

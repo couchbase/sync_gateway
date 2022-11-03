@@ -677,12 +677,6 @@ func (context *DatabaseContext) GetOIDCProvider(providerName string) (*auth.OIDC
 	}
 }
 
-// Create a zero'd out since value (eg, initial since value) based on the sequence type
-// of the database (int or vector clock)
-func (context *DatabaseCollection) CreateZeroSinceValue() SequenceID {
-	return SequenceID{}
-}
-
 func (context *DatabaseContext) SetOnChangeCallback(callback DocChangedFunc) {
 	context.mutationListener.OnDocChanged = callback
 }
@@ -1872,7 +1866,7 @@ func (context *DatabaseContext) IsGuestReadOnly() bool {
 
 // Calls a function, synchronously, while imposing a timeout on the Database's Context. Any call to CheckTimeout while the function is running will return an error if the timeout has expired.
 // The function will *not* be aborted automatically! Its code must check for timeouts by calling CheckTimeout periodically, returning once that produces an error.
-func (db *Database) WithTimeout(ctx context.Context, timeout time.Duration, operation func(tmCtx context.Context) error) error {
+func WithTimeout(ctx context.Context, timeout time.Duration, operation func(tmCtx context.Context) error) error {
 	newCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer func() {
 		cancel()
@@ -1881,7 +1875,7 @@ func (db *Database) WithTimeout(ctx context.Context, timeout time.Duration, oper
 }
 
 // Returns an HTTP timeout (408) error if the Database's Context has an expired timeout or has been explicitly canceled. (See WithTimeout.)
-func (db *Database) CheckTimeout(ctx context.Context) error {
+func CheckTimeout(ctx context.Context) error {
 	if ctx == nil {
 		return nil
 	}
