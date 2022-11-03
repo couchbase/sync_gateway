@@ -954,6 +954,7 @@ func TestLowSequenceHandlingWithAccessGrant(t *testing.T) {
 	// whether the user has already seen the documents on the channel previously, so it gets resent
 
 	changesCtxCancel()
+	require.NoError(t, authenticator.DeleteUser(user))
 }
 
 // Tests channel cache backfill with slow query, validates that a request that is terminated while
