@@ -24,8 +24,6 @@ import (
 
 var _ N1QLStore = &Collection{}
 
-const waitTime = 5 * time.Second
-
 // IsDefaultScopeCollection returns true if the given Collection is on the _default._default scope and collection.
 func (c *Collection) IsDefaultScopeCollection() bool {
 	return c.ScopeName() == DefaultScope && c.Name() == DefaultCollection

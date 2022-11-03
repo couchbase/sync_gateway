@@ -35,7 +35,6 @@ func TestN1qlQuery(t *testing.T) {
 
 	bucket := GetTestBucket(t)
 	defer bucket.Close()
-	col, err := AsCollection(bucket)
 
 	n1qlStore, ok := AsN1QLStore(bucket)
 	if !ok {
@@ -54,13 +53,13 @@ func TestN1qlQuery(t *testing.T) {
 	}
 
 	indexExpression := "val"
-	err = n1qlStore.CreateIndex("testIndex_value", indexExpression, "", testN1qlOptions)
+	err := n1qlStore.CreateIndex("testIndex_value", indexExpression, "", testN1qlOptions)
 	if err != nil && err != ErrAlreadyExists {
 		t.Errorf("Error creating index: %s", err)
 	}
 
 	// Wait for index readiness
-	onlineErr := col.WaitForIndexesOnline([]string{"testIndex_value"}, false)
+	onlineErr := n1qlStore.WaitForIndexesOnline([]string{"testIndex_value"}, false)
 	if onlineErr != nil {
 		t.Fatalf("Error waiting for index to come online: %v", err)
 	}
@@ -81,7 +80,7 @@ func TestN1qlQuery(t *testing.T) {
 		}
 	}()
 
-	readyErr := col.WaitForIndexesOnline([]string{"testIndex_value"}, false)
+	readyErr := n1qlStore.WaitForIndexesOnline([]string{"testIndex_value"}, false)
 	require.NoError(t, readyErr, "Error validating index online")
 
 	// Query the index
@@ -144,8 +143,6 @@ func TestN1qlFilterExpression(t *testing.T) {
 
 	bucket := GetTestBucket(t)
 	defer bucket.Close()
-	col, err := AsCollection(bucket)
-	require.NoError(t, err)
 	n1qlStore, ok := AsN1QLStore(bucket)
 	if !ok {
 		t.Fatalf("Requires bucket to be N1QLStore")
@@ -164,13 +161,13 @@ func TestN1qlFilterExpression(t *testing.T) {
 
 	indexExpression := "val"
 	filterExpression := "val < 3"
-	err = n1qlStore.CreateIndex("testIndex_filtered_value", indexExpression, filterExpression, testN1qlOptions)
+	err := n1qlStore.CreateIndex("testIndex_filtered_value", indexExpression, filterExpression, testN1qlOptions)
 	if err != nil {
 		t.Fatalf("Error creating index: %s", err)
 	}
 
 	// Wait for index readiness
-	readyErr := col.WaitForIndexesOnline([]string{"testIndex_filtered_value"}, false)
+	readyErr := n1qlStore.WaitForIndexesOnline([]string{"testIndex_filtered_value"}, false)
 	require.NoError(t, readyErr, "Error validating index online")
 
 	// Defer index teardown
@@ -223,8 +220,6 @@ func TestIndexMeta(t *testing.T) {
 
 	bucket := GetTestBucket(t)
 	defer bucket.Close()
-	col, err := AsCollection(bucket)
-	require.NoError(t, err)
 	n1qlStore, ok := AsN1QLStore(bucket)
 	if !ok {
 		t.Fatalf("Requires bucket to be N1QLStore")
@@ -241,7 +236,7 @@ func TestIndexMeta(t *testing.T) {
 		t.Fatalf("Error creating index: %s", err)
 	}
 
-	readyErr := col.WaitForIndexesOnline([]string{"testIndex_value"}, false)
+	readyErr := n1qlStore.WaitForIndexesOnline([]string{"testIndex_value"}, false)
 	require.NoError(t, readyErr, "Error validating index online")
 
 	// Defer index teardown
@@ -269,8 +264,6 @@ func TestMalformedN1qlQuery(t *testing.T) {
 
 	bucket := GetTestBucket(t)
 	defer bucket.Close()
-	col, err := AsCollection(bucket)
-	require.NoError(t, err)
 	n1qlStore, ok := AsN1QLStore(bucket)
 	if !ok {
 		t.Fatalf("Requires bucket to be N1QLStore")
@@ -288,12 +281,12 @@ func TestMalformedN1qlQuery(t *testing.T) {
 	}
 
 	indexExpression := "val"
-	err = n1qlStore.CreateIndex("testIndex_value_malformed", indexExpression, "", testN1qlOptions)
+	err := n1qlStore.CreateIndex("testIndex_value_malformed", indexExpression, "", testN1qlOptions)
 	if err != nil {
 		t.Fatalf("Error creating index: %s", err)
 	}
 
-	readyErr := col.WaitForIndexesOnline([]string{"testIndex_value_malformed"}, false)
+	readyErr := n1qlStore.WaitForIndexesOnline([]string{"testIndex_value_malformed"}, false)
 	assert.NoError(t, readyErr, "Error validating index online")
 
 	// Defer index teardown
@@ -344,18 +337,16 @@ func TestCreateAndDropIndex(t *testing.T) {
 	bucket := GetTestBucket(t)
 	defer bucket.Close()
 	n1qlStore, ok := AsN1QLStore(bucket)
-	col, err := AsCollection(bucket)
-	require.NoError(t, err)
 	if !ok {
 		t.Fatalf("Requires bucket to be N1QLStore")
 	}
 
 	createExpression := SyncPropertyName + ".sequence"
-	err = n1qlStore.CreateIndex("testIndex_sequence", createExpression, "", testN1qlOptions)
+	err := n1qlStore.CreateIndex("testIndex_sequence", createExpression, "", testN1qlOptions)
 	if err != nil {
 		t.Fatalf("Error creating index: %s", err)
 	}
-	readyErr := col.WaitForIndexesOnline([]string{"testIndex_sequence"}, false)
+	readyErr := n1qlStore.WaitForIndexesOnline([]string{"testIndex_sequence"}, false)
 	assert.NoError(t, readyErr, "Error validating index online")
 
 	// Drop the index
@@ -372,20 +363,18 @@ func TestCreateDuplicateIndex(t *testing.T) {
 
 	bucket := GetTestBucket(t)
 	defer bucket.Close()
-	col, err := AsCollection(bucket)
-	require.NoError(t, err)
 	n1qlStore, ok := AsN1QLStore(bucket)
 	if !ok {
 		t.Fatalf("Requires bucket to be N1QLStore")
 	}
 
 	createExpression := SyncPropertyName + ".sequence"
-	err = n1qlStore.CreateIndex("testIndexDuplicateSequence", createExpression, "", testN1qlOptions)
+	err := n1qlStore.CreateIndex("testIndexDuplicateSequence", createExpression, "", testN1qlOptions)
 	if err != nil {
 		t.Fatalf("Error creating index: %s", err)
 	}
 
-	readyErr := col.WaitForIndexesOnline([]string{"testIndexDuplicateSequence"}, false)
+	readyErr := n1qlStore.WaitForIndexesOnline([]string{"testIndexDuplicateSequence"}, false)
 	assert.NoError(t, readyErr, "Error validating index online")
 
 	// Attempt to create duplicate, validate duplicate error
@@ -406,20 +395,18 @@ func TestCreateAndDropIndexSpecialCharacters(t *testing.T) {
 
 	bucket := GetTestBucket(t)
 	defer bucket.Close()
-	col, err := AsCollection(bucket)
-	require.NoError(t, err)
 	n1qlStore, ok := AsN1QLStore(bucket)
 	if !ok {
 		t.Fatalf("Requires bucket to be N1QLStore")
 	}
 
 	createExpression := SyncPropertyName + ".sequence"
-	err = n1qlStore.CreateIndex("testIndex-sequence", createExpression, "", testN1qlOptions)
+	err := n1qlStore.CreateIndex("testIndex-sequence", createExpression, "", testN1qlOptions)
 	if err != nil {
 		t.Fatalf("Error creating index: %s", err)
 	}
 
-	readyErr := col.WaitForIndexesOnline([]string{"testIndex-sequence"}, false)
+	readyErr := n1qlStore.WaitForIndexesOnline([]string{"testIndex-sequence"}, false)
 	assert.NoError(t, readyErr, "Error validating index online")
 
 	// Drop the index
@@ -436,8 +423,6 @@ func TestDeferredCreateIndex(t *testing.T) {
 
 	bucket := GetTestBucket(t)
 	defer bucket.Close()
-	col, err := AsCollection(bucket)
-	require.NoError(t, err)
 	n1qlStore, ok := AsN1QLStore(bucket)
 	if !ok {
 		t.Fatalf("Requires bucket to be N1QLStore")
@@ -452,7 +437,7 @@ func TestDeferredCreateIndex(t *testing.T) {
 	}
 
 	createExpression := SyncPropertyName + ".sequence"
-	err = n1qlStore.CreateIndex(indexName, createExpression, "", deferN1qlOptions)
+	err := n1qlStore.CreateIndex(indexName, createExpression, "", deferN1qlOptions)
 	if err != nil {
 		t.Fatalf("Error creating index: %s", err)
 	}
@@ -468,7 +453,7 @@ func TestDeferredCreateIndex(t *testing.T) {
 	buildErr := buildIndexes(n1qlStore, []string{indexName})
 	assert.NoError(t, buildErr, "Error building indexes")
 
-	readyErr := col.WaitForIndexesOnline([]string{indexName}, false)
+	readyErr := n1qlStore.WaitForIndexesOnline([]string{indexName}, false)
 	assert.NoError(t, readyErr, "Error validating index online")
 
 }
@@ -480,8 +465,6 @@ func TestBuildDeferredIndexes(t *testing.T) {
 
 	bucket := GetTestBucket(t)
 	defer bucket.Close()
-	col, err := AsCollection(bucket)
-	require.NoError(t, err)
 	n1qlStore, ok := AsN1QLStore(bucket)
 	if !ok {
 		t.Fatalf("Requires bucket to be N1QLStore")
@@ -499,7 +482,7 @@ func TestBuildDeferredIndexes(t *testing.T) {
 
 	// Create a deferred and a non-deferred index
 	createExpression := SyncPropertyName + ".sequence"
-	err = n1qlStore.CreateIndex(deferredIndexName, createExpression, "", deferN1qlOptions)
+	err := n1qlStore.CreateIndex(deferredIndexName, createExpression, "", deferN1qlOptions)
 	if err != nil {
 		t.Errorf("Error creating index: %s", err)
 	}
@@ -527,9 +510,9 @@ func TestBuildDeferredIndexes(t *testing.T) {
 	buildErr := n1qlStore.BuildDeferredIndexes([]string{deferredIndexName, nonDeferredIndexName})
 	assert.NoError(t, buildErr, "Error building indexes")
 
-	readyErr := col.WaitForIndexesOnline([]string{deferredIndexName}, false)
+	readyErr := n1qlStore.WaitForIndexesOnline([]string{deferredIndexName}, false)
 	assert.NoError(t, readyErr, "Error validating index online")
-	readyErr = col.WaitForIndexesOnline([]string{nonDeferredIndexName}, false)
+	readyErr = n1qlStore.WaitForIndexesOnline([]string{nonDeferredIndexName}, false)
 	assert.NoError(t, readyErr, "Error validating index online")
 
 	// Ensure no errors from no-op scenarios
@@ -547,8 +530,6 @@ func TestCreateAndDropIndexErrors(t *testing.T) {
 
 	bucket := GetTestBucket(t)
 	defer bucket.Close()
-	//col, err := AsCollection(bucket)
-	//require.NoError(t, err)
 	n1qlStore, ok := AsN1QLStore(bucket)
 	if !ok {
 		t.Fatalf("Requires bucket to be N1QLStore")
@@ -617,8 +598,6 @@ func TestWaitForBucketExistence(t *testing.T) {
 	defer bucket.Close()
 	wg := sync.WaitGroup{}
 	wg.Add(1)
-	col, err := AsCollection(bucket)
-	require.NoError(t, err)
 	n1qlStore, ok := AsN1QLStore(bucket)
 	if !ok {
 		t.Fatalf("Requires bucket to be N1QLStore")
@@ -646,10 +625,10 @@ func TestWaitForBucketExistence(t *testing.T) {
 		wg.Done()
 	}()
 	wg.Wait()
-	assert.NoError(t, col.WaitForIndexesOnline([]string{indexName}, false))
+	assert.NoError(t, n1qlStore.WaitForIndexesOnline([]string{indexName}, false))
 
 	// Drop the index;
-	err = n1qlStore.DropIndex(indexName)
+	err := n1qlStore.DropIndex(indexName)
 	assert.NoError(t, err, "Index should be removed from the bucket")
 }
 

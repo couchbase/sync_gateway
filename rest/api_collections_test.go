@@ -281,12 +281,10 @@ func TestCollectionsBasicIndexQuery(t *testing.T) {
 	// use the rt.Bucket which has got the foo.bar scope/collection set up
 	n1qlStore, ok := base.AsN1QLStore(rt.Bucket())
 	require.True(t, ok)
-	col, err := base.AsCollection(rt.Bucket())
-	require.NoError(t, err)
 
 	idxName := t.Name() + "_primary"
 	require.NoError(t, n1qlStore.CreatePrimaryIndex(idxName, nil))
-	require.NoError(t, col.WaitForIndexesOnline([]string{idxName}, true))
+	require.NoError(t, n1qlStore.WaitForIndexesOnline([]string{idxName}, false))
 
 	res, err := n1qlStore.Query("SELECT keyspace_id, bucket_id, scope_id from system:indexes WHERE name = $idxName",
 		map[string]interface{}{"idxName": idxName}, base.RequestPlus, true)
