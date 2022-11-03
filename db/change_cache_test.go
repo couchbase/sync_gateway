@@ -1683,17 +1683,19 @@ func TestLateArrivingSequenceTriggersOnChange(t *testing.T) {
 
 	// Send feed event for doc2. This won't trigger notifyChange, as buffering is waiting for seq 1
 	feedEventDoc2 := sgbucket.FeedEvent{
-		Synchronous: true,
-		Key:         []byte(doc2Id),
-		Value:       doc2Bytes,
+		Synchronous:  true,
+		Key:          []byte(doc2Id),
+		Value:        doc2Bytes,
+		CollectionID: collectionID,
 	}
 	db.changeCache.DocChanged(feedEventDoc2)
 
 	// Send feed event for doc1. This should trigger caching for doc2, and trigger notifyChange for channel ABC.
 	feedEventDoc1 := sgbucket.FeedEvent{
-		Synchronous: true,
-		Key:         []byte(doc1Id),
-		Value:       doc1Bytes,
+		Synchronous:  true,
+		Key:          []byte(doc1Id),
+		Value:        doc1Bytes,
+		CollectionID: collectionID,
 	}
 	db.changeCache.DocChanged(feedEventDoc1)
 
