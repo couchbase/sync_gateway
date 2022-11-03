@@ -13,7 +13,6 @@ package base
 import (
 	"errors"
 	"fmt"
-	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -596,8 +595,6 @@ func TestWaitForBucketExistence(t *testing.T) {
 
 	bucket := GetTestBucket(t)
 	defer bucket.Close()
-	wg := sync.WaitGroup{}
-	wg.Add(1)
 	n1qlStore, ok := AsN1QLStore(bucket)
 	if !ok {
 		t.Fatalf("Requires bucket to be N1QLStore")
@@ -622,9 +619,7 @@ func TestWaitForBucketExistence(t *testing.T) {
 
 		err = n1qlStore.CreateIndex(indexName, expression, filterExpression, options)
 		assert.NoError(t, err, "Index should be created in the bucket")
-		wg.Done()
 	}()
-	wg.Wait()
 	assert.NoError(t, n1qlStore.WaitForIndexesOnline([]string{indexName}, false))
 
 	// Drop the index;
