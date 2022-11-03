@@ -462,6 +462,77 @@ func TestFunctionsConfigAsPartOfDBConfig(t *testing.T) {
 
 }
 
+func TestMaxRequestSize(t *testing.T) {
+	var testFunctionConfig = functions.FunctionsConfig{
+		Definitions: functions.FunctionsDefs{
+			"multiply": &functions.FunctionConfig{
+				Type:  "javascript",
+				Code:  "function(context, args) {return args.first * args.second * args.third * args.fourth;}",
+				Args:  []string{"first", "second", "third", "fourth"},
+				Allow: allowAll,
+			},
+			"multiplyN1QL": {
+				Type:  "query",
+				Code:  "SELECT $args.`first` * $args.second * $args.third * $args.fourth AS result",
+				Args:  []string{"first", "second", "third", "fourth"},
+				Allow: allowAll,
+			},
+		},
+	}
+
+	rt := rest.NewRestTesterForUserQueries(t, rest.DbConfig{})
+	if rt == nil {
+		return
+	}
+	defer rt.Close()
+
+	// positive cases:
+	t.Run("request size less than MaxRequestSize", func(t *testing.T) {
+		testFunctionConfig.MaxRequestSize = base.IntPtr(1000)
+
+		request, err := json.Marshal(testFunctionConfig)
+		assert.NoError(t, err)
+
+		response := rt.SendAdminRequest("PUT", "/db/_config/functions", string(request))
+		assert.Equal(t, 200, response.Result().StatusCode)
+
+		t.Run("js function", func(t *testing.T) {
+			response := rt.SendAdminRequest("POST", "/db/_function/multiply", `{"first":1,"second":2,"third":3,"fourth":4}`)
+			assert.Equal(t, 200, response.Result().StatusCode)
+			assert.Equal(t, "24", string(response.BodyBytes()))
+		})
+
+		t.Run("n1ql query", func(t *testing.T) {
+			response := rt.SendAdminRequest("POST", "/db/_function/multiplyN1QL", `{"first":1,"second":2,"third":3,"fourth":4}`)
+			assert.Equal(t, 200, response.Result().StatusCode)
+			assert.Equal(t, "[{\"result\":24}\n]\n", string(response.BodyBytes()))
+		})
+	})
+
+	// negative cases:
+	t.Run("request size greater than MaxRequestSize", func(t *testing.T) {
+		testFunctionConfig.MaxRequestSize = base.IntPtr(5)
+
+		request, err := json.Marshal(testFunctionConfig)
+		assert.NoError(t, err)
+
+		response := rt.SendAdminRequest("PUT", "/db/_config/functions", string(request))
+		assert.Equal(t, 200, response.Result().StatusCode)
+
+		t.Run("js function", func(t *testing.T) {
+			response = rt.SendAdminRequest("POST", "/db/_function/multiply", `{"first":1,"second":2,"third":3,"fourth":4}`)
+			assert.Equal(t, 413, response.Result().StatusCode)
+			assert.Contains(t, string(response.BodyBytes()), "Arguments too large")
+		})
+
+		t.Run("n1ql query", func(t *testing.T) {
+			response := rt.SendAdminRequest("POST", "/db/_function/multiplyN1QL", `{"first":1,"second":2,"third":3,"fourth":4}`)
+			assert.Equal(t, 413, response.Result().StatusCode)
+			assert.Contains(t, string(response.BodyBytes()), "Arguments too large")
+		})
+	})
+}
+
 //////// FUNCTIONS CONFIG AND EXECUTION COMBINATIONS
 
 var kUserFunctionConfig = &functions.FunctionsConfig{
