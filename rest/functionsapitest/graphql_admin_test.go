@@ -201,6 +201,115 @@ var kTestGraphQLUserFunctionsConfig = functions.FunctionsConfig{
 	},
 }
 
+// //////////// Changes according to Jens Comment
+// The GraphQL schema:
+var kTetGraphQLSchema = `
+	type User {
+		id: ID! #Int
+		name: String!
+		Emails: [String!]! #Mutation via Admin Only
+	}
+	type Query {
+		getUser(id: ID!): User
+		getAllUsers: [User!]!
+	}
+	type Mutation {
+		updateName(id:ID!, name: String!): User
+		addEmail(id:ID!, email: String!): User  #can be done via admin only
+	}
+
+`
+
+// The GraphQL configuration:
+var kTetGraphQLConfig = functions.GraphQLConfig{
+	Schema: &kTetGraphQLSchema,
+	Resolvers: map[string]functions.GraphQLResolverConfig{
+		"Query": {
+			"getUser": {
+				Type: "javascript",
+				Code: `function(parent, args, context, info) {
+						if (Object.keys(parent).length != 0) throw "Unexpected parent";
+						if (Object.keys(args).length != 1) throw "Unexpected args";
+						if (Object.keys(info) != "selectedFieldNames") throw "Unexpected info";
+						if (!context.user) throw "Missing context.user";
+						if (!context.admin) throw "Missing context.admin";
+						return context.user.function("getUserWithID", {id: args.id});}`,
+				Allow: allowAll,
+			},
+			"getAllUsers": {
+				Type: "javascript",
+				Code: `function(parent, args, context, info) {
+						if (Object.keys(parent).length != 0) throw "Unexpected parent";
+						if (Object.keys(args).length != 0) throw "Unexpected args";
+						if (Object.keys(info) != "selectedFieldNames") throw "Unexpected info";
+						if (!context.user) throw "Missing context.user";
+						if (!context.admin) throw "Missing context.admin";
+						return context.user.function("all");}`,
+				Allow: allowAll,
+			},
+		},
+		"Mutation": {
+			"updateName": {
+				Type: "javascript",
+				Code: `function(parent, args, context, info){
+						if (Object.keys(parent).length != 0) throw "Unexpected parent";
+						if (Object.keys(args).length != 1) throw "Unexpected args";
+						if (Object.keys(info) != "selectedFieldNames") throw "Unexpected info";
+						if (!context.user) throw "Missing context.user";
+						if (!context.admin) throw "Missing context.admin";
+						context.requireMutating();
+						var currentUser = context.user.function("getUser", {id: args.id});
+						if (!currentUser) return undefined;
+						currentUser.name = args.name;
+						return currentUser;
+				}`,
+				Allow: allowAll,
+			},
+			"addEmail": {
+				Type: "javascript",
+				Code: `function(parent, args, context, info){
+						context.requireMutating();
+						var currentUser = context.user.function("getUser", {id: args.id});
+						if (!currentUser) return undefined;
+
+						//case: args.email already present in the Emails array
+						if(Emails.include(args.email)){
+							return currentUser;
+						}
+						currentUser.Emails.push(args.email);
+						return currentUser;
+				}`,
+				Allow: &functions.Allow{Users: base.Set{}}, // only admins
+			},
+		},
+	},
+}
+
+// JS function helpers:
+var kTetGraphQLUserFunctionsConfig = functions.FunctionsConfig{
+	Definitions: functions.FunctionsDefs{
+		"all": {
+			Type: "javascript",
+			Code: `function(context, args) {
+                        return [
+                        {id: 1,"name": "Janhavi", Emails: ["abc@gmail.com"]},
+                        {id: 4,"name": "Jinesh", Emails: ["xyz@gmail.com","def@gmail.com"]},
+                        {id: 6,"name": "Tanvi", Emails: ["ipo@gmail.com"]} ];}`,
+			Allow: &functions.Allow{Channels: []string{"*"}},
+		},
+		"getUserWithID": {
+			Type: "javascript",
+			Code: `function(context, args) {
+                        var all = context.user.function("all");
+                        for (var i = 0; i < all.length; i++)
+                            if (all[i].id == args.id) return all[i];
+                        return undefined;}`,
+			Args:  []string{"id"},
+			Allow: &functions.Allow{Channels: []string{"*"}},
+		},
+	},
+}
+
 // When feature flag is not enabled, all API calls return 404:
 func TestFunctionsConfigGetWithoutFeatureFlagGraphQL(t *testing.T) {
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{EnableUserQueries: false})
@@ -626,115 +735,6 @@ func TestInvalidGraphQLConfigurationValues(t *testing.T) {
 		err = os.Remove("schema.graphql")
 		assert.NoError(t, err)
 	})
-}
-
-// //////////// Changes according to Jens Comment
-// The GraphQL schema:
-var kTetGraphQLSchema = `
-	type User {
-		id: ID! #Int
-		name: String!
-		Emails: [String!]! #Mutation via Admin Only
-	}
-	type Query {
-		getUser(id: ID!): User 
-		getAllUsers: [User!]!
-	}
-	type Mutation {
-		updateName(id:ID!, name: String!): User
-		addEmail(id:ID!, email: String!): User  #can be done via admin only
-	}
-
-`
-
-// The GraphQL configuration:
-var kTetGraphQLConfig = functions.GraphQLConfig{
-	Schema: &kTetGraphQLSchema,
-	Resolvers: map[string]functions.GraphQLResolverConfig{
-		"Query": {
-			"getUser": {
-				Type: "javascript",
-				Code: `function(parent, args, context, info) {
-						if (Object.keys(parent).length != 0) throw "Unexpected parent";
-						if (Object.keys(args).length != 1) throw "Unexpected args";
-						if (Object.keys(info) != "selectedFieldNames") throw "Unexpected info";
-						if (!context.user) throw "Missing context.user";
-						if (!context.admin) throw "Missing context.admin";
-						return context.user.function("getUserWithID", {id: args.id});}`,
-				Allow: allowAll,
-			},
-			"getAllUsers": {
-				Type: "javascript",
-				Code: `function(parent, args, context, info) {
-						if (Object.keys(parent).length != 0) throw "Unexpected parent";
-						if (Object.keys(args).length != 0) throw "Unexpected args";
-						if (Object.keys(info) != "selectedFieldNames") throw "Unexpected info";
-						if (!context.user) throw "Missing context.user";
-						if (!context.admin) throw "Missing context.admin";
-						return context.user.function("all");}`,
-				Allow: allowAll,
-			},
-		},
-		"Mutation": {
-			"updateName": {
-				Type: "javascript",
-				Code: `function(parent, args, context, info){
-						if (Object.keys(parent).length != 0) throw "Unexpected parent";
-						if (Object.keys(args).length != 1) throw "Unexpected args";
-						if (Object.keys(info) != "selectedFieldNames") throw "Unexpected info";
-						if (!context.user) throw "Missing context.user";
-						if (!context.admin) throw "Missing context.admin";
-						context.requireMutating();
-						var currentUser = context.user.function("getUser", {id: args.id});
-						if (!currentUser) return undefined;
-						currentUser.name = args.name;
-						return currentUser;
-				}`,
-				Allow: allowAll,
-			},
-			"addEmail": {
-				Type: "javascript",
-				Code: `function(parent, args, context, info){
-						context.requireMutating();
-						var currentUser = context.user.function("getUser", {id: args.id});
-						if (!currentUser) return undefined;
-
-						//case: args.email already present in the Emails array
-						if(Emails.include(args.email)){
-							return currentUser;
-						}
-						currentUser.Emails.push(args.email);
-						return currentUser;
-				}`,
-				Allow: &functions.Allow{Users: base.Set{}}, // only admins
-			},
-		},
-	},
-}
-
-// JS function helpers:
-var kTetGraphQLUserFunctionsConfig = functions.FunctionsConfig{
-	Definitions: functions.FunctionsDefs{
-		"all": {
-			Type: "javascript",
-			Code: `function(context, args) {
-                        return [
-                        {id: 1,"name": "Janhavi", Emails: ["abc@gmail.com"]},
-                        {id: 4,"name": "Jinesh", Emails: ["xyz@gmail.com","def@gmail.com"]},
-                        {id: 6,"name": "Tanvi", Emails: ["ipo@gmail.com"]} ];}`,
-			Allow: &functions.Allow{Channels: []string{"*"}},
-		},
-		"getUserWithID": {
-			Type: "javascript",
-			Code: `function(context, args) {
-                        var all = context.user.function("all");
-                        for (var i = 0; i < all.length; i++)
-                            if (all[i].id == args.id) return all[i];
-                        return undefined;}`,
-			Args:  []string{"id"},
-			Allow: &functions.Allow{Channels: []string{"*"}},
-		},
-	},
 }
 
 func TestSchemaSyntax(t *testing.T) {

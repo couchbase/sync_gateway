@@ -234,7 +234,7 @@ func TestsDisableGSI() bool {
 
 // Check the whether tests are being run with SG_TEST_BACKING_STORE=Couchbase
 func TestUseCouchbaseServer() bool {
-	backingStore := os.Getenv(TestEnvSyncGatewayBackingStore)
+	backingStore := "Couchbase"
 	return strings.ToLower(backingStore) == strings.ToLower(TestEnvBackingStoreCouchbase)
 }
 
