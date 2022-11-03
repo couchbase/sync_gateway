@@ -48,7 +48,7 @@ type N1QLStore interface {
 	IndexMetaBucketID() string
 	IndexMetaScopeID() string
 	IndexMetaKeyspaceID() string
-	WaitForIndexesOnline(indexNames []string, watchPrimary bool) error
+	WaitForIndexesOnline(indexNames []string, failfast bool) error
 
 	// executeQuery performs the specified query without any built-in retry handling and returns the resultset
 	executeQuery(statement string) (sgbucket.QueryResultIterator, error)
@@ -174,7 +174,7 @@ func waitForIndexExistence(store N1QLStore, indexName string, shouldExist bool) 
 }
 
 // BuildDeferredIndexes issues a build command for any deferred sync gateway indexes associated with the bucket.
-func BuildDeferredIndexes(bucket Bucket, s N1QLStore, indexSet []string) error {
+func BuildDeferredIndexes(s N1QLStore, indexSet []string) error {
 
 	if len(indexSet) == 0 {
 		return nil

@@ -367,24 +367,19 @@ func InitializeIndexes(bucket base.N1QLStore, useXattrs bool, numReplicas uint, 
 
 	// Issue BUILD INDEX for any deferred indexes.
 	if len(deferredIndexes) > 0 {
-		buildErr := base.BuildDeferredIndexes(bucket, n1QLStore, deferredIndexes)
+		buildErr := base.BuildDeferredIndexes(n1QLStore, deferredIndexes)
 		if buildErr != nil {
 			base.InfofCtx(context.TODO(), base.KeyQuery, "Error building deferred indexes.  Error: %v", buildErr)
 			return buildErr
 		}
 	}
 
-	// Wait for newly built indexes to be online
-	for _, indexName := range deferredIndexes {
-		_ = base.WaitForIndexOnline(n1QLStore, indexName)
-	}
-
 	// Wait for initial readiness queries to complete
-	return waitForIndexes(bucket, useXattrs)
+	return waitForIndexes(bucket, useXattrs, failFast)
 }
 
 // Issue a consistency=request_plus query against critical indexes to guarantee indexing is complete and indexes are ready.
-func waitForIndexes(bucket base.Bucket, useXattrs bool) error {
+func waitForIndexes(bucket base.Bucket, useXattrs, failfast bool) error {
 	logCtx := context.TODO()
 	base.InfofCtx(logCtx, base.KeyAll, "Verifying index availability for bucket %s...", base.MD(bucket.GetName()))
 	collection, err := base.AsCollection(bucket)
@@ -401,7 +396,7 @@ func waitForIndexes(bucket base.Bucket, useXattrs bool) error {
 		indexes = append(indexes, fullIndexName)
 	}
 
-	err = collection.WaitForIndexesOnline(indexes, false)
+	err = collection.WaitForIndexesOnline(indexes, failfast)
 	if err != nil {
 		return err
 	}

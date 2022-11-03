@@ -122,12 +122,17 @@ func (c *Collection) CreatePrimaryIndex(indexName string, options *N1qlIndexOpti
 }
 
 // WaitForIndexOnline takes set of indexes and watches them till they're online.
-func (c *Collection) WaitForIndexesOnline(indexNames []string, watchPrimary bool) error {
+func (c *Collection) WaitForIndexesOnline(indexNames []string, failfast bool) error {
 	logCtx := context.TODO()
 	mgr := c.cluster.QueryIndexes()
-	maxNumAttempts := 150 * len(indexNames)
+	maxNumAttempts := 180
+	if failfast {
+		maxNumAttempts = 1
+	}
 	retrySleeper := CreateMaxDoublingSleeperFunc(maxNumAttempts, 100, 5000)
 	retryCount := 0
+
+	logged := make(map[string]bool)
 
 	indexOption := gocb.GetAllQueryIndexesOptions{
 		ScopeName:      c.ScopeName(),
@@ -136,7 +141,6 @@ func (c *Collection) WaitForIndexesOnline(indexNames []string, watchPrimary bool
 
 	for {
 		onlineIndexCount := 0
-		var onlineIndexList []string
 		currIndexes, err := mgr.GetAllIndexes(c.BucketName(), &indexOption)
 		if err != nil {
 			return err
@@ -144,18 +148,19 @@ func (c *Collection) WaitForIndexesOnline(indexNames []string, watchPrimary bool
 
 		for i := 0; i < len(currIndexes); i++ {
 			if currIndexes[i].State == IndexStateOnline {
-				onlineIndexList = append(onlineIndexList, currIndexes[i].Name)
-				InfofCtx(logCtx, KeyAll, "Index %s is online", MD(currIndexes[i].Name))
-			}
-		}
-
-		for _, currVal := range onlineIndexList {
-			for _, listVal := range indexNames {
-				if currVal == listVal {
-					onlineIndexCount++
+				if logged[currIndexes[i].Name] == false {
+					InfofCtx(logCtx, KeyAll, "Index %s is online", MD(currIndexes[i].Name))
+					logged[currIndexes[i].Name] = true
 				}
 			}
 		}
+
+		for _, listVal := range indexNames {
+			if logged[listVal] == true {
+				onlineIndexCount++
+			}
+		}
+
 		if onlineIndexCount == len(indexNames) {
 			return nil
 		}
@@ -180,11 +185,7 @@ func (c *Collection) DropIndex(indexName string) error {
 
 // Issues a build command for any deferred sync gateway indexes associated with the bucket.
 func (c *Collection) BuildDeferredIndexes(indexSet []string) error {
-	bucket, err := GetBucket(c.Spec)
-	if err != nil {
-		return err
-	}
-	return BuildDeferredIndexes(bucket, c, indexSet)
+	return BuildDeferredIndexes(c, indexSet)
 }
 
 func (c *Collection) runQuery(statement string, n1qlOptions *gocb.QueryOptions) (*gocb.QueryResult, error) {

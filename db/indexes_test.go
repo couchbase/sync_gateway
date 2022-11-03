@@ -18,8 +18,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/couchbase/gocb/v2"
-
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/stretchr/testify/assert"
@@ -83,14 +81,14 @@ func validateAllIndexesOnline(bucket base.Bucket, xattrs, isServerless bool) err
 	if err != nil {
 		return err
 	}
-	cluster := col.GetCluster()
-	mgr := cluster.QueryIndexes()
+	//cluster := col.GetCluster()
+	//mgr := cluster.QueryIndexes()
 
-	watchOption := gocb.WatchQueryIndexOptions{
-		WatchPrimary:   true,
-		ScopeName:      col.ScopeName(),
-		CollectionName: col.Name(),
-	}
+	//watchOption := gocb.WatchQueryIndexOptions{
+	//	WatchPrimary:   true,
+	//	ScopeName:      col.ScopeName(),
+	//	CollectionName: col.Name(),
+	//}
 	// Watch and wait some time for indexes to come online
 	err = mgr.WatchIndexes(bucket.GetName(), sgIndexNames(xattrs, isServerless), 10*time.Second, &watchOption)
 	if err != nil {
