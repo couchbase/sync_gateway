@@ -243,7 +243,7 @@ func (bsc *BlipSyncContext) _copyContextDatabase() *Database {
 }
 
 // Handles the response to a pushed "changes" message, i.e. the list of revisions the client wants
-func (bsc *BlipSyncContext) handleChangesResponse(sender *blip.Sender, response *blip.Message, changeArray [][]interface{}, requestSent time.Time, handleChangesResponseCollection *DatabaseCollectionWithUser) error {
+func (bsc *BlipSyncContext) handleChangesResponse(sender *blip.Sender, response *blip.Message, changeArray [][]interface{}, requestSent time.Time, handleChangesResponseDb *Database) error {
 	defer func() {
 		if panicked := recover(); panicked != nil {
 			bsc.replicationStats.NumHandlersPanicked.Add(1)
@@ -326,6 +326,7 @@ func (bsc *BlipSyncContext) handleChangesResponse(sender *blip.Sender, response 
 				}
 			}
 
+			handleChangesResponseCollection := handleChangesResponseDb.GetSingleDatabaseCollectionWithUser()
 			var err error
 			if deltaSrcRevID != "" {
 				err = bsc.sendRevAsDelta(sender, docID, revID, deltaSrcRevID, seq, knownRevs, maxHistory, handleChangesResponseCollection)
@@ -571,7 +572,7 @@ func (bsc *BlipSyncContext) sendRevision(sender *blip.Sender, docID, revID strin
 		collectionIdx = &coll
 	}
 
-	rev, err := bsc.blipContextDb.GetSingleDatabaseCollectionWithUser().GetRev(bsc.loggingCtx, docID, revID, true, nil)
+	rev, err := handleChangesResponseCollection.GetRev(bsc.loggingCtx, docID, revID, true, nil)
 	if base.IsDocNotFoundError(err) {
 		return bsc.sendNoRev(sender, docID, revID, collectionIdx, seq, err)
 	} else if err != nil {

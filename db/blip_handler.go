@@ -110,10 +110,15 @@ func (bh *blipHandler) updateUser() {
 	for _, col := range bh.collectionMapping {
 		col = &DatabaseCollectionWithUser{
 			DatabaseCollection: col.DatabaseCollection,
-			user:               bh.db.user,
+			user:               bh.db.User(),
 		}
 	}
-
+	if bh.collection != nil {
+		bh.collection = &DatabaseCollectionWithUser{
+			DatabaseCollection: bh.collection.DatabaseCollection,
+			user:               bh.db.User(),
+		}
+	}
 }
 
 func (bh *blipHandler) refreshUser() error {
@@ -136,7 +141,6 @@ func (bh *blipHandler) refreshUser() error {
 			bc.userChangeWaiter.RefreshUserKeys(newUser)
 			bc.blipContextDb.SetUser(newUser)
 
-			// refresh the handler's database with the new BlipSyncContext database
 			bh.updateUser()
 		}
 	}
@@ -401,9 +405,8 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions
 
 	// Create a distinct database instance for changes, to avoid races between reloadUser invocation in changes.go
 	// and BlipSyncContext user access.
-	bh.updateUser()
-	changesDB := bh.copyContextDatabase()
-	_, forceClose := generateBlipSyncChanges(bh.loggingCtx, changesDB, channelSet, options, opts.docIDs, func(changes []*ChangeEntry) error {
+	changesDb := bh.copyContextDatabase()
+	_, forceClose := generateBlipSyncChanges(bh.loggingCtx, changesDb, channelSet, options, opts.docIDs, func(changes []*ChangeEntry) error {
 		base.DebugfCtx(bh.loggingCtx, base.KeySync, "    Sending %d changes", len(changes))
 		for _, change := range changes {
 			if !strings.HasPrefix(change.ID, "_") {
@@ -417,7 +420,7 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions
 					}
 
 					// If the user has access to the doc through another channel don't send change
-					userHasAccessToDoc, err := UserHasDocAccess(bh.loggingCtx, changesDB.GetSingleDatabaseCollectionWithUser(), change.ID)
+					userHasAccessToDoc, err := UserHasDocAccess(bh.loggingCtx, changesDb.GetSingleDatabaseCollectionWithUser(), change.ID)
 					if err == nil && userHasAccessToDoc {
 						continue
 					}
@@ -519,7 +522,8 @@ func (bh *blipHandler) sendBatchOfChanges(sender *blip.Sender, changeArray [][]i
 		if err := bh.refreshUser(); err != nil {
 			return err
 		}
-		handleChangesResponseCollection := bh.collection
+
+		handleChangesResponseDb := bh.copyContextDatabase()
 
 		sendTime := time.Now()
 		if !bh.sendBLIPMessage(sender, outrq) {
@@ -531,8 +535,8 @@ func (bh *blipHandler) sendBatchOfChanges(sender *blip.Sender, changeArray [][]i
 
 		bh.replicationStats.SendChangesCount.Add(int64(len(changeArray)))
 		// Spawn a goroutine to await the client's response:
-		go func(bh *blipHandler, sender *blip.Sender, response *blip.Message, changeArray [][]interface{}, sendTime time.Time, collection *DatabaseCollectionWithUser) {
-			if err := bh.handleChangesResponse(sender, response, changeArray, sendTime, collection); err != nil {
+		go func(bh *blipHandler, sender *blip.Sender, response *blip.Message, changeArray [][]interface{}, sendTime time.Time, database *Database) {
+			if err := bh.handleChangesResponse(sender, response, changeArray, sendTime, database); err != nil {
 				base.WarnfCtx(bh.loggingCtx, "Error from bh.handleChangesResponse: %v", err)
 				if bh.fatalErrorCallback != nil {
 					bh.fatalErrorCallback(err)
@@ -546,7 +550,7 @@ func (bh *blipHandler) sendBatchOfChanges(sender *blip.Sender, changeArray [][]i
 			}
 
 			atomic.AddInt64(&bh.changesPendingResponseCount, -1)
-		}(bh, sender, outrq.Response(), changeArray, sendTime, handleChangesResponseCollection)
+		}(bh, sender, outrq.Response(), changeArray, sendTime, handleChangesResponseDb)
 	} else {
 		outrq.SetNoReply(true)
 		if !bh.sendBLIPMessage(sender, outrq) {
