@@ -143,7 +143,7 @@ func TestGraphQLMutationsAdminOnly(t *testing.T) {
 	})
 }
 
-// Test for GraphQL mutations Custom User: New Schema
+// Test for GraphQL mutations Custom User
 func TestGraphQLMutationsCustomUser(t *testing.T) {
 	rt := rest.NewRestTesterForUserQueries(t, rest.DbConfig{
 		GraphQL:       &kTestGraphQLConfig,
