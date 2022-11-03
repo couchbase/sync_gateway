@@ -46,26 +46,7 @@ func setupTestDBForBucket(t testing.TB, bucket base.Bucket) (*Database, context.
 	dbcOptions := DatabaseContextOptions{
 		CacheOptions: &cacheOptions,
 	}
-	return setupTestDBForBucketWithOptions(t, bucket, dbcOptions)
-}
-
-// Sets up test db with the specified database context options.  Note that environment variables can
-// override somedbcOptions properties.
-func setupTestDBWithOptions(t testing.TB, dbcOptions DatabaseContextOptions) (*Database, context.Context) {
-
-	tBucket := base.GetTestBucket(t)
-	return setupTestDBForBucketWithOptions(t, tBucket, dbcOptions)
-}
-
-func setupTestDBForBucketWithOptions(t testing.TB, tBucket base.Bucket, dbcOptions DatabaseContextOptions) (*Database, context.Context) {
-	ctx := base.TestCtx(t)
-	AddOptionsFromEnvironmentVariables(&dbcOptions)
-	dbCtx, err := NewDatabaseContext(ctx, "db", tBucket, false, dbcOptions)
-	require.NoError(t, err, "Couldn't create context for database 'db'")
-	db, err := CreateDatabase(dbCtx)
-	require.NoError(t, err, "Couldn't create database 'db'")
-	ctx = db.AddDatabaseLogContext(ctx)
-	return db, ctx
+	return SetupTestDBForBucketWithOptions(t, bucket, dbcOptions)
 }
 
 func setupTestDBWithOptionsAndImport(t testing.TB, dbcOptions DatabaseContextOptions) (*Database, context.Context) {
@@ -87,7 +68,7 @@ func setupTestDBWithCacheOptions(t testing.TB, options CacheOptions) (*Database,
 	dbcOptions := DatabaseContextOptions{
 		CacheOptions: &options,
 	}
-	return setupTestDBWithOptions(t, dbcOptions)
+	return SetupTestDBWithOptions(t, dbcOptions)
 }
 
 // Forces UseViews:true in the database context.  Useful for testing w/ views while running
@@ -99,7 +80,7 @@ func setupTestDBWithViewsEnabled(t testing.TB) (*Database, context.Context) {
 	dbcOptions := DatabaseContextOptions{
 		UseViews: true,
 	}
-	return setupTestDBWithOptions(t, dbcOptions)
+	return SetupTestDBWithOptions(t, dbcOptions)
 }
 
 // Sets up a test bucket with _sync:seq initialized to a high value prior to database creation.  Used to test
@@ -153,26 +134,14 @@ func setupTestLeakyDBWithCacheOptions(t *testing.T, options CacheOptions, leakyO
 func setupTestNamedCollectionDBWithOptions(t testing.TB, dbcOptions DatabaseContextOptions) (*Database, context.Context) {
 
 	tBucket := base.GetTestBucketNamedCollection(t)
-	return setupTestDBForBucketWithOptions(t, tBucket, dbcOptions)
+	return SetupTestDBForBucketWithOptions(t, tBucket, dbcOptions)
 }
 
 // Sets up test db with the specified database context options in _default scope and collection.  Note that environment variables can
 // override somedbcOptions properties.
 func setupTestDefaultCollectionDBWithOptions(t testing.TB, dbcOptions DatabaseContextOptions) (*Database, context.Context) {
 
-	return setupTestDBWithOptions(t, dbcOptions)
-}
-
-// If certain environment variables are set, for example to turn on XATTR support, then update
-// the DatabaseContextOptions accordingly
-func AddOptionsFromEnvironmentVariables(dbcOptions *DatabaseContextOptions) {
-	if base.TestUseXattrs() {
-		dbcOptions.EnableXattr = true
-	}
-
-	if base.TestsDisableGSI() {
-		dbcOptions.UseViews = true
-	}
+	return SetupTestDBWithOptions(t, dbcOptions)
 }
 
 func assertHTTPError(t *testing.T, err error, status int) bool {
@@ -399,6 +368,30 @@ func TestGetRemovedAsUser(t *testing.T) {
 
 	_, err = db.Get1xRevBody(ctx, "doc1", rev1id, true, nil)
 	assertHTTPError(t, err, 404)
+}
+
+func TestIsServerless(t *testing.T) {
+	testCases := []struct {
+		title      string
+		serverless bool
+	}{
+		{
+			serverless: true,
+		},
+		{
+			serverless: false,
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(fmt.Sprintf("TestIsServerless with Serverless=%t", testCase.serverless), func(t *testing.T) {
+			db, ctx := setupTestDB(t)
+			defer db.Close(ctx)
+
+			db.Options.Serverless = testCase.serverless
+			assert.Equal(t, testCase.serverless, db.IsServerless())
+		})
+	}
 }
 
 // Test removal handling for unavailable multi-channel revisions.
@@ -1097,7 +1090,7 @@ func TestConflictRevLimit(t *testing.T) {
 		AllowConflicts: base.BoolPtr(true),
 	}
 
-	db, ctx = setupTestDBWithOptions(t, dbOptions)
+	db, ctx = SetupTestDBWithOptions(t, dbOptions)
 	assert.Equal(t, uint32(DefaultRevsLimitConflicts), db.RevsLimit)
 	defer db.Close(ctx)
 
@@ -1106,7 +1099,7 @@ func TestConflictRevLimit(t *testing.T) {
 		AllowConflicts: base.BoolPtr(false),
 	}
 
-	db, ctx = setupTestDBWithOptions(t, dbOptions)
+	db, ctx = SetupTestDBWithOptions(t, dbOptions)
 	assert.Equal(t, uint32(DefaultRevsLimitNoConflicts), db.RevsLimit)
 	defer db.Close(ctx)
 
@@ -1954,7 +1947,7 @@ func TestNewDatabaseContextWithOIDCProviderOptions(t *testing.T) {
 
 func TestGetOIDCProvider(t *testing.T) {
 	options := DatabaseContextOptions{OIDCOptions: mockOIDCOptions()}
-	context, ctx := setupTestDBWithOptions(t, options)
+	context, ctx := SetupTestDBWithOptions(t, options)
 	defer context.Close(ctx)
 
 	// Lookup default provider by empty name, which exists in database context
@@ -2378,7 +2371,7 @@ func TestResyncUpdateAllDocChannels(t *testing.T) {
 		channel("x")
 	}`
 
-	db, ctx := setupTestDBWithOptions(t, DatabaseContextOptions{QueryPaginationLimit: 5000})
+	db, ctx := SetupTestDBWithOptions(t, DatabaseContextOptions{QueryPaginationLimit: 5000})
 
 	_, err := db.UpdateSyncFun(ctx, syncFn)
 	assert.NoError(t, err)
@@ -2413,7 +2406,7 @@ func TestTombstoneCompactionStopWithManager(t *testing.T) {
 	}
 
 	bucket := base.NewLeakyBucket(base.GetTestBucket(t), base.LeakyBucketConfig{})
-	db, ctx := setupTestDBForBucketWithOptions(t, bucket, DatabaseContextOptions{})
+	db, ctx := SetupTestDBForBucketWithOptions(t, bucket, DatabaseContextOptions{})
 	db.PurgeInterval = 0
 	defer db.Close(ctx)
 
@@ -2549,7 +2542,7 @@ func TestGetRoleIDs(t *testing.T) {
 	assert.ElementsMatch(t, []string{user1.Name()}, users)
 	assert.ElementsMatch(t, []string{role1.Name(), role2.Name()}, roles)
 
-	roles, err = db.GetRoleIDs(ctx)
+	roles, err = db.GetRoleIDs(ctx, db.UseViews(), false)
 	require.NoError(t, err)
 	assert.ElementsMatch(t, []string{role1.Name()}, roles)
 }

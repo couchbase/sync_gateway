@@ -870,6 +870,10 @@ func (context *DatabaseContext) Authenticator(ctx context.Context) *auth.Authent
 	return authenticator
 }
 
+func (context *DatabaseContext) IsServerless() bool {
+	return context.Options.Serverless
+}
+
 // Makes a Database object given its name and bucket.
 func GetDatabase(context *DatabaseContext, user auth.User) (*Database, error) {
 	return &Database{DatabaseContext: context, user: user}, nil
@@ -998,8 +1002,121 @@ func (db *Database) processForEachDocIDResults(callback ForEachDocIDFunc, limit 
 	return nil
 }
 
-// Returns the IDs of all users and roles
+// Returns the IDs of all users and roles, including deleted Roles
 func (db *DatabaseContext) AllPrincipalIDs(ctx context.Context) (users, roles []string, err error) {
+
+	if !db.IsServerless() || db.Options.UseViews {
+		return db.getAllPrincipalIDsSyncDocs(ctx)
+	}
+
+	// If running in Serverless mode, we can leverage `users` and `roles` index
+	// to fetch users and roles
+	usersCh := db.getUserNamesInBackground(ctx)
+	rolesCh := db.getRoleIDsInBackground(ctx)
+
+	userData := <-usersCh
+	if userData.err != nil {
+		return nil, nil, userData.err
+	}
+	users = userData.value
+
+	rolesData := <-rolesCh
+	if rolesData.err != nil {
+		return nil, nil, rolesData.err
+	}
+	roles = rolesData.value
+
+	return users, roles, err
+}
+
+// used to send users/roles data from background fetch
+type data struct {
+	value []string
+	err   error
+}
+
+func (db *DatabaseContext) getUserNamesInBackground(ctx context.Context) <-chan data {
+	ch := make(chan data, 1)
+	go func() {
+		defer close(ch)
+		users, err := db.GetUserNames(ctx)
+		ch <- data{
+			value: users,
+			err:   err,
+		}
+	}()
+	return ch
+}
+
+func (db *DatabaseContext) getRoleIDsInBackground(ctx context.Context) <-chan data {
+	ch := make(chan data, 1)
+	go func() {
+		defer close(ch)
+		roles, err := db.getRoleIDsUsingIndex(ctx, true)
+		ch <- data{
+			value: roles,
+			err:   err,
+		}
+	}()
+	return ch
+}
+
+// Returns the Names of all users
+func (db *DatabaseContext) GetUserNames(ctx context.Context) (users []string, err error) {
+	startKey := base.UserPrefix
+	limit := db.Options.QueryPaginationLimit
+
+	users = []string{}
+
+outerLoop:
+	for {
+		results, err := db.QueryUsers(ctx, startKey, limit)
+		if err != nil {
+			return nil, err
+		}
+
+		var principalName string
+
+		resultCount := 0
+
+		for {
+			// startKey is inclusive for views, so need to skip first result if using non-empty startKey, as this results in an overlapping result
+			var skipAddition bool
+			if resultCount == 0 && startKey != base.UserPrefix {
+				skipAddition = true
+			}
+
+			var queryRow QueryUsersRow
+			found := results.Next(&queryRow)
+			if !found {
+				break
+			}
+			principalName = queryRow.Name
+			startKey = base.UserPrefix + queryRow.Name
+
+			resultCount++
+
+			if principalName != "" && !skipAddition {
+				users = append(users, principalName)
+			}
+		}
+
+		closeErr := results.Close()
+		if closeErr != nil {
+			return nil, closeErr
+		}
+
+		if resultCount < limit {
+			break outerLoop
+		}
+
+	}
+
+	return users, nil
+}
+
+// Returns the IDs of all users and roles using syncDocs index
+func (db *DatabaseContext) getAllPrincipalIDsSyncDocs(ctx context.Context) (users, roles []string, err error) {
 
 	startKey := ""
 	limit := db.Options.QueryPaginationLimit
@@ -1154,8 +1271,7 @@ outerLoop:
 	return users, nil
 }
 
-// Returns the IDs of all roles, excluding deleted.
-func (db *DatabaseContext) GetRoleIDs(ctx context.Context) (roles []string, err error) {
+func (db *DatabaseContext) getRoleIDsUsingIndex(ctx context.Context, includeDeleted bool) (roles []string, err error) {
 
 	startKey := ""
 	limit := db.Options.QueryPaginationLimit
@@ -1164,7 +1280,13 @@ func (db *DatabaseContext) GetRoleIDs(ctx context.Context) (roles []string, err 
 
 outerLoop:
 	for {
-		results, err := db.QueryRoles(ctx, startKey, limit)
+		var results sgbucket.QueryResultIterator
+		var err error
+		if includeDeleted {
+			results, err = db.QueryAllRoles(ctx, startKey, limit)
+		} else {
+			results, err = db.QueryRoles(ctx, startKey, limit)
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -1181,26 +1303,17 @@ outerLoop:
 				skipAddition = true
 			}
 
-			if db.Options.UseViews {
-				var viewRow principalsViewRow
-				found := results.Next(&viewRow)
-				if !found {
-					break
-				}
-				roleName = viewRow.Key
-				startKey = roleName
-			} else {
-				var queryRow QueryIdRow
-				found := results.Next(&queryRow)
-				if !found {
-					break
-				}
-				if len(queryRow.Id) < lenRoleKeyPrefix {
-					continue
-				}
-				roleName = queryRow.Id[lenRoleKeyPrefix:]
-				startKey = queryRow.Id
+			var queryRow QueryIdRow
+			found := results.Next(&queryRow)
+			if !found {
+				break
 			}
+			if len(queryRow.Id) < lenRoleKeyPrefix {
+				continue
+			}
+			roleName = queryRow.Id[lenRoleKeyPrefix:]
+			startKey = queryRow.Id
+
 			resultCount++
 
 			if roleName != "" && !skipAddition {
@@ -1217,6 +1330,26 @@ outerLoop:
 			break outerLoop
 		}
 
+	}
+
+	return roles, nil
+}
+
+// GetRoleIDs returns IDs of all roles, Includes deleted roles based on given flag
+//
+// It choses which View/Index to use based on combination of useViews and includeDeleted
+// When Views is enabled and includeDeleted is true, ViewPrincipal is used to fetch roles
+// when View is enabled and includeDelete is false, ViewRolesExcludeDelete is used
+// Otherwise RoleIndex is used to fetch roles
+func (db *DatabaseContext) GetRoleIDs(ctx context.Context, useViews, includeDeleted bool) (roles []string, err error) {
+	if useViews && includeDeleted {
+		_, roles, err = db.AllPrincipalIDs(ctx)
+	} else {
+		roles, err = db.getRoleIDsUsingIndex(ctx, includeDeleted)
+	}
+
+	if err != nil {
+		return nil, err
 	}
 
 	return roles, nil
@@ -1813,6 +1946,7 @@ func initDatabaseStats(dbName string, autoImport bool, options DatabaseContextOp
 			QueryTypeSequences,
 			QueryTypePrincipals,
 			QueryTypeRolesExcludeDeleted,
+			QueryTypeRoles,
 			QueryTypeSessions,
 			QueryTypeTombstones,
 			QueryTypeResync,

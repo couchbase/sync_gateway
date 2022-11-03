@@ -484,18 +484,6 @@ func TestUserFunctionAllow(t *testing.T) {
 	assert.NotNil(t, err)
 }
 
-// If certain environment variables are set, for example to turn on XATTR support, then update
-// the DatabaseContextOptions accordingly
-func AddOptionsFromEnvironmentVariables(dbcOptions *db.DatabaseContextOptions) {
-	if base.TestUseXattrs() {
-		dbcOptions.EnableXattr = true
-	}
-
-	if base.TestsDisableGSI() {
-		dbcOptions.UseViews = true
-	}
-}
-
 func assertHTTPError(t *testing.T, err error, status int) bool {
 	var httpErr *base.HTTPError
 	return assert.Error(t, err) &&
