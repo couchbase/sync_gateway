@@ -375,17 +375,13 @@ func InitializeIndexes(bucket base.N1QLStore, useXattrs bool, numReplicas uint, 
 	}
 
 	// Wait for initial readiness queries to complete
-	return waitForIndexes(bucket, useXattrs, failFast)
+	return waitForIndexes(n1QLStore, useXattrs, failFast)
 }
 
 // Issue a consistency=request_plus query against critical indexes to guarantee indexing is complete and indexes are ready.
-func waitForIndexes(bucket base.Bucket, useXattrs, failfast bool) error {
+func waitForIndexes(bucket base.N1QLStore, useXattrs, failfast bool) error {
 	logCtx := context.TODO()
 	base.InfofCtx(logCtx, base.KeyAll, "Verifying index availability for bucket %s...", base.MD(bucket.GetName()))
-	collection, err := base.AsCollection(bucket)
-	if err != nil {
-		return err
-	}
 	var indexes []string
 
 	for _, sgIndex := range sgIndexes {
@@ -396,7 +392,7 @@ func waitForIndexes(bucket base.Bucket, useXattrs, failfast bool) error {
 		indexes = append(indexes, fullIndexName)
 	}
 
-	err = collection.WaitForIndexesOnline(indexes, failfast)
+	err := bucket.WaitForIndexesOnline(indexes, failfast)
 	if err != nil {
 		return err
 	}

@@ -121,7 +121,7 @@ func (c *Collection) CreatePrimaryIndex(indexName string, options *N1qlIndexOpti
 	return CreatePrimaryIndex(c, indexName, options)
 }
 
-// WaitForIndexOnline takes set of indexes and watches them till they're online.
+// WaitForIndexesOnline takes set of indexes and watches them till they're online.
 func (c *Collection) WaitForIndexesOnline(indexNames []string, failfast bool) error {
 	logCtx := context.TODO()
 	mgr := c.cluster.QueryIndexes()
@@ -132,7 +132,7 @@ func (c *Collection) WaitForIndexesOnline(indexNames []string, failfast bool) er
 	retrySleeper := CreateMaxDoublingSleeperFunc(maxNumAttempts, 100, 5000)
 	retryCount := 0
 
-	logged := make(map[string]bool)
+	onlineIndexes := make(map[string]bool)
 
 	indexOption := gocb.GetAllQueryIndexesOptions{
 		ScopeName:      c.ScopeName(),
@@ -140,34 +140,34 @@ func (c *Collection) WaitForIndexesOnline(indexNames []string, failfast bool) er
 	}
 
 	for {
-		onlineIndexCount := 0
+		watchedOnlineIndexCount := 0
 		currIndexes, err := mgr.GetAllIndexes(c.BucketName(), &indexOption)
 		if err != nil {
 			return err
 		}
-
+		// check each of the current indexes state, add to map once finished to make sure each index online is only being logged once
 		for i := 0; i < len(currIndexes); i++ {
 			if currIndexes[i].State == IndexStateOnline {
-				if logged[currIndexes[i].Name] == false {
+				if !onlineIndexes[currIndexes[i].Name] {
 					InfofCtx(logCtx, KeyAll, "Index %s is online", MD(currIndexes[i].Name))
-					logged[currIndexes[i].Name] = true
+					onlineIndexes[currIndexes[i].Name] = true
 				}
 			}
 		}
-
+		// check online index against indexes we watch to have online, increase counter as each comes online
 		for _, listVal := range indexNames {
-			if logged[listVal] == true {
-				onlineIndexCount++
+			if onlineIndexes[listVal] {
+				watchedOnlineIndexCount++
 			}
 		}
 
-		if onlineIndexCount == len(indexNames) {
+		if watchedOnlineIndexCount == len(indexNames) {
 			return nil
 		}
 		retryCount++
 		shouldContinue, sleepMs := retrySleeper(retryCount)
 		if !shouldContinue {
-			return err
+			return fmt.Errorf("error waiting for indexes for bucket %s....", MD(c.BucketName()))
 		}
 		InfofCtx(logCtx, KeyAll, "Indexes for bucket %s not ready - retrying...", MD(c.BucketName()))
 		time.Sleep(time.Millisecond * time.Duration(sleepMs))

@@ -16,7 +16,6 @@ import (
 	"fmt"
 	"log"
 	"testing"
-	"time"
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
@@ -29,6 +28,7 @@ func TestInitializeIndexes(t *testing.T) {
 	if base.TestsDisableGSI() {
 		t.Skip("This test only works with Couchbase Server and UseViews=false")
 	}
+	base.LongRunningTest(t)
 
 	tests := []struct {
 		xattrs      bool
@@ -53,7 +53,7 @@ func TestInitializeIndexes(t *testing.T) {
 				db, ctx = setupTestDefaultCollectionDBWithOptions(t, DatabaseContextOptions{EnableXattr: test.xattrs})
 			}
 			defer db.Close(ctx)
-			var b base.Bucket = db.Bucket
+			b := db.Bucket
 
 			n1qlStore, isGoCBBucket := base.AsN1QLStore(b)
 			require.True(t, isGoCBBucket)
@@ -76,21 +76,9 @@ func TestInitializeIndexes(t *testing.T) {
 }
 
 // Reset bucket state
-func validateAllIndexesOnline(bucket base.Bucket, xattrs, isServerless bool) error {
-	col, err := base.AsCollection(bucket)
-	if err != nil {
-		return err
-	}
-	//cluster := col.GetCluster()
-	//mgr := cluster.QueryIndexes()
-
-	//watchOption := gocb.WatchQueryIndexOptions{
-	//	WatchPrimary:   true,
-	//	ScopeName:      col.ScopeName(),
-	//	CollectionName: col.Name(),
-	//}
+func validateExpectedIndexes(niqlStore base.N1QLStore, xattrs, isServerless bool) error {
 	// Watch and wait some time for indexes to come online
-	err = mgr.WatchIndexes(bucket.GetName(), sgIndexNames(xattrs, isServerless), 10*time.Second, &watchOption)
+	err := niqlStore.WaitForIndexesOnline(sgIndexNames(xattrs, isServerless), true)
 	if err != nil {
 		return err
 	}
@@ -209,8 +197,6 @@ func TestPostUpgradeIndexesVersionChange(t *testing.T) {
 	err := InitializeIndexes(n1qlStore, db.UseXattrs(), 0, false, false)
 	assert.NoError(t, err)
 
-	validateErr := validateAllIndexesOnline(db.Bucket, db.UseXattrs(), db.IsServerless())
-	assert.NoError(t, validateErr, "Error validating indexes online")
 }
 
 func TestRemoveIndexesUseViewsTrueAndFalse(t *testing.T) {
@@ -268,9 +254,6 @@ func TestRemoveIndexesUseViewsTrueAndFalse(t *testing.T) {
 	// Restore indexes after test
 	err = InitializeIndexes(n1QLStore, db.UseXattrs(), 0, false, false)
 	assert.NoError(t, err)
-
-	validateErr := validateAllIndexesOnline(db.Bucket, db.UseXattrs(), db.IsServerless())
-	assert.NoError(t, validateErr, "Error validating indexes online")
 }
 
 func TestRemoveObsoleteIndexOnError(t *testing.T) {
@@ -316,9 +299,6 @@ func TestRemoveObsoleteIndexOnError(t *testing.T) {
 	err := InitializeIndexes(n1qlStore, db.UseXattrs(), 0, false, false)
 	assert.NoError(t, err)
 
-	validateErr := validateAllIndexesOnline(db.Bucket, db.UseXattrs(), db.IsServerless())
-	assert.NoError(t, validateErr, "Error validating indexes online")
-
 }
 
 func TestIsIndexerError(t *testing.T) {
@@ -331,7 +311,7 @@ func TestIsIndexerError(t *testing.T) {
 }
 
 // dropAndInitializeIndexes drops and reinitialize all sync gateway indexes
-func dropAndInitializeIndexes(ctx context.Context, n1qlStore base.N1QLStore, bucket base.Bucket, xattrs, isServerless bool) error {
+func dropAndInitializeIndexes(ctx context.Context, n1qlStore base.N1QLStore, xattrs, isServerless bool) error {
 	dropErr := base.DropAllIndexes(ctx, n1qlStore)
 	if dropErr != nil {
 		return dropErr
@@ -346,11 +326,6 @@ func dropAndInitializeIndexes(ctx context.Context, n1qlStore base.N1QLStore, buc
 	err := n1qlStore.CreatePrimaryIndex(base.PrimaryIndexName, nil)
 	if err != nil {
 		return err
-	}
-
-	validateErr := validateAllIndexesOnline(bucket, xattrs, isServerless)
-	if validateErr != nil {
-		return validateErr
 	}
 
 	return nil

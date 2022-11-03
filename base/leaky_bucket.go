@@ -283,12 +283,11 @@ func (b *LeakyBucket) GetWithXattr(k string, xattr string, userXattrKey string, 
 }
 
 func (b *LeakyBucket) WaitForIndexesOnline(indexNames []string, failfast bool) error {
-	bucket := b.GetUnderlyingBucket()
-	col, err := AsCollection(bucket)
-	if err != nil {
-		return err
+	n1qlStore, ok := AsN1QLStore(b.bucket)
+	if !ok {
+		return errors.New("Not N1QL Store")
 	}
-	return col.WaitForIndexesOnline(indexNames, failfast)
+	return n1qlStore.WaitForIndexesOnline(indexNames, failfast)
 }
 
 func (b *LeakyBucket) DeleteWithXattr(k string, xattr string) error {

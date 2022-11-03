@@ -250,24 +250,6 @@ func buildIndexes(s N1QLStore, indexNames []string) error {
 	return err
 }
 
-// WaitForIndexOnline waits for index state to be online
-func WaitForIndexOnline(store N1QLStore, indexName string) error {
-	worker := func() (shouldRetry bool, err error, value interface{}) {
-		exists, indexMeta, getMetaErr := store.GetIndexMeta(indexName)
-		if exists && indexMeta.State == IndexStateOnline {
-			return false, nil, nil
-		}
-		return true, getMetaErr, nil
-	}
-
-	// Kick off retry loop
-	err, _ := RetryLoop("WaitForIndexesOnline", worker, CreateMaxDoublingSleeperFunc(25, 100, 15000))
-	if err != nil {
-		return pkgerrors.Wrapf(err, "WaitForIndexesOnline for index %s", MD(indexName).Redact())
-	}
-	return nil
-}
-
 // IndexMeta represents a Couchbase GSI index.
 type IndexMeta struct {
 	Name      string   `json:"name"`
