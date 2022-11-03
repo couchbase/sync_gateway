@@ -30,66 +30,39 @@ var allowAll = &functions.Allow{Channels: []string{"*"}}
 
 // The GraphQL schema:
 var kTestGraphQLSchema = `
-    type Task {
-        id: ID!
-        title: String!
-        description: String
-        done: Boolean
-        tags: [String!]
-        secretNotes: String     # Admin-only
-    }
-    type Query {
-        square(n: Int!): Int!
-        infinite: Int!
-        task(id: ID!): Task
-        tasks: [Task!]!
-		tasksClone: [Task!]!
-        toDo: [Task!]!
-    }
-    type Mutation {
-        complete(id: ID!): Task
-        addTag(id: ID!, tag: String!): Task
-    }
-    `
+	type User {
+		id: ID! #Int
+		name: String!
+		Emails: [String!]! #Mutation via Admin Only
+	}
+	type Query {
+		getUser(id: ID!): User
+		getAllUsers: [User!]!
+	}
+	type Mutation {
+		updateName(id:ID!, name: String!): User
+		addEmail(id:ID!, email: String!): User  #can be done via admin only
+	}
+
+`
 
 // The GraphQL configuration:
 var kTestGraphQLConfig = functions.GraphQLConfig{
 	Schema: &kTestGraphQLSchema,
 	Resolvers: map[string]functions.GraphQLResolverConfig{
 		"Query": {
-			"square": {
-				Type:  "javascript",
-				Code:  `function(parent, args, context, info) {return args.n * args.n;}`,
-				Allow: allowAll,
-			},
-			"infinite": {
-				Type:  "javascript",
-				Code:  `function(parent, args, context, info) {return context.user.function("infinite");}`,
-				Allow: allowAll,
-			},
-			"task": {
+			"getUser": {
 				Type: "javascript",
 				Code: `function(parent, args, context, info) {
-                        if (Object.keys(parent).length != 0) throw "Unexpected parent";
-                        if (Object.keys(args).length != 1) throw "Unexpected args";
-                        if (Object.keys(info) != "selectedFieldNames") throw "Unexpected info";
-                        if (!context.user) throw "Missing context.user";
-                        if (!context.admin) throw "Missing context.admin";
-                        return context.user.function("getTask", {id: args.id});}`,
+						if (Object.keys(parent).length != 0) throw "Unexpected parent";
+						if (Object.keys(args).length != 1) throw "Unexpected args";
+						if (Object.keys(info) != "selectedFieldNames") throw "Unexpected info";
+						if (!context.user) throw "Missing context.user";
+						if (!context.admin) throw "Missing context.admin";
+						return context.user.function("getUserWithID", {id: args.id});}`,
 				Allow: allowAll,
 			},
-			"tasks": {
-				Type: "javascript",
-				Code: `function(parent, args, context, info) {
-                        if (Object.keys(parent).length != 0) throw "Unexpected parent";
-                        if (Object.keys(args).length != 0) throw "Unexpected args";
-                        if (Object.keys(info) != "selectedFieldNames") throw "Unexpected info";
-                        if (!context.user) throw "Missing context.user";
-                        if (!context.admin) throw "Missing context.admin";
-                        return context.user.function("all");}`,
-				Allow: allowAll,
-			},
-			"tasksClone": {
+			"getAllUsers": {
 				Type: "javascript",
 				Code: `function(parent, args, context, info) {
 						if (Object.keys(parent).length != 0) throw "Unexpected parent";
@@ -97,62 +70,51 @@ var kTestGraphQLConfig = functions.GraphQLConfig{
 						if (Object.keys(info) != "selectedFieldNames") throw "Unexpected info";
 						if (!context.user) throw "Missing context.user";
 						if (!context.admin) throw "Missing context.admin";
-						return context.user.function("allClone");}`,
-				Allow: allowAll,
-			},
-			"toDo": {
-				Type: "javascript",
-				Code: `function(parent, args, context, info) {
-                        if (Object.keys(parent).length != 0) throw "Unexpected parent";
-                        if (Object.keys(args).length != 0) throw "Unexpected args";
-                        if (Object.keys(info) != "selectedFieldNames") throw "Unexpected info";
-                        if (!context.user) throw "Missing context.user";
-                        if (!context.admin) throw "Missing context.admin";
-                        var result=new Array(); var all = context.user.function("all");
-                        for (var i = 0; i < all.length; i++)
-                            if (!all[i].done) result.push(all[i]);
-                        return result;}`,
+						return context.user.function("all");}`,
 				Allow: allowAll,
 			},
 		},
 		"Mutation": {
-			"complete": {
+			"updateName": {
 				Type: "javascript",
-				Code: `function(parent, args, context, info) {
-                        	if (Object.keys(parent).length != 0) throw "Unexpected parent";
-                        	if (Object.keys(args).length != 1) throw "Unexpected args";
-                        	if (Object.keys(info) != "selectedFieldNames") throw "Unexpected info";
-                        	if (!context.user) throw "Missing context.user";
-                        	if (!context.admin) throw "Missing context.admin";
-                        	context.requireMutating();
-                        	var task = context.user.function("getTask", {id: args.id});
-                        	if (!task) return undefined;
-                        	task.done = true;
-                        	return task;}`,
+				Code: `function(parent, args, context, info){
+						if (Object.keys(parent).length != 0) throw "Unexpected parent";
+						if (Object.keys(args).length != 2) throw "Unexpected args";
+						if (Object.keys(info) != "selectedFieldNames") throw "Unexpected info";
+						if (!context.user) throw "Missing context.user";
+						if (!context.admin) throw "Missing context.admin";
+						
+						var currentUser = context.user.function("getUserWithID", {id: args.id});
+						if (!currentUser) return undefined;
+						currentUser.name = args.name;
+						return currentUser;
+				}`,
 				Allow: allowAll,
 			},
-			"addTag": {
+			"addEmail": {
 				Type: "javascript",
-				Code: `function(parent, args, context, info) {
-                        	context.requireMutating();
-                        	var task = context.user.function("getTask", {id: args.id});
-                        	if (!task) return undefined;
-                        	if (!task.tags) task.tags = [];
-                        	task.tags.push(args.tag);
-                        	return task;}`,
-				Allow: allowAll,
-			},
-		},
-		"Task": {
-			"secretNotes": {
-				Type: "javascript",
-				Code: `function(parent, args, context, info) {
-                        		if (!parent.id) throw "Invalid parent";
-                        		if (Object.keys(args).length != 0) throw "Unexpected args";
-                        		if (Object.keys(info) != "selectedFieldNames") throw "Unexpected info";
-                                if (!context.user) throw "Missing context.user";
-                                if (!context.admin) throw "Missing context.admin";
-                                return "TOP SECRET!";}`,
+				Code: `function(parent, args, context, info){
+						//if (!parent.id) throw "Invalid parent";
+						if (Object.keys(args).length != 2) throw "Unexpected args";
+						if (Object.keys(info) != "selectedFieldNames") throw "Unexpected info";
+						if (!context.user) throw "Missing context.user";
+						if (!context.admin) throw "Missing context.admin";
+						context.requireMutating();
+						var currentUser = context.user.function("getUserWithID", {id: args.id});
+						if (!currentUser) return undefined;
+
+						//case: args.email already present in the Emails array
+						
+						for (var i = 0; i < currentUser.Emails.length; i++) {
+							console.log(currentUser.Emails[i]);
+							if(currentUser.Emails[i]==args.email){
+								return currentUser;
+							}
+						}
+						currentUser.Emails.push(args.email);
+						return currentUser;
+				}`,
+
 				Allow: &functions.Allow{Users: base.Set{}}, // only admins
 			},
 		},
@@ -166,12 +128,12 @@ var kTestGraphQLUserFunctionsConfig = functions.FunctionsConfig{
 			Type: "javascript",
 			Code: `function(context, args) {
                         return [
-                        {id: "a", "title": "Applesauce", done:true, tags:["fruit","soft"]},
-                        {id: "b", "title": "Beer", done:false,description: "Bass ale please"},
-                        {id: "m", "title": "Mangoes",done:false} ];}`,
+                        {id: 1,"name": "user1", Emails: ["abc@gmail.com"]},
+                        {id: 2,"name": "user2", Emails: ["xyz@gmail.com","def@gmail.com"]},
+                        {id: 3,"name": "user3", Emails: ["ipo@gmail.com"]} ];}`,
 			Allow: &functions.Allow{Channels: []string{"*"}},
 		},
-		"getTask": {
+		"getUserWithID": {
 			Type: "javascript",
 			Code: `function(context, args) {
                         var all = context.user.function("all");
@@ -179,23 +141,6 @@ var kTestGraphQLUserFunctionsConfig = functions.FunctionsConfig{
                             if (all[i].id == args.id) return all[i];
                         return undefined;}`,
 			Args:  []string{"id"},
-			Allow: &functions.Allow{Channels: []string{"*"}},
-		},
-		"allClone": {
-			Type: "javascript",
-			Code: `function(context, args) {
-						return [
-						{id: "a", "title": "Applesauce", done:true, tags:["fruit","soft"]},
-						{id: "b", "title": "Beer", description: "Bass ale please"},
-						{id: "m", "title": "Mangoes"} ];}`,
-			Allow: &functions.Allow{Channels: []string{"wonderland"}},
-		},
-		"infinite": {
-			Type: "javascript",
-			Code: `function(context, args) {
-                    	var result = context.user.graphql("query{ infinite }");
-                    	if (result.errors) throw "GraphQL query failed:" + result.errors[0].message;
-                    	return -1;}`,
 			Allow: &functions.Allow{Channels: []string{"*"}},
 		},
 	},
@@ -625,5 +570,23 @@ func TestInvalidGraphQLConfigurationValues(t *testing.T) {
 
 		err = os.Remove("schema.graphql")
 		assert.NoError(t, err)
+	})
+}
+
+func TestSchemaSyntax(t *testing.T) {
+	rt := rest.NewRestTesterForUserQueries(t, rest.DbConfig{
+		GraphQL:       &kTestGraphQLConfig,
+		UserFunctions: &kTestGraphQLUserFunctionsConfig,
+	})
+	if rt == nil {
+		return
+	}
+	defer rt.Close()
+
+	t.Run("Non-Admin", func(t *testing.T) {
+		response := rt.SendRequest("PUT", "/db/_config/graphql", "{}")
+		assert.Equal(t, 404, response.Result().StatusCode)
+		response = rt.SendRequest("DELETE", "/db/_config/graphql", "{}")
+		assert.Equal(t, 404, response.Result().StatusCode)
 	})
 }
