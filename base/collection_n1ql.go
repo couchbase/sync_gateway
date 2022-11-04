@@ -119,8 +119,58 @@ func (c *Collection) CreatePrimaryIndex(indexName string, options *N1qlIndexOpti
 	return CreatePrimaryIndex(c, indexName, options)
 }
 
-func (c *Collection) WaitForIndexOnline(indexName string) error {
-	return WaitForIndexOnline(c, indexName)
+// WaitForIndexesOnline takes set of indexes and watches them till they're online.
+func (c *Collection) WaitForIndexesOnline(indexNames []string, failfast bool) error {
+	logCtx := context.TODO()
+	mgr := c.cluster.QueryIndexes()
+	maxNumAttempts := 180
+	if failfast {
+		maxNumAttempts = 1
+	}
+	retrySleeper := CreateMaxDoublingSleeperFunc(maxNumAttempts, 100, 5000)
+	retryCount := 0
+
+	onlineIndexes := make(map[string]bool)
+
+	indexOption := gocb.GetAllQueryIndexesOptions{
+		ScopeName:      c.ScopeName(),
+		CollectionName: c.Name(),
+		RetryStrategy:  &goCBv2FailFastRetryStrategy{},
+	}
+
+	for {
+		watchedOnlineIndexCount := 0
+		currIndexes, err := mgr.GetAllIndexes(c.BucketName(), &indexOption)
+		if err != nil {
+			return err
+		}
+		// check each of the current indexes state, add to map once finished to make sure each index online is only being logged once
+		for i := 0; i < len(currIndexes); i++ {
+			if currIndexes[i].State == IndexStateOnline {
+				if !onlineIndexes[currIndexes[i].Name] {
+					InfofCtx(logCtx, KeyAll, "Index %s is online", MD(currIndexes[i].Name))
+					onlineIndexes[currIndexes[i].Name] = true
+				}
+			}
+		}
+		// check online index against indexes we watch to have online, increase counter as each comes online
+		for _, listVal := range indexNames {
+			if onlineIndexes[listVal] {
+				watchedOnlineIndexCount++
+			}
+		}
+
+		if watchedOnlineIndexCount == len(indexNames) {
+			return nil
+		}
+		retryCount++
+		shouldContinue, sleepMs := retrySleeper(retryCount)
+		if !shouldContinue {
+			return fmt.Errorf("error waiting for indexes for bucket %s....", MD(c.BucketName()))
+		}
+		InfofCtx(logCtx, KeyAll, "Indexes for bucket %s not ready - retrying...", MD(c.BucketName()))
+		time.Sleep(time.Millisecond * time.Duration(sleepMs))
+	}
 }
 
 func (c *Collection) GetIndexMeta(indexName string) (exists bool, meta *IndexMeta, err error) {
