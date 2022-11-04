@@ -387,7 +387,7 @@ func waitForIndexes(bucket base.N1QLStore, useXattrs, isServerless, failfast boo
 		if sgIndex.isXattrOnly() && !useXattrs {
 			continue
 		}
-		if sgIndex.creationMode == Serverless && !isServerless {
+		if !sgIndex.shouldCreate(isServerless) {
 			continue
 		}
 		indexes = append(indexes, fullIndexName)
