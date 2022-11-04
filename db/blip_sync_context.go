@@ -125,7 +125,7 @@ type BlipSyncContext struct {
 	// when readOnly is true, handleRev requests are rejected
 	readOnly bool
 
-	collectionMapping []*DatabaseCollectionWithUser // Mapping of array id to collection mapping
+	collectionMapping []*DatabaseCollection // Mapping of array id to collection mapping
 }
 
 // AllowedAttachment contains the metadata for handling allowed attachments

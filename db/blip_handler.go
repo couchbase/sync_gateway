@@ -107,12 +107,6 @@ func userBlipHandler(next blipHandlerFunc) blipHandlerFunc {
 func (bh *blipHandler) updateUser() {
 	// refresh the handler's database with the new BlipSyncContext database
 	bh.db = bh._copyContextDatabase()
-	for _, col := range bh.collectionMapping {
-		col = &DatabaseCollectionWithUser{
-			DatabaseCollection: col.DatabaseCollection,
-			user:               bh.db.User(),
-		}
-	}
 	if bh.collection != nil {
 		bh.collection = &DatabaseCollectionWithUser{
 			DatabaseCollection: bh.collection.DatabaseCollection,
@@ -168,13 +162,17 @@ func collectionBlipHandler(next blipHandlerFunc) blipHandlerFunc {
 			return base.HTTPErrorf(http.StatusBadRequest, "collection property needs to be an int, was %q", collectionIndexStr)
 		}
 
-		bh.collectionIdx = &collectionIndex
 		if len(bh.collectionMapping) <= collectionIndex {
 			return base.HTTPErrorf(http.StatusBadRequest, "Collection index %d is outside indexes set by GetCollections", collectionIndex)
 		}
-		bh.collection = bh.collectionMapping[collectionIndex]
-		if bh.collection == nil {
+		bh.collectionIdx = &collectionIndex
+		collection := bh.collectionMapping[collectionIndex]
+		if collection == nil {
 			return base.HTTPErrorf(http.StatusBadRequest, "Collection index %d does not match a valid collection from GetCollections", collectionIndex)
+		}
+		bh.collection = &DatabaseCollectionWithUser{
+			DatabaseCollection: bh.collectionMapping[collectionIndex],
+			user:               bh.db.user,
 		}
 		// Call down to the underlying handler and return it's value
 		return next(bh, bm)

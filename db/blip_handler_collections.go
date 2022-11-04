@@ -75,15 +75,11 @@ func (bh *blipHandler) handleGetCollections(rq *blip.Message) error {
 		}
 		key := CheckpointDocIDPrefix + requestBody.CheckpointIDs[i]
 		value, err := collection.GetSpecial(DocTypeLocal, key)
-		collectionWithUser := &DatabaseCollectionWithUser{
-			DatabaseCollection: collection,
-			user:               bh.db.user,
-		}
 		if err != nil {
 			status, _ := base.ErrorAsHTTPStatus(err)
 			if status == http.StatusNotFound {
 				checkpoints[i] = Body{}
-				bh.collectionMapping = append(bh.collectionMapping, collectionWithUser)
+				bh.collectionMapping = append(bh.collectionMapping, collection)
 			} else {
 				errMsg := fmt.Sprintf("Unable to fetch client checkpoint %q for collection %s: %s", key, scopeAndCollection, err)
 				base.WarnfCtx(bh.loggingCtx, errMsg)
@@ -93,7 +89,7 @@ func (bh *blipHandler) handleGetCollections(rq *blip.Message) error {
 		}
 		delete(value, BodyId)
 		checkpoints[i] = value
-		bh.collectionMapping = append(bh.collectionMapping, collectionWithUser)
+		bh.collectionMapping = append(bh.collectionMapping, collection)
 	}
 	response := rq.Response()
 	if response == nil {
