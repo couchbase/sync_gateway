@@ -240,11 +240,7 @@ func buildIndexes(s N1QLStore, indexNames []string) error {
 	if IsIndexerRetryBuildError(err) {
 		InfofCtx(context.TODO(), KeyQuery, "Indexer error creating index - waiting for background build.  Error:%v", err)
 		// Wait for bucket to be created in background before returning
-		waitErr := s.WaitForIndexesOnline(indexNames, false)
-		if waitErr != nil {
-			return waitErr
-		}
-		return nil
+		return s.WaitForIndexesOnline(indexNames, false)
 	}
 
 	return err

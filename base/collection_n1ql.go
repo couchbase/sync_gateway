@@ -135,6 +135,7 @@ func (c *Collection) WaitForIndexesOnline(indexNames []string, failfast bool) er
 	indexOption := gocb.GetAllQueryIndexesOptions{
 		ScopeName:      c.ScopeName(),
 		CollectionName: c.Name(),
+		RetryStrategy:  &goCBv2FailFastRetryStrategy{},
 	}
 
 	for {

@@ -60,14 +60,14 @@ func TestInitializeIndexes(t *testing.T) {
 
 			// Make sure we can drop and reinitialize twice
 			for i := 0; i < 2; i++ {
-				err := dropAndInitializeIndexes(base.TestCtx(t), n1qlStore, b, test.xattrs, db.IsServerless())
+				err := dropAndInitializeIndexes(base.TestCtx(t), n1qlStore, test.xattrs, db.IsServerless())
 				require.NoError(t, err, "Error dropping and initialising all indexes on bucket")
 			}
 			// check to see if current indexes match what is expected by the rest of the test
 			// if not we drop and reinitialize these indexes using the overall test environment variables for XATTRS
-			err := validateAllIndexesOnline(b, base.TestUseXattrs(), db.IsServerless())
+			err := validateExpectedIndexes(n1qlStore, base.TestUseXattrs(), db.IsServerless())
 			if err != nil {
-				err = dropAndInitializeIndexes(base.TestCtx(t), n1qlStore, b, base.TestUseXattrs(), db.IsServerless())
+				err = dropAndInitializeIndexes(base.TestCtx(t), n1qlStore, base.TestUseXattrs(), db.IsServerless())
 				require.NoError(t, err)
 			}
 		})
@@ -94,9 +94,10 @@ func sgIndexNames(xattrs, isServerless bool) []string {
 		if sgIndex.isXattrOnly() && !xattrs {
 			continue
 		}
-		if sgIndex.shouldCreate(isServerless) {
-			allSGIndexes = append(allSGIndexes, fullIndexName)
+		if sgIndex.creationMode == Serverless && !isServerless {
+			continue
 		}
+		allSGIndexes = append(allSGIndexes, fullIndexName)
 	}
 	return allSGIndexes
 }
@@ -133,7 +134,7 @@ func TestPostUpgradeIndexesSimple(t *testing.T) {
 	log.Printf("removedIndexes: %+v", removedIndexes)
 	assert.NoError(t, removeErr, "Unexpected error running removeObsoleteIndexes in setup case")
 
-	err := InitializeIndexes(n1qlStore, db.UseXattrs(), 0, false, false)
+	err := InitializeIndexes(n1qlStore, db.UseXattrs(), 0, false, db.IsServerless())
 	assert.NoError(t, err)
 
 	// Running w/ opposite xattrs flag should preview removal of the indexes associated with this db context
@@ -152,7 +153,7 @@ func TestPostUpgradeIndexesSimple(t *testing.T) {
 	assert.NoError(t, removeErr, "Unexpected error running removeObsoleteIndexes in post-cleanup no-op")
 
 	// Restore indexes after test
-	err = InitializeIndexes(n1qlStore, db.UseXattrs(), 0, false, false)
+	err = InitializeIndexes(n1qlStore, db.UseXattrs(), 0, false, db.IsServerless())
 	assert.NoError(t, err)
 }
 
@@ -194,7 +195,7 @@ func TestPostUpgradeIndexesVersionChange(t *testing.T) {
 	assert.NoError(t, removeErr, "Unexpected error running removeObsoleteIndexes with hacked sgIndexes")
 
 	// Restore indexes after test
-	err := InitializeIndexes(n1qlStore, db.UseXattrs(), 0, false, false)
+	err := InitializeIndexes(n1qlStore, db.UseXattrs(), 0, false, db.IsServerless())
 	assert.NoError(t, err)
 
 }
@@ -252,7 +253,7 @@ func TestRemoveIndexesUseViewsTrueAndFalse(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Restore indexes after test
-	err = InitializeIndexes(n1QLStore, db.UseXattrs(), 0, false, false)
+	err = InitializeIndexes(n1QLStore, db.UseXattrs(), 0, false, db.IsServerless())
 	assert.NoError(t, err)
 }
 
@@ -296,7 +297,7 @@ func TestRemoveObsoleteIndexOnError(t *testing.T) {
 
 	// Restore indexes after test
 	n1qlStore, _ := base.AsN1QLStore(db.Bucket)
-	err := InitializeIndexes(n1qlStore, db.UseXattrs(), 0, false, false)
+	err := InitializeIndexes(n1qlStore, db.UseXattrs(), 0, false, db.IsServerless())
 	assert.NoError(t, err)
 
 }
@@ -317,7 +318,7 @@ func dropAndInitializeIndexes(ctx context.Context, n1qlStore base.N1QLStore, xat
 		return dropErr
 	}
 
-	initErr := InitializeIndexes(n1qlStore, xattrs, 0, true, false)
+	initErr := InitializeIndexes(n1qlStore, xattrs, 0, false, isServerless)
 	if initErr != nil {
 		return initErr
 	}

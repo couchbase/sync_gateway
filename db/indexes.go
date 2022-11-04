@@ -339,13 +339,12 @@ func (i *SGIndex) createIfNeeded(bucket base.N1QLStore, useXattrs bool, numRepli
 }
 
 // Initializes Sync Gateway indexes for bucket.  Creates required indexes if not found, then waits for index readiness.
-func InitializeIndexes(bucket base.N1QLStore, useXattrs bool, numReplicas uint, failFast bool, isServerless bool) error {
+func InitializeIndexes(n1QLStore base.N1QLStore, useXattrs bool, numReplicas uint, failFast bool, isServerless bool) error {
 
 	base.InfofCtx(context.TODO(), base.KeyAll, "Initializing indexes with numReplicas: %d...", numReplicas)
 
 	// Create any indexes that aren't present
 	deferredIndexes := make([]string, 0)
-	allSGIndexes := make([]string, 0)
 	for _, sgIndex := range sgIndexes {
 
 		if !sgIndex.shouldCreate(isServerless) {
@@ -362,7 +361,6 @@ func InitializeIndexes(bucket base.N1QLStore, useXattrs bool, numReplicas uint, 
 		if isDeferred {
 			deferredIndexes = append(deferredIndexes, fullIndexName)
 		}
-		allSGIndexes = append(allSGIndexes, fullIndexName)
 	}
 
 	// Issue BUILD INDEX for any deferred indexes.
@@ -375,11 +373,11 @@ func InitializeIndexes(bucket base.N1QLStore, useXattrs bool, numReplicas uint, 
 	}
 
 	// Wait for initial readiness queries to complete
-	return waitForIndexes(n1QLStore, useXattrs, failFast)
+	return waitForIndexes(n1QLStore, useXattrs, isServerless, failFast)
 }
 
 // Issue a consistency=request_plus query against critical indexes to guarantee indexing is complete and indexes are ready.
-func waitForIndexes(bucket base.N1QLStore, useXattrs, failfast bool) error {
+func waitForIndexes(bucket base.N1QLStore, useXattrs, isServerless, failfast bool) error {
 	logCtx := context.TODO()
 	base.InfofCtx(logCtx, base.KeyAll, "Verifying index availability for bucket %s...", base.MD(bucket.GetName()))
 	var indexes []string
@@ -387,6 +385,9 @@ func waitForIndexes(bucket base.N1QLStore, useXattrs, failfast bool) error {
 	for _, sgIndex := range sgIndexes {
 		fullIndexName := sgIndex.fullIndexName(useXattrs)
 		if sgIndex.isXattrOnly() && !useXattrs {
+			continue
+		}
+		if sgIndex.creationMode == Serverless && !isServerless {
 			continue
 		}
 		indexes = append(indexes, fullIndexName)
