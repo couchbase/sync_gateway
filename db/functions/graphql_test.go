@@ -476,3 +476,61 @@ func TestGraphQLMaxResolverCount(t *testing.T) {
 	_, err := CompileGraphQL(&config)
 	assert.ErrorContains(t, err, "too many GraphQL resolvers (> 1)")
 }
+
+func TestArgsInResolverConfig(t *testing.T) {
+	var config = GraphQLConfig{
+		Schema: base.StringPtr(`type Query{}`),
+		Resolvers: map[string]GraphQLResolverConfig{
+			"Query": {
+				"square": {
+					Type: "javascript",
+					Code: `function(parent, args, context, info) {return args.n * args.n;}`,
+					Args: []string{"n"},
+				},
+			},
+		},
+	}
+	_, err := CompileGraphQL(&config)
+	assert.ErrorContains(t, err, `'args' is not valid in a GraphQL resolver config`)
+}
+
+func TestUnresolvedTypes(t *testing.T) {
+	var config = GraphQLConfig{
+		Schema:    base.StringPtr(`type Query{} type abc{def:kkk}`),
+		Resolvers: nil,
+	}
+	_, err := CompileGraphQL(&config)
+	assert.ErrorContains(t, err, `GraphQL Schema object has no registered TypeMap -- this probably means the schema has unresolved types`)
+}
+
+func TestInvalidMutationType(t *testing.T) {
+	var config = GraphQLConfig{
+		Schema: base.StringPtr(`type Query{}`),
+		Resolvers: map[string]GraphQLResolverConfig{
+			"Mutation": {
+				"complete": {
+					Type: "cpp",
+					Code: `SELECT {}`,
+				},
+			},
+		},
+	}
+	_, err := CompileGraphQL(&config)
+	assert.ErrorContains(t, err, `unrecognized 'type' "cpp"`)
+}
+
+func TestCompilationError(t *testing.T) {
+	var config = GraphQLConfig{
+		Schema: base.StringPtr(`type Query{ square(n: Int!): Int! }`),
+		Resolvers: map[string]GraphQLResolverConfig{
+			"Query": {
+				"square": {
+					Type: "javascript",
+					Code: `function(parent, args, context, info, 3) { }`,
+				},
+			},
+		},
+	}
+	_, err := CompileGraphQL(&config)
+	assert.ErrorContains(t, err, `500 Error compiling GraphQL resolver "Query:square"`)
+}
