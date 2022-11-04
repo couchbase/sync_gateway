@@ -56,7 +56,7 @@ type ChangeEntry struct {
 	backfill     backfillFlag // Flag used to identify non-client entries used for backfill synchronization (di only)
 	principalDoc bool         // Used to indicate _user/_role docs
 	Revoked      bool         `json:"revoked,omitempty"`
-	CollectionID uint32       `json:"-"`
+	collectionID uint32
 }
 
 const (
@@ -96,7 +96,7 @@ func (db *Database) addDocToChangeEntry(ctx context.Context, entry *ChangeEntry,
 		return
 	}
 
-	dbCollection, ok := db.CollectionByID[entry.CollectionID]
+	dbCollection, ok := db.CollectionByID[entry.collectionID]
 	if !ok {
 		base.FatalfCtx(ctx, "Changes feed: could not determine collection from change entry")
 		return
@@ -475,7 +475,7 @@ func makeChangeEntry(logEntry *LogEntry, seqID SequenceID, channel channels.ID) 
 		Changes:      []ChangeRev{{"rev": logEntry.RevID}},
 		branched:     (logEntry.Flags & channels.Branched) != 0,
 		principalDoc: logEntry.IsPrincipal,
-		CollectionID: logEntry.CollectionID,
+		collectionID: logEntry.CollectionID,
 	}
 	if logEntry.Flags&channels.Removed != 0 {
 		change.Removed = base.SetOf(channel.Name)

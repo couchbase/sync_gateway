@@ -204,6 +204,10 @@ func (dbc *DatabaseContext) getChangesForSequences(ctx context.Context, sequence
 	if err != nil {
 		return nil, err
 	}
+	collectionID, err := dbc.GetSingleCollectionID()
+	if err != nil {
+		return nil, err
+	}
 
 	// Convert the output to LogEntries.  Channel query and view result rows have different structure, so need to unmarshal independently.
 	for {
@@ -212,10 +216,6 @@ func (dbc *DatabaseContext) getChangesForSequences(ctx context.Context, sequence
 		if usingViews {
 			entry, found = nextChannelViewEntry(queryResults)
 		} else {
-			collectionID, err := dbc.GetSingleCollectionID()
-			if err != nil {
-				return nil, err
-			}
 			entry, found = nextChannelQueryEntry(queryResults, collectionID)
 		}
 

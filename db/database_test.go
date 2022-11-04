@@ -1074,7 +1074,7 @@ func TestConflicts(t *testing.T) {
 		ID:           "doc",
 		Changes:      []ChangeRev{{"rev": "2-b"}, {"rev": "2-a"}},
 		branched:     true,
-		CollectionID: collectionID,
+		collectionID: collectionID,
 	}, changes[0],
 	)
 
@@ -1108,7 +1108,7 @@ func TestConflicts(t *testing.T) {
 		ID:           "doc",
 		Changes:      []ChangeRev{{"rev": "2-a"}, {"rev": rev3}},
 		branched:     true,
-		CollectionID: collectionID,
+		collectionID: collectionID,
 	}, changes[0])
 
 }
