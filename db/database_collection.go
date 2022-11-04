@@ -79,6 +79,11 @@ func (c *DatabaseCollection) eventMgr() *EventManager {
 	return c.dbCtx.EventMgr
 }
 
+// GetReivisonCacheForTest allow accessing a copy of revision cache.
+func (context *DatabaseCollection) GetRevisionCacheForTest() RevisionCache {
+	return context.revisionCache
+}
+
 // FlushRevisionCacheForTest creates a new revision cache. This is currently at the database level. Only use this in test code.
 func (c *DatabaseCollection) FlushRevisionCacheForTest() {
 	c.revisionCache = NewRevisionCache(
@@ -95,7 +100,6 @@ func (c *DatabaseCollection) ForceAPIForbiddenErrors() bool {
 }
 
 // importFilter returns the sync function.
-// FIXME: collections - this needs to be moved to per-collection
 func (c *DatabaseCollection) importFilter() *ImportFilterFunction {
 	return c.dbCtx.Options.ImportOptions.ImportFilter
 }
@@ -106,7 +110,6 @@ func (c *DatabaseCollection) isGuestReadOnly() bool {
 }
 
 // LastSequence returns the highest sequence number allocated for this collection.
-// FIXME: collections - this needs to be moved to collections
 func (c *DatabaseCollection) LastSequence() (uint64, error) {
 	return c.dbCtx.sequences.lastSequence()
 }
@@ -146,7 +149,6 @@ func (c *DatabaseCollection) revsLimit() uint32 {
 }
 
 // sequences returns the sequence generator for a collection.
-// FIXME: collections, this should be a collection level property
 func (c *DatabaseCollection) sequences() *sequenceAllocator {
 	return c.dbCtx.sequences
 }

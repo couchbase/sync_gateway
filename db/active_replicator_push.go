@@ -92,9 +92,8 @@ func (apr *ActivePushReplicator) _connect() error {
 	bh := blipHandler{
 		BlipSyncContext: apr.blipSyncContext,
 		db:              apr.config.ActiveDB,
-		// FIXME: this is probably an array of collections
-		collection:   singleCollection,
-		serialNumber: apr.blipSyncContext.incrementSerialNumber(),
+		collection:      singleCollection,
+		serialNumber:    apr.blipSyncContext.incrementSerialNumber(),
 	}
 
 	seq, err := ParseSequenceID(apr.Checkpointer.lastCheckpointSeq)

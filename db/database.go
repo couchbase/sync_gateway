@@ -92,6 +92,7 @@ type DatabaseContext struct {
 	sequences                   *sequenceAllocator      // Source of new sequence numbers
 	ChannelMapper               *channels.ChannelMapper // Runs JS 'sync' function
 	StartTime                   time.Time               // Timestamp when context was instantiated
+	RevsLimit                   uint32                  // Max depth a document's revision tree can grow to
 	autoImport                  bool                    // Add sync data to new untracked couchbase server docs?  (Xattr mode specific)
 	changeCache                 *changeCache            // Cache of recently-access channels
 	EventMgr                    *EventManager           // Manages notification events
@@ -107,8 +108,6 @@ type DatabaseContext struct {
 	LocalJWTProviders           auth.LocalJWTProviderMap
 	PurgeInterval               time.Duration // Metadata purge interval
 	serverUUID                  string        // UUID of the server, if available
-	revisionCache               RevisionCache // Cache of recently-accessed doc revisions
-	RevsLimit                   uint32        // Max depth a document's revision tree can grow to
 
 	DbStats      *base.DbStats // stats that correspond to this database context
 	CompactState uint32        // Status of database compaction
@@ -1667,7 +1666,6 @@ func (db *Database) UpdateAllDocChannels(ctx context.Context, regenerateSequence
 	if docsChanged > 0 {
 		// Now invalidate channel cache of all users/roles:
 		base.InfofCtx(ctx, base.KeyAll, "Invalidating channel caches of users/roles...")
-		// TOR: This should be metadata collection, probably
 		collection := db.GetSingleDatabaseCollection()
 		users, roles, _ := db.AllPrincipalIDs(ctx)
 		for _, name := range users {
@@ -1757,7 +1755,6 @@ func (context *DatabaseContext) UseViews() bool {
 	return context.Options.UseViews
 }
 
-// TOR: This function is duplicated on DatabaseCollection
 func (context *DatabaseContext) DeltaSyncEnabled() bool {
 	return context.Options.DeltaSyncOptions.Enabled
 }
@@ -1831,12 +1828,6 @@ func initDatabaseStats(dbName string, autoImport bool, options DatabaseContextOp
 	return base.SyncGatewayStats.NewDBStats(dbName, enabledDeltaSync, enabledImport, enabledViews, queryNames...)
 }
 
-// For test usage
-func (context *DatabaseCollection) GetRevisionCacheForTest() RevisionCache {
-	return context.revisionCache
-}
-
-// Duplicated on DatabaseCollection
 func (context *DatabaseContext) AllowConflicts() bool {
 	if context.Options.AllowConflicts != nil {
 		return *context.Options.AllowConflicts
