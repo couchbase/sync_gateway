@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math/rand"
 	"net/http"
 	"net/url"
 	"os"
@@ -519,6 +520,54 @@ func TestDBOfflinePostResync(t *testing.T) {
 	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 
+	_, ok := (rt.GetDatabase().ResyncManager.Process).(*db.ResyncManager)
+	if !ok {
+		t.Skip("This test only works when ResyncManager is used")
+	}
+
+	log.Printf("Taking DB offline")
+	response := rt.SendAdminRequest("GET", "/db/", "")
+	var body db.Body
+	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
+	assert.True(t, body["state"].(string) == "Online")
+
+	response = rt.SendAdminRequest("POST", "/db/_offline", "")
+	rest.RequireStatus(t, response, 200)
+
+	response = rt.SendAdminRequest("GET", "/db/", "")
+	body = nil
+	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
+	assert.True(t, body["state"].(string) == "Offline")
+
+	rest.RequireStatus(t, rt.SendAdminRequest("POST", "/db/_resync?action=start", ""), 200)
+	err := rt.WaitForCondition(func() bool {
+		response := rt.SendAdminRequest("GET", "/db/_resync", "")
+		var status db.ResyncManagerResponse
+		err := json.Unmarshal(response.BodyBytes(), &status)
+		assert.NoError(t, err)
+
+		var val interface{}
+		_, err = rt.Bucket().DefaultDataStore().Get(rt.GetDatabase().ResyncManager.GetHeartbeatDocID(t), &val)
+
+		return status.State == db.BackgroundProcessStateCompleted && base.IsDocNotFoundError(err)
+	})
+	assert.NoError(t, err)
+}
+
+func TestADBOfflinePostResyncUsingDCPStream(t *testing.T) {
+
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test doesn't work with walrus")
+	}
+
+	rt := rest.NewRestTester(t, nil)
+	defer rt.Close()
+
+	_, ok := (rt.GetDatabase().ResyncManager.Process).(*db.ResyncManagerDCP)
+	if !ok {
+		t.Skip("This test only works when ResyncManagerDCP is used")
+	}
+
 	log.Printf("Taking DB offline")
 	response := rt.SendAdminRequest("GET", "/db/", "")
 	var body db.Body
@@ -558,6 +607,10 @@ func TestDBOfflineSingleResync(t *testing.T) {
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{SyncFn: syncFn})
 	defer rt.Close()
 
+	_, ok := (rt.GetDatabase().ResyncManager.Process).(*db.ResyncManager)
+	if !ok {
+		t.Skip("This test only works when ResyncManager is used")
+	}
 	// create documents in DB to cause resync to take a few seconds
 	for i := 0; i < 1000; i++ {
 		rt.CreateDoc(t, fmt.Sprintf("doc%v", i))
@@ -585,6 +638,65 @@ func TestDBOfflineSingleResync(t *testing.T) {
 	rest.RequireStatus(t, rt.SendAdminRequest("POST", "/db/_resync?action=start", ""), 503)
 
 	err := rt.WaitForCondition(func() bool {
+		response := rt.SendAdminRequest("GET", "/db/_resync", "")
+		var status db.ResyncManagerResponse
+		err := json.Unmarshal(response.BodyBytes(), &status)
+		assert.NoError(t, err)
+
+		var val interface{}
+		_, err = rt.Bucket().DefaultDataStore().Get(rt.GetDatabase().ResyncManager.GetHeartbeatDocID(t), &val)
+
+		return status.State == db.BackgroundProcessStateCompleted && base.IsDocNotFoundError(err)
+	})
+	assert.NoError(t, err)
+
+	assert.Equal(t, int64(2000), rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value())
+}
+
+func TestDBOfflineSingleResyncUsingDCPStream(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test doesn't works with walrus")
+	}
+	syncFn := `
+	function(doc) {
+		channel("x")
+	}`
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{SyncFn: syncFn})
+	defer rt.Close()
+
+	_, ok := (rt.GetDatabase().ResyncManager.Process).(*db.ResyncManagerDCP)
+	if !ok {
+		t.Skip("This test only works when ResyncManagerDCP is used")
+	}
+
+	// create documents in DB to cause resync to take a few seconds
+	for i := 0; i < 1000; i++ {
+		rt.CreateDoc(t, fmt.Sprintf("doc%v", i))
+	}
+	assert.Equal(t, int64(1000), rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value())
+
+	log.Printf("Taking DB offline")
+	response := rt.SendAdminRequest("GET", "/db/", "")
+	var body db.Body
+	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
+	assert.True(t, body["state"].(string) == "Online")
+
+	response = rt.SendAdminRequest("POST", "/db/_offline", "")
+	rest.RequireStatus(t, response, 200)
+
+	response = rt.SendAdminRequest("GET", "/db/", "")
+	body = nil
+	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
+	assert.True(t, body["state"].(string) == "Offline")
+
+	response = rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
+	rest.RequireStatus(t, response, http.StatusOK)
+
+	// Send a second _resync request.  This must return a 400 since the first one is blocked processing
+	rest.RequireStatus(t, rt.SendAdminRequest("POST", "/db/_resync?action=start", ""), 503)
+
+	err := rt.WaitForCondition(func() bool {
+		time.Sleep(time.Duration(rand.Intn(1500)) * time.Millisecond)
 		response := rt.SendAdminRequest("GET", "/db/_resync", "")
 		var status db.ResyncManagerResponse
 		err := json.Unmarshal(response.BodyBytes(), &status)
@@ -650,9 +762,18 @@ func TestResync(t *testing.T) {
 			)
 			defer rt.Close()
 
+			_, ok := (rt.GetDatabase().ResyncManager.Process).(*db.ResyncManager)
+			if !ok {
+				t.Skip("This test only works when ResyncManager is used")
+			}
+
 			for i := 0; i < testCase.docsCreated; i++ {
 				rt.CreateDoc(t, fmt.Sprintf("doc%d", i))
 			}
+			err := rt.WaitForCondition(func() bool {
+				return int(rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value()) == testCase.docsCreated
+			})
+			assert.NoError(t, err)
 
 			response := rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
 			rest.RequireStatus(t, response, http.StatusServiceUnavailable)
@@ -669,7 +790,7 @@ func TestResync(t *testing.T) {
 			rest.RequireStatus(t, response, http.StatusOK)
 
 			var resyncManagerStatus db.ResyncManagerResponseDCP
-			err := rt.WaitForCondition(func() bool {
+			err = rt.WaitForCondition(func() bool {
 				response := rt.SendAdminRequest("GET", "/db/_resync", "")
 				err := json.Unmarshal(response.BodyBytes(), &resyncManagerStatus)
 				assert.NoError(t, err)
@@ -687,6 +808,93 @@ func TestResync(t *testing.T) {
 			assert.NoError(t, err)
 
 			assert.Equal(t, testCase.expectedSyncFnRuns, int(rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value()))
+
+			assert.Equal(t, testCase.docsCreated, resyncManagerStatus.DocsProcessed)
+			assert.Equal(t, 0, resyncManagerStatus.DocsChanged)
+		})
+	}
+
+}
+
+func TestResyncUsingDCPStream(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test doesn't works with walrus")
+	}
+	base.LongRunningTest(t)
+
+	testCases := []struct {
+		docsCreated int
+	}{
+		{
+			docsCreated: 0,
+		},
+		{
+			docsCreated: 1000,
+		},
+	}
+
+	syncFn := `
+	function(doc) {
+		channel("x")
+	}`
+
+	for _, testCase := range testCases {
+		t.Run(fmt.Sprintf("Docs %d", testCase.docsCreated), func(t *testing.T) {
+			rt := rest.NewRestTester(t,
+				&rest.RestTesterConfig{
+					SyncFn: syncFn,
+				},
+			)
+			defer rt.Close()
+
+			_, ok := (rt.GetDatabase().ResyncManager.Process).(*db.ResyncManagerDCP)
+			if !ok {
+				t.Skip("This test only works when ResyncManagerDCP is used")
+			}
+
+			for i := 0; i < testCase.docsCreated; i++ {
+				rt.CreateDoc(t, fmt.Sprintf("doc%d", i))
+			}
+
+			err := rt.WaitForCondition(func() bool {
+				return int(rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value()) == testCase.docsCreated
+			})
+			assert.NoError(t, err)
+			rt.GetDatabase().DbStats.Database().SyncFunctionCount.Set(0)
+
+			response := rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
+			rest.RequireStatus(t, response, http.StatusServiceUnavailable)
+
+			response = rt.SendAdminRequest("POST", "/db/_offline", "")
+			rest.RequireStatus(t, response, http.StatusOK)
+
+			rest.WaitAndAssertCondition(t, func() bool {
+				state := atomic.LoadUint32(&rt.GetDatabase().State)
+				return state == db.DBOffline
+			})
+
+			response = rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
+			rest.RequireStatus(t, response, http.StatusOK)
+
+			var resyncManagerStatus db.ResyncManagerResponseDCP
+			err = rt.WaitForCondition(func() bool {
+				response := rt.SendAdminRequest("GET", "/db/_resync", "")
+				err := json.Unmarshal(response.BodyBytes(), &resyncManagerStatus)
+				assert.NoError(t, err)
+
+				var val interface{}
+				_, err = rt.Bucket().DefaultDataStore().Get(rt.GetDatabase().ResyncManager.GetHeartbeatDocID(t), &val)
+
+				if resyncManagerStatus.State == db.BackgroundProcessStateCompleted && base.IsDocNotFoundError(err) {
+					return true
+				} else {
+					t.Logf("resyncManagerStatus.State != %v: %v - err:%v", db.BackgroundProcessStateCompleted, resyncManagerStatus.State, err)
+					return false
+				}
+			})
+			assert.NoError(t, err)
+
+			assert.Equal(t, testCase.docsCreated, int(rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value()))
 
 			assert.Equal(t, testCase.docsCreated, resyncManagerStatus.DocsProcessed)
 			assert.Equal(t, 0, resyncManagerStatus.DocsChanged)
@@ -716,6 +924,11 @@ func TestResyncErrorScenarios(t *testing.T) {
 		},
 	)
 	defer rt.Close()
+
+	_, ok := (rt.GetDatabase().ResyncManager.Process).(*db.ResyncManager)
+	if !ok {
+		t.Skip("This test only works when ResyncManager is used")
+	}
 
 	leakyDataStore, ok := base.AsLeakyDataStore(rt.TestBucket.GetSingleDataStore())
 	require.Truef(t, ok, "Wanted *base.LeakyBucket but got %T", leakyTestBucket.Bucket)
@@ -789,6 +1002,83 @@ func TestResyncErrorScenarios(t *testing.T) {
 	assert.True(t, callbackFired, "expecting callback to be fired")
 }
 
+func TestResyncErrorScenariosUsingDCPStream(t *testing.T) {
+
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test doesn't works with walrus")
+	}
+
+	syncFn := `
+	function(doc) {
+		channel("x")
+	}`
+
+	testBucket := base.GetTestBucket(t)
+
+	rt := rest.NewRestTester(t,
+		&rest.RestTesterConfig{
+			SyncFn:           syncFn,
+			CustomTestBucket: testBucket,
+		},
+	)
+	defer rt.Close()
+
+	_, ok := (rt.GetDatabase().ResyncManager.Process).(*db.ResyncManagerDCP)
+	if !ok {
+		t.Skip("This test only works when ResyncManagerDCP is used")
+	}
+
+	numOfDocs := 1000
+	for i := 0; i < numOfDocs; i++ {
+		rt.CreateDoc(t, fmt.Sprintf("doc%d", i))
+	}
+
+	assert.Equal(t, numOfDocs, int(rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value()))
+	rt.GetDatabase().DbStats.Database().SyncFunctionCount.Set(0)
+
+	response := rt.SendAdminRequest("GET", "/db/_resync", "")
+	rest.RequireStatus(t, response, http.StatusOK)
+
+	response = rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
+	rest.RequireStatus(t, response, http.StatusServiceUnavailable)
+
+	response = rt.SendAdminRequest("POST", "/db/_resync?action=stop", "")
+	rest.RequireStatus(t, response, http.StatusBadRequest)
+
+	response = rt.SendAdminRequest("POST", "/db/_offline", "")
+	rest.RequireStatus(t, response, http.StatusOK)
+
+	rest.WaitAndAssertCondition(t, func() bool {
+		state := atomic.LoadUint32(&rt.GetDatabase().State)
+		return state == db.DBOffline
+	})
+
+	response = rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
+	rest.RequireStatus(t, response, http.StatusOK)
+
+	// If processor is running, another start request should throw error
+	response = rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
+	rest.RequireStatus(t, response, http.StatusServiceUnavailable)
+
+	rest.WaitAndAssertBackgroundManagerState(t, db.BackgroundProcessStateCompleted, rt.GetDatabase().ResyncManager.GetRunState)
+	rest.WaitAndAssertBackgroundManagerExpiredHeartbeat(t, rt.GetDatabase().ResyncManager)
+
+	assert.Equal(t, numOfDocs, int(rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value()))
+
+	response = rt.SendAdminRequest("POST", "/db/_resync?action=stop", "")
+	rest.RequireStatus(t, response, http.StatusBadRequest)
+
+	response = rt.SendAdminRequest("POST", "/db/_resync?action=invalid", "")
+	rest.RequireStatus(t, response, http.StatusBadRequest)
+
+	// Test empty action, should default to start
+	response = rt.SendAdminRequest("POST", "/db/_resync", "")
+	rest.RequireStatus(t, response, http.StatusOK)
+
+	rest.WaitAndAssertBackgroundManagerState(t, db.BackgroundProcessStateCompleted, rt.GetDatabase().ResyncManager.GetRunState)
+	rest.WaitAndAssertBackgroundManagerExpiredHeartbeat(t, rt.GetDatabase().ResyncManager)
+}
+
 func TestResyncStop(t *testing.T) {
 
 	if !base.UnitTestUrlIsWalrus() {
@@ -813,6 +1103,11 @@ func TestResyncStop(t *testing.T) {
 		},
 	)
 	defer rt.Close()
+
+	_, ok := (rt.GetDatabase().ResyncManager.Process).(*db.ResyncManager)
+	if !ok {
+		t.Skip("This test only works when ResyncManager is used")
+	}
 
 	leakyDataStore, ok := base.AsLeakyDataStore(rt.TestBucket.GetSingleDataStore())
 	require.Truef(t, ok, "Wanted *base.LeakyBucket but got %T", leakyTestBucket.Bucket)
@@ -872,6 +1167,65 @@ func TestResyncStop(t *testing.T) {
 	assert.True(t, syncFnCount < 2000, "Expected syncFnCount < 2000 but syncFnCount=%d", syncFnCount)
 }
 
+func TestResyncStopUsingDCPStream(t *testing.T) {
+
+	if base.UnitTestUrlIsWalrus() {
+		// Walrus doesn't support Collections which is required to create DCP stream
+		t.Skip("This test doesn't works with walrus")
+	}
+
+	syncFn := `
+	function(doc) {
+		channel("x")
+	}`
+
+	testBucket := base.GetTestBucket(t)
+
+	rt := rest.NewRestTester(t,
+		&rest.RestTesterConfig{
+			SyncFn:           syncFn,
+			CustomTestBucket: testBucket,
+		},
+	)
+	defer rt.Close()
+
+	_, ok := (rt.GetDatabase().ResyncManager.Process).(*db.ResyncManagerDCP)
+	if !ok {
+		t.Skip("This test only works when ResyncManagerDCP is used")
+	}
+
+	numOfDocs := 1000
+	for i := 0; i < numOfDocs; i++ {
+		rt.CreateDoc(t, fmt.Sprintf("doc%d", i))
+	}
+
+	err := rt.WaitForCondition(func() bool {
+		return int(rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value()) == numOfDocs
+	})
+	assert.NoError(t, err)
+
+	response := rt.SendAdminRequest("POST", "/db/_offline", "")
+	rest.RequireStatus(t, response, http.StatusOK)
+
+	rest.WaitAndAssertCondition(t, func() bool {
+		state := atomic.LoadUint32(&rt.GetDatabase().State)
+		return state == db.DBOffline
+	})
+
+	response = rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
+	rest.RequireStatus(t, response, http.StatusOK)
+	rest.WaitAndAssertBackgroundManagerState(t, db.BackgroundProcessStateRunning, rt.GetDatabase().ResyncManager.GetRunState)
+
+	response = rt.SendAdminRequest("POST", "/db/_resync?action=stop", "")
+	rest.RequireStatus(t, response, http.StatusOK)
+
+	rest.WaitAndAssertBackgroundManagerState(t, db.BackgroundProcessStateStopped, rt.GetDatabase().ResyncManager.GetRunState)
+	rest.WaitAndAssertBackgroundManagerExpiredHeartbeat(t, rt.GetDatabase().ResyncManager)
+
+	syncFnCount := int(rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value())
+	assert.True(t, syncFnCount < 2000, "Expected syncFnCount < 2000 but syncFnCount=%d", syncFnCount)
+}
+
 func TestResyncRegenerateSequences(t *testing.T) {
 
 	base.LongRunningTest(t)
@@ -901,6 +1255,11 @@ func TestResyncRegenerateSequences(t *testing.T) {
 		},
 	)
 	defer rt.Close()
+
+	_, ok := (rt.GetDatabase().ResyncManager.Process).(*db.ResyncManager)
+	if !ok {
+		t.Skip("This test only works when ResyncManager is used")
+	}
 
 	var response *rest.TestResponse
 	var docSeqArr []float64
@@ -1027,6 +1386,170 @@ func TestResyncRegenerateSequences(t *testing.T) {
 	response = rt.Send(request)
 	rest.RequireStatus(t, response, http.StatusOK)
 	err = json.Unmarshal(response.BodyBytes(), &changesResp)
+	assert.NoError(t, err)
+	assert.Len(t, changesResp.Results, 3)
+	assert.True(t, changesRespContains(changesResp, "userdoc"))
+	assert.True(t, changesRespContains(changesResp, "userdoc2"))
+}
+
+func TestResyncRegenerateSequencesUsingDCPStream(t *testing.T) {
+
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test doesn't works with walrus")
+	}
+
+	base.LongRunningTest(t)
+	syncFn := `
+	function(doc) {
+		if (doc.userdoc){
+			channel("channel_1")
+		}
+	}`
+
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
+
+	testBucket := base.GetTestBucket(t)
+
+	rt := rest.NewRestTester(t,
+		&rest.RestTesterConfig{
+			SyncFn:           syncFn,
+			CustomTestBucket: testBucket,
+		},
+	)
+	defer rt.Close()
+
+	_, ok := (rt.GetDatabase().ResyncManager.Process).(*db.ResyncManagerDCP)
+	if !ok {
+		t.Skip("This test only works when ResyncManagerDCP is used")
+	}
+
+	var response *rest.TestResponse
+	var docSeqArr []float64
+	var body db.Body
+
+	for i := 0; i < 10; i++ {
+		docID := fmt.Sprintf("doc%d", i)
+		rt.CreateDoc(t, docID)
+
+		response = rt.SendAdminRequest("GET", "/db/_raw/"+docID, "")
+		require.Equal(t, http.StatusOK, response.Code)
+
+		err := json.Unmarshal(response.BodyBytes(), &body)
+		require.NoError(t, err)
+
+		docSeqArr = append(docSeqArr, body["_sync"].(map[string]interface{})["sequence"].(float64))
+	}
+
+	role := "role1"
+	response = rt.SendAdminRequest("PUT", fmt.Sprintf("/db/_role/%s", role), fmt.Sprintf(`{"name":"%s", "admin_channels":["channel_1"]}`, role))
+	rest.RequireStatus(t, response, http.StatusCreated)
+
+	username := "user1"
+	response = rt.SendAdminRequest("PUT", fmt.Sprintf("/db/_user/%s", username), fmt.Sprintf(`{"name":"%s", "password":"letmein", "admin_channels":["channel_1"], "admin_roles": ["%s"]}`, username, role))
+	rest.RequireStatus(t, response, http.StatusCreated)
+
+	_, err := rt.Bucket().DefaultDataStore().Get(base.RolePrefix+"role1", &body)
+	assert.NoError(t, err)
+	role1SeqBefore := body["sequence"].(float64)
+
+	_, err = rt.Bucket().DefaultDataStore().Get(base.UserPrefix+"user1", &body)
+	assert.NoError(t, err)
+	user1SeqBefore := body["sequence"].(float64)
+
+	response = rt.SendAdminRequest("PUT", "/db/userdoc", `{"userdoc": true}`)
+	rest.RequireStatus(t, response, http.StatusCreated)
+
+	response = rt.SendAdminRequest("PUT", "/db/userdoc2", `{"userdoc": true}`)
+	rest.RequireStatus(t, response, http.StatusCreated)
+
+	// Let everything catch up before opening changes feed
+	require.NoError(t, rt.WaitForPendingChanges())
+
+	type ChangesResp struct {
+		Results []struct {
+			ID  string `json:"id"`
+			Seq int    `json:"seq"`
+		} `json:"results"`
+		LastSeq string `json:"last_seq"`
+	}
+
+	changesRespContains := func(changesResp ChangesResp, docid string) bool {
+		for _, resp := range changesResp.Results {
+			if resp.ID == docid {
+				return true
+			}
+		}
+		return false
+	}
+
+	var changesResp ChangesResp
+	request, _ := http.NewRequest("GET", "/db/_changes", nil)
+	request.SetBasicAuth("user1", "letmein")
+	response = rt.Send(request)
+	rest.RequireStatus(t, response, http.StatusOK)
+	err = json.Unmarshal(response.BodyBytes(), &changesResp)
+	assert.NoError(t, err)
+	assert.Len(t, changesResp.Results, 3)
+	assert.True(t, changesRespContains(changesResp, "userdoc"))
+	assert.True(t, changesRespContains(changesResp, "userdoc2"))
+
+	response = rt.SendAdminRequest("GET", "/db/_resync", "")
+	rest.RequireStatus(t, response, http.StatusOK)
+
+	response = rt.SendAdminRequest("POST", "/db/_offline", "")
+	rest.RequireStatus(t, response, http.StatusOK)
+
+	response = rt.SendAdminRequest("POST", "/db/_resync?action=start&regenerate_sequences=true", "")
+	rest.RequireStatus(t, response, http.StatusOK)
+
+	rest.WaitAndAssertBackgroundManagerState(t, db.BackgroundProcessStateCompleted, rt.GetDatabase().ResyncManager.GetRunState)
+	rest.WaitAndAssertBackgroundManagerExpiredHeartbeat(t, rt.GetDatabase().ResyncManager)
+
+	_, err = rt.Bucket().DefaultDataStore().Get(base.RolePrefix+"role1", &body)
+	assert.NoError(t, err)
+	role1SeqAfter := body["sequence"].(float64)
+
+	_, err = rt.Bucket().DefaultDataStore().Get(base.UserPrefix+"user1", &body)
+	assert.NoError(t, err)
+	user1SeqAfter := body["sequence"].(float64)
+
+	assert.True(t, role1SeqAfter > role1SeqBefore)
+	assert.True(t, user1SeqAfter > user1SeqBefore)
+
+	for i := 0; i < 10; i++ {
+		docID := fmt.Sprintf("doc%d", i)
+
+		doc, err := rt.GetDatabase().GetSingleDatabaseCollection().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalAll)
+		assert.NoError(t, err)
+
+		assert.True(t, float64(doc.Sequence) > docSeqArr[i])
+	}
+
+	response = rt.SendAdminRequest("GET", "/db/_resync", "")
+	rest.RequireStatus(t, response, http.StatusOK)
+	var resyncStatus db.ResyncManagerResponseDCP
+	err = base.JSONUnmarshal(response.BodyBytes(), &resyncStatus)
+	assert.NoError(t, err)
+	assert.NotEmpty(t, resyncStatus.ResyncID)
+	assert.Equal(t, 12, resyncStatus.DocsChanged)
+	assert.Equal(t, 12, resyncStatus.DocsProcessed)
+
+	response = rt.SendAdminRequest("POST", "/db/_online", "")
+	rest.RequireStatus(t, response, http.StatusOK)
+
+	err = rt.WaitForCondition(func() bool {
+		state := atomic.LoadUint32(&rt.GetDatabase().State)
+		return state == db.DBOnline
+	})
+	assert.NoError(t, err)
+
+	// Data is wiped when brought back online
+	request, _ = http.NewRequest("GET", "/db/_changes?since="+changesResp.LastSeq, nil)
+	request.SetBasicAuth("user1", "letmein")
+	response = rt.Send(request)
+	rest.RequireStatus(t, response, http.StatusOK)
+	err = json.Unmarshal(response.BodyBytes(), &changesResp)
+	assert.NoError(t, err)
 	assert.Len(t, changesResp.Results, 3)
 	assert.True(t, changesRespContains(changesResp, "userdoc"))
 	assert.True(t, changesRespContains(changesResp, "userdoc2"))
