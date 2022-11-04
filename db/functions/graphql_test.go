@@ -13,6 +13,7 @@ package functions
 import (
 	"context"
 	"encoding/json"
+	"os"
 	"strings"
 	"testing"
 
@@ -475,4 +476,74 @@ func TestGraphQLMaxResolverCount(t *testing.T) {
 	}
 	_, err := CompileGraphQL(&config)
 	assert.ErrorContains(t, err, "too many GraphQL resolvers (> 1)")
+}
+
+// Unit Tests for possible errors in getSchema Function
+func TestErrorsInGetSchema(t *testing.T) {
+	t.Run("Both Schema and SchemaFile are provided", func(t *testing.T) {
+		var config = GraphQLConfig{
+			Schema:     base.StringPtr(`type Query{ square(n: Int!): Int! }`),
+			SchemaFile: base.StringPtr("someInvalidPath/someInvalidFileName"),
+			Resolvers:  nil,
+		}
+		_, err := CompileGraphQL(&config)
+		assert.ErrorContains(t, err, "GraphQL config: only one of `schema` and `schemaFile` may be used")
+	})
+
+	t.Run("Neither Schema nor SchemaFile Provided", func(t *testing.T) {
+		var config = GraphQLConfig{
+			Resolvers: nil,
+		}
+		_, err := CompileGraphQL(&config)
+		assert.ErrorContains(t, err, "GraphQL config: either `schema` or `schemaFile` must be defined")
+	})
+
+	t.Run("Invalid File name/path", func(t *testing.T) {
+		var config = GraphQLConfig{
+			SchemaFile: base.StringPtr("dummySchemaFile.txt"),
+		}
+		_, err := os.ReadFile(*config.SchemaFile)
+		assert.ErrorContains(t, err, "no such file or directory")
+	})
+
+	t.Run("cannot read File", func(t *testing.T) {
+		var config = GraphQLConfig{
+			SchemaFile: base.StringPtr("dummySchemaFile.txt"),
+		}
+		_, err := CompileGraphQL(&config)
+		assert.ErrorContains(t, err, "can't read file")
+	})
+}
+
+// // Unit Tests for Valid getSchema Function
+func TestGetSchema(t *testing.T) {
+	t.Run("Only Schema is Provided", func(t *testing.T) {
+		var config = GraphQLConfig{
+			Schema: base.StringPtr(`type Query{ square(n: Int!): Int! }`),
+			Resolvers: map[string]GraphQLResolverConfig{
+				"Query": {
+					"square": {
+						Type: "javascript",
+						Code: "function(context,args){return args.n * args.n;}",
+					},
+				},
+			},
+		}
+		_, err := CompileGraphQL(&config)
+		assert.ErrorIs(t, err, nil)
+	})
+
+	t.Run("Only SchemaFile is Provided", func(t *testing.T) {
+		validSchema := "type Query {sum(n: Int!) : Int!}"
+		err := os.WriteFile("schema.graphql", []byte(validSchema), 0666)
+		assert.NoError(t, err)
+		var config = GraphQLConfig{
+			SchemaFile: base.StringPtr("schema.graphql"),
+		}
+		_, err1 := CompileGraphQL(&config)
+		assert.NoError(t, err1)
+
+		err = os.Remove("schema.graphql")
+		assert.ErrorIs(t, err, nil)
+	})
 }

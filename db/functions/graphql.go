@@ -193,7 +193,7 @@ func (config *GraphQLConfig) getSchema() (string, error) {
 		}
 		src, err := os.ReadFile(*config.SchemaFile)
 		if err != nil {
-			return "", fmt.Errorf("GraphQL config: cann't read file %s: %w", *config.SchemaFile, err)
+			return "", fmt.Errorf("GraphQL config: can't read file %s: %w", *config.SchemaFile, err)
 		}
 		return string(src), nil
 	}
