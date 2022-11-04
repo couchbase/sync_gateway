@@ -98,7 +98,7 @@ func (db *Database) addDocToChangeEntry(ctx context.Context, entry *ChangeEntry,
 
 	dbCollection, ok := db.CollectionByID[entry.collectionID]
 	if !ok {
-		base.FatalfCtx(ctx, "Changes feed: could not determine collection from change entry")
+		base.WarnfCtx(ctx, "Changes feed: could not determine collection from doc %q", base.UD(entry.ID))
 		return
 	}
 	// Three options for retrieving document content, depending on what's required:

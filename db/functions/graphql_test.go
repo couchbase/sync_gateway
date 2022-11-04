@@ -369,7 +369,8 @@ func TestUserGraphQLWithN1QL(t *testing.T) {
 	db, ctx := setupTestDBWithFunctions(t, nil, &kTestGraphQLConfigWithN1QL)
 	defer db.Close(ctx)
 
-	collection := db.GetSingleDatabaseCollectionWithUser()
+	collection, err := db.GetDefaultDatabaseCollectionWithUser()
+	require.NoError(t, err)
 	_, _, _ = collection.Put(ctx, "a", Body{"type": "task", "title": "Applesauce", "done": true, "tags": []string{"fruit", "soft"}, "channels": "wonderland"})
 	_, _, _ = collection.Put(ctx, "b", Body{"type": "task", "title": "Beer", "description": "Bass ale please", "channels": "wonderland"})
 	_, _, _ = collection.Put(ctx, "m", Body{"type": "task", "title": "Mangoes", "channels": "wonderland"})

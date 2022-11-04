@@ -104,17 +104,6 @@ func userBlipHandler(next blipHandlerFunc) blipHandlerFunc {
 	}
 }
 
-func (bh *blipHandler) updateUser() {
-	// refresh the handler's database with the new BlipSyncContext database
-	bh.db = bh._copyContextDatabase()
-	if bh.collection != nil {
-		bh.collection = &DatabaseCollectionWithUser{
-			DatabaseCollection: bh.collection.DatabaseCollection,
-			user:               bh.db.User(),
-		}
-	}
-}
-
 func (bh *blipHandler) refreshUser() error {
 
 	bc := bh.BlipSyncContext
@@ -134,8 +123,14 @@ func (bh *blipHandler) refreshUser() error {
 			newUser.InitializeRoles()
 			bc.userChangeWaiter.RefreshUserKeys(newUser)
 			bc.blipContextDb.SetUser(newUser)
-
-			bh.updateUser()
+			// refresh the handler's database with the new BlipSyncContext database
+			bh.db = bh._copyContextDatabase()
+			if bh.collection != nil {
+				bh.collection = &DatabaseCollectionWithUser{
+					DatabaseCollection: bh.collection.DatabaseCollection,
+					user:               bh.db.User(),
+				}
+			}
 		}
 	}
 	return nil
@@ -146,11 +141,11 @@ func collectionBlipHandler(next blipHandlerFunc) blipHandlerFunc {
 	return func(bh *blipHandler, bm *blip.Message) error {
 		collectionIndexStr, ok := bm.Properties[BlipCollection]
 		if !ok {
-			bh.collection = &DatabaseCollectionWithUser{
-				DatabaseCollection: bh.db.GetSingleDatabaseCollection(),
-				user:               bh.db.user,
+			var err error
+			bh.collection, err = bh.db.GetDefaultDatabaseCollectionWithUser()
+			if err != nil {
+				return base.HTTPErrorf(http.StatusBadRequest, "%s", err)
 			}
-
 			return next(bh, bm)
 		}
 		if len(bh.collectionMapping) == 0 {

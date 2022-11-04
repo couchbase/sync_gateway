@@ -20,6 +20,9 @@ import (
 func TestCollectionBlipHandler(t *testing.T) {
 	allDBContext := &DatabaseContext{}
 	allDBCollection := &DatabaseCollection{dbCtx: allDBContext}
+	allDBContext.CollectionByID = map[uint32]*DatabaseCollection{
+		base.DefaultCollectionID: allDBCollection,
+	}
 	allDBContext.singleCollection = allDBCollection
 	allDB := &Database{
 		DatabaseContext: allDBContext,

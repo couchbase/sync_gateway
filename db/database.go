@@ -1909,6 +1909,18 @@ func (dbCtx *DatabaseContext) GetSingleCollectionID() (uint32, error) {
 	return collection.GetCollectionID()
 }
 
+// GetDefaultDatabaseCollectionWithUser will return the default collection if the default collection is supplied in the database config.
+func (dbc *Database) GetDefaultDatabaseCollectionWithUser() (*DatabaseCollectionWithUser, error) {
+	col, exists := dbc.CollectionByID[base.DefaultCollectionID]
+	if !exists {
+		return nil, fmt.Errorf("default collection is not configured on this database")
+	}
+	return &DatabaseCollectionWithUser{
+		DatabaseCollection: col,
+		user:               dbc.user,
+	}, nil
+}
+
 // GetSingleDatabaseCollection is a temporary function to return a single collection. This should be a temporary function while collection work is ongoing.
 func (dbc *DatabaseContext) GetSingleDatabaseCollection() *DatabaseCollection {
 	return dbc.singleCollection
