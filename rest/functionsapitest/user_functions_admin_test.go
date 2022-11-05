@@ -310,6 +310,12 @@ func TestMaxRequestSize(t *testing.T) {
 		response := rt.SendAdminRequest("PUT", "/db/_config/functions", string(request))
 		assert.Equal(t, 200, response.Result().StatusCode)
 
+		t.Run("GET - js function", func(t *testing.T) {
+			response := rt.SendAdminRequest("GET", "/db/_function/multiply?first=1&second=2&third=3&fourth=4", "")
+			assert.Equal(t, 200, response.Result().StatusCode)
+			assert.Equal(t, "24", string(response.BodyBytes()))
+		})
+
 		t.Run("js function", func(t *testing.T) {
 			response := rt.SendAdminRequest("POST", "/db/_function/multiply", `{"first":1,"second":2,"third":3,"fourth":4}`)
 			assert.Equal(t, 200, response.Result().StatusCode)
@@ -332,6 +338,12 @@ func TestMaxRequestSize(t *testing.T) {
 
 		response := rt.SendAdminRequest("PUT", "/db/_config/functions", string(request))
 		assert.Equal(t, 200, response.Result().StatusCode)
+
+		t.Run("GET - js function", func(t *testing.T) {
+			response := rt.SendAdminRequest("GET", "/db/_function/multiply?first=1&second=2&third=3&fourth=4", "")
+			assert.Equal(t, 413, response.Result().StatusCode)
+			assert.Contains(t, string(response.BodyBytes()), "Arguments too large")
+		})
 
 		t.Run("js function", func(t *testing.T) {
 			response = rt.SendAdminRequest("POST", "/db/_function/multiply", `{"first":1,"second":2,"third":3,"fourth":4}`)

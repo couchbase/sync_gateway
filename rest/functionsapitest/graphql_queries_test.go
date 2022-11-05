@@ -45,6 +45,13 @@ func TestGraphQLQueryAdminOnly(t *testing.T) {
 		response = rt.SendAdminRequest("GET", getRequestUrl, "")
 		assert.Equal(t, 200, response.Result().StatusCode)
 		assert.Equal(t, `{"data":{"getUser":{"id":"1","name":"user1"}}}`, string(response.BodyBytes()))
+
+		headerMap := map[string]string{
+			"Content-Type": "application/graphql",
+		}
+		response = rt.SendAdminRequestWithHeaders("POST", "/db/_graphql", `query{getUser(id:1){id,name}}`, headerMap)
+		assert.Equal(t, 200, response.Result().StatusCode)
+		assert.Equal(t, `{"data":{"getUser":{"id":"1","name":"user1"}}}`, string(response.BodyBytes()))
 	})
 
 	t.Run("AsAdmin - getAllUsers", func(t *testing.T) {
