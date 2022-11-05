@@ -3,7 +3,6 @@ package functions
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"sort"
 	"strings"
 
@@ -49,7 +48,7 @@ func (config *GraphQLConfig) addSubgraphExtensions(schemaSource string, resolver
 	}
 	// Add a union named `_Entity` to the schema, that matches all the entity types:
 	entitiesStr := fmt.Sprintf("union _Entity = %s\n", strings.Join(entityNames, " | "))
-	schemaSource = entitiesStr + kSubgraphSchemaPreamble + kSubgraphQueryExtension + schemaSource
+	schemaSource = kSubgraphSchemaPreamble + kSubgraphQueryExtension + entitiesStr + "\n### ORIGINAL SCHEMA:\n\n" + schemaSource
 
 	// Define the field resolver for `Query._service`, which simply returns the schema SDL:
 	if resolvers["Query"] == nil {
@@ -202,7 +201,6 @@ func (config *GraphQLConfig) compileReferenceResolver(interfaceName string, fnCo
 //////// THE "_Any" TYPE:
 
 func serializeAny(value any) any {
-	log.Printf("???? serializeAny: %T %#v", value, value) // TODO: When is this needed?
 	if bytes, err := json.Marshal(value); err != nil {
 		return nil
 	} else {
@@ -211,48 +209,61 @@ func serializeAny(value any) any {
 }
 
 func parseAnyValue(value any) any {
-	return value // Value has already been parsed from JSON, so nothing to do
+	return value // Value has already been parsed from JSON, so nothing to do ¯\_(ツ)_/¯
 }
 
 func parseAnyLiteral(valueAST ast.Value) any {
-	log.Printf("???? parseAnyLiteral: %T %#v", valueAST, valueAST) // TODO: When is this needed?
+	// TODO: Does not appear to be called in real usage; not sure how it would be implemented.
 	return nil
 }
 
 //////// SCHEMA ADDITIONS:
 
-// Types and directives used in subgraph schemas. Pasted from spec.
+// Types and directives used in subgraph schemas. Pasted directly from spec:
+// <https://www.apollographql.com/docs/federation/subgraph-spec/#subgraph-schema-additions>
+// I tried to keep changes to a minimum since the Apollo conformance test checks the exact
+// structure of the schema returned from the `_service` query (the AST, not the text.)
+// I did have to remove the keyword `repeatable` from the directives, because graphql-go doesn't
+// understand it.
 const kSubgraphSchemaPreamble = `
-	scalar _Any
-	scalar FieldSet
-	scalar link__Import
+### SCHEMA EXTENSIONS FOR APOLLO SUBGRAPH PROTOCOL:
+scalar _Any
+scalar FieldSet
+scalar link__Import
 
-	enum link__Purpose {
-		"SECURITY features provide metadata necessary to securely resolve fields."
-		SECURITY
-		"EXECUTION features provide metadata necessary for operation execution."
-		EXECUTION
-	}
+enum link__Purpose {
+  """
+  ` + "`SECURITY`" + ` features provide metadata necessary to securely resolve fields.
+  """
+  SECURITY
 
-	directive @external on FIELD_DEFINITION
-	directive @requires(fields: FieldSet!) on FIELD_DEFINITION
-	directive @provides(fields: FieldSet!) on FIELD_DEFINITION
-	directive @key(fields: FieldSet!, resolvable: Boolean = true) on OBJECT | INTERFACE
-	directive @link(url: String!, as: String, for: link__Purpose, import: [link__Import]) on SCHEMA
-	directive @shareable on OBJECT | FIELD_DEFINITION
-	directive @inaccessible on FIELD_DEFINITION | OBJECT | INTERFACE | UNION | ARGUMENT_DEFINITION | SCALAR | ENUM | ENUM_VALUE | INPUT_OBJECT | INPUT_FIELD_DEFINITION
-	directive @tag(name: String!) on FIELD_DEFINITION | INTERFACE | OBJECT | UNION | ARGUMENT_DEFINITION | SCALAR | ENUM | ENUM_VALUE | INPUT_OBJECT | INPUT_FIELD_DEFINITION
-	directive @override(from: String!) on FIELD_DEFINITION
-	directive @composeDirective(name: String!) on SCHEMA
-	`
+  """
+  ` + "`EXECUTION`" + ` features provide metadata necessary for operation execution.
+  """
+  EXECUTION
+}
 
-// Declares top-level subgraph queries.
+directive @external on FIELD_DEFINITION
+directive @requires(fields: FieldSet!) on FIELD_DEFINITION
+directive @provides(fields: FieldSet!) on FIELD_DEFINITION
+directive @key(fields: FieldSet!, resolvable: Boolean = true) on OBJECT | INTERFACE
+directive @link(url: String!, as: String, for: link__Purpose, import: [link__Import]) on SCHEMA
+directive @shareable on OBJECT | FIELD_DEFINITION
+directive @inaccessible on FIELD_DEFINITION | OBJECT | INTERFACE | UNION | ARGUMENT_DEFINITION | SCALAR | ENUM | ENUM_VALUE | INPUT_OBJECT | INPUT_FIELD_DEFINITION
+directive @tag(name: String!) on FIELD_DEFINITION | INTERFACE | OBJECT | UNION | ARGUMENT_DEFINITION | SCALAR | ENUM | ENUM_VALUE | INPUT_OBJECT | INPUT_FIELD_DEFINITION
+directive @override(from: String!) on FIELD_DEFINITION
+directive @composeDirective(name: String!) on SCHEMA
+`
+
+// Declares top-level queries that must be implemented by a subgraph.
 const kSubgraphQueryExtension = `
-	type _Service {
-		sdl: String!
-	}
-	extend type Query {
-		_entities(representations: [_Any!]!): [_Entity]!
-		_service: _Service!
-	}
-	`
+type _Service {
+	sdl: String!
+}
+extend type Query {
+	_entities(representations: [_Any!]!): [_Entity]!
+	_service: _Service!
+}
+
+### DYNAMIC SCHEMA EXTENSIONS:
+`

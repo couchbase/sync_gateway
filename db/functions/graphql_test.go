@@ -629,7 +629,7 @@ func TestGraphQLSubgraph(t *testing.T) {
 		}
 		sdl, ok := result.Data.(map[string]any)["_service"].(map[string]any)["sdl"].(string)
 		assert.True(t, ok, "No 'sdl' key in result: %#v", result)
-		assert.True(t, strings.HasPrefix(sdl, "union _Entity = Person | Task\n"), "Unexpected sdl: %s", sdl)
+		assert.True(t, strings.Contains(sdl, "union _Entity = Person | Task\n"), "Unexpected sdl: %s", sdl)
 	})
 
 	// Handle an `_entities` query:
