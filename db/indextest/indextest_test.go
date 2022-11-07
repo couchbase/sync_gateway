@@ -19,7 +19,7 @@ import (
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/google/uuid"
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestRoleQuery(t *testing.T) {
@@ -46,38 +46,40 @@ func TestRoleQuery(t *testing.T) {
 			defer database.Close(ctx)
 
 			n1QLStore, reset, err := setupN1QLStore(database.Bucket, testCase.isServerless)
-			assert.NoError(t, err, "Unable to get n1QLStore for testBucket")
+			require.NoError(t, err, "Unable to get n1QLStore for testBucket")
 			defer func(n1QLStore base.N1QLStore, isServerless bool) {
 				err := reset(n1QLStore, isServerless)
-				assert.NoError(t, err, "Reset fn shouldn't return error")
+				require.NoError(t, err, "Reset fn shouldn't return error")
 			}(n1QLStore, testCase.isServerless)
 
 			authenticator := database.Authenticator(ctx)
-			assert.NotNil(t, authenticator, "database.Authenticator(ctx) returned nil")
+			require.NotNil(t, authenticator, "database.Authenticator(ctx) returned nil")
 
 			// Add roles
 			for i := 1; i <= 5; i++ {
 				role, err := authenticator.NewRole(fmt.Sprintf("role%d", i), base.SetOf("ABC"))
-				assert.NoError(t, err, "Error creating new role")
-				assert.NoError(t, authenticator.Save(role))
+				require.NoError(t, err, "Error creating new role")
+				require.NoError(t, authenticator.Save(role))
 			}
 
 			// Delete 1 role
 			role1, err := authenticator.NewRole("role1", base.SetOf("ABC"))
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			err = authenticator.DeleteRole(role1, false, 0)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 
 			// Standard query
 			results, queryErr := database.QueryRoles(ctx, "", 0)
-			assert.NoError(t, queryErr, "Query error")
+			require.NoError(t, queryErr, "Query error")
+			defer func() {
+				require.NoError(t, results.Close())
+			}()
 			var row map[string]interface{}
 			rowCount := 0
 			for results.Next(&row) {
 				rowCount++
 			}
-			assert.Equal(t, 4, rowCount)
-			assert.NoError(t, results.Close())
+			require.Equal(t, 4, rowCount)
 		})
 	}
 
@@ -107,21 +109,21 @@ func TestBuildRolesQuery(t *testing.T) {
 			defer database.Close(ctx)
 
 			n1QLStore, reset, err := setupN1QLStore(database.Bucket, testCase.isServerless)
-			assert.NoError(t, err, "Unable to get n1QLStore for testBucket")
+			require.NoError(t, err, "Unable to get n1QLStore for testBucket")
 			defer func(n1QLStore base.N1QLStore, isServerless bool) {
 				err := reset(n1QLStore, isServerless)
-				assert.NoError(t, err, "Reset fn shouldn't return error")
+				require.NoError(t, err, "Reset fn shouldn't return error")
 			}(n1QLStore, testCase.isServerless)
 
 			// roles
 			roleStatement, _ := database.BuildRolesQuery("", 0)
 			plan, explainErr := n1QLStore.ExplainQuery(roleStatement, nil)
-			assert.NoError(t, explainErr, "Error generating explain for roleAccess query")
+			require.NoError(t, explainErr, "Error generating explain for roleAccess query")
 
 			covered := db.IsCovered(plan)
 			planJSON, err := base.JSONMarshal(plan)
-			assert.NoError(t, err)
-			assert.Equal(t, testCase.isServerless, covered, "Roles query covered by index; expectedToBeCovered: %t, Plan: %s", testCase.isServerless, planJSON)
+			require.NoError(t, err)
+			require.Equal(t, testCase.isServerless, covered, "Roles query covered by index; expectedToBeCovered: %t, Plan: %s", testCase.isServerless, planJSON)
 		})
 	}
 }
@@ -150,21 +152,21 @@ func TestBuildSessionsQuery(t *testing.T) {
 			defer database.Close(ctx)
 
 			n1QLStore, reset, err := setupN1QLStore(database.Bucket, testCase.isServerless)
-			assert.NoError(t, err, "Unable to get n1QLStore for testBucket")
+			require.NoError(t, err, "Unable to get n1QLStore for testBucket")
 			defer func(n1QLStore base.N1QLStore, isServerless bool) {
 				err := reset(n1QLStore, isServerless)
-				assert.NoError(t, err, "Reset fn shouldn't return error")
+				require.NoError(t, err, "Reset fn shouldn't return error")
 			}(n1QLStore, testCase.isServerless)
 
 			// Sessions
 			roleStatement, _ := database.BuildSessionsQuery("user1")
 			plan, explainErr := n1QLStore.ExplainQuery(roleStatement, nil)
-			assert.NoError(t, explainErr, "Error generating explain for roleAccess query")
+			require.NoError(t, explainErr, "Error generating explain for roleAccess query")
 
 			covered := db.IsCovered(plan)
 			planJSON, err := base.JSONMarshal(plan)
-			assert.NoError(t, err)
-			assert.Equal(t, testCase.isServerless, covered, "Session query covered by index; expectedToBeCovered: %t, Plan: %s", testCase.isServerless, planJSON)
+			require.NoError(t, err)
+			require.Equal(t, testCase.isServerless, covered, "Session query covered by index; expectedToBeCovered: %t, Plan: %s", testCase.isServerless, planJSON)
 		})
 	}
 }
@@ -193,21 +195,21 @@ func TestBuildUsersQuery(t *testing.T) {
 			defer database.Close(ctx)
 
 			n1QLStore, reset, err := setupN1QLStore(database.Bucket, testCase.isServerless)
-			assert.NoError(t, err, "Unable to get n1QLStore for testBucket")
+			require.NoError(t, err, "Unable to get n1QLStore for testBucket")
 			defer func(n1QLStore base.N1QLStore, isServerless bool) {
 				err := reset(n1QLStore, isServerless)
-				assert.NoError(t, err, "Reset fn shouldn't return error")
+				require.NoError(t, err, "Reset fn shouldn't return error")
 			}(n1QLStore, testCase.isServerless)
 
 			// Sessions
 			roleStatement, _ := database.BuildUsersQuery("", 0)
 			plan, explainErr := n1QLStore.ExplainQuery(roleStatement, nil)
-			assert.NoError(t, explainErr, "Error generating explain for roleAccess query")
+			require.NoError(t, explainErr, "Error generating explain for roleAccess query")
 
 			covered := db.IsCovered(plan)
 			planJSON, err := base.JSONMarshal(plan)
-			assert.NoError(t, err)
-			assert.Equal(t, testCase.isServerless, covered, "Users query covered by index; expectedToBeCovered: %t, Plan: %s", testCase.isServerless, planJSON)
+			require.NoError(t, err)
+			require.Equal(t, testCase.isServerless, covered, "Users query covered by index; expectedToBeCovered: %t, Plan: %s", testCase.isServerless, planJSON)
 		})
 	}
 }
@@ -236,39 +238,41 @@ func TestQueryAllRoles(t *testing.T) {
 			defer database.Close(ctx)
 
 			n1QLStore, reset, err := setupN1QLStore(database.Bucket, testCase.isServerless)
-			assert.NoError(t, err, "Unable to get n1QLStore for testBucket")
+			require.NoError(t, err, "Unable to get n1QLStore for testBucket")
 			defer func(n1QLStore base.N1QLStore, isServerless bool) {
 				err := reset(n1QLStore, isServerless)
-				assert.NoError(t, err, "Reset fn shouldn't return error")
+				require.NoError(t, err, "Reset fn shouldn't return error")
 			}(n1QLStore, testCase.isServerless)
 
 			authenticator := database.Authenticator(ctx)
-			assert.NotNil(t, authenticator, "db.Authenticator(ctx) returned nil")
+			require.NotNil(t, authenticator, "db.Authenticator(ctx) returned nil")
 
 			// Add roles
 			for i := 1; i <= 5; i++ {
 				role, err := authenticator.NewRole(fmt.Sprintf("role%d", i), base.SetOf("ABC"))
-				assert.NoError(t, err, "Error creating new role")
-				assert.NoError(t, authenticator.Save(role))
+				require.NoError(t, err, "Error creating new role")
+				require.NoError(t, authenticator.Save(role))
 			}
 
 			// Delete 1 role
 			role1, err := authenticator.NewRole("role1", base.SetOf("ABC"))
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			err = authenticator.DeleteRole(role1, false, 0)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 
 			// Standard query
 			results, queryErr := database.QueryAllRoles(ctx, "", 0)
-			assert.NoError(t, queryErr, "Query error")
+			require.NoError(t, queryErr, "Query error")
+			defer func() {
+				require.NoError(t, results.Close())
+			}()
 
 			var row map[string]interface{}
 			rowCount := 0
 			for results.Next(&row) {
 				rowCount++
 			}
-			assert.Equal(t, 5, rowCount)
-			assert.NoError(t, results.Close())
+			require.Equal(t, 5, rowCount)
 		})
 	}
 }
@@ -297,10 +301,10 @@ func TestAllPrincipalIDs(t *testing.T) {
 			defer db.Close(ctx)
 
 			n1QLStore, reset, err := setupN1QLStore(db.Bucket, testCase.isServerless)
-			assert.NoError(t, err, "Unable to get n1QLStore for testBucket")
+			require.NoError(t, err, "Unable to get n1QLStore for testBucket")
 			defer func(n1QLStore base.N1QLStore, isServerless bool) {
 				err := reset(n1QLStore, isServerless)
-				assert.NoError(t, err, "Reset fn shouldn't return error")
+				require.NoError(t, err, "Reset fn shouldn't return error")
 			}(n1QLStore, testCase.isServerless)
 			base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache, base.KeyChanges)
 
@@ -313,37 +317,37 @@ func TestAllPrincipalIDs(t *testing.T) {
 			username := uuid.NewString()
 
 			user1, err := authenticator.NewUser(username, "letmein", nil)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			user1.SetExplicitRoles(channels.TimedSet{rolename1: channels.NewVbSimpleSequence(1), rolename2: channels.NewVbSimpleSequence(1)}, 1)
-			assert.NoError(t, authenticator.Save(user1))
+			require.NoError(t, authenticator.Save(user1))
 
 			role1, err := authenticator.NewRole(rolename1, nil)
-			assert.NoError(t, err)
-			assert.NoError(t, authenticator.Save(role1))
+			require.NoError(t, err)
+			require.NoError(t, authenticator.Save(role1))
 
 			role2, err := authenticator.NewRole(rolename2, nil)
-			assert.NoError(t, err)
-			assert.NoError(t, authenticator.Save(role2))
+			require.NoError(t, err)
+			require.NoError(t, authenticator.Save(role2))
 
 			err = db.DeleteRole(ctx, role2.Name(), false)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			roleGet, err := authenticator.GetRoleIncDeleted(role2.Name())
-			assert.NoError(t, err)
-			assert.True(t, roleGet.IsDeleted())
+			require.NoError(t, err)
+			require.True(t, roleGet.IsDeleted())
 
 			t.Log("user1:", user1.Name())
 			t.Log("role1:", role1.Name())
 			t.Log("role2:", role2.Name())
 
-			// assert allprincipals still returns users and deleted roles
+			// require allprincipals still returns users and deleted roles
 			users, roles, err := db.AllPrincipalIDs(ctx)
-			assert.NoError(t, err)
-			assert.ElementsMatch(t, []string{user1.Name()}, users)
-			assert.ElementsMatch(t, []string{role1.Name(), role2.Name()}, roles)
+			require.NoError(t, err)
+			require.ElementsMatch(t, []string{user1.Name()}, users)
+			require.ElementsMatch(t, []string{role1.Name(), role2.Name()}, roles)
 
 			roles, err = db.GetRoleIDs(ctx, db.UseViews(), false)
-			assert.NoError(t, err)
-			assert.ElementsMatch(t, []string{role1.Name()}, roles)
+			require.NoError(t, err)
+			require.ElementsMatch(t, []string{role1.Name()}, roles)
 		})
 	}
 }
@@ -383,10 +387,10 @@ func TestGetRoleIDs(t *testing.T) {
 			defer database.Close(ctx)
 
 			n1QLStore, reset, err := setupN1QLStore(database.Bucket, testCase.isServerless)
-			assert.NoError(t, err, "Unable to get n1QLStore for testBucket")
+			require.NoError(t, err, "Unable to get n1QLStore for testBucket")
 			defer func(n1QLStore base.N1QLStore, isServerless bool) {
 				err := reset(n1QLStore, isServerless)
-				assert.NoError(t, err, "Reset fn shouldn't return error")
+				require.NoError(t, err, "Reset fn shouldn't return error")
 			}(n1QLStore, testCase.isServerless)
 			base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache, base.KeyChanges)
 
@@ -398,31 +402,31 @@ func TestGetRoleIDs(t *testing.T) {
 			rolename2 := uuid.NewString()
 
 			role1, err := authenticator.NewRole(rolename1, nil)
-			assert.NoError(t, err)
-			assert.NoError(t, authenticator.Save(role1))
+			require.NoError(t, err)
+			require.NoError(t, authenticator.Save(role1))
 
 			role2, err := authenticator.NewRole(rolename2, nil)
-			assert.NoError(t, err)
-			assert.NoError(t, authenticator.Save(role2))
+			require.NoError(t, err)
+			require.NoError(t, authenticator.Save(role2))
 
 			err = database.DeleteRole(ctx, role2.Name(), false)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			roleGet, err := authenticator.GetRoleIncDeleted(role2.Name())
-			assert.NoError(t, err)
-			assert.True(t, roleGet.IsDeleted())
+			require.NoError(t, err)
+			require.True(t, roleGet.IsDeleted())
 
 			t.Log("role1:", role1.Name())
 			t.Log("role2:", role2.Name())
 
-			// assert roles
+			// require roles
 			roles, err := database.GetRoleIDs(ctx, database.UseViews(), testCase.includeDeleted)
 			expectedRoles := []string{role1.Name()}
 			if testCase.includeDeleted {
 				expectedRoles = append(expectedRoles, role2.Name())
 			}
 
-			assert.NoError(t, err)
-			assert.ElementsMatch(t, expectedRoles, roles)
+			require.NoError(t, err)
+			require.ElementsMatch(t, expectedRoles, roles)
 		})
 	}
 }
