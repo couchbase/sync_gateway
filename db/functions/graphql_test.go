@@ -13,6 +13,7 @@ package functions
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -498,19 +499,12 @@ func TestInvalidSchemaAndSchemaFile(t *testing.T) {
 		assert.ErrorContains(t, err, "GraphQL config: either `schema` or `schemaFile` must be defined")
 	})
 
-	t.Run("Invalid File name/path", func(t *testing.T) {
-		var config = GraphQLConfig{
-			SchemaFile: base.StringPtr("dummySchemaFile.txt"),
-		}
-		_, err := CompileGraphQL(&config)
-		assert.ErrorContains(t, err, "no such file or directory")
-	})
-
 	t.Run("cannot read SchemaFile", func(t *testing.T) {
 		var config = GraphQLConfig{
 			SchemaFile: base.StringPtr("dummySchemaFile.txt"),
 		}
 		_, err := CompileGraphQL(&config)
+		fmt.Println(err)
 		assert.ErrorContains(t, err, "can't read file")
 	})
 }
