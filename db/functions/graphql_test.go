@@ -175,7 +175,7 @@ var kTestGraphQLUserFunctionsConfig = FunctionsConfig{
 	},
 }
 
-var ktestTypenameResolverSchema = `interface Book {
+var kTestTypenameResolverSchema = `interface Book {
 	id: ID!
 }
 type Textbook implements Book {
@@ -190,7 +190,7 @@ type Query {
 	books: [Book!]!
 }`
 
-var ktestTypenameResolverQuery = `
+var kTestTypenameResolverQuery = `
 query {
 	books {
 		id
@@ -564,171 +564,174 @@ func TestCompilationError(t *testing.T) {
 	assert.ErrorContains(t, err, `500 Error compiling GraphQL resolver "Query:square"`)
 }
 
-func TestTypenameResolverMustBeJavascript(t *testing.T) {
-	var config = GraphQLConfig{
-		Schema: &ktestTypenameResolverSchema,
-		Resolvers: map[string]GraphQLResolverConfig{
-			"Book": {
-				"__typename": {
-					Type: "cpp",
-					Code: `function(context, value) {
-							switch (value.type) {
-							  case "textbook": return "Textbook";
-							  case "coloringBook": return "ColoringBook";
-							  default:        return null;
-							}
-						  }`,
-				},
-			},
-		},
-	}
-	_, err := CompileGraphQL(&config)
-	assert.ErrorContains(t, err, "a GraphQL '__typename__' resolver must be JavaScript")
-}
+func TestTypenameResolver(t *testing.T) {
 
-func TestTypenameResolverAllow(t *testing.T) {
-	var config = GraphQLConfig{
-		Schema: &ktestTypenameResolverSchema,
-		Resolvers: map[string]GraphQLResolverConfig{
-			"Book": {
-				"__typename": {
-					Type: "javascript",
-					Code: `function(context, value) {
-							switch (args.type) {
-							  case "textbook": return "Textbook";
-							  case "coloringBook": return "ColoringBook";
-							  default:        return null;
-							}
-						  }`,
-					Allow: allowAll,
+	t.Run("Typename Resolver must be a Javascript Function", func(t *testing.T) {
+		var config = GraphQLConfig{
+			Schema: &kTestTypenameResolverSchema,
+			Resolvers: map[string]GraphQLResolverConfig{
+				"Book": {
+					"__typename": {
+						Type: "cpp",
+						Code: `function(context, value) {
+								switch (value.type) {
+								  case "textbook": return "Textbook";
+								  case "coloringBook": return "ColoringBook";
+								  default: return null;
+								}
+							  }`,
+					},
 				},
 			},
-		},
-	}
-	_, err := CompileGraphQL(&config)
-	assert.ErrorContains(t, err, "'allow' is not valid in a GraphQL '__typename__' resolver")
-}
+		}
+		_, err := CompileGraphQL(&config)
+		assert.ErrorContains(t, err, "a GraphQL '__typename__' resolver must be JavaScript")
+	})
 
-func TestTypenameResolverReturnsNonString(t *testing.T) {
-	var config = GraphQLConfig{
-		Schema: &ktestTypenameResolverSchema,
-		Resolvers: map[string]GraphQLResolverConfig{
-			"Book": {
-				"__typename": {
-					Type: "javascript",
-					Code: `function(context, value) {
-							return null;
-						  }`,
+	t.Run("Typename Resolver should not have allow", func(t *testing.T) {
+		var config = GraphQLConfig{
+			Schema: &kTestTypenameResolverSchema,
+			Resolvers: map[string]GraphQLResolverConfig{
+				"Book": {
+					"__typename": {
+						Type: "javascript",
+						Code: `function(context, value) {
+								switch (args.type) {
+								  case "textbook": return "Textbook";
+								  case "coloringBook": return "ColoringBook";
+								  default: return null;
+								}
+							  }`,
+						Allow: allowAll,
+					},
 				},
 			},
-			"Query": {
-				"books": {
-					Type: "javascript",
-					Code: `function(parent, args, context, info) {return [{"id":"abc", "colors":["def"], "type": "textbook"},{"id":"abcaa", "courses":["deaaf"], "type": "coloringBook"}] }`,
-				},
-			},
-		},
-	}
-	_, err := CompileGraphQL(&config)
-	assert.NoError(t, err)
-	db, ctx := setupTestDBWithFunctions(t, nil, &config)
-	defer db.Close(ctx)
-	base.AssertLogContains(t, "return value must be a type-name string", func() { db.UserGraphQLQuery(ktestTypenameResolverQuery, "", nil, false, ctx) })
-	result, err := db.UserGraphQLQuery(ktestTypenameResolverQuery, "", nil, false, ctx)
-	assert.Equal(t, result.HasErrors(), true) //checks that the GraphQL results has any error or not
-}
+		}
+		_, err := CompileGraphQL(&config)
+		assert.ErrorContains(t, err, "'allow' is not valid in a GraphQL '__typename__' resolver")
+	})
 
-func TestTypenameResolverReturnsNonExistingType(t *testing.T) {
-	var config = GraphQLConfig{
-		Schema: &ktestTypenameResolverSchema,
-		Resolvers: map[string]GraphQLResolverConfig{
-			"Book": {
-				"__typename": {
-					Type: "javascript",
-					Code: `function(context, value) {
-							return "Non_Existing_Type";
-						  }`,
+	t.Run("Typename Resolver result must be a string", func(t *testing.T) {
+		var config = GraphQLConfig{
+			Schema: &kTestTypenameResolverSchema,
+			Resolvers: map[string]GraphQLResolverConfig{
+				"Book": {
+					"__typename": {
+						Type: "javascript",
+						Code: `function(context, value) {
+								return null;
+							  }`,
+					},
+				},
+				"Query": {
+					"books": {
+						Type: "javascript",
+						Code: `function(parent, args, context, info) {return [{"id":"abc", "courses":["science"], "type": "textbook"},{"id":"efg", "colors":["red"], "type": "coloringBook"}] }`,
+					},
 				},
 			},
-			"Query": {
-				"books": {
-					Type: "javascript",
-					Code: `function(parent, args, context, info) {return [{"id":"abc", "colors":["def"], "type": "textbook"},{"id":"abcaa", "courses":["deaaf"], "type": "coloringBook"}] }`,
-				},
-			},
-		},
-	}
-	_, err := CompileGraphQL(&config)
-	assert.NoError(t, err)
-	db, ctx := setupTestDBWithFunctions(t, nil, &config)
-	defer db.Close(ctx)
-	base.AssertLogContains(t, "which is not the name of a type", func() { db.UserGraphQLQuery(ktestTypenameResolverQuery, "", nil, false, ctx) })
-	result, err := db.UserGraphQLQuery(ktestTypenameResolverQuery, "", nil, false, ctx)
-	assert.Equal(t, result.HasErrors(), true) //checks that the GraphQL results has any error or not
-}
+		}
+		_, err := CompileGraphQL(&config)
+		assert.NoError(t, err)
+		db, ctx := setupTestDBWithFunctions(t, nil, &config)
+		defer db.Close(ctx)
+		base.AssertLogContains(t, "return value must be a type-name string", func() { db.UserGraphQLQuery(kTestTypenameResolverQuery, "", nil, false, ctx) })
+		result, err := db.UserGraphQLQuery(kTestTypenameResolverQuery, "", nil, false, ctx)
+		assert.Equal(t, result.HasErrors(), true) //checks that the GraphQL results has any error or not
+	})
 
-func TestTypenameResolverReturnsNonObjectType(t *testing.T) {
-	schema := ktestTypenameResolverSchema +
-		`interface NonObjectType {
+	t.Run("Typename Resolver must not return a Non-Object Type", func(t *testing.T) {
+		schema := kTestTypenameResolverSchema +
+			`interface NonObjectType {
 			id: ID!
 		}`
-	var config = GraphQLConfig{
-		Schema: &schema,
-		Resolvers: map[string]GraphQLResolverConfig{
-			"Book": {
-				"__typename": {
-					Type: "javascript",
-					Code: `function(context, value) {
-							return "NonObjectType";
-						  }`,
+		var config = GraphQLConfig{
+			Schema: &schema,
+			Resolvers: map[string]GraphQLResolverConfig{
+				"Book": {
+					"__typename": {
+						Type: "javascript",
+						Code: `function(context, value) {
+								return "NonObjectType";
+							}`,
+					},
+				},
+				"Query": {
+					"books": {
+						Type: "javascript",
+						Code: `function(parent, args, context, info) {return [{"id":"abc", "courses":["science"], "type": "textbook"},{"id":"efg", "colors":["red"], "type": "coloringBook"}] }`,
+					},
 				},
 			},
-			"Query": {
-				"books": {
-					Type: "javascript",
-					Code: `function(parent, args, context, info) {return [{"id":"abc", "colors":["def"], "type": "textbook"},{"id":"abcaa", "courses":["deaaf"], "type": "coloringBook"}] }`,
-				},
-			},
-		},
-	}
-	_, err := CompileGraphQL(&config)
-	assert.NoError(t, err)
-	db, ctx := setupTestDBWithFunctions(t, nil, &config)
-	defer db.Close(ctx)
-	base.AssertLogContains(t, "which is not the name of an object type", func() { db.UserGraphQLQuery(ktestTypenameResolverQuery, "", nil, false, ctx) })
-	result, err := db.UserGraphQLQuery(ktestTypenameResolverQuery, "", nil, false, ctx)
-	assert.Equal(t, result.HasErrors(), true) //checks that the GraphQL results has any error or not
-}
+		}
+		_, err := CompileGraphQL(&config)
+		assert.NoError(t, err)
+		db, ctx := setupTestDBWithFunctions(t, nil, &config)
+		defer db.Close(ctx)
+		base.AssertLogContains(t, "which is not the name of an object type", func() { db.UserGraphQLQuery(kTestTypenameResolverQuery, "", nil, false, ctx) })
+		result, err := db.UserGraphQLQuery(kTestTypenameResolverQuery, "", nil, false, ctx)
+		assert.Equal(t, result.HasErrors(), true) //checks that the GraphQL results has any error or not
 
-// positive test for Typename
-func TestTypenameResolver(t *testing.T) {
-	var config = GraphQLConfig{
-		Schema: &ktestTypenameResolverSchema,
-		Resolvers: map[string]GraphQLResolverConfig{
-			"Book": {
-				"__typename": {
-					Type: "javascript",
-					Code: `function(context, value) {
-							switch (value.type) {
-							  case "textbook": return "Textbook";
-							  case "coloringBook": return "ColoringBook";
-							  default:        return null;
-							}
-						  }`,
+	})
+
+	t.Run("Typename Resolver must return a name of a Type in Schema", func(t *testing.T) {
+		var config = GraphQLConfig{
+			Schema: &kTestTypenameResolverSchema,
+			Resolvers: map[string]GraphQLResolverConfig{
+				"Book": {
+					"__typename": {
+						Type: "javascript",
+						Code: `function(context, value) {
+								return "Non_Existing_Type";
+							  }`,
+					},
+				},
+				"Query": {
+					"books": {
+						Type: "javascript",
+						Code: `function(parent, args, context, info) {return [{"id":"abc", "courses":["science"], "type": "textbook"},{"id":"efg", "colors":["red"], "type": "coloringBook"}] }`,
+					},
 				},
 			},
-			"Query": {
-				"books": {
-					Type: "javascript",
-					Code: `function(parent, args, context, info) {return [{"id":"abc", "courses":["science"], "type": "textbook"},{"id":"efg", "colors":["red"], "type": "coloringBook"}] }`,
+		}
+		_, err := CompileGraphQL(&config)
+		assert.NoError(t, err)
+		db, ctx := setupTestDBWithFunctions(t, nil, &config)
+		defer db.Close(ctx)
+		base.AssertLogContains(t, "which is not the name of a type", func() { db.UserGraphQLQuery(kTestTypenameResolverQuery, "", nil, false, ctx) })
+		result, err := db.UserGraphQLQuery(kTestTypenameResolverQuery, "", nil, false, ctx)
+		assert.Equal(t, result.HasErrors(), true) //checks that the GraphQL results has any error or not
+	})
+
+	t.Run("Correct Schema and Query produces the result", func(t *testing.T) {
+		var config = GraphQLConfig{
+			Schema: &kTestTypenameResolverSchema,
+			Resolvers: map[string]GraphQLResolverConfig{
+				"Book": {
+					"__typename": {
+						Type: "javascript",
+						Code: `function(context, value) {
+								switch (value.type) {
+								  case "textbook": return "Textbook";
+								  case "coloringBook": return "ColoringBook";
+								  default:        return null;
+								}
+							  }`,
+					},
+				},
+				"Query": {
+					"books": {
+						Type: "javascript",
+						Code: `function(parent, args, context, info) {return [{"id":"abc", "courses":["science"], "type": "textbook"},{"id":"efg", "colors":["red"], "type": "coloringBook"}] }`,
+					},
 				},
 			},
-		},
-	}
-	_, err := CompileGraphQL(&config)
-	assert.NoError(t, err)
-	db, ctx := setupTestDBWithFunctions(t, nil, &config)
-	defer db.Close(ctx)
-	result, err := db.UserGraphQLQuery(ktestTypenameResolverQuery, "", nil, false, ctx)
-	assertGraphQLResult(t, `{"books":[{"courses":["science"],"id":"abc"},{"colors":["red"],"id":"efg"}]}`, result, err)
+		}
+		_, err := CompileGraphQL(&config)
+		assert.NoError(t, err)
+		db, ctx := setupTestDBWithFunctions(t, nil, &config)
+		defer db.Close(ctx)
+		result, err := db.UserGraphQLQuery(kTestTypenameResolverQuery, "", nil, false, ctx)
+		assertGraphQLResult(t, `{"books":[{"courses":["science"],"id":"abc"},{"colors":["red"],"id":"efg"}]}`, result, err)
+	})
 }
