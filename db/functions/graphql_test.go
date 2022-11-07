@@ -13,6 +13,8 @@ package functions
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"os"
 	"strings"
 	"testing"
 
@@ -733,5 +735,52 @@ func TestTypenameResolver(t *testing.T) {
 		defer db.Close(ctx)
 		result, err := db.UserGraphQLQuery(kTestTypenameResolverQuery, "", nil, false, ctx)
 		assertGraphQLResult(t, `{"books":[{"courses":["science"],"id":"abc"},{"colors":["red"],"id":"efg"}]}`, result, err)
+	})
+}
+
+// Unit Tests for Invalid Schema/SchemaFile in the getSchema Function
+func TestInvalidSchemaAndSchemaFile(t *testing.T) {
+	t.Run("Both Schema and SchemaFile are provided", func(t *testing.T) {
+		var config = GraphQLConfig{
+			Schema:     base.StringPtr(`type Query{ square(n: Int!): Int! }`),
+			SchemaFile: base.StringPtr("someInvalidPath/someInvalidFileName"),
+			Resolvers:  nil,
+		}
+		_, err := CompileGraphQL(&config)
+		assert.ErrorContains(t, err, "GraphQL config: only one of `schema` and `schemaFile` may be used")
+	})
+
+	t.Run("Neither Schema nor SchemaFile Provided", func(t *testing.T) {
+		var config = GraphQLConfig{
+			Resolvers: nil,
+		}
+		_, err := CompileGraphQL(&config)
+		assert.ErrorContains(t, err, "GraphQL config: either `schema` or `schemaFile` must be defined")
+	})
+
+	t.Run("cannot read SchemaFile", func(t *testing.T) {
+		var config = GraphQLConfig{
+			SchemaFile: base.StringPtr("dummySchemaFile.txt"),
+		}
+		_, err := CompileGraphQL(&config)
+		fmt.Println(err)
+		assert.ErrorContains(t, err, "can't read file")
+	})
+}
+
+// Unit Tests for Valid SchemaFile in the getSchema Function
+func TestValidSchemaFile(t *testing.T) {
+	t.Run("Only SchemaFile is Provided", func(t *testing.T) {
+		validSchema := "type Query {sum(n: Int!) : Int!}"
+		err := os.WriteFile("schema.graphql", []byte(validSchema), 0666)
+		assert.NoError(t, err)
+		var config = GraphQLConfig{
+			SchemaFile: base.StringPtr("schema.graphql"),
+		}
+		_, err = CompileGraphQL(&config)
+		assert.NoError(t, err)
+
+		err = os.Remove("schema.graphql")
+		assert.NoError(t, err)
 	})
 }
