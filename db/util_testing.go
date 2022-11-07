@@ -456,6 +456,19 @@ func SetupTestDBWithOptions(t testing.TB, dbcOptions DatabaseContextOptions) (*D
 func SetupTestDBForBucketWithOptions(t testing.TB, tBucket base.Bucket, dbcOptions DatabaseContextOptions) (*Database, context.Context) {
 	ctx := base.TestCtx(t)
 	AddOptionsFromEnvironmentVariables(&dbcOptions)
+	if !base.TestsDisableGSI() {
+		collection, err := base.AsCollection(tBucket)
+		if err == nil {
+			dbcOptions.Scopes = map[string]ScopeOptions{
+				collection.ScopeName(): ScopeOptions{
+					Collections: map[string]CollectionOptions{
+						collection.Name(): {},
+					},
+				},
+			}
+		}
+	}
+
 	dbCtx, err := NewDatabaseContext(ctx, "db", tBucket, false, dbcOptions)
 	require.NoError(t, err, "Couldn't create context for database 'db'")
 	db, err := CreateDatabase(dbCtx)

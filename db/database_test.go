@@ -46,38 +46,7 @@ func setupTestDBForBucket(t testing.TB, bucket base.Bucket) (*Database, context.
 	dbcOptions := DatabaseContextOptions{
 		CacheOptions: &cacheOptions,
 	}
-	return setupTestDBForBucketWithOptions(t, bucket, dbcOptions)
-}
-
-// Sets up test db with the specified database context options.  Note that environment variables can
-// override somedbcOptions properties.
-func setupTestDBWithOptions(t testing.TB, dbcOptions DatabaseContextOptions) (*Database, context.Context) {
-
-	tBucket := base.GetTestBucket(t)
-	return setupTestDBForBucketWithOptions(t, tBucket, dbcOptions)
-}
-
-func setupTestDBForBucketWithOptions(t testing.TB, tBucket base.Bucket, dbcOptions DatabaseContextOptions) (*Database, context.Context) {
-	ctx := base.TestCtx(t)
-	AddOptionsFromEnvironmentVariables(&dbcOptions)
-	if !base.TestsDisableGSI() {
-		collection, err := base.AsCollection(tBucket)
-		if err == nil {
-			dbcOptions.Scopes = map[string]ScopeOptions{
-				collection.ScopeName(): ScopeOptions{
-					Collections: map[string]CollectionOptions{
-						collection.Name(): {},
-					},
-				},
-			}
-		}
-	}
-	dbCtx, err := NewDatabaseContext(ctx, "db", tBucket, false, dbcOptions)
-	require.NoError(t, err, "Couldn't create context for database 'db'")
-	db, err := CreateDatabase(dbCtx)
-	require.NoError(t, err, "Couldn't create database 'db'")
-	ctx = db.AddDatabaseLogContext(ctx)
-	return db, ctx
+	return SetupTestDBForBucketWithOptions(t, bucket, dbcOptions)
 }
 
 func setupTestDBWithOptionsAndImport(t testing.TB, dbcOptions DatabaseContextOptions) (*Database, context.Context) {
@@ -2446,7 +2415,7 @@ func TestResyncUpdateAllDocChannels(t *testing.T) {
 		channel("x")
 	}`
 
-	db, ctx := setupTestDBWithOptions(t, DatabaseContextOptions{QueryPaginationLimit: 5000})
+	db, ctx := SetupTestDBWithOptions(t, DatabaseContextOptions{QueryPaginationLimit: 5000})
 	collection := db.GetSingleDatabaseCollectionWithUser()
 
 	_, err := db.UpdateSyncFun(ctx, syncFn)
