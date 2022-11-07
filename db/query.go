@@ -35,6 +35,7 @@ const (
 	QueryTypeChannelsStar        = "channelsStar"
 	QueryTypeSequences           = "sequences"
 	QueryTypePrincipals          = "principals"
+	QueryTypeRoles               = "roles"
 	QueryTypeRolesExcludeDeleted = "rolesExcludeDeleted"
 	QueryTypeSessions            = "sessions"
 	QueryTypeTombstones          = "tombstones"
@@ -165,8 +166,25 @@ var QueryPrincipals = SGQuery{
 		base.KeyspaceQueryAlias,
 		base.KeyspaceQueryToken, base.KeyspaceQueryAlias,
 		base.KeyspaceQueryAlias, SyncDocWildcard,
-		base.KeyspaceQueryAlias, `\\_sync:user:%`,
-		base.KeyspaceQueryAlias, `\\_sync:role:%`,
+		base.KeyspaceQueryAlias, SyncUserWildcard,
+		base.KeyspaceQueryAlias, SyncRoleWildcard,
+		base.KeyspaceQueryAlias, QueryParamStartKey,
+		base.KeyspaceQueryAlias),
+	adhoc: false,
+}
+
+var QueryAllRolesUsingRoleIdx = SGQuery{
+	name: QueryTypeRoles,
+	statement: fmt.Sprintf(
+		"SELECT META(%s).id "+
+			"FROM %s AS %s "+
+			"USE INDEX($idx) "+
+			"WHERE META(%s).id LIKE '%s' "+
+			"AND META(%s).id >= $%s "+ // Uses >= for inclusive startKey
+			"ORDER BY META(%s).id",
+		base.KeyspaceQueryAlias,
+		base.KeyspaceQueryToken, base.KeyspaceQueryAlias,
+		base.KeyspaceQueryAlias, SyncRoleWildcard,
 		base.KeyspaceQueryAlias, QueryParamStartKey,
 		base.KeyspaceQueryAlias),
 	adhoc: false,
@@ -179,14 +197,12 @@ var QueryRolesExcludeDeleted = SGQuery{
 			"FROM %s AS %s "+
 			"USE INDEX($idx) "+
 			"WHERE META(%s).id LIKE '%s' "+
-			"AND META(%s).id LIKE '%s' "+
 			"AND (%s.deleted IS MISSING OR %s.deleted = false) "+
 			"AND META(%s).id >= $%s "+ // Uses >= for inclusive startKey
 			"ORDER BY META(%s).id",
 		base.KeyspaceQueryAlias,
 		base.KeyspaceQueryToken, base.KeyspaceQueryAlias,
-		base.KeyspaceQueryAlias, SyncDocWildcard,
-		base.KeyspaceQueryAlias, `\\_sync:role:%`,
+		base.KeyspaceQueryAlias, SyncRoleWildcard,
 		base.KeyspaceQueryAlias, base.KeyspaceQueryAlias,
 		base.KeyspaceQueryAlias, QueryParamStartKey,
 		base.KeyspaceQueryAlias),
@@ -214,7 +230,7 @@ var QueryUsers = SGQuery{
 		base.KeyspaceQueryAlias,
 		base.KeyspaceQueryAlias,
 		base.KeyspaceQueryToken, base.KeyspaceQueryAlias,
-		base.KeyspaceQueryAlias, `\\_sync:user:%`,
+		base.KeyspaceQueryAlias, SyncUserWildcard,
 		base.KeyspaceQueryAlias, QueryParamStartKey,
 		base.KeyspaceQueryAlias),
 	adhoc: false,
@@ -232,9 +248,24 @@ var QuerySessions = SGQuery{
 		base.KeyspaceQueryAlias,
 		base.KeyspaceQueryToken, base.KeyspaceQueryAlias,
 		base.KeyspaceQueryAlias, SyncDocWildcard,
-		base.KeyspaceQueryAlias, `\\_sync:session:%`),
+		base.KeyspaceQueryAlias, SyncSessionWildcard),
 	adhoc: false,
 }
+
+var QuerySessionsUsingSessionIdx = SGQuery{
+	name: QueryTypeSessions,
+	statement: fmt.Sprintf(
+		"SELECT META(%s).id "+
+			"FROM %s AS %s "+
+			"USE INDEX($idx) "+
+			"WHERE META(%s).id LIKE '%s' "+
+			"AND username = $userName",
+		base.KeyspaceQueryAlias,
+		base.KeyspaceQueryToken, base.KeyspaceQueryAlias,
+		base.KeyspaceQueryAlias, SyncSessionWildcard),
+	adhoc: false,
+}
+
 var QueryTombstones = SGQuery{
 	name: QueryTypeTombstones,
 	statement: fmt.Sprintf(
@@ -512,7 +543,7 @@ func (context *DatabaseContext) QueryPrincipals(ctx context.Context, startKey st
 	return context.N1QLQueryWithStats(ctx, QueryPrincipals.name, queryStatement, params, base.RequestPlus, QueryPrincipals.adhoc)
 }
 
-// Query to retrieve user details, using the syncDocs index
+// Query to retrieve user details, using the syncDocs or users index
 func (context *DatabaseContext) QueryUsers(ctx context.Context, startKey string, limit int) (sgbucket.QueryResultIterator, error) {
 
 	// View Query
@@ -520,7 +551,21 @@ func (context *DatabaseContext) QueryUsers(ctx context.Context, startKey string,
 		return nil, errors.New("QueryUsers does not support views")
 	}
 
-	queryStatement := replaceIndexTokensQuery(QueryUsers.statement, sgIndexes[IndexSyncDocs], context.UseXattrs())
+	queryStatement, params := context.BuildUsersQuery(startKey, limit)
+
+	// N1QL Query
+	return context.N1QLQueryWithStats(ctx, QueryTypeUsers, queryStatement, params, base.RequestPlus, QueryUsers.adhoc)
+}
+
+// BuildUsersQuery builds the query statement and query parameters for a Users N1QL query. Also used by unit tests to validate
+// query is covering.
+func (context *DatabaseContext) BuildUsersQuery(startKey string, limit int) (string, map[string]interface{}) {
+	var queryStatement string
+	if context.IsServerless() {
+		queryStatement = replaceIndexTokensQuery(QueryUsers.statement, sgIndexes[IndexUser], context.UseXattrs())
+	} else {
+		queryStatement = replaceIndexTokensQuery(QueryUsers.statement, sgIndexes[IndexSyncDocs], context.UseXattrs())
+	}
 
 	params := make(map[string]interface{})
 	params[QueryParamStartKey] = startKey
@@ -528,12 +573,10 @@ func (context *DatabaseContext) QueryUsers(ctx context.Context, startKey string,
 	if limit > 0 {
 		queryStatement = fmt.Sprintf("%s LIMIT %d", queryStatement, limit)
 	}
-
-	// N1QL Query
-	return context.N1QLQueryWithStats(ctx, QueryTypeUsers, queryStatement, params, base.RequestPlus, QueryUsers.adhoc)
+	return queryStatement, params
 }
 
-// Retrieves role ids using the syncDocs index, excluding deleted roles
+// Retrieves role ids using the syncDocs or roles index, excluding deleted roles
 func (context *DatabaseContext) QueryRoles(ctx context.Context, startKey string, limit int) (sgbucket.QueryResultIterator, error) {
 
 	// View Query
@@ -551,7 +594,42 @@ func (context *DatabaseContext) QueryRoles(ctx context.Context, startKey string,
 		return context.ViewQueryWithStats(ctx, DesignDocSyncGateway(), ViewRolesExcludeDeleted, opts)
 	}
 
-	queryStatement := replaceIndexTokensQuery(QueryRolesExcludeDeleted.statement, sgIndexes[IndexSyncDocs], context.UseXattrs())
+	queryStatement, params := context.BuildRolesQuery(startKey, limit)
+
+	// N1QL Query
+	return context.N1QLQueryWithStats(ctx, QueryRolesExcludeDeleted.name, queryStatement, params, base.RequestPlus, QueryRolesExcludeDeleted.adhoc)
+}
+
+// BuildRolesQuery builds the query statement and query parameters for a Roles N1QL query. Also used by unit tests to validate
+// query is covering.
+func (context *DatabaseContext) BuildRolesQuery(startKey string, limit int) (string, map[string]interface{}) {
+
+	var queryStatement string
+	if context.IsServerless() {
+		queryStatement = replaceIndexTokensQuery(QueryRolesExcludeDeleted.statement, sgIndexes[IndexRole], context.UseXattrs())
+	} else {
+		queryStatement = replaceIndexTokensQuery(QueryRolesExcludeDeleted.statement, sgIndexes[IndexSyncDocs], context.UseXattrs())
+	}
+
+	params := make(map[string]interface{})
+	params[QueryParamStartKey] = startKey
+
+	if limit > 0 {
+		queryStatement = fmt.Sprintf("%s LIMIT %d", queryStatement, limit)
+	}
+
+	return queryStatement, params
+}
+
+// Retrieves role ids using the roles index, includes deleted roles
+func (context *DatabaseContext) QueryAllRoles(ctx context.Context, startKey string, limit int) (sgbucket.QueryResultIterator, error) {
+
+	// View Query
+	if context.Options.UseViews {
+		return nil, fmt.Errorf("QueryAllRoles doesn't support views")
+	}
+
+	queryStatement := replaceIndexTokensQuery(QueryAllRolesUsingRoleIdx.statement, sgIndexes[IndexRole], context.UseXattrs())
 
 	params := make(map[string]interface{})
 	params[QueryParamStartKey] = startKey
@@ -575,12 +653,23 @@ func (context *DatabaseContext) QuerySessions(ctx context.Context, userName stri
 		return context.ViewQueryWithStats(ctx, DesignDocSyncHousekeeping(), ViewSessions, opts)
 	}
 
-	queryStatement := replaceIndexTokensQuery(QuerySessions.statement, sgIndexes[IndexSyncDocs], context.UseXattrs())
+	queryStatement, params := context.BuildSessionsQuery(userName)
+	return context.N1QLQueryWithStats(ctx, QueryTypeSessions, queryStatement, params, base.RequestPlus, QuerySessions.adhoc)
+}
 
-	// N1QL Query
+// BuildSessionsQuery builds the query statement and query parameters for a Sessions N1QL query. Also used by unit tests to validate
+// query is covering.
+func (context *DatabaseContext) BuildSessionsQuery(userName string) (string, map[string]interface{}) {
+	var queryStatement string
+	if context.IsServerless() {
+		queryStatement = replaceIndexTokensQuery(QuerySessionsUsingSessionIdx.statement, sgIndexes[IndexSession], context.UseXattrs())
+	} else {
+		queryStatement = replaceIndexTokensQuery(QuerySessions.statement, sgIndexes[IndexSyncDocs], context.UseXattrs())
+	}
+
 	params := make(map[string]interface{}, 1)
 	params[QueryParamUserName] = userName
-	return context.N1QLQueryWithStats(ctx, QueryTypeSessions, queryStatement, params, base.RequestPlus, QuerySessions.adhoc)
+	return queryStatement, params
 }
 
 type AllDocsViewQueryRow struct {

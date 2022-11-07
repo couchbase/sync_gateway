@@ -61,7 +61,7 @@ type RestTesterConfig struct {
 	metricsInterfaceAuthentication  bool
 	enableAdminAuthPermissionsCheck bool
 	useTLSServer                    bool // If true, TLS will be required for communications with CBS. Default: false
-	persistentConfig                bool
+	PersistentConfig                bool
 	groupID                         *string
 	serverless                      bool // Runs SG in serverless mode. Must be used in conjunction with persistent config
 }
@@ -164,7 +164,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 	sc.Bootstrap.ServerTLSSkipVerify = base.BoolPtr(base.TestTLSSkipVerify())
 	sc.Unsupported.Serverless.Enabled = &rt.serverless
 	if rt.serverless {
-		if !rt.persistentConfig {
+		if !rt.PersistentConfig {
 			rt.TB.Fatalf("Persistent config must be used when running in serverless mode")
 		}
 		sc.BucketCredentials = map[string]*base.CredentialsConfig{
@@ -177,7 +177,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 
 	if rt.RestTesterConfig.groupID != nil {
 		sc.Bootstrap.ConfigGroupID = *rt.RestTesterConfig.groupID
-	} else if rt.RestTesterConfig.persistentConfig {
+	} else if rt.RestTesterConfig.PersistentConfig {
 		// If running in persistent config mode, the database has to be manually created. If the db name is the same as a
 		// past tests db name, a db already exists error could happen if the past tests bucket is still flushing. Prevent this
 		// by using a unique group ID for each new rest tester.
@@ -204,7 +204,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 	// Post-validation, we can lower the bcrypt cost beyond SG limits to reduce test runtime.
 	sc.Auth.BcryptCost = bcrypt.MinCost
 
-	rt.RestTesterServerContext = NewServerContext(base.TestCtx(rt.TB), &sc, rt.RestTesterConfig.persistentConfig)
+	rt.RestTesterServerContext = NewServerContext(base.TestCtx(rt.TB), &sc, rt.RestTesterConfig.PersistentConfig)
 	ctx := rt.Context()
 
 	if !base.ServerIsWalrus(sc.Bootstrap.Server) {
@@ -229,7 +229,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 	}
 
 	// tests must create their own databases in persistent mode
-	if !rt.persistentConfig {
+	if !rt.PersistentConfig {
 		useXattrs := base.TestUseXattrs()
 
 		if rt.DatabaseConfig == nil {

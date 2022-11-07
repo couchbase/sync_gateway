@@ -130,6 +130,7 @@ func registerConfigFlags(config *StartupConfig, fs *flag.FlagSet) map[string]con
 		"unsupported.http2.enabled":                        {&config.Unsupported.HTTP2.Enabled, fs.Bool("unsupported.http2.enabled", false, "Whether HTTP2 support is enabled")},
 		"unsupported.serverless.enabled":                   {&config.Unsupported.Serverless.Enabled, fs.Bool("unsupported.serverless.enabled", false, "Settings for running Sync Gateway in serverless mode.")},
 		"unsupported.serverless.min_config_fetch_interval": {&config.Unsupported.Serverless.MinConfigFetchInterval, fs.String("unsupported.serverless.min_config_fetch_interval", "", "How long to cache configs fetched from the buckets for. This cache is used for requested databases that SG does not know about.")},
+		"unsupported.use_xattr_config":                     {&config.Unsupported.UseXattrConfig, fs.Bool("unsupported.use_xattr_config", false, "Store database configurations in system xattrs")},
 
 		"unsupported.user_queries": {&config.Unsupported.UserQueries, fs.Bool("unsupported.user_queries", false, "Whether user-query APIs are enabled")},
 

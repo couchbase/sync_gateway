@@ -36,7 +36,7 @@ func TestChangesAccessNotifyInteger(t *testing.T) {
 	// Create user:
 	ctx := rt.Context()
 	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
-	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf(t, "ABC"))
+	bernard, err := a.NewUser("bernard", "letmein", channels.BaseSetOf(t, "ABC"))
 	assert.NoError(t, err)
 	assert.NoError(t, a.Save(bernard))
 
@@ -96,7 +96,7 @@ func TestChangesNotifyChannelFilter(t *testing.T) {
 
 	/*
 		a := it.ServerContext().Database("db").Authenticator(base.TestCtx(t))
-		bernard, err := a.NewUser("bernard", "letmein", channels.SetOf(t,"ABC"))
+		bernard, err := a.NewUser("bernard", "letmein", channels.BaseSetOf(t,"ABC"))
 		goassert.True(t, err == nil)
 		a.Save(bernard)
 	*/

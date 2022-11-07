@@ -102,7 +102,7 @@ func TestBackupOldRevision(t *testing.T) {
 	deltasEnabled := base.IsEnterpriseEdition()
 	xattrsEnabled := base.TestUseXattrs()
 
-	db, ctx := setupTestDBWithOptions(t, DatabaseContextOptions{DeltaSyncOptions: DeltaSyncOptions{
+	db, ctx := SetupTestDBWithOptions(t, DatabaseContextOptions{DeltaSyncOptions: DeltaSyncOptions{
 		Enabled:          deltasEnabled,
 		RevMaxAgeSeconds: DefaultDeltaSyncRevMaxAge,
 	}})

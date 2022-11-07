@@ -106,7 +106,7 @@ func NewRestTesterCluster(t *testing.T, config *RestTesterClusterConfig) *RestTe
 		config.rtConfig.groupID = config.groupID
 	}
 	// only persistent mode is supported for a RestTesterCluster
-	config.rtConfig.persistentConfig = true
+	config.rtConfig.PersistentConfig = true
 
 	// Make all RestTesters share the same unclosable TestBucket
 	tb := config.testBucket

@@ -29,6 +29,7 @@ import (
 
 var ErrCollectionsUnsupported = errors.New("collections not supported")
 
+// DefaultCollectionID represents _default._default collection
 const DefaultCollectionID = 0x0
 
 var _ sgbucket.KVStore = &Collection{}
@@ -94,7 +95,7 @@ func GetCouchbaseCollection(spec BucketSpec) (*Collection, error) {
 		return nil, err
 	}
 
-	return GetCollectionFromCluster(cluster, spec, 30)
+	return GetCollectionFromCluster(cluster, spec, time.Second*30)
 
 }
 
@@ -122,11 +123,11 @@ func getClusterVersion(cluster *gocb.Cluster) (int, int, error) {
 	return clusterCompatMajor, clusterCompatMinor, nil
 }
 
-func GetCollectionFromCluster(cluster *gocb.Cluster, spec BucketSpec, waitUntilReadySeconds int) (*Collection, error) {
+func GetCollectionFromCluster(cluster *gocb.Cluster, spec BucketSpec, waitUntilReady time.Duration) (*Collection, error) {
 
 	// Connect to bucket
 	bucket := cluster.Bucket(spec.BucketName)
-	err := bucket.WaitUntilReady(time.Duration(waitUntilReadySeconds)*time.Second, &gocb.WaitUntilReadyOptions{
+	err := bucket.WaitUntilReady(waitUntilReady, &gocb.WaitUntilReadyOptions{
 		RetryStrategy: &goCBv2FailFastRetryStrategy{},
 	})
 	if err != nil {

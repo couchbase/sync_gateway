@@ -28,7 +28,7 @@ if [ "${1:-}" == "-m" ]; then
     COUCHBASE_SERVER_VERSION="enterprise-7.0.3"
     SG_TEST_BUCKET_POOL_SIZE="3"
     SG_TEST_BUCKET_POOL_DEBUG="true"
-    GSI="false"
+    GSI="true"
     TLS_SKIP_VERIFY="false"
     SG_CBCOLLECT_ALWAYS="false"
 fi

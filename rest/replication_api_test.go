@@ -517,7 +517,7 @@ func TestPushReplicationAPI(t *testing.T) {
 	base.LongRunningTest(t)
 
 	base.RequireNumTestBuckets(t, 2)
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)
 
 	rt1, rt2, remoteURLString, teardown := setupSGRPeers(t)
 	defer teardown()
@@ -811,10 +811,13 @@ func TestReplicationRebalancePush(t *testing.T) {
 	_ = activeRT.PutDoc(docABC1, `{"source":"activeRT","channels":["ABC"]}`)
 	_ = activeRT.PutDoc(docDEF1, `{"source":"activeRT","channels":["DEF"]}`)
 
+	// This seems to fix the flaking. Wait until the change-cache has caught up with the latest writes to the database.
+	require.NoError(t, activeRT.WaitForPendingChanges())
+
 	// Create push replications, verify running
 	activeRT.createReplication("rep_ABC", remoteURLString, db.ActiveReplicatorTypePush, []string{"ABC"}, true, db.ConflictResolverDefault)
-	activeRT.WaitForReplicationStatus("rep_ABC", db.ReplicationStateRunning)
 	activeRT.createReplication("rep_DEF", remoteURLString, db.ActiveReplicatorTypePush, []string{"DEF"}, true, db.ConflictResolverDefault)
+	activeRT.WaitForReplicationStatus("rep_ABC", db.ReplicationStateRunning)
 	activeRT.WaitForReplicationStatus("rep_DEF", db.ReplicationStateRunning)
 
 	// wait for documents to be pushed to remote
@@ -1709,7 +1712,7 @@ func TestDBReplicationStatsTeardown(t *testing.T) {
 	tb := base.GetTestBucket(t)
 	defer tb.Close()
 	rt := NewRestTester(t, &RestTesterConfig{
-		persistentConfig: true,
+		PersistentConfig: true,
 		CustomTestBucket: tb,
 	})
 	defer rt.Close()

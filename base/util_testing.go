@@ -238,6 +238,15 @@ func TestUseCouchbaseServer() bool {
 	return strings.ToLower(backingStore) == strings.ToLower(TestEnvBackingStoreCouchbase)
 }
 
+// Check the whether tests are being run with SG_TEST_BACKING_STORE=Couchbase
+func TestUseExistingBucket() bool {
+	return TestUseExistingBucketName() != ""
+}
+
+func TestUseExistingBucketName() string {
+	return os.Getenv(TestEnvUseExistingBucket)
+}
+
 type TestAuthenticator struct {
 	Username   string
 	Password   string

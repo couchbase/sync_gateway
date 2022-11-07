@@ -588,15 +588,15 @@ func (user *userImpl) ExpandWildCardChannel(channels base.Set) base.Set {
 	return channels
 }
 
-func (user *userImpl) FilterToAvailableChannels(channels base.Set) (filtered ch.TimedSet, removed []string) {
+func (user *userImpl) FilterToAvailableChannels(channels ch.Set) (filtered ch.TimedSet, removed []string) {
 	filtered = ch.TimedSet{}
 	for channel := range channels {
-		if channel == ch.AllChannelWildcard {
+		if channel.Name == ch.AllChannelWildcard {
 			return user.InheritedChannels().Copy(), nil
 		}
-		added := filtered.AddChannel(channel, user.CanSeeChannelSince(channel))
+		added := filtered.AddChannel(channel.Name, user.CanSeeChannelSince(channel.Name))
 		if !added {
-			removed = append(removed, channel)
+			removed = append(removed, channel.Name)
 		}
 	}
 	return filtered, removed

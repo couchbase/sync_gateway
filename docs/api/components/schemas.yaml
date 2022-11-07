@@ -1991,6 +1991,9 @@ Startup-config:
       properties:
         serverless:
           $ref: '#/Serverless'
+        use_xattr_config:
+          description: Store database configurations in system xattrs
+          type: boolean
         stats_log_frequency:
           description: |-
             How often should stats be written to stats logs.

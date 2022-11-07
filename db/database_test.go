@@ -46,26 +46,7 @@ func setupTestDBForBucket(t testing.TB, bucket base.Bucket) (*Database, context.
 	dbcOptions := DatabaseContextOptions{
 		CacheOptions: &cacheOptions,
 	}
-	return setupTestDBForBucketWithOptions(t, bucket, dbcOptions)
-}
-
-// Sets up test db with the specified database context options.  Note that environment variables can
-// override somedbcOptions properties.
-func setupTestDBWithOptions(t testing.TB, dbcOptions DatabaseContextOptions) (*Database, context.Context) {
-
-	tBucket := base.GetTestBucket(t)
-	return setupTestDBForBucketWithOptions(t, tBucket, dbcOptions)
-}
-
-func setupTestDBForBucketWithOptions(t testing.TB, tBucket base.Bucket, dbcOptions DatabaseContextOptions) (*Database, context.Context) {
-	ctx := base.TestCtx(t)
-	AddOptionsFromEnvironmentVariables(&dbcOptions)
-	dbCtx, err := NewDatabaseContext(ctx, "db", tBucket, false, dbcOptions)
-	require.NoError(t, err, "Couldn't create context for database 'db'")
-	db, err := CreateDatabase(dbCtx)
-	require.NoError(t, err, "Couldn't create database 'db'")
-	ctx = db.AddDatabaseLogContext(ctx)
-	return db, ctx
+	return SetupTestDBForBucketWithOptions(t, bucket, dbcOptions)
 }
 
 func setupTestDBWithOptionsAndImport(t testing.TB, dbcOptions DatabaseContextOptions) (*Database, context.Context) {
@@ -87,7 +68,7 @@ func setupTestDBWithCacheOptions(t testing.TB, options CacheOptions) (*Database,
 	dbcOptions := DatabaseContextOptions{
 		CacheOptions: &options,
 	}
-	return setupTestDBWithOptions(t, dbcOptions)
+	return SetupTestDBWithOptions(t, dbcOptions)
 }
 
 // Forces UseViews:true in the database context.  Useful for testing w/ views while running
@@ -99,7 +80,7 @@ func setupTestDBWithViewsEnabled(t testing.TB) (*Database, context.Context) {
 	dbcOptions := DatabaseContextOptions{
 		UseViews: true,
 	}
-	return setupTestDBWithOptions(t, dbcOptions)
+	return SetupTestDBWithOptions(t, dbcOptions)
 }
 
 // Sets up a test bucket with _sync:seq initialized to a high value prior to database creation.  Used to test
@@ -153,26 +134,14 @@ func setupTestLeakyDBWithCacheOptions(t *testing.T, options CacheOptions, leakyO
 func setupTestNamedCollectionDBWithOptions(t testing.TB, dbcOptions DatabaseContextOptions) (*Database, context.Context) {
 
 	tBucket := base.GetTestBucketNamedCollection(t)
-	return setupTestDBForBucketWithOptions(t, tBucket, dbcOptions)
+	return SetupTestDBForBucketWithOptions(t, tBucket, dbcOptions)
 }
 
 // Sets up test db with the specified database context options in _default scope and collection.  Note that environment variables can
 // override somedbcOptions properties.
 func setupTestDefaultCollectionDBWithOptions(t testing.TB, dbcOptions DatabaseContextOptions) (*Database, context.Context) {
 
-	return setupTestDBWithOptions(t, dbcOptions)
-}
-
-// If certain environment variables are set, for example to turn on XATTR support, then update
-// the DatabaseContextOptions accordingly
-func AddOptionsFromEnvironmentVariables(dbcOptions *DatabaseContextOptions) {
-	if base.TestUseXattrs() {
-		dbcOptions.EnableXattr = true
-	}
-
-	if base.TestsDisableGSI() {
-		dbcOptions.UseViews = true
-	}
+	return SetupTestDBWithOptions(t, dbcOptions)
 }
 
 func assertHTTPError(t *testing.T, err error, status int) bool {
@@ -399,6 +368,30 @@ func TestGetRemovedAsUser(t *testing.T) {
 
 	_, err = db.Get1xRevBody(ctx, "doc1", rev1id, true, nil)
 	assertHTTPError(t, err, 404)
+}
+
+func TestIsServerless(t *testing.T) {
+	testCases := []struct {
+		title      string
+		serverless bool
+	}{
+		{
+			serverless: true,
+		},
+		{
+			serverless: false,
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(fmt.Sprintf("TestIsServerless with Serverless=%t", testCase.serverless), func(t *testing.T) {
+			db, ctx := setupTestDB(t)
+			defer db.Close(ctx)
+
+			db.Options.Serverless = testCase.serverless
+			assert.Equal(t, testCase.serverless, db.IsServerless())
+		})
+	}
 }
 
 // Test removal handling for unavailable multi-channel revisions.
@@ -802,8 +795,11 @@ func TestAllDocsOnly(t *testing.T) {
 
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
+	collectionID, err := db.GetSingleCollectionID()
+	require.NoError(t, err)
+
 	// Trigger creation of the channel cache for channel "all"
-	db.changeCache.getChannelCache().getSingleChannelCache("all")
+	db.changeCache.getChannelCache().getSingleChannelCache(channels.NewID("all", collectionID))
 
 	ids := make([]AllDocsEntry, 100)
 	for i := 0; i < 100; i++ {
@@ -846,7 +842,8 @@ func TestAllDocsOnly(t *testing.T) {
 	// There are 101 sequences overall, so the 1st one it has should be #52.
 	err = db.changeCache.waitForSequence(ctx, 101, base.DefaultWaitForSequence)
 	require.NoError(t, err)
-	changeLog := db.GetChangeLog("all", 0)
+
+	changeLog := db.GetChangeLog(channels.NewID("all", collectionID), 0)
 	require.Len(t, changeLog, 50)
 	assert.Equal(t, "alldoc-51", changeLog[0].DocID)
 
@@ -855,7 +852,7 @@ func TestAllDocsOnly(t *testing.T) {
 	changesCtx, changesCtxCancel := context.WithCancel(context.Background())
 	options.ChangesCtx = changesCtx
 	defer changesCtxCancel()
-	changes, err := db.GetChanges(ctx, channels.SetOf(t, "all"), options)
+	changes, err := db.GetChanges(ctx, channels.BaseSetOf(t, "all"), options)
 	assert.NoError(t, err, "Couldn't GetChanges")
 	require.Len(t, changes, 100)
 
@@ -868,7 +865,7 @@ func TestAllDocsOnly(t *testing.T) {
 			// The last entry in the changes response should be the deleted document
 			assert.True(t, change.Deleted)
 			assert.Equal(t, "alldoc-23", change.ID)
-			assert.Equal(t, channels.SetOf(t, "all"), change.Removed)
+			assert.Equal(t, channels.BaseSetOf(t, "all"), change.Removed)
 		} else {
 			// Verify correct ordering for all other documents
 			assert.Equal(t, fmt.Sprintf("alldoc-%02d", docIndex), change.ID)
@@ -883,7 +880,7 @@ func TestAllDocsOnly(t *testing.T) {
 	assert.True(t, sortedSeqAsc(changes), "Sequences should be ascending for all entries in the changes response")
 
 	options.IncludeDocs = true
-	changes, err = db.GetChanges(ctx, channels.SetOf(t, "KFJC"), options)
+	changes, err = db.GetChanges(ctx, channels.BaseSetOf(t, "KFJC"), options)
 	assert.NoError(t, err, "Couldn't GetChanges")
 	assert.Len(t, changes, 10)
 	for i, change := range changes {
@@ -910,7 +907,7 @@ func TestUpdatePrincipal(t *testing.T) {
 
 	// Create a user with access to channel ABC
 	authenticator := db.Authenticator(ctx)
-	user, _ := authenticator.NewUser("naomi", "letmein", channels.SetOf(t, "ABC"))
+	user, _ := authenticator.NewUser("naomi", "letmein", channels.BaseSetOf(t, "ABC"))
 	assert.NoError(t, authenticator.Save(user))
 
 	// Validate that a call to UpdatePrincipals with no changes to the user doesn't allocate a sequence
@@ -977,19 +974,23 @@ func TestConflicts(t *testing.T) {
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
 	// Instantiate channel cache for channel 'all'
-	db.changeCache.getChannelCache().getSingleChannelCache("all")
+	collectionID, err := db.GetSingleCollectionID()
+	require.NoError(t, err)
+
+	allChannel := channels.NewID("all", collectionID)
+	db.changeCache.getChannelCache().getSingleChannelCache(allChannel)
 
 	cacheWaiter := db.NewDCPCachingCountWaiter(t)
 
 	// Create rev 1 of "doc":
 	body := Body{"n": 1, "channels": []string{"all", "1"}}
-	_, _, err := db.PutExistingRevWithBody(ctx, "doc", body, []string{"1-a"}, false)
+	_, _, err = db.PutExistingRevWithBody(ctx, "doc", body, []string{"1-a"}, false)
 	assert.NoError(t, err, "add 1-a")
 
 	// Wait for rev to be cached
 	cacheWaiter.AddAndWait(1)
 
-	changeLog := db.GetChangeLog("all", 0)
+	changeLog := db.GetChangeLog(channels.NewID("all", collectionID), 0)
 	assert.Equal(t, 1, len(changeLog))
 
 	// Create two conflicting changes:
@@ -1023,7 +1024,7 @@ func TestConflicts(t *testing.T) {
 
 	// Verify the change-log of the "all" channel:
 	cacheWaiter.Wait()
-	changeLog = db.GetChangeLog("all", 0)
+	changeLog = db.GetChangeLog(allChannel, 0)
 	assert.Equal(t, 1, len(changeLog))
 	assert.Equal(t, uint64(3), changeLog[0].Sequence)
 	assert.Equal(t, "doc", changeLog[0].DocID)
@@ -1035,7 +1036,7 @@ func TestConflicts(t *testing.T) {
 		Conflicts:  true,
 		ChangesCtx: context.Background(),
 	}
-	changes, err := db.GetChanges(ctx, channels.SetOf(t, "all"), options)
+	changes, err := db.GetChanges(ctx, channels.BaseSetOf(t, "all"), options)
 	assert.NoError(t, err, "Couldn't GetChanges")
 	assert.Equal(t, 1, len(changes))
 	assert.Equal(t, &ChangeEntry{
@@ -1066,7 +1067,7 @@ func TestConflicts(t *testing.T) {
 	cacheWaiter.AddAndWait(1)
 
 	// Verify the _changes feed:
-	changes, err = db.GetChanges(ctx, channels.SetOf(t, "all"), options)
+	changes, err = db.GetChanges(ctx, channels.BaseSetOf(t, "all"), options)
 	assert.NoError(t, err, "Couldn't GetChanges")
 	assert.Equal(t, 1, len(changes))
 	assert.Equal(t, &ChangeEntry{
@@ -1089,7 +1090,7 @@ func TestConflictRevLimit(t *testing.T) {
 		AllowConflicts: base.BoolPtr(true),
 	}
 
-	db, ctx = setupTestDBWithOptions(t, dbOptions)
+	db, ctx = SetupTestDBWithOptions(t, dbOptions)
 	assert.Equal(t, uint32(DefaultRevsLimitConflicts), db.RevsLimit)
 	defer db.Close(ctx)
 
@@ -1098,7 +1099,7 @@ func TestConflictRevLimit(t *testing.T) {
 		AllowConflicts: base.BoolPtr(false),
 	}
 
-	db, ctx = setupTestDBWithOptions(t, dbOptions)
+	db, ctx = SetupTestDBWithOptions(t, dbOptions)
 	assert.Equal(t, uint32(DefaultRevsLimitNoConflicts), db.RevsLimit)
 	defer db.Close(ctx)
 
@@ -1418,7 +1419,7 @@ func TestAccessFunctionDb(t *testing.T) {
 	var err error
 	db.ChannelMapper = channels.NewChannelMapper(`function(doc){access(doc.users,doc.userChannels);}`, 0)
 
-	user, _ := authenticator.NewUser("naomi", "letmein", channels.SetOf(t, "Netflix"))
+	user, _ := authenticator.NewUser("naomi", "letmein", channels.BaseSetOf(t, "Netflix"))
 	user.SetExplicitRoles(channels.TimedSet{"animefan": channels.NewVbSimpleSequence(1), "tumblr": channels.NewVbSimpleSequence(1)}, 1)
 	assert.NoError(t, authenticator.Save(user), "Save")
 
@@ -1437,7 +1438,7 @@ func TestAccessFunctionDb(t *testing.T) {
 
 	user, err = authenticator.GetUser("naomi")
 	assert.NoError(t, err, "GetUser")
-	expected := channels.AtSequence(channels.SetOf(t, "Hulu", "Netflix", "!"), 1)
+	expected := channels.AtSequence(channels.BaseSetOf(t, "Hulu", "Netflix", "!"), 1)
 	assert.Equal(t, expected, user.Channels())
 
 	expected.AddChannel("CrunchyRoll", 2)
@@ -1505,7 +1506,7 @@ func TestUpdateDesignDoc(t *testing.T) {
 	assert.NotEqual(t, mapFunction, retrievedView.Map) // SG should wrap the map function, so they shouldn't be equal
 
 	authenticator := auth.NewAuthenticator(db.Bucket, db, auth.DefaultAuthenticatorOptions())
-	db.user, _ = authenticator.NewUser("naomi", "letmein", channels.SetOf(t, "Netflix"))
+	db.user, _ = authenticator.NewUser("naomi", "letmein", channels.BaseSetOf(t, "Netflix"))
 	err = db.PutDesignDoc("_design/pwn3d", sgbucket.DesignDoc{})
 	assertHTTPError(t, err, 403)
 }
@@ -1946,7 +1947,7 @@ func TestNewDatabaseContextWithOIDCProviderOptions(t *testing.T) {
 
 func TestGetOIDCProvider(t *testing.T) {
 	options := DatabaseContextOptions{OIDCOptions: mockOIDCOptions()}
-	context, ctx := setupTestDBWithOptions(t, options)
+	context, ctx := SetupTestDBWithOptions(t, options)
 	defer context.Close(ctx)
 
 	// Lookup default provider by empty name, which exists in database context
@@ -2370,7 +2371,7 @@ func TestResyncUpdateAllDocChannels(t *testing.T) {
 		channel("x")
 	}`
 
-	db, ctx := setupTestDBWithOptions(t, DatabaseContextOptions{QueryPaginationLimit: 5000})
+	db, ctx := SetupTestDBWithOptions(t, DatabaseContextOptions{QueryPaginationLimit: 5000})
 
 	_, err := db.UpdateSyncFun(ctx, syncFn)
 	assert.NoError(t, err)
@@ -2405,7 +2406,7 @@ func TestTombstoneCompactionStopWithManager(t *testing.T) {
 	}
 
 	bucket := base.NewLeakyBucket(base.GetTestBucket(t), base.LeakyBucketConfig{})
-	db, ctx := setupTestDBForBucketWithOptions(t, bucket, DatabaseContextOptions{})
+	db, ctx := SetupTestDBForBucketWithOptions(t, bucket, DatabaseContextOptions{})
 	db.PurgeInterval = 0
 	defer db.Close(ctx)
 
@@ -2473,16 +2474,16 @@ func TestGetAllUsers(t *testing.T) {
 	log.Printf("Creating users...")
 	// Create users
 	authenticator := db.Authenticator(ctx)
-	user, _ := authenticator.NewUser("userA", "letmein", channels.SetOf(t, "ABC"))
+	user, _ := authenticator.NewUser("userA", "letmein", channels.BaseSetOf(t, "ABC"))
 	_ = user.SetEmail("userA@test.org")
 	assert.NoError(t, authenticator.Save(user))
-	user, _ = authenticator.NewUser("userB", "letmein", channels.SetOf(t, "ABC"))
+	user, _ = authenticator.NewUser("userB", "letmein", channels.BaseSetOf(t, "ABC"))
 	_ = user.SetEmail("userB@test.org")
 	assert.NoError(t, authenticator.Save(user))
-	user, _ = authenticator.NewUser("userC", "letmein", channels.SetOf(t, "ABC"))
+	user, _ = authenticator.NewUser("userC", "letmein", channels.BaseSetOf(t, "ABC"))
 	user.SetDisabled(true)
 	assert.NoError(t, authenticator.Save(user))
-	user, _ = authenticator.NewUser("userD", "letmein", channels.SetOf(t, "ABC"))
+	user, _ = authenticator.NewUser("userD", "letmein", channels.BaseSetOf(t, "ABC"))
 	assert.NoError(t, authenticator.Save(user))
 
 	log.Printf("Getting users...")
@@ -2541,7 +2542,7 @@ func TestGetRoleIDs(t *testing.T) {
 	assert.ElementsMatch(t, []string{user1.Name()}, users)
 	assert.ElementsMatch(t, []string{role1.Name(), role2.Name()}, roles)
 
-	roles, err = db.GetRoleIDs(ctx)
+	roles, err = db.GetRoleIDs(ctx, db.UseViews(), false)
 	require.NoError(t, err)
 	assert.ElementsMatch(t, []string{role1.Name()}, roles)
 }

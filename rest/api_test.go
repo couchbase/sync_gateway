@@ -110,7 +110,7 @@ func TestDisablePublicBasicAuth(t *testing.T) {
 
 	// Double-check that even if we provide valid credentials we still won't be let in
 	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
-	user, err := a.NewUser("user1", "letmein", channels.SetOf(t, "foo"))
+	user, err := a.NewUser("user1", "letmein", channels.BaseSetOf(t, "foo"))
 	assert.NoError(t, err)
 	assert.NoError(t, a.Save(user))
 
@@ -365,7 +365,7 @@ func TestDocAttachmentOnRemovedRev(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Create a test user
-	user, err = a.NewUser("user1", "letmein", channels.SetOf(t, "foo"))
+	user, err = a.NewUser("user1", "letmein", channels.BaseSetOf(t, "foo"))
 	assert.NoError(t, a.Save(user))
 
 	response := rt.Send(RequestByUser("PUT", "/db/doc", `{"prop":true, "channels":["foo"]}`, "user1"))
@@ -404,7 +404,7 @@ func TestDocumentUpdateWithNullBody(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Create a test user
-	user, err = a.NewUser("user1", "letmein", channels.SetOf(t, "foo"))
+	user, err = a.NewUser("user1", "letmein", channels.BaseSetOf(t, "foo"))
 	assert.NoError(t, a.Save(user))
 	// Create document
 	response := rt.Send(RequestByUser("PUT", "/db/doc", `{"prop":true, "channels":["foo"]}`, "user1"))
@@ -491,7 +491,7 @@ func TestFunkyUsernames(t *testing.T) {
 			a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
 
 			// Create a test user
-			user, err := a.NewUser(tc.UserName, "letmein", channels.SetOf(t, "foo"))
+			user, err := a.NewUser(tc.UserName, "letmein", channels.BaseSetOf(t, "foo"))
 			require.NoError(t, err)
 			require.NoError(t, a.Save(user))
 
@@ -552,7 +552,7 @@ func TestFunkyRoleNames(t *testing.T) {
 			a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
 
 			// Create a test user
-			user, err := a.NewUser(username, "letmein", channels.SetOf(t))
+			user, err := a.NewUser(username, "letmein", channels.BaseSetOf(t))
 			require.NoError(t, err)
 			require.NoError(t, a.Save(user))
 
@@ -1943,7 +1943,7 @@ func TestLogin(t *testing.T) {
 	response := rt.SendRequest("PUT", "/db/doc", `{"hi": "there"}`)
 	RequireStatus(t, response, 401)
 
-	user, err = a.NewUser("pupshaw", "letmein", channels.SetOf(t, "*"))
+	user, err = a.NewUser("pupshaw", "letmein", channels.BaseSetOf(t, "*"))
 	assert.NoError(t, a.Save(user))
 
 	RequireStatus(t, rt.SendRequest("GET", "/db/_session", ""), 200)
@@ -2121,7 +2121,7 @@ func TestAllDocsAccessControl(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Create a user:
-	alice, err := a.NewUser("alice", "letmein", channels.SetOf(t, "Cinemax"))
+	alice, err := a.NewUser("alice", "letmein", channels.BaseSetOf(t, "Cinemax"))
 	assert.NoError(t, a.Save(alice))
 
 	// Get a single doc the user has access to:
@@ -2332,9 +2332,9 @@ func TestChannelAccessChanges(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Create users:
-	alice, err := a.NewUser("alice", "letmein", channels.SetOf(t, "zero"))
+	alice, err := a.NewUser("alice", "letmein", channels.BaseSetOf(t, "zero"))
 	assert.NoError(t, a.Save(alice))
-	zegpold, err := a.NewUser("zegpold", "letmein", channels.SetOf(t, "zero"))
+	zegpold, err := a.NewUser("zegpold", "letmein", channels.BaseSetOf(t, "zero"))
 	assert.NoError(t, a.Save(zegpold))
 
 	// Create some docs that give users access:
@@ -2520,7 +2520,7 @@ func TestAccessOnTombstone(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Create user:
-	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf(t, "zero"))
+	bernard, err := a.NewUser("bernard", "letmein", channels.BaseSetOf(t, "zero"))
 	assert.NoError(t, a.Save(bernard))
 
 	// Create doc that gives user access to its channel
@@ -3015,12 +3015,12 @@ func TestRoleAccessChanges(t *testing.T) {
 	response = rt.SendAdminRequest("PUT", "/db/_role/hipster", `{"admin_channels":["gamma"]}`)
 	RequireStatus(t, response, 201)
 	/*
-		alice, err := a.NewUser("alice", "letmein", channels.SetOf(t, "alpha"))
+		alice, err := a.NewUser("alice", "letmein", channels.BaseSetOf(t, "alpha"))
 		assert.NoError(t, a.Save(alice))
-		zegpold, err := a.NewUser("zegpold", "letmein", channels.SetOf(t, "beta"))
+		zegpold, err := a.NewUser("zegpold", "letmein", channels.BaseSetOf(t, "beta"))
 		assert.NoError(t, a.Save(zegpold))
 
-		hipster, err := a.NewRole("hipster", channels.SetOf(t, "gamma"))
+		hipster, err := a.NewRole("hipster", channels.BaseSetOf(t, "gamma"))
 		assert.NoError(t, a.Save(hipster))
 	*/
 
@@ -3452,7 +3452,7 @@ func TestStarAccess(t *testing.T) {
 	//
 	// Part 1 - Tests for user with single channel access:
 	//
-	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf(t, "books"))
+	bernard, err := a.NewUser("bernard", "letmein", channels.BaseSetOf(t, "books"))
 	assert.NoError(t, a.Save(bernard))
 
 	// GET /db/docid - basic test for channel user has
@@ -3527,7 +3527,7 @@ func TestStarAccess(t *testing.T) {
 	//
 
 	// Create a user:
-	fran, err := a.NewUser("fran", "letmein", channels.SetOf(t, "*"))
+	fran, err := a.NewUser("fran", "letmein", channels.BaseSetOf(t, "*"))
 	assert.NoError(t, a.Save(fran))
 
 	// GET /db/docid - basic test for doc that has channel
@@ -4181,7 +4181,7 @@ func TestLongpollWithWildcard(t *testing.T) {
 	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
 
 	// Create user:
-	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf(t, "PBS"))
+	bernard, err := a.NewUser("bernard", "letmein", channels.BaseSetOf(t, "PBS"))
 	assert.True(t, err == nil)
 	assert.NoError(t, a.Save(bernard))
 
@@ -4326,7 +4326,7 @@ func TestDocIDFilterResurrection(t *testing.T) {
 	// Create User
 	ctx := rt.Context()
 	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
-	jacques, err := a.NewUser("jacques", "letmein", channels.SetOf(t, "A", "B"))
+	jacques, err := a.NewUser("jacques", "letmein", channels.BaseSetOf(t, "A", "B"))
 	assert.NoError(t, err)
 	assert.NoError(t, a.Save(jacques))
 
@@ -4667,7 +4667,7 @@ func TestNumAccessErrors(t *testing.T) {
 	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
 
 	// Create a test user
-	user, err := a.NewUser("user", "letmein", channels.SetOf(t, "A"))
+	user, err := a.NewUser("user", "letmein", channels.BaseSetOf(t, "A"))
 	assert.NoError(t, err)
 	assert.NoError(t, a.Save(user))
 
@@ -6142,6 +6142,8 @@ func TestRemovingUserXattr(t *testing.T) {
 	if !base.IsEnterpriseEdition() {
 		t.Skipf("test is EE only - user xattrs")
 	}
+
+	defer db.SuspendSequenceBatching()()
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 

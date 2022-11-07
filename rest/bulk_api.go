@@ -307,7 +307,11 @@ func (h *handler) handleDumpChannel() error {
 	since := h.getIntQuery("since", 0)
 	base.InfofCtx(h.ctx(), base.KeyHTTP, "Dump channel %q", base.UD(channelName))
 
-	chanLog := h.db.GetChangeLog(channelName, since)
+	collectionID, err := h.db.GetSingleCollectionID()
+	if err != nil {
+		return err
+	}
+	chanLog := h.db.GetChangeLog(ch.NewID(channelName, collectionID), since)
 	if chanLog == nil {
 		return base.HTTPErrorf(http.StatusNotFound, "no such channel")
 	}

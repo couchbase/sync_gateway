@@ -110,6 +110,7 @@ func (bh *blipHandler) refreshUser() error {
 	if bc.userName != "" {
 		// Check whether user needs to be refreshed
 		bc.dbUserLock.Lock()
+		defer bc.dbUserLock.Unlock()
 		userChanged := bc.userChangeWaiter.RefreshUserCount()
 
 		// If changed, refresh the user and db while holding the lock
@@ -117,7 +118,6 @@ func (bh *blipHandler) refreshUser() error {
 			// Refresh the BlipSyncContext database
 			newUser, err := bc.blipContextDb.Authenticator(bh.loggingCtx).GetUser(bc.userName)
 			if err != nil {
-				bc.dbUserLock.Unlock()
 				return err
 			}
 			newUser.InitializeRoles()
@@ -127,7 +127,6 @@ func (bh *blipHandler) refreshUser() error {
 			// refresh the handler's database with the new BlipSyncContext database
 			bh.db = bh._copyContextDatabase()
 		}
-		bc.dbUserLock.Unlock()
 	}
 	return nil
 }

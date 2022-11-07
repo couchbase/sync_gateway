@@ -23,7 +23,7 @@ type tbpCluster interface {
 	getBucketNames() ([]string, error)
 	insertBucket(name string, quotaMB int) error
 	removeBucket(name string) error
-	openTestBucket(name tbpBucketName, waitUntilReadySeconds int, usingNamedCollections bool) (Bucket, Bucket, error)
+	openTestBucket(name tbpBucketName, waitUntilReady time.Duration, usingNamedCollections bool) (Bucket, Bucket, error)
 	supportsCollections() (bool, error)
 	close() error
 }
@@ -92,9 +92,10 @@ func initV2Cluster(server string) *gocb.Cluster {
 	if err != nil {
 		FatalfCtx(context.TODO(), "Couldn't connect to %q: %v", server, err)
 	}
-	err = cluster.WaitUntilReady(1*time.Minute, nil)
+	const clusterReadyTimeout = 90 * time.Second
+	err = cluster.WaitUntilReady(clusterReadyTimeout, nil)
 	if err != nil {
-		FatalfCtx(context.TODO(), "Cluster not ready: %v", err)
+		FatalfCtx(context.TODO(), "Cluster not ready after %ds: %v", int(clusterReadyTimeout.Seconds()), err)
 	}
 	return cluster
 }
@@ -137,7 +138,7 @@ func (c *tbpClusterV2) removeBucket(name string) error {
 }
 
 // openTestBucket opens the bucket of the given name for the gocb cluster in the given TestBucketPool.
-func (c *tbpClusterV2) openTestBucket(testBucketName tbpBucketName, waitUntilReadySeconds int, usingNamedCollections bool) (Bucket, Bucket, error) {
+func (c *tbpClusterV2) openTestBucket(testBucketName tbpBucketName, waitUntilReady time.Duration, usingNamedCollections bool) (Bucket, Bucket, error) {
 
 	bucketCluster := initV2Cluster(c.server)
 
@@ -146,7 +147,7 @@ func (c *tbpClusterV2) openTestBucket(testBucketName tbpBucketName, waitUntilRea
 	// Create scope and collection on server, first drop any scope and collect in the bucket and then create
 	// new scope + collection
 	bucket := bucketCluster.Bucket(bucketSpec.BucketName)
-	err := bucket.WaitUntilReady(time.Duration(waitUntilReadySeconds*4)*time.Second, nil)
+	err := bucket.WaitUntilReady(waitUntilReady, nil)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -156,7 +157,7 @@ func (c *tbpClusterV2) openTestBucket(testBucketName tbpBucketName, waitUntilRea
 		return nil, nil, err
 	}
 
-	bucketFromSpec, err := GetCollectionFromCluster(bucketCluster, bucketSpec, waitUntilReadySeconds)
+	bucketFromSpec, err := GetCollectionFromCluster(bucketCluster, bucketSpec, waitUntilReady)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -173,7 +174,7 @@ func (c *tbpClusterV2) openTestBucket(testBucketName tbpBucketName, waitUntilRea
 		defaultSpec := getBucketSpec(testBucketName, usingNamedCollections)
 		defaultSpec.Scope = nil
 		defaultSpec.Collection = nil
-		unnamedCollectionBucket, err := GetCollectionFromCluster(bucketCluster, defaultSpec, waitUntilReadySeconds)
+		unnamedCollectionBucket, err := GetCollectionFromCluster(bucketCluster, defaultSpec, waitUntilReady)
 		if err != nil {
 			return nil, nil, err
 		}
