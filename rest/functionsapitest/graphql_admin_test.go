@@ -11,7 +11,6 @@ package functionsapitest
 import (
 	"encoding/json"
 	"fmt"
-	"net/url"
 	"os"
 	"testing"
 
@@ -415,8 +414,8 @@ func TestValidGraphQLConfigurationValues(t *testing.T) {
 		assert.Equal(t, 200, response.Result().StatusCode)
 		assert.Equal(t, `{"data":{"square":16}}`, string(response.BodyBytes()))
 
-		queryParam := url.QueryEscape(`query($numberToBeSquared:Int!){ square(n:$numberToBeSquared) }`)
-		variableParam := url.QueryEscape(`{"numberToBeSquared": 4}`)
+		queryParam := `query($numberToBeSquared:Int!){ square(n:$numberToBeSquared) }`
+		variableParam := `{"numberToBeSquared": 4}`
 		getRequestUrl := fmt.Sprintf("/db/_graphql?query=%s&variables=%s", queryParam, variableParam)
 		response = rt.SendAdminRequest("GET", getRequestUrl, "")
 		assert.Equal(t, 200, response.Result().StatusCode)
@@ -558,8 +557,8 @@ func TestInvalidGraphQLConfigurationValues(t *testing.T) {
 		assert.Contains(t, responseMap["reason"], "Arguments too large")
 		assert.Contains(t, responseMap["error"], "Request Entity Too Large")
 
-		queryParam := url.QueryEscape(`query($numberToBeSquared:Int!){ square(n:$numberToBeSquared) }`)
-		variableParam := url.QueryEscape(`{"numberToBeSquared": 4}`)
+		queryParam := `query($numberToBeSquared:Int!){ square(n:$numberToBeSquared) }`
+		variableParam := `{"numberToBeSquared": 4}`
 		getRequestUrl := fmt.Sprintf("/db/_graphql?query=%s&variables=%s", queryParam, variableParam)
 
 		response = rt.SendAdminRequest("GET", getRequestUrl, "")
