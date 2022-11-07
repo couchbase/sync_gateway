@@ -11,6 +11,7 @@ package functionsapitest
 import (
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -39,10 +40,17 @@ func TestGraphQLQueryAdminOnly(t *testing.T) {
 		assert.Equal(t, 200, response.Result().StatusCode)
 		assert.Equal(t, `{"data":{"getUser":{"id":"1","name":"user1"}}}`, string(response.BodyBytes()))
 
-		queryParam := `query($id:ID!){ getUser(id:$id) { id , name } }`
-		variableParam := `{"id": 1}`
+		queryParam := url.QueryEscape(`query($id:ID!){ getUser(id:$id) { id , name } }`)
+		variableParam := url.QueryEscape(`{"id": 1}`)
 		getRequestUrl := fmt.Sprintf("/db/_graphql?query=%s&variables=%s", queryParam, variableParam)
 		response = rt.SendAdminRequest("GET", getRequestUrl, "")
+		assert.Equal(t, 200, response.Result().StatusCode)
+		assert.Equal(t, `{"data":{"getUser":{"id":"1","name":"user1"}}}`, string(response.BodyBytes()))
+
+		headerMap := map[string]string{
+			"Content-type": "application/graphql",
+		}
+		response = rt.SendAdminRequestWithHeaders("POST", "/db/_graphql", `query{getUser(id:1){id,name}}`, headerMap)
 		assert.Equal(t, 200, response.Result().StatusCode)
 		assert.Equal(t, `{"data":{"getUser":{"id":"1","name":"user1"}}}`, string(response.BodyBytes()))
 	})

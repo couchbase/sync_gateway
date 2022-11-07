@@ -11,6 +11,7 @@ package functionsapitest
 import (
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
 	"testing"
 
@@ -350,6 +351,10 @@ func TestValidGraphQLConfigurationValues(t *testing.T) {
 			"max_schema_size" : %d
 		}`, len(schema)))
 		assert.Equal(t, 200, response.Result().StatusCode)
+
+		response = rt.SendAdminRequest("GET", "/db/_config/graphql", "")
+		assert.Equal(t, 200, response.Result().StatusCode)
+		assert.Contains(t, string(response.BodyBytes()), `"max_schema_size":32`)
 	})
 
 	//If max_resolver_count >= given number of resolvers then Valid
@@ -372,6 +377,10 @@ func TestValidGraphQLConfigurationValues(t *testing.T) {
 			"max_resolver_count" : 2
 		}`)
 		assert.Equal(t, 200, response.Result().StatusCode)
+
+		response = rt.SendAdminRequest("GET", "/db/_config/graphql", "")
+		assert.Equal(t, 200, response.Result().StatusCode)
+		assert.Contains(t, string(response.BodyBytes()), `"max_resolver_count":2`)
 	})
 
 	//If max_request_size >= length of JSON-encoded arguments passed to a function then Valid
@@ -394,6 +403,25 @@ func TestValidGraphQLConfigurationValues(t *testing.T) {
 		response = rt.SendAdminRequest("POST", "/db/_graphql", requestQuery)
 		assert.Equal(t, 200, response.Result().StatusCode)
 		assert.Equal(t, `{"data":{"square":16}}`, string(response.BodyBytes()))
+
+		response = rt.SendAdminRequest("GET", "/db/_config/graphql", "")
+		assert.Equal(t, 200, response.Result().StatusCode)
+		assert.Contains(t, string(response.BodyBytes()), fmt.Sprintf(`"max_request_size":%d`, len(requestQuery)))
+
+		headerMap := map[string]string{
+			"Content-type": "application/graphql",
+		}
+		response = rt.SendAdminRequestWithHeaders("POST", "/db/_graphql", `query{square(n:4)}`, headerMap)
+		assert.Equal(t, 200, response.Result().StatusCode)
+		assert.Equal(t, `{"data":{"square":16}}`, string(response.BodyBytes()))
+
+		queryParam := url.QueryEscape(`query($numberToBeSquared:Int!){ square(n:$numberToBeSquared) }`)
+		variableParam := url.QueryEscape(`{"numberToBeSquared": 4}`)
+		getRequestUrl := fmt.Sprintf("/db/_graphql?query=%s&variables=%s", queryParam, variableParam)
+		response = rt.SendAdminRequest("GET", getRequestUrl, "")
+		assert.Equal(t, 200, response.Result().StatusCode)
+		assert.Equal(t, `{"data":{"square":16}}`, string(response.BodyBytes()))
+
 	})
 
 	//only one out of the schema or schemaFile is allowed
@@ -416,6 +444,10 @@ func TestValidGraphQLConfigurationValues(t *testing.T) {
 		assert.Equal(t, 200, response.Result().StatusCode)
 		err = os.Remove("schema.graphql")
 		assert.NoError(t, err)
+
+		response = rt.SendAdminRequest("GET", "/db/_config/graphql", "")
+		assert.Equal(t, 200, response.Result().StatusCode)
+		assert.Contains(t, string(response.BodyBytes()), `"schemaFile":"schema.graphql"`)
 	})
 }
 
@@ -513,6 +545,27 @@ func TestInvalidGraphQLConfigurationValues(t *testing.T) {
 		assert.NoError(t, err)
 
 		assert.Equal(t, 413, response.Result().StatusCode)
+		assert.Contains(t, responseMap["reason"], "Arguments too large")
+		assert.Contains(t, responseMap["error"], "Request Entity Too Large")
+
+		headerMap := map[string]string{
+			"Content-type": "application/graphql",
+		}
+		response = rt.SendAdminRequestWithHeaders("POST", "/db/_graphql", `query{square(n:4)}`, headerMap)
+		assert.Equal(t, 413, response.Result().StatusCode)
+		err = json.Unmarshal([]byte(string(response.BodyBytes())), &responseMap)
+		assert.NoError(t, err)
+		assert.Contains(t, responseMap["reason"], "Arguments too large")
+		assert.Contains(t, responseMap["error"], "Request Entity Too Large")
+
+		queryParam := url.QueryEscape(`query($numberToBeSquared:Int!){ square(n:$numberToBeSquared) }`)
+		variableParam := url.QueryEscape(`{"numberToBeSquared": 4}`)
+		getRequestUrl := fmt.Sprintf("/db/_graphql?query=%s&variables=%s", queryParam, variableParam)
+
+		response = rt.SendAdminRequest("GET", getRequestUrl, "")
+		assert.Equal(t, 200, response.Result().StatusCode)
+		err = json.Unmarshal([]byte(string(response.BodyBytes())), &responseMap)
+		assert.NoError(t, err)
 		assert.Contains(t, responseMap["reason"], "Arguments too large")
 		assert.Contains(t, responseMap["error"], "Request Entity Too Large")
 	})
