@@ -416,7 +416,9 @@ func setupTestDBWithFunctions(t *testing.T, fnConfig FunctionConfigMap, gqConfig
 		options.GraphQL, err = CompileGraphQL(gqConfig)
 		assert.NoError(t, err)
 	}
-	return db.SetupTestDBWithOptions(t, options)
+
+	tBucket := base.GetTestBucketDefaultCollection(t)
+	return db.SetupTestDBForBucketWithOptions(t, tBucket, options)
 }
 
 // createPrimaryIndex returns true if there was no index created before
