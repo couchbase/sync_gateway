@@ -66,14 +66,21 @@ func (h *handler) getFunctionArgs(maxSize *int) (string, map[string]interface{},
 	var err error
 	if h.rq.Method == "POST" {
 		// POST: Args come from the request body in JSON format:
+		input, err := processContentEncoding(h.rq.Header, h.requestBody, "application/json")
+		if err != nil {
+			return "", nil, err
+		}
 		if h.rq.ContentLength >= 0 {
 			if err := db.CheckRequestSize(h.rq.ContentLength, maxSize); err != nil {
 				return "", nil, err
 			}
 		}
-		err = h.readJSONInto(&args)
-		if err == nil && h.rq.ContentLength < 0 && maxSize != nil {
-			err = db.CheckRequestSize(int64(db.EstimateSizeOfJSON(args)), maxSize)
+		// Decode the body bytes into target structure.
+		decoder := json.NewDecoder(input)
+		err = decoder.Decode(&args)
+		_ = input.Close()
+		if err == nil {
+			err = db.CheckRequestSize(decoder.InputOffset(), maxSize)
 		}
 	} else {
 		// GET: Params come from the URL queries (`?key=value`):
