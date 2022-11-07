@@ -478,8 +478,8 @@ func TestGraphQLMaxResolverCount(t *testing.T) {
 	assert.ErrorContains(t, err, "too many GraphQL resolvers (> 1)")
 }
 
-// Unit Tests for possible errors in getSchema Function
-func TestErrorsInGetSchema(t *testing.T) {
+// Unit Tests for Invalid Schema/SchemaFile in the getSchema Function
+func TestInvalidSchemaAndSchemaFile(t *testing.T) {
 	t.Run("Both Schema and SchemaFile are provided", func(t *testing.T) {
 		var config = GraphQLConfig{
 			Schema:     base.StringPtr(`type Query{ square(n: Int!): Int! }`),
@@ -502,11 +502,11 @@ func TestErrorsInGetSchema(t *testing.T) {
 		var config = GraphQLConfig{
 			SchemaFile: base.StringPtr("dummySchemaFile.txt"),
 		}
-		_, err := os.ReadFile(*config.SchemaFile)
+		_, err := CompileGraphQL(&config)
 		assert.ErrorContains(t, err, "no such file or directory")
 	})
 
-	t.Run("cannot read File", func(t *testing.T) {
+	t.Run("cannot read SchemaFile", func(t *testing.T) {
 		var config = GraphQLConfig{
 			SchemaFile: base.StringPtr("dummySchemaFile.txt"),
 		}
@@ -515,24 +515,8 @@ func TestErrorsInGetSchema(t *testing.T) {
 	})
 }
 
-// // Unit Tests for Valid getSchema Function
-func TestGetSchema(t *testing.T) {
-	t.Run("Only Schema is Provided", func(t *testing.T) {
-		var config = GraphQLConfig{
-			Schema: base.StringPtr(`type Query{ square(n: Int!): Int! }`),
-			Resolvers: map[string]GraphQLResolverConfig{
-				"Query": {
-					"square": {
-						Type: "javascript",
-						Code: "function(context,args){return args.n * args.n;}",
-					},
-				},
-			},
-		}
-		_, err := CompileGraphQL(&config)
-		assert.ErrorIs(t, err, nil)
-	})
-
+// Unit Tests for Valid SchemaFile in the getSchema Function
+func TestValidSchemaFile(t *testing.T) {
 	t.Run("Only SchemaFile is Provided", func(t *testing.T) {
 		validSchema := "type Query {sum(n: Int!) : Int!}"
 		err := os.WriteFile("schema.graphql", []byte(validSchema), 0666)
@@ -540,10 +524,10 @@ func TestGetSchema(t *testing.T) {
 		var config = GraphQLConfig{
 			SchemaFile: base.StringPtr("schema.graphql"),
 		}
-		_, err1 := CompileGraphQL(&config)
-		assert.NoError(t, err1)
+		_, err = CompileGraphQL(&config)
+		assert.NoError(t, err)
 
 		err = os.Remove("schema.graphql")
-		assert.ErrorIs(t, err, nil)
+		assert.NoError(t, err)
 	})
 }
