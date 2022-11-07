@@ -171,7 +171,7 @@ func TestUnmarshalBrokenConfig(t *testing.T) {
 
 	rt := NewRestTester(t, &RestTesterConfig{PersistentConfig: true})
 	defer rt.Close()
-	resp := rt.SendAdminRequest(http.MethodPut, "/db/",
+	resp := rt.SendAdminRequest(http.MethodPut, "/newdb/",
 		fmt.Sprintf(
 			`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "use_views": %t}`,
 			tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(),
@@ -179,13 +179,15 @@ func TestUnmarshalBrokenConfig(t *testing.T) {
 	)
 
 	cnf := make(map[string]interface{}, 1)
-
 	_, err := rt.ServerContext().BootstrapContext.Connection.GetConfig(tb.GetName(), rt.ServerContext().Config.Bootstrap.ConfigGroupID, &cnf)
 	require.NoError(t, err)
 
-	cnf["graphql"] = `"{"resolvers": "foobar",  "foo": null}"`
+	// Add invalid json fields to the config
+	cnf["num_index_replicas"] = "0"
+	//cnf["graphql"] = `"{"resolvers": "foobar",  "foo": null}"`
 	marshaled, err := json.Marshal(cnf)
 
+	// Set the config to _sync:dbconfig:default
 	err = tb.SetRaw("_sync:dbconfig:default", 0, nil, marshaled)
 	require.NoError(t, err)
 
@@ -196,17 +198,17 @@ func TestUnmarshalBrokenConfig(t *testing.T) {
 			return bytes, err
 		})
 	require.NoError(t, err)
-
 	_, err = rt.ServerContext().fetchAndLoadConfigs(rt.Context(), false)
 	assert.NoError(t, err)
 
-	resp = rt.SendAdminRequest(http.MethodGet, "/db/", "{}")
+	resp = rt.SendAdminRequest(http.MethodGet, "/newdb/", "{}")
 	RequireStatus(t, resp, http.StatusNotFound)
-	resp = rt.SendAdminRequest(http.MethodPut, "/db2/", fmt.Sprintf(
+	resp = rt.SendAdminRequest(http.MethodDelete, "/newdb/", fmt.Sprintf(
 		`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "use_views": %t}`,
 		tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(),
 	))
-	RequireStatus(t, resp, http.StatusPreconditionFailed)
+	RequireStatus(t, resp, http.StatusOK)
+	_, _, err = tb.GetRaw("_sync:dbconfig:default")
 }
 
 func TestAutomaticConfigUpgradeExistingConfigAndNewGroup(t *testing.T) {

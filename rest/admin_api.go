@@ -910,19 +910,40 @@ func (h *handler) handlePutDbConfigImportFilter() error {
 // In non-persistent mode, the endpoint just removes the database from the node.
 func (h *handler) handleDeleteDB() error {
 	h.assertAdminOnly()
+	db := h.PathVar("olddb")
+
+	var bucket string
+
+	buckets, err := h.server.BootstrapContext.Connection.GetConfigBuckets()
+	if err != nil {
+		return err
+	}
+	for _, s := range buckets {
+		var config map[string]interface{}
+		_, err = h.server.BootstrapContext.Connection.GetConfig(s, h.server.Config.Bootstrap.ConfigGroupID, &config)
+		fmt.Sprintln(config)
+		if err != nil && err != base.ErrNotFound {
+			return err
+		}
+		if config["name"] == db {
+			bucket = s
+			break
+		}
+	}
+	if bucket == "" {
+		return base.HTTPErrorf(http.StatusNotFound, "Database not found")
+	}
 
 	if h.server.persistentConfig {
-		bucket := h.db.Bucket.GetName()
 		_, err := h.server.BootstrapContext.Connection.UpdateConfig(bucket, h.server.Config.Bootstrap.ConfigGroupID, func(rawBucketConfig []byte) (updatedConfig []byte, err error) {
 			return nil, nil
 		})
 		if err != nil {
-			return base.HTTPErrorf(http.StatusInternalServerError, "couldn't remove database %q from bucket %q: %s", base.MD(h.db.Name), base.MD(bucket), err.Error())
+			return base.HTTPErrorf(http.StatusInternalServerError, "couldn't remove database %q from bucket %q: %s", base.MD(db), base.MD(bucket), err.Error())
 		}
 	}
-
-	if !h.server.RemoveDatabase(h.ctx(), h.db.Name) {
-		return base.HTTPErrorf(http.StatusNotFound, "missing")
+	if !h.server.RemoveDatabase(h.ctx(), db) && bucket == "" {
+		return base.HTTPErrorf(http.StatusNotFound, "Database not found")
 	}
 	_, _ = h.response.Write([]byte("{}"))
 	return nil
