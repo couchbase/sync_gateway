@@ -14,7 +14,6 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -29,7 +28,10 @@ const (
 
 	// N1ql-encoded wildcard expression matching the '_sync:' prefix used for all sync gateway's system documents.
 	// Need to escape the underscore in '_sync' to prevent it being treated as a N1QL wildcard
-	SyncDocWildcard = `\\_sync:%`
+	SyncDocWildcard     = `\\_sync:%`
+	SyncUserWildcard    = `\\_sync:user:%`
+	SyncSessionWildcard = `\\_sync:session:%`
+	SyncRoleWildcard    = `\\_sync:role:%`
 )
 
 // Index and query definitions use syncToken ($sync) to represent the location of sync gateway's metadata.
@@ -50,6 +52,9 @@ const (
 	IndexAllDocs
 	IndexTombstones
 	IndexSyncDocs
+	IndexUser
+	IndexSession
+	IndexRole
 	indexTypeCount // Used for iteration
 )
 
@@ -58,6 +63,14 @@ type SGIndexFlags uint8
 const (
 	IdxFlagXattrOnly       = SGIndexFlags(1 << iota) // Index should only be created when running w/ xattrs=true
 	IdxFlagIndexTombstones                           // When xattrs=true, index should be created with {“retain_deleted_xattr”:true} in order to index tombstones
+)
+
+type indexCreationMode int
+
+const (
+	Always indexCreationMode = iota
+	Serverless
+	Dedicated
 )
 
 var (
@@ -69,6 +82,9 @@ var (
 		IndexAllDocs:    "allDocs",
 		IndexTombstones: "tombstones",
 		IndexSyncDocs:   "syncDocs",
+		IndexUser:       "users",
+		IndexSession:    "sessions",
+		IndexRole:       "roles",
 	}
 
 	// Index versions - must be incremented when index definition changes
@@ -79,6 +95,9 @@ var (
 		IndexAllDocs:    1,
 		IndexTombstones: 1,
 		IndexSyncDocs:   1,
+		IndexUser:       1,
+		IndexSession:    1,
+		IndexRole:       1,
 	}
 
 	// Previous index versions - must be appended to when index version changes
@@ -89,6 +108,9 @@ var (
 		IndexAllDocs:    {},
 		IndexTombstones: {},
 		IndexSyncDocs:   {},
+		IndexUser:       {},
+		IndexSession:    {},
+		IndexRole:       {},
 	}
 
 	// Expressions used to create index.
@@ -101,11 +123,17 @@ var (
 		IndexAllDocs:    "$sync.sequence, $sync.rev, $sync.flags, $sync.deleted",
 		IndexTombstones: "$sync.tombstoned_at",
 		IndexSyncDocs:   "META().id",
+		IndexUser:       "META().id, name, email, disabled",
+		IndexSession:    "META().id, username",
+		IndexRole:       "META().id, name, deleted",
 	}
 
 	indexFilterExpressions = map[SGIndexType]string{
 		IndexAllDocs:  fmt.Sprintf("META().id NOT LIKE '%s'", SyncDocWildcard),
 		IndexSyncDocs: fmt.Sprintf("META().id LIKE '%s'", SyncDocWildcard),
+		IndexUser:     fmt.Sprintf("META().id LIKE '%s'", SyncUserWildcard),
+		IndexSession:  fmt.Sprintf("META().id LIKE '%s'", SyncSessionWildcard),
+		IndexRole:     fmt.Sprintf("META().id LIKE '%s'", SyncRoleWildcard),
 	}
 
 	// Index flags - used to identify any custom handling
@@ -115,6 +143,19 @@ var (
 		IndexChannels:   IdxFlagIndexTombstones,
 		IndexAllDocs:    IdxFlagIndexTombstones,
 		IndexTombstones: IdxFlagXattrOnly | IdxFlagIndexTombstones,
+	}
+
+	// mode for when to create index
+	indexCreationModes = map[SGIndexType]indexCreationMode{
+		IndexAccess:     Always,
+		IndexRoleAccess: Always,
+		IndexChannels:   Always,
+		IndexAllDocs:    Always,
+		IndexTombstones: Always,
+		IndexSyncDocs:   Dedicated,
+		IndexUser:       Serverless,
+		IndexSession:    Serverless,
+		IndexRole:       Serverless,
 	}
 
 	// Queries used to check readiness on startup.  Only required for critical indexes.
@@ -152,6 +193,7 @@ func init() {
 			expression:       indexExpressions[i],
 			filterExpression: indexFilterExpressions[i],
 			flags:            indexFlags[i],
+			creationMode:     indexCreationModes[i],
 		}
 		// If a readiness query is specified for this index, mark the index as required and add to SGIndex
 		readinessQuery, ok := readinessQueries[i]
@@ -166,14 +208,15 @@ func init() {
 
 // SGIndex is used to manage the set of constants associated with each index definition
 type SGIndex struct {
-	simpleName       string       // Simplified index name (used to build fullIndexName)
-	expression       string       // Expression used to create index
-	filterExpression string       // (Optional) Filter expression used to create index
-	version          int          // Index version.  Must be incremented any time the index definition changes
-	previousVersions []int        // Previous versions of the index that will be removed during post_upgrade cleanup
-	required         bool         // Whether SG blocks on startup until this index is ready
-	readinessQuery   string       // Query used to determine view readiness
-	flags            SGIndexFlags // Additional index options
+	simpleName       string            // Simplified index name (used to build fullIndexName)
+	expression       string            // Expression used to create index
+	filterExpression string            // (Optional) Filter expression used to create index
+	version          int               // Index version.  Must be incremented any time the index definition changes
+	previousVersions []int             // Previous versions of the index that will be removed during post_upgrade cleanup
+	required         bool              // Whether SG blocks on startup until this index is ready
+	readinessQuery   string            // Query used to determine view readiness
+	flags            SGIndexFlags      // Additional index options
+	creationMode     indexCreationMode // Signal when to create indexes
 }
 
 func (i *SGIndex) fullIndexName(useXattrs bool) string {
@@ -196,6 +239,19 @@ func (i *SGIndex) shouldIndexTombstones(useXattrs bool) bool {
 
 func (i *SGIndex) isXattrOnly() bool {
 	return i.flags&IdxFlagXattrOnly != 0
+}
+
+// shouldCreate returns if given index should be created based on Serverless mode
+func (i *SGIndex) shouldCreate(isServerless bool) bool {
+	if i.creationMode == Always {
+		return true
+	}
+
+	if isServerless {
+		return i.creationMode == Serverless
+	}
+
+	return i.creationMode == Dedicated
 }
 
 // Creates index associated with specified SGIndex if not already present.  Always defers build - a subsequent BUILD INDEX
@@ -283,16 +339,21 @@ func (i *SGIndex) createIfNeeded(bucket base.N1QLStore, useXattrs bool, numRepli
 }
 
 // Initializes Sync Gateway indexes for bucket.  Creates required indexes if not found, then waits for index readiness.
-func InitializeIndexes(bucket base.N1QLStore, useXattrs bool, numReplicas uint, failFast bool) error {
+func InitializeIndexes(n1QLStore base.N1QLStore, useXattrs bool, numReplicas uint, failFast bool, isServerless bool) error {
 
 	base.InfofCtx(context.TODO(), base.KeyAll, "Initializing indexes with numReplicas: %d...", numReplicas)
 
 	// Create any indexes that aren't present
 	deferredIndexes := make([]string, 0)
-	allSGIndexes := make([]string, 0)
 	for _, sgIndex := range sgIndexes {
+
+		if !sgIndex.shouldCreate(isServerless) {
+			base.DebugfCtx(context.TODO(), base.KeyAll, "Skipping index for Serverless: %s...", sgIndex.simpleName)
+			continue
+		}
+
 		fullIndexName := sgIndex.fullIndexName(useXattrs)
-		isDeferred, err := sgIndex.createIfNeeded(bucket, useXattrs, numReplicas)
+		isDeferred, err := sgIndex.createIfNeeded(n1QLStore, useXattrs, numReplicas)
 		if err != nil {
 			return base.RedactErrorf("Unable to install index %s: %v", base.MD(sgIndex.simpleName), err)
 		}
@@ -300,107 +361,45 @@ func InitializeIndexes(bucket base.N1QLStore, useXattrs bool, numReplicas uint, 
 		if isDeferred {
 			deferredIndexes = append(deferredIndexes, fullIndexName)
 		}
-		allSGIndexes = append(allSGIndexes, fullIndexName)
 	}
 
 	// Issue BUILD INDEX for any deferred indexes.
 	if len(deferredIndexes) > 0 {
-		buildErr := bucket.BuildDeferredIndexes(deferredIndexes)
+		buildErr := base.BuildDeferredIndexes(n1QLStore, deferredIndexes)
 		if buildErr != nil {
 			base.InfofCtx(context.TODO(), base.KeyQuery, "Error building deferred indexes.  Error: %v", buildErr)
 			return buildErr
 		}
 	}
 
-	// Wait for newly built indexes to be online
-	for _, indexName := range deferredIndexes {
-		_ = bucket.WaitForIndexOnline(indexName)
-	}
-
 	// Wait for initial readiness queries to complete
-	return waitForIndexes(bucket, useXattrs, failFast)
+	return waitForIndexes(n1QLStore, useXattrs, isServerless, failFast)
 }
 
 // Issue a consistency=request_plus query against critical indexes to guarantee indexing is complete and indexes are ready.
-func waitForIndexes(bucket base.N1QLStore, useXattrs, failFast bool) error {
-	var indexesWg sync.WaitGroup
+func waitForIndexes(bucket base.N1QLStore, useXattrs, isServerless, failfast bool) error {
 	logCtx := context.TODO()
 	base.InfofCtx(logCtx, base.KeyAll, "Verifying index availability for bucket %s...", base.MD(bucket.GetName()))
-	indexErrors := make(chan error, len(sgIndexes))
+	var indexes []string
 
 	for _, sgIndex := range sgIndexes {
-		if sgIndex.required {
-			indexesWg.Add(1)
-			go func(index SGIndex) {
-				defer indexesWg.Done()
-				base.DebugfCtx(logCtx, base.KeyQuery, "Verifying index availability for index %s...", base.MD(index.fullIndexName(useXattrs)))
-				queryStatement := index.readinessQuery
-				if index.simpleName == QueryTypeChannels {
-					queryStatement = replaceActiveOnlyFilter(queryStatement, false)
-				}
-				queryStatement = replaceSyncTokensQuery(queryStatement, useXattrs)
-				queryStatement = replaceIndexTokensQuery(queryStatement, index, useXattrs)
-				queryErr := waitForIndex(bucket, index.fullIndexName(useXattrs), queryStatement, failFast)
-				if queryErr != nil {
-					base.WarnfCtx(logCtx, "Query error for statement [%s], err:%v", queryStatement, queryErr)
-					indexErrors <- queryErr
-				}
-				base.DebugfCtx(logCtx, base.KeyQuery, "Index %s verified as ready", base.MD(index.fullIndexName(useXattrs)))
-			}(sgIndex)
+		fullIndexName := sgIndex.fullIndexName(useXattrs)
+		if sgIndex.isXattrOnly() && !useXattrs {
+			continue
 		}
+		if !sgIndex.shouldCreate(isServerless) {
+			continue
+		}
+		indexes = append(indexes, fullIndexName)
 	}
 
-	indexesWg.Wait()
-	if len(indexErrors) > 0 {
-		err := <-indexErrors
-		close(indexErrors)
+	err := bucket.WaitForIndexesOnline(indexes, failfast)
+	if err != nil {
 		return err
 	}
 
 	base.InfofCtx(logCtx, base.KeyAll, "Indexes ready for bucket %s.", base.MD(bucket.GetName()))
 	return nil
-}
-
-// Issues adhoc consistency=request_plus query to determine if specified index is ready.
-// Retries indefinitely on timeout, backoff retry on all other errors.
-func waitForIndex(bucket base.N1QLStore, indexName string, queryStatement string, failFast bool) error {
-
-	logCtx := context.TODO()
-
-	// For non-timeout errors, backoff retry up to ~15m, to handle large initial indexing times
-	maxNumAttempts := 180
-	if failFast {
-		maxNumAttempts = 1
-	}
-	retrySleeper := base.CreateMaxDoublingSleeperFunc(maxNumAttempts, 100, 5000)
-	retryCount := 0
-	for {
-		resultSet, resultsError := bucket.Query(queryStatement, nil, base.RequestPlus, true)
-
-		// Immediately close results. We don't need these
-		if resultSet != nil {
-			resultSetCloseError := resultSet.Close()
-			if resultSetCloseError != nil {
-				base.InfofCtx(logCtx, base.KeyAll, "Failed to close query results when verifying index %q availability for bucket %q", base.MD(indexName), base.MD(bucket.GetName()))
-			}
-		}
-
-		if resultsError == nil {
-			return nil
-		}
-
-		if resultsError == base.ErrViewTimeoutError {
-			base.InfofCtx(logCtx, base.KeyAll, "Timeout waiting for index %q to be ready for bucket %q - retrying...", base.MD(indexName), base.MD(bucket.GetName()))
-		} else {
-			base.InfofCtx(logCtx, base.KeyAll, "Error waiting for index %q to be ready for bucket %q - retrying...", base.MD(indexName), base.MD(bucket.GetName()))
-			retryCount++
-			shouldContinue, sleepMs := retrySleeper(retryCount)
-			if !shouldContinue {
-				return resultsError
-			}
-			time.Sleep(time.Millisecond * time.Duration(sleepMs))
-		}
-	}
 }
 
 // Return true if the string representation of the error contains
@@ -506,4 +505,20 @@ func copySGIndexes(inputMap map[SGIndexType]SGIndex) map[SGIndexType]SGIndex {
 	}
 
 	return outputMap
+}
+
+// GetIndexesName returns names of the indexes that would be created for given Serverless mode and Xattr flag
+// it meant to be used in tests to know which indexes to drop as a part of manual cleanup
+func GetIndexesName(isServerless, xattr bool) []string {
+	indexesName := make([]string, 0)
+
+	for _, sgIndex := range sgIndexes {
+		if sgIndex.isXattrOnly() && !xattr {
+			continue
+		}
+		if sgIndex.shouldCreate(isServerless) {
+			indexesName = append(indexesName, sgIndex.fullIndexName(xattr))
+		}
+	}
+	return indexesName
 }

@@ -21,6 +21,7 @@ import (
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // Workaround SG #3570 by doing a polling loop until the star channel query returns 0 results.
@@ -302,7 +303,7 @@ var viewsAndGSIBucketInit base.TBPBucketInitFunc = func(ctx context.Context, b b
 		return err
 	}
 	tbp.Logf(ctx, "creating SG bucket indexes")
-	if err := InitializeIndexes(n1qlStore, base.TestUseXattrs(), 0, false); err != nil {
+	if err := InitializeIndexes(n1qlStore, base.TestUseXattrs(), 0, false, false); err != nil {
 		return err
 	}
 
@@ -400,4 +401,65 @@ func (dbc *DatabaseContext) GetPrincipalForTest(tb testing.TB, name string, isUs
 // TestBucketPoolWithIndexes runs a TestMain for packages that require creation of indexes
 func TestBucketPoolWithIndexes(m *testing.M, memWatermarkThresholdMB uint64) {
 	base.TestBucketPoolMain(m, viewsAndGSIBucketReadier, viewsAndGSIBucketInit, memWatermarkThresholdMB)
+}
+
+// Parse the plan looking for use of the fetch operation (appears as the key/value pair "#operator":"Fetch")
+// If there's no fetch operator in the plan, we can assume the query is covered by the index.
+// The plan returned by an EXPLAIN is a nested hierarchy with operators potentially appearing at different
+// depths, so need to traverse the JSON object.
+// https://docs.couchbase.com/server/6.0/n1ql/n1ql-language-reference/explain.html
+func IsCovered(plan map[string]interface{}) bool {
+	for key, value := range plan {
+		switch value := value.(type) {
+		case string:
+			if key == "#operator" && value == "Fetch" {
+				return false
+			}
+		case map[string]interface{}:
+			if !IsCovered(value) {
+				return false
+			}
+		case []interface{}:
+			for _, arrayValue := range value {
+				jsonArrayValue, ok := arrayValue.(map[string]interface{})
+				if ok {
+					if !IsCovered(jsonArrayValue) {
+						return false
+					}
+				}
+			}
+		default:
+		}
+	}
+	return true
+}
+
+// If certain environment variables are set, for example to turn on XATTR support, then update
+// the DatabaseContextOptions accordingly
+func AddOptionsFromEnvironmentVariables(dbcOptions *DatabaseContextOptions) {
+	if base.TestUseXattrs() {
+		dbcOptions.EnableXattr = true
+	}
+
+	if base.TestsDisableGSI() {
+		dbcOptions.UseViews = true
+	}
+}
+
+// Sets up test db with the specified database context options.  Note that environment variables can
+// override somedbcOptions properties.
+func SetupTestDBWithOptions(t testing.TB, dbcOptions DatabaseContextOptions) (*Database, context.Context) {
+	tBucket := base.GetTestBucket(t)
+	return SetupTestDBForBucketWithOptions(t, tBucket, dbcOptions)
+}
+
+func SetupTestDBForBucketWithOptions(t testing.TB, tBucket base.Bucket, dbcOptions DatabaseContextOptions) (*Database, context.Context) {
+	ctx := base.TestCtx(t)
+	AddOptionsFromEnvironmentVariables(&dbcOptions)
+	dbCtx, err := NewDatabaseContext(ctx, "db", tBucket, false, dbcOptions)
+	require.NoError(t, err, "Couldn't create context for database 'db'")
+	db, err := CreateDatabase(dbCtx)
+	require.NoError(t, err, "Couldn't create database 'db'")
+	ctx = db.AddDatabaseLogContext(ctx)
+	return db, ctx
 }

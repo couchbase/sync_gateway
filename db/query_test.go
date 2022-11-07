@@ -336,7 +336,7 @@ func TestCoveringQueries(t *testing.T) {
 	channelsStatement, params := db.buildChannelsQuery("ABC", 0, 10, 100, false)
 	plan, explainErr := n1QLStore.ExplainQuery(channelsStatement, params)
 	assert.NoError(t, explainErr, "Error generating explain for channels query")
-	covered := isCovered(plan)
+	covered := IsCovered(plan)
 	planJSON, err := base.JSONMarshal(plan)
 	assert.NoError(t, err)
 	assert.True(t, covered, "Channel query isn't covered by index: %s", planJSON)
@@ -345,7 +345,7 @@ func TestCoveringQueries(t *testing.T) {
 	channelStarStatement, params := db.buildChannelsQuery("*", 0, 10, 100, false)
 	plan, explainErr = n1QLStore.ExplainQuery(channelStarStatement, params)
 	assert.NoError(t, explainErr, "Error generating explain for star channel query")
-	covered = isCovered(plan)
+	covered = IsCovered(plan)
 	planJSON, err = base.JSONMarshal(plan)
 	assert.NoError(t, err)
 	assert.True(t, covered, "Star channel query isn't covered by index: %s", planJSON)
@@ -356,7 +356,7 @@ func TestCoveringQueries(t *testing.T) {
 	accessStatement := db.buildAccessQuery("user1")
 	plan, explainErr = n1QLStore.ExplainQuery(accessStatement, nil)
 	assert.NoError(t, explainErr, "Error generating explain for access query")
-	covered = isCovered(plan)
+	covered = IsCovered(plan)
 	planJSON, err = base.JSONMarshal(plan)
 	assert.NoError(t, err)
 	// assert.True(t, covered, "Access query isn't covered by index: %s", planJSON)
@@ -365,7 +365,7 @@ func TestCoveringQueries(t *testing.T) {
 	roleAccessStatement := db.buildRoleAccessQuery("user1")
 	plan, explainErr = n1QLStore.ExplainQuery(roleAccessStatement, nil)
 	assert.NoError(t, explainErr, "Error generating explain for roleAccess query")
-	covered = isCovered(plan)
+	covered = IsCovered(plan)
 	planJSON, err = base.JSONMarshal(plan)
 	assert.NoError(t, err)
 	// assert.True(t, !covered, "RoleAccess query isn't covered by index: %s", planJSON)
@@ -530,37 +530,6 @@ func TestRoleAccessQuery(t *testing.T) {
 		assert.Equal(t, 0, rowCount)
 		assert.NoError(t, results.Close())
 	}
-}
-
-// Parse the plan looking for use of the fetch operation (appears as the key/value pair "#operator":"Fetch")
-// If there's no fetch operator in the plan, we can assume the query is covered by the index.
-// The plan returned by an EXPLAIN is a nested hierarchy with operators potentially appearing at different
-// depths, so need to traverse the JSON object.
-// https://docs.couchbase.com/server/6.0/n1ql/n1ql-language-reference/explain.html
-func isCovered(plan map[string]interface{}) bool {
-	for key, value := range plan {
-		switch value := value.(type) {
-		case string:
-			if key == "#operator" && value == "Fetch" {
-				return false
-			}
-		case map[string]interface{}:
-			if !isCovered(value) {
-				return false
-			}
-		case []interface{}:
-			for _, arrayValue := range value {
-				jsonArrayValue, ok := arrayValue.(map[string]interface{})
-				if ok {
-					if !isCovered(jsonArrayValue) {
-						return false
-					}
-				}
-			}
-		default:
-		}
-	}
-	return true
 }
 
 func countQueryResults(results sgbucket.QueryResultIterator) int {
