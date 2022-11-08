@@ -131,6 +131,9 @@ ResolverLoop:
 		for fieldName, fnConfig := range resolver {
 			if fnConfig.Args != nil {
 				err = fmt.Errorf("'args' is not valid in a GraphQL resolver config")
+			} else if config.MaxCodeSize != nil && len(fnConfig.Code) > *config.MaxCodeSize {
+				err = fmt.Errorf("resolver %s code too large (> %d bytes)", fieldName, *config.MaxCodeSize)
+				multiError = multiError.Append(err)
 			} else if fieldName == "__typename" {
 				// The "__typename" resolver returns the name of the concrete type of an
 				// instance of an interface.
