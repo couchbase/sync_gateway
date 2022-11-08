@@ -2167,7 +2167,7 @@ func (db *Database) getChannelsAndAccess(doc *Document, body Body, metaMap map[s
 
 		var output *channels.ChannelMapperOutput
 		output, err = db.ChannelMapper.MapToChannelsAndAccess(body, oldJson, metaMap,
-			makeUserCtx(db.user))
+			MakeUserCtx(db.user))
 
 		db.DbStats.Database().SyncFunctionTime.Add(time.Since(startTime).Nanoseconds())
 
@@ -2208,7 +2208,7 @@ func (db *Database) getChannelsAndAccess(doc *Document, body Body, metaMap map[s
 }
 
 // Creates a userCtx object to be passed to the sync function
-func makeUserCtx(user auth.User) map[string]interface{} {
+func MakeUserCtx(user auth.User) map[string]interface{} {
 	if user == nil {
 		return nil
 	}

@@ -32,6 +32,7 @@ import (
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
+	"github.com/couchbase/sync_gateway/db/functions"
 )
 
 // The URL that stats will be reported to if deployment_id is set in the config
@@ -804,6 +805,27 @@ func dbcOptionsFromConfig(sc *ServerContext, config *DbConfig, dbName string) (d
 		ClientPartitionWindow:     clientPartitionWindow,
 		BcryptCost:                bcryptCost,
 		GroupID:                   groupID,
+		// UserQueries:               config.UserQueries,   // behind feature flag (see below)
+		// UserFunctions:             config.UserFunctions, // behind feature flag (see below)
+		// GraphQL:                   config.GraphQL,       // behind feature flag (see below)
+	}
+
+	if sc.config.Unsupported.UserQueries != nil && *sc.config.Unsupported.UserQueries {
+		var err error
+		if config.UserFunctions != nil {
+			contextOptions.UserFunctions, err = functions.CompileFunctions(*config.UserFunctions)
+			if err != nil {
+				return contextOptions, err
+			}
+		}
+		if config.GraphQL != nil {
+			contextOptions.GraphQL, err = functions.CompileGraphQL(config.GraphQL)
+			if err != nil {
+				return contextOptions, err
+			}
+		}
+	} else if config.UserFunctions != nil || config.GraphQL != nil {
+		base.WarnfCtx(context.TODO(), `Database config options "functions" and "graphql" ignored because unsupported.user_queries feature flag is not enabled`)
 	}
 
 	return contextOptions, nil

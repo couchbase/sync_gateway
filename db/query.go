@@ -28,17 +28,18 @@ type QueryIdRow struct {
 }
 
 const (
-	QueryTypeAccess       = "access"
-	QueryTypeRoleAccess   = "roleAccess"
-	QueryTypeChannels     = "channels"
-	QueryTypeChannelsStar = "channelsStar"
-	QueryTypeSequences    = "sequences"
-	QueryTypePrincipals   = "principals"
-	QueryTypeSessions     = "sessions"
-	QueryTypeTombstones   = "tombstones"
-	QueryTypeResync       = "resync"
-	QueryTypeAllDocs      = "allDocs"
-	QueryTypeUsers        = "users"
+	QueryTypeAccess             = "access"
+	QueryTypeRoleAccess         = "roleAccess"
+	QueryTypeChannels           = "channels"
+	QueryTypeChannelsStar       = "channelsStar"
+	QueryTypeSequences          = "sequences"
+	QueryTypePrincipals         = "principals"
+	QueryTypeSessions           = "sessions"
+	QueryTypeTombstones         = "tombstones"
+	QueryTypeResync             = "resync"
+	QueryTypeAllDocs            = "allDocs"
+	QueryTypeUsers              = "users"
+	QueryTypeUserFunctionPrefix = "function:" // Prefix applied to named functions from config file
 )
 
 type SGQuery struct {

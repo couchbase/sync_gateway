@@ -136,6 +136,8 @@ type DatabaseContextOptions struct {
 	SecureCookieOverride          bool             // Pass-through DBConfig.SecureCookieOverride
 	SessionCookieName             string           // Pass-through DbConfig.SessionCookieName
 	SessionCookieHttpOnly         bool             // Pass-through DbConfig.SessionCookieHTTPOnly
+	UserFunctions                 *UserFunctions   // JS/N1QL functions clients can call
+	GraphQL                       GraphQL          // GraphQL query interface
 	AllowConflicts                *bool            // False forbids creating conflicts
 	SendWWWAuthenticateHeader     *bool            // False disables setting of 'WWW-Authenticate' header
 	DisablePasswordAuthentication bool             // True enforces OIDC/guest only
@@ -187,6 +189,7 @@ type UnsupportedOptions struct {
 	SgrTlsSkipVerify          bool                     `json:"sgr_tls_skip_verify,omitempty"`           // Config option to enable self-signed certs for SG-Replicate testing.
 	RemoteConfigTlsSkipVerify bool                     `json:"remote_config_tls_skip_verify,omitempty"` // Config option to enable self signed certificates for external JavaScript load.
 	GuestReadOnly             bool                     `json:"guest_read_only,omitempty"`               // Config option to restrict GUEST document access to read-only
+	ConnectedClient           bool                     `json:"connected_client,omitempty"`              // Enables BLIP connected-client APIs
 }
 
 type WarningThresholds struct {
@@ -1708,4 +1711,29 @@ func (context *DatabaseContext) LastSequence() (uint64, error) {
 func (context *DatabaseContext) IsGuestReadOnly() bool {
 	return context.Options.UnsupportedOptions != nil && context.Options.UnsupportedOptions.GuestReadOnly
 
+}
+
+//////// TIMEOUTS
+
+// Calls a function, synchronously, while imposing a timeout on the Database's Context. Any call to CheckTimeout while the function is running will return an error if the timeout has expired.
+// The function will *not* be aborted automatically! Its code must check for timeouts by calling CheckTimeout periodically, returning once that produces an error.
+func (db *Database) WithTimeout(ctx context.Context, timeout time.Duration, operation func(tmCtx context.Context) error) error {
+	newCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer func() {
+		cancel()
+	}()
+	return operation(newCtx)
+}
+
+// Returns an HTTP timeout (408) error if the Database's Context has an expired timeout or has been explicitly canceled. (See WithTimeout.)
+func (db *Database) CheckTimeout(ctx context.Context) error {
+	if ctx == nil {
+		return nil
+	}
+	select {
+	case <-ctx.Done():
+		return base.HTTPErrorf(http.StatusRequestTimeout, "Request timed out")
+	default:
+		return nil
+	}
 }

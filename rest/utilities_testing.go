@@ -49,6 +49,7 @@ type RestTesterConfig struct {
 	DatabaseConfig                  *DatabaseConfig  // Supports additional config options.  BucketConfig, Name, Sync, Unsupported will be ignored (overridden)
 	InitSyncSeq                     uint64           // If specified, initializes _sync:seq on bucket creation.  Not supported when running against walrus
 	EnableNoConflictsMode           bool             // Enable no-conflicts mode.  By default, conflicts will be allowed, which is the default behavior
+	EnableUserQueries               bool             // Enable the feature-flag for user N1QL/etc queries
 	distributedIndex                bool             // Test with walrus-based index bucket
 	TestBucket                      *base.TestBucket // If set, use this bucket instead of requesting a new one.
 	adminInterface                  string           // adminInterface overrides the default admin interface.
@@ -151,6 +152,8 @@ func (rt *RestTester) Bucket() base.Bucket {
 	sc.API.EnableAdminAuthenticationPermissionsCheck = &rt.enableAdminAuthPermissionsCheck
 	sc.Bootstrap.UseTLSServer = &rt.RestTesterConfig.useTLSServer
 	sc.Bootstrap.ServerTLSSkipVerify = base.BoolPtr(base.TestTLSSkipVerify())
+
+	sc.Unsupported.UserQueries = base.BoolPtr(rt.EnableUserQueries)
 
 	if rt.RestTesterConfig.groupID != nil {
 		sc.Bootstrap.ConfigGroupID = *rt.RestTesterConfig.groupID

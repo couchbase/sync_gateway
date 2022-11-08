@@ -32,6 +32,7 @@ import (
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
+	"github.com/couchbase/sync_gateway/db/functions"
 )
 
 var (
@@ -154,6 +155,8 @@ type DbConfig struct {
 	UserXattrKey                     string                           `json:"user_xattr_key,omitempty"`                       // Key of user xattr that will be accessible from the Sync Function. If empty the feature will be disabled.
 	ClientPartitionWindowSecs        *int                             `json:"client_partition_window_secs,omitempty"`         // How long clients can remain offline for without losing replication metadata. Default 30 days (in seconds)
 	Guest                            *db.PrincipalConfig              `json:"guest,omitempty"`                                // Guest user settings
+	GraphQL                          *functions.GraphQLConfig         `json:"graphql,omitempty"`                              // GraphQL configuration & resolver fns
+	UserFunctions                    *functions.FunctionsConfig       `json:"functions,omitempty"`                            // Named JS fns for clients to call
 }
 
 type DeltaSyncConfig struct {
@@ -702,6 +705,17 @@ func (dbConfig *DbConfig) validateVersion(isEnterpriseEdition, validateOIDCConfi
 			if err != nil {
 				multiError = multiError.Append(fmt.Errorf("failed to validate OIDC configuration for %s: %w", name, err))
 			}
+		}
+	}
+
+	if dbConfig.UserFunctions != nil {
+		if err := functions.ValidateFunctions(context.TODO(), *dbConfig.UserFunctions); err != nil {
+			multiError = multiError.Append(err)
+		}
+	}
+	if dbConfig.GraphQL != nil {
+		if err := dbConfig.GraphQL.Validate(context.TODO()); err != nil {
+			multiError = multiError.Append(err)
 		}
 	}
 

@@ -682,6 +682,29 @@ func (h *handler) userAgentIs(agent string) bool {
 	return len(userAgent) > len(agent) && userAgent[len(agent)] == '/' && strings.HasPrefix(userAgent, agent)
 }
 
+// Returns true if the header exists, and its value matches the given etag.
+// (The etag parameter should not be double-quoted; the function will take care of that.)
+func (h *handler) headerMatchesEtag(headerName string, etag string) bool {
+	value := h.rq.Header.Get(headerName)
+	return value != "" && strings.Contains(value, `"`+etag+`"`)
+}
+
+// Returns true if the header exists, and its value does NOT match the given etag.
+// (The etag parameter should not be double-quoted; the function will take care of that.)
+func (h *handler) headerDoesNotMatchEtag(etag string) bool {
+	value := h.rq.Header.Get("If-Match")
+	return value != "" && !strings.Contains(value, `"`+etag+`"`)
+}
+
+func (h *handler) getEtag(headerName string) (string, error) {
+	value := h.rq.Header.Get(headerName)
+	if len(value) > 0 && !strings.Contains(value, `"`) {
+		return "", fmt.Errorf("ETag value is not quoted when trying to read the value")
+	}
+	eTag := strings.Trim(value, `"`)
+	return eTag, nil
+}
+
 // Returns the request body as a raw byte array.
 func (h *handler) readBody() ([]byte, error) {
 	return ioutil.ReadAll(h.requestBody)
@@ -691,6 +714,19 @@ func (h *handler) readBody() ([]byte, error) {
 func (h *handler) readJSON() (db.Body, error) {
 	var body db.Body
 	return body, h.readJSONInto(&body)
+}
+
+// Parses a JSON request body, returning it as a Body map, leaving numbers as float64.
+func (h *handler) readJSONWithoutNumber() (db.Body, error) {
+	var body db.Body
+	input, err := processContentEncoding(h.rq.Header, h.requestBody, "application/json")
+	if err != nil {
+		return body, err
+	}
+	decoder := base.JSONDecoder(input)
+	err = decoder.Decode(&body)
+	_ = input.Close()
+	return body, err
 }
 
 // Parses a JSON request body into a custom structure.
@@ -860,6 +896,12 @@ func (h *handler) formattedEffectiveUserName() string {
 
 func (h *handler) setHeader(name string, value string) {
 	h.response.Header().Set(name, value)
+}
+
+// Adds an "Etag" header to the response, whose value is the parameter wrapped in double-quotes.
+func (h *handler) setEtag(etag string) {
+	h.setHeader("Etag", `"`+etag+`"`)
+	// (Note: etags should not contain double-quotes (per RFC7232 2.3) so no escaping needed)
 }
 
 func (h *handler) setStatus(status int, message string) {
