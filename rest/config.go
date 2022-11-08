@@ -630,7 +630,7 @@ func (dbConfig *DbConfig) validateVersion(isEnterpriseEdition, validateOIDCConfi
 
 	if dbConfig.Sync != nil {
 		if strings.TrimSpace(*dbConfig.Sync) != "" {
-			_, err = sgbucket.NewJSRunner(*dbConfig.Sync)
+			_, err = sgbucket.NewJSRunner(*dbConfig.Sync, 0)
 			if err != nil {
 				multiError = multiError.Append(fmt.Errorf("sync function contains invalid javascript syntax: %v", err))
 			}
@@ -641,7 +641,7 @@ func (dbConfig *DbConfig) validateVersion(isEnterpriseEdition, validateOIDCConfi
 
 	if dbConfig.ImportFilter != nil {
 		if strings.TrimSpace(*dbConfig.ImportFilter) != "" {
-			_, err = sgbucket.NewJSRunner(*dbConfig.ImportFilter)
+			_, err = sgbucket.NewJSRunner(*dbConfig.ImportFilter, 0)
 			if err != nil {
 				multiError = multiError.Append(fmt.Errorf("import filter function contains invalid javascript syntax: %v", err))
 			}

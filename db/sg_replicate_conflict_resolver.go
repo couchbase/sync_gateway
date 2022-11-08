@@ -13,6 +13,7 @@ package db
 import (
 	"errors"
 	"fmt"
+	"time"
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
@@ -198,7 +199,7 @@ type ConflictResolverJSServer struct {
 func NewConflictResolverJSServer(fnSource string) *ConflictResolverJSServer {
 	base.Debugf(base.KeyReplicate, "Creating new ConflictResolverFunction")
 	return &ConflictResolverJSServer{
-		JSServer: sgbucket.NewJSServer(fnSource, kTaskCacheSize, newConflictResolverRunner),
+		JSServer: sgbucket.NewJSServer(fnSource, 0, kTaskCacheSize, newConflictResolverRunner),
 	}
 }
 
@@ -234,9 +235,9 @@ func (i *ConflictResolverJSServer) EvaluateFunction(conflict Conflict) (Body, er
 }
 
 // Compiles a JavaScript event function to a conflictResolverRunner object.
-func newConflictResolverRunner(funcSource string) (sgbucket.JSServerTask, error) {
+func newConflictResolverRunner(funcSource string, timeout time.Duration) (sgbucket.JSServerTask, error) {
 	conflictResolverRunner := &sgbucket.JSRunner{}
-	err := conflictResolverRunner.InitWithLogging(funcSource,
+	err := conflictResolverRunner.InitWithLogging(funcSource, timeout,
 		func(s string) { base.Errorf(base.KeyJavascript.String()+": ConflictResolver %s", base.UD(s)) },
 		func(s string) { base.Infof(base.KeyJavascript, "ConflictResolver %s", base.UD(s)) })
 	if err != nil {

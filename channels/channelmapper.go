@@ -11,6 +11,7 @@ package channels
 import (
 	"encoding/json"
 	"strconv"
+	"time"
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
@@ -41,8 +42,8 @@ const DefaultSyncFunction = `function(doc){channel(doc.channels);}`
 
 func NewChannelMapper(fnSource string) *ChannelMapper {
 	return &ChannelMapper{
-		JSServer: sgbucket.NewJSServer(fnSource, kTaskCacheSize,
-			func(fnSource string) (sgbucket.JSServerTask, error) {
+		JSServer: sgbucket.NewJSServer(fnSource, 0, kTaskCacheSize,
+			func(fnSource string, timeout time.Duration) (sgbucket.JSServerTask, error) {
 				return NewSyncRunner(fnSource)
 			}),
 	}

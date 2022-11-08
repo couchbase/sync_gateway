@@ -117,7 +117,7 @@ type SyncRunner struct {
 func NewSyncRunner(funcSource string) (*SyncRunner, error) {
 	funcSource = wrappedFuncSource(funcSource)
 	runner := &SyncRunner{}
-	err := runner.InitWithLogging(funcSource,
+	err := runner.InitWithLogging(funcSource, 0,
 		func(s string) { base.Errorf(base.KeyJavascript.String()+": Sync %s", base.UD(s)) },
 		func(s string) { base.Infof(base.KeyJavascript, "Sync %s", base.UD(s)) })
 	if err != nil {
