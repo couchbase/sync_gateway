@@ -57,7 +57,7 @@ func nextChannelViewEntry(results sgbucket.QueryResultIterator) (*LogEntry, bool
 
 }
 
-func nextChannelQueryEntry(results sgbucket.QueryResultIterator) (*LogEntry, bool) {
+func nextChannelQueryEntry(results sgbucket.QueryResultIterator, collectionID uint32) (*LogEntry, bool) {
 
 	var queryRow QueryChannelsRow
 	found := results.Next(&queryRow)
@@ -70,6 +70,7 @@ func nextChannelQueryEntry(results sgbucket.QueryResultIterator) (*LogEntry, boo
 		RevID:        queryRow.Rev,
 		Flags:        queryRow.Flags,
 		TimeReceived: time.Now(),
+		CollectionID: collectionID,
 	}
 
 	if queryRow.RemovalRev != "" {
@@ -116,7 +117,11 @@ func (dbc *DatabaseContext) getChangesInChannelFromQuery(ctx context.Context, ch
 			if usingViews {
 				entry, found = nextChannelViewEntry(queryResults)
 			} else {
-				entry, found = nextChannelQueryEntry(queryResults)
+				collectionID, err := dbc.GetSingleCollectionID()
+				if err != nil {
+					return nil, err
+				}
+				entry, found = nextChannelQueryEntry(queryResults, collectionID)
 			}
 
 			if !found {
@@ -199,6 +204,10 @@ func (dbc *DatabaseContext) getChangesForSequences(ctx context.Context, sequence
 	if err != nil {
 		return nil, err
 	}
+	collectionID, err := dbc.GetSingleCollectionID()
+	if err != nil {
+		return nil, err
+	}
 
 	// Convert the output to LogEntries.  Channel query and view result rows have different structure, so need to unmarshal independently.
 	for {
@@ -207,7 +216,7 @@ func (dbc *DatabaseContext) getChangesForSequences(ctx context.Context, sequence
 		if usingViews {
 			entry, found = nextChannelViewEntry(queryResults)
 		} else {
-			entry, found = nextChannelQueryEntry(queryResults)
+			entry, found = nextChannelQueryEntry(queryResults, collectionID)
 		}
 
 		if !found {

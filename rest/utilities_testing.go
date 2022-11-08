@@ -403,7 +403,8 @@ func (rt *RestTester) SequenceForDoc(docid string) (seq uint64, err error) {
 	if database == nil {
 		return 0, fmt.Errorf("No database found")
 	}
-	doc, err := database.GetDocument(base.TestCtx(rt.TB), docid, db.DocUnmarshalAll)
+	collection := database.GetSingleDatabaseCollection()
+	doc, err := collection.GetDocument(base.TestCtx(rt.TB), docid, db.DocUnmarshalAll)
 	if err != nil {
 		return 0, err
 	}

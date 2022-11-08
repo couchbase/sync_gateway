@@ -462,9 +462,10 @@ func (c *Checkpointer) _setCheckpoints(seq string, status *ReplicationStatus) (e
 func (c *Checkpointer) getLocalCheckpoint() (checkpoint *replicationCheckpoint, err error) {
 	base.TracefCtx(c.ctx, base.KeyReplicate, "getLocalCheckpoint")
 
-	checkpointBytes, err := c.activeDB.GetSpecialBytes(DocTypeLocal, CheckpointDocIDPrefix+c.clientID)
+	collection := c.activeDB.GetSingleDatabaseCollection()
+	checkpointBytes, err := collection.GetSpecialBytes(DocTypeLocal, CheckpointDocIDPrefix+c.clientID)
 	if err != nil {
-		if !base.IsKeyNotFoundError(c.activeDB.Bucket, err) {
+		if !base.IsKeyNotFoundError(collection.Bucket, err) {
 			return &replicationCheckpoint{}, err
 		}
 		base.DebugfCtx(c.ctx, base.KeyReplicate, "couldn't find existing local checkpoint for client %q", c.clientID)
@@ -476,7 +477,8 @@ func (c *Checkpointer) getLocalCheckpoint() (checkpoint *replicationCheckpoint, 
 }
 
 func (c *Checkpointer) setLocalCheckpoint(checkpoint *replicationCheckpoint) (newRev string, err error) {
-	newRev, err = c.activeDB.putSpecial(DocTypeLocal, CheckpointDocIDPrefix+c.clientID, checkpoint.Rev, checkpoint.AsBody())
+	collection := c.activeDB.GetSingleDatabaseCollection()
+	newRev, err = collection.putSpecial(DocTypeLocal, CheckpointDocIDPrefix+c.clientID, checkpoint.Rev, checkpoint.AsBody())
 	if err != nil {
 		base.TracefCtx(c.ctx, base.KeyReplicate, "Error setting local checkpoint(%v): %v", checkpoint, err)
 		return "", err
@@ -662,9 +664,10 @@ func (c *Checkpointer) setLocalCheckpointStatus(status string, errorMessage stri
 func getLocalCheckpoint(db *DatabaseContext, clientID string) (*replicationCheckpoint, error) {
 	base.TracefCtx(context.TODO(), base.KeyReplicate, "getLocalCheckpoint for %s", clientID)
 
-	checkpointBytes, err := db.GetSpecialBytes(DocTypeLocal, CheckpointDocIDPrefix+clientID)
+	collection := db.GetSingleDatabaseCollection()
+	checkpointBytes, err := collection.GetSpecialBytes(DocTypeLocal, CheckpointDocIDPrefix+clientID)
 	if err != nil {
-		if !base.IsKeyNotFoundError(db.Bucket, err) {
+		if !base.IsKeyNotFoundError(collection.Bucket, err) {
 			return nil, err
 		}
 		base.DebugfCtx(context.TODO(), base.KeyReplicate, "couldn't find existing local checkpoint for ID %q", clientID)
@@ -696,7 +699,8 @@ func setLocalCheckpointStatus(ctx context.Context, db *Database, clientID string
 	checkpoint.Status.Status = status
 	checkpoint.Status.ErrorMessage = errorMessage
 	base.TracefCtx(ctx, base.KeyReplicate, "setLocalCheckpoint(%v)", checkpoint)
-	newRev, putErr := db.putSpecial(DocTypeLocal, CheckpointDocIDPrefix+clientID, checkpoint.Rev, checkpoint.AsBody())
+	collection := db.GetSingleDatabaseCollection()
+	newRev, putErr := collection.putSpecial(DocTypeLocal, CheckpointDocIDPrefix+clientID, checkpoint.Rev, checkpoint.AsBody())
 	if putErr != nil {
 		base.WarnfCtx(ctx, "Unable to persist status in local checkpoint for %s, status not updated: %v", clientID, putErr)
 	} else {

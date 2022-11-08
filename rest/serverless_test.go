@@ -226,12 +226,12 @@ func TestServerlessSuspendDatabase(t *testing.T) {
 
 	// Update config in bucket to see if unsuspending check for updates
 	cas, err := sc.BootstrapContext.Connection.UpdateConfig(tb.GetName(), sc.Config.Bootstrap.ConfigGroupID,
-		func(rawBucketConfig []byte) (updatedConfig []byte, err error) {
+		func(rawBucketConfig []byte, rawBucketConfigCas uint64) (updatedConfig []byte, err error) {
 			return json.Marshal(sc.dbConfigs["db"])
 		},
 	)
 	require.NoError(t, err)
-	assert.NotEqual(t, cas, sc.dbConfigs["db"].cas)
+	assert.NotEqual(t, cas, sc.dbConfigs["db"].cfgCas)
 
 	// Unsuspend db
 	dbCtx, err = sc.unsuspendDatabase(rt.Context(), "db")
@@ -242,7 +242,7 @@ func TestServerlessSuspendDatabase(t *testing.T) {
 	require.NotNil(t, sc.dbConfigs["db"])
 
 	// Make sure updated config is being used
-	assert.Equal(t, cas, sc.dbConfigs["db"].cas)
+	assert.Equal(t, cas, sc.dbConfigs["db"].cfgCas)
 
 	// Attempt unsuspend of invalid db
 	dbCtx, err = sc.unsuspendDatabase(rt.Context(), "invalid")
@@ -333,7 +333,7 @@ func TestServerlessFetchConfigsLimited(t *testing.T) {
 
 	// Update database config in the bucket
 	newCas, err := sc.BootstrapContext.Connection.UpdateConfig(tb.GetName(), sc.Config.Bootstrap.ConfigGroupID,
-		func(rawBucketConfig []byte) (updatedConfig []byte, err error) {
+		func(rawBucketConfig []byte, rawBucketConfigCas uint64) (updatedConfig []byte, err error) {
 			return json.Marshal(sc.dbConfigs["db"])
 		},
 	)
@@ -341,7 +341,7 @@ func TestServerlessFetchConfigsLimited(t *testing.T) {
 	// Fetch configs again and expect same config to be returned
 	dbConfigsAfter, err := sc.fetchConfigsSince(rt.Context(), sc.Config.Unsupported.Serverless.MinConfigFetchInterval)
 	require.NotEmpty(t, dbConfigsAfter["db"])
-	assert.Equal(t, dbConfigsBefore["db"].cas, dbConfigsAfter["db"].cas)
+	assert.Equal(t, dbConfigsBefore["db"].cfgCas, dbConfigsAfter["db"].cfgCas)
 	assert.Equal(t, timeCached, sc.fetchConfigsLastUpdate)
 
 	// Make caching 1ms so it will grab newest config
@@ -350,13 +350,13 @@ func TestServerlessFetchConfigsLimited(t *testing.T) {
 	time.Sleep(time.Millisecond * 500)
 	dbConfigsAfter, err = sc.fetchConfigsSince(rt.Context(), sc.Config.Unsupported.Serverless.MinConfigFetchInterval)
 	require.NotEmpty(t, dbConfigsAfter["db"])
-	assert.Equal(t, newCas, dbConfigsAfter["db"].cas)
+	assert.Equal(t, newCas, dbConfigsAfter["db"].cfgCas)
 	// Change back for next test before next config update (not fully necessary but just to be safe)
 	sc.Config.Unsupported.Serverless.MinConfigFetchInterval = base.NewConfigDuration(time.Hour)
 
 	// Update database config in the bucket again to test caching disable case
 	newCas, err = sc.BootstrapContext.Connection.UpdateConfig(tb.GetName(), sc.Config.Bootstrap.ConfigGroupID,
-		func(rawBucketConfig []byte) (updatedConfig []byte, err error) {
+		func(rawBucketConfig []byte, rawBucketConfigCas uint64) (updatedConfig []byte, err error) {
 			return json.Marshal(sc.dbConfigs["db"])
 		},
 	)
@@ -365,7 +365,7 @@ func TestServerlessFetchConfigsLimited(t *testing.T) {
 	sc.Config.Unsupported.Serverless.MinConfigFetchInterval = base.NewConfigDuration(0)
 	dbConfigsAfter, err = sc.fetchConfigsSince(rt.Context(), sc.Config.Unsupported.Serverless.MinConfigFetchInterval)
 	require.NotEmpty(t, dbConfigsAfter["db"])
-	assert.Equal(t, newCas, dbConfigsAfter["db"].cas)
+	assert.Equal(t, newCas, dbConfigsAfter["db"].cfgCas)
 }
 
 // Checks what happens to a suspended database when the config is modified by another node and the periodic fetchAndLoadConfigs gets called.
@@ -399,12 +399,12 @@ func TestServerlessUpdateSuspendedDb(t *testing.T) {
 	assert.NoError(t, sc.suspendDatabase(t, rt.Context(), "db"))
 	// Update database config
 	newCas, err := sc.BootstrapContext.Connection.UpdateConfig(tb.GetName(), sc.Config.Bootstrap.ConfigGroupID,
-		func(rawBucketConfig []byte) (updatedConfig []byte, err error) {
+		func(rawBucketConfig []byte, rawBucketConfigCas uint64) (updatedConfig []byte, err error) {
 			return json.Marshal(sc.dbConfigs["db"])
 		},
 	)
 	// Confirm dbConfig cas did not update yet in SG, or get unsuspended
-	assert.NotEqual(t, sc.dbConfigs["db"].cas, newCas)
+	assert.NotEqual(t, sc.dbConfigs["db"].cfgCas, newCas)
 	assert.True(t, sc.isDatabaseSuspended(t, "db"))
 	assert.Nil(t, sc.databases_["db"])
 	// Trigger update frequency (would usually happen every ConfigUpdateFrequency seconds)

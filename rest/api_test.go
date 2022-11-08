@@ -2606,7 +2606,7 @@ func TestSyncFnBodyProperties(t *testing.T) {
 	response := rt.SendAdminRequest("PUT", "/db/"+testDocID, `{"`+testdataKey+`":true}`)
 	RequireStatus(t, response, 201)
 
-	syncData, err := rt.GetDatabase().GetDocSyncData(base.TestCtx(t), testDocID)
+	syncData, err := rt.GetDatabase().GetSingleDatabaseCollection().GetDocSyncData(base.TestCtx(t), testDocID)
 	assert.NoError(t, err)
 
 	actualProperties := syncData.Channels.KeySet()
@@ -2655,7 +2655,7 @@ func TestSyncFnBodyPropertiesTombstone(t *testing.T) {
 	response = rt.SendAdminRequest("DELETE", "/db/"+testDocID+"?rev="+revID, `{}`)
 	RequireStatus(t, response, 200)
 
-	syncData, err := rt.GetDatabase().GetDocSyncData(base.TestCtx(t), testDocID)
+	syncData, err := rt.GetDatabase().GetSingleDatabaseCollection().GetDocSyncData(base.TestCtx(t), testDocID)
 	assert.NoError(t, err)
 
 	actualProperties := syncData.Channels.KeySet()
@@ -2703,7 +2703,7 @@ func TestSyncFnOldDocBodyProperties(t *testing.T) {
 	response = rt.SendAdminRequest("PUT", "/db/"+testDocID+"?rev="+revID, `{"`+testdataKey+`":true,"update":2}`)
 	RequireStatus(t, response, 201)
 
-	syncData, err := rt.GetDatabase().GetDocSyncData(base.TestCtx(t), testDocID)
+	syncData, err := rt.GetDatabase().GetSingleDatabaseCollection().GetDocSyncData(base.TestCtx(t), testDocID)
 	assert.NoError(t, err)
 
 	actualProperties := syncData.Channels.KeySet()
@@ -2759,7 +2759,7 @@ func TestSyncFnOldDocBodyPropertiesTombstoneResurrect(t *testing.T) {
 	response = rt.SendAdminRequest("PUT", "/db/"+testDocID+"?rev="+revID, `{"`+testdataKey+`":true}`)
 	RequireStatus(t, response, 201)
 
-	syncData, err := rt.GetDatabase().GetDocSyncData(base.TestCtx(t), testDocID)
+	syncData, err := rt.GetDatabase().GetSingleDatabaseCollection().GetDocSyncData(base.TestCtx(t), testDocID)
 	assert.NoError(t, err)
 
 	actualProperties := syncData.Channels.KeySet()
@@ -3899,7 +3899,7 @@ func TestBulkGetBadAttachmentReproIssue2528(t *testing.T) {
 	// rather than loading it from the (stale) rev cache.  The rev cache will be stale since the test
 	// short-circuits Sync Gateway and directly updates the bucket.
 	// Reset at the end of the test, to avoid bleed into other tests
-	rt.GetDatabase().FlushRevisionCacheForTest()
+	rt.GetDatabase().GetSingleDatabaseCollection().FlushRevisionCacheForTest()
 
 	// Get latest rev id
 	response = rt.SendAdminRequest("GET", resource, "")
@@ -6143,6 +6143,8 @@ func TestRemovingUserXattr(t *testing.T) {
 		t.Skipf("test is EE only - user xattrs")
 	}
 
+	defer db.SuspendSequenceBatching()()
+
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	testCases := []struct {
@@ -6302,7 +6304,7 @@ func TestUserXattrAvoidRevisionIDGeneration(t *testing.T) {
 	_, err := subdocXattrStore.SubdocGetXattr(docKey, base.SyncXattrName, &syncData)
 	assert.NoError(t, err)
 
-	docRev, err := rt.GetDatabase().GetRevisionCacheForTest().Get(base.TestCtx(t), docKey, syncData.CurrentRev, true, false)
+	docRev, err := rt.GetDatabase().GetSingleDatabaseCollection().GetRevisionCacheForTest().Get(base.TestCtx(t), docKey, syncData.CurrentRev, true, false)
 	assert.NoError(t, err)
 	assert.Equal(t, 0, len(docRev.Channels.ToArray()))
 	assert.Equal(t, syncData.CurrentRev, docRev.RevID)
@@ -6322,7 +6324,7 @@ func TestUserXattrAvoidRevisionIDGeneration(t *testing.T) {
 	_, err = subdocXattrStore.SubdocGetXattr(docKey, base.SyncXattrName, &syncData2)
 	assert.NoError(t, err)
 
-	docRev2, err := rt.GetDatabase().GetRevisionCacheForTest().Get(base.TestCtx(t), docKey, syncData.CurrentRev, true, false)
+	docRev2, err := rt.GetDatabase().GetSingleDatabaseCollection().GetRevisionCacheForTest().Get(base.TestCtx(t), docKey, syncData.CurrentRev, true, false)
 	assert.NoError(t, err)
 	assert.Equal(t, syncData2.CurrentRev, docRev2.RevID)
 
@@ -6361,7 +6363,7 @@ func TestDocumentChannelHistory(t *testing.T) {
 	RequireStatus(t, resp, http.StatusCreated)
 	err := json.Unmarshal(resp.BodyBytes(), &body)
 	assert.NoError(t, err)
-	syncData, err := rt.GetDatabase().GetDocSyncData(base.TestCtx(t), "doc")
+	syncData, err := rt.GetDatabase().GetSingleDatabaseCollection().GetDocSyncData(base.TestCtx(t), "doc")
 	assert.NoError(t, err)
 
 	require.Len(t, syncData.ChannelSet, 1)
@@ -6374,7 +6376,7 @@ func TestDocumentChannelHistory(t *testing.T) {
 	RequireStatus(t, resp, http.StatusCreated)
 	err = json.Unmarshal(resp.BodyBytes(), &body)
 	assert.NoError(t, err)
-	syncData, err = rt.GetDatabase().GetDocSyncData(base.TestCtx(t), "doc")
+	syncData, err = rt.GetDatabase().GetSingleDatabaseCollection().GetDocSyncData(base.TestCtx(t), "doc")
 	assert.NoError(t, err)
 
 	require.Len(t, syncData.ChannelSet, 1)
@@ -6387,7 +6389,7 @@ func TestDocumentChannelHistory(t *testing.T) {
 	RequireStatus(t, resp, http.StatusCreated)
 	err = json.Unmarshal(resp.BodyBytes(), &body)
 	assert.NoError(t, err)
-	syncData, err = rt.GetDatabase().GetDocSyncData(base.TestCtx(t), "doc")
+	syncData, err = rt.GetDatabase().GetSingleDatabaseCollection().GetDocSyncData(base.TestCtx(t), "doc")
 	assert.NoError(t, err)
 
 	require.Len(t, syncData.ChannelSet, 2)
@@ -6452,7 +6454,7 @@ func TestChannelHistoryLegacyDoc(t *testing.T) {
 	RequireStatus(t, resp, http.StatusCreated)
 	err = json.Unmarshal(resp.BodyBytes(), &body)
 	assert.NoError(t, err)
-	syncData, err := rt.GetDatabase().GetDocSyncData(base.TestCtx(t), "doc1")
+	syncData, err := rt.GetDatabase().GetSingleDatabaseCollection().GetDocSyncData(base.TestCtx(t), "doc1")
 	assert.NoError(t, err)
 	require.Len(t, syncData.ChannelSet, 1)
 	assert.Contains(t, syncData.ChannelSet, db.ChannelSetEntry{
@@ -7732,14 +7734,15 @@ func TestUserHasDocAccessDocNotFound(t *testing.T) {
 	database, err := db.CreateDatabase(rt.GetDatabase())
 	assert.NoError(t, err)
 
-	userHasDocAccess, err := db.UserHasDocAccess(ctx, database, "doc")
+	collection := database.GetSingleDatabaseCollectionWithUser()
+	userHasDocAccess, err := db.UserHasDocAccess(ctx, collection, "doc")
 	assert.NoError(t, err)
 	assert.True(t, userHasDocAccess)
 
 	// Purge the document from the bucket to force 'not found'
-	err = database.Purge(ctx, "doc")
+	err = collection.Purge(ctx, "doc")
 
-	userHasDocAccess, err = db.UserHasDocAccess(ctx, database, "doc")
+	userHasDocAccess, err = db.UserHasDocAccess(ctx, collection, "doc")
 	assert.NoError(t, err)
 	assert.False(t, userHasDocAccess)
 }
@@ -8041,7 +8044,7 @@ func TestDocChannelSetPruning(t *testing.T) {
 		revID = rt.CreateDocReturnRev(t, "doc", revID, map[string]interface{}{"channels": []string{"a"}})
 	}
 
-	syncData, err := rt.GetDatabase().GetDocSyncData(base.TestCtx(t), "doc")
+	syncData, err := rt.GetDatabase().GetSingleDatabaseCollection().GetDocSyncData(base.TestCtx(t), "doc")
 	assert.NoError(t, err)
 
 	require.Len(t, syncData.ChannelSetHistory, db.DocumentHistoryMaxEntriesPerChannel)
@@ -9313,7 +9316,7 @@ func TestAttachmentsMissing(t *testing.T) {
 	resp = rt.SendAdminRequest("PUT", "/db/"+t.Name()+"?new_edits=false", `{"_rev": "2-b", "_revisions": {"ids": ["b", "ca9ad22802b66f662ff171f226211d5c"], "start": 2}, "Winning Rev": true}`)
 	RequireStatus(t, resp, http.StatusCreated)
 
-	rt.GetDatabase().FlushRevisionCacheForTest()
+	rt.GetDatabase().GetSingleDatabaseCollection().FlushRevisionCacheForTest()
 
 	resp = rt.SendAdminRequest("GET", "/db/"+t.Name()+"?rev="+rev2ID, ``)
 	RequireStatus(t, resp, http.StatusOK)
@@ -9338,7 +9341,7 @@ func TestAttachmentsMissingNoBody(t *testing.T) {
 	resp = rt.SendAdminRequest("PUT", "/db/"+t.Name()+"?new_edits=false", `{"_rev": "2-b", "_revisions": {"ids": ["b", "ca9ad22802b66f662ff171f226211d5c"], "start": 2}}`)
 	RequireStatus(t, resp, http.StatusCreated)
 
-	rt.GetDatabase().FlushRevisionCacheForTest()
+	rt.GetDatabase().GetSingleDatabaseCollection().FlushRevisionCacheForTest()
 
 	resp = rt.SendAdminRequest("GET", "/db/"+t.Name()+"?rev="+rev2ID, ``)
 	RequireStatus(t, resp, http.StatusOK)

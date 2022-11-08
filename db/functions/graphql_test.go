@@ -369,9 +369,11 @@ func TestUserGraphQLWithN1QL(t *testing.T) {
 	db, ctx := setupTestDBWithFunctions(t, nil, &kTestGraphQLConfigWithN1QL)
 	defer db.Close(ctx)
 
-	_, _, _ = db.Put(ctx, "a", Body{"type": "task", "title": "Applesauce", "done": true, "tags": []string{"fruit", "soft"}, "channels": "wonderland"})
-	_, _, _ = db.Put(ctx, "b", Body{"type": "task", "title": "Beer", "description": "Bass ale please", "channels": "wonderland"})
-	_, _, _ = db.Put(ctx, "m", Body{"type": "task", "title": "Mangoes", "channels": "wonderland"})
+	collection, err := db.GetDefaultDatabaseCollectionWithUser()
+	require.NoError(t, err)
+	_, _, _ = collection.Put(ctx, "a", Body{"type": "task", "title": "Applesauce", "done": true, "tags": []string{"fruit", "soft"}, "channels": "wonderland"})
+	_, _, _ = collection.Put(ctx, "b", Body{"type": "task", "title": "Beer", "description": "Bass ale please", "channels": "wonderland"})
+	_, _, _ = collection.Put(ctx, "m", Body{"type": "task", "title": "Mangoes", "channels": "wonderland"})
 
 	n1qlStore, ok := base.AsN1QLStore(db.Bucket)
 	require.True(t, ok)
@@ -414,24 +416,9 @@ func setupTestDBWithFunctions(t *testing.T, fnConfig FunctionConfigMap, gqConfig
 		options.GraphQL, err = CompileGraphQL(gqConfig)
 		assert.NoError(t, err)
 	}
-	return setupTestDBWithOptions(t, options)
-}
 
-func setupTestDBWithOptions(t testing.TB, dbcOptions db.DatabaseContextOptions) (*db.Database, context.Context) {
-
-	tBucket := base.GetTestBucket(t)
-	return setupTestDBForBucketWithOptions(t, tBucket, dbcOptions)
-}
-
-func setupTestDBForBucketWithOptions(t testing.TB, tBucket base.Bucket, dbcOptions db.DatabaseContextOptions) (*db.Database, context.Context) {
-	ctx := base.TestCtx(t)
-	AddOptionsFromEnvironmentVariables(&dbcOptions)
-	dbCtx, err := db.NewDatabaseContext(ctx, "db", tBucket, false, dbcOptions)
-	assert.NoError(t, err, "Couldn't create context for database 'db'")
-	db, err := db.CreateDatabase(dbCtx)
-	assert.NoError(t, err, "Couldn't create database 'db'")
-	ctx = db.AddDatabaseLogContext(ctx)
-	return db, ctx
+	tBucket := base.GetTestBucketDefaultCollection(t)
+	return db.SetupTestDBForBucketWithOptions(t, tBucket, options)
 }
 
 // createPrimaryIndex returns true if there was no index created before

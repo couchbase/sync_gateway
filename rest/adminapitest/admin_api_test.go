@@ -1625,7 +1625,7 @@ func TestResyncRegenerateSequences(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		docID := fmt.Sprintf("doc%d", i)
 
-		doc, err := rt.GetDatabase().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalAll)
+		doc, err := rt.GetDatabase().GetSingleDatabaseCollection().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalAll)
 		assert.NoError(t, err)
 
 		assert.True(t, float64(doc.Sequence) > docSeqArr[i])
@@ -3568,6 +3568,76 @@ func TestPutDbConfigChangeName(t *testing.T) {
 	resp.RequireStatus(http.StatusBadRequest)
 }
 
+func TestSwitchDbConfigCollectionName(t *testing.T) {
+	base.TestRequiresCollections(t)
+
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyConfig)
+	serverErr := make(chan error, 0)
+
+	// Start SG with no databases
+	ctx := base.TestCtx(t)
+	config := rest.BootstrapStartupConfigForTest(t)
+	sc, err := rest.SetupServerContext(ctx, &config, true)
+	require.NoError(t, err)
+	defer func() {
+		sc.Close(ctx)
+		require.NoError(t, <-serverErr)
+	}()
+
+	go func() {
+		serverErr <- rest.StartServer(ctx, &config, sc)
+	}()
+	require.NoError(t, sc.WaitForRESTAPIs())
+
+	// Get a test bucket, and add new scopes and collections to it.
+	tb := base.GetTestBucket(t)
+	defer func() {
+		log.Println("closing test bucket")
+		tb.Close()
+	}()
+
+	err = base.CreateBucketScopesAndCollections(base.TestCtx(t), tb.BucketSpec, map[string][]string{
+		"foo": {
+			"bar",
+			"baz",
+		},
+	})
+	require.NoError(t, err)
+
+	// create db
+	resp := rest.BootstrapAdminRequest(t, http.MethodPut, "/db/", fmt.Sprintf(
+		`{"bucket": "%s", "scopes": {"foo": {"collections": {"bar": {}}}}, "num_index_replicas": 0, "enable_shared_bucket_access": true, "use_views": false}`,
+		tb.GetName(),
+	))
+	resp.RequireStatus(http.StatusCreated)
+
+	// put a doc in db
+	resp = rest.BootstrapAdminRequest(t, http.MethodPut, "/db.foo.bar/10001", `{"type":"test_doc"}`)
+	resp.RequireStatus(http.StatusCreated)
+
+	// update config to another collection
+	resp = rest.BootstrapAdminRequest(t, http.MethodPost, "/db/_config", fmt.Sprintf(
+		`{"bucket": "%s", "scopes": {"foo": {"collections": {"baz": {}}}}, "num_index_replicas": 0, "enable_shared_bucket_access": true, "use_views": false}`,
+		tb.GetName(),
+	))
+	resp.RequireStatus(http.StatusCreated)
+
+	// put doc in new collection
+	resp = rest.BootstrapAdminRequest(t, http.MethodPut, "/db.foo.baz/10001", `{"type":"test_doc1"}`)
+	resp.RequireStatus(http.StatusCreated)
+
+	// update back to original collection config
+	resp = rest.BootstrapAdminRequest(t, http.MethodPost, "/db/_config", fmt.Sprintf(
+		`{"bucket": "%s", "scopes": {"foo": {"collections": {"bar": {}}}}, "num_index_replicas": 0, "enable_shared_bucket_access": true, "use_views": false}`,
+		tb.GetName(),
+	))
+	resp.RequireStatus(http.StatusCreated)
+
+	// put doc in original collection name
+	resp = rest.BootstrapAdminRequest(t, http.MethodPut, "/db.foo.bar/100", `{"type":"test_doc1"}`)
+	resp.RequireStatus(http.StatusCreated)
+}
+
 func TestPutDBConfigOIDC(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
@@ -4000,7 +4070,7 @@ func TestDbConfigPersistentSGVersions(t *testing.T) {
 	assertRevsLimit(sc, 123)
 
 	writeRevsLimitConfigWithVersion := func(sc *rest.ServerContext, version string, revsLimit uint32) error {
-		_, err = sc.BootstrapContext.Connection.UpdateConfig(tb.GetName(), t.Name(), func(rawBucketConfig []byte) (updatedConfig []byte, err error) {
+		_, err = sc.BootstrapContext.Connection.UpdateConfig(tb.GetName(), t.Name(), func(rawBucketConfig []byte, rawBucketConfigCas uint64) (updatedConfig []byte, err error) {
 			var db rest.DatabaseConfig
 			if err := base.JSONUnmarshal(rawBucketConfig, &db); err != nil {
 				return nil, err
@@ -4718,7 +4788,7 @@ func TestReplicatorCheckpointOnStop(t *testing.T) {
 
 	database, err := db.CreateDatabase(activeRT.GetDatabase())
 	require.NoError(t, err)
-	rev, doc, err := database.Put(activeCtx, "test", db.Body{})
+	rev, doc, err := database.GetSingleDatabaseCollectionWithUser().Put(activeCtx, "test", db.Body{})
 	require.NoError(t, err)
 	seq := strconv.FormatUint(doc.Sequence, 10)
 

@@ -102,24 +102,25 @@ func TestBackupOldRevision(t *testing.T) {
 	deltasEnabled := base.IsEnterpriseEdition()
 	xattrsEnabled := base.TestUseXattrs()
 
-	db, ctx := setupTestDBWithOptions(t, DatabaseContextOptions{DeltaSyncOptions: DeltaSyncOptions{
+	db, ctx := SetupTestDBWithOptions(t, DatabaseContextOptions{DeltaSyncOptions: DeltaSyncOptions{
 		Enabled:          deltasEnabled,
 		RevMaxAgeSeconds: DefaultDeltaSyncRevMaxAge,
 	}})
 	defer db.Close(ctx)
+	collection := db.GetSingleDatabaseCollectionWithUser()
 
 	docID := t.Name()
 
-	rev1ID, _, err := db.Put(ctx, docID, Body{"test": true})
+	rev1ID, _, err := collection.Put(ctx, docID, Body{"test": true})
 	require.NoError(t, err)
 
 	// make sure we didn't accidentally store an empty old revision
-	_, err = db.getOldRevisionJSON(base.TestCtx(t), docID, "")
+	_, err = collection.getOldRevisionJSON(base.TestCtx(t), docID, "")
 	assert.Error(t, err)
 	assert.Equal(t, "404 missing", err.Error())
 
 	// check for current rev backup in xattr+delta case (to support deltas by sdk imports)
-	_, err = db.getOldRevisionJSON(base.TestCtx(t), docID, rev1ID)
+	_, err = collection.getOldRevisionJSON(base.TestCtx(t), docID, rev1ID)
 	if deltasEnabled && xattrsEnabled {
 		require.NoError(t, err)
 	} else {
@@ -129,15 +130,15 @@ func TestBackupOldRevision(t *testing.T) {
 
 	// create rev 2 and check backups for both revs
 	rev2ID := "2-abc"
-	_, _, err = db.PutExistingRevWithBody(ctx, docID, Body{"test": true, "updated": true}, []string{rev2ID, rev1ID}, true)
+	_, _, err = collection.PutExistingRevWithBody(ctx, docID, Body{"test": true, "updated": true}, []string{rev2ID, rev1ID}, true)
 	require.NoError(t, err)
 
 	// now in all cases we'll have rev 1 backed up (for at least 5 minutes)
-	_, err = db.getOldRevisionJSON(base.TestCtx(t), docID, rev1ID)
+	_, err = collection.getOldRevisionJSON(base.TestCtx(t), docID, rev1ID)
 	require.NoError(t, err)
 
 	// check for current rev backup in xattr+delta case (to support deltas by sdk imports)
-	_, err = db.getOldRevisionJSON(base.TestCtx(t), docID, rev2ID)
+	_, err = collection.getOldRevisionJSON(base.TestCtx(t), docID, rev2ID)
 	if deltasEnabled && xattrsEnabled {
 		require.NoError(t, err)
 	} else {

@@ -194,6 +194,7 @@ func TestMultiCollectionDCP(t *testing.T) {
 		t.Skip("Test relies on import - needs xattrs")
 	}
 
+	t.Skip("Skip until CBG-2266 is implemented")
 	tb := base.GetTestBucket(t)
 	defer tb.Close()
 
@@ -284,7 +285,7 @@ func TestCollectionsBasicIndexQuery(t *testing.T) {
 
 	idxName := t.Name() + "_primary"
 	require.NoError(t, n1qlStore.CreatePrimaryIndex(idxName, nil))
-	require.NoError(t, n1qlStore.WaitForIndexOnline(idxName))
+	require.NoError(t, n1qlStore.WaitForIndexesOnline([]string{idxName}, false))
 
 	res, err := n1qlStore.Query("SELECT keyspace_id, bucket_id, scope_id from system:indexes WHERE name = $idxName",
 		map[string]interface{}{"idxName": idxName}, base.RequestPlus, true)

@@ -113,6 +113,7 @@ type TestBucketPool struct {
 	unclosedBucketsLock sync.Mutex
 
 	useNamedCollections bool
+	useExistingBucket   bool
 }
 
 // shouldUseNamedCollections returns true if cluster will be created with named collections
@@ -142,10 +143,12 @@ func shouldUseNamedCollections(cluster tbpCluster) (bool, error) {
 // NewTestBucketPool initializes a new TestBucketPool. To be called from TestMain for packages requiring test buckets.
 func NewTestBucketPool(bucketReadierFunc TBPBucketReadierFunc, bucketInitFunc TBPBucketInitFunc) *TestBucketPool {
 	// We can safely skip setup when we want Walrus buckets to be used. They'll be created on-demand via GetTestBucketAndSpec.
-	if !TestUseCouchbaseServer() {
+	if !TestUseCouchbaseServer() || TestUseExistingBucket() {
 		tbp := TestBucketPool{
-			bucketInitFunc:  bucketInitFunc,
-			unclosedBuckets: make(map[string]map[string]struct{}),
+			bucketInitFunc:    bucketInitFunc,
+			unclosedBuckets:   make(map[string]map[string]struct{}),
+			integrationMode:   TestUseCouchbaseServer(),
+			useExistingBucket: TestUseExistingBucket(),
 		}
 		tbp.verbose.Set(tbpVerbose())
 		return &tbp
@@ -174,6 +177,7 @@ func NewTestBucketPool(bucketReadierFunc TBPBucketReadierFunc, bucketInitFunc TB
 		preserveBuckets:        preserveBuckets,
 		bucketInitFunc:         bucketInitFunc,
 		unclosedBuckets:        make(map[string]map[string]struct{}),
+		useExistingBucket:      TestUseExistingBucket(),
 	}
 
 	tbp.cluster = newTestCluster(UnitTestUrl(), tbp.Logf)
@@ -318,6 +322,38 @@ func (tbp *TestBucketPool) GetWalrusTestBucket(t testing.TB, url string) (b Buck
 	}
 }
 
+// GetExistingBucket opens a bucket conection to an existing bucket
+func (tbp *TestBucketPool) GetExistingBucket(t testing.TB) (b Bucket, s BucketSpec, teardown func()) {
+	testCtx := TestCtx(t)
+
+	bucketCluster := initV2Cluster(UnitTestUrl())
+
+	useNamedCollections, err := shouldUseNamedCollections(tbp.cluster)
+	if err != nil {
+		tbp.Fatalf(testCtx, "couldn't check if named collections should be used: %v", err)
+	}
+
+	bucketName := tbpBucketName(TestUseExistingBucketName())
+	bucketSpec := getBucketSpec(bucketName, useNamedCollections)
+
+	bucket := bucketCluster.Bucket(bucketSpec.BucketName)
+	err = bucket.WaitUntilReady(waitForReadyBucketTimeout, nil)
+	if err != nil {
+		return nil, bucketSpec, nil
+	}
+	DebugfCtx(context.TODO(), KeySGTest, "opened bucket %s", bucketName)
+
+	bucketFromSpec, err := GetCollectionFromCluster(bucketCluster, bucketSpec, waitForReadyBucketTimeout)
+	if err != nil {
+		tbp.Fatalf(testCtx, "couldn't get existing collection from cluster: %v", err)
+	}
+
+	return bucketFromSpec, bucketSpec, func() {
+		tbp.Logf(testCtx, "Teardown called - Closing connection to existing bucket")
+		bucketFromSpec.Close()
+	}
+}
+
 // GetTestBucketAndSpec returns a bucket to be used during a test.
 // The returned teardownFn MUST be called once the test is done,
 // which closes the bucket, readies it for a new test, and releases back into the pool.
@@ -329,6 +365,11 @@ func (tbp *TestBucketPool) getTestBucketAndSpec(t testing.TB, collectionType tbp
 	if !tbp.integrationMode {
 		tbp.Logf(ctx, "Getting walrus test bucket - tbp.integrationMode is not set")
 		return tbp.GetWalrusTestBucket(t, kTestWalrusURL)
+	}
+
+	if tbp.useExistingBucket {
+		tbp.Logf(ctx, "Using predefined bucket")
+		return tbp.GetExistingBucket(t)
 	}
 
 	if atomic.LoadUint32(&tbp.preservedBucketCount) >= uint32(cap(tbp.readyBucketPool)) {
@@ -545,7 +586,7 @@ func (tbp *TestBucketPool) createTestBuckets(numBuckets int, bucketQuotaMB int, 
 				tbp.Fatalf(ctx, "Couldn't create test bucket: %v", err)
 			}
 
-			namedCollection, defaultCollection, err := tbp.cluster.openTestBucket(tbpBucketName(bucketName), 10*numBuckets, tbp.UsingNamedCollections())
+			namedCollection, defaultCollection, err := tbp.cluster.openTestBucket(tbpBucketName(bucketName), waitForReadyBucketTimeout, tbp.UsingNamedCollections())
 			ctx = updateContextWithKeyspace(ctx, defaultCollection)
 			if err != nil {
 				tbp.Fatalf(ctx, "Timed out trying to open new bucket: %v", err)
@@ -641,7 +682,7 @@ loop:
 				defer tbp.bucketReadierWaitGroup.Done()
 
 				start := time.Now()
-				namedCollection, defaultCollection, err := tbp.cluster.openTestBucket(testBucketName, 5, tbp.UsingNamedCollections())
+				namedCollection, defaultCollection, err := tbp.cluster.openTestBucket(testBucketName, waitForReadyBucketTimeout, tbp.UsingNamedCollections())
 				ctx = updateContextWithKeyspace(ctx, defaultCollection)
 				if err != nil {
 					tbp.Logf(ctx, "Couldn't open bucket to get ready, got error: %v", err)

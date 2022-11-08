@@ -56,9 +56,9 @@ const maxInFlightChangesBatches = 2
 
 type blipHandler struct {
 	*BlipSyncContext
-	db            *Database // Handler-specific copy of the BlipSyncContext's blipContextDb
-	collection    *Database // Handler-specific copy of the BlipSyncContext's collection specific DB
-	collectionIdx *int      // index into BlipSyncContext.collectionMapping for the collection
+	db            *Database                   // Handler-specific copy of the BlipSyncContext's blipContextDb
+	collection    *DatabaseCollectionWithUser // Handler-specific copy of the BlipSyncContext's collection specific DB
+	collectionIdx *int                        // index into BlipSyncContext.collectionMapping for the collection
 
 	serialNumber uint64 // This blip handler's serial number to differentiate logs w/ other handlers
 }
@@ -123,9 +123,14 @@ func (bh *blipHandler) refreshUser() error {
 			newUser.InitializeRoles()
 			bc.userChangeWaiter.RefreshUserKeys(newUser)
 			bc.blipContextDb.SetUser(newUser)
-
 			// refresh the handler's database with the new BlipSyncContext database
 			bh.db = bh._copyContextDatabase()
+			if bh.collection != nil {
+				bh.collection = &DatabaseCollectionWithUser{
+					DatabaseCollection: bh.collection.DatabaseCollection,
+					user:               bh.db.User(),
+				}
+			}
 		}
 	}
 	return nil
@@ -136,7 +141,14 @@ func collectionBlipHandler(next blipHandlerFunc) blipHandlerFunc {
 	return func(bh *blipHandler, bm *blip.Message) error {
 		collectionIndexStr, ok := bm.Properties[BlipCollection]
 		if !ok {
-			bh.collection = bh.db
+			bh.collection = bh.db.GetSingleDatabaseCollectionWithUser()
+			/* put into place in CBG-2527
+			var err error
+			bh.collection, err = bh.db.GetDefaultDatabaseCollectionWithUser()
+			if err != nil {
+				return base.HTTPErrorf(http.StatusBadRequest, "%s", err)
+			}
+			*/
 			return next(bh, bm)
 		}
 		if len(bh.collectionMapping) == 0 {
@@ -148,13 +160,17 @@ func collectionBlipHandler(next blipHandlerFunc) blipHandlerFunc {
 			return base.HTTPErrorf(http.StatusBadRequest, "collection property needs to be an int, was %q", collectionIndexStr)
 		}
 
-		bh.collectionIdx = &collectionIndex
 		if len(bh.collectionMapping) <= collectionIndex {
 			return base.HTTPErrorf(http.StatusBadRequest, "Collection index %d is outside indexes set by GetCollections", collectionIndex)
 		}
-		bh.collection = bh.collectionMapping[collectionIndex]
-		if bh.collection == nil {
+		bh.collectionIdx = &collectionIndex
+		collection := bh.collectionMapping[collectionIndex]
+		if collection == nil {
 			return base.HTTPErrorf(http.StatusBadRequest, "Collection index %d does not match a valid collection from GetCollections", collectionIndex)
+		}
+		bh.collection = &DatabaseCollectionWithUser{
+			DatabaseCollection: bh.collectionMapping[collectionIndex],
+			user:               bh.db.user,
 		}
 		// Call down to the underlying handler and return it's value
 		return next(bh, bm)
@@ -220,12 +236,12 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 	bh.changesCtxLock.Lock()
 	defer bh.changesCtxLock.Unlock()
 
-	defaultSince := bh.collection.CreateZeroSinceValue()
+	defaultSince := CreateZeroSinceValue()
 	latestSeq := func() (SequenceID, error) {
 		seq, err := bh.collection.LastSequence()
 		return SequenceID{Seq: seq}, err
 	}
-	subChangesParams, err := NewSubChangesParams(bh.loggingCtx, rq, defaultSince, latestSeq, bh.collection.ParseSequenceID)
+	subChangesParams, err := NewSubChangesParams(bh.loggingCtx, rq, defaultSince, latestSeq, ParseSequenceID)
 	if err != nil {
 		return base.HTTPErrorf(http.StatusBadRequest, "Invalid subChanges parameters")
 	}
@@ -400,7 +416,7 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions
 					}
 
 					// If the user has access to the doc through another channel don't send change
-					userHasAccessToDoc, err := UserHasDocAccess(bh.loggingCtx, bh.collection, change.ID)
+					userHasAccessToDoc, err := UserHasDocAccess(bh.loggingCtx, changesDb.GetSingleDatabaseCollectionWithUser(), change.ID)
 					if err == nil && userHasAccessToDoc {
 						continue
 					}
@@ -502,6 +518,7 @@ func (bh *blipHandler) sendBatchOfChanges(sender *blip.Sender, changeArray [][]i
 		if err := bh.refreshUser(); err != nil {
 			return err
 		}
+
 		handleChangesResponseDb := bh.copyContextDatabase()
 
 		sendTime := time.Now()
@@ -757,27 +774,27 @@ func (bh *blipHandler) handleProposeChanges(rq *blip.Message) error {
 
 // ////// DOCUMENTS:
 
-func (bsc *BlipSyncContext) sendRevAsDelta(sender *blip.Sender, docID, revID string, deltaSrcRevID string, seq SequenceID, knownRevs map[string]bool, maxHistory int, handleChangesResponseDb *Database) error {
+func (bsc *BlipSyncContext) sendRevAsDelta(sender *blip.Sender, docID, revID string, deltaSrcRevID string, seq SequenceID, knownRevs map[string]bool, maxHistory int, handleChangesResponseCollection *DatabaseCollectionWithUser) error {
 	var collectionIdx *int
-	if coll, ok := bsc.getCollectionIndexForDB(handleChangesResponseDb); ok {
+	if coll, ok := bsc.getCollectionIndexForDB(handleChangesResponseCollection); ok {
 		collectionIdx = &coll
 	}
 
 	bsc.replicationStats.SendRevDeltaRequestedCount.Add(1)
 
-	revDelta, redactedRev, err := handleChangesResponseDb.GetDelta(bsc.loggingCtx, docID, deltaSrcRevID, revID)
+	revDelta, redactedRev, err := handleChangesResponseCollection.GetDelta(bsc.loggingCtx, docID, deltaSrcRevID, revID)
 	if err == ErrForbidden { // nolint: gocritic // can't convert if/else if to switch since base.IsFleeceDeltaError is not switchable
 		return err
 	} else if base.IsFleeceDeltaError(err) {
 		// Something went wrong in the diffing library. We want to know about this!
 		base.WarnfCtx(bsc.loggingCtx, "Falling back to full body replication. Error generating delta from %s to %s for key %s - err: %v", deltaSrcRevID, revID, base.UD(docID), err)
-		return bsc.sendRevision(sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseDb)
+		return bsc.sendRevision(sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseCollection)
 	} else if err == base.ErrDeltaSourceIsTombstone {
 		base.TracefCtx(bsc.loggingCtx, base.KeySync, "Falling back to full body replication. Delta source %s is tombstone. Unable to generate delta to %s for key %s", deltaSrcRevID, revID, base.UD(docID))
-		return bsc.sendRevision(sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseDb)
+		return bsc.sendRevision(sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseCollection)
 	} else if err != nil {
 		base.DebugfCtx(bsc.loggingCtx, base.KeySync, "Falling back to full body replication. Couldn't get delta from %s to %s for key %s - err: %v", deltaSrcRevID, revID, base.UD(docID), err)
-		return bsc.sendRevision(sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseDb)
+		return bsc.sendRevision(sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseCollection)
 	}
 
 	if redactedRev != nil {
@@ -788,12 +805,12 @@ func (bsc *BlipSyncContext) sendRevAsDelta(sender *blip.Sender, docID, revID str
 
 	if revDelta == nil {
 		base.DebugfCtx(bsc.loggingCtx, base.KeySync, "Falling back to full body replication. Couldn't get delta from %s to %s for key %s", deltaSrcRevID, revID, base.UD(docID))
-		return bsc.sendRevision(sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseDb)
+		return bsc.sendRevision(sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseCollection)
 	}
 
 	resendFullRevisionFunc := func() error {
 		base.InfofCtx(bsc.loggingCtx, base.KeySync, "Resending revision as full body. Peer couldn't process delta %s from %s to %s for key %s", base.UD(revDelta.DeltaBytes), deltaSrcRevID, revID, base.UD(docID))
-		return bsc.sendRevision(sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseDb)
+		return bsc.sendRevision(sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseCollection)
 	}
 
 	base.TracefCtx(bsc.loggingCtx, base.KeySync, "docID: %s - delta: %v", base.UD(docID), base.UD(string(revDelta.DeltaBytes)))

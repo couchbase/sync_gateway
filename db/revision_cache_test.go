@@ -180,13 +180,14 @@ func TestRevisionCacheInternalProperties(t *testing.T) {
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
+	collection := db.GetSingleDatabaseCollectionWithUser()
 
 	// Invalid _revisions property will be stripped.  Should also not be present in the rev cache.
 	rev1body := Body{
 		"value":       1234,
 		BodyRevisions: "unexpected data",
 	}
-	rev1id, _, err := db.Put(ctx, "doc1", rev1body)
+	rev1id, _, err := collection.Put(ctx, "doc1", rev1body)
 	assert.NoError(t, err, "Put")
 
 	// Get the raw document directly from the bucket, validate _revisions property isn't found
@@ -199,7 +200,7 @@ func TestRevisionCacheInternalProperties(t *testing.T) {
 	}
 
 	// Get the doc while still resident in the rev cache w/ history=false, validate _revisions property isn't found
-	body, err := db.Get1xRevBody(ctx, "doc1", rev1id, false, nil)
+	body, err := collection.Get1xRevBody(ctx, "doc1", rev1id, false, nil)
 	assert.NoError(t, err, "Get1xRevBody")
 	badRevisions, ok := body[BodyRevisions]
 	if ok {
@@ -208,7 +209,7 @@ func TestRevisionCacheInternalProperties(t *testing.T) {
 
 	// Get the doc while still resident in the rev cache w/ history=true, validate _revisions property is returned with expected
 	// properties ("start", "ids")
-	bodyWithHistory, err := db.Get1xRevBody(ctx, "doc1", rev1id, true, nil)
+	bodyWithHistory, err := collection.Get1xRevBody(ctx, "doc1", rev1id, true, nil)
 	assert.NoError(t, err, "Get1xRevBody")
 	validRevisions, ok := bodyWithHistory[BodyRevisions]
 	if !ok {
@@ -229,20 +230,22 @@ func TestBypassRevisionCache(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 
+	collection := db.GetSingleDatabaseCollectionWithUser()
+
 	docBody := Body{
 		"value": 1234,
 	}
 	key := "doc1"
-	rev1, _, err := db.Put(ctx, key, docBody)
+	rev1, _, err := collection.Put(ctx, key, docBody)
 	assert.NoError(t, err)
 
 	docBody["_rev"] = rev1
 	docBody["value"] = 5678
-	rev2, _, err := db.Put(ctx, key, docBody)
+	rev2, _, err := collection.Put(ctx, key, docBody)
 	assert.NoError(t, err)
 
 	bypassStat := base.SgwIntStat{}
-	rc := NewBypassRevisionCache(db.DatabaseContext, &bypassStat)
+	rc := NewBypassRevisionCache(collection, &bypassStat)
 
 	// Peek always returns false for BypassRevisionCache
 	_, ok := rc.Peek(base.TestCtx(t), key, rev1)
@@ -289,14 +292,15 @@ func TestPutRevisionCacheAttachmentProperty(t *testing.T) {
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
+	collection := db.GetSingleDatabaseCollectionWithUser()
 
 	rev1body := Body{
 		"value":         1234,
 		BodyAttachments: map[string]interface{}{"myatt": map[string]interface{}{"content_type": "text/plain", "data": "SGVsbG8gV29ybGQh"}},
 	}
 	rev1key := "doc1"
-	rev1id, _, err := db.Put(ctx, rev1key, rev1body)
-	assert.NoError(t, err, "Unexpected error calling db.Put")
+	rev1id, _, err := collection.Put(ctx, rev1key, rev1body)
+	assert.NoError(t, err, "Unexpected error calling collection.Put")
 
 	// Get the raw document directly from the bucket, validate _attachments property isn't found
 	var bucketBody Body
@@ -306,17 +310,17 @@ func TestPutRevisionCacheAttachmentProperty(t *testing.T) {
 	assert.False(t, ok, "_attachments property still present in document body retrieved from bucket: %#v", bucketBody)
 
 	// Get the raw document directly from the revcache, validate _attachments property isn't found
-	docRevision, ok := db.revisionCache.Peek(base.TestCtx(t), rev1key, rev1id)
+	docRevision, ok := collection.revisionCache.Peek(base.TestCtx(t), rev1key, rev1id)
 	assert.True(t, ok)
 	assert.NotContains(t, docRevision.BodyBytes, BodyAttachments, "_attachments property still present in document body retrieved from rev cache: %#v", bucketBody)
 	_, ok = docRevision.Attachments["myatt"]
 	assert.True(t, ok, "'myatt' not found in revcache attachments metadata")
 
 	// db.getRev stamps _attachments back in from revcache Attachment metadata
-	body, err := db.Get1xRevBody(ctx, rev1key, rev1id, false, nil)
-	assert.NoError(t, err, "Unexpected error calling db.Get1xRevBody")
+	body, err := collection.Get1xRevBody(ctx, rev1key, rev1id, false, nil)
+	assert.NoError(t, err, "Unexpected error calling collection.Get1xRevBody")
 	atts, ok := body[BodyAttachments]
-	assert.True(t, ok, "_attachments property was not stamped back in body during db.Get1xRevBody: %#v", body)
+	assert.True(t, ok, "_attachments property was not stamped back in body during collection.Get1xRevBody: %#v", body)
 
 	attsMap, ok := atts.(AttachmentsMeta)
 	_, ok = attsMap["myatt"]
@@ -330,21 +334,22 @@ func TestPutExistingRevRevisionCacheAttachmentProperty(t *testing.T) {
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
+	collection := db.GetSingleDatabaseCollectionWithUser()
 
 	docKey := "doc1"
 	rev1body := Body{
 		"value": 1234,
 	}
-	rev1id, _, err := db.Put(ctx, docKey, rev1body)
-	assert.NoError(t, err, "Unexpected error calling db.Put")
+	rev1id, _, err := collection.Put(ctx, docKey, rev1body)
+	assert.NoError(t, err, "Unexpected error calling collection.Put")
 
 	rev2id := "2-xxx"
 	rev2body := Body{
 		"value":         1235,
 		BodyAttachments: map[string]interface{}{"myatt": map[string]interface{}{"content_type": "text/plain", "data": "SGVsbG8gV29ybGQh"}},
 	}
-	_, _, err = db.PutExistingRevWithBody(ctx, docKey, rev2body, []string{rev2id, rev1id}, false)
-	assert.NoError(t, err, "Unexpected error calling db.PutExistingRev")
+	_, _, err = collection.PutExistingRevWithBody(ctx, docKey, rev2body, []string{rev2id, rev1id}, false)
+	assert.NoError(t, err, "Unexpected error calling collection.PutExistingRev")
 
 	// Get the raw document directly from the bucket, validate _attachments property isn't found
 	var bucketBody Body
@@ -354,17 +359,17 @@ func TestPutExistingRevRevisionCacheAttachmentProperty(t *testing.T) {
 	assert.False(t, ok, "_attachments property still present in document body retrieved from bucket: %#v", bucketBody)
 
 	// Get the raw document directly from the revcache, validate _attachments property isn't found
-	docRevision, err := db.revisionCache.Get(base.TestCtx(t), docKey, rev2id, RevCacheOmitBody, RevCacheOmitDelta)
-	assert.NoError(t, err, "Unexpected error calling db.revisionCache.Get")
+	docRevision, err := collection.revisionCache.Get(base.TestCtx(t), docKey, rev2id, RevCacheOmitBody, RevCacheOmitDelta)
+	assert.NoError(t, err, "Unexpected error calling collection.revisionCache.Get")
 	assert.NotContains(t, docRevision.BodyBytes, BodyAttachments, "_attachments property still present in document body retrieved from rev cache: %#v", bucketBody)
 	_, ok = docRevision.Attachments["myatt"]
 	assert.True(t, ok, "'myatt' not found in revcache attachments metadata")
 
 	// db.getRev stamps _attachments back in from revcache Attachment metadata
-	body, err := db.Get1xRevBody(ctx, docKey, rev2id, false, nil)
-	assert.NoError(t, err, "Unexpected error calling db.Get1xRevBody")
+	body, err := collection.Get1xRevBody(ctx, docKey, rev2id, false, nil)
+	assert.NoError(t, err, "Unexpected error calling collection.Get1xRevBody")
 	atts, ok := body[BodyAttachments]
-	assert.True(t, ok, "_attachments property was not stamped back in body during db.Get1xRevBody: %#v", body)
+	assert.True(t, ok, "_attachments property was not stamped back in body during collection.Get1xRevBody: %#v", body)
 
 	attsMap, ok := atts.(AttachmentsMeta)
 	_, ok = attsMap["myatt"]
@@ -441,37 +446,38 @@ func TestConcurrentLoad(t *testing.T) {
 func TestInvalidate(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
+	collection := db.GetSingleDatabaseCollectionWithUser()
 
-	rev1id, _, err := db.Put(ctx, "doc", Body{"val": 123})
+	rev1id, _, err := collection.Put(ctx, "doc", Body{"val": 123})
 	assert.NoError(t, err)
 
-	docRev, err := db.revisionCache.Get(base.TestCtx(t), "doc", rev1id, true, true)
+	docRev, err := collection.revisionCache.Get(base.TestCtx(t), "doc", rev1id, true, true)
 	assert.NoError(t, err)
 	assert.Equal(t, rev1id, docRev.RevID)
 	assert.False(t, docRev.Invalid)
 	assert.Equal(t, int64(0), db.DbStats.Cache().RevisionCacheMisses.Value())
 
-	db.revisionCache.Invalidate(base.TestCtx(t), "doc", rev1id)
+	collection.revisionCache.Invalidate(base.TestCtx(t), "doc", rev1id)
 
-	docRev, err = db.revisionCache.Get(base.TestCtx(t), "doc", rev1id, true, true)
+	docRev, err = collection.revisionCache.Get(base.TestCtx(t), "doc", rev1id, true, true)
 	assert.NoError(t, err)
 	assert.Equal(t, rev1id, docRev.RevID)
 	assert.True(t, docRev.Invalid)
 	assert.Equal(t, int64(1), db.DbStats.Cache().RevisionCacheMisses.Value())
 
-	docRev, err = db.revisionCache.GetActive(base.TestCtx(t), "doc", true)
+	docRev, err = collection.revisionCache.GetActive(base.TestCtx(t), "doc", true)
 	assert.NoError(t, err)
 	assert.Equal(t, rev1id, docRev.RevID)
 	assert.True(t, docRev.Invalid)
 	assert.Equal(t, int64(2), db.DbStats.Cache().RevisionCacheMisses.Value())
 
-	docRev, err = db.GetRev(ctx, "doc", docRev.RevID, true, nil)
+	docRev, err = collection.GetRev(ctx, "doc", docRev.RevID, true, nil)
 	assert.NoError(t, err)
 	assert.Equal(t, rev1id, docRev.RevID)
 	assert.True(t, docRev.Invalid)
 	assert.Equal(t, int64(3), db.DbStats.Cache().RevisionCacheMisses.Value())
 
-	docRev, err = db.GetRev(ctx, "doc", "", true, nil)
+	docRev, err = collection.GetRev(ctx, "doc", "", true, nil)
 	assert.NoError(t, err)
 	assert.Equal(t, rev1id, docRev.RevID)
 	assert.True(t, docRev.Invalid)
