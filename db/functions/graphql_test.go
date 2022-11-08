@@ -177,6 +177,35 @@ var kTestGraphQLUserFunctionsConfig = FunctionsConfig{
 	},
 }
 
+var kTestTypenameResolverSchema = `interface Book {
+	id: ID!
+}
+type Textbook implements Book {
+	id: ID!
+	courses: [String!]!
+} 
+type ColoringBook implements Book {
+	id: ID!
+	colors: [String!]!
+}
+type Query {
+	books: [Book!]!
+}`
+
+var kTestTypenameResolverQuery = `
+query {
+	books {
+		id
+		... on Textbook {
+			courses
+		}
+		... on ColoringBook{
+			colors
+		}
+	}
+}
+`
+
 func assertGraphQLResult(t *testing.T, expected string, result *graphql.Result, err error) {
 	if !assert.NoError(t, err) || !assert.NotNil(t, result) {
 		return
@@ -477,6 +506,144 @@ func TestGraphQLMaxResolverCount(t *testing.T) {
 	}
 	_, err := CompileGraphQL(&config)
 	assert.ErrorContains(t, err, "too many GraphQL resolvers (> 1)")
+}
+
+func TestArgsInResolverConfig(t *testing.T) {
+	var config = GraphQLConfig{
+		Schema: base.StringPtr(`type Query{}`),
+		Resolvers: map[string]GraphQLResolverConfig{
+			"Query": {
+				"square": {
+					Type: "javascript",
+					Code: `function(parent, args, context, info) {return args.n * args.n;}`,
+					Args: []string{"n"},
+				},
+			},
+		},
+	}
+	_, err := CompileGraphQL(&config)
+	assert.ErrorContains(t, err, `'args' is not valid in a GraphQL resolver config`)
+}
+
+func TestUnresolvedTypes(t *testing.T) {
+	var config = GraphQLConfig{
+		Schema:    base.StringPtr(`type Query{} type abc{def:kkk}`),
+		Resolvers: nil,
+	}
+	_, err := CompileGraphQL(&config)
+	assert.ErrorContains(t, err, `GraphQL Schema object has no registered TypeMap -- this probably means the schema has unresolved types`)
+}
+
+func TestInvalidMutationType(t *testing.T) {
+	var config = GraphQLConfig{
+		Schema: base.StringPtr(`type Query{}`),
+		Resolvers: map[string]GraphQLResolverConfig{
+			"Mutation": {
+				"complete": {
+					Type: "cpp",
+					Code: `SELECT {}`,
+				},
+			},
+		},
+	}
+	_, err := CompileGraphQL(&config)
+	assert.ErrorContains(t, err, `unrecognized 'type' "cpp"`)
+}
+
+func TestCompilationError(t *testing.T) {
+	var config = GraphQLConfig{
+		Schema: base.StringPtr(`type Query{ square(n: Int!): Int! }`),
+		Resolvers: map[string]GraphQLResolverConfig{
+			"Query": {
+				"square": {
+					Type: "javascript",
+					Code: `function(parent, args, context, info, 3) { }`,
+				},
+			},
+		},
+	}
+	_, err := CompileGraphQL(&config)
+	assert.ErrorContains(t, err, `500 Error compiling GraphQL resolver "Query:square"`)
+}
+
+// Unit Test for Typename resolver for interfaces in GraphQL schema
+func TestTypenameResolver(t *testing.T) {
+	t.Run("Typename Resolver must be a Javascript Function", func(t *testing.T) {
+		var config = GraphQLConfig{
+			Schema: &kTestTypenameResolverSchema,
+			Resolvers: map[string]GraphQLResolverConfig{
+				"Book": {
+					"__typename": {
+						Type: "cpp",
+						Code: `function(context, value) {
+								switch (value.type) {
+								  case "textbook": return "Textbook";
+								  case "coloringBook": return "ColoringBook";
+								  default: return null;
+								}
+							  }`,
+					},
+				},
+			},
+		}
+		_, err := CompileGraphQL(&config)
+		assert.ErrorContains(t, err, "a GraphQL '__typename__' resolver must be JavaScript")
+	})
+
+	t.Run("Typename Resolver should not have allow", func(t *testing.T) {
+		var config = GraphQLConfig{
+			Schema: &kTestTypenameResolverSchema,
+			Resolvers: map[string]GraphQLResolverConfig{
+				"Book": {
+					"__typename": {
+						Type: "javascript",
+						Code: `function(context, value) {
+								switch (args.type) {
+								  case "textbook": return "Textbook";
+								  case "coloringBook": return "ColoringBook";
+								  default: return null;
+								}
+							  }`,
+						Allow: allowAll,
+					},
+				},
+			},
+		}
+		_, err := CompileGraphQL(&config)
+		assert.ErrorContains(t, err, "'allow' is not valid in a GraphQL '__typename__' resolver")
+	})
+
+	t.Run("Correct Schema and Query produces the result", func(t *testing.T) {
+		var config = GraphQLConfig{
+			Schema: &kTestTypenameResolverSchema,
+			Resolvers: map[string]GraphQLResolverConfig{
+				"Book": {
+					"__typename": {
+						Type: "javascript",
+						Code: `function(context, value) {
+								switch (value.type) {
+								  case "textbook": return "Textbook";
+								  case "coloringBook": return "ColoringBook";
+								  default:        return null;
+								}
+							  }`,
+					},
+				},
+				"Query": {
+					"books": {
+						Type: "javascript",
+						Code: `function(parent, args, context, info) {return [{"id":"abc", "courses":["science"], "type": "textbook"},{"id":"efg", "colors":["red"], "type": "coloringBook"}] }`,
+					},
+				},
+			},
+		}
+		_, err := CompileGraphQL(&config)
+		assert.NoError(t, err)
+		db, ctx := setupTestDBWithFunctions(t, nil, &config)
+		defer db.Close(ctx)
+		result, err := db.UserGraphQLQuery(kTestTypenameResolverQuery, "", nil, false, ctx)
+		assertGraphQLResult(t, `{"books":[{"courses":["science"],"id":"abc"},{"colors":["red"],"id":"efg"}]}`, result, err)
+	})
 }
 
 // Unit Tests for Invalid Schema/SchemaFile in the getSchema Function
