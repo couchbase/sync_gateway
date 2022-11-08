@@ -163,11 +163,12 @@ func TestXattrImportOldDocRevHistory(t *testing.T) {
 	database, err := db.GetDatabase(dbc, nil)
 	assert.NoError(t, err)
 
+	collection := database.GetSingleDatabaseCollectionWithUser()
 	ctx := rt.Context()
 	for i := 0; i < 10; i++ {
 		updateResponse := rt.UpdateDoc(docID, revID, fmt.Sprintf(`{"val":%d}`, i))
 		// Purge old revision JSON to simulate expiry, and to verify import doesn't attempt multiple retrievals
-		purgeErr := database.PurgeOldRevisionJSON(ctx, docID, revID)
+		purgeErr := collection.PurgeOldRevisionJSON(ctx, docID, revID)
 		assert.NoError(t, purgeErr)
 		revID = updateResponse.Rev
 	}
@@ -1866,7 +1867,7 @@ func TestImportRevisionCopy(t *testing.T) {
 
 	// 5. Flush the rev cache (simulates attempted retrieval by a different SG node, since testing framework isn't great
 	//    at simulating multiple SG instances)
-	rt.GetDatabase().FlushRevisionCacheForTest()
+	rt.GetDatabase().GetSingleDatabaseCollection().FlushRevisionCacheForTest()
 
 	// 6. Attempt to retrieve previous revision body
 	response = rt.SendAdminRequest("GET", fmt.Sprintf("/db/%s?rev=%s", key, rev1id), "")
@@ -1914,7 +1915,7 @@ func TestImportRevisionCopyUnavailable(t *testing.T) {
 
 	// 3. Flush the rev cache (simulates attempted retrieval by a different SG node, since testing framework isn't great
 	//    at simulating multiple SG instances)
-	rt.GetDatabase().FlushRevisionCacheForTest()
+	rt.GetDatabase().GetSingleDatabaseCollection().FlushRevisionCacheForTest()
 
 	// 4. Update via SDK
 	updatedBody := make(map[string]interface{})
@@ -1988,7 +1989,7 @@ func TestImportRevisionCopyDisabled(t *testing.T) {
 
 	// 5. Flush the rev cache (simulates attempted retrieval by a different SG node, since testing framework isn't great
 	//    at simulating multiple SG instances)
-	rt.GetDatabase().FlushRevisionCacheForTest()
+	rt.GetDatabase().GetSingleDatabaseCollection().FlushRevisionCacheForTest()
 
 	// 6. Attempt to retrieve previous revision body.  Should fail, as backup wasn't persisted
 	response = rt.SendAdminRequest("GET", fmt.Sprintf("/db/%s?rev=%s", key, rev1id), "")

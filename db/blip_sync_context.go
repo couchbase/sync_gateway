@@ -125,7 +125,7 @@ type BlipSyncContext struct {
 	// when readOnly is true, handleRev requests are rejected
 	readOnly bool
 
-	collectionMapping []*Database // Mapping of array id to collection mapping
+	collectionMapping []*DatabaseCollection // Mapping of array id to collection mapping
 }
 
 // AllowedAttachment contains the metadata for handling allowed attachments
@@ -326,11 +326,12 @@ func (bsc *BlipSyncContext) handleChangesResponse(sender *blip.Sender, response 
 				}
 			}
 
+			handleChangesResponseCollection := handleChangesResponseDb.GetSingleDatabaseCollectionWithUser()
 			var err error
 			if deltaSrcRevID != "" {
-				err = bsc.sendRevAsDelta(sender, docID, revID, deltaSrcRevID, seq, knownRevs, maxHistory, handleChangesResponseDb)
+				err = bsc.sendRevAsDelta(sender, docID, revID, deltaSrcRevID, seq, knownRevs, maxHistory, handleChangesResponseCollection)
 			} else {
-				err = bsc.sendRevision(sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseDb)
+				err = bsc.sendRevision(sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseCollection)
 			}
 			if err != nil {
 				return err
@@ -565,13 +566,13 @@ func (bsc *BlipSyncContext) sendNoRev(sender *blip.Sender, docID, revID string, 
 }
 
 // Pushes a revision body to the client
-func (bsc *BlipSyncContext) sendRevision(sender *blip.Sender, docID, revID string, seq SequenceID, knownRevs map[string]bool, maxHistory int, handleChangesResponseDb *Database) error {
+func (bsc *BlipSyncContext) sendRevision(sender *blip.Sender, docID, revID string, seq SequenceID, knownRevs map[string]bool, maxHistory int, handleChangesResponseCollection *DatabaseCollectionWithUser) error {
 	var collectionIdx *int
-	if coll, ok := bsc.getCollectionIndexForDB(handleChangesResponseDb); ok {
+	if coll, ok := bsc.getCollectionIndexForDB(handleChangesResponseCollection); ok {
 		collectionIdx = &coll
 	}
 
-	rev, err := handleChangesResponseDb.GetRev(bsc.loggingCtx, docID, revID, true, nil)
+	rev, err := handleChangesResponseCollection.GetRev(bsc.loggingCtx, docID, revID, true, nil)
 	if base.IsDocNotFoundError(err) {
 		return bsc.sendNoRev(sender, docID, revID, collectionIdx, seq, err)
 	} else if err != nil {

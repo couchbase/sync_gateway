@@ -370,7 +370,7 @@ func (c *changeCache) CleanSkippedSequenceQueue(ctx context.Context) error {
 		entry.Skipped = true
 		// Need to populate the actual channels for this entry - the entry returned from the * channel
 		// view will only have the * channel
-		doc, err := c.context.GetDocument(ctx, entry.DocID, DocUnmarshalNoHistory)
+		doc, err := c.context.GetSingleDatabaseCollection().GetDocument(ctx, entry.DocID, DocUnmarshalNoHistory)
 		if err != nil {
 			base.WarnfCtx(ctx, "Unable to retrieve doc when processing skipped document %q: abandoning sequence %d", base.UD(entry.DocID), entry.Sequence)
 			continue
@@ -472,7 +472,8 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 	// If not using xattrs and no sync metadata found, check whether we're mid-upgrade and attempting to read a doc w/ metadata stored in xattr
 	// before ignoring the mutation.
 	if !c.context.UseXattrs() && !syncData.HasValidSyncData() {
-		migratedDoc, _ := c.context.checkForUpgrade(docID, DocUnmarshalNoHistory)
+		dbCollection := c.context.GetSingleDatabaseCollection()
+		migratedDoc, _ := dbCollection.checkForUpgrade(docID, DocUnmarshalNoHistory)
 		if migratedDoc != nil && migratedDoc.Cas == event.Cas {
 			base.InfofCtx(c.logCtx, base.KeyCache, "Found mobile xattr on doc %q without %s property - caching, assuming upgrade in progress.", base.UD(docID), base.SyncPropertyName)
 			syncData = &migratedDoc.SyncData

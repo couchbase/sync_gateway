@@ -952,7 +952,8 @@ func (h *handler) handleGetRawDoc() error {
 		includeDoc = false
 	}
 
-	doc, err := h.db.GetDocument(h.ctx(), docid, db.DocUnmarshalSync)
+	collection := h.db.GetSingleDatabaseCollectionWithUser()
+	doc, err := collection.GetDocument(h.ctx(), docid, db.DocUnmarshalSync)
 	if err != nil {
 		return err
 	}
@@ -1003,7 +1004,8 @@ func (h *handler) handleGetRawDoc() error {
 func (h *handler) handleGetRevTree() error {
 	h.assertAdminOnly()
 	docid := h.PathVar("docid")
-	doc, err := h.db.GetDocument(h.ctx(), docid, db.DocUnmarshalAll)
+	collection := h.db.GetSingleDatabaseCollectionWithUser()
+	doc, err := collection.GetDocument(h.ctx(), docid, db.DocUnmarshalAll)
 
 	if doc != nil {
 		h.writeText([]byte(doc.History.RenderGraphvizDot()))
@@ -1451,6 +1453,7 @@ func (h *handler) handlePurge() error {
 	h.setHeader("Cache-Control", "private, max-age=0, no-cache, no-store")
 	_, _ = h.response.Write([]byte("{\"purged\":{\r\n"))
 	var first bool = true
+	collection := h.db.GetSingleDatabaseCollectionWithUser()
 
 	for key, value := range input {
 		// For each one validate that the revision list is set to ["*"], otherwise skip doc and log warning
@@ -1470,7 +1473,7 @@ func (h *handler) handlePurge() error {
 			}
 
 			// Attempt to delete document, if successful add to response, otherwise log warning
-			err = h.db.Purge(h.ctx(), key)
+			err = collection.Purge(h.ctx(), key)
 			if err == nil {
 
 				docIDs = append(docIDs, key)

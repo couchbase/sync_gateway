@@ -194,6 +194,7 @@ func TestMultiCollectionDCP(t *testing.T) {
 		t.Skip("Test relies on import - needs xattrs")
 	}
 
+	t.Skip("Skip until CBG-2266 is implemented")
 	tb := base.GetTestBucket(t)
 	defer tb.Close()
 

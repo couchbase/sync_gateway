@@ -65,22 +65,23 @@ func (h *handler) handleGetDoc() error {
 		}
 	}
 
+	collection := h.db.GetSingleDatabaseCollectionWithUser()
 	if openRevs == "" {
 		// Single-revision GET:
-		value, err := h.db.Get1xRevBodyWithHistory(h.ctx(), docid, revid, revsLimit, revsFrom, attachmentsSince, showExp)
+		value, err := collection.Get1xRevBodyWithHistory(h.ctx(), docid, revid, revsLimit, revsFrom, attachmentsSince, showExp)
 		if err != nil {
 			if err == base.ErrImportCancelledPurged {
 				base.DebugfCtx(h.ctx(), base.KeyImport, fmt.Sprintf("Import cancelled as document %v is purged", base.UD(docid)))
 				return nil
 			}
-			if h.db.ForceAPIForbiddenErrors() && base.IsDocNotFoundError(err) {
+			if collection.ForceAPIForbiddenErrors() && base.IsDocNotFoundError(err) {
 				base.InfofCtx(h.ctx(), base.KeyCRUD, "Doc %q not found: %v", base.UD(docid), err)
 				return db.ErrForbidden
 			}
 			return err
 		}
 		if value == nil {
-			if h.db.ForceAPIForbiddenErrors() {
+			if collection.ForceAPIForbiddenErrors() {
 				base.InfofCtx(h.ctx(), base.KeyCRUD, "Doc %q missing", base.UD(docid))
 				return db.ErrForbidden
 			}
@@ -105,7 +106,7 @@ func (h *handler) handleGetDoc() error {
 
 		if openRevs == "all" {
 			// open_revs=all
-			doc, err := h.db.GetDocument(h.ctx(), docid, db.DocUnmarshalSync)
+			doc, err := collection.GetDocument(h.ctx(), docid, db.DocUnmarshalSync)
 			if err != nil {
 				return err
 			}
@@ -124,7 +125,7 @@ func (h *handler) handleGetDoc() error {
 		if h.requestAccepts("multipart/") {
 			err := h.writeMultipart("mixed", func(writer *multipart.Writer) error {
 				for _, revid := range revids {
-					revBody, err := h.db.Get1xRevBodyWithHistory(h.ctx(), docid, revid, revsLimit, revsFrom, attachmentsSince, showExp)
+					revBody, err := collection.Get1xRevBodyWithHistory(h.ctx(), docid, revid, revsLimit, revsFrom, attachmentsSince, showExp)
 					if err != nil {
 						revBody = db.Body{"missing": revid} // TODO: More specific error
 					}
@@ -140,7 +141,7 @@ func (h *handler) handleGetDoc() error {
 			_, _ = h.response.Write([]byte(`[` + "\n"))
 			separator := []byte(``)
 			for _, revid := range revids {
-				revBody, err := h.db.Get1xRevBodyWithHistory(h.ctx(), docid, revid, revsLimit, revsFrom, attachmentsSince, showExp)
+				revBody, err := collection.Get1xRevBodyWithHistory(h.ctx(), docid, revid, revsLimit, revsFrom, attachmentsSince, showExp)
 				if err != nil {
 					revBody = db.Body{"missing": revid} // TODO: More specific error
 				} else {
@@ -165,7 +166,8 @@ func (h *handler) handleGetDocReplicator2(docid, revid string) error {
 		return base.HTTPErrorf(http.StatusNotImplemented, "replicator2 endpoints are only supported in EE")
 	}
 
-	rev, err := h.db.GetRev(h.ctx(), docid, revid, true, nil)
+	collection := h.db.GetSingleDatabaseCollectionWithUser()
+	rev, err := collection.GetRev(h.ctx(), docid, revid, true, nil)
 	if err != nil {
 		return err
 	}
@@ -191,7 +193,8 @@ func (h *handler) handleGetAttachment() error {
 	docid := h.PathVar("docid")
 	attachmentName := h.PathVar("attach")
 	revid := h.getQuery("rev")
-	rev, err := h.db.GetRev(h.ctx(), docid, revid, false, nil)
+	collection := h.db.GetSingleDatabaseCollectionWithUser()
+	rev, err := collection.GetRev(h.ctx(), docid, revid, false, nil)
 	if err != nil {
 		return err
 	}
@@ -209,7 +212,7 @@ func (h *handler) handleGetAttachment() error {
 		return db.ErrAttachmentVersion
 	}
 	attachmentKey := db.MakeAttachmentKey(version, docid, digest)
-	data, err := h.db.GetAttachment(attachmentKey)
+	data, err := collection.GetAttachment(attachmentKey)
 	if err != nil {
 		return err
 	}
@@ -314,7 +317,8 @@ func (h *handler) handlePutAttachment() error {
 		return err
 	}
 
-	body, err := h.db.Get1xRevBody(h.ctx(), docid, revid, false, nil)
+	collection := h.db.GetSingleDatabaseCollectionWithUser()
+	body, err := collection.Get1xRevBody(h.ctx(), docid, revid, false, nil)
 	if err != nil {
 		if base.IsDocNotFoundError(err) {
 			// couchdb creates empty body on attachment PUT
@@ -346,7 +350,7 @@ func (h *handler) handlePutAttachment() error {
 	attachments[attachmentName] = attachment
 	body[db.BodyAttachments] = attachments
 
-	newRev, _, err := h.db.Put(h.ctx(), docid, body)
+	newRev, _, err := collection.Put(h.ctx(), docid, body)
 	if err != nil {
 		return err
 	}
@@ -372,7 +376,8 @@ func (h *handler) handleDeleteAttachment() error {
 		}
 	}
 
-	body, err := h.db.Get1xRevBody(h.ctx(), docid, revid, false, nil)
+	collection := h.db.GetSingleDatabaseCollectionWithUser()
+	body, err := collection.Get1xRevBody(h.ctx(), docid, revid, false, nil)
 	if err != nil {
 		if base.IsDocNotFoundError(err) {
 			// Check here if error is relating to incorrect revid, if so return 409 code else return 404 code
@@ -401,7 +406,7 @@ func (h *handler) handleDeleteAttachment() error {
 	delete(attachments, attachmentName)
 	body[db.BodyAttachments] = attachments
 
-	newRev, _, err := h.db.Put(h.ctx(), docid, body)
+	newRev, _, err := collection.Put(h.ctx(), docid, body)
 	if err != nil {
 		return err
 	}
@@ -448,6 +453,7 @@ func (h *handler) handlePutDoc() error {
 	var newRev string
 	var doc *db.Document
 
+	collection := h.db.GetSingleDatabaseCollectionWithUser()
 	if h.getQuery("new_edits") != "false" {
 		// Regular PUT:
 		bodyRev := body[db.BodyRev]
@@ -460,7 +466,7 @@ func (h *handler) handlePutDoc() error {
 			return base.HTTPErrorf(http.StatusBadRequest, "Revision IDs provided do not match")
 		}
 
-		newRev, doc, err = h.db.Put(h.ctx(), docid, body)
+		newRev, doc, err = collection.Put(h.ctx(), docid, body)
 		if err != nil {
 			return err
 		}
@@ -471,7 +477,7 @@ func (h *handler) handlePutDoc() error {
 		if revisions == nil {
 			return base.HTTPErrorf(http.StatusBadRequest, "Bad _revisions")
 		}
-		doc, newRev, err = h.db.PutExistingRevWithBody(h.ctx(), docid, body, revisions, false)
+		doc, newRev, err = collection.PutExistingRevWithBody(h.ctx(), docid, body, revisions, false)
 		if err != nil {
 			return err
 		}
@@ -548,7 +554,8 @@ func (h *handler) handlePutDocReplicator2(docid string, roundTrip bool) (err err
 		newDoc.UpdateBody(body)
 	}
 
-	doc, rev, err := h.db.PutExistingRev(h.ctx(), newDoc, history, true, false, nil)
+	collection := h.db.GetSingleDatabaseCollectionWithUser()
+	doc, rev, err := collection.PutExistingRev(h.ctx(), newDoc, history, true, false, nil)
 
 	if err != nil {
 		return err
@@ -576,7 +583,8 @@ func (h *handler) handlePostDoc() error {
 		return err
 	}
 
-	docid, newRev, doc, err := h.db.Post(h.ctx(), body)
+	collection := h.db.GetSingleDatabaseCollectionWithUser()
+	docid, newRev, doc, err := collection.Post(h.ctx(), body)
 	if err != nil {
 		return err
 	}
@@ -605,7 +613,8 @@ func (h *handler) handleDeleteDoc() error {
 			return err
 		}
 	}
-	newRev, err := h.db.DeleteDoc(h.ctx(), docid, revid)
+	collection := h.db.GetSingleDatabaseCollectionWithUser()
+	newRev, err := collection.DeleteDoc(h.ctx(), docid, revid)
 	if err == nil {
 		h.writeRawJSONStatus(http.StatusOK, []byte(`{"id":`+base.ConvertToJSONString(docid)+`,"ok":true,"rev":"`+newRev+`"}`))
 	}
@@ -617,7 +626,8 @@ func (h *handler) handleDeleteDoc() error {
 // HTTP handler for a GET of a _local document
 func (h *handler) handleGetLocalDoc() error {
 	docid := h.PathVar("docid")
-	value, err := h.db.GetSpecial(db.DocTypeLocal, docid)
+	collection := h.db.GetSingleDatabaseCollectionWithUser()
+	value, err := collection.GetSpecial(db.DocTypeLocal, docid)
 	if err != nil {
 		return err
 	}
@@ -634,8 +644,9 @@ func (h *handler) handlePutLocalDoc() error {
 	docid := h.PathVar("docid")
 	body, err := h.readJSON()
 	if err == nil {
+		collection := h.db.GetSingleDatabaseCollectionWithUser()
 		var revid string
-		revid, err = h.db.PutSpecial(db.DocTypeLocal, docid, body)
+		revid, err = collection.PutSpecial(db.DocTypeLocal, docid, body)
 		if err == nil {
 			h.writeRawJSONStatus(http.StatusCreated, []byte(`{"id":`+base.ConvertToJSONString("_local/"+docid)+`,"ok":true,"rev":"`+revid+`"}`))
 		}
@@ -646,7 +657,8 @@ func (h *handler) handlePutLocalDoc() error {
 // HTTP handler for a DELETE of a _local document
 func (h *handler) handleDelLocalDoc() error {
 	docid := h.PathVar("docid")
-	return h.db.DeleteSpecial(db.DocTypeLocal, docid, h.getQuery("rev"))
+	collection := h.db.GetSingleDatabaseCollectionWithUser()
+	return collection.DeleteSpecial(db.DocTypeLocal, docid, h.getQuery("rev"))
 }
 
 // helper for read only check

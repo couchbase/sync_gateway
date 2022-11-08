@@ -30,7 +30,7 @@ import (
 var ErrCollectionsUnsupported = errors.New("collections not supported")
 
 // DefaultCollectionID represents _default._default collection
-const DefaultCollectionID = 0x0
+const DefaultCollectionID = uint32(0)
 
 var _ sgbucket.KVStore = &Collection{}
 var _ CouchbaseStore = &Collection{}

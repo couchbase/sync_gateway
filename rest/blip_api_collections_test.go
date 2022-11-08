@@ -68,7 +68,7 @@ func TestBlipGetCollections(t *testing.T) {
 	checkpointID1 := "checkpoint1"
 	checkpoint1Body := db.Body{"seq": "123"}
 	dbInstance := db.Database{DatabaseContext: rt.GetDatabase()}
-	revID, err := dbInstance.PutSpecial(db.DocTypeLocal, db.CheckpointDocIDPrefix+checkpointID1, checkpoint1Body)
+	revID, err := dbInstance.GetSingleDatabaseCollection().PutSpecial(db.DocTypeLocal, db.CheckpointDocIDPrefix+checkpointID1, checkpoint1Body)
 	require.NoError(t, err)
 	checkpoint1RevID := "0-1"
 	require.Equal(t, checkpoint1RevID, revID)
@@ -205,7 +205,7 @@ func TestBlipGetCollectionsAndSetCheckpoint(t *testing.T) {
 	checkpointID1 := "checkpoint1"
 	checkpoint1Body := db.Body{"seq": "123"}
 	dbInstance := db.Database{DatabaseContext: rt.GetDatabase()}
-	revID, err := dbInstance.PutSpecial(db.DocTypeLocal, db.CheckpointDocIDPrefix+checkpointID1, checkpoint1Body)
+	revID, err := dbInstance.GetSingleDatabaseCollection().PutSpecial(db.DocTypeLocal, db.CheckpointDocIDPrefix+checkpointID1, checkpoint1Body)
 	require.NoError(t, err)
 	checkpoint1RevID := "0-1"
 	require.Equal(t, checkpoint1RevID, revID)

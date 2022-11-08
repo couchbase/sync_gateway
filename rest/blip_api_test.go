@@ -996,7 +996,6 @@ function(doc, oldDoc) {
 	require.NoError(t, rt.WaitForPendingChanges())
 
 	// Wait until all expected changes are received by change handler
-	// receivedChangesWg.Wait()
 	timeoutErr := WaitWithTimeout(&receivedChangesWg, time.Second*5)
 	assert.NoError(t, timeoutErr, "Timed out waiting for all changes.")
 
@@ -1101,7 +1100,7 @@ function(doc, oldDoc) {
 			panic(fmt.Sprintf("Unexpected err: %v", err))
 		}
 		_, isRemoved := doc[db.BodyRemoved]
-		assert.False(t, isRemoved, fmt.Sprintf("Document %v shouldn't be removed", request.Properties[db.RevMessageID]))
+		require.False(t, isRemoved, fmt.Sprintf("Document %v shouldn't be removed", request.Properties[db.RevMessageID]))
 
 	}
 
@@ -1133,7 +1132,7 @@ function(doc, oldDoc) {
 			"channels":["`+docID+`"]}`),
 			blip.Properties{},
 		)
-		assert.NoError(t, sendErr)
+		require.NoError(t, sendErr)
 	}
 
 	// Wait until all expected changes are received by change handler
@@ -1924,7 +1923,7 @@ func TestGetRemovedDoc(t *testing.T) {
 	require.NoError(t, rt.GetDatabase().WaitForPendingChanges(base.TestCtx(t)))
 
 	// Flush rev cache in case this prevents the bug from showing up (didn't make a difference)
-	rt.GetDatabase().FlushRevisionCacheForTest()
+	rt.GetDatabase().GetSingleDatabaseCollection().FlushRevisionCacheForTest()
 
 	// Delete any temp revisions in case this prevents the bug from showing up (didn't make a difference)
 	tempRevisionDocID := base.RevPrefix + "foo:5:3-cde"
@@ -1988,11 +1987,11 @@ func TestMissingNoRev(t *testing.T) {
 
 	// Purge one doc
 	doc0Id := fmt.Sprintf("doc-%d", 0)
-	err = targetDb.Purge(ctx, doc0Id)
+	err = targetDb.GetSingleDatabaseCollectionWithUser().Purge(ctx, doc0Id)
 	assert.NoError(t, err, "failed")
 
 	// Flush rev cache
-	targetDb.FlushRevisionCacheForTest()
+	targetDb.GetSingleDatabaseCollection().FlushRevisionCacheForTest()
 
 	// Pull docs, expect to pull 4 since one was purged.  (also expect to NOT get stuck)
 	docs, ok = bt.WaitForNumDocsViaChanges(4)
@@ -2630,7 +2629,7 @@ func TestBlipDeltaSyncPush(t *testing.T) {
 		assert.Equal(t, `{"greetings":{"2-":[{"howdy":"bob"}]}}`, string(msgBody))
 
 		// Validate that generation of a delta didn't mutate the revision body in the revision cache
-		docRev, cacheErr := rt.GetDatabase().GetRevisionCacheForTest().Get(base.TestCtx(t), "doc1", "1-0335a345b6ffed05707ccc4cbc1b67f4", db.RevCacheOmitBody, db.RevCacheOmitDelta)
+		docRev, cacheErr := rt.GetDatabase().GetSingleDatabaseCollection().GetRevisionCacheForTest().Get(base.TestCtx(t), "doc1", "1-0335a345b6ffed05707ccc4cbc1b67f4", db.RevCacheOmitBody, db.RevCacheOmitDelta)
 		assert.NoError(t, cacheErr)
 		assert.NotContains(t, docRev.BodyBytes, "bob")
 	} else {
@@ -2962,7 +2961,7 @@ func TestBlipDeltaSyncPushAttachment(t *testing.T) {
 	revID, err = btc.PushRev(docID, revID, []byte(`{"key":"val","_attachments":{"myAttachment":{"data":"`+attData+`"}}}`))
 	require.NoError(t, err)
 
-	syncData, err := rt.GetDatabase().GetDocSyncData(base.TestCtx(t), docID)
+	syncData, err := rt.GetDatabase().GetSingleDatabaseCollection().GetDocSyncData(base.TestCtx(t), docID)
 	require.NoError(t, err)
 
 	assert.Len(t, syncData.Attachments, 1)
@@ -2980,7 +2979,7 @@ func TestBlipDeltaSyncPushAttachment(t *testing.T) {
 	revID, err = btc.PushRev(docID, revID, newBody)
 	require.NoError(t, err)
 
-	syncData, err = rt.GetDatabase().GetDocSyncData(base.TestCtx(t), docID)
+	syncData, err = rt.GetDatabase().GetSingleDatabaseCollection().GetDocSyncData(base.TestCtx(t), docID)
 	require.NoError(t, err)
 
 	assert.Len(t, syncData.Attachments, 1)
@@ -3274,8 +3273,8 @@ func TestUpdateExistingAttachment(t *testing.T) {
 	err = rt.WaitForRev("doc2", revIDDoc2)
 	assert.NoError(t, err)
 
-	_, err = rt.GetDatabase().GetDocument(base.TestCtx(t), "doc1", db.DocUnmarshalAll)
-	_, err = rt.GetDatabase().GetDocument(base.TestCtx(t), "doc2", db.DocUnmarshalAll)
+	_, err = rt.GetDatabase().GetSingleDatabaseCollection().GetDocument(base.TestCtx(t), "doc1", db.DocUnmarshalAll)
+	_, err = rt.GetDatabase().GetSingleDatabaseCollection().GetDocument(base.TestCtx(t), "doc2", db.DocUnmarshalAll)
 
 	revIDDoc1, err = btc.PushRev("doc1", revIDDoc1, []byte(`{"key": "val", "_attachments":{"attachment":{"digest":"sha1-SKk0IV40XSHW37d3H0xpv2+z9Ck=","length":11,"content_type":"","stub":true,"revpos":3}}}`))
 	require.NoError(t, err)
@@ -3283,7 +3282,7 @@ func TestUpdateExistingAttachment(t *testing.T) {
 	err = rt.WaitForRev("doc1", revIDDoc1)
 	assert.NoError(t, err)
 
-	doc1, err := rt.GetDatabase().GetDocument(base.TestCtx(t), "doc1", db.DocUnmarshalAll)
+	doc1, err := rt.GetDatabase().GetSingleDatabaseCollection().GetDocument(base.TestCtx(t), "doc1", db.DocUnmarshalAll)
 	assert.NoError(t, err)
 
 	assert.Equal(t, "sha1-SKk0IV40XSHW37d3H0xpv2+z9Ck=", doc1.Attachments["attachment"].(map[string]interface{})["digest"])
@@ -3344,8 +3343,8 @@ func TestCBLRevposHandling(t *testing.T) {
 	err = rt.WaitForRev("doc2", revIDDoc2)
 	assert.NoError(t, err)
 
-	_, err = rt.GetDatabase().GetDocument(base.TestCtx(t), "doc1", db.DocUnmarshalAll)
-	_, err = rt.GetDatabase().GetDocument(base.TestCtx(t), "doc2", db.DocUnmarshalAll)
+	_, err = rt.GetDatabase().GetSingleDatabaseCollection().GetDocument(base.TestCtx(t), "doc1", db.DocUnmarshalAll)
+	_, err = rt.GetDatabase().GetSingleDatabaseCollection().GetDocument(base.TestCtx(t), "doc2", db.DocUnmarshalAll)
 
 	// Update doc1, don't change attachment, use correct revpos
 	revIDDoc1, err = btc.PushRev("doc1", revIDDoc1, []byte(`{"key": "val", "_attachments":{"attachment":{"digest":"sha1-wzp8ZyykdEuZ9GuqmxQ7XDrY7Co=","length":11,"content_type":"","stub":true,"revpos":2}}}`))
@@ -4698,7 +4697,7 @@ func TestSendRevisionNoRevHandling(t *testing.T) {
 			})
 
 			// Flush cache so document has to be retrieved from the leaky bucket
-			rt.GetDatabase().FlushRevisionCacheForTest()
+			rt.GetDatabase().GetSingleDatabaseCollection().FlushRevisionCacheForTest()
 
 			err = btc.StartPull()
 			require.NoError(t, err)

@@ -1625,7 +1625,7 @@ func TestResyncRegenerateSequences(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		docID := fmt.Sprintf("doc%d", i)
 
-		doc, err := rt.GetDatabase().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalAll)
+		doc, err := rt.GetDatabase().GetSingleDatabaseCollection().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalAll)
 		assert.NoError(t, err)
 
 		assert.True(t, float64(doc.Sequence) > docSeqArr[i])
@@ -4788,7 +4788,7 @@ func TestReplicatorCheckpointOnStop(t *testing.T) {
 
 	database, err := db.CreateDatabase(activeRT.GetDatabase())
 	require.NoError(t, err)
-	rev, doc, err := database.Put(activeCtx, "test", db.Body{})
+	rev, doc, err := database.GetSingleDatabaseCollectionWithUser().Put(activeCtx, "test", db.Body{})
 	require.NoError(t, err)
 	seq := strconv.FormatUint(doc.Sequence, 10)
 
