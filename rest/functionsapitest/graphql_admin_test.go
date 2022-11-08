@@ -37,6 +37,7 @@ var kTestGraphQLSchema = `
 	}
 	type Query {
 		getUser(id: ID!): User
+		getEmails(name: String!): User
 		getAllUsers: [User!]!
 	}
 	type Mutation {
@@ -60,6 +61,17 @@ var kTestGraphQLConfig = functions.GraphQLConfig{
 						if (!context.user) throw "Missing context.user";
 						if (!context.admin) throw "Missing context.admin";
 						return context.user.function("getUserWithID", {id: args.id});}`,
+				Allow: allowAll,
+			},
+			"getEmails": {
+				Type: "javascript",
+				Code: `function(parent, args, context, info) {
+						if (Object.keys(parent).length != 0) throw "Unexpected parent";
+						if (Object.keys(args).length != 1) throw "Unexpected args";
+						if (Object.keys(info) != "selectedFieldNames") throw "Unexpected info";
+						if (!context.user) throw "Missing context.user";
+						if (!context.admin) throw "Missing context.admin";
+						return context.user.function("getEmailsWithName", {name: args.name});}`,
 				Allow: allowAll,
 			},
 			"getAllUsers": {
@@ -141,6 +153,16 @@ var kTestGraphQLUserFunctionsConfig = functions.FunctionsConfig{
                             if (all[i].id == args.id) return all[i];
                         return undefined;}`,
 			Args:  []string{"id"},
+			Allow: &functions.Allow{Channels: []string{"*"}},
+		},
+		"getEmailsWithName": {
+			Type: "javascript",
+			Code: `function(context, args) {
+                        var all = context.user.function("all");
+                        for (var i = 0; i < all.length; i++)
+                            if (all[i].name == args.name) return all[i];
+                        return undefined;}`,
+			Args:  []string{"name"},
 			Allow: &functions.Allow{Channels: []string{"*"}},
 		},
 	},
