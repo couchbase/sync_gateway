@@ -184,7 +184,6 @@ func TestUnmarshalBrokenConfig(t *testing.T) {
 
 	// Add invalid json fields to the config
 	cnf["num_index_replicas"] = "0"
-	//cnf["graphql"] = `"{"resolvers": "foobar",  "foo": null}"`
 	marshaled, err := json.Marshal(cnf)
 
 	// Set the config to _sync:dbconfig:default
@@ -193,7 +192,7 @@ func TestUnmarshalBrokenConfig(t *testing.T) {
 
 	// Both calls to UpdateConfig and fetchAndLoadConfigs needed to enter the broken state
 	_, err = rt.ServerContext().BootstrapContext.Connection.UpdateConfig(tb.GetName(), rt.ServerContext().Config.Bootstrap.ConfigGroupID,
-		func(rawBucketConfig []byte) (newConfig []byte, err error) {
+		func(rawBucketConfig []byte, rawBucketConfigCas uint64) (newConfig []byte, err error) {
 			bytes, err := json.Marshal(cnf)
 			return bytes, err
 		})
