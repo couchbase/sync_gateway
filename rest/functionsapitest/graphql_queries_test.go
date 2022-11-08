@@ -35,23 +35,60 @@ func TestGraphQLQueryAdminOnly(t *testing.T) {
 	defer rt.Close()
 
 	t.Run("AsAdmin - getUser", func(t *testing.T) {
-		response := rt.SendAdminRequest("POST", "/db/_graphql", `{"query": "query($id:ID!){ getUser(id:$id) { id , name } }" , "variables": {"id": 1}}`)
-		assert.Equal(t, 200, response.Result().StatusCode)
-		assert.Equal(t, `{"data":{"getUser":{"id":"1","name":"user1"}}}`, string(response.BodyBytes()))
+		t.Run("POST request", func(t *testing.T) {
+			response := rt.SendAdminRequest("POST", "/db/_graphql", `{"query": "query($id:ID!){ getUser(id:$id) { id , name } }" , "variables": {"id": 1}}`)
+			assert.Equal(t, 200, response.Result().StatusCode)
+			assert.Equal(t, `{"data":{"getUser":{"id":"1","name":"user1"}}}`, string(response.BodyBytes()))
+		})
 
-		queryParam := `query($id:ID!){ getUser(id:$id) { id , name } }`
-		variableParam := `{"id": 1}`
-		getRequestUrl := fmt.Sprintf("/db/_graphql?query=%s&variables=%s", queryParam, variableParam)
-		response = rt.SendAdminRequest("GET", getRequestUrl, "")
-		assert.Equal(t, 200, response.Result().StatusCode)
-		assert.Equal(t, `{"data":{"getUser":{"id":"1","name":"user1"}}}`, string(response.BodyBytes()))
+		t.Run("GET request", func(t *testing.T) {
+			queryParam := `query($id:ID!){ getUser(id:$id) { id , name } }`
+			variableParam := `{"id": 1}`
+			getRequestUrl := fmt.Sprintf("/db/_graphql?query=%s&variables=%s", queryParam, variableParam)
+			response := rt.SendAdminRequest("GET", getRequestUrl, "")
+			assert.Equal(t, 200, response.Result().StatusCode)
+			assert.Equal(t, `{"data":{"getUser":{"id":"1","name":"user1"}}}`, string(response.BodyBytes()))
+		})
+
+		t.Run("POST request with Headers", func(t *testing.T) {
+			headerMap := map[string]string{
+				"Content-type": "application/graphql",
+			}
+			response := rt.SendAdminRequestWithHeaders("POST", "/db/_graphql", `query{getUser(id:1){id,name}}`, headerMap)
+			assert.Equal(t, 200, response.Result().StatusCode)
+			assert.Equal(t, `{"data":{"getUser":{"id":"1","name":"user1"}}}`, string(response.BodyBytes()))
+		})
 	})
 
 	t.Run("AsAdmin - getAllUsers", func(t *testing.T) {
 		response := rt.SendAdminRequest("POST", "/db/_graphql", `{"query": "query{getAllUsers{name}}"}`)
 		assert.Equal(t, 200, response.Result().StatusCode)
 		assert.Equal(t, `{"data":{"getAllUsers":[{"name":"user1"},{"name":"user2"},{"name":"user3"}]}}`, string(response.BodyBytes()))
+	})
 
+	// Test multiple query operations in a single request
+	t.Run("AsAdmin - getUserAndEmails", func(t *testing.T) {
+		queryParam := "query getUserAndEmail($id:ID!, $name:String!){getUser(id:$id) {id, name} getEmails(name:$name) {id, name, Emails}}"
+		variableParam := `{"id": 1, "name":"user2"}`
+		operationParam := "getUserAndEmail"
+		expectedResponse := `{"data":{"getEmails":{"Emails":["xyz@gmail.com","def@gmail.com"],"id":"2","name":"user2"},"getUser":{"id":"1","name":"user1"}}}`
+
+		t.Run("POST request", func(t *testing.T) {
+			requestBody := fmt.Sprintf(`{
+				"query": "%s",
+				"variables": %s, 
+				"operationName": "%s"
+			}`, queryParam, variableParam, operationParam)
+			response := rt.SendAdminRequest("POST", "/db/_graphql", requestBody)
+			assert.Equal(t, 200, response.Result().StatusCode)
+			assert.Equal(t, expectedResponse, string(response.BodyBytes()))
+		})
+
+		t.Run("GET request", func(t *testing.T) {
+			getRequestUrl := fmt.Sprintf(`/db/_graphql?query=%s&variables=%s&operationName=%s`, queryParam, variableParam, operationParam)
+			response := rt.SendAdminRequest("GET", getRequestUrl, "")
+			assert.Equal(t, expectedResponse, string(response.BodyBytes()))
+		})
 	})
 }
 
@@ -140,6 +177,24 @@ func TestGraphQLMutationsAdminOnly(t *testing.T) {
 		response := rt.SendAdminRequest("POST", "/db/_graphql", `{"query": "mutation($id:ID!, $email: String!){ addEmail(id:$id, email:$email) {id,name,Emails} }" , "variables": {"id": 2, "email":"pqr@gmail.com"}}`)
 		assert.Equal(t, 200, response.Result().StatusCode)
 		assert.Equal(t, `{"data":{"addEmail":{"Emails":["xyz@gmail.com","def@gmail.com","pqr@gmail.com"],"id":"2","name":"user2"}}}`, string(response.BodyBytes()))
+	})
+
+	// Test multiple mutation operations in a single request
+	// GET request cannot be made since it is read-only
+	t.Run("AsAdmin - updateNameAndEmail", func(t *testing.T) {
+		queryParam := "mutation updateNameAndEmail($id:ID!, $id2:ID!, $name:String!, $email:String!){updateName(id:$id, name:$name) {id, name} addEmail(id:$id2, email:$email) {id, name, Emails}}"
+		variableParam := `{"id": 1, "id2": 2, "name":"newUser", "email":"newEmail@gmail.com"}`
+		operationParam := "updateNameAndEmail"
+		expectedResponse := `{"data":{"addEmail":{"Emails":["xyz@gmail.com","def@gmail.com","newEmail@gmail.com"],"id":"2","name":"user2"},"updateName":{"id":"1","name":"newUser"}}}`
+		requestBody := fmt.Sprintf(`{
+			"query": "%s",
+			"variables": %s, 
+			"operationName": "%s"
+		}`, queryParam, variableParam, operationParam)
+
+		response := rt.SendAdminRequest("POST", "/db/_graphql", requestBody)
+		assert.Equal(t, 200, response.Result().StatusCode)
+		assert.Equal(t, expectedResponse, string(response.BodyBytes()))
 	})
 }
 

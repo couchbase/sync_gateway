@@ -37,6 +37,7 @@ var kTestGraphQLSchema = `
 	}
 	type Query {
 		getUser(id: ID!): User
+		getEmails(name: String!): User
 		getAllUsers: [User!]!
 	}
 	type Mutation {
@@ -60,6 +61,17 @@ var kTestGraphQLConfig = functions.GraphQLConfig{
 						if (!context.user) throw "Missing context.user";
 						if (!context.admin) throw "Missing context.admin";
 						return context.user.function("getUserWithID", {id: args.id});}`,
+				Allow: allowAll,
+			},
+			"getEmails": {
+				Type: "javascript",
+				Code: `function(parent, args, context, info) {
+						if (Object.keys(parent).length != 0) throw "Unexpected parent";
+						if (Object.keys(args).length != 1) throw "Unexpected args";
+						if (Object.keys(info) != "selectedFieldNames") throw "Unexpected info";
+						if (!context.user) throw "Missing context.user";
+						if (!context.admin) throw "Missing context.admin";
+						return context.user.function("getEmailsWithName", {name: args.name});}`,
 				Allow: allowAll,
 			},
 			"getAllUsers": {
@@ -141,6 +153,16 @@ var kTestGraphQLUserFunctionsConfig = functions.FunctionsConfig{
                             if (all[i].id == args.id) return all[i];
                         return undefined;}`,
 			Args:  []string{"id"},
+			Allow: &functions.Allow{Channels: []string{"*"}},
+		},
+		"getEmailsWithName": {
+			Type: "javascript",
+			Code: `function(context, args) {
+                        var all = context.user.function("all");
+                        for (var i = 0; i < all.length; i++)
+                            if (all[i].name == args.name) return all[i];
+                        return undefined;}`,
+			Args:  []string{"name"},
 			Allow: &functions.Allow{Channels: []string{"*"}},
 		},
 	},
@@ -350,6 +372,10 @@ func TestValidGraphQLConfigurationValues(t *testing.T) {
 			"max_schema_size" : %d
 		}`, len(schema)))
 		assert.Equal(t, 200, response.Result().StatusCode)
+
+		response = rt.SendAdminRequest("GET", "/db/_config/graphql", "")
+		assert.Equal(t, 200, response.Result().StatusCode)
+		assert.Contains(t, string(response.BodyBytes()), `"max_schema_size":32`)
 	})
 
 	//If max_resolver_count >= given number of resolvers then Valid
@@ -372,6 +398,10 @@ func TestValidGraphQLConfigurationValues(t *testing.T) {
 			"max_resolver_count" : 2
 		}`)
 		assert.Equal(t, 200, response.Result().StatusCode)
+
+		response = rt.SendAdminRequest("GET", "/db/_config/graphql", "")
+		assert.Equal(t, 200, response.Result().StatusCode)
+		assert.Contains(t, string(response.BodyBytes()), `"max_resolver_count":2`)
 	})
 
 	//If max_request_size >= length of JSON-encoded arguments passed to a function then Valid
@@ -394,6 +424,25 @@ func TestValidGraphQLConfigurationValues(t *testing.T) {
 		response = rt.SendAdminRequest("POST", "/db/_graphql", requestQuery)
 		assert.Equal(t, 200, response.Result().StatusCode)
 		assert.Equal(t, `{"data":{"square":16}}`, string(response.BodyBytes()))
+
+		response = rt.SendAdminRequest("GET", "/db/_config/graphql", "")
+		assert.Equal(t, 200, response.Result().StatusCode)
+		assert.Contains(t, string(response.BodyBytes()), fmt.Sprintf(`"max_request_size":%d`, len(requestQuery)))
+
+		headerMap := map[string]string{
+			"Content-type": "application/graphql",
+		}
+		response = rt.SendAdminRequestWithHeaders("POST", "/db/_graphql", `query{square(n:4)}`, headerMap)
+		assert.Equal(t, 200, response.Result().StatusCode)
+		assert.Equal(t, `{"data":{"square":16}}`, string(response.BodyBytes()))
+
+		queryParam := `query($numberToBeSquared:Int!){ square(n:$numberToBeSquared) }`
+		variableParam := `{"numberToBeSquared": 4}`
+		getRequestUrl := fmt.Sprintf("/db/_graphql?query=%s&variables=%s", queryParam, variableParam)
+		response = rt.SendAdminRequest("GET", getRequestUrl, "")
+		assert.Equal(t, 200, response.Result().StatusCode)
+		assert.Equal(t, `{"data":{"square":16}}`, string(response.BodyBytes()))
+
 	})
 
 	//only one out of the schema or schemaFile is allowed
@@ -416,6 +465,10 @@ func TestValidGraphQLConfigurationValues(t *testing.T) {
 		assert.Equal(t, 200, response.Result().StatusCode)
 		err = os.Remove("schema.graphql")
 		assert.NoError(t, err)
+
+		response = rt.SendAdminRequest("GET", "/db/_config/graphql", "")
+		assert.Equal(t, 200, response.Result().StatusCode)
+		assert.Contains(t, string(response.BodyBytes()), `"schemaFile":"schema.graphql"`)
 	})
 }
 
@@ -513,6 +566,27 @@ func TestInvalidGraphQLConfigurationValues(t *testing.T) {
 		assert.NoError(t, err)
 
 		assert.Equal(t, 413, response.Result().StatusCode)
+		assert.Contains(t, responseMap["reason"], "Arguments too large")
+		assert.Contains(t, responseMap["error"], "Request Entity Too Large")
+
+		headerMap := map[string]string{
+			"Content-type": "application/graphql",
+		}
+		response = rt.SendAdminRequestWithHeaders("POST", "/db/_graphql", `query{square(n:4)}`, headerMap)
+		assert.Equal(t, 413, response.Result().StatusCode)
+		err = json.Unmarshal([]byte(string(response.BodyBytes())), &responseMap)
+		assert.NoError(t, err)
+		assert.Contains(t, responseMap["reason"], "Arguments too large")
+		assert.Contains(t, responseMap["error"], "Request Entity Too Large")
+
+		queryParam := `query($numberToBeSquared:Int!){ square(n:$numberToBeSquared) }`
+		variableParam := `{"numberToBeSquared": 4}`
+		getRequestUrl := fmt.Sprintf("/db/_graphql?query=%s&variables=%s", queryParam, variableParam)
+
+		response = rt.SendAdminRequest("GET", getRequestUrl, "")
+		assert.Equal(t, 200, response.Result().StatusCode)
+		err = json.Unmarshal([]byte(string(response.BodyBytes())), &responseMap)
+		assert.NoError(t, err)
 		assert.Contains(t, responseMap["reason"], "Arguments too large")
 		assert.Contains(t, responseMap["error"], "Request Entity Too Large")
 	})
