@@ -525,7 +525,7 @@ func TestArgsInResolverConfig(t *testing.T) {
 	assert.ErrorContains(t, err, `'args' is not valid in a GraphQL resolver config`)
 }
 
-func TestUnresolvedTypes(t *testing.T) {
+func TestUnresolvedTypesInSchema(t *testing.T) {
 	var config = GraphQLConfig{
 		Schema:    base.StringPtr(`type Query{} type abc{def:kkk}`),
 		Resolvers: nil,
@@ -535,22 +535,39 @@ func TestUnresolvedTypes(t *testing.T) {
 }
 
 func TestInvalidMutationType(t *testing.T) {
-	var config = GraphQLConfig{
-		Schema: base.StringPtr(`type Query{}`),
-		Resolvers: map[string]GraphQLResolverConfig{
-			"Mutation": {
-				"complete": {
-					Type: "cpp",
-					Code: `SELECT {}`,
+	t.Run("Unrecognized type cpp", func(t *testing.T) {
+		var config = GraphQLConfig{
+			Schema: base.StringPtr(`type Query{}`),
+			Resolvers: map[string]GraphQLResolverConfig{
+				"Mutation": {
+					"complete": {
+						Type: "cpp",
+						Code: `{}`,
+					},
 				},
 			},
-		},
-	}
-	_, err := CompileGraphQL(&config)
-	assert.ErrorContains(t, err, `unrecognized 'type' "cpp"`)
+		}
+		_, err := CompileGraphQL(&config)
+		assert.ErrorContains(t, err, `unrecognized 'type' "cpp"`)
+	})
+	t.Run("Unrecognized type query", func(t *testing.T) {
+		var config = GraphQLConfig{
+			Schema: base.StringPtr(`type Query{}`),
+			Resolvers: map[string]GraphQLResolverConfig{
+				"Mutation": {
+					"complete": {
+						Type: "query",
+						Code: `SELECT 1;`,
+					},
+				},
+			},
+		}
+		_, err := CompileGraphQL(&config)
+		assert.ErrorContains(t, err, `GraphQL mutations must be implemented in JavaScript`)
+	})
 }
 
-func TestCompilationError(t *testing.T) {
+func TestCompilationErrorInResolverCode(t *testing.T) {
 	var config = GraphQLConfig{
 		Schema: base.StringPtr(`type Query{ square(n: Int!): Int! }`),
 		Resolvers: map[string]GraphQLResolverConfig{
@@ -589,7 +606,25 @@ func TestTypenameResolver(t *testing.T) {
 		_, err := CompileGraphQL(&config)
 		assert.ErrorContains(t, err, "a GraphQL '__typename__' resolver must be JavaScript")
 	})
-
+	t.Run("Error in compiling typename resolver", func(t *testing.T) {
+		var config = GraphQLConfig{
+			Schema: &kTestTypenameResolverSchema,
+			Resolvers: map[string]GraphQLResolverConfig{
+				"Book": {
+					"__typename": {
+						Type: "javascript",
+						Code: `function(context, value, 3) {
+								switch (value.type) {
+								  default: return null;
+								}
+							  }`,
+					},
+				},
+			},
+		}
+		_, err := CompileGraphQL(&config)
+		assert.ErrorContains(t, err, `Error compiling GraphQL type-name resolver "Book"`)
+	})
 	t.Run("Typename Resolver should not have allow", func(t *testing.T) {
 		var config = GraphQLConfig{
 			Schema: &kTestTypenameResolverSchema,
