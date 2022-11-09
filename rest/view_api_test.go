@@ -191,7 +191,7 @@ func TestViewQueryUserAccess(t *testing.T) {
 	// Create a user:
 	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
 	password := "123456"
-	testUser, _ := a.NewUser("testUser", password, channels.SetOf(t, "*"))
+	testUser, _ := a.NewUser("testUser", password, channels.BaseSetOf(t, "*"))
 	assert.NoError(t, a.Save(testUser))
 
 	result, err = rt.WaitForNUserViewResults(2, "/db/_design/foo/_view/bar?stale=false", testUser, password)
@@ -276,7 +276,7 @@ func TestUserViewQuery(t *testing.T) {
 
 	// Create a user:
 	password := "123456"
-	quinn, _ := a.NewUser("quinn", password, channels.SetOf(t, "Q", "q"))
+	quinn, _ := a.NewUser("quinn", password, channels.BaseSetOf(t, "Q", "q"))
 	assert.NoError(t, a.Save(quinn))
 
 	// Have the user query the view:
@@ -704,7 +704,7 @@ func TestViewQueryWrappers(t *testing.T) {
 	assert.Equal(t, 3, result.Len())
 
 	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
-	testUser, err := a.NewUser("testUser", "password", channels.SetOf(t, "userchannel"))
+	testUser, err := a.NewUser("testUser", "password", channels.BaseSetOf(t, "userchannel"))
 	assert.NoError(t, err)
 	err = a.Save(testUser)
 	assert.NoError(t, err)

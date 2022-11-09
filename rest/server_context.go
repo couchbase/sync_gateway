@@ -474,7 +474,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 			return nil, errors.New("Cannot create indexes on non-Couchbase data store.")
 
 		}
-		indexErr := db.InitializeIndexes(n1qlStore, config.UseXattrs(), numReplicas, false)
+		indexErr := db.InitializeIndexes(n1qlStore, config.UseXattrs(), numReplicas, false, sc.Config.IsServerless())
 		if indexErr != nil {
 			return nil, indexErr
 		}
@@ -1149,7 +1149,7 @@ func (sc *ServerContext) _unsuspendDatabase(ctx context.Context, dbName string) 
 		} else if err != nil {
 			return nil, fmt.Errorf("unsuspending db %q failed due to an error while trying to retrieve latest config from bucket %q: %w", base.MD(dbName).Redact(), base.MD(bucket).Redact(), err)
 		}
-		dbConfig.cas = cas
+		dbConfig.cfgCas = cas
 		dbCtx, err = sc._getOrAddDatabaseFromConfig(ctx, dbConfig.DatabaseConfig, false, db.GetConnectToBucketFn(false))
 		if err != nil {
 			return nil, err

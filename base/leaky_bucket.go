@@ -282,6 +282,14 @@ func (b *LeakyBucket) GetWithXattr(k string, xattr string, userXattrKey string, 
 	return b.bucket.GetWithXattr(k, xattr, userXattrKey, rv, xv, uxv)
 }
 
+func (b *LeakyBucket) WaitForIndexesOnline(indexNames []string, failfast bool) error {
+	n1qlStore, ok := AsN1QLStore(b.bucket)
+	if !ok {
+		return errors.New("Not N1QL Store")
+	}
+	return n1qlStore.WaitForIndexesOnline(indexNames, failfast)
+}
+
 func (b *LeakyBucket) DeleteWithXattr(k string, xattr string) error {
 	return b.bucket.DeleteWithXattr(k, xattr)
 }
@@ -560,7 +568,7 @@ func (b *LeakyBucket) BuildDeferredIndexes(indexSet []string) error {
 	if !ok {
 		return errors.New("Not N1QL Store")
 	}
-	return n1qlStore.BuildDeferredIndexes(indexSet)
+	return BuildDeferredIndexes(n1qlStore, indexSet)
 }
 
 func (b *LeakyBucket) CreatePrimaryIndex(indexName string, options *N1qlIndexOptions) error {
@@ -569,14 +577,6 @@ func (b *LeakyBucket) CreatePrimaryIndex(indexName string, options *N1qlIndexOpt
 		return errors.New("Not N1QL Store")
 	}
 	return n1qlStore.CreatePrimaryIndex(indexName, options)
-}
-
-func (b *LeakyBucket) WaitForIndexOnline(indexName string) error {
-	n1qlStore, ok := AsN1QLStore(b.bucket)
-	if !ok {
-		return errors.New("Not N1QL Store")
-	}
-	return n1qlStore.WaitForIndexOnline(indexName)
 }
 
 func (b *LeakyBucket) GetIndexMeta(indexName string) (exists bool, meta *IndexMeta, err error) {

@@ -56,7 +56,7 @@ type changeCache struct {
 	initialSequence    uint64                  // DB's current sequence at startup time. Should use getInitialSequence() rather than accessing directly.
 	receivedSeqs       map[uint64]struct{}     // Set of all sequences received
 	pendingLogs        LogPriorityQueue        // Out-of-sequence entries waiting to be cached
-	notifyChange       func(base.Set)          // Client callback that notifies of channel changes
+	notifyChange       func(channels.Set)      // Client callback that notifies of channel changes
 	stopped            bool                    // Set by the Stop method
 	skippedSeqs        *SkippedSequenceList    // Skipped sequences still pending on the TAP feed
 	lock               sync.RWMutex            // Coordinates access to struct fields
@@ -157,7 +157,7 @@ func DefaultCacheOptions() CacheOptions {
 // notifyChange is an optional function that will be called to notify of channel changes.
 // After calling Init(), you must call .Start() to start useing the cache, otherwise it will be in a locked state
 // and callers will block on trying to obtain the lock.
-func (c *changeCache) Init(logCtx context.Context, dbcontext *DatabaseContext, notifyChange func(base.Set), options *CacheOptions) error {
+func (c *changeCache) Init(logCtx context.Context, dbcontext *DatabaseContext, notifyChange func(channels.Set), options *CacheOptions) error {
 	c.context = dbcontext
 	c.logCtx = logCtx
 
@@ -365,7 +365,7 @@ func (c *changeCache) CleanSkippedSequenceQueue(ctx context.Context) error {
 	}
 
 	// Issue processEntry for found entries.  Standard processEntry handling will remove these sequences from the skipped seq queue.
-	changedChannelsCombined := base.Set{}
+	changedChannelsCombined := channels.Set{}
 	for _, entry := range foundEntries {
 		entry.Skipped = true
 		// Need to populate the actual channels for this entry - the entry returned from the * channel
@@ -404,7 +404,7 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 
 	docID := string(event.Key)
 	docJSON := event.Value
-	changedChannelsCombined := base.Set{}
+	changedChannelsCombined := channels.Set{}
 
 	// ** This method does not directly access any state of c, so it doesn't lock.
 	// Is this a user/role doc?
@@ -509,6 +509,7 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 		change := &LogEntry{
 			Sequence:     seq,
 			TimeReceived: event.TimeReceived,
+			CollectionID: event.CollectionID,
 		}
 		changedChannels := c.processEntry(change)
 		changedChannelsCombined = changedChannelsCombined.Update(changedChannels)
@@ -532,6 +533,7 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 				change := &LogEntry{
 					Sequence:     seq,
 					TimeReceived: event.TimeReceived,
+					CollectionID: event.CollectionID,
 				}
 
 				// if the doc was removed from one or more channels at this sequence
@@ -557,6 +559,7 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 		TimeReceived: event.TimeReceived,
 		TimeSaved:    syncData.TimeSaved,
 		Channels:     syncData.Channels,
+		CollectionID: event.CollectionID,
 	}
 
 	millisecondLatency := int(feedLatency / time.Millisecond)
@@ -684,7 +687,7 @@ func (c *changeCache) processPrincipalDoc(docID string, docJSON []byte, isUser b
 }
 
 // Handles a newly-arrived LogEntry.
-func (c *changeCache) processEntry(change *LogEntry) base.Set {
+func (c *changeCache) processEntry(change *LogEntry) channels.Set {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	if c.logsDisabled {
@@ -713,10 +716,10 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 	}
 	c.receivedSeqs[sequence] = struct{}{}
 
-	var changedChannels base.Set
+	var changedChannels channels.Set
 	if sequence == c.nextSequence || c.nextSequence == 0 {
 		// This is the expected next sequence so we can add it now:
-		changedChannels = base.SetFromArray(c._addToCache(change))
+		changedChannels = channels.SetFromArrayNoValidate(c._addToCache(change))
 		// Also add any pending sequences that are now contiguous:
 		changedChannels = changedChannels.Update(c._addPendingLogs())
 	} else if sequence > c.nextSequence {
@@ -761,7 +764,7 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 
 // Adds an entry to the appropriate channels' caches, returning the affected channels.  lateSequence
 // flag indicates whether it was a change arriving out of sequence
-func (c *changeCache) _addToCache(change *LogEntry) []string {
+func (c *changeCache) _addToCache(change *LogEntry) []channels.ID {
 
 	if change.Sequence >= c.nextSequence {
 		c.nextSequence = change.Sequence + 1
@@ -796,8 +799,8 @@ func (c *changeCache) _addToCache(change *LogEntry) []string {
 // Add the first change(s) from pendingLogs if they're the next sequence.  If not, and we've been
 // waiting too long for nextSequence, move nextSequence to skipped queue.
 // Returns the channels that changed.
-func (c *changeCache) _addPendingLogs() base.Set {
-	var changedChannels base.Set
+func (c *changeCache) _addPendingLogs() channels.Set {
+	var changedChannels channels.Set
 
 	for len(c.pendingLogs) > 0 {
 		change := c.pendingLogs[0]
@@ -831,12 +834,12 @@ func (c *changeCache) getChannelCache() ChannelCache {
 
 // ////// CHANGE ACCESS:
 
-func (c *changeCache) GetChanges(channelName string, options ChangesOptions) ([]*LogEntry, error) {
+func (c *changeCache) GetChanges(channel channels.ID, options ChangesOptions) ([]*LogEntry, error) {
 
 	if c.IsStopped() {
 		return nil, base.HTTPErrorf(503, "Database closed")
 	}
-	return c.channelCache.GetChanges(channelName, options)
+	return c.channelCache.GetChanges(channel, options)
 }
 
 // Returns the sequence number the cache is up-to-date with.

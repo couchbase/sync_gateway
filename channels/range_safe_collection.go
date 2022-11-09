@@ -8,7 +8,7 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-package base
+package channels
 
 import (
 	"sync"
@@ -20,10 +20,10 @@ import (
 //   - snapshot-based iteration, Range doesn't block Append
 //   - key-based access to entries
 type RangeSafeCollection struct {
-	valueMap    map[string]*AppendOnlyListElement // map from key to collection elements
-	valueList   AppendOnlyList                    // List of collection elements
-	valueLock   sync.RWMutex                      // Mutex for valueMap interactions.
-	iterateLock sync.RWMutex                      // Mutex for list iteration.  Write lock required for any non-append list mutations.
+	valueMap    map[ID]*AppendOnlyListElement // map from key to collection elements
+	valueList   AppendOnlyList                // List of collection elements
+	valueLock   sync.RWMutex                  // Mutex for valueMap interactions.
+	iterateLock sync.RWMutex                  // Mutex for list iteration.  Write lock required for any non-append list mutations.
 }
 
 // NewRangeSafeCollection creates and initializes a new RangeSafeCollection
@@ -38,7 +38,7 @@ func (r *RangeSafeCollection) Init() {
 	r.iterateLock.Lock()
 	r.valueLock.Lock()
 
-	r.valueMap = make(map[string](*AppendOnlyListElement), 0)
+	r.valueMap = make(map[ID](*AppendOnlyListElement), 0)
 	r.valueList.Init()
 
 	r.valueLock.Unlock()
@@ -47,7 +47,7 @@ func (r *RangeSafeCollection) Init() {
 
 // Remove removes an entry from the collection, and returns the new length of the collection.
 // Obtains both the iterate and value lock, so will block on active Range operations.
-func (r *RangeSafeCollection) Remove(key string) (length int) {
+func (r *RangeSafeCollection) Remove(key ID) (length int) {
 	r.iterateLock.Lock()
 	r.valueLock.Lock()
 
@@ -83,7 +83,7 @@ func (r *RangeSafeCollection) RemoveElements(elements []*AppendOnlyListElement) 
 }
 
 // Get performs map-style retrieval from the collection.
-func (r *RangeSafeCollection) Get(key string) (value interface{}, ok bool) {
+func (r *RangeSafeCollection) Get(key ID) (value interface{}, ok bool) {
 
 	r.valueLock.RLock()
 
@@ -99,7 +99,7 @@ func (r *RangeSafeCollection) Get(key string) (value interface{}, ok bool) {
 
 // GetOrInsert returns the value of the specified key if already present in the collection - otherwise
 // will append the element to the collection.  Does not block on active Range operations.
-func (r *RangeSafeCollection) GetOrInsert(key string, value interface{}) (actual interface{}, created bool, length int) {
+func (r *RangeSafeCollection) GetOrInsert(key ID, value interface{}) (actual interface{}, created bool, length int) {
 
 	r.valueLock.Lock()
 
@@ -183,7 +183,7 @@ type AppendOnlyListElement struct {
 	list *AppendOnlyList
 
 	// The key for this element in the map.  Used when retrieving element from list
-	key string
+	key ID
 
 	// The value stored with this element.
 	Value interface{}
@@ -254,7 +254,7 @@ func (l *AppendOnlyList) append(e *AppendOnlyListElement) *AppendOnlyListElement
 }
 
 // insertValue is a convenience wrapper for insert(&Element{Value: v}, at).
-func (l *AppendOnlyList) appendValue(k string, v interface{}) *AppendOnlyListElement {
+func (l *AppendOnlyList) appendValue(k ID, v interface{}) *AppendOnlyListElement {
 	return l.append(&AppendOnlyListElement{key: k, Value: v})
 }
 
@@ -281,7 +281,7 @@ func (l *AppendOnlyList) Remove(e *AppendOnlyListElement) interface{} {
 }
 
 // PushBack inserts a new element e with value v at the back of list l and returns e.
-func (l *AppendOnlyList) PushBack(key string, v interface{}) *AppendOnlyListElement {
+func (l *AppendOnlyList) PushBack(key ID, v interface{}) *AppendOnlyListElement {
 	l.lazyInit()
 	return l.appendValue(key, v)
 }

@@ -17,7 +17,6 @@ import (
 	"time"
 
 	"github.com/couchbase/gocb/v2"
-	"github.com/couchbase/gocbcore/v10/memd"
 	"github.com/imdario/mergo"
 )
 
@@ -30,7 +29,7 @@ type BootstrapConnection interface {
 	// InsertConfig saves a new database config for a given bucket and config group ID.
 	InsertConfig(bucket, groupID string, value interface{}) (newCAS uint64, err error)
 	// UpdateConfig updates an existing database config for a given bucket and config group ID. updateCallback can return nil to remove the config.
-	UpdateConfig(bucket, groupID string, updateCallback func(rawBucketConfig []byte) (updatedConfig []byte, err error)) (newCAS uint64, err error)
+	UpdateConfig(bucket, groupID string, updateCallback func(rawBucketConfig []byte, rawBucketConfigCas uint64) (updatedConfig []byte, err error)) (newCAS uint64, err error)
 	// Close releases any long-lived connections
 	Close()
 }
@@ -45,6 +44,7 @@ type CouchbaseCluster struct {
 	cachedClusterConnection *gocb.Cluster            // Cached cluster connection, should only be used by GetConfigBuckets
 	cachedBucketConnections map[string]*cachedBucket // Per-bucket cached connections
 	cachedConnectionLock    sync.Mutex               // mutex for access to cachedBucketConnections
+	configPersistence       ConfigPersistence        // ConfigPersistence mode
 }
 
 type BucketConnectionMode int
@@ -71,7 +71,7 @@ var _ BootstrapConnection = &CouchbaseCluster{}
 func NewCouchbaseCluster(server, username, password,
 	x509CertPath, x509KeyPath, caCertPath string,
 	forcePerBucketAuth bool, perBucketCreds PerBucketCredentialsConfig,
-	tlsSkipVerify *bool, bucketMode BucketConnectionMode) (*CouchbaseCluster, error) {
+	tlsSkipVerify *bool, useXattrConfig *bool, bucketMode BucketConnectionMode) (*CouchbaseCluster, error) {
 
 	securityConfig, err := GoCBv2SecurityConfig(tlsSkipVerify, caCertPath)
 	if err != nil {
@@ -116,6 +116,11 @@ func NewCouchbaseCluster(server, username, password,
 
 	if bucketMode == CachedClusterConnections {
 		cbCluster.cachedBucketConnections = make(map[string]*cachedBucket)
+	}
+
+	cbCluster.configPersistence = &DocumentBootstrapPersistence{}
+	if useXattrConfig != nil && *useXattrConfig == true {
+		cbCluster.configPersistence = &XattrBootstrapPersistence{}
 	}
 
 	return cbCluster, nil
@@ -217,22 +222,7 @@ func (cc *CouchbaseCluster) GetConfig(location, groupID string, valuePtr interfa
 	if err != nil {
 		return 0, err
 	}
-	res, err := b.DefaultCollection().Get(docID, &gocb.GetOptions{
-		Timeout:       time.Second * 10,
-		RetryStrategy: gocb.NewBestEffortRetryStrategy(nil),
-	})
-	if err != nil {
-		if errors.Is(err, gocb.ErrDocumentNotFound) {
-			return 0, ErrNotFound
-		}
-		return 0, err
-	}
-	err = res.Content(valuePtr)
-	if err != nil {
-		return 0, err
-	}
-
-	return uint64(res.Cas()), nil
+	return cc.configPersistence.loadConfig(b.DefaultCollection(), docID, valuePtr)
 }
 
 func (cc *CouchbaseCluster) InsertConfig(location, groupID string, value interface{}) (newCAS uint64, err error) {
@@ -250,18 +240,11 @@ func (cc *CouchbaseCluster) InsertConfig(location, groupID string, value interfa
 	if err != nil {
 		return 0, err
 	}
-	res, err := b.DefaultCollection().Insert(docID, value, nil)
-	if err != nil {
-		if isKVError(err, memd.StatusKeyExists) {
-			return 0, ErrAlreadyExists
-		}
-		return 0, err
-	}
 
-	return uint64(res.Cas()), nil
+	return cc.configPersistence.insertConfig(b.DefaultCollection(), docID, value)
 }
 
-func (cc *CouchbaseCluster) UpdateConfig(location, groupID string, updateCallback func(bucketConfig []byte) (newConfig []byte, err error)) (newCAS uint64, err error) {
+func (cc *CouchbaseCluster) UpdateConfig(location, groupID string, updateCallback func(bucketConfig []byte, rawBucketConfigCas uint64) (newConfig []byte, err error)) (newCAS uint64, err error) {
 	if cc == nil {
 		return 0, errors.New("nil CouchbaseCluster")
 	}
@@ -279,27 +262,19 @@ func (cc *CouchbaseCluster) UpdateConfig(location, groupID string, updateCallbac
 		return 0, err
 	}
 	for {
-		res, err := collection.Get(docID, &gocb.GetOptions{
-			Transcoder: gocb.NewRawJSONTranscoder(),
-		})
+
+		bucketValue, cas, err := cc.configPersistence.loadRawConfig(collection, docID)
 		if err != nil {
 			return 0, err
 		}
-
-		var bucketValue []byte
-		err = res.Content(&bucketValue)
-		if err != nil {
-			return 0, err
-		}
-
-		newConfig, err := updateCallback(bucketValue)
+		newConfig, err := updateCallback(bucketValue, uint64(cas))
 		if err != nil {
 			return 0, err
 		}
 
 		// handle delete when updateCallback returns nil
 		if newConfig == nil {
-			deleteRes, err := collection.Remove(docID, &gocb.RemoveOptions{Cas: res.Cas()})
+			removeCasOut, err := cc.configPersistence.removeRawConfig(collection, docID, cas)
 			if err != nil {
 				// retry on cas failure
 				if errors.Is(err, gocb.ErrCasMismatch) {
@@ -307,10 +282,10 @@ func (cc *CouchbaseCluster) UpdateConfig(location, groupID string, updateCallbac
 				}
 				return 0, err
 			}
-			return uint64(deleteRes.Cas()), nil
+			return uint64(removeCasOut), nil
 		}
 
-		replaceRes, err := collection.Replace(docID, newConfig, &gocb.ReplaceOptions{Transcoder: gocb.NewRawJSONTranscoder(), Cas: res.Cas()})
+		_, replaceCfgCasOut, err := cc.configPersistence.replaceRawConfig(collection, docID, newConfig, cas)
 		if err != nil {
 			if errors.Is(err, gocb.ErrCasMismatch) {
 				// retry on cas failure
@@ -319,7 +294,7 @@ func (cc *CouchbaseCluster) UpdateConfig(location, groupID string, updateCallbac
 			return 0, err
 		}
 
-		return uint64(replaceRes.Cas()), nil
+		return replaceCfgCasOut, nil
 	}
 
 }

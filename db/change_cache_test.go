@@ -58,12 +58,13 @@ func et(seq uint64, docid string, revid string) *LogEntry {
 	return entry
 }
 
-func logEntry(seq uint64, docid string, revid string, channelNames []string) *LogEntry {
+func logEntry(seq uint64, docid string, revid string, channelNames []string, collectionID uint32) *LogEntry {
 	entry := &LogEntry{
 		Sequence:     seq,
 		DocID:        docid,
 		RevID:        revid,
 		TimeReceived: time.Now(),
+		CollectionID: collectionID,
 	}
 	channelMap := make(channels.ChannelMap)
 	for _, channelName := range channelNames {
@@ -117,12 +118,15 @@ func TestLateSequenceHandling(t *testing.T) {
 	context, ctx := setupTestDBWithCacheOptions(t, DefaultCacheOptions())
 	defer context.Close(ctx)
 
+	collectionID, err := context.GetSingleCollectionID()
+	require.NoError(t, err)
+
 	stats, err := base.NewSyncGatewayStats()
 	require.NoError(t, err)
 	dbstats, err := stats.NewDBStats("", false, false, false)
 	require.NoError(t, err)
 
-	cache := newSingleChannelCache(context, "Test1", 0, dbstats.CacheStats)
+	cache := newSingleChannelCache(context, channels.NewID("Test1", collectionID), 0, dbstats.CacheStats)
 	assert.True(t, cache != nil)
 
 	// Empty late sequence cache should return empty set
@@ -190,12 +194,15 @@ func TestLateSequenceHandlingWithMultipleListeners(t *testing.T) {
 	require.NoError(t, err)
 	defer context.Close(ctx)
 
+	collectionID, err := context.GetSingleCollectionID()
+	require.NoError(t, err)
+
 	stats, err := base.NewSyncGatewayStats()
 	require.NoError(t, err)
 	dbstats, err := stats.NewDBStats("", false, false, false)
 	require.NoError(t, err)
 
-	cache := newSingleChannelCache(context, "Test1", 0, dbstats.CacheStats)
+	cache := newSingleChannelCache(context, channels.NewID("Test1", collectionID), 0, dbstats.CacheStats)
 	assert.True(t, cache != nil)
 
 	// Add Listener before late entries arrive
@@ -250,16 +257,19 @@ func TestLateSequenceErrorRecovery(t *testing.T) {
 		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
 	}
 
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyChanges, base.KeyCache)
+	base.SetUpTestLogging(t, base.LevelTrace, base.KeyChanges, base.KeyCache)
 
 	db, ctx := setupTestDBWithCacheOptions(t, shortWaitCache())
 	defer db.Close(ctx)
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
+	collectionID, err := db.GetSingleCollectionID()
+	require.NoError(t, err)
+
 	// Create a user with access to channel ABC
 	authenticator := db.Authenticator(ctx)
 	require.NotNil(t, authenticator, "db.Authenticator(db.Ctx) returned nil")
-	user, err := authenticator.NewUser("naomi", "letmein", channels.SetOf(t, "ABC"))
+	user, err := authenticator.NewUser("naomi", "letmein", channels.BaseSetOf(t, "ABC"))
 	require.NoError(t, err, "Error creating new user")
 	require.NoError(t, authenticator.Save(user))
 
@@ -312,7 +322,7 @@ func TestLateSequenceErrorRecovery(t *testing.T) {
 	// Modify the cache's late logs to remove the changes feed's lateFeedHandler sequence from the
 	// cache's lateLogs.  This will trigger an error on the next feed iteration, which should trigger
 	// rollback to resend all changes since low sequence (1)
-	abcCache := db.changeCache.getChannelCache().getSingleChannelCache("ABC").(*singleChannelCacheImpl)
+	abcCache := db.changeCache.getChannelCache().getSingleChannelCache(channels.NewID("ABC", collectionID)).(*singleChannelCacheImpl)
 	abcCache.lateLogs[0].logEntry.Sequence = 1
 
 	// Write sequence 3.  Error should trigger rollback that resends everything since low sequence (1)
@@ -551,13 +561,18 @@ func TestChannelCacheBufferingWithUserDoc(t *testing.T) {
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
+
+	collectionID, err := db.GetSingleCollectionID()
+	require.NoError(t, err)
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
 	// Simulate seq 1 (user doc) being delayed - write 2 first
 	WriteDirect(db, []string{"ABC"}, 2)
 
 	// Start wait for doc in ABC
-	waiter := db.mutationListener.NewWaiterWithChannels(channels.SetOf(t, "ABC"), nil)
+	chans := channels.SetOfNoValidate(
+		channels.NewID("ABC", collectionID))
+	waiter := db.mutationListener.NewWaiterWithChannels(chans, nil)
 
 	successChan := make(chan bool)
 	go func() {
@@ -593,7 +608,7 @@ func TestChannelCacheBackfill(t *testing.T) {
 
 	// Create a user with access to channel ABC
 	authenticator := db.Authenticator(ctx)
-	user, _ := authenticator.NewUser("naomi", "letmein", channels.SetOf(t, "ABC", "PBS", "NBC", "TBS"))
+	user, _ := authenticator.NewUser("naomi", "letmein", channels.BaseSetOf(t, "ABC", "PBS", "NBC", "TBS"))
 	require.NoError(t, authenticator.Save(user))
 
 	// Simulate seq 3 being delayed - write 1,2,4,5
@@ -619,17 +634,21 @@ func TestChannelCacheBackfill(t *testing.T) {
 	WriteDirect(db, []string{"ABC", "NBC", "PBS", "TBS"}, 3)
 	WriteDirect(db, []string{"CBS"}, 7)
 	require.NoError(t, db.changeCache.waitForSequence(ctx, 7, base.DefaultWaitForSequence))
+
+	collectionID, err := db.GetSingleCollectionID()
+	require.NoError(t, err)
+
 	// verify insert at start (PBS)
-	pbsCache := db.changeCache.getChannelCache().getSingleChannelCache("PBS").(*singleChannelCacheImpl)
+	pbsCache := db.changeCache.getChannelCache().getSingleChannelCache(channels.NewID("PBS", collectionID)).(*singleChannelCacheImpl)
 	assert.True(t, verifyCacheSequences(pbsCache, []uint64{3, 5, 6}))
 	// verify insert at middle (ABC)
-	abcCache := db.changeCache.getChannelCache().getSingleChannelCache("ABC").(*singleChannelCacheImpl)
+	abcCache := db.changeCache.getChannelCache().getSingleChannelCache(channels.NewID("ABC", collectionID)).(*singleChannelCacheImpl)
 	assert.True(t, verifyCacheSequences(abcCache, []uint64{1, 2, 3, 5, 6}))
 	// verify insert at end (NBC)
-	nbcCache := db.changeCache.getChannelCache().getSingleChannelCache("NBC").(*singleChannelCacheImpl)
+	nbcCache := db.changeCache.getChannelCache().getSingleChannelCache(channels.NewID("NBC", collectionID)).(*singleChannelCacheImpl)
 	assert.True(t, verifyCacheSequences(nbcCache, []uint64{1, 3}))
 	// verify insert to empty cache (TBS)
-	tbsCache := db.changeCache.getChannelCache().getSingleChannelCache("TBS").(*singleChannelCacheImpl)
+	tbsCache := db.changeCache.getChannelCache().getSingleChannelCache(channels.NewID("TBS", collectionID)).(*singleChannelCacheImpl)
 	assert.True(t, verifyCacheSequences(tbsCache, []uint64{3}))
 
 	// verify changes has three entries (needs to resend all since previous LowSeq, which
@@ -659,7 +678,7 @@ func TestContinuousChangesBackfill(t *testing.T) {
 
 	// Create a user with access to channel ABC
 	authenticator := db.Authenticator(ctx)
-	user, _ := authenticator.NewUser("naomi", "letmein", channels.SetOf(t, "ABC", "PBS", "NBC", "CBS"))
+	user, _ := authenticator.NewUser("naomi", "letmein", channels.BaseSetOf(t, "ABC", "PBS", "NBC", "CBS"))
 	require.NoError(t, authenticator.Save(user))
 
 	// Simulate seq 3 and 4 being delayed - write 1,2,5,6
@@ -761,7 +780,7 @@ func TestLowSequenceHandling(t *testing.T) {
 	// Create a user with access to channel ABC
 	authenticator := db.Authenticator(ctx)
 	assert.True(t, authenticator != nil, "db.Authenticator(ctx) returned nil")
-	user, err := authenticator.NewUser("naomi", "letmein", channels.SetOf(t, "ABC", "PBS", "NBC", "TBS"))
+	user, err := authenticator.NewUser("naomi", "letmein", channels.BaseSetOf(t, "ABC", "PBS", "NBC", "TBS"))
 	assert.NoError(t, err, fmt.Sprintf("Error creating new user: %v", err))
 	require.NoError(t, authenticator.Save(user))
 
@@ -826,7 +845,7 @@ func TestLowSequenceHandlingAcrossChannels(t *testing.T) {
 
 	// Create a user with access to channel ABC
 	authenticator := db.Authenticator(ctx)
-	user, err := authenticator.NewUser("naomi", "letmein", channels.SetOf(t, "ABC"))
+	user, err := authenticator.NewUser("naomi", "letmein", channels.BaseSetOf(t, "ABC"))
 	assert.NoError(t, err, fmt.Sprintf("db.Authenticator(db.Ctx) returned err: %v", err))
 	require.NoError(t, authenticator.Save(user))
 
@@ -880,7 +899,7 @@ func TestLowSequenceHandlingWithAccessGrant(t *testing.T) {
 
 	// Create a user with access to channel ABC
 	authenticator := db.Authenticator(ctx)
-	user, _ := authenticator.NewUser("naomi", "letmein", channels.SetOf(t, "ABC"))
+	user, _ := authenticator.NewUser("naomi", "letmein", channels.BaseSetOf(t, "ABC"))
 	require.NoError(t, authenticator.Save(user))
 
 	// Simulate seq 3 and 4 being delayed - write 1,2,5,6
@@ -1084,7 +1103,7 @@ func TestLowSequenceHandlingNoDuplicates(t *testing.T) {
 	// Create a user with access to channel ABC
 	authenticator := db.Authenticator(ctx)
 	assert.True(t, authenticator != nil, "db.Authenticator(db.Ctx) returned nil")
-	user, err := authenticator.NewUser("naomi", "letmein", channels.SetOf(t, "ABC", "PBS", "NBC", "TBS"))
+	user, err := authenticator.NewUser("naomi", "letmein", channels.BaseSetOf(t, "ABC", "PBS", "NBC", "TBS"))
 	assert.NoError(t, err, fmt.Sprintf("Error creating new user: %v", err))
 	require.NoError(t, authenticator.Save(user))
 
@@ -1179,7 +1198,7 @@ func TestChannelRace(t *testing.T) {
 
 	// Create a user with access to channels "Odd", "Even"
 	authenticator := db.Authenticator(ctx)
-	user, _ := authenticator.NewUser("naomi", "letmein", channels.SetOf(t, "Even", "Odd"))
+	user, _ := authenticator.NewUser("naomi", "letmein", channels.BaseSetOf(t, "Even", "Odd"))
 	require.NoError(t, authenticator.Save(user))
 
 	// Write initial sequences
@@ -1314,7 +1333,11 @@ func TestSkippedViewRetrieval(t *testing.T) {
 
 	// Validate expected entries
 	require.NoError(t, db.changeCache.waitForSequence(ctx, 15, base.DefaultWaitForSequence))
-	entries, err := db.changeCache.GetChanges("ABC", getChangesOptionsWithSeq(SequenceID{Seq: 2}))
+
+	collectionID, err := db.GetSingleCollectionID()
+	require.NoError(t, err)
+
+	entries, err := db.changeCache.GetChanges(channels.NewID("ABC", collectionID), getChangesOptionsWithSeq(SequenceID{Seq: 2}))
 	assert.NoError(t, err, "Get Changes returned error")
 	assert.Equal(t, 6, len(entries))
 	log.Printf("entries: %v", entries)
@@ -1369,7 +1392,6 @@ func TestStopChangeCache(t *testing.T) {
 
 // Test size config
 func TestChannelCacheSize(t *testing.T) {
-
 	if base.TestUseXattrs() {
 		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
 	}
@@ -1388,7 +1410,7 @@ func TestChannelCacheSize(t *testing.T) {
 
 	// Create a user with access to channel ABC
 	authenticator := db.Authenticator(ctx)
-	user, _ := authenticator.NewUser("naomi", "letmein", channels.SetOf(t, "ABC"))
+	user, _ := authenticator.NewUser("naomi", "letmein", channels.BaseSetOf(t, "ABC"))
 	require.NoError(t, authenticator.Save(user))
 
 	// Write 750 docs to channel ABC
@@ -1404,7 +1426,10 @@ func TestChannelCacheSize(t *testing.T) {
 	assert.Equal(t, 750, len(changes))
 
 	// Validate that cache stores the expected number of values
-	abcCache := db.changeCache.getChannelCache().getSingleChannelCache("ABC").(*singleChannelCacheImpl)
+	collectionID, err := db.GetSingleCollectionID()
+	require.NoError(t, err)
+
+	abcCache := db.changeCache.getChannelCache().getSingleChannelCache(channels.NewID("ABC", collectionID)).(*singleChannelCacheImpl)
 	assert.Equal(t, 600, len(abcCache.logs))
 }
 
@@ -1604,17 +1629,20 @@ func TestLateArrivingSequenceTriggersOnChange(t *testing.T) {
 	db, ctx := setupTestDBWithCacheOptions(t, options)
 	defer db.Close(ctx)
 
+	collectionID, err := db.GetSingleCollectionID()
+	require.NoError(t, err)
+
 	// -------- Setup notifyChange callback ----------------
 
 	//  Detect whether the 2nd was ignored using an notifyChange listener callback and make sure it was not added to the ABC channel
 	waitForOnChangeCallback := sync.WaitGroup{}
 	waitForOnChangeCallback.Add(1)
-	db.changeCache.notifyChange = func(channels base.Set) {
-		// defer waitForOnChangeCallback.Done()
-		log.Printf("channelsChanged: %v", channels)
-		// goassert.True(t, channels.Contains("ABC"))
-		if channels.Contains("ABC") {
-			waitForOnChangeCallback.Done()
+	db.changeCache.notifyChange = func(chans channels.Set) {
+		expectedChan := channels.NewID("ABC", collectionID)
+		for ch := range chans {
+			if ch == expectedChan {
+				waitForOnChangeCallback.Done()
+			}
 		}
 
 	}
@@ -1654,17 +1682,19 @@ func TestLateArrivingSequenceTriggersOnChange(t *testing.T) {
 
 	// Send feed event for doc2. This won't trigger notifyChange, as buffering is waiting for seq 1
 	feedEventDoc2 := sgbucket.FeedEvent{
-		Synchronous: true,
-		Key:         []byte(doc2Id),
-		Value:       doc2Bytes,
+		Synchronous:  true,
+		Key:          []byte(doc2Id),
+		Value:        doc2Bytes,
+		CollectionID: collectionID,
 	}
 	db.changeCache.DocChanged(feedEventDoc2)
 
 	// Send feed event for doc1. This should trigger caching for doc2, and trigger notifyChange for channel ABC.
 	feedEventDoc1 := sgbucket.FeedEvent{
-		Synchronous: true,
-		Key:         []byte(doc1Id),
-		Value:       doc1Bytes,
+		Synchronous:  true,
+		Key:          []byte(doc1Id),
+		Value:        doc1Bytes,
+		CollectionID: collectionID,
 	}
 	db.changeCache.DocChanged(feedEventDoc1)
 
@@ -1702,7 +1732,7 @@ func TestInitializeEmptyCache(t *testing.T) {
 	}
 
 	// Issue getChanges for empty channel
-	changes, err := db.GetChanges(ctx, channels.SetOf(t, "zero"), getChangesOptionsWithCtxOnly())
+	changes, err := db.GetChanges(ctx, channels.BaseSetOf(t, "zero"), getChangesOptionsWithCtxOnly())
 	assert.NoError(t, err, "Couldn't GetChanges")
 	changesCount := len(changes)
 	assert.Equal(t, 0, changesCount)
@@ -1720,7 +1750,7 @@ func TestInitializeEmptyCache(t *testing.T) {
 	cacheWaiter.Add(docCount)
 	cacheWaiter.Wait()
 
-	changes, err = db.GetChanges(ctx, channels.SetOf(t, "zero"), getChangesOptionsWithCtxOnly())
+	changes, err = db.GetChanges(ctx, channels.BaseSetOf(t, "zero"), getChangesOptionsWithCtxOnly())
 	assert.NoError(t, err, "Couldn't GetChanges")
 	changesCount = len(changes)
 	assert.Equal(t, 10, changesCount)
@@ -1766,7 +1796,7 @@ func TestInitializeCacheUnderLoad(t *testing.T) {
 
 	// Wait for writes to be in progress, then getChanges for channel zero
 	writesInProgress.Wait()
-	changes, err := db.GetChanges(ctx, channels.SetOf(t, "zero"), getChangesOptionsWithCtxOnly())
+	changes, err := db.GetChanges(ctx, channels.BaseSetOf(t, "zero"), getChangesOptionsWithCtxOnly())
 	require.NoError(t, err, "Couldn't GetChanges")
 	firstChangesCount := len(changes)
 	var lastSeq SequenceID
@@ -1777,7 +1807,7 @@ func TestInitializeCacheUnderLoad(t *testing.T) {
 	// Wait for all writes to be cached, then getChanges again
 	cacheWaiter.Wait()
 
-	changes, err = db.GetChanges(ctx, channels.SetOf(t, "zero"), getChangesOptionsWithSeq(lastSeq))
+	changes, err = db.GetChanges(ctx, channels.BaseSetOf(t, "zero"), getChangesOptionsWithSeq(lastSeq))
 	require.NoError(t, err, "Couldn't GetChanges")
 	secondChangesCount := len(changes)
 	assert.Equal(t, docCount, firstChangesCount+secondChangesCount)
@@ -1793,19 +1823,22 @@ func TestNotifyForInactiveChannel(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 
+	collectionID, err := db.GetSingleCollectionID()
+	require.NoError(t, err)
+
 	// -------- Setup notifyChange callback ----------------
 
 	notifyChannel := make(chan struct{})
-	db.changeCache.notifyChange = func(channels base.Set) {
-		log.Printf("channelsChanged: %v", channels)
-		if channels.Contains("zero") {
+	db.changeCache.notifyChange = func(chans channels.Set) {
+		expectedChan := channels.NewID("zero", collectionID)
+		if chans.Contains(expectedChan) {
 			notifyChannel <- struct{}{}
 		}
 	}
 
 	// Write a document to channel zero
 	body := Body{"channels": []string{"zero"}}
-	_, _, err := db.Put(ctx, "inactiveCacheNotify", body)
+	_, _, err = db.Put(ctx, "inactiveCacheNotify", body)
 	assert.NoError(t, err)
 
 	// Wait for notify to arrive
@@ -1862,7 +1895,7 @@ func TestChangeCache_InsertPendingEntries(t *testing.T) {
 
 	// Create a user with access to some channels
 	authenticator := db.Authenticator(ctx)
-	user, _ := authenticator.NewUser("naomi", "letmein", channels.SetOf(t, "ABC", "PBS", "NBC", "TBS"))
+	user, _ := authenticator.NewUser("naomi", "letmein", channels.BaseSetOf(t, "ABC", "PBS", "NBC", "TBS"))
 	require.NoError(t, authenticator.Save(user))
 
 	// Simulate seq 3 + 4 being delayed - write 1,2,5,6
@@ -1985,6 +2018,8 @@ func BenchmarkProcessEntry(b *testing.B) {
 			context, err := NewDatabaseContext(ctx, "db", base.GetTestBucket(b), false, DatabaseContextOptions{})
 			require.NoError(b, err)
 			defer context.Close(ctx)
+			collectionID, err := context.GetSingleCollectionID()
+			require.NoError(b, err)
 
 			ctx = context.AddDatabaseLogContext(ctx)
 			changeCache := &changeCache{}
@@ -2001,8 +2036,8 @@ func BenchmarkProcessEntry(b *testing.B) {
 
 			if bm.warmCacheCount > 0 {
 				for i := 0; i < bm.warmCacheCount; i++ {
-					channelName := fmt.Sprintf("channel_%d", i)
-					_, err := changeCache.GetChanges(channelName, getChangesOptionsWithZeroSeq())
+					channel := channels.NewID(fmt.Sprintf("channel_%d", i), collectionID)
+					_, err := changeCache.GetChanges(channel, getChangesOptionsWithZeroSeq())
 					if err != nil {
 						log.Printf("GetChanges failed for changeCache: %v", err)
 						b.Fail()
@@ -2214,6 +2249,9 @@ func BenchmarkDocChanged(b *testing.B) {
 			require.NoError(b, err)
 			defer context.Close(ctx)
 
+			collectionID, err := context.GetSingleCollectionID()
+			require.NoError(b, err)
+
 			ctx = context.AddDatabaseLogContext(ctx)
 			changeCache := &changeCache{}
 			if err := changeCache.Init(ctx, context, nil, nil); err != nil {
@@ -2228,8 +2266,8 @@ func BenchmarkDocChanged(b *testing.B) {
 
 			if bm.warmCacheCount > 0 {
 				for i := 0; i < bm.warmCacheCount; i++ {
-					channelName := fmt.Sprintf("channel_%d", i)
-					_, err := changeCache.GetChanges(channelName, getChangesOptionsWithZeroSeq())
+					channel := channels.NewID(fmt.Sprintf("channel_%d", i), collectionID)
+					_, err := changeCache.GetChanges(channel, getChangesOptionsWithZeroSeq())
 					if err != nil {
 						log.Printf("GetChanges failed for changeCache: %v", err)
 						b.Fail()

@@ -15,6 +15,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"runtime/debug"
 	"strconv"
 	"sync"
@@ -185,8 +186,13 @@ func (bsc *BlipSyncContext) register(profile string, handlerFn func(*blipHandler
 			if response := rq.Response(); response != nil {
 				response.SetError("HTTP", status, msg)
 			}
-			base.InfofCtx(bsc.loggingCtx, base.KeySyncMsg, "#%d: Type:%s   --> %d %s Time:%v", handler.serialNumber, profile, status, msg, time.Since(startTime))
-		} else if profile != "subChanges" {
+			if profile == MessageGetCheckpoint && status == http.StatusNotFound {
+				// lower log level for missing checkpoints - it's expected behaviour for new clients
+				base.DebugfCtx(bsc.loggingCtx, base.KeySyncMsg, "#%d: Type:%s   --> no existing checkpoint for client Time:%v", handler.serialNumber, profile, time.Since(startTime))
+			} else {
+				base.InfofCtx(bsc.loggingCtx, base.KeySyncMsg, "#%d: Type:%s   --> %d %s Time:%v", handler.serialNumber, profile, status, msg, time.Since(startTime))
+			}
+		} else if profile != MessageSubChanges {
 			// Log the fact that the handler has finished, except for the "subChanges" special case which does it's own termination related logging
 			base.DebugfCtx(bsc.loggingCtx, base.KeySyncMsg, "#%d: Type:%s   --> OK Time:%v", handler.serialNumber, profile, time.Since(startTime))
 		}

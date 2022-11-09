@@ -118,7 +118,7 @@ func (listener *changeListener) ProcessFeedEvent(event sgbucket.FeedEvent) bool 
 			if listener.OnDocChanged != nil && event.Opcode == sgbucket.FeedOpMutation {
 				listener.OnDocChanged(event)
 			}
-			listener.Notify(base.SetOf(key))
+			listener.notifyKey(key)
 		} else if strings.HasPrefix(key, base.UnusedSeqPrefix) || strings.HasPrefix(key, base.UnusedSeqRangePrefix) { // SG unused sequence marker docs
 			if listener.OnDocChanged != nil && event.Opcode == sgbucket.FeedOpMutation {
 				listener.OnDocChanged(event)
@@ -181,7 +181,7 @@ func (listener changeListener) TapFeed() base.TapFeed {
 //////// NOTIFICATIONS:
 
 // Changes the counter, notifying waiting clients.
-func (listener *changeListener) Notify(keys base.Set) {
+func (listener *changeListener) Notify(keys channels.Set) {
 
 	if len(keys) == 0 {
 		return
@@ -189,10 +189,21 @@ func (listener *changeListener) Notify(keys base.Set) {
 	listener.tapNotifier.L.Lock()
 	listener.counter++
 	for key := range keys {
-		listener.keyCounts[key] = listener.counter
+		listener.keyCounts[key.String()] = listener.counter
 	}
 	base.DebugfCtx(context.TODO(), base.KeyChanges, "Notifying that %q changed (keys=%q) count=%d",
 		base.MD(listener.bucketName), base.UD(keys), listener.counter)
+	listener.tapNotifier.Broadcast()
+	listener.tapNotifier.L.Unlock()
+}
+
+// Changes the counter, notifying waiting clients. Only use for a key update.
+func (listener *changeListener) notifyKey(key string) {
+	listener.tapNotifier.L.Lock()
+	listener.counter++
+	listener.keyCounts[key] = listener.counter
+	base.DebugfCtx(context.TODO(), base.KeyChanges, "Notifying that %q changed (key=%q) count=%d",
+		base.MD(listener.bucketName), base.UD(key), listener.counter)
 	listener.tapNotifier.Broadcast()
 	listener.tapNotifier.L.Unlock()
 }
@@ -293,10 +304,10 @@ func (listener *changeListener) NewWaiter(keys []string) *ChangeWaiter {
 	}
 }
 
-func (listener *changeListener) NewWaiterWithChannels(chans base.Set, user auth.User) *ChangeWaiter {
+func (listener *changeListener) NewWaiterWithChannels(chans channels.Set, user auth.User) *ChangeWaiter {
 	waitKeys := make([]string, 0, 5)
 	for channel := range chans {
-		waitKeys = append(waitKeys, channel)
+		waitKeys = append(waitKeys, channel.String())
 	}
 	var userKeys []string
 	if user != nil {
@@ -351,27 +362,20 @@ func (waiter *ChangeWaiter) RefreshUserCount() bool {
 }
 
 // Updates the set of channel keys in the ChangeWaiter (maintains the existing set of user keys)
-func (waiter *ChangeWaiter) UpdateChannels(chans channels.TimedSet) {
-	initialCapacity := len(chans) + len(waiter.userKeys)
+func (waiter *ChangeWaiter) UpdateChannels(timedSetByCollectionID channels.TimedSetByCollectionID) {
+	// This capacity is not right can not accomodate channels without iteration.
+	initialCapacity := len(waiter.userKeys)
 	updatedKeys := make([]string, 0, initialCapacity)
-	for channel := range chans {
-		updatedKeys = append(updatedKeys, channel)
+	for collectionID, timedSetByChannel := range timedSetByCollectionID {
+		for channelName, _ := range timedSetByChannel {
+			updatedKeys = append(updatedKeys, channels.NewID(channelName, collectionID).String())
+		}
 	}
 	if len(waiter.userKeys) > 0 {
 		updatedKeys = append(updatedKeys, waiter.userKeys...)
 	}
 	waiter.keys = updatedKeys
 
-}
-
-// Returns the set of user keys for this ChangeWaiter
-func (waiter *ChangeWaiter) GetUserKeys() (result []string) {
-	if len(waiter.userKeys) == 0 {
-		return result
-	}
-	result = make([]string, len(waiter.userKeys))
-	copy(result, waiter.userKeys)
-	return result
 }
 
 // Refresh user keys refreshes the waiter's userKeys (users and roles).  Required
@@ -387,7 +391,8 @@ func (waiter *ChangeWaiter) RefreshUserKeys(user auth.User) {
 		}
 		waiter.userKeys = []string{base.UserPrefix + user.Name()}
 		for role := range user.RoleNames() {
-			waiter.userKeys = append(waiter.userKeys, base.RolePrefix+role)
+			waiter.userKeys = append(waiter.userKeys,
+				base.RolePrefix+role)
 		}
 		waiter.lastUserCount = waiter.listener.CurrentCount(waiter.userKeys)
 
@@ -395,5 +400,5 @@ func (waiter *ChangeWaiter) RefreshUserKeys(user auth.User) {
 }
 
 func (db *Database) NewUserWaiter() *ChangeWaiter {
-	return db.mutationListener.NewWaiterWithChannels(base.Set{}, db.User())
+	return db.mutationListener.NewWaiterWithChannels(channels.Set{}, db.User())
 }

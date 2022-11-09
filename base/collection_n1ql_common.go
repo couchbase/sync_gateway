@@ -43,12 +43,12 @@ type N1QLStore interface {
 	ExplainQuery(statement string, params map[string]interface{}) (plan map[string]interface{}, err error)
 	GetIndexMeta(indexName string) (exists bool, meta *IndexMeta, err error)
 	Query(statement string, params map[string]interface{}, consistency ConsistencyMode, adhoc bool) (results sgbucket.QueryResultIterator, err error)
-	WaitForIndexOnline(indexName string) error
 	IsErrNoResults(error) bool
 	EscapedKeyspace() string
 	IndexMetaBucketID() string
 	IndexMetaScopeID() string
 	IndexMetaKeyspaceID() string
+	WaitForIndexesOnline(indexNames []string, failfast bool) error
 
 	// executeQuery performs the specified query without any built-in retry handling and returns the resultset
 	executeQuery(statement string) (sgbucket.QueryResultIterator, error)
@@ -240,34 +240,10 @@ func buildIndexes(s N1QLStore, indexNames []string) error {
 	if IsIndexerRetryBuildError(err) {
 		InfofCtx(context.TODO(), KeyQuery, "Indexer error creating index - waiting for background build.  Error:%v", err)
 		// Wait for bucket to be created in background before returning
-		for _, indexName := range indexNames {
-			waitErr := s.WaitForIndexOnline(indexName)
-			if waitErr != nil {
-				return waitErr
-			}
-		}
-		return nil
+		return s.WaitForIndexesOnline(indexNames, false)
 	}
 
 	return err
-}
-
-// WaitForIndexOnline waits for index state to be online
-func WaitForIndexOnline(store N1QLStore, indexName string) error {
-	worker := func() (shouldRetry bool, err error, value interface{}) {
-		exists, indexMeta, getMetaErr := store.GetIndexMeta(indexName)
-		if exists && indexMeta.State == IndexStateOnline {
-			return false, nil, nil
-		}
-		return true, getMetaErr, nil
-	}
-
-	// Kick off retry loop
-	err, _ := RetryLoop("WaitForIndexOnline", worker, CreateMaxDoublingSleeperFunc(25, 100, 15000))
-	if err != nil {
-		return pkgerrors.Wrapf(err, "WaitForIndexOnline for index %s", MD(indexName).Redact())
-	}
-	return nil
 }
 
 // IndexMeta represents a Couchbase GSI index.

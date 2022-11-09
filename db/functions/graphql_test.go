@@ -89,7 +89,7 @@ var kTestGraphQLConfig = GraphQLConfig{
 				Type: "javascript",
 				Code: `function(parent, args, context, info) {
 						if (Object.keys(parent).length != 0) throw "Unexpected parent";
-						if (Object.keys(args).length != 1) throw "Unexpected args";
+						if (Object.keys(args).length != 0) throw "Unexpected args";
 						if (Object.keys(info) != "selectedFieldNames") throw "Unexpected info";
 						if (!context.user) throw "Missing context.user";
 						if (!context.admin) throw "Missing context.admin";
@@ -581,6 +581,24 @@ func TestCompilationErrorInResolverCode(t *testing.T) {
 	}
 	_, err := CompileGraphQL(&config)
 	assert.ErrorContains(t, err, `500 Error compiling GraphQL resolver "Query:square"`)
+}
+
+func TestGraphQLMaxCodeSize(t *testing.T) {
+	var schema = `type Query {square(n: Int!) : Int!}`
+	var config = GraphQLConfig{
+		MaxCodeSize: base.IntPtr(2),
+		Schema:      &schema,
+		Resolvers: map[string]GraphQLResolverConfig{
+			"Query": {
+				"square": {
+					Type: "javascript",
+					Code: `function(parent, args, context, info) {return args.n * args.n;}`,
+				},
+			},
+		},
+	}
+	_, err := CompileGraphQL(&config)
+	assert.ErrorContains(t, err, "resolver square code too large (> 2 bytes)")
 }
 
 // Unit Test for Typename resolver for interfaces in GraphQL schema

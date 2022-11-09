@@ -15,6 +15,7 @@ import (
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestTimedSetMarshal(t *testing.T) {
@@ -30,12 +31,12 @@ func TestTimedSetMarshal(t *testing.T) {
 	assert.NoError(t, err, "Marshal")
 	assert.Equal(t, `{"Channels":{}}`, string(bytes))
 
-	str.Channels = AtSequence(SetOf(t, "a"), 17)
+	str.Channels = AtSequence(BaseSetOf(t, "a"), 17)
 	bytes, err = base.JSONMarshal(str)
 	assert.NoError(t, err, "Marshal")
 	assert.Equal(t, `{"Channels":{"a":17}}`, string(bytes))
 
-	str.Channels = AtSequence(SetOf(t, "a", "b"), 17)
+	str.Channels = AtSequence(BaseSetOf(t, "a", "b"), 17)
 	bytes, err = base.JSONMarshal(str)
 	assert.NoError(t, err, "Marshal")
 	// Ordering of JSON keys can vary - so just check each channel is present with the correct sequence
@@ -167,4 +168,19 @@ func TestTimedSetCompareKeys(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestTimedSetByCollectionID(t *testing.T) {
+	chans, err := SetOf(
+		NewID("A", 2),
+		NewID("B", 2),
+		NewID("B", 1),
+		NewID("C", 1),
+	)
+	require.NoError(t, err)
+	collectionByTimedSet := AtSequenceByCollection(chans, 42)
+	require.Equal(t, TimedSetByCollectionID{
+		1: TimedSetFromString("B:42,C:42"),
+		2: TimedSetFromString("A:42,B:42"),
+	}, collectionByTimedSet)
 }

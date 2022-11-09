@@ -32,7 +32,7 @@ func TestUserWaiter(t *testing.T) {
 	username := "bob"
 	authenticator := db.Authenticator(ctx)
 	require.NotNil(t, authenticator, "db.Authenticator(db.Ctx) returned nil")
-	user, err := authenticator.NewUser(username, "letmein", channels.SetOf(t, "ABC"))
+	user, err := authenticator.NewUser(username, "letmein", channels.BaseSetOf(t, "ABC"))
 	require.NoError(t, err, "Error creating new user")
 
 	// Create the user waiter (note: user hasn't been saved yet)
@@ -75,7 +75,7 @@ func TestUserWaiterForRoleChange(t *testing.T) {
 	roleName := "good_egg"
 	authenticator := db.Authenticator(ctx)
 	require.NotNil(t, authenticator, "db.Authenticator(ctx) returned nil")
-	role, err := authenticator.NewRole(roleName, channels.SetOf(t, "ABC"))
+	role, err := authenticator.NewRole(roleName, channels.BaseSetOf(t, "ABC"))
 	require.NoError(t, err, "Error creating new role")
 	require.NoError(t, authenticator.Save(role))
 
