@@ -37,7 +37,7 @@ func NewRestTesterForUserQueries(t *testing.T, queryConfig DbConfig) *RestTester
 	rt := NewRestTester(t, &RestTesterConfig{
 		groupID:           base.StringPtr(t.Name()), // Avoids race conditions between tests
 		EnableUserQueries: true,
-		persistentConfig:  true,
+		PersistentConfig:  true,
 	})
 
 	_ = rt.Bucket() // initializes the bucket as a side effect
