@@ -2617,6 +2617,245 @@ func TestGetRoleIDs(t *testing.T) {
 	assert.ElementsMatch(t, []string{role1.Name()}, roles)
 }
 
+func Test_updateAllPrincipalsSequences(t *testing.T) {
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
+
+	db.Options.QueryPaginationLimit = 100
+	db.ChannelMapper = channels.NewDefaultChannelMapper()
+
+	auth := db.Authenticator(ctx)
+	roleSequences := [5]uint64{}
+	userSequences := [5]uint64{}
+
+	for i := 0; i < 5; i++ {
+		role, err := auth.NewRole(fmt.Sprintf("role%d", i), base.SetOf("ABC"))
+		require.NoError(t, err)
+		assert.NotEmpty(t, role)
+		err = auth.Save(role)
+		require.NoError(t, err)
+		roleSequences[i] = role.Sequence()
+
+		user, err := auth.NewUser(fmt.Sprintf("user%d", i), "letmein", base.SetOf("ABC"))
+		require.NoError(t, err)
+		assert.NotEmpty(t, user)
+		err = auth.Save(user)
+		require.NoError(t, err)
+		userSequences[i] = user.Sequence()
+	}
+	err := db.updateAllPrincipalsSequences(ctx)
+	require.NoError(t, err)
+
+	for i := 0; i < 5; i++ {
+		role, err := auth.GetRole(fmt.Sprintf("role%d", i))
+		assert.NoError(t, err)
+		assert.Greater(t, role.Sequence(), roleSequences[i])
+
+		user, err := auth.GetUser(fmt.Sprintf("user%d", i))
+		assert.NoError(t, err)
+		assert.Greater(t, user.Sequence(), userSequences[i])
+	}
+}
+
+func Test_invalidateAllPrincipalsCache(t *testing.T) {
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
+
+	db.Options.QueryPaginationLimit = 100
+	db.ChannelMapper = channels.NewDefaultChannelMapper()
+	sequenceAllocator, err := newSequenceAllocator(db.Bucket, db.DbStats.DatabaseStats)
+	assert.NoError(t, err)
+
+	db.sequences = sequenceAllocator
+
+	auth := db.Authenticator(ctx)
+
+	for i := 0; i < 5; i++ {
+		role, err := auth.NewRole(fmt.Sprintf("role%d", i), base.SetOf("ABC"))
+		assert.NoError(t, err)
+		assert.NotEmpty(t, role)
+		seq, err := db.sequences.nextSequence()
+		assert.NoError(t, err)
+		role.SetSequence(seq)
+		err = auth.Save(role)
+		assert.NoError(t, err)
+
+		user, err := auth.NewUser(fmt.Sprintf("user%d", i), "letmein", base.SetOf("ABC"))
+		assert.NoError(t, err)
+		assert.NotEmpty(t, user)
+		seq, err = db.sequences.nextSequence()
+		assert.NoError(t, err)
+		user.SetSequence(seq)
+		err = auth.Save(user)
+		assert.NoError(t, err)
+	}
+	endSeq, err := db.sequences.getSequence()
+	assert.NoError(t, err)
+	assert.Greater(t, endSeq, uint64(0))
+
+	db.invalidateAllPrincipalsCache(ctx, endSeq)
+	err = db.WaitForPendingChanges(ctx)
+	assert.NoError(t, err)
+
+	type invalidatePrincipal struct {
+		Name            string `json:"name,omitempty"`
+		ChannelInvalSeq uint64 `json:"channel_inval_seq,omitempty"`
+	}
+
+	var invalPrinc invalidatePrincipal
+	for i := 0; i < 5; i++ {
+		raw, _, _ := db.Bucket.GetRaw(fmt.Sprintf("_sync:role:role%d", i))
+		err := json.Unmarshal(raw, &invalPrinc)
+		assert.NoError(t, err)
+		assert.Equal(t, endSeq, invalPrinc.ChannelInvalSeq)
+		assert.Equal(t, fmt.Sprintf("role%d", i), invalPrinc.Name)
+
+		raw, _, _ = db.Bucket.GetRaw(fmt.Sprintf("_sync:user:user%d", i))
+		err = json.Unmarshal(raw, &invalPrinc)
+		assert.NoError(t, err)
+		assert.Equal(t, endSeq, invalPrinc.ChannelInvalSeq)
+		assert.Equal(t, fmt.Sprintf("user%d", i), invalPrinc.Name)
+	}
+}
+
+func Test_updateDocument(t *testing.T) {
+	testCases := []struct {
+		useXattr bool
+	}{
+		{useXattr: true},
+		{useXattr: false},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(fmt.Sprintf("Test_updateDocument with useXattr: %t", testCase.useXattr), func(t *testing.T) {
+			if !base.TestUseXattrs() && testCase.useXattr {
+				t.Skip("Walrus doesn't support xattr")
+			}
+			db, ctx := setupTestDB(t)
+			defer db.Close(ctx)
+
+			db.Options.EnableXattr = testCase.useXattr
+			db.Options.QueryPaginationLimit = 100
+			db.ChannelMapper = channels.NewDefaultChannelMapper()
+			collection := db.GetSingleDatabaseCollectionWithUser()
+
+			syncFn := `
+	function sync(doc, oldDoc){
+		channel("channel." + "ABC");
+	}
+`
+			_, err := db.UpdateSyncFun(ctx, syncFn)
+			require.NoError(t, err)
+
+			docID := uuid.NewString()
+
+			updateBody := make(map[string]interface{})
+			updateBody["val"] = "value"
+			_, doc, err := collection.Put(ctx, docID, updateBody)
+			require.NoError(t, err)
+			assert.NotNil(t, doc)
+
+			syncFn = `
+		function sync(doc, oldDoc){
+			channel("channel." + "ABC12332423234");
+		}
+	`
+			_, err = db.UpdateSyncFun(ctx, syncFn)
+			require.NoError(t, err)
+
+			_, _, err = db.updateDocument(ctx, docID, realDocID(docID), false, []uint64{10})
+			require.NoError(t, err)
+			err = db.WaitForPendingChanges(ctx)
+			require.NoError(t, err)
+
+			syncData, err := db.singleCollection.GetDocSyncData(ctx, docID)
+			assert.NoError(t, err)
+
+			assert.Len(t, syncData.ChannelSet, 2)
+			assert.Len(t, syncData.Channels, 2)
+			found := false
+
+			for _, chSet := range syncData.ChannelSet {
+				if chSet.Name == "channel.ABC12332423234" {
+					found = true
+					break
+				}
+			}
+
+			assert.True(t, found)
+			assert.Equal(t, 2, int(db.DbStats.Database().SyncFunctionCount.Value()))
+		})
+	}
+}
+
+func Test_getUpdatedDocument(t *testing.T) {
+	t.Run("Non Sync document is not processed", func(t *testing.T) {
+		db, ctx := setupTestDB(t)
+		defer db.Close(ctx)
+
+		db.Options.QueryPaginationLimit = 100
+		db.ChannelMapper = channels.NewDefaultChannelMapper()
+		docID := "testDoc"
+
+		body := `{"val": "nonsyncdoc"}`
+		added, err := db.Bucket.AddRaw(docID, 0, []byte(body))
+		require.NoError(t, err)
+		assert.True(t, added)
+
+		raw, _, err := db.Bucket.GetRaw(docID)
+		require.NoError(t, err)
+		doc, err := unmarshalDocument(docID, raw)
+		require.NoError(t, err)
+
+		_, _, _, _, _, err = db.getUpdatedDocument(ctx, doc, false, []uint64{})
+		assert.Equal(t, base.ErrUpdateCancel, err)
+	})
+
+	t.Run("Sync Document", func(t *testing.T) {
+		db, ctx := setupTestDB(t)
+		defer db.Close(ctx)
+		db.Options.QueryPaginationLimit = 100
+		db.ChannelMapper = channels.NewDefaultChannelMapper()
+		collection := db.GetSingleDatabaseCollectionWithUser()
+
+		syncFn := `
+	function sync(doc, oldDoc){
+		channel("channel." + "ABC");
+	}
+`
+		_, err := db.UpdateSyncFun(ctx, syncFn)
+		require.NoError(t, err)
+
+		docID := uuid.NewString()
+		updateBody := make(map[string]interface{})
+		updateBody["val"] = "value"
+		_, doc, err := collection.Put(ctx, docID, updateBody)
+		require.NoError(t, err)
+		assert.NotNil(t, doc)
+
+		syncFn = `
+		function sync(doc, oldDoc){
+			channel("channel." + "ABC12332423234");
+		}
+	`
+		_, err = db.UpdateSyncFun(ctx, syncFn)
+		require.NoError(t, err)
+
+		updatedDoc, shouldUpdate, _, highSeq, _, err := db.getUpdatedDocument(ctx, doc, false, []uint64{})
+		require.NoError(t, err)
+		assert.True(t, shouldUpdate)
+		assert.Equal(t, doc.Sequence, highSeq)
+		assert.Equal(t, 2, int(db.DbStats.Database().SyncFunctionCount.Value()))
+
+		// Rerunning same resync function should mark doc not to be updated
+		_, shouldUpdate, _, _, _, err = db.getUpdatedDocument(ctx, updatedDoc, false, []uint64{})
+		require.NoError(t, err)
+		assert.False(t, shouldUpdate)
+		assert.Equal(t, 3, int(db.DbStats.Database().SyncFunctionCount.Value()))
+	})
+
+}
+
 // Regression test for CBG-2058.
 func TestImportCompactPanic(t *testing.T) {
 	if !base.TestUseXattrs() {
