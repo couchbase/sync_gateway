@@ -520,7 +520,7 @@ func TestWebhookBasic(t *testing.T) {
 }
 
 func TestWebhookOverflows(t *testing.T) {
-	if true { // Modify conditions
+	if true { // Modify conditions or re-enable once CBG-2281 is fixed
 		t.Skip("Test skipped")
 	}
 	base.LongRunningTest(t)
