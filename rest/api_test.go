@@ -731,106 +731,6 @@ func assertGatewayStatus(t *testing.T, response *TestResponse, expected int) {
 	RequireStatus(t, response, expected)
 }
 
-func TestCORSLoginOriginOnSessionPost(t *testing.T) {
-
-	rt := NewRestTester(t, nil)
-	defer rt.Close()
-
-	reqHeaders := map[string]string{
-		"Origin": "http://example.com",
-	}
-
-	response := rt.SendRequestWithHeaders("POST", "/db/_session", "{\"name\":\"jchris\",\"password\":\"secret\"}", reqHeaders)
-	RequireStatus(t, response, 401)
-
-	response = rt.SendRequestWithHeaders("POST", "/db/_facebook", `{"access_token":"true"}`, reqHeaders)
-	assertGatewayStatus(t, response, 401)
-}
-
-// #issue 991
-func TestCORSLoginOriginOnSessionPostNoCORSConfig(t *testing.T) {
-	rt := NewRestTester(t, nil)
-	defer rt.Close()
-
-	reqHeaders := map[string]string{
-		"Origin": "http://example.com",
-	}
-
-	// Set CORS to nil
-	sc := rt.ServerContext()
-	sc.Config.API.CORS = nil
-
-	response := rt.SendRequestWithHeaders("POST", "/db/_session", `{"name":"jchris","password":"secret"}`, reqHeaders)
-	RequireStatus(t, response, 400)
-}
-
-func TestNoCORSOriginOnSessionPost(t *testing.T) {
-	rt := NewRestTester(t, nil)
-	defer rt.Close()
-
-	reqHeaders := map[string]string{
-		"Origin": "http://staging.example.com",
-	}
-
-	response := rt.SendRequestWithHeaders("POST", "/db/_session", "{\"name\":\"jchris\",\"password\":\"secret\"}", reqHeaders)
-	RequireStatus(t, response, 400)
-
-	response = rt.SendRequestWithHeaders("POST", "/db/_facebook", `{"access_token":"true"}`, reqHeaders)
-	assertGatewayStatus(t, response, 400)
-}
-
-func TestCORSLogoutOriginOnSessionDelete(t *testing.T) {
-	rt := NewRestTester(t, &RestTesterConfig{GuestEnabled: true})
-	defer rt.Close()
-
-	reqHeaders := map[string]string{
-		"Origin": "http://example.com",
-	}
-
-	response := rt.SendRequestWithHeaders("DELETE", "/db/_session", "", reqHeaders)
-	RequireStatus(t, response, 404)
-
-	var body db.Body
-	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
-	assert.Equal(t, "no session", body["reason"])
-}
-
-func TestCORSLogoutOriginOnSessionDeleteNoCORSConfig(t *testing.T) {
-	rt := NewRestTester(t, &RestTesterConfig{GuestEnabled: true})
-	defer rt.Close()
-
-	reqHeaders := map[string]string{
-		"Origin": "http://example.com",
-	}
-
-	// Set CORS to nil
-	sc := rt.ServerContext()
-	sc.Config.API.CORS = nil
-
-	response := rt.SendRequestWithHeaders("DELETE", "/db/_session", "", reqHeaders)
-	RequireStatus(t, response, 400)
-
-	var body db.Body
-	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
-	assert.Equal(t, "No CORS", body["reason"])
-}
-
-func TestNoCORSOriginOnSessionDelete(t *testing.T) {
-	rt := NewRestTester(t, &RestTesterConfig{GuestEnabled: true})
-	defer rt.Close()
-
-	reqHeaders := map[string]string{
-		"Origin": "http://staging.example.com",
-	}
-
-	response := rt.SendRequestWithHeaders("DELETE", "/db/_session", "", reqHeaders)
-	RequireStatus(t, response, 400)
-
-	var body db.Body
-	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
-	assert.Equal(t, "No CORS", body["reason"])
-}
-
 func TestManualAttachment(t *testing.T) {
 	rt := NewRestTester(t, &RestTesterConfig{GuestEnabled: true})
 	defer rt.Close()
@@ -1952,25 +1852,6 @@ func TestLogin(t *testing.T) {
 	RequireStatus(t, response, 200)
 	log.Printf("Set-Cookie: %s", response.Header().Get("Set-Cookie"))
 	assert.True(t, response.Header().Get("Set-Cookie") != "")
-}
-
-func TestInvalidSession(t *testing.T) {
-	rt := NewRestTester(t, nil)
-	defer rt.Close()
-
-	response := rt.SendAdminRequest("PUT", "/db/testdoc", `{"hi": "there"}`)
-	RequireStatus(t, response, 201)
-
-	headers := map[string]string{}
-	headers["Cookie"] = fmt.Sprintf("%s=%s", auth.DefaultCookieName, "FakeSession")
-	response = rt.SendRequestWithHeaders("GET", "/db/testdoc", "", headers)
-	RequireStatus(t, response, 401)
-
-	var body db.Body
-	err := base.JSONUnmarshal(response.Body.Bytes(), &body)
-
-	assert.NoError(t, err)
-	assert.Equal(t, "Session Invalid", body["reason"])
 }
 
 func TestCustomCookieName(t *testing.T) {
@@ -3627,50 +3508,6 @@ func TestCreateTarget(t *testing.T) {
 	// Attempt to create new target DB on public API
 	response = rt.SendRequest("PUT", "/foo/", "")
 	RequireStatus(t, response, 403)
-}
-
-// Test for issue 758 - basic auth with stale session cookie
-func TestBasicAuthWithSessionCookie(t *testing.T) {
-
-	rt := NewRestTester(t, nil)
-	defer rt.Close()
-
-	// Create two users
-	response := rt.SendAdminRequest("PUT", "/db/_user/bernard", `{"name":"bernard", "password":"letmein", "admin_channels":["bernard"]}`)
-	RequireStatus(t, response, 201)
-	response = rt.SendAdminRequest("PUT", "/db/_user/manny", `{"name":"manny", "password":"letmein","admin_channels":["manny"]}`)
-	RequireStatus(t, response, 201)
-
-	// Create a session for the first user
-	response = rt.Send(RequestByUser("POST", "/db/_session", `{"name":"bernard", "password":"letmein"}`, "bernard"))
-	log.Println("response.Header()", response.Header())
-	assert.True(t, response.Header().Get("Set-Cookie") != "")
-
-	cookie := response.Header().Get("Set-Cookie")
-
-	// Create a doc as the first user, with session auth, channel-restricted to first user
-	reqHeaders := map[string]string{
-		"Cookie": cookie,
-	}
-	response = rt.SendRequestWithHeaders("PUT", "/db/bernardDoc", `{"hi": "there", "channels":["bernard"]}`, reqHeaders)
-	RequireStatus(t, response, 201)
-	response = rt.SendRequestWithHeaders("GET", "/db/bernardDoc", "", reqHeaders)
-	RequireStatus(t, response, 200)
-
-	// Create a doc as the second user, with basic auth, channel-restricted to the second user
-	response = rt.Send(RequestByUser("PUT", "/db/mannyDoc", `{"hi": "there", "channels":["manny"]}`, "manny"))
-	RequireStatus(t, response, 201)
-	response = rt.Send(RequestByUser("GET", "/db/mannyDoc", "", "manny"))
-	RequireStatus(t, response, 200)
-	response = rt.Send(RequestByUser("GET", "/db/bernardDoc", "", "manny"))
-	RequireStatus(t, response, 403)
-
-	// Attempt to retrieve the docs with the first user's cookie, second user's basic auth credentials.  Basic Auth should take precedence
-	response = rt.SendUserRequestWithHeaders("GET", "/db/bernardDoc", "", reqHeaders, "manny", "letmein")
-	RequireStatus(t, response, 403)
-	response = rt.SendUserRequestWithHeaders("GET", "/db/mannyDoc", "", reqHeaders, "manny", "letmein")
-	RequireStatus(t, response, 200)
-
 }
 
 func TestEventConfigValidationSuccess(t *testing.T) {
@@ -5385,35 +5222,6 @@ func TestHandleStats(t *testing.T) {
 	response := rt.SendAdminRequest(http.MethodGet, "/_stats", "")
 	assert.Equal(t, "application/json", response.Header().Get("Content-Type"))
 	assert.Contains(t, string(response.BodyBytes()), "MemStats")
-	RequireStatus(t, response, http.StatusOK)
-}
-
-// Try to create session with invalid cert but valid credentials
-func TestSessionFail(t *testing.T) {
-	rt := NewRestTester(t, nil)
-	defer rt.Close()
-
-	// Create user
-	response := rt.SendAdminRequest("PUT", "/db/_user/user1", `{"name":"user1", "password":"letmein", "admin_channels":["user1"]}`)
-	RequireStatus(t, response, http.StatusCreated)
-
-	id, err := base.GenerateRandomSecret()
-	require.NoError(t, err)
-
-	// Create fake, invalid session
-	fakeSession := auth.LoginSession{
-		ID:         id,
-		Username:   "user1",
-		Expiration: time.Now().Add(4 * time.Hour),
-		Ttl:        24 * time.Hour,
-	}
-
-	reqHeaders := map[string]string{
-		"Cookie": auth.DefaultCookieName + "=" + fakeSession.ID,
-	}
-
-	// Attempt to create session with invalid cert but valid login
-	response = rt.SendRequestWithHeaders("POST", "/db/_session", `{"name":"user1", "password":"letmein"}`, reqHeaders)
 	RequireStatus(t, response, http.StatusOK)
 }
 
