@@ -184,11 +184,6 @@ func TestUnmarshalBrokenConfig(t *testing.T) {
 
 	// Add invalid json fields to the config
 	cnf["num_index_replicas"] = "0"
-	marshaled, err := json.Marshal(cnf)
-
-	// Set the config to _sync:dbconfig:default
-	err = tb.SetRaw("_sync:dbconfig:default", 0, nil, marshaled)
-	require.NoError(t, err)
 
 	// Both calls to UpdateConfig and fetchAndLoadConfigs needed to enter the broken state
 	_, err = rt.ServerContext().BootstrapContext.Connection.UpdateConfig(tb.GetName(), rt.ServerContext().Config.Bootstrap.ConfigGroupID,
@@ -200,14 +195,10 @@ func TestUnmarshalBrokenConfig(t *testing.T) {
 	_, err = rt.ServerContext().fetchAndLoadConfigs(rt.Context(), false)
 	assert.NoError(t, err)
 
-	resp = rt.SendAdminRequest(http.MethodGet, "/newdb/", "{}")
+	resp = rt.SendAdminRequest(http.MethodGet, "/newdb/", "")
 	RequireStatus(t, resp, http.StatusNotFound)
-	resp = rt.SendAdminRequest(http.MethodDelete, "/newdb/", fmt.Sprintf(
-		`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "use_views": %t}`,
-		tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(),
-	))
+	resp = rt.SendAdminRequest(http.MethodDelete, "/newdb/", "")
 	RequireStatus(t, resp, http.StatusOK)
-	_, _, err = tb.GetRaw("_sync:dbconfig:default")
 }
 
 func TestAutomaticConfigUpgradeExistingConfigAndNewGroup(t *testing.T) {
