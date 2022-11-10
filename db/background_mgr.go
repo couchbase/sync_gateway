@@ -471,7 +471,6 @@ func (b *BackgroundManager) UpdateHeartbeatDocClusterAware() error {
 		// goroutine which intermittently runs this but this snuck in before it was stopped. This may result in the doc
 		// being deleted before this runs. We can ignore that error is that is the case.
 		if base.IsDocNotFoundError(err) && b.terminator.IsClosed() {
-			fmt.Println("Inside here where terminiator has closed it")
 			return nil
 		}
 
@@ -479,7 +478,6 @@ func (b *BackgroundManager) UpdateHeartbeatDocClusterAware() error {
 		// out. If we fail to write heartbeat for this time we can no longer ensure that this would be the only process
 		// running and another could end up starting.
 		if time.Now().Sub(time.Unix(b.clusterAwareOptions.lastSuccessfulHeartbeatUnix.Value(), 0)) > (BackgroundManagerHeartbeatExpirySecs - BackgroundManagerHeartbeatIntervalSecs) {
-			fmt.Println("Non succesful heartbet part")
 			return err
 		}
 		return nil
@@ -492,7 +490,6 @@ func (b *BackgroundManager) UpdateHeartbeatDocClusterAware() error {
 	}
 
 	if status.ShouldStop {
-		fmt.Println("Should stop>?")
 		err = b.Stop()
 		if err != nil {
 			base.WarnfCtx(context.TODO(), "Failed to stop process %q: %v", b.clusterAwareOptions.processSuffix, err)
