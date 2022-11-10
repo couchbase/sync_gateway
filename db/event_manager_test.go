@@ -19,7 +19,6 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
-	"runtime"
 	"strconv"
 	"sync"
 	"testing"
@@ -518,14 +517,47 @@ func TestWebhookBasic(t *testing.T) {
 	receivedPayload := string((wr.GetPayloads())[0])
 	fmt.Println("payload:", receivedPayload)
 	assert.Equal(t, `{"_id":"0","value":0}`, receivedPayload)
+}
+
+func TestWebhookOverflows(t *testing.T) {
+	if true { // Modify conditions
+		t.Skip("Test skipped")
+	}
+	base.LongRunningTest(t)
+
+	terminator := make(chan bool)
+	defer close(terminator)
+
+	ts, wr := InitWebhookTest()
+	defer ts.Close()
+	url := ts.URL
+
+	ids := make([]string, 200)
+	for i := 0; i < 200; i++ {
+		ids[i] = fmt.Sprintf("%d", i)
+	}
+
+	eventForTest := func(i int) (Body, string, base.Set) {
+		testBody := Body{
+			BodyId:  ids[i],
+			"value": i,
+		}
+		var channelSet base.Set
+		if i%2 == 0 {
+			channelSet = base.SetFromArray([]string{"Even"})
+		} else {
+			channelSet = base.SetFromArray([]string{"Odd"})
+		}
+		return testBody, ids[i], channelSet
+	}
 
 	// Test fast fill, fast webhook
 	log.Println("Test fast fill, fast webhook")
 	wr.Clear()
-	em = NewEventManager(terminator)
+	em := NewEventManager(terminator)
 	em.Start(5, -1)
 	timeout := uint64(60)
-	webhookHandler, _ = NewWebhook(fmt.Sprintf("%s/echo", url), "", &timeout, nil)
+	webhookHandler, _ := NewWebhook(fmt.Sprintf("%s/echo", url), "", &timeout, nil)
 	em.RegisterEventHandler(webhookHandler, DocumentChange)
 	for i := 0; i < 100; i++ {
 		body, docId, channels := eventForTest(i % 10)
@@ -533,35 +565,35 @@ func TestWebhookBasic(t *testing.T) {
 		err := em.RaiseDocumentChangeEvent(bodyBytes, docId, "", channels, false)
 		assert.NoError(t, err)
 	}
-	err = em.waitForProcessedTotal(base.TestCtx(t), 100, DefaultWaitForWebhook)
+	err := em.waitForProcessedTotal(base.TestCtx(t), 100, DefaultWaitForWebhook)
 	assert.NoError(t, err)
 	assert.Equal(t, int64(100), em.GetEventsProcessedSuccess())
 
 	// CBG-2281 skip test temporarily under windows
-	if runtime.GOOS != "windows" {
-		// Test queue full, slow webhook.  Drops events
-		log.Println("Test queue full, slow webhook")
-		wr.Clear()
-		errCount := 0
-		em = NewEventManager(terminator)
-		em.Start(5, 1)
-		webhookHandler, _ = NewWebhook(fmt.Sprintf("%s/slow", url), "", nil, nil)
-		em.RegisterEventHandler(webhookHandler, DocumentChange)
-		for i := 0; i < 100; i++ {
-			body, docId, channels := eventForTest(i)
-			bodyBytes, _ := base.JSONMarshal(body)
-			err := em.RaiseDocumentChangeEvent(bodyBytes, docId, "", channels, false)
-			if err != nil {
-				errCount++
-			}
+	// if runtime.GOOS != "windows" {
+	// Test queue full, slow webhook.  Drops events
+	log.Println("Test queue full, slow webhook")
+	wr.Clear()
+	errCount := 0
+	em = NewEventManager(terminator)
+	em.Start(5, 1)
+	webhookHandler, _ = NewWebhook(fmt.Sprintf("%s/slow", url), "", nil, nil)
+	em.RegisterEventHandler(webhookHandler, DocumentChange)
+	for i := 0; i < 100; i++ {
+		body, docId, channels := eventForTest(i)
+		bodyBytes, _ := base.JSONMarshal(body)
+		err := em.RaiseDocumentChangeEvent(bodyBytes, docId, "", channels, false)
+		if err != nil {
+			errCount++
 		}
-		// Expect 21 to complete.  5 get goroutines immediately, 15 get queued, and one is blocked waiting
-		// for a goroutine.  The rest get discarded because the queue is full.
-		err = em.waitForProcessedTotal(base.TestCtx(t), 21, 10*time.Second)
-		assert.NoError(t, err)
-		assert.Equal(t, int64(21), em.GetEventsProcessedSuccess())
-		assert.Equal(t, 79, errCount)
 	}
+	// Expect 21 to complete.  5 get goroutines immediately, 15 get queued, and one is blocked waiting
+	// for a goroutine.  The rest get discarded because the queue is full.
+	err = em.waitForProcessedTotal(base.TestCtx(t), 21, 10*time.Second)
+	assert.NoError(t, err)
+	assert.Equal(t, int64(21), em.GetEventsProcessedSuccess())
+	assert.Equal(t, 79, errCount)
+	//}
 
 	// Test queue full, slow webhook, long wait time.  Throttles events
 	log.Println("Test queue full, slow webhook, long wait")
