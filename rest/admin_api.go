@@ -918,25 +918,18 @@ func (h *handler) handleDeleteDB() error {
 	dbName := h.PathVar("olddb")
 
 	var bucket string
-	var buckets []string
+	//var buckets []string
 
-	dbContext, err := h.server.GetDatabase(h.ctx(), dbName)
+	dbContext, _ := h.server.GetDatabase(h.ctx(), dbName)
 
 	if dbContext != nil {
 		bucket = dbContext.Bucket.GetName()
 	} else if h.server.persistentConfig {
-		buckets, err = h.server.BootstrapContext.Connection.GetConfigBuckets()
-		for _, s := range buckets {
-			var config map[string]interface{}
-			_, err = h.server.BootstrapContext.Connection.GetConfig(s, h.server.Config.Bootstrap.ConfigGroupID, &config)
-			if err != nil && err != base.ErrNotFound {
-				return err
-			}
-			if config["name"] == dbName {
-				bucket = s
-				break
-			}
+		_, cnf, err := h.server.fetchDatabase(h.ctx(), dbName)
+		if err != nil {
+			return err
 		}
+		bucket = *cnf.Bucket
 	}
 
 	if bucket == "" { // no dbcontext and database not found in any bucket

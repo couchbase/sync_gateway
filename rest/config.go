@@ -13,6 +13,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -1399,6 +1400,11 @@ func (sc *ServerContext) fetchDatabase(ctx context.Context, dbName string) (foun
 			continue
 		}
 		if err != nil {
+			if err.(*json.UnmarshalTypeError) != nil {
+				base.WarnfCtx(ctx, "unable to fetch config in group %q from bucket %q: %v", sc.Config.Bootstrap.ConfigGroupID, bucket, err)
+				cnf.Bucket = &bucket
+				return true, &cnf, nil
+			}
 			base.DebugfCtx(ctx, base.KeyConfig, "unable to fetch config in group %q from bucket %q: %v", sc.Config.Bootstrap.ConfigGroupID, bucket, err)
 			continue
 		}
