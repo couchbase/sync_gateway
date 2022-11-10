@@ -85,6 +85,7 @@ func NewCheckpointer(ctx context.Context, clientID string, configHash string, bl
 func (c *Checkpointer) AddAlreadyKnownSeq(seq ...string) {
 	select {
 	case <-c.ctx.Done():
+		base.TracefCtx(c.ctx, base.KeyReplicate, "Inside AddAlreadyKnownSeq and context has been cancelled")
 		// replicator already closed, bail out of checkpointing work
 		return
 	default:
@@ -102,6 +103,7 @@ func (c *Checkpointer) AddAlreadyKnownSeq(seq ...string) {
 func (c *Checkpointer) AddProcessedSeq(seq string) {
 	select {
 	case <-c.ctx.Done():
+		base.TracefCtx(c.ctx, base.KeyReplicate, "Inside AddProcessedSeq and context has been cancelled")
 		// replicator already closed, bail out of checkpointing work
 		return
 	default:
@@ -116,6 +118,7 @@ func (c *Checkpointer) AddProcessedSeq(seq string) {
 func (c *Checkpointer) AddProcessedSeqIDAndRev(seq string, idAndRev IDAndRev) {
 	select {
 	case <-c.ctx.Done():
+		base.TracefCtx(c.ctx, base.KeyReplicate, "Inside AddProcessedSeqIDAndRev and context has been cancelled")
 		// replicator already closed, bail out of checkpointing work
 		return
 	default:
@@ -144,6 +147,7 @@ func (c *Checkpointer) AddExpectedSeqs(seqs ...string) {
 	select {
 	case <-c.ctx.Done():
 		// replicator already closed, bail out of checkpointing work
+		base.TracefCtx(c.ctx, base.KeyReplicate, "Inside AddExpectedSeqs and context has been cancelled")
 		return
 	default:
 	}
@@ -163,6 +167,7 @@ func (c *Checkpointer) AddExpectedSeqIDAndRevs(seqs map[IDAndRev]string) {
 	select {
 	case <-c.ctx.Done():
 		// replicator already closed, bail out of checkpointing work
+		base.TracefCtx(c.ctx, base.KeyReplicate, "Inside AddExpectedSeqIDAndRevs and context has been cancelled")
 		return
 	default:
 	}
@@ -187,6 +192,7 @@ func (c *Checkpointer) Start() {
 			for {
 				select {
 				case <-ticker.C:
+					base.TracefCtx(c.ctx, base.KeyReplicate, "calling checkpoint now. context is not cancelled here")
 					c.CheckpointNow()
 				case <-c.ctx.Done():
 					base.DebugfCtx(c.ctx, base.KeyReplicate, "checkpointer goroutine stopped")
@@ -234,6 +240,7 @@ func (c *Checkpointer) Stats() CheckpointerStats {
 // _updateCheckpointLists determines the highest checkpointable sequence, and trims the processedSeqs/expectedSeqs lists up to this point.
 func (c *Checkpointer) _updateCheckpointLists() (safeSeq string) {
 	base.TracefCtx(c.ctx, base.KeyReplicate, "checkpointer: _updateCheckpointLists(expectedSeqs: %v, procssedSeqs: %v)", c.expectedSeqs, c.processedSeqs)
+	base.TracefCtx(c.ctx, base.KeyReplicate, "Inside update checkpoint lists")
 
 	maxI := c._calculateSafeExpectedSeqsIdx()
 	if maxI == -1 {
@@ -577,6 +584,7 @@ func (c *Checkpointer) waitForExpectedSequences() error {
 	waitCount := 0
 	for waitCount < 100 {
 		expectedCount, processedCount := c.getCounts()
+		base.TracefCtx(c.ctx, base.KeyReplicate, "Inside waitForExpectedSequences loop expected %d and processed %d", expectedCount, processedCount)
 		if expectedCount == 0 {
 			return nil
 		}
@@ -586,6 +594,7 @@ func (c *Checkpointer) waitForExpectedSequences() error {
 			// in case of bugs that result in expectedCount==processedCount, but the
 			// sets are not identical.  In that scenario, want to sleep before retrying
 			updatedExpectedCount, _ := c.getCounts()
+			base.TracefCtx(c.ctx, base.KeyReplicate, "Inside waitForExpectedSequences updated expected count %d", updatedExpectedCount)
 			if updatedExpectedCount == 0 {
 				return nil
 			}

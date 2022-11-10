@@ -114,6 +114,7 @@ func (a *activeReplicatorCommon) reconnectLoop() {
 		a.setState(ReplicationStateReconnecting)
 
 		// disconnect no-ops if nothing is active, but will close any checkpointer processes, blip contexts, etc, if active.
+		base.TracefCtx(a.ctx, base.KeyReplicate, "calling disconnect from reconnectLoop")
 		err = a._disconnect()
 		if err != nil {
 			base.InfofCtx(a.ctx, base.KeyReplicate, "error stopping replicator on reconnect: %v", err)
@@ -146,6 +147,7 @@ func (a *activeReplicatorCommon) reconnectLoop() {
 // reconnect will disconnect and stop the replicator, but not set the state - such that it will be reassigned and started again.
 func (a *activeReplicatorCommon) reconnect() error {
 	a.lock.Lock()
+	base.TracefCtx(a.ctx, base.KeyReplicate, "Calling disconnect from reconnect()")
 	err := a._disconnect()
 	a._publishStatus()
 	a.lock.Unlock()
@@ -156,6 +158,7 @@ func (a *activeReplicatorCommon) reconnect() error {
 func (a *activeReplicatorCommon) stopAndDisconnect() error {
 	a.lock.Lock()
 	a._stop()
+	base.TracefCtx(a.ctx, base.KeyReplicate, "Calling _stop and _disconnect from stopAndDisconnect()")
 	err := a._disconnect()
 	a.setState(ReplicationStateStopped)
 	a._publishStatus()
@@ -177,6 +180,7 @@ func (a *activeReplicatorCommon) _disconnect() error {
 	}
 
 	if a.checkpointerCtx != nil {
+		base.TracefCtx(a.ctx, base.KeyReplicate, "cancelling checkpointer context inside _disconnect")
 		a.checkpointerCtxCancel()
 		a.Checkpointer.CheckpointNow()
 		a.Checkpointer.closeWg.Wait()
@@ -184,11 +188,13 @@ func (a *activeReplicatorCommon) _disconnect() error {
 	a.checkpointerCtx = nil
 
 	if a.blipSender != nil {
+		base.TracefCtx(a.ctx, base.KeyReplicate, "closing blip sender")
 		a.blipSender.Close()
 		a.blipSender = nil
 	}
 
 	if a.blipSyncContext != nil {
+		base.TracefCtx(a.ctx, base.KeyReplicate, "closing blip sync context")
 		a.blipSyncContext.Close()
 		a.blipSyncContext = nil
 	}
@@ -199,6 +205,7 @@ func (a *activeReplicatorCommon) _disconnect() error {
 // _stop aborts any replicator processes that run outside of a running replication (e.g: async reconnect handling)
 func (a *activeReplicatorCommon) _stop() {
 	if a.ctxCancel != nil {
+		base.TracefCtx(a.ctx, base.KeyReplicate, "cancelling context on activeReplicatorCommon in _stop()")
 		a.ctxCancel()
 	}
 }
