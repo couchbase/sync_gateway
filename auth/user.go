@@ -242,7 +242,11 @@ func (revokedChannels RevokedChannels) add(chanName string, triggeredBy uint64) 
 	}
 }
 
-// RevokedChannels returns a map of revoked channels => most recent sequence at which access to that channel was lost
+func (user *userImpl) RevokedChannels(since uint64, lowSeq uint64, triggeredBy uint64) RevokedChannels {
+	return user.RevokedCollectionChannels(base.DefaultScope, base.DefaultCollection, since, lowSeq, triggeredBy)
+}
+
+// RevokedCollectionChannels returns a map of revoked channels for the collection => most recent sequence at which access to that channel was lost
 // Steps:
 // Get revoked roles and for each:
 //   - Revoke the current channels if the role is deleted
@@ -253,7 +257,7 @@ func (revokedChannels RevokedChannels) add(chanName string, triggeredBy uint64) 
 //
 // Get user:
 //   - Revoke users revoked channels
-func (user *userImpl) RevokedChannels(since uint64, lowSeq uint64, triggeredBy uint64) RevokedChannels {
+func (user *userImpl) RevokedCollectionChannels(scope string, collection string, since uint64, lowSeq uint64, triggeredBy uint64) RevokedChannels {
 	// checkSeq represents the value that we use to 'diff' against ie. What channels did the user have at checkSeq but
 	// no longer has.
 	// In the event we have a lowSeq that will be used.
@@ -274,7 +278,7 @@ func (user *userImpl) RevokedChannels(since uint64, lowSeq uint64, triggeredBy u
 	// If there has been a revocation somewhere after the since value or we're in an interrupted revocation backfill
 	// at the point a revocation occurred we should return this as a channel to revoke.
 
-	accessibleChannels := user.InheritedChannels()
+	accessibleChannels := user.InheritedCollectionChannels(scope, collection)
 	// Get revoked roles
 	rolesToRevoke := map[string]uint64{}
 	roleHistory := user.RoleHistory()
@@ -295,7 +299,7 @@ func (user *userImpl) RevokedChannels(since uint64, lowSeq uint64, triggeredBy u
 
 	// revokeChannelHistoryProcessing iterates over a principals channel history and if not accessible add to combined
 	revokeChannelHistoryProcessing := func(princ Principal) {
-		for chanName, history := range princ.ChannelHistory() {
+		for chanName, history := range princ.CollectionChannelHistory(scope, collection) {
 			if !accessibleChannels.Contains(chanName) {
 				for _, entry := range history.Entries {
 					if entry.EndSeq > checkSeq || entry.EndSeq == triggeredBy {
@@ -319,7 +323,7 @@ func (user *userImpl) RevokedChannels(since uint64, lowSeq uint64, triggeredBy u
 		// First check 'current channels' if role isn't deleted
 		// Current roles should be invalidated on deleted anyway but for safety
 		if !role.IsDeleted() {
-			for _, chanName := range role.Channels().AllKeys() {
+			for _, chanName := range role.CollectionChannels(scope, collection).AllKeys() {
 				if !accessibleChannels.Contains(chanName) {
 					combinedRevokedChannels.add(chanName, roleRevokeSeq)
 				}
@@ -327,7 +331,7 @@ func (user *userImpl) RevokedChannels(since uint64, lowSeq uint64, triggeredBy u
 		}
 
 		// Second check the channel history and add any revoked channels
-		for chanName, history := range role.ChannelHistory() {
+		for chanName, history := range role.CollectionChannelHistory(scope, collection) {
 			if !accessibleChannels.Contains(chanName) {
 				for _, channelEntry := range history.Entries {
 					if channelEntry.EndSeq > checkSeq || channelEntry.EndSeq == triggeredBy {
@@ -359,18 +363,22 @@ func (user *userImpl) RevokedChannels(since uint64, lowSeq uint64, triggeredBy u
 	return combinedRevokedChannels
 }
 
-// Calculate periods where user had access to the given channel either directly or via a role
 func (user *userImpl) ChannelGrantedPeriods(chanName string) ([]GrantHistorySequencePair, error) {
+	return user.CollectionChannelGrantedPeriods(base.DefaultScope, base.DefaultCollection, chanName)
+}
+
+// Calculate periods where user had access to the given channel either directly or via a role
+func (user *userImpl) CollectionChannelGrantedPeriods(scope, collection, chanName string) ([]GrantHistorySequencePair, error) {
 	var resultPairs []GrantHistorySequencePair
 
 	// Grab user history and use this to begin the resultPairs
-	userChannelHistory, ok := user.ChannelHistory()[chanName]
+	userChannelHistory, ok := user.CollectionChannelHistory(scope, collection)[chanName]
 	if ok {
 		resultPairs = userChannelHistory.Entries
 	}
 
 	// Iterate over current user channels and add to resultPairs
-	for channelName, chanInfo := range user.Channels() {
+	for channelName, chanInfo := range user.CollectionChannels(scope, collection) {
 		if channelName != chanName {
 			continue
 		}
@@ -396,7 +404,7 @@ func (user *userImpl) ChannelGrantedPeriods(chanName string) ([]GrantHistorySequ
 	for _, currentRole := range user.GetRoles() {
 
 		// Grab pairs from channel history on current roles
-		roleChannelHistory, ok := currentRole.ChannelHistory()[chanName]
+		roleChannelHistory, ok := currentRole.CollectionChannelHistory(scope, collection)[chanName]
 		if ok {
 			for _, roleChannelHistoryEntry := range roleChannelHistory.Entries {
 				roleGrantedAt := user.RolesSince_[currentRole.Name()].Sequence
@@ -405,8 +413,8 @@ func (user *userImpl) ChannelGrantedPeriods(chanName string) ([]GrantHistorySequ
 		}
 
 		// Grab pairs from current channels on current roles
-		if currentRole.Channels().Contains(chanName) {
-			for _, channelInfo := range currentRole.Channels() {
+		if currentRole.CollectionChannels(scope, collection).Contains(chanName) {
+			for _, channelInfo := range currentRole.CollectionChannels(scope, collection) {
 				resultPairs = append(resultPairs, GrantHistorySequencePair{
 					StartSeq: channelInfo.Sequence,
 					EndSeq:   math.MaxUint64,
@@ -431,7 +439,7 @@ func (user *userImpl) ChannelGrantedPeriods(chanName string) ([]GrantHistorySequ
 		}
 
 		// Iterate over channel history on old roles
-		roleChannelHistory, ok := role.ChannelHistory()[chanName]
+		roleChannelHistory, ok := role.CollectionChannelHistory(scope, collection)[chanName]
 		if ok {
 			for _, roleChannelHistoryEntry := range roleChannelHistory.Entries {
 				for _, roleHistoryEntry := range historyEntry.Entries {
@@ -441,8 +449,8 @@ func (user *userImpl) ChannelGrantedPeriods(chanName string) ([]GrantHistorySequ
 		}
 
 		// Iterate over current channels on old roles
-		if role.Channels().Contains(chanName) {
-			for _, activeChannel := range role.Channels() {
+		if role.CollectionChannels(scope, collection).Contains(chanName) {
+			for _, activeChannel := range role.CollectionChannels(scope, collection) {
 				for _, roleHistoryEntry := range historyEntry.Entries {
 					compareAndAddPair(activeChannel.Sequence, roleHistoryEntry.StartSeq, math.MaxUint64, roleHistoryEntry.EndSeq)
 				}
@@ -582,19 +590,27 @@ func (user *userImpl) InheritedChannels() ch.TimedSet {
 
 // If a channel list contains the all-channel wildcard, replace it with all the user's accessible channels.
 func (user *userImpl) ExpandWildCardChannel(channels base.Set) base.Set {
+	return user.expandCollectionWildCardChannel(base.DefaultScope, base.DefaultCollection, channels)
+}
+
+func (user *userImpl) expandCollectionWildCardChannel(scope, collection string, channels base.Set) base.Set {
 	if channels.Contains(ch.AllChannelWildcard) {
-		channels = user.InheritedChannels().AsSet()
+		channels = user.InheritedCollectionChannels(scope, collection).AsSet()
 	}
 	return channels
 }
 
 func (user *userImpl) FilterToAvailableChannels(channels ch.Set) (filtered ch.TimedSet, removed []string) {
+	return user.FilterToAvailableCollectionChannels(base.DefaultScope, base.DefaultCollection, channels)
+}
+
+func (user *userImpl) FilterToAvailableCollectionChannels(scope, collection string, channels ch.Set) (filtered ch.TimedSet, removed []string) {
 	filtered = ch.TimedSet{}
 	for channel := range channels {
 		if channel.Name == ch.AllChannelWildcard {
-			return user.InheritedChannels().Copy(), nil
+			return user.InheritedCollectionChannels(scope, collection).Copy(), nil
 		}
-		added := filtered.AddChannel(channel.Name, user.CanSeeChannelSince(channel.Name))
+		added := filtered.AddChannel(channel.Name, user.canSeeCollectionChannelSince(scope, collection, channel.Name))
 		if !added {
 			removed = append(removed, channel.Name)
 		}
