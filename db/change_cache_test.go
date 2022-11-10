@@ -278,7 +278,6 @@ func TestLateSequenceErrorRecovery(t *testing.T) {
 	options.Since = SequenceID{Seq: 0}
 	changesCtx, changesCtxCancel := context.WithCancel(context.Background())
 	options.ChangesCtx = changesCtx
-	defer changesCtxCancel()
 	options.Continuous = true
 	options.Wait = true
 	feed, err := db.MultiChangesFeed(ctx, base.SetOf("ABC"), options)
@@ -368,6 +367,9 @@ func TestLateSequenceErrorRecovery(t *testing.T) {
 	nextEvents = nextFeedIteration()
 	require.Equal(t, len(nextEvents), 1)
 	assert.Equal(t, nextEvents[0].Seq.String(), "9")
+
+	changesCtxCancel()
+	emptyChangesFeed(feed)
 
 }
 
@@ -696,7 +698,6 @@ func TestContinuousChangesBackfill(t *testing.T) {
 	options.ChangesCtx = changesCtx
 	options.Continuous = true
 	options.Wait = true
-	defer changesCtxCancel()
 
 	feed, err := db.MultiChangesFeed(ctx, base.SetOf("*"), options)
 	assert.True(t, err == nil)
@@ -761,6 +762,8 @@ func TestContinuousChangesBackfill(t *testing.T) {
 	}
 
 	assert.Equal(t, 0, len(expectedDocs))
+	changesCtxCancel()
+	emptyChangesFeed(feed)
 }
 
 // Test low sequence handling of late arriving sequences to a continuous changes feed
@@ -799,7 +802,6 @@ func TestLowSequenceHandling(t *testing.T) {
 	options.Since = SequenceID{Seq: 0}
 	changesCtx, changesCtxCancel := context.WithCancel(context.Background())
 	options.ChangesCtx = changesCtx
-	defer changesCtxCancel()
 	options.Continuous = true
 	options.Wait = true
 	feed, err := db.MultiChangesFeed(ctx, base.SetOf("*"), options)
@@ -825,6 +827,9 @@ func TestLowSequenceHandling(t *testing.T) {
 	WriteDirect(db, []string{"ABC", "PBS"}, 9)
 	_, err = verifySequencesInFeed(feed, []uint64{7, 8, 9})
 	assert.True(t, err == nil)
+
+	changesCtxCancel()
+	emptyChangesFeed(feed)
 
 }
 
@@ -880,6 +885,7 @@ func TestLowSequenceHandlingAcrossChannels(t *testing.T) {
 	assert.True(t, err == nil)
 
 	changesCtxCancel()
+	emptyChangesFeed(feed)
 }
 
 // Test low sequence handling of late arriving sequences to a continuous changes feed, when the
@@ -954,6 +960,7 @@ func TestLowSequenceHandlingWithAccessGrant(t *testing.T) {
 	// whether the user has already seen the documents on the channel previously, so it gets resent
 
 	changesCtxCancel()
+	emptyChangesFeed(feed)
 }
 
 // Tests channel cache backfill with slow query, validates that a request that is terminated while
@@ -1123,7 +1130,6 @@ func TestLowSequenceHandlingNoDuplicates(t *testing.T) {
 	options.Since = SequenceID{Seq: 0}
 	changesCtx, changesCtxCancel := context.WithCancel(context.Background())
 	options.ChangesCtx = changesCtx
-	defer changesCtxCancel()
 	options.Continuous = true
 	options.Wait = true
 	feed, err := db.MultiChangesFeed(ctx, base.SetOf("*"), options)
@@ -1159,7 +1165,8 @@ func TestLowSequenceHandlingNoDuplicates(t *testing.T) {
 	require.NoError(t, db.changeCache.waitForSequence(ctx, 9, base.DefaultWaitForSequence))
 	require.NoError(t, appendFromFeed(&changes, feed, 5, base.DefaultWaitForSequence))
 	assert.True(t, verifyChangesSequencesIgnoreOrder(changes, []uint64{1, 2, 5, 6, 3, 4, 7, 8, 9}))
-
+	changesCtxCancel()
+	emptyChangesFeed(feed)
 }
 
 // Test race condition causing skipped sequences in changes feed.  Channel feeds are processed sequentially
@@ -1272,6 +1279,7 @@ func TestChannelRace(t *testing.T) {
 	fmt.Println("changes: ", changesString)
 
 	changesCtxCancel()
+	emptyChangesFeed(feed)
 }
 
 // Test retrieval of skipped sequence using view.  Unit test catches panic, but we don't currently have a way
@@ -2291,5 +2299,18 @@ func BenchmarkDocChanged(b *testing.B) {
 			// log.Printf("maxNumPending: %v", changeCache.context.DbStats.StatsCblReplicationPull().Get(base.StatKeyMaxPending))
 			// log.Printf("cachingCount: %v", changeCache.context.DbStats.StatsDatabase().Get(base.StatKeyDcpCachingCount))
 		})
+	}
+}
+
+func emptyChangesFeed(feed <-chan *ChangeEntry) {
+	done := false
+	for !done {
+		select {
+		case v, _ := <-feed:
+			log.Printf("Waiting for change entry feed to be empty. Item coming off the feed: %v", v)
+		default:
+			log.Println("Change entry feed empty")
+			done = true
+		}
 	}
 }
