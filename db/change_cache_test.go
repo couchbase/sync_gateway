@@ -1610,7 +1610,6 @@ func readNextFromFeed(feed <-chan (*ChangeEntry), timeout time.Duration) (*Chang
 
 }
 
-/*
 // Repro SG #2633
 //
 // Create doc1 w/ unused sequences 1, actual sequence 3.
@@ -1712,8 +1711,6 @@ func TestLateArrivingSequenceTriggersOnChange(t *testing.T) {
 	waitForOnChangeCallback.Wait()
 
 }
-
-*/
 
 // Trigger initialization of empty cache, then write and validate a subsequent changes request returns expected data.
 func TestInitializeEmptyCache(t *testing.T) {
