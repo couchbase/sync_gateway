@@ -289,7 +289,6 @@ func (b *BackgroundManager) getStatusFromCluster() ([]byte, error) {
 		}
 		return nil, err
 	}
-	_, _, heartbeatErr := b.clusterAwareOptions.bucket.GetRaw(b.clusterAwareOptions.HeartbeatDocID())
 
 	var clusterStatus map[string]interface{}
 	err = base.JSONUnmarshal(status, &clusterStatus)
