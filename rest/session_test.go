@@ -1,10 +1,3 @@
-// Copyright 2022-Present Couchbase, Inc.
-//
-// Use of this software is governed by the Business Source License included
-// in the file licenses/BSL-Couchbase.txt.  As of the Change Date specified
-// in that file, in accordance with the Business Source License, use of this
-// software will be governed by the Apache License, Version 2.0, included in
-// the file licenses/APL2.txt.
 package rest
 
 import (
@@ -211,6 +204,81 @@ func TestSessionFail(t *testing.T) {
 	// Attempt to create session with invalid cert but valid login
 	response = rt.SendRequestWithHeaders("POST", "/db/_session", `{"name":"user1", "password":"letmein"}`, reqHeaders)
 	RequireStatus(t, response, http.StatusOK)
+}
+
+func TestLogin(t *testing.T) {
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	a := auth.NewAuthenticator(rt.Bucket(), nil, auth.DefaultAuthenticatorOptions())
+	user, err := a.GetUser("")
+	assert.NoError(t, err)
+	user.SetDisabled(true)
+	err = a.Save(user)
+	assert.NoError(t, err)
+
+	user, err = a.GetUser("")
+	assert.NoError(t, err)
+	assert.True(t, user.Disabled())
+
+	response := rt.SendRequest("PUT", "/db/doc", `{"hi": "there"}`)
+	RequireStatus(t, response, 401)
+
+	user, err = a.NewUser("pupshaw", "letmein", channels.BaseSetOf(t, "*"))
+	assert.NoError(t, a.Save(user))
+
+	RequireStatus(t, rt.SendRequest("GET", "/db/_session", ""), 200)
+
+	response = rt.SendRequest("POST", "/db/_session", `{"name":"pupshaw", "password":"letmein"}`)
+	RequireStatus(t, response, 200)
+	log.Printf("Set-Cookie: %s", response.Header().Get("Set-Cookie"))
+	assert.True(t, response.Header().Get("Set-Cookie") != "")
+}
+func TestCustomCookieName(t *testing.T) {
+
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	customCookieName := "TestCustomCookieName"
+	rt.DatabaseConfig = &DatabaseConfig{DbConfig: DbConfig{
+		Name:              "db",
+		SessionCookieName: customCookieName,
+	}}
+
+	// Disable guest user
+	a := auth.NewAuthenticator(rt.Bucket(), nil, auth.DefaultAuthenticatorOptions())
+	user, err := a.GetUser("")
+	assert.NoError(t, err)
+	user.SetDisabled(true)
+	err = a.Save(user)
+	assert.NoError(t, err)
+
+	// Create a user
+	response := rt.SendAdminRequest("POST", "/db/_user/", `{"name":"user1", "password":"1234"}`)
+	RequireStatus(t, response, 201)
+
+	// Create a session
+	resp := rt.SendRequest("POST", "/db/_session", `{"name":"user1", "password":"1234"}`)
+	assert.Equal(t, 200, resp.Code)
+
+	// Extract the cookie from the create session response to verify the "Set-Cookie" value returned by Sync Gateway
+	cookies := resp.Result().Cookies()
+	assert.True(t, len(cookies) == 1)
+	cookie := cookies[0]
+	assert.Equal(t, customCookieName, cookie.Name)
+	assert.Equal(t, "/db", cookie.Path)
+
+	// Attempt to use default cookie name to authenticate -- expect a 401 error
+	headers := map[string]string{}
+	headers["Cookie"] = fmt.Sprintf("%s=%s", auth.DefaultCookieName, cookie.Value)
+	resp = rt.SendRequestWithHeaders("GET", "/db/foo", `{}`, headers)
+	assert.Equal(t, 401, resp.Result().StatusCode)
+
+	// Attempt to use custom cookie name to authenticate
+	headers["Cookie"] = fmt.Sprintf("%s=%s", customCookieName, cookie.Value)
+	resp = rt.SendRequestWithHeaders("POST", "/db/", `{"_id": "foo", "key": "val"}`, headers)
+	assert.Equal(t, 200, resp.Result().StatusCode)
+
 }
 
 // Test that TTL values greater than the default max offset TTL 2592000 seconds are processed correctly
