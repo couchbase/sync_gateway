@@ -623,12 +623,18 @@ func TestChannelCacheBackfill(t *testing.T) {
 	require.NoError(t, db.changeCache.waitForSequence(ctx, 6, base.DefaultWaitForSequence))
 	db.user, _ = authenticator.GetUser("naomi")
 	changes, err := db.GetChanges(ctx, base.SetOf("*"), getChangesOptionsWithZeroSeq())
+
 	assert.NoError(t, err, "Couldn't GetChanges")
 	assert.Equal(t, 4, len(changes))
+
+	collectionID, err := db.GetSingleCollectionID()
+	require.NoError(t, err)
+
 	assert.Equal(t, &ChangeEntry{
-		Seq:     SequenceID{Seq: 1, TriggeredBy: 0, LowSeq: 2},
-		ID:      "doc-1",
-		Changes: []ChangeRev{{"rev": "1-a"}}}, changes[0])
+		Seq:          SequenceID{Seq: 1, TriggeredBy: 0, LowSeq: 2},
+		ID:           "doc-1",
+		Changes:      []ChangeRev{{"rev": "1-a"}},
+		collectionID: collectionID}, changes[0])
 
 	lastSeq := changes[len(changes)-1].Seq
 
@@ -636,9 +642,6 @@ func TestChannelCacheBackfill(t *testing.T) {
 	WriteDirect(db, []string{"ABC", "NBC", "PBS", "TBS"}, 3)
 	WriteDirect(db, []string{"CBS"}, 7)
 	require.NoError(t, db.changeCache.waitForSequence(ctx, 7, base.DefaultWaitForSequence))
-
-	collectionID, err := db.GetSingleCollectionID()
-	require.NoError(t, err)
 
 	// verify insert at start (PBS)
 	pbsCache := db.changeCache.getChannelCache().getSingleChannelCache(channels.NewID("PBS", collectionID)).(*singleChannelCacheImpl)
@@ -658,9 +661,11 @@ func TestChannelCacheBackfill(t *testing.T) {
 	changes, err = db.GetChanges(ctx, base.SetOf("*"), getChangesOptionsWithSeq(lastSeq))
 	assert.Equal(t, 3, len(changes))
 	assert.Equal(t, &ChangeEntry{
-		Seq:     SequenceID{Seq: 3, LowSeq: 3},
-		ID:      "doc-3",
-		Changes: []ChangeRev{{"rev": "1-a"}}}, changes[0])
+		Seq:          SequenceID{Seq: 3, LowSeq: 3},
+		ID:           "doc-3",
+		Changes:      []ChangeRev{{"rev": "1-a"}},
+		collectionID: collectionID,
+	}, changes[0])
 
 }
 
@@ -810,10 +815,14 @@ func TestLowSequenceHandling(t *testing.T) {
 	changes, err := verifySequencesInFeed(feed, []uint64{1, 2, 5, 6})
 	assert.True(t, err == nil)
 	require.Len(t, changes, 4)
-	assert.Equal(t, &ChangeEntry{
-		Seq:     SequenceID{Seq: 1, TriggeredBy: 0, LowSeq: 2},
-		ID:      "doc-1",
-		Changes: []ChangeRev{{"rev": "1-a"}}}, changes[0])
+	collectionID, err := db.GetSingleCollectionID()
+	require.NoError(t, err)
+
+	require.Equal(t, &ChangeEntry{
+		Seq:          SequenceID{Seq: 1, TriggeredBy: 0, LowSeq: 2},
+		ID:           "doc-1",
+		Changes:      []ChangeRev{{"rev": "1-a"}},
+		collectionID: collectionID}, changes[0])
 
 	// Test backfill clear - sequence numbers go back to standard handling
 	WriteDirect(db, []string{"ABC", "NBC", "PBS", "TBS"}, 3)
