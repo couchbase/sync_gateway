@@ -416,9 +416,13 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 				if err != nil {
 					return nil, err
 				}
-				collectionID, err := collection.GetCollectionID()
-				if err != nil {
-					return nil, err
+				collectionID := base.DefaultCollectionID
+				if collection.IsSupported(sgbucket.DataStoreFeatureCollections) {
+					var err error
+					collectionID, err = collection.GetCollectionID()
+					if err != nil {
+						return nil, err
+					}
 				}
 				dbContext.CollectionByID[collectionID] = dbCollection
 				dbContext.singleCollection = dbCollection
