@@ -118,7 +118,7 @@ func (rt *RestTester) WaitForCheckpointLastSequence(expectedName string) (string
 }
 
 // createReplication creates a replication via the REST API with the specified ID, remoteURL, direction and channel filter
-func (rt *RestTester) createReplication(replicationID string, remoteURLString string, direction db.ActiveReplicatorDirection, channels []string, continuous bool, conflictResolver db.ConflictResolverType) {
+func (rt *RestTester) CreateReplication(replicationID string, remoteURLString string, direction db.ActiveReplicatorDirection, channels []string, continuous bool, conflictResolver db.ConflictResolverType) {
 	replicationConfig := &db.ReplicationConfig{
 		ID:                     replicationID,
 		Direction:              direction,
@@ -136,7 +136,7 @@ func (rt *RestTester) createReplication(replicationID string, remoteURLString st
 	RequireStatus(rt.TB, resp, http.StatusCreated)
 }
 
-func (rt *RestTester) waitForAssignedReplications(count int) {
+func (rt *RestTester) WaitForAssignedReplications(count int) {
 	successFunc := func() bool {
 		replicationStatuses := rt.GetReplicationStatuses("?localOnly=true")
 		return len(replicationStatuses) == count
