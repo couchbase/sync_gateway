@@ -143,13 +143,11 @@ func TestBlipPushRevisionInspectChanges(t *testing.T) {
 	subChangesRequest.Properties["continuous"] = "true"
 	sent = bt.sender.Send(subChangesRequest)
 	assert.True(t, sent)
-	receivedChangesRequestWg.Add(1)
+	// Also expect the "changes" profile handler above to be called back again with an empty request that
+	// will be ignored since body will be "null" hence the incrementing for the wait group by 2
+	receivedChangesRequestWg.Add(2)
 	subChangesResponse := subChangesRequest.Response()
 	assert.Equal(t, subChangesRequest.SerialNumber(), subChangesResponse.SerialNumber())
-
-	// Also expect the "changes" profile handler above to be called back again with an empty request that
-	// will be ignored since body will be "null"
-	receivedChangesRequestWg.Add(1)
 
 	// Wait until we got the expected callback on the "changes" profile handler
 	timeoutErr := WaitWithTimeout(&receivedChangesRequestWg, time.Second*5)
