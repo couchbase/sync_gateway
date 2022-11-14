@@ -2,6 +2,7 @@ package auth
 
 import (
 	"fmt"
+	
 	"github.com/couchbase/sync_gateway/base"
 	ch "github.com/couchbase/sync_gateway/channels"
 )

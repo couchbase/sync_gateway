@@ -1,9 +1,10 @@
 package auth
 
 import (
+	"time"
+
 	"github.com/couchbase/sync_gateway/base"
 	ch "github.com/couchbase/sync_gateway/channels"
-	"time"
 )
 
 // PrincipalCollectionAccess defines the common interface for managing channel access for a role or user for

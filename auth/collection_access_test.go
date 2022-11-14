@@ -2,12 +2,13 @@ package auth
 
 import (
 	"bytes"
+	"log"
+	"testing"
+
 	"github.com/couchbase/sync_gateway/base"
 	ch "github.com/couchbase/sync_gateway/channels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"log"
-	"testing"
 )
 
 func canSeeAllCollectionChannels(scope, collection string, princ Principal, channels base.Set) bool {
