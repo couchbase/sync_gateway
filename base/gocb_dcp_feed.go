@@ -59,11 +59,7 @@ func StartGocbDCPFeed(collection *Collection, bucketName string, args sgbucket.F
 	}
 	var collectionIDs []uint32
 	if collection.IsSupported(sgbucket.DataStoreFeatureCollections) {
-		collectionID, err := collection.GetCollectionID()
-		if err != nil {
-			return err
-		}
-		collectionIDs = append(collectionIDs, collectionID)
+		collectionIDs = append(collectionIDs, collection.GetCollectionID())
 	}
 	dcpClient, err := NewDCPClient(
 		feedName,
