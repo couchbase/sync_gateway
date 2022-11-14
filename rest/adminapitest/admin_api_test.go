@@ -764,192 +764,6 @@ func TestGuestUser(t *testing.T) {
 	rest.RequireStatus(t, response, http.StatusMethodNotAllowed)
 }
 
-// Test that TTL values greater than the default max offset TTL 2592000 seconds are processed correctly
-// fixes #974
-func TestSessionTtlGreaterThan30Days(t *testing.T) {
-
-	rt := rest.NewRestTester(t, nil)
-	defer rt.Close()
-
-	a := auth.NewAuthenticator(rt.Bucket(), nil, auth.DefaultAuthenticatorOptions())
-	user, err := a.GetUser("")
-	assert.NoError(t, err)
-	user.SetDisabled(true)
-	err = a.Save(user)
-	assert.NoError(t, err)
-
-	user, err = a.GetUser("")
-	assert.NoError(t, err)
-	assert.True(t, user.Disabled())
-
-	response := rt.SendRequest("PUT", "/db/doc", `{"hi": "there"}`)
-	rest.RequireStatus(t, response, 401)
-
-	user, err = a.NewUser("pupshaw", "letmein", channels.BaseSetOf(t, "*"))
-	assert.NoError(t, a.Save(user))
-
-	// create a session with the maximum offset ttl value (30days) 2592000 seconds
-	response = rt.SendAdminRequest("POST", "/db/_session", `{"name":"pupshaw", "ttl":2592000}`)
-	rest.RequireStatus(t, response, 200)
-
-	layout := "2006-01-02T15:04:05"
-
-	var body db.Body
-	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
-
-	log.Printf("expires %s", body["expires"].(string))
-	expires, err := time.Parse(layout, body["expires"].(string)[:19])
-	assert.NoError(t, err)
-
-	// create a session with a ttl value one second greater thatn the max offset ttl 2592001 seconds
-	response = rt.SendAdminRequest("POST", "/db/_session", `{"name":"pupshaw", "ttl":2592001}`)
-	rest.RequireStatus(t, response, 200)
-
-	body = nil
-	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
-	log.Printf("expires2 %s", body["expires"].(string))
-	expires2, err := time.Parse(layout, body["expires"].(string)[:19])
-	assert.NoError(t, err)
-
-	// Allow a ten second drift between the expires dates, to pass test on slow servers
-	acceptableTimeDelta := time.Duration(10) * time.Second
-
-	// The difference between the two expires dates should be less than the acceptable time delta
-	assert.True(t, expires2.Sub(expires) < acceptableTimeDelta)
-}
-
-// Check whether the session is getting extended or refreshed if 10% or more of the current
-// expiration time has elapsed.
-func TestSessionExtension(t *testing.T) {
-	rt := rest.NewRestTester(t, &rest.RestTesterConfig{GuestEnabled: true})
-	defer rt.Close()
-
-	id, err := base.GenerateRandomSecret()
-	require.NoError(t, err)
-
-	// Fake session with more than 10% of the 24 hours TTL has elapsed. It should cause a new
-	// cookie to be sent by the server with the same session ID and an extended expiration date.
-	fakeSession := auth.LoginSession{
-		ID:         id,
-		Username:   "Alice",
-		Expiration: time.Now().Add(4 * time.Hour),
-		Ttl:        24 * time.Hour,
-	}
-
-	assert.NoError(t, rt.Bucket().Set(auth.DocIDForSession(fakeSession.ID), 0, nil, fakeSession))
-	reqHeaders := map[string]string{
-		"Cookie": auth.DefaultCookieName + "=" + fakeSession.ID,
-	}
-
-	response := rt.SendRequestWithHeaders("PUT", "/db/doc1", `{"hi": "there"}`, reqHeaders)
-	log.Printf("PUT Request: Set-Cookie: %v", response.Header().Get("Set-Cookie"))
-	rest.RequireStatus(t, response, http.StatusCreated)
-	assert.Contains(t, response.Header().Get("Set-Cookie"), auth.DefaultCookieName+"="+fakeSession.ID)
-
-	response = rt.SendRequestWithHeaders("GET", "/db/doc1", "", reqHeaders)
-	log.Printf("GET Request: Set-Cookie: %v", response.Header().Get("Set-Cookie"))
-	rest.RequireStatus(t, response, http.StatusOK)
-	assert.Equal(t, "", response.Header().Get("Set-Cookie"))
-
-	// Explicitly delete the fake session doc from the bucket to simulate the test
-	// scenario for expired session. In reality, Sync Gateway rely on Couchbase
-	// Server to nuke the expired document based on TTL. Couchbase Server periodically
-	// removes all items with expiration times that have passed.
-	assert.NoError(t, rt.Bucket().Delete(auth.DocIDForSession(fakeSession.ID)))
-
-	response = rt.SendRequestWithHeaders("GET", "/db/doc1", "", reqHeaders)
-	log.Printf("GET Request: Set-Cookie: %v", response.Header().Get("Set-Cookie"))
-	rest.RequireStatus(t, response, http.StatusUnauthorized)
-
-}
-
-func TestSessionAPI(t *testing.T) {
-
-	rt := rest.NewRestTester(t, nil)
-	defer rt.Close()
-
-	// create session test users
-	response := rt.SendAdminRequest("POST", "/db/_user/", `{"name":"user1", "password":"1234"}`)
-	rest.RequireStatus(t, response, 201)
-	response = rt.SendAdminRequest("POST", "/db/_user/", `{"name":"user2", "password":"1234"}`)
-	rest.RequireStatus(t, response, 201)
-	response = rt.SendAdminRequest("POST", "/db/_user/", `{"name":"user3", "password":"1234"}`)
-	rest.RequireStatus(t, response, 201)
-
-	// create multiple sessions for the users
-	user1sessions := make([]string, 5)
-	user2sessions := make([]string, 5)
-	user3sessions := make([]string, 5)
-
-	for i := 0; i < 5; i++ {
-		user1sessions[i] = createSession(t, rt, "user1")
-		user2sessions[i] = createSession(t, rt, "user2")
-		user3sessions[i] = createSession(t, rt, "user3")
-	}
-
-	// GET Tests
-	// 1. GET a session and make sure the result is OK
-	response = rt.SendAdminRequest("GET", fmt.Sprintf("/db/_session/%s", user1sessions[0]), "")
-	rest.RequireStatus(t, response, 200)
-
-	// DELETE tests
-	// 1. DELETE a session by session id
-	response = rt.SendAdminRequest("DELETE", fmt.Sprintf("/db/_session/%s", user1sessions[0]), "")
-	rest.RequireStatus(t, response, 200)
-
-	// Attempt to GET the deleted session and make sure it's not found
-	response = rt.SendAdminRequest("GET", fmt.Sprintf("/db/_session/%s", user1sessions[0]), "")
-	rest.RequireStatus(t, response, 404)
-
-	// 2. DELETE a session with user validation
-	response = rt.SendAdminRequest("DELETE", fmt.Sprintf("/db/_user/%s/_session/%s", "user1", user1sessions[1]), "")
-	rest.RequireStatus(t, response, 200)
-
-	// Attempt to GET the deleted session and make sure it's not found
-	response = rt.SendAdminRequest("GET", fmt.Sprintf("/db/_session/%s", user1sessions[1]), "")
-	rest.RequireStatus(t, response, 404)
-
-	// 3. DELETE a session not belonging to the user (should fail)
-	response = rt.SendAdminRequest("DELETE", fmt.Sprintf("/db/_user/%s/_session/%s", "user1", user2sessions[0]), "")
-	rest.RequireStatus(t, response, 404)
-
-	// GET the session and make sure it still exists
-	response = rt.SendAdminRequest("GET", fmt.Sprintf("/db/_session/%s", user2sessions[0]), "")
-	rest.RequireStatus(t, response, 200)
-
-	// 4. DELETE all sessions for a user
-	response = rt.SendAdminRequest("DELETE", "/db/_user/user2/_session", "")
-	rest.RequireStatus(t, response, 200)
-
-	// Validate that all sessions were deleted
-	for i := 0; i < 5; i++ {
-		response = rt.SendAdminRequest("GET", fmt.Sprintf("/db/_session/%s", user2sessions[i]), "")
-		rest.RequireStatus(t, response, 404)
-	}
-
-	// 5. DELETE sessions when password is changed
-	// Change password for user3
-	response = rt.SendAdminRequest("PUT", "/db/_user/user3", `{"password":"5678"}`)
-	rest.RequireStatus(t, response, 200)
-
-	// Validate that all sessions were deleted
-	for i := 0; i < 5; i++ {
-		response = rt.SendAdminRequest("GET", fmt.Sprintf("/db/_session/%s", user3sessions[i]), "")
-		rest.RequireStatus(t, response, 404)
-	}
-
-	// DELETE the users
-	rest.RequireStatus(t, rt.SendAdminRequest("DELETE", "/db/_user/user1", ""), 200)
-	rest.RequireStatus(t, rt.SendAdminRequest("GET", "/db/_user/user1", ""), 404)
-
-	rest.RequireStatus(t, rt.SendAdminRequest("DELETE", "/db/_user/user2", ""), 200)
-	rest.RequireStatus(t, rt.SendAdminRequest("GET", "/db/_user/user2", ""), 404)
-
-	rest.RequireStatus(t, rt.SendAdminRequest("DELETE", "/db/_user/user3", ""), 200)
-	rest.RequireStatus(t, rt.SendAdminRequest("GET", "/db/_user/user3", ""), 404)
-
-}
-
 func TestFlush(t *testing.T) {
 
 	if !base.UnitTestUrlIsWalrus() {
@@ -1625,7 +1439,7 @@ func TestResyncRegenerateSequences(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		docID := fmt.Sprintf("doc%d", i)
 
-		doc, err := rt.GetDatabase().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalAll)
+		doc, err := rt.GetDatabase().GetSingleDatabaseCollection().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalAll)
 		assert.NoError(t, err)
 
 		assert.True(t, float64(doc.Sequence) > docSeqArr[i])
@@ -1875,18 +1689,6 @@ func TestDBOnlineWithTwoDelays(t *testing.T) {
 	body = nil
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.True(t, body["state"].(string) == "Online")
-}
-
-func createSession(t *testing.T, rt *rest.RestTester, username string) string {
-
-	response := rt.SendAdminRequest("POST", "/db/_session", fmt.Sprintf(`{"name":%q}`, username))
-	rest.RequireStatus(t, response, 200)
-
-	var body db.Body
-	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
-	sessionId := body["session_id"].(string)
-
-	return sessionId
 }
 
 func TestPurgeWithBadJsonPayload(t *testing.T) {
@@ -2402,35 +2204,6 @@ func TestHandleSGCollect(t *testing.T) {
 	// Try to start SGCollect with invalid body; It should throw with unexpected end of JSON input error
 	resp = rt.SendAdminRequest(http.MethodPost, resource, reqBodyJson)
 	rest.RequireStatus(t, resp, http.StatusBadRequest)
-}
-
-func TestSessionExpirationDateTimeFormat(t *testing.T) {
-	rt := rest.NewRestTester(t, nil)
-	defer rt.Close()
-
-	authenticator := auth.NewAuthenticator(rt.Bucket(), nil, auth.DefaultAuthenticatorOptions())
-	user, err := authenticator.NewUser("alice", "letMe!n", channels.BaseSetOf(t, "*"))
-	assert.NoError(t, err, "Couldn't create new user")
-	assert.NoError(t, authenticator.Save(user), "Couldn't save new user")
-
-	var body db.Body
-	response := rt.SendAdminRequest(http.MethodPost, "/db/_session", `{"name":"alice"}`)
-	rest.RequireStatus(t, response, http.StatusOK)
-
-	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
-	expires, err := time.Parse(time.RFC3339, body["expires"].(string))
-	assert.NoError(t, err, "Couldn't parse session expiration datetime")
-	assert.True(t, expires.Sub(time.Now()).Hours() <= 24, "Couldn't validate session expiration")
-
-	sessionId := body["session_id"].(string)
-	require.NotEmpty(t, sessionId, "Couldn't parse sessionID from response body")
-	response = rt.SendAdminRequest(http.MethodGet, fmt.Sprintf("/db/_session/%s", sessionId), "")
-	rest.RequireStatus(t, response, http.StatusOK)
-
-	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
-	expires, err = time.Parse(time.RFC3339, body["expires"].(string))
-	assert.NoError(t, err, "Couldn't parse session expiration datetime")
-	assert.True(t, expires.Sub(time.Now()).Hours() <= 24, "Couldn't validate session expiration")
 }
 
 func TestUserAndRoleResponseContentType(t *testing.T) {
@@ -4788,7 +4561,7 @@ func TestReplicatorCheckpointOnStop(t *testing.T) {
 
 	database, err := db.CreateDatabase(activeRT.GetDatabase())
 	require.NoError(t, err)
-	rev, doc, err := database.Put(activeCtx, "test", db.Body{})
+	rev, doc, err := database.GetSingleDatabaseCollectionWithUser().Put(activeCtx, "test", db.Body{})
 	require.NoError(t, err)
 	seq := strconv.FormatUint(doc.Sequence, 10)
 
@@ -4815,14 +4588,9 @@ func TestReplicatorCheckpointOnStop(t *testing.T) {
 	// Check checkpoint document was wrote to bucket with correct status
 	// _sync:local:checkpoint/sgr2cp:push:TestReplicatorCheckpointOnStop
 	expectedCheckpointName := base.SyncDocPrefix + "local:checkpoint/" + db.PushCheckpointID(t.Name())
-	val, _, err := activeRT.Bucket().GetRaw(expectedCheckpointName)
+	lastSeq, err := activeRT.WaitForCheckpointLastSequence(expectedCheckpointName)
 	require.NoError(t, err)
-	var config struct { // db.replicationCheckpoint
-		LastSeq string `json:"last_sequence"`
-	}
-	err = json.Unmarshal(val, &config)
-	require.NoError(t, err)
-	assert.Equal(t, seq, config.LastSeq)
+	assert.Equal(t, seq, lastSeq)
 
 	err = activeRT.GetDatabase().SGReplicateMgr.DeleteReplication(t.Name())
 	require.NoError(t, err)

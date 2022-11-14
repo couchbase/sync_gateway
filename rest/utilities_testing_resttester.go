@@ -101,6 +101,22 @@ func (rt *RestTester) WaitForRev(docID string, revID string) error {
 	})
 }
 
+func (rt *RestTester) WaitForCheckpointLastSequence(expectedName string) (string, error) {
+	var lastSeq string
+	successFunc := func() bool {
+		val, _, err := rt.Bucket().GetRaw(expectedName)
+		require.NoError(rt.TB, err)
+		var config struct { // db.replicationCheckpoint
+			LastSeq string `json:"last_sequence"`
+		}
+		err = json.Unmarshal(val, &config)
+		require.NoError(rt.TB, err)
+		lastSeq = config.LastSeq
+		return lastSeq != ""
+	}
+	return lastSeq, rt.WaitForCondition(successFunc)
+}
+
 // createReplication creates a replication via the REST API with the specified ID, remoteURL, direction and channel filter
 func (rt *RestTester) createReplication(replicationID string, remoteURLString string, direction db.ActiveReplicatorDirection, channels []string, continuous bool, conflictResolver db.ConflictResolverType) {
 	replicationConfig := &db.ReplicationConfig{

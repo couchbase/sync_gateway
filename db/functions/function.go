@@ -139,7 +139,7 @@ func (fn *functionImpl) AllowByDefault(allow bool) {
 }
 
 // Creates an Invocation of a UserFunction.
-func (fn *functionImpl) Invoke(db *db.Database, args map[string]any, mutationAllowed bool, ctx context.Context) (db.UserFunctionInvocation, error) {
+func (fn *functionImpl) Invoke(database *db.Database, args map[string]any, mutationAllowed bool, ctx context.Context) (db.UserFunctionInvocation, error) {
 	if ctx == nil {
 		return nil, fmt.Errorf("missing context to UserFunction.Invoke")
 	}
@@ -159,7 +159,7 @@ func (fn *functionImpl) Invoke(db *db.Database, args map[string]any, mutationAll
 
 	// Check that the user is authorized:
 	if fn.Allow != nil || !fn.allowByDefault {
-		if err := fn.authorize(db.User(), args); err != nil {
+		if err := fn.authorize(database.User(), args); err != nil {
 			return nil, err
 		}
 	}
@@ -167,14 +167,14 @@ func (fn *functionImpl) Invoke(db *db.Database, args map[string]any, mutationAll
 	if fn.isN1QL() {
 		return &n1qlInvocation{
 			functionImpl: fn,
-			db:           db,
+			db:           database,
 			args:         args,
 			ctx:          ctx,
 		}, nil
 	} else {
 		return &jsInvocation{
 			functionImpl:    fn,
-			db:              db,
+			db:              database,
 			ctx:             ctx,
 			args:            args,
 			mutationAllowed: mutationAllowed,

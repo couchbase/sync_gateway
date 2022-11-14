@@ -161,7 +161,7 @@ func BenchmarkReadOps_GetRevCacheMisses(b *testing.B) {
 	for _, bm := range getBenchmarks {
 		b.Run(bm.name, func(b *testing.B) {
 			var getResponse *TestResponse
-			rtDatabase.FlushRevisionCacheForTest()
+			rtDatabase.GetSingleDatabaseCollection().FlushRevisionCacheForTest()
 			for i := 0; i < b.N; i++ {
 				// update key in URI
 				docNum := i % numDocs

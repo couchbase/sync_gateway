@@ -157,7 +157,7 @@ func (rev *DocumentRevision) Body() (b Body, err error) {
 
 // Mutable1xBody returns a copy of the given document revision as a 1.x style body (with special properties)
 // Callers are free to modify this body without affecting the document revision.
-func (rev *DocumentRevision) Mutable1xBody(db *Database, requestedHistory Revisions, attachmentsSince []string, showExp bool) (b Body, err error) {
+func (rev *DocumentRevision) Mutable1xBody(db *DatabaseCollectionWithUser, requestedHistory Revisions, attachmentsSince []string, showExp bool) (b Body, err error) {
 	b, err = rev.Body()
 	if err != nil {
 		return nil, err
@@ -207,7 +207,7 @@ func (rev *DocumentRevision) Mutable1xBody(db *Database, requestedHistory Revisi
 }
 
 // As1xBytes returns a byte slice representing the 1.x style body, containing special properties (i.e. _id, _rev, _attachments, etc.)
-func (rev *DocumentRevision) As1xBytes(db *Database, requestedHistory Revisions, attachmentsSince []string, showExp bool) (b []byte, err error) {
+func (rev *DocumentRevision) As1xBytes(db *DatabaseCollectionWithUser, requestedHistory Revisions, attachmentsSince []string, showExp bool) (b []byte, err error) {
 	// unmarshal
 	body1x, err := rev.Mutable1xBody(db, requestedHistory, attachmentsSince, showExp)
 	if err != nil {
@@ -276,7 +276,6 @@ func revCacheLoaderForDocument(ctx context.Context, backingStore RevisionCacheBa
 			return bodyBytes, body, history, channels, removed, nil, isDelete, nil, err
 		}
 	}
-
 	deleted = doc.History[revid].Deleted
 
 	validatedHistory, getHistoryErr := doc.History.getHistory(revid)

@@ -56,6 +56,7 @@ type ChangeEntry struct {
 	backfill     backfillFlag // Flag used to identify non-client entries used for backfill synchronization (di only)
 	principalDoc bool         // Used to indicate _user/_role docs
 	Revoked      bool         `json:"revoked,omitempty"`
+	collectionID uint32
 }
 
 const (
@@ -95,6 +96,11 @@ func (db *Database) addDocToChangeEntry(ctx context.Context, entry *ChangeEntry,
 		return
 	}
 
+	dbCollection, ok := db.CollectionByID[entry.collectionID]
+	if !ok {
+		base.WarnfCtx(ctx, "Changes feed: could not determine collection from doc %q", base.UD(entry.ID))
+		return
+	}
 	// Three options for retrieving document content, depending on what's required:
 	//   includeConflicts only:
 	//      - Retrieve document metadata from bucket (required to identify current set of conflicts)
@@ -106,7 +112,7 @@ func (db *Database) addDocToChangeEntry(ctx context.Context, entry *ChangeEntry,
 
 	if options.IncludeDocs && includeConflicts {
 		// Load doc body + metadata
-		doc, err := db.GetDocument(ctx, entry.ID, DocUnmarshalAll)
+		doc, err := dbCollection.GetDocument(ctx, entry.ID, DocUnmarshalAll)
 		if err != nil {
 			base.WarnfCtx(ctx, "Changes feed: error getting doc %q: %v", base.UD(entry.ID), err)
 			return
@@ -117,7 +123,7 @@ func (db *Database) addDocToChangeEntry(ctx context.Context, entry *ChangeEntry,
 		// Load doc metadata only
 		doc := &Document{}
 		var err error
-		doc.SyncData, err = db.GetDocSyncData(ctx, entry.ID)
+		doc.SyncData, err = dbCollection.GetDocSyncData(ctx, entry.ID)
 		if err != nil {
 			base.WarnfCtx(ctx, "Changes feed: error getting doc sync data %q: %v", base.UD(entry.ID), err)
 			return
@@ -136,11 +142,12 @@ func (db *Database) addDocToChangeEntry(ctx context.Context, entry *ChangeEntry,
 }
 
 func (db *Database) AddDocToChangeEntryUsingRevCache(ctx context.Context, entry *ChangeEntry, revID string) (err error) {
-	rev, err := db.getRev(ctx, entry.ID, revID, 0, nil, RevCacheIncludeBody)
+	dbCollectionWithUser := db.GetSingleDatabaseCollectionWithUser()
+	rev, err := dbCollectionWithUser.getRev(ctx, entry.ID, revID, 0, nil, RevCacheIncludeBody)
 	if err != nil {
 		return err
 	}
-	entry.Doc, err = rev.As1xBytes(db, nil, nil, false)
+	entry.Doc, err = rev.As1xBytes(dbCollectionWithUser, nil, nil, false)
 	return err
 }
 
@@ -164,7 +171,7 @@ func (db *Database) AddDocInstanceToChangeEntry(ctx context.Context, entry *Chan
 	}
 	if options.IncludeDocs {
 		var err error
-		entry.Doc, _, err = db.get1xRevFromDoc(ctx, doc, revID, false)
+		entry.Doc, _, err = db.GetSingleDatabaseCollectionWithUser().get1xRevFromDoc(ctx, doc, revID, false)
 		db.DbStats.Database().NumDocReadsRest.Add(1)
 		if err != nil {
 			base.WarnfCtx(ctx, "Changes feed: error getting doc %q/%q: %v", base.UD(doc.ID), revID, err)
@@ -241,7 +248,7 @@ func (db *Database) buildRevokedFeed(ctx context.Context, ch channels.ID, option
 				// Otherwise: we need to determine whether a previous revision of the document was in the channel prior
 				// to the since value, and only send a revocation if that was the case
 				if logEntry.Sequence > sinceVal {
-					requiresRevocation, err := db.wasDocInChannelPriorToRevocation(ctx, logEntry.DocID, singleChannelCache.ChannelID().Name, revocationSinceSeq)
+					requiresRevocation, err := db.GetSingleDatabaseCollectionWithUser().wasDocInChannelPriorToRevocation(ctx, logEntry.DocID, singleChannelCache.ChannelID().Name, revocationSinceSeq)
 					if err != nil {
 						change := ChangeEntry{
 							Err: base.ErrChannelFeed,
@@ -257,7 +264,7 @@ func (db *Database) buildRevokedFeed(ctx context.Context, ch channels.ID, option
 					}
 				}
 
-				userHasAccessToDoc, err := UserHasDocAccess(ctx, db, logEntry.DocID)
+				userHasAccessToDoc, err := UserHasDocAccess(ctx, db.GetSingleDatabaseCollectionWithUser(), logEntry.DocID)
 				if err != nil {
 					change := ChangeEntry{
 						Err: base.ErrChannelFeed,
@@ -303,7 +310,7 @@ func (db *Database) buildRevokedFeed(ctx context.Context, ch channels.ID, option
 }
 
 // UserHasDocAccess checks whether the user has access to the active revision of the document
-func UserHasDocAccess(ctx context.Context, db *Database, docID string) (bool, error) {
+func UserHasDocAccess(ctx context.Context, db *DatabaseCollectionWithUser, docID string) (bool, error) {
 	currentRev, err := db.revisionCache.GetActive(ctx, docID, false)
 	if err != nil {
 		if base.IsDocNotFoundError(err) {
@@ -321,7 +328,7 @@ func UserHasDocAccess(ctx context.Context, db *Database, docID string) (bool, er
 }
 
 // Checks if a document needs to be revoked. This is used in the case where the since < doc sequence
-func (db *Database) wasDocInChannelPriorToRevocation(ctx context.Context, docID, chanName string, since uint64) (bool, error) {
+func (db *DatabaseCollectionWithUser) wasDocInChannelPriorToRevocation(ctx context.Context, docID, chanName string, since uint64) (bool, error) {
 	// Get doc sync data so we can verify the docs grant history
 	syncData, err := db.GetDocSyncData(ctx, docID)
 	if err != nil {
@@ -468,8 +475,8 @@ func makeChangeEntry(logEntry *LogEntry, seqID SequenceID, channel channels.ID) 
 		Changes:      []ChangeRev{{"rev": logEntry.RevID}},
 		branched:     (logEntry.Flags & channels.Branched) != 0,
 		principalDoc: logEntry.IsPrincipal,
+		collectionID: logEntry.CollectionID,
 	}
-
 	if logEntry.Flags&channels.Removed != 0 {
 		change.Removed = base.SetOf(channel.Name)
 	}
@@ -531,11 +538,8 @@ func (db *Database) MultiChangesFeed(ctx context.Context, chans base.Set, option
 
 	base.DebugfCtx(ctx, base.KeyChanges, "Int sequence multi changes feed...")
 
-	collectionID, err := db.GetSingleCollectionID()
-	if err != nil {
-		return nil, err
-	}
-	return db.SimpleMultiChangesFeed(ctx, channels.SetOfFromSingleCollection(chans.ToArray(), collectionID), options)
+	collection := db.GetSingleDatabaseCollection()
+	return db.SimpleMultiChangesFeed(ctx, channels.SetOfFromSingleCollection(chans.ToArray(), collection.GetCollectionID()), options)
 
 }
 
@@ -584,13 +588,11 @@ func (db *Database) checkForUserUpdates(ctx context.Context, userChangeCount uin
 			}
 			// check whether channel set has changed
 			singleCollectionChannels := db.user.InheritedChannels().CompareKeys(previousChannels)
-			singleCollectionID, err := db.GetSingleCollectionID()
-			if err != nil {
-				return false, 0, nil, err
-			}
+			collection := db.GetSingleDatabaseCollection()
+			collectionID := collection.GetCollectionID()
 
 			for channelName, changed := range singleCollectionChannels {
-				changedChannels[channels.NewID(channelName, singleCollectionID)] = changed
+				changedChannels[channels.NewID(channelName, collectionID)] = changed
 			}
 			if len(changedChannels) > 0 {
 				base.DebugfCtx(ctx, base.KeyChanges, "Modified channel set after user reload: %v", base.UD(changedChannels))
@@ -617,10 +619,8 @@ func (db *Database) SimpleMultiChangesFeed(ctx context.Context, chans channels.S
 	base.InfofCtx(ctx, base.KeyChanges, "MultiChangesFeed(channels: %s, options: %s) ... %s", base.UD(chans), options, base.UD(to))
 	output := make(chan *ChangeEntry, 50)
 
-	singleCollectionID, err := db.GetSingleCollectionID()
-	if err != nil {
-		return nil, err
-	}
+	collection := db.GetSingleDatabaseCollection()
+	singleCollectionID := collection.GetCollectionID()
 	go func() {
 
 		defer func() {
@@ -1258,7 +1258,7 @@ func (db *Database) DocIDChangesFeed(ctx context.Context, userChannels base.Set,
 func createChangesEntry(ctx context.Context, docid string, db *Database, options ChangesOptions) *ChangeEntry {
 	row := &ChangeEntry{ID: docid}
 
-	populatedDoc, err := db.GetDocument(ctx, docid, DocUnmarshalSync)
+	populatedDoc, err := db.GetSingleDatabaseCollectionWithUser().GetDocument(ctx, docid, DocUnmarshalSync)
 	if err != nil {
 		base.InfofCtx(ctx, base.KeyChanges, "Unable to get changes for docID %v, caused by %v", base.UD(docid), err)
 		return nil

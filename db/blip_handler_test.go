@@ -18,21 +18,29 @@ import (
 )
 
 func TestCollectionBlipHandler(t *testing.T) {
-	allDBContext := &Database{DatabaseContext: &DatabaseContext{Name: "allDBContext"}}
-	realCollectionDB0 := &Database{DatabaseContext: &DatabaseContext{Name: "realCollectionDB0"}}
-	realCollectionDB1 := &Database{DatabaseContext: &DatabaseContext{Name: "realCollectionDB1"}}
+	allDBContext := &DatabaseContext{}
+	allDBCollection := &DatabaseCollection{dbCtx: allDBContext}
+	allDBContext.CollectionByID = map[uint32]*DatabaseCollection{
+		base.DefaultCollectionID: allDBCollection,
+	}
+	allDBContext.singleCollection = allDBCollection
+	allDB := &Database{
+		DatabaseContext: allDBContext,
+	}
+	realCollectionDB0 := &DatabaseCollection{dbCtx: &DatabaseContext{}}
+	realCollectionDB1 := &DatabaseCollection{dbCtx: &DatabaseContext{}}
 	testCases := []struct {
 		name              string
 		blipMessage       *blip.Message
 		err               *base.HTTPError
-		collection        *Database
-		collectionMapping []*Database
+		collection        *DatabaseCollectionWithUser
+		collectionMapping []*DatabaseCollection
 	}{
 		{
 			name:        "NoCollections",
 			blipMessage: &blip.Message{},
 			err:         nil,
-			collection:  allDBContext,
+			collection:  &DatabaseCollectionWithUser{DatabaseCollection: allDBCollection},
 		},
 		{
 			name: "emptyCollectionNoAnInt",
@@ -81,9 +89,11 @@ func TestCollectionBlipHandler(t *testing.T) {
 					BlipCollection: "0",
 				},
 			},
-			err:               nil,
-			collection:        realCollectionDB0,
-			collectionMapping: []*Database{realCollectionDB0},
+			err: nil,
+			collection: &DatabaseCollectionWithUser{
+				DatabaseCollection: realCollectionDB0,
+			},
+			collectionMapping: []*DatabaseCollection{realCollectionDB0},
 		},
 		{
 			name: "twoPresentCollections",
@@ -92,9 +102,11 @@ func TestCollectionBlipHandler(t *testing.T) {
 					BlipCollection: "1",
 				},
 			},
-			err:               nil,
-			collection:        realCollectionDB1,
-			collectionMapping: []*Database{realCollectionDB0, realCollectionDB1},
+			err: nil,
+			collection: &DatabaseCollectionWithUser{
+				DatabaseCollection: realCollectionDB1,
+			},
+			collectionMapping: []*DatabaseCollection{realCollectionDB0, realCollectionDB1},
 		},
 		{
 			name: "collectionPassedInGetCollectionsButHitErrorInGetCollections",
@@ -105,7 +117,7 @@ func TestCollectionBlipHandler(t *testing.T) {
 			},
 			err:               &base.HTTPError{Status: http.StatusBadRequest},
 			collection:        nil,
-			collectionMapping: []*Database{realCollectionDB0, nil},
+			collectionMapping: []*DatabaseCollection{realCollectionDB0, nil},
 		},
 		{
 			name: "outOfRangeCollections",
@@ -116,13 +128,13 @@ func TestCollectionBlipHandler(t *testing.T) {
 			},
 			err:               &base.HTTPError{Status: http.StatusBadRequest},
 			collection:        nil,
-			collectionMapping: []*Database{realCollectionDB0, realCollectionDB1},
+			collectionMapping: []*DatabaseCollection{realCollectionDB0, realCollectionDB1},
 		},
 	}
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
 			bh := blipHandler{
-				db:              allDBContext,
+				db:              allDB,
 				BlipSyncContext: &BlipSyncContext{collectionMapping: testCase.collectionMapping},
 			}
 
@@ -141,7 +153,13 @@ func TestCollectionBlipHandler(t *testing.T) {
 				require.Equal(t, testCase.err.Status, err.(*base.HTTPError).Status)
 				require.False(t, passedMiddleware)
 			}
-			require.Equal(t, bh.collection, testCase.collection)
+			if testCase.collection == nil {
+				require.Nil(t, bh.collection)
+			} else {
+				require.NotNil(t, testCase.collection)
+				require.NotNil(t, bh.collection)
+				require.Equal(t, testCase.collection.dbCtx, bh.collection.dbCtx)
+			}
 		})
 	}
 }

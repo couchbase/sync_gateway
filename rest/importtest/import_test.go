@@ -163,11 +163,12 @@ func TestXattrImportOldDocRevHistory(t *testing.T) {
 	database, err := db.GetDatabase(dbc, nil)
 	assert.NoError(t, err)
 
+	collection := database.GetSingleDatabaseCollectionWithUser()
 	ctx := rt.Context()
 	for i := 0; i < 10; i++ {
 		updateResponse := rt.UpdateDoc(docID, revID, fmt.Sprintf(`{"val":%d}`, i))
 		// Purge old revision JSON to simulate expiry, and to verify import doesn't attempt multiple retrievals
-		purgeErr := database.PurgeOldRevisionJSON(ctx, docID, revID)
+		purgeErr := collection.PurgeOldRevisionJSON(ctx, docID, revID)
 		assert.NoError(t, purgeErr)
 		revID = updateResponse.Rev
 	}
@@ -1866,7 +1867,7 @@ func TestImportRevisionCopy(t *testing.T) {
 
 	// 5. Flush the rev cache (simulates attempted retrieval by a different SG node, since testing framework isn't great
 	//    at simulating multiple SG instances)
-	rt.GetDatabase().FlushRevisionCacheForTest()
+	rt.GetDatabase().GetSingleDatabaseCollection().FlushRevisionCacheForTest()
 
 	// 6. Attempt to retrieve previous revision body
 	response = rt.SendAdminRequest("GET", fmt.Sprintf("/db/%s?rev=%s", key, rev1id), "")
@@ -1914,7 +1915,7 @@ func TestImportRevisionCopyUnavailable(t *testing.T) {
 
 	// 3. Flush the rev cache (simulates attempted retrieval by a different SG node, since testing framework isn't great
 	//    at simulating multiple SG instances)
-	rt.GetDatabase().FlushRevisionCacheForTest()
+	rt.GetDatabase().GetSingleDatabaseCollection().FlushRevisionCacheForTest()
 
 	// 4. Update via SDK
 	updatedBody := make(map[string]interface{})
@@ -1988,7 +1989,7 @@ func TestImportRevisionCopyDisabled(t *testing.T) {
 
 	// 5. Flush the rev cache (simulates attempted retrieval by a different SG node, since testing framework isn't great
 	//    at simulating multiple SG instances)
-	rt.GetDatabase().FlushRevisionCacheForTest()
+	rt.GetDatabase().GetSingleDatabaseCollection().FlushRevisionCacheForTest()
 
 	// 6. Attempt to retrieve previous revision body.  Should fail, as backup wasn't persisted
 	response = rt.SendAdminRequest("GET", fmt.Sprintf("/db/%s?rev=%s", key, rev1id), "")
@@ -2426,4 +2427,415 @@ func TestImportTouch(t *testing.T) {
 	err = base.JSONUnmarshal(response.Body.Bytes(), &rawUpdateResponse)
 	require.NoError(t, err, "Unable to unmarshal raw response")
 	require.Equal(t, initialRev, rawUpdateResponse.Sync.Rev)
+}
+func TestImportingPurgedDocument(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test won't work under walrus until https://github.com/couchbase/sync_gateway/issues/2390")
+	}
+
+	if !base.TestUseXattrs() {
+		t.Skip("XATTR based tests not enabled.  Enable via SG_TEST_USE_XATTRS=true environment variable")
+	}
+
+	rt := rest.NewRestTester(t, nil)
+	defer rt.Close()
+
+	body := `{"_purged": true, "foo": "bar"}`
+	ok, err := rt.Bucket().Add("key", 0, []byte(body))
+	assert.NoError(t, err)
+	assert.True(t, ok)
+
+	numErrors, err := strconv.Atoi(base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().ErrorCount.String())
+	assert.NoError(t, err)
+
+	response := rt.SendRequest("GET", "/db/key", "")
+	fmt.Println(response.Body)
+
+	numErrorsAfter, err := strconv.Atoi(base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().ErrorCount.String())
+	assert.NoError(t, err)
+
+	assert.Equal(t, numErrors, numErrorsAfter)
+}
+
+func TestNonImportedDuplicateID(t *testing.T) {
+
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("Skip this test under walrus testing")
+	}
+
+	rt := rest.NewRestTester(t, nil)
+	defer rt.Close()
+
+	bucket := rt.Bucket()
+	body := `{"foo":"bar"}`
+	ok, err := bucket.Add("key", 0, []byte(body))
+
+	assert.True(t, ok)
+	assert.Nil(t, err)
+	res := rt.SendAdminRequest("PUT", "/db/key", `{"prop":true}`)
+	rest.RequireStatus(t, res, http.StatusConflict)
+}
+
+func TestImportOnWriteMigration(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("Test doesn't work with Walrus")
+	}
+
+	if !base.TestUseXattrs() {
+		t.Skip("Test requires xattrs to be enabled")
+	}
+
+	rt := rest.NewRestTester(t, nil)
+	defer rt.Close()
+
+	// Put doc with sync data / non-xattr
+	key := "doc1"
+	body := []byte(`{"_sync": { "rev": "1-fc2cf22c5e5007bd966869ebfe9e276a", "sequence": 1, "recent_sequences": [ 1 ], "history": { "revs": [ "1-fc2cf22c5e5007bd966869ebfe9e276a" ], "parents": [ -1], "channels": [ null ] }, "cas": "","value_crc32c": "", "time_saved": "2019-04-10T12:40:04.490083+01:00" }, "value": "foo"}`)
+	ok, err := rt.Bucket().Add(key, 0, body)
+	assert.NoError(t, err)
+	assert.True(t, ok)
+
+	// Update doc with xattr - get 409, creates new rev, has old body
+	response := rt.SendAdminRequest("PUT", "/db/doc1?rev=1-fc2cf22c5e5007bd966869ebfe9e276a", `{"value":"new"}`)
+	rest.RequireStatus(t, response, http.StatusCreated)
+
+	// Update doc with xattr - successful update
+	response = rt.SendAdminRequest("PUT", "/db/doc1?rev=2-44ad6f128a2b1f75d0d0bb49b1fc0019", `{"value":"newer"}`)
+	rest.RequireStatus(t, response, http.StatusCreated)
+}
+
+func TestUserXattrAutoImport(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server")
+	}
+
+	if !base.TestUseXattrs() {
+		t.Skip("This test only works with XATTRS enabled")
+	}
+
+	if !base.IsEnterpriseEdition() {
+		t.Skipf("test is EE only - user xattrs")
+	}
+
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+
+	docKey := t.Name()
+	xattrKey := "myXattr"
+	channelName := "testChan"
+
+	// Sync function to set channel access to whatever xattr is
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
+		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
+			AutoImport:   true,
+			UserXattrKey: xattrKey,
+		}},
+		SyncFn: `
+			function (doc, oldDoc, meta){
+				if (meta.xattrs.myXattr !== undefined){
+					channel(meta.xattrs.myXattr);
+				}
+			}`,
+	})
+
+	defer rt.Close()
+
+	userXattrStore, ok := base.AsUserXattrStore(rt.Bucket())
+	if !ok {
+		t.Skip("Test requires Couchbase Bucket")
+	}
+
+	// Add doc
+	resp := rt.SendAdminRequest("PUT", "/db/"+docKey, "{}")
+	rest.RequireStatus(t, resp, http.StatusCreated)
+
+	// Add xattr to doc
+	_, err := userXattrStore.WriteUserXattr(docKey, xattrKey, channelName)
+	assert.NoError(t, err)
+
+	// Wait for doc to be imported
+	err = rt.WaitForCondition(func() bool {
+		return rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value() == 1
+	})
+	assert.NoError(t, err)
+
+	// Ensure sync function has ran twice (once for PUT and once for xattr addition)
+	assert.Equal(t, int64(2), rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value())
+
+	// Get Xattr and ensure channel value set correctly
+	var syncData db.SyncData
+	subdocXattrStore, ok := base.AsSubdocXattrStore(rt.Bucket())
+	require.True(t, ok)
+	_, err = subdocXattrStore.SubdocGetXattr(docKey, base.SyncXattrName, &syncData)
+	assert.NoError(t, err)
+
+	assert.Equal(t, []string{channelName}, syncData.Channels.KeySet())
+
+	// Update xattr again but same value and ensure it isn't imported again (crc32 hash should match)
+	_, err = userXattrStore.WriteUserXattr(docKey, xattrKey, channelName)
+	assert.NoError(t, err)
+
+	err = rt.WaitForCondition(func() bool {
+		return rt.GetDatabase().DbStats.Database().Crc32MatchCount.Value() == 1
+	})
+	assert.NoError(t, err)
+
+	var syncData2 db.SyncData
+	_, err = subdocXattrStore.SubdocGetXattr(docKey, base.SyncXattrName, &syncData2)
+	assert.NoError(t, err)
+
+	assert.Equal(t, syncData.Crc32c, syncData2.Crc32c)
+	assert.Equal(t, syncData.Crc32cUserXattr, syncData2.Crc32cUserXattr)
+	assert.Equal(t, int64(2), rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value())
+	assert.Equal(t, int64(1), rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value())
+
+	// Update body but same value and ensure it isn't imported again (crc32 hash should match)
+	err = rt.Bucket().Set(docKey, 0, nil, map[string]interface{}{})
+	assert.NoError(t, err)
+
+	err = rt.WaitForCondition(func() bool {
+		return rt.GetDatabase().DbStats.Database().Crc32MatchCount.Value() == 2
+	})
+	assert.NoError(t, err)
+
+	var syncData3 db.SyncData
+	_, err = subdocXattrStore.SubdocGetXattr(docKey, base.SyncXattrName, &syncData3)
+	assert.NoError(t, err)
+
+	assert.Equal(t, syncData2.Crc32c, syncData3.Crc32c)
+	assert.Equal(t, syncData2.Crc32cUserXattr, syncData3.Crc32cUserXattr)
+	assert.Equal(t, int64(2), rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value())
+	assert.Equal(t, int64(1), rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value())
+
+	// Update body and ensure import occurs
+	updateVal := []byte(`{"prop":"val"}`)
+	err = rt.Bucket().Set(docKey, 0, nil, updateVal)
+	assert.NoError(t, err)
+
+	err = rt.WaitForCondition(func() bool {
+		return rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value() == 2
+	})
+	assert.NoError(t, err)
+
+	assert.Equal(t, int64(3), rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value())
+
+	var syncData4 db.SyncData
+	_, err = subdocXattrStore.SubdocGetXattr(docKey, base.SyncXattrName, &syncData4)
+	assert.NoError(t, err)
+
+	assert.Equal(t, base.Crc32cHashString(updateVal), syncData4.Crc32c)
+	assert.Equal(t, syncData3.Crc32cUserXattr, syncData4.Crc32cUserXattr)
+}
+
+func TestUserXattrOnDemandImportGET(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server")
+	}
+
+	if !base.TestUseXattrs() {
+		t.Skip("This test only works with XATTRS enabled")
+	}
+
+	if !base.IsEnterpriseEdition() {
+		t.Skipf("test is EE only - user xattrs")
+	}
+
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+
+	docKey := t.Name()
+	xattrKey := "myXattr"
+	channelName := "testChan"
+
+	// Sync function to set channel access to whatever xattr is
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
+		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
+			AutoImport:   false,
+			UserXattrKey: xattrKey,
+		}},
+		SyncFn: `
+			function (doc, oldDoc, meta){
+				if (meta.xattrs.myXattr !== undefined){
+					channel(meta.xattrs.myXattr);
+				}
+			}`,
+	})
+
+	defer rt.Close()
+
+	userXattrStore, ok := base.AsUserXattrStore(rt.Bucket())
+	if !ok {
+		t.Skip("Test requires Couchbase Bucket")
+	}
+	subdocXattrStore, ok := base.AsSubdocXattrStore(rt.Bucket())
+	require.True(t, ok)
+
+	// Add doc with SDK
+	err := rt.Bucket().Set(docKey, 0, nil, []byte(`{}`))
+	assert.NoError(t, err)
+
+	// GET to trigger import
+	resp := rt.SendAdminRequest("GET", "/db/"+docKey, "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+
+	// Wait for import
+	err = rt.WaitForCondition(func() bool {
+		return rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value() == 1
+	})
+	assert.NoError(t, err)
+
+	// Ensure sync function has been ran on import
+	assert.Equal(t, int64(1), rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value())
+
+	// Write user xattr
+	_, err = userXattrStore.WriteUserXattr(docKey, xattrKey, channelName)
+	assert.NoError(t, err)
+
+	// GET to trigger import
+	resp = rt.SendAdminRequest("GET", "/db/"+docKey, "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+
+	// Wait for import
+	err = rt.WaitForCondition(func() bool {
+		return rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value() == 2
+	})
+	assert.NoError(t, err)
+
+	// Ensure sync function has ran on import
+	assert.Equal(t, int64(2), rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value())
+
+	// Get sync data for doc and ensure user xattr has been used correctly to set channel
+	var syncData db.SyncData
+	_, err = subdocXattrStore.SubdocGetXattr(docKey, base.SyncXattrName, &syncData)
+	assert.NoError(t, err)
+
+	assert.Equal(t, []string{channelName}, syncData.Channels.KeySet())
+
+	// Write same xattr value
+	_, err = userXattrStore.WriteUserXattr(docKey, xattrKey, channelName)
+	assert.NoError(t, err)
+
+	// Perform GET and ensure import isn't triggered as crc32 hash is the same
+	resp = rt.SendAdminRequest("GET", "/db/"+docKey, "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+
+	var syncData2 db.SyncData
+	_, err = subdocXattrStore.SubdocGetXattr(docKey, base.SyncXattrName, &syncData2)
+	assert.NoError(t, err)
+
+	assert.Equal(t, syncData.Crc32c, syncData2.Crc32c)
+	assert.Equal(t, syncData.Crc32cUserXattr, syncData2.Crc32cUserXattr)
+	assert.Equal(t, int64(2), rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value())
+}
+
+func TestUserXattrOnDemandImportWrite(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server")
+	}
+
+	if !base.TestUseXattrs() {
+		t.Skip("This test only works with XATTRS enabled")
+	}
+
+	if !base.IsEnterpriseEdition() {
+		t.Skipf("test is EE only - user xattrs")
+	}
+
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+
+	docKey := t.Name()
+	xattrKey := "myXattr"
+	channelName := "testChan"
+
+	// Sync function to set channel access to whatever xattr is
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
+		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
+			AutoImport:   false,
+			UserXattrKey: xattrKey,
+		}},
+		SyncFn: `
+			function (doc, oldDoc, meta){
+				if (meta.xattrs.myXattr !== undefined){
+					channel(meta.xattrs.myXattr);
+				}
+			}`,
+	})
+
+	defer rt.Close()
+
+	userXattrStore, ok := base.AsUserXattrStore(rt.Bucket())
+	if !ok {
+		t.Skip("Test requires Couchbase Bucket")
+	}
+
+	// Initial PUT
+	resp := rt.SendAdminRequest("PUT", "/db/"+docKey, `{}`)
+	rest.RequireStatus(t, resp, http.StatusCreated)
+
+	// SDK PUT
+	err := rt.Bucket().Set(docKey, 0, nil, []byte(`{"update": "update"}`))
+	assert.NoError(t, err)
+
+	// Trigger Import
+	resp = rt.SendAdminRequest("PUT", "/db/"+docKey, `{}`)
+	rest.RequireStatus(t, resp, http.StatusConflict)
+
+	// Wait for import
+	err = rt.WaitForCondition(func() bool {
+		return rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value() == 1
+	})
+	assert.NoError(t, err)
+
+	// Ensure sync function has ran on import
+	assert.Equal(t, int64(2), rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value())
+
+	// Write user xattr
+	_, err = userXattrStore.WriteUserXattr(docKey, xattrKey, channelName)
+	assert.NoError(t, err)
+
+	// Trigger import
+	resp = rt.SendAdminRequest("PUT", "/db/"+docKey, `{"update": "update"}`)
+	rest.RequireStatus(t, resp, http.StatusConflict)
+
+	// Wait for import
+	err = rt.WaitForCondition(func() bool {
+		return rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value() == 2
+	})
+	assert.NoError(t, err)
+
+	// Ensure sync function has ran on import
+	assert.Equal(t, int64(3), rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value())
+
+	subdocXattrStore, ok := base.AsSubdocXattrStore(rt.Bucket())
+	require.True(t, ok)
+	var syncData db.SyncData
+	_, err = subdocXattrStore.SubdocGetXattr(docKey, base.SyncXattrName, &syncData)
+	assert.NoError(t, err)
+
+	assert.Equal(t, []string{channelName}, syncData.Channels.KeySet())
+}
+
+func TestImportFilterTimeout(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("Import not supported by Walrus")
+	}
+
+	importFilter := `function(doc) { while(true) { } }`
+
+	rtConfig := rest.RestTesterConfig{DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{ImportFilter: &importFilter, AutoImport: false, JavascriptTimeoutSecs: base.Uint32Ptr(1)}}}
+	rt := rest.NewRestTester(t, &rtConfig)
+	defer rt.Close()
+
+	added, err := rt.Bucket().AddRaw("doc", 0, []byte(fmt.Sprintf(`{"foo": "bar"}`)))
+	require.True(t, added)
+	require.NoError(t, err)
+
+	syncFnFinishedWG := sync.WaitGroup{}
+	syncFnFinishedWG.Add(1)
+	go func() {
+		response := rt.SendAdminRequest("GET", "/db/doc", ``)
+		rest.AssertStatus(t, response, 404)
+		syncFnFinishedWG.Done()
+	}()
+	timeoutErr := rest.WaitWithTimeout(&syncFnFinishedWG, time.Second*15)
+	assert.NoError(t, timeoutErr)
 }

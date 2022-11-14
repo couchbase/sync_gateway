@@ -68,7 +68,7 @@ func (fn *n1qlInvocation) Iterate() (sgbucket.QueryResultIterator, error) {
 		}
 	}
 	// Do a final timeout check, so the caller will know not to do any more work if time's up:
-	return iter, fn.db.CheckTimeout(fn.ctx)
+	return iter, db.CheckTimeout(fn.ctx)
 }
 
 func (fn *n1qlInvocation) Run() (any, error) {

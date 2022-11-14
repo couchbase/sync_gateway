@@ -45,11 +45,11 @@ type GraphQLResolverConfig map[string]FunctionConfig
 //////// QUERYING
 
 // Runs a GraphQL query on behalf of a user, presumably invoked via a REST or BLIP API.
-func (gq *graphQLImpl) Query(db *db.Database, query string, operationName string, variables map[string]any, mutationAllowed bool, ctx context.Context) (*graphql.Result, error) {
+func (gq *graphQLImpl) Query(database *db.Database, query string, operationName string, variables map[string]any, mutationAllowed bool, ctx context.Context) (*graphql.Result, error) {
 	if err := db.CheckTimeout(ctx); err != nil {
 		return nil, err
 	}
-	ctx = context.WithValue(ctx, dbKey, db)
+	ctx = context.WithValue(ctx, dbKey, database)
 	ctx = context.WithValue(ctx, mutAllowedKey, mutationAllowed)
 	result := graphql.Do(graphql.Params{
 		Schema:         gq.schema,

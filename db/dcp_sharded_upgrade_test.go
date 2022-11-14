@@ -230,6 +230,7 @@ func TestShardedDCPUpgrade(t *testing.T) {
 	require.NoError(t, err, "NewDatabaseContext")
 	defer db.Close(ctx)
 	ctx = db.AddDatabaseLogContext(ctx)
+	collection := db.GetSingleDatabaseCollection()
 
 	err, _ = base.RetryLoop("wait for non-existent node to be removed", func() (shouldRetry bool, err error, value interface{}) {
 		nodes, _, err := cbgt.CfgGetNodeDefs(db.CfgSG, cbgt.NODE_DEFS_KNOWN)
@@ -263,14 +264,14 @@ func TestShardedDCPUpgrade(t *testing.T) {
 
 	// assert that the doc we created before starting this node gets imported once all the pindexes are reassigned
 	require.NoError(t, db.WaitForPendingChanges(ctx))
-	doc, err := db.GetDocument(ctx, testDoc1, DocUnmarshalAll)
+	doc, err := collection.GetDocument(ctx, testDoc1, DocUnmarshalAll)
 	require.NoError(t, err, "GetDocument 1")
 	require.NotNil(t, doc, "GetDocument 1")
 
 	// Write a doc to the test bucket to check that import still works
 	require.NoError(t, tb.SetRaw(testDoc2, 0, nil, []byte(`{}`)))
 	require.NoError(t, db.WaitForPendingChanges(ctx))
-	doc, err = db.GetDocument(ctx, testDoc2, DocUnmarshalAll)
+	doc, err = collection.GetDocument(ctx, testDoc2, DocUnmarshalAll)
 	require.NoError(t, err, "GetDocument 2")
 	require.NotNil(t, doc, "GetDocument 2")
 }

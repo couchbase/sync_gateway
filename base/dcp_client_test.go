@@ -61,9 +61,7 @@ func TestOneShotDCP(t *testing.T) {
 	require.NoError(t, err)
 	var collectionIDs []uint32
 	if collection.IsSupported(sgbucket.DataStoreFeatureCollections) {
-		collectionID, err := collection.GetCollectionID()
-		require.NoError(t, err)
-		collectionIDs = append(collectionIDs, collectionID)
+		collectionIDs = append(collectionIDs, collection.GetCollectionID())
 	}
 
 	clientOptions := DCPClientOptions{
@@ -230,9 +228,7 @@ func TestDCPClientMultiFeedConsistency(t *testing.T) {
 			require.NoError(t, err)
 			var collectionIDs []uint32
 			if collection.IsSupported(sgbucket.DataStoreFeatureCollections) {
-				collectionID, err := collection.GetCollectionID()
-				require.NoError(t, err)
-				collectionIDs = append(collectionIDs, collectionID)
+				collectionIDs = append(collectionIDs, collection.GetCollectionID())
 			}
 
 			// Perform first one-shot DCP feed - normal one-shot
@@ -358,9 +354,7 @@ func TestResumeStoppedFeed(t *testing.T) {
 	require.NoError(t, err)
 	var collectionIDs []uint32
 	if collection.IsSupported(sgbucket.DataStoreFeatureCollections) {
-		collectionID, err := collection.GetCollectionID()
-		require.NoError(t, err)
-		collectionIDs = append(collectionIDs, collectionID)
+		collectionIDs = append(collectionIDs, collection.GetCollectionID())
 	}
 
 	dcpClientOpts := DCPClientOptions{

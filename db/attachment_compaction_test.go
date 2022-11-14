@@ -31,10 +31,11 @@ func TestAttachmentMark(t *testing.T) {
 	testDb, ctx := setupTestDB(t)
 	defer testDb.Close(ctx)
 
+	collection := testDb.GetSingleDatabaseCollectionWithUser()
 	body := map[string]interface{}{"foo": "bar"}
 	for i := 0; i < 10; i++ {
 		key := fmt.Sprintf("%s_%d", t.Name(), i)
-		_, _, err := testDb.Put(ctx, key, body)
+		_, _, err := collection.Put(ctx, key, body)
 		assert.NoError(t, err)
 	}
 
@@ -45,7 +46,7 @@ func TestAttachmentMark(t *testing.T) {
 		attBody := map[string]interface{}{"value": strconv.Itoa(i)}
 		attJSONBody, err := base.JSONMarshal(attBody)
 		assert.NoError(t, err)
-		attKeys = append(attKeys, CreateLegacyAttachmentDoc(t, ctx, testDb, docID, []byte("{}"), attKey, attJSONBody))
+		attKeys = append(attKeys, CreateLegacyAttachmentDoc(t, ctx, collection, docID, []byte("{}"), attKey, attJSONBody))
 	}
 
 	err := testDb.Bucket.SetRaw("testDocx", 0, nil, []byte("{}"))
@@ -53,7 +54,7 @@ func TestAttachmentMark(t *testing.T) {
 
 	attKeys = append(attKeys, createConflictingDocOneLeafHasAttachmentBodyMap(t, "conflictAtt", "attForConflict", []byte(`{"value": "att"}`), testDb))
 	attKeys = append(attKeys, createConflictingDocOneLeafHasAttachmentBodyKey(t, "conflictAttBodyKey", "attForConflict2", []byte(`{"val": "bodyKeyAtt"}`), testDb))
-	attKeys = append(attKeys, createDocWithInBodyAttachment(t, ctx, "inBodyDoc", []byte(`{}`), "attForInBodyRef", []byte(`{"val": "inBodyAtt"}`), testDb))
+	attKeys = append(attKeys, createDocWithInBodyAttachment(t, ctx, "inBodyDoc", []byte(`{}`), "attForInBodyRef", []byte(`{"val": "inBodyAtt"}`), collection))
 
 	terminator := base.NewSafeTerminator()
 	attachmentsMarked, _, err := attachmentCompactMarkPhase(ctx, testDb, t.Name(), terminator, &base.AtomicInt{})
@@ -231,6 +232,7 @@ func TestAttachmentMarkAndSweepAndCleanup(t *testing.T) {
 	testDb, ctx := setupTestDB(t)
 	defer testDb.Close(ctx)
 
+	collection := testDb.GetSingleDatabaseCollectionWithUser()
 	attKeys := make([]string, 0, 15)
 	for i := 0; i < 10; i++ {
 		docID := fmt.Sprintf("testDoc-%d", i)
@@ -238,7 +240,7 @@ func TestAttachmentMarkAndSweepAndCleanup(t *testing.T) {
 		attBody := map[string]interface{}{"value": strconv.Itoa(i)}
 		attJSONBody, err := base.JSONMarshal(attBody)
 		assert.NoError(t, err)
-		attKeys = append(attKeys, CreateLegacyAttachmentDoc(t, ctx, testDb, docID, []byte("{}"), attKey, attJSONBody))
+		attKeys = append(attKeys, CreateLegacyAttachmentDoc(t, ctx, collection, docID, []byte("{}"), attKey, attJSONBody))
 	}
 
 	makeUnmarkedDoc := func(docid string) {
@@ -553,7 +555,8 @@ func TestAttachmentProcessError(t *testing.T) {
 	testDB1, ctx1 := setupTestDBForBucket(t, b)
 	defer testDB1.Close(ctx1)
 
-	CreateLegacyAttachmentDoc(t, ctx1, testDB1, "docID", []byte("{}"), "attKey", []byte("{}"))
+	collection := testDB1.GetSingleDatabaseCollectionWithUser()
+	CreateLegacyAttachmentDoc(t, ctx1, collection, "docID", []byte("{}"), "attKey", []byte("{}"))
 
 	err := testDB1.AttachmentCompactionManager.Start(ctx1, map[string]interface{}{"database": testDB1})
 	assert.NoError(t, err)
@@ -614,7 +617,7 @@ func WaitForConditionWithOptions(successFunc func() bool, maxNumAttempts, timeTo
 	return nil
 }
 
-func CreateLegacyAttachmentDoc(t *testing.T, ctx context.Context, db *Database, docID string, body []byte, attID string, attBody []byte) string {
+func CreateLegacyAttachmentDoc(t *testing.T, ctx context.Context, db *DatabaseCollectionWithUser, docID string, body []byte, attID string, attBody []byte) string {
 	if !base.TestUseXattrs() {
 		t.Skip("Requires xattrs")
 	}
@@ -772,7 +775,7 @@ func createConflictingDocOneLeafHasAttachmentBodyKey(t *testing.T, docID string,
 	return attDocID
 }
 
-func createDocWithInBodyAttachment(t *testing.T, ctx context.Context, docID string, docBody []byte, attID string, attBody []byte, db *Database) string {
+func createDocWithInBodyAttachment(t *testing.T, ctx context.Context, docID string, docBody []byte, attID string, attBody []byte, db *DatabaseCollectionWithUser) string {
 	var body Body
 	err := base.JSONUnmarshal(docBody, &body)
 	assert.NoError(t, err)
@@ -828,11 +831,13 @@ func TestAttachmentCompactIncorrectStat(t *testing.T) {
 
 	testDb, ctx := setupTestDB(t)
 	defer testDb.Close(ctx)
+
+	collection := testDb.GetSingleDatabaseCollectionWithUser()
 	// Create the docs that will be marked and not swept
 	body := map[string]interface{}{"foo": "bar"}
 	for i := 0; i < docsToCreate; i++ {
 		key := fmt.Sprintf("%s_%d", t.Name(), i)
-		_, _, err := testDb.Put(ctx, key, body)
+		_, _, err := collection.Put(ctx, key, body)
 		require.NoError(t, err)
 	}
 
@@ -842,7 +847,7 @@ func TestAttachmentCompactIncorrectStat(t *testing.T) {
 		attBody := map[string]interface{}{"value": strconv.Itoa(i)}
 		attJSONBody, err := base.JSONMarshal(attBody)
 		require.NoError(t, err)
-		CreateLegacyAttachmentDoc(t, ctx, testDb, docID, []byte("{}"), attKey, attJSONBody)
+		CreateLegacyAttachmentDoc(t, ctx, collection, docID, []byte("{}"), attKey, attJSONBody)
 	}
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
