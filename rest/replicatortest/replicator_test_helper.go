@@ -10,12 +10,9 @@ package replicatortest
 import (
 	"fmt"
 	"net/http"
-	"net/http/httptest"
-	"net/url"
 	"testing"
 	"time"
 
-	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/rest"
@@ -25,59 +22,6 @@ import (
 )
 
 // Helper functions for SGR testing
-
-// setupSGRPeers sets up two rest testers to be used for sg-replicate testing with the following configuration:
-//
-//	activeRT:
-//	  - backed by test bucket
-//	  - has sgreplicate enabled
-//	passiveRT:
-//	  - backed by different test bucket
-//	  - user 'alice' created with star channel access
-//	  - http server wrapping the public API, remoteDBURLString targets the rt2 database as user alice (e.g. http://alice:pass@host/db)
-//	returned teardown function closes activeRT, passiveRT and the http server, should be invoked with defer
-func setupSGRPeers(t *testing.T) (activeRT *rest.RestTester, passiveRT *rest.RestTester, remoteDBURLString string, teardown func()) {
-	// Set up passive RestTester (rt2)
-	passiveTestBucket := base.GetTestBucket(t)
-	passiveRT = rest.NewRestTester(t, &rest.RestTesterConfig{
-		CustomTestBucket: passiveTestBucket.NoCloseClone(),
-		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
-			Users: map[string]*auth.PrincipalConfig{
-				"alice": {
-					Password:         base.StringPtr("pass"),
-					ExplicitChannels: base.SetOf("*"),
-				},
-			},
-		}},
-	})
-	// Initalize RT and bucket
-	_ = passiveRT.Bucket()
-
-	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1
-	srv := httptest.NewServer(passiveRT.TestPublicHandler())
-
-	// Build passiveDBURL with basic auth creds
-	passiveDBURL, _ := url.Parse(srv.URL + "/db")
-	passiveDBURL.User = url.UserPassword("alice", "pass")
-
-	// Set up active RestTester (rt1)
-	activeTestBucket := base.GetTestBucket(t)
-	activeRT = rest.NewRestTester(t, &rest.RestTesterConfig{
-		CustomTestBucket:   activeTestBucket.NoCloseClone(),
-		SgReplicateEnabled: true,
-	})
-	// Initalize RT and bucket
-	_ = activeRT.Bucket()
-
-	teardown = func() {
-		activeRT.Close()
-		activeTestBucket.Close()
-		srv.Close()
-		passiveRT.Close()
-		passiveTestBucket.Close()
-	}
-	return activeRT, passiveRT, passiveDBURL.String(), teardown
-}
 
 func reduceTestCheckpointInterval(interval time.Duration) func() {
 	previousInterval := db.DefaultCheckpointInterval

@@ -460,7 +460,7 @@ func TestPushReplicationAPI(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)
 
-	rt1, rt2, remoteURLString, teardown := setupSGRPeers(t)
+	rt1, rt2, remoteURLString, teardown := rest.SetupSGRPeers(t)
 	defer teardown()
 
 	// Create doc1 on rt1
@@ -503,7 +503,7 @@ func TestPullReplicationAPI(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)
 
-	rt1, rt2, remoteURLString, teardown := setupSGRPeers(t)
+	rt1, rt2, remoteURLString, teardown := rest.SetupSGRPeers(t)
 	defer teardown()
 
 	// Create doc1 on rt2
@@ -545,7 +545,7 @@ func TestReplicationStatusActions(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)
 
-	rt1, rt2, remoteURLString, teardown := setupSGRPeers(t)
+	rt1, rt2, remoteURLString, teardown := rest.SetupSGRPeers(t)
 	defer teardown()
 
 	// Create doc1 on rt2
@@ -653,7 +653,7 @@ func TestReplicationRebalancePull(t *testing.T) {
 	// Disable sequence batching for multi-RT tests (pending CBG-1000)
 	defer db.SuspendSequenceBatching()()
 
-	activeRT, remoteRT, remoteURLString, teardown := setupSGRPeers(t)
+	activeRT, remoteRT, remoteURLString, teardown := rest.SetupSGRPeers(t)
 	defer teardown()
 
 	// Create docs on remote
@@ -743,7 +743,7 @@ func TestReplicationRebalancePush(t *testing.T) {
 	// Disable sequence batching for multi-RT tests (pending CBG-1000)
 	defer db.SuspendSequenceBatching()()
 
-	activeRT, remoteRT, remoteURLString, teardown := setupSGRPeers(t)
+	activeRT, remoteRT, remoteURLString, teardown := rest.SetupSGRPeers(t)
 	defer teardown()
 
 	// Create docs on active
@@ -829,7 +829,7 @@ func TestPullOneshotReplicationAPI(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)
 
-	activeRT, remoteRT, remoteURLString, teardown := setupSGRPeers(t)
+	activeRT, remoteRT, remoteURLString, teardown := rest.SetupSGRPeers(t)
 	defer teardown()
 
 	// Create 20 docs on rt2
@@ -895,7 +895,7 @@ func TestReplicationConcurrentPush(t *testing.T) {
 	// Increase checkpoint persistence frequency for cross-node status verification
 	defer reduceTestCheckpointInterval(50 * time.Millisecond)()
 
-	activeRT, remoteRT, remoteURLString, teardown := setupSGRPeers(t)
+	activeRT, remoteRT, remoteURLString, teardown := rest.SetupSGRPeers(t)
 	defer teardown()
 	// Create push replications, verify running
 	activeRT.CreateReplication("rep_ABC", remoteURLString, db.ActiveReplicatorTypePush, []string{"ABC"}, true, db.ConflictResolverDefault)
@@ -1368,7 +1368,7 @@ func TestReplicationConfigChange(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
-	rt1, rt2, remoteURLString, teardown := setupSGRPeers(t)
+	rt1, rt2, remoteURLString, teardown := rest.SetupSGRPeers(t)
 	defer teardown()
 
 	// Add docs to two channels
@@ -1461,7 +1461,7 @@ func TestReplicationHeartbeatRemoval(t *testing.T) {
 	// Disable sequence batching for multi-RT tests (pending CBG-1000)
 	defer db.SuspendSequenceBatching()()
 
-	activeRT, remoteRT, remoteURLString, teardown := setupSGRPeers(t)
+	activeRT, remoteRT, remoteURLString, teardown := rest.SetupSGRPeers(t)
 	defer teardown()
 
 	// Create docs on remote
@@ -1636,7 +1636,7 @@ func TestPushReplicationAPIUpdateDatabase(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)
 
-	rt1, rt2, remoteURLString, teardown := setupSGRPeers(t)
+	rt1, rt2, remoteURLString, teardown := rest.SetupSGRPeers(t)
 	defer teardown()
 
 	// Create initial doc on rt1
@@ -6443,7 +6443,7 @@ func TestLocalWinsConflictResolution(t *testing.T) {
 			base.RequireNumTestBuckets(t, 2)
 			base.SetUpTestLogging(t, base.LevelTrace, base.KeyAll)
 
-			activeRT, remoteRT, remoteURLString, teardown := setupSGRPeers(t)
+			activeRT, remoteRT, remoteURLString, teardown := rest.SetupSGRPeers(t)
 			defer teardown()
 
 			// Create initial revision(s) on local
@@ -6660,7 +6660,7 @@ func TestReplicatorConflictAttachment(t *testing.T) {
 
 	for _, test := range testCases {
 		t.Run(test.name, func(t *testing.T) {
-			activeRT, remoteRT, remoteURLString, teardown := setupSGRPeers(t)
+			activeRT, remoteRT, remoteURLString, teardown := rest.SetupSGRPeers(t)
 			defer teardown()
 
 			docID := test.name
