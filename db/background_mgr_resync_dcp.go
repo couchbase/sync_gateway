@@ -29,7 +29,7 @@ type ResyncManagerDCP struct {
 	DocsChanged   base.AtomicInt
 	ResyncID      string
 	VBUUIDs       []uint64
-	lock          sync.Mutex
+	lock          sync.RWMutex
 }
 
 var _ BackgroundManagerProcessI = &ResyncManagerDCP{}
@@ -73,11 +73,9 @@ func (r *ResyncManagerDCP) Init(ctx context.Context, options map[string]interfac
 			return newRunInit()
 		} else {
 			r.ResyncID = statusDoc.ResyncID
-			r.DocsChanged.Set(int64(statusDoc.DocsChanged))
-			r.DocsProcessed.Set(int64(statusDoc.DocsProcessed))
-			r.VBUUIDs = statusDoc.VBUUIDs
+			r.SetStatus(statusDoc.DocsChanged, statusDoc.DocsProcessed)
 
-			base.InfofCtx(ctx, base.KeyAll, "Resync: Attempting to resume resync with resycn ID: %q", r.ResyncID)
+			base.InfofCtx(ctx, base.KeyAll, "Resync: Attempting to resume resync with resycn ID: %s", r.ResyncID)
 		}
 
 		return nil
@@ -94,7 +92,6 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]interface
 
 	persistClusterStatus := func() {
 		err := persistClusterStatusCallback()
-		r.SetStats(int(r.DocsProcessed.Value()), int(r.DocsChanged.Value()))
 		if err != nil {
 			base.WarnfCtx(ctx, "[%s] Failed to persist cluster status on-demand for resync operation: %v", resyncLoggingID, err)
 		}
@@ -147,16 +144,15 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]interface
 	if err != nil {
 		return err
 	}
-	clientOptions.InitialMetadata = base.BuildDCPMetadataSliceFromVBUUIDs(r.VBUUIDs)
 
 	dcpFeedKey := generateResyncDCPStreamName(r.ResyncID)
-	base.InfofCtx(ctx, base.KeyAll, "[%s] Starting DCP feed %q for resync", resyncLoggingID, dcpFeedKey)
 	dcpClient, err := base.NewDCPClient(dcpFeedKey, callback, *clientOptions, collection)
 	if err != nil {
 		base.WarnfCtx(ctx, "[%s] Failed to create resync DCP client! %v", resyncLoggingID, err)
 		return err
 	}
 
+	base.InfofCtx(ctx, base.KeyAll, "[%s] Starting DCP feed %q for resync", resyncLoggingID, dcpFeedKey)
 	doneChan, err := dcpClient.Start()
 	if err != nil {
 		base.WarnfCtx(ctx, "[%s] Failed to start resync DCP feed! %v", resyncLoggingID, err)
@@ -165,9 +161,11 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]interface
 	}
 	base.DebugfCtx(ctx, base.KeyAll, "[%s] DCP client started.", resyncLoggingID)
 
+	r.VBUUIDs = base.GetVBUUIDs(dcpClient.GetMetadata())
+
 	select {
 	case <-doneChan:
-		base.InfofCtx(ctx, base.KeyAll, "[%s] Finished re-running sync function. %d/%d docs changed", resyncLoggingID, r.DocsChanged.Value(), r.DocsProcessed.Value())
+		base.InfofCtx(ctx, base.KeyAll, "[%s] Finished running sync function. %d/%d docs changed", resyncLoggingID, r.DocsChanged.Value(), r.DocsProcessed.Value())
 		err = dcpClient.Close()
 		if err != nil {
 			base.WarnfCtx(ctx, "[%s] Failed to close resync DCP client! %v", resyncLoggingID, err)
@@ -224,34 +222,46 @@ func (r *ResyncManagerDCP) ResetStatus() {
 	r.DocsChanged.Set(0)
 }
 
-func (r *ResyncManagerDCP) SetStats(docsProcessed, docsChanged int) {
+func (r *ResyncManagerDCP) SetStatus(docChanged, docProcessed int64) {
 	r.lock.Lock()
 	defer r.lock.Unlock()
 
-	r.DocsProcessed.Set(int64(docsProcessed))
-	r.DocsChanged.Set(int64(docsChanged))
+	r.DocsChanged.Set(docChanged)
+	r.DocsProcessed.Set(docProcessed)
 }
 
 type ResyncManagerResponseDCP struct {
 	BackgroundManagerStatus
 	ResyncID      string `json:"resync_id"`
-	DocsChanged   int    `json:"docs_changed"`
-	DocsProcessed int    `json:"docs_processed"`
+	DocsChanged   int64  `json:"docs_changed"`
+	DocsProcessed int64  `json:"docs_processed"`
 }
 
-func (r *ResyncManagerDCP) GetProcessStatus(backgroundManagerStatus BackgroundManagerStatus) ([]byte, []byte, error) {
-	r.lock.Lock()
-	defer r.lock.Unlock()
+func (r *ResyncManagerDCP) GetProcessStatus(status BackgroundManagerStatus) ([]byte, []byte, error) {
+	r.lock.RLock()
+	defer r.lock.RUnlock()
 
-	restStatus := ResyncManagerResponseDCP{
-		BackgroundManagerStatus: backgroundManagerStatus,
+	response := ResyncManagerResponseDCP{
+		BackgroundManagerStatus: status,
 		ResyncID:                r.ResyncID,
-		DocsChanged:             int(r.DocsChanged.Value()),
-		DocsProcessed:           int(r.DocsProcessed.Value()),
+		DocsChanged:             r.DocsChanged.Value(),
+		DocsProcessed:           r.DocsProcessed.Value(),
 	}
 
-	statusJSON, err := base.JSONMarshal(restStatus)
-	return statusJSON, nil, err
+	meta := AttachmentManagerMeta{
+		VBUUIDs: r.VBUUIDs,
+	}
+
+	statusJSON, err := base.JSONMarshal(response)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	metaJSON, err := base.JSONMarshal(meta)
+	if err != nil {
+		return nil, nil, err
+	}
+	return statusJSON, metaJSON, err
 }
 
 type ResyncManagerMeta struct {
@@ -272,8 +282,8 @@ func getReSyncDCPClientOptions(collectionIDs []uint32, groupID string) (*base.DC
 		GroupID:           groupID,
 		CollectionIDs:     collectionIDs,
 	}
-	return clientOptions, nil
 
+	return clientOptions, nil
 }
 
 func generateResyncDCPStreamName(resyncID string) string {

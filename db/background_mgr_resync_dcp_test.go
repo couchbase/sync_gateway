@@ -120,19 +120,14 @@ func TestResyncDCPInit(t *testing.T) {
 
 			err = resyncMrg.Process.Init(context.TODO(), options, clusterData)
 			require.NoError(t, err)
-			rawStatus, err := resyncMrg.GetStatus()
-			require.NoError(t, err)
 
-			var response ResyncManagerResponseDCP
-			err = json.Unmarshal(rawStatus, &response)
-			assert.NoError(t, err)
-
+			response := getResyncStats(resyncMrg.Process)
 			assert.NotEmpty(t, response.ResyncID)
 
 			if testCase.shouldCreateNewRun {
 				assert.NotEqual(t, testCase.initialClusterState.ResyncID, response.ResyncID)
-				assert.Equal(t, 0, response.DocsChanged)
-				assert.Equal(t, 0, response.DocsProcessed)
+				assert.Equal(t, int64(0), response.DocsChanged)
+				assert.Equal(t, int64(0), response.DocsProcessed)
 			} else {
 				assert.Equal(t, testCase.initialClusterState.ResyncID, response.ResyncID)
 				assert.Equal(t, testCase.initialClusterState.DocsChanged, response.DocsChanged)
@@ -164,7 +159,8 @@ func TestResycnManagerDCPStopInMidWay(t *testing.T) {
 	require.NoError(t, err)
 	go func() {
 		time.Sleep(2 * time.Second)
-		_ = resyncMrg.Stop()
+		err = resyncMrg.Stop()
+		require.NoError(t, err)
 	}()
 
 	err = WaitForConditionWithOptions(func() bool {
@@ -174,17 +170,15 @@ func TestResycnManagerDCPStopInMidWay(t *testing.T) {
 		return status.State == BackgroundProcessStateStopped
 	}, 2000, 10)
 	require.NoError(t, err)
-	// Give some time to persist stats
-	time.Sleep(1 * time.Second)
 
 	stats := getResyncStats(resyncMrg.Process)
-	assert.Less(t, stats.DocsProcessed, docsToCreate, "DocsProcessed is equal to docs created. Consider setting docsToCreate > %d.", docsToCreate)
-	assert.Less(t, stats.DocsChanged, docsToCreate)
+	assert.Less(t, stats.DocsProcessed, int64(docsToCreate), "DocsProcessed is equal to docs created. Consider setting docsToCreate > %d.", docsToCreate)
+	assert.Less(t, stats.DocsChanged, int64(docsToCreate))
 
-	assert.Less(t, int(db.DbStats.Database().SyncFunctionCount.Value()), docsToCreate)
+	assert.Less(t, db.DbStats.Database().SyncFunctionCount.Value(), int64(docsToCreate))
 }
 
-func TestResycnManagerDCP(t *testing.T) {
+func TestResycnManagerDCPStart(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Test requires Couchbase Server")
 	}
@@ -214,8 +208,8 @@ func TestResycnManagerDCP(t *testing.T) {
 		require.NoError(t, err)
 
 		stats := getResyncStats(resyncMrg.Process)
-		assert.Equal(t, docsToCreate, stats.DocsProcessed)
-		assert.Equal(t, 0, stats.DocsChanged)
+		assert.Equal(t, int64(docsToCreate), stats.DocsProcessed)
+		assert.Equal(t, int64(0), stats.DocsChanged)
 
 		assert.Equal(t, int(db.DbStats.Database().SyncFunctionCount.Value()), docsToCreate)
 	})
@@ -244,13 +238,127 @@ func TestResycnManagerDCP(t *testing.T) {
 		require.NoError(t, err)
 
 		stats := getResyncStats(resyncMrg.Process)
-		assert.Equal(t, docsToCreate, stats.DocsProcessed)
-		assert.Equal(t, docsToCreate, stats.DocsChanged)
+		assert.Equal(t, int64(docsToCreate), stats.DocsProcessed)
+		assert.Equal(t, int64(docsToCreate), stats.DocsChanged)
 
-		assert.Equal(t, docsToCreate, int(db.DbStats.Database().SyncFunctionCount.Value()))
+		assert.Equal(t, int64(docsToCreate), db.DbStats.Database().SyncFunctionCount.Value())
 	})
 }
 
+func TestResycnManagerDCPRunTwice(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("Test requires Couchbase Server")
+	}
+	base.LongRunningTest(t)
+
+	docsToCreate := 10_000
+	db, ctx := setupTestDBForResyncWithDocs(t, docsToCreate, false)
+	defer db.Close(ctx)
+
+	resyncMrg := NewResyncManagerDCP(db.Bucket)
+	require.NotNil(t, resyncMrg)
+
+	options := make(map[string]interface{})
+	options["database"] = db
+	options["regenerateSequences"] = false
+
+	err := resyncMrg.Start(ctx, options)
+	require.NoError(t, err)
+
+	// Attempt to Start running process
+	go func() {
+		err := WaitForConditionWithOptions(func() bool {
+			var status BackgroundManagerStatus
+			rawStatus, _ := resyncMrg.GetStatus()
+			_ = json.Unmarshal(rawStatus, &status)
+			return status.State == BackgroundProcessStateRunning
+		}, 100, 100)
+		require.NoError(t, err)
+		err = resyncMrg.Start(ctx, options)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "Process already running")
+	}()
+
+	err = WaitForConditionWithOptions(func() bool {
+		var status BackgroundManagerStatus
+		rawStatus, _ := resyncMrg.GetStatus()
+		_ = json.Unmarshal(rawStatus, &status)
+		return status.State == BackgroundProcessStateCompleted
+	}, 200, 100)
+	require.NoError(t, err)
+
+	stats := getResyncStats(resyncMrg.Process)
+	assert.Equal(t, int64(docsToCreate), stats.DocsProcessed)
+	assert.Equal(t, int64(0), stats.DocsChanged)
+
+	assert.Equal(t, db.DbStats.Database().SyncFunctionCount.Value(), int64(docsToCreate))
+}
+
+func TestResycnManagerDCPResumeStoppedProcess(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("Test requires Couchbase Server")
+	}
+	base.LongRunningTest(t)
+
+	docsToCreate := 5000
+	db, ctx := setupTestDBForResyncWithDocs(t, int(docsToCreate), true)
+	defer db.Close(ctx)
+
+	resyncMrg := NewResyncManagerDCP(db.Bucket)
+	require.NotNil(t, resyncMrg)
+
+	options := make(map[string]interface{})
+	options["database"] = db
+	options["regenerateSequences"] = false
+
+	err := resyncMrg.Start(ctx, options)
+	require.NoError(t, err)
+
+	// Attempt to Stop Process
+	go func() {
+		for {
+			stats := getResyncStats(resyncMrg.Process)
+			if stats.DocsProcessed >= 2000 {
+				err = resyncMrg.Stop()
+				require.NoError(t, err)
+				break
+			}
+			time.Sleep(1 * time.Microsecond)
+		}
+	}()
+
+	err = WaitForConditionWithOptions(func() bool {
+		var status BackgroundManagerStatus
+		rawStatus, _ := resyncMrg.GetStatus()
+		_ = json.Unmarshal(rawStatus, &status)
+		return status.State == BackgroundProcessStateStopped
+	}, 200, 200)
+	require.NoError(t, err)
+
+	stats := getResyncStats(resyncMrg.Process)
+	require.Less(t, stats.DocsProcessed, int64(docsToCreate), "DocsProcessed is equal to docs created. Consider setting docsToCreate > %d.", docsToCreate)
+	assert.Less(t, stats.DocsChanged, int64(docsToCreate))
+
+	// Resume process
+	err = resyncMrg.Start(ctx, options)
+	require.NoError(t, err)
+
+	err = WaitForConditionWithOptions(func() bool {
+		var status BackgroundManagerStatus
+		rawStatus, _ := resyncMrg.GetStatus()
+		_ = json.Unmarshal(rawStatus, &status)
+		return status.State == BackgroundProcessStateCompleted
+	}, 200, 100)
+	require.NoError(t, err)
+
+	stats = getResyncStats(resyncMrg.Process)
+	assert.GreaterOrEqual(t, stats.DocsProcessed, int64(docsToCreate))
+	assert.Equal(t, int64(docsToCreate), stats.DocsChanged)
+
+	assert.GreaterOrEqual(t, db.DbStats.Database().SyncFunctionCount.Value(), int64(docsToCreate))
+}
+
+// helper function to insert documents equals to docsToCreate, and update resync function if updateResyncFuncAfterDocsAdded set to true
 func setupTestDBForResyncWithDocs(t *testing.T, docsToCreate int, updateResyncFuncAfterDocsAdded bool) (*Database, context.Context) {
 	db, ctx := setupTestDB(t)
 	db.Options.QueryPaginationLimit = 100
