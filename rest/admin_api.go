@@ -918,18 +918,14 @@ func (h *handler) handleDeleteDB() error {
 	dbName := h.PathVar("olddb")
 
 	var bucket string
-	//var buckets []string
 
 	dbContext, _ := h.server.GetDatabase(h.ctx(), dbName)
 
 	if dbContext != nil {
 		bucket = dbContext.Bucket.GetName()
 	} else if h.server.persistentConfig {
-		_, cnf, err := h.server.fetchDatabase(h.ctx(), dbName)
-		if err != nil {
-			return err
-		}
-		bucket = *cnf.Bucket
+		bucket, _ = h.server.bucketNameFromDbName(dbName)
+		fmt.Println("BUCKET", bucket)
 	}
 
 	if bucket == "" { // no dbcontext and database not found in any bucket
