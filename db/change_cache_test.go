@@ -118,8 +118,8 @@ func TestLateSequenceHandling(t *testing.T) {
 	context, ctx := setupTestDBWithCacheOptions(t, DefaultCacheOptions())
 	defer context.Close(ctx)
 
-	collectionID, err := context.GetSingleCollectionID()
-	require.NoError(t, err)
+	collection := context.GetSingleDatabaseCollection()
+	collectionID := collection.GetCollectionID()
 
 	stats, err := base.NewSyncGatewayStats()
 	require.NoError(t, err)
@@ -194,8 +194,8 @@ func TestLateSequenceHandlingWithMultipleListeners(t *testing.T) {
 	require.NoError(t, err)
 	defer context.Close(ctx)
 
-	collectionID, err := context.GetSingleCollectionID()
-	require.NoError(t, err)
+	collection := context.GetSingleDatabaseCollection()
+	collectionID := collection.GetCollectionID()
 
 	stats, err := base.NewSyncGatewayStats()
 	require.NoError(t, err)
@@ -263,8 +263,8 @@ func TestLateSequenceErrorRecovery(t *testing.T) {
 	defer db.Close(ctx)
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
-	collectionID, err := db.GetSingleCollectionID()
-	require.NoError(t, err)
+	collection := db.GetSingleDatabaseCollection()
+	collectionID := collection.GetCollectionID()
 
 	// Create a user with access to channel ABC
 	authenticator := db.Authenticator(ctx)
@@ -564,8 +564,8 @@ func TestChannelCacheBufferingWithUserDoc(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 
-	collectionID, err := db.GetSingleCollectionID()
-	require.NoError(t, err)
+	collection := db.GetSingleDatabaseCollection()
+	collectionID := collection.GetCollectionID()
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
 	// Simulate seq 1 (user doc) being delayed - write 2 first
@@ -637,8 +637,8 @@ func TestChannelCacheBackfill(t *testing.T) {
 	WriteDirect(db, []string{"CBS"}, 7)
 	require.NoError(t, db.changeCache.waitForSequence(ctx, 7, base.DefaultWaitForSequence))
 
-	collectionID, err := db.GetSingleCollectionID()
-	require.NoError(t, err)
+	collection := db.GetSingleDatabaseCollection()
+	collectionID := collection.GetCollectionID()
 
 	// verify insert at start (PBS)
 	pbsCache := db.changeCache.getChannelCache().getSingleChannelCache(channels.NewID("PBS", collectionID)).(*singleChannelCacheImpl)
@@ -1343,8 +1343,8 @@ func TestSkippedViewRetrieval(t *testing.T) {
 	// Validate expected entries
 	require.NoError(t, db.changeCache.waitForSequence(ctx, 15, base.DefaultWaitForSequence))
 
-	collectionID, err := db.GetSingleCollectionID()
-	require.NoError(t, err)
+	collection := db.GetSingleDatabaseCollection()
+	collectionID := collection.GetCollectionID()
 
 	entries, err := db.changeCache.GetChanges(channels.NewID("ABC", collectionID), getChangesOptionsWithSeq(SequenceID{Seq: 2}))
 	assert.NoError(t, err, "Get Changes returned error")
@@ -1435,8 +1435,8 @@ func TestChannelCacheSize(t *testing.T) {
 	assert.Equal(t, 750, len(changes))
 
 	// Validate that cache stores the expected number of values
-	collectionID, err := db.GetSingleCollectionID()
-	require.NoError(t, err)
+	collection := db.GetSingleDatabaseCollection()
+	collectionID := collection.GetCollectionID()
 
 	abcCache := db.changeCache.getChannelCache().getSingleChannelCache(channels.NewID("ABC", collectionID)).(*singleChannelCacheImpl)
 	assert.Equal(t, 600, len(abcCache.logs))
@@ -1638,8 +1638,8 @@ func TestLateArrivingSequenceTriggersOnChange(t *testing.T) {
 	db, ctx := setupTestDBWithCacheOptions(t, options)
 	defer db.Close(ctx)
 
-	collectionID, err := db.GetSingleCollectionID()
-	require.NoError(t, err)
+	collection := db.GetSingleDatabaseCollection()
+	collectionID := collection.GetCollectionID()
 
 	// -------- Setup notifyChange callback ----------------
 
@@ -1833,10 +1833,9 @@ func TestNotifyForInactiveChannel(t *testing.T) {
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	collection := db.GetSingleDatabaseCollectionWithUser()
 
-	collectionID, err := db.GetSingleCollectionID()
-	require.NoError(t, err)
+	collection := db.GetSingleDatabaseCollectionWithUser()
+	collectionID := collection.GetCollectionID()
 
 	// -------- Setup notifyChange callback ----------------
 
@@ -1850,7 +1849,7 @@ func TestNotifyForInactiveChannel(t *testing.T) {
 
 	// Write a document to channel zero
 	body := Body{"channels": []string{"zero"}}
-	_, _, err = collection.Put(ctx, "inactiveCacheNotify", body)
+	_, _, err := collection.Put(ctx, "inactiveCacheNotify", body)
 	assert.NoError(t, err)
 
 	// Wait for notify to arrive
@@ -2030,8 +2029,9 @@ func BenchmarkProcessEntry(b *testing.B) {
 			context, err := NewDatabaseContext(ctx, "db", base.GetTestBucket(b), false, DatabaseContextOptions{})
 			require.NoError(b, err)
 			defer context.Close(ctx)
-			collectionID, err := context.GetSingleCollectionID()
-			require.NoError(b, err)
+
+			collection := context.GetSingleDatabaseCollection()
+			collectionID := collection.GetCollectionID()
 
 			ctx = context.AddDatabaseLogContext(ctx)
 			changeCache := &changeCache{}
@@ -2261,8 +2261,8 @@ func BenchmarkDocChanged(b *testing.B) {
 			require.NoError(b, err)
 			defer context.Close(ctx)
 
-			collectionID, err := context.GetSingleCollectionID()
-			require.NoError(b, err)
+			collection := context.GetSingleDatabaseCollection()
+			collectionID := collection.GetCollectionID()
 
 			ctx = context.AddDatabaseLogContext(ctx)
 			changeCache := &changeCache{}

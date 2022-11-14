@@ -551,11 +551,7 @@ func getCompactionIDSubDocPath(compactionID string) string {
 func getCompactionDCPClientOptions(collection *base.Collection, groupID string) (*base.DCPClientOptions, error) {
 	var collectionIDs []uint32
 	if collection.IsSupported(sgbucket.DataStoreFeatureCollections) {
-		collectionID, err := collection.GetCollectionID()
-		if err != nil {
-			return nil, err
-		}
-		collectionIDs = append(collectionIDs, collectionID)
+		collectionIDs = append(collectionIDs, collection.GetCollectionID())
 	}
 
 	clientOptions := &base.DCPClientOptions{

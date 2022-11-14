@@ -18,7 +18,6 @@ import (
 	"io"
 	"net/http"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/couchbase/gocb/v2"
@@ -186,7 +185,10 @@ func GetCollectionFromCluster(cluster *gocb.Cluster, spec BucketSpec, waitUntilR
 		numPools = spec.KvPoolSize
 	}
 	collection.kvOps = make(chan struct{}, MaxConcurrentSingleOps*nodeCount*numPools)
-
+	err = collection.setCollectionID()
+	if err != nil {
+		return nil, err
+	}
 	return collection, nil
 }
 
@@ -196,7 +198,7 @@ type Collection struct {
 	cluster          *gocb.Cluster // Associated cluster - required for N1QL operations
 	queryOps         chan struct{} // Manages max concurrent query ops
 	kvOps            chan struct{} // Manages max concurrent kv ops
-	collectionID     atomic.Value  // cached copy of collectionID
+	collectionID     uint32        // cached copy of collectionID
 
 	clusterCompatMajorVersion, clusterCompatMinorVersion uint64 // E.g: 6 and 0 for 6.0.3
 }
@@ -796,11 +798,7 @@ func (c *Collection) GetExpiry(k string) (expiry uint32, getMetaError error) {
 		Deadline: c.getBucketOpDeadline(),
 	}
 	if c.IsSupported(sgbucket.DataStoreFeatureCollections) {
-		collectionID, err := c.GetCollectionID()
-		if err != nil {
-			return 0, err
-		}
-		getMetaOptions.CollectionID = collectionID
+		getMetaOptions.CollectionID = c.GetCollectionID()
 	}
 
 	wg := sync.WaitGroup{}
@@ -985,30 +983,26 @@ func (c *Collection) getBucketOpDeadline() time.Time {
 	return time.Now().Add(opTimeout)
 }
 
-// GetCollectionID returns the gocbcore CollectionID for the current collection
-func (c *Collection) GetCollectionID() (uint32, error) {
+// GetCollectionID sets the kv CollectionID for the current collection. In the case of Couchbase Server not supporting collection, returns DefaultCollectionID.
+func (c *Collection) GetCollectionID() uint32 {
+	return c.collectionID
+}
+
+// setCollectionID sets private property of kv CollectionID.
+func (c *Collection) setCollectionID() error {
 	if !c.IsSupported(sgbucket.DataStoreFeatureCollections) {
-		return 0, fmt.Errorf("Couchbase server does not support collections")
+		c.collectionID = DefaultCollectionID
+		return nil
 	}
 	// default collection has a known ID
 	if c.IsDefaultScopeCollection() {
-		return DefaultCollectionID, nil
+		c.collectionID = DefaultCollectionID
+		return nil
 	}
-	// return cached value if present
-	collectionIDAtomic := c.collectionID.Load()
-	if collectionIDAtomic != nil {
-		collectionID, ok := collectionIDAtomic.(uint32)
-		if !ok {
-			return 0, fmt.Errorf("Expected Collection.collectionID to be uint32: %T", collectionID)
-		}
-		return collectionID, nil
-	}
-
 	agent, err := c.getGoCBAgent()
 	if err != nil {
-		return 0, err
+		return err
 	}
-	var collectionID uint32
 	scope := c.ScopeName()
 	collection := c.Name()
 	wg := sync.WaitGroup{}
@@ -1025,7 +1019,7 @@ func (c *Collection) GetCollectionID() (uint32, error) {
 			return
 		}
 
-		collectionID = res.CollectionID
+		c.collectionID = res.CollectionID
 	}
 	_, err = agent.GetCollectionID(scope,
 		collection,
@@ -1036,15 +1030,13 @@ func (c *Collection) GetCollectionID() (uint32, error) {
 
 	if err != nil {
 		wg.Done()
-		return 0, fmt.Errorf("GetCollectionID for %s.%s, err: %w", scope, collection, err)
+		return fmt.Errorf("GetCollectionID for %s.%s, err: %w", scope, collection, err)
 	}
 	wg.Wait()
 	if callbackErr != nil {
-		return 0, fmt.Errorf("GetCollectionID for %s.%s, err: %w", scope, collection, callbackErr)
+		return fmt.Errorf("GetCollectionID for %s.%s, err: %w", scope, collection, callbackErr)
 	}
-	// cache value for future use
-	c.collectionID.Store(collectionID)
-	return collectionID, nil
+	return nil
 }
 
 func GetIDForCollection(manifest gocbcore.Manifest, scopeName, collectionName string) (uint32, bool) {

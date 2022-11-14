@@ -412,14 +412,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 				dbCollection := newDatabaseCollection(dbContext, bucket)
 				dbContext.Scopes[scopeName].Collections[collName] = dbCollection
 
-				collection, err := base.AsCollection(dbCollection.Bucket)
-				if err != nil {
-					return nil, err
-				}
-				collectionID, err := collection.GetCollectionID()
-				if err != nil {
-					return nil, err
-				}
+				collectionID := dbCollection.GetCollectionID()
 				dbContext.CollectionByID[collectionID] = dbCollection
 				dbContext.singleCollection = dbCollection
 			}
@@ -2029,18 +2022,6 @@ func (dbCtx *DatabaseContext) onlyDefaultCollection() bool {
 	}
 	_, exists := dbCtx.CollectionByID[base.DefaultCollectionID]
 	return exists
-}
-
-// GetSingleCollectionID returns a collectionID. This is a temporary shim for single collections, and will be removed when a database can support multiple collecitons.
-func (dbCtx *DatabaseContext) GetSingleCollectionID() (uint32, error) {
-	collection, err := base.AsCollection(dbCtx.Bucket)
-	if err != nil {
-		return 0, nil
-	}
-	if !collection.IsSupported(sgbucket.DataStoreFeatureCollections) {
-		return 0, nil
-	}
-	return collection.GetCollectionID()
 }
 
 // GetDefaultDatabaseCollectionWithUser will return the default collection if the default collection is supplied in the database config.
