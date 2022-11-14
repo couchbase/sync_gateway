@@ -514,9 +514,3 @@ func TestSessionExpirationDateTimeFormat(t *testing.T) {
 	assert.NoError(t, err, "Couldn't parse session expiration datetime")
 	assert.True(t, expires.Sub(time.Now()).Hours() <= 24, "Couldn't validate session expiration")
 }
-
-//resplicator_test.go
-
-//user_api_test.go
-
-//blip
