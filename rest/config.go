@@ -1394,7 +1394,7 @@ func (sc *ServerContext) foreachDbConfig(callback func(bucket string) (exit bool
 			return nil
 		}
 	}
-	return nil
+	return base.ErrNotFound
 }
 
 func (sc *ServerContext) fetchDatabase(ctx context.Context, dbName string) (found bool, dbConfig *DatabaseConfig, err error) {
