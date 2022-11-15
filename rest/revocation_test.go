@@ -1693,6 +1693,10 @@ func TestReplicatorRevocationsMultipleAlternateAccess(t *testing.T) {
 	})
 	require.NoError(t, ar.Start(ctx1))
 
+	defer func() {
+		assert.NoError(t, ar.Stop())
+	}()
+
 	resp := rt2.SendAdminRequest("PUT", "/db/_user/user", `{"name": "user", "password": "letmein"}`)
 	RequireStatus(t, resp, http.StatusOK)
 
@@ -1825,6 +1829,10 @@ func TestReplicatorRevocationsWithTombstoneResurrection(t *testing.T) {
 	RequireStatus(t, resp, http.StatusOK)
 
 	require.NoError(t, ar.Start(ctx1))
+
+	defer func() {
+		assert.NoError(t, ar.Stop())
+	}()
 
 	err = rt1.WaitForCondition(func() bool {
 		resp := rt1.SendAdminRequest("GET", "/db/docA", "")
