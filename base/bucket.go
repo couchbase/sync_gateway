@@ -100,6 +100,7 @@ type CouchbaseBucketType int
 
 // Full specification of how to connect to a bucket
 type BucketSpec struct {
+	Serverless                    bool
 	Server, BucketName, FeedType  string
 	Auth                          AuthHandler
 	Certpath, Keypath, CACertPath string         // X.509 auth parameters
@@ -145,8 +146,10 @@ type GoCBConnStringParams struct {
 }
 
 // FillDefaults replaces any unset fields in this GoCBConnStringParams with their default values.
-func (p *GoCBConnStringParams) FillDefaults() {
-	if p.KVPoolSize == 0 {
+func (p *GoCBConnStringParams) FillDefaults(serverless bool) {
+	if p.KVPoolSize == 0 && serverless {
+		p.KVPoolSize = DefaultGocbKvPoolSizeServerless
+	} else if p.KVPoolSize == 0 {
 		p.KVPoolSize = DefaultGocbKvPoolSize
 	}
 }
@@ -156,7 +159,7 @@ func (spec *BucketSpec) GetGoCBConnString(params *GoCBConnStringParams) (string,
 	if params == nil {
 		params = &GoCBConnStringParams{}
 	}
-	params.FillDefaults()
+	params.FillDefaults(spec.Serverless)
 	connSpec, err := gocbconnstr.Parse(spec.Server)
 	if err != nil {
 		return "", err
