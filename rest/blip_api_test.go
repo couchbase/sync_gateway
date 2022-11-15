@@ -4158,7 +4158,7 @@ func TestProveAttachmentNotFound(t *testing.T) {
 func TestProcessRevIncrementsStat(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
 
-	activeRT, remoteRT, remoteURLString, teardown := setupSGRPeers(t)
+	activeRT, remoteRT, remoteURLString, teardown := SetupSGRPeers(t)
 	defer teardown()
 	activeCtx := activeRT.Context()
 

@@ -532,7 +532,7 @@ type ChangesResults struct {
 	Last_Seq interface{}
 }
 
-func (cr ChangesResults) requireDocIDs(t testing.TB, docIDs []string) {
+func (cr ChangesResults) RequireDocIDs(t testing.TB, docIDs []string) {
 	require.Equal(t, len(docIDs), len(cr.Results))
 	for _, docID := range docIDs {
 		var found bool
@@ -1820,7 +1820,7 @@ func NewHTTPTestServerOnListener(h http.Handler, l net.Listener) *httptest.Serve
 	return s
 }
 
-func waitAndRequireCondition(t *testing.T, fn func() bool, failureMsgAndArgs ...interface{}) {
+func WaitAndRequireCondition(t *testing.T, fn func() bool, failureMsgAndArgs ...interface{}) {
 	t.Log("starting waitAndRequireCondition")
 	for i := 0; i <= 20; i++ {
 		if i == 20 {

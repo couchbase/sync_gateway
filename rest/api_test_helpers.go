@@ -24,7 +24,7 @@ func (rt *RestTester) RequireDocNotFound(docID string) {
 	RequireStatus(rt.TB, rawResponse, http.StatusNotFound)
 }
 
-func (rt *RestTester) tombstoneDoc(docID string, revID string) {
+func (rt *RestTester) TombstoneDoc(docID string, revID string) {
 	rawResponse := rt.SendAdminRequest("DELETE", "/db/"+docID+"?rev="+revID, "")
 	RequireStatus(rt.TB, rawResponse, 200)
 }
@@ -40,7 +40,7 @@ func (rt *RestTester) PurgeDoc(docID string) {
 
 // PutDocumentWithRevID builds a new_edits=false style put to create a revision with the specified revID.
 // If parentRevID is not specified, treated as insert
-func (rt *RestTester) putNewEditsFalse(docID string, newRevID string, parentRevID string, bodyString string) (response PutDocResponse) {
+func (rt *RestTester) PutNewEditsFalse(docID string, newRevID string, parentRevID string, bodyString string) (response PutDocResponse) {
 
 	var body db.Body
 	marshalErr := base.JSONUnmarshal([]byte(bodyString), &body)
