@@ -190,6 +190,25 @@ var QueryAllRolesUsingRoleIdx = SGQuery{
 	adhoc: false,
 }
 
+var QueryAllRolesUsingSyncDocsIdx = SGQuery{
+	name: QueryTypeRoles,
+	statement: fmt.Sprintf(
+		"SELECT META(%s).id "+
+			"FROM %s AS %s "+
+			"USE INDEX($idx) "+
+			"WHERE META(%s).id LIKE '%s' "+
+			"AND META(%s).id LIKE '%s' "+
+			"AND META(%s).id >= $%s "+ // Uses >= for inclusive startKey
+			"ORDER BY META(%s).id",
+		base.KeyspaceQueryAlias,
+		base.KeyspaceQueryToken, base.KeyspaceQueryAlias,
+		base.KeyspaceQueryAlias, SyncDocWildcard,
+		base.KeyspaceQueryAlias, SyncRoleWildcard,
+		base.KeyspaceQueryAlias, QueryParamStartKey,
+		base.KeyspaceQueryAlias),
+	adhoc: false,
+}
+
 var QueryRolesExcludeDeleted = SGQuery{
 	name: QueryTypeRolesExcludeDeleted,
 	statement: fmt.Sprintf(
@@ -251,6 +270,29 @@ var QueryUsers = SGQuery{
 		base.KeyspaceQueryAlias,
 		base.KeyspaceQueryAlias,
 		base.KeyspaceQueryToken, base.KeyspaceQueryAlias,
+		base.KeyspaceQueryAlias, SyncUserWildcard,
+		base.KeyspaceQueryAlias, QueryParamStartKey,
+		base.KeyspaceQueryAlias),
+	adhoc: false,
+}
+
+var QueryUsersUsingSyncDocsIdx = SGQuery{
+	name: QueryTypeUsers,
+	statement: fmt.Sprintf(
+		"SELECT %s.name, "+
+			"%s.email, "+
+			"%s.disabled "+
+			"FROM %s as %s "+
+			"USE INDEX($idx) "+
+			"WHERE META(%s).id LIKE '%s' "+
+			"AND META(%s).id LIKE '%s' "+
+			"AND META(%s).id >= $%s "+ // Using >= to match QueryPrincipals startKey handling
+			"ORDER BY META(%s).id",
+		base.KeyspaceQueryAlias,
+		base.KeyspaceQueryAlias,
+		base.KeyspaceQueryAlias,
+		base.KeyspaceQueryToken, base.KeyspaceQueryAlias,
+		base.KeyspaceQueryAlias, SyncDocWildcard,
 		base.KeyspaceQueryAlias, SyncUserWildcard,
 		base.KeyspaceQueryAlias, QueryParamStartKey,
 		base.KeyspaceQueryAlias),
@@ -585,7 +627,7 @@ func (context *DatabaseContext) BuildUsersQuery(startKey string, limit int) (str
 	if context.IsServerless() {
 		queryStatement = replaceIndexTokensQuery(QueryUsers.statement, sgIndexes[IndexUser], context.UseXattrs())
 	} else {
-		queryStatement = replaceIndexTokensQuery(QueryUsers.statement, sgIndexes[IndexSyncDocs], context.UseXattrs())
+		queryStatement = replaceIndexTokensQuery(QueryUsersUsingSyncDocsIdx.statement, sgIndexes[IndexSyncDocs], context.UseXattrs())
 	}
 
 	params := make(map[string]interface{})
@@ -650,7 +692,12 @@ func (context *DatabaseContext) QueryAllRoles(ctx context.Context, startKey stri
 		return nil, fmt.Errorf("QueryAllRoles doesn't support views")
 	}
 
-	queryStatement := replaceIndexTokensQuery(QueryAllRolesUsingRoleIdx.statement, sgIndexes[IndexRole], context.UseXattrs())
+	var queryStatement string
+	if context.IsServerless() {
+		queryStatement = replaceIndexTokensQuery(QueryAllRolesUsingRoleIdx.statement, sgIndexes[IndexRole], context.UseXattrs())
+	} else {
+		queryStatement = replaceIndexTokensQuery(QueryAllRolesUsingSyncDocsIdx.statement, sgIndexes[IndexSyncDocs], context.UseXattrs())
+	}
 
 	params := make(map[string]interface{})
 	params[QueryParamStartKey] = startKey
