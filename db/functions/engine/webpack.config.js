@@ -1,5 +1,3 @@
-// Generated using webpack-cli https://github.com/webpack/webpack-cli
-
 const path = require('path');
 
 const isProduction = process.env.NODE_ENV == 'production';
@@ -33,18 +31,18 @@ const config = {
             "path":     require.resolve("path-browserify"),
             "url":      path.resolve(__dirname, 'polyfill/url.js'),
             "util":     require.resolve("util/"),
-            // Omit this module entirely (any calls will throw):
+            // Omit this module entirely (any calls will throw) but it's never called:
             "fs":       false,
         }
     },
 
-    devtool: 'inline-source-map',       // put JS source map in the code itself
+    devtool: 'inline-source-map',           // put JS source map in the code itself
 
     // optimization: {
-    //     minimize: false,                // turn off size minimization; leave code readable
+    //     minimize: false,                 // turn off size minimization; leave code readable
     // },
 
-    ignoreWarnings: [                   // Suppress Web-specific warnings about big code
+    ignoreWarnings: [                       // Suppress Web-specific warnings about big code
         /asset size limit/, /entrypoint size limit/, /limit the size/
     ],
 };

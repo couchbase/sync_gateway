@@ -1,7 +1,7 @@
 import { AllowConfig, Args, Context, Database, FunctionConfig, User, JSFn, ResolverFn, HTTPError, ResolveInfo, EntityReferenceResolver, TypeResolverFn } from './types'
+import { BeginReadOnly, EndReadOnly } from "./impl";
 
 import * as gq from 'graphql';
-import { BeginReadOnly, EndReadOnly } from "./impl";
 
 
 function nonEmpty<T>(a: T[] | undefined) : a is T[] {

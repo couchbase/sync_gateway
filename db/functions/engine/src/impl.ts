@@ -207,19 +207,21 @@ class DatabaseImpl implements Database {
     }
 
 
-    // note: `args` are top-level N1QL args, not the "args" object
+
     query(context: Context,
           fnName: string,
           n1ql: string,
-          args: Args | undefined) : JSONObject[] {
+          args: Args | undefined)    // note: `args` are top-level N1QL args, not the "args" object
+          : JSONObject[]
+    {
         return this.upstream.query(fnName, n1ql, args, context.user);
     }
 
 
     graphql(context: Context,
-                  query: string,
-                  variableValues?: Args,
-                  operationName?: string) : Promise<gq.ExecutionResult> {
+            query: string,
+            variableValues?: Args,
+            operationName?: string) : Promise<gq.ExecutionResult> {
         console.debug(`GRAPHQL ${query}`);
         if (!this.schema) throw new HTTPError(404, "No GraphQL schema");
         return gq.graphql({
@@ -248,30 +250,6 @@ class DatabaseImpl implements Database {
     private superUserContext: ContextImpl;       // The admin Context (only one is needed)
     private functions: Record<string,JSFn> = {}; // Compiled JS functions
     private schema?: gq.GraphQLSchema;           // Compiled GraphQL schema (with resolvers)
-}
-
-
-class ErrorList {
-    /** adds an error message to `errors`. */
-    complain(msg: string) {
-        console.error(msg);
-        this.errors.push(msg);
-    }
-    /** calls a function, catching any exception and adding it to `errors`. */
-    try(msg: string, fn: ()=>void) {
-        try {
-            fn();
-        } catch (err) {
-            if (err instanceof Error) {
-                msg += err.message;
-            } else {
-                msg += String(err);
-            }
-            this.complain(msg);
-        }
-    };
-
-    errors: string[] = [];
 }
 
 
@@ -493,6 +471,34 @@ class UserImpl implements User {
 
     context!: ContextImpl;
 };
+
+
+//////// UTILITIES:
+
+
+/** Utility that collects a list of error messages. */
+class ErrorList {
+    /** adds an error message to `errors`. */
+    complain(msg: string) {
+        console.error(msg);
+        this.errors.push(msg);
+    }
+    /** calls a function, catching any exception and adding it to `errors`. */
+    try(msg: string, fn: ()=>void) {
+        try {
+            fn();
+        } catch (err) {
+            if (err instanceof Error) {
+                msg += err.message;
+            } else {
+                msg += String(err);
+            }
+            this.complain(msg);
+        }
+    };
+
+    errors: string[] = [];
+}
 
 
 // Returns true if `what` is equal to `against` or included in it.

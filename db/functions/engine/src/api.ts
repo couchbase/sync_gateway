@@ -22,7 +22,7 @@ export interface NativeAPI {
 }
 
 
-// Wraps a NativeAPI and exposes it as an Upstream for a Database to use
+// Wraps a `NativeAPI` and exposes it as an Upstream for a Database to use
 class UpstreamNativeImpl implements Upstream {
     constructor(private native: NativeAPI) { }
 
