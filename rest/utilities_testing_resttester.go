@@ -12,8 +12,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"testing"
 
+	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/stretchr/testify/assert"
@@ -118,7 +121,7 @@ func (rt *RestTester) WaitForCheckpointLastSequence(expectedName string) (string
 }
 
 // createReplication creates a replication via the REST API with the specified ID, remoteURL, direction and channel filter
-func (rt *RestTester) createReplication(replicationID string, remoteURLString string, direction db.ActiveReplicatorDirection, channels []string, continuous bool, conflictResolver db.ConflictResolverType) {
+func (rt *RestTester) CreateReplication(replicationID string, remoteURLString string, direction db.ActiveReplicatorDirection, channels []string, continuous bool, conflictResolver db.ConflictResolverType) {
 	replicationConfig := &db.ReplicationConfig{
 		ID:                     replicationID,
 		Direction:              direction,
@@ -136,7 +139,7 @@ func (rt *RestTester) createReplication(replicationID string, remoteURLString st
 	RequireStatus(rt.TB, resp, http.StatusCreated)
 }
 
-func (rt *RestTester) waitForAssignedReplications(count int) {
+func (rt *RestTester) WaitForAssignedReplications(count int) {
 	successFunc := func() bool {
 		replicationStatuses := rt.GetReplicationStatuses("?localOnly=true")
 		return len(replicationStatuses) == count
@@ -171,4 +174,57 @@ func (rt *RestTester) GetReplicationStatuses(queryString string) (statuses []db.
 	RequireStatus(rt.TB, rawResponse, 200)
 	require.NoError(rt.TB, base.JSONUnmarshal(rawResponse.Body.Bytes(), &statuses))
 	return statuses
+}
+
+// setupSGRPeers sets up two rest testers to be used for sg-replicate testing with the following configuration:
+//
+//	activeRT:
+//	  - backed by test bucket
+//	  - has sgreplicate enabled
+//	passiveRT:
+//	  - backed by different test bucket
+//	  - user 'alice' created with star channel access
+//	  - http server wrapping the public API, remoteDBURLString targets the rt2 database as user alice (e.g. http://alice:pass@host/db)
+//	returned teardown function closes activeRT, passiveRT and the http server, should be invoked with defer
+func SetupSGRPeers(t *testing.T) (activeRT *RestTester, passiveRT *RestTester, remoteDBURLString string, teardown func()) {
+	// Set up passive RestTester (rt2)
+	passiveTestBucket := base.GetTestBucket(t)
+	passiveRT = NewRestTester(t, &RestTesterConfig{
+		CustomTestBucket: passiveTestBucket.NoCloseClone(),
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
+			Users: map[string]*auth.PrincipalConfig{
+				"alice": {
+					Password:         base.StringPtr("pass"),
+					ExplicitChannels: base.SetOf("*"),
+				},
+			},
+		}},
+	})
+	// Initalize RT and bucket
+	_ = passiveRT.Bucket()
+
+	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1
+	srv := httptest.NewServer(passiveRT.TestPublicHandler())
+
+	// Build passiveDBURL with basic auth creds
+	passiveDBURL, _ := url.Parse(srv.URL + "/db")
+	passiveDBURL.User = url.UserPassword("alice", "pass")
+
+	// Set up active RestTester (rt1)
+	activeTestBucket := base.GetTestBucket(t)
+	activeRT = NewRestTester(t, &RestTesterConfig{
+		CustomTestBucket:   activeTestBucket.NoCloseClone(),
+		SgReplicateEnabled: true,
+	})
+	// Initalize RT and bucket
+	_ = activeRT.Bucket()
+
+	teardown = func() {
+		activeRT.Close()
+		activeTestBucket.Close()
+		srv.Close()
+		passiveRT.Close()
+		passiveTestBucket.Close()
+	}
+	return activeRT, passiveRT, passiveDBURL.String(), teardown
 }
