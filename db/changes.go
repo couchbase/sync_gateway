@@ -259,7 +259,7 @@ func (db *Database) buildRevokedFeed(ctx context.Context, ch channels.ID, option
 					}
 
 					if !requiresRevocation {
-						base.DebugfCtx(ctx, base.KeyChanges, "Channel feed processing revocation, seq: %v in channel %s does not require revocation", seqID, base.UD(singleChannelCache.ChannelID()))
+						base.TracefCtx(ctx, base.KeyChanges, "Channel feed processing revocation, seq: %v in channel %s does not require revocation", seqID, base.UD(singleChannelCache.ChannelID()))
 						continue
 					}
 				}
