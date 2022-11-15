@@ -53,8 +53,8 @@ func (fn *n1qlInvocation) Iterate() (sgbucket.QueryResultIterator, error) {
 	fn.n1qlArgs["user"] = &userArg
 
 	// Run the N1QL query:
-	iter, err := fn.db.N1QLQueryWithStats(fn.ctx, db.QueryTypeUserFunctionPrefix+fn.name, fn.Code, fn.n1qlArgs,
-		base.RequestPlus, false)
+	iter, err := db.N1QLQueryWithStats(fn.ctx, fn.db.Bucket, db.QueryTypeUserFunctionPrefix+fn.name, fn.Code, fn.n1qlArgs,
+		base.RequestPlus, false, fn.db.DbStats, fn.db.Options.SlowQueryWarningThreshold)
 
 	if err != nil {
 		// Return a friendlier error:

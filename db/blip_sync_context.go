@@ -237,6 +237,21 @@ func (bsc *BlipSyncContext) copyContextDatabase() *Database {
 	return databaseCopy
 }
 
+func (bsc *BlipSyncContext) copyDatabaseCollectionWithUser(collectionIdx *int) *DatabaseCollectionWithUser {
+	bsc.dbUserLock.RLock()
+	defer bsc.dbUserLock.RUnlock()
+	user := bsc.blipContextDb.User()
+	if collectionIdx != nil {
+		return &DatabaseCollectionWithUser{DatabaseCollection: bsc.collectionMapping[*collectionIdx], user: user}
+	}
+	// There is a panic handler on the calling function but no way to pass error
+	c, err := bsc.blipContextDb.GetDefaultDatabaseCollection()
+	if err != nil {
+		panic(err)
+	}
+	return &DatabaseCollectionWithUser{DatabaseCollection: c, user: user}
+}
+
 func (bsc *BlipSyncContext) _copyContextDatabase() *Database {
 	databaseCopy, _ := GetDatabase(bsc.blipContextDb.DatabaseContext, bsc.blipContextDb.User())
 	return databaseCopy

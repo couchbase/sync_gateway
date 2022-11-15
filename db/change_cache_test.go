@@ -266,6 +266,7 @@ func TestLateSequenceErrorRecovery(t *testing.T) {
 	collection := db.GetSingleDatabaseCollection()
 	collectionID := collection.GetCollectionID()
 
+	dbCollection := db.GetSingleDatabaseCollectionWithUser()
 	// Create a user with access to channel ABC
 	authenticator := db.Authenticator(ctx)
 	require.NotNil(t, authenticator, "db.Authenticator(db.Ctx) returned nil")
@@ -280,7 +281,7 @@ func TestLateSequenceErrorRecovery(t *testing.T) {
 	options.ChangesCtx = changesCtx
 	options.Continuous = true
 	options.Wait = true
-	feed, err := db.MultiChangesFeed(ctx, base.SetOf("ABC"), options)
+	feed, err := dbCollection.MultiChangesFeed(ctx, base.SetOf("ABC"), options)
 	require.NoError(t, err, "Feed initialization error")
 
 	// Reads events until it gets a nil event, which indicates the changes loop has entered wait mode.
@@ -321,7 +322,7 @@ func TestLateSequenceErrorRecovery(t *testing.T) {
 	// Modify the cache's late logs to remove the changes feed's lateFeedHandler sequence from the
 	// cache's lateLogs.  This will trigger an error on the next feed iteration, which should trigger
 	// rollback to resend all changes since low sequence (1)
-	abcCache := db.changeCache.getChannelCache().getSingleChannelCache(channels.NewID("ABC", collectionID)).(*singleChannelCacheImpl)
+	abcCache := dbCollection.ChangeCache().getChannelCache().getSingleChannelCache(channels.NewID("ABC", collectionID)).(*singleChannelCacheImpl)
 	abcCache.lateLogs[0].logEntry.Sequence = 1
 
 	// Write sequence 3.  Error should trigger rollback that resends everything since low sequence (1)
@@ -410,9 +411,10 @@ func TestLateSequenceHandlingDuringCompact(t *testing.T) {
 			options.Wait = true
 			channelName := fmt.Sprintf("chan_%d", i)
 			perRequestDb, err := CreateDatabase(db.DatabaseContext)
+			dbCollection := perRequestDb.GetSingleDatabaseCollectionWithUser()
 			assert.NoError(t, err)
 			perRequestCtx := base.LogContextWith(ctx, &base.LogContext{CorrelationID: fmt.Sprintf("context_%s", channelName)})
-			feed, err := perRequestDb.MultiChangesFeed(perRequestCtx, base.SetOf(channelName), options)
+			feed, err := dbCollection.MultiChangesFeed(perRequestCtx, base.SetOf(channelName), options)
 			require.NoError(t, err, "Feed initialization error")
 
 			// Process feed until closed by terminator in main goroutine
@@ -608,6 +610,7 @@ func TestChannelCacheBackfill(t *testing.T) {
 	defer db.Close(ctx)
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
+	collection := db.GetSingleDatabaseCollectionWithUser()
 	// Create a user with access to channel ABC
 	authenticator := db.Authenticator(ctx)
 	user, _ := authenticator.NewUser("naomi", "letmein", channels.BaseSetOf(t, "ABC", "PBS", "NBC", "TBS"))
@@ -620,14 +623,12 @@ func TestChannelCacheBackfill(t *testing.T) {
 	WriteDirect(db, []string{"ABC", "PBS"}, 6)
 
 	// Test that retrieval isn't blocked by skipped sequences
-	require.NoError(t, db.changeCache.waitForSequence(ctx, 6, base.DefaultWaitForSequence))
-	db.user, _ = authenticator.GetUser("naomi")
-	changes, err := db.GetChanges(ctx, base.SetOf("*"), getChangesOptionsWithZeroSeq())
-
+	require.NoError(t, collection.ChangeCache().waitForSequence(ctx, 6, base.DefaultWaitForSequence))
+	collection.user, _ = authenticator.GetUser("naomi")
+	changes, err := collection.GetChanges(ctx, base.SetOf("*"), getChangesOptionsWithZeroSeq())
 	assert.NoError(t, err, "Couldn't GetChanges")
 	assert.Equal(t, 4, len(changes))
 
-	collection := db.GetSingleDatabaseCollection()
 	collectionID := collection.GetCollectionID()
 
 	assert.Equal(t, &ChangeEntry{
@@ -641,24 +642,24 @@ func TestChannelCacheBackfill(t *testing.T) {
 	// Validate insert to various cache states
 	WriteDirect(db, []string{"ABC", "NBC", "PBS", "TBS"}, 3)
 	WriteDirect(db, []string{"CBS"}, 7)
-	require.NoError(t, db.changeCache.waitForSequence(ctx, 7, base.DefaultWaitForSequence))
+	require.NoError(t, collection.ChangeCache().waitForSequence(ctx, 7, base.DefaultWaitForSequence))
 
 	// verify insert at start (PBS)
-	pbsCache := db.changeCache.getChannelCache().getSingleChannelCache(channels.NewID("PBS", collectionID)).(*singleChannelCacheImpl)
+	pbsCache := collection.ChangeCache().getChannelCache().getSingleChannelCache(channels.NewID("PBS", collectionID)).(*singleChannelCacheImpl)
 	assert.True(t, verifyCacheSequences(pbsCache, []uint64{3, 5, 6}))
 	// verify insert at middle (ABC)
-	abcCache := db.changeCache.getChannelCache().getSingleChannelCache(channels.NewID("ABC", collectionID)).(*singleChannelCacheImpl)
+	abcCache := collection.ChangeCache().getChannelCache().getSingleChannelCache(channels.NewID("ABC", collectionID)).(*singleChannelCacheImpl)
 	assert.True(t, verifyCacheSequences(abcCache, []uint64{1, 2, 3, 5, 6}))
 	// verify insert at end (NBC)
-	nbcCache := db.changeCache.getChannelCache().getSingleChannelCache(channels.NewID("NBC", collectionID)).(*singleChannelCacheImpl)
+	nbcCache := collection.ChangeCache().getChannelCache().getSingleChannelCache(channels.NewID("NBC", collectionID)).(*singleChannelCacheImpl)
 	assert.True(t, verifyCacheSequences(nbcCache, []uint64{1, 3}))
 	// verify insert to empty cache (TBS)
-	tbsCache := db.changeCache.getChannelCache().getSingleChannelCache(channels.NewID("TBS", collectionID)).(*singleChannelCacheImpl)
+	tbsCache := collection.ChangeCache().getChannelCache().getSingleChannelCache(channels.NewID("TBS", collectionID)).(*singleChannelCacheImpl)
 	assert.True(t, verifyCacheSequences(tbsCache, []uint64{3}))
 
 	// verify changes has three entries (needs to resend all since previous LowSeq, which
 	// will be the late arriver (3) along with 5, 6)
-	changes, err = db.GetChanges(ctx, base.SetOf("*"), getChangesOptionsWithSeq(lastSeq))
+	changes, err = collection.GetChanges(ctx, base.SetOf("*"), getChangesOptionsWithSeq(lastSeq))
 	assert.Equal(t, 3, len(changes))
 	assert.Equal(t, &ChangeEntry{
 		Seq:          SequenceID{Seq: 3, LowSeq: 3},
@@ -704,7 +705,8 @@ func TestContinuousChangesBackfill(t *testing.T) {
 	options.Continuous = true
 	options.Wait = true
 
-	feed, err := db.MultiChangesFeed(ctx, base.SetOf("*"), options)
+	dbCollection := db.GetSingleDatabaseCollectionWithUser()
+	feed, err := dbCollection.MultiChangesFeed(ctx, base.SetOf("*"), options)
 	assert.True(t, err == nil)
 
 	time.Sleep(50 * time.Millisecond)
@@ -712,14 +714,14 @@ func TestContinuousChangesBackfill(t *testing.T) {
 	// Write some more docs
 	WriteDirect(db, []string{"CBS"}, 3)
 	WriteDirect(db, []string{"PBS"}, 12)
-	require.NoError(t, db.changeCache.waitForSequence(ctx, 12, base.DefaultWaitForSequence))
+	require.NoError(t, dbCollection.ChangeCache().waitForSequence(ctx, 12, base.DefaultWaitForSequence))
 
 	// Test multiple backfill in single changes loop iteration
 	WriteDirect(db, []string{"ABC", "NBC", "PBS", "CBS"}, 4)
 	WriteDirect(db, []string{"ABC", "NBC", "PBS", "CBS"}, 7)
 	WriteDirect(db, []string{"ABC", "PBS"}, 8)
 	WriteDirect(db, []string{"ABC", "PBS"}, 13)
-	require.NoError(t, db.changeCache.waitForSequence(ctx, 13, base.DefaultWaitForSequence))
+	require.NoError(t, dbCollection.ChangeCache().waitForSequence(ctx, 13, base.DefaultWaitForSequence))
 	time.Sleep(50 * time.Millisecond)
 
 	// We can't guarantee how compound sequences will be generated in a multi-core test - will
@@ -798,8 +800,9 @@ func TestLowSequenceHandling(t *testing.T) {
 	WriteDirect(db, []string{"ABC", "PBS"}, 5)
 	WriteDirect(db, []string{"ABC", "PBS"}, 6)
 
-	require.NoError(t, db.changeCache.waitForSequence(ctx, 6, base.DefaultWaitForSequence))
-	db.user, _ = authenticator.GetUser("naomi")
+	dbCollection := db.GetSingleDatabaseCollectionWithUser()
+	require.NoError(t, dbCollection.ChangeCache().waitForSequence(ctx, 6, base.DefaultWaitForSequence))
+	dbCollection.user, _ = authenticator.GetUser("naomi")
 
 	// Start changes feed
 
@@ -809,7 +812,7 @@ func TestLowSequenceHandling(t *testing.T) {
 	options.ChangesCtx = changesCtx
 	options.Continuous = true
 	options.Wait = true
-	feed, err := db.MultiChangesFeed(ctx, base.SetOf("*"), options)
+	feed, err := dbCollection.MultiChangesFeed(ctx, base.SetOf("*"), options)
 	assert.True(t, err == nil)
 
 	changes, err := verifySequencesInFeed(feed, []uint64{1, 2, 5, 6})
@@ -858,6 +861,7 @@ func TestLowSequenceHandlingAcrossChannels(t *testing.T) {
 
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
+	collection := db.GetSingleDatabaseCollectionWithUser()
 	// Create a user with access to channel ABC
 	authenticator := db.Authenticator(ctx)
 	user, err := authenticator.NewUser("naomi", "letmein", channels.BaseSetOf(t, "ABC"))
@@ -870,7 +874,7 @@ func TestLowSequenceHandlingAcrossChannels(t *testing.T) {
 	WriteDirect(db, []string{"PBS"}, 5)
 	WriteDirect(db, []string{"ABC", "PBS"}, 6)
 
-	require.NoError(t, db.changeCache.waitForSequence(ctx, 6, base.DefaultWaitForSequence))
+	require.NoError(t, collection.ChangeCache().waitForSequence(ctx, 6, base.DefaultWaitForSequence))
 	db.user, _ = authenticator.GetUser("naomi")
 
 	// Start changes feed
@@ -881,7 +885,8 @@ func TestLowSequenceHandlingAcrossChannels(t *testing.T) {
 	options.ChangesCtx = changesCtx
 	options.Continuous = true
 	options.Wait = true
-	feed, err := db.MultiChangesFeed(ctx, base.SetOf("*"), options)
+	dbCollection := db.GetSingleDatabaseCollectionWithUser()
+	feed, err := dbCollection.MultiChangesFeed(ctx, base.SetOf("*"), options)
 	assert.True(t, err == nil)
 
 	_, err = verifySequencesInFeed(feed, []uint64{1, 2, 6})
@@ -924,7 +929,8 @@ func TestLowSequenceHandlingWithAccessGrant(t *testing.T) {
 	WriteDirect(db, []string{"PBS"}, 5)
 	WriteDirect(db, []string{"ABC", "PBS"}, 6)
 
-	require.NoError(t, db.changeCache.waitForSequence(ctx, 6, base.DefaultWaitForSequence))
+	collection := db.GetSingleDatabaseCollectionWithUser()
+	require.NoError(t, collection.ChangeCache().waitForSequence(ctx, 6, base.DefaultWaitForSequence))
 	db.user, _ = authenticator.GetUser("naomi")
 
 	// Start changes feed
@@ -935,7 +941,8 @@ func TestLowSequenceHandlingWithAccessGrant(t *testing.T) {
 	options.ChangesCtx = changesCtx
 	options.Continuous = true
 	options.Wait = true
-	feed, err := db.MultiChangesFeed(ctx, base.SetOf("*"), options)
+	dbCollection := db.GetSingleDatabaseCollectionWithUser()
+	feed, err := dbCollection.MultiChangesFeed(ctx, base.SetOf("*"), options)
 	require.NoError(t, err)
 
 	var changes = make([]*ChangeEntry, 0, 50)
@@ -958,7 +965,7 @@ func TestLowSequenceHandlingWithAccessGrant(t *testing.T) {
 	require.NoError(t, err, "UpdatePrincipal failed")
 
 	WriteDirect(db, []string{"PBS"}, 9)
-	require.NoError(t, db.changeCache.waitForSequence(ctx, 9, base.DefaultWaitForSequence))
+	require.NoError(t, collection.ChangeCache().waitForSequence(ctx, 9, base.DefaultWaitForSequence))
 
 	err = appendFromFeed(&changes, feed, 4, base.DefaultWaitForSequence)
 	require.NoError(t, err, "Expected more changes to be sent on feed, but never received")
@@ -1032,10 +1039,10 @@ func TestChannelQueryCancellation(t *testing.T) {
 	assert.NoError(t, err, "Put failed with error: %v", err)
 	_, _, err = collection.Put(ctx, "key4", Body{"channels": "ABC"})
 	assert.NoError(t, err, "Put failed with error: %v", err)
-	require.NoError(t, db.changeCache.waitForSequence(ctx, 4, base.DefaultWaitForSequence))
+	require.NoError(t, collection.ChangeCache().waitForSequence(ctx, 4, base.DefaultWaitForSequence))
 
 	// Flush the cache, to ensure view query on subsequent changes requests
-	require.NoError(t, db.FlushChannelCache(ctx))
+	//require.NoError(t, db.FlushChannelCache(ctx))
 
 	// Issue two one-shot since=0 changes request.  Both will attempt a view query.  The first will block based on queryWg,
 	// the second will block waiting for the view lock
@@ -1049,7 +1056,7 @@ func TestChannelQueryCancellation(t *testing.T) {
 		options.Continuous = false
 		options.Wait = false
 		options.Limit = 2 // Avoid prepending results in cache, as we don't want second changes to serve results from cache
-		_, err := db.GetChanges(ctx, base.SetOf("ABC"), options)
+		_, err := collection.GetChanges(ctx, base.SetOf("ABC"), options)
 		assert.NoError(t, err, "Expect no error for first changes request")
 	}()
 
@@ -1074,7 +1081,7 @@ func TestChannelQueryCancellation(t *testing.T) {
 		options.Continuous = false
 		options.Limit = 2
 		options.Wait = false
-		_, err := db.GetChanges(ctx, base.SetOf("ABC"), options)
+		_, err := collection.GetChanges(ctx, base.SetOf("ABC"), options)
 		assert.Error(t, err, "Expected error for second changes")
 	}()
 
@@ -1131,7 +1138,8 @@ func TestLowSequenceHandlingNoDuplicates(t *testing.T) {
 	WriteDirect(db, []string{"ABC", "PBS"}, 5)
 	WriteDirect(db, []string{"ABC", "PBS"}, 6)
 
-	require.NoError(t, db.changeCache.waitForSequence(ctx, 6, base.DefaultWaitForSequence))
+	collection := db.GetSingleDatabaseCollectionWithUser()
+	require.NoError(t, collection.ChangeCache().waitForSequence(ctx, 6, base.DefaultWaitForSequence))
 	db.user, _ = authenticator.GetUser("naomi")
 
 	// Start changes feed
@@ -1142,7 +1150,8 @@ func TestLowSequenceHandlingNoDuplicates(t *testing.T) {
 	options.ChangesCtx = changesCtx
 	options.Continuous = true
 	options.Wait = true
-	feed, err := db.MultiChangesFeed(ctx, base.SetOf("*"), options)
+	dbCollection := db.GetSingleDatabaseCollectionWithUser()
+	feed, err := dbCollection.MultiChangesFeed(ctx, base.SetOf("*"), options)
 	assert.True(t, err == nil)
 
 	// Array to read changes from feed to support assertions
@@ -1162,7 +1171,7 @@ func TestLowSequenceHandlingNoDuplicates(t *testing.T) {
 	WriteDirect(db, []string{"ABC", "NBC", "PBS", "TBS"}, 3)
 	WriteDirect(db, []string{"ABC", "PBS"}, 4)
 
-	require.NoError(t, db.changeCache.waitForSequenceNotSkipped(ctx, 4, base.DefaultWaitForSequence))
+	require.NoError(t, collection.ChangeCache().waitForSequenceNotSkipped(ctx, 4, base.DefaultWaitForSequence))
 
 	err = appendFromFeed(&changes, feed, 2, base.DefaultWaitForSequence)
 	assert.True(t, err == nil)
@@ -1172,7 +1181,7 @@ func TestLowSequenceHandlingNoDuplicates(t *testing.T) {
 	WriteDirect(db, []string{"ABC"}, 7)
 	WriteDirect(db, []string{"ABC", "NBC"}, 8)
 	WriteDirect(db, []string{"ABC", "PBS"}, 9)
-	require.NoError(t, db.changeCache.waitForSequence(ctx, 9, base.DefaultWaitForSequence))
+	require.NoError(t, collection.ChangeCache().waitForSequence(ctx, 9, base.DefaultWaitForSequence))
 	require.NoError(t, appendFromFeed(&changes, feed, 5, base.DefaultWaitForSequence))
 	assert.True(t, verifyChangesSequencesIgnoreOrder(changes, []uint64{1, 2, 5, 6, 3, 4, 7, 8, 9}))
 	changesCtxCancel()
@@ -1224,7 +1233,8 @@ func TestChannelRace(t *testing.T) {
 	WriteDirect(db, []string{"Even"}, 2)
 	WriteDirect(db, []string{"Odd"}, 3)
 
-	require.NoError(t, db.changeCache.waitForSequence(ctx, 3, base.DefaultWaitForSequence))
+	collection := db.GetSingleDatabaseCollectionWithUser()
+	require.NoError(t, collection.ChangeCache().waitForSequence(ctx, 3, base.DefaultWaitForSequence))
 	db.user, _ = authenticator.GetUser("naomi")
 
 	// Start changes feed
@@ -1235,7 +1245,8 @@ func TestChannelRace(t *testing.T) {
 	options.ChangesCtx = changesCtx
 	options.Continuous = true
 	options.Wait = true
-	feed, err := db.MultiChangesFeed(ctx, base.SetOf("Even", "Odd"), options)
+	dbCollection := db.GetSingleDatabaseCollectionWithUser()
+	feed, err := dbCollection.MultiChangesFeed(ctx, base.SetOf("Even", "Odd"), options)
 	assert.True(t, err == nil)
 	feedClosed := false
 
@@ -1333,8 +1344,9 @@ func TestSkippedViewRetrieval(t *testing.T) {
 	WriteDirect(db, []string{"ABC"}, 14)
 	WriteDirect(db, []string{"ABC"}, 15)
 
+	collection := db.GetSingleDatabaseCollectionWithUser()
 	// db.Options.UnsupportedOptions.DisableCleanSkippedQuery = true
-	changeCache := db.changeCache
+	changeCache := collection.ChangeCache()
 
 	// Artificially add skipped sequences to queue, and back date skipped entry by 2 hours to trigger attempted view retrieval during Clean call
 	// Sequences '3', '7', '10', '13' and '14' exist, should be found.
@@ -1351,12 +1363,11 @@ func TestSkippedViewRetrieval(t *testing.T) {
 	assert.NoError(t, cleanErr, "CleanSkippedSequenceQueue returned error")
 
 	// Validate expected entries
-	require.NoError(t, db.changeCache.waitForSequence(ctx, 15, base.DefaultWaitForSequence))
+	require.NoError(t, collection.ChangeCache().waitForSequence(ctx, 15, base.DefaultWaitForSequence))
 
-	collection := db.GetSingleDatabaseCollection()
 	collectionID := collection.GetCollectionID()
 
-	entries, err := db.changeCache.GetChanges(channels.NewID("ABC", collectionID), getChangesOptionsWithSeq(SequenceID{Seq: 2}))
+	entries, err := collection.ChangeCache().GetChanges(channels.NewID("ABC", collectionID), getChangesOptionsWithSeq(SequenceID{Seq: 2}))
 	assert.NoError(t, err, "Get Changes returned error")
 	assert.Equal(t, 6, len(entries))
 	log.Printf("entries: %v", entries)
@@ -1398,7 +1409,8 @@ func TestStopChangeCache(t *testing.T) {
 	WriteDirect(db, []string{"ABC"}, 3)
 
 	// Artificially add 3 skipped, and back date skipped entry by 2 hours to trigger attempted view retrieval during Clean call
-	err := db.changeCache.skippedSeqs.Push(&SkippedSequence{3, time.Now().Add(time.Duration(time.Hour * -2))})
+	collection := db.GetSingleDatabaseCollectionWithUser()
+	err := collection.ChangeCache().skippedSeqs.Push(&SkippedSequence{3, time.Now().Add(time.Duration(time.Hour * -2))})
 	require.NoError(t, err)
 
 	// tear down the DB.  Should stop the cache before view retrieval of the skipped sequence is attempted.
@@ -1426,6 +1438,7 @@ func TestChannelCacheSize(t *testing.T) {
 	defer db.Close(ctx)
 
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
+	collection := db.GetSingleDatabaseCollectionWithUser()
 
 	// Create a user with access to channel ABC
 	authenticator := db.Authenticator(ctx)
@@ -1438,17 +1451,16 @@ func TestChannelCacheSize(t *testing.T) {
 	}
 
 	// Validate that retrieval returns expected sequences
-	require.NoError(t, db.changeCache.waitForSequence(ctx, 750, base.DefaultWaitForSequence))
-	db.user, _ = authenticator.GetUser("naomi")
-	changes, err := db.GetChanges(ctx, base.SetOf("ABC"), getChangesOptionsWithZeroSeq())
+	require.NoError(t, collection.ChangeCache().waitForSequence(ctx, 750, base.DefaultWaitForSequence))
+	collection.user, _ = authenticator.GetUser("naomi")
+	changes, err := collection.GetChanges(ctx, base.SetOf("ABC"), getChangesOptionsWithZeroSeq())
 	assert.NoError(t, err, "Couldn't GetChanges")
 	assert.Equal(t, 750, len(changes))
 
 	// Validate that cache stores the expected number of values
-	collection := db.GetSingleDatabaseCollection()
 	collectionID := collection.GetCollectionID()
 
-	abcCache := db.changeCache.getChannelCache().getSingleChannelCache(channels.NewID("ABC", collectionID)).(*singleChannelCacheImpl)
+	abcCache := collection.ChangeCache().getChannelCache().getSingleChannelCache(channels.NewID("ABC", collectionID)).(*singleChannelCacheImpl)
 	assert.Equal(t, 600, len(abcCache.logs))
 }
 
@@ -1656,7 +1668,7 @@ func TestLateArrivingSequenceTriggersOnChange(t *testing.T) {
 	//  Detect whether the 2nd was ignored using an notifyChange listener callback and make sure it was not added to the ABC channel
 	waitForOnChangeCallback := sync.WaitGroup{}
 	waitForOnChangeCallback.Add(1)
-	db.changeCache.notifyChange = func(chans channels.Set) {
+	collection.ChangeCache().notifyChange = func(chans channels.Set) {
 		expectedChan := channels.NewID("ABC", collectionID)
 		for ch := range chans {
 			if ch == expectedChan {
@@ -1706,7 +1718,7 @@ func TestLateArrivingSequenceTriggersOnChange(t *testing.T) {
 		Value:        doc2Bytes,
 		CollectionID: collectionID,
 	}
-	db.changeCache.DocChanged(feedEventDoc2)
+	collection.ChangeCache().DocChanged(feedEventDoc2)
 
 	// Send feed event for doc1. This should trigger caching for doc2, and trigger notifyChange for channel ABC.
 	feedEventDoc1 := sgbucket.FeedEvent{
@@ -1715,7 +1727,7 @@ func TestLateArrivingSequenceTriggersOnChange(t *testing.T) {
 		Value:        doc1Bytes,
 		CollectionID: collectionID,
 	}
-	db.changeCache.DocChanged(feedEventDoc1)
+	collection.ChangeCache().DocChanged(feedEventDoc1)
 
 	// -------- Wait for waitgroup ----------------
 
@@ -1752,7 +1764,7 @@ func TestInitializeEmptyCache(t *testing.T) {
 	}
 
 	// Issue getChanges for empty channel
-	changes, err := db.GetChanges(ctx, channels.BaseSetOf(t, "zero"), getChangesOptionsWithCtxOnly())
+	changes, err := collection.GetChanges(ctx, channels.BaseSetOf(t, "zero"), getChangesOptionsWithCtxOnly())
 	assert.NoError(t, err, "Couldn't GetChanges")
 	changesCount := len(changes)
 	assert.Equal(t, 0, changesCount)
@@ -1770,7 +1782,7 @@ func TestInitializeEmptyCache(t *testing.T) {
 	cacheWaiter.Add(docCount)
 	cacheWaiter.Wait()
 
-	changes, err = db.GetChanges(ctx, channels.BaseSetOf(t, "zero"), getChangesOptionsWithCtxOnly())
+	changes, err = collection.GetChanges(ctx, channels.BaseSetOf(t, "zero"), getChangesOptionsWithCtxOnly())
 	assert.NoError(t, err, "Couldn't GetChanges")
 	changesCount = len(changes)
 	assert.Equal(t, 10, changesCount)
@@ -1817,7 +1829,7 @@ func TestInitializeCacheUnderLoad(t *testing.T) {
 
 	// Wait for writes to be in progress, then getChanges for channel zero
 	writesInProgress.Wait()
-	changes, err := db.GetChanges(ctx, channels.BaseSetOf(t, "zero"), getChangesOptionsWithCtxOnly())
+	changes, err := collection.GetChanges(ctx, channels.BaseSetOf(t, "zero"), getChangesOptionsWithCtxOnly())
 	require.NoError(t, err, "Couldn't GetChanges")
 	firstChangesCount := len(changes)
 	var lastSeq SequenceID
@@ -1828,7 +1840,7 @@ func TestInitializeCacheUnderLoad(t *testing.T) {
 	// Wait for all writes to be cached, then getChanges again
 	cacheWaiter.Wait()
 
-	changes, err = db.GetChanges(ctx, channels.BaseSetOf(t, "zero"), getChangesOptionsWithSeq(lastSeq))
+	changes, err = collection.GetChanges(ctx, channels.BaseSetOf(t, "zero"), getChangesOptionsWithSeq(lastSeq))
 	require.NoError(t, err, "Couldn't GetChanges")
 	secondChangesCount := len(changes)
 	assert.Equal(t, docCount, firstChangesCount+secondChangesCount)
@@ -1850,7 +1862,7 @@ func TestNotifyForInactiveChannel(t *testing.T) {
 	// -------- Setup notifyChange callback ----------------
 
 	notifyChannel := make(chan struct{})
-	db.changeCache.notifyChange = func(chans channels.Set) {
+	collection.ChangeCache().notifyChange = func(chans channels.Set) {
 		expectedChan := channels.NewID("zero", collectionID)
 		if chans.Contains(expectedChan) {
 			notifyChannel <- struct{}{}
@@ -1926,7 +1938,8 @@ func TestChangeCache_InsertPendingEntries(t *testing.T) {
 	WriteDirect(db, []string{"ABC", "PBS"}, 6)
 
 	// wait for InsertPendingEntries to fire, move 3 and 4 to skipped and get seqs 5 + 6
-	require.NoError(t, db.changeCache.waitForSequence(ctx, 6, base.DefaultWaitForSequence))
+	collection := db.GetSingleDatabaseCollectionWithUser()
+	require.NoError(t, collection.ChangeCache().waitForSequence(ctx, 6, base.DefaultWaitForSequence))
 
 }
 
@@ -2045,7 +2058,7 @@ func BenchmarkProcessEntry(b *testing.B) {
 
 			ctx = context.AddDatabaseLogContext(ctx)
 			changeCache := &changeCache{}
-			if err := changeCache.Init(ctx, context, nil, nil); err != nil {
+			if err := changeCache.Init(ctx, collection, context.channelCache, nil, nil, ""); err != nil {
 				log.Printf("Init failed for changeCache: %v", err)
 				b.Fail()
 			}
@@ -2056,6 +2069,7 @@ func BenchmarkProcessEntry(b *testing.B) {
 			}
 			defer changeCache.Stop()
 
+			require.NoError(b, err)
 			if bm.warmCacheCount > 0 {
 				for i := 0; i < bm.warmCacheCount; i++ {
 					channel := channels.NewID(fmt.Sprintf("channel_%d", i), collectionID)
@@ -2276,7 +2290,7 @@ func BenchmarkDocChanged(b *testing.B) {
 
 			ctx = context.AddDatabaseLogContext(ctx)
 			changeCache := &changeCache{}
-			if err := changeCache.Init(ctx, context, nil, nil); err != nil {
+			if err := changeCache.Init(ctx, collection, context.channelCache, nil, nil, ""); err != nil {
 				log.Printf("Init failed for changeCache: %v", err)
 				b.Fail()
 			}
@@ -2286,6 +2300,7 @@ func BenchmarkDocChanged(b *testing.B) {
 			}
 			defer changeCache.Stop()
 
+			require.NoError(b, err)
 			if bm.warmCacheCount > 0 {
 				for i := 0; i < bm.warmCacheCount; i++ {
 					channel := channels.NewID(fmt.Sprintf("channel_%d", i), collectionID)

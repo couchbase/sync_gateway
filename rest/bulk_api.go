@@ -217,7 +217,7 @@ func (h *handler) handleAllDocs() error {
 
 		}
 	} else {
-		if err := h.db.ForEachDocID(h.ctx(), writeDoc, options); err != nil {
+		if err := h.db.GetSingleDatabaseCollection().ForEachDocID(h.ctx(), writeDoc, options); err != nil {
 			return err
 		}
 	}
@@ -310,7 +310,7 @@ func (h *handler) handleDumpChannel() error {
 
 	collection := h.db.GetSingleDatabaseCollection()
 	collectionID := collection.GetCollectionID()
-	chanLog := h.db.GetChangeLog(ch.NewID(channelName, collectionID), since)
+	chanLog := collection.GetChangeLog(ch.NewID(channelName, collectionID), since)
 	if chanLog == nil {
 		return base.HTTPErrorf(http.StatusNotFound, "no such channel")
 	}

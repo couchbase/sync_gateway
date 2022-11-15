@@ -417,7 +417,7 @@ func (rt *RestTester) WaitForSequence(seq uint64) error {
 	if database == nil {
 		return fmt.Errorf("No database found")
 	}
-	return database.WaitForSequence(base.TestCtx(rt.TB), seq)
+	return database.GetSingleDatabaseCollection().WaitForSequence(base.TestCtx(rt.TB), seq)
 }
 
 func (rt *RestTester) WaitForPendingChanges() error {
@@ -425,7 +425,7 @@ func (rt *RestTester) WaitForPendingChanges() error {
 	if database == nil {
 		return fmt.Errorf("No database found")
 	}
-	return database.WaitForPendingChanges(base.TestCtx(rt.TB))
+	return database.GetSingleDatabaseCollection().WaitForPendingChanges(base.TestCtx(rt.TB))
 }
 
 func (rt *RestTester) SetAdminParty(partyTime bool) error {

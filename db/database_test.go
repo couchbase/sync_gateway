@@ -779,8 +779,8 @@ func (e AllDocsEntry) Equal(e2 AllDocsEntry) bool {
 
 var options ForEachDocIDOptions
 
-func allDocIDs(ctx context.Context, db *Database) (docs []AllDocsEntry, err error) {
-	err = db.ForEachDocID(ctx, func(doc IDRevAndSequence, channels []string) (bool, error) {
+func allDocIDs(ctx context.Context, collection *DatabaseCollection) (docs []AllDocsEntry, err error) {
+	err = collection.ForEachDocID(ctx, func(doc IDRevAndSequence, channels []string) (bool, error) {
 		docs = append(docs, AllDocsEntry{
 			IDRevAndSequence: doc,
 			Channels:         channels,
@@ -807,7 +807,7 @@ func TestAllDocsOnly(t *testing.T) {
 	collectionID := collection.GetCollectionID()
 
 	// Trigger creation of the channel cache for channel "all"
-	db.changeCache.getChannelCache().getSingleChannelCache(channels.NewID("all", collectionID))
+	collection.ChangeCache().getChannelCache().getSingleChannelCache(channels.NewID("all", collectionID))
 
 	ids := make([]AllDocsEntry, 100)
 	for i := 0; i < 100; i++ {
@@ -824,7 +824,7 @@ func TestAllDocsOnly(t *testing.T) {
 		assert.NoError(t, err, "Couldn't create document")
 	}
 
-	alldocs, err := allDocIDs(ctx, db)
+	alldocs, err := allDocIDs(ctx, collection.DatabaseCollection)
 	assert.NoError(t, err, "AllDocIDs failed")
 	require.Len(t, alldocs, 100)
 	for i, entry := range alldocs {
@@ -835,7 +835,7 @@ func TestAllDocsOnly(t *testing.T) {
 	_, err = collection.DeleteDoc(ctx, ids[23].DocID, ids[23].RevID)
 	assert.NoError(t, err, "Couldn't delete doc 23")
 
-	alldocs, err = allDocIDs(ctx, db)
+	alldocs, err = allDocIDs(ctx, collection.DatabaseCollection)
 	assert.NoError(t, err, "AllDocIDs failed")
 	require.Len(t, alldocs, 99)
 	for i, entry := range alldocs {
@@ -848,10 +848,10 @@ func TestAllDocsOnly(t *testing.T) {
 
 	// Inspect the channel log to confirm that it's only got the last 50 sequences.
 	// There are 101 sequences overall, so the 1st one it has should be #52.
-	err = db.changeCache.waitForSequence(ctx, 101, base.DefaultWaitForSequence)
+	err = collection.ChangeCache().waitForSequence(ctx, 101, base.DefaultWaitForSequence)
 	require.NoError(t, err)
 
-	changeLog := db.GetChangeLog(channels.NewID("all", collectionID), 0)
+	changeLog := collection.GetChangeLog(channels.NewID("all", collectionID), 0)
 	require.Len(t, changeLog, 50)
 	assert.Equal(t, "alldoc-51", changeLog[0].DocID)
 
@@ -860,7 +860,7 @@ func TestAllDocsOnly(t *testing.T) {
 	changesCtx, changesCtxCancel := context.WithCancel(context.Background())
 	options.ChangesCtx = changesCtx
 	defer changesCtxCancel()
-	changes, err := db.GetChanges(ctx, channels.BaseSetOf(t, "all"), options)
+	changes, err := collection.GetChanges(ctx, channels.BaseSetOf(t, "all"), options)
 	assert.NoError(t, err, "Couldn't GetChanges")
 	require.Len(t, changes, 100)
 
@@ -888,7 +888,7 @@ func TestAllDocsOnly(t *testing.T) {
 	assert.True(t, sortedSeqAsc(changes), "Sequences should be ascending for all entries in the changes response")
 
 	options.IncludeDocs = true
-	changes, err = db.GetChanges(ctx, channels.BaseSetOf(t, "KFJC"), options)
+	changes, err = collection.GetChanges(ctx, channels.BaseSetOf(t, "KFJC"), options)
 	assert.NoError(t, err, "Couldn't GetChanges")
 	assert.Len(t, changes, 10)
 	for i, change := range changes {
@@ -987,7 +987,7 @@ func TestConflicts(t *testing.T) {
 	collectionID := collection.GetCollectionID()
 
 	allChannel := channels.NewID("all", collectionID)
-	db.changeCache.getChannelCache().getSingleChannelCache(allChannel)
+	collection.ChangeCache().getChannelCache().getSingleChannelCache(allChannel)
 
 	cacheWaiter := db.NewDCPCachingCountWaiter(t)
 
@@ -999,7 +999,7 @@ func TestConflicts(t *testing.T) {
 	// Wait for rev to be cached
 	cacheWaiter.AddAndWait(1)
 
-	changeLog := db.GetChangeLog(channels.NewID("all", collectionID), 0)
+	changeLog := collection.GetChangeLog(channels.NewID("all", collectionID), 0)
 	assert.Equal(t, 1, len(changeLog))
 
 	// Create two conflicting changes:
@@ -1033,7 +1033,7 @@ func TestConflicts(t *testing.T) {
 
 	// Verify the change-log of the "all" channel:
 	cacheWaiter.Wait()
-	changeLog = db.GetChangeLog(allChannel, 0)
+	changeLog = collection.GetChangeLog(allChannel, 0)
 	assert.Equal(t, 1, len(changeLog))
 	assert.Equal(t, uint64(3), changeLog[0].Sequence)
 	assert.Equal(t, "doc", changeLog[0].DocID)
@@ -1045,7 +1045,7 @@ func TestConflicts(t *testing.T) {
 		Conflicts:  true,
 		ChangesCtx: context.Background(),
 	}
-	changes, err := db.GetChanges(ctx, channels.BaseSetOf(t, "all"), options)
+	changes, err := collection.GetChanges(ctx, channels.BaseSetOf(t, "all"), options)
 	assert.NoError(t, err, "Couldn't GetChanges")
 	assert.Equal(t, 1, len(changes))
 	assert.Equal(t, &ChangeEntry{
@@ -1079,7 +1079,7 @@ func TestConflicts(t *testing.T) {
 	cacheWaiter.AddAndWait(1)
 
 	// Verify the _changes feed:
-	changes, err = db.GetChanges(ctx, channels.BaseSetOf(t, "all"), options)
+	changes, err = collection.GetChanges(ctx, channels.BaseSetOf(t, "all"), options)
 	assert.NoError(t, err, "Couldn't GetChanges")
 	assert.Equal(t, 1, len(changes))
 	assert.Equal(t, &ChangeEntry{
@@ -1656,7 +1656,7 @@ func TestRecentSequenceHistory(t *testing.T) {
 	// Recent sequence pruning only prunes entries older than what's been seen over DCP
 	// (to ensure it's not pruning something that may still be coalesced).  Because of this, test waits
 	// for caching before attempting to trigger pruning.
-	err = db.changeCache.waitForSequence(ctx, seqTracker, base.DefaultWaitForSequence)
+	err = collection.ChangeCache().waitForSequence(ctx, seqTracker, base.DefaultWaitForSequence)
 	require.NoError(t, err)
 
 	// Add another sequence to validate pruning when past max (20)
@@ -1682,7 +1682,7 @@ func TestRecentSequenceHistory(t *testing.T) {
 		seqTracker++
 	}
 
-	err = db.changeCache.waitForSequence(ctx, seqTracker, base.DefaultWaitForSequence) //
+	err = collection.ChangeCache().waitForSequence(ctx, seqTracker, base.DefaultWaitForSequence) //
 	require.NoError(t, err)
 	revid, doc, err = collection.Put(ctx, "doc1", body)
 	body[BodyId] = doc.ID
@@ -1700,6 +1700,7 @@ func TestChannelView(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 	collection := db.GetSingleDatabaseCollectionWithUser()
+	collectionID := collection.GetCollectionID()
 
 	// Create doc
 	log.Printf("Create doc 1...")
@@ -1712,7 +1713,7 @@ func TestChannelView(t *testing.T) {
 	// Query view (retry loop to wait for indexing)
 	for i := 0; i < 10; i++ {
 		var err error
-		entries, err = db.getChangesInChannelFromQuery(ctx, "*", 0, 100, 0, false)
+		entries, err = db.getChangesInChannelFromQuery(ctx, channels.ID{Name: "*", CollectionID: collectionID}, 0, 100, 0, false)
 
 		assert.NoError(t, err, "Couldn't create document")
 		if len(entries) >= 1 {
@@ -2436,7 +2437,7 @@ func TestResyncUpdateAllDocChannels(t *testing.T) {
 		return state == DBOffline
 	})
 
-	_, err = db.UpdateAllDocChannels(ctx, false, func(docsProcessed, docsChanged *int) {}, base.NewSafeTerminator())
+	_, err = collection.UpdateAllDocChannels(ctx, false, func(docsProcessed, docsChanged *int) {}, base.NewSafeTerminator())
 	assert.NoError(t, err)
 
 	syncFnCount := int(db.DbStats.Database().SyncFunctionCount.Value())
@@ -2462,7 +2463,7 @@ func TestTombstoneCompactionStopWithManager(t *testing.T) {
 		assert.NoError(t, err)
 	}
 
-	require.NoError(t, db.WaitForPendingChanges(ctx))
+	require.NoError(t, collection.WaitForPendingChanges(ctx))
 
 	leakyBucket, ok := base.AsLeakyBucket(db.Bucket)
 	require.True(t, ok)
@@ -2610,7 +2611,7 @@ func TestImportCompactPanic(t *testing.T) {
 	require.NoError(t, err)
 	_, err = collection.DeleteDoc(ctx, doc.ID, rev)
 	require.NoError(t, err)
-	require.NoError(t, db.WaitForPendingChanges(ctx))
+	require.NoError(t, collection.WaitForPendingChanges(ctx))
 
 	// Wait for Compact to run - in the failing case it'll panic before incrementing the stat
 	_, ok := base.WaitForStat(func() int64 {

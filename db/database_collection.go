@@ -10,6 +10,8 @@ package db
 
 import (
 	"context"
+	"fmt"
+	"time"
 
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
@@ -20,6 +22,7 @@ import (
 type DatabaseCollection struct {
 	Bucket        base.Bucket      // Storage
 	revisionCache RevisionCache    // Cache of recently-accessed doc revisions
+	changeCache   *changeCache     // Cache of recently-access channels
 	dbCtx         *DatabaseContext // pointer to database context to allow passthrough of functions
 }
 
@@ -43,15 +46,20 @@ func (c *DatabaseCollection) Authenticator(ctx context.Context) *auth.Authentica
 	return c.dbCtx.Authenticator(ctx)
 }
 
+// activeChannels tracks active replications by channel. This is a database level property.
+func (c *DatabaseCollection) activeChannels() *channels.ActiveChannels {
+	return c.dbCtx.activeChannels
+}
+
 // backupOldRev creates a temporary copy of a old revision body when resolving conflicts. This is controlled at the database level.
 func (c *DatabaseCollection) backupOldRev() bool {
 	return c.dbCtx.Options.ImportOptions.BackupOldRev
 
 }
 
-// changeCache returns the set of channels in memory. This is currently at the database level.
-func (c *DatabaseCollection) changeCache() *changeCache {
-	return c.dbCtx.changeCache
+// ChangeCache returns the set of channels in memory. This is currently at the database level.
+func (c *DatabaseCollection) ChangeCache() *changeCache {
+	return c.changeCache
 }
 
 // channelMapper runs the javascript sync function. The is currently at the database level.
@@ -128,6 +136,11 @@ func (c *DatabaseCollection) localDocExpirySecs() uint32 {
 	return c.dbCtx.Options.LocalDocExpirySecs
 }
 
+// mutationListener returns mutation level for the database.
+func (c *DatabaseCollection) mutationListener() *changeListener {
+	return &c.dbCtx.mutationListener
+}
+
 // Name returns the name of the collection. If couchbase server is not aware of collections, it will return _default.
 func (c *DatabaseCollection) Name() string {
 	collection, err := base.AsCollection(c.Bucket)
@@ -175,4 +188,61 @@ func (c *DatabaseCollection) userXattrKey() string {
 // UseXattrs specifies whether the collection stores metadata in xattars or inline. This is controlled at a database level.
 func (c *DatabaseCollection) UseXattrs() bool {
 	return c.dbCtx.Options.EnableXattr
+}
+
+// Reloads the database's User object, in case its persistent properties have been changed.
+func (c *DatabaseCollectionWithUser) ReloadUser(ctx context.Context) error {
+	if c.user == nil {
+		return nil
+	}
+	user, err := c.Authenticator(ctx).GetUser(c.user.Name())
+	if err != nil {
+		return err
+	}
+	if user == nil {
+		return fmt.Errorf("User not found during reload")
+	} else {
+		c.user = user
+		return nil
+	}
+}
+
+func (c *DatabaseCollectionWithUser) User() auth.User {
+	return c.user
+}
+
+func (c *DatabaseCollection) channelQueryLimit() int {
+	return c.dbCtx.Options.CacheOptions.ChannelQueryLimit
+}
+
+func (c *DatabaseCollection) IsClosed() bool {
+	return c.Bucket == nil
+}
+
+// exitChanges will close active _changes feeds on the DB. This is a database level close.
+func (c *DatabaseCollection) exitChanges() chan struct{} {
+	return c.dbCtx.ExitChanges
+}
+
+// Cache flush support.  Currently test-only - added for unit test access from rest package
+func (c *DatabaseCollection) FlushChannelCache(ctx context.Context) error {
+	base.InfofCtx(ctx, base.KeyCache, "Flushing channel cache")
+	return c.changeCache.Clear()
+}
+
+func (c *DatabaseCollection) useViews() bool {
+	return c.dbCtx.Options.UseViews
+}
+
+func (c *DatabaseCollection) slowQueryWarningThreshold() time.Duration {
+	return c.dbCtx.Options.SlowQueryWarningThreshold
+}
+
+func (c *DatabaseCollection) queryPaginationLimit() int {
+	return c.dbCtx.Options.QueryPaginationLimit
+}
+
+// allPrincipalIDs returns the IDs of all users and roles, including deleted Roles
+func (c *DatabaseCollection) allPrincipalIDs(ctx context.Context) (users, roles []string, err error) {
+	return c.dbCtx.AllPrincipalIDs(ctx)
 }

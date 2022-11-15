@@ -20,6 +20,7 @@ import (
 
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/channels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -77,12 +78,17 @@ func isIndexEmpty(store base.N1QLStore, useXattrs bool) (bool, error) {
 }
 
 func (db *DatabaseContext) CacheCompactActive() bool {
-	channelCache := db.changeCache.getChannelCache()
-	compactingCache, ok := channelCache.(*channelCacheImpl)
-	if !ok {
-		return false
+	for _, collection := range db.CollectionByID {
+		channelCache := collection.ChangeCache().getChannelCache()
+		compactingCache, ok := channelCache.(*channelCacheImpl)
+		if !ok {
+			return false
+		}
+		if compactingCache.isCompactActive() {
+			return true
+		}
 	}
-	return compactingCache.isCompactActive()
+	return false
 }
 
 func (db *DatabaseContext) WaitForCaughtUp(targetCount int64) error {
@@ -367,7 +373,11 @@ func SuspendSequenceBatching() func() {
 
 // Public channel view call - for unit test support
 func (dbc *DatabaseContext) ChannelViewForTest(tb testing.TB, channelName string, startSeq, endSeq uint64) (LogEntries, error) {
-	return dbc.getChangesInChannelFromQuery(base.TestCtx(tb), channelName, startSeq, endSeq, 0, false)
+	channel := channels.ID{
+		Name:         channelName,
+		CollectionID: dbc.GetSingleDatabaseCollection().GetCollectionID(),
+	}
+	return dbc.getChangesInChannelFromQuery(base.TestCtx(tb), channel, startSeq, endSeq, 0, false)
 }
 
 // Test-only version of GetPrincipal that doesn't trigger channel/role recalculation

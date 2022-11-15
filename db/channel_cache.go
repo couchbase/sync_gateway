@@ -75,7 +75,7 @@ type ChannelCache interface {
 
 // ChannelQueryHandler interface is implemented by databaseContext.
 type ChannelQueryHandler interface {
-	getChangesInChannelFromQuery(ctx context.Context, channelName string, startSeq, endSeq uint64, limit int, activeOnly bool) (LogEntries, error)
+	getChangesInChannelFromQuery(ctx context.Context, channelName channels.ID, startSeq, endSeq uint64, limit int, activeOnly bool) (LogEntries, error)
 }
 
 type StableSequenceCallbackFunc func() uint64

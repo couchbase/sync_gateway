@@ -342,9 +342,9 @@ func (h *handler) sendSimpleChanges(channels base.Set, options db.ChangesOptions
 	var feed <-chan *db.ChangeEntry
 	var err error
 	if len(docids) > 0 {
-		feed, err = h.db.DocIDChangesFeed(h.ctx(), channels, docids, options)
+		feed, err = h.db.GetSingleDatabaseCollectionWithUser().DocIDChangesFeed(h.ctx(), channels, docids, options)
 	} else {
-		feed, err = h.db.MultiChangesFeed(h.ctx(), channels, options)
+		feed, err = h.db.GetSingleDatabaseCollectionWithUser().MultiChangesFeed(h.ctx(), channels, options)
 	}
 	if err != nil {
 		return err, false
@@ -444,7 +444,7 @@ func (h *handler) sendSimpleChanges(channels base.Set, options db.ChangesOptions
 func (h *handler) generateContinuousChanges(inChannels base.Set, options db.ChangesOptions, send func([]*db.ChangeEntry) error) (error, bool) {
 	// Ensure continuous is set, since generateChanges now supports both continuous and one-shot
 	options.Continuous = true
-	err, forceClose := db.GenerateChanges(h.ctx(), h.rq.Context(), h.db, inChannels, options, nil, send)
+	err, forceClose := db.GenerateChanges(h.ctx(), h.rq.Context(), h.db.GetSingleDatabaseCollectionWithUser(), inChannels, options, nil, send)
 	if sendErr, ok := err.(*db.ChangesSendErr); ok {
 		h.logStatus(http.StatusOK, fmt.Sprintf("0Write error: %v", sendErr))
 		return nil, forceClose // error is probably because the client closed the connection
