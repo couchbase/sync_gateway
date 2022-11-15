@@ -538,11 +538,8 @@ func (db *Database) MultiChangesFeed(ctx context.Context, chans base.Set, option
 
 	base.DebugfCtx(ctx, base.KeyChanges, "Int sequence multi changes feed...")
 
-	collectionID, err := db.GetSingleCollectionID()
-	if err != nil {
-		return nil, err
-	}
-	return db.SimpleMultiChangesFeed(ctx, channels.SetOfFromSingleCollection(chans.ToArray(), collectionID), options)
+	collection := db.GetSingleDatabaseCollection()
+	return db.SimpleMultiChangesFeed(ctx, channels.SetOfFromSingleCollection(chans.ToArray(), collection.GetCollectionID()), options)
 
 }
 
@@ -591,13 +588,11 @@ func (db *Database) checkForUserUpdates(ctx context.Context, userChangeCount uin
 			}
 			// check whether channel set has changed
 			singleCollectionChannels := db.user.InheritedChannels().CompareKeys(previousChannels)
-			singleCollectionID, err := db.GetSingleCollectionID()
-			if err != nil {
-				return false, 0, nil, err
-			}
+			collection := db.GetSingleDatabaseCollection()
+			collectionID := collection.GetCollectionID()
 
 			for channelName, changed := range singleCollectionChannels {
-				changedChannels[channels.NewID(channelName, singleCollectionID)] = changed
+				changedChannels[channels.NewID(channelName, collectionID)] = changed
 			}
 			if len(changedChannels) > 0 {
 				base.DebugfCtx(ctx, base.KeyChanges, "Modified channel set after user reload: %v", base.UD(changedChannels))
@@ -624,10 +619,8 @@ func (db *Database) SimpleMultiChangesFeed(ctx context.Context, chans channels.S
 	base.InfofCtx(ctx, base.KeyChanges, "MultiChangesFeed(channels: %s, options: %s) ... %s", base.UD(chans), options, base.UD(to))
 	output := make(chan *ChangeEntry, 50)
 
-	singleCollectionID, err := db.GetSingleCollectionID()
-	if err != nil {
-		return nil, err
-	}
+	collection := db.GetSingleDatabaseCollection()
+	singleCollectionID := collection.GetCollectionID()
 	go func() {
 
 		defer func() {

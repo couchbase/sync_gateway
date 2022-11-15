@@ -197,6 +197,27 @@ var QueryRolesExcludeDeleted = SGQuery{
 			"FROM %s AS %s "+
 			"USE INDEX($idx) "+
 			"WHERE META(%s).id LIKE '%s' "+
+			"AND META(%s).id LIKE '%s' "+
+			"AND (%s.deleted IS MISSING OR %s.deleted = false) "+
+			"AND META(%s).id >= $%s "+ // Uses >= for inclusive startKey
+			"ORDER BY META(%s).id",
+		base.KeyspaceQueryAlias,
+		base.KeyspaceQueryToken, base.KeyspaceQueryAlias,
+		base.KeyspaceQueryAlias, SyncDocWildcard,
+		base.KeyspaceQueryAlias, SyncRoleWildcard,
+		base.KeyspaceQueryAlias, base.KeyspaceQueryAlias,
+		base.KeyspaceQueryAlias, QueryParamStartKey,
+		base.KeyspaceQueryAlias),
+	adhoc: false,
+}
+
+var QueryRolesExcludeDeletedUsingRoleIdx = SGQuery{
+	name: QueryTypeRolesExcludeDeleted,
+	statement: fmt.Sprintf(
+		"SELECT META(%s).id "+
+			"FROM %s AS %s "+
+			"USE INDEX($idx) "+
+			"WHERE META(%s).id LIKE '%s' "+
 			"AND (%s.deleted IS MISSING OR %s.deleted = false) "+
 			"AND META(%s).id >= $%s "+ // Uses >= for inclusive startKey
 			"ORDER BY META(%s).id",
@@ -606,7 +627,7 @@ func (context *DatabaseContext) BuildRolesQuery(startKey string, limit int) (str
 
 	var queryStatement string
 	if context.IsServerless() {
-		queryStatement = replaceIndexTokensQuery(QueryRolesExcludeDeleted.statement, sgIndexes[IndexRole], context.UseXattrs())
+		queryStatement = replaceIndexTokensQuery(QueryRolesExcludeDeletedUsingRoleIdx.statement, sgIndexes[IndexRole], context.UseXattrs())
 	} else {
 		queryStatement = replaceIndexTokensQuery(QueryRolesExcludeDeleted.statement, sgIndexes[IndexSyncDocs], context.UseXattrs())
 	}
