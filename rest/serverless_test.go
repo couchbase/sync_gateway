@@ -178,7 +178,7 @@ func TestServerlessBucketCredentialsFetchDatabases(t *testing.T) {
 	assert.False(t, found)
 }
 
-func TestLOl(t *testing.T) {
+func TestServerlessGoCBConnectionString(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
 	}
