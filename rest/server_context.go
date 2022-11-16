@@ -413,6 +413,13 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	if spec.Server == "" {
 		spec.Server = sc.Config.Bootstrap.Server
 	}
+	if sc.Config.IsServerless() {
+		connStr, err := spec.GetGoCBConnString(&base.GoCBConnStringParams{KVPoolSize: base.DefaultGocbKvPoolSizeServerless})
+		if err != nil {
+			return nil, err
+		}
+		spec.Server = connStr
+	}
 
 	if sc.databases_[dbName] != nil {
 		if useExisting {

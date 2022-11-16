@@ -111,7 +111,6 @@ func (dc *DbConfig) MakeBucketSpec() base.BucketSpec {
 	}
 
 	return base.BucketSpec{
-		Serverless:            dc.StartupConfig.IsServerless(),
 		Server:                server,
 		BucketName:            bucketName,
 		Keypath:               bc.KeyPath,
@@ -133,7 +132,6 @@ func (bucketConfig *BucketConfig) GetCredentials() (username string, password st
 // DbConfig defines a database configuration used in a config file or the REST API.
 type DbConfig struct {
 	BucketConfig
-	StartupConfig
 	Scopes                           ScopesConfig                     `json:"scopes,omitempty"`                // Scopes and collection specific config
 	Name                             string                           `json:"name,omitempty"`                  // Database name in REST API (stored as key in JSON)
 	Sync                             *string                          `json:"sync,omitempty"`                  // The sync function applied to write operations in the _default scope and collection

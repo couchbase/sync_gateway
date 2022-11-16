@@ -65,22 +65,6 @@ func TestGetGoCBConnString(t *testing.T) {
 			},
 			expectedConnStr: "http://localhost:8091?ca_cert_path=.%2FmyCACertPath&custom=true&idle_http_connection_timeout=90000&kv_pool_size=3&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
 		},
-		{
-			name: "serverless connection",
-			bucketSpec: BucketSpec{
-				Serverless: true,
-				Server:     "http://localhost:8091",
-			},
-			expectedConnStr: "http://localhost:8091?idle_http_connection_timeout=90000&kv_pool_size=1&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
-		},
-		{
-			name: "serverless connection with kv pool specified",
-			bucketSpec: BucketSpec{
-				Serverless: true,
-				Server:     "http://localhost:8091?custom=true&kv_pool_size=3",
-			},
-			expectedConnStr: "http://localhost:8091?custom=true&idle_http_connection_timeout=90000&kv_pool_size=3&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
-		},
 	}
 
 	for _, test := range tests {
