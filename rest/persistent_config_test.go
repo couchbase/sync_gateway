@@ -16,6 +16,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/stretchr/testify/assert"
@@ -362,4 +363,54 @@ func TestImportFilterEndpoint(t *testing.T) {
 	// Ensure document is imported based on default import filter
 	resp = BootstrapAdminRequest(t, http.MethodGet, "/db1/importDoc3", "")
 	resp.RequireStatus(http.StatusOK)
+}
+
+// Development-time test, expects locally running Couchbase Server and designed for long-running memory profiling
+func DevTestFetchConfigManual(t *testing.T) {
+
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
+
+	serverErr := make(chan error, 0)
+
+	config := DefaultStartupConfig("")
+
+	logLevel := base.LevelInfo
+	config.Logging.Console = &base.ConsoleLoggerConfig{
+		LogLevel: &logLevel,
+		LogKeys:  []string{"HTTP", "Config", "CRUD", "DCP", "Sync"},
+	}
+
+	config.API.AdminInterfaceAuthentication = base.BoolPtr(false)
+
+	config.API.PublicInterface = "127.0.0.1:4984"
+	config.API.AdminInterface = "127.0.0.1:4985"
+	config.API.MetricsInterface = "127.0.0.1:4986"
+
+	config.Bootstrap.Server = "couchbase://localhost"
+	config.Bootstrap.Username = "configUser"
+	config.Bootstrap.Password = "password"
+	config.Bootstrap.ServerTLSSkipVerify = base.BoolPtr(true)
+	config.Bootstrap.UseTLSServer = base.BoolPtr(false)
+
+	// Start SG with no databases, high frequency polling
+	config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(time.Second)
+
+	ctx := base.TestCtx(t)
+	sc, err := SetupServerContext(ctx, &config, true)
+	require.NoError(t, err)
+
+	defer func() {
+		sc.Close(ctx)
+		require.NoError(t, <-serverErr)
+	}()
+
+	go func() {
+		serverErr <- StartServer(ctx, &config, sc)
+	}()
+	require.NoError(t, sc.WaitForRESTAPIs())
+
+	// Sleep to wait for bucket polling iterations, or allow manual modification to server accessibility
+
+	time.Sleep(15 * time.Second)
+
 }
