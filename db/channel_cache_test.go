@@ -24,11 +24,8 @@ import (
 )
 
 func TestChannelCacheMaxSize(t *testing.T) {
-	t.Skip("fIXME: stats")
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyCache)
 
-	bucket := base.GetTestBucket(t)
-
+	bucket := base.GetTestBucketDefaultCollection(t)
 	ctx := base.TestCtx(t)
 	dbCtx, err := NewDatabaseContext(ctx, "db", bucket, false, DatabaseContextOptions{})
 	require.NoError(t, err)

@@ -2007,7 +2007,7 @@ func (dbCtx *DatabaseContext) onlyDefaultCollection() bool {
 }
 
 // GetDefaultDatabaseCollection will return the default collection if the default collection is supplied in the database config.
-func (dbc *Database) GetDefaultDatabaseCollection() (*DatabaseCollection, error) {
+func (dbc *DatabaseContext) GetDefaultDatabaseCollection() (*DatabaseCollection, error) {
 	col, exists := dbc.CollectionByID[base.DefaultCollectionID]
 	if !exists {
 		return nil, fmt.Errorf("default collection is not configured on this database")

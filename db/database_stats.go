@@ -21,14 +21,18 @@ package db
 
 // Update database-specific stats that are more efficiently calculated at stats collection time
 func (db *DatabaseContext) UpdateCalculatedStats() {
-	return
-	/* FIXME
-	if db.changeCache != nil {
-		db.changeCache.updateStats()
-		channelCache := db.changeCache.getChannelCache()
+	if !db.onlyDefaultCollection() {
+		return
+	}
+	defaultCollection, err := db.GetDefaultDatabaseCollection()
+	if err != nil {
+		return
+	}
+	if defaultCollection.changeCache != nil {
+		defaultCollection.changeCache.updateStats()
+		channelCache := defaultCollection.changeCache.getChannelCache()
 		db.DbStats.Cache().ChannelCacheMaxEntries.Set(int64(channelCache.MaxCacheSize()))
 		db.DbStats.Cache().HighSeqCached.Set(int64(channelCache.GetHighCacheSequence()))
 	}
-	*/
 
 }
