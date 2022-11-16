@@ -107,7 +107,7 @@ func TestChangesAfterChannelAdded(t *testing.T) {
 	cacheWaiter := db.NewDCPCachingCountWaiter(t)
 
 	// Create a doc on two channels (sequence 1):
-	revid, _, err := collection.Put(ctx, "doc1", Body{"channels": []string{"ABC", "PBS"}})
+	_, _, err := collection.Put(ctx, "doc1", Body{"channels": []string{"ABC", "PBS"}})
 	require.NoError(t, err)
 	cacheWaiter.AddAndWait(1)
 
@@ -145,7 +145,7 @@ func TestChangesAfterChannelAdded(t *testing.T) {
 	lastSeq, _ = ParseSequenceID(lastSeq.String())
 
 	// Add a new doc (sequence 3):
-	revid, _, err = collection.Put(ctx, "doc2", Body{"channels": []string{"PBS"}})
+	revid, _, err := collection.Put(ctx, "doc2", Body{"channels": []string{"PBS"}})
 	require.NoError(t, err)
 
 	// Check the _changes feed -- this is to make sure the changeCache properly received
@@ -225,10 +225,12 @@ func TestDocDeletionFromChannelCoalescedRemoved(t *testing.T) {
 	assert.NoError(t, err, "Couldn't GetChanges")
 	printChanges(changes)
 	assert.Equal(t, 1, len(changes))
-	assert.Equal(t, &ChangeEntry{
-		Seq:     SequenceID{Seq: 1},
-		ID:      "alpha",
-		Changes: []ChangeRev{{"rev": revid}}}, changes[0])
+	collectionID := collection.GetCollectionID()
+	require.Equal(t, &ChangeEntry{
+		Seq:          SequenceID{Seq: 1},
+		ID:           "alpha",
+		Changes:      []ChangeRev{{"rev": revid}},
+		collectionID: collectionID}, changes[0])
 
 	lastSeq := getLastSeq(changes)
 	lastSeq, _ = ParseSequenceID(lastSeq.String())
@@ -269,11 +271,12 @@ func TestDocDeletionFromChannelCoalescedRemoved(t *testing.T) {
 
 	assert.Equal(t, 1, len(changes))
 	assert.Equal(t, &ChangeEntry{
-		Seq:        SequenceID{Seq: 2},
-		ID:         "alpha",
-		Removed:    base.SetOf("A"),
-		allRemoved: true,
-		Changes:    []ChangeRev{{"rev": "2-e99405a23fa102238fa8c3fd499b15bc"}}}, changes[0])
+		Seq:          SequenceID{Seq: 2},
+		ID:           "alpha",
+		Removed:      base.SetOf("A"),
+		allRemoved:   true,
+		Changes:      []ChangeRev{{"rev": "2-e99405a23fa102238fa8c3fd499b15bc"}},
+		collectionID: collectionID}, changes[0])
 
 	printChanges(changes)
 }
@@ -307,11 +310,13 @@ func TestDocDeletionFromChannelCoalesced(t *testing.T) {
 	assert.NoError(t, err, "Couldn't GetChanges")
 	printChanges(changes)
 
+	collectionID := collection.GetCollectionID()
 	assert.Equal(t, 1, len(changes))
-	assert.Equal(t, &ChangeEntry{
-		Seq:     SequenceID{Seq: 1},
-		ID:      "alpha",
-		Changes: []ChangeRev{{"rev": revid}}}, changes[0])
+	require.Equal(t, &ChangeEntry{
+		Seq:          SequenceID{Seq: 1},
+		ID:           "alpha",
+		Changes:      []ChangeRev{{"rev": revid}},
+		collectionID: collectionID}, changes[0])
 
 	lastSeq := getLastSeq(changes)
 	lastSeq, _ = ParseSequenceID(lastSeq.String())
@@ -348,10 +353,11 @@ func TestDocDeletionFromChannelCoalesced(t *testing.T) {
 	assert.NoError(t, err, "Couldn't GetChanges (2nd)")
 
 	assert.Equal(t, 1, len(changes))
-	assert.Equal(t, &ChangeEntry{
-		Seq:     SequenceID{Seq: 3},
-		ID:      "alpha",
-		Changes: []ChangeRev{{"rev": "3-e99405a23fa102238fa8c3fd499b15bc"}}}, changes[0])
+	require.Equal(t, &ChangeEntry{
+		Seq:          SequenceID{Seq: 3},
+		ID:           "alpha",
+		Changes:      []ChangeRev{{"rev": "3-e99405a23fa102238fa8c3fd499b15bc"}},
+		collectionID: collectionID}, changes[0])
 
 	printChanges(changes)
 }

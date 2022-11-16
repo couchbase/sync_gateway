@@ -35,8 +35,7 @@ func TestChannelCacheMaxSize(t *testing.T) {
 	defer dbCtx.Close(ctx)
 	cache := dbCtx.changeCache.getChannelCache()
 
-	collectionID, err := dbCtx.GetSingleCollectionID()
-	require.NoError(t, err)
+	collectionID := dbCtx.GetSingleDatabaseCollection().GetCollectionID()
 
 	// Make channels active
 	_, err = cache.GetChanges(channels.NewID("TestA", collectionID), getChangesOptionsWithCtxOnly())
