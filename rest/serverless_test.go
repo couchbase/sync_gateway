@@ -190,13 +190,13 @@ func TestServerlessGoCBConnectionString(t *testing.T) {
 	}{
 		{
 			name:            "serverless connection",
-			expectedConnStr: "couchbase://localhost?idle_http_connection_timeout=90000&kv_pool_size=1&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
+			expectedConnStr: "?idle_http_connection_timeout=90000&kv_pool_size=1&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
 			kvConnCount:     1,
 		},
 		{
 			name:            "serverless connection with kv pool specified",
-			specKvConn:      "couchbase://localhost?idle_http_connection_timeout=90000&kv_pool_size=3&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
-			expectedConnStr: "couchbase://localhost?idle_http_connection_timeout=90000&kv_pool_size=3&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
+			specKvConn:      "?idle_http_connection_timeout=90000&kv_pool_size=3&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
+			expectedConnStr: "?idle_http_connection_timeout=90000&kv_pool_size=3&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
 			kvConnCount:     3,
 		},
 	}
@@ -204,8 +204,11 @@ func TestServerlessGoCBConnectionString(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			tb := base.GetTestBucket(t)
 			defer tb.Close()
+			bucketServer := tb.BucketSpec.Server
+			test.expectedConnStr = bucketServer + test.expectedConnStr
+
 			if test.specKvConn != "" {
-				tb.BucketSpec.Server = "couchbase://localhost?kv_pool_size=3"
+				tb.BucketSpec.Server = bucketServer + "?kv_pool_size=3"
 				tb.BucketSpec.KvPoolSize = 3
 			}
 
