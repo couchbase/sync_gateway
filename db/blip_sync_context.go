@@ -244,11 +244,14 @@ func (bsc *BlipSyncContext) copyDatabaseCollectionWithUser(collectionIdx *int) *
 	if collectionIdx != nil {
 		return &DatabaseCollectionWithUser{DatabaseCollection: bsc.collectionMapping[*collectionIdx], user: user}
 	}
+	/* put into place in CBG-2527
 	// There is a panic handler on the calling function but no way to pass error
 	c, err := bsc.blipContextDb.GetDefaultDatabaseCollection()
 	if err != nil {
 		panic(err)
 	}
+	*/
+	c := bsc.blipContextDb.GetSingleDatabaseCollection()
 	return &DatabaseCollectionWithUser{DatabaseCollection: c, user: user}
 }
 
