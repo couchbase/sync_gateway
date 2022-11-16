@@ -28,6 +28,7 @@ import (
 
 const CBGTIndexTypeSyncGatewayImport = "syncGateway-import-"
 const DefaultImportPartitions = 16
+const DefaultImportPartitionsServerless = 6
 
 // firstVersionToSupportCollections represents the earliest Sync Gateway release that supports collections.
 var firstVersionToSupportCollections = &ComparableVersion{

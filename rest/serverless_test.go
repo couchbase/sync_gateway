@@ -579,3 +579,43 @@ func TestServerlessUnsuspendAdminAuth(t *testing.T) {
 	resp = rt.SendAdminRequestWithAuth(http.MethodGet, "/invaliddb/doc", "", base.TestClusterUsername(), base.TestClusterPassword())
 	assertHTTPErrorReason(t, resp, http.StatusForbidden, "")
 }
+
+func TestImportPartitionsServerless(t *testing.T) {
+	tests := []struct {
+		name               string
+		importPartition    *uint16
+		expectedPartitions *uint16
+	}{
+		{
+			name:               "serverless partitions",
+			expectedPartitions: base.Uint16Ptr(6),
+		},
+		{
+			name:               "serverless partitions with import_partition specified",
+			importPartition:    base.Uint16Ptr(8),
+			expectedPartitions: base.Uint16Ptr(8),
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			var dbconf *DbConfig
+			tb := base.GetTestBucket(t)
+			defer tb.Close()
+			rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb, PersistentConfig: true, serverless: true})
+			defer rt.Close()
+			sc := rt.ServerContext()
+			require.True(t, sc.Config.IsServerless())
+			if test.name == "serverless partitions" {
+				dbconf = DefaultDbConfig(sc.Config)
+			} else {
+				resp := rt.SendAdminRequest(http.MethodPut, "/db/", fmt.Sprintf(`{"bucket": "%s", "use_views": %t, "num_index_replicas": 0, "import_partitions": 8}`,
+					tb.GetName(), base.TestsDisableGSI()))
+				RequireStatus(t, resp, http.StatusCreated)
+				dbconf = sc.GetDbConfig("db")
+			}
+
+			assert.Equal(t, test.expectedPartitions, dbconf.ImportPartitions)
+		})
+	}
+}
