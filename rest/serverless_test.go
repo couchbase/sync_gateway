@@ -585,15 +585,23 @@ func TestImportPartitionsServerless(t *testing.T) {
 		name               string
 		importPartition    *uint16
 		expectedPartitions *uint16
+		serverless         bool
 	}{
 		{
 			name:               "serverless partitions",
 			expectedPartitions: base.Uint16Ptr(6),
+			serverless:         true,
 		},
 		{
 			name:               "serverless partitions with import_partition specified",
 			importPartition:    base.Uint16Ptr(8),
 			expectedPartitions: base.Uint16Ptr(8),
+			serverless:         true,
+		},
+		{
+			name:               "non serverless partitions",
+			expectedPartitions: base.Uint16Ptr(16),
+			serverless:         false,
 		},
 	}
 
@@ -602,17 +610,16 @@ func TestImportPartitionsServerless(t *testing.T) {
 			var dbconf *DbConfig
 			tb := base.GetTestBucket(t)
 			defer tb.Close()
-			rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb, PersistentConfig: true, serverless: true})
+			rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb, PersistentConfig: true, serverless: test.serverless})
 			defer rt.Close()
 			sc := rt.ServerContext()
-			require.True(t, sc.Config.IsServerless())
-			if test.name == "serverless partitions" {
-				dbconf = DefaultDbConfig(sc.Config)
-			} else {
+			if test.name == "serverless partitions with import_partition specified" {
 				resp := rt.SendAdminRequest(http.MethodPut, "/db/", fmt.Sprintf(`{"bucket": "%s", "use_views": %t, "num_index_replicas": 0, "import_partitions": 8}`,
 					tb.GetName(), base.TestsDisableGSI()))
 				RequireStatus(t, resp, http.StatusCreated)
 				dbconf = sc.GetDbConfig("db")
+			} else {
+				dbconf = DefaultDbConfig(sc.Config)
 			}
 
 			assert.Equal(t, test.expectedPartitions, dbconf.ImportPartitions)
