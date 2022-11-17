@@ -679,3 +679,11 @@ func RemoveDestFactory(destKey string) {
 	delete(cbgtDestFactories, destKey)
 	cbgtDestFactoriesLock.Unlock()
 }
+
+func GetDefaultImportPartitions(serverless bool) uint16 {
+	if serverless {
+		return DefaultImportPartitionsServerless
+	} else {
+		return DefaultImportPartitions
+	}
+}

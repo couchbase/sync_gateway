@@ -87,12 +87,6 @@ func MergeDatabaseConfigWithDefaults(sc *StartupConfig, dbConfig *DbConfig) (*Db
 // to provide defaults to  include_runtime config endpoints.
 // Note that this does not include unsupported options
 func DefaultDbConfig(sc *StartupConfig) *DbConfig {
-	var importPartitions uint16
-	if sc.IsServerless() {
-		importPartitions = base.DefaultImportPartitionsServerless
-	} else {
-		importPartitions = base.DefaultImportPartitions
-	}
 	dbConfig := DbConfig{
 		BucketConfig:       BucketConfig{},
 		Name:               "",
@@ -101,7 +95,7 @@ func DefaultDbConfig(sc *StartupConfig) *DbConfig {
 		Roles:              nil,
 		RevsLimit:          nil, // Set this below struct
 		AutoImport:         base.BoolPtr(base.DefaultAutoImport),
-		ImportPartitions:   base.Uint16Ptr(importPartitions),
+		ImportPartitions:   base.Uint16Ptr(base.GetDefaultImportPartitions(sc.IsServerless())),
 		ImportFilter:       nil,
 		ImportBackupOldRev: base.BoolPtr(false),
 		EventHandlers:      nil,

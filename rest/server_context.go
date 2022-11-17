@@ -655,10 +655,8 @@ func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConf
 	}
 	importOptions.BackupOldRev = base.BoolDefault(config.ImportBackupOldRev, false)
 
-	if config.ImportPartitions == nil && sc.Config.IsServerless() {
-		importOptions.ImportPartitions = base.DefaultImportPartitionsServerless
-	} else if config.ImportPartitions == nil {
-		importOptions.ImportPartitions = base.DefaultImportPartitions
+	if config.ImportPartitions == nil {
+		importOptions.ImportPartitions = base.GetDefaultImportPartitions(sc.Config.IsServerless())
 	} else {
 		importOptions.ImportPartitions = *config.ImportPartitions
 	}
