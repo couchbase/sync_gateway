@@ -925,11 +925,6 @@ func (h *handler) handleDeleteDB() error {
 		bucket = dbContext.Bucket.GetName()
 	} else if h.server.persistentConfig {
 		bucket, _ = h.server.bucketNameFromDbName(dbName)
-		fmt.Println("BUCKET", bucket)
-	}
-
-	if bucket == "" { // no dbcontext and database not found in any bucket
-		return base.HTTPErrorf(http.StatusNotFound, "no such database %q", dbName)
 	}
 
 	if h.server.persistentConfig {

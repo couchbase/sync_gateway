@@ -1370,7 +1370,7 @@ func (sc *ServerContext) _fetchAndLoadDatabase(ctx context.Context, dbName strin
 	return true, nil
 }
 
-func (sc *ServerContext) foreachDbConfig(callback func(bucket string) (exit bool, err error)) (err error) {
+func (sc *ServerContext) forEachDbConfig(callback func(bucket string) (exit bool, err error)) (err error) {
 	// rewritten loop from FetchDatabase as part of CBG-2420 PR review
 	var buckets []string
 	if sc.Config.IsServerless() {
@@ -1441,16 +1441,16 @@ func (sc *ServerContext) fetchDatabase(ctx context.Context, dbName string) (foun
 		return true, nil
 	}
 
-	err = sc.foreachDbConfig(callback)
+	err = sc.forEachDbConfig(callback)
 	if err != nil {
-		return false, nil, nil
+		return false, nil, err
 	}
 
 	return true, &cnf, nil
 }
 
 func (sc *ServerContext) bucketNameFromDbName(dbName string) (bucketName string, found bool) {
-	// Only used in handleDeleteDB in config.go when GetDatabase does not find the db (CBG-2420)
+	// Minimal representation of config struct to be tolerant of invalid database configurations where we still need to find a database name
 	var cfgDbName struct {
 		Name string `json:"name"`
 	}
@@ -1465,7 +1465,7 @@ func (sc *ServerContext) bucketNameFromDbName(dbName string) (bucketName string,
 		}
 		return false, base.ErrNotFound
 	}
-	err := sc.foreachDbConfig(callback)
+	err := sc.forEachDbConfig(callback)
 	if err != nil {
 		return "", false
 	}
