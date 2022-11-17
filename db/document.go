@@ -58,7 +58,6 @@ type SyncData struct {
 	Sequence        uint64              `json:"sequence,omitempty"`
 	UnusedSequences []uint64            `json:"unused_sequences,omitempty"` // unused sequences due to update conflicts/CAS retry
 	RecentSequences []uint64            `json:"recent_sequences,omitempty"` // recent sequences for this doc - used in server dedup handling
-	History         RevTree             `json:"history"`
 	Channels        channels.ChannelMap `json:"channels,omitempty"`
 	Access          UserAccessMap       `json:"access,omitempty"`
 	RoleAccess      UserAccessMap       `json:"role_access,omitempty"`
@@ -73,6 +72,8 @@ type SyncData struct {
 
 	// Backward compatibility (the "deleted" field was, um, deleted in commit 4194f81, 2/17/14)
 	Deleted_OLD bool `json:"deleted,omitempty"`
+	// History should be marshalled last to optimize indexing (CBG-2559)
+	History RevTree `json:"history"`
 
 	addedRevisionBodies     []string          // revIDs of non-winning revision bodies that have been added (and so require persistence)
 	removedRevisionBodyKeys map[string]string // keys of non-winning revisions that have been removed (and so may require deletion), indexed by revID
