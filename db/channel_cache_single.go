@@ -239,9 +239,6 @@ func (c *singleChannelCacheImpl) Remove(collectionID uint32, docIDs []string, st
 	// Do the removals in one sweep of the channel cache
 	end := len(c.logs) - 1
 	for i := end; i >= 0; i-- {
-		if c.ChannelID().CollectionID != collectionID {
-			continue
-		}
 		if _, ok := foundDocs[c.logs[i].DocID]; ok {
 			docID := c.logs[i].DocID
 

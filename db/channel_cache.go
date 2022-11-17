@@ -255,7 +255,9 @@ func (c *channelCacheImpl) Remove(collectionID uint32, docIDs []string, startTim
 		if channelCache == nil {
 			return false
 		}
-
+		if channelCache.ChannelID().CollectionID != collectionID {
+			return true
+		}
 		count += channelCache.Remove(collectionID, docIDs, startTime)
 		return true
 	}
