@@ -583,8 +583,8 @@ type cachePrincipal struct {
 	Sequence uint64 `json:"sequence"`
 }
 
-func (c *changeCache) Remove(docIDs []string, startTime time.Time) (count int) {
-	return c.channelCache.Remove(docIDs, startTime)
+func (c *changeCache) Remove(collectionID uint32, docIDs []string, startTime time.Time) (count int) {
+	return c.channelCache.Remove(collectionID, docIDs, startTime)
 }
 
 // Principals unmarshalled during caching don't need to instantiate a real principal - we're just using name and seq from the document

@@ -62,11 +62,6 @@ func (c *DatabaseCollection) backupOldRev() bool {
 
 }
 
-// ChangeCache returns the set of channels in memory. This is currently at the database level.
-func (c *DatabaseCollection) ChangeCache() *changeCache {
-	return c.changeCache
-}
-
 // channelMapper runs the javascript sync function. This is currently at the database level.
 func (c *DatabaseCollection) channelMapper() *channels.ChannelMapper {
 	return c.dbCtx.ChannelMapper
@@ -112,8 +107,8 @@ func (c *DatabaseCollection) GetCollectionID() uint32 {
 }
 
 // GetReivisonCacheForTest allow accessing a copy of revision cache.
-func (context *DatabaseCollection) GetRevisionCacheForTest() RevisionCache {
-	return context.revisionCache
+func (c *DatabaseCollection) GetRevisionCacheForTest() RevisionCache {
+	return c.revisionCache
 }
 
 // FlushChannelCache flush support. Currently test-only - added for unit test access from rest package
@@ -211,6 +206,11 @@ func (c *DatabaseCollection) ScopeName() string {
 		return base.DefaultScope
 	}
 	return collection.ScopeName()
+}
+
+// RemoveFromChangeCache removes select documents from all channel caches and returns the number of documents removed.
+func (c *DatabaseCollection) RemoveFromChangeCache(docIDs []string, startTime time.Time) int {
+	return c.changeCache.Remove(c.GetCollectionID(), docIDs, startTime)
 }
 
 // revsLimit is the max depth a document's revision tree can grow to. This is controlled at a database level.

@@ -45,7 +45,7 @@ type ChannelCache interface {
 	AddPrincipal(change *LogEntry)
 
 	// Remove purges the given doc IDs from all channel caches and returns the number of items removed.
-	Remove(docIDs []string, startTime time.Time) (count int)
+	Remove(collectionID uint32, docIDs []string, startTime time.Time) (count int)
 
 	// Returns set of changes for a given channel, within the bounds specified in options
 	GetChanges(ch channels.ID, options ChangesOptions) ([]*LogEntry, error)
@@ -244,7 +244,7 @@ func (c *channelCacheImpl) AddToCache(change *LogEntry) (updatedChannels []chann
 
 // Remove purges the given doc IDs from all channel caches and returns the number of items removed.
 // count will be larger than the input slice if the same document is removed from multiple channel caches.
-func (c *channelCacheImpl) Remove(docIDs []string, startTime time.Time) (count int) {
+func (c *channelCacheImpl) Remove(collectionID uint32, docIDs []string, startTime time.Time) (count int) {
 	// Exit early if there's no work to do
 	if len(docIDs) == 0 {
 		return 0
@@ -256,7 +256,7 @@ func (c *channelCacheImpl) Remove(docIDs []string, startTime time.Time) (count i
 			return false
 		}
 
-		count += channelCache.Remove(docIDs, startTime)
+		count += channelCache.Remove(collectionID, docIDs, startTime)
 		return true
 	}
 

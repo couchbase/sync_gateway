@@ -511,12 +511,12 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 	}
 
 	for _, collection := range dbContext.CollectionByID {
-		err = collection.ChangeCache().Start(initialSequence)
+		err = collection.changeCache.Start(initialSequence)
 		if err != nil {
 			return nil, err
 		}
 		cleanupFunctions = append(cleanupFunctions, func() {
-			collection.ChangeCache().Stop()
+			collection.changeCache.Stop()
 		})
 	}
 
@@ -1457,7 +1457,8 @@ func (db *Database) Compact(ctx context.Context, skipRunningStateCheck bool, cal
 		count := len(purgedDocs)
 		purgedDocCount += count
 		if count > 0 {
-			db.GetSingleDatabaseCollection().ChangeCache().Remove(purgedDocs, startTime)
+			collection := db.GetSingleDatabaseCollection() // CBG-2561
+			collection.RemoveFromChangeCache(purgedDocs, startTime)
 			db.DbStats.Database().NumTombstonesCompacted.Add(int64(count))
 		}
 		base.DebugfCtx(ctx, base.KeyAll, "Compacted %v tombstones", count)
@@ -2058,7 +2059,7 @@ func newDatabaseCollection(ctx context.Context, dbContext *DatabaseContext, buck
 	}
 
 	// Initialize the ChangeCache.  Will be locked and unusable until .Start() is called (SG #3558)
-	err := dbCollection.ChangeCache().Init(
+	err := dbCollection.changeCache.Init(
 		ctx,
 		dbCollection,
 		dbContext.channelCache,
@@ -2071,20 +2072,20 @@ func newDatabaseCollection(ctx context.Context, dbContext *DatabaseContext, buck
 		return nil, err
 	}
 	// Set the DB Context notifyChange callback to call back the changecache DocChanged callback
-	dbContext.SetOnChangeCallback(dbCollection.ChangeCache().DocChanged)
+	dbContext.SetOnChangeCallback(dbCollection.changeCache.DocChanged)
 
 	if base.IsEnterpriseEdition() {
 		cfgSG, ok := dbContext.CfgSG.(*base.CfgSG)
 		if !ok {
 			return nil, fmt.Errorf("Could not cast %V to CfgSG", dbContext.CfgSG)
 		}
-		dbCollection.ChangeCache().cfgEventCallback = cfgSG.FireEvent
+		dbCollection.changeCache.cfgEventCallback = cfgSG.FireEvent
 	}
 	return dbCollection, nil
 }
 
 func (dbc *DatabaseContext) stopChangeCaches() {
 	for _, collection := range dbc.CollectionByID {
-		collection.ChangeCache().Stop()
+		collection.changeCache.Stop()
 	}
 }

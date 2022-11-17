@@ -79,7 +79,7 @@ func isIndexEmpty(store base.N1QLStore, useXattrs bool) (bool, error) {
 
 func (db *DatabaseContext) CacheCompactActive() bool {
 	for _, collection := range db.CollectionByID {
-		channelCache := collection.ChangeCache().getChannelCache()
+		channelCache := collection.changeCache.getChannelCache()
 		compactingCache, ok := channelCache.(*channelCacheImpl)
 		if !ok {
 			return false

@@ -807,7 +807,7 @@ func TestAllDocsOnly(t *testing.T) {
 	collectionID := collection.GetCollectionID()
 
 	// Trigger creation of the channel cache for channel "all"
-	collection.ChangeCache().getChannelCache().getSingleChannelCache(channels.NewID("all", collectionID))
+	collection.changeCache.getChannelCache().getSingleChannelCache(channels.NewID("all", collectionID))
 
 	ids := make([]AllDocsEntry, 100)
 	for i := 0; i < 100; i++ {
@@ -848,7 +848,7 @@ func TestAllDocsOnly(t *testing.T) {
 
 	// Inspect the channel log to confirm that it's only got the last 50 sequences.
 	// There are 101 sequences overall, so the 1st one it has should be #52.
-	err = collection.ChangeCache().waitForSequence(ctx, 101, base.DefaultWaitForSequence)
+	err = collection.changeCache.waitForSequence(ctx, 101, base.DefaultWaitForSequence)
 	require.NoError(t, err)
 
 	changeLog := collection.GetChangeLog(channels.NewID("all", collectionID), 0)
@@ -987,7 +987,7 @@ func TestConflicts(t *testing.T) {
 	collectionID := collection.GetCollectionID()
 
 	allChannel := channels.NewID("all", collectionID)
-	collection.ChangeCache().getChannelCache().getSingleChannelCache(allChannel)
+	collection.changeCache.getChannelCache().getSingleChannelCache(allChannel)
 
 	cacheWaiter := db.NewDCPCachingCountWaiter(t)
 
@@ -1656,7 +1656,7 @@ func TestRecentSequenceHistory(t *testing.T) {
 	// Recent sequence pruning only prunes entries older than what's been seen over DCP
 	// (to ensure it's not pruning something that may still be coalesced).  Because of this, test waits
 	// for caching before attempting to trigger pruning.
-	err = collection.ChangeCache().waitForSequence(ctx, seqTracker, base.DefaultWaitForSequence)
+	err = collection.changeCache.waitForSequence(ctx, seqTracker, base.DefaultWaitForSequence)
 	require.NoError(t, err)
 
 	// Add another sequence to validate pruning when past max (20)
@@ -1682,7 +1682,7 @@ func TestRecentSequenceHistory(t *testing.T) {
 		seqTracker++
 	}
 
-	err = collection.ChangeCache().waitForSequence(ctx, seqTracker, base.DefaultWaitForSequence) //
+	err = collection.changeCache.waitForSequence(ctx, seqTracker, base.DefaultWaitForSequence) //
 	require.NoError(t, err)
 	revid, doc, err = collection.Put(ctx, "doc1", body)
 	body[BodyId] = doc.ID

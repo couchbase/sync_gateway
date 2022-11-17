@@ -218,7 +218,7 @@ func (c *singleChannelCacheImpl) wouldBeImmediatelyPruned(change *LogEntry) bool
 }
 
 // Remove purges the given doc IDs from the channel cache and returns the number of items removed.
-func (c *singleChannelCacheImpl) Remove(docIDs []string, startTime time.Time) (count int) {
+func (c *singleChannelCacheImpl) Remove(collectionID uint32, docIDs []string, startTime time.Time) (count int) {
 	// Exit early if there's no work to do
 	if len(docIDs) == 0 {
 		return 0
@@ -239,6 +239,9 @@ func (c *singleChannelCacheImpl) Remove(docIDs []string, startTime time.Time) (c
 	// Do the removals in one sweep of the channel cache
 	end := len(c.logs) - 1
 	for i := end; i >= 0; i-- {
+		if c.ChannelID().CollectionID != collectionID {
+			continue
+		}
 		if _, ok := foundDocs[c.logs[i].DocID]; ok {
 			docID := c.logs[i].DocID
 
