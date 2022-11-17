@@ -116,7 +116,6 @@ func (h *handler) handleAllDocs() error {
 
 	// Subroutine that creates a response row for a document:
 	totalRows := 0
-	collection := h.db.GetSingleDatabaseCollectionWithUser()
 	createRow := func(doc db.IDRevAndSequence, channels []string) *allDocsRow {
 		row := &allDocsRow{Key: doc.DocID}
 		value := allDocsRowValue{}
@@ -130,7 +129,7 @@ func (h *handler) handleAllDocs() error {
 
 		if explicitDocIDs != nil || includeDocs || includeAccess {
 			// Fetch the document body and other metadata that lives with it:
-			bodyBytes, channelSet, access, roleAccess, _, _, currentRevID, removed, err := collection.Get1xRevAndChannels(h.ctx(), doc.DocID, doc.RevID, includeRevs)
+			bodyBytes, channelSet, access, roleAccess, _, _, currentRevID, removed, err := h.collection.Get1xRevAndChannels(h.ctx(), doc.DocID, doc.RevID, includeRevs)
 			if err != nil {
 				row.Status, _ = base.ErrorAsHTTPStatus(err)
 				return row
@@ -308,9 +307,7 @@ func (h *handler) handleDumpChannel() error {
 	since := h.getIntQuery("since", 0)
 	base.InfofCtx(h.ctx(), base.KeyHTTP, "Dump channel %q", base.UD(channelName))
 
-	collection := h.db.GetSingleDatabaseCollection()
-	collectionID := collection.GetCollectionID()
-	chanLog := collection.GetChangeLog(ch.NewID(channelName, collectionID), since)
+	chanLog := h.collection.GetChangeLog(ch.NewID(channelName, h.collection.GetCollectionID()), since)
 	if chanLog == nil {
 		return base.HTTPErrorf(http.StatusNotFound, "no such channel")
 	}
@@ -425,8 +422,7 @@ func (h *handler) handleBulkGet() error {
 			}
 
 			if err == nil {
-				collection := h.db.GetSingleDatabaseCollectionWithUser()
-				body, err = collection.Get1xRevBodyWithHistory(h.ctx(), docid, revid, docRevsLimit, revsFrom, attsSince, showExp)
+				body, err = h.collection.Get1xRevBodyWithHistory(h.ctx(), docid, revid, docRevsLimit, revsFrom, attsSince, showExp)
 			}
 
 			if err != nil {
@@ -494,7 +490,6 @@ func (h *handler) handleBulkDocs() error {
 	}
 
 	result := make([]db.Body, 0, len(docs))
-	collection := h.db.GetSingleDatabaseCollectionWithUser()
 	for _, item := range docs {
 		doc := item.(map[string]interface{})
 		docid, _ := doc[db.BodyId].(string)
@@ -502,9 +497,9 @@ func (h *handler) handleBulkDocs() error {
 		var revid string
 		if newEdits {
 			if docid != "" {
-				revid, _, err = collection.Put(h.ctx(), docid, doc)
+				revid, _, err = h.collection.Put(h.ctx(), docid, doc)
 			} else {
-				docid, revid, _, err = collection.Post(h.ctx(), doc)
+				docid, revid, _, err = h.collection.Post(h.ctx(), doc)
 			}
 		} else {
 			revisions := db.ParseRevisions(doc)
@@ -512,7 +507,7 @@ func (h *handler) handleBulkDocs() error {
 				err = base.HTTPErrorf(http.StatusBadRequest, "Bad _revisions")
 			} else {
 				revid = revisions[0]
-				_, _, err = collection.PutExistingRevWithBody(h.ctx(), docid, doc, revisions, false)
+				_, _, err = h.collection.PutExistingRevWithBody(h.ctx(), docid, doc, revisions, false)
 			}
 		}
 
@@ -543,7 +538,7 @@ func (h *handler) handleBulkDocs() error {
 		offset := len("_local/")
 		docid, _ := doc[db.BodyId].(string)
 		idslug := docid[offset:]
-		revid, err = collection.PutSpecial(db.DocTypeLocal, idslug, doc)
+		revid, err = h.collection.PutSpecial(db.DocTypeLocal, idslug, doc)
 		status := db.Body{}
 		status["id"] = docid
 		if err != nil {

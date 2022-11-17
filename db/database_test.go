@@ -2620,6 +2620,150 @@ func TestImportCompactPanic(t *testing.T) {
 	require.True(t, ok)
 }
 
+func TestGetDatabaseCollectionWithUserScopesNil(t *testing.T) {
+	testCases := []struct {
+		scope      string
+		collection string
+	}{
+		{
+			scope:      "",
+			collection: "",
+		},
+		{
+			scope:      "foo",
+			collection: "bar",
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(fmt.Sprintf("%s.%s", testCase.scope, testCase.collection), func(t *testing.T) {
+
+			db := Database{DatabaseContext: &DatabaseContext{}}
+			col, err := db.GetDatabaseCollectionWithUser(testCase.scope, testCase.collection)
+			require.Error(t, err)
+			require.Nil(t, col)
+		})
+	}
+}
+
+func TestGetDatabaseCollectionWithUserNoScopesConfigured(t *testing.T) {
+	testCases := []struct {
+		scope      string
+		collection string
+	}{
+		{
+			scope:      "",
+			collection: "",
+		},
+		{
+			scope:      "foo",
+			collection: "bar",
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(fmt.Sprintf("%s.%s", testCase.scope, testCase.collection), func(t *testing.T) {
+
+			db := Database{DatabaseContext: &DatabaseContext{}}
+			col, err := db.GetDatabaseCollectionWithUser(testCase.scope, testCase.collection)
+			require.Error(t, err)
+			require.Nil(t, col)
+		})
+	}
+}
+
+func TestGetDatabaseCollectionWithUserDefaultCollection(t *testing.T) {
+	testCases := []struct {
+		name       string
+		scope      string
+		collection string
+		err        bool
+		options    DatabaseContextOptions
+	}{
+		{
+			name:       "emptyscopecollection",
+			scope:      "",
+			collection: "",
+			err:        true,
+		},
+		{
+			name:       "foo.bar-notconfigured",
+			scope:      "foo",
+			collection: "bar",
+			err:        true,
+		},
+		{
+			name:       "_default._default-noconfiguration",
+			scope:      base.DefaultScope,
+			collection: base.DefaultCollection,
+			err:        false,
+		},
+		/* This test passes under walrus/views but not GSI, needs to be fixed when making walrus collection aware.
+		{
+			name:       "_default._default-not-in-config",
+			scope:      base.DefaultScope,
+			collection: base.DefaultCollection,
+			err:        true,
+			options: DatabaseContextOptions{
+				Scopes: map[string]ScopeOptions{
+					"foo": ScopeOptions{
+						Collections: map[string]CollectionOptions{
+							"bar": {},
+						},
+					},
+				},
+			},
+		},
+		*/
+		{
+			name:       "_default._default-inconfig",
+			scope:      base.DefaultScope,
+			collection: base.DefaultCollection,
+			err:        false,
+			options: DatabaseContextOptions{
+				Scopes: map[string]ScopeOptions{
+					"foo": ScopeOptions{
+						Collections: map[string]CollectionOptions{
+							"bar": {},
+						},
+					},
+					base.DefaultScope: ScopeOptions{
+						Collections: map[string]CollectionOptions{
+							base.DefaultCollection: {},
+						},
+					},
+				},
+			},
+		},
+	}
+	dataStore := base.GetTestBucketDefaultCollection(t)
+	defer dataStore.Close()
+
+	for _, testCase := range testCases {
+		t.Run(fmt.Sprintf(testCase.name), func(t *testing.T) {
+			ctx := base.TestCtx(t)
+			dbCtx, err := NewDatabaseContext(ctx, "db", dataStore.NoCloseClone(), false, testCase.options)
+			require.NoError(t, err)
+
+			db, err := GetDatabase(dbCtx, nil)
+			defer db.Close(ctx)
+			require.NoError(t, err)
+			col, err := db.GetDatabaseCollectionWithUser(testCase.scope, testCase.collection)
+			if testCase.err {
+				require.Error(t, err)
+				require.Nil(t, col)
+			} else {
+				require.NoError(t, err)
+				require.NotNil(t, col)
+				require.Equal(t, col.ScopeName(), testCase.scope)
+				require.Equal(t, col.Name(), testCase.collection)
+			}
+
+		})
+	}
+
+}
+
 func waitAndAssertConditionWithOptions(t *testing.T, fn func() bool, retryCount, msSleepTime int, failureMsgAndArgs ...interface{}) {
 	for i := 0; i <= retryCount; i++ {
 		if i == retryCount {

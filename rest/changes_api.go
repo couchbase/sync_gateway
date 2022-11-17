@@ -46,9 +46,8 @@ func (h *handler) handleRevsDiff() error {
 
 	_, _ = h.response.Write([]byte("{"))
 	first := true
-	collection := h.db.GetSingleDatabaseCollectionWithUser()
 	for docid, revs := range input {
-		missing, possible := collection.RevDiff(h.ctx(), docid, revs)
+		missing, possible := h.collection.RevDiff(h.ctx(), docid, revs)
 		if missing != nil {
 			docOutput := map[string]interface{}{"missing": missing}
 			if possible != nil {
