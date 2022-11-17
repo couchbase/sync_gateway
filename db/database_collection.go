@@ -62,6 +62,12 @@ func (c *DatabaseCollection) backupOldRev() bool {
 
 }
 
+// bucketName returns the name of the bucket this collection is stored in.
+func (c *DatabaseCollection) bucketName() string {
+	return c.Bucket.GetName()
+
+}
+
 // channelMapper runs the javascript sync function. This is currently at the database level.
 func (c *DatabaseCollection) channelMapper() *channels.ChannelMapper {
 	return c.dbCtx.ChannelMapper
@@ -198,10 +204,9 @@ func (c *DatabaseCollectionWithUser) ReloadUser(ctx context.Context) error {
 	}
 	if user == nil {
 		return fmt.Errorf("User not found during reload")
-	} else {
-		c.user = user
-		return nil
 	}
+	c.user = user
+	return nil
 }
 
 // Name returns the name of the scope the collection is in. If couchbase server is not aware of collections, it will return _default.

@@ -178,7 +178,7 @@ func (c *changeCache) Init(logCtx context.Context, collection *DatabaseCollectio
 
 	c.channelCache = channelCache
 
-	base.InfofCtx(c.logCtx, base.KeyCache, "Initializing changes cache for %s.%s.%s with options %+v", base.UD(collection.ScopeName()), base.UD(collection.Name()), c.options)
+	base.InfofCtx(c.logCtx, base.KeyCache, "Initializing changes cache for %s.%s.%s with options %+v", base.UD(collection.bucketName()), base.UD(collection.ScopeName()), base.UD(collection.Name()), c.options)
 
 	heap.Init(&c.pendingLogs)
 
