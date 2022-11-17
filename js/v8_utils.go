@@ -1,4 +1,4 @@
-package functions
+package js
 
 import (
 	"encoding/json"
@@ -18,7 +18,7 @@ func goToV8String(i *v8.Isolate, str string) *v8.Value {
 }
 
 // Converts a JS string to a Go string, or returns an error if the JS value isn't a string.
-func v8ToGoString(val *v8.Value) ([]byte, error) {
+func StringToGo(val *v8.Value) ([]byte, error) {
 	if val.IsString() {
 		return []byte(val.String()), nil
 	} else if val.IsNullOrUndefined() {
@@ -29,8 +29,8 @@ func v8ToGoString(val *v8.Value) ([]byte, error) {
 }
 
 // Converts & parses a JS string of JSON into a Go map.
-func v8JSONToGo(val *v8.Value) (map[string]any, error) {
-	if jsonStr, err := v8ToGoString(val); err != nil {
+func JSONToGoMap(val *v8.Value) (map[string]any, error) {
+	if jsonStr, err := StringToGo(val); err != nil {
 		return nil, err
 	} else if jsonStr == nil {
 		return nil, nil
@@ -40,19 +40,6 @@ func v8JSONToGo(val *v8.Value) (map[string]any, error) {
 			return nil, err
 		}
 		return result, nil
-	}
-}
-
-// Converts a result and error to a JSON-encoded string and error.
-// - If `err` is non-nil on input, just passes it through.
-// - Otherwise it JSON-encodes the `result` and returns it.
-func returnAsJSON(result any, err error) (any, error) {
-	if result == nil || err != nil {
-		return nil, err
-	} else if jsonBytes, err := json.Marshal(result); err != nil {
-		return nil, err
-	} else {
-		return string(jsonBytes), nil
 	}
 }
 
@@ -79,17 +66,11 @@ func v8Throw(i *v8.Isolate, err error) *v8.Value {
 	return i.ThrowException(goToV8String(i, errStr))
 }
 
-// Gets a named method of a JS object. Panics if not found.
-func mustGetV8Fn(owner *v8.Object, name string) *v8.Function {
-	fnVal := mustSucceed(owner.Get(name))
-	return mustSucceed(fnVal.AsFunction())
-}
-
 // (This detects the way HTTP statuses are encoded into error messages by the class HTTPError in types.ts.)
 var kHTTPErrRegexp = regexp.MustCompile(`^(Error:\s*)?\[(\d\d\d)\]\s+(.*)`)
 
 // Looks for an HTTP status in an error message and returns it as an HTTPError; else returns nil.
-func unpackJSErrorStr(jsErrMessage string) error {
+func UnpackErrorStr(jsErrMessage string) error {
 	if m := kHTTPErrRegexp.FindStringSubmatch(jsErrMessage); m != nil {
 		if status, err := strconv.ParseUint(m[2], 10, 16); err == nil {
 			return &base.HTTPError{Status: int(status), Message: m[3]}
@@ -99,9 +80,9 @@ func unpackJSErrorStr(jsErrMessage string) error {
 }
 
 // Postprocesses an error returned from running JS code, detecting the HTTPError type defined in types.ts. If the error is a v8.JSError, looks for an HTTP status in brackets at the start of the message; if found, returns a base.HTTPError.
-func unpackJSError(err error) error {
+func UnpackError(err error) error {
 	if jsErr, ok := err.(*v8.JSError); ok {
-		if unpackedErr := unpackJSErrorStr(jsErr.Message); unpackedErr != nil {
+		if unpackedErr := UnpackErrorStr(jsErr.Message); unpackedErr != nil {
 			return unpackedErr
 		}
 	}

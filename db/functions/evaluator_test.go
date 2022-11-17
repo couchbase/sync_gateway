@@ -11,6 +11,7 @@ licenses/APL2.txt.
 package functions
 
 import (
+	"context"
 	"log"
 	"net/http"
 	"strconv"
@@ -22,15 +23,11 @@ import (
 
 // A basic bring-up test of the Evaluator and TypeScript engine.
 func TestEvaluator(t *testing.T) {
-	env, err := newEnvironment(&kTestFunctionsConfig, &kTestGraphQLConfig)
+	delegate := mockEvaluatorDelegate{}
+	eval, err := newStandaloneEvaluator(context.Background(), &kTestFunctionsConfig, &kTestGraphQLConfig, &delegate)
 	if !assert.NoError(t, err) {
 		return
 	}
-	defer env.close()
-
-	delegate := mockEvaluatorDelegate{}
-	eval, err := env.newEvaluator(&delegate, nil)
-	assert.NoError(t, err)
 	defer eval.close()
 
 	result, err := eval.callFunction("square", map[string]any{"numero": 13})

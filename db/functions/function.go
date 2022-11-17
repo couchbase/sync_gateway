@@ -18,6 +18,7 @@ import (
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
+	"github.com/couchbase/sync_gateway/js"
 )
 
 //////// CONFIGURATION TYPES:
@@ -77,9 +78,18 @@ func CompileFunctions(fnConfig *FunctionsConfig, gqConfig *GraphQLConfig) (fns *
 		return
 	}
 
-	env, err := newEnvironmentPool(fnConfig, gqConfig, kMaxCachedV8Environments)
+	vms, err := js.NewVMPool(kMaxCachedV8Environments)
 	if err != nil {
-		return
+		return nil, nil, err
+	}
+	vms.AddModule("functions", makeModuleConfig(fnConfig, gqConfig))
+
+	makeEvaluator := func(delegate evaluatorDelegate, user *userCredentials) (*evaluator, error) {
+		runner, err := vms.GetRunner("functions")
+		if err != nil {
+			return nil, err
+		}
+		return newEvaluator(runner, delegate, user)
 	}
 
 	if fnConfig != nil {
@@ -91,39 +101,48 @@ func CompileFunctions(fnConfig *FunctionsConfig, gqConfig *GraphQLConfig) (fns *
 			fns.Definitions[name] = &functionImpl{
 				FunctionConfig: fnConfig,
 				name:           name,
-				env:            env,
+				makeEvaluator:  makeEvaluator,
 			}
 		}
 	}
 	if gqConfig != nil {
 		gq = &graphQLImpl{
-			config: gqConfig,
-			env:    env,
+			config:        gqConfig,
+			makeEvaluator: makeEvaluator,
 		}
 	}
 	return
 }
 
-// Validates a FunctionsConfig.
-func ValidateFunctions(ctx context.Context, fnConfig *FunctionsConfig, gqConfig *GraphQLConfig) error {
-	// To validate, we have to create an Evaluator, because that's when the JavaScript code
-	// runs and reads the configuration.
+// Creates an evaluator using a new VM not belonging to a pool.
+// Remember to close it when finished!
+func newStandaloneEvaluator(ctx context.Context, fnConfig *FunctionsConfig, gqConfig *GraphQLConfig, delegate evaluatorDelegate) (*evaluator, error) {
 	if fnConfig == nil && gqConfig == nil {
-		return nil
-	} else if env, err := newEnvironment(fnConfig, gqConfig); err != nil {
-		return err
+		return nil, nil
+	}
+	config := map[string]js.ModuleConfig{"functions": makeModuleConfig(fnConfig, gqConfig)}
+	vm, err := js.NewVM(config)
+	if err != nil {
+		return nil, err
+	}
+	if runner, err := vm.NewRunner("functions"); err != nil {
+		vm.Close()
+		return nil, err
 	} else {
-		delegate := &databaseDelegate{
-			ctx: ctx,
-		}
-		if eval, err := env.newEvaluator(delegate, nil); err != nil {
-			return err
-		} else {
-			eval.close()
-			return nil
-		}
+		return newEvaluator(runner, delegate, nil)
 	}
 }
+
+// Validates a FunctionsConfig & GraphQLConfig.
+func ValidateFunctions(ctx context.Context, fnConfig *FunctionsConfig, gqConfig *GraphQLConfig) error {
+	eval, err := newStandaloneEvaluator(ctx, fnConfig, gqConfig, &databaseDelegate{ctx: ctx})
+	if err == nil {
+		eval.close()
+	}
+	return err
+}
+
+type evaluatorFactory = func(delegate evaluatorDelegate, user *userCredentials) (*evaluator, error)
 
 //////// FUNCTIONIMPL
 
@@ -131,7 +150,7 @@ func ValidateFunctions(ctx context.Context, fnConfig *FunctionsConfig, gqConfig 
 type functionImpl struct {
 	*FunctionConfig                  // Inherits from FunctionConfig
 	name            string           // Name of function
-	env             *environmentPool // The V8 VM
+	makeEvaluator   evaluatorFactory // Source of JavaScript (V8) VMs
 }
 
 func (fn *functionImpl) Name() string {
@@ -152,7 +171,7 @@ func (fn *functionImpl) N1QLQueryName() (string, bool) {
 
 // Creates an Invocation of a UserFunction.
 func (fn *functionImpl) invoke(delegate evaluatorDelegate, user *userCredentials, args map[string]any, mutationAllowed bool) (db.UserFunctionInvocation, error) {
-	eval, err := fn.env.getEvaluator(delegate, user)
+	eval, err := fn.makeEvaluator(delegate, user)
 	if err != nil {
 		return nil, err
 	}
@@ -211,7 +230,7 @@ func (inv *functionInvocation) Run() (interface{}, error) {
 }
 
 func (inv *functionInvocation) RunAsJSON() ([]byte, error) {
-	defer inv.env.returnEvaluator(inv.eval)
+	defer inv.eval.close()
 	return inv.eval.callFunction(inv.name, inv.args)
 }
 
@@ -219,8 +238,8 @@ func (inv *functionInvocation) RunAsJSON() ([]byte, error) {
 
 // Implementation of db.graphQLImpl interface.
 type graphQLImpl struct {
-	config *GraphQLConfig
-	env    *environmentPool // The V8 VM
+	config        *GraphQLConfig
+	makeEvaluator evaluatorFactory // Source of JavaScript (V8) VMs
 }
 
 func (gq *graphQLImpl) MaxRequestSize() *int {
@@ -228,11 +247,11 @@ func (gq *graphQLImpl) MaxRequestSize() *int {
 }
 
 func (gq *graphQLImpl) query(delegate evaluatorDelegate, user *userCredentials, query string, operationName string, variables map[string]interface{}, mutationAllowed bool, ctx context.Context) ([]byte, error) {
-	eval, err := gq.env.getEvaluator(delegate, user)
+	eval, err := gq.makeEvaluator(delegate, user)
 	if err != nil {
 		return nil, err
 	}
-	defer gq.env.returnEvaluator(eval)
+	defer eval.close()
 
 	eval.setMutationAllowed(mutationAllowed)
 	return eval.callGraphQL(query, operationName, variables)
