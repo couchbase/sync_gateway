@@ -804,8 +804,7 @@ func TestAllDocsOnly(t *testing.T) {
 
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
-	collectionID, err := db.GetSingleCollectionID()
-	require.NoError(t, err)
+	collectionID := collection.GetCollectionID()
 
 	// Trigger creation of the channel cache for channel "all"
 	db.changeCache.getChannelCache().getSingleChannelCache(channels.NewID("all", collectionID))
@@ -985,8 +984,7 @@ func TestConflicts(t *testing.T) {
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
 	// Instantiate channel cache for channel 'all'
-	collectionID, err := db.GetSingleCollectionID()
-	require.NoError(t, err)
+	collectionID := collection.GetCollectionID()
 
 	allChannel := channels.NewID("all", collectionID)
 	db.changeCache.getChannelCache().getSingleChannelCache(allChannel)
@@ -995,7 +993,7 @@ func TestConflicts(t *testing.T) {
 
 	// Create rev 1 of "doc":
 	body := Body{"n": 1, "channels": []string{"all", "1"}}
-	_, _, err = collection.PutExistingRevWithBody(ctx, "doc", body, []string{"1-a"}, false)
+	_, _, err := collection.PutExistingRevWithBody(ctx, "doc", body, []string{"1-a"}, false)
 	assert.NoError(t, err, "add 1-a")
 
 	// Wait for rev to be cached

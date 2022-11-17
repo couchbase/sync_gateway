@@ -11,6 +11,8 @@ licenses/APL2.txt.
 package db
 
 import (
+	"fmt"
+	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -123,6 +125,41 @@ func TestCheckpointerSafeSeq(t *testing.T) {
 				assert.Equal(t, tt.expectedExpectedSeqs, tt.c.expectedSeqs)
 				assert.Equal(t, tt.expectedProcessedSeqs, tt.c.processedSeqs)
 			})
+		})
+	}
+}
+
+func BenchmarkCheckpointerUpdateCheckpointLists(b *testing.B) {
+	tests := []struct {
+		expectedSeqsLen  int
+		processedSeqsLen int
+	}{
+		{expectedSeqsLen: 1, processedSeqsLen: 1},
+		{expectedSeqsLen: 10, processedSeqsLen: 10},
+		{expectedSeqsLen: 100, processedSeqsLen: 100},
+		{expectedSeqsLen: 500, processedSeqsLen: 500},
+		{expectedSeqsLen: 1000, processedSeqsLen: 1000},
+		{expectedSeqsLen: 10000, processedSeqsLen: 10000},
+		{expectedSeqsLen: 50000, processedSeqsLen: 50000},
+		{expectedSeqsLen: 100000, processedSeqsLen: 100000},
+	}
+
+	for _, test := range tests {
+		b.Run(fmt.Sprintf("expectedSeqsLen=%d,processedSeqsLen=%d", test.expectedSeqsLen, test.processedSeqsLen), func(b *testing.B) {
+			expectedSeqs := make([]string, 0, test.expectedSeqsLen)
+			for i := 0; i < test.expectedSeqsLen; i++ {
+				expectedSeqs = append(expectedSeqs, strconv.Itoa(i))
+			}
+			processedSeqs := make(map[string]struct{}, test.processedSeqsLen)
+			for i := 0; i < test.processedSeqsLen; i++ {
+				processedSeqs[strconv.Itoa(i)] = struct{}{}
+			}
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				c := &Checkpointer{expectedSeqs: expectedSeqs, processedSeqs: processedSeqs}
+				_ = c._updateCheckpointLists()
+			}
 		})
 	}
 }
