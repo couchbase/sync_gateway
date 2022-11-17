@@ -106,9 +106,14 @@ func (c *DatabaseCollection) GetCollectionID() uint32 {
 	return collection.GetCollectionID()
 }
 
-// GetReivisonCacheForTest allow accessing a copy of revision cache.
+// GetRevisionCacheForTest allow accessing a copy of revision cache.
 func (c *DatabaseCollection) GetRevisionCacheForTest() RevisionCache {
 	return c.revisionCache
+}
+
+// groupID return the GroupID defined at a database level.
+func (c *DatabaseCollection) groupID() string {
+	return c.dbCtx.Options.GroupID
 }
 
 // FlushChannelCache flush support. Currently test-only - added for unit test access from rest package

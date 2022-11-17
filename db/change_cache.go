@@ -157,7 +157,7 @@ func DefaultCacheOptions() CacheOptions {
 // notifyChange is an optional function that will be called to notify of channel changes.
 // After calling Init(), you must call .Start() to start useing the cache, otherwise it will be in a locked state
 // and callers will block on trying to obtain the lock.
-func (c *changeCache) Init(logCtx context.Context, collection *DatabaseCollection, channelCache ChannelCache, notifyChange func(channels.Set), options *CacheOptions, groupID string) error {
+func (c *changeCache) Init(logCtx context.Context, collection *DatabaseCollection, channelCache ChannelCache, notifyChange func(channels.Set), options *CacheOptions) error {
 	c.collection = collection
 	c.logCtx = logCtx
 
@@ -167,7 +167,7 @@ func (c *changeCache) Init(logCtx context.Context, collection *DatabaseCollectio
 	c.initTime = time.Now()
 	c.skippedSeqs = NewSkippedSequenceList()
 	c.lastAddPendingTime = time.Now().UnixNano()
-	c.sgCfgPrefix = base.SGCfgPrefixWithGroupID(groupID)
+	c.sgCfgPrefix = base.SGCfgPrefixWithGroupID(collection.groupID())
 
 	// init cache options
 	if options != nil {
@@ -178,7 +178,7 @@ func (c *changeCache) Init(logCtx context.Context, collection *DatabaseCollectio
 
 	c.channelCache = channelCache
 
-	base.InfofCtx(c.logCtx, base.KeyCache, "Initializing changes cache for collection %s.%s with options %+v", base.UD(collection.ScopeName()), base.UD(collection.Name()), c.options)
+	base.InfofCtx(c.logCtx, base.KeyCache, "Initializing changes cache for %s.%s.%s with options %+v", base.UD(collection.ScopeName()), base.UD(collection.Name()), c.options)
 
 	heap.Init(&c.pendingLogs)
 
