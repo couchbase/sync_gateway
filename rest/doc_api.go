@@ -484,7 +484,8 @@ func (h *handler) handlePutDoc() error {
 	}
 
 	if doc != nil && roundTrip {
-		if err := h.db.WaitForSequenceNotSkipped(h.ctx(), doc.Sequence); err != nil {
+		collection := h.db.GetSingleDatabaseCollection()
+		if err := collection.WaitForSequenceNotSkipped(h.ctx(), doc.Sequence); err != nil {
 			return err
 		}
 	}
@@ -562,7 +563,7 @@ func (h *handler) handlePutDocReplicator2(docid string, roundTrip bool) (err err
 	}
 
 	if doc != nil && roundTrip {
-		if err := h.db.WaitForSequenceNotSkipped(h.ctx(), doc.Sequence); err != nil {
+		if err := collection.WaitForSequenceNotSkipped(h.ctx(), doc.Sequence); err != nil {
 			return err
 		}
 	}
@@ -590,7 +591,7 @@ func (h *handler) handlePostDoc() error {
 	}
 
 	if doc != nil && roundTrip {
-		err := h.db.WaitForSequenceNotSkipped(h.ctx(), doc.Sequence)
+		err := collection.WaitForSequenceNotSkipped(h.ctx(), doc.Sequence)
 		if err != nil {
 			return err
 		}

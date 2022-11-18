@@ -4616,7 +4616,7 @@ func TestActiveReplicatorRecoverFromRemoteRollback(t *testing.T) {
 	err = rt2db.GetSingleDatabaseCollectionWithUser().Purge(ctx2, docID+"2")
 	assert.NoError(t, err)
 
-	require.NoError(t, rt2.GetDatabase().FlushChannelCache(ctx2))
+	require.NoError(t, rt2.GetDatabase().GetSingleDatabaseCollection().FlushChannelCache(ctx2))
 	rt2.GetDatabase().GetSingleDatabaseCollection().FlushRevisionCacheForTest()
 
 	assert.NoError(t, ar.Start(ctx1))

@@ -1499,7 +1499,7 @@ func (h *handler) handlePurge() error {
 	}
 
 	if len(docIDs) > 0 {
-		count := h.db.GetChangeCache().Remove(docIDs, startTime)
+		count := collection.RemoveFromChangeCache(docIDs, startTime)
 		base.DebugfCtx(h.ctx(), base.KeyCache, "Purged %d items from caches", count)
 	}
 

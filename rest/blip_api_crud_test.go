@@ -1713,7 +1713,7 @@ func TestGetRemovedDoc(t *testing.T) {
 	assert.NoError(t, err)                         // no error
 	assert.Empty(t, resp.Properties["Error-Code"]) // no error
 
-	require.NoError(t, rt.GetDatabase().WaitForPendingChanges(base.TestCtx(t)))
+	require.NoError(t, rt.GetDatabase().GetSingleDatabaseCollection().WaitForPendingChanges(base.TestCtx(t)))
 
 	// Try to get rev 2 via BLIP API and assert that _removed == false
 	resultDoc, err := bt.GetDocAtRev("foo", "2-bcd")
@@ -1734,7 +1734,7 @@ func TestGetRemovedDoc(t *testing.T) {
 	assert.NoError(t, err)                         // no error
 	assert.Empty(t, resp.Properties["Error-Code"]) // no error
 
-	require.NoError(t, rt.GetDatabase().WaitForPendingChanges(base.TestCtx(t)))
+	require.NoError(t, rt.GetDatabase().GetSingleDatabaseCollection().WaitForPendingChanges(base.TestCtx(t)))
 
 	// Flush rev cache in case this prevents the bug from showing up (didn't make a difference)
 	rt.GetDatabase().GetSingleDatabaseCollection().FlushRevisionCacheForTest()

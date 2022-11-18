@@ -55,7 +55,7 @@ func TestQueryChannelsStatsView(t *testing.T) {
 	channelQueryErrorCountBefore := db.DbStats.Query(queryExpvar).QueryErrorCount.Value()
 
 	// Issue channels query
-	results, queryErr := db.QueryChannels(base.TestCtx(t), "ABC", docSeqMap["queryTestDoc1"], docSeqMap["queryTestDoc3"], 100, false)
+	results, queryErr := collection.QueryChannels(base.TestCtx(t), "ABC", docSeqMap["queryTestDoc1"], docSeqMap["queryTestDoc3"], 100, false)
 	assert.NoError(t, queryErr, "Query error")
 
 	assert.Equal(t, 3, countQueryResults(results))
@@ -108,7 +108,7 @@ func TestQueryChannelsStatsN1ql(t *testing.T) {
 	channelQueryErrorCountBefore := db.DbStats.Query(QueryTypeChannels).QueryErrorCount.Value()
 
 	// Issue channels query
-	results, queryErr := db.QueryChannels(base.TestCtx(t), "ABC", docSeqMap["queryTestDoc1"], docSeqMap["queryTestDoc3"], 100, false)
+	results, queryErr := collection.QueryChannels(base.TestCtx(t), "ABC", docSeqMap["queryTestDoc1"], docSeqMap["queryTestDoc3"], 100, false)
 	assert.NoError(t, queryErr, "Query error")
 
 	assert.Equal(t, 3, countQueryResults(results))
@@ -156,7 +156,7 @@ func TestQuerySequencesStatsView(t *testing.T) {
 	channelQueryErrorCountBefore := db.DbStats.Query(queryExpvar).QueryErrorCount.Value()
 
 	// Issue channels query
-	results, queryErr := db.QuerySequences(base.TestCtx(t), []uint64{
+	results, queryErr := collection.QuerySequences(base.TestCtx(t), []uint64{
 		docSeqMap["queryTestDoc3"], docSeqMap["queryTestDoc4"],
 		docSeqMap["queryTestDoc6"], docSeqMap["queryTestDoc8"],
 	})
@@ -166,21 +166,21 @@ func TestQuerySequencesStatsView(t *testing.T) {
 	assert.NoError(t, closeErr, "Close error")
 
 	// Issue query with single key
-	results, queryErr = db.QuerySequences(base.TestCtx(t), []uint64{docSeqMap["queryTestDoc2"]})
+	results, queryErr = collection.QuerySequences(base.TestCtx(t), []uint64{docSeqMap["queryTestDoc2"]})
 	assert.NoError(t, queryErr, "Query error")
 	assert.Equal(t, 1, countQueryResults(results))
 	closeErr = results.Close()
 	assert.NoError(t, closeErr, "Close error")
 
 	// Issue query with key outside keyset range
-	results, queryErr = db.QuerySequences(base.TestCtx(t), []uint64{100})
+	results, queryErr = collection.QuerySequences(base.TestCtx(t), []uint64{100})
 	assert.NoError(t, queryErr, "Query error")
 	assert.Equal(t, 0, countQueryResults(results))
 	closeErr = results.Close()
 	assert.NoError(t, closeErr, "Close error")
 
 	// Issue query with empty keys
-	results, queryErr = db.QuerySequences(base.TestCtx(t), []uint64{})
+	results, queryErr = collection.QuerySequences(base.TestCtx(t), []uint64{})
 	assert.Error(t, queryErr, "Expect empty sequence error")
 
 	channelQueryCountAfter := db.DbStats.Query(queryExpvar).QueryCount.Value()
@@ -197,7 +197,7 @@ func TestQuerySequencesStatsView(t *testing.T) {
 		docSeqMap[docID] = doc.Sequence
 	}
 	// Issue channels query
-	results, queryErr = db.QuerySequences(base.TestCtx(t), []uint64{
+	results, queryErr = collection.QuerySequences(base.TestCtx(t), []uint64{
 		docSeqMap["queryTestDoc3"], docSeqMap["queryTestDoc4"],
 		docSeqMap["queryTestDoc6"], docSeqMap["queryTestDoc8"],
 		docSeqMap["queryTestDocChanneled5"],
@@ -208,7 +208,7 @@ func TestQuerySequencesStatsView(t *testing.T) {
 	assert.NoError(t, closeErr, "Close error")
 
 	// Issue query with single key
-	results, queryErr = db.QuerySequences(base.TestCtx(t), []uint64{docSeqMap["queryTestDoc2"]})
+	results, queryErr = collection.QuerySequences(base.TestCtx(t), []uint64{docSeqMap["queryTestDoc2"]})
 	assert.NoError(t, queryErr, "Query error")
 	assert.Equal(t, 1, countQueryResults(results))
 	closeErr = results.Close()
@@ -216,7 +216,7 @@ func TestQuerySequencesStatsView(t *testing.T) {
 
 	// Issue query with key outside sequence range.  Note that this isn't outside the entire view key range, as
 	// [*, 25] is sorted before ["ABC1", 11]
-	results, queryErr = db.QuerySequences(base.TestCtx(t), []uint64{100})
+	results, queryErr = collection.QuerySequences(base.TestCtx(t), []uint64{100})
 	assert.NoError(t, queryErr, "Query error")
 	assert.Equal(t, 0, countQueryResults(results))
 	closeErr = results.Close()
@@ -250,7 +250,7 @@ func TestQuerySequencesStatsN1ql(t *testing.T) {
 	channelQueryErrorCountBefore := db.DbStats.Query(QueryTypeSequences).QueryErrorCount.Value()
 
 	// Issue channels query
-	results, queryErr := db.QuerySequences(base.TestCtx(t), []uint64{
+	results, queryErr := collection.QuerySequences(base.TestCtx(t), []uint64{
 		docSeqMap["queryTestDoc3"], docSeqMap["queryTestDoc4"],
 		docSeqMap["queryTestDoc6"], docSeqMap["queryTestDoc8"],
 	})
@@ -260,21 +260,21 @@ func TestQuerySequencesStatsN1ql(t *testing.T) {
 	assert.NoError(t, closeErr, "Close error")
 
 	// Issue query with single key
-	results, queryErr = db.QuerySequences(base.TestCtx(t), []uint64{docSeqMap["queryTestDoc2"]})
+	results, queryErr = collection.QuerySequences(base.TestCtx(t), []uint64{docSeqMap["queryTestDoc2"]})
 	assert.NoError(t, queryErr, "Query error")
 	assert.Equal(t, 1, countQueryResults(results))
 	closeErr = results.Close()
 	assert.NoError(t, closeErr, "Close error")
 
 	// Issue query with key outside keyset range
-	results, queryErr = db.QuerySequences(base.TestCtx(t), []uint64{100})
+	results, queryErr = collection.QuerySequences(base.TestCtx(t), []uint64{100})
 	assert.NoError(t, queryErr, "Query error")
 	assert.Equal(t, 0, countQueryResults(results))
 	closeErr = results.Close()
 	assert.NoError(t, closeErr, "Close error")
 
 	// Issue query with empty keys
-	results, queryErr = db.QuerySequences(base.TestCtx(t), []uint64{})
+	results, queryErr = collection.QuerySequences(base.TestCtx(t), []uint64{})
 	assert.Error(t, queryErr, "Expect empty sequence error")
 
 	channelQueryCountAfter := db.DbStats.Query(QueryTypeSequences).QueryCount.Value()
@@ -292,7 +292,7 @@ func TestQuerySequencesStatsN1ql(t *testing.T) {
 	}
 
 	// Issue channels query
-	results, queryErr = db.QuerySequences(base.TestCtx(t), []uint64{
+	results, queryErr = collection.QuerySequences(base.TestCtx(t), []uint64{
 		docSeqMap["queryTestDoc3"], docSeqMap["queryTestDoc4"],
 		docSeqMap["queryTestDoc6"], docSeqMap["queryTestDoc8"],
 		docSeqMap["queryTestDocChanneled5"],
@@ -303,7 +303,7 @@ func TestQuerySequencesStatsN1ql(t *testing.T) {
 	assert.NoError(t, closeErr, "Close error")
 
 	// Issue query with single key
-	results, queryErr = db.QuerySequences(base.TestCtx(t), []uint64{docSeqMap["queryTestDoc2"]})
+	results, queryErr = collection.QuerySequences(base.TestCtx(t), []uint64{docSeqMap["queryTestDoc2"]})
 	assert.NoError(t, queryErr, "Query error")
 	assert.Equal(t, 1, countQueryResults(results))
 	closeErr = results.Close()
@@ -311,7 +311,7 @@ func TestQuerySequencesStatsN1ql(t *testing.T) {
 
 	// Issue query with key outside sequence range.  Note that this isn't outside the entire view key range, as
 	// [*, 25] is sorted before ["ABC1", 11]
-	results, queryErr = db.QuerySequences(base.TestCtx(t), []uint64{100})
+	results, queryErr = collection.QuerySequences(base.TestCtx(t), []uint64{100})
 	assert.NoError(t, queryErr, "Query error")
 	assert.Equal(t, 0, countQueryResults(results))
 	closeErr = results.Close()
@@ -332,8 +332,9 @@ func TestCoveringQueries(t *testing.T) {
 		t.Errorf("Unable to get n1QLStore for testBucket")
 	}
 
+	collection := db.GetSingleDatabaseCollection()
 	// channels
-	channelsStatement, params := db.buildChannelsQuery("ABC", 0, 10, 100, false)
+	channelsStatement, params := collection.buildChannelsQuery("ABC", 0, 10, 100, false)
 	plan, explainErr := n1QLStore.ExplainQuery(channelsStatement, params)
 	assert.NoError(t, explainErr, "Error generating explain for channels query")
 	covered := IsCovered(plan)
@@ -342,7 +343,7 @@ func TestCoveringQueries(t *testing.T) {
 	assert.True(t, covered, "Channel query isn't covered by index: %s", planJSON)
 
 	// star channel
-	channelStarStatement, params := db.buildChannelsQuery("*", 0, 10, 100, false)
+	channelStarStatement, params := collection.buildChannelsQuery("*", 0, 10, 100, false)
 	plan, explainErr = n1QLStore.ExplainQuery(channelStarStatement, params)
 	assert.NoError(t, explainErr, "Error generating explain for star channel query")
 	covered = IsCovered(plan)
@@ -391,7 +392,7 @@ func TestAllDocsQuery(t *testing.T) {
 	// Standard query
 	startKey := "a"
 	endKey := ""
-	results, queryErr := db.QueryAllDocs(base.TestCtx(t), startKey, endKey)
+	results, queryErr := collection.QueryAllDocs(base.TestCtx(t), startKey, endKey)
 	assert.NoError(t, queryErr, "Query error")
 	var row map[string]interface{}
 	rowCount := 0
@@ -404,7 +405,7 @@ func TestAllDocsQuery(t *testing.T) {
 	// Attempt to invalidate standard query
 	startKey = "a' AND 1=0\x00"
 	endKey = ""
-	results, queryErr = db.QueryAllDocs(base.TestCtx(t), startKey, endKey)
+	results, queryErr = collection.QueryAllDocs(base.TestCtx(t), startKey, endKey)
 	assert.NoError(t, queryErr, "Query error")
 	rowCount = 0
 	for results.Next(&row) {
@@ -416,7 +417,7 @@ func TestAllDocsQuery(t *testing.T) {
 	// Attempt to invalidate statement to add row to resultset
 	startKey = `a' UNION ALL SELECT TOSTRING(BASE64_DECODE("SW52YWxpZERhdGE=")) as id;` + "\x00"
 	endKey = ""
-	results, queryErr = db.QueryAllDocs(base.TestCtx(t), startKey, endKey)
+	results, queryErr = collection.QueryAllDocs(base.TestCtx(t), startKey, endKey)
 	assert.NoError(t, queryErr, "Query error")
 	rowCount = 0
 	for results.Next(&row) {
@@ -429,7 +430,7 @@ func TestAllDocsQuery(t *testing.T) {
 	// Attempt to create syntax error
 	startKey = `a'1`
 	endKey = ""
-	results, queryErr = db.QueryAllDocs(base.TestCtx(t), startKey, endKey)
+	results, queryErr = collection.QueryAllDocs(base.TestCtx(t), startKey, endKey)
 	assert.NoError(t, queryErr, "Query error")
 	rowCount = 0
 	for results.Next(&row) {
@@ -677,49 +678,51 @@ func TestQueryChannelsActiveOnlyWithLimit(t *testing.T) {
 	// 20 Deleted documents (10 deleted + 10 branched|deleted)
 
 	// Get changes from channel "ABC" with limit and activeOnly true
-	entries, err := db.getChangesInChannelFromQuery(base.TestCtx(t), "ABC", startSeq, endSeq, 25, true)
+
+	collectionID := collection.GetCollectionID()
+	entries, err := db.getChangesInChannelFromQuery(base.TestCtx(t), channels.ID{Name: "ABC", CollectionID: collectionID}, startSeq, endSeq, 25, true)
 	require.NoError(t, err, "Couldn't query active docs from channel ABC with limit")
 	require.Len(t, entries, 25)
 	checkFlags(entries)
 
 	// Get changes from channel "*" with limit and activeOnly true
-	entries, err = db.getChangesInChannelFromQuery(base.TestCtx(t), "*", startSeq, endSeq, 25, true)
+	entries, err = db.getChangesInChannelFromQuery(base.TestCtx(t), channels.ID{Name: "*", CollectionID: collectionID}, startSeq, endSeq, 25, true)
 	require.NoError(t, err, "Couldn't query active docs from channel * with limit")
 	require.Len(t, entries, 25)
 	checkFlags(entries)
 
 	// Get changes from channel "ABC" without limit and activeOnly true
-	entries, err = db.getChangesInChannelFromQuery(base.TestCtx(t), "ABC", startSeq, endSeq, 0, true)
+	entries, err = db.getChangesInChannelFromQuery(base.TestCtx(t), channels.ID{Name: "ABC", CollectionID: collectionID}, startSeq, endSeq, 0, true)
 	require.NoError(t, err, "Couldn't query active docs from channel ABC with limit")
 	require.Len(t, entries, 30)
 	checkFlags(entries)
 
 	// Get changes from channel "*" without limit and activeOnly true
-	entries, err = db.getChangesInChannelFromQuery(base.TestCtx(t), "*", startSeq, endSeq, 0, true)
+	entries, err = db.getChangesInChannelFromQuery(base.TestCtx(t), channels.ID{Name: "*", CollectionID: collectionID}, startSeq, endSeq, 0, true)
 	require.NoError(t, err, "Couldn't query active docs from channel * with limit")
 	require.Len(t, entries, 30)
 	checkFlags(entries)
 
 	// Get changes from channel "ABC" with limit and activeOnly false
-	entries, err = db.getChangesInChannelFromQuery(base.TestCtx(t), "ABC", startSeq, endSeq, 45, false)
+	entries, err = db.getChangesInChannelFromQuery(base.TestCtx(t), channels.ID{Name: "ABC", CollectionID: collectionID}, startSeq, endSeq, 45, false)
 	require.NoError(t, err, "Couldn't query active docs from channel ABC with limit")
 	require.Len(t, entries, 45)
 	checkFlags(entries)
 
 	// Get changes from channel "*" with limit and activeOnly false
-	entries, err = db.getChangesInChannelFromQuery(base.TestCtx(t), "*", startSeq, endSeq, 45, false)
+	entries, err = db.getChangesInChannelFromQuery(base.TestCtx(t), channels.ID{Name: "*", CollectionID: collectionID}, startSeq, endSeq, 45, false)
 	require.NoError(t, err, "Couldn't query active docs from channel * with limit")
 	require.Len(t, entries, 45)
 	checkFlags(entries)
 
 	// Get changes from channel "ABC" without limit and activeOnly false
-	entries, err = db.getChangesInChannelFromQuery(base.TestCtx(t), "ABC", startSeq, endSeq, 0, false)
+	entries, err = db.getChangesInChannelFromQuery(base.TestCtx(t), channels.ID{Name: "ABC", CollectionID: collectionID}, startSeq, endSeq, 0, false)
 	require.NoError(t, err, "Couldn't query active docs from channel ABC with limit")
 	require.Len(t, entries, 50)
 	checkFlags(entries)
 
 	// Get changes from channel "*" without limit and activeOnly true
-	entries, err = db.getChangesInChannelFromQuery(base.TestCtx(t), "*", startSeq, endSeq, 0, false)
+	entries, err = db.getChangesInChannelFromQuery(base.TestCtx(t), channels.ID{Name: "*", CollectionID: collectionID}, startSeq, endSeq, 0, false)
 	require.NoError(t, err, "Couldn't query active docs from channel * with limit")
 	require.Len(t, entries, 50)
 	checkFlags(entries)

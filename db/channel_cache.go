@@ -45,7 +45,7 @@ type ChannelCache interface {
 	AddPrincipal(change *LogEntry)
 
 	// Remove purges the given doc IDs from all channel caches and returns the number of items removed.
-	Remove(docIDs []string, startTime time.Time) (count int)
+	Remove(collectionID uint32, docIDs []string, startTime time.Time) (count int)
 
 	// Returns set of changes for a given channel, within the bounds specified in options
 	GetChanges(ch channels.ID, options ChangesOptions) ([]*LogEntry, error)
@@ -75,7 +75,7 @@ type ChannelCache interface {
 
 // ChannelQueryHandler interface is implemented by databaseContext.
 type ChannelQueryHandler interface {
-	getChangesInChannelFromQuery(ctx context.Context, channelName string, startSeq, endSeq uint64, limit int, activeOnly bool) (LogEntries, error)
+	getChangesInChannelFromQuery(ctx context.Context, channelName channels.ID, startSeq, endSeq uint64, limit int, activeOnly bool) (LogEntries, error)
 }
 
 type StableSequenceCallbackFunc func() uint64
@@ -244,7 +244,7 @@ func (c *channelCacheImpl) AddToCache(change *LogEntry) (updatedChannels []chann
 
 // Remove purges the given doc IDs from all channel caches and returns the number of items removed.
 // count will be larger than the input slice if the same document is removed from multiple channel caches.
-func (c *channelCacheImpl) Remove(docIDs []string, startTime time.Time) (count int) {
+func (c *channelCacheImpl) Remove(collectionID uint32, docIDs []string, startTime time.Time) (count int) {
 	// Exit early if there's no work to do
 	if len(docIDs) == 0 {
 		return 0
@@ -255,8 +255,10 @@ func (c *channelCacheImpl) Remove(docIDs []string, startTime time.Time) (count i
 		if channelCache == nil {
 			return false
 		}
-
-		count += channelCache.Remove(docIDs, startTime)
+		if channelCache.ChannelID().CollectionID != collectionID {
+			return true
+		}
+		count += channelCache.Remove(collectionID, docIDs, startTime)
 		return true
 	}
 

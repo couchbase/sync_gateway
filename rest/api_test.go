@@ -1750,10 +1750,12 @@ func TestChannelAccessChanges(t *testing.T) {
 	dbc := rt.ServerContext().Database(ctx, "db")
 	database, _ := db.GetDatabase(dbc, nil)
 
+	collection := database.GetSingleDatabaseCollectionWithUser()
+
 	changed, err := database.UpdateSyncFun(ctx, `function(doc) {access("alice", "beta");channel("beta");}`)
 	assert.NoError(t, err)
 	assert.True(t, changed)
-	changeCount, err := database.UpdateAllDocChannels(ctx, false, func(docsProcessed, docsChanged *int) {}, base.NewSafeTerminator())
+	changeCount, err := collection.UpdateAllDocChannels(ctx, false, func(docsProcessed, docsChanged *int) {}, base.NewSafeTerminator())
 	assert.NoError(t, err)
 	assert.Equal(t, 9, changeCount)
 

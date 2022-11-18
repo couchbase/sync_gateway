@@ -493,7 +493,7 @@ func TestChannelCacheRemove(t *testing.T) {
 	assert.True(t, err == nil)
 
 	// Now remove doc1
-	cache.Remove([]string{"doc1"}, time.Now())
+	cache.Remove(collectionID, []string{"doc1"}, time.Now())
 	entries, err = cache.GetChanges(getChangesOptionsWithZeroSeq())
 	require.Len(t, entries, 2)
 	assert.True(t, verifyChannelSequences(entries, []uint64{2, 3}))
@@ -503,7 +503,7 @@ func TestChannelCacheRemove(t *testing.T) {
 	// Try to remove doc5 with a startTime before it was added to ensure it's not removed
 	// This will print a debug level log:
 	// [DBG] Cache+: Skipping removal of doc "doc5" from cache "Test1" - received after purge
-	cache.Remove([]string{"doc5"}, time.Now().Add(-time.Second*5))
+	cache.Remove(collectionID, []string{"doc5"}, time.Now().Add(-time.Second*5))
 	entries, err = cache.GetChanges(getChangesOptionsWithZeroSeq())
 	require.Len(t, entries, 2)
 	assert.True(t, verifyChannelSequences(entries, []uint64{2, 3}))
