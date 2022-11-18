@@ -178,6 +178,56 @@ func TestServerlessBucketCredentialsFetchDatabases(t *testing.T) {
 	assert.False(t, found)
 }
 
+func TestServerlessGoCBConnectionString(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server")
+	}
+	tests := []struct {
+		name            string
+		expectedConnStr string
+		specKvConn      string
+		kvConnCount     int
+	}{
+		{
+			name:            "serverless connection",
+			expectedConnStr: "?idle_http_connection_timeout=90000&kv_pool_size=1&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
+			kvConnCount:     1,
+		},
+		{
+			name:            "serverless connection with kv pool specified",
+			specKvConn:      "?idle_http_connection_timeout=90000&kv_pool_size=3&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
+			expectedConnStr: "?idle_http_connection_timeout=90000&kv_pool_size=3&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
+			kvConnCount:     3,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			tb := base.GetTestBucket(t)
+			defer tb.Close()
+			bucketServer := tb.BucketSpec.Server
+			test.expectedConnStr = bucketServer + test.expectedConnStr
+
+			if test.specKvConn != "" {
+				tb.BucketSpec.Server = bucketServer + "?kv_pool_size=3"
+				tb.BucketSpec.KvPoolSize = 3
+			}
+
+			rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb, PersistentConfig: true, serverless: true})
+			defer rt.Close()
+			sc := rt.ServerContext()
+			require.True(t, sc.Config.IsServerless())
+
+			resp := rt.SendAdminRequest(http.MethodPut, "/db/", fmt.Sprintf(`{"bucket": "%s", "use_views": %t, "num_index_replicas": 0}`,
+				tb.GetName(), base.TestsDisableGSI()))
+			RequireStatus(t, resp, http.StatusCreated)
+
+			assert.Equal(t, test.expectedConnStr, sc.getConnectionString("db"))
+			assert.Equal(t, test.kvConnCount, sc.getKVConnectionPol("db"))
+		})
+	}
+
+}
+
 func TestServerlessSuspendDatabase(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server due to updating database config using a Bootstrap connection")
@@ -581,6 +631,9 @@ func TestServerlessUnsuspendAdminAuth(t *testing.T) {
 }
 
 func TestImportPartitionsServerless(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server")
+	}
 	tests := []struct {
 		name               string
 		importPartition    *uint16

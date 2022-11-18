@@ -1914,6 +1914,18 @@ func (sc *ServerContext) isDatabaseSuspended(t *testing.T, dbName string) bool {
 	return sc._isDatabaseSuspended(dbName)
 }
 
+func (sc *ServerContext) getConnectionString(dbName string) string {
+	sc.lock.RLock()
+	defer sc.lock.RUnlock()
+	return sc.databases_[dbName].BucketSpec.Server
+}
+
+func (sc *ServerContext) getKVConnectionPol(dbName string) int {
+	sc.lock.RLock()
+	defer sc.lock.RUnlock()
+	return sc.databases_[dbName].BucketSpec.KvPoolSize
+}
+
 func (sc *ServerContext) suspendDatabase(t *testing.T, ctx context.Context, dbName string) error {
 	sc.lock.Lock()
 	defer sc.lock.Unlock()
