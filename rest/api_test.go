@@ -3414,8 +3414,6 @@ func TestWebhookSpecialProperties(t *testing.T) {
 	wg.Wait()
 }
 
-
-
 func Benchmark_RestApiGetDocPerformance(b *testing.B) {
 
 	base.SetUpBenchmarkLogging(b, base.LevelInfo, base.KeyHTTP)
