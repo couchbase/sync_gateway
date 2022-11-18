@@ -3070,38 +3070,6 @@ func TestPutIDRevMatchBody(t *testing.T) {
 	}
 }
 
-func TestPublicChanGuestAccess(t *testing.T) {
-	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
-		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
-			Guest: &auth.PrincipalConfig{
-				Disabled: base.BoolPtr(false),
-			},
-		}},
-	})
-	defer rt.Close()
-
-	// Create a document on the public channel
-	resp := rt.SendAdminRequest(http.MethodPut, "/db/doc", `{"channels": ["!"], "foo": "bar"}`)
-	rest.RequireStatus(t, resp, http.StatusCreated)
-
-	// Check guest user has access to public channel
-	resp = rt.SendRequest(http.MethodGet, "/db/doc", "")
-	rest.RequireStatus(t, resp, http.StatusOK)
-	assert.EqualValues(t, "bar", resp.GetRestDocument()["foo"])
-
-	resp = rt.SendAdminRequest(http.MethodGet, "/db/_user/GUEST", ``)
-	rest.RequireStatus(t, resp, http.StatusOK)
-	fmt.Println("GUEST user:", resp.Body.String())
-	assert.EqualValues(t, []interface{}{"!"}, resp.GetRestDocument()["all_channels"])
-
-	// Confirm guest user cannot access other channels it has no access too
-	resp = rt.SendAdminRequest(http.MethodPut, "/db/docNoAccess", `{"channels": ["cookie"], "foo": "bar"}`)
-	rest.RequireStatus(t, resp, http.StatusCreated)
-
-	resp = rt.SendRequest(http.MethodGet, "/db/docNoAccess", "")
-	rest.RequireStatus(t, resp, http.StatusForbidden)
-}
-
 func setServerPurgeInterval(t *testing.T, rt *rest.RestTester, newPurgeInterval string) {
 	eps, httpClient, err := rt.ServerContext().ObtainManagementEndpointsAndHTTPClient()
 	require.NoError(t, err)
