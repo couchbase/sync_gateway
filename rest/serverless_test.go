@@ -631,6 +631,9 @@ func TestServerlessUnsuspendAdminAuth(t *testing.T) {
 }
 
 func TestImportPartitionsServerless(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server")
+	}
 	tests := []struct {
 		name               string
 		importPartition    *uint16
