@@ -22,7 +22,13 @@ export interface Upstream {
 
 
 // https://www.apollographql.com/docs/federation/building-supergraphs/subgraphs-apollo-server/
-const kFederationImportsStr = `extend schema @link(url: "https://specs.apollo.dev/federation/v2.0", import: ["@key", "@shareable"])`;
+const kFederationImportsStr = `
+    extend schema @link(
+        url: "https://specs.apollo.dev/federation/v2.0",
+        import: ["@extends", "@external", "@inaccessible", "@key", "@override", "@provides",
+                 "@requires", "@shareable", "@tag"]
+    )
+`;
 
 
 /** Constructs a Database instance. */

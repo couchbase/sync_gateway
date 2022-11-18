@@ -5,7 +5,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/couchbase/sync_gateway/db"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -63,23 +62,17 @@ func TestGraphQLSubgraph(t *testing.T) {
 		},
 	}
 
-	// Compile the schema:
-	var gq db.GraphQL
-	var err error
-	t.Run("CompileSchema", func(t *testing.T) {
-		_, gq, err = CompileFunctions(nil, &config)
-		assert.NoError(t, err)
+	// Validate the config:
+	t.Run("ValidateSchema", func(t *testing.T) {
+		assert.NoError(t, ValidateFunctions(context.Background(), nil, &config))
 	})
-	if err != nil {
-		return
-	}
 
-	db, ctx := setupTestDBWithFunctions(t, nil, &kTestGraphQLConfigWithN1QL)
+	db, ctx := setupTestDBWithFunctions(t, nil, &config)
 	defer db.Close(ctx)
 
 	// Handle a `_service` query:
 	t.Run("ServiceQuery", func(t *testing.T) {
-		result, err := gq.Query(db, `query { _service { sdl } }`,
+		result, err := db.GraphQL.Query(db, `query { _service { sdl } }`,
 			"", nil, false, context.TODO())
 		if !assertGraphQLNoErrors(t, result, err) {
 			return
@@ -98,7 +91,7 @@ func TestGraphQLSubgraph(t *testing.T) {
 			},
 		}
 
-		result, err := gq.Query(db, `
+		result, err := db.GraphQL.Query(db, `
 		query($reprs: [_Any!]!) {
 			_entities(representations: $reprs) {
 				...on Task { title }
@@ -114,12 +107,6 @@ func TestGraphQLApolloCompatibilitySubgraph(t *testing.T) {
 	// Subgraph schema definition; see https://github.com/apollographql/apollo-federation-subgraph-compatibility/blob/main/CONTRIBUTORS.md
 	// (I had to comment out a few things to get it to compile with graphql-go)
 	var kSchemaStr = `
-	#extend schema
-	#@link(
-	#  url: "https://specs.apollo.dev/federation/v2.0",
-	#  import: ["@extends", "@external", "@inaccessible", "@key", "@override", "@provides", "@requires", "@shareable", "@tag"]
-	#)
-
   type Product @key(fields: "id") @key(fields: "sku package") @key(fields: "sku variation { id }") {
 	id: ID!
 	sku: String
@@ -158,13 +145,13 @@ func TestGraphQLApolloCompatibilitySubgraph(t *testing.T) {
 	unit: String @inaccessible
   }
 
-  extend
+#  extend
    type Query {
 	product(id: ID!): Product
 	deprecatedProduct(sku: String!, package: String!): DeprecatedProduct @deprecated(reason: "Use product query instead")
   }
 
-  extend
+#  extend
    type User @key(fields: "email") {
 	averageProductsCreatedPerYear: Int @requires(fields: "totalProductsCreated yearsOfEmployment")
 	email: ID! @external
@@ -222,14 +209,5 @@ func TestGraphQLApolloCompatibilitySubgraph(t *testing.T) {
 		},
 	}
 
-	// Compile the schema:
-	//var gq db.GraphQL
-	var err error
-	t.Run("CompileSchema", func(t *testing.T) {
-		_, _, err = CompileFunctions(nil, &config)
-		assert.NoError(t, err)
-	})
-	if err != nil {
-		return
-	}
+	assert.NoError(t, ValidateFunctions(context.Background(), nil, &config))
 }

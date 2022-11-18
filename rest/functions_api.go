@@ -31,8 +31,8 @@ const kGraphQLVariablesParam = "variables"
 // HTTP handler for GET or POST `/$db/_function/$name`
 func (h *handler) handleFunctionCall() error {
 	var maxRequestSize *int
-	if h.db.Options.UserFunctions != nil {
-		maxRequestSize = h.db.Options.UserFunctions.MaxRequestSize
+	if h.db.UserFunctions != nil {
+		maxRequestSize = h.db.UserFunctions.MaxRequestSize
 	}
 	fnName, fnParams, err := h.getFunctionArgs(maxRequestSize)
 	if err != nil {
@@ -153,10 +153,10 @@ func (h *handler) handleGraphQL() error {
 	var variables map[string]interface{}
 	canMutate := false
 
-	if h.db.Options.GraphQL == nil {
+	if h.db.GraphQL == nil {
 		return base.HTTPErrorf(http.StatusServiceUnavailable, "GraphQL is not configured")
 	}
-	maxSize := h.db.Options.GraphQL.MaxRequestSize()
+	maxSize := h.db.GraphQL.MaxRequestSize()
 
 	if h.rq.Method == "POST" {
 		if h.rq.ContentLength >= 0 {

@@ -23,6 +23,7 @@ import (
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
+	"github.com/couchbase/sync_gateway/js"
 	pkgerrors "github.com/pkg/errors"
 )
 
@@ -79,6 +80,9 @@ const (
 // completion of all background tasks before the server is stopped.
 const BGTCompletionMaxWait = 30 * time.Second
 
+// Max number of V8 instances to create (per database)
+const MaxV8VMs = 4
+
 // Basic description of a database. Shared between all Database objects on the same database.
 // This object is thread-safe so it can be shared between HTTP handlers.
 type DatabaseContext struct {
@@ -120,9 +124,10 @@ type DatabaseContext struct {
 	ServeInsecureAttachmentTypes bool                     // Attachment content type will bypass the content-disposition handling, default false
 	NoX509HTTPClient             *http.Client             // A HTTP Client from gocb to use the management endpoints
 	ServerContextHasStarted      chan struct{}            // Closed via PostStartup once the server has fully started
-	userFunctions                *UserFunctions           // client-callable JavaScript functions
-	graphQL                      *GraphQL                 // GraphQL query evaluator
 	Scopes                       map[string]Scope         // A map keyed by scope name containing a set of scopes/collections. Nil if running with only _default._default
+	UserFunctions                *UserFunctions           // JS/N1QL functions clients can call
+	GraphQL                      GraphQL                  // GraphQL query interface
+	V8VMs                        js.VMPool                // A pool of preconfigured V8 instances
 }
 
 type Scope struct {
@@ -148,8 +153,6 @@ type DatabaseContextOptions struct {
 	SecureCookieOverride          bool             // Pass-through DBConfig.SecureCookieOverride
 	SessionCookieName             string           // Pass-through DbConfig.SessionCookieName
 	SessionCookieHttpOnly         bool             // Pass-through DbConfig.SessionCookieHTTPOnly
-	UserFunctions                 *UserFunctions   // JS/N1QL functions clients can call
-	GraphQL                       GraphQL          // GraphQL query interface
 	AllowConflicts                *bool            // False forbids creating conflicts
 	SendWWWAuthenticateHeader     *bool            // False disables setting of 'WWW-Authenticate' header
 	DisablePasswordAuthentication bool             // True enforces OIDC/guest only
@@ -166,7 +169,8 @@ type DatabaseContextOptions struct {
 	JavascriptTimeout             time.Duration // Max time the JS functions run for (ie. sync fn, import filter)
 	Serverless                    bool          // If running in serverless mode
 	Scopes                        ScopesOptions
-	skipRegisterImportPIndex      bool // if set, skips the global gocb PIndex registration
+	skipRegisterImportPIndex      bool                       // if set, skips the global gocb PIndex registration
+	FunctionsConfig               IFunctionsAndGraphQLConfig // JS/N1QL functions clients can call
 }
 
 type ScopesOptions map[string]ScopeOptions
@@ -359,8 +363,11 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 		DbStats:    dbStats,
 	}
 
+	dbContext.V8VMs.Init(MaxV8VMs)
+
 	cleanupFunctions = append(cleanupFunctions, func() {
 		base.SyncGatewayStats.ClearDBStats(dbName)
+		dbContext.V8VMs.Close()
 	})
 
 	if len(options.Scopes) > 0 {
@@ -644,6 +651,13 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 	dbContext.ResyncManager = NewResyncManager(bucket)
 	dbContext.TombstoneCompactionManager = NewTombstoneCompactionManager()
 	dbContext.AttachmentCompactionManager = NewAttachmentCompactionManager(bucket)
+
+	if dbContext.Options.FunctionsConfig != nil {
+		dbContext.UserFunctions, dbContext.GraphQL, err = dbContext.Options.FunctionsConfig.Compile(&dbContext.V8VMs)
+		if err != nil {
+			return nil, err
+		}
+	}
 
 	return dbContext, nil
 }
@@ -1821,15 +1835,8 @@ func initDatabaseStats(dbName string, autoImport bool, options DatabaseContextOp
 		}
 	}
 
-	if options.UserFunctions != nil {
-		for _, fn := range options.UserFunctions.Definitions {
-			if queryName, ok := fn.N1QLQueryName(); ok {
-				queryNames = append(queryNames, queryName)
-			}
-		}
-	}
-	if options.GraphQL != nil {
-		queryNames = append(queryNames, options.GraphQL.N1QLQueryNames()...)
+	if options.FunctionsConfig != nil {
+		queryNames = append(queryNames, options.FunctionsConfig.N1QLQueryNames()...)
 	}
 
 	return base.SyncGatewayStats.NewDBStats(dbName, enabledDeltaSync, enabledImport, enabledViews, queryNames...)

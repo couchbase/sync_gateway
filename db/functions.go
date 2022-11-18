@@ -20,12 +20,22 @@ import (
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/js"
 )
 
 /* This is the interface to the functions and GraphQL APIs implemented in the functions package. */
 
 // Timeout for N1QL, JavaScript and GraphQL queries. (Applies to REST and BLIP requests.)
 const UserFunctionTimeout = 60 * time.Second
+
+// Abstract interface for user-functions & GraphQL configuration.
+type IFunctionsAndGraphQLConfig interface {
+	// Compiles the configuration into a live UserFunctions intance.
+	Compile(*js.VMPool) (*UserFunctions, GraphQL, error)
+
+	// Returns the names of all N1QL queries used.
+	N1QLQueryNames() []string
+}
 
 //////// USER FUNCTIONS
 
@@ -108,8 +118,8 @@ type SourceLocation struct {
 
 // Looks up a UserFunction by name and returns an Invocation.
 func (db *Database) GetUserFunction(name string, args map[string]interface{}, mutationAllowed bool, ctx context.Context) (UserFunctionInvocation, error) {
-	if db.Options.UserFunctions != nil {
-		if fn, found := db.Options.UserFunctions.Definitions[name]; found {
+	if db.UserFunctions != nil {
+		if fn, found := db.UserFunctions.Definitions[name]; found {
 			return fn.Invoke(db, args, mutationAllowed, ctx)
 		}
 	}
@@ -127,7 +137,7 @@ func (db *Database) CallUserFunction(name string, args map[string]interface{}, m
 
 // Top-level public method to run a GraphQL query on a db.Database.
 func (db *Database) UserGraphQLQuery(query string, operationName string, variables map[string]interface{}, mutationAllowed bool, ctx context.Context) (*GraphQLResult, error) {
-	if graphql := db.Options.GraphQL; graphql == nil {
+	if graphql := db.GraphQL; graphql == nil {
 		return nil, base.HTTPErrorf(http.StatusServiceUnavailable, "GraphQL is not configured")
 	} else {
 		return graphql.Query(db, query, operationName, variables, mutationAllowed, ctx)

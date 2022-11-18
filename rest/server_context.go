@@ -871,16 +871,14 @@ func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConf
 		GroupID:                   groupID,
 		JavascriptTimeout:         javascriptTimeout,
 		Serverless:                sc.Config.IsServerless(),
-		// UserQueries:               config.UserQueries,   // behind feature flag (see below)
-		// UserFunctions:             config.UserFunctions, // behind feature flag (see below)
-		// GraphQL:                   config.GraphQL,       // behind feature flag (see below)
+		// FunctionsConfig:        config.UserFunctions, // behind feature flag (see below)
+		// GraphQLConfig:          config.GraphQL,       // behind feature flag (see below)
 	}
 
 	if sc.Config.Unsupported.UserQueries != nil && *sc.Config.Unsupported.UserQueries {
-		var err error
-		contextOptions.UserFunctions, contextOptions.GraphQL, err = functions.CompileFunctions(config.UserFunctions, config.GraphQL)
-		if err != nil {
-			return contextOptions, err
+		contextOptions.FunctionsConfig = &functions.Config{
+			Functions: config.UserFunctions,
+			GraphQL:   config.GraphQL,
 		}
 	} else if config.UserFunctions != nil || config.GraphQL != nil {
 		base.WarnfCtx(context.TODO(), `Database config options "functions" and "graphql" ignored because unsupported.user_queries feature flag is not enabled`)

@@ -96,13 +96,12 @@ type VMPool struct {
 	vms     chan *VM
 }
 
-// Creates an `vmPool`, a thread-safe wrapper around `VM`.
+// Initializes a `vmPool`, a thread-safe wrapper around `VM`.
 // `maxEnvironments` is the maximum number of `VM` objects (and V8 instances!) it will cache.
-func NewVMPool(maxVMs int) (*VMPool, error) {
-	return &VMPool{
-		modules: map[string]ModuleConfig{},
-		vms:     make(chan *VM, maxVMs),
-	}, nil
+func (pool *VMPool) Init(maxVMs int) {
+	pool.modules = map[string]ModuleConfig{}
+	pool.vms = make(chan *VM, maxVMs)
+
 }
 
 func (pool *VMPool) AddModule(name string, mod ModuleConfig) {

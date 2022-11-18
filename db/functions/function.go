@@ -23,6 +23,12 @@ import (
 
 //////// CONFIGURATION TYPES:
 
+// Combines functions & GraphQL configuration. Implements db.IFunctionsAndGraphQLConfig.
+type Config struct {
+	Functions *FunctionsConfig
+	GraphQL   *GraphQLConfig
+}
+
 // Top level user-function config object: the map of names to queries.
 type FunctionsConfig struct {
 	Definitions      FunctionsDefs `json:"definitions"`                  // The function definitions
@@ -68,20 +74,44 @@ type GraphQLTypesMap map[string]GraphQLResolverConfig
 // Maps GraphQL field names to the resolvers that implement them.
 type GraphQLResolverConfig map[string]FunctionConfig
 
-const kMaxCachedV8Environments = 4
-
 //////// INITIALIZATION:
 
+func (fnc *Config) Compile(vms *js.VMPool) (*db.UserFunctions, db.GraphQL, error) {
+	return CompileFunctions(fnc.Functions, fnc.GraphQL, vms)
+}
+
+func (fnc *Config) N1QLQueryNames() []string {
+	queryNames := []string{}
+	if fnc.Functions != nil {
+		for fnName, fn := range fnc.Functions.Definitions {
+			if fn.Type == "query" {
+				queryNames = append(queryNames, db.QueryTypeUserFunctionPrefix+fnName)
+			}
+		}
+	}
+	if fnc.GraphQL != nil {
+		for typeName, resolvers := range fnc.GraphQL.Resolvers {
+			for fieldName, resolver := range resolvers {
+				if resolver.Type == "query" {
+					queryNames = append(queryNames, db.QueryTypeUserFunctionPrefix+graphQLResolverName(typeName, fieldName))
+				}
+			}
+		}
+	}
+	return queryNames
+}
+
 // Compiles the functions in a UserFunctionConfigMap, returning UserFunctions.
-func CompileFunctions(fnConfig *FunctionsConfig, gqConfig *GraphQLConfig) (fns *db.UserFunctions, gq db.GraphQL, err error) {
+func CompileFunctions(fnConfig *FunctionsConfig, gqConfig *GraphQLConfig, vms *js.VMPool) (fns *db.UserFunctions, gq db.GraphQL, err error) {
 	if fnConfig == nil && gqConfig == nil {
 		return
 	}
 
-	vms, err := js.NewVMPool(kMaxCachedV8Environments)
-	if err != nil {
-		return nil, nil, err
-	}
+	// var vms js.VMPool
+	// vms.Init(kMaxCachedV8Environments)
+	// if err != nil {
+	// 	return nil, nil, err
+	// }
 	vms.AddModule("functions", makeModuleConfig(fnConfig, gqConfig))
 
 	makeEvaluator := func(delegate evaluatorDelegate, user *userCredentials) (*evaluator, error) {

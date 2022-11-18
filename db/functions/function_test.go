@@ -186,8 +186,8 @@ func TestUserFunctions(t *testing.T) {
 	db, ctx := setupTestDBWithFunctions(t, &kTestFunctionsConfig, nil)
 	defer db.Close(ctx)
 
-	assert.NotNil(t, db.Options.UserFunctions)
-	assert.NotNil(t, db.Options.UserFunctions.Definitions["square"])
+	assert.NotNil(t, db.UserFunctions)
+	assert.NotNil(t, db.UserFunctions.Definitions["square"])
 
 	// First run the tests as an admin:
 	t.Run("AsAdmin", func(t *testing.T) { testUserFunctionsAsAdmin(t, ctx, db) })
@@ -507,11 +507,9 @@ func assertHTTPError(t *testing.T, err error, status int) bool {
 func setupTestDBWithFunctions(t *testing.T, fnConfig *FunctionsConfig, gqConfig *GraphQLConfig) (*db.Database, context.Context) {
 	cacheOptions := db.DefaultCacheOptions()
 	options := db.DatabaseContextOptions{
-		CacheOptions: &cacheOptions,
+		CacheOptions:    &cacheOptions,
+		FunctionsConfig: &Config{fnConfig, gqConfig},
 	}
-	var err error
-	options.UserFunctions, options.GraphQL, err = CompileFunctions(fnConfig, gqConfig)
-	assert.NoError(t, err)
 	return setupTestDBWithOptions(t, options)
 }
 
