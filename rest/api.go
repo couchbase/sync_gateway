@@ -391,8 +391,10 @@ func (h *handler) handleGetDB() error {
 	// Don't bother trying to lookup LastSequence() if offline
 	runState := db.RunStateString[atomic.LoadUint32(&h.db.State)]
 	if runState != db.RunStateString[db.DBOffline] {
-		lastSeq, _ := h.db.LastSequence()
-		defaultCollectionLastSeq = &lastSeq
+		if h.db.OnlyDefaultCollection() {
+			lastSeq, _ := h.collection.LastSequence()
+			defaultCollectionLastSeq = &lastSeq
+		}
 	}
 
 	var response = DatabaseRoot{

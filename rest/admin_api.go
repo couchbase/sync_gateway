@@ -1051,7 +1051,13 @@ func (h *handler) handleGetStatus() error {
 
 		// Don't bother trying to lookup LastSequence() if offline
 		if runState != db.RunStateString[db.DBOffline] {
-			lastSeq, _ = database.LastSequence()
+			if database.OnlyDefaultCollection() {
+				collection, err := database.GetDefaultDatabaseCollection()
+				if err != nil {
+					return err
+				}
+				lastSeq, _ = collection.LastSequence()
+			}
 		}
 
 		replicationsStatus, err := database.SGReplicateMgr.GetReplicationStatusAll(db.DefaultReplicationStatusOptions())

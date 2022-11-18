@@ -90,7 +90,7 @@ type DatabaseContext struct {
 	BucketLock                  sync.RWMutex            // Control Access to the underlying bucket object
 	mutationListener            changeListener          // Caching feed listener
 	ImportListener              *importListener         // Import feed listener
-	sequences                   *sequenceAllocator      // Source of new sequence numbers
+	principalSequences          *principalSequences     // Manager of principal sequence numbers
 	ChannelMapper               *channels.ChannelMapper // Runs JS 'sync' function
 	StartTime                   time.Time               // Timestamp when context was instantiated
 	RevsLimit                   uint32                  // Max depth a document's revision tree can grow to
@@ -384,23 +384,6 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 
 	dbContext.EventMgr = NewEventManager(dbContext.terminator)
 
-	var err error
-	dbContext.sequences, err = newSequenceAllocator(metadataStore, dbContext.DbStats.Database())
-	if err != nil {
-		return nil, err
-	}
-
-	cleanupFunctions = append(cleanupFunctions, func() {
-		dbContext.sequences.Stop()
-	})
-
-	// Get current value of _sync:seq
-	initialSequence, seqErr := dbContext.sequences.lastSequence()
-	if seqErr != nil {
-		return nil, seqErr
-	}
-	initialSequenceTime := time.Now()
-
 	// Initialize the active channel counter
 	dbContext.activeChannels = channels.NewActiveChannels(dbContext.DbStats.Cache().NumActiveChannels)
 
@@ -455,6 +438,11 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 
 		dbContext.CollectionByID[base.DefaultCollectionID] = dbCollection
 		dbContext.singleCollection = dbCollection
+	}
+
+	dbContext.principalSequences, err = newPrincipalSequences(ctx, dbContext)
+	if err != nil {
+		return nil, err
 	}
 
 	// Initialize the tap Listener for notify handling
@@ -516,20 +504,9 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 		dbContext.mutationListener.Stop()
 	})
 
-	// Unlock change cache.  Validate that any allocated sequences on other nodes have either been assigned or released
-	// before starting
-	if initialSequence > 0 {
-		_ = dbContext.sequences.waitForReleasedSequences(initialSequenceTime)
-	}
-
-	for _, collection := range dbContext.CollectionByID {
-		err = collection.changeCache.Start(initialSequence)
-		if err != nil {
-			return nil, err
-		}
-		cleanupFunctions = append(cleanupFunctions, func() {
-			collection.changeCache.Stop()
-		})
+	err = startChangeCaches(dbContext, cleanupFunctions)
+	if err != nil {
+		return nil, err
 	}
 
 	// If this is an xattr import node, start import feed.  Must be started after the caching DCP feed, as import cfg
@@ -714,7 +691,7 @@ func (context *DatabaseContext) Close(ctx context.Context) {
 	close(context.terminator)
 	// Wait for database background tasks to finish.
 	waitForBGTCompletion(ctx, BGTCompletionMaxWait, context.backgroundTasks, context.Name)
-	context.sequences.Stop()
+	context.stopSequenceAllocators()
 	context.mutationListener.Stop()
 	context.stopChangeCaches()
 	// Stop the channel cache and it's background tasks.
@@ -1562,7 +1539,7 @@ func (db *DatabaseCollectionWithUser) UpdateAllDocChannels(ctx context.Context, 
 
 	queryLimit := db.queryPaginationLimit()
 	startSeq := uint64(0)
-	endSeq, err := db.sequences().getSequence()
+	endSeq, err := db.sequences.getSequence()
 	if err != nil {
 		return 0, err
 	}
@@ -1745,7 +1722,7 @@ func (db *DatabaseCollectionWithUser) UpdateAllDocChannels(ctx context.Context, 
 	}
 
 	for _, sequence := range unusedSequences {
-		err := db.sequences().releaseSequence(sequence)
+		err := db.sequences.releaseSequence(sequence)
 		if err != nil {
 			base.WarnfCtx(ctx, "Error attempting to release sequence %d. Error %v", sequence, err)
 		}
@@ -1759,7 +1736,7 @@ func (db *DatabaseCollectionWithUser) UpdateAllDocChannels(ctx context.Context, 
 
 		authr := db.Authenticator(ctx)
 		regeneratePrincipalSequences := func(princ auth.Principal) error {
-			nextSeq, err := db.sequences().nextSequence()
+			nextSeq, err := db.principalSequences().nextSequence()
 			if err != nil {
 				return err
 			}
@@ -1977,12 +1954,6 @@ func (context *DatabaseContext) AllowFlushNonCouchbaseBuckets() bool {
 	return false
 }
 
-// ////// SEQUENCE ALLOCATION:
-
-func (context *DatabaseContext) LastSequence() (uint64, error) {
-	return context.sequences.lastSequence()
-}
-
 // Helpers for unsupported options
 func (context *DatabaseContext) IsGuestReadOnly() bool {
 	return context.Options.UnsupportedOptions != nil && context.Options.UnsupportedOptions.GuestReadOnly
@@ -2023,8 +1994,8 @@ func (dbCtx *DatabaseContext) AddDatabaseLogContext(ctx context.Context) context
 	return ctx
 }
 
-// onlyDefaultCollection is true if the database is only configured with default collection.
-func (dbCtx *DatabaseContext) onlyDefaultCollection() bool {
+// OnlyDefaultCollection is true if the database is only configured with default collection.
+func (dbCtx *DatabaseContext) OnlyDefaultCollection() bool {
 	if len(dbCtx.CollectionByID) > 1 {
 		return false
 	}
@@ -2034,7 +2005,7 @@ func (dbCtx *DatabaseContext) onlyDefaultCollection() bool {
 
 // GetDatabaseCollectionWithUser returns a collection if one exists, otherwise error.
 func (dbc *Database) GetDatabaseCollectionWithUser(scopeName, collectionName string) (*DatabaseCollectionWithUser, error) {
-	if base.IsDefaultCollection(scopeName, collectionName) && dbc.onlyDefaultCollection() {
+	if base.IsDefaultCollection(scopeName, collectionName) && dbc.OnlyDefaultCollection() {
 		return dbc.GetDefaultDatabaseCollectionWithUser()
 	}
 	if dbc.Scopes == nil {
@@ -2126,11 +2097,49 @@ func newDatabaseCollection(ctx context.Context, dbContext *DatabaseContext, data
 		}
 		dbCollection.changeCache.cfgEventCallback = cfgSG.FireEvent
 	}
+	dbCollection.sequences, err = newSequenceAllocator(dbCollection.dataStore, dbCollection.dbStats().Database())
+	if err != nil {
+		return nil, err
+	}
+
 	return dbCollection, nil
+}
+
+func startChangeCaches(dbContext *DatabaseContext, cleanupFunctions []func()) error {
+	for _, collection := range dbContext.CollectionByID {
+		// Get current value of _sync:seq
+		initialSequence, seqErr := collection.LastSequence()
+		if seqErr != nil {
+			return seqErr
+		}
+		initialSequenceTime := time.Now()
+
+		// Unlock change cache.  Validate that any allocated sequences on other nodes have either been assigned or released
+		// before starting
+		if initialSequence > 0 {
+			_ = collection.sequences.waitForReleasedSequences(initialSequenceTime)
+		}
+
+		err := collection.changeCache.Start(initialSequence)
+		if err != nil {
+			return err
+		}
+		cleanupFunctions = append(cleanupFunctions, func() {
+			collection.changeCache.Stop()
+		})
+	}
+	return nil
 }
 
 func (dbc *DatabaseContext) stopChangeCaches() {
 	for _, collection := range dbc.CollectionByID {
 		collection.changeCache.Stop()
 	}
+}
+
+func (dbc *DatabaseContext) stopSequenceAllocators() {
+	for _, collection := range dbc.CollectionByID {
+		collection.sequences.Stop()
+	}
+	dbc.principalSequences.sequences.Stop()
 }

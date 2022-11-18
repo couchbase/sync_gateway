@@ -63,7 +63,7 @@ func (il *importListener) StartImportFeed(ctx context.Context, bucket base.Bucke
 		scopeName = sn
 	}
 
-	if !dbContext.onlyDefaultCollection() {
+	if !dbContext.OnlyDefaultCollection() {
 		gocbv2Bucket, err := base.AsGocbV2Bucket(bucket)
 		if err != nil {
 			return err
