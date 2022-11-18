@@ -79,6 +79,8 @@ type Principal interface {
 
 	setDeleted(bool)
 	IsDeleted() bool
+
+	PrincipalCollectionAccess
 }
 
 // Role is basically the same as Principal, just concrete. Users can inherit channels from Roles.
@@ -160,6 +162,8 @@ type User interface {
 	FilterToAvailableChannels(channels ch.Set) (filtered ch.TimedSet, removed []string)
 
 	setRolesSince(ch.TimedSet)
+
+	UserCollectionAccess
 }
 
 // PrincipalConfig represents a user/role as a JSON object.

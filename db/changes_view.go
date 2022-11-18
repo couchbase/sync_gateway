@@ -18,6 +18,7 @@ import (
 	"github.com/couchbase/go-couchbase"
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/channels"
 )
 
 // Unmarshaled JSON structure for "changes" view results
@@ -85,13 +86,19 @@ func nextChannelQueryEntry(results sgbucket.QueryResultIterator, collectionID ui
 }
 
 // Queries the 'channels' view to get a range of sequences of a single channel as LogEntries.
-func (dbc *DatabaseContext) getChangesInChannelFromQuery(ctx context.Context, channelName string, startSeq, endSeq uint64, limit int, activeOnly bool) (LogEntries, error) {
+func (dbc *DatabaseContext) getChangesInChannelFromQuery(ctx context.Context, channel channels.ID, startSeq, endSeq uint64, limit int, activeOnly bool) (LogEntries, error) {
+	collection := dbc.GetSingleDatabaseCollection()
+	return collection.getChangesInChannelFromQuery(ctx, channel.Name, startSeq, endSeq, limit, activeOnly)
+
+}
+
+// Queries the 'channels' view to get a range of sequences of a single channel as LogEntries.
+func (dbc *DatabaseCollection) getChangesInChannelFromQuery(ctx context.Context, channelName string, startSeq, endSeq uint64, limit int, activeOnly bool) (LogEntries, error) {
 	if dbc.Bucket == nil {
 		return nil, errors.New("No bucket available for channel query")
 	}
 	start := time.Now()
-	usingViews := dbc.Options.UseViews
-
+	usingViews := dbc.useViews()
 	entries := make(LogEntries, 0)
 	activeEntryCount := 0
 
@@ -100,6 +107,7 @@ func (dbc *DatabaseContext) getChangesInChannelFromQuery(ctx context.Context, ch
 	// Loop for active-only and limit handling.
 	// The set of changes we get back from the query applies the limit, but includes both active and non-active entries.  When retrieving changes w/ activeOnly=true and a limit,
 	// this means we may need multiple view calls to get a total of [limit] active entries.
+	collectionID := dbc.GetCollectionID()
 	for {
 
 		// Query the view or index
@@ -117,10 +125,6 @@ func (dbc *DatabaseContext) getChangesInChannelFromQuery(ctx context.Context, ch
 			if usingViews {
 				entry, found = nextChannelViewEntry(queryResults)
 			} else {
-				collectionID, err := dbc.GetSingleCollectionID()
-				if err != nil {
-					return nil, err
-				}
 				entry, found = nextChannelQueryEntry(queryResults, collectionID)
 			}
 
@@ -184,18 +188,18 @@ func (dbc *DatabaseContext) getChangesInChannelFromQuery(ctx context.Context, ch
 		base.InfofCtx(ctx, base.KeyAll, "Channel query took %v to return %d rows.  Channel: %s StartSeq: %d EndSeq: %d Limit: %d",
 			elapsed, len(entries), base.UD(channelName), startSeq, endSeq, limit)
 	}
-	dbc.DbStats.Cache().ViewQueries.Add(1)
+	dbc.dbStats().Cache().ViewQueries.Add(1)
 	return entries, nil
 }
 
 // Queries the 'channels' view to get changes from a channel for the specified sequence.  Used for skipped sequence check
 // before abandoning.
-func (dbc *DatabaseContext) getChangesForSequences(ctx context.Context, sequences []uint64) (LogEntries, error) {
+func (dbc *DatabaseCollection) getChangesForSequences(ctx context.Context, sequences []uint64) (LogEntries, error) {
 	if dbc.Bucket == nil {
 		return nil, errors.New("No bucket available for sequence query")
 	}
 	start := time.Now()
-	usingViews := dbc.Options.UseViews
+	usingViews := dbc.useViews()
 
 	entries := make(LogEntries, 0)
 
@@ -204,10 +208,7 @@ func (dbc *DatabaseContext) getChangesForSequences(ctx context.Context, sequence
 	if err != nil {
 		return nil, err
 	}
-	collectionID, err := dbc.GetSingleCollectionID()
-	if err != nil {
-		return nil, err
-	}
+	collectionID := dbc.GetCollectionID()
 
 	// Convert the output to LogEntries.  Channel query and view result rows have different structure, so need to unmarshal independently.
 	for {

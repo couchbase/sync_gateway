@@ -137,6 +137,11 @@ func (c *tbpClusterV2) removeBucket(name string) error {
 	return c.cluster.Buckets().DropBucket(name, nil)
 }
 
+func isNonDefaultCollection(bucketSpec BucketSpec) bool {
+	specScope, specCollection := bucketSpecScopeAndCollection(bucketSpec)
+	return specScope != DefaultScope || specCollection != DefaultCollection
+}
+
 // openTestBucket opens the bucket of the given name for the gocb cluster in the given TestBucketPool.
 func (c *tbpClusterV2) openTestBucket(testBucketName tbpBucketName, waitUntilReady time.Duration, usingNamedCollections bool) (Bucket, Bucket, error) {
 
@@ -156,14 +161,8 @@ func (c *tbpClusterV2) openTestBucket(testBucketName tbpBucketName, waitUntilRea
 	if err := dropAllScopesAndCollections(bucket); err != nil && !errors.Is(err, ErrCollectionsUnsupported) {
 		return nil, nil, err
 	}
-
-	bucketFromSpec, err := GetCollectionFromCluster(bucketCluster, bucketSpec, waitUntilReady)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	specScope, specCollection := bucketSpecScopeAndCollection(bucketSpec)
-	if specScope != DefaultScope || specCollection != DefaultCollection {
+	if isNonDefaultCollection(bucketSpec) {
+		specScope, specCollection := bucketSpecScopeAndCollection(bucketSpec)
 		err := CreateBucketScopesAndCollections(context.TODO(), bucketSpec,
 			map[string][]string{
 				specScope: []string{specCollection},
@@ -171,6 +170,14 @@ func (c *tbpClusterV2) openTestBucket(testBucketName tbpBucketName, waitUntilRea
 		if err != nil {
 			return nil, nil, err
 		}
+	}
+
+	bucketFromSpec, err := GetCollectionFromCluster(bucketCluster, bucketSpec, waitUntilReady)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	if isNonDefaultCollection(bucketSpec) {
 		defaultSpec := getBucketSpec(testBucketName, usingNamedCollections)
 		defaultSpec.Scope = nil
 		defaultSpec.Collection = nil

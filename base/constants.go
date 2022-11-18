@@ -114,6 +114,9 @@ const (
 	// Number of kv connections (pipelines) per Couchbase Server node
 	DefaultGocbKvPoolSize = 2
 
+	// Number of kv connections (pipelines) per Couchbase Server node when running in serverless
+	DefaultGocbKvPoolSizeServerless = 1
+
 	// Number of connections used by DCP agents - must be 1
 	GoCBPoolSizeDCP = 1
 

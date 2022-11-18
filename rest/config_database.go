@@ -95,7 +95,7 @@ func DefaultDbConfig(sc *StartupConfig) *DbConfig {
 		Roles:              nil,
 		RevsLimit:          nil, // Set this below struct
 		AutoImport:         base.BoolPtr(base.DefaultAutoImport),
-		ImportPartitions:   base.Uint16Ptr(base.DefaultImportPartitions),
+		ImportPartitions:   base.Uint16Ptr(base.GetDefaultImportPartitions(sc.IsServerless())),
 		ImportFilter:       nil,
 		ImportBackupOldRev: base.BoolPtr(false),
 		EventHandlers:      nil,

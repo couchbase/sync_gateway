@@ -217,7 +217,7 @@ func (h *handler) handleAllDocs() error {
 
 		}
 	} else {
-		if err := h.db.ForEachDocID(h.ctx(), writeDoc, options); err != nil {
+		if err := h.db.GetSingleDatabaseCollection().ForEachDocID(h.ctx(), writeDoc, options); err != nil {
 			return err
 		}
 	}
@@ -308,11 +308,9 @@ func (h *handler) handleDumpChannel() error {
 	since := h.getIntQuery("since", 0)
 	base.InfofCtx(h.ctx(), base.KeyHTTP, "Dump channel %q", base.UD(channelName))
 
-	collectionID, err := h.db.GetSingleCollectionID()
-	if err != nil {
-		return err
-	}
-	chanLog := h.db.GetChangeLog(ch.NewID(channelName, collectionID), since)
+	collection := h.db.GetSingleDatabaseCollection()
+	collectionID := collection.GetCollectionID()
+	chanLog := collection.GetChangeLog(ch.NewID(channelName, collectionID), since)
 	if chanLog == nil {
 		return base.HTTPErrorf(http.StatusNotFound, "no such channel")
 	}

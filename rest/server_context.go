@@ -413,6 +413,13 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	if spec.Server == "" {
 		spec.Server = sc.Config.Bootstrap.Server
 	}
+	if sc.Config.IsServerless() {
+		connStr, err := spec.GetGoCBConnString(&base.GoCBConnStringParams{KVPoolSize: base.DefaultGocbKvPoolSizeServerless})
+		if err != nil {
+			return nil, err
+		}
+		spec.Server = connStr
+	}
 
 	if sc.databases_[dbName] != nil {
 		if useExisting {
@@ -656,7 +663,7 @@ func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConf
 	importOptions.BackupOldRev = base.BoolDefault(config.ImportBackupOldRev, false)
 
 	if config.ImportPartitions == nil {
-		importOptions.ImportPartitions = base.DefaultImportPartitions
+		importOptions.ImportPartitions = base.GetDefaultImportPartitions(sc.Config.IsServerless())
 	} else {
 		importOptions.ImportPartitions = *config.ImportPartitions
 	}

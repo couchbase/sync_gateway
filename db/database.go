@@ -94,12 +94,12 @@ type DatabaseContext struct {
 	StartTime                   time.Time               // Timestamp when context was instantiated
 	RevsLimit                   uint32                  // Max depth a document's revision tree can grow to
 	autoImport                  bool                    // Add sync data to new untracked couchbase server docs?  (Xattr mode specific)
-	changeCache                 *changeCache            // Cache of recently-access channels
-	EventMgr                    *EventManager           // Manages notification events
-	AllowEmptyPassword          bool                    // Allow empty passwords?  Defaults to false
-	Options                     DatabaseContextOptions  // Database Context Options
-	AccessLock                  sync.RWMutex            // Allows DB offline to block until synchronous calls have completed
-	State                       uint32                  // The runtime state of the DB from a service perspective
+	channelCache                ChannelCache
+	EventMgr                    *EventManager          // Manages notification events
+	AllowEmptyPassword          bool                   // Allow empty passwords?  Defaults to false
+	Options                     DatabaseContextOptions // Database Context Options
+	AccessLock                  sync.RWMutex           // Allows DB offline to block until synchronous calls have completed
+	State                       uint32                 // The runtime state of the DB from a service perspective
 	ResyncManager               *BackgroundManager
 	TombstoneCompactionManager  *BackgroundManager
 	AttachmentCompactionManager *BackgroundManager
@@ -390,16 +390,31 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 	}
 	initialSequenceTime := time.Now()
 
-	// In-memory channel cache
-	dbContext.changeCache = &changeCache{}
-
-	// Callback that is invoked whenever a set of channels is changed in the ChangeCache
-	notifyChange := func(changedChannels channels.Set) {
-		dbContext.mutationListener.Notify(changedChannels)
-	}
-
 	// Initialize the active channel counter
 	dbContext.activeChannels = channels.NewActiveChannels(dbContext.DbStats.Cache().NumActiveChannels)
+
+	cacheOptions := options.CacheOptions
+	if cacheOptions == nil {
+		defaultOpts := DefaultCacheOptions()
+		cacheOptions = &defaultOpts
+	}
+	channelCache, err := NewChannelCacheForContext(cacheOptions.ChannelCacheOptions, dbContext)
+	if err != nil {
+		return nil, err
+	}
+	dbContext.channelCache = channelCache
+
+	// Initialize sg cluster config.  Required even if import and sgreplicate are disabled
+	// on this node, to support replication REST API calls
+	if base.IsEnterpriseEdition() {
+		sgCfg, err := base.NewCfgSG(dbContext.Bucket, dbContext.Options.GroupID)
+		if err != nil {
+			return nil, err
+		}
+		dbContext.CfgSG = sgCfg
+	} else {
+		dbContext.CfgSG = cbgt.NewCfgMem()
+	}
 
 	if len(options.Scopes) > 0 {
 		dbContext.Scopes = make(map[string]Scope, len(options.Scopes))
@@ -409,57 +424,29 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 			}
 			for collName := range scope.Collections {
 
-				dbCollection := newDatabaseCollection(dbContext, bucket)
+				dbCollection, err := newDatabaseCollection(ctx, dbContext, bucket)
+				if err != nil {
+					return nil, err
+				}
 				dbContext.Scopes[scopeName].Collections[collName] = dbCollection
 
-				collection, err := base.AsCollection(dbCollection.Bucket)
-				if err != nil {
-					return nil, err
-				}
-				collectionID, err := collection.GetCollectionID()
-				if err != nil {
-					return nil, err
-				}
+				collectionID := dbCollection.GetCollectionID()
 				dbContext.CollectionByID[collectionID] = dbCollection
 				dbContext.singleCollection = dbCollection
 			}
 		}
 	} else {
-		dbCollection := newDatabaseCollection(dbContext, bucket)
+		dbCollection, err := newDatabaseCollection(ctx, dbContext, bucket)
+		if err != nil {
+			return nil, err
+		}
 
 		dbContext.CollectionByID[base.DefaultCollectionID] = dbCollection
 		dbContext.singleCollection = dbCollection
 	}
 
-	// Initialize the ChangeCache.  Will be locked and unusable until .Start() is called (SG #3558)
-	err = dbContext.changeCache.Init(
-		ctx,
-		dbContext,
-		notifyChange,
-		options.CacheOptions,
-	)
-	if err != nil {
-		base.DebugfCtx(ctx, base.KeyDCP, "Error initializing the change cache", err)
-	}
-
-	// Set the DB Context notifyChange callback to call back the changecache DocChanged callback
-	dbContext.SetOnChangeCallback(dbContext.changeCache.DocChanged)
-
 	// Initialize the tap Listener for notify handling
 	dbContext.mutationListener.Init(bucket.GetName(), options.GroupID)
-
-	// Initialize sg cluster config.  Required even if import and sgreplicate are disabled
-	// on this node, to support replication REST API calls
-	if base.IsEnterpriseEdition() {
-		sgCfg, err := base.NewCfgSG(dbContext.Bucket, dbContext.Options.GroupID)
-		if err != nil {
-			return nil, err
-		}
-		dbContext.changeCache.cfgEventCallback = sgCfg.FireEvent
-		dbContext.CfgSG = sgCfg
-	} else {
-		dbContext.CfgSG = cbgt.NewCfgMem()
-	}
 
 	// Initialize sg-replicate manager
 	dbContext.SGReplicateMgr, err = NewSGReplicateManager(ctx, dbContext, dbContext.CfgSG)
@@ -509,7 +496,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 
 	// Check if there is an error starting the DCP feed
 	if err != nil {
-		dbContext.changeCache = nil
+		dbContext.channelCache = nil
 		return nil, err
 	}
 
@@ -523,14 +510,15 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 		_ = dbContext.sequences.waitForReleasedSequences(initialSequenceTime)
 	}
 
-	err = dbContext.changeCache.Start(initialSequence)
-	if err != nil {
-		return nil, err
+	for _, collection := range dbContext.CollectionByID {
+		err = collection.changeCache.Start(initialSequence)
+		if err != nil {
+			return nil, err
+		}
+		cleanupFunctions = append(cleanupFunctions, func() {
+			collection.changeCache.Stop()
+		})
 	}
-
-	cleanupFunctions = append(cleanupFunctions, func() {
-		dbContext.changeCache.Stop()
-	})
 
 	// If this is an xattr import node, start import feed.  Must be started after the caching DCP feed, as import cfg
 	// subscription relies on the caching feed.
@@ -706,11 +694,6 @@ func (dbCtx *DatabaseContext) GetServerUUID(ctx context.Context) string {
 	return dbCtx.serverUUID
 }
 
-// Utility function to support cache testing from outside db package
-func (context *DatabaseContext) GetChangeCache() *changeCache {
-	return context.changeCache
-}
-
 func (context *DatabaseContext) Close(ctx context.Context) {
 	context.BucketLock.Lock()
 	defer context.BucketLock.Unlock()
@@ -721,7 +704,7 @@ func (context *DatabaseContext) Close(ctx context.Context) {
 	waitForBGTCompletion(ctx, BGTCompletionMaxWait, context.backgroundTasks, context.Name)
 	context.sequences.Stop()
 	context.mutationListener.Stop()
-	context.changeCache.Stop()
+	context.stopChangeCaches()
 	context.ImportListener.Stop()
 	if context.Heartbeater != nil {
 		context.Heartbeater.Stop()
@@ -772,12 +755,6 @@ func (context *DatabaseContext) RestartListener() error {
 	return nil
 }
 
-// Cache flush support.  Currently test-only - added for unit test access from rest package
-func (dbCtx *DatabaseContext) FlushChannelCache(ctx context.Context) error {
-	base.InfofCtx(ctx, base.KeyCache, "Flushing channel cache")
-	return dbCtx.changeCache.Clear()
-}
-
 // Removes previous versions of Sync Gateway's design docs found on the server
 func (context *DatabaseContext) RemoveObsoleteDesignDocs(previewOnly bool) (removedDesignDocs []string, err error) {
 	return removeObsoleteDesignDocs(context.Bucket, previewOnly, context.UseViews())
@@ -817,7 +794,7 @@ func (dc *DatabaseContext) TakeDbOffline(ctx context.Context, reason string) err
 		dc.AccessLock.Lock()
 		defer dc.AccessLock.Unlock()
 
-		dc.changeCache.Stop()
+		dc.stopChangeCaches()
 
 		// set DB state to Offline
 		atomic.StoreUint32(&dc.State, DBOffline)
@@ -939,7 +916,7 @@ type ForEachDocIDOptions struct {
 type ForEachDocIDFunc func(id IDRevAndSequence, channels []string) (bool, error)
 
 // Iterates over all documents in the database, calling the callback function on each
-func (db *Database) ForEachDocID(ctx context.Context, callback ForEachDocIDFunc, resultsOpts ForEachDocIDOptions) error {
+func (db *DatabaseCollection) ForEachDocID(ctx context.Context, callback ForEachDocIDFunc, resultsOpts ForEachDocIDOptions) error {
 
 	results, err := db.QueryAllDocs(ctx, resultsOpts.Startkey, resultsOpts.Endkey)
 	if err != nil {
@@ -954,7 +931,7 @@ func (db *Database) ForEachDocID(ctx context.Context, callback ForEachDocIDFunc,
 }
 
 // Iterate over the results of an AllDocs query, performing ForEachDocID handling for each row
-func (db *Database) processForEachDocIDResults(callback ForEachDocIDFunc, limit uint64, results sgbucket.QueryResultIterator) error {
+func (db *DatabaseCollection) processForEachDocIDResults(callback ForEachDocIDFunc, limit uint64, results sgbucket.QueryResultIterator) error {
 
 	count := uint64(0)
 	for {
@@ -963,7 +940,7 @@ func (db *Database) processForEachDocIDResults(callback ForEachDocIDFunc, limit 
 		var docid, revid string
 		var seq uint64
 		var channels []string
-		if db.Options.UseViews {
+		if db.useViews() {
 			var viewRow AllDocsViewQueryRow
 			found = results.Next(&viewRow)
 			if found {
@@ -1480,7 +1457,8 @@ func (db *Database) Compact(ctx context.Context, skipRunningStateCheck bool, cal
 		count := len(purgedDocs)
 		purgedDocCount += count
 		if count > 0 {
-			db.changeCache.Remove(purgedDocs, startTime)
+			collection := db.GetSingleDatabaseCollection() // CBG-2561
+			collection.RemoveFromChangeCache(purgedDocs, startTime)
 			db.DbStats.Database().NumTombstonesCompacted.Add(int64(count))
 		}
 		base.DebugfCtx(ctx, base.KeyAll, "Compacted %v tombstones", count)
@@ -1553,13 +1531,13 @@ func (db *Database) UpdateSyncFun(ctx context.Context, syncFun string) (changed 
 // To be used when the JavaScript sync function changes.
 type updateAllDocChannelsCallbackFunc func(docsProcessed, docsChanged *int)
 
-func (db *Database) UpdateAllDocChannels(ctx context.Context, regenerateSequences bool, callback updateAllDocChannelsCallbackFunc, terminator *base.SafeTerminator) (int, error) {
+func (db *DatabaseCollectionWithUser) UpdateAllDocChannels(ctx context.Context, regenerateSequences bool, callback updateAllDocChannelsCallbackFunc, terminator *base.SafeTerminator) (int, error) {
 	base.InfofCtx(ctx, base.KeyAll, "Recomputing document channels...")
 	base.InfofCtx(ctx, base.KeyAll, "Re-running sync function on all documents...")
 
-	queryLimit := db.Options.QueryPaginationLimit
+	queryLimit := db.queryPaginationLimit()
 	startSeq := uint64(0)
-	endSeq, err := db.sequences.getSequence()
+	endSeq, err := db.sequences().getSequence()
 	if err != nil {
 		return 0, err
 	}
@@ -1613,8 +1591,7 @@ func (db *Database) UpdateAllDocChannels(ctx context.Context, regenerateSequence
 				// Run the sync fn over each current/leaf revision, in case there are conflicts:
 				changed := 0
 				doc.History.forEachLeaf(func(rev *RevInfo) {
-					collection := db.GetSingleDatabaseCollectionWithUser()
-					bodyBytes, _, err := collection.get1xRevFromDoc(ctx, doc, rev.ID, false)
+					bodyBytes, _, err := db.get1xRevFromDoc(ctx, doc, rev.ID, false)
 					if err != nil {
 						base.WarnfCtx(ctx, "Error getting rev from doc %s/%s %s", base.UD(docid), rev.ID, err)
 					}
@@ -1623,11 +1600,11 @@ func (db *Database) UpdateAllDocChannels(ctx context.Context, regenerateSequence
 						base.WarnfCtx(ctx, "Error unmarshalling body %s/%s for sync function %s", base.UD(docid), rev.ID, err)
 						return
 					}
-					metaMap, err := doc.GetMetaMap(db.Options.UserXattrKey)
+					metaMap, err := doc.GetMetaMap(db.userXattrKey())
 					if err != nil {
 						return
 					}
-					channels, access, roles, syncExpiry, _, err := collection.getChannelsAndAccess(ctx, doc, body, metaMap, rev.ID)
+					channels, access, roles, syncExpiry, _, err := db.getChannelsAndAccess(ctx, doc, body, metaMap, rev.ID)
 					if err != nil {
 						// Probably the validator rejected the doc
 						base.WarnfCtx(ctx, "Error calling sync() on doc %q: %v", base.UD(docid), err)
@@ -1639,7 +1616,7 @@ func (db *Database) UpdateAllDocChannels(ctx context.Context, regenerateSequence
 					if rev.ID == doc.CurrentRev {
 
 						if regenerateSequences {
-							unusedSequences, err = collection.assignSequence(ctx, 0, doc, unusedSequences)
+							unusedSequences, err = db.assignSequence(ctx, 0, doc, unusedSequences)
 							if err != nil {
 								base.WarnfCtx(ctx, "Unable to assign a sequence number: %v", err)
 							}
@@ -1693,7 +1670,7 @@ func (db *Database) UpdateAllDocChannels(ctx context.Context, regenerateSequence
 						return nil, nil, deleteDoc, nil, base.ErrUpdateCancel
 					}
 				}
-				_, err = db.Bucket.WriteUpdateWithXattr(key, base.SyncXattrName, db.Options.UserXattrKey, 0, nil, nil, writeUpdateFunc)
+				_, err = db.Bucket.WriteUpdateWithXattr(key, base.SyncXattrName, db.userXattrKey(), 0, nil, nil, writeUpdateFunc)
 			} else {
 				_, err = db.Bucket.Update(key, 0, func(currentValue []byte) ([]byte, *uint32, bool, error) {
 					// Be careful: this block can be invoked multiple times if there are races!
@@ -1743,21 +1720,21 @@ func (db *Database) UpdateAllDocChannels(ctx context.Context, regenerateSequence
 	}
 
 	for _, sequence := range unusedSequences {
-		err := db.sequences.releaseSequence(sequence)
+		err := db.sequences().releaseSequence(sequence)
 		if err != nil {
 			base.WarnfCtx(ctx, "Error attempting to release sequence %d. Error %v", sequence, err)
 		}
 	}
 
 	if regenerateSequences {
-		users, roles, err := db.AllPrincipalIDs(ctx)
+		users, roles, err := db.allPrincipalIDs(ctx)
 		if err != nil {
 			return docsChanged, err
 		}
 
 		authr := db.Authenticator(ctx)
 		regeneratePrincipalSequences := func(princ auth.Principal) error {
-			nextSeq, err := db.DatabaseContext.sequences.nextSequence()
+			nextSeq, err := db.sequences().nextSequence()
 			if err != nil {
 				return err
 			}
@@ -1799,13 +1776,12 @@ func (db *Database) UpdateAllDocChannels(ctx context.Context, regenerateSequence
 	if docsChanged > 0 {
 		// Now invalidate channel cache of all users/roles:
 		base.InfofCtx(ctx, base.KeyAll, "Invalidating channel caches of users/roles...")
-		collection := db.GetSingleDatabaseCollection()
-		users, roles, _ := db.AllPrincipalIDs(ctx)
+		users, roles, _ := db.allPrincipalIDs(ctx)
 		for _, name := range users {
-			collection.invalUserChannels(ctx, name, endSeq)
+			db.invalUserChannels(ctx, name, endSeq)
 		}
 		for _, name := range roles {
-			collection.invalRoleChannels(ctx, name, endSeq)
+			db.invalRoleChannels(ctx, name, endSeq)
 		}
 	}
 	return docsChanged, nil
@@ -2031,23 +2007,20 @@ func (dbCtx *DatabaseContext) onlyDefaultCollection() bool {
 	return exists
 }
 
-// GetSingleCollectionID returns a collectionID. This is a temporary shim for single collections, and will be removed when a database can support multiple collecitons.
-func (dbCtx *DatabaseContext) GetSingleCollectionID() (uint32, error) {
-	collection, err := base.AsCollection(dbCtx.Bucket)
-	if err != nil {
-		return 0, nil
+// GetDefaultDatabaseCollection will return the default collection if the default collection is supplied in the database config.
+func (dbc *DatabaseContext) GetDefaultDatabaseCollection() (*DatabaseCollection, error) {
+	col, exists := dbc.CollectionByID[base.DefaultCollectionID]
+	if !exists {
+		return nil, fmt.Errorf("default collection is not configured on this database")
 	}
-	if !collection.IsSupported(sgbucket.DataStoreFeatureCollections) {
-		return 0, nil
-	}
-	return collection.GetCollectionID()
+	return col, nil
 }
 
 // GetDefaultDatabaseCollectionWithUser will return the default collection if the default collection is supplied in the database config.
 func (dbc *Database) GetDefaultDatabaseCollectionWithUser() (*DatabaseCollectionWithUser, error) {
-	col, exists := dbc.CollectionByID[base.DefaultCollectionID]
-	if !exists {
-		return nil, fmt.Errorf("default collection is not configured on this database")
+	col, err := dbc.GetDefaultDatabaseCollection()
+	if err != nil {
+		return nil, err
 	}
 	return &DatabaseCollectionWithUser{
 		DatabaseCollection: col,
@@ -2069,15 +2042,49 @@ func (dbc *Database) GetSingleDatabaseCollectionWithUser() *DatabaseCollectionWi
 }
 
 // newDatabaseCollection returns a collection which inherits values from the database but is specific to a given Bucket.
-func newDatabaseCollection(dbContext *DatabaseContext, bucket base.Bucket) *DatabaseCollection {
+func newDatabaseCollection(ctx context.Context, dbContext *DatabaseContext, bucket base.Bucket) (*DatabaseCollection, error) {
 	dbCollection := &DatabaseCollection{
-		Bucket: bucket,
-		dbCtx:  dbContext,
+		Bucket:      bucket,
+		dbCtx:       dbContext,
+		changeCache: &changeCache{},
 	}
 	dbCollection.revisionCache = NewRevisionCache(
 		dbContext.Options.RevisionCacheOptions,
 		dbCollection,
 		dbContext.DbStats.Cache(),
 	)
-	return dbCollection
+	// Callback that is invoked whenever a set of channels is changed in the ChangeCache
+	notifyChange := func(changedChannels channels.Set) {
+		dbContext.mutationListener.Notify(changedChannels)
+	}
+
+	// Initialize the ChangeCache.  Will be locked and unusable until .Start() is called (SG #3558)
+	err := dbCollection.changeCache.Init(
+		ctx,
+		dbCollection,
+		dbContext.channelCache,
+		notifyChange,
+		dbContext.Options.CacheOptions,
+	)
+	if err != nil {
+		base.DebugfCtx(ctx, base.KeyDCP, "Error initializing the change cache", err)
+		return nil, err
+	}
+	// Set the DB Context notifyChange callback to call back the changecache DocChanged callback
+	dbContext.SetOnChangeCallback(dbCollection.changeCache.DocChanged)
+
+	if base.IsEnterpriseEdition() {
+		cfgSG, ok := dbContext.CfgSG.(*base.CfgSG)
+		if !ok {
+			return nil, fmt.Errorf("Could not cast %V to CfgSG", dbContext.CfgSG)
+		}
+		dbCollection.changeCache.cfgEventCallback = cfgSG.FireEvent
+	}
+	return dbCollection, nil
+}
+
+func (dbc *DatabaseContext) stopChangeCaches() {
+	for _, collection := range dbc.CollectionByID {
+		collection.changeCache.Stop()
+	}
 }

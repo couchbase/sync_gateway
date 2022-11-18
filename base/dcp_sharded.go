@@ -28,6 +28,7 @@ import (
 
 const CBGTIndexTypeSyncGatewayImport = "syncGateway-import-"
 const DefaultImportPartitions = 16
+const DefaultImportPartitionsServerless = 6
 
 // firstVersionToSupportCollections represents the earliest Sync Gateway release that supports collections.
 var firstVersionToSupportCollections = &ComparableVersion{
@@ -677,4 +678,12 @@ func RemoveDestFactory(destKey string) {
 	cbgtDestFactoriesLock.Lock()
 	delete(cbgtDestFactories, destKey)
 	cbgtDestFactoriesLock.Unlock()
+}
+
+func GetDefaultImportPartitions(serverless bool) uint16 {
+	if serverless {
+		return DefaultImportPartitionsServerless
+	} else {
+		return DefaultImportPartitions
+	}
 }

@@ -417,7 +417,7 @@ func (rt *RestTester) WaitForSequence(seq uint64) error {
 	if database == nil {
 		return fmt.Errorf("No database found")
 	}
-	return database.WaitForSequence(base.TestCtx(rt.TB), seq)
+	return database.GetSingleDatabaseCollection().WaitForSequence(base.TestCtx(rt.TB), seq)
 }
 
 func (rt *RestTester) WaitForPendingChanges() error {
@@ -425,7 +425,7 @@ func (rt *RestTester) WaitForPendingChanges() error {
 	if database == nil {
 		return fmt.Errorf("No database found")
 	}
-	return database.WaitForPendingChanges(base.TestCtx(rt.TB))
+	return database.GetSingleDatabaseCollection().WaitForPendingChanges(base.TestCtx(rt.TB))
 }
 
 func (rt *RestTester) SetAdminParty(partyTime bool) error {
@@ -532,7 +532,7 @@ type ChangesResults struct {
 	Last_Seq interface{}
 }
 
-func (cr ChangesResults) requireDocIDs(t testing.TB, docIDs []string) {
+func (cr ChangesResults) RequireDocIDs(t testing.TB, docIDs []string) {
 	require.Equal(t, len(docIDs), len(cr.Results))
 	for _, docID := range docIDs {
 		var found bool
@@ -1820,7 +1820,7 @@ func NewHTTPTestServerOnListener(h http.Handler, l net.Listener) *httptest.Serve
 	return s
 }
 
-func waitAndRequireCondition(t *testing.T, fn func() bool, failureMsgAndArgs ...interface{}) {
+func WaitAndRequireCondition(t *testing.T, fn func() bool, failureMsgAndArgs ...interface{}) {
 	t.Log("starting waitAndRequireCondition")
 	for i := 0; i <= 20; i++ {
 		if i == 20 {
@@ -1912,6 +1912,18 @@ func (sc *ServerContext) isDatabaseSuspended(t *testing.T, dbName string) bool {
 	sc.lock.RLock()
 	defer sc.lock.RUnlock()
 	return sc._isDatabaseSuspended(dbName)
+}
+
+func (sc *ServerContext) getConnectionString(dbName string) string {
+	sc.lock.RLock()
+	defer sc.lock.RUnlock()
+	return sc.databases_[dbName].BucketSpec.Server
+}
+
+func (sc *ServerContext) getKVConnectionPol(dbName string) int {
+	sc.lock.RLock()
+	defer sc.lock.RUnlock()
+	return sc.databases_[dbName].BucketSpec.KvPoolSize
 }
 
 func (sc *ServerContext) suspendDatabase(t *testing.T, ctx context.Context, dbName string) error {

@@ -33,8 +33,7 @@ func TestDuplicateDocID(t *testing.T) {
 	require.NoError(t, err)
 	defer context.Close(ctx)
 
-	collectionID, err := context.GetSingleCollectionID()
-	require.NoError(t, err)
+	collectionID := context.GetSingleDatabaseCollection().GetCollectionID()
 
 	stats, err := base.NewSyncGatewayStats()
 	require.NoError(t, err)
@@ -97,8 +96,7 @@ func TestLateArrivingSequence(t *testing.T) {
 	dbstats, err := stats.NewDBStats("", false, false, false)
 	require.NoError(t, err)
 
-	collectionID, err := context.GetSingleCollectionID()
-	require.NoError(t, err)
+	collectionID := context.GetSingleDatabaseCollection().GetCollectionID()
 
 	cache := newSingleChannelCache(context, channels.NewID("Test1", collectionID), 0, dbstats.Cache())
 	assert.NotNil(t, cache)
@@ -141,8 +139,7 @@ func TestLateSequenceAsFirst(t *testing.T) {
 	dbstats, err := stats.NewDBStats("", false, false, false)
 	require.NoError(t, err)
 
-	collectionID, err := context.GetSingleCollectionID()
-	require.NoError(t, err)
+	collectionID := context.GetSingleDatabaseCollection().GetCollectionID()
 
 	cache := newSingleChannelCache(context, channels.NewID("Test1", collectionID), 0, dbstats.Cache())
 	assert.NotNil(t, cache)
@@ -185,8 +182,7 @@ func TestDuplicateLateArrivingSequence(t *testing.T) {
 	dbstats, err := stats.NewDBStats("", false, false, false)
 	require.NoError(t, err)
 
-	collectionID, err := context.GetSingleCollectionID()
-	require.NoError(t, err)
+	collectionID := context.GetSingleDatabaseCollection().GetCollectionID()
 
 	cache := newSingleChannelCache(context, channels.NewID("Test1", collectionID), 0, dbstats.Cache())
 	assert.NotNil(t, cache)
@@ -271,8 +267,7 @@ func TestPrependChanges(t *testing.T) {
 	dbstats, err := stats.NewDBStats("", false, false, false)
 	require.NoError(t, err)
 
-	collectionID, err := dbCtx.GetSingleCollectionID()
-	require.NoError(t, err)
+	collectionID := dbCtx.GetSingleDatabaseCollection().GetCollectionID()
 
 	cache := newSingleChannelCache(dbCtx, channels.NewID("PrependEmptyCache", collectionID), 0, dbstats.Cache())
 	assert.NotNil(t, cache)
@@ -482,8 +477,7 @@ func TestChannelCacheRemove(t *testing.T) {
 	dbstats, err := stats.NewDBStats("", false, false, false)
 	require.NoError(t, err)
 
-	collectionID, err := context.GetSingleCollectionID()
-	require.NoError(t, err)
+	collectionID := context.GetSingleDatabaseCollection().GetCollectionID()
 
 	cache := newSingleChannelCache(context, channels.NewID("Test1", collectionID), 0, dbstats.Cache())
 
@@ -499,7 +493,7 @@ func TestChannelCacheRemove(t *testing.T) {
 	assert.True(t, err == nil)
 
 	// Now remove doc1
-	cache.Remove([]string{"doc1"}, time.Now())
+	cache.Remove(collectionID, []string{"doc1"}, time.Now())
 	entries, err = cache.GetChanges(getChangesOptionsWithZeroSeq())
 	require.Len(t, entries, 2)
 	assert.True(t, verifyChannelSequences(entries, []uint64{2, 3}))
@@ -509,7 +503,7 @@ func TestChannelCacheRemove(t *testing.T) {
 	// Try to remove doc5 with a startTime before it was added to ensure it's not removed
 	// This will print a debug level log:
 	// [DBG] Cache+: Skipping removal of doc "doc5" from cache "Test1" - received after purge
-	cache.Remove([]string{"doc5"}, time.Now().Add(-time.Second*5))
+	cache.Remove(collectionID, []string{"doc5"}, time.Now().Add(-time.Second*5))
 	entries, err = cache.GetChanges(getChangesOptionsWithZeroSeq())
 	require.Len(t, entries, 2)
 	assert.True(t, verifyChannelSequences(entries, []uint64{2, 3}))
@@ -532,8 +526,7 @@ func TestChannelCacheStats(t *testing.T) {
 	dbstats, err := stats.NewDBStats("", false, false, false)
 	require.NoError(t, err)
 
-	collectionID, err := context.GetSingleCollectionID()
-	require.NoError(t, err)
+	collectionID := context.GetSingleDatabaseCollection().GetCollectionID()
 
 	testStats := dbstats.Cache()
 	cache := newSingleChannelCache(context, channels.NewID("Test1", collectionID), 0, testStats)
@@ -613,8 +606,7 @@ func TestChannelCacheStatsOnPrune(t *testing.T) {
 	dbstats, err := stats.NewDBStats("", false, false, false)
 	require.NoError(t, err)
 
-	collectionID, err := context.GetSingleCollectionID()
-	require.NoError(t, err)
+	collectionID := context.GetSingleDatabaseCollection().GetCollectionID()
 
 	testStats := dbstats.Cache()
 	cache := newSingleChannelCache(context, channels.NewID("Test1", collectionID), 0, testStats)
@@ -654,8 +646,7 @@ func TestChannelCacheStatsOnPrepend(t *testing.T) {
 	dbstats, err := stats.NewDBStats("", false, false, false)
 	require.NoError(t, err)
 
-	collectionID, err := context.GetSingleCollectionID()
-	require.NoError(t, err)
+	collectionID := context.GetSingleDatabaseCollection().GetCollectionID()
 
 	testStats := dbstats.Cache()
 	cache := newSingleChannelCache(context, channels.NewID("Test1", collectionID), 99, testStats)
@@ -754,8 +745,7 @@ func BenchmarkChannelCacheUniqueDocs_Ordered(b *testing.B) {
 	dbstats, err := stats.NewDBStats("", false, false, false)
 	require.NoError(b, err)
 
-	collectionID, err := context.GetSingleCollectionID()
-	require.NoError(b, err)
+	collectionID := context.GetSingleDatabaseCollection().GetCollectionID()
 
 	cache := newSingleChannelCache(context, channels.NewID("Benchmark", collectionID), 0, dbstats.Cache())
 	// generate doc IDs
@@ -784,8 +774,7 @@ func BenchmarkChannelCacheRepeatedDocs5(b *testing.B) {
 	dbstats, err := stats.NewDBStats("", false, false, false)
 	require.NoError(b, err)
 
-	collectionID, err := context.GetSingleCollectionID()
-	require.NoError(b, err)
+	collectionID := context.GetSingleDatabaseCollection().GetCollectionID()
 
 	cache := newSingleChannelCache(context, channels.NewID("Benchmark", collectionID), 0, dbstats.Cache())
 	// generate doc IDs
@@ -811,8 +800,7 @@ func BenchmarkChannelCacheRepeatedDocs20(b *testing.B) {
 	dbstats, err := stats.NewDBStats("", false, false, false)
 	require.NoError(b, err)
 
-	collectionID, err := context.GetSingleCollectionID()
-	require.NoError(b, err)
+	collectionID := context.GetSingleDatabaseCollection().GetCollectionID()
 
 	cache := newSingleChannelCache(context, channels.NewID("Benchmark", collectionID), 0, dbstats.Cache())
 	// generate doc IDs
@@ -838,8 +826,7 @@ func BenchmarkChannelCacheRepeatedDocs50(b *testing.B) {
 	dbstats, err := stats.NewDBStats("", false, false, false)
 	require.NoError(b, err)
 
-	collectionID, err := context.GetSingleCollectionID()
-	require.NoError(b, err)
+	collectionID := context.GetSingleDatabaseCollection().GetCollectionID()
 
 	cache := newSingleChannelCache(context, channels.NewID("Benchmark", collectionID), 0, dbstats.Cache())
 	// generate doc IDs
@@ -865,8 +852,7 @@ func BenchmarkChannelCacheRepeatedDocs80(b *testing.B) {
 	dbstats, err := stats.NewDBStats("", false, false, false)
 	require.NoError(b, err)
 
-	collectionID, err := context.GetSingleCollectionID()
-	require.NoError(b, err)
+	collectionID := context.GetSingleDatabaseCollection().GetCollectionID()
 
 	cache := newSingleChannelCache(context, channels.NewID("Benchmark", collectionID), 0, dbstats.Cache())
 	// generate doc IDs
@@ -892,8 +878,7 @@ func BenchmarkChannelCacheRepeatedDocs95(b *testing.B) {
 	dbstats, err := stats.NewDBStats("", false, false, false)
 	require.NoError(b, err)
 
-	collectionID, err := context.GetSingleCollectionID()
-	require.NoError(b, err)
+	collectionID := context.GetSingleDatabaseCollection().GetCollectionID()
 
 	cache := newSingleChannelCache(context, channels.NewID("Benchmark", collectionID), 0, dbstats.Cache())
 	// generate doc IDs
@@ -919,8 +904,7 @@ func BenchmarkChannelCacheUniqueDocs_Unordered(b *testing.B) {
 	dbstats, err := stats.NewDBStats("", false, false, false)
 	require.NoError(b, err)
 
-	collectionID, err := context.GetSingleCollectionID()
-	require.NoError(b, err)
+	collectionID := context.GetSingleDatabaseCollection().GetCollectionID()
 
 	cache := newSingleChannelCache(context, channels.NewID("Benchmark", collectionID), 0, dbstats.Cache())
 	// generate docs
@@ -988,8 +972,7 @@ func verifyChannelDocIDs(entries []*LogEntry, docIDs []string) bool {
 	}
 	for index, docID := range docIDs {
 		if entries[index].DocID != docID {
-			log.Printf("verifyChannelDocIDs: DocID mismatch at index %v, entries=%s, DocIDs=%s",
-				index, entries[index].DocID, docID)
+			log.Printf("verifyChannelDocIDs: DocID mismatch at index %v, entries=%s, DocIDs=%s", index, entries[index].DocID, docID)
 			return false
 		}
 	}

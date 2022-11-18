@@ -26,7 +26,11 @@ var _ N1QLStore = &Collection{}
 
 // IsDefaultScopeCollection returns true if the given Collection is on the _default._default scope and collection.
 func (c *Collection) IsDefaultScopeCollection() bool {
-	return c.ScopeName() == DefaultScope && c.Name() == DefaultCollection
+	return IsDefaultCollection(c.ScopeName(), c.Name())
+}
+
+func IsDefaultCollection(scope, collection string) bool {
+	return scope == DefaultScope && collection == DefaultCollection
 }
 
 // EscapedKeyspace returns the escaped fully-qualified identifier for the keyspace (e.g. `bucket`.`scope`.`collection`)

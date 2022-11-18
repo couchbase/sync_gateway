@@ -25,13 +25,14 @@ import (
 
 /** A group that users can belong to, with associated channel permissions. */
 type roleImpl struct {
-	Name_             string          `json:"name,omitempty"`
-	ExplicitChannels_ ch.TimedSet     `json:"admin_channels,omitempty"`
-	Channels_         ch.TimedSet     `json:"all_channels"`
-	Sequence_         uint64          `json:"sequence"`
-	ChannelHistory_   TimedSetHistory `json:"channel_history,omitempty"`   // Added to when a previously granted channel is revoked. Calculated inside of rebuildChannels.
-	ChannelInvalSeq   uint64          `json:"channel_inval_seq,omitempty"` // Sequence at which the channels were invalidated. Data remains in Channels_ for history calculation.
-	Deleted           bool            `json:"deleted,omitempty"`
+	Name_             string                                  `json:"name,omitempty"`
+	ExplicitChannels_ ch.TimedSet                             `json:"admin_channels,omitempty"`
+	Channels_         ch.TimedSet                             `json:"all_channels"`
+	Sequence_         uint64                                  `json:"sequence"`
+	ChannelHistory_   TimedSetHistory                         `json:"channel_history,omitempty"`   // Added to when a previously granted channel is revoked. Calculated inside of rebuildChannels.
+	ChannelInvalSeq   uint64                                  `json:"channel_inval_seq,omitempty"` // Sequence at which the channels were invalidated. Data remains in Channels_ for history calculation.
+	Deleted           bool                                    `json:"deleted,omitempty"`
+	CollectionsAccess map[string]map[string]*CollectionAccess `json:"collection_access,omitempty"` // Nested maps of CollectionAccess, indexed by scope and collection name
 	vbNo              *uint16
 	cas               uint64
 }
@@ -253,6 +254,7 @@ func (role *roleImpl) IsDeleted() bool {
 	return role.Deleted
 }
 
+// Retrieves Channels for the default collection
 func (role *roleImpl) Channels() ch.TimedSet {
 	if role.ChannelInvalSeq != 0 {
 		return nil
@@ -367,4 +369,11 @@ func authorizeAnyChannel(princ Principal, channels base.Set) error {
 		return nil
 	}
 	return princ.UnauthError("You are not allowed to see this")
+}
+
+func (ca *CollectionAccess) Channels() ch.TimedSet {
+	if ca.ChannelInvalSeq != 0 {
+		return nil
+	}
+	return ca.Channels_
 }
