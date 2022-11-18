@@ -2698,7 +2698,7 @@ func TestGetDatabaseCollectionWithUserDefaultCollection(t *testing.T) {
 			collection: base.DefaultCollection,
 			err:        false,
 		},
-		/* This test passes under walrus/views but not GSI, needs to be fixed when making walrus collection aware.
+		/* CBG-2568 This test passes under walrus/views but not GSI, needs to be fixed when making walrus collection aware.
 		{
 			name:       "_default._default-not-in-config",
 			scope:      base.DefaultScope,
