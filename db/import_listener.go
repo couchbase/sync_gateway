@@ -63,7 +63,7 @@ func (il *importListener) StartImportFeed(ctx context.Context, bucket base.Bucke
 		scopeName = sn
 	}
 
-	if !dbContext.onlyDefaultCollection() {
+	if !dbContext.OnlyDefaultCollection() {
 		coll, err := base.AsCollection(bucket)
 		if err != nil {
 			return fmt.Errorf("configured with named collections, but bucket is not collection: %w", err)

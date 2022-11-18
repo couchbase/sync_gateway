@@ -20,10 +20,11 @@ import (
 
 // DatabaseCollection provides a representation of a single collection of a database.
 type DatabaseCollection struct {
-	Bucket        base.Bucket      // Storage
-	revisionCache RevisionCache    // Cache of recently-accessed doc revisions
-	changeCache   *changeCache     // Cache of recently-access channels
-	dbCtx         *DatabaseContext // pointer to database context to allow passthrough of functions
+	Bucket        base.Bucket        // Storage
+	revisionCache RevisionCache      // Cache of recently-accessed doc revisions
+	changeCache   *changeCache       // Cache of recently-access channels
+	dbCtx         *DatabaseContext   // pointer to database context to allow passthrough of functions
+	sequences     *sequenceAllocator // Source of new sequence numbers
 }
 
 // DatabaseCollectionWithUser represents CouchDB database. A new instance is created for each request,
@@ -160,7 +161,7 @@ func (c *DatabaseCollection) isGuestReadOnly() bool {
 
 // LastSequence returns the highest sequence number allocated for this collection.
 func (c *DatabaseCollection) LastSequence() (uint64, error) {
-	return c.dbCtx.sequences.lastSequence()
+	return c.sequences.lastSequence()
 }
 
 // localDocExpirySecs returns the expiry for docs tracking Couchbase Lite replication state. This is controlled at the database level.
@@ -181,6 +182,11 @@ func (c *DatabaseCollection) Name() string {
 	}
 	return collection.Name()
 
+}
+
+// principalSequences returns sequence allocator for principal sequences on a database.
+func (c *DatabaseCollection) principalSequences() *sequenceAllocator {
+	return c.dbCtx.principalSequences
 }
 
 // oldRevExpirySeconds is the number of seconds before old revisions are removed from Couchbase server. This is controlled at a database level.
@@ -226,11 +232,6 @@ func (c *DatabaseCollection) RemoveFromChangeCache(docIDs []string, startTime ti
 // revsLimit is the max depth a document's revision tree can grow to. This is controlled at a database level.
 func (c *DatabaseCollection) revsLimit() uint32 {
 	return c.dbCtx.RevsLimit
-}
-
-// sequences returns the sequence generator for a collection.
-func (c *DatabaseCollection) sequences() *sequenceAllocator {
-	return c.dbCtx.sequences
 }
 
 // slowQueryWarningThreshold is the duration of N1QL query to log as slow. This is controlled at a database level.

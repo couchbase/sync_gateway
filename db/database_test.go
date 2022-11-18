@@ -924,7 +924,7 @@ func TestUpdatePrincipal(t *testing.T) {
 	_, err = db.UpdatePrincipal(ctx, userInfo, true, true)
 	assert.NoError(t, err, "Unable to update principal")
 
-	nextSeq, err := db.sequences.nextSequence()
+	nextSeq, err := db.principalSequences.nextSequence()
 	assert.Equal(t, uint64(1), nextSeq)
 
 	// Validate that a call to UpdatePrincipals with changes to the user does allocate a sequence
@@ -933,7 +933,7 @@ func TestUpdatePrincipal(t *testing.T) {
 	_, err = db.UpdatePrincipal(ctx, userInfo, true, true)
 	assert.NoError(t, err, "Unable to update principal")
 
-	nextSeq, err = db.sequences.nextSequence()
+	nextSeq, err = db.principalSequences.nextSequence()
 	assert.Equal(t, uint64(3), nextSeq)
 }
 

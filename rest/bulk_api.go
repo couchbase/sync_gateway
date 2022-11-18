@@ -199,7 +199,7 @@ func (h *handler) handleAllDocs() error {
 	options.Limit = h.getIntQuery("limit", 0)
 
 	// Now it's time to actually write the response!
-	lastSeq, _ := h.db.LastSequence()
+	lastSeq, _ := h.collection.LastSequence()
 	h.setHeader("Content-Type", "application/json")
 	// response.Write below would set Status OK implicitly. We manually do it here to ensure that our handler knows
 	//that the header has been written to, meaning we can prevent it from attempting to set the header again later on.
