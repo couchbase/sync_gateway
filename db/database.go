@@ -2007,7 +2007,28 @@ func (dbCtx *DatabaseContext) onlyDefaultCollection() bool {
 	return exists
 }
 
-// GetDefaultDatabaseCollection will return the default collection if the default collection is supplied in the database config.
+// GetDatabaseCollectionWithUser returns a collection if one exists, otherwise error.
+func (dbc *Database) GetDatabaseCollectionWithUser(scopeName, collectionName string) (*DatabaseCollectionWithUser, error) {
+	if base.IsDefaultCollection(scopeName, collectionName) && dbc.onlyDefaultCollection() {
+		return dbc.GetDefaultDatabaseCollectionWithUser()
+	}
+	if dbc.Scopes == nil {
+		return nil, fmt.Errorf("scope %s does not exist on this database", base.UD(scopeName))
+	}
+	collections, exists := dbc.Scopes[scopeName]
+	if !exists {
+		return nil, fmt.Errorf("scope %s does not exist on this database", base.UD(scopeName))
+	}
+	collection, exists := collections.Collections[collectionName]
+	if !exists {
+		return nil, fmt.Errorf("collection %s.%s is not configured on this database", base.UD(scopeName), base.UD(collectionName))
+	}
+	return &DatabaseCollectionWithUser{
+		DatabaseCollection: collection,
+		user:               dbc.user,
+	}, nil
+}
+
 func (dbc *DatabaseContext) GetDefaultDatabaseCollection() (*DatabaseCollection, error) {
 	col, exists := dbc.CollectionByID[base.DefaultCollectionID]
 	if !exists {

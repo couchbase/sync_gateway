@@ -88,8 +88,7 @@ type handler struct {
 	statusMessage         string
 	requestBody           io.ReadCloser
 	db                    *db.Database
-	keyspaceScope         string
-	keyspaceCollection    string
+	collection            *db.DatabaseCollectionWithUser
 	user                  auth.User
 	authorizedAdminUser   string
 	privs                 handlerPrivs
@@ -461,8 +460,11 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 
 	// Now set the request's Database (i.e. context + user)
 	if dbContext != nil {
-		h.keyspaceScope, h.keyspaceCollection = *keyspaceScope, *keyspaceCollection
 		h.db, err = db.GetDatabase(dbContext, h.user)
+		if err != nil {
+			return err
+		}
+		h.collection, err = h.db.GetDatabaseCollectionWithUser(*keyspaceScope, *keyspaceCollection)
 		if err != nil {
 			return err
 		}
