@@ -357,6 +357,10 @@ func (c *Collection) SubdocInsert(k string, fieldPath string, cas uint64, value 
 		return ErrAlreadyExists
 	}
 
+	if errors.Is(mutateErr, gocbcore.ErrPathNotFound) {
+		return ErrPathNotFound
+	}
+
 	return mutateErr
 
 }

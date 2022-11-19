@@ -466,13 +466,18 @@ func (context *DatabaseContext) buildAccessQuery(username string) string {
 	return statement
 }
 
-// Query to compute the set of roles granted to the specified user via the Sync Function
+//TODO: Remove when multi-collection support is in place
 func (context *DatabaseContext) QueryRoleAccess(ctx context.Context, username string) (sgbucket.QueryResultIterator, error) {
+	return context.GetSingleDatabaseCollection().QueryRoleAccess(ctx, username)
+}
+
+// Query to compute the set of roles granted to the specified user via the Sync Function
+func (context *DatabaseCollection) QueryRoleAccess(ctx context.Context, username string) (sgbucket.QueryResultIterator, error) {
 
 	// View Query
-	if context.Options.UseViews {
+	if context.useViews() {
 		opts := map[string]interface{}{"stale": false, "key": username}
-		return context.ViewQueryWithStats(ctx, DesignDocSyncGateway(), ViewRoleAccess, opts)
+		return context.dbCtx.ViewQueryWithStats(ctx, DesignDocSyncGateway(), ViewRoleAccess, opts)
 	}
 
 	// N1QL Query
@@ -484,11 +489,16 @@ func (context *DatabaseContext) QueryRoleAccess(ctx context.Context, username st
 	accessQueryStatement := context.buildRoleAccessQuery(username)
 	params := make(map[string]interface{}, 0)
 	params[QueryParamUserName] = username
-	return N1QLQueryWithStats(ctx, context.Bucket, QueryTypeRoleAccess, accessQueryStatement, params, base.RequestPlus, QueryRoleAccess.adhoc, context.DbStats, context.Options.SlowQueryWarningThreshold)
+	return N1QLQueryWithStats(ctx, context.Bucket, QueryTypeRoleAccess, accessQueryStatement, params, base.RequestPlus, QueryRoleAccess.adhoc, context.dbStats(), context.slowQueryWarningThreshold())
+}
+
+//TODO: Remove
+func (context *DatabaseContext) buildRoleAccessQuery(username string) string {
+	return context.GetSingleDatabaseCollection().buildRoleAccessQuery(username)
 }
 
 // Builds the query statement for a roleAccess N1QL query.
-func (context *DatabaseContext) buildRoleAccessQuery(username string) string {
+func (context *DatabaseCollection) buildRoleAccessQuery(username string) string {
 	statement := replaceSyncTokensQuery(QueryRoleAccess.statement, context.UseXattrs())
 
 	// SG usernames don't allow back tick, but guard username in select clause for additional safety

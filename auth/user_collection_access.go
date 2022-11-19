@@ -21,7 +21,7 @@ func (user *userImpl) CollectionJWTChannels(scope, collection string) ch.TimedSe
 	}
 
 	if cc, ok := user.getCollectionAccess(scope, collection); ok {
-		return cc.JWTChannels
+		return cc.JWTChannels()
 	}
 	return nil
 }
@@ -33,7 +33,7 @@ func (user *userImpl) SetCollectionJWTChannels(scope, collection string, channel
 	}
 
 	cc := user.getOrCreateCollectionAccess(scope, collection)
-	cc.JWTChannels = channels
+	cc.JWTChannels_ = channels
 	cc.ChannelInvalSeq = invalSeq
 }
 
@@ -57,8 +57,7 @@ func (user *userImpl) InheritedCollectionChannels(scope, collection string) ch.T
 		channels.AddAtSequence(role.CollectionChannels(scope, collection), roleSince.Sequence)
 	}
 
-	// TODO: should warning threshold be per-collection, or cross-collection?  If the latter, hard to compute, as
-	//  we lazily fetch channels per collection
+	// Warning threshold is per-collection, as we lazily load per-collection channel information
 	user.warnChanThresholdOnce.Do(func() {
 		if channelsPerUserThreshold := user.auth.ChannelsWarningThreshold; channelsPerUserThreshold != nil {
 			channelCount := len(channels)
@@ -70,4 +69,34 @@ func (user *userImpl) InheritedCollectionChannels(scope, collection string) ch.T
 	})
 
 	return channels
+}
+
+//  Checks for user access to any channel in the set, including access inherited via roles
+func (user *userImpl) AuthorizeAnyCollectionChannel(scope, collection string, channels base.Set) error {
+
+	if base.IsDefaultCollection(scope, collection) {
+		return user.AuthorizeAnyChannel(channels)
+	}
+
+	// User access
+	if ca, ok := user.getCollectionAccess(scope, collection); ok {
+		if len(channels) > 0 {
+			for channel := range channels {
+				if ca.CanSeeChannel(channel) {
+					return nil
+				}
+			}
+		} else if ca.Channels().Contains(ch.UserStarChannel) {
+			return nil
+		}
+	}
+
+	// Inherited role access
+	for _, role := range user.GetRoles() {
+		if role.AuthorizeAnyCollectionChannel(scope, collection, channels) == nil {
+			return nil
+		}
+	}
+
+	return user.UnauthError("You are not allowed to see this")
 }

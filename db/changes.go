@@ -317,7 +317,7 @@ func UserHasDocAccess(ctx context.Context, db *DatabaseCollectionWithUser, docID
 		return true, nil
 	}
 
-	authErr := db.user.AuthorizeAnyChannel(currentRev.Channels)
+	authErr := db.user.AuthorizeAnyCollectionChannel(db.ScopeName(), db.Name(), currentRev.Channels)
 	return authErr == nil, nil
 }
 

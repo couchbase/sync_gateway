@@ -290,18 +290,51 @@ func TestSaveRoles(t *testing.T) {
 }
 
 type mockComputer struct {
-	channels     ch.TimedSet
+	channels     map[string]map[string]ch.TimedSet
 	roles        ch.TimedSet
-	roleChannels ch.TimedSet
+	roleChannels map[string]map[string]ch.TimedSet
 	err          error
 }
 
-func (self *mockComputer) ComputeChannelsForPrincipal(ctx context.Context, p Principal) (ch.TimedSet, error) {
+func (mc *mockComputer) AddChannelsForCollection(scope, collection string, channels ch.TimedSet) {
+	if mc.channels == nil {
+		mc.channels = make(map[string]map[string]ch.TimedSet)
+	}
+	collectionMap, ok := mc.channels[scope]
+	if !ok {
+		collectionMap = make(map[string]ch.TimedSet)
+		mc.channels[scope] = collectionMap
+	}
+	collectionMap[collection] = channels
+}
+
+func (mc *mockComputer) AddRoleChannelsForCollection(scope, collection string, channels ch.TimedSet) {
+	if mc.roleChannels == nil {
+		mc.roleChannels = make(map[string]map[string]ch.TimedSet)
+	}
+	collectionMap, ok := mc.roleChannels[scope]
+	if !ok {
+		collectionMap = make(map[string]ch.TimedSet)
+		mc.roleChannels[scope] = collectionMap
+	}
+	collectionMap[collection] = channels
+}
+
+func (self *mockComputer) ComputeChannelsForPrincipal(ctx context.Context, p Principal, scope, collection string) (ch.TimedSet, error) {
+
 	switch p.(type) {
 	case User:
-		return self.channels, self.err
+		channels, ok := self.channels[scope][collection]
+		if !ok {
+			return ch.TimedSet{}, self.err
+		}
+		return channels, self.err
 	case Role:
-		return self.roleChannels, self.err
+		channels, ok := self.roleChannels[scope][collection]
+		if !ok {
+			return ch.TimedSet{}, self.err
+		}
+		return channels, self.err
 	default:
 		return nil, self.err
 	}
@@ -311,20 +344,17 @@ func (self *mockComputer) ComputeRolesForUser(context.Context, User) (ch.TimedSe
 	return self.roles, self.err
 }
 
-func (self *mockComputer) UseGlobalSequence() bool {
-	return true
-}
-
 func TestRebuildUserChannels(t *testing.T) {
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close()
-	computer := mockComputer{channels: ch.AtSequence(ch.BaseSetOf(t, "derived1", "derived2"), 1)}
+	computer := mockComputer{}
+	computer.AddChannelsForCollection(base.DefaultScope, base.DefaultCollection, ch.AtSequence(ch.BaseSetOf(t, "derived1", "derived2"), 1))
 	auth := NewAuthenticator(bucket, &computer, DefaultAuthenticatorOptions())
 	user, _ := auth.NewUser("testUser", "password", ch.BaseSetOf(t, "explicit1"))
 	err := auth.Save(user)
 	assert.NoError(t, err)
 
-	err = auth.InvalidateChannels("testUser", true, 2)
+	err = auth.InvalidateDefaultChannels("testUser", true, 2)
 	assert.NoError(t, err)
 
 	user2, err := auth.GetUser("testUser")
@@ -332,18 +362,76 @@ func TestRebuildUserChannels(t *testing.T) {
 	assert.Equal(t, ch.AtSequence(ch.BaseSetOf(t, "explicit1", "derived1", "derived2", "!"), 1), user2.Channels())
 }
 
+func TestRebuildUserChannelsMultiCollection(t *testing.T) {
+	bucket := base.GetTestBucket(t)
+	defer bucket.Close()
+	computer := mockComputer{}
+	computer.AddChannelsForCollection(base.DefaultScope, base.DefaultCollection, ch.AtSequence(ch.BaseSetOf(t, "derived1", "derived2"), 1))
+	computer.AddChannelsForCollection("scope1", "collection1", ch.AtSequence(ch.BaseSetOf(t, "derived3", "derived4"), 1))
+
+	options := DefaultAuthenticatorOptions()
+	options.Collections = map[string]map[string]struct{}{
+		base.DefaultScope: {base.DefaultCollection: struct{}{}},
+		"scope1":          {"collection1": struct{}{}},
+	}
+	auth := NewAuthenticator(bucket, &computer, options)
+	user, _ := auth.NewUser("testUser", "password", ch.BaseSetOf(t, "explicit1"))
+	user.SetCollectionExplicitChannels("scope1", "collection1", ch.AtSequence(ch.BaseSetOf(t, "explicit2"), 1), 0)
+	err := auth.Save(user)
+	assert.NoError(t, err)
+
+	err = auth.InvalidateChannels("testUser", true, "scope1", "collection1", 2)
+	assert.NoError(t, err)
+
+	user2, err := auth.GetUser("testUser")
+	assert.NoError(t, err)
+	assert.Equal(t, ch.AtSequence(ch.BaseSetOf(t, "explicit1", "derived1", "derived2", "!"), 1), user2.Channels())
+	assert.Equal(t, ch.AtSequence(ch.BaseSetOf(t, "explicit2", "derived3", "derived4", "!"), 1), user2.CollectionChannels("scope1", "collection1"))
+}
+
+func TestRebuildUserChannelsNamedCollection(t *testing.T) {
+	bucket := base.GetTestBucket(t)
+	defer bucket.Close()
+	computer := mockComputer{}
+	computer.AddChannelsForCollection("scope1", "collection1", ch.AtSequence(ch.BaseSetOf(t, "derived3", "derived4"), 1))
+
+	options := DefaultAuthenticatorOptions()
+	options.Collections = map[string]map[string]struct{}{
+		"scope1": {"collection1": struct{}{}},
+	}
+	auth := NewAuthenticator(bucket, &computer, options)
+	user, _ := auth.NewUser("testUser", "password", nil)
+	user.SetCollectionExplicitChannels("scope1", "collection1", ch.AtSequence(ch.BaseSetOf(t, "explicit2"), 1), 0)
+	err := auth.Save(user)
+	assert.NoError(t, err)
+
+	err = auth.InvalidateChannels("testUser", true, "scope1", "collection1", 2)
+	assert.NoError(t, err)
+
+	user2, err := auth.GetUser("testUser")
+	assert.NoError(t, err)
+	assert.Equal(t, ch.TimedSet(nil), user2.Channels())
+	assert.Equal(t, ch.AtSequence(ch.BaseSetOf(t, "explicit2", "derived3", "derived4", "!"), 1), user2.CollectionChannels("scope1", "collection1"))
+}
+
+// Test cases
+//   multiple collections
+//   single non-default
+//   single plus default
+
 func TestRebuildRoleChannels(t *testing.T) {
 
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close()
-	computer := mockComputer{roleChannels: ch.AtSequence(ch.BaseSetOf(t, "derived1", "derived2"), 1)}
+	computer := mockComputer{}
+	computer.AddRoleChannelsForCollection(base.DefaultScope, base.DefaultCollection, ch.AtSequence(ch.BaseSetOf(t, "derived1", "derived2"), 1))
 	auth := NewAuthenticator(bucket, &computer, DefaultAuthenticatorOptions())
 	role, err := auth.NewRole("testRole", ch.BaseSetOf(t, "explicit1"))
 	assert.NoError(t, err)
 	err = auth.Save(role)
 	assert.NoError(t, err)
 
-	err = auth.InvalidateChannels("testRole", false, 1)
+	err = auth.InvalidateDefaultChannels("testRole", false, 1)
 	assert.Equal(t, nil, err)
 
 	role2, err := auth.GetRole("testRole")
@@ -362,7 +450,7 @@ func TestRebuildChannelsError(t *testing.T) {
 	err = auth.Save(role)
 	assert.NoError(t, err)
 
-	assert.Equal(t, nil, auth.InvalidateChannels("testRole2", false, 1))
+	assert.Equal(t, nil, auth.InvalidateDefaultChannels("testRole2", false, 1))
 
 	computer.err = errors.New("I'm sorry, Dave.")
 
@@ -600,7 +688,7 @@ func TestConcurrentUserWrites(t *testing.T) {
 			t.Errorf("User is nil prior to invalidate channels, error: %v", getErr)
 		}
 
-		invalidateErr := auth.InvalidateChannels(username, true, 1)
+		invalidateErr := auth.InvalidateDefaultChannels(username, true, 1)
 		if invalidateErr != nil {
 			t.Errorf("Error invalidating user's channels: %v", invalidateErr)
 		}
@@ -1322,7 +1410,7 @@ type mockComputerV2 struct {
 	err          error
 }
 
-func (m mockComputerV2) ComputeChannelsForPrincipal(ctx context.Context, principal Principal) (ch.TimedSet, error) {
+func (m mockComputerV2) ComputeChannelsForPrincipal(ctx context.Context, principal Principal, scope, collection string) (ch.TimedSet, error) {
 	if user, ok := principal.(User); ok {
 		return m.channels[user.Name()].Copy(), nil
 	} else {
@@ -1340,13 +1428,13 @@ func (m mockComputerV2) addRoleChannels(t *testing.T, auth *Authenticator, roleN
 	}
 
 	m.roleChannels[roleName].Add(ch.AtSequence(ch.BaseSetOf(t, channelName), invalSeq))
-	err := auth.InvalidateChannels(roleName, false, invalSeq)
+	err := auth.InvalidateDefaultChannels(roleName, false, invalSeq)
 	assert.NoError(t, err)
 }
 
 func (m mockComputerV2) removeRoleChannel(t *testing.T, auth *Authenticator, roleName, channelName string, invalSeq uint64) {
 	delete(m.roleChannels[roleName], channelName)
-	err := auth.InvalidateChannels(roleName, false, invalSeq)
+	err := auth.InvalidateDefaultChannels(roleName, false, invalSeq)
 	assert.NoError(t, err)
 }
 
@@ -2668,7 +2756,7 @@ func TestInvalidateChannels(t *testing.T) {
 			auth := NewAuthenticator(leakyBucket, nil, DefaultAuthenticatorOptions())
 
 			// Invalidate channels on non-existent user / role and ensure no error
-			err := auth.InvalidateChannels(testCase.name, testCase.isUser, 0)
+			err := auth.InvalidateDefaultChannels(testCase.name, testCase.isUser, 0)
 			assert.NoError(t, err)
 
 			// Create user / role
@@ -2687,7 +2775,7 @@ func TestInvalidateChannels(t *testing.T) {
 			enableRetry := false
 			// If subdoc operations are supported, perform an initial invalidation at seq 5
 			if leakyBucket.IsSupported(sgbucket.DataStoreFeatureSubdocOperations) {
-				err := auth.InvalidateChannels(testCase.name, testCase.isUser, 5)
+				err := auth.InvalidateDefaultChannels(testCase.name, testCase.isUser, 5)
 				assert.NoError(t, err)
 
 			} else {
@@ -2695,14 +2783,14 @@ func TestInvalidateChannels(t *testing.T) {
 				leakyBucket.SetUpdateCallback(func(key string) {
 					if enableRetry {
 						enableRetry = false
-						err = auth.InvalidateChannels(testCase.name, testCase.isUser, 5)
+						err = auth.InvalidateDefaultChannels(testCase.name, testCase.isUser, 5)
 						assert.NoError(t, err)
 					}
 				})
 			}
 
 			enableRetry = true
-			err = auth.InvalidateChannels(testCase.name, testCase.isUser, 10)
+			err = auth.InvalidateDefaultChannels(testCase.name, testCase.isUser, 10)
 			assert.NoError(t, err)
 
 			// Ensure the inval seq was set to 5 (raw get to avoid rebuild)
@@ -2722,7 +2810,7 @@ func TestInvalidateChannels(t *testing.T) {
 			assert.Equal(t, expectedValue, princCheck.GetChannelInvalSeq())
 
 			// Invalidate again and ensure existing value remains
-			err = auth.InvalidateChannels(testCase.name, testCase.isUser, 20)
+			err = auth.InvalidateDefaultChannels(testCase.name, testCase.isUser, 20)
 			assert.NoError(t, err)
 
 			_, err = leakyBucket.Get(docID, &princCheck)

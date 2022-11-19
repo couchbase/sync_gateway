@@ -1047,3 +1047,154 @@ func TestAccessOnTombstone(t *testing.T) {
 	}
 
 }
+
+func TestDynamicChannelGrant(t *testing.T) {
+
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAccess)
+
+	rtConfig := RestTesterConfig{SyncFn: `function(doc) {if(doc.type == "setaccess") {channel(doc.channel); access(doc.owner, doc.channel);} else { channel(doc.channel)}}`}
+	rt := NewRestTester(t, &rtConfig)
+	defer rt.Close()
+
+	ctx := rt.Context()
+	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
+	user, err := a.GetUser("")
+	assert.NoError(t, err)
+	user.SetDisabled(true)
+	err = a.Save(user)
+	assert.NoError(t, err)
+
+	// Create a test user
+	user, err = a.NewUser("user1", "letmein", nil)
+	assert.NoError(t, err)
+	assert.NoError(t, a.Save(user))
+
+	collection := rt.GetDatabase().GetSingleDatabaseCollection()
+	keyspace := fmt.Sprintf("%s.%s.%s", "db", collection.ScopeName(), collection.Name())
+
+	// Create a document in channel chan1
+	response := rt.Send(RequestByUser("PUT", "/"+keyspace+"/doc1", `{"channel":"chan1", "greeting":"hello"}`, "user1"))
+	RequireStatus(t, response, 201)
+
+	// Verify user cannot access document
+	response = rt.Send(RequestByUser("GET", "/"+keyspace+"/doc1", "", "user1"))
+	RequireStatus(t, response, 403)
+
+	// Write access granting document
+	response = rt.Send(RequestByUser("PUT", "/"+keyspace+"/grant1", `{"type":"setaccess", "owner":"user1", "channel":"chan1"}`, "user1"))
+	RequireStatus(t, response, 201)
+
+	// Verify user can access document
+	response = rt.Send(RequestByUser("GET", "/"+keyspace+"/doc1", "", "user1"))
+	RequireStatus(t, response, 200)
+
+	var body db.Body
+	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
+	assert.Equal(t, "hello", body["greeting"])
+
+	// Create a document in channel chan2
+	response = rt.Send(RequestByUser("PUT", "/"+keyspace+"/doc2", `{"channel":"chan2", "greeting":"hello"}`, "user1"))
+	RequireStatus(t, response, 201)
+
+	// Write access granting document for chan2 (tests invalidation when channels/inval_seq exists)
+	response = rt.Send(RequestByUser("PUT", "/"+keyspace+"/grant2", `{"type":"setaccess", "owner":"user1", "channel":"chan2"}`, "user1"))
+	RequireStatus(t, response, 201)
+
+	// Verify user can now access both documents
+	response = rt.Send(RequestByUser("GET", "/"+keyspace+"/doc1", "", "user1"))
+	RequireStatus(t, response, 200)
+	response = rt.Send(RequestByUser("GET", "/"+keyspace+"/doc2", "", "user1"))
+	RequireStatus(t, response, 200)
+}
+
+// Verify a dynamic grant of a channel to a role is inherited by a user with that role
+func TestRoleChannelGrantInheritance(t *testing.T) {
+
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAccess)
+
+	rtConfig := RestTesterConfig{SyncFn: `function(doc) {if(doc.type == "setaccess") {channel(doc.channel); access(doc.owner, doc.channel);} else { channel(doc.channel)}}`}
+	rt := NewRestTester(t, &rtConfig)
+	defer rt.Close()
+
+	ctx := rt.Context()
+	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
+
+	collection := rt.GetDatabase().GetSingleDatabaseCollection()
+	scopeName := collection.ScopeName()
+	collectionName := collection.Name()
+	keyspace := fmt.Sprintf("%s.%s.%s", "db", scopeName, collectionName)
+
+	user, err := a.GetUser("")
+	assert.NoError(t, err)
+	user.SetDisabled(true)
+	err = a.Save(user)
+	assert.NoError(t, err)
+
+	// Create a role with admin grant of chan1
+	role, err := a.NewRole("role1", nil)
+	role.SetCollectionExplicitChannels(scopeName, collectionName, channels.TimedSet{"chan1": channels.NewVbSimpleSequence(1)}, 1)
+	assert.NoError(t, err)
+	assert.NoError(t, a.Save(role))
+
+	// Create a test user with access to the role
+	user, err = a.NewUser("user1", "letmein", nil)
+	assert.NoError(t, err)
+	user.SetExplicitRoles(channels.TimedSet{"role1": channels.NewVbSimpleSequence(1)}, 1)
+	assert.NoError(t, a.Save(user))
+
+	// Create documents in channels chan1, chan2, chan3
+	response := rt.Send(RequestByUser("PUT", "/"+keyspace+"/doc1", `{"channel":"chan1", "greeting":"hello"}`, "user1"))
+	RequireStatus(t, response, 201)
+	response = rt.Send(RequestByUser("PUT", "/"+keyspace+"/doc2", `{"channel":"chan2", "greeting":"hello"}`, "user1"))
+	RequireStatus(t, response, 201)
+	response = rt.Send(RequestByUser("PUT", "/"+keyspace+"/doc3", `{"channel":"chan3", "greeting":"hello"}`, "user1"))
+	RequireStatus(t, response, 201)
+
+	// Verify user can access document in admin role channel (chan1)
+	response = rt.Send(RequestByUser("GET", "/"+keyspace+"/doc1", "", "user1"))
+	RequireStatus(t, response, 200)
+
+	// Verify user cannot access other documents
+	response = rt.Send(RequestByUser("GET", "/"+keyspace+"/doc2", "", "user1"))
+	RequireStatus(t, response, 403)
+	response = rt.Send(RequestByUser("GET", "/"+keyspace+"/doc3", "", "user1"))
+	RequireStatus(t, response, 403)
+
+	// Write access granting document (grants chan2 to role role1)
+	response = rt.Send(RequestByUser("PUT", "/"+keyspace+"/grant1", `{"type":"setaccess", "owner":"role:role1", "channel":"chan2"}`, "user1"))
+	RequireStatus(t, response, 201)
+	grant1Rev := RespRevID(t, response)
+
+	// Verify user can access document
+	response = rt.Send(RequestByUser("GET", "/"+keyspace+"/doc2", "", "user1"))
+	RequireStatus(t, response, 200)
+
+	var body db.Body
+	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
+	assert.Equal(t, "hello", body["greeting"])
+
+	// Write access granting document for chan2 (tests invalidation when channels/inval_seq exists)
+	response = rt.Send(RequestByUser("PUT", "/"+keyspace+"/grant2", `{"type":"setaccess", "owner":"role:role1", "channel":"chan3"}`, "user1"))
+	RequireStatus(t, response, 201)
+
+	// Verify user can now access all three documents
+	response = rt.Send(RequestByUser("GET", "/"+keyspace+"/doc1", "", "user1"))
+	RequireStatus(t, response, 200)
+	response = rt.Send(RequestByUser("GET", "/"+keyspace+"/doc2", "", "user1"))
+	RequireStatus(t, response, 200)
+	response = rt.Send(RequestByUser("GET", "/"+keyspace+"/doc3", "", "user1"))
+	RequireStatus(t, response, 200)
+
+	// Revoke access to chan2 (dynamic)
+	response = rt.Send(RequestByUser("PUT", "/"+keyspace+"/grant1?rev="+grant1Rev, `{"type":"setaccess", "owner":"none", "channel":"chan2"}`, "user1"))
+	RequireStatus(t, response, 201)
+
+	// Verify user cannot access doc in revoked channel, but can successfully access remaining documents
+	response = rt.Send(RequestByUser("GET", "/"+keyspace+"/doc2", "", "user1"))
+	RequireStatus(t, response, 403)
+	response = rt.Send(RequestByUser("GET", "/"+keyspace+"/doc1", "", "user1"))
+	RequireStatus(t, response, 200)
+	response = rt.Send(RequestByUser("GET", "/"+keyspace+"/doc3", "", "user1"))
+	RequireStatus(t, response, 200)
+
+}

@@ -207,7 +207,7 @@ func (auth *Authenticator) NewRole(name string, channels base.Set) (Role, error)
 	if err := role.initRole(name, channels); err != nil {
 		return nil, err
 	}
-	if err := auth.rebuildChannels(role); err != nil {
+	if _, err := auth.rebuildChannels(role); err != nil {
 		return nil, err
 	}
 	return role, nil
@@ -369,11 +369,4 @@ func authorizeAnyChannel(princ Principal, channels base.Set) error {
 		return nil
 	}
 	return princ.UnauthError("You are not allowed to see this")
-}
-
-func (ca *CollectionAccess) Channels() ch.TimedSet {
-	if ca.ChannelInvalSeq != 0 {
-		return nil
-	}
-	return ca.Channels_
 }

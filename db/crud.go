@@ -431,8 +431,9 @@ func (db *DatabaseCollectionWithUser) GetDelta(ctx context.Context, docID, fromR
 }
 
 func (db *DatabaseCollectionWithUser) authorizeUserForChannels(docID, revID string, channels base.Set, isDeleted bool, history Revisions) (isAuthorized bool, redactedRev DocumentRevision) {
+
 	if db.user != nil {
-		if err := db.user.AuthorizeAnyChannel(channels); err != nil {
+		if err := db.user.AuthorizeAnyCollectionChannel(db.ScopeName(), db.Name(), channels); err != nil {
 			// On access failure, return (only) the doc history and deletion/removal
 			// status instead of returning an error. For justification see the comment in
 			// the getRevFromDoc method, below
@@ -491,7 +492,7 @@ func (db *DatabaseCollectionWithUser) authorizeDoc(doc *Document, revid string) 
 	}
 	if rev := doc.History[revid]; rev != nil {
 		// Authenticate against specific revision:
-		return db.user.AuthorizeAnyChannel(rev.Channels)
+		return db.user.AuthorizeAnyCollectionChannel(db.ScopeName(), db.Name(), rev.Channels)
 	} else {
 		// No such revision; let the caller proceed and return a 404
 		return nil
@@ -2311,9 +2312,9 @@ func isAccessError(err error) bool {
 	return base.ContainsString(base.SyncFnAccessErrors, err.Error())
 }
 
-// Recomputes the set of channels a User/Role has been granted access to by sync() functions.
+// Recomputes the set of channels a User/Role has been granted access to by sync() functions for the default collection
 // This is part of the ChannelComputer interface defined by the Authenticator.
-func (context *DatabaseContext) ComputeChannelsForPrincipal(ctx context.Context, princ auth.Principal) (channels.TimedSet, error) {
+func (context *DatabaseContext) ComputeChannelsForPrincipal(ctx context.Context, princ auth.Principal, scope string, collection string) (channels.TimedSet, error) {
 	key := princ.Name()
 	if _, ok := princ.(auth.User); !ok {
 		key = channels.RoleAccessPrefix + key // Roles are identified in access view by a "role:" prefix
@@ -2339,9 +2340,24 @@ func (context *DatabaseContext) ComputeChannelsForPrincipal(ctx context.Context,
 	return channelSet, nil
 }
 
-// Recomputes the set of channels a User/Role has been granted access to by sync() functions.
+// Recomputes the set of channels a User/Role has been granted access to by sync() function for all collections.
 // This is part of the ChannelComputer interface defined by the Authenticator.
 func (context *DatabaseContext) ComputeRolesForUser(ctx context.Context, user auth.User) (channels.TimedSet, error) {
+
+	roles := channels.TimedSet{}
+
+	for _, collection := range context.CollectionByID {
+		collectionRoles, err := collection.ComputeRolesForUser(ctx, user)
+		if err != nil {
+			return nil, err
+		}
+		roles.Add(collectionRoles)
+	}
+	return roles, nil
+}
+
+// Recomputes the set of channels a User/Role has been granted access to by sync() functions for a single collection.
+func (context *DatabaseCollection) ComputeRolesForUser(ctx context.Context, user auth.User) (channels.TimedSet, error) {
 	results, err := context.QueryRoleAccess(ctx, user.Name())
 	if err != nil {
 		return nil, err
