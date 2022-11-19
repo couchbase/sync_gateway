@@ -521,7 +521,7 @@ func TestRoleAccessQuery(t *testing.T) {
 
 	// Standard query
 	username := "user1"
-	results, queryErr := db.QueryRoleAccess(base.TestCtx(t), username)
+	results, queryErr := collection.QueryRoleAccess(base.TestCtx(t), username)
 	assert.NoError(t, queryErr, "Query error")
 	var row map[string]interface{}
 	rowCount := 0
@@ -536,7 +536,7 @@ func TestRoleAccessQuery(t *testing.T) {
 	usernames := []string{"user1'", "user1?", "user1 ! user2$"}
 	// usernames = append(usernames, "user1`AND") // TODO: MB-50619 - broken until Server 7.1.0
 	for _, username := range usernames {
-		results, queryErr = db.QueryRoleAccess(base.TestCtx(t), username)
+		results, queryErr = collection.QueryRoleAccess(base.TestCtx(t), username)
 		assert.NoError(t, queryErr, "Query error")
 		rowCount = 0
 		for results.Next(&row) {

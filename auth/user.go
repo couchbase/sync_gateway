@@ -86,7 +86,7 @@ func (auth *Authenticator) NewUser(username string, password string, channels ba
 	if err := user.initRole(username, channels); err != nil {
 		return nil, err
 	}
-	if err := auth.rebuildChannels(user); err != nil {
+	if _, err := auth.rebuildChannels(user); err != nil {
 		return nil, err
 	}
 

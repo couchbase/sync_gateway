@@ -58,10 +58,9 @@ func (role *roleImpl) CollectionChannels(scope, collection string) ch.TimedSet {
 			return nil
 		}
 		return cc.Channels_
+	} else {
+		return nil
 	}
-	// Access always granted to public channel, even if channels aren't otherwise defined for the collection
-	// always grant access to the public document channel
-	return ch.TimedSet{ch.DocumentStarChannel: ch.NewVbSimpleSequence(1)}
 }
 
 func (role *roleImpl) CollectionExplicitChannels(scope, collection string) ch.TimedSet {
@@ -70,7 +69,7 @@ func (role *roleImpl) CollectionExplicitChannels(scope, collection string) ch.Ti
 	}
 
 	if cc, ok := role.getCollectionAccess(scope, collection); ok {
-		return cc.ExplicitChannels_
+		return cc.ExplicitChannels()
 	}
 	return nil
 }
@@ -82,8 +81,7 @@ func (role *roleImpl) SetCollectionExplicitChannels(scope, collection string, ch
 	}
 
 	cc := role.getOrCreateCollectionAccess(scope, collection)
-	cc.ExplicitChannels_ = channels
-	cc.ChannelInvalSeq = invalSeq
+	cc.SetExplicitChannels(channels, invalSeq)
 }
 
 func (role *roleImpl) setCollectionChannels(scope, collection string, channels ch.TimedSet) {
@@ -161,7 +159,7 @@ func (role *roleImpl) CanSeeCollectionChannel(scope, collection, channel string)
 		return true
 	}
 	if cc, ok := role.getCollectionAccess(scope, collection); ok {
-		return cc.Channels().Contains(channel) || cc.Channels().Contains(ch.UserStarChannel)
+		return cc.CanSeeChannel(channel)
 	}
 	return false
 }
@@ -205,7 +203,7 @@ func (role *roleImpl) authorizeAllCollectionChannels(scope, collection string, c
 }
 
 // Returns an error if the Principal does not have access to any of the channels in the set.
-func (role *roleImpl) authorizeAnyCollectionChannel(scope, collection string, channels base.Set) error {
+func (role *roleImpl) AuthorizeAnyCollectionChannel(scope, collection string, channels base.Set) error {
 	if base.IsDefaultCollection(scope, collection) {
 		return role.AuthorizeAnyChannel(channels)
 	}

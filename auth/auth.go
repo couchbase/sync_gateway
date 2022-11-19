@@ -22,7 +22,8 @@ import (
 	"gopkg.in/square/go-jose.v2/jwt"
 )
 
-/** Manages user authentication for a database. */
+// Authenticator manages user authentication for a database.
+
 type Authenticator struct {
 	datastore       base.DataStore
 	channelComputer ChannelComputer
@@ -36,13 +37,22 @@ type AuthenticatorOptions struct {
 	SessionCookieName        string
 	BcryptCost               int
 	LogCtx                   context.Context
+
+	// Collections defines the set of collections used by the authenticator when rebuilding channels.
+	// Channels are only recomputed for collections included in this set.
+	// This can be used to limit (re-)computation of channel access to only those collections relevant to
+	// a given operation. If not specified, is set to _default._default in NewAuthenticator constructor.
+	Collections map[string]map[string]struct{}
 }
 
 // Interface for deriving the set of channels and roles a User/Role has access to.
 // The instantiator of an Authenticator must provide an implementation.
 type ChannelComputer interface {
-	ComputeChannelsForPrincipal(context.Context, Principal) (ch.TimedSet, error)
-	ComputeRolesForUser(context.Context, User) (ch.TimedSet, error)
+	// ComputeChannelsForPrincipal returns the set of channels granted to the principal by documents in scope.collection
+	ComputeChannelsForPrincipal(ctx context.Context, p Principal, scope string, collection string) (ch.TimedSet, error)
+
+	// ComputeRolesForUser returns the set of roles granted to the user by documents in all collections
+	ComputeRolesForUser(ctx context.Context, u User) (ch.TimedSet, error)
 }
 
 type userByEmailInfo struct {
@@ -67,8 +77,15 @@ const (
 	GuestUserReadOnly = "Anonymous access is read-only"
 )
 
+var defaultCollectionMap = map[string]map[string]struct{}{base.DefaultScope: {base.DefaultCollection: struct{}{}}}
+
 // Creates a new Authenticator that stores user info in the given Bucket.
+
 func NewAuthenticator(datastore base.DataStore, channelComputer ChannelComputer, options AuthenticatorOptions) *Authenticator {
+
+	if len(options.Collections) == 0 {
+		options.Collections = defaultCollectionMap
+	}
 	return &Authenticator{
 		datastore:            datastore,
 		channelComputer:      channelComputer,
@@ -147,13 +164,16 @@ func (auth *Authenticator) getPrincipal(docID string, factory func() Principal) 
 			return nil, nil, false, pkgerrors.WithStack(base.RedactErrorf("base.JSONUnmarshal() error for doc ID: %s in getPrincipal().  Error: %v", base.UD(docID), err))
 		}
 		changed := false
-		if princ.Channels() == nil && !princ.IsDeleted() {
-			// Channel list has been invalidated by a doc update -- rebuild it:
-			if err := auth.rebuildChannels(princ); err != nil {
+		if !princ.IsDeleted() {
+			// Check whether any collection's channel list has been invalidated by a doc update -- if so, rebuild it:
+			channelsChanged, err := auth.rebuildChannels(princ)
+			if err != nil {
 				base.WarnfCtx(auth.LogCtx, "RebuildChannels returned error: %v", err)
 				return nil, nil, false, err
 			}
-			changed = true
+			if channelsChanged {
+				changed = true
+			}
 		}
 		if user, ok := princ.(User); ok {
 			if user.RoleNames() == nil {
@@ -190,11 +210,43 @@ func (auth *Authenticator) getPrincipal(docID string, factory func() Principal) 
 	return princ, nil
 }
 
-func (auth *Authenticator) rebuildChannels(princ Principal) error {
-	channels := princ.ExplicitChannels().Copy()
+// Rebuild channels computes the full set of channels for all collections defined for the authenticator.
+// For each collection in Authenticator.collections:
+//   - if there is no CollectionAccess on the principal for the collection, rebuilds channels for that collection
+//   - If CollectionAccess on the principal has been invalidated, rebuilds channels for that collection
+func (auth *Authenticator) rebuildChannels(princ Principal) (changed bool, err error) {
+
+	changed = false
+	for scope, collections := range auth.Collections {
+		for collection, _ := range collections {
+			// If collection channels are nil, they have been invalidated and must be rebuilt
+			if princ.CollectionChannels(scope, collection) == nil {
+				err := auth.rebuildCollectionChannels(princ, scope, collection)
+				if err != nil {
+					return changed, err
+				}
+				changed = true
+			}
+		}
+	}
+	return changed, nil
+}
+
+func (auth *Authenticator) rebuildCollectionChannels(princ Principal, scope, collection string) error {
+
+	// For the default collection, rebuild the top-level channels properties on the principal.  Otherwise rebuild the appropriate entry
+	// in the principal CollectionAccess map.
+	var ca PrincipalCollectionAccess
+	if base.IsDefaultCollection(scope, collection) {
+		ca = princ
+	} else {
+		ca = princ.getOrCreateCollectionAccess(scope, collection)
+	}
+
+	channels := ca.ExplicitChannels().Copy()
 
 	if auth.channelComputer != nil {
-		viewChannels, err := auth.channelComputer.ComputeChannelsForPrincipal(auth.LogCtx, princ)
+		viewChannels, err := auth.channelComputer.ComputeChannelsForPrincipal(auth.LogCtx, princ, scope, collection)
 		if err != nil {
 			base.WarnfCtx(auth.LogCtx, "channelComputer.ComputeChannelsForPrincipal returned error for %v: %v", base.UD(princ), err)
 			return err
@@ -202,8 +254,8 @@ func (auth *Authenticator) rebuildChannels(princ Principal) error {
 		channels.Add(viewChannels)
 	}
 
-	if user, ok := princ.(User); ok {
-		if jwt := user.JWTChannels(); jwt != nil {
+	if userCollectionAccess, ok := ca.(UserCollectionAccess); ok {
+		if jwt := userCollectionAccess.JWTChannels(); jwt != nil {
 			channels.Add(jwt)
 		}
 	}
@@ -211,15 +263,15 @@ func (auth *Authenticator) rebuildChannels(princ Principal) error {
 	// always grant access to the public document channel
 	channels.AddChannel(ch.DocumentStarChannel, 1)
 
-	channelHistory := auth.calculateHistory(princ.Name(), princ.GetChannelInvalSeq(), princ.InvalidatedChannels(), channels, princ.ChannelHistory())
+	channelHistory := auth.calculateHistory(princ.Name(), ca.GetChannelInvalSeq(), ca.InvalidatedChannels(), channels, ca.ChannelHistory())
 
 	if len(channelHistory) != 0 {
-		princ.SetChannelHistory(channelHistory)
+		ca.SetChannelHistory(channelHistory)
 	}
 
-	base.InfofCtx(auth.LogCtx, base.KeyAccess, "Recomputed channels for %q: %s", base.UD(princ.Name()), base.UD(channels))
-	princ.SetChannelInvalSeq(0)
-	princ.setChannels(channels)
+	base.InfofCtx(auth.LogCtx, base.KeyAccess, "Recomputed channels for %q (%s.%s): %s", base.UD(princ.Name()), base.MD(scope), base.MD(collection), base.UD(channels))
+	ca.SetChannelInvalSeq(0)
+	ca.setChannels(channels)
 
 	return nil
 }
@@ -375,8 +427,12 @@ func (auth *Authenticator) UpdateSequenceNumber(p Principal, seq uint64) error {
 	return nil
 }
 
+func (auth *Authenticator) InvalidateDefaultChannels(name string, isUser bool, invalSeq uint64) error {
+	return auth.InvalidateChannels(name, isUser, base.DefaultScope, base.DefaultCollection, invalSeq)
+}
+
 // Invalidates the channel list of a user/role by setting the ChannelInvalSeq to a non-zero value
-func (auth *Authenticator) InvalidateChannels(name string, isUser bool, invalSeq uint64) error {
+func (auth *Authenticator) InvalidateChannels(name string, isUser bool, scope string, collection string, invalSeq uint64) error {
 	var princ Principal
 	var docID string
 
@@ -390,9 +446,14 @@ func (auth *Authenticator) InvalidateChannels(name string, isUser bool, invalSeq
 
 	base.InfofCtx(auth.LogCtx, base.KeyAccess, "Invalidate access of %q", base.UD(name))
 
+	subdocPath := "channel_inval_seq"
+	if scope != base.DefaultScope || collection != base.DefaultCollection {
+		subdocPath = "collection_access." + scope + "." + collection + "." + subdocPath
+	}
+
 	if subdocStore, ok := base.AsSubdocStore(auth.datastore); ok {
-		err := subdocStore.SubdocInsert(docID, "channel_inval_seq", 0, invalSeq)
-		if err != nil && err != base.ErrNotFound && err != base.ErrAlreadyExists {
+		err := subdocStore.SubdocInsert(docID, subdocPath, 0, invalSeq)
+		if err != nil && err != base.ErrNotFound && err != base.ErrAlreadyExists && err != base.ErrPathNotFound {
 			return err
 		}
 		return nil
@@ -409,11 +470,11 @@ func (auth *Authenticator) InvalidateChannels(name string, isUser bool, invalSeq
 			return nil, nil, false, err
 		}
 
-		if princ.Channels() == nil {
+		if princ.CollectionChannels(scope, collection) == nil {
 			return nil, nil, false, base.ErrUpdateCancel
 		}
 
-		princ.SetChannelInvalSeq(invalSeq)
+		princ.setCollectionChannelInvalSeq(scope, collection, invalSeq)
 
 		updated, err = base.JSONMarshal(princ)
 
