@@ -744,6 +744,7 @@ func (context *DatabaseContext) Close(ctx context.Context) {
 
 	base.RemovePerDbStats(context.Name)
 
+	context.V8VMs.Close()
 }
 
 // waitForBGTCompletion waits for all the background tasks to finish.

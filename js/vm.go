@@ -3,6 +3,7 @@ package js
 import (
 	_ "embed"
 	"fmt"
+	"sync"
 
 	v8 "rogchap.com/v8go" // Docs: https://pkg.go.dev/rogchap.com/v8go
 )
@@ -13,23 +14,26 @@ import (
 // This doesn't do much on its own; its purpose is to perform shared initialization that makes creating an context faster.
 // **Not thread-safe! Must be called only on one goroutine at a time.**
 type VM struct {
-	iso       *v8.Isolate        // A V8 virtual machine. NOT THREAD SAFE.
-	modules   map[string]*Module // Available modules
-	curRunner *Runner            // Runner that's currently running in the iso
-	pool      *VMPool            // Pool to return this to, or nil
+	iso          *v8.Isolate        // A V8 virtual machine. NOT THREAD SAFE.
+	services     map[string]Service // Available services
+	runners      map[string]*Runner // Available runners
+	curRunner    *Runner            // Runner that's currently running in the iso
+	returnToPool *VMPool            // Pool to return this to, or nil
 }
 
 // Constructs an Environment given the configuration.
-func NewVM(modules map[string]ModuleConfig) (*VM, error) {
+func NewVM(services map[string]ServiceFactory) (*VM, error) {
 	// Create a V8 VM ("isolate"):
 	iso := v8.NewIsolate()
 	vm := &VM{
-		iso:     iso,
-		modules: map[string]*Module{},
+		iso:      iso,
+		services: map[string]Service{},
+		runners:  map[string]*Runner{},
 	}
-	for name, config := range modules {
+	//log.Printf("*** NewVM %p", vm)
+	for name, factory := range services {
 		var err error
-		vm.modules[name], err = newModule(config, name, vm)
+		vm.services[name], err = factory(vm)
 		if err != nil {
 			return nil, err
 		}
@@ -40,8 +44,12 @@ func NewVM(modules map[string]ModuleConfig) (*VM, error) {
 // Cleans up a VM by disposing the V8 runtime.
 // You should call this when you're done with it.
 func (vm *VM) Close() {
-	if vm.pool != nil {
+	//log.Printf("*** VM.Close %p", vm)
+	if vm.returnToPool != nil {
 		panic("closing a js.VM that belongs to a Pool")
+	}
+	for _, runner := range vm.runners {
+		runner.close()
 	}
 	vm.iso.Dispose()
 	vm.iso = nil
@@ -49,30 +57,66 @@ func (vm *VM) Close() {
 
 // Call this when finished using a VM. Returns it to the VMPool it came from, or else closes it.
 func (vm *VM) Return() {
-	if vm.pool != nil {
-		vm.pool.ReturnVM(vm)
+	if vm.returnToPool != nil {
+		vm.returnToPool.returnVM(vm)
 	} else {
 		vm.Close()
 	}
 }
 
+// Produces a Runner object that can run the given service.
+// Be sure to call Runner.Return when done.
+func (vm *VM) GetRunner(serviceName string) (*Runner, error) {
+	runner := vm.runners[serviceName]
+	if runner == nil {
+		service := vm.services[serviceName]
+		if service == nil {
+			return nil, fmt.Errorf("js.VM has no service %q", serviceName)
+		}
+		var err error
+		runner, err = newRunner(vm, service)
+		if err != nil {
+			return nil, err
+		}
+	}
+	vm.curRunner = runner
+	return runner, nil
+}
+
+// Called by Runner.Return; either closes its V8 resources or saves it for reuse.
+// Also returns the VM to its Pool (or closes it.)
+func (vm *VM) returnRunner(r *Runner) {
+	if vm.curRunner == r {
+		vm.curRunner = nil
+	} else if r.vm != vm {
+		panic("Runner returned to wrong VM!")
+	}
+	if r.service.Reusable() {
+		vm.runners[r.service.Name()] = r
+	} else {
+		r.close()
+	}
+	vm.Return()
+}
+
 // Returns the Runner that owns the given V8 Context.
-func (vm *VM) GetRunner(ctx *v8.Context) *Runner {
-	// IMPORTANT: This is kind of a hack, because we expect only one context at a time.
-	// If there were to be multiple Evaluators, we'd need to maintain a map from contexts to Evaluators.
+func (vm *VM) currentRunner(ctx *v8.Context) *Runner {
+	// IMPORTANT: This is kind of a hack, but we can get away with it because a VM has only one
+	// active Runner at a time. If it were to be multiple Runners, we'd need to maintain a map
+	// from Contexts to Runners.
 	if vm.curRunner == nil {
-		panic(fmt.Sprintf("Unknown v8.Context passed to VM.GetRunner: %v, expected none", ctx))
+		panic(fmt.Sprintf("Unknown v8.Context passed to VM.currentRunner: %v, expected none", ctx))
 	}
 	if ctx != vm.curRunner.ctx {
-		panic(fmt.Sprintf("Unknown v8.Context passed to VM.GetRunner: %v, expected %v", ctx, vm.curRunner.ctx))
+		panic(fmt.Sprintf("Unknown v8.Context passed to VM.currentRunner: %v, expected %v", ctx, vm.curRunner.ctx))
 	}
 	return vm.curRunner
 }
 
 // Wraps a Go function in a V8 function template.
-func (vm *VM) CreateCallback(callback ModuleCallback) *v8.FunctionTemplate {
+func (vm *VM) NewCallback(callback ServiceCallback) *v8.FunctionTemplate {
 	return v8.NewFunctionTemplate(vm.iso, func(info *v8.FunctionCallbackInfo) *v8.Value {
-		c := vm.GetRunner(info.Context())
+		c := vm.currentRunner(info.Context())
 		result, err := callback(c, info)
 		if err == nil {
 			if result != nil {
@@ -88,89 +132,88 @@ func (vm *VM) CreateCallback(callback ModuleCallback) *v8.FunctionTemplate {
 	})
 }
 
+func (vm *VM) NewObjectTemplate() *v8.ObjectTemplate { return v8.NewObjectTemplate(vm.iso) }
+func (vm *VM) NewString(str string) *v8.Value        { return mustSucceed(v8.NewValue(vm.iso, str)) }
+
+func (vm *VM) NewValue(val any) (*v8.Value, error) {
+	if val != nil {
+		return v8.NewValue(vm.iso, val)
+	} else {
+		return v8.Undefined(vm.iso), nil
+	}
+}
+
 //////// VM POOL
 
 // Thread-safe wrapper that vends `VM` objects.
 type VMPool struct {
-	modules map[string]ModuleConfig
-	vms     chan *VM
+	services map[string]ServiceFactory
+	vms      sync.Pool
 }
 
 // Initializes a `vmPool`, a thread-safe wrapper around `VM`.
 // `maxEnvironments` is the maximum number of `VM` objects (and V8 instances!) it will cache.
 func (pool *VMPool) Init(maxVMs int) {
-	pool.modules = map[string]ModuleConfig{}
-	pool.vms = make(chan *VM, maxVMs)
-
+	pool.services = map[string]ServiceFactory{}
 }
 
-func (pool *VMPool) AddModule(name string, mod ModuleConfig) {
-	pool.modules[name] = mod
+func (pool *VMPool) AddService(name string, s ServiceFactory) {
+	pool.services[name] = s
 }
 
 // Produces a `VM` that can be used by this goroutine.
 // It should be returned when done by calling `returnEvaluator` to avoid wasting memory.
 func (pool *VMPool) GetVM() (*VM, error) {
-	var vm *VM
-	select {
-	case vm = <-pool.vms:
-		break
-	default:
-		// If pool is empty, create a new VM.
-		// (If this bloats memory, it might be better to block until one is returned...)
+	// Pop a VM from the channel, or block until one's available:
+	vm, ok := pool.vms.Get().(*VM)
+	if !ok {
+		// Nothing in the pool, so create a real VM instance:
 		var err error
-		if vm, err = NewVM(pool.modules); err != nil {
+		if vm, err = NewVM(pool.services); err != nil {
 			return nil, err
 		}
-		vm.pool = pool
 	}
+	vm.returnToPool = pool
 	return vm, nil
 }
 
-// Instantiates a Runner for a named Module.
-func (pool *VMPool) GetRunner(moduleName string) (*Runner, error) {
+// Returns a used `VM` back to the pool for reuse.
+func (pool *VMPool) returnVM(vm *VM) {
+	if vm != nil && vm.returnToPool == pool {
+		vm.returnToPool = nil
+		pool.vms.Put(vm)
+	}
+}
+
+// Instantiates a Runner for a named Service.
+func (pool *VMPool) GetRunner(serviceName string) (*Runner, error) {
 	vm, err := pool.GetVM()
 	if err != nil {
 		return nil, err
 	}
-	runner, err := vm.NewRunner(moduleName)
+	runner, err := vm.GetRunner(serviceName)
 	if err != nil {
-		pool.ReturnVM(vm)
+		pool.returnVM(vm)
 	}
 	return runner, err
 }
 
-// Returns a used `VM` back to the pool for reuse.
-func (pool *VMPool) ReturnVM(vm *VM) {
-	if vm != nil && vm.pool == pool {
-		select {
-		case pool.vms <- vm:
-		default:
-			// Drop it on the floor if the pool is already full
-			vm.pool = nil
-			vm.Close()
-		}
-	}
-}
-
-func (pool *VMPool) WithRunner(moduleName string, fn func(*Runner) (any, error)) (any, error) {
-	runner, err := pool.GetRunner(moduleName)
+func (pool *VMPool) WithRunner(serviceName string, fn func(*Runner) (any, error)) (any, error) {
+	runner, err := pool.GetRunner(serviceName)
 	if err != nil {
 		return nil, err
 	}
-	defer runner.Close()
+	defer runner.Return()
 	return fn(runner)
 }
 
 // Frees up the cached V8 VMs of an `vmPool`
 func (pool *VMPool) Close() {
 	for {
-		select {
-		case vm := <-pool.vms:
-			vm.pool = nil
-			vm.Close()
-		default:
-			return
+		if vm := pool.vms.Get(); vm != nil {
+			vm.(*VM).Close()
+		} else {
+			break
 		}
 	}
 }

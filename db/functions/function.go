@@ -112,7 +112,7 @@ func CompileFunctions(fnConfig *FunctionsConfig, gqConfig *GraphQLConfig, vms *j
 	// if err != nil {
 	// 	return nil, nil, err
 	// }
-	vms.AddModule("functions", makeModuleConfig(fnConfig, gqConfig))
+	vms.AddService("functions", makeService(fnConfig, gqConfig))
 
 	makeEvaluator := func(delegate evaluatorDelegate, user *userCredentials) (*evaluator, error) {
 		runner, err := vms.GetRunner("functions")
@@ -150,16 +150,21 @@ func newStandaloneEvaluator(ctx context.Context, fnConfig *FunctionsConfig, gqCo
 	if fnConfig == nil && gqConfig == nil {
 		return nil, nil
 	}
-	config := map[string]js.ModuleConfig{"functions": makeModuleConfig(fnConfig, gqConfig)}
+	config := map[string]js.ServiceFactory{"functions": makeService(fnConfig, gqConfig)}
 	vm, err := js.NewVM(config)
 	if err != nil {
 		return nil, err
 	}
-	if runner, err := vm.NewRunner("functions"); err != nil {
+	if runner, err := vm.GetRunner("functions"); err != nil {
 		vm.Close()
 		return nil, err
 	} else {
-		return newEvaluator(runner, delegate, nil)
+		eval, err := newEvaluator(runner, delegate, nil)
+		if err != nil {
+			vm.Close()
+			return nil, err
+		}
+		return eval, err
 	}
 }
 

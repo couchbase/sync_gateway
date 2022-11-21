@@ -24,32 +24,39 @@ type jsConfig struct {
 	GraphQL   *GraphQLConfig   `json:"graphql,omitempty"`
 }
 
-func makeModuleConfig(functions *FunctionsConfig, graphql *GraphQLConfig) js.ModuleConfig {
-	return js.ModuleConfig{
-		SourceCode: kJavaScriptCode + "\n SG_Engine.main;",
-		OnSetup: func(mod *js.Module) error {
-			// Create the top-level 'process' namespace that Apollo's libraries expect.
-			processTemplate := mod.NewObjectTemplate()
-			processTemplate.Set("env", mod.NewObjectTemplate())
-			mustNoError(mod.SetGlobal("process", processTemplate))
+type functionService struct {
+	js.BaseService
+	upstreamTemplate *v8.ObjectTemplate
+	jsonConfig       *v8.Value
+}
 
-			// Create the template for the "upstream" object containing the callbacks to Go:
-			upstreamTemplate := mod.NewObjectTemplate()
-			upstreamTemplate.Set("query", mod.NewCallback(doQuery))
-			upstreamTemplate.Set("get", mod.NewCallback(doGet))
-			upstreamTemplate.Set("save", mod.NewCallback(doSave))
-			upstreamTemplate.Set("delete", mod.NewCallback(doDelete))
-			upstreamTemplate.Set("log", mod.NewCallback(doLog))
-			mod.RegisterObject("upstream", upstreamTemplate)
+// Returns a ServiceFactory function that instantiates a "functions" js.Service
+func makeService(functions *FunctionsConfig, graphql *GraphQLConfig) js.ServiceFactory {
+	return func(vm *js.VM) (js.Service, error) {
+		service := &functionService{}
+		service.Init(vm, "functions", kJavaScriptCode+"\n SG_Engine.main;")
 
-			// Store the configuration JSON:
-			jsonConfig, err := json.Marshal(jsConfig{Functions: functions, GraphQL: graphql})
-			if err != nil {
-				panic("can't marshal config")
-			}
-			mustNoError(mod.RegisterValue("config", string(jsonConfig)))
-			return nil
-		},
+		// Create the top-level 'process' namespace that Apollo's libraries expect.
+		processTemplate := service.NewObjectTemplate()
+		processTemplate.Set("env", service.NewObjectTemplate())
+		mustNoError(service.SetGlobal("process", processTemplate))
+
+		// Create the template for the "upstream" object containing the callbacks to Go:
+		upstreamTemplate := service.NewObjectTemplate()
+		upstreamTemplate.Set("query", service.NewCallback(doQuery))
+		upstreamTemplate.Set("get", service.NewCallback(doGet))
+		upstreamTemplate.Set("save", service.NewCallback(doSave))
+		upstreamTemplate.Set("delete", service.NewCallback(doDelete))
+		upstreamTemplate.Set("log", service.NewCallback(doLog))
+		service.upstreamTemplate = upstreamTemplate
+
+		// Store the configuration JSON:
+		jsonConfig, err := json.Marshal(jsConfig{Functions: functions, GraphQL: graphql})
+		if err != nil {
+			panic("can't marshal config")
+		}
+		service.jsonConfig = service.NewString(string(jsonConfig))
+		return service, nil
 	}
 }
 
@@ -103,19 +110,22 @@ func newEvaluator(runner *js.Runner, delegate evaluatorDelegate, user *userCrede
 		user:     user,
 	}
 	runner.Delegate = eval
+	runner.CheckTimeout = eval.delegate.checkTimeout
 
 	// Call the JS initialization code, passing it the configuration and the Upstream.
 	// This returns the JS `API` object.
-	config := runner.GetValue("config")
-	upstream := mustSucceed(runner.GetObject("upstream"))
-	if config == nil || upstream == nil {
-		panic("nil")
+	fnService := runner.Service().(*functionService)
+	if fnService == nil {
+		panic("Couldn't cast to functionService")
 	}
-	apiVal, err := runner.Run(config, upstream)
+	upstream, err := runner.NewInstance(fnService.upstreamTemplate)
 	if err != nil {
 		return nil, err
 	}
-	eval.api = mustSucceed(apiVal.AsObject())
+	eval.api, err = runner.RunAsObject(fnService.jsonConfig, upstream)
+	if err != nil {
+		return nil, err
+	}
 
 	// Check the API.errors property for configuration errors:
 	if errorsVal, err := eval.api.Get("errors"); err != nil {
@@ -138,7 +148,7 @@ func newEvaluator(runner *js.Runner, delegate evaluatorDelegate, user *userCrede
 
 // Disposes the V8 resources for an Evaluator. Always call this when done.
 func (eval *evaluator) close() {
-	eval.runner.Close()
+	eval.runner.Return()
 }
 
 // Configures whether the Evaluator is allowed to mutate the database; if false (the default), calls to `save()` and `delete()` will fail.
@@ -208,7 +218,7 @@ func (eval *evaluator) v8Credentials() (user *v8.Value, roles *v8.Value, channel
 	return
 }
 
-//////// `NativeAPI` CALLBACK IMPLEMENTATIONS:
+//////// EVALUATOR CALLBACK IMPLEMENTATIONS:
 
 // 	query(fnName: string, n1ql: string, argsJSON: string | undefined, asAdmin: boolean) : string;
 func doQuery(r *js.Runner, info *v8.FunctionCallbackInfo) (any, error) {
