@@ -114,14 +114,6 @@ func CompileFunctions(fnConfig *FunctionsConfig, gqConfig *GraphQLConfig, vms *j
 	// }
 	vms.AddService("functions", makeService(fnConfig, gqConfig))
 
-	makeEvaluator := func(delegate evaluatorDelegate, user *userCredentials) (*evaluator, error) {
-		runner, err := vms.GetRunner("functions")
-		if err != nil {
-			return nil, err
-		}
-		return newEvaluator(runner, delegate, user)
-	}
-
 	if fnConfig != nil {
 		fns = &db.UserFunctions{
 			MaxRequestSize: fnConfig.MaxRequestSize,
@@ -131,14 +123,12 @@ func CompileFunctions(fnConfig *FunctionsConfig, gqConfig *GraphQLConfig, vms *j
 			fns.Definitions[name] = &functionImpl{
 				FunctionConfig: fnConfig,
 				name:           name,
-				makeEvaluator:  makeEvaluator,
 			}
 		}
 	}
 	if gqConfig != nil {
 		gq = &graphQLImpl{
-			config:        gqConfig,
-			makeEvaluator: makeEvaluator,
+			config: gqConfig,
 		}
 	}
 	return
@@ -151,10 +141,7 @@ func newStandaloneEvaluator(ctx context.Context, fnConfig *FunctionsConfig, gqCo
 		return nil, nil
 	}
 	config := map[string]js.ServiceFactory{"functions": makeService(fnConfig, gqConfig)}
-	vm, err := js.NewVM(config)
-	if err != nil {
-		return nil, err
-	}
+	vm := js.NewVM(config)
 	if runner, err := vm.GetRunner("functions"); err != nil {
 		vm.Close()
 		return nil, err
@@ -177,15 +164,12 @@ func ValidateFunctions(ctx context.Context, fnConfig *FunctionsConfig, gqConfig 
 	return err
 }
 
-type evaluatorFactory = func(delegate evaluatorDelegate, user *userCredentials) (*evaluator, error)
-
 //////// FUNCTIONIMPL
 
 // implements UserFunction.
 type functionImpl struct {
-	*FunctionConfig                  // Inherits from FunctionConfig
-	name            string           // Name of function
-	makeEvaluator   evaluatorFactory // Source of JavaScript (V8) VMs
+	*FunctionConfig        // Inherits from FunctionConfig
+	name            string // Name of function
 }
 
 func (fn *functionImpl) Name() string {
@@ -202,21 +186,6 @@ func (fn *functionImpl) N1QLQueryName() (string, bool) {
 	} else {
 		return "", false
 	}
-}
-
-// Creates an Invocation of a UserFunction.
-func (fn *functionImpl) invoke(delegate evaluatorDelegate, user *userCredentials, args map[string]any, mutationAllowed bool) (db.UserFunctionInvocation, error) {
-	eval, err := fn.makeEvaluator(delegate, user)
-	if err != nil {
-		return nil, err
-	}
-
-	eval.setMutationAllowed(mutationAllowed)
-	return &functionInvocation{
-		functionImpl: fn,
-		eval:         eval,
-		args:         args,
-	}, nil
 }
 
 // Creates an Invocation of a UserFunction.
@@ -238,7 +207,17 @@ func (fn *functionImpl) Invoke(dbc *db.Database, args map[string]any, mutationAl
 			Channels: dbUser.Channels().AllKeys(),
 		}
 	}
-	return fn.invoke(delegate, delegate.user, args, mutationAllowed)
+
+	eval, err := makeEvaluator(dbc, delegate, delegate.user)
+	if err != nil {
+		return nil, err
+	}
+	eval.setMutationAllowed(mutationAllowed)
+	return &functionInvocation{
+		functionImpl: fn,
+		eval:         eval,
+		args:         args,
+	}, nil
 }
 
 // Implements UserFunctionInvocation
@@ -273,23 +252,11 @@ func (inv *functionInvocation) RunAsJSON() ([]byte, error) {
 
 // Implementation of db.graphQLImpl interface.
 type graphQLImpl struct {
-	config        *GraphQLConfig
-	makeEvaluator evaluatorFactory // Source of JavaScript (V8) VMs
+	config *GraphQLConfig
 }
 
 func (gq *graphQLImpl) MaxRequestSize() *int {
 	return gq.config.MaxRequestSize
-}
-
-func (gq *graphQLImpl) query(delegate evaluatorDelegate, user *userCredentials, query string, operationName string, variables map[string]interface{}, mutationAllowed bool, ctx context.Context) ([]byte, error) {
-	eval, err := gq.makeEvaluator(delegate, user)
-	if err != nil {
-		return nil, err
-	}
-	defer eval.close()
-
-	eval.setMutationAllowed(mutationAllowed)
-	return eval.callGraphQL(query, operationName, variables)
 }
 
 func (gq *graphQLImpl) QueryAsJSON(dbc *db.Database, query string, operationName string, variables map[string]interface{}, mutationAllowed bool, ctx context.Context) ([]byte, error) {
@@ -310,7 +277,15 @@ func (gq *graphQLImpl) QueryAsJSON(dbc *db.Database, query string, operationName
 			Channels: dbUser.Channels().AllKeys(),
 		}
 	}
-	return gq.query(delegate, delegate.user, query, operationName, variables, mutationAllowed, ctx)
+
+	eval, err := makeEvaluator(dbc, delegate, delegate.user)
+	if err != nil {
+		return nil, err
+	}
+	defer eval.close()
+
+	eval.setMutationAllowed(mutationAllowed)
+	return eval.callGraphQL(query, operationName, variables)
 }
 
 func (gq *graphQLImpl) Query(dbc *db.Database, query string, operationName string, variables map[string]interface{}, mutationAllowed bool, ctx context.Context) (*db.GraphQLResult, error) {

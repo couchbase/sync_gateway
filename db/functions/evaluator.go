@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/js"
 	v8 "rogchap.com/v8go" // Docs: https://pkg.go.dev/rogchap.com/v8go
 )
@@ -18,53 +19,55 @@ import (
 //go:embed engine/dist/main.js
 var kJavaScriptCode string
 
-// Used to pass configuration to V8. Equivalent to TypeScript type `Config` in types.ts
+// Used for JSON-encoding configuration for engine.
+// Equivalent to TypeScript type `Config` in types.ts
 type jsConfig struct {
 	Functions *FunctionsConfig `json:"functions,omitempty"`
 	GraphQL   *GraphQLConfig   `json:"graphql,omitempty"`
 }
 
+// js.Service implementation; a "subclass" of js.BaseService.
 type functionService struct {
-	js.BaseService
-	upstreamTemplate *v8.ObjectTemplate
-	jsonConfig       *v8.Value
+	*js.BasicService                    // "Superclass"
+	upstreamTemplate *v8.ObjectTemplate // Template of object holding JS callbacks
+	jsonConfig       *v8.Value          // JSON configuration string
 }
 
 // Returns a ServiceFactory function that instantiates a "functions" js.Service
 func makeService(functions *FunctionsConfig, graphql *GraphQLConfig) js.ServiceFactory {
-	return func(vm *js.VM) (js.Service, error) {
-		service := &functionService{}
-		service.Init(vm, "functions", kJavaScriptCode+"\n SG_Engine.main;")
+	return func(base *js.BasicService) (js.Service, error) {
+		// Initialize the BaseService and compile the JS code:
+		base.SetScript(kJavaScriptCode + "\n SG_Engine.main;")
 
-		// Create the top-level 'process' namespace that Apollo's libraries expect.
-		processTemplate := service.NewObjectTemplate()
-		processTemplate.Set("env", service.NewObjectTemplate())
-		mustNoError(service.SetGlobal("process", processTemplate))
+		// Create the top-level 'process' namespace that Apollo's libraries expect:
+		process := base.NewObjectTemplate()
+		process.Set("env", base.NewObjectTemplate())
+		mustNoError(base.Global().Set("process", process))
 
 		// Create the template for the "upstream" object containing the callbacks to Go:
-		upstreamTemplate := service.NewObjectTemplate()
-		upstreamTemplate.Set("query", service.NewCallback(doQuery))
-		upstreamTemplate.Set("get", service.NewCallback(doGet))
-		upstreamTemplate.Set("save", service.NewCallback(doSave))
-		upstreamTemplate.Set("delete", service.NewCallback(doDelete))
-		upstreamTemplate.Set("log", service.NewCallback(doLog))
-		service.upstreamTemplate = upstreamTemplate
+		upstream := base.NewObjectTemplate()
+		upstream.Set("query", base.NewCallback(doQuery))
+		upstream.Set("get", base.NewCallback(doGet))
+		upstream.Set("save", base.NewCallback(doSave))
+		upstream.Set("delete", base.NewCallback(doDelete))
+		upstream.Set("log", base.NewCallback(doLog))
 
-		// Store the configuration JSON:
-		jsonConfig, err := json.Marshal(jsConfig{Functions: functions, GraphQL: graphql})
-		if err != nil {
-			panic("can't marshal config")
-		}
-		service.jsonConfig = service.NewString(string(jsonConfig))
-		return service, nil
+		// Create a JS string of the configuration JSON:
+		jsonConfig := mustSucceed(json.Marshal(jsConfig{Functions: functions, GraphQL: graphql}))
+
+		// Wrap the service in a functionService subclass:
+		return &functionService{
+			BasicService:     base,
+			upstreamTemplate: upstream,
+			jsonConfig:       base.NewString(string(jsonConfig)),
+		}, nil
 	}
 }
 
 //////// EVALUATOR
 
 // A JavaScript execution context in an Environment. This is what actually does the work.
-// An Environment has its own JS global state, but all instances on an Environment share a single JavaScript thread.
-// **NOTE:** The current implementation allows for only one evaluator on an Environment at once.
+// It wraps a js.Runner that was instantiated from the functionService.
 // **Not thread-safe! Must be called only on one goroutine at a time. In fact, all Evaluators created from the same Environment must be called only one one goroutine.**
 type evaluator struct {
 	runner          *js.Runner        // The V8 context
@@ -102,7 +105,17 @@ type userCredentials struct {
 	Channels []string
 }
 
-// Constructs an Evaluator.
+func makeEvaluator(dbc *db.Database, delegate evaluatorDelegate, user *userCredentials) (*evaluator, error) {
+	if runner, err := dbc.V8VMs.GetRunner("functions"); err != nil {
+		return nil, err
+	} else if e, ok := runner.Delegate.(*evaluator); ok {
+		return e, nil // Reuse existing evaluator
+	} else {
+		return newEvaluator(runner, delegate, user)
+	}
+}
+
+// Creates an Evaluator, wrapping a js.Runner.
 func newEvaluator(runner *js.Runner, delegate evaluatorDelegate, user *userCredentials) (*evaluator, error) {
 	eval := &evaluator{
 		runner:   runner,

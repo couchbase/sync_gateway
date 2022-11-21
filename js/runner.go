@@ -15,8 +15,8 @@ type Runner struct {
 	vm           *VM          // The owning VM object
 	ctx          *v8.Context  // V8 object managing this execution context
 	mainFn       *v8.Function // The entry-point function (returned by the Service's script)
-	Delegate     any          // User may put whatever they want here, to point back to their state
-	CheckTimeout func() error
+	Delegate     any          // Client may put whatever they want here, to point back to their state
+	CheckTimeout func() error // Client-set fn, called to detect timeouts
 }
 
 // Creates a Runner on a Service

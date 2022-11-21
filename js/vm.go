@@ -8,37 +8,28 @@ import (
 	v8 "rogchap.com/v8go" // Docs: https://pkg.go.dev/rogchap.com/v8go
 )
 
-//////// ENVIRONMENT
-
 // Represents a V8 JavaScript VM (aka "Isolate".)
 // This doesn't do much on its own; its purpose is to perform shared initialization that makes creating an context faster.
 // **Not thread-safe! Must be called only on one goroutine at a time.**
 type VM struct {
-	iso          *v8.Isolate        // A V8 virtual machine. NOT THREAD SAFE.
-	services     map[string]Service // Available services
-	runners      map[string]*Runner // Available runners
-	curRunner    *Runner            // Runner that's currently running in the iso
-	returnToPool *VMPool            // Pool to return this to, or nil
+	iso          *v8.Isolate           // A V8 virtual machine. NOT THREAD SAFE.
+	config       ServicesConfiguration // Factory for services
+	services     map[string]Service    // Available services
+	runners      map[string]*Runner    // Available runners
+	curRunner    *Runner               // Runner that's currently running in the iso
+	returnToPool *VMPool               // Pool to return this to, or nil
 }
 
-// Constructs an Environment given the configuration.
-func NewVM(services map[string]ServiceFactory) (*VM, error) {
-	// Create a V8 VM ("isolate"):
-	iso := v8.NewIsolate()
-	vm := &VM{
-		iso:      iso,
-		services: map[string]Service{},
-		runners:  map[string]*Runner{},
+type ServicesConfiguration map[string]ServiceFactory
+
+// Creates an Environment that can run a set of services.
+func NewVM(services ServicesConfiguration) *VM {
+	return &VM{
+		iso:      v8.NewIsolate(),      // The V8 VM
+		config:   services,             // Factory fn for each service
+		services: map[string]Service{}, // Instantiated Services
+		runners:  map[string]*Runner{}, // Cached reusable Runners
 	}
-	//log.Printf("*** NewVM %p", vm)
-	for name, factory := range services {
-		var err error
-		vm.services[name], err = factory(vm)
-		if err != nil {
-			return nil, err
-		}
-	}
-	return vm, nil
 }
 
 // Cleans up a VM by disposing the V8 runtime.
@@ -64,16 +55,43 @@ func (vm *VM) Return() {
 	}
 }
 
+// Instantiates the named Service or returns the existing instance.
+func (vm *VM) getService(serviceName string) (Service, error) {
+	service := vm.services[serviceName]
+	if service == nil {
+		factory := vm.config[serviceName]
+		if factory == nil {
+			return nil, fmt.Errorf("js.VM has no service %q", serviceName)
+		}
+		base := &BasicService{
+			name:   serviceName,
+			vm:     vm,
+			global: v8.NewObjectTemplate(vm.iso),
+		}
+		var err error
+		service, err = factory(base)
+		if err != nil {
+			return nil, err
+		}
+		if service == nil {
+			panic("js.ServiceFactory returned nil")
+		} else if service.Script() == nil {
+			panic("js.ServiceFactory did not initialize Service's script")
+		}
+		vm.services[serviceName] = service
+	}
+	return service, nil
+}
+
 // Produces a Runner object that can run the given service.
 // Be sure to call Runner.Return when done.
 func (vm *VM) GetRunner(serviceName string) (*Runner, error) {
 	runner := vm.runners[serviceName]
 	if runner == nil {
-		service := vm.services[serviceName]
+		service, err := vm.getService(serviceName)
 		if service == nil {
-			return nil, fmt.Errorf("js.VM has no service %q", serviceName)
+			return nil, err
 		}
-		var err error
 		runner, err = newRunner(vm, service)
 		if err != nil {
 			return nil, err
@@ -147,17 +165,20 @@ func (vm *VM) NewValue(val any) (*v8.Value, error) {
 
 // Thread-safe wrapper that vends `VM` objects.
 type VMPool struct {
-	services map[string]ServiceFactory
+	services ServicesConfiguration
 	vms      sync.Pool
 }
 
 // Initializes a `vmPool`, a thread-safe wrapper around `VM`.
 // `maxEnvironments` is the maximum number of `VM` objects (and V8 instances!) it will cache.
 func (pool *VMPool) Init(maxVMs int) {
-	pool.services = map[string]ServiceFactory{}
+	pool.services = ServicesConfiguration{}
 }
 
 func (pool *VMPool) AddService(name string, s ServiceFactory) {
+	if pool.services[name] != nil {
+		panic(fmt.Sprintf("Duplicate Service name %q", name))
+	}
 	pool.services[name] = s
 }
 
@@ -168,10 +189,7 @@ func (pool *VMPool) GetVM() (*VM, error) {
 	vm, ok := pool.vms.Get().(*VM)
 	if !ok {
 		// Nothing in the pool, so create a real VM instance:
-		var err error
-		if vm, err = NewVM(pool.services); err != nil {
-			return nil, err
-		}
+		vm = NewVM(pool.services)
 	}
 	vm.returnToPool = pool
 	return vm, nil
