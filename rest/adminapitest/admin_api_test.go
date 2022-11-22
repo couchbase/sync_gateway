@@ -983,7 +983,10 @@ func TestResyncErrorScenarios(t *testing.T) {
 	response = rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
 	rest.RequireStatus(t, response, http.StatusOK)
 
-	rest.WaitAndAssertBackgroundManagerState(t, db.BackgroundProcessStateCompleted, rt.GetDatabase().ResyncManager.GetRunState)
+	rest.WaitAndAssertBackgroundManagerState(t, db.BackgroundProcessStateCompleted,
+		func(t testing.TB) db.BackgroundProcessState {
+			return rt.GetDatabase().ResyncManager.GetRunState()
+		})
 	rest.WaitAndAssertBackgroundManagerExpiredHeartbeat(t, rt.GetDatabase().ResyncManager)
 
 	response = rt.SendAdminRequest("POST", "/db/_resync?action=stop", "")
@@ -996,7 +999,10 @@ func TestResyncErrorScenarios(t *testing.T) {
 	response = rt.SendAdminRequest("POST", "/db/_resync", "")
 	rest.RequireStatus(t, response, http.StatusOK)
 
-	rest.WaitAndAssertBackgroundManagerState(t, db.BackgroundProcessStateCompleted, rt.GetDatabase().ResyncManager.GetRunState)
+	rest.WaitAndAssertBackgroundManagerState(t, db.BackgroundProcessStateCompleted,
+		func(t testing.TB) db.BackgroundProcessState {
+			return rt.GetDatabase().ResyncManager.GetRunState()
+		})
 	rest.WaitAndAssertBackgroundManagerExpiredHeartbeat(t, rt.GetDatabase().ResyncManager)
 
 	assert.True(t, callbackFired, "expecting callback to be fired")
@@ -1060,7 +1066,10 @@ func TestResyncErrorScenariosUsingDCPStream(t *testing.T) {
 	response = rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
 	rest.RequireStatus(t, response, http.StatusServiceUnavailable)
 
-	rest.WaitAndAssertBackgroundManagerState(t, db.BackgroundProcessStateCompleted, rt.GetDatabase().ResyncManager.GetRunState)
+	rest.WaitAndAssertBackgroundManagerState(t, db.BackgroundProcessStateCompleted,
+		func(t testing.TB) db.BackgroundProcessState {
+			return rt.GetDatabase().ResyncManager.GetRunState()
+		})
 	rest.WaitAndAssertBackgroundManagerExpiredHeartbeat(t, rt.GetDatabase().ResyncManager)
 
 	assert.Equal(t, numOfDocs, int(rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value()))
@@ -1075,7 +1084,10 @@ func TestResyncErrorScenariosUsingDCPStream(t *testing.T) {
 	response = rt.SendAdminRequest("POST", "/db/_resync", "")
 	rest.RequireStatus(t, response, http.StatusOK)
 
-	rest.WaitAndAssertBackgroundManagerState(t, db.BackgroundProcessStateCompleted, rt.GetDatabase().ResyncManager.GetRunState)
+	rest.WaitAndAssertBackgroundManagerState(t, db.BackgroundProcessStateCompleted,
+		func(t testing.TB) db.BackgroundProcessState {
+			return rt.GetDatabase().ResyncManager.GetRunState()
+		})
 	rest.WaitAndAssertBackgroundManagerExpiredHeartbeat(t, rt.GetDatabase().ResyncManager)
 }
 
@@ -1158,7 +1170,10 @@ func TestResyncStop(t *testing.T) {
 	response = rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
 	rest.RequireStatus(t, response, http.StatusOK)
 
-	rest.WaitAndAssertBackgroundManagerState(t, db.BackgroundProcessStateStopped, rt.GetDatabase().ResyncManager.GetRunState)
+	rest.WaitAndAssertBackgroundManagerState(t, db.BackgroundProcessStateStopped,
+		func(t testing.TB) db.BackgroundProcessState {
+			return rt.GetDatabase().ResyncManager.GetRunState()
+		})
 	rest.WaitAndAssertBackgroundManagerExpiredHeartbeat(t, rt.GetDatabase().ResyncManager)
 
 	assert.True(t, callbackFired, "expecting callback to be fired")
@@ -1214,12 +1229,18 @@ func TestResyncStopUsingDCPStream(t *testing.T) {
 
 	response = rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
 	rest.RequireStatus(t, response, http.StatusOK)
-	rest.WaitAndAssertBackgroundManagerState(t, db.BackgroundProcessStateRunning, rt.GetDatabase().ResyncManager.GetRunState)
+	rest.WaitAndAssertBackgroundManagerState(t, db.BackgroundProcessStateRunning,
+		func(t testing.TB) db.BackgroundProcessState {
+			return rt.GetDatabase().ResyncManager.GetRunState()
+		})
 
 	response = rt.SendAdminRequest("POST", "/db/_resync?action=stop", "")
 	rest.RequireStatus(t, response, http.StatusOK)
 
-	rest.WaitAndAssertBackgroundManagerState(t, db.BackgroundProcessStateStopped, rt.GetDatabase().ResyncManager.GetRunState)
+	rest.WaitAndAssertBackgroundManagerState(t, db.BackgroundProcessStateStopped,
+		func(t testing.TB) db.BackgroundProcessState {
+			return rt.GetDatabase().ResyncManager.GetRunState()
+		})
 	rest.WaitAndAssertBackgroundManagerExpiredHeartbeat(t, rt.GetDatabase().ResyncManager)
 
 	syncFnCount := int(rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value())
@@ -1340,7 +1361,10 @@ func TestResyncRegenerateSequences(t *testing.T) {
 	response = rt.SendAdminRequest("POST", "/db/_resync?action=start&regenerate_sequences=true", "")
 	rest.RequireStatus(t, response, http.StatusOK)
 
-	rest.WaitAndAssertBackgroundManagerState(t, db.BackgroundProcessStateCompleted, rt.GetDatabase().ResyncManager.GetRunState)
+	rest.WaitAndAssertBackgroundManagerState(t, db.BackgroundProcessStateCompleted,
+		func(t testing.TB) db.BackgroundProcessState {
+			return rt.GetDatabase().ResyncManager.GetRunState()
+		})
 	rest.WaitAndAssertBackgroundManagerExpiredHeartbeat(t, rt.GetDatabase().ResyncManager)
 
 	_, err = rt.Bucket().DefaultDataStore().Get(base.RolePrefix+"role1", &body)
@@ -1502,7 +1526,10 @@ func TestResyncRegenerateSequencesUsingDCPStream(t *testing.T) {
 	response = rt.SendAdminRequest("POST", "/db/_resync?action=start&regenerate_sequences=true", "")
 	rest.RequireStatus(t, response, http.StatusOK)
 
-	rest.WaitAndAssertBackgroundManagerState(t, db.BackgroundProcessStateCompleted, rt.GetDatabase().ResyncManager.GetRunState)
+	rest.WaitAndAssertBackgroundManagerState(t, db.BackgroundProcessStateCompleted,
+		func(t testing.TB) db.BackgroundProcessState {
+			return rt.GetDatabase().ResyncManager.GetRunState()
+		})
 	rest.WaitAndAssertBackgroundManagerExpiredHeartbeat(t, rt.GetDatabase().ResyncManager)
 
 	_, err = rt.Bucket().DefaultDataStore().Get(base.RolePrefix+"role1", &body)

@@ -2514,7 +2514,7 @@ func TestTombstoneCompactionStopWithManager(t *testing.T) {
 	assert.NoError(t, db.TombstoneCompactionManager.Start(ctx, map[string]interface{}{"database": db}))
 
 	waitAndAssertConditionWithOptions(t, func() bool {
-		return db.TombstoneCompactionManager.GetRunState(t) == BackgroundProcessStateStopped
+		return db.TombstoneCompactionManager.GetRunState() == BackgroundProcessStateStopped
 	}, 60, 1000)
 
 	var tombstoneCompactionStatus TombstoneManagerResponse

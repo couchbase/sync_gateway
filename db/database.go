@@ -738,6 +738,13 @@ func (context *DatabaseContext) Close(ctx context.Context) {
 
 	context.OIDCProviders.Stop()
 	close(context.terminator)
+
+	wg := &sync.WaitGroup{}
+	wg.Add(3)
+	go stopBackgroundProcess(ctx, 10*time.Second, context.ResyncManager, "resync", wg)
+	go stopBackgroundProcess(ctx, 10*time.Second, context.AttachmentCompactionManager, "attachment_compaction", wg)
+	go stopBackgroundProcess(ctx, 10*time.Second, context.TombstoneCompactionManager, "tombstone_compaction", wg)
+
 	// Wait for database background tasks to finish.
 	waitForBGTCompletion(ctx, BGTCompletionMaxWait, context.backgroundTasks, context.Name)
 	context.sequences.Stop()
@@ -752,11 +759,50 @@ func (context *DatabaseContext) Close(ctx context.Context) {
 	if context.SGReplicateMgr != nil {
 		context.SGReplicateMgr.Stop()
 	}
+
+	// wait for all BackgroundManager to stop
+	wg.Wait()
+
 	context.Bucket.Close()
 	context.Bucket = nil
 
 	base.RemovePerDbStats(context.Name)
 
+}
+
+func stopBackgroundProcess(ctx context.Context, waitTimeMax time.Duration, bgManager *BackgroundManager, processName string, wg *sync.WaitGroup) {
+	defer wg.Done()
+	if isBackgroundManagerStopped(bgManager.GetRunState()) {
+		return
+	}
+
+	err := bgManager.Stop()
+	if err != nil {
+		base.WarnfCtx(ctx, "failed to stop background manager %s.  Error %v", processName, err)
+		return
+	}
+
+	timeout := time.NewTicker(waitTimeMax)
+	interval := time.NewTicker(1 * time.Second)
+	defer timeout.Stop()
+	defer interval.Stop()
+
+	for {
+		select {
+		case <-timeout.C:
+			base.WarnfCtx(ctx, "Timeout after %v of waiting for Background Manager [%s] to terminate", waitTimeMax, processName)
+			return
+		case <-interval.C:
+			state := bgManager.GetRunState()
+			if isBackgroundManagerStopped(state) {
+				return
+			}
+		}
+	}
+}
+
+func isBackgroundManagerStopped(state BackgroundProcessState) bool {
+	return state == BackgroundProcessStateStopped || state == BackgroundProcessStateCompleted || state == BackgroundProcessStateError || state == ""
 }
 
 // waitForBGTCompletion waits for all the background tasks to finish.

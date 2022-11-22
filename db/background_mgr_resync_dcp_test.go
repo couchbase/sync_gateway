@@ -97,6 +97,7 @@ func TestResyncDCPInit(t *testing.T) {
 
 			resyncMrg := NewResyncManagerDCP(db.Bucket)
 			require.NotNil(t, resyncMrg)
+			db.ResyncManager = resyncMrg
 
 			// this gets called by background manager in each Start call.
 			// We have to manually call this for tests only to reset docsChanged/docsProcessed counters
@@ -149,6 +150,7 @@ func TestResycnManagerDCPStopInMidWay(t *testing.T) {
 
 	resyncMrg := NewResyncManagerDCP(db.Bucket)
 	require.NotNil(t, resyncMrg)
+	db.ResyncManager = resyncMrg
 	defer resyncMrg.resetStatus()
 
 	options := make(map[string]interface{})
@@ -191,6 +193,7 @@ func TestResycnManagerDCPStart(t *testing.T) {
 
 		resyncMrg := NewResyncManagerDCP(db.Bucket)
 		require.NotNil(t, resyncMrg)
+		db.ResyncManager = resyncMrg
 
 		options := make(map[string]interface{})
 		options["database"] = db
@@ -257,6 +260,7 @@ func TestResycnManagerDCPRunTwice(t *testing.T) {
 
 	resyncMrg := NewResyncManagerDCP(db.Bucket)
 	require.NotNil(t, resyncMrg)
+	db.ResyncManager = resyncMrg
 
 	options := make(map[string]interface{})
 	options["database"] = db
@@ -306,6 +310,7 @@ func TestResycnManagerDCPResumeStoppedProcess(t *testing.T) {
 
 	resyncMrg := NewResyncManagerDCP(db.Bucket)
 	require.NotNil(t, resyncMrg)
+	db.ResyncManager = resyncMrg
 
 	options := make(map[string]interface{})
 	options["database"] = db

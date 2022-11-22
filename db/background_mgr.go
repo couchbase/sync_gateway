@@ -390,8 +390,7 @@ func (b *BackgroundManager) setRunState(state BackgroundProcessState) {
 	b.State = state
 }
 
-// Currently only test
-func (b *BackgroundManager) GetRunState(t testing.TB) BackgroundProcessState {
+func (b *BackgroundManager) GetRunState() BackgroundProcessState {
 	b.lock.Lock()
 	defer b.lock.Unlock()
 	return b.State
