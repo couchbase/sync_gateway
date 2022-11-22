@@ -38,11 +38,18 @@ var (
 )
 
 func AsCollection(dataStore DataStore) (*Collection, error) {
-	collection, ok := dataStore.(*Collection)
-	if !ok {
-		return nil, errors.New("dataStore is not a *Collection")
+	var underlyingDataStore DataStore
+	switch collection := dataStore.(type) {
+	case *Collection:
+		return collection, nil
+	case *LeakyDataStore:
+		underlyingDataStore = collection.dataStore
+	default:
+		// bail out for unrecognised/unsupported buckets
+		return nil, fmt.Errorf("not a collection")
 	}
-	return collection, nil
+
+	return AsCollection(underlyingDataStore)
 }
 
 // CollectionName returns the collection name

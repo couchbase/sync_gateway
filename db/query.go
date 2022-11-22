@@ -385,7 +385,7 @@ const (
 )
 
 // N1QlQueryWithStats is a wrapper for gocbBucket.Query that performs additional diagnostic processing (expvars, slow query logging)
-func N1QLQueryWithStats(ctx context.Context, dataStore base.Bucket, queryName string, statement string, params map[string]interface{}, consistency base.ConsistencyMode, adhoc bool, dbStats *base.DbStats, slowQueryWarningThreshold time.Duration) (results sgbucket.QueryResultIterator, err error) {
+func N1QLQueryWithStats(ctx context.Context, dataStore base.DataStore, queryName string, statement string, params map[string]interface{}, consistency base.ConsistencyMode, adhoc bool, dbStats *base.DbStats, slowQueryWarningThreshold time.Duration) (results sgbucket.QueryResultIterator, err error) {
 
 	startTime := time.Now()
 	if threshold := slowQueryWarningThreshold; threshold > 0 {
@@ -424,7 +424,12 @@ func (context *DatabaseContext) ViewQueryWithStats(ctx context.Context, ddoc str
 
 	queryStat := context.DbStats.Query(fmt.Sprintf(base.StatViewFormat, ddoc, viewName))
 
-	results, err = context.Bucket.ViewQuery(ddoc, viewName, params)
+	viewStore, ok := context.singleCollection.dataStore.(sgbucket.ViewStore)
+	if !ok {
+		return results, fmt.Errorf("Datastore does not support views")
+	}
+
+	results, err = viewStore.ViewQuery(ddoc, viewName, params)
 	if err != nil {
 		queryStat.QueryErrorCount.Add(1)
 	}
@@ -452,7 +457,7 @@ func (context *DatabaseContext) QueryAccess(ctx context.Context, username string
 	params := make(map[string]interface{}, 0)
 	params[QueryParamUserName] = username
 
-	return N1QLQueryWithStats(ctx, context.Bucket, QueryAccess.name, accessQueryStatement, params, base.RequestPlus, QueryAccess.adhoc, context.DbStats, context.Options.SlowQueryWarningThreshold)
+	return N1QLQueryWithStats(ctx, context.MetadataStore, QueryAccess.name, accessQueryStatement, params, base.RequestPlus, QueryAccess.adhoc, context.DbStats, context.Options.SlowQueryWarningThreshold)
 }
 
 // Builds the query statement for an access N1QL query.
@@ -484,7 +489,7 @@ func (context *DatabaseContext) QueryRoleAccess(ctx context.Context, username st
 	accessQueryStatement := context.buildRoleAccessQuery(username)
 	params := make(map[string]interface{}, 0)
 	params[QueryParamUserName] = username
-	return N1QLQueryWithStats(ctx, context.Bucket, QueryTypeRoleAccess, accessQueryStatement, params, base.RequestPlus, QueryRoleAccess.adhoc, context.DbStats, context.Options.SlowQueryWarningThreshold)
+	return N1QLQueryWithStats(ctx, context.MetadataStore, QueryTypeRoleAccess, accessQueryStatement, params, base.RequestPlus, QueryRoleAccess.adhoc, context.DbStats, context.Options.SlowQueryWarningThreshold)
 }
 
 // Builds the query statement for a roleAccess N1QL query.
@@ -512,7 +517,7 @@ func (context *DatabaseCollection) QueryChannels(ctx context.Context, channelNam
 	// QueryChannels result schema (removal handling isn't needed for the star channel).
 	channelQueryStatement, params := context.buildChannelsQuery(channelName, startSeq, endSeq, limit, activeOnly)
 
-	return N1QLQueryWithStats(ctx, context.Bucket, QueryChannels.name, channelQueryStatement, params, base.RequestPlus, QueryChannels.adhoc, context.dbStats(), context.slowQueryWarningThreshold())
+	return N1QLQueryWithStats(ctx, context.dataStore, QueryChannels.name, channelQueryStatement, params, base.RequestPlus, QueryChannels.adhoc, context.dbStats(), context.slowQueryWarningThreshold())
 }
 
 // Query to retrieve keys for the specified sequences.  View query uses star channel, N1QL query uses IndexAllDocs
@@ -534,7 +539,7 @@ func (context *DatabaseCollection) QuerySequences(ctx context.Context, sequences
 	params := make(map[string]interface{})
 	params[QueryParamInSequences] = sequences
 
-	return N1QLQueryWithStats(ctx, context.Bucket, QuerySequences.name, sequenceQueryStatement, params, base.RequestPlus, QueryChannels.adhoc, context.dbStats(), context.slowQueryWarningThreshold())
+	return N1QLQueryWithStats(ctx, context.dataStore, QuerySequences.name, sequenceQueryStatement, params, base.RequestPlus, QueryChannels.adhoc, context.dbStats(), context.slowQueryWarningThreshold())
 }
 
 // buildsChannelsQuery constructs the query statement and query parameters for a channels N1QL query.  Also used by unit tests to validate
@@ -603,7 +608,7 @@ func (context *DatabaseContext) QueryPrincipals(ctx context.Context, startKey st
 	}
 
 	// N1QL Query
-	return N1QLQueryWithStats(ctx, context.Bucket, QueryPrincipals.name, queryStatement, params, base.RequestPlus, QueryPrincipals.adhoc, context.DbStats, context.Options.SlowQueryWarningThreshold)
+	return N1QLQueryWithStats(ctx, context.MetadataStore, QueryPrincipals.name, queryStatement, params, base.RequestPlus, QueryPrincipals.adhoc, context.DbStats, context.Options.SlowQueryWarningThreshold)
 }
 
 // Query to retrieve user details, using the syncDocs or users index
@@ -617,7 +622,7 @@ func (context *DatabaseContext) QueryUsers(ctx context.Context, startKey string,
 	queryStatement, params := context.BuildUsersQuery(startKey, limit)
 
 	// N1QL Query
-	return N1QLQueryWithStats(ctx, context.Bucket, QueryTypeUsers, queryStatement, params, base.RequestPlus, QueryUsers.adhoc, context.DbStats, context.Options.SlowQueryWarningThreshold)
+	return N1QLQueryWithStats(ctx, context.MetadataStore, QueryTypeUsers, queryStatement, params, base.RequestPlus, QueryUsers.adhoc, context.DbStats, context.Options.SlowQueryWarningThreshold)
 }
 
 // BuildUsersQuery builds the query statement and query parameters for a Users N1QL query. Also used by unit tests to validate
@@ -660,7 +665,7 @@ func (context *DatabaseContext) QueryRoles(ctx context.Context, startKey string,
 	queryStatement, params := context.BuildRolesQuery(startKey, limit)
 
 	// N1QL Query
-	return N1QLQueryWithStats(ctx, context.Bucket, QueryRolesExcludeDeleted.name, queryStatement, params, base.RequestPlus, QueryRolesExcludeDeleted.adhoc, context.DbStats, context.Options.SlowQueryWarningThreshold)
+	return N1QLQueryWithStats(ctx, context.MetadataStore, QueryRolesExcludeDeleted.name, queryStatement, params, base.RequestPlus, QueryRolesExcludeDeleted.adhoc, context.DbStats, context.Options.SlowQueryWarningThreshold)
 }
 
 // BuildRolesQuery builds the query statement and query parameters for a Roles N1QL query. Also used by unit tests to validate
@@ -707,7 +712,7 @@ func (context *DatabaseContext) QueryAllRoles(ctx context.Context, startKey stri
 	}
 
 	// N1QL Query
-	return N1QLQueryWithStats(ctx, context.Bucket, QueryRolesExcludeDeleted.name, queryStatement, params, base.RequestPlus, QueryRolesExcludeDeleted.adhoc, context.DbStats, context.Options.SlowQueryWarningThreshold)
+	return N1QLQueryWithStats(ctx, context.MetadataStore, QueryRolesExcludeDeleted.name, queryStatement, params, base.RequestPlus, QueryRolesExcludeDeleted.adhoc, context.DbStats, context.Options.SlowQueryWarningThreshold)
 }
 
 // Query to retrieve the set of sessions, using the syncDocs index
@@ -722,7 +727,7 @@ func (context *DatabaseContext) QuerySessions(ctx context.Context, userName stri
 	}
 
 	queryStatement, params := context.BuildSessionsQuery(userName)
-	return N1QLQueryWithStats(ctx, context.Bucket, QueryTypeSessions, queryStatement, params, base.RequestPlus, QuerySessions.adhoc, context.DbStats, context.Options.SlowQueryWarningThreshold)
+	return N1QLQueryWithStats(ctx, context.MetadataStore, QueryTypeSessions, queryStatement, params, base.RequestPlus, QuerySessions.adhoc, context.DbStats, context.Options.SlowQueryWarningThreshold)
 }
 
 // BuildSessionsQuery builds the query statement and query parameters for a Sessions N1QL query. Also used by unit tests to validate
@@ -790,13 +795,13 @@ func (context *DatabaseCollection) QueryAllDocs(ctx context.Context, startKey st
 	allDocsQueryStatement = fmt.Sprintf("%s ORDER BY META(%s).id",
 		allDocsQueryStatement, base.KeyspaceQueryAlias)
 
-	return N1QLQueryWithStats(ctx, context.Bucket, QueryTypeAllDocs, allDocsQueryStatement, params, base.RequestPlus, QueryAllDocs.adhoc, context.dbStats(), context.slowQueryWarningThreshold())
+	return N1QLQueryWithStats(ctx, context.dataStore, QueryTypeAllDocs, allDocsQueryStatement, params, base.RequestPlus, QueryAllDocs.adhoc, context.dbStats(), context.slowQueryWarningThreshold())
 }
 
-func (context *DatabaseContext) QueryTombstones(ctx context.Context, olderThan time.Time, limit int) (sgbucket.QueryResultIterator, error) {
+func (context *DatabaseCollection) QueryTombstones(ctx context.Context, olderThan time.Time, limit int) (sgbucket.QueryResultIterator, error) {
 
 	// View Query
-	if context.Options.UseViews {
+	if context.useViews() {
 		opts := Body{
 			"stale":            false,
 			QueryParamStartKey: 1,
@@ -805,7 +810,7 @@ func (context *DatabaseContext) QueryTombstones(ctx context.Context, olderThan t
 		if limit != 0 {
 			opts[QueryParamLimit] = limit
 		}
-		return context.ViewQueryWithStats(ctx, DesignDocSyncHousekeeping(), ViewTombstones, opts)
+		return context.dbCtx.ViewQueryWithStats(ctx, DesignDocSyncHousekeeping(), ViewTombstones, opts)
 	}
 
 	// N1QL Query
@@ -819,7 +824,7 @@ func (context *DatabaseContext) QueryTombstones(ctx context.Context, olderThan t
 		QueryParamOlderThan: olderThan.Unix(),
 	}
 
-	return N1QLQueryWithStats(ctx, context.Bucket, QueryTypeTombstones, tombstoneQueryStatement, params, base.RequestPlus, QueryTombstones.adhoc, context.DbStats, context.Options.SlowQueryWarningThreshold)
+	return N1QLQueryWithStats(ctx, context.dataStore, QueryTypeTombstones, tombstoneQueryStatement, params, base.RequestPlus, QueryTombstones.adhoc, context.dbStats(), context.slowQueryWarningThreshold())
 }
 
 func changesViewOptions(channelName string, startSeq, endSeq uint64, limit int) map[string]interface{} {

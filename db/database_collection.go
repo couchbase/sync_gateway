@@ -64,7 +64,7 @@ func (c *DatabaseCollection) backupOldRev() bool {
 
 // bucketName returns the name of the bucket this collection is stored in.
 func (c *DatabaseCollection) bucketName() string {
-	return c.Bucket.GetName()
+	return c.dataStore.GetName()
 
 }
 
@@ -150,7 +150,7 @@ func (c *DatabaseCollection) importFilter() *ImportFilterFunction {
 
 // IsClosed returns true if the underlying collection has been closed.
 func (c *DatabaseCollection) IsClosed() bool {
-	return c.Bucket == nil
+	return c.dataStore == nil
 }
 
 // isGuestReadOnly returns true if the guest user can only perform read operations. This is controlled at the database level.

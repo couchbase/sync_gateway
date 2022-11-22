@@ -768,8 +768,16 @@ func (context *DatabaseContext) RestartListener() error {
 }
 
 // Removes previous versions of Sync Gateway's design docs found on the server
-func (context *DatabaseContext) RemoveObsoleteDesignDocs(previewOnly bool) (removedDesignDocs []string, err error) {
-	return removeObsoleteDesignDocs(context.Bucket, previewOnly, context.UseViews())
+func (dbCtx *DatabaseContext) RemoveObsoleteDesignDocs(previewOnly bool) (removedDesignDocs []string, err error) {
+	dbCollection, err := dbCtx.GetDefaultDatabaseCollection()
+	if err != nil {
+		return []string{}, err
+	}
+	viewStore, ok := dbCollection.dataStore.(sgbucket.ViewStore)
+	if !ok {
+		return []string{}, fmt.Errorf("Datastore does not support views")
+	}
+	return removeObsoleteDesignDocs(context.TODO(), viewStore, previewOnly, dbCtx.UseViews())
 }
 
 // Removes previous versions of Sync Gateway's indexes found on the server
@@ -855,7 +863,7 @@ func (context *DatabaseContext) Authenticator(ctx context.Context) *auth.Authent
 	}
 
 	// Authenticators are lightweight & stateless, so it's OK to return a new one every time
-	authenticator := auth.NewAuthenticator(context.MetadataStore, context, auth.AuthenticatorOptions{
+	authenticator := auth.NewAuthenticator(context.MetadataStore, context.singleCollection, auth.AuthenticatorOptions{
 		ClientPartitionWindow:    context.Options.ClientPartitionWindow,
 		ChannelsWarningThreshold: channelsWarningThreshold,
 		SessionCookieName:        sessionCookieName,
@@ -1423,7 +1431,7 @@ func (db *Database) Compact(ctx context.Context, skipRunningStateCheck bool, cal
 	purgeBody := Body{"_purged": true}
 	for {
 		purgedDocs := make([]string, 0)
-		results, err := db.QueryTombstones(ctx, purgeOlderThan, QueryTombstoneBatch)
+		results, err := db.singleCollection.QueryTombstones(ctx, purgeOlderThan, QueryTombstoneBatch)
 		if err != nil {
 			return 0, err
 		}
@@ -1688,9 +1696,9 @@ func (db *DatabaseCollectionWithUser) UpdateAllDocChannels(ctx context.Context, 
 						return nil, nil, deleteDoc, nil, base.ErrUpdateCancel
 					}
 				}
-				_, err = db.Bucket.WriteUpdateWithXattr(key, base.SyncXattrName, db.userXattrKey(), 0, nil, nil, writeUpdateFunc)
+				_, err = db.dataStore.WriteUpdateWithXattr(key, base.SyncXattrName, db.userXattrKey(), 0, nil, nil, writeUpdateFunc)
 			} else {
-				_, err = db.Bucket.Update(key, 0, func(currentValue []byte) ([]byte, *uint32, bool, error) {
+				_, err = db.dataStore.Update(key, 0, func(currentValue []byte) ([]byte, *uint32, bool, error) {
 					// Be careful: this block can be invoked multiple times if there are races!
 					if currentValue == nil {
 						return nil, nil, false, base.ErrUpdateCancel // someone deleted it?!

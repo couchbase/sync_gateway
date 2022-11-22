@@ -303,7 +303,7 @@ func (db *DatabaseCollectionWithUser) setOldRevisionJSON(ctx context.Context, do
 	nonJSONBytes := make([]byte, 1, len(body)+1)
 	nonJSONBytes[0] = nonJSONPrefix
 	nonJSONBytes = append(nonJSONBytes, body...)
-	err := db.MetadataStore.SetRaw(oldRevisionKey(docid, revid), expiry, nil, nonJSONBytes)
+	err := db.dbCtx.MetadataStore.SetRaw(oldRevisionKey(docid, revid), expiry, nil, nonJSONBytes)
 	if err == nil {
 		base.DebugfCtx(ctx, base.KeyCRUD, "Backed up revision body %q/%q (%d bytes, ttl:%d)", base.UD(docid), revid, len(body), expiry)
 	} else {
@@ -316,7 +316,7 @@ func (db *DatabaseCollectionWithUser) setOldRevisionJSON(ctx context.Context, do
 // recreate the revision backup when body is non-empty.
 func (db *DatabaseCollectionWithUser) refreshPreviousRevisionBackup(ctx context.Context, docid string, revid string, body []byte, expiry uint32) error {
 
-	_, err := db.MetadataStore.Touch(oldRevisionKey(docid, revid), expiry)
+	_, err := db.dbCtx.MetadataStore.Touch(oldRevisionKey(docid, revid), expiry)
 	if base.IsKeyNotFoundError(db.dataStore, err) && len(body) > 0 {
 		return db.setOldRevisionJSON(ctx, docid, revid, body, expiry)
 	}
@@ -326,7 +326,7 @@ func (db *DatabaseCollectionWithUser) refreshPreviousRevisionBackup(ctx context.
 // Currently only used by unit tests - deletes an archived old revision from the database
 func (db *DatabaseCollection) PurgeOldRevisionJSON(ctx context.Context, docid string, revid string) error {
 	base.DebugfCtx(ctx, base.KeyCRUD, "Purging old revision backup %q / %q ", base.UD(docid), revid)
-	return db.MetadataStore.Delete(oldRevisionKey(docid, revid))
+	return db.dbCtx.MetadataStore.Delete(oldRevisionKey(docid, revid))
 }
 
 // ////// UTILITY FUNCTIONS:

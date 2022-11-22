@@ -129,7 +129,11 @@ func (il *importListener) StartImportFeed(ctx context.Context, bucket base.Bucke
 
 	if !base.IsEnterpriseEdition() {
 		groupID := ""
-		return base.StartGocbDCPFeed(bucket, bucket.GetName(), feedArgs, il.ProcessFeedEvent, importFeedStatsMap.Map, base.DCPMetadataStoreCS, groupID)
+		gocbv2Bucket, ok := bucket.(*base.GocbV2Bucket)
+		if !ok {
+			return fmt.Errorf("configured with named collections, but bucket is not a gocb bucket: %w", err)
+		}
+		return base.StartGocbDCPFeed(gocbv2Bucket, bucket.GetName(), feedArgs, il.ProcessFeedEvent, importFeedStatsMap.Map, base.DCPMetadataStoreCS, groupID)
 	}
 
 	il.cbgtContext, err = base.StartShardedDCPFeed(ctx, dbContext.Name, dbContext.Options.GroupID, dbContext.UUID, dbContext.Heartbeater,

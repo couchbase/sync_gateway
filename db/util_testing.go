@@ -18,6 +18,7 @@ import (
 	"testing"
 	"time"
 
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
@@ -181,11 +182,11 @@ func WaitForUserWaiterChange(userWaiter *ChangeWaiter) bool {
 }
 
 // emptyAllDocsIndex ensures the AllDocs index for the given bucket is empty. Works similarly to db.Compact, except on a different index and without a DatabaseContext
-func emptyAllDocsIndex(ctx context.Context, b base.Bucket, tbp *base.TestBucketPool) (numCompacted int, err error) {
+func emptyAllDocsIndex(ctx context.Context, dataStore sgbucket.DataStore, tbp *base.TestBucketPool) (numCompacted int, err error) {
 	purgedDocCount := 0
 	purgeBody := Body{"_purged": true}
 
-	n1qlStore, ok := base.AsN1QLStore(b)
+	n1qlStore, ok := base.AsN1QLStore(dataStore)
 	if !ok {
 		return 0, fmt.Errorf("bucket was not a n1ql store")
 	}
@@ -206,19 +207,19 @@ WHERE META(ks).xattrs._sync.sequence >= 0
 		// First, attempt to purge.
 		var purgeErr error
 		if base.TestUseXattrs() {
-			purgeErr = b.DeleteWithXattr(tombstonesRow.Id, base.SyncXattrName)
+			purgeErr = dataStore.DeleteWithXattr(tombstonesRow.Id, base.SyncXattrName)
 		} else {
-			purgeErr = b.Delete(tombstonesRow.Id)
+			purgeErr = dataStore.Delete(tombstonesRow.Id)
 		}
-		if base.IsKeyNotFoundError(b, purgeErr) {
+		if base.IsKeyNotFoundError(dataStore, purgeErr) {
 			// If key no longer exists, need to add and remove to trigger removal from view
-			_, addErr := b.Add(tombstonesRow.Id, 0, purgeBody)
+			_, addErr := dataStore.Add(tombstonesRow.Id, 0, purgeBody)
 			if addErr != nil {
 				tbp.Logf(ctx, "Error compacting key %s (add) - will not be compacted.  %v", tombstonesRow.Id, addErr)
 				continue
 			}
 
-			if delErr := b.Delete(tombstonesRow.Id); delErr != nil {
+			if delErr := dataStore.Delete(tombstonesRow.Id); delErr != nil {
 				tbp.Logf(ctx, "Error compacting key %s (delete) - will not be compacted.  %v", tombstonesRow.Id, delErr)
 			}
 			purgedDocCount++
@@ -243,7 +244,7 @@ var viewsAndGSIBucketReadier base.TBPBucketReadierFunc = func(ctx context.Contex
 			return err
 		}
 		// Exit early if we're not using GSI.
-		return viewBucketReadier(ctx, b, tbp)
+		return viewBucketReadier(ctx, b.DefaultDataStore(), tbp)
 	}
 
 	tbp.Logf(ctx, "emptying bucket via N1QL, readying views and indexes")
@@ -251,26 +252,36 @@ var viewsAndGSIBucketReadier base.TBPBucketReadierFunc = func(ctx context.Contex
 		return err
 	}
 
-	if _, err := emptyAllDocsIndex(ctx, b, tbp); err != nil {
+	dataStores, err := b.ListDataStores()
+	if err != nil {
 		return err
 	}
-
-	if !tbp.UsingNamedCollections() {
-		if err := viewBucketReadier(ctx, b, tbp); err != nil {
+	for _, dataStoreName := range dataStores {
+		dataStore := b.NamedDataStore(dataStoreName)
+		if _, err := emptyAllDocsIndex(ctx, dataStore, tbp); err != nil {
 			return err
 		}
+
+		n1qlStore, ok := base.AsN1QLStore(dataStore)
+		if !ok {
+			return errors.New("attempting to empty indexes with non-N1QL store")
+		}
+		tbp.Logf(ctx, "waiting for empty bucket indexes")
+		// we can't init indexes concurrently, so we'll just wait for them to be empty after emptying instead of recreating.
+		if err := WaitForIndexEmpty(n1qlStore, base.TestUseXattrs()); err != nil {
+			tbp.Logf(ctx, "WaitForIndexEmpty returned an error: %v", err)
+			return err
+		}
+		tbp.Logf(ctx, "bucket indexes empty")
 	}
-	n1qlStore, ok := base.AsN1QLStore(b)
-	if !ok {
-		return errors.New("attempting to empty indexes with non-N1QL store")
+	if len(dataStores) == 1 {
+		dataStoreName := dataStores[0]
+		if base.IsDefaultCollection(dataStoreName.ScopeName(), dataStoreName.CollectionName()) {
+			if err := viewBucketReadier(ctx, b.NamedDataStore(dataStoreName), tbp); err != nil {
+				return err
+			}
+		}
 	}
-	tbp.Logf(ctx, "waiting for empty bucket indexes")
-	// we can't init indexes concurrently, so we'll just wait for them to be empty after emptying instead of recreating.
-	if err := WaitForIndexEmpty(n1qlStore, base.TestUseXattrs()); err != nil {
-		tbp.Logf(ctx, "WaitForIndexEmpty returned an error: %v", err)
-		return err
-	}
-	tbp.Logf(ctx, "bucket indexes empty")
 	return nil
 }
 
@@ -283,7 +294,7 @@ var viewsAndGSIBucketInit base.TBPBucketInitFunc = func(ctx context.Context, b b
 		}
 
 		tbp.Logf(ctx, "bucket not a gocb bucket... skipping GSI setup")
-		return viewBucketReadier(ctx, b, tbp)
+		return viewBucketReadier(ctx, b.DefaultDataStore(), tbp)
 	}
 	tbp.Logf(ctx, "Starting bucket init function")
 
@@ -291,54 +302,64 @@ var viewsAndGSIBucketInit base.TBPBucketInitFunc = func(ctx context.Context, b b
 	if base.TestsDisableGSI() {
 		return nil
 	}
-	n1qlStore, ok := base.AsN1QLStore(b)
-	if !ok {
-		return fmt.Errorf("bucket %T was not a N1QL store", b)
-	}
-
-	if empty, err := isIndexEmpty(n1qlStore, base.TestUseXattrs()); empty && err == nil {
-		tbp.Logf(ctx, "indexes already created, and already empty - skipping")
-		return nil
-	} else {
-		tbp.Logf(ctx, "indexes not empty (or doesn't exist) - %v %v", empty, err)
-	}
-
-	tbp.Logf(ctx, "dropping existing bucket indexes")
-	if err := base.DropAllIndexes(ctx, n1qlStore); err != nil {
-		tbp.Logf(ctx, "Failed to drop bucket indexes: %v", err)
-		return err
-	}
-	tbp.Logf(ctx, "creating SG bucket indexes")
-	if err := InitializeIndexes(n1qlStore, base.TestUseXattrs(), 0, false, false); err != nil {
-		return err
-	}
-
-	err := n1qlStore.CreatePrimaryIndex(base.PrimaryIndexName, nil)
+	dataStores, err := b.ListDataStores()
 	if err != nil {
 		return err
 	}
-	tbp.Logf(ctx, "finished creating SG bucket indexes")
+	for _, dataStoreName := range dataStores {
 
+		dataStore := b.NamedDataStore(dataStoreName)
+		n1qlStore, ok := base.AsN1QLStore(dataStore)
+		if !ok {
+			return fmt.Errorf("bucket %T was not a N1QL store", b)
+		}
+
+		if empty, err := isIndexEmpty(n1qlStore, base.TestUseXattrs()); empty && err == nil {
+			tbp.Logf(ctx, "indexes already created, and already empty - skipping")
+			return nil
+		} else {
+			tbp.Logf(ctx, "indexes not empty (or doesn't exist) - %v %v", empty, err)
+		}
+
+		tbp.Logf(ctx, "dropping existing bucket indexes")
+		if err := base.DropAllIndexes(ctx, n1qlStore); err != nil {
+			tbp.Logf(ctx, "Failed to drop bucket indexes: %v", err)
+			return err
+		}
+		tbp.Logf(ctx, "creating SG bucket indexes")
+		if err := InitializeIndexes(n1qlStore, base.TestUseXattrs(), 0, false, false); err != nil {
+			return err
+		}
+
+		err := n1qlStore.CreatePrimaryIndex(base.PrimaryIndexName, nil)
+		if err != nil {
+			return err
+		}
+		tbp.Logf(ctx, "finished creating SG bucket indexes")
+	}
 	return nil
 }
 
 // viewBucketReadier removes any existing views and installs a new set into the given bucket.
-func viewBucketReadier(ctx context.Context, b base.Bucket, tbp *base.TestBucketPool) error {
-
-	ddocs, err := b.GetDDocs()
+func viewBucketReadier(ctx context.Context, dataStore sgbucket.DataStore, tbp *base.TestBucketPool) error {
+	collection, err := base.AsCollection(dataStore)
+	if err != nil {
+		return err
+	}
+	ddocs, err := collection.GetDDocs()
 	if err != nil {
 		return err
 	}
 
 	for ddocName, _ := range ddocs {
 		tbp.Logf(ctx, "removing existing view: %s", ddocName)
-		if err := b.DeleteDDoc(ddocName); err != nil {
+		if err := collection.DeleteDDoc(ddocName); err != nil {
 			return err
 		}
 	}
 
 	tbp.Logf(ctx, "initializing bucket views")
-	err = InitializeViews(b)
+	err = InitializeViews(ctx, dataStore)
 	if err != nil {
 		return err
 	}
