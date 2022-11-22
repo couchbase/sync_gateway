@@ -351,6 +351,11 @@ func TestDBOfflinePostResync(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
+	_, isDCPResync := (rt.GetDatabase().ResyncManager.Process).(*db.ResyncManagerDCP)
+	if isDCPResync && base.UnitTestUrlIsWalrus() {
+		t.Skip("This test doesn't work with Walrus when ResyncManagerDCP is used")
+	}
+
 	log.Printf("Taking DB offline")
 	response := rt.SendAdminRequest("GET", "/db/", "")
 	var body db.Body
@@ -389,6 +394,11 @@ func TestDBOfflineSingleResync(t *testing.T) {
 	}`
 	rt := NewRestTester(t, &RestTesterConfig{SyncFn: syncFn})
 	defer rt.Close()
+
+	_, isDCPResync := (rt.GetDatabase().ResyncManager.Process).(*db.ResyncManagerDCP)
+	if isDCPResync && base.UnitTestUrlIsWalrus() {
+		t.Skip("This test doesn't work with Walrus when ResyncManagerDCP is used")
+	}
 
 	// create documents in DB to cause resync to take a few seconds
 	for i := 0; i < 1000; i++ {
@@ -482,6 +492,11 @@ func TestResync(t *testing.T) {
 			)
 			defer rt.Close()
 
+			_, isDCPResync := (rt.GetDatabase().ResyncManager.Process).(*db.ResyncManagerDCP)
+			if isDCPResync && base.UnitTestUrlIsWalrus() {
+				t.Skip("This test doesn't work with Walrus when ResyncManagerDCP is used")
+			}
+
 			for i := 0; i < testCase.docsCreated; i++ {
 				rt.CreateDoc(t, fmt.Sprintf("doc%d", i))
 			}
@@ -520,19 +535,20 @@ func TestResync(t *testing.T) {
 
 			assert.Equal(t, testCase.expectedSyncFnRuns, int(rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value()))
 
-			var queryName string
-			if base.TestsDisableGSI() {
-				queryName = fmt.Sprintf(base.StatViewFormat, db.DesignDocSyncGateway(), db.ViewChannels)
-			} else {
-				queryName = db.QueryTypeChannels
+			if !isDCPResync {
+				var queryName string
+				if base.TestsDisableGSI() {
+					queryName = fmt.Sprintf(base.StatViewFormat, db.DesignDocSyncGateway(), db.ViewChannels)
+				} else {
+					queryName = db.QueryTypeChannels
+				}
+				assert.Equal(t, testCase.expectedQueryCount, int(rt.GetDatabase().DbStats.Query(queryName).QueryCount.Value()))
 			}
 
-			assert.Equal(t, testCase.expectedQueryCount, int(rt.GetDatabase().DbStats.Query(queryName).QueryCount.Value()))
 			assert.Equal(t, testCase.docsCreated, resyncManagerStatus.DocsProcessed)
 			assert.Equal(t, 0, resyncManagerStatus.DocsChanged)
 		})
 	}
-
 }
 
 func TestResyncErrorScenarios(t *testing.T) {
@@ -556,6 +572,11 @@ func TestResyncErrorScenarios(t *testing.T) {
 		},
 	)
 	defer rt.Close()
+
+	_, ok := (rt.GetDatabase().ResyncManager.Process).(*db.ResyncManager)
+	if !ok {
+		t.Skip("This test only works when ResyncManager is used")
+	}
 
 	leakyDataStore, ok := base.AsLeakyDataStore(rt.Bucket().DefaultDataStore())
 	require.Truef(t, ok, "Wanted *base.LeakyBucket but got %T", leakyTestBucket.Bucket)
@@ -635,6 +656,75 @@ func TestResyncErrorScenarios(t *testing.T) {
 	assert.True(t, callbackFired, "expecting callback to be fired")
 }
 
+func TestResyncErrorScenariosUsingDCPStream(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test doesn't work with walrus")
+	}
+
+	syncFn := `
+	function(doc) {
+		channel("x")
+	}`
+
+	rt := NewRestTester(t,
+		&RestTesterConfig{
+			SyncFn: syncFn,
+		},
+	)
+	defer rt.Close()
+
+	_, ok := (rt.GetDatabase().ResyncManager.Process).(*db.ResyncManagerDCP)
+	if !ok {
+		t.Skip("This test only works when ResyncManagerDCP is used")
+	}
+
+	for i := 0; i < 1000; i++ {
+		rt.CreateDoc(t, fmt.Sprintf("doc%d", i))
+	}
+
+	response := rt.SendAdminRequest("GET", "/db/_resync", "")
+	RequireStatus(t, response, http.StatusOK)
+
+	response = rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
+	RequireStatus(t, response, http.StatusServiceUnavailable)
+
+	response = rt.SendAdminRequest("POST", "/db/_resync?action=stop", "")
+	RequireStatus(t, response, http.StatusBadRequest)
+
+	response = rt.SendAdminRequest("POST", "/db/_offline", "")
+	RequireStatus(t, response, http.StatusOK)
+
+	WaitAndAssertCondition(t, func() bool {
+		state := atomic.LoadUint32(&rt.GetDatabase().State)
+		return state == db.DBOffline
+	})
+
+	response = rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
+	RequireStatus(t, response, http.StatusOK)
+
+	WaitAndAssertBackgroundManagerState(t, db.BackgroundProcessStateCompleted,
+		func(t testing.TB) db.BackgroundProcessState {
+			return rt.GetDatabase().ResyncManager.GetRunState()
+		})
+	WaitAndAssertBackgroundManagerExpiredHeartbeat(t, rt.GetDatabase().ResyncManager)
+
+	response = rt.SendAdminRequest("POST", "/db/_resync?action=stop", "")
+	RequireStatus(t, response, http.StatusBadRequest)
+
+	response = rt.SendAdminRequest("POST", "/db/_resync?action=invalid", "")
+	RequireStatus(t, response, http.StatusBadRequest)
+
+	// Test empty action, should default to start
+	response = rt.SendAdminRequest("POST", "/db/_resync", "")
+	RequireStatus(t, response, http.StatusOK)
+
+	WaitAndAssertBackgroundManagerState(t, db.BackgroundProcessStateCompleted,
+		func(t testing.TB) db.BackgroundProcessState {
+			return rt.GetDatabase().ResyncManager.GetRunState()
+		})
+	WaitAndAssertBackgroundManagerExpiredHeartbeat(t, rt.GetDatabase().ResyncManager)
+}
+
 func TestResyncStop(t *testing.T) {
 
 	if !base.UnitTestUrlIsWalrus() {
@@ -659,6 +749,11 @@ func TestResyncStop(t *testing.T) {
 		},
 	)
 	defer rt.Close()
+
+	_, ok := (rt.GetDatabase().ResyncManager.Process).(*db.ResyncManager)
+	if !ok {
+		t.Skip("This test only works when ResyncManager is used")
+	}
 
 	leakyDataStore, ok := base.AsLeakyDataStore(rt.Bucket().DefaultDataStore())
 	require.Truef(t, ok, "Wanted *base.LeakyBucket but got %T", leakyTestBucket.Bucket)
@@ -721,6 +816,71 @@ func TestResyncStop(t *testing.T) {
 	assert.True(t, syncFnCount < 2000, "Expected syncFnCount < 2000 but syncFnCount=%d", syncFnCount)
 }
 
+func TestResyncStopUsingDCPStream(t *testing.T) {
+
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test doesn't work with walrus")
+	}
+
+	syncFn := `
+	function(doc) {
+		channel("x")
+	}`
+
+	rt := NewRestTester(t,
+		&RestTesterConfig{
+			SyncFn: syncFn,
+			DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
+				QueryPaginationLimit: base.IntPtr(10),
+			}},
+		},
+	)
+	defer rt.Close()
+
+	_, ok := (rt.GetDatabase().ResyncManager.Process).(*db.ResyncManagerDCP)
+	if !ok {
+		t.Skip("This test only works when ResyncManagerDCP is used")
+	}
+
+	for i := 0; i < 1000; i++ {
+		rt.CreateDoc(t, fmt.Sprintf("doc%d", i))
+	}
+
+	err := rt.WaitForCondition(func() bool {
+		return int(rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value()) == 1000
+	})
+	assert.NoError(t, err)
+
+	response := rt.SendAdminRequest("POST", "/db/_offline", "")
+	RequireStatus(t, response, http.StatusOK)
+
+	WaitAndAssertCondition(t, func() bool {
+		state := atomic.LoadUint32(&rt.GetDatabase().State)
+		return state == db.DBOffline
+	})
+
+	response = rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
+	RequireStatus(t, response, http.StatusOK)
+
+	WaitAndAssertBackgroundManagerState(t, db.BackgroundProcessStateRunning,
+		func(t testing.TB) db.BackgroundProcessState {
+			return rt.GetDatabase().ResyncManager.GetRunState()
+		})
+
+	time.Sleep(500 * time.Microsecond)
+	response = rt.SendAdminRequest("POST", "/db/_resync?action=stop", "")
+	RequireStatus(t, response, http.StatusOK)
+
+	WaitAndAssertBackgroundManagerState(t, db.BackgroundProcessStateStopped,
+		func(t testing.TB) db.BackgroundProcessState {
+			return rt.GetDatabase().ResyncManager.GetRunState()
+		})
+	WaitAndAssertBackgroundManagerExpiredHeartbeat(t, rt.GetDatabase().ResyncManager)
+
+	syncFnCount := int(rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value())
+	assert.Less(t, syncFnCount, 2000, "Expected syncFnCount < 2000 but syncFnCount=%d", syncFnCount)
+}
+
 func TestResyncRegenerateSequences(t *testing.T) {
 
 	// FIXME: PersistentWalrusBucket doesn't support collections yet
@@ -753,6 +913,11 @@ func TestResyncRegenerateSequences(t *testing.T) {
 		},
 	)
 	defer rt.Close()
+
+	_, ok := (rt.GetDatabase().ResyncManager.Process).(*db.ResyncManagerDCP)
+	if ok && base.UnitTestUrlIsWalrus() {
+		t.Skip("This test doesn't works with Walrus when ResyncManagerDCP is used")
+	}
 
 	var response *TestResponse
 	var docSeqArr []float64
