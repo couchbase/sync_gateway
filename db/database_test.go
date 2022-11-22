@@ -2628,6 +2628,8 @@ func Test_updateAllPrincipalsSequences(t *testing.T) {
 	roleSequences := [5]uint64{}
 	userSequences := [5]uint64{}
 
+	collection := db.GetSingleDatabaseCollection()
+
 	for i := 0; i < 5; i++ {
 		role, err := auth.NewRole(fmt.Sprintf("role%d", i), base.SetOf("ABC"))
 		require.NoError(t, err)
@@ -2643,7 +2645,7 @@ func Test_updateAllPrincipalsSequences(t *testing.T) {
 		require.NoError(t, err)
 		userSequences[i] = user.Sequence()
 	}
-	err := db.updateAllPrincipalsSequences(ctx)
+	err := collection.updateAllPrincipalsSequences(ctx)
 	require.NoError(t, err)
 
 	for i := 0; i < 5; i++ {
@@ -2669,6 +2671,7 @@ func Test_invalidateAllPrincipalsCache(t *testing.T) {
 	db.sequences = sequenceAllocator
 
 	auth := db.Authenticator(ctx)
+	collection := db.GetSingleDatabaseCollection()
 
 	for i := 0; i < 5; i++ {
 		role, err := auth.NewRole(fmt.Sprintf("role%d", i), base.SetOf("ABC"))
@@ -2693,8 +2696,8 @@ func Test_invalidateAllPrincipalsCache(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Greater(t, endSeq, uint64(0))
 
-	db.invalidateAllPrincipalsCache(ctx, endSeq)
-	err = db.WaitForPendingChanges(ctx)
+	collection.invalidateAllPrincipalsCache(ctx, endSeq)
+	err = collection.WaitForPendingChanges(ctx)
 	assert.NoError(t, err)
 
 	type invalidatePrincipal struct {
@@ -2763,9 +2766,9 @@ func Test_updateDocument(t *testing.T) {
 			_, err = db.UpdateSyncFun(ctx, syncFn)
 			require.NoError(t, err)
 
-			_, _, err = db.updateDocument(ctx, docID, realDocID(docID), false, []uint64{10})
+			_, _, err = collection.updateDocument(ctx, docID, realDocID(docID), false, []uint64{10})
 			require.NoError(t, err)
-			err = db.WaitForPendingChanges(ctx)
+			err = collection.WaitForPendingChanges(ctx)
 			require.NoError(t, err)
 
 			syncData, err := db.singleCollection.GetDocSyncData(ctx, docID)
@@ -2807,7 +2810,8 @@ func Test_getUpdatedDocument(t *testing.T) {
 		doc, err := unmarshalDocument(docID, raw)
 		require.NoError(t, err)
 
-		_, _, _, _, _, err = db.getUpdatedDocument(ctx, doc, false, []uint64{})
+		collection := db.GetSingleDatabaseCollectionWithUser()
+		_, _, _, _, _, err = collection.getUpdatedDocument(ctx, doc, false, []uint64{})
 		assert.Equal(t, base.ErrUpdateCancel, err)
 	})
 
@@ -2841,14 +2845,14 @@ func Test_getUpdatedDocument(t *testing.T) {
 		_, err = db.UpdateSyncFun(ctx, syncFn)
 		require.NoError(t, err)
 
-		updatedDoc, shouldUpdate, _, highSeq, _, err := db.getUpdatedDocument(ctx, doc, false, []uint64{})
+		updatedDoc, shouldUpdate, _, highSeq, _, err := collection.getUpdatedDocument(ctx, doc, false, []uint64{})
 		require.NoError(t, err)
 		assert.True(t, shouldUpdate)
 		assert.Equal(t, doc.Sequence, highSeq)
 		assert.Equal(t, 2, int(db.DbStats.Database().SyncFunctionCount.Value()))
 
 		// Rerunning same resync function should mark doc not to be updated
-		_, shouldUpdate, _, _, _, err = db.getUpdatedDocument(ctx, updatedDoc, false, []uint64{})
+		_, shouldUpdate, _, _, _, err = collection.getUpdatedDocument(ctx, updatedDoc, false, []uint64{})
 		require.NoError(t, err)
 		assert.False(t, shouldUpdate)
 		assert.Equal(t, 3, int(db.DbStats.Database().SyncFunctionCount.Value()))

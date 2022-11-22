@@ -610,7 +610,10 @@ func TestResyncErrorScenarios(t *testing.T) {
 	response = rt.SendAdminRequest("POST", "/{{.keyspace}}/_resync?action=start", "")
 	RequireStatus(t, response, http.StatusOK)
 
-	WaitAndAssertBackgroundManagerState(t, db.BackgroundProcessStateCompleted, rt.GetDatabase().ResyncManager.GetRunState)
+	WaitAndAssertBackgroundManagerState(t, db.BackgroundProcessStateCompleted,
+		func(t testing.TB) db.BackgroundProcessState {
+			return rt.GetDatabase().ResyncManager.GetRunState()
+		})
 	WaitAndAssertBackgroundManagerExpiredHeartbeat(t, rt.GetDatabase().ResyncManager)
 
 	response = rt.SendAdminRequest("POST", "/{{.keyspace}}/_resync?action=stop", "")
@@ -623,7 +626,10 @@ func TestResyncErrorScenarios(t *testing.T) {
 	response = rt.SendAdminRequest("POST", "/{{.keyspace}}/_resync", "")
 	RequireStatus(t, response, http.StatusOK)
 
-	WaitAndAssertBackgroundManagerState(t, db.BackgroundProcessStateCompleted, rt.GetDatabase().ResyncManager.GetRunState)
+	WaitAndAssertBackgroundManagerState(t, db.BackgroundProcessStateCompleted,
+		func(t testing.TB) db.BackgroundProcessState {
+			return rt.GetDatabase().ResyncManager.GetRunState()
+		})
 	WaitAndAssertBackgroundManagerExpiredHeartbeat(t, rt.GetDatabase().ResyncManager)
 
 	assert.True(t, callbackFired, "expecting callback to be fired")
@@ -703,7 +709,10 @@ func TestResyncStop(t *testing.T) {
 	response = rt.SendAdminRequest("POST", "/{{.keyspace}}/_resync?action=start", "")
 	RequireStatus(t, response, http.StatusOK)
 
-	WaitAndAssertBackgroundManagerState(t, db.BackgroundProcessStateStopped, rt.GetDatabase().ResyncManager.GetRunState)
+	WaitAndAssertBackgroundManagerState(t, db.BackgroundProcessStateStopped,
+		func(t testing.TB) db.BackgroundProcessState {
+			return rt.GetDatabase().ResyncManager.GetRunState()
+		})
 	WaitAndAssertBackgroundManagerExpiredHeartbeat(t, rt.GetDatabase().ResyncManager)
 
 	assert.True(t, callbackFired, "expecting callback to be fired")
@@ -823,7 +832,10 @@ func TestResyncRegenerateSequences(t *testing.T) {
 	response = rt.SendAdminRequest("POST", "/db/_resync?action=start&regenerate_sequences=true", "")
 	RequireStatus(t, response, http.StatusOK)
 
-	WaitAndAssertBackgroundManagerState(t, db.BackgroundProcessStateCompleted, rt.GetDatabase().ResyncManager.GetRunState)
+	WaitAndAssertBackgroundManagerState(t, db.BackgroundProcessStateCompleted,
+		func(t testing.TB) db.BackgroundProcessState {
+			return rt.GetDatabase().ResyncManager.GetRunState()
+		})
 	WaitAndAssertBackgroundManagerExpiredHeartbeat(t, rt.GetDatabase().ResyncManager)
 
 	_, err = rt.MetadataStore().Get(base.RolePrefix+"role1", &body)
