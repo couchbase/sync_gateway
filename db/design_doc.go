@@ -86,11 +86,11 @@ func (db *Database) GetDesignDoc(ddocName string) (ddoc sgbucket.DesignDoc, err 
 	if err = db.checkDDocAccess(ddocName); err != nil {
 		return ddoc, err
 	}
-	collection, err := getCollectionFromDefaultDatabase(db.DatabaseContext)
+	vs, err := getViewStoreFromDefaultDatabase(db.DatabaseContext)
 	if err != nil {
 		return ddoc, err
 	}
-	return collection.GetDDoc(ddocName)
+	return vs.GetDDoc(ddocName)
 }
 
 func (db *Database) PutDesignDoc(ddocName string, ddoc sgbucket.DesignDoc) (err error) {
@@ -104,12 +104,12 @@ func (db *Database) PutDesignDoc(ddocName string, ddoc sgbucket.DesignDoc) (err 
 		wrapViews(&ddoc, db.GetUserViewsEnabled(), db.UseXattrs())
 	}
 
-	collection, err := getCollectionFromDefaultDatabase(db.DatabaseContext)
+	vs, err := getViewStoreFromDefaultDatabase(db.DatabaseContext)
 	if err != nil {
 		return err
 	}
 	if err = db.checkDDocAccess(ddocName); err == nil {
-		err = collection.PutDDoc(ddocName, &ddoc)
+		err = vs.PutDDoc(ddocName, &ddoc)
 	}
 	return
 }
@@ -228,13 +228,13 @@ func wrapViews(ddoc *sgbucket.DesignDoc, enableUserViews bool, useXattrs bool) {
 }
 
 func (db *Database) DeleteDesignDoc(ddocName string) (err error) {
-	collection, err := getCollectionFromDefaultDatabase(db.DatabaseContext)
+	vs, err := getViewStoreFromDefaultDatabase(db.DatabaseContext)
 	if err != nil {
 		return err
 	}
 
 	if err = db.checkDDocAccess(ddocName); err == nil {
-		err = collection.DeleteDDoc(ddocName)
+		err = vs.DeleteDDoc(ddocName)
 	}
 	return
 }
@@ -253,11 +253,11 @@ func (db *Database) QueryDesignDoc(ddocName string, viewName string, options map
 			return nil, base.HTTPErrorf(http.StatusForbidden, "forbidden")
 		}
 	}
-	collection, err := getCollectionFromDefaultDatabase(db.DatabaseContext)
+	vs, err := getViewStoreFromDefaultDatabase(db.DatabaseContext)
 	if err != nil {
 		return nil, err
 	}
-	result, err := collection.View(ddocName, viewName, options)
+	result, err := vs.View(ddocName, viewName, options)
 	if err != nil {
 		return nil, err
 	}
@@ -713,14 +713,6 @@ func removeObsoleteDesignDocs(ctx context.Context, viewStore sgbucket.ViewStore,
 		versionsToRemove = append(versionsToRemove, DesignDocVersion)
 	}
 
-	dataStore, ok := viewStore.(sgbucket.DataStore)
-	if !ok {
-		return []string{}, fmt.Errorf("ViewStore is not a datastore")
-	}
-	collection, err := base.AsCollection(dataStore)
-	if err != nil {
-		return []string{}, err
-	}
 	for _, previousVersion := range versionsToRemove {
 		for _, ddocPrefix := range designDocPrefixes {
 			var ddocName string
@@ -731,7 +723,7 @@ func removeObsoleteDesignDocs(ctx context.Context, viewStore sgbucket.ViewStore,
 			}
 
 			if !previewOnly {
-				removeDDocErr := collection.DeleteDDoc(ddocName)
+				removeDDocErr := viewStore.DeleteDDoc(ddocName)
 				if removeDDocErr != nil && !IsMissingDDocError(removeDDocErr) {
 					base.WarnfCtx(ctx, "Unexpected error when removing design doc %q: %s", ddocName, removeDDocErr)
 				}
@@ -786,14 +778,14 @@ func IsMissingDDocError(err error) bool {
 
 }
 
-func getCollectionFromDefaultDatabase(dbContext *DatabaseContext) (*base.Collection, error) {
+func getViewStoreFromDefaultDatabase(dbContext *DatabaseContext) (sgbucket.ViewStore, error) {
 	dbCollection, err := dbContext.GetDefaultDatabaseCollection()
 	if err != nil {
 		return nil, err
 	}
-	collection, err := base.AsCollection(dbCollection.dataStore)
-	if err != nil {
-		return nil, err
+	vs, ok := base.AsViewStore(dbCollection.dataStore)
+	if !ok {
+		return nil, fmt.Errorf("dbCollection.dataStore is not a ViewStore")
 	}
-	return collection, nil
+	return vs, nil
 }

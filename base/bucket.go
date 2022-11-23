@@ -392,12 +392,16 @@ func GetFeedType(bucket Bucket) (feedType string) {
 	switch typedBucket := bucket.(type) {
 	case *GocbV2Bucket:
 		return DcpFeedType
+	case *walrus.CollectionBucket:
+		return DcpFeedType
 	case *LeakyBucket:
 		return GetFeedType(typedBucket.bucket)
 	case *TestBucket:
 		return GetFeedType(typedBucket.Bucket)
-	default:
+	case *walrus.WalrusBucket:
 		return TapFeedType
+	default:
+		panic(fmt.Sprintf("Unknown bucket type to determine feed type: %T", bucket))
 	}
 }
 

@@ -342,18 +342,18 @@ var viewsAndGSIBucketInit base.TBPBucketInitFunc = func(ctx context.Context, b b
 
 // viewBucketReadier removes any existing views and installs a new set into the given bucket.
 func viewBucketReadier(ctx context.Context, dataStore sgbucket.DataStore, tbp *base.TestBucketPool) error {
-	collection, err := base.AsCollection(dataStore)
-	if err != nil {
-		return err
+	viewStore, ok := base.AsViewStore(dataStore)
+	if !ok {
+		return fmt.Errorf("dataStore %T was not a View store", dataStore)
 	}
-	ddocs, err := collection.GetDDocs()
+	ddocs, err := viewStore.GetDDocs()
 	if err != nil {
 		return err
 	}
 
 	for ddocName, _ := range ddocs {
 		tbp.Logf(ctx, "removing existing view: %s", ddocName)
-		if err := collection.DeleteDDoc(ddocName); err != nil {
+		if err := viewStore.DeleteDDoc(ddocName); err != nil {
 			return err
 		}
 	}

@@ -220,7 +220,9 @@ func (b *GocbV2Bucket) GetCluster() *gocb.Cluster {
 }
 
 func (b *GocbV2Bucket) Close() {
-	b.Close()
+	if err := b.cluster.Close(nil); err != nil {
+
+	}
 }
 
 func (b *GocbV2Bucket) IsSupported(feature sgbucket.BucketStoreFeature) bool {

@@ -632,18 +632,18 @@ func TestPostInstallCleanup(t *testing.T) {
 	bucket := rt.Bucket()
 	mapFunction := `function (doc, meta) { emit(); }`
 
-	collection, err := base.AsCollection(bucket.DefaultDataStore())
-	require.NoError(t, err)
+	viewStore, ok := base.AsViewStore(bucket.DefaultDataStore())
+	require.True(t, ok)
 
 	// Create design docs in obsolete format
-	err = collection.PutDDoc(db.DesignDocSyncGatewayPrefix, &sgbucket.DesignDoc{
+	err = viewStore.PutDDoc(db.DesignDocSyncGatewayPrefix, &sgbucket.DesignDoc{
 		Views: sgbucket.ViewMap{
 			"channels": sgbucket.ViewDef{Map: mapFunction},
 		},
 	})
 	assert.NoError(t, err, "Unable to create design doc (DesignDocSyncGatewayPrefix)")
 
-	err = collection.PutDDoc(db.DesignDocSyncHousekeepingPrefix, &sgbucket.DesignDoc{
+	err = viewStore.PutDDoc(db.DesignDocSyncHousekeepingPrefix, &sgbucket.DesignDoc{
 		Views: sgbucket.ViewMap{
 			"all_docs": sgbucket.ViewDef{Map: mapFunction},
 		},
