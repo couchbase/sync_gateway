@@ -27,17 +27,17 @@ func setDesignDocPreviousVersionsForTest(t testing.TB, versions ...string) {
 
 // assertDesignDocExists ensures that the design doc exists in the bucket.
 func assertDesignDocExists(t testing.TB, bucket base.Bucket, ddocName string) bool {
-	collection, err := base.AsCollection(bucket.DefaultDataStore())
-	require.NoError(t, err)
-	_, err = collection.GetDDoc(ddocName)
+	viewStore, ok := base.AsViewStore(bucket.DefaultDataStore())
+	require.True(t, ok)
+	_, err := viewStore.GetDDoc(ddocName)
 	return assert.NoErrorf(t, err, "Design doc %s should exist but got an error fetching it: %v", ddocName, err)
 }
 
 // assertDesignDocDoesNotExist ensures that the design doc does not exist in the bucket.
 func assertDesignDocNotExists(t testing.TB, bucket base.Bucket, ddocName string) bool {
-	collection, err := base.AsCollection(bucket.DefaultDataStore())
-	require.NoError(t, err)
-	ddoc, err := collection.GetDDoc(ddocName)
+	viewStore, ok := base.AsViewStore(bucket.DefaultDataStore())
+	require.True(t, ok)
+	ddoc, err := viewStore.GetDDoc(ddocName)
 	if err == nil {
 		return assert.Failf(t, "Design doc %s should not exist but but it did: %v", ddocName, ddoc)
 	}

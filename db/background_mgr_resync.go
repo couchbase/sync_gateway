@@ -28,7 +28,7 @@ type ResyncManager struct {
 
 var _ BackgroundManagerProcessI = &ResyncManager{}
 
-func NewResyncManager(metadataStore *base.MetadataStore) *BackgroundManager {
+func NewResyncManager(metadataStore base.DataStore) *BackgroundManager {
 	return &BackgroundManager{
 		Process: &ResyncManager{},
 		clusterAwareOptions: &ClusterAwareBackgroundManagerOptions{

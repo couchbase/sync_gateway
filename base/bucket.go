@@ -87,13 +87,6 @@ func init() {
 	gomemcached.MaxBodyLen = int(20 * 1024 * 1024)
 }
 
-// MetadataStore is a place for SG to write its metadata to.
-type MetadataStore struct {
-	DataStore
-
-	// Additional fields like `DatabaseID` can be implemented here when namespacing is required to support multiple SG databases on the same bucket.
-}
-
 type DataStore sgbucket.DataStore
 type Bucket sgbucket.BucketStore
 

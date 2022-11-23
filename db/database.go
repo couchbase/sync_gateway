@@ -84,7 +84,7 @@ const BGTCompletionMaxWait = 30 * time.Second
 type DatabaseContext struct {
 	Name                        string                  // Database name
 	UUID                        string                  // UUID for this database instance. Used by cbgt and sgr
-	MetadataStore               *base.MetadataStore     // Storage for database metadata (anything that isn't an end-user's/customer's documents)
+	MetadataStore               base.DataStore          // Storage for database metadata (anything that isn't an end-user's/customer's documents)
 	Bucket                      base.Bucket             // Storage
 	BucketSpec                  base.BucketSpec         // The BucketSpec
 	BucketLock                  sync.RWMutex            // Control Access to the underlying bucket object
@@ -166,8 +166,8 @@ type DatabaseContextOptions struct {
 	JavascriptTimeout             time.Duration // Max time the JS functions run for (ie. sync fn, import filter)
 	Serverless                    bool          // If running in serverless mode
 	Scopes                        ScopesOptions
-	skipRegisterImportPIndex      bool                // if set, skips the global gocb PIndex registration
-	MetadataStore                 *base.MetadataStore // If set, use this location/connection for SG metadata storage - if not set, metadata is stored using the same location/connection as the bucket used for data storage.
+	skipRegisterImportPIndex      bool           // if set, skips the global gocb PIndex registration
+	MetadataStore                 base.DataStore // If set, use this location/connection for SG metadata storage - if not set, metadata is stored using the same location/connection as the bucket used for data storage.
 }
 
 type ScopesOptions map[string]ScopeOptions
@@ -355,7 +355,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 	metadataStore := options.MetadataStore
 	if metadataStore == nil {
 		base.DebugfCtx(context.TODO(), base.KeyConfig, "MetadataStore was nil - falling back to use existing bucket connection %q for database %q", bucket.GetName(), dbName)
-		metadataStore = &base.MetadataStore{DataStore: bucket.DefaultDataStore()}
+		metadataStore = bucket.DefaultDataStore()
 	}
 
 	dbContext := &DatabaseContext{
@@ -385,7 +385,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 	dbContext.EventMgr = NewEventManager(dbContext.terminator)
 
 	var err error
-	dbContext.sequences, err = newSequenceAllocator(metadataStore.DataStore, dbContext.DbStats.Database())
+	dbContext.sequences, err = newSequenceAllocator(metadataStore, dbContext.DbStats.Database())
 	if err != nil {
 		return nil, err
 	}

@@ -62,7 +62,7 @@ const (
 )
 
 type ClusterAwareBackgroundManagerOptions struct {
-	metadataStore *base.MetadataStore
+	metadataStore base.DataStore
 	processSuffix string
 
 	lastSuccessfulHeartbeatUnix base.AtomicInt

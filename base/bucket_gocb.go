@@ -397,12 +397,6 @@ func (b *GocbV2Bucket) GetSpec() BucketSpec {
 	return b.Spec
 }
 
-// SGMetadataCollection returns the collection on a bucket that can be used to write SG metadata to.
-func (b *GocbV2Bucket) SGMetadataCollection() sgbucket.DataStore {
-	// TODO: Replace with system scope/collection once available
-	return b.DefaultDataStore()
-}
-
 // DefaultDataStore returns the default collection for the bucket.
 func (b *GocbV2Bucket) DefaultDataStore() sgbucket.DataStore {
 	return &Collection{

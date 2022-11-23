@@ -861,7 +861,8 @@ func TestResyncRegenerateSequences(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Data is wiped from walrus when brought back online
-	request, _ = http.NewRequest("GET", "/db/_changes?since="+changesResp.LastSeq, nil)
+	request, err = http.NewRequest("GET", "/db/_changes?since="+changesResp.LastSeq, nil)
+	require.NoError(t, err)
 	request.SetBasicAuth("user1", "letmein")
 	response = rt.Send(request)
 	RequireStatus(t, response, http.StatusOK)

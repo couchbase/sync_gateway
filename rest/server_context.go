@@ -577,16 +577,9 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	// - we know it is supported in all server versions
 	// - it cannot be dropped by customers, we always know it exists
 	// - it simplifies RBAC in terms of not having to create a metadata collection
-	metadataDataStore := bucket.DefaultDataStore()
-
 	// Once system scope/collection is well-supported, and we have a migration path, we can consider using those.
-	// mdCollection, err := base.AsCollection(bucket)
-	// if err != nil {
-	// 	return nil, err
-	// }
-	// metadataDataStore := mdCollection.Bucket().Scope(base.MobileMetadataScope).Collection(base.MobileMetadataCollection)
-	metadataStore := &base.MetadataStore{DataStore: metadataDataStore}
-	contextOptions.MetadataStore = metadataStore
+	// contextOptions.MetadataStore = bucket.NamedDataStore(base.ScopeAndCollectionName{base.MobileMetadataScope, base.MobileMetadataCollection})
+	contextOptions.MetadataStore = bucket.DefaultDataStore()
 
 	// Create the DB Context
 	dbcontext, err := db.NewDatabaseContext(ctx, dbName, bucket, autoImport, contextOptions)
@@ -1685,7 +1678,7 @@ func (sc *ServerContext) initializeCouchbaseServerConnections(ctx context.Contex
 	// Fetch database configs from bucket and start polling for new buckets and config updates.
 	if sc.persistentConfig {
 		couchbaseCluster, err := CreateCouchbaseClusterFromStartupConfig(sc.Config, base.CachedClusterConnections)
-		//couchbaseCluster, err := CreateCouchbaseClusterFromStartupConfig(sc.Config, base.PerUseClusterConnections)
+		// couchbaseCluster, err := CreateCouchbaseClusterFromStartupConfig(sc.Config, base.PerUseClusterConnections)
 		if err != nil {
 			return err
 		}
