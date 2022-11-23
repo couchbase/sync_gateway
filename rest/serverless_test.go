@@ -9,15 +9,11 @@
 package rest
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"sync/atomic"
 	"testing"
 	"time"
-
-	sgbucket "github.com/couchbase/sg-bucket"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/stretchr/testify/assert"
@@ -589,53 +585,6 @@ func TestServerlessUnsuspendAPI(t *testing.T) {
 	require.NotNil(t, sc.databases_["db"])
 }
 
-func TestServerlessDCPBuffSize(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server")
-	}
-	tb := base.GetTestBucket(t)
-	defer tb.Close()
-	rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb, PersistentConfig: true, serverless: true, AdminInterfaceAuthentication: true})
-	defer rt.Close()
-	sc := rt.ServerContext()
-
-	mutationCount := uint64(0)
-	counterCallback := func(event sgbucket.FeedEvent) bool {
-		if bytes.HasPrefix(event.Key, []byte(base.SyncDocPrefix)) {
-			return false
-		}
-		atomic.AddUint64(&mutationCount, 1)
-		return false
-	}
-
-	feedID := t.Name()
-
-	collection, err := base.AsCollection(tb)
-	require.NoError(t, err)
-	var collectionIDs []uint32
-	if collection.IsSupported(sgbucket.DataStoreFeatureCollections) {
-		collectionID := collection.GetCollectionID()
-		require.NoError(t, err)
-		collectionIDs = append(collectionIDs, collectionID)
-	}
-
-	clientOptions := base.DCPClientOptions{
-		OneShot:       true,
-		CollectionIDs: collectionIDs,
-		Serverless:    sc.Config.IsServerless(),
-	}
-	dcpClient, err := base.NewDCPClient(feedID, counterCallback, clientOptions, collection)
-	require.NoError(t, err)
-
-	_, startErr := dcpClient.Start()
-	require.NoError(t, startErr)
-
-	defer func() {
-		_ = dcpClient.Close()
-	}()
-
-}
-
 func addDocs(bucket base.TestBucket) error {
 	var err error
 	for i := 0; i < 500; i++ {
@@ -653,65 +602,17 @@ func TestLOLOL(t *testing.T) {
 	rt := NewRestTester(t, &RestTesterConfig{PersistentConfig: true, serverless: true, AdminInterfaceAuthentication: true})
 	defer rt.Close()
 	time.Sleep(5 * time.Second)
-	//sc := rt.ServerContext()
-	//added, err := rt.Bucket().AddRaw("doc", 0, []byte(fmt.Sprintf(`{"foo": "bar"}`)))
-	//require.True(t, added)
-	//require.NoError(t, err)
+
 	tb1 := base.GetTestBucket(t)
 	//tb1 := base.GetTestBucket(t)
 	fmt.Println(tb1.GetName())
 	fmt.Println(tb1.BucketSpec.Auth.GetCredentials())
 	rt.RestTesterConfig.CustomTestBucket = tb1
-	/*
-		tb2 := base.GetTestBucket(t)
-		tb3 := base.GetTestBucket(t)
-		tb4 := base.GetTestBucket(t)
-		tb5 := base.GetTestBucket(t)
-		tb6 := base.GetTestBucket(t)
-		tb7 := base.GetTestBucket(t)
-		tb8 := base.GetTestBucket(t)
-		tb9 := base.GetTestBucket(t)
-		tb10 := base.GetTestBucket(t)
-
-	*/
 
 	defer tb1.Close()
-	/*
-		defer tb2.Close()
-		defer tb3.Close()
-		defer tb4.Close()
-		defer tb5.Close()
-		defer tb6.Close()
-		defer tb7.Close()
-		defer tb8.Close()
-		defer tb9.Close()
-		defer tb10.Close()
 
-	*/
 	err := addDocs(*tb1)
 	require.NoError(t, err)
-	/*
-		err = addDocs(*tb2)
-		require.NoError(t, err)
-		err = addDocs(*tb3)
-		require.NoError(t, err)
-		err = addDocs(*tb4)
-		require.NoError(t, err)
-		err = addDocs(*tb5)
-		require.NoError(t, err)
-		err = addDocs(*tb6)
-		require.NoError(t, err)
-		err = addDocs(*tb7)
-		require.NoError(t, err)
-		err = addDocs(*tb8)
-		require.NoError(t, err)
-		err = addDocs(*tb9)
-		require.NoError(t, err)
-		err = addDocs(*tb10)
-		require.NoError(t, err)
-		fmt.Println(tb1.GetRaw("1"))
-
-	*/
 
 	resp := rt.SendAdminRequestWithAuth(http.MethodPut, "/db1/", fmt.Sprintf(`{
 		"bucket": "%s",
@@ -721,78 +622,6 @@ func TestLOLOL(t *testing.T) {
 	}`, tb1.GetName(), base.TestsDisableGSI(), true), base.TestClusterUsername(), base.TestClusterPassword())
 	RequireStatus(t, resp, http.StatusCreated)
 
-	//rt.WaitForPendingChanges()
-	/*
-		//tb2 := base.GetTestBucket(t)
-		fmt.Println(tb2.GetName())
-
-		resp = rt.SendAdminRequestWithAuth(http.MethodPut, "/db2/", fmt.Sprintf(`{
-			"bucket": "%s",
-			"use_views": %t,
-			"num_index_replicas": 0
-		}`, tb2.GetName(), base.TestsDisableGSI()), base.TestClusterUsername(), base.TestClusterPassword())
-		RequireStatus(t, resp, http.StatusCreated)
-		//tb3 := base.GetTestBucket(t)
-		fmt.Println(tb3.GetName())
-
-		resp = rt.SendAdminRequestWithAuth(http.MethodPut, "/db3/", fmt.Sprintf(`{
-			"bucket": "%s",
-			"use_views": %t,
-			"num_index_replicas": 0
-		}`, tb3.GetName(), base.TestsDisableGSI()), base.TestClusterUsername(), base.TestClusterPassword())
-		RequireStatus(t, resp, http.StatusCreated)
-
-		resp = rt.SendAdminRequestWithAuth(http.MethodPut, "/db4/", fmt.Sprintf(`{
-			"bucket": "%s",
-			"use_views": %t,
-			"num_index_replicas": 0
-		}`, tb4.GetName(), base.TestsDisableGSI()), base.TestClusterUsername(), base.TestClusterPassword())
-		RequireStatus(t, resp, http.StatusCreated)
-
-		resp = rt.SendAdminRequestWithAuth(http.MethodPut, "/db5/", fmt.Sprintf(`{
-			"bucket": "%s",
-			"use_views": %t,
-			"num_index_replicas": 0
-		}`, tb5.GetName(), base.TestsDisableGSI()), base.TestClusterUsername(), base.TestClusterPassword())
-		RequireStatus(t, resp, http.StatusCreated)
-
-		resp = rt.SendAdminRequestWithAuth(http.MethodPut, "/db6/", fmt.Sprintf(`{
-			"bucket": "%s",
-			"use_views": %t,
-			"num_index_replicas": 0
-		}`, tb6.GetName(), base.TestsDisableGSI()), base.TestClusterUsername(), base.TestClusterPassword())
-		RequireStatus(t, resp, http.StatusCreated)
-
-		resp = rt.SendAdminRequestWithAuth(http.MethodPut, "/db7/", fmt.Sprintf(`{
-			"bucket": "%s",
-			"use_views": %t,
-			"num_index_replicas": 0
-		}`, tb7.GetName(), base.TestsDisableGSI()), base.TestClusterUsername(), base.TestClusterPassword())
-		RequireStatus(t, resp, http.StatusCreated)
-
-		resp = rt.SendAdminRequestWithAuth(http.MethodPut, "/db8/", fmt.Sprintf(`{
-			"bucket": "%s",
-			"use_views": %t,
-			"num_index_replicas": 0
-		}`, tb8.GetName(), base.TestsDisableGSI()), base.TestClusterUsername(), base.TestClusterPassword())
-		RequireStatus(t, resp, http.StatusCreated)
-
-		resp = rt.SendAdminRequestWithAuth(http.MethodPut, "/db9/", fmt.Sprintf(`{
-			"bucket": "%s",
-			"use_views": %t,
-			"num_index_replicas": 0
-		}`, tb9.GetName(), base.TestsDisableGSI()), base.TestClusterUsername(), base.TestClusterPassword())
-		RequireStatus(t, resp, http.StatusCreated)
-
-		resp = rt.SendAdminRequestWithAuth(http.MethodPut, "/db10/", fmt.Sprintf(`{
-			"bucket": "%s",
-			"use_views": %t,
-			"num_index_replicas": 0
-		}`, tb10.GetName(), base.TestsDisableGSI()), base.TestClusterUsername(), base.TestClusterPassword())
-		RequireStatus(t, resp, http.StatusCreated)
-
-	*/
-
 	time.Sleep(20 * time.Second)
 
 	path := "testlol100111.pprof.pb.gz"
@@ -800,38 +629,6 @@ func TestLOLOL(t *testing.T) {
 
 	resp = rt.SendAdminRequestWithAuth(http.MethodPost, "/_profile/heap", fmt.Sprintf(`{"file": "%s"}`, path), base.TestClusterUsername(), base.TestClusterPassword())
 	RequireStatus(t, resp, http.StatusOK)
-
-}
-
-func TestMemoryUsageServerless(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server")
-	}
-	//spec := tb.BucketSpec
-	rt := NewRestTester(t, &RestTesterConfig{PersistentConfig: true, serverless: true, AdminInterfaceAuthentication: true})
-	defer rt.Close()
-	//sc := rt.ServerContext()
-	count := 0
-	var buckets []*base.TestBucket
-
-	dbnames := []string{"db", "db1", "db2", "db3", "db4", "db5", "db6", "db7", "db8", "db9"} //  "db10", "db11", "db12", "db13", "db14", "db15", "db16", "db17", "db18", "db19"}
-
-	for i := range dbnames {
-		count++
-		tb := base.GetTestBucket(t)
-		buckets = append(buckets, tb)
-		resp := rt.SendAdminRequestWithAuth(http.MethodPut, "/"+dbnames[i]+"/", fmt.Sprintf(`{
-		"bucket": "%s",
-		"use_views": %t,
-		"num_index_replicas": 0
-	}`, tb.GetName(), base.TestsDisableGSI()), base.TestClusterUsername(), base.TestClusterPassword())
-		RequireStatus(t, resp, http.StatusCreated)
-		fmt.Println(count)
-	}
-
-	for j := range buckets {
-		buckets[j].Close()
-	}
 
 }
 
