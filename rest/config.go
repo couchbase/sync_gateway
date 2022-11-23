@@ -1394,7 +1394,7 @@ func (sc *ServerContext) forEachDbConfig(callback func(bucket string) (exit bool
 			return nil
 		}
 	}
-	return base.ErrNotFound
+	return nil
 }
 
 func (sc *ServerContext) fetchDatabase(ctx context.Context, dbName string) (found bool, dbConfig *DatabaseConfig, err error) {
@@ -1404,11 +1404,11 @@ func (sc *ServerContext) fetchDatabase(ctx context.Context, dbName string) (foun
 		cas, err := sc.BootstrapContext.Connection.GetConfig(bucket, sc.Config.Bootstrap.ConfigGroupID, &cnf)
 		if err == base.ErrNotFound {
 			base.DebugfCtx(ctx, base.KeyConfig, "%q did not contain config in group %q", bucket, sc.Config.Bootstrap.ConfigGroupID)
-			return false, nil
+			return false, err
 		}
 		if err != nil {
 			base.DebugfCtx(ctx, base.KeyConfig, "unable to fetch config in group %q from bucket %q: %v", sc.Config.Bootstrap.ConfigGroupID, bucket, err)
-			return false, nil
+			return false, err
 		}
 
 		if cnf.Name == "" {
@@ -1417,7 +1417,7 @@ func (sc *ServerContext) fetchDatabase(ctx context.Context, dbName string) (foun
 
 		if cnf.Name != dbName {
 			base.TracefCtx(ctx, base.KeyConfig, "%q did not contain config in group %q for db %q", bucket, sc.Config.Bootstrap.ConfigGroupID, dbName)
-			return false, nil
+			return false, err
 		}
 
 		cnf.cfgCas = cas
