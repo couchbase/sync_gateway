@@ -62,7 +62,8 @@ type LeakyBucketConfig struct {
 
 	// GetRawCallback issues a callback prior to running GetRaw. Allows tests to issue a doc mutation or deletion prior
 	// to GetRaw being ran.
-	GetRawCallback func(key string) error
+	GetRawCallback       func(key string) error
+	GetWithXattrCallback func(key string) error
 
 	PostUpdateCallback func(key string)
 
@@ -279,6 +280,11 @@ func (b *LeakyBucket) SubdocInsert(docID string, fieldPath string, cas uint64, v
 }
 
 func (b *LeakyBucket) GetWithXattr(k string, xattr string, userXattrKey string, rv interface{}, xv interface{}, uxv interface{}) (cas uint64, err error) {
+	if b.config.GetWithXattrCallback != nil {
+		if err := b.config.GetWithXattrCallback(k); err != nil {
+			return 0, err
+		}
+	}
 	return b.bucket.GetWithXattr(k, xattr, userXattrKey, rv, xv, uxv)
 }
 

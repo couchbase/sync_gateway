@@ -241,9 +241,20 @@ func (db *DatabaseCollectionWithUser) buildRevokedFeed(ctx context.Context, ch c
 				// If its less than we can send a standard revocation with Sequence ID as above.
 				// Otherwise: we need to determine whether a previous revision of the document was in the channel prior
 				// to the since value, and only send a revocation if that was the case
+
 				if logEntry.Sequence > sinceVal {
-					requiresRevocation, err := db.wasDocInChannelPriorToRevocation(ctx, logEntry.DocID, singleChannelCache.ChannelID().Name, revocationSinceSeq)
+					// Get doc sync data so we can verify the docs grant history
+					syncData, err := db.GetDocSyncData(ctx, logEntry.DocID)
 					if err != nil {
+						base.InfofCtx(ctx, base.KeyChanges, "Error getting sync data, seq: %v in channel %s, skipping document. Error: %v", seqID, base.UD(singleChannelCache.ChannelID()), err)
+						continue
+					}
+					requiresRevocation, err := db.wasDocInChannelPriorToRevocation(ctx, syncData, logEntry.DocID, singleChannelCache.ChannelID().Name, revocationSinceSeq)
+					if err != nil {
+						if syncData.History == nil {
+							base.TracefCtx(ctx, base.KeyChanges, "Document history empty: %s, no revocation sent", base.UD(logEntry.DocID))
+							continue
+						}
 						change := ChangeEntry{
 							Err: base.ErrChannelFeed,
 						}
@@ -322,13 +333,7 @@ func UserHasDocAccess(ctx context.Context, db *DatabaseCollectionWithUser, docID
 }
 
 // Checks if a document needs to be revoked. This is used in the case where the since < doc sequence
-func (db *DatabaseCollectionWithUser) wasDocInChannelPriorToRevocation(ctx context.Context, docID, chanName string, since uint64) (bool, error) {
-	// Get doc sync data so we can verify the docs grant history
-	syncData, err := db.GetDocSyncData(ctx, docID)
-	if err != nil {
-		return false, err
-	}
-
+func (db *DatabaseCollectionWithUser) wasDocInChannelPriorToRevocation(ctx context.Context, syncData SyncData, docID, chanName string, since uint64) (bool, error) {
 	// Obtain periods where the channel we're interested in was accessible by the user
 	channelAccessPeriods, err := db.user.ChannelGrantedPeriods(chanName)
 	if err != nil {

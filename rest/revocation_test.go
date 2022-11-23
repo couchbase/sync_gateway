@@ -10,6 +10,12 @@ package rest
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/couchbase/go-blip"
+	"github.com/couchbase/sync_gateway/auth"
+	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/db"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -17,13 +23,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/couchbase/go-blip"
-	"github.com/couchbase/sync_gateway/auth"
-	"github.com/couchbase/sync_gateway/base"
-	"github.com/couchbase/sync_gateway/db"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 type ChannelRevocationTester struct {
@@ -186,7 +185,6 @@ func InitScenario(t *testing.T, rtConfig *RestTesterConfig) (ChannelRevocationTe
 			rtConfig.SyncFn = defaultSyncFn
 		}
 	}
-
 	rt := NewRestTester(t, rtConfig)
 
 	revocationTester := ChannelRevocationTester{
@@ -2143,6 +2141,69 @@ func TestRevocationNoRev(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, deletedFlag, int64(2))
+}
+
+func TestRevocationGetSyncDataError(t *testing.T) {
+	defer db.SuspendSequenceBatching()()
+	var throw bool
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
+	// Two callbacks to cover usage with CBS/Xattrs and without
+	revocationTester, rt := InitScenario(t, &RestTesterConfig{leakyBucketConfig: &base.LeakyBucketConfig{GetWithXattrCallback: func(key string) error {
+		fmt.Println("CALLBACK RUN")
+		return fmt.Errorf("some error")
+	}, GetRawCallback: func(key string) error {
+
+		if throw {
+			fmt.Println("CALLBACK RUN")
+			return fmt.Errorf("some error")
+		}
+		return nil
+	},
+	}})
+
+	defer rt.Close()
+
+	btc, err := NewBlipTesterClientOptsWithRT(t, rt, &BlipTesterClientOpts{
+		Username:        "user",
+		Channels:        []string{"*"},
+		ClientDeltas:    false,
+		SendRevocations: true,
+	})
+	assert.NoError(t, err)
+	defer btc.Close()
+
+	// Add channel to role and role to user
+	revocationTester.addRoleChannel("foo", "A")
+	revocationTester.addRole("user", "foo")
+
+	// Skip to seq 4 and then create doc in channel A
+	revocationTester.fillToSeq(4)
+	revID := rt.CreateDocReturnRev(t, "doc", "", map[string]interface{}{"channels": "A"})
+
+	require.NoError(t, rt.WaitForPendingChanges())
+	firstOneShotSinceSeq := rt.GetDocumentSequence("doc")
+
+	// OneShot pull to grab doc
+	err = btc.StartOneshotPull()
+	assert.NoError(t, err)
+	throw = true
+	_, ok := btc.WaitForRev("doc", "1-ad48b5c9d9c47b98532a3d8164ec0ae7")
+	require.True(t, ok)
+
+	// Remove role from user
+	revocationTester.removeRole("user", "foo")
+
+	revID = rt.CreateDocReturnRev(t, "doc", revID, map[string]interface{}{"channels": "A", "val": "mutate"})
+
+	waitRevID := rt.CreateDocReturnRev(t, "docmarker", "", map[string]interface{}{"channels": "!"})
+	require.NoError(t, rt.WaitForPendingChanges())
+
+	lastSeqStr := strconv.FormatUint(firstOneShotSinceSeq, 10)
+	err = btc.StartPullSince("false", lastSeqStr, "false")
+	assert.NoError(t, err)
+
+	_, ok = btc.WaitForRev("docmarker", waitRevID)
+	require.True(t, ok)
 }
 
 // Regression test for CBG-2183.
