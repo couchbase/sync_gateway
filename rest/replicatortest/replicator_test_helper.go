@@ -16,7 +16,6 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/rest"
-	"github.com/couchbaselabs/walrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -47,6 +46,7 @@ func addActiveRT(t *testing.T, testBucket *base.TestBucket) (activeRT *rest.Rest
 	// Because RestTester has Sync Gateway create the database context and bucket based on the bucketSpec, we can't
 	// set up the leakyBucket wrapper prior to bucket creation.
 	// Instead, we need to modify the leaky bucket config (created for vbno handling) after the fact.
+	/* FIXME: TOR
 	leakyBucket, ok := activeRT.GetDatabase().Bucket.(*base.LeakyBucket)
 	if ok {
 		underlyingBucket := leakyBucket.GetUnderlyingBucket()
@@ -54,7 +54,7 @@ func addActiveRT(t *testing.T, testBucket *base.TestBucket) (activeRT *rest.Rest
 			leakyBucket.SetIgnoreClose(true)
 		}
 	}
-
+	*/
 	return activeRT
 }
 
@@ -67,9 +67,9 @@ func requireRevID(t *testing.T, rt *rest.RestTester, docID, revID string) {
 }
 func requireErrorKeyNotFound(t *testing.T, rt *rest.RestTester, docID string) {
 	var body []byte
-	_, err := rt.Bucket().Get(docID, &body)
+	_, err := rt.Bucket().DefaultDataStore().Get(docID, &body)
 	require.Error(t, err)
-	require.True(t, base.IsKeyNotFoundError(rt.Bucket(), err))
+	require.True(t, base.IsKeyNotFoundError(rt.Bucket().DefaultDataStore(), err))
 }
 
 // waitForTombstone waits until the specified tombstone revision is available

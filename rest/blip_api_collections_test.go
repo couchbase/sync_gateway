@@ -12,7 +12,6 @@ import (
 	"fmt"
 	"net/http"
 	"testing"
-	"time"
 
 	"github.com/couchbase/go-blip"
 	"github.com/couchbase/sync_gateway/base"
@@ -27,14 +26,14 @@ func TestBlipGetCollections(t *testing.T) {
 
 	//checkpointIDWithError := "checkpointError"
 
-	tb := base.GetTestBucketNamedCollection(t)
+	tb := base.GetTestBucket(t)
 	defer tb.Close()
 
-	tc, err := base.AsCollection(tb)
+	tc, err := base.AsCollection(tb.DefaultDataStore())
 	require.NoError(t, err)
 
 	scopeName := tc.ScopeName()
-	collectionName := tc.Name()
+	collectionName := tc.CollectionName()
 
 	scopeAndCollection := fmt.Sprintf("%s.%s", scopeName, collectionName)
 	const defaultScopeAndCollection = "_default._default"
@@ -173,14 +172,14 @@ func TestBlipGetCollections(t *testing.T) {
 func TestBlipGetCollectionsAndSetCheckpoint(t *testing.T) {
 	base.TestRequiresCollections(t)
 
-	tb := base.GetTestBucketNamedCollection(t)
+	tb := base.GetTestBucket(t)
 	defer tb.Close()
 
-	tc, err := base.AsCollection(tb)
+	tc, err := base.AsCollection(tb.DefaultDataStore())
 	require.NoError(t, err)
 
 	scopeName := tc.ScopeName()
-	collectionName := tc.Name()
+	collectionName := tc.CollectionName()
 
 	rt := NewRestTester(t, &RestTesterConfig{
 		GuestEnabled: true,
@@ -253,10 +252,10 @@ func TestBlipGetCollectionsAndSetCheckpoint(t *testing.T) {
 func TestCollectionsPeerDoesNotHave(t *testing.T) {
 	base.TestRequiresCollections(t)
 
-	tb := base.GetTestBucketNamedCollection(t)
+	tb := base.GetTestBucket(t)
 	defer tb.Close()
 
-	tc, err := base.AsCollection(tb)
+	tc, err := base.AsCollection(tb.DefaultDataStore())
 	require.NoError(t, err)
 
 	rt := NewRestTester(t, &RestTesterConfig{
@@ -267,7 +266,7 @@ func TestCollectionsPeerDoesNotHave(t *testing.T) {
 				Scopes: ScopesConfig{
 					tc.ScopeName(): ScopeConfig{
 						Collections: map[string]CollectionConfig{
-							tc.Name(): {},
+							tc.CollectionName(): {},
 						},
 					},
 				},
@@ -290,14 +289,14 @@ func TestCollectionsReplication(t *testing.T) {
 		t.Skip("only works with GSI")
 	}
 
-	tb := base.GetTestBucketNamedCollection(t)
+	tb := base.GetTestBucket(t)
 	defer tb.Close()
 
-	tc, err := base.AsCollection(tb)
+	tc, err := base.AsCollection(tb.DefaultDataStore())
 	require.NoError(t, err)
 
 	scopeKey := tc.ScopeName()
-	collectionKey := tc.Name()
+	collectionKey := tc.CollectionName()
 
 	scopeAndCollectionKey := scopeKey + "." + collectionKey
 

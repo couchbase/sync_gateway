@@ -497,7 +497,7 @@ func WriteDirect(db *Database, channelArray []string, sequence uint64) {
 
 func WriteUserDirect(db *Database, username string, sequence uint64) {
 	docId := base.UserPrefix + username
-	_, _ = db.Bucket.Add(docId, 0, Body{"sequence": sequence, "name": username})
+	_, _ = db.singleCollection.dataStore.Add(docId, 0, Body{"sequence": sequence, "name": username})
 }
 
 func WriteDirectWithKey(db *Database, key string, channelArray []string, sequence uint64) {
@@ -519,7 +519,7 @@ func WriteDirectWithKey(db *Database, key string, channelArray []string, sequenc
 		Channels:   chanMap,
 		TimeSaved:  time.Now(),
 	}
-	_, _ = db.Bucket.Add(key, 0, Body{base.SyncPropertyName: syncData, "key": key})
+	_, _ = db.singleCollection.dataStore.Add(key, 0, Body{base.SyncPropertyName: syncData, "key": key})
 }
 
 // Create a document directly to the bucket with specific _sync metadata - used for
@@ -549,7 +549,7 @@ func WriteDirectWithChannelGrant(db *Database, channelArray []string, sequence u
 		Channels:   chanMap,
 		Access:     accessMap,
 	}
-	_, _ = db.Bucket.Add(docId, 0, Body{base.SyncPropertyName: syncData, "key": docId})
+	_, _ = db.singleCollection.dataStore.Add(docId, 0, Body{base.SyncPropertyName: syncData, "key": docId})
 }
 
 // Test notification when buffered entries are processed after a user doc arrives.
@@ -947,7 +947,7 @@ func TestLowSequenceHandlingWithAccessGrant(t *testing.T) {
 	assert.Len(t, changes, 3)
 	assert.True(t, verifyChangesFullSequences(changes, []string{"1", "2", "2::6"}))
 
-	_, incrErr := db.Bucket.Incr(base.SyncSeqKey, 7, 7, 0)
+	_, incrErr := db.singleCollection.dataStore.Incr(base.SyncSeqKey, 7, 7, 0)
 	require.NoError(t, incrErr)
 
 	// Modify user to have access to both channels (sequence 2):

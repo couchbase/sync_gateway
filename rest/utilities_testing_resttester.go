@@ -107,7 +107,7 @@ func (rt *RestTester) WaitForRev(docID string, revID string) error {
 func (rt *RestTester) WaitForCheckpointLastSequence(expectedName string) (string, error) {
 	var lastSeq string
 	successFunc := func() bool {
-		val, _, err := rt.Bucket().GetRaw(expectedName)
+		val, _, err := rt.Bucket().DefaultDataStore().GetRaw(expectedName)
 		require.NoError(rt.TB, err)
 		var config struct { // db.replicationCheckpoint
 			LastSeq string `json:"last_sequence"`

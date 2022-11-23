@@ -14,7 +14,6 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/couchbase/gocb/v2"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -206,10 +205,7 @@ func TestPersistentDbConfigWithInvalidUpsert(t *testing.T) {
 	// remove the db config directly from the bucket
 	docID, err := base.PersistentConfigKey(*rtc.config.groupID)
 	require.NoError(t, err)
-	collection, err := base.AsCollection(rtc.testBucket)
-	require.NoError(t, err)
-	defaultCollection := collection.Bucket().DefaultCollection()
-	_, err = defaultCollection.Remove(docID, &gocb.RemoveOptions{})
+	_, err = rtc.testBucket.DefaultDataStore().Remove(docID, 0)
 	require.NoError(t, err)
 
 	// ensure all nodes remove the database

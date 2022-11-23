@@ -452,7 +452,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	// initDataStore is a function to initialize Views or GSI indexes for a datastore
 	initDataStore := func(ds base.DataStore) error {
 		if useViews {
-			return db.InitializeViews(ds)
+			return db.InitializeViews(ctx, ds)
 		}
 
 		gsiSupported := bucket.IsSupported(sgbucket.BucketStoreFeatureN1ql)
@@ -577,7 +577,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	// - we know it is supported in all server versions
 	// - it cannot be dropped by customers, we always know it exists
 	// - it simplifies RBAC in terms of not having to create a metadata collection
-	metadataDataStore := bucket
+	metadataDataStore := bucket.DefaultDataStore()
 
 	// Once system scope/collection is well-supported, and we have a migration path, we can consider using those.
 	// mdCollection, err := base.AsCollection(bucket)

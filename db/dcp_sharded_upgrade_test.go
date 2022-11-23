@@ -188,12 +188,13 @@ func TestShardedDCPUpgrade(t *testing.T) {
 	}
 
 	// Use default collection namespace since this will make sure we are upgrading from 3.0 -> post 3.0
-	tb := base.GetTestBucketDefaultCollection(t)
+	tb := base.GetTestBucket(t)
 	defer tb.Close()
 
-	tc, err := base.AsCollection(tb)
+	dataStore := tb.DefaultDataStore()
+	tc, err := base.AsCollection(dataStore)
 	require.NoError(t, err)
-	require.Equal(t, base.DefaultCollection, tc.Name())
+	require.Equal(t, base.DefaultCollection, tc.CollectionName())
 	bucketUUID, err := tb.UUID()
 	require.NoError(t, err, "get bucket UUID")
 
@@ -205,18 +206,18 @@ func TestShardedDCPUpgrade(t *testing.T) {
 		indexName     = "db0x2d9928b7_index"
 	)
 
-	require.NoError(t, tb.SetRaw(base.SyncDocPrefix+"cfgindexDefs", 0, nil, []byte(fmt.Sprintf(indexDefs, tb.GetName(), bucketUUID))))
-	require.NoError(t, tb.SetRaw(base.SyncDocPrefix+"cfgnodeDefs-known", 0, nil, []byte(nodeDefs)))
-	require.NoError(t, tb.SetRaw(base.SyncDocPrefix+"cfgnodeDefs-wanted", 0, nil, []byte(nodeDefs)))
+	require.NoError(t, dataStore.SetRaw(base.SyncDocPrefix+"cfgindexDefs", 0, nil, []byte(fmt.Sprintf(indexDefs, tb.GetName(), bucketUUID))))
+	require.NoError(t, dataStore.SetRaw(base.SyncDocPrefix+"cfgnodeDefs-known", 0, nil, []byte(nodeDefs)))
+	require.NoError(t, dataStore.SetRaw(base.SyncDocPrefix+"cfgnodeDefs-wanted", 0, nil, []byte(nodeDefs)))
 	planPIndexesJSON := preparePlanPIndexesJSON(t, tb, numVBuckets, numPartitions)
-	require.NoError(t, tb.SetRaw(base.SyncDocPrefix+"cfgplanPIndexes", 0, nil, []byte(planPIndexesJSON)))
+	require.NoError(t, dataStore.SetRaw(base.SyncDocPrefix+"cfgplanPIndexes", 0, nil, []byte(planPIndexesJSON)))
 
 	// Write a doc before starting the dbContext to check that import works
 	const (
 		testDoc1 = "testDoc1"
 		testDoc2 = "testDoc2"
 	)
-	require.NoError(t, tb.SetRaw(testDoc1, 0, nil, []byte(`{}`)))
+	require.NoError(t, dataStore.SetRaw(testDoc1, 0, nil, []byte(`{}`)))
 
 	ctx := base.TestCtx(t)
 	db, err := NewDatabaseContext(ctx, tb.GetName(), tb.NoCloseClone(), true, DatabaseContextOptions{
@@ -269,7 +270,7 @@ func TestShardedDCPUpgrade(t *testing.T) {
 	require.NotNil(t, doc, "GetDocument 1")
 
 	// Write a doc to the test bucket to check that import still works
-	require.NoError(t, tb.SetRaw(testDoc2, 0, nil, []byte(`{}`)))
+	require.NoError(t, dataStore.SetRaw(testDoc2, 0, nil, []byte(`{}`)))
 	require.NoError(t, collection.WaitForPendingChanges(ctx))
 	doc, err = collection.GetDocument(ctx, testDoc2, DocUnmarshalAll)
 	require.NoError(t, err, "GetDocument 2")

@@ -25,7 +25,7 @@ import (
 
 func TestChannelCacheMaxSize(t *testing.T) {
 
-	bucket := base.GetTestBucketDefaultCollection(t)
+	bucket := base.GetTestBucket(t)
 	ctx := base.TestCtx(t)
 	dbCtx, err := NewDatabaseContext(ctx, "db", bucket, false, DatabaseContextOptions{})
 	require.NoError(t, err)

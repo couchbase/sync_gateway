@@ -67,11 +67,11 @@ func TestReproduce2383(t *testing.T) {
 		Last_Seq interface{}
 	}
 
-	leakyBucket, ok := base.AsLeakyBucket(rt.TestBucket)
+	leakyDataStore, ok := base.AsLeakyDataStore(rt.TestBucket.DefaultDataStore())
 	require.True(t, ok)
 
 	// Force a partial error for the first ViewCustom call we make to initialize an invalid cache.
-	leakyBucket.SetFirstTimeViewCustomPartialError(true)
+	leakyDataStore.SetFirstTimeViewCustomPartialError(true)
 
 	changes.Results = nil
 	changesResponse := rt.Send(rest.RequestByUser("POST", "/db/_changes?filter=sync_gateway/bychannel&channels=PBS", "{}", "ben"))
@@ -2065,7 +2065,7 @@ func TestChangesIncludeDocs(t *testing.T) {
 	// Flush the rev cache, and issue changes again to ensure successful handling for rev cache misses
 	testDB.GetSingleDatabaseCollection().FlushRevisionCacheForTest()
 	// Also nuke temporary revision backup of doc_pruned.  Validates that the body for the pruned revision is generated correctly when no longer resident in the rev cache
-	assert.NoError(t, testDB.Bucket.Delete(base.RevPrefix+"doc_pruned:34:2-5afcb73bd3eb50615470e3ba54b80f00"))
+	assert.NoError(t, testDB.Bucket.DefaultDataStore().Delete(base.RevPrefix+"doc_pruned:34:2-5afcb73bd3eb50615470e3ba54b80f00"))
 
 	postFlushChangesResponse := rt.Send(rest.RequestByUser("GET", "/db/_changes?include_docs=true", "", "user1"))
 
@@ -3004,10 +3004,10 @@ func TestChangesViewBackfillSlowQuery(t *testing.T) {
 
 	}
 
-	leakyBucket, ok := base.AsLeakyBucket(rt.TestBucket)
+	leakyDataStore, ok := base.AsLeakyDataStore(rt.TestBucket.DefaultDataStore())
 	require.True(t, ok)
 
-	leakyBucket.SetPostQueryCallback(postQueryCallback)
+	leakyDataStore.SetPostQueryCallback(postQueryCallback)
 
 	// Issue a since=0 changes request.  Will cause the following:
 	//   1. Retrieves doc2 from the cache
@@ -3032,7 +3032,7 @@ func TestChangesViewBackfillSlowQuery(t *testing.T) {
 	queryCount := testDb.DbStats.Cache().ViewQueries.Value()
 	log.Printf("After initial changes request, query count is: %d", queryCount)
 
-	leakyBucket.SetPostQueryCallback(nil)
+	leakyDataStore.SetPostQueryCallback(nil)
 
 	// Issue another since=0 changes request - cache SHOULD only have a single rev for doc1
 	changes.Results = nil
@@ -3974,7 +3974,7 @@ func WriteDirectWithKey(testDb *db.DatabaseContext, key string, channelArray []s
 	syncData.TimeSaved = time.Now()
 	// syncData := fmt.Sprintf(`{"rev":"%s", "sequence":%d, "channels":%s, "TimeSaved":"%s"}`, rev, sequence, chanMap, time.Now())
 
-	_, err := testDb.Bucket.Add(key, 0, db.Body{base.SyncPropertyName: syncData, "key": key})
+	_, err := testDb.Bucket.DefaultDataStore().Add(key, 0, db.Body{base.SyncPropertyName: syncData, "key": key})
 	if err != nil {
 		base.PanicfCtx(context.TODO(), "Error while add ket to bucket: %v", err)
 	}

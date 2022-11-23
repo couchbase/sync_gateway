@@ -327,12 +327,12 @@ func TestCoveringQueries(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 
-	n1QLStore, ok := base.AsN1QLStore(db.Bucket)
+	collection := db.GetSingleDatabaseCollection()
+	n1QLStore, ok := base.AsN1QLStore(collection.dataStore)
 	if !ok {
 		t.Errorf("Unable to get n1QLStore for testBucket")
 	}
 
-	collection := db.GetSingleDatabaseCollection()
 	// channels
 	channelsStatement, params := collection.buildChannelsQuery("ABC", 0, 10, 100, false)
 	plan, explainErr := n1QLStore.ExplainQuery(channelsStatement, params)

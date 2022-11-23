@@ -25,14 +25,14 @@ import (
 func TestCollectionsPutDocInKeyspace(t *testing.T) {
 	base.TestRequiresCollections(t)
 
-	tb := base.GetTestBucketNamedCollection(t)
+	tb := base.GetTestBucket(t)
 	defer tb.Close()
 
-	tc, err := base.AsCollection(tb)
+	tc, err := base.AsCollection(tb.DefaultDataStore())
 	require.NoError(t, err)
 
 	scopeName := tc.ScopeName()
-	collectionName := tc.Name()
+	collectionName := tc.CollectionName()
 
 	tests := []struct {
 		name           string
@@ -100,11 +100,11 @@ func TestCollectionsPutDocInKeyspace(t *testing.T) {
 
 			if test.expectedStatus == http.StatusCreated {
 				// go and check that the doc didn't just end up in the default collection of the test bucket
-				docBody, _, err := tb.GetRaw(docID)
+				docBody, _, err := tb.DefaultDataStore().GetRaw(docID)
 				require.NoError(t, err)
 				require.NotNil(t, docBody)
 
-				tc, err := base.AsCollection(tb)
+				tc, err := base.AsCollection(tb.DefaultDataStore())
 				defaultCollection := tc.Collection.Bucket().DefaultCollection()
 				_, err = defaultCollection.Get(docID, &gocb.GetOptions{})
 				require.Error(t, err)
@@ -115,7 +115,7 @@ func TestCollectionsPutDocInKeyspace(t *testing.T) {
 
 // TestNoCollectionsPutDocWithKeyspace ensures that a keyspace can't be used to insert a doc on a database not configured for collections.
 func TestNoCollectionsPutDocWithKeyspace(t *testing.T) {
-	tb := base.GetTestBucketDefaultCollection(t)
+	tb := base.GetTestBucket(t)
 	defer tb.Close()
 
 	rt := NewRestTester(t, &RestTesterConfig{
@@ -150,10 +150,10 @@ func TestSingleCollectionDCP(t *testing.T) {
 		t.Skip("Test relies on import - needs xattrs")
 	}
 
-	tb := base.GetTestBucketNamedCollection(t)
+	tb := base.GetTestBucket(t)
 	defer tb.Close()
 
-	tc, err := base.AsCollection(tb)
+	tc, err := base.AsCollection(tb.DefaultDataStore())
 	require.NoError(t, err)
 
 	rt := NewRestTester(t, &RestTesterConfig{
@@ -163,7 +163,7 @@ func TestSingleCollectionDCP(t *testing.T) {
 				Scopes: ScopesConfig{
 					tc.ScopeName(): ScopeConfig{
 						Collections: map[string]CollectionConfig{
-							tc.Name(): {},
+							tc.CollectionName(): {},
 						},
 					},
 				},
@@ -174,7 +174,7 @@ func TestSingleCollectionDCP(t *testing.T) {
 
 	const docID = "doc1"
 
-	ok, err := rt.Bucket().AddRaw(docID, 0, []byte(`{"test":true}`))
+	ok, err := rt.Bucket().DefaultDataStore().AddRaw(docID, 0, []byte(`{"test":true}`))
 	require.NoError(t, err)
 	require.True(t, ok)
 
@@ -224,7 +224,7 @@ func TestMultiCollectionDCP(t *testing.T) {
 	})
 	defer rt.Close()
 
-	underlying, ok := base.GetBaseBucket(rt.Bucket()).(*base.Collection)
+	underlying, ok := rt.Bucket().DefaultDataStore().(*base.Collection)
 	require.True(t, ok, "rt bucket was not a Collection")
 
 	_, err = underlying.Collection.Bucket().Scope("foo").Collection("bar").Insert("testDocBar", map[string]any{"test": true}, nil)
@@ -247,14 +247,14 @@ func TestMultiCollectionDCP(t *testing.T) {
 func TestCollectionsBasicIndexQuery(t *testing.T) {
 	base.TestRequiresCollections(t)
 
-	tb := base.GetTestBucketNamedCollection(t)
+	tb := base.GetTestBucket(t)
 	defer tb.Close()
 
-	tc, err := base.AsCollection(tb)
+	tc, err := base.AsCollection(tb.DefaultDataStore())
 	require.NoError(t, err)
 
 	scopeName := tc.ScopeName()
-	collectionName := tc.Name()
+	collectionName := tc.CollectionName()
 
 	rt := NewRestTester(t, &RestTesterConfig{
 		CustomTestBucket: tb.NoCloseClone(),
@@ -280,7 +280,7 @@ func TestCollectionsBasicIndexQuery(t *testing.T) {
 	RequireStatus(t, resp, http.StatusCreated)
 
 	// use the rt.Bucket which has got the foo.bar scope/collection set up
-	n1qlStore, ok := base.AsN1QLStore(rt.Bucket())
+	n1qlStore, ok := base.AsN1QLStore(rt.Bucket().DefaultDataStore())
 	require.True(t, ok)
 
 	idxName := t.Name() + "_primary"
@@ -340,14 +340,15 @@ func TestCollectionsSGIndexQuery(t *testing.T) {
 		validDocID   = "doc1"
 		invalidDocID = "doc2"
 	)
-	tb := base.GetTestBucketNamedCollection(t)
+	tb := base.GetTestBucket(t)
 	defer tb.Close()
 
-	tc, err := base.AsCollection(tb)
+	tc, err := base.AsCollection(tb.DefaultDataStore())
 	require.NoError(t, err)
 
 	scopeName := tc.ScopeName()
-	collectionName := tc.Name()
+	collectionName := tc.CollectionName()
+
 	keyspace := "db." + scopeName + "." + collectionName
 
 	rt := NewRestTester(t, &RestTesterConfig{

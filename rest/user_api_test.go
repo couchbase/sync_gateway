@@ -476,7 +476,7 @@ func TestUserAndRoleResponseContentType(t *testing.T) {
 	assert.Equal(t, "application/json", response.Header().Get("Content-Type"))
 
 	// Create a new user and save to database to create user session.
-	authenticator := auth.NewAuthenticator(rt.Bucket(), nil, auth.DefaultAuthenticatorOptions())
+	authenticator := auth.NewAuthenticator(rt.Bucket().DefaultDataStore(), nil, auth.DefaultAuthenticatorOptions())
 	user, err := authenticator.NewUser("eve", "cGFzc3dvcmQ=", channels.BaseSetOf(t, "*"))
 	assert.NoError(t, err, "Couldn't create new user")
 	assert.NoError(t, authenticator.Save(user), "Couldn't save new user")
@@ -563,7 +563,7 @@ func TestUserXattrsRawGet(t *testing.T) {
 	})
 	defer rt.Close()
 
-	userXattrStore, ok := base.AsUserXattrStore(rt.Bucket())
+	userXattrStore, ok := base.AsUserXattrStore(rt.Bucket().DefaultDataStore())
 	if !ok {
 		t.Skip("Test requires Couchbase Bucket")
 	}
@@ -644,11 +644,11 @@ func TestObtainUserChannelsForDeletedRoleCasFail(t *testing.T) {
 			resp = rt.SendAdminRequest("PUT", "/db/userRoles", `{"roles": "role:role"}`)
 			RequireStatus(t, resp, http.StatusCreated)
 
-			leakyBucket, ok := base.AsLeakyBucket(rt.TestBucket)
+			leakyDataStore, ok := base.AsLeakyDataStore(rt.TestBucket.DefaultDataStore())
 			require.True(t, ok)
 
 			triggerCallback := false
-			leakyBucket.SetUpdateCallback(func(key string) {
+			leakyDataStore.SetUpdateCallback(func(key string) {
 				if triggerCallback {
 					triggerCallback = false
 					resp = rt.SendAdminRequest("DELETE", "/db/_role/role", ``)
@@ -1204,7 +1204,7 @@ func TestRemovingUserXattr(t *testing.T) {
 
 			defer rt.Close()
 
-			gocbBucket, ok := base.AsUserXattrStore(rt.Bucket())
+			gocbBucket, ok := base.AsUserXattrStore(rt.Bucket().DefaultDataStore())
 			if !ok {
 				t.Skip("Test requires Couchbase Bucket")
 			}
@@ -1226,7 +1226,7 @@ func TestRemovingUserXattr(t *testing.T) {
 
 			// Get sync data for doc and ensure user xattr has been used correctly to set channel
 			var syncData db.SyncData
-			subdocStore, ok := base.AsSubdocXattrStore(rt.Bucket())
+			subdocStore, ok := base.AsSubdocXattrStore(rt.Bucket().DefaultDataStore())
 			require.True(t, ok)
 			_, err = subdocStore.SubdocGetXattr(docKey, base.SyncXattrName, &syncData)
 			assert.NoError(t, err)
@@ -1289,12 +1289,12 @@ func TestUserXattrAvoidRevisionIDGeneration(t *testing.T) {
 
 	defer rt.Close()
 
-	userXattrStore, ok := base.AsUserXattrStore(rt.Bucket())
+	userXattrStore, ok := base.AsUserXattrStore(rt.Bucket().DefaultDataStore())
 	if !ok {
 		t.Skip("Test requires Couchbase Bucket")
 	}
 
-	subdocXattrStore, ok := base.AsSubdocXattrStore(rt.Bucket())
+	subdocXattrStore, ok := base.AsSubdocXattrStore(rt.Bucket().DefaultDataStore())
 	require.True(t, ok)
 
 	// Initial PUT
@@ -1337,7 +1337,7 @@ func TestUserXattrAvoidRevisionIDGeneration(t *testing.T) {
 	assert.Equal(t, []string{channelName}, syncData2.Channels.KeySet())
 	assert.Equal(t, syncData2.Channels.KeySet(), docRev2.Channels.ToArray())
 
-	err = rt.Bucket().Set(docKey, 0, nil, []byte(`{"update": "update"}`))
+	err = rt.Bucket().DefaultDataStore().Set(docKey, 0, nil, []byte(`{"update": "update"}`))
 	assert.NoError(t, err)
 
 	err = rt.WaitForCondition(func() bool {

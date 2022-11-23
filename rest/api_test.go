@@ -1051,7 +1051,7 @@ func TestLocalDocExpiry(t *testing.T) {
 	RequireStatus(t, response, 201)
 
 	localDocKey := db.RealSpecialDocID(db.DocTypeLocal, "loc1")
-	expiry, getMetaError := rt.Bucket().GetExpiry(localDocKey)
+	expiry, getMetaError := rt.Bucket().DefaultDataStore().GetExpiry(localDocKey)
 	log.Printf("Expiry after PUT is %v", expiry)
 	assert.True(t, expiry > timeNow, "expiry is not greater than current time")
 	assert.True(t, expiry < oneMoreHour, "expiry is not greater than current time")
@@ -1060,7 +1060,7 @@ func TestLocalDocExpiry(t *testing.T) {
 	// Retrieve local doc, ensure non-zero expiry is preserved
 	response = rt.SendAdminRequest("GET", "/db/_local/loc1", "")
 	RequireStatus(t, response, 200)
-	expiry, getMetaError = rt.Bucket().GetExpiry(localDocKey)
+	expiry, getMetaError = rt.Bucket().DefaultDataStore().GetExpiry(localDocKey)
 	log.Printf("Expiry after GET is %v", expiry)
 	assert.True(t, expiry > timeNow, "expiry is not greater than current time")
 	assert.True(t, expiry < oneMoreHour, "expiry is not greater than current time")
@@ -1532,7 +1532,7 @@ func TestWriteTombstonedDocUsingXattrs(t *testing.T) {
 
 	// Fetch the xattr and make sure it contains the above value
 	baseBucket := rt.GetDatabase().Bucket
-	subdocXattrStore, _ := base.AsSubdocXattrStore(baseBucket)
+	subdocXattrStore, _ := base.AsSubdocXattrStore(baseBucket.DefaultDataStore())
 	var retrievedVal map[string]interface{}
 	var retrievedXattr map[string]interface{}
 	_, err = subdocXattrStore.SubdocGetBodyAndXattr("-21SK00U-ujxUO9fU2HezxL", base.SyncXattrName, "", &retrievedVal, &retrievedXattr, nil)
@@ -1803,7 +1803,7 @@ func TestWebhookProperties(t *testing.T) {
 		wg.Add(1)
 		body := make(map[string]interface{})
 		body["foo"] = "bar"
-		added, err := rt.Bucket().Add("doc2", 0, body)
+		added, err := rt.Bucket().DefaultDataStore().Add("doc2", 0, body)
 		assert.True(t, added)
 		assert.NoError(t, err)
 	}
@@ -2212,7 +2212,7 @@ func TestDeleteNonExistentDoc(t *testing.T) {
 	RequireStatus(t, response, http.StatusNotFound)
 
 	var body map[string]interface{}
-	_, err := rt.GetDatabase().Bucket.Get("fake", &body)
+	_, err := rt.GetDatabase().Bucket.DefaultDataStore().Get("fake", &body)
 
 	if base.TestUseXattrs() {
 		assert.Error(t, err)
@@ -2241,7 +2241,7 @@ func TestDeleteEmptyBodyDoc(t *testing.T) {
 	RequireStatus(t, response, http.StatusNotFound)
 
 	var doc map[string]interface{}
-	_, err := rt.GetDatabase().Bucket.Get("doc1", &doc)
+	_, err := rt.GetDatabase().Bucket.DefaultDataStore().Get("doc1", &doc)
 
 	if base.TestUseXattrs() {
 		assert.Error(t, err)
@@ -2278,7 +2278,7 @@ func TestTombstonedBulkDocs(t *testing.T) {
 	RequireStatus(t, response, http.StatusCreated)
 
 	var body map[string]interface{}
-	_, err := rt.GetDatabase().Bucket.Get(t.Name(), &body)
+	_, err := rt.GetDatabase().Bucket.DefaultDataStore().Get(t.Name(), &body)
 
 	if base.TestUseXattrs() {
 		assert.Error(t, err)
@@ -2310,7 +2310,7 @@ func TestTombstonedBulkDocsWithPriorPurge(t *testing.T) {
 		t.Skip("Requires Couchbase bucket")
 	}
 
-	_, err := bucket.Add(t.Name(), 0, map[string]interface{}{"val": "val"})
+	_, err := bucket.DefaultDataStore().Add(t.Name(), 0, map[string]interface{}{"val": "val"})
 	require.NoError(t, err)
 
 	resp := rt.SendAdminRequest("POST", "/db/_purge", `{"`+t.Name()+`": ["*"]}`)
@@ -2320,7 +2320,7 @@ func TestTombstonedBulkDocsWithPriorPurge(t *testing.T) {
 	RequireStatus(t, response, http.StatusCreated)
 
 	var body map[string]interface{}
-	_, err = rt.GetDatabase().Bucket.Get(t.Name(), &body)
+	_, err = rt.GetDatabase().Bucket.DefaultDataStore().Get(t.Name(), &body)
 
 	assert.Error(t, err)
 	assert.True(t, base.IsDocNotFoundError(err))
@@ -2352,18 +2352,18 @@ func TestTombstonedBulkDocsWithExistingTombstone(t *testing.T) {
 	// Create the document to trigger cas failure
 	value := make(map[string]interface{})
 	value["foo"] = "bar"
-	insCas, err := bucket.WriteCas(t.Name(), 0, 0, 0, value, 0)
+	insCas, err := bucket.DefaultDataStore().WriteCas(t.Name(), 0, 0, 0, value, 0)
 	require.NoError(t, err)
 
 	// Delete document
-	_, err = bucket.Remove(t.Name(), insCas)
+	_, err = bucket.DefaultDataStore().Remove(t.Name(), insCas)
 	require.NoError(t, err)
 
 	response := rt.SendAdminRequest("POST", "/db/_bulk_docs", `{"new_edits": false, "docs": [{"_id":"`+t.Name()+`", "_deleted": true, "_revisions":{"start":9, "ids":["c45c049b7fe6cf64cd8595c1990f6504", "6e01ac52ffd5ce6a4f7f4024c08d296f"]}}]}`)
 	RequireStatus(t, response, http.StatusCreated)
 
 	var body map[string]interface{}
-	_, err = rt.GetDatabase().Bucket.Get(t.Name(), &body)
+	_, err = rt.GetDatabase().Bucket.DefaultDataStore().Get(t.Name(), &body)
 
 	assert.Error(t, err)
 	assert.True(t, base.IsDocNotFoundError(err))
@@ -2474,7 +2474,7 @@ func TestChannelHistoryLegacyDoc(t *testing.T) {
 	}`
 
 	// Insert raw 'legacy' doc with no channel history info
-	err := rt.GetDatabase().Bucket.Set("doc1", 0, nil, []byte(docData))
+	err := rt.GetDatabase().Bucket.DefaultDataStore().Set("doc1", 0, nil, []byte(docData))
 	assert.NoError(t, err)
 
 	var body db.Body

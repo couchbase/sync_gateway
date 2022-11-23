@@ -10,20 +10,13 @@ licenses/APL2.txt.
 
 package db
 
-import (
-	"fmt"
-	"testing"
-
-	"github.com/couchbase/sync_gateway/base"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
-)
-
 const (
 	docIdProblematicRevTree  = "docIdProblematicRevTree"
 	docIdProblematicRevTree2 = "docIdProblematicRevTree2"
 )
 
+// FIXME: TOR
+/*
 func testBucketWithViewsAndBrokenDoc(t testing.TB) (bucket *base.TestBucket, numDocs int) {
 
 	numDocsAdded := 0
@@ -187,3 +180,4 @@ func TestRepairBucketDryRun(t *testing.T) {
 	assert.False(t, backupDoc.History.ContainsCycles())
 
 }
+*/

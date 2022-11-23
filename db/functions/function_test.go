@@ -20,6 +20,7 @@ import (
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 var allowAll = &Allow{Channels: []string{"*"}}
@@ -132,8 +133,9 @@ var kUserFunctionConfig = FunctionConfigMap{
 // Adds a user "alice" to the database, with role "hero"
 // and access to channels "wonderland" and "lookingglass".
 func addUserAlice(t *testing.T, db *db.Database) auth.User {
-	var err error
-	authenticator := auth.NewAuthenticator(db.MetadataStore, db, auth.DefaultAuthenticatorOptions())
+	collection, err := db.GetDefaultDatabaseCollection()
+	require.NoError(t, err)
+	authenticator := auth.NewAuthenticator(db.MetadataStore, collection, auth.DefaultAuthenticatorOptions())
 	hero, err := authenticator.NewRole("hero", base.SetOf("heroes"))
 	assert.NoError(t, err)
 	assert.NoError(t, authenticator.Save(hero))
@@ -411,7 +413,10 @@ func TestUserFunctionAllow(t *testing.T) {
 	db, ctx := setupTestDBWithFunctions(t, kUserFunctionConfig, nil)
 	defer db.Close(ctx)
 
-	authenticator := auth.NewAuthenticator(db.MetadataStore, db, auth.DefaultAuthenticatorOptions())
+	collection, err := db.GetDefaultDatabaseCollection()
+	require.NoError(t, err)
+
+	authenticator := auth.NewAuthenticator(db.MetadataStore, collection, auth.DefaultAuthenticatorOptions())
 	user, err := authenticator.NewUser("maurice", "pass", base.SetOf("city-Paris"))
 	_ = user.SetEmail("maurice@academie.fr")
 	assert.NoError(t, err)

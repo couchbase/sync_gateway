@@ -93,7 +93,7 @@ func setupTestDBWithCustomSyncSeq(t testing.TB, customSeq uint64) (*Database, co
 	tBucket := base.GetTestBucket(t)
 
 	log.Printf("Initializing test %s to %d", base.SyncSeqKey, customSeq)
-	_, incrErr := tBucket.Incr(base.SyncSeqKey, customSeq, customSeq, 0)
+	_, incrErr := tBucket.DefaultDataStore().Incr(base.SyncSeqKey, customSeq, customSeq, 0)
 	assert.NoError(t, incrErr, fmt.Sprintf("Couldn't increment %s by %d", base.SyncSeqKey, customSeq))
 
 	dbCtx, err := NewDatabaseContext(ctx, "db", tBucket, false, dbcOptions)
@@ -133,7 +133,7 @@ func setupTestLeakyDBWithCacheOptions(t *testing.T, options CacheOptions, leakyO
 // override somedbcOptions properties.
 func setupTestNamedCollectionDBWithOptions(t testing.TB, dbcOptions DatabaseContextOptions) (*Database, context.Context) {
 
-	tBucket := base.GetTestBucketNamedCollection(t)
+	tBucket := base.GetTestBucket(t)
 	return SetupTestDBForDataStoreWithOptions(t, tBucket, dbcOptions)
 }
 
@@ -278,7 +278,7 @@ func TestGetDeleted(t *testing.T) {
 	assert.Equal(t, rev2id, doc.SyncData.CurrentRev)
 
 	// Try again but with a user who doesn't have access to this revision (see #179)
-	authenticator := auth.NewAuthenticator(db.Bucket, db, auth.DefaultAuthenticatorOptions())
+	authenticator := auth.NewAuthenticator(db.MetadataStore, collection, auth.DefaultAuthenticatorOptions())
 	collection.user, err = authenticator.GetUser("")
 	assert.NoError(t, err, "GetUser")
 	collection.user.SetExplicitChannels(nil, 1)
@@ -344,7 +344,7 @@ func TestGetRemovedAsUser(t *testing.T) {
 	assert.NoError(t, err, "Purge old revision JSON")
 
 	// Try again with a user who doesn't have access to this revision
-	authenticator := auth.NewAuthenticator(db.Bucket, db, auth.DefaultAuthenticatorOptions())
+	authenticator := auth.NewAuthenticator(db.MetadataStore, collection, auth.DefaultAuthenticatorOptions())
 	collection.user, err = authenticator.GetUser("")
 	assert.NoError(t, err, "GetUser")
 
@@ -403,7 +403,7 @@ func TestGetRemovalMultiChannel(t *testing.T) {
 	defer db.Close(ctx)
 	collection := db.GetSingleDatabaseCollectionWithUser()
 
-	auth := auth.NewAuthenticator(db.Bucket, db, auth.DefaultAuthenticatorOptions())
+	auth := auth.NewAuthenticator(db.MetadataStore, collection, auth.DefaultAuthenticatorOptions())
 
 	// Create a user who have access to both channel ABC and NBC.
 	userAlice, err := auth.NewUser("alice", "pass", base.SetOf("ABC", "NBC"))
@@ -541,7 +541,7 @@ func TestDeltaSyncWhenFromRevIsChannelRemoval(t *testing.T) {
 
 	// Request delta between rev2ID and rev3ID (toRevision "rev2ID" is channel removal)
 	// as a user who doesn't have access to the removed revision via any other channel.
-	authenticator := auth.NewAuthenticator(db.Bucket, db, auth.DefaultAuthenticatorOptions())
+	authenticator := auth.NewAuthenticator(db.MetadataStore, collection, auth.DefaultAuthenticatorOptions())
 	user, err := authenticator.NewUser("alice", "pass", base.SetOf("NBC"))
 	require.NoError(t, err, "Error creating user")
 
@@ -607,7 +607,7 @@ func TestDeltaSyncWhenToRevIsChannelRemoval(t *testing.T) {
 
 	// Request delta between rev1ID and rev2ID (toRevision "rev2ID" is channel removal)
 	// as a user who doesn't have access to the removed revision via any other channel.
-	authenticator := auth.NewAuthenticator(db.Bucket, db, auth.DefaultAuthenticatorOptions())
+	authenticator := auth.NewAuthenticator(db.MetadataStore, collection, auth.DefaultAuthenticatorOptions())
 	user, err := authenticator.NewUser("alice", "pass", base.SetOf("NBC"))
 	require.NoError(t, err, "Error creating user")
 
@@ -1014,7 +1014,7 @@ func TestConflicts(t *testing.T) {
 
 	cacheWaiter.Add(2)
 
-	rawBody, _, _ := db.Bucket.GetRaw("doc")
+	rawBody, _, _ := collection.dataStore.GetRaw("doc")
 
 	log.Printf("got raw body: %s", rawBody)
 
@@ -1061,7 +1061,7 @@ func TestConflicts(t *testing.T) {
 	rev3, err := collection.DeleteDoc(ctx, "doc", "2-b")
 	assert.NoError(t, err, "delete 2-b")
 
-	rawBody, _, _ = db.Bucket.GetRaw("doc")
+	rawBody, _, _ = collection.dataStore.GetRaw("doc")
 	log.Printf("post-delete, got raw body: %s", rawBody)
 
 	gotBody, err = collection.Get1xBody(ctx, "doc")
@@ -1435,7 +1435,7 @@ func TestAccessFunctionDb(t *testing.T) {
 	defer db.Close(ctx)
 	collection := db.GetSingleDatabaseCollectionWithUser()
 
-	authenticator := auth.NewAuthenticator(db.Bucket, db, auth.DefaultAuthenticatorOptions())
+	authenticator := auth.NewAuthenticator(db.MetadataStore, collection, auth.DefaultAuthenticatorOptions())
 
 	var err error
 	db.ChannelMapper = channels.NewChannelMapper(`function(doc){access(doc.users,doc.userChannels);}`, 0)
@@ -1526,7 +1526,8 @@ func TestUpdateDesignDoc(t *testing.T) {
 	assert.True(t, strings.Contains(retrievedView.Map, "emit()"))
 	assert.NotEqual(t, mapFunction, retrievedView.Map) // SG should wrap the map function, so they shouldn't be equal
 
-	authenticator := auth.NewAuthenticator(db.Bucket, db, auth.DefaultAuthenticatorOptions())
+	collection := db.GetSingleDatabaseCollectionWithUser()
+	authenticator := auth.NewAuthenticator(db.MetadataStore, collection, auth.DefaultAuthenticatorOptions())
 	db.user, _ = authenticator.NewUser("naomi", "letmein", channels.BaseSetOf(t, "Netflix"))
 	err = db.PutDesignDoc("_design/pwn3d", sgbucket.DesignDoc{})
 	assertHTTPError(t, err, 403)
@@ -1745,7 +1746,7 @@ func TestConcurrentImport(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyImport)
 
 	// Add doc to the underlying bucket:
-	_, err := db.Bucket.Add("directWrite", 0, Body{"value": "hi"})
+	_, err := collection.dataStore.Add("directWrite", 0, Body{"value": "hi"})
 	require.NoError(t, err)
 
 	// Attempt concurrent retrieval of the docs, and validate that they are only imported once (based on revid)
@@ -2327,16 +2328,16 @@ func TestRepairUnorderedRecentSequences(t *testing.T) {
 
 	// Update document directly in the bucket to scramble recent sequences
 	var rawBody Body
-	_, err = db.Bucket.Get("doc1", &rawBody)
+	_, err = collection.dataStore.Get("doc1", &rawBody)
 	require.NoError(t, err)
 	rawSyncData, ok := rawBody["_sync"].(map[string]interface{})
 	require.True(t, ok)
 	rawSyncData["recent_sequences"] = []uint64{3, 5, 9, 11, 1, 2, 4, 8, 7, 10, 5}
-	assert.NoError(t, db.Bucket.Set("doc1", 0, nil, rawBody))
+	assert.NoError(t, collection.dataStore.Set("doc1", 0, nil, rawBody))
 
 	// Validate non-ordered
 	var rawBodyCheck Body
-	_, err = db.Bucket.Get("doc1", &rawBodyCheck)
+	_, err = collection.dataStore.Get("doc1", &rawBodyCheck)
 	require.NoError(t, err)
 	log.Printf("raw body check %v", rawBodyCheck)
 	rawSyncDataCheck, ok := rawBody["_sync"].(map[string]interface{})
@@ -2380,7 +2381,7 @@ func TestDeleteWithNoTombstoneCreationSupport(t *testing.T) {
 	// gocbBucket.OverrideClusterCompatVersion(5, 5)
 
 	// Ensure empty doc is imported correctly
-	added, err := db.Bucket.Add("doc1", 0, map[string]interface{}{})
+	added, err := collection.dataStore.Add("doc1", 0, map[string]interface{}{})
 	assert.NoError(t, err)
 	assert.True(t, added)
 
@@ -2397,7 +2398,7 @@ func TestDeleteWithNoTombstoneCreationSupport(t *testing.T) {
 
 	// Ensure document has been added
 	waitAndAssertCondition(t, func() bool {
-		_, err = db.Bucket.GetWithXattr("doc", "_sync", "", &doc, &xattr, nil)
+		_, err = collection.dataStore.GetWithXattr("doc", "_sync", "", &doc, &xattr, nil)
 		return err == nil
 	})
 
@@ -2465,7 +2466,7 @@ func TestTombstoneCompactionStopWithManager(t *testing.T) {
 
 	require.NoError(t, collection.WaitForPendingChanges(ctx))
 
-	leakyBucket, ok := base.AsLeakyBucket(db.Bucket)
+	leakyDataStore, ok := base.AsLeakyDataStore(collection.dataStore)
 	require.True(t, ok)
 
 	queryCount := 0
@@ -2477,11 +2478,11 @@ func TestTombstoneCompactionStopWithManager(t *testing.T) {
 	}
 
 	if base.TestsDisableGSI() {
-		leakyBucket.SetPostQueryCallback(func(ddoc, viewName string, params map[string]interface{}) {
+		leakyDataStore.SetPostQueryCallback(func(ddoc, viewName string, params map[string]interface{}) {
 			callbackFunc()
 		})
 	} else {
-		leakyBucket.SetPostN1QLQueryCallback(func() {
+		leakyDataStore.SetPostN1QLQueryCallback(func() {
 			callbackFunc()
 		})
 	}
@@ -2736,7 +2737,7 @@ func TestGetDatabaseCollectionWithUserDefaultCollection(t *testing.T) {
 			},
 		},
 	}
-	dataStore := base.GetTestBucketDefaultCollection(t)
+	dataStore := base.GetTestBucket(t)
 	defer dataStore.Close()
 
 	for _, testCase := range testCases {

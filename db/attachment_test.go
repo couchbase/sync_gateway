@@ -881,14 +881,14 @@ func TestMigrateBodyAttachments(t *testing.T) {
 		assert.NoError(t, err)
 		err = base.JSONUnmarshal([]byte(syncData), &xattrVal)
 		assert.NoError(t, err)
-
+		defaultDataStore := bucket.DefaultDataStore()
 		if base.TestUseXattrs() {
-			_, err = bucket.WriteCasWithXattr(docKey, base.SyncXattrName, 0, 0, nil, bodyVal, xattrVal)
+			_, err = defaultDataStore.WriteCasWithXattr(docKey, base.SyncXattrName, 0, 0, nil, bodyVal, xattrVal)
 			assert.NoError(t, err)
 		} else {
 			newBody, err := base.InjectJSONPropertiesFromBytes([]byte(bodyPre25), base.KVPairBytes{Key: base.SyncPropertyName, Val: []byte(syncData)})
 			assert.NoError(t, err)
-			ok, err := bucket.Add(docKey, 0, newBody)
+			ok, err := defaultDataStore.Add(docKey, 0, newBody)
 			assert.NoError(t, err)
 			assert.True(t, ok)
 		}
@@ -1189,13 +1189,14 @@ func TestMigrateBodyAttachmentsMerge(t *testing.T) {
 	err = base.JSONUnmarshal([]byte(syncData), &xattrVal)
 	assert.NoError(t, err)
 
+	defaultDataStore := bucket.DefaultDataStore()
 	if base.TestUseXattrs() {
-		_, err = bucket.WriteCasWithXattr(docKey, base.SyncXattrName, 0, 0, nil, bodyVal, xattrVal)
+		_, err = defaultDataStore.WriteCasWithXattr(docKey, base.SyncXattrName, 0, 0, nil, bodyVal, xattrVal)
 		assert.NoError(t, err)
 	} else {
 		newBody, err := base.InjectJSONPropertiesFromBytes([]byte(bodyPre25), base.KVPairBytes{Key: base.SyncPropertyName, Val: []byte(syncData)})
 		assert.NoError(t, err)
-		ok, err := bucket.Add(docKey, 0, newBody)
+		ok, err := defaultDataStore.Add(docKey, 0, newBody)
 		assert.NoError(t, err)
 		assert.True(t, ok)
 	}
@@ -1377,13 +1378,14 @@ func TestMigrateBodyAttachmentsMergeConflicting(t *testing.T) {
 	err = base.JSONUnmarshal([]byte(syncData), &xattrVal)
 	assert.NoError(t, err)
 
+	defaultDataStore := bucket.DefaultDataStore()
 	if base.TestUseXattrs() {
-		_, err = bucket.WriteCasWithXattr(docKey, base.SyncXattrName, 0, 0, nil, bodyVal, xattrVal)
+		_, err = defaultDataStore.WriteCasWithXattr(docKey, base.SyncXattrName, 0, 0, nil, bodyVal, xattrVal)
 		assert.NoError(t, err)
 	} else {
 		newBody, err := base.InjectJSONPropertiesFromBytes([]byte(bodyPre25), base.KVPairBytes{Key: base.SyncPropertyName, Val: []byte(syncData)})
 		assert.NoError(t, err)
-		ok, err := bucket.Add(docKey, 0, newBody)
+		ok, err := defaultDataStore.Add(docKey, 0, newBody)
 		assert.NoError(t, err)
 		assert.True(t, ok)
 	}

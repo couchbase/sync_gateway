@@ -42,7 +42,7 @@ func TestRoleQuery(t *testing.T) {
 		t.Run(fmt.Sprintf("TestRoleQuery in Serverless=%t", testCase.isServerless), func(t *testing.T) {
 			dbContextConfig := getDatabaseContextOptions(testCase.isServerless)
 
-			tBucket := base.GetTestBucketDefaultCollection(t)
+			tBucket := base.GetTestBucket(t)
 			database, ctx := db.SetupTestDBForDataStoreWithOptions(t, tBucket, dbContextConfig)
 			defer database.Close(ctx)
 
@@ -444,7 +444,7 @@ func getDatabaseContextOptions(isServerless bool) db.DatabaseContextOptions {
 type resetN1QLStoreFn func(n1QLStore base.N1QLStore, isServerless bool) error
 
 func setupN1QLStore(bucket base.Bucket, isServerless bool) (base.N1QLStore, resetN1QLStoreFn, error) {
-	n1QLStore, ok := base.AsN1QLStore(bucket)
+	n1QLStore, ok := base.AsN1QLStore(bucket.DefaultDataStore())
 	if !ok {
 		return nil, nil, fmt.Errorf("Unable to get n1QLStore for testBucket")
 	}

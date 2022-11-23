@@ -236,7 +236,7 @@ func TestDocDeletionFromChannelCoalescedRemoved(t *testing.T) {
 	lastSeq, _ = ParseSequenceID(lastSeq.String())
 
 	// Get raw document from the bucket
-	rv, _, _ := db.Bucket.GetRaw("alpha") // cas, err
+	rv, _, _ := collection.dataStore.GetRaw("alpha") // cas, err
 
 	// Unmarshall into nested maps
 	var x map[string]interface{}
@@ -260,7 +260,7 @@ func TestDocDeletionFromChannelCoalescedRemoved(t *testing.T) {
 	b, err := base.JSONMarshal(x)
 
 	// Update raw document in the bucket
-	assert.NoError(t, db.Bucket.SetRaw("alpha", 0, nil, b))
+	assert.NoError(t, collection.dataStore.SetRaw("alpha", 0, nil, b))
 
 	// Check the _changes feed -- this is to make sure the changeCache properly received
 	// sequence 3 and isn't stuck waiting for it.
@@ -322,7 +322,7 @@ func TestDocDeletionFromChannelCoalesced(t *testing.T) {
 	lastSeq, _ = ParseSequenceID(lastSeq.String())
 
 	// Get raw document from the bucket
-	rv, _, _ := db.Bucket.GetRaw("alpha") // cas, err
+	rv, _, _ := collection.dataStore.GetRaw("alpha") // cas, err
 
 	// Unmarshall into nested maps
 	var x map[string]interface{}
@@ -342,7 +342,7 @@ func TestDocDeletionFromChannelCoalesced(t *testing.T) {
 	b, err := base.JSONMarshal(x)
 
 	// Update raw document in the bucket
-	require.NoError(t, db.Bucket.SetRaw("alpha", 0, nil, b))
+	require.NoError(t, collection.dataStore.SetRaw("alpha", 0, nil, b))
 
 	// Check the _changes feed -- this is to make sure the changeCache properly received
 	// sequence 3 (the modified document) and isn't stuck waiting for it.

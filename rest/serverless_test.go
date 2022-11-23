@@ -27,7 +27,7 @@ func TestServerlessPollBuckets(t *testing.T) {
 	}
 
 	// Get test bucket
-	tb1 := base.GetTestBucketDefaultCollection(t)
+	tb1 := base.GetTestBucket(t)
 	defer tb1.Close()
 
 	rt := NewRestTester(t, &RestTesterConfig{

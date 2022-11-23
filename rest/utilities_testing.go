@@ -124,7 +124,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 
 	if rt.InitSyncSeq > 0 {
 		log.Printf("Initializing %s to %d", base.SyncSeqKey, rt.InitSyncSeq)
-		_, incrErr := testBucket.Incr(base.SyncSeqKey, rt.InitSyncSeq, rt.InitSyncSeq, 0)
+		_, incrErr := testBucket.DefaultDataStore().Incr(base.SyncSeqKey, rt.InitSyncSeq, rt.InitSyncSeq, 0)
 		if incrErr != nil {
 			rt.TB.Fatalf("Error initializing %s in test bucket: %v", base.SyncSeqKey, incrErr)
 		}
@@ -241,7 +241,8 @@ func (rt *RestTester) Bucket() base.Bucket {
 			rt.DatabaseConfig.UseViews = base.BoolPtr(base.TestsDisableGSI())
 		}
 
-		collection, collectionErr := base.AsCollection(rt.TestBucket)
+		/* FIXME: TOR
+		collection, collectionErr := base.AsCollection(rt.TestBucket.DefaultDataStore())
 		if collectionErr == nil && rt.DatabaseConfig.Scopes == nil && collection.Spec.Scope != nil && collection.Spec.Collection != nil {
 			rt.DatabaseConfig.Scopes = ScopesConfig{
 				*collection.Spec.Scope: ScopeConfig{
@@ -251,6 +252,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 				},
 			}
 		}
+		*/
 		// numReplicas set to 0 for test buckets, since it should assume that there may only be one indexing node.
 		numReplicas := uint(0)
 		rt.DatabaseConfig.NumIndexReplicas = &numReplicas
@@ -281,6 +283,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 			// Scopes and collections have to be set on the bucket being passed in for the db to use.
 			// WIP: Collections Phase 1 - Grab just one scope/collection from the defined set.
 			// Phase 2 (multi collection) means DatabaseContext needs a set of BucketSpec/Collections, not just one...
+			/* FIXME: TOR
 			var scope, collection *string
 			for scopeName, scopeConfig := range rt.RestTesterConfig.DatabaseConfig.Scopes {
 				scope = &scopeName
@@ -299,7 +302,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 				collectionBucket.Bucket.Spec.Collection = collection
 				collectionBucket.Collection = collectionBucket.Collection.Bucket().Scope(*scope).Collection(*collection)
 			}
-
+			*/
 			_, err = rt.RestTesterServerContext.AddDatabaseFromConfigWithBucket(ctx, rt.TB, *rt.DatabaseConfig, testBucket.Bucket)
 		} else {
 			_, err = rt.RestTesterServerContext.AddDatabaseFromConfig(ctx, *rt.DatabaseConfig)
@@ -334,11 +337,11 @@ func (rt *RestTester) LeakyBucket() *base.LeakyDataStore {
 	if rt.leakyBucketConfig == nil {
 		rt.TB.Fatalf("Cannot get leaky bucket when leakyBucketConfig was not set on RestTester initialisation")
 	}
-	leakyBucket, ok := base.AsLeakyBucket(rt.Bucket())
+	leakyDataStore, ok := base.AsLeakyDataStore(rt.Bucket().DefaultDataStore())
 	if !ok {
 		rt.TB.Fatalf("Could not get bucket (type %T) as a leaky bucket", rt.Bucket())
 	}
-	return leakyBucket
+	return leakyDataStore
 }
 
 func (rt *RestTester) ServerContext() *ServerContext {

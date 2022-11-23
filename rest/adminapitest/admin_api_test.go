@@ -1276,13 +1276,13 @@ func TestSoftDeleteCasMismatch(t *testing.T) {
 	resp := rt.SendAdminRequest("PUT", "/db/_role/role", `{"admin_channels":["channel"]}`)
 	rest.RequireStatus(t, resp, http.StatusCreated)
 
-	leakyBucket, ok := base.AsLeakyBucket(rt.TestBucket)
+	leakyDataStore, ok := base.AsLeakyDataStore(rt.TestBucket.DefaultDataStore())
 	require.True(t, ok)
 
 	// Set callback to trigger a DELETE AFTER an update. This will trigger a CAS mismatch.
 	// Update is done on a GetRole operation so this delete is done between a GET and save operation.
 	triggerCallback := true
-	leakyBucket.SetPostUpdateCallback(func(key string) {
+	leakyDataStore.SetPostUpdateCallback(func(key string) {
 		if triggerCallback {
 			triggerCallback = false
 			resp = rt.SendAdminRequest("DELETE", "/db/_role/role", ``)
@@ -2620,7 +2620,7 @@ func TestDeleteFunctionsWhileDbOffline(t *testing.T) {
 
 	// Get a test bucket, and use it to create the database.
 	// FIXME: CBG-2266 this test reads in persistent config
-	tb := base.GetTestBucketDefaultCollection(t)
+	tb := base.GetTestBucket(t)
 	defer func() { tb.Close() }()
 
 	// Initial DB config
@@ -2661,7 +2661,7 @@ func TestDeleteFunctionsWhileDbOffline(t *testing.T) {
 	resp.RequireStatus(http.StatusCreated)
 
 	if base.TestUseXattrs() {
-		add, err := tb.Add("TestImportDoc", 0, db.Document{ID: "TestImportDoc", RevID: "1-abc"})
+		add, err := tb.DefaultDataStore().Add("TestImportDoc", 0, db.Document{ID: "TestImportDoc", RevID: "1-abc"})
 		require.NoError(t, err)
 		require.Equal(t, true, add)
 
@@ -2975,7 +2975,7 @@ func TestApiInternalPropertiesHandling(t *testing.T) {
 			rest.RequireStatus(t, resp, http.StatusCreated)
 
 			var bucketDoc map[string]interface{}
-			_, err = rt.Bucket().Get(docID, &bucketDoc)
+			_, err = rt.Bucket().DefaultDataStore().Get(docID, &bucketDoc)
 			assert.NoError(t, err)
 			body := rt.GetDoc(docID)
 			// Confirm input body is in the bucket doc
