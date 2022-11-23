@@ -54,7 +54,7 @@ type CbgtContext struct {
 
 // StartShardedDCPFeed initializes and starts a CBGT Manager targeting the provided bucket.
 // dbName is used to define a unique path name for local file storage of pindex files
-func StartShardedDCPFeed(ctx context.Context, dbName string, configGroup string, uuid string, heartbeater Heartbeater, bucket Bucket, spec BucketSpec, scope string, collections []string, numPartitions uint16, cfg cbgt.Cfg) (*CbgtContext, error) {
+func StartShardedDCPFeed(ctx context.Context, dbName string, configGroup string, uuid string, heartbeater Heartbeater, bucket Bucket, spec BucketSpec, scope string, collections []string, numPartitions uint16, cfg cbgt.Cfg, serverless bool) (*CbgtContext, error) {
 	// Ensure we don't try to start collections-enabled feed if there are any pre-collection SG nodes in the cluster.
 	minVersion, err := getMinNodeVersion(cfg)
 	if err != nil {
@@ -66,7 +66,7 @@ func StartShardedDCPFeed(ctx context.Context, dbName string, configGroup string,
 		}
 	}
 
-	cbgtContext, err := initCBGTManager(ctx, bucket, spec, cfg, uuid, dbName)
+	cbgtContext, err := initCBGTManager(ctx, bucket, spec, cfg, uuid, dbName, serverless)
 	if err != nil {
 		return nil, err
 	}
@@ -255,7 +255,7 @@ func getCBGTIndexUUID(manager *cbgt.Manager, indexName string) (exists bool, pre
 // createCBGTManager creates a new manager for a given bucket and bucketSpec
 // Inline comments below provide additional detail on how cbgt uses each manager
 // parameter, and the implications for SG
-func initCBGTManager(ctx context.Context, bucket Bucket, spec BucketSpec, cfgSG cbgt.Cfg, dbUUID string, dbName string) (*CbgtContext, error) {
+func initCBGTManager(ctx context.Context, bucket Bucket, spec BucketSpec, cfgSG cbgt.Cfg, dbUUID string, dbName string, serverless bool) (*CbgtContext, error) {
 	// uuid: Unique identifier for the node. Used to identify the node in the config.
 	//       Without UUID persistence across SG restarts, a restarted SG node relies on heartbeater to remove
 	// 		 the previous version of that node from the cfg, and assign pindexes to the new one.
@@ -298,10 +298,18 @@ func initCBGTManager(ctx context.Context, bucket Bucket, spec BucketSpec, cfgSG 
 	//   		https://github.com/couchbaselabs/cbgt/issues/1
 	//   		https://github.com/couchbaselabs/cbgt/issues/25
 	bindHttp := uuid
+	defaultValues := &GoCBConnStringParams{}
+	if serverless {
+		defaultValues.KVPoolSize = GoCBPoolSizeDCP
+		defaultValues.KVBufferSize = DefaultKvBufferSizeServerless
+		defaultValues.DCPBuffer = DefaultDCPBufferServerless
+	} else {
+		defaultValues.KVPoolSize = GoCBPoolSizeDCP
+		defaultValues.KVBufferSize = DefaultGoCBKvBufferSize
+		defaultValues.DCPBuffer = DefaultDCPBuffer
+	}
 
-	serverURL, err := spec.GetGoCBConnString(&GoCBConnStringParams{
-		KVPoolSize: GoCBPoolSizeDCP,
-	})
+	serverURL, err := spec.GetGoCBConnString(defaultValues)
 	if err != nil {
 		return nil, err
 	}

@@ -222,6 +222,7 @@ type UnsupportedOptions struct {
 	ForceAPIForbiddenErrors    bool                     `json:"force_api_forbidden_errors,omitempty"`    // Config option to force the REST API to return forbidden errors
 	ConnectedClient            bool                     `json:"connected_client,omitempty"`              // Enables BLIP connected-client APIs
 	UseQueryBasedResyncManager bool                     `json:"use_query_resync_manager,omitempty"`      // Config option to use Query based resync manager to perform Resync op
+	DCPReadBuffer             *int                     `json:"dcp_read_buffer,omitempty"`
 }
 
 type WarningThresholds struct {

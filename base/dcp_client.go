@@ -28,6 +28,10 @@ const openStreamTimeout = 30 * time.Second
 const openRetryCount = uint32(10)
 const defaultNumWorkers = 8
 
+const DefaultDCPBufferServerless = 1 * 1024 * 1024
+
+const DefaultDCPBuffer = 20 * 1024 * 1024
+
 const getVbSeqnoTimeout = 30 * time.Second
 
 const infiniteOpenStreamRetries = uint32(math.MaxUint32)
@@ -58,6 +62,7 @@ type DCPClient struct {
 	dbStats                    *expvar.Map                    // Stats for database
 	agentPriority              gocbcore.DcpAgentPriority      // agentPriority specifies the priority level for a dcp stream
 	collectionIDs              []uint32                       // collectionIDs used by gocbcore, if empty, uses default collections
+	Serverless                 bool
 }
 
 type DCPClientOptions struct {
@@ -71,6 +76,7 @@ type DCPClientOptions struct {
 	DbStats                    *expvar.Map               // Optional stats
 	AgentPriority              gocbcore.DcpAgentPriority // agentPriority specifies the priority level for a dcp stream
 	CollectionIDs              []uint32                  // CollectionIDs used by gocbcore, if empty, uses default collections
+	Serverless                 bool
 }
 
 func NewDCPClient(ID string, callback sgbucket.FeedEventCallbackFunc, options DCPClientOptions, bucket *GocbV2Bucket) (*DCPClient, error) {
@@ -102,6 +108,7 @@ func NewDCPClient(ID string, callback sgbucket.FeedEventCallbackFunc, options DC
 		dbStats:             options.DbStats,
 		agentPriority:       options.AgentPriority,
 		collectionIDs:       options.CollectionIDs,
+		Serverless:          options.Serverless,
 	}
 
 	// Initialize active vbuckets
@@ -271,9 +278,17 @@ func (dc *DCPClient) close() {
 }
 
 func (dc *DCPClient) initAgent(spec BucketSpec) error {
-	connStr, err := spec.GetGoCBConnString(&GoCBConnStringParams{
-		KVPoolSize: GoCBPoolSizeDCP,
-	})
+	defaultValues := &GoCBConnStringParams{}
+	if dc.Serverless {
+		defaultValues.KVPoolSize = GoCBPoolSizeDCP
+		defaultValues.KVBufferSize = DefaultKvBufferSizeServerless
+		defaultValues.DCPBuffer = DefaultDCPBufferServerless
+	} else {
+		defaultValues.KVPoolSize = GoCBPoolSizeDCP
+		defaultValues.KVBufferSize = DefaultGoCBKvBufferSize
+		defaultValues.DCPBuffer = DefaultDCPBuffer
+	}
+	connStr, err := spec.GetGoCBConnString(defaultValues)
 	if err != nil {
 		return err
 	}
@@ -298,6 +313,10 @@ func (dc *DCPClient) initAgent(spec BucketSpec) error {
 	agentConfig.KVConfig.PoolSize = 1
 	agentConfig.BucketName = spec.BucketName
 	agentConfig.DCPConfig.AgentPriority = dc.agentPriority
+	if dc.Serverless {
+		agentConfig.DCPConfig.BufferSize = DefaultDCPBufferServerless
+	}
+	fmt.Println("Buffer size", agentConfig.DCPConfig.BufferSize)
 	agentConfig.SecurityConfig.Auth = auth
 	agentConfig.SecurityConfig.TLSRootCAProvider = tlsRootCAProvider
 	agentConfig.UserAgent = "SyncGatewayDCP"

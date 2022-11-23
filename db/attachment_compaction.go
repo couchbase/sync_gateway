@@ -140,7 +140,7 @@ func attachmentCompactMarkPhase(ctx context.Context, dataStore base.DataStore, c
 	if err != nil {
 		return 0, nil, err
 	}
-
+	clientOptions.Serverless = db.IsServerless()
 	bucket, err := base.AsGocbV2Bucket(db.Bucket)
 	if err != nil {
 		return 0, nil, err
@@ -371,6 +371,7 @@ func attachmentCompactSweepPhase(ctx context.Context, dataStore base.DataStore, 
 	}
 
 	base.InfofCtx(ctx, base.KeyAll, "[%s] Starting DCP feed %q for sweep phase of attachment compaction", compactionLoggingID, dcpFeedKey)
+	clientOptions.Serverless = db.IsServerless()
 	dcpClient, err := base.NewDCPClient(dcpFeedKey, callback, *clientOptions, bucket)
 	if err != nil {
 		base.WarnfCtx(ctx, "[%s] Failed to create attachment compaction DCP client! %v", compactionLoggingID, err)
@@ -507,7 +508,7 @@ func attachmentCompactCleanupPhase(ctx context.Context, dataStore base.DataStore
 	if err != nil {
 		return err
 	}
-
+	clientOptions.Serverless = db.IsServerless()
 	dcpClient, err := base.NewDCPClient(dcpFeedKey, callback, *clientOptions, bucket)
 	if err != nil {
 		base.WarnfCtx(ctx, "[%s] Failed to create attachment compaction DCP client! %v", compactionLoggingID, err)
