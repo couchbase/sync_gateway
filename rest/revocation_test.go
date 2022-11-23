@@ -10,12 +10,6 @@ package rest
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/couchbase/go-blip"
-	"github.com/couchbase/sync_gateway/auth"
-	"github.com/couchbase/sync_gateway/base"
-	"github.com/couchbase/sync_gateway/db"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -23,6 +17,13 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/couchbase/go-blip"
+	"github.com/couchbase/sync_gateway/auth"
+	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/db"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 type ChannelRevocationTester struct {
