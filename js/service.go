@@ -35,7 +35,7 @@ func (s *BasicService) Global() *v8.ObjectTemplate { return s.global }
 func (s *BasicService) Script() *v8.UnboundScript  { return s.script }
 func (s *BasicService) Reusable() bool             { return true }
 
-// Compiles JavaScript source code that becomes the services' script.
+// Compiles JavaScript source code that becomes the service's script.
 // A ServiceFactory is responsible for calling this.
 func (service *BasicService) SetScript(sourceCode string) error {
 	var err error
@@ -51,7 +51,12 @@ func (s *BasicService) NewValue(val any) (*v8.Value, error)   { return s.vm.NewV
 // and return Go values -- allowed types are nil, numbers, bool, string, v8.Value, v8.Object.
 type ServiceCallback = func(*Runner, *v8.FunctionCallbackInfo) (any, error)
 
-// Creates a JS function template that calls back to Go code.
+// Creates a JS function-template object that calls back to Go code.
 func (s *BasicService) NewCallback(cb ServiceCallback) *v8.FunctionTemplate {
 	return s.vm.NewCallback(cb)
+}
+
+// Defines a JS global function that calls back to Go code.
+func (s *BasicService) GlobalCallback(name string, cb ServiceCallback) {
+	s.global.Set(name, s.NewCallback(cb), v8.ReadOnly)
 }

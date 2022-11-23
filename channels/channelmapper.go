@@ -9,14 +9,29 @@
 package channels
 
 import (
-	"encoding/json"
-	"strconv"
+	_ "embed"
+	"fmt"
+	"strings"
 	"time"
 
-	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
-	_ "github.com/robertkrimen/otto/underscore"
+	"github.com/couchbase/sync_gateway/js"
+	v8 "rogchap.com/v8go" // Docs: https://pkg.go.dev/rogchap.com/v8go
 )
+
+// Maps user names (or role names prefixed with "role:") to arrays of channel or role names
+type AccessMap map[string]base.Set
+
+// If the provided principal name (in access grant format) is a role, returns the role name without prefix
+func AccessNameToPrincipalName(accessPrincipalName string) (principalName string, isRole bool) {
+	if strings.HasPrefix(accessPrincipalName, RoleAccessPrefix) {
+		return accessPrincipalName[len(RoleAccessPrefix):], true
+	}
+	return accessPrincipalName, false
+}
+
+// Prefix used to identify roles in access grants
+const RoleAccessPrefix = "role:"
 
 /** Result of running a channel-mapper function. */
 type ChannelMapperOutput struct {
@@ -27,37 +42,92 @@ type ChannelMapperOutput struct {
 	Expiry    *uint32   // Expiry value specified by expiry() callback.  Standard CBS expiry format: seconds if less than 30 days, epoch time otherwise
 }
 
+// The object that runs the sync function.
 type ChannelMapper struct {
-	*sgbucket.JSServer // "Superclass"
+	vms     *js.VMPool
+	timeout time.Duration
 }
-
-// Maps user names (or role names prefixed with "role:") to arrays of channel or role names
-type AccessMap map[string]base.Set
-
-// Number of SyncRunner tasks (and Otto contexts) to cache
-// Should be larger than sequence_allocator.maxBatchSize, to avoid pool overflow under some load scenarios (CBG-436)
-const kTaskCacheSize = 16
 
 const DefaultSyncFunction = `function(doc){channel(doc.channels);}`
 
-func NewChannelMapper(fnSource string, timeout time.Duration) *ChannelMapper {
+const kChannelMapperServiceName = "channelMapper"
+
+// The JavaScript code run by the SyncRunner; the sync fn is copied into it.
+// See wrappedFuncSource().
+//
+//go:embed sync_fn_wrapper.js
+var funcWrapper string
+
+// Creates a ChannelMapper.
+func NewChannelMapper(vms *js.VMPool, fnSource string, timeout time.Duration) *ChannelMapper {
+	vms.AddService(kChannelMapperServiceName, func(base *js.BasicService) (js.Service, error) {
+		return createChannelService(base, fnSource, timeout)
+	})
 	return &ChannelMapper{
-		JSServer: sgbucket.NewJSServer(fnSource, timeout, kTaskCacheSize,
-			func(fnSource string, timeout time.Duration) (sgbucket.JSServerTask, error) {
-				return NewSyncRunner(fnSource, timeout)
-			}),
+		vms:     vms,
+		timeout: timeout,
 	}
 }
 
-func NewDefaultChannelMapper() *ChannelMapper {
-	return NewChannelMapper(DefaultSyncFunction, time.Duration(base.DefaultJavascriptTimeoutSecs)*time.Second)
+func newChannelMapperWithVMs(fnSource string, timeout time.Duration) *ChannelMapper {
+	var vms js.VMPool
+	vms.Init(1)
+	return NewChannelMapper(&vms, fnSource, timeout)
 }
 
-func (mapper *ChannelMapper) MapToChannelsAndAccess(body map[string]interface{}, oldBodyJSON string, metaMap map[string]interface{}, userCtx map[string]interface{}) (*ChannelMapperOutput, error) {
-	numberFixBody := ConvertJSONNumbers(body)
-	numberFixMetaMap := ConvertJSONNumbers(metaMap)
+func (cm *ChannelMapper) closeVMs() {
+	cm.vms.Close()
+}
 
-	result1, err := mapper.Call(numberFixBody, sgbucket.JSONString(oldBodyJSON), numberFixMetaMap, userCtx)
+// Creates a ChannelMapper with the default sync function. (Used by tests)
+func NewDefaultChannelMapper(vms *js.VMPool) *ChannelMapper {
+	return NewChannelMapper(vms, DefaultSyncFunction, time.Duration(base.DefaultJavascriptTimeoutSecs)*time.Second)
+}
+
+// Creates a js.Service instance for a ChannelMapper;
+// this configures the object & callback templates in a V8 VM.
+func createChannelService(base *js.BasicService, fnSource string, timeout time.Duration) (js.Service, error) {
+	err := base.SetScript(wrappedFuncSource(fnSource))
+	// Define the callback functions:
+	base.GlobalCallback("channel", func(jsr *js.Runner, call *v8.FunctionCallbackInfo) (any, error) {
+		return jsr.Client.(*syncRunner).channelCallback(call.Args())
+	})
+	base.GlobalCallback("access", func(jsr *js.Runner, call *v8.FunctionCallbackInfo) (any, error) {
+		return jsr.Client.(*syncRunner).accessCallback(call.Args())
+	})
+	base.GlobalCallback("role", func(jsr *js.Runner, call *v8.FunctionCallbackInfo) (any, error) {
+		return jsr.Client.(*syncRunner).roleCallback(call.Args())
+	})
+	base.GlobalCallback("reject", func(jsr *js.Runner, call *v8.FunctionCallbackInfo) (any, error) {
+		return jsr.Client.(*syncRunner).rejectCallback(call.Args())
+	})
+	base.GlobalCallback("expiry", func(jsr *js.Runner, call *v8.FunctionCallbackInfo) (any, error) {
+		jsr.Client.(*syncRunner).expiryCallback(call.Args())
+		return nil, nil
+	})
+	return base, err
+}
+
+func (mapper *ChannelMapper) withSyncRunner(fn func(*syncRunner) (any, error)) (any, error) {
+	return mapper.vms.WithRunner(kChannelMapperServiceName, func(jsRunner *js.Runner) (any, error) {
+		var runner *syncRunner
+		if jsRunner.Client == nil {
+			runner = &syncRunner{
+				jsRunner: jsRunner,
+			}
+			jsRunner.Client = runner
+		} else {
+			runner = jsRunner.Client.(*syncRunner)
+		}
+		return fn(runner)
+	})
+}
+
+// Runs the sync function. Thread-safe.
+func (mapper *ChannelMapper) MapToChannelsAndAccess(body map[string]interface{}, oldBodyJSON string, metaMap map[string]interface{}, userCtx map[string]interface{}) (*ChannelMapperOutput, error) {
+	result1, err := mapper.withSyncRunner(func(runner *syncRunner) (any, error) {
+		return runner.call(body, oldBodyJSON, metaMap, userCtx)
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -65,67 +135,13 @@ func (mapper *ChannelMapper) MapToChannelsAndAccess(body map[string]interface{},
 	return output, nil
 }
 
-// Javscript max integer value (https://www.ecma-international.org/ecma-262/5.1/#sec-8.5)
-const JavascriptMaxSafeInt = int64(1<<53 - 1)
-const JavascriptMinSafeInt = -JavascriptMaxSafeInt
-
-// ConvertJSONNumbers converts json.Number values to javascript number objects for use in the sync
-// function.  Integers that would lose precision are left as json.Number, as are floats that can't be
-// converted to float64.
-func ConvertJSONNumbers(value interface{}) interface{} {
-	switch value := value.(type) {
-	case json.Number:
-		if asInt, err := value.Int64(); err == nil {
-			if asInt > JavascriptMaxSafeInt || asInt < JavascriptMinSafeInt {
-				// Integer will lose precision when used in javascript - leave as json.Number
-				return value
-			}
-			return asInt
-		} else {
-			numErr, _ := err.(*strconv.NumError)
-			if numErr.Err == strconv.ErrRange {
-				return value
-			}
-		}
-
-		if asFloat, err := value.Float64(); err == nil {
-			// Can't reliably detect loss of precision in float, due to number of variations in input float format
-			return asFloat
-		}
-		return value
-	case map[string]interface{}:
-		for k, v := range value {
-			value[k] = ConvertJSONNumbers(v)
-		}
-	case []interface{}:
-		for i, v := range value {
-			value[i] = ConvertJSONNumbers(v)
-		}
-	default:
-	}
-	return value
-}
-
-//////// UTILITY FUNCTIONS:
-
-// Calls the function for each user whose access is different between the two AccessMaps
-func ForChangedUsers(a, b AccessMap, fn func(user string)) {
-	for name, access := range a {
-		if !access.Equals(b[name]) {
-			fn(name)
-		}
-	}
-	for name := range b {
-		if _, existed := a[name]; !existed {
-			fn(name)
-		}
-	}
-}
-
-func (runner *SyncRunner) MapToChannelsAndAccess(body map[string]interface{}, oldBodyJSON string, userCtx map[string]interface{}) (*ChannelMapperOutput, error) {
-	result, err := runner.Call(body, sgbucket.JSONString(oldBodyJSON), userCtx)
-	if err != nil {
-		return nil, err
-	}
-	return result.(*ChannelMapperOutput), nil
+func wrappedFuncSource(funcSource string) string {
+	return fmt.Sprintf(
+		funcWrapper,
+		funcSource,
+		base.SyncFnErrorAdminRequired,
+		base.SyncFnErrorWrongUser,
+		base.SyncFnErrorMissingRole,
+		base.SyncFnErrorMissingChannelAccess,
+	)
 }

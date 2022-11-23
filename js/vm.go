@@ -3,16 +3,23 @@ package js
 import (
 	_ "embed"
 	"fmt"
-	"sync"
 
-	v8 "rogchap.com/v8go" // Docs: https://pkg.go.dev/rogchap.com/v8go
+	"github.com/pkg/errors"
+	v8 "rogchap.com/v8go"
 )
 
-// Represents a V8 JavaScript VM (aka "Isolate".)
-// This doesn't do much on its own; its purpose is to perform shared initialization that makes creating an context faster.
-// **Not thread-safe! Must be called only on one goroutine at a time.**
+// v8go docs:			https://pkg.go.dev/rogchap.com/v8go
+// General V8 API docs: https://v8.dev/docs/embed
+
+// Top-level object that represents a V8 JavaScript VM (aka "Isolate".)
+// This doesn't do much on its own; execution in V8 occurs in "Contexts" within an Isolate
+// which are sandboxes with their own globals that can't interact with each other.
+//
+// **Not thread-safe!** Methods of a VM must be called only on one goroutine at a time.
+// The VMPool takes care of this by vending VM instances that are known not to be in use.
 type VM struct {
 	iso          *v8.Isolate           // A V8 virtual machine. NOT THREAD SAFE.
+	underscore   *v8.UnboundScript     // Precompiled Underscore.js library
 	config       ServicesConfiguration // Factory for services
 	services     map[string]Service    // Available services
 	runners      map[string]*Runner    // Available runners
@@ -22,7 +29,12 @@ type VM struct {
 
 type ServicesConfiguration map[string]ServiceFactory
 
-// Creates an Environment that can run a set of services.
+// The Underscore.js utility library <https://underscorejs.org>
+//
+//go:embed underscore-umd.js
+var underscoreJS string
+
+// Creates an Environment that can run a set of Services.
 func NewVM(services ServicesConfiguration) *VM {
 	return &VM{
 		iso:      v8.NewIsolate(),      // The V8 VM
@@ -32,26 +44,17 @@ func NewVM(services ServicesConfiguration) *VM {
 	}
 }
 
-// Cleans up a VM by disposing the V8 runtime.
-// You should call this when you're done with it.
-func (vm *VM) Close() {
-	//log.Printf("*** VM.Close %p", vm)
-	if vm.returnToPool != nil {
-		panic("closing a js.VM that belongs to a Pool")
-	}
-	for _, runner := range vm.runners {
-		runner.close()
-	}
-	vm.iso.Dispose()
-	vm.iso = nil
-}
-
 // Call this when finished using a VM. Returns it to the VMPool it came from, or else closes it.
-func (vm *VM) Return() {
+func (vm *VM) Release() {
 	if vm.returnToPool != nil {
 		vm.returnToPool.returnVM(vm)
 	} else {
-		vm.Close()
+		// If it doesn't bleong to a pool, really dispose it:
+		for _, runner := range vm.runners {
+			runner.close()
+		}
+		vm.iso.Dispose()
+		vm.iso = nil
 	}
 }
 
@@ -63,6 +66,17 @@ func (vm *VM) getService(serviceName string) (Service, error) {
 		if factory == nil {
 			return nil, fmt.Errorf("js.VM has no service %q", serviceName)
 		}
+
+		// Compile Underscore.js if it's not already done:
+		if vm.underscore == nil {
+			// Include the Underscore.js library:
+			var err error
+			vm.underscore, err = vm.iso.CompileUnboundScript(underscoreJS, "underscore-umd.js", v8.CompileOptions{})
+			if err != nil {
+				return nil, errors.Wrapf(err, "Couldn't compile underscore.js: %w", err)
+			}
+		}
+
 		base := &BasicService{
 			name:   serviceName,
 			vm:     vm,
@@ -71,12 +85,11 @@ func (vm *VM) getService(serviceName string) (Service, error) {
 		var err error
 		service, err = factory(base)
 		if err != nil {
-			return nil, err
-		}
-		if service == nil {
-			panic("js.ServiceFactory returned nil")
+			return nil, errors.Wrapf(err, "Failed to initialize JS service %q: %w", serviceName, err)
+		} else if service == nil {
+			return nil, fmt.Errorf("js.ServiceFactory %q returned nil", serviceName)
 		} else if service.Script() == nil {
-			panic("js.ServiceFactory did not initialize Service's script")
+			return nil, fmt.Errorf("js.ServiceFactory %q failed to initialize Service's script", serviceName)
 		}
 		vm.services[serviceName] = service
 	}
@@ -114,7 +127,7 @@ func (vm *VM) returnRunner(r *Runner) {
 	} else {
 		r.close()
 	}
-	vm.Return()
+	vm.Release()
 }
 
 // Returns the Runner that owns the given V8 Context.
@@ -139,8 +152,13 @@ func (vm *VM) NewCallback(callback ServiceCallback) *v8.FunctionTemplate {
 		if err == nil {
 			if result != nil {
 				var v8Result *v8.Value
-				if v8Result, err = v8.NewValue(vm.iso, result); err == nil {
-					return v8Result
+				switch result := result.(type) {
+				case *v8.Value:
+					return result
+				default:
+					if v8Result, err = v8.NewValue(vm.iso, result); err == nil {
+						return v8Result
+					}
 				}
 			} else {
 				return v8.Undefined(vm.iso)
@@ -153,6 +171,7 @@ func (vm *VM) NewCallback(callback ServiceCallback) *v8.FunctionTemplate {
 func (vm *VM) NewObjectTemplate() *v8.ObjectTemplate { return v8.NewObjectTemplate(vm.iso) }
 func (vm *VM) NewString(str string) *v8.Value        { return mustSucceed(v8.NewValue(vm.iso, str)) }
 
+// Converts a Go value to a v8.Value. Must be a number, string, bool or nil.
 func (vm *VM) NewValue(val any) (*v8.Value, error) {
 	if val != nil {
 		return v8.NewValue(vm.iso, val)
@@ -161,77 +180,14 @@ func (vm *VM) NewValue(val any) (*v8.Value, error) {
 	}
 }
 
-//////// VM POOL
-
-// Thread-safe wrapper that vends `VM` objects.
-type VMPool struct {
-	services ServicesConfiguration
-	vms      sync.Pool
-}
-
-// Initializes a `vmPool`, a thread-safe wrapper around `VM`.
-// `maxEnvironments` is the maximum number of `VM` objects (and V8 instances!) it will cache.
-func (pool *VMPool) Init(maxVMs int) {
-	pool.services = ServicesConfiguration{}
-}
-
-func (pool *VMPool) AddService(name string, s ServiceFactory) {
-	if pool.services[name] != nil {
-		panic(fmt.Sprintf("Duplicate Service name %q", name))
-	}
-	pool.services[name] = s
-}
-
-// Produces a `VM` that can be used by this goroutine.
-// It should be returned when done by calling `returnEvaluator` to avoid wasting memory.
-func (pool *VMPool) GetVM() (*VM, error) {
-	// Pop a VM from the channel, or block until one's available:
-	vm, ok := pool.vms.Get().(*VM)
-	if !ok {
-		// Nothing in the pool, so create a real VM instance:
-		vm = NewVM(pool.services)
-	}
-	vm.returnToPool = pool
-	return vm, nil
-}
-
-// Returns a used `VM` back to the pool for reuse.
-func (pool *VMPool) returnVM(vm *VM) {
-	if vm != nil && vm.returnToPool == pool {
-		vm.returnToPool = nil
-		pool.vms.Put(vm)
-	}
-}
-
-// Instantiates a Runner for a named Service.
-func (pool *VMPool) GetRunner(serviceName string) (*Runner, error) {
-	vm, err := pool.GetVM()
-	if err != nil {
-		return nil, err
-	}
-	runner, err := vm.GetRunner(serviceName)
-	if err != nil {
-		pool.returnVM(vm)
-	}
-	return runner, err
-}
-
-func (pool *VMPool) WithRunner(serviceName string, fn func(*Runner) (any, error)) (any, error) {
-	runner, err := pool.GetRunner(serviceName)
-	if err != nil {
-		return nil, err
-	}
-	defer runner.Return()
-	return fn(runner)
-}
-
-// Frees up the cached V8 VMs of an `vmPool`
-func (pool *VMPool) Close() {
-	for {
-		if vm := pool.vms.Get(); vm != nil {
-			vm.(*VM).Close()
-		} else {
-			break
-		}
+// Converts a Go value or a v8.Value or v8.Object to a v8.Value
+func (vm *VM) AsValue(val any) (*v8.Value, error) {
+	switch val := val.(type) {
+	case *v8.Value:
+		return val, nil
+	case *v8.Object:
+		return val.Value, nil
+	default:
+		return vm.NewValue(val)
 	}
 }

@@ -108,7 +108,7 @@ type userCredentials struct {
 func makeEvaluator(dbc *db.Database, delegate evaluatorDelegate, user *userCredentials) (*evaluator, error) {
 	if runner, err := dbc.V8VMs.GetRunner("functions"); err != nil {
 		return nil, err
-	} else if e, ok := runner.Delegate.(*evaluator); ok {
+	} else if e, ok := runner.Client.(*evaluator); ok {
 		return e, nil // Reuse existing evaluator
 	} else {
 		return newEvaluator(runner, delegate, user)
@@ -122,7 +122,7 @@ func newEvaluator(runner *js.Runner, delegate evaluatorDelegate, user *userCrede
 		delegate: delegate,
 		user:     user,
 	}
-	runner.Delegate = eval
+	runner.Client = eval
 	runner.CheckTimeout = eval.delegate.checkTimeout
 
 	// Call the JS initialization code, passing it the configuration and the Upstream.
@@ -242,7 +242,7 @@ func doQuery(r *js.Runner, info *v8.FunctionCallbackInfo) (any, error) {
 		return nil, err
 	}
 	asAdmin := info.Args()[3].Boolean()
-	eval := r.Delegate.(*evaluator)
+	eval := r.Client.(*evaluator)
 	return eval.delegate.query(fnName, n1ql, args, asAdmin)
 }
 
@@ -250,7 +250,7 @@ func doQuery(r *js.Runner, info *v8.FunctionCallbackInfo) (any, error) {
 func doGet(r *js.Runner, info *v8.FunctionCallbackInfo) (any, error) {
 	docID := info.Args()[0].String()
 	asAdmin := info.Args()[1].Boolean()
-	eval := r.Delegate.(*evaluator)
+	eval := r.Client.(*evaluator)
 	return returnAsJSON(eval.delegate.get(docID, asAdmin))
 }
 
@@ -273,7 +273,7 @@ func doSave(r *js.Runner, info *v8.FunctionCallbackInfo) (any, error) {
 	}
 	asAdmin := info.Args()[2].Boolean()
 
-	eval := r.Delegate.(*evaluator)
+	eval := r.Client.(*evaluator)
 	if saved, err := eval.delegate.save(doc, docID, asAdmin); saved && err == nil {
 		return docID, nil
 	} else {
@@ -289,7 +289,7 @@ func doDelete(r *js.Runner, info *v8.FunctionCallbackInfo) (any, error) {
 		revID = arg1.String()
 	}
 	asAdmin := info.Args()[2].Boolean()
-	eval := r.Delegate.(*evaluator)
+	eval := r.Client.(*evaluator)
 	return eval.delegate.delete(docID, revID, asAdmin)
 }
 
@@ -304,7 +304,7 @@ func doLog(r *js.Runner, info *v8.FunctionCallbackInfo) (any, error) {
 			message = append(message, arg.DetailString())
 		}
 	}
-	eval := r.Delegate.(*evaluator)
+	eval := r.Client.(*evaluator)
 	eval.delegate.log(level, strings.Join(message, " "))
 	return nil, nil
 }

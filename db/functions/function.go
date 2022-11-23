@@ -143,12 +143,12 @@ func newStandaloneEvaluator(ctx context.Context, fnConfig *FunctionsConfig, gqCo
 	config := map[string]js.ServiceFactory{"functions": makeService(fnConfig, gqConfig)}
 	vm := js.NewVM(config)
 	if runner, err := vm.GetRunner("functions"); err != nil {
-		vm.Close()
+		vm.Release()
 		return nil, err
 	} else {
 		eval, err := newEvaluator(runner, delegate, nil)
 		if err != nil {
-			vm.Close()
+			vm.Release()
 			return nil, err
 		}
 		return eval, err

@@ -1,8 +1,10 @@
 package js
 
 import (
+	"encoding/json"
 	"fmt"
 
+	"github.com/pkg/errors"
 	v8 "rogchap.com/v8go" // Docs: https://pkg.go.dev/rogchap.com/v8go
 )
 
@@ -15,15 +17,17 @@ type Runner struct {
 	vm           *VM          // The owning VM object
 	ctx          *v8.Context  // V8 object managing this execution context
 	mainFn       *v8.Function // The entry-point function (returned by the Service's script)
-	Delegate     any          // Client may put whatever they want here, to point back to their state
-	CheckTimeout func() error // Client-set fn, called to detect timeouts
+	Client       any          // You can put whatever you want here, to point back to your state
+	CheckTimeout func() error // Optional function, called to detect timeouts
 }
 
 // Creates a Runner on a Service
 func newRunner(vm *VM, service Service) (*Runner, error) {
-	//log.Printf("*** newRunner") //TEMP
 	// Create a V8 Context and run the script in it, returning the JS `main` function:
 	ctx := v8.NewContext(vm.iso, service.Global())
+	if _, err := vm.underscore.Run(ctx); err != nil {
+		return nil, errors.Wrap(err, "js.Runner failed to initialize underscore.js library")
+	}
 	result, err := service.Script().Run(ctx)
 	if err != nil {
 		ctx.Close()
@@ -51,7 +55,6 @@ func (r *Runner) Return() {
 
 // Disposes the V8 resources for a runner.
 func (r *Runner) close() {
-	//log.Printf("*** close Runner %p", r) //TEMP
 	if r.vm != nil && r.vm.curRunner == r {
 		r.vm.curRunner = nil
 	}
@@ -85,6 +88,21 @@ func (r *Runner) NewInstance(o *v8.ObjectTemplate) (*v8.Object, error) { return 
 func (r *Runner) NewCallback(cb ServiceCallback) *v8.Function {
 	return r.vm.NewCallback(cb).GetFunction(r.ctx)
 }
+
+// Converts a Go value to a V8 value by marshaling to JSON and then parsing in V8.
+func (r *Runner) GoToV8(val any) (*v8.Value, error) {
+	j, err := json.Marshal(val)
+	if err != nil {
+		return nil, err
+	}
+	return r.JSONParse(string(j))
+}
+
+// Encodes a V8 value as a JSON string.
+func (r *Runner) JSONStringify(val *v8.Value) (string, error) { return v8.JSONStringify(r.ctx, val) }
+
+// Parses a JSON string to a V8 value.
+func (r *Runner) JSONParse(json string) (*v8.Value, error) { return v8.JSONParse(r.ctx, json) }
 
 // Postprocesses a result from V8: if it's a Promise it returns its resolved value or error. If the Promise hasn't completed yet, it lets V8 run until it completes.
 func (r *Runner) ResolvePromise(val *v8.Value, err error) (*v8.Value, error) {
