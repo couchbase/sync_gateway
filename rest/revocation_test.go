@@ -2149,13 +2149,10 @@ func TestRevocationGetSyncDataError(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 	// Two callbacks to cover usage with CBS/Xattrs and without
 	revocationTester, rt := InitScenario(t, &RestTesterConfig{leakyBucketConfig: &base.LeakyBucketConfig{GetWithXattrCallback: func(key string) error {
-		fmt.Println("CALLBACK RUN")
-		return fmt.Errorf("some error")
+		return fmt.Errorf("Leaky Bucket GetWithXattrCallback Error")
 	}, GetRawCallback: func(key string) error {
-
 		if throw {
-			fmt.Println("CALLBACK RUN")
-			return fmt.Errorf("some error")
+			return fmt.Errorf("Leaky Bucket GetRawCallback Error")
 		}
 		return nil
 	},
