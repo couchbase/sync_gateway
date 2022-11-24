@@ -129,7 +129,9 @@ func GetGocbV2BucketFromCluster(cluster *gocb.Cluster, spec BucketSpec, waitUnti
 	// Connect to bucket
 	bucket := cluster.Bucket(spec.BucketName)
 	err := bucket.WaitUntilReady(waitUntilReady, &gocb.WaitUntilReadyOptions{
-		RetryStrategy: &goCBv2FailFastRetryStrategy{},
+		// RetryStrategy: &goCBv2FailFastRetryStrategy{},
+		// FIXME (bbrks): This fast fail was being hit immediately in test bucket pool setup without any retry
+		RetryStrategy: gocb.NewBestEffortRetryStrategy(nil),
 	})
 	if err != nil {
 		_ = cluster.Close(&gocb.ClusterCloseOptions{})

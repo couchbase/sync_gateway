@@ -27,6 +27,8 @@ type LeakyBucket struct {
 	collections map[string]*LeakyDataStore
 }
 
+var _ sgbucket.BucketStore = &LeakyBucket{}
+
 func NewLeakyBucket(bucket Bucket, config LeakyBucketConfig) *LeakyBucket {
 	return &LeakyBucket{
 		bucket:      bucket,
@@ -47,6 +49,11 @@ func (b *LeakyBucket) Close() {
 	if !b.config.IgnoreClose {
 		b.bucket.Close()
 	}
+}
+
+// For walrus handling, ignore close needs to be set after the bucket is initialized
+func (b *LeakyBucket) SetIgnoreClose(value bool) {
+	b.config.IgnoreClose = value
 }
 
 func (b *LeakyBucket) CloseAndDelete() error {

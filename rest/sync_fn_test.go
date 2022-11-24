@@ -714,6 +714,9 @@ func TestResyncStop(t *testing.T) {
 
 func TestResyncRegenerateSequences(t *testing.T) {
 
+	// FIXME: PersistentWalrusBucket doesn't support collections yet
+	t.Skip("PersistentWalrusBucket doesn't support collections yet")
+
 	base.LongRunningTest(t)
 	syncFn := `
 	function(doc) {

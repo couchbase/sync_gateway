@@ -168,9 +168,7 @@ func (listener *changeListener) Stop() {
 	fmt.Printf("changeListener.Stop()\n")
 
 	// Wait for mutation feed worker to terminate.
-	// FIXME (bbrks): Put back up to 30s once feed closing is fixed - for now avoid tests taking 30s+
-	// waitTime := MutationFeedStopMaxWait
-	waitTime := MutationFeedStopMaxWait / 1000 // 30ms
+	waitTime := MutationFeedStopMaxWait
 	select {
 	case <-listener.FeedArgs.DoneChan:
 		// Mutation feed worker goroutine is terminated and doneChan is already closed.

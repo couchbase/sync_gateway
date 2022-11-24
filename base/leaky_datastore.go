@@ -46,11 +46,6 @@ func (lds *LeakyDataStore) Exists(k string) (exists bool, err error) {
 	return lds.dataStore.Exists(k)
 }
 
-// For walrus handling, ignore close needs to be set after the bucket is initialized
-func (lds *LeakyDataStore) SetIgnoreClose(value bool) {
-	lds.config.IgnoreClose = value
-}
-
 func (lds *LeakyDataStore) GetName() string {
 	return lds.dataStore.GetName()
 }
