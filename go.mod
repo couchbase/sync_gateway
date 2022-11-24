@@ -15,7 +15,7 @@ require (
 	github.com/couchbase/goutils v0.1.2
 	github.com/couchbase/sg-bucket v0.0.0-20221115164032-632b41d8a809
 	github.com/couchbaselabs/go-fleecedelta v0.0.0-20200408160354-2ed3f45fde8f
-	github.com/couchbaselabs/walrus v0.0.0-20221123181703-02f0b4ad0b7b
+	github.com/couchbaselabs/walrus v0.0.0-20221124001916-f782ee5884c5
 	github.com/elastic/gosigar v0.14.2
 	github.com/felixge/fgprof v0.9.2
 	github.com/google/uuid v1.3.0
