@@ -23,6 +23,7 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -282,10 +283,9 @@ func TestGroupIDReplications(t *testing.T) {
 		config.API.PublicInterface = fmt.Sprintf("127.0.0.1:%d", 4984+BootstrapTestPortOffset+portOffset)
 		config.API.AdminInterface = adminInterface
 		config.API.MetricsInterface = fmt.Sprintf("127.0.0.1:%d", 4986+BootstrapTestPortOffset+portOffset)
-		config.Bootstrap.ConfigGroupID = group
-		if group == "" {
-			config.Bootstrap.ConfigGroupID = PersistentConfigDefaultGroupID
-		}
+		uniqueUUID, err := uuid.NewRandom()
+		require.NoError(t, err)
+		config.Bootstrap.ConfigGroupID = group + uniqueUUID.String()
 
 		ctx := base.TestCtx(t)
 		sc, err := SetupServerContext(ctx, &config, true)
