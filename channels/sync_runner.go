@@ -10,6 +10,7 @@ package channels
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"math"
 	"strconv"
@@ -24,12 +25,12 @@ import (
 
 // An object that runs a specific JS sync() function. Wraps a js.Runner.
 type syncRunner struct {
-	jsRunner *js.Runner           // "Superclass"
-	output   *ChannelMapperOutput // Results being accumulated while the JS fn runs
-	channels []string             // channels granted via channel() callback
-	access   map[string][]string  // channels granted to users via access() callback
-	roles    map[string][]string  // roles granted to users via role() callback
-	expiry   *uint32              // document expiry (in seconds) specified via expiry() callback
+	*js.Runner                      // "Superclass"
+	output     *ChannelMapperOutput // Results being accumulated while the JS fn runs
+	channels   []string             // channels granted via channel() callback
+	access     map[string][]string  // channels granted to users via access() callback
+	roles      map[string][]string  // roles granted to users via role() callback
+	expiry     *uint32              // document expiry (in seconds) specified via expiry() callback
 }
 
 // Runs the sync function.
@@ -46,21 +47,21 @@ func (runner *syncRunner) call(body map[string]interface{},
 	runner.expiry = nil
 
 	// Convert the arguments to V8 values:
-	jsBody, err := runner.jsRunner.GoToV8(body)
+	jsBody, err := runner.convertBodyToV8(body)
 	if err != nil {
 		return nil, err
 	}
-	jsMeta, err := runner.jsRunner.GoToV8(metaMap)
+	jsMeta, err := runner.GoToV8(metaMap)
 	if err != nil {
 		return nil, err
 	}
-	jsCtx, err := runner.jsRunner.GoToV8(userCtx)
+	jsCtx, err := runner.GoToV8(userCtx)
 	if err != nil {
 		return nil, err
 	}
 
 	// Call the sync fn:
-	_, err = runner.jsRunner.Run(jsBody, runner.jsRunner.NewString(oldBodyJSON), jsMeta, jsCtx)
+	_, err = runner.Run(jsBody, runner.NewString(oldBodyJSON), jsMeta, jsCtx)
 
 	// Extract the output:
 	output := runner.output
@@ -84,7 +85,7 @@ func (runner *syncRunner) call(body map[string]interface{},
 
 func (runner *syncRunner) channelCallback(args []*v8.Value) (any, error) {
 	for _, arg := range args {
-		if strings := v8ValueToStringArray(arg); strings != nil {
+		if strings := v8ValueToStringArray(arg, runner.ContextOrDefault()); strings != nil {
 			runner.channels = append(runner.channels, strings...)
 		}
 	}
@@ -116,7 +117,7 @@ func (runner *syncRunner) expiryCallback(args []*v8.Value) {
 	if len(args) > 0 {
 		expiry, reflectErr := reflectExpiry(args[0])
 		if reflectErr != nil {
-			base.WarnfCtx(context.TODO(), "SyncRunner: Invalid value passed to expiry().  Value:%+v ", args[0])
+			base.WarnfCtx(runner.ContextOrDefault(), "SyncRunner: Invalid value passed to expiry().  Value:%+v ", args[0])
 			return
 		} else if expiry != nil {
 			runner.expiry = expiry
@@ -126,9 +127,9 @@ func (runner *syncRunner) expiryCallback(args []*v8.Value) {
 
 // Common implementation of 'access()' and 'role()' callbacks
 func (runner *syncRunner) addValueForUser(user *v8.Value, value *v8.Value, mapping map[string][]string) *v8.Value {
-	valueStrings := v8ValueToStringArray(value)
+	valueStrings := v8ValueToStringArray(value, runner.ContextOrDefault())
 	if len(valueStrings) > 0 {
-		for _, name := range v8ValueToStringArray(user) {
+		for _, name := range v8ValueToStringArray(user, runner.ContextOrDefault()) {
 			mapping[name] = append(mapping[name], valueStrings...)
 		}
 	}
@@ -136,6 +137,58 @@ func (runner *syncRunner) addValueForUser(user *v8.Value, value *v8.Value, mappi
 }
 
 //////// UTILITIES:
+
+// Converts a document body to a V8 object for use in the sync function.
+// `json.Number` objects in the body are converted to JS numbers if that won't lose precision;
+// else they're converted to JS strings.
+// *This modifies the map in-place.*
+func (runner *syncRunner) convertBodyToV8(body map[string]interface{}) (*v8.Value, error) {
+	convertJSONNumbers(body)
+	return runner.GoToV8(body)
+}
+
+// subroutine; returns nil if the value is OK, else returns the value to substitute.
+func convertJSONNumbers(value interface{}) interface{} {
+	switch value := value.(type) {
+	case json.Number:
+		if asInt, err := value.Int64(); err == nil {
+			if asInt > javascriptMaxSafeInt || asInt < javascriptMinSafeInt {
+				// Integer will lose precision when used in javascript -- convert to string
+				return string(value)
+			}
+			return nil
+		} else {
+			numErr, _ := err.(*strconv.NumError)
+			if numErr.Err == strconv.ErrRange {
+				return string(value)
+			}
+		}
+
+		if _, err := value.Float64(); err == nil {
+			// Can't reliably detect loss of precision in float, due to number of variations in input float format
+			return nil
+		}
+		return string(value)
+	case map[string]interface{}:
+		for k, v := range value {
+			if cv := convertJSONNumbers(v); cv != nil {
+				value[k] = cv
+			}
+		}
+	case []interface{}:
+		for i, v := range value {
+			if cv := convertJSONNumbers(v); cv != nil {
+				value[i] = cv
+			}
+		}
+	default:
+	}
+	return nil
+}
+
+// Javscript max integer value (https://www.ecma-international.org/ecma-262/5.1/#sec-8.5)
+const javascriptMaxSafeInt = int64(1<<53 - 1)
+const javascriptMinSafeInt = -javascriptMaxSafeInt
 
 func compileAccessMap(input map[string][]string, prefix string) (AccessMap, error) {
 	access := make(AccessMap, len(input))
@@ -159,7 +212,7 @@ func compileAccessMap(input map[string][]string, prefix string) (AccessMap, erro
 }
 
 // Converts a JS string or array into a Go string array.
-func v8ValueToStringArray(value *v8.Value) []string {
+func v8ValueToStringArray(value *v8.Value, ctx context.Context) []string {
 	var result []string
 	var nonStrings []any
 
@@ -182,7 +235,7 @@ func v8ValueToStringArray(value *v8.Value) []string {
 	}
 
 	if nonStrings != nil {
-		base.WarnfCtx(context.Background(), "Channel names must be string values only. Ignoring non-string channels: %s", base.UD(nonStrings))
+		base.WarnfCtx(ctx, "Channel names must be string values only. Ignoring non-string channels: %s", base.UD(nonStrings))
 	}
 	return result
 }

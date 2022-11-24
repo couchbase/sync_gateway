@@ -146,6 +146,7 @@ func newStandaloneEvaluator(ctx context.Context, fnConfig *FunctionsConfig, gqCo
 		vm.Release()
 		return nil, err
 	} else {
+		runner.SetContext(ctx)
 		eval, err := newEvaluator(runner, delegate, nil)
 		if err != nil {
 			vm.Release()
@@ -158,7 +159,7 @@ func newStandaloneEvaluator(ctx context.Context, fnConfig *FunctionsConfig, gqCo
 // Validates a FunctionsConfig & GraphQLConfig.
 func ValidateFunctions(ctx context.Context, fnConfig *FunctionsConfig, gqConfig *GraphQLConfig) error {
 	eval, err := newStandaloneEvaluator(ctx, fnConfig, gqConfig, &databaseDelegate{ctx: ctx})
-	if err == nil {
+	if err == nil && eval != nil {
 		eval.close()
 	}
 	return err
@@ -208,7 +209,7 @@ func (fn *functionImpl) Invoke(dbc *db.Database, args map[string]any, mutationAl
 		}
 	}
 
-	eval, err := makeEvaluator(dbc, delegate, delegate.user)
+	eval, err := makeEvaluator(dbc, delegate, delegate.user, ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -278,7 +279,7 @@ func (gq *graphQLImpl) QueryAsJSON(dbc *db.Database, query string, operationName
 		}
 	}
 
-	eval, err := makeEvaluator(dbc, delegate, delegate.user)
+	eval, err := makeEvaluator(dbc, delegate, delegate.user, ctx)
 	if err != nil {
 		return nil, err
 	}

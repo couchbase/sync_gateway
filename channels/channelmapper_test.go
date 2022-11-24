@@ -9,6 +9,7 @@
 package channels
 
 import (
+	"context"
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -43,12 +44,12 @@ func TestV8ValueToStringArray(t *testing.T) {
 	ctx := v8.NewContext(iso)
 	value, _ := v8.JSONParse(ctx, `["foo", "bar", "baz"]`)
 	// Test for https://github.com/robertkrimen/otto/issues/24
-	strings := v8ValueToStringArray(value)
+	strings := v8ValueToStringArray(value, context.Background())
 	assert.Equal(t, []string{"foo", "bar", "baz"}, strings)
 
 	// Test for https://issues.couchbase.com/browse/CBG-714
 	value, _ = v8.JSONParse(ctx, `["a", ["b", "g"], "c", 4]`)
-	strings = v8ValueToStringArray(value)
+	strings = v8ValueToStringArray(value, context.Background())
 	assert.Equal(t, []string{"a", "c"}, strings)
 }
 

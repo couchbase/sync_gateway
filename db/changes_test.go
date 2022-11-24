@@ -95,7 +95,7 @@ func TestChangesAfterChannelAdded(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache, base.KeyChanges)
 
-	db.ChannelMapper = channels.NewDefaultChannelMapper()
+	db.ChannelMapper = channels.NewDefaultChannelMapper(&db.V8VMs)
 
 	// Create a user with access to channel ABC
 	authenticator := db.Authenticator(base.TestCtx(t))
@@ -203,7 +203,7 @@ func TestDocDeletionFromChannelCoalescedRemoved(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 
-	db.ChannelMapper = channels.NewDefaultChannelMapper()
+	db.ChannelMapper = channels.NewDefaultChannelMapper(&db.V8VMs)
 
 	// Create a user with access to channel A
 	authenticator := db.Authenticator(base.TestCtx(t))
@@ -284,7 +284,7 @@ func TestDocDeletionFromChannelCoalesced(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 
-	db.ChannelMapper = channels.NewDefaultChannelMapper()
+	db.ChannelMapper = channels.NewDefaultChannelMapper(&db.V8VMs)
 
 	// Create a user with access to channel A
 	authenticator := db.Authenticator(base.TestCtx(t))

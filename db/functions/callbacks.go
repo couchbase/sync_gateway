@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"log"
 	"net/http"
 
 	"github.com/couchbase/gocb/v2"
@@ -26,7 +25,7 @@ type n1qlUserArgument struct {
 // The "real" implementation of EvaluatorDelegate.
 type databaseDelegate struct {
 	db   *db.Database     // The database (with user)
-	ctx  context.Context  // Context for logging, timeouts etc.
+	ctx  context.Context  // Context for timeouts etc.
 	user *userCredentials // User's info
 }
 
@@ -40,13 +39,6 @@ func (d *databaseDelegate) asAdmin() func() {
 
 func (d *databaseDelegate) checkTimeout() error {
 	return d.db.CheckTimeout(d.ctx)
-}
-
-func (d *databaseDelegate) log(level base.LogLevel, message string) {
-	if kAlwaysLog {
-		log.Printf("JS LOG: (%d) %s", level, message)
-	}
-	base.LogfTo(d.ctx, level, base.KeyJavascript, "%s", base.UD(message))
 }
 
 func (d *databaseDelegate) get(docID string, asAdmin bool) (doc map[string]any, err error) {

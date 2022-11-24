@@ -44,19 +44,13 @@ type ChannelMapperOutput struct {
 
 // The object that runs the sync function.
 type ChannelMapper struct {
-	vms     *js.VMPool
-	timeout time.Duration
+	vms         *js.VMPool
+	timeout     time.Duration
+	fnSource    string
+	serviceName string
 }
 
 const DefaultSyncFunction = `function(doc){channel(doc.channels);}`
-
-const kChannelMapperServiceName = "channelMapper"
-
-// The JavaScript code run by the SyncRunner; the sync fn is copied into it.
-// See wrappedFuncSource().
-//
-//go:embed sync_fn_wrapper.js
-var funcWrapper string
 
 // Creates a ChannelMapper.
 func NewChannelMapper(vms *js.VMPool, fnSource string, timeout time.Duration) *ChannelMapper {
@@ -64,8 +58,10 @@ func NewChannelMapper(vms *js.VMPool, fnSource string, timeout time.Duration) *C
 		return createChannelService(base, fnSource, timeout)
 	})
 	return &ChannelMapper{
-		vms:     vms,
-		timeout: timeout,
+		vms:         vms,
+		timeout:     timeout,
+		fnSource:    fnSource,
+		serviceName: kChannelMapperServiceName,
 	}
 }
 
@@ -82,6 +78,33 @@ func (cm *ChannelMapper) closeVMs() {
 // Creates a ChannelMapper with the default sync function. (Used by tests)
 func NewDefaultChannelMapper(vms *js.VMPool) *ChannelMapper {
 	return NewChannelMapper(vms, DefaultSyncFunction, time.Duration(base.DefaultJavascriptTimeoutSecs)*time.Second)
+}
+
+func (mapper *ChannelMapper) Function() string {
+	return mapper.fnSource
+}
+
+// This function is DEPRECATED. It's currently used in some tests that can't easily be changed.
+// Its current implementation is a kludge, and it shouldn't be used in production.
+func (mapper *ChannelMapper) SetFunction(fnSource string) error {
+	mapper.fnSource = fnSource
+	mapper.serviceName += "X"
+	mapper.vms.AddService(mapper.serviceName, func(base *js.BasicService) (js.Service, error) {
+		return createChannelService(base, fnSource, mapper.timeout)
+	})
+	return nil
+}
+
+// Runs the sync function. Thread-safe.
+func (mapper *ChannelMapper) MapToChannelsAndAccess(body map[string]interface{}, oldBodyJSON string, metaMap map[string]interface{}, userCtx map[string]interface{}) (*ChannelMapperOutput, error) {
+	result1, err := mapper.withSyncRunner(func(runner *syncRunner) (any, error) {
+		return runner.call(body, oldBodyJSON, metaMap, userCtx)
+	})
+	if err != nil {
+		return nil, err
+	}
+	output := result1.(*ChannelMapperOutput)
+	return output, nil
 }
 
 // Creates a js.Service instance for a ChannelMapper;
@@ -109,11 +132,11 @@ func createChannelService(base *js.BasicService, fnSource string, timeout time.D
 }
 
 func (mapper *ChannelMapper) withSyncRunner(fn func(*syncRunner) (any, error)) (any, error) {
-	return mapper.vms.WithRunner(kChannelMapperServiceName, func(jsRunner *js.Runner) (any, error) {
+	return mapper.vms.WithRunner(mapper.serviceName, func(jsRunner *js.Runner) (any, error) {
 		var runner *syncRunner
 		if jsRunner.Client == nil {
 			runner = &syncRunner{
-				jsRunner: jsRunner,
+				Runner: jsRunner,
 			}
 			jsRunner.Client = runner
 		} else {
@@ -121,18 +144,6 @@ func (mapper *ChannelMapper) withSyncRunner(fn func(*syncRunner) (any, error)) (
 		}
 		return fn(runner)
 	})
-}
-
-// Runs the sync function. Thread-safe.
-func (mapper *ChannelMapper) MapToChannelsAndAccess(body map[string]interface{}, oldBodyJSON string, metaMap map[string]interface{}, userCtx map[string]interface{}) (*ChannelMapperOutput, error) {
-	result1, err := mapper.withSyncRunner(func(runner *syncRunner) (any, error) {
-		return runner.call(body, oldBodyJSON, metaMap, userCtx)
-	})
-	if err != nil {
-		return nil, err
-	}
-	output := result1.(*ChannelMapperOutput)
-	return output, nil
 }
 
 func wrappedFuncSource(funcSource string) string {
@@ -145,3 +156,11 @@ func wrappedFuncSource(funcSource string) string {
 		base.SyncFnErrorMissingChannelAccess,
 	)
 }
+
+const kChannelMapperServiceName = "channelMapper"
+
+// The JavaScript code run by the SyncRunner; the sync fn is copied into it.
+// See wrappedFuncSource().
+//
+//go:embed sync_fn_wrapper.js
+var funcWrapper string

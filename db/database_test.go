@@ -800,7 +800,7 @@ func TestAllDocsOnly(t *testing.T) {
 	db, ctx := setupTestDBWithCacheOptions(t, cacheOptions)
 	defer db.Close(ctx)
 
-	db.ChannelMapper = channels.NewDefaultChannelMapper()
+	db.ChannelMapper = channels.NewDefaultChannelMapper(&db.V8VMs)
 
 	// Trigger creation of the channel cache for channel "all"
 	db.changeCache.getChannelCache().getSingleChannelCache("all")
@@ -906,7 +906,7 @@ func TestUpdatePrincipal(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 
-	db.ChannelMapper = channels.NewDefaultChannelMapper()
+	db.ChannelMapper = channels.NewDefaultChannelMapper(&db.V8VMs)
 
 	// Create a user with access to channel ABC
 	authenticator := db.Authenticator(ctx)
@@ -974,7 +974,7 @@ func TestConflicts(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 
-	db.ChannelMapper = channels.NewDefaultChannelMapper()
+	db.ChannelMapper = channels.NewDefaultChannelMapper(&db.V8VMs)
 
 	// Instantiate channel cache for channel 'all'
 	db.changeCache.getChannelCache().getSingleChannelCache("all")
@@ -1330,7 +1330,7 @@ func TestSyncFnOnPush(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 
-	db.ChannelMapper = channels.NewChannelMapper(`function(doc, oldDoc) {
+	db.ChannelMapper = channels.NewChannelMapper(&db.V8VMs, `function(doc, oldDoc) {
 		log("doc _id = "+doc._id+", _rev = "+doc._rev);
 		if (oldDoc)
 			log("oldDoc _id = "+oldDoc._id+", _rev = "+oldDoc._rev);
@@ -1368,7 +1368,7 @@ func TestInvalidChannel(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 
-	db.ChannelMapper = channels.NewDefaultChannelMapper()
+	db.ChannelMapper = channels.NewDefaultChannelMapper(&db.V8VMs)
 
 	body := Body{"channels": []string{"bad,name"}}
 	_, _, err := db.Put(ctx, "doc", body)
@@ -1381,7 +1381,7 @@ func TestAccessFunctionValidation(t *testing.T) {
 	defer db.Close(ctx)
 
 	var err error
-	db.ChannelMapper = channels.NewChannelMapper(`function(doc){access(doc.users,doc.userChannels);}`, 0)
+	db.ChannelMapper = channels.NewChannelMapper(&db.V8VMs, `function(doc){access(doc.users,doc.userChannels);}`, 0)
 
 	body := Body{"users": []string{"username"}, "userChannels": []string{"BBC1"}}
 	_, _, err = db.Put(ctx, "doc1", body)
@@ -1416,7 +1416,7 @@ func TestAccessFunctionDb(t *testing.T) {
 	authenticator := auth.NewAuthenticator(db.Bucket, db, auth.DefaultAuthenticatorOptions())
 
 	var err error
-	db.ChannelMapper = channels.NewChannelMapper(`function(doc){access(doc.users,doc.userChannels);}`, 0)
+	db.ChannelMapper = channels.NewChannelMapper(&db.V8VMs, `function(doc){access(doc.users,doc.userChannels);}`, 0)
 
 	user, _ := authenticator.NewUser("naomi", "letmein", channels.SetOf(t, "Netflix"))
 	user.SetExplicitRoles(channels.TimedSet{"animefan": channels.NewVbSimpleSequence(1), "tumblr": channels.NewVbSimpleSequence(1)}, 1)
@@ -1973,7 +1973,7 @@ func TestSyncFnMutateBody(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 
-	db.ChannelMapper = channels.NewChannelMapper(`function(doc, oldDoc) {
+	db.ChannelMapper = channels.NewChannelMapper(&db.V8VMs, `function(doc, oldDoc) {
 		doc.key1 = "mutatedValue"
 		doc.key2.subkey1 = "mutatedSubValue"
 		channel(doc.channels);
@@ -2468,7 +2468,7 @@ func TestGetAllUsers(t *testing.T) {
 	db.Options.QueryPaginationLimit = 100
 	defer db.Close(ctx)
 
-	db.ChannelMapper = channels.NewDefaultChannelMapper()
+	db.ChannelMapper = channels.NewDefaultChannelMapper(&db.V8VMs)
 
 	log.Printf("Creating users...")
 	// Create users
@@ -2505,7 +2505,7 @@ func TestGetRoleIDs(t *testing.T) {
 	defer db.Close(ctx)
 
 	db.Options.QueryPaginationLimit = 100
-	db.ChannelMapper = channels.NewDefaultChannelMapper()
+	db.ChannelMapper = channels.NewDefaultChannelMapper(&db.V8VMs)
 	authenticator := db.Authenticator(ctx)
 
 	rolename1 := uuid.NewString()

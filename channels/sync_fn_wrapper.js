@@ -3,6 +3,8 @@
 		var realUserCtx, shouldValidate;
 		var syncFn = %s;
 
+		let log = console.log;
+
 		function makeArray(maybeArray) {
 			if (Array.isArray(maybeArray)) {
 				return maybeArray;
@@ -57,6 +59,7 @@
 					throw({forbidden: "%s"});
 		}
 
+		// This is the function that's called to run the sync function:
 		return function (newDoc, oldDoc, meta, _realUserCtx) {
 			realUserCtx = _realUserCtx;
 

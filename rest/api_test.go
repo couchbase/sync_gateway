@@ -2832,6 +2832,7 @@ func TestSyncFnDocBodyPropertiesSwitchActiveTombstone(t *testing.T) {
 	RequireStatus(t, resp, 200)
 
 	numErrorsBefore, err := strconv.Atoi(base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().ErrorCount.String())
+	log.Printf("*** numErrorsBefore = %d", numErrorsBefore) //TEMP
 	assert.NoError(t, err)
 	// tombstone at 3-b
 	resp = rt.SendAdminRequest("DELETE", "/db/"+testDocID+"?rev="+rev2bID, `{}`)
@@ -2839,6 +2840,7 @@ func TestSyncFnDocBodyPropertiesSwitchActiveTombstone(t *testing.T) {
 
 	numErrorsAfter, err := strconv.Atoi(base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().ErrorCount.String())
 	assert.NoError(t, err)
+	log.Printf("*** numErrorsAfter = %d", numErrorsAfter) //TEMP
 
 	assert.Equal(t, 1, numErrorsAfter-numErrorsBefore, "expecting to see only only 1 error logged")
 }
@@ -6602,22 +6604,22 @@ func (tester *ChannelRevocationTester) getChanges(sinceSeq interface{}, expected
 func InitScenario(t *testing.T, rtConfig *RestTesterConfig) (ChannelRevocationTester, *RestTester) {
 	defaultSyncFn := `
 			function (doc, oldDoc){
-				if (doc._id === 'userRoles'){				
+				if (doc._id === 'userRoles'){
 					for (var key in doc.roles){
 						role(key, doc.roles[key]);
 					}
 				}
-				if (doc._id === 'roleChannels'){				
+				if (doc._id === 'roleChannels'){
 					for (var key in doc.channels){
 						access(key, doc.channels[key]);
 					}
 				}
-				if (doc._id === 'userChannels'){				
+				if (doc._id === 'userChannels'){
 					for (var key in doc.channels){
 						access(key, doc.channels[key]);
 					}
 				}
-				if (doc._id.indexOf("doc") >= 0){				
+				if (doc._id.indexOf("doc") >= 0){
 					channel(doc.channels);
 				}
 			}`
@@ -7998,7 +8000,7 @@ func TestRevocationWithUserXattrs(t *testing.T) {
 						access(key, meta.xattrs.channelInfo.userChannels[key]);
 					}
 				}
-				if (doc._id.indexOf("doc") >= 0){				
+				if (doc._id.indexOf("doc") >= 0){
 					channel(doc.channels);
 				}
 			}`,

@@ -18,7 +18,6 @@ export interface NativeAPI {
     delete(docID: string,
            revID: string | undefined,
            asAdmin: boolean) : boolean;
-    log(sgLogLevel: number, ...args: any) : void;
 }
 
 
@@ -64,11 +63,6 @@ export class API {
      *  Should not throw exceptions, but sets the `errors` property if config is invalid.
      */
     constructor(configJSON: string, native: NativeAPI) {
-        console.debug = (...args: any) => native.log(4, ...args);
-        console.log   = (...args: any) => native.log(3, ...args);
-        console.warn  = (...args: any) => native.log(2, ...args);
-        console.error = (...args: any) => native.log(1, ...args);
-
         let config = JSON.parse(configJSON) as Config;
         let [db, errors] = MakeDatabase(config.functions, config.graphql,
                                         new UpstreamNativeImpl(native));

@@ -11,15 +11,16 @@ import (
 // v8go docs:			https://pkg.go.dev/rogchap.com/v8go
 // General V8 API docs: https://v8.dev/docs/embed
 
-// Top-level object that represents a V8 JavaScript VM (aka "Isolate".)
-// This doesn't do much on its own; execution in V8 occurs in "Contexts" within an Isolate
-// which are sandboxes with their own globals that can't interact with each other.
+// Top-level object that represents a JavaScript VM, an "Isolate" in V8 terminology.
+// This doesn't do much on its own; it acts as a container for Service objects that hold
+// pre-initialized JS code and objects for a particular service such as the ChannelMapper
+// or the GraphQL engine.
 //
-// **Not thread-safe!** Methods of a VM must be called only on one goroutine at a time.
-// The VMPool takes care of this by vending VM instances that are known not to be in use.
+// **Not thread-safe!** A VM instance must be used only on one goroutine at a time.
+// The VMPool takes care of this, by vending VM instances that are known not to be in use.
 type VM struct {
 	iso          *v8.Isolate           // A V8 virtual machine. NOT THREAD SAFE.
-	underscore   *v8.UnboundScript     // Precompiled Underscore.js library
+	setupScript  *v8.UnboundScript     // JS code to set up a new v8.Context
 	config       ServicesConfiguration // Factory for services
 	services     map[string]Service    // Available services
 	runners      map[string]*Runner    // Available runners
@@ -27,12 +28,8 @@ type VM struct {
 	returnToPool *VMPool               // Pool to return this to, or nil
 }
 
+// The factory functions for all services known to a VM.
 type ServicesConfiguration map[string]ServiceFactory
-
-// The Underscore.js utility library <https://underscorejs.org>
-//
-//go:embed underscore-umd.js
-var underscoreJS string
 
 // Creates an Environment that can run a set of Services.
 func NewVM(services ServicesConfiguration) *VM {
@@ -44,7 +41,8 @@ func NewVM(services ServicesConfiguration) *VM {
 	}
 }
 
-// Call this when finished using a VM. Returns it to the VMPool it came from, or else closes it.
+// Must be called when finished using a VM!
+// Returns it to the VMPool it came from, or else closes it.
 func (vm *VM) Release() {
 	if vm.returnToPool != nil {
 		vm.returnToPool.returnVM(vm)
@@ -68,12 +66,12 @@ func (vm *VM) getService(serviceName string) (Service, error) {
 		}
 
 		// Compile Underscore.js if it's not already done:
-		if vm.underscore == nil {
-			// Include the Underscore.js library:
+		if vm.setupScript == nil {
+			// The setup script points console logging to SG, and loads the Underscore.js library:
 			var err error
-			vm.underscore, err = vm.iso.CompileUnboundScript(underscoreJS, "underscore-umd.js", v8.CompileOptions{})
+			vm.setupScript, err = vm.iso.CompileUnboundScript(kSetupLoggingJS+kUnderscoreJS, "setupScript.js", v8.CompileOptions{})
 			if err != nil {
-				return nil, errors.Wrapf(err, "Couldn't compile underscore.js: %w", err)
+				return nil, errors.Wrapf(err, "Couldn't compile setup script")
 			}
 		}
 
@@ -82,10 +80,11 @@ func (vm *VM) getService(serviceName string) (Service, error) {
 			vm:     vm,
 			global: v8.NewObjectTemplate(vm.iso),
 		}
+		base.defineConsole() // Maybe make this optional?
 		var err error
 		service, err = factory(base)
 		if err != nil {
-			return nil, errors.Wrapf(err, "Failed to initialize JS service %q: %w", serviceName, err)
+			return nil, errors.Wrapf(err, "failed to initialize JS service %q", serviceName)
 		} else if service == nil {
 			return nil, fmt.Errorf("js.ServiceFactory %q returned nil", serviceName)
 		} else if service.Script() == nil {
@@ -117,6 +116,7 @@ func (vm *VM) GetRunner(serviceName string) (*Runner, error) {
 // Called by Runner.Return; either closes its V8 resources or saves it for reuse.
 // Also returns the VM to its Pool (or closes it.)
 func (vm *VM) returnRunner(r *Runner) {
+	r.goContext = nil
 	if vm.curRunner == r {
 		vm.curRunner = nil
 	} else if r.vm != vm {
@@ -144,7 +144,10 @@ func (vm *VM) currentRunner(ctx *v8.Context) *Runner {
 	return vm.curRunner
 }
 
+//////// V8 UTILITIES:
+
 // Wraps a Go function in a V8 function template.
+// The function object instantiated from this template will call the Go function.
 func (vm *VM) NewCallback(callback ServiceCallback) *v8.FunctionTemplate {
 	return v8.NewFunctionTemplate(vm.iso, func(info *v8.FunctionCallbackInfo) *v8.Value {
 		c := vm.currentRunner(info.Context())
@@ -168,26 +171,41 @@ func (vm *VM) NewCallback(callback ServiceCallback) *v8.FunctionTemplate {
 	})
 }
 
+// Creates a template for a new empty JS object.
 func (vm *VM) NewObjectTemplate() *v8.ObjectTemplate { return v8.NewObjectTemplate(vm.iso) }
-func (vm *VM) NewString(str string) *v8.Value        { return mustSucceed(v8.NewValue(vm.iso, str)) }
 
-// Converts a Go value to a v8.Value. Must be a number, string, bool or nil.
+// Creates a JS string value.
+func (vm *VM) NewString(str string) *v8.Value { return mustSucceed(v8.NewValue(vm.iso, str)) }
+
+// Creates a v8.Value from a Go number, string, bool or nil.
+// As a convenience, also accepts `*v8.Value` and `*v8.Object` and passes them through.
 func (vm *VM) NewValue(val any) (*v8.Value, error) {
-	if val != nil {
-		return v8.NewValue(vm.iso, val)
-	} else {
+	if val == nil {
 		return v8.Undefined(vm.iso), nil
 	}
+	v8val, err := v8.NewValue(vm.iso, val)
+	if err != nil {
+		// v8.NewValue rejects the types `*v8.Value` and `*v8.Object`, which seems odd. Handle them:
+		switch val := val.(type) {
+		case *v8.Value:
+			return val, nil
+		case *v8.Object:
+			return val.Value, nil
+		}
+	}
+	return v8val, err
 }
 
-// Converts a Go value or a v8.Value or v8.Object to a v8.Value
-func (vm *VM) AsValue(val any) (*v8.Value, error) {
-	switch val := val.(type) {
-	case *v8.Value:
-		return val, nil
-	case *v8.Object:
-		return val.Value, nil
-	default:
-		return vm.NewValue(val)
-	}
-}
+// The Underscore.js utility library, version 1.13.6, downloaded 2022-Nov-23 from
+// <https://underscorejs.org/underscore-umd-min.js>
+//
+//go:embed underscore-umd-min.js
+var kUnderscoreJS string
+
+const kSetupLoggingJS = `
+	console.trace = function(...args) {sg_log(5, ...args);};
+	console.debug = function(...args) {sg_log(4, ...args);};
+	console.log   = function(...args) {sg_log(3, ...args);};
+	console.warn  = function(...args) {sg_log(2, ...args);};
+	console.error = function(...args) {sg_log(1, ...args);};
+`

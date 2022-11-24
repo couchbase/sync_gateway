@@ -254,7 +254,7 @@ func TestLateSequenceErrorRecovery(t *testing.T) {
 
 	db, ctx := setupTestDBWithCacheOptions(t, shortWaitCache())
 	defer db.Close(ctx)
-	db.ChannelMapper = channels.NewDefaultChannelMapper()
+	db.ChannelMapper = channels.NewDefaultChannelMapper(&db.V8VMs)
 
 	// Create a user with access to channel ABC
 	authenticator := db.Authenticator(ctx)
@@ -376,7 +376,7 @@ func TestLateSequenceHandlingDuringCompact(t *testing.T) {
 	db, ctx := setupTestDBWithCacheOptions(t, cacheOptions)
 	defer db.Close(ctx)
 
-	db.ChannelMapper = channels.NewDefaultChannelMapper()
+	db.ChannelMapper = channels.NewDefaultChannelMapper(&db.V8VMs)
 
 	caughtUpStart := db.DbStats.CBLReplicationPull().NumPullReplCaughtUp.Value()
 
@@ -551,7 +551,7 @@ func TestChannelCacheBufferingWithUserDoc(t *testing.T) {
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	db.ChannelMapper = channels.NewDefaultChannelMapper()
+	db.ChannelMapper = channels.NewDefaultChannelMapper(&db.V8VMs)
 
 	// Simulate seq 1 (user doc) being delayed - write 2 first
 	WriteDirect(db, []string{"ABC"}, 2)
@@ -589,7 +589,7 @@ func TestChannelCacheBackfill(t *testing.T) {
 
 	db, ctx := setupTestDBWithCacheOptions(t, shortWaitCache())
 	defer db.Close(ctx)
-	db.ChannelMapper = channels.NewDefaultChannelMapper()
+	db.ChannelMapper = channels.NewDefaultChannelMapper(&db.V8VMs)
 
 	// Create a user with access to channel ABC
 	authenticator := db.Authenticator(ctx)
@@ -655,7 +655,7 @@ func TestContinuousChangesBackfill(t *testing.T) {
 	db, ctx := setupTestDBWithCacheOptions(t, shortWaitCache())
 	defer db.Close(ctx)
 
-	db.ChannelMapper = channels.NewDefaultChannelMapper()
+	db.ChannelMapper = channels.NewDefaultChannelMapper(&db.V8VMs)
 
 	// Create a user with access to channel ABC
 	authenticator := db.Authenticator(ctx)
@@ -756,7 +756,7 @@ func TestLowSequenceHandling(t *testing.T) {
 	db, ctx := setupTestDBWithCacheOptions(t, shortWaitCache())
 	defer db.Close(ctx)
 
-	db.ChannelMapper = channels.NewDefaultChannelMapper()
+	db.ChannelMapper = channels.NewDefaultChannelMapper(&db.V8VMs)
 
 	// Create a user with access to channel ABC
 	authenticator := db.Authenticator(ctx)
@@ -822,7 +822,7 @@ func TestLowSequenceHandlingAcrossChannels(t *testing.T) {
 	db, ctx := setupTestDBWithCacheOptions(t, shortWaitCache())
 	defer db.Close(ctx)
 
-	db.ChannelMapper = channels.NewDefaultChannelMapper()
+	db.ChannelMapper = channels.NewDefaultChannelMapper(&db.V8VMs)
 
 	// Create a user with access to channel ABC
 	authenticator := db.Authenticator(ctx)
@@ -876,7 +876,7 @@ func TestLowSequenceHandlingWithAccessGrant(t *testing.T) {
 	db, ctx := setupTestDBWithCacheOptions(t, shortWaitCache())
 	defer db.Close(ctx)
 
-	db.ChannelMapper = channels.NewDefaultChannelMapper()
+	db.ChannelMapper = channels.NewDefaultChannelMapper(&db.V8VMs)
 
 	// Create a user with access to channel ABC
 	authenticator := db.Authenticator(ctx)
@@ -983,7 +983,7 @@ func TestChannelQueryCancellation(t *testing.T) {
 	}
 
 	db, ctx := setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), queryCallbackConfig)
-	db.ChannelMapper = channels.NewDefaultChannelMapper()
+	db.ChannelMapper = channels.NewDefaultChannelMapper(&db.V8VMs)
 	defer db.Close(ctx)
 
 	// Write a handful of docs/sequences to the bucket
@@ -1079,7 +1079,7 @@ func TestLowSequenceHandlingNoDuplicates(t *testing.T) {
 	db, ctx := setupTestDBWithCacheOptions(t, shortWaitCache())
 	defer db.Close(ctx)
 
-	db.ChannelMapper = channels.NewDefaultChannelMapper()
+	db.ChannelMapper = channels.NewDefaultChannelMapper(&db.V8VMs)
 
 	// Create a user with access to channel ABC
 	authenticator := db.Authenticator(ctx)
@@ -1175,7 +1175,7 @@ func TestChannelRace(t *testing.T) {
 	db, ctx := setupTestDBWithCacheOptions(t, shortWaitCache())
 	defer db.Close(ctx)
 
-	db.ChannelMapper = channels.NewDefaultChannelMapper()
+	db.ChannelMapper = channels.NewDefaultChannelMapper(&db.V8VMs)
 
 	// Create a user with access to channels "Odd", "Even"
 	authenticator := db.Authenticator(ctx)
@@ -1280,7 +1280,7 @@ func TestSkippedViewRetrieval(t *testing.T) {
 	}
 	db, ctx := setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), leakyConfig)
 	defer db.Close(ctx)
-	db.ChannelMapper = channels.NewDefaultChannelMapper()
+	db.ChannelMapper = channels.NewDefaultChannelMapper(&db.V8VMs)
 
 	// Allow db to initialize and run initial CleanSkippedSequenceQueue
 	time.Sleep(10 * time.Millisecond)
@@ -1384,7 +1384,7 @@ func TestChannelCacheSize(t *testing.T) {
 	db, ctx := setupTestDBWithCacheOptions(t, options)
 	defer db.Close(ctx)
 
-	db.ChannelMapper = channels.NewDefaultChannelMapper()
+	db.ChannelMapper = channels.NewDefaultChannelMapper(&db.V8VMs)
 
 	// Create a user with access to channel ABC
 	authenticator := db.Authenticator(ctx)
@@ -1687,7 +1687,7 @@ func TestInitializeEmptyCache(t *testing.T) {
 
 	db, ctx := setupTestDBWithCacheOptions(t, cacheOptions)
 	defer db.Close(ctx)
-	db.ChannelMapper = channels.NewDefaultChannelMapper()
+	db.ChannelMapper = channels.NewDefaultChannelMapper(&db.V8VMs)
 
 	cacheWaiter := db.NewDCPCachingCountWaiter(t)
 	docCount := 0
@@ -1738,7 +1738,7 @@ func TestInitializeCacheUnderLoad(t *testing.T) {
 
 	db, ctx := setupTestDBWithCacheOptions(t, cacheOptions)
 	defer db.Close(ctx)
-	db.ChannelMapper = channels.NewDefaultChannelMapper()
+	db.ChannelMapper = channels.NewDefaultChannelMapper(&db.V8VMs)
 
 	// Writes [docCount] documents.  Use wait group (writesDone)to identify when all docs have been written.
 	// Use another waitGroup (writesInProgress) to trigger getChanges midway through writes
@@ -1858,7 +1858,7 @@ func TestChangeCache_InsertPendingEntries(t *testing.T) {
 	db, ctx := setupTestDBWithCacheOptions(t, cacheOptions)
 	defer db.Close(ctx)
 
-	db.ChannelMapper = channels.NewDefaultChannelMapper()
+	db.ChannelMapper = channels.NewDefaultChannelMapper(&db.V8VMs)
 
 	// Create a user with access to some channels
 	authenticator := db.Authenticator(ctx)

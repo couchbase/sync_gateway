@@ -1385,7 +1385,7 @@ func (dbCtx *DatabaseContext) UpdateSyncFun(ctx context.Context, syncFun string)
 	if syncFun == "" {
 		dbCtx.ChannelMapper = nil
 	} else if dbCtx.ChannelMapper != nil {
-		_, err = dbCtx.ChannelMapper.SetFunction(syncFun)
+		err = dbCtx.ChannelMapper.SetFunction(syncFun)
 	} else {
 		dbCtx.ChannelMapper = channels.NewChannelMapper(&dbCtx.V8VMs, syncFun, dbCtx.Options.JavascriptTimeout)
 	}

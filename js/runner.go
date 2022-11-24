@@ -1,8 +1,11 @@
 package js
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"log"
+	"time"
 
 	"github.com/pkg/errors"
 	v8 "rogchap.com/v8go" // Docs: https://pkg.go.dev/rogchap.com/v8go
@@ -13,21 +16,23 @@ import (
 // **NOTE:** The current implementation allows for only one Runner on a VM at once.
 // **Not thread-safe! Must be called only on one goroutine at a time. In fact, all Evaluators created from the same VM must be called only one one goroutine.**
 type Runner struct {
-	service      Service      // The Service I'm created from
-	vm           *VM          // The owning VM object
-	ctx          *v8.Context  // V8 object managing this execution context
-	mainFn       *v8.Function // The entry-point function (returned by the Service's script)
-	Client       any          // You can put whatever you want here, to point back to your state
-	CheckTimeout func() error // Optional function, called to detect timeouts
+	service   Service         // The Service I'm created from
+	vm        *VM             // The owning VM object
+	ctx       *v8.Context     // V8 object managing this execution context
+	mainFn    *v8.Function    // The entry-point function (returned by the Service's script)
+	goContext context.Context // Context value for use by Go callbacks
+	Client    any             // You can put whatever you want here, to point back to your state
 }
 
 // Creates a Runner on a Service
 func newRunner(vm *VM, service Service) (*Runner, error) {
-	// Create a V8 Context and run the script in it, returning the JS `main` function:
+	// Create a V8 Context and run the setup script in it
 	ctx := v8.NewContext(vm.iso, service.Global())
-	if _, err := vm.underscore.Run(ctx); err != nil {
+	if _, err := vm.setupScript.Run(ctx); err != nil {
 		return nil, errors.Wrap(err, "js.Runner failed to initialize underscore.js library")
 	}
+
+	// Now run the service's script, which returns the service's main function:
 	result, err := service.Script().Run(ctx)
 	if err != nil {
 		ctx.Close()
@@ -39,13 +44,12 @@ func newRunner(vm *VM, service Service) (*Runner, error) {
 		return nil, err
 	}
 
-	runner := &Runner{
+	return &Runner{
 		service: service,
 		vm:      vm,
 		ctx:     ctx,
 		mainFn:  mainFn,
-	}
-	return runner, nil
+	}, nil
 }
 
 // Always call this when finished with a Runner.
@@ -61,6 +65,21 @@ func (r *Runner) close() {
 	r.ctx.Close()
 	r.ctx = nil
 	r.vm = nil
+}
+
+// Associates a Context value with this Runner, for use by callbacks.
+func (r *Runner) SetContext(ctx context.Context) { r.goContext = ctx }
+
+// Returns the Context associated with this Runner.
+func (r *Runner) Context() context.Context { return r.goContext }
+
+// Returns the Context associated with this Runner, else `context.TODO()`
+func (r *Runner) ContextOrDefault() context.Context {
+	if r.goContext != nil {
+		return r.goContext
+	} else {
+		return context.TODO()
+	}
 }
 
 // Runs the Service's script, returning the result as a V8 Value.
@@ -95,6 +114,7 @@ func (r *Runner) GoToV8(val any) (*v8.Value, error) {
 	if err != nil {
 		return nil, err
 	}
+	log.Printf("*** GoToV8: %s", j) //TEMP
 	return r.JSONParse(string(j))
 }
 
@@ -112,6 +132,7 @@ func (r *Runner) ResolvePromise(val *v8.Value, err error) (*v8.Value, error) {
 	if !val.IsPromise() {
 		return val, nil
 	}
+	deadline, hasDeadline := r.ContextOrDefault().Deadline()
 	for {
 		switch p, _ := val.AsPromise(); p.State() {
 		case v8.Fulfilled:
@@ -125,10 +146,8 @@ func (r *Runner) ResolvePromise(val *v8.Value, err error) (*v8.Value, error) {
 			return nil, err
 		case v8.Pending:
 			r.ctx.PerformMicrotaskCheckpoint() // run VM to make progress on the promise
-			if r.CheckTimeout != nil {
-				if err := r.CheckTimeout(); err != nil {
-					return nil, err
-				}
+			if hasDeadline && time.Now().After(deadline) {
+				return nil, context.DeadlineExceeded
 			}
 			// go round the loop again...
 		default:

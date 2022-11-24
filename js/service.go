@@ -1,6 +1,7 @@
 package js
 
 import (
+	"github.com/couchbase/sync_gateway/base"
 	v8 "rogchap.com/v8go"
 )
 
@@ -22,7 +23,7 @@ type Service interface {
 type ServiceFactory func(base *BasicService) (Service, error)
 
 // Base implementation of Service.
-// "Subclasses" can be created by embedding this in anothe struct.
+// "Subclasses" can be created by embedding this in another struct.
 type BasicService struct {
 	name   string
 	vm     *VM
@@ -41,6 +42,28 @@ func (service *BasicService) SetScript(sourceCode string) error {
 	var err error
 	service.script, err = service.vm.iso.CompileUnboundScript(sourceCode, service.name+".js", v8.CompileOptions{})
 	return err
+}
+
+// Defines a global `sg_log` function that writes to SG's log.
+func (service *BasicService) defineConsole() {
+	service.global.Set("sg_log", service.NewCallback(func(r *Runner, info *v8.FunctionCallbackInfo) (any, error) {
+		args := info.Args()
+		if len(args) >= 2 {
+			level := base.LogLevel(args[0].Integer())
+			msg := args[1].String()
+			extra := ""
+			for i := 2; i < len(args); i++ {
+				extra += " "
+				extra += args[i].DetailString()
+			}
+			key := base.KeyJavascript
+			if level <= base.LevelWarn {
+				key = base.KeyAll // replicates behavior of base.WarnFctx, ErrorFctx
+			}
+			base.LogfTo(r.ContextOrDefault(), level, key, "%s%s", msg, base.UD(extra))
+		}
+		return nil, nil
+	}))
 }
 
 func (s *BasicService) NewObjectTemplate() *v8.ObjectTemplate { return s.vm.NewObjectTemplate() }

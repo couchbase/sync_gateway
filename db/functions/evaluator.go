@@ -1,6 +1,7 @@
 package functions
 
 import (
+	"context"
 	_ "embed"
 	"encoding/json"
 	"fmt"
@@ -50,7 +51,6 @@ func makeService(functions *FunctionsConfig, graphql *GraphQLConfig) js.ServiceF
 		upstream.Set("get", base.NewCallback(doGet))
 		upstream.Set("save", base.NewCallback(doSave))
 		upstream.Set("delete", base.NewCallback(doDelete))
-		upstream.Set("log", base.NewCallback(doLog))
 
 		// Create a JS string of the configuration JSON:
 		jsonConfig := mustSucceed(json.Marshal(jsConfig{Functions: functions, GraphQL: graphql}))
@@ -84,9 +84,6 @@ type evaluatorDelegate interface {
 	// Return an error if evaluation has gone on too long.
 	checkTimeout() error
 
-	// Log a message
-	log(level base.LogLevel, message string)
-
 	// Perform a N1QL query.
 	query(fnName string, n1ql string, args map[string]any, asAdmin bool) (rowsAsJSON string, err error)
 
@@ -105,10 +102,13 @@ type userCredentials struct {
 	Channels []string
 }
 
-func makeEvaluator(dbc *db.Database, delegate evaluatorDelegate, user *userCredentials) (*evaluator, error) {
-	if runner, err := dbc.V8VMs.GetRunner("functions"); err != nil {
+func makeEvaluator(dbc *db.Database, delegate evaluatorDelegate, user *userCredentials, ctx context.Context) (*evaluator, error) {
+	runner, err := dbc.V8VMs.GetRunner("functions")
+	if err != nil {
 		return nil, err
-	} else if e, ok := runner.Client.(*evaluator); ok {
+	}
+	runner.SetContext(ctx)
+	if e, ok := runner.Client.(*evaluator); ok {
 		return e, nil // Reuse existing evaluator
 	} else {
 		return newEvaluator(runner, delegate, user)
@@ -123,7 +123,6 @@ func newEvaluator(runner *js.Runner, delegate evaluatorDelegate, user *userCrede
 		user:     user,
 	}
 	runner.Client = eval
-	runner.CheckTimeout = eval.delegate.checkTimeout
 
 	// Call the JS initialization code, passing it the configuration and the Upstream.
 	// This returns the JS `API` object.
@@ -291,22 +290,6 @@ func doDelete(r *js.Runner, info *v8.FunctionCallbackInfo) (any, error) {
 	asAdmin := info.Args()[2].Boolean()
 	eval := r.Client.(*evaluator)
 	return eval.delegate.delete(docID, revID, asAdmin)
-}
-
-//  log(sgLogLevel: number, ...args: string[])
-func doLog(r *js.Runner, info *v8.FunctionCallbackInfo) (any, error) {
-	var level base.LogLevel
-	var message []string
-	for i, arg := range info.Args() {
-		if i == 0 {
-			level = base.LogLevel(arg.Integer())
-		} else {
-			message = append(message, arg.DetailString())
-		}
-	}
-	eval := r.Client.(*evaluator)
-	eval.delegate.log(level, strings.Join(message, " "))
-	return nil, nil
 }
 
 //////// UTILITIES
