@@ -1035,7 +1035,7 @@ func TestChannelQueryCancellation(t *testing.T) {
 	require.NoError(t, collection.changeCache.waitForSequence(ctx, 4, base.DefaultWaitForSequence))
 
 	// Flush the cache, to ensure view query on subsequent changes requests
-	//require.NoError(t, db.FlushChannelCache(ctx))
+	// require.NoError(t, db.FlushChannelCache(ctx))
 
 	// Issue two one-shot since=0 changes request.  Both will attempt a view query.  The first will block based on queryWg,
 	// the second will block waiting for the view lock
@@ -1893,11 +1893,13 @@ func TestMaxChannelCacheConfig(t *testing.T) {
 	channelCacheMaxChannels := []int{10, 50000, 100000}
 
 	for _, val := range channelCacheMaxChannels {
-		options := DefaultCacheOptions()
-		options.ChannelCacheOptions.MaxNumChannels = val
-		db, ctx := setupTestDBWithCacheOptions(t, options)
-		assert.Equal(t, val, db.DatabaseContext.Options.CacheOptions.MaxNumChannels)
-		defer db.Close(ctx)
+		t.Run(fmt.Sprintf("TestMaxChannelCacheConfig-%d", val), func(t *testing.T) {
+			options := DefaultCacheOptions()
+			options.ChannelCacheOptions.MaxNumChannels = val
+			db, ctx := setupTestDBWithCacheOptions(t, options)
+			assert.Equal(t, val, db.DatabaseContext.Options.CacheOptions.MaxNumChannels)
+			defer db.Close(ctx)
+		})
 	}
 }
 

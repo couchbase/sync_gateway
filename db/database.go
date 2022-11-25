@@ -359,10 +359,11 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 	}
 
 	dbContext := &DatabaseContext{
-		Name:           dbName,
-		UUID:           cbgt.NewUUID(),
-		MetadataStore:  metadataStore,
-		Bucket:         bucket,
+		Name:          dbName,
+		UUID:          cbgt.NewUUID(),
+		MetadataStore: metadataStore,
+		Bucket:        bucket,
+		// BucketSpec:     bucketSpec, // TODO: Set BucketSpec?
 		StartTime:      time.Now(),
 		autoImport:     autoImport,
 		Options:        options,

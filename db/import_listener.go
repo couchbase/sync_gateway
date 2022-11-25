@@ -64,9 +64,9 @@ func (il *importListener) StartImportFeed(ctx context.Context, bucket base.Bucke
 	}
 
 	if !dbContext.onlyDefaultCollection() {
-		gocbv2Bucket, ok := bucket.(*base.GocbV2Bucket)
-		if !ok {
-			return fmt.Errorf("configured with named collections, but bucket is not a gocb bucket: %w", err)
+		gocbv2Bucket, err := base.AsGocbV2Bucket(bucket)
+		if err != nil {
+			return err
 		}
 
 		collectionManifest, err := gocbv2Bucket.GetCollectionManifest()
@@ -129,9 +129,9 @@ func (il *importListener) StartImportFeed(ctx context.Context, bucket base.Bucke
 
 	if !base.IsEnterpriseEdition() {
 		groupID := ""
-		gocbv2Bucket, ok := bucket.(*base.GocbV2Bucket)
-		if !ok {
-			return fmt.Errorf("configured with named collections, but bucket is not a gocb bucket: %w", err)
+		gocbv2Bucket, err := base.AsGocbV2Bucket(bucket)
+		if err != nil {
+			return err
 		}
 		return base.StartGocbDCPFeed(gocbv2Bucket, bucket.GetName(), feedArgs, il.ProcessFeedEvent, importFeedStatsMap.Map, base.DCPMetadataStoreCS, groupID)
 	}

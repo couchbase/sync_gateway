@@ -74,8 +74,7 @@ func AsCouchbaseStore(b Bucket) (CouchbaseStore, bool) {
 
 // GetBaseBucket returns the lowest level non-wrapping bucket wrapped by one or more WrappingBuckets
 func GetBaseBucket(b Bucket) Bucket {
-	wb, ok := b.(WrappingBucket)
-	if ok {
+	if wb, ok := b.(WrappingBucket); ok {
 		return GetBaseBucket(wb.GetUnderlyingBucket())
 	}
 	return b

@@ -204,6 +204,14 @@ var (
 	_ CouchbaseStore       = &GocbV2Bucket{}
 )
 
+func AsGocbV2Bucket(bucket Bucket) (*GocbV2Bucket, error) {
+	baseBucket := GetBaseBucket(bucket)
+	if gocbv2Bucket, ok := baseBucket.(*GocbV2Bucket); ok {
+		return gocbv2Bucket, nil
+	}
+	return nil, fmt.Errorf("bucket is not a gocb bucket (type %T)", baseBucket)
+}
+
 func (b *GocbV2Bucket) GetName() string {
 	return b.bucket.Name()
 }

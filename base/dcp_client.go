@@ -71,7 +71,7 @@ type DCPClientOptions struct {
 	CollectionIDs              []uint32                  // CollectionIDs used by gocbcore, if empty, uses default collections
 }
 
-func NewDCPClient(ID string, callback sgbucket.FeedEventCallbackFunc, options DCPClientOptions, bucket Bucket, bucketSpec BucketSpec) (*DCPClient, error) {
+func NewDCPClient(ID string, callback sgbucket.FeedEventCallbackFunc, options DCPClientOptions, bucket *GocbV2Bucket) (*DCPClient, error) {
 
 	numWorkers := defaultNumWorkers
 	if options.NumWorkers > 0 {
@@ -91,7 +91,7 @@ func NewDCPClient(ID string, callback sgbucket.FeedEventCallbackFunc, options DC
 		numVbuckets:         numVbuckets,
 		callback:            callback,
 		ID:                  ID,
-		spec:                bucketSpec,
+		spec:                bucket.GetSpec(),
 		supportsCollections: bucket.IsSupported(sgbucket.BucketStoreFeatureCollections),
 		terminator:          make(chan bool),
 		doneChannel:         make(chan error, 1),

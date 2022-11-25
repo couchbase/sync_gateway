@@ -22,7 +22,10 @@ type LeakyDataStore struct {
 	config    *LeakyBucketConfig
 }
 
-var _ DataStore = &LeakyDataStore{}
+var (
+	_ DataStore = &LeakyDataStore{}
+	// _ N1QLStore = &LeakyDataStore{}
+)
 
 func NewLeakyDataStore(bucket *LeakyBucket, dataStore DataStore, config *LeakyBucketConfig) *LeakyDataStore {
 	return &LeakyDataStore{

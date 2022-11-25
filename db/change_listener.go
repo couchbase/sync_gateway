@@ -13,7 +13,6 @@ package db
 import (
 	"context"
 	"expvar"
-	"fmt"
 	"math"
 	"strings"
 	"sync"
@@ -164,8 +163,6 @@ func (listener *changeListener) Stop() {
 			base.DebugfCtx(logCtx, base.KeyChanges, "Error closing listener tap feed: %v", err)
 		}
 	}
-
-	fmt.Printf("changeListener.Stop()\n")
 
 	// Wait for mutation feed worker to terminate.
 	waitTime := MutationFeedStopMaxWait
