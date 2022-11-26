@@ -1198,3 +1198,49 @@ func TestRoleChannelGrantInheritance(t *testing.T) {
 	RequireStatus(t, response, 200)
 
 }
+
+func TestPublicChannel(t *testing.T) {
+
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAccess, base.KeyHTTP, base.KeyHTTPResp)
+
+	rtConfig := RestTesterConfig{SyncFn: `
+           function(doc) {
+              if(doc.type == "public") {
+                 channel("!")
+              } else { 
+                 channel(doc.channel)
+              }
+           }`}
+	rt := NewRestTester(t, &rtConfig)
+	defer rt.Close()
+
+	ctx := rt.Context()
+	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
+	user, err := a.GetUser("")
+	assert.NoError(t, err)
+	user.SetDisabled(true)
+	err = a.Save(user)
+	assert.NoError(t, err)
+
+	// Create a test user
+	user, err = a.NewUser("user1", "letmein", nil)
+	assert.NoError(t, err)
+	assert.NoError(t, a.Save(user))
+
+	collection := rt.GetDatabase().GetSingleDatabaseCollection()
+	keyspace := fmt.Sprintf("%s.%s.%s", "db", collection.ScopeName(), collection.Name())
+
+	// Create a document in public channel
+	response := rt.Send(RequestByUser("PUT", "/"+keyspace+"/publicDoc", `{"type":"public", "greeting":"hello"}`, "user1"))
+	RequireStatus(t, response, 201)
+
+	// Create a document in non-public channel
+	response = rt.Send(RequestByUser("PUT", "/"+keyspace+"/privateDoc", `{"channel":"restricted", "greeting":"hello"}`, "user1"))
+	RequireStatus(t, response, 201)
+
+	// Verify user can access public document, cannot access non-public document
+	response = rt.Send(RequestByUser("GET", "/"+keyspace+"/publicDoc", "", "user1"))
+	RequireStatus(t, response, 200)
+	response = rt.Send(RequestByUser("GET", "/"+keyspace+"/privateDoc", "", "user1"))
+	RequireStatus(t, response, 403)
+}
