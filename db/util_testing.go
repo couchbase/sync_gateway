@@ -341,7 +341,7 @@ var viewsAndGSIBucketInit base.TBPBucketInitFunc = func(ctx context.Context, b b
 }
 
 // viewBucketReadier removes any existing views and installs a new set into the given bucket.
-func viewBucketReadier(ctx context.Context, dataStore sgbucket.DataStore, tbp *base.TestBucketPool) error {
+func viewBucketReadier(ctx context.Context, dataStore base.DataStore, tbp *base.TestBucketPool) error {
 	viewStore, ok := base.AsViewStore(dataStore)
 	if !ok {
 		return fmt.Errorf("dataStore %T was not a View store", dataStore)

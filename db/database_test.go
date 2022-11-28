@@ -2476,6 +2476,7 @@ func TestTombstoneCompactionStopWithManager(t *testing.T) {
 
 	queryCount := 0
 	callbackFunc := func() {
+		fmt.Println("leakyDataStore query callbackFunc")
 		queryCount++
 		if queryCount == 2 {
 			assert.NoError(t, db.TombstoneCompactionManager.Stop())

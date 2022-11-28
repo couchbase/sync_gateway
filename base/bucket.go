@@ -340,7 +340,7 @@ func GetBucket(spec BucketSpec) (bucket Bucket, err error) {
 
 // GetCounter returns a uint64 result for the given counter key.
 // If the given key is not found in the bucket, this function returns a result of zero.
-func GetCounter(datastore sgbucket.DataStore, k string) (result uint64, err error) {
+func GetCounter(datastore DataStore, k string) (result uint64, err error) {
 	_, err = datastore.Get(k, &result)
 	if datastore.IsError(err, sgbucket.KeyNotFoundError) {
 		return 0, nil
@@ -348,7 +348,7 @@ func GetCounter(datastore sgbucket.DataStore, k string) (result uint64, err erro
 	return result, err
 }
 
-func IsKeyNotFoundError(datastore sgbucket.DataStore, err error) bool {
+func IsKeyNotFoundError(datastore DataStore, err error) bool {
 
 	if err == nil {
 		return false
@@ -390,10 +390,8 @@ func GetFeedType(bucket Bucket) (feedType string) {
 		return GetFeedType(typedBucket.bucket)
 	case *TestBucket:
 		return GetFeedType(typedBucket.Bucket)
-	case *walrus.WalrusBucket:
-		return TapFeedType
 	default:
-		panic(fmt.Sprintf("Unknown bucket type to determine feed type: %T", bucket))
+		return TapFeedType
 	}
 }
 
@@ -522,17 +520,17 @@ func AsViewStore(ds DataStore) (sgbucket.ViewStore, bool) {
 }
 
 // AsSubdocStore returns a SubdocStore if the underlying dataStore implements and supports subdoc operations.
-func AsSubdocStore(dataStore sgbucket.DataStore) (sgbucket.SubdocStore, bool) {
-	subdocStore, ok := dataStore.(sgbucket.SubdocStore)
-	return subdocStore, ok && dataStore.IsSupported(sgbucket.BucketStoreFeatureSubdocOperations)
+func AsSubdocStore(ds DataStore) (sgbucket.SubdocStore, bool) {
+	subdocStore, ok := ds.(sgbucket.SubdocStore)
+	return subdocStore, ok && ds.IsSupported(sgbucket.BucketStoreFeatureSubdocOperations)
 }
 
 // WaitUntilDataStoreExists will try to perform an operation in the given DataStore until it can succeed.
 //
 // There's no WaitForReady operation in GoCB for collections, only Buckets, so attempting to use Exists in this way this seems like our best option to check for availability.
-func WaitUntilDataStoreExists(dataStore DataStore) error {
+func WaitUntilDataStoreExists(ds DataStore) error {
 	return WaitForNoError(func() error {
-		_, err := dataStore.Exists("WaitUntilDataStoreExists")
+		_, err := ds.Exists("WaitUntilDataStoreExists")
 		return err
 	})
 }

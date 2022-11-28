@@ -24,7 +24,7 @@ type LeakyDataStore struct {
 
 var (
 	_ DataStore = &LeakyDataStore{}
-	// _ N1QLStore = &LeakyDataStore{}
+	// _ N1QLStore = &LeakyDataStore{} // TODO: Not implemented
 )
 
 func NewLeakyDataStore(bucket *LeakyBucket, dataStore DataStore, config *LeakyBucketConfig) *LeakyDataStore {
@@ -36,8 +36,8 @@ func NewLeakyDataStore(bucket *LeakyBucket, dataStore DataStore, config *LeakyBu
 }
 
 // AsLeakyDataStore returns the given DataStore as a LeakyDataStore, if possible.
-func AsLeakyDataStore(dataStore sgbucket.DataStore) (*LeakyDataStore, bool) {
-	lds, ok := dataStore.(*LeakyDataStore)
+func AsLeakyDataStore(ds DataStore) (*LeakyDataStore, bool) {
+	lds, ok := ds.(*LeakyDataStore)
 	return lds, ok
 }
 
