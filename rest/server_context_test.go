@@ -275,6 +275,7 @@ outerLoop:
 			}
 			formattedHttpHost := fmt.Sprintf("%s://%s:%d", protocol, httpHost.Host, httpHost.Port)
 
+			t.Logf("formattedHttpHost: %s, ep: %s", formattedHttpHost, ep)
 			if formattedHttpHost == ep {
 				existsOneMatchingEndpoint = true
 				break outerLoop

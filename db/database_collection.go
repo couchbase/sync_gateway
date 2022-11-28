@@ -105,6 +105,7 @@ func (c *DatabaseCollection) exitChanges() chan struct{} {
 
 // GetCollectionID returns a collectionID. If couchbase server does not return collections, it will return base.DefaultCollectionID, like the default collection for a Couchbase Server that does support collections.
 func (c *DatabaseCollection) GetCollectionID() uint32 {
+	// FIXME (bbrks) - will not work with wrappers
 	collection, err := base.AsCollection(c.dataStore)
 	if err != nil {
 		return base.DefaultCollectionID

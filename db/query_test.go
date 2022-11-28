@@ -397,6 +397,7 @@ func TestAllDocsQuery(t *testing.T) {
 	var row map[string]interface{}
 	rowCount := 0
 	for results.Next(&row) {
+		t.Logf("row[%d]: %v", rowCount, row)
 		rowCount++
 	}
 	assert.Equal(t, 10, rowCount)
@@ -409,6 +410,7 @@ func TestAllDocsQuery(t *testing.T) {
 	assert.NoError(t, queryErr, "Query error")
 	rowCount = 0
 	for results.Next(&row) {
+		t.Logf("row[%d]: %v", rowCount, row)
 		rowCount++
 	}
 	assert.Equal(t, 10, rowCount)
@@ -421,6 +423,7 @@ func TestAllDocsQuery(t *testing.T) {
 	assert.NoError(t, queryErr, "Query error")
 	rowCount = 0
 	for results.Next(&row) {
+		t.Logf("row[%d]: %v", rowCount, row)
 		assert.NotEqual(t, row["id"], "InvalidData")
 		rowCount++
 	}
@@ -434,6 +437,7 @@ func TestAllDocsQuery(t *testing.T) {
 	assert.NoError(t, queryErr, "Query error")
 	rowCount = 0
 	for results.Next(&row) {
+		t.Logf("row[%d]: %v", rowCount, row)
 		rowCount++
 	}
 	assert.Equal(t, 10, rowCount)

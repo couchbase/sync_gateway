@@ -59,6 +59,7 @@ func TestOneShotDCP(t *testing.T) {
 	// start one shot feed
 	feedID := t.Name()
 
+	// FIXME (bbrks) will not work with wrappers
 	collection, ok := dataStore.(*Collection)
 	require.True(t, ok)
 	var collectionIDs []uint32

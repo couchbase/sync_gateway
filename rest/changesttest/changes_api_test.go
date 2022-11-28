@@ -3641,7 +3641,7 @@ func TestChangesLargeSequences(t *testing.T) {
 	defer rt.Close()
 
 	// Create document
-	response := rt.SendAdminRequest("PUT", "/db/largeSeqDoc", `{"channel":["PBS"]}`)
+	response := rt.SendAdminRequest("PUT", "/db/largeSeqDocForChanges", `{"channel":["PBS"]}`)
 	rest.RequireStatus(t, response, 201)
 
 	var changes struct {
