@@ -904,7 +904,6 @@ func TestLowSequenceHandlingAcrossChannels(t *testing.T) {
 	_, err = verifySequencesInFeed(feed, []uint64{9})
 	assert.True(t, err == nil)
 
-	//changesCtxCancel()
 }
 
 // Test low sequence handling of late arriving sequences to a continuous changes feed, when the
@@ -984,7 +983,6 @@ func TestLowSequenceHandlingWithAccessGrant(t *testing.T) {
 	// 2. The duplicate send of sequence '6' is the standard behaviour when a channel is added - we don't know
 	// whether the user has already seen the documents on the channel previously, so it gets resent
 
-	//changesCtxCancel()
 }
 
 // Tests channel cache backfill with slow query, validates that a request that is terminated while
