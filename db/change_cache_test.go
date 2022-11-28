@@ -702,11 +702,14 @@ func TestContinuousChangesBackfill(t *testing.T) {
 	options.ChangesCtx = changesCtx
 	options.Continuous = true
 	options.Wait = true
-	defer changesCtxCancel()
 
 	dbCollection := db.GetSingleDatabaseCollectionWithUser()
 	feed, err := dbCollection.MultiChangesFeed(ctx, base.SetOf("*"), options)
 	assert.True(t, err == nil)
+	defer func() {
+		changesCtxCancel()
+		emptyChangesFeed(t, feed)
+	}()
 
 	time.Sleep(50 * time.Millisecond)
 
@@ -807,11 +810,14 @@ func TestLowSequenceHandling(t *testing.T) {
 	options.Since = SequenceID{Seq: 0}
 	changesCtx, changesCtxCancel := context.WithCancel(context.Background())
 	options.ChangesCtx = changesCtx
-	defer changesCtxCancel()
 	options.Continuous = true
 	options.Wait = true
 	feed, err := dbCollection.MultiChangesFeed(ctx, base.SetOf("*"), options)
 	assert.True(t, err == nil)
+	defer func() {
+		changesCtxCancel()
+		emptyChangesFeed(t, feed)
+	}()
 
 	changes, err := verifySequencesInFeed(feed, []uint64{1, 2, 5, 6})
 	assert.True(t, err == nil)
@@ -883,6 +889,10 @@ func TestLowSequenceHandlingAcrossChannels(t *testing.T) {
 	dbCollection := db.GetSingleDatabaseCollectionWithUser()
 	feed, err := dbCollection.MultiChangesFeed(ctx, base.SetOf("*"), options)
 	assert.True(t, err == nil)
+	defer func() {
+		changesCtxCancel()
+		emptyChangesFeed(t, feed)
+	}()
 
 	_, err = verifySequencesInFeed(feed, []uint64{1, 2, 6})
 	assert.True(t, err == nil)
@@ -894,7 +904,7 @@ func TestLowSequenceHandlingAcrossChannels(t *testing.T) {
 	_, err = verifySequencesInFeed(feed, []uint64{9})
 	assert.True(t, err == nil)
 
-	changesCtxCancel()
+	//changesCtxCancel()
 }
 
 // Test low sequence handling of late arriving sequences to a continuous changes feed, when the
@@ -938,6 +948,10 @@ func TestLowSequenceHandlingWithAccessGrant(t *testing.T) {
 	dbCollection := db.GetSingleDatabaseCollectionWithUser()
 	feed, err := dbCollection.MultiChangesFeed(ctx, base.SetOf("*"), options)
 	require.NoError(t, err)
+	defer func() {
+		changesCtxCancel()
+		emptyChangesFeed(t, feed)
+	}()
 
 	var changes = make([]*ChangeEntry, 0, 50)
 
@@ -970,7 +984,7 @@ func TestLowSequenceHandlingWithAccessGrant(t *testing.T) {
 	// 2. The duplicate send of sequence '6' is the standard behaviour when a channel is added - we don't know
 	// whether the user has already seen the documents on the channel previously, so it gets resent
 
-	changesCtxCancel()
+	//changesCtxCancel()
 }
 
 // Tests channel cache backfill with slow query, validates that a request that is terminated while
@@ -1141,12 +1155,15 @@ func TestLowSequenceHandlingNoDuplicates(t *testing.T) {
 	options.Since = SequenceID{Seq: 0}
 	changesCtx, changesCtxCancel := context.WithCancel(context.Background())
 	options.ChangesCtx = changesCtx
-	defer changesCtxCancel()
 	options.Continuous = true
 	options.Wait = true
 	dbCollection := db.GetSingleDatabaseCollectionWithUser()
 	feed, err := dbCollection.MultiChangesFeed(ctx, base.SetOf("*"), options)
 	assert.True(t, err == nil)
+	defer func() {
+		changesCtxCancel()
+		emptyChangesFeed(t, feed)
+	}()
 
 	// Array to read changes from feed to support assertions
 	var changes = make([]*ChangeEntry, 0, 50)
@@ -1293,6 +1310,7 @@ func TestChannelRace(t *testing.T) {
 	fmt.Println("changes: ", changesString)
 
 	changesCtxCancel()
+	emptyChangesFeed(t, feed)
 }
 
 // Test retrieval of skipped sequence using view.  Unit test catches panic, but we don't currently have a way
@@ -2316,5 +2334,20 @@ func BenchmarkDocChanged(b *testing.B) {
 			// log.Printf("maxNumPending: %v", changeCache.context.DbStats.StatsCblReplicationPull().Get(base.StatKeyMaxPending))
 			// log.Printf("cachingCount: %v", changeCache.context.DbStats.StatsDatabase().Get(base.StatKeyDcpCachingCount))
 		})
+	}
+}
+
+func emptyChangesFeed(t *testing.T, feed <-chan *ChangeEntry) {
+	timeout := 20 * time.Second
+	for {
+		select {
+		case v := <-feed:
+			log.Println(v)
+			if v == nil {
+				return
+			}
+		case <-time.After(timeout):
+			t.Fatalf("chnages feed didn't empty after %d s", timeout)
+		}
 	}
 }
