@@ -35,10 +35,10 @@ func IsDefaultCollection(scope, collection string) bool {
 
 // EscapedKeyspace returns the escaped fully-qualified identifier for the keyspace (e.g. `bucket`.`scope`.`collection`)
 func (c *Collection) EscapedKeyspace() string {
-	if !c.Bucket.IsSupported(sgbucket.BucketStoreFeatureCollections) {
+	if !c.IsSupported(sgbucket.BucketStoreFeatureCollections) {
 		return fmt.Sprintf("`%s`", c.BucketName())
 	}
-	return fmt.Sprintf("`%s`.`%s`.`%s`", c.BucketName(), c.Collection.ScopeName(), c.Collection.Name())
+	return fmt.Sprintf("`%s`.`%s`.`%s`", c.BucketName(), c.ScopeName(), c.CollectionName())
 }
 
 // IndexMetaBucketID returns the value of bucket_id for the system:indexes table for the collection.
@@ -54,7 +54,7 @@ func (c *Collection) IndexMetaScopeID() string {
 	if c.IsDefaultScopeCollection() {
 		return ""
 	}
-	return c.Collection.ScopeName()
+	return c.ScopeName()
 }
 
 func (c *Collection) BucketName() string {
@@ -66,7 +66,7 @@ func (c *Collection) IndexMetaKeyspaceID() string {
 	if c.IsDefaultScopeCollection() {
 		return c.BucketName()
 	}
-	return c.Collection.Name()
+	return c.CollectionName()
 }
 
 func (c *Collection) Query(statement string, params map[string]interface{}, consistency ConsistencyMode, adhoc bool) (resultsIterator sgbucket.QueryResultIterator, err error) {
@@ -248,10 +248,10 @@ func (c *Collection) getIndexes() (indexes []string, err error) {
 
 	indexes = []string{}
 	var opts *gocb.GetAllQueryIndexesOptions
-	if c.Bucket.IsSupported(sgbucket.BucketStoreFeatureCollections) {
+	if c.IsSupported(sgbucket.BucketStoreFeatureCollections) {
 		opts = &gocb.GetAllQueryIndexesOptions{
-			ScopeName:      c.Collection.ScopeName(),
-			CollectionName: c.Collection.Name(),
+			ScopeName:      c.ScopeName(),
+			CollectionName: c.CollectionName(),
 		}
 	}
 	indexInfo, err := c.Bucket.cluster.QueryIndexes().GetAllIndexes(c.BucketName(), opts)

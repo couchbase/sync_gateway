@@ -33,8 +33,8 @@ type Collection struct {
 
 // Ensure that Collection implements sgbucket.DataStore/N1QLStore
 var (
-	_ sgbucket.DataStore = &Collection{}
-	_ N1QLStore          = &Collection{}
+	_ DataStore = &Collection{}
+	_ N1QLStore = &Collection{}
 )
 
 func AsCollection(dataStore DataStore) (*Collection, error) {
@@ -404,7 +404,7 @@ func (c *Collection) GetExpiry(k string) (expiry uint32, getMetaError error) {
 		Key:      []byte(k),
 		Deadline: c.Bucket.getBucketOpDeadline(),
 	}
-	if c.Bucket.IsSupported(sgbucket.BucketStoreFeatureCollections) {
+	if c.IsSupported(sgbucket.BucketStoreFeatureCollections) {
 		getMetaOptions.CollectionID = c.GetCollectionID()
 	}
 

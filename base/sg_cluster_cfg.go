@@ -25,7 +25,7 @@ import (
 // any shared data.  It uses Sync Gateway's existing
 // bucket as a keystore, and existing caching feed for change notifications.
 type CfgSG struct {
-	datastore     sgbucket.DataStore
+	datastore     DataStore
 	loggingCtx    context.Context
 	subscriptions map[string][]chan<- cbgt.CfgEvent // Keyed by key
 	lock          sync.Mutex                        // mutex for subscriptions

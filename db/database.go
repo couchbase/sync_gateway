@@ -350,7 +350,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 		return nil, statsError
 	}
 
-	// options.MetadataStore is always passed via rest._getOrAddDatabase... (even if it's the default collection, to use a separate SDK connection)
+	// options.MetadataStore is always passed via rest._getOrAddDatabase...
 	// but in db package tests this is unlikely to be set. In this case we'll use the existing bucket connection to store metadata.
 	metadataStore := options.MetadataStore
 	if metadataStore == nil {
@@ -359,11 +359,10 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 	}
 
 	dbContext := &DatabaseContext{
-		Name:          dbName,
-		UUID:          cbgt.NewUUID(),
-		MetadataStore: metadataStore,
-		Bucket:        bucket,
-		// BucketSpec:     bucketSpec, // TODO: Set BucketSpec?
+		Name:           dbName,
+		UUID:           cbgt.NewUUID(),
+		MetadataStore:  metadataStore,
+		Bucket:         bucket,
 		StartTime:      time.Now(),
 		autoImport:     autoImport,
 		Options:        options,
@@ -770,11 +769,8 @@ func (context *DatabaseContext) RestartListener() error {
 
 // Removes previous versions of Sync Gateway's design docs found on the server
 func (dbCtx *DatabaseContext) RemoveObsoleteDesignDocs(previewOnly bool) (removedDesignDocs []string, err error) {
-	dbCollection, err := dbCtx.GetDefaultDatabaseCollection()
-	if err != nil {
-		return []string{}, err
-	}
-	viewStore, ok := dbCollection.dataStore.(sgbucket.ViewStore)
+	ds := dbCtx.Bucket.DefaultDataStore()
+	viewStore, ok := ds.(sgbucket.ViewStore)
 	if !ok {
 		return []string{}, fmt.Errorf("Datastore does not support views")
 	}

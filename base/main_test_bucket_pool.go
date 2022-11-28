@@ -77,9 +77,6 @@ type TestBucketPool struct {
 	useExistingBucket bool
 }
 
-// TODO: Init set of buckets with set of collections
-// - provide way to list collection names in each TestBucket so collection tests can request collection name as part of sg server setup
-
 // NewTestBucketPool initializes a new TestBucketPool. To be called from TestMain for packages requiring test buckets.
 func NewTestBucketPool(bucketReadierFunc TBPBucketReadierFunc, bucketInitFunc TBPBucketInitFunc) *TestBucketPool {
 	// We can safely skip setup when we want Walrus buckets to be used.

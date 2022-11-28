@@ -292,7 +292,7 @@ func (c *Collection) SubdocInsertXattr(k string, xattrKey string, exp uint32, ca
 	c.Bucket.waitForAvailKvOp()
 	defer c.Bucket.releaseKvOp()
 
-	supportsTombstoneCreation := c.Bucket.IsSupported(sgbucket.BucketStoreFeatureCreateDeletedWithXattr)
+	supportsTombstoneCreation := c.IsSupported(sgbucket.BucketStoreFeatureCreateDeletedWithXattr)
 
 	var docFlags gocb.SubdocDocFlag
 	if supportsTombstoneCreation {
