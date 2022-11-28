@@ -94,9 +94,24 @@ func (tb *TestBucket) NoCloseClone() *TestBucket {
 }
 
 // GetTestBucket returns a test bucket from a pool.
-// TODO: GetTestCollection?
 func GetTestBucket(t testing.TB) *TestBucket {
 	return getTestBucket(t)
+}
+
+// GetTestNamedDataStore returns a named datastore from the test bucket.
+func GetTestNamedDataStore(t testing.TB) DataStore {
+	bucket := getTestBucket(t)
+	dataStoreNames, err := bucket.ListDataStores()
+	require.NoError(t, err)
+	for _, name := range dataStoreNames {
+		if IsDefaultCollection(name.ScopeName(), name.CollectionName()) {
+			continue
+		}
+		c := bucket.NamedDataStore(name)
+		return c
+	}
+	t.Error("Could not find a named collection")
+	return nil
 }
 
 // getTestBucket returns a bucket from the bucket pool

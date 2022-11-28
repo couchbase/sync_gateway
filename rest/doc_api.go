@@ -448,6 +448,8 @@ func (h *handler) handlePutDoc() error {
 	var newRev string
 	var doc *db.Document
 
+	fmt.Printf("HONK collection=%+v\n", h.collection)
+
 	if h.getQuery("new_edits") != "false" {
 		// Regular PUT:
 		bodyRev := body[db.BodyRev]
@@ -478,8 +480,7 @@ func (h *handler) handlePutDoc() error {
 	}
 
 	if doc != nil && roundTrip {
-		collection := h.db.GetSingleDatabaseCollection()
-		if err := collection.WaitForSequenceNotSkipped(h.ctx(), doc.Sequence); err != nil {
+		if err := h.collection.WaitForSequenceNotSkipped(h.ctx(), doc.Sequence); err != nil {
 			return err
 		}
 	}

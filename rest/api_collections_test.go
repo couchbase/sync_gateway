@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/couchbase/gocb/v2"
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/stretchr/testify/assert"
@@ -28,11 +29,12 @@ func TestCollectionsPutDocInKeyspace(t *testing.T) {
 	tb := base.GetTestBucket(t)
 	defer tb.Close()
 
-	tc, err := base.AsCollection(tb.DefaultDataStore())
-	require.NoError(t, err)
+	ds := base.GetTestNamedDataStore(t)
 
-	scopeName := tc.ScopeName()
-	collectionName := tc.CollectionName()
+	dsName, ok := ds.(sgbucket.DataStoreName)
+	require.True(t, ok)
+	scopeName := dsName.ScopeName()
+	collectionName := dsName.CollectionName()
 
 	tests := []struct {
 		name           string
@@ -40,11 +42,12 @@ func TestCollectionsPutDocInKeyspace(t *testing.T) {
 		expectedStatus int
 	}{
 		// if a single scope and collection is defined, use that implicitly
-		{
+		/*{
 			name:           "implicit scope and collection",
 			keyspace:       "db",
-			expectedStatus: http.StatusCreated,
+			expectedStatus: http.StatusNotFound,
 		},
+		*/
 		{
 			name:           "fully qualified",
 			keyspace:       fmt.Sprintf("%s.%s.%s", "db", scopeName, collectionName),
@@ -100,13 +103,12 @@ func TestCollectionsPutDocInKeyspace(t *testing.T) {
 
 			if test.expectedStatus == http.StatusCreated {
 				// go and check that the doc didn't just end up in the default collection of the test bucket
-				docBody, _, err := tb.DefaultDataStore().GetRaw(docID)
+				docBody, _, err := ds.GetRaw(docID)
 				require.NoError(t, err)
 				require.NotNil(t, docBody)
 
-				tc, err := base.AsCollection(tb.DefaultDataStore())
-				defaultCollection := tc.Collection.Bucket().DefaultCollection()
-				_, err = defaultCollection.Get(docID, &gocb.GetOptions{})
+				defaultDataStore := tb.DefaultDataStore()
+				_, err = defaultDataStore.Get(docID, &gocb.GetOptions{})
 				require.Error(t, err)
 			}
 		})
