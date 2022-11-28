@@ -55,7 +55,7 @@ func makeService(functions *FunctionsConfig, graphql *GraphQLConfig) js.ServiceF
 		// Create a JS string of the configuration JSON:
 		jsonConfig := mustSucceed(json.Marshal(jsConfig{Functions: functions, GraphQL: graphql}))
 
-		// Wrap the service in a functionService subclass:
+		// Wrap the service in a js.Service implementation:
 		return &functionService{
 			BasicService:     base,
 			upstreamTemplate: upstream,

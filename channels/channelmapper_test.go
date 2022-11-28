@@ -465,7 +465,6 @@ func TestExpiryFunction(t *testing.T) {
 
 func TestExpiryFunctionConstantValue(t *testing.T) {
 	mapper := newChannelMapperWithVMs(`function(doc) {expiry(100);}`, 0)
-	mapper.closeVMs()
 	res1, err := mapper.MapToChannelsAndAccess(parse(`{}`), `{}`, emptyMetaMap(), noUser)
 	assert.NoError(t, err, "MapToChannelsAndAccess error")
 	assert.Equal(t, uint32(100), *res1.Expiry)

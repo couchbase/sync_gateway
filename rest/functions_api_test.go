@@ -11,6 +11,7 @@ licenses/APL2.txt.
 package rest
 
 import (
+	"context"
 	"log"
 	"sync"
 	"testing"
@@ -52,29 +53,17 @@ var kGraphQLTestConfig = &DatabaseConfig{DbConfig: DbConfig{
 	},
 }}
 
-// Asserts that running testFunc in 100 concurrent goroutines is no more than 10% slower
-// than running it 100 times in succession. A low bar indeed, but can detect some serious
-// bottlenecks, or of course deadlocks.
-func testConcurrently(t *testing.T, rt *RestTester, testFunc func() bool) bool {
-	const numTasks = 100
-
-	// Run testFunc once to prime the pump:
-	if !testFunc() {
-		return false
-	}
-
-	// 100 sequential calls:
+func runSequentially(rt *RestTester, testFunc func() bool, numTasks int) time.Duration {
 	startTime := time.Now()
 	for i := 0; i < numTasks; i++ {
-		if !testFunc() {
-			return false
-		}
+		testFunc()
 	}
-	sequentialDuration := time.Since(startTime)
+	return time.Since(startTime)
+}
 
-	// Now run 100 concurrent calls:
+func runConcurrently(rt *RestTester, testFunc func() bool, numTasks int) time.Duration {
 	var wg sync.WaitGroup
-	startTime = time.Now()
+	startTime := time.Now()
 	for i := 0; i < numTasks; i++ {
 		wg.Add(1)
 		go func() {
@@ -83,12 +72,28 @@ func testConcurrently(t *testing.T, rt *RestTester, testFunc func() bool) bool {
 		}()
 	}
 	wg.Wait()
-	concurrentDuration := time.Since(startTime)
+	return time.Since(startTime)
+}
+
+// Asserts that running testFunc in 100 concurrent goroutines is no more than 10% slower
+// than running it 100 times in succession. A low bar indeed, but can detect some serious
+// bottlenecks, or of course deadlocks.
+func testConcurrently(t *testing.T, rt *RestTester, testFunc func() bool) bool {
+	const numTasks = 100
+
+	// prime the pump:
+	runConcurrently(rt, testFunc, 100)
+
+	base.WarnfCtx(context.TODO(), "---- Starting sequential tasks ----")
+	sequentialDuration := runSequentially(rt, testFunc, numTasks)
+	base.WarnfCtx(context.TODO(), "---- Starting concurrent tasks ----")
+	concurrentDuration := runConcurrently(rt, testFunc, numTasks)
+	base.WarnfCtx(context.TODO(), "---- End ----")
 
 	log.Printf("---- %d sequential took %v, concurrent took %v ... speedup is %f",
 		numTasks, sequentialDuration, concurrentDuration,
 		float64(sequentialDuration)/float64(concurrentDuration))
-	return assert.LessOrEqual(t, concurrentDuration, 1.1*numTasks*sequentialDuration)
+	return assert.LessOrEqual(t, float64(concurrentDuration), 1.1*float64(sequentialDuration))
 }
 
 func TestFunctions(t *testing.T) {
