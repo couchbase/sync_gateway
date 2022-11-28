@@ -809,8 +809,8 @@ func TestResync(t *testing.T) {
 
 			assert.Equal(t, testCase.expectedSyncFnRuns, int(rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value()))
 
-			assert.Equal(t, testCase.docsCreated, resyncManagerStatus.DocsProcessed)
-			assert.Equal(t, 0, resyncManagerStatus.DocsChanged)
+			assert.Equal(t, testCase.docsCreated, int(resyncManagerStatus.DocsProcessed))
+			assert.Equal(t, 0, int(resyncManagerStatus.DocsChanged))
 		})
 	}
 
@@ -896,8 +896,8 @@ func TestResyncUsingDCPStream(t *testing.T) {
 
 			assert.Equal(t, testCase.docsCreated, int(rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value()))
 
-			assert.Equal(t, testCase.docsCreated, resyncManagerStatus.DocsProcessed)
-			assert.Equal(t, 0, resyncManagerStatus.DocsChanged)
+			assert.Equal(t, testCase.docsCreated, int(resyncManagerStatus.DocsProcessed))
+			assert.Equal(t, 0, int(resyncManagerStatus.DocsChanged))
 		})
 	}
 
@@ -1558,8 +1558,8 @@ func TestResyncRegenerateSequencesUsingDCPStream(t *testing.T) {
 	err = base.JSONUnmarshal(response.BodyBytes(), &resyncStatus)
 	assert.NoError(t, err)
 	assert.NotEmpty(t, resyncStatus.ResyncID)
-	assert.Equal(t, 12, resyncStatus.DocsChanged)
-	assert.Equal(t, 12, resyncStatus.DocsProcessed)
+	assert.Equal(t, 12, int(resyncStatus.DocsChanged))
+	assert.Equal(t, 12, int(resyncStatus.DocsProcessed))
 
 	response = rt.SendAdminRequest("POST", "/db/_online", "")
 	rest.RequireStatus(t, response, http.StatusOK)

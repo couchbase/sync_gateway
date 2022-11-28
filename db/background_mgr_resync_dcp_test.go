@@ -207,7 +207,7 @@ func TestResycnManagerDCPStart(t *testing.T) {
 			rawStatus, _ := resyncMrg.GetStatus()
 			_ = json.Unmarshal(rawStatus, &status)
 			return status.State == BackgroundProcessStateCompleted
-		}, 20, 100)
+		}, 30, 100)
 		require.NoError(t, err)
 
 		stats := getResyncStats(resyncMrg.Process)
@@ -237,7 +237,7 @@ func TestResycnManagerDCPStart(t *testing.T) {
 			rawStatus, _ := resyncMrg.GetStatus()
 			_ = json.Unmarshal(rawStatus, &status)
 			return status.State == BackgroundProcessStateCompleted
-		}, 20, 100)
+		}, 30, 100)
 		require.NoError(t, err)
 
 		stats := getResyncStats(resyncMrg.Process)

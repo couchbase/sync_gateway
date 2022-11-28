@@ -76,7 +76,7 @@ const (
 )
 
 // BGTCompletionMaxWait is the maximum amount of time to wait for
-// completion of all background tasks before the server is stopped.
+// completion of all background tasks and background managers before the server is stopped.
 const BGTCompletionMaxWait = 30 * time.Second
 
 // Basic description of a database. Shared between all Database objects on the same database.
@@ -739,11 +739,8 @@ func (context *DatabaseContext) Close(ctx context.Context) {
 	context.OIDCProviders.Stop()
 	close(context.terminator)
 
-	wg := &sync.WaitGroup{}
-	wg.Add(3)
-	go stopBackgroundProcess(ctx, 10*time.Second, context.ResyncManager, "resync", wg)
-	go stopBackgroundProcess(ctx, 10*time.Second, context.AttachmentCompactionManager, "attachment_compaction", wg)
-	go stopBackgroundProcess(ctx, 10*time.Second, context.TombstoneCompactionManager, "tombstone_compaction", wg)
+	// Stop All background processors
+	bgManagers := context.stopBackgroundManagers()
 
 	// Wait for database background tasks to finish.
 	waitForBGTCompletion(ctx, BGTCompletionMaxWait, context.backgroundTasks, context.Name)
@@ -760,8 +757,7 @@ func (context *DatabaseContext) Close(ctx context.Context) {
 		context.SGReplicateMgr.Stop()
 	}
 
-	// wait for all BackgroundManager to stop
-	wg.Wait()
+	waitForBackgroundManagersToStop(ctx, BGTCompletionMaxWait, bgManagers)
 
 	context.Bucket.Close()
 	context.Bucket = nil
@@ -770,18 +766,40 @@ func (context *DatabaseContext) Close(ctx context.Context) {
 
 }
 
-func stopBackgroundProcess(ctx context.Context, waitTimeMax time.Duration, bgManager *BackgroundManager, processName string, wg *sync.WaitGroup) {
-	defer wg.Done()
-	if isBackgroundManagerStopped(bgManager.GetRunState()) {
-		return
+// stopBackgroundManagers stops any running BackgroundManager.
+// Returns a list of BackgroundManager it signalled to stop
+func (context *DatabaseContext) stopBackgroundManagers() []*BackgroundManager {
+	bgManagers := make([]*BackgroundManager, 0)
+
+	if context.ResyncManager != nil {
+		if !isBackgroundManagerStopped(context.ResyncManager.GetRunState()) {
+			if err := context.ResyncManager.Stop(); err == nil {
+				bgManagers = append(bgManagers, context.ResyncManager)
+			}
+		}
 	}
 
-	err := bgManager.Stop()
-	if err != nil {
-		base.WarnfCtx(ctx, "failed to stop background manager %s.  Error %v", processName, err)
-		return
+	if context.AttachmentCompactionManager != nil {
+		if !isBackgroundManagerStopped(context.AttachmentCompactionManager.GetRunState()) {
+			if err := context.AttachmentCompactionManager.Stop(); err == nil {
+				bgManagers = append(bgManagers, context.AttachmentCompactionManager)
+			}
+		}
 	}
 
+	if context.TombstoneCompactionManager != nil {
+		if !isBackgroundManagerStopped(context.TombstoneCompactionManager.GetRunState()) {
+			if err := context.TombstoneCompactionManager.Stop(); err == nil {
+				bgManagers = append(bgManagers, context.TombstoneCompactionManager)
+			}
+		}
+	}
+
+	return bgManagers
+}
+
+// waitForBackgroundManagersToStop wait for given all BackgroundManagers to stop within given time
+func waitForBackgroundManagersToStop(ctx context.Context, waitTimeMax time.Duration, bgManagers []*BackgroundManager) {
 	timeout := time.NewTicker(waitTimeMax)
 	interval := time.NewTicker(1 * time.Second)
 	defer timeout.Stop()
@@ -790,11 +808,17 @@ func stopBackgroundProcess(ctx context.Context, waitTimeMax time.Duration, bgMan
 	for {
 		select {
 		case <-timeout.C:
-			base.WarnfCtx(ctx, "Timeout after %v of waiting for Background Manager [%s] to terminate", waitTimeMax, processName)
+			base.WarnfCtx(ctx, "Timeout after %v of waiting for Background Managers to terminate", waitTimeMax)
 			return
 		case <-interval.C:
-			state := bgManager.GetRunState()
-			if isBackgroundManagerStopped(state) {
+			stoppedServices := 0
+			for _, bgManager := range bgManagers {
+				state := bgManager.GetRunState()
+				if isBackgroundManagerStopped(state) {
+					stoppedServices += 1
+				}
+			}
+			if stoppedServices == len(bgManagers) {
 				return
 			}
 		}
