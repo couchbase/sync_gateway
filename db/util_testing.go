@@ -257,10 +257,7 @@ var viewsAndGSIBucketReadier base.TBPBucketReadierFunc = func(ctx context.Contex
 		return err
 	}
 	for _, dataStoreName := range dataStores {
-		dataStore, err := b.NamedDataStore(dataStoreName)
-		if err != nil {
-			return err
-		}
+		dataStore := b.NamedDataStore(dataStoreName)
 		if _, err := emptyAllDocsIndex(ctx, dataStore, tbp); err != nil {
 			return err
 		}
@@ -280,7 +277,7 @@ var viewsAndGSIBucketReadier base.TBPBucketReadierFunc = func(ctx context.Contex
 	if len(dataStores) == 1 {
 		dataStoreName := dataStores[0]
 		if base.IsDefaultCollection(dataStoreName.ScopeName(), dataStoreName.CollectionName()) {
-			if err := viewBucketReadier(ctx, b.DefaultDataStore(), tbp); err != nil {
+			if err := viewBucketReadier(ctx, b.NamedDataStore(dataStoreName), tbp); err != nil {
 				return err
 			}
 		}
@@ -310,10 +307,8 @@ var viewsAndGSIBucketInit base.TBPBucketInitFunc = func(ctx context.Context, b b
 		return err
 	}
 	for _, dataStoreName := range dataStores {
-		dataStore, err := b.NamedDataStore(dataStoreName)
-		if err != nil {
-			return err
-		}
+
+		dataStore := b.NamedDataStore(dataStoreName)
 		n1qlStore, ok := base.AsN1QLStore(dataStore)
 		if !ok {
 			return fmt.Errorf("bucket %T was not a N1QL store", b)
@@ -336,7 +331,7 @@ var viewsAndGSIBucketInit base.TBPBucketInitFunc = func(ctx context.Context, b b
 			return err
 		}
 
-		err = n1qlStore.CreatePrimaryIndex(base.PrimaryIndexName, nil)
+		err := n1qlStore.CreatePrimaryIndex(base.PrimaryIndexName, nil)
 		if err != nil {
 			return err
 		}

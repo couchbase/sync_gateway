@@ -288,7 +288,12 @@ func (b *GocbV2Bucket) CreateDataStore(name sgbucket.DataStoreName) error {
 	if err != nil {
 		return err
 	}
-	return WaitUntilCollectionExists(b, name)
+	// Can't use Collection.Exists since we can't get a collection until the collection exists on CBS
+	gocbCollection := b.bucket.Scope(name.ScopeName()).Collection(name.CollectionName())
+	return WaitForNoError(func() error {
+		_, err := gocbCollection.Exists("fakedocid", nil)
+		return err
+	})
 }
 
 func (bucket *GocbV2Bucket) StartDCPFeed(args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map) error {
@@ -420,10 +425,14 @@ func (b *GocbV2Bucket) DefaultDataStore() sgbucket.DataStore {
 }
 
 // NamedDataStore returns a collection on a bucket within the given scope and collection.
-func (b *GocbV2Bucket) NamedDataStore(name sgbucket.DataStoreName) (sgbucket.DataStore, error) {
-	return NewCollection(
+func (b *GocbV2Bucket) NamedDataStore(name sgbucket.DataStoreName) sgbucket.DataStore {
+	c, err := NewCollection(
 		b,
 		b.bucket.Scope(name.ScopeName()).Collection(name.CollectionName()))
+	if err != nil {
+		panic(err)
+	}
+	return c
 }
 
 func (b *GocbV2Bucket) BucketName() string {

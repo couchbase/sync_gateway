@@ -57,7 +57,7 @@ func (b *TestBucket) DefaultDataStore() sgbucket.DataStore {
 	return b.Bucket.DefaultDataStore()
 }
 
-func (b *TestBucket) NamedDataStore(name sgbucket.DataStoreName) (sgbucket.DataStore, error) {
+func (b *TestBucket) NamedDataStore(name sgbucket.DataStoreName) sgbucket.DataStore {
 	return b.Bucket.NamedDataStore(name)
 }
 
@@ -106,9 +106,7 @@ func (tb *TestBucket) GetNamedDataStore(t testing.TB) DataStore {
 		if IsDefaultCollection(name.ScopeName(), name.CollectionName()) {
 			continue
 		}
-		c, err := tb.NamedDataStore(name)
-		require.NoError(t, err)
-		return c
+		return tb.NamedDataStore(name)
 	}
 	t.Error("Could not find a named collection")
 	return nil

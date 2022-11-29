@@ -434,10 +434,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 				Collections: make(map[string]*DatabaseCollection, len(scope.Collections)),
 			}
 			for collName := range scope.Collections {
-				dataStore, err := bucket.NamedDataStore(base.ScopeAndCollectionName{Scope: scopeName, Collection: collName})
-				if err != nil {
-					return nil, err
-				}
+				dataStore := bucket.NamedDataStore(base.ScopeAndCollectionName{Scope: scopeName, Collection: collName})
 				dbCollection, err := newDatabaseCollection(ctx, dbContext, dataStore)
 				if err != nil {
 					return nil, err
@@ -459,6 +456,8 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 		dbContext.CollectionByID[base.DefaultCollectionID] = dbCollection
 		dbContext.singleCollection = dbCollection
 	}
+
+	fmt.Printf("HONK dbCollectionByID=%+v\n", dbContext.CollectionByID)
 
 	// Initialize the tap Listener for notify handling
 	dbContext.mutationListener.Init(bucket.GetName(), options.GroupID)
