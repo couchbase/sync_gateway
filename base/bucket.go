@@ -390,7 +390,10 @@ func GetFeedType(bucket Bucket) (feedType string) {
 		return GetFeedType(typedBucket.bucket)
 	case *TestBucket:
 		return GetFeedType(typedBucket.Bucket)
+	case *walrus.WalrusBucket:
+		return TapFeedType
 	default:
+		// unknown bucket type?
 		return TapFeedType
 	}
 }
