@@ -421,10 +421,6 @@ func (b *GocbV2Bucket) DefaultDataStore() sgbucket.DataStore {
 
 // NamedDataStore returns a collection on a bucket within the given scope and collection.
 func (b *GocbV2Bucket) NamedDataStore(name sgbucket.DataStoreName) (sgbucket.DataStore, error) {
-	err := WaitUntilCollectionExists(b, name)
-	if err != nil {
-		return nil, fmt.Errorf("attempting to create/update database with a scope/collection that is not found")
-	}
 	return NewCollection(
 		b,
 		b.bucket.Scope(name.ScopeName()).Collection(name.CollectionName()))
