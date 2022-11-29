@@ -236,7 +236,7 @@ func (b *GocbV2Bucket) GetCluster() *gocb.Cluster {
 
 func (b *GocbV2Bucket) Close() {
 	if err := b.cluster.Close(nil); err != nil {
-
+		WarnfCtx(context.TODO(), "Error closing cluster for bucket %s: %v", MD(b.BucketName()), err)
 	}
 }
 
