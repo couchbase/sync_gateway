@@ -144,7 +144,7 @@ func (c *tbpClusterV2) openTestBucket(testBucketName tbpBucketName, waitUntilRea
 	// bucketSpec := getTestBucketSpec(testBucketName, usingNamedCollections)
 	bucketSpec := getTestBucketSpec(testBucketName)
 
-	bucketFromSpec, err := GetGocbV2BucketFromCluster(bucketCluster, bucketSpec, waitUntilReady)
+	bucketFromSpec, err := GetGocbV2BucketFromCluster(bucketCluster, bucketSpec, waitUntilReady, false)
 	if err != nil {
 		return nil, err
 	}
