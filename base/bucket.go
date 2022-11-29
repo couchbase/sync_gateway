@@ -134,6 +134,7 @@ type BucketSpec struct {
 	KvPoolSize                    int            // gocb kv_pool_size - number of pipelines per node. Initialized on GetGoCBConnString
 	KvBufferSize                  int
 	DcpBuffer                     int
+	Serverless                    bool
 }
 
 // Create a RetrySleeper based on the bucket spec properties.  Used to retry bucket operations after transient errors.
@@ -170,13 +171,13 @@ type GoCBConnStringParams struct {
 // FillDefaults replaces any unset fields in this GoCBConnStringParams with their default values.
 func (p *GoCBConnStringParams) FillDefaults() {
 	if p.KVPoolSize == 0 {
-		p.KVPoolSize = DefaultGocbKvPoolSizeServerless
+		p.KVPoolSize = DefaultGocbKvPoolSize
 	}
 	if p.KVBufferSize == 0 {
-		p.KVBufferSize = DefaultKvBufferSizeServerless
+		p.KVBufferSize = DefaultGoCBKvBufferSize
 	}
 	if p.DCPBuffer == 0 {
-		p.DCPBuffer = DefaultDCPBufferServerless
+		p.DCPBuffer = DefaultDCPBuffer
 	}
 }
 

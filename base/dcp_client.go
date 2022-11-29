@@ -225,6 +225,7 @@ func (dc *DCPClient) Start() (doneChan chan error, err error) {
 		}
 	}
 	dc.startWorkers()
+	fmt.Println("conn string at the agent code", dc.spec.Server)
 
 	for i := uint16(0); i < dc.numVbuckets; i++ {
 		openErr := dc.openStream(i, openRetryCount)

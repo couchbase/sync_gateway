@@ -149,6 +149,8 @@ type SGFeedSourceParams struct {
 
 	// Collections within the scope that the feed would cover.
 	Collections []string `json:"collections,omitempty"`
+
+	DCPBuffer uint32 `json:"dcp_buffer,omitempty"`
 }
 
 type SGFeedIndexParams struct {
@@ -169,6 +171,10 @@ func cbgtFeedParams(spec BucketSpec, scope string, collections []string, dbName 
 	if len(collections) > 0 {
 		feedParams.Scope = scope
 		feedParams.Collections = collections
+	}
+
+	if spec.Serverless == true {
+		feedParams.DCPBuffer = 1000000
 	}
 
 	paramBytes, err := JSONMarshal(feedParams)
@@ -246,6 +252,10 @@ func addCbgtAuthToDCPParams(dcpParams string) string {
 	} else {
 		feedParamsWithAuth.AuthUser = creds.username
 		feedParamsWithAuth.AuthPassword = creds.password
+	}
+
+	if sgSourceParams.DCPBuffer != 0 {
+		feedParamsWithAuth.FeedBufferSizeBytes = sgSourceParams.DCPBuffer
 	}
 
 	marshalledParamsWithAuth, marshalErr := JSONMarshal(feedParamsWithAuth)

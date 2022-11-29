@@ -423,6 +423,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 			return nil, err
 		}
 		spec.Server = connStr
+		spec.Serverless = true
 	}
 
 	if sc.databases_[dbName] != nil {
@@ -1385,6 +1386,8 @@ func initClusterAgent(ctx context.Context, clusterAddress, clusterUser, clusterP
 	if err != nil {
 		return nil, err
 	}
+	config.KVConfig.PoolSize = 1
+	config.KVConfig.ConnectionBufferSize = base.DefaultKvBufferSizeServerless
 
 	agent, err := gocbcore.CreateAgent(&config)
 	if err != nil {

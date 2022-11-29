@@ -587,7 +587,7 @@ func TestServerlessUnsuspendAPI(t *testing.T) {
 
 func addDocs(bucket base.TestBucket) error {
 	var err error
-	for i := 0; i < 500; i++ {
+	for i := 0; i < 2000; i++ {
 		_, err = bucket.AddRaw(fmt.Sprint(i), 0, []byte(fmt.Sprintf(`{"foo": "bar"}`)))
 	}
 	if err != nil {
@@ -596,19 +596,16 @@ func addDocs(bucket base.TestBucket) error {
 	return nil
 }
 
-func TestLOLOL(t *testing.T) {
+func TestBuffer(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
-	//tb1 := base.GetTestBucket(t)
+
 	rt := NewRestTester(t, &RestTesterConfig{PersistentConfig: true, serverless: true, AdminInterfaceAuthentication: true})
 	defer rt.Close()
-	time.Sleep(5 * time.Second)
 
 	tb1 := base.GetTestBucket(t)
-	//tb1 := base.GetTestBucket(t)
 	fmt.Println(tb1.GetName())
 	fmt.Println(tb1.BucketSpec.Auth.GetCredentials())
 	rt.RestTesterConfig.CustomTestBucket = tb1
-
 	defer tb1.Close()
 
 	err := addDocs(*tb1)
@@ -620,15 +617,15 @@ func TestLOLOL(t *testing.T) {
 		"import_docs": %t,
 		"num_index_replicas": 0
 	}`, tb1.GetName(), base.TestsDisableGSI(), true), base.TestClusterUsername(), base.TestClusterPassword())
+	fmt.Println("here")
 	RequireStatus(t, resp, http.StatusCreated)
 
-	time.Sleep(20 * time.Second)
+	time.Sleep(8 * time.Second)
 
-	path := "testlol100111.pprof.pb.gz"
-	//require.NoError(t, err)
+	//path := ""
 
-	resp = rt.SendAdminRequestWithAuth(http.MethodPost, "/_profile/heap", fmt.Sprintf(`{"file": "%s"}`, path), base.TestClusterUsername(), base.TestClusterPassword())
-	RequireStatus(t, resp, http.StatusOK)
+	//resp := rt.SendAdminRequestWithAuth(http.MethodPost, "/_heap", fmt.Sprintf(`{"file": "%s"}`, path), base.TestClusterUsername(), base.TestClusterPassword())
+	//RequireStatus(t, resp, http.StatusOK)
 
 }
 

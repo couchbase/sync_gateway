@@ -687,6 +687,14 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 	dbContext.TombstoneCompactionManager = NewTombstoneCompactionManager()
 	dbContext.AttachmentCompactionManager = NewAttachmentCompactionManager(metadataStore)
 
+	/*
+		f, _ := os.Create("./serverless3_profile_NewDbCtx-import-1bucket.pb.gz")
+		defer f.Close()
+		runtime.GC()
+		_ = pprof.WriteHeapProfile(f)
+
+	*/
+
 	return dbContext, nil
 }
 
