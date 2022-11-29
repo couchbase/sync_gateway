@@ -107,9 +107,17 @@ func makeEvaluator(dbc *db.Database, delegate evaluatorDelegate, user *userCrede
 	if err != nil {
 		return nil, err
 	}
+
+	if dbc.Options.JavascriptTimeout > 0 {
+		var cancelFn context.CancelFunc
+		ctx, cancelFn = context.WithTimeout(ctx, dbc.Options.JavascriptTimeout)
+		defer cancelFn()
+	}
 	runner.SetContext(ctx)
-	if e, ok := runner.Client.(*evaluator); ok {
-		return e, nil // Reuse existing evaluator
+
+	if eval, ok := runner.Client.(*evaluator); ok {
+		eval.user = user
+		return eval, nil
 	} else {
 		return newEvaluator(runner, delegate, user)
 	}
@@ -177,11 +185,11 @@ func (eval *evaluator) GetUser() *userCredentials {
 func (eval *evaluator) callFunction(name string, args map[string]any) ([]byte, error) {
 	user, roles, channels := eval.v8Credentials()
 	// Calling JS method API.callFunction (api.ts)
-	v8Result, err := eval.runner.ResolvePromise(eval.functionFn.Call(eval.api,
+	v8Result, err := eval.runner.Call(eval.functionFn, eval.api,
 		eval.runner.NewString(name),
 		mustSucceed(eval.runner.NewJSONString(args)),
 		user, roles, channels,
-		mustSucceed(eval.runner.NewValue(eval.mutationAllowed))))
+		mustSucceed(eval.runner.NewValue(eval.mutationAllowed)))
 
 	if err == nil {
 		if result, err := js.StringToGo(v8Result); err == nil {
@@ -195,14 +203,15 @@ func (eval *evaluator) callFunction(name string, args map[string]any) ([]byte, e
 func (eval *evaluator) callGraphQL(query string, operationName string, variables map[string]any) ([]byte, error) {
 	user, roles, channels := eval.v8Credentials()
 	// Calling JS method API.callGraphQL (api.ts)
-	v8Result, err := eval.runner.ResolvePromise(eval.graphqlFn.Call(eval.api,
+	v8Result, err := eval.runner.Call(eval.graphqlFn, eval.api,
 		eval.runner.NewString(query),
 		eval.runner.NewString(operationName),
 		mustSucceed(eval.runner.NewJSONString(variables)),
 		user, roles, channels,
-		mustSucceed(eval.runner.NewValue(eval.mutationAllowed))))
+		mustSucceed(eval.runner.NewValue(eval.mutationAllowed)))
 	if err == nil {
-		if result, err := js.StringToGo(v8Result); err == nil {
+		var result []byte
+		if result, err = js.StringToGo(v8Result); err == nil {
 			return result, nil
 		}
 	}

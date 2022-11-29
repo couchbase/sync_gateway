@@ -73,7 +73,7 @@ func TestGraphQLSubgraph(t *testing.T) {
 	// Handle a `_service` query:
 	t.Run("ServiceQuery", func(t *testing.T) {
 		result, err := db.GraphQL.Query(db, `query { _service { sdl } }`,
-			"", nil, false, context.TODO())
+			"", nil, false, ctx)
 		if !assertGraphQLNoErrors(t, result, err) {
 			return
 		}
@@ -98,7 +98,7 @@ func TestGraphQLSubgraph(t *testing.T) {
 				...on Person { name }
 			}
 		}`,
-			"", vars, false, context.TODO())
+			"", vars, false, ctx)
 		assertGraphQLResult(t, `{"_entities":[{"title":"Task-001"},{"name":"Bob 1138"}]}`, result, err)
 	})
 }

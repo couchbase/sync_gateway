@@ -9,6 +9,7 @@
 package channels
 
 import (
+	"context"
 	_ "embed"
 	"fmt"
 	"strings"
@@ -133,6 +134,14 @@ func createChannelService(base *js.BasicService, fnSource string, timeout time.D
 
 func (mapper *ChannelMapper) withSyncRunner(fn func(*syncRunner) (any, error)) (any, error) {
 	return mapper.vms.WithRunner(mapper.serviceName, func(jsRunner *js.Runner) (any, error) {
+		goContext := context.Background()
+		if mapper.timeout > 0 {
+			var cancelFn context.CancelFunc
+			goContext, cancelFn = context.WithDeadline(goContext, time.Now().Add(mapper.timeout))
+			defer cancelFn()
+		}
+		jsRunner.SetContext(goContext)
+
 		var runner *syncRunner
 		if jsRunner.Client == nil {
 			runner = &syncRunner{

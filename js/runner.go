@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"strings"
 	"time"
 
+	"github.com/couchbase/sync_gateway/base"
 	"github.com/pkg/errors"
+	"rogchap.com/v8go"
 	v8 "rogchap.com/v8go" // Docs: https://pkg.go.dev/rogchap.com/v8go
 )
 
@@ -67,13 +69,19 @@ func (r *Runner) close() {
 	r.vm = nil
 }
 
-// Associates a Context value with this Runner, for use by callbacks.
+func (r *Runner) Service() Service { return r.service }
+func (r *Runner) VM() *VM          { return r.vm }
+
+//////// GO CONTEXT AND TIMEOUT
+
+// Associates a Go `context.Context` value with this Runner.
+// If this Context has a deadline, JS calls will abort if it expires.
 func (r *Runner) SetContext(ctx context.Context) { r.goContext = ctx }
 
-// Returns the Context associated with this Runner.
+// Returns the Go context.Context associated with this Runner.
 func (r *Runner) Context() context.Context { return r.goContext }
 
-// Returns the Context associated with this Runner, else `context.TODO()`
+// Returns the Go context.Context associated with this Runner, else `context.TODO()`
 func (r *Runner) ContextOrDefault() context.Context {
 	if r.goContext != nil {
 		return r.goContext
@@ -82,9 +90,22 @@ func (r *Runner) ContextOrDefault() context.Context {
 	}
 }
 
+// Returns the remaining duration until the Runner's Go Context's deadline, or nil if none.
+func (r *Runner) Timeout() *time.Duration {
+	if r.goContext != nil {
+		if deadline, hasDeadline := r.goContext.Deadline(); hasDeadline {
+			timeout := time.Until(deadline)
+			return &timeout
+		}
+	}
+	return nil
+}
+
+//////// CALLING JAVASCRIPT FUNCTIONS
+
 // Runs the Service's script, returning the result as a V8 Value.
 func (r *Runner) Run(args ...v8.Valuer) (*v8.Value, error) {
-	return r.ResolvePromise(r.mainFn.Call(r.mainFn, args...))
+	return r.Call(r.mainFn, r.mainFn, args...)
 }
 
 // Runs the Service's script, returning the result as a V8 Object.
@@ -98,41 +119,63 @@ func (r *Runner) RunAsObject(args ...v8.Valuer) (*v8.Object, error) {
 	}
 }
 
-func (r *Runner) Service() Service                                     { return r.service }
-func (r *Runner) NewValue(val any) (*v8.Value, error)                  { return r.vm.NewValue(val) }
-func (r *Runner) NewString(str string) *v8.Value                       { return r.vm.NewString(str) }
-func (r *Runner) NewJSONString(val any) (*v8.Value, error)             { return goToV8JSON(r.ctx, val) }
-func (r *Runner) NewInstance(o *v8.ObjectTemplate) (*v8.Object, error) { return o.NewInstance(r.ctx) }
-
-func (r *Runner) NewCallback(cb ServiceCallback) *v8.Function {
-	return r.vm.NewCallback(cb).GetFunction(r.ctx)
+// Calls a V8 function. Unlike `fn.Call(this,args)`, it:
+// - waits for Promises to resolve, and returns the resolved value or rejection error;
+// - stops with a DeadlineExceeded error if the Runner's Go Context times out.
+func (r *Runner) Call(fn *v8.Function, this v8.Valuer, args ...v8.Valuer) (*v8.Value, error) {
+	return r.ResolvePromise(r.JustCall(fn, this, args...))
 }
 
-// Converts a Go value to a V8 value by marshaling to JSON and then parsing in V8.
-func (r *Runner) GoToV8(val any) (*v8.Value, error) {
-	j, err := json.Marshal(val)
-	if err != nil {
-		return nil, err
+// Calls a V8 function. Unlike `fn.Call(this,args)`, it:
+// - stops with a DeadlineExceeded error if the Runner's Go Context times out.
+func (r *Runner) JustCall(fn *v8.Function, this v8.Valuer, args ...v8.Valuer) (*v8.Value, error) {
+	if timeout := r.Timeout(); timeout != nil {
+		if *timeout <= 0 {
+			// Already timed out
+			return nil, context.DeadlineExceeded
+		} else {
+			// Future timeout; start a goroutine that will make the VM's thread terminate:
+			timer := time.NewTimer(*timeout)
+			completed := make(chan bool)
+			defer close(completed)
+			iso := r.vm.iso
+			go func() {
+				defer timer.Stop()
+
+				select {
+				case <-completed:
+					return
+				case <-timer.C:
+					iso.TerminateExecution()
+				}
+			}()
+		}
 	}
-	log.Printf("*** GoToV8: %s", j) //TEMP
-	return r.JSONParse(string(j))
+	return fn.Call(this, args...)
 }
 
-// Encodes a V8 value as a JSON string.
-func (r *Runner) JSONStringify(val *v8.Value) (string, error) { return v8.JSONStringify(r.ctx, val) }
-
-// Parses a JSON string to a V8 value.
-func (r *Runner) JSONParse(json string) (*v8.Value, error) { return v8.JSONParse(r.ctx, json) }
-
-// Postprocesses a result from V8: if it's a Promise it returns its resolved value or error. If the Promise hasn't completed yet, it lets V8 run until it completes.
+// Postprocesses a result from V8: if it's a Promise it returns its resolved value or error.
+// If the Promise hasn't completed yet, it lets V8 run until it completes.
+// Returns a DeadlineExceeded error if the Runner's Go Context has timed out,
+// or times out while waiting on a Promise.
 func (r *Runner) ResolvePromise(val *v8.Value, err error) (*v8.Value, error) {
 	if err != nil {
+		// Already failed:
+		if jsErr, ok := err.(*v8go.JSError); ok && strings.HasPrefix(jsErr.Message, "ExecutionTerminated:") {
+			err = context.DeadlineExceeded
+		}
 		return nil, err
 	}
+	deadline, hasDeadline := r.ContextOrDefault().Deadline()
+	if hasDeadline && time.Now().After(deadline) {
+		// Already timed out:
+		base.WarnfCtx(r.ContextOrDefault(), "A JavaScript call timed out")
+		return nil, context.DeadlineExceeded
+	}
 	if !val.IsPromise() {
+		// Just a regular value:
 		return val, nil
 	}
-	deadline, hasDeadline := r.ContextOrDefault().Deadline()
 	for {
 		switch p, _ := val.AsPromise(); p.State() {
 		case v8.Fulfilled:
@@ -155,3 +198,29 @@ func (r *Runner) ResolvePromise(val *v8.Value, err error) (*v8.Value, error) {
 		}
 	}
 }
+
+//////// V8 UTILITIES
+
+func (r *Runner) NewValue(val any) (*v8.Value, error)                  { return r.vm.NewValue(val) }
+func (r *Runner) NewString(str string) *v8.Value                       { return r.vm.NewString(str) }
+func (r *Runner) NewJSONString(val any) (*v8.Value, error)             { return goToV8JSON(r.ctx, val) }
+func (r *Runner) NewInstance(o *v8.ObjectTemplate) (*v8.Object, error) { return o.NewInstance(r.ctx) }
+
+func (r *Runner) NewCallback(cb ServiceCallback) *v8.Function {
+	return r.vm.NewCallback(cb).GetFunction(r.ctx)
+}
+
+// Converts a Go value to a V8 value by marshaling to JSON and then parsing in V8.
+func (r *Runner) GoToV8(val any) (*v8.Value, error) {
+	j, err := json.Marshal(val)
+	if err != nil {
+		return nil, err
+	}
+	return r.JSONParse(string(j))
+}
+
+// Encodes a V8 value as a JSON string.
+func (r *Runner) JSONStringify(val *v8.Value) (string, error) { return v8.JSONStringify(r.ctx, val) }
+
+// Parses a JSON string to a V8 value.
+func (r *Runner) JSONParse(json string) (*v8.Value, error) { return v8.JSONParse(r.ctx, json) }

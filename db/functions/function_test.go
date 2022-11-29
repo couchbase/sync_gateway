@@ -14,6 +14,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
@@ -57,6 +58,11 @@ var kTestFunctionsConfig = FunctionsConfig{
 			Args: []string{"n"},
 			Code: `function(context, args) {if (args.n <= 1) return 1;
 						else return args.n * context.user.function("factorial", {n: args.n-1});}`,
+			Allow: allowAll,
+		},
+		"endless": &FunctionConfig{
+			Type:  "javascript",
+			Code:  `function(context, args) {while(true);}`,
 			Allow: allowAll,
 		},
 		"great_and_terrible": &FunctionConfig{
@@ -257,6 +263,12 @@ func testUserFunctionsCommon(t *testing.T, ctx context.Context, db *db.Database)
 	_, err = db.CallUserFunction("factorial", map[string]any{"n": kUserFunctionMaxCallDepth + 1}, true, ctx)
 	assert.ErrorContains(t, err, "User function recursion too deep")
 	assert.ErrorContains(t, err, "factorial")
+
+	// Timeout:
+	briefCtx, cancelFn := context.WithTimeout(ctx, 2*time.Second)
+	defer cancelFn()
+	_, err = db.CallUserFunction("endless", nil, true, briefCtx)
+	assert.ErrorContains(t, err, "context deadline exceeded")
 }
 
 // User-function tests, run as admin:
