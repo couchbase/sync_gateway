@@ -99,15 +99,14 @@ func GetTestBucket(t testing.TB) *TestBucket {
 }
 
 // GetTestNamedDataStore returns a named datastore from the test bucket.
-func GetTestNamedDataStore(t testing.TB) DataStore {
-	bucket := getTestBucket(t)
-	dataStoreNames, err := bucket.ListDataStores()
+func (tb *TestBucket) GetNamedDataStore(t testing.TB) DataStore {
+	dataStoreNames, err := tb.ListDataStores()
 	require.NoError(t, err)
 	for _, name := range dataStoreNames {
 		if IsDefaultCollection(name.ScopeName(), name.CollectionName()) {
 			continue
 		}
-		c, err := bucket.NamedDataStore(name)
+		c, err := tb.NamedDataStore(name)
 		require.NoError(t, err)
 		return c
 	}
