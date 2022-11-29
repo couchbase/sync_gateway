@@ -1209,6 +1209,34 @@ func marshalPrincipal(princ auth.Principal, includeDynamicGrantInfo bool) auth.P
 		Name:             &name,
 		ExplicitChannels: princ.ExplicitChannels().AsSet(),
 	}
+
+	collectionAccess := princ.GetCollectionsAccess()
+	if collectionAccess != nil {
+		info.CollectionAccess = make(map[string]map[string]*auth.CollectionAccessConfig)
+		for scopeName, scope := range collectionAccess {
+			scopeAccessConfig := make(map[string]*auth.CollectionAccessConfig)
+			for collectionName, collection := range scope {
+				collectionAccessConfig := &auth.CollectionAccessConfig{
+					ExplicitChannels_: collection.ExplicitChannels().AsSet(),
+				}
+				if includeDynamicGrantInfo {
+					if user, ok := princ.(auth.User); ok {
+						collectionAccessConfig.Channels_ = user.InheritedCollectionChannels(scopeName, collectionName).AsSet()
+						collectionAccessConfig.JWTChannels_ = user.CollectionJWTChannels(scopeName, collectionName).AsSet()
+						lastUpdated := collection.JWTLastUpdated
+						if lastUpdated != nil && !lastUpdated.IsZero() {
+							collectionAccessConfig.JWTLastUpdated = lastUpdated
+						}
+					} else {
+						collectionAccessConfig.Channels_ = princ.CollectionChannels(scopeName, collectionName).AsSet()
+					}
+				}
+				scopeAccessConfig[collectionName] = collectionAccessConfig
+			}
+			info.CollectionAccess[scopeName] = scopeAccessConfig
+		}
+	}
+
 	if user, ok := princ.(auth.User); ok {
 		email := user.Email()
 		info.Email = &email

@@ -221,3 +221,7 @@ func (role *roleImpl) AuthorizeAnyCollectionChannel(scope, collection string, ch
 	}
 	return role.UnauthError("You are not allowed to see this")
 }
+
+func (role *roleImpl) GetCollectionsAccess() map[string]map[string]*CollectionAccess {
+	return role.CollectionsAccess
+}

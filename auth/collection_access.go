@@ -62,6 +62,9 @@ type CollectionChannelAPI interface {
 
 	// Retrieves or creates collection access entry on principal for specified scope and collection
 	getOrCreateCollectionAccess(scope, collection string) *CollectionAccess
+
+	// Returns the CollectionAccess map
+	GetCollectionsAccess() map[string]map[string]*CollectionAccess
 }
 
 // UserCollectionChannelAPI defines the interface for managing channel access that is supported by users but not roles.
