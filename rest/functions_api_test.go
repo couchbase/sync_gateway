@@ -79,7 +79,7 @@ func runConcurrently(rt *RestTester, testFunc func() bool, numTasks int) time.Du
 // than running it 100 times in succession. A low bar indeed, but can detect some serious
 // bottlenecks, or of course deadlocks.
 func testConcurrently(t *testing.T, rt *RestTester, testFunc func() bool) bool {
-	const numTasks = 100
+	const numTasks = 1000
 
 	// prime the pump:
 	runConcurrently(rt, testFunc, 100)
