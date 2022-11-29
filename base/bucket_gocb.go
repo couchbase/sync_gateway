@@ -48,7 +48,7 @@ const (
 	DeleteCrc32c = "0x00000000"
 )
 
-// GetGoCBv2Bucket returns a *GocbV2Bucket for the specified bucket.
+// GetGoCBv2Bucket opens a connection to the Couchbase cluster and returns a *GocbV2Bucket for the specified BucketSpec.
 func GetGoCBv2Bucket(spec BucketSpec) (*GocbV2Bucket, error) {
 
 	logCtx := context.TODO()
