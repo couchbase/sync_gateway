@@ -457,8 +457,6 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 		dbContext.singleCollection = dbCollection
 	}
 
-	fmt.Printf("HONK dbCollectionByID=%+v\n", dbContext.CollectionByID)
-
 	// Initialize the tap Listener for notify handling
 	dbContext.mutationListener.Init(bucket.GetName(), options.GroupID)
 
