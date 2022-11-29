@@ -40,7 +40,7 @@ var (
 func AsCollection(dataStore DataStore) (*Collection, error) {
 	collection, ok := dataStore.(*Collection)
 	if !ok {
-		return nil, fmt.Errorf("dataStore is not a %T", dataStore)
+		return nil, fmt.Errorf("dataStore is not a *Collection (got %T)", dataStore)
 	}
 	return collection, nil
 }
