@@ -104,7 +104,7 @@ func (h *handler) handleCreateDB() error {
 				return httpErr
 			}
 			if errors.Is(err, base.ErrAuthError) {
-				return base.HTTPErrorf(http.StatusForbidden, "auth failure accessing provided bucket: %s", bucket)
+				return base.HTTPErrorf(http.StatusForbidden, "Provided bucket credentials do not have access to specified bucket: %s", bucket)
 			}
 			if errors.Is(err, base.ErrAlreadyExists) {
 				return base.HTTPErrorf(http.StatusConflict, "couldn't load database: %s", err)
