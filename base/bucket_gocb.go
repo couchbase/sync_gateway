@@ -48,7 +48,7 @@ const (
 	DeleteCrc32c = "0x00000000"
 )
 
-// GetGoCBv2Bucket returns a *GocbV2Bucket for the specified bucket.
+// GetGoCBv2Bucket opens a connection to the Couchbase cluster and returns a *GocbV2Bucket for the specified BucketSpec.
 func GetGoCBv2Bucket(spec BucketSpec) (*GocbV2Bucket, error) {
 
 	logCtx := context.TODO()
@@ -108,7 +108,7 @@ func GetGoCBv2Bucket(spec BucketSpec) (*GocbV2Bucket, error) {
 		return nil, err
 	}
 
-	return GetGocbV2BucketFromCluster(cluster, spec, time.Second*30)
+	return GetGocbV2BucketFromCluster(cluster, spec, time.Second*30, true)
 
 }
 
@@ -124,14 +124,19 @@ func getClusterVersion(cluster *gocb.Cluster) (int, int, error) {
 	return clusterCompatMajor, clusterCompatMinor, nil
 }
 
-func GetGocbV2BucketFromCluster(cluster *gocb.Cluster, spec BucketSpec, waitUntilReady time.Duration) (*GocbV2Bucket, error) {
+func GetGocbV2BucketFromCluster(cluster *gocb.Cluster, spec BucketSpec, waitUntilReady time.Duration, failFast bool) (*GocbV2Bucket, error) {
 
 	// Connect to bucket
 	bucket := cluster.Bucket(spec.BucketName)
+
+	var retryStrategy gocb.RetryStrategy
+	if failFast {
+		retryStrategy = &goCBv2FailFastRetryStrategy{}
+	} else {
+		retryStrategy = gocb.NewBestEffortRetryStrategy(nil)
+	}
 	err := bucket.WaitUntilReady(waitUntilReady, &gocb.WaitUntilReadyOptions{
-		// RetryStrategy: &goCBv2FailFastRetryStrategy{},
-		// FIXME (bbrks): This fast fail was being hit immediately in test bucket pool setup without any retry
-		RetryStrategy: gocb.NewBestEffortRetryStrategy(nil),
+		RetryStrategy: retryStrategy,
 	})
 	if err != nil {
 		_ = cluster.Close(&gocb.ClusterCloseOptions{})
@@ -201,7 +206,7 @@ type GocbV2Bucket struct {
 
 var (
 	_ sgbucket.BucketStore = &GocbV2Bucket{}
-	_ CouchbaseStore       = &GocbV2Bucket{}
+	_ CouchbaseBucketStore = &GocbV2Bucket{}
 )
 
 func AsGocbV2Bucket(bucket Bucket) (*GocbV2Bucket, error) {
@@ -231,7 +236,7 @@ func (b *GocbV2Bucket) GetCluster() *gocb.Cluster {
 
 func (b *GocbV2Bucket) Close() {
 	if err := b.cluster.Close(nil); err != nil {
-
+		WarnfCtx(context.TODO(), "Error closing cluster for bucket %s: %v", MD(b.BucketName()), err)
 	}
 }
 
@@ -304,10 +309,6 @@ func (bucket *GocbV2Bucket) StartDCPFeed(args sgbucket.FeedArguments, callback s
 func (bucket *GocbV2Bucket) StartTapFeed(args sgbucket.FeedArguments, dbStats *expvar.Map) (sgbucket.MutationFeed, error) {
 	return nil, errors.New("StartTapFeed not implemented")
 }
-
-// func (bucket *GocbV2Bucket) Dump() {
-// 	return
-// }
 
 func (b *GocbV2Bucket) GetStatsVbSeqno(maxVbno uint16, useAbsHighSeqNo bool) (uuids map[uint16]uint64, highSeqnos map[uint16]uint64, seqErr error) {
 
@@ -526,7 +527,7 @@ func (b *GocbV2Bucket) BucketItemCount() (itemCount int, err error) {
 		return itemCount, nil
 	}
 
-	// TODO: implement APIBucketItemCount for collections as part of CouchbaseStore refactoring.  Until then, give flush a moment to finish
+	// TODO: implement APIBucketItemCount for collections as part of CouchbaseBucketStore refactoring.  Until then, give flush a moment to finish
 	time.Sleep(1 * time.Second)
 	// itemCount, err = bucket.APIBucketItemCount()
 	return 0, err
@@ -848,12 +849,12 @@ func AsLeakyBucket(bucket Bucket) (*LeakyBucket, bool) {
 	return AsLeakyBucket(underlyingBucket)
 }
 
-func GoCBBucketMgmtEndpoints(bucket CouchbaseStore) (url []string, err error) {
+func GoCBBucketMgmtEndpoints(bucket CouchbaseBucketStore) (url []string, err error) {
 	return bucket.MgmtEps()
 }
 
 // Get one of the management endpoints.  It will be a string such as http://couchbase
-func GoCBBucketMgmtEndpoint(bucket CouchbaseStore) (url string, err error) {
+func GoCBBucketMgmtEndpoint(bucket CouchbaseBucketStore) (url string, err error) {
 	mgmtEps, err := bucket.MgmtEps()
 	if err != nil {
 		return "", err

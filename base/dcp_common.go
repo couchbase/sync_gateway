@@ -67,7 +67,7 @@ func (s *SimpleFeed) Close() error {
 type DCPCommon struct {
 	dbStatsExpvars         *expvar.Map
 	m                      sync.Mutex
-	couchbaseStore         CouchbaseStore
+	couchbaseStore         CouchbaseBucketStore
 	metaStore              DataStore                      // For metadata persistence/retrieval
 	maxVbNo                uint16                         // Number of vbuckets being used for this feed
 	persistCheckpoints     bool                           // Whether this DCPReceiver should persist metadata to the bucket

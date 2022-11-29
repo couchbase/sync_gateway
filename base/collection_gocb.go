@@ -372,7 +372,7 @@ func (c *Collection) Incr(k string, amt, def uint64, exp uint32) (uint64, error)
 	return incrResult.Content(), nil
 }
 
-// CouchbaseStore
+// CouchbaseBucketStore
 
 // Recoverable errors or timeouts trigger retry for gocb v2 read operations
 func (c *Collection) isRecoverableReadError(err error) bool {

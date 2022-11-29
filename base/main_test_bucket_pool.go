@@ -249,17 +249,11 @@ func (tbp *TestBucketPool) GetExistingBucket(t testing.TB) (b Bucket, s BucketSp
 	bucketName := tbpBucketName(TestUseExistingBucketName())
 	bucketSpec := getTestBucketSpec(bucketName)
 
-	bucket := bucketCluster.Bucket(bucketSpec.BucketName)
-	err := bucket.WaitUntilReady(waitForReadyBucketTimeout, nil)
-	if err != nil {
-		return nil, bucketSpec, nil
-	}
-	DebugfCtx(context.TODO(), KeySGTest, "opened bucket %s", bucketName)
-
-	bucketFromSpec, err := GetGocbV2BucketFromCluster(bucketCluster, bucketSpec, waitForReadyBucketTimeout)
+	bucketFromSpec, err := GetGocbV2BucketFromCluster(bucketCluster, bucketSpec, waitForReadyBucketTimeout, false)
 	if err != nil {
 		tbp.Fatalf(testCtx, "couldn't get existing collection from cluster: %v", err)
 	}
+	DebugfCtx(context.TODO(), KeySGTest, "opened bucket %s", bucketName)
 
 	return bucketFromSpec, bucketSpec, func() {
 		tbp.Logf(testCtx, "Teardown called - Closing connection to existing bucket")

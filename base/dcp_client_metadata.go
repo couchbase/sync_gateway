@@ -19,7 +19,7 @@ import (
 type DCPMetadataStoreType int
 
 const (
-	// DCPMetadataCS uses CouchbaseStore interface backed metadata storage
+	// DCPMetadataCS uses CouchbaseBucketStore interface backed metadata storage
 	DCPMetadataStoreCS = iota
 	// DCPMetadataInMemory uses in memory metadata storage
 	DCPMetadataStoreInMemory
@@ -148,7 +148,7 @@ func BuildDCPMetadataSliceFromVBUUIDs(vbUUIDS []uint64) []DCPMetadata {
 	return metadata
 }
 
-// DCPMetadataCS stores DCP metadata in the specified CouchbaseStore.  It does not require that the store is the
+// DCPMetadataCS stores DCP metadata in the specified CouchbaseBucketStore.  It does not require that the store is the
 // same one being streamed over DCP.
 type DCPMetadataCS struct {
 	dataStore DataStore

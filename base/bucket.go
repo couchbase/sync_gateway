@@ -48,8 +48,8 @@ type WrappingBucket interface {
 	GetUnderlyingBucket() Bucket
 }
 
-// CouchbaseStore defines operations specific to Couchbase data stores
-type CouchbaseStore interface {
+// CouchbaseBucketStore defines operations specific to Couchbase Bucket
+type CouchbaseBucketStore interface {
 	GetName() string
 	MgmtEps() ([]string, error)
 	MetadataPurgeInterval() (time.Duration, error)
@@ -63,12 +63,12 @@ type CouchbaseStore interface {
 	// a map of UUIDS and a map of high sequence numbers (map from vbno -> seq)
 	GetStatsVbSeqno(maxVbno uint16, useAbsHighSeqNo bool) (uuids map[uint16]uint64, highSeqnos map[uint16]uint64, seqErr error)
 
-	// mgmtRequest uses the CouchbaseStore's http client to make an http request against a management endpoint.
+	// mgmtRequest uses the CouchbaseBucketStore's http client to make an http request against a management endpoint.
 	mgmtRequest(method, uri, contentType string, body io.Reader) (*http.Response, error)
 }
 
-func AsCouchbaseStore(b Bucket) (CouchbaseStore, bool) {
-	couchbaseBucket, ok := GetBaseBucket(b).(CouchbaseStore)
+func AsCouchbaseStore(b Bucket) (CouchbaseBucketStore, bool) {
+	couchbaseBucket, ok := GetBaseBucket(b).(CouchbaseBucketStore)
 	return couchbaseBucket, ok
 }
 
@@ -390,14 +390,17 @@ func GetFeedType(bucket Bucket) (feedType string) {
 		return GetFeedType(typedBucket.bucket)
 	case *TestBucket:
 		return GetFeedType(typedBucket.Bucket)
+	case *walrus.WalrusBucket:
+		return TapFeedType
 	default:
+		// unknown bucket type?
 		return TapFeedType
 	}
 }
 
 // Gets the bucket max TTL, or 0 if no TTL was set.  Sync gateway should fail to bring the DB online if this is non-zero,
 // since it's not meant to operate against buckets that auto-delete data.
-func getMaxTTL(store CouchbaseStore) (int, error) {
+func getMaxTTL(store CouchbaseBucketStore) (int, error) {
 	var bucketResponseWithMaxTTL struct {
 		MaxTTLSeconds int `json:"maxTTL,omitempty"`
 	}
@@ -423,7 +426,7 @@ func getMaxTTL(store CouchbaseStore) (int, error) {
 }
 
 // Get the Server UUID of the bucket, this is also known as the Cluster UUID
-func getServerUUID(store CouchbaseStore) (uuid string, err error) {
+func getServerUUID(store CouchbaseBucketStore) (uuid string, err error) {
 	resp, err := store.mgmtRequest(http.MethodGet, "/pools", "application/json", nil)
 	if err != nil {
 		return "", err
@@ -449,7 +452,7 @@ func getServerUUID(store CouchbaseStore) (uuid string, err error) {
 
 // Gets the metadata purge interval for the bucket.  First checks for a bucket-specific value.  If not
 // found, retrieves the cluster-wide value.
-func getMetadataPurgeInterval(store CouchbaseStore) (time.Duration, error) {
+func getMetadataPurgeInterval(store CouchbaseBucketStore) (time.Duration, error) {
 
 	// Bucket-specific settings
 	uri := fmt.Sprintf("/pools/default/buckets/%s", store.GetName())
@@ -472,7 +475,7 @@ func getMetadataPurgeInterval(store CouchbaseStore) (time.Duration, error) {
 // Helper function to retrieve a Metadata Purge Interval from server and convert to hours.  Works for any uri
 // that returns 'purgeInterval' as a root-level property (which includes the two server endpoints for
 // bucket and server purge intervals).
-func retrievePurgeInterval(bucket CouchbaseStore, uri string) (time.Duration, error) {
+func retrievePurgeInterval(bucket CouchbaseBucketStore, uri string) (time.Duration, error) {
 
 	// Both of the purge interval endpoints (cluster and bucket) return purgeInterval in the same way
 	var purgeResponse struct {
