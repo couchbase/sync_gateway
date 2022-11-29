@@ -66,6 +66,8 @@
 			if (oldDoc) {
 				oldDoc = JSON.parse(oldDoc);
 				oldDoc._id = newDoc._id;
+			} else {
+				oldDoc = null;
 			}
 
 			// Proxy userCtx that allows queries but not direct access to user/roles:

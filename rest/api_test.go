@@ -2832,7 +2832,6 @@ func TestSyncFnDocBodyPropertiesSwitchActiveTombstone(t *testing.T) {
 	RequireStatus(t, resp, 200)
 
 	numErrorsBefore, err := strconv.Atoi(base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().ErrorCount.String())
-	log.Printf("*** numErrorsBefore = %d", numErrorsBefore) //TEMP
 	assert.NoError(t, err)
 	// tombstone at 3-b
 	resp = rt.SendAdminRequest("DELETE", "/db/"+testDocID+"?rev="+rev2bID, `{}`)
@@ -2840,9 +2839,8 @@ func TestSyncFnDocBodyPropertiesSwitchActiveTombstone(t *testing.T) {
 
 	numErrorsAfter, err := strconv.Atoi(base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().ErrorCount.String())
 	assert.NoError(t, err)
-	log.Printf("*** numErrorsAfter = %d", numErrorsAfter) //TEMP
 
-	assert.Equal(t, 1, numErrorsAfter-numErrorsBefore, "expecting to see only only 1 error logged")
+	assert.Equal(t, 1, numErrorsAfter-numErrorsBefore, "expecting to see 1 error logged")
 }
 
 // Test for wrong _changes entries for user joining a populated channel

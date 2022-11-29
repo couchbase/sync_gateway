@@ -400,22 +400,6 @@ func TestCheckAccessArray(t *testing.T) {
 	assert.Equal(t, nil, res.Rejection)
 }
 
-/* TEMP
-// Test changing the function
-func TestSetFunction(t *testing.T) {
-	mapper := newChannelMapperWithVMs(`function(doc) {channel(doc.channels);}`, 0)
-	defer mapper.closeVMs()
-	output, err := mapper.MapToChannelsAndAccess(parse(`{"channels": ["foo", "bar", "baz"]}`), `{}`, emptyMetaMap(), noUser)
-	assert.NoError(t, err, "MapToChannelsAndAccess failed")
-	changed, err := mapper.SetFunction(`function(doc) {channel("all");}`)
-	assert.True(t, changed, "SetFunction failed")
-	assert.NoError(t, err, "SetFunction failed")
-	output, err = mapper.MapToChannelsAndAccess(parse(`{"channels": ["foo", "bar", "baz"]}`), `{}`, emptyMetaMap(), noUser)
-	assert.NoError(t, err, "MapToChannelsAndAccess failed")
-	assert.Equal(t, SetOf(t, "all"), output.Channels)
-}
-*/
-
 // Test that expiry function sets the expiry property
 func TestExpiryFunction(t *testing.T) {
 	mapper := newChannelMapperWithVMs(`function(doc) {expiry(doc.expiry);}`, 0)
