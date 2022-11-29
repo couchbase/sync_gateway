@@ -469,7 +469,11 @@ func (tbp *TestBucketPool) createTestBuckets(numBuckets, numCollectionsPerBucket
 					if err != nil {
 						tbp.Fatalf(ctx, "Couldn't create datastore %v.%v: %v", scopeName, collectionName, err)
 					}
-					tbp.emptyPreparedStatements(ctx, bucket.NamedDataStore(dataStoreName))
+					ds, err := bucket.NamedDataStore(dataStoreName)
+					if err != nil {
+						tbp.Fatalf(ctx, "Couldn't get NamedDataStore %v.%v: %v", scopeName, collectionName, err)
+					}
+					tbp.emptyPreparedStatements(ctx, ds)
 				}
 			}
 
@@ -595,7 +599,11 @@ var N1QLBucketEmptierFunc TBPBucketReadierFunc = func(ctx context.Context, b Buc
 		return err
 	}
 	for _, dataStoreName := range dataStores {
-		n1qlStore, ok := AsN1QLStore(b.NamedDataStore(dataStoreName))
+		ds, err := b.NamedDataStore(dataStoreName)
+		if err != nil {
+			return err
+		}
+		n1qlStore, ok := AsN1QLStore(ds)
 		if !ok {
 			return errors.New("N1QLBucketEmptierFunc used with non-N1QL store")
 		}

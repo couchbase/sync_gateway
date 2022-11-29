@@ -14,7 +14,6 @@ import (
 	"testing"
 
 	"github.com/couchbase/gocb/v2"
-	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/stretchr/testify/assert"
@@ -26,15 +25,9 @@ import (
 func TestCollectionsPutDocInKeyspace(t *testing.T) {
 	base.TestRequiresCollections(t)
 
-	tb := base.GetTestBucket(t)
-	defer tb.Close()
-
-	ds := base.GetTestNamedDataStore(t)
-
-	dsName, ok := ds.(sgbucket.DataStoreName)
-	require.True(t, ok)
-	scopeName := dsName.ScopeName()
-	collectionName := dsName.CollectionName()
+	// FIXME: How could I generate these names? The bucket names get reused with `GetTestBucket` which is scoped to tests.
+	scopeName := "sg_test_0"
+	collectionName := "sg_test_0"
 
 	tests := []struct {
 		name           string
@@ -74,28 +67,27 @@ func TestCollectionsPutDocInKeyspace(t *testing.T) {
 		username = "alice"
 		password = "pass"
 	)
+	for i, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
 
-	rt := NewRestTester(t, &RestTesterConfig{
-		CustomTestBucket: tb.NoCloseClone(),
-		DatabaseConfig: &DatabaseConfig{
-			DbConfig: DbConfig{
-				Users: map[string]*auth.PrincipalConfig{
-					username: {Password: base.StringPtr(password)},
-				},
-				Scopes: ScopesConfig{
-					scopeName: ScopeConfig{
-						Collections: map[string]CollectionConfig{
-							collectionName: {},
+			rt := NewRestTester(t, &RestTesterConfig{
+				DatabaseConfig: &DatabaseConfig{
+					DbConfig: DbConfig{
+						Users: map[string]*auth.PrincipalConfig{
+							username: {Password: base.StringPtr(password)},
+						},
+						Scopes: ScopesConfig{
+							scopeName: ScopeConfig{
+								Collections: map[string]CollectionConfig{
+									collectionName: {},
+								},
+							},
 						},
 					},
 				},
-			},
-		},
-	})
-	defer rt.Close()
+			})
+			defer rt.Close()
 
-	for i, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
 			docID := fmt.Sprintf("doc%d", i)
 			path := fmt.Sprintf("/%s/%s", test.keyspace, docID)
 			resp := rt.SendUserRequestWithHeaders(http.MethodPut, path, `{"test":true}`, nil, username, password)
@@ -103,11 +95,16 @@ func TestCollectionsPutDocInKeyspace(t *testing.T) {
 
 			if test.expectedStatus == http.StatusCreated {
 				// go and check that the doc didn't just end up in the default collection of the test bucket
+				ds, err := rt.Bucket().NamedDataStore(
+					base.ScopeAndCollectionName{
+						Scope:      scopeName,
+						Collection: collectionName})
+				require.NoError(t, err)
 				docBody, _, err := ds.GetRaw(docID)
 				require.NoError(t, err)
 				require.NotNil(t, docBody)
 
-				defaultDataStore := tb.DefaultDataStore()
+				defaultDataStore := rt.Bucket().DefaultDataStore()
 				_, err = defaultDataStore.Get(docID, &gocb.GetOptions{})
 				require.Error(t, err)
 			}
