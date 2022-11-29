@@ -223,6 +223,7 @@ function checkN1QL(config: FunctionConfig) : string {
 }
 
 
+// Annotates an exception with the name of the active function, and re-throws it.
 function rethrow(x: unknown, what: string, fnName: string) : never {
     if (x instanceof Error) {
         x.message = `${x.message} (thrown by ${what} ${fnName})`

@@ -1,5 +1,5 @@
 import { Args, User, Config, Database, Context, Credentials, Document, JSONObject } from './types'
-import { MakeDatabase, Upstream } from "./impl";
+import { ClearCallDepth, MakeDatabase, Upstream } from "./impl";
 
 
 /** The interface the native code needs to implement.
@@ -83,6 +83,7 @@ export class API {
     {
         let args = argsJSON ? JSON.parse(argsJSON) : undefined;
         let context = this.makeContext(user, roles, channels, mutationAllowed);
+        ClearCallDepth();
         let result = this.db.callFunction(context, name, args);
         if (result instanceof Promise) {
             return result.then( result => JSON.stringify(result) );
@@ -103,6 +104,7 @@ export class API {
         if (operationName === "") operationName = undefined;
         let vars = variablesJSON ? JSON.parse(variablesJSON) : undefined;
         let context = this.makeContext(user, roles, channels, mutationAllowed);
+        ClearCallDepth();
         return this.db.graphql(context, query, vars, operationName)
             .then( result => JSON.stringify(result) );
     }

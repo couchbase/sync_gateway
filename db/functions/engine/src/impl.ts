@@ -395,6 +395,8 @@ class CRUDImpl implements CRUD {
 export let CallDepth = 1;
 export const MaxCallDepth = 20;
 
+export function ClearCallDepth() {CallDepth = 1;}
+
 
 class UserImpl implements User {
 
@@ -429,6 +431,7 @@ class UserImpl implements User {
     function(name: string, args?: Args) : unknown {
         let fn = this.db.getFunction(name);
         if (++CallDepth > MaxCallDepth) {
+            --CallDepth;
             let msg = `User function recursion too deep (calling function("${name}")`;
             console.error(msg);
             throw new HTTPError(508, msg);
@@ -443,6 +446,7 @@ class UserImpl implements User {
 
     async graphql(query: string, args?: Args) : Promise<JSONObject | null> {
         if (++CallDepth > MaxCallDepth) {
+            --CallDepth;
             let msg = `User function recursion too deep (calling graphql())`;
             console.error(msg);
             throw new HTTPError(508, msg);
