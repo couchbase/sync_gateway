@@ -206,7 +206,7 @@ type GocbV2Bucket struct {
 
 var (
 	_ sgbucket.BucketStore = &GocbV2Bucket{}
-	_ CouchbaseStore       = &GocbV2Bucket{}
+	_ CouchbaseBucketStore = &GocbV2Bucket{}
 )
 
 func AsGocbV2Bucket(bucket Bucket) (*GocbV2Bucket, error) {
@@ -515,7 +515,7 @@ func (b *GocbV2Bucket) BucketItemCount() (itemCount int, err error) {
 		return itemCount, nil
 	}
 
-	// TODO: implement APIBucketItemCount for collections as part of CouchbaseStore refactoring.  Until then, give flush a moment to finish
+	// TODO: implement APIBucketItemCount for collections as part of CouchbaseBucketStore refactoring.  Until then, give flush a moment to finish
 	time.Sleep(1 * time.Second)
 	// itemCount, err = bucket.APIBucketItemCount()
 	return 0, err
@@ -837,12 +837,12 @@ func AsLeakyBucket(bucket Bucket) (*LeakyBucket, bool) {
 	return AsLeakyBucket(underlyingBucket)
 }
 
-func GoCBBucketMgmtEndpoints(bucket CouchbaseStore) (url []string, err error) {
+func GoCBBucketMgmtEndpoints(bucket CouchbaseBucketStore) (url []string, err error) {
 	return bucket.MgmtEps()
 }
 
 // Get one of the management endpoints.  It will be a string such as http://couchbase
-func GoCBBucketMgmtEndpoint(bucket CouchbaseStore) (url string, err error) {
+func GoCBBucketMgmtEndpoint(bucket CouchbaseBucketStore) (url string, err error) {
 	mgmtEps, err := bucket.MgmtEps()
 	if err != nil {
 		return "", err
