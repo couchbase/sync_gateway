@@ -448,8 +448,6 @@ func (h *handler) handlePutDoc() error {
 	var newRev string
 	var doc *db.Document
 
-	fmt.Printf("HONK collection=%+v\n", h.collection)
-
 	if h.getQuery("new_edits") != "false" {
 		// Regular PUT:
 		bodyRev := body[db.BodyRev]

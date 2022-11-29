@@ -284,7 +284,11 @@ func (b *GocbV2Bucket) CreateDataStore(name sgbucket.DataStoreName) error {
 	if err != nil && !errors.Is(err, gocb.ErrScopeExists) {
 		return err
 	}
-	return b.bucket.Collections().CreateCollection(gocb.CollectionSpec{Name: name.CollectionName(), ScopeName: name.ScopeName()}, nil)
+	err = b.bucket.Collections().CreateCollection(gocb.CollectionSpec{Name: name.CollectionName(), ScopeName: name.ScopeName()}, nil)
+	if err != nil {
+		return err
+	}
+	return WaitUntilCollectionExists(b, name)
 }
 
 func (bucket *GocbV2Bucket) StartDCPFeed(args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map) error {
@@ -417,8 +421,7 @@ func (b *GocbV2Bucket) DefaultDataStore() sgbucket.DataStore {
 
 // NamedDataStore returns a collection on a bucket within the given scope and collection.
 func (b *GocbV2Bucket) NamedDataStore(name sgbucket.DataStoreName) (sgbucket.DataStore, error) {
-	collection := b.bucket.Scope(name.ScopeName()).Collection(name.CollectionName())
-	err := WaitUntilCollectionExists(collection)
+	err := WaitUntilCollectionExists(b, name)
 	if err != nil {
 		return nil, fmt.Errorf("attempting to create/update database with a scope/collection that is not found")
 	}
