@@ -2340,7 +2340,6 @@ func emptyChangesFeed(t *testing.T, feed <-chan *ChangeEntry) {
 	for {
 		select {
 		case v := <-feed:
-			log.Println(v)
 			if v == nil {
 				return
 			}
