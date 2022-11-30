@@ -420,60 +420,6 @@ func TestGetAndTouchRaw(t *testing.T) {
 
 }
 
-func TestCreateBatchesEntries(t *testing.T) {
-
-	entries := []*sgbucket.BulkSetEntry{
-		{
-			Key: "one",
-		},
-		{
-			Key: "two",
-		},
-		{
-			Key: "three",
-		},
-		{
-			Key: "four",
-		},
-		{
-			Key: "five",
-		},
-		{
-			Key: "six",
-		},
-		{
-			Key: "seven",
-		},
-	}
-
-	batchSize := uint(2)
-	batches := createBatchesEntries(batchSize, entries)
-	log.Printf("batches: %+v", batches)
-	assert.Equal(t, 4, len(batches))
-	assert.Equal(t, "one", batches[0][0].Key)
-	assert.Equal(t, "two", batches[0][1].Key)
-	assert.Equal(t, "three", batches[1][0].Key)
-	assert.Equal(t, "four", batches[1][1].Key)
-	assert.Equal(t, "five", batches[2][0].Key)
-	assert.Equal(t, "six", batches[2][1].Key)
-	assert.Equal(t, "seven", batches[3][0].Key)
-}
-
-func TestCreateBatchesKeys(t *testing.T) {
-	keys := []string{"one", "two", "three", "four", "five", "six", "seven"}
-	batchSize := uint(2)
-	batches := createBatchesKeys(batchSize, keys)
-	log.Printf("batches: %+v", batches)
-	assert.Equal(t, 4, len(batches))
-	assert.Equal(t, "one", batches[0][0])
-	assert.Equal(t, "two", batches[0][1])
-	assert.Equal(t, "three", batches[1][0])
-	assert.Equal(t, "four", batches[1][1])
-	assert.Equal(t, "five", batches[2][0])
-	assert.Equal(t, "six", batches[2][1])
-	assert.Equal(t, "seven", batches[3][0])
-}
-
 func SkipXattrTestsIfNotEnabled(t *testing.T) {
 
 	if !TestUseXattrs() {
