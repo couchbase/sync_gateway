@@ -2680,6 +2680,13 @@ func TestGetDatabaseCollectionWithUserNoScopesConfigured(t *testing.T) {
 }
 
 func TestGetDatabaseCollectionWithUserDefaultCollection(t *testing.T) {
+	bucket := base.GetTestBucket(t)
+	defer bucket.Close()
+
+	ds := bucket.GetNamedDataStore(t)
+	dataStoreName, ok := ds.(sgbucket.DataStoreName)
+	require.True(t, ok)
+
 	testCases := []struct {
 		name       string
 		scope      string
@@ -2729,9 +2736,9 @@ func TestGetDatabaseCollectionWithUserDefaultCollection(t *testing.T) {
 			err:        false,
 			options: DatabaseContextOptions{
 				Scopes: map[string]ScopeOptions{
-					"foo": ScopeOptions{
+					dataStoreName.ScopeName(): ScopeOptions{
 						Collections: map[string]CollectionOptions{
-							"bar": {},
+							dataStoreName.CollectionName(): {},
 						},
 					},
 					base.DefaultScope: ScopeOptions{
@@ -2743,13 +2750,11 @@ func TestGetDatabaseCollectionWithUserDefaultCollection(t *testing.T) {
 			},
 		},
 	}
-	dataStore := base.GetTestBucket(t)
-	defer dataStore.Close()
 
 	for _, testCase := range testCases {
 		t.Run(fmt.Sprintf(testCase.name), func(t *testing.T) {
 			ctx := base.TestCtx(t)
-			dbCtx, err := NewDatabaseContext(ctx, "db", dataStore.NoCloseClone(), false, testCase.options)
+			dbCtx, err := NewDatabaseContext(ctx, "db", bucket.NoCloseClone(), false, testCase.options)
 			require.NoError(t, err)
 
 			db, err := GetDatabase(dbCtx, nil)

@@ -40,9 +40,21 @@ var (
 func AsCollection(dataStore DataStore) (*Collection, error) {
 	collection, ok := dataStore.(*Collection)
 	if !ok {
-		return nil, errors.New("dataStore is not a *Collection")
+		return nil, fmt.Errorf("dataStore is not a *Collection (got %T)", dataStore)
 	}
 	return collection, nil
+}
+
+// NewCollection creates a new collection object, caching some kv ops.
+func NewCollection(bucket *GocbV2Bucket, collection *gocb.Collection) (*Collection, error) {
+	c := &Collection{
+		Bucket:     bucket,
+		Collection: collection}
+	err := c.setCollectionID()
+	if err != nil {
+		return nil, err
+	}
+	return c, nil
 }
 
 // CollectionName returns the collection name

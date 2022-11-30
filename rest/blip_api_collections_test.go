@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/couchbase/go-blip"
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/stretchr/testify/assert"
@@ -29,16 +30,18 @@ func TestBlipGetCollections(t *testing.T) {
 	tb := base.GetTestBucket(t)
 	defer tb.Close()
 
-	tc, err := base.AsCollection(tb.DefaultDataStore())
-	require.NoError(t, err)
+	ds := tb.GetNamedDataStore(t)
+	dataStoreName, ok := ds.(sgbucket.DataStoreName)
+	require.True(t, ok)
 
-	scopeName := tc.ScopeName()
-	collectionName := tc.CollectionName()
+	scopeName := dataStoreName.ScopeName()
+	collectionName := dataStoreName.CollectionName()
 
 	scopeAndCollection := fmt.Sprintf("%s.%s", scopeName, collectionName)
 	const defaultScopeAndCollection = "_default._default"
 	rt := NewRestTester(t, &RestTesterConfig{
-		GuestEnabled: true,
+		CustomTestBucket: tb.NoCloseClone(),
+		GuestEnabled:     true,
 		DatabaseConfig: &DatabaseConfig{
 			DbConfig: DbConfig{
 				Scopes: ScopesConfig{

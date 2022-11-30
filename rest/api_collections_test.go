@@ -11,9 +11,11 @@ package rest
 import (
 	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/couchbase/gocb/v2"
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/stretchr/testify/assert"
@@ -28,11 +30,12 @@ func TestCollectionsPutDocInKeyspace(t *testing.T) {
 	tb := base.GetTestBucket(t)
 	defer tb.Close()
 
-	tc, err := base.AsCollection(tb.DefaultDataStore())
-	require.NoError(t, err)
+	// dbName is the default name from RestTester
+	dbName := "db"
 
-	scopeName := tc.ScopeName()
-	collectionName := tc.CollectionName()
+	ds := tb.GetNamedDataStore(t)
+	dataStoreName, ok := ds.(sgbucket.DataStoreName)
+	require.True(t, ok)
 
 	tests := []struct {
 		name           string
@@ -40,29 +43,30 @@ func TestCollectionsPutDocInKeyspace(t *testing.T) {
 		expectedStatus int
 	}{
 		// if a single scope and collection is defined, use that implicitly
-		{
+		/*{
 			name:           "implicit scope and collection",
 			keyspace:       "db",
-			expectedStatus: http.StatusCreated,
+			expectedStatus: http.StatusNotFound,
 		},
+		*/
 		{
 			name:           "fully qualified",
-			keyspace:       fmt.Sprintf("%s.%s.%s", "db", scopeName, collectionName),
+			keyspace:       strings.Join([]string{dbName, dataStoreName.ScopeName(), dataStoreName.CollectionName()}, base.ScopeCollectionSeparator),
 			expectedStatus: http.StatusCreated,
 		},
 		{
 			name:           "collection only",
-			keyspace:       fmt.Sprintf("%s.%s", "db", collectionName),
+			keyspace:       strings.Join([]string{dbName, dataStoreName.CollectionName()}, base.ScopeCollectionSeparator),
 			expectedStatus: http.StatusCreated,
 		},
 		{
 			name:           "invalid collection",
-			keyspace:       fmt.Sprintf("%s.%s.%s", "db", scopeName, "buzz"),
+			keyspace:       strings.Join([]string{dbName, dataStoreName.ScopeName(), "buzz"}, base.ScopeCollectionSeparator),
 			expectedStatus: http.StatusNotFound,
 		},
 		{
 			name:           "invalid scope",
-			keyspace:       fmt.Sprintf("%s.%s.%s", "db", "buzz", collectionName),
+			keyspace:       strings.Join([]string{dbName, "buzz", dataStoreName.CollectionName()}, base.ScopeCollectionSeparator),
 			expectedStatus: http.StatusNotFound,
 		},
 	}
@@ -71,28 +75,28 @@ func TestCollectionsPutDocInKeyspace(t *testing.T) {
 		username = "alice"
 		password = "pass"
 	)
+	for i, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
 
-	rt := NewRestTester(t, &RestTesterConfig{
-		CustomTestBucket: tb.NoCloseClone(),
-		DatabaseConfig: &DatabaseConfig{
-			DbConfig: DbConfig{
-				Users: map[string]*auth.PrincipalConfig{
-					username: {Password: base.StringPtr(password)},
-				},
-				Scopes: ScopesConfig{
-					scopeName: ScopeConfig{
-						Collections: map[string]CollectionConfig{
-							collectionName: {},
+			rt := NewRestTester(t, &RestTesterConfig{
+				CustomTestBucket: tb.NoCloseClone(),
+				DatabaseConfig: &DatabaseConfig{
+					DbConfig: DbConfig{
+						Users: map[string]*auth.PrincipalConfig{
+							username: {Password: base.StringPtr(password)},
+						},
+						Scopes: ScopesConfig{
+							dataStoreName.ScopeName(): ScopeConfig{
+								Collections: map[string]CollectionConfig{
+									dataStoreName.CollectionName(): {},
+								},
+							},
 						},
 					},
 				},
-			},
-		},
-	})
-	defer rt.Close()
+			})
+			defer rt.Close()
 
-	for i, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
 			docID := fmt.Sprintf("doc%d", i)
 			path := fmt.Sprintf("/%s/%s", test.keyspace, docID)
 			resp := rt.SendUserRequestWithHeaders(http.MethodPut, path, `{"test":true}`, nil, username, password)
@@ -100,13 +104,12 @@ func TestCollectionsPutDocInKeyspace(t *testing.T) {
 
 			if test.expectedStatus == http.StatusCreated {
 				// go and check that the doc didn't just end up in the default collection of the test bucket
-				docBody, _, err := tb.DefaultDataStore().GetRaw(docID)
+				docBody, _, err := ds.GetRaw(docID)
 				require.NoError(t, err)
 				require.NotNil(t, docBody)
 
-				tc, err := base.AsCollection(tb.DefaultDataStore())
-				defaultCollection := tc.Collection.Bucket().DefaultCollection()
-				_, err = defaultCollection.Get(docID, &gocb.GetOptions{})
+				defaultDataStore := rt.Bucket().DefaultDataStore()
+				_, err = defaultDataStore.Get(docID, &gocb.GetOptions{})
 				require.Error(t, err)
 			}
 		})
@@ -250,20 +253,19 @@ func TestCollectionsBasicIndexQuery(t *testing.T) {
 	tb := base.GetTestBucket(t)
 	defer tb.Close()
 
-	tc, err := base.AsCollection(tb.DefaultDataStore())
-	require.NoError(t, err)
+	ds := tb.GetNamedDataStore(t)
 
-	scopeName := tc.ScopeName()
-	collectionName := tc.CollectionName()
+	dataStoreName, ok := ds.(sgbucket.DataStoreName)
+	require.True(t, ok)
 
 	rt := NewRestTester(t, &RestTesterConfig{
 		CustomTestBucket: tb.NoCloseClone(),
 		DatabaseConfig: &DatabaseConfig{
 			DbConfig: DbConfig{
 				Scopes: ScopesConfig{
-					scopeName: ScopeConfig{
+					dataStoreName.ScopeName(): ScopeConfig{
 						Collections: map[string]CollectionConfig{
-							collectionName: {},
+							dataStoreName.CollectionName(): {},
 						},
 					},
 				},
@@ -274,13 +276,13 @@ func TestCollectionsBasicIndexQuery(t *testing.T) {
 
 	const docID = "doc1"
 
-	keyspace := "db." + scopeName + "." + collectionName
+	keyspace := strings.Join([]string{"db", dataStoreName.ScopeName(), dataStoreName.CollectionName()}, base.ScopeCollectionSeparator)
 
 	resp := rt.SendAdminRequest(http.MethodPut, fmt.Sprintf("/%s/%s", keyspace, docID), `{"test":true}`)
 	RequireStatus(t, resp, http.StatusCreated)
 
 	// use the rt.Bucket which has got the foo.bar scope/collection set up
-	n1qlStore, ok := base.AsN1QLStore(rt.Bucket().DefaultDataStore())
+	n1qlStore, ok := base.AsN1QLStore(ds)
 	require.True(t, ok)
 
 	idxName := t.Name() + "_primary"
@@ -303,12 +305,12 @@ func TestCollectionsBasicIndexQuery(t *testing.T) {
 	assert.NotNilf(t, indexMetaResult.BucketID, "bucket_id was not present - index was created on the _default collection!")
 	assert.NotNilf(t, indexMetaResult.ScopeID, "scope_id was not present - index was created on the _default collection!")
 	require.NotNilf(t, indexMetaResult.KeyspaceID, "keyspace_id should be present")
-	assert.NotEqualf(t, tb.Bucket.GetName(), *indexMetaResult.KeyspaceID, "keyspace_id was the bucket name - index was created on the _default collection!")
+	assert.NotEqualf(t, rt.Bucket().GetName(), *indexMetaResult.KeyspaceID, "keyspace_id was the bucket name - index was created on the _default collection!")
 
 	// if the index was created on a collection, the keyspace_id becomes the collection, along with additional fields for bucket and scope.
-	assert.Equal(t, tb.Bucket.GetName(), *indexMetaResult.BucketID)
-	assert.Equal(t, scopeName, *indexMetaResult.ScopeID)
-	assert.Equal(t, collectionName, *indexMetaResult.KeyspaceID)
+	assert.Equal(t, rt.Bucket().GetName(), *indexMetaResult.BucketID)
+	assert.Equal(t, dataStoreName.ScopeName(), *indexMetaResult.ScopeID)
+	assert.Equal(t, dataStoreName.CollectionName(), *indexMetaResult.KeyspaceID)
 
 	// try and query the document that we wrote via SG
 	res, err = n1qlStore.Query("SELECT test FROM "+base.KeyspaceQueryToken+" WHERE test = true", nil, base.RequestPlus, true)
@@ -340,16 +342,16 @@ func TestCollectionsSGIndexQuery(t *testing.T) {
 		validDocID   = "doc1"
 		invalidDocID = "doc2"
 	)
+
 	tb := base.GetTestBucket(t)
 	defer tb.Close()
 
-	tc, err := base.AsCollection(tb.DefaultDataStore())
-	require.NoError(t, err)
+	ds := tb.GetNamedDataStore(t)
 
-	scopeName := tc.ScopeName()
-	collectionName := tc.CollectionName()
+	dataStoreName, ok := ds.(sgbucket.DataStoreName)
+	require.True(t, ok)
 
-	keyspace := "db." + scopeName + "." + collectionName
+	keyspace := strings.Join([]string{"db", dataStoreName.ScopeName(), dataStoreName.CollectionName()}, base.ScopeCollectionSeparator)
 
 	rt := NewRestTester(t, &RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{
@@ -362,9 +364,9 @@ func TestCollectionsSGIndexQuery(t *testing.T) {
 					},
 				},
 				Scopes: ScopesConfig{
-					scopeName: ScopeConfig{
+					dataStoreName.ScopeName(): ScopeConfig{
 						Collections: map[string]CollectionConfig{
-							collectionName: {},
+							dataStoreName.CollectionName(): {},
 						},
 					},
 				},
@@ -396,7 +398,7 @@ func TestCollectionsSGIndexQuery(t *testing.T) {
 	resp = rt.SendUserRequestWithHeaders(http.MethodGet, fmt.Sprintf("/%s/%s", keyspace, invalidDocID), ``, nil, username, password)
 	RequireStatus(t, resp, http.StatusForbidden)
 
-	_, err = rt.WaitForChanges(1, "/db/_changes", username, false)
+	_, err := rt.WaitForChanges(1, "/db/_changes", username, false)
 	require.NoError(t, err)
 }
 
