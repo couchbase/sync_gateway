@@ -2679,6 +2679,12 @@ func TestGetDatabaseCollectionWithUserNoScopesConfigured(t *testing.T) {
 	}
 }
 
+// AsDataStoreName is a temporary thing until DataStoreName is implemented on wrappers (pending further design work on FQName...)
+func AsDataStoreName(ds base.DataStore) (sgbucket.DataStoreName, bool) {
+	dsn, ok := base.GetBaseDataStore(ds).(sgbucket.DataStoreName)
+	return dsn, ok
+}
+
 func TestGetDatabaseCollectionWithUserDefaultCollection(t *testing.T) {
 	base.TestRequiresCollections(t)
 
@@ -2687,7 +2693,8 @@ func TestGetDatabaseCollectionWithUserDefaultCollection(t *testing.T) {
 
 	ds := bucket.GetNamedDataStore(t)
 	require.NotNil(t, ds)
-	dataStoreName, ok := ds.(sgbucket.DataStoreName)
+
+	dataStoreName, ok := AsDataStoreName(ds)
 	require.True(t, ok)
 
 	testCases := []struct {

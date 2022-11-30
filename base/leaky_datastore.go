@@ -23,7 +23,8 @@ type LeakyDataStore struct {
 }
 
 var (
-	_ DataStore = &LeakyDataStore{}
+	_ DataStore         = &LeakyDataStore{}
+	_ WrappingDatastore = &LeakyDataStore{}
 	// _ N1QLStore = &LeakyDataStore{} // TODO: Not implemented
 )
 
@@ -39,6 +40,10 @@ func NewLeakyDataStore(bucket *LeakyBucket, dataStore DataStore, config *LeakyBu
 func AsLeakyDataStore(ds DataStore) (*LeakyDataStore, bool) {
 	lds, ok := ds.(*LeakyDataStore)
 	return lds, ok
+}
+
+func (lds *LeakyDataStore) GetUnderlyingDataStore() DataStore {
+	return lds.dataStore
 }
 
 func (lds *LeakyDataStore) SetDDocDeleteErrorCount(i int) {

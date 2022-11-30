@@ -48,6 +48,12 @@ type WrappingBucket interface {
 	GetUnderlyingBucket() Bucket
 }
 
+// WrappingDataStore interface used to identify datastores that wrap an underlying
+// datastore (leaky datastore)
+type WrappingDatastore interface {
+	GetUnderlyingDataStore() DataStore
+}
+
 // CouchbaseBucketStore defines operations specific to Couchbase Bucket
 type CouchbaseBucketStore interface {
 	GetName() string
@@ -78,6 +84,14 @@ func GetBaseBucket(b Bucket) Bucket {
 		return GetBaseBucket(wb.GetUnderlyingBucket())
 	}
 	return b
+}
+
+// GetBaseDataStore returns the lowest level non-wrapping datastore wrapped by one or more WrappingBuckets
+func GetBaseDataStore(ds DataStore) DataStore {
+	if wds, ok := ds.(WrappingDatastore); ok {
+		return GetBaseDataStore(wds.GetUnderlyingDataStore())
+	}
+	return ds
 }
 
 func init() {
