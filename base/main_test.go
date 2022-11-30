@@ -11,10 +11,13 @@ licenses/APL2.txt.
 package base
 
 import (
+	"os"
 	"testing"
 )
 
 func TestMain(m *testing.M) {
 	memWatermarkThresholdMB := uint64(2048)
+
+	_ = os.Setenv(tbpUseDefaultCollection, "false")
 	TestBucketPoolNoIndexes(m, memWatermarkThresholdMB)
 }
