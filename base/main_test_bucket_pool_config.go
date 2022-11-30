@@ -66,6 +66,11 @@ var tbpDefaultBucketSpec = BucketSpec{
 	UseXattrs: TestUseXattrs(),
 }
 
+func ShouldUseDefaultCollection() bool {
+	ok, _ := strconv.ParseBool(os.Getenv(tbpUseDefaultCollection))
+	return ok
+}
+
 // shouldUseCollections returns true if cluster will be created with named collections
 func (tbp *TestBucketPool) shouldUseCollections() (bool, error) {
 	// walrus supports collections, but we need to query the server's version for capability check

@@ -124,7 +124,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 
 	if rt.InitSyncSeq > 0 {
 		log.Printf("Initializing %s to %d", base.SyncSeqKey, rt.InitSyncSeq)
-		_, incrErr := testBucket.DefaultDataStore().Incr(base.SyncSeqKey, rt.InitSyncSeq, rt.InitSyncSeq, 0)
+		_, incrErr := testBucket.GetSingleDataStore().Incr(base.SyncSeqKey, rt.InitSyncSeq, rt.InitSyncSeq, 0)
 		if incrErr != nil {
 			rt.TB.Fatalf("Error initializing %s in test bucket: %v", base.SyncSeqKey, incrErr)
 		}
@@ -242,7 +242,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 		}
 
 		/* FIXME: TOR
-		collection, collectionErr := base.AsCollection(rt.TestBucket.DefaultDataStore())
+		collection, collectionErr := base.AsCollection(rt.TestBucket.GetSingleDataStore())
 		if collectionErr == nil && rt.DatabaseConfig.Scopes == nil && collection.Spec.Scope != nil && collection.Spec.Collection != nil {
 			rt.DatabaseConfig.Scopes = ScopesConfig{
 				*collection.Spec.Scope: ScopeConfig{

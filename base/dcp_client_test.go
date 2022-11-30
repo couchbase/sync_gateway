@@ -35,7 +35,7 @@ func TestOneShotDCP(t *testing.T) {
 	bucket := GetTestBucket(t)
 	defer bucket.Close()
 
-	dataStore := bucket.DefaultDataStore()
+	dataStore := bucket.GetSingleDataStore()
 
 	numDocs := 1000
 	// write documents to bucket
@@ -124,7 +124,7 @@ func TestTerminateDCPFeed(t *testing.T) {
 	bucket := GetTestBucket(t)
 	defer bucket.Close()
 
-	dataStore := bucket.DefaultDataStore()
+	dataStore := bucket.GetSingleDataStore()
 
 	// create callback
 	mutationCount := uint64(0)
@@ -209,7 +209,7 @@ func TestDCPClientMultiFeedConsistency(t *testing.T) {
 			bucket := GetTestBucket(t)
 			defer bucket.Close()
 
-			dataStore := bucket.DefaultDataStore()
+			dataStore := bucket.GetSingleDataStore()
 
 			// create callback
 			mutationCount := uint64(0)
@@ -330,7 +330,7 @@ func TestResumeStoppedFeed(t *testing.T) {
 	bucket := GetTestBucket(t)
 	defer bucket.Close()
 
-	dataStore := bucket.DefaultDataStore()
+	dataStore := bucket.GetSingleDataStore()
 
 	var dcpClient *DCPClient
 

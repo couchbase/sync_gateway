@@ -1183,7 +1183,7 @@ func TestJWTRolesChannels(t *testing.T) {
 
 			testBucket := base.GetTestBucket(t)
 			defer testBucket.Close()
-			dataStore := testBucket.DefaultDataStore()
+			dataStore := testBucket.GetSingleDataStore()
 			testMockComputer := mockComputerV2{
 				roles:        map[string]ch.TimedSet{},
 				channels:     map[string]ch.TimedSet{},

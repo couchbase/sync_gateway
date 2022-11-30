@@ -35,7 +35,7 @@ func TestN1qlQuery(t *testing.T) {
 	bucket := GetTestBucket(t)
 	defer bucket.Close()
 
-	dataStore := bucket.DefaultDataStore()
+	dataStore := bucket.GetSingleDataStore()
 
 	n1qlStore, ok := AsN1QLStore(dataStore)
 	if !ok {
@@ -144,7 +144,7 @@ func TestN1qlFilterExpression(t *testing.T) {
 
 	bucket := GetTestBucket(t)
 	defer bucket.Close()
-	dataStore := bucket.DefaultDataStore()
+	dataStore := bucket.GetSingleDataStore()
 	n1qlStore, ok := AsN1QLStore(dataStore)
 	if !ok {
 		t.Fatalf("Requires bucket to be N1QLStore")
@@ -223,7 +223,7 @@ func TestIndexMeta(t *testing.T) {
 	bucket := GetTestBucket(t)
 	defer bucket.Close()
 
-	dataStore := bucket.DefaultDataStore()
+	dataStore := bucket.GetSingleDataStore()
 
 	n1qlStore, ok := AsN1QLStore(dataStore)
 	if !ok {
@@ -270,7 +270,7 @@ func TestMalformedN1qlQuery(t *testing.T) {
 	bucket := GetTestBucket(t)
 	defer bucket.Close()
 
-	dataStore := bucket.DefaultDataStore()
+	dataStore := bucket.GetSingleDataStore()
 
 	n1qlStore, ok := AsN1QLStore(dataStore)
 	if !ok {
@@ -345,7 +345,7 @@ func TestCreateAndDropIndex(t *testing.T) {
 	bucket := GetTestBucket(t)
 	defer bucket.Close()
 
-	dataStore := bucket.DefaultDataStore()
+	dataStore := bucket.GetSingleDataStore()
 
 	n1qlStore, ok := AsN1QLStore(dataStore)
 	if !ok {
@@ -375,7 +375,7 @@ func TestCreateDuplicateIndex(t *testing.T) {
 	bucket := GetTestBucket(t)
 	defer bucket.Close()
 
-	dataStore := bucket.DefaultDataStore()
+	dataStore := bucket.GetSingleDataStore()
 
 	n1qlStore, ok := AsN1QLStore(dataStore)
 	if !ok {
@@ -410,7 +410,7 @@ func TestCreateAndDropIndexSpecialCharacters(t *testing.T) {
 	bucket := GetTestBucket(t)
 	defer bucket.Close()
 
-	dataStore := bucket.DefaultDataStore()
+	dataStore := bucket.GetSingleDataStore()
 
 	n1qlStore, ok := AsN1QLStore(dataStore)
 	if !ok {
@@ -441,7 +441,7 @@ func TestDeferredCreateIndex(t *testing.T) {
 	bucket := GetTestBucket(t)
 	defer bucket.Close()
 
-	dataStore := bucket.DefaultDataStore()
+	dataStore := bucket.GetSingleDataStore()
 
 	n1qlStore, ok := AsN1QLStore(dataStore)
 	if !ok {
@@ -486,7 +486,7 @@ func TestBuildDeferredIndexes(t *testing.T) {
 	bucket := GetTestBucket(t)
 	defer bucket.Close()
 
-	dataStore := bucket.DefaultDataStore()
+	dataStore := bucket.GetSingleDataStore()
 
 	n1qlStore, ok := AsN1QLStore(dataStore)
 	if !ok {
@@ -554,7 +554,7 @@ func TestCreateAndDropIndexErrors(t *testing.T) {
 	bucket := GetTestBucket(t)
 	defer bucket.Close()
 
-	dataStore := bucket.DefaultDataStore()
+	dataStore := bucket.GetSingleDataStore()
 
 	n1qlStore, ok := AsN1QLStore(dataStore)
 	if !ok {
@@ -623,7 +623,7 @@ func TestWaitForBucketExistence(t *testing.T) {
 	bucket := GetTestBucket(t)
 	defer bucket.Close()
 
-	dataStore := bucket.DefaultDataStore()
+	dataStore := bucket.GetSingleDataStore()
 
 	n1qlStore, ok := AsN1QLStore(dataStore)
 	if !ok {

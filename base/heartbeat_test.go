@@ -109,7 +109,7 @@ func TestCouchbaseHeartbeaters(t *testing.T) {
 	testBucket := GetTestBucket(t)
 	defer testBucket.Close()
 
-	DataStore := testBucket.DefaultDataStore()
+	DataStore := testBucket.GetSingleDataStore()
 
 	// Setup heartbeaters and listeners
 	nodeCount := 3
@@ -189,7 +189,7 @@ func TestCouchbaseHeartbeatersMultipleListeners(t *testing.T) {
 	testBucket := GetTestBucket(t)
 	defer testBucket.Close()
 
-	dataStore := testBucket.DefaultDataStore()
+	dataStore := testBucket.GetSingleDataStore()
 
 	// Setup heartbeaters and listeners
 	nodeCount := 3

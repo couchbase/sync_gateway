@@ -5759,7 +5759,7 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 	// requireTombstone validates tombstoned revision.
 	requireTombstone := func(t *testing.T, bucket *base.TestBucket, docID string) {
 		var rawBody db.Body
-		_, err := bucket.DefaultDataStore().Get(docID, &rawBody)
+		_, err := bucket.GetSingleDataStore().Get(docID, &rawBody)
 		if base.TestUseXattrs() {
 			require.True(t, base.IsDocNotFoundError(err))
 			require.Len(t, rawBody, 0)
@@ -5965,7 +5965,7 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 			if test.resurrectLocal {
 				if test.sdkResurrect {
 					// resurrect doc via SDK on local
-					err = activeBucket.DefaultDataStore().Set("docid2", 0, nil, updatedBody)
+					err = activeBucket.GetSingleDataStore().Set("docid2", 0, nil, updatedBody)
 					assert.NoError(t, err, "Unable to resurrect doc docid2")
 					// force on-demand import
 					_, getErr := localActiveRT.GetDatabase().GetSingleDatabaseCollection().GetDocument(base.TestCtx(t), "docid2", db.DocUnmarshalSync)
@@ -5977,7 +5977,7 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 			} else {
 				if test.sdkResurrect {
 					// resurrect doc via SDK on remote
-					err = passiveBucket.DefaultDataStore().Set("docid2", 0, nil, updatedBody)
+					err = passiveBucket.GetSingleDataStore().Set("docid2", 0, nil, updatedBody)
 					assert.NoError(t, err, "Unable to resurrect doc docid2")
 					// force on-demand import
 					_, getErr := remotePassiveRT.GetDatabase().GetSingleDatabaseCollection().GetDocument(base.TestCtx(t), "docid2", db.DocUnmarshalSync)

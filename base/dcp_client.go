@@ -112,7 +112,7 @@ func NewDCPClient(ID string, callback sgbucket.FeedEventCallbackFunc, options DC
 	checkpointPrefix := fmt.Sprintf("%s:%v", client.checkpointPrefix, ID)
 	switch options.MetadataStoreType {
 	case DCPMetadataStoreCS:
-		// TODO: Change DefaultDataStore to a metadata Store?
+		// TODO: Change GetSingleDataStore to a metadata Store?
 		metadataStore := bucket.DefaultDataStore()
 		client.metadata = NewDCPMetadataCS(metadataStore, numVbuckets, numWorkers, checkpointPrefix)
 	case DCPMetadataStoreInMemory:

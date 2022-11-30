@@ -1276,7 +1276,7 @@ func TestSoftDeleteCasMismatch(t *testing.T) {
 	resp := rt.SendAdminRequest("PUT", "/db/_role/role", `{"admin_channels":["channel"]}`)
 	rest.RequireStatus(t, resp, http.StatusCreated)
 
-	leakyDataStore, ok := base.AsLeakyDataStore(rt.TestBucket.DefaultDataStore())
+	leakyDataStore, ok := base.AsLeakyDataStore(rt.TestBucket.GetSingleDataStore())
 	require.True(t, ok)
 
 	// Set callback to trigger a DELETE AFTER an update. This will trigger a CAS mismatch.
@@ -2662,7 +2662,7 @@ func TestDeleteFunctionsWhileDbOffline(t *testing.T) {
 	resp.RequireStatus(http.StatusCreated)
 
 	if base.TestUseXattrs() {
-		add, err := tb.DefaultDataStore().Add("TestImportDoc", 0, db.Document{ID: "TestImportDoc", RevID: "1-abc"})
+		add, err := tb.GetSingleDataStore().Add("TestImportDoc", 0, db.Document{ID: "TestImportDoc", RevID: "1-abc"})
 		require.NoError(t, err)
 		require.Equal(t, true, add)
 

@@ -49,16 +49,23 @@ type TestBucket struct {
 	Bucket
 	BucketSpec BucketSpec
 	closeFn    func()
+	t          testing.TB
 }
 
 var _ Bucket = &TestBucket{}
 
+// DefaultDataStore is intentionally not implemented for TestBucket
+// DEPRECATED: Should use GetSingleDataStore
 func (b *TestBucket) DefaultDataStore() sgbucket.DataStore {
-	return b.Bucket.DefaultDataStore()
+	b.t.Fatalf("Tests using TestBucket should use GetSingleDataStore accessor!")
+	return nil
 }
 
+// NamedDataStore is intentionally not implemented for TestBucket
+// DEPRECATED: Should use GetNamedDataStore
 func (b *TestBucket) NamedDataStore(name sgbucket.DataStoreName) sgbucket.DataStore {
-	return b.Bucket.NamedDataStore(name)
+	b.t.Fatalf("Tests using TestBucket should use GetNamedDataStore accessor!")
+	return nil
 }
 
 func (tb TestBucket) Close() {
@@ -98,20 +105,6 @@ func GetTestBucket(t testing.TB) *TestBucket {
 	return getTestBucket(t)
 }
 
-// GetTestNamedDataStore returns a named datastore from the test bucket.
-func (tb *TestBucket) GetNamedDataStore(t testing.TB) DataStore {
-	dataStoreNames, err := tb.ListDataStores()
-	require.NoError(t, err)
-	for _, name := range dataStoreNames {
-		if IsDefaultCollection(name.ScopeName(), name.CollectionName()) {
-			continue
-		}
-		return tb.NamedDataStore(name)
-	}
-	t.Error("Could not find a named collection")
-	return nil
-}
-
 // getTestBucket returns a bucket from the bucket pool
 func getTestBucket(t testing.TB) *TestBucket {
 	bucket, spec, closeFn := GTestBucketPool.getTestBucketAndSpec(t)
@@ -122,7 +115,34 @@ func getTestBucket(t testing.TB) *TestBucket {
 	}
 }
 
-// TODO: TestBucket.GetTestCollection?
+// GetNamedDataStore returns a named datastore from the TestBucket.
+func (tb *TestBucket) GetNamedDataStore() DataStore {
+	dataStoreNames, err := tb.ListDataStores()
+	require.NoError(tb.t, err)
+	for _, name := range dataStoreNames {
+		if IsDefaultCollection(name.ScopeName(), name.CollectionName()) {
+			continue
+		}
+		return tb.Bucket.NamedDataStore(name)
+	}
+	tb.t.Error("Could not find a named collection")
+	return nil
+}
+
+// GetSingleDataStore returns a DataStore that can be used for testing.
+// This may be the default collection, or a named collection depending on whether SG_TEST_USE_DEFAULT_COLLECTION is set.
+func (b *TestBucket) GetSingleDataStore() sgbucket.DataStore {
+	if ShouldUseDefaultCollection() {
+		return b.Bucket.DefaultDataStore()
+	}
+	return b.GetNamedDataStore()
+}
+
+// GetDefaultDataStore returns the default DataStore. This is likely never actually wanted over GetSingleDataStore, so is left commented until absolutely required.
+// func (b *TestBucket) GetDefaultDataStore() sgbucket.DataStore {
+// 	b.t.Logf("Using default collection - Are you sure you want this instead of GetSingleDataStore() ?")
+// 	return b.Bucket.DefaultDataStore()
+// }
 
 // Gets a Walrus bucket which will be persisted to a temporary directory
 // Returns both the test bucket which is persisted and a function which can be used to remove the created temporary

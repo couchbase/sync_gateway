@@ -26,7 +26,7 @@ func TestRemoveObsoleteDesignDocs(t *testing.T) {
 	mapFunction := `function (doc, meta) { emit(); }`
 
 	// Add some design docs in the old format
-	viewStore, ok := base.AsViewStore(bucket.DefaultDataStore())
+	viewStore, ok := base.AsViewStore(bucket.GetSingleDataStore())
 	require.True(t, ok)
 
 	err := viewStore.PutDDoc(DesignDocSyncGatewayPrefix, &sgbucket.DesignDoc{
@@ -96,7 +96,7 @@ func TestRemoveDesignDocsUseViewsTrueAndFalse(t *testing.T) {
 
 	mapFunction := `function (doc, meta){ emit(); }`
 
-	viewStore, ok := base.AsViewStore(bucket.DefaultDataStore())
+	viewStore, ok := base.AsViewStore(bucket.GetSingleDataStore())
 	require.True(t, ok)
 
 	err := viewStore.PutDDoc(DesignDocSyncGatewayPrefix+"_2.0", &sgbucket.DesignDoc{

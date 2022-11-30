@@ -644,7 +644,7 @@ func TestObtainUserChannelsForDeletedRoleCasFail(t *testing.T) {
 			resp = rt.SendAdminRequest("PUT", "/db/userRoles", `{"roles": "role:role"}`)
 			RequireStatus(t, resp, http.StatusCreated)
 
-			leakyDataStore, ok := base.AsLeakyDataStore(rt.TestBucket.DefaultDataStore())
+			leakyDataStore, ok := base.AsLeakyDataStore(rt.TestBucket.GetSingleDataStore())
 			require.True(t, ok)
 
 			triggerCallback := false

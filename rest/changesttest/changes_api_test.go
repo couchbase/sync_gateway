@@ -67,7 +67,7 @@ func TestReproduce2383(t *testing.T) {
 		Last_Seq interface{}
 	}
 
-	leakyDataStore, ok := base.AsLeakyDataStore(rt.TestBucket.DefaultDataStore())
+	leakyDataStore, ok := base.AsLeakyDataStore(rt.TestBucket.GetSingleDataStore())
 	require.True(t, ok)
 
 	// Force a partial error for the first ViewCustom call we make to initialize an invalid cache.
@@ -3004,7 +3004,7 @@ func TestChangesViewBackfillSlowQuery(t *testing.T) {
 
 	}
 
-	leakyDataStore, ok := base.AsLeakyDataStore(rt.TestBucket.DefaultDataStore())
+	leakyDataStore, ok := base.AsLeakyDataStore(rt.TestBucket.GetSingleDataStore())
 	require.True(t, ok)
 
 	leakyDataStore.SetPostQueryCallback(postQueryCallback)

@@ -31,7 +31,7 @@ func TestUserAuthenticateDisabled(t *testing.T) {
 
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close()
-	dataStore := bucket.DefaultDataStore()
+	dataStore := bucket.GetSingleDataStore()
 	// Create user
 	auth := NewAuthenticator(dataStore, nil, DefaultAuthenticatorOptions())
 	u, err := auth.NewUser(username, oldPassword, base.Set{})
@@ -66,7 +66,7 @@ func TestUserAuthenticatePasswordHashUpgrade(t *testing.T) {
 
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close()
-	dataStore := bucket.DefaultDataStore()
+	dataStore := bucket.GetSingleDataStore()
 	// Create user
 	auth := NewAuthenticator(dataStore, nil, DefaultAuthenticatorOptions())
 	u, err := auth.NewUser(username, oldPassword, base.Set{})
@@ -249,7 +249,7 @@ func TestCanSeeChannelSince(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAuth)
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
-	dataStore := testBucket.DefaultDataStore()
+	dataStore := testBucket.GetSingleDataStore()
 	auth := NewAuthenticator(dataStore, nil, DefaultAuthenticatorOptions())
 	freeChannels := base.SetFromArray([]string{"ESPN", "HBO", "FX", "AMC"})
 	user, err := auth.NewUser("user", "password", freeChannels)
@@ -277,7 +277,7 @@ func TestGetAddedChannels(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAuth)
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
-	dataStore := testBucket.DefaultDataStore()
+	dataStore := testBucket.GetSingleDataStore()
 	auth := NewAuthenticator(dataStore, nil, DefaultAuthenticatorOptions())
 
 	role, err := auth.NewRole("music", channels.BaseSetOf(t, "Spotify", "Youtube"))
@@ -320,7 +320,7 @@ func TestUserAuthenticateWithDisabledUserAccount(t *testing.T) {
 	)
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
-	dataStore := testBucket.DefaultDataStore()
+	dataStore := testBucket.GetSingleDataStore()
 	auth := NewAuthenticator(dataStore, nil, DefaultAuthenticatorOptions())
 
 	user, err := auth.NewUser(username, password, base.Set{})
@@ -342,7 +342,7 @@ func TestUserAuthenticateWithOldPasswordHash(t *testing.T) {
 	)
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
-	dataStore := testBucket.DefaultDataStore()
+	dataStore := testBucket.GetSingleDataStore()
 	auth := NewAuthenticator(dataStore, nil, DefaultAuthenticatorOptions())
 
 	user, err := auth.NewUser(username, password, base.Set{})
@@ -363,7 +363,7 @@ func TestUserAuthenticateWithBadPasswordHash(t *testing.T) {
 	)
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
-	dataStore := testBucket.DefaultDataStore()
+	dataStore := testBucket.GetSingleDataStore()
 	auth := NewAuthenticator(dataStore, nil, DefaultAuthenticatorOptions())
 
 	user, err := auth.NewUser(username, password, base.Set{})
@@ -384,7 +384,7 @@ func TestUserAuthenticateWithNoHashAndBadPassword(t *testing.T) {
 	)
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
-	dataStore := testBucket.DefaultDataStore()
+	dataStore := testBucket.GetSingleDataStore()
 	auth := NewAuthenticator(dataStore, nil, DefaultAuthenticatorOptions())
 
 	user, err := auth.NewUser(username, password, base.Set{})

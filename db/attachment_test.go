@@ -881,7 +881,7 @@ func TestMigrateBodyAttachments(t *testing.T) {
 		assert.NoError(t, err)
 		err = base.JSONUnmarshal([]byte(syncData), &xattrVal)
 		assert.NoError(t, err)
-		defaultDataStore := bucket.DefaultDataStore()
+		defaultDataStore := bucket.GetSingleDataStore()
 		if base.TestUseXattrs() {
 			_, err = defaultDataStore.WriteCasWithXattr(docKey, base.SyncXattrName, 0, 0, nil, bodyVal, xattrVal)
 			assert.NoError(t, err)
@@ -1189,7 +1189,7 @@ func TestMigrateBodyAttachmentsMerge(t *testing.T) {
 	err = base.JSONUnmarshal([]byte(syncData), &xattrVal)
 	assert.NoError(t, err)
 
-	defaultDataStore := bucket.DefaultDataStore()
+	defaultDataStore := bucket.GetSingleDataStore()
 	if base.TestUseXattrs() {
 		_, err = defaultDataStore.WriteCasWithXattr(docKey, base.SyncXattrName, 0, 0, nil, bodyVal, xattrVal)
 		assert.NoError(t, err)
@@ -1378,7 +1378,7 @@ func TestMigrateBodyAttachmentsMergeConflicting(t *testing.T) {
 	err = base.JSONUnmarshal([]byte(syncData), &xattrVal)
 	assert.NoError(t, err)
 
-	defaultDataStore := bucket.DefaultDataStore()
+	defaultDataStore := bucket.GetSingleDataStore()
 	if base.TestUseXattrs() {
 		_, err = defaultDataStore.WriteCasWithXattr(docKey, base.SyncXattrName, 0, 0, nil, bodyVal, xattrVal)
 		assert.NoError(t, err)

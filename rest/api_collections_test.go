@@ -156,7 +156,7 @@ func TestSingleCollectionDCP(t *testing.T) {
 	tb := base.GetTestBucket(t)
 	defer tb.Close()
 
-	tc, err := base.AsCollection(tb.DefaultDataStore())
+	tc, err := base.AsCollection(tb.GetSingleDataStore())
 	require.NoError(t, err)
 
 	rt := NewRestTester(t, &RestTesterConfig{
@@ -242,7 +242,7 @@ func TestMultiCollectionDCP(t *testing.T) {
 	require.NoError(t, err)
 
 	// TODO(CBG-2329): collection-aware caching
-	//require.NoError(t, rt.WaitForDoc(docID))
+	// require.NoError(t, rt.WaitForDoc(docID))
 }
 
 // TestCollectionsBasicIndexQuery ensures that the bucket API is able to create an index on a collection

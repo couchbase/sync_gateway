@@ -403,7 +403,7 @@ func TestConcurrentCBGTIndexCreation(t *testing.T) {
 	bucket := GetTestBucket(t)
 	defer bucket.Close()
 
-	dataStore := bucket.DefaultDataStore()
+	dataStore := bucket.GetSingleDataStore()
 
 	spec := bucket.BucketSpec
 	testDBName := "testDB"

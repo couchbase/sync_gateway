@@ -27,7 +27,7 @@ func TestView(t *testing.T) {
 	bucket := GetTestBucket(t)
 	defer bucket.Close()
 
-	dataStore := bucket.DefaultDataStore()
+	dataStore := bucket.GetSingleDataStore()
 	viewStore, ok := AsViewStore(dataStore)
 	require.True(t, ok)
 

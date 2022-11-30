@@ -27,7 +27,7 @@ func TestCreateSession(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAuth)
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
-	dataStore := testBucket.DefaultDataStore()
+	dataStore := testBucket.GetSingleDataStore()
 	auth := NewAuthenticator(dataStore, nil, DefaultAuthenticatorOptions())
 
 	// Create session with a username and valid TTL of 2 hours.
@@ -67,7 +67,7 @@ func TestDeleteSession(t *testing.T) {
 	var username string = "Alice"
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
-	dataStore := testBucket.DefaultDataStore()
+	dataStore := testBucket.GetSingleDataStore()
 	auth := NewAuthenticator(dataStore, nil, DefaultAuthenticatorOptions())
 
 	id, err := base.GenerateRandomSecret()
@@ -96,7 +96,7 @@ func TestMakeSessionCookie(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAuth)
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
-	dataStore := testBucket.DefaultDataStore()
+	dataStore := testBucket.GetSingleDataStore()
 	auth := NewAuthenticator(dataStore, nil, DefaultAuthenticatorOptions())
 
 	sessionID, err := base.GenerateRandomSecret()
@@ -122,7 +122,7 @@ func TestMakeSessionCookie(t *testing.T) {
 func TestMakeSessionCookieProperties(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
-	dataStore := testBucket.DefaultDataStore()
+	dataStore := testBucket.GetSingleDataStore()
 	auth := NewAuthenticator(dataStore, nil, DefaultAuthenticatorOptions())
 
 	sessionID, err := base.GenerateRandomSecret()
@@ -157,7 +157,7 @@ func TestDeleteSessionForCookie(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAuth)
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
-	dataStore := testBucket.DefaultDataStore()
+	dataStore := testBucket.GetSingleDataStore()
 	auth := NewAuthenticator(dataStore, nil, DefaultAuthenticatorOptions())
 
 	sessionID, err := base.GenerateRandomSecret()

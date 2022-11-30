@@ -27,7 +27,7 @@ import (
 func TestSetGet(t *testing.T) {
 	bucket := GetTestBucket(t)
 	defer bucket.Close()
-	dataStore := bucket.DefaultDataStore()
+	dataStore := bucket.GetSingleDataStore()
 
 	key := t.Name()
 	val := make(map[string]interface{}, 0)
@@ -56,7 +56,7 @@ func TestSetGetRaw(t *testing.T) {
 
 	bucket := GetTestBucket(t)
 	defer bucket.Close()
-	dataStore := bucket.DefaultDataStore()
+	dataStore := bucket.GetSingleDataStore()
 
 	key := t.Name()
 	val := []byte("bar")
@@ -86,7 +86,7 @@ func TestAddRaw(t *testing.T) {
 
 	bucket := GetTestBucket(t)
 	defer bucket.Close()
-	dataStore := bucket.DefaultDataStore()
+	dataStore := bucket.GetSingleDataStore()
 	key := t.Name()
 	val := []byte("bar")
 
@@ -124,7 +124,7 @@ func TestWriteCasBasic(t *testing.T) {
 
 	bucket := GetTestBucket(t)
 	defer bucket.Close()
-	dataStore := bucket.DefaultDataStore()
+	dataStore := bucket.GetSingleDataStore()
 	key := t.Name()
 	val := []byte("bar2")
 
@@ -163,7 +163,7 @@ func TestWriteCasAdvanced(t *testing.T) {
 
 	bucket := GetTestBucket(t)
 	defer bucket.Close()
-	dataStore := bucket.DefaultDataStore()
+	dataStore := bucket.GetSingleDataStore()
 	key := t.Name()
 
 	_, _, err := dataStore.GetRaw(key)
@@ -198,7 +198,7 @@ func TestUpdate(t *testing.T) {
 
 	bucket := GetTestBucket(t)
 	defer bucket.Close()
-	dataStore := bucket.DefaultDataStore()
+	dataStore := bucket.GetSingleDataStore()
 	key := t.Name()
 	valInitial := []byte(`{"state":"initial"}`)
 	valUpdated := []byte(`{"state":"updated"}`)
@@ -255,7 +255,7 @@ func TestUpdateCASFailure(t *testing.T) {
 
 	bucket := GetTestBucket(t)
 	defer bucket.Close()
-	dataStore := bucket.DefaultDataStore()
+	dataStore := bucket.GetSingleDataStore()
 	key := t.Name()
 	valInitial := []byte(`{"state":"initial"}`)
 	valCasMismatch := []byte(`{"state":"casMismatch"}`)
@@ -304,7 +304,7 @@ func TestUpdateCASFailureOnInsert(t *testing.T) {
 
 	bucket := GetTestBucket(t)
 	defer bucket.Close()
-	dataStore := bucket.DefaultDataStore()
+	dataStore := bucket.GetSingleDataStore()
 	key := t.Name()
 	valCasMismatch := []byte(`{"state":"casMismatch"}`)
 	valInitial := []byte(`{"state":"initial"}`)
@@ -349,7 +349,7 @@ func TestIncrCounter(t *testing.T) {
 
 	bucket := GetTestBucket(t)
 	defer bucket.Close()
-	dataStore := bucket.DefaultDataStore()
+	dataStore := bucket.GetSingleDataStore()
 	key := t.Name()
 
 	defer func() {
@@ -387,7 +387,7 @@ func TestGetAndTouchRaw(t *testing.T) {
 
 	bucket := GetTestBucket(t)
 	defer bucket.Close()
-	dataStore := bucket.DefaultDataStore()
+	dataStore := bucket.GetSingleDataStore()
 
 	defer func() {
 		err := dataStore.Delete(key)
@@ -492,7 +492,7 @@ func TestXattrWriteCasSimple(t *testing.T) {
 
 	bucket := GetTestBucket(t)
 	defer bucket.Close()
-	dataStore := bucket.DefaultDataStore()
+	dataStore := bucket.GetSingleDataStore()
 	key := t.Name()
 	xattrName := SyncXattrName
 	val := make(map[string]interface{})
@@ -553,7 +553,7 @@ func TestXattrWriteCasUpsert(t *testing.T) {
 
 	bucket := GetTestBucket(t)
 	defer bucket.Close()
-	dataStore := bucket.DefaultDataStore()
+	dataStore := bucket.GetSingleDataStore()
 
 	key := t.Name()
 	xattrName := SyncXattrName
@@ -619,7 +619,7 @@ func TestXattrWriteCasWithXattrCasCheck(t *testing.T) {
 
 	bucket := GetTestBucket(t)
 	defer bucket.Close()
-	dataStore := bucket.DefaultDataStore()
+	dataStore := bucket.GetSingleDataStore()
 
 	key := t.Name()
 	xattrName := SyncXattrName
@@ -687,7 +687,7 @@ func TestXattrWriteCasRaw(t *testing.T) {
 
 	bucket := GetTestBucket(t)
 	defer bucket.Close()
-	dataStore := bucket.DefaultDataStore()
+	dataStore := bucket.GetSingleDataStore()
 
 	key := t.Name()
 	xattrName := SyncXattrName
@@ -738,7 +738,7 @@ func TestXattrWriteCasTombstoneResurrect(t *testing.T) {
 
 	bucket := GetTestBucket(t)
 	defer bucket.Close()
-	dataStore := bucket.DefaultDataStore()
+	dataStore := bucket.GetSingleDataStore()
 	key := t.Name()
 	xattrName := SyncXattrName
 	val := make(map[string]interface{})
@@ -814,7 +814,7 @@ func TestXattrWriteCasTombstoneUpdate(t *testing.T) {
 
 	bucket := GetTestBucket(t)
 	defer bucket.Close()
-	dataStore := bucket.DefaultDataStore()
+	dataStore := bucket.GetSingleDataStore()
 	key := t.Name()
 	xattrName := SyncXattrName
 	val := make(map[string]interface{})
@@ -891,7 +891,7 @@ func TestXattrWriteUpdateXattr(t *testing.T) {
 
 	bucket := GetTestBucket(t)
 	defer bucket.Close()
-	dataStore := bucket.DefaultDataStore()
+	dataStore := bucket.GetSingleDataStore()
 
 	key := t.Name()
 	xattrName := SyncXattrName
@@ -999,7 +999,7 @@ func TestWriteUpdateWithXattrUserXattr(t *testing.T) {
 
 	bucket := GetTestBucket(t)
 	defer bucket.Close()
-	dataStore := bucket.DefaultDataStore()
+	dataStore := bucket.GetSingleDataStore()
 	key := t.Name()
 	xattrKey := SyncXattrName
 	userXattrKey := "UserXattr"
@@ -1076,7 +1076,7 @@ func TestXattrDeleteDocument(t *testing.T) {
 
 	bucket := GetTestBucket(t)
 	defer bucket.Close()
-	dataStore := bucket.DefaultDataStore()
+	dataStore := bucket.GetSingleDataStore()
 	// Create document with XATTR
 	xattrName := SyncXattrName
 	val := make(map[string]interface{})
@@ -1125,7 +1125,7 @@ func TestXattrDeleteDocumentUpdate(t *testing.T) {
 
 	bucket := GetTestBucket(t)
 	defer bucket.Close()
-	dataStore := bucket.DefaultDataStore()
+	dataStore := bucket.GetSingleDataStore()
 
 	// Create document with XATTR
 	xattrName := SyncXattrName
@@ -1194,7 +1194,7 @@ func TestXattrDeleteDocumentAndUpdateXattr(t *testing.T) {
 
 	bucket := GetTestBucket(t)
 	defer bucket.Close()
-	dataStore := bucket.DefaultDataStore()
+	dataStore := bucket.GetSingleDataStore()
 	// Create document with XATTR
 	xattrName := SyncXattrName
 	val := make(map[string]interface{})
@@ -1244,7 +1244,7 @@ func TestXattrTombstoneDocAndUpdateXattr(t *testing.T) {
 
 	bucket := GetTestBucket(t)
 	defer bucket.Close()
-	dataStore := bucket.DefaultDataStore()
+	dataStore := bucket.GetSingleDataStore()
 
 	key1 := t.Name() + "DocExistsXattrExists"
 	key2 := t.Name() + "DocExistsNoXattr"
@@ -1341,7 +1341,7 @@ func TestXattrDeleteDocAndXattr(t *testing.T) {
 
 	bucket := GetTestBucket(t)
 	defer bucket.Close()
-	dataStore := bucket.DefaultDataStore()
+	dataStore := bucket.GetSingleDataStore()
 
 	key1 := t.Name() + "DocExistsXattrExists"
 	key2 := t.Name() + "DocExistsNoXattr"
@@ -1420,7 +1420,7 @@ func TestDeleteWithXattrWithSimulatedRaceResurrect(t *testing.T) {
 
 	bucket := GetTestBucket(t)
 	defer bucket.Close()
-	dataStore := bucket.DefaultDataStore()
+	dataStore := bucket.GetSingleDataStore()
 
 	key := t.Name()
 	xattrName := SyncXattrName
@@ -1470,7 +1470,7 @@ func TestXattrRetrieveDocumentAndXattr(t *testing.T) {
 
 	bucket := GetTestBucket(t)
 	defer bucket.Close()
-	dataStore := bucket.DefaultDataStore()
+	dataStore := bucket.GetSingleDataStore()
 
 	key1 := t.Name() + "DocExistsXattrExists"
 	key2 := t.Name() + "DocExistsNoXattr"
@@ -1557,7 +1557,7 @@ func TestXattrMutateDocAndXattr(t *testing.T) {
 
 	bucket := GetTestBucket(t)
 	defer bucket.Close()
-	dataStore := bucket.DefaultDataStore()
+	dataStore := bucket.GetSingleDataStore()
 
 	key1 := t.Name() + "DocExistsXattrExists"
 	key2 := t.Name() + "DocExistsNoXattr"
@@ -1664,7 +1664,7 @@ func TestGetXattr(t *testing.T) {
 
 	bucket := GetTestBucket(t)
 	defer bucket.Close()
-	dataStore := bucket.DefaultDataStore()
+	dataStore := bucket.GetSingleDataStore()
 
 	// Doc 1
 	key1 := t.Name() + "DocExistsXattrExists"
@@ -1757,7 +1757,7 @@ func TestGetXattrAndBody(t *testing.T) {
 
 	bucket := GetTestBucket(t)
 	defer bucket.Close()
-	dataStore := bucket.DefaultDataStore()
+	dataStore := bucket.GetSingleDataStore()
 
 	// Doc 1
 	key1 := t.Name() + "DocExistsXattrExists"
@@ -2172,7 +2172,7 @@ func TestUpdateXattrWithDeleteBodyAndIsDelete(t *testing.T) {
 
 	bucket := GetTestBucket(t)
 	defer bucket.Close()
-	dataStore := bucket.DefaultDataStore()
+	dataStore := bucket.GetSingleDataStore()
 
 	subdocXattrStore, ok := AsSubdocXattrStore(dataStore)
 	require.True(t, ok)
@@ -2216,7 +2216,7 @@ func TestUserXattrGetWithXattr(t *testing.T) {
 
 	bucket := GetTestBucket(t)
 	defer bucket.Close()
-	dataStore := bucket.DefaultDataStore()
+	dataStore := bucket.GetSingleDataStore()
 
 	userXattrStore, ok := AsUserXattrStore(dataStore)
 	require.True(t, ok)
@@ -2250,7 +2250,7 @@ func TestUserXattrGetWithXattrNil(t *testing.T) {
 
 	bucket := GetTestBucket(t)
 	defer bucket.Close()
-	dataStore := bucket.DefaultDataStore()
+	dataStore := bucket.GetSingleDataStore()
 
 	docKey := t.Name()
 
@@ -2278,7 +2278,7 @@ func TestInsertTombstoneWithXattr(t *testing.T) {
 
 	bucket := GetTestBucket(t)
 	defer bucket.Close()
-	dataStore := bucket.DefaultDataStore()
+	dataStore := bucket.GetSingleDataStore()
 
 	subdocXattrStore, ok := AsSubdocXattrStore(dataStore)
 	require.True(t, ok)
@@ -2319,7 +2319,7 @@ func TestRawBackwardCompatibilityFromJSON(t *testing.T) {
 
 	bucket := GetTestBucket(t)
 	defer bucket.Close()
-	dataStore := bucket.DefaultDataStore()
+	dataStore := bucket.GetSingleDataStore()
 
 	key := t.Name()
 	val := []byte(`{"foo":"bar"}`)
@@ -2358,7 +2358,7 @@ func TestRawBackwardCompatibilityFromBinary(t *testing.T) {
 
 	bucket := GetTestBucket(t)
 	defer bucket.Close()
-	dataStore := bucket.DefaultDataStore()
+	dataStore := bucket.GetSingleDataStore()
 
 	key := t.Name()
 	val := []byte(`{{"foo":"bar"}`)
@@ -2395,7 +2395,7 @@ func TestGetExpiry(t *testing.T) {
 
 	bucket := GetTestBucket(t)
 	defer bucket.Close()
-	dataStore := bucket.DefaultDataStore()
+	dataStore := bucket.GetSingleDataStore()
 
 	key := t.Name()
 	val := make(map[string]interface{}, 0)
@@ -2438,7 +2438,7 @@ func TestGetStatsVbSeqNo(t *testing.T) {
 
 	bucket := GetTestBucket(t)
 	defer bucket.Close()
-	dataStore := bucket.DefaultDataStore()
+	dataStore := bucket.GetSingleDataStore()
 
 	cbstore, ok := AsCouchbaseStore(bucket)
 	assert.True(t, ok)
@@ -2471,7 +2471,7 @@ func TestUpsertOptionPreserveExpiry(t *testing.T) {
 	}
 	bucket := GetTestBucket(t)
 	defer bucket.Close()
-	dataStore := bucket.DefaultDataStore()
+	dataStore := bucket.GetSingleDataStore()
 	if !bucket.IsSupported(sgbucket.BucketStoreFeaturePreserveExpiry) {
 		t.Skip("Preserve expiry is not supported with this CBS version. Skipping test...")
 	}

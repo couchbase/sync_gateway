@@ -25,7 +25,7 @@ func TestConfigPersistence(t *testing.T) {
 	bucket := GetTestBucket(t)
 	defer bucket.Close()
 
-	dataStore := bucket.DefaultDataStore()
+	dataStore := bucket.GetSingleDataStore()
 
 	sgCollection, ok := dataStore.(*Collection)
 	require.True(t, ok)
@@ -128,7 +128,7 @@ func TestXattrConfigPersistence(t *testing.T) {
 	bucket := GetTestBucket(t)
 	defer bucket.Close()
 
-	dataStore := bucket.DefaultDataStore()
+	dataStore := bucket.GetSingleDataStore()
 
 	sgCollection, ok := dataStore.(*Collection)
 	require.True(t, ok)

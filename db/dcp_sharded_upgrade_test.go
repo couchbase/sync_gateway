@@ -191,7 +191,7 @@ func TestShardedDCPUpgrade(t *testing.T) {
 	tb := base.GetTestBucket(t)
 	defer tb.Close()
 
-	dataStore := tb.DefaultDataStore()
+	dataStore := tb.GetSingleDataStore()
 	tc, err := base.AsCollection(dataStore)
 	require.NoError(t, err)
 	require.Equal(t, base.DefaultCollection, tc.CollectionName())

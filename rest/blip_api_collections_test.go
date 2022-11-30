@@ -178,7 +178,7 @@ func TestBlipGetCollectionsAndSetCheckpoint(t *testing.T) {
 	tb := base.GetTestBucket(t)
 	defer tb.Close()
 
-	tc, err := base.AsCollection(tb.DefaultDataStore())
+	tc, err := base.AsCollection(tb.GetSingleDataStore())
 	require.NoError(t, err)
 
 	scopeName := tc.ScopeName()
@@ -258,7 +258,7 @@ func TestCollectionsPeerDoesNotHave(t *testing.T) {
 	tb := base.GetTestBucket(t)
 	defer tb.Close()
 
-	tc, err := base.AsCollection(tb.DefaultDataStore())
+	tc, err := base.AsCollection(tb.GetSingleDataStore())
 	require.NoError(t, err)
 
 	rt := NewRestTester(t, &RestTesterConfig{
@@ -295,7 +295,7 @@ func TestCollectionsReplication(t *testing.T) {
 	tb := base.GetTestBucket(t)
 	defer tb.Close()
 
-	tc, err := base.AsCollection(tb.DefaultDataStore())
+	tc, err := base.AsCollection(tb.GetSingleDataStore())
 	require.NoError(t, err)
 
 	scopeKey := tc.ScopeName()

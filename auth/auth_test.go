@@ -40,8 +40,7 @@ func TestValidateGuestUser(t *testing.T) {
 
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close()
-
-	dataStore := bucket.DefaultDataStore()
+	dataStore := bucket.GetSingleDataStore()
 
 	auth := NewAuthenticator(dataStore, nil, DefaultAuthenticatorOptions())
 	user, err := auth.NewUser("", "", nil)
@@ -54,7 +53,7 @@ func TestValidateUser(t *testing.T) {
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close()
 
-	dataStore := bucket.DefaultDataStore()
+	dataStore := bucket.GetSingleDataStore()
 
 	auth := NewAuthenticator(dataStore, nil, DefaultAuthenticatorOptions())
 	user, err := auth.NewUser("invalid:name", "", nil)
@@ -73,7 +72,7 @@ func TestValidateRole(t *testing.T) {
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close()
 
-	dataStore := bucket.DefaultDataStore()
+	dataStore := bucket.GetSingleDataStore()
 
 	auth := NewAuthenticator(dataStore, nil, DefaultAuthenticatorOptions())
 	role, err := auth.NewRole("invalid:name", nil)
@@ -92,7 +91,7 @@ func TestValidateUserEmail(t *testing.T) {
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close()
 
-	dataStore := bucket.DefaultDataStore()
+	dataStore := bucket.GetSingleDataStore()
 
 	auth := NewAuthenticator(dataStore, nil, DefaultAuthenticatorOptions())
 	badEmails := []string{"", "foo", "foo@", "@bar", "foo@bar@buzz"}
@@ -113,7 +112,7 @@ func TestUserPasswords(t *testing.T) {
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close()
 
-	dataStore := bucket.DefaultDataStore()
+	dataStore := bucket.GetSingleDataStore()
 
 	auth := NewAuthenticator(dataStore, nil, DefaultAuthenticatorOptions())
 	user, _ := auth.NewUser("me", "letmein", nil)
@@ -138,7 +137,7 @@ func TestSerializeUser(t *testing.T) {
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close()
 
-	dataStore := bucket.DefaultDataStore()
+	dataStore := bucket.GetSingleDataStore()
 
 	auth := NewAuthenticator(dataStore, nil, DefaultAuthenticatorOptions())
 	user, _ := auth.NewUser("me", "letmein", ch.BaseSetOf(t, "me", "public"))
@@ -161,7 +160,7 @@ func TestSerializeRole(t *testing.T) {
 
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close()
-	dataStore := bucket.DefaultDataStore()
+	dataStore := bucket.GetSingleDataStore()
 	auth := NewAuthenticator(dataStore, nil, DefaultAuthenticatorOptions())
 	role, _ := auth.NewRole("froods", ch.BaseSetOf(t, "hoopy", "public"))
 	encoded, _ := base.JSONMarshal(role)
@@ -180,7 +179,7 @@ func TestUserAccess(t *testing.T) {
 	// User with no access:
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close()
-	dataStore := bucket.DefaultDataStore()
+	dataStore := bucket.GetSingleDataStore()
 	auth := NewAuthenticator(dataStore, nil, DefaultAuthenticatorOptions())
 	user, _ := auth.NewUser("foo", "password", nil)
 	assert.Equal(t, ch.BaseSetOf(t, "!"), user.ExpandWildCardChannel(ch.BaseSetOf(t, "*")))
@@ -252,7 +251,7 @@ func TestGetMissingUser(t *testing.T) {
 
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close()
-	dataStore := bucket.DefaultDataStore()
+	dataStore := bucket.GetSingleDataStore()
 	auth := NewAuthenticator(dataStore, nil, DefaultAuthenticatorOptions())
 	user, err := auth.GetUser("noSuchUser")
 	assert.Equal(t, nil, err)
@@ -266,7 +265,7 @@ func TestGetMissingRole(t *testing.T) {
 
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close()
-	dataStore := bucket.DefaultDataStore()
+	dataStore := bucket.GetSingleDataStore()
 	auth := NewAuthenticator(dataStore, nil, DefaultAuthenticatorOptions())
 	role, err := auth.GetRole("noSuchRole")
 	assert.Equal(t, nil, err)
@@ -276,7 +275,7 @@ func TestGetMissingRole(t *testing.T) {
 func TestGetGuestUser(t *testing.T) {
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close()
-	dataStore := bucket.DefaultDataStore()
+	dataStore := bucket.GetSingleDataStore()
 	auth := NewAuthenticator(dataStore, nil, DefaultAuthenticatorOptions())
 	user, err := auth.GetUser("")
 	require.Equal(t, nil, err)
@@ -287,7 +286,7 @@ func TestSaveUsers(t *testing.T) {
 
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close()
-	dataStore := bucket.DefaultDataStore()
+	dataStore := bucket.GetSingleDataStore()
 	auth := NewAuthenticator(dataStore, nil, DefaultAuthenticatorOptions())
 	user, _ := auth.NewUser("testUser", "password", ch.BaseSetOf(t, "test"))
 	err := auth.Save(user)
@@ -302,7 +301,7 @@ func TestSaveRoles(t *testing.T) {
 
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close()
-	dataStore := bucket.DefaultDataStore()
+	dataStore := bucket.GetSingleDataStore()
 	auth := NewAuthenticator(dataStore, nil, DefaultAuthenticatorOptions())
 	role, _ := auth.NewRole("testRole", ch.BaseSetOf(t, "test"))
 	err := auth.Save(role)
@@ -342,7 +341,7 @@ func (self *mockComputer) UseGlobalSequence() bool {
 func TestRebuildUserChannels(t *testing.T) {
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close()
-	dataStore := bucket.DefaultDataStore()
+	dataStore := bucket.GetSingleDataStore()
 	computer := mockComputer{channels: ch.AtSequence(ch.BaseSetOf(t, "derived1", "derived2"), 1)}
 	auth := NewAuthenticator(dataStore, &computer, DefaultAuthenticatorOptions())
 	user, _ := auth.NewUser("testUser", "password", ch.BaseSetOf(t, "explicit1"))
@@ -361,7 +360,7 @@ func TestRebuildRoleChannels(t *testing.T) {
 
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close()
-	dataStore := bucket.DefaultDataStore()
+	dataStore := bucket.GetSingleDataStore()
 	computer := mockComputer{roleChannels: ch.AtSequence(ch.BaseSetOf(t, "derived1", "derived2"), 1)}
 	auth := NewAuthenticator(dataStore, &computer, DefaultAuthenticatorOptions())
 	role, err := auth.NewRole("testRole", ch.BaseSetOf(t, "explicit1"))
@@ -381,7 +380,7 @@ func TestRebuildChannelsError(t *testing.T) {
 
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close()
-	dataStore := bucket.DefaultDataStore()
+	dataStore := bucket.GetSingleDataStore()
 	computer := mockComputer{}
 	auth := NewAuthenticator(dataStore, &computer, DefaultAuthenticatorOptions())
 	role, err := auth.NewRole("testRole2", ch.BaseSetOf(t, "explicit1"))
@@ -402,7 +401,7 @@ func TestRebuildUserRoles(t *testing.T) {
 
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close()
-	dataStore := bucket.DefaultDataStore()
+	dataStore := bucket.GetSingleDataStore()
 	computer := mockComputer{roles: ch.AtSequence(base.SetOf("role1", "role2"), 3)}
 	auth := NewAuthenticator(dataStore, &computer, DefaultAuthenticatorOptions())
 	user, _ := auth.NewUser("testUser", "letmein", nil)
@@ -432,7 +431,7 @@ func TestRoleInheritance(t *testing.T) {
 	// Create some roles:
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close()
-	dataStore := bucket.DefaultDataStore()
+	dataStore := bucket.GetSingleDataStore()
 	auth := NewAuthenticator(dataStore, nil, DefaultAuthenticatorOptions())
 	role, _ := auth.NewRole("square", ch.BaseSetOf(t, "dull", "duller", "dullest"))
 	assert.Equal(t, nil, auth.Save(role))
@@ -460,7 +459,7 @@ func TestRegisterUser(t *testing.T) {
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close()
 
-	dataStore := bucket.DefaultDataStore()
+	dataStore := bucket.GetSingleDataStore()
 
 	// Register user based on name, email
 	auth := NewAuthenticator(dataStore, nil, DefaultAuthenticatorOptions())
@@ -521,7 +520,7 @@ func TestCASUpdatePrincipal(t *testing.T) {
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close()
 
-	dataStore := bucket.DefaultDataStore()
+	dataStore := bucket.GetSingleDataStore()
 
 	// Create user
 	username := "foo"
@@ -592,7 +591,7 @@ func TestConcurrentUserWrites(t *testing.T) {
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close()
 
-	dataStore := bucket.DefaultDataStore()
+	dataStore := bucket.GetSingleDataStore()
 
 	username := "foo"
 	password := "password"
@@ -711,7 +710,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
 
-	dataStore := testBucket.DefaultDataStore()
+	dataStore := testBucket.GetSingleDataStore()
 
 	auth := NewAuthenticator(dataStore, nil, DefaultAuthenticatorOptions())
 
@@ -1130,7 +1129,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 func TestGetPrincipal(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
-	dataStore := testBucket.DefaultDataStore()
+	dataStore := testBucket.GetSingleDataStore()
 	auth := NewAuthenticator(dataStore, nil, DefaultAuthenticatorOptions())
 
 	const (
@@ -1201,7 +1200,7 @@ func ToBase64String(key string) string {
 func TestAuthenticateUntrustedJWT(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
-	dataStore := testBucket.DefaultDataStore()
+	dataStore := testBucket.GetSingleDataStore()
 	auth := NewAuthenticator(dataStore, nil, DefaultAuthenticatorOptions())
 
 	issuerFacebookAccounts := "https://accounts.facebook.com"
@@ -1454,7 +1453,7 @@ func TestRevocationScenario1(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
 
-	dataStore := testBucket.DefaultDataStore()
+	dataStore := testBucket.GetSingleDataStore()
 
 	testMockComputer := mockComputerV2{
 		roles:        map[string]ch.TimedSet{},
@@ -1548,7 +1547,7 @@ func TestRevocationScenario2(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
 
-	dataStore := testBucket.DefaultDataStore()
+	dataStore := testBucket.GetSingleDataStore()
 
 	testMockComputer := mockComputerV2{
 		roles:        map[string]ch.TimedSet{},
@@ -1648,7 +1647,7 @@ func TestRevocationScenario3(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
 
-	dataStore := testBucket.DefaultDataStore()
+	dataStore := testBucket.GetSingleDataStore()
 
 	testMockComputer := mockComputerV2{
 		roles:        map[string]ch.TimedSet{},
@@ -1757,7 +1756,7 @@ func TestRevocationScenario4(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
 
-	dataStore := testBucket.DefaultDataStore()
+	dataStore := testBucket.GetSingleDataStore()
 
 	testMockComputer := mockComputerV2{
 		roles:        map[string]ch.TimedSet{},
@@ -1853,7 +1852,7 @@ func TestRevocationScenario5(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
 
-	dataStore := testBucket.DefaultDataStore()
+	dataStore := testBucket.GetSingleDataStore()
 
 	testMockComputer := mockComputerV2{
 		roles:        map[string]ch.TimedSet{},
@@ -1933,7 +1932,7 @@ func TestRevocationScenario6(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
 
-	dataStore := testBucket.DefaultDataStore()
+	dataStore := testBucket.GetSingleDataStore()
 
 	testMockComputer := mockComputerV2{
 		roles:        map[string]ch.TimedSet{},
@@ -2017,7 +2016,7 @@ func TestRevocationScenario7(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
 
-	dataStore := testBucket.DefaultDataStore()
+	dataStore := testBucket.GetSingleDataStore()
 
 	testMockComputer := mockComputerV2{
 		roles:        map[string]ch.TimedSet{},
@@ -2098,7 +2097,7 @@ func TestRevocationScenario8(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
 
-	dataStore := testBucket.DefaultDataStore()
+	dataStore := testBucket.GetSingleDataStore()
 
 	testMockComputer := mockComputerV2{
 		roles:        map[string]ch.TimedSet{},
@@ -2160,7 +2159,7 @@ func TestRevocationScenario9(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
 
-	dataStore := testBucket.DefaultDataStore()
+	dataStore := testBucket.GetSingleDataStore()
 
 	testMockComputer := mockComputerV2{
 		roles:        map[string]ch.TimedSet{},
@@ -2219,7 +2218,7 @@ func TestRevocationScenario10(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
 
-	dataStore := testBucket.DefaultDataStore()
+	dataStore := testBucket.GetSingleDataStore()
 
 	testMockComputer := mockComputerV2{
 		roles:        map[string]ch.TimedSet{},
@@ -2281,7 +2280,7 @@ func TestRevocationScenario11(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
 
-	dataStore := testBucket.DefaultDataStore()
+	dataStore := testBucket.GetSingleDataStore()
 
 	testMockComputer := mockComputerV2{
 		roles:        map[string]ch.TimedSet{},
@@ -2349,7 +2348,7 @@ func TestRevocationScenario12(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
 
-	dataStore := testBucket.DefaultDataStore()
+	dataStore := testBucket.GetSingleDataStore()
 
 	testMockComputer := mockComputerV2{
 		roles:        map[string]ch.TimedSet{},
@@ -2411,7 +2410,7 @@ func TestRevocationScenario13(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
 
-	dataStore := testBucket.DefaultDataStore()
+	dataStore := testBucket.GetSingleDataStore()
 
 	testMockComputer := mockComputerV2{
 		roles:        map[string]ch.TimedSet{},
@@ -2471,7 +2470,7 @@ func TestRevocationScenario14(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
 
-	dataStore := testBucket.DefaultDataStore()
+	dataStore := testBucket.GetSingleDataStore()
 
 	testMockComputer := mockComputerV2{
 		roles:        map[string]ch.TimedSet{},
@@ -2514,7 +2513,7 @@ func TestRoleSoftDelete(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
 
-	dataStore := testBucket.DefaultDataStore()
+	dataStore := testBucket.GetSingleDataStore()
 
 	auth := NewAuthenticator(dataStore, nil, DefaultAuthenticatorOptions())
 
@@ -2629,7 +2628,7 @@ func TestObtainChannelsForDeletedRole(t *testing.T) {
 
 			testBucket := base.GetTestBucket(t)
 			defer testBucket.Close()
-			dataStore := testBucket.DefaultDataStore()
+			dataStore := testBucket.GetSingleDataStore()
 			auth := NewAuthenticator(dataStore, testMockComputer, DefaultAuthenticatorOptions())
 
 			const roleName = "role"
