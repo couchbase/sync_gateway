@@ -57,15 +57,15 @@ var _ Bucket = &TestBucket{}
 // DefaultDataStore is intentionally not implemented for TestBucket
 // DEPRECATED: Should use GetSingleDataStore
 func (b *TestBucket) DefaultDataStore() sgbucket.DataStore {
-	b.t.Fatalf("Tests using TestBucket should use GetSingleDataStore accessor!")
-	return nil
+	b.t.Logf("Tests directly using TestBucket should use GetSingleDataStore accessor!")
+	return b.Bucket.DefaultDataStore()
 }
 
 // NamedDataStore is intentionally not implemented for TestBucket
 // DEPRECATED: Should use GetNamedDataStore
 func (b *TestBucket) NamedDataStore(name sgbucket.DataStoreName) sgbucket.DataStore {
-	b.t.Fatalf("Tests using TestBucket should use GetNamedDataStore accessor!")
-	return nil
+	b.t.Logf("Tests directly using TestBucket should use GetNamedDataStore accessor!")
+	return b.Bucket.NamedDataStore(name)
 }
 
 func (tb TestBucket) Close() {
@@ -82,6 +82,7 @@ func (tb *TestBucket) LeakyBucketClone(c LeakyBucketConfig) *TestBucket {
 		Bucket:     NewLeakyBucket(tb.Bucket, c),
 		BucketSpec: tb.BucketSpec,
 		closeFn:    tb.Close,
+		t:          tb.t,
 	}
 }
 
@@ -97,6 +98,7 @@ func (tb *TestBucket) NoCloseClone() *TestBucket {
 		Bucket:     NoCloseClone(tb.Bucket),
 		BucketSpec: tb.BucketSpec,
 		closeFn:    func() {},
+		t:          tb.t,
 	}
 }
 
@@ -112,6 +114,7 @@ func getTestBucket(t testing.TB) *TestBucket {
 		Bucket:     bucket,
 		BucketSpec: spec,
 		closeFn:    closeFn,
+		t:          t,
 	}
 }
 
@@ -164,6 +167,7 @@ func GetPersistentWalrusBucket(t testing.TB) (*TestBucket, func()) {
 		Bucket:     bucket,
 		BucketSpec: spec,
 		closeFn:    closeFn,
+		t:          t,
 	}, removeFileFunc
 }
 

@@ -516,10 +516,7 @@ func TestChannelCacheStats(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyCache)
 
 	ctx := base.TestCtx(t)
-	tb := base.GetTestBucket(t)
-	defer tb.Close()
-
-	context, err := NewDatabaseContext(ctx, "db", tb, false, DatabaseContextOptions{})
+	context, err := NewDatabaseContext(ctx, "db", base.GetTestBucket(t), false, DatabaseContextOptions{})
 	require.NoError(t, err)
 	defer context.Close(ctx)
 
