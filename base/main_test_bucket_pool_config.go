@@ -50,8 +50,7 @@ const (
 	// Prints detailed debug logs from the test pooling framework.
 	tbpEnvVerbose = "SG_TEST_BUCKET_POOL_DEBUG"
 
-	// TODO: Remove?
-	tbpUseDefaultCollection = "SG_TEST_USE_DEFAULT_COLLECTION"
+	tbpEnvUseDefaultCollection = "SG_TEST_USE_DEFAULT_COLLECTION"
 
 	// wait this long when requesting a test bucket from the pool before giving up and failing the test.
 	waitForReadyBucketTimeout = time.Minute
@@ -67,8 +66,12 @@ var tbpDefaultBucketSpec = BucketSpec{
 }
 
 func ShouldUseDefaultCollection() bool {
-	ok, _ := strconv.ParseBool(os.Getenv(tbpUseDefaultCollection))
-	return ok
+	val, isSet := os.LookupEnv(tbpEnvUseDefaultCollection)
+	if !isSet {
+		return true
+	}
+	useDefault, _ := strconv.ParseBool(val)
+	return useDefault
 }
 
 // shouldUseCollections returns true if cluster will be created with named collections
@@ -83,7 +86,7 @@ func (tbp *TestBucketPool) shouldUseCollections() (bool, error) {
 		}
 	}
 
-	useNamedCollection, isSet := os.LookupEnv(tbpUseDefaultCollection)
+	useNamedCollection, isSet := os.LookupEnv(tbpEnvUseDefaultCollection)
 	if !isSet {
 		if !UnitTestUrlIsWalrus() && TestsDisableGSI() {
 			tbp.Logf(context.TODO(), "GSI disabled - not using named collections")
@@ -96,7 +99,7 @@ func (tbp *TestBucketPool) shouldUseCollections() (bool, error) {
 
 	requestCollection, _ := strconv.ParseBool(useNamedCollection)
 	if requestCollection && !clusterSupport {
-		return false, fmt.Errorf("Can not run %s with a cluster that doesn't support collections", tbpUseDefaultCollection)
+		return false, fmt.Errorf("Can not run %s with a cluster that doesn't support collections", tbpEnvUseDefaultCollection)
 	}
 
 	return requestCollection, nil
