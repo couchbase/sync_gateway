@@ -1739,7 +1739,7 @@ func (db *DatabaseCollectionWithUser) documentUpdateFunc(ctx context.Context, do
 	}
 
 	updatedExpiry = doc.updateExpiry(syncExpiry, updatedExpiry, expiry)
-	err = doc.persistModifiedRevisionBodies(db.dbCtx.MetadataStore)
+	err = doc.persistModifiedRevisionBodies(db.dataStore)
 	if err != nil {
 		return
 	}
