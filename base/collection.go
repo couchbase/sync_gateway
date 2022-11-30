@@ -396,22 +396,21 @@ func (b *GocbV2Bucket) BucketItemCount() (itemCount int, err error) {
 		return 0, err
 	}
 
+	itemCount = 0
 	for _, dsn := range dataStoreNames {
 		ds := b.NamedDataStore(dsn)
 		ns, ok := AsN1QLStore(ds)
 		if !ok {
 			return 0, fmt.Errorf("DataStore %v %T is not a N1QLStore", ds.GetName(), ds)
 		}
-		itemCount, err = QueryBucketItemCount(ns)
-		if err == nil {
-			return itemCount, nil
+		dataStoreItemCount, err := QueryBucketItemCount(ns)
+		if err != nil {
+			return 0, nil
 		}
+		itemCount += dataStoreItemCount
 	}
 
-	// TODO: implement APIBucketItemCount for collections as part of CouchbaseBucketStore refactoring.  Until then, give flush a moment to finish
-	time.Sleep(1 * time.Second)
-	// itemCount, err = bucket.APIBucketItemCount()
-	return 0, err
+	return itemCount, nil
 }
 
 func (b *GocbV2Bucket) MgmtEps() (url []string, err error) {
