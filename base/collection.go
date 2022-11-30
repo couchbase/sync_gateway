@@ -334,25 +334,6 @@ func (b *GocbV2Bucket) GetStatsVbSeqno(maxVbno uint16, useAbsHighSeqNo bool) (uu
 	return GetStatsVbSeqno(genericStats, maxVbno, useAbsHighSeqNo)
 }
 
-// GetBucketOpDeadline returns a deadline for use in gocbcore calls
-func (b *GocbV2Bucket) getBucketOpDeadline() time.Time {
-	opTimeout := DefaultGocbV2OperationTimeout
-	configOpTimeout := b.Spec.BucketOpTimeout
-	if configOpTimeout != nil {
-		opTimeout = *configOpTimeout
-	}
-	return time.Now().Add(opTimeout)
-}
-
-// This prevents Sync Gateway from overflowing gocb's pipeline
-func (b *GocbV2Bucket) waitForAvailKvOp() {
-	b.kvOps <- struct{}{}
-}
-
-func (b *GocbV2Bucket) releaseKvOp() {
-	<-b.kvOps
-}
-
 func (b *GocbV2Bucket) GetMaxVbno() (uint16, error) {
 
 	config, configErr := b.getConfigSnapshot()
@@ -528,6 +509,25 @@ func (b *GocbV2Bucket) MgmtEps() (url []string, err error) {
 // GetGoCBAgent returns the underlying agent from gocbcore
 func (b *GocbV2Bucket) getGoCBAgent() (*gocbcore.Agent, error) {
 	return b.bucket.Internal().IORouter()
+}
+
+// GetBucketOpDeadline returns a deadline for use in gocbcore calls
+func (b *GocbV2Bucket) getBucketOpDeadline() time.Time {
+	opTimeout := DefaultGocbV2OperationTimeout
+	configOpTimeout := b.Spec.BucketOpTimeout
+	if configOpTimeout != nil {
+		opTimeout = *configOpTimeout
+	}
+	return time.Now().Add(opTimeout)
+}
+
+// This prevents Sync Gateway from overflowing gocb's pipeline
+func (b *GocbV2Bucket) waitForAvailKvOp() {
+	b.kvOps <- struct{}{}
+}
+
+func (b *GocbV2Bucket) releaseKvOp() {
+	<-b.kvOps
 }
 
 func (b *GocbV2Bucket) QueryEpsCount() (int, error) {
