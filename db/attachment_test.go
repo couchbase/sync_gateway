@@ -214,7 +214,7 @@ func TestAttachments(t *testing.T) {
 	assert.Equal(t, float64(2), bye["revpos"])
 
 	log.Printf("Expire body of rev 1, then add a child...") // test fix of #498
-	err = db.MetadataStore.Delete(oldRevisionKey("doc1", rev1id))
+	err = collection.dataStore.Delete(oldRevisionKey("doc1", rev1id))
 	assert.NoError(t, err, "Couldn't compact old revision")
 	rev2Bstr := `{"_attachments": {"bye.txt": {"stub":true,"revpos":1,"digest":"sha1-gwwPApfQR9bzBKpqoEYwFmKp98A="}}, "_rev": "2-f000"}`
 	var body2B Body

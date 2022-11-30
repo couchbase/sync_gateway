@@ -95,7 +95,7 @@ func (dbc *DatabaseContext) getChangesInChannelFromQuery(ctx context.Context, ch
 // Queries the 'channels' view to get a range of sequences of a single channel as LogEntries.
 func (dbc *DatabaseCollection) getChangesInChannelFromQuery(ctx context.Context, channelName string, startSeq, endSeq uint64, limit int, activeOnly bool) (LogEntries, error) {
 	if dbc.dataStore == nil {
-		return nil, errors.New("No bucket available for channel query")
+		return nil, errors.New("No data store available for channel query")
 	}
 	start := time.Now()
 	usingViews := dbc.useViews()
@@ -196,7 +196,7 @@ func (dbc *DatabaseCollection) getChangesInChannelFromQuery(ctx context.Context,
 // before abandoning.
 func (dbc *DatabaseCollection) getChangesForSequences(ctx context.Context, sequences []uint64) (LogEntries, error) {
 	if dbc.dataStore == nil {
-		return nil, errors.New("No bucket available for sequence query")
+		return nil, errors.New("No data store available for sequence query")
 	}
 	start := time.Now()
 	usingViews := dbc.useViews()
