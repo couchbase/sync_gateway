@@ -30,20 +30,6 @@ import (
 // GTestBucketPool is a global instance of a TestBucketPool used to manage a pool of buckets for integration testing.
 var GTestBucketPool *TestBucketPool
 
-// a dirtyBucket is passed to bucketReadier to be cleaned
-type dirtyBucket struct {
-	name tbpBucketName
-}
-
-type cleanBucket struct {
-	name tbpBucketName
-}
-
-type tbpBucket struct {
-	bucket         Bucket
-	dataStoreNames []ScopeAndCollectionName
-}
-
 // TestBucketPool is used to manage a pool of pre-prepared buckets for testing purposes.
 type TestBucketPool struct {
 	// integrationMode should be true if using Couchbase Server. If this is false, Walrus buckets are returned instead of pooled buckets.
@@ -52,7 +38,7 @@ type TestBucketPool struct {
 	// readyBucketPool contains a buffered channel of buckets ready for use
 	readyBucketPool        chan Bucket
 	cluster                tbpCluster
-	bucketReadierQueue     chan dirtyBucket
+	bucketReadierQueue     chan tbpBucketName
 	bucketReadierWaitGroup *sync.WaitGroup
 	ctxCancelFunc          context.CancelFunc
 
@@ -108,7 +94,7 @@ func NewTestBucketPool(bucketReadierFunc TBPBucketReadierFunc, bucketInitFunc TB
 	tbp := TestBucketPool{
 		integrationMode:        true,
 		readyBucketPool:        make(chan Bucket, numBuckets),
-		bucketReadierQueue:     make(chan dirtyBucket, numBuckets),
+		bucketReadierQueue:     make(chan tbpBucketName, numBuckets),
 		bucketReadierWaitGroup: &sync.WaitGroup{},
 		ctxCancelFunc:          ctxCancelFunc,
 		preserveBuckets:        preserveBuckets,
@@ -329,7 +315,7 @@ func (tbp *TestBucketPool) getTestBucketAndSpec(t testing.TB) (b Bucket, s Bucke
 func (tbp *TestBucketPool) addBucketToReadierQueue(ctx context.Context, name tbpBucketName) {
 	tbp.bucketReadierWaitGroup.Add(1)
 	tbp.Logf(ctx, "Putting bucket onto bucketReadierQueue")
-	tbp.bucketReadierQueue <- dirtyBucket{name: name}
+	tbp.bucketReadierQueue <- name
 }
 
 // Close waits for any buckets to be cleaned, and closes the pool.
@@ -530,7 +516,7 @@ loop:
 
 		case dirtyBucket := <-tbp.bucketReadierQueue:
 			atomic.AddInt32(&tbp.stats.TotalBucketReadierCount, 1)
-			ctx := bucketNameCtx(ctx, string(dirtyBucket.name))
+			ctx := bucketNameCtx(ctx, string(dirtyBucket))
 			tbp.Logf(ctx, "bucketReadier got bucket")
 
 			go func(testBucketName tbpBucketName) {
@@ -564,7 +550,7 @@ loop:
 				tbp.readyBucketPool <- b
 
 				atomic.AddInt64(&tbp.stats.TotalBucketReadierDurationNano, time.Since(start).Nanoseconds())
-			}(dirtyBucket.name)
+			}(dirtyBucket)
 		}
 	}
 
