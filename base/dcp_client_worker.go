@@ -11,6 +11,7 @@ package base
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
@@ -115,6 +116,7 @@ func (w *DCPWorker) Start(wg *sync.WaitGroup) {
 					// to avoid attempting to restart with a new snapshot and old sequence value
 					w.pendingSnapshot[vbID] = e
 				case mutationEvent:
+					fmt.Printf("HONK docid=%s\n", e.asFeedEvent().Key)
 					if w.mutationCallback != nil {
 						w.mutationCallback(e.asFeedEvent())
 					}

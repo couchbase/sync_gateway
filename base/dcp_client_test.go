@@ -35,6 +35,7 @@ func TestOneShotDCP(t *testing.T) {
 	if UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
 	}
+	SetUpTestLogging(t, LevelDebug, KeyAll)
 
 	bucket := GetTestBucket(t)
 	defer bucket.Close()
@@ -45,7 +46,7 @@ func TestOneShotDCP(t *testing.T) {
 	// write documents to bucket
 	body := map[string]interface{}{"foo": "bar"}
 	for i := 0; i < numDocs; i++ {
-		key := fmt.Sprintf("%s_%d", t.Name(), i)
+		key := fmt.Sprintf("%s_%03d", t.Name(), i)
 		err := dataStore.Set(key, 0, nil, body)
 		require.NoError(t, err)
 	}
@@ -63,8 +64,9 @@ func TestOneShotDCP(t *testing.T) {
 	// start one shot feed
 	feedID := t.Name()
 
-	// FIXME (bbrks) will not work with wrappers
 	collection, ok := dataStore.(*Collection)
+	fmt.Printf("HONK scopeName=%s\n", collection.ScopeName())
+	fmt.Printf("HONK collectionName=%s\n", collection.CollectionName())
 	require.True(t, ok)
 	var collectionIDs []uint32
 	if collection.IsSupported(sgbucket.BucketStoreFeatureCollections) {
@@ -114,7 +116,7 @@ func TestOneShotDCP(t *testing.T) {
 			require.LessOrEqual(t, numDocs, int(mutationCount))
 		}
 	case <-timeout:
-		require.Fail(t, "timeout waiting for one-shot feed to complete")
+		require.Fail(t, fmt.Sprintf("timeout after %dsec waiting for one-shot feed to complete", int(oneShotDCPTimeout.Seconds())))
 	}
 
 }
@@ -178,7 +180,7 @@ func TestTerminateDCPFeed(t *testing.T) {
 	case <-doneChan:
 		feedClosed.Set(true)
 	case <-timeout:
-		t.Errorf("timeout waiting for one-shot feed to complete")
+		require.Fail(t, fmt.Sprintf("timeout after %dsec waiting for one-shot feed to complete", int(oneShotDCPTimeout.Seconds())))
 	}
 
 	log.Printf("Waiting for docs generation goroutine to exit")
@@ -266,6 +268,7 @@ func TestDCPClientMultiFeedConsistency(t *testing.T) {
 				mutationCount := atomic.LoadUint64(&mutationCount)
 				require.Equal(t, uint64(10000), mutationCount)
 			case <-feed1Timeout:
+				require.Fail(t, fmt.Sprintf("timeout after %dsec waiting for one-shot feed to complete", int(oneShotDCPTimeout.Seconds())))
 				t.Errorf("timeout waiting for first one-shot feed to complete")
 			}
 
@@ -316,7 +319,7 @@ func TestDCPClientMultiFeedConsistency(t *testing.T) {
 				mutationCount := atomic.LoadUint64(&mutationCount)
 				require.Equal(t, int(vbucketZeroExpected), int(mutationCount))
 			case <-feed3Timeout:
-				t.Errorf("timeout waiting for first one-shot feed to complete")
+				require.Fail(t, fmt.Sprintf("timeout after %dsec waiting for one-shot feed to complete", int(oneShotDCPTimeout.Seconds())))
 			}
 		})
 	}
@@ -396,7 +399,7 @@ func TestResumeStoppedFeed(t *testing.T) {
 		require.Greater(t, int(mutationCount), 5000)
 		log.Printf("Total processed first feed: %v", mutationCount)
 	case <-timeout:
-		t.Errorf("timeout waiting for first one-shot feed to complete")
+		require.Fail(t, fmt.Sprintf("timeout after %dsec waiting for one-shot feed to complete", int(oneShotDCPTimeout.Seconds())))
 	}
 
 	var secondFeedCount uint64
@@ -434,7 +437,7 @@ func TestResumeStoppedFeed(t *testing.T) {
 		require.Less(t, int(secondFeedCount), 10000)
 		log.Printf("Total processed: %v, second feed: %v", mutationCount, secondFeedCount)
 	case <-timeout:
-		t.Errorf("timeout waiting for second one-shot feed to complete")
+		require.Fail(t, fmt.Sprintf("timeout after %dsec waiting for one-shot feed to complete", int(oneShotDCPTimeout.Seconds())))
 	}
 
 }

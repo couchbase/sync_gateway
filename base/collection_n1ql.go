@@ -83,6 +83,7 @@ func (c *Collection) Query(statement string, params map[string]interface{}, cons
 	waitTime := 10 * time.Millisecond
 	for i := 1; i <= MaxQueryRetries; i++ {
 		TracefCtx(logCtx, KeyQuery, "Executing N1QL query: %v - %+v", UD(keyspaceStatement), UD(params))
+		fmt.Printf("Executing N1QL query: %v - %+v\n", UD(keyspaceStatement), UD(params))
 		queryResults, queryErr := c.Bucket.runQuery(keyspaceStatement, n1qlOptions)
 		if queryErr == nil {
 			resultsIterator := &gocbRawIterator{
