@@ -55,7 +55,18 @@ type CbgtContext struct {
 // StartShardedDCPFeed initializes and starts a CBGT Manager targeting the provided bucket.
 // dbName is used to define a unique path name for local file storage of pindex files
 func StartShardedDCPFeed(ctx context.Context, dbName string, configGroup string, uuid string, heartbeater Heartbeater, bucket Bucket, spec BucketSpec, scope string, collections []string, numPartitions uint16, cfg cbgt.Cfg) (*CbgtContext, error) {
-	cbgtContext, err := initCBGTManager(ctx, bucket, spec, scope, collections, cfg, uuid, dbName)
+	// Ensure we don't try to start collections-enabled feed if there are any pre-collection SG nodes in the cluster.
+	minVersion, err := getMinNodeVersion(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get minimum node version in cluster: %w", err)
+	}
+	if minVersion.Less(firstVersionToSupportCollections) {
+		if scope != "" || len(collections) > 0 {
+			return nil, fmt.Errorf("cannot start DCP feed on non-default collection with legacy nodes present in the cluster")
+		}
+	}
+
+	cbgtContext, err := initCBGTManager(ctx, bucket, spec, cfg, uuid, dbName)
 	if err != nil {
 		return nil, err
 	}
@@ -244,19 +255,7 @@ func getCBGTIndexUUID(manager *cbgt.Manager, indexName string) (exists bool, pre
 // createCBGTManager creates a new manager for a given bucket and bucketSpec
 // Inline comments below provide additional detail on how cbgt uses each manager
 // parameter, and the implications for SG
-func initCBGTManager(ctx context.Context, bucket Bucket, spec BucketSpec, scope string, collections []string, cfgSG cbgt.Cfg, dbUUID string, dbName string) (*CbgtContext, error) {
-	// Check if there are pre-Helium nodes, and if so, set the LithiumCompat flag to ensure we don't try to start a
-	// collections-enabled feed when some nodes won't support it.
-	minVersion, err := getMinNodeVersion(cfgSG)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get minimum node version in cluster: %w", err)
-	}
-	if minVersion.Less(firstVersionToSupportCollections) {
-		if scope != "" || len(collections) > 0 {
-			return nil, fmt.Errorf("cannot start DCP feed on non-default collection with legacy nodes present in the cluster")
-		}
-	}
-
+func initCBGTManager(ctx context.Context, bucket Bucket, spec BucketSpec, cfgSG cbgt.Cfg, dbUUID string, dbName string) (*CbgtContext, error) {
 	// uuid: Unique identifier for the node. Used to identify the node in the config.
 	//       Without UUID persistence across SG restarts, a restarted SG node relies on heartbeater to remove
 	// 		 the previous version of that node from the cfg, and assign pindexes to the new one.
