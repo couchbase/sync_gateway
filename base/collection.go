@@ -388,29 +388,30 @@ func (b *GocbV2Bucket) Flush() error {
 
 }
 
-// BucketItemCount first tries to retrieve an accurate bucket count via N1QL,
-// but falls back to the REST API if that cannot be done (when there's no index to count all items in a bucket)
-func (b *GocbV2Bucket) BucketItemCount() (itemCount int, err error) {
-	dataStoreNames, err := b.ListDataStores()
+// BucketItemCount returns the amount of items in a bucket as per rest API.
+func (b *GocbV2Bucket) BucketItemCount() (int, error) {
+	type CurrItemsStats struct {
+		CurrItems int64 `json:"curr_items"`
+	}
+	uri := fmt.Sprintf("/pools/default/buckets/%s/stats", b.GetName())
+	resp, err := b.mgmtRequest(http.MethodGet, uri, "application/json", nil)
 	if err != nil {
 		return 0, err
 	}
 
-	itemCount = 0
-	for _, dsn := range dataStoreNames {
-		ds := b.NamedDataStore(dsn)
-		ns, ok := AsN1QLStore(ds)
-		if !ok {
-			return 0, fmt.Errorf("DataStore %v %T is not a N1QLStore", ds.GetName(), ds)
-		}
-		dataStoreItemCount, err := QueryBucketItemCount(ns)
-		if err != nil {
-			return 0, nil
-		}
-		itemCount += dataStoreItemCount
+	defer func() { _ = resp.Body.Close() }()
+
+	respBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return 0, err
 	}
 
-	return itemCount, nil
+	var stats CurrItemsStats
+	if err := JSONUnmarshal(respBytes, &stats); err != nil {
+		return 0, err
+	}
+
+	return int(stats.CurrItems), nil
 }
 
 func (b *GocbV2Bucket) MgmtEps() (url []string, err error) {
