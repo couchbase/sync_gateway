@@ -245,48 +245,12 @@ func (b *GocbV2Bucket) IsSupported(feature sgbucket.BucketStoreFeature) bool {
 	}
 }
 
-func (b *GocbV2Bucket) ListDataStores() ([]sgbucket.DataStoreName, error) {
-	scopes, err := b.bucket.Collections().GetAllScopes(nil)
-	if err != nil {
-		return nil, err
-	}
-	collections := make([]sgbucket.DataStoreName, 0)
-	for _, s := range scopes {
-		for _, c := range s.Collections {
-			collections = append(collections, ScopeAndCollectionName{s.Name, c.Name})
-		}
-	}
-	return collections, nil
-}
-
-func (b *GocbV2Bucket) DropDataStore(name sgbucket.DataStoreName) error {
-	return b.bucket.Collections().DropCollection(gocb.CollectionSpec{Name: name.CollectionName(), ScopeName: name.ScopeName()}, nil)
-}
-
-func (b *GocbV2Bucket) CreateDataStore(name sgbucket.DataStoreName) error {
-	// create scope first (if it doesn't already exist)
-	err := b.bucket.Collections().CreateScope(name.ScopeName(), nil)
-	if err != nil && !errors.Is(err, gocb.ErrScopeExists) {
-		return err
-	}
-	err = b.bucket.Collections().CreateCollection(gocb.CollectionSpec{Name: name.CollectionName(), ScopeName: name.ScopeName()}, nil)
-	if err != nil {
-		return err
-	}
-	// Can't use Collection.Exists since we can't get a collection until the collection exists on CBS
-	gocbCollection := b.bucket.Scope(name.ScopeName()).Collection(name.CollectionName())
-	return WaitForNoError(func() error {
-		_, err := gocbCollection.Exists("fakedocid", nil)
-		return err
-	})
-}
-
-func (bucket *GocbV2Bucket) StartDCPFeed(args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map) error {
+func (b *GocbV2Bucket) StartDCPFeed(args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map) error {
 	groupID := ""
-	return StartGocbDCPFeed(bucket, bucket.Spec.BucketName, args, callback, dbStats, DCPMetadataStoreInMemory, groupID)
+	return StartGocbDCPFeed(b, b.Spec.BucketName, args, callback, dbStats, DCPMetadataStoreInMemory, groupID)
 }
 
-func (bucket *GocbV2Bucket) StartTapFeed(args sgbucket.FeedArguments, dbStats *expvar.Map) (sgbucket.MutationFeed, error) {
+func (b *GocbV2Bucket) StartTapFeed(args sgbucket.FeedArguments, dbStats *expvar.Map) (sgbucket.MutationFeed, error) {
 	return nil, errors.New("StartTapFeed not implemented")
 }
 
@@ -378,58 +342,6 @@ func (b *GocbV2Bucket) GetSpec() BucketSpec {
 	return b.Spec
 }
 
-// DefaultDataStore returns the default collection for the bucket.
-func (b *GocbV2Bucket) DefaultDataStore() sgbucket.DataStore {
-	return &Collection{
-		Bucket:     b,
-		Collection: b.bucket.DefaultCollection(),
-	}
-}
-
-// NamedDataStore returns a collection on a bucket within the given scope and collection.
-func (b *GocbV2Bucket) NamedDataStore(name sgbucket.DataStoreName) sgbucket.DataStore {
-	c, err := NewCollection(
-		b,
-		b.bucket.Scope(name.ScopeName()).Collection(name.CollectionName()))
-	if err != nil {
-		panic(err)
-	}
-	return c
-}
-
-func (b *GocbV2Bucket) BucketName() string {
-	// TODO: Consider removing this method and swap for GetName()/Name()?
-	return b.GetName()
-}
-
-func (b *GocbV2Bucket) mgmtRequest(method, uri, contentType string, body io.Reader) (*http.Response, error) {
-	if contentType == "" && body != nil {
-		// TODO: CBG-1948
-		panic("Content-type must be specified for non-null body.")
-	}
-
-	mgmtEp, err := GoCBBucketMgmtEndpoint(b)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest(method, mgmtEp+uri, body)
-	if err != nil {
-		return nil, err
-	}
-
-	if contentType != "" {
-		req.Header.Add("Content-Type", contentType)
-	}
-
-	if b.Spec.Auth != nil {
-		username, password, _ := b.Spec.Auth.GetCredentials()
-		req.SetBasicAuth(username, password)
-	}
-
-	return b.HttpClient().Do(req)
-}
-
 // This flushes the *entire* bucket associated with the collection (not just the collection).  Intended for test usage only.
 func (b *GocbV2Bucket) Flush() error {
 
@@ -506,30 +418,6 @@ func (b *GocbV2Bucket) MgmtEps() (url []string, err error) {
 	return mgmtEps, nil
 }
 
-// GetGoCBAgent returns the underlying agent from gocbcore
-func (b *GocbV2Bucket) getGoCBAgent() (*gocbcore.Agent, error) {
-	return b.bucket.Internal().IORouter()
-}
-
-// GetBucketOpDeadline returns a deadline for use in gocbcore calls
-func (b *GocbV2Bucket) getBucketOpDeadline() time.Time {
-	opTimeout := DefaultGocbV2OperationTimeout
-	configOpTimeout := b.Spec.BucketOpTimeout
-	if configOpTimeout != nil {
-		opTimeout = *configOpTimeout
-	}
-	return time.Now().Add(opTimeout)
-}
-
-// This prevents Sync Gateway from overflowing gocb's pipeline
-func (b *GocbV2Bucket) waitForAvailKvOp() {
-	b.kvOps <- struct{}{}
-}
-
-func (b *GocbV2Bucket) releaseKvOp() {
-	<-b.kvOps
-}
-
 func (b *GocbV2Bucket) QueryEpsCount() (int, error) {
 	agent, err := b.getGoCBAgent()
 	if err != nil {
@@ -562,18 +450,61 @@ func (b *GocbV2Bucket) HttpClient() *http.Client {
 	return agent.HTTPClient()
 }
 
-func GetIDForCollection(manifest gocbcore.Manifest, scopeName, collectionName string) (uint32, bool) {
-	for _, scope := range manifest.Scopes {
-		if scope.Name != scopeName {
-			continue
-		}
-		for _, coll := range scope.Collections {
-			if coll.Name == collectionName {
-				return coll.UID, true
-			}
-		}
+func (b *GocbV2Bucket) BucketName() string {
+	// TODO: Consider removing this method and swap for GetName()/Name()?
+	return b.GetName()
+}
+
+func (b *GocbV2Bucket) mgmtRequest(method, uri, contentType string, body io.Reader) (*http.Response, error) {
+	if contentType == "" && body != nil {
+		// TODO: CBG-1948
+		panic("Content-type must be specified for non-null body.")
 	}
-	return 0, false
+
+	mgmtEp, err := GoCBBucketMgmtEndpoint(b)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(method, mgmtEp+uri, body)
+	if err != nil {
+		return nil, err
+	}
+
+	if contentType != "" {
+		req.Header.Add("Content-Type", contentType)
+	}
+
+	if b.Spec.Auth != nil {
+		username, password, _ := b.Spec.Auth.GetCredentials()
+		req.SetBasicAuth(username, password)
+	}
+
+	return b.HttpClient().Do(req)
+}
+
+// This prevents Sync Gateway from overflowing gocb's pipeline
+func (b *GocbV2Bucket) waitForAvailKvOp() {
+	b.kvOps <- struct{}{}
+}
+
+func (b *GocbV2Bucket) releaseKvOp() {
+	<-b.kvOps
+}
+
+// GetGoCBAgent returns the underlying agent from gocbcore
+func (b *GocbV2Bucket) getGoCBAgent() (*gocbcore.Agent, error) {
+	return b.bucket.Internal().IORouter()
+}
+
+// GetBucketOpDeadline returns a deadline for use in gocbcore calls
+func (b *GocbV2Bucket) getBucketOpDeadline() time.Time {
+	opTimeout := DefaultGocbV2OperationTimeout
+	configOpTimeout := b.Spec.BucketOpTimeout
+	if configOpTimeout != nil {
+		opTimeout = *configOpTimeout
+	}
+	return time.Now().Add(opTimeout)
 }
 
 func (b *GocbV2Bucket) GetCollectionManifest() (gocbcore.Manifest, error) {
@@ -609,6 +540,20 @@ func (b *GocbV2Bucket) GetCollectionManifest() (gocbcore.Manifest, error) {
 	return rv, nil
 }
 
+func GetIDForCollection(manifest gocbcore.Manifest, scopeName, collectionName string) (uint32, bool) {
+	for _, scope := range manifest.Scopes {
+		if scope.Name != scopeName {
+			continue
+		}
+		for _, coll := range scope.Collections {
+			if coll.Name == collectionName {
+				return coll.UID, true
+			}
+		}
+	}
+	return 0, false
+}
+
 // waitForAvailQueryOp prevents Sync Gateway from having too many concurrent
 // queries against Couchbase Server
 func (b *GocbV2Bucket) waitForAvailQueryOp() {
@@ -617,4 +562,59 @@ func (b *GocbV2Bucket) waitForAvailQueryOp() {
 
 func (b *GocbV2Bucket) releaseQueryOp() {
 	<-b.queryOps
+}
+
+func (b *GocbV2Bucket) ListDataStores() ([]sgbucket.DataStoreName, error) {
+	scopes, err := b.bucket.Collections().GetAllScopes(nil)
+	if err != nil {
+		return nil, err
+	}
+	collections := make([]sgbucket.DataStoreName, 0)
+	for _, s := range scopes {
+		for _, c := range s.Collections {
+			collections = append(collections, ScopeAndCollectionName{s.Name, c.Name})
+		}
+	}
+	return collections, nil
+}
+
+func (b *GocbV2Bucket) DropDataStore(name sgbucket.DataStoreName) error {
+	return b.bucket.Collections().DropCollection(gocb.CollectionSpec{Name: name.CollectionName(), ScopeName: name.ScopeName()}, nil)
+}
+
+func (b *GocbV2Bucket) CreateDataStore(name sgbucket.DataStoreName) error {
+	// create scope first (if it doesn't already exist)
+	err := b.bucket.Collections().CreateScope(name.ScopeName(), nil)
+	if err != nil && !errors.Is(err, gocb.ErrScopeExists) {
+		return err
+	}
+	err = b.bucket.Collections().CreateCollection(gocb.CollectionSpec{Name: name.CollectionName(), ScopeName: name.ScopeName()}, nil)
+	if err != nil {
+		return err
+	}
+	// Can't use Collection.Exists since we can't get a collection until the collection exists on CBS
+	gocbCollection := b.bucket.Scope(name.ScopeName()).Collection(name.CollectionName())
+	return WaitForNoError(func() error {
+		_, err := gocbCollection.Exists("fakedocid", nil)
+		return err
+	})
+}
+
+// DefaultDataStore returns the default collection for the bucket.
+func (b *GocbV2Bucket) DefaultDataStore() sgbucket.DataStore {
+	return &Collection{
+		Bucket:     b,
+		Collection: b.bucket.DefaultCollection(),
+	}
+}
+
+// NamedDataStore returns a collection on a bucket within the given scope and collection.
+func (b *GocbV2Bucket) NamedDataStore(name sgbucket.DataStoreName) sgbucket.DataStore {
+	c, err := NewCollection(
+		b,
+		b.bucket.Scope(name.ScopeName()).Collection(name.CollectionName()))
+	if err != nil {
+		panic(err)
+	}
+	return c
 }
