@@ -68,14 +68,19 @@ var tbpDefaultBucketSpec = BucketSpec{
 
 // shouldUseCollections returns true if cluster will be created with named collections
 func (tbp *TestBucketPool) shouldUseCollections() (bool, error) {
-	clusterSupport, err := tbp.cluster.supportsCollections()
-	if err != nil {
-		return false, err
+	// walrus supports collections, but we need to query the server's version for capability check
+	clusterSupport := true
+	if tbp.cluster != nil {
+		var err error
+		clusterSupport, err = tbp.cluster.supportsCollections()
+		if err != nil {
+			return false, err
+		}
 	}
 
 	useNamedCollection, isSet := os.LookupEnv(tbpUseDefaultCollection)
 	if !isSet {
-		if TestsDisableGSI() {
+		if !UnitTestUrlIsWalrus() && TestsDisableGSI() {
 			tbp.Logf(context.TODO(), "GSI disabled - not using named collections")
 			return false, nil
 		}
@@ -88,6 +93,7 @@ func (tbp *TestBucketPool) shouldUseCollections() (bool, error) {
 	if requestCollection && !clusterSupport {
 		return false, fmt.Errorf("Can not run %s with a cluster that doesn't support collections", tbpUseDefaultCollection)
 	}
+
 	return requestCollection, nil
 
 }

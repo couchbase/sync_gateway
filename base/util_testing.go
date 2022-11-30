@@ -671,33 +671,13 @@ func RequireWaitForStat(t testing.TB, getStatFunc func() int64, expected int64) 
 	require.Equal(t, expected, val)
 }
 
-// CB Server compat version for the integration test server
-var testClusterCompatVersion int
-var getTestClusterCompatVersionOnce sync.Once
-
-var minCompatVersionForCollections = encodeClusterVersion(7, 0)
-
 // TestRequiresCollections will skip the current test if the Couchbase Server version it is running against does not
 // support collections.
 func TestRequiresCollections(t *testing.T) {
-	if UnitTestUrlIsWalrus() {
-		t.Skip("Walrus does not support scopes and collections")
-	}
-
-	c, ok := GTestBucketPool.cluster.(*tbpClusterV2)
-	if !ok {
-		t.Skipf("GTestBucketPool cluster is %T, can't support collections", GTestBucketPool.cluster)
-	}
-
-	getTestClusterCompatVersionOnce.Do(func() {
-		testClusterCompatVersion = c.getMinClusterCompatVersion()
-	})
-
-	if testClusterCompatVersion < minCompatVersionForCollections {
-		t.Skip("Collections not supported")
-	}
-	if TestsDisableGSI() {
-		t.Skip("Collections requires GSI")
+	if ok, err := GTestBucketPool.shouldUseCollections(); err != nil {
+		t.Skipf("Skipping test - collections not supported: %v", err)
+	} else if !ok {
+		t.Skipf("Skipping test - collections not enabled")
 	}
 }
 

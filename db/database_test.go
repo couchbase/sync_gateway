@@ -2680,10 +2680,13 @@ func TestGetDatabaseCollectionWithUserNoScopesConfigured(t *testing.T) {
 }
 
 func TestGetDatabaseCollectionWithUserDefaultCollection(t *testing.T) {
+	base.TestRequiresCollections(t)
+
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close()
 
 	ds := bucket.GetNamedDataStore(t)
+	require.NotNil(t, ds)
 	dataStoreName, ok := ds.(sgbucket.DataStoreName)
 	require.True(t, ok)
 

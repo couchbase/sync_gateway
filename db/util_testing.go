@@ -287,28 +287,36 @@ var viewsAndGSIBucketReadier base.TBPBucketReadierFunc = func(ctx context.Contex
 
 // viewsAndGSIBucketInit is run synchronously only once per-bucket to do any initial setup. For non-integration Walrus buckets, this is run for each new Walrus bucket.
 var viewsAndGSIBucketInit base.TBPBucketInitFunc = func(ctx context.Context, b base.Bucket, tbp *base.TestBucketPool) error {
+	skipGSI := false
+
 	if base.UnitTestUrlIsWalrus() {
 		// Check we're not running with an invalid combination of backing store and xattrs.
 		if base.TestUseXattrs() {
 			return fmt.Errorf("xattrs not supported when using Walrus buckets")
 		}
-
 		tbp.Logf(ctx, "bucket not a gocb bucket... skipping GSI setup")
-		return viewBucketReadier(ctx, b.DefaultDataStore(), tbp)
+		skipGSI = true
 	}
+
 	tbp.Logf(ctx, "Starting bucket init function")
 
-	// Exit early if we're not using GSI.
-	if base.TestsDisableGSI() {
-		return nil
-	}
 	dataStores, err := b.ListDataStores()
 	if err != nil {
 		return err
 	}
-	for _, dataStoreName := range dataStores {
 
+	for _, dataStoreName := range dataStores {
 		dataStore := b.NamedDataStore(dataStoreName)
+
+		// Views
+		if skipGSI || base.TestsDisableGSI() {
+			if err := viewBucketReadier(ctx, dataStore, tbp); err != nil {
+				return err
+			}
+			continue
+		}
+
+		// GSI
 		n1qlStore, ok := base.AsN1QLStore(dataStore)
 		if !ok {
 			return fmt.Errorf("bucket %T was not a N1QL store", b)

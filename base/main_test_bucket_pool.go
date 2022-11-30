@@ -72,8 +72,8 @@ type TestBucketPool struct {
 	unclosedBuckets     map[string]map[string]struct{}
 	unclosedBucketsLock sync.Mutex
 
-	// useCollections may be false for older Couchbase Server versions that do not support collections.
-	useCollections    bool
+	// skipCollections may be true for older Couchbase Server versions that do not support collections.
+	skipCollections   bool
 	useExistingBucket bool
 }
 
@@ -123,7 +123,7 @@ func NewTestBucketPool(bucketReadierFunc TBPBucketReadierFunc, bucketInitFunc TB
 	if err != nil {
 		tbp.Fatalf(ctx, "%s", err)
 	}
-	tbp.useCollections = useCollections
+	tbp.skipCollections = !useCollections
 
 	tbp.verbose.Set(tbpVerbose())
 
@@ -135,11 +135,9 @@ func NewTestBucketPool(bucketReadierFunc TBPBucketReadierFunc, bucketInitFunc TB
 		tbp.Fatalf(ctx, "Couldn't remove old test buckets: %v", err)
 	}
 
-	numCollectionsPerBucket := tbpNumCollectionsPerBucket()
-
 	// Make sure the test buckets are created and put into the readier worker queue
 	start := time.Now()
-	if err := tbp.createTestBuckets(numBuckets, numCollectionsPerBucket, tbpBucketQuotaMB(), bucketInitFunc); err != nil {
+	if err := tbp.createTestBuckets(numBuckets, tbpBucketQuotaMB(), bucketInitFunc); err != nil {
 		tbp.Fatalf(ctx, "Couldn't create test buckets: %v", err)
 	}
 	atomic.AddInt64(&tbp.stats.TotalBucketInitDurationNano, time.Since(start).Nanoseconds())
@@ -209,6 +207,8 @@ func (tbp *TestBucketPool) GetWalrusTestBucket(t testing.TB, url string) (b Buck
 
 	ctx := bucketCtx(testCtx, b)
 	tbp.Logf(ctx, "Creating new walrus test bucket")
+
+	tbp.createCollections(ctx, walrusBucket)
 
 	initFuncStart := time.Now()
 	err = tbp.bucketInitFunc(ctx, b, tbp)
@@ -407,8 +407,36 @@ func (tbp *TestBucketPool) emptyPreparedStatements(ctx context.Context, ds DataS
 	}
 }
 
+// createCollections will create a set of test collections on the bucket, if enabled...
+func (tbp *TestBucketPool) createCollections(ctx context.Context, bucket Bucket) {
+	// If we're able to use collections, the test bucket pool will also create N collections per bucket - rather than just getting the default collection ready.
+	if tbp.skipCollections {
+		return
+	}
+
+	dynamicDataStore, ok := bucket.(sgbucket.DynamicDataStoreBucket)
+	if !ok {
+		tbp.Fatalf(ctx, "Bucket doesn't support dynamic collection creation")
+	}
+
+	for i := 0; i < tbpNumCollectionsPerBucket(); i++ {
+		scopeName := fmt.Sprintf("%s%d", tbpScopePrefix, 0)
+		collectionName := fmt.Sprintf("%s%d", tbpCollectionPrefix, i)
+		ctx := keyspaceNameCtx(ctx, bucket.GetName(), scopeName, collectionName)
+
+		tbp.Logf(ctx, "Creating new collection: %s.%s", scopeName, collectionName)
+		dataStoreName := ScopeAndCollectionName{Scope: scopeName, Collection: collectionName}
+		err := dynamicDataStore.CreateDataStore(dataStoreName)
+		if err != nil {
+			tbp.Fatalf(ctx, "Couldn't create datastore %v.%v: %v", scopeName, collectionName, err)
+		}
+
+		tbp.emptyPreparedStatements(ctx, bucket.NamedDataStore(dataStoreName))
+	}
+}
+
 // createTestBuckets creates a new set of integration test buckets and pushes them into the readier queue.
-func (tbp *TestBucketPool) createTestBuckets(numBuckets, numCollectionsPerBucket int, bucketQuotaMB int, bucketInitFunc TBPBucketInitFunc) error {
+func (tbp *TestBucketPool) createTestBuckets(numBuckets, bucketQuotaMB int, bucketInitFunc TBPBucketInitFunc) error {
 
 	// keep references to opened buckets for use later in this function
 	var (
@@ -447,25 +475,7 @@ func (tbp *TestBucketPool) createTestBuckets(numBuckets, numCollectionsPerBucket
 			openBuckets[bucketName] = bucket
 			openBucketsLock.Unlock()
 
-			// If set, the test bucket pool will also create N collections per bucket - rather than just getting the default collection ready.
-			if tbp.useCollections {
-				dynamicDataStore, ok := bucket.(sgbucket.DynamicDataStoreBucket)
-				if !ok {
-					tbp.Fatalf(ctx, "Bucket doesn't support dynamic collection creation")
-				}
-				for i := 0; i < numCollectionsPerBucket; i++ {
-					scopeName := fmt.Sprintf("%s%d", tbpScopePrefix, 0)
-					collectionName := fmt.Sprintf("%s%d", tbpCollectionPrefix, i)
-					ctx := keyspaceNameCtx(ctx, bucketName, scopeName, collectionName)
-					tbp.Logf(ctx, "Creating new collection: %s.%s", scopeName, collectionName)
-					dataStoreName := ScopeAndCollectionName{Scope: scopeName, Collection: collectionName}
-					err := dynamicDataStore.CreateDataStore(dataStoreName)
-					if err != nil {
-						tbp.Fatalf(ctx, "Couldn't create datastore %v.%v: %v", scopeName, collectionName, err)
-					}
-					tbp.emptyPreparedStatements(ctx, bucket.NamedDataStore(dataStoreName))
-				}
-			}
+			tbp.createCollections(ctx, bucket)
 
 			tbp.emptyPreparedStatements(ctx, bucket.DefaultDataStore())
 
