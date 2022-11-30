@@ -196,6 +196,9 @@ func (tbp *TestBucketPool) GetWalrusTestBucket(t testing.TB, url string) (b Buck
 
 	tbp.createCollections(ctx, walrusBucket)
 
+	// Create default collection here so that it gets initialized by bucketInitFunc
+	_ = walrusBucket.DefaultDataStore()
+
 	initFuncStart := time.Now()
 	err = tbp.bucketInitFunc(ctx, b, tbp)
 	if err != nil {
