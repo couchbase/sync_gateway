@@ -43,7 +43,7 @@ func JSONToGoMap(val *v8.Value) (map[string]any, error) {
 	}
 }
 
-// Encodes a Go value to JSON and returns the string as a V8 value.
+// Marshals a Go value to JSON, and returns the string as a V8 Value.
 func goToV8JSON(ctx *v8.Context, val any) (*v8.Value, error) {
 	if val == nil {
 		return v8.Null(ctx.Isolate()), nil

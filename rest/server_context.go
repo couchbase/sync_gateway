@@ -649,15 +649,12 @@ func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConf
 	}
 
 	// Identify import options
-	importOptions := db.ImportOptions{}
-	if config.ImportFilter != nil {
-		importOptions.ImportFilter = db.NewImportFilterFunction(*config.ImportFilter, javascriptTimeout)
+	importOptions := db.ImportOptions{
+		ImportFilterSource: config.ImportFilter,
+		BackupOldRev:       base.BoolDefault(config.ImportBackupOldRev, false),
+		ImportPartitions:   base.DefaultImportPartitions,
 	}
-	importOptions.BackupOldRev = base.BoolDefault(config.ImportBackupOldRev, false)
-
-	if config.ImportPartitions == nil {
-		importOptions.ImportPartitions = base.DefaultImportPartitions
-	} else {
+	if config.ImportPartitions != nil {
 		importOptions.ImportPartitions = *config.ImportPartitions
 	}
 

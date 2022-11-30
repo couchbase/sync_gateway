@@ -20,7 +20,8 @@ import (
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
-	"github.com/robertkrimen/otto"
+	"github.com/couchbase/sync_gateway/js"
+	v8 "rogchap.com/v8go"
 )
 
 type ImportMode uint8
@@ -236,13 +237,13 @@ func (db *Database) importDoc(ctx context.Context, docid string, body Body, expi
 
 			if isDelete && body == nil {
 				deleteBody := Body{BodyDeleted: true}
-				shouldImport, importErr = db.DatabaseContext.Options.ImportOptions.ImportFilter.EvaluateFunction(ctx, deleteBody)
+				shouldImport, importErr = db.DatabaseContext.Options.ImportOptions.ImportFilter(ctx, deleteBody)
 			} else if isDelete && body != nil {
 				deleteBody := body.ShallowCopy()
 				deleteBody[BodyDeleted] = true
-				shouldImport, importErr = db.DatabaseContext.Options.ImportOptions.ImportFilter.EvaluateFunction(ctx, deleteBody)
+				shouldImport, importErr = db.DatabaseContext.Options.ImportOptions.ImportFilter(ctx, deleteBody)
 			} else {
-				shouldImport, importErr = db.DatabaseContext.Options.ImportOptions.ImportFilter.EvaluateFunction(ctx, body)
+				shouldImport, importErr = db.DatabaseContext.Options.ImportOptions.ImportFilter(ctx, body)
 			}
 
 			if importErr != nil {
@@ -443,68 +444,40 @@ func (db *Database) backupPreImportRevision(ctx context.Context, docid, revid st
 	return nil
 }
 
-// ////// Import Filter Function
+//////// Import Filter Function
 
-// A compiled JavaScript event function.
-type jsImportFilterRunner struct {
-	sgbucket.JSRunner
-	response bool
-}
+const kImportServiceName = "import"
 
-// Compiles a JavaScript event function to a jsImportFilterRunner object.
-func newImportFilterRunner(funcSource string, timeout time.Duration) (sgbucket.JSServerTask, error) {
-	importFilterRunner := &jsEventTask{}
-	err := importFilterRunner.InitWithLogging(funcSource, timeout,
-		func(s string) {
-			base.ErrorfCtx(context.Background(), base.KeyJavascript.String()+": Import %s", base.UD(s))
-		},
-		func(s string) { base.InfofCtx(context.Background(), base.KeyJavascript, "Import %s", base.UD(s)) })
-	if err != nil {
-		return nil, err
-	}
+type ImportFilterFunction func(context.Context, Body) (bool, error)
 
-	importFilterRunner.After = func(result otto.Value, err error) (interface{}, error) {
-		nativeValue, _ := result.Export()
-		return nativeValue, err
-	}
-
-	return importFilterRunner, nil
-}
-
-type ImportFilterFunction struct {
-	*sgbucket.JSServer
-}
-
-func NewImportFilterFunction(fnSource string, timeout time.Duration) *ImportFilterFunction {
-
-	base.DebugfCtx(context.Background(), base.KeyImport, "Creating new ImportFilterFunction")
-	return &ImportFilterFunction{
-		JSServer: sgbucket.NewJSServer(fnSource, timeout, kTaskCacheSize,
-			func(fnSource string, timeout time.Duration) (sgbucket.JSServerTask, error) {
-				return newImportFilterRunner(fnSource, timeout)
-			}),
-	}
-}
-
-// Calls a jsEventFunction returning an interface{}
-func (i *ImportFilterFunction) EvaluateFunction(ctx context.Context, doc Body) (bool, error) {
-
-	result, err := i.Call(doc)
-	if err != nil {
-		base.WarnfCtx(ctx, "Unexpected error invoking import filter for document %s - processing aborted, document will not be imported.  Error: %v", base.UD(doc), err)
-		return false, err
-	}
-	switch result := result.(type) {
-	case bool:
-		return result, nil
-	case string:
-		boolResult, err := strconv.ParseBool(result)
-		if err != nil {
-			return false, err
+func NewImportFilterFunction(vms *js.VMPool, fnSource string, timeout time.Duration) ImportFilterFunction {
+	// Register the import service with its JS script:
+	vms.AddService(kImportServiceName, js.BasicServiceFactory(fnSource))
+	// Return a function that calls the function on a document:
+	return func(ctx context.Context, doc Body) (bool, error) {
+		if timeout > 0 {
+			var cancelFn context.CancelFunc
+			ctx, cancelFn = context.WithTimeout(ctx, timeout)
+			defer cancelFn()
 		}
-		return boolResult, nil
-	default:
-		base.WarnfCtx(ctx, "Import filter function returned non-boolean result %v Type: %T", result, result)
-		return false, errors.New("Import filter function returned non-boolean value.")
+		result, err := vms.WithRunner(kImportServiceName, func(runner *js.Runner) (any, error) {
+			runner.SetContext(ctx)
+			v8Doc, err := runner.GoToV8(doc)
+			if err == nil {
+				var val *v8.Value
+				if val, err = runner.Run(v8Doc); val != nil {
+					if val.IsBoolean() {
+						return val.Boolean(), nil
+					} else if val.IsString() {
+						return strconv.ParseBool(val.String())
+					} else {
+						err = errors.New("import filter function returned non-boolean value")
+					}
+				}
+			}
+			return false, err
+		})
+		ok, _ := result.(bool)
+		return ok, err
 	}
 }

@@ -31,6 +31,14 @@ type BasicService struct {
 	script *v8.UnboundScript
 }
 
+// Returns a ServiceFactory function for a BasicService with the given JavaScript.
+func BasicServiceFactory(fnSource string) ServiceFactory {
+	fnSource = `(` + fnSource + `)` // Allows a JS `function` stmt to be evaluated as a value
+	return func(service *BasicService) (Service, error) {
+		return service, service.SetScript(fnSource)
+	}
+}
+
 func (s *BasicService) Name() string               { return s.name }
 func (s *BasicService) Global() *v8.ObjectTemplate { return s.global }
 func (s *BasicService) Script() *v8.UnboundScript  { return s.script }
