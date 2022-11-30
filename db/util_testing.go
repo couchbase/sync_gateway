@@ -494,19 +494,20 @@ func SetupTestDBWithOptions(t testing.TB, dbcOptions DatabaseContextOptions) (*D
 
 func SetupTestDBForDataStoreWithOptions(t testing.TB, tBucket *base.TestBucket, dbcOptions DatabaseContextOptions) (*Database, context.Context) {
 	ctx := base.TestCtx(t)
-	dataStore := tBucket.GetSingleDataStore()
 	AddOptionsFromEnvironmentVariables(&dbcOptions)
 
-	if !base.TestsDisableGSI() {
-		collection, err := base.AsCollection(dataStore)
-		if err == nil {
-			dbcOptions.Scopes = map[string]ScopeOptions{
-				collection.ScopeName(): ScopeOptions{
-					Collections: map[string]CollectionOptions{
-						collection.CollectionName(): {},
-					},
+	if !base.ShouldUseDefaultCollection() {
+		dataStore := tBucket.GetSingleDataStore()
+		dsn, ok := base.AsDataStoreName(dataStore)
+		if !ok {
+			t.Fatalf("dataStore (%T) did not implement DataStoreName", dataStore)
+		}
+		dbcOptions.Scopes = map[string]ScopeOptions{
+			dsn.ScopeName(): {
+				Collections: map[string]CollectionOptions{
+					dsn.CollectionName(): {},
 				},
-			}
+			},
 		}
 	}
 
