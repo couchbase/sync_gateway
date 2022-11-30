@@ -2313,13 +2313,13 @@ func isAccessError(err error) bool {
 
 // Recomputes the set of channels a User/Role has been granted access to by sync() functions.
 // This is part of the ChannelComputer interface defined by the Authenticator.
-func (context *DatabaseCollection) ComputeChannelsForPrincipal(ctx context.Context, princ auth.Principal) (channels.TimedSet, error) {
+func (context *DatabaseContext) ComputeChannelsForPrincipal(ctx context.Context, princ auth.Principal) (channels.TimedSet, error) {
 	key := princ.Name()
 	if _, ok := princ.(auth.User); !ok {
 		key = channels.RoleAccessPrefix + key // Roles are identified in access view by a "role:" prefix
 	}
 
-	results, err := context.dbCtx.QueryAccess(ctx, key)
+	results, err := context.QueryAccess(ctx, key)
 	if err != nil {
 		base.WarnfCtx(ctx, "QueryAccess returned error: %v", err)
 		return nil, err
@@ -2341,8 +2341,8 @@ func (context *DatabaseCollection) ComputeChannelsForPrincipal(ctx context.Conte
 
 // Recomputes the set of channels a User/Role has been granted access to by sync() functions.
 // This is part of the ChannelComputer interface defined by the Authenticator.
-func (context *DatabaseCollection) ComputeRolesForUser(ctx context.Context, user auth.User) (channels.TimedSet, error) {
-	results, err := context.dbCtx.QueryRoleAccess(ctx, user.Name())
+func (context *DatabaseContext) ComputeRolesForUser(ctx context.Context, user auth.User) (channels.TimedSet, error) {
+	results, err := context.QueryRoleAccess(ctx, user.Name())
 	if err != nil {
 		return nil, err
 	}
