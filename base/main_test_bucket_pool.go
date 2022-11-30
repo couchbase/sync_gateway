@@ -374,15 +374,16 @@ func (tbp *TestBucketPool) removeOldTestBuckets() error {
 	return nil
 }
 
-func (tbp *TestBucketPool) emptyPreparedStatements(ctx context.Context, ds DataStore) {
-	tbp.Logf(ctx, "Emptying prepared statements")
+func (tbp *TestBucketPool) emptyPreparedStatements(ctx context.Context, b Bucket) {
+	tbp.Logf(ctx, "Emptying prepared statements for bucket")
 	// if the bucket is a N1QLStore, clean up prepared statements as-per the advice from the query team
-	if n1qlStore, ok := AsN1QLStore(ds); ok {
+	if n1qlStore, ok := AsN1QLStore(b.DefaultDataStore()); ok {
 		if err := n1qlStore.waitUntilQueryServiceReady(time.Minute); err != nil {
 			tbp.Fatalf(ctx, "Timed out waiting for query service to be ready: %v", err)
 		}
 
-		queryRes, err := n1qlStore.Query(`DELETE FROM system:prepareds WHERE statement LIKE "%`+KeyspaceQueryToken+`%";`, nil, RequestPlus, true)
+		// search all statements for those containing a string matching the bucket name (which will also include all scope/collection-based prepared statements)
+		queryRes, err := n1qlStore.Query(`DELETE FROM system:prepareds WHERE statement LIKE "%`+b.GetName()+`%";`, nil, RequestPlus, true)
 		if err != nil {
 			tbp.Fatalf(ctx, "Couldn't remove old prepared statements: %v", err)
 		}
@@ -416,8 +417,6 @@ func (tbp *TestBucketPool) createCollections(ctx context.Context, bucket Bucket)
 		if err != nil {
 			tbp.Fatalf(ctx, "Couldn't create datastore %v.%v: %v", scopeName, collectionName, err)
 		}
-
-		tbp.emptyPreparedStatements(ctx, bucket.NamedDataStore(dataStoreName))
 	}
 }
 
@@ -463,7 +462,7 @@ func (tbp *TestBucketPool) createTestBuckets(numBuckets, bucketQuotaMB int, buck
 
 			tbp.createCollections(ctx, bucket)
 
-			tbp.emptyPreparedStatements(ctx, bucket.DefaultDataStore())
+			tbp.emptyPreparedStatements(ctx, bucket)
 
 			wg.Done()
 		}(testBucketName)
