@@ -263,16 +263,14 @@ func TestLateSequenceErrorRecovery(t *testing.T) {
 	defer db.Close(ctx)
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
-	collection := db.GetSingleDatabaseCollection()
-	collectionID := collection.GetCollectionID()
-
-	dbCollection := db.GetSingleDatabaseCollectionWithUser()
 	// Create a user with access to channel ABC
 	authenticator := db.Authenticator(ctx)
 	require.NotNil(t, authenticator, "db.Authenticator(db.Ctx) returned nil")
 	user, err := authenticator.NewUser("naomi", "letmein", channels.BaseSetOf(t, "ABC"))
 	require.NoError(t, err, "Error creating new user")
 	require.NoError(t, authenticator.Save(user))
+
+	dbCollection := db.GetSingleDatabaseCollectionWithUser()
 
 	// Start continuous changes feed
 	var options ChangesOptions
@@ -319,6 +317,9 @@ func TestLateSequenceErrorRecovery(t *testing.T) {
 	nextEvents = nextFeedIteration()
 	require.Equal(t, len(nextEvents), 1)
 	assert.Equal(t, nextEvents[0].Seq.String(), "1::6")
+
+	collection := db.GetSingleDatabaseCollection()
+	collectionID := collection.GetCollectionID()
 
 	// Modify the cache's late logs to remove the changes feed's lateFeedHandler sequence from the
 	// cache's lateLogs.  This will trigger an error on the next feed iteration, which should trigger

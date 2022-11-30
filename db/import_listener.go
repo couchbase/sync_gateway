@@ -26,7 +26,6 @@ type importListener struct {
 	terminator       chan bool                             // Signal to cause cbdatasource bucketdatasource.Close() to be called, which removes dcp receiver
 	dbName           string                                // used for naming the DCP feed
 	bucket           base.Bucket                           // bucket to get vb stats for feed
-	metadataStore    base.DataStore                        // collection to store DCP metadata
 	collections      map[uint32]DatabaseCollectionWithUser // Admin databases used for import, keyed by collection ID (CB-server-side)
 	dbStats          *base.DatabaseStats                   // Database stats group
 	importStats      *base.SharedBucketImportStats         // import stats group
@@ -46,16 +45,10 @@ func NewImportListener(groupID string) *importListener {
 // StartImportFeed starts an import DCP feed.  Always starts the feed based on previous checkpoints (Backfill:FeedResume).
 // Writes DCP stats into the StatKeyImportDcpStats map
 func (il *importListener) StartImportFeed(ctx context.Context, bucket base.Bucket, dbStats *base.DbStats, dbContext *DatabaseContext) (err error) {
-	couchbaseBucket, ok := base.AsCouchbaseBucketStore(bucket)
-	if !ok {
-		return fmt.Errorf("Unable to start import feed for non-Couchbase bucket")
-	}
-
 	il.bucketName = bucket.GetName()
 	il.dbName = dbContext.Name
 	il.loggingCtx = ctx
-	il.bucket = couchbaseBucket
-	il.metadataStore = dbContext.MetadataStore
+	il.bucket = bucket
 	il.collections = make(map[uint32]DatabaseCollectionWithUser)
 	il.dbStats = dbStats.Database()
 	il.importStats = dbStats.SharedBucketImport()

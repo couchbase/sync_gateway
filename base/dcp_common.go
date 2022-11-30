@@ -86,7 +86,7 @@ type DCPCommon struct {
 func NewDCPCommon(ctx context.Context, callback sgbucket.FeedEventCallbackFunc, bucket Bucket, metaStore DataStore, maxVbNo uint16, persistCheckpoints bool, dbStats *expvar.Map, feedID, checkpointPrefix string) (*DCPCommon, error) {
 	newBackfillStatus := backfillStatus{}
 
-	couchbaseStore, ok := AsCouchbaseStore(bucket)
+	couchbaseStore, ok := AsCouchbaseBucketStore(bucket)
 	if !ok {
 		return nil, errors.New("DCP not supported for non-Couchbase data source")
 	}

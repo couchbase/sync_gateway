@@ -41,7 +41,7 @@ func setupTestDB(t testing.TB) (*Database, context.Context) {
 	return setupTestDBWithCacheOptions(t, DefaultCacheOptions())
 }
 
-func setupTestDBForBucket(t testing.TB, bucket base.Bucket) (*Database, context.Context) {
+func setupTestDBForBucket(t testing.TB, bucket *base.TestBucket) (*Database, context.Context) {
 	cacheOptions := DefaultCacheOptions()
 	dbcOptions := DatabaseContextOptions{
 		CacheOptions: &cacheOptions,
@@ -278,7 +278,7 @@ func TestGetDeleted(t *testing.T) {
 	assert.Equal(t, rev2id, doc.SyncData.CurrentRev)
 
 	// Try again but with a user who doesn't have access to this revision (see #179)
-	authenticator := auth.NewAuthenticator(db.MetadataStore, collection, auth.DefaultAuthenticatorOptions())
+	authenticator := auth.NewAuthenticator(db.MetadataStore, db, auth.DefaultAuthenticatorOptions())
 	collection.user, err = authenticator.GetUser("")
 	assert.NoError(t, err, "GetUser")
 	collection.user.SetExplicitChannels(nil, 1)
@@ -344,7 +344,7 @@ func TestGetRemovedAsUser(t *testing.T) {
 	assert.NoError(t, err, "Purge old revision JSON")
 
 	// Try again with a user who doesn't have access to this revision
-	authenticator := auth.NewAuthenticator(db.MetadataStore, collection, auth.DefaultAuthenticatorOptions())
+	authenticator := auth.NewAuthenticator(db.MetadataStore, db, auth.DefaultAuthenticatorOptions())
 	collection.user, err = authenticator.GetUser("")
 	assert.NoError(t, err, "GetUser")
 
@@ -403,7 +403,7 @@ func TestGetRemovalMultiChannel(t *testing.T) {
 	defer db.Close(ctx)
 	collection := db.GetSingleDatabaseCollectionWithUser()
 
-	auth := auth.NewAuthenticator(db.MetadataStore, collection, auth.DefaultAuthenticatorOptions())
+	auth := auth.NewAuthenticator(db.MetadataStore, db, auth.DefaultAuthenticatorOptions())
 
 	// Create a user who have access to both channel ABC and NBC.
 	userAlice, err := auth.NewUser("alice", "pass", base.SetOf("ABC", "NBC"))
@@ -541,7 +541,7 @@ func TestDeltaSyncWhenFromRevIsChannelRemoval(t *testing.T) {
 
 	// Request delta between rev2ID and rev3ID (toRevision "rev2ID" is channel removal)
 	// as a user who doesn't have access to the removed revision via any other channel.
-	authenticator := auth.NewAuthenticator(db.MetadataStore, collection, auth.DefaultAuthenticatorOptions())
+	authenticator := auth.NewAuthenticator(db.MetadataStore, db, auth.DefaultAuthenticatorOptions())
 	user, err := authenticator.NewUser("alice", "pass", base.SetOf("NBC"))
 	require.NoError(t, err, "Error creating user")
 
@@ -607,7 +607,7 @@ func TestDeltaSyncWhenToRevIsChannelRemoval(t *testing.T) {
 
 	// Request delta between rev1ID and rev2ID (toRevision "rev2ID" is channel removal)
 	// as a user who doesn't have access to the removed revision via any other channel.
-	authenticator := auth.NewAuthenticator(db.MetadataStore, collection, auth.DefaultAuthenticatorOptions())
+	authenticator := auth.NewAuthenticator(db.MetadataStore, db, auth.DefaultAuthenticatorOptions())
 	user, err := authenticator.NewUser("alice", "pass", base.SetOf("NBC"))
 	require.NoError(t, err, "Error creating user")
 
@@ -1435,7 +1435,7 @@ func TestAccessFunctionDb(t *testing.T) {
 	defer db.Close(ctx)
 	collection := db.GetSingleDatabaseCollectionWithUser()
 
-	authenticator := auth.NewAuthenticator(db.MetadataStore, collection, auth.DefaultAuthenticatorOptions())
+	authenticator := auth.NewAuthenticator(db.MetadataStore, db, auth.DefaultAuthenticatorOptions())
 
 	var err error
 	db.ChannelMapper = channels.NewChannelMapper(`function(doc){access(doc.users,doc.userChannels);}`, 0)
@@ -1526,8 +1526,7 @@ func TestUpdateDesignDoc(t *testing.T) {
 	assert.True(t, strings.Contains(retrievedView.Map, "emit()"))
 	assert.NotEqual(t, mapFunction, retrievedView.Map) // SG should wrap the map function, so they shouldn't be equal
 
-	collection := db.GetSingleDatabaseCollectionWithUser()
-	authenticator := auth.NewAuthenticator(db.MetadataStore, collection, auth.DefaultAuthenticatorOptions())
+	authenticator := auth.NewAuthenticator(db.MetadataStore, db, auth.DefaultAuthenticatorOptions())
 	db.user, _ = authenticator.NewUser("naomi", "letmein", channels.BaseSetOf(t, "Netflix"))
 	err = db.PutDesignDoc("_design/pwn3d", sgbucket.DesignDoc{})
 	assertHTTPError(t, err, 403)
@@ -2455,7 +2454,7 @@ func TestTombstoneCompactionStopWithManager(t *testing.T) {
 		t.Skip("LeakyDataStore does not yet support N1QL")
 	}
 
-	bucket := base.NewLeakyBucket(base.GetTestBucket(t), base.LeakyBucketConfig{})
+	bucket := base.GetTestBucket(t).LeakyBucketClone(base.LeakyBucketConfig{})
 	db, ctx := SetupTestDBForDataStoreWithOptions(t, bucket, DatabaseContextOptions{})
 	db.PurgeInterval = 0
 	defer db.Close(ctx)
@@ -2679,12 +2678,6 @@ func TestGetDatabaseCollectionWithUserNoScopesConfigured(t *testing.T) {
 	}
 }
 
-// AsDataStoreName is a temporary thing until DataStoreName is implemented on wrappers (pending further design work on FQName...)
-func AsDataStoreName(ds base.DataStore) (sgbucket.DataStoreName, bool) {
-	dsn, ok := base.GetBaseDataStore(ds).(sgbucket.DataStoreName)
-	return dsn, ok
-}
-
 func TestGetDatabaseCollectionWithUserDefaultCollection(t *testing.T) {
 	base.TestRequiresCollections(t)
 
@@ -2694,7 +2687,7 @@ func TestGetDatabaseCollectionWithUserDefaultCollection(t *testing.T) {
 	ds := bucket.GetNamedDataStore()
 	require.NotNil(t, ds)
 
-	dataStoreName, ok := AsDataStoreName(ds)
+	dataStoreName, ok := base.AsDataStoreName(ds)
 	require.True(t, ok)
 
 	testCases := []struct {

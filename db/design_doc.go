@@ -86,7 +86,7 @@ func (db *Database) GetDesignDoc(ddocName string) (ddoc sgbucket.DesignDoc, err 
 	if err = db.checkDDocAccess(ddocName); err != nil {
 		return ddoc, err
 	}
-	vs, err := getViewStoreFromDefaultDatabase(db.DatabaseContext)
+	vs, err := getViewStoreForDefaultCollection(db.DatabaseContext)
 	if err != nil {
 		return ddoc, err
 	}
@@ -104,7 +104,7 @@ func (db *Database) PutDesignDoc(ddocName string, ddoc sgbucket.DesignDoc) (err 
 		wrapViews(&ddoc, db.GetUserViewsEnabled(), db.UseXattrs())
 	}
 
-	vs, err := getViewStoreFromDefaultDatabase(db.DatabaseContext)
+	vs, err := getViewStoreForDefaultCollection(db.DatabaseContext)
 	if err != nil {
 		return err
 	}
@@ -228,7 +228,7 @@ func wrapViews(ddoc *sgbucket.DesignDoc, enableUserViews bool, useXattrs bool) {
 }
 
 func (db *Database) DeleteDesignDoc(ddocName string) (err error) {
-	vs, err := getViewStoreFromDefaultDatabase(db.DatabaseContext)
+	vs, err := getViewStoreForDefaultCollection(db.DatabaseContext)
 	if err != nil {
 		return err
 	}
@@ -253,7 +253,7 @@ func (db *Database) QueryDesignDoc(ddocName string, viewName string, options map
 			return nil, base.HTTPErrorf(http.StatusForbidden, "forbidden")
 		}
 	}
-	vs, err := getViewStoreFromDefaultDatabase(db.DatabaseContext)
+	vs, err := getViewStoreForDefaultCollection(db.DatabaseContext)
 	if err != nil {
 		return nil, err
 	}
@@ -778,7 +778,7 @@ func IsMissingDDocError(err error) bool {
 
 }
 
-func getViewStoreFromDefaultDatabase(dbContext *DatabaseContext) (sgbucket.ViewStore, error) {
+func getViewStoreForDefaultCollection(dbContext *DatabaseContext) (sgbucket.ViewStore, error) {
 	dbCollection, err := dbContext.GetDefaultDatabaseCollection()
 	if err != nil {
 		return nil, err

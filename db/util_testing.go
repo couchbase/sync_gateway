@@ -492,10 +492,11 @@ func SetupTestDBWithOptions(t testing.TB, dbcOptions DatabaseContextOptions) (*D
 	return SetupTestDBForDataStoreWithOptions(t, tBucket, dbcOptions)
 }
 
-func SetupTestDBForDataStoreWithOptions(t testing.TB, tBucket base.Bucket, dbcOptions DatabaseContextOptions) (*Database, context.Context) {
+func SetupTestDBForDataStoreWithOptions(t testing.TB, tBucket *base.TestBucket, dbcOptions DatabaseContextOptions) (*Database, context.Context) {
 	ctx := base.TestCtx(t)
-	dataStore := tBucket.DefaultDataStore()
+	dataStore := tBucket.GetSingleDataStore()
 	AddOptionsFromEnvironmentVariables(&dbcOptions)
+
 	if !base.TestsDisableGSI() {
 		collection, err := base.AsCollection(dataStore)
 		if err == nil {

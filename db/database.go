@@ -860,7 +860,7 @@ func (context *DatabaseContext) Authenticator(ctx context.Context) *auth.Authent
 	}
 
 	// Authenticators are lightweight & stateless, so it's OK to return a new one every time
-	authenticator := auth.NewAuthenticator(context.MetadataStore, context.singleCollection, auth.AuthenticatorOptions{
+	authenticator := auth.NewAuthenticator(context.MetadataStore, context, auth.AuthenticatorOptions{
 		ClientPartitionWindow:    context.Options.ClientPartitionWindow,
 		ChannelsWarningThreshold: channelsWarningThreshold,
 		SessionCookieName:        sessionCookieName,

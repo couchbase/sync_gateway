@@ -14,7 +14,6 @@ import (
 	"testing"
 
 	"github.com/couchbase/go-blip"
-	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/stretchr/testify/assert"
@@ -22,16 +21,19 @@ import (
 )
 
 func TestBlipGetCollections(t *testing.T) {
+	// FIXME (tor) needs RestTester collection support
+	t.Skip("needs RestTester collection support")
+
 	// FIXME as part of CBG-2203 to enable subtest checkpointExistsWithErrorInNonDefaultCollection
 	base.TestRequiresCollections(t)
 
-	//checkpointIDWithError := "checkpointError"
+	// checkpointIDWithError := "checkpointError"
 
 	tb := base.GetTestBucket(t)
 	defer tb.Close()
 
-	ds := tb.GetNamedDataStore(t)
-	dataStoreName, ok := ds.(sgbucket.DataStoreName)
+	ds := tb.GetNamedDataStore()
+	dataStoreName, ok := base.AsDataStoreName(ds)
 	require.True(t, ok)
 
 	scopeName := dataStoreName.ScopeName()
@@ -53,14 +55,14 @@ func TestBlipGetCollections(t *testing.T) {
 				},
 			},
 		},
-		//leakyBucketConfig: &base.LeakyBucketConfig{
+		// leakyBucketConfig: &base.LeakyBucketConfig{
 		//	GetRawCallback: func(key string) error {
 		//		if key == db.CheckpointDocIDPrefix+checkpointIDWithError {
 		//			return fmt.Errorf("a unique error")
 		//		}
 		//		return nil
 		//	},
-		//},
+		// },
 	})
 	defer rt.Close()
 
@@ -136,7 +138,7 @@ func TestBlipGetCollections(t *testing.T) {
 			resultBody: []db.Body{db.Body{}},
 			errorCode:  "",
 		},
-		//{
+		// {
 		//	name: "checkpointExistsWithErrorInNonDefaultCollection",
 		//	requestBody: db.GetCollectionsRequestBody{
 		//		CheckpointIDs: []string{checkpointIDWithError},
@@ -144,7 +146,7 @@ func TestBlipGetCollections(t *testing.T) {
 		//	},
 		//	resultBody: []db.Body{nil},
 		//	errorCode:  "",
-		//},
+		// },
 	}
 
 	for _, testCase := range testCases {
@@ -178,11 +180,12 @@ func TestBlipGetCollectionsAndSetCheckpoint(t *testing.T) {
 	tb := base.GetTestBucket(t)
 	defer tb.Close()
 
-	tc, err := base.AsCollection(tb.GetSingleDataStore())
-	require.NoError(t, err)
+	ds := tb.GetSingleDataStore()
+	namedDataStore, ok := base.AsDataStoreName(ds)
+	require.True(t, ok)
 
-	scopeName := tc.ScopeName()
-	collectionName := tc.CollectionName()
+	scopeName := namedDataStore.ScopeName()
+	collectionName := namedDataStore.CollectionName()
 
 	rt := NewRestTester(t, &RestTesterConfig{
 		GuestEnabled: true,
@@ -258,8 +261,9 @@ func TestCollectionsPeerDoesNotHave(t *testing.T) {
 	tb := base.GetTestBucket(t)
 	defer tb.Close()
 
-	tc, err := base.AsCollection(tb.GetSingleDataStore())
-	require.NoError(t, err)
+	ds := tb.GetSingleDataStore()
+	namedDataStore, ok := base.AsDataStoreName(ds)
+	require.True(t, ok)
 
 	rt := NewRestTester(t, &RestTesterConfig{
 		GuestEnabled:     true,
@@ -267,9 +271,9 @@ func TestCollectionsPeerDoesNotHave(t *testing.T) {
 		DatabaseConfig: &DatabaseConfig{
 			DbConfig: DbConfig{
 				Scopes: ScopesConfig{
-					tc.ScopeName(): ScopeConfig{
+					namedDataStore.ScopeName(): ScopeConfig{
 						Collections: map[string]CollectionConfig{
-							tc.CollectionName(): {},
+							namedDataStore.CollectionName(): {},
 						},
 					},
 				},
@@ -278,7 +282,7 @@ func TestCollectionsPeerDoesNotHave(t *testing.T) {
 	})
 	defer rt.Close()
 
-	_, err = NewBlipTesterClientOptsWithRT(t, rt, &BlipTesterClientOpts{
+	_, err := NewBlipTesterClientOptsWithRT(t, rt, &BlipTesterClientOpts{
 		Collections: []string{"barScope.barCollection"},
 	})
 	require.Error(t, err)

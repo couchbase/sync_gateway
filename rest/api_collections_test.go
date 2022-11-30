@@ -15,7 +15,6 @@ import (
 	"testing"
 
 	"github.com/couchbase/gocb/v2"
-	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/stretchr/testify/assert"
@@ -25,6 +24,9 @@ import (
 // TestCollectionsPutDocInKeyspace creates a collection and starts up a RestTester instance on it.
 // Ensures that various keyspaces can or can't be used to insert a doc in the collection.
 func TestCollectionsPutDocInKeyspace(t *testing.T) {
+	// FIXME (tor) needs RestTester collection support
+	t.Skip("needs RestTester collection support")
+
 	base.TestRequiresCollections(t)
 
 	tb := base.GetTestBucket(t)
@@ -33,8 +35,8 @@ func TestCollectionsPutDocInKeyspace(t *testing.T) {
 	// dbName is the default name from RestTester
 	dbName := "db"
 
-	ds := tb.GetNamedDataStore(t)
-	dataStoreName, ok := ds.(sgbucket.DataStoreName)
+	ds := tb.GetNamedDataStore()
+	dataStoreName, ok := base.AsDataStoreName(ds)
 	require.True(t, ok)
 
 	tests := []struct {
@@ -105,12 +107,12 @@ func TestCollectionsPutDocInKeyspace(t *testing.T) {
 			if test.expectedStatus == http.StatusCreated {
 				// go and check that the doc didn't just end up in the default collection of the test bucket
 				docBody, _, err := ds.GetRaw(docID)
-				require.NoError(t, err)
-				require.NotNil(t, docBody)
+				assert.NoError(t, err)
+				assert.NotNil(t, docBody)
 
 				defaultDataStore := rt.Bucket().DefaultDataStore()
 				_, err = defaultDataStore.Get(docID, &gocb.GetOptions{})
-				require.Error(t, err)
+				assert.Error(t, err)
 			}
 		})
 	}
@@ -248,14 +250,16 @@ func TestMultiCollectionDCP(t *testing.T) {
 // TestCollectionsBasicIndexQuery ensures that the bucket API is able to create an index on a collection
 // and query documents written to the collection.
 func TestCollectionsBasicIndexQuery(t *testing.T) {
+	// FIXME (tor) needs RestTester collection support
+	t.Skip("needs RestTester collection support")
+
 	base.TestRequiresCollections(t)
 
 	tb := base.GetTestBucket(t)
 	defer tb.Close()
 
-	ds := tb.GetNamedDataStore(t)
-
-	dataStoreName, ok := ds.(sgbucket.DataStoreName)
+	ds := tb.GetNamedDataStore()
+	dataStoreName, ok := base.AsDataStoreName(ds)
 	require.True(t, ok)
 
 	rt := NewRestTester(t, &RestTesterConfig{
@@ -328,6 +332,9 @@ func TestCollectionsBasicIndexQuery(t *testing.T) {
 // TestCollectionsSGIndexQuery is more of an end-to-end test to ensure SG indexes are built correctly,
 // and the channel access query is able to run when pulling a document as a user, and backfill the channel cache.
 func TestCollectionsSGIndexQuery(t *testing.T) {
+	// FIXME (tor) needs RestTester collection support
+	t.Skip("needs RestTester collection support")
+
 	base.TestRequiresCollections(t)
 
 	// force GSI for this one test
@@ -346,9 +353,9 @@ func TestCollectionsSGIndexQuery(t *testing.T) {
 	tb := base.GetTestBucket(t)
 	defer tb.Close()
 
-	ds := tb.GetNamedDataStore(t)
+	ds := tb.GetNamedDataStore()
 
-	dataStoreName, ok := ds.(sgbucket.DataStoreName)
+	dataStoreName, ok := base.AsDataStoreName(ds)
 	require.True(t, ok)
 
 	keyspace := strings.Join([]string{"db", dataStoreName.ScopeName(), dataStoreName.CollectionName()}, base.ScopeCollectionSeparator)
@@ -403,6 +410,9 @@ func TestCollectionsSGIndexQuery(t *testing.T) {
 }
 
 func TestCollectionsChangeConfigScope(t *testing.T) {
+	// FIXME (tor) needs RestTester collection support
+	t.Skip("needs RestTester collection support")
+
 	base.TestRequiresCollections(t)
 
 	tb := base.GetTestBucket(t)

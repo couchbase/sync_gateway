@@ -405,6 +405,8 @@ func TestUserGraphQLWithN1QL(t *testing.T) {
 func setupTestDBWithFunctions(t *testing.T, fnConfig FunctionConfigMap, gqConfig *GraphQLConfig) (*db.Database, context.Context) {
 	cacheOptions := db.DefaultCacheOptions()
 	options := db.DatabaseContextOptions{
+		UseViews:     base.TestsDisableGSI(),
+		EnableXattr:  base.TestUseXattrs(),
 		CacheOptions: &cacheOptions,
 	}
 	var err error

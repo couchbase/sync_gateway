@@ -415,7 +415,7 @@ func N1QLQueryWithStats(ctx context.Context, dataStore base.DataStore, queryName
 }
 
 // ViewQueryWithStats is a wrapper for gocbBucket.Query that performs additional diagnostic processing (expvars, slow query logging)
-func (context *DatabaseContext) ViewQueryWithStats(ctx context.Context, ddoc string, viewName string, params map[string]interface{}) (results sgbucket.QueryResultIterator, err error) {
+func (context *DatabaseContext) ViewQueryWithStats(ctx context.Context, dataStore base.DataStore, ddoc string, viewName string, params map[string]interface{}) (results sgbucket.QueryResultIterator, err error) {
 
 	startTime := time.Now()
 	if threshold := context.Options.SlowQueryWarningThreshold; threshold > 0 {
@@ -424,7 +424,7 @@ func (context *DatabaseContext) ViewQueryWithStats(ctx context.Context, ddoc str
 
 	queryStat := context.DbStats.Query(fmt.Sprintf(base.StatViewFormat, ddoc, viewName))
 
-	viewStore, ok := context.singleCollection.dataStore.(sgbucket.ViewStore)
+	viewStore, ok := base.AsViewStore(dataStore)
 	if !ok {
 		return results, fmt.Errorf("Datastore does not support views")
 	}
@@ -445,7 +445,7 @@ func (context *DatabaseContext) QueryAccess(ctx context.Context, username string
 	// View Query
 	if context.Options.UseViews {
 		opts := map[string]interface{}{"stale": false, "key": username}
-		return context.ViewQueryWithStats(ctx, DesignDocSyncGateway(), ViewAccess, opts)
+		return context.ViewQueryWithStats(ctx, context.MetadataStore, DesignDocSyncGateway(), ViewAccess, opts)
 	}
 
 	// N1QL Query
@@ -477,7 +477,7 @@ func (context *DatabaseContext) QueryRoleAccess(ctx context.Context, username st
 	// View Query
 	if context.Options.UseViews {
 		opts := map[string]interface{}{"stale": false, "key": username}
-		return context.ViewQueryWithStats(ctx, DesignDocSyncGateway(), ViewRoleAccess, opts)
+		return context.ViewQueryWithStats(ctx, context.MetadataStore, DesignDocSyncGateway(), ViewRoleAccess, opts)
 	}
 
 	// N1QL Query
@@ -508,7 +508,7 @@ func (context *DatabaseCollection) QueryChannels(ctx context.Context, channelNam
 
 	if context.useViews() {
 		opts := changesViewOptions(channelName, startSeq, endSeq, limit)
-		return context.dbCtx.ViewQueryWithStats(ctx, DesignDocSyncGateway(), ViewChannels, opts)
+		return context.dbCtx.ViewQueryWithStats(ctx, context.dataStore, DesignDocSyncGateway(), ViewChannels, opts)
 	}
 
 	// N1QL Query
@@ -529,7 +529,7 @@ func (context *DatabaseCollection) QuerySequences(ctx context.Context, sequences
 
 	if context.useViews() {
 		opts := changesViewForSequencesOptions(sequences)
-		return context.dbCtx.ViewQueryWithStats(ctx, DesignDocSyncGateway(), ViewChannels, opts)
+		return context.dbCtx.ViewQueryWithStats(ctx, context.dataStore, DesignDocSyncGateway(), ViewChannels, opts)
 	}
 
 	// N1QL Query
@@ -595,7 +595,7 @@ func (context *DatabaseContext) QueryPrincipals(ctx context.Context, startKey st
 			opts[QueryParamStartKey] = startKey
 		}
 
-		return context.ViewQueryWithStats(ctx, DesignDocSyncGateway(), ViewPrincipals, opts)
+		return context.ViewQueryWithStats(ctx, context.MetadataStore, DesignDocSyncGateway(), ViewPrincipals, opts)
 	}
 
 	queryStatement := replaceIndexTokensQuery(QueryPrincipals.statement, sgIndexes[IndexSyncDocs], context.UseXattrs())
@@ -659,7 +659,7 @@ func (context *DatabaseContext) QueryRoles(ctx context.Context, startKey string,
 			opts[QueryParamStartKey] = startKey
 		}
 
-		return context.ViewQueryWithStats(ctx, DesignDocSyncGateway(), ViewRolesExcludeDeleted, opts)
+		return context.ViewQueryWithStats(ctx, context.MetadataStore, DesignDocSyncGateway(), ViewRolesExcludeDeleted, opts)
 	}
 
 	queryStatement, params := context.BuildRolesQuery(startKey, limit)
@@ -723,7 +723,7 @@ func (context *DatabaseContext) QuerySessions(ctx context.Context, userName stri
 		opts := Body{"stale": false}
 		opts[QueryParamStartKey] = userName
 		opts[QueryParamEndKey] = userName
-		return context.ViewQueryWithStats(ctx, DesignDocSyncHousekeeping(), ViewSessions, opts)
+		return context.ViewQueryWithStats(ctx, context.MetadataStore, DesignDocSyncHousekeeping(), ViewSessions, opts)
 	}
 
 	queryStatement, params := context.BuildSessionsQuery(userName)
@@ -773,7 +773,7 @@ func (context *DatabaseCollection) QueryAllDocs(ctx context.Context, startKey st
 		if endKey != "" {
 			opts[QueryParamEndKey] = endKey
 		}
-		return context.dbCtx.ViewQueryWithStats(ctx, DesignDocSyncHousekeeping(), ViewAllDocs, opts)
+		return context.dbCtx.ViewQueryWithStats(ctx, context.dataStore, DesignDocSyncHousekeeping(), ViewAllDocs, opts)
 	}
 
 	// N1QL Query
@@ -810,7 +810,7 @@ func (context *DatabaseCollection) QueryTombstones(ctx context.Context, olderTha
 		if limit != 0 {
 			opts[QueryParamLimit] = limit
 		}
-		return context.dbCtx.ViewQueryWithStats(ctx, DesignDocSyncHousekeeping(), ViewTombstones, opts)
+		return context.dbCtx.ViewQueryWithStats(ctx, context.dataStore, DesignDocSyncHousekeeping(), ViewTombstones, opts)
 	}
 
 	// N1QL Query
