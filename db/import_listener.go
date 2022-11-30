@@ -25,7 +25,8 @@ type importListener struct {
 	bucketName       string                                // Used for logging
 	terminator       chan bool                             // Signal to cause cbdatasource bucketdatasource.Close() to be called, which removes dcp receiver
 	dbName           string                                // used for naming the DCP feed
-	metaStore        base.Bucket                           // collection to store DCP metadata
+	bucket           base.Bucket                           // bucket to get vb stats for feed
+	metadataStore    base.DataStore                        // collection to store DCP metadata
 	collections      map[uint32]DatabaseCollectionWithUser // Admin databases used for import, keyed by collection ID (CB-server-side)
 	dbStats          *base.DatabaseStats                   // Database stats group
 	importStats      *base.SharedBucketImportStats         // import stats group
@@ -45,10 +46,16 @@ func NewImportListener(groupID string) *importListener {
 // StartImportFeed starts an import DCP feed.  Always starts the feed based on previous checkpoints (Backfill:FeedResume).
 // Writes DCP stats into the StatKeyImportDcpStats map
 func (il *importListener) StartImportFeed(ctx context.Context, bucket base.Bucket, dbStats *base.DbStats, dbContext *DatabaseContext) (err error) {
+	couchbaseBucket, ok := base.AsCouchbaseBucketStore(bucket)
+	if !ok {
+		return fmt.Errorf("Unable to start import feed for non-Couchbase bucket")
+	}
+
 	il.bucketName = bucket.GetName()
 	il.dbName = dbContext.Name
 	il.loggingCtx = ctx
-	il.metaStore = dbContext.Bucket // FIXME(CBG-2266): use proper metadata collection
+	il.bucket = couchbaseBucket
+	il.metadataStore = dbContext.MetadataStore
 	il.collections = make(map[uint32]DatabaseCollectionWithUser)
 	il.dbStats = dbStats.Database()
 	il.importStats = dbStats.SharedBucketImport()
@@ -121,7 +128,7 @@ func (il *importListener) StartImportFeed(ctx context.Context, bucket base.Bucke
 	base.InfofCtx(ctx, base.KeyDCP, "Starting DCP import feed for bucket: %q ", base.UD(bucket.GetName()))
 
 	// TODO: need to clean up StartDCPFeed to push bucket dependencies down
-	cbStore, ok := base.AsCouchbaseStore(bucket)
+	cbStore, ok := base.AsCouchbaseBucketStore(bucket)
 	if !ok {
 		// walrus is not a couchbasestore
 		return bucket.StartDCPFeed(feedArgs, il.ProcessFeedEvent, importFeedStatsMap.Map)

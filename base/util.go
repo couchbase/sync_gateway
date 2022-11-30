@@ -856,7 +856,7 @@ func Float32Ptr(f float32) *float32 {
 func CouchbaseURIToHttpURL(bucket Bucket, couchbaseUri string, connSpec *gocbconnstr.ConnSpec) (httpUrls []string, err error) {
 
 	// If we're using a couchbase bucket, use the bucket to retrieve the mgmt endpoints.
-	cbBucket, ok := AsCouchbaseStore(bucket)
+	cbBucket, ok := AsCouchbaseBucketStore(bucket)
 	if ok {
 		return cbBucket.MgmtEps()
 	}

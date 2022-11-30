@@ -1918,7 +1918,7 @@ func TestCouchbaseServerMaxTTL(t *testing.T) {
 	bucket := GetTestBucket(t)
 	defer bucket.Close()
 
-	cbStore, ok := AsCouchbaseStore(bucket)
+	cbStore, ok := AsCouchbaseBucketStore(bucket)
 	require.True(t, ok)
 	maxTTL, err := cbStore.MaxTTL()
 	assert.NoError(t, err, "Unexpected error")
@@ -2386,7 +2386,7 @@ func TestGetStatsVbSeqNo(t *testing.T) {
 	defer bucket.Close()
 	dataStore := bucket.GetSingleDataStore()
 
-	cbstore, ok := AsCouchbaseStore(bucket)
+	cbstore, ok := AsCouchbaseBucketStore(bucket)
 	assert.True(t, ok)
 
 	maxVbNo, err := cbstore.GetMaxVbno()

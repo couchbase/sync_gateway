@@ -2305,7 +2305,7 @@ func TestTombstonedBulkDocsWithPriorPurge(t *testing.T) {
 	defer rt.Close()
 
 	bucket := rt.Bucket()
-	_, ok := base.AsCouchbaseStore(bucket)
+	_, ok := base.AsCouchbaseBucketStore(bucket)
 	if !ok {
 		t.Skip("Requires Couchbase bucket")
 	}
@@ -2344,7 +2344,7 @@ func TestTombstonedBulkDocsWithExistingTombstone(t *testing.T) {
 	defer rt.Close()
 
 	bucket := rt.Bucket()
-	_, ok := base.AsCouchbaseStore(bucket)
+	_, ok := base.AsCouchbaseBucketStore(bucket)
 	if !ok {
 		t.Skip("Requires Couchbase bucket")
 	}

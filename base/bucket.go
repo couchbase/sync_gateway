@@ -73,7 +73,7 @@ type CouchbaseBucketStore interface {
 	mgmtRequest(method, uri, contentType string, body io.Reader) (*http.Response, error)
 }
 
-func AsCouchbaseStore(b Bucket) (CouchbaseBucketStore, bool) {
+func AsCouchbaseBucketStore(b Bucket) (CouchbaseBucketStore, bool) {
 	couchbaseBucket, ok := GetBaseBucket(b).(CouchbaseBucketStore)
 	return couchbaseBucket, ok
 }

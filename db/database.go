@@ -589,7 +589,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 	if dbContext.UseXattrs() {
 		// Set the purge interval for tombstone compaction
 		dbContext.PurgeInterval = DefaultPurgeInterval
-		cbStore, ok := base.AsCouchbaseStore(bucket)
+		cbStore, ok := base.AsCouchbaseBucketStore(bucket)
 		if ok {
 			serverPurgeInterval, err := cbStore.MetadataPurgeInterval()
 			if err != nil {
@@ -628,7 +628,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 	}
 
 	// Make sure there is no MaxTTL set on the bucket (SG #3314)
-	cbs, ok := base.AsCouchbaseStore(bucket)
+	cbs, ok := base.AsCouchbaseBucketStore(bucket)
 	if ok {
 		maxTTL, err := cbs.MaxTTL()
 		if err != nil {
@@ -687,7 +687,7 @@ func (dbCtx *DatabaseContext) GetServerUUID(ctx context.Context) string {
 
 	// Lazy load the server UUID, if we can get it.
 	if dbCtx.serverUUID == "" {
-		cbs, ok := base.AsCouchbaseStore(dbCtx.Bucket)
+		cbs, ok := base.AsCouchbaseBucketStore(dbCtx.Bucket)
 		if !ok {
 			base.WarnfCtx(ctx, "Database %v: Unable to get server UUID. Underlying bucket type was not GoCBBucket.", base.MD(dbCtx.Name))
 			return ""
@@ -1410,7 +1410,7 @@ func (db *Database) Compact(ctx context.Context, skipRunningStateCheck bool, cal
 
 	// Update metadata purge interval if not explicitly set to 0 (used in testing)
 	if db.PurgeInterval > 0 {
-		cbStore, ok := base.AsCouchbaseStore(db.Bucket)
+		cbStore, ok := base.AsCouchbaseBucketStore(db.Bucket)
 		if ok {
 			serverPurgeInterval, err := cbStore.MetadataPurgeInterval()
 			if err != nil {
@@ -1842,7 +1842,7 @@ func (db *DatabaseCollection) invalUserOrRoleChannels(ctx context.Context, name 
 }
 
 func (dbCtx *DatabaseContext) ObtainManagementEndpoints(ctx context.Context) ([]string, error) {
-	cbStore, ok := base.AsCouchbaseStore(dbCtx.Bucket)
+	cbStore, ok := base.AsCouchbaseBucketStore(dbCtx.Bucket)
 	if !ok {
 		base.WarnfCtx(ctx, "Database %v: Unable to get server management endpoints. Underlying bucket type was not GoCBBucket.", base.MD(dbCtx.Name))
 		return nil, nil
@@ -1852,7 +1852,7 @@ func (dbCtx *DatabaseContext) ObtainManagementEndpoints(ctx context.Context) ([]
 }
 
 func (dbCtx *DatabaseContext) ObtainManagementEndpointsAndHTTPClient(ctx context.Context) ([]string, *http.Client, error) {
-	cbStore, ok := base.AsCouchbaseStore(dbCtx.Bucket)
+	cbStore, ok := base.AsCouchbaseBucketStore(dbCtx.Bucket)
 	if !ok {
 		base.WarnfCtx(ctx, "Database %v: Unable to get server management endpoints. Underlying bucket type was not GoCBBucket.", base.MD(dbCtx.Name))
 		return nil, nil, nil

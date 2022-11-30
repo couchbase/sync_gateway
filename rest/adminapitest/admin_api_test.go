@@ -3128,7 +3128,7 @@ func TestTombstoneCompactionPurgeInterval(t *testing.T) {
 	dbc := rt.GetDatabase()
 	ctx := rt.Context()
 
-	cbStore, _ := base.AsCouchbaseStore(rt.Bucket())
+	cbStore, _ := base.AsCouchbaseBucketStore(rt.Bucket())
 	serverPurgeInterval, err := cbStore.MetadataPurgeInterval()
 	require.NoError(t, err)
 	// Set server purge interval back to what it was for bucket reuse
