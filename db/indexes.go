@@ -136,6 +136,10 @@ var (
 		IndexRole:     fmt.Sprintf("META().id LIKE '%s'", SyncRoleWildcard),
 	}
 
+	indexParitionExpressions = map[SGIndexType]string{
+		IndexChannels: "META().id",
+	}
+
 	// Index flags - used to identify any custom handling
 	indexFlags = map[SGIndexType]SGIndexFlags{
 		IndexAccess:     IdxFlagIndexTombstones,
@@ -187,13 +191,14 @@ func init() {
 	sgIndexes = make(map[SGIndexType]SGIndex, indexTypeCount)
 	for i := SGIndexType(0); i < indexTypeCount; i++ {
 		sgIndex := SGIndex{
-			simpleName:       indexNames[i],
-			version:          indexVersions[i],
-			previousVersions: indexPreviousVersions[i],
-			expression:       indexExpressions[i],
-			filterExpression: indexFilterExpressions[i],
-			flags:            indexFlags[i],
-			creationMode:     indexCreationModes[i],
+			simpleName:          indexNames[i],
+			version:             indexVersions[i],
+			previousVersions:    indexPreviousVersions[i],
+			expression:          indexExpressions[i],
+			filterExpression:    indexFilterExpressions[i],
+			partitionExpression: indexParitionExpressions[i],
+			flags:               indexFlags[i],
+			creationMode:        indexCreationModes[i],
 		}
 		// If a readiness query is specified for this index, mark the index as required and add to SGIndex
 		readinessQuery, ok := readinessQueries[i]
@@ -208,15 +213,16 @@ func init() {
 
 // SGIndex is used to manage the set of constants associated with each index definition
 type SGIndex struct {
-	simpleName       string            // Simplified index name (used to build fullIndexName)
-	expression       string            // Expression used to create index
-	filterExpression string            // (Optional) Filter expression used to create index
-	version          int               // Index version.  Must be incremented any time the index definition changes
-	previousVersions []int             // Previous versions of the index that will be removed during post_upgrade cleanup
-	required         bool              // Whether SG blocks on startup until this index is ready
-	readinessQuery   string            // Query used to determine view readiness
-	flags            SGIndexFlags      // Additional index options
-	creationMode     indexCreationMode // Signal when to create indexes
+	simpleName          string            // Simplified index name (used to build fullIndexName)
+	expression          string            // Expression used to create index
+	filterExpression    string            // (Optional) Filter expression used to create index
+	partitionExpression string            // (Optional) Partition expression used to partition indexes
+	version             int               // Index version.  Must be incremented any time the index definition changes
+	previousVersions    []int             // Previous versions of the index that will be removed during post_upgrade cleanup
+	required            bool              // Whether SG blocks on startup until this index is ready
+	readinessQuery      string            // Query used to determine view readiness
+	flags               SGIndexFlags      // Additional index options
+	creationMode        indexCreationMode // Signal when to create indexes
 }
 
 func (i *SGIndex) fullIndexName(useXattrs bool) string {
@@ -256,13 +262,13 @@ func (i *SGIndex) shouldCreate(isServerless bool) bool {
 
 // Creates index associated with specified SGIndex if not already present.  Always defers build - a subsequent BUILD INDEX
 // will need to be invoked for any created indexes.
-func (i *SGIndex) createIfNeeded(bucket base.N1QLStore, useXattrs bool, numReplica uint) (isDeferred bool, err error) {
+func (i *SGIndex) createIfNeeded(bucket base.N1QLStore, ic IndexInitConfig) (isDeferred bool, err error) {
 
-	if i.isXattrOnly() && !useXattrs {
+	if i.isXattrOnly() && !ic.UseXattrs {
 		return false, nil
 	}
 
-	indexName := i.fullIndexName(useXattrs)
+	indexName := i.fullIndexName(ic.UseXattrs)
 
 	exists, indexMeta, metaErr := bucket.GetIndexMeta(indexName)
 	if metaErr != nil {
@@ -298,13 +304,22 @@ func (i *SGIndex) createIfNeeded(bucket base.N1QLStore, useXattrs bool, numRepli
 	// Create index
 	base.InfofCtx(logCtx, base.KeyQuery, "Index %s doesn't exist, creating...", indexName)
 	isDeferred = true
-	indexExpression := replaceSyncTokensIndex(i.expression, useXattrs)
-	filterExpression := replaceSyncTokensIndex(i.filterExpression, useXattrs)
+	indexExpression := replaceSyncTokensIndex(i.expression, ic.UseXattrs)
+	filterExpression := replaceSyncTokensIndex(i.filterExpression, ic.UseXattrs)
 
 	options := &base.N1qlIndexOptions{
 		DeferBuild:      true,
-		NumReplica:      numReplica,
-		IndexTombstones: i.shouldIndexTombstones(useXattrs),
+		NumReplica:      ic.NumReplicas,
+		IndexTombstones: i.shouldIndexTombstones(ic.UseXattrs),
+	}
+
+	partitionExpression := ""
+
+	if ic.ShouldPartitionIndex && i.partitionExpression != "" {
+		partitionExpression = i.partitionExpression
+		if ic.NumPartitions != nil {
+			options.NumPartitions = *ic.NumPartitions
+		}
 	}
 
 	// Initial retry 500ms, max wait 1s, waits up to ~15s
@@ -312,7 +327,7 @@ func (i *SGIndex) createIfNeeded(bucket base.N1QLStore, useXattrs bool, numRepli
 
 	// start a retry loop to create index,
 	worker := func() (shouldRetry bool, err error, value interface{}) {
-		err = bucket.CreateIndex(indexName, indexExpression, filterExpression, options)
+		err = bucket.CreateIndex(indexName, indexExpression, filterExpression, partitionExpression, options)
 		if err != nil {
 			// If index has already been created (race w/ other SG node), return without error
 			if err == base.ErrAlreadyExists {
@@ -320,7 +335,7 @@ func (i *SGIndex) createIfNeeded(bucket base.N1QLStore, useXattrs bool, numRepli
 				return false, nil, nil
 			}
 			if strings.Contains(err.Error(), "not enough indexer nodes") {
-				return false, fmt.Errorf("Unable to create indexes with the specified number of replicas (%d).  Increase the number of index nodes, or modify 'num_index_replicas' in your Sync Gateway database config.", numReplica), nil
+				return false, fmt.Errorf("Unable to create indexes with the specified number of replicas (%d).  Increase the number of index nodes, or modify 'num_index_replicas' in your Sync Gateway database config.", ic.NumReplicas), nil
 			}
 			base.WarnfCtx(logCtx, "Error creating index %s: %v - will retry.", indexName, err)
 		}
@@ -338,10 +353,19 @@ func (i *SGIndex) createIfNeeded(bucket base.N1QLStore, useXattrs bool, numRepli
 	return isDeferred, nil
 }
 
-// Initializes Sync Gateway indexes for bucket.  Creates required indexes if not found, then waits for index readiness.
-func InitializeIndexes(n1QLStore base.N1QLStore, useXattrs bool, numReplicas uint, failFast bool, isServerless bool) error {
+// IndexInitConfig represents metadata used to create indexes
+type IndexInitConfig struct {
+	UseXattrs            bool
+	NumReplicas          uint
+	NumPartitions        *uint
+	FailFast             bool
+	ShouldPartitionIndex bool
+}
 
-	base.InfofCtx(context.TODO(), base.KeyAll, "Initializing indexes with numReplicas: %d...", numReplicas)
+// Initializes Sync Gateway indexes for bucket.  Creates required indexes if not found, then waits for index readiness.
+func InitializeIndexes(n1QLStore base.N1QLStore, initConfig IndexInitConfig, isServerless bool) error {
+
+	base.InfofCtx(context.TODO(), base.KeyAll, "Initializing indexes with numReplicas: %d...", initConfig.NumReplicas)
 
 	// Create any indexes that aren't present
 	deferredIndexes := make([]string, 0)
@@ -352,8 +376,8 @@ func InitializeIndexes(n1QLStore base.N1QLStore, useXattrs bool, numReplicas uin
 			continue
 		}
 
-		fullIndexName := sgIndex.fullIndexName(useXattrs)
-		isDeferred, err := sgIndex.createIfNeeded(n1QLStore, useXattrs, numReplicas)
+		fullIndexName := sgIndex.fullIndexName(initConfig.UseXattrs)
+		isDeferred, err := sgIndex.createIfNeeded(n1QLStore, initConfig)
 		if err != nil {
 			return base.RedactErrorf("Unable to install index %s: %v", base.MD(sgIndex.simpleName), err)
 		}
@@ -373,7 +397,7 @@ func InitializeIndexes(n1QLStore base.N1QLStore, useXattrs bool, numReplicas uin
 	}
 
 	// Wait for initial readiness queries to complete
-	return waitForIndexes(n1QLStore, useXattrs, isServerless, failFast)
+	return waitForIndexes(n1QLStore, initConfig.UseXattrs, isServerless, initConfig.FailFast)
 }
 
 // Issue a consistency=request_plus query against critical indexes to guarantee indexing is complete and indexes are ready.

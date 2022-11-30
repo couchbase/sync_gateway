@@ -485,9 +485,33 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		n1qlStore, ok := base.AsN1QLStore(ds)
 		if !ok {
 			return errors.New("Cannot create indexes on non-Couchbase data store.")
-
 		}
-		indexErr := db.InitializeIndexes(n1qlStore, config.UseXattrs(), numReplicas, false, sc.Config.IsServerless())
+
+		var numIndexPartitions *uint
+		if base.IsEnterpriseEdition() {
+			if config.NumIndexPartitions != nil {
+				numIndexPartitions = config.NumIndexPartitions
+			}
+		}
+
+		// we want to create Partition index bydefault for EE edition
+		// until it is disabled manually via config.ShouldPartitionIndex
+		shouldPartitionIndex := base.IsEnterpriseEdition()
+		if base.IsEnterpriseEdition() {
+			if config.ShouldPartitionIndex != nil {
+				shouldPartitionIndex = *config.ShouldPartitionIndex
+			}
+		}
+
+		indexInitConfig := db.IndexInitConfig{
+			UseXattrs:            config.UseXattrs(),
+			NumReplicas:          numReplicas,
+			NumPartitions:        numIndexPartitions,
+			FailFast:             false,
+			ShouldPartitionIndex: shouldPartitionIndex,
+		}
+
+		indexErr := db.InitializeIndexes(n1qlStore, indexInitConfig, sc.Config.IsServerless())
 		if indexErr != nil {
 			return indexErr
 		}

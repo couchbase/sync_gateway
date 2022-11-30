@@ -37,7 +37,7 @@ const (
 type N1QLStore interface {
 	GetName() string
 	BuildDeferredIndexes(indexSet []string) error
-	CreateIndex(indexName string, expression string, filterExpression string, options *N1qlIndexOptions) error
+	CreateIndex(indexName string, expression string, filterExpression string, paritionExpression string, options *N1qlIndexOptions) error
 	CreatePrimaryIndex(indexName string, options *N1qlIndexOptions) error
 	DropIndex(indexName string) error
 	ExplainQuery(statement string, params map[string]interface{}) (plan map[string]interface{}, err error)
@@ -83,18 +83,29 @@ func ExplainQuery(store N1QLStore, statement string, params map[string]interface
 
 // CreateIndex issues a CREATE INDEX query in the current bucket, using the form:
 //
-//	CREATE INDEX indexName ON bucket.Name(expression) WHERE filterExpression WITH options
+//	CREATE INDEX indexName ON bucket.Name(expression) WHERE filterExpression  PARTITION BY HASH(partitionFilter) WITH options
+//
+// # CreateIndex ignores `PARTITION BY HASH`` if partitionFilter is empty string
 //
 // Sample usage with resulting statement:
 //
-//	  CreateIndex("myIndex", "field1, field2, nested.field", "field1 > 0", N1qlIndexOptions{numReplica:1})
+//	  CreateIndex("myIndex", "field1, field2, nested.field", "field1 > 0", "", N1qlIndexOptions{numReplica:1})
 //	CREATE INDEX myIndex on myBucket(field1, field2, nested.field) WHERE field1 > 0 WITH {"numReplica":1}
-func CreateIndex(store N1QLStore, indexName string, expression string, filterExpression string, options *N1qlIndexOptions) error {
+//
+// Sample usage with resulting statement with parititoning:
+//
+//	  CreateIndex("myIndex", "field1, field2, nested.field", "field1 > 0", "META().id, field1", N1qlIndexOptions{numReplica:1, numPartition:16})
+//	CREATE INDEX myIndex on myBucket(field1, field2, nested.field) WHERE field1 > 0 PARTITION BY HASH("META().id, field1") WITH {"num_replica":1, "num_partition": 16}
+func CreateIndex(store N1QLStore, indexName string, expression string, filterExpression string, partitionExpression string, options *N1qlIndexOptions) error {
 	createStatement := fmt.Sprintf("CREATE INDEX `%s` ON %s(%s)", indexName, store.EscapedKeyspace(), expression)
 
 	// Add filter expression, when present
 	if filterExpression != "" {
 		createStatement = fmt.Sprintf("%s WHERE %s", createStatement, filterExpression)
+	}
+
+	if partitionExpression != "" {
+		createStatement = fmt.Sprintf("%s PARTITION BY HASH(%s)", createStatement, partitionExpression)
 	}
 
 	// Replace any KeyspaceQueryToken references in the index expression
@@ -255,6 +266,7 @@ type IndexMeta struct {
 	Keyspace  string   `json:"keyspace_id"`
 	Namespace string   `json:"namespace_id"`
 	IndexKey  []string `json:"index_key"`
+	Partition string   `json:"partition"`
 }
 
 type getIndexMetaRetryValues struct {

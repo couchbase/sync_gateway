@@ -23,4 +23,5 @@ type N1qlIndexOptions struct {
 	NumReplica      uint `json:"num_replica,omitempty"`          // Number of replicas
 	IndexTombstones bool `json:"retain_deleted_xattr,omitempty"` // Whether system xattrs on tombstones should be indexed
 	DeferBuild      bool `json:"defer_build,omitempty"`          // Whether to defer initial build of index (requires a subsequent BUILD INDEX invocation)
+	NumPartitions   uint `json:"num_partition,omitempty"`        // Number of partitions
 }
