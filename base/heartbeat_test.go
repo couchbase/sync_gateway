@@ -109,7 +109,7 @@ func TestCouchbaseHeartbeaters(t *testing.T) {
 	testBucket := GetTestBucket(t)
 	defer testBucket.Close()
 
-	DataStore := testBucket.GetSingleDataStore()
+	dataStore := testBucket.GetSingleDataStore()
 
 	// Setup heartbeaters and listeners
 	nodeCount := 3
@@ -117,7 +117,7 @@ func TestCouchbaseHeartbeaters(t *testing.T) {
 	listeners := make([]*documentBackedListener, nodeCount)
 	for i := 0; i < nodeCount; i++ {
 		nodeUUID := fmt.Sprintf("node%d", i)
-		node, err := NewCouchbaseHeartbeater(testBucket, keyprefix, nodeUUID)
+		node, err := NewCouchbaseHeartbeater(dataStore, keyprefix, nodeUUID)
 		assert.NoError(t, err)
 
 		// Lower heartbeat expiry to avoid long-running test
@@ -128,7 +128,7 @@ func TestCouchbaseHeartbeaters(t *testing.T) {
 
 		// Create and register listener.
 		// Simulates service starting on node, and self-registering the nodeUUID to that listener's node set
-		listener, err := NewDocumentBackedListener(DataStore, keyprefix)
+		listener, err := NewDocumentBackedListener(dataStore, keyprefix)
 		require.NoError(t, err)
 		assert.NoError(t, listener.AddNode(nodeUUID))
 		assert.NoError(t, node.RegisterListener(listener))
@@ -198,7 +198,7 @@ func TestCouchbaseHeartbeatersMultipleListeners(t *testing.T) {
 	sgrListeners := make([]*documentBackedListener, nodeCount)
 	for i := 0; i < nodeCount; i++ {
 		nodeUUID := fmt.Sprintf("node%d", i)
-		node, err := NewCouchbaseHeartbeater(testBucket, keyprefix, nodeUUID)
+		node, err := NewCouchbaseHeartbeater(dataStore, keyprefix, nodeUUID)
 		assert.NoError(t, err)
 
 		// Lower heartbeat expiry to avoid long-running test
@@ -304,6 +304,8 @@ func TestCBGTManagerHeartbeater(t *testing.T) {
 	cfgCB, err := initCfgCB(testBucket, testBucket.BucketSpec)
 	require.NoError(t, err)
 
+	dataStore := testBucket.GetSingleDataStore()
+
 	// Simulate the three nodes self-registering into the cfg
 	nodeDefs := cbgt.NewNodeDefs("1.0.0")
 	nodeDefs.NodeDefs["node1"] = &cbgt.NodeDef{UUID: "node1"}
@@ -313,11 +315,11 @@ func TestCBGTManagerHeartbeater(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create three heartbeaters (representing three nodes)
-	node1, err := NewCouchbaseHeartbeater(testBucket, keyprefix, "node1")
+	node1, err := NewCouchbaseHeartbeater(dataStore, keyprefix, "node1")
 	assert.NoError(t, err)
-	node2, err := NewCouchbaseHeartbeater(testBucket, keyprefix, "node2")
+	node2, err := NewCouchbaseHeartbeater(dataStore, keyprefix, "node2")
 	assert.NoError(t, err)
-	node3, err := NewCouchbaseHeartbeater(testBucket, keyprefix, "node3")
+	node3, err := NewCouchbaseHeartbeater(dataStore, keyprefix, "node3")
 	assert.NoError(t, err)
 
 	assert.NoError(t, node1.SetExpirySeconds(2))

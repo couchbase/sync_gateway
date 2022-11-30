@@ -85,10 +85,9 @@ type couchbaseHeartBeater struct {
 // the keyPrefix which will be prepended to the heartbeat doc keys,
 // and the nodeUUID, which is an opaque identifier for the "thing" that is using this
 // library.  nodeUUID will be passed to listeners on stale node detection.
-func NewCouchbaseHeartbeater(bucket Bucket, keyPrefix, nodeUUID string) (heartbeater *couchbaseHeartBeater, err error) {
-	metadataStore := bucket.DefaultDataStore()
+func NewCouchbaseHeartbeater(dataStore DataStore, keyPrefix, nodeUUID string) (heartbeater *couchbaseHeartBeater, err error) {
 	heartbeater = &couchbaseHeartBeater{
-		datastore:              metadataStore,
+		datastore:              dataStore,
 		keyPrefix:              keyPrefix,
 		nodeUUID:               nodeUUID,
 		terminator:             make(chan struct{}),
