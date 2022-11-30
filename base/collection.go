@@ -391,13 +391,21 @@ func (b *GocbV2Bucket) Flush() error {
 // BucketItemCount first tries to retrieve an accurate bucket count via N1QL,
 // but falls back to the REST API if that cannot be done (when there's no index to count all items in a bucket)
 func (b *GocbV2Bucket) BucketItemCount() (itemCount int, err error) {
-	ns, ok := AsN1QLStore(b.DefaultDataStore())
-	if !ok {
-		return 0, fmt.Errorf("bucket %T is not a N1QLStore", b)
+	dataStoreNames, err := b.ListDataStores()
+	if err != nil {
+		return 0, err
 	}
-	itemCount, err = QueryBucketItemCount(ns)
-	if err == nil {
-		return itemCount, nil
+
+	for _, dsn := range dataStoreNames {
+		ds := b.NamedDataStore(dsn)
+		ns, ok := AsN1QLStore(ds)
+		if !ok {
+			return 0, fmt.Errorf("DataStore %v %T is not a N1QLStore", ds.GetName(), ds)
+		}
+		itemCount, err = QueryBucketItemCount(ns)
+		if err == nil {
+			return itemCount, nil
+		}
 	}
 
 	// TODO: implement APIBucketItemCount for collections as part of CouchbaseBucketStore refactoring.  Until then, give flush a moment to finish
