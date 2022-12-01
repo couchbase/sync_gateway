@@ -10,7 +10,7 @@ package base
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"os"
 	"strconv"
 	"time"
@@ -86,9 +86,16 @@ func (tbp *TestBucketPool) shouldUseCollections() (bool, error) {
 		}
 	}
 
-	useNamedCollection, isSet := os.LookupEnv(tbpEnvUseDefaultCollection)
+	// Walrus views work with collections - Server views do not - we need GSI when running with CB Server...
+	queryStoreSupportsCollections := true
+	if !UnitTestUrlIsWalrus() && TestsDisableGSI() {
+		queryStoreSupportsCollections = false
+	}
+
+	// if we've not explicitly set a use default collection flag - determine support based on other flags
+	useDefaultCollection, isSet := os.LookupEnv(tbpEnvUseDefaultCollection)
 	if !isSet {
-		if !UnitTestUrlIsWalrus() && TestsDisableGSI() {
+		if !queryStoreSupportsCollections {
 			tbp.Logf(context.TODO(), "GSI disabled - not using named collections")
 			return false, nil
 		}
@@ -97,12 +104,19 @@ func (tbp *TestBucketPool) shouldUseCollections() (bool, error) {
 		return clusterSupport, nil
 	}
 
-	requestCollection, _ := strconv.ParseBool(useNamedCollection)
-	if requestCollection && !clusterSupport {
-		return false, fmt.Errorf("Can not run %s with a cluster that doesn't support collections", tbpEnvUseDefaultCollection)
+	requestDefaultCollection, _ := strconv.ParseBool(useDefaultCollection)
+	requestNamedCollection := !requestDefaultCollection
+	if requestNamedCollection {
+		if !clusterSupport {
+			return false, errors.New("Unable to use named collections - Cluster does not support collections")
+		}
+		if !queryStoreSupportsCollections {
+			return false, errors.New("Unable to use named collections - GSI disabled")
+		}
+
 	}
 
-	return requestCollection, nil
+	return requestNamedCollection, nil
 
 }
 
