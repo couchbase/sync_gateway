@@ -24,9 +24,6 @@ import (
 // TestCollectionsPutDocInKeyspace creates a collection and starts up a RestTester instance on it.
 // Ensures that various keyspaces can or can't be used to insert a doc in the collection.
 func TestCollectionsPutDocInKeyspace(t *testing.T) {
-	// FIXME (tor) needs RestTester collection support
-	t.Skip("needs RestTester collection support")
-
 	base.TestRequiresCollections(t)
 
 	tb := base.GetTestBucket(t)
@@ -250,9 +247,6 @@ func TestMultiCollectionDCP(t *testing.T) {
 // TestCollectionsBasicIndexQuery ensures that the bucket API is able to create an index on a collection
 // and query documents written to the collection.
 func TestCollectionsBasicIndexQuery(t *testing.T) {
-	// FIXME (tor) needs RestTester collection support
-	t.Skip("needs RestTester collection support")
-
 	base.TestRequiresCollections(t)
 
 	tb := base.GetTestBucket(t)
@@ -332,9 +326,6 @@ func TestCollectionsBasicIndexQuery(t *testing.T) {
 // TestCollectionsSGIndexQuery is more of an end-to-end test to ensure SG indexes are built correctly,
 // and the channel access query is able to run when pulling a document as a user, and backfill the channel cache.
 func TestCollectionsSGIndexQuery(t *testing.T) {
-	// FIXME (tor) needs RestTester collection support
-	t.Skip("needs RestTester collection support")
-
 	base.TestRequiresCollections(t)
 
 	// force GSI for this one test
@@ -410,9 +401,6 @@ func TestCollectionsSGIndexQuery(t *testing.T) {
 }
 
 func TestCollectionsChangeConfigScope(t *testing.T) {
-	// FIXME (tor) needs RestTester collection support
-	t.Skip("needs RestTester collection support")
-
 	base.TestRequiresCollections(t)
 
 	tb := base.GetTestBucket(t)
