@@ -676,7 +676,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 		// No cleanup necessary, stop heartbeater above will take care of it
 	}
 
-	dbContext.ResyncManager = NewResyncManager(metadataStore)
+	dbContext.ResyncManager = NewResyncManagerDCP(metadataStore)
 	dbContext.TombstoneCompactionManager = NewTombstoneCompactionManager()
 	dbContext.AttachmentCompactionManager = NewAttachmentCompactionManager(metadataStore)
 
@@ -1740,8 +1740,7 @@ func (db *DatabaseCollectionWithUser) UpdateAllDocChannels(ctx context.Context, 
 			key := realDocID(docid)
 			queryRowCount++
 			docsProcessed++
-
-			highSeq, unusedSequences, err = db.updateDocument(ctx, docid, key, regenerateSequences, unusedSequences)
+			highSeq, unusedSequences, err = db.resyncDocument(ctx, docid, key, regenerateSequences, unusedSequences)
 			if err == nil {
 				docsChanged++
 			} else if err != base.ErrUpdateCancel {
@@ -1846,7 +1845,7 @@ func (db *DatabaseCollection) releaseSequences(ctx context.Context, sequences []
 	}
 }
 
-func (db *DatabaseCollectionWithUser) getUpdatedDocument(ctx context.Context, doc *Document, regenerateSequences bool, unusedSequences []uint64) (updatedDoc *Document, shouldUpdate bool, updatedExpiry *uint32, highSeq uint64, updatedUnusedSequences []uint64, err error) {
+func (db *DatabaseCollectionWithUser) getResyncedDocument(ctx context.Context, doc *Document, regenerateSequences bool, unusedSequences []uint64) (updatedDoc *Document, shouldUpdate bool, updatedExpiry *uint32, highSeq uint64, updatedUnusedSequences []uint64, err error) {
 	docid := doc.ID
 	forceUpdate := false
 	if !doc.HasValidSyncData() {
@@ -1908,7 +1907,7 @@ func (db *DatabaseCollectionWithUser) getUpdatedDocument(ctx context.Context, do
 	return doc, shouldUpdate, updatedExpiry, doc.Sequence, updatedUnusedSequences, nil
 }
 
-func (db *DatabaseCollectionWithUser) updateDocument(ctx context.Context, docid, key string, regenerateSequences bool, unusedSequences []uint64) (updatedHighSeq uint64, updatedUnusedSequences []uint64, err error) {
+func (db *DatabaseCollectionWithUser) resyncDocument(ctx context.Context, docid, key string, regenerateSequences bool, unusedSequences []uint64) (updatedHighSeq uint64, updatedUnusedSequences []uint64, err error) {
 	var updatedDoc *Document
 	var shouldUpdate bool
 	var updatedExpiry *uint32
@@ -1924,7 +1923,7 @@ func (db *DatabaseCollectionWithUser) updateDocument(ctx context.Context, docid,
 			if err != nil {
 				return nil, nil, deleteDoc, nil, err
 			}
-			updatedDoc, shouldUpdate, updatedExpiry, updatedHighSeq, unusedSequences, err = db.getUpdatedDocument(ctx, doc, regenerateSequences, unusedSequences)
+			updatedDoc, shouldUpdate, updatedExpiry, updatedHighSeq, unusedSequences, err = db.getResyncedDocument(ctx, doc, regenerateSequences, unusedSequences)
 			if err != nil {
 				return nil, nil, deleteDoc, nil, err
 			}
@@ -1952,7 +1951,7 @@ func (db *DatabaseCollectionWithUser) updateDocument(ctx context.Context, docid,
 			if err != nil {
 				return nil, nil, false, err
 			}
-			updatedDoc, shouldUpdate, updatedExpiry, updatedHighSeq, unusedSequences, err = db.getUpdatedDocument(ctx, doc, regenerateSequences, unusedSequences)
+			updatedDoc, shouldUpdate, updatedExpiry, updatedHighSeq, unusedSequences, err = db.getResyncedDocument(ctx, doc, regenerateSequences, unusedSequences)
 			if err != nil {
 				return nil, nil, false, err
 			}

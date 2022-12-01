@@ -95,13 +95,13 @@ func TestResyncDCPInit(t *testing.T) {
 			db, ctx := setupTestDB(t)
 			defer db.Close(ctx)
 
-			resyncMrg := NewResyncManagerDCP(db.Bucket)
-			require.NotNil(t, resyncMrg)
-			db.ResyncManager = resyncMrg
+			resycMgr := NewResyncManagerDCP(db.Bucket.DefaultDataStore())
+			require.NotNil(t, resycMgr)
+			db.ResyncManager = resycMgr
 
 			// this gets called by background manager in each Start call.
 			// We have to manually call this for tests only to reset docsChanged/docsProcessed counters
-			defer resyncMrg.resetStatus()
+			defer resycMgr.resetStatus()
 
 			options := make(map[string]interface{})
 			if testCase.forceReset {
@@ -119,10 +119,10 @@ func TestResyncDCPInit(t *testing.T) {
 				require.NoError(t, err)
 			}
 
-			err = resyncMrg.Process.Init(context.TODO(), options, clusterData)
+			err = resycMgr.Process.Init(context.TODO(), options, clusterData)
 			require.NoError(t, err)
 
-			response := getResyncStats(resyncMrg.Process)
+			response := getResyncStats(resycMgr.Process)
 			assert.NotEmpty(t, response.ResyncID)
 
 			if testCase.shouldCreateNewRun {
@@ -148,99 +148,106 @@ func TestResycnManagerDCPStopInMidWay(t *testing.T) {
 	db, ctx := setupTestDBForResyncWithDocs(t, docsToCreate, true)
 	defer db.Close(ctx)
 
-	resyncMrg := NewResyncManagerDCP(db.Bucket)
-	require.NotNil(t, resyncMrg)
-	db.ResyncManager = resyncMrg
-	defer resyncMrg.resetStatus()
+	resycMgr := NewResyncManagerDCP(db.Bucket.DefaultDataStore())
+	require.NotNil(t, resycMgr)
+	db.ResyncManager = resycMgr
+	defer resycMgr.resetStatus()
 
 	options := make(map[string]interface{})
 	options["database"] = db
 	options["regenerateSequences"] = false
 
-	err := resyncMrg.Start(ctx, options)
+	err := resycMgr.Start(ctx, options)
 	require.NoError(t, err)
 	go func() {
-		time.Sleep(2 * time.Second)
-		err = resyncMrg.Stop()
+		err = WaitForConditionWithOptions(func() bool {
+			stats := getResyncStats(resycMgr.Process)
+			if stats.DocsProcessed > 3000 {
+				err = resycMgr.Stop()
+				return true
+			}
+			return false
+		}, 200, 100)
 		require.NoError(t, err)
 	}()
 
 	err = WaitForConditionWithOptions(func() bool {
 		var status BackgroundManagerStatus
-		rawStatus, _ := resyncMrg.GetStatus()
+		rawStatus, _ := resycMgr.GetStatus()
 		_ = json.Unmarshal(rawStatus, &status)
 		return status.State == BackgroundProcessStateStopped
-	}, 2000, 10)
+	}, 200, 100)
 	require.NoError(t, err)
 
-	stats := getResyncStats(resyncMrg.Process)
+	stats := getResyncStats(resycMgr.Process)
 	assert.Less(t, stats.DocsProcessed, int64(docsToCreate), "DocsProcessed is equal to docs created. Consider setting docsToCreate > %d.", docsToCreate)
 	assert.Less(t, stats.DocsChanged, int64(docsToCreate))
 
 	assert.Less(t, db.DbStats.Database().SyncFunctionCount.Value(), int64(docsToCreate))
+	assert.Greater(t, db.DbStats.Database().SyncFunctionCount.Value(), int64(3000))
 }
 
-func TestResycnManagerDCPStart(t *testing.T) {
+func TestResyncManagerDCPStart(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Test requires Couchbase Server")
 	}
 	base.LongRunningTest(t)
 
-	t.Run("Resync without updating resync function", func(t *testing.T) {
+	t.Run("Resync without updating sync function", func(t *testing.T) {
 		docsToCreate := 100
 		db, ctx := setupTestDBForResyncWithDocs(t, docsToCreate, false)
 		defer db.Close(ctx)
 
-		resyncMrg := NewResyncManagerDCP(db.Bucket)
-		require.NotNil(t, resyncMrg)
-		db.ResyncManager = resyncMrg
+		resycMgr := NewResyncManagerDCP(db.Bucket.DefaultDataStore())
+		require.NotNil(t, resycMgr)
+		db.ResyncManager = resycMgr
 
 		options := make(map[string]interface{})
 		options["database"] = db
 		options["regenerateSequences"] = false
 
-		err := resyncMrg.Start(ctx, options)
+		err := resycMgr.Start(ctx, options)
 		require.NoError(t, err)
 
 		err = WaitForConditionWithOptions(func() bool {
 			var status BackgroundManagerStatus
-			rawStatus, _ := resyncMrg.GetStatus()
+			rawStatus, _ := resycMgr.GetStatus()
 			_ = json.Unmarshal(rawStatus, &status)
 			return status.State == BackgroundProcessStateCompleted
 		}, 30, 100)
 		require.NoError(t, err)
 
-		stats := getResyncStats(resyncMrg.Process)
+		stats := getResyncStats(resycMgr.Process)
 		assert.Equal(t, int64(docsToCreate), stats.DocsProcessed)
 		assert.Equal(t, int64(0), stats.DocsChanged)
 
 		assert.Equal(t, int(db.DbStats.Database().SyncFunctionCount.Value()), docsToCreate)
 	})
 
-	t.Run("Resync with updated resync function", func(t *testing.T) {
+	t.Run("Resync with updated sync function", func(t *testing.T) {
 		docsToCreate := 100
 		db, ctx := setupTestDBForResyncWithDocs(t, docsToCreate, true)
 		defer db.Close(ctx)
 
-		resyncMrg := NewResyncManagerDCP(db.Bucket)
-		require.NotNil(t, resyncMrg)
+		resycMgr := NewResyncManagerDCP(db.Bucket.DefaultDataStore())
+		require.NotNil(t, resycMgr)
 
 		options := make(map[string]interface{})
 		options["database"] = db
 		options["regenerateSequences"] = false
 
-		err := resyncMrg.Start(ctx, options)
+		err := resycMgr.Start(ctx, options)
 		require.NoError(t, err)
 
 		err = WaitForConditionWithOptions(func() bool {
 			var status BackgroundManagerStatus
-			rawStatus, _ := resyncMrg.GetStatus()
+			rawStatus, _ := resycMgr.GetStatus()
 			_ = json.Unmarshal(rawStatus, &status)
 			return status.State == BackgroundProcessStateCompleted
 		}, 30, 100)
 		require.NoError(t, err)
 
-		stats := getResyncStats(resyncMrg.Process)
+		stats := getResyncStats(resycMgr.Process)
 		assert.Equal(t, int64(docsToCreate), stats.DocsProcessed)
 		assert.Equal(t, int64(docsToCreate), stats.DocsChanged)
 
@@ -258,40 +265,40 @@ func TestResycnManagerDCPRunTwice(t *testing.T) {
 	db, ctx := setupTestDBForResyncWithDocs(t, docsToCreate, false)
 	defer db.Close(ctx)
 
-	resyncMrg := NewResyncManagerDCP(db.Bucket)
-	require.NotNil(t, resyncMrg)
-	db.ResyncManager = resyncMrg
+	resycMgr := NewResyncManagerDCP(db.Bucket.DefaultDataStore())
+	require.NotNil(t, resycMgr)
+	db.ResyncManager = resycMgr
 
 	options := make(map[string]interface{})
 	options["database"] = db
 	options["regenerateSequences"] = false
 
-	err := resyncMrg.Start(ctx, options)
+	err := resycMgr.Start(ctx, options)
 	require.NoError(t, err)
 
 	// Attempt to Start running process
 	go func() {
 		err := WaitForConditionWithOptions(func() bool {
 			var status BackgroundManagerStatus
-			rawStatus, _ := resyncMrg.GetStatus()
+			rawStatus, _ := resycMgr.GetStatus()
 			_ = json.Unmarshal(rawStatus, &status)
 			return status.State == BackgroundProcessStateRunning
 		}, 100, 100)
 		require.NoError(t, err)
-		err = resyncMrg.Start(ctx, options)
+		err = resycMgr.Start(ctx, options)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "Process already running")
 	}()
 
 	err = WaitForConditionWithOptions(func() bool {
 		var status BackgroundManagerStatus
-		rawStatus, _ := resyncMrg.GetStatus()
+		rawStatus, _ := resycMgr.GetStatus()
 		_ = json.Unmarshal(rawStatus, &status)
 		return status.State == BackgroundProcessStateCompleted
 	}, 200, 100)
 	require.NoError(t, err)
 
-	stats := getResyncStats(resyncMrg.Process)
+	stats := getResyncStats(resycMgr.Process)
 	assert.Equal(t, int64(docsToCreate), stats.DocsProcessed)
 	assert.Equal(t, int64(0), stats.DocsChanged)
 
@@ -308,23 +315,23 @@ func TestResycnManagerDCPResumeStoppedProcess(t *testing.T) {
 	db, ctx := setupTestDBForResyncWithDocs(t, int(docsToCreate), true)
 	defer db.Close(ctx)
 
-	resyncMrg := NewResyncManagerDCP(db.Bucket)
-	require.NotNil(t, resyncMrg)
-	db.ResyncManager = resyncMrg
+	resycMgr := NewResyncManagerDCP(db.Bucket.DefaultDataStore())
+	require.NotNil(t, resycMgr)
+	db.ResyncManager = resycMgr
 
 	options := make(map[string]interface{})
 	options["database"] = db
 	options["regenerateSequences"] = false
 
-	err := resyncMrg.Start(ctx, options)
+	err := resycMgr.Start(ctx, options)
 	require.NoError(t, err)
 
 	// Attempt to Stop Process
 	go func() {
 		for {
-			stats := getResyncStats(resyncMrg.Process)
+			stats := getResyncStats(resycMgr.Process)
 			if stats.DocsProcessed >= 2000 {
-				err = resyncMrg.Stop()
+				err = resycMgr.Stop()
 				require.NoError(t, err)
 				break
 			}
@@ -334,42 +341,42 @@ func TestResycnManagerDCPResumeStoppedProcess(t *testing.T) {
 
 	err = WaitForConditionWithOptions(func() bool {
 		var status BackgroundManagerStatus
-		rawStatus, _ := resyncMrg.GetStatus()
+		rawStatus, _ := resycMgr.GetStatus()
 		_ = json.Unmarshal(rawStatus, &status)
 		return status.State == BackgroundProcessStateStopped
 	}, 200, 200)
 	require.NoError(t, err)
 
-	stats := getResyncStats(resyncMrg.Process)
+	stats := getResyncStats(resycMgr.Process)
 	require.Less(t, stats.DocsProcessed, int64(docsToCreate), "DocsProcessed is equal to docs created. Consider setting docsToCreate > %d.", docsToCreate)
 	assert.Less(t, stats.DocsChanged, int64(docsToCreate))
 
 	// Resume process
-	err = resyncMrg.Start(ctx, options)
+	err = resycMgr.Start(ctx, options)
 	require.NoError(t, err)
 
 	err = WaitForConditionWithOptions(func() bool {
 		var status BackgroundManagerStatus
-		rawStatus, _ := resyncMrg.GetStatus()
+		rawStatus, _ := resycMgr.GetStatus()
 		_ = json.Unmarshal(rawStatus, &status)
 		return status.State == BackgroundProcessStateCompleted
 	}, 200, 100)
 	require.NoError(t, err)
 
-	stats = getResyncStats(resyncMrg.Process)
+	stats = getResyncStats(resycMgr.Process)
 	assert.GreaterOrEqual(t, stats.DocsProcessed, int64(docsToCreate))
 	assert.Equal(t, int64(docsToCreate), stats.DocsChanged)
 
 	assert.GreaterOrEqual(t, db.DbStats.Database().SyncFunctionCount.Value(), int64(docsToCreate))
 }
 
-// helper function to insert documents equals to docsToCreate, and update resync function if updateResyncFuncAfterDocsAdded set to true
+// helper function to insert documents equals to docsToCreate, and update sync function if updateResyncFuncAfterDocsAdded set to true
 func setupTestDBForResyncWithDocs(t *testing.T, docsToCreate int, updateResyncFuncAfterDocsAdded bool) (*Database, context.Context) {
 	db, ctx := setupTestDB(t)
 	db.Options.QueryPaginationLimit = 100
 	syncFn := `
 function sync(doc, oldDoc){
-	channel("channel." + "ABC");
+	channel("channel.ABC");
 }
 `
 	_, err := db.UpdateSyncFun(ctx, syncFn)
@@ -391,7 +398,7 @@ function sync(doc, oldDoc){
 	if updateResyncFuncAfterDocsAdded {
 		syncFn = `
 function sync(doc, oldDoc){
-	channel("channel." + "ABC123");
+	channel("channel.ABC123");
 }
 `
 

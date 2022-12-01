@@ -63,8 +63,7 @@ func (r *ResyncManagerDCP) Init(ctx context.Context, options map[string]interfac
 
 		reset, ok := options["reset"].(bool)
 		if reset && ok {
-			base.InfofCtx(ctx, base.KeyAll, "Resync: Resetting resync process. Will not  resume any "+
-				"partially completed process")
+			base.InfofCtx(ctx, base.KeyAll, "Resync: Resetting resync process. Will not resume any partially completed process")
 		}
 
 		// If the previous run completed, or there was an error during unmarshalling the status we will start the
@@ -75,7 +74,7 @@ func (r *ResyncManagerDCP) Init(ctx context.Context, options map[string]interfac
 			r.ResyncID = statusDoc.ResyncID
 			r.SetStatus(statusDoc.DocsChanged, statusDoc.DocsProcessed)
 
-			base.InfofCtx(ctx, base.KeyAll, "Resync: Attempting to resume resync with resycn ID: %s", r.ResyncID)
+			base.InfofCtx(ctx, base.KeyAll, "Resync: Attempting to resume resync with resync ID: %s", r.ResyncID)
 		}
 
 		return nil
@@ -121,7 +120,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]interface
 		databaseCollection := db.CollectionByID[event.CollectionID]
 		_, unusedSequences, err := (&DatabaseCollectionWithUser{
 			DatabaseCollection: databaseCollection,
-		}).updateDocument(ctx, docID, key, regenerateSequences, []uint64{})
+		}).resyncDocument(ctx, docID, key, regenerateSequences, []uint64{})
 
 		databaseCollection.releaseSequences(ctx, unusedSequences)
 

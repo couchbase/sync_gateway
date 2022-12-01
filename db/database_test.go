@@ -2665,7 +2665,7 @@ func Test_invalidateAllPrincipalsCache(t *testing.T) {
 
 	db.Options.QueryPaginationLimit = 100
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
-	sequenceAllocator, err := newSequenceAllocator(db.Bucket, db.DbStats.DatabaseStats)
+	sequenceAllocator, err := newSequenceAllocator(db.Bucket.DefaultDataStore(), db.DbStats.DatabaseStats)
 	assert.NoError(t, err)
 
 	db.sequences = sequenceAllocator
@@ -2707,13 +2707,13 @@ func Test_invalidateAllPrincipalsCache(t *testing.T) {
 
 	var invalPrinc invalidatePrincipal
 	for i := 0; i < 5; i++ {
-		raw, _, _ := db.Bucket.GetRaw(fmt.Sprintf("_sync:role:role%d", i))
+		raw, _, _ := db.Bucket.DefaultDataStore().GetRaw(fmt.Sprintf("_sync:role:role%d", i))
 		err := json.Unmarshal(raw, &invalPrinc)
 		assert.NoError(t, err)
 		assert.Equal(t, endSeq, invalPrinc.ChannelInvalSeq)
 		assert.Equal(t, fmt.Sprintf("role%d", i), invalPrinc.Name)
 
-		raw, _, _ = db.Bucket.GetRaw(fmt.Sprintf("_sync:user:user%d", i))
+		raw, _, _ = db.Bucket.DefaultDataStore().GetRaw(fmt.Sprintf("_sync:user:user%d", i))
 		err = json.Unmarshal(raw, &invalPrinc)
 		assert.NoError(t, err)
 		assert.Equal(t, endSeq, invalPrinc.ChannelInvalSeq)
@@ -2721,7 +2721,7 @@ func Test_invalidateAllPrincipalsCache(t *testing.T) {
 	}
 }
 
-func Test_updateDocument(t *testing.T) {
+func Test_resyncDocument(t *testing.T) {
 	testCases := []struct {
 		useXattr bool
 	}{
@@ -2730,7 +2730,7 @@ func Test_updateDocument(t *testing.T) {
 	}
 
 	for _, testCase := range testCases {
-		t.Run(fmt.Sprintf("Test_updateDocument with useXattr: %t", testCase.useXattr), func(t *testing.T) {
+		t.Run(fmt.Sprintf("Test_resyncDocument with useXattr: %t", testCase.useXattr), func(t *testing.T) {
 			if !base.TestUseXattrs() && testCase.useXattr {
 				t.Skip("Walrus doesn't support xattr")
 			}
@@ -2766,7 +2766,7 @@ func Test_updateDocument(t *testing.T) {
 			_, err = db.UpdateSyncFun(ctx, syncFn)
 			require.NoError(t, err)
 
-			_, _, err = collection.updateDocument(ctx, docID, realDocID(docID), false, []uint64{10})
+			_, _, err = collection.resyncDocument(ctx, docID, realDocID(docID), false, []uint64{10})
 			require.NoError(t, err)
 			err = collection.WaitForPendingChanges(ctx)
 			require.NoError(t, err)
@@ -2801,17 +2801,17 @@ func Test_getUpdatedDocument(t *testing.T) {
 		docID := "testDoc"
 
 		body := `{"val": "nonsyncdoc"}`
-		added, err := db.Bucket.AddRaw(docID, 0, []byte(body))
+		added, err := db.Bucket.DefaultDataStore().AddRaw(docID, 0, []byte(body))
 		require.NoError(t, err)
 		assert.True(t, added)
 
-		raw, _, err := db.Bucket.GetRaw(docID)
+		raw, _, err := db.Bucket.DefaultDataStore().GetRaw(docID)
 		require.NoError(t, err)
 		doc, err := unmarshalDocument(docID, raw)
 		require.NoError(t, err)
 
 		collection := db.GetSingleDatabaseCollectionWithUser()
-		_, _, _, _, _, err = collection.getUpdatedDocument(ctx, doc, false, []uint64{})
+		_, _, _, _, _, err = collection.getResyncedDocument(ctx, doc, false, []uint64{})
 		assert.Equal(t, base.ErrUpdateCancel, err)
 	})
 
@@ -2845,14 +2845,14 @@ func Test_getUpdatedDocument(t *testing.T) {
 		_, err = db.UpdateSyncFun(ctx, syncFn)
 		require.NoError(t, err)
 
-		updatedDoc, shouldUpdate, _, highSeq, _, err := collection.getUpdatedDocument(ctx, doc, false, []uint64{})
+		updatedDoc, shouldUpdate, _, highSeq, _, err := collection.getResyncedDocument(ctx, doc, false, []uint64{})
 		require.NoError(t, err)
 		assert.True(t, shouldUpdate)
 		assert.Equal(t, doc.Sequence, highSeq)
 		assert.Equal(t, 2, int(db.DbStats.Database().SyncFunctionCount.Value()))
 
 		// Rerunning same resync function should mark doc not to be updated
-		_, shouldUpdate, _, _, _, err = collection.getUpdatedDocument(ctx, updatedDoc, false, []uint64{})
+		_, shouldUpdate, _, _, _, err = collection.getResyncedDocument(ctx, updatedDoc, false, []uint64{})
 		require.NoError(t, err)
 		assert.False(t, shouldUpdate)
 		assert.Equal(t, 3, int(db.DbStats.Database().SyncFunctionCount.Value()))
