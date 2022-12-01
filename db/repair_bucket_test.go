@@ -10,13 +10,14 @@ licenses/APL2.txt.
 
 package db
 
+// Disabled due to REST API being disabled and not working with collections CBG-2594
+
+/*
 const (
 	docIdProblematicRevTree  = "docIdProblematicRevTree"
 	docIdProblematicRevTree2 = "docIdProblematicRevTree2"
 )
 
-// FIXME: TOR
-/*
 func testBucketWithViewsAndBrokenDoc(t testing.TB) (bucket *base.TestBucket, numDocs int) {
 
 	numDocsAdded := 0
