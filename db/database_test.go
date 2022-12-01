@@ -1434,6 +1434,10 @@ func TestAccessFunctionValidation(t *testing.T) {
 
 func TestAccessFunctionDb(t *testing.T) {
 
+	if !base.TestsUseDefaultCollection() {
+		t.Skip("Disabled for non-default collection until CBG-2554")
+	}
+
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 	collection := db.GetSingleDatabaseCollectionWithUser()
