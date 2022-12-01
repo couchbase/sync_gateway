@@ -24,6 +24,9 @@ import (
 // TestCollectionsPutDocInKeyspace creates a collection and starts up a RestTester instance on it.
 // Ensures that various keyspaces can or can't be used to insert a doc in the collection.
 func TestCollectionsPutDocInKeyspace(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("rest errors are slightly different with walrus than CBS")
+	}
 	base.TestRequiresCollections(t)
 
 	tb := base.GetTestBucket(t)
@@ -247,6 +250,10 @@ func TestMultiCollectionDCP(t *testing.T) {
 // TestCollectionsBasicIndexQuery ensures that the bucket API is able to create an index on a collection
 // and query documents written to the collection.
 func TestCollectionsBasicIndexQuery(t *testing.T) {
+	if base.TestsDisableGSI() {
+		t.Skip("This test requires N1QL")
+	}
+
 	base.TestRequiresCollections(t)
 
 	tb := base.GetTestBucket(t)
@@ -401,6 +408,10 @@ func TestCollectionsSGIndexQuery(t *testing.T) {
 }
 
 func TestCollectionsChangeConfigScope(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("can not create new buckets and scopes in walrus")
+	}
+
 	base.TestRequiresCollections(t)
 
 	tb := base.GetTestBucket(t)

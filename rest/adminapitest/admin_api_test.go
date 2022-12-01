@@ -2039,6 +2039,9 @@ func TestPutDbConfigChangeName(t *testing.T) {
 }
 
 func TestSwitchDbConfigCollectionName(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("can not create new buckets and scopes in walrus")
+	}
 	base.TestRequiresCollections(t)
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyConfig)
