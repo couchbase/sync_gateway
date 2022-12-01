@@ -50,9 +50,10 @@ func addActiveRT(t *testing.T, testBucket *base.TestBucket) (activeRT *rest.Rest
 	// FIXME: TOR
 	leakyBucket, ok := base.AsLeakyBucket(activeRT.GetDatabase().Bucket)
 	if ok {
-		_, isWalrusBucket := leakyBucket.GetUnderlyingBucket().(*walrus.WalrusBucket)
-		_, isWalrusCollection := leakyBucket.GetUnderlyingBucket().(*walrus.WalrusCollection)
-		if isWalrusBucket || isWalrusCollection {
+		ub := leakyBucket.GetUnderlyingBucket()
+		_, isWalrusBucket := ub.(*walrus.WalrusBucket)
+		_, isWalrusCollectionBucket := ub.(*walrus.CollectionBucket)
+		if isWalrusBucket || isWalrusCollectionBucket {
 			leakyBucket.SetIgnoreClose(true)
 		}
 	}

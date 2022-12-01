@@ -824,11 +824,6 @@ func TestReplicationRebalancePush(t *testing.T) {
 //   - Validates replication status count when replication is local and non-local
 func TestPullOneshotReplicationAPI(t *testing.T) {
 
-	// 2022-11-25T16:32:33.0279468Z 2022-11-25T16:31:29.702Z [DBG] Replicate+: couldn't find existing local checkpoint for ID "sgr2cp:pull:TestPullOneshotReplicationAPI"
-	// 2022-11-25T16:32:33.0279844Z 2022-11-25T16:31:29.702Z [DBG] Replicate+: couldn't find existing local checkpoint for ID "sgr2cp:push:TestPullOneshotReplicationAPI"
-	// FIXME (bbrks) - checkpoints being written to wrong place?
-	t.Skip("failing test")
-
 	base.LongRunningTest(t)
 
 	base.RequireNumTestBuckets(t, 2)
