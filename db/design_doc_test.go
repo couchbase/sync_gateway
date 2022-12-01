@@ -26,7 +26,8 @@ func TestRemoveObsoleteDesignDocs(t *testing.T) {
 	mapFunction := `function (doc, meta) { emit(); }`
 
 	// Add some design docs in the old format
-	viewStore, ok := base.AsViewStore(bucket.GetSingleDataStore())
+	// This uses the default data store because Couchbase Server views aren't supported in named collections.
+	viewStore, ok := base.AsViewStore(bucket.DefaultDataStore())
 	require.True(t, ok)
 
 	err := viewStore.PutDDoc(DesignDocSyncGatewayPrefix, &sgbucket.DesignDoc{
