@@ -1962,7 +1962,6 @@ func TestInvalidDBConfig(t *testing.T) {
 	assert.True(t, strings.Contains(resp.Body, "invalid javascript syntax"))
 }
 
-// FIXME (bbrks): Failing
 func TestCreateDbOnNonExistentBucket(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")

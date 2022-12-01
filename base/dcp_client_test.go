@@ -28,9 +28,8 @@ const oneShotDCPTimeout = 60 * time.Second
 
 func TestOneShotDCP(t *testing.T) {
 
-	if !ShouldUseDefaultCollection() {
-		t.Skip("temporarily disabled if tests are running with named collections (this test fails for some reason)")
-	}
+	// CBG-2454
+	t.Skip("CBG-2454: temporarily disabled (the DCP feed doesn't close within the timeout in some environments/Jenkins)")
 
 	if UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
@@ -63,9 +62,8 @@ func TestOneShotDCP(t *testing.T) {
 	// start one shot feed
 	feedID := t.Name()
 
-	// FIXME (bbrks) will not work with wrappers
-	collection, ok := dataStore.(*Collection)
-	require.True(t, ok)
+	collection, err := AsCollection(dataStore)
+	require.NoError(t, err)
 	var collectionIDs []uint32
 	if collection.IsSupported(sgbucket.BucketStoreFeatureCollections) {
 		collectionIDs = append(collectionIDs, collection.GetCollectionID())
@@ -101,13 +99,15 @@ func TestOneShotDCP(t *testing.T) {
 		}
 	}()
 
+	// deferred to block test end until we've actually finished writing docs
 	defer additionalDocsWg.Wait()
+
 	// wait for done
 	timeout := time.After(oneShotDCPTimeout)
 	select {
 	case err := <-doneChan:
 		require.NoError(t, err)
-		if TestsDisableGSI() {
+		if TestsUseDefaultCollection() {
 			require.Equal(t, numDocs, int(mutationCount))
 		} else {
 			// CBG-2454, sometimes we get extra docs from TO_LATEST with collections

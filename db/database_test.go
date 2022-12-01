@@ -2449,11 +2449,6 @@ func TestTombstoneCompactionStopWithManager(t *testing.T) {
 		t.Skip("Compaction requires xattrs")
 	}
 
-	if !base.TestsDisableGSI() {
-		// FIXME (bbrks)
-		t.Skip("LeakyDataStore does not yet support N1QL")
-	}
-
 	bucket := base.GetTestBucket(t).LeakyBucketClone(base.LeakyBucketConfig{})
 	db, ctx := SetupTestDBForDataStoreWithOptions(t, bucket, DatabaseContextOptions{})
 	db.PurgeInterval = 0

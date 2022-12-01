@@ -65,7 +65,7 @@ var tbpDefaultBucketSpec = BucketSpec{
 	UseXattrs: TestUseXattrs(),
 }
 
-func ShouldUseDefaultCollection() bool {
+func TestsUseDefaultCollection() bool {
 	val, isSet := os.LookupEnv(tbpEnvUseDefaultCollection)
 	if !isSet {
 		return true

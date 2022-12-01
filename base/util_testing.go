@@ -135,7 +135,7 @@ func (tb *TestBucket) GetNamedDataStore() DataStore {
 // GetSingleDataStore returns a DataStore that can be used for testing.
 // This may be the default collection, or a named collection depending on whether SG_TEST_USE_DEFAULT_COLLECTION is set.
 func (b *TestBucket) GetSingleDataStore() sgbucket.DataStore {
-	if ShouldUseDefaultCollection() {
+	if TestsUseDefaultCollection() {
 		return b.Bucket.DefaultDataStore()
 	}
 	return b.GetNamedDataStore()
