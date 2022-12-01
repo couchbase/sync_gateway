@@ -58,11 +58,33 @@ func StartGocbDCPFeed(bucket *GocbV2Bucket, bucketName string, args sgbucket.Fee
 	if err != nil {
 		return err
 	}
+
 	var collectionIDs []uint32
 	if bucket.IsSupported(sgbucket.BucketStoreFeatureCollections) {
-		// FIXME (bbrks): why only 1 collection ID? How do we get the others in feed args?!
-		// collectionIDs = append(collectionIDs, collection.GetCollectionID())
+		cm, err := bucket.GetCollectionManifest()
+		if err != nil {
+			return err
+		}
+
+		// should only be one args.Scope so cheaper to iterate this way around
+		for scopeName, collections := range args.Scopes {
+			for _, manifestScope := range cm.Scopes {
+				if scopeName != manifestScope.Name {
+					continue
+				}
+				// should be less than or equal number of args.collections than cm.scope.collections, so iterate this way so that the inner loop completes quicker on average
+				for _, manifestCollection := range manifestScope.Collections {
+					for _, collectionName := range collections {
+						if collectionName != manifestCollection.Name {
+							continue
+						}
+						collectionIDs = append(collectionIDs, manifestCollection.UID)
+					}
+				}
+			}
+		}
 	}
+
 	dcpClient, err := NewDCPClient(
 		feedName,
 		callback,
