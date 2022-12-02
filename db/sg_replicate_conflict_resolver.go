@@ -16,9 +16,9 @@ import (
 	"fmt"
 	"time"
 
-	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/robertkrimen/otto"
+	"github.com/couchbase/sync_gateway/js"
+	"rogchap.com/v8go"
 )
 
 type ConflictResolverType string
@@ -170,6 +170,8 @@ func RemoteWinsConflictResolver(conflict Conflict) (winner Body, err error) {
 	return conflict.RemoteDocument, nil
 }
 
+//////// CUSTOM CONFLICT RESOLVER:
+
 func NewConflictResolverFunc(resolverType ConflictResolverType, customResolverSource string, customResolverTimeout time.Duration) (ConflictResolverFunc, error) {
 	switch resolverType {
 	case ConflictResolverLocalWins:
@@ -181,115 +183,80 @@ func NewConflictResolverFunc(resolverType ConflictResolverType, customResolverSo
 	case ConflictResolverCustom:
 		return NewCustomConflictResolver(customResolverSource, customResolverTimeout)
 	default:
-		return nil, fmt.Errorf("Unknown Conflict Resolver type: %s", resolverType)
+		return nil, fmt.Errorf("unknown Conflict Resolver type: %s", resolverType)
 	}
 }
 
 // NewCustomConflictResolver returns a ConflictResolverFunc that executes the
 // javascript conflict resolver specified by source
 func NewCustomConflictResolver(source string, timeout time.Duration) (ConflictResolverFunc, error) {
-	conflictResolverJSServer := NewConflictResolverJSServer(source, timeout)
-	return conflictResolverJSServer.EvaluateFunction, nil
-}
-
-// ConflictResolverJSServer manages the compiled javascript function runner instance
-type ConflictResolverJSServer struct {
-	*sgbucket.JSServer
-}
-
-func NewConflictResolverJSServer(fnSource string, timeout time.Duration) *ConflictResolverJSServer {
 	base.DebugfCtx(context.Background(), base.KeyReplicate, "Creating new ConflictResolverFunction")
-	return &ConflictResolverJSServer{
-		JSServer: sgbucket.NewJSServer(fnSource, timeout, kTaskCacheSize, newConflictResolverRunner),
-	}
-}
-
-// EvaluateFunction executes the conflict resolver with the provided conflict and returns the result.
-func (i *ConflictResolverJSServer) EvaluateFunction(conflict Conflict) (Body, error) {
-	docID, _ := conflict.LocalDocument[BodyId].(string)
-	localRevID, _ := conflict.LocalDocument[BodyRev].(string)
-	remoteRevID, _ := conflict.RemoteDocument[BodyRev].(string)
-	result, err := i.Call(conflict)
-	if err != nil {
-		base.WarnfCtx(context.Background(), "Unexpected error invoking conflict resolver for document %s, local/remote revisions %s/%s - processing aborted, document will not be replicated.  Error: %v",
-			base.UD(docID), base.UD(localRevID), base.UD(remoteRevID), err)
-		return nil, err
-	}
-
-	// A null value returned by the conflict resolver should be treated as a delete
-	if result == nil {
-		return Body{BodyDeleted: true}, nil
-	}
-
-	switch result := result.(type) {
-	case Body:
-		return result, nil
-	case map[string]interface{}:
-		return result, nil
-	case error:
-		base.WarnfCtx(context.Background(), "conflictResolverRunner: "+result.Error())
-		return nil, result
-	default:
-		base.WarnfCtx(context.Background(), "Custom conflict resolution function returned non-document result %v Type: %T", result, result)
-		return nil, errors.New("Custom conflict resolution function returned non-document value.")
-	}
-}
-
-// Compiles a JavaScript event function to a conflictResolverRunner object.
-func newConflictResolverRunner(funcSource string, timeout time.Duration) (sgbucket.JSServerTask, error) {
-	conflictResolverRunner := &sgbucket.JSRunner{}
-	err := conflictResolverRunner.InitWithLogging(funcSource, timeout,
-		func(s string) {
-			base.ErrorfCtx(context.Background(), base.KeyJavascript.String()+": ConflictResolver %s", base.UD(s))
-		},
-		func(s string) {
-			base.InfofCtx(context.Background(), base.KeyJavascript, "ConflictResolver %s", base.UD(s))
-		})
-	if err != nil {
-		return nil, err
-	}
-
-	// Implementation of the 'defaultPolicy(conflict)' callback:
-	conflictResolverRunner.DefineNativeFunction("defaultPolicy", func(call otto.FunctionCall) otto.Value {
-		if len(call.ArgumentList) == 0 {
-			return ErrorToOttoValue(conflictResolverRunner, errors.New("No conflict parameter specified when calling defaultPolicy()"))
+	vms := js.NewVMPool(kTaskCacheSize)
+	service := js.NewCustomService(vms, "conflict resolver", func(tmpl *js.BasicTemplate) (js.Template, error) {
+		err := tmpl.SetScript(`(` + source + `)`)
+		if err == nil {
+			tmpl.GlobalCallback("defaultPolicy", defaultPolicyCallback)
 		}
-		rawConflict, exportErr := call.Argument(0).Export()
-		if exportErr != nil {
-			return ErrorToOttoValue(conflictResolverRunner, fmt.Errorf("Unable to export conflict parameter for defaultPolicy(): %v Error: %s", call.Argument(0), exportErr))
-		}
-
-		// Called defaultPolicy with null/undefined value - return
-		if rawConflict == nil || call.Argument(0).IsUndefined() {
-			return ErrorToOttoValue(conflictResolverRunner, errors.New("Null or undefined value passed to defaultPolicy()"))
-		}
-
-		conflict, ok := rawConflict.(Conflict)
-		if !ok {
-			return ErrorToOttoValue(conflictResolverRunner, fmt.Errorf("Invalid value passed to defaultPolicy().  Value was type %T, expected type Conflict", rawConflict))
-		}
-
-		defaultWinner, _ := DefaultConflictResolver(conflict)
-		ottoDefaultWinner, err := conflictResolverRunner.ToValue(defaultWinner)
-		if err != nil {
-			return ErrorToOttoValue(conflictResolverRunner, fmt.Errorf("Error converting default winner to javascript value.  Error:%w", err))
-		}
-		return ottoDefaultWinner
+		return tmpl, err
 	})
 
-	conflictResolverRunner.After = func(result otto.Value, err error) (interface{}, error) {
-		nativeValue, _ := result.Export()
-		return nativeValue, err
-	}
+	return func(conflict Conflict) (Body, error) {
+		// Here's the ConflictResolverFunc:
+		ctx := context.Background()
+		if timeout > 0 {
+			var cancelFn context.CancelFunc
+			ctx, cancelFn = context.WithTimeout(ctx, timeout)
+			defer cancelFn()
+		}
 
-	return conflictResolverRunner, nil
+		result, err := service.Run(ctx, conflict)
+
+		if err != nil {
+			// Warn if the resolver fn fails:
+			docID, _ := conflict.LocalDocument[BodyId].(string)
+			localRevID, _ := conflict.LocalDocument[BodyRev].(string)
+			remoteRevID, _ := conflict.RemoteDocument[BodyRev].(string)
+			base.WarnfCtx(context.Background(), "Unexpected error invoking conflict resolver for document %s, local/remote revisions %s/%s - processing aborted, document will not be replicated.  Error: %+v",
+				base.UD(docID), base.UD(localRevID), base.UD(remoteRevID), err)
+			return nil, err
+		}
+
+		// A null value returned by the conflict resolver should be treated as a delete
+		if result == nil {
+			return Body{BodyDeleted: true}, nil
+		}
+
+		switch result := result.(type) {
+		case map[string]interface{}:
+			return result, nil
+		case error:
+			base.WarnfCtx(context.Background(), "conflictResolverRunner: "+result.Error())
+			return nil, result
+		default:
+			base.WarnfCtx(context.Background(), "Custom conflict resolution function returned non-document result %v Type: %T", result, result)
+			return nil, errors.New("custom conflict resolution function returned non-document value")
+		}
+	}, nil
 }
 
-// Converts an error to an otto value, to support native functions returning errors.
-func ErrorToOttoValue(runner *sgbucket.JSRunner, err error) otto.Value {
-	errorValue, convertErr := runner.ToValue(err)
-	if convertErr != nil {
-		base.WarnfCtx(context.Background(), "Unable to convert error to otto value: %v", convertErr)
+// Implementation of the JS "defaultPolicy" callback function:
+func defaultPolicyCallback(runner *js.Runner, this *v8go.Object, args []*v8go.Value) (any, error) {
+	if len(args) != 1 {
+		return nil, errors.New("defaultPolicy() takes one parameter")
 	}
-	return errorValue
+	rawConflict, err := js.ValueToGo(args[0])
+	if err != nil {
+		return nil, fmt.Errorf("unable to export conflict parameter for defaultPolicy(): %v Error: %w", args[0], err)
+	}
+	conflictMap, ok := rawConflict.(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("conflict parameter for defaultPolicy is not a conflict object")
+	}
+	var conflict Conflict
+	conflict.LocalDocument, _ = conflictMap["LocalDocument"].(map[string]any)
+	conflict.RemoteDocument, _ = conflictMap["RemoteDocument"].(map[string]any)
+	if conflict.LocalDocument == nil || conflict.RemoteDocument == nil {
+		return nil, fmt.Errorf("conflict parameter for defaultPolicy is not a conflict object")
+	}
+	return DefaultConflictResolver(conflict)
 }

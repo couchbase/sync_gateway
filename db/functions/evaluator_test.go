@@ -24,10 +24,11 @@ import (
 // A basic bring-up test of the Evaluator and TypeScript engine.
 func TestEvaluator(t *testing.T) {
 	delegate := mockEvaluatorDelegate{}
-	eval, err := newStandaloneEvaluator(context.Background(), &kTestFunctionsConfig, &kTestGraphQLConfig, &delegate)
+	eval, vm, err := newStandaloneEvaluator(context.Background(), &kTestFunctionsConfig, &kTestGraphQLConfig, &delegate)
 	if !assert.NoError(t, err) {
 		return
 	}
+	defer vm.Close()
 	defer eval.close()
 
 	result, err := eval.callFunction("square", map[string]any{"numero": 13})

@@ -12,7 +12,6 @@ package db
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strconv"
 	"time"
@@ -21,7 +20,6 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/js"
-	v8 "rogchap.com/v8go"
 )
 
 type ImportMode uint8
@@ -446,13 +444,12 @@ func (db *Database) backupPreImportRevision(ctx context.Context, docid, revid st
 
 //////// Import Filter Function
 
-const kImportServiceName = "import"
-
 type ImportFilterFunction func(context.Context, Body) (bool, error)
 
 func NewImportFilterFunction(vms *js.VMPool, fnSource string, timeout time.Duration) ImportFilterFunction {
-	// Register the import service with its JS script:
-	vms.AddService(kImportServiceName, js.BasicServiceFactory(fnSource))
+	// Create the import service with its JS script:
+	service := js.NewService(vms, "import", fnSource)
+
 	// Return a function that calls the function on a document:
 	return func(ctx context.Context, doc Body) (bool, error) {
 		if timeout > 0 {
@@ -460,24 +457,17 @@ func NewImportFilterFunction(vms *js.VMPool, fnSource string, timeout time.Durat
 			ctx, cancelFn = context.WithTimeout(ctx, timeout)
 			defer cancelFn()
 		}
-		result, err := vms.WithRunner(kImportServiceName, func(runner *js.Runner) (any, error) {
-			runner.SetContext(ctx)
-			v8Doc, err := runner.GoToV8(doc)
-			if err == nil {
-				var val *v8.Value
-				if val, err = runner.Run(v8Doc); val != nil {
-					if val.IsBoolean() {
-						return val.Boolean(), nil
-					} else if val.IsString() {
-						return strconv.ParseBool(val.String())
-					} else {
-						err = errors.New("import filter function returned non-boolean value")
-					}
-				}
-			}
+
+		result, err := service.Run(ctx, doc)
+		if err != nil {
 			return false, err
-		})
-		ok, _ := result.(bool)
-		return ok, err
+		}
+		switch result := result.(type) {
+		case bool:
+			return result, nil
+		case string:
+			return strconv.ParseBool(result)
+		}
+		return false, fmt.Errorf("import filter function returned non-boolean type %T", result)
 	}
 }

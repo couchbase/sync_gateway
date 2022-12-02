@@ -12,11 +12,19 @@ import (
 
 // Thread-safe wrapper that vends `VM` objects.
 type VMPool struct {
-	vms      chan *VM              // Cache of idle VMs
-	counter  chan int              // Each item in this channel represents availability of a VM
-	services ServicesConfiguration // Defines the services
-	maxVMs   int                   // Max number of simultaneously in-use VMs
-	inUse    int32                 // Number of VMs currently in use ("checked out".) *ATOMIC*
+	vms      chan *VM               // Cache of idle VMs
+	counter  chan int               // Each item in this channel represents availability of a VM
+	services *servicesConfiguration // Defines the services
+	maxVMs   int                    // Max number of simultaneously in-use VMs
+	inUse    int32                  // Number of VMs currently in use ("checked out".) *ATOMIC*
+}
+
+// Creates a `VMPool`, a thread-safe wrapper around a set of `VM`s.
+// `maxVMs` is the maximum number of `VM` objects (and V8 instances!) it will provide.
+func NewVMPool(maxVMs int) *VMPool {
+	pool := new(VMPool)
+	pool.Init(maxVMs)
+	return pool
 }
 
 // Initializes a `VMPool`, a thread-safe wrapper around a set of `VM`s.
@@ -24,7 +32,7 @@ type VMPool struct {
 func (pool *VMPool) Init(maxVMs int) {
 	pool.maxVMs = maxVMs
 	pool.vms = make(chan *VM, maxVMs)
-	pool.services = ServicesConfiguration{}
+	pool.services = &servicesConfiguration{}
 	pool.counter = make(chan int, maxVMs)
 	for i := 0; i < maxVMs; i++ {
 		pool.counter <- i
@@ -32,13 +40,9 @@ func (pool *VMPool) Init(maxVMs int) {
 	base.InfofCtx(context.Background(), base.KeyJavascript, "js.VMPool: Init, max %d VMs", maxVMs)
 }
 
-// Registers a new Service. Only call this before instantiating any VMs.
-// This method is NOT thread-safe.
-func (pool *VMPool) AddService(name string, s ServiceFactory) {
-	if pool.services[name] != nil {
-		panic(fmt.Sprintf("Duplicate Service name %q", name))
-	}
-	pool.services[name] = s
+// Creates a new Service.
+func (pool *VMPool) registerService(factory TemplateFactory) serviceID {
+	return pool.services.addService(factory)
 }
 
 // Produces an idle `VM` that can be used by this goroutine.
@@ -53,7 +57,7 @@ func (pool *VMPool) GetVM() (*VM, error) {
 	vm := pool.pop()
 	if vm == nil {
 		// Nothing in the pool, so create a new VM instance.
-		vm = NewVM(pool.services)
+		vm = newVM(pool.services)
 	}
 
 	vm.returnToPool = pool
@@ -76,25 +80,15 @@ func (pool *VMPool) returnVM(vm *VM) {
 
 // Instantiates a Runner for a named Service, in an available VM.
 // You MUST call Runner.Return when done -- it will return the associated VM too.
-func (pool *VMPool) GetRunner(serviceName string) (*Runner, error) {
+func (pool *VMPool) getRunner(service *Service) (*Runner, error) {
 	if vm, err := pool.GetVM(); err != nil {
 		return nil, err
-	} else if runner, err := vm.GetRunner(serviceName); err != nil {
+	} else if runner, err := vm.getRunner(service); err != nil {
 		pool.returnVM(vm)
 		return nil, err
 	} else {
 		return runner, err
 	}
-}
-
-// Invokes `fn`, passing it a Runner for the given serviceName. Returns whatever `fn` does.
-func (pool *VMPool) WithRunner(serviceName string, fn func(*Runner) (any, error)) (any, error) {
-	runner, err := pool.GetRunner(serviceName)
-	if err != nil {
-		return nil, err
-	}
-	defer runner.Return()
-	return fn(runner)
 }
 
 // Returns the number of VMs currently in use.
@@ -123,12 +117,14 @@ func (pool *VMPool) Close() {
 	}
 }
 
-// just add a VM to the pool
+//////// Low-level pool management:
+
+// just adds a VM to the pool
 func (pool *VMPool) push(vm *VM) {
 	pool.vms <- vm
 }
 
-// just get a VM from the pool
+// just gets a VM from the pool
 func (pool *VMPool) pop() *VM {
 	select {
 	case vm := <-pool.vms:
@@ -138,7 +134,7 @@ func (pool *VMPool) pop() *VM {
 	}
 }
 
-// gets a VM from the pool and closes it.
+// gets a VM from the pool and closes the VM. Returns false if none are left.
 func (pool *VMPool) popAndClose() bool {
 	if vm := pool.pop(); vm != nil {
 		vm.returnToPool = nil

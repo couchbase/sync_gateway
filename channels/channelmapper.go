@@ -45,35 +45,32 @@ type ChannelMapperOutput struct {
 
 // The object that runs the sync function.
 type ChannelMapper struct {
-	vms         *js.VMPool
-	timeout     time.Duration
-	fnSource    string
-	serviceName string
+	service  *js.Service
+	timeout  time.Duration
+	fnSource string
 }
 
 const DefaultSyncFunction = `function(doc){channel(doc.channels);}`
 
 // Creates a ChannelMapper.
-func NewChannelMapper(vms *js.VMPool, fnSource string, timeout time.Duration) *ChannelMapper {
-	vms.AddService(kChannelMapperServiceName, func(base *js.BasicService) (js.Service, error) {
+func NewChannelMapper(owner js.ServiceHost, fnSource string, timeout time.Duration) *ChannelMapper {
+	service := js.NewCustomService(owner, kChannelMapperServiceName, func(base *js.BasicTemplate) (js.Template, error) {
 		return createChannelService(base, fnSource, timeout)
 	})
 	return &ChannelMapper{
-		vms:         vms,
-		timeout:     timeout,
-		fnSource:    fnSource,
-		serviceName: kChannelMapperServiceName,
+		service:  service,
+		timeout:  timeout,
+		fnSource: fnSource,
 	}
 }
 
+// used by tests.
 func newChannelMapperWithVMs(fnSource string, timeout time.Duration) *ChannelMapper {
-	var vms js.VMPool
-	vms.Init(1)
-	return NewChannelMapper(&vms, fnSource, timeout)
+	return NewChannelMapper(js.NewVM(), fnSource, timeout)
 }
 
 func (cm *ChannelMapper) closeVMs() {
-	cm.vms.Close()
+	cm.service.Host().Close()
 }
 
 // Creates a ChannelMapper with the default sync function. (Used by tests)
@@ -89,8 +86,7 @@ func (mapper *ChannelMapper) Function() string {
 // Its current implementation is a kludge, and it shouldn't be used in production.
 func (mapper *ChannelMapper) SetFunction(fnSource string) error {
 	mapper.fnSource = fnSource
-	mapper.serviceName += "X"
-	mapper.vms.AddService(mapper.serviceName, func(base *js.BasicService) (js.Service, error) {
+	mapper.service = js.NewCustomService(mapper.service.Host(), kChannelMapperServiceName, func(base *js.BasicTemplate) (js.Template, error) {
 		return createChannelService(base, fnSource, mapper.timeout)
 	})
 	return nil
@@ -110,34 +106,37 @@ func (mapper *ChannelMapper) MapToChannelsAndAccess(body map[string]interface{},
 
 // Creates a js.Service instance for a ChannelMapper;
 // this configures the object & callback templates in a V8 VM.
-func createChannelService(base *js.BasicService, fnSource string, timeout time.Duration) (js.Service, error) {
+func createChannelService(base *js.BasicTemplate, fnSource string, timeout time.Duration) (js.Template, error) {
 	err := base.SetScript(wrappedFuncSource(fnSource))
+	if err != nil {
+		return nil, err
+	}
 	// Define the callback functions:
-	base.GlobalCallback("channel", func(jsr *js.Runner, call *v8.FunctionCallbackInfo) (any, error) {
-		return jsr.Client.(*syncRunner).channelCallback(call.Args())
+	base.GlobalCallback("channel", func(jsr *js.Runner, this *v8.Object, args []*v8.Value) (any, error) {
+		return jsr.Client.(*syncRunner).channelCallback(args)
 	})
-	base.GlobalCallback("access", func(jsr *js.Runner, call *v8.FunctionCallbackInfo) (any, error) {
-		return jsr.Client.(*syncRunner).accessCallback(call.Args())
+	base.GlobalCallback("access", func(jsr *js.Runner, this *v8.Object, args []*v8.Value) (any, error) {
+		return jsr.Client.(*syncRunner).accessCallback(args)
 	})
-	base.GlobalCallback("role", func(jsr *js.Runner, call *v8.FunctionCallbackInfo) (any, error) {
-		return jsr.Client.(*syncRunner).roleCallback(call.Args())
+	base.GlobalCallback("role", func(jsr *js.Runner, this *v8.Object, args []*v8.Value) (any, error) {
+		return jsr.Client.(*syncRunner).roleCallback(args)
 	})
-	base.GlobalCallback("reject", func(jsr *js.Runner, call *v8.FunctionCallbackInfo) (any, error) {
-		return jsr.Client.(*syncRunner).rejectCallback(call.Args())
+	base.GlobalCallback("reject", func(jsr *js.Runner, this *v8.Object, args []*v8.Value) (any, error) {
+		return jsr.Client.(*syncRunner).rejectCallback(args)
 	})
-	base.GlobalCallback("expiry", func(jsr *js.Runner, call *v8.FunctionCallbackInfo) (any, error) {
-		jsr.Client.(*syncRunner).expiryCallback(call.Args())
+	base.GlobalCallback("expiry", func(jsr *js.Runner, this *v8.Object, args []*v8.Value) (any, error) {
+		jsr.Client.(*syncRunner).expiryCallback(args)
 		return nil, nil
 	})
 	return base, err
 }
 
 func (mapper *ChannelMapper) withSyncRunner(fn func(*syncRunner) (any, error)) (any, error) {
-	return mapper.vms.WithRunner(mapper.serviceName, func(jsRunner *js.Runner) (any, error) {
+	return mapper.service.WithRunner(func(jsRunner *js.Runner) (any, error) {
 		goContext := context.Background()
 		if mapper.timeout > 0 {
 			var cancelFn context.CancelFunc
-			goContext, cancelFn = context.WithDeadline(goContext, time.Now().Add(mapper.timeout))
+			goContext, cancelFn = context.WithTimeout(goContext, mapper.timeout)
 			defer cancelFn()
 		}
 		jsRunner.SetContext(goContext)

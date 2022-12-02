@@ -112,7 +112,7 @@ func CompileFunctions(fnConfig *FunctionsConfig, gqConfig *GraphQLConfig, vms *j
 	// if err != nil {
 	// 	return nil, nil, err
 	// }
-	vms.AddService("functions", makeService(fnConfig, gqConfig))
+	service := js.NewCustomService(vms, "functions", makeService(fnConfig, gqConfig))
 
 	if fnConfig != nil {
 		fns = &db.UserFunctions{
@@ -122,13 +122,15 @@ func CompileFunctions(fnConfig *FunctionsConfig, gqConfig *GraphQLConfig, vms *j
 		for name, fnConfig := range fnConfig.Definitions {
 			fns.Definitions[name] = &functionImpl{
 				FunctionConfig: fnConfig,
+				service:        service,
 				name:           name,
 			}
 		}
 	}
 	if gqConfig != nil {
 		gq = &graphQLImpl{
-			config: gqConfig,
+			config:  gqConfig,
+			service: service,
 		}
 	}
 	return
@@ -136,31 +138,32 @@ func CompileFunctions(fnConfig *FunctionsConfig, gqConfig *GraphQLConfig, vms *j
 
 // Creates an evaluator using a new VM not belonging to a pool.
 // Remember to close it when finished!
-func newStandaloneEvaluator(ctx context.Context, fnConfig *FunctionsConfig, gqConfig *GraphQLConfig, delegate evaluatorDelegate) (*evaluator, error) {
+func newStandaloneEvaluator(ctx context.Context, fnConfig *FunctionsConfig, gqConfig *GraphQLConfig, delegate evaluatorDelegate) (*evaluator, *js.VM, error) {
 	if fnConfig == nil && gqConfig == nil {
-		return nil, nil
+		return nil, nil, nil
 	}
-	config := map[string]js.ServiceFactory{"functions": makeService(fnConfig, gqConfig)}
-	vm := js.NewVM(config)
-	if runner, err := vm.GetRunner("functions"); err != nil {
-		vm.Release()
-		return nil, err
+	vm := js.NewVM()
+	service := js.NewCustomService(vm, "functions", makeService(fnConfig, gqConfig))
+	if runner, err := service.GetRunner(); err != nil {
+		vm.Close()
+		return nil, nil, err
 	} else {
 		runner.SetContext(ctx)
 		eval, err := newEvaluator(runner, delegate, nil)
 		if err != nil {
-			vm.Release()
-			return nil, err
+			vm.Close()
+			return nil, nil, err
 		}
-		return eval, err
+		return eval, vm, nil
 	}
 }
 
 // Validates a FunctionsConfig & GraphQLConfig.
 func ValidateFunctions(ctx context.Context, fnConfig *FunctionsConfig, gqConfig *GraphQLConfig) error {
-	eval, err := newStandaloneEvaluator(ctx, fnConfig, gqConfig, &databaseDelegate{ctx: ctx})
+	eval, vm, err := newStandaloneEvaluator(ctx, fnConfig, gqConfig, &databaseDelegate{ctx: ctx})
 	if err == nil && eval != nil {
 		eval.close()
+		vm.Close()
 	}
 	return err
 }
@@ -169,7 +172,8 @@ func ValidateFunctions(ctx context.Context, fnConfig *FunctionsConfig, gqConfig 
 
 // implements UserFunction.
 type functionImpl struct {
-	*FunctionConfig        // Inherits from FunctionConfig
+	*FunctionConfig // Inherits from FunctionConfig
+	service         *js.Service
 	name            string // Name of function
 }
 
@@ -209,7 +213,7 @@ func (fn *functionImpl) Invoke(dbc *db.Database, args map[string]any, mutationAl
 		}
 	}
 
-	eval, err := makeEvaluator(dbc, delegate, delegate.user, ctx)
+	eval, err := makeEvaluator(fn.service, dbc, delegate, delegate.user, ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -253,7 +257,8 @@ func (inv *functionInvocation) RunAsJSON() ([]byte, error) {
 
 // Implementation of db.graphQLImpl interface.
 type graphQLImpl struct {
-	config *GraphQLConfig
+	config  *GraphQLConfig
+	service *js.Service
 }
 
 func (gq *graphQLImpl) MaxRequestSize() *int {
@@ -279,7 +284,7 @@ func (gq *graphQLImpl) QueryAsJSON(dbc *db.Database, query string, operationName
 		}
 	}
 
-	eval, err := makeEvaluator(dbc, delegate, delegate.user, ctx)
+	eval, err := makeEvaluator(gq.service, dbc, delegate, delegate.user, ctx)
 	if err != nil {
 		return nil, err
 	}

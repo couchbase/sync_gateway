@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -27,16 +29,16 @@ type jsConfig struct {
 	GraphQL   *GraphQLConfig   `json:"graphql,omitempty"`
 }
 
-// js.Service implementation; a "subclass" of js.BaseService.
-type functionService struct {
-	*js.BasicService                    // "Superclass"
-	upstreamTemplate *v8.ObjectTemplate // Template of object holding JS callbacks
-	jsonConfig       *v8.Value          // JSON configuration string
+// js.Template implementation; a "subclass" of js.BasicTemplate.
+type functionServiceTemplate struct {
+	*js.BasicTemplate                    // "Superclass"
+	upstreamTemplate  *v8.ObjectTemplate // Template of object holding JS callbacks
+	jsonConfig        *v8.Value          // JSON configuration string
 }
 
 // Returns a ServiceFactory function that instantiates a "functions" js.Service
-func makeService(functions *FunctionsConfig, graphql *GraphQLConfig) js.ServiceFactory {
-	return func(base *js.BasicService) (js.Service, error) {
+func makeService(functions *FunctionsConfig, graphql *GraphQLConfig) js.TemplateFactory {
+	return func(base *js.BasicTemplate) (js.Template, error) {
 		// Initialize the BaseService and compile the JS code:
 		base.SetScript(kJavaScriptCode + "\n SG_Engine.main;")
 
@@ -56,8 +58,8 @@ func makeService(functions *FunctionsConfig, graphql *GraphQLConfig) js.ServiceF
 		jsonConfig := mustSucceed(json.Marshal(jsConfig{Functions: functions, GraphQL: graphql}))
 
 		// Wrap the service in a js.Service implementation:
-		return &functionService{
-			BasicService:     base,
+		return &functionServiceTemplate{
+			BasicTemplate:    base,
 			upstreamTemplate: upstream,
 			jsonConfig:       base.NewString(string(jsonConfig)),
 		}, nil
@@ -102,8 +104,8 @@ type userCredentials struct {
 	Channels []string
 }
 
-func makeEvaluator(dbc *db.Database, delegate evaluatorDelegate, user *userCredentials, ctx context.Context) (*evaluator, error) {
-	runner, err := dbc.V8VMs.GetRunner("functions")
+func makeEvaluator(service *js.Service, dbc *db.Database, delegate evaluatorDelegate, user *userCredentials, ctx context.Context) (*evaluator, error) {
+	runner, err := service.GetRunner()
 	if err != nil {
 		return nil, err
 	}
@@ -134,7 +136,7 @@ func newEvaluator(runner *js.Runner, delegate evaluatorDelegate, user *userCrede
 
 	// Call the JS initialization code, passing it the configuration and the Upstream.
 	// This returns the JS `API` object.
-	fnService := runner.Service().(*functionService)
+	fnService := runner.Template().(*functionServiceTemplate)
 	if fnService == nil {
 		panic("Couldn't cast to functionService")
 	}
@@ -181,7 +183,7 @@ func (eval *evaluator) GetUser() *userCredentials {
 	return eval.user
 }
 
-// Calls a named function. Result is returned as a JSON string.
+// Calls a named function. Result is returned as JSON data.
 func (eval *evaluator) callFunction(name string, args map[string]any) ([]byte, error) {
 	user, roles, channels := eval.v8Credentials()
 	// Calling JS method API.callFunction (api.ts)
@@ -192,11 +194,11 @@ func (eval *evaluator) callFunction(name string, args map[string]any) ([]byte, e
 		mustSucceed(eval.runner.NewValue(eval.mutationAllowed)))
 
 	if err == nil {
-		if result, err := js.StringToGo(v8Result); err == nil {
-			return result, nil
+		if result, ok := js.StringToGo(v8Result); ok {
+			return []byte(result), nil
 		}
 	}
-	return nil, js.UnpackError(err)
+	return nil, unpackError(err)
 }
 
 // Performs a GraphQL query. Result is an object of the usual GraphQL result shape, i.e. with `data` and/or `errors` properties. It is returned as a JSON string.
@@ -210,17 +212,16 @@ func (eval *evaluator) callGraphQL(query string, operationName string, variables
 		user, roles, channels,
 		mustSucceed(eval.runner.NewValue(eval.mutationAllowed)))
 	if err == nil {
-		var result []byte
-		if result, err = js.StringToGo(v8Result); err == nil {
-			return result, nil
+		if result, ok := js.StringToGo(v8Result); ok {
+			return []byte(result), nil
 		}
 	}
-	return nil, js.UnpackError(err)
+	return nil, unpackError(err)
 }
 
 // Encodes credentials as 3 parameters to pass to JS.
 func (eval *evaluator) v8Credentials() (user *v8.Value, roles *v8.Value, channels *v8.Value) {
-	undef, _ := eval.runner.NewValue(nil)
+	undef := eval.runner.Undefined()
 	if eval.user != nil {
 		user = eval.runner.NewString(eval.user.Name)
 	} else {
@@ -242,34 +243,34 @@ func (eval *evaluator) v8Credentials() (user *v8.Value, roles *v8.Value, channel
 //////// EVALUATOR CALLBACK IMPLEMENTATIONS:
 
 // 	query(fnName: string, n1ql: string, argsJSON: string | undefined, asAdmin: boolean) : string;
-func doQuery(r *js.Runner, info *v8.FunctionCallbackInfo) (any, error) {
-	fnName := info.Args()[0].String()
-	n1ql := info.Args()[1].String()
-	args, err := js.JSONToGoMap(info.Args()[2])
+func doQuery(r *js.Runner, this *v8.Object, args []*v8.Value) (any, error) {
+	fnName := args[0].String()
+	n1ql := args[1].String()
+	fnArgs, err := jsonToGoMap(args[2])
 	if err != nil {
 		return nil, err
 	}
-	asAdmin := info.Args()[3].Boolean()
+	asAdmin := args[3].Boolean()
 	eval := r.Client.(*evaluator)
-	return eval.delegate.query(fnName, n1ql, args, asAdmin)
+	return eval.delegate.query(fnName, n1ql, fnArgs, asAdmin)
 }
 
 // 	get(docID: string, asAdmin: boolean) : string | null;
-func doGet(r *js.Runner, info *v8.FunctionCallbackInfo) (any, error) {
-	docID := info.Args()[0].String()
-	asAdmin := info.Args()[1].Boolean()
+func doGet(r *js.Runner, this *v8.Object, args []*v8.Value) (any, error) {
+	docID := args[0].String()
+	asAdmin := args[1].Boolean()
 	eval := r.Client.(*evaluator)
 	return returnAsJSON(eval.delegate.get(docID, asAdmin))
 }
 
 // 	save(docJSON: string, docID: string | undefined, asAdmin: boolean) : string | null;
-func doSave(r *js.Runner, info *v8.FunctionCallbackInfo) (any, error) {
+func doSave(r *js.Runner, this *v8.Object, args []*v8.Value) (any, error) {
 	var docID string
-	doc, err := js.JSONToGoMap(info.Args()[0])
+	doc, err := jsonToGoMap(args[0])
 	if err != nil {
 		return nil, err
 	}
-	if arg1 := info.Args()[1]; arg1.IsString() {
+	if arg1 := args[1]; arg1.IsString() {
 		docID = arg1.String()
 	} else if _id, found := doc["_id"].(string); found {
 		docID = _id
@@ -279,7 +280,7 @@ func doSave(r *js.Runner, info *v8.FunctionCallbackInfo) (any, error) {
 			return nil, err
 		}
 	}
-	asAdmin := info.Args()[2].Boolean()
+	asAdmin := args[2].Boolean()
 
 	eval := r.Client.(*evaluator)
 	if saved, err := eval.delegate.save(doc, docID, asAdmin); saved && err == nil {
@@ -290,13 +291,13 @@ func doSave(r *js.Runner, info *v8.FunctionCallbackInfo) (any, error) {
 }
 
 // 	delete(docID: string, revID: string | undefined, asAdmin: boolean) : boolean;
-func doDelete(r *js.Runner, info *v8.FunctionCallbackInfo) (any, error) {
-	docID := info.Args()[0].String()
+func doDelete(r *js.Runner, this *v8.Object, args []*v8.Value) (any, error) {
+	docID := args[0].String()
 	var revID string
-	if arg1 := info.Args()[1]; arg1.IsString() {
+	if arg1 := args[1]; arg1.IsString() {
 		revID = arg1.String()
 	}
-	asAdmin := info.Args()[2].Boolean()
+	asAdmin := args[2].Boolean()
 	eval := r.Client.(*evaluator)
 	return eval.delegate.delete(docID, revID, asAdmin)
 }
@@ -336,4 +337,40 @@ func returnAsJSON(result any, err error) (any, error) {
 	} else {
 		return string(jsonBytes), nil
 	}
+}
+
+// Converts & parses a JS string of JSON into a Go map.
+func jsonToGoMap(val *v8.Value) (map[string]any, error) {
+	if val.IsNullOrUndefined() {
+		return nil, nil
+	} else if jsonStr, ok := js.StringToGo(val); !ok {
+		return nil, fmt.Errorf("Unexpected error: instead of a string, got %s", val.DetailString())
+	} else {
+		var result map[string]any
+		err := json.Unmarshal([]byte(jsonStr), &result)
+		return result, err
+	}
+}
+
+// (This detects the way HTTP statuses are encoded into error messages by the class HTTPError in types.ts.)
+var kHTTPErrRegexp = regexp.MustCompile(`^(Error:\s*)?\[(\d\d\d)\]\s+(.*)`)
+
+// Looks for an HTTP status in an error message and returns it as an HTTPError; else returns nil.
+func unpackErrorStr(jsErrMessage string) error {
+	if m := kHTTPErrRegexp.FindStringSubmatch(jsErrMessage); m != nil {
+		if status, err := strconv.ParseUint(m[2], 10, 16); err == nil {
+			return &base.HTTPError{Status: int(status), Message: m[3]}
+		}
+	}
+	return nil
+}
+
+// Postprocesses an error returned from running JS code, detecting the HTTPError type defined in types.ts. If the error is a v8.JSError, looks for an HTTP status in brackets at the start of the message; if found, returns a base.HTTPError.
+func unpackError(err error) error {
+	if jsErr, ok := err.(*v8.JSError); ok {
+		if unpackedErr := unpackErrorStr(jsErr.Message); unpackedErr != nil {
+			return unpackedErr
+		}
+	}
+	return err
 }

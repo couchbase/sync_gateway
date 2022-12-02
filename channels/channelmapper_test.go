@@ -14,15 +14,10 @@ import (
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/js"
-	"github.com/robertkrimen/otto/underscore"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	v8 "rogchap.com/v8go" // Docs: https://pkg.go.dev/rogchap.com/v8go
 )
-
-func init() {
-	underscore.Disable() // It really slows down unit tests (by making otto.New take a lot longer)
-}
 
 func parse(jsonStr string) map[string]interface{} {
 	var parsed map[string]interface{}
@@ -43,7 +38,6 @@ func TestV8ValueToStringArray(t *testing.T) {
 	defer iso.Dispose()
 	ctx := v8.NewContext(iso)
 	value, _ := v8.JSONParse(ctx, `["foo", "bar", "baz"]`)
-	// Test for https://github.com/robertkrimen/otto/issues/24
 	strings := v8ValueToStringArray(value, context.Background())
 	assert.Equal(t, []string{"foo", "bar", "baz"}, strings)
 

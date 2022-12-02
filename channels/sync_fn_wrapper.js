@@ -61,14 +61,11 @@
 
 		// This is the function that's called to run the sync function:
 		return function (newDoc, oldDoc, meta, _realUserCtx) {
-			realUserCtx = _realUserCtx;
-
 			if (oldDoc) {
-				oldDoc = JSON.parse(oldDoc);
-				oldDoc._id = newDoc._id;
-			} else {
-				oldDoc = null;
+				oldDoc._id = newDoc._id
 			}
+
+			realUserCtx = _realUserCtx;
 
 			// Proxy userCtx that allows queries but not direct access to user/roles:
 			shouldValidate = (realUserCtx != null && realUserCtx.name != null);

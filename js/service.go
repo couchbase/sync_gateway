@@ -1,93 +1,96 @@
 package js
 
 import (
-	"github.com/couchbase/sync_gateway/base"
+	"context"
+
 	v8 "rogchap.com/v8go"
 )
 
-// Interface defining a JavaScript service belonging to a VM that can be instantiated by a Runner.
-type Service interface {
-	// The Service's registered name.
-	Name() string
-	// The global namespace
-	Global() *v8.ObjectTemplate
-	// The compiled script the Runner will run.
-	Script() *v8.UnboundScript
-	// If true, Runners from this Service can be reused for multiple calls.
-	Reusable() bool
+// A Service represents a JavaScript-based API that runs in a VM or VMPool.
+type Service struct {
+	host ServiceHost
+	id   serviceID
+	name string
 }
 
-// Factory/initialization function for services.
-// `base` is a BasicService that doesn't have a script yet. The function must call SetScript on it.
-// The function may either return `base` itself, or its own Service implementation that wraps it.
-type ServiceFactory func(base *BasicService) (Service, error)
+type serviceID uint32 // internal ID, used as an array index in VM and VMPool.
 
-// Base implementation of Service.
-// "Subclasses" can be created by embedding this in another struct.
-type BasicService struct {
-	name   string
-	vm     *VM
-	global *v8.ObjectTemplate
-	script *v8.UnboundScript
+// A provider of a JavaScript runtime for Services. VM and VMPool implement this.
+type ServiceHost interface {
+	Close()
+	registerService(factory TemplateFactory) serviceID
+	getRunner(*Service) (*Runner, error)
 }
 
-// Returns a ServiceFactory function for a BasicService with the given JavaScript.
-func BasicServiceFactory(fnSource string) ServiceFactory {
-	fnSource = `(` + fnSource + `)` // Allows a JS `function` stmt to be evaluated as a value
-	return func(service *BasicService) (Service, error) {
-		return service, service.SetScript(fnSource)
+// Creates a new Service in a ServiceHost (a VM or VMPool.)
+// The source code should be of the form `function(arg1,arg2…) {…body…; return result;}`.
+// If you have a more complex script, like one that defines several functions, use NewCustomService.
+func NewService(host ServiceHost, name string, jsFunctionSource string) *Service {
+	return NewCustomService(host, name, BasicTemplateFactory(jsFunctionSource))
+}
+
+// Creates a new Service in a ServiceHost (a VM or VMPool.)
+// The implementation can extend the Service's JavaScript template environment by defining globals
+// and/or callback functions.
+func NewCustomService(host ServiceHost, name string, factory TemplateFactory) *Service {
+	return &Service{
+		host: host,
+		id:   host.registerService(factory),
+		name: name,
 	}
 }
 
-func (s *BasicService) Name() string               { return s.name }
-func (s *BasicService) Global() *v8.ObjectTemplate { return s.global }
-func (s *BasicService) Script() *v8.UnboundScript  { return s.script }
-func (s *BasicService) Reusable() bool             { return true }
+// Factory/initialization function for Services that need to add JS globals or callbacks or
+// otherwise extend their runtime environment. They do this by operating on its Template.
+//
+// The function's parameter is a BasicTemplate that doesn't have a script yet.
+// The function MUST call its SetScript method.
+// The function may return the Template it was given, or it may instantiate its own struct that
+// implements Template (which presumably includes a pointer to the BasicTemplate) and return that.
+type TemplateFactory func(base *BasicTemplate) (Template, error)
 
-// Compiles JavaScript source code that becomes the service's script.
-// A ServiceFactory is responsible for calling this.
-func (service *BasicService) SetScript(sourceCode string) error {
-	var err error
-	service.script, err = service.vm.iso.CompileUnboundScript(sourceCode, service.name+".js", v8.CompileOptions{})
-	return err
+// The Service's name.
+func (service *Service) Name() string { return service.name }
+
+// The VM or VMPool that provides the Service's runtime environment.
+func (service *Service) Host() ServiceHost { return service.host }
+
+// Returns a Runner instance that can be used to call the Service's code.
+// This may be a new instance, or (if the Service's Template is reuseable) a recycled one.
+// You **MUST** call its Return method when you're through with it.
+//
+// - If the Service's host is a VMPool, this call will block while all the pool's VMs are in use.
+// - If the host is a VM, this call will fail if there is another Runner in use belonging to any
+//   Service hosted by that VM.
+func (service *Service) GetRunner() (*Runner, error) {
+	return service.host.getRunner(service)
 }
 
-// Defines a global `sg_log` function that writes to SG's log.
-func (service *BasicService) defineConsole() {
-	service.global.Set("sg_log", service.NewCallback(func(r *Runner, info *v8.FunctionCallbackInfo) (any, error) {
-		args := info.Args()
-		if len(args) >= 2 {
-			level := base.LogLevel(args[0].Integer())
-			msg := args[1].String()
-			extra := ""
-			for i := 2; i < len(args); i++ {
-				extra += " "
-				extra += args[i].DetailString()
+// A convenience wrapper around GetRunner that takes care of returning the Runner.
+// It simply returns whatever the callback returns.
+func (service *Service) WithRunner(fn func(*Runner) (any, error)) (any, error) {
+	runner, err := service.GetRunner()
+	if err != nil {
+		return nil, err
+	}
+	defer runner.Return()
+	return fn(runner)
+}
+
+// A high-level method that runs a service in a VM without your needing to interact with a Runner.
+// The arguments can be Go types or V8 Values; any types supported by VM.NewValue.
+// The result is converted back to a Go type.
+// If the function throws a JavaScript exception it's converted to a Go `error`.
+func (service *Service) Run(ctx context.Context, args ...any) (any, error) {
+	return service.WithRunner(func(r *Runner) (any, error) {
+		r.SetContext(ctx)
+		v8args, err := r.ConvertArgs(args...)
+		if err == nil {
+			var val *v8.Value
+			if val, err = r.Run(v8args...); err == nil {
+				return ValueToGo(val)
 			}
-			key := base.KeyJavascript
-			if level <= base.LevelWarn {
-				key = base.KeyAll // replicates behavior of base.WarnFctx, ErrorFctx
-			}
-			base.LogfTo(r.ContextOrDefault(), level, key, "%s%s", msg, base.UD(extra))
 		}
-		return nil, nil
-	}))
-}
-
-func (s *BasicService) NewObjectTemplate() *v8.ObjectTemplate { return s.vm.NewObjectTemplate() }
-func (s *BasicService) NewString(str string) *v8.Value        { return s.vm.NewString(str) }
-func (s *BasicService) NewValue(val any) (*v8.Value, error)   { return s.vm.NewValue(val) }
-
-// For convenience, Service callbacks get passed the Runner instance,
-// and return Go values -- allowed types are nil, numbers, bool, string, v8.Value, v8.Object.
-type ServiceCallback = func(*Runner, *v8.FunctionCallbackInfo) (any, error)
-
-// Creates a JS function-template object that calls back to Go code.
-func (s *BasicService) NewCallback(cb ServiceCallback) *v8.FunctionTemplate {
-	return s.vm.NewCallback(cb)
-}
-
-// Defines a JS global function that calls back to Go code.
-func (s *BasicService) GlobalCallback(name string, cb ServiceCallback) {
-	s.global.Set(name, s.NewCallback(cb), v8.ReadOnly)
+		return nil, err
+	})
 }

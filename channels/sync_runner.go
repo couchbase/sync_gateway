@@ -10,7 +10,6 @@ package channels
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"math"
 	"strconv"
@@ -46,22 +45,15 @@ func (runner *syncRunner) call(body map[string]interface{},
 	runner.roles = map[string][]string{}
 	runner.expiry = nil
 
-	// Convert the arguments to V8 values:
-	jsBody, err := runner.convertBodyToV8(body)
-	if err != nil {
-		return nil, err
-	}
-	jsMeta, err := runner.GoToV8(metaMap)
-	if err != nil {
-		return nil, err
-	}
-	jsCtx, err := runner.GoToV8(userCtx)
-	if err != nil {
-		return nil, err
-	}
-
 	// Call the sync fn:
-	_, err = runner.Run(jsBody, runner.NewString(oldBodyJSON), jsMeta, jsCtx)
+	if oldBodyJSON == "" {
+		oldBodyJSON = "null"
+	}
+	args, err := runner.ConvertArgs(body, js.JSONString(oldBodyJSON), metaMap, userCtx)
+	if err != nil {
+		return nil, err
+	}
+	_, err = runner.Run(args...)
 
 	// Extract the output:
 	output := runner.output
@@ -137,58 +129,6 @@ func (runner *syncRunner) addValueForUser(user *v8.Value, value *v8.Value, mappi
 }
 
 //////// UTILITIES:
-
-// Converts a document body to a V8 object for use in the sync function.
-// `json.Number` objects in the body are converted to JS numbers if that won't lose precision;
-// else they're converted to JS strings.
-// *This modifies the map in-place.*
-func (runner *syncRunner) convertBodyToV8(body map[string]interface{}) (*v8.Value, error) {
-	convertJSONNumbers(body)
-	return runner.GoToV8(body)
-}
-
-// subroutine; returns nil if the value is OK, else returns the value to substitute.
-func convertJSONNumbers(value interface{}) interface{} {
-	switch value := value.(type) {
-	case json.Number:
-		if asInt, err := value.Int64(); err == nil {
-			if asInt > javascriptMaxSafeInt || asInt < javascriptMinSafeInt {
-				// Integer will lose precision when used in javascript -- convert to string
-				return string(value)
-			}
-			return nil
-		} else {
-			numErr, _ := err.(*strconv.NumError)
-			if numErr.Err == strconv.ErrRange {
-				return string(value)
-			}
-		}
-
-		if _, err := value.Float64(); err == nil {
-			// Can't reliably detect loss of precision in float, due to number of variations in input float format
-			return nil
-		}
-		return string(value)
-	case map[string]interface{}:
-		for k, v := range value {
-			if cv := convertJSONNumbers(v); cv != nil {
-				value[k] = cv
-			}
-		}
-	case []interface{}:
-		for i, v := range value {
-			if cv := convertJSONNumbers(v); cv != nil {
-				value[i] = cv
-			}
-		}
-	default:
-	}
-	return nil
-}
-
-// Javscript max integer value (https://www.ecma-international.org/ecma-262/5.1/#sec-8.5)
-const javascriptMaxSafeInt = int64(1<<53 - 1)
-const javascriptMinSafeInt = -javascriptMaxSafeInt
 
 func compileAccessMap(input map[string][]string, prefix string) (AccessMap, error) {
 	access := make(AccessMap, len(input))
