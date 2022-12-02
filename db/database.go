@@ -2082,6 +2082,7 @@ func newDatabaseCollection(ctx context.Context, dbContext *DatabaseContext, data
 		dbContext.channelCache,
 		notifyChange,
 		dbContext.Options.CacheOptions,
+		false,
 	)
 	if err != nil {
 		base.DebugfCtx(ctx, base.KeyDCP, "Error initializing the change cache", err)

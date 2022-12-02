@@ -110,10 +110,14 @@ func (db *DatabaseCollection) GetDocumentWithRaw(ctx context.Context, docid stri
 	return doc, rawBucketDoc, nil
 }
 
-func (db *DatabaseCollection) GetDocWithXattr(key string, unmarshalLevel DocumentUnmarshalLevel) (doc *Document, rawBucketDoc *sgbucket.BucketDocument, err error) {
+func (c *DatabaseCollection) GetDocWithXattr(key string, unmarshalLevel DocumentUnmarshalLevel) (doc *Document, rawBucketDoc *sgbucket.BucketDocument, err error) {
+	return getDocWithXattr(c.dataStore, key, unmarshalLevel, c.userXattrKey())
+}
+
+func getDocWithXattr(dataStore base.DataStore, key string, unmarshalLevel DocumentUnmarshalLevel, userXattrKey string) (doc *Document, rawBucketDoc *sgbucket.BucketDocument, err error) {
 	rawBucketDoc = &sgbucket.BucketDocument{}
 	var getErr error
-	rawBucketDoc.Cas, getErr = db.dataStore.GetWithXattr(key, base.SyncXattrName, db.userXattrKey(), &rawBucketDoc.Body, &rawBucketDoc.Xattr, &rawBucketDoc.UserXattr)
+	rawBucketDoc.Cas, getErr = dataStore.GetWithXattr(key, base.SyncXattrName, userXattrKey, &rawBucketDoc.Body, &rawBucketDoc.Xattr, &rawBucketDoc.UserXattr)
 	if getErr != nil {
 		return nil, nil, getErr
 	}
@@ -2362,13 +2366,13 @@ func (context *DatabaseContext) ComputeRolesForUser(ctx context.Context, user au
 }
 
 // Checks whether a document has a mobile xattr.  Used when running in non-xattr mode to support no downtime upgrade.
-func (context *DatabaseCollection) checkForUpgrade(key string, unmarshalLevel DocumentUnmarshalLevel) (*Document, *sgbucket.BucketDocument) {
+func (c *DatabaseCollection) checkForUpgrade(key string, unmarshalLevel DocumentUnmarshalLevel) (*Document, *sgbucket.BucketDocument) {
 	// If we are using xattrs or Couchbase Server doesn't support them, an upgrade isn't going to be in progress
-	if context.UseXattrs() || !context.dataStore.IsSupported(sgbucket.BucketStoreFeatureXattrs) {
+	if c.UseXattrs() || !c.dataStore.IsSupported(sgbucket.BucketStoreFeatureXattrs) {
 		return nil, nil
 	}
 
-	doc, rawDocument, err := context.GetDocWithXattr(key, unmarshalLevel)
+	doc, rawDocument, err := c.GetDocWithXattr(key, unmarshalLevel)
 	if err != nil || doc == nil || !doc.HasValidSyncData() {
 		return nil, nil
 	}

@@ -70,6 +70,7 @@ type changeCache struct {
 	cfgEventCallback         base.CfgEventNotifyFunc // Callback for Cfg updates recieved over the caching feed
 	sgCfgPrefix              string                  // Prefix for SG Cfg doc keys
 	disableCleanSkippedQuery bool
+	principalOnly            bool // in principal only mode, finding channels is not necessary
 }
 
 type changeCacheStats struct {
@@ -158,7 +159,7 @@ func DefaultCacheOptions() CacheOptions {
 // notifyChange is an optional function that will be called to notify of channel changes.
 // After calling Init(), you must call .Start() to start useing the cache, otherwise it will be in a locked state
 // and callers will block on trying to obtain the lock.
-func (c *changeCache) Init(logCtx context.Context, dataStoreWithSequence DataStoreWithSequence, channelCache ChannelCache, notifyChange func(channels.Set), options *CacheOptions) error {
+func (c *changeCache) Init(logCtx context.Context, dataStoreWithSequence DataStoreWithSequence, channelCache ChannelCache, notifyChange func(channels.Set), options *CacheOptions, principalOnly bool) error {
 	c.logCtx = logCtx
 	c.dataStoreWithSequence = dataStoreWithSequence
 	c.notifyChange = notifyChange
@@ -168,6 +169,7 @@ func (c *changeCache) Init(logCtx context.Context, dataStoreWithSequence DataSto
 	c.skippedSeqs = NewSkippedSequenceList()
 	c.lastAddPendingTime = time.Now().UnixNano()
 	c.sgCfgPrefix = base.SGCfgPrefixWithGroupID(dataStoreWithSequence.groupID())
+	c.principalOnly = principalOnly
 
 	// init cache options
 	if options != nil {

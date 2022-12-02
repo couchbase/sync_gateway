@@ -521,25 +521,14 @@ func (context *DatabaseCollection) QueryChannels(ctx context.Context, channelNam
 }
 
 // Query to retrieve keys for the specified sequences.  View query uses star channel, N1QL query uses IndexAllDocs
-func (context *DatabaseCollection) QuerySequences(ctx context.Context, sequences []uint64) (sgbucket.QueryResultIterator, error) {
-
-	if len(sequences) == 0 {
-		return nil, errors.New("No sequences specified for QueryChannelsForSequences")
+func (dbc *DatabaseCollection) QuerySequences(ctx context.Context, sequences []uint64) (sgbucket.QueryResultIterator, error) {
+	options := querySequencesOptions{
+		dbStats:                   dbc.dbStats(),
+		useViews:                  dbc.useViews(),
+		useXattrs:                 dbc.UseXattrs(),
+		slowQueryWarningThreshold: dbc.slowQueryWarningThreshold(),
 	}
-
-	if context.useViews() {
-		opts := changesViewForSequencesOptions(sequences)
-		return context.dbCtx.ViewQueryWithStats(ctx, context.dataStore, DesignDocSyncGateway(), ViewChannels, opts)
-	}
-
-	// N1QL Query
-	sequenceQueryStatement := replaceSyncTokensQuery(QuerySequences.statement, context.UseXattrs())
-	sequenceQueryStatement = replaceIndexTokensQuery(sequenceQueryStatement, sgIndexes[IndexAllDocs], context.UseXattrs())
-
-	params := make(map[string]interface{})
-	params[QueryParamInSequences] = sequences
-
-	return N1QLQueryWithStats(ctx, context.dataStore, QuerySequences.name, sequenceQueryStatement, params, base.RequestPlus, QueryChannels.adhoc, context.dbStats(), context.slowQueryWarningThreshold())
+	return querySequences(ctx, dbc.dbCtx, dbc.dataStore, sequences, options)
 }
 
 // buildsChannelsQuery constructs the query statement and query parameters for a channels N1QL query.  Also used by unit tests to validate
