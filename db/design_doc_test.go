@@ -97,7 +97,7 @@ func TestRemoveDesignDocsUseViewsTrueAndFalse(t *testing.T) {
 
 	mapFunction := `function (doc, meta){ emit(); }`
 
-	viewStore, ok := base.AsViewStore(bucket.GetSingleDataStore())
+	viewStore, ok := base.AsViewStore(bucket.Bucket.DefaultDataStore())
 	require.True(t, ok)
 
 	err := viewStore.PutDDoc(DesignDocSyncGatewayPrefix+"_2.0", &sgbucket.DesignDoc{

@@ -185,7 +185,7 @@ func TestImportWithStaleBucketDocCorrectExpiry(t *testing.T) {
 			assert.NoError(t, errImportDoc, "Unexpected error")
 
 			// Make sure the doc in the bucket has expected XATTR
-			assertXattrSyncMetaRevGeneration(t, db.Bucket, key, testCase.expectedGeneration)
+			assertXattrSyncMetaRevGeneration(t, collection.dataStore, key, testCase.expectedGeneration)
 
 			// Verify the expiry has been preserved after the import
 			expiry, err = collection.dataStore.GetExpiry(key)
@@ -424,9 +424,9 @@ func TestImportNullDocRaw(t *testing.T) {
 	assert.True(t, importedDoc == nil, "Expected no imported doc")
 }
 
-func assertXattrSyncMetaRevGeneration(t *testing.T, bucket base.Bucket, key string, expectedRevGeneration int) {
+func assertXattrSyncMetaRevGeneration(t *testing.T, dataStore base.DataStore, key string, expectedRevGeneration int) {
 	xattr := map[string]interface{}{}
-	_, err := bucket.DefaultDataStore().GetWithXattr(key, base.SyncXattrName, "", nil, &xattr, nil)
+	_, err := dataStore.GetWithXattr(key, base.SyncXattrName, "", nil, &xattr, nil)
 	assert.NoError(t, err, "Error Getting Xattr")
 	revision, ok := xattr["rev"]
 	assert.True(t, ok)
