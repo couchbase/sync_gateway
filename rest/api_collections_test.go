@@ -162,6 +162,7 @@ func TestSingleCollectionDCP(t *testing.T) {
 	require.NoError(t, err)
 
 	rt := NewRestTester(t, &RestTesterConfig{
+		CustomTestBucket: tb,
 		DatabaseConfig: &DatabaseConfig{
 			DbConfig: DbConfig{
 				AutoImport: true,
