@@ -106,11 +106,7 @@ func (c *DatabaseCollection) exitChanges() chan struct{} {
 // GetCollectionID returns a collectionID. If couchbase server does not return collections, it will return base.DefaultCollectionID, like the default collection for a Couchbase Server that does support collections.
 func (c *DatabaseCollection) GetCollectionID() uint32 {
 	ds := base.GetBaseDataStore(c.dataStore)
-	collection, err := base.AsCollection(ds)
-	if err != nil {
-		return base.DefaultCollectionID
-	}
-	return collection.GetCollectionID()
+	return base.GetCollectionID(ds)
 }
 
 // GetRevisionCacheForTest allow accessing a copy of revision cache.

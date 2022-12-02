@@ -504,7 +504,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 	// Start DCP feed
 	base.InfofCtx(ctx, base.KeyDCP, "Starting mutation feed on bucket %v due to either channel cache mode or doc tracking (auto-import)", base.MD(bucket.GetName()))
 	cacheFeedStatsMap := dbContext.DbStats.Database().CacheFeedMapStats
-	err = dbContext.mutationListener.Start(bucket, cacheFeedStatsMap.Map)
+	err = dbContext.mutationListener.Start(bucket, cacheFeedStatsMap.Map, dbContext.Scopes, dbContext.MetadataStore)
 
 	// Check if there is an error starting the DCP feed
 	if err != nil {
@@ -717,6 +717,8 @@ func (context *DatabaseContext) Close(ctx context.Context) {
 	context.sequences.Stop()
 	context.mutationListener.Stop()
 	context.stopChangeCaches()
+	// Stop the channel cache and it's background tasks.
+	context.channelCache.Stop()
 	context.ImportListener.Stop()
 	if context.Heartbeater != nil {
 		context.Heartbeater.Stop()
@@ -761,7 +763,7 @@ func (context *DatabaseContext) RestartListener() error {
 	time.Sleep(2 * time.Second)
 	context.mutationListener.Init(context.Bucket.GetName(), context.Options.GroupID)
 	cacheFeedStatsMap := context.DbStats.Database().CacheFeedMapStats
-	if err := context.mutationListener.Start(context.Bucket, cacheFeedStatsMap.Map); err != nil {
+	if err := context.mutationListener.Start(context.Bucket, cacheFeedStatsMap.Map, context.Scopes, context.MetadataStore); err != nil {
 		return err
 	}
 	return nil
