@@ -4,7 +4,7 @@ import (
 	"sync"
 )
 
-// A thread-safe registry of service factory functions. Each is identified by a `serviceID`.
+// A thread-safe registry of service TemplateFactory functions. Each is identified by a `serviceID`.
 type servicesConfiguration struct {
 	mutex    sync.Mutex
 	registry []TemplateFactory
@@ -14,7 +14,7 @@ type servicesConfiguration struct {
 func (config *servicesConfiguration) getService(id serviceID) TemplateFactory {
 	config.mutex.Lock()
 	defer config.mutex.Unlock()
-	if /*config.registry != nil &&*/ int(id) < len(config.registry) {
+	if int(id) < len(config.registry) {
 		return config.registry[int(id)]
 	} else {
 		return nil

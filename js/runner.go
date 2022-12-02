@@ -21,7 +21,7 @@ type Runner struct {
 	vm        *VM             // The owning VM object
 	ctx       *v8.Context     // V8 object managing this execution context
 	mainFn    *v8.Function    // The entry-point function (returned by the Service's script)
-	goContext context.Context // Context value for use by Go callbacks
+	goContext context.Context // context.Context value for use by Go callbacks
 	Client    any             // You can put whatever you want here, to point back to your state
 }
 
@@ -56,7 +56,7 @@ func newRunner(vm *VM, template Template, id serviceID) (*Runner, error) {
 	}, nil
 }
 
-// Always call this when finished with a Runner.
+// Always call this when finished with a Runner acquired from Service.GetRunner.
 func (r *Runner) Return() {
 	r.vm.returnRunner(r)
 }

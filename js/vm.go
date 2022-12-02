@@ -11,34 +11,25 @@ import (
 // v8go docs:			https://pkg.go.dev/rogchap.com/v8go
 // General V8 API docs: https://v8.dev/docs/embed
 
-// Top-level object that represents a JavaScript VM, an "Isolate" in V8 terminology.
-// This doesn't do much on its own; it acts as a container for Service and Runner objects.
+// Represents a JavaScript virtual machine, an "Isolate" in V8 terminology.
+// This doesn't do much on its own; it acts as a host for Service and Runner objects.
 //
 // **Not thread-safe!** A VM instance must be used only on one goroutine at a time.
 // The VMPool takes care of this, by vending VM instances that are known not to be in use.
 type VM struct {
 	iso          *v8.Isolate            // A V8 virtual machine. NOT THREAD SAFE.
 	setupScript  *v8.UnboundScript      // JS code to set up a new v8.Context
-	config       *servicesConfiguration // Factory for services
-	services     []Template             // Already-created Templates
-	runners      []*Runner              // Available Runners
-	curRunner    *Runner                // Runner that's currently running in the iso
-	returnToPool *VMPool                // Pool to return this to, or nil
+	services     *servicesConfiguration // Factories for services
+	templates    []Template             // Already-created Templates, indexed by serviceID
+	runners      []*Runner              // Available Runners, indexed by serviceID
+	curRunner    *Runner                // Currently active Runner, if any
+	returnToPool *VMPool                // Pool to return me to, or nil
 }
 
 // Creates a JavaScript virtual machine that can run Services.
+// This object should be used only on a single goroutine at a time.
 func NewVM() *VM {
 	return newVM(&servicesConfiguration{})
-}
-
-// Creates a VM owned by a VMPool.
-func newVM(services *servicesConfiguration) *VM {
-	return &VM{
-		iso:      v8.NewIsolate(), // The V8 VM
-		config:   services,        // Factory fn for each service
-		services: []Template{},    // Instantiated Services
-		runners:  []*Runner{},     // Cached reusable Runners
-	}
 }
 
 // Shuts down a VM. It's a good idea to call this explicitly when done with it,
@@ -50,33 +41,44 @@ func (vm *VM) Close() {
 	for _, runner := range vm.runners {
 		runner.close()
 	}
+	vm.templates = nil
 	vm.iso.Dispose()
 	vm.iso = nil
 }
 
-// Must be called when finished using a VM!
-// Returns it to the VMPool it came from, or else closes it.
-func (vm *VM) Release() {
+//////// INTERNALS:
+
+func newVM(services *servicesConfiguration) *VM {
+	return &VM{
+		iso:       v8.NewIsolate(), // The V8 VM
+		services:  services,        // Factory fn for each service
+		templates: []Template{},    // Instantiated Services
+		runners:   []*Runner{},     // Cached reusable Runners
+	}
+}
+
+// Must be called when finished using a VM belonging to a VMPool!
+// (Harmless no-op when called on a standalone VM.)
+func (vm *VM) release() {
 	if vm.returnToPool != nil {
 		vm.returnToPool.returnVM(vm)
 	}
 }
 
 func (vm *VM) registerService(factory TemplateFactory) serviceID {
-	return vm.config.addService(factory)
+	return vm.services.addService(factory)
 }
 
 // Returns a Template for the given Service.
 func (vm *VM) getTemplate(service *Service) (Template, error) {
-	if int(service.id) < len(vm.services) {
-		return vm.services[service.id], nil
+	if int(service.id) < len(vm.templates) {
+		return vm.templates[service.id], nil
 	} else {
-		factory := vm.config.getService(service.id)
+		factory := vm.services.getService(service.id)
 		if factory == nil {
 			return nil, fmt.Errorf("js.VM has no service %q (%d)", service.name, int(service.id))
 		}
 
-		// Compile Underscore.js if it's not already done:
 		if vm.setupScript == nil {
 			// The setup script points console logging to SG, and loads the Underscore.js library:
 			var err error
@@ -86,25 +88,15 @@ func (vm *VM) getTemplate(service *Service) (Template, error) {
 			}
 		}
 
-		basic := &BasicTemplate{
-			name:   service.name,
-			vm:     vm,
-			global: v8.NewObjectTemplate(vm.iso),
-		}
-		basic.defineSgLog() // Maybe make this optional?
-		tmpl, err := factory(basic)
+		tmpl, err := newTemplate(vm, service.name, factory)
 		if err != nil {
-			return nil, errors.Wrapf(err, "failed to initialize JS service %q", service.name)
-		} else if tmpl == nil {
-			return nil, fmt.Errorf("js.TemplateFactory %q returned nil", service.name)
-		} else if tmpl.Script() == nil {
-			return nil, fmt.Errorf("js.TemplateFactory %q failed to initialize Service's script", service.name)
+			return nil, err
 		}
 
-		for int(service.id) >= len(vm.services) {
-			vm.services = append(vm.services, nil)
+		for int(service.id) >= len(vm.templates) {
+			vm.templates = append(vm.templates, nil)
 		}
-		vm.services[service.id] = tmpl
+		vm.templates[service.id] = tmpl
 		return tmpl, nil
 	}
 }
@@ -154,7 +146,7 @@ func (vm *VM) returnRunner(r *Runner) {
 	} else {
 		r.close()
 	}
-	vm.Release()
+	vm.release()
 }
 
 // Returns the Runner that owns the given V8 Context.
@@ -171,18 +163,8 @@ func (vm *VM) currentRunner(ctx *v8.Context) *Runner {
 	return vm.curRunner
 }
 
-//////// V8 UTILITIES:
-
 // The Underscore.js utility library, version 1.13.6, downloaded 2022-Nov-23 from
 // <https://underscorejs.org/underscore-umd-min.js>
 //
 //go:embed underscore-umd-min.js
 var kUnderscoreJS string
-
-const kSetupLoggingJS = `
-	console.trace = function(...args) {sg_log(5, ...args);};
-	console.debug = function(...args) {sg_log(4, ...args);};
-	console.log   = function(...args) {sg_log(3, ...args);};
-	console.warn  = function(...args) {sg_log(2, ...args);};
-	console.error = function(...args) {sg_log(1, ...args);};
-`

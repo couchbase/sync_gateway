@@ -1,6 +1,8 @@
 package js
 
 import (
+	"fmt"
+
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/pkg/errors"
 	v8 "rogchap.com/v8go"
@@ -122,6 +124,27 @@ func (t *BasicTemplate) NewValue(val any) (*v8.Value, error) { return newValue(t
 // Creates a JS string value.
 func (t *BasicTemplate) NewString(str string) *v8.Value { return newString(t.vm.iso, str) }
 
+//////// INTERNALS:
+
+func newTemplate(vm *VM, name string, factory TemplateFactory) (Template, error) {
+	basicTmpl := &BasicTemplate{
+		name:   name,
+		vm:     vm,
+		global: v8.NewObjectTemplate(vm.iso),
+	}
+	basicTmpl.defineSgLog() // Maybe make this optional?
+	tmpl, err := factory(basicTmpl)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to initialize JS service %q", name)
+	} else if tmpl == nil {
+		return nil, fmt.Errorf("js.TemplateFactory %q returned nil", name)
+	} else if tmpl.Script() == nil {
+		return nil, fmt.Errorf("js.TemplateFactory %q failed to initialize Service's script", name)
+	} else {
+		return tmpl, nil
+	}
+}
+
 // Defines a global `sg_log` function that writes to SG's log.
 func (service *BasicTemplate) defineSgLog() {
 	service.global.Set("sg_log", service.NewCallback(func(r *Runner, this *v8.Object, args []*v8.Value) (any, error) {
@@ -142,3 +165,12 @@ func (service *BasicTemplate) defineSgLog() {
 		return nil, nil
 	}))
 }
+
+// Sets up the standard console logging functions, delegating to `sg_log`.
+const kSetupLoggingJS = `
+	console.trace = function(...args) {sg_log(5, ...args);};
+	console.debug = function(...args) {sg_log(4, ...args);};
+	console.log   = function(...args) {sg_log(3, ...args);};
+	console.warn  = function(...args) {sg_log(2, ...args);};
+	console.error = function(...args) {sg_log(1, ...args);};
+`

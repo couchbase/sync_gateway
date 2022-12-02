@@ -11,14 +11,17 @@ licenses/APL2.txt.
 package rest
 
 import (
+	"fmt"
+	"log"
 	"net/http"
+	"strings"
 	"testing"
 
+	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
-
-/* OBSOLETE(?)
 
 // Tests ConvertJSONNumber handling for the sync function, and preservation of large numbers in the
 // stored document.
@@ -33,19 +36,19 @@ func TestDocumentNumbers(t *testing.T) {
 		{"maxInt64",
 			`{"number": 9223372036854775807}`,
 			"9223372036854775807",
-			"string"},
+			"number"},
 		{"minInt64",
 			`{"number": -9223372036854775808}`,
 			"-9223372036854775808",
-			"string"},
+			"number"},
 		{"greaterThanMaxInt64",
 			`{"number": 9223372036854775808}`,
 			"9223372036854775808",
-			"string"},
+			"number"},
 		{"lessThanMinInt64",
 			`{"number": -9223372036854775809}`,
 			"9223372036854775809",
-			"string"},
+			"number"},
 		{"javascriptMaxSafeInt",
 			`{"number": 9007199254740991}`,
 			"9007199254740991",
@@ -57,11 +60,11 @@ func TestDocumentNumbers(t *testing.T) {
 		{"javascriptGreaterThanMaxSafeInt",
 			`{"number": 9007199254740992}`,
 			"9007199254740992",
-			"string"},
+			"number"},
 		{"javascriptLessThanMinSafeInt",
 			`{"number": -9007199254740992}`,
 			"-9007199254740992",
-			"string"},
+			"number"},
 		{"simpleFloat",
 			`{"number": -234.56}`,
 			"-234.56",
@@ -84,6 +87,14 @@ func TestDocumentNumbers(t *testing.T) {
 			`"array":[12.34]`,
 			"number",
 		},
+		{"bigInt",
+			`{"number": 123456789012345678901234567890}`,
+			"123456789012345678901234567890",
+			"number"},
+		{"bigIntArray",
+			`{"array": [123456789012345678901234567890]}`,
+			`"array":[123456789012345678901234567890]`,
+			"number"},
 	}
 
 	// Use channels to ensure numbers are making it to sync function with expected formats
@@ -113,25 +124,26 @@ func TestDocumentNumbers(t *testing.T) {
 			RequireStatus(ts, getResponse, 200)
 
 			// Check the raw bytes, because unmarshalling the response would be another opportunity for the number to get modified
-			responseString := string(getResponse.Body.Bytes())
+			responseString := getResponse.Body.String()
 			if !strings.Contains(responseString, test.expectedString) {
 				ts.Errorf("Response does not contain the expected number format (%s).  Response: %s", test.name, responseString)
 			}
 
 			// Check channel assignment
+			// NOTE: Now that we use V8 instead of Otto, this is kind of pointless: V8 supports
+			// JavaScript "bigints" -- arbitrary-size integers -- so it's no longer necessary to
+			// marshal large integers to strings before passing them to the sync function.
 			getRawResponse := rt.SendAdminRequest("GET", fmt.Sprintf("/db/_raw/%s?redact=false", test.name), "")
 			var rawResponse RawResponse
 			require.NoError(ts, base.JSONUnmarshal(getRawResponse.Body.Bytes(), &rawResponse))
 			log.Printf("raw response: %s", getRawResponse.Body.Bytes())
 			assert.Equal(ts, 1, len(rawResponse.Sync.Channels))
-			assert.True(ts, HasActiveChannel(rawResponse.Sync.Channels, test.expectedFormatChannel), fmt.Sprintf("Expected channel %s was not found in document channels %v (%s)", test.expectedFormatChannel, rawResponse.Sync.Channels, test.name))
+			assert.True(ts, HasActiveChannel(rawResponse.Sync.Channels, test.expectedFormatChannel), fmt.Sprintf("Expected channel %s was not found in document channels %s (%s)", test.expectedFormatChannel, rawResponse.Sync.Channels, test.name))
 
 		})
 	}
 
 }
-
-*/
 
 func TestGuestReadOnly(t *testing.T) {
 	rt := NewRestTester(t, &RestTesterConfig{
