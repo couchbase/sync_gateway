@@ -79,6 +79,12 @@ func TestAttachmentMark(t *testing.T) {
 }
 
 func TestAttachmentSweep(t *testing.T) {
+
+	if !base.TestsUseDefaultCollection() {
+		// FIXME MB-53448 cannot close if high seqno is in another collection
+		t.Skip("MB-53448 - One Shot DCP cannot close if high seqno is in another collection (fix in 7.2)")
+	}
+
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Requires CBS")
 	}
@@ -132,8 +138,9 @@ func TestAttachmentCleanup(t *testing.T) {
 
 	testDb, ctx := setupTestDB(t)
 	defer testDb.Close(ctx)
-	dataStore := testDb.Bucket.DefaultDataStore()
-	collectionID := testDb.GetSingleDatabaseCollection().GetCollectionID()
+	collection := testDb.GetSingleDatabaseCollection()
+	dataStore := collection.dataStore
+	collectionID := collection.GetCollectionID()
 
 	makeMarkedDoc := func(docid string, compactID string) {
 		err := dataStore.SetRaw(docid, 0, nil, []byte("{}"))

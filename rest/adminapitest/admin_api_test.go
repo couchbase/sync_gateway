@@ -2664,7 +2664,8 @@ func TestDeleteFunctionsWhileDbOffline(t *testing.T) {
 	resp.RequireStatus(http.StatusCreated)
 
 	if base.TestUseXattrs() {
-		add, err := tb.GetSingleDataStore().Add("TestImportDoc", 0, db.Document{ID: "TestImportDoc", RevID: "1-abc"})
+		// default data store - we're not using a named scope/collection in this test
+		add, err := tb.DefaultDataStore().Add("TestImportDoc", 0, db.Document{ID: "TestImportDoc", RevID: "1-abc"})
 		require.NoError(t, err)
 		require.Equal(t, true, add)
 

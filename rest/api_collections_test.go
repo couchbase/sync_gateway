@@ -162,6 +162,7 @@ func TestSingleCollectionDCP(t *testing.T) {
 	require.NoError(t, err)
 
 	rt := NewRestTester(t, &RestTesterConfig{
+		CustomTestBucket: tb,
 		DatabaseConfig: &DatabaseConfig{
 			DbConfig: DbConfig{
 				AutoImport: true,
@@ -179,7 +180,7 @@ func TestSingleCollectionDCP(t *testing.T) {
 
 	const docID = "doc1"
 
-	ok, err := rt.Bucket().DefaultDataStore().AddRaw(docID, 0, []byte(`{"test":true}`))
+	ok, err := tc.AddRaw(docID, 0, []byte(`{"test":true}`))
 	require.NoError(t, err)
 	require.True(t, ok)
 

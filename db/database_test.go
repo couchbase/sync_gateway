@@ -2456,6 +2456,10 @@ func TestResyncUpdateAllDocChannels(t *testing.T) {
 }
 
 func TestTombstoneCompactionStopWithManager(t *testing.T) {
+
+	// FIXME (bbrks)
+	t.Skip("leaky data store needs passing down into database to trigger callbacks properly")
+
 	if !base.TestUseXattrs() {
 		t.Skip("Compaction requires xattrs")
 	}
@@ -2488,6 +2492,7 @@ func TestTombstoneCompactionStopWithManager(t *testing.T) {
 		}
 	}
 
+	// FIXME (bbrks): These callbacks are not firing due to leakyDataStore being set in test and not inside SG
 	if base.TestsDisableGSI() {
 		leakyDataStore.SetPostQueryCallback(func(ddoc, viewName string, params map[string]interface{}) {
 			callbackFunc()

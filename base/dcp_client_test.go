@@ -28,6 +28,11 @@ const oneShotDCPTimeout = 5 * time.Minute
 
 func TestOneShotDCP(t *testing.T) {
 
+	if !TestsUseDefaultCollection() {
+		// FIXME MB-53448 cannot close if high seqno is in another collection
+		t.Skip("MB-53448 - One Shot DCP cannot close if high seqno is in another collection (fix in 7.2)")
+	}
+
 	if UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
 	}
@@ -187,6 +192,11 @@ func TestTerminateDCPFeed(t *testing.T) {
 // changes in the VbUUID
 func TestDCPClientMultiFeedConsistency(t *testing.T) {
 
+	if !TestsUseDefaultCollection() {
+		// FIXME MB-53448 cannot close if high seqno is in another collection
+		t.Skip("MB-53448 - One Shot DCP cannot close if high seqno is in another collection (fix in 7.2)")
+	}
+
 	if UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
 	}
@@ -321,6 +331,11 @@ func TestDCPClientMultiFeedConsistency(t *testing.T) {
 
 // TestResumeInterruptedFeed uses persisted metadata to resume the feed
 func TestResumeStoppedFeed(t *testing.T) {
+
+	if !TestsUseDefaultCollection() {
+		// FIXME MB-53448 cannot close if high seqno is in another collection
+		t.Skip("MB-53448 - One Shot DCP cannot close if high seqno is in another collection (fix in 7.2)")
+	}
 
 	if UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
