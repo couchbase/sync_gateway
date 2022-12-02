@@ -717,6 +717,8 @@ func (context *DatabaseContext) Close(ctx context.Context) {
 	context.sequences.Stop()
 	context.mutationListener.Stop()
 	context.stopChangeCaches()
+	// Stop the channel cache and it's background tasks.
+	context.channelCache.Stop()
 	context.ImportListener.Stop()
 	if context.Heartbeater != nil {
 		context.Heartbeater.Stop()
