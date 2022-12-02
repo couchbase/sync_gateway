@@ -123,8 +123,14 @@ func TestNoCollectionsPutDocWithKeyspace(t *testing.T) {
 	tb := base.GetTestBucket(t)
 	defer tb.Close()
 
+	// Force use of no scopes
 	rt := NewRestTester(t, &RestTesterConfig{
 		CustomTestBucket: tb,
+		DatabaseConfig: &DatabaseConfig{
+			DbConfig: DbConfig{
+				AutoImport: true,
+			},
+		},
 	})
 	defer rt.Close()
 
