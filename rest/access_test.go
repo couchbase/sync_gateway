@@ -82,7 +82,7 @@ func TestStarAccess(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
-	a := auth.NewAuthenticator(rt.Bucket().DefaultDataStore(), nil, auth.DefaultAuthenticatorOptions())
+	a := auth.NewAuthenticator(rt.MetadataStore(), nil, auth.DefaultAuthenticatorOptions())
 	var changes struct {
 		Results []db.ChangeEntry
 	}
@@ -580,7 +580,7 @@ func TestAllDocsAccessControl(t *testing.T) {
 	}
 
 	// Create some docs:
-	a := auth.NewAuthenticator(rt.Bucket().DefaultDataStore(), nil, auth.DefaultAuthenticatorOptions())
+	a := auth.NewAuthenticator(rt.MetadataStore(), nil, auth.DefaultAuthenticatorOptions())
 	guest, err := a.GetUser("")
 	assert.NoError(t, err)
 	guest.SetDisabled(false)
