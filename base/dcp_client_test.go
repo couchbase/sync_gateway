@@ -28,9 +28,6 @@ const oneShotDCPTimeout = 60 * time.Second
 
 func TestOneShotDCP(t *testing.T) {
 
-	// CBG-2454
-	t.Skip("CBG-2454: temporarily disabled (the DCP feed doesn't close within the timeout in some environments/Jenkins)")
-
 	if UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
 	}
