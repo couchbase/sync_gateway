@@ -446,6 +446,11 @@ func TestAllDocsQuery(t *testing.T) {
 }
 
 func TestAccessQuery(t *testing.T) {
+
+	if !base.TestsUseDefaultCollection() {
+		t.Skip("Disabled for non-default collection until CBG-2554")
+	}
+
 	if base.UnitTestUrlIsWalrus() || base.TestsDisableGSI() {
 		t.Skip("This test is Couchbase Server and UseViews=false only")
 	}
@@ -492,6 +497,11 @@ func TestAccessQuery(t *testing.T) {
 }
 
 func TestRoleAccessQuery(t *testing.T) {
+
+	if !base.TestsUseDefaultCollection() {
+		t.Skip("Disabled for non-default collection until CBG-2554")
+	}
+
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test is Couchbase Server only")
 	}

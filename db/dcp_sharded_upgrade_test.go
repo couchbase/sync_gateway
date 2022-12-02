@@ -194,7 +194,6 @@ func TestShardedDCPUpgrade(t *testing.T) {
 	dataStore := tb.GetSingleDataStore()
 	tc, err := base.AsCollection(dataStore)
 	require.NoError(t, err)
-	require.Equal(t, base.DefaultCollection, tc.CollectionName())
 	bucketUUID, err := tb.UUID()
 	require.NoError(t, err, "get bucket UUID")
 

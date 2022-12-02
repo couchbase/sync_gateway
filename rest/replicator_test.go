@@ -332,7 +332,8 @@ func TestGroupIDReplications(t *testing.T) {
 		channel := "chan" + group
 		key := "doc" + group
 		body := fmt.Sprintf(`{"channels":["%s"]}`, channel)
-		added, err := activeBucket.GetSingleDataStore().Add(key, 0, []byte(body))
+		// default data store - we're not using a named scope/collection in this test
+		added, err := activeBucket.DefaultDataStore().Add(key, 0, []byte(body))
 		require.NoError(t, err)
 		require.True(t, added)
 

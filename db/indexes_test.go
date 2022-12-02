@@ -204,6 +204,11 @@ func TestPostUpgradeIndexesVersionChange(t *testing.T) {
 
 func TestRemoveIndexesUseViewsTrueAndFalse(t *testing.T) {
 
+	if !base.TestsUseDefaultCollection() {
+		// we could push the restriction up into SG such that views + non-default is disallowed for CBS and allowed for Walrus?
+		t.Skip("InitializeViews only works on default collection")
+	}
+
 	if base.TestsDisableGSI() {
 		t.Skip("This test only works with Couchbase Server and UseViews=false")
 	}
