@@ -47,7 +47,6 @@ func addActiveRT(t *testing.T, testBucket *base.TestBucket) (activeRT *rest.Rest
 	// Because RestTester has Sync Gateway create the database context and bucket based on the bucketSpec, we can't
 	// set up the leakyBucket wrapper prior to bucket creation.
 	// Instead, we need to modify the leaky bucket config (created for vbno handling) after the fact.
-	// FIXME: TOR
 	leakyBucket, ok := base.AsLeakyBucket(activeRT.GetDatabase().Bucket)
 	if ok {
 		ub := leakyBucket.GetUnderlyingBucket()

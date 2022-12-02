@@ -241,18 +241,6 @@ func (rt *RestTester) Bucket() base.Bucket {
 			rt.DatabaseConfig.UseViews = base.BoolPtr(base.TestsDisableGSI())
 		}
 
-		/* FIXME: TOR
-		collection, collectionErr := base.AsCollection(rt.TestBucket.GetSingleDataStore())
-		if collectionErr == nil && rt.DatabaseConfig.Scopes == nil && collection.Spec.Scope != nil && collection.Spec.Collection != nil {
-			rt.DatabaseConfig.Scopes = ScopesConfig{
-				*collection.Spec.Scope: ScopeConfig{
-					Collections: map[string]CollectionConfig{
-						*collection.Spec.Collection: {},
-					},
-				},
-			}
-		}
-		*/
 		// numReplicas set to 0 for test buckets, since it should assume that there may only be one indexing node.
 		numReplicas := uint(0)
 		rt.DatabaseConfig.NumIndexReplicas = &numReplicas

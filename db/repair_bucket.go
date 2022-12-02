@@ -134,7 +134,7 @@ func (r *RepairBucket) InitFrom(params RepairBucketParams) *RepairBucket {
 // If it's iterating a result page and sees a doc with the start key (eg, doc3 in above), it will ignore it so it doesn't process it twice
 // Stop condition: if NumProcessed is 0, because the only doc in result set had already been processed.
 func (r RepairBucket) RepairBucket() (results []RepairBucketResult, err error) {
-	// FIXME: TOR
+	// Disabled due to REST API being disabled and not working with collections CBG-2594
 	/*
 	   logCtx := context.TODO()
 	   base.InfofCtx(logCtx, base.KeyCRUD, "RepairBucket() invoked")

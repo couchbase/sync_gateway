@@ -265,49 +265,59 @@ func TestRemoveIndexesUseViewsTrueAndFalse(t *testing.T) {
 }
 
 func TestRemoveObsoleteIndexOnError(t *testing.T) {
-	// FIXME: TOR
-	/*
-		if base.TestsDisableGSI() {
-			t.Skip("This test only works with Couchbase Server and UseViews=false")
-		}
+	if base.TestsDisableGSI() {
+		t.Skip("This test only works with Couchbase Server and UseViews=false")
+	}
 
-		db, ctx := setupTestDB(t)
-		defer db.Close(ctx)
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
 
-		leakyBucket := base.NewLeakyBucket(db.Bucket, base.LeakyBucketConfig{DropIndexErrorNames: []string{"sg_access_1", "sg_access_x1"}})
-		copiedIndexes := copySGIndexes(sgIndexes)
-		require.True(t, db.Bucket.IsSupported(sgbucket.BucketStoreFeatureN1ql))
+	leakyBucket := base.NewLeakyBucket(db.Bucket, base.LeakyBucketConfig{DropIndexErrorNames: []string{"sg_access_1", "sg_access_x1"}})
 
-		// Use existing versions of IndexAccess and IndexChannels and create an old version that will be removed by obsolete
-		// indexes. Resulting from the removal candidates for removeObsoleteIndexes will be:
-		// All previous versions and opposite of current xattr setting eg. for this test ran with non-xattrs:
-		// [sg_channels_x2 sg_channels_x1 sg_channels_1 sg_access_x2 sg_access_x1 sg_access_1]
-		testIndexes := map[SGIndexType]SGIndex{}
+	// TODO: CBG-2533 Multi-collection removal (iterate over each collection here?)
+	dataStore := db.Bucket.DefaultDataStore()
 
-		accessIndex := copiedIndexes[IndexAccess]
-		accessIndex.version = 2
-		accessIndex.previousVersions = []int{1}
-		testIndexes[IndexAccess] = accessIndex
+	leakyDataStore := base.NewLeakyDataStore(leakyBucket, dataStore, &base.LeakyBucketConfig{DropIndexErrorNames: []string{"sg_access_1", "sg_access_x1"}})
 
-		channelIndex := copiedIndexes[IndexChannels]
-		channelIndex.version = 2
-		channelIndex.previousVersions = []int{1}
-		testIndexes[IndexChannels] = channelIndex
-
-		removedIndex, removeErr := removeObsoleteIndexes(leakyBucket, false, db.UseXattrs(), db.UseViews(), testIndexes)
-		assert.NoError(t, removeErr)
-
-		if base.TestUseXattrs() {
-			assert.Contains(t, removedIndex, "sg_channels_x1")
-		} else {
-			assert.Contains(t, removedIndex, "sg_channels_1")
-		}
-
+	defer func() {
 		// Restore indexes after test
-		n1qlStore, _ := base.AsN1QLStore(db.Bucket)
+		n1qlStore, ok := base.AsN1QLStore(dataStore)
+		assert.True(t, ok)
 		err := InitializeIndexes(n1qlStore, db.UseXattrs(), 0, false, db.IsServerless())
 		assert.NoError(t, err)
-	*/
+
+	}()
+	copiedIndexes := copySGIndexes(sgIndexes)
+	require.True(t, db.Bucket.IsSupported(sgbucket.BucketStoreFeatureN1ql))
+
+	// Use existing versions of IndexAccess and IndexChannels and create an old version that will be removed by obsolete
+	// indexes. Resulting from the removal candidates for removeObsoleteIndexes will be:
+	// All previous versions and opposite of current xattr setting eg. for this test ran with non-xattrs:
+	// [sg_channels_x2 sg_channels_x1 sg_channels_1 sg_access_x2 sg_access_x1 sg_access_1]
+	testIndexes := map[SGIndexType]SGIndex{}
+
+	accessIndex := copiedIndexes[IndexAccess]
+	accessIndex.version = 2
+	accessIndex.previousVersions = []int{1}
+	testIndexes[IndexAccess] = accessIndex
+
+	channelIndex := copiedIndexes[IndexChannels]
+	channelIndex.version = 2
+	channelIndex.previousVersions = []int{1}
+	testIndexes[IndexChannels] = channelIndex
+
+	n1qlStore, ok := base.AsN1QLStore(leakyDataStore)
+	require.True(t, ok)
+
+	removedIndex, removeErr := removeObsoleteIndexes(n1qlStore, false, db.UseXattrs(), db.UseViews(), testIndexes)
+	assert.NoError(t, removeErr)
+
+	if base.TestUseXattrs() {
+		assert.Contains(t, removedIndex, "sg_channels_x1")
+	} else {
+		assert.Contains(t, removedIndex, "sg_channels_1")
+	}
+
 }
 
 func TestIsIndexerError(t *testing.T) {

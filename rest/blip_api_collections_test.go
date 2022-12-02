@@ -21,9 +21,6 @@ import (
 )
 
 func TestBlipGetCollections(t *testing.T) {
-	// FIXME (tor) needs RestTester collection support
-	t.Skip("needs RestTester collection support")
-
 	// FIXME as part of CBG-2203 to enable subtest checkpointExistsWithErrorInNonDefaultCollection
 	base.TestRequiresCollections(t)
 
