@@ -1511,6 +1511,10 @@ func TestDocIDs(t *testing.T) {
 
 func TestUpdateDesignDoc(t *testing.T) {
 
+	if !base.TestsUseDefaultCollection() {
+		t.Skip("Design docs not supported for non-default collection")
+	}
+
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 

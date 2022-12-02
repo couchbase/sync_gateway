@@ -507,7 +507,7 @@ func TestResync(t *testing.T) {
 				assert.NoError(t, err)
 
 				var val interface{}
-				_, err = rt.Bucket().DefaultDataStore().Get(rt.GetDatabase().ResyncManager.GetHeartbeatDocID(t), &val)
+				_, err = rt.MetadataStore().Get(rt.GetDatabase().ResyncManager.GetHeartbeatDocID(t), &val)
 
 				if resyncManagerStatus.State == db.BackgroundProcessStateCompleted && base.IsDocNotFoundError(err) {
 					return true

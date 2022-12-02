@@ -318,6 +318,11 @@ func (rt *RestTester) Bucket() base.Bucket {
 	return rt.TestBucket.Bucket
 }
 
+// MetadataStore returns the datastore for the database on the RestTester
+func (rt *RestTester) MetadataStore() base.DataStore {
+	return rt.GetDatabase().MetadataStore
+}
+
 // LeakyBucket gets the bucket from the RestTester as a leaky bucket allowing for callbacks to be set on the fly.
 // The RestTester must have been set up to create and use a leaky bucket by setting leakyBucketConfig in the RT
 // config when calling NewRestTester.
