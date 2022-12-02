@@ -54,9 +54,9 @@ func TestRemoveObsoleteDesignDocs(t *testing.T) {
 
 	// Verify creation was successful
 	base.RequireAllAssertions(t,
-		assertDesignDocExists(t, bucket, DesignDocSyncGatewayPrefix),
-		assertDesignDocExists(t, bucket, DesignDocSyncHousekeepingPrefix),
-		assertDesignDocExists(t, bucket, "sync_gateway_user_ddoc"),
+		assertDesignDocExists(t, viewStore, DesignDocSyncGatewayPrefix),
+		assertDesignDocExists(t, viewStore, DesignDocSyncHousekeepingPrefix),
+		assertDesignDocExists(t, viewStore, "sync_gateway_user_ddoc"),
 	)
 
 	// Invoke removal in preview mode
@@ -69,9 +69,9 @@ func TestRemoveObsoleteDesignDocs(t *testing.T) {
 
 	// Re-verify ddocs still exist (preview)
 	base.RequireAllAssertions(t,
-		assertDesignDocExists(t, bucket, DesignDocSyncGatewayPrefix),
-		assertDesignDocExists(t, bucket, DesignDocSyncHousekeepingPrefix),
-		assertDesignDocExists(t, bucket, "sync_gateway_user_ddoc"),
+		assertDesignDocExists(t, viewStore, DesignDocSyncGatewayPrefix),
+		assertDesignDocExists(t, viewStore, DesignDocSyncHousekeepingPrefix),
+		assertDesignDocExists(t, viewStore, "sync_gateway_user_ddoc"),
 	)
 
 	// Invoke removal in non-preview mode
@@ -83,9 +83,9 @@ func TestRemoveObsoleteDesignDocs(t *testing.T) {
 
 	// Verify ddocs are in expected state
 	base.RequireAllAssertions(t,
-		assertDesignDocNotExists(t, bucket, DesignDocSyncGatewayPrefix),
-		assertDesignDocNotExists(t, bucket, DesignDocSyncHousekeepingPrefix),
-		assertDesignDocExists(t, bucket, "sync_gateway_user_ddoc"),
+		assertDesignDocNotExists(t, viewStore, DesignDocSyncGatewayPrefix),
+		assertDesignDocNotExists(t, viewStore, DesignDocSyncHousekeepingPrefix),
+		assertDesignDocExists(t, viewStore, "sync_gateway_user_ddoc"),
 	)
 }
 
@@ -127,10 +127,10 @@ func TestRemoveDesignDocsUseViewsTrueAndFalse(t *testing.T) {
 
 	// Verify creation was successful
 	base.RequireAllAssertions(t,
-		assertDesignDocExists(t, bucket, DesignDocSyncGatewayPrefix+"_2.0"),
-		assertDesignDocExists(t, bucket, DesignDocSyncHousekeepingPrefix+"_2.0"),
-		assertDesignDocExists(t, bucket, DesignDocSyncGatewayPrefix+"_2.1"),
-		assertDesignDocExists(t, bucket, DesignDocSyncHousekeepingPrefix+"_2.1"),
+		assertDesignDocExists(t, viewStore, DesignDocSyncGatewayPrefix+"_2.0"),
+		assertDesignDocExists(t, viewStore, DesignDocSyncHousekeepingPrefix+"_2.0"),
+		assertDesignDocExists(t, viewStore, DesignDocSyncGatewayPrefix+"_2.1"),
+		assertDesignDocExists(t, viewStore, DesignDocSyncHousekeepingPrefix+"_2.1"),
 	)
 
 	useViewsTrueRemovalPreview := []string{"sync_gateway_2.0", "sync_housekeeping_2.0"}
@@ -179,8 +179,8 @@ func TestRemoveObsoleteDesignDocsErrors(t *testing.T) {
 
 	// Verify creation was successful
 	base.RequireAllAssertions(t,
-		assertDesignDocExists(t, bucket, DesignDocSyncGatewayPrefix+"_test"),
-		assertDesignDocExists(t, bucket, DesignDocSyncHousekeepingPrefix+"_test"),
+		assertDesignDocExists(t, viewStore, DesignDocSyncGatewayPrefix+"_test"),
+		assertDesignDocExists(t, viewStore, DesignDocSyncHousekeepingPrefix+"_test"),
 	)
 
 	leakyDataStore, ok := base.AsLeakyDataStore(bucket.DefaultDataStore())
