@@ -373,7 +373,7 @@ func TestDBOfflinePostResync(t *testing.T) {
 		assert.NoError(t, err)
 
 		var val interface{}
-		_, err = rt.Bucket().DefaultDataStore().Get(rt.GetDatabase().ResyncManager.GetHeartbeatDocID(t), &val)
+		_, err = rt.MetadataStore().Get(rt.GetDatabase().ResyncManager.GetHeartbeatDocID(t), &val)
 
 		return status.State == db.BackgroundProcessStateCompleted && base.IsDocNotFoundError(err)
 	})
@@ -423,7 +423,7 @@ func TestDBOfflineSingleResync(t *testing.T) {
 		assert.NoError(t, err)
 
 		var val interface{}
-		_, err = rt.Bucket().DefaultDataStore().Get(rt.GetDatabase().ResyncManager.GetHeartbeatDocID(t), &val)
+		_, err = rt.MetadataStore().Get(rt.GetDatabase().ResyncManager.GetHeartbeatDocID(t), &val)
 
 		return status.State == db.BackgroundProcessStateCompleted && base.IsDocNotFoundError(err)
 	})
@@ -770,11 +770,11 @@ func TestResyncRegenerateSequences(t *testing.T) {
 	response = rt.SendAdminRequest("PUT", fmt.Sprintf("/db/_user/%s", username), fmt.Sprintf(`{"name":"%s", "password":"letmein", "admin_channels":["channel_1"], "admin_roles": ["%s"]}`, username, role))
 	RequireStatus(t, response, http.StatusCreated)
 
-	_, err := rt.Bucket().DefaultDataStore().Get(base.RolePrefix+"role1", &body)
+	_, err := rt.MetadataStore().Get(base.RolePrefix+"role1", &body)
 	assert.NoError(t, err)
 	role1SeqBefore := body["sequence"].(float64)
 
-	_, err = rt.Bucket().DefaultDataStore().Get(base.UserPrefix+"user1", &body)
+	_, err = rt.MetadataStore().Get(base.UserPrefix+"user1", &body)
 	assert.NoError(t, err)
 	user1SeqBefore := body["sequence"].(float64)
 
@@ -826,11 +826,11 @@ func TestResyncRegenerateSequences(t *testing.T) {
 	WaitAndAssertBackgroundManagerState(t, db.BackgroundProcessStateCompleted, rt.GetDatabase().ResyncManager.GetRunState)
 	WaitAndAssertBackgroundManagerExpiredHeartbeat(t, rt.GetDatabase().ResyncManager)
 
-	_, err = rt.Bucket().DefaultDataStore().Get(base.RolePrefix+"role1", &body)
+	_, err = rt.MetadataStore().Get(base.RolePrefix+"role1", &body)
 	assert.NoError(t, err)
 	role1SeqAfter := body["sequence"].(float64)
 
-	_, err = rt.Bucket().DefaultDataStore().Get(base.UserPrefix+"user1", &body)
+	_, err = rt.MetadataStore().Get(base.UserPrefix+"user1", &body)
 	assert.NoError(t, err)
 	user1SeqAfter := body["sequence"].(float64)
 
