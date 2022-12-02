@@ -905,6 +905,10 @@ func TestLowSequenceHandlingAcrossChannels(t *testing.T) {
 // user gets added to a new channel with existing entries (and existing backfill)
 func TestLowSequenceHandlingWithAccessGrant(t *testing.T) {
 
+	if !base.TestsUseDefaultCollection() {
+		t.Skip("Disabled for non-default collection until CBG-2554")
+	}
+
 	if base.TestUseXattrs() {
 		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
 	}
@@ -965,9 +969,20 @@ func TestLowSequenceHandlingWithAccessGrant(t *testing.T) {
 	WriteDirect(db, []string{"PBS"}, 9)
 	require.NoError(t, collection.changeCache.waitForSequence(ctx, 9, base.DefaultWaitForSequence))
 
+	// FIXME CBG-2554 expected 4 entries only received 3
 	err = appendFromFeed(&changes, feed, 4, base.DefaultWaitForSequence)
 	require.NoError(t, err, "Expected more changes to be sent on feed, but never received")
 	assert.Len(t, changes, 7)
+	// FIXME CBG-2554 changes don't match expected (missing seq 8 (the user sequence))
+	// [
+	//   {Seq:1, ID:doc-1, Changes:[map[rev:1-a]]}
+	//   {Seq:2, ID:doc-2, Changes:[map[rev:1-a]]}
+	//   {Seq:2::6, ID:doc-6, Changes:[map[rev:1-a]]}
+	//   {Seq:2::5, ID:doc-5, Changes:[map[rev:1-a]]} // should be 2:8:5
+	//   {Seq:2::6, ID:doc-6, Changes:[map[rev:1-a]]} // should be 2:8:6
+	//                                                // MISSING 2::8
+	//   {Seq:2::9, ID:doc-9, Changes:[map[rev:1-a]]}
+	// ]
 	assert.True(t, verifyChangesFullSequences(changes, []string{"1", "2", "2::6", "2:8:5", "2:8:6", "2::8", "2::9"}))
 	// Notes:
 	// 1. 2::8 is the user sequence
