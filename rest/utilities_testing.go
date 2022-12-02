@@ -235,6 +235,8 @@ func (rt *RestTester) Bucket() base.Bucket {
 		if rt.DatabaseConfig == nil {
 			// If no db config was passed in, create one
 			rt.DatabaseConfig = &DatabaseConfig{}
+			// Configure non default collection by default
+			rt.DatabaseConfig.Scopes = getScopesConfig(rt.TB, testBucket)
 		}
 
 		if rt.DatabaseConfig.UseViews == nil {
@@ -268,29 +270,6 @@ func (rt *RestTester) Bucket() base.Bucket {
 		}
 
 		if rt.leakyBucketConfig != nil {
-			// Scopes and collections have to be set on the bucket being passed in for the db to use.
-			// WIP: Collections Phase 1 - Grab just one scope/collection from the defined set.
-			// Phase 2 (multi collection) means DatabaseContext needs a set of BucketSpec/Collections, not just one...
-			/* FIXME: TOR
-			var scope, collection *string
-			for scopeName, scopeConfig := range rt.RestTesterConfig.DatabaseConfig.Scopes {
-				scope = &scopeName
-				for collectionName := range scopeConfig.Collections {
-					collection = &collectionName
-					break
-				}
-			}
-			if scope != nil && collection != nil {
-				collectionBucket, err := base.AsCollection(testBucket.Bucket)
-				if err != nil {
-					rt.TB.Fatalf("Could not get collection from bucket with type %T: %v", testBucket.Bucket, err)
-				}
-
-				collectionBucket.Bucket.Spec.Scope = scope
-				collectionBucket.Bucket.Spec.Collection = collection
-				collectionBucket.Collection = collectionBucket.Collection.Bucket().Scope(*scope).Collection(*collection)
-			}
-			*/
 			_, err = rt.RestTesterServerContext.AddDatabaseFromConfigWithBucket(ctx, rt.TB, *rt.DatabaseConfig, testBucket.Bucket)
 		} else {
 			_, err = rt.RestTesterServerContext.AddDatabaseFromConfig(ctx, *rt.DatabaseConfig)
@@ -321,6 +300,24 @@ func (rt *RestTester) Bucket() base.Bucket {
 // MetadataStore returns the datastore for the database on the RestTester
 func (rt *RestTester) MetadataStore() base.DataStore {
 	return rt.GetDatabase().MetadataStore
+}
+
+// getScopesConfig sets up a ScopesConfig from a TestBucket and uses a non default collection if available.
+func getScopesConfig(t testing.TB, testBucket *base.TestBucket) ScopesConfig {
+	// Get a datastore as provided by the test
+	singleDataStore := testBucket.GetSingleDataStore()
+	dataStoreName, ok := base.AsDataStoreName(singleDataStore)
+	require.True(t, ok)
+	if base.IsDefaultCollection(dataStoreName.ScopeName(), dataStoreName.CollectionName()) {
+		return nil
+	}
+	return ScopesConfig{
+		dataStoreName.ScopeName(): ScopeConfig{
+			Collections: map[string]CollectionConfig{
+				dataStoreName.CollectionName(): {},
+			},
+		},
+	}
 }
 
 // LeakyBucket gets the bucket from the RestTester as a leaky bucket allowing for callbacks to be set on the fly.
