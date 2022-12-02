@@ -243,6 +243,11 @@ func TestAttachmentMarkAndSweepAndCleanup(t *testing.T) {
 		t.Skip("Requires CBS")
 	}
 
+	if !base.TestsUseDefaultCollection() {
+		// FIXME MB-53448 cannot close if high seqno is in another collection
+		t.Skip("MB-53448 - One Shot DCP cannot close if high seqno is in another collection (fix in 7.2)")
+	}
+
 	testDb, ctx := setupTestDB(t)
 	defer testDb.Close(ctx)
 	dataStore := testDb.Bucket.DefaultDataStore()
@@ -563,6 +568,11 @@ func TestAttachmentProcessError(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
+	if !base.TestsUseDefaultCollection() {
+		// FIXME MB-53448 cannot close if high seqno is in another collection
+		t.Skip("MB-53448 - One Shot DCP cannot close if high seqno is in another collection (fix in 7.2)")
+	}
+
 	b := base.GetTestBucket(t).LeakyBucketClone(base.LeakyBucketConfig{
 		SetXattrCallback: func(key string) error {
 			return fmt.Errorf("some error")
@@ -843,6 +853,11 @@ func createDocWithInBodyAttachment(t *testing.T, ctx context.Context, docID stri
 // May sometimes fail if docsToCreate is not high enough
 func TestAttachmentCompactIncorrectStat(t *testing.T) {
 	base.LongRunningTest(t)
+
+	if !base.TestsUseDefaultCollection() {
+		// FIXME MB-53448 cannot close if high seqno is in another collection
+		t.Skip("MB-53448 - One Shot DCP cannot close if high seqno is in another collection (fix in 7.2)")
+	}
 
 	const docsToCreate = 10_000
 	if base.UnitTestUrlIsWalrus() {
