@@ -72,6 +72,9 @@ func (pool *VMPool) PurgeUnusedVMs() {
 //////// INTERNALS:
 
 func (pool *VMPool) registerService(factory TemplateFactory) serviceID {
+	if pool.services == nil {
+		panic("You are calling an uninitialized VMPool")
+	}
 	return pool.services.addService(factory)
 }
 

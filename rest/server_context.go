@@ -1014,7 +1014,7 @@ func (sc *ServerContext) processEventHandlersForEvent(ctx context.Context, event
 	for _, event := range events {
 		switch event.HandlerType {
 		case "webhook":
-			wh, err := db.NewWebhook(event.Url, event.Filter, event.Timeout, event.Options)
+			wh, err := db.NewWebhook(event.Url, event.Filter, &dbcontext.V8VMs, event.Timeout, event.Options)
 			if err != nil {
 				base.WarnfCtx(ctx, "Error creating webhook %v", err)
 				return err

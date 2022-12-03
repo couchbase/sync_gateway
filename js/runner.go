@@ -217,7 +217,11 @@ func (r *Runner) NewValue(val any) (v8Val *v8.Value, err error) {
 	v8Val, err = newValue(r.vm.iso, val)
 	if err != nil {
 		if jsonStr, ok := val.(JSONString); ok {
-			return r.JSONParse(string(jsonStr))
+			if jsonStr != "" {
+				return r.JSONParse(string(jsonStr))
+			} else {
+				return r.NullValue(), nil
+			}
 		} else if jsonData, jsonErr := json.Marshal(val); jsonErr == nil {
 			return r.JSONParse(string(jsonData))
 		}
@@ -242,7 +246,10 @@ func (r *Runner) NewJSONString(val any) (*v8.Value, error) { return newJSONStrin
 func (r *Runner) JSONParse(json string) (*v8.Value, error) { return v8.JSONParse(r.ctx, json) }
 
 // Returns a value representing JavaScript 'undefined'.
-func (r *Runner) Undefined() *v8.Value { return v8.Undefined(r.vm.iso) }
+func (r *Runner) UndefinedValue() *v8.Value { return v8.Undefined(r.vm.iso) }
+
+// Returns a value representing JavaScript 'null'.
+func (r *Runner) NullValue() *v8.Value { return v8.Null(r.vm.iso) }
 
 //////// CONVERTING JAVASCRIPT VALUES BACK TO GO:
 

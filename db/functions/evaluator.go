@@ -221,7 +221,7 @@ func (eval *evaluator) callGraphQL(query string, operationName string, variables
 
 // Encodes credentials as 3 parameters to pass to JS.
 func (eval *evaluator) v8Credentials() (user *v8.Value, roles *v8.Value, channels *v8.Value) {
-	undef := eval.runner.Undefined()
+	undef := eval.runner.UndefinedValue()
 	if eval.user != nil {
 		user = eval.runner.NewString(eval.user.Name)
 	} else {

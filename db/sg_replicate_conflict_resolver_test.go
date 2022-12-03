@@ -13,6 +13,7 @@ package db
 import (
 	"testing"
 
+	"github.com/couchbase/sync_gateway/js"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -96,7 +97,7 @@ func TestCustomConflictResolver(t *testing.T) {
 		},
 		{
 			name: "merge",
-			resolverSource: `function(conflict) { 
+			resolverSource: `function(conflict) {
 				var mergedDoc = new Object();
 				mergedDoc.prop = conflict.LocalDocument.prop + conflict.RemoteDocument.prop;
 				return mergedDoc;
@@ -107,7 +108,7 @@ func TestCustomConflictResolver(t *testing.T) {
 		},
 		{
 			name: "mergeDelete",
-			resolverSource: `function(conflict) { 
+			resolverSource: `function(conflict) {
 				return null;
 			}`,
 			localDocument:  Body{"_rev": "2-abc", "prop": "foo"},
@@ -116,7 +117,7 @@ func TestCustomConflictResolver(t *testing.T) {
 		},
 		{
 			name: "invokeDefault",
-			resolverSource: `function(conflict) { 
+			resolverSource: `function(conflict) {
 				return defaultPolicy(conflict);
 			}`,
 			localDocument:  Body{"_rev": "2-abc", "prop": "foo"},
@@ -125,7 +126,7 @@ func TestCustomConflictResolver(t *testing.T) {
 		},
 		{
 			name: "invokeDefaultWithInvalidValue",
-			resolverSource: `function(conflict) { 
+			resolverSource: `function(conflict) {
 				return defaultPolicy(conflict.LocalDocument);
 			}`,
 			localDocument:  Body{"_rev": "2-abc", "prop": "foo"},
@@ -134,7 +135,7 @@ func TestCustomConflictResolver(t *testing.T) {
 		},
 		{
 			name: "invokeDefaultWithNoValue",
-			resolverSource: `function(conflict) { 
+			resolverSource: `function(conflict) {
 				return defaultPolicy();
 			}`,
 			localDocument:  Body{"_rev": "2-abc", "prop": "foo"},
@@ -143,7 +144,7 @@ func TestCustomConflictResolver(t *testing.T) {
 		},
 		{
 			name: "invokeDefaultWithNullValue",
-			resolverSource: `function(conflict) { 
+			resolverSource: `function(conflict) {
 				return defaultPolicy(null);
 			}`,
 			localDocument:  Body{"_rev": "2-abc", "prop": "foo"},
@@ -152,13 +153,16 @@ func TestCustomConflictResolver(t *testing.T) {
 		},
 	}
 
+	host := js.NewVMPool(4)
+	defer host.Close()
+
 	for _, test := range defaultConflictResolverTests {
 		t.Run(test.name, func(tt *testing.T) {
 			conflict := Conflict{
 				LocalDocument:  test.localDocument,
 				RemoteDocument: test.remoteDocument,
 			}
-			customConflictResolverFunc, err := NewCustomConflictResolver(test.resolverSource, 0)
+			customConflictResolverFunc, err := NewCustomConflictResolver(test.resolverSource, 0, host)
 			require.NoError(tt, err)
 			result, err := customConflictResolverFunc(conflict)
 			if test.expectError {

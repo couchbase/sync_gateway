@@ -71,9 +71,11 @@ func (vm *VM) registerService(factory TemplateFactory) serviceID {
 
 // Returns a Template for the given Service.
 func (vm *VM) getTemplate(service *Service) (Template, error) {
+	var tmpl Template
 	if int(service.id) < len(vm.templates) {
-		return vm.templates[service.id], nil
-	} else {
+		tmpl = vm.templates[service.id]
+	}
+	if tmpl == nil {
 		factory := vm.services.getService(service.id)
 		if factory == nil {
 			return nil, fmt.Errorf("js.VM has no service %q (%d)", service.name, int(service.id))
@@ -88,7 +90,8 @@ func (vm *VM) getTemplate(service *Service) (Template, error) {
 			}
 		}
 
-		tmpl, err := newTemplate(vm, service.name, factory)
+		var err error
+		tmpl, err = newTemplate(vm, service.name, factory)
 		if err != nil {
 			return nil, err
 		}
@@ -97,8 +100,8 @@ func (vm *VM) getTemplate(service *Service) (Template, error) {
 			vm.templates = append(vm.templates, nil)
 		}
 		vm.templates[service.id] = tmpl
-		return tmpl, nil
 	}
+	return tmpl, nil
 }
 
 // Produces a Runner object that can run the given service.

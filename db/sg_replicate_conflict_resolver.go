@@ -172,7 +172,7 @@ func RemoteWinsConflictResolver(conflict Conflict) (winner Body, err error) {
 
 //////// CUSTOM CONFLICT RESOLVER:
 
-func NewConflictResolverFunc(resolverType ConflictResolverType, customResolverSource string, customResolverTimeout time.Duration) (ConflictResolverFunc, error) {
+func NewConflictResolverFunc(resolverType ConflictResolverType, customResolverSource string, customResolverTimeout time.Duration, host js.ServiceHost) (ConflictResolverFunc, error) {
 	switch resolverType {
 	case ConflictResolverLocalWins:
 		return LocalWinsConflictResolver, nil
@@ -181,7 +181,7 @@ func NewConflictResolverFunc(resolverType ConflictResolverType, customResolverSo
 	case ConflictResolverDefault:
 		return DefaultConflictResolver, nil
 	case ConflictResolverCustom:
-		return NewCustomConflictResolver(customResolverSource, customResolverTimeout)
+		return NewCustomConflictResolver(customResolverSource, customResolverTimeout, host)
 	default:
 		return nil, fmt.Errorf("unknown Conflict Resolver type: %s", resolverType)
 	}
@@ -189,10 +189,9 @@ func NewConflictResolverFunc(resolverType ConflictResolverType, customResolverSo
 
 // NewCustomConflictResolver returns a ConflictResolverFunc that executes the
 // javascript conflict resolver specified by source
-func NewCustomConflictResolver(source string, timeout time.Duration) (ConflictResolverFunc, error) {
+func NewCustomConflictResolver(source string, timeout time.Duration, host js.ServiceHost) (ConflictResolverFunc, error) {
 	base.DebugfCtx(context.Background(), base.KeyReplicate, "Creating new ConflictResolverFunction")
-	vms := js.NewVMPool(kTaskCacheSize)
-	service := js.NewCustomService(vms, "conflict resolver", func(tmpl *js.BasicTemplate) (js.Template, error) {
+	service := js.NewCustomService(host, "conflict resolver", func(tmpl *js.BasicTemplate) (js.Template, error) {
 		err := tmpl.SetScript(`(` + source + `)`)
 		if err == nil {
 			tmpl.GlobalCallback("defaultPolicy", defaultPolicyCallback)

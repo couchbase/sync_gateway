@@ -622,12 +622,14 @@ func TestIsCfgChanged(t *testing.T) {
 	testCfg, err := base.NewCfgSG(testBucket, "")
 	require.NoError(t, err)
 
-	mgr, err := NewSGReplicateManager(base.TestCtx(t), &DatabaseContext{Name: "test"}, testCfg)
+	dbctx := DatabaseContext{Name: "test"}
+	dbctx.V8VMs.Init(4)
+	mgr, err := NewSGReplicateManager(base.TestCtx(t), &dbctx, testCfg)
 	require.NoError(t, err)
 	defer mgr.Stop()
 
 	for _, testCase := range testCases {
-		t.Run(fmt.Sprintf("%s", testCase.name), func(t *testing.T) {
+		t.Run(testCase.name, func(t *testing.T) {
 			replicationCfg := getInitialCfg()
 			replicatorConfig, err := mgr.NewActiveReplicatorConfig(replicationCfg)
 			require.NoError(t, err)

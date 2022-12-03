@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/js"
 )
 
 // EventHandler interface represents an instance of an event handler defined in the database config
@@ -50,7 +51,7 @@ const (
 )
 
 // Creates a new webhook handler based on the url and filter function.
-func NewWebhook(url string, filterFnString string, timeout *uint64, options map[string]interface{}) (*Webhook, error) {
+func NewWebhook(url string, filterFnString string, host js.ServiceHost, timeout *uint64, options map[string]interface{}) (*Webhook, error) {
 
 	var err error
 
@@ -63,7 +64,7 @@ func NewWebhook(url string, filterFnString string, timeout *uint64, options map[
 		url: url,
 	}
 	if filterFnString != "" {
-		wh.filter = NewJSEventFunction(filterFnString)
+		wh.filter = NewJSEventFunction(host, filterFnString)
 	}
 
 	if timeout != nil {

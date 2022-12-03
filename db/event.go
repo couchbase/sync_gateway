@@ -15,11 +15,9 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
-	"time"
 
-	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/robertkrimen/otto"
+	"github.com/couchbase/sync_gateway/js"
 )
 
 // EventType is an enum for each unique event type.
@@ -95,78 +93,30 @@ func (dsce *DBStateChangeEvent) EventType() EventType {
 	return DBStateChange
 }
 
-// Javascript function handling for events
-const kTaskCacheSize = 4
+// type ResponseType uint8
 
-type ResponseType uint8
-
-const (
-	StringResponse ResponseType = iota
-	JSObjectResponse
-)
-
-// A compiled JavaScript event function.
-type jsEventTask struct {
-	sgbucket.JSRunner
-	responseType ResponseType
-}
-
-// Compiles a JavaScript event function to a jsEventTask object.
-func newJsEventTask(funcSource string) (sgbucket.JSServerTask, error) {
-	eventTask := &jsEventTask{}
-	err := eventTask.InitWithLogging(funcSource, 0,
-		func(s string) {
-			base.ErrorfCtx(context.Background(), base.KeyJavascript.String()+": Webhook %s", base.UD(s))
-		},
-		func(s string) { base.InfofCtx(context.Background(), base.KeyJavascript, "Webhook %s", base.UD(s)) })
-	if err != nil {
-		return nil, err
-	}
-
-	eventTask.After = func(result otto.Value, err error) (interface{}, error) {
-		nativeValue, _ := result.Export()
-		/*
-			switch nativeValue := nativeValue.(type) {
-			case string:
-				stringResult = nativeValue
-				eventTask.responseType = StringResponse
-			case interface{}:
-				resultBytes, marshErr := base.JSONMarshal(nativeValue)
-				if marshErr != nil {
-					err = marshErr
-				} else {
-					stringResult = string(resultBytes)
-					eventTask.responseType = JSObjectResponse
-				}
-			}
-		*/
-		return nativeValue, err
-	}
-
-	return eventTask, nil
-}
+// const (
+// 	StringResponse ResponseType = iota
+// 	JSObjectResponse
+// )
 
 //////// JSEventFunction
 
-// A thread-safe wrapper around a jsEventTask, i.e. an event function.
+// A compiled event function.
 type JSEventFunction struct {
-	*sgbucket.JSServer
+	*js.Service
 }
 
-func NewJSEventFunction(fnSource string) *JSEventFunction {
-
+func NewJSEventFunction(host js.ServiceHost, fnSource string) *JSEventFunction {
 	base.InfofCtx(context.Background(), base.KeyEvents, "Creating new JSEventFunction")
 	return &JSEventFunction{
-		JSServer: sgbucket.NewJSServer(fnSource, 0, kTaskCacheSize,
-			func(fnSource string, timeout time.Duration) (sgbucket.JSServerTask, error) {
-				return newJsEventTask(fnSource)
-			}),
+		Service: js.NewService(host, "event", fnSource),
 	}
 }
 
 // Calls a jsEventFunction returning an interface{}
 func (ef *JSEventFunction) CallFunction(event Event) (interface{}, error) {
-
+	ctx := context.TODO()
 	var err error
 	var result interface{}
 
@@ -174,16 +124,16 @@ func (ef *JSEventFunction) CallFunction(event Event) (interface{}, error) {
 	switch event := event.(type) {
 
 	case *DocumentChangeEvent:
-		result, err = ef.Call(sgbucket.JSONString(event.DocBytes), sgbucket.JSONString(event.OldDoc))
+		result, err = ef.Run(ctx, js.JSONString(event.DocBytes), js.JSONString(event.OldDoc))
 	case *DBStateChangeEvent:
-		result, err = ef.Call(event.Doc)
+		result, err = ef.Run(ctx, event.Doc)
 	default:
 		base.WarnfCtx(context.TODO(), "unknown event %v tried to call function", event.EventType())
 		return "", fmt.Errorf("unknown event %v tried to call function", event.EventType())
 	}
 
 	if err != nil {
-		base.WarnfCtx(context.TODO(), "Error calling function - function processing aborted: %v", err)
+		base.WarnfCtx(context.TODO(), "Error calling function - function processing aborted: %+v", err)
 		return "", err
 	}
 
@@ -192,7 +142,6 @@ func (ef *JSEventFunction) CallFunction(event Event) (interface{}, error) {
 
 // Calls a jsEventFunction returning bool.
 func (ef *JSEventFunction) CallValidateFunction(event Event) (bool, error) {
-
 	result, err := ef.CallFunction(event)
 	if err != nil {
 		return false, err
@@ -202,14 +151,10 @@ func (ef *JSEventFunction) CallValidateFunction(event Event) (bool, error) {
 	case bool:
 		return result, nil
 	case string:
-		boolResult, err := strconv.ParseBool(result)
-		if err != nil {
-			return false, err
-		}
-		return boolResult, nil
+		return strconv.ParseBool(result)
 	default:
 		base.WarnfCtx(context.TODO(), "Event validate function returned non-boolean result %T %v", result, result)
-		return false, errors.New("Validate function returned non-boolean value.")
+		return false, errors.New("validate function returned non-boolean value.")
 	}
 
 }
