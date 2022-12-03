@@ -37,18 +37,9 @@ import (
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbaselabs/walrus"
-	"github.com/robertkrimen/otto/underscore"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
-
-func init() {
-	underscore.Disable() // It really slows down unit tests (by making otto.New take a lot longer)
-}
-
-// ////// REST TESTER HELPER CLASS:
-
-// ////// AND NOW THE TESTS:
 
 func TestRoot(t *testing.T) {
 	rt := NewRestTester(t, nil)
