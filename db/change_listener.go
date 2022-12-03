@@ -13,6 +13,7 @@ package db
 import (
 	"context"
 	"expvar"
+	"fmt"
 	"math"
 	"strings"
 	"sync"
@@ -52,7 +53,7 @@ func (listener *changeListener) Init(name string, groupID string) {
 }
 
 // Starts a changeListener on a given Bucket.
-func (listener *changeListener) Start(bucket base.Bucket, dbStats *expvar.Map) error {
+func (listener *changeListener) Start(bucket base.Bucket, dbStats *expvar.Map, scopes map[string]Scope, metadataStore base.DataStore) error {
 
 	listener.terminator = make(chan bool)
 	listener.bucket = bucket
@@ -63,7 +64,40 @@ func (listener *changeListener) Start(bucket base.Bucket, dbStats *expvar.Map) e
 		Terminator: listener.terminator,
 		DoneChan:   make(chan struct{}),
 	}
+	if len(scopes) > 0 {
+		// build the set of collections to be requested
 
+		// Add the metadata collection first
+		metadataStoreName, ok := base.AsDataStoreName(metadataStore)
+		if !ok {
+			return fmt.Errorf("changeListener started with collections, but unable to retrieve metadata store name for %T", metadataStore)
+		}
+
+		metadataStoreFoundInScopes := false
+		scopeArgs := make(map[string][]string)
+		for scopeName, scope := range scopes {
+			collections := make([]string, 0)
+			for collectionName, _ := range scope.Collections {
+				collections = append(collections, collectionName)
+				if scopeName == metadataStoreName.ScopeName() && collectionName == metadataStoreName.CollectionName() {
+					metadataStoreFoundInScopes = true
+				}
+			}
+			scopeArgs[scopeName] = collections
+		}
+
+		// If the metadataStore's collection isn't already present in the list of scopes, add it to the DCP scopes
+		if !metadataStoreFoundInScopes {
+			_, ok = scopeArgs[metadataStoreName.ScopeName()]
+			if !ok {
+				scopeArgs[metadataStoreName.ScopeName()] = []string{metadataStoreName.CollectionName()}
+			} else {
+				scopeArgs[metadataStoreName.ScopeName()] = append(scopeArgs[metadataStoreName.ScopeName()], metadataStoreName.CollectionName())
+			}
+		}
+		listener.FeedArgs.Scopes = scopeArgs
+
+	}
 	return listener.StartMutationFeed(bucket, dbStats)
 }
 

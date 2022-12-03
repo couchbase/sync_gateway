@@ -1154,7 +1154,7 @@ func (bh *blipHandler) handleProveAttachment(rq *blip.Message) error {
 		if bh.clientType == BLIPClientTypeSGR2 {
 			return ErrAttachmentNotFound
 		}
-		if base.IsKeyNotFoundError(bh.collection.Bucket, err) {
+		if base.IsKeyNotFoundError(bh.collection.dataStore, err) {
 			return ErrAttachmentNotFound
 		}
 		return base.HTTPErrorf(http.StatusInternalServerError, fmt.Sprintf("Error getting client attachment: %v", err))

@@ -79,7 +79,7 @@ func TestAttachmentCompactionAPI(t *testing.T) {
 
 	// Create some 'unmarked' attachments
 	makeUnmarkedDoc := func(docid string) {
-		err := rt.GetDatabase().Bucket.SetRaw(docid, 0, nil, []byte("{}"))
+		err := rt.GetDatabase().Bucket.DefaultDataStore().SetRaw(docid, 0, nil, []byte("{}"))
 		require.NoError(t, err)
 	}
 
@@ -215,7 +215,7 @@ func TestAttachmentCompactionDryRun(t *testing.T) {
 
 	// Create some 'unmarked' attachments
 	makeUnmarkedDoc := func(docid string) {
-		err := rt.GetDatabase().Bucket.SetRaw(docid, 0, nil, []byte("{}"))
+		err := rt.GetDatabase().Bucket.DefaultDataStore().SetRaw(docid, 0, nil, []byte("{}"))
 		assert.NoError(t, err)
 	}
 
@@ -233,7 +233,7 @@ func TestAttachmentCompactionDryRun(t *testing.T) {
 	assert.Equal(t, int64(5), status.PurgedAttachments)
 
 	for _, docID := range attachmentKeys {
-		_, _, err := rt.GetDatabase().Bucket.GetRaw(docID)
+		_, _, err := rt.GetDatabase().Bucket.DefaultDataStore().GetRaw(docID)
 		assert.NoError(t, err)
 	}
 
@@ -241,10 +241,10 @@ func TestAttachmentCompactionDryRun(t *testing.T) {
 	rest.RequireStatus(t, resp, http.StatusOK)
 	status = rt.WaitForAttachmentCompactionStatus(t, db.BackgroundProcessStateCompleted)
 	assert.False(t, status.DryRun)
-	assert.Equal(t, int64(5), status.PurgedAttachments)
+	assert.Equal(t, int64(5), status.PurgedAttachments) // FIXME (bbrks) 25???? leak from other tests?
 
 	for _, docID := range attachmentKeys {
-		_, _, err := rt.GetDatabase().Bucket.GetRaw(docID)
+		_, _, err := rt.GetDatabase().Bucket.DefaultDataStore().GetRaw(docID)
 		assert.Error(t, err)
 		assert.True(t, base.IsDocNotFoundError(err))
 	}
@@ -297,22 +297,22 @@ func TestAttachmentCompactionInvalidDocs(t *testing.T) {
 	ctx := rt.Context()
 
 	// Create a raw binary doc
-	_, err := rt.Bucket().AddRaw("binary", 0, []byte("binary doc"))
+	_, err := rt.Bucket().DefaultDataStore().AddRaw("binary", 0, []byte("binary doc"))
 	assert.NoError(t, err)
 
 	// Create a CBS tombstone
-	_, err = rt.Bucket().AddRaw("deleted", 0, []byte("{}"))
+	_, err = rt.Bucket().DefaultDataStore().AddRaw("deleted", 0, []byte("{}"))
 	assert.NoError(t, err)
-	err = rt.Bucket().Delete("deleted")
+	err = rt.Bucket().DefaultDataStore().Delete("deleted")
 	assert.NoError(t, err)
 
 	// Also create an actual legacy attachment to ensure they are still processed
 	rest.CreateLegacyAttachmentDoc(t, ctx, &db.Database{DatabaseContext: rt.GetDatabase()}, "docID", []byte("{}"), "attKey", []byte("{}"))
 
 	// Create attachment with no doc reference
-	err = rt.GetDatabase().Bucket.SetRaw(base.AttPrefix+"test", 0, nil, []byte("{}"))
+	err = rt.GetDatabase().Bucket.DefaultDataStore().SetRaw(base.AttPrefix+"test", 0, nil, []byte("{}"))
 	assert.NoError(t, err)
-	err = rt.GetDatabase().Bucket.SetRaw(base.AttPrefix+"test2", 0, nil, []byte("{}"))
+	err = rt.GetDatabase().Bucket.DefaultDataStore().SetRaw(base.AttPrefix+"test2", 0, nil, []byte("{}"))
 	assert.NoError(t, err)
 
 	// Write a normal doc to ensure this passes through fine
@@ -338,7 +338,7 @@ func TestAttachmentCompactionStartTimeAndStats(t *testing.T) {
 	defer rt.Close()
 
 	// Create attachment with no doc reference
-	err := rt.GetDatabase().Bucket.SetRaw(base.AttPrefix+"test", 0, nil, []byte("{}"))
+	err := rt.GetDatabase().Bucket.DefaultDataStore().SetRaw(base.AttPrefix+"test", 0, nil, []byte("{}"))
 	assert.NoError(t, err)
 
 	databaseStats := rt.GetDatabase().DbStats.Database()

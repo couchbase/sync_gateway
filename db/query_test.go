@@ -327,12 +327,12 @@ func TestCoveringQueries(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 
-	n1QLStore, ok := base.AsN1QLStore(db.Bucket)
+	collection := db.GetSingleDatabaseCollection()
+	n1QLStore, ok := base.AsN1QLStore(collection.dataStore)
 	if !ok {
 		t.Errorf("Unable to get n1QLStore for testBucket")
 	}
 
-	collection := db.GetSingleDatabaseCollection()
 	// channels
 	channelsStatement, params := collection.buildChannelsQuery("ABC", 0, 10, 100, false)
 	plan, explainErr := n1QLStore.ExplainQuery(channelsStatement, params)
@@ -397,6 +397,7 @@ func TestAllDocsQuery(t *testing.T) {
 	var row map[string]interface{}
 	rowCount := 0
 	for results.Next(&row) {
+		t.Logf("row[%d]: %v", rowCount, row)
 		rowCount++
 	}
 	assert.Equal(t, 10, rowCount)
@@ -409,6 +410,7 @@ func TestAllDocsQuery(t *testing.T) {
 	assert.NoError(t, queryErr, "Query error")
 	rowCount = 0
 	for results.Next(&row) {
+		t.Logf("row[%d]: %v", rowCount, row)
 		rowCount++
 	}
 	assert.Equal(t, 10, rowCount)
@@ -421,6 +423,7 @@ func TestAllDocsQuery(t *testing.T) {
 	assert.NoError(t, queryErr, "Query error")
 	rowCount = 0
 	for results.Next(&row) {
+		t.Logf("row[%d]: %v", rowCount, row)
 		assert.NotEqual(t, row["id"], "InvalidData")
 		rowCount++
 	}
@@ -434,6 +437,7 @@ func TestAllDocsQuery(t *testing.T) {
 	assert.NoError(t, queryErr, "Query error")
 	rowCount = 0
 	for results.Next(&row) {
+		t.Logf("row[%d]: %v", rowCount, row)
 		rowCount++
 	}
 	assert.Equal(t, 10, rowCount)
@@ -442,6 +446,11 @@ func TestAllDocsQuery(t *testing.T) {
 }
 
 func TestAccessQuery(t *testing.T) {
+
+	if !base.TestsUseDefaultCollection() {
+		t.Skip("Disabled for non-default collection until CBG-2554")
+	}
+
 	if base.UnitTestUrlIsWalrus() || base.TestsDisableGSI() {
 		t.Skip("This test is Couchbase Server and UseViews=false only")
 	}
@@ -488,6 +497,11 @@ func TestAccessQuery(t *testing.T) {
 }
 
 func TestRoleAccessQuery(t *testing.T) {
+
+	if !base.TestsUseDefaultCollection() {
+		t.Skip("Disabled for non-default collection until CBG-2554")
+	}
+
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test is Couchbase Server only")
 	}

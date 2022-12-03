@@ -15,7 +15,6 @@ import (
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
-	pkgerrors "github.com/pkg/errors"
 )
 
 // Enum for the different repair jobs (eg, repairing rev tree cycles)
@@ -135,163 +134,166 @@ func (r *RepairBucket) InitFrom(params RepairBucketParams) *RepairBucket {
 // If it's iterating a result page and sees a doc with the start key (eg, doc3 in above), it will ignore it so it doesn't process it twice
 // Stop condition: if NumProcessed is 0, because the only doc in result set had already been processed.
 func (r RepairBucket) RepairBucket() (results []RepairBucketResult, err error) {
+	// Disabled due to REST API being disabled and not working with collections CBG-2594
+	/*
+	   logCtx := context.TODO()
+	   base.InfofCtx(logCtx, base.KeyCRUD, "RepairBucket() invoked")
+	   defer base.InfofCtx(logCtx, base.KeyCRUD, "RepairBucket() finished")
 
-	logCtx := context.TODO()
-	base.InfofCtx(logCtx, base.KeyCRUD, "RepairBucket() invoked")
-	defer base.InfofCtx(logCtx, base.KeyCRUD, "RepairBucket() finished")
+	   startKey := ""
+	   results = []RepairBucketResult{}
+	   numDocsProcessed := 0
 
-	startKey := ""
-	results = []RepairBucketResult{}
-	numDocsProcessed := 0
+	   for {
 
-	for {
+	   	options := Body{"stale": false, "reduce": false}
+	   	options["startkey"] = []interface{}{
+	   		true,
+	   		startKey,
+	   	}
+	   	options["limit"] = r.ViewQueryPageSize
 
-		options := Body{"stale": false, "reduce": false}
-		options["startkey"] = []interface{}{
-			true,
-			startKey,
-		}
-		options["limit"] = r.ViewQueryPageSize
+	   	base.InfofCtx(logCtx, base.KeyCRUD, "RepairBucket() querying view with options: %+v", options)
+	   	vres, err := r.Bucket.View(DesignDocSyncHousekeeping(), ViewImport, options)
+	   	base.InfofCtx(logCtx, base.KeyCRUD, "RepairBucket() queried view and got %d results", len(vres.Rows))
+	   	if err != nil {
+	   		// TODO: Maybe we could retry if the view timed out (as seen in #3267)
+	   		return results, err
+	   	}
 
-		base.InfofCtx(logCtx, base.KeyCRUD, "RepairBucket() querying view with options: %+v", options)
-		vres, err := r.Bucket.View(DesignDocSyncHousekeeping(), ViewImport, options)
-		base.InfofCtx(logCtx, base.KeyCRUD, "RepairBucket() queried view and got %d results", len(vres.Rows))
-		if err != nil {
-			// TODO: Maybe we could retry if the view timed out (as seen in #3267)
-			return results, err
-		}
+	   	// Check
+	   	if len(vres.Rows) == 0 {
+	   		// No more results.  Return
+	   		return results, nil
+	   	}
 
-		// Check
-		if len(vres.Rows) == 0 {
-			// No more results.  Return
-			return results, nil
-		}
+	   	// Keep a counter of how many results were processed, since if none were processed it indicates that
+	   	// we hit the last (empty) page of data.  This is needed because the start key is inclusive, and
+	   	// so even on the last page of results, the view query will return a single result with the start key doc.
+	   	numResultsProcessed := 0
 
-		// Keep a counter of how many results were processed, since if none were processed it indicates that
-		// we hit the last (empty) page of data.  This is needed because the start key is inclusive, and
-		// so even on the last page of results, the view query will return a single result with the start key doc.
-		numResultsProcessed := 0
+	   	for _, row := range vres.Rows {
 
-		for _, row := range vres.Rows {
+	   		rowKey := row.Key.([]interface{})
+	   		docid := rowKey[1].(string)
 
-			rowKey := row.Key.([]interface{})
-			docid := rowKey[1].(string)
+	   		if docid == startKey {
+	   			// Skip this, already processed in previous iteration.  Important to do this before numResultsProcessed
+	   			// is incremented.
+	   			continue
+	   		}
 
-			if docid == startKey {
-				// Skip this, already processed in previous iteration.  Important to do this before numResultsProcessed
-				// is incremented.
-				continue
-			}
+	   		// The next page for viewquery should start at the last result in this page.  There is a de-duping mechanism
+	   		// to avoid processing this doc twice.
+	   		startKey = docid
 
-			// The next page for viewquery should start at the last result in this page.  There is a de-duping mechanism
-			// to avoid processing this doc twice.
-			startKey = docid
+	   		// Increment counter of how many results were processed for detecting stop condition
+	   		numResultsProcessed += 1
 
-			// Increment counter of how many results were processed for detecting stop condition
-			numResultsProcessed += 1
+	   		key := realDocID(docid)
+	   		var backupOrDryRunDocId string
 
-			key := realDocID(docid)
-			var backupOrDryRunDocId string
+	   		_, err = r.Bucket.Update(key, 0, func(currentValue []byte) ([]byte, *uint32, bool, error) {
+	   			// Be careful: this block can be invoked multiple times if there are races!
+	   			if currentValue == nil {
+	   				return nil, nil, false, base.ErrUpdateCancel // someone deleted it?!
+	   			}
+	   			updatedDoc, shouldUpdate, repairJobs, err := r.TransformBucketDoc(key, currentValue)
+	   			if err != nil {
+	   				return nil, nil, false, err
+	   			}
 
-			_, err = r.Bucket.Update(key, 0, func(currentValue []byte) ([]byte, *uint32, bool, error) {
-				// Be careful: this block can be invoked multiple times if there are races!
-				if currentValue == nil {
-					return nil, nil, false, base.ErrUpdateCancel // someone deleted it?!
-				}
-				updatedDoc, shouldUpdate, repairJobs, err := r.TransformBucketDoc(key, currentValue)
-				if err != nil {
-					return nil, nil, false, err
-				}
+	   			switch shouldUpdate {
+	   			case true:
 
-				switch shouldUpdate {
-				case true:
+	   				backupOrDryRunDocId, err = r.WriteRepairedDocsToBucket(key, currentValue, updatedDoc)
+	   				if err != nil {
+	   					base.InfofCtx(logCtx, base.KeyCRUD, "Repair Doc (dry_run=%v) Writing docs to bucket failed with error: %v.  Dumping raw contents.", r.DryRun, err)
+	   					base.InfofCtx(logCtx, base.KeyCRUD, "Original Doc before repair: %s", base.UD(currentValue))
+	   					base.InfofCtx(logCtx, base.KeyCRUD, "Updated doc after repair: %s", base.UD(updatedDoc))
+	   				}
 
-					backupOrDryRunDocId, err = r.WriteRepairedDocsToBucket(key, currentValue, updatedDoc)
-					if err != nil {
-						base.InfofCtx(logCtx, base.KeyCRUD, "Repair Doc (dry_run=%v) Writing docs to bucket failed with error: %v.  Dumping raw contents.", r.DryRun, err)
-						base.InfofCtx(logCtx, base.KeyCRUD, "Original Doc before repair: %s", base.UD(currentValue))
-						base.InfofCtx(logCtx, base.KeyCRUD, "Updated doc after repair: %s", base.UD(updatedDoc))
-					}
+	   				result := RepairBucketResult{
+	   					DryRun:              r.DryRun,
+	   					BackupOrDryRunDocId: backupOrDryRunDocId,
+	   					DocId:               key,
+	   					RepairJobTypes:      repairJobs,
+	   				}
 
-					result := RepairBucketResult{
-						DryRun:              r.DryRun,
-						BackupOrDryRunDocId: backupOrDryRunDocId,
-						DocId:               key,
-						RepairJobTypes:      repairJobs,
-					}
+	   				results = append(results, result)
 
-					results = append(results, result)
+	   				if r.DryRun {
+	   					return nil, nil, false, base.ErrUpdateCancel
+	   				} else {
+	   					return updatedDoc, nil, false, nil
+	   				}
+	   			default:
+	   				return nil, nil, false, base.ErrUpdateCancel
+	   			}
 
-					if r.DryRun {
-						return nil, nil, false, base.ErrUpdateCancel
-					} else {
-						return updatedDoc, nil, false, nil
-					}
-				default:
-					return nil, nil, false, base.ErrUpdateCancel
-				}
+	   		})
 
-			})
+	   		if err != nil {
+	   			// Ignore base.ErrUpdateCancel (Cas.QUIT) errors.  Any other errors should be returned to caller
+	   			if pkgerrors.Cause(err) != base.ErrUpdateCancel {
+	   				return results, err
+	   			}
+	   		}
 
-			if err != nil {
-				// Ignore base.ErrUpdateCancel (Cas.QUIT) errors.  Any other errors should be returned to caller
-				if pkgerrors.Cause(err) != base.ErrUpdateCancel {
-					return results, err
-				}
-			}
+	   		if backupOrDryRunDocId != "" {
+	   			if r.DryRun {
+	   				base.InfofCtx(logCtx, base.KeyCRUD, "Repair Doc: dry run result available in Bucket Doc: %v (auto-deletes in 24 hours)", base.UD(backupOrDryRunDocId))
+	   			} else {
+	   				base.InfofCtx(logCtx, base.KeyCRUD, "Repair Doc: Doc repaired, original doc backed up in Bucket Doc: %v (auto-deletes in 24 hours)", base.UD(backupOrDryRunDocId))
+	   			}
+	   		}
 
-			if backupOrDryRunDocId != "" {
-				if r.DryRun {
-					base.InfofCtx(logCtx, base.KeyCRUD, "Repair Doc: dry run result available in Bucket Doc: %v (auto-deletes in 24 hours)", base.UD(backupOrDryRunDocId))
-				} else {
-					base.InfofCtx(logCtx, base.KeyCRUD, "Repair Doc: Doc repaired, original doc backed up in Bucket Doc: %v (auto-deletes in 24 hours)", base.UD(backupOrDryRunDocId))
-				}
-			}
+	   	}
 
-		}
+	   	numDocsProcessed += numResultsProcessed
 
-		numDocsProcessed += numResultsProcessed
+	   	base.InfofCtx(logCtx, base.KeyCRUD, "RepairBucket() processed %d / %d", numDocsProcessed, vres.TotalRows)
 
-		base.InfofCtx(logCtx, base.KeyCRUD, "RepairBucket() processed %d / %d", numDocsProcessed, vres.TotalRows)
+	   	if numResultsProcessed == 0 {
+	   		// No point in going to the next page, since this page had 0 results.  See method comments.
+	   		return results, nil
+	   	}
 
-		if numResultsProcessed == 0 {
-			// No point in going to the next page, since this page had 0 results.  See method comments.
-			return results, nil
-		}
-
-	}
-
+	   }
+	*/
+	return
 }
 
 func (r RepairBucket) WriteRepairedDocsToBucket(docId string, originalDoc, updatedDoc []byte) (backupOrDryRunDocId string, err error) {
+	/*
+		var contentToSave []byte
 
-	var contentToSave []byte
+		if r.DryRun {
+			backupOrDryRunDocId = base.RepairDryRunPrefix + docId
+			contentToSave = updatedDoc
+		} else {
+			backupOrDryRunDocId = base.RepairBackupPrefix + docId
+			contentToSave = originalDoc
+		}
 
-	if r.DryRun {
-		backupOrDryRunDocId = base.RepairDryRunPrefix + docId
-		contentToSave = updatedDoc
-	} else {
-		backupOrDryRunDocId = base.RepairBackupPrefix + docId
-		contentToSave = originalDoc
-	}
+		doc, err := unmarshalDocument(docId, contentToSave)
+		if err != nil {
+			return backupOrDryRunDocId, err
+		}
 
-	doc, err := unmarshalDocument(docId, contentToSave)
-	if err != nil {
-		return backupOrDryRunDocId, err
-	}
+		// If the RepairedFileTTL is explicitly set to 0 then don't write the doc at all
+		if int(r.RepairedFileTTL.Seconds()) == 0 {
+			base.InfofCtx(context.TODO(), base.KeyCRUD, "Repair Doc: Doc %v repaired, TTL set to 0, doc will not be written to bucket", base.UD(backupOrDryRunDocId))
+			return backupOrDryRunDocId, nil
+		}
 
-	// If the RepairedFileTTL is explicitly set to 0 then don't write the doc at all
-	if int(r.RepairedFileTTL.Seconds()) == 0 {
-		base.InfofCtx(context.TODO(), base.KeyCRUD, "Repair Doc: Doc %v repaired, TTL set to 0, doc will not be written to bucket", base.UD(backupOrDryRunDocId))
+		if err := r.Bucket.Set(backupOrDryRunDocId, base.DurationToCbsExpiry(r.RepairedFileTTL), nil, doc); err != nil {
+			return backupOrDryRunDocId, err
+		}
+
 		return backupOrDryRunDocId, nil
-	}
-
-	if err := r.Bucket.Set(backupOrDryRunDocId, base.DurationToCbsExpiry(r.RepairedFileTTL), nil, doc); err != nil {
-		return backupOrDryRunDocId, err
-	}
-
-	return backupOrDryRunDocId, nil
-
+	*/
+	return
 }
 
 // Loops over all repair jobs and applies them

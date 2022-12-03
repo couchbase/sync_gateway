@@ -1739,7 +1739,7 @@ func TestGetRemovedDoc(t *testing.T) {
 
 	// Delete any temp revisions in case this prevents the bug from showing up (didn't make a difference)
 	tempRevisionDocID := base.RevPrefix + "foo:5:3-cde"
-	err = rt.GetDatabase().Bucket.Delete(tempRevisionDocID)
+	err = rt.GetDatabase().Bucket.DefaultDataStore().Delete(tempRevisionDocID)
 	assert.NoError(t, err, "Unexpected Error")
 
 	// Try to get rev 3 via BLIP API and assert that _removed == true
@@ -2385,7 +2385,7 @@ func TestBlipInternalPropertiesHandling(t *testing.T) {
 			require.NoError(t, err)
 
 			var bucketDoc map[string]interface{}
-			_, err = rt.Bucket().Get(docID, &bucketDoc)
+			_, err = rt.Bucket().DefaultDataStore().Get(docID, &bucketDoc)
 			assert.NoError(t, err)
 			body := rt.GetDoc(docID)
 			// Confirm input body is in the bucket doc
@@ -2532,7 +2532,7 @@ func TestSendRevisionNoRevHandling(t *testing.T) {
 			})
 			defer rt.Close()
 
-			leakyBucket, ok := base.AsLeakyBucket(rt.Bucket())
+			leakyDataStore, ok := base.AsLeakyDataStore(rt.Bucket().DefaultDataStore())
 			require.True(t, ok)
 
 			btc, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
@@ -2550,7 +2550,7 @@ func TestSendRevisionNoRevHandling(t *testing.T) {
 			RequireStatus(t, resp, http.StatusCreated)
 
 			// Make the LeakyBucket return an error
-			leakyBucket.SetGetRawCallback(func(key string) error {
+			leakyDataStore.SetGetRawCallback(func(key string) error {
 				return test.error
 			})
 

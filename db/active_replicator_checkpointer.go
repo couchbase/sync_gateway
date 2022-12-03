@@ -462,10 +462,11 @@ func (c *Checkpointer) _setCheckpoints(seq string, status *ReplicationStatus) (e
 func (c *Checkpointer) getLocalCheckpoint() (checkpoint *replicationCheckpoint, err error) {
 	base.TracefCtx(c.ctx, base.KeyReplicate, "getLocalCheckpoint")
 
+	// TODO: Checkpointer should be scoped to a collection
 	collection := c.activeDB.GetSingleDatabaseCollection()
 	checkpointBytes, err := collection.GetSpecialBytes(DocTypeLocal, CheckpointDocIDPrefix+c.clientID)
 	if err != nil {
-		if !base.IsKeyNotFoundError(collection.Bucket, err) {
+		if !base.IsKeyNotFoundError(collection.dataStore, err) {
 			return &replicationCheckpoint{}, err
 		}
 		base.DebugfCtx(c.ctx, base.KeyReplicate, "couldn't find existing local checkpoint for client %q", c.clientID)
@@ -477,6 +478,7 @@ func (c *Checkpointer) getLocalCheckpoint() (checkpoint *replicationCheckpoint, 
 }
 
 func (c *Checkpointer) setLocalCheckpoint(checkpoint *replicationCheckpoint) (newRev string, err error) {
+	// TODO: Checkpointer should be scoped to a collection - storing checkpoints in the relevant collection. NOT the metadata collection!
 	collection := c.activeDB.GetSingleDatabaseCollection()
 	newRev, err = collection.putSpecial(DocTypeLocal, CheckpointDocIDPrefix+c.clientID, checkpoint.Rev, checkpoint.AsBody())
 	if err != nil {
@@ -496,9 +498,9 @@ func (c *Checkpointer) setLocalCheckpointWithRetry(checkpoint *replicationCheckp
 }
 
 // resetLocalCheckpoint removes the local checkpoint to roll back the replication.
-func resetLocalCheckpoint(activeDB *Database, checkpointID string) error {
+func resetLocalCheckpoint(dataStore base.DataStore, checkpointID string) error {
 	key := RealSpecialDocID(DocTypeLocal, CheckpointDocIDPrefix+checkpointID)
-	if err := activeDB.Bucket.Delete(key); err != nil && !base.IsDocNotFoundError(err) {
+	if err := dataStore.Delete(key); err != nil && !base.IsDocNotFoundError(err) {
 		return err
 	}
 	return nil
@@ -667,7 +669,7 @@ func getLocalCheckpoint(db *DatabaseContext, clientID string) (*replicationCheck
 	collection := db.GetSingleDatabaseCollection()
 	checkpointBytes, err := collection.GetSpecialBytes(DocTypeLocal, CheckpointDocIDPrefix+clientID)
 	if err != nil {
-		if !base.IsKeyNotFoundError(collection.Bucket, err) {
+		if !base.IsKeyNotFoundError(collection.dataStore, err) {
 			return nil, err
 		}
 		base.DebugfCtx(context.TODO(), base.KeyReplicate, "couldn't find existing local checkpoint for ID %q", clientID)

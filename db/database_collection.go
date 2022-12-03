@@ -20,7 +20,7 @@ import (
 
 // DatabaseCollection provides a representation of a single collection of a database.
 type DatabaseCollection struct {
-	Bucket        base.Bucket      // Storage
+	dataStore     base.DataStore   // Storage
 	revisionCache RevisionCache    // Cache of recently-accessed doc revisions
 	changeCache   *changeCache     // Cache of recently-access channels
 	dbCtx         *DatabaseContext // pointer to database context to allow passthrough of functions
@@ -64,7 +64,7 @@ func (c *DatabaseCollection) backupOldRev() bool {
 
 // bucketName returns the name of the bucket this collection is stored in.
 func (c *DatabaseCollection) bucketName() string {
-	return c.Bucket.GetName()
+	return c.dataStore.GetName()
 
 }
 
@@ -105,11 +105,8 @@ func (c *DatabaseCollection) exitChanges() chan struct{} {
 
 // GetCollectionID returns a collectionID. If couchbase server does not return collections, it will return base.DefaultCollectionID, like the default collection for a Couchbase Server that does support collections.
 func (c *DatabaseCollection) GetCollectionID() uint32 {
-	collection, err := base.AsCollection(c.Bucket)
-	if err != nil {
-		return base.DefaultCollectionID
-	}
-	return collection.GetCollectionID()
+	ds := base.GetBaseDataStore(c.dataStore)
+	return base.GetCollectionID(ds)
 }
 
 // GetRevisionCacheForTest allow accessing a copy of revision cache.
@@ -150,7 +147,7 @@ func (c *DatabaseCollection) importFilter() *ImportFilterFunction {
 
 // IsClosed returns true if the underlying collection has been closed.
 func (c *DatabaseCollection) IsClosed() bool {
-	return c.Bucket == nil
+	return c.dataStore == nil
 }
 
 // isGuestReadOnly returns true if the guest user can only perform read operations. This is controlled at the database level.
@@ -175,11 +172,11 @@ func (c *DatabaseCollection) mutationListener() *changeListener {
 
 // Name returns the name of the collection. If couchbase server is not aware of collections, it will return _default.
 func (c *DatabaseCollection) Name() string {
-	collection, err := base.AsCollection(c.Bucket)
+	collection, err := base.AsCollection(c.dataStore)
 	if err != nil {
 		return base.DefaultCollection
 	}
-	return collection.Name()
+	return collection.CollectionName()
 
 }
 
@@ -211,7 +208,7 @@ func (c *DatabaseCollectionWithUser) ReloadUser(ctx context.Context) error {
 
 // Name returns the name of the scope the collection is in. If couchbase server is not aware of collections, it will return _default.
 func (c *DatabaseCollection) ScopeName() string {
-	collection, err := base.AsCollection(c.Bucket)
+	collection, err := base.AsCollection(c.dataStore)
 	if err != nil {
 		return base.DefaultScope
 	}

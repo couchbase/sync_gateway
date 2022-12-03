@@ -33,11 +33,11 @@ type AttachmentCompactionManager struct {
 
 var _ BackgroundManagerProcessI = &AttachmentCompactionManager{}
 
-func NewAttachmentCompactionManager(bucket base.Bucket) *BackgroundManager {
+func NewAttachmentCompactionManager(metadataStore base.DataStore) *BackgroundManager {
 	return &BackgroundManager{
 		Process: &AttachmentCompactionManager{},
 		clusterAwareOptions: &ClusterAwareBackgroundManagerOptions{
-			bucket:        bucket,
+			metadataStore: metadataStore,
 			processSuffix: "compact",
 		},
 		terminator: base.NewSafeTerminator(),
@@ -101,6 +101,14 @@ func (a *AttachmentCompactionManager) Init(ctx context.Context, options map[stri
 func (a *AttachmentCompactionManager) Run(ctx context.Context, options map[string]interface{}, persistClusterStatusCallback updateStatusCallbackFunc, terminator *base.SafeTerminator) error {
 	database := options["database"].(*Database)
 
+	// Attachment compaction only needs to operate the default scope/collection,
+	// because all collection-based attachments will be written by 3.1+ and will be stored in the new format that doesn't need compaction.
+	//
+	// This may not be true if a user migrated/XDCR'd an existing _default collection into a named collection,
+	// but we'll consider that a follow-up enhancement to point this compaction operation at arbitrary collections.
+	dataStore := database.Bucket.DefaultDataStore()
+	collectionID := base.DefaultCollectionID
+
 	persistClusterStatus := func() {
 		err := persistClusterStatusCallback()
 		if err != nil {
@@ -117,7 +125,7 @@ func (a *AttachmentCompactionManager) Run(ctx context.Context, options map[strin
 	case "mark", "":
 		a.SetPhase("mark")
 		persistClusterStatus()
-		_, a.VBUUIDs, err = attachmentCompactMarkPhase(ctx, database, a.CompactID, terminator, &a.MarkedAttachments)
+		_, a.VBUUIDs, err = attachmentCompactMarkPhase(ctx, dataStore, collectionID, database, a.CompactID, terminator, &a.MarkedAttachments)
 		if err != nil || terminator.IsClosed() {
 			return err
 		}
@@ -125,7 +133,7 @@ func (a *AttachmentCompactionManager) Run(ctx context.Context, options map[strin
 	case "sweep":
 		a.SetPhase("sweep")
 		persistClusterStatus()
-		_, err := attachmentCompactSweepPhase(ctx, database, a.CompactID, a.VBUUIDs, a.dryRun, terminator, &a.PurgedAttachments)
+		_, err := attachmentCompactSweepPhase(ctx, dataStore, collectionID, database, a.CompactID, a.VBUUIDs, a.dryRun, terminator, &a.PurgedAttachments)
 		if err != nil || terminator.IsClosed() {
 			return err
 		}
@@ -133,7 +141,7 @@ func (a *AttachmentCompactionManager) Run(ctx context.Context, options map[strin
 	case "cleanup":
 		a.SetPhase("cleanup")
 		persistClusterStatus()
-		err := attachmentCompactCleanupPhase(ctx, database, a.CompactID, a.VBUUIDs, terminator)
+		err := attachmentCompactCleanupPhase(ctx, dataStore, collectionID, database, a.CompactID, a.VBUUIDs, terminator)
 		if err != nil || terminator.IsClosed() {
 			return err
 		}

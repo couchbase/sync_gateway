@@ -631,15 +631,19 @@ func TestPostInstallCleanup(t *testing.T) {
 
 	bucket := rt.Bucket()
 	mapFunction := `function (doc, meta) { emit(); }`
+
+	viewStore, ok := base.AsViewStore(bucket.DefaultDataStore())
+	require.True(t, ok)
+
 	// Create design docs in obsolete format
-	err = bucket.PutDDoc(db.DesignDocSyncGatewayPrefix, &sgbucket.DesignDoc{
+	err = viewStore.PutDDoc(db.DesignDocSyncGatewayPrefix, &sgbucket.DesignDoc{
 		Views: sgbucket.ViewMap{
 			"channels": sgbucket.ViewDef{Map: mapFunction},
 		},
 	})
 	assert.NoError(t, err, "Unable to create design doc (DesignDocSyncGatewayPrefix)")
 
-	err = bucket.PutDDoc(db.DesignDocSyncHousekeepingPrefix, &sgbucket.DesignDoc{
+	err = viewStore.PutDDoc(db.DesignDocSyncHousekeepingPrefix, &sgbucket.DesignDoc{
 		Views: sgbucket.ViewMap{
 			"all_docs": sgbucket.ViewDef{Map: mapFunction},
 		},
@@ -743,13 +747,13 @@ func TestViewQueryWithXattrAndNonXattr(t *testing.T) {
 
 	// Document with sync data in body
 	body := `{"_sync": { "rev": "1-fc2cf22c5e5007bd966869ebfe9e276a", "sequence": 2, "recent_sequences": [ 2 ], "history": { "revs": [ "1-fc2cf22c5e5007bd966869ebfe9e276a" ], "parents": [ -1], "channels": [ null ] }, "cas": "","value_crc32c": "", "time_saved": "2019-04-10T12:40:04.490083+01:00" }, "value": "foo"}`
-	ok, err := rt.Bucket().Add("doc2", 0, []byte(body))
+	ok, err := rt.Bucket().DefaultDataStore().Add("doc2", 0, []byte(body))
 	assert.True(t, ok)
 	assert.NoError(t, err)
 
 	// Should handle the case where there is no sync data
 	body = `{"value": "foo"}`
-	ok, err = rt.Bucket().Add("doc3", 0, []byte(body))
+	ok, err = rt.Bucket().DefaultDataStore().Add("doc3", 0, []byte(body))
 	assert.True(t, ok)
 	assert.NoError(t, err)
 

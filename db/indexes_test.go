@@ -53,9 +53,9 @@ func TestInitializeIndexes(t *testing.T) {
 				db, ctx = setupTestDefaultCollectionDBWithOptions(t, DatabaseContextOptions{EnableXattr: test.xattrs})
 			}
 			defer db.Close(ctx)
-			b := db.Bucket
+			collection := db.GetSingleDatabaseCollection()
 
-			n1qlStore, isGoCBBucket := base.AsN1QLStore(b)
+			n1qlStore, isGoCBBucket := base.AsN1QLStore(collection.dataStore)
 			require.True(t, isGoCBBucket)
 
 			// Make sure we can drop and reinitialize twice
@@ -111,9 +111,10 @@ func TestPostUpgradeIndexesSimple(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 
-	require.True(t, db.Bucket.IsSupported(sgbucket.DataStoreFeatureN1ql))
+	require.True(t, db.Bucket.IsSupported(sgbucket.BucketStoreFeatureN1ql))
 
-	n1qlStore, ok := base.AsN1QLStore(db.Bucket)
+	collection := db.GetSingleDatabaseCollection()
+	n1qlStore, ok := base.AsN1QLStore(collection.dataStore)
 	assert.True(t, ok)
 
 	// We have one xattr-only index - adjust expected indexes accordingly
@@ -165,8 +166,9 @@ func TestPostUpgradeIndexesVersionChange(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 
-	require.True(t, db.Bucket.IsSupported(sgbucket.DataStoreFeatureN1ql))
-	n1qlStore, ok := base.AsN1QLStore(db.Bucket)
+	require.True(t, db.Bucket.IsSupported(sgbucket.BucketStoreFeatureN1ql))
+	collection := db.GetSingleDatabaseCollection()
+	n1qlStore, ok := base.AsN1QLStore(collection.dataStore)
 	assert.True(t, ok)
 
 	copiedIndexes := copySGIndexes(sgIndexes)
@@ -202,20 +204,30 @@ func TestPostUpgradeIndexesVersionChange(t *testing.T) {
 
 func TestRemoveIndexesUseViewsTrueAndFalse(t *testing.T) {
 
+	if !base.TestsUseDefaultCollection() {
+		// we could push the restriction up into SG such that views + non-default is disallowed for CBS and allowed for Walrus?
+		t.Skip("InitializeViews only works on default collection")
+	}
+
 	if base.TestsDisableGSI() {
 		t.Skip("This test only works with Couchbase Server and UseViews=false")
 	}
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 
-	require.True(t, db.Bucket.IsSupported(sgbucket.DataStoreFeatureN1ql))
-	n1QLStore, ok := base.AsN1QLStore(db.Bucket)
-	assert.True(t, ok)
 	copiedIndexes := copySGIndexes(sgIndexes)
 
-	_, err := removeObsoleteDesignDocs(db.Bucket, !db.UseXattrs(), db.UseViews())
+	require.True(t, db.Bucket.IsSupported(sgbucket.BucketStoreFeatureN1ql))
+	collection := db.GetSingleDatabaseCollection()
+	n1QLStore, ok := base.AsN1QLStore(collection.dataStore)
+	assert.True(t, ok)
+
+	viewStore, ok := collection.dataStore.(sgbucket.ViewStore)
+	require.True(t, ok)
+
+	_, err := removeObsoleteDesignDocs(ctx, viewStore, !db.UseXattrs(), db.UseViews())
 	assert.NoError(t, err)
-	_, err = removeObsoleteDesignDocs(db.Bucket, !db.UseXattrs(), !db.UseViews())
+	_, err = removeObsoleteDesignDocs(ctx, viewStore, !db.UseXattrs(), !db.UseViews())
 	assert.NoError(t, err)
 
 	expectedIndexes := int(indexTypeCount)
@@ -239,17 +251,17 @@ func TestRemoveIndexesUseViewsTrueAndFalse(t *testing.T) {
 	assert.NoError(t, removeErr)
 
 	// Cleanup design docs created during test
-	_, err = removeObsoleteDesignDocs(db.Bucket, db.UseXattrs(), db.UseViews())
+	_, err = removeObsoleteDesignDocs(ctx, viewStore, db.UseXattrs(), db.UseViews())
 	assert.NoError(t, err)
-	_, err = removeObsoleteDesignDocs(db.Bucket, db.UseXattrs(), !db.UseViews())
+	_, err = removeObsoleteDesignDocs(ctx, viewStore, db.UseXattrs(), !db.UseViews())
 	assert.NoError(t, err)
-	_, err = removeObsoleteDesignDocs(db.Bucket, !db.UseXattrs(), db.UseViews())
+	_, err = removeObsoleteDesignDocs(ctx, viewStore, !db.UseXattrs(), db.UseViews())
 	assert.NoError(t, err)
-	_, err = removeObsoleteDesignDocs(db.Bucket, !db.UseXattrs(), !db.UseViews())
+	_, err = removeObsoleteDesignDocs(ctx, viewStore, !db.UseXattrs(), !db.UseViews())
 	assert.NoError(t, err)
 
 	// Restore ddocs after test
-	err = InitializeViews(db.Bucket)
+	err = InitializeViews(ctx, collection.dataStore)
 	assert.NoError(t, err)
 
 	// Restore indexes after test
@@ -258,7 +270,6 @@ func TestRemoveIndexesUseViewsTrueAndFalse(t *testing.T) {
 }
 
 func TestRemoveObsoleteIndexOnError(t *testing.T) {
-
 	if base.TestsDisableGSI() {
 		t.Skip("This test only works with Couchbase Server and UseViews=false")
 	}
@@ -267,8 +278,22 @@ func TestRemoveObsoleteIndexOnError(t *testing.T) {
 	defer db.Close(ctx)
 
 	leakyBucket := base.NewLeakyBucket(db.Bucket, base.LeakyBucketConfig{DropIndexErrorNames: []string{"sg_access_1", "sg_access_x1"}})
+
+	// TODO: CBG-2533 Multi-collection removal (iterate over each collection here?)
+	dataStore := db.Bucket.DefaultDataStore()
+
+	leakyDataStore := base.NewLeakyDataStore(leakyBucket, dataStore, &base.LeakyBucketConfig{DropIndexErrorNames: []string{"sg_access_1", "sg_access_x1"}})
+
+	defer func() {
+		// Restore indexes after test
+		n1qlStore, ok := base.AsN1QLStore(dataStore)
+		assert.True(t, ok)
+		err := InitializeIndexes(n1qlStore, db.UseXattrs(), 0, false, db.IsServerless())
+		assert.NoError(t, err)
+
+	}()
 	copiedIndexes := copySGIndexes(sgIndexes)
-	require.True(t, db.Bucket.IsSupported(sgbucket.DataStoreFeatureN1ql))
+	require.True(t, db.Bucket.IsSupported(sgbucket.BucketStoreFeatureN1ql))
 
 	// Use existing versions of IndexAccess and IndexChannels and create an old version that will be removed by obsolete
 	// indexes. Resulting from the removal candidates for removeObsoleteIndexes will be:
@@ -286,7 +311,10 @@ func TestRemoveObsoleteIndexOnError(t *testing.T) {
 	channelIndex.previousVersions = []int{1}
 	testIndexes[IndexChannels] = channelIndex
 
-	removedIndex, removeErr := removeObsoleteIndexes(leakyBucket, false, db.UseXattrs(), db.UseViews(), testIndexes)
+	n1qlStore, ok := base.AsN1QLStore(leakyDataStore)
+	require.True(t, ok)
+
+	removedIndex, removeErr := removeObsoleteIndexes(n1qlStore, false, db.UseXattrs(), db.UseViews(), testIndexes)
 	assert.NoError(t, removeErr)
 
 	if base.TestUseXattrs() {
@@ -294,11 +322,6 @@ func TestRemoveObsoleteIndexOnError(t *testing.T) {
 	} else {
 		assert.Contains(t, removedIndex, "sg_channels_1")
 	}
-
-	// Restore indexes after test
-	n1qlStore, _ := base.AsN1QLStore(db.Bucket)
-	err := InitializeIndexes(n1qlStore, db.UseXattrs(), 0, false, db.IsServerless())
-	assert.NoError(t, err)
 
 }
 

@@ -253,10 +253,10 @@ func TestGroupIDReplications(t *testing.T) {
 	// FIXME: CBG-2266 this test reads in persistent config
 
 	// Create test buckets to replicate between
-	passiveBucket := base.GetTestBucketDefaultCollection(t)
+	passiveBucket := base.GetTestBucket(t)
 	defer passiveBucket.Close()
 
-	activeBucket := base.GetTestBucketDefaultCollection(t)
+	activeBucket := base.GetTestBucket(t)
 	defer activeBucket.Close()
 
 	// Set up passive bucket RT
@@ -332,7 +332,8 @@ func TestGroupIDReplications(t *testing.T) {
 		channel := "chan" + group
 		key := "doc" + group
 		body := fmt.Sprintf(`{"channels":["%s"]}`, channel)
-		added, err := activeBucket.Add(key, 0, []byte(body))
+		// default data store - we're not using a named scope/collection in this test
+		added, err := activeBucket.DefaultDataStore().Add(key, 0, []byte(body))
 		require.NoError(t, err)
 		require.True(t, added)
 

@@ -28,14 +28,22 @@ func TestAttachmentMark(t *testing.T) {
 		t.Skip("Requires CBS")
 	}
 
+	if !base.TestsUseDefaultCollection() {
+		// FIXME MB-53448 cannot close if high seqno is in another collection
+		t.Skip("MB-53448 - One Shot DCP cannot close if high seqno is in another collection (fix in 7.2)")
+	}
+
 	testDb, ctx := setupTestDB(t)
 	defer testDb.Close(ctx)
 
-	collection := testDb.GetSingleDatabaseCollectionWithUser()
+	databaseCollection := testDb.GetSingleDatabaseCollectionWithUser()
+	collectionID := databaseCollection.GetCollectionID()
+	dataStore := databaseCollection.dataStore
+
 	body := map[string]interface{}{"foo": "bar"}
 	for i := 0; i < 10; i++ {
 		key := fmt.Sprintf("%s_%d", t.Name(), i)
-		_, _, err := collection.Put(ctx, key, body)
+		_, _, err := databaseCollection.Put(ctx, key, body)
 		assert.NoError(t, err)
 	}
 
@@ -46,24 +54,24 @@ func TestAttachmentMark(t *testing.T) {
 		attBody := map[string]interface{}{"value": strconv.Itoa(i)}
 		attJSONBody, err := base.JSONMarshal(attBody)
 		assert.NoError(t, err)
-		attKeys = append(attKeys, CreateLegacyAttachmentDoc(t, ctx, collection, docID, []byte("{}"), attKey, attJSONBody))
+		attKeys = append(attKeys, CreateLegacyAttachmentDoc(t, ctx, databaseCollection, docID, []byte("{}"), attKey, attJSONBody))
 	}
 
-	err := testDb.Bucket.SetRaw("testDocx", 0, nil, []byte("{}"))
+	err := dataStore.SetRaw("testDocx", 0, nil, []byte("{}"))
 	assert.NoError(t, err)
 
-	attKeys = append(attKeys, createConflictingDocOneLeafHasAttachmentBodyMap(t, "conflictAtt", "attForConflict", []byte(`{"value": "att"}`), testDb))
-	attKeys = append(attKeys, createConflictingDocOneLeafHasAttachmentBodyKey(t, "conflictAttBodyKey", "attForConflict2", []byte(`{"val": "bodyKeyAtt"}`), testDb))
-	attKeys = append(attKeys, createDocWithInBodyAttachment(t, ctx, "inBodyDoc", []byte(`{}`), "attForInBodyRef", []byte(`{"val": "inBodyAtt"}`), collection))
+	attKeys = append(attKeys, createConflictingDocOneLeafHasAttachmentBodyMap(t, "conflictAtt", "attForConflict", []byte(`{"value": "att"}`), databaseCollection))
+	attKeys = append(attKeys, createConflictingDocOneLeafHasAttachmentBodyKey(t, "conflictAttBodyKey", "attForConflict2", []byte(`{"val": "bodyKeyAtt"}`), databaseCollection))
+	attKeys = append(attKeys, createDocWithInBodyAttachment(t, ctx, "inBodyDoc", []byte(`{}`), "attForInBodyRef", []byte(`{"val": "inBodyAtt"}`), databaseCollection))
 
 	terminator := base.NewSafeTerminator()
-	attachmentsMarked, _, err := attachmentCompactMarkPhase(ctx, testDb, t.Name(), terminator, &base.AtomicInt{})
+	attachmentsMarked, _, err := attachmentCompactMarkPhase(ctx, dataStore, collectionID, testDb, t.Name(), terminator, &base.AtomicInt{})
 	assert.NoError(t, err)
 	assert.Equal(t, int64(13), attachmentsMarked)
 
 	for _, attDocKey := range attKeys {
 		var attachmentData Body
-		_, err = testDb.Bucket.GetXattr(attDocKey, base.AttachmentCompactionXattrName, &attachmentData)
+		_, err = dataStore.GetXattr(attDocKey, base.AttachmentCompactionXattrName, &attachmentData)
 		assert.NoError(t, err)
 
 		compactIDSection, ok := attachmentData[CompactionIDKey]
@@ -76,22 +84,30 @@ func TestAttachmentMark(t *testing.T) {
 }
 
 func TestAttachmentSweep(t *testing.T) {
+
+	if !base.TestsUseDefaultCollection() {
+		// FIXME MB-53448 cannot close if high seqno is in another collection
+		t.Skip("MB-53448 - One Shot DCP cannot close if high seqno is in another collection (fix in 7.2)")
+	}
+
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Requires CBS")
 	}
 
 	testDb, ctx := setupTestDB(t)
 	defer testDb.Close(ctx)
+	dataStore := testDb.Bucket.DefaultDataStore()
+	collectionID := testDb.GetSingleDatabaseCollection().GetCollectionID()
 
 	makeMarkedDoc := func(docid string, compactID string) {
-		err := testDb.Bucket.SetRaw(docid, 0, nil, []byte("{}"))
+		err := dataStore.SetRaw(docid, 0, nil, []byte("{}"))
 		assert.NoError(t, err)
-		_, err = testDb.Bucket.SetXattr(docid, getCompactionIDSubDocPath(compactID), []byte(strconv.Itoa(int(time.Now().Unix()))))
+		_, err = dataStore.SetXattr(docid, getCompactionIDSubDocPath(compactID), []byte(strconv.Itoa(int(time.Now().Unix()))))
 		assert.NoError(t, err)
 	}
 
 	makeUnmarkedDoc := func(docid string) {
-		err := testDb.Bucket.SetRaw(docid, 0, nil, []byte("{}"))
+		err := dataStore.SetRaw(docid, 0, nil, []byte("{}"))
 		assert.NoError(t, err)
 	}
 
@@ -114,7 +130,7 @@ func TestAttachmentSweep(t *testing.T) {
 	}
 
 	terminator := base.NewSafeTerminator()
-	purged, err := attachmentCompactSweepPhase(ctx, testDb, t.Name(), nil, false, terminator, &base.AtomicInt{})
+	purged, err := attachmentCompactSweepPhase(ctx, dataStore, collectionID, testDb, t.Name(), nil, false, terminator, &base.AtomicInt{})
 	assert.NoError(t, err)
 
 	assert.Equal(t, int64(11), purged)
@@ -124,23 +140,29 @@ func TestAttachmentCleanup(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Requires CBS")
 	}
-
+	if !base.TestsUseDefaultCollection() {
+		// FIXME MB-53448 cannot close if high seqno is in another collection
+		t.Skip("MB-53448 - One Shot DCP cannot close if high seqno is in another collection (fix in 7.2)")
+	}
 	testDb, ctx := setupTestDB(t)
 	defer testDb.Close(ctx)
+	collection := testDb.GetSingleDatabaseCollection()
+	dataStore := collection.dataStore
+	collectionID := collection.GetCollectionID()
 
 	makeMarkedDoc := func(docid string, compactID string) {
-		err := testDb.Bucket.SetRaw(docid, 0, nil, []byte("{}"))
+		err := dataStore.SetRaw(docid, 0, nil, []byte("{}"))
 		assert.NoError(t, err)
-		_, err = testDb.Bucket.SetXattr(docid, getCompactionIDSubDocPath(compactID), []byte(strconv.Itoa(int(time.Now().Unix()))))
+		_, err = dataStore.SetXattr(docid, getCompactionIDSubDocPath(compactID), []byte(strconv.Itoa(int(time.Now().Unix()))))
 		assert.NoError(t, err)
 	}
 
 	makeMultiMarkedDoc := func(docid string, compactIDs map[string]interface{}) {
-		err := testDb.Bucket.SetRaw(docid, 0, nil, []byte("{}"))
+		err := dataStore.SetRaw(docid, 0, nil, []byte("{}"))
 		assert.NoError(t, err)
 		compactIDsJSON, err := base.JSONMarshal(compactIDs)
 		assert.NoError(t, err)
-		_, err = testDb.Bucket.SetXattr(docid, base.AttachmentCompactionXattrName+"."+CompactionIDKey, compactIDsJSON)
+		_, err = dataStore.SetXattr(docid, base.AttachmentCompactionXattrName+"."+CompactionIDKey, compactIDsJSON)
 		assert.NoError(t, err)
 	}
 
@@ -185,19 +207,19 @@ func TestAttachmentCleanup(t *testing.T) {
 	}
 
 	terminator := base.NewSafeTerminator()
-	err := attachmentCompactCleanupPhase(ctx, testDb, t.Name(), nil, terminator)
+	err := attachmentCompactCleanupPhase(ctx, dataStore, collectionID, testDb, t.Name(), nil, terminator)
 	assert.NoError(t, err)
 
 	for _, docID := range singleMarkedAttIDs {
 		var xattr map[string]interface{}
-		_, err := testDb.Bucket.GetXattr(docID, base.AttachmentCompactionXattrName, &xattr)
+		_, err := dataStore.GetXattr(docID, base.AttachmentCompactionXattrName, &xattr)
 		assert.Error(t, err)
 		assert.True(t, errors.Is(err, base.ErrXattrNotFound))
 	}
 
 	for _, docID := range recentMultiMarkedAttIDs {
 		var xattr map[string]interface{}
-		_, err := testDb.Bucket.GetXattr(docID, base.AttachmentCompactionXattrName+"."+CompactionIDKey, &xattr)
+		_, err := dataStore.GetXattr(docID, base.AttachmentCompactionXattrName+"."+CompactionIDKey, &xattr)
 		assert.NoError(t, err)
 
 		assert.NotContains(t, xattr, t.Name())
@@ -206,14 +228,14 @@ func TestAttachmentCleanup(t *testing.T) {
 
 	for _, docID := range oldMultiMarkedAttIDs {
 		var xattr map[string]interface{}
-		_, err := testDb.Bucket.GetXattr(docID, CompactionIDKey, &xattr)
+		_, err := dataStore.GetXattr(docID, CompactionIDKey, &xattr)
 		assert.Error(t, err)
 		assert.True(t, errors.Is(err, base.ErrXattrNotFound))
 	}
 
 	for _, docID := range oneRecentOneOldMultiMarkedAttIDs {
 		var xattr map[string]interface{}
-		_, err := testDb.Bucket.GetXattr(docID, base.AttachmentCompactionXattrName+"."+CompactionIDKey, &xattr)
+		_, err := dataStore.GetXattr(docID, base.AttachmentCompactionXattrName+"."+CompactionIDKey, &xattr)
 		assert.NoError(t, err)
 
 		assert.NotContains(t, xattr, t.Name())
@@ -229,8 +251,15 @@ func TestAttachmentMarkAndSweepAndCleanup(t *testing.T) {
 		t.Skip("Requires CBS")
 	}
 
+	if !base.TestsUseDefaultCollection() {
+		// FIXME MB-53448 cannot close if high seqno is in another collection
+		t.Skip("MB-53448 - One Shot DCP cannot close if high seqno is in another collection (fix in 7.2)")
+	}
+
 	testDb, ctx := setupTestDB(t)
 	defer testDb.Close(ctx)
+	dataStore := testDb.Bucket.DefaultDataStore()
+	collectionID := testDb.GetSingleDatabaseCollection().GetCollectionID()
 
 	collection := testDb.GetSingleDatabaseCollectionWithUser()
 	attKeys := make([]string, 0, 15)
@@ -244,7 +273,7 @@ func TestAttachmentMarkAndSweepAndCleanup(t *testing.T) {
 	}
 
 	makeUnmarkedDoc := func(docid string) {
-		err := testDb.Bucket.SetRaw(docid, 0, nil, []byte("{}"))
+		err := dataStore.SetRaw(docid, 0, nil, []byte("{}"))
 		assert.NoError(t, err)
 		attKeys = append(attKeys, docid)
 	}
@@ -255,38 +284,38 @@ func TestAttachmentMarkAndSweepAndCleanup(t *testing.T) {
 	}
 
 	terminator := base.NewSafeTerminator()
-	attachmentsMarked, vbUUIDS, err := attachmentCompactMarkPhase(ctx, testDb, t.Name(), terminator, &base.AtomicInt{})
+	attachmentsMarked, vbUUIDS, err := attachmentCompactMarkPhase(ctx, dataStore, collectionID, testDb, t.Name(), terminator, &base.AtomicInt{})
 	assert.NoError(t, err)
 	assert.Equal(t, int64(10), attachmentsMarked)
 
-	attachmentsPurged, err := attachmentCompactSweepPhase(ctx, testDb, t.Name(), vbUUIDS, false, terminator, &base.AtomicInt{})
+	attachmentsPurged, err := attachmentCompactSweepPhase(ctx, dataStore, collectionID, testDb, t.Name(), vbUUIDS, false, terminator, &base.AtomicInt{})
 	assert.NoError(t, err)
 	assert.Equal(t, int64(5), attachmentsPurged)
 
 	for _, attDocKey := range attKeys {
 		var back interface{}
-		_, err = testDb.Bucket.Get(attDocKey, &back)
+		_, err = dataStore.Get(attDocKey, &back)
 		if strings.Contains(attDocKey, "unmarked") {
 			assert.Error(t, err)
 		} else {
 			assert.NoError(t, err)
 			var xattr map[string]interface{}
-			_, err = testDb.Bucket.GetXattr(attDocKey, base.AttachmentCompactionXattrName+"."+CompactionIDKey, &xattr)
+			_, err = dataStore.GetXattr(attDocKey, base.AttachmentCompactionXattrName+"."+CompactionIDKey, &xattr)
 			assert.NoError(t, err)
 			assert.Contains(t, xattr, t.Name())
 		}
 	}
 
-	err = attachmentCompactCleanupPhase(ctx, testDb, t.Name(), vbUUIDS, terminator)
+	err = attachmentCompactCleanupPhase(ctx, dataStore, collectionID, testDb, t.Name(), vbUUIDS, terminator)
 	assert.NoError(t, err)
 
 	for _, attDocKey := range attKeys {
 		var back interface{}
-		_, err = testDb.Bucket.Get(attDocKey, &back)
+		_, err = dataStore.Get(attDocKey, &back)
 		if !strings.Contains(attDocKey, "unmarked") {
 			assert.NoError(t, err)
 			var xattr map[string]interface{}
-			_, err = testDb.Bucket.GetXattr(attDocKey, base.AttachmentCompactionXattrName+"."+CompactionIDKey, &xattr)
+			_, err = dataStore.GetXattr(attDocKey, base.AttachmentCompactionXattrName+"."+CompactionIDKey, &xattr)
 			assert.Error(t, err)
 			assert.True(t, errors.Is(err, base.ErrXattrNotFound))
 		}
@@ -298,23 +327,29 @@ func TestAttachmentCompactionRunTwice(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
+	if !base.TestsUseDefaultCollection() {
+		// FIXME MB-53448 cannot close if high seqno is in another collection
+		t.Skip("MB-53448 - One Shot DCP cannot close if high seqno is in another collection (fix in 7.2)")
+	}
+
 	b := base.GetTestBucket(t).LeakyBucketClone(base.LeakyBucketConfig{})
 	defer b.Close()
 
 	testDB1, ctx1 := setupTestDBForBucket(t, b)
 	defer testDB1.Close(ctx1)
+	db1DataStore := testDB1.Bucket.DefaultDataStore()
 
 	testDB2, ctx2 := setupTestDBForBucket(t, b.NoCloseClone())
 	defer testDB2.Close(ctx2)
 
 	var err error
 
-	leakyBucket, ok := base.AsLeakyBucket(testDB1.Bucket)
+	lds, ok := base.AsLeakyDataStore(db1DataStore)
 	require.True(t, ok)
 
 	triggerCallback := false
 	triggerStopCallback := false
-	leakyBucket.SetGetRawCallback(func(s string) error {
+	lds.SetGetRawCallback(func(s string) error {
 		if triggerCallback {
 			err = testDB2.AttachmentCompactionManager.Start(ctx2, map[string]interface{}{"database": testDB2})
 			assert.Error(t, err)
@@ -443,23 +478,28 @@ func TestAttachmentCompactionStopImmediateStart(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
+	if !base.TestsUseDefaultCollection() {
+		// FIXME MB-53448 cannot close if high seqno is in another collection
+		t.Skip("MB-53448 - One Shot DCP cannot close if high seqno is in another collection (fix in 7.2)")
+	}
 	b := base.GetTestBucket(t).LeakyBucketClone(base.LeakyBucketConfig{})
 	defer b.Close()
 
 	testDB1, ctx1 := setupTestDBForBucket(t, b)
 	defer testDB1.Close(ctx1)
+	db1DataStore := testDB1.Bucket.DefaultDataStore()
 
 	testDB2, ctx2 := setupTestDBForBucket(t, b.NoCloseClone())
 	defer testDB2.Close(ctx2)
 
 	var err error
 
-	leakyBucket, ok := base.AsLeakyBucket(testDB1.Bucket)
+	lds, ok := base.AsLeakyDataStore(db1DataStore)
 	require.True(t, ok)
 
 	triggerCallback := false
 	triggerStopCallback := false
-	leakyBucket.SetGetRawCallback(func(s string) error {
+	lds.SetGetRawCallback(func(s string) error {
 		if triggerCallback {
 			err = testDB2.AttachmentCompactionManager.Start(ctx2, map[string]interface{}{"database": testDB2})
 			assert.Error(t, err)
@@ -545,6 +585,11 @@ func TestAttachmentProcessError(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
+	if !base.TestsUseDefaultCollection() {
+		// FIXME MB-53448 cannot close if high seqno is in another collection
+		t.Skip("MB-53448 - One Shot DCP cannot close if high seqno is in another collection (fix in 7.2)")
+	}
+
 	b := base.GetTestBucket(t).LeakyBucketClone(base.LeakyBucketConfig{
 		SetXattrCallback: func(key string) error {
 			return fmt.Errorf("some error")
@@ -584,18 +629,24 @@ func TestAttachmentDifferentVBUUIDsBetweenPhases(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
+	if !base.TestsUseDefaultCollection() {
+		// FIXME MB-53448 cannot close if high seqno is in another collection
+		t.Skip("MB-53448 - One Shot DCP cannot close if high seqno is in another collection (fix in 7.2)")
+	}
 	testDB, ctx := setupTestDB(t)
 	defer testDB.Close(ctx)
+	dataStore := testDB.Bucket.DefaultDataStore()
+	collectionID := testDB.GetSingleDatabaseCollection().GetCollectionID()
 
 	// Run mark phase as usual
 	terminator := base.NewSafeTerminator()
-	_, vbUUIDs, err := attachmentCompactMarkPhase(ctx, testDB, t.Name(), terminator, &base.AtomicInt{})
+	_, vbUUIDs, err := attachmentCompactMarkPhase(ctx, dataStore, collectionID, testDB, t.Name(), terminator, &base.AtomicInt{})
 	assert.NoError(t, err)
 
 	// Manually modify a vbUUID and ensure the Sweep phase errors
 	vbUUIDs[0] = 1
 
-	_, err = attachmentCompactSweepPhase(ctx, testDB, t.Name(), vbUUIDs, false, terminator, &base.AtomicInt{})
+	_, err = attachmentCompactSweepPhase(ctx, dataStore, collectionID, testDB, t.Name(), vbUUIDs, false, terminator, &base.AtomicInt{})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "error opening stream for vb 0: VbUUID mismatch when failOnRollback set")
 }
@@ -625,7 +676,7 @@ func CreateLegacyAttachmentDoc(t *testing.T, ctx context.Context, db *DatabaseCo
 	attDigest := Sha1DigestKey(attBody)
 
 	attDocID := MakeAttachmentKey(AttVersion1, docID, attDigest)
-	_, err := db.Bucket.AddRaw(attDocID, 0, attBody)
+	_, err := db.dataStore.AddRaw(attDocID, 0, attBody)
 	require.NoError(t, err)
 
 	var unmarshalledBody Body
@@ -635,7 +686,7 @@ func CreateLegacyAttachmentDoc(t *testing.T, ctx context.Context, db *DatabaseCo
 	_, _, err = db.Put(ctx, docID, unmarshalledBody)
 	require.NoError(t, err)
 
-	_, err = db.Bucket.WriteUpdateWithXattr(docID, base.SyncXattrName, "", 0, nil, nil, func(doc []byte, xattr []byte, userXattr []byte, cas uint64) (updatedDoc []byte, updatedXattr []byte, deletedDoc bool, expiry *uint32, err error) {
+	_, err = db.dataStore.WriteUpdateWithXattr(docID, base.SyncXattrName, "", 0, nil, nil, func(doc []byte, xattr []byte, userXattr []byte, cas uint64) (updatedDoc []byte, updatedXattr []byte, deletedDoc bool, expiry *uint32, err error) {
 		attachmentSyncData := map[string]interface{}{
 			attID: map[string]interface{}{
 				"content_type": "application/json",
@@ -662,7 +713,7 @@ func CreateLegacyAttachmentDoc(t *testing.T, ctx context.Context, db *DatabaseCo
 	return attDocID
 }
 
-func createConflictingDocOneLeafHasAttachmentBodyMap(t *testing.T, docID string, attID string, attBody []byte, db *Database) string {
+func createConflictingDocOneLeafHasAttachmentBodyMap(t *testing.T, docID string, attID string, attBody []byte, db *DatabaseCollectionWithUser) string {
 	attDigest := Sha1DigestKey(attBody)
 	attLength := len(attBody)
 
@@ -700,17 +751,17 @@ func createConflictingDocOneLeafHasAttachmentBodyMap(t *testing.T, docID string,
       "time_saved": "2021-10-14T16:38:11.359443+01:00"
     }`
 
-	_, err := db.Bucket.WriteWithXattr(docID, base.SyncXattrName, 0, 0, nil, []byte(`{"Winning Rev": true}`), []byte(syncData), false, false)
+	_, err := db.dataStore.WriteWithXattr(docID, base.SyncXattrName, 0, 0, nil, []byte(`{"Winning Rev": true}`), []byte(syncData), false, false)
 	assert.NoError(t, err)
 
 	attDocID := MakeAttachmentKey(AttVersion1, docID, attDigest)
-	_, err = db.Bucket.AddRaw(attDocID, 0, attBody)
+	_, err = db.dataStore.AddRaw(attDocID, 0, attBody)
 	require.NoError(t, err)
 
 	return attDocID
 }
 
-func createConflictingDocOneLeafHasAttachmentBodyKey(t *testing.T, docID string, attID string, attBody []byte, db *Database) string {
+func createConflictingDocOneLeafHasAttachmentBodyKey(t *testing.T, docID string, attID string, attBody []byte, db *DatabaseCollectionWithUser) string {
 	attDigest := Sha1DigestKey(attBody)
 
 	syncData := `{
@@ -749,11 +800,11 @@ func createConflictingDocOneLeafHasAttachmentBodyKey(t *testing.T, docID string,
       "time_saved": "2021-10-21T12:48:39.549095+01:00"
     }`
 
-	_, err := db.Bucket.WriteWithXattr(docID, base.SyncXattrName, 0, 0, nil, []byte(`{"Winning Rev": true}`), []byte(syncData), false, false)
+	_, err := db.dataStore.WriteWithXattr(docID, base.SyncXattrName, 0, 0, nil, []byte(`{"Winning Rev": true}`), []byte(syncData), false, false)
 	assert.NoError(t, err)
 
 	attDocID := MakeAttachmentKey(AttVersion1, docID, attDigest)
-	_, err = db.Bucket.AddRaw(attDocID, 0, attBody)
+	_, err = db.dataStore.AddRaw(attDocID, 0, attBody)
 	require.NoError(t, err)
 
 	backupKey := "_sync:rb:PVLZc9dMcSQWX9uiA9tvlMDcs/PXoFIowRvfjcSurvU="
@@ -769,7 +820,7 @@ func createConflictingDocOneLeafHasAttachmentBodyKey(t *testing.T, docID string,
 	  "testval": "val"
 	}`
 
-	err = db.Bucket.SetRaw(backupKey, 0, nil, []byte(bodyBackup))
+	err = db.dataStore.SetRaw(backupKey, 0, nil, []byte(bodyBackup))
 	assert.NoError(t, err)
 
 	return attDocID
@@ -785,10 +836,10 @@ func createDocWithInBodyAttachment(t *testing.T, ctx context.Context, docID stri
 
 	attDigest := Sha1DigestKey(attBody)
 	attDocID := MakeAttachmentKey(AttVersion1, docID, attDigest)
-	_, err = db.Bucket.AddRaw(attDocID, 0, attBody)
+	_, err = db.dataStore.AddRaw(attDocID, 0, attBody)
 	require.NoError(t, err)
 
-	_, err = db.Bucket.Update(docID, 0, func(current []byte) (updated []byte, expiry *uint32, delete bool, err error) {
+	_, err = db.dataStore.Update(docID, 0, func(current []byte) (updated []byte, expiry *uint32, delete bool, err error) {
 		attachmentSyncData := map[string]interface{}{
 			attID: map[string]interface{}{
 				"content_type": "application/json",
@@ -824,6 +875,11 @@ func createDocWithInBodyAttachment(t *testing.T, ctx context.Context, docID stri
 func TestAttachmentCompactIncorrectStat(t *testing.T) {
 	base.LongRunningTest(t)
 
+	if !base.TestsUseDefaultCollection() {
+		// FIXME MB-53448 cannot close if high seqno is in another collection
+		t.Skip("MB-53448 - One Shot DCP cannot close if high seqno is in another collection (fix in 7.2)")
+	}
+
 	const docsToCreate = 10_000
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Requires CBS")
@@ -831,32 +887,33 @@ func TestAttachmentCompactIncorrectStat(t *testing.T) {
 
 	testDb, ctx := setupTestDB(t)
 	defer testDb.Close(ctx)
+	dataStore := testDb.Bucket.DefaultDataStore()
+	collectionID := testDb.GetSingleDatabaseCollection().GetCollectionID()
+
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
 	collection := testDb.GetSingleDatabaseCollectionWithUser()
 	// Create the docs that will be marked and not swept
 	body := map[string]interface{}{"foo": "bar"}
+	t.Logf("Creating %d docs - may take a while...", docsToCreate)
 	for i := 0; i < docsToCreate; i++ {
-		key := fmt.Sprintf("%s_%d", t.Name(), i)
-		_, _, err := collection.Put(ctx, key, body)
+		iStr := strconv.Itoa(i)
+		_, _, err := collection.Put(ctx, t.Name()+"_"+iStr, body)
 		require.NoError(t, err)
 	}
 
+	t.Logf("Creating %d legacy attachment docs - may take a while...", docsToCreate)
 	for i := 0; i < docsToCreate; i++ {
-		docID := fmt.Sprintf("testDoc-%d", i)
-		attKey := fmt.Sprintf("att-%d", i)
-		attBody := map[string]interface{}{"value": strconv.Itoa(i)}
-		attJSONBody, err := base.JSONMarshal(attBody)
-		require.NoError(t, err)
-		CreateLegacyAttachmentDoc(t, ctx, collection, docID, []byte("{}"), attKey, attJSONBody)
+		iStr := strconv.Itoa(i)
+		CreateLegacyAttachmentDoc(t, ctx, collection, "testDoc-"+iStr, []byte("{}"), "att-"+iStr, []byte(`{"value":`+iStr+`}`))
 	}
 
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 	// Start marking stage
 	terminator := base.NewSafeTerminator()
 	stat := &base.AtomicInt{}
 	count := int64(0)
 	go func() {
-		attachmentCount, _, err := attachmentCompactMarkPhase(ctx, testDb, "mark", terminator, stat)
+		attachmentCount, _, err := attachmentCompactMarkPhase(ctx, dataStore, collectionID, testDb, "mark", terminator, stat)
 		atomic.StoreInt64(&count, attachmentCount)
 		require.NoError(t, err)
 	}()
@@ -898,7 +955,7 @@ func TestAttachmentCompactIncorrectStat(t *testing.T) {
 	count = 0
 	terminator = base.NewSafeTerminator()
 	go func() {
-		attachmentCount, err := attachmentCompactSweepPhase(ctx, testDb, "sweep", nil, false, terminator, stat)
+		attachmentCount, err := attachmentCompactSweepPhase(ctx, dataStore, collectionID, testDb, "sweep", nil, false, terminator, stat)
 		atomic.StoreInt64(&count, attachmentCount)
 		require.NoError(t, err)
 	}()

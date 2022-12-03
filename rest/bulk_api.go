@@ -19,10 +19,10 @@ import (
 	"strings"
 	"time"
 
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	ch "github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
-	pkgerrors "github.com/pkg/errors"
 )
 
 // HTTP handler for _all_docs
@@ -202,7 +202,7 @@ func (h *handler) handleAllDocs() error {
 	lastSeq, _ := h.db.LastSequence()
 	h.setHeader("Content-Type", "application/json")
 	// response.Write below would set Status OK implicitly. We manually do it here to ensure that our handler knows
-	//that the header has been written to, meaning we can prevent it from attempting to set the header again later on.
+	// that the header has been written to, meaning we can prevent it from attempting to set the header again later on.
 	h.writeStatus(http.StatusOK, http.StatusText(http.StatusOK))
 	_, _ = h.response.Write([]byte(`{"rows":[` + "\n"))
 	if explicitDocIDs != nil {
@@ -232,7 +232,11 @@ func (h *handler) handleDump() error {
 	viewName := h.PathVar("view")
 	base.InfofCtx(h.ctx(), base.KeyHTTP, "Dump view %q", base.MD(viewName))
 	opts := db.Body{"stale": false, "reduce": false}
-	result, err := h.db.Bucket.View(db.DesignDocSyncGateway(), viewName, opts)
+	vs, ok := h.db.Bucket.(sgbucket.ViewStore)
+	if !ok {
+		return base.HTTPErrorf(http.StatusInternalServerError, "bucket does not support views")
+	}
+	result, err := vs.View(db.DesignDocSyncGateway(), viewName, opts)
 	if err != nil {
 		return err
 	}
@@ -264,7 +268,7 @@ func (h *handler) handleRepair() error {
 		return errors.New("_repair endpoint disabled")
 	}
 
-	base.InfofCtx(h.ctx(), base.KeyHTTP, "Repair bucket")
+	/*base.InfofCtx(h.ctx(), base.KeyHTTP, "Repair bucket")
 
 	// Todo: is this actually needed or does something else in the handler do it?  I can't find that..
 	defer func() {
@@ -299,6 +303,10 @@ func (h *handler) handleRepair() error {
 	_, err = h.response.Write(resultMarshalled)
 
 	return err
+
+	*/
+
+	return nil
 }
 
 // HTTP handler for _dumpchannel

@@ -4575,7 +4575,7 @@ func TestActiveReplicatorRecoverFromRemoteRollback(t *testing.T) {
 	checkpointDocID := base.SyncDocPrefix + "local:checkpoint/" + cID
 
 	var firstCheckpoint interface{}
-	_, err = rt2.Bucket().Get(checkpointDocID, &firstCheckpoint)
+	_, err = rt2.Bucket().DefaultDataStore().Get(checkpointDocID, &firstCheckpoint)
 	require.NoError(t, err)
 
 	// Create doc2 on rt1
@@ -4608,7 +4608,7 @@ func TestActiveReplicatorRecoverFromRemoteRollback(t *testing.T) {
 	assert.NoError(t, ar.Stop())
 
 	// roll back checkpoint value to first one and remove the associated doc
-	err = rt2.Bucket().Set(checkpointDocID, 0, nil, firstCheckpoint)
+	err = rt2.Bucket().DefaultDataStore().Set(checkpointDocID, 0, nil, firstCheckpoint)
 	assert.NoError(t, err)
 
 	rt2db, err := db.GetDatabase(rt2.GetDatabase(), nil)
@@ -4704,13 +4704,13 @@ func TestActiveReplicatorRecoverFromMismatchedRev(t *testing.T) {
 
 	pushCheckpointID := ar.Push.CheckpointID
 	pushCheckpointDocID := base.SyncDocPrefix + "local:checkpoint/" + pushCheckpointID
-	err = rt2.Bucket().Set(pushCheckpointDocID, 0, nil, map[string]interface{}{"last_sequence": "0", "_rev": "abc"})
+	err = rt2.Bucket().DefaultDataStore().Set(pushCheckpointDocID, 0, nil, map[string]interface{}{"last_sequence": "0", "_rev": "abc"})
 	require.NoError(t, err)
 
 	pullCheckpointID := ar.Pull.CheckpointID
 	require.NoError(t, err)
 	pullCheckpointDocID := base.SyncDocPrefix + "local:checkpoint/" + pullCheckpointID
-	err = rt1.Bucket().Set(pullCheckpointDocID, 0, nil, map[string]interface{}{"last_sequence": "0", "_rev": "abc"})
+	err = rt1.Bucket().DefaultDataStore().Set(pullCheckpointDocID, 0, nil, map[string]interface{}{"last_sequence": "0", "_rev": "abc"})
 	require.NoError(t, err)
 
 	// Create doc1 on rt1
@@ -5754,7 +5754,8 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 	// requireTombstone validates tombstoned revision.
 	requireTombstone := func(t *testing.T, bucket *base.TestBucket, docID string) {
 		var rawBody db.Body
-		_, err := bucket.Get(docID, &rawBody)
+		// TODO: Could move to GetSingleDataStore when RestTester database is being initialised with a named collection instead of just default
+		_, err := bucket.DefaultDataStore().Get(docID, &rawBody)
 		if base.TestUseXattrs() {
 			require.True(t, base.IsDocNotFoundError(err))
 			require.Len(t, rawBody, 0)
@@ -5960,7 +5961,8 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 			if test.resurrectLocal {
 				if test.sdkResurrect {
 					// resurrect doc via SDK on local
-					err = activeBucket.Set("docid2", 0, nil, updatedBody)
+					// TODO: Could move to GetSingleDataStore when RestTester database is being initialised with a named collection instead of just default
+					err = activeBucket.DefaultDataStore().Set("docid2", 0, nil, updatedBody)
 					assert.NoError(t, err, "Unable to resurrect doc docid2")
 					// force on-demand import
 					_, getErr := localActiveRT.GetDatabase().GetSingleDatabaseCollection().GetDocument(base.TestCtx(t), "docid2", db.DocUnmarshalSync)
@@ -5972,7 +5974,8 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 			} else {
 				if test.sdkResurrect {
 					// resurrect doc via SDK on remote
-					err = passiveBucket.Set("docid2", 0, nil, updatedBody)
+					// TODO: Could move to GetSingleDataStore when RestTester database is being initialised with a named collection instead of just default
+					err = passiveBucket.DefaultDataStore().Set("docid2", 0, nil, updatedBody)
 					assert.NoError(t, err, "Unable to resurrect doc docid2")
 					// force on-demand import
 					_, getErr := remotePassiveRT.GetDatabase().GetSingleDatabaseCollection().GetDocument(base.TestCtx(t), "docid2", db.DocUnmarshalSync)
@@ -7060,7 +7063,7 @@ func TestReplicatorIgnoreRemovalBodies(t *testing.T) {
 	require.NoError(t, err)
 
 	activeRT.GetDatabase().GetSingleDatabaseCollection().FlushRevisionCacheForTest()
-	err = activeRT.Bucket().Delete(fmt.Sprintf("_sync:rev:%s:%d:%s", t.Name(), len(rev2ID), rev2ID))
+	err = activeRT.Bucket().DefaultDataStore().Delete(fmt.Sprintf("_sync:rev:%s:%d:%s", t.Name(), len(rev2ID), rev2ID))
 	require.NoError(t, err)
 
 	// Set-up replicator //

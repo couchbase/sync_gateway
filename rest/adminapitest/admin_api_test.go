@@ -1262,6 +1262,9 @@ func TestConfigRedaction(t *testing.T) {
 }
 
 func TestSoftDeleteCasMismatch(t *testing.T) {
+	// FIXME: LeakyBucket not supported for metadata collection
+	t.Skip("LeakyBucket not supported for metadata collection")
+
 	if !base.UnitTestUrlIsWalrus() {
 		t.Skip("Skip LeakyBucket test when running in integration")
 	}
@@ -1273,13 +1276,13 @@ func TestSoftDeleteCasMismatch(t *testing.T) {
 	resp := rt.SendAdminRequest("PUT", "/db/_role/role", `{"admin_channels":["channel"]}`)
 	rest.RequireStatus(t, resp, http.StatusCreated)
 
-	leakyBucket, ok := base.AsLeakyBucket(rt.TestBucket)
+	leakyDataStore, ok := base.AsLeakyDataStore(rt.TestBucket.GetSingleDataStore())
 	require.True(t, ok)
 
 	// Set callback to trigger a DELETE AFTER an update. This will trigger a CAS mismatch.
 	// Update is done on a GetRole operation so this delete is done between a GET and save operation.
 	triggerCallback := true
-	leakyBucket.SetPostUpdateCallback(func(key string) {
+	leakyDataStore.SetPostUpdateCallback(func(key string) {
 		if triggerCallback {
 			triggerCallback = false
 			resp = rt.SendAdminRequest("DELETE", "/db/_role/role", ``)
@@ -2035,6 +2038,9 @@ func TestPutDbConfigChangeName(t *testing.T) {
 }
 
 func TestSwitchDbConfigCollectionName(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("can not create new buckets and scopes in walrus")
+	}
 	base.TestRequiresCollections(t)
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyConfig)
@@ -2617,7 +2623,7 @@ func TestDeleteFunctionsWhileDbOffline(t *testing.T) {
 
 	// Get a test bucket, and use it to create the database.
 	// FIXME: CBG-2266 this test reads in persistent config
-	tb := base.GetTestBucketDefaultCollection(t)
+	tb := base.GetTestBucket(t)
 	defer func() { tb.Close() }()
 
 	// Initial DB config
@@ -2658,7 +2664,8 @@ func TestDeleteFunctionsWhileDbOffline(t *testing.T) {
 	resp.RequireStatus(http.StatusCreated)
 
 	if base.TestUseXattrs() {
-		add, err := tb.Add("TestImportDoc", 0, db.Document{ID: "TestImportDoc", RevID: "1-abc"})
+		// default data store - we're not using a named scope/collection in this test
+		add, err := tb.DefaultDataStore().Add("TestImportDoc", 0, db.Document{ID: "TestImportDoc", RevID: "1-abc"})
 		require.NoError(t, err)
 		require.Equal(t, true, add)
 
@@ -2972,7 +2979,7 @@ func TestApiInternalPropertiesHandling(t *testing.T) {
 			rest.RequireStatus(t, resp, http.StatusCreated)
 
 			var bucketDoc map[string]interface{}
-			_, err = rt.Bucket().Get(docID, &bucketDoc)
+			_, err = rt.Bucket().DefaultDataStore().Get(docID, &bucketDoc)
 			assert.NoError(t, err)
 			body := rt.GetDoc(docID)
 			// Confirm input body is in the bucket doc
@@ -3124,7 +3131,7 @@ func TestTombstoneCompactionPurgeInterval(t *testing.T) {
 	dbc := rt.GetDatabase()
 	ctx := rt.Context()
 
-	cbStore, _ := base.AsCouchbaseStore(rt.Bucket())
+	cbStore, _ := base.AsCouchbaseBucketStore(rt.Bucket())
 	serverPurgeInterval, err := cbStore.MetadataPurgeInterval()
 	require.NoError(t, err)
 	// Set server purge interval back to what it was for bucket reuse

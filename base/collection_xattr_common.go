@@ -36,10 +36,12 @@ type SubdocXattrStore interface {
 	SubdocDeleteXattrs(k string, xattrKeys ...string) error
 	SubdocDeleteBodyAndXattr(k string, xattrKey string) error
 	SubdocDeleteBody(k string, xattrKey string, exp uint32, cas uint64) (casOut uint64, err error)
-	GetSpec() BucketSpec
-	IsSupported(feature sgbucket.DataStoreFeature) bool
-	isRecoverableReadError(err error) bool
-	isRecoverableWriteError(err error) bool
+
+	// TODO: These could be factored out of this interface and passed in via other means - GetSpec on a DataStore doesn't fit well and IsSupported generally applies only to a bucket not a collection/datastore
+	GetSpec() BucketSpec                                  // GetSpec is used for retry counts/times
+	IsSupported(feature sgbucket.BucketStoreFeature) bool // IsSupported typically defined on the bucket, not the datastore
+	isRecoverableReadError(err error) bool                // TODO: Can isRecoverableReadError be handled by GoCB's retry logic?
+	isRecoverableWriteError(err error) bool               // TODO: Can isRecoverableWriteError by handled by GoCB's retry logic?
 }
 
 // Utilities for creating/deleting user xattr.  For test use
@@ -127,7 +129,7 @@ func UpdateTombstoneXattr(store SubdocXattrStore, k string, xattrKey string, exp
 				// if cas == 0, create a new server tombstone with xattr
 				casOut, tombstoneErr = store.SubdocInsertXattr(k, xattrKey, exp, cas, xv)
 				// If one-step tombstone creation is not supported, set flag for document body removal
-				requiresBodyRemoval = !store.IsSupported(sgbucket.DataStoreFeatureCreateDeletedWithXattr)
+				requiresBodyRemoval = !store.IsSupported(sgbucket.BucketStoreFeatureCreateDeletedWithXattr)
 			} else {
 				// If cas is non-zero, this is an already existing tombstone.  Update xattr only
 				casOut, tombstoneErr = store.SubdocUpdateXattr(k, xattrKey, exp, cas, xv)
@@ -423,44 +425,36 @@ func deleteDocXattrOnly(store SubdocXattrStore, k string, xattrKey string, callb
 }
 
 // AsSubdocXattrStore tries to return the given bucket as a SubdocXattrStore, based on underlying buckets.
-func AsSubdocXattrStore(bucket Bucket) (SubdocXattrStore, bool) {
+func AsSubdocXattrStore(dataStore DataStore) (SubdocXattrStore, bool) {
 
-	var underlyingBucket Bucket
-	switch typedBucket := bucket.(type) {
+	var underlyingDataStore DataStore
+	switch typedDataStore := dataStore.(type) {
 	case *Collection:
-		return typedBucket, true
-	case *LoggingBucket:
-		underlyingBucket = typedBucket.GetUnderlyingBucket()
-	case *LeakyBucket:
-		underlyingBucket = typedBucket.GetUnderlyingBucket()
-	case *TestBucket:
-		underlyingBucket = typedBucket.Bucket
+		return typedDataStore, true
+	case *LeakyDataStore:
+		underlyingDataStore = typedDataStore.dataStore
 	default:
 		// bail out for unrecognised/unsupported buckets
 		return nil, false
 	}
 
-	return AsSubdocXattrStore(underlyingBucket)
+	return AsSubdocXattrStore(underlyingDataStore)
 }
 
-func AsUserXattrStore(bucket Bucket) (UserXattrStore, bool) {
+func AsUserXattrStore(dataStore DataStore) (UserXattrStore, bool) {
 
-	var underlyingBucket Bucket
-	switch typedBucket := bucket.(type) {
+	var underlyingDataStore DataStore
+	switch typedDataStore := dataStore.(type) {
 	case *Collection:
-		return typedBucket, true
-	case *LoggingBucket:
-		underlyingBucket = typedBucket.GetUnderlyingBucket()
-	case *LeakyBucket:
-		underlyingBucket = typedBucket.GetUnderlyingBucket()
-	case *TestBucket:
-		underlyingBucket = typedBucket.Bucket
+		return typedDataStore, true
+	case *LeakyDataStore:
+		underlyingDataStore = typedDataStore.dataStore
 	default:
 		// bail out for unrecognised/unsupported buckets
 		return nil, false
 	}
 
-	return AsUserXattrStore(underlyingBucket)
+	return AsUserXattrStore(underlyingDataStore)
 }
 
 func xattrCasPath(xattrKey string) string {

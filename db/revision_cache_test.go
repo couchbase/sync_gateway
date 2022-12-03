@@ -192,7 +192,7 @@ func TestRevisionCacheInternalProperties(t *testing.T) {
 
 	// Get the raw document directly from the bucket, validate _revisions property isn't found
 	var bucketBody Body
-	_, err = db.Bucket.Get("doc1", &bucketBody)
+	_, err = collection.dataStore.Get("doc1", &bucketBody)
 	require.NoError(t, err)
 	_, ok := bucketBody[BodyRevisions]
 	if ok {
@@ -304,7 +304,7 @@ func TestPutRevisionCacheAttachmentProperty(t *testing.T) {
 
 	// Get the raw document directly from the bucket, validate _attachments property isn't found
 	var bucketBody Body
-	_, err = db.Bucket.Get(rev1key, &bucketBody)
+	_, err = collection.dataStore.Get(rev1key, &bucketBody)
 	assert.NoError(t, err, "Unexpected error calling bucket.Get")
 	_, ok := bucketBody[BodyAttachments]
 	assert.False(t, ok, "_attachments property still present in document body retrieved from bucket: %#v", bucketBody)
@@ -353,7 +353,7 @@ func TestPutExistingRevRevisionCacheAttachmentProperty(t *testing.T) {
 
 	// Get the raw document directly from the bucket, validate _attachments property isn't found
 	var bucketBody Body
-	_, err = db.Bucket.Get(docKey, &bucketBody)
+	_, err = collection.dataStore.Get(docKey, &bucketBody)
 	assert.NoError(t, err, "Unexpected error calling bucket.Get")
 	_, ok := bucketBody[BodyAttachments]
 	assert.False(t, ok, "_attachments property still present in document body retrieved from bucket: %#v", bucketBody)

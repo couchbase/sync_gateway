@@ -38,7 +38,7 @@ type channelsViewRow struct {
 	}
 }
 
-func nextChannelViewEntry(results sgbucket.QueryResultIterator) (*LogEntry, bool) {
+func nextChannelViewEntry(results sgbucket.QueryResultIterator, collectionID uint32) (*LogEntry, bool) {
 
 	var viewRow channelsViewRow
 	found := results.Next(&viewRow)
@@ -53,6 +53,7 @@ func nextChannelViewEntry(results sgbucket.QueryResultIterator) (*LogEntry, bool
 		RevID:        viewRow.Value.Rev,
 		Flags:        viewRow.Value.Flags,
 		TimeReceived: time.Now(),
+		CollectionID: collectionID,
 	}
 	return entry, true
 
@@ -94,8 +95,8 @@ func (dbc *DatabaseContext) getChangesInChannelFromQuery(ctx context.Context, ch
 
 // Queries the 'channels' view to get a range of sequences of a single channel as LogEntries.
 func (dbc *DatabaseCollection) getChangesInChannelFromQuery(ctx context.Context, channelName string, startSeq, endSeq uint64, limit int, activeOnly bool) (LogEntries, error) {
-	if dbc.Bucket == nil {
-		return nil, errors.New("No bucket available for channel query")
+	if dbc.dataStore == nil {
+		return nil, errors.New("No data store available for channel query")
 	}
 	start := time.Now()
 	usingViews := dbc.useViews()
@@ -123,7 +124,7 @@ func (dbc *DatabaseCollection) getChangesInChannelFromQuery(ctx context.Context,
 			var entry *LogEntry
 			var found bool
 			if usingViews {
-				entry, found = nextChannelViewEntry(queryResults)
+				entry, found = nextChannelViewEntry(queryResults, collectionID)
 			} else {
 				entry, found = nextChannelQueryEntry(queryResults, collectionID)
 			}
@@ -195,8 +196,8 @@ func (dbc *DatabaseCollection) getChangesInChannelFromQuery(ctx context.Context,
 // Queries the 'channels' view to get changes from a channel for the specified sequence.  Used for skipped sequence check
 // before abandoning.
 func (dbc *DatabaseCollection) getChangesForSequences(ctx context.Context, sequences []uint64) (LogEntries, error) {
-	if dbc.Bucket == nil {
-		return nil, errors.New("No bucket available for sequence query")
+	if dbc.dataStore == nil {
+		return nil, errors.New("No data store available for sequence query")
 	}
 	start := time.Now()
 	usingViews := dbc.useViews()
@@ -215,7 +216,7 @@ func (dbc *DatabaseCollection) getChangesForSequences(ctx context.Context, seque
 		var entry *LogEntry
 		var found bool
 		if usingViews {
-			entry, found = nextChannelViewEntry(queryResults)
+			entry, found = nextChannelViewEntry(queryResults, collectionID)
 		} else {
 			entry, found = nextChannelQueryEntry(queryResults, collectionID)
 		}

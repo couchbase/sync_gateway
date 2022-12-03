@@ -17,6 +17,7 @@ import (
 	"sync"
 
 	"github.com/couchbase/cbgt"
+	sgbucket "github.com/couchbase/sg-bucket"
 )
 
 // CfgSG is used to manage shared information between Sync Gateway nodes.
@@ -24,7 +25,7 @@ import (
 // any shared data.  It uses Sync Gateway's existing
 // bucket as a keystore, and existing caching feed for change notifications.
 type CfgSG struct {
-	bucket        Bucket
+	datastore     DataStore
 	loggingCtx    context.Context
 	subscriptions map[string][]chan<- cbgt.CfgEvent // Keyed by key
 	lock          sync.Mutex                        // mutex for subscriptions
@@ -41,13 +42,13 @@ var ErrCfgCasError = &cbgt.CfgCASError{}
 //
 // urlStr: single URL or multiple URLs delimited by ';'
 // bucket: couchbase bucket name
-func NewCfgSG(bucket Bucket, groupID string) (*CfgSG, error) {
+func NewCfgSG(datastore sgbucket.DataStore, groupID string) (*CfgSG, error) {
 
-	cfgContextID := MD(bucket.GetName()).Redact() + "-cfgSG"
+	cfgContextID := MD(datastore.GetName()).Redact() + "-cfgSG"
 	loggingCtx := LogContextWith(context.Background(), &LogContext{CorrelationID: cfgContextID})
 
 	c := &CfgSG{
-		bucket:        bucket,
+		datastore:     datastore,
 		loggingCtx:    loggingCtx,
 		subscriptions: make(map[string][]chan<- cbgt.CfgEvent),
 		keyPrefix:     SGCfgPrefixWithGroupID(groupID),
@@ -65,8 +66,8 @@ func (c *CfgSG) Get(cfgKey string, cas uint64) (
 	DebugfCtx(c.loggingCtx, KeyCluster, "cfg_sg: Get, key: %s, cas: %d", cfgKey, cas)
 	bucketKey := c.sgCfgBucketKey(cfgKey)
 	var value []byte
-	casOut, err := c.bucket.Get(bucketKey, &value)
-	if err != nil && !IsKeyNotFoundError(c.bucket, err) {
+	casOut, err := c.datastore.Get(bucketKey, &value)
+	if err != nil && !IsKeyNotFoundError(c.datastore, err) {
 		InfofCtx(c.loggingCtx, KeyCluster, "cfg_sg: Get, key: %s, cas: %d, err: %v", cfgKey, cas, err)
 		return nil, 0, err
 	}
@@ -88,7 +89,7 @@ func (c *CfgSG) Set(cfgKey string, val []byte, cas uint64) (uint64, error) {
 
 	bucketKey := c.sgCfgBucketKey(cfgKey)
 
-	casOut, err := c.bucket.WriteCas(bucketKey, 0, 0, cas, val, 0)
+	casOut, err := c.datastore.WriteCas(bucketKey, 0, 0, cas, val, 0)
 
 	if IsCasMismatch(err) {
 		InfofCtx(c.loggingCtx, KeyCluster, "cfg_sg: Set, ErrKeyExists key: %s, cas: %d", cfgKey, cas)
@@ -105,10 +106,10 @@ func (c *CfgSG) Del(cfgKey string, cas uint64) error {
 
 	DebugfCtx(c.loggingCtx, KeyCluster, "cfg_sg: Del, key: %s, cas: %d", cfgKey, cas)
 	bucketKey := c.sgCfgBucketKey(cfgKey)
-	_, err := c.bucket.Remove(bucketKey, cas)
+	_, err := c.datastore.Remove(bucketKey, cas)
 	if IsCasMismatch(err) {
 		return ErrCfgCasError
-	} else if err != nil && !IsKeyNotFoundError(c.bucket, err) {
+	} else if err != nil && !IsKeyNotFoundError(c.datastore, err) {
 		return err
 	}
 

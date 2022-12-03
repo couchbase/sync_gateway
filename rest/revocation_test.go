@@ -1213,11 +1213,11 @@ func TestRevocationUserHasDocAccessDocNotFound(t *testing.T) {
 	revocationTester.removeRoleChannel("foo", "A")
 	require.NoError(t, rt.WaitForPendingChanges())
 
-	leakyBucket, ok := base.AsLeakyBucket(rt.Bucket())
+	leakyDataStore, ok := base.AsLeakyDataStore(rt.Bucket().DefaultDataStore())
 	require.True(t, ok)
 
-	leakyBucket.SetGetRawCallback(func(s string) error {
-		require.NoError(t, leakyBucket.Delete("doc"))
+	leakyDataStore.SetGetRawCallback(func(s string) error {
+		require.NoError(t, leakyDataStore.Delete("doc"))
 		return nil
 	})
 
@@ -1443,7 +1443,7 @@ func TestRevocationWithUserXattrs(t *testing.T) {
 
 	defer rt.Close()
 
-	collection, err := base.AsCollection(rt.Bucket())
+	collection, err := base.AsCollection(rt.Bucket().DefaultDataStore())
 	if err != nil {
 		t.Skip("Test requires Couchbase Bucket")
 	}

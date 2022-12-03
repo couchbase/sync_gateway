@@ -217,7 +217,7 @@ func TestLogin(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
-	a := auth.NewAuthenticator(rt.Bucket(), nil, auth.DefaultAuthenticatorOptions())
+	a := auth.NewAuthenticator(rt.MetadataStore(), nil, auth.DefaultAuthenticatorOptions())
 	user, err := a.GetUser("")
 	assert.NoError(t, err)
 	user.SetDisabled(true)
@@ -253,7 +253,7 @@ func TestCustomCookieName(t *testing.T) {
 	}}
 
 	// Disable guest user
-	a := auth.NewAuthenticator(rt.Bucket(), nil, auth.DefaultAuthenticatorOptions())
+	a := auth.NewAuthenticator(rt.MetadataStore(), nil, auth.DefaultAuthenticatorOptions())
 	user, err := a.GetUser("")
 	assert.NoError(t, err)
 	user.SetDisabled(true)
@@ -295,7 +295,7 @@ func TestSessionTtlGreaterThan30Days(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
-	a := auth.NewAuthenticator(rt.Bucket(), nil, auth.DefaultAuthenticatorOptions())
+	a := auth.NewAuthenticator(rt.MetadataStore(), nil, auth.DefaultAuthenticatorOptions())
 	user, err := a.GetUser("")
 	assert.NoError(t, err)
 	user.SetDisabled(true)
@@ -360,7 +360,7 @@ func TestSessionExtension(t *testing.T) {
 		Ttl:        24 * time.Hour,
 	}
 
-	assert.NoError(t, rt.Bucket().Set(auth.DocIDForSession(fakeSession.ID), 0, nil, fakeSession))
+	assert.NoError(t, rt.MetadataStore().Set(auth.DocIDForSession(fakeSession.ID), 0, nil, fakeSession))
 	reqHeaders := map[string]string{
 		"Cookie": auth.DefaultCookieName + "=" + fakeSession.ID,
 	}
@@ -379,7 +379,7 @@ func TestSessionExtension(t *testing.T) {
 	// scenario for expired session. In reality, Sync Gateway rely on Couchbase
 	// Server to nuke the expired document based on TTL. Couchbase Server periodically
 	// removes all items with expiration times that have passed.
-	assert.NoError(t, rt.Bucket().Delete(auth.DocIDForSession(fakeSession.ID)))
+	assert.NoError(t, rt.MetadataStore().Delete(auth.DocIDForSession(fakeSession.ID)))
 
 	response = rt.SendRequestWithHeaders("GET", "/db/doc1", "", reqHeaders)
 	log.Printf("GET Request: Set-Cookie: %v", response.Header().Get("Set-Cookie"))
@@ -490,7 +490,7 @@ func TestSessionExpirationDateTimeFormat(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
-	authenticator := auth.NewAuthenticator(rt.Bucket(), nil, auth.DefaultAuthenticatorOptions())
+	authenticator := auth.NewAuthenticator(rt.MetadataStore(), nil, auth.DefaultAuthenticatorOptions())
 	user, err := authenticator.NewUser("alice", "letMe!n", channels.BaseSetOf(t, "*"))
 	assert.NoError(t, err, "Couldn't create new user")
 	assert.NoError(t, authenticator.Save(user), "Couldn't save new user")

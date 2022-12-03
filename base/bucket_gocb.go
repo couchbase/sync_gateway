@@ -20,7 +20,6 @@ import (
 	"strconv"
 	"strings"
 
-	sgbucket "github.com/couchbase/sg-bucket"
 	pkgerrors "github.com/pkg/errors"
 )
 
@@ -42,73 +41,6 @@ const (
 	// CRC-32 checksum represents the body hash of "Deleted" document.
 	DeleteCrc32c = "0x00000000"
 )
-
-func createBatchesEntries(batchSize uint, entries []*sgbucket.BulkSetEntry) [][]*sgbucket.BulkSetEntry {
-	// boundary checking
-	if len(entries) == 0 {
-		WarnfCtx(context.Background(), "createBatchesEnrties called with empty entries")
-		return [][]*sgbucket.BulkSetEntry{}
-	}
-	if batchSize == 0 {
-		WarnfCtx(context.Background(), "createBatchesEntries called with invalid batchSize")
-		result := [][]*sgbucket.BulkSetEntry{}
-		return append(result, entries)
-	}
-
-	batches := [][]*sgbucket.BulkSetEntry{}
-	batch := []*sgbucket.BulkSetEntry{}
-
-	for idxEntry, entry := range entries {
-
-		batch = append(batch, entry)
-
-		isBatchFull := uint(len(batch)) == batchSize
-		isLastEntry := idxEntry == (len(entries) - 1)
-
-		if isBatchFull || isLastEntry {
-			// this batch is full, add it to batches and start a new batch
-			batches = append(batches, batch)
-			batch = []*sgbucket.BulkSetEntry{}
-		}
-
-	}
-	return batches
-
-}
-
-func createBatchesKeys(batchSize uint, keys []string) [][]string {
-
-	// boundary checking
-	if len(keys) == 0 {
-		WarnfCtx(context.Background(), "createBatchesKeys called with empty keys")
-		return [][]string{}
-	}
-	if batchSize == 0 {
-		WarnfCtx(context.Background(), "createBatchesKeys called with invalid batchSize")
-		result := [][]string{}
-		return append(result, keys)
-	}
-
-	batches := [][]string{}
-	batch := []string{}
-
-	for idxKey, key := range keys {
-
-		batch = append(batch, key)
-
-		isBatchFull := uint(len(batch)) == batchSize
-		isLastKey := idxKey == (len(keys) - 1)
-
-		if isBatchFull || isLastKey {
-			// this batch is full, add it to batches and start a new batch
-			batches = append(batches, batch)
-			batch = []string{}
-		}
-
-	}
-	return batches
-
-}
 
 // If the error is a net/url.Error and the error message is:
 //
@@ -190,6 +122,7 @@ func QueryBucketItemCount(n1qlStore N1QLStore) (itemCount int, err error) {
 	}
 	return val.Count, nil
 }
+
 func isMinimumVersion(major, minor, requiredMajor, requiredMinor uint64) bool {
 	if major < requiredMajor {
 		return false
@@ -242,8 +175,6 @@ func AsLeakyBucket(bucket Bucket) (*LeakyBucket, bool) {
 	switch typedBucket := bucket.(type) {
 	case *LeakyBucket:
 		return typedBucket, true
-	case *LoggingBucket:
-		underlyingBucket = typedBucket.GetUnderlyingBucket()
 	case *TestBucket:
 		underlyingBucket = typedBucket.Bucket
 	default:
@@ -254,12 +185,12 @@ func AsLeakyBucket(bucket Bucket) (*LeakyBucket, bool) {
 	return AsLeakyBucket(underlyingBucket)
 }
 
-func GoCBBucketMgmtEndpoints(bucket CouchbaseStore) (url []string, err error) {
+func GoCBBucketMgmtEndpoints(bucket CouchbaseBucketStore) (url []string, err error) {
 	return bucket.MgmtEps()
 }
 
 // Get one of the management endpoints.  It will be a string such as http://couchbase
-func GoCBBucketMgmtEndpoint(bucket CouchbaseStore) (url string, err error) {
+func GoCBBucketMgmtEndpoint(bucket CouchbaseBucketStore) (url string, err error) {
 	mgmtEps, err := bucket.MgmtEps()
 	if err != nil {
 		return "", err

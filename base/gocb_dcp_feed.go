@@ -18,13 +18,13 @@ import (
 )
 
 // getHighSeqMetadata returns metadata to feed into a DCP client based on the last sequence numbers stored in memory
-func getHighSeqMetadata(collection *Collection) ([]DCPMetadata, error) {
-	numVbuckets, err := collection.GetMaxVbno()
+func getHighSeqMetadata(cbstore CouchbaseBucketStore) ([]DCPMetadata, error) {
+	numVbuckets, err := cbstore.GetMaxVbno()
 	if err != nil {
 		return nil, fmt.Errorf("Unable to determine maxVbNo when creating DCP client: %w", err)
 	}
 
-	vbUUIDs, highSeqNos, statsErr := collection.GetStatsVbSeqno(numVbuckets, true)
+	vbUUIDs, highSeqNos, statsErr := cbstore.GetStatsVbSeqno(numVbuckets, true)
 	if statsErr != nil {
 		return nil, fmt.Errorf("Unable to obtain high seqnos for DCP feed: %w", statsErr)
 	}
@@ -48,8 +48,9 @@ func getHighSeqMetadata(collection *Collection) ([]DCPMetadata, error) {
 }
 
 // StartGocbDCPFeed starts a DCP Feed.
-func StartGocbDCPFeed(collection *Collection, bucketName string, args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map, metadataStoreType DCPMetadataStoreType, groupID string) error {
-	metadata, err := getHighSeqMetadata(collection)
+func StartGocbDCPFeed(bucket *GocbV2Bucket, bucketName string, args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map, metadataStoreType DCPMetadataStoreType, groupID string) error {
+
+	metadata, err := getHighSeqMetadata(bucket)
 	if err != nil {
 		return err
 	}
@@ -57,10 +58,33 @@ func StartGocbDCPFeed(collection *Collection, bucketName string, args sgbucket.F
 	if err != nil {
 		return err
 	}
+
 	var collectionIDs []uint32
-	if collection.IsSupported(sgbucket.DataStoreFeatureCollections) {
-		collectionIDs = append(collectionIDs, collection.GetCollectionID())
+	if bucket.IsSupported(sgbucket.BucketStoreFeatureCollections) {
+		cm, err := bucket.GetCollectionManifest()
+		if err != nil {
+			return err
+		}
+
+		// should only be one args.Scope so cheaper to iterate this way around
+		for scopeName, collections := range args.Scopes {
+			for _, manifestScope := range cm.Scopes {
+				if scopeName != manifestScope.Name {
+					continue
+				}
+				// should be less than or equal number of args.collections than cm.scope.collections, so iterate this way so that the inner loop completes quicker on average
+				for _, manifestCollection := range manifestScope.Collections {
+					for _, collectionName := range collections {
+						if collectionName != manifestCollection.Name {
+							continue
+						}
+						collectionIDs = append(collectionIDs, manifestCollection.UID)
+					}
+				}
+			}
+		}
 	}
+
 	dcpClient, err := NewDCPClient(
 		feedName,
 		callback,
@@ -72,7 +96,7 @@ func StartGocbDCPFeed(collection *Collection, bucketName string, args sgbucket.F
 			CollectionIDs:     collectionIDs,
 			AgentPriority:     gocbcore.DcpAgentPriorityMed,
 		},
-		collection)
+		bucket)
 	if err != nil {
 		return err
 	}
