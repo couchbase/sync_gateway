@@ -334,6 +334,7 @@ func TestCollectionsBasicIndexQuery(t *testing.T) {
 // TestCollectionsSGIndexQuery is more of an end-to-end test to ensure SG indexes are built correctly,
 // and the channel access query is able to run when pulling a document as a user, and backfill the channel cache.
 func TestCollectionsSGIndexQuery(t *testing.T) {
+	t.Skip("Requires config-based collection channel assignment (pending CBG-2551)")
 	base.TestRequiresCollections(t)
 
 	// force GSI for this one test
