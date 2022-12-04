@@ -380,7 +380,7 @@ func TestRebuildUserChannels(t *testing.T) {
 	assert.NoError(t, err)
 
 	err = auth.InvalidateDefaultChannels("testUser", true, 2)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	user2, err := auth.GetUser("testUser")
 	assert.NoError(t, err)

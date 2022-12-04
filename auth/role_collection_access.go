@@ -58,9 +58,9 @@ func (role *roleImpl) CollectionChannels(scope, collection string) ch.TimedSet {
 			return nil
 		}
 		return cc.Channels_
-	} else {
-		return nil
 	}
+	return nil
+	
 }
 
 func (role *roleImpl) CollectionExplicitChannels(scope, collection string) ch.TimedSet {

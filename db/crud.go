@@ -2320,7 +2320,12 @@ func (context *DatabaseContext) ComputeChannelsForPrincipal(ctx context.Context,
 		key = channels.RoleAccessPrefix + key // Roles are identified in access view by a "role:" prefix
 	}
 
-	results, err := context.QueryAccess(ctx, key)
+	dbCollection, err := context.GetDatabaseCollection(scope, collection)
+	if err != nil {
+		return nil, err
+	}
+
+	results, err := dbCollection.QueryAccess(ctx, key)
 	if err != nil {
 		base.WarnfCtx(ctx, "QueryAccess returned error: %v", err)
 		return nil, err
