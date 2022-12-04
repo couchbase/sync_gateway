@@ -657,7 +657,7 @@ func (db *DatabaseCollectionWithUser) SimpleMultiChangesFeed(ctx context.Context
 		// have been available to the user:
 		channelsSince := channels.TimedSetByCollectionID{}
 		if db.user != nil {
-			chansSince, channelsRemoved := db.user.FilterToAvailableChannels(chans)
+			chansSince, channelsRemoved := db.user.FilterToAvailableCollectionChannels(db.ScopeName(), db.Name(), chans)
 			if len(channelsRemoved) > 0 {
 				base.InfofCtx(ctx, base.KeyChanges, "Channels %s request without access by user %s", base.UD(channelsRemoved), base.UD(db.user.Name()))
 			}
@@ -1020,7 +1020,7 @@ func (db *DatabaseCollectionWithUser) SimpleMultiChangesFeed(ctx context.Context
 				return
 			}
 			if userChanged && db.user != nil {
-				newChannelsSince, _ := db.user.FilterToAvailableChannels(chans)
+				newChannelsSince, _ := db.user.FilterToAvailableCollectionChannels(db.ScopeName(), db.Name(), chans)
 				// change when we support multiple collections
 				singleCollectionChannels := newChannelsSince.CompareKeys(channelsSince[singleCollectionID])
 

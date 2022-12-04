@@ -60,7 +60,6 @@ func (role *roleImpl) CollectionChannels(scope, collection string) ch.TimedSet {
 		return cc.Channels_
 	}
 	return nil
-	
 }
 
 func (role *roleImpl) CollectionExplicitChannels(scope, collection string) ch.TimedSet {
@@ -175,6 +174,7 @@ func (role *roleImpl) canSeeCollectionChannelSince(scope, collection, channel st
 		if seq.Sequence == 0 {
 			seq = cc.Channels()[ch.UserStarChannel]
 		}
+		return seq.Sequence
 	}
 	return 0
 }
@@ -220,4 +220,12 @@ func (role *roleImpl) AuthorizeAnyCollectionChannel(scope, collection string, ch
 		}
 	}
 	return role.UnauthError("You are not allowed to see this")
+}
+
+// initChannels grants the specified channels to the role as an admin grant, and performs
+// validation on the channel set.
+func (role *roleImpl) initChannels(scopeName, collectionName string, channels base.Set) error {
+	channels = ch.ExpandingStar(channels)
+	role.SetCollectionExplicitChannels(scopeName, collectionName, ch.AtSequence(channels, 1), 0)
+	return role.CollectionExplicitChannels(scopeName, collectionName).Validate()
 }

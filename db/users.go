@@ -78,7 +78,7 @@ func (dbc *DatabaseContext) UpdatePrincipal(ctx context.Context, updates *auth.P
 					err = base.HTTPErrorf(http.StatusBadRequest, "Error creating user: %s", reason)
 					return replaced, err
 				}
-				user, err = authenticator.NewUser(*updates.Name, "", nil)
+				user, err = authenticator.NewUserNoChannels(*updates.Name, "")
 				princ = user
 			} else {
 				princ, err = authenticator.NewRole(*updates.Name, nil)

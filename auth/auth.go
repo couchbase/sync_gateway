@@ -840,7 +840,7 @@ func (auth *Authenticator) RegisterNewUser(username, email string) (User, error)
 		return nil, err
 	}
 
-	user, err := auth.NewUser(username, secret, base.Set{})
+	user, err := auth.NewUserNoChannels(username, secret)
 	if err != nil {
 		return nil, err
 	}
