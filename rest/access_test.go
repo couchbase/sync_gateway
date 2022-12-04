@@ -1062,12 +1062,12 @@ func TestDynamicChannelGrant(t *testing.T) {
 	assert.NoError(t, err)
 	user.SetDisabled(true)
 	err = a.Save(user)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// Create a test user
 	user, err = a.NewUser("user1", "letmein", nil)
-	assert.NoError(t, err)
-	assert.NoError(t, a.Save(user))
+	require.NoError(t, err)
+	require.NoError(t, a.Save(user))
 
 	collection := rt.GetDatabase().GetSingleDatabaseCollection()
 	keyspace := fmt.Sprintf("%s.%s.%s", "db", collection.ScopeName(), collection.Name())
@@ -1128,19 +1128,19 @@ func TestRoleChannelGrantInheritance(t *testing.T) {
 	assert.NoError(t, err)
 	user.SetDisabled(true)
 	err = a.Save(user)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// Create a role with admin grant of chan1
 	role, err := a.NewRole("role1", nil)
 	role.SetCollectionExplicitChannels(scopeName, collectionName, channels.TimedSet{"chan1": channels.NewVbSimpleSequence(1)}, 1)
-	assert.NoError(t, err)
-	assert.NoError(t, a.Save(role))
+	require.NoError(t, err)
+	require.NoError(t, a.Save(role))
 
 	// Create a test user with access to the role
 	user, err = a.NewUser("user1", "letmein", nil)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	user.SetExplicitRoles(channels.TimedSet{"role1": channels.NewVbSimpleSequence(1)}, 1)
-	assert.NoError(t, a.Save(user))
+	require.NoError(t, a.Save(user))
 
 	// Create documents in channels chan1, chan2, chan3
 	response := rt.Send(RequestByUser("PUT", "/"+keyspace+"/doc1", `{"channel":"chan1", "greeting":"hello"}`, "user1"))
@@ -1217,15 +1217,15 @@ func TestPublicChannel(t *testing.T) {
 	ctx := rt.Context()
 	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
 	user, err := a.GetUser("")
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	user.SetDisabled(true)
 	err = a.Save(user)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// Create a test user
 	user, err = a.NewUser("user1", "letmein", nil)
-	assert.NoError(t, err)
-	assert.NoError(t, a.Save(user))
+	require.NoError(t, err)
+	require.NoError(t, a.Save(user))
 
 	collection := rt.GetDatabase().GetSingleDatabaseCollection()
 	keyspace := fmt.Sprintf("%s.%s.%s", "db", collection.ScopeName(), collection.Name())
