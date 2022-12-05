@@ -96,10 +96,23 @@ func (pair *GrantHistorySequencePair) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func (role *roleImpl) initRole(name string, channels base.Set) error {
-	channels = ch.ExpandingStar(channels)
+func (role *roleImpl) initRole(name string, channels base.Set, collections map[string]map[string]struct{}) error {
 	role.Name_ = name
-	role.ExplicitChannels_ = ch.AtSequence(channels, 1)
+	// Grant the user the specified channels for all specified collections.  If none are
+	// specified, grant to the default collection.
+	if len(collections) == 0 {
+		if err := role.initChannels(base.DefaultScope, base.DefaultCollection, channels); err != nil {
+			return err
+		}
+	} else {
+		for scopeName, scope := range collections {
+			for collectionName, _ := range scope {
+				if err := role.initChannels(scopeName, collectionName, channels); err != nil {
+					return err
+				}
+			}
+		}
+	}
 	return role.validate()
 }
 
@@ -204,7 +217,29 @@ func (auth *Authenticator) NewRole(name string, channels base.Set) (Role, error)
 		role.SetChannelHistory(existingRole.ChannelHistory())
 	}
 
-	if err := role.initRole(name, channels); err != nil {
+	if err := role.initRole(name, channels, auth.Collections); err != nil {
+		return nil, err
+	}
+	if _, err := auth.rebuildChannels(role); err != nil {
+		return nil, err
+	}
+	return role, nil
+}
+
+// Creates a new Role object.
+func (auth *Authenticator) NewRoleNoChannels(name string) (Role, error) {
+	role := &roleImpl{}
+	existingRole, err := auth.GetRoleIncDeleted(name)
+	if err != nil {
+		return nil, err
+	}
+
+	if existingRole != nil && existingRole.IsDeleted() {
+		role.SetCas(existingRole.Cas())
+		role.SetChannelHistory(existingRole.ChannelHistory())
+	}
+
+	if err := role.initRole(name, nil, nil); err != nil {
 		return nil, err
 	}
 	if _, err := auth.rebuildChannels(role); err != nil {

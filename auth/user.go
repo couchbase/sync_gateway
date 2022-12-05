@@ -86,24 +86,8 @@ func (auth *Authenticator) NewUser(username string, password string, channels ba
 		auth:         auth,
 		userImplBody: userImplBody{RolesSince_: ch.TimedSet{}},
 	}
-	if err := user.initRole(username, channels); err != nil {
+	if err := user.initRole(username, channels, auth.Collections); err != nil {
 		return nil, err
-	}
-
-	// Grant the user the specified channels for all collections on the authenticator.  If none are
-	// specified, grant to the default collection.
-	if len(auth.Collections) == 0 {
-		if err := user.initChannels(base.DefaultScope, base.DefaultCollection, channels); err != nil {
-			return nil, err
-		}
-	} else {
-		for scopeName, scope := range auth.Collections {
-			for collectionName, _ := range scope {
-				if err := user.initChannels(scopeName, collectionName, channels); err != nil {
-					return nil, err
-				}
-			}
-		}
 	}
 
 	if _, err := auth.rebuildChannels(user); err != nil {
@@ -129,7 +113,7 @@ func (auth *Authenticator) NewUserNoChannels(username string, password string) (
 		auth:         auth,
 		userImplBody: userImplBody{RolesSince_: ch.TimedSet{}},
 	}
-	if err := user.initRole(username, nil); err != nil {
+	if err := user.initRole(username, nil, nil); err != nil {
 		return nil, err
 	}
 	if _, err := auth.rebuildChannels(user); err != nil {

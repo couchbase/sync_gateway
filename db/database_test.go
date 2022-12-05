@@ -406,7 +406,7 @@ func TestGetRemovalMultiChannel(t *testing.T) {
 	defer db.Close(ctx)
 	collection := db.GetSingleDatabaseCollectionWithUser()
 
-	auth := auth.NewAuthenticator(db.MetadataStore, db, auth.DefaultAuthenticatorOptions())
+	auth := db.Authenticator(base.TestCtx(t))
 
 	// Create a user who have access to both channel ABC and NBC.
 	userAlice, err := auth.NewUser("alice", "pass", base.SetOf("ABC", "NBC"))
@@ -544,7 +544,7 @@ func TestDeltaSyncWhenFromRevIsChannelRemoval(t *testing.T) {
 
 	// Request delta between rev2ID and rev3ID (toRevision "rev2ID" is channel removal)
 	// as a user who doesn't have access to the removed revision via any other channel.
-	authenticator := auth.NewAuthenticator(db.MetadataStore, db, auth.DefaultAuthenticatorOptions())
+	authenticator := db.Authenticator(ctx)
 	user, err := authenticator.NewUser("alice", "pass", base.SetOf("NBC"))
 	require.NoError(t, err, "Error creating user")
 
@@ -610,7 +610,7 @@ func TestDeltaSyncWhenToRevIsChannelRemoval(t *testing.T) {
 
 	// Request delta between rev1ID and rev2ID (toRevision "rev2ID" is channel removal)
 	// as a user who doesn't have access to the removed revision via any other channel.
-	authenticator := auth.NewAuthenticator(db.MetadataStore, db, auth.DefaultAuthenticatorOptions())
+	authenticator := db.Authenticator(ctx)
 	user, err := authenticator.NewUser("alice", "pass", base.SetOf("NBC"))
 	require.NoError(t, err, "Error creating user")
 
@@ -908,6 +908,10 @@ func TestAllDocsOnly(t *testing.T) {
 
 // Unit test for bug #673
 func TestUpdatePrincipal(t *testing.T) {
+
+	if !base.TestsUseDefaultCollection() {
+		t.Skip("Disabled for non-default collection based on use of GetPrincipalForTest")
+	}
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache, base.KeyChanges)
 

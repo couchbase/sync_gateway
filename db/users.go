@@ -81,7 +81,7 @@ func (dbc *DatabaseContext) UpdatePrincipal(ctx context.Context, updates *auth.P
 				user, err = authenticator.NewUserNoChannels(*updates.Name, "")
 				princ = user
 			} else {
-				princ, err = authenticator.NewRole(*updates.Name, nil)
+				princ, err = authenticator.NewRoleNoChannels(*updates.Name)
 			}
 			if err != nil {
 				return replaced, fmt.Errorf("Error creating user/role: %w", err)
