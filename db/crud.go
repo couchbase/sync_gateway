@@ -48,41 +48,69 @@ func realDocID(docid string) string {
 	return docid
 }
 
-func (db *DatabaseCollection) GetDocument(ctx context.Context, docid string, unmarshalLevel DocumentUnmarshalLevel) (doc *Document, err error) {
-	doc, _, err = db.GetDocumentWithRaw(ctx, docid, unmarshalLevel)
+type getDocumentOptions struct {
+	useXattrs    bool
+	userXattrKey string
+	dbStats      *base.DbStats
+}
+
+func (c *DatabaseCollection) getDocOptions() getDocumentOptions {
+	return getDocumentOptions{
+		useXattrs:    c.UseXattrs(),
+		userXattrKey: c.userXattrKey(),
+		dbStats:      c.dbStats(),
+	}
+}
+
+func (c *DatabaseCollection) GetDocument(ctx context.Context, docid string, unmarshalLevel DocumentUnmarshalLevel) (doc *Document, err error) {
+	return getDocument(ctx, c, c.dataStore, docid, unmarshalLevel, c.getDocOptions())
+}
+
+func getDocument(ctx context.Context, collection *DatabaseCollection, dataStore base.DataStore, docid string, unmarshalLevel DocumentUnmarshalLevel, options getDocumentOptions) (doc *Document, err error) {
+	doc, _, err = getDocumentWithRaw(ctx, collection, dataStore, docid, unmarshalLevel, options)
 	return doc, err
 }
 
 // Lowest-level method that reads a document from the bucket
-func (db *DatabaseCollection) GetDocumentWithRaw(ctx context.Context, docid string, unmarshalLevel DocumentUnmarshalLevel) (doc *Document, rawBucketDoc *sgbucket.BucketDocument, err error) {
+func (c *DatabaseCollection) GetDocumentWithRaw(ctx context.Context, docid string, unmarshalLevel DocumentUnmarshalLevel) (doc *Document, rawBucketDoc *sgbucket.BucketDocument, err error) {
+	return getDocumentWithRaw(ctx, c, c.dataStore, docid, unmarshalLevel, c.getDocOptions())
+}
+
+// Lowest-level method that reads a document from the bucket
+func getDocumentWithRaw(ctx context.Context, collection *DatabaseCollection, dataStore base.DataStore, docid string, unmarshalLevel DocumentUnmarshalLevel, options getDocumentOptions) (doc *Document, rawBucketDoc *sgbucket.BucketDocument, err error) {
 	key := realDocID(docid)
+
 	if key == "" {
 		return nil, nil, base.HTTPErrorf(400, "Invalid doc ID")
 	}
-	if db.UseXattrs() {
-		doc, rawBucketDoc, err = db.GetDocWithXattr(key, unmarshalLevel)
+	if options.useXattrs {
+		doc, rawBucketDoc, err = getDocWithXattr(dataStore, key, unmarshalLevel, options.userXattrKey)
 		if err != nil {
 			return nil, nil, err
 		}
 
 		isSgWrite, crc32Match, _ := doc.IsSGWrite(ctx, rawBucketDoc.Body)
 		if crc32Match {
-			db.dbStats().Database().Crc32MatchCount.Add(1)
+			options.dbStats.Database().Crc32MatchCount.Add(1)
 		}
 
 		// If existing doc wasn't an SG Write, import the doc.
 		if !isSgWrite {
 			var importErr error
-			doc, importErr = db.OnDemandImportForGet(ctx, docid, rawBucketDoc.Body, rawBucketDoc.Xattr, rawBucketDoc.UserXattr, rawBucketDoc.Cas)
-			if importErr != nil {
-				return nil, nil, importErr
+			// FIXME: I don't think metadata collection will ever need to import, but I think you need a real db for this
+			if collection != nil {
+
+				doc, importErr = collection.OnDemandImportForGet(ctx, docid, rawBucketDoc.Body, rawBucketDoc.Xattr, rawBucketDoc.UserXattr, rawBucketDoc.Cas)
+				if importErr != nil {
+					return nil, nil, importErr
+				}
 			}
 		}
 		if !doc.HasValidSyncData() {
 			return nil, nil, base.HTTPErrorf(404, "Not imported")
 		}
 	} else {
-		rawDoc, cas, getErr := db.dataStore.GetRaw(key)
+		rawDoc, cas, getErr := dataStore.GetRaw(key)
 		if getErr != nil {
 			return nil, nil, getErr
 		}
@@ -94,7 +122,7 @@ func (db *DatabaseCollection) GetDocumentWithRaw(ctx context.Context, docid stri
 
 		if !doc.HasValidSyncData() {
 			// Check whether doc has been upgraded to use xattrs
-			upgradeDoc, _ := db.checkForUpgrade(docid, unmarshalLevel)
+			upgradeDoc, _ := checkForUpgrade(dataStore, docid, unmarshalLevel, options)
 			if upgradeDoc == nil {
 				return nil, nil, base.HTTPErrorf(404, "Not imported")
 			}
@@ -110,10 +138,14 @@ func (db *DatabaseCollection) GetDocumentWithRaw(ctx context.Context, docid stri
 	return doc, rawBucketDoc, nil
 }
 
-func (db *DatabaseCollection) GetDocWithXattr(key string, unmarshalLevel DocumentUnmarshalLevel) (doc *Document, rawBucketDoc *sgbucket.BucketDocument, err error) {
+func (c *DatabaseCollection) GetDocWithXattr(key string, unmarshalLevel DocumentUnmarshalLevel) (doc *Document, rawBucketDoc *sgbucket.BucketDocument, err error) {
+	return getDocWithXattr(c.dataStore, key, unmarshalLevel, c.userXattrKey())
+}
+
+func getDocWithXattr(dataStore base.DataStore, key string, unmarshalLevel DocumentUnmarshalLevel, userXattrKey string) (doc *Document, rawBucketDoc *sgbucket.BucketDocument, err error) {
 	rawBucketDoc = &sgbucket.BucketDocument{}
 	var getErr error
-	rawBucketDoc.Cas, getErr = db.dataStore.GetWithXattr(key, base.SyncXattrName, db.userXattrKey(), &rawBucketDoc.Body, &rawBucketDoc.Xattr, &rawBucketDoc.UserXattr)
+	rawBucketDoc.Cas, getErr = dataStore.GetWithXattr(key, base.SyncXattrName, userXattrKey, &rawBucketDoc.Body, &rawBucketDoc.Xattr, &rawBucketDoc.UserXattr)
 	if getErr != nil {
 		return nil, nil, getErr
 	}
@@ -190,6 +222,7 @@ func (db *DatabaseCollection) GetDocSyncData(ctx context.Context, docid string) 
 // OnDemandImportForGet.  Attempts to import the doc based on the provided id, contents and cas.  ImportDocRaw does cas retry handling
 // if the document gets updated after the initial retrieval attempt that triggered this.
 func (db *DatabaseCollection) OnDemandImportForGet(ctx context.Context, docid string, rawDoc []byte, rawXattr []byte, rawUserXattr []byte, cas uint64) (docOut *Document, err error) {
+
 	isDelete := rawDoc == nil
 	importDb := DatabaseCollectionWithUser{DatabaseCollection: db, user: nil}
 	var importErr error
@@ -1535,14 +1568,14 @@ func (db *DatabaseCollectionWithUser) assignSequence(ctx context.Context, docSeq
 		}
 
 		for {
-			if docSequence, err = db.sequences().nextSequence(); err != nil {
+			if docSequence, err = db.sequences.nextSequence(); err != nil {
 				return unusedSequences, err
 			}
 
 			if docSequence > doc.Sequence {
 				break
 			} else {
-				releaseErr := db.sequences().releaseSequence(docSequence)
+				releaseErr := db.sequences.releaseSequence(docSequence)
 				if releaseErr != nil {
 					base.WarnfCtx(ctx, "Error returned when releasing sequence %d. Falling back to skipped sequence handling.  Error:%v", docSequence, err)
 				}
@@ -1891,13 +1924,13 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 	// If the WriteUpdate didn't succeed, check whether there are unused, allocated sequences that need to be accounted for
 	if err != nil {
 		if docSequence > 0 {
-			if seqErr := db.sequences().releaseSequence(docSequence); seqErr != nil {
+			if seqErr := db.sequences.releaseSequence(docSequence); seqErr != nil {
 				base.WarnfCtx(ctx, "Error returned when releasing sequence %d. Falling back to skipped sequence handling.  Error:%v", docSequence, seqErr)
 			}
 
 		}
 		for _, sequence := range unusedSequences {
-			if seqErr := db.sequences().releaseSequence(sequence); seqErr != nil {
+			if seqErr := db.sequences.releaseSequence(sequence); seqErr != nil {
 				base.WarnfCtx(ctx, "Error returned when releasing sequence %d. Falling back to skipped sequence handling.  Error:%v", sequence, seqErr)
 			}
 		}
@@ -2362,13 +2395,17 @@ func (context *DatabaseContext) ComputeRolesForUser(ctx context.Context, user au
 }
 
 // Checks whether a document has a mobile xattr.  Used when running in non-xattr mode to support no downtime upgrade.
-func (context *DatabaseCollection) checkForUpgrade(key string, unmarshalLevel DocumentUnmarshalLevel) (*Document, *sgbucket.BucketDocument) {
+func (c *DatabaseCollection) checkForUpgrade(key string, unmarshalLevel DocumentUnmarshalLevel) (*Document, *sgbucket.BucketDocument) {
+	return checkForUpgrade(c.dataStore, key, unmarshalLevel, c.getDocOptions())
+}
+
+func checkForUpgrade(dataStore base.DataStore, key string, unmarshalLevel DocumentUnmarshalLevel, options getDocumentOptions) (*Document, *sgbucket.BucketDocument) {
 	// If we are using xattrs or Couchbase Server doesn't support them, an upgrade isn't going to be in progress
-	if context.UseXattrs() || !context.dataStore.IsSupported(sgbucket.BucketStoreFeatureXattrs) {
+	if options.useXattrs || !dataStore.IsSupported(sgbucket.BucketStoreFeatureXattrs) {
 		return nil, nil
 	}
 
-	doc, rawDocument, err := context.GetDocWithXattr(key, unmarshalLevel)
+	doc, rawDocument, err := getDocWithXattr(dataStore, key, unmarshalLevel, options.userXattrKey)
 	if err != nil || doc == nil || !doc.HasValidSyncData() {
 		return nil, nil
 	}

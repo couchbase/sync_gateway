@@ -21,7 +21,7 @@ package db
 
 // Update database-specific stats that are more efficiently calculated at stats collection time
 func (db *DatabaseContext) UpdateCalculatedStats() {
-	if !db.onlyDefaultCollection() {
+	if !db.OnlyDefaultCollection() {
 		return
 	}
 	defaultCollection, err := db.GetDefaultDatabaseCollection()
