@@ -229,3 +229,7 @@ func (role *roleImpl) initChannels(scopeName, collectionName string, channels ba
 	role.SetCollectionExplicitChannels(scopeName, collectionName, ch.AtSequence(channels, 1), 0)
 	return role.CollectionExplicitChannels(scopeName, collectionName).Validate()
 }
+
+func (role *roleImpl) GetCollectionsAccess() map[string]map[string]*CollectionAccess {
+	return role.CollectionsAccess
+}
