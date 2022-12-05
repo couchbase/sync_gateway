@@ -2440,7 +2440,8 @@ func TestProcessRevIncrementsStat(t *testing.T) {
 	err = activeRT.WaitForRev("doc", rev)
 	require.NoError(t, err)
 
-	assert.EqualValues(t, 1, pullStats.HandleRevCount.Value())
+	_, ok := base.WaitForStat(pullStats.HandleRevCount.Value, 1)
+	require.True(t, ok)
 	assert.NotEqualValues(t, 0, pullStats.HandleRevBytes.Value())
 	// Confirm connected client count has not increased, which uses same processRev code
 	assert.EqualValues(t, 0, pullStats.HandlePutRevCount.Value())
