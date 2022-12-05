@@ -170,14 +170,12 @@ func (c *DatabaseCollection) mutationListener() *changeListener {
 	return &c.dbCtx.mutationListener
 }
 
-// Name returns the name of the collection. If couchbase server is not aware of collections, it will return _default.
+// Name returns the name of the collection. If datastore is not aware of collections, it will return _default.
 func (c *DatabaseCollection) Name() string {
-	collection, err := base.AsCollection(c.dataStore)
-	if err != nil {
-		return base.DefaultCollection
+	if metadataStoreName, ok := base.AsDataStoreName(c.dataStore); ok {
+		return metadataStoreName.CollectionName()
 	}
-	return collection.CollectionName()
-
+	return base.DefaultCollection
 }
 
 // oldRevExpirySeconds is the number of seconds before old revisions are removed from Couchbase server. This is controlled at a database level.
@@ -206,13 +204,12 @@ func (c *DatabaseCollectionWithUser) ReloadUser(ctx context.Context) error {
 	return nil
 }
 
-// Name returns the name of the scope the collection is in. If couchbase server is not aware of collections, it will return _default.
+// Name returns the name of the scope the collection is in. If datastore is not aware of collections, it will return _default.
 func (c *DatabaseCollection) ScopeName() string {
-	collection, err := base.AsCollection(c.dataStore)
-	if err != nil {
-		return base.DefaultScope
+	if metadataStoreName, ok := base.AsDataStoreName(c.dataStore); ok {
+		return metadataStoreName.ScopeName()
 	}
-	return collection.ScopeName()
+	return base.DefaultScope
 }
 
 // RemoveFromChangeCache removes select documents from all channel caches and returns the number of documents removed.

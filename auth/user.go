@@ -77,16 +77,46 @@ func (auth *Authenticator) defaultGuestUser() User {
 	return user
 }
 
-// Creates a new User object.
+// Creates a new User object. Intended for test usage, for simplified channel assignment.
+// The specified channels are granted to the user as admin grants for
+// all collections defined in the authenticator.  If no collections are defined, the channels
+// are granted for the default collection.
 func (auth *Authenticator) NewUser(username string, password string, channels base.Set) (User, error) {
 	user := &userImpl{
 		auth:         auth,
 		userImplBody: userImplBody{RolesSince_: ch.TimedSet{}},
 	}
-	if err := user.initRole(username, channels); err != nil {
+	if err := user.initRole(username, channels, auth.Collections); err != nil {
 		return nil, err
 	}
-	if err := auth.rebuildChannels(user); err != nil {
+
+	if _, err := auth.rebuildChannels(user); err != nil {
+		return nil, err
+	}
+
+	if err := auth.rebuildRoles(user); err != nil {
+		return nil, err
+	}
+
+	err := user.SetPassword(password)
+	if err != nil {
+		return nil, err
+	}
+
+	return user, nil
+}
+
+// NewUserNoChannels initializes a user object with no admin channel grants.  Should be used for
+// non-test user creation.
+func (auth *Authenticator) NewUserNoChannels(username string, password string) (User, error) {
+	user := &userImpl{
+		auth:         auth,
+		userImplBody: userImplBody{RolesSince_: ch.TimedSet{}},
+	}
+	if err := user.initRole(username, nil, nil); err != nil {
+		return nil, err
+	}
+	if _, err := auth.rebuildChannels(user); err != nil {
 		return nil, err
 	}
 

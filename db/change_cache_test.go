@@ -906,7 +906,7 @@ func TestLowSequenceHandlingAcrossChannels(t *testing.T) {
 func TestLowSequenceHandlingWithAccessGrant(t *testing.T) {
 
 	if !base.TestsUseDefaultCollection() {
-		t.Skip("Disabled for non-default collection until CBG-2554")
+		t.Skip("Disabled for non-default collection based on use of GetPrincipalForTest")
 	}
 
 	if base.TestUseXattrs() {

@@ -436,7 +436,16 @@ func (rt *RestTester) SetAdminParty(partyTime bool) error {
 	if partyTime {
 		chans = channels.AtSequence(base.SetOf(channels.UserStarChannel), 1)
 	}
-	guest.SetExplicitChannels(chans, 1)
+
+	if len(a.Collections) == 0 {
+		guest.SetExplicitChannels(chans, 1)
+	} else {
+		for scopeName, scope := range a.Collections {
+			for collectionName, _ := range scope {
+				guest.SetCollectionExplicitChannels(scopeName, collectionName, chans, 1)
+			}
+		}
+	}
 	return a.Save(guest)
 }
 

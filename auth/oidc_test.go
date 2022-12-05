@@ -1243,7 +1243,8 @@ func TestJWTRolesChannels(t *testing.T) {
 				user.SetJWTLastUpdated(*updates.JWTLastUpdated)
 
 				require.NoError(t, auth.rebuildRoles(user))
-				require.NoError(t, auth.rebuildChannels(user))
+				_, rebuildErr := auth.rebuildChannels(user)
+				require.NoError(t, rebuildErr)
 
 				if user.RoleNames() == nil {
 					require.Empty(t, login.expectedRoles, "user's roles were nil when we expected roles")
