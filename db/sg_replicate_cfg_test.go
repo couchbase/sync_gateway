@@ -26,7 +26,7 @@ func TestReplicateManagerReplications(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
 
-	testCfg, err := base.NewCfgSG(testBucket, "")
+	testCfg, err := base.NewCfgSG(testBucket.GetSingleDataStore(), "")
 	require.NoError(t, err)
 
 	ctx := base.TestCtx(t)
@@ -90,7 +90,7 @@ func TestReplicateManagerNodes(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
 
-	testCfg, err := base.NewCfgSG(testBucket, "")
+	testCfg, err := base.NewCfgSG(testBucket.GetSingleDataStore(), "")
 	require.NoError(t, err)
 
 	ctx := base.TestCtx(t)
@@ -147,7 +147,7 @@ func TestReplicateManagerConcurrentNodeOperations(t *testing.T) {
 	defer testBucket.Close()
 
 	ctx := base.TestCtx(t)
-	testCfg, err := base.NewCfgSG(testBucket, "")
+	testCfg, err := base.NewCfgSG(testBucket.GetSingleDataStore(), "")
 	require.NoError(t, err)
 
 	manager, err := NewSGReplicateManager(ctx, &DatabaseContext{Name: "test"}, testCfg)
@@ -192,7 +192,7 @@ func TestReplicateManagerConcurrentReplicationOperations(t *testing.T) {
 	defer testBucket.Close()
 
 	ctx := base.TestCtx(t)
-	testCfg, err := base.NewCfgSG(testBucket, "")
+	testCfg, err := base.NewCfgSG(testBucket.GetSingleDataStore(), "")
 	require.NoError(t, err)
 
 	manager, err := NewSGReplicateManager(ctx, &DatabaseContext{Name: "test"}, testCfg)
@@ -619,7 +619,7 @@ func TestIsCfgChanged(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
 
-	testCfg, err := base.NewCfgSG(testBucket, "")
+	testCfg, err := base.NewCfgSG(testBucket.GetSingleDataStore(), "")
 	require.NoError(t, err)
 
 	dbctx := DatabaseContext{Name: "test"}

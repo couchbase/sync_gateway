@@ -109,13 +109,15 @@ func TestCouchbaseHeartbeaters(t *testing.T) {
 	testBucket := GetTestBucket(t)
 	defer testBucket.Close()
 
+	dataStore := testBucket.GetSingleDataStore()
+
 	// Setup heartbeaters and listeners
 	nodeCount := 3
 	nodes := make([]*couchbaseHeartBeater, nodeCount)
 	listeners := make([]*documentBackedListener, nodeCount)
 	for i := 0; i < nodeCount; i++ {
 		nodeUUID := fmt.Sprintf("node%d", i)
-		node, err := NewCouchbaseHeartbeater(testBucket, keyprefix, nodeUUID)
+		node, err := NewCouchbaseHeartbeater(dataStore, keyprefix, nodeUUID)
 		assert.NoError(t, err)
 
 		// Lower heartbeat expiry to avoid long-running test
@@ -126,7 +128,7 @@ func TestCouchbaseHeartbeaters(t *testing.T) {
 
 		// Create and register listener.
 		// Simulates service starting on node, and self-registering the nodeUUID to that listener's node set
-		listener, err := NewDocumentBackedListener(testBucket, keyprefix)
+		listener, err := NewDocumentBackedListener(dataStore, keyprefix)
 		require.NoError(t, err)
 		assert.NoError(t, listener.AddNode(nodeUUID))
 		assert.NoError(t, node.RegisterListener(listener))
@@ -187,6 +189,8 @@ func TestCouchbaseHeartbeatersMultipleListeners(t *testing.T) {
 	testBucket := GetTestBucket(t)
 	defer testBucket.Close()
 
+	dataStore := testBucket.GetSingleDataStore()
+
 	// Setup heartbeaters and listeners
 	nodeCount := 3
 	nodes := make([]*couchbaseHeartBeater, nodeCount)
@@ -194,7 +198,7 @@ func TestCouchbaseHeartbeatersMultipleListeners(t *testing.T) {
 	sgrListeners := make([]*documentBackedListener, nodeCount)
 	for i := 0; i < nodeCount; i++ {
 		nodeUUID := fmt.Sprintf("node%d", i)
-		node, err := NewCouchbaseHeartbeater(testBucket, keyprefix, nodeUUID)
+		node, err := NewCouchbaseHeartbeater(dataStore, keyprefix, nodeUUID)
 		assert.NoError(t, err)
 
 		// Lower heartbeat expiry to avoid long-running test
@@ -205,7 +209,7 @@ func TestCouchbaseHeartbeatersMultipleListeners(t *testing.T) {
 
 		// Create and register import listener on all nodes.
 		// Simulates service starting on node, and self-registering the nodeUUID to that listener's node set
-		importListener, err := NewDocumentBackedListener(testBucket, keyprefix+":import")
+		importListener, err := NewDocumentBackedListener(dataStore, keyprefix+":import")
 		require.NoError(t, err)
 		assert.NoError(t, importListener.AddNode(nodeUUID))
 		assert.NoError(t, node.RegisterListener(importListener))
@@ -213,7 +217,7 @@ func TestCouchbaseHeartbeatersMultipleListeners(t *testing.T) {
 
 		// Create and register sgr listener on two nodes
 		if i < 2 {
-			sgrListener, err := NewDocumentBackedListener(testBucket, keyprefix+":sgr")
+			sgrListener, err := NewDocumentBackedListener(dataStore, keyprefix+":sgr")
 			require.NoError(t, err)
 			assert.NoError(t, sgrListener.AddNode(nodeUUID))
 			assert.NoError(t, node.RegisterListener(sgrListener))
@@ -300,6 +304,8 @@ func TestCBGTManagerHeartbeater(t *testing.T) {
 	cfgCB, err := initCfgCB(testBucket, testBucket.BucketSpec)
 	require.NoError(t, err)
 
+	dataStore := testBucket.GetSingleDataStore()
+
 	// Simulate the three nodes self-registering into the cfg
 	nodeDefs := cbgt.NewNodeDefs("1.0.0")
 	nodeDefs.NodeDefs["node1"] = &cbgt.NodeDef{UUID: "node1"}
@@ -309,11 +315,11 @@ func TestCBGTManagerHeartbeater(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create three heartbeaters (representing three nodes)
-	node1, err := NewCouchbaseHeartbeater(testBucket, keyprefix, "node1")
+	node1, err := NewCouchbaseHeartbeater(dataStore, keyprefix, "node1")
 	assert.NoError(t, err)
-	node2, err := NewCouchbaseHeartbeater(testBucket, keyprefix, "node2")
+	node2, err := NewCouchbaseHeartbeater(dataStore, keyprefix, "node2")
 	assert.NoError(t, err)
-	node3, err := NewCouchbaseHeartbeater(testBucket, keyprefix, "node3")
+	node3, err := NewCouchbaseHeartbeater(dataStore, keyprefix, "node3")
 	assert.NoError(t, err)
 
 	assert.NoError(t, node1.SetExpirySeconds(2))

@@ -85,14 +85,18 @@ func (apr *ActivePushReplicator) _connect() error {
 		return err
 	}
 
+	singleCollection := &DatabaseCollectionWithUser{
+		DatabaseCollection: apr.config.ActiveDB.GetSingleDatabaseCollection(),
+		user:               apr.config.ActiveDB.user,
+	}
 	bh := blipHandler{
 		BlipSyncContext: apr.blipSyncContext,
 		db:              apr.config.ActiveDB,
-		collection:      apr.config.ActiveDB,
+		collection:      singleCollection,
 		serialNumber:    apr.blipSyncContext.incrementSerialNumber(),
 	}
 
-	seq, err := apr.config.ActiveDB.ParseSequenceID(apr.Checkpointer.lastCheckpointSeq)
+	seq, err := ParseSequenceID(apr.Checkpointer.lastCheckpointSeq)
 	if err != nil {
 		base.WarnfCtx(apr.ctx, "couldn't parse checkpointed sequence ID, starting push from seq:0")
 	}
@@ -239,7 +243,9 @@ func (apr *ActivePushReplicator) reset() error {
 	if apr.state != ReplicationStateStopped {
 		return fmt.Errorf("reset invoked for replication %s when the replication was not stopped", apr.config.ID)
 	}
-	if err := resetLocalCheckpoint(apr.config.ActiveDB, apr.CheckpointID); err != nil {
+	// TODO: this needs pointing at all collections the replicator is configured for!
+	collection := apr.config.ActiveDB.GetSingleDatabaseCollection()
+	if err := resetLocalCheckpoint(collection.dataStore, apr.CheckpointID); err != nil {
 		return err
 	}
 

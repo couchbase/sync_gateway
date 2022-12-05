@@ -35,6 +35,7 @@ const (
 	QueryTypeChannelsStar        = "channelsStar"
 	QueryTypeSequences           = "sequences"
 	QueryTypePrincipals          = "principals"
+	QueryTypeRoles               = "roles"
 	QueryTypeRolesExcludeDeleted = "rolesExcludeDeleted"
 	QueryTypeSessions            = "sessions"
 	QueryTypeTombstones          = "tombstones"
@@ -165,8 +166,44 @@ var QueryPrincipals = SGQuery{
 		base.KeyspaceQueryAlias,
 		base.KeyspaceQueryToken, base.KeyspaceQueryAlias,
 		base.KeyspaceQueryAlias, SyncDocWildcard,
-		base.KeyspaceQueryAlias, `\\_sync:user:%`,
-		base.KeyspaceQueryAlias, `\\_sync:role:%`,
+		base.KeyspaceQueryAlias, SyncUserWildcard,
+		base.KeyspaceQueryAlias, SyncRoleWildcard,
+		base.KeyspaceQueryAlias, QueryParamStartKey,
+		base.KeyspaceQueryAlias),
+	adhoc: false,
+}
+
+var QueryAllRolesUsingRoleIdx = SGQuery{
+	name: QueryTypeRoles,
+	statement: fmt.Sprintf(
+		"SELECT META(%s).id "+
+			"FROM %s AS %s "+
+			"USE INDEX($idx) "+
+			"WHERE META(%s).id LIKE '%s' "+
+			"AND META(%s).id >= $%s "+ // Uses >= for inclusive startKey
+			"ORDER BY META(%s).id",
+		base.KeyspaceQueryAlias,
+		base.KeyspaceQueryToken, base.KeyspaceQueryAlias,
+		base.KeyspaceQueryAlias, SyncRoleWildcard,
+		base.KeyspaceQueryAlias, QueryParamStartKey,
+		base.KeyspaceQueryAlias),
+	adhoc: false,
+}
+
+var QueryAllRolesUsingSyncDocsIdx = SGQuery{
+	name: QueryTypeRoles,
+	statement: fmt.Sprintf(
+		"SELECT META(%s).id "+
+			"FROM %s AS %s "+
+			"USE INDEX($idx) "+
+			"WHERE META(%s).id LIKE '%s' "+
+			"AND META(%s).id LIKE '%s' "+
+			"AND META(%s).id >= $%s "+ // Uses >= for inclusive startKey
+			"ORDER BY META(%s).id",
+		base.KeyspaceQueryAlias,
+		base.KeyspaceQueryToken, base.KeyspaceQueryAlias,
+		base.KeyspaceQueryAlias, SyncDocWildcard,
+		base.KeyspaceQueryAlias, SyncRoleWildcard,
 		base.KeyspaceQueryAlias, QueryParamStartKey,
 		base.KeyspaceQueryAlias),
 	adhoc: false,
@@ -186,7 +223,26 @@ var QueryRolesExcludeDeleted = SGQuery{
 		base.KeyspaceQueryAlias,
 		base.KeyspaceQueryToken, base.KeyspaceQueryAlias,
 		base.KeyspaceQueryAlias, SyncDocWildcard,
-		base.KeyspaceQueryAlias, `\\_sync:role:%`,
+		base.KeyspaceQueryAlias, SyncRoleWildcard,
+		base.KeyspaceQueryAlias, base.KeyspaceQueryAlias,
+		base.KeyspaceQueryAlias, QueryParamStartKey,
+		base.KeyspaceQueryAlias),
+	adhoc: false,
+}
+
+var QueryRolesExcludeDeletedUsingRoleIdx = SGQuery{
+	name: QueryTypeRolesExcludeDeleted,
+	statement: fmt.Sprintf(
+		"SELECT META(%s).id "+
+			"FROM %s AS %s "+
+			"USE INDEX($idx) "+
+			"WHERE META(%s).id LIKE '%s' "+
+			"AND (%s.deleted IS MISSING OR %s.deleted = false) "+
+			"AND META(%s).id >= $%s "+ // Uses >= for inclusive startKey
+			"ORDER BY META(%s).id",
+		base.KeyspaceQueryAlias,
+		base.KeyspaceQueryToken, base.KeyspaceQueryAlias,
+		base.KeyspaceQueryAlias, SyncRoleWildcard,
 		base.KeyspaceQueryAlias, base.KeyspaceQueryAlias,
 		base.KeyspaceQueryAlias, QueryParamStartKey,
 		base.KeyspaceQueryAlias),
@@ -214,7 +270,30 @@ var QueryUsers = SGQuery{
 		base.KeyspaceQueryAlias,
 		base.KeyspaceQueryAlias,
 		base.KeyspaceQueryToken, base.KeyspaceQueryAlias,
-		base.KeyspaceQueryAlias, `\\_sync:user:%`,
+		base.KeyspaceQueryAlias, SyncUserWildcard,
+		base.KeyspaceQueryAlias, QueryParamStartKey,
+		base.KeyspaceQueryAlias),
+	adhoc: false,
+}
+
+var QueryUsersUsingSyncDocsIdx = SGQuery{
+	name: QueryTypeUsers,
+	statement: fmt.Sprintf(
+		"SELECT %s.name, "+
+			"%s.email, "+
+			"%s.disabled "+
+			"FROM %s as %s "+
+			"USE INDEX($idx) "+
+			"WHERE META(%s).id LIKE '%s' "+
+			"AND META(%s).id LIKE '%s' "+
+			"AND META(%s).id >= $%s "+ // Using >= to match QueryPrincipals startKey handling
+			"ORDER BY META(%s).id",
+		base.KeyspaceQueryAlias,
+		base.KeyspaceQueryAlias,
+		base.KeyspaceQueryAlias,
+		base.KeyspaceQueryToken, base.KeyspaceQueryAlias,
+		base.KeyspaceQueryAlias, SyncDocWildcard,
+		base.KeyspaceQueryAlias, SyncUserWildcard,
 		base.KeyspaceQueryAlias, QueryParamStartKey,
 		base.KeyspaceQueryAlias),
 	adhoc: false,
@@ -232,9 +311,24 @@ var QuerySessions = SGQuery{
 		base.KeyspaceQueryAlias,
 		base.KeyspaceQueryToken, base.KeyspaceQueryAlias,
 		base.KeyspaceQueryAlias, SyncDocWildcard,
-		base.KeyspaceQueryAlias, `\\_sync:session:%`),
+		base.KeyspaceQueryAlias, SyncSessionWildcard),
 	adhoc: false,
 }
+
+var QuerySessionsUsingSessionIdx = SGQuery{
+	name: QueryTypeSessions,
+	statement: fmt.Sprintf(
+		"SELECT META(%s).id "+
+			"FROM %s AS %s "+
+			"USE INDEX($idx) "+
+			"WHERE META(%s).id LIKE '%s' "+
+			"AND username = $userName",
+		base.KeyspaceQueryAlias,
+		base.KeyspaceQueryToken, base.KeyspaceQueryAlias,
+		base.KeyspaceQueryAlias, SyncSessionWildcard),
+	adhoc: false,
+}
+
 var QueryTombstones = SGQuery{
 	name: QueryTypeTombstones,
 	statement: fmt.Sprintf(
@@ -291,14 +385,14 @@ const (
 )
 
 // N1QlQueryWithStats is a wrapper for gocbBucket.Query that performs additional diagnostic processing (expvars, slow query logging)
-func (context *DatabaseContext) N1QLQueryWithStats(ctx context.Context, queryName string, statement string, params map[string]interface{}, consistency base.ConsistencyMode, adhoc bool) (results sgbucket.QueryResultIterator, err error) {
+func N1QLQueryWithStats(ctx context.Context, dataStore base.DataStore, queryName string, statement string, params map[string]interface{}, consistency base.ConsistencyMode, adhoc bool, dbStats *base.DbStats, slowQueryWarningThreshold time.Duration) (results sgbucket.QueryResultIterator, err error) {
 
 	startTime := time.Now()
-	if threshold := context.Options.SlowQueryWarningThreshold; threshold > 0 {
+	if threshold := slowQueryWarningThreshold; threshold > 0 {
 		defer base.SlowQueryLog(ctx, startTime, threshold, "N1QL Query(%q)", queryName)
 	}
 
-	n1QLStore, ok := base.AsN1QLStore(context.Bucket)
+	n1QLStore, ok := base.AsN1QLStore(dataStore)
 	if !ok {
 		return nil, errors.New("Cannot perform N1QL query on non-Couchbase bucket.")
 	}
@@ -306,7 +400,7 @@ func (context *DatabaseContext) N1QLQueryWithStats(ctx context.Context, queryNam
 	results, err = n1QLStore.Query(statement, params, consistency, adhoc)
 
 	if len(queryName) > 0 {
-		queryStat := context.DbStats.Query(queryName)
+		queryStat := dbStats.Query(queryName)
 		if queryStat == nil {
 			// This panic is more recognizable than the one that will otherwise occur below
 			panic(fmt.Sprintf("DbStats has no entry for query %q", queryName))
@@ -320,8 +414,8 @@ func (context *DatabaseContext) N1QLQueryWithStats(ctx context.Context, queryNam
 	return results, err
 }
 
-// N1QlQueryWithStats is a wrapper for gocbBucket.Query that performs additional diagnostic processing (expvars, slow query logging)
-func (context *DatabaseContext) ViewQueryWithStats(ctx context.Context, ddoc string, viewName string, params map[string]interface{}) (results sgbucket.QueryResultIterator, err error) {
+// ViewQueryWithStats is a wrapper for gocbBucket.Query that performs additional diagnostic processing (expvars, slow query logging)
+func (context *DatabaseContext) ViewQueryWithStats(ctx context.Context, dataStore base.DataStore, ddoc string, viewName string, params map[string]interface{}) (results sgbucket.QueryResultIterator, err error) {
 
 	startTime := time.Now()
 	if threshold := context.Options.SlowQueryWarningThreshold; threshold > 0 {
@@ -330,7 +424,12 @@ func (context *DatabaseContext) ViewQueryWithStats(ctx context.Context, ddoc str
 
 	queryStat := context.DbStats.Query(fmt.Sprintf(base.StatViewFormat, ddoc, viewName))
 
-	results, err = context.Bucket.ViewQuery(ddoc, viewName, params)
+	viewStore, ok := base.AsViewStore(dataStore)
+	if !ok {
+		return results, fmt.Errorf("Datastore does not support views")
+	}
+
+	results, err = viewStore.ViewQuery(ddoc, viewName, params)
 	if err != nil {
 		queryStat.QueryErrorCount.Add(1)
 	}
@@ -341,12 +440,12 @@ func (context *DatabaseContext) ViewQueryWithStats(ctx context.Context, ddoc str
 }
 
 // Query to compute the set of channels granted to the specified user via the Sync Function
-func (context *DatabaseContext) QueryAccess(ctx context.Context, username string) (sgbucket.QueryResultIterator, error) {
+func (dbCollection *DatabaseCollection) QueryAccess(ctx context.Context, username string) (sgbucket.QueryResultIterator, error) {
 
 	// View Query
-	if context.Options.UseViews {
+	if dbCollection.useViews() {
 		opts := map[string]interface{}{"stale": false, "key": username}
-		return context.ViewQueryWithStats(ctx, DesignDocSyncGateway(), ViewAccess, opts)
+		return dbCollection.dbCtx.ViewQueryWithStats(ctx, dbCollection.dataStore, DesignDocSyncGateway(), ViewAccess, opts)
 	}
 
 	// N1QL Query
@@ -354,31 +453,31 @@ func (context *DatabaseContext) QueryAccess(ctx context.Context, username string
 		base.WarnfCtx(ctx, "QueryAccess called with empty username - returning empty result iterator")
 		return &EmptyResultIterator{}, nil
 	}
-	accessQueryStatement := context.buildAccessQuery(username)
+	accessQueryStatement := dbCollection.buildAccessQuery(username)
 	params := make(map[string]interface{}, 0)
 	params[QueryParamUserName] = username
 
-	return context.N1QLQueryWithStats(ctx, QueryAccess.name, accessQueryStatement, params, base.RequestPlus, QueryAccess.adhoc)
+	return N1QLQueryWithStats(ctx, dbCollection.dataStore, QueryAccess.name, accessQueryStatement, params, base.RequestPlus, QueryAccess.adhoc, dbCollection.dbStats(), dbCollection.slowQueryWarningThreshold())
 }
 
 // Builds the query statement for an access N1QL query.
-func (context *DatabaseContext) buildAccessQuery(username string) string {
-	statement := replaceSyncTokensQuery(QueryAccess.statement, context.UseXattrs())
+func (dbCollection *DatabaseCollection) buildAccessQuery(username string) string {
+	statement := replaceSyncTokensQuery(QueryAccess.statement, dbCollection.UseXattrs())
 
 	// SG usernames don't allow back tick, but guard username in select clause for additional safety
 	username = strings.Replace(username, "`", "``", -1)
 	statement = strings.Replace(statement, QuerySelectUserName, username, -1)
-	statement = replaceIndexTokensQuery(statement, sgIndexes[IndexAccess], context.UseXattrs())
+	statement = replaceIndexTokensQuery(statement, sgIndexes[IndexAccess], dbCollection.UseXattrs())
 	return statement
 }
 
 // Query to compute the set of roles granted to the specified user via the Sync Function
-func (context *DatabaseContext) QueryRoleAccess(ctx context.Context, username string) (sgbucket.QueryResultIterator, error) {
+func (dbCollection *DatabaseCollection) QueryRoleAccess(ctx context.Context, username string) (sgbucket.QueryResultIterator, error) {
 
 	// View Query
-	if context.Options.UseViews {
+	if dbCollection.useViews() {
 		opts := map[string]interface{}{"stale": false, "key": username}
-		return context.ViewQueryWithStats(ctx, DesignDocSyncGateway(), ViewRoleAccess, opts)
+		return dbCollection.dbCtx.ViewQueryWithStats(ctx, dbCollection.dataStore, DesignDocSyncGateway(), ViewRoleAccess, opts)
 	}
 
 	// N1QL Query
@@ -387,14 +486,19 @@ func (context *DatabaseContext) QueryRoleAccess(ctx context.Context, username st
 		return &EmptyResultIterator{}, nil
 	}
 
-	accessQueryStatement := context.buildRoleAccessQuery(username)
+	accessQueryStatement := dbCollection.buildRoleAccessQuery(username)
 	params := make(map[string]interface{}, 0)
 	params[QueryParamUserName] = username
-	return context.N1QLQueryWithStats(ctx, QueryTypeRoleAccess, accessQueryStatement, params, base.RequestPlus, QueryRoleAccess.adhoc)
+	return N1QLQueryWithStats(ctx, dbCollection.dataStore, QueryTypeRoleAccess, accessQueryStatement, params, base.RequestPlus, QueryRoleAccess.adhoc, dbCollection.dbStats(), dbCollection.slowQueryWarningThreshold())
+}
+
+// TODO: Remove
+func (context *DatabaseContext) buildRoleAccessQuery(username string) string {
+	return context.GetSingleDatabaseCollection().buildRoleAccessQuery(username)
 }
 
 // Builds the query statement for a roleAccess N1QL query.
-func (context *DatabaseContext) buildRoleAccessQuery(username string) string {
+func (context *DatabaseCollection) buildRoleAccessQuery(username string) string {
 	statement := replaceSyncTokensQuery(QueryRoleAccess.statement, context.UseXattrs())
 
 	// SG usernames don't allow back tick, but guard username in select clause for additional safety
@@ -405,11 +509,11 @@ func (context *DatabaseContext) buildRoleAccessQuery(username string) string {
 }
 
 // Query to compute the set of documents assigned to the specified channel within the sequence range
-func (context *DatabaseContext) QueryChannels(ctx context.Context, channelName string, startSeq uint64, endSeq uint64, limit int, activeOnly bool) (sgbucket.QueryResultIterator, error) {
+func (context *DatabaseCollection) QueryChannels(ctx context.Context, channelName string, startSeq uint64, endSeq uint64, limit int, activeOnly bool) (sgbucket.QueryResultIterator, error) {
 
-	if context.Options.UseViews {
+	if context.useViews() {
 		opts := changesViewOptions(channelName, startSeq, endSeq, limit)
-		return context.ViewQueryWithStats(ctx, DesignDocSyncGateway(), ViewChannels, opts)
+		return context.dbCtx.ViewQueryWithStats(ctx, context.dataStore, DesignDocSyncGateway(), ViewChannels, opts)
 	}
 
 	// N1QL Query
@@ -418,19 +522,19 @@ func (context *DatabaseContext) QueryChannels(ctx context.Context, channelName s
 	// QueryChannels result schema (removal handling isn't needed for the star channel).
 	channelQueryStatement, params := context.buildChannelsQuery(channelName, startSeq, endSeq, limit, activeOnly)
 
-	return context.N1QLQueryWithStats(ctx, QueryChannels.name, channelQueryStatement, params, base.RequestPlus, QueryChannels.adhoc)
+	return N1QLQueryWithStats(ctx, context.dataStore, QueryChannels.name, channelQueryStatement, params, base.RequestPlus, QueryChannels.adhoc, context.dbStats(), context.slowQueryWarningThreshold())
 }
 
 // Query to retrieve keys for the specified sequences.  View query uses star channel, N1QL query uses IndexAllDocs
-func (context *DatabaseContext) QuerySequences(ctx context.Context, sequences []uint64) (sgbucket.QueryResultIterator, error) {
+func (context *DatabaseCollection) QuerySequences(ctx context.Context, sequences []uint64) (sgbucket.QueryResultIterator, error) {
 
 	if len(sequences) == 0 {
 		return nil, errors.New("No sequences specified for QueryChannelsForSequences")
 	}
 
-	if context.Options.UseViews {
+	if context.useViews() {
 		opts := changesViewForSequencesOptions(sequences)
-		return context.ViewQueryWithStats(ctx, DesignDocSyncGateway(), ViewChannels, opts)
+		return context.dbCtx.ViewQueryWithStats(ctx, context.dataStore, DesignDocSyncGateway(), ViewChannels, opts)
 	}
 
 	// N1QL Query
@@ -440,12 +544,12 @@ func (context *DatabaseContext) QuerySequences(ctx context.Context, sequences []
 	params := make(map[string]interface{})
 	params[QueryParamInSequences] = sequences
 
-	return context.N1QLQueryWithStats(ctx, QuerySequences.name, sequenceQueryStatement, params, base.RequestPlus, QueryChannels.adhoc)
+	return N1QLQueryWithStats(ctx, context.dataStore, QuerySequences.name, sequenceQueryStatement, params, base.RequestPlus, QueryChannels.adhoc, context.dbStats(), context.slowQueryWarningThreshold())
 }
 
-// Builds the query statement and query parameters for a channels N1QL query.  Also used by unit tests to validate
+// buildsChannelsQuery constructs the query statement and query parameters for a channels N1QL query.  Also used by unit tests to validate
 // query is covering.
-func (context *DatabaseContext) buildChannelsQuery(channelName string, startSeq uint64, endSeq uint64, limit int, activeOnly bool) (statement string, params map[string]interface{}) {
+func (context *DatabaseCollection) buildChannelsQuery(channelName string, startSeq uint64, endSeq uint64, limit int, activeOnly bool) (statement string, params map[string]interface{}) {
 
 	channelQuery := QueryChannels
 	index := sgIndexes[IndexChannels]
@@ -477,7 +581,7 @@ func (context *DatabaseContext) buildChannelsQuery(channelName string, startSeq 
 	return channelQueryStatement, params
 }
 
-func (context *DatabaseContext) QueryResync(ctx context.Context, limit int, startSeq, endSeq uint64) (sgbucket.QueryResultIterator, error) {
+func (context *DatabaseCollection) QueryResync(ctx context.Context, limit int, startSeq, endSeq uint64) (sgbucket.QueryResultIterator, error) {
 	return context.QueryChannels(ctx, channels.UserStarChannel, startSeq, endSeq, limit, false)
 }
 
@@ -496,7 +600,7 @@ func (context *DatabaseContext) QueryPrincipals(ctx context.Context, startKey st
 			opts[QueryParamStartKey] = startKey
 		}
 
-		return context.ViewQueryWithStats(ctx, DesignDocSyncGateway(), ViewPrincipals, opts)
+		return context.ViewQueryWithStats(ctx, context.MetadataStore, DesignDocSyncGateway(), ViewPrincipals, opts)
 	}
 
 	queryStatement := replaceIndexTokensQuery(QueryPrincipals.statement, sgIndexes[IndexSyncDocs], context.UseXattrs())
@@ -509,10 +613,10 @@ func (context *DatabaseContext) QueryPrincipals(ctx context.Context, startKey st
 	}
 
 	// N1QL Query
-	return context.N1QLQueryWithStats(ctx, QueryPrincipals.name, queryStatement, params, base.RequestPlus, QueryPrincipals.adhoc)
+	return N1QLQueryWithStats(ctx, context.MetadataStore, QueryPrincipals.name, queryStatement, params, base.RequestPlus, QueryPrincipals.adhoc, context.DbStats, context.Options.SlowQueryWarningThreshold)
 }
 
-// Query to retrieve user details, using the syncDocs index
+// Query to retrieve user details, using the syncDocs or users index
 func (context *DatabaseContext) QueryUsers(ctx context.Context, startKey string, limit int) (sgbucket.QueryResultIterator, error) {
 
 	// View Query
@@ -520,7 +624,21 @@ func (context *DatabaseContext) QueryUsers(ctx context.Context, startKey string,
 		return nil, errors.New("QueryUsers does not support views")
 	}
 
-	queryStatement := replaceIndexTokensQuery(QueryUsers.statement, sgIndexes[IndexSyncDocs], context.UseXattrs())
+	queryStatement, params := context.BuildUsersQuery(startKey, limit)
+
+	// N1QL Query
+	return N1QLQueryWithStats(ctx, context.MetadataStore, QueryTypeUsers, queryStatement, params, base.RequestPlus, QueryUsers.adhoc, context.DbStats, context.Options.SlowQueryWarningThreshold)
+}
+
+// BuildUsersQuery builds the query statement and query parameters for a Users N1QL query. Also used by unit tests to validate
+// query is covering.
+func (context *DatabaseContext) BuildUsersQuery(startKey string, limit int) (string, map[string]interface{}) {
+	var queryStatement string
+	if context.IsServerless() {
+		queryStatement = replaceIndexTokensQuery(QueryUsers.statement, sgIndexes[IndexUser], context.UseXattrs())
+	} else {
+		queryStatement = replaceIndexTokensQuery(QueryUsersUsingSyncDocsIdx.statement, sgIndexes[IndexSyncDocs], context.UseXattrs())
+	}
 
 	params := make(map[string]interface{})
 	params[QueryParamStartKey] = startKey
@@ -528,12 +646,10 @@ func (context *DatabaseContext) QueryUsers(ctx context.Context, startKey string,
 	if limit > 0 {
 		queryStatement = fmt.Sprintf("%s LIMIT %d", queryStatement, limit)
 	}
-
-	// N1QL Query
-	return context.N1QLQueryWithStats(ctx, QueryTypeUsers, queryStatement, params, base.RequestPlus, QueryUsers.adhoc)
+	return queryStatement, params
 }
 
-// Retrieves role ids using the syncDocs index, excluding deleted roles
+// Retrieves role ids using the syncDocs or roles index, excluding deleted roles
 func (context *DatabaseContext) QueryRoles(ctx context.Context, startKey string, limit int) (sgbucket.QueryResultIterator, error) {
 
 	// View Query
@@ -548,10 +664,50 @@ func (context *DatabaseContext) QueryRoles(ctx context.Context, startKey string,
 			opts[QueryParamStartKey] = startKey
 		}
 
-		return context.ViewQueryWithStats(ctx, DesignDocSyncGateway(), ViewRolesExcludeDeleted, opts)
+		return context.ViewQueryWithStats(ctx, context.MetadataStore, DesignDocSyncGateway(), ViewRolesExcludeDeleted, opts)
 	}
 
-	queryStatement := replaceIndexTokensQuery(QueryRolesExcludeDeleted.statement, sgIndexes[IndexSyncDocs], context.UseXattrs())
+	queryStatement, params := context.BuildRolesQuery(startKey, limit)
+
+	// N1QL Query
+	return N1QLQueryWithStats(ctx, context.MetadataStore, QueryRolesExcludeDeleted.name, queryStatement, params, base.RequestPlus, QueryRolesExcludeDeleted.adhoc, context.DbStats, context.Options.SlowQueryWarningThreshold)
+}
+
+// BuildRolesQuery builds the query statement and query parameters for a Roles N1QL query. Also used by unit tests to validate
+// query is covering.
+func (context *DatabaseContext) BuildRolesQuery(startKey string, limit int) (string, map[string]interface{}) {
+
+	var queryStatement string
+	if context.IsServerless() {
+		queryStatement = replaceIndexTokensQuery(QueryRolesExcludeDeletedUsingRoleIdx.statement, sgIndexes[IndexRole], context.UseXattrs())
+	} else {
+		queryStatement = replaceIndexTokensQuery(QueryRolesExcludeDeleted.statement, sgIndexes[IndexSyncDocs], context.UseXattrs())
+	}
+
+	params := make(map[string]interface{})
+	params[QueryParamStartKey] = startKey
+
+	if limit > 0 {
+		queryStatement = fmt.Sprintf("%s LIMIT %d", queryStatement, limit)
+	}
+
+	return queryStatement, params
+}
+
+// Retrieves role ids using the roles index, includes deleted roles
+func (context *DatabaseContext) QueryAllRoles(ctx context.Context, startKey string, limit int) (sgbucket.QueryResultIterator, error) {
+
+	// View Query
+	if context.Options.UseViews {
+		return nil, fmt.Errorf("QueryAllRoles doesn't support views")
+	}
+
+	var queryStatement string
+	if context.IsServerless() {
+		queryStatement = replaceIndexTokensQuery(QueryAllRolesUsingRoleIdx.statement, sgIndexes[IndexRole], context.UseXattrs())
+	} else {
+		queryStatement = replaceIndexTokensQuery(QueryAllRolesUsingSyncDocsIdx.statement, sgIndexes[IndexSyncDocs], context.UseXattrs())
+	}
 
 	params := make(map[string]interface{})
 	params[QueryParamStartKey] = startKey
@@ -561,7 +717,7 @@ func (context *DatabaseContext) QueryRoles(ctx context.Context, startKey string,
 	}
 
 	// N1QL Query
-	return context.N1QLQueryWithStats(ctx, QueryRolesExcludeDeleted.name, queryStatement, params, base.RequestPlus, QueryRolesExcludeDeleted.adhoc)
+	return N1QLQueryWithStats(ctx, context.MetadataStore, QueryRolesExcludeDeleted.name, queryStatement, params, base.RequestPlus, QueryRolesExcludeDeleted.adhoc, context.DbStats, context.Options.SlowQueryWarningThreshold)
 }
 
 // Query to retrieve the set of sessions, using the syncDocs index
@@ -572,15 +728,26 @@ func (context *DatabaseContext) QuerySessions(ctx context.Context, userName stri
 		opts := Body{"stale": false}
 		opts[QueryParamStartKey] = userName
 		opts[QueryParamEndKey] = userName
-		return context.ViewQueryWithStats(ctx, DesignDocSyncHousekeeping(), ViewSessions, opts)
+		return context.ViewQueryWithStats(ctx, context.MetadataStore, DesignDocSyncHousekeeping(), ViewSessions, opts)
 	}
 
-	queryStatement := replaceIndexTokensQuery(QuerySessions.statement, sgIndexes[IndexSyncDocs], context.UseXattrs())
+	queryStatement, params := context.BuildSessionsQuery(userName)
+	return N1QLQueryWithStats(ctx, context.MetadataStore, QueryTypeSessions, queryStatement, params, base.RequestPlus, QuerySessions.adhoc, context.DbStats, context.Options.SlowQueryWarningThreshold)
+}
 
-	// N1QL Query
+// BuildSessionsQuery builds the query statement and query parameters for a Sessions N1QL query. Also used by unit tests to validate
+// query is covering.
+func (context *DatabaseContext) BuildSessionsQuery(userName string) (string, map[string]interface{}) {
+	var queryStatement string
+	if context.IsServerless() {
+		queryStatement = replaceIndexTokensQuery(QuerySessionsUsingSessionIdx.statement, sgIndexes[IndexSession], context.UseXattrs())
+	} else {
+		queryStatement = replaceIndexTokensQuery(QuerySessions.statement, sgIndexes[IndexSyncDocs], context.UseXattrs())
+	}
+
 	params := make(map[string]interface{}, 1)
 	params[QueryParamUserName] = userName
-	return context.N1QLQueryWithStats(ctx, QueryTypeSessions, queryStatement, params, base.RequestPlus, QuerySessions.adhoc)
+	return queryStatement, params
 }
 
 type AllDocsViewQueryRow struct {
@@ -600,10 +767,10 @@ type AllDocsIndexQueryRow struct {
 }
 
 // AllDocs returns all non-deleted documents in the bucket between startKey and endKey
-func (context *DatabaseContext) QueryAllDocs(ctx context.Context, startKey string, endKey string) (sgbucket.QueryResultIterator, error) {
+func (context *DatabaseCollection) QueryAllDocs(ctx context.Context, startKey string, endKey string) (sgbucket.QueryResultIterator, error) {
 
 	// View Query
-	if context.Options.UseViews {
+	if context.useViews() {
 		opts := Body{"stale": false, "reduce": false}
 		if startKey != "" {
 			opts[QueryParamStartKey] = startKey
@@ -611,7 +778,7 @@ func (context *DatabaseContext) QueryAllDocs(ctx context.Context, startKey strin
 		if endKey != "" {
 			opts[QueryParamEndKey] = endKey
 		}
-		return context.ViewQueryWithStats(ctx, DesignDocSyncHousekeeping(), ViewAllDocs, opts)
+		return context.dbCtx.ViewQueryWithStats(ctx, context.dataStore, DesignDocSyncHousekeeping(), ViewAllDocs, opts)
 	}
 
 	// N1QL Query
@@ -633,13 +800,13 @@ func (context *DatabaseContext) QueryAllDocs(ctx context.Context, startKey strin
 	allDocsQueryStatement = fmt.Sprintf("%s ORDER BY META(%s).id",
 		allDocsQueryStatement, base.KeyspaceQueryAlias)
 
-	return context.N1QLQueryWithStats(ctx, QueryTypeAllDocs, allDocsQueryStatement, params, base.RequestPlus, QueryAllDocs.adhoc)
+	return N1QLQueryWithStats(ctx, context.dataStore, QueryTypeAllDocs, allDocsQueryStatement, params, base.RequestPlus, QueryAllDocs.adhoc, context.dbStats(), context.slowQueryWarningThreshold())
 }
 
-func (context *DatabaseContext) QueryTombstones(ctx context.Context, olderThan time.Time, limit int) (sgbucket.QueryResultIterator, error) {
+func (context *DatabaseCollection) QueryTombstones(ctx context.Context, olderThan time.Time, limit int) (sgbucket.QueryResultIterator, error) {
 
 	// View Query
-	if context.Options.UseViews {
+	if context.useViews() {
 		opts := Body{
 			"stale":            false,
 			QueryParamStartKey: 1,
@@ -648,7 +815,7 @@ func (context *DatabaseContext) QueryTombstones(ctx context.Context, olderThan t
 		if limit != 0 {
 			opts[QueryParamLimit] = limit
 		}
-		return context.ViewQueryWithStats(ctx, DesignDocSyncHousekeeping(), ViewTombstones, opts)
+		return context.dbCtx.ViewQueryWithStats(ctx, context.dataStore, DesignDocSyncHousekeeping(), ViewTombstones, opts)
 	}
 
 	// N1QL Query
@@ -662,7 +829,7 @@ func (context *DatabaseContext) QueryTombstones(ctx context.Context, olderThan t
 		QueryParamOlderThan: olderThan.Unix(),
 	}
 
-	return context.N1QLQueryWithStats(ctx, QueryTypeTombstones, tombstoneQueryStatement, params, base.RequestPlus, QueryTombstones.adhoc)
+	return N1QLQueryWithStats(ctx, context.dataStore, QueryTypeTombstones, tombstoneQueryStatement, params, base.RequestPlus, QueryTombstones.adhoc, context.dbStats(), context.slowQueryWarningThreshold())
 }
 
 func changesViewOptions(channelName string, startSeq, endSeq uint64, limit int) map[string]interface{} {

@@ -54,16 +54,18 @@ type LogEntry struct {
 	Value        []byte       // Snapshot metadata (when Type=LogEntryCheckpoint)
 	PrevSequence uint64       // Sequence of previous active revision
 	IsPrincipal  bool         // Whether the log-entry is a tracking entry for a principal doc
+	CollectionID uint32       // Collection ID
 }
 
 func (l LogEntry) String() string {
 	return fmt.Sprintf(
-		"seq: %d docid: %s revid: %s vbno: %d type: %v",
+		"seq: %d docid: %s revid: %s vbno: %d type: %v collectionID: %d",
 		l.Sequence,
 		l.DocID,
 		l.RevID,
 		l.VbNo,
 		l.Type,
+		l.CollectionID,
 	)
 }
 

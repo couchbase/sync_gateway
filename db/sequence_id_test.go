@@ -52,6 +52,31 @@ func TestParseSequenceID(t *testing.T) {
 	assert.True(t, err != nil)
 }
 
+func BenchmarkParseSequenceID(b *testing.B) {
+	tests := []string{
+		"1234",
+		"5678:1234",
+		"",
+		"123:456:789",
+		"123::789",
+		"foo",
+		":",
+		":1",
+		"::1",
+		"10:11:12:13",
+		"123:ggg",
+	}
+
+	for _, test := range tests {
+		b.Run(test, func(b *testing.B) {
+			b.ReportAllocs()
+			for i := 0; i < b.N; i++ {
+				_, _ = parseIntegerSequenceID(test)
+			}
+		})
+	}
+}
+
 func TestMarshalSequenceID(t *testing.T) {
 	s := SequenceID{Seq: 1234}
 	assert.Equal(t, "1234", s.String())

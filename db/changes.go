@@ -56,6 +56,7 @@ type ChangeEntry struct {
 	backfill     backfillFlag // Flag used to identify non-client entries used for backfill synchronization (di only)
 	principalDoc bool         // Used to indicate _user/_role docs
 	Revoked      bool         `json:"revoked,omitempty"`
+	collectionID uint32
 }
 
 const (
@@ -78,12 +79,12 @@ type ViewDoc struct {
 	Json json.RawMessage // should be type 'document', but that fails to unmarshal correctly
 }
 
-func (db *Database) AddDocToChangeEntry(ctx context.Context, entry *ChangeEntry, options ChangesOptions) {
+func (db *DatabaseCollectionWithUser) AddDocToChangeEntry(ctx context.Context, entry *ChangeEntry, options ChangesOptions) {
 	db.addDocToChangeEntry(ctx, entry, options)
 }
 
 // Adds a document body and/or its conflicts to a ChangeEntry
-func (db *Database) addDocToChangeEntry(ctx context.Context, entry *ChangeEntry, options ChangesOptions) {
+func (db *DatabaseCollectionWithUser) addDocToChangeEntry(ctx context.Context, entry *ChangeEntry, options ChangesOptions) {
 
 	includeConflicts := options.Conflicts && entry.branched
 	if !options.IncludeDocs && !includeConflicts {
@@ -135,7 +136,7 @@ func (db *Database) addDocToChangeEntry(ctx context.Context, entry *ChangeEntry,
 
 }
 
-func (db *Database) AddDocToChangeEntryUsingRevCache(ctx context.Context, entry *ChangeEntry, revID string) (err error) {
+func (db *DatabaseCollectionWithUser) AddDocToChangeEntryUsingRevCache(ctx context.Context, entry *ChangeEntry, revID string) (err error) {
 	rev, err := db.getRev(ctx, entry.ID, revID, 0, nil, RevCacheIncludeBody)
 	if err != nil {
 		return err
@@ -145,7 +146,7 @@ func (db *Database) AddDocToChangeEntryUsingRevCache(ctx context.Context, entry 
 }
 
 // Adds a document body and/or its conflicts to a ChangeEntry
-func (db *Database) AddDocInstanceToChangeEntry(ctx context.Context, entry *ChangeEntry, doc *Document, options ChangesOptions) {
+func (db *DatabaseCollectionWithUser) AddDocInstanceToChangeEntry(ctx context.Context, entry *ChangeEntry, doc *Document, options ChangesOptions) {
 
 	includeConflicts := options.Conflicts && entry.branched
 
@@ -165,7 +166,7 @@ func (db *Database) AddDocInstanceToChangeEntry(ctx context.Context, entry *Chan
 	if options.IncludeDocs {
 		var err error
 		entry.Doc, _, err = db.get1xRevFromDoc(ctx, doc, revID, false)
-		db.DbStats.Database().NumDocReadsRest.Add(1)
+		db.dbStats().Database().NumDocReadsRest.Add(1)
 		if err != nil {
 			base.WarnfCtx(ctx, "Changes feed: error getting doc %q/%q: %v", base.UD(doc.ID), revID, err)
 		}
@@ -179,11 +180,11 @@ func (db *Database) AddDocInstanceToChangeEntry(ctx context.Context, entry *Chan
 // This is used in this function in 'wasDocInChannelAtSeq'.
 // revokeFrom: This is the point at which we should run the changes feed from to find the documents we should revoke. It
 // is calculated higher up based on whether we are resuming an interrupted feed or not.
-func (db *Database) buildRevokedFeed(ctx context.Context, channelName string, options ChangesOptions, revokedAt, revocationSinceSeq, revokeFrom uint64, to string) <-chan *ChangeEntry {
+func (db *DatabaseCollectionWithUser) buildRevokedFeed(ctx context.Context, ch channels.ID, options ChangesOptions, revokedAt, revocationSinceSeq, revokeFrom uint64, to string) <-chan *ChangeEntry {
 	feed := make(chan *ChangeEntry, 1)
 	sinceVal := options.Since.Seq
 
-	queryLimit := db.Options.CacheOptions.ChannelQueryLimit
+	queryLimit := db.channelQueryLimit()
 	requestLimit := options.Limit
 
 	paginationOptions := options
@@ -195,7 +196,7 @@ func (db *Database) buildRevokedFeed(ctx context.Context, channelName string, op
 	paginationOptions.Since.Seq = revokeFrom
 
 	// Use a bypass channel cache for revocations (CBG-1695)
-	singleChannelCache := db.changeCache.getChannelCache().getBypassChannelCache(channelName)
+	singleChannelCache := db.changeCache.getChannelCache().getBypassChannelCache(ch)
 
 	go func() {
 		defer base.FatalPanicHandler()
@@ -217,17 +218,17 @@ func (db *Database) buildRevokedFeed(ctx context.Context, channelName string, op
 			}
 
 			// Get changes from 0 to latest seq
-			base.TracefCtx(ctx, base.KeyChanges, "Querying channel %q for revocation with options: %+v", base.UD(singleChannelCache.ChannelName()), paginationOptions)
+			base.TracefCtx(ctx, base.KeyChanges, "Querying channel %q for revocation with options: %+v", base.UD(singleChannelCache.ChannelID()), paginationOptions)
 			changes, err := singleChannelCache.GetChanges(paginationOptions)
 			if err != nil {
-				base.WarnfCtx(ctx, "Error retrieving changes for channel %q: %v", base.UD(singleChannelCache.ChannelName()), err)
+				base.WarnfCtx(ctx, "Error retrieving changes for channel %q: %v", base.UD(singleChannelCache.ChannelID()), err)
 				change := ChangeEntry{
 					Err: base.ErrChannelFeed,
 				}
 				feed <- &change
 				return
 			}
-			base.DebugfCtx(ctx, base.KeyChanges, "[revocationChangesFeed] Found %d changes for channel %q", len(changes), base.UD(singleChannelCache.ChannelName()))
+			base.DebugfCtx(ctx, base.KeyChanges, "[revocationChangesFeed] Found %d changes for channel %q", len(changes), base.UD(singleChannelCache.ChannelID()))
 
 			sentChanges := 0
 			for _, logEntry := range changes {
@@ -241,18 +242,18 @@ func (db *Database) buildRevokedFeed(ctx context.Context, channelName string, op
 				// Otherwise: we need to determine whether a previous revision of the document was in the channel prior
 				// to the since value, and only send a revocation if that was the case
 				if logEntry.Sequence > sinceVal {
-					requiresRevocation, err := db.wasDocInChannelPriorToRevocation(ctx, logEntry.DocID, singleChannelCache.ChannelName(), revocationSinceSeq)
+					requiresRevocation, err := db.wasDocInChannelPriorToRevocation(ctx, logEntry.DocID, singleChannelCache.ChannelID().Name, revocationSinceSeq)
 					if err != nil {
 						change := ChangeEntry{
 							Err: base.ErrChannelFeed,
 						}
 						feed <- &change
-						base.WarnfCtx(ctx, "Error checking document history during revocation, seq: %v in channel %s, ending revocation feed. Error: %v", seqID, base.UD(singleChannelCache.ChannelName()), err)
+						base.WarnfCtx(ctx, "Error checking document history during revocation, seq: %v in channel %s, ending revocation feed. Error: %v", seqID, base.UD(singleChannelCache.ChannelID()), err)
 						return
 					}
 
 					if !requiresRevocation {
-						base.DebugfCtx(ctx, base.KeyChanges, "Channel feed processing revocation, seq: %v in channel %s does not require revocation", seqID, base.UD(singleChannelCache.ChannelName()))
+						base.TracefCtx(ctx, base.KeyChanges, "Channel feed processing revocation, seq: %v in channel %s does not require revocation", seqID, base.UD(singleChannelCache.ChannelID()))
 						continue
 					}
 				}
@@ -271,10 +272,10 @@ func (db *Database) buildRevokedFeed(ctx context.Context, channelName string, op
 					continue
 				}
 
-				change := makeRevocationChangeEntry(logEntry, seqID, singleChannelCache.ChannelName())
+				change := makeRevocationChangeEntry(logEntry, seqID, singleChannelCache.ChannelID())
 				lastSeq = logEntry.Sequence
 
-				base.DebugfCtx(ctx, base.KeyChanges, "Channel feed processing revocation seq: %v in channel %s ", seqID, base.UD(singleChannelCache.ChannelName()))
+				base.DebugfCtx(ctx, base.KeyChanges, "Channel feed processing revocation seq: %v in channel %s ", seqID, base.UD(singleChannelCache.ChannelID()))
 
 				select {
 				case <-options.ChangesCtx.Done():
@@ -303,7 +304,7 @@ func (db *Database) buildRevokedFeed(ctx context.Context, channelName string, op
 }
 
 // UserHasDocAccess checks whether the user has access to the active revision of the document
-func UserHasDocAccess(ctx context.Context, db *Database, docID string) (bool, error) {
+func UserHasDocAccess(ctx context.Context, db *DatabaseCollectionWithUser, docID string) (bool, error) {
 	currentRev, err := db.revisionCache.GetActive(ctx, docID, false)
 	if err != nil {
 		if base.IsDocNotFoundError(err) {
@@ -316,12 +317,12 @@ func UserHasDocAccess(ctx context.Context, db *Database, docID string) (bool, er
 		return true, nil
 	}
 
-	authErr := db.user.AuthorizeAnyChannel(currentRev.Channels)
+	authErr := db.user.AuthorizeAnyCollectionChannel(db.ScopeName(), db.Name(), currentRev.Channels)
 	return authErr == nil, nil
 }
 
 // Checks if a document needs to be revoked. This is used in the case where the since < doc sequence
-func (db *Database) wasDocInChannelPriorToRevocation(ctx context.Context, docID, chanName string, since uint64) (bool, error) {
+func (db *DatabaseCollectionWithUser) wasDocInChannelPriorToRevocation(ctx context.Context, docID, chanName string, since uint64) (bool, error) {
 	// Get doc sync data so we can verify the docs grant history
 	syncData, err := db.GetDocSyncData(ctx, docID)
 	if err != nil {
@@ -369,11 +370,11 @@ func (db *Database) wasDocInChannelPriorToRevocation(ctx context.Context, docID,
 
 // Creates a Go-channel of all the changes made on a channel.
 // Does NOT handle the Wait option. Does NOT check authorization.
-func (db *Database) changesFeed(ctx context.Context, singleChannelCache SingleChannelCache, options ChangesOptions, to string) <-chan *ChangeEntry {
+func (db *DatabaseCollectionWithUser) changesFeed(ctx context.Context, singleChannelCache SingleChannelCache, options ChangesOptions, to string) <-chan *ChangeEntry {
 
 	feed := make(chan *ChangeEntry, 1)
 
-	queryLimit := db.Options.CacheOptions.ChannelQueryLimit
+	queryLimit := db.channelQueryLimit()
 	requestLimit := options.Limit
 
 	// Make a copy of the changesOptions so that query pagination can modify since and limit.  Pagination uses safe sequence
@@ -402,17 +403,17 @@ func (db *Database) changesFeed(ctx context.Context, singleChannelCache SingleCh
 			}
 
 			// TODO: pass db.Ctx down to changeCache?
-			base.TracefCtx(ctx, base.KeyChanges, "Querying channel %q with options: %+v", base.UD(singleChannelCache.ChannelName()), paginationOptions)
+			base.TracefCtx(ctx, base.KeyChanges, "Querying channel %q with options: %+v", base.UD(singleChannelCache.ChannelID()), paginationOptions)
 			changes, err := singleChannelCache.GetChanges(paginationOptions)
 			if err != nil {
-				base.WarnfCtx(ctx, "Error retrieving changes for channel %q: %v", base.UD(singleChannelCache.ChannelName()), err)
+				base.WarnfCtx(ctx, "Error retrieving changes for channel %q: %v", base.UD(singleChannelCache.ChannelID()), err)
 				change := ChangeEntry{
 					Err: base.ErrChannelFeed,
 				}
 				feed <- &change
 				return
 			}
-			base.DebugfCtx(ctx, base.KeyChanges, "[changesFeed] Found %d changes for channel %q", len(changes), base.UD(singleChannelCache.ChannelName()))
+			base.DebugfCtx(ctx, base.KeyChanges, "[changesFeed] Found %d changes for channel %q", len(changes), base.UD(singleChannelCache.ChannelID()))
 
 			// Now write each log entry to the 'feed' channel in turn:
 			sentChanges := 0
@@ -425,7 +426,7 @@ func (db *Database) changesFeed(ctx context.Context, singleChannelCache SingleCh
 					TriggeredBy: options.Since.TriggeredBy,
 				}
 
-				change := makeChangeEntry(logEntry, seqID, singleChannelCache.ChannelName())
+				change := makeChangeEntry(logEntry, seqID, singleChannelCache.ChannelID())
 				lastSeq = logEntry.Sequence
 
 				// Don't include deletes or removals during initial channel backfill
@@ -433,7 +434,7 @@ func (db *Database) changesFeed(ctx context.Context, singleChannelCache SingleCh
 					continue
 				}
 
-				base.DebugfCtx(ctx, base.KeyChanges, "Channel feed processing seq:%v in channel %s %s", seqID, base.UD(singleChannelCache.ChannelName()), base.UD(to))
+				base.DebugfCtx(ctx, base.KeyChanges, "Channel feed processing seq:%v in channel %s %s", seqID, base.UD(singleChannelCache.ChannelID()), base.UD(to))
 				select {
 				case <-options.ChangesCtx.Done():
 					base.DebugfCtx(ctx, base.KeyChanges, "Terminating channel feed %s", base.UD(to))
@@ -460,7 +461,7 @@ func (db *Database) changesFeed(ctx context.Context, singleChannelCache SingleCh
 	return feed
 }
 
-func makeChangeEntry(logEntry *LogEntry, seqID SequenceID, channelName string) ChangeEntry {
+func makeChangeEntry(logEntry *LogEntry, seqID SequenceID, channel channels.ID) ChangeEntry {
 	change := ChangeEntry{
 		Seq:          seqID,
 		ID:           logEntry.DocID,
@@ -468,17 +469,17 @@ func makeChangeEntry(logEntry *LogEntry, seqID SequenceID, channelName string) C
 		Changes:      []ChangeRev{{"rev": logEntry.RevID}},
 		branched:     (logEntry.Flags & channels.Branched) != 0,
 		principalDoc: logEntry.IsPrincipal,
+		collectionID: logEntry.CollectionID,
 	}
-
 	if logEntry.Flags&channels.Removed != 0 {
-		change.Removed = base.SetOf(channelName)
+		change.Removed = base.SetOf(channel.Name)
 	}
 
 	return change
 }
 
-func makeRevocationChangeEntry(logEntry *LogEntry, seqID SequenceID, channelName string) ChangeEntry {
-	entry := makeChangeEntry(logEntry, seqID, channelName)
+func makeRevocationChangeEntry(logEntry *LogEntry, seqID SequenceID, channel channels.ID) ChangeEntry {
+	entry := makeChangeEntry(logEntry, seqID, channel)
 	entry.Revoked = true
 
 	return entry
@@ -520,7 +521,7 @@ func makeErrorEntry(message string) ChangeEntry {
 	return change
 }
 
-func (db *Database) MultiChangesFeed(ctx context.Context, chans base.Set, options ChangesOptions) (<-chan *ChangeEntry, error) {
+func (db *DatabaseCollectionWithUser) MultiChangesFeed(ctx context.Context, chans base.Set, options ChangesOptions) (<-chan *ChangeEntry, error) {
 	if len(chans) == 0 {
 		return nil, nil
 	}
@@ -530,19 +531,16 @@ func (db *Database) MultiChangesFeed(ctx context.Context, chans base.Set, option
 	}
 
 	base.DebugfCtx(ctx, base.KeyChanges, "Int sequence multi changes feed...")
-	return db.SimpleMultiChangesFeed(ctx, chans, options)
+
+	return db.SimpleMultiChangesFeed(ctx, channels.SetOfFromSingleCollection(chans.ToArray(), db.GetCollectionID()), options)
 
 }
 
-func (db *Database) startChangeWaiter(chans base.Set) *ChangeWaiter {
-	waitChans := chans
-	if db.user != nil {
-		waitChans = db.user.ExpandWildCardChannel(chans)
-	}
-	return db.mutationListener.NewWaiterWithChannels(waitChans, db.user)
+func (db *DatabaseCollectionWithUser) startChangeWaiter() *ChangeWaiter {
+	return db.mutationListener().NewWaiterWithChannels(channels.Set{}, db.user)
 }
 
-func (db *Database) appendUserFeed(feeds []<-chan *ChangeEntry, options ChangesOptions) []<-chan *ChangeEntry {
+func (db *DatabaseCollectionWithUser) appendUserFeed(feeds []<-chan *ChangeEntry, options ChangesOptions) []<-chan *ChangeEntry {
 	userSeq := SequenceID{Seq: db.user.Sequence()}
 	if options.Since.Before(userSeq) {
 		name := db.user.Name()
@@ -563,12 +561,13 @@ func (db *Database) appendUserFeed(feeds []<-chan *ChangeEntry, options ChangesO
 	return feeds
 }
 
-func (db *Database) checkForUserUpdates(ctx context.Context, userChangeCount uint64, changeWaiter *ChangeWaiter, isContinuous bool) (isChanged bool, newCount uint64, changedChannels channels.ChangedKeys, err error) {
+func (db *DatabaseCollectionWithUser) checkForUserUpdates(ctx context.Context, userChangeCount uint64, changeWaiter *ChangeWaiter, isContinuous bool) (isChanged bool, newCount uint64, changedChannels channels.ChangedChannels, err error) {
 
 	newCount = changeWaiter.CurrentUserCount()
 	// If not continuous, we force user reload as a workaround for https://github.com/couchbase/sync_gateway/issues/2068.  For continuous, #2068 is handled by changedChannels check, and
 	// we can reload only when there's been a user change notification
 	if newCount > userChangeCount || !isContinuous {
+		changedChannels := channels.ChangedChannels{}
 		var previousChannels channels.TimedSet
 		base.DebugfCtx(ctx, base.KeyChanges, "MultiChangesFeed reloading user %+v", base.UD(db.user))
 		userChangeCount = newCount
@@ -581,7 +580,12 @@ func (db *Database) checkForUserUpdates(ctx context.Context, userChangeCount uin
 				return false, 0, nil, err
 			}
 			// check whether channel set has changed
-			changedChannels = db.user.InheritedChannels().CompareKeys(previousChannels)
+			singleCollectionChannels := db.user.InheritedChannels().CompareKeys(previousChannels)
+			collectionID := db.GetCollectionID()
+
+			for channelName, changed := range singleCollectionChannels {
+				changedChannels[channels.NewID(channelName, collectionID)] = changed
+			}
 			if len(changedChannels) > 0 {
 				base.DebugfCtx(ctx, base.KeyChanges, "Modified channel set after user reload: %v", base.UD(changedChannels))
 			}
@@ -597,7 +601,7 @@ func (db *Database) checkForUserUpdates(ctx context.Context, userChangeCount uin
 }
 
 // Returns the (ordered) union of all of the changes made to multiple channels.
-func (db *Database) SimpleMultiChangesFeed(ctx context.Context, chans base.Set, options ChangesOptions) (<-chan *ChangeEntry, error) {
+func (db *DatabaseCollectionWithUser) SimpleMultiChangesFeed(ctx context.Context, chans channels.Set, options ChangesOptions) (<-chan *ChangeEntry, error) {
 
 	to := ""
 	if db.user != nil && db.user.Name() != "" {
@@ -607,6 +611,7 @@ func (db *Database) SimpleMultiChangesFeed(ctx context.Context, chans base.Set, 
 	base.InfofCtx(ctx, base.KeyChanges, "MultiChangesFeed(channels: %s, options: %s) ... %s", base.UD(chans), options, base.UD(to))
 	output := make(chan *ChangeEntry, 50)
 
+	singleCollectionID := db.GetCollectionID()
 	go func() {
 
 		defer func() {
@@ -621,17 +626,18 @@ func (db *Database) SimpleMultiChangesFeed(ctx context.Context, chans base.Set, 
 		var changeWaiter *ChangeWaiter
 		var lowSequence uint64
 		var currentCachedSequence uint64
-		var lateSequenceFeeds map[string]*lateSequenceFeed
-		var userCounter uint64              // Wait counter used to identify changes to the user document
-		var changedChannels map[string]bool // Tracks channels added/removed to the user during changes processing.
-		var userChanged bool                // Whether the user document has changed in a given iteration loop
-		var deferredBackfill bool           // Whether there's a backfill identified in the user doc that's deferred while the SG cache catches up
+		var lateSequenceFeeds map[channels.ID]*lateSequenceFeed
+		var userCounter uint64                       // Wait counter used to identify changes to the user document
+		var changedChannels channels.ChangedChannels // Tracks channels added/removed to the user during changes processing.
+		var userChanged bool                         // Whether the user document has changed in a given iteration loop
+		var deferredBackfill bool                    // Whether there's a backfill identified in the user doc that's deferred while the SG cache catches up
 
 		// Retrieve the current max cached sequence - ensures there isn't a race between the subsequent channel cache queries
 		currentCachedSequence = db.changeCache.getChannelCache().GetHighCacheSequence()
 		if options.Wait {
 			options.Wait = false
-			changeWaiter = db.startChangeWaiter(base.Set{}) // Waiter is updated with the actual channel set (post-user reload) at the start of the outer changes loop
+
+			changeWaiter = db.startChangeWaiter() // Waiter is updated with the actual channel set (post-user reload) at the start of the outer changes loop
 			userCounter = changeWaiter.CurrentUserCount()
 			// Reload user to pick up user changes that happened between auth and the change waiter
 			// initialization.  Without this, notification for user doc changes in that window (a) won't be
@@ -649,25 +655,25 @@ func (db *Database) SimpleMultiChangesFeed(ctx context.Context, chans base.Set, 
 
 		// Restrict to available channels, expand wild-card, and find since when these channels
 		// have been available to the user:
-		var channelsSince channels.TimedSet
+		channelsSince := channels.TimedSetByCollectionID{}
 		if db.user != nil {
-			var channelsRemoved []string
-			channelsSince, channelsRemoved = db.user.FilterToAvailableChannels(chans)
+			chansSince, channelsRemoved := db.user.FilterToAvailableCollectionChannels(db.ScopeName(), db.Name(), chans)
 			if len(channelsRemoved) > 0 {
 				base.InfofCtx(ctx, base.KeyChanges, "Channels %s request without access by user %s", base.UD(channelsRemoved), base.UD(db.user.Name()))
 			}
+			channelsSince[singleCollectionID] = chansSince
 		} else {
-			channelsSince = channels.AtSequence(chans, 0)
+			channelsSince = channels.AtSequenceByCollection(chans, 0)
 		}
 
 		// Mark channel set as active, schedule defer
-		db.activeChannels.IncrChannels(channelsSince)
-		defer db.activeChannels.DecrChannels(channelsSince)
+		db.activeChannels().IncrChannels(channelsSince)
+		defer db.activeChannels().DecrChannels(channelsSince)
 
 		// For a continuous feed, initialise the lateSequenceFeeds that track late-arriving sequences
 		// to the channel caches.
 		if options.Continuous {
-			lateSequenceFeeds = make(map[string]*lateSequenceFeed)
+			lateSequenceFeeds = make(map[channels.ID]*lateSequenceFeed)
 			defer db.closeLateFeeds(lateSequenceFeeds)
 		}
 
@@ -684,7 +690,7 @@ func (db *Database) SimpleMultiChangesFeed(ctx context.Context, chans base.Set, 
 			if changeWaiter != nil {
 				changeWaiter.UpdateChannels(channelsSince)
 			}
-			base.DebugfCtx(ctx, base.KeyChanges, "MultiChangesFeed: channels expand to %#v ... %s", base.UD(channelsSince.String()), base.UD(to))
+			base.DebugfCtx(ctx, base.KeyChanges, "MultiChangesFeed: channels expand to %#v ... %s", base.UD(channelsSince), base.UD(to))
 
 			// lowSequence is used to send composite keys to clients, so that they can obtain any currently
 			// skipped sequences in a future iteration or request.
@@ -713,116 +719,119 @@ func (db *Database) SimpleMultiChangesFeed(ctx context.Context, chans base.Set, 
 			// with access to both channels would see two versions on the feed.
 
 			deferredBackfill = false
-			for name, vbSeqAddedAt := range channelsSince {
-				chanOpts := options
+			for collectionID, chanSeq := range channelsSince {
+				for chanName, vbSeqAddedAt := range chanSeq {
+					chanOpts := options
 
-				// Obtain a SingleChannelCache instance to use for both normal and late feeds.  Required to ensure consistency
-				// if cache is evicted during processing
-				singleChannelCache := db.changeCache.getChannelCache().getSingleChannelCache(name)
+					chanID := channels.NewID(chanName, collectionID)
+					// Obtain a SingleChannelCache instance to use for both normal and late feeds.  Required to ensure consistency
+					// if cache is evicted during processing
+					singleChannelCache := db.changeCache.getChannelCache().getSingleChannelCache(chanID)
 
-				// Set up late sequence handling first, as we need to roll back the regular feed on error
-				// Handles previously skipped sequences prior to options.Since that
-				// have arrived in the channel cache since this changes request started.  Only needed for
-				// continuous feeds - one-off changes requests only require the standard channel cache.
-				if options.Continuous {
-					lateSequenceFeedHandler := lateSequenceFeeds[name]
-					if lateSequenceFeedHandler != nil {
-						latefeed, err := db.getLateFeed(lateSequenceFeedHandler, singleChannelCache)
-						if err != nil {
-							base.WarnfCtx(ctx, "MultiChangesFeed got error reading late sequence feed %q, rolling back channel changes feed to last sent low sequence #%d.", base.UD(name), lastSentLowSeq)
-							chanOpts.Since.LowSeq = lastSentLowSeq
-							if lateFeed := db.newLateSequenceFeed(singleChannelCache); lateFeed != nil {
-								lateSequenceFeeds[name] = lateFeed
+					// Set up late sequence handling first, as we need to roll back the regular feed on error
+					// Handles previously skipped sequences prior to options.Since that
+					// have arrived in the channel cache since this changes request started.  Only needed for
+					// continuous feeds - one-off changes requests only require the standard channel cache.
+					if options.Continuous {
+						lateSequenceFeedHandler := lateSequenceFeeds[chanID]
+						if lateSequenceFeedHandler != nil {
+							latefeed, err := db.getLateFeed(lateSequenceFeedHandler, singleChannelCache)
+							if err != nil {
+								base.WarnfCtx(ctx, "MultiChangesFeed got error reading late sequence feed %q, rolling back channel changes feed to last sent low sequence #%d.", base.UD(chanID.String()), lastSentLowSeq)
+								chanOpts.Since.LowSeq = lastSentLowSeq
+								if lateFeed := db.newLateSequenceFeed(singleChannelCache); lateFeed != nil {
+									lateSequenceFeeds[chanID] = lateFeed
+								}
+							} else {
+								// Mark feed as actively used in this iteration.  Used to remove lateSequenceFeeds
+								// when the user loses channel access
+								lateSequenceFeedHandler.active = true
+								feeds = append(feeds, latefeed)
 							}
 						} else {
-							// Mark feed as actively used in this iteration.  Used to remove lateSequenceFeeds
-							// when the user loses channel access
-							lateSequenceFeedHandler.active = true
-							feeds = append(feeds, latefeed)
-						}
-					} else {
-						// Initialize lateSequenceFeeds[name] for next iteration
-						if lateFeed := db.newLateSequenceFeed(singleChannelCache); lateFeed != nil {
-							lateSequenceFeeds[name] = lateFeed
-						}
-					}
-				}
-
-				seqAddedAt := vbSeqAddedAt.Sequence
-
-				// Check whether requires backfill based on changedChannels in this _changes feed
-				isNewChannel := false
-				if changedChannels != nil {
-					isNewChannel, _ = changedChannels[name]
-				}
-
-				// Check whether requires backfill based on current sequence, seqAddedAt
-				// Triggered by handling:
-				//   1. options.Since.TriggeredBy == seqAddedAt : We're in the middle of backfill for this channel, based
-				//    on the access grant in sequence options.Since.TriggeredBy.  Normally the entire backfill would be done in one
-				//    changes feed iteration, but this can be split over multiple iterations when 'limit' is used.
-				//   2. options.Since.TriggeredBy == 0 : Not currently doing a backfill
-				//   3. options.Since.TriggeredBy != 0 and <= seqAddedAt: We're in the middle of a backfill for another channel, but the backfill for
-				//     this channel is still pending.  Initiate the backfill for this channel - will be ordered below in the usual way (iterating over all channels)
-				//   4. options.Since.TriggeredBy !=0 and options.Since.TriggeredBy > seqAddedAt: We're in the
-				//  middle of a backfill for another channel.  This should issue normal (non-backfill) changes
-				//  request with  since= options.Since.TriggeredBy for the non-backfill channel.
-
-				// Backfill required when seqAddedAt is before current sequence
-				backfillRequired := seqAddedAt > 1 && options.Since.Before(SequenceID{Seq: seqAddedAt}) && seqAddedAt <= currentCachedSequence
-				if seqAddedAt > currentCachedSequence {
-					base.DebugfCtx(ctx, base.KeyChanges, "Grant for channel [%s] is after the current sequence - skipped for this iteration.  Grant:[%d] Current:[%d] %s", base.UD(name), seqAddedAt, currentCachedSequence, base.UD(to))
-					deferredBackfill = true
-					continue
-				}
-
-				// Ensure backfill isn't already in progress for this seqAddedAt
-				backfillPending := options.Since.TriggeredBy == 0 || options.Since.TriggeredBy < seqAddedAt
-
-				backfillInOtherChannel := options.Since.TriggeredBy != 0 && options.Since.TriggeredBy > seqAddedAt
-
-				if isNewChannel || (backfillRequired && backfillPending) {
-					// Newly added channel so initiate backfill:
-					chanOpts.Since = SequenceID{Seq: 0, TriggeredBy: seqAddedAt}
-				} else if backfillInOtherChannel {
-					chanOpts.Since = SequenceID{Seq: options.Since.TriggeredBy - 1}
-				}
-
-				feed := db.changesFeed(ctx, singleChannelCache, chanOpts, to)
-				feeds = append(feeds, feed)
-
-			}
-			// If the user object has changed, create a special pseudo-feed for it:
-			if db.user != nil {
-				feeds = db.appendUserFeed(feeds, options)
-			}
-
-			if options.Revocations && db.user != nil && !options.ActiveOnly {
-				channelsToRevoke := db.user.RevokedChannels(options.Since.Seq, options.Since.LowSeq, options.Since.TriggeredBy)
-				for channel, revokedSeq := range channelsToRevoke {
-					revocationSinceSeq := options.Since.SafeSequence()
-					revokeFrom := uint64(0)
-
-					// If we have a triggeredBy sequence:
-					// If channel access was lost at the triggeredBy sequence then replication may have been interrupted
-					// so we need to roll back one sequence to re-send the values with that previous triggeredBy as we
-					// cannot be sure that they were all sent. However, we can get changes from triggeredBy rather than
-					// 0 when finding docs to revoke.
-					// If channel access was after the triggeredBy then we can just use the triggeredBy and need to
-					// check for docs to revoke since 0.
-					if options.Since.TriggeredBy != 0 {
-						if revokedSeq == options.Since.TriggeredBy {
-							revocationSinceSeq = options.Since.TriggeredBy - 1
-							revokeFrom = options.Since.Seq
-						}
-						if revokedSeq > options.Since.TriggeredBy {
-							revocationSinceSeq = options.Since.TriggeredBy
-							revokeFrom = 0
+							// Initialize lateSequenceFeeds[name] for next iteration
+							if lateFeed := db.newLateSequenceFeed(singleChannelCache); lateFeed != nil {
+								lateSequenceFeeds[chanID] = lateFeed
+							}
 						}
 					}
 
-					feed := db.buildRevokedFeed(ctx, channel, options, revokedSeq, revocationSinceSeq, revokeFrom, to)
+					seqAddedAt := vbSeqAddedAt.Sequence
+
+					// Check whether requires backfill based on changedChannels in this _changes feed
+					isNewChannel := false
+					if changedChannels != nil {
+						isNewChannel, _ = changedChannels[chanID]
+					}
+
+					// Check whether requires backfill based on current sequence, seqAddedAt
+					// Triggered by handling:
+					//   1. options.Since.TriggeredBy == seqAddedAt : We're in the middle of backfill for this channel, based
+					//    on the access grant in sequence options.Since.TriggeredBy.  Normally the entire backfill would be done in one
+					//    changes feed iteration, but this can be split over multiple iterations when 'limit' is used.
+					//   2. options.Since.TriggeredBy == 0 : Not currently doing a backfill
+					//   3. options.Since.TriggeredBy != 0 and <= seqAddedAt: We're in the middle of a backfill for another channel, but the backfill for
+					//     this channel is still pending.  Initiate the backfill for this channel - will be ordered below in the usual way (iterating over all channels)
+					//   4. options.Since.TriggeredBy !=0 and options.Since.TriggeredBy > seqAddedAt: We're in the
+					//  middle of a backfill for another channel.  This should issue normal (non-backfill) changes
+					//  request with  since= options.Since.TriggeredBy for the non-backfill channel.
+
+					// Backfill required when seqAddedAt is before current sequence
+					backfillRequired := seqAddedAt > 1 && options.Since.Before(SequenceID{Seq: seqAddedAt}) && seqAddedAt <= currentCachedSequence
+					if seqAddedAt > currentCachedSequence {
+						base.DebugfCtx(ctx, base.KeyChanges, "Grant for channel [%s] is after the current sequence - skipped for this iteration.  Grant:[%d] Current:[%d] %s", base.UD(chanID.String()), seqAddedAt, currentCachedSequence, base.UD(to))
+						deferredBackfill = true
+						continue
+					}
+
+					// Ensure backfill isn't already in progress for this seqAddedAt
+					backfillPending := options.Since.TriggeredBy == 0 || options.Since.TriggeredBy < seqAddedAt
+
+					backfillInOtherChannel := options.Since.TriggeredBy != 0 && options.Since.TriggeredBy > seqAddedAt
+
+					if isNewChannel || (backfillRequired && backfillPending) {
+						// Newly added channel so initiate backfill:
+						chanOpts.Since = SequenceID{Seq: 0, TriggeredBy: seqAddedAt}
+					} else if backfillInOtherChannel {
+						chanOpts.Since = SequenceID{Seq: options.Since.TriggeredBy - 1}
+					}
+
+					feed := db.changesFeed(ctx, singleChannelCache, chanOpts, to)
 					feeds = append(feeds, feed)
+
+				}
+				// If the user object has changed, create a special pseudo-feed for it:
+				if db.user != nil {
+					feeds = db.appendUserFeed(feeds, options)
+				}
+
+				if options.Revocations && db.user != nil && !options.ActiveOnly {
+					channelsToRevoke := db.user.RevokedChannels(options.Since.Seq, options.Since.LowSeq, options.Since.TriggeredBy)
+					for channel, revokedSeq := range channelsToRevoke {
+						revocationSinceSeq := options.Since.SafeSequence()
+						revokeFrom := uint64(0)
+
+						// If we have a triggeredBy sequence:
+						// If channel access was lost at the triggeredBy sequence then replication may have been interrupted
+						// so we need to roll back one sequence to re-send the values with that previous triggeredBy as we
+						// cannot be sure that they were all sent. However, we can get changes from triggeredBy rather than
+						// 0 when finding docs to revoke.
+						// If channel access was after the triggeredBy then we can just use the triggeredBy and need to
+						// check for docs to revoke since 0.
+						if options.Since.TriggeredBy != 0 {
+							if revokedSeq == options.Since.TriggeredBy {
+								revocationSinceSeq = options.Since.TriggeredBy - 1
+								revokeFrom = options.Since.Seq
+							}
+							if revokedSeq > options.Since.TriggeredBy {
+								revocationSinceSeq = options.Since.TriggeredBy
+								revokeFrom = 0
+							}
+						}
+
+						feed := db.buildRevokedFeed(ctx, channels.NewID(channel, collectionID), options, revokedSeq, revocationSinceSeq, revokeFrom, to)
+						feeds = append(feeds, feed)
+					}
 				}
 			}
 
@@ -940,7 +949,6 @@ func (db *Database) SimpleMultiChangesFeed(ctx context.Context, chans base.Set, 
 					}
 				}
 			}
-
 			if !options.Continuous && (sentSomething || changeWaiter == nil) {
 				break
 			}
@@ -976,10 +984,10 @@ func (db *Database) SimpleMultiChangesFeed(ctx context.Context, chans base.Set, 
 					break waitForChanges
 				}
 
-				db.DbStats.CBLReplicationPull().NumPullReplTotalCaughtUp.Add(1)
-				db.DbStats.CBLReplicationPull().NumPullReplCaughtUp.Add(1)
+				db.dbStats().CBLReplicationPull().NumPullReplTotalCaughtUp.Add(1)
+				db.dbStats().CBLReplicationPull().NumPullReplCaughtUp.Add(1)
 				waitResponse := changeWaiter.Wait()
-				db.DbStats.CBLReplicationPull().NumPullReplCaughtUp.Add(-1)
+				db.dbStats().CBLReplicationPull().NumPullReplCaughtUp.Add(-1)
 
 				if waitResponse == WaiterClosed {
 					break outer
@@ -1012,12 +1020,19 @@ func (db *Database) SimpleMultiChangesFeed(ctx context.Context, chans base.Set, 
 				return
 			}
 			if userChanged && db.user != nil {
-				newChannelsSince, _ := db.user.FilterToAvailableChannels(chans)
-				changedChannels = newChannelsSince.CompareKeys(channelsSince)
-				if len(changedChannels) > 0 {
-					db.activeChannels.UpdateChanged(changedChannels)
+				newChannelsSince, _ := db.user.FilterToAvailableCollectionChannels(db.ScopeName(), db.Name(), chans)
+				// change when we support multiple collections
+				singleCollectionChannels := newChannelsSince.CompareKeys(channelsSince[singleCollectionID])
+
+				for channelName, changed := range singleCollectionChannels {
+					changedChannels[channels.NewID(channelName, singleCollectionID)] = changed
 				}
-				channelsSince = newChannelsSince
+
+				if len(changedChannels) > 0 {
+					db.activeChannels().UpdateChanged(changedChannels)
+				}
+				channelsSince = channels.TimedSetByCollectionID{}
+				channelsSince[singleCollectionID] = newChannelsSince
 			}
 
 			// Clean up inactive lateSequenceFeeds (because user has lost access to the channel)
@@ -1036,7 +1051,7 @@ func (db *Database) SimpleMultiChangesFeed(ctx context.Context, chans base.Set, 
 	return output, nil
 }
 
-func (db *Database) waitForCacheUpdate(ctx context.Context, currentCachedSequence uint64) (cancelled bool) {
+func (db *DatabaseCollectionWithUser) waitForCacheUpdate(ctx context.Context, currentCachedSequence uint64) (cancelled bool) {
 	ticker := time.NewTicker(100 * time.Millisecond)
 	defer ticker.Stop()
 	for retry := 0; retry <= 50; retry++ {
@@ -1055,7 +1070,7 @@ func (db *Database) waitForCacheUpdate(ctx context.Context, currentCachedSequenc
 
 // FOR TEST USE ONLY: Synchronous convenience function that returns all changes as a simple array,
 // Returns error if initial feed creation fails, or if an error is returned with the changes entries
-func (db *Database) GetChanges(ctx context.Context, channels base.Set, options ChangesOptions) ([]*ChangeEntry, error) {
+func (db *DatabaseCollectionWithUser) GetChanges(ctx context.Context, channels base.Set, options ChangesOptions) ([]*ChangeEntry, error) {
 	if options.ChangesCtx == nil {
 		changesCtx, changesCtxCancel := context.WithCancel(context.Background())
 		options.ChangesCtx = changesCtx
@@ -1076,25 +1091,25 @@ func (db *Database) GetChanges(ctx context.Context, channels base.Set, options C
 }
 
 // Returns the set of cached log entries for a given channel
-func (db *Database) GetChangeLog(channelName string, afterSeq uint64) (entries []*LogEntry) {
+func (db *DatabaseCollection) GetChangeLog(channel channels.ID, afterSeq uint64) (entries []*LogEntry) {
 
-	return db.changeCache.getChannelCache().GetCachedChanges(channelName)
+	return db.changeCache.getChannelCache().GetCachedChanges(channel)
 }
 
 // WaitForSequenceNotSkipped blocks until the given sequence has been received or skipped by the change cache.
-func (dbc *DatabaseContext) WaitForSequence(ctx context.Context, sequence uint64) (err error) {
+func (dbc *DatabaseCollection) WaitForSequence(ctx context.Context, sequence uint64) (err error) {
 	base.DebugfCtx(ctx, base.KeyChanges, "Waiting for sequence: %d", sequence)
 	return dbc.changeCache.waitForSequence(ctx, sequence, base.DefaultWaitForSequence)
 }
 
 // WaitForSequenceNotSkipped blocks until the given sequence has been received by the change cache without being skipped.
-func (dbc *DatabaseContext) WaitForSequenceNotSkipped(ctx context.Context, sequence uint64) (err error) {
+func (dbc *DatabaseCollection) WaitForSequenceNotSkipped(ctx context.Context, sequence uint64) (err error) {
 	base.DebugfCtx(ctx, base.KeyChanges, "Waiting for sequence: %d", sequence)
 	return dbc.changeCache.waitForSequenceNotSkipped(ctx, sequence, base.DefaultWaitForSequence)
 }
 
 // WaitForPendingChanges blocks until the change-cache has caught up with the latest writes to the database.
-func (dbc *DatabaseContext) WaitForPendingChanges(ctx context.Context) (err error) {
+func (dbc *DatabaseCollection) WaitForPendingChanges(ctx context.Context) (err error) {
 	lastSequence, err := dbc.LastSequence()
 	base.DebugfCtx(ctx, base.KeyChanges, "Waiting for sequence: %d", lastSequence)
 	return dbc.changeCache.waitForSequence(ctx, lastSequence, base.DefaultWaitForSequence)
@@ -1103,16 +1118,16 @@ func (dbc *DatabaseContext) WaitForPendingChanges(ctx context.Context) (err erro
 // Late Sequence Feed
 // Manages the changes feed interaction with a channels cache's set of late-arriving entries
 type lateSequenceFeed struct {
-	active           bool      // Whether the changes feed is still serving the channel this feed is associated with
-	lastSequence     uint64    // Last late sequence processed on the feed
-	channelName      string    // Channel Name
-	lateSequenceUUID uuid.UUID // Ensures cache doesn't change underneath us
+	active           bool        // Whether the changes feed is still serving the channel this feed is associated with
+	lastSequence     uint64      // Last late sequence processed on the feed
+	channel          channels.ID // Channel
+	lateSequenceUUID uuid.UUID   // Ensures cache doesn't change underneath us
 }
 
 // Returns a lateSequenceFeed for the channel, used to find late-arriving (previously
 // skipped) sequences that have been sent to the channel cache.  The lateSequenceFeed stores the last (late)
 // sequence seen by this particular _changes feed to support continuous changes.
-func (db *Database) newLateSequenceFeed(singleChannelCache SingleChannelCache) *lateSequenceFeed {
+func (db *DatabaseCollectionWithUser) newLateSequenceFeed(singleChannelCache SingleChannelCache) *lateSequenceFeed {
 
 	if !singleChannelCache.SupportsLateFeed() {
 		return nil
@@ -1121,7 +1136,7 @@ func (db *Database) newLateSequenceFeed(singleChannelCache SingleChannelCache) *
 	lsf := &lateSequenceFeed{
 		active:           true,
 		lateSequenceUUID: singleChannelCache.LateSequenceUUID(),
-		channelName:      singleChannelCache.ChannelName(),
+		channel:          singleChannelCache.ChannelID(),
 		lastSequence:     singleChannelCache.RegisterLateSequenceClient(),
 	}
 	return lsf
@@ -1129,7 +1144,7 @@ func (db *Database) newLateSequenceFeed(singleChannelCache SingleChannelCache) *
 
 // Feed to process late sequences for the channel.  Updates lastSequence as it works the feed.  Error indicates
 // previous position in late sequence feed isn't available, and caller should reset to low sequence.
-func (db *Database) getLateFeed(feedHandler *lateSequenceFeed, singleChannelCache SingleChannelCache) (<-chan *ChangeEntry, error) {
+func (db *DatabaseCollectionWithUser) getLateFeed(feedHandler *lateSequenceFeed, singleChannelCache SingleChannelCache) (<-chan *ChangeEntry, error) {
 
 	if !singleChannelCache.SupportsLateFeed() {
 		return nil, errors.New("Cache doesn't support late feeds")
@@ -1168,7 +1183,7 @@ func (db *Database) getLateFeed(feedHandler *lateSequenceFeed, singleChannelCach
 			seqID := SequenceID{
 				Seq: logEntry.Sequence,
 			}
-			change := makeChangeEntry(logEntry, seqID, singleChannelCache.ChannelName())
+			change := makeChangeEntry(logEntry, seqID, singleChannelCache.ChannelID())
 			feed <- &change
 		}
 	}()
@@ -1178,8 +1193,8 @@ func (db *Database) getLateFeed(feedHandler *lateSequenceFeed, singleChannelCach
 }
 
 // Closes a single late sequence feed.
-func (db *Database) closeLateFeed(feedHandler *lateSequenceFeed) {
-	singleChannelCache := db.changeCache.getChannelCache().getSingleChannelCache(feedHandler.channelName)
+func (db *DatabaseCollectionWithUser) closeLateFeed(feedHandler *lateSequenceFeed) {
+	singleChannelCache := db.changeCache.getChannelCache().getSingleChannelCache(feedHandler.channel)
 	if !singleChannelCache.SupportsLateFeed() {
 		return
 	}
@@ -1189,7 +1204,7 @@ func (db *Database) closeLateFeed(feedHandler *lateSequenceFeed) {
 }
 
 // Closes set of feeds.  Invoked on changes termination
-func (db *Database) closeLateFeeds(feeds map[string]*lateSequenceFeed) {
+func (db *DatabaseCollectionWithUser) closeLateFeeds(feeds map[channels.ID]*lateSequenceFeed) {
 	for _, feed := range feeds {
 		db.closeLateFeed(feed)
 	}
@@ -1197,7 +1212,7 @@ func (db *Database) closeLateFeeds(feeds map[string]*lateSequenceFeed) {
 
 // Generate the changes for a specific list of doc ID's, only documents accessible to the user will generate
 // results. Only supports non-continuous changes, closes buffered channel before returning.
-func (db *Database) DocIDChangesFeed(ctx context.Context, userChannels base.Set, explicitDocIds []string, options ChangesOptions) (<-chan *ChangeEntry, error) {
+func (db *DatabaseCollectionWithUser) DocIDChangesFeed(ctx context.Context, userChannels base.Set, explicitDocIds []string, options ChangesOptions) (<-chan *ChangeEntry, error) {
 
 	// Subroutine that creates a response row for a document:
 	output := make(chan *ChangeEntry, len(explicitDocIds))
@@ -1231,7 +1246,7 @@ func (db *Database) DocIDChangesFeed(ctx context.Context, userChannels base.Set,
 }
 
 // createChangesEntry is used when creating a doc ID filtered changes feed
-func createChangesEntry(ctx context.Context, docid string, db *Database, options ChangesOptions) *ChangeEntry {
+func createChangesEntry(ctx context.Context, docid string, db *DatabaseCollectionWithUser, options ChangesOptions) *ChangeEntry {
 	row := &ChangeEntry{ID: docid}
 
 	populatedDoc, err := db.GetDocument(ctx, docid, DocUnmarshalSync)
@@ -1304,7 +1319,7 @@ func (options ChangesOptions) String() string {
 }
 
 // Used by BLIP connections for changes.  Supports both one-shot and continuous changes.
-func generateBlipSyncChanges(ctx context.Context, database *Database, inChannels base.Set, options ChangesOptions, docIDFilter []string, send func([]*ChangeEntry) error) (err error, forceClose bool) {
+func generateBlipSyncChanges(ctx context.Context, database *DatabaseCollectionWithUser, inChannels base.Set, options ChangesOptions, docIDFilter []string, send func([]*ChangeEntry) error) (err error, forceClose bool) {
 
 	// Store one-shot here to protect
 	isOneShot := !options.Continuous
@@ -1327,7 +1342,7 @@ type ChangesSendErr struct{ error }
 // Shell of the continuous changes feed -- calls out to a `send` function to deliver the change.
 // This is called from BLIP connections as well as HTTP handlers, which is why this is not a
 // method on `handler`.
-func GenerateChanges(ctx context.Context, cancelCtx context.Context, database *Database, inChannels base.Set, options ChangesOptions, docIDFilter []string, send func([]*ChangeEntry) error) (err error, forceClose bool) {
+func GenerateChanges(ctx context.Context, cancelCtx context.Context, database *DatabaseCollectionWithUser, inChannels base.Set, options ChangesOptions, docIDFilter []string, send func([]*ChangeEntry) error) (err error, forceClose bool) {
 	// Set up heartbeat/timeout
 	var timeoutInterval time.Duration
 	var timer *time.Timer
@@ -1350,7 +1365,7 @@ func GenerateChanges(ctx context.Context, cancelCtx context.Context, database *D
 	}
 
 	if !options.Since.IsNonZero() {
-		database.DatabaseContext.DbStats.CBLReplicationPull().NumPullReplSinceZero.Add(1)
+		database.dbStats().CBLReplicationPull().NumPullReplSinceZero.Add(1)
 	}
 
 	var lastSeq SequenceID
@@ -1455,7 +1470,7 @@ loop:
 		case <-timeout:
 			forceClose = true
 			break loop
-		case <-database.ExitChanges:
+		case <-database.exitChanges():
 			forceClose = true
 			break loop
 		case <-cancelCtx.Done():

@@ -28,11 +28,11 @@ type ResyncManager struct {
 
 var _ BackgroundManagerProcessI = &ResyncManager{}
 
-func NewResyncManager(bucket base.Bucket) *BackgroundManager {
+func NewResyncManager(metadataStore base.DataStore) *BackgroundManager {
 	return &BackgroundManager{
 		Process: &ResyncManager{},
 		clusterAwareOptions: &ClusterAwareBackgroundManagerOptions{
-			bucket:        bucket,
+			metadataStore: metadataStore,
 			processSuffix: "resync",
 		},
 		terminator: base.NewSafeTerminator(),
@@ -61,9 +61,13 @@ func (r *ResyncManager) Run(ctx context.Context, options map[string]interface{},
 		persistClusterStatus()
 	}
 
-	_, err := database.UpdateAllDocChannels(ctx, regenerateSequences, callback, terminator)
-	if err != nil {
-		return err
+	for _, collection := range database.CollectionByID {
+		_, err := (&DatabaseCollectionWithUser{
+			DatabaseCollection: collection,
+		}).UpdateAllDocChannels(ctx, regenerateSequences, callback, terminator)
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil

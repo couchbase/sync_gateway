@@ -191,7 +191,7 @@ func TestViewQueryUserAccess(t *testing.T) {
 	// Create a user:
 	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
 	password := "123456"
-	testUser, _ := a.NewUser("testUser", password, channels.SetOf(t, "*"))
+	testUser, _ := a.NewUser("testUser", password, channels.BaseSetOf(t, "*"))
 	assert.NoError(t, a.Save(testUser))
 
 	result, err = rt.WaitForNUserViewResults(2, "/db/_design/foo/_view/bar?stale=false", testUser, password)
@@ -276,7 +276,7 @@ func TestUserViewQuery(t *testing.T) {
 
 	// Create a user:
 	password := "123456"
-	quinn, _ := a.NewUser("quinn", password, channels.SetOf(t, "Q", "q"))
+	quinn, _ := a.NewUser("quinn", password, channels.BaseSetOf(t, "Q", "q"))
 	assert.NoError(t, a.Save(quinn))
 
 	// Have the user query the view:
@@ -631,15 +631,19 @@ func TestPostInstallCleanup(t *testing.T) {
 
 	bucket := rt.Bucket()
 	mapFunction := `function (doc, meta) { emit(); }`
+
+	viewStore, ok := base.AsViewStore(bucket.DefaultDataStore())
+	require.True(t, ok)
+
 	// Create design docs in obsolete format
-	err = bucket.PutDDoc(db.DesignDocSyncGatewayPrefix, &sgbucket.DesignDoc{
+	err = viewStore.PutDDoc(db.DesignDocSyncGatewayPrefix, &sgbucket.DesignDoc{
 		Views: sgbucket.ViewMap{
 			"channels": sgbucket.ViewDef{Map: mapFunction},
 		},
 	})
 	assert.NoError(t, err, "Unable to create design doc (DesignDocSyncGatewayPrefix)")
 
-	err = bucket.PutDDoc(db.DesignDocSyncHousekeepingPrefix, &sgbucket.DesignDoc{
+	err = viewStore.PutDDoc(db.DesignDocSyncHousekeepingPrefix, &sgbucket.DesignDoc{
 		Views: sgbucket.ViewMap{
 			"all_docs": sgbucket.ViewDef{Map: mapFunction},
 		},
@@ -704,7 +708,7 @@ func TestViewQueryWrappers(t *testing.T) {
 	assert.Equal(t, 3, result.Len())
 
 	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
-	testUser, err := a.NewUser("testUser", "password", channels.SetOf(t, "userchannel"))
+	testUser, err := a.NewUser("testUser", "password", channels.BaseSetOf(t, "userchannel"))
 	assert.NoError(t, err)
 	err = a.Save(testUser)
 	assert.NoError(t, err)
@@ -743,13 +747,13 @@ func TestViewQueryWithXattrAndNonXattr(t *testing.T) {
 
 	// Document with sync data in body
 	body := `{"_sync": { "rev": "1-fc2cf22c5e5007bd966869ebfe9e276a", "sequence": 2, "recent_sequences": [ 2 ], "history": { "revs": [ "1-fc2cf22c5e5007bd966869ebfe9e276a" ], "parents": [ -1], "channels": [ null ] }, "cas": "","value_crc32c": "", "time_saved": "2019-04-10T12:40:04.490083+01:00" }, "value": "foo"}`
-	ok, err := rt.Bucket().Add("doc2", 0, []byte(body))
+	ok, err := rt.Bucket().DefaultDataStore().Add("doc2", 0, []byte(body))
 	assert.True(t, ok)
 	assert.NoError(t, err)
 
 	// Should handle the case where there is no sync data
 	body = `{"value": "foo"}`
-	ok, err = rt.Bucket().Add("doc3", 0, []byte(body))
+	ok, err = rt.Bucket().DefaultDataStore().Add("doc3", 0, []byte(body))
 	assert.True(t, ok)
 	assert.NoError(t, err)
 

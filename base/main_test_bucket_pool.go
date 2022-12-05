@@ -30,69 +30,15 @@ import (
 // GTestBucketPool is a global instance of a TestBucketPool used to manage a pool of buckets for integration testing.
 var GTestBucketPool *TestBucketPool
 
-// Bucket names start with a fixed prefix and end with a sequential bucket number and a creation timestamp for uniqueness
-const (
-	tbpBucketNamePrefix = "sg_int_"
-	tbpBucketNameFormat = "%s%d_%d"
-	tbpScopePrefix      = "sg_test_"
-	tbpCollectionPrefix = "sg_test_"
-)
-
-const (
-	envTestClusterUsername     = "SG_TEST_USERNAME"
-	DefaultTestClusterUsername = DefaultCouchbaseAdministrator
-	envTestClusterPassword     = "SG_TEST_PASSWORD"
-	DefaultTestClusterPassword = DefaultCouchbasePassword
-	envTestClusterDriver       = "SG_TEST_DRIVER"
-
-	// Creates this many buckets in the backing store to be pooled for testing.
-	tbpDefaultBucketPoolSize = 3
-	tbpEnvPoolSize           = "SG_TEST_BUCKET_POOL_SIZE"
-
-	defaultBucketQuotaMB = 200
-	tbpEnvBucketQuotaMB  = "SG_TEST_BUCKET_QUOTA_MB"
-
-	// Prevents reuse and cleanup of buckets used in failed tests for later inspection.
-	// When all pooled buckets are in a preserved state, any remaining tests are skipped instead of blocking waiting for a bucket.
-	tbpEnvPreserve = "SG_TEST_BUCKET_POOL_PRESERVE"
-
-	// Prints detailed debug logs from the test pooling framework.
-	tbpEnvVerbose = "SG_TEST_BUCKET_POOL_DEBUG"
-
-	tbpUseDefaultCollection = "SG_TEST_USE_DEFAULT_COLLECTION"
-
-	// wait this long when requesting a test bucket from the pool before giving up and failing the test.
-	waitForReadyBucketTimeout = time.Minute
-)
-
-// openCollections represent two Collection as Bucket that are the named and unnamed collection time.
-type openCollections struct {
-	namedCollection   Bucket
-	defaultCollection Bucket
-}
-
-type tbpCollectionType uint8
-
-const (
-	tbpCollectionNamed   = 0 // any scope/collection that is not default
-	tbpCollectionDefault = 1 // _default._default scope and collection
-)
-
-// a dirtyBucket is passed to bucketReadier to be cleaned
-type dirtyBucket struct {
-	name           tbpBucketName
-	collectionType tbpCollectionType
-}
-
-// TestBucketPool is used to manage a pool of gocb buckets on a Couchbase Server for testing purposes.
-// The zero-value/uninitialized version of this struct is safe to use as Walrus buckets are returned.
+// TestBucketPool is used to manage a pool of pre-prepared buckets for testing purposes.
 type TestBucketPool struct {
 	// integrationMode should be true if using Couchbase Server. If this is false, Walrus buckets are returned instead of pooled buckets.
 	integrationMode bool
 
-	readyBucketPool        chan openCollections
+	// readyBucketPool contains a buffered channel of buckets ready for use
+	readyBucketPool        chan Bucket
 	cluster                tbpCluster
-	bucketReadierQueue     chan dirtyBucket
+	bucketReadierQueue     chan tbpBucketName
 	bucketReadierWaitGroup *sync.WaitGroup
 	ctxCancelFunc          context.CancelFunc
 
@@ -112,40 +58,22 @@ type TestBucketPool struct {
 	unclosedBuckets     map[string]map[string]struct{}
 	unclosedBucketsLock sync.Mutex
 
-	useNamedCollections bool
-}
-
-// shouldUseNamedCollections returns true if cluster will be created with named collections
-func shouldUseNamedCollections(cluster tbpCluster) (bool, error) {
-	clusterSupport, err := cluster.supportsCollections()
-	if err != nil {
-		return false, err
-	}
-
-	useNamedCollection, isSet := os.LookupEnv(tbpUseDefaultCollection)
-	if !isSet {
-		if TestsDisableGSI() {
-			return false, nil
-		}
-		// use collections if running GSI and server >= 7
-		return clusterSupport, nil
-	}
-
-	requestCollection, _ := strconv.ParseBool(useNamedCollection)
-	if requestCollection && !clusterSupport {
-		return false, fmt.Errorf("Can not run %s with a cluster that doesn't support collections", tbpUseDefaultCollection)
-	}
-	return requestCollection, nil
-
+	// skipCollections may be true for older Couchbase Server versions that do not support collections.
+	skipCollections   bool
+	useExistingBucket bool
 }
 
 // NewTestBucketPool initializes a new TestBucketPool. To be called from TestMain for packages requiring test buckets.
 func NewTestBucketPool(bucketReadierFunc TBPBucketReadierFunc, bucketInitFunc TBPBucketInitFunc) *TestBucketPool {
-	// We can safely skip setup when we want Walrus buckets to be used. They'll be created on-demand via GetTestBucketAndSpec.
-	if !TestUseCouchbaseServer() {
+	// We can safely skip setup when we want Walrus buckets to be used.
+	// They'll be created on-demand via GetTestBucketAndSpec,
+	// which is fast enough for Walrus that we don't need to prepare buckets ahead of time.
+	if !TestUseCouchbaseServer() || TestUseExistingBucket() {
 		tbp := TestBucketPool{
-			bucketInitFunc:  bucketInitFunc,
-			unclosedBuckets: make(map[string]map[string]struct{}),
+			bucketInitFunc:    bucketInitFunc,
+			unclosedBuckets:   make(map[string]map[string]struct{}),
+			integrationMode:   TestUseCouchbaseServer(),
+			useExistingBucket: TestUseExistingBucket(),
 		}
 		tbp.verbose.Set(tbpVerbose())
 		return &tbp
@@ -157,8 +85,6 @@ func NewTestBucketPool(bucketReadierFunc TBPBucketReadierFunc, bucketInitFunc TB
 	}
 
 	numBuckets := tbpNumBuckets()
-	// TODO: What about pooling servers too??
-	// That way, we can have unlimited buckets available in a single test pool... True horizontal scalability in tests!
 
 	// Used to manage cancellation of worker goroutines
 	ctx, ctxCancelFunc := context.WithCancel(context.Background())
@@ -167,22 +93,23 @@ func NewTestBucketPool(bucketReadierFunc TBPBucketReadierFunc, bucketInitFunc TB
 
 	tbp := TestBucketPool{
 		integrationMode:        true,
-		readyBucketPool:        make(chan openCollections, numBuckets),
-		bucketReadierQueue:     make(chan dirtyBucket, numBuckets),
+		readyBucketPool:        make(chan Bucket, numBuckets),
+		bucketReadierQueue:     make(chan tbpBucketName, numBuckets),
 		bucketReadierWaitGroup: &sync.WaitGroup{},
 		ctxCancelFunc:          ctxCancelFunc,
 		preserveBuckets:        preserveBuckets,
 		bucketInitFunc:         bucketInitFunc,
 		unclosedBuckets:        make(map[string]map[string]struct{}),
+		useExistingBucket:      TestUseExistingBucket(),
 	}
 
 	tbp.cluster = newTestCluster(UnitTestUrl(), tbp.Logf)
 
-	useNamedCollections, err := shouldUseNamedCollections(tbp.cluster)
+	useCollections, err := tbp.shouldUseCollections()
 	if err != nil {
 		tbp.Fatalf(ctx, "%s", err)
 	}
-	tbp.useNamedCollections = useNamedCollections
+	tbp.skipCollections = !useCollections
 
 	tbp.verbose.Set(tbpVerbose())
 
@@ -205,27 +132,6 @@ func NewTestBucketPool(bucketReadierFunc TBPBucketReadierFunc, bucketInitFunc TB
 	return &tbp
 }
 
-// Fatalf logs and exits.
-func (tbp *TestBucketPool) Fatalf(ctx context.Context, format string, args ...interface{}) {
-	format = addPrefixes(format, ctx, LevelNone, KeySGTest)
-	FatalfCtx(ctx, format, args...)
-}
-
-// Logf formats the given test bucket logging and logs to stderr.
-func (tbp *TestBucketPool) Logf(ctx context.Context, format string, args ...interface{}) {
-	if tbp != nil && !tbp.verbose.IsTrue() {
-		return
-	}
-
-	format = addPrefixes(format, ctx, LevelNone, KeySGTest)
-	if colorEnabled() {
-		// Green
-		format = "\033[0;32m" + format + "\033[0m"
-	}
-
-	_, _ = fmt.Fprintf(consoleFOutput, format+"\n", args...)
-}
-
 func (tbp *TestBucketPool) markBucketOpened(t testing.TB, b Bucket) {
 	tbp.unclosedBucketsLock.Lock()
 	defer tbp.unclosedBucketsLock.Unlock()
@@ -245,7 +151,7 @@ func (tbp *TestBucketPool) markBucketClosed(t testing.TB, b Bucket) {
 	// Check for unclosed view query operations. A fatal error will occur if queue is not cleared
 	testCtx := TestCtx(t)
 	switch typedBucket := b.(type) {
-	case *Collection:
+	case *GocbV2Bucket:
 		tbp.checkForViewOpsQueueEmptied(testCtx, b.GetName(), typedBucket.queryOps)
 	}
 
@@ -277,16 +183,21 @@ func (tbp *TestBucketPool) GetWalrusTestBucket(t testing.TB, url string) (b Buck
 	id, err := GenerateRandomID()
 	require.NoError(t, err)
 
-	walrusBucket, err := walrus.GetBucket(url, DefaultPool, tbpBucketNamePrefix+"walrus_"+id)
+	walrusBucket, err := walrus.GetCollectionBucket(url, tbpBucketNamePrefix+"walrus_"+id)
 	if err != nil {
 		tbp.Fatalf(testCtx, "couldn't get walrus bucket: %v", err)
 	}
 
 	// Wrap Walrus buckets with a leaky bucket to support vbucket IDs on feed.
-	b = &LeakyBucket{bucket: walrusBucket, config: LeakyBucketConfig{TapFeedVbuckets: true}}
+	b = &LeakyBucket{bucket: walrusBucket, config: &LeakyBucketConfig{TapFeedVbuckets: true}}
 
 	ctx := bucketCtx(testCtx, b)
 	tbp.Logf(ctx, "Creating new walrus test bucket")
+
+	tbp.createCollections(ctx, walrusBucket)
+
+	// Create default collection here so that it gets initialized by bucketInitFunc
+	_ = walrusBucket.DefaultDataStore()
 
 	initFuncStart := time.Now()
 	err = tbp.bucketInitFunc(ctx, b, tbp)
@@ -301,7 +212,7 @@ func (tbp *TestBucketPool) GetWalrusTestBucket(t testing.TB, url string) (b Buck
 	openedStart := time.Now()
 	bucketClosed := &AtomicBool{}
 
-	bucketSpec := getBucketSpec(tbpBucketName(b.GetName()), tbp.UsingNamedCollections())
+	bucketSpec := getTestBucketSpec(tbpBucketName(b.GetName()))
 	bucketSpec.Server = url
 
 	return b, bucketSpec, func() {
@@ -318,10 +229,31 @@ func (tbp *TestBucketPool) GetWalrusTestBucket(t testing.TB, url string) (b Buck
 	}
 }
 
+// GetExistingBucket opens a bucket conection to an existing bucket
+func (tbp *TestBucketPool) GetExistingBucket(t testing.TB) (b Bucket, s BucketSpec, teardown func()) {
+	testCtx := TestCtx(t)
+
+	bucketCluster := initV2Cluster(UnitTestUrl())
+
+	bucketName := tbpBucketName(TestUseExistingBucketName())
+	bucketSpec := getTestBucketSpec(bucketName)
+
+	bucketFromSpec, err := GetGocbV2BucketFromCluster(bucketCluster, bucketSpec, waitForReadyBucketTimeout, false)
+	if err != nil {
+		tbp.Fatalf(testCtx, "couldn't get existing collection from cluster: %v", err)
+	}
+	DebugfCtx(context.TODO(), KeySGTest, "opened bucket %s", bucketName)
+
+	return bucketFromSpec, bucketSpec, func() {
+		tbp.Logf(testCtx, "Teardown called - Closing connection to existing bucket")
+		bucketFromSpec.Close()
+	}
+}
+
 // GetTestBucketAndSpec returns a bucket to be used during a test.
 // The returned teardownFn MUST be called once the test is done,
 // which closes the bucket, readies it for a new test, and releases back into the pool.
-func (tbp *TestBucketPool) getTestBucketAndSpec(t testing.TB, collectionType tbpCollectionType) (b Bucket, s BucketSpec, teardownFn func()) {
+func (tbp *TestBucketPool) getTestBucketAndSpec(t testing.TB) (b Bucket, s BucketSpec, teardownFn func()) {
 
 	ctx := TestCtx(t)
 
@@ -329,6 +261,11 @@ func (tbp *TestBucketPool) getTestBucketAndSpec(t testing.TB, collectionType tbp
 	if !tbp.integrationMode {
 		tbp.Logf(ctx, "Getting walrus test bucket - tbp.integrationMode is not set")
 		return tbp.GetWalrusTestBucket(t, kTestWalrusURL)
+	}
+
+	if tbp.useExistingBucket {
+		tbp.Logf(ctx, "Using predefined bucket")
+		return tbp.GetExistingBucket(t)
 	}
 
 	if atomic.LoadUint32(&tbp.preservedBucketCount) >= uint32(cap(tbp.readyBucketPool)) {
@@ -339,22 +276,14 @@ func (tbp *TestBucketPool) getTestBucketAndSpec(t testing.TB, collectionType tbp
 
 	tbp.Logf(ctx, "Attempting to get test bucket from pool")
 	waitingBucketStart := time.Now()
-	var collections openCollections
+	var bucket Bucket
 	select {
-	case collections = <-tbp.readyBucketPool:
+	case bucket = <-tbp.readyBucketPool:
 	case <-time.After(waitForReadyBucketTimeout):
 		tbp.Logf(ctx, "Timed out after %s waiting for a bucket to become available.", waitForReadyBucketTimeout)
 		t.Fatalf("TEST: Timed out after %s waiting for a bucket to become available.", waitForReadyBucketTimeout)
 	}
 	atomic.AddInt64(&tbp.stats.TotalWaitingForReadyBucketNano, time.Since(waitingBucketStart).Nanoseconds())
-	bucket := collections.defaultCollection
-	if collectionType == tbpCollectionNamed {
-		bucket = collections.namedCollection
-		if bucket == nil {
-			t.Fatalf("TEST: Asked for a named collection, but named collections are not available")
-		}
-		collections.defaultCollection = nil
-	}
 
 	ctx = bucketCtx(ctx, bucket)
 	tbp.Logf(ctx, "Got test bucket from pool")
@@ -363,7 +292,7 @@ func (tbp *TestBucketPool) getTestBucketAndSpec(t testing.TB, collectionType tbp
 	atomic.AddInt32(&tbp.stats.NumBucketsOpened, 1)
 	bucketOpenStart := time.Now()
 	bucketClosed := &AtomicBool{}
-	return bucket, getBucketSpec(tbpBucketName(bucket.GetName()), tbp.UsingNamedCollections()), func() {
+	return bucket, getTestBucketSpec(tbpBucketName(bucket.GetName())), func() {
 		if !bucketClosed.CompareAndSwap(false, true) {
 			tbp.Logf(ctx, "Bucket teardown was already called. Ignoring.")
 			return
@@ -382,14 +311,14 @@ func (tbp *TestBucketPool) getTestBucketAndSpec(t testing.TB, collectionType tbp
 		}
 
 		tbp.Logf(ctx, "Teardown called - Pushing into bucketReadier queue")
-		tbp.addBucketToReadierQueue(ctx, tbpBucketName(bucket.GetName()), collectionType)
+		tbp.addBucketToReadierQueue(ctx, tbpBucketName(bucket.GetName()))
 	}
 }
 
-func (tbp *TestBucketPool) addBucketToReadierQueue(ctx context.Context, name tbpBucketName, collectionType tbpCollectionType) {
+func (tbp *TestBucketPool) addBucketToReadierQueue(ctx context.Context, name tbpBucketName) {
 	tbp.bucketReadierWaitGroup.Add(1)
 	tbp.Logf(ctx, "Putting bucket onto bucketReadierQueue")
-	tbp.bucketReadierQueue <- dirtyBucket{name: name, collectionType: collectionType}
+	tbp.bucketReadierQueue <- name
 }
 
 // Close waits for any buckets to be cleaned, and closes the pool.
@@ -412,69 +341,6 @@ func (tbp *TestBucketPool) Close() {
 	}
 
 	tbp.printStats()
-}
-
-// printStats outputs test bucket stats for the current package's test run.
-func (tbp *TestBucketPool) printStats() {
-
-	numBucketsOpened := time.Duration(atomic.LoadInt32(&tbp.stats.NumBucketsOpened))
-	if numBucketsOpened == 0 {
-		// we may have been running benchmarks if we've opened zero test buckets
-		// in any case; if we have no stats, don't bother printing anything.
-		return
-	}
-
-	totalBucketInitTime := time.Duration(atomic.LoadInt64(&tbp.stats.TotalBucketInitDurationNano))
-	totalBucketInitCount := time.Duration(atomic.LoadInt32(&tbp.stats.TotalBucketInitCount))
-
-	totalBucketReadierTime := time.Duration(atomic.LoadInt64(&tbp.stats.TotalBucketReadierDurationNano))
-	totalBucketReadierCount := time.Duration(atomic.LoadInt32(&tbp.stats.TotalBucketReadierCount))
-
-	totalBucketWaitTime := time.Duration(atomic.LoadInt64(&tbp.stats.TotalWaitingForReadyBucketNano))
-
-	totalBucketUseTime := time.Duration(atomic.LoadInt64(&tbp.stats.TotalInuseBucketNano))
-
-	origVerbose := tbp.verbose.IsTrue()
-	tbp.verbose.Set(true)
-	ctx := context.Background()
-
-	tbp.Logf(ctx, "==========================")
-	tbp.Logf(ctx, "= Test Bucket Pool Stats =")
-	tbp.Logf(ctx, "==========================")
-	if totalBucketInitCount > 0 {
-		tbp.Logf(ctx, "Total bucket init time: %s for %d buckets (avg: %s)", totalBucketInitTime, totalBucketInitCount, totalBucketInitTime/totalBucketInitCount)
-	} else {
-		tbp.Logf(ctx, "Total bucket init time: %s for %d buckets", totalBucketInitTime, totalBucketInitCount)
-	}
-	if totalBucketReadierCount > 0 {
-		tbp.Logf(ctx, "Total bucket readier time: %s for %d buckets (avg: %s)", totalBucketReadierTime, totalBucketReadierCount, totalBucketReadierTime/totalBucketReadierCount)
-	} else {
-		tbp.Logf(ctx, "Total bucket readier time: %s for %d buckets", totalBucketReadierTime, totalBucketReadierCount)
-	}
-	tbp.Logf(ctx, "Total buckets opened/closed: %d/%d", numBucketsOpened, atomic.LoadInt32(&tbp.stats.NumBucketsClosed))
-	if numBucketsOpened > 0 {
-		tbp.Logf(ctx, "Total time waiting for ready bucket: %s over %d buckets (avg: %s)", totalBucketWaitTime, numBucketsOpened, totalBucketWaitTime/numBucketsOpened)
-		tbp.Logf(ctx, "Total time tests using buckets: %s (avg: %s)", totalBucketUseTime, totalBucketUseTime/numBucketsOpened)
-	} else {
-		tbp.Logf(ctx, "Total time waiting for ready bucket: %s over %d buckets", totalBucketWaitTime, numBucketsOpened)
-		tbp.Logf(ctx, "Total time tests using buckets: %s", totalBucketUseTime)
-	}
-	tbp.Logf(ctx, "==========================")
-
-	tbp.unclosedBucketsLock.Lock()
-	unclosedBucketWarnings := ""
-	for testName, buckets := range tbp.unclosedBuckets {
-		for bucketName := range buckets {
-			tbp.Logf(ctx, "WARNING: %s left %s bucket unclosed!", testName, bucketName)
-			unclosedBucketWarnings += fmt.Sprintf("%s left %s bucket unclosed!\n", testName, bucketName)
-		}
-	}
-	if unclosedBucketWarnings != "" {
-		panic(unclosedBucketWarnings)
-	}
-	tbp.unclosedBucketsLock.Unlock()
-
-	tbp.verbose.Set(origVerbose)
 }
 
 // removeOldTestBuckets removes all buckets starting with testBucketNamePrefix
@@ -511,16 +377,58 @@ func (tbp *TestBucketPool) removeOldTestBuckets() error {
 	return nil
 }
 
-// createTestBuckets creates a new set of integration test buckets and pushes them into the readier queue.
-func (tbp *TestBucketPool) createTestBuckets(numBuckets int, bucketQuotaMB int, bucketInitFunc TBPBucketInitFunc) error {
+func (tbp *TestBucketPool) emptyPreparedStatements(ctx context.Context, b Bucket) {
+	tbp.Logf(ctx, "Emptying prepared statements for bucket")
+	// if the bucket is a N1QLStore, clean up prepared statements as-per the advice from the query team
+	if n1qlStore, ok := AsN1QLStore(b.DefaultDataStore()); ok {
+		if err := n1qlStore.waitUntilQueryServiceReady(time.Minute); err != nil {
+			tbp.Fatalf(ctx, "Timed out waiting for query service to be ready: %v", err)
+		}
 
-	type openCollections struct {
-		namedCollection   Bucket
-		defaultCollection Bucket
+		// search all statements for those containing a string matching the bucket name (which will also include all scope/collection-based prepared statements)
+		queryRes, err := n1qlStore.Query(`DELETE FROM system:prepareds WHERE statement LIKE "%`+b.GetName()+`%";`, nil, RequestPlus, true)
+		if err != nil {
+			tbp.Fatalf(ctx, "Couldn't remove old prepared statements: %v", err)
+		}
+
+		if err := queryRes.Close(); err != nil {
+			tbp.Fatalf(ctx, "Failed to close query: %v", err)
+		}
 	}
+}
+
+// createCollections will create a set of test collections on the bucket, if enabled...
+func (tbp *TestBucketPool) createCollections(ctx context.Context, bucket Bucket) {
+	// If we're able to use collections, the test bucket pool will also create N collections per bucket - rather than just getting the default collection ready.
+	if tbp.skipCollections {
+		return
+	}
+
+	dynamicDataStore, ok := bucket.(sgbucket.DynamicDataStoreBucket)
+	if !ok {
+		tbp.Fatalf(ctx, "Bucket doesn't support dynamic collection creation")
+	}
+
+	for i := 0; i < tbpNumCollectionsPerBucket(); i++ {
+		scopeName := fmt.Sprintf("%s%d", tbpScopePrefix, 0)
+		collectionName := fmt.Sprintf("%s%d", tbpCollectionPrefix, i)
+		ctx := keyspaceNameCtx(ctx, bucket.GetName(), scopeName, collectionName)
+
+		tbp.Logf(ctx, "Creating new collection: %s.%s", scopeName, collectionName)
+		dataStoreName := ScopeAndCollectionName{Scope: scopeName, Collection: collectionName}
+		err := dynamicDataStore.CreateDataStore(dataStoreName)
+		if err != nil {
+			tbp.Fatalf(ctx, "Couldn't create datastore %v.%v: %v", scopeName, collectionName, err)
+		}
+	}
+}
+
+// createTestBuckets creates a new set of integration test buckets and pushes them into the readier queue.
+func (tbp *TestBucketPool) createTestBuckets(numBuckets, bucketQuotaMB int, bucketInitFunc TBPBucketInitFunc) error {
+
 	// keep references to opened buckets for use later in this function
 	var (
-		openBuckets     = make(map[string]openCollections, numBuckets)
+		openBuckets     = make(map[string]Bucket, numBuckets)
 		openBucketsLock sync.Mutex // protects openBuckets
 	)
 
@@ -539,42 +447,25 @@ func (tbp *TestBucketPool) createTestBuckets(numBuckets int, bucketQuotaMB int, 
 		// Bucket creation takes a few seconds for each bucket,
 		// so create and wait for readiness concurrently.
 		go func(bucketName string) {
+			ctx := bucketNameCtx(ctx, bucketName)
+
 			tbp.Logf(ctx, "Creating new test bucket")
 			err := tbp.cluster.insertBucket(bucketName, bucketQuotaMB)
 			if err != nil {
 				tbp.Fatalf(ctx, "Couldn't create test bucket: %v", err)
 			}
 
-			namedCollection, defaultCollection, err := tbp.cluster.openTestBucket(tbpBucketName(bucketName), 10*numBuckets, tbp.UsingNamedCollections())
-			ctx = updateContextWithKeyspace(ctx, defaultCollection)
+			bucket, err := tbp.cluster.openTestBucket(tbpBucketName(bucketName), waitForReadyBucketTimeout)
 			if err != nil {
 				tbp.Fatalf(ctx, "Timed out trying to open new bucket: %v", err)
 			}
 			openBucketsLock.Lock()
-			openBuckets[bucketName] = openCollections{
-				namedCollection:   namedCollection,
-				defaultCollection: defaultCollection,
-			}
+			openBuckets[bucketName] = bucket
 			openBucketsLock.Unlock()
 
-			ctx = updateContextWithKeyspace(ctx, defaultCollection)
-			// if the bucket is a N1QLStore, clean up prepared statements as-per the advice from the query team.
-			if n1qlStore, ok := AsN1QLStore(defaultCollection); ok {
-				err = n1qlStore.waitUntilQueryServiceReady(time.Minute)
-				if err != nil {
-					tbp.Fatalf(ctx, "Timed out waiting for query service to be ready: %v", err)
-				}
+			tbp.createCollections(ctx, bucket)
 
-				queryRes, err := n1qlStore.Query(`DELETE FROM system:prepareds WHERE statement LIKE "%`+KeyspaceQueryToken+`%";`, nil, RequestPlus, true)
-				if err != nil {
-					tbp.Fatalf(ctx, "Couldn't remove old prepared statements: %v", err)
-				}
-
-				err = queryRes.Close()
-				if err != nil {
-					tbp.Fatalf(ctx, "Failed to close query: %v", err)
-				}
-			}
+			tbp.emptyPreparedStatements(ctx, bucket)
 
 			wg.Done()
 		}(testBucketName)
@@ -589,29 +480,24 @@ func (tbp *TestBucketPool) createTestBuckets(numBuckets int, bucketQuotaMB int, 
 		ctx := bucketNameCtx(context.Background(), testBucketName)
 
 		tbp.Logf(ctx, "running bucketInitFunc")
-		openCollections := openBuckets[testBucketName]
+		b := openBuckets[testBucketName]
 
-		for _, b := range []Bucket{openCollections.namedCollection, openCollections.defaultCollection} {
-			if b == nil {
-				continue
+		itemName := "bucket"
+		if err, _ := RetryLoop(b.GetName()+"bucketInitRetry", func() (bool, error, interface{}) {
+			tbp.Logf(ctx, "Running %s through init function", itemName)
+			ctx = keyspaceNameCtx(ctx, b.GetName(), "", "")
+			err := bucketInitFunc(ctx, b, tbp)
+			if err != nil {
+				tbp.Logf(ctx, "Couldn't init %s, got error: %v - Retrying", itemName, err)
+				return true, err, nil
 			}
-			itemName := "bucket"
-			if err, _ := RetryLoop(b.GetName()+"bucketInitRetry", func() (bool, error, interface{}) {
-				tbp.Logf(ctx, "Running %s through init function", itemName)
-				ctx = updateContextWithKeyspace(ctx, b)
-				err := bucketInitFunc(ctx, b, tbp)
-				if err != nil {
-					tbp.Logf(ctx, "Couldn't init %s, got error: %v - Retrying", itemName, err)
-					return true, err, nil
-				}
-				return false, nil, nil
-			}, CreateSleeperFunc(5, 1000)); err != nil {
-				tbp.Fatalf(ctx, "Couldn't init %s, got error: %v - Aborting", itemName, err)
-			}
-
+			return false, nil, nil
+		}, CreateSleeperFunc(5, 1000)); err != nil {
+			tbp.Fatalf(ctx, "Couldn't init %s, got error: %v - Aborting", itemName, err)
 		}
-		openCollections.defaultCollection.Close()
-		tbp.addBucketToReadierQueue(ctx, tbpBucketName(testBucketName), tbpCollectionDefault)
+
+		b.Close()
+		tbp.addBucketToReadierQueue(ctx, tbpBucketName(testBucketName))
 	}
 
 	return nil
@@ -632,64 +518,45 @@ loop:
 
 		case dirtyBucket := <-tbp.bucketReadierQueue:
 			atomic.AddInt32(&tbp.stats.TotalBucketReadierCount, 1)
-			ctx := bucketNameCtx(ctx, string(dirtyBucket.name))
+			ctx := bucketNameCtx(ctx, string(dirtyBucket))
 			tbp.Logf(ctx, "bucketReadier got bucket")
 
-			go func(testBucketName tbpBucketName, collectionType tbpCollectionType) {
+			go func(testBucketName tbpBucketName) {
 				// We might not actually be "done" with the bucket if something fails,
 				// but we need to release the waitgroup so tbp.Close() doesn't block forever.
 				defer tbp.bucketReadierWaitGroup.Done()
 
 				start := time.Now()
-				namedCollection, defaultCollection, err := tbp.cluster.openTestBucket(testBucketName, 5, tbp.UsingNamedCollections())
-				ctx = updateContextWithKeyspace(ctx, defaultCollection)
+				b, err := tbp.cluster.openTestBucket(testBucketName, waitForReadyBucketTimeout)
+				ctx = keyspaceNameCtx(ctx, b.GetName(), "", "")
 				if err != nil {
 					tbp.Logf(ctx, "Couldn't open bucket to get ready, got error: %v", err)
 					return
 				}
 
-				var buckets []Bucket
-				switch collectionType {
-				case tbpCollectionNamed:
-					buckets = append(buckets, namedCollection)
-				case tbpCollectionDefault:
-					buckets = append(buckets, defaultCollection)
-				}
-
-				for _, b := range buckets {
-					if b == nil {
-						continue
-					}
-					err, _ = RetryLoop(b.GetName()+"bucketReadierRetry", func() (bool, error, interface{}) {
-						tbp.Logf(ctx, "Running bucket through readier function")
-						err = bucketReadierFunc(ctx, b, tbp)
-						if err != nil {
-							tbp.Logf(ctx, "Couldn't ready bucket, got error: %v - Retrying", err)
-							return true, err, nil
-						}
-						return false, nil, nil
-					}, CreateSleeperFunc(15, 2000))
-
+				err, _ = RetryLoop(b.GetName()+"bucketReadierRetry", func() (bool, error, interface{}) {
+					tbp.Logf(ctx, "Running bucket through readier function")
+					err = bucketReadierFunc(ctx, b, tbp)
 					if err != nil {
-						tbp.Logf(ctx, "Couldn't ready bucket, got error: %v - Aborting readier for bucket", err)
-						return
+						tbp.Logf(ctx, "Couldn't ready bucket, got error: %v - Retrying", err)
+						return true, err, nil
 					}
+					return false, nil, nil
+				}, CreateSleeperFunc(15, 2000))
+				if err != nil {
+					tbp.Logf(ctx, "Couldn't ready bucket, got error: %v - Aborting readier for bucket", err)
+					return
 				}
+
 				tbp.Logf(ctx, "Bucket ready, putting back into ready pool")
-				tbp.readyBucketPool <- openCollections{namedCollection: namedCollection,
-					defaultCollection: defaultCollection}
+				tbp.readyBucketPool <- b
 
 				atomic.AddInt64(&tbp.stats.TotalBucketReadierDurationNano, time.Since(start).Nanoseconds())
-			}(dirtyBucket.name, dirtyBucket.collectionType)
+			}(dirtyBucket)
 		}
 	}
 
 	tbp.Logf(context.Background(), "Stopped bucketReadier")
-}
-
-// UsingNamedCollections specifies whether the bucket pool is using named collections.
-func (tbp *TestBucketPool) UsingNamedCollections() bool {
-	return tbp.useNamedCollections
 }
 
 // TBPBucketInitFunc is a function that is run once (synchronously) when creating/opening a bucket.
@@ -697,26 +564,6 @@ type TBPBucketInitFunc func(ctx context.Context, b Bucket, tbp *TestBucketPool) 
 
 // NoopInitFunc does nothing to init a bucket. This can be used in conjunction with FlushBucketReadier when there's no requirement for views/GSI.
 var NoopInitFunc TBPBucketInitFunc = func(ctx context.Context, b Bucket, tbp *TestBucketPool) error {
-	return nil
-}
-
-// PrimaryIndexInitFunc creates a primary index on the given bucket. This can then be used with N1QLBucketEmptierFunc, for improved compatibility with GSI.
-// Will be used when GSI is re-enabled (CBG-813)
-var PrimaryIndexInitFunc TBPBucketInitFunc = func(ctx context.Context, b Bucket, tbp *TestBucketPool) error {
-	n1qlStore, ok := AsN1QLStore(b)
-	if !ok {
-		tbp.Logf(ctx, "skipping primary index creation for non-gocb bucket")
-		return nil
-	}
-
-	if hasPrimary, _, err := getIndexMetaWithoutRetry(n1qlStore, PrimaryIndexName); err != nil {
-		return err
-	} else if !hasPrimary {
-		err := n1qlStore.CreatePrimaryIndex(PrimaryIndexName, nil)
-		if err != nil {
-			return err
-		}
-	}
 	return nil
 }
 
@@ -733,156 +580,46 @@ var FlushBucketEmptierFunc TBPBucketReadierFunc = func(ctx context.Context, b Bu
 	return flushableBucket.Flush()
 }
 
-// N1QLBucketEmptierFunc ensures the bucket is empty by using N1QL deletes. This is the preferred approach when using GSI.
-// Will be used when GSI is re-enabled (CBG-813)
-var N1QLBucketEmptierFunc TBPBucketReadierFunc = func(ctx context.Context, bucket Bucket, tbp *TestBucketPool) error {
-	n1qlStore, ok := AsN1QLStore(bucket)
-	if !ok {
-		return errors.New("N1QLBucketEmptierFunc used with non-N1QL store")
-	}
-
-	if hasPrimary, _, err := getIndexMetaWithoutRetry(n1qlStore, PrimaryIndexName); err != nil {
+// N1QLBucketEmptierFunc ensures the Bucket and all of its DataStore are empty by using N1QL deletes. This is the preferred approach when using GSI.
+var N1QLBucketEmptierFunc TBPBucketReadierFunc = func(ctx context.Context, b Bucket, tbp *TestBucketPool) error {
+	dataStores, err := b.ListDataStores()
+	if err != nil {
 		return err
-	} else if !hasPrimary {
-		return fmt.Errorf("bucket does not have primary index, so can't empty bucket using N1QL")
 	}
-
-	if itemCount, err := QueryBucketItemCount(n1qlStore); err != nil {
-		return err
-	} else if itemCount == 0 {
-		tbp.Logf(ctx, "Bucket already empty - skipping")
-	} else {
-		tbp.Logf(ctx, "Bucket not empty (%d items), emptying bucket via N1QL", itemCount)
-		// Use N1QL to empty bucket, with the hope that the query service is happier to deal with this than a bucket flush/rollback.
-		// Requires a primary index on the bucket.
-		// TODO: How can we delete xattr only docs from here too? It would avoid needing to call db.emptyAllDocsIndex in ViewsAndGSIBucketReadier
-		res, err := n1qlStore.Query(fmt.Sprintf(`DELETE FROM %s`, KeyspaceQueryToken), nil, RequestPlus, true)
-		if err != nil {
-			return err
+	for _, dataStoreName := range dataStores {
+		n1qlStore, ok := AsN1QLStore(b.NamedDataStore(dataStoreName))
+		if !ok {
+			return errors.New("N1QLBucketEmptierFunc used with non-N1QL store")
 		}
-		_ = res.Close()
+
+		if hasPrimary, _, err := getIndexMetaWithoutRetry(n1qlStore, PrimaryIndexName); err != nil {
+			return err
+		} else if !hasPrimary {
+			return fmt.Errorf("bucket does not have primary index, so can't empty bucket using N1QL")
+		}
+
+		if itemCount, err := QueryBucketItemCount(n1qlStore); err != nil {
+			return err
+		} else if itemCount == 0 {
+			tbp.Logf(ctx, "Bucket already empty - skipping")
+		} else {
+			tbp.Logf(ctx, "Bucket not empty (%d items), emptying bucket via N1QL", itemCount)
+			// Use N1QL to empty bucket, with the hope that the query service is happier to deal with this than a bucket flush/rollback.
+			// Requires a primary index on the bucket.
+			// TODO: How can we delete xattr only docs from here too? It would avoid needing to call db.emptyAllDocsIndex in ViewsAndGSIBucketReadier
+			res, err := n1qlStore.Query(fmt.Sprintf(`DELETE FROM %s`, KeyspaceQueryToken), nil, RequestPlus, true)
+			if err != nil {
+				return err
+			}
+			_ = res.Close()
+		}
 	}
 
 	return nil
-}
-
-// bucketPoolStats is the struct used to track runtime/counts of various test bucket operations.
-// printStats() is called once a package's tests have finished to output these stats.
-type bucketPoolStats struct {
-	TotalBucketInitDurationNano    int64
-	TotalBucketInitCount           int32
-	TotalBucketReadierDurationNano int64
-	TotalBucketReadierCount        int32
-	NumBucketsOpened               int32
-	NumBucketsClosed               int32
-	TotalWaitingForReadyBucketNano int64
-	TotalInuseBucketNano           int64
 }
 
 // tbpBucketName use a strongly typed bucket name.
 type tbpBucketName string
-
-var tbpDefaultBucketSpec = BucketSpec{
-	Server: UnitTestUrl(),
-	Auth: TestAuthenticator{
-		Username: TestClusterUsername(),
-		Password: TestClusterPassword(),
-	},
-	UseXattrs: TestUseXattrs(),
-}
-
-// addCustomScopeAndCollection adds a non default scope/collection to a BucketSpec.
-func addCustomScopeAndCollection(spec *BucketSpec) error {
-	scopeName := tbpScopePrefix + "1"
-	collectionName := tbpCollectionPrefix + "1"
-	spec.Scope = &scopeName
-	spec.Collection = &collectionName
-	return nil
-
-}
-
-// getBucketSpec returns a new BucketSpec for the given bucket name.
-func getBucketSpec(testBucketName tbpBucketName, usingNamedCollections bool) BucketSpec {
-	bucketSpec := tbpDefaultBucketSpec
-	bucketSpec.BucketName = string(testBucketName)
-	bucketSpec.TLSSkipVerify = TestTLSSkipVerify()
-	if usingNamedCollections && bucketSpec.Scope == nil && bucketSpec.Collection == nil {
-		err := addCustomScopeAndCollection(&bucketSpec)
-		if err != nil {
-			panic(err)
-		}
-	}
-
-	return bucketSpec
-}
-
-// RequireNumTestBuckets skips the given test if there are not enough test buckets available to use.
-func RequireNumTestBuckets(t *testing.T, numRequired int) {
-	usable := GTestBucketPool.numUsableBuckets()
-	if usable < numRequired {
-		t.Skipf("Only had %d usable test buckets available (test requires %d)", usable, numRequired)
-	}
-}
-
-// numUsableBuckets returns the total number of buckets in the pool that can be used by a test.
-func (tbp *TestBucketPool) numUsableBuckets() int {
-	if !tbp.integrationMode {
-		// we can create virtually endless walrus buckets,
-		// so report back 10 to match a fully available CBS bucket pool.
-		return 10
-	}
-	return tbpNumBuckets() - int(atomic.LoadUint32(&tbp.preservedBucketCount))
-}
-
-// tbpNumBuckets returns the configured number of buckets to use in the pool.
-func tbpNumBuckets() int {
-	numBuckets := tbpDefaultBucketPoolSize
-	if envPoolSize := os.Getenv(tbpEnvPoolSize); envPoolSize != "" {
-		var err error
-		numBuckets, err = strconv.Atoi(envPoolSize)
-		if err != nil {
-			FatalfCtx(context.TODO(), "Couldn't parse %s: %v", tbpEnvPoolSize, err)
-		}
-	}
-	return numBuckets
-}
-
-// tbpBucketQuotaMB returns the configured bucket RAM quota.
-func tbpBucketQuotaMB() int {
-	bucketQuota := defaultBucketQuotaMB
-	if envBucketQuotaMB := os.Getenv(tbpEnvBucketQuotaMB); envBucketQuotaMB != "" {
-		var err error
-		bucketQuota, err = strconv.Atoi(envBucketQuotaMB)
-		if err != nil {
-			FatalfCtx(context.TODO(), "Couldn't parse %s: %v", tbpEnvBucketQuotaMB, err)
-		}
-	}
-	return bucketQuota
-}
-
-// tbpVerbose returns the configured test bucket pool verbose flag.
-func tbpVerbose() bool {
-	verbose, _ := strconv.ParseBool(os.Getenv(tbpEnvVerbose))
-	return verbose
-}
-
-// TestClusterUsername returns the configured cluster username.
-func TestClusterUsername() string {
-	username := DefaultTestClusterUsername
-	if envClusterUsername := os.Getenv(envTestClusterUsername); envClusterUsername != "" {
-		username = envClusterUsername
-	}
-	return username
-}
-
-// TestClusterPassword returns the configured cluster password.
-func TestClusterPassword() string {
-	password := DefaultTestClusterPassword
-	if envClusterPassword := os.Getenv(envTestClusterPassword); envClusterPassword != "" {
-		password = envClusterPassword
-	}
-	return password
-}
 
 // TestBucketPoolMain is used as TestMain in main_test.go packages
 func TestBucketPoolMain(m *testing.M, bucketReadierFunc TBPBucketReadierFunc, bucketInitFunc TBPBucketInitFunc,
@@ -914,12 +651,4 @@ func TestBucketPoolMain(m *testing.M, bucketReadierFunc TBPBucketReadierFunc, bu
 // TestBucketPoolNoIndexes runs a TestMain for packages that do not require creation of indexes
 func TestBucketPoolNoIndexes(m *testing.M, memWatermarkThresholdMB uint64) {
 	TestBucketPoolMain(m, FlushBucketEmptierFunc, NoopInitFunc, memWatermarkThresholdMB)
-}
-
-func updateContextWithKeyspace(ctx context.Context, b Bucket) context.Context {
-	c, ok := b.(*Collection)
-	if ok {
-		ctx = keyspaceNameCtx(ctx, b.GetName(), c.Name(), c.ScopeName())
-	}
-	return ctx
 }

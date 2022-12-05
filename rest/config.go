@@ -98,18 +98,6 @@ func (dc *DbConfig) MakeBucketSpec() base.BucketSpec {
 		tlsPort = bc.KvTLSPort
 	}
 
-	// WIP: Collections Phase 1 - Grab just one scope/collection from the defined set.
-	// Phase 2 (multi collection) means DatabaseContext needs a set of BucketSpec/Collections, not just one...
-	var scope, collection *string
-	for scopeName, scopeConfig := range dc.Scopes {
-		scope = &scopeName
-		for collectionName := range scopeConfig.Collections {
-			base.WarnfCtx(context.TODO(), "WIP Collections (Phase 1) - Running db %q in scope %q collection %q", dc.Name, scopeName, collectionName)
-			collection = &collectionName
-			break
-		}
-	}
-
 	return base.BucketSpec{
 		Server:                server,
 		BucketName:            bucketName,
@@ -119,8 +107,6 @@ func (dc *DbConfig) MakeBucketSpec() base.BucketSpec {
 		KvTLSPort:             tlsPort,
 		Auth:                  bc,
 		MaxConcurrentQueryOps: bc.MaxConcurrentQueryOps,
-		Scope:                 scope,
-		Collection:            collection,
 	}
 }
 
@@ -855,8 +841,7 @@ func (dbConfig *DbConfig) validateVersion(ctx context.Context, isEnterpriseEditi
 		for scopeName, scopeConfig := range dbConfig.Scopes {
 			// WIP: Collections Phase 1 - Only allow a single collection
 			if len(scopeConfig.Collections) != 1 {
-				multiError = multiError.Append(fmt.Errorf("WIP Collections Phase 1 only supports a single collection - had %d", len(scopeConfig.Collections)))
-				continue
+				base.WarnfCtx(ctx, "WIP Collections Phase 1 only supports a single collection - had %d", len(scopeConfig.Collections))
 			}
 
 			if len(scopeConfig.Collections) == 0 {
@@ -1299,7 +1284,7 @@ func (sc *ServerContext) fetchAndLoadConfigs(ctx context.Context, isInitialStart
 			}
 		}
 		for dbName, fetchedConfig := range fetchedConfigs {
-			if dbConfig, ok := sc.dbConfigs[dbName]; ok && dbConfig.cas >= fetchedConfig.cas {
+			if dbConfig, ok := sc.dbConfigs[dbName]; ok && dbConfig.cfgCas >= fetchedConfig.cfgCas {
 				base.DebugfCtx(ctx, base.KeyConfig, "Database %q bucket %q config has not changed since last update", fetchedConfig.Name, *fetchedConfig.Bucket)
 				delete(fetchedConfigs, dbName)
 			}
@@ -1406,7 +1391,7 @@ func (sc *ServerContext) fetchDatabase(ctx context.Context, dbName string) (foun
 			continue
 		}
 
-		cnf.cas = cas
+		cnf.cfgCas = cas
 
 		// TODO: This code is mostly copied from FetchConfigs, move into shared function with DbConfig REST API work?
 
@@ -1495,7 +1480,7 @@ func (sc *ServerContext) FetchConfigs(ctx context.Context, isInitialStartup bool
 			continue
 		}
 
-		cnf.cas = cas
+		cnf.cfgCas = cas
 
 		// inherit properties the bootstrap config
 		cnf.CACertPath = sc.Config.Bootstrap.CACertPath
@@ -1575,11 +1560,11 @@ func (sc *ServerContext) _applyConfig(ctx context.Context, cnf DatabaseConfig, f
 			return false, fmt.Errorf("%w: Bucket %q already in use by database %q", base.ErrAlreadyExists, *cnf.Bucket, foundDbName)
 		}
 
-		if cnf.cas == 0 {
+		if cnf.cfgCas == 0 {
 			// force an update when the new config's cas was set to zero prior to load
 			base.InfofCtx(ctx, base.KeyConfig, "Forcing update of config for database %q bucket %q", cnf.Name, *cnf.Bucket)
 		} else {
-			if sc.dbConfigs[foundDbName].cas >= cnf.cas {
+			if sc.dbConfigs[foundDbName].cfgCas >= cnf.cfgCas {
 				base.DebugfCtx(ctx, base.KeyConfig, "Database %q bucket %q config has not changed since last update", cnf.Name, *cnf.Bucket)
 				return false, nil
 			}

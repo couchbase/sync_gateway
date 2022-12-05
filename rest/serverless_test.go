@@ -27,13 +27,13 @@ func TestServerlessPollBuckets(t *testing.T) {
 	}
 
 	// Get test bucket
-	tb1 := base.GetTestBucketDefaultCollection(t)
+	tb1 := base.GetTestBucket(t)
 	defer tb1.Close()
 
 	rt := NewRestTester(t, &RestTesterConfig{
 		CustomTestBucket: tb1,
 		serverless:       true,
-		persistentConfig: true,
+		PersistentConfig: true,
 		MutateStartupConfig: func(config *StartupConfig) {
 			config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(0)
 		},
@@ -52,7 +52,7 @@ func TestServerlessPollBuckets(t *testing.T) {
 	assert.Empty(t, configs)
 
 	// Create a database
-	rt2 := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb1, persistentConfig: true, groupID: &sc.Config.Bootstrap.ConfigGroupID})
+	rt2 := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb1, PersistentConfig: true, groupID: &sc.Config.Bootstrap.ConfigGroupID})
 	defer rt2.Close()
 	// Create a new db on the RT to confirm fetch won't retrieve it (due to bucket not being in BucketCredentials)
 	resp := rt2.SendAdminRequest(http.MethodPut, "/db/", fmt.Sprintf(`{
@@ -124,7 +124,7 @@ func TestServerlessDBSetupForceCreds(t *testing.T) {
 	}
 	for _, test := range testCases {
 		t.Run(test.name, func(t *testing.T) {
-			rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb1, serverless: true, persistentConfig: true})
+			rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb1, serverless: true, PersistentConfig: true})
 			defer rt.Close()
 
 			if test.perBucketCreds != nil {
@@ -150,7 +150,7 @@ func TestServerlessBucketCredentialsFetchDatabases(t *testing.T) {
 
 	tb1 := base.GetTestBucket(t)
 	defer tb1.Close()
-	rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb1, persistentConfig: true, serverless: true,
+	rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb1, PersistentConfig: true, serverless: true,
 		MutateStartupConfig: func(config *StartupConfig) {
 			config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(0)
 		},
@@ -178,6 +178,56 @@ func TestServerlessBucketCredentialsFetchDatabases(t *testing.T) {
 	assert.False(t, found)
 }
 
+func TestServerlessGoCBConnectionString(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server")
+	}
+	tests := []struct {
+		name            string
+		expectedConnStr string
+		specKvConn      string
+		kvConnCount     int
+	}{
+		{
+			name:            "serverless connection",
+			expectedConnStr: "?idle_http_connection_timeout=90000&kv_pool_size=1&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
+			kvConnCount:     1,
+		},
+		{
+			name:            "serverless connection with kv pool specified",
+			specKvConn:      "?idle_http_connection_timeout=90000&kv_pool_size=3&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
+			expectedConnStr: "?idle_http_connection_timeout=90000&kv_pool_size=3&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
+			kvConnCount:     3,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			tb := base.GetTestBucket(t)
+			defer tb.Close()
+			bucketServer := tb.BucketSpec.Server
+			test.expectedConnStr = bucketServer + test.expectedConnStr
+
+			if test.specKvConn != "" {
+				tb.BucketSpec.Server = bucketServer + "?kv_pool_size=3"
+				tb.BucketSpec.KvPoolSize = 3
+			}
+
+			rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb, PersistentConfig: true, serverless: true})
+			defer rt.Close()
+			sc := rt.ServerContext()
+			require.True(t, sc.Config.IsServerless())
+
+			resp := rt.SendAdminRequest(http.MethodPut, "/db/", fmt.Sprintf(`{"bucket": "%s", "use_views": %t, "num_index_replicas": 0}`,
+				tb.GetName(), base.TestsDisableGSI()))
+			RequireStatus(t, resp, http.StatusCreated)
+
+			assert.Equal(t, test.expectedConnStr, sc.getConnectionString("db"))
+			assert.Equal(t, test.kvConnCount, sc.getKVConnectionPol("db"))
+		})
+	}
+
+}
+
 func TestServerlessSuspendDatabase(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server due to updating database config using a Bootstrap connection")
@@ -187,7 +237,7 @@ func TestServerlessSuspendDatabase(t *testing.T) {
 	tb := base.GetTestBucket(t)
 	defer tb.Close()
 
-	rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb, persistentConfig: true, serverless: true})
+	rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb, PersistentConfig: true, serverless: true})
 	defer rt.Close()
 
 	sc := rt.ServerContext()
@@ -226,12 +276,12 @@ func TestServerlessSuspendDatabase(t *testing.T) {
 
 	// Update config in bucket to see if unsuspending check for updates
 	cas, err := sc.BootstrapContext.Connection.UpdateConfig(tb.GetName(), sc.Config.Bootstrap.ConfigGroupID,
-		func(rawBucketConfig []byte) (updatedConfig []byte, err error) {
+		func(rawBucketConfig []byte, rawBucketConfigCas uint64) (updatedConfig []byte, err error) {
 			return json.Marshal(sc.dbConfigs["db"])
 		},
 	)
 	require.NoError(t, err)
-	assert.NotEqual(t, cas, sc.dbConfigs["db"].cas)
+	assert.NotEqual(t, cas, sc.dbConfigs["db"].cfgCas)
 
 	// Unsuspend db
 	dbCtx, err = sc.unsuspendDatabase(rt.Context(), "db")
@@ -242,7 +292,7 @@ func TestServerlessSuspendDatabase(t *testing.T) {
 	require.NotNil(t, sc.dbConfigs["db"])
 
 	// Make sure updated config is being used
-	assert.Equal(t, cas, sc.dbConfigs["db"].cas)
+	assert.Equal(t, cas, sc.dbConfigs["db"].cfgCas)
 
 	// Attempt unsuspend of invalid db
 	dbCtx, err = sc.unsuspendDatabase(rt.Context(), "invalid")
@@ -262,7 +312,7 @@ func TestServerlessUnsuspendFetchFallback(t *testing.T) {
 	rt := NewRestTester(t, &RestTesterConfig{
 		CustomTestBucket: tb,
 		serverless:       true,
-		persistentConfig: true,
+		PersistentConfig: true,
 		MutateStartupConfig: func(config *StartupConfig) {
 			config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(0)
 		},
@@ -307,7 +357,7 @@ func TestServerlessFetchConfigsLimited(t *testing.T) {
 
 	rt := NewRestTester(t, &RestTesterConfig{
 		CustomTestBucket: tb,
-		persistentConfig: true,
+		PersistentConfig: true,
 		MutateStartupConfig: func(config *StartupConfig) {
 			config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(0)
 		},
@@ -333,7 +383,7 @@ func TestServerlessFetchConfigsLimited(t *testing.T) {
 
 	// Update database config in the bucket
 	newCas, err := sc.BootstrapContext.Connection.UpdateConfig(tb.GetName(), sc.Config.Bootstrap.ConfigGroupID,
-		func(rawBucketConfig []byte) (updatedConfig []byte, err error) {
+		func(rawBucketConfig []byte, rawBucketConfigCas uint64) (updatedConfig []byte, err error) {
 			return json.Marshal(sc.dbConfigs["db"])
 		},
 	)
@@ -341,7 +391,7 @@ func TestServerlessFetchConfigsLimited(t *testing.T) {
 	// Fetch configs again and expect same config to be returned
 	dbConfigsAfter, err := sc.fetchConfigsSince(rt.Context(), sc.Config.Unsupported.Serverless.MinConfigFetchInterval)
 	require.NotEmpty(t, dbConfigsAfter["db"])
-	assert.Equal(t, dbConfigsBefore["db"].cas, dbConfigsAfter["db"].cas)
+	assert.Equal(t, dbConfigsBefore["db"].cfgCas, dbConfigsAfter["db"].cfgCas)
 	assert.Equal(t, timeCached, sc.fetchConfigsLastUpdate)
 
 	// Make caching 1ms so it will grab newest config
@@ -350,13 +400,13 @@ func TestServerlessFetchConfigsLimited(t *testing.T) {
 	time.Sleep(time.Millisecond * 500)
 	dbConfigsAfter, err = sc.fetchConfigsSince(rt.Context(), sc.Config.Unsupported.Serverless.MinConfigFetchInterval)
 	require.NotEmpty(t, dbConfigsAfter["db"])
-	assert.Equal(t, newCas, dbConfigsAfter["db"].cas)
+	assert.Equal(t, newCas, dbConfigsAfter["db"].cfgCas)
 	// Change back for next test before next config update (not fully necessary but just to be safe)
 	sc.Config.Unsupported.Serverless.MinConfigFetchInterval = base.NewConfigDuration(time.Hour)
 
 	// Update database config in the bucket again to test caching disable case
 	newCas, err = sc.BootstrapContext.Connection.UpdateConfig(tb.GetName(), sc.Config.Bootstrap.ConfigGroupID,
-		func(rawBucketConfig []byte) (updatedConfig []byte, err error) {
+		func(rawBucketConfig []byte, rawBucketConfigCas uint64) (updatedConfig []byte, err error) {
 			return json.Marshal(sc.dbConfigs["db"])
 		},
 	)
@@ -365,7 +415,7 @@ func TestServerlessFetchConfigsLimited(t *testing.T) {
 	sc.Config.Unsupported.Serverless.MinConfigFetchInterval = base.NewConfigDuration(0)
 	dbConfigsAfter, err = sc.fetchConfigsSince(rt.Context(), sc.Config.Unsupported.Serverless.MinConfigFetchInterval)
 	require.NotEmpty(t, dbConfigsAfter["db"])
-	assert.Equal(t, newCas, dbConfigsAfter["db"].cas)
+	assert.Equal(t, newCas, dbConfigsAfter["db"].cfgCas)
 }
 
 // Checks what happens to a suspended database when the config is modified by another node and the periodic fetchAndLoadConfigs gets called.
@@ -379,7 +429,7 @@ func TestServerlessUpdateSuspendedDb(t *testing.T) {
 
 	rt := NewRestTester(t, &RestTesterConfig{
 		CustomTestBucket: tb,
-		persistentConfig: true,
+		PersistentConfig: true,
 		MutateStartupConfig: func(config *StartupConfig) {
 			config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(0)
 		},
@@ -399,12 +449,12 @@ func TestServerlessUpdateSuspendedDb(t *testing.T) {
 	assert.NoError(t, sc.suspendDatabase(t, rt.Context(), "db"))
 	// Update database config
 	newCas, err := sc.BootstrapContext.Connection.UpdateConfig(tb.GetName(), sc.Config.Bootstrap.ConfigGroupID,
-		func(rawBucketConfig []byte) (updatedConfig []byte, err error) {
+		func(rawBucketConfig []byte, rawBucketConfigCas uint64) (updatedConfig []byte, err error) {
 			return json.Marshal(sc.dbConfigs["db"])
 		},
 	)
 	// Confirm dbConfig cas did not update yet in SG, or get unsuspended
-	assert.NotEqual(t, sc.dbConfigs["db"].cas, newCas)
+	assert.NotEqual(t, sc.dbConfigs["db"].cfgCas, newCas)
 	assert.True(t, sc.isDatabaseSuspended(t, "db"))
 	assert.Nil(t, sc.databases_["db"])
 	// Trigger update frequency (would usually happen every ConfigUpdateFrequency seconds)
@@ -464,7 +514,7 @@ func TestSuspendingFlags(t *testing.T) {
 			tb := base.GetTestBucket(t)
 			defer tb.Close()
 
-			rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb, persistentConfig: true, serverless: test.serverlessMode})
+			rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb, PersistentConfig: true, serverless: test.serverlessMode})
 			defer rt.Close()
 
 			sc := rt.ServerContext()
@@ -507,7 +557,7 @@ func TestServerlessUnsuspendAPI(t *testing.T) {
 	tb := base.GetTestBucket(t)
 	defer tb.Close()
 
-	rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb, persistentConfig: true, serverless: true})
+	rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb, PersistentConfig: true, serverless: true})
 	defer rt.Close()
 
 	sc := rt.ServerContext()
@@ -544,7 +594,7 @@ func TestServerlessUnsuspendAdminAuth(t *testing.T) {
 	tb := base.GetTestBucket(t)
 	defer tb.Close()
 
-	rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb, persistentConfig: true, serverless: true, AdminInterfaceAuthentication: true})
+	rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb, PersistentConfig: true, serverless: true, AdminInterfaceAuthentication: true})
 	defer rt.Close()
 
 	sc := rt.ServerContext()
@@ -578,4 +628,61 @@ func TestServerlessUnsuspendAdminAuth(t *testing.T) {
 	// Attempt to get DB that does not exist
 	resp = rt.SendAdminRequestWithAuth(http.MethodGet, "/invaliddb/doc", "", base.TestClusterUsername(), base.TestClusterPassword())
 	assertHTTPErrorReason(t, resp, http.StatusForbidden, "")
+}
+
+func TestImportPartitionsServerless(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server")
+	}
+	tests := []struct {
+		name               string
+		importPartition    *uint16
+		expectedPartitions *uint16
+		serverless         bool
+	}{
+		{
+			name:               "serverless partitions",
+			expectedPartitions: base.Uint16Ptr(6),
+			serverless:         true,
+		},
+		{
+			name:               "serverless partitions with import_partition specified",
+			importPartition:    base.Uint16Ptr(8),
+			expectedPartitions: base.Uint16Ptr(8),
+			serverless:         true,
+		},
+		{
+			name:               "non serverless partitions",
+			expectedPartitions: base.Uint16Ptr(16),
+			serverless:         false,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			expectedPartitions := test.expectedPartitions
+			if !base.IsEnterpriseEdition() {
+				t.Logf("Import partitions setting is only supported in EE")
+				expectedPartitions = nil
+			}
+
+			tb := base.GetTestBucket(t)
+			defer tb.Close()
+			rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb, PersistentConfig: true, serverless: test.serverless})
+			defer rt.Close()
+			sc := rt.ServerContext()
+
+			var dbconf *DbConfig
+			if test.name == "serverless partitions with import_partition specified" {
+				resp := rt.SendAdminRequest(http.MethodPut, "/db/", fmt.Sprintf(`{"bucket": "%s", "use_views": %t, "num_index_replicas": 0, "import_partitions": 8}`,
+					tb.GetName(), base.TestsDisableGSI()))
+				RequireStatus(t, resp, http.StatusCreated)
+				dbconf = sc.GetDbConfig("db")
+			} else {
+				dbconf = DefaultDbConfig(sc.Config)
+			}
+
+			assert.Equal(t, expectedPartitions, dbconf.ImportPartitions)
+		})
+	}
 }

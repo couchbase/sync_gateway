@@ -45,9 +45,14 @@ func (h *handler) handleCreateDB() error {
 	if err != nil {
 		return err
 	}
-	config.Name = dbName
 
 	validateOIDC := !h.getBoolQuery(paramDisableOIDCValidation)
+
+	if dbName != config.Name && config.Name != "" {
+		return base.HTTPErrorf(http.StatusBadRequest, "When providing a name in the JSON body (%s), ensure it matches the name in the path (%s).", config.Name, dbName)
+	}
+
+	config.Name = dbName
 
 	if h.server.persistentConfig {
 		if err := config.validatePersistentDbConfig(); err != nil {
@@ -99,7 +104,7 @@ func (h *handler) handleCreateDB() error {
 				return httpErr
 			}
 			if errors.Is(err, base.ErrAuthError) {
-				return base.HTTPErrorf(http.StatusForbidden, "auth failure accessing provided bucket: %s", bucket)
+				return base.HTTPErrorf(http.StatusForbidden, "Provided bucket credentials do not have access to specified bucket: %s", bucket)
 			}
 			if errors.Is(err, base.ErrAlreadyExists) {
 				return base.HTTPErrorf(http.StatusConflict, "couldn't load database: %s", err)
@@ -125,7 +130,7 @@ func (h *handler) handleCreateDB() error {
 			return base.HTTPErrorf(http.StatusInternalServerError, "couldn't save database config: %v", err)
 		}
 		// store the cas in the loaded config after a successful insert
-		h.server.dbConfigs[dbName].cas = cas
+		h.server.dbConfigs[dbName].cfgCas = cas
 	} else {
 		// Intentionally pass in an empty BootstrapConfig to avoid inheriting any credentials or server when running with a legacy config (CBG-1764)
 		if err := config.setup(dbName, BootstrapConfig{}, nil, nil, false); err != nil {
@@ -234,7 +239,7 @@ func (h *handler) handleGetDbConfig() error {
 		// refresh_config=true forces the config loaded out of the bucket to be applied on the node
 		if h.getBoolQuery("refresh_config") && h.server.BootstrapContext.Connection != nil {
 			// set cas=0 to force a refresh
-			dbConfig.cas = 0
+			dbConfig.cfgCas = 0
 			h.server.applyConfigs(h.ctx(), map[string]DatabaseConfig{h.db.Name: *dbConfig})
 		}
 
@@ -525,7 +530,7 @@ func (h *handler) handlePutDbConfig() (err error) {
 	var updatedDbConfig *DatabaseConfig
 	cas, err := h.server.BootstrapContext.Connection.UpdateConfig(
 		bucket, h.server.Config.Bootstrap.ConfigGroupID,
-		func(rawBucketConfig []byte) (newConfig []byte, err error) {
+		func(rawBucketConfig []byte, rawBucketConfigCas uint64) (newConfig []byte, err error) {
 			var bucketDbConfig DatabaseConfig
 			if err := base.JSONUnmarshal(rawBucketConfig, &bucketDbConfig); err != nil {
 				return nil, err
@@ -534,6 +539,8 @@ func (h *handler) handlePutDbConfig() (err error) {
 			if h.headerDoesNotMatchEtag(bucketDbConfig.Version) {
 				return nil, base.HTTPErrorf(http.StatusPreconditionFailed, "Provided If-Match header does not match current config version")
 			}
+
+			bucketDbConfig.cfgCas = rawBucketConfigCas
 
 			oldBucketDbConfig := bucketDbConfig.DbConfig
 
@@ -568,6 +575,7 @@ func (h *handler) handlePutDbConfig() (err error) {
 			if err = base.DeepCopyInefficient(&tmpConfig, bucketDbConfig); err != nil {
 				return nil, err
 			}
+			tmpConfig.cfgCas = rawBucketConfigCas
 			dbCreds, _ := h.server.Config.DatabaseCredentials[dbName]
 			bucketCreds, _ := h.server.Config.BucketCredentials[bucket]
 			if err := tmpConfig.setup(dbName, h.server.Config.Bootstrap, dbCreds, bucketCreds, h.server.Config.IsServerless()); err != nil {
@@ -591,8 +599,10 @@ func (h *handler) handlePutDbConfig() (err error) {
 		return err
 	}
 	// store the cas in the loaded config after a successful update
-	h.server.dbConfigs[dbName].cas = cas
 	h.setEtag(updatedDbConfig.Version)
+	h.server.lock.Lock()
+	defer h.server.lock.Unlock()
+	h.server.dbConfigs[dbName].cfgCas = cas
 
 	return base.HTTPErrorf(http.StatusCreated, "updated")
 
@@ -640,7 +650,7 @@ func (h *handler) handleDeleteDbConfigSync() error {
 	var updatedDbConfig *DatabaseConfig
 	cas, err := h.server.BootstrapContext.Connection.UpdateConfig(
 		bucket, h.server.Config.Bootstrap.ConfigGroupID,
-		func(rawBucketConfig []byte) (newConfig []byte, err error) {
+		func(rawBucketConfig []byte, rawBucketConfigCas uint64) (newConfig []byte, err error) {
 			var bucketDbConfig DatabaseConfig
 			if err := base.JSONUnmarshal(rawBucketConfig, &bucketDbConfig); err != nil {
 				return nil, err
@@ -664,7 +674,7 @@ func (h *handler) handleDeleteDbConfigSync() error {
 	if err != nil {
 		return err
 	}
-	updatedDbConfig.cas = cas
+	updatedDbConfig.cfgCas = cas
 
 	dbName := h.db.Name
 	dbCreds, _ := h.server.Config.DatabaseCredentials[dbName]
@@ -701,7 +711,7 @@ func (h *handler) handlePutDbConfigSync() error {
 	var updatedDbConfig *DatabaseConfig
 	cas, err := h.server.BootstrapContext.Connection.UpdateConfig(
 		bucket, h.server.Config.Bootstrap.ConfigGroupID,
-		func(rawBucketConfig []byte) (newConfig []byte, err error) {
+		func(rawBucketConfig []byte, rawBucketConfigCas uint64) (newConfig []byte, err error) {
 			var bucketDbConfig DatabaseConfig
 			if err := base.JSONUnmarshal(rawBucketConfig, &bucketDbConfig); err != nil {
 				return nil, err
@@ -730,7 +740,7 @@ func (h *handler) handlePutDbConfigSync() error {
 	if err != nil {
 		return err
 	}
-	updatedDbConfig.cas = cas
+	updatedDbConfig.cfgCas = cas
 
 	dbName := h.db.Name
 	dbCreds, _ := h.server.Config.DatabaseCredentials[dbName]
@@ -790,7 +800,7 @@ func (h *handler) handleDeleteDbConfigImportFilter() error {
 	var updatedDbConfig *DatabaseConfig
 	cas, err := h.server.BootstrapContext.Connection.UpdateConfig(
 		bucket, h.server.Config.Bootstrap.ConfigGroupID,
-		func(rawBucketConfig []byte) (newConfig []byte, err error) {
+		func(rawBucketConfig []byte, rawBucketConfigCas uint64) (newConfig []byte, err error) {
 			var bucketDbConfig DatabaseConfig
 			if err := base.JSONUnmarshal(rawBucketConfig, &bucketDbConfig); err != nil {
 				return nil, err
@@ -814,7 +824,7 @@ func (h *handler) handleDeleteDbConfigImportFilter() error {
 	if err != nil {
 		return err
 	}
-	updatedDbConfig.cas = cas
+	updatedDbConfig.cfgCas = cas
 
 	dbName := h.db.Name
 	dbCreds, _ := h.server.Config.DatabaseCredentials[dbName]
@@ -852,7 +862,7 @@ func (h *handler) handlePutDbConfigImportFilter() error {
 	var updatedDbConfig *DatabaseConfig
 	cas, err := h.server.BootstrapContext.Connection.UpdateConfig(
 		bucket, h.server.Config.Bootstrap.ConfigGroupID,
-		func(rawBucketConfig []byte) (newConfig []byte, err error) {
+		func(rawBucketConfig []byte, rawBucketConfigCas uint64) (newConfig []byte, err error) {
 			var bucketDbConfig DatabaseConfig
 			if err := base.JSONUnmarshal(rawBucketConfig, &bucketDbConfig); err != nil {
 				return nil, err
@@ -881,7 +891,7 @@ func (h *handler) handlePutDbConfigImportFilter() error {
 	if err != nil {
 		return err
 	}
-	updatedDbConfig.cas = cas
+	updatedDbConfig.cfgCas = cas
 
 	dbName := h.db.Name
 	dbCreds, _ := h.server.Config.DatabaseCredentials[dbName]
@@ -908,7 +918,7 @@ func (h *handler) handleDeleteDB() error {
 
 	if h.server.persistentConfig {
 		bucket := h.db.Bucket.GetName()
-		_, err := h.server.BootstrapContext.Connection.UpdateConfig(bucket, h.server.Config.Bootstrap.ConfigGroupID, func(rawBucketConfig []byte) (updatedConfig []byte, err error) {
+		_, err := h.server.BootstrapContext.Connection.UpdateConfig(bucket, h.server.Config.Bootstrap.ConfigGroupID, func(rawBucketConfig []byte, rawBucketConfigCas uint64) (updatedConfig []byte, err error) {
 			return nil, nil
 		})
 		if err != nil {
@@ -942,7 +952,7 @@ func (h *handler) handleGetRawDoc() error {
 		includeDoc = false
 	}
 
-	doc, err := h.db.GetDocument(h.ctx(), docid, db.DocUnmarshalSync)
+	doc, err := h.collection.GetDocument(h.ctx(), docid, db.DocUnmarshalSync)
 	if err != nil {
 		return err
 	}
@@ -993,7 +1003,7 @@ func (h *handler) handleGetRawDoc() error {
 func (h *handler) handleGetRevTree() error {
 	h.assertAdminOnly()
 	docid := h.PathVar("docid")
-	doc, err := h.db.GetDocument(h.ctx(), docid, db.DocUnmarshalAll)
+	doc, err := h.collection.GetDocument(h.ctx(), docid, db.DocUnmarshalAll)
 
 	if doc != nil {
 		h.writeText([]byte(doc.History.RenderGraphvizDot()))
@@ -1379,7 +1389,13 @@ func (h *handler) getUsers() error {
 	var bytes []byte
 	var marshalErr error
 	if nameOnly {
-		users, _, err := h.db.AllPrincipalIDs(h.ctx())
+		var users []string
+		var err error
+		if h.db.Options.UseViews {
+			users, _, err = h.db.AllPrincipalIDs(h.ctx())
+		} else {
+			users, err = h.db.GetUserNames(h.ctx())
+		}
 		if err != nil {
 			return err
 		}
@@ -1403,15 +1419,10 @@ func (h *handler) getUsers() error {
 }
 
 func (h *handler) getRoles() error {
-	var roles []string
-	var err error
-
 	includeDeleted, _ := h.getOptBoolQuery(paramDeleted, false)
-	if includeDeleted {
-		_, roles, err = h.db.AllPrincipalIDs(h.ctx())
-	} else {
-		roles, err = h.db.GetRoleIDs(h.ctx())
-	}
+
+	roles, err := h.db.GetRoleIDs(h.ctx(), h.db.Options.UseViews, includeDeleted)
+
 	if err != nil {
 		return err
 	}
@@ -1459,7 +1470,7 @@ func (h *handler) handlePurge() error {
 			}
 
 			// Attempt to delete document, if successful add to response, otherwise log warning
-			err = h.db.Purge(h.ctx(), key)
+			err = h.collection.Purge(h.ctx(), key)
 			if err == nil {
 
 				docIDs = append(docIDs, key)
@@ -1485,7 +1496,7 @@ func (h *handler) handlePurge() error {
 	}
 
 	if len(docIDs) > 0 {
-		count := h.db.GetChangeCache().Remove(docIDs, startTime)
+		count := h.collection.RemoveFromChangeCache(docIDs, startTime)
 		base.DebugfCtx(h.ctx(), base.KeyCache, "Purged %d items from caches", count)
 	}
 

@@ -88,8 +88,7 @@ type handler struct {
 	statusMessage         string
 	requestBody           io.ReadCloser
 	db                    *db.Database
-	keyspaceScope         string
-	keyspaceCollection    string
+	collection            *db.DatabaseCollectionWithUser
 	user                  auth.User
 	authorizedAdminUser   string
 	privs                 handlerPrivs
@@ -307,21 +306,29 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 			}
 			scope, foundScope := dbContext.Scopes[*keyspaceScope]
 			if !foundScope {
-				return base.HTTPErrorf(http.StatusNotFound, "keyspace %s.%s.%s not found", base.MD(keyspaceDb), base.MD(*keyspaceScope), base.MD(*keyspaceCollection))
+				return base.HTTPErrorf(http.StatusNotFound, "keyspace %s.%s.%s not found", base.MD(keyspaceDb), base.MD(base.StringDefault(keyspaceScope, "")), base.MD(base.StringDefault(keyspaceCollection, "")))
 			}
 
 			if keyspaceCollection == nil {
 				if len(scope.Collections) > 1 {
 					// _default doesn't exist for a non-default scope - so make it a required element if it's ambiguous
-					return base.HTTPErrorf(http.StatusBadRequest, "Ambiguous keyspace: %s.%s", keyspaceDb, *keyspaceScope)
+					return base.HTTPErrorf(http.StatusBadRequest, "Ambiguous keyspace: %s.%s", base.MD(keyspaceDb), base.MD(base.StringDefault(keyspaceScope, "")))
 				}
-				keyspaceCollection = dbContext.BucketSpec.Collection
+				// one collection only - use that one
+				for collectionName := range scope.Collections {
+					keyspaceCollection = &collectionName
+					break
+				}
 			}
 			_, foundCollection := scope.Collections[*keyspaceCollection]
 			if !foundCollection {
-				return base.HTTPErrorf(http.StatusNotFound, "keyspace %s.%s.%s not found", base.MD(keyspaceDb), base.MD(*keyspaceScope), base.MD(*keyspaceCollection))
+				return base.HTTPErrorf(http.StatusNotFound, "keyspace %s.%s.%s not found", base.MD(keyspaceDb), base.MD(base.StringDefault(keyspaceScope, "")), base.MD(base.StringDefault(keyspaceCollection, "")))
 			}
 		} else {
+			if keyspaceScope != nil && *keyspaceScope != base.DefaultScope || keyspaceCollection != nil && *keyspaceCollection != base.DefaultCollection {
+				// request tried specifying a named collection on a non-named collections database
+				return base.HTTPErrorf(http.StatusNotFound, "keyspace %s.%s.%s not found", base.MD(keyspaceDb), base.MD(base.StringDefault(keyspaceScope, "")), base.MD(base.StringDefault(keyspaceCollection, "")))
+			}
 			// Set these for handlers that expect a scope/collection to be set, even if not using named collections.
 			keyspaceScope = base.StringPtr(base.DefaultScope)
 			keyspaceCollection = base.StringPtr(base.DefaultCollection)
@@ -457,8 +464,11 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 
 	// Now set the request's Database (i.e. context + user)
 	if dbContext != nil {
-		h.keyspaceScope, h.keyspaceCollection = *keyspaceScope, *keyspaceCollection
 		h.db, err = db.GetDatabase(dbContext, h.user)
+		if err != nil {
+			return err
+		}
+		h.collection, err = h.db.GetDatabaseCollectionWithUser(*keyspaceScope, *keyspaceCollection)
 		if err != nil {
 			return err
 		}

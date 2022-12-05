@@ -61,7 +61,7 @@ type RestTesterConfig struct {
 	metricsInterfaceAuthentication  bool
 	enableAdminAuthPermissionsCheck bool
 	useTLSServer                    bool // If true, TLS will be required for communications with CBS. Default: false
-	persistentConfig                bool
+	PersistentConfig                bool
 	groupID                         *string
 	serverless                      bool // Runs SG in serverless mode. Must be used in conjunction with persistent config
 }
@@ -124,7 +124,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 
 	if rt.InitSyncSeq > 0 {
 		log.Printf("Initializing %s to %d", base.SyncSeqKey, rt.InitSyncSeq)
-		_, incrErr := testBucket.Incr(base.SyncSeqKey, rt.InitSyncSeq, rt.InitSyncSeq, 0)
+		_, incrErr := testBucket.GetSingleDataStore().Incr(base.SyncSeqKey, rt.InitSyncSeq, rt.InitSyncSeq, 0)
 		if incrErr != nil {
 			rt.TB.Fatalf("Error initializing %s in test bucket: %v", base.SyncSeqKey, incrErr)
 		}
@@ -164,7 +164,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 	sc.Bootstrap.ServerTLSSkipVerify = base.BoolPtr(base.TestTLSSkipVerify())
 	sc.Unsupported.Serverless.Enabled = &rt.serverless
 	if rt.serverless {
-		if !rt.persistentConfig {
+		if !rt.PersistentConfig {
 			rt.TB.Fatalf("Persistent config must be used when running in serverless mode")
 		}
 		sc.BucketCredentials = map[string]*base.CredentialsConfig{
@@ -177,7 +177,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 
 	if rt.RestTesterConfig.groupID != nil {
 		sc.Bootstrap.ConfigGroupID = *rt.RestTesterConfig.groupID
-	} else if rt.RestTesterConfig.persistentConfig {
+	} else if rt.RestTesterConfig.PersistentConfig {
 		// If running in persistent config mode, the database has to be manually created. If the db name is the same as a
 		// past tests db name, a db already exists error could happen if the past tests bucket is still flushing. Prevent this
 		// by using a unique group ID for each new rest tester.
@@ -204,7 +204,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 	// Post-validation, we can lower the bcrypt cost beyond SG limits to reduce test runtime.
 	sc.Auth.BcryptCost = bcrypt.MinCost
 
-	rt.RestTesterServerContext = NewServerContext(base.TestCtx(rt.TB), &sc, rt.RestTesterConfig.persistentConfig)
+	rt.RestTesterServerContext = NewServerContext(base.TestCtx(rt.TB), &sc, rt.RestTesterConfig.PersistentConfig)
 	ctx := rt.Context()
 
 	if !base.ServerIsWalrus(sc.Bootstrap.Server) {
@@ -229,7 +229,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 	}
 
 	// tests must create their own databases in persistent mode
-	if !rt.persistentConfig {
+	if !rt.PersistentConfig {
 		useXattrs := base.TestUseXattrs()
 
 		if rt.DatabaseConfig == nil {
@@ -241,16 +241,6 @@ func (rt *RestTester) Bucket() base.Bucket {
 			rt.DatabaseConfig.UseViews = base.BoolPtr(base.TestsDisableGSI())
 		}
 
-		collection, collectionErr := base.AsCollection(rt.TestBucket)
-		if collectionErr == nil && rt.DatabaseConfig.Scopes == nil && collection.Spec.Scope != nil && collection.Spec.Collection != nil {
-			rt.DatabaseConfig.Scopes = ScopesConfig{
-				*collection.Spec.Scope: ScopeConfig{
-					Collections: map[string]CollectionConfig{
-						*collection.Spec.Collection: {},
-					},
-				},
-			}
-		}
 		// numReplicas set to 0 for test buckets, since it should assume that there may only be one indexing node.
 		numReplicas := uint(0)
 		rt.DatabaseConfig.NumIndexReplicas = &numReplicas
@@ -281,6 +271,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 			// Scopes and collections have to be set on the bucket being passed in for the db to use.
 			// WIP: Collections Phase 1 - Grab just one scope/collection from the defined set.
 			// Phase 2 (multi collection) means DatabaseContext needs a set of BucketSpec/Collections, not just one...
+			/* FIXME: TOR
 			var scope, collection *string
 			for scopeName, scopeConfig := range rt.RestTesterConfig.DatabaseConfig.Scopes {
 				scope = &scopeName
@@ -295,11 +286,11 @@ func (rt *RestTester) Bucket() base.Bucket {
 					rt.TB.Fatalf("Could not get collection from bucket with type %T: %v", testBucket.Bucket, err)
 				}
 
-				collectionBucket.Spec.Scope = scope
-				collectionBucket.Spec.Collection = collection
+				collectionBucket.Bucket.Spec.Scope = scope
+				collectionBucket.Bucket.Spec.Collection = collection
 				collectionBucket.Collection = collectionBucket.Collection.Bucket().Scope(*scope).Collection(*collection)
 			}
-
+			*/
 			_, err = rt.RestTesterServerContext.AddDatabaseFromConfigWithBucket(ctx, rt.TB, *rt.DatabaseConfig, testBucket.Bucket)
 		} else {
 			_, err = rt.RestTesterServerContext.AddDatabaseFromConfig(ctx, *rt.DatabaseConfig)
@@ -327,18 +318,23 @@ func (rt *RestTester) Bucket() base.Bucket {
 	return rt.TestBucket.Bucket
 }
 
+// MetadataStore returns the datastore for the database on the RestTester
+func (rt *RestTester) MetadataStore() base.DataStore {
+	return rt.GetDatabase().MetadataStore
+}
+
 // LeakyBucket gets the bucket from the RestTester as a leaky bucket allowing for callbacks to be set on the fly.
 // The RestTester must have been set up to create and use a leaky bucket by setting leakyBucketConfig in the RT
 // config when calling NewRestTester.
-func (rt *RestTester) LeakyBucket() *base.LeakyBucket {
+func (rt *RestTester) LeakyBucket() *base.LeakyDataStore {
 	if rt.leakyBucketConfig == nil {
 		rt.TB.Fatalf("Cannot get leaky bucket when leakyBucketConfig was not set on RestTester initialisation")
 	}
-	leakyBucket, ok := base.AsLeakyBucket(rt.Bucket())
+	leakyDataStore, ok := base.AsLeakyDataStore(rt.Bucket().DefaultDataStore())
 	if !ok {
 		rt.TB.Fatalf("Could not get bucket (type %T) as a leaky bucket", rt.Bucket())
 	}
-	return leakyBucket
+	return leakyDataStore
 }
 
 func (rt *RestTester) ServerContext() *ServerContext {
@@ -403,7 +399,8 @@ func (rt *RestTester) SequenceForDoc(docid string) (seq uint64, err error) {
 	if database == nil {
 		return 0, fmt.Errorf("No database found")
 	}
-	doc, err := database.GetDocument(base.TestCtx(rt.TB), docid, db.DocUnmarshalAll)
+	collection := database.GetSingleDatabaseCollection()
+	doc, err := collection.GetDocument(base.TestCtx(rt.TB), docid, db.DocUnmarshalAll)
 	if err != nil {
 		return 0, err
 	}
@@ -416,7 +413,7 @@ func (rt *RestTester) WaitForSequence(seq uint64) error {
 	if database == nil {
 		return fmt.Errorf("No database found")
 	}
-	return database.WaitForSequence(base.TestCtx(rt.TB), seq)
+	return database.GetSingleDatabaseCollection().WaitForSequence(base.TestCtx(rt.TB), seq)
 }
 
 func (rt *RestTester) WaitForPendingChanges() error {
@@ -424,7 +421,7 @@ func (rt *RestTester) WaitForPendingChanges() error {
 	if database == nil {
 		return fmt.Errorf("No database found")
 	}
-	return database.WaitForPendingChanges(base.TestCtx(rt.TB))
+	return database.GetSingleDatabaseCollection().WaitForPendingChanges(base.TestCtx(rt.TB))
 }
 
 func (rt *RestTester) SetAdminParty(partyTime bool) error {
@@ -439,7 +436,16 @@ func (rt *RestTester) SetAdminParty(partyTime bool) error {
 	if partyTime {
 		chans = channels.AtSequence(base.SetOf(channels.UserStarChannel), 1)
 	}
-	guest.SetExplicitChannels(chans, 1)
+
+	if len(a.Collections) == 0 {
+		guest.SetExplicitChannels(chans, 1)
+	} else {
+		for scopeName, scope := range a.Collections {
+			for collectionName, _ := range scope {
+				guest.SetCollectionExplicitChannels(scopeName, collectionName, chans, 1)
+			}
+		}
+	}
 	return a.Save(guest)
 }
 
@@ -531,7 +537,7 @@ type ChangesResults struct {
 	Last_Seq interface{}
 }
 
-func (cr ChangesResults) requireDocIDs(t testing.TB, docIDs []string) {
+func (cr ChangesResults) RequireDocIDs(t testing.TB, docIDs []string) {
 	require.Equal(t, len(docIDs), len(cr.Results))
 	for _, docID := range docIDs {
 		var found bool
@@ -1819,7 +1825,7 @@ func NewHTTPTestServerOnListener(h http.Handler, l net.Listener) *httptest.Serve
 	return s
 }
 
-func waitAndRequireCondition(t *testing.T, fn func() bool, failureMsgAndArgs ...interface{}) {
+func WaitAndRequireCondition(t *testing.T, fn func() bool, failureMsgAndArgs ...interface{}) {
 	t.Log("starting waitAndRequireCondition")
 	for i := 0; i <= 20; i++ {
 		if i == 20 {
@@ -1911,6 +1917,18 @@ func (sc *ServerContext) isDatabaseSuspended(t *testing.T, dbName string) bool {
 	sc.lock.RLock()
 	defer sc.lock.RUnlock()
 	return sc._isDatabaseSuspended(dbName)
+}
+
+func (sc *ServerContext) getConnectionString(dbName string) string {
+	sc.lock.RLock()
+	defer sc.lock.RUnlock()
+	return sc.databases_[dbName].BucketSpec.Server
+}
+
+func (sc *ServerContext) getKVConnectionPol(dbName string) int {
+	sc.lock.RLock()
+	defer sc.lock.RUnlock()
+	return sc.databases_[dbName].BucketSpec.KvPoolSize
 }
 
 func (sc *ServerContext) suspendDatabase(t *testing.T, ctx context.Context, dbName string) error {

@@ -32,7 +32,11 @@ type viewMetadata struct {
 }
 
 func (c *Collection) GetDDoc(docname string) (ddoc sgbucket.DesignDoc, err error) {
-	manager := c.Bucket().ViewIndexes()
+	if !c.IsDefaultScopeCollection() {
+		return ddoc, fmt.Errorf("views not supported for non-default collection")
+	}
+
+	manager := c.Collection.Bucket().ViewIndexes()
 	designDoc, err := manager.GetDesignDocument(docname, gocb.DesignDocumentNamespaceProduction, nil)
 	if err != nil {
 		if strings.Contains(err.Error(), "not found") {
@@ -51,7 +55,11 @@ func (c *Collection) GetDDoc(docname string) (ddoc sgbucket.DesignDoc, err error
 }
 
 func (c *Collection) GetDDocs() (ddocs map[string]sgbucket.DesignDoc, err error) {
-	manager := c.Bucket().ViewIndexes()
+	if !c.IsDefaultScopeCollection() {
+		return nil, fmt.Errorf("views not supported for non-default collection")
+	}
+
+	manager := c.Collection.Bucket().ViewIndexes()
 	gocbDDocs, getErr := manager.GetAllDesignDocuments(gocb.DesignDocumentNamespaceProduction, nil)
 	if getErr != nil {
 		return nil, getErr
@@ -72,7 +80,11 @@ func (c *Collection) GetDDocs() (ddocs map[string]sgbucket.DesignDoc, err error)
 }
 
 func (c *Collection) PutDDoc(docname string, sgDesignDoc *sgbucket.DesignDoc) error {
-	manager := c.Bucket().ViewIndexes()
+	if !c.IsDefaultScopeCollection() {
+		return fmt.Errorf("views not supported for non-default collection")
+	}
+
+	manager := c.Collection.Bucket().ViewIndexes()
 	gocbDesignDoc := gocb.DesignDocument{
 		Name:  docname,
 		Views: make(map[string]gocb.View),
@@ -88,7 +100,7 @@ func (c *Collection) PutDDoc(docname string, sgDesignDoc *sgbucket.DesignDoc) er
 
 	// If design doc needs to be tombstone-aware, requires custom creation*
 	if sgDesignDoc.Options != nil && sgDesignDoc.Options.IndexXattrOnTombstones {
-		return c.putDDocForTombstones(&gocbDesignDoc)
+		return c.Bucket.putDDocForTombstones(&gocbDesignDoc)
 	}
 
 	// Retry for all errors (The view service sporadically returns 500 status codes with Erlang errors (for unknown reasons) - E.g: 500 {"error":"case_clause","reason":"false"})
@@ -147,9 +159,9 @@ type NoNameDesignDocument struct {
 	Views map[string]NoNameView `json:"views"`
 }
 
-func (c *Collection) putDDocForTombstones(ddoc *gocb.DesignDocument) error {
-	username, password, _ := c.Spec.Auth.GetCredentials()
-	agent, err := c.getGoCBAgent()
+func (b *GocbV2Bucket) putDDocForTombstones(ddoc *gocb.DesignDocument) error {
+	username, password, _ := b.Spec.Auth.GetCredentials()
+	agent, err := b.getGoCBAgent()
 	if err != nil {
 		return fmt.Errorf("Unable to get handle for bucket router: %v", err)
 	}
@@ -170,7 +182,11 @@ func (c *Collection) putDDocForTombstones(ddoc *gocb.DesignDocument) error {
 }
 
 func (c *Collection) DeleteDDoc(docname string) error {
-	return c.Bucket().ViewIndexes().DropDesignDocument(docname, gocb.DesignDocumentNamespaceProduction, nil)
+	if !c.IsDefaultScopeCollection() {
+		return fmt.Errorf("views not supported for non-default collection")
+	}
+
+	return c.Collection.Bucket().ViewIndexes().DropDesignDocument(docname, gocb.DesignDocumentNamespaceProduction, nil)
 }
 
 func (c *Collection) View(ddoc, name string, params map[string]interface{}) (sgbucket.ViewResult, error) {
@@ -184,7 +200,7 @@ func (c *Collection) View(ddoc, name string, params map[string]interface{}) (sgb
 	if gocbViewResult != nil {
 		viewResultIterator := &gocbRawIterator{
 			rawResult:                  gocbViewResult,
-			concurrentQueryOpLimitChan: c.queryOps,
+			concurrentQueryOpLimitChan: c.Bucket.queryOps,
 		}
 		for {
 			viewRow := sgbucket.ViewRow{}
@@ -237,7 +253,7 @@ func (c *Collection) ViewQuery(ddoc, name string, params map[string]interface{})
 	if err != nil {
 		return nil, err
 	}
-	return &gocbRawIterator{rawResult: gocbViewResult, concurrentQueryOpLimitChan: c.queryOps}, nil
+	return &gocbRawIterator{rawResult: gocbViewResult, concurrentQueryOpLimitChan: c.Bucket.queryOps}, nil
 }
 
 func (c *Collection) executeViewQuery(ddoc, name string, params map[string]interface{}) (*gocb.ViewResultRaw, error) {
@@ -249,29 +265,19 @@ func (c *Collection) executeViewQuery(ddoc, name string, params map[string]inter
 		return nil, optsErr
 	}
 
-	c.waitForAvailQueryOp()
-	goCbViewResult, err := c.Bucket().ViewQuery(ddoc, name, viewOpts)
+	c.Bucket.waitForAvailQueryOp()
+	goCbViewResult, err := c.Collection.Bucket().ViewQuery(ddoc, name, viewOpts)
 
 	// On timeout, return an typed error
 	if isGoCBQueryTimeoutError(err) {
-		c.releaseQueryOp()
+		c.Bucket.releaseQueryOp()
 		return nil, ErrViewTimeoutError
 	} else if err != nil {
-		c.releaseQueryOp()
+		c.Bucket.releaseQueryOp()
 		return nil, pkgerrors.WithStack(err)
 	}
 
 	return goCbViewResult.Raw(), nil
-}
-
-// waitForAvailQueryOp prevents Sync Gateway from having too many concurrent
-// queries against Couchbase Server
-func (c *Collection) waitForAvailQueryOp() {
-	c.queryOps <- struct{}{}
-}
-
-func (c *Collection) releaseQueryOp() {
-	<-c.queryOps
 }
 
 // Applies the viewquery options as specified in the params map to the gocb.ViewOptions

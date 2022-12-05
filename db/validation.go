@@ -86,7 +86,7 @@ func validateBlipBody(rawBody []byte, doc *Document) error {
 	return nil
 }
 
-func (db *Database) validateExistingDoc(doc *Document, importAllowed, docExists bool) error {
+func validateExistingDoc(doc *Document, importAllowed, docExists bool) error {
 	if !importAllowed && docExists && !doc.HasValidSyncData() {
 		return base.HTTPErrorf(409, "Not imported")
 	}

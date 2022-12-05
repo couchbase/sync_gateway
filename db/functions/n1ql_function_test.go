@@ -98,6 +98,10 @@ func TestUserN1QLQueries(t *testing.T) {
 		t.Skip("This test is Couchbase Server only (requires N1QL)")
 	}
 
+	if !base.TestsUseDefaultCollection() {
+		t.Skip("Requires collection-aware function security (CBG-2597)")
+	}
+
 	//base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	db, ctx := setupTestDBWithFunctions(t, &kUserN1QLFunctionsConfig, nil)
 	defer db.Close(ctx)

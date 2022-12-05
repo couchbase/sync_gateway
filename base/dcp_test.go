@@ -403,11 +403,13 @@ func TestConcurrentCBGTIndexCreation(t *testing.T) {
 	bucket := GetTestBucket(t)
 	defer bucket.Close()
 
+	dataStore := bucket.GetSingleDataStore()
+
 	spec := bucket.BucketSpec
 	testDBName := "testDB"
 
 	// Use an bucket-backed cfg
-	cfg, err := NewCfgSG(bucket, "")
+	cfg, err := NewCfgSG(dataStore, "")
 	require.NoError(t, err)
 
 	// Define index type for db name

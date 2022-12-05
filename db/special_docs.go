@@ -17,7 +17,7 @@ import (
 
 const DocTypeLocal = "local"
 
-func (db *Database) GetSpecial(doctype string, docid string) (Body, error) {
+func (db *DatabaseCollection) GetSpecial(doctype string, docid string) (Body, error) {
 
 	body := Body{}
 	bytes, err := db.GetSpecialBytes(doctype, docid)
@@ -31,7 +31,7 @@ func (db *Database) GetSpecial(doctype string, docid string) (Body, error) {
 	return body, err
 }
 
-func (db *DatabaseContext) GetSpecialBytes(doctype string, docid string) ([]byte, error) {
+func (db *DatabaseCollection) GetSpecialBytes(doctype string, docid string) ([]byte, error) {
 	key := RealSpecialDocID(doctype, docid)
 
 	if key == "" {
@@ -40,10 +40,10 @@ func (db *DatabaseContext) GetSpecialBytes(doctype string, docid string) ([]byte
 
 	var rawDocBytes []byte
 	var err error
-	if doctype == "local" && db.Options.LocalDocExpirySecs > 0 {
-		rawDocBytes, _, err = db.Bucket.GetAndTouchRaw(key, base.SecondsToCbsExpiry(int(db.Options.LocalDocExpirySecs)))
+	if doctype == "local" && db.localDocExpirySecs() > 0 {
+		rawDocBytes, _, err = db.dataStore.GetAndTouchRaw(key, base.SecondsToCbsExpiry(int(db.localDocExpirySecs())))
 	} else {
-		rawDocBytes, _, err = db.Bucket.GetRaw(key)
+		rawDocBytes, _, err = db.dataStore.GetRaw(key)
 	}
 	if err != nil {
 		return nil, err
@@ -52,7 +52,7 @@ func (db *DatabaseContext) GetSpecialBytes(doctype string, docid string) ([]byte
 }
 
 // Updates or deletes a special document.
-func (db *Database) putSpecial(doctype string, docid string, matchRev string, body Body) (string, error) {
+func (db *DatabaseCollection) putSpecial(doctype string, docid string, matchRev string, body Body) (string, error) {
 	key := RealSpecialDocID(doctype, docid)
 	if key == "" {
 		return "", base.HTTPErrorf(400, "Invalid doc ID")
@@ -61,9 +61,9 @@ func (db *Database) putSpecial(doctype string, docid string, matchRev string, bo
 
 	var expiry uint32
 	if doctype == DocTypeLocal {
-		expiry = base.SecondsToCbsExpiry(int(db.DatabaseContext.Options.LocalDocExpirySecs))
+		expiry = base.SecondsToCbsExpiry(int(db.localDocExpirySecs()))
 	}
-	_, err := db.Bucket.Update(key, expiry, func(value []byte) ([]byte, *uint32, bool, error) {
+	_, err := db.dataStore.Update(key, expiry, func(value []byte) ([]byte, *uint32, bool, error) {
 		if len(value) == 0 {
 			if matchRev != "" || body == nil {
 				return nil, nil, false, base.HTTPErrorf(http.StatusNotFound, "No previous revision to replace")
@@ -97,13 +97,13 @@ func (db *Database) putSpecial(doctype string, docid string, matchRev string, bo
 	return revid, err
 }
 
-func (db *Database) PutSpecial(doctype string, docid string, body Body) (string, error) {
+func (db *DatabaseCollection) PutSpecial(doctype string, docid string, body Body) (string, error) {
 	matchRev, _ := body[BodyRev].(string)
 	body, _ = stripAllSpecialProperties(body)
 	return db.putSpecial(doctype, docid, matchRev, body)
 }
 
-func (db *Database) DeleteSpecial(doctype string, docid string, revid string) error {
+func (db *DatabaseCollection) DeleteSpecial(doctype string, docid string, revid string) error {
 	_, err := db.putSpecial(doctype, docid, revid, nil)
 	return err
 }

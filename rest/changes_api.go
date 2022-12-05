@@ -47,7 +47,7 @@ func (h *handler) handleRevsDiff() error {
 	_, _ = h.response.Write([]byte("{"))
 	first := true
 	for docid, revs := range input {
-		missing, possible := h.db.RevDiff(h.ctx(), docid, revs)
+		missing, possible := h.collection.RevDiff(h.ctx(), docid, revs)
 		if missing != nil {
 			docOutput := map[string]interface{}{"missing": missing}
 			if possible != nil {
@@ -84,7 +84,7 @@ func (h *handler) updateChangesOptionsFromQuery(feed *string, options *db.Change
 	}
 
 	if _, ok := values["since"]; ok {
-		if options.Since, err = h.db.ParseSequenceID(h.getJSONStringQuery("since")); err != nil {
+		if options.Since, err = db.ParseSequenceID(h.getJSONStringQuery("since")); err != nil {
 			return nil, nil, err
 		}
 	}
@@ -172,7 +172,7 @@ func (h *handler) handleChanges() error {
 		// GET request has parameters in URL:
 		feed = h.getQuery("feed")
 		var err error
-		if options.Since, err = h.db.ParseSequenceID(h.getJSONStringQuery("since")); err != nil {
+		if options.Since, err = db.ParseSequenceID(h.getJSONStringQuery("since")); err != nil {
 			return err
 		}
 		options.Limit = int(h.getIntQuery("limit", 0))
@@ -341,9 +341,9 @@ func (h *handler) sendSimpleChanges(channels base.Set, options db.ChangesOptions
 	var feed <-chan *db.ChangeEntry
 	var err error
 	if len(docids) > 0 {
-		feed, err = h.db.DocIDChangesFeed(h.ctx(), channels, docids, options)
+		feed, err = h.db.GetSingleDatabaseCollectionWithUser().DocIDChangesFeed(h.ctx(), channels, docids, options)
 	} else {
-		feed, err = h.db.MultiChangesFeed(h.ctx(), channels, options)
+		feed, err = h.db.GetSingleDatabaseCollectionWithUser().MultiChangesFeed(h.ctx(), channels, options)
 	}
 	if err != nil {
 		return err, false
@@ -443,7 +443,7 @@ func (h *handler) sendSimpleChanges(channels base.Set, options db.ChangesOptions
 func (h *handler) generateContinuousChanges(inChannels base.Set, options db.ChangesOptions, send func([]*db.ChangeEntry) error) (error, bool) {
 	// Ensure continuous is set, since generateChanges now supports both continuous and one-shot
 	options.Continuous = true
-	err, forceClose := db.GenerateChanges(h.ctx(), h.rq.Context(), h.db, inChannels, options, nil, send)
+	err, forceClose := db.GenerateChanges(h.ctx(), h.rq.Context(), h.db.GetSingleDatabaseCollectionWithUser(), inChannels, options, nil, send)
 	if sendErr, ok := err.(*db.ChangesSendErr); ok {
 		h.logStatus(http.StatusOK, fmt.Sprintf("0Write error: %v", sendErr))
 		return nil, forceClose // error is probably because the client closed the connection
@@ -576,7 +576,7 @@ func (h *handler) readChangesOptionsFromJSON(jsonData []byte) (feed string, opti
 
 	// Initialize since clock and hasher ahead of unmarshalling sequence
 	if h.db != nil {
-		input.Since = h.db.CreateZeroSinceValue()
+		input.Since = db.CreateZeroSinceValue()
 	}
 
 	if err = base.JSONUnmarshal(jsonData, &input); err != nil {

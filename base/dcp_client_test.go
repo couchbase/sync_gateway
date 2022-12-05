@@ -24,9 +24,14 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const oneShotDCPTimeout = 60 * time.Second
+const oneShotDCPTimeout = 5 * time.Minute
 
 func TestOneShotDCP(t *testing.T) {
+
+	if !TestsUseDefaultCollection() {
+		// FIXME MB-53448 cannot close if high seqno is in another collection
+		t.Skip("MB-53448 - One Shot DCP cannot close if high seqno is in another collection (fix in 7.2)")
+	}
 
 	if UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
@@ -35,12 +40,14 @@ func TestOneShotDCP(t *testing.T) {
 	bucket := GetTestBucket(t)
 	defer bucket.Close()
 
+	dataStore := bucket.GetSingleDataStore()
+
 	numDocs := 1000
 	// write documents to bucket
 	body := map[string]interface{}{"foo": "bar"}
 	for i := 0; i < numDocs; i++ {
 		key := fmt.Sprintf("%s_%d", t.Name(), i)
-		err := bucket.Set(key, 0, nil, body)
+		err := dataStore.Set(key, 0, nil, body)
 		require.NoError(t, err)
 	}
 
@@ -57,13 +64,11 @@ func TestOneShotDCP(t *testing.T) {
 	// start one shot feed
 	feedID := t.Name()
 
-	collection, err := AsCollection(bucket)
+	collection, err := AsCollection(dataStore)
 	require.NoError(t, err)
 	var collectionIDs []uint32
-	if collection.IsSupported(sgbucket.DataStoreFeatureCollections) {
-		collectionID, err := collection.GetCollectionID()
-		require.NoError(t, err)
-		collectionIDs = append(collectionIDs, collectionID)
+	if collection.IsSupported(sgbucket.BucketStoreFeatureCollections) {
+		collectionIDs = append(collectionIDs, collection.GetCollectionID())
 	}
 
 	clientOptions := DCPClientOptions{
@@ -71,7 +76,9 @@ func TestOneShotDCP(t *testing.T) {
 		CollectionIDs: collectionIDs,
 	}
 
-	dcpClient, err := NewDCPClient(feedID, counterCallback, clientOptions, collection)
+	gocbv2Bucket, err := AsGocbV2Bucket(bucket.Bucket)
+	require.NoError(t, err)
+	dcpClient, err := NewDCPClient(feedID, counterCallback, clientOptions, gocbv2Bucket)
 	require.NoError(t, err)
 
 	doneChan, startErr := dcpClient.Start()
@@ -89,18 +96,20 @@ func TestOneShotDCP(t *testing.T) {
 		updatedBody := map[string]interface{}{"foo": "bar"}
 		for i := numDocs; i < numDocs*2; i++ {
 			key := fmt.Sprintf("%s_INVALID_%d", t.Name(), i)
-			err := bucket.Set(key, 0, nil, updatedBody)
+			err := dataStore.Set(key, 0, nil, updatedBody)
 			require.NoError(t, err)
 		}
 	}()
 
+	// deferred to block test end until we've actually finished writing docs
 	defer additionalDocsWg.Wait()
+
 	// wait for done
 	timeout := time.After(oneShotDCPTimeout)
 	select {
 	case err := <-doneChan:
 		require.NoError(t, err)
-		if TestsDisableGSI() {
+		if TestsUseDefaultCollection() {
 			require.Equal(t, numDocs, int(mutationCount))
 		} else {
 			// CBG-2454, sometimes we get extra docs from TO_LATEST with collections
@@ -121,6 +130,8 @@ func TestTerminateDCPFeed(t *testing.T) {
 	bucket := GetTestBucket(t)
 	defer bucket.Close()
 
+	dataStore := bucket.GetSingleDataStore()
+
 	// create callback
 	mutationCount := uint64(0)
 	counterCallback := func(event sgbucket.FeedEvent) bool {
@@ -131,9 +142,9 @@ func TestTerminateDCPFeed(t *testing.T) {
 	// start continuous feed with terminator
 	feedID := t.Name()
 
-	collection, err := AsCollection(bucket)
+	gocbv2Bucket, err := AsGocbV2Bucket(bucket.Bucket)
 	require.NoError(t, err)
-	dcpClient, err := NewDCPClient(feedID, counterCallback, DCPClientOptions{}, collection)
+	dcpClient, err := NewDCPClient(feedID, counterCallback, DCPClientOptions{}, gocbv2Bucket)
 	require.NoError(t, err)
 
 	// Add documents in a separate goroutine
@@ -148,7 +159,7 @@ func TestTerminateDCPFeed(t *testing.T) {
 				break
 			}
 			key := fmt.Sprintf("%s_%d", t.Name(), i)
-			err := bucket.Set(key, 0, nil, updatedBody)
+			err := dataStore.Set(key, 0, nil, updatedBody)
 			assert.NoError(t, err)
 		}
 	}()
@@ -181,6 +192,11 @@ func TestTerminateDCPFeed(t *testing.T) {
 // changes in the VbUUID
 func TestDCPClientMultiFeedConsistency(t *testing.T) {
 
+	if !TestsUseDefaultCollection() {
+		// FIXME MB-53448 cannot close if high seqno is in another collection
+		t.Skip("MB-53448 - One Shot DCP cannot close if high seqno is in another collection (fix in 7.2)")
+	}
+
 	if UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
 	}
@@ -204,6 +220,8 @@ func TestDCPClientMultiFeedConsistency(t *testing.T) {
 			bucket := GetTestBucket(t)
 			defer bucket.Close()
 
+			dataStore := bucket.GetSingleDataStore()
+
 			// create callback
 			mutationCount := uint64(0)
 			vbucketZeroCount := uint64(0)
@@ -223,16 +241,14 @@ func TestDCPClientMultiFeedConsistency(t *testing.T) {
 			updatedBody := map[string]interface{}{"foo": "bar"}
 			for i := 0; i < 10000; i++ {
 				key := fmt.Sprintf("%s_%d", t.Name(), i)
-				err := bucket.Set(key, 0, nil, updatedBody)
+				err := dataStore.Set(key, 0, nil, updatedBody)
 				require.NoError(t, err)
 			}
-			collection, err := AsCollection(bucket)
-			require.NoError(t, err)
+			collection, ok := dataStore.(*Collection)
+			require.True(t, ok)
 			var collectionIDs []uint32
-			if collection.IsSupported(sgbucket.DataStoreFeatureCollections) {
-				collectionID, err := collection.GetCollectionID()
-				require.NoError(t, err)
-				collectionIDs = append(collectionIDs, collectionID)
+			if collection.IsSupported(sgbucket.BucketStoreFeatureCollections) {
+				collectionIDs = append(collectionIDs, collection.GetCollectionID())
 			}
 
 			// Perform first one-shot DCP feed - normal one-shot
@@ -242,7 +258,9 @@ func TestDCPClientMultiFeedConsistency(t *testing.T) {
 				CollectionIDs:  collectionIDs,
 			}
 
-			dcpClient, err := NewDCPClient(feedID, counterCallback, dcpClientOpts, collection)
+			gocbv2Bucket, err := AsGocbV2Bucket(bucket.Bucket)
+			require.NoError(t, err)
+			dcpClient, err := NewDCPClient(feedID, counterCallback, dcpClientOpts, gocbv2Bucket)
 			require.NoError(t, err)
 
 			doneChan, startErr := dcpClient.Start()
@@ -273,7 +291,7 @@ func TestDCPClientMultiFeedConsistency(t *testing.T) {
 				OneShot:         true,
 				CollectionIDs:   collectionIDs,
 			}
-			dcpClient2, err := NewDCPClient(feedID, counterCallback, dcpClientOpts, collection)
+			dcpClient2, err := NewDCPClient(feedID, counterCallback, dcpClientOpts, gocbv2Bucket)
 			require.NoError(t, err)
 
 			doneChan2, startErr2 := dcpClient2.Start()
@@ -290,10 +308,8 @@ func TestDCPClientMultiFeedConsistency(t *testing.T) {
 				OneShot:         true,
 				CollectionIDs:   collectionIDs,
 			}
-			collection, err = AsCollection(bucket)
-			require.NoError(t, err)
 
-			dcpClient3, err := NewDCPClient(feedID, counterCallback, dcpClientOpts, collection)
+			dcpClient3, err := NewDCPClient(feedID, counterCallback, dcpClientOpts, gocbv2Bucket)
 			require.NoError(t, err)
 
 			doneChan3, startErr3 := dcpClient3.Start()
@@ -316,6 +332,11 @@ func TestDCPClientMultiFeedConsistency(t *testing.T) {
 // TestResumeInterruptedFeed uses persisted metadata to resume the feed
 func TestResumeStoppedFeed(t *testing.T) {
 
+	if !TestsUseDefaultCollection() {
+		// FIXME MB-53448 cannot close if high seqno is in another collection
+		t.Skip("MB-53448 - One Shot DCP cannot close if high seqno is in another collection (fix in 7.2)")
+	}
+
 	if UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
 	}
@@ -324,6 +345,8 @@ func TestResumeStoppedFeed(t *testing.T) {
 
 	bucket := GetTestBucket(t)
 	defer bucket.Close()
+
+	dataStore := bucket.GetSingleDataStore()
 
 	var dcpClient *DCPClient
 
@@ -346,7 +369,7 @@ func TestResumeStoppedFeed(t *testing.T) {
 	updatedBody := map[string]interface{}{"foo": "bar"}
 	for i := 0; i < 10000; i++ {
 		key := fmt.Sprintf("%s_%d", t.Name(), i)
-		err := bucket.Set(key, 0, nil, updatedBody)
+		err := dataStore.Set(key, 0, nil, updatedBody)
 		require.NoError(t, err)
 	}
 
@@ -354,13 +377,11 @@ func TestResumeStoppedFeed(t *testing.T) {
 	// Set metadata persistence frequency to zero to force persistence on every mutation
 	highFrequency := 0 * time.Second
 
-	collection, err := AsCollection(bucket)
-	require.NoError(t, err)
+	collection, ok := dataStore.(*Collection)
+	require.True(t, ok)
 	var collectionIDs []uint32
-	if collection.IsSupported(sgbucket.DataStoreFeatureCollections) {
-		collectionID, err := collection.GetCollectionID()
-		require.NoError(t, err)
-		collectionIDs = append(collectionIDs, collectionID)
+	if collection.IsSupported(sgbucket.BucketStoreFeatureCollections) {
+		collectionIDs = append(collectionIDs, collection.GetCollectionID())
 	}
 
 	dcpClientOpts := DCPClientOptions{
@@ -370,7 +391,10 @@ func TestResumeStoppedFeed(t *testing.T) {
 		CollectionIDs:              collectionIDs,
 	}
 
-	dcpClient, err = NewDCPClient(feedID, counterCallback, dcpClientOpts, collection)
+	gocbv2Bucket, err := AsGocbV2Bucket(bucket.Bucket)
+	require.NoError(t, err)
+
+	dcpClient, err = NewDCPClient(feedID, counterCallback, dcpClientOpts, gocbv2Bucket)
 	require.NoError(t, err)
 
 	doneChan, startErr := dcpClient.Start()
@@ -402,10 +426,10 @@ func TestResumeStoppedFeed(t *testing.T) {
 		OneShot:        true,
 		CollectionIDs:  collectionIDs,
 	}
-	collection, err = AsCollection(bucket)
-	require.NoError(t, err)
+	collection, ok = dataStore.(*Collection)
+	require.True(t, ok)
 
-	dcpClient2, err := NewDCPClient(feedID, secondCallback, dcpClientOpts, collection)
+	dcpClient2, err := NewDCPClient(feedID, secondCallback, dcpClientOpts, gocbv2Bucket)
 	require.NoError(t, err)
 
 	doneChan2, startErr2 := dcpClient2.Start()
@@ -444,9 +468,11 @@ func TestBadAgentPriority(t *testing.T) {
 	dcpClientOpts := DCPClientOptions{
 		AgentPriority: gocbcore.DcpAgentPriorityHigh,
 	}
-	collection, err := AsCollection(bucket)
+
+	gocbv2Bucket, err := AsGocbV2Bucket(bucket.Bucket)
 	require.NoError(t, err)
-	dcpClient, err := NewDCPClient(feedID, panicCallback, dcpClientOpts, collection)
+
+	dcpClient, err := NewDCPClient(feedID, panicCallback, dcpClientOpts, gocbv2Bucket)
 	require.Error(t, err)
 	require.Nil(t, dcpClient)
 }

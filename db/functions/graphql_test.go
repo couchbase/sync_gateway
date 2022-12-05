@@ -217,6 +217,7 @@ func assertGraphQLError(t *testing.T, expectedErrorText string, result *db.Graph
 
 // Unit test for GraphQL queries.
 func TestUserGraphQL(t *testing.T) {
+	// FIXME : this test doesn't work because the access view does not exist on the collection ???
 	//base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	db, ctx := setupTestDBWithFunctions(t, &kTestGraphQLUserFunctionsConfig, &kTestGraphQLConfig)
 	defer db.Close(ctx)
@@ -292,7 +293,7 @@ func testUserGraphQLAsUser(t *testing.T, ctx context.Context, db *db.Database) {
 	assertGraphQLError(t, "403", result, err)
 }
 
-//////// GRAPHQL N1QL RESOLVER TESTS
+// ////// GRAPHQL N1QL RESOLVER TESTS
 
 // The GraphQL configuration, using N1QL in some resolvers:
 var kTestGraphQLConfigWithN1QL = GraphQLConfig{
@@ -384,6 +385,12 @@ type Body = db.Body
 
 // Unit test for GraphQL queries.
 func TestUserGraphQLWithN1QL(t *testing.T) {
+
+	if !base.TestsUseDefaultCollection() {
+		// FIXME MB-53448 cannot close if high seqno is in another collection
+		t.Skip("MB-53448 - One Shot DCP cannot close if high seqno is in another collection (fix in 7.2)")
+	}
+
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test is Couchbase Server only (requires N1QL)")
 	}
@@ -391,11 +398,13 @@ func TestUserGraphQLWithN1QL(t *testing.T) {
 	db, ctx := setupTestDBWithFunctions(t, nil, &kTestGraphQLConfigWithN1QL)
 	defer db.Close(ctx)
 
-	_, _, _ = db.Put(ctx, "a", Body{"type": "task", "title": "Applesauce", "done": true, "tags": []string{"fruit", "soft"}, "channels": "wonderland"})
-	_, _, _ = db.Put(ctx, "b", Body{"type": "task", "title": "Beer", "description": "Bass ale please", "channels": "wonderland"})
-	_, _, _ = db.Put(ctx, "m", Body{"type": "task", "title": "Mangoes", "channels": "wonderland"})
+	collection, err := db.GetDefaultDatabaseCollectionWithUser()
+	require.NoError(t, err)
+	_, _, _ = collection.Put(ctx, "a", Body{"type": "task", "title": "Applesauce", "done": true, "tags": []string{"fruit", "soft"}, "channels": "wonderland"})
+	_, _, _ = collection.Put(ctx, "b", Body{"type": "task", "title": "Beer", "description": "Bass ale please", "channels": "wonderland"})
+	_, _, _ = collection.Put(ctx, "m", Body{"type": "task", "title": "Mangoes", "channels": "wonderland"})
 
-	n1qlStore, ok := base.AsN1QLStore(db.Bucket)
+	n1qlStore, ok := base.AsN1QLStore(db.Bucket.DefaultDataStore())
 	require.True(t, ok)
 
 	createdPrimaryIdx := createPrimaryIndex(t, n1qlStore)

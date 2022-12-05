@@ -22,10 +22,10 @@ type RuntimeDatabaseConfig struct {
 
 // DatabaseConfig is a 3.x/persisted database config that represents a config stored in the bucket.
 type DatabaseConfig struct {
-	// cas is the Couchbase Server CAS of the database config in the bucket
+	// cas is the Couchbase Server CAS for the last mutation of the database config in the bucket
 	// used to skip applying configs to SG nodes that already have an up-to-date config.
 	// This value can be explicitly set to 0 before applyConfig to force reload.
-	cas uint64
+	cfgCas uint64
 
 	// Version is a generated Rev ID used for optimistic concurrency control using ETags/If-Match headers.
 	Version string `json:"version,omitempty"`
@@ -95,7 +95,7 @@ func DefaultDbConfig(sc *StartupConfig) *DbConfig {
 		Roles:              nil,
 		RevsLimit:          nil, // Set this below struct
 		AutoImport:         base.BoolPtr(base.DefaultAutoImport),
-		ImportPartitions:   base.Uint16Ptr(base.DefaultImportPartitions),
+		ImportPartitions:   base.Uint16Ptr(base.GetDefaultImportPartitions(sc.IsServerless())),
 		ImportFilter:       nil,
 		ImportBackupOldRev: base.BoolPtr(false),
 		EventHandlers:      nil,

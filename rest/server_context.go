@@ -413,6 +413,13 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	if spec.Server == "" {
 		spec.Server = sc.Config.Bootstrap.Server
 	}
+	if sc.Config.IsServerless() {
+		connStr, err := spec.GetGoCBConnString(&base.GoCBConnStringParams{KVPoolSize: base.DefaultGocbKvPoolSizeServerless})
+		if err != nil {
+			return nil, err
+		}
+		spec.Server = connStr
+	}
 
 	if sc.databases_[dbName] != nil {
 		if useExisting {
@@ -442,46 +449,57 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		useViews = true
 	}
 
-	if len(config.Scopes) > 0 {
-		if !bucket.IsSupported(sgbucket.DataStoreFeatureCollections) {
-			return nil, errCollectionsUnsupported
+	// initDataStore is a function to initialize Views or GSI indexes for a datastore
+	initDataStore := func(ds base.DataStore) error {
+		if useViews {
+			return db.InitializeViews(ctx, ds)
 		}
-		// TODO: This needs changing when implementing Phase 2 collections: support for multiple collections
-		collection, err := base.AsCollection(bucket)
-		if err != nil {
-			return nil, err
-		}
-		// Check if scope/collection specified exists. Will enter retry loop if connection unsuccessful
-		err = base.WaitUntilScopeAndCollectionExists(collection.Collection)
-		if err != nil {
-			return nil, fmt.Errorf("attempting to create/update database with a scope/collection that is not found")
-		}
-	}
 
-	// Initialize Views or GSI indexes for the bucket
-	if !useViews {
-		gsiSupported := bucket.IsSupported(sgbucket.DataStoreFeatureN1ql)
+		gsiSupported := bucket.IsSupported(sgbucket.BucketStoreFeatureN1ql)
 		if !gsiSupported {
-			return nil, errors.New("Sync Gateway was unable to connect to a query node on the provided Couchbase Server cluster.  Ensure a query node is accessible, or set 'use_views':true in Sync Gateway's database config.")
+			return errors.New("Sync Gateway was unable to connect to a query node on the provided Couchbase Server cluster.  Ensure a query node is accessible, or set 'use_views':true in Sync Gateway's database config.")
 		}
 
 		numReplicas := DefaultNumIndexReplicas
 		if config.NumIndexReplicas != nil {
 			numReplicas = *config.NumIndexReplicas
 		}
-		n1qlStore, ok := base.AsN1QLStore(bucket)
+		n1qlStore, ok := base.AsN1QLStore(ds)
 		if !ok {
-			return nil, errors.New("Cannot create indexes on non-Couchbase data store.")
+			return errors.New("Cannot create indexes on non-Couchbase data store.")
 
 		}
-		indexErr := db.InitializeIndexes(n1qlStore, config.UseXattrs(), numReplicas, false)
+		indexErr := db.InitializeIndexes(n1qlStore, config.UseXattrs(), numReplicas, false, sc.Config.IsServerless())
 		if indexErr != nil {
-			return nil, indexErr
+			return indexErr
+		}
+
+		return nil
+	}
+
+	if len(config.Scopes) > 0 {
+		if !bucket.IsSupported(sgbucket.BucketStoreFeatureCollections) {
+			return nil, errCollectionsUnsupported
+		}
+
+		for scopeName, scopeConfig := range config.Scopes {
+			for collectionName, _ := range scopeConfig.Collections {
+				dataStore := bucket.NamedDataStore(base.ScopeAndCollectionName{Scope: scopeName, Collection: collectionName})
+
+				// Check if scope/collection specified exists. Will enter retry loop if connection unsuccessful
+				if err := base.WaitUntilDataStoreExists(dataStore); err != nil {
+					return nil, fmt.Errorf("attempting to create/update database with a scope/collection that is not found")
+				}
+
+				if err := initDataStore(dataStore); err != nil {
+					return nil, err
+				}
+			}
 		}
 	} else {
-		viewErr := db.InitializeViews(bucket)
-		if viewErr != nil {
-			return nil, viewErr
+		// no scopes configured - init the default data store
+		if err := initDataStore(bucket.DefaultDataStore()); err != nil {
+			return nil, err
 		}
 	}
 
@@ -554,6 +572,14 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 			}
 		}
 	}
+
+	// For now, we'll continue writing metadata into `_default`.`_default`, for a few reasons:
+	// - we know it is supported in all server versions
+	// - it cannot be dropped by customers, we always know it exists
+	// - it simplifies RBAC in terms of not having to create a metadata collection
+	// Once system scope/collection is well-supported, and we have a migration path, we can consider using those.
+	// contextOptions.MetadataStore = bucket.NamedDataStore(base.ScopeAndCollectionName{base.MobileMetadataScope, base.MobileMetadataCollection})
+	contextOptions.MetadataStore = bucket.DefaultDataStore()
 
 	// Create the DB Context
 	dbcontext, err := db.NewDatabaseContext(ctx, dbName, bucket, autoImport, contextOptions)
@@ -654,7 +680,11 @@ func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConf
 		BackupOldRev:       base.BoolDefault(config.ImportBackupOldRev, false),
 		ImportPartitions:   base.DefaultImportPartitions,
 	}
-	if config.ImportPartitions != nil {
+	importOptions.BackupOldRev = base.BoolDefault(config.ImportBackupOldRev, false)
+
+	if config.ImportPartitions == nil {
+		importOptions.ImportPartitions = base.GetDefaultImportPartitions(sc.Config.IsServerless())
+	} else {
 		importOptions.ImportPartitions = *config.ImportPartitions
 	}
 
@@ -1136,7 +1166,7 @@ func (sc *ServerContext) _unsuspendDatabase(ctx context.Context, dbName string) 
 		} else if err != nil {
 			return nil, fmt.Errorf("unsuspending db %q failed due to an error while trying to retrieve latest config from bucket %q: %w", base.MD(dbName).Redact(), base.MD(bucket).Redact(), err)
 		}
-		dbConfig.cas = cas
+		dbConfig.cfgCas = cas
 		dbCtx, err = sc._getOrAddDatabaseFromConfig(ctx, dbConfig.DatabaseConfig, false, db.GetConnectToBucketFn(false))
 		if err != nil {
 			return nil, err
@@ -1639,7 +1669,7 @@ func (sc *ServerContext) initializeCouchbaseServerConnections(ctx context.Contex
 	// Fetch database configs from bucket and start polling for new buckets and config updates.
 	if sc.persistentConfig {
 		couchbaseCluster, err := CreateCouchbaseClusterFromStartupConfig(sc.Config, base.CachedClusterConnections)
-		//couchbaseCluster, err := CreateCouchbaseClusterFromStartupConfig(sc.Config, base.PerUseClusterConnections)
+		// couchbaseCluster, err := CreateCouchbaseClusterFromStartupConfig(sc.Config, base.PerUseClusterConnections)
 		if err != nil {
 			return err
 		}
