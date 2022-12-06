@@ -432,7 +432,7 @@ func TestCollectionsChangeConfigScope(t *testing.T) {
 	require.NoError(t, err)
 	defer func() {
 		collection, err := base.AsCollection(tb.DefaultDataStore())
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		cm := collection.Collection.Bucket().Collections()
 		for scope := range scopesAndCollections {
 			assert.NoError(t, cm.DropScope(scope, nil))
