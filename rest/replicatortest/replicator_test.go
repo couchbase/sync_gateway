@@ -1553,6 +1553,7 @@ func TestDBReplicationStatsTeardown(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
 	}
+	base.RequireNumTestBuckets(t, 2)
 	// Test tests Prometheus stat registration
 	base.SkipPrometheusStatsRegistration = false
 	defer func() {
@@ -5807,6 +5808,7 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 			passiveBucket := base.GetTestBucket(t)
 			remotePassiveRT := rest.NewRestTester(t, &rest.RestTesterConfig{
 				CustomTestBucket: passiveBucket,
+				DatabaseConfig:   &rest.DatabaseConfig{}, // force use of default scope and collection
 			})
 			defer remotePassiveRT.Close()
 
@@ -5818,6 +5820,7 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 			localActiveRT := rest.NewRestTester(t, &rest.RestTesterConfig{
 				CustomTestBucket:   activeBucket,
 				SgReplicateEnabled: true,
+				DatabaseConfig:     &rest.DatabaseConfig{}, // force use of default scope and collection
 			})
 			defer localActiveRT.Close()
 
@@ -7025,6 +7028,7 @@ func TestReplicatorIgnoreRemovalBodies(t *testing.T) {
 	passiveBucket := base.GetTestBucket(t)
 	passiveRT := rest.NewRestTester(t, &rest.RestTesterConfig{
 		CustomTestBucket: passiveBucket,
+		DatabaseConfig:   &rest.DatabaseConfig{}, // force use of default scope and collection
 	})
 	defer passiveRT.Close()
 
@@ -7036,6 +7040,7 @@ func TestReplicatorIgnoreRemovalBodies(t *testing.T) {
 	activeBucket := base.GetTestBucket(t)
 	activeRT := rest.NewRestTester(t, &rest.RestTesterConfig{
 		CustomTestBucket: activeBucket,
+		DatabaseConfig:   &rest.DatabaseConfig{}, // force use of default scope and collection
 	})
 	defer activeRT.Close()
 	activeCtx := activeRT.Context()

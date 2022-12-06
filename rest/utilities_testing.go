@@ -369,11 +369,24 @@ func (rt *RestTester) UpsertDbConfig(dbName string, config DbConfig) (*TestRespo
 	return resp, nil
 }
 
-// Returns first database found for server context.
+// GetDatabase Returns first database found for server context.
 func (rt *RestTester) GetDatabase() *db.DatabaseContext {
 
 	for _, database := range rt.ServerContext().AllDatabases() {
 		return database
+	}
+	return nil
+}
+
+// GetSingleTestDataStore will return a datastore if there is only one collection configured on the RestTester database.
+func (rt *RestTester) GetSingleTestDataStore() base.DataStore {
+	database := rt.GetDatabase()
+	require.Equal(rt.TB, 1, len(database.CollectionByID))
+	for _, collection := range database.CollectionByID {
+		return database.Bucket.NamedDataStore(base.ScopeAndCollectionName{
+			Scope:      collection.ScopeName(),
+			Collection: collection.Name(),
+		})
 	}
 	return nil
 }

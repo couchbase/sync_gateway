@@ -282,7 +282,10 @@ func TestPostChangesSinceInteger(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
-	rt := rest.NewRestTester(t, &rest.RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel);}`})
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
+		SyncFn:         `function(doc) {channel(doc.channel);}`,
+		DatabaseConfig: &rest.DatabaseConfig{}, // force use of default scope and collection
+	})
 	defer rt.Close()
 
 	postChangesSince(t, rt)

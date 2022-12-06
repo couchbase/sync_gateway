@@ -2162,7 +2162,6 @@ func TestDeletedEmptyDocumentImport(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyImport)
 	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
-	bucket := rt.Bucket()
 
 	// Create a document with empty body through SG
 	const docId = "doc1"
@@ -2174,7 +2173,7 @@ func TestDeletedEmptyDocumentImport(t *testing.T) {
 	assert.Equal(t, "1-ca9ad22802b66f662ff171f226211d5c", body["rev"])
 
 	// Delete the document through SDK
-	err := bucket.DefaultDataStore().Delete(docId)
+	err := rt.GetSingleTestDataStore().Delete(docId)
 	assert.NoError(t, err, "Unable to delete doc %s", docId)
 
 	// Get the doc and check deleted revision is getting imported
@@ -2182,7 +2181,7 @@ func TestDeletedEmptyDocumentImport(t *testing.T) {
 	assert.Equal(t, http.StatusOK, response.Code)
 	rawResponse := make(map[string]interface{})
 	err = base.JSONUnmarshal(response.Body.Bytes(), &rawResponse)
-	assert.NoError(t, err, "Unable to unmarshal raw response")
+	require.NoError(t, err, "Unable to unmarshal raw response")
 
 	assert.True(t, rawResponse[db.BodyDeleted].(bool))
 	syncMeta := rawResponse["_sync"].(map[string]interface{})
@@ -2338,12 +2337,11 @@ func TestImportInternalPropertiesHandling(t *testing.T) {
 
 	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
-	bucket := rt.Bucket()
 
 	for i, test := range testCases {
 		t.Run(test.name, func(t *testing.T) {
 			docID := fmt.Sprintf("test%d", i)
-			added, err := bucket.DefaultDataStore().Add(docID, 0, test.importBody)
+			added, err := rt.GetSingleTestDataStore().Add(docID, 0, test.importBody)
 			require.True(t, added)
 			require.NoError(t, err)
 
@@ -2462,9 +2460,8 @@ func TestNonImportedDuplicateID(t *testing.T) {
 	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 
-	bucket := rt.Bucket()
 	body := `{"foo":"bar"}`
-	ok, err := bucket.DefaultDataStore().Add("key", 0, []byte(body))
+	ok, err := rt.GetSingleTestDataStore().Add("key", 0, []byte(body))
 
 	assert.True(t, ok)
 	assert.Nil(t, err)
@@ -2488,7 +2485,7 @@ func TestImportOnWriteMigration(t *testing.T) {
 	// Put doc with sync data / non-xattr
 	key := "doc1"
 	body := []byte(`{"_sync": { "rev": "1-fc2cf22c5e5007bd966869ebfe9e276a", "sequence": 1, "recent_sequences": [ 1 ], "history": { "revs": [ "1-fc2cf22c5e5007bd966869ebfe9e276a" ], "parents": [ -1], "channels": [ null ] }, "cas": "","value_crc32c": "", "time_saved": "2019-04-10T12:40:04.490083+01:00" }, "value": "foo"}`)
-	ok, err := rt.Bucket().DefaultDataStore().Add(key, 0, body)
+	ok, err := rt.GetSingleTestDataStore().Add(key, 0, body)
 	assert.NoError(t, err)
 	assert.True(t, ok)
 
