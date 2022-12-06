@@ -419,15 +419,26 @@ func TestCollectionsChangeConfigScope(t *testing.T) {
 	tb := base.GetTestBucket(t)
 	defer tb.Close()
 	ctx := base.TestCtx(t)
-	err := base.CreateBucketScopesAndCollections(ctx, tb.BucketSpec, map[string][]string{
+
+	scopesAndCollections := map[string][]string{
 		"fooScope": {
 			"bar",
 		},
 		"quxScope": {
 			"quux",
 		},
-	})
+	}
+	err := base.CreateBucketScopesAndCollections(ctx, tb.BucketSpec, scopesAndCollections)
 	require.NoError(t, err)
+	defer func() {
+		collection, err := base.AsCollection(tb.DefaultDataStore())
+		assert.NoError(t, err)
+		cm := collection.Collection.Bucket().Collections()
+		for scope := range scopesAndCollections {
+			assert.NoError(t, cm.DropScope(scope, nil))
+		}
+
+	}()
 
 	serverErr := make(chan error)
 	config := BootstrapStartupConfigForTest(t)
