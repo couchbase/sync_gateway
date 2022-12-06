@@ -28,7 +28,7 @@ const oneShotDCPTimeout = 5 * time.Minute
 
 func TestOneShotDCP(t *testing.T) {
 
-	DisableTestWithCollections(t)
+	TemporarilyDisableTestUsingDCPWithCollections(t)
 
 	if UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
@@ -189,7 +189,7 @@ func TestTerminateDCPFeed(t *testing.T) {
 // changes in the VbUUID
 func TestDCPClientMultiFeedConsistency(t *testing.T) {
 
-	DisableTestWithCollections(t)
+	TemporarilyDisableTestUsingDCPWithCollections(t)
 
 	if UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
@@ -326,7 +326,7 @@ func TestDCPClientMultiFeedConsistency(t *testing.T) {
 // TestResumeInterruptedFeed uses persisted metadata to resume the feed
 func TestResumeStoppedFeed(t *testing.T) {
 
-	DisableTestWithCollections(t)
+	TemporarilyDisableTestUsingDCPWithCollections(t)
 
 	if UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")

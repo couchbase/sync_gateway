@@ -705,11 +705,15 @@ func TestRequiresCollections(t *testing.T) {
 	}
 }
 
+// TemporarilyDisableTestUsingDCPWithCollections will skip the current test if using named collections to avoid MB-53448 prior to CB 7.2 until we've implemented a SG-side workaround (CBG-2605)
+func TemporarilyDisableTestUsingDCPWithCollections(t *testing.T) {
+	DisableTestWithCollections(t)
+}
+
 // DisableTestWithCollections will skip the current test if using named collections.
-// This should be temporary until DCP feed close issues are resolved in MB-53448
 func DisableTestWithCollections(t *testing.T) {
 	if TestsUseNamedCollections() {
-		t.Skip("WARNING: MB-53448 - Skipping test because collections are enabled - DCP cannot close if high seqno is in another collection (fix coming in 7.2)")
+		t.Skip("Skipping test because collections are enabled")
 	}
 }
 
