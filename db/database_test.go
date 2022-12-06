@@ -909,7 +909,7 @@ func TestAllDocsOnly(t *testing.T) {
 // Unit test for bug #673
 func TestUpdatePrincipal(t *testing.T) {
 
-	if !base.TestsUseDefaultCollection() {
+	if base.TestsUseNamedCollections() {
 		t.Skip("Disabled for non-default collection based on use of GetPrincipalForTest")
 	}
 
@@ -1438,7 +1438,7 @@ func TestAccessFunctionValidation(t *testing.T) {
 
 func TestAccessFunctionDb(t *testing.T) {
 
-	if !base.TestsUseDefaultCollection() {
+	if base.TestsUseNamedCollections() {
 		t.Skip("Disabled for non-default collection until CBG-2554")
 	}
 
@@ -1515,7 +1515,7 @@ func TestDocIDs(t *testing.T) {
 
 func TestUpdateDesignDoc(t *testing.T) {
 
-	if !base.TestsUseDefaultCollection() {
+	if base.TestsUseNamedCollections() {
 		t.Skip("Design docs not supported for non-default collection")
 	}
 

@@ -65,17 +65,14 @@ var tbpDefaultBucketSpec = BucketSpec{
 	UseXattrs: TestUseXattrs(),
 }
 
-func TestsUseDefaultCollection() bool {
-	val, isSet := os.LookupEnv(tbpEnvUseDefaultCollection)
-	if !isSet {
-		return true
-	}
-	useDefault, _ := strconv.ParseBool(val)
-	return useDefault
+// TestsUseNamedCollections returns true if the tests use named collections.
+func TestsUseNamedCollections() bool {
+	ok, err := GTestBucketPool.canUseNamedCollections()
+	return err == nil && ok
 }
 
-// shouldUseCollections returns true if cluster will be created with named collections
-func (tbp *TestBucketPool) shouldUseCollections() (bool, error) {
+// canUseNamedCollections returns true if the cluster supports named collections, and they are also requested
+func (tbp *TestBucketPool) canUseNamedCollections() (bool, error) {
 	// walrus supports collections, but we need to query the server's version for capability check
 	clusterSupport := true
 	if tbp.cluster != nil {

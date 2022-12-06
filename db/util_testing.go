@@ -496,7 +496,7 @@ func SetupTestDBForDataStoreWithOptions(t testing.TB, tBucket *base.TestBucket, 
 	ctx := base.TestCtx(t)
 	AddOptionsFromEnvironmentVariables(&dbcOptions)
 
-	if !base.TestsUseDefaultCollection() {
+	if base.TestsUseNamedCollections() {
 		dataStore := tBucket.GetSingleDataStore()
 		dsn, ok := base.AsDataStoreName(dataStore)
 		if !ok {

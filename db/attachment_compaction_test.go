@@ -28,10 +28,7 @@ func TestAttachmentMark(t *testing.T) {
 		t.Skip("Requires CBS")
 	}
 
-	if !base.TestsUseDefaultCollection() {
-		// FIXME MB-53448 cannot close if high seqno is in another collection
-		t.Skip("MB-53448 - One Shot DCP cannot close if high seqno is in another collection (fix in 7.2)")
-	}
+	base.TemporarilyDisableTestUsingDCPWithCollections(t)
 
 	testDb, ctx := setupTestDB(t)
 	defer testDb.Close(ctx)
@@ -85,10 +82,7 @@ func TestAttachmentMark(t *testing.T) {
 
 func TestAttachmentSweep(t *testing.T) {
 
-	if !base.TestsUseDefaultCollection() {
-		// FIXME MB-53448 cannot close if high seqno is in another collection
-		t.Skip("MB-53448 - One Shot DCP cannot close if high seqno is in another collection (fix in 7.2)")
-	}
+	base.TemporarilyDisableTestUsingDCPWithCollections(t)
 
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Requires CBS")
@@ -140,10 +134,7 @@ func TestAttachmentCleanup(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Requires CBS")
 	}
-	if !base.TestsUseDefaultCollection() {
-		// FIXME MB-53448 cannot close if high seqno is in another collection
-		t.Skip("MB-53448 - One Shot DCP cannot close if high seqno is in another collection (fix in 7.2)")
-	}
+	base.TemporarilyDisableTestUsingDCPWithCollections(t)
 	testDb, ctx := setupTestDB(t)
 	defer testDb.Close(ctx)
 	collection := testDb.GetSingleDatabaseCollection()
@@ -251,10 +242,7 @@ func TestAttachmentMarkAndSweepAndCleanup(t *testing.T) {
 		t.Skip("Requires CBS")
 	}
 
-	if !base.TestsUseDefaultCollection() {
-		// FIXME MB-53448 cannot close if high seqno is in another collection
-		t.Skip("MB-53448 - One Shot DCP cannot close if high seqno is in another collection (fix in 7.2)")
-	}
+	base.TemporarilyDisableTestUsingDCPWithCollections(t)
 
 	testDb, ctx := setupTestDB(t)
 	defer testDb.Close(ctx)
@@ -327,10 +315,7 @@ func TestAttachmentCompactionRunTwice(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
-	if !base.TestsUseDefaultCollection() {
-		// FIXME MB-53448 cannot close if high seqno is in another collection
-		t.Skip("MB-53448 - One Shot DCP cannot close if high seqno is in another collection (fix in 7.2)")
-	}
+	base.TemporarilyDisableTestUsingDCPWithCollections(t)
 
 	b := base.GetTestBucket(t).LeakyBucketClone(base.LeakyBucketConfig{})
 	defer b.Close()
@@ -478,10 +463,7 @@ func TestAttachmentCompactionStopImmediateStart(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
-	if !base.TestsUseDefaultCollection() {
-		// FIXME MB-53448 cannot close if high seqno is in another collection
-		t.Skip("MB-53448 - One Shot DCP cannot close if high seqno is in another collection (fix in 7.2)")
-	}
+	base.TemporarilyDisableTestUsingDCPWithCollections(t)
 	b := base.GetTestBucket(t).LeakyBucketClone(base.LeakyBucketConfig{})
 	defer b.Close()
 
@@ -585,10 +567,7 @@ func TestAttachmentProcessError(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
-	if !base.TestsUseDefaultCollection() {
-		// FIXME MB-53448 cannot close if high seqno is in another collection
-		t.Skip("MB-53448 - One Shot DCP cannot close if high seqno is in another collection (fix in 7.2)")
-	}
+	base.TemporarilyDisableTestUsingDCPWithCollections(t)
 
 	b := base.GetTestBucket(t).LeakyBucketClone(base.LeakyBucketConfig{
 		SetXattrCallback: func(key string) error {
@@ -629,10 +608,7 @@ func TestAttachmentDifferentVBUUIDsBetweenPhases(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
-	if !base.TestsUseDefaultCollection() {
-		// FIXME MB-53448 cannot close if high seqno is in another collection
-		t.Skip("MB-53448 - One Shot DCP cannot close if high seqno is in another collection (fix in 7.2)")
-	}
+	base.TemporarilyDisableTestUsingDCPWithCollections(t)
 	testDB, ctx := setupTestDB(t)
 	defer testDB.Close(ctx)
 	dataStore := testDB.Bucket.DefaultDataStore()
@@ -875,10 +851,7 @@ func createDocWithInBodyAttachment(t *testing.T, ctx context.Context, docID stri
 func TestAttachmentCompactIncorrectStat(t *testing.T) {
 	base.LongRunningTest(t)
 
-	if !base.TestsUseDefaultCollection() {
-		// FIXME MB-53448 cannot close if high seqno is in another collection
-		t.Skip("MB-53448 - One Shot DCP cannot close if high seqno is in another collection (fix in 7.2)")
-	}
+	base.TemporarilyDisableTestUsingDCPWithCollections(t)
 
 	const docsToCreate = 10_000
 	if base.UnitTestUrlIsWalrus() {
