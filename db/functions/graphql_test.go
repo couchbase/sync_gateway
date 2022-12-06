@@ -217,7 +217,6 @@ func assertGraphQLError(t *testing.T, expectedErrorText string, result *db.Graph
 
 // Unit test for GraphQL queries.
 func TestUserGraphQL(t *testing.T) {
-	// FIXME : this test doesn't work because the access view does not exist on the collection ???
 	//base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	db, ctx := setupTestDBWithFunctions(t, &kTestGraphQLUserFunctionsConfig, &kTestGraphQLConfig)
 	defer db.Close(ctx)

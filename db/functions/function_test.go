@@ -191,7 +191,6 @@ func addUserAlice(t *testing.T, db *db.Database) auth.User {
 func TestUserFunctions(t *testing.T) {
 	//base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	db, ctx := setupTestDBWithFunctions(t, &kTestFunctionsConfig, nil)
-	// FIXME : this test doesn't work because the access view does not exist on the collection ???
 	defer db.Close(ctx)
 
 	assert.NotNil(t, db.UserFunctions)

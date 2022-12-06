@@ -42,8 +42,10 @@ func (vm *VM) Close() {
 		runner.close()
 	}
 	vm.templates = nil
-	vm.iso.Dispose()
-	vm.iso = nil
+	if vm.iso != nil {
+		vm.iso.Dispose()
+		vm.iso = nil
+	}
 }
 
 //////// INTERNALS:
@@ -66,6 +68,9 @@ func (vm *VM) release() {
 }
 
 func (vm *VM) registerService(factory TemplateFactory) serviceID {
+	if vm.iso == nil {
+		panic("uninitialized js.VM")
+	}
 	return vm.services.addService(factory)
 }
 
