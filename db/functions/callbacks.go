@@ -24,9 +24,10 @@ type n1qlUserArgument struct {
 
 // The "real" implementation of EvaluatorDelegate.
 type databaseDelegate struct {
-	db   *db.Database     // The database (with user)
-	ctx  context.Context  // Context for timeouts etc.
-	user *userCredentials // User's info
+	db         *db.Database // The database (with user)
+	collection *db.DatabaseCollectionWithUser
+	ctx        context.Context  // Context for timeouts etc.
+	user       *userCredentials // User's info
 }
 
 // Temporarily gives the `db.Database` admin powers. Returns a fn that will revert the upgrade.
@@ -38,14 +39,14 @@ func (d *databaseDelegate) asAdmin() func() {
 }
 
 func (d *databaseDelegate) checkTimeout() error {
-	return d.db.CheckTimeout(d.ctx)
+	return db.CheckTimeout(d.ctx)
 }
 
 func (d *databaseDelegate) get(docID string, asAdmin bool) (doc map[string]any, err error) {
 	if asAdmin {
 		defer d.asAdmin()()
 	}
-	rev, err := d.db.GetRev(d.ctx, docID, "", false, nil)
+	rev, err := d.collection.GetRev(d.ctx, docID, "", false, nil)
 	if err != nil {
 		status, _ := base.ErrorAsHTTPStatus(err)
 		if status == http.StatusNotFound {
@@ -70,7 +71,7 @@ func (d *databaseDelegate) save(body map[string]any, docID string, asAdmin bool)
 	delete(body, "_id")
 	if _, found := body["_rev"]; found {
 		// If caller provided `_rev` property, use MVCC as normal:
-		if _, _, err := d.db.Put(d.ctx, docID, body); err != nil {
+		if _, _, err := d.collection.Put(d.ctx, docID, body); err != nil {
 			if status, _ := base.ErrorAsHTTPStatus(err); status == http.StatusConflict {
 				err = nil // conflict: no error, but returns false
 			}
@@ -81,7 +82,7 @@ func (d *databaseDelegate) save(body map[string]any, docID string, asAdmin bool)
 		// If caller didn't provide a `_rev` property, fall back to "last writer wins":
 		// get the current revision if any, and pass it to Put so that the save always succeeds.
 		for {
-			rev, err := d.db.GetRev(d.ctx, docID, "", false, []string{})
+			rev, err := d.collection.GetRev(d.ctx, docID, "", false, []string{})
 			if err != nil {
 				if status, _ := base.ErrorAsHTTPStatus(err); status != http.StatusNotFound {
 					return false, err
@@ -96,7 +97,7 @@ func (d *databaseDelegate) save(body map[string]any, docID string, asAdmin bool)
 				body["_rev"] = rev.RevID
 			}
 
-			_, _, err = d.db.Put(d.ctx, docID, body)
+			_, _, err = d.collection.Put(d.ctx, docID, body)
 			if err == nil {
 				break // success!
 			} else if status, _ := base.ErrorAsHTTPStatus(err); status != http.StatusConflict {
@@ -132,7 +133,8 @@ func (d *databaseDelegate) query(fnName string, n1ql string, args map[string]any
 	args["user"] = &userArg
 
 	// Run the N1QL query:
-	rows, err := d.db.N1QLQueryWithStats(d.ctx,
+	rows, err := d.collection.Query(
+		d.ctx,
 		db.QueryTypeUserFunctionPrefix+fnName,
 		n1ql,
 		args,
@@ -184,7 +186,7 @@ func (d *databaseDelegate) writeRowsToJSON(rows sgbucket.QueryResultIterator) (s
 			return "", err
 		}
 		// The iterator streams results as the query engine produces them, so this loop may take most of the query's time; check for timeout after each iteration:
-		if err := d.db.CheckTimeout(d.ctx); err != nil {
+		if err := db.CheckTimeout(d.ctx); err != nil {
 			return "", err
 		}
 	}

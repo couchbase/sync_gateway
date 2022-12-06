@@ -21,6 +21,7 @@ import (
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	v8 "rogchap.com/v8go"
 )
 
@@ -494,32 +495,19 @@ func TestUserFunctionsMaxCodeSize(t *testing.T) {
 	assert.ErrorContains(t, err, "function square: code is too large (> 20 bytes)")
 }
 
-	ch, err = allow.expandPattern("sales-$CITY-all", params, user)
-	assert.NoError(t, err)
-	assert.Equal(t, ch, "sales-Paris-all")
 //////// UTILITY FUNCTIONS:
 
-	ch, err = allow.expandPattern("sales$(CITY)All", params, user)
-	assert.NoError(t, err)
-	assert.Equal(t, ch, "salesParisAll")
 // If certain environment variables are set, for example to turn on XATTR support, then update
 // the DatabaseContextOptions accordingly
 func AddOptionsFromEnvironmentVariables(dbcOptions *db.DatabaseContextOptions) {
 	if base.TestUseXattrs() {
 		dbcOptions.EnableXattr = true
 	}
-
-	ch, err = allow.expandPattern("sales$CITY-$BREAD", params, user)
-	assert.NoError(t, err)
-	assert.Equal(t, ch, "salesParis-Baguette")
 	if base.TestsDisableGSI() {
 		dbcOptions.UseViews = true
 	}
 }
 
-	ch, err = allow.expandPattern("sales-upTo-$YEAR", params, user)
-	assert.NoError(t, err)
-	assert.Equal(t, ch, "sales-upTo-2020")
 func assertHTTPError(t *testing.T, err error, status int) bool {
 	var httpErr *base.HTTPError
 	return assert.Error(t, err) &&

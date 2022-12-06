@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"time"
 
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
@@ -140,8 +141,8 @@ func (c *DatabaseCollection) ForceAPIForbiddenErrors() bool {
 	return c.dbCtx.Options.UnsupportedOptions != nil && c.dbCtx.Options.UnsupportedOptions.ForceAPIForbiddenErrors
 }
 
-// importFilter returns the sync function.
-func (c *DatabaseCollection) importFilter() *ImportFilterFunction {
+// importFilter returns the import filter function.
+func (c *DatabaseCollection) importFilter() ImportFilterFunction {
 	return c.dbCtx.Options.ImportOptions.ImportFilter
 }
 
@@ -181,6 +182,20 @@ func (c *DatabaseCollection) Name() string {
 // oldRevExpirySeconds is the number of seconds before old revisions are removed from Couchbase server. This is controlled at a database level.
 func (c *DatabaseCollection) oldRevExpirySeconds() uint32 {
 	return c.dbCtx.Options.OldRevExpirySeconds
+}
+
+// Runs a N1QL query.
+func (c *DatabaseCollection) Query(ctx context.Context, queryName string, statement string, params map[string]interface{}, consistency base.ConsistencyMode, adhoc bool) (results sgbucket.QueryResultIterator, err error) {
+	return N1QLQueryWithStats(
+		ctx,
+		c.dataStore,
+		queryName,
+		statement,
+		params,
+		consistency,
+		adhoc,
+		c.dbStats(),
+		c.slowQueryWarningThreshold())
 }
 
 // queryPaginationLimit limits the size of large queries. This is is controlled at a database level.

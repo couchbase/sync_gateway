@@ -198,12 +198,17 @@ func (fn *functionImpl) Invoke(dbc *db.Database, args map[string]any, mutationAl
 	if ctx == nil {
 		return nil, fmt.Errorf("missing context to UserFunction.Invoke")
 	}
-	if err := dbc.CheckTimeout(ctx); err != nil {
+	if err := db.CheckTimeout(ctx); err != nil {
+		return nil, err
+	}
+	collection, err := dbc.GetDefaultDatabaseCollectionWithUser()
+	if err != nil {
 		return nil, err
 	}
 	delegate := &databaseDelegate{
-		db:  dbc,
-		ctx: ctx,
+		db:         dbc,
+		collection: collection,
+		ctx:        ctx,
 	}
 	if dbUser := dbc.User(); dbUser != nil {
 		delegate.user = &userCredentials{
@@ -269,12 +274,17 @@ func (gq *graphQLImpl) QueryAsJSON(dbc *db.Database, query string, operationName
 	if ctx == nil {
 		return nil, fmt.Errorf("missing context to UserFunction.Invoke")
 	}
-	if err := dbc.CheckTimeout(ctx); err != nil {
+	if err := db.CheckTimeout(ctx); err != nil {
+		return nil, err
+	}
+	collection, err := dbc.GetDefaultDatabaseCollectionWithUser()
+	if err != nil {
 		return nil, err
 	}
 	delegate := &databaseDelegate{
-		db:  dbc,
-		ctx: ctx,
+		db:         dbc,
+		collection: collection,
+		ctx:        ctx,
 	}
 	if dbUser := dbc.User(); dbUser != nil {
 		delegate.user = &userCredentials{
