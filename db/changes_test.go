@@ -91,7 +91,7 @@ func TestFilterToAvailableChannels(t *testing.T) {
 // Unit test for bug #314
 func TestChangesAfterChannelAdded(t *testing.T) {
 
-	if !base.TestsUseDefaultCollection() {
+	if base.TestsUseNamedCollections() {
 		t.Skip("Disabled for non-default collection based on use of GetPrincipalForTest")
 	}
 
