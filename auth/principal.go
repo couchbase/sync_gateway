@@ -150,7 +150,7 @@ type User interface {
 type PrincipalConfig struct {
 	Name             *string                                       `json:"name,omitempty"`
 	ExplicitChannels base.Set                                      `json:"admin_channels,omitempty"`
-	CollectionAccess map[string]map[string]*CollectionAccessConfig `json:"collection_access"`
+	CollectionAccess map[string]map[string]*CollectionAccessConfig `json:"collection_access,omitempty"`
 	// Fields below only apply to Users, not Roles:
 	Email             *string  `json:"email,omitempty"`
 	Disabled          *bool    `json:"disabled,omitempty"`
