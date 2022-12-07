@@ -1051,7 +1051,8 @@ func TestLocalDocExpiry(t *testing.T) {
 	RequireStatus(t, response, 201)
 
 	localDocKey := db.RealSpecialDocID(db.DocTypeLocal, "loc1")
-	expiry, getMetaError := rt.Bucket().DefaultDataStore().GetExpiry(localDocKey)
+	dataStore := rt.GetSingleTestDataStore()
+	expiry, getMetaError := dataStore.GetExpiry(localDocKey)
 	log.Printf("Expiry after PUT is %v", expiry)
 	assert.True(t, expiry > timeNow, "expiry is not greater than current time")
 	assert.True(t, expiry < oneMoreHour, "expiry is not greater than current time")
@@ -1060,7 +1061,7 @@ func TestLocalDocExpiry(t *testing.T) {
 	// Retrieve local doc, ensure non-zero expiry is preserved
 	response = rt.SendAdminRequest("GET", "/db/_local/loc1", "")
 	RequireStatus(t, response, 200)
-	expiry, getMetaError = rt.Bucket().DefaultDataStore().GetExpiry(localDocKey)
+	expiry, getMetaError = dataStore.GetExpiry(localDocKey)
 	log.Printf("Expiry after GET is %v", expiry)
 	assert.True(t, expiry > timeNow, "expiry is not greater than current time")
 	assert.True(t, expiry < oneMoreHour, "expiry is not greater than current time")
@@ -1531,8 +1532,7 @@ func TestWriteTombstonedDocUsingXattrs(t *testing.T) {
 	}
 
 	// Fetch the xattr and make sure it contains the above value
-	baseBucket := rt.GetDatabase().Bucket
-	subdocXattrStore, _ := base.AsSubdocXattrStore(baseBucket.DefaultDataStore())
+	subdocXattrStore, _ := base.AsSubdocXattrStore(rt.GetSingleTestDataStore())
 	var retrievedVal map[string]interface{}
 	var retrievedXattr map[string]interface{}
 	_, err = subdocXattrStore.SubdocGetBodyAndXattr("-21SK00U-ujxUO9fU2HezxL", base.SyncXattrName, "", &retrievedVal, &retrievedXattr, nil)

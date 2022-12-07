@@ -1363,9 +1363,10 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		return attachments
 	}
 
+	dataStore := rt.GetSingleTestDataStore()
 	requireAttachmentFound := func(attKey string, attBodyExpected []byte) {
 		var attBodyActual []byte
-		_, err := rt.Bucket().DefaultDataStore().Get(attKey, &attBodyActual)
+		_, err := dataStore.Get(attKey, &attBodyActual)
 		require.NoError(t, err)
 		assert.Equal(t, attBodyExpected, attBodyActual)
 	}
@@ -2032,7 +2033,7 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		require.NotEmpty(t, attKey)
 
 		// Delete/tombstone the document via SDK.
-		err := rt.Bucket().DefaultDataStore().Delete(docID)
+		err := dataStore.Delete(docID)
 		require.NoError(t, err, "Unable to delete doc %q", docID)
 
 		// Wait until the "delete" mutation appears on the changes feed.
@@ -2085,7 +2086,7 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		require.NotEmpty(t, attKey)
 
 		// Update the document via SDK.
-		err := rt.Bucket().DefaultDataStore().Set(docID, 0, nil, []byte(`{"prop": false}`))
+		err := dataStore.Set(docID, 0, nil, []byte(`{"prop": false}`))
 		require.NoError(t, err, "Error updating the document")
 
 		// Wait until the "update" mutation appears on the changes feed.
@@ -2496,7 +2497,7 @@ func TestAttachmentRemovalWithConflicts(t *testing.T) {
 	resp = rt.SendAdminRequest("DELETE", "/db/doc?rev="+losingRev3, "")
 	RequireStatus(t, resp, http.StatusOK)
 
-	_, _, err = rt.GetDatabase().Bucket.DefaultDataStore().GetRaw(attachmentKey)
+	_, _, err = rt.GetSingleTestDataStore().GetRaw(attachmentKey)
 	assert.Error(t, err)
 	assert.True(t, base.IsDocNotFoundError(err))
 }

@@ -378,17 +378,24 @@ func (rt *RestTester) GetDatabase() *db.DatabaseContext {
 	return nil
 }
 
-// GetSingleTestDataStore will return a datastore if there is only one collection configured on the RestTester database.
-func (rt *RestTester) GetSingleTestDataStore() base.DataStore {
+// GetSingleTestDatabaseCollection will return a DatabaseCollection if there is only one. Depending on test environment configuration, it may or may not be the default collection.
+func (rt *RestTester) GetSingleTestDatabaseCollection() *db.DatabaseCollection {
 	database := rt.GetDatabase()
 	require.Equal(rt.TB, 1, len(database.CollectionByID))
 	for _, collection := range database.CollectionByID {
-		return database.Bucket.NamedDataStore(base.ScopeAndCollectionName{
-			Scope:      collection.ScopeName(),
-			Collection: collection.Name(),
-		})
+		return collection
 	}
 	return nil
+}
+
+// GetSingleTestDataStore will return a datastore if there is only one collection configured on the RestTester database.
+func (rt *RestTester) GetSingleTestDataStore() base.DataStore {
+	collection := rt.GetSingleTestDatabaseCollection()
+	fmt.Println(collection.ScopeName())
+	return rt.GetDatabase().Bucket.NamedDataStore(base.ScopeAndCollectionName{
+		Scope:      collection.ScopeName(),
+		Collection: collection.Name(),
+	})
 }
 
 func (rt *RestTester) MustWaitForDoc(docid string, t testing.TB) {
