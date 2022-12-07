@@ -105,7 +105,7 @@ func NewTestBucketPool(bucketReadierFunc TBPBucketReadierFunc, bucketInitFunc TB
 
 	tbp.cluster = newTestCluster(UnitTestUrl(), tbp.Logf)
 
-	useCollections, err := tbp.shouldUseCollections()
+	useCollections, err := tbp.canUseNamedCollections()
 	if err != nil {
 		tbp.Fatalf(ctx, "%s", err)
 	}

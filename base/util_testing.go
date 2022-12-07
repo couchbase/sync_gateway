@@ -135,10 +135,10 @@ func (tb *TestBucket) GetNamedDataStore() DataStore {
 // GetSingleDataStore returns a DataStore that can be used for testing.
 // This may be the default collection, or a named collection depending on whether SG_TEST_USE_DEFAULT_COLLECTION is set.
 func (b *TestBucket) GetSingleDataStore() sgbucket.DataStore {
-	if TestsUseDefaultCollection() {
-		return b.Bucket.DefaultDataStore()
+	if TestsUseNamedCollections() {
+		return b.GetNamedDataStore()
 	}
-	return b.GetNamedDataStore()
+	return b.Bucket.DefaultDataStore()
 }
 
 // GetDefaultDataStore returns the default DataStore. This is likely never actually wanted over GetSingleDataStore, so is left commented until absolutely required.
@@ -698,10 +698,22 @@ func RequireWaitForStat(t testing.TB, getStatFunc func() int64, expected int64) 
 // TestRequiresCollections will skip the current test if the Couchbase Server version it is running against does not
 // support collections.
 func TestRequiresCollections(t *testing.T) {
-	if ok, err := GTestBucketPool.shouldUseCollections(); err != nil {
+	if ok, err := GTestBucketPool.canUseNamedCollections(); err != nil {
 		t.Skipf("Skipping test - collections not supported: %v", err)
 	} else if !ok {
 		t.Skipf("Skipping test - collections not enabled")
+	}
+}
+
+// TemporarilyDisableTestUsingDCPWithCollections will skip the current test if using named collections to avoid MB-53448 prior to CB 7.2 until we've implemented a SG-side workaround (CBG-2605)
+func TemporarilyDisableTestUsingDCPWithCollections(t *testing.T) {
+	DisableTestWithCollections(t)
+}
+
+// DisableTestWithCollections will skip the current test if using named collections.
+func DisableTestWithCollections(t *testing.T) {
+	if TestsUseNamedCollections() {
+		t.Skip("Skipping test because collections are enabled")
 	}
 }
 

@@ -204,7 +204,7 @@ func TestPostUpgradeIndexesVersionChange(t *testing.T) {
 
 func TestRemoveIndexesUseViewsTrueAndFalse(t *testing.T) {
 
-	if !base.TestsUseDefaultCollection() {
+	if base.TestsUseNamedCollections() {
 		// we could push the restriction up into SG such that views + non-default is disallowed for CBS and allowed for Walrus?
 		t.Skip("InitializeViews only works on default collection")
 	}

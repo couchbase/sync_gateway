@@ -905,7 +905,7 @@ func TestLowSequenceHandlingAcrossChannels(t *testing.T) {
 // user gets added to a new channel with existing entries (and existing backfill)
 func TestLowSequenceHandlingWithAccessGrant(t *testing.T) {
 
-	if !base.TestsUseDefaultCollection() {
+	if base.TestsUseNamedCollections() {
 		t.Skip("Disabled for non-default collection based on use of GetPrincipalForTest")
 	}
 

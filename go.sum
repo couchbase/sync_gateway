@@ -77,14 +77,14 @@ github.com/couchbase/gomemcached v0.1.4 h1:5n5wmr4dBu+X7XteP8QHP5S9inK9MBjNpN9b7
 github.com/couchbase/gomemcached v0.1.4/go.mod h1:mxliKQxOv84gQ0bJWbI+w9Wxdpt9HjDvgW9MjCym5Vo=
 github.com/couchbase/goutils v0.1.2 h1:gWr8B6XNWPIhfalHNog3qQKfGiYyh4K4VhO3P2o9BCs=
 github.com/couchbase/goutils v0.1.2/go.mod h1:h89Ek/tiOxxqjz30nPPlwZdQbdB8BwgnuBxeoUe/ViE=
-github.com/couchbase/sg-bucket v0.0.0-20221115164032-632b41d8a809 h1:OrFg9NQJ5C+XO7uDRirhcI6sNR5NoihvBlVE69f1/rA=
-github.com/couchbase/sg-bucket v0.0.0-20221115164032-632b41d8a809/go.mod h1:9XQoB1t+elPP+yEjHGOX3xcC3Z0/qDgOI7h/fc9XjlU=
+github.com/couchbase/sg-bucket v0.0.0-20221205193604-510d1305f14d h1:doWrdlRlQcxHqIdEmhfvTAZXwGSyADsmvT1nqg9e3gE=
+github.com/couchbase/sg-bucket v0.0.0-20221205193604-510d1305f14d/go.mod h1:9XQoB1t+elPP+yEjHGOX3xcC3Z0/qDgOI7h/fc9XjlU=
 github.com/couchbaselabs/go-fleecedelta v0.0.0-20200408160354-2ed3f45fde8f h1:al5DxXEBAUmINnP5dR950gL47424WzncuRpNdg0TWR0=
 github.com/couchbaselabs/go-fleecedelta v0.0.0-20200408160354-2ed3f45fde8f/go.mod h1:daOs69VstinwoALl3wwWxjBf1nD4lIe3wwYhKHKDapY=
 github.com/couchbaselabs/gocaves/client v0.0.0-20220223122017-22859b310bd2 h1:UlwJ2GWpZQAQCLHyO3xHKcqAjUUcX2w7FKpbxCIUQks=
 github.com/couchbaselabs/gocaves/client v0.0.0-20220223122017-22859b310bd2/go.mod h1:AVekAZwIY2stsJOMWLAS/0uA/+qdp7pjO8EHnl61QkY=
-github.com/couchbaselabs/walrus v0.0.0-20221201053215-6dad9706b8ff h1:0mKtEAqo8K+WEVN6bOw2T5k/QukbYB3SV9NSqFU5AJg=
-github.com/couchbaselabs/walrus v0.0.0-20221201053215-6dad9706b8ff/go.mod h1:1Gy0YiYTNnuS4ThzYwKqz5X8q9qlCjAoqb/E1QbJdps=
+github.com/couchbaselabs/walrus v0.0.0-20221206001402-65a954a35458 h1:35OYBE+3zoFKK7CjnaNYUmtwGf3ww+pJu3A1lpGegqQ=
+github.com/couchbaselabs/walrus v0.0.0-20221206001402-65a954a35458/go.mod h1:0/AUfQguQ6xzmOtLd107VlnXwjpkjN7i858owbyRa9s=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
@@ -452,8 +452,6 @@ golang.org/x/text v0.3.1-0.20180807135948-17ff2d5776d2/go.mod h1:NqM8EUOU14njkJ3
 golang.org/x/text v0.3.2/go.mod h1:bEr9sfX3Q8Zfm5fL9x+3itogRgK3+ptLWKqgva+5dAk=
 golang.org/x/text v0.3.3/go.mod h1:5Zoc/QRtKVWzQhOtBMvqHzDpF6irO9z98xDceosuGiQ=
 golang.org/x/text v0.3.6/go.mod h1:5Zoc/QRtKVWzQhOtBMvqHzDpF6irO9z98xDceosuGiQ=
-golang.org/x/text v0.3.7 h1:olpwvP2KacW1ZWvsR7uQhoyTYvKAupfQrRGBFM352Gk=
-golang.org/x/text v0.3.7/go.mod h1:u+2+/6zg+i71rQMx5EYifcz6MCKuco9NR6JIITiCfzQ=
 golang.org/x/text v0.4.0 h1:BrVqGRd7+k1DiOgtnFvAkoQEWQvBc25ouMJM6429SFg=
 golang.org/x/text v0.4.0/go.mod h1:mrYo+phRRbMaCq/xk9113O4dZlRixOauAjOtrjsXDZ8=
 golang.org/x/time v0.0.0-20181108054448-85acf8d2951c/go.mod h1:tRJNPiyCQ0inRvYxbN9jk5I+vvW/OXSQhTDSoE431IQ=

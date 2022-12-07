@@ -148,8 +148,9 @@ type User interface {
 // Used to define a user/role within DbConfig, and structures the request/response body in the admin REST API
 // for /db/_user/*
 type PrincipalConfig struct {
-	Name             *string  `json:"name,omitempty"`
-	ExplicitChannels base.Set `json:"admin_channels,omitempty"`
+	Name             *string                                       `json:"name,omitempty"`
+	ExplicitChannels base.Set                                      `json:"admin_channels,omitempty"`
+	CollectionAccess map[string]map[string]*CollectionAccessConfig `json:"collection_access,omitempty"`
 	// Fields below only apply to Users, not Roles:
 	Email             *string  `json:"email,omitempty"`
 	Disabled          *bool    `json:"disabled,omitempty"`
@@ -161,6 +162,14 @@ type PrincipalConfig struct {
 	JWTIssuer      *string    `json:"jwt_issuer,omitempty"`
 	JWTRoles       base.Set   `json:"jwt_roles,omitempty"`
 	JWTChannels    base.Set   `json:"jwt_channels,omitempty"`
+	JWTLastUpdated *time.Time `json:"jwt_last_updated,omitempty"`
+}
+
+type CollectionAccessConfig struct {
+	ExplicitChannels_ base.Set `json:"admin_channels,omitempty"`
+	// read-only
+	Channels_      base.Set   `json:"all_channels,omitempty"`
+	JWTChannels_   base.Set   `json:"jwt_channels,omitempty"` // TODO: JWT properties should only be populated for user but would like to share scope/collection map
 	JWTLastUpdated *time.Time `json:"jwt_last_updated,omitempty"`
 }
 

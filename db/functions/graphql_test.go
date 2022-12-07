@@ -385,10 +385,7 @@ type Body = db.Body
 // Unit test for GraphQL queries.
 func TestUserGraphQLWithN1QL(t *testing.T) {
 
-	if !base.TestsUseDefaultCollection() {
-		// FIXME MB-53448 cannot close if high seqno is in another collection
-		t.Skip("MB-53448 - One Shot DCP cannot close if high seqno is in another collection (fix in 7.2)")
-	}
+	base.DisableTestWithCollections(t)
 
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test is Couchbase Server only (requires N1QL)")
