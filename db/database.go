@@ -798,7 +798,7 @@ func (context *DatabaseContext) stopBackgroundManagers() []*BackgroundManager {
 	return bgManagers
 }
 
-// waitForBackgroundManagersToStop wait for given all BackgroundManagers to stop within given time
+// waitForBackgroundManagersToStop wait for given BackgroundManagers to stop within given time
 func waitForBackgroundManagersToStop(ctx context.Context, waitTimeMax time.Duration, bgManagers []*BackgroundManager) {
 	timeout := time.NewTicker(waitTimeMax)
 	interval := time.NewTicker(1 * time.Second)
@@ -808,7 +808,13 @@ func waitForBackgroundManagersToStop(ctx context.Context, waitTimeMax time.Durat
 	for {
 		select {
 		case <-timeout.C:
-			base.WarnfCtx(ctx, "Timeout after %v of waiting for Background Managers to terminate", waitTimeMax)
+			runningBackgroundManagerNames := ""
+			for _, bgManager := range bgManagers {
+				if !isBackgroundManagerStopped(bgManager.GetRunState()) {
+					runningBackgroundManagerNames += fmt.Sprintf(" %s", bgManager.GetName())
+				}
+			}
+			base.WarnfCtx(ctx, "Background Managers [%s] failed to stop within deadline of %s.", runningBackgroundManagerNames, waitTimeMax)
 			return
 		case <-interval.C:
 			stoppedServices := 0
