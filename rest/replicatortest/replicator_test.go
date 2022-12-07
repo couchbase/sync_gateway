@@ -1855,15 +1855,15 @@ func TestActiveReplicatorPullBasic(t *testing.T) {
 }
 
 // TestActiveReplicatorPullSkippedSequence ensures that ISGR and the checkpointer are able to handle the compound sequence format appropriately.
-// - Creates several documents on rt2, separated by a skipped sequence.
-//   - rt2 seq 1 _user
-//   - rt2 seq 2 doc1
-//   - rt2 seq 3 doc2
-//   - rt2 seq 4 skipped
-//   - rt2 seq 5 doc3
-//   - rt2 seq 6 doc4
+// - Creates several documents on rt2, separated by a skipped sequence, and rt1 pulls them.
+//   - rt2 seq 1 _user    rt1 seq n/a
+//   - rt2 seq 2 doc1     rt1 seq 1
+//   - rt2 seq 3 doc2     rt1 seq 2
+//   - rt2 seq 4 skipped  rt1 seq n/a
+//   - rt2 seq 5 doc3     rt1 seq 3
+//   - rt2 seq 6 doc4     rt1 seq 4
 //
-// - Issues a few one-shot pulls between seq 2-3 and 4-5
+// - Issues a few pulls to ensure the replicator is resuming correctly from a compound sequence checkpoint, and that we're emptying the expected/processed lists appropriately.
 func TestActiveReplicatorPullSkippedSequence(t *testing.T) {
 
 	base.RequireNumTestBuckets(t, 2)
@@ -1966,7 +1966,7 @@ func TestActiveReplicatorPullSkippedSequence(t *testing.T) {
 	resp = rt2.SendAdminRequest(http.MethodPut, "/db/"+docID2, `{"source":"rt2","channels":["`+username+`"]}`)
 	rest.RequireStatus(t, resp, http.StatusCreated)
 
-	// allocate a fake sequence to trigger skipped sequence handling
+	// allocate a fake sequence to trigger skipped sequence handling - this never arrives at rt1 - we could think about creating the doc afterwards to let the replicator recover, but not necessary for the test.
 	_, err = rt2.MetadataStore().Incr(base.SyncSeqKey, 1, 1, 0)
 	require.NoError(t, err)
 
