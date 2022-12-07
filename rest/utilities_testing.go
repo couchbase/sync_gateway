@@ -1072,11 +1072,17 @@ func (bt BlipTester) DatabaseContext() *db.DatabaseContext {
 	return nil
 }
 
+// getBlipTesterSpec returns a default tester specification.
+func getDefaultBlipTesterSpec() BlipTesterSpec {
+	return BlipTesterSpec{GuestEnabled: true}
+}
+
+// NewBlipTesterFromSpecWithRT creates a blip tester from an existing rest tester
 func NewBlipTesterFromSpecWithRT(tb testing.TB, spec *BlipTesterSpec, rt *RestTester) (blipTester *BlipTester, err error) {
 	blipTesterSpec := spec
 	if spec == nil {
-		// Default spec
-		blipTesterSpec = &BlipTesterSpec{}
+		spec := getDefaultBlipTesterSpec()
+		blipTesterSpec = &spec
 	}
 	blipTester, err = createBlipTesterWithSpec(tb, *blipTesterSpec, rt)
 	if err != nil {
@@ -1087,10 +1093,27 @@ func NewBlipTesterFromSpecWithRT(tb testing.TB, spec *BlipTesterSpec, rt *RestTe
 	return blipTester, err
 }
 
+// NewBlipTesterDefaultCollection creates a blip tester that has a RestTester only using a single database and `_default._default` collection.
+func NewBlipTesterDefaultCollection(tb testing.TB) *BlipTester {
+	return NewBlipTesterDefaultCollectionFromSpec(tb, BlipTesterSpec{GuestEnabled: true})
+}
+
+// NewBlipTesterDefaultCollectionFromSpec creates a blip tester that has a RestTester only using a single database and `_default._default` collection.
+func NewBlipTesterDefaultCollectionFromSpec(tb testing.TB, spec BlipTesterSpec) *BlipTester {
+	rtConfig := RestTesterConfig{
+		EnableNoConflictsMode: spec.noConflictsMode,
+		GuestEnabled:          spec.GuestEnabled,
+		DatabaseConfig:        &DatabaseConfig{},
+	}
+	rt := NewRestTester(tb, &rtConfig)
+	bt, err := createBlipTesterWithSpec(tb, spec, rt)
+	require.NoError(tb, err)
+	return bt
+}
+
 // Create a BlipTester using the default spec
 func NewBlipTester(tb testing.TB) (*BlipTester, error) {
-	defaultSpec := BlipTesterSpec{GuestEnabled: true}
-	return NewBlipTesterFromSpec(tb, defaultSpec)
+	return NewBlipTesterFromSpec(tb, getDefaultBlipTesterSpec())
 }
 
 func NewBlipTesterFromSpec(tb testing.TB, spec BlipTesterSpec) (*BlipTester, error) {

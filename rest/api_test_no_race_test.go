@@ -82,7 +82,10 @@ func TestChangesNotifyChannelFilter(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyChanges, base.KeyHTTP)
 
-	rt := NewRestTester(t, &RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel);}`})
+	rt := NewRestTester(t, &RestTesterConfig{
+		SyncFn:         `function(doc) {channel(doc.channel);}`,
+		DatabaseConfig: &DatabaseConfig{}, // make scopes/collections aware by using collection access in channel grant
+	})
 	defer rt.Close()
 
 	// Create user:

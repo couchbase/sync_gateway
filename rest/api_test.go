@@ -2212,7 +2212,7 @@ func TestDeleteNonExistentDoc(t *testing.T) {
 	RequireStatus(t, response, http.StatusNotFound)
 
 	var body map[string]interface{}
-	_, err := rt.GetDatabase().Bucket.DefaultDataStore().Get("fake", &body)
+	_, err := rt.GetSingleTestDataStore().Get("fake", &body)
 
 	if base.TestUseXattrs() {
 		assert.Error(t, err)
@@ -2241,7 +2241,7 @@ func TestDeleteEmptyBodyDoc(t *testing.T) {
 	RequireStatus(t, response, http.StatusNotFound)
 
 	var doc map[string]interface{}
-	_, err := rt.GetDatabase().Bucket.DefaultDataStore().Get("doc1", &doc)
+	_, err := rt.GetSingleTestDataStore().Get("doc1", &doc)
 
 	if base.TestUseXattrs() {
 		assert.Error(t, err)
@@ -2278,7 +2278,7 @@ func TestTombstonedBulkDocs(t *testing.T) {
 	RequireStatus(t, response, http.StatusCreated)
 
 	var body map[string]interface{}
-	_, err := rt.GetDatabase().Bucket.DefaultDataStore().Get(t.Name(), &body)
+	_, err := rt.GetSingleTestDataStore().Get(t.Name(), &body)
 
 	if base.TestUseXattrs() {
 		assert.Error(t, err)
@@ -2474,7 +2474,7 @@ func TestChannelHistoryLegacyDoc(t *testing.T) {
 	}`
 
 	// Insert raw 'legacy' doc with no channel history info
-	err := rt.GetDatabase().Bucket.DefaultDataStore().Set("doc1", 0, nil, []byte(docData))
+	err := rt.GetSingleTestDataStore().Set("doc1", 0, nil, []byte(docData))
 	assert.NoError(t, err)
 
 	var body db.Body

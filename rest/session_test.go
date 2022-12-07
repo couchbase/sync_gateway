@@ -144,7 +144,11 @@ func TestInvalidSession(t *testing.T) {
 // Test for issue 758 - basic auth with stale session cookie
 func TestBasicAuthWithSessionCookie(t *testing.T) {
 
-	rt := NewRestTester(t, nil)
+	rt := NewRestTester(t,
+		&RestTesterConfig{
+			DatabaseConfig: &DatabaseConfig{}, // needs channel changes for non default scope/collections
+		},
+	)
 	defer rt.Close()
 
 	// Create two users

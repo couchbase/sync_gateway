@@ -89,7 +89,10 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyCache, base.KeyAccess, base.KeyCRUD, base.KeyChanges)
 
-	rtConfig := RestTesterConfig{SyncFn: `function(doc) {channel(doc.channels)}`}
+	rtConfig := RestTesterConfig{
+		SyncFn:         `function(doc) {channel(doc.channels)}`,
+		DatabaseConfig: &DatabaseConfig{}, // does not work with scopes/collections
+	}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 

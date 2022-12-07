@@ -189,13 +189,17 @@ func TestReplicatorDeprecatedCredentials(t *testing.T) {
 func TestReplicatorCheckpointOnStop(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
 
-	passiveRT := NewRestTester(t, nil)
+	passiveRT := NewRestTester(t, &RestTesterConfig{
+		DatabaseConfig: &DatabaseConfig{}, // replicator requires default collection
+	})
 	defer passiveRT.Close()
 
 	adminSrv := httptest.NewServer(passiveRT.TestAdminHandler())
 	defer adminSrv.Close()
 
-	activeRT := NewRestTester(t, nil)
+	activeRT := NewRestTester(t, &RestTesterConfig{
+		DatabaseConfig: &DatabaseConfig{}, // replicator requires default collection
+	})
 	defer activeRT.Close()
 	activeCtx := activeRT.Context()
 

@@ -457,7 +457,10 @@ func TestPostChangesAdminChannelGrant(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyChanges, base.KeyHTTP)
 
-	rt := rest.NewRestTester(t, &rest.RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel);}`})
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
+		SyncFn:         `function(doc) {channel(doc.channel);}`,
+		DatabaseConfig: &rest.DatabaseConfig{}, // does not work with collections yet
+	})
 	defer rt.Close()
 
 	// Create user with access to channel ABC:
@@ -543,7 +546,9 @@ func TestPostChangesAdminChannelGrantRemoval(t *testing.T) {
 	// Disable sequence batching for multi-RT tests (pending CBG-1000)
 	defer db.SuspendSequenceBatching()()
 
-	rt := rest.NewRestTester(t, &rest.RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel);}`})
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel);}`,
+		DatabaseConfig: &rest.DatabaseConfig{}, // does not work with collections yet
+	})
 	defer rt.Close()
 
 	// Create user with access to channel ABC:
@@ -698,7 +703,9 @@ func TestPostChangesAdminChannelGrantRemoval(t *testing.T) {
 func TestPostChangesAdminChannelGrantRemovalWithLimit(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyChanges, base.KeyHTTP)
 
-	rt := rest.NewRestTester(t, &rest.RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel);}`})
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel);}`,
+		DatabaseConfig: &rest.DatabaseConfig{}, // does not work with collections yet
+	})
 	defer rt.Close()
 
 	// Create user with access to channel ABC:
@@ -1729,7 +1736,10 @@ func TestOneShotChangesWithExplicitDocIds(t *testing.T) {
 
 	defer db.SuspendSequenceBatching()()
 
-	rtConfig := rest.RestTesterConfig{SyncFn: `function(doc) {channel(doc.channels)}`}
+	rtConfig := rest.RestTesterConfig{
+		SyncFn:         `function(doc) {channel(doc.channels)}`,
+		DatabaseConfig: &rest.DatabaseConfig{}, // does not work with collections yet
+	}
 	rt := rest.NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
@@ -1932,7 +1942,10 @@ func TestChangesIncludeDocs(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyNone)
 
-	rtConfig := rest.RestTesterConfig{SyncFn: `function(doc) {channel(doc.channels)}`}
+	rtConfig := rest.RestTesterConfig{
+		SyncFn:         `function(doc) {channel(doc.channels)}`,
+		DatabaseConfig: &rest.DatabaseConfig{}, // does not work with collections yet
+	}
 	rt := rest.NewRestTester(t, &rtConfig)
 	testDB := rt.GetDatabase()
 	testDB.RevsLimit = 3
@@ -3681,7 +3694,9 @@ func TestIncludeDocsWithPrincipals(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
-	rt := rest.NewRestTester(t, nil)
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
+		DatabaseConfig: &rest.DatabaseConfig{}, // force use of default scope and collection
+	})
 	defer rt.Close()
 
 	ctx := rt.Context()
@@ -3736,7 +3751,9 @@ func TestChangesAdminChannelGrantLongpollNotify(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyChanges, base.KeyHTTP)
 
-	rt := rest.NewRestTester(t, nil)
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
+		DatabaseConfig: &rest.DatabaseConfig{}, // force use of default scope and collection
+	})
 	defer rt.Close()
 
 	// Create user with access to channel ABC:

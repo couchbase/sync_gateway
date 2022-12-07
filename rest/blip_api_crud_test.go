@@ -431,10 +431,8 @@ func TestBlipSubChangesDocIDFilter(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)
 
-	bt, err := NewBlipTester(t)
-	assert.NoError(t, err, "Error creating BlipTester")
+	bt := NewBlipTesterDefaultCollection(t)
 	defer bt.Close()
-
 	// Counter/Waitgroup to help ensure that all callbacks on continuous changes handler are received
 	receivedChangesWg := sync.WaitGroup{}
 	receivedCaughtUpChange := false
@@ -757,15 +755,14 @@ func TestPublicPortAuthentication(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)
 
 	// Create bliptester that is connected as user1, with access to the user1 channel
-	btUser1, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
+	btUser1 := NewBlipTesterDefaultCollectionFromSpec(t, BlipTesterSpec{
 		connectingUsername: "user1",
 		connectingPassword: "1234",
 	})
-	require.NoError(t, err, "Error creating BlipTester")
 	defer btUser1.Close()
 
 	// Send the user1 doc
-	_, _, _, err = btUser1.SendRev(
+	_, _, _, err := btUser1.SendRev(
 		"foo",
 		"1-abc",
 		[]byte(`{"key": "val", "channels": ["user1"]}`),
@@ -820,7 +817,10 @@ function(doc, oldDoc) {
 }
 
 `
-	rtConfig := RestTesterConfig{SyncFn: syncFunction}
+	rtConfig := RestTesterConfig{
+		SyncFn:         syncFunction,
+		DatabaseConfig: &DatabaseConfig{}, // does not work with scopes/collections
+	}
 	var rt = NewRestTester(t, &rtConfig)
 	defer rt.Close()
 	ctx := rt.Context()
@@ -1311,7 +1311,10 @@ func TestReloadUser(t *testing.T) {
     `
 
 	// Setup
-	rtConfig := RestTesterConfig{SyncFn: syncFn}
+	rtConfig := RestTesterConfig{
+		SyncFn:         syncFn,
+		DatabaseConfig: &DatabaseConfig{}, // does not work with scopes/collections
+	}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 	ctx := rt.Context()
@@ -1412,11 +1415,10 @@ func TestAccessGrantViaAdminApi(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)
 
 	// Create blip tester
-	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
+	bt := NewBlipTesterDefaultCollectionFromSpec(t, BlipTesterSpec{
 		connectingUsername: "user1",
 		connectingPassword: "1234",
 	})
-	require.NoError(t, err, "Unexpected error creating BlipTester")
 	defer bt.Close()
 
 	// Add a doc in the PBS channel
@@ -1673,7 +1675,9 @@ func TestGetRemovedDoc(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)
 
-	rt := NewRestTester(t, nil)
+	rt := NewRestTester(t, &RestTesterConfig{
+		DatabaseConfig: &DatabaseConfig{}, // does not work with scopes/collections
+	})
 	defer rt.Close()
 	btSpec := BlipTesterSpec{
 		connectingUsername: "user1",
@@ -1946,7 +1950,9 @@ func TestRemovedMessageWithAlternateAccess(t *testing.T) {
 	defer db.SuspendSequenceBatching()()
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
-	rt := NewRestTester(t, nil)
+	rt := NewRestTester(t, &RestTesterConfig{
+		DatabaseConfig: &DatabaseConfig{}, // does not work with scopes/collections
+	})
 	defer rt.Close()
 
 	resp := rt.SendAdminRequest("PUT", "/db/_user/user", `{"admin_channels": ["A", "B"], "password": "test"}`)
@@ -2052,7 +2058,9 @@ func TestRemovedMessageWithAlternateAccessAndChannelFilteredReplication(t *testi
 	defer db.SuspendSequenceBatching()()
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
-	rt := NewRestTester(t, nil)
+	rt := NewRestTester(t, &RestTesterConfig{
+		DatabaseConfig: &DatabaseConfig{}, // does not work with scopes/collections
+	})
 	defer rt.Close()
 
 	resp := rt.SendAdminRequest("PUT", "/db/_user/user", `{"admin_channels": ["A", "B"], "password": "test"}`)
@@ -2354,7 +2362,10 @@ func TestBlipInternalPropertiesHandling(t *testing.T) {
 	}
 
 	// Setup
-	rt := NewRestTester(t, &RestTesterConfig{GuestEnabled: true})
+	rt := NewRestTester(t, &RestTesterConfig{
+		GuestEnabled:   true,
+		DatabaseConfig: &DatabaseConfig{}, // does not work with scopes/collections
+	})
 	defer rt.Close()
 
 	client, err := NewBlipTesterClientOptsWithRT(t, rt, nil)

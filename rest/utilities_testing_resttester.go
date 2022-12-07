@@ -215,6 +215,11 @@ func SetupSGRPeers(t *testing.T) (activeRT *RestTester, passiveRT *RestTester, r
 	activeRT = NewRestTester(t, &RestTesterConfig{
 		CustomTestBucket:   activeTestBucket.NoCloseClone(),
 		SgReplicateEnabled: true,
+		DatabaseConfig: &DatabaseConfig{
+			DbConfig: DbConfig{
+				Scopes: nil, // no non default collections for ISGR yet
+			},
+		},
 	})
 	// Initalize RT and bucket
 	_ = activeRT.Bucket()

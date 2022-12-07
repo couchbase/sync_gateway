@@ -639,7 +639,6 @@ func TestReplicationStatusActions(t *testing.T) {
 //   - adds another active node
 //   - Creates more documents, validates they are replicated
 func TestReplicationRebalancePull(t *testing.T) {
-
 	if !base.IsEnterpriseEdition() {
 		t.Skipf("test is EE only (replication rebalance)")
 	}
@@ -729,7 +728,6 @@ func TestReplicationRebalancePull(t *testing.T) {
 //   - adds another active node
 //   - Creates more documents, validates they are replicated
 func TestReplicationRebalancePush(t *testing.T) {
-
 	if !base.IsEnterpriseEdition() {
 		t.Skipf("test is EE only (replication rebalance)")
 	}

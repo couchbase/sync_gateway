@@ -79,7 +79,9 @@ func TestStarAccess(t *testing.T) {
 	}
 
 	// Create some docs:
-	rt := NewRestTester(t, nil)
+	rt := NewRestTester(t, &RestTesterConfig{
+		DatabaseConfig: &DatabaseConfig{}, // make scopes/collections aware by using collection access in channel grant
+	})
 	defer rt.Close()
 
 	a := auth.NewAuthenticator(rt.MetadataStore(), nil, auth.DefaultAuthenticatorOptions())
@@ -526,7 +528,10 @@ func TestBulkDocsChangeToAccess(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAccess)
 
-	rtConfig := RestTesterConfig{SyncFn: `function(doc) {if(doc.type == "setaccess") {channel(doc.channel); access(doc.owner, doc.channel);} else { requireAccess(doc.channel)}}`}
+	rtConfig := RestTesterConfig{
+		SyncFn:         `function(doc) {if(doc.type == "setaccess") {channel(doc.channel); access(doc.owner, doc.channel);} else { requireAccess(doc.channel)}}`,
+		DatabaseConfig: &DatabaseConfig{}, // make scopes/collections aware by using collection access in channel grant
+	}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
@@ -559,8 +564,9 @@ func TestBulkDocsChangeToAccess(t *testing.T) {
 
 // Test _all_docs API call under different security scenarios
 func TestAllDocsAccessControl(t *testing.T) {
-	// restTester := initRestTester(db.IntSequenceType, `function(doc) {channel(doc.channels);}`)
-	rt := NewRestTester(t, nil)
+	rt := NewRestTester(t, &RestTesterConfig{
+		DatabaseConfig: &DatabaseConfig{}, // make scopes/collections aware by using collection access in channel grant
+	})
 	defer rt.Close()
 	type allDocsRow struct {
 		ID    string `json:"id"`
@@ -795,7 +801,10 @@ func TestChannelAccessChanges(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache, base.KeyChanges, base.KeyCRUD)
 
-	rtConfig := RestTesterConfig{SyncFn: `function(doc) {access(doc.owner, doc._id);channel(doc.channel)}`}
+	rtConfig := RestTesterConfig{
+		SyncFn:         `function(doc) {access(doc.owner, doc._id);channel(doc.channel)}`,
+		DatabaseConfig: &DatabaseConfig{}, // make scopes/collections aware by using collection access in channel grant
+	}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 

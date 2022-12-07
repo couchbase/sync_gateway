@@ -139,7 +139,8 @@ func TestFunkyRoleNames(t *testing.T) {
 			const username = "user1"
 			syncFn := fmt.Sprintf(`function(doc) {channel(doc.channels); role("%s", %s);}`, username, string(roleNameJSON))
 			rt := NewRestTester(t, &RestTesterConfig{
-				SyncFn: syncFn,
+				SyncFn:         syncFn,
+				DatabaseConfig: &DatabaseConfig{}, // revocation requires collection specific channel access
 			})
 			defer rt.Close()
 
@@ -177,7 +178,9 @@ func TestBulkDocsChangeToRoleAccess(t *testing.T) {
 			} else {
 				requireAccess(doc.mustHaveAccess)
 			}
-		}`}
+		}`,
+		DatabaseConfig: &DatabaseConfig{}, // revocation requires collection specific channel access
+	}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 	ctx := rt.Context()
@@ -222,7 +225,9 @@ func TestRoleAssignmentBeforeUserExists(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAccess, base.KeyCRUD, base.KeyChanges)
 
-	rtConfig := RestTesterConfig{SyncFn: `function(doc) {role(doc.user, doc.role);channel(doc.channel)}`}
+	rtConfig := RestTesterConfig{SyncFn: `function(doc) {role(doc.user, doc.role);channel(doc.channel)}`,
+		DatabaseConfig: &DatabaseConfig{}, // revocation requires collection specific channel access
+	}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
@@ -268,7 +273,9 @@ func TestRoleAccessChanges(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAccess, base.KeyCRUD, base.KeyChanges)
 
-	rtConfig := RestTesterConfig{SyncFn: `function(doc) {role(doc.user, doc.role);channel(doc.channel)}`}
+	rtConfig := RestTesterConfig{SyncFn: `function(doc) {role(doc.user, doc.role);channel(doc.channel)}`,
+		DatabaseConfig: &DatabaseConfig{}, // revocation requires collection specific channel access
+	}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 

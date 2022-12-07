@@ -261,7 +261,11 @@ func TestUsersAPIDetailsWithLimit(t *testing.T) {
 func TestUserAPI(t *testing.T) {
 
 	// PUT a user
-	rt := NewRestTester(t, nil)
+	rt := NewRestTester(t,
+		&RestTesterConfig{
+			DatabaseConfig: &DatabaseConfig{}, // needs channel changes for non default scope/collections
+		},
+	)
 	defer rt.Close()
 	ctx := rt.Context()
 
@@ -625,6 +629,7 @@ func TestObtainUserChannelsForDeletedRoleCasFail(t *testing.T) {
 				}
 			}
 		`,
+				DatabaseConfig: &DatabaseConfig{}, // needs channel changes for non default scope/collections
 			})
 			defer rt.Close()
 
@@ -842,7 +847,10 @@ function(doc, oldDoc) {
 }
 
 `
-	rtConfig := RestTesterConfig{SyncFn: syncFunction}
+	rtConfig := RestTesterConfig{
+		SyncFn:         syncFunction,
+		DatabaseConfig: &DatabaseConfig{}, // needs channel changes for non default scope/collections
+	}
 	var rt = NewRestTester(t, &rtConfig)
 	defer rt.Close()
 

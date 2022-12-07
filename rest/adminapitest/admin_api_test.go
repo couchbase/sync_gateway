@@ -2979,7 +2979,7 @@ func TestApiInternalPropertiesHandling(t *testing.T) {
 			rest.RequireStatus(t, resp, http.StatusCreated)
 
 			var bucketDoc map[string]interface{}
-			_, err = rt.Bucket().DefaultDataStore().Get(docID, &bucketDoc)
+			_, err = rt.GetSingleTestDataStore().Get(docID, &bucketDoc)
 			assert.NoError(t, err)
 			body := rt.GetDoc(docID)
 			// Confirm input body is in the bucket doc

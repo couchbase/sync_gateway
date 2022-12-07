@@ -39,6 +39,11 @@ func addActiveRT(t *testing.T, testBucket *base.TestBucket) (activeRT *rest.Rest
 	activeRT = rest.NewRestTester(t, &rest.RestTesterConfig{
 		CustomTestBucket:   testBucket.NoCloseClone(),
 		SgReplicateEnabled: true,
+		DatabaseConfig: &rest.DatabaseConfig{
+			DbConfig: rest.DbConfig{
+				Scopes: nil, // no non default collections for ISGR yet
+			},
+		},
 	})
 
 	// If this is a walrus bucket, we need to jump through some hoops to ensure the shared in-memory walrus bucket isn't
