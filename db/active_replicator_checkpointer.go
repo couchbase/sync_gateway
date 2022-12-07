@@ -59,7 +59,9 @@ type statusFunc func(lastSeq string) *ReplicationStatus
 
 type CheckpointerStats struct {
 	ExpectedSequenceCount     int64
+	ExpectedSequenceLen       int
 	ProcessedSequenceCount    int64
+	ProcessedSequenceLen      int
 	AlreadyKnownSequenceCount int64
 	SetCheckpointCount        int64
 	GetCheckpointHitCount     int64
@@ -252,6 +254,9 @@ func (c *Checkpointer) _updateCheckpointLists() (safeSeq string) {
 
 	// trim expectedSeqs list for all processed seqs
 	c.expectedSeqs = c.expectedSeqs[maxI+1:]
+
+	c.stats.ExpectedSequenceLen = len(c.expectedSeqs)
+	c.stats.ProcessedSequenceLen = len(c.processedSeqs)
 
 	return safeSeq
 }
