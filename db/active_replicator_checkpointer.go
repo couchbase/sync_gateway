@@ -58,14 +58,16 @@ type Checkpointer struct {
 type statusFunc func(lastSeq string) *ReplicationStatus
 
 type CheckpointerStats struct {
-	ExpectedSequenceCount     int64
-	ExpectedSequenceLen       int
-	ProcessedSequenceCount    int64
-	ProcessedSequenceLen      int
-	AlreadyKnownSequenceCount int64
-	SetCheckpointCount        int64
-	GetCheckpointHitCount     int64
-	GetCheckpointMissCount    int64
+	ExpectedSequenceCount           int64
+	ExpectedSequenceLen             int
+	ExpectedSequenceLenPostCleanup  int
+	ProcessedSequenceCount          int64
+	ProcessedSequenceLen            int
+	ProcessedSequenceLenPostCleanup int
+	AlreadyKnownSequenceCount       int64
+	SetCheckpointCount              int64
+	GetCheckpointHitCount           int64
+	GetCheckpointMissCount          int64
 }
 
 func NewCheckpointer(ctx context.Context, clientID string, configHash string, blipSender *blip.Sender, replicatorConfig *ActiveReplicatorConfig, statusCallback statusFunc) *Checkpointer {
@@ -238,6 +240,9 @@ func (c *Checkpointer) Stats() CheckpointerStats {
 func (c *Checkpointer) _updateCheckpointLists() (safeSeq *SequenceID) {
 	base.TracefCtx(c.ctx, base.KeyReplicate, "checkpointer: _updateCheckpointLists(expectedSeqs: %v, procssedSeqs: %v)", c.expectedSeqs, c.processedSeqs)
 
+	c.stats.ExpectedSequenceLen = len(c.expectedSeqs)
+	c.stats.ProcessedSequenceLen = len(c.processedSeqs)
+
 	maxI := c._calculateSafeExpectedSeqsIdx()
 	if maxI == -1 {
 		// nothing to do
@@ -256,8 +261,8 @@ func (c *Checkpointer) _updateCheckpointLists() (safeSeq *SequenceID) {
 	// trim expectedSeqs list for all processed seqs
 	c.expectedSeqs = c.expectedSeqs[maxI+1:]
 
-	c.stats.ExpectedSequenceLen = len(c.expectedSeqs)
-	c.stats.ProcessedSequenceLen = len(c.processedSeqs)
+	c.stats.ExpectedSequenceLenPostCleanup = len(c.expectedSeqs)
+	c.stats.ProcessedSequenceLenPostCleanup = len(c.processedSeqs)
 
 	return &seq
 }
