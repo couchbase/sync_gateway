@@ -21,7 +21,7 @@ func TestCheckpointerSafeSeq(t *testing.T) {
 	tests := []struct {
 		name                    string
 		c                       *Checkpointer
-		expectedSafeSeq         string
+		expectedSafeSeq         *SequenceID
 		expectedExpectedSeqsIdx int
 		expectedExpectedSeqs    []SequenceID
 		expectedProcessedSeqs   map[SequenceID]struct{}
@@ -32,7 +32,7 @@ func TestCheckpointerSafeSeq(t *testing.T) {
 				expectedSeqs:  []SequenceID{},
 				processedSeqs: map[SequenceID]struct{}{},
 			},
-			expectedSafeSeq:         "",
+			expectedSafeSeq:         nil,
 			expectedExpectedSeqsIdx: -1,
 			expectedExpectedSeqs:    []SequenceID{},
 			expectedProcessedSeqs:   map[SequenceID]struct{}{},
@@ -43,7 +43,7 @@ func TestCheckpointerSafeSeq(t *testing.T) {
 				expectedSeqs:  []SequenceID{{Seq: 1}, {Seq: 2}, {Seq: 3}},
 				processedSeqs: map[SequenceID]struct{}{},
 			},
-			expectedSafeSeq:         "",
+			expectedSafeSeq:         nil,
 			expectedExpectedSeqsIdx: -1,
 			expectedExpectedSeqs:    []SequenceID{{Seq: 1}, {Seq: 2}, {Seq: 3}},
 			expectedProcessedSeqs:   map[SequenceID]struct{}{},
@@ -54,7 +54,7 @@ func TestCheckpointerSafeSeq(t *testing.T) {
 				expectedSeqs:  []SequenceID{{Seq: 1}, {Seq: 2}, {Seq: 3}},
 				processedSeqs: map[SequenceID]struct{}{{Seq: 1}: {}},
 			},
-			expectedSafeSeq:         "1",
+			expectedSafeSeq:         &SequenceID{Seq: 1},
 			expectedExpectedSeqsIdx: 0,
 			expectedExpectedSeqs:    []SequenceID{{Seq: 2}, {Seq: 3}},
 			expectedProcessedSeqs:   map[SequenceID]struct{}{},
@@ -65,7 +65,7 @@ func TestCheckpointerSafeSeq(t *testing.T) {
 				expectedSeqs:  []SequenceID{{Seq: 1}, {Seq: 2}, {Seq: 3}},
 				processedSeqs: map[SequenceID]struct{}{{Seq: 1}: {}, {Seq: 3}: {}},
 			},
-			expectedSafeSeq:         "1",
+			expectedSafeSeq:         &SequenceID{Seq: 1},
 			expectedExpectedSeqsIdx: 0,
 			expectedExpectedSeqs:    []SequenceID{{Seq: 2}, {Seq: 3}},
 			expectedProcessedSeqs:   map[SequenceID]struct{}{{Seq: 3}: {}},
@@ -76,7 +76,7 @@ func TestCheckpointerSafeSeq(t *testing.T) {
 				expectedSeqs:  []SequenceID{{Seq: 1}, {Seq: 2}, {Seq: 3}},
 				processedSeqs: map[SequenceID]struct{}{{Seq: 1}: {}, {Seq: 2}: {}, {Seq: 3}: {}},
 			},
-			expectedSafeSeq:         "3",
+			expectedSafeSeq:         &SequenceID{Seq: 3},
 			expectedExpectedSeqsIdx: 2,
 			expectedExpectedSeqs:    []SequenceID{},
 			expectedProcessedSeqs:   map[SequenceID]struct{}{},
@@ -87,7 +87,7 @@ func TestCheckpointerSafeSeq(t *testing.T) {
 				expectedSeqs:  []SequenceID{{Seq: 1}, {Seq: 2}, {Seq: 3}},
 				processedSeqs: map[SequenceID]struct{}{{Seq: 1}: {}, {Seq: 2}: {}, {Seq: 3}: {}, {Seq: 4}: {}, {Seq: 5}: {}},
 			},
-			expectedSafeSeq:         "3",
+			expectedSafeSeq:         &SequenceID{Seq: 3},
 			expectedExpectedSeqsIdx: 2,
 			expectedExpectedSeqs:    []SequenceID{},
 			expectedProcessedSeqs:   map[SequenceID]struct{}{{Seq: 4}: {}, {Seq: 5}: {}},
@@ -98,8 +98,19 @@ func TestCheckpointerSafeSeq(t *testing.T) {
 				expectedSeqs:  []SequenceID{{Seq: 3}, {Seq: 2}, {Seq: 1}},
 				processedSeqs: map[SequenceID]struct{}{{Seq: 1}: {}, {Seq: 2}: {}, {Seq: 3}: {}},
 			},
-			expectedSafeSeq:         "3",
+			expectedSafeSeq:         &SequenceID{Seq: 3},
 			expectedExpectedSeqsIdx: 2,
+			expectedExpectedSeqs:    []SequenceID{},
+			expectedProcessedSeqs:   map[SequenceID]struct{}{},
+		},
+		{
+			name: "compound sequence",
+			c: &Checkpointer{
+				expectedSeqs:  []SequenceID{{Seq: 1}, {Seq: 3, LowSeq: 1}},
+				processedSeqs: map[SequenceID]struct{}{{Seq: 1}: {}, {Seq: 3, LowSeq: 1}: {}},
+			},
+			expectedSafeSeq:         &SequenceID{Seq: 3, LowSeq: 1},
+			expectedExpectedSeqsIdx: 1,
 			expectedExpectedSeqs:    []SequenceID{},
 			expectedProcessedSeqs:   map[SequenceID]struct{}{},
 		},
@@ -113,14 +124,18 @@ func TestCheckpointerSafeSeq(t *testing.T) {
 
 			t.Run("_updateCheckpointLists", func(t *testing.T) {
 				actualSafeSeq := tt.c._updateCheckpointLists()
-				assert.Equal(t, tt.expectedSafeSeq, actualSafeSeq)
+				if tt.expectedSafeSeq == nil {
+					assert.Nil(t, actualSafeSeq)
+				} else {
+					assert.Equal(t, *tt.expectedSafeSeq, *actualSafeSeq)
+				}
 				assert.Equal(t, tt.expectedExpectedSeqs, tt.c.expectedSeqs)
 				assert.Equal(t, tt.expectedProcessedSeqs, tt.c.processedSeqs)
 
 				// _updateCheckpointLists should be idempotent
 				// we'd expect no safe seq, and no further changes to either list, as long as c.processedSeqs hasn't been added to
 				actualSafeSeq2 := tt.c._updateCheckpointLists()
-				assert.Equal(t, "", actualSafeSeq2)
+				assert.Nil(t, actualSafeSeq2)
 				assert.Equal(t, tt.expectedExpectedSeqs, tt.c.expectedSeqs)
 				assert.Equal(t, tt.expectedProcessedSeqs, tt.c.processedSeqs)
 			})
