@@ -1854,6 +1854,131 @@ func TestActiveReplicatorPullBasic(t *testing.T) {
 	assert.Equal(t, strconv.FormatUint(remoteDoc.Sequence, 10), ar.GetStatus().LastSeqPull)
 }
 
+// TestActiveReplicatorPullSkippedSequence:
+//   - Starts 2 RestTesters, one active, and one passive.
+//   - Creates two documents on rt2, separated by a skipped sequence which can be pulled by the replicator running in rt1.
+//   - Ensures that the checkpointer is able to handle the compound sequence format appropriately.
+func TestActiveReplicatorPullSkippedSequence(t *testing.T) {
+
+	// we're messing with sequence numbers in this test
+	defer db.SuspendSequenceBatching()()
+
+	base.RequireNumTestBuckets(t, 2)
+
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+
+	// Passive
+	tb2 := base.GetTestBucket(t)
+
+	const (
+		username = "AL_1c.e-@"
+		password = "pa$$w*rD!"
+	)
+
+	rt2 := rest.NewRestTester(t, &rest.RestTesterConfig{
+		CustomTestBucket: tb2,
+		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
+			Users: map[string]*auth.PrincipalConfig{
+				username: {
+					Password:         base.StringPtr(password),
+					ExplicitChannels: base.SetOf(username),
+				},
+			},
+			CacheConfig: &rest.CacheConfig{
+				// shorten pending sequence handling to speed up test
+				ChannelCacheConfig: &rest.ChannelCacheConfig{
+					MaxWaitPending: base.Uint32Ptr(1),
+				},
+			},
+		}},
+	})
+	defer rt2.Close()
+
+	docIDPrefix := t.Name() + "rt2doc"
+	docID1 := docIDPrefix + "1"
+	resp := rt2.SendAdminRequest(http.MethodPut, "/db/"+docID1, `{"source":"rt2","channels":["`+username+`"]}`)
+	rest.RequireStatus(t, resp, http.StatusCreated)
+
+	// allocate a fake sequence to trigger skipped sequence handling
+	_, err := rt2.MetadataStore().Incr(base.SyncSeqKey, 1, 1, 0)
+	require.NoError(t, err)
+
+	docID2 := docIDPrefix + "2"
+	resp = rt2.SendAdminRequest(http.MethodPut, "/db/"+docID2, `{"source":"rt2","channels":["`+username+`"]}`)
+	rest.RequireStatus(t, resp, http.StatusCreated)
+
+	docID3 := docIDPrefix + "3"
+	resp = rt2.SendAdminRequest(http.MethodPut, "/db/"+docID3, `{"source":"rt2","channels":["`+username+`"]}`)
+	rest.RequireStatus(t, resp, http.StatusCreated)
+
+	// remoteDoc1, err := rt2.GetDatabase().GetSingleDatabaseCollection().GetDocument(base.TestCtx(t), docID1, db.DocUnmarshalAll)
+	// assert.NoError(t, err)
+
+	// remoteDoc2, err := rt2.GetDatabase().GetSingleDatabaseCollection().GetDocument(base.TestCtx(t), docID2, db.DocUnmarshalAll)
+	// assert.NoError(t, err)
+
+	require.NoError(t, rt2.WaitForPendingChanges())
+
+	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1.
+	srv := httptest.NewServer(rt2.TestPublicHandler())
+	defer srv.Close()
+
+	passiveDBURL, err := url.Parse(srv.URL + "/db")
+	require.NoError(t, err)
+
+	// Add basic auth creds to target db URL
+	passiveDBURL.User = url.UserPassword(username, password)
+
+	// Active
+	tb1 := base.GetTestBucket(t)
+
+	rt1 := rest.NewRestTester(t, &rest.RestTesterConfig{
+		CustomTestBucket: tb1,
+	})
+	defer rt1.Close()
+	ctx1 := rt1.Context()
+
+	stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false)
+	require.NoError(t, err)
+	dbstats, err := stats.DBReplicatorStats(t.Name())
+	require.NoError(t, err)
+
+	ar := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
+		ID:          t.Name(),
+		Direction:   db.ActiveReplicatorTypePull,
+		RemoteDBURL: passiveDBURL,
+		ActiveDB: &db.Database{
+			DatabaseContext: rt1.GetDatabase(),
+		},
+		ChangesBatchSize:    200,
+		Continuous:          true,
+		ReplicationStatsMap: dbstats,
+	})
+	defer func() { assert.NoError(t, ar.Stop()) }()
+
+	assert.Equal(t, "", ar.GetStatus().LastSeqPull)
+
+	// Start the replicator (implicit connect)
+	assert.NoError(t, ar.Start(ctx1))
+
+	// wait for the documents originally written to rt2 to arrive at rt1
+	changesResults, err := rt1.WaitForChanges(3, "/db/_changes?since=0", "", true)
+	require.NoError(t, err)
+	require.Len(t, changesResults.Results, 3)
+	t.Logf("changesResults: %+v", changesResults)
+
+	// received seqs 2, 4 and 5, despite skipping 3 - cannot checkpoint past 2
+	assert.Equal(t, "2::5", ar.GetStatus().LastSeqPull)
+
+	require.NoError(t, ar.Stop())
+
+	// TODO: Write a doc with sequence 3?
+
+	require.NoError(t, ar.Start(ctx1))
+
+	time.Sleep(time.Minute * 30)
+}
+
 // TestActiveReplicatorPullAttachments:
 //   - Starts 2 RestTesters, one active, and one passive.
 //   - Creates a document with an attachment on rt2 which can be pulled by the replicator running in rt1.
