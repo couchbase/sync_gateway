@@ -2002,7 +2002,7 @@ func TestActiveReplicatorPullSkippedSequence(t *testing.T) {
 
 	require.NoError(t, ar.Stop())
 	assert.Equal(t, int64(1), ar.Pull.Checkpointer.Stats().ExpectedSequenceCount)
-	assert.Equal(t, int64(2), ar.Pull.Checkpointer.Stats().AlreadyKnownSequenceCount)
+	assert.Equal(t, int64(0), ar.Pull.Checkpointer.Stats().AlreadyKnownSequenceCount)
 	assert.Equal(t, int64(1), ar.Pull.Checkpointer.Stats().ProcessedSequenceCount)
 
 	assert.Equal(t, 0, ar.Pull.Checkpointer.Stats().ExpectedSequenceLen)

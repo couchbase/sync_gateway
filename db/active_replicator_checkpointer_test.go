@@ -12,7 +12,6 @@ package db
 
 import (
 	"fmt"
-	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -24,85 +23,85 @@ func TestCheckpointerSafeSeq(t *testing.T) {
 		c                       *Checkpointer
 		expectedSafeSeq         string
 		expectedExpectedSeqsIdx int
-		expectedExpectedSeqs    []string
-		expectedProcessedSeqs   map[string]struct{}
+		expectedExpectedSeqs    []SequenceID
+		expectedProcessedSeqs   map[SequenceID]struct{}
 	}{
 		{
 			name: "empty",
 			c: &Checkpointer{
-				expectedSeqs:  []string{},
-				processedSeqs: map[string]struct{}{},
+				expectedSeqs:  []SequenceID{},
+				processedSeqs: map[SequenceID]struct{}{},
 			},
 			expectedSafeSeq:         "",
 			expectedExpectedSeqsIdx: -1,
-			expectedExpectedSeqs:    []string{},
-			expectedProcessedSeqs:   map[string]struct{}{},
+			expectedExpectedSeqs:    []SequenceID{},
+			expectedProcessedSeqs:   map[SequenceID]struct{}{},
 		},
 		{
 			name: "none processed",
 			c: &Checkpointer{
-				expectedSeqs:  []string{"1", "2", "3"},
-				processedSeqs: map[string]struct{}{},
+				expectedSeqs:  []SequenceID{{Seq: 1}, {Seq: 2}, {Seq: 3}},
+				processedSeqs: map[SequenceID]struct{}{},
 			},
 			expectedSafeSeq:         "",
 			expectedExpectedSeqsIdx: -1,
-			expectedExpectedSeqs:    []string{"1", "2", "3"},
-			expectedProcessedSeqs:   map[string]struct{}{},
+			expectedExpectedSeqs:    []SequenceID{{Seq: 1}, {Seq: 2}, {Seq: 3}},
+			expectedProcessedSeqs:   map[SequenceID]struct{}{},
 		},
 		{
 			name: "partial processed",
 			c: &Checkpointer{
-				expectedSeqs:  []string{"1", "2", "3"},
-				processedSeqs: map[string]struct{}{"1": {}},
+				expectedSeqs:  []SequenceID{{Seq: 1}, {Seq: 2}, {Seq: 3}},
+				processedSeqs: map[SequenceID]struct{}{{Seq: 1}: {}},
 			},
 			expectedSafeSeq:         "1",
 			expectedExpectedSeqsIdx: 0,
-			expectedExpectedSeqs:    []string{"2", "3"},
-			expectedProcessedSeqs:   map[string]struct{}{},
+			expectedExpectedSeqs:    []SequenceID{{Seq: 2}, {Seq: 3}},
+			expectedProcessedSeqs:   map[SequenceID]struct{}{},
 		},
 		{
 			name: "partial processed with gap",
 			c: &Checkpointer{
-				expectedSeqs:  []string{"1", "2", "3"},
-				processedSeqs: map[string]struct{}{"1": {}, "3": {}},
+				expectedSeqs:  []SequenceID{{Seq: 1}, {Seq: 2}, {Seq: 3}},
+				processedSeqs: map[SequenceID]struct{}{{Seq: 1}: {}, {Seq: 3}: {}},
 			},
 			expectedSafeSeq:         "1",
 			expectedExpectedSeqsIdx: 0,
-			expectedExpectedSeqs:    []string{"2", "3"},
-			expectedProcessedSeqs:   map[string]struct{}{"3": {}},
+			expectedExpectedSeqs:    []SequenceID{{Seq: 2}, {Seq: 3}},
+			expectedProcessedSeqs:   map[SequenceID]struct{}{{Seq: 3}: {}},
 		},
 		{
 			name: "fully processed",
 			c: &Checkpointer{
-				expectedSeqs:  []string{"1", "2", "3"},
-				processedSeqs: map[string]struct{}{"1": {}, "2": {}, "3": {}},
+				expectedSeqs:  []SequenceID{{Seq: 1}, {Seq: 2}, {Seq: 3}},
+				processedSeqs: map[SequenceID]struct{}{{Seq: 1}: {}, {Seq: 2}: {}, {Seq: 3}: {}},
 			},
 			expectedSafeSeq:         "3",
 			expectedExpectedSeqsIdx: 2,
-			expectedExpectedSeqs:    []string{},
-			expectedProcessedSeqs:   map[string]struct{}{},
+			expectedExpectedSeqs:    []SequenceID{},
+			expectedProcessedSeqs:   map[SequenceID]struct{}{},
 		},
 		{
 			name: "extra processed",
 			c: &Checkpointer{
-				expectedSeqs:  []string{"1", "2", "3"},
-				processedSeqs: map[string]struct{}{"1": {}, "2": {}, "3": {}, "4": {}, "5": {}},
+				expectedSeqs:  []SequenceID{{Seq: 1}, {Seq: 2}, {Seq: 3}},
+				processedSeqs: map[SequenceID]struct{}{{Seq: 1}: {}, {Seq: 2}: {}, {Seq: 3}: {}, {Seq: 4}: {}, {Seq: 5}: {}},
 			},
 			expectedSafeSeq:         "3",
 			expectedExpectedSeqsIdx: 2,
-			expectedExpectedSeqs:    []string{},
-			expectedProcessedSeqs:   map[string]struct{}{"4": {}, "5": {}},
+			expectedExpectedSeqs:    []SequenceID{},
+			expectedProcessedSeqs:   map[SequenceID]struct{}{{Seq: 4}: {}, {Seq: 5}: {}},
 		},
 		{
 			name: "out of order expected seqs",
 			c: &Checkpointer{
-				expectedSeqs:  []string{"3", "2", "1"},
-				processedSeqs: map[string]struct{}{"1": {}, "2": {}, "3": {}},
+				expectedSeqs:  []SequenceID{{Seq: 3}, {Seq: 2}, {Seq: 1}},
+				processedSeqs: map[SequenceID]struct{}{{Seq: 1}: {}, {Seq: 2}: {}, {Seq: 3}: {}},
 			},
 			expectedSafeSeq:         "3",
 			expectedExpectedSeqsIdx: 2,
-			expectedExpectedSeqs:    []string{},
-			expectedProcessedSeqs:   map[string]struct{}{},
+			expectedExpectedSeqs:    []SequenceID{},
+			expectedProcessedSeqs:   map[SequenceID]struct{}{},
 		},
 	}
 	for _, tt := range tests {
@@ -135,7 +134,6 @@ func BenchmarkCheckpointerUpdateCheckpointLists(b *testing.B) {
 		processedSeqsLen int
 	}{
 		{expectedSeqsLen: 1, processedSeqsLen: 1},
-		{expectedSeqsLen: 10, processedSeqsLen: 10},
 		{expectedSeqsLen: 100, processedSeqsLen: 100},
 		{expectedSeqsLen: 500, processedSeqsLen: 500},
 		{expectedSeqsLen: 1000, processedSeqsLen: 1000},
@@ -143,16 +141,15 @@ func BenchmarkCheckpointerUpdateCheckpointLists(b *testing.B) {
 		{expectedSeqsLen: 50000, processedSeqsLen: 50000},
 		{expectedSeqsLen: 100000, processedSeqsLen: 100000},
 	}
-
 	for _, test := range tests {
 		b.Run(fmt.Sprintf("expectedSeqsLen=%d,processedSeqsLen=%d", test.expectedSeqsLen, test.processedSeqsLen), func(b *testing.B) {
-			expectedSeqs := make([]string, 0, test.expectedSeqsLen)
+			expectedSeqs := make([]SequenceID, 0, test.expectedSeqsLen)
 			for i := 0; i < test.expectedSeqsLen; i++ {
-				expectedSeqs = append(expectedSeqs, strconv.Itoa(i))
+				expectedSeqs = append(expectedSeqs, SequenceID{Seq: uint64(i)})
 			}
-			processedSeqs := make(map[string]struct{}, test.processedSeqsLen)
+			processedSeqs := make(map[SequenceID]struct{}, test.processedSeqsLen)
 			for i := 0; i < test.processedSeqsLen; i++ {
-				processedSeqs[strconv.Itoa(i)] = struct{}{}
+				processedSeqs[SequenceID{Seq: uint64(i)}] = struct{}{}
 			}
 			b.ReportAllocs()
 			b.ResetTimer()
