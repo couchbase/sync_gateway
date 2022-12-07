@@ -810,7 +810,8 @@ func TestAllDocsOnly(t *testing.T) {
 	collectionID := collection.GetCollectionID()
 
 	// Trigger creation of the channel cache for channel "all"
-	collection.changeCache.getChannelCache().getSingleChannelCache(channels.NewID("all", collectionID))
+	_, err := collection.changeCache.getChannelCache().getSingleChannelCache(channels.NewID("all", collectionID))
+	require.NoError(t, err)
 
 	ids := make([]AllDocsEntry, 100)
 	for i := 0; i < 100; i++ {
@@ -854,7 +855,8 @@ func TestAllDocsOnly(t *testing.T) {
 	err = collection.changeCache.waitForSequence(ctx, 101, base.DefaultWaitForSequence)
 	require.NoError(t, err)
 
-	changeLog := collection.GetChangeLog(channels.NewID("all", collectionID), 0)
+	changeLog, err := collection.GetChangeLog(channels.NewID("all", collectionID), 0)
+	require.NoError(t, err)
 	require.Len(t, changeLog, 50)
 	assert.Equal(t, "alldoc-51", changeLog[0].DocID)
 
@@ -994,19 +996,21 @@ func TestConflicts(t *testing.T) {
 	collectionID := collection.GetCollectionID()
 
 	allChannel := channels.NewID("all", collectionID)
-	collection.changeCache.getChannelCache().getSingleChannelCache(allChannel)
+	_, err := collection.changeCache.getChannelCache().getSingleChannelCache(allChannel)
+	require.NoError(t, err)
 
 	cacheWaiter := db.NewDCPCachingCountWaiter(t)
 
 	// Create rev 1 of "doc":
 	body := Body{"n": 1, "channels": []string{"all", "1"}}
-	_, _, err := collection.PutExistingRevWithBody(ctx, "doc", body, []string{"1-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc", body, []string{"1-a"}, false)
 	assert.NoError(t, err, "add 1-a")
 
 	// Wait for rev to be cached
 	cacheWaiter.AddAndWait(1)
 
-	changeLog := collection.GetChangeLog(channels.NewID("all", collectionID), 0)
+	changeLog, err := collection.GetChangeLog(channels.NewID("all", collectionID), 0)
+	require.NoError(t, err)
 	assert.Equal(t, 1, len(changeLog))
 
 	// Create two conflicting changes:
@@ -1040,7 +1044,8 @@ func TestConflicts(t *testing.T) {
 
 	// Verify the change-log of the "all" channel:
 	cacheWaiter.Wait()
-	changeLog = collection.GetChangeLog(allChannel, 0)
+	changeLog, err = collection.GetChangeLog(allChannel, 0)
+	require.NoError(t, err)
 	assert.Equal(t, 1, len(changeLog))
 	assert.Equal(t, uint64(3), changeLog[0].Sequence)
 	assert.Equal(t, "doc", changeLog[0].DocID)

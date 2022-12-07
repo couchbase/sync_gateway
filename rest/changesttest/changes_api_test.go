@@ -2228,6 +2228,7 @@ func TestChangesViewBackfillFromQueryOnly(t *testing.T) {
 
 // Validate that non-contiguous query results (due to limit) are not prepended to the cache
 func TestChangesViewBackfillNonContiguousQueryResults(t *testing.T) {
+	defer db.SuspendSequenceBatching()()
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyChanges, base.KeyCache)
 
