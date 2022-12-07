@@ -84,7 +84,6 @@ type ChannelQueryHandlerFactory func(collectionID uint32) (ChannelQueryHandler, 
 type StableSequenceCallbackFunc func() uint64
 
 type channelCacheImpl struct {
-	//queryHandler         ChannelQueryHandler           // Passed to singleChannelCacheImpl for view queries.
 	queryHandlerFactory  ChannelQueryHandlerFactory    // Factory to look up ChannelQueryHandler for a collectionID
 	channelCaches        *channels.RangeSafeCollection // A collection of singleChannelCaches
 	backgroundTasks      []BackgroundTask              // List of background tasks specific to channel cache.
