@@ -810,7 +810,8 @@ func TestAllDocsOnly(t *testing.T) {
 	collectionID := collection.GetCollectionID()
 
 	// Trigger creation of the channel cache for channel "all"
-	collection.changeCache.getChannelCache().getSingleChannelCache(channels.NewID("all", collectionID))
+	_, err := collection.changeCache.getChannelCache().getSingleChannelCache(channels.NewID("all", collectionID))
+	require.NoError(t, err)
 
 	ids := make([]AllDocsEntry, 100)
 	for i := 0; i < 100; i++ {
@@ -995,7 +996,8 @@ func TestConflicts(t *testing.T) {
 	collectionID := collection.GetCollectionID()
 
 	allChannel := channels.NewID("all", collectionID)
-	collection.changeCache.getChannelCache().getSingleChannelCache(allChannel)
+	_, err := collection.changeCache.getChannelCache().getSingleChannelCache(allChannel)
+	require.NoError(t, err)
 
 	cacheWaiter := db.NewDCPCachingCountWaiter(t)
 
