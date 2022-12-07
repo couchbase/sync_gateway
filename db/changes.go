@@ -196,7 +196,16 @@ func (db *DatabaseCollectionWithUser) buildRevokedFeed(ctx context.Context, ch c
 	paginationOptions.Since.Seq = revokeFrom
 
 	// Use a bypass channel cache for revocations (CBG-1695)
-	singleChannelCache := db.changeCache.getChannelCache().getBypassChannelCache(ch)
+	singleChannelCache, err := db.changeCache.getChannelCache().getBypassChannelCache(ch)
+	if err != nil {
+		base.WarnfCtx(ctx, "Error obtaining channel cache for channel %q: %v", base.UD(singleChannelCache.ChannelID()), err)
+		change := ChangeEntry{
+			Err: base.ErrChannelFeed,
+		}
+		feed <- &change
+		close(feed)
+		return feed
+	}
 
 	go func() {
 		defer base.FatalPanicHandler()
@@ -726,7 +735,13 @@ func (db *DatabaseCollectionWithUser) SimpleMultiChangesFeed(ctx context.Context
 					chanID := channels.NewID(chanName, collectionID)
 					// Obtain a SingleChannelCache instance to use for both normal and late feeds.  Required to ensure consistency
 					// if cache is evicted during processing
-					singleChannelCache := db.changeCache.getChannelCache().getSingleChannelCache(chanID)
+					singleChannelCache, err := db.changeCache.getChannelCache().getSingleChannelCache(chanID)
+					if err != nil {
+						base.WarnfCtx(ctx, "Unable to obtain channel cache for %v, terminating feed", chanID)
+						change := makeErrorEntry("Channel cache unavailable, terminating feed")
+						output <- &change
+						return
+					}
 
 					// Set up late sequence handling first, as we need to roll back the regular feed on error
 					// Handles previously skipped sequences prior to options.Since that
@@ -1091,8 +1106,7 @@ func (db *DatabaseCollectionWithUser) GetChanges(ctx context.Context, channels b
 }
 
 // Returns the set of cached log entries for a given channel
-func (db *DatabaseCollection) GetChangeLog(channel channels.ID, afterSeq uint64) (entries []*LogEntry) {
-
+func (db *DatabaseCollection) GetChangeLog(channel channels.ID, afterSeq uint64) (entries []*LogEntry, err error) {
 	return db.changeCache.getChannelCache().GetCachedChanges(channel)
 }
 
@@ -1194,8 +1208,8 @@ func (db *DatabaseCollectionWithUser) getLateFeed(feedHandler *lateSequenceFeed,
 
 // Closes a single late sequence feed.
 func (db *DatabaseCollectionWithUser) closeLateFeed(feedHandler *lateSequenceFeed) {
-	singleChannelCache := db.changeCache.getChannelCache().getSingleChannelCache(feedHandler.channel)
-	if !singleChannelCache.SupportsLateFeed() {
+	singleChannelCache, err := db.changeCache.getChannelCache().getSingleChannelCache(feedHandler.channel)
+	if err != nil || !singleChannelCache.SupportsLateFeed() {
 		return
 	}
 	if singleChannelCache.LateSequenceUUID() == feedHandler.lateSequenceUUID {

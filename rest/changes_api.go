@@ -341,9 +341,9 @@ func (h *handler) sendSimpleChanges(channels base.Set, options db.ChangesOptions
 	var feed <-chan *db.ChangeEntry
 	var err error
 	if len(docids) > 0 {
-		feed, err = h.db.GetSingleDatabaseCollectionWithUser().DocIDChangesFeed(h.ctx(), channels, docids, options)
+		feed, err = h.collection.DocIDChangesFeed(h.ctx(), channels, docids, options)
 	} else {
-		feed, err = h.db.GetSingleDatabaseCollectionWithUser().MultiChangesFeed(h.ctx(), channels, options)
+		feed, err = h.collection.MultiChangesFeed(h.ctx(), channels, options)
 	}
 	if err != nil {
 		return err, false

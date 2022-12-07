@@ -126,7 +126,7 @@ func TestLateSequenceHandling(t *testing.T) {
 	dbstats, err := stats.NewDBStats("", false, false, false)
 	require.NoError(t, err)
 
-	cache := newSingleChannelCache(context, channels.NewID("Test1", collectionID), 0, dbstats.CacheStats)
+	cache := newSingleChannelCache(collection, channels.NewID("Test1", collectionID), 0, dbstats.CacheStats)
 	assert.True(t, cache != nil)
 
 	// Empty late sequence cache should return empty set
@@ -202,7 +202,7 @@ func TestLateSequenceHandlingWithMultipleListeners(t *testing.T) {
 	dbstats, err := stats.NewDBStats("", false, false, false)
 	require.NoError(t, err)
 
-	cache := newSingleChannelCache(context, channels.NewID("Test1", collectionID), 0, dbstats.CacheStats)
+	cache := newSingleChannelCache(collection, channels.NewID("Test1", collectionID), 0, dbstats.CacheStats)
 	assert.True(t, cache != nil)
 
 	// Add Listener before late entries arrive
@@ -324,7 +324,9 @@ func TestLateSequenceErrorRecovery(t *testing.T) {
 	// Modify the cache's late logs to remove the changes feed's lateFeedHandler sequence from the
 	// cache's lateLogs.  This will trigger an error on the next feed iteration, which should trigger
 	// rollback to resend all changes since low sequence (1)
-	abcCache := dbCollection.changeCache.getChannelCache().getSingleChannelCache(channels.NewID("ABC", collectionID)).(*singleChannelCacheImpl)
+	c, err := dbCollection.changeCache.getChannelCache().getSingleChannelCache(channels.NewID("ABC", collectionID))
+	require.NoError(t, err)
+	abcCache := c.(*singleChannelCacheImpl)
 	abcCache.lateLogs[0].logEntry.Sequence = 1
 
 	// Write sequence 3.  Error should trigger rollback that resends everything since low sequence (1)
@@ -647,16 +649,20 @@ func TestChannelCacheBackfill(t *testing.T) {
 	require.NoError(t, collection.changeCache.waitForSequence(ctx, 7, base.DefaultWaitForSequence))
 
 	// verify insert at start (PBS)
-	pbsCache := collection.changeCache.getChannelCache().getSingleChannelCache(channels.NewID("PBS", collectionID)).(*singleChannelCacheImpl)
+	pbsCache, err := collection.changeCache.getChannelCache().getSingleChannelCache(channels.NewID("PBS", collectionID))
+	require.NoError(t, err)
 	assert.True(t, verifyCacheSequences(pbsCache, []uint64{3, 5, 6}))
 	// verify insert at middle (ABC)
-	abcCache := collection.changeCache.getChannelCache().getSingleChannelCache(channels.NewID("ABC", collectionID)).(*singleChannelCacheImpl)
+	abcCache, err := collection.changeCache.getChannelCache().getSingleChannelCache(channels.NewID("ABC", collectionID))
+	require.NoError(t, err)
 	assert.True(t, verifyCacheSequences(abcCache, []uint64{1, 2, 3, 5, 6}))
 	// verify insert at end (NBC)
-	nbcCache := collection.changeCache.getChannelCache().getSingleChannelCache(channels.NewID("NBC", collectionID)).(*singleChannelCacheImpl)
+	nbcCache, err := collection.changeCache.getChannelCache().getSingleChannelCache(channels.NewID("NBC", collectionID))
+	require.NoError(t, err)
 	assert.True(t, verifyCacheSequences(nbcCache, []uint64{1, 3}))
 	// verify insert to empty cache (TBS)
-	tbsCache := collection.changeCache.getChannelCache().getSingleChannelCache(channels.NewID("TBS", collectionID)).(*singleChannelCacheImpl)
+	tbsCache, err := collection.changeCache.getChannelCache().getSingleChannelCache(channels.NewID("TBS", collectionID))
+	require.NoError(t, err)
 	assert.True(t, verifyCacheSequences(tbsCache, []uint64{3}))
 
 	// verify changes has three entries (needs to resend all since previous LowSeq, which
@@ -1471,8 +1477,10 @@ func TestChannelCacheSize(t *testing.T) {
 	// Validate that cache stores the expected number of values
 	collectionID := collection.GetCollectionID()
 
-	abcCache := collection.changeCache.getChannelCache().getSingleChannelCache(channels.NewID("ABC", collectionID)).(*singleChannelCacheImpl)
-	assert.Equal(t, 600, len(abcCache.logs))
+	abcCache, err := collection.changeCache.getChannelCache().getSingleChannelCache(channels.NewID("ABC", collectionID))
+	require.NoError(t, err)
+
+	assert.Equal(t, 600, len(abcCache.(*singleChannelCacheImpl).logs))
 }
 
 func shortWaitCache() CacheOptions {
@@ -1510,7 +1518,12 @@ func verifySkippedSequences(list *SkippedSequenceList, sequences []uint64) bool 
 	return true
 }
 
-func verifyCacheSequences(cache *singleChannelCacheImpl, sequences []uint64) bool {
+func verifyCacheSequences(singleCache SingleChannelCache, sequences []uint64) bool {
+
+	cache, ok := singleCache.(*singleChannelCacheImpl)
+	if !ok {
+		return false
+	}
 	if len(cache.logs) != len(sequences) {
 
 		log.Printf("verifyCacheSequences: cache size (%v) not equals to sequences size (%v)",
