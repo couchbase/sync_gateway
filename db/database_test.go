@@ -2660,12 +2660,14 @@ func Test_updateAllPrincipalsSequences(t *testing.T) {
 }
 
 func Test_invalidateAllPrincipalsCache(t *testing.T) {
-	db, ctx := setupTestDB(t)
-	defer db.Close(ctx)
+	bucket := base.GetTestBucket(t)
+	defer bucket.Close()
 
+	db, ctx := setupTestDBForBucket(t, bucket)
+	defer db.Close(ctx)
 	db.Options.QueryPaginationLimit = 100
-	db.ChannelMapper = channels.NewDefaultChannelMapper()
-	sequenceAllocator, err := newSequenceAllocator(db.Bucket.DefaultDataStore(), db.DbStats.DatabaseStats)
+
+	sequenceAllocator, err := newSequenceAllocator(db.MetadataStore, db.DbStats.DatabaseStats)
 	assert.NoError(t, err)
 
 	db.sequences = sequenceAllocator
@@ -2700,24 +2702,64 @@ func Test_invalidateAllPrincipalsCache(t *testing.T) {
 	err = collection.WaitForPendingChanges(ctx)
 	assert.NoError(t, err)
 
-	type invalidatePrincipal struct {
-		Name            string `json:"name,omitempty"`
-		ChannelInvalSeq uint64 `json:"channel_inval_seq,omitempty"`
-	}
+	t.Logf("Datastore name: %s", collection.dataStore.GetName())
 
-	var invalPrinc invalidatePrincipal
-	for i := 0; i < 5; i++ {
-		raw, _, _ := db.Bucket.DefaultDataStore().GetRaw(fmt.Sprintf("_sync:role:role%d", i))
-		err := json.Unmarshal(raw, &invalPrinc)
-		assert.NoError(t, err)
-		assert.Equal(t, endSeq, invalPrinc.ChannelInvalSeq)
-		assert.Equal(t, fmt.Sprintf("role%d", i), invalPrinc.Name)
+	if base.TestsUseNamedCollections() {
+		dataStoreName := collection.dataStore.GetName()
+		dataStoreNameSlice := strings.Split(dataStoreName, ":")
+		scopeName, collectionName := dataStoreNameSlice[0], dataStoreNameSlice[1]
 
-		raw, _, _ = db.Bucket.DefaultDataStore().GetRaw(fmt.Sprintf("_sync:user:user%d", i))
-		err = json.Unmarshal(raw, &invalPrinc)
-		assert.NoError(t, err)
-		assert.Equal(t, endSeq, invalPrinc.ChannelInvalSeq)
-		assert.Equal(t, fmt.Sprintf("user%d", i), invalPrinc.Name)
+		// Example of Raw response when named collection is used
+		// Role {"name":"role0","all_channels":null,"sequence":1,
+		// "collection_access": {"sg_test_0": {"sg_test_2": {"admin_channels":{"ABC":1},"all_channels":{"ABC":1,"!":1},"channel_inval_seq":15}}}}
+		type Collection struct {
+			ChannelInvalSeq uint64 `json:"channel_inval_seq,omitempty"`
+		}
+		type invalPric struct {
+			Name             string                           `json:"name,omitempty"`
+			CollectionAccess map[string]map[string]Collection `json:"collection_access,omitempty"`
+		}
+
+		var invalPrinc invalPric
+		for i := 0; i < 1; i++ {
+			raw, _, err := db.MetadataStore.GetRaw(fmt.Sprintf("_sync:role:role%d", i))
+			assert.NoError(t, err)
+			err = json.Unmarshal(raw, &invalPrinc)
+			assert.NoError(t, err)
+			assert.Equal(t, endSeq, invalPrinc.CollectionAccess[scopeName][collectionName].ChannelInvalSeq)
+			assert.Equal(t, fmt.Sprintf("role%d", i), invalPrinc.Name)
+
+			raw, _, err = db.MetadataStore.GetRaw(fmt.Sprintf("_sync:user:user%d", i))
+			assert.NoError(t, err)
+			err = json.Unmarshal(raw, &invalPrinc)
+			assert.NoError(t, err)
+			assert.Equal(t, endSeq, invalPrinc.CollectionAccess[scopeName][collectionName].ChannelInvalSeq)
+			assert.Equal(t, fmt.Sprintf("user%d", i), invalPrinc.Name)
+		}
+	} else {
+		// Example of Raw response when default collection is used
+		// Role {"name":"role0","admin_channels":{"ABC":1},"all_channels":{"!":1,"ABC":1},"sequence":1,"channel_inval_seq":15}
+		type invalPric struct {
+			Name            string `json:"name,omitempty"`
+			ChannelInvalSeq uint64 `json:"channel_inval_seq,omitempty"`
+		}
+
+		var invalPrinc invalPric
+		for i := 0; i < 1; i++ {
+			raw, _, err := db.MetadataStore.GetRaw(fmt.Sprintf("_sync:role:role%d", i))
+			assert.NoError(t, err)
+			err = json.Unmarshal(raw, &invalPrinc)
+			assert.NoError(t, err)
+			assert.Equal(t, endSeq, invalPrinc.ChannelInvalSeq)
+			assert.Equal(t, fmt.Sprintf("role%d", i), invalPrinc.Name)
+
+			raw, _, err = db.MetadataStore.GetRaw(fmt.Sprintf("_sync:user:user%d", i))
+			assert.NoError(t, err)
+			err = json.Unmarshal(raw, &invalPrinc)
+			assert.NoError(t, err)
+			assert.Equal(t, endSeq, invalPrinc.ChannelInvalSeq)
+			assert.Equal(t, fmt.Sprintf("user%d", i), invalPrinc.Name)
+		}
 	}
 }
 
