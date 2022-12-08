@@ -231,7 +231,7 @@ func (listener *changeListener) Stop() {
 	}
 }
 
-func (listener changeListener) TapFeed() base.TapFeed {
+func (listener *changeListener) TapFeed() base.TapFeed {
 	return listener.tapFeed
 }
 

@@ -682,8 +682,8 @@ func (context *DatabaseContext) GetOIDCProvider(providerName string) (*auth.OIDC
 }
 
 // Registers an on change callback.  Each change cache (per collection) will register here
-func (context *DatabaseContext) RegisterOnChangeCallback(collectionID uint32, callback DocChangedFunc) {
-	context.mutationListener.RegisterOnChangeCallback(collectionID, callback)
+func (context *DatabaseContext) RegisterOnChangeCallback(collectionID uint32, callback DocChangedFunc) error {
+	return context.mutationListener.RegisterOnChangeCallback(collectionID, callback)
 }
 
 func (dbCtx *DatabaseContext) GetServerUUID(ctx context.Context) string {
@@ -2133,7 +2133,10 @@ func newDatabaseCollection(ctx context.Context, dbContext *DatabaseContext, data
 		return nil, err
 	}
 	// Set the DB Context notifyChange callback to call back the changecache DocChanged callback
-	dbContext.RegisterOnChangeCallback(dbCollection.GetCollectionID(), dbCollection.changeCache.DocChanged)
+	err = dbContext.RegisterOnChangeCallback(dbCollection.GetCollectionID(), dbCollection.changeCache.DocChanged)
+	if err != nil {
+		base.DebugfCtx(ctx, base.KeyDCP, "Error registering the listener callback for collection %s: %v", dbCollection.GetCollectionID(), err)
+	}
 
 	if base.IsEnterpriseEdition() {
 		cfgSG, ok := dbContext.CfgSG.(*base.CfgSG)

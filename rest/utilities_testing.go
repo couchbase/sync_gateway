@@ -804,7 +804,10 @@ func (rt *RestTester) PutDocumentWithRevID(docID string, newRevID string, parent
 
 func (rt *RestTester) SetAdminChannels(username string, keyspace string, channels ...string) error {
 
-	dbName, scopeName, collectionName := SplitKeyspace(keyspace)
+	dbName, scopeName, collectionName, err := parseKeyspace(keyspace)
+	if err != nil {
+		return err
+	}
 	// Get the current user document
 	userResponse := rt.SendAdminRequest("GET", "/"+dbName+"/_user/"+username, "")
 	if userResponse.Code != 200 {
@@ -816,7 +819,7 @@ func (rt *RestTester) SetAdminChannels(username string, keyspace string, channel
 		return err
 	}
 
-	currentConfig.SetExplicitChannels(scopeName, collectionName, channels...)
+	currentConfig.SetExplicitChannels(*scopeName, *collectionName, channels...)
 	newConfigBytes, _ := base.JSONMarshal(currentConfig)
 
 	userResponse = rt.SendAdminRequest("PUT", "/"+dbName+"/_user/"+username, string(newConfigBytes))
@@ -824,16 +827,6 @@ func (rt *RestTester) SetAdminChannels(username string, keyspace string, channel
 		return fmt.Errorf("User update failed: %s", userResponse.Body.Bytes())
 	}
 	return nil
-}
-
-func SplitKeyspace(keyspace string) (dbName, scopeName, channelName string) {
-	results := strings.Split(keyspace, ".")
-	if len(results) == 1 {
-		return results[0], base.DefaultScope, base.DefaultCollection
-	} else if len(results) == 3 {
-		return results[0], results[1], results[2]
-	}
-	panic(fmt.Sprintf("malformed keyspace: %v", keyspace))
 }
 
 type SimpleSync struct {

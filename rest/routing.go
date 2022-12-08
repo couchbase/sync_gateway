@@ -161,6 +161,8 @@ func CreateAdminRouter(sc *ServerContext) *mux.Router {
 		makeHandler(sc, adminPrivs, []Permission{PermUpdateDb}, nil, (*handler).handleCompact)).Methods("POST")
 	keyspace.Handle("/_compact",
 		makeHandler(sc, adminPrivs, []Permission{PermUpdateDb}, nil, (*handler).handleGetCompact)).Methods("GET")
+	keyspace.Handle("/_dumpchannel/{channel}",
+		makeHandler(sc, adminPrivs, []Permission{PermReadAppData}, nil, (*handler).handleDumpChannel)).Methods("GET")
 
 	// Database handlers (multi collection):
 	dbr.Handle("/_session",
@@ -242,8 +244,6 @@ func CreateAdminRouter(sc *ServerContext) *mux.Router {
 		makeHandler(sc, adminPrivs, []Permission{PermReadAppData}, nil, (*handler).handleDump)).Methods("GET")
 	dbr.Handle("/_view/{view}", // redundant; just for backward compatibility with 1.0
 		makeHandler(sc, adminPrivs, []Permission{PermReadAppData}, nil, (*handler).handleView)).Methods("GET")
-	dbr.Handle("/_dumpchannel/{channel}",
-		makeHandler(sc, adminPrivs, []Permission{PermReadAppData}, nil, (*handler).handleDumpChannel)).Methods("GET")
 	dbr.Handle("/_repair",
 		makeHandler(sc, adminPrivs, []Permission{PermUpdateDb}, nil, (*handler).handleRepair)).Methods("POST")
 
