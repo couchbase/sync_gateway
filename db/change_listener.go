@@ -29,16 +29,18 @@ import (
 // changes.
 type changeListener struct {
 	bucket                base.Bucket
-	bucketName            string                 // Used for logging
-	tapFeed               base.TapFeed           // Observes changes to bucket
-	tapNotifier           *sync.Cond             // Posts notifications when documents are updated
-	FeedArgs              sgbucket.FeedArguments // The Tap Args (backfill, etc)
-	counter               uint64                 // Event counter; increments on every doc update
-	terminateCheckCounter uint64                 // Termination Event counter; increments on every notifyCheckForTermination
-	keyCounts             map[string]uint64      // Latest count at which each doc key was updated
-	OnDocChanged          DocChangedFunc         // Called when change arrives on feed
-	terminator            chan bool              // Signal to cause cbdatasource bucketdatasource.Close() to be called, which removes dcp receiver
-	sgCfgPrefix           string                 // SG config key prefix
+	bucketName            string                    // Used for logging
+	tapFeed               base.TapFeed              // Observes changes to bucket
+	tapNotifier           *sync.Cond                // Posts notifications when documents are updated
+	FeedArgs              sgbucket.FeedArguments    // The Tap Args (backfill, etc)
+	counter               uint64                    // Event counter; increments on every doc update
+	terminateCheckCounter uint64                    // Termination Event counter; increments on every notifyCheckForTermination
+	keyCounts             map[string]uint64         // Latest count at which each doc key was updated
+	OnChangeSubscribers   map[uint32]DocChangedFunc // Map of DocChanged functions, keyed by collection ID.
+	subscribeLock         sync.Mutex                // Mutex for addition to the subscriber list
+	terminator            chan bool                 // Signal to cause cbdatasource bucketdatasource.Close() to be called, which removes dcp receiver
+	sgCfgPrefix           string                    // SG config key prefix
+	started               base.AtomicBool           // whether the feed has been started
 }
 
 type DocChangedFunc func(event sgbucket.FeedEvent)
@@ -50,6 +52,26 @@ func (listener *changeListener) Init(name string, groupID string) {
 	listener.keyCounts = map[string]uint64{}
 	listener.tapNotifier = sync.NewCond(&sync.Mutex{})
 	listener.sgCfgPrefix = base.SGCfgPrefixWithGroupID(groupID)
+	listener.OnChangeSubscribers = map[uint32]DocChangedFunc{}
+}
+
+// RegisterOnChangeCallback adds a listener to DocChanged events.  Subscription is only supported prior to
+// feed start, to allow non-locking reads of OnChangeSubscribers map once the feed is running.
+func (listener *changeListener) RegisterOnChangeCallback(collectionID uint32, callback DocChangedFunc) error {
+	if listener.started.IsTrue() {
+		return fmt.Errorf("Attempt to register callback after feed has started for collectionID %d", collectionID)
+	}
+	listener.subscribeLock.Lock()
+	defer listener.subscribeLock.Unlock()
+	listener.OnChangeSubscribers[collectionID] = callback
+	return nil
+}
+
+func (listener *changeListener) OnDocChanged(event sgbucket.FeedEvent) {
+	// TODO: When principal grants are implemented (CBG-2333), perform collection filtering here
+	for _, callback := range listener.OnChangeSubscribers {
+		callback(event)
+	}
 }
 
 // Starts a changeListener on a given Bucket.
@@ -103,6 +125,10 @@ func (listener *changeListener) Start(bucket base.Bucket, dbStats *expvar.Map, s
 
 func (listener *changeListener) StartMutationFeed(bucket base.Bucket, dbStats *expvar.Map) error {
 
+	defer func() {
+		listener.started.Set(true)
+	}()
+
 	// Uses DCP by default, unless TAP is explicitly specified
 	feedType := base.GetFeedType(bucket)
 	switch feedType {
@@ -144,17 +170,16 @@ func (listener *changeListener) ProcessFeedEvent(event sgbucket.FeedEvent) bool 
 	if event.Opcode == sgbucket.FeedOpMutation || event.Opcode == sgbucket.FeedOpDeletion {
 		key := string(event.Key)
 		if !strings.HasPrefix(key, base.SyncDocPrefix) { // Anything other than internal SG docs can go straight to OnDocChanged
-			if listener.OnDocChanged != nil {
-				listener.OnDocChanged(event)
-			}
+			listener.OnDocChanged(event)
+
 		} else if strings.HasPrefix(key, base.UserPrefix) ||
 			strings.HasPrefix(key, base.RolePrefix) { // SG users and roles
-			if listener.OnDocChanged != nil && event.Opcode == sgbucket.FeedOpMutation {
+			if event.Opcode == sgbucket.FeedOpMutation {
 				listener.OnDocChanged(event)
 			}
 			listener.notifyKey(key)
 		} else if strings.HasPrefix(key, base.UnusedSeqPrefix) || strings.HasPrefix(key, base.UnusedSeqRangePrefix) { // SG unused sequence marker docs
-			if listener.OnDocChanged != nil && event.Opcode == sgbucket.FeedOpMutation {
+			if event.Opcode == sgbucket.FeedOpMutation {
 				listener.OnDocChanged(event)
 			}
 		} else if strings.HasPrefix(key, base.DCPCheckpointPrefixWithoutGroupID) { // SG DCP checkpoint docs (including other config group IDs)
@@ -164,9 +189,7 @@ func (listener *changeListener) ProcessFeedEvent(event sgbucket.FeedEvent) bool 
 			// defensively.
 			requiresCheckpointPersistence = false
 		} else if strings.HasPrefix(key, listener.sgCfgPrefix) {
-			if listener.OnDocChanged != nil {
-				listener.OnDocChanged(event)
-			}
+			listener.OnDocChanged(event)
 		}
 	}
 	return requiresCheckpointPersistence

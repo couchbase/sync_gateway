@@ -43,9 +43,9 @@ func TestMultiCollectionChangesAdmin(t *testing.T) {
 	defer rt.Close()
 
 	// Put several documents, will be retrieved via query
-	response := rt.SendAdminRequest("PUT", "/"+c1Keyspace+"/pbs1", `{"value":1, "channel":["PBS"]}`)
+	response := rt.SendAdminRequest("PUT", "/"+c1Keyspace+"/pbs1", `{"value":1, "channels":["PBS"]}`)
 	rest.RequireStatus(t, response, 201)
-	response = rt.SendAdminRequest("PUT", "/"+c2Keyspace+"/abc1", `{"value":1, "channel":["ABC"]}`)
+	response = rt.SendAdminRequest("PUT", "/"+c2Keyspace+"/abc1", `{"value":1, "channels":["ABC"]}`)
 	rest.RequireStatus(t, response, 201)
 
 	_ = rt.WaitForPendingChanges()
@@ -69,9 +69,9 @@ func TestMultiCollectionChangesAdmin(t *testing.T) {
 	logChangesResponse(t, changesResponse.Body.Bytes())
 
 	// Put more documents, should be served via DCP/cache
-	response = rt.SendAdminRequest("PUT", "/"+c1Keyspace+"/pbs2", `{"value":1, "channel":["PBS"]}`)
+	response = rt.SendAdminRequest("PUT", "/"+c1Keyspace+"/pbs2", `{"value":1, "channels":["PBS"]}`)
 	rest.RequireStatus(t, response, 201)
-	response = rt.SendAdminRequest("PUT", "/"+c2Keyspace+"/abc2", `{"value":1, "channel":["ABC"]}`)
+	response = rt.SendAdminRequest("PUT", "/"+c2Keyspace+"/abc2", `{"value":1, "channels":["ABC"]}`)
 	rest.RequireStatus(t, response, 201)
 
 	changesResponse = rt.SendAdminRequest("GET", "/"+c1Keyspace+"/_changes?since=0", "")
@@ -108,9 +108,9 @@ func TestMultiCollectionChangesAdminSameChannelName(t *testing.T) {
 	defer rt.Close()
 
 	// Put several documents, will be retrieved via query
-	response := rt.SendAdminRequest("PUT", "/"+c1Keyspace+"/pbs1_c1", `{"value":1, "channel":["PBS"]}`)
+	response := rt.SendAdminRequest("PUT", "/"+c1Keyspace+"/pbs1_c1", `{"value":1, "channels":["PBS"]}`)
 	rest.RequireStatus(t, response, 201)
-	response = rt.SendAdminRequest("PUT", "/"+c2Keyspace+"/pbs1_c2", `{"value":1, "channel":["PBS"]}`)
+	response = rt.SendAdminRequest("PUT", "/"+c2Keyspace+"/pbs1_c2", `{"value":1, "channels":["PBS"]}`)
 	rest.RequireStatus(t, response, 201)
 
 	_ = rt.WaitForPendingChanges()
@@ -134,9 +134,9 @@ func TestMultiCollectionChangesAdminSameChannelName(t *testing.T) {
 	logChangesResponse(t, changesResponse.Body.Bytes())
 
 	// Put more documents, should be served via DCP/cache
-	response = rt.SendAdminRequest("PUT", "/"+c1Keyspace+"/pbs2_c1", `{"value":1, "channel":["PBS"]}`)
+	response = rt.SendAdminRequest("PUT", "/"+c1Keyspace+"/pbs2_c1", `{"value":1, "channels":["PBS"]}`)
 	rest.RequireStatus(t, response, 201)
-	response = rt.SendAdminRequest("PUT", "/"+c2Keyspace+"/pbs2_c2", `{"value":1, "channel":["PBS"]}`)
+	response = rt.SendAdminRequest("PUT", "/"+c2Keyspace+"/pbs2_c2", `{"value":1, "channels":["PBS"]}`)
 	rest.RequireStatus(t, response, 201)
 
 	changesResponse = rt.SendAdminRequest("GET", "/"+c1Keyspace+"/_changes?since=0", "")
@@ -381,24 +381,25 @@ func TestMultiCollectionChangesUserDynamicGrantDCP(t *testing.T) {
 	require.NoError(t, err)
 
 	// Write additional docs to the cached channels, should be served via DCP/cache
-	response = rt.SendAdminRequest("PUT", "/"+c1Keyspace+"/abc2_c1", `{"value":1, "channel":["ABC"]}`)
+	response = rt.SendAdminRequest("PUT", "/"+c1Keyspace+"/abc2_c1", `{"value":1, "channels":["ABC"]}`)
 	rest.RequireStatus(t, response, 201)
-	response = rt.SendAdminRequest("PUT", "/"+c2Keyspace+"/abc2_c2", `{"value":1, "channel":["ABC"]}`)
+	response = rt.SendAdminRequest("PUT", "/"+c2Keyspace+"/abc2_c2", `{"value":1, "channels":["ABC"]}`)
 	rest.RequireStatus(t, response, 201)
-	response = rt.SendAdminRequest("PUT", "/"+c1Keyspace+"/pbs2_c1", `{"value":1, "channel":["PBS"]}`)
+	response = rt.SendAdminRequest("PUT", "/"+c1Keyspace+"/pbs2_c1", `{"value":1, "channels":["PBS"]}`)
 	rest.RequireStatus(t, response, 201)
-	response = rt.SendAdminRequest("PUT", "/"+c2Keyspace+"/pbs2_c2", `{"value":1, "channel":["PBS"]}`)
+	response = rt.SendAdminRequest("PUT", "/"+c2Keyspace+"/pbs2_c2", `{"value":1, "channels":["PBS"]}`)
 	rest.RequireStatus(t, response, 201)
+	_ = rt.WaitForPendingChanges()
 
 	// Expect 5 documents in collection with ABC grant:
-	//  - backfill of 2 docs written prior to lastSeq
+	//  - backfill of 1 ABC doc written prior to lastSeq
 	//  - user doc
 	//  - 1 PBS docs after lastSeq
 	//  - 1 ABC docs after lastSeq
 	changesResponse = rt.SendUserRequest("GET", "/"+c1Keyspace+"/_changes?since="+lastSeq.String(), "", "bernard")
 	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
 	assert.NoError(t, err, "Error unmarshalling changes response")
-	assert.Len(t, changes.Results, 5)
+	assert.Len(t, changes.Results, 4)
 	logChangesResponse(t, changesResponse.Body.Bytes())
 
 	// Expect 2 documents in collection without ABC grant

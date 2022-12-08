@@ -428,6 +428,9 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 		dbContext.CfgSG = cbgt.NewCfgMem()
 	}
 
+	// Initialize the tap Listener for notify handling
+	dbContext.mutationListener.Init(bucket.GetName(), options.GroupID)
+
 	if len(options.Scopes) > 0 {
 		dbContext.Scopes = make(map[string]Scope, len(options.Scopes))
 		dbContext.CollectionNames = make(map[string]map[string]struct{}, len(options.Scopes))
@@ -461,9 +464,6 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 		dbContext.CollectionByID[base.DefaultCollectionID] = dbCollection
 		dbContext.singleCollection = dbCollection
 	}
-
-	// Initialize the tap Listener for notify handling
-	dbContext.mutationListener.Init(bucket.GetName(), options.GroupID)
 
 	// Initialize sg-replicate manager
 	dbContext.SGReplicateMgr, err = NewSGReplicateManager(ctx, dbContext, dbContext.CfgSG)
@@ -681,8 +681,9 @@ func (context *DatabaseContext) GetOIDCProvider(providerName string) (*auth.OIDC
 	}
 }
 
-func (context *DatabaseContext) SetOnChangeCallback(callback DocChangedFunc) {
-	context.mutationListener.OnDocChanged = callback
+// Registers an on change callback.  Each change cache (per collection) will register here
+func (context *DatabaseContext) RegisterOnChangeCallback(collectionID uint32, callback DocChangedFunc) {
+	context.mutationListener.RegisterOnChangeCallback(collectionID, callback)
 }
 
 func (dbCtx *DatabaseContext) GetServerUUID(ctx context.Context) string {
@@ -2132,7 +2133,7 @@ func newDatabaseCollection(ctx context.Context, dbContext *DatabaseContext, data
 		return nil, err
 	}
 	// Set the DB Context notifyChange callback to call back the changecache DocChanged callback
-	dbContext.SetOnChangeCallback(dbCollection.changeCache.DocChanged)
+	dbContext.RegisterOnChangeCallback(dbCollection.GetCollectionID(), dbCollection.changeCache.DocChanged)
 
 	if base.IsEnterpriseEdition() {
 		cfgSG, ok := dbContext.CfgSG.(*base.CfgSG)
