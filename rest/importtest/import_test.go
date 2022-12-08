@@ -639,7 +639,7 @@ func TestXattrImportMultipleActorOnDemandGet(t *testing.T) {
 			AutoImport: false,
 		}},
 	}
-	rt := rest.NewRestTester(t, &rtConfig)
+	rt := rest.NewRestTesterDefaultCollection(t, &rtConfig) // CBG-2618: fix collection channel access
 	defer rt.Close()
 	dataStore := rt.GetSingleTestDataStore()
 
@@ -695,9 +695,9 @@ func TestXattrImportMultipleActorOnDemandPut(t *testing.T) {
 			AutoImport: false,
 		}},
 	}
-	rt := rest.NewRestTester(t, &rtConfig)
+	rt := rest.NewRestTesterDefaultCollection(t, &rtConfig) // CBG-2618: fix collection channel access
 	defer rt.Close()
-	bucket := rt.Bucket()
+	dataStore := rt.GetSingleTestDataStore()
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyImport, base.KeyCRUD)
 
@@ -705,7 +705,7 @@ func TestXattrImportMultipleActorOnDemandPut(t *testing.T) {
 	mobileKey := "TestImportMultiActorUpdate"
 	mobileBody := make(map[string]interface{})
 	mobileBody["channels"] = "ABC"
-	_, err := bucket.DefaultDataStore().Add(mobileKey, 0, mobileBody)
+	_, err := dataStore.Add(mobileKey, 0, mobileBody)
 	assert.NoError(t, err, "Error writing SDK doc")
 
 	// Attempt to get the document via Sync Gateway.  Will trigger on-demand import.
@@ -718,13 +718,13 @@ func TestXattrImportMultipleActorOnDemandPut(t *testing.T) {
 	assert.True(t, ok, "No rev included in response")
 
 	// Go get the cas for the doc to use for update
-	_, cas, getErr := bucket.DefaultDataStore().GetRaw(mobileKey)
+	_, cas, getErr := dataStore.GetRaw(mobileKey)
 	assert.NoError(t, getErr, "Error retrieving cas for multi-actor document")
 
 	// Modify the document via the SDK to add a new, non-mobile xattr
 	xattrVal := make(map[string]interface{})
 	xattrVal["actor"] = "not mobile"
-	subdocXattrStore, ok := base.AsSubdocXattrStore(bucket.DefaultDataStore())
+	subdocXattrStore, ok := base.AsSubdocXattrStore(dataStore)
 	assert.True(t, ok, "Unable to cast bucket to gocb bucket")
 	_, mutateErr := subdocXattrStore.SubdocUpdateXattr(mobileKey, "_nonmobile", uint32(0), cas, xattrVal)
 	assert.NoError(t, mutateErr, "Error updating non-mobile xattr for multi-actor document")
@@ -753,9 +753,10 @@ func TestXattrImportMultipleActorOnDemandFeed(t *testing.T) {
 			AutoImport: true,
 		}},
 	}
+
 	rt := rest.NewRestTester(t, &rtConfig)
 	defer rt.Close()
-	bucket := rt.Bucket()
+	dataStore := rt.GetSingleTestDataStore()
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyImport, base.KeyCRUD)
 
@@ -763,7 +764,7 @@ func TestXattrImportMultipleActorOnDemandFeed(t *testing.T) {
 	mobileKey := "TestImportMultiActorFeed"
 	mobileBody := make(map[string]interface{})
 	mobileBody["channels"] = "ABC"
-	_, err := bucket.DefaultDataStore().Add(mobileKey, 0, mobileBody)
+	_, err := dataStore.Add(mobileKey, 0, mobileBody)
 	assert.NoError(t, err, "Error writing SDK doc")
 
 	// Attempt to get the document via Sync Gateway.  Guarantees initial import is complete
@@ -776,7 +777,7 @@ func TestXattrImportMultipleActorOnDemandFeed(t *testing.T) {
 	assert.True(t, ok, "No rev included in response")
 
 	// Go get the cas for the doc to use for update
-	_, cas, getErr := bucket.DefaultDataStore().GetRaw(mobileKey)
+	_, cas, getErr := dataStore.GetRaw(mobileKey)
 	assert.NoError(t, getErr, "Error retrieving cas for multi-actor document")
 
 	// Check expvars before update
@@ -785,7 +786,7 @@ func TestXattrImportMultipleActorOnDemandFeed(t *testing.T) {
 	// Modify the document via the SDK to add a new, non-mobile xattr
 	xattrVal := make(map[string]interface{})
 	xattrVal["actor"] = "not mobile"
-	subdocXattrStore, ok := base.AsSubdocXattrStore(bucket.DefaultDataStore())
+	subdocXattrStore, ok := base.AsSubdocXattrStore(dataStore)
 	assert.True(t, ok, "Unable to cast bucket to gocb bucket")
 	_, mutateErr := subdocXattrStore.SubdocUpdateXattr(mobileKey, "_nonmobile", uint32(0), cas, xattrVal)
 	assert.NoError(t, mutateErr, "Error updating non-mobile xattr for multi-actor document")

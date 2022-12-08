@@ -1294,12 +1294,13 @@ func TestUserXattrAvoidRevisionIDGeneration(t *testing.T) {
 
 	defer rt.Close()
 
-	userXattrStore, ok := base.AsUserXattrStore(rt.Bucket().DefaultDataStore())
+	dataStore := rt.GetSingleTestDataStore()
+	userXattrStore, ok := base.AsUserXattrStore(dataStore)
 	if !ok {
 		t.Skip("Test requires Couchbase Bucket")
 	}
 
-	subdocXattrStore, ok := base.AsSubdocXattrStore(rt.Bucket().DefaultDataStore())
+	subdocXattrStore, ok := base.AsSubdocXattrStore(dataStore)
 	require.True(t, ok)
 
 	// Initial PUT
@@ -1342,7 +1343,7 @@ func TestUserXattrAvoidRevisionIDGeneration(t *testing.T) {
 	assert.Equal(t, []string{channelName}, syncData2.Channels.KeySet())
 	assert.Equal(t, syncData2.Channels.KeySet(), docRev2.Channels.ToArray())
 
-	err = rt.Bucket().DefaultDataStore().Set(docKey, 0, nil, []byte(`{"update": "update"}`))
+	err = rt.GetSingleTestDataStore().Set(docKey, 0, nil, []byte(`{"update": "update"}`))
 	assert.NoError(t, err)
 
 	err = rt.WaitForCondition(func() bool {
