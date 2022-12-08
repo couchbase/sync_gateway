@@ -11,6 +11,7 @@ package db
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"math"
 	"net/http"
@@ -2223,8 +2224,33 @@ func (db *DatabaseCollectionWithUser) getChannelsAndAccess(ctx context.Context, 
 		startTime := time.Now()
 		db.dbStats().Database().SyncFunctionCount.Add(1)
 
+		var bodyJson []byte
+		if doc._rawBody != nil && body[BodyDeleted] == nil {
+			bodyJson = doc._rawBody
+			/*
+				// Verify that body and _rawBody match:
+				checkBody := body.DeepCopy()
+				delete(checkBody, "_id")
+				delete(checkBody, "_rev")
+				jCheck, _ := json.Marshal(checkBody)
+				var raw Body
+				raw.Unmarshal(doc._rawBody)
+				jRaw, _ := json.Marshal(raw)
+				if string(jCheck) != string(jRaw) {
+					panic(fmt.Sprintf("body doesn't match rawBody:\nbody= %s\nraw=  %s", jCheck, jRaw))
+				}
+				// End of verification
+			*/
+		} else {
+			if bodyJson, err = json.Marshal(body); err != nil {
+				return
+			}
+		}
+		docID, _ := body[BodyId].(string)
+		revID, _ := body[BodyRev].(string)
+
 		var output *channels.ChannelMapperOutput
-		output, err = db.channelMapper().MapToChannelsAndAccess(body, oldJson, metaMap,
+		output, err = db.channelMapper().MapToChannelsAndAccess2(docID, revID, string(bodyJson), oldJson, metaMap,
 			MakeUserCtx(db.user))
 
 		db.dbStats().Database().SyncFunctionTime.Add(time.Since(startTime).Nanoseconds())

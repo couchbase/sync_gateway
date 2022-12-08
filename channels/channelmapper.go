@@ -11,6 +11,7 @@ package channels
 import (
 	"context"
 	_ "embed"
+	"encoding/json"
 	"fmt"
 	"math"
 	"strconv"
@@ -112,7 +113,18 @@ func wrappedFuncSource(funcSource string) string {
 }
 
 // Runs the sync function. Thread-safe.
-func (mapper *ChannelMapper) MapToChannelsAndAccess(body map[string]interface{}, oldBodyJSON string, metaMap map[string]interface{}, userCtx map[string]interface{}) (*ChannelMapperOutput, error) {
+func (mapper *ChannelMapper) MapToChannelsAndAccess(body map[string]any, oldBodyJSON string, metaMap map[string]interface{}, userCtx map[string]interface{}) (*ChannelMapperOutput, error) {
+	bodyJSON, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	docID, _ := body["_id"].(string)
+	revID, _ := body["_rev"].(string)
+	return mapper.MapToChannelsAndAccess2(docID, revID, string(bodyJSON), oldBodyJSON, metaMap, userCtx)
+}
+
+// Runs the sync function. Thread-safe.
+func (mapper *ChannelMapper) MapToChannelsAndAccess2(docID string, revID string, bodyJSON string, oldBodyJSON string, metaMap map[string]interface{}, userCtx map[string]interface{}) (*ChannelMapperOutput, error) {
 	result, err := mapper.service.WithRunner(func(runner *js.Runner) (any, error) {
 		ctx := context.Background()
 		if mapper.timeout > 0 {
@@ -121,22 +133,21 @@ func (mapper *ChannelMapper) MapToChannelsAndAccess(body map[string]interface{},
 			defer cancelFn()
 		}
 		runner.SetContext(ctx)
-		return callSyncFn(runner, body, oldBodyJSON, metaMap, userCtx)
+		return callSyncFn(runner, docID, revID, bodyJSON, oldBodyJSON, metaMap, userCtx)
 	})
 	return result.(*ChannelMapperOutput), err
 }
 
 func callSyncFn(runner *js.Runner,
-	body map[string]interface{},
+	docID string,
+	revID string,
+	bodyJSON string,
 	oldBodyJSON string,
 	metaMap map[string]interface{},
 	userCtx map[string]interface{}) (*ChannelMapperOutput, error) {
 
 	// Call the sync fn:
-	if oldBodyJSON == "" {
-		oldBodyJSON = "null"
-	}
-	args, err := runner.ConvertArgs(body, js.JSONString(oldBodyJSON), metaMap, userCtx)
+	args, err := runner.ConvertArgs(docID, revID, bodyJSON, oldBodyJSON, metaMap, userCtx)
 	if err != nil {
 		return nil, err
 	}

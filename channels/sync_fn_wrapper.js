@@ -153,9 +153,22 @@ function() {
 
         /**** The function that runs the sync function ****/
 
-        return function (newDoc, oldDoc, meta, _userCtx) {
+        return function (docID, revID, newDoc, oldDoc, meta, _userCtx) {
+            newDoc = JSON.parse(newDoc);
+            if (docID) {
+                newDoc._id = docID;
+            }
+            if (revID) {
+                newDoc._rev = revID;
+            }
+
             if (oldDoc) {
-                oldDoc._id = newDoc._id
+                oldDoc = JSON.parse(oldDoc);
+                if (docID) {
+                    oldDoc._id = docID;
+                }
+            } else {
+                oldDoc = null;
             }
 
             userCtx = _userCtx;
