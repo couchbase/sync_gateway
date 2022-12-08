@@ -2136,6 +2136,7 @@ func newDatabaseCollection(ctx context.Context, dbContext *DatabaseContext, data
 	err = dbContext.RegisterOnChangeCallback(dbCollection.GetCollectionID(), dbCollection.changeCache.DocChanged)
 	if err != nil {
 		base.DebugfCtx(ctx, base.KeyDCP, "Error registering the listener callback for collection %s: %v", dbCollection.GetCollectionID(), err)
+		return nil, err
 	}
 
 	if base.IsEnterpriseEdition() {
