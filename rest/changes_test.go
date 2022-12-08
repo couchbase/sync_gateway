@@ -90,10 +90,9 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyCache, base.KeyAccess, base.KeyCRUD, base.KeyChanges)
 
 	rtConfig := RestTesterConfig{
-		SyncFn:         `function(doc) {channel(doc.channels)}`,
-		DatabaseConfig: &DatabaseConfig{}, // does not work with scopes/collections
+		SyncFn: `function(doc) {channel(doc.channels)}`,
 	}
-	rt := NewRestTester(t, &rtConfig)
+	rt := NewRestTesterDefaultCollection(t, &rtConfig) // CBG-2618: fix collection channel access
 	defer rt.Close()
 
 	ctx := rt.Context()

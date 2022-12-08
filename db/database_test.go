@@ -2704,7 +2704,7 @@ func TestGetDatabaseCollectionWithUserDefaultCollection(t *testing.T) {
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close()
 
-	ds := bucket.GetNamedDataStore()
+	ds := bucket.GetNamedDataStore(1)
 	require.NotNil(t, ds)
 
 	dataStoreName, ok := base.AsDataStoreName(ds)

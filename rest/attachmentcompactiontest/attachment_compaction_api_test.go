@@ -28,11 +28,9 @@ func TestAttachmentCompactionAPI(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
-	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
-		DatabaseConfig: &rest.DatabaseConfig{
-			DbConfig: rest.DbConfig{}, // need default collection until CBG-2605
-		},
-	})
+	base.TemporarilyDisableTestUsingDCPWithCollections(t)
+
+	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 
 	// Perform GET before compact has been ran, ensure it starts in valid 'stopped' state
@@ -220,11 +218,7 @@ func TestAttachmentCompactionDryRun(t *testing.T) {
 
 	base.TemporarilyDisableTestUsingDCPWithCollections(t)
 
-	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
-		DatabaseConfig: &rest.DatabaseConfig{
-			DbConfig: rest.DbConfig{}, // need default collection until CBG-2605
-		},
-	})
+	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 
 	dataStore := rt.GetSingleTestDataStore()
@@ -309,11 +303,7 @@ func TestAttachmentCompactionInvalidDocs(t *testing.T) {
 
 	base.TemporarilyDisableTestUsingDCPWithCollections(t)
 
-	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
-		DatabaseConfig: &rest.DatabaseConfig{
-			DbConfig: rest.DbConfig{}, // need default collection until CBG-2605
-		},
-	})
+	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 	ctx := rt.Context()
 

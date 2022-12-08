@@ -360,7 +360,6 @@ func TestPutAttachmentViaBlipGetViaRest(t *testing.T) {
 
 }
 func TestPutAttachmentViaBlipGetViaBlip(t *testing.T) {
-	t.Skip("here")
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)
 
 	// Create blip tester

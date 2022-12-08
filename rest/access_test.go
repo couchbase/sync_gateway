@@ -26,13 +26,14 @@ import (
 )
 
 func TestPublicChanGuestAccess(t *testing.T) {
-	rt := NewRestTester(t, &RestTesterConfig{
-		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
-			Guest: &auth.PrincipalConfig{
-				Disabled: base.BoolPtr(false),
-			},
-		}},
-	})
+	rt := NewRestTesterDefaultCollection(t, // CBG-2618: fix collection channel access
+		&RestTesterConfig{
+			DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
+				Guest: &auth.PrincipalConfig{
+					Disabled: base.BoolPtr(false),
+				},
+			}},
+		})
 	defer rt.Close()
 
 	// Create a document on the public channel
@@ -79,9 +80,7 @@ func TestStarAccess(t *testing.T) {
 	}
 
 	// Create some docs:
-	rt := NewRestTester(t, &RestTesterConfig{
-		DatabaseConfig: &DatabaseConfig{}, // make scopes/collections aware by using collection access in channel grant
-	})
+	rt := NewRestTesterDefaultCollection(t, nil) // CBG-2618: fix collection channel access
 	defer rt.Close()
 
 	a := auth.NewAuthenticator(rt.MetadataStore(), nil, auth.DefaultAuthenticatorOptions())
@@ -353,8 +352,9 @@ func TestForceAPIForbiddenErrors(t *testing.T) {
 				AssertStatus(t, resp, statusIfForbiddenErrorsFalse)
 			}
 
-			rt := NewRestTester(t, &RestTesterConfig{
-				SyncFn: `
+			rt := NewRestTesterDefaultCollection(t, // CBG-2618: fix collection channel access
+				&RestTesterConfig{
+					SyncFn: `
 				function(doc, oldDoc) {
 					if (!doc.doNotSync) {
 						access("NoPerms", "chan2");
@@ -363,24 +363,24 @@ func TestForceAPIForbiddenErrors(t *testing.T) {
 						channel(doc.channels);
 					}
 				}`,
-				DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
-					Unsupported: &db.UnsupportedOptions{
-						ForceAPIForbiddenErrors: test.forceForbiddenErrors,
-					},
-					Guest: &auth.PrincipalConfig{
-						Disabled: base.BoolPtr(false),
-					},
-					Users: map[string]*auth.PrincipalConfig{
-						"NoPerms": {
-							Password: base.StringPtr("password"),
+					DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
+						Unsupported: &db.UnsupportedOptions{
+							ForceAPIForbiddenErrors: test.forceForbiddenErrors,
 						},
-						"Perms": {
-							ExplicitChannels: base.SetOf("chan"),
-							Password:         base.StringPtr("password"),
+						Guest: &auth.PrincipalConfig{
+							Disabled: base.BoolPtr(false),
 						},
-					},
-				}},
-			})
+						Users: map[string]*auth.PrincipalConfig{
+							"NoPerms": {
+								Password: base.StringPtr("password"),
+							},
+							"Perms": {
+								ExplicitChannels: base.SetOf("chan"),
+								Password:         base.StringPtr("password"),
+							},
+						},
+					}},
+				})
 			defer rt.Close()
 
 			// Create the initial document
@@ -528,11 +528,8 @@ func TestBulkDocsChangeToAccess(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAccess)
 
-	rtConfig := RestTesterConfig{
-		SyncFn:         `function(doc) {if(doc.type == "setaccess") {channel(doc.channel); access(doc.owner, doc.channel);} else { requireAccess(doc.channel)}}`,
-		DatabaseConfig: &DatabaseConfig{}, // make scopes/collections aware by using collection access in channel grant
-	}
-	rt := NewRestTester(t, &rtConfig)
+	rtConfig := RestTesterConfig{SyncFn: `function(doc) {if(doc.type == "setaccess") {channel(doc.channel); access(doc.owner, doc.channel);} else { requireAccess(doc.channel)}}`}
+	rt := NewRestTesterDefaultCollection(t, &rtConfig)
 	defer rt.Close()
 
 	ctx := rt.Context()
@@ -564,9 +561,7 @@ func TestBulkDocsChangeToAccess(t *testing.T) {
 
 // Test _all_docs API call under different security scenarios
 func TestAllDocsAccessControl(t *testing.T) {
-	rt := NewRestTester(t, &RestTesterConfig{
-		DatabaseConfig: &DatabaseConfig{}, // make scopes/collections aware by using collection access in channel grant
-	})
+	rt := NewRestTesterDefaultCollection(t, nil) // CBG-2618: fix collection channel access
 	defer rt.Close()
 	type allDocsRow struct {
 		ID    string `json:"id"`
@@ -801,11 +796,8 @@ func TestChannelAccessChanges(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache, base.KeyChanges, base.KeyCRUD)
 
-	rtConfig := RestTesterConfig{
-		SyncFn:         `function(doc) {access(doc.owner, doc._id);channel(doc.channel)}`,
-		DatabaseConfig: &DatabaseConfig{}, // make scopes/collections aware by using collection access in channel grant
-	}
-	rt := NewRestTester(t, &rtConfig)
+	rtConfig := RestTesterConfig{SyncFn: `function(doc) {access(doc.owner, doc._id);channel(doc.channel)}`}
+	rt := NewRestTesterDefaultCollection(t, &rtConfig) // CBG-2618: fix collection channel access
 	defer rt.Close()
 
 	ctx := rt.Context()

@@ -197,9 +197,7 @@ func TestReplicatorCheckpointOnStop(t *testing.T) {
 	adminSrv := httptest.NewServer(passiveRT.TestAdminHandler())
 	defer adminSrv.Close()
 
-	activeRT := NewRestTester(t, &RestTesterConfig{
-		DatabaseConfig: &DatabaseConfig{}, // replicator requires default collection
-	})
+	activeRT := NewRestTesterDefaultCollection(t, nil) //  CBG-2319: replicator currently requires default collection
 	defer activeRT.Close()
 	activeCtx := activeRT.Context()
 
@@ -438,7 +436,7 @@ function (doc) {
 				}},
 			}
 			// Set up buckets, rest testers, and set up servers
-			passiveRT := NewRestTester(t, rtConfig)
+			passiveRT := NewRestTesterDefaultCollection(t, rtConfig) //  CBG-2319: replicator currently requires default collection
 			defer passiveRT.Close()
 
 			publicSrv := httptest.NewServer(passiveRT.TestPublicHandler())
@@ -447,7 +445,7 @@ function (doc) {
 			adminSrv := httptest.NewServer(passiveRT.TestAdminHandler())
 			defer adminSrv.Close()
 
-			activeRT := NewRestTester(t, rtConfig)
+			activeRT := NewRestTesterDefaultCollection(t, rtConfig) //  CBG-2319: replicator currently requires default collection
 			defer activeRT.Close()
 
 			// Change RT depending on direction

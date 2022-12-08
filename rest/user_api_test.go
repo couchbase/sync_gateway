@@ -43,7 +43,8 @@ func TestUsersAPI(t *testing.T) {
 			},
 		},
 	}
-	rt := NewRestTester(t, rtConfig)
+	rt := NewRestTesterDefaultCollection(t, // CBG-2618: fix collection channel access
+		rtConfig)
 	defer rt.Close()
 
 	// Validate the zero user case
@@ -261,11 +262,7 @@ func TestUsersAPIDetailsWithLimit(t *testing.T) {
 func TestUserAPI(t *testing.T) {
 
 	// PUT a user
-	rt := NewRestTester(t,
-		&RestTesterConfig{
-			DatabaseConfig: &DatabaseConfig{}, // needs channel changes for non default scope/collections
-		},
-	)
+	rt := NewRestTesterDefaultCollection(t, nil) // CBG-2618: fix collection channel access
 	defer rt.Close()
 	ctx := rt.Context()
 
@@ -618,8 +615,9 @@ func TestObtainUserChannelsForDeletedRoleCasFail(t *testing.T) {
 
 	for _, testCase := range testCases {
 		t.Run(testCase.Name, func(t *testing.T) {
-			rt := NewRestTester(t, &RestTesterConfig{
-				SyncFn: `
+			rt := NewRestTesterDefaultCollection(t, // CBG-2618: fix collection channel access
+				&RestTesterConfig{
+					SyncFn: `
 			function(doc, oldDoc){
 				if (doc._id === 'roleChannels'){
 					access('role:role', doc.channels)
@@ -629,8 +627,7 @@ func TestObtainUserChannelsForDeletedRoleCasFail(t *testing.T) {
 				}
 			}
 		`,
-				DatabaseConfig: &DatabaseConfig{}, // needs channel changes for non default scope/collections
-			})
+				})
 			defer rt.Close()
 
 			// Create role
@@ -848,10 +845,10 @@ function(doc, oldDoc) {
 
 `
 	rtConfig := RestTesterConfig{
-		SyncFn:         syncFunction,
-		DatabaseConfig: &DatabaseConfig{}, // needs channel changes for non default scope/collections
+		SyncFn: syncFunction,
 	}
-	var rt = NewRestTester(t, &rtConfig)
+	rt := NewRestTesterDefaultCollection(t, // CBG-2618: fix collection channel access
+		&rtConfig)
 	defer rt.Close()
 
 	response := rt.SendAdminRequest("PUT", "/db/_user/bernard", `{"name":"bernard", "password":"letmein", "admin_channels":["profile-bernard"]}`)

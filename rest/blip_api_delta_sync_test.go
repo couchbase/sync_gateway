@@ -34,14 +34,15 @@ func TestBlipDeltaSyncPushAttachment(t *testing.T) {
 
 	const docID = "pushAttachmentDoc"
 
-	rt := NewRestTester(t, &RestTesterConfig{
-		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
-			DeltaSync: &DeltaSyncConfig{
-				Enabled: base.BoolPtr(true),
-			},
-		}},
-		GuestEnabled: true,
-	})
+	rt := NewRestTesterDefaultCollection(t, // CBG-2619: make collection aware
+		&RestTesterConfig{
+			DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
+				DeltaSync: &DeltaSyncConfig{
+					Enabled: base.BoolPtr(true),
+				},
+			}},
+			GuestEnabled: true,
+		})
 	defer rt.Close()
 
 	btc, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
@@ -425,7 +426,8 @@ func TestBlipDeltaSyncPullRemoved(t *testing.T) {
 
 	sgUseDeltas := base.IsEnterpriseEdition()
 	rtConfig := RestTesterConfig{DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{DeltaSync: &DeltaSyncConfig{Enabled: &sgUseDeltas}}}}
-	rt := NewRestTester(t, &rtConfig)
+	rt := NewRestTesterDefaultCollection(t, // CBG-2619: make collection aware
+		&rtConfig)
 	defer rt.Close()
 
 	client, err := NewBlipTesterClientOptsWithRT(t, rt, &BlipTesterClientOpts{
@@ -480,7 +482,8 @@ func TestBlipDeltaSyncPullTombstoned(t *testing.T) {
 
 	sgUseDeltas := base.IsEnterpriseEdition()
 	rtConfig := RestTesterConfig{DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{DeltaSync: &DeltaSyncConfig{Enabled: &sgUseDeltas}}}}
-	rt := NewRestTester(t, &rtConfig)
+	rt := NewRestTesterDefaultCollection(t, // CBG-2619: make collection aware
+		&rtConfig)
 	defer rt.Close()
 
 	var deltaCacheHitsStart int64
@@ -575,7 +578,9 @@ func TestBlipDeltaSyncPullTombstonedStarChan(t *testing.T) {
 
 	sgUseDeltas := base.IsEnterpriseEdition()
 	rtConfig := RestTesterConfig{DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{DeltaSync: &DeltaSyncConfig{Enabled: &sgUseDeltas}}}}
-	rt := NewRestTester(t, &rtConfig)
+	rt := NewRestTesterDefaultCollection(t, // CBG-2619: make collection aware
+		&rtConfig)
+
 	defer rt.Close()
 
 	var deltaCacheHitsStart int64

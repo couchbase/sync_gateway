@@ -30,7 +30,8 @@ func TestChangesAccessNotifyInteger(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyChanges, base.KeyHTTP)
 
-	rt := NewRestTester(t, &RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel); access(doc.accessUser, doc.accessChannel);}`})
+	rt := NewRestTesterDefaultCollection(t, // CBG-2618: fix collection channel access
+		&RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel); access(doc.accessUser, doc.accessChannel);}`})
 	defer rt.Close()
 
 	// Create user:
@@ -82,10 +83,10 @@ func TestChangesNotifyChannelFilter(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyChanges, base.KeyHTTP)
 
-	rt := NewRestTester(t, &RestTesterConfig{
-		SyncFn:         `function(doc) {channel(doc.channel);}`,
-		DatabaseConfig: &DatabaseConfig{}, // make scopes/collections aware by using collection access in channel grant
-	})
+	rt := NewRestTesterDefaultCollection(t, // CBG-2618: fix collection channel access
+		&RestTesterConfig{
+			SyncFn: `function(doc) {channel(doc.channel);}`,
+		})
 	defer rt.Close()
 
 	// Create user:

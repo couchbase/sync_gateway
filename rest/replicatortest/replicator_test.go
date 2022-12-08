@@ -36,10 +36,7 @@ import (
 
 func TestReplicationAPI(t *testing.T) {
 
-	var rt = rest.NewRestTester(t, nil)
-	// if rt == nil {
-	// 	return
-	// }
+	rt := rest.NewRestTesterDefaultCollection(t, nil) // CBG-2319: replicator currently requires default collection
 	defer rt.Close()
 
 	replicationConfig := db.ReplicationConfig{
@@ -108,7 +105,7 @@ func TestReplicationAPI(t *testing.T) {
 }
 func TestValidateReplicationAPI(t *testing.T) {
 
-	var rt = rest.NewRestTester(t, nil)
+	rt := rest.NewRestTesterDefaultCollection(t, nil) // CBG-2319: replicator currently requires default collection
 	defer rt.Close()
 
 	tests := []struct {
@@ -183,7 +180,7 @@ func TestValidateReplicationAPI(t *testing.T) {
 
 func TestReplicationStatusAPI(t *testing.T) {
 
-	var rt = rest.NewRestTester(t, nil)
+	rt := rest.NewRestTesterDefaultCollection(t, nil) // CBG-2319: replicator currently requires default collection
 	defer rt.Close()
 
 	// GET replication status for non-existent replication ID
@@ -239,7 +236,7 @@ func TestReplicationStatusAPI(t *testing.T) {
 
 func TestReplicationStatusStopAdhoc(t *testing.T) {
 
-	var rt = rest.NewRestTester(t, nil)
+	rt := rest.NewRestTesterDefaultCollection(t, nil) // CBG-2319: replicator currently requires default collection
 	defer rt.Close()
 
 	// GET replication status for non-existent replication ID
@@ -307,7 +304,7 @@ func TestReplicationStatusStopAdhoc(t *testing.T) {
 
 func TestReplicationStatusAPIIncludeConfig(t *testing.T) {
 
-	var rt = rest.NewRestTester(t, nil)
+	rt := rest.NewRestTesterDefaultCollection(t, nil) // CBG-2319: replicator currently requires default collection
 	defer rt.Close()
 
 	// GET replication status for non-existent replication ID
@@ -428,7 +425,8 @@ func TestReplicationsFromConfig(t *testing.T) {
 				dbConfig.Replications[rc.ID] = rc
 			}
 
-			rt := rest.NewRestTester(t, &rest.RestTesterConfig{DatabaseConfig: dbConfig})
+			rt := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+				&rest.RestTesterConfig{DatabaseConfig: dbConfig})
 			defer rt.Close()
 
 			// Retrieve replications
@@ -642,7 +640,6 @@ func TestReplicationRebalancePull(t *testing.T) {
 	if !base.IsEnterpriseEdition() {
 		t.Skipf("test is EE only (replication rebalance)")
 	}
-
 	base.RequireNumTestBuckets(t, 2)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)
 
@@ -947,7 +944,7 @@ func TestReplicationConcurrentPush(t *testing.T) {
 
 }
 func TestReplicationAPIWithAuthCredentials(t *testing.T) {
-	var rt = rest.NewRestTester(t, nil)
+	rt := rest.NewRestTesterDefaultCollection(t, nil) // CBG-2319: replicator currently requires default collection
 	defer rt.Close()
 
 	// Create replication with explicitly defined auth credentials in replication config
@@ -1226,7 +1223,7 @@ func TestValidateReplicationWithInvalidURL(t *testing.T) {
 }
 
 func TestGetStatusWithReplication(t *testing.T) {
-	var rt = rest.NewRestTester(t, nil)
+	rt := rest.NewRestTesterDefaultCollection(t, nil) // CBG-2319: replicator currently requires default collection
 	defer rt.Close()
 
 	// Create a replication
@@ -1314,7 +1311,7 @@ func TestGetStatusWithReplication(t *testing.T) {
 func TestRequireReplicatorStoppedBeforeUpsert(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyHTTPResp)
 
-	rt := rest.NewRestTester(t, nil)
+	rt := rest.NewRestTesterDefaultCollection(t, nil) // CBG-2319: replicator currently requires default collection
 	defer rt.Close()
 
 	// Make rt listen on an actual HTTP port, so it can receive the blipsync request.
@@ -1560,10 +1557,11 @@ func TestDBReplicationStatsTeardown(t *testing.T) {
 
 	tb := base.GetTestBucket(t)
 	defer tb.Close()
-	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
-		PersistentConfig: true,
-		CustomTestBucket: tb,
-	})
+	rt := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+		&rest.RestTesterConfig{
+			PersistentConfig: true,
+			CustomTestBucket: tb,
+		})
 	defer rt.Close()
 
 	srv := httptest.NewServer(rt.TestAdminHandler())
@@ -1700,13 +1698,14 @@ func TestPushReplicationAPIUpdateDatabase(t *testing.T) {
 func TestActiveReplicatorHeartbeats(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyWebSocket, base.KeyWebSocketFrame)
 
-	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
-		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
-			Users: map[string]*auth.PrincipalConfig{
-				"alice": {Password: base.StringPtr("pass")},
-			},
-		}},
-	})
+	rt := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+		&rest.RestTesterConfig{
+			DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
+				Users: map[string]*auth.PrincipalConfig{
+					"alice": {Password: base.StringPtr("pass")},
+				},
+			}},
+		})
 	defer rt.Close()
 	ctx := rt.Context()
 
@@ -1772,17 +1771,18 @@ func TestActiveReplicatorPullBasic(t *testing.T) {
 		password = "pa$$w*rD!"
 	)
 
-	rt2 := rest.NewRestTester(t, &rest.RestTesterConfig{
-		CustomTestBucket: tb2,
-		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
-			Users: map[string]*auth.PrincipalConfig{
-				username: {
-					Password:         base.StringPtr(password),
-					ExplicitChannels: base.SetOf(username),
+	rt2 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+		&rest.RestTesterConfig{
+			CustomTestBucket: tb2,
+			DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
+				Users: map[string]*auth.PrincipalConfig{
+					username: {
+						Password:         base.StringPtr(password),
+						ExplicitChannels: base.SetOf(username),
+					},
 				},
-			},
-		}},
-	})
+			}},
+		})
 	defer rt2.Close()
 
 	docID := t.Name() + "rt2doc1"
@@ -1806,9 +1806,10 @@ func TestActiveReplicatorPullBasic(t *testing.T) {
 	// Active
 	tb1 := base.GetTestBucket(t)
 
-	rt1 := rest.NewRestTester(t, &rest.RestTesterConfig{
-		CustomTestBucket: tb1,
-	})
+	rt1 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+		&rest.RestTesterConfig{
+			CustomTestBucket: tb1,
+		})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
 
@@ -1868,17 +1869,18 @@ func TestActiveReplicatorPullAttachments(t *testing.T) {
 	// Passive
 	tb2 := base.GetTestBucket(t)
 
-	rt2 := rest.NewRestTester(t, &rest.RestTesterConfig{
-		CustomTestBucket: tb2,
-		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
-			Users: map[string]*auth.PrincipalConfig{
-				"alice": {
-					Password:         base.StringPtr("pass"),
-					ExplicitChannels: base.SetOf("alice"),
+	rt2 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+		&rest.RestTesterConfig{
+			CustomTestBucket: tb2,
+			DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
+				Users: map[string]*auth.PrincipalConfig{
+					"alice": {
+						Password:         base.StringPtr("pass"),
+						ExplicitChannels: base.SetOf("alice"),
+					},
 				},
-			},
-		}},
-	})
+			}},
+		})
 	defer rt2.Close()
 
 	attachment := `"_attachments":{"hi.txt":{"data":"aGk=","content_type":"text/plain"}}`
@@ -1901,9 +1903,10 @@ func TestActiveReplicatorPullAttachments(t *testing.T) {
 	// Active
 	tb1 := base.GetTestBucket(t)
 
-	rt1 := rest.NewRestTester(t, &rest.RestTesterConfig{
-		CustomTestBucket: tb1,
-	})
+	rt1 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+		&rest.RestTesterConfig{
+			CustomTestBucket: tb1,
+		})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
 
@@ -2056,16 +2059,17 @@ func TestActiveReplicatorPullMergeConflictingAttachments(t *testing.T) {
 			defer db.SuspendSequenceBatching()()
 
 			// Passive
-			rt2 := rest.NewRestTester(t, &rest.RestTesterConfig{
-				DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
-					Users: map[string]*auth.PrincipalConfig{
-						"alice": {
-							Password:         base.StringPtr("pass"),
-							ExplicitChannels: base.SetOf("alice"),
+			rt2 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+				&rest.RestTesterConfig{
+					DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
+						Users: map[string]*auth.PrincipalConfig{
+							"alice": {
+								Password:         base.StringPtr("pass"),
+								ExplicitChannels: base.SetOf("alice"),
+							},
 						},
-					},
-				}},
-			})
+					}},
+				})
 			defer rt2.Close()
 
 			// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1.
@@ -2079,15 +2083,16 @@ func TestActiveReplicatorPullMergeConflictingAttachments(t *testing.T) {
 			passiveDBURL.User = url.UserPassword("alice", "pass")
 
 			// Active
-			rt1 := rest.NewRestTester(t, &rest.RestTesterConfig{
-				DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
-					Replications: map[string]*db.ReplicationConfig{
-						"repl1": {
-							Remote:                 passiveDBURL.String(),
-							Direction:              db.ActiveReplicatorTypePull,
-							Continuous:             true,
-							ConflictResolutionType: db.ConflictResolverCustom,
-							ConflictResolutionFn: `
+			rt1 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+				&rest.RestTesterConfig{
+					DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
+						Replications: map[string]*db.ReplicationConfig{
+							"repl1": {
+								Remote:                 passiveDBURL.String(),
+								Direction:              db.ActiveReplicatorTypePull,
+								Continuous:             true,
+								ConflictResolutionType: db.ConflictResolverCustom,
+								ConflictResolutionFn: `
 					function(conflict) {
 						var mergedDoc = new Object();
 						mergedDoc.source = "merged";
@@ -2107,10 +2112,10 @@ func TestActiveReplicatorPullMergeConflictingAttachments(t *testing.T) {
 
 						return mergedDoc;
 					}`},
-					},
-				}},
-				SgReplicateEnabled: true,
-			})
+						},
+					}},
+					SgReplicateEnabled: true,
+				})
 			defer rt1.Close()
 
 			rt1.WaitForAssignedReplications(1)
@@ -2195,17 +2200,18 @@ func TestActiveReplicatorPullFromCheckpoint(t *testing.T) {
 
 	// Passive
 	tb2 := base.GetTestBucket(t)
-	rt2 := rest.NewRestTester(t, &rest.RestTesterConfig{
-		CustomTestBucket: tb2,
-		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
-			Users: map[string]*auth.PrincipalConfig{
-				"alice": {
-					Password:         base.StringPtr("pass"),
-					ExplicitChannels: base.SetOf("alice"),
+	rt2 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+		&rest.RestTesterConfig{
+			CustomTestBucket: tb2,
+			DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
+				Users: map[string]*auth.PrincipalConfig{
+					"alice": {
+						Password:         base.StringPtr("pass"),
+						ExplicitChannels: base.SetOf("alice"),
+					},
 				},
-			},
-		}},
-	})
+			}},
+		})
 	defer rt2.Close()
 
 	// Create first batch of docs
@@ -2226,9 +2232,10 @@ func TestActiveReplicatorPullFromCheckpoint(t *testing.T) {
 
 	// Active
 	tb1 := base.GetTestBucket(t)
-	rt1 := rest.NewRestTester(t, &rest.RestTesterConfig{
-		CustomTestBucket: tb1,
-	})
+	rt1 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+		&rest.RestTesterConfig{
+			CustomTestBucket: tb1,
+		})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
 
@@ -2366,24 +2373,26 @@ func TestActiveReplicatorPullFromCheckpointIgnored(t *testing.T) {
 
 	// Passive
 	tb2 := base.GetTestBucket(t)
-	rt2 := rest.NewRestTester(t, &rest.RestTesterConfig{
-		CustomTestBucket: tb2,
-		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
-			Users: map[string]*auth.PrincipalConfig{
-				"alice": {
-					Password:         base.StringPtr("pass"),
-					ExplicitChannels: base.SetOf("alice"),
+	rt2 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+		&rest.RestTesterConfig{
+			CustomTestBucket: tb2,
+			DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
+				Users: map[string]*auth.PrincipalConfig{
+					"alice": {
+						Password:         base.StringPtr("pass"),
+						ExplicitChannels: base.SetOf("alice"),
+					},
 				},
-			},
-		}},
-	})
+			}},
+		})
 	defer rt2.Close()
 
 	// Active
 	tb1 := base.GetTestBucket(t)
-	rt1 := rest.NewRestTester(t, &rest.RestTesterConfig{
-		CustomTestBucket: tb1,
-	})
+	rt1 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+		&rest.RestTesterConfig{
+			CustomTestBucket: tb1,
+		})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
 
@@ -2526,17 +2535,18 @@ func TestActiveReplicatorPullOneshot(t *testing.T) {
 	// Passive
 	tb2 := base.GetTestBucket(t)
 
-	rt2 := rest.NewRestTester(t, &rest.RestTesterConfig{
-		CustomTestBucket: tb2,
-		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
-			Users: map[string]*auth.PrincipalConfig{
-				"alice": {
-					Password:         base.StringPtr("pass"),
-					ExplicitChannels: base.SetOf("alice"),
+	rt2 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+		&rest.RestTesterConfig{
+			CustomTestBucket: tb2,
+			DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
+				Users: map[string]*auth.PrincipalConfig{
+					"alice": {
+						Password:         base.StringPtr("pass"),
+						ExplicitChannels: base.SetOf("alice"),
+					},
 				},
-			},
-		}},
-	})
+			}},
+		})
 	defer rt2.Close()
 
 	docID := t.Name() + "rt2doc1"
@@ -2560,9 +2570,10 @@ func TestActiveReplicatorPullOneshot(t *testing.T) {
 	// Active
 	tb1 := base.GetTestBucket(t)
 
-	rt1 := rest.NewRestTester(t, &rest.RestTesterConfig{
-		CustomTestBucket: tb1,
-	})
+	rt1 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+		&rest.RestTesterConfig{
+			CustomTestBucket: tb1,
+		})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
 
@@ -2625,25 +2636,27 @@ func TestActiveReplicatorPushBasic(t *testing.T) {
 	// Passive
 	tb2 := base.GetTestBucket(t)
 
-	rt2 := rest.NewRestTester(t, &rest.RestTesterConfig{
-		CustomTestBucket: tb2,
-		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
-			Users: map[string]*auth.PrincipalConfig{
-				"alice": {
-					Password:         base.StringPtr("pass"),
-					ExplicitChannels: base.SetOf("alice"),
+	rt2 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+		&rest.RestTesterConfig{
+			CustomTestBucket: tb2,
+			DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
+				Users: map[string]*auth.PrincipalConfig{
+					"alice": {
+						Password:         base.StringPtr("pass"),
+						ExplicitChannels: base.SetOf("alice"),
+					},
 				},
-			},
-		}},
-	})
+			}},
+		})
 	defer rt2.Close()
 
 	// Active
 	tb1 := base.GetTestBucket(t)
 
-	rt1 := rest.NewRestTester(t, &rest.RestTesterConfig{
-		CustomTestBucket: tb1,
-	})
+	rt1 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+		&rest.RestTesterConfig{
+			CustomTestBucket: tb1,
+		})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
 
@@ -2718,25 +2731,27 @@ func TestActiveReplicatorPushAttachments(t *testing.T) {
 
 	// Active
 	tb1 := base.GetTestBucket(t)
-	rt1 := rest.NewRestTester(t, &rest.RestTesterConfig{
-		CustomTestBucket: tb1,
-	})
+	rt1 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+		&rest.RestTesterConfig{
+			CustomTestBucket: tb1,
+		})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
 
 	// Passive
 	tb2 := base.GetTestBucket(t)
-	rt2 := rest.NewRestTester(t, &rest.RestTesterConfig{
-		CustomTestBucket: tb2,
-		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
-			Users: map[string]*auth.PrincipalConfig{
-				"alice": {
-					Password:         base.StringPtr("pass"),
-					ExplicitChannels: base.SetOf("alice"),
+	rt2 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+		&rest.RestTesterConfig{
+			CustomTestBucket: tb2,
+			DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
+				Users: map[string]*auth.PrincipalConfig{
+					"alice": {
+						Password:         base.StringPtr("pass"),
+						ExplicitChannels: base.SetOf("alice"),
+					},
 				},
-			},
-		}},
-	})
+			}},
+		})
 	defer rt2.Close()
 
 	attachment := `"_attachments":{"hi.txt":{"data":"aGk=","content_type":"text/plain"}}`
@@ -2842,9 +2857,10 @@ func TestActiveReplicatorPushFromCheckpoint(t *testing.T) {
 
 	// Active
 	tb1 := base.GetTestBucket(t)
-	rt1 := rest.NewRestTester(t, &rest.RestTesterConfig{
-		CustomTestBucket: tb1,
-	})
+	rt1 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+		&rest.RestTesterConfig{
+			CustomTestBucket: tb1,
+		})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
 
@@ -2857,17 +2873,18 @@ func TestActiveReplicatorPushFromCheckpoint(t *testing.T) {
 
 	// Passive
 	tb2 := base.GetTestBucket(t)
-	rt2 := rest.NewRestTester(t, &rest.RestTesterConfig{
-		CustomTestBucket: tb2,
-		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
-			Users: map[string]*auth.PrincipalConfig{
-				"alice": {
-					Password:         base.StringPtr("pass"),
-					ExplicitChannels: base.SetOf("alice"),
+	rt2 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+		&rest.RestTesterConfig{
+			CustomTestBucket: tb2,
+			DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
+				Users: map[string]*auth.PrincipalConfig{
+					"alice": {
+						Password:         base.StringPtr("pass"),
+						ExplicitChannels: base.SetOf("alice"),
+					},
 				},
-			},
-		}},
-	})
+			}},
+		})
 	defer rt2.Close()
 
 	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1
@@ -3012,17 +3029,18 @@ func TestActiveReplicatorEdgeCheckpointNameCollisions(t *testing.T) {
 
 	// Central cluster
 	tb1 := base.GetTestBucket(t)
-	rt1 := rest.NewRestTester(t, &rest.RestTesterConfig{
-		CustomTestBucket: tb1,
-		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
-			Users: map[string]*auth.PrincipalConfig{
-				"alice": {
-					Password:         base.StringPtr("pass"),
-					ExplicitChannels: base.SetOf("alice"),
+	rt1 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+		&rest.RestTesterConfig{
+			CustomTestBucket: tb1,
+			DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
+				Users: map[string]*auth.PrincipalConfig{
+					"alice": {
+						Password:         base.StringPtr("pass"),
+						ExplicitChannels: base.SetOf("alice"),
+					},
 				},
-			},
-		}},
-	})
+			}},
+		})
 	defer rt1.Close()
 
 	// Create first batch of docs
@@ -3043,9 +3061,10 @@ func TestActiveReplicatorEdgeCheckpointNameCollisions(t *testing.T) {
 
 	// Edge 1
 	edge1Bucket := base.GetTestBucket(t)
-	edge1 := rest.NewRestTester(t, &rest.RestTesterConfig{
-		CustomTestBucket: edge1Bucket,
-	})
+	edge1 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+		&rest.RestTesterConfig{
+			CustomTestBucket: edge1Bucket,
+		})
 	defer edge1.Close()
 	ctx1 := edge1.Context()
 
@@ -3116,9 +3135,10 @@ func TestActiveReplicatorEdgeCheckpointNameCollisions(t *testing.T) {
 
 	// Edge 2
 	edge2Bucket := base.GetTestBucket(t)
-	edge2 := rest.NewRestTester(t, &rest.RestTesterConfig{
-		CustomTestBucket: edge2Bucket,
-	})
+	edge2 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+		&rest.RestTesterConfig{
+			CustomTestBucket: edge2Bucket,
+		})
 	defer edge2.Close()
 	ctx2 := edge2.Context()
 
@@ -3192,25 +3212,27 @@ func TestActiveReplicatorPushOneshot(t *testing.T) {
 	// Passive
 	tb2 := base.GetTestBucket(t)
 
-	rt2 := rest.NewRestTester(t, &rest.RestTesterConfig{
-		CustomTestBucket: tb2,
-		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
-			Users: map[string]*auth.PrincipalConfig{
-				"alice": {
-					Password:         base.StringPtr("pass"),
-					ExplicitChannels: base.SetOf("alice"),
+	rt2 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+		&rest.RestTesterConfig{
+			CustomTestBucket: tb2,
+			DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
+				Users: map[string]*auth.PrincipalConfig{
+					"alice": {
+						Password:         base.StringPtr("pass"),
+						ExplicitChannels: base.SetOf("alice"),
+					},
 				},
-			},
-		}},
-	})
+			}},
+		})
 	defer rt2.Close()
 
 	// Active
 	tb1 := base.GetTestBucket(t)
 
-	rt1 := rest.NewRestTester(t, &rest.RestTesterConfig{
-		CustomTestBucket: tb1,
-	})
+	rt1 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+		&rest.RestTesterConfig{
+			CustomTestBucket: tb1,
+		})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
 
@@ -3293,17 +3315,18 @@ func TestActiveReplicatorPullTombstone(t *testing.T) {
 	// Passive
 	tb2 := base.GetTestBucket(t)
 
-	rt2 := rest.NewRestTester(t, &rest.RestTesterConfig{
-		CustomTestBucket: tb2,
-		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
-			Users: map[string]*auth.PrincipalConfig{
-				"alice": {
-					Password:         base.StringPtr("pass"),
-					ExplicitChannels: base.SetOf("alice"),
+	rt2 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+		&rest.RestTesterConfig{
+			CustomTestBucket: tb2,
+			DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
+				Users: map[string]*auth.PrincipalConfig{
+					"alice": {
+						Password:         base.StringPtr("pass"),
+						ExplicitChannels: base.SetOf("alice"),
+					},
 				},
-			},
-		}},
-	})
+			}},
+		})
 	defer rt2.Close()
 
 	docID := t.Name() + "rt2doc1"
@@ -3324,9 +3347,10 @@ func TestActiveReplicatorPullTombstone(t *testing.T) {
 	// Active
 	tb1 := base.GetTestBucket(t)
 
-	rt1 := rest.NewRestTester(t, &rest.RestTesterConfig{
-		CustomTestBucket: tb1,
-	})
+	rt1 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+		&rest.RestTesterConfig{
+			CustomTestBucket: tb1,
+		})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
 
@@ -3401,17 +3425,18 @@ func TestActiveReplicatorPullPurgeOnRemoval(t *testing.T) {
 	// Passive
 	tb2 := base.GetTestBucket(t)
 
-	rt2 := rest.NewRestTester(t, &rest.RestTesterConfig{
-		CustomTestBucket: tb2,
-		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
-			Users: map[string]*auth.PrincipalConfig{
-				"alice": {
-					Password:         base.StringPtr("pass"),
-					ExplicitChannels: base.SetOf("alice"),
+	rt2 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+		&rest.RestTesterConfig{
+			CustomTestBucket: tb2,
+			DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
+				Users: map[string]*auth.PrincipalConfig{
+					"alice": {
+						Password:         base.StringPtr("pass"),
+						ExplicitChannels: base.SetOf("alice"),
+					},
 				},
-			},
-		}},
-	})
+			}},
+		})
 	defer rt2.Close()
 
 	docID := t.Name() + "rt2doc1"
@@ -3432,9 +3457,10 @@ func TestActiveReplicatorPullPurgeOnRemoval(t *testing.T) {
 	// Active
 	tb1 := base.GetTestBucket(t)
 
-	rt1 := rest.NewRestTester(t, &rest.RestTesterConfig{
-		CustomTestBucket: tb1,
-	})
+	rt1 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+		&rest.RestTesterConfig{
+			CustomTestBucket: tb1,
+		})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
 
@@ -3584,17 +3610,18 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 			// Passive
 			tb2 := base.GetTestBucket(t)
 
-			rt2 := rest.NewRestTester(t, &rest.RestTesterConfig{
-				CustomTestBucket: tb2,
-				DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
-					Users: map[string]*auth.PrincipalConfig{
-						"alice": {
-							Password:         base.StringPtr("pass"),
-							ExplicitChannels: base.SetOf("*"),
+			rt2 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+				&rest.RestTesterConfig{
+					CustomTestBucket: tb2,
+					DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
+						Users: map[string]*auth.PrincipalConfig{
+							"alice": {
+								Password:         base.StringPtr("pass"),
+								ExplicitChannels: base.SetOf("*"),
+							},
 						},
-					},
-				}},
-			})
+					}},
+				})
 			defer rt2.Close()
 
 			// Create revision on rt2 (remote)
@@ -3618,9 +3645,10 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 			// Active
 			tb1 := base.GetTestBucket(t)
 
-			rt1 := rest.NewRestTester(t, &rest.RestTesterConfig{
-				CustomTestBucket: tb1,
-			})
+			rt1 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+				&rest.RestTesterConfig{
+					CustomTestBucket: tb1,
+				})
 			defer rt1.Close()
 			ctx1 := rt1.Context()
 
@@ -3795,17 +3823,18 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 			base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeyChanges, base.KeyCRUD)
 
 			// Passive
-			rt2 := rest.NewRestTester(t, &rest.RestTesterConfig{
-				CustomTestBucket: base.GetTestBucket(t),
-				DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
-					Users: map[string]*auth.PrincipalConfig{
-						"alice": {
-							Password:         base.StringPtr("pass"),
-							ExplicitChannels: base.SetOf("*"),
+			rt2 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+				&rest.RestTesterConfig{
+					CustomTestBucket: base.GetTestBucket(t),
+					DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
+						Users: map[string]*auth.PrincipalConfig{
+							"alice": {
+								Password:         base.StringPtr("pass"),
+								ExplicitChannels: base.SetOf("*"),
+							},
 						},
-					},
-				}},
-			})
+					}},
+				})
 			defer rt2.Close()
 
 			var localRevisionBody db.Body
@@ -3848,9 +3877,10 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 			passiveDBURL.User = url.UserPassword("alice", "pass")
 
 			// Active
-			rt1 := rest.NewRestTester(t, &rest.RestTesterConfig{
-				CustomTestBucket: base.GetTestBucket(t),
-			})
+			rt1 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+				&rest.RestTesterConfig{
+					CustomTestBucket: base.GetTestBucket(t),
+				})
 			defer rt1.Close()
 			ctx1 := rt1.Context()
 
@@ -3996,23 +4026,25 @@ func TestActiveReplicatorPushBasicWithInsecureSkipVerifyEnabled(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeyChanges, base.KeyCRUD, base.KeyBucket)
 
 	// Passive
-	rt2 := rest.NewRestTester(t, &rest.RestTesterConfig{
-		CustomTestBucket: base.GetTestBucket(t),
-		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
-			Users: map[string]*auth.PrincipalConfig{
-				"alice": {
-					Password:         base.StringPtr("pass"),
-					ExplicitChannels: base.SetOf("alice"),
+	rt2 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+		&rest.RestTesterConfig{
+			CustomTestBucket: base.GetTestBucket(t),
+			DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
+				Users: map[string]*auth.PrincipalConfig{
+					"alice": {
+						Password:         base.StringPtr("pass"),
+						ExplicitChannels: base.SetOf("alice"),
+					},
 				},
-			},
-		}},
-	})
+			}},
+		})
 	defer rt2.Close()
 
 	// Active
-	rt1 := rest.NewRestTester(t, &rest.RestTesterConfig{
-		CustomTestBucket: base.GetTestBucket(t),
-	})
+	rt1 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+		&rest.RestTesterConfig{
+			CustomTestBucket: base.GetTestBucket(t),
+		})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
 
@@ -4078,23 +4110,25 @@ func TestActiveReplicatorPushBasicWithInsecureSkipVerifyDisabled(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeyChanges, base.KeyCRUD, base.KeyBucket)
 
 	// Passive
-	rt2 := rest.NewRestTester(t, &rest.RestTesterConfig{
-		CustomTestBucket: base.GetTestBucket(t),
-		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
-			Users: map[string]*auth.PrincipalConfig{
-				"alice": {
-					Password:         base.StringPtr("pass"),
-					ExplicitChannels: base.SetOf("alice"),
+	rt2 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+		&rest.RestTesterConfig{
+			CustomTestBucket: base.GetTestBucket(t),
+			DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
+				Users: map[string]*auth.PrincipalConfig{
+					"alice": {
+						Password:         base.StringPtr("pass"),
+						ExplicitChannels: base.SetOf("alice"),
+					},
 				},
-			},
-		}},
-	})
+			}},
+		})
 	defer rt2.Close()
 
 	// Active
-	rt1 := rest.NewRestTester(t, &rest.RestTesterConfig{
-		CustomTestBucket: base.GetTestBucket(t),
-	})
+	rt1 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+		&rest.RestTesterConfig{
+			CustomTestBucket: base.GetTestBucket(t),
+		})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
 
@@ -4147,17 +4181,18 @@ func TestActiveReplicatorRecoverFromLocalFlush(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)
 
 	// Passive
-	rt2 := rest.NewRestTester(t, &rest.RestTesterConfig{
-		CustomTestBucket: base.GetTestBucket(t),
-		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
-			Users: map[string]*auth.PrincipalConfig{
-				"alice": {
-					Password:         base.StringPtr("pass"),
-					ExplicitChannels: base.SetOf("alice"),
+	rt2 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+		&rest.RestTesterConfig{
+			CustomTestBucket: base.GetTestBucket(t),
+			DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
+				Users: map[string]*auth.PrincipalConfig{
+					"alice": {
+						Password:         base.StringPtr("pass"),
+						ExplicitChannels: base.SetOf("alice"),
+					},
 				},
-			},
-		}},
-	})
+			}},
+		})
 	defer rt2.Close()
 
 	// Create doc on rt2
@@ -4177,9 +4212,10 @@ func TestActiveReplicatorRecoverFromLocalFlush(t *testing.T) {
 	passiveDBURL.User = url.UserPassword("alice", "pass")
 
 	// Active
-	rt1 := rest.NewRestTester(t, &rest.RestTesterConfig{
-		CustomTestBucket: base.GetTestBucket(t),
-	})
+	rt1 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+		&rest.RestTesterConfig{
+			CustomTestBucket: base.GetTestBucket(t),
+		})
 	ctx1 := rt1.Context()
 	stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false)
 	require.NoError(t, err)
@@ -4243,9 +4279,10 @@ func TestActiveReplicatorRecoverFromLocalFlush(t *testing.T) {
 	rt1.Close()
 
 	// recreate rt1 with a new bucket
-	rt1 = rest.NewRestTester(t, &rest.RestTesterConfig{
-		CustomTestBucket: base.GetTestBucket(t),
-	})
+	rt1 = rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+		&rest.RestTesterConfig{
+			CustomTestBucket: base.GetTestBucket(t),
+		})
 	defer rt1.Close()
 	ctx1 = rt1.Context()
 
@@ -4308,17 +4345,18 @@ func TestActiveReplicatorRecoverFromRemoteFlush(t *testing.T) {
 
 	// Passive
 	tb2 := base.GetTestBucket(t)
-	rt2 := rest.NewRestTester(t, &rest.RestTesterConfig{
-		CustomTestBucket: tb2,
-		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
-			Users: map[string]*auth.PrincipalConfig{
-				"alice": {
-					Password:         base.StringPtr("pass"),
-					ExplicitChannels: base.SetOf("alice"),
+	rt2 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+		&rest.RestTesterConfig{
+			CustomTestBucket: tb2,
+			DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
+				Users: map[string]*auth.PrincipalConfig{
+					"alice": {
+						Password:         base.StringPtr("pass"),
+						ExplicitChannels: base.SetOf("alice"),
+					},
 				},
-			},
-		}},
-	})
+			}},
+		})
 
 	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1
 	srv := httptest.NewServer(rt2.TestPublicHandler())
@@ -4331,9 +4369,10 @@ func TestActiveReplicatorRecoverFromRemoteFlush(t *testing.T) {
 
 	// Active
 	tb1 := base.GetTestBucket(t)
-	rt1 := rest.NewRestTester(t, &rest.RestTesterConfig{
-		CustomTestBucket: tb1,
-	})
+	rt1 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+		&rest.RestTesterConfig{
+			CustomTestBucket: tb1,
+		})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
 
@@ -4408,17 +4447,18 @@ func TestActiveReplicatorRecoverFromRemoteFlush(t *testing.T) {
 	rt2.Close()
 
 	// recreate rt2 with a new bucket, http server and update target URL in the replicator
-	rt2 = rest.NewRestTester(t, &rest.RestTesterConfig{
-		CustomTestBucket: base.GetTestBucket(t),
-		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
-			Users: map[string]*auth.PrincipalConfig{
-				"alice": {
-					Password:         base.StringPtr("pass"),
-					ExplicitChannels: base.SetOf("alice"),
+	rt2 = rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+		&rest.RestTesterConfig{
+			CustomTestBucket: base.GetTestBucket(t),
+			DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
+				Users: map[string]*auth.PrincipalConfig{
+					"alice": {
+						Password:         base.StringPtr("pass"),
+						ExplicitChannels: base.SetOf("alice"),
+					},
 				},
-			},
-		}},
-	})
+			}},
+		})
 	defer rt2.Close()
 
 	srv.Config.Handler = rt2.TestPublicHandler()
@@ -4489,17 +4529,18 @@ func TestActiveReplicatorRecoverFromRemoteRollback(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyBucket, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)
 
 	// Passive
-	rt2 := rest.NewRestTester(t, &rest.RestTesterConfig{
-		CustomTestBucket: base.GetTestBucket(t),
-		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
-			Users: map[string]*auth.PrincipalConfig{
-				"alice": {
-					Password:         base.StringPtr("pass"),
-					ExplicitChannels: base.SetOf("alice"),
+	rt2 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+		&rest.RestTesterConfig{
+			CustomTestBucket: base.GetTestBucket(t),
+			DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
+				Users: map[string]*auth.PrincipalConfig{
+					"alice": {
+						Password:         base.StringPtr("pass"),
+						ExplicitChannels: base.SetOf("alice"),
+					},
 				},
-			},
-		}},
-	})
+			}},
+		})
 	defer rt2.Close()
 	ctx2 := rt2.Context()
 
@@ -4513,9 +4554,10 @@ func TestActiveReplicatorRecoverFromRemoteRollback(t *testing.T) {
 	passiveDBURL.User = url.UserPassword("alice", "pass")
 
 	// Active
-	rt1 := rest.NewRestTester(t, &rest.RestTesterConfig{
-		CustomTestBucket: base.GetTestBucket(t),
-	})
+	rt1 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+		&rest.RestTesterConfig{
+			CustomTestBucket: base.GetTestBucket(t),
+		})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
 
@@ -4651,17 +4693,18 @@ func TestActiveReplicatorRecoverFromMismatchedRev(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyBucket, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)
 
 	// Passive
-	rt2 := rest.NewRestTester(t, &rest.RestTesterConfig{
-		CustomTestBucket: base.GetTestBucket(t),
-		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
-			Users: map[string]*auth.PrincipalConfig{
-				"alice": {
-					Password:         base.StringPtr("pass"),
-					ExplicitChannels: base.SetOf("alice"),
+	rt2 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+		&rest.RestTesterConfig{
+			CustomTestBucket: base.GetTestBucket(t),
+			DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
+				Users: map[string]*auth.PrincipalConfig{
+					"alice": {
+						Password:         base.StringPtr("pass"),
+						ExplicitChannels: base.SetOf("alice"),
+					},
 				},
-			},
-		}},
-	})
+			}},
+		})
 	defer rt2.Close()
 
 	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1
@@ -4674,9 +4717,10 @@ func TestActiveReplicatorRecoverFromMismatchedRev(t *testing.T) {
 	passiveDBURL.User = url.UserPassword("alice", "pass")
 
 	// Active
-	rt1 := rest.NewRestTester(t, &rest.RestTesterConfig{
-		CustomTestBucket: base.GetTestBucket(t),
-	})
+	rt1 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+		&rest.RestTesterConfig{
+			CustomTestBucket: base.GetTestBucket(t),
+		})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
 	stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false)
@@ -4755,27 +4799,29 @@ func TestActiveReplicatorIgnoreNoConflicts(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeyChanges, base.KeyCRUD, base.KeyBucket)
 
 	// Passive
-	rt2 := rest.NewRestTester(t, &rest.RestTesterConfig{
-		CustomTestBucket: base.GetTestBucket(t),
-		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
-			AllowConflicts: base.BoolPtr(false),
-			Users: map[string]*auth.PrincipalConfig{
-				"alice": {
-					Password:         base.StringPtr("pass"),
-					ExplicitChannels: base.SetOf("alice"),
+	rt2 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+		&rest.RestTesterConfig{
+			CustomTestBucket: base.GetTestBucket(t),
+			DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
+				AllowConflicts: base.BoolPtr(false),
+				Users: map[string]*auth.PrincipalConfig{
+					"alice": {
+						Password:         base.StringPtr("pass"),
+						ExplicitChannels: base.SetOf("alice"),
+					},
 				},
-			},
-		}},
-	})
+			}},
+		})
 	defer rt2.Close()
 
 	// Active
-	rt1 := rest.NewRestTester(t, &rest.RestTesterConfig{
-		CustomTestBucket: base.GetTestBucket(t),
-		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
-			AllowConflicts: base.BoolPtr(false),
-		}},
-	})
+	rt1 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+		&rest.RestTesterConfig{
+			CustomTestBucket: base.GetTestBucket(t),
+			DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
+				AllowConflicts: base.BoolPtr(false),
+			}},
+		})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
 
@@ -4874,17 +4920,18 @@ func TestActiveReplicatorPullModifiedHash(t *testing.T) {
 
 	// Passive
 	tb2 := base.GetTestBucket(t)
-	rt2 := rest.NewRestTester(t, &rest.RestTesterConfig{
-		CustomTestBucket: tb2,
-		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
-			Users: map[string]*auth.PrincipalConfig{
-				"alice": {
-					Password:         base.StringPtr("pass"),
-					ExplicitChannels: base.SetOf("chan1", "chan2"),
+	rt2 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+		&rest.RestTesterConfig{
+			CustomTestBucket: tb2,
+			DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
+				Users: map[string]*auth.PrincipalConfig{
+					"alice": {
+						Password:         base.StringPtr("pass"),
+						ExplicitChannels: base.SetOf("chan1", "chan2"),
+					},
 				},
-			},
-		}},
-	})
+			}},
+		})
 	defer rt2.Close()
 
 	// Create first batch of docs, creating numRT2DocsInitial in each channel
@@ -4905,9 +4952,10 @@ func TestActiveReplicatorPullModifiedHash(t *testing.T) {
 
 	// Active
 	tb1 := base.GetTestBucket(t)
-	rt1 := rest.NewRestTester(t, &rest.RestTesterConfig{
-		CustomTestBucket: tb1,
-	})
+	rt1 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+		&rest.RestTesterConfig{
+			CustomTestBucket: tb1,
+		})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
 	stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false)
@@ -5080,17 +5128,18 @@ func TestActiveReplicatorReconnectOnStart(t *testing.T) {
 
 					// Passive
 					tb2 := base.GetTestBucket(t)
-					rt2 := rest.NewRestTester(t, &rest.RestTesterConfig{
-						CustomTestBucket: tb2,
-						DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
-							Users: map[string]*auth.PrincipalConfig{
-								"alice": {
-									Password:         base.StringPtr("pass"),
-									ExplicitChannels: base.SetOf("alice"),
+					rt2 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+						&rest.RestTesterConfig{
+							CustomTestBucket: tb2,
+							DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
+								Users: map[string]*auth.PrincipalConfig{
+									"alice": {
+										Password:         base.StringPtr("pass"),
+										ExplicitChannels: base.SetOf("alice"),
+									},
 								},
-							},
-						}},
-					})
+							}},
+						})
 					defer rt2.Close()
 
 					// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1
@@ -5114,9 +5163,10 @@ func TestActiveReplicatorReconnectOnStart(t *testing.T) {
 
 					// Active
 					tb1 := base.GetTestBucket(t)
-					rt1 := rest.NewRestTester(t, &rest.RestTesterConfig{
-						CustomTestBucket: tb1,
-					})
+					rt1 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+						&rest.RestTesterConfig{
+							CustomTestBucket: tb1,
+						})
 					defer rt1.Close()
 					ctx1 := rt1.Context()
 
@@ -5189,9 +5239,10 @@ func TestActiveReplicatorReconnectOnStartEventualSuccess(t *testing.T) {
 
 	// Passive
 	tb2 := base.GetTestBucket(t)
-	rt2 := rest.NewRestTester(t, &rest.RestTesterConfig{
-		CustomTestBucket: tb2,
-	})
+	rt2 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+		&rest.RestTesterConfig{
+			CustomTestBucket: tb2,
+		})
 	defer rt2.Close()
 
 	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1
@@ -5207,9 +5258,10 @@ func TestActiveReplicatorReconnectOnStartEventualSuccess(t *testing.T) {
 
 	// Active
 	tb1 := base.GetTestBucket(t)
-	rt1 := rest.NewRestTester(t, &rest.RestTesterConfig{
-		CustomTestBucket: tb1,
-	})
+	rt1 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+		&rest.RestTesterConfig{
+			CustomTestBucket: tb1,
+		})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
 
@@ -5274,17 +5326,18 @@ func TestActiveReplicatorReconnectSendActions(t *testing.T) {
 
 	// Passive
 	tb2 := base.GetTestBucket(t)
-	rt2 := rest.NewRestTester(t, &rest.RestTesterConfig{
-		CustomTestBucket: tb2,
-		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
-			Users: map[string]*auth.PrincipalConfig{
-				"alice": {
-					Password:         base.StringPtr("pass"),
-					ExplicitChannels: base.SetOf("alice"),
+	rt2 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+		&rest.RestTesterConfig{
+			CustomTestBucket: tb2,
+			DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
+				Users: map[string]*auth.PrincipalConfig{
+					"alice": {
+						Password:         base.StringPtr("pass"),
+						ExplicitChannels: base.SetOf("alice"),
+					},
 				},
-			},
-		}},
-	})
+			}},
+		})
 	defer rt2.Close()
 
 	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1
@@ -5300,9 +5353,10 @@ func TestActiveReplicatorReconnectSendActions(t *testing.T) {
 
 	// Active
 	tb1 := base.GetTestBucket(t)
-	rt1 := rest.NewRestTester(t, &rest.RestTesterConfig{
-		CustomTestBucket: tb1,
-	})
+	rt1 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+		&rest.RestTesterConfig{
+			CustomTestBucket: tb1,
+		})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
 	stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false)
@@ -5568,17 +5622,18 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 			// Passive
 			tb2 := base.GetTestBucket(t)
 
-			rt2 := rest.NewRestTester(t, &rest.RestTesterConfig{
-				CustomTestBucket: tb2,
-				DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
-					Users: map[string]*auth.PrincipalConfig{
-						"alice": {
-							Password:         base.StringPtr("pass"),
-							ExplicitChannels: base.SetOf("*"),
+			rt2 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+				&rest.RestTesterConfig{
+					CustomTestBucket: tb2,
+					DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
+						Users: map[string]*auth.PrincipalConfig{
+							"alice": {
+								Password:         base.StringPtr("pass"),
+								ExplicitChannels: base.SetOf("*"),
+							},
 						},
-					},
-				}},
-			})
+					}},
+				})
 			defer rt2.Close()
 
 			// Create revision on rt2 (remote)
@@ -5606,9 +5661,10 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 			// Active
 			tb1 := base.GetTestBucket(t)
 
-			rt1 := rest.NewRestTester(t, &rest.RestTesterConfig{
-				CustomTestBucket: tb1,
-			})
+			rt1 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+				&rest.RestTesterConfig{
+					CustomTestBucket: tb1,
+				})
 			defer rt1.Close()
 			ctx1 := rt1.Context()
 
@@ -5804,10 +5860,10 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 
 			// Passive
 			passiveBucket := base.GetTestBucket(t)
-			remotePassiveRT := rest.NewRestTester(t, &rest.RestTesterConfig{
-				CustomTestBucket: passiveBucket,
-				DatabaseConfig:   &rest.DatabaseConfig{}, // force use of default scope and collection
-			})
+			remotePassiveRT := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+				&rest.RestTesterConfig{
+					CustomTestBucket: passiveBucket,
+				})
 			defer remotePassiveRT.Close()
 
 			srv := httptest.NewServer(remotePassiveRT.TestAdminHandler())
@@ -5815,11 +5871,11 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 
 			// Active
 			activeBucket := base.GetTestBucket(t)
-			localActiveRT := rest.NewRestTester(t, &rest.RestTesterConfig{
-				CustomTestBucket:   activeBucket,
-				SgReplicateEnabled: true,
-				DatabaseConfig:     &rest.DatabaseConfig{}, // force use of default scope and collection
-			})
+			localActiveRT := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+				&rest.RestTesterConfig{
+					CustomTestBucket:   activeBucket,
+					SgReplicateEnabled: true,
+				})
 			defer localActiveRT.Close()
 
 			replConf := `
@@ -6070,17 +6126,18 @@ func TestDefaultConflictResolverWithTombstoneLocal(t *testing.T) {
 	for _, test := range defaultConflictResolverWithTombstoneTests {
 		t.Run(test.name, func(tt *testing.T) {
 			// Passive
-			rt2 := rest.NewRestTester(t, &rest.RestTesterConfig{
-				CustomTestBucket: base.GetTestBucket(t),
-				DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
-					Users: map[string]*auth.PrincipalConfig{
-						"alice": {
-							Password:         base.StringPtr("pass"),
-							ExplicitChannels: base.SetOf("alice"),
+			rt2 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+				&rest.RestTesterConfig{
+					CustomTestBucket: base.GetTestBucket(t),
+					DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
+						Users: map[string]*auth.PrincipalConfig{
+							"alice": {
+								Password:         base.StringPtr("pass"),
+								ExplicitChannels: base.SetOf("alice"),
+							},
 						},
-					},
-				}},
-			})
+					}},
+				})
 			defer rt2.Close()
 
 			// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1
@@ -6093,9 +6150,10 @@ func TestDefaultConflictResolverWithTombstoneLocal(t *testing.T) {
 			passiveDBURL.User = url.UserPassword("alice", "pass")
 
 			// Active
-			rt1 := rest.NewRestTester(t, &rest.RestTesterConfig{
-				CustomTestBucket: base.GetTestBucket(t),
-			})
+			rt1 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+				&rest.RestTesterConfig{
+					CustomTestBucket: base.GetTestBucket(t),
+				})
 			defer rt1.Close()
 			ctx1 := rt1.Context()
 
@@ -6229,17 +6287,18 @@ func TestDefaultConflictResolverWithTombstoneRemote(t *testing.T) {
 	for _, test := range defaultConflictResolverWithTombstoneTests {
 		t.Run(test.name, func(t *testing.T) {
 			// Passive
-			rt2 := rest.NewRestTester(t, &rest.RestTesterConfig{
-				CustomTestBucket: base.GetTestBucket(t),
-				DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
-					Users: map[string]*auth.PrincipalConfig{
-						"alice": {
-							Password:         base.StringPtr("pass"),
-							ExplicitChannels: base.SetOf("alice"),
+			rt2 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+				&rest.RestTesterConfig{
+					CustomTestBucket: base.GetTestBucket(t),
+					DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
+						Users: map[string]*auth.PrincipalConfig{
+							"alice": {
+								Password:         base.StringPtr("pass"),
+								ExplicitChannels: base.SetOf("alice"),
+							},
 						},
-					},
-				}},
-			})
+					}},
+				})
 			defer rt2.Close()
 
 			// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1
@@ -6252,9 +6311,10 @@ func TestDefaultConflictResolverWithTombstoneRemote(t *testing.T) {
 			passiveDBURL.User = url.UserPassword("alice", "pass")
 
 			// Active
-			rt1 := rest.NewRestTester(t, &rest.RestTesterConfig{
-				CustomTestBucket: base.GetTestBucket(t),
-			})
+			rt1 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+				&rest.RestTesterConfig{
+					CustomTestBucket: base.GetTestBucket(t),
+				})
 			defer rt1.Close()
 			ctx1 := rt1.Context()
 
@@ -6577,17 +6637,19 @@ func TestSendChangesToNoConflictPreHydrogenTarget(t *testing.T) {
 
 	// Passive
 	tb2 := base.GetTestBucket(t)
-	rt2 := rest.NewRestTester(t, &rest.RestTesterConfig{
-		CustomTestBucket: tb2,
-		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
-			AllowConflicts: base.BoolPtr(false),
-		}},
-	})
+	rt2 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+		&rest.RestTesterConfig{
+			CustomTestBucket: tb2,
+			DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
+				AllowConflicts: base.BoolPtr(false),
+			}},
+		})
 	defer rt2.Close()
 
-	rt1 := rest.NewRestTester(t, &rest.RestTesterConfig{
-		CustomTestBucket: base.GetTestBucket(t),
-	})
+	rt1 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+		&rest.RestTesterConfig{
+			CustomTestBucket: base.GetTestBucket(t),
+		})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
 
@@ -6741,13 +6803,14 @@ func TestConflictResolveMergeWithMutatedRev(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
 
 	// Passive
-	rt2 := rest.NewRestTester(t, nil)
+	rt2 := rest.NewRestTesterDefaultCollection(t, nil) // CBG-2319: replicator currently requires default collection
 	defer rt2.Close()
 
 	// Active
-	rt1 := rest.NewRestTester(t, &rest.RestTesterConfig{
-		CustomTestBucket: base.GetTestBucket(t),
-	})
+	rt1 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+		&rest.RestTesterConfig{
+			CustomTestBucket: base.GetTestBucket(t),
+		})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
 
@@ -6818,16 +6881,17 @@ func TestReplicatorDoNotSendDeltaWhenSrcIsTombstone(t *testing.T) {
 
 	// Passive //
 	passiveBucket := base.GetTestBucket(t)
-	passiveRT := rest.NewRestTester(t, &rest.RestTesterConfig{
-		CustomTestBucket: passiveBucket,
-		DatabaseConfig: &rest.DatabaseConfig{
-			DbConfig: rest.DbConfig{
-				DeltaSync: &rest.DeltaSyncConfig{
-					Enabled: base.BoolPtr(true),
+	passiveRT := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+		&rest.RestTesterConfig{
+			CustomTestBucket: passiveBucket,
+			DatabaseConfig: &rest.DatabaseConfig{
+				DbConfig: rest.DbConfig{
+					DeltaSync: &rest.DeltaSyncConfig{
+						Enabled: base.BoolPtr(true),
+					},
 				},
 			},
-		},
-	})
+		})
 	defer passiveRT.Close()
 
 	// Make passive RT listen on an actual HTTP port, so it can receive the blipsync request from the active replicator.
@@ -6836,16 +6900,17 @@ func TestReplicatorDoNotSendDeltaWhenSrcIsTombstone(t *testing.T) {
 
 	// Active //
 	activeBucket := base.GetTestBucket(t)
-	activeRT := rest.NewRestTester(t, &rest.RestTesterConfig{
-		CustomTestBucket: activeBucket,
-		DatabaseConfig: &rest.DatabaseConfig{
-			DbConfig: rest.DbConfig{
-				DeltaSync: &rest.DeltaSyncConfig{
-					Enabled: base.BoolPtr(true),
+	activeRT := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+		&rest.RestTesterConfig{
+			CustomTestBucket: activeBucket,
+			DatabaseConfig: &rest.DatabaseConfig{
+				DbConfig: rest.DbConfig{
+					DeltaSync: &rest.DeltaSyncConfig{
+						Enabled: base.BoolPtr(true),
+					},
 				},
 			},
-		},
-	})
+		})
 	defer activeRT.Close()
 	activeCtx := activeRT.Context()
 
@@ -6924,16 +6989,17 @@ func TestUnprocessableDeltas(t *testing.T) {
 
 	// Passive //
 	passiveBucket := base.GetTestBucket(t)
-	passiveRT := rest.NewRestTester(t, &rest.RestTesterConfig{
-		CustomTestBucket: passiveBucket,
-		DatabaseConfig: &rest.DatabaseConfig{
-			DbConfig: rest.DbConfig{
-				DeltaSync: &rest.DeltaSyncConfig{
-					Enabled: base.BoolPtr(true),
+	passiveRT := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+		&rest.RestTesterConfig{
+			CustomTestBucket: passiveBucket,
+			DatabaseConfig: &rest.DatabaseConfig{
+				DbConfig: rest.DbConfig{
+					DeltaSync: &rest.DeltaSyncConfig{
+						Enabled: base.BoolPtr(true),
+					},
 				},
 			},
-		},
-	})
+		})
 	defer passiveRT.Close()
 
 	// Make passive RT listen on an actual HTTP port, so it can receive the blipsync request from the active replicator.
@@ -6942,16 +7008,17 @@ func TestUnprocessableDeltas(t *testing.T) {
 
 	// Active //
 	activeBucket := base.GetTestBucket(t)
-	activeRT := rest.NewRestTester(t, &rest.RestTesterConfig{
-		CustomTestBucket: activeBucket,
-		DatabaseConfig: &rest.DatabaseConfig{
-			DbConfig: rest.DbConfig{
-				DeltaSync: &rest.DeltaSyncConfig{
-					Enabled: base.BoolPtr(true),
+	activeRT := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+		&rest.RestTesterConfig{
+			CustomTestBucket: activeBucket,
+			DatabaseConfig: &rest.DatabaseConfig{
+				DbConfig: rest.DbConfig{
+					DeltaSync: &rest.DeltaSyncConfig{
+						Enabled: base.BoolPtr(true),
+					},
 				},
 			},
-		},
-	})
+		})
 	defer activeRT.Close()
 	activeCtx := activeRT.Context()
 
@@ -7024,10 +7091,10 @@ func TestReplicatorIgnoreRemovalBodies(t *testing.T) {
 
 	// Passive //
 	passiveBucket := base.GetTestBucket(t)
-	passiveRT := rest.NewRestTester(t, &rest.RestTesterConfig{
-		CustomTestBucket: passiveBucket,
-		DatabaseConfig:   &rest.DatabaseConfig{}, // force use of default scope and collection
-	})
+	passiveRT := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+		&rest.RestTesterConfig{
+			CustomTestBucket: passiveBucket,
+		})
 	defer passiveRT.Close()
 
 	// Make passive RT listen on an actual HTTP port, so it can receive the blipsync request from the active replicator
@@ -7036,10 +7103,10 @@ func TestReplicatorIgnoreRemovalBodies(t *testing.T) {
 
 	// Active //
 	activeBucket := base.GetTestBucket(t)
-	activeRT := rest.NewRestTester(t, &rest.RestTesterConfig{
-		CustomTestBucket: activeBucket,
-		DatabaseConfig:   &rest.DatabaseConfig{}, // force use of default scope and collection
-	})
+	activeRT := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+		&rest.RestTesterConfig{
+			CustomTestBucket: activeBucket,
+		})
 	defer activeRT.Close()
 	activeCtx := activeRT.Context()
 
@@ -7106,7 +7173,7 @@ func TestUnderscorePrefixSupport(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
 
 	// Passive //
-	passiveRT := rest.NewRestTester(t, nil)
+	passiveRT := rest.NewRestTesterDefaultCollection(t, nil) // CBG-2319: replicator currently requires default collection
 	defer passiveRT.Close()
 
 	// Make passive RT listen on an actual HTTP port, so it can receive the blipsync request from the active replicator
@@ -7114,7 +7181,7 @@ func TestUnderscorePrefixSupport(t *testing.T) {
 	defer srv.Close()
 
 	// Active //
-	activeRT := rest.NewRestTester(t, nil)
+	activeRT := rest.NewRestTesterDefaultCollection(t, nil) // CBG-2319: replicator currently requires default collection
 	defer activeRT.Close()
 	activeCtx := activeRT.Context()
 

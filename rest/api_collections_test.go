@@ -28,17 +28,26 @@ func TestCollectionsPutDocInKeyspace(t *testing.T) {
 		t.Skip("CBG-2554 walrus returns access errors that CBS does not")
 	}
 	base.TestRequiresCollections(t)
+	const (
+		username = "alice"
+		password = "pass"
+		// dbName is the default name from RestTester
+		dbName = "db"
+	)
+	rt := NewRestTester(t, &RestTesterConfig{
+		DatabaseConfig: &DatabaseConfig{
+			DbConfig: DbConfig{
+				Users: map[string]*auth.PrincipalConfig{
+					username: {Password: base.StringPtr(password)},
+				},
+			},
+		},
+	})
+	defer rt.Close()
 
-	tb := base.GetTestBucket(t)
-	defer tb.Close()
-
-	// dbName is the default name from RestTester
-	dbName := "db"
-
-	ds := tb.GetNamedDataStore()
+	ds := rt.GetSingleTestDataStore()
 	dataStoreName, ok := base.AsDataStoreName(ds)
 	require.True(t, ok)
-
 	tests := []struct {
 		name           string
 		keyspace       string
@@ -73,31 +82,8 @@ func TestCollectionsPutDocInKeyspace(t *testing.T) {
 		},
 	}
 
-	const (
-		username = "alice"
-		password = "pass"
-	)
 	for i, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-
-			rt := NewRestTester(t, &RestTesterConfig{
-				CustomTestBucket: tb.NoCloseClone(),
-				DatabaseConfig: &DatabaseConfig{
-					DbConfig: DbConfig{
-						Users: map[string]*auth.PrincipalConfig{
-							username: {Password: base.StringPtr(password)},
-						},
-						Scopes: ScopesConfig{
-							dataStoreName.ScopeName(): ScopeConfig{
-								Collections: map[string]CollectionConfig{
-									dataStoreName.CollectionName(): {},
-								},
-							},
-						},
-					},
-				},
-			})
-			defer rt.Close()
 
 			docID := fmt.Sprintf("doc%d", i)
 			path := fmt.Sprintf("/%s/%s", test.keyspace, docID)
@@ -123,8 +109,8 @@ func TestNoCollectionsPutDocWithKeyspace(t *testing.T) {
 	tb := base.GetTestBucket(t)
 	defer tb.Close()
 
-	// Force use of no scopes
-	rt := NewRestTester(t, &RestTesterConfig{
+	// Force use of no scopes intentionally
+	rt := NewRestTesterDefaultCollection(t, &RestTesterConfig{
 		CustomTestBucket: tb,
 		DatabaseConfig: &DatabaseConfig{
 			DbConfig: DbConfig{
@@ -263,37 +249,19 @@ func TestCollectionsBasicIndexQuery(t *testing.T) {
 
 	base.TestRequiresCollections(t)
 
-	tb := base.GetTestBucket(t)
-	defer tb.Close()
-
-	ds := tb.GetNamedDataStore()
-	dataStoreName, ok := base.AsDataStoreName(ds)
-	require.True(t, ok)
-
-	rt := NewRestTester(t, &RestTesterConfig{
-		CustomTestBucket: tb.NoCloseClone(),
-		DatabaseConfig: &DatabaseConfig{
-			DbConfig: DbConfig{
-				Scopes: ScopesConfig{
-					dataStoreName.ScopeName(): ScopeConfig{
-						Collections: map[string]CollectionConfig{
-							dataStoreName.CollectionName(): {},
-						},
-					},
-				},
-			},
-		},
-	})
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
 	const docID = "doc1"
 
-	keyspace := strings.Join([]string{"db", dataStoreName.ScopeName(), dataStoreName.CollectionName()}, base.ScopeCollectionSeparator)
+	collection := rt.GetSingleTestDatabaseCollection()
+	keyspace := getRESTKeyspace(t, "db", collection)
 
 	resp := rt.SendAdminRequest(http.MethodPut, fmt.Sprintf("/%s/%s", keyspace, docID), `{"test":true}`)
 	RequireStatus(t, resp, http.StatusCreated)
 
 	// use the rt.Bucket which has got the foo.bar scope/collection set up
+	ds := rt.GetSingleTestDataStore()
 	n1qlStore, ok := base.AsN1QLStore(ds)
 	require.True(t, ok)
 
@@ -321,8 +289,8 @@ func TestCollectionsBasicIndexQuery(t *testing.T) {
 
 	// if the index was created on a collection, the keyspace_id becomes the collection, along with additional fields for bucket and scope.
 	assert.Equal(t, rt.Bucket().GetName(), *indexMetaResult.BucketID)
-	assert.Equal(t, dataStoreName.ScopeName(), *indexMetaResult.ScopeID)
-	assert.Equal(t, dataStoreName.CollectionName(), *indexMetaResult.KeyspaceID)
+	assert.Equal(t, collection.ScopeName(), *indexMetaResult.ScopeID)
+	assert.Equal(t, collection.Name(), *indexMetaResult.KeyspaceID)
 
 	// try and query the document that we wrote via SG
 	res, err = n1qlStore.Query("SELECT test FROM "+base.KeyspaceQueryToken+" WHERE test = true", nil, base.RequestPlus, true)
@@ -356,16 +324,6 @@ func TestCollectionsSGIndexQuery(t *testing.T) {
 		invalidDocID = "doc2"
 	)
 
-	tb := base.GetTestBucket(t)
-	defer tb.Close()
-
-	ds := tb.GetNamedDataStore()
-
-	dataStoreName, ok := base.AsDataStoreName(ds)
-	require.True(t, ok)
-
-	keyspace := strings.Join([]string{"db", dataStoreName.ScopeName(), dataStoreName.CollectionName()}, base.ScopeCollectionSeparator)
-
 	rt := NewRestTester(t, &RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{
 			DbConfig: DbConfig{
@@ -376,17 +334,12 @@ func TestCollectionsSGIndexQuery(t *testing.T) {
 						Password:         base.StringPtr(password),
 					},
 				},
-				Scopes: ScopesConfig{
-					dataStoreName.ScopeName(): ScopeConfig{
-						Collections: map[string]CollectionConfig{
-							dataStoreName.CollectionName(): {},
-						},
-					},
-				},
 			},
 		},
 	})
 	defer rt.Close()
+
+	keyspace := getRESTKeyspace(t, "db", rt.GetSingleTestDatabaseCollection())
 
 	resp := rt.SendAdminRequest(http.MethodPut, fmt.Sprintf("/%s/%s", keyspace, validDocID), `{"test": true, "channels": ["`+validChannel+`"]}`)
 	RequireStatus(t, resp, http.StatusCreated)

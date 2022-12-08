@@ -22,14 +22,7 @@ import (
 )
 
 func TestDesignDocs(t *testing.T) {
-	rt := NewRestTester(t, &RestTesterConfig{
-		GuestEnabled: true,
-		DatabaseConfig: &DatabaseConfig{
-			DbConfig: DbConfig{
-				Scopes: nil, // no scopes for views tests
-			},
-		},
-	})
+	rt := NewRestTesterDefaultCollection(t, &RestTesterConfig{GuestEnabled: true}) // views only use default collection
 	defer rt.Close()
 
 	response := rt.SendRequest(http.MethodGet, "/db/_design/foo", "")
@@ -60,13 +53,7 @@ func TestDesignDocs(t *testing.T) {
 }
 
 func TestViewQuery(t *testing.T) {
-	rt := NewRestTester(t, &RestTesterConfig{GuestEnabled: true,
-		DatabaseConfig: &DatabaseConfig{
-			DbConfig: DbConfig{
-				Scopes: nil, // no scopes for views tests
-			},
-		},
-	})
+	rt := NewRestTesterDefaultCollection(t, &RestTesterConfig{GuestEnabled: true}) // views only use default collection
 	defer rt.Close()
 
 	if !base.TestsDisableGSI() {
@@ -113,13 +100,7 @@ func TestViewQueryMultipleViews(t *testing.T) {
 		t.Skip("views tests are not applicable under GSI")
 	}
 
-	rt := NewRestTester(t, &RestTesterConfig{GuestEnabled: true,
-		DatabaseConfig: &DatabaseConfig{
-			DbConfig: DbConfig{
-				Scopes: nil, // no scopes for views tests
-			},
-		},
-	})
+	rt := NewRestTesterDefaultCollection(t, &RestTesterConfig{GuestEnabled: true}) // views only use default collection
 	defer rt.Close()
 
 	// Define three views
@@ -152,13 +133,7 @@ func TestViewQueryWithParams(t *testing.T) {
 		t.Skip("views tests are not applicable under GSI")
 	}
 
-	rt := NewRestTester(t, &RestTesterConfig{GuestEnabled: true,
-		DatabaseConfig: &DatabaseConfig{
-			DbConfig: DbConfig{
-				Scopes: nil, // no scopes for views tests
-			},
-		},
-	})
+	rt := NewRestTesterDefaultCollection(t, &RestTesterConfig{GuestEnabled: true}) // views only use default collection
 	defer rt.Close()
 
 	response := rt.SendAdminRequest(http.MethodPut, "/db/_design/foodoc", `{"views": {"foobarview": {"map": "function(doc, meta) {if (doc.value == \"foo\") {emit(doc.key, null);}}"}}}`)
@@ -186,13 +161,7 @@ func TestViewQueryUserAccess(t *testing.T) {
 		t.Skip("views tests are not applicable under GSI")
 	}
 
-	rt := NewRestTester(t, &RestTesterConfig{GuestEnabled: true,
-		DatabaseConfig: &DatabaseConfig{
-			DbConfig: DbConfig{
-				Scopes: nil, // no scopes for views tests
-			},
-		},
-	})
+	rt := NewRestTesterDefaultCollection(t, &RestTesterConfig{GuestEnabled: true}) // views only use default collection
 	defer rt.Close()
 
 	ctx := rt.Context()
@@ -287,14 +256,9 @@ func TestUserViewQuery(t *testing.T) {
 	rtConfig := RestTesterConfig{
 		SyncFn:       `function(doc) {channel(doc.channel)}`,
 		GuestEnabled: true,
-		DatabaseConfig: &DatabaseConfig{
-			DbConfig: DbConfig{
-				Scopes: nil, // no scopes for views tests
-			},
-		},
 	}
 
-	rt := NewRestTester(t, &rtConfig)
+	rt := NewRestTesterDefaultCollection(t, &rtConfig) // views only use default collection
 	defer rt.Close()
 
 	ctx := rt.Context()
@@ -371,13 +335,8 @@ func TestAdminReduceViewQuery(t *testing.T) {
 	rtConfig := RestTesterConfig{
 		SyncFn:       `function(doc) {channel(doc.channel)}`,
 		GuestEnabled: true,
-		DatabaseConfig: &DatabaseConfig{
-			DbConfig: DbConfig{
-				Scopes: nil, // no scopes for views tests
-			},
-		},
 	}
-	rt := NewRestTester(t, &rtConfig)
+	rt := NewRestTesterDefaultCollection(t, &rtConfig) // views only use default collection
 	defer rt.Close()
 
 	// Create a view with a reduce:
@@ -431,13 +390,8 @@ func TestAdminReduceSumQuery(t *testing.T) {
 	rtConfig := RestTesterConfig{
 		SyncFn:       `function(doc) {channel(doc.channel)}`,
 		GuestEnabled: true,
-		DatabaseConfig: &DatabaseConfig{
-			DbConfig: DbConfig{
-				Scopes: nil, // no scopes for views tests
-			},
-		},
 	}
-	rt := NewRestTester(t, &rtConfig)
+	rt := NewRestTesterDefaultCollection(t, &rtConfig) // views only use default collection
 	defer rt.Close()
 
 	// Create a view with a reduce:
@@ -476,13 +430,8 @@ func TestAdminGroupReduceSumQuery(t *testing.T) {
 	rtConfig := RestTesterConfig{
 		SyncFn:       `function(doc) {channel(doc.channel)}`,
 		GuestEnabled: true,
-		DatabaseConfig: &DatabaseConfig{
-			DbConfig: DbConfig{
-				Scopes: nil, // no scopes for views tests
-			},
-		},
 	}
-	rt := NewRestTester(t, &rtConfig)
+	rt := NewRestTesterDefaultCollection(t, &rtConfig) // views only use default collection
 	defer rt.Close()
 
 	// Create a view with a reduce:
@@ -523,13 +472,8 @@ func TestViewQueryWithKeys(t *testing.T) {
 
 	rtConfig := RestTesterConfig{
 		SyncFn: `function(doc) {channel(doc.channel)}`,
-		DatabaseConfig: &DatabaseConfig{
-			DbConfig: DbConfig{
-				Scopes: nil, // no scopes for views tests
-			},
-		},
 	}
-	rt := NewRestTester(t, &rtConfig)
+	rt := NewRestTesterDefaultCollection(t, &rtConfig) // views only use default collection
 	defer rt.Close()
 
 	// Create a view
@@ -570,7 +514,7 @@ func TestViewQueryWithCompositeKeys(t *testing.T) {
 	}
 
 	rtConfig := RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel)}`}
-	rt := NewRestTester(t, &rtConfig)
+	rt := NewRestTesterDefaultCollection(t, &rtConfig) // views only use default collection
 	defer rt.Close()
 
 	// Create a view
@@ -610,7 +554,7 @@ func TestViewQueryWithIntKeys(t *testing.T) {
 	}
 
 	rtConfig := RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel)}`}
-	rt := NewRestTester(t, &rtConfig)
+	rt := NewRestTesterDefaultCollection(t, &rtConfig) // views only use default collection
 	defer rt.Close()
 
 	// Create a view
@@ -649,13 +593,8 @@ func TestAdminGroupLevelReduceSumQuery(t *testing.T) {
 	rtConfig := RestTesterConfig{
 		SyncFn:       `function(doc) {channel(doc.channel)}`,
 		GuestEnabled: true,
-		DatabaseConfig: &DatabaseConfig{
-			DbConfig: DbConfig{
-				Scopes: nil, // no scopes for views tests
-			},
-		},
 	}
-	rt := NewRestTester(t, &rtConfig)
+	rt := NewRestTesterDefaultCollection(t, &rtConfig) // views only use default collection
 	defer rt.Close()
 
 	// Create a view with a reduce:
@@ -687,11 +626,6 @@ func TestAdminGroupLevelReduceSumQuery(t *testing.T) {
 func TestPostInstallCleanup(t *testing.T) {
 	rtConfig := RestTesterConfig{
 		SyncFn: `function(doc) {channel(doc.channel)}`,
-		DatabaseConfig: &DatabaseConfig{
-			DbConfig: DbConfig{
-				Scopes: nil, // no scopes for views tests
-			},
-		},
 	}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
@@ -758,13 +692,7 @@ func TestViewQueryWrappers(t *testing.T) {
 	if !base.TestsDisableGSI() {
 		t.Skip("views tests are not applicable under GSI")
 	}
-	rt := NewRestTester(t, &RestTesterConfig{
-		DatabaseConfig: &DatabaseConfig{
-			DbConfig: DbConfig{
-				Scopes: nil, // no scopes for views tests
-			},
-		},
-	})
+	rt := NewRestTesterDefaultCollection(t, nil) // views only use default collection
 	defer rt.Close()
 
 	ctx := rt.Context()

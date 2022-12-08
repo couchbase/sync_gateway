@@ -79,9 +79,16 @@ type RestTester struct {
 	MetricsHandler          http.Handler
 	metricsHandlerOnce      sync.Once
 	closed                  bool
+	onlyDefaultCollection   bool // force use of only default collection
 }
 
+// NewRestTester returns a rest tester backed by a single database and a single collection. This collection may be named or default collection based on global test configuration.
 func NewRestTester(tb testing.TB, restConfig *RestTesterConfig) *RestTester {
+	return newRestTester(tb, restConfig, false)
+}
+
+// newRestTester creates the underlying rest testers, use public functions.
+func newRestTester(tb testing.TB, restConfig *RestTesterConfig, onlyDefaultCollection bool) *RestTester {
 	var rt RestTester
 	if tb == nil {
 		panic("tester parameter cannot be nil")
@@ -93,7 +100,13 @@ func NewRestTester(tb testing.TB, restConfig *RestTesterConfig) *RestTester {
 		rt.RestTesterConfig = &RestTesterConfig{}
 	}
 	rt.RestTesterConfig.useTLSServer = base.ServerIsTLS(base.UnitTestUrl())
+	rt.onlyDefaultCollection = onlyDefaultCollection
 	return &rt
+}
+
+// NewRestTester returns a rest tester backed by a single database and a single default collection.
+func NewRestTesterDefaultCollection(tb testing.TB, restConfig *RestTesterConfig) *RestTester {
+	return newRestTester(tb, restConfig, true)
 }
 
 func (rt *RestTester) Bucket() base.Bucket {
@@ -235,10 +248,11 @@ func (rt *RestTester) Bucket() base.Bucket {
 		if rt.DatabaseConfig == nil {
 			// If no db config was passed in, create one
 			rt.DatabaseConfig = &DatabaseConfig{}
+		}
+		if !rt.onlyDefaultCollection {
 			// Configure non default collection by default
 			rt.DatabaseConfig.Scopes = getScopesConfig(rt.TB, testBucket)
 		}
-
 		if rt.DatabaseConfig.UseViews == nil {
 			rt.DatabaseConfig.UseViews = base.BoolPtr(base.TestsDisableGSI())
 		}
@@ -1033,6 +1047,9 @@ type BlipTesterSpec struct {
 
 	// Supported blipProtocols for the client to use in order of preference
 	blipProtocols []string
+
+	// If true, only run the default collection
+	onlyDefaultCollection bool
 }
 
 // State associated with a BlipTester
@@ -1102,7 +1119,7 @@ func NewBlipTesterFromSpecWithRT(tb testing.TB, spec *BlipTesterSpec, rt *RestTe
 
 // NewBlipTesterDefaultCollection creates a blip tester that has a RestTester only using a single database and `_default._default` collection.
 func NewBlipTesterDefaultCollection(tb testing.TB) *BlipTester {
-	return NewBlipTesterDefaultCollectionFromSpec(tb, BlipTesterSpec{GuestEnabled: true})
+	return NewBlipTesterDefaultCollectionFromSpec(tb, BlipTesterSpec{GuestEnabled: true, onlyDefaultCollection: true})
 }
 
 // NewBlipTesterDefaultCollectionFromSpec creates a blip tester that has a RestTester only using a single database and `_default._default` collection.
@@ -1112,7 +1129,7 @@ func NewBlipTesterDefaultCollectionFromSpec(tb testing.TB, spec BlipTesterSpec) 
 		GuestEnabled:          spec.GuestEnabled,
 		DatabaseConfig:        &DatabaseConfig{},
 	}
-	rt := NewRestTester(tb, &rtConfig)
+	rt := newRestTester(tb, &rtConfig, true)
 	bt, err := createBlipTesterWithSpec(tb, spec, rt)
 	require.NoError(tb, err)
 	return bt
@@ -2007,4 +2024,9 @@ func (sc *ServerContext) suspendDatabase(t *testing.T, ctx context.Context, dbNa
 	defer sc.lock.Unlock()
 
 	return sc._suspendDatabase(ctx, dbName)
+}
+
+// getRESTkeyspace returns a keyspace for REST URIs
+func getRESTKeyspace(_ *testing.T, dbName string, collection *db.DatabaseCollection) string {
+	return strings.Join([]string{dbName, collection.ScopeName(), collection.Name()}, base.ScopeCollectionSeparator)
 }

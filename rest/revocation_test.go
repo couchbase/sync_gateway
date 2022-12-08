@@ -179,8 +179,7 @@ func InitScenario(t *testing.T, rtConfig *RestTesterConfig) (ChannelRevocationTe
 
 	if rtConfig == nil {
 		rtConfig = &RestTesterConfig{
-			SyncFn:         defaultSyncFn,
-			DatabaseConfig: &DatabaseConfig{}, // revocation requires collection specific channel access
+			SyncFn: defaultSyncFn,
 		}
 	} else {
 		if rtConfig.SyncFn == "" {
@@ -188,7 +187,7 @@ func InitScenario(t *testing.T, rtConfig *RestTesterConfig) (ChannelRevocationTe
 		}
 	}
 
-	rt := NewRestTester(t, rtConfig)
+	rt := NewRestTesterDefaultCollection(t, rtConfig) // CBG-2618: fix collection channel access
 
 	revocationTester := ChannelRevocationTester{
 		test:       t,
@@ -890,9 +889,7 @@ func TestEnsureRevocationUsingDocHistory(t *testing.T) {
 func TestRevocationWithAdminChannels(t *testing.T) {
 	defer db.SuspendSequenceBatching()()
 
-	rt := NewRestTester(t, &RestTesterConfig{
-		DatabaseConfig: &DatabaseConfig{}, // revocation requires collection specific channel access
-	})
+	rt := NewRestTesterDefaultCollection(t, nil) // CBG-2618: fix collection channel access
 	defer rt.Close()
 
 	resp := rt.SendAdminRequest("PUT", "/db/_user/user", `{"admin_channels": ["A"], "password": "letmein"}`)
@@ -922,9 +919,7 @@ func TestRevocationWithAdminChannels(t *testing.T) {
 func TestRevocationWithAdminRoles(t *testing.T) {
 	defer db.SuspendSequenceBatching()()
 
-	rt := NewRestTester(t, &RestTesterConfig{
-		DatabaseConfig: &DatabaseConfig{}, // revocation requires collection specific channel access
-	})
+	rt := NewRestTesterDefaultCollection(t, nil) // CBG-2618: fix collection channel access
 	defer rt.Close()
 
 	resp := rt.SendAdminRequest("PUT", "/db/_role/role", `{"admin_channels": ["A"]}`)
