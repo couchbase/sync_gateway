@@ -185,6 +185,10 @@ func (s SequenceID) Equals(s2 SequenceID) bool {
 func (s SequenceID) Before(s2 SequenceID) bool {
 	// using SafeSequence for comparison, which takes the lower of LowSeq and Seq
 	if s.TriggeredBy == s2.TriggeredBy {
+		if s.SafeSequence() == s2.SafeSequence() {
+			// If both are equal, one sequence must be a non-zero LowSeq - sort those after the actual sequence.
+			return s.Seq < s2.Seq
+		}
 		return s.SafeSequence() < s2.SafeSequence() // the simple case: untriggered, or triggered by same sequence
 	} else if s.TriggeredBy == 0 {
 		return s.SafeSequence() < s2.TriggeredBy // s2 triggered but not s
