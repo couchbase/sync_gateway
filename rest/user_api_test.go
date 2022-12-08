@@ -564,7 +564,7 @@ func TestUserXattrsRawGet(t *testing.T) {
 	})
 	defer rt.Close()
 
-	userXattrStore, ok := base.AsUserXattrStore(rt.Bucket().DefaultDataStore())
+	userXattrStore, ok := base.AsUserXattrStore(rt.GetSingleTestDataStore())
 	if !ok {
 		t.Skip("Test requires Couchbase Bucket")
 	}
@@ -1209,7 +1209,7 @@ func TestRemovingUserXattr(t *testing.T) {
 
 			defer rt.Close()
 
-			gocbBucket, ok := base.AsUserXattrStore(rt.Bucket().DefaultDataStore())
+			gocbBucket, ok := base.AsUserXattrStore(rt.GetSingleTestDataStore())
 			if !ok {
 				t.Skip("Test requires Couchbase Bucket")
 			}

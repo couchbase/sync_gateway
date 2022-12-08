@@ -1803,7 +1803,7 @@ func TestWebhookProperties(t *testing.T) {
 		wg.Add(1)
 		body := make(map[string]interface{})
 		body["foo"] = "bar"
-		added, err := rt.Bucket().DefaultDataStore().Add("doc2", 0, body)
+		added, err := rt.GetSingleTestDataStore().Add("doc2", 0, body)
 		assert.True(t, added)
 		assert.NoError(t, err)
 	}
@@ -2310,7 +2310,8 @@ func TestTombstonedBulkDocsWithPriorPurge(t *testing.T) {
 		t.Skip("Requires Couchbase bucket")
 	}
 
-	_, err := bucket.DefaultDataStore().Add(t.Name(), 0, map[string]interface{}{"val": "val"})
+	dataStore := rt.GetSingleTestDataStore()
+	_, err := dataStore.Add(t.Name(), 0, map[string]interface{}{"val": "val"})
 	require.NoError(t, err)
 
 	resp := rt.SendAdminRequest("POST", "/db/_purge", `{"`+t.Name()+`": ["*"]}`)
@@ -2320,7 +2321,7 @@ func TestTombstonedBulkDocsWithPriorPurge(t *testing.T) {
 	RequireStatus(t, response, http.StatusCreated)
 
 	var body map[string]interface{}
-	_, err = rt.GetDatabase().Bucket.DefaultDataStore().Get(t.Name(), &body)
+	_, err = dataStore.Get(t.Name(), &body)
 
 	assert.Error(t, err)
 	assert.True(t, base.IsDocNotFoundError(err))

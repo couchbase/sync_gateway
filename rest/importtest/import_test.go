@@ -64,7 +64,8 @@ func TestXattrImportOldDoc(t *testing.T) {
 			AutoImport: false,
 		}},
 	}
-	rt := rest.NewRestTester(t, &rtConfig)
+	rt := rest.NewRestTesterDefaultCollection(t, // CBG-2618: fix collection channel access
+		&rtConfig)
 	defer rt.Close()
 
 	bucket := rt.Bucket()
@@ -96,7 +97,7 @@ func TestXattrImportOldDoc(t *testing.T) {
 	updatedBody["test"] = "TestImportDelete"
 	updatedBody["channels"] = "HBO"
 
-	err = bucket.DefaultDataStore().Set(key, 0, nil, updatedBody)
+	err = rt.GetSingleTestDataStore().Set(key, 0, nil, updatedBody)
 	assert.NoError(t, err, "Unable to update doc TestImportDelete")
 
 	// Attempt to get the document via Sync Gateway, to trigger import.  On import of a create, oldDoc should be nil.
@@ -358,8 +359,6 @@ func TestXattrResurrectViaSDK(t *testing.T) {
 	rt := rest.NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
-	bucket := rt.Bucket()
-
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyImport)
 
 	// 1. Create and import doc
@@ -368,7 +367,9 @@ func TestXattrResurrectViaSDK(t *testing.T) {
 	docBody["test"] = key
 	docBody["channels"] = "ABC"
 
-	_, err := bucket.DefaultDataStore().Add(key, 0, docBody)
+	dataStore := rt.GetSingleTestDataStore()
+
+	_, err := dataStore.Add(key, 0, docBody)
 	assert.NoError(t, err, "Unable to insert doc TestResurrectViaSDK")
 
 	// Attempt to get the document via Sync Gateway, to trigger import.  On import of a create, oldDoc should be nil.
@@ -380,7 +381,7 @@ func TestXattrResurrectViaSDK(t *testing.T) {
 	assert.NoError(t, err, "Unable to unmarshal raw response")
 
 	// 2. Delete the doc through the SDK
-	err = bucket.DefaultDataStore().Delete(key)
+	err = dataStore.Delete(key)
 	assert.NoError(t, err, "Unable to delete doc TestResurrectViaSDK")
 
 	response = rt.SendAdminRequest("GET", rawPath, "")
@@ -395,7 +396,7 @@ func TestXattrResurrectViaSDK(t *testing.T) {
 	updatedBody["test"] = key
 	updatedBody["channels"] = "HBO"
 
-	err = bucket.DefaultDataStore().Set(key, 0, nil, updatedBody)
+	err = dataStore.Set(key, 0, nil, updatedBody)
 	assert.NoError(t, err, "Unable to update doc TestResurrectViaSDK")
 
 	// Attempt to get the document via Sync Gateway, to trigger import.
@@ -423,8 +424,6 @@ func TestXattrDoubleDelete(t *testing.T) {
 	rt := rest.NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
-	bucket := rt.Bucket()
-
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyImport, base.KeyCRUD)
 
 	// 1. Create and import doc
@@ -443,7 +442,7 @@ func TestXattrDoubleDelete(t *testing.T) {
 
 	// 2. Delete the doc through the SDK
 	log.Printf("...............Delete through SDK.....................................")
-	deleteErr := bucket.DefaultDataStore().Delete(key)
+	deleteErr := rt.GetSingleTestDataStore().Delete(key)
 	assert.NoError(t, deleteErr, "Couldn't delete via SDK")
 
 	log.Printf("...............Delete through SG.......................................")
@@ -551,7 +550,7 @@ func TestXattrImportFilterOptIn(t *testing.T) {
 	}
 	rt := rest.NewRestTester(t, &rtConfig)
 	defer rt.Close()
-	bucket := rt.Bucket()
+	dataStore := rt.GetSingleTestDataStore()
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyImport, base.KeyCRUD)
 
@@ -560,14 +559,14 @@ func TestXattrImportFilterOptIn(t *testing.T) {
 	mobileBody := make(map[string]interface{})
 	mobileBody["type"] = "mobile"
 	mobileBody["channels"] = "ABC"
-	_, err := bucket.DefaultDataStore().Add(mobileKey, 0, mobileBody)
+	_, err := dataStore.Add(mobileKey, 0, mobileBody)
 	assert.NoError(t, err, "Error writing SDK doc")
 
 	nonMobileKey := "TestImportFilterInvalid"
 	nonMobileBody := make(map[string]interface{})
 	nonMobileBody["type"] = "non-mobile"
 	nonMobileBody["channels"] = "ABC"
-	_, err = bucket.DefaultDataStore().Add(nonMobileKey, 0, nonMobileBody)
+	_, err = dataStore.Add(nonMobileKey, 0, nonMobileBody)
 	assert.NoError(t, err, "Error writing SDK doc")
 
 	// Attempt to get the documents via Sync Gateway.  Will trigger on-demand import.
@@ -607,7 +606,7 @@ func TestImportFilterLogging(t *testing.T) {
 	body := make(map[string]interface{})
 	body["type"] = "mobile"
 	body["channels"] = "A"
-	ok, err := rt.Bucket().DefaultDataStore().Add(key, 0, body)
+	ok, err := rt.GetSingleTestDataStore().Add(key, 0, body)
 	assert.NoError(t, err)
 	assert.True(t, ok)
 
