@@ -222,3 +222,33 @@ func (u PrincipalConfig) Merge(other PrincipalConfig) PrincipalConfig {
 		JWTLastUpdated:    base.Coalesce(other.JWTLastUpdated, u.JWTLastUpdated),
 	}
 }
+
+// Helper function to set explicit channels for a collection
+func (u *PrincipalConfig) SetExplicitChannels(scopeName, collectionName string, channels ...string) {
+	channelSet := base.SetFromArray(channels)
+	if u.CollectionAccess == nil {
+		u.CollectionAccess = map[string]map[string]*CollectionAccessConfig{
+			scopeName: {
+				collectionName: {
+					ExplicitChannels_: channelSet,
+				},
+			},
+		}
+		return
+	}
+	if scope, ok := u.CollectionAccess[scopeName]; !ok {
+		u.CollectionAccess[scopeName] = map[string]*CollectionAccessConfig{
+			collectionName: {
+				ExplicitChannels_: channelSet,
+			},
+		}
+	} else {
+		if collection, ok := scope[collectionName]; !ok {
+			scope[collectionName] = &CollectionAccessConfig{
+				ExplicitChannels_: channelSet,
+			}
+		} else {
+			collection.ExplicitChannels_ = channelSet
+		}
+	}
+}

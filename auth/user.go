@@ -79,7 +79,7 @@ func (auth *Authenticator) defaultGuestUser() User {
 
 // Creates a new User object. Intended for test usage, for simplified channel assignment.
 // The specified channels are granted to the user as admin grants for
-// all collections defined in the authenticator.  If no collections are defined, the channels
+// all collections defined in the authenticator, at sequence 1.  If no collections are defined, the channels
 // are granted for the default collection.
 func (auth *Authenticator) NewUser(username string, password string, channels base.Set) (User, error) {
 	user := &userImpl{

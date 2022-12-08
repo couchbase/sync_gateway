@@ -649,6 +649,10 @@ func (rt *RestTester) SendAdminRequest(method, resource string, body string) *Te
 	return response
 }
 
+func (rt *RestTester) SendUserRequest(method, resource string, body string, username string) *TestResponse {
+	return rt.Send(RequestByUser(method, resource, body, username))
+}
+
 func (rt *RestTester) WaitForNUserViewResults(numResultsExpected int, viewUrlPath string, user auth.User, password string) (viewResult sgbucket.ViewResult, err error) {
 	return rt.WaitForNViewResults(numResultsExpected, viewUrlPath, user, password)
 }
@@ -796,6 +800,33 @@ func (rt *RestTester) PutDocumentWithRevID(docID string, newRevID string, parent
 	}
 	resp := rt.SendAdminRequest(http.MethodPut, "/db/"+docID+"?new_edits=false", string(requestBytes))
 	return resp, nil
+}
+
+func (rt *RestTester) SetAdminChannels(username string, keyspace string, channels ...string) error {
+
+	dbName, scopeName, collectionName, err := parseKeyspace(keyspace)
+	if err != nil {
+		return err
+	}
+	// Get the current user document
+	userResponse := rt.SendAdminRequest("GET", "/"+dbName+"/_user/"+username, "")
+	if userResponse.Code != 200 {
+		return fmt.Errorf("User %s not found", username)
+	}
+
+	var currentConfig auth.PrincipalConfig
+	if err := base.JSONUnmarshal(userResponse.Body.Bytes(), &currentConfig); err != nil {
+		return err
+	}
+
+	currentConfig.SetExplicitChannels(*scopeName, *collectionName, channels...)
+	newConfigBytes, _ := base.JSONMarshal(currentConfig)
+
+	userResponse = rt.SendAdminRequest("PUT", "/"+dbName+"/_user/"+username, string(newConfigBytes))
+	if userResponse.Code != 200 {
+		return fmt.Errorf("User update failed: %s", userResponse.Body.Bytes())
+	}
+	return nil
 }
 
 type SimpleSync struct {

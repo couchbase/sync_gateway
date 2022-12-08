@@ -207,3 +207,70 @@ func TestSerializeUserWithCollections(t *testing.T) {
 	assert.Equal(t, 0, len(collectionAccess.ExplicitChannels_))
 	assert.Equal(t, uint64(2), user.getCollectionChannelInvalSeq(scope, collection))
 }
+
+func TestPrincipalConfigSetExplicitChannels(t *testing.T) {
+
+	bucket := base.GetTestBucket(t)
+	defer bucket.Close()
+
+	userName := "bernard"
+	config := &PrincipalConfig{
+		Name: &userName,
+	}
+
+	config.SetExplicitChannels("scope1", "collection1", "ABC", "DEF")
+	assert.Equal(t, config.CollectionAccess, map[string]map[string]*CollectionAccessConfig{
+		"scope1": {
+			"collection1": &CollectionAccessConfig{
+				ExplicitChannels_: base.SetOf("ABC", "DEF"),
+			},
+		},
+	})
+
+	config.SetExplicitChannels("scope2", "collection1", "GHI")
+	assert.Equal(t, config.CollectionAccess, map[string]map[string]*CollectionAccessConfig{
+		"scope1": {
+			"collection1": &CollectionAccessConfig{
+				ExplicitChannels_: base.SetOf("ABC", "DEF"),
+			},
+		},
+		"scope2": {
+			"collection1": &CollectionAccessConfig{
+				ExplicitChannels_: base.SetOf("GHI"),
+			},
+		},
+	})
+	config.SetExplicitChannels("scope1", "collection2", "JKL")
+	assert.Equal(t, config.CollectionAccess, map[string]map[string]*CollectionAccessConfig{
+		"scope1": {
+			"collection1": &CollectionAccessConfig{
+				ExplicitChannels_: base.SetOf("ABC", "DEF"),
+			},
+			"collection2": &CollectionAccessConfig{
+				ExplicitChannels_: base.SetOf("JKL"),
+			},
+		},
+		"scope2": {
+			"collection1": &CollectionAccessConfig{
+				ExplicitChannels_: base.SetOf("GHI"),
+			},
+		},
+	})
+	config.SetExplicitChannels("scope1", "collection1", "MNO")
+	assert.Equal(t, config.CollectionAccess, map[string]map[string]*CollectionAccessConfig{
+		"scope1": {
+			"collection1": &CollectionAccessConfig{
+				ExplicitChannels_: base.SetOf("MNO"),
+			},
+			"collection2": &CollectionAccessConfig{
+				ExplicitChannels_: base.SetOf("JKL"),
+			},
+		},
+		"scope2": {
+			"collection1": &CollectionAccessConfig{
+				ExplicitChannels_: base.SetOf("GHI"),
+			},
+		},
+	})
+
+}

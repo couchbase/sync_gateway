@@ -774,6 +774,11 @@ func (c *changeCache) _addToCache(change *LogEntry) []channels.ID {
 		return nil
 	}
 
+	// FIXME: Until CBG-2333, changeCache will perform sequence buffering for all collections, but should not cache
+	if change.CollectionID != c.collection.GetCollectionID() {
+		return nil
+	}
+
 	// updatedChannels tracks the set of channels that should be notified of the change.  This includes
 	// the change's active channels, as well as any channel removals for the active revision.
 	updatedChannels := c.channelCache.AddToCache(change)
