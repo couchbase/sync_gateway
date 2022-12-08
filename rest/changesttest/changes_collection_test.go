@@ -73,6 +73,7 @@ func TestMultiCollectionChangesAdmin(t *testing.T) {
 	rest.RequireStatus(t, response, 201)
 	response = rt.SendAdminRequest("PUT", "/"+c2Keyspace+"/abc2", `{"value":1, "channels":["ABC"]}`)
 	rest.RequireStatus(t, response, 201)
+	_ = rt.WaitForPendingChanges()
 
 	changesResponse = rt.SendAdminRequest("GET", "/"+c1Keyspace+"/_changes?since=0", "")
 	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
@@ -112,7 +113,6 @@ func TestMultiCollectionChangesAdminSameChannelName(t *testing.T) {
 	rest.RequireStatus(t, response, 201)
 	response = rt.SendAdminRequest("PUT", "/"+c2Keyspace+"/pbs1_c2", `{"value":1, "channels":["PBS"]}`)
 	rest.RequireStatus(t, response, 201)
-
 	_ = rt.WaitForPendingChanges()
 
 	var changes struct {
@@ -138,6 +138,7 @@ func TestMultiCollectionChangesAdminSameChannelName(t *testing.T) {
 	rest.RequireStatus(t, response, 201)
 	response = rt.SendAdminRequest("PUT", "/"+c2Keyspace+"/pbs2_c2", `{"value":1, "channels":["PBS"]}`)
 	rest.RequireStatus(t, response, 201)
+	_ = rt.WaitForPendingChanges()
 
 	changesResponse = rt.SendAdminRequest("GET", "/"+c1Keyspace+"/_changes?since=0", "")
 	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
@@ -184,7 +185,6 @@ func TestMultiCollectionChangesUser(t *testing.T) {
 	rest.RequireStatus(t, response, 201)
 	response = rt.SendAdminRequest("PUT", "/"+c2Keyspace+"/pbs1_c2", `{"value":1, "channels":["PBS"]}`)
 	rest.RequireStatus(t, response, 201)
-
 	_ = rt.WaitForPendingChanges()
 
 	var changes struct {
@@ -210,6 +210,7 @@ func TestMultiCollectionChangesUser(t *testing.T) {
 	rest.RequireStatus(t, response, 201)
 	response = rt.SendAdminRequest("PUT", "/"+c2Keyspace+"/pbs2_c2", `{"value":1, "channels":["PBS"]}`)
 	rest.RequireStatus(t, response, 201)
+	_ = rt.WaitForPendingChanges()
 
 	changesResponse = rt.SendUserRequest("GET", "/"+c1Keyspace+"/_changes?since=0", "", "bernard")
 	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
@@ -262,7 +263,6 @@ func TestMultiCollectionChangesUserDynamicGrant(t *testing.T) {
 	rest.RequireStatus(t, response, 201)
 	response = rt.SendAdminRequest("PUT", "/"+c2Keyspace+"/abc1_c2", `{"value":1, "channels":["ABC"]}`)
 	rest.RequireStatus(t, response, 201)
-
 	_ = rt.WaitForPendingChanges()
 
 	var changes struct {
@@ -341,7 +341,6 @@ func TestMultiCollectionChangesUserDynamicGrantDCP(t *testing.T) {
 	rest.RequireStatus(t, response, 201)
 	response = rt.SendAdminRequest("PUT", "/"+c2Keyspace+"/abc1_c2", `{"value":1, "channels":["ABC"]}`)
 	rest.RequireStatus(t, response, 201)
-
 	_ = rt.WaitForPendingChanges()
 
 	var changes struct {
