@@ -66,6 +66,19 @@ func intify(f float64) any {
 	}
 }
 
+// Converts a V8 array of strings to Go. Any non-strings in the array are ignored.
+func StringArrayToGo(val *v8.Value) (result []string, err error) {
+	obj, err := val.AsObject()
+	if err == nil {
+		for i := uint32(0); obj.HasIdx(i); i++ {
+			if item, err := obj.GetIdx(i); err == nil && item.IsString() {
+				result = append(result, item.String())
+			}
+		}
+	}
+	return
+}
+
 //////// CONVERTING GO TO V8 VALUES:
 
 // Converts a Go string into a JS string value. Assumes this cannot fail.

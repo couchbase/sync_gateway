@@ -12,12 +12,16 @@ import (
 	"context"
 	_ "embed"
 	"fmt"
+	"math"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/js"
-	v8 "rogchap.com/v8go" // Docs: https://pkg.go.dev/rogchap.com/v8go
+	pkgerrors "github.com/pkg/errors"
+	v8 "rogchap.com/v8go"
+	// Docs: https://pkg.go.dev/rogchap.com/v8go
 )
 
 // Maps user names (or role names prefixed with "role:") to arrays of channel or role names
@@ -52,11 +56,17 @@ type ChannelMapper struct {
 
 const DefaultSyncFunction = `function(doc){channel(doc.channels);}`
 
+const kChannelMapperServiceName = "channelMapper"
+
+// The JavaScript code run by the SyncRunner; the sync fn is copied into it.
+// See wrappedFuncSource().
+//
+//go:embed sync_fn_wrapper.js
+var kSyncFnHostScript string
+
 // Creates a ChannelMapper.
 func NewChannelMapper(owner js.ServiceHost, fnSource string, timeout time.Duration) *ChannelMapper {
-	service := js.NewCustomService(owner, kChannelMapperServiceName, func(base *js.BasicTemplate) (js.Template, error) {
-		return createChannelService(base, fnSource, timeout)
-	})
+	service := js.NewService(owner, kChannelMapperServiceName, wrappedFuncSource(fnSource))
 	return &ChannelMapper{
 		service:  service,
 		timeout:  timeout,
@@ -86,77 +96,13 @@ func (mapper *ChannelMapper) Function() string {
 // Its current implementation is a kludge, and it shouldn't be used in production.
 func (mapper *ChannelMapper) SetFunction(fnSource string) error {
 	mapper.fnSource = fnSource
-	mapper.service = js.NewCustomService(mapper.service.Host(), kChannelMapperServiceName, func(base *js.BasicTemplate) (js.Template, error) {
-		return createChannelService(base, fnSource, mapper.timeout)
-	})
+	mapper.service = js.NewService(mapper.service.Host(), kChannelMapperServiceName, wrappedFuncSource(fnSource))
 	return nil
-}
-
-// Runs the sync function. Thread-safe.
-func (mapper *ChannelMapper) MapToChannelsAndAccess(body map[string]interface{}, oldBodyJSON string, metaMap map[string]interface{}, userCtx map[string]interface{}) (*ChannelMapperOutput, error) {
-	result1, err := mapper.withSyncRunner(func(runner *syncRunner) (any, error) {
-		return runner.call(body, oldBodyJSON, metaMap, userCtx)
-	})
-	if err != nil {
-		return nil, err
-	}
-	output := result1.(*ChannelMapperOutput)
-	return output, nil
-}
-
-// Creates a js.Service instance for a ChannelMapper;
-// this configures the object & callback templates in a V8 VM.
-func createChannelService(base *js.BasicTemplate, fnSource string, timeout time.Duration) (js.Template, error) {
-	err := base.SetScript(wrappedFuncSource(fnSource))
-	if err != nil {
-		return nil, err
-	}
-	// Define the callback functions:
-	base.GlobalCallback("channel", func(jsr *js.Runner, this *v8.Object, args []*v8.Value) (any, error) {
-		return jsr.Client.(*syncRunner).channelCallback(args)
-	})
-	base.GlobalCallback("access", func(jsr *js.Runner, this *v8.Object, args []*v8.Value) (any, error) {
-		return jsr.Client.(*syncRunner).accessCallback(args)
-	})
-	base.GlobalCallback("role", func(jsr *js.Runner, this *v8.Object, args []*v8.Value) (any, error) {
-		return jsr.Client.(*syncRunner).roleCallback(args)
-	})
-	base.GlobalCallback("reject", func(jsr *js.Runner, this *v8.Object, args []*v8.Value) (any, error) {
-		return jsr.Client.(*syncRunner).rejectCallback(args)
-	})
-	base.GlobalCallback("expiry", func(jsr *js.Runner, this *v8.Object, args []*v8.Value) (any, error) {
-		jsr.Client.(*syncRunner).expiryCallback(args)
-		return nil, nil
-	})
-	return base, err
-}
-
-func (mapper *ChannelMapper) withSyncRunner(fn func(*syncRunner) (any, error)) (any, error) {
-	return mapper.service.WithRunner(func(jsRunner *js.Runner) (any, error) {
-		goContext := context.Background()
-		if mapper.timeout > 0 {
-			var cancelFn context.CancelFunc
-			goContext, cancelFn = context.WithTimeout(goContext, mapper.timeout)
-			defer cancelFn()
-		}
-		jsRunner.SetContext(goContext)
-
-		var runner *syncRunner
-		if jsRunner.Client == nil {
-			runner = &syncRunner{
-				Runner: jsRunner,
-			}
-			jsRunner.Client = runner
-		} else {
-			runner = jsRunner.Client.(*syncRunner)
-		}
-		return fn(runner)
-	})
 }
 
 func wrappedFuncSource(funcSource string) string {
 	return fmt.Sprintf(
-		funcWrapper,
+		kSyncFnHostScript,
 		funcSource,
 		base.SyncFnErrorAdminRequired,
 		base.SyncFnErrorWrongUser,
@@ -165,10 +111,171 @@ func wrappedFuncSource(funcSource string) string {
 	)
 }
 
-const kChannelMapperServiceName = "channelMapper"
+// Runs the sync function. Thread-safe.
+func (mapper *ChannelMapper) MapToChannelsAndAccess(body map[string]interface{}, oldBodyJSON string, metaMap map[string]interface{}, userCtx map[string]interface{}) (*ChannelMapperOutput, error) {
+	result, err := mapper.service.WithRunner(func(runner *js.Runner) (any, error) {
+		ctx := context.Background()
+		if mapper.timeout > 0 {
+			var cancelFn context.CancelFunc
+			ctx, cancelFn = context.WithTimeout(ctx, mapper.timeout)
+			defer cancelFn()
+		}
+		runner.SetContext(ctx)
+		return callSyncFn(runner, body, oldBodyJSON, metaMap, userCtx)
+	})
+	return result.(*ChannelMapperOutput), err
+}
 
-// The JavaScript code run by the SyncRunner; the sync fn is copied into it.
-// See wrappedFuncSource().
-//
-//go:embed sync_fn_wrapper.js
-var funcWrapper string
+func callSyncFn(runner *js.Runner,
+	body map[string]interface{},
+	oldBodyJSON string,
+	metaMap map[string]interface{},
+	userCtx map[string]interface{}) (*ChannelMapperOutput, error) {
+
+	// Call the sync fn:
+	if oldBodyJSON == "" {
+		oldBodyJSON = "null"
+	}
+	args, err := runner.ConvertArgs(body, js.JSONString(oldBodyJSON), metaMap, userCtx)
+	if err != nil {
+		return nil, err
+	}
+	jsResult, err := runner.RunAsObject(args...)
+	if err != nil {
+		return nil, err
+	}
+
+	// Convert the JavaScript jsResult object to a ChannelMapperOutput:
+	output := &ChannelMapperOutput{}
+
+	if rej, err := jsResult.Get("rejectionStatus"); err == nil {
+		if status := rej.Integer(); status >= 400 {
+			var message string
+			if msg, err := jsResult.Get("rejectionMessage"); err == nil {
+				message = msg.String()
+			}
+			output.Rejection = base.HTTPErrorf(int(status), message)
+			return output, err
+		}
+	}
+
+	if jsChannels, err := jsResult.Get("channels"); err != nil {
+		return nil, err
+	} else if channels, err := js.StringArrayToGo(jsChannels); err != nil {
+		return nil, err
+	} else if output.Channels, err = SetFromArray(channels, ExpandStar); err != nil {
+		return nil, err
+	}
+
+	if output.Access, err = compileJSAccessMap(jsResult, "access", ""); err != nil {
+		return nil, err
+	}
+
+	if output.Roles, err = compileJSAccessMap(jsResult, "roles", "role:"); err != nil {
+		return nil, err
+	}
+
+	if jsExp, err := jsResult.Get("expiry"); err == nil {
+		if expiry, reflectErr := reflectExpiry(jsExp); reflectErr == nil {
+			output.Expiry = expiry
+		} else {
+			base.WarnfCtx(runner.ContextOrDefault(), "SyncRunner: Invalid value passed to expiry().  Value:%+v ", jsExp)
+		}
+	}
+	return output, nil
+}
+
+//////// UTILITIES:
+
+// Shortcut to get an object property as an object.
+func v8GetObject(obj *v8.Object, key string) (*v8.Object, error) {
+	if jsVal, err := obj.Get(key); err != nil || jsVal.IsUndefined() {
+		return nil, err
+	} else {
+		return jsVal.AsObject()
+	}
+}
+
+// Converts the "access" or "roles" property of the result into an AccessMap.
+func compileJSAccessMap(jsResult *v8.Object, key string, prefix string) (AccessMap, error) {
+	jsMap, err := v8GetObject(jsResult, key)
+	if err != nil || jsMap == nil {
+		return nil, err
+	}
+	jsKeys, err := v8GetObject(jsResult, key+"Keys")
+	if err != nil {
+		return nil, err
+	}
+	access := make(AccessMap)
+	for i := uint32(0); jsKeys.HasIdx(i); i++ {
+		userVal, err := jsKeys.GetIdx(i)
+		if err != nil {
+			return nil, err
+		}
+		user := userVal.String()
+		jsItems, err := jsMap.Get(user)
+		if err != nil {
+			return nil, err
+		}
+		values, err := js.StringArrayToGo(jsItems)
+		if err != nil {
+			return nil, err
+		} else if len(values) > 0 {
+			if err = stripMandatoryPrefix(values, prefix); err != nil {
+				return nil, err
+			}
+			if access[user], err = SetFromArray(values, RemoveStar); err != nil {
+				return nil, err
+			}
+		}
+	}
+	return access, nil
+}
+
+// Strips a prefix from every item of an array.
+func stripMandatoryPrefix(values []string, prefix string) error {
+	if prefix != "" {
+		for i, value := range values {
+			if strings.HasPrefix(value, prefix) {
+				values[i] = value[len(prefix):]
+			} else {
+				return base.RedactErrorf("Value %q does not begin with %q", base.UD(value), base.UD(prefix))
+			}
+		}
+	}
+	return nil
+}
+
+// Adapted from base.ReflectExpiry
+func reflectExpiry(rawExpiry *v8.Value) (*uint32, error) {
+	if rawExpiry.IsNumber() {
+		return validateFloatAsUInt32Expiry(rawExpiry.Number())
+	} else if rawExpiry.IsString() {
+		expiry := rawExpiry.String()
+		// First check if it's a numeric string
+		expInt, err := strconv.ParseInt(expiry, 10, 32)
+		if err == nil {
+			return base.ValidateUint32Expiry(expInt)
+		}
+		// Check if it's an ISO-8601 date
+		expRFC3339, err := time.Parse(time.RFC3339, expiry)
+		if err == nil {
+			return base.ValidateUint32Expiry(expRFC3339.Unix())
+		} else {
+			return nil, pkgerrors.Wrapf(err, "Unable to parse expiry %s as either numeric or date expiry", rawExpiry)
+		}
+	} else if rawExpiry.IsNullOrUndefined() {
+		return nil, nil
+	} else {
+		return nil, fmt.Errorf("unrecognized expiry format")
+	}
+}
+
+// Adapted from base.ValidateUint32Expiry
+func validateFloatAsUInt32Expiry(expiry float64) (*uint32, error) {
+	if expiry < 0 || expiry > math.MaxUint32 {
+		return nil, fmt.Errorf("expiry value is not within valid range: %f", expiry)
+	}
+	uint32Expiry := uint32(expiry)
+	return &uint32Expiry, nil
+}

@@ -9,14 +9,13 @@
 package channels
 
 import (
-	"context"
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/js"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	v8 "rogchap.com/v8go" // Docs: https://pkg.go.dev/rogchap.com/v8go
+	// Docs: https://pkg.go.dev/rogchap.com/v8go
 )
 
 func parse(jsonStr string) map[string]interface{} {
@@ -33,27 +32,27 @@ func emptyMetaMap() map[string]interface{} {
 
 var noUser = map[string]interface{}{"name": nil, "channels": []string{}}
 
-func TestV8ValueToStringArray(t *testing.T) {
-	iso := v8.NewIsolate()
-	defer iso.Dispose()
-	ctx := v8.NewContext(iso)
-	value, _ := v8.JSONParse(ctx, `["foo", "bar", "baz"]`)
-	strings := v8ValueToStringArray(value, context.Background())
-	assert.Equal(t, []string{"foo", "bar", "baz"}, strings)
-
-	// Test for https://issues.couchbase.com/browse/CBG-714
-	value, _ = v8.JSONParse(ctx, `["a", ["b", "g"], "c", 4]`)
-	strings = v8ValueToStringArray(value, context.Background())
-	assert.Equal(t, []string{"a", "c"}, strings)
-}
-
 // verify that our version of Otto treats JSON parsed arrays like real arrays
 func TestJavaScriptWorks(t *testing.T) {
 	mapper := newChannelMapperWithVMs(`function(doc) {channel(doc.x.concat(doc.y));}`, 0)
 	defer mapper.closeVMs()
 	res, err := mapper.MapToChannelsAndAccess(parse(`{"x":["abc"],"y":["xyz"]}`), `{}`, emptyMetaMap(), noUser)
-	assert.NoError(t, err, "MapToChannelsAndAccess failed")
-	assert.Equal(t, BaseSetOf(t, "abc", "xyz"), res.Channels)
+	if assert.NoError(t, err, "MapToChannelsAndAccess failed") {
+		assert.Equal(t, BaseSetOf(t, "abc", "xyz"), res.Channels)
+	}
+}
+
+// Verify the sync fn cannot access the internal JS variables used in the wrapper.
+func TestHiddenVariables(t *testing.T) {
+	vm := js.NewVM()
+	defer vm.Close()
+	for _, hidden := range []string{"userCtx", "shouldValidate", "result"} {
+		mapper := NewChannelMapper(vm, `function(doc) {return `+hidden+`;}`, 0)
+		_, err := mapper.MapToChannelsAndAccess(parse(`{}`), `{}`, emptyMetaMap(), noUser)
+		if assert.Error(t, err, "Was able to access %q", hidden) {
+			assert.ErrorContains(t, err, "ReferenceError: "+hidden+" is not defined")
+		}
+	}
 }
 
 // Just verify that the calls to the channel() fn show up in the output channel list.
@@ -99,16 +98,17 @@ func TestAccessFunctionRejectsInvalidChannels(t *testing.T) {
 	assert.True(t, err != nil)
 }
 
-// Just verify that the calls to the access() fn show up in the output channel list.
+// Verify that the first parameter to access() may be an array of usernames.
 func TestAccessFunctionTakesArrayOfUsers(t *testing.T) {
 	mapper := newChannelMapperWithVMs(`function(doc) {access(["foo","bar","baz"], "ginger")}`, 0)
 	defer mapper.closeVMs()
 	res, err := mapper.MapToChannelsAndAccess(parse(`{}`), `{}`, emptyMetaMap(), noUser)
-	assert.NoError(t, err, "MapToChannelsAndAccess failed")
-	assert.Equal(t, AccessMap{"bar": BaseSetOf(t, "ginger"), "baz": BaseSetOf(t, "ginger"), "foo": BaseSetOf(t, "ginger")}, res.Access)
+	if assert.NoError(t, err, "MapToChannelsAndAccess failed") {
+		assert.Equal(t, AccessMap{"bar": BaseSetOf(t, "ginger"), "baz": BaseSetOf(t, "ginger"), "foo": BaseSetOf(t, "ginger")}, res.Access)
+	}
 }
 
-// Just verify that the calls to the access() fn show up in the output channel list.
+// Verify that the second parameter to access() may be an array of channels.
 func TestAccessFunctionTakesArrayOfChannels(t *testing.T) {
 	mapper := newChannelMapperWithVMs(`function(doc) {access("lee", ["ginger", "earl_grey", "green"])}`, 0)
 	defer mapper.closeVMs()
@@ -314,17 +314,20 @@ func TestCheckRole(t *testing.T) {
 	defer mapper.closeVMs()
 	var sally = map[string]interface{}{"name": "sally", "roles": map[string]int{"girl": 1, "5yo": 1}}
 	res, err := mapper.MapToChannelsAndAccess(parse(`{"role": "girl"}`), `{}`, emptyMetaMap(), sally)
-	assert.NoError(t, err, "MapToChannelsAndAccess failed")
-	assert.Equal(t, nil, res.Rejection)
+	if assert.NoError(t, err, "MapToChannelsAndAccess failed") {
+		assert.Equal(t, nil, res.Rejection)
+	}
 
 	var linus = map[string]interface{}{"name": "linus", "roles": []string{"boy", "musician"}}
 	res, err = mapper.MapToChannelsAndAccess(parse(`{"role": "girl"}`), `{}`, emptyMetaMap(), linus)
-	assert.NoError(t, err, "MapToChannelsAndAccess failed")
-	assert.Equal(t, base.HTTPErrorf(403, base.SyncFnErrorMissingRole), res.Rejection)
+	if assert.NoError(t, err, "MapToChannelsAndAccess failed") {
+		assert.Equal(t, base.HTTPErrorf(403, base.SyncFnErrorMissingRole), res.Rejection)
+	}
 
 	res, err = mapper.MapToChannelsAndAccess(parse(`{"role": "girl"}`), `{}`, emptyMetaMap(), nil)
-	assert.NoError(t, err, "MapToChannelsAndAccess failed")
-	assert.Equal(t, nil, res.Rejection)
+	if assert.NoError(t, err, "MapToChannelsAndAccess failed") {
+		assert.Equal(t, nil, res.Rejection)
+	}
 }
 
 // Test the userCtx role parameter with a list
@@ -392,49 +395,57 @@ func TestCheckAccessArray(t *testing.T) {
 
 // Test that expiry function sets the expiry property
 func TestExpiryFunction(t *testing.T) {
+	var res *ChannelMapperOutput
+	var err error
+
+	checkExp := func(expected int) {
+		if assert.NoError(t, err, "MapToChannelsAndAccess error") {
+			if assert.NotNil(t, res.Expiry) {
+				assert.Equal(t, uint32(expected), *res.Expiry)
+			}
+		}
+	}
+	checkNilExp := func() {
+		if assert.NoError(t, err, "MapToChannelsAndAccess error") {
+			assert.Nil(t, res.Expiry)
+		}
+	}
+
 	mapper := newChannelMapperWithVMs(`function(doc) {expiry(doc.expiry);}`, 0)
 	defer mapper.closeVMs()
-	res1, err := mapper.MapToChannelsAndAccess(parse(`{"expiry":100}`), `{}`, emptyMetaMap(), noUser)
-	assert.NoError(t, err, "MapToChannelsAndAccess error")
-	assert.Equal(t, uint32(100), *res1.Expiry)
 
-	res2, err := mapper.MapToChannelsAndAccess(parse(`{"expiry":"500"}`), `{}`, emptyMetaMap(), noUser)
-	assert.NoError(t, err, "MapToChannelsAndAccess error")
-	assert.Equal(t, uint32(500), *res2.Expiry)
+	res, err = mapper.MapToChannelsAndAccess(parse(`{"expiry":100}`), `{}`, emptyMetaMap(), noUser)
+	checkExp(100)
 
-	res_stringDate, err := mapper.MapToChannelsAndAccess(parse(`{"expiry":"2105-01-01T00:00:00.000+00:00"}`), `{}`, emptyMetaMap(), noUser)
-	assert.NoError(t, err, "MapToChannelsAndAccess error")
-	assert.Equal(t, uint32(4260211200), *res_stringDate.Expiry)
+	res, err = mapper.MapToChannelsAndAccess(parse(`{"expiry":"500"}`), `{}`, emptyMetaMap(), noUser)
+	checkExp(500)
+
+	res, err = mapper.MapToChannelsAndAccess(parse(`{"expiry":"2105-01-01T00:00:00.000+00:00"}`), `{}`, emptyMetaMap(), noUser)
+	checkExp(4260211200)
 
 	// Validate invalid expiry values log warning and don't set expiry
-	res3, err := mapper.MapToChannelsAndAccess(parse(`{"expiry":"abc"}`), `{}`, emptyMetaMap(), noUser)
-	assert.NoError(t, err, "MapToChannelsAndAccess error for expiry:abc")
-	assert.True(t, res3.Expiry == nil)
+	res, err = mapper.MapToChannelsAndAccess(parse(`{"expiry":"abc"}`), `{}`, emptyMetaMap(), noUser)
+	checkNilExp()
 
 	// Invalid: non-numeric
-	res4, err := mapper.MapToChannelsAndAccess(parse(`{"expiry":["100", "200"]}`), `{}`, emptyMetaMap(), noUser)
-	assert.NoError(t, err, "MapToChannelsAndAccess error for expiry as array")
-	assert.True(t, res4.Expiry == nil)
+	res, err = mapper.MapToChannelsAndAccess(parse(`{"expiry":["100", "200"]}`), `{}`, emptyMetaMap(), noUser)
+	checkNilExp()
 
 	// Invalid: negative value
-	res5, err := mapper.MapToChannelsAndAccess(parse(`{"expiry":-100}`), `{}`, emptyMetaMap(), noUser)
-	assert.NoError(t, err, "MapToChannelsAndAccess error for expiry as negative value")
-	assert.True(t, res5.Expiry == nil)
+	res, err = mapper.MapToChannelsAndAccess(parse(`{"expiry":-100}`), `{}`, emptyMetaMap(), noUser)
+	checkNilExp()
 
 	// Invalid - larger than uint32
-	res6, err := mapper.MapToChannelsAndAccess(parse(`{"expiry":123456789012345}`), `{}`, emptyMetaMap(), noUser)
-	assert.NoError(t, err, "MapToChannelsAndAccess error for expiry > unit32")
-	assert.True(t, res6.Expiry == nil)
+	res, err = mapper.MapToChannelsAndAccess(parse(`{"expiry":123456789012345}`), `{}`, emptyMetaMap(), noUser)
+	checkNilExp()
 
 	// Invalid - non-unix date
-	resInvalidDate, err := mapper.MapToChannelsAndAccess(parse(`{"expiry":"1805-01-01T00:00:00.000+00:00"}`), `{}`, emptyMetaMap(), noUser)
-	assert.NoError(t, err, "MapToChannelsAndAccess error for expiry:1805-01-01T00:00:00.000+00:00")
-	assert.True(t, resInvalidDate.Expiry == nil)
+	res, err = mapper.MapToChannelsAndAccess(parse(`{"expiry":"1805-01-01T00:00:00.000+00:00"}`), `{}`, emptyMetaMap(), noUser)
+	checkNilExp()
 
 	// No expiry specified
-	res7, err := mapper.MapToChannelsAndAccess(parse(`{"value":5}`), `{}`, emptyMetaMap(), noUser)
-	assert.NoError(t, err, "MapToChannelsAndAccess error for expiry not specified")
-	assert.True(t, res7.Expiry == nil)
+	res, err = mapper.MapToChannelsAndAccess(parse(`{"value":5}`), `{}`, emptyMetaMap(), noUser)
+	checkNilExp()
 }
 
 func TestExpiryFunctionConstantValue(t *testing.T) {
