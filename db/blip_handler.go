@@ -677,8 +677,9 @@ func (bh *blipHandler) handleChanges(rq *blip.Message) error {
 				if err != nil {
 					// We've already asked for the doc/rev for the sequence so assume we're going to receive it... Just log this and carry on
 					base.WarnfCtx(bh.loggingCtx, "Unable to parse expected sequence %q for %q/%q: %v", change[0], base.UD(docID), revID, err)
+				} else {
+					expectedSeqs[IDAndRev{DocID: docID, RevID: revID}] = seq
 				}
-				expectedSeqs[IDAndRev{DocID: docID, RevID: revID}] = seq
 			}
 		}
 		nWritten++
