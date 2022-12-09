@@ -241,7 +241,7 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 		seq, err := bh.collection.LastSequence()
 		return SequenceID{Seq: seq}, err
 	}
-	subChangesParams, err := NewSubChangesParams(bh.loggingCtx, rq, defaultSince, latestSeq, ParseSequenceID)
+	subChangesParams, err := NewSubChangesParams(bh.loggingCtx, rq, defaultSince, latestSeq, ParseJSONSequenceID)
 	if err != nil {
 		return base.HTTPErrorf(http.StatusBadRequest, "Invalid subChanges parameters")
 	}
@@ -606,8 +606,8 @@ func (bh *blipHandler) handleChanges(rq *blip.Message) error {
 	}()
 
 	// DocID+RevID -> SeqNo
-	expectedSeqs := make(map[IDAndRev]string, 0)
-	alreadyKnownSeqs := make([]string, 0)
+	expectedSeqs := make(map[IDAndRev]SequenceID, 0)
+	alreadyKnownSeqs := make([]SequenceID, 0)
 
 	for _, change := range changeList {
 		docID := change[1].(string)
@@ -651,7 +651,13 @@ func (bh *blipHandler) handleChanges(rq *blip.Message) error {
 			// already have this rev, tell the peer to skip sending it
 			output.Write([]byte("0"))
 			if bh.sgr2PullAlreadyKnownSeqsCallback != nil {
-				alreadyKnownSeqs = append(alreadyKnownSeqs, seqStr(change[0]))
+				seq, err := ParseJSONSequenceID(seqStr(change[0]))
+				if err != nil {
+					base.WarnfCtx(bh.loggingCtx, "Unable to parse known sequence %q for %q/%q: %v", change[0], base.UD(docID), revID, err)
+				} else {
+					// we're not able to checkpoint a sequence we can't parse and aren't expecting so just skip the callback if we errored
+					alreadyKnownSeqs = append(alreadyKnownSeqs, seq)
+				}
 			}
 		} else {
 			// we want this rev, send possible ancestors to the peer
@@ -667,7 +673,13 @@ func (bh *blipHandler) handleChanges(rq *blip.Message) error {
 
 			// skip parsing seqno if we're not going to use it (no callback defined)
 			if bh.sgr2PullAddExpectedSeqsCallback != nil {
-				expectedSeqs[IDAndRev{DocID: docID, RevID: revID}] = seqStr(change[0])
+				seq, err := ParseJSONSequenceID(seqStr(change[0]))
+				if err != nil {
+					// We've already asked for the doc/rev for the sequence so assume we're going to receive it... Just log this and carry on
+					base.WarnfCtx(bh.loggingCtx, "Unable to parse expected sequence %q for %q/%q: %v", change[0], base.UD(docID), revID, err)
+				} else {
+					expectedSeqs[IDAndRev{DocID: docID, RevID: revID}] = seq
+				}
 			}
 		}
 		nWritten++
@@ -690,17 +702,6 @@ func (bh *blipHandler) handleChanges(rq *blip.Message) error {
 	}
 
 	return nil
-}
-
-func seqStr(seq interface{}) string {
-	switch seq := seq.(type) {
-	case string:
-		return seq
-	case json.Number:
-		return seq.String()
-	}
-	base.WarnfCtx(context.Background(), "unknown seq type: %T", seq)
-	return ""
 }
 
 // Handles a "proposeChanges" request, similar to "changes" but in no-conflicts mode
@@ -823,14 +824,22 @@ func (bsc *BlipSyncContext) sendRevAsDelta(sender *blip.Sender, docID, revID str
 }
 
 func (bh *blipHandler) handleNoRev(rq *blip.Message) error {
+	docID, revID := rq.Properties[NorevMessageId], rq.Properties[NorevMessageRev]
 	base.InfofCtx(bh.loggingCtx, base.KeySyncMsg, "%s: norev for doc %q / %q - error: %q - reason: %q",
-		rq.String(), base.UD(rq.Properties[NorevMessageId]), rq.Properties[NorevMessageRev], rq.Properties[NorevMessageError], rq.Properties[NorevMessageReason])
+		rq.String(), base.UD(docID), revID, rq.Properties[NorevMessageError], rq.Properties[NorevMessageReason])
 
 	if bh.sgr2PullProcessedSeqCallback != nil {
+		var seqStr string
 		if bh.blipContext.ActiveSubprotocol() == BlipCBMobileReplicationV2 && bh.clientType == BLIPClientTypeSGR2 {
-			bh.sgr2PullProcessedSeqCallback(rq.Properties[NorevMessageSeq], IDAndRev{DocID: rq.Properties[NorevMessageId], RevID: rq.Properties[NorevMessageRev]})
+			seqStr = rq.Properties[NorevMessageSeq]
 		} else {
-			bh.sgr2PullProcessedSeqCallback(rq.Properties[NorevMessageSequence], IDAndRev{DocID: rq.Properties[NorevMessageId], RevID: rq.Properties[NorevMessageRev]})
+			seqStr = rq.Properties[NorevMessageSequence]
+		}
+		seq, err := ParseJSONSequenceID(seqStr)
+		if err != nil {
+			base.WarnfCtx(bh.loggingCtx, "Unable to parse sequence %q from norev message: %w - not tracking for checkpointing", seqStr, err)
+		} else {
+			bh.sgr2PullProcessedSeqCallback(&seq, IDAndRev{DocID: docID, RevID: revID})
 		}
 	}
 
@@ -903,7 +912,13 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 			}
 			stats.docsPurgedCount.Add(1)
 			if bh.sgr2PullProcessedSeqCallback != nil {
-				bh.sgr2PullProcessedSeqCallback(rq.Properties[RevMessageSequence], IDAndRev{DocID: docID, RevID: revID})
+				seqStr := rq.Properties[RevMessageSequence]
+				seq, err := ParseJSONSequenceID(seqStr)
+				if err != nil {
+					base.WarnfCtx(bh.loggingCtx, "Unable to parse sequence %q from rev message: %w - not tracking for checkpointing", seqStr, err)
+				} else {
+					bh.sgr2PullProcessedSeqCallback(&seq, IDAndRev{DocID: docID, RevID: revID})
+				}
 			}
 			return nil
 		}
@@ -1113,7 +1128,13 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 	}
 
 	if bh.sgr2PullProcessedSeqCallback != nil {
-		bh.sgr2PullProcessedSeqCallback(rq.Properties[RevMessageSequence], IDAndRev{DocID: docID, RevID: revID})
+		seqProperty := rq.Properties[RevMessageSequence]
+		seq, err := ParseJSONSequenceID(seqProperty)
+		if err != nil {
+			base.WarnfCtx(bh.loggingCtx, "Unable to parse sequence %q from rev message: %w - not tracking for checkpointing", seqProperty, err)
+		} else {
+			bh.sgr2PullProcessedSeqCallback(&seq, IDAndRev{DocID: docID, RevID: revID})
+		}
 	}
 
 	return nil

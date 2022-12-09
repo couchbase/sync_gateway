@@ -1854,6 +1854,167 @@ func TestActiveReplicatorPullBasic(t *testing.T) {
 	assert.Equal(t, strconv.FormatUint(remoteDoc.Sequence, 10), ar.GetStatus().LastSeqPull)
 }
 
+// TestActiveReplicatorPullSkippedSequence ensures that ISGR and the checkpointer are able to handle the compound sequence format appropriately.
+// - Creates several documents on rt2, separated by a skipped sequence, and rt1 pulls them.
+//   - rt2 seq 1 _user    rt1 seq n/a
+//   - rt2 seq 2 doc1     rt1 seq 1
+//   - rt2 seq 3 doc2     rt1 seq 2
+//   - rt2 seq 4 skipped  rt1 seq n/a
+//   - rt2 seq 5 doc3     rt1 seq 3
+//   - rt2 seq 6 doc4     rt1 seq 4
+//
+// - Issues a few pulls to ensure the replicator is resuming correctly from a compound sequence checkpoint, and that we're emptying the expected/processed lists appropriately.
+func TestActiveReplicatorPullSkippedSequence(t *testing.T) {
+
+	base.RequireNumTestBuckets(t, 2)
+
+	base.SetUpTestLogging(t, base.LevelTrace, base.KeyCRUD, base.KeyChanges, base.KeyReplicate)
+
+	defer db.SuspendSequenceBatching()()
+
+	// Passive
+	tb2 := base.GetTestBucket(t)
+
+	const (
+		username = "AL_1c.e-@"
+		password = "pa$$w*rD!"
+	)
+
+	rt2 := rest.NewRestTester(t, &rest.RestTesterConfig{
+		CustomTestBucket: tb2,
+		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
+			Users: map[string]*auth.PrincipalConfig{
+				username: {
+					Password:         base.StringPtr(password),
+					ExplicitChannels: base.SetOf(username),
+				},
+			},
+			CacheConfig: &rest.CacheConfig{
+				// shorten pending sequence handling to speed up test
+				ChannelCacheConfig: &rest.ChannelCacheConfig{
+					MaxWaitPending: base.Uint32Ptr(1),
+				},
+			},
+		}},
+	})
+	defer rt2.Close()
+
+	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1.
+	srv := httptest.NewServer(rt2.TestPublicHandler())
+	defer srv.Close()
+
+	passiveDBURL, err := url.Parse(srv.URL + "/db")
+	require.NoError(t, err)
+
+	// Add basic auth creds to target db URL
+	passiveDBURL.User = url.UserPassword(username, password)
+
+	// Active
+	tb1 := base.GetTestBucket(t)
+
+	rt1 := rest.NewRestTester(t, &rest.RestTesterConfig{
+		CustomTestBucket: tb1,
+	})
+	defer rt1.Close()
+	ctx1 := rt1.Context()
+
+	stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false)
+	require.NoError(t, err)
+	dbstats, err := stats.DBReplicatorStats(t.Name())
+	require.NoError(t, err)
+
+	ar := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
+		ID:          t.Name(),
+		Direction:   db.ActiveReplicatorTypePull,
+		RemoteDBURL: passiveDBURL,
+		ActiveDB: &db.Database{
+			DatabaseContext: rt1.GetDatabase(),
+		},
+		ChangesBatchSize:    200,
+		Continuous:          true,
+		ReplicationStatsMap: dbstats,
+	})
+	defer func() { assert.NoError(t, ar.Stop()) }()
+
+	docIDPrefix := t.Name() + "rt2doc"
+
+	docID1 := docIDPrefix + "1"
+	resp := rt2.SendAdminRequest(http.MethodPut, "/db/"+docID1, `{"source":"rt2","channels":["`+username+`"]}`)
+	rest.RequireStatus(t, resp, http.StatusCreated)
+
+	require.NoError(t, rt2.WaitForPendingChanges())
+
+	// Start the replicator (implicit connect)
+	assert.NoError(t, ar.Start(ctx1))
+
+	// wait for the documents originally written to rt2 to arrive at rt1
+	changesResults, err := rt1.WaitForChanges(1, "/db/_changes?since=0", "", true)
+	require.NoError(t, err)
+	require.Len(t, changesResults.Results, 1)
+
+	require.NoError(t, ar.Stop())
+	assert.Equal(t, int64(1), ar.Pull.Checkpointer.Stats().ExpectedSequenceCount)
+	assert.Equal(t, int64(0), ar.Pull.Checkpointer.Stats().AlreadyKnownSequenceCount)
+	assert.Equal(t, int64(1), ar.Pull.Checkpointer.Stats().ProcessedSequenceCount)
+
+	assert.Equal(t, 1, ar.Pull.Checkpointer.Stats().ExpectedSequenceLen)
+	assert.Equal(t, 1, ar.Pull.Checkpointer.Stats().ProcessedSequenceLen)
+	assert.Equal(t, 0, ar.Pull.Checkpointer.Stats().ExpectedSequenceLenPostCleanup)
+	assert.Equal(t, 0, ar.Pull.Checkpointer.Stats().ProcessedSequenceLenPostCleanup)
+
+	docID2 := docIDPrefix + "2"
+	resp = rt2.SendAdminRequest(http.MethodPut, "/db/"+docID2, `{"source":"rt2","channels":["`+username+`"]}`)
+	rest.RequireStatus(t, resp, http.StatusCreated)
+
+	// allocate a fake sequence to trigger skipped sequence handling - this never arrives at rt1 - we could think about creating the doc afterwards to let the replicator recover, but not necessary for the test.
+	_, err = rt2.MetadataStore().Incr(base.SyncSeqKey, 1, 1, 0)
+	require.NoError(t, err)
+
+	docID3 := docIDPrefix + "3"
+	resp = rt2.SendAdminRequest(http.MethodPut, "/db/"+docID3, `{"source":"rt2","channels":["`+username+`"]}`)
+	rest.RequireStatus(t, resp, http.StatusCreated)
+
+	require.NoError(t, rt2.WaitForPendingChanges())
+
+	// Start the replicator (implicit connect)
+	assert.NoError(t, ar.Start(ctx1))
+
+	changesResults, err = rt1.WaitForChanges(3, "/db/_changes?since=0", "", true)
+	require.NoError(t, err)
+	require.Len(t, changesResults.Results, 3)
+
+	require.NoError(t, ar.Stop())
+	assert.Equal(t, int64(2), ar.Pull.Checkpointer.Stats().ExpectedSequenceCount)
+	assert.Equal(t, int64(0), ar.Pull.Checkpointer.Stats().AlreadyKnownSequenceCount)
+	assert.Equal(t, int64(2), ar.Pull.Checkpointer.Stats().ProcessedSequenceCount)
+
+	assert.Equal(t, 2, ar.Pull.Checkpointer.Stats().ExpectedSequenceLen)
+	assert.Equal(t, 2, ar.Pull.Checkpointer.Stats().ProcessedSequenceLen)
+	assert.Equal(t, 0, ar.Pull.Checkpointer.Stats().ExpectedSequenceLenPostCleanup)
+	assert.Equal(t, 0, ar.Pull.Checkpointer.Stats().ProcessedSequenceLenPostCleanup)
+
+	docID4 := docIDPrefix + "4"
+	resp = rt2.SendAdminRequest(http.MethodPut, "/db/"+docID4, `{"source":"rt2","channels":["`+username+`"]}`)
+	rest.RequireStatus(t, resp, http.StatusCreated)
+	require.NoError(t, rt2.WaitForPendingChanges())
+
+	require.NoError(t, ar.Start(ctx1))
+
+	changesResults, err = rt1.WaitForChanges(4, "/db/_changes?since=0", "", true)
+	require.NoError(t, err)
+	require.Len(t, changesResults.Results, 4)
+
+	require.NoError(t, ar.Stop())
+	assert.Equal(t, int64(1), ar.Pull.Checkpointer.Stats().ExpectedSequenceCount)
+	assert.Equal(t, int64(0), ar.Pull.Checkpointer.Stats().AlreadyKnownSequenceCount)
+	assert.Equal(t, int64(1), ar.Pull.Checkpointer.Stats().ProcessedSequenceCount)
+
+	assert.Equal(t, 1, ar.Pull.Checkpointer.Stats().ExpectedSequenceLen)
+	assert.Equal(t, 1, ar.Pull.Checkpointer.Stats().ProcessedSequenceLen)
+	assert.Equal(t, 0, ar.Pull.Checkpointer.Stats().ExpectedSequenceLenPostCleanup)
+	assert.Equal(t, 0, ar.Pull.Checkpointer.Stats().ProcessedSequenceLenPostCleanup)
+}
+
 // TestActiveReplicatorPullAttachments:
 //   - Starts 2 RestTesters, one active, and one passive.
 //   - Creates a document with an attachment on rt2 which can be pulled by the replicator running in rt1.

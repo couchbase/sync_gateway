@@ -7,7 +7,7 @@
 # the file licenses/APL2.txt.
 
 parameters:
-  - $ref: ../../components/parameters.yaml#/db
+  - $ref: ../../components/parameters.yaml#/keyspace
   - name: channel
     in: path
     description: The channel to dump all the documents from.

@@ -84,7 +84,7 @@ func (h *handler) updateChangesOptionsFromQuery(feed *string, options *db.Change
 	}
 
 	if _, ok := values["since"]; ok {
-		if options.Since, err = db.ParseSequenceID(h.getJSONStringQuery("since")); err != nil {
+		if options.Since, err = db.ParsePlainSequenceID(h.getJSONStringQuery("since")); err != nil {
 			return nil, nil, err
 		}
 	}
@@ -127,7 +127,7 @@ func (h *handler) updateChangesOptionsFromQuery(feed *string, options *db.Change
 				}
 			} else {
 				// This is not a JSON array so treat as a simple
-				//comma separated list of doc id's
+				// comma separated list of doc id's
 				docIdsArray = strings.Split(docidsParam, ",")
 			}
 		}
@@ -172,7 +172,7 @@ func (h *handler) handleChanges() error {
 		// GET request has parameters in URL:
 		feed = h.getQuery("feed")
 		var err error
-		if options.Since, err = db.ParseSequenceID(h.getJSONStringQuery("since")); err != nil {
+		if options.Since, err = db.ParsePlainSequenceID(h.getJSONStringQuery("since")); err != nil {
 			return err
 		}
 		options.Limit = int(h.getIntQuery("limit", 0))
@@ -196,7 +196,7 @@ func (h *handler) handleChanges() error {
 				}
 			} else {
 				// This is not a JSON array so treat as a simple
-				//comma separated list of doc id's
+				// comma separated list of doc id's
 				docIdsArray = strings.Split(docidsParam, ",")
 			}
 		}
@@ -509,8 +509,8 @@ func (h *handler) sendContinuousChangesByWebSocket(inChannels base.Set, options 
 		}
 
 		// Copy options.ChangesCtx to new WebSocket options
-		//options.ChangesCtx will be cancelled automatically when
-		//changes feed completes
+		// options.ChangesCtx will be cancelled automatically when
+		// changes feed completes
 		wsoptions.ChangesCtx = options.ChangesCtx
 
 		// Set up GZip compression
