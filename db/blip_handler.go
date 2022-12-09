@@ -837,11 +837,10 @@ func (bh *blipHandler) handleNoRev(rq *blip.Message) error {
 		}
 		seq, err := ParseJSONSequenceID(seqStr)
 		if err != nil {
-			// This can leave a sequence in the expected sequence list if we were somehow able to parse it originally but not now... This shouldn't happen unless the client is doing something weird.
-			// return the error at least so the other side can know something went wrong with the sequence they sent us...
-			return fmt.Errorf("Unable to parse norev sequence %q: %w", seqStr, err)
+			base.WarnfCtx(bh.loggingCtx, "Unable to parse sequence %q from norev message: %w - not tracking for checkpointing", seqStr, err)
+		} else {
+			bh.sgr2PullProcessedSeqCallback(&seq, IDAndRev{DocID: docID, RevID: revID})
 		}
-		bh.sgr2PullProcessedSeqCallback(&seq, IDAndRev{DocID: docID, RevID: revID})
 	}
 
 	// Couchbase Lite always sends noreply=true for norev profiles
@@ -916,9 +915,10 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 				seqStr := rq.Properties[RevMessageSequence]
 				seq, err := ParseJSONSequenceID(seqStr)
 				if err != nil {
-					return fmt.Errorf("Error parsing sequence %q from rev message: %w", seqStr, err)
+					base.WarnfCtx(bh.loggingCtx, "Unable to parse sequence %q from rev message: %w - not tracking for checkpointing", seqStr, err)
+				} else {
+					bh.sgr2PullProcessedSeqCallback(&seq, IDAndRev{DocID: docID, RevID: revID})
 				}
-				bh.sgr2PullProcessedSeqCallback(&seq, IDAndRev{DocID: docID, RevID: revID})
 			}
 			return nil
 		}
@@ -1131,9 +1131,10 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 		seqProperty := rq.Properties[RevMessageSequence]
 		seq, err := ParseJSONSequenceID(seqProperty)
 		if err != nil {
-			return fmt.Errorf("Unable to parse sequence %q from rev message: %w", seqProperty, err)
+			base.WarnfCtx(bh.loggingCtx, "Unable to parse sequence %q from rev message: %w - not tracking for checkpointing", seqProperty, err)
+		} else {
+			bh.sgr2PullProcessedSeqCallback(&seq, IDAndRev{DocID: docID, RevID: revID})
 		}
-		bh.sgr2PullProcessedSeqCallback(&seq, IDAndRev{DocID: docID, RevID: revID})
 	}
 
 	return nil
