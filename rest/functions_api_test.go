@@ -140,7 +140,7 @@ func TestFunctionsConcurrently(t *testing.T) {
 			testConcurrently(t, rt, func() bool {
 				response := rt.SendRequest("GET", "/db/_function/squareN1QL?n=13", "")
 				return assert.Equal(t, 200, response.Result().StatusCode) &&
-					assert.Equal(t, "[{\"square\":169}\n]\n", string(response.BodyBytes()))
+					assert.Equal(t, "[{\"square\":169}]", string(response.BodyBytes()))
 			})
 		}
 	})

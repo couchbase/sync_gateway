@@ -54,7 +54,7 @@ func TestFunctionsConfigMVCC(t *testing.T) {
 			Definitions: functions.FunctionsDefs{
 				"xxx": {
 					Type: "javascript",
-					Code: "function(){return 42;}",
+					Code: "function(x,y){return 42;}",
 				},
 				"xxxN1QL": {
 					Type: "query",
