@@ -3,7 +3,6 @@ import { ClearCallDepth, MakeDatabase, Upstream } from "./impl";
 
 
 /** The interface the native code needs to implement.
- *  See evaluator.go, functions `doQuery`, `doGet`, etc.
  */
 export interface NativeAPI {
     query(fnName: string,
@@ -11,12 +10,15 @@ export interface NativeAPI {
           argsJSON: string | undefined,
           asAdmin: boolean) : string;
     get(docID: string,
+        collection: string,
         asAdmin: boolean) : string | null;
     save(docJSON: string,
          docID: string | undefined,
+         collection: string,
          asAdmin: boolean) : string | null;
     delete(docID: string,
            revID: string | undefined,
+           collection: string,
            asAdmin: boolean) : boolean;
 }
 
@@ -30,18 +32,18 @@ class UpstreamNativeImpl implements Upstream {
         return JSON.parse(result);
     }
 
-    get(docID: string, user: User) : Document | null {
-        let jresult = this.native.get(docID, user.isAdmin);
+    get(docID: string, collection: string, user: User) : Document | null {
+        let jresult = this.native.get(docID, collection, user.isAdmin);
         if (jresult === null) return jresult;
         return this.parseDoc(jresult)
     }
 
-    save(doc: object, docID: string | undefined, user: User) : string | null {
-        return this.native.save(JSON.stringify(doc), docID, user.isAdmin);
+    save(doc: object, docID: string | undefined, collection: string, user: User) : string | null {
+        return this.native.save(JSON.stringify(doc), docID, collection, user.isAdmin);
     }
 
-    delete(docID: string, revID: string | undefined, user: User) : boolean {
-        return this.native.delete(docID, revID, user.isAdmin);
+    delete(docID: string, revID: string | undefined, collection: string, user: User) : boolean {
+        return this.native.delete(docID, revID, collection, user.isAdmin);
     }
 
     private stringify(obj: object | undefined) : string | undefined {

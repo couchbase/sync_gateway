@@ -12,9 +12,9 @@ export interface Upstream {
           n1ql: string,
           args: Args | undefined,
           user: User) : JSONObject[];
-    get(docID: string, user: User) : Document | null;
-    save(doc: Document, docID: string | undefined, user: User) : string | null;
-    delete(docID: string, revID: string | undefined, user: User) : boolean;
+    get(docID: string, collection: string, user: User) : Document | null;
+    save(doc: Document, docID: string | undefined, collection: string, user: User) : string | null;
+    delete(docID: string, revID: string | undefined, collection: string, user: User) : boolean;
 }
 
 
@@ -240,16 +240,16 @@ class DatabaseImpl implements Database {
     }
 
 
-    get(docID: string, user: User) : Document | null {
-        return this.upstream.get(docID, user);
+    get(docID: string, collection: string, user: User) : Document | null {
+        return this.upstream.get(docID, collection, user);
     }
 
-    save(doc: Document, docID: string | undefined, user: User) : string | null {
-        return this.upstream.save(doc, docID, user);
+    save(doc: Document, docID: string | undefined, collection: string, user: User) : string | null {
+        return this.upstream.save(doc, docID, collection, user);
     }
 
-    delete(docID: string, revID: string | undefined, user: User) : boolean {
-        return this.upstream.delete(docID, revID, user);
+    delete(docID: string, revID: string | undefined, collection: string, user: User) : boolean {
+        return this.upstream.delete(docID, revID, collection, user);
     }
 
 
@@ -352,22 +352,20 @@ export function EndReadOnly(context: Context) {
 
 class CRUDImpl implements CRUD {
 
-    constructor(db: DatabaseImpl, collectionName: string, user: UserImpl) {
-        this.db = db;
-        // this.collection = collectionName;
-        this.user = user;
-    }
+    constructor(private db: DatabaseImpl,
+                private collection: string,
+                private user: UserImpl) { }
 
 
     get(docID: string) : Document | null {
-        return this.db.get(docID, this.user);
+        return this.db.get(docID, this.collection, this.user);
     }
 
 
     save(doc: Document, docID?: string) : string | null {
         if (!this.user.canMutate)
             throw new HTTPError(403, "save() is not allowed in a read-only context");
-        return this.db.save(doc, docID, this.user);
+        return this.db.save(doc, docID, this.collection, this.user);
     }
 
 
@@ -375,17 +373,13 @@ class CRUDImpl implements CRUD {
         if (!this.user.canMutate)
             throw new HTTPError(403, "delete() is not allowed in a read-only context");
         if (typeof docOrID === 'string') {
-            return this.db.delete(docOrID, undefined, this.user);
+            return this.db.delete(docOrID, undefined, this.collection, this.user);
         } else {
             let id = docOrID['_id'];
             if (!id) throw "delete() called with doc object that has no '_id' property";
-            return this.db.delete(id, docOrID._rev, this.user);
+            return this.db.delete(id, docOrID._rev, this.collection, this.user);
         }
     }
-
-    private db: DatabaseImpl;
-    // private collection: string;  // TODO: support collections
-    private user: UserImpl;         // The User I access it as
 }
 
 
@@ -427,6 +421,9 @@ class UserImpl implements User {
 
     readonly defaultCollection: CRUD;
 
+    collection(name: string) : CRUD {
+        return new CRUDImpl(this.db, name, this);
+    }
 
     function(name: string, args?: Args) : unknown {
         let fn = this.db.getFunction(name);

@@ -90,11 +90,11 @@ type evaluatorDelegate interface {
 	query(fnName string, n1ql string, args map[string]any, asAdmin bool) (rowsAsJSON string, err error)
 
 	// Get a document.
-	get(docID string, asAdmin bool) (doc map[string]any, err error)
+	get(docID string, collection string, asAdmin bool) (doc map[string]any, err error)
 	// Save/create a document.
-	save(doc map[string]any, docID string, asAdmin bool) (saved bool, err error)
+	save(doc map[string]any, docID string, collection string, asAdmin bool) (saved bool, err error)
 	// Delete a document.
-	delete(docID string, revID string, asAdmin bool) (ok bool, err error)
+	delete(docID string, revID string, collection string, asAdmin bool) (ok bool, err error)
 }
 
 // Name and capabilities of the current user. (Admin is represented by a nil `*userCredentials`.)
@@ -104,6 +104,7 @@ type userCredentials struct {
 	Channels []string
 }
 
+// Returns an evaluator for use with a Service.
 func makeEvaluator(service *js.Service, dbc *db.Database, delegate evaluatorDelegate, user *userCredentials, ctx context.Context) (*evaluator, error) {
 	runner, err := service.GetRunner()
 	if err != nil {
@@ -117,21 +118,20 @@ func makeEvaluator(service *js.Service, dbc *db.Database, delegate evaluatorDele
 	}
 	runner.SetContext(ctx)
 
-	if eval, ok := runner.Client.(*evaluator); ok {
-		eval.user = user
-		return eval, nil
-	} else {
-		return newEvaluator(runner, delegate, user)
+	eval, ok := runner.Client.(*evaluator)
+	if !ok {
+		if eval, err = newEvaluator(runner); err != nil {
+			return nil, err
+		}
 	}
+	eval.setup(delegate, user)
+	return eval, nil
 }
 
 // Creates an Evaluator, wrapping a js.Runner.
-func newEvaluator(runner *js.Runner, delegate evaluatorDelegate, user *userCredentials) (*evaluator, error) {
-	eval := &evaluator{
-		runner:   runner,
-		delegate: delegate,
-		user:     user,
-	}
+// Usually it's better to call makeEvaluator since that will reuse an existing instance.
+func newEvaluator(runner *js.Runner) (*evaluator, error) {
+	eval := &evaluator{runner: runner}
 	runner.Client = eval
 
 	// Call the JS initialization code, passing it the configuration and the Upstream.
@@ -168,19 +168,21 @@ func newEvaluator(runner *js.Runner, delegate evaluatorDelegate, user *userCrede
 	return eval, nil
 }
 
-// Disposes the V8 resources for an Evaluator. Always call this when done.
+func (eval *evaluator) setup(delegate evaluatorDelegate, user *userCredentials) {
+	eval.delegate = delegate
+	eval.user = user
+}
+
+// Call this when finished using an evaluator.
 func (eval *evaluator) close() {
 	eval.runner.Return()
+	eval.delegate = nil
+	eval.user = nil
 }
 
 // Configures whether the Evaluator is allowed to mutate the database; if false (the default), calls to `save()` and `delete()` will fail.
 func (eval *evaluator) setMutationAllowed(allowed bool) {
 	eval.mutationAllowed = allowed
-}
-
-// Returns the current user.
-func (eval *evaluator) GetUser() *userCredentials {
-	return eval.user
 }
 
 // Calls a named function. Result is returned as JSON data.
@@ -255,15 +257,16 @@ func doQuery(r *js.Runner, this *v8.Object, args []*v8.Value) (any, error) {
 	return eval.delegate.query(fnName, n1ql, fnArgs, asAdmin)
 }
 
-// 	get(docID: string, asAdmin: boolean) : string | null;
+// 	get(docID: string, collection: string, asAdmin: boolean) : string | null;
 func doGet(r *js.Runner, this *v8.Object, args []*v8.Value) (any, error) {
 	docID := args[0].String()
-	asAdmin := args[1].Boolean()
+	collection := args[1].String()
+	asAdmin := args[2].Boolean()
 	eval := r.Client.(*evaluator)
-	return returnAsJSON(eval.delegate.get(docID, asAdmin))
+	return returnAsJSON(eval.delegate.get(docID, collection, asAdmin))
 }
 
-// 	save(docJSON: string, docID: string | undefined, asAdmin: boolean) : string | null;
+// 	save(docJSON: string, docID: string | undefined, collection: string, asAdmin: boolean) : string | null;
 func doSave(r *js.Runner, this *v8.Object, args []*v8.Value) (any, error) {
 	var docID string
 	doc, err := jsonToGoMap(args[0])
@@ -280,26 +283,28 @@ func doSave(r *js.Runner, this *v8.Object, args []*v8.Value) (any, error) {
 			return nil, err
 		}
 	}
-	asAdmin := args[2].Boolean()
+	collection := args[2].String()
+	asAdmin := args[3].Boolean()
 
 	eval := r.Client.(*evaluator)
-	if saved, err := eval.delegate.save(doc, docID, asAdmin); saved && err == nil {
+	if saved, err := eval.delegate.save(doc, docID, collection, asAdmin); saved && err == nil {
 		return docID, nil
 	} else {
 		return nil, err
 	}
 }
 
-// 	delete(docID: string, revID: string | undefined, asAdmin: boolean) : boolean;
+// 	delete(docID: string, revID: string | undefined, collection: string, asAdmin: boolean) : boolean;
 func doDelete(r *js.Runner, this *v8.Object, args []*v8.Value) (any, error) {
 	docID := args[0].String()
 	var revID string
 	if arg1 := args[1]; arg1.IsString() {
 		revID = arg1.String()
 	}
-	asAdmin := args[2].Boolean()
+	collection := args[2].String()
+	asAdmin := args[3].Boolean()
 	eval := r.Client.(*evaluator)
-	return eval.delegate.delete(docID, revID, asAdmin)
+	return eval.delegate.delete(docID, revID, collection, asAdmin)
 }
 
 //////// UTILITIES
@@ -344,7 +349,7 @@ func jsonToGoMap(val *v8.Value) (map[string]any, error) {
 	if val.IsNullOrUndefined() {
 		return nil, nil
 	} else if jsonStr, ok := js.StringToGo(val); !ok {
-		return nil, fmt.Errorf("Unexpected error: instead of a string, got %s", val.DetailString())
+		return nil, fmt.Errorf("unexpected error: instead of a string, got %s", val.DetailString())
 	} else {
 		var result map[string]any
 		err := json.Unmarshal([]byte(jsonStr), &result)

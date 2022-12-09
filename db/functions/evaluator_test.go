@@ -12,7 +12,6 @@ package functions
 
 import (
 	"context"
-	"log"
 	"net/http"
 	"strconv"
 	"testing"
@@ -48,23 +47,17 @@ type mockEvaluatorDelegate struct {
 	docs map[string]mockDoc
 }
 
-var logLevelNames = []string{"none", "error", "warning", "info", "debug", "trace"}
-
-func (d *mockEvaluatorDelegate) log(level base.LogLevel, message string) {
-	log.Printf("JAVASCRIPT %s: %s", logLevelNames[level], message)
-}
-
 func (d *mockEvaluatorDelegate) checkTimeout() error { return nil }
 
 func (d *mockEvaluatorDelegate) query(fnName string, n1ql string, args map[string]any, asAdmin bool) (rowsJSON string, err error) {
 	return "", base.HTTPErrorf(http.StatusNotImplemented, "query unimplemented")
 }
 
-func (d *mockEvaluatorDelegate) get(docID string, asAdmin bool) (doc map[string]any, err error) {
+func (d *mockEvaluatorDelegate) get(docID string, coll string, asAdmin bool) (doc map[string]any, err error) {
 	return d.docs[docID], nil
 }
 
-func (d *mockEvaluatorDelegate) save(doc map[string]any, docID string, asAdmin bool) (saved bool, err error) {
+func (d *mockEvaluatorDelegate) save(doc map[string]any, docID string, coll string, asAdmin bool) (saved bool, err error) {
 	existingDoc := d.docs[docID]
 	curRevID, curExists := existingDoc["_rev"].(string)
 	if revID, exists := doc["_rev"].(string); exists {
@@ -87,7 +80,7 @@ func (d *mockEvaluatorDelegate) save(doc map[string]any, docID string, asAdmin b
 	return true, nil
 }
 
-func (d *mockEvaluatorDelegate) delete(docID string, revID string, asAdmin bool) (bool, error) {
+func (d *mockEvaluatorDelegate) delete(docID string, revID string, coll string, asAdmin bool) (bool, error) {
 	existingDoc := d.docs[docID]
 	if existingDoc == nil {
 		return true, nil

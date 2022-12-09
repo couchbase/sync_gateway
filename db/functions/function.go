@@ -13,7 +13,6 @@ package functions
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
@@ -149,11 +148,12 @@ func newStandaloneEvaluator(ctx context.Context, fnConfig *FunctionsConfig, gqCo
 		return nil, nil, err
 	} else {
 		runner.SetContext(ctx)
-		eval, err := newEvaluator(runner, delegate, nil)
+		eval, err := newEvaluator(runner)
 		if err != nil {
 			vm.Close()
 			return nil, nil, err
 		}
+		eval.setup(delegate, nil)
 		return eval, vm, nil
 	}
 }
@@ -195,46 +195,21 @@ func (fn *functionImpl) N1QLQueryName() (string, bool) {
 
 // Creates an Invocation of a UserFunction.
 func (fn *functionImpl) Invoke(dbc *db.Database, args map[string]any, mutationAllowed bool, ctx context.Context) (db.UserFunctionInvocation, error) {
-	if ctx == nil {
-		return nil, fmt.Errorf("missing context to UserFunction.Invoke")
+	inv := functionInvocation{
+		functionImpl:    fn,
+		args:            args,
+		mutationAllowed: mutationAllowed,
 	}
-	if err := db.CheckTimeout(ctx); err != nil {
-		return nil, err
-	}
-	collection, err := dbc.GetDefaultDatabaseCollectionWithUser()
-	if err != nil {
-		return nil, err
-	}
-	delegate := &databaseDelegate{
-		db:         dbc,
-		collection: collection,
-		ctx:        ctx,
-	}
-	if dbUser := dbc.User(); dbUser != nil {
-		delegate.user = &userCredentials{
-			Name:     dbUser.Name(),
-			Roles:    dbUser.RoleNames().AllKeys(),
-			Channels: dbUser.Channels().AllKeys(),
-		}
-	}
-
-	eval, err := makeEvaluator(fn.service, dbc, delegate, delegate.user, ctx)
-	if err != nil {
-		return nil, err
-	}
-	eval.setMutationAllowed(mutationAllowed)
-	return &functionInvocation{
-		functionImpl: fn,
-		eval:         eval,
-		args:         args,
-	}, nil
+	err := inv.delegate.init(dbc, ctx)
+	return &inv, err
 }
 
 // Implements UserFunctionInvocation
 type functionInvocation struct {
 	*functionImpl
-	eval *evaluator
-	args map[string]any
+	args            map[string]any
+	mutationAllowed bool
+	delegate        databaseDelegate
 }
 
 func (inv *functionInvocation) Iterate() (sgbucket.QueryResultIterator, error) {
@@ -254,8 +229,14 @@ func (inv *functionInvocation) Run() (interface{}, error) {
 }
 
 func (inv *functionInvocation) RunAsJSON() ([]byte, error) {
-	defer inv.eval.close()
-	return inv.eval.callFunction(inv.name, inv.args)
+	delegate := &inv.delegate
+	eval, err := makeEvaluator(inv.service, delegate.db, delegate, delegate.user, delegate.ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer eval.close()
+	eval.setMutationAllowed(inv.mutationAllowed)
+	return eval.callFunction(inv.name, inv.args)
 }
 
 //////// GRAPHQLIMPL
@@ -271,30 +252,11 @@ func (gq *graphQLImpl) MaxRequestSize() *int {
 }
 
 func (gq *graphQLImpl) QueryAsJSON(dbc *db.Database, query string, operationName string, variables map[string]interface{}, mutationAllowed bool, ctx context.Context) ([]byte, error) {
-	if ctx == nil {
-		return nil, fmt.Errorf("missing context to UserFunction.Invoke")
-	}
-	if err := db.CheckTimeout(ctx); err != nil {
+	var delegate databaseDelegate
+	if err := delegate.init(dbc, ctx); err != nil {
 		return nil, err
 	}
-	collection, err := dbc.GetDefaultDatabaseCollectionWithUser()
-	if err != nil {
-		return nil, err
-	}
-	delegate := &databaseDelegate{
-		db:         dbc,
-		collection: collection,
-		ctx:        ctx,
-	}
-	if dbUser := dbc.User(); dbUser != nil {
-		delegate.user = &userCredentials{
-			Name:     dbUser.Name(),
-			Roles:    dbUser.RoleNames().AllKeys(),
-			Channels: dbUser.Channels().AllKeys(),
-		}
-	}
-
-	eval, err := makeEvaluator(gq.service, dbc, delegate, delegate.user, ctx)
+	eval, err := makeEvaluator(gq.service, dbc, &delegate, delegate.user, ctx)
 	if err != nil {
 		return nil, err
 	}
