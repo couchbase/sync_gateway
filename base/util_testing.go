@@ -120,7 +120,7 @@ func getTestBucket(t testing.TB) *TestBucket {
 
 // GetNamedDataStore returns a named datastore from the TestBucket. Each number (starting from 0, indicates which data store you'll get.
 func (tb *TestBucket) GetNamedDataStore(count int) DataStore {
-	dataStoreNames := tb.getNonDefaultDatastoreNames()
+	dataStoreNames := tb.GetNonDefaultDatastoreNames()
 	if count > len(dataStoreNames) {
 		tb.t.Errorf("You are requesting more datastores %d than are available on this test instance %d", dataStoreNames, count)
 	}
@@ -128,7 +128,7 @@ func (tb *TestBucket) GetNamedDataStore(count int) DataStore {
 }
 
 // Return a sorted list of data store names
-func (tb *TestBucket) getNonDefaultDatastoreNames() []sgbucket.DataStoreName {
+func (tb *TestBucket) GetNonDefaultDatastoreNames() []sgbucket.DataStoreName {
 	allDataStoreNames, err := tb.ListDataStores()
 	require.NoError(tb.t, err)
 	var nonDefaultDataStoreNames []sgbucket.DataStoreName

@@ -25,22 +25,12 @@ import (
 func TestMultiCollectionChangesAdmin(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeyChanges, base.KeyCache)
-	testBucket := base.GetTestBucket(t)
-	scopesConfig, keyspaces := getMultiCollectionConfig(t, testBucket, 2)
-	rtConfig := &rest.RestTesterConfig{
-		CustomTestBucket: testBucket,
-		DatabaseConfig: &rest.DatabaseConfig{
-			DbConfig: rest.DbConfig{
-				Scopes: scopesConfig,
-			},
-		},
-	}
+
+	rt, keyspaces := rest.NewRestTesterMultipleCollections(t, nil, 2)
+	defer rt.Close()
 
 	c1Keyspace := keyspaces[0]
 	c2Keyspace := keyspaces[1]
-
-	rt := rest.NewRestTester(t, rtConfig)
-	defer rt.Close()
 
 	// Put several documents, will be retrieved via query
 	response := rt.SendAdminRequest("PUT", "/"+c1Keyspace+"/pbs1", `{"value":1, "channels":["PBS"]}`)
@@ -91,22 +81,12 @@ func TestMultiCollectionChangesAdmin(t *testing.T) {
 func TestMultiCollectionChangesAdminSameChannelName(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeyChanges, base.KeyCache)
-	testBucket := base.GetTestBucket(t)
-	scopesConfig, keyspaces := getMultiCollectionConfig(t, testBucket, 2)
-	rtConfig := &rest.RestTesterConfig{
-		CustomTestBucket: testBucket,
-		DatabaseConfig: &rest.DatabaseConfig{
-			DbConfig: rest.DbConfig{
-				Scopes: scopesConfig,
-			},
-		},
-	}
+
+	rt, keyspaces := rest.NewRestTesterMultipleCollections(t, nil, 2)
+	defer rt.Close()
 
 	c1Keyspace := keyspaces[0]
 	c2Keyspace := keyspaces[1]
-
-	rt := rest.NewRestTester(t, rtConfig)
-	defer rt.Close()
 
 	// Put several documents, will be retrieved via query
 	response := rt.SendAdminRequest("PUT", "/"+c1Keyspace+"/pbs1_c1", `{"value":1, "channels":["PBS"]}`)
@@ -156,22 +136,12 @@ func TestMultiCollectionChangesAdminSameChannelName(t *testing.T) {
 func TestMultiCollectionChangesUser(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeyChanges, base.KeyCache, base.KeyCRUD)
-	testBucket := base.GetTestBucket(t)
-	scopesConfig, keyspaces := getMultiCollectionConfig(t, testBucket, 2)
-	rtConfig := &rest.RestTesterConfig{
-		CustomTestBucket: testBucket,
-		DatabaseConfig: &rest.DatabaseConfig{
-			DbConfig: rest.DbConfig{
-				Scopes: scopesConfig,
-			},
-		},
-	}
+
+	rt, keyspaces := rest.NewRestTesterMultipleCollections(t, nil, 2)
+	defer rt.Close()
 
 	c1Keyspace := keyspaces[0]
 	c2Keyspace := keyspaces[1]
-
-	rt := rest.NewRestTester(t, rtConfig)
-	defer rt.Close()
 
 	// Create user with access to channel PBS in both collections
 	ctx := rt.Context()
@@ -230,22 +200,12 @@ func TestMultiCollectionChangesUser(t *testing.T) {
 func TestMultiCollectionChangesUserDynamicGrant(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeyChanges, base.KeyCache, base.KeyCRUD)
-	testBucket := base.GetTestBucket(t)
-	scopesConfig, keyspaces := getMultiCollectionConfig(t, testBucket, 2)
-	rtConfig := &rest.RestTesterConfig{
-		CustomTestBucket: testBucket,
-		DatabaseConfig: &rest.DatabaseConfig{
-			DbConfig: rest.DbConfig{
-				Scopes: scopesConfig,
-			},
-		},
-	}
+
+	rt, keyspaces := rest.NewRestTesterMultipleCollections(t, nil, 2)
+	defer rt.Close()
 
 	c1Keyspace := keyspaces[0]
 	c2Keyspace := keyspaces[1]
-
-	rt := rest.NewRestTester(t, rtConfig)
-	defer rt.Close()
 
 	// Create user with access to channel PBS in both collections
 	ctx := rt.Context()
@@ -308,22 +268,12 @@ func TestMultiCollectionChangesUserDynamicGrant(t *testing.T) {
 func TestMultiCollectionChangesUserDynamicGrantDCP(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeyChanges, base.KeyCache, base.KeyCRUD)
-	testBucket := base.GetTestBucket(t)
-	scopesConfig, keyspaces := getMultiCollectionConfig(t, testBucket, 2)
-	rtConfig := &rest.RestTesterConfig{
-		CustomTestBucket: testBucket,
-		DatabaseConfig: &rest.DatabaseConfig{
-			DbConfig: rest.DbConfig{
-				Scopes: scopesConfig,
-			},
-		},
-	}
+
+	rt, keyspaces := rest.NewRestTesterMultipleCollections(t, nil, 2)
+	defer rt.Close()
 
 	c1Keyspace := keyspaces[0]
 	c2Keyspace := keyspaces[1]
-
-	rt := rest.NewRestTester(t, rtConfig)
-	defer rt.Close()
 
 	// Create user with access to channel PBS in both collections
 	ctx := rt.Context()
@@ -424,33 +374,4 @@ func logChangesResponse(t *testing.T, response []byte) {
 		log.Printf("changes Response entry: %+v", entry)
 	}
 	return
-}
-
-// getScopesConfig sets up a ScopesConfig from a TestBucket and uses a non default collection if available.
-func getMultiCollectionConfig(t testing.TB, testBucket *base.TestBucket, numCollections int) (rest.ScopesConfig, []string) {
-	// Get a datastore as provided by the test
-	stores, err := testBucket.ListDataStores()
-	require.NoError(t, err)
-	require.True(t, len(stores) >= numCollections, "Requested more collections than found on testBucket")
-
-	scopesConfig := rest.ScopesConfig{}
-	keyspaces := make([]string, numCollections)
-	for i := 0; i < numCollections; i++ {
-		dataStoreName := stores[i]
-		keyspaces[i] = "db." + dataStoreName.ScopeName() + "." + dataStoreName.CollectionName()
-		if scopeConfig, ok := scopesConfig[dataStoreName.ScopeName()]; ok {
-			if _, ok := scopeConfig.Collections[dataStoreName.CollectionName()]; ok {
-				// already present
-			} else {
-				scopeConfig.Collections[dataStoreName.CollectionName()] = rest.CollectionConfig{}
-			}
-		} else {
-			scopesConfig[dataStoreName.ScopeName()] = rest.ScopeConfig{
-				Collections: map[string]rest.CollectionConfig{
-					dataStoreName.CollectionName(): {},
-				}}
-		}
-
-	}
-	return scopesConfig, keyspaces
 }
