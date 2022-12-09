@@ -147,6 +147,9 @@ function() {
 
         globalThis.log = console.log;
 
+        // Prevent scripts from dynamically generating code:
+        delete globalThis.eval;
+        delete globalThis.Function;
 
         /**** The function that runs the sync function ****/
 

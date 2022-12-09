@@ -46,7 +46,7 @@ func TestJavaScriptWorks(t *testing.T) {
 func TestHiddenVariables(t *testing.T) {
 	vm := js.NewVM()
 	defer vm.Close()
-	for _, hidden := range []string{"userCtx", "shouldValidate", "result"} {
+	for _, hidden := range []string{"userCtx", "shouldValidate", "result", "eval", "Function"} {
 		mapper := NewChannelMapper(vm, `function(doc) {return `+hidden+`;}`, 0)
 		_, err := mapper.MapToChannelsAndAccess(parse(`{}`), `{}`, emptyMetaMap(), noUser)
 		if assert.Error(t, err, "Was able to access %q", hidden) {
