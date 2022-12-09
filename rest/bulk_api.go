@@ -216,7 +216,7 @@ func (h *handler) handleAllDocs() error {
 
 		}
 	} else {
-		if err := h.db.GetSingleDatabaseCollection().ForEachDocID(h.ctx(), writeDoc, options); err != nil {
+		if err := h.collection.ForEachDocID(h.ctx(), writeDoc, options); err != nil {
 			return err
 		}
 	}
