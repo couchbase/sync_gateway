@@ -83,7 +83,7 @@ func (apr *ActivePullReplicator) _connect() error {
 	subChangesRequest := SubChangesRequest{
 		Continuous:     apr.config.Continuous,
 		Batch:          apr.config.ChangesBatchSize,
-		Since:          apr.Checkpointer.lastCheckpointSeq,
+		Since:          apr.Checkpointer.lastCheckpointSeq.String(),
 		Filter:         apr.config.Filter,
 		FilterChannels: apr.config.FilterChannels,
 		DocIDs:         apr.config.DocIDs,
@@ -173,7 +173,7 @@ func (apr *ActivePullReplicator) GetStatus() *ReplicationStatus {
 	apr.lock.RLock()
 	defer apr.lock.RUnlock()
 	if apr.Checkpointer != nil {
-		lastSeqPulled = apr.Checkpointer.calculateSafeProcessedSeq()
+		lastSeqPulled = apr.Checkpointer.calculateSafeProcessedSeq().String()
 	}
 	status := apr.getPullStatus(lastSeqPulled)
 	return status
