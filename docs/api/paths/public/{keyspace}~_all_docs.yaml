@@ -7,7 +7,7 @@
 # the file licenses/APL2.txt.
 
 parameters:
-  - $ref: ../../components/parameters.yaml#/db
+  - $ref: ../../components/parameters.yaml#/keyspace
 get:
   summary: Gets all the documents in the database with the given parameters
   description: Returns all documents in the databased based on the specified parameters.
