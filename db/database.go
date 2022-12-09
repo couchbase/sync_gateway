@@ -177,7 +177,10 @@ type ScopeOptions struct {
 	Collections map[string]CollectionOptions
 }
 
-type CollectionOptions struct{}
+type CollectionOptions struct {
+	Sync *string // Collection sync function
+
+}
 
 type SGReplicateOptions struct {
 	Enabled               bool          // Whether this node can be assigned sg-replicate replications
@@ -439,9 +442,17 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 				Collections: make(map[string]*DatabaseCollection, len(scope.Collections)),
 			}
 			collectionNameMap := make(map[string]struct{}, len(scope.Collections))
-			for collName := range scope.Collections {
+			for collName, collOpts := range scope.Collections {
 				dataStore := bucket.NamedDataStore(base.ScopeAndCollectionName{Scope: scopeName, Collection: collName})
 				dbCollection, err := newDatabaseCollection(ctx, dbContext, dataStore)
+				if err != nil {
+					return nil, err
+				}
+				syncFn := ""
+				if collOpts.Sync != nil {
+					syncFn = *collOpts.Sync
+				}
+				_, err = dbCollection.UpdateSyncFun(ctx, syncFn)
 				if err != nil {
 					return nil, err
 				}

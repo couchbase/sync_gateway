@@ -804,7 +804,7 @@ func (rt *RestTester) PutDocumentWithRevID(docID string, newRevID string, parent
 
 func (rt *RestTester) SetAdminChannels(username string, keyspace string, channels ...string) error {
 
-	dbName, scopeName, collectionName, err := parseKeyspace(keyspace)
+	dbName, scopeName, collectionName, err := ParseKeyspace(keyspace)
 	if err != nil {
 		return err
 	}

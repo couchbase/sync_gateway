@@ -567,8 +567,10 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 			contextOptions.Scopes[scopeName] = db.ScopeOptions{
 				Collections: make(map[string]db.CollectionOptions, len(scopeCfg.Collections)),
 			}
-			for collName := range scopeCfg.Collections {
-				contextOptions.Scopes[scopeName].Collections[collName] = db.CollectionOptions{}
+			for collName, collCfg := range scopeCfg.Collections {
+				contextOptions.Scopes[scopeName].Collections[collName] = db.CollectionOptions{
+					Sync: collCfg.SyncFn,
+				}
 			}
 		}
 	}

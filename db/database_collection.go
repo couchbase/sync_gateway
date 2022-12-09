@@ -20,10 +20,11 @@ import (
 
 // DatabaseCollection provides a representation of a single collection of a database.
 type DatabaseCollection struct {
-	dataStore     base.DataStore   // Storage
-	revisionCache RevisionCache    // Cache of recently-accessed doc revisions
-	changeCache   *changeCache     // Cache of recently-access channels
-	dbCtx         *DatabaseContext // pointer to database context to allow passthrough of functions
+	dataStore     base.DataStore          // Storage
+	revisionCache RevisionCache           // Cache of recently-accessed doc revisions
+	changeCache   *changeCache            // Cache of recently-access channels
+	dbCtx         *DatabaseContext        // pointer to database context to allow passthrough of functions
+	ChannelMapper *channels.ChannelMapper // Collection's sync function
 }
 
 // DatabaseCollectionWithUser represents CouchDB database. A new instance is created for each request,
@@ -70,7 +71,7 @@ func (c *DatabaseCollection) bucketName() string {
 
 // channelMapper runs the javascript sync function. This is currently at the database level.
 func (c *DatabaseCollection) channelMapper() *channels.ChannelMapper {
-	return c.dbCtx.ChannelMapper
+	return c.ChannelMapper
 }
 
 // channelQueryLimit returns the pagination for the number of channels returned in a query. This is a database level property.
@@ -255,4 +256,51 @@ func (c *DatabaseCollectionWithUser) User() auth.User {
 // useViews will return whether the bucket is configured using views.
 func (c *DatabaseCollection) useViews() bool {
 	return c.dbCtx.Options.UseViews
+}
+
+// ////// SYNC FUNCTION:
+
+// Sets the database context's sync function based on the JS code from config.
+// Returns a boolean indicating whether the function is different from the saved one.
+// If multiple gateway instances try to update the function at the same time (to the same new
+// value) only one of them will get a changed=true result.
+func (dc *DatabaseCollection) UpdateSyncFun(ctx context.Context, syncFun string) (changed bool, err error) {
+	if syncFun == "" {
+		dc.ChannelMapper = nil
+	} else if dc.ChannelMapper != nil {
+		_, err = dc.ChannelMapper.SetFunction(syncFun)
+	} else {
+		dc.ChannelMapper = channels.NewChannelMapper(syncFun, dc.dbCtx.Options.JavascriptTimeout)
+	}
+	if err != nil {
+		base.WarnfCtx(ctx, "Error setting sync function: %s", err)
+		return
+	}
+
+	var syncData struct { // format of the sync-fn document
+		Sync string
+	}
+
+	syncFunctionDocID := base.CollectionSyncFunctionKeyWithGroupID(dc.dbCtx.Options.GroupID, dc.GetCollectionID())
+	_, err = dc.dbCtx.MetadataStore.Update(syncFunctionDocID, 0, func(currentValue []byte) ([]byte, *uint32, bool, error) {
+		// The first time opening a new db, currentValue will be nil. Don't treat this as a change.
+		if currentValue != nil {
+			parseErr := base.JSONUnmarshal(currentValue, &syncData)
+			if parseErr != nil || syncData.Sync != syncFun {
+				changed = true
+			}
+		}
+		if changed || currentValue == nil {
+			syncData.Sync = syncFun
+			bytes, err := base.JSONMarshal(syncData)
+			return bytes, nil, false, err
+		} else {
+			return nil, nil, false, base.ErrUpdateCancel // value unchanged, no need to save
+		}
+	})
+
+	if err == base.ErrUpdateCancel {
+		err = nil
+	}
+	return
 }
