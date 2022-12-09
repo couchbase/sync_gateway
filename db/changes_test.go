@@ -80,7 +80,7 @@ func TestChangesAfterChannelAdded(t *testing.T) {
 	assert.True(t, changes[2].principalDoc)
 
 	lastSeq := getLastSeq(changes)
-	lastSeq, _ = db.ParseSequenceID(lastSeq.String())
+	lastSeq, _ = ParsePlainSequenceID(lastSeq.String())
 
 	// Add a new doc (sequence 3):
 	revid, _, err = db.Put("doc2", Body{"channels": []string{"PBS"}})
@@ -160,7 +160,7 @@ func TestDocDeletionFromChannelCoalescedRemoved(t *testing.T) {
 		ID:      "alpha",
 		Changes: []ChangeRev{{"rev": revid}}})
 	lastSeq := getLastSeq(changes)
-	lastSeq, _ = db.ParseSequenceID(lastSeq.String())
+	lastSeq, _ = ParsePlainSequenceID(lastSeq.String())
 
 	// Get raw document from the bucket
 	rv, _, _ := db.Bucket.GetRaw("alpha") // cas, err
@@ -245,7 +245,7 @@ func TestDocDeletionFromChannelCoalesced(t *testing.T) {
 		ID:      "alpha",
 		Changes: []ChangeRev{{"rev": revid}}})
 	lastSeq := getLastSeq(changes)
-	lastSeq, _ = db.ParseSequenceID(lastSeq.String())
+	lastSeq, _ = ParsePlainSequenceID(lastSeq.String())
 
 	// Get raw document from the bucket
 	rv, _, _ := db.Bucket.GetRaw("alpha") // cas, err

@@ -113,7 +113,7 @@ func NewSubChangesParams(logCtx context.Context, rq *blip.Message, zeroSeq Seque
 	sinceSequenceId := zeroSeq
 	if sinceStr, found := rq.Properties[SubChangesSince]; found {
 		var err error
-		if sinceSequenceId, err = sequenceIDParser(base.ConvertJSONString(sinceStr)); err != nil {
+		if sinceSequenceId, err = sequenceIDParser(sinceStr); err != nil {
 			base.InfofCtx(logCtx, base.KeySync, "%s: Invalid sequence ID in 'since': %s", rq, sinceStr)
 			return params, err
 		}
