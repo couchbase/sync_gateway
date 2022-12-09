@@ -271,9 +271,12 @@ func (rt *RestTester) Bucket() base.Bucket {
 		if rt.DatabaseConfig.UseViews == nil {
 			rt.DatabaseConfig.UseViews = base.BoolPtr(base.TestsDisableGSI())
 		}
-		if rt.collectionConfig != useSingleCollectionDefaultOnly && (*rt.DatabaseConfig.UseViews != false || base.UnitTestUrlIsWalrus()) {
-			// Configure non default collections by default
-			rt.DatabaseConfig.Scopes = getCollectionsConfig(rt.TB, testBucket, rt.numCollections)
+		if rt.collectionConfig != useSingleCollectionDefaultOnly && (!*rt.DatabaseConfig.UseViews || base.UnitTestUrlIsWalrus()) {
+			// If scopes is already set, assume the caller has a plan
+			if rt.DatabaseConfig.Scopes == nil {
+				// Configure non default collections by default
+				rt.DatabaseConfig.Scopes = GetCollectionsConfig(rt.TB, testBucket, rt.numCollections)
+			}
 		}
 
 		// numReplicas set to 0 for test buckets, since it should assume that there may only be one indexing node.
@@ -335,8 +338,8 @@ func (rt *RestTester) MetadataStore() base.DataStore {
 	return rt.GetDatabase().MetadataStore
 }
 
-// getCollectionsConfig sets up a ScopesConfig from a TestBucket for use with non default collections.
-func getCollectionsConfig(t testing.TB, testBucket *base.TestBucket, numCollections int) ScopesConfig {
+// GetCollectionsConfig sets up a ScopesConfig from a TestBucket for use with non default collections.
+func GetCollectionsConfig(t testing.TB, testBucket *base.TestBucket, numCollections int) ScopesConfig {
 	// Get a datastore as provided by the test
 	stores := testBucket.GetNonDefaultDatastoreNames()
 	require.True(t, len(stores) >= numCollections, "Requested more collections %d than found on testBucket %d", numCollections, len(stores))
@@ -359,6 +362,18 @@ func getCollectionsConfig(t testing.TB, testBucket *base.TestBucket, numCollecti
 
 	}
 	return scopesConfig
+}
+
+func GetDataStoreNamesFromScopesConfig(config ScopesConfig) []sgbucket.DataStoreName {
+	var names []sgbucket.DataStoreName
+	for scopeName, scopeConfig := range config {
+		for collectionName, _ := range scopeConfig.Collections {
+			names = append(names, base.ScopeAndCollectionName{Scope: scopeName, Collection: collectionName})
+		}
+
+	}
+	return names
+
 }
 
 // LeakyBucket gets the bucket from the RestTester as a leaky bucket allowing for callbacks to be set on the fly.

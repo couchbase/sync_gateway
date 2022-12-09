@@ -365,24 +365,20 @@ func TestMultiCollectionChangesCustomSyncFunctions(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeyChanges, base.KeyCache, base.KeyCRUD)
 	testBucket := base.GetTestBucket(t)
-	scopesConfig, keyspaces := getMultiCollectionConfig(t, testBucket, 2)
-
-	c1Keyspace := keyspaces[0]
-	c2Keyspace := keyspaces[1]
-	_, c1Scope, c1Collection, err := rest.ParseKeyspace(c1Keyspace)
-	require.NoError(t, err)
-	_, c2Scope, c2Collection, err := rest.ParseKeyspace(c2Keyspace)
+	numCollections := 2
+	scopesConfig := rest.GetCollectionsConfig(t, testBucket, numCollections)
+	dataStoreNames := rest.GetDataStoreNamesFromScopesConfig(scopesConfig)
 
 	c1SyncFunction := `function(doc, oldDoc) { channel("collection1")}`
 	c2SyncFunction := `
-	function(doc, oldDoc) { 
+	function(doc, oldDoc) {
 		channel("collection2")
 		if (doc.public) {
 			channel("!")
 		}
 	}`
-	scopesConfig[*c1Scope].Collections[*c1Collection] = rest.CollectionConfig{SyncFn: &c1SyncFunction}
-	scopesConfig[*c2Scope].Collections[*c2Collection] = rest.CollectionConfig{SyncFn: &c2SyncFunction}
+	scopesConfig[dataStoreNames[0].ScopeName()].Collections[dataStoreNames[0].CollectionName()] = rest.CollectionConfig{SyncFn: &c1SyncFunction}
+	scopesConfig[dataStoreNames[1].ScopeName()].Collections[dataStoreNames[1].CollectionName()] = rest.CollectionConfig{SyncFn: &c2SyncFunction}
 
 	rtConfig := &rest.RestTesterConfig{
 		CustomTestBucket: testBucket,
@@ -393,8 +389,11 @@ func TestMultiCollectionChangesCustomSyncFunctions(t *testing.T) {
 		},
 	}
 
-	rt := rest.NewRestTester(t, rtConfig)
+	rt, keyspaces := rest.NewRestTesterMultipleCollections(t, rtConfig, numCollections)
 	defer rt.Close()
+
+	c1Keyspace := keyspaces[0]
+	c2Keyspace := keyspaces[1]
 
 	// Create user with access to channel collection1 in both collections
 	ctx := rt.Context()
