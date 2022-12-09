@@ -1068,6 +1068,43 @@ func TestHandlePutDbConfigWithBackticks(t *testing.T) {
 	assert.Equal(t, syncFunc, respBody["sync"].(string))
 }
 
+func TestHandlePutDbConfigWithBackticksCollections(t *testing.T) {
+	rt := rest.NewRestTester(t, nil)
+	defer rt.Close()
+
+	// Get database info before putting config.
+	resp := rt.SendAdminRequest(http.MethodGet, "/backticks/", "")
+	rest.RequireStatus(t, resp, http.StatusNotFound)
+
+	// Create database with valid JSON config that contains sync function enclosed in backticks.
+	syncFunc := `function(doc, oldDoc) { console.log("foo");}`
+	// ` + "`" + syncFunc + "`" + `
+	reqBodyWithBackticks := `{
+        "server": "walrus:",
+        "bucket": "backticks",
+		"enable_shared_bucket_access":false,
+		"scopes": {
+			"scope1": {
+			  "collections" : {
+				"collection1":{   
+        			"sync": ` + "`" + syncFunc + "`" + `
+ 				}
+   			  }
+			}
+  		}
+	}`
+	resp = rt.SendAdminRequest(http.MethodPut, "/backticks/", reqBodyWithBackticks)
+	rest.RequireStatus(t, resp, http.StatusCreated)
+
+	// Get database config after putting config.
+	resp = rt.SendAdminRequest(http.MethodGet, "/backticks/_config?include_runtime=true", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+	var respConfig rest.DbConfig
+	require.NoError(t, base.JSONUnmarshal(resp.Body.Bytes(), &respConfig))
+	assert.Equal(t, "walrus:", *respConfig.Server)
+	assert.Equal(t, syncFunc, *respConfig.Scopes["scope1"].Collections["collection1"].SyncFn)
+}
+
 func TestHandleDBConfig(t *testing.T) {
 	tb := base.GetTestBucket(t)
 
