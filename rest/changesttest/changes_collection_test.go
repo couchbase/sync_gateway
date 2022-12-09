@@ -10,6 +10,7 @@ package changestest
 
 import (
 	"log"
+	"strings"
 	"testing"
 
 	"github.com/couchbase/sync_gateway/channels"
@@ -389,11 +390,11 @@ func TestMultiCollectionChangesCustomSyncFunctions(t *testing.T) {
 		},
 	}
 
-	rt, keyspaces := rest.NewRestTesterMultipleCollections(t, rtConfig, numCollections)
+	rt, _ := rest.NewRestTesterMultipleCollections(t, rtConfig, numCollections)
 	defer rt.Close()
 
-	c1Keyspace := keyspaces[0]
-	c2Keyspace := keyspaces[1]
+	c1Keyspace := strings.Join([]string{rt.GetDatabase().Name, dataStoreNames[0].ScopeName(), dataStoreNames[0].CollectionName()}, base.ScopeCollectionSeparator)
+	c2Keyspace := strings.Join([]string{rt.GetDatabase().Name, dataStoreNames[1].ScopeName(), dataStoreNames[1].CollectionName()}, base.ScopeCollectionSeparator)
 
 	// Create user with access to channel collection1 in both collections
 	ctx := rt.Context()

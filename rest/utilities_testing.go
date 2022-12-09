@@ -22,6 +22,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"runtime/debug"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -364,15 +365,22 @@ func GetCollectionsConfig(t testing.TB, testBucket *base.TestBucket, numCollecti
 	return scopesConfig
 }
 
+// GetSingleDataStoreNamesFromScopes config returns a lexically sorted list of configured datastores.
 func GetDataStoreNamesFromScopesConfig(config ScopesConfig) []sgbucket.DataStoreName {
-	var names []sgbucket.DataStoreName
+	var names []string
 	for scopeName, scopeConfig := range config {
 		for collectionName, _ := range scopeConfig.Collections {
-			names = append(names, base.ScopeAndCollectionName{Scope: scopeName, Collection: collectionName})
+			names = append(names, fmt.Sprintf("%s%s%s", scopeName, base.ScopeCollectionSeparator, collectionName))
 		}
 
 	}
-	return names
+	sort.Strings(names)
+	var dataStoreNames []sgbucket.DataStoreName
+	for _, scopeAndCollection := range names {
+		keyspace := strings.Split(scopeAndCollection, base.ScopeCollectionSeparator)
+		dataStoreNames = append(dataStoreNames, base.ScopeAndCollectionName{Scope: keyspace[0], Collection: keyspace[1]})
+	}
+	return dataStoreNames
 
 }
 
@@ -2080,5 +2088,6 @@ func (rt *RestTester) getKeyspaces() []string {
 	for _, collection := range db.CollectionByID {
 		keyspaces = append(keyspaces, getRESTKeyspace(rt.TB, db.Name, collection))
 	}
+	sort.Strings(keyspaces)
 	return keyspaces
 }
