@@ -15,9 +15,9 @@ import (
 	ch "github.com/couchbase/sync_gateway/channels"
 )
 
-// PrincipalCollectionAccess defines the common interface for managing channel access for a role or user for
-// a single collection.
-type PrincipalCollectionAccess interface {
+// CollectionChannelAPI defines helper functions for interacting with a principal's CollectionAccess set using
+// scope and collection name.  Mirrors the default collection functionality defined on Principal
+type CollectionChannelAPI interface {
 
 	// Retrieve all channels for a collection
 	CollectionChannels(scope, collection string) ch.TimedSet
@@ -58,11 +58,17 @@ type PrincipalCollectionAccess interface {
 	authorizeAllCollectionChannels(scope, collection string, channels base.Set) error
 
 	// Returns an error if the Principal does not have access to any of the channels in the set, for the specified collection
-	authorizeAnyCollectionChannel(scope, collection string, channels base.Set) error
+	AuthorizeAnyCollectionChannel(scope, collection string, channels base.Set) error
+
+	// Retrieves or creates collection access entry on principal for specified scope and collection
+	getOrCreateCollectionAccess(scope, collection string) *CollectionAccess
+
+	// Returns the CollectionAccess map
+	GetCollectionsAccess() map[string]map[string]*CollectionAccess
 }
 
-// UserCollection defines the interface for managing channel access that is supported by users but not roles.
-type UserCollectionAccess interface {
+// UserCollectionChannelAPI defines the interface for managing channel access that is supported by users but not roles.
+type UserCollectionChannelAPI interface {
 	// Retrieves JWT channels for a collection
 	CollectionJWTChannels(scope, collection string) ch.TimedSet
 
@@ -89,16 +95,101 @@ type UserCollectionAccess interface {
 	expandCollectionWildCardChannel(scope, collection string, channels base.Set) base.Set
 }
 
+// PrincipalCollectionAccess defines a common interface for principal access control.  This interface is
+// implemented by CollectionAccess for named collection access,
+// and by roleImpl for the _default._default collection.
+type PrincipalCollectionAccess interface {
+	// The set of channels the Principal belongs to for the channel, and what sequence access was granted.
+	// Returns nil if invalidated.
+	// For both roles and users, the set of channels is the union of ExplicitChannels, JWTChannels, and any channels
+	// they are granted through a sync function.
+	//
+	// NOTE: channels a user has access to through a role are *not* included in Channels(), so the user could have
+	// access to more documents than included in Channels. CanSeeChannel will also check against the user's roles.
+	Channels() ch.TimedSet
+
+	// Sets the explicit channels the Principal has access to.
+	SetExplicitChannels(ch.TimedSet, uint64)
+
+	// The channels the Principal was explicitly granted access to thru the admin API.
+	ExplicitChannels() ch.TimedSet
+
+	// sets the computed channels for the collection
+	setChannels(ch.TimedSet)
+
+	// The set of invalidated channels
+	// Returns nil if not invalidated
+	InvalidatedChannels() ch.TimedSet
+
+	GetChannelInvalSeq() uint64
+	SetChannelInvalSeq(invalSeq uint64)
+	ChannelHistory() TimedSetHistory
+	SetChannelHistory(h TimedSetHistory)
+}
+
+// UserCollectionAccess functions the same as PrincipalCollectionAccess, but for user-specific properties.
+type UserCollectionAccess interface {
+	JWTChannels() ch.TimedSet
+	SetJWTChannels(ch.TimedSet, uint64)
+}
+
 // Defines channel grants and history for a single collection
 type CollectionAccess struct {
 	ExplicitChannels_ ch.TimedSet     `json:"admin_channels,omitempty"`
 	Channels_         ch.TimedSet     `json:"all_channels,omitempty"`
 	ChannelHistory_   TimedSetHistory `json:"channel_history,omitempty"`   // Added to when a previously granted channel is revoked. Calculated inside of rebuildChannels.
 	ChannelInvalSeq   uint64          `json:"channel_inval_seq,omitempty"` // Sequence at which the channels were invalidated. Data remains in Channels_ for history calculation.
-	JWTChannels       ch.TimedSet     `json:"jwt_channels,omitempty"`      // TODO: JWT properties should only be populated for user but would like to share scope/collection map
+	JWTChannels_      ch.TimedSet     `json:"jwt_channels,omitempty"`      // TODO: JWT properties should only be populated for user but would like to share scope/collection map
 	JWTLastUpdated    *time.Time      `json:"jwt_last_updated,omitempty"`
+}
+
+func (ca *CollectionAccess) ExplicitChannels() ch.TimedSet {
+	return ca.ExplicitChannels_
+}
+
+func (ca *CollectionAccess) SetExplicitChannels(channels ch.TimedSet, invalSeq uint64) {
+	ca.ExplicitChannels_ = channels
+	ca.SetChannelInvalSeq(invalSeq)
+}
+
+func (ca *CollectionAccess) JWTChannels() ch.TimedSet {
+	return ca.JWTChannels_
+}
+
+func (ca *CollectionAccess) GetChannelInvalSeq() uint64 {
+	return ca.ChannelInvalSeq
+}
+
+func (ca *CollectionAccess) InvalidatedChannels() ch.TimedSet {
+	if ca.ChannelInvalSeq != 0 {
+		return ca.Channels_
+	}
+	return nil
+}
+
+func (ca *CollectionAccess) ChannelHistory() TimedSetHistory {
+	return ca.ChannelHistory_
+}
+
+func (ca *CollectionAccess) SetChannelHistory(history TimedSetHistory) {
+	ca.ChannelHistory_ = history
+}
+
+func (ca *CollectionAccess) SetChannelInvalSeq(invalSeq uint64) {
+	ca.ChannelInvalSeq = invalSeq
+}
+
+func (ca *CollectionAccess) setChannels(channels ch.TimedSet) {
+	ca.Channels_ = channels
 }
 
 func (ca *CollectionAccess) CanSeeChannel(channel string) bool {
 	return ca.Channels().Contains(channel) || ca.Channels().Contains(ch.UserStarChannel)
+}
+
+func (ca *CollectionAccess) Channels() ch.TimedSet {
+	if ca.ChannelInvalSeq != 0 {
+		return nil
+	}
+	return ca.Channels_
 }

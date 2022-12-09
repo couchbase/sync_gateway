@@ -27,6 +27,10 @@ func TestRoleQuery(t *testing.T) {
 		t.Skip("This test is Couchbase Server and UseViews=false only")
 	}
 
+	if base.TestsUseNamedCollections() {
+		t.Skip("This test doesn't initialize indexes for non-default collections, needed for NewRole")
+	}
+
 	testCases := []struct {
 		isServerless bool
 	}{
@@ -219,6 +223,9 @@ func TestQueryAllRoles(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() || base.TestsDisableGSI() {
 		t.Skip("This test is Couchbase Server and UseViews=false only")
 	}
+	if base.TestsUseNamedCollections() {
+		t.Skip("This test doesn't initialize indexes for non-default collections, needed for NewRole")
+	}
 
 	testCases := []struct {
 		isServerless bool
@@ -281,6 +288,9 @@ func TestQueryAllRoles(t *testing.T) {
 func TestAllPrincipalIDs(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() || base.TestsDisableGSI() {
 		t.Skip("This test is Couchbase Server and UseViews=false only")
+	}
+	if base.TestsUseNamedCollections() {
+		t.Skip("This test package doesn't initialize indexes for non-default collections, needed for NewRole")
 	}
 
 	testCases := []struct {
@@ -356,6 +366,10 @@ func TestAllPrincipalIDs(t *testing.T) {
 func TestGetRoleIDs(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() || base.TestsDisableGSI() {
 		t.Skip("This test is Couchbase Server and UseViews=false only")
+	}
+
+	if base.TestsUseNamedCollections() {
+		t.Skip("This test package doesn't initialize indexes for non-default collections, needed for NewRole")
 	}
 
 	testCases := []struct {

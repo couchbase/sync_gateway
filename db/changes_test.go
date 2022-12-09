@@ -91,6 +91,10 @@ func TestFilterToAvailableChannels(t *testing.T) {
 // Unit test for bug #314
 func TestChangesAfterChannelAdded(t *testing.T) {
 
+	if base.TestsUseNamedCollections() {
+		t.Skip("Disabled for non-default collection based on use of GetPrincipalForTest")
+	}
+
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 	collection := db.GetSingleDatabaseCollectionWithUser()
@@ -115,6 +119,7 @@ func TestChangesAfterChannelAdded(t *testing.T) {
 	userInfo, err := db.GetPrincipalForTest(t, "naomi", true)
 	assert.True(t, userInfo != nil)
 	userInfo.ExplicitChannels = base.SetOf("ABC", "PBS")
+
 	_, err = db.UpdatePrincipal(base.TestCtx(t), userInfo, true, true)
 	assert.NoError(t, err, "UpdatePrincipal failed")
 

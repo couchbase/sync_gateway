@@ -127,6 +127,7 @@ type DatabaseContext struct {
 	Scopes                       map[string]Scope               // A map keyed by scope name containing a set of scopes/collections. Nil if running with only _default._default
 	singleCollection             *DatabaseCollection            // Temporary collection
 	CollectionByID               map[uint32]*DatabaseCollection // A map keyed by collection ID to Collection
+	CollectionNames              map[string]map[string]struct{} // Map of scope, collection names
 }
 
 type Scope struct {
@@ -176,7 +177,10 @@ type ScopeOptions struct {
 	Collections map[string]CollectionOptions
 }
 
-type CollectionOptions struct{}
+type CollectionOptions struct {
+	Sync *string // Collection sync function
+
+}
 
 type SGReplicateOptions struct {
 	Enabled               bool          // Whether this node can be assigned sg-replicate replications
@@ -427,15 +431,28 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 		dbContext.CfgSG = cbgt.NewCfgMem()
 	}
 
+	// Initialize the tap Listener for notify handling
+	dbContext.mutationListener.Init(bucket.GetName(), options.GroupID)
+
 	if len(options.Scopes) > 0 {
 		dbContext.Scopes = make(map[string]Scope, len(options.Scopes))
+		dbContext.CollectionNames = make(map[string]map[string]struct{}, len(options.Scopes))
 		for scopeName, scope := range options.Scopes {
 			dbContext.Scopes[scopeName] = Scope{
 				Collections: make(map[string]*DatabaseCollection, len(scope.Collections)),
 			}
-			for collName := range scope.Collections {
+			collectionNameMap := make(map[string]struct{}, len(scope.Collections))
+			for collName, collOpts := range scope.Collections {
 				dataStore := bucket.NamedDataStore(base.ScopeAndCollectionName{Scope: scopeName, Collection: collName})
 				dbCollection, err := newDatabaseCollection(ctx, dbContext, dataStore)
+				if err != nil {
+					return nil, err
+				}
+				syncFn := ""
+				if collOpts.Sync != nil {
+					syncFn = *collOpts.Sync
+				}
+				_, err = dbCollection.UpdateSyncFun(ctx, syncFn)
 				if err != nil {
 					return nil, err
 				}
@@ -444,7 +461,9 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 				collectionID := dbCollection.GetCollectionID()
 				dbContext.CollectionByID[collectionID] = dbCollection
 				dbContext.singleCollection = dbCollection
+				collectionNameMap[collName] = struct{}{}
 			}
+			dbContext.CollectionNames[scopeName] = collectionNameMap
 		}
 	} else {
 		dataStore := bucket.DefaultDataStore()
@@ -456,9 +475,6 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 		dbContext.CollectionByID[base.DefaultCollectionID] = dbCollection
 		dbContext.singleCollection = dbCollection
 	}
-
-	// Initialize the tap Listener for notify handling
-	dbContext.mutationListener.Init(bucket.GetName(), options.GroupID)
 
 	// Initialize sg-replicate manager
 	dbContext.SGReplicateMgr, err = NewSGReplicateManager(ctx, dbContext, dbContext.CfgSG)
@@ -676,8 +692,9 @@ func (context *DatabaseContext) GetOIDCProvider(providerName string) (*auth.OIDC
 	}
 }
 
-func (context *DatabaseContext) SetOnChangeCallback(callback DocChangedFunc) {
-	context.mutationListener.OnDocChanged = callback
+// Registers an on change callback.  Each change cache (per collection) will register here
+func (context *DatabaseContext) RegisterOnChangeCallback(collectionID uint32, callback DocChangedFunc) error {
+	return context.mutationListener.RegisterOnChangeCallback(collectionID, callback)
 }
 
 func (dbCtx *DatabaseContext) GetServerUUID(ctx context.Context) string {
@@ -868,6 +885,7 @@ func (context *DatabaseContext) Authenticator(ctx context.Context) *auth.Authent
 		SessionCookieName:        sessionCookieName,
 		BcryptCost:               context.Options.BcryptCost,
 		LogCtx:                   ctx,
+		Collections:              context.CollectionNames,
 	})
 
 	return authenticator
@@ -1821,14 +1839,14 @@ func (db *DatabaseCollection) invalUserRoles(ctx context.Context, username strin
 
 func (db *DatabaseCollection) invalUserChannels(ctx context.Context, username string, invalSeq uint64) {
 	authr := db.Authenticator(ctx)
-	if err := authr.InvalidateChannels(username, true, invalSeq); err != nil {
+	if err := authr.InvalidateChannels(username, true, db.ScopeName(), db.Name(), invalSeq); err != nil {
 		base.WarnfCtx(ctx, "Error invalidating channels for user %s: %v", base.UD(username), err)
 	}
 }
 
 func (db *DatabaseCollection) invalRoleChannels(ctx context.Context, rolename string, invalSeq uint64) {
 	authr := db.Authenticator(ctx)
-	if err := authr.InvalidateChannels(rolename, false, invalSeq); err != nil {
+	if err := authr.InvalidateChannels(rolename, false, db.ScopeName(), db.Name(), invalSeq); err != nil {
 		base.WarnfCtx(ctx, "Error invalidating channels for role %s: %v", base.UD(rolename), err)
 	}
 }
@@ -2032,10 +2050,22 @@ func (dbCtx *DatabaseContext) onlyDefaultCollection() bool {
 	return exists
 }
 
-// GetDatabaseCollectionWithUser returns a collection if one exists, otherwise error.
+// GetDatabaseCollectionWithUser returns a DatabaseCollectionWithUser if the collection exists on the database, otherwise error.
 func (dbc *Database) GetDatabaseCollectionWithUser(scopeName, collectionName string) (*DatabaseCollectionWithUser, error) {
+	collection, err := dbc.GetDatabaseCollection(scopeName, collectionName)
+	if err != nil {
+		return nil, err
+	}
+	return &DatabaseCollectionWithUser{
+		DatabaseCollection: collection,
+		user:               dbc.user,
+	}, nil
+}
+
+// GetDatabaseCollection returns a collection if one exists, otherwise error.
+func (dbc *DatabaseContext) GetDatabaseCollection(scopeName, collectionName string) (*DatabaseCollection, error) {
 	if base.IsDefaultCollection(scopeName, collectionName) && dbc.onlyDefaultCollection() {
-		return dbc.GetDefaultDatabaseCollectionWithUser()
+		return dbc.GetDefaultDatabaseCollection()
 	}
 	if dbc.Scopes == nil {
 		return nil, fmt.Errorf("scope %s does not exist on this database", base.UD(scopeName))
@@ -2048,10 +2078,7 @@ func (dbc *Database) GetDatabaseCollectionWithUser(scopeName, collectionName str
 	if !exists {
 		return nil, fmt.Errorf("collection %s.%s is not configured on this database", base.UD(scopeName), base.UD(collectionName))
 	}
-	return &DatabaseCollectionWithUser{
-		DatabaseCollection: collection,
-		user:               dbc.user,
-	}, nil
+	return collection, nil
 }
 
 func (dbc *DatabaseContext) GetDefaultDatabaseCollection() (*DatabaseCollection, error) {
@@ -2117,7 +2144,11 @@ func newDatabaseCollection(ctx context.Context, dbContext *DatabaseContext, data
 		return nil, err
 	}
 	// Set the DB Context notifyChange callback to call back the changecache DocChanged callback
-	dbContext.SetOnChangeCallback(dbCollection.changeCache.DocChanged)
+	err = dbContext.RegisterOnChangeCallback(dbCollection.GetCollectionID(), dbCollection.changeCache.DocChanged)
+	if err != nil {
+		base.DebugfCtx(ctx, base.KeyDCP, "Error registering the listener callback for collection %s: %v", dbCollection.GetCollectionID(), err)
+		return nil, err
+	}
 
 	if base.IsEnterpriseEdition() {
 		cfgSG, ok := dbContext.CfgSG.(*base.CfgSG)

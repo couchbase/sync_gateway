@@ -406,7 +406,7 @@ func TestGetRemovalMultiChannel(t *testing.T) {
 	defer db.Close(ctx)
 	collection := db.GetSingleDatabaseCollectionWithUser()
 
-	auth := auth.NewAuthenticator(db.MetadataStore, db, auth.DefaultAuthenticatorOptions())
+	auth := db.Authenticator(base.TestCtx(t))
 
 	// Create a user who have access to both channel ABC and NBC.
 	userAlice, err := auth.NewUser("alice", "pass", base.SetOf("ABC", "NBC"))
@@ -544,7 +544,7 @@ func TestDeltaSyncWhenFromRevIsChannelRemoval(t *testing.T) {
 
 	// Request delta between rev2ID and rev3ID (toRevision "rev2ID" is channel removal)
 	// as a user who doesn't have access to the removed revision via any other channel.
-	authenticator := auth.NewAuthenticator(db.MetadataStore, db, auth.DefaultAuthenticatorOptions())
+	authenticator := db.Authenticator(ctx)
 	user, err := authenticator.NewUser("alice", "pass", base.SetOf("NBC"))
 	require.NoError(t, err, "Error creating user")
 
@@ -610,7 +610,7 @@ func TestDeltaSyncWhenToRevIsChannelRemoval(t *testing.T) {
 
 	// Request delta between rev1ID and rev2ID (toRevision "rev2ID" is channel removal)
 	// as a user who doesn't have access to the removed revision via any other channel.
-	authenticator := auth.NewAuthenticator(db.MetadataStore, db, auth.DefaultAuthenticatorOptions())
+	authenticator := db.Authenticator(ctx)
 	user, err := authenticator.NewUser("alice", "pass", base.SetOf("NBC"))
 	require.NoError(t, err, "Error creating user")
 
@@ -810,7 +810,8 @@ func TestAllDocsOnly(t *testing.T) {
 	collectionID := collection.GetCollectionID()
 
 	// Trigger creation of the channel cache for channel "all"
-	collection.changeCache.getChannelCache().getSingleChannelCache(channels.NewID("all", collectionID))
+	_, err := collection.changeCache.getChannelCache().getSingleChannelCache(channels.NewID("all", collectionID))
+	require.NoError(t, err)
 
 	ids := make([]AllDocsEntry, 100)
 	for i := 0; i < 100; i++ {
@@ -854,7 +855,8 @@ func TestAllDocsOnly(t *testing.T) {
 	err = collection.changeCache.waitForSequence(ctx, 101, base.DefaultWaitForSequence)
 	require.NoError(t, err)
 
-	changeLog := collection.GetChangeLog(channels.NewID("all", collectionID), 0)
+	changeLog, err := collection.GetChangeLog(channels.NewID("all", collectionID), 0)
+	require.NoError(t, err)
 	require.Len(t, changeLog, 50)
 	assert.Equal(t, "alldoc-51", changeLog[0].DocID)
 
@@ -908,6 +910,10 @@ func TestAllDocsOnly(t *testing.T) {
 
 // Unit test for bug #673
 func TestUpdatePrincipal(t *testing.T) {
+
+	if base.TestsUseNamedCollections() {
+		t.Skip("Disabled for non-default collection based on use of GetPrincipalForTest")
+	}
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache, base.KeyChanges)
 
@@ -990,19 +996,21 @@ func TestConflicts(t *testing.T) {
 	collectionID := collection.GetCollectionID()
 
 	allChannel := channels.NewID("all", collectionID)
-	collection.changeCache.getChannelCache().getSingleChannelCache(allChannel)
+	_, err := collection.changeCache.getChannelCache().getSingleChannelCache(allChannel)
+	require.NoError(t, err)
 
 	cacheWaiter := db.NewDCPCachingCountWaiter(t)
 
 	// Create rev 1 of "doc":
 	body := Body{"n": 1, "channels": []string{"all", "1"}}
-	_, _, err := collection.PutExistingRevWithBody(ctx, "doc", body, []string{"1-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc", body, []string{"1-a"}, false)
 	assert.NoError(t, err, "add 1-a")
 
 	// Wait for rev to be cached
 	cacheWaiter.AddAndWait(1)
 
-	changeLog := collection.GetChangeLog(channels.NewID("all", collectionID), 0)
+	changeLog, err := collection.GetChangeLog(channels.NewID("all", collectionID), 0)
+	require.NoError(t, err)
 	assert.Equal(t, 1, len(changeLog))
 
 	// Create two conflicting changes:
@@ -1036,7 +1044,8 @@ func TestConflicts(t *testing.T) {
 
 	// Verify the change-log of the "all" channel:
 	cacheWaiter.Wait()
-	changeLog = collection.GetChangeLog(allChannel, 0)
+	changeLog, err = collection.GetChangeLog(allChannel, 0)
+	require.NoError(t, err)
 	assert.Equal(t, 1, len(changeLog))
 	assert.Equal(t, uint64(3), changeLog[0].Sequence)
 	assert.Equal(t, "doc", changeLog[0].DocID)
@@ -1434,7 +1443,7 @@ func TestAccessFunctionValidation(t *testing.T) {
 
 func TestAccessFunctionDb(t *testing.T) {
 
-	if !base.TestsUseDefaultCollection() {
+	if base.TestsUseNamedCollections() {
 		t.Skip("Disabled for non-default collection until CBG-2554")
 	}
 
@@ -1511,7 +1520,7 @@ func TestDocIDs(t *testing.T) {
 
 func TestUpdateDesignDoc(t *testing.T) {
 
-	if !base.TestsUseDefaultCollection() {
+	if base.TestsUseNamedCollections() {
 		t.Skip("Design docs not supported for non-default collection")
 	}
 

@@ -133,7 +133,7 @@ var kUserFunctionConfig = FunctionConfigMap{
 // Adds a user "alice" to the database, with role "hero"
 // and access to channels "wonderland" and "lookingglass".
 func addUserAlice(t *testing.T, db *db.Database) auth.User {
-	authenticator := auth.NewAuthenticator(db.MetadataStore, db, auth.DefaultAuthenticatorOptions())
+	authenticator := db.Authenticator(base.TestCtx(t))
 	hero, err := authenticator.NewRole("hero", base.SetOf("heroes"))
 	require.NoError(t, err)
 	require.NoError(t, authenticator.Save(hero))

@@ -223,13 +223,13 @@ func Test_parseKeyspace(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.ks, func(t *testing.T) {
-			gotDb, gotScope, gotCollection, err := parseKeyspace(tt.ks)
-			if !tt.wantErr(t, err, fmt.Sprintf("parseKeyspace(%v)", tt.ks)) {
+			gotDb, gotScope, gotCollection, err := ParseKeyspace(tt.ks)
+			if !tt.wantErr(t, err, fmt.Sprintf("ParseKeyspace(%v)", tt.ks)) {
 				return
 			}
-			assert.Equalf(t, tt.wantDb, gotDb, "parseKeyspace(%v)", tt.ks)
-			assert.Equalf(t, tt.wantScope, gotScope, "parseKeyspace(%v)", tt.ks)
-			assert.Equalf(t, tt.wantCollection, gotCollection, "parseKeyspace(%v)", tt.ks)
+			assert.Equalf(t, tt.wantDb, gotDb, "ParseKeyspace(%v)", tt.ks)
+			assert.Equalf(t, tt.wantScope, gotScope, "ParseKeyspace(%v)", tt.ks)
+			assert.Equalf(t, tt.wantCollection, gotCollection, "ParseKeyspace(%v)", tt.ks)
 		})
 	}
 }
@@ -237,6 +237,6 @@ func Test_parseKeyspace(t *testing.T) {
 func Benchmark_parseKeyspace(b *testing.B) {
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		_, _, _, _ = parseKeyspace("d.s.c")
+		_, _, _, _ = ParseKeyspace("d.s.c")
 	}
 }

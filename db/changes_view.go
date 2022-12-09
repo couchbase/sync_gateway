@@ -13,6 +13,7 @@ package db
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/couchbase/go-couchbase"
@@ -91,6 +92,15 @@ func (dbc *DatabaseContext) getChangesInChannelFromQuery(ctx context.Context, ch
 	collection := dbc.GetSingleDatabaseCollection()
 	return collection.getChangesInChannelFromQuery(ctx, channel.Name, startSeq, endSeq, limit, activeOnly)
 
+}
+
+// Queries the 'channels' view to get a range of sequences of a single channel as LogEntries.
+func (dbc *DatabaseContext) getQueryHandlerForCollection(collectionID uint32) (ChannelQueryHandler, error) {
+	collection, ok := dbc.CollectionByID[collectionID]
+	if !ok {
+		return nil, fmt.Errorf("Query handler requested for unknown collectionID: %d", collectionID)
+	}
+	return collection, nil
 }
 
 // Queries the 'channels' view to get a range of sequences of a single channel as LogEntries.

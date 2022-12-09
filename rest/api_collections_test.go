@@ -334,6 +334,7 @@ func TestCollectionsBasicIndexQuery(t *testing.T) {
 // TestCollectionsSGIndexQuery is more of an end-to-end test to ensure SG indexes are built correctly,
 // and the channel access query is able to run when pulling a document as a user, and backfill the channel cache.
 func TestCollectionsSGIndexQuery(t *testing.T) {
+	t.Skip("Requires config-based collection channel assignment (pending CBG-2551)")
 	base.TestRequiresCollections(t)
 
 	// force GSI for this one test
@@ -418,15 +419,26 @@ func TestCollectionsChangeConfigScope(t *testing.T) {
 	tb := base.GetTestBucket(t)
 	defer tb.Close()
 	ctx := base.TestCtx(t)
-	err := base.CreateBucketScopesAndCollections(ctx, tb.BucketSpec, map[string][]string{
+
+	scopesAndCollections := map[string][]string{
 		"fooScope": {
 			"bar",
 		},
 		"quxScope": {
 			"quux",
 		},
-	})
+	}
+	err := base.CreateBucketScopesAndCollections(ctx, tb.BucketSpec, scopesAndCollections)
 	require.NoError(t, err)
+	defer func() {
+		collection, err := base.AsCollection(tb.DefaultDataStore())
+		require.NoError(t, err)
+		cm := collection.Collection.Bucket().Collections()
+		for scope := range scopesAndCollections {
+			assert.NoError(t, cm.DropScope(scope, nil))
+		}
+
+	}()
 
 	serverErr := make(chan error)
 	config := BootstrapStartupConfigForTest(t)

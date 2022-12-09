@@ -1352,3 +1352,59 @@ func TestUserXattrAvoidRevisionIDGeneration(t *testing.T) {
 
 	assert.NotEqual(t, syncData2.CurrentRev, syncData3.CurrentRev)
 }
+
+func TestGetUserCollectionAccess(t *testing.T) {
+
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	// Create a user with collection metadata
+	userPayload := `{
+		"email":"alice@couchbase.com", 
+		"password":"letmein", 
+		"admin_channels":["foo", "bar"],
+		"collection_access": {
+			"scope1": {
+				"collection1": {
+					"admin_channels":["foo", "bar1"]
+				}
+			}
+		}
+	}`
+
+	putResponse := rt.SendAdminRequest("PUT", "/db/_user/alice", userPayload)
+	RequireStatus(t, putResponse, 201)
+
+	getResponse := rt.SendAdminRequest("GET", "/db/_user/alice", "")
+	RequireStatus(t, getResponse, 200)
+	log.Printf("response:%s", getResponse.Body.Bytes())
+	var responseConfig auth.PrincipalConfig
+	err := json.Unmarshal(getResponse.Body.Bytes(), &responseConfig)
+	require.NoError(t, err)
+	collectionAccess, ok := responseConfig.CollectionAccess["scope1"]["collection1"]
+	require.True(t, ok)
+	assert.Equal(t, channels.BaseSetOf(t, "foo", "bar1"), collectionAccess.ExplicitChannels_)
+	// TODO: computed channels requires authenticator populated with collection set, pending CBG-2266
+	//assert.Equal(t, channels.BaseSetOf(t), collectionAccess.Channels_)
+	assert.Nil(t, collectionAccess.JWTChannels_)
+	assert.Nil(t, collectionAccess.JWTLastUpdated)
+
+	// TODO: Additional test cases still required:
+	//  GET _user
+	//  1. Hide entries for collections that are no longer part of the database
+	//
+	//  GET _role
+	//  1. Standard get
+	//  2. Hide entries for collections that are no longer part of the database
+	//
+	//  INSERT _user
+	//  1. Attempt to write read-only properties (error)
+	//  2. Attempt to write collections that aren't defined for the database (error)
+	//  INSERT _role
+	//  1. Attempt to write read-only properties (error)
+	//  2. Attempt to write collections that aren't defined for the database (error)
+	//  UPDATE _user
+	//  0. Upsert of single collection (preserve existing)
+	//  1. Delete collection admin channels
+	//  2. Delete scope
+}
