@@ -68,7 +68,7 @@ func TestAttachmentCompactionAPI(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	dataStore := rt.GetSingleTestDataStore()
+	dataStore := rt.GetSingleDataStore()
 	collection := &db.DatabaseCollectionWithUser{
 		DatabaseCollection: rt.GetSingleTestDatabaseCollection(),
 	}
@@ -221,7 +221,7 @@ func TestAttachmentCompactionDryRun(t *testing.T) {
 	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 
-	dataStore := rt.GetSingleTestDataStore()
+	dataStore := rt.GetSingleDataStore()
 	// Create some 'unmarked' attachments
 	makeUnmarkedDoc := func(docid string) {
 		err := dataStore.SetRaw(docid, 0, nil, []byte("{}"))
@@ -307,7 +307,7 @@ func TestAttachmentCompactionInvalidDocs(t *testing.T) {
 	defer rt.Close()
 	ctx := rt.Context()
 
-	dataStore := rt.GetSingleTestDataStore()
+	dataStore := rt.GetSingleDataStore()
 	// Create a raw binary doc
 	_, err := dataStore.AddRaw("binary", 0, []byte("binary doc"))
 	assert.NoError(t, err)
@@ -391,7 +391,7 @@ func TestAttachmentCompactionAbort(t *testing.T) {
 	defer rt.Close()
 	ctx := rt.Context()
 
-	dataStore := rt.GetSingleTestDataStore()
+	dataStore := rt.GetSingleDataStore()
 	collection := &db.DatabaseCollectionWithUser{
 		DatabaseCollection: rt.GetSingleTestDatabaseCollection(),
 	}

@@ -452,8 +452,8 @@ func (rt *RestTester) GetSingleTestDatabaseCollection() *db.DatabaseCollection {
 	return nil
 }
 
-// GetSingleTestDataStore will return a datastore if there is only one collection configured on the RestTester database.
-func (rt *RestTester) GetSingleTestDataStore() base.DataStore {
+// GetSingleDataStore will return a datastore if there is only one collection configured on the RestTester database.
+func (rt *RestTester) GetSingleDataStore() base.DataStore {
 	collection := rt.GetSingleTestDatabaseCollection()
 	fmt.Println(collection.ScopeName())
 	return rt.GetDatabase().Bucket.NamedDataStore(base.ScopeAndCollectionName{

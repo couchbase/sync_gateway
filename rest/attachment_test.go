@@ -717,7 +717,7 @@ func TestBulkGetBadAttachmentReproIssue2528(t *testing.T) {
 
 	// Get the couchbase doc
 	couchbaseDoc := db.Body{}
-	_, err := rt.GetSingleTestDataStore().Get(docIdDoc1, &couchbaseDoc)
+	_, err := rt.GetSingleDataStore().Get(docIdDoc1, &couchbaseDoc)
 	assert.NoError(t, err, "Error getting couchbaseDoc")
 	log.Printf("couchbase doc: %+v", couchbaseDoc)
 
@@ -768,7 +768,7 @@ func TestBulkGetBadAttachmentReproIssue2528(t *testing.T) {
 	*/
 
 	// Put the doc back into couchbase
-	err = rt.GetSingleTestDataStore().Set(docIdDoc1, 0, nil, couchbaseDoc)
+	err = rt.GetSingleDataStore().Set(docIdDoc1, 0, nil, couchbaseDoc)
 	assert.NoError(t, err, "Error putting couchbaseDoc")
 
 	// Flush rev cache so that the _bulk_get request is forced to go back to the bucket to load the doc
@@ -943,7 +943,7 @@ func TestAttachmentRevposPre25Metadata(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
-	ok, err := rt.GetSingleTestDataStore().Add("doc1", 0, []byte(`{"_attachments":{"hello.txt":{"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=","length":11,"revpos":1,"stub":true}},"_sync":{"rev":"1-6e5a9ed9e2e8637d495ac5dd2fa90479","sequence":2,"recent_sequences":[2],"history":{"revs":["1-6e5a9ed9e2e8637d495ac5dd2fa90479"],"parents":[-1],"channels":[null]},"cas":"","time_saved":"2019-12-06T20:02:25.523013Z"},"test":true}`))
+	ok, err := rt.GetSingleDataStore().Add("doc1", 0, []byte(`{"_attachments":{"hello.txt":{"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=","length":11,"revpos":1,"stub":true}},"_sync":{"rev":"1-6e5a9ed9e2e8637d495ac5dd2fa90479","sequence":2,"recent_sequences":[2],"history":{"revs":["1-6e5a9ed9e2e8637d495ac5dd2fa90479"],"parents":[-1],"channels":[null]},"cas":"","time_saved":"2019-12-06T20:02:25.523013Z"},"test":true}`))
 	require.NoError(t, err)
 	require.True(t, ok)
 
@@ -1363,7 +1363,7 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		return attachments
 	}
 
-	dataStore := rt.GetSingleTestDataStore()
+	dataStore := rt.GetSingleDataStore()
 	requireAttachmentFound := func(attKey string, attBodyExpected []byte) {
 		var attBodyActual []byte
 		_, err := dataStore.Get(attKey, &attBodyActual)
@@ -2497,7 +2497,7 @@ func TestAttachmentRemovalWithConflicts(t *testing.T) {
 	resp = rt.SendAdminRequest("DELETE", "/db/doc?rev="+losingRev3, "")
 	RequireStatus(t, resp, http.StatusOK)
 
-	_, _, err = rt.GetSingleTestDataStore().GetRaw(attachmentKey)
+	_, _, err = rt.GetSingleDataStore().GetRaw(attachmentKey)
 	assert.Error(t, err)
 	assert.True(t, base.IsDocNotFoundError(err))
 }
@@ -2574,7 +2574,7 @@ func TestAttachmentDeleteOnPurge(t *testing.T) {
 	assert.True(t, ok)
 
 	// Ensure we can get the attachment doc
-	_, _, err = rt.GetSingleTestDataStore().GetRaw(key)
+	_, _, err = rt.GetSingleDataStore().GetRaw(key)
 	assert.NoError(t, err)
 
 	// Purge the document
@@ -2595,7 +2595,7 @@ func TestAttachmentDeleteOnExpiry(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
-	dataStore := rt.GetSingleTestDataStore()
+	dataStore := rt.GetSingleDataStore()
 
 	// Create doc with attachment and expiry
 	resp := rt.SendAdminRequest("PUT", "/db/"+t.Name(), `{"_attachments": {"hello.txt": {"data": "aGVsbG8gd29ybGQ="}}, "_exp": 2}`)
@@ -3049,7 +3049,7 @@ func TestCBLRevposHandling(t *testing.T) {
 // Helper_Functions
 func CreateDocWithLegacyAttachment(t *testing.T, rt *RestTester, docID string, rawDoc []byte, attKey string, attBody []byte) {
 	// Write attachment directly to the datastore.
-	dataStore := rt.GetSingleTestDataStore()
+	dataStore := rt.GetSingleDataStore()
 	_, err := dataStore.Add(attKey, 0, attBody)
 	require.NoError(t, err)
 

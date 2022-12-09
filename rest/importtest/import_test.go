@@ -68,7 +68,7 @@ func TestXattrImportOldDoc(t *testing.T) {
 		&rtConfig)
 	defer rt.Close()
 
-	dataStore := rt.GetSingleTestDataStore()
+	dataStore := rt.GetSingleDataStore()
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyImport, base.KeyCRUD)
 
@@ -97,7 +97,7 @@ func TestXattrImportOldDoc(t *testing.T) {
 	updatedBody["test"] = "TestImportDelete"
 	updatedBody["channels"] = "HBO"
 
-	err = rt.GetSingleTestDataStore().Set(key, 0, nil, updatedBody)
+	err = rt.GetSingleDataStore().Set(key, 0, nil, updatedBody)
 	assert.NoError(t, err, "Unable to update doc TestImportDelete")
 
 	// Attempt to get the document via Sync Gateway, to trigger import.  On import of a create, oldDoc should be nil.
@@ -151,7 +151,7 @@ func TestXattrImportOldDocRevHistory(t *testing.T) {
 	rt := rest.NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
-	dataStore := rt.GetSingleTestDataStore()
+	dataStore := rt.GetSingleDataStore()
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyImport, base.KeyCRUD)
 
 	// 1. Create revision with history
@@ -201,7 +201,7 @@ func TestXattrSGTombstone(t *testing.T) {
 	rt := rest.NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
-	dataStore := rt.GetSingleTestDataStore()
+	dataStore := rt.GetSingleDataStore()
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyImport, base.KeyCRUD)
 
@@ -247,7 +247,7 @@ func TestXattrImportOnCasFailure(t *testing.T) {
 	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 
-	dataStore := rt.GetSingleTestDataStore()
+	dataStore := rt.GetSingleDataStore()
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyImport)
 
 	// 1. SG Write
@@ -367,7 +367,7 @@ func TestXattrResurrectViaSDK(t *testing.T) {
 	docBody["test"] = key
 	docBody["channels"] = "ABC"
 
-	dataStore := rt.GetSingleTestDataStore()
+	dataStore := rt.GetSingleDataStore()
 
 	_, err := dataStore.Add(key, 0, docBody)
 	assert.NoError(t, err, "Unable to insert doc TestResurrectViaSDK")
@@ -442,7 +442,7 @@ func TestXattrDoubleDelete(t *testing.T) {
 
 	// 2. Delete the doc through the SDK
 	log.Printf("...............Delete through SDK.....................................")
-	deleteErr := rt.GetSingleTestDataStore().Delete(key)
+	deleteErr := rt.GetSingleDataStore().Delete(key)
 	assert.NoError(t, deleteErr, "Couldn't delete via SDK")
 
 	log.Printf("...............Delete through SG.......................................")
@@ -475,7 +475,7 @@ func TestViewQueryTombstoneRetrieval(t *testing.T) {
 	rt := rest.NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
-	dataStore := rt.GetSingleTestDataStore()
+	dataStore := rt.GetSingleDataStore()
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyImport)
 
@@ -550,7 +550,7 @@ func TestXattrImportFilterOptIn(t *testing.T) {
 	}
 	rt := rest.NewRestTester(t, &rtConfig)
 	defer rt.Close()
-	dataStore := rt.GetSingleTestDataStore()
+	dataStore := rt.GetSingleDataStore()
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyImport, base.KeyCRUD)
 
@@ -606,7 +606,7 @@ func TestImportFilterLogging(t *testing.T) {
 	body := make(map[string]interface{})
 	body["type"] = "mobile"
 	body["channels"] = "A"
-	ok, err := rt.GetSingleTestDataStore().Add(key, 0, body)
+	ok, err := rt.GetSingleDataStore().Add(key, 0, body)
 	assert.NoError(t, err)
 	assert.True(t, ok)
 
@@ -641,7 +641,7 @@ func TestXattrImportMultipleActorOnDemandGet(t *testing.T) {
 	}
 	rt := rest.NewRestTesterDefaultCollection(t, &rtConfig) // CBG-2618: fix collection channel access
 	defer rt.Close()
-	dataStore := rt.GetSingleTestDataStore()
+	dataStore := rt.GetSingleDataStore()
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyImport, base.KeyCRUD)
 
@@ -697,7 +697,7 @@ func TestXattrImportMultipleActorOnDemandPut(t *testing.T) {
 	}
 	rt := rest.NewRestTesterDefaultCollection(t, &rtConfig) // CBG-2618: fix collection channel access
 	defer rt.Close()
-	dataStore := rt.GetSingleTestDataStore()
+	dataStore := rt.GetSingleDataStore()
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyImport, base.KeyCRUD)
 
@@ -756,7 +756,7 @@ func TestXattrImportMultipleActorOnDemandFeed(t *testing.T) {
 
 	rt := rest.NewRestTester(t, &rtConfig)
 	defer rt.Close()
-	dataStore := rt.GetSingleTestDataStore()
+	dataStore := rt.GetSingleDataStore()
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyImport, base.KeyCRUD)
 
@@ -837,7 +837,7 @@ func TestXattrImportLargeNumbers(t *testing.T) {
 	mobileBody := make(map[string]interface{})
 	mobileBody["channels"] = "ABC"
 	mobileBody["largeNumber"] = uint64(9223372036854775807)
-	_, err := rt.GetSingleTestDataStore().Add(mobileKey, 0, mobileBody)
+	_, err := rt.GetSingleDataStore().Add(mobileKey, 0, mobileBody)
 	assert.NoError(t, err, "Error writing SDK doc")
 
 	// 2. Attempt to get the document via Sync Gateway.  Will trigger on-demand import.
@@ -915,7 +915,7 @@ func TestMigrateLargeInlineRevisions(t *testing.T) {
 	largeBodyString := fmt.Sprintf(bodyString, largeProperty, largeProperty, largeProperty)
 
 	// Create via the SDK with sync metadata intact
-	_, err := rt.GetSingleTestDataStore().Add(key, 0, []byte(largeBodyString))
+	_, err := rt.GetSingleDataStore().Add(key, 0, []byte(largeBodyString))
 	assert.NoError(t, err, "Error writing doc w/ large inline revisions")
 
 	// Attempt to get the documents via Sync Gateway.  Will trigger on-demand migrate.
@@ -983,7 +983,7 @@ func TestMigrateTombstone(t *testing.T) {
 }`
 
 	// Create via the SDK with sync metadata intact
-	_, err := rt.GetSingleTestDataStore().Add(key, 0, []byte(bodyString))
+	_, err := rt.GetSingleDataStore().Add(key, 0, []byte(bodyString))
 	assert.NoError(t, err, "Error writing tombstoned doc")
 
 	// Attempt to get the documents via Sync Gateway.  Will trigger on-demand migrate.
@@ -1053,7 +1053,7 @@ func TestMigrateWithExternalRevisions(t *testing.T) {
 	largeBodyString := fmt.Sprintf(bodyString, largeProperty, largeProperty)
 
 	// Create via the SDK with sync metadata intact
-	_, err := rt.GetSingleTestDataStore().Add(key, 0, []byte(largeBodyString))
+	_, err := rt.GetSingleDataStore().Add(key, 0, []byte(largeBodyString))
 	assert.NoError(t, err, "Error writing doc w/ large inline revisions")
 
 	// Attempt to get the documents via Sync Gateway.  Will trigger on-demand migrate.
@@ -1088,7 +1088,7 @@ func TestCheckForUpgradeOnRead(t *testing.T) {
 	}
 	rt := rest.NewRestTester(t, &rtConfig)
 	defer rt.Close()
-	dataStore := rt.GetSingleTestDataStore()
+	dataStore := rt.GetSingleDataStore()
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyImport, base.KeyCRUD)
 
@@ -1167,7 +1167,7 @@ func TestCheckForUpgradeOnWrite(t *testing.T) {
 	}
 	rt := rest.NewRestTester(t, &rtConfig)
 	defer rt.Close()
-	dataStore := rt.GetSingleTestDataStore()
+	dataStore := rt.GetSingleDataStore()
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyImport, base.KeyCRUD, base.KeyCache)
 
@@ -1250,7 +1250,7 @@ func TestCheckForUpgradeFeed(t *testing.T) {
 	rt := rest.NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
-	dataStore := rt.GetSingleTestDataStore()
+	dataStore := rt.GetSingleDataStore()
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyImport, base.KeyCRUD, base.KeyCache)
 
@@ -1313,7 +1313,7 @@ func TestXattrFeedBasedImportPreservesExpiry(t *testing.T) {
 	}
 	rt := rest.NewRestTester(t, &rtConfig)
 	defer rt.Close()
-	dataStore := rt.GetSingleTestDataStore()
+	dataStore := rt.GetSingleDataStore()
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyImport, base.KeyCRUD)
 
@@ -1374,7 +1374,7 @@ func TestFeedBasedMigrateWithExpiry(t *testing.T) {
 	}
 	rt := rest.NewRestTester(t, &rtConfig)
 	defer rt.Close()
-	dataStore := rt.GetSingleTestDataStore()
+	dataStore := rt.GetSingleDataStore()
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyImport, base.KeyCRUD)
 
@@ -1423,7 +1423,7 @@ func TestOnDemandWriteImportReplacingNullDoc(t *testing.T) {
 	}
 	rt := rest.NewRestTester(t, &rtConfig)
 	defer rt.Close()
-	dataStore := rt.GetSingleTestDataStore()
+	dataStore := rt.GetSingleDataStore()
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyImport, base.KeyCRUD)
 
@@ -1495,7 +1495,7 @@ func TestXattrOnDemandImportPreservesExpiry(t *testing.T) {
 			}
 			rt := rest.NewRestTester(t, &rtConfig)
 			defer rt.Close()
-			dataStore := rt.GetSingleTestDataStore()
+			dataStore := rt.GetSingleDataStore()
 
 			base.SetUpTestLogging(t, base.LevelDebug, base.KeyImport, base.KeyCRUD)
 
@@ -1578,7 +1578,7 @@ func TestOnDemandMigrateWithExpiry(t *testing.T) {
 			}
 			rt := rest.NewRestTester(t, &rtConfig)
 			defer rt.Close()
-			dataStore := rt.GetSingleTestDataStore()
+			dataStore := rt.GetSingleDataStore()
 
 			base.SetUpTestLogging(t, base.LevelDebug, base.KeyImport, base.KeyCRUD)
 
@@ -1624,7 +1624,7 @@ func TestXattrSGWriteOfNonImportedDoc(t *testing.T) {
 
 	log.Printf("Starting get bucket....")
 
-	dataStore := rt.GetSingleTestDataStore()
+	dataStore := rt.GetSingleDataStore()
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyImport, base.KeyCRUD)
 
@@ -1672,7 +1672,7 @@ func TestImportBinaryDoc(t *testing.T) {
 
 	log.Printf("Starting get bucket....")
 
-	dataStore := rt.GetSingleTestDataStore()
+	dataStore := rt.GetSingleDataStore()
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyImport, base.KeyCRUD, base.KeyCache)
 
@@ -1701,7 +1701,7 @@ func TestImportZeroValueDecimalPlaces(t *testing.T) {
 
 	rt := rest.NewRestTester(t, &rtConfig)
 	defer rt.Close()
-	dataStore := rt.GetSingleTestDataStore()
+	dataStore := rt.GetSingleDataStore()
 
 	const minDecimalPlaces = 0
 	const maxDecimalPlaces = 20
@@ -1768,7 +1768,7 @@ func TestImportZeroValueDecimalPlacesScientificNotation(t *testing.T) {
 	const minDecimalPlaces = 0
 	const maxDecimalPlaces = 20
 
-	dataStore := rt.GetSingleTestDataStore()
+	dataStore := rt.GetSingleDataStore()
 
 	for i := minDecimalPlaces; i <= maxDecimalPlaces; i++ {
 		var docNumber string
@@ -1828,7 +1828,7 @@ func TestImportRevisionCopy(t *testing.T) {
 	rt := rest.NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
-	dataStore := rt.GetSingleTestDataStore()
+	dataStore := rt.GetSingleDataStore()
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyImport)
 
 	key := "TestImportRevisionCopy"
@@ -1889,7 +1889,7 @@ func TestImportRevisionCopyUnavailable(t *testing.T) {
 		t.Skipf("Skipping TestImportRevisionCopyUnavailable when delta sync enabled, delta revision backup handling invalidates test")
 	}
 
-	dataStore := rt.GetSingleTestDataStore()
+	dataStore := rt.GetSingleDataStore()
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyImport)
 
 	key := "TestImportRevisionCopy"
@@ -1950,7 +1950,7 @@ func TestImportRevisionCopyDisabled(t *testing.T) {
 		t.Skipf("Skipping TestImportRevisionCopyDisabled when delta sync enabled, delta revision backup handling invalidates test")
 	}
 
-	dataStore := rt.GetSingleTestDataStore()
+	dataStore := rt.GetSingleDataStore()
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyImport)
 
 	key := "TestImportRevisionCopy"
@@ -2003,7 +2003,7 @@ func TestDcpBackfill(t *testing.T) {
 
 	log.Printf("Starting get bucket....")
 
-	dataStore := rt.GetSingleTestDataStore()
+	dataStore := rt.GetSingleDataStore()
 
 	// Write enough documents directly to the bucket to ensure multiple docs per vbucket (on average)
 	docBody := make(map[string]interface{})
@@ -2027,7 +2027,7 @@ func TestDcpBackfill(t *testing.T) {
 	newRt := rest.NewRestTester(t, &newRtConfig)
 	defer newRt.Close()
 	log.Printf("Poke the rest tester so it starts DCP processing:")
-	dataStore = newRt.GetSingleTestDataStore()
+	dataStore = newRt.GetSingleDataStore()
 
 	backfillComplete := false
 	var expectedBackfill, completedBackfill int
@@ -2063,7 +2063,7 @@ func TestUnexpectedBodyOnTombstone(t *testing.T) {
 	}
 	rt := rest.NewRestTester(t, &rtConfig)
 	defer rt.Close()
-	dataStore := rt.GetSingleTestDataStore()
+	dataStore := rt.GetSingleDataStore()
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyImport, base.KeyCRUD)
 
@@ -2173,7 +2173,7 @@ func TestDeletedEmptyDocumentImport(t *testing.T) {
 	assert.Equal(t, "1-ca9ad22802b66f662ff171f226211d5c", body["rev"])
 
 	// Delete the document through SDK
-	err := rt.GetSingleTestDataStore().Delete(docId)
+	err := rt.GetSingleDataStore().Delete(docId)
 	assert.NoError(t, err, "Unable to delete doc %s", docId)
 
 	// Get the doc and check deleted revision is getting imported
@@ -2206,7 +2206,7 @@ func TestDeletedDocumentImportWithImportFilter(t *testing.T) {
 	}
 	rt := rest.NewRestTester(t, &rtConfig)
 	defer rt.Close()
-	dataStore := rt.GetSingleTestDataStore()
+	dataStore := rt.GetSingleDataStore()
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyImport, base.KeyCRUD, base.KeyJavascript)
 
 	// Create document via SDK
@@ -2341,7 +2341,7 @@ func TestImportInternalPropertiesHandling(t *testing.T) {
 	for i, test := range testCases {
 		t.Run(test.name, func(t *testing.T) {
 			docID := fmt.Sprintf("test%d", i)
-			added, err := rt.GetSingleTestDataStore().Add(docID, 0, test.importBody)
+			added, err := rt.GetSingleDataStore().Add(docID, 0, test.importBody)
 			require.True(t, added)
 			require.NoError(t, err)
 
@@ -2391,7 +2391,7 @@ func TestImportTouch(t *testing.T) {
 	rt := rest.NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
-	dataStore := rt.GetSingleTestDataStore()
+	dataStore := rt.GetSingleDataStore()
 
 	// 1. Create a document
 	key := "TestImportTouch"
@@ -2435,7 +2435,7 @@ func TestImportingPurgedDocument(t *testing.T) {
 	defer rt.Close()
 
 	body := `{"_purged": true, "foo": "bar"}`
-	ok, err := rt.GetSingleTestDataStore().Add("key", 0, []byte(body))
+	ok, err := rt.GetSingleDataStore().Add("key", 0, []byte(body))
 	assert.NoError(t, err)
 	assert.True(t, ok)
 
@@ -2461,7 +2461,7 @@ func TestNonImportedDuplicateID(t *testing.T) {
 	defer rt.Close()
 
 	body := `{"foo":"bar"}`
-	ok, err := rt.GetSingleTestDataStore().Add("key", 0, []byte(body))
+	ok, err := rt.GetSingleDataStore().Add("key", 0, []byte(body))
 
 	assert.True(t, ok)
 	assert.Nil(t, err)
@@ -2485,7 +2485,7 @@ func TestImportOnWriteMigration(t *testing.T) {
 	// Put doc with sync data / non-xattr
 	key := "doc1"
 	body := []byte(`{"_sync": { "rev": "1-fc2cf22c5e5007bd966869ebfe9e276a", "sequence": 1, "recent_sequences": [ 1 ], "history": { "revs": [ "1-fc2cf22c5e5007bd966869ebfe9e276a" ], "parents": [ -1], "channels": [ null ] }, "cas": "","value_crc32c": "", "time_saved": "2019-04-10T12:40:04.490083+01:00" }, "value": "foo"}`)
-	ok, err := rt.GetSingleTestDataStore().Add(key, 0, body)
+	ok, err := rt.GetSingleDataStore().Add(key, 0, body)
 	assert.NoError(t, err)
 	assert.True(t, ok)
 
@@ -2533,7 +2533,7 @@ func TestUserXattrAutoImport(t *testing.T) {
 
 	defer rt.Close()
 
-	dataStore := rt.GetSingleTestDataStore()
+	dataStore := rt.GetSingleDataStore()
 	userXattrStore, ok := base.AsUserXattrStore(dataStore)
 	if !ok {
 		t.Skip("Test requires Couchbase Bucket")
@@ -2656,7 +2656,7 @@ func TestUserXattrOnDemandImportGET(t *testing.T) {
 
 	defer rt.Close()
 
-	dataStore := rt.GetSingleTestDataStore()
+	dataStore := rt.GetSingleDataStore()
 
 	userXattrStore, ok := base.AsUserXattrStore(dataStore)
 	if !ok {
@@ -2758,7 +2758,7 @@ func TestUserXattrOnDemandImportWrite(t *testing.T) {
 
 	defer rt.Close()
 
-	dataStore := rt.GetSingleTestDataStore()
+	dataStore := rt.GetSingleDataStore()
 
 	userXattrStore, ok := base.AsUserXattrStore(dataStore)
 	if !ok {
@@ -2823,7 +2823,7 @@ func TestImportFilterTimeout(t *testing.T) {
 	rt := rest.NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
-	added, err := rt.GetSingleTestDataStore().AddRaw("doc", 0, []byte(fmt.Sprintf(`{"foo": "bar"}`)))
+	added, err := rt.GetSingleDataStore().AddRaw("doc", 0, []byte(fmt.Sprintf(`{"foo": "bar"}`)))
 	require.True(t, added)
 	require.NoError(t, err)
 

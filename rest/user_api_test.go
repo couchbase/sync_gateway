@@ -564,7 +564,7 @@ func TestUserXattrsRawGet(t *testing.T) {
 	})
 	defer rt.Close()
 
-	userXattrStore, ok := base.AsUserXattrStore(rt.GetSingleTestDataStore())
+	userXattrStore, ok := base.AsUserXattrStore(rt.GetSingleDataStore())
 	if !ok {
 		t.Skip("Test requires Couchbase Bucket")
 	}
@@ -1209,7 +1209,7 @@ func TestRemovingUserXattr(t *testing.T) {
 
 			defer rt.Close()
 
-			gocbBucket, ok := base.AsUserXattrStore(rt.GetSingleTestDataStore())
+			gocbBucket, ok := base.AsUserXattrStore(rt.GetSingleDataStore())
 			if !ok {
 				t.Skip("Test requires Couchbase Bucket")
 			}
@@ -1231,7 +1231,7 @@ func TestRemovingUserXattr(t *testing.T) {
 
 			// Get sync data for doc and ensure user xattr has been used correctly to set channel
 			var syncData db.SyncData
-			subdocStore, ok := base.AsSubdocXattrStore(rt.GetSingleTestDataStore())
+			subdocStore, ok := base.AsSubdocXattrStore(rt.GetSingleDataStore())
 			require.True(t, ok)
 			_, err = subdocStore.SubdocGetXattr(docKey, base.SyncXattrName, &syncData)
 			assert.NoError(t, err)
@@ -1294,7 +1294,7 @@ func TestUserXattrAvoidRevisionIDGeneration(t *testing.T) {
 
 	defer rt.Close()
 
-	dataStore := rt.GetSingleTestDataStore()
+	dataStore := rt.GetSingleDataStore()
 	userXattrStore, ok := base.AsUserXattrStore(dataStore)
 	if !ok {
 		t.Skip("Test requires Couchbase Bucket")
@@ -1343,7 +1343,7 @@ func TestUserXattrAvoidRevisionIDGeneration(t *testing.T) {
 	assert.Equal(t, []string{channelName}, syncData2.Channels.KeySet())
 	assert.Equal(t, syncData2.Channels.KeySet(), docRev2.Channels.ToArray())
 
-	err = rt.GetSingleTestDataStore().Set(docKey, 0, nil, []byte(`{"update": "update"}`))
+	err = rt.GetSingleDataStore().Set(docKey, 0, nil, []byte(`{"update": "update"}`))
 	assert.NoError(t, err)
 
 	err = rt.WaitForCondition(func() bool {

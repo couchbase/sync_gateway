@@ -99,7 +99,7 @@ func TestAttachmentCompactionRun(t *testing.T) {
 	collection := &db.DatabaseCollectionWithUser{
 		DatabaseCollection: rt.GetSingleTestDatabaseCollection(),
 	}
-	dataStore := rt.GetSingleTestDataStore()
+	dataStore := rt.GetSingleDataStore()
 
 	for i := 0; i < 20; i++ {
 		docID := fmt.Sprintf("testDoc-%d", i)

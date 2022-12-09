@@ -45,7 +45,7 @@ func TestCollectionsPutDocInKeyspace(t *testing.T) {
 	})
 	defer rt.Close()
 
-	ds := rt.GetSingleTestDataStore()
+	ds := rt.GetSingleDataStore()
 	dataStoreName, ok := base.AsDataStoreName(ds)
 	require.True(t, ok)
 	tests := []struct {
@@ -261,7 +261,7 @@ func TestCollectionsBasicIndexQuery(t *testing.T) {
 	RequireStatus(t, resp, http.StatusCreated)
 
 	// use the rt.Bucket which has got the foo.bar scope/collection set up
-	ds := rt.GetSingleTestDataStore()
+	ds := rt.GetSingleDataStore()
 	n1qlStore, ok := base.AsN1QLStore(ds)
 	require.True(t, ok)
 

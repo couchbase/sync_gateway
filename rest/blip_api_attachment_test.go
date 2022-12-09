@@ -431,7 +431,7 @@ func TestBlipAttachNameChange(t *testing.T) {
 
 	// Confirm attachment is in the bucket
 	attachmentAKey := db.MakeAttachmentKey(2, "doc", digest)
-	bucketAttachmentA, _, err := rt.GetSingleTestDataStore().GetRaw(attachmentAKey)
+	bucketAttachmentA, _, err := rt.GetSingleDataStore().GetRaw(attachmentAKey)
 	require.NoError(t, err)
 	require.EqualValues(t, bucketAttachmentA, attachmentA)
 
@@ -443,7 +443,7 @@ func TestBlipAttachNameChange(t *testing.T) {
 	require.NoError(t, err)
 
 	// Check if attachment is still in bucket
-	bucketAttachmentA, _, err = rt.GetSingleTestDataStore().GetRaw(attachmentAKey)
+	bucketAttachmentA, _, err = rt.GetSingleDataStore().GetRaw(attachmentAKey)
 	assert.NoError(t, err)
 	assert.Equal(t, bucketAttachmentA, attachmentA)
 
@@ -488,7 +488,7 @@ func TestBlipLegacyAttachNameChange(t *testing.T) {
 
 	// Confirm attachment is in the bucket
 	attachmentAKey := db.MakeAttachmentKey(1, "doc", digest)
-	bucketAttachmentA, _, err := rt.GetSingleTestDataStore().GetRaw(attachmentAKey)
+	bucketAttachmentA, _, err := rt.GetSingleDataStore().GetRaw(attachmentAKey)
 	require.NoError(t, err)
 	require.EqualValues(t, bucketAttachmentA, attBody)
 
@@ -541,7 +541,7 @@ func TestBlipLegacyAttachDocUpdate(t *testing.T) {
 
 	// Confirm attachment is in the bucket
 	attachmentAKey := db.MakeAttachmentKey(1, "doc", digest)
-	dataStore := rt.GetSingleTestDataStore()
+	dataStore := rt.GetSingleDataStore()
 	bucketAttachmentA, _, err := dataStore.GetRaw(attachmentAKey)
 	require.NoError(t, err)
 	require.EqualValues(t, bucketAttachmentA, attBody)
