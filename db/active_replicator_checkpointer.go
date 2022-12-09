@@ -222,7 +222,7 @@ func (c *Checkpointer) CheckpointNow() {
 	}
 
 	base.InfofCtx(c.ctx, base.KeyReplicate, "checkpointer: calculated seq: %v", seq)
-	err := c._setCheckpoints(*seq, status)
+	err := c._setCheckpoints(seq, status)
 	if err != nil {
 		base.WarnfCtx(c.ctx, "couldn't set checkpoints: %v", err)
 	}
@@ -422,25 +422,26 @@ func (c *Checkpointer) fetchCheckpoints() (*ReplicationStatus, error) {
 		checkpointSeq = ""
 	}
 
-	base.InfofCtx(c.ctx, base.KeyReplicate, "using checkpointed seq: %q", checkpointSeq)
-
-	if checkpointSeq == "" {
-		c.stats.GetCheckpointMissCount++
+	var parsedCheckpointSeq SequenceID
+	if checkpointSeq != "" {
+		parsedCheckpointSeq, err = ParsePlainSequenceID(checkpointSeq)
+		if err == nil {
+			c.stats.GetCheckpointHitCount++
+		} else {
+			base.WarnfCtx(c.ctx, "couldn't parse checkpoint sequence %q, unable to use previous checkpoint: %v", checkpointSeq, err)
+			c.stats.GetCheckpointMissCount++
+		}
 	} else {
-		c.stats.GetCheckpointHitCount++
+		c.stats.GetCheckpointMissCount++
 	}
 
-	parsedCheckpointSeq, err := ParsePlainSequenceID(checkpointSeq)
-	if err != nil {
-		return nil, err
-	}
-
+	base.InfofCtx(c.ctx, base.KeyReplicate, "using checkpointed seq: %q", parsedCheckpointSeq.String())
 	c.lastCheckpointSeq = parsedCheckpointSeq
 
 	return status, nil
 }
 
-func (c *Checkpointer) _setCheckpoints(seq SequenceID, status *ReplicationStatus) (err error) {
+func (c *Checkpointer) _setCheckpoints(seq *SequenceID, status *ReplicationStatus) (err error) {
 	seqStr := seq.String()
 	base.TracefCtx(c.ctx, base.KeyReplicate, "setCheckpoints(%v)", seqStr)
 	c.lastLocalCheckpointRevID, err = c.setLocalCheckpointWithRetry(
@@ -464,7 +465,7 @@ func (c *Checkpointer) _setCheckpoints(seq SequenceID, status *ReplicationStatus
 		return err
 	}
 
-	c.lastCheckpointSeq = seq
+	c.lastCheckpointSeq = *seq
 	c.stats.SetCheckpointCount++
 
 	return nil
