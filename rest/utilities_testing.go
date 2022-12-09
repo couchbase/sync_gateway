@@ -271,7 +271,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 		if rt.DatabaseConfig.UseViews == nil {
 			rt.DatabaseConfig.UseViews = base.BoolPtr(base.TestsDisableGSI())
 		}
-		if rt.collectionConfig != useSingleCollectionDefaultOnly && *rt.DatabaseConfig.UseViews == false {
+		if rt.collectionConfig != useSingleCollectionDefaultOnly && (*rt.DatabaseConfig.UseViews != false || base.UnitTestUrlIsWalrus()) {
 			// Configure non default collections by default
 			rt.DatabaseConfig.Scopes = getCollectionsConfig(rt.TB, testBucket, rt.numCollections)
 		}
