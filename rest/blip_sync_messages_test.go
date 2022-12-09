@@ -64,15 +64,10 @@ func TestAddRevision(t *testing.T) {
 // Reproduces SG #3283
 func TestSubChangesSince(t *testing.T) {
 
-	rt := NewRestTester(t, nil)
-	defer rt.Close()
-
-	testDb := rt.GetDatabase()
-
 	rq := blip.NewRequest()
 	rq.Properties["since"] = `"1"`
 
-	subChangesParams, err := db.NewSubChangesParams(context.TODO(), rq, db.SequenceID{}, testDb.ParseSequenceID)
+	subChangesParams, err := db.NewSubChangesParams(context.TODO(), rq, db.SequenceID{}, db.ParseJSONSequenceID)
 	require.NoError(t, err)
 
 	seqID := subChangesParams.Since()
