@@ -38,14 +38,14 @@ paths:
     $ref: ./paths/public/~.yaml
   '/{keyspace}/':
     $ref: './paths/admin/{keyspace}~.yaml'
-  '/{db}/_all_docs':
-    $ref: './paths/public/{db}~_all_docs.yaml'
+  '/{keyspace}/_all_docs':
+    $ref: './paths/public/{keyspace}~_all_docs.yaml'
   '/{keyspace}/_bulk_docs':
     $ref: './paths/public/{keyspace}~_bulk_docs.yaml'
   '/{keyspace}/_bulk_get':
     $ref: './paths/public/{keyspace}~_bulk_get.yaml'
-  '/{db}/_changes':
-    $ref: './paths/public/{db}~_changes.yaml'
+  '/{keyspace}/_changes':
+    $ref: './paths/public/{keyspace}~_changes.yaml'
   '/{db}/_design/{ddoc}':
     $ref: './paths/public/{db}~_design~{ddoc}.yaml'
   '/{db}/_design/{ddoc}/_view/{view}':
