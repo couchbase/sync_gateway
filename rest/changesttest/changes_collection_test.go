@@ -411,6 +411,78 @@ func TestMultiCollectionChangesUserDynamicGrantDCP(t *testing.T) {
 	logChangesResponse(t, changesResponse.Body.Bytes())
 }
 
+func TestMultiCollectionChangesCustomSyncFunctions(t *testing.T) {
+
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeyChanges, base.KeyCache, base.KeyCRUD)
+	testBucket := base.GetTestBucket(t)
+	scopesConfig, keyspaces := getMultiCollectionConfig(t, testBucket, 2)
+
+	c1Keyspace := keyspaces[0]
+	c2Keyspace := keyspaces[1]
+	_, c1Scope, c1Collection, err := rest.ParseKeyspace(c1Keyspace)
+	require.NoError(t, err)
+	_, c2Scope, c2Collection, err := rest.ParseKeyspace(c2Keyspace)
+
+	c1SyncFunction := `function(doc, oldDoc) { channel("collection1")}`
+	c2SyncFunction := `
+	function(doc, oldDoc) { 
+		channel("collection2")
+		if (doc.public) {
+			channel("!")
+		}
+	}`
+	scopesConfig[*c1Scope].Collections[*c1Collection] = rest.CollectionConfig{SyncFn: &c1SyncFunction}
+	scopesConfig[*c2Scope].Collections[*c2Collection] = rest.CollectionConfig{SyncFn: &c2SyncFunction}
+
+	rtConfig := &rest.RestTesterConfig{
+		CustomTestBucket: testBucket,
+		DatabaseConfig: &rest.DatabaseConfig{
+			DbConfig: rest.DbConfig{
+				Scopes: scopesConfig,
+			},
+		},
+	}
+
+	rt := rest.NewRestTester(t, rtConfig)
+	defer rt.Close()
+
+	// Create user with access to channel collection1 in both collections
+	ctx := rt.Context()
+	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
+	bernard, err := a.NewUser("bernard", "letmein", channels.BaseSetOf(t, "collection1"))
+	assert.NoError(t, err)
+	assert.NoError(t, a.Save(bernard))
+
+	// Put two documents
+	response := rt.SendAdminRequest("PUT", "/"+c1Keyspace+"/doc1", `{"value":1}`)
+	rest.RequireStatus(t, response, 201)
+	response = rt.SendAdminRequest("PUT", "/"+c2Keyspace+"/doc1", `{"value":1}`)
+	rest.RequireStatus(t, response, 201)
+	response = rt.SendAdminRequest("PUT", "/"+c2Keyspace+"/publicDoc", `{"value":1, "public":true}`)
+	rest.RequireStatus(t, response, 201)
+	_ = rt.WaitForPendingChanges()
+
+	var changes struct {
+		Results  []db.ChangeEntry
+		Last_Seq db.SequenceID
+	}
+
+	// Issue changes request.  Will initialize cache for channels, and return docs via query
+	changesResponse := rt.SendUserRequest("GET", "/"+c1Keyspace+"/_changes?since=0", "", "bernard")
+	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
+	assert.NoError(t, err, "Error unmarshalling changes response")
+	require.Len(t, changes.Results, 1)
+	assert.Equal(t, "doc1", changes.Results[0].ID)
+	logChangesResponse(t, changesResponse.Body.Bytes())
+
+	changesResponse = rt.SendUserRequest("GET", "/"+c2Keyspace+"/_changes?since=0", "", "bernard")
+	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
+	assert.NoError(t, err, "Error unmarshalling changes response")
+	require.Len(t, changes.Results, 1)
+	assert.Equal(t, "publicDoc", changes.Results[0].ID)
+	logChangesResponse(t, changesResponse.Body.Bytes())
+}
+
 func logChangesResponse(t *testing.T, response []byte) {
 	var changes struct {
 		Results  []db.ChangeEntry

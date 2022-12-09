@@ -10,7 +10,10 @@ licenses/APL2.txt.
 
 package base
 
-import "errors"
+import (
+	"errors"
+	"fmt"
+)
 
 const SyncDocPrefix = "_sync:" // SyncDocPrefix is a common prefix for all Sync Gateway metadata documents
 
@@ -37,11 +40,12 @@ const (
 
 // Sync Gateway Metadata documents that should be GroupID scoped and accessed via the "WithGroupID" helper methods below
 const (
-	DCPCheckpointPrefixWithoutGroupID    = SyncDocPrefix + "dcp_ck:"   // DCPCheckpointPrefixWithoutGroupID stores a DCP checkpoint
-	SGCfgPrefixWithoutGroupID            = SyncDocPrefix + "cfg"       // SGCfgPrefixWithoutGroupID stores CfgSG/cbgt data
-	HeartbeaterPrefixWithoutGroupID      = SyncDocPrefix               // HeartbeaterPrefixWithoutGroupID stores a SG node heartbeat document
-	PersistentConfigPrefixWithoutGroupID = SyncDocPrefix + "dbconfig:" // PersistentConfigPrefixWithoutGroupID stores a database config
-	SyncFunctionKeyWithoutGroupID        = SyncDocPrefix + "syncdata"  // SyncFunctionKeyWithoutGroupID stores a copy of the Sync Function
+	DCPCheckpointPrefixWithoutGroupID       = SyncDocPrefix + "dcp_ck:"             // DCPCheckpointPrefixWithoutGroupID stores a DCP checkpoint
+	SGCfgPrefixWithoutGroupID               = SyncDocPrefix + "cfg"                 // SGCfgPrefixWithoutGroupID stores CfgSG/cbgt data
+	HeartbeaterPrefixWithoutGroupID         = SyncDocPrefix                         // HeartbeaterPrefixWithoutGroupID stores a SG node heartbeat document
+	PersistentConfigPrefixWithoutGroupID    = SyncDocPrefix + "dbconfig:"           // PersistentConfigPrefixWithoutGroupID stores a database config
+	SyncFunctionKeyWithoutGroupID           = SyncDocPrefix + "syncdata"            // SyncFunctionKeyWithoutGroupID stores a copy of the Sync Function
+	CollectionSyncFunctionKeyWithoutGroupID = SyncDocPrefix + "syncdata_collection" // CollectionSyncFunctionKeyWithoutGroupID stores a copy of the Sync Function
 )
 
 // SyncFunctionKeyWithGroupID returns a doc ID to use when storing the sync function
@@ -50,6 +54,14 @@ func SyncFunctionKeyWithGroupID(groupID string) string {
 		return SyncFunctionKeyWithoutGroupID + ":" + groupID
 	}
 	return SyncFunctionKeyWithoutGroupID
+}
+
+// SyncFunctionKeyWithGroupID returns a doc ID to use when storing the sync function
+func CollectionSyncFunctionKeyWithGroupID(groupID string, collectionID uint32) string {
+	if groupID != "" {
+		return fmt.Sprintf("%s:%d:%s", CollectionSyncFunctionKeyWithoutGroupID, collectionID, groupID)
+	}
+	return fmt.Sprintf("%s:%d", CollectionSyncFunctionKeyWithoutGroupID, collectionID)
 }
 
 // DCPCheckpointPrefixWithGroupID returns a doc ID prefix to use for DCP checkpoints
