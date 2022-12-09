@@ -1880,23 +1880,24 @@ func TestActiveReplicatorPullSkippedSequence(t *testing.T) {
 		password = "pa$$w*rD!"
 	)
 
-	rt2 := rest.NewRestTester(t, &rest.RestTesterConfig{
-		CustomTestBucket: tb2,
-		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
-			Users: map[string]*auth.PrincipalConfig{
-				username: {
-					Password:         base.StringPtr(password),
-					ExplicitChannels: base.SetOf(username),
+	rt2 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+		&rest.RestTesterConfig{
+			CustomTestBucket: tb2,
+			DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
+				Users: map[string]*auth.PrincipalConfig{
+					username: {
+						Password:         base.StringPtr(password),
+						ExplicitChannels: base.SetOf(username),
+					},
 				},
-			},
-			CacheConfig: &rest.CacheConfig{
-				// shorten pending sequence handling to speed up test
-				ChannelCacheConfig: &rest.ChannelCacheConfig{
-					MaxWaitPending: base.Uint32Ptr(1),
+				CacheConfig: &rest.CacheConfig{
+					// shorten pending sequence handling to speed up test
+					ChannelCacheConfig: &rest.ChannelCacheConfig{
+						MaxWaitPending: base.Uint32Ptr(1),
+					},
 				},
-			},
-		}},
-	})
+			}},
+		})
 	defer rt2.Close()
 
 	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1.
@@ -1912,9 +1913,10 @@ func TestActiveReplicatorPullSkippedSequence(t *testing.T) {
 	// Active
 	tb1 := base.GetTestBucket(t)
 
-	rt1 := rest.NewRestTester(t, &rest.RestTesterConfig{
-		CustomTestBucket: tb1,
-	})
+	rt1 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+		&rest.RestTesterConfig{
+			CustomTestBucket: tb1,
+		})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
 
