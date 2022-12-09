@@ -268,12 +268,12 @@ func (rt *RestTester) Bucket() base.Bucket {
 			// If no db config was passed in, create one
 			rt.DatabaseConfig = &DatabaseConfig{}
 		}
-		if rt.collectionConfig != useSingleCollectionDefaultOnly {
-			// Configure non default collections by default
-			rt.DatabaseConfig.Scopes = getCollectionsConfig(rt.TB, testBucket, rt.numCollections)
-		}
 		if rt.DatabaseConfig.UseViews == nil {
 			rt.DatabaseConfig.UseViews = base.BoolPtr(base.TestsDisableGSI())
+		}
+		if rt.collectionConfig != useSingleCollectionDefaultOnly && *rt.DatabaseConfig.UseViews == false {
+			// Configure non default collections by default
+			rt.DatabaseConfig.Scopes = getCollectionsConfig(rt.TB, testBucket, rt.numCollections)
 		}
 
 		// numReplicas set to 0 for test buckets, since it should assume that there may only be one indexing node.
@@ -339,7 +339,7 @@ func (rt *RestTester) MetadataStore() base.DataStore {
 func getCollectionsConfig(t testing.TB, testBucket *base.TestBucket, numCollections int) ScopesConfig {
 	// Get a datastore as provided by the test
 	stores := testBucket.GetNonDefaultDatastoreNames()
-	require.GreaterOrEqual(t, len(stores), numCollections, "Requested more collections than found on testBucket")
+	require.True(t, len(stores) >= numCollections, "Requested more collections %d than found on testBucket %d", numCollections, len(stores))
 
 	scopesConfig := ScopesConfig{}
 	for i := 0; i < numCollections; i++ {
