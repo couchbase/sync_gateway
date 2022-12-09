@@ -272,7 +272,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 		if rt.DatabaseConfig.UseViews == nil {
 			rt.DatabaseConfig.UseViews = base.BoolPtr(base.TestsDisableGSI())
 		}
-		if rt.collectionConfig != useSingleCollectionDefaultOnly && (!*rt.DatabaseConfig.UseViews || base.UnitTestUrlIsWalrus()) {
+		if base.TestsUseNamedCollections() && rt.collectionConfig != useSingleCollectionDefaultOnly && (!*rt.DatabaseConfig.UseViews || base.UnitTestUrlIsWalrus()) {
 			// If scopes is already set, assume the caller has a plan
 			if rt.DatabaseConfig.Scopes == nil {
 				// Configure non default collections by default
@@ -1097,9 +1097,6 @@ type BlipTesterSpec struct {
 
 	// Supported blipProtocols for the client to use in order of preference
 	blipProtocols []string
-
-	// If true, only run the default collection
-	onlyDefaultCollection bool
 }
 
 // State associated with a BlipTester
@@ -1155,8 +1152,7 @@ func getDefaultBlipTesterSpec() BlipTesterSpec {
 func NewBlipTesterFromSpecWithRT(tb testing.TB, spec *BlipTesterSpec, rt *RestTester) (blipTester *BlipTester, err error) {
 	blipTesterSpec := spec
 	if spec == nil {
-		spec := getDefaultBlipTesterSpec()
-		blipTesterSpec = &spec
+		blipTesterSpec = &BlipTesterSpec{}
 	}
 	blipTester, err = createBlipTesterWithSpec(tb, *blipTesterSpec, rt)
 	if err != nil {
@@ -1169,7 +1165,7 @@ func NewBlipTesterFromSpecWithRT(tb testing.TB, spec *BlipTesterSpec, rt *RestTe
 
 // NewBlipTesterDefaultCollection creates a blip tester that has a RestTester only using a single database and `_default._default` collection.
 func NewBlipTesterDefaultCollection(tb testing.TB) *BlipTester {
-	return NewBlipTesterDefaultCollectionFromSpec(tb, BlipTesterSpec{GuestEnabled: true, onlyDefaultCollection: true})
+	return NewBlipTesterDefaultCollectionFromSpec(tb, BlipTesterSpec{GuestEnabled: true})
 }
 
 // NewBlipTesterDefaultCollectionFromSpec creates a blip tester that has a RestTester only using a single database and `_default._default` collection.

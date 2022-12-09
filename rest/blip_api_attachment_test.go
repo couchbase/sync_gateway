@@ -319,11 +319,11 @@ func TestPutAttachmentViaBlipGetViaRest(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)
 
 	// Create blip tester
-	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
-		connectingUsername: "user1",
-		connectingPassword: "1234",
-	})
-	require.NoError(t, err, "Unexpected error creating BlipTester")
+	bt := NewBlipTesterDefaultCollectionFromSpec(t, // CBG-2619 // make collection aware
+		BlipTesterSpec{
+			connectingUsername: "user1",
+			connectingPassword: "1234",
+		})
 	defer bt.Close()
 
 	attachmentBody := "attach"
