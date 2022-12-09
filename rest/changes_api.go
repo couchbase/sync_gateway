@@ -84,7 +84,7 @@ func (h *handler) updateChangesOptionsFromQuery(feed *string, options *db.Change
 	}
 
 	if _, ok := values["since"]; ok {
-		if options.Since, err = h.db.ParseSequenceID(h.getJSONStringQuery("since")); err != nil {
+		if options.Since, err = db.ParsePlainSequenceID(h.getJSONStringQuery("since")); err != nil {
 			return nil, nil, err
 		}
 	}
@@ -172,7 +172,7 @@ func (h *handler) handleChanges() error {
 		// GET request has parameters in URL:
 		feed = h.getQuery("feed")
 		var err error
-		if options.Since, err = h.db.ParseSequenceID(h.getJSONStringQuery("since")); err != nil {
+		if options.Since, err = db.ParsePlainSequenceID(h.getJSONStringQuery("since")); err != nil {
 			return err
 		}
 		options.Limit = int(h.getIntQuery("limit", 0))

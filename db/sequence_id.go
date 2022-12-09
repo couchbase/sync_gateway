@@ -1,6 +1,8 @@
 package db
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
 	"math"
 	"strconv"
@@ -54,9 +56,26 @@ func (s SequenceID) intSeqToString() string {
 	}
 }
 
-// Currently accepts a plain string, but in the future might accept generic JSON objects.
-// Calling this with a JSON string will result in an error.
-func (dbc *DatabaseContext) ParseSequenceID(str string) (s SequenceID, err error) {
+func seqStr(seq interface{}) string {
+	switch seq := seq.(type) {
+	case string:
+		return seq
+	case json.Number:
+		return seq.String()
+	}
+	base.WarnfCtx(context.Background(), "unknown seq type: %T", seq)
+	return ""
+}
+
+// ParseJSONSequenceID will parse a JSON string sequence ID. (e.g. accepts: `"1::3"`, `2`, and also a plain sequence like `1::3`)
+func ParseJSONSequenceID(str string) (SequenceID, error) {
+	plainStr := base.ConvertJSONString(str)
+	return ParsePlainSequenceID(plainStr)
+}
+
+// ParsePlainSequenceID will parse a plain sequence string - but not a JSON sequence string (e.g. accepts: `1::3` but not `"1::3"`)
+// Calling this with a JSON string will result in an error. Use ParseJSONSequenceID instead.
+func ParsePlainSequenceID(str string) (s SequenceID, err error) {
 	return parseIntegerSequenceID(str)
 }
 
@@ -154,6 +173,10 @@ func (s SequenceID) Equals(s2 SequenceID) bool {
 func (s SequenceID) Before(s2 SequenceID) bool {
 	// using SafeSequence for comparison, which takes the lower of LowSeq and Seq
 	if s.TriggeredBy == s2.TriggeredBy {
+		if s.SafeSequence() == s2.SafeSequence() {
+			// If both are equal, one sequence must be a non-zero LowSeq - sort those after the actual sequence.
+			return s.Seq < s2.Seq
+		}
 		return s.SafeSequence() < s2.SafeSequence() // the simple case: untriggered, or triggered by same sequence
 	} else if s.TriggeredBy == 0 {
 		return s.SafeSequence() < s2.TriggeredBy // s2 triggered but not s
