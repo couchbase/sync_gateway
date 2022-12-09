@@ -71,6 +71,11 @@ func (c *DatabaseCollection) bucketName() string {
 
 // channelMapper runs the javascript sync function. This is currently at the database level.
 func (c *DatabaseCollection) channelMapper() *channels.ChannelMapper {
+	// FIXME: this supports RestTesterConfig.SyncFn being applied to named bucket for single bucket testing.  That should
+	//  be done by test code, not here
+	if c.ChannelMapper == nil {
+		return c.dbCtx.ChannelMapper
+	}
 	return c.ChannelMapper
 }
 
