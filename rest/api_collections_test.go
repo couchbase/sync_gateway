@@ -24,9 +24,6 @@ import (
 // TestCollectionsPutDocInKeyspace creates a collection and starts up a RestTester instance on it.
 // Ensures that various keyspaces can or can't be used to insert a doc in the collection.
 func TestCollectionsPutDocInKeyspace(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("CBG-2554 walrus returns access errors that CBS does not")
-	}
 	base.TestRequiresCollections(t)
 	const (
 		username = "alice"
