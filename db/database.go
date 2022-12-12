@@ -178,8 +178,8 @@ type ScopeOptions struct {
 }
 
 type CollectionOptions struct {
-	Sync *string // Collection sync function
-
+	Sync          *string        // Collection sync function
+	ImportOptions *ImportOptions // Collection import filter and options
 }
 
 type SGReplicateOptions struct {
@@ -452,10 +452,19 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 				if collOpts.Sync != nil {
 					syncFn = *collOpts.Sync
 				}
+
+				if collOpts.ImportOptions != nil {
+					dbCollection.importOptions = *collOpts.ImportOptions
+				} else {
+					dbCollection.importOptions = dbContext.Options.ImportOptions
+
+				}
+
 				_, err = dbCollection.UpdateSyncFun(ctx, syncFn)
 				if err != nil {
 					return nil, err
 				}
+
 				dbContext.Scopes[scopeName].Collections[collName] = dbCollection
 
 				collectionID := dbCollection.GetCollectionID()

@@ -561,6 +561,8 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	}
 	contextOptions.UseViews = useViews
 
+	javascriptTimeout := getJavascriptTimeout(&config.DbConfig)
+
 	if len(config.Scopes) > 0 {
 		contextOptions.Scopes = make(db.ScopesOptions, len(config.Scopes))
 		for scopeName, scopeCfg := range config.Scopes {
@@ -568,9 +570,18 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 				Collections: make(map[string]db.CollectionOptions, len(scopeCfg.Collections)),
 			}
 			for collName, collCfg := range scopeCfg.Collections {
-				contextOptions.Scopes[scopeName].Collections[collName] = db.CollectionOptions{
-					Sync: collCfg.SyncFn,
+				var importOptions *db.ImportOptions
+				if collCfg.ImportFilter != nil {
+					importOptions = newBaseImportOptions(&config.DbConfig,
+						sc.Config.IsServerless())
+					importOptions.ImportFilter = db.NewImportFilterFunction(*collCfg.ImportFilter, javascriptTimeout)
 				}
+
+				contextOptions.Scopes[scopeName].Collections[collName] = db.CollectionOptions{
+					Sync:          collCfg.SyncFn,
+					ImportOptions: importOptions,
+				}
+
 			}
 		}
 	}
@@ -668,25 +679,40 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	return dbcontext, nil
 }
 
-func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConfig, dbName string) (db.DatabaseContextOptions, error) {
-
-	// Get timeout to use for import filter function and db context
+// getJavascriptTimeout returns the duration javascript functions can run.
+func getJavascriptTimeout(config *DbConfig) time.Duration {
 	javascriptTimeout := time.Duration(base.DefaultJavascriptTimeoutSecs) * time.Second
 	if config.JavascriptTimeoutSecs != nil {
 		javascriptTimeout = time.Duration(*config.JavascriptTimeoutSecs) * time.Second
 	}
+	return javascriptTimeout
+}
 
+// newBaseImportOptions returns a prepopulated ImportOptions struct with values that are database wide.
+func newBaseImportOptions(config *DbConfig, serverless bool) *db.ImportOptions {
 	// Identify import options
-	importOptions := db.ImportOptions{}
-	if config.ImportFilter != nil {
-		importOptions.ImportFilter = db.NewImportFilterFunction(*config.ImportFilter, javascriptTimeout)
+	importOptions := &db.ImportOptions{
+		BackupOldRev: base.BoolDefault(config.ImportBackupOldRev, false),
 	}
-	importOptions.BackupOldRev = base.BoolDefault(config.ImportBackupOldRev, false)
 
 	if config.ImportPartitions == nil {
-		importOptions.ImportPartitions = base.GetDefaultImportPartitions(sc.Config.IsServerless())
+		importOptions.ImportPartitions = base.GetDefaultImportPartitions(serverless)
 	} else {
 		importOptions.ImportPartitions = *config.ImportPartitions
+	}
+	return importOptions
+
+}
+
+func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConfig, dbName string) (db.DatabaseContextOptions, error) {
+
+	// Get timeout to use for import filter function and db context
+	javascriptTimeout := getJavascriptTimeout(config)
+
+	// Identify import options
+	importOptions := newBaseImportOptions(config, sc.Config.IsServerless())
+	if config.ImportFilter != nil {
+		importOptions.ImportFilter = db.NewImportFilterFunction(*config.ImportFilter, javascriptTimeout)
 	}
 
 	// Check for deprecated cache options. If new are set they will take priority but will still log warnings
@@ -877,7 +903,7 @@ func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConf
 		OIDCOptions:                   config.OIDCConfig,
 		LocalJWTConfig:                config.LocalJWTConfig,
 		DBOnlineCallback:              dbOnlineCallback,
-		ImportOptions:                 importOptions,
+		ImportOptions:                 *importOptions,
 		EnableXattr:                   config.UseXattrs(),
 		SecureCookieOverride:          secureCookieOverride,
 		SessionCookieName:             config.SessionCookieName,
