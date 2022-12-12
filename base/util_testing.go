@@ -118,25 +118,34 @@ func getTestBucket(t testing.TB) *TestBucket {
 	}
 }
 
-// GetNamedDataStore returns a named datastore from the TestBucket.
-func (tb *TestBucket) GetNamedDataStore() DataStore {
-	dataStoreNames, err := tb.ListDataStores()
+// GetNamedDataStore returns a named datastore from the TestBucket. Each number (starting from 0, indicates which data store you'll get.
+func (tb *TestBucket) GetNamedDataStore(count int) DataStore {
+	dataStoreNames := tb.GetNonDefaultDatastoreNames()
+	if count > len(dataStoreNames) {
+		tb.t.Errorf("You are requesting more datastores %d than are available on this test instance %d", dataStoreNames, count)
+	}
+	return tb.Bucket.NamedDataStore(dataStoreNames[count-1])
+}
+
+// Return a sorted list of data store names
+func (tb *TestBucket) GetNonDefaultDatastoreNames() []sgbucket.DataStoreName {
+	allDataStoreNames, err := tb.ListDataStores()
 	require.NoError(tb.t, err)
-	for _, name := range dataStoreNames {
+	var nonDefaultDataStoreNames []sgbucket.DataStoreName
+	for _, name := range allDataStoreNames {
 		if IsDefaultCollection(name.ScopeName(), name.CollectionName()) {
 			continue
 		}
-		return tb.Bucket.NamedDataStore(name)
+		nonDefaultDataStoreNames = append(nonDefaultDataStoreNames, name)
 	}
-	tb.t.Error("Could not find a named collection")
-	return nil
+	return nonDefaultDataStoreNames
 }
 
 // GetSingleDataStore returns a DataStore that can be used for testing.
 // This may be the default collection, or a named collection depending on whether SG_TEST_USE_DEFAULT_COLLECTION is set.
 func (b *TestBucket) GetSingleDataStore() sgbucket.DataStore {
 	if TestsUseNamedCollections() {
-		return b.GetNamedDataStore()
+		return b.GetNamedDataStore(1)
 	}
 	return b.Bucket.DefaultDataStore()
 }

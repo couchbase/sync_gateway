@@ -36,10 +36,11 @@ func reduceTestCheckpointInterval(interval time.Duration) func() {
 func addActiveRT(t *testing.T, testBucket *base.TestBucket) (activeRT *rest.RestTester) {
 
 	// Create a new rest tester, using a NoCloseClone of testBucket, which disables the TestBucketPool teardown
-	activeRT = rest.NewRestTester(t, &rest.RestTesterConfig{
-		CustomTestBucket:   testBucket.NoCloseClone(),
-		SgReplicateEnabled: true,
-	})
+	activeRT = rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+		&rest.RestTesterConfig{
+			CustomTestBucket:   testBucket.NoCloseClone(),
+			SgReplicateEnabled: true,
+		})
 
 	// If this is a walrus bucket, we need to jump through some hoops to ensure the shared in-memory walrus bucket isn't
 	// deleted when bucket.Close() is called during DatabaseContext.Close().

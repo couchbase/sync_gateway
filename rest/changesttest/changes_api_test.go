@@ -282,14 +282,19 @@ func TestPostChangesSinceInteger(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
-	rt := rest.NewRestTester(t, &rest.RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel);}`})
+	rt := rest.NewRestTesterDefaultCollection(t, // CBG-2618: fix collection channel access
+		&rest.RestTesterConfig{
+			SyncFn:         `function(doc) {channel(doc.channel);}`,
+			DatabaseConfig: &rest.DatabaseConfig{}, // force use of default scope and collection
+		})
 	defer rt.Close()
 
 	postChangesSince(t, rt)
 }
 
 func TestPostChangesWithQueryString(t *testing.T) {
-	rt := rest.NewRestTester(t, &rest.RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel);}`})
+	rt := rest.NewRestTesterDefaultCollection(t, // CBG-2618: fix collection channel access
+		&rest.RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel);}`})
 	defer rt.Close()
 
 	// Put several documents
@@ -454,7 +459,10 @@ func TestPostChangesAdminChannelGrant(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyChanges, base.KeyHTTP)
 
-	rt := rest.NewRestTester(t, &rest.RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel);}`})
+	rt := rest.NewRestTesterDefaultCollection(t, // CBG-2618: fix collection channel access
+		&rest.RestTesterConfig{
+			SyncFn: `function(doc) {channel(doc.channel);}`,
+		})
 	defer rt.Close()
 
 	// Create user with access to channel ABC:
@@ -540,7 +548,8 @@ func TestPostChangesAdminChannelGrantRemoval(t *testing.T) {
 	// Disable sequence batching for multi-RT tests (pending CBG-1000)
 	defer db.SuspendSequenceBatching()()
 
-	rt := rest.NewRestTester(t, &rest.RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel);}`})
+	rt := rest.NewRestTesterDefaultCollection(t, // CBG-2618: fix collection channel access
+		&rest.RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel);}`})
 	defer rt.Close()
 
 	// Create user with access to channel ABC:
@@ -695,7 +704,8 @@ func TestPostChangesAdminChannelGrantRemoval(t *testing.T) {
 func TestPostChangesAdminChannelGrantRemovalWithLimit(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyChanges, base.KeyHTTP)
 
-	rt := rest.NewRestTester(t, &rest.RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel);}`})
+	rt := rest.NewRestTesterDefaultCollection(t, // CBG-2618: fix collection channel access
+		&rest.RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel);}`})
 	defer rt.Close()
 
 	// Create user with access to channel ABC:
@@ -976,7 +986,7 @@ func TestChangesLoopingWhenLowSequence(t *testing.T) {
 		NumIndexReplicas: &numIndexReplicas,
 	}}
 	rtConfig := rest.RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel)}`, DatabaseConfig: shortWaitConfig}
-	rt := rest.NewRestTester(t, &rtConfig)
+	rt := rest.NewRestTesterDefaultCollection(t, &rtConfig) // CBG-2618: fix collection channel access
 	defer rt.Close()
 
 	ctx := rt.Context()
@@ -1068,7 +1078,7 @@ func TestChangesLoopingWhenLowSequenceOneShotUser(t *testing.T) {
 		NumIndexReplicas: &numIndexReplicas,
 	}}
 	rtConfig := rest.RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel)}`, DatabaseConfig: shortWaitConfig}
-	rt := rest.NewRestTester(t, &rtConfig)
+	rt := rest.NewRestTesterDefaultCollection(t, &rtConfig) // CBG-2618: fix collection channel access
 	defer rt.Close()
 
 	ctx := rt.Context()
@@ -1203,7 +1213,7 @@ func TestChangesLoopingWhenLowSequenceOneShotAdmin(t *testing.T) {
 		NumIndexReplicas: &numIndexReplicas,
 	}}
 	rtConfig := rest.RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel)}`, DatabaseConfig: shortWaitConfig}
-	rt := rest.NewRestTester(t, &rtConfig)
+	rt := rest.NewRestTesterDefaultCollection(t, &rtConfig) // CBG-2618: fix collection channel access
 	defer rt.Close()
 
 	ctx := rt.Context()
@@ -1335,7 +1345,7 @@ func TestChangesLoopingWhenLowSequenceLongpollUser(t *testing.T) {
 		NumIndexReplicas: &numIndexReplicas,
 	}}
 	rtConfig := rest.RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel)}`, DatabaseConfig: shortWaitConfig}
-	rt := rest.NewRestTester(t, &rtConfig)
+	rt := rest.NewRestTesterDefaultCollection(t, &rtConfig) // CBG-2618: fix collection channel access
 	defer rt.Close()
 
 	ctx := rt.Context()
@@ -1726,8 +1736,10 @@ func TestOneShotChangesWithExplicitDocIds(t *testing.T) {
 
 	defer db.SuspendSequenceBatching()()
 
-	rtConfig := rest.RestTesterConfig{SyncFn: `function(doc) {channel(doc.channels)}`}
-	rt := rest.NewRestTester(t, &rtConfig)
+	rtConfig := rest.RestTesterConfig{
+		SyncFn: `function(doc) {channel(doc.channels)}`,
+	}
+	rt := rest.NewRestTesterDefaultCollection(t, &rtConfig) // CBG-2618: fix collection channel access
 	defer rt.Close()
 
 	// Create user1
@@ -1929,8 +1941,10 @@ func TestChangesIncludeDocs(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyNone)
 
-	rtConfig := rest.RestTesterConfig{SyncFn: `function(doc) {channel(doc.channels)}`}
-	rt := rest.NewRestTester(t, &rtConfig)
+	rtConfig := rest.RestTesterConfig{
+		SyncFn: `function(doc) {channel(doc.channels)}`,
+	}
+	rt := rest.NewRestTesterDefaultCollection(t, &rtConfig) // CBG-2618: fix collection channel access
 	testDB := rt.GetDatabase()
 	testDB.RevsLimit = 3
 	defer rt.Close()
@@ -3678,7 +3692,7 @@ func TestIncludeDocsWithPrincipals(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
-	rt := rest.NewRestTester(t, nil)
+	rt := rest.NewRestTesterDefaultCollection(t, nil) // CBG-2618: fix collection channel access
 	defer rt.Close()
 
 	ctx := rt.Context()
@@ -3733,7 +3747,7 @@ func TestChangesAdminChannelGrantLongpollNotify(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyChanges, base.KeyHTTP)
 
-	rt := rest.NewRestTester(t, nil)
+	rt := rest.NewRestTesterDefaultCollection(t, nil) // CBG-2618: fix collection channel access
 	defer rt.Close()
 
 	// Create user with access to channel ABC:
