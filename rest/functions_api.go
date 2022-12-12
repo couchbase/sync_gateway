@@ -40,7 +40,7 @@ func (h *handler) handleFunctionCall() error {
 	}
 	canMutate := h.rq.Method != "GET"
 
-	return h.db.WithTimeout(h.ctx(), db.UserFunctionTimeout, func(ctx context.Context) error {
+	return db.WithTimeout(h.ctx(), db.UserFunctionTimeout, func(ctx context.Context) error {
 		fn, err := h.db.GetUserFunction(fnName, fnParams, canMutate, ctx)
 		if err != nil {
 			return err
@@ -66,14 +66,21 @@ func (h *handler) getFunctionArgs(maxSize *int) (string, map[string]interface{},
 	var err error
 	if h.rq.Method == "POST" {
 		// POST: Args come from the request body in JSON format:
+		input, err := processContentEncoding(h.rq.Header, h.requestBody, "application/json")
+		if err != nil {
+			return "", nil, err
+		}
 		if h.rq.ContentLength >= 0 {
 			if err := db.CheckRequestSize(h.rq.ContentLength, maxSize); err != nil {
 				return "", nil, err
 			}
 		}
-		err = h.readJSONInto(&args)
-		if err == nil && h.rq.ContentLength < 0 && maxSize != nil {
-			err = db.CheckRequestSize(int64(db.EstimateSizeOfJSON(args)), maxSize)
+		// Decode the body bytes into target structure.
+		decoder := json.NewDecoder(input)
+		err = decoder.Decode(&args)
+		_ = input.Close()
+		if err == nil {
+			err = db.CheckRequestSize(decoder.InputOffset(), maxSize)
 		}
 	} else {
 		// GET: Params come from the URL queries (`?key=value`):
@@ -130,7 +137,7 @@ func (h *handler) writeQueryRows(rows sgbucket.QueryResultIterator) error {
 			return err
 		}
 		// The iterator streams results as the query engine produces them, so this loop may take most of the query's time; check for timeout after each iteration:
-		if err = h.db.CheckTimeout(h.ctx()); err != nil {
+		if err = db.CheckTimeout(h.ctx()); err != nil {
 			return err
 		}
 	}
@@ -214,7 +221,7 @@ func (h *handler) handleGraphQL() error {
 		return base.HTTPErrorf(http.StatusBadRequest, "Missing/empty `query` property")
 	}
 
-	return h.db.WithTimeout(h.ctx(), db.UserFunctionTimeout, func(ctx context.Context) error {
+	return db.WithTimeout(h.ctx(), db.UserFunctionTimeout, func(ctx context.Context) error {
 		result, err := h.db.UserGraphQLQuery(queryString, operationName, variables, canMutate, ctx)
 		if err == nil {
 			h.writeJSON(result)

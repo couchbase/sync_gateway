@@ -22,16 +22,16 @@ import (
 // ImportListener manages the import DCP feed.  ProcessFeedEvent is triggered for each feed events,
 // and invokes ImportFeedEvent for any event that's eligible for import handling.
 type importListener struct {
-	bucketName       string                        // Used for logging
-	terminator       chan bool                     // Signal to cause cbdatasource bucketdatasource.Close() to be called, which removes dcp receiver
-	dbName           string                        // used for naming the DCP feed
-	metaStore        base.Bucket                   // collection to store DCP metadata
-	collections      map[uint32]Database           // Admin databases used for import, keyed by collection ID (CB-server-side)
-	dbStats          *base.DatabaseStats           // Database stats group
-	importStats      *base.SharedBucketImportStats // import stats group
-	cbgtContext      *base.CbgtContext             // Handle to cbgt manager,cfg
-	checkpointPrefix string                        // DCP checkpoint key prefix
-	loggingCtx       context.Context               // ctx for logging on event callbacks
+	bucketName       string                                // Used for logging
+	terminator       chan bool                             // Signal to cause cbdatasource bucketdatasource.Close() to be called, which removes dcp receiver
+	dbName           string                                // used for naming the DCP feed
+	bucket           base.Bucket                           // bucket to get vb stats for feed
+	collections      map[uint32]DatabaseCollectionWithUser // Admin databases used for import, keyed by collection ID (CB-server-side)
+	dbStats          *base.DatabaseStats                   // Database stats group
+	importStats      *base.SharedBucketImportStats         // import stats group
+	cbgtContext      *base.CbgtContext                     // Handle to cbgt manager,cfg
+	checkpointPrefix string                                // DCP checkpoint key prefix
+	loggingCtx       context.Context                       // ctx for logging on event callbacks
 }
 
 func NewImportListener(groupID string) *importListener {
@@ -48,43 +48,57 @@ func (il *importListener) StartImportFeed(ctx context.Context, bucket base.Bucke
 	il.bucketName = bucket.GetName()
 	il.dbName = dbContext.Name
 	il.loggingCtx = ctx
-	il.metaStore = dbContext.Bucket // FIXME(CBG-2266): use proper metadata collection
-	il.collections = make(map[uint32]Database)
+	il.bucket = bucket
+	il.collections = make(map[uint32]DatabaseCollectionWithUser)
 	il.dbStats = dbStats.Database()
 	il.importStats = dbStats.SharedBucketImport()
 
 	collectionNamesByScope := make(map[string][]string)
 	var scopeName string
 
-	if len(dbContext.Scopes) > 0 {
-		if len(dbContext.Scopes) > 1 {
-			return fmt.Errorf("multiple scopes not supported")
-		}
-		for sn := range dbContext.Scopes {
-			scopeName = sn
+	if len(dbContext.Scopes) > 1 {
+		return fmt.Errorf("multiple scopes not supported")
+	}
+	for sn := range dbContext.Scopes {
+		scopeName = sn
+	}
+
+	if !dbContext.onlyDefaultCollection() {
+		gocbv2Bucket, err := base.AsGocbV2Bucket(bucket)
+		if err != nil {
+			return err
 		}
 
-		coll, err := base.AsCollection(bucket)
-		if err != nil {
-			return fmt.Errorf("configured with named collections, but bucket is not collection: %w", err)
-		}
-		collectionManifest, err := coll.GetCollectionManifest()
+		collectionManifest, err := gocbv2Bucket.GetCollectionManifest()
 		if err != nil {
 			return fmt.Errorf("failed to load collection manifest: %w", err)
 		}
 
 		collectionNamesByScope[scopeName] = make([]string, 0, len(dbContext.Scopes[scopeName].Collections))
-		for collName, collCtx := range dbContext.Scopes[scopeName].Collections {
+		for collName, _ := range dbContext.Scopes[scopeName].Collections {
 			collectionNamesByScope[scopeName] = append(collectionNamesByScope[scopeName], collName)
 
 			collID, ok := base.GetIDForCollection(collectionManifest, scopeName, collName)
 			if !ok {
 				return fmt.Errorf("failed to find ID for collection %s.%s", base.MD(scopeName).Redact(), base.MD(collName).Redact())
 			}
-			il.collections[collID] = Database{DatabaseContext: collCtx.CollectionCtx, user: nil}
+			dbCollection := dbContext.CollectionByID[collID]
+			if dbCollection == nil {
+				return fmt.Errorf("failed to find collection for  %s.%s", base.MD(scopeName).Redact(), base.MD(collName).Redact())
+
+			}
+			il.collections[collID] = DatabaseCollectionWithUser{
+				DatabaseCollection: dbCollection,
+				user:               nil, // admin
+			}
 		}
 	} else {
-		il.collections[0] = Database{DatabaseContext: dbContext, user: nil}
+		collectionID := base.DefaultCollectionID
+		il.collections[collectionID] = DatabaseCollectionWithUser{
+			DatabaseCollection: dbContext.CollectionByID[collectionID],
+			user:               nil, // admin
+		}
+
 	}
 
 	feedArgs := sgbucket.FeedArguments{
@@ -107,19 +121,21 @@ func (il *importListener) StartImportFeed(ctx context.Context, bucket base.Bucke
 	base.InfofCtx(ctx, base.KeyDCP, "Starting DCP import feed for bucket: %q ", base.UD(bucket.GetName()))
 
 	// TODO: need to clean up StartDCPFeed to push bucket dependencies down
-	cbStore, ok := base.AsCouchbaseStore(bucket)
+	cbStore, ok := base.AsCouchbaseBucketStore(bucket)
 	if !ok {
 		// walrus is not a couchbasestore
 		return bucket.StartDCPFeed(feedArgs, il.ProcessFeedEvent, importFeedStatsMap.Map)
 	}
+
 	if !base.IsEnterpriseEdition() {
 		groupID := ""
-		collection, err := base.AsCollection(bucket)
+		gocbv2Bucket, err := base.AsGocbV2Bucket(bucket)
 		if err != nil {
 			return err
 		}
-		return base.StartGocbDCPFeed(collection, bucket.GetName(), feedArgs, il.ProcessFeedEvent, importFeedStatsMap.Map, base.DCPMetadataStoreCS, groupID)
+		return base.StartGocbDCPFeed(gocbv2Bucket, bucket.GetName(), feedArgs, il.ProcessFeedEvent, importFeedStatsMap.Map, base.DCPMetadataStoreCS, groupID)
 	}
+
 	il.cbgtContext, err = base.StartShardedDCPFeed(ctx, dbContext.Name, dbContext.Options.GroupID, dbContext.UUID, dbContext.Heartbeater,
 		bucket, cbStore.GetSpec(), scopeName, collectionNamesByScope[scopeName], dbContext.Options.ImportOptions.ImportPartitions, dbContext.CfgSG)
 	return err
@@ -168,7 +184,7 @@ func (il *importListener) ImportFeedEvent(event sgbucket.FeedEvent) {
 		return
 	}
 
-	syncData, rawBody, rawXattr, rawUserXattr, err := UnmarshalDocumentSyncDataFromFeed(event.Value, event.DataType, collectionCtx.Options.UserXattrKey, false)
+	syncData, rawBody, rawXattr, rawUserXattr, err := UnmarshalDocumentSyncDataFromFeed(event.Value, event.DataType, collectionCtx.userXattrKey(), false)
 	if err != nil {
 		base.DebugfCtx(il.loggingCtx, base.KeyImport, "Found sync metadata, but unable to unmarshal for feed document %q.  Will not be imported.  Error: %v", base.UD(event.Key), err)
 		if err == base.ErrEmptyMetadata {

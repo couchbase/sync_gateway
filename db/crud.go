@@ -48,13 +48,13 @@ func realDocID(docid string) string {
 	return docid
 }
 
-func (db *DatabaseContext) GetDocument(ctx context.Context, docid string, unmarshalLevel DocumentUnmarshalLevel) (doc *Document, err error) {
+func (db *DatabaseCollection) GetDocument(ctx context.Context, docid string, unmarshalLevel DocumentUnmarshalLevel) (doc *Document, err error) {
 	doc, _, err = db.GetDocumentWithRaw(ctx, docid, unmarshalLevel)
 	return doc, err
 }
 
 // Lowest-level method that reads a document from the bucket
-func (db *DatabaseContext) GetDocumentWithRaw(ctx context.Context, docid string, unmarshalLevel DocumentUnmarshalLevel) (doc *Document, rawBucketDoc *sgbucket.BucketDocument, err error) {
+func (db *DatabaseCollection) GetDocumentWithRaw(ctx context.Context, docid string, unmarshalLevel DocumentUnmarshalLevel) (doc *Document, rawBucketDoc *sgbucket.BucketDocument, err error) {
 	key := realDocID(docid)
 	if key == "" {
 		return nil, nil, base.HTTPErrorf(400, "Invalid doc ID")
@@ -67,7 +67,7 @@ func (db *DatabaseContext) GetDocumentWithRaw(ctx context.Context, docid string,
 
 		isSgWrite, crc32Match, _ := doc.IsSGWrite(ctx, rawBucketDoc.Body)
 		if crc32Match {
-			db.DbStats.Database().Crc32MatchCount.Add(1)
+			db.dbStats().Database().Crc32MatchCount.Add(1)
 		}
 
 		// If existing doc wasn't an SG Write, import the doc.
@@ -82,7 +82,7 @@ func (db *DatabaseContext) GetDocumentWithRaw(ctx context.Context, docid string,
 			return nil, nil, base.HTTPErrorf(404, "Not imported")
 		}
 	} else {
-		rawDoc, cas, getErr := db.Bucket.GetRaw(key)
+		rawDoc, cas, getErr := db.dataStore.GetRaw(key)
 		if getErr != nil {
 			return nil, nil, getErr
 		}
@@ -110,10 +110,10 @@ func (db *DatabaseContext) GetDocumentWithRaw(ctx context.Context, docid string,
 	return doc, rawBucketDoc, nil
 }
 
-func (db *DatabaseContext) GetDocWithXattr(key string, unmarshalLevel DocumentUnmarshalLevel) (doc *Document, rawBucketDoc *sgbucket.BucketDocument, err error) {
+func (db *DatabaseCollection) GetDocWithXattr(key string, unmarshalLevel DocumentUnmarshalLevel) (doc *Document, rawBucketDoc *sgbucket.BucketDocument, err error) {
 	rawBucketDoc = &sgbucket.BucketDocument{}
 	var getErr error
-	rawBucketDoc.Cas, getErr = db.Bucket.GetWithXattr(key, base.SyncXattrName, db.Options.UserXattrKey, &rawBucketDoc.Body, &rawBucketDoc.Xattr, &rawBucketDoc.UserXattr)
+	rawBucketDoc.Cas, getErr = db.dataStore.GetWithXattr(key, base.SyncXattrName, db.userXattrKey(), &rawBucketDoc.Body, &rawBucketDoc.Xattr, &rawBucketDoc.UserXattr)
 	if getErr != nil {
 		return nil, nil, getErr
 	}
@@ -128,7 +128,7 @@ func (db *DatabaseContext) GetDocWithXattr(key string, unmarshalLevel DocumentUn
 }
 
 // This gets *just* the Sync Metadata (_sync field) rather than the entire doc, for efficiency reasons.
-func (db *DatabaseContext) GetDocSyncData(ctx context.Context, docid string) (SyncData, error) {
+func (db *DatabaseCollection) GetDocSyncData(ctx context.Context, docid string) (SyncData, error) {
 
 	emptySyncData := SyncData{}
 	key := realDocID(docid)
@@ -140,7 +140,7 @@ func (db *DatabaseContext) GetDocSyncData(ctx context.Context, docid string) (Sy
 		// Retrieve doc and xattr from bucket, unmarshal only xattr.
 		// Triggers on-demand import when document xattr doesn't match cas.
 		var rawDoc, rawXattr, rawUserXattr []byte
-		cas, getErr := db.Bucket.GetWithXattr(key, base.SyncXattrName, db.Options.UserXattrKey, &rawDoc, &rawXattr, &rawUserXattr)
+		cas, getErr := db.dataStore.GetWithXattr(key, base.SyncXattrName, db.userXattrKey(), &rawDoc, &rawXattr, &rawUserXattr)
 		if getErr != nil {
 			return emptySyncData, getErr
 		}
@@ -153,7 +153,7 @@ func (db *DatabaseContext) GetDocSyncData(ctx context.Context, docid string) (Sy
 
 		isSgWrite, crc32Match, _ := doc.IsSGWrite(ctx, rawDoc)
 		if crc32Match {
-			db.DbStats.Database().Crc32MatchCount.Add(1)
+			db.dbStats().Database().Crc32MatchCount.Add(1)
 		}
 
 		// If existing doc wasn't an SG Write, import the doc.
@@ -170,7 +170,7 @@ func (db *DatabaseContext) GetDocSyncData(ctx context.Context, docid string) (Sy
 
 	} else {
 		// Non-xattr.  Retrieve doc from bucket, unmarshal metadata only.
-		rawDocBytes, _, err := db.Bucket.GetRaw(key)
+		rawDocBytes, _, err := db.dataStore.GetRaw(key)
 		if err != nil {
 			return emptySyncData, err
 		}
@@ -189,9 +189,9 @@ func (db *DatabaseContext) GetDocSyncData(ctx context.Context, docid string) (Sy
 
 // OnDemandImportForGet.  Attempts to import the doc based on the provided id, contents and cas.  ImportDocRaw does cas retry handling
 // if the document gets updated after the initial retrieval attempt that triggered this.
-func (db *DatabaseContext) OnDemandImportForGet(ctx context.Context, docid string, rawDoc []byte, rawXattr []byte, rawUserXattr []byte, cas uint64) (docOut *Document, err error) {
+func (db *DatabaseCollection) OnDemandImportForGet(ctx context.Context, docid string, rawDoc []byte, rawXattr []byte, rawUserXattr []byte, cas uint64) (docOut *Document, err error) {
 	isDelete := rawDoc == nil
-	importDb := Database{DatabaseContext: db, user: nil}
+	importDb := DatabaseCollectionWithUser{DatabaseCollection: db, user: nil}
 	var importErr error
 
 	docOut, importErr = importDb.ImportDocRaw(ctx, docid, rawDoc, rawXattr, rawUserXattr, isDelete, cas, nil, ImportOnDemand)
@@ -205,7 +205,7 @@ func (db *DatabaseContext) OnDemandImportForGet(ctx context.Context, docid strin
 }
 
 // GetRev returns the revision for the given docID and revID, or the current active revision if revID is empty.
-func (db *Database) GetRev(ctx context.Context, docID, revID string, history bool, attachmentsSince []string) (DocumentRevision, error) {
+func (db *DatabaseCollectionWithUser) GetRev(ctx context.Context, docID, revID string, history bool, attachmentsSince []string) (DocumentRevision, error) {
 	maxHistory := 0
 	if history {
 		maxHistory = math.MaxInt32
@@ -214,12 +214,12 @@ func (db *Database) GetRev(ctx context.Context, docID, revID string, history boo
 }
 
 // Returns the body of the current revision of a document
-func (db *Database) Get1xBody(ctx context.Context, docid string) (Body, error) {
+func (db *DatabaseCollectionWithUser) Get1xBody(ctx context.Context, docid string) (Body, error) {
 	return db.Get1xRevBody(ctx, docid, "", false, nil)
 }
 
 // Get Rev with all-or-none history based on specified 'history' flag
-func (db *Database) Get1xRevBody(ctx context.Context, docid, revid string, history bool, attachmentsSince []string) (Body, error) {
+func (db *DatabaseCollectionWithUser) Get1xRevBody(ctx context.Context, docid, revid string, history bool, attachmentsSince []string) (Body, error) {
 	maxHistory := 0
 	if history {
 		maxHistory = math.MaxInt32
@@ -229,7 +229,7 @@ func (db *Database) Get1xRevBody(ctx context.Context, docid, revid string, histo
 }
 
 // Retrieves rev with request history specified as collection of revids (historyFrom)
-func (db *Database) Get1xRevBodyWithHistory(ctx context.Context, docid, revid string, maxHistory int, historyFrom []string, attachmentsSince []string, showExp bool) (Body, error) {
+func (db *DatabaseCollectionWithUser) Get1xRevBodyWithHistory(ctx context.Context, docid, revid string, maxHistory int, historyFrom []string, attachmentsSince []string, showExp bool) (Body, error) {
 	rev, err := db.getRev(ctx, docid, revid, maxHistory, historyFrom, RevCacheIncludeBody)
 	if err != nil {
 		return nil, err
@@ -257,7 +257,7 @@ func (db *Database) Get1xRevBodyWithHistory(ctx context.Context, docid, revid st
 //   - attachmentsSince is nil to return no attachment bodies, otherwise a (possibly empty) list of
 //     revisions for which the client already has attachments and doesn't need bodies. Any attachment
 //     that hasn't changed since one of those revisions will be returned as a stub.
-func (db *Database) getRev(ctx context.Context, docid, revid string, maxHistory int, historyFrom []string, includeBody bool) (revision DocumentRevision, err error) {
+func (db *DatabaseCollectionWithUser) getRev(ctx context.Context, docid, revid string, maxHistory int, historyFrom []string, includeBody bool) (revision DocumentRevision, err error) {
 	if revid != "" {
 		// Get a specific revision body and history from the revision cache
 		// (which will load them if necessary, by calling revCacheLoader, above)
@@ -316,7 +316,7 @@ func (db *Database) getRev(ctx context.Context, docid, revid string, maxHistory 
 
 // GetDelta attempts to return the delta between fromRevId and toRevId.  If the delta can't be generated,
 // returns nil.
-func (db *Database) GetDelta(ctx context.Context, docID, fromRevID, toRevID string) (delta *RevisionDelta, redactedRev *DocumentRevision, err error) {
+func (db *DatabaseCollectionWithUser) GetDelta(ctx context.Context, docID, fromRevID, toRevID string) (delta *RevisionDelta, redactedRev *DocumentRevision, err error) {
 
 	if docID == "" || fromRevID == "" || toRevID == "" {
 		return nil, nil, nil
@@ -352,7 +352,7 @@ func (db *Database) GetDelta(ctx context.Context, docID, fromRevID, toRevID stri
 
 			// Case 2a. 'some rev' is the rev we're interested in - return the delta
 			// db.DbStats.StatsDeltaSync().Add(base.StatKeyDeltaCacheHits, 1)
-			db.DbStats.DeltaSync().DeltaCacheHit.Add(1)
+			db.dbStats().DeltaSync().DeltaCacheHit.Add(1)
 			return fromRevision.Delta, nil, nil
 		} else {
 			// TODO: Recurse and merge deltas when gen(revCacheDelta.toRevID) < gen(toRevId)
@@ -364,7 +364,7 @@ func (db *Database) GetDelta(ctx context.Context, docID, fromRevID, toRevID stri
 	if fromRevision.BodyBytes != nil {
 
 		// db.DbStats.StatsDeltaSync().Add(base.StatKeyDeltaCacheMisses, 1)
-		db.DbStats.DeltaSync().DeltaCacheMiss.Add(1)
+		db.dbStats().DeltaSync().DeltaCacheMiss.Add(1)
 		toRevision, err := db.revisionCache.Get(ctx, docID, toRevID, RevCacheOmitBody, RevCacheIncludeDelta)
 		if err != nil {
 			return nil, nil, err
@@ -430,9 +430,10 @@ func (db *Database) GetDelta(ctx context.Context, docID, fromRevID, toRevID stri
 	return nil, nil, nil
 }
 
-func (db *Database) authorizeUserForChannels(docID, revID string, channels base.Set, isDeleted bool, history Revisions) (isAuthorized bool, redactedRev DocumentRevision) {
+func (db *DatabaseCollectionWithUser) authorizeUserForChannels(docID, revID string, channels base.Set, isDeleted bool, history Revisions) (isAuthorized bool, redactedRev DocumentRevision) {
+
 	if db.user != nil {
-		if err := db.user.AuthorizeAnyChannel(channels); err != nil {
+		if err := db.user.AuthorizeAnyCollectionChannel(db.ScopeName(), db.Name(), channels); err != nil {
 			// On access failure, return (only) the doc history and deletion/removal
 			// status instead of returning an error. For justification see the comment in
 			// the getRevFromDoc method, below
@@ -458,7 +459,7 @@ func (db *Database) authorizeUserForChannels(docID, revID string, channels base.
 
 // Returns the body of a revision of a document, as well as the document's current channels
 // and the user/roles it grants channel access to.
-func (db *Database) Get1xRevAndChannels(ctx context.Context, docID string, revID string, listRevisions bool) (bodyBytes []byte, channels channels.ChannelMap, access UserAccessMap, roleAccess UserAccessMap, flags uint8, sequence uint64, gotRevID string, removed bool, err error) {
+func (db *DatabaseCollectionWithUser) Get1xRevAndChannels(ctx context.Context, docID string, revID string, listRevisions bool) (bodyBytes []byte, channels channels.ChannelMap, access UserAccessMap, roleAccess UserAccessMap, flags uint8, sequence uint64, gotRevID string, removed bool, err error) {
 	doc, err := db.GetDocument(ctx, docID, DocUnmarshalAll)
 	if doc == nil {
 		return
@@ -481,7 +482,7 @@ func (db *Database) Get1xRevAndChannels(ctx context.Context, docID string, revID
 }
 
 // Returns an HTTP 403 error if the User is not allowed to access any of this revision's channels.
-func (db *Database) authorizeDoc(doc *Document, revid string) error {
+func (db *DatabaseCollectionWithUser) authorizeDoc(doc *Document, revid string) error {
 	user := db.user
 	if doc == nil || user == nil {
 		return nil // A nil User means access control is disabled
@@ -491,7 +492,7 @@ func (db *Database) authorizeDoc(doc *Document, revid string) error {
 	}
 	if rev := doc.History[revid]; rev != nil {
 		// Authenticate against specific revision:
-		return db.user.AuthorizeAnyChannel(rev.Channels)
+		return db.user.AuthorizeAnyCollectionChannel(db.ScopeName(), db.Name(), rev.Channels)
 	} else {
 		// No such revision; let the caller proceed and return a 404
 		return nil
@@ -500,7 +501,7 @@ func (db *Database) authorizeDoc(doc *Document, revid string) error {
 
 // Gets a revision of a document. If it's obsolete it will be loaded from the database if possible.
 // inline "_attachments" properties in the body will be extracted and returned separately if present (pre-2.5 metadata, or backup revisions)
-func (db *DatabaseContext) getRevision(ctx context.Context, doc *Document, revid string) (bodyBytes []byte, body Body, attachments AttachmentsMeta, err error) {
+func (db *DatabaseCollection) getRevision(ctx context.Context, doc *Document, revid string) (bodyBytes []byte, body Body, attachments AttachmentsMeta, err error) {
 	bodyBytes = doc.getRevisionBodyJSON(ctx, revid, db.RevisionBodyLoader)
 
 	// No inline body, so look for separate doc:
@@ -618,7 +619,7 @@ func extractInlineAttachments(bodyBytes []byte) (attachments AttachmentsMeta, cl
 
 // Gets the body of a revision's nearest ancestor, as raw JSON (without _id or _rev.)
 // If no ancestor has any JSON, returns nil but no error.
-func (db *Database) getAncestorJSON(ctx context.Context, doc *Document, revid string) ([]byte, error) {
+func (db *DatabaseCollectionWithUser) getAncestorJSON(ctx context.Context, doc *Document, revid string) ([]byte, error) {
 	for {
 		if revid = doc.History.getParent(revid); revid == "" {
 			return nil, nil
@@ -631,7 +632,7 @@ func (db *Database) getAncestorJSON(ctx context.Context, doc *Document, revid st
 // Returns the body of a revision given a document struct. Checks user access.
 // If the user is not authorized to see the specific revision they asked for,
 // instead returns a minimal deletion or removal revision to let them know it's gone.
-func (db *Database) get1xRevFromDoc(ctx context.Context, doc *Document, revid string, listRevisions bool) (bodyBytes []byte, removed bool, err error) {
+func (db *DatabaseCollectionWithUser) get1xRevFromDoc(ctx context.Context, doc *Document, revid string, listRevisions bool) (bodyBytes []byte, removed bool, err error) {
 	var attachments AttachmentsMeta
 	if err := db.authorizeDoc(doc, revid); err != nil {
 		// As a special case, you don't need channel access to see a deletion revision,
@@ -691,7 +692,7 @@ func (db *Database) get1xRevFromDoc(ctx context.Context, doc *Document, revid st
 }
 
 // Returns the body and rev ID of the asked-for revision or the most recent available ancestor.
-func (db *Database) getAvailableRev(ctx context.Context, doc *Document, revid string) ([]byte, string, AttachmentsMeta, error) {
+func (db *DatabaseCollectionWithUser) getAvailableRev(ctx context.Context, doc *Document, revid string) ([]byte, string, AttachmentsMeta, error) {
 	for ; revid != ""; revid = doc.History[revid].Parent {
 		if bodyBytes, _, attachments, _ := db.getRevision(ctx, doc, revid); bodyBytes != nil {
 			return bodyBytes, revid, attachments, nil
@@ -701,7 +702,7 @@ func (db *Database) getAvailableRev(ctx context.Context, doc *Document, revid st
 }
 
 // Returns the 1x-style body of the asked-for revision or the most recent available ancestor.
-func (db *Database) getAvailable1xRev(ctx context.Context, doc *Document, revid string) ([]byte, error) {
+func (db *DatabaseCollectionWithUser) getAvailable1xRev(ctx context.Context, doc *Document, revid string) ([]byte, error) {
 	bodyBytes, ancestorRevID, attachments, err := db.getAvailableRev(ctx, doc, revid)
 	if err != nil {
 		return nil, err
@@ -730,7 +731,7 @@ func (db *Database) getAvailable1xRev(ctx context.Context, doc *Document, revid 
 
 // Returns the attachments of the asked-for revision or the most recent available ancestor.
 // Returns nil if no attachments or ancestors are found.
-func (db *Database) getAvailableRevAttachments(ctx context.Context, doc *Document, revid string) (ancestorAttachments AttachmentsMeta, foundAncestor bool) {
+func (db *DatabaseCollectionWithUser) getAvailableRevAttachments(ctx context.Context, doc *Document, revid string) (ancestorAttachments AttachmentsMeta, foundAncestor bool) {
 	_, _, attachments, err := db.getAvailableRev(ctx, doc, revid)
 	if err != nil {
 		return nil, false
@@ -740,7 +741,7 @@ func (db *Database) getAvailableRevAttachments(ctx context.Context, doc *Documen
 }
 
 // Moves a revision's ancestor's body out of the document object and into a separate db doc.
-func (db *Database) backupAncestorRevs(ctx context.Context, doc *Document, newDoc *Document) {
+func (db *DatabaseCollectionWithUser) backupAncestorRevs(ctx context.Context, doc *Document, newDoc *Document) {
 	newBodyBytes, err := newDoc.BodyBytes()
 	if err != nil {
 		base.WarnfCtx(ctx, "Error getting body bytes when backing up ancestor revs")
@@ -773,7 +774,7 @@ func (db *Database) backupAncestorRevs(ctx context.Context, doc *Document, newDo
 
 // ////// UPDATING DOCUMENTS:
 
-func (db *Database) OnDemandImportForWrite(ctx context.Context, docid string, doc *Document, deleted bool) error {
+func (db *DatabaseCollectionWithUser) OnDemandImportForWrite(ctx context.Context, docid string, doc *Document, deleted bool) error {
 
 	// Check whether the doc requiring import is an SDK delete
 	isDelete := false
@@ -783,7 +784,7 @@ func (db *Database) OnDemandImportForWrite(ctx context.Context, docid string, do
 		isDelete = deleted
 	}
 	// Use an admin-scoped database for import
-	importDb := Database{DatabaseContext: db.DatabaseContext, user: nil}
+	importDb := DatabaseCollectionWithUser{DatabaseCollection: db.DatabaseCollection, user: nil}
 
 	importedDoc, importErr := importDb.ImportDoc(ctx, docid, doc, isDelete, nil, ImportOnDemand)
 
@@ -800,7 +801,7 @@ func (db *Database) OnDemandImportForWrite(ctx context.Context, docid string, do
 
 // Updates or creates a document.
 // The new body's BodyRev property must match the current revision's, if any.
-func (db *Database) Put(ctx context.Context, docid string, body Body) (newRevID string, doc *Document, err error) {
+func (db *DatabaseCollectionWithUser) Put(ctx context.Context, docid string, body Body) (newRevID string, doc *Document, err error) {
 
 	delete(body, BodyId)
 
@@ -846,7 +847,7 @@ func (db *Database) Put(ctx context.Context, docid string, body Body) (newRevID 
 		if doc != nil {
 			isSgWrite, crc32Match, _ = doc.IsSGWrite(ctx, nil)
 			if crc32Match {
-				db.DbStats.Database().Crc32MatchCount.Add(1)
+				db.dbStats().Database().Crc32MatchCount.Add(1)
 			}
 		}
 
@@ -946,7 +947,7 @@ func (db *Database) Put(ctx context.Context, docid string, body Body) (newRevID 
 }
 
 // Adds an existing revision to a document along with its history (list of rev IDs.)
-func (db *Database) PutExistingRev(ctx context.Context, newDoc *Document, docHistory []string, noConflicts bool, forceAllConflicts bool, existingDoc *sgbucket.BucketDocument) (doc *Document, newRevID string, err error) {
+func (db *DatabaseCollectionWithUser) PutExistingRev(ctx context.Context, newDoc *Document, docHistory []string, noConflicts bool, forceAllConflicts bool, existingDoc *sgbucket.BucketDocument) (doc *Document, newRevID string, err error) {
 	return db.PutExistingRevWithConflictResolution(ctx, newDoc, docHistory, noConflicts, nil, forceAllConflicts, existingDoc)
 }
 
@@ -955,7 +956,7 @@ func (db *Database) PutExistingRev(ctx context.Context, newDoc *Document, docHis
 //  1. If noConflicts == false, the revision will be added to the rev tree as a conflict
 //  2. If noConflicts == true and a conflictResolverFunc is not provided, a 409 conflict error will be returned
 //  3. If noConflicts == true and a conflictResolverFunc is provided, conflicts will be resolved and the result added to the document.
-func (db *Database) PutExistingRevWithConflictResolution(ctx context.Context, newDoc *Document, docHistory []string, noConflicts bool, conflictResolver *ConflictResolver, forceAllowConflictingTombstone bool, existingDoc *sgbucket.BucketDocument) (doc *Document, newRevID string, err error) {
+func (db *DatabaseCollectionWithUser) PutExistingRevWithConflictResolution(ctx context.Context, newDoc *Document, docHistory []string, noConflicts bool, conflictResolver *ConflictResolver, forceAllowConflictingTombstone bool, existingDoc *sgbucket.BucketDocument) (doc *Document, newRevID string, err error) {
 	newRev := docHistory[0]
 	generation, _ := ParseRevID(newRev)
 	if generation < 0 {
@@ -973,7 +974,7 @@ func (db *Database) PutExistingRevWithConflictResolution(ctx context.Context, ne
 		if doc != nil {
 			isSgWrite, crc32Match, _ = doc.IsSGWrite(ctx, nil)
 			if crc32Match {
-				db.DbStats.Database().Crc32MatchCount.Add(1)
+				db.dbStats().Database().Crc32MatchCount.Add(1)
 			}
 		}
 
@@ -1062,7 +1063,7 @@ func (db *Database) PutExistingRevWithConflictResolution(ctx context.Context, ne
 	return doc, newRev, err
 }
 
-func (db *Database) PutExistingRevWithBody(ctx context.Context, docid string, body Body, docHistory []string, noConflicts bool) (doc *Document, newRev string, err error) {
+func (db *DatabaseCollectionWithUser) PutExistingRevWithBody(ctx context.Context, docid string, body Body, docHistory []string, noConflicts bool) (doc *Document, newRev string, err error) {
 	err = validateAPIDocUpdate(body)
 	if err != nil {
 		return nil, "", err
@@ -1100,7 +1101,7 @@ func (db *Database) PutExistingRevWithBody(ctx context.Context, docid string, bo
 // resolveConflict runs the conflictResolverFunction with doc and newDoc.  doc and newDoc's bodies and revision trees
 // may be changed based on the outcome of conflict resolution - see resolveDocLocalWins, resolveDocRemoteWins and
 // resolveDocMerge for specifics on what is changed under each scenario.
-func (db *Database) resolveConflict(ctx context.Context, localDoc *Document, remoteDoc *Document, docHistory []string, resolver *ConflictResolver) (resolvedRevID string, updatedHistory []string, resolveError error) {
+func (db *DatabaseCollectionWithUser) resolveConflict(ctx context.Context, localDoc *Document, remoteDoc *Document, docHistory []string, resolver *ConflictResolver) (resolvedRevID string, updatedHistory []string, resolveError error) {
 
 	if resolver == nil {
 		return "", nil, errors.New("Conflict resolution function is nil for resolveConflict")
@@ -1168,7 +1169,7 @@ func (db *Database) resolveConflict(ctx context.Context, localDoc *Document, rem
 //   - Tombstones the local revision
 //
 // The remote revision is added to the revision tree by the standard update processing.
-func (db *Database) resolveDocRemoteWins(ctx context.Context, localDoc *Document, conflict Conflict) (resolvedRevID string, err error) {
+func (db *DatabaseCollectionWithUser) resolveDocRemoteWins(ctx context.Context, localDoc *Document, conflict Conflict) (resolvedRevID string, err error) {
 
 	// Tombstone the local revision
 	localRevID := localDoc.CurrentRev
@@ -1191,7 +1192,7 @@ func (db *Database) resolveDocRemoteWins(ctx context.Context, localDoc *Document
 //	results in additional replication work for clients that have previously replicated the local
 //	revision.  This will be addressed post-Hydrogen with version vector work, but additional analysis
 //	of options for Hydrogen should be completed.
-func (db *Database) resolveDocLocalWins(ctx context.Context, localDoc *Document, remoteDoc *Document, conflict Conflict, docHistory []string) (resolvedRevID string, updatedHistory []string, err error) {
+func (db *DatabaseCollectionWithUser) resolveDocLocalWins(ctx context.Context, localDoc *Document, remoteDoc *Document, conflict Conflict, docHistory []string) (resolvedRevID string, updatedHistory []string, err error) {
 
 	// Clone the local revision as a child of the remote revision
 	docBodyBytes, err := localDoc.BodyBytes()
@@ -1278,7 +1279,7 @@ func (db *Database) resolveDocLocalWins(ctx context.Context, localDoc *Document,
 //   - Tombstones the local revision
 //   - Modifies the incoming document body to the merged body
 //   - Modifies the incoming history to prepend the merged revid (retaining the previous remote revID as its parent)
-func (db *Database) resolveDocMerge(ctx context.Context, localDoc *Document, remoteDoc *Document, conflict Conflict, docHistory []string, mergedBody Body) (resolvedRevID string, updatedHistory []string, err error) {
+func (db *DatabaseCollectionWithUser) resolveDocMerge(ctx context.Context, localDoc *Document, remoteDoc *Document, conflict Conflict, docHistory []string, mergedBody Body) (resolvedRevID string, updatedHistory []string, err error) {
 
 	// Move attachments from the merged body to the incoming DocAttachments for normal processing.
 	bodyAtts, ok := mergedBody[BodyAttachments]
@@ -1317,7 +1318,7 @@ func (db *Database) resolveDocMerge(ctx context.Context, localDoc *Document, rem
 }
 
 // tombstoneRevision updates the document's revision tree to add a tombstone revision as a child of the specified revID
-func (db *Database) tombstoneActiveRevision(ctx context.Context, doc *Document, revID string) (tombstoneRevID string, err error) {
+func (db *DatabaseCollectionWithUser) tombstoneActiveRevision(ctx context.Context, doc *Document, revID string) (tombstoneRevID string, err error) {
 
 	if doc.CurrentRev != revID {
 		return "", fmt.Errorf("Attempted to tombstone active revision for doc (%s), but provided rev (%s) doesn't match current rev(%s)", base.UD(doc.ID), revID, doc.CurrentRev)
@@ -1345,7 +1346,7 @@ func (db *Database) tombstoneActiveRevision(ctx context.Context, doc *Document, 
 	// Backup previous revision body, then remove the current body from the doc
 	bodyBytes, err := doc.BodyBytes()
 	if err == nil {
-		_ = db.setOldRevisionJSON(ctx, doc.ID, revID, bodyBytes, db.Options.OldRevExpirySeconds)
+		_ = db.setOldRevisionJSON(ctx, doc.ID, revID, bodyBytes, db.oldRevExpirySeconds())
 	}
 	doc.RemoveBody()
 
@@ -1365,7 +1366,7 @@ func (doc *Document) updateWinningRevAndSetDocFlags() {
 	}
 }
 
-func (db *Database) storeOldBodyInRevTreeAndUpdateCurrent(ctx context.Context, doc *Document, prevCurrentRev string, newRevID string, newDoc *Document, newDocHasAttachments bool) {
+func (db *DatabaseCollectionWithUser) storeOldBodyInRevTreeAndUpdateCurrent(ctx context.Context, doc *Document, prevCurrentRev string, newRevID string, newDoc *Document, newDocHasAttachments bool) {
 	if doc.HasBody() && doc.CurrentRev != prevCurrentRev && prevCurrentRev != "" {
 		// Store the doc's previous body into the revision tree:
 		oldBodyJson, marshalErr := doc.BodyBytes()
@@ -1431,9 +1432,9 @@ func (db *Database) storeOldBodyInRevTreeAndUpdateCurrent(ctx context.Context, d
 	}
 }
 
-func (db *Database) prepareSyncFn(doc *Document, newDoc *Document) (mutableBody Body, metaMap map[string]interface{}, newRevID string, err error) {
+func (db *DatabaseCollectionWithUser) prepareSyncFn(doc *Document, newDoc *Document) (mutableBody Body, metaMap map[string]interface{}, newRevID string, err error) {
 	// Marshal raw user xattrs for use in Sync Fn. If this fails we can bail out so we should do early as possible.
-	metaMap, err = doc.GetMetaMap(db.Options.UserXattrKey)
+	metaMap, err = doc.GetMetaMap(db.userXattrKey())
 	if err != nil {
 		return
 	}
@@ -1461,7 +1462,7 @@ func (db *Database) prepareSyncFn(doc *Document, newDoc *Document) (mutableBody 
 
 // Run the sync function on the given document and body. Need to inject the document ID and rev ID temporarily to run
 // the sync function.
-func (db *Database) runSyncFn(ctx context.Context, doc *Document, body Body, metaMap map[string]interface{}, newRevId string) (*uint32, string, base.Set, channels.AccessMap, channels.AccessMap, error) {
+func (db *DatabaseCollectionWithUser) runSyncFn(ctx context.Context, doc *Document, body Body, metaMap map[string]interface{}, newRevId string) (*uint32, string, base.Set, channels.AccessMap, channels.AccessMap, error) {
 	channelSet, access, roles, syncExpiry, oldBody, err := db.getChannelsAndAccess(ctx, doc, body, metaMap, newRevId)
 	if err != nil {
 		return nil, ``, nil, nil, nil, err
@@ -1470,7 +1471,7 @@ func (db *Database) runSyncFn(ctx context.Context, doc *Document, body Body, met
 	return syncExpiry, oldBody, channelSet, access, roles, nil
 }
 
-func (db *Database) recalculateSyncFnForActiveRev(ctx context.Context, doc *Document, metaMap map[string]interface{}, newRevID string) (channelSet base.Set, access, roles channels.AccessMap, syncExpiry *uint32, oldBodyJSON string, err error) {
+func (db *DatabaseCollectionWithUser) recalculateSyncFnForActiveRev(ctx context.Context, doc *Document, metaMap map[string]interface{}, newRevID string) (channelSet base.Set, access, roles channels.AccessMap, syncExpiry *uint32, oldBodyJSON string, err error) {
 	// In some cases an older revision might become the current one. If so, get its
 	// channels & access, for purposes of updating the doc:
 	curBodyBytes, err := db.getAvailable1xRev(ctx, doc, doc.CurrentRev)
@@ -1502,7 +1503,7 @@ func (db *Database) recalculateSyncFnForActiveRev(ctx context.Context, doc *Docu
 	return
 }
 
-func (db *Database) addAttachments(ctx context.Context, newAttachments AttachmentData) error {
+func (db *DatabaseCollectionWithUser) addAttachments(ctx context.Context, newAttachments AttachmentData) error {
 	// Need to check and add attachments here to ensure the attachment is within size constraints
 	err := db.setAttachments(ctx, newAttachments)
 	if err != nil {
@@ -1519,7 +1520,7 @@ func (db *Database) addAttachments(ctx context.Context, newAttachments Attachmen
 // Assigns provided sequence to the document
 // Update unusedSequences in the event that there is a conflict and we have to provide a new sequence number
 // Update and prune RecentSequences
-func (db *Database) assignSequence(ctx context.Context, docSequence uint64, doc *Document, unusedSequences []uint64) ([]uint64, error) {
+func (db *DatabaseCollectionWithUser) assignSequence(ctx context.Context, docSequence uint64, doc *Document, unusedSequences []uint64) ([]uint64, error) {
 	var err error
 
 	// Assign the next sequence number, for _changes feed.
@@ -1535,14 +1536,14 @@ func (db *Database) assignSequence(ctx context.Context, docSequence uint64, doc 
 		}
 
 		for {
-			if docSequence, err = db.sequences.nextSequence(); err != nil {
+			if docSequence, err = db.sequences().nextSequence(); err != nil {
 				return unusedSequences, err
 			}
 
 			if docSequence > doc.Sequence {
 				break
 			} else {
-				releaseErr := db.sequences.releaseSequence(docSequence)
+				releaseErr := db.sequences().releaseSequence(docSequence)
 				if releaseErr != nil {
 					base.WarnfCtx(ctx, "Error returned when releasing sequence %d. Falling back to skipped sequence handling.  Error:%v", docSequence, err)
 				}
@@ -1621,8 +1622,7 @@ Truth table for AllowConflicts and noConflicts combinations:
                        AllowConflicts=true     AllowConflicts=false
    noConflicts=true    continue checks         continue checks
    noConflicts=false   return false            continue checks */
-func (db *Database) IsIllegalConflict(ctx context.Context, doc *Document, parentRevID string, deleted, noConflicts bool, docHistory []string) bool {
-
+func (db *DatabaseCollectionWithUser) IsIllegalConflict(ctx context.Context, doc *Document, parentRevID string, deleted, noConflicts bool, docHistory []string) bool {
 	if db.AllowConflicts() && !noConflicts {
 		return false
 	}
@@ -1665,9 +1665,9 @@ func (db *Database) IsIllegalConflict(ctx context.Context, doc *Document, parent
 	return true
 }
 
-func (db *Database) documentUpdateFunc(ctx context.Context, docExists bool, doc *Document, allowImport bool, previousDocSequenceIn uint64, unusedSequences []uint64, callback updateAndReturnDocCallback, expiry uint32) (retSyncFuncExpiry *uint32, retNewRevID string, retStoredDoc *Document, retOldBodyJSON string, retUnusedSequences []uint64, changedAccessPrincipals []string, changedRoleAccessUsers []string, createNewRevIDSkipped bool, err error) {
+func (db *DatabaseCollectionWithUser) documentUpdateFunc(ctx context.Context, docExists bool, doc *Document, allowImport bool, previousDocSequenceIn uint64, unusedSequences []uint64, callback updateAndReturnDocCallback, expiry uint32) (retSyncFuncExpiry *uint32, retNewRevID string, retStoredDoc *Document, retOldBodyJSON string, retUnusedSequences []uint64, changedAccessPrincipals []string, changedRoleAccessUsers []string, createNewRevIDSkipped bool, err error) {
 
-	err = db.validateExistingDoc(doc, allowImport, docExists)
+	err = validateExistingDoc(doc, allowImport, docExists)
 	if err != nil {
 		return
 	}
@@ -1735,12 +1735,12 @@ func (db *Database) documentUpdateFunc(ctx context.Context, docExists bool, doc 
 	}
 
 	// Prune old revision history to limit the number of revisions:
-	if pruned := doc.pruneRevisions(db.RevsLimit, doc.CurrentRev); pruned > 0 {
+	if pruned := doc.pruneRevisions(db.revsLimit(), doc.CurrentRev); pruned > 0 {
 		base.DebugfCtx(ctx, base.KeyCRUD, "updateDoc(%q): Pruned %d old revisions", base.UD(doc.ID), pruned)
 	}
 
 	updatedExpiry = doc.updateExpiry(syncExpiry, updatedExpiry, expiry)
-	err = doc.persistModifiedRevisionBodies(db.Bucket)
+	err = doc.persistModifiedRevisionBodies(db.dataStore)
 	if err != nil {
 		return
 	}
@@ -1756,7 +1756,7 @@ type updateAndReturnDocCallback func(*Document) (resultDoc *Document, resultAtta
 //  1. Receive the updated document body in the response
 //  2. Specify the existing document body/xattr/cas, to avoid initial retrieval of the doc in cases that the current contents are already known (e.g. import).
 //     On cas failure, the document will still be reloaded from the bucket as usual.
-func (db *Database) updateAndReturnDoc(ctx context.Context, docid string, allowImport bool, expiry uint32, opts *sgbucket.MutateInOptions, existingDoc *sgbucket.BucketDocument, callback updateAndReturnDocCallback) (doc *Document, newRevID string, err error) {
+func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, docid string, allowImport bool, expiry uint32, opts *sgbucket.MutateInOptions, existingDoc *sgbucket.BucketDocument, callback updateAndReturnDocCallback) (doc *Document, newRevID string, err error) {
 
 	key := realDocID(docid)
 	if key == "" {
@@ -1781,7 +1781,7 @@ func (db *Database) updateAndReturnDoc(ctx context.Context, docid string, allowI
 
 	if !db.UseXattrs() {
 		// Update the document, storing metadata in _sync property
-		_, err = db.Bucket.Update(key, expiry, func(currentValue []byte) (raw []byte, syncFuncExpiry *uint32, isDelete bool, err error) {
+		_, err = db.dataStore.Update(key, expiry, func(currentValue []byte) (raw []byte, syncFuncExpiry *uint32, isDelete bool, err error) {
 			// Be careful: this block can be invoked multiple times if there are races!
 			if doc, err = unmarshalDocument(docid, currentValue); err != nil {
 				return
@@ -1820,7 +1820,7 @@ func (db *Database) updateAndReturnDoc(ctx context.Context, docid string, allowI
 	if db.UseXattrs() || upgradeInProgress {
 		var casOut uint64
 		// Update the document, storing metadata in extended attribute
-		casOut, err = db.Bucket.WriteUpdateWithXattr(key, base.SyncXattrName, db.Options.UserXattrKey, expiry, opts, existingDoc, func(currentValue []byte, currentXattr []byte, currentUserXattr []byte, cas uint64) (raw []byte, rawXattr []byte, deleteDoc bool, syncFuncExpiry *uint32, err error) {
+		casOut, err = db.dataStore.WriteUpdateWithXattr(key, base.SyncXattrName, db.userXattrKey(), expiry, opts, existingDoc, func(currentValue []byte, currentXattr []byte, currentUserXattr []byte, cas uint64) (raw []byte, rawXattr []byte, deleteDoc bool, syncFuncExpiry *uint32, err error) {
 			// Be careful: this block can be invoked multiple times if there are races!
 			if doc, err = unmarshalDocumentWithXattr(docid, currentValue, currentXattr, currentUserXattr, cas, DocUnmarshalAll); err != nil {
 				return
@@ -1860,11 +1860,11 @@ func (db *Database) updateAndReturnDoc(ctx context.Context, docid string, allowI
 			docBytes = len(raw)
 
 			// Warn when sync data is larger than a configured threshold
-			if db.Options.UnsupportedOptions != nil && db.Options.UnsupportedOptions.WarningThresholds != nil {
-				if xattrBytesThreshold := db.Options.UnsupportedOptions.WarningThresholds.XattrSize; xattrBytesThreshold != nil {
+			if db.unsupportedOptions() != nil && db.unsupportedOptions().WarningThresholds != nil {
+				if xattrBytesThreshold := db.unsupportedOptions().WarningThresholds.XattrSize; xattrBytesThreshold != nil {
 					xattrBytes = len(rawXattr)
 					if uint32(xattrBytes) >= *xattrBytesThreshold {
-						db.DbStats.Database().WarnXattrSizeCount.Add(1)
+						db.dbStats().Database().WarnXattrSizeCount.Add(1)
 						base.WarnfCtx(ctx, "Doc id: %v sync metadata size: %d bytes exceeds %d bytes for sync metadata warning threshold", base.UD(doc.ID), xattrBytes, *xattrBytesThreshold)
 					}
 				}
@@ -1892,13 +1892,13 @@ func (db *Database) updateAndReturnDoc(ctx context.Context, docid string, allowI
 	// If the WriteUpdate didn't succeed, check whether there are unused, allocated sequences that need to be accounted for
 	if err != nil {
 		if docSequence > 0 {
-			if seqErr := db.sequences.releaseSequence(docSequence); seqErr != nil {
+			if seqErr := db.sequences().releaseSequence(docSequence); seqErr != nil {
 				base.WarnfCtx(ctx, "Error returned when releasing sequence %d. Falling back to skipped sequence handling.  Error:%v", docSequence, seqErr)
 			}
 
 		}
 		for _, sequence := range unusedSequences {
-			if seqErr := db.sequences.releaseSequence(sequence); seqErr != nil {
+			if seqErr := db.sequences().releaseSequence(sequence); seqErr != nil {
 				base.WarnfCtx(ctx, "Error returned when releasing sequence %d. Falling back to skipped sequence handling.  Error:%v", sequence, seqErr)
 			}
 		}
@@ -1914,11 +1914,11 @@ func (db *Database) updateAndReturnDoc(ctx context.Context, docid string, allowI
 		return nil, "", err
 	}
 
-	db.DbStats.Database().NumDocWrites.Add(1)
-	db.DbStats.Database().DocWritesBytes.Add(int64(docBytes))
-	db.DbStats.Database().DocWritesXattrBytes.Add(int64(xattrBytes))
+	db.dbStats().Database().NumDocWrites.Add(1)
+	db.dbStats().Database().DocWritesBytes.Add(int64(docBytes))
+	db.dbStats().Database().DocWritesXattrBytes.Add(int64(xattrBytes))
 	if inConflict {
-		db.DbStats.Database().ConflictWriteCount.Add(1)
+		db.dbStats().Database().ConflictWriteCount.Add(1)
 	}
 
 	if doc.History[newRevID] != nil {
@@ -1953,13 +1953,13 @@ func (db *Database) updateAndReturnDoc(ctx context.Context, docid string, allowI
 			db.revisionCache.Put(ctx, documentRevision)
 		}
 
-		if db.EventMgr.HasHandlerForEvent(DocumentChange) {
+		if db.eventMgr().HasHandlerForEvent(DocumentChange) {
 			webhookJSON, err := doc.BodyWithSpecialProperties()
 			if err != nil {
 				base.WarnfCtx(ctx, "Error marshalling doc with id %s and revid %s for webhook post: %v", base.UD(docid), base.UD(newRevID), err)
 			} else {
 				winningRevChange := prevCurrentRev != doc.CurrentRev
-				err = db.EventMgr.RaiseDocumentChangeEvent(webhookJSON, docid, oldBodyJSON, revChannels, winningRevChange)
+				err = db.eventMgr().RaiseDocumentChangeEvent(webhookJSON, docid, oldBodyJSON, revChannels, winningRevChange)
 				if err != nil {
 					base.DebugfCtx(ctx, base.KeyCRUD, "Error raising document change event: %v", err)
 				}
@@ -1986,7 +1986,7 @@ func (db *Database) updateAndReturnDoc(ctx context.Context, docid string, allowI
 		var obsoleteAttachments []string
 		for previousAttachmentID := range previousAttachments {
 			if _, found := leafAttachments[previousAttachmentID]; !found {
-				err = db.Bucket.Delete(previousAttachmentID)
+				err = db.dataStore.Delete(previousAttachmentID)
 				if err != nil {
 					base.ErrorfCtx(ctx, "Error deleting obsolete attachment %q of doc %q, Error: %v", previousAttachmentID, base.UD(doc.ID), err)
 				} else {
@@ -2000,14 +2000,14 @@ func (db *Database) updateAndReturnDoc(ctx context.Context, docid string, allowI
 	}
 
 	// Remove any obsolete non-winning revision bodies
-	doc.deleteRemovedRevisionBodies(db.Bucket)
+	doc.deleteRemovedRevisionBodies(db.dataStore)
 
 	// Mark affected users/roles as needing to recompute their channel access:
 	db.MarkPrincipalsChanged(ctx, docid, newRevID, changedAccessPrincipals, changedRoleAccessUsers, doc.Sequence)
 	return doc, newRevID, nil
 }
 
-func getAttachmentIDsForLeafRevisions(ctx context.Context, db *Database, doc *Document, newRevID string) (map[string]struct{}, error) {
+func getAttachmentIDsForLeafRevisions(ctx context.Context, db *DatabaseCollectionWithUser, doc *Document, newRevID string) (map[string]struct{}, error) {
 	leafAttachments := make(map[string]struct{})
 
 	currentAttachments, err := retrieveV2AttachmentKeys(doc.ID, doc.Attachments)
@@ -2048,41 +2048,41 @@ func getAttachmentIDsForLeafRevisions(ctx context.Context, db *Database, doc *Do
 	return leafAttachments, nil
 }
 
-func (db *Database) checkDocChannelsAndGrantsLimits(ctx context.Context, docID string, channels base.Set, accessGrants channels.AccessMap, roleGrants channels.AccessMap) {
-	if db.Options.UnsupportedOptions == nil || db.Options.UnsupportedOptions.WarningThresholds == nil {
+func (db *DatabaseCollectionWithUser) checkDocChannelsAndGrantsLimits(ctx context.Context, docID string, channels base.Set, accessGrants channels.AccessMap, roleGrants channels.AccessMap) {
+	if db.unsupportedOptions() == nil || db.unsupportedOptions().WarningThresholds == nil {
 		return
 	}
 
 	// Warn when channel count is larger than a configured threshold
-	if channelCountThreshold := db.Options.UnsupportedOptions.WarningThresholds.ChannelsPerDoc; channelCountThreshold != nil {
+	if channelCountThreshold := db.unsupportedOptions().WarningThresholds.ChannelsPerDoc; channelCountThreshold != nil {
 		channelCount := len(channels)
 		if uint32(channelCount) >= *channelCountThreshold {
-			db.DbStats.Database().WarnChannelsPerDocCount.Add(1)
+			db.dbStats().Database().WarnChannelsPerDocCount.Add(1)
 			base.WarnfCtx(ctx, "Doc id: %v channel count: %d exceeds %d for channels per doc warning threshold", base.UD(docID), channelCount, *channelCountThreshold)
 		}
 	}
 
 	// Warn when grants are larger than a configured threshold
-	if grantThreshold := db.Options.UnsupportedOptions.WarningThresholds.GrantsPerDoc; grantThreshold != nil {
+	if grantThreshold := db.unsupportedOptions().WarningThresholds.GrantsPerDoc; grantThreshold != nil {
 		grantCount := len(accessGrants) + len(roleGrants)
 		if uint32(grantCount) >= *grantThreshold {
-			db.DbStats.Database().WarnGrantsPerDocCount.Add(1)
+			db.dbStats().Database().WarnGrantsPerDocCount.Add(1)
 			base.WarnfCtx(ctx, "Doc id: %v access and role grants count: %d exceeds %d for grants per doc warning threshold", base.UD(docID), grantCount, *grantThreshold)
 		}
 	}
 
 	// Warn when channel names are larger than a configured threshold
-	if channelNameSizeThreshold := db.Options.UnsupportedOptions.WarningThresholds.ChannelNameSize; channelNameSizeThreshold != nil {
+	if channelNameSizeThreshold := db.unsupportedOptions().WarningThresholds.ChannelNameSize; channelNameSizeThreshold != nil {
 		for c := range channels {
 			if uint32(len(c)) > *channelNameSizeThreshold {
-				db.DbStats.Database().WarnChannelNameSizeCount.Add(1)
+				db.dbStats().Database().WarnChannelNameSizeCount.Add(1)
 				base.WarnfCtx(ctx, "Doc: %q channel %q exceeds %d characters for channel name size warning threshold", base.UD(docID), base.UD(c), *channelNameSizeThreshold)
 			}
 		}
 	}
 }
 
-func (db *Database) MarkPrincipalsChanged(ctx context.Context, docid string, newRevID string, changedPrincipals, changedRoleUsers []string, invalSeq uint64) {
+func (db *DatabaseCollectionWithUser) MarkPrincipalsChanged(ctx context.Context, docid string, newRevID string, changedPrincipals, changedRoleUsers []string, invalSeq uint64) {
 
 	reloadActiveUser := false
 
@@ -2139,7 +2139,7 @@ func (db *Database) MarkPrincipalsChanged(ctx context.Context, docid string, new
 }
 
 // Creates a new document, assigning it a random doc ID.
-func (db *Database) Post(ctx context.Context, body Body) (docid string, rev string, doc *Document, err error) {
+func (db *DatabaseCollectionWithUser) Post(ctx context.Context, body Body) (docid string, rev string, doc *Document, err error) {
 	if body[BodyRev] != nil {
 		return "", "", nil, base.HTTPErrorf(http.StatusNotFound, "No previous revision to replace")
 	}
@@ -2161,14 +2161,14 @@ func (db *Database) Post(ctx context.Context, body Body) (docid string, rev stri
 }
 
 // Deletes a document, by adding a new revision whose _deleted property is true.
-func (db *Database) DeleteDoc(ctx context.Context, docid string, revid string) (string, error) {
+func (db *DatabaseCollectionWithUser) DeleteDoc(ctx context.Context, docid string, revid string) (string, error) {
 	body := Body{BodyDeleted: true, BodyRev: revid}
 	newRevID, _, err := db.Put(ctx, docid, body)
 	return newRevID, err
 }
 
 // Purges a document from the bucket (no tombstone)
-func (db *Database) Purge(ctx context.Context, key string) error {
+func (db *DatabaseCollectionWithUser) Purge(ctx context.Context, key string) error {
 	doc, err := db.GetDocument(ctx, key, DocUnmarshalAll)
 	if err != nil {
 		return err
@@ -2180,16 +2180,16 @@ func (db *Database) Purge(ctx context.Context, key string) error {
 	}
 
 	for attachmentID := range attachments {
-		err = db.Bucket.Delete(attachmentID)
+		err = db.dataStore.Delete(attachmentID)
 		if err != nil {
 			base.WarnfCtx(ctx, "Unable to delete attachment %q. Error: %v", attachmentID, err)
 		}
 	}
 
 	if db.UseXattrs() {
-		return db.Bucket.DeleteWithXattr(key, base.SyncXattrName)
+		return db.dataStore.DeleteWithXattr(key, base.SyncXattrName)
 	} else {
-		return db.Bucket.Delete(key)
+		return db.dataStore.Delete(key)
 	}
 }
 
@@ -2197,7 +2197,7 @@ func (db *Database) Purge(ctx context.Context, key string) error {
 
 // Calls the JS sync function to assign the doc to channels, grant users
 // access to channels, and reject invalid documents.
-func (db *Database) getChannelsAndAccess(ctx context.Context, doc *Document, body Body, metaMap map[string]interface{}, revID string) (
+func (db *DatabaseCollectionWithUser) getChannelsAndAccess(ctx context.Context, doc *Document, body Body, metaMap map[string]interface{}, revID string) (
 	result base.Set,
 	access channels.AccessMap,
 	roles channels.AccessMap,
@@ -2207,7 +2207,7 @@ func (db *Database) getChannelsAndAccess(ctx context.Context, doc *Document, bod
 	base.DebugfCtx(ctx, base.KeyCRUD, "Invoking sync on doc %q rev %s", base.UD(doc.ID), body[BodyRev])
 
 	// Low-level protection against writes for read-only guest.  Handles write pathways that don't fail-fast
-	if db.user != nil && db.user.Name() == "" && db.DatabaseContext.IsGuestReadOnly() {
+	if db.user != nil && db.user.Name() == "" && db.isGuestReadOnly() {
 		return result, access, roles, expiry, oldJson, base.HTTPErrorf(403, auth.GuestUserReadOnly)
 	}
 
@@ -2218,16 +2218,16 @@ func (db *Database) getChannelsAndAccess(ctx context.Context, doc *Document, bod
 	}
 	oldJson = string(oldJsonBytes)
 
-	if db.ChannelMapper != nil {
+	if db.channelMapper() != nil {
 		// Call the ChannelMapper:
 		startTime := time.Now()
-		db.DbStats.Database().SyncFunctionCount.Add(1)
+		db.dbStats().Database().SyncFunctionCount.Add(1)
 
 		var output *channels.ChannelMapperOutput
-		output, err = db.ChannelMapper.MapToChannelsAndAccess(body, oldJson, metaMap,
+		output, err = db.channelMapper().MapToChannelsAndAccess(body, oldJson, metaMap,
 			MakeUserCtx(db.user))
 
-		db.DbStats.Database().SyncFunctionTime.Add(time.Since(startTime).Nanoseconds())
+		db.dbStats().Database().SyncFunctionTime.Add(time.Since(startTime).Nanoseconds())
 
 		if err == nil {
 			result = output.Channels
@@ -2238,9 +2238,9 @@ func (db *Database) getChannelsAndAccess(ctx context.Context, doc *Document, bod
 			if err != nil {
 				base.InfofCtx(ctx, base.KeyAll, "Sync fn rejected doc %q / %q --> %s", base.UD(doc.ID), base.UD(doc.NewestRev), err)
 				base.DebugfCtx(ctx, base.KeyAll, "    rejected doc %q / %q : new=%+v  old=%s", base.UD(doc.ID), base.UD(doc.NewestRev), base.UD(body), base.UD(oldJson))
-				db.DbStats.Security().NumDocsRejected.Add(1)
+				db.dbStats().Security().NumDocsRejected.Add(1)
 				if isAccessError(err) {
-					db.DbStats.Security().NumAccessErrors.Add(1)
+					db.dbStats().Security().NumAccessErrors.Add(1)
 				}
 			} else if !validateAccessMap(access) || !validateRoleAccessMap(roles) {
 				err = base.HTTPErrorf(500, "Error in JS sync function")
@@ -2312,15 +2312,20 @@ func isAccessError(err error) bool {
 	return base.ContainsString(base.SyncFnAccessErrors, err.Error())
 }
 
-// Recomputes the set of channels a User/Role has been granted access to by sync() functions.
+// Recomputes the set of channels a User/Role has been granted access to by sync() functions for the default collection
 // This is part of the ChannelComputer interface defined by the Authenticator.
-func (context *DatabaseContext) ComputeChannelsForPrincipal(ctx context.Context, princ auth.Principal) (channels.TimedSet, error) {
+func (context *DatabaseContext) ComputeChannelsForPrincipal(ctx context.Context, princ auth.Principal, scope string, collection string) (channels.TimedSet, error) {
 	key := princ.Name()
 	if _, ok := princ.(auth.User); !ok {
 		key = channels.RoleAccessPrefix + key // Roles are identified in access view by a "role:" prefix
 	}
 
-	results, err := context.QueryAccess(ctx, key)
+	dbCollection, err := context.GetDatabaseCollection(scope, collection)
+	if err != nil {
+		return nil, err
+	}
+
+	results, err := dbCollection.QueryAccess(ctx, key)
 	if err != nil {
 		base.WarnfCtx(ctx, "QueryAccess returned error: %v", err)
 		return nil, err
@@ -2340,9 +2345,24 @@ func (context *DatabaseContext) ComputeChannelsForPrincipal(ctx context.Context,
 	return channelSet, nil
 }
 
-// Recomputes the set of channels a User/Role has been granted access to by sync() functions.
+// Recomputes the set of channels a User/Role has been granted access to by sync() function for all collections.
 // This is part of the ChannelComputer interface defined by the Authenticator.
 func (context *DatabaseContext) ComputeRolesForUser(ctx context.Context, user auth.User) (channels.TimedSet, error) {
+
+	roles := channels.TimedSet{}
+
+	for _, collection := range context.CollectionByID {
+		collectionRoles, err := collection.ComputeRolesForUser(ctx, user)
+		if err != nil {
+			return nil, err
+		}
+		roles.Add(collectionRoles)
+	}
+	return roles, nil
+}
+
+// Recomputes the set of channels a User/Role has been granted access to by sync() functions for a single collection.
+func (context *DatabaseCollection) ComputeRolesForUser(ctx context.Context, user auth.User) (channels.TimedSet, error) {
 	results, err := context.QueryRoleAccess(ctx, user.Name())
 	if err != nil {
 		return nil, err
@@ -2363,9 +2383,9 @@ func (context *DatabaseContext) ComputeRolesForUser(ctx context.Context, user au
 }
 
 // Checks whether a document has a mobile xattr.  Used when running in non-xattr mode to support no downtime upgrade.
-func (context *DatabaseContext) checkForUpgrade(key string, unmarshalLevel DocumentUnmarshalLevel) (*Document, *sgbucket.BucketDocument) {
+func (context *DatabaseCollection) checkForUpgrade(key string, unmarshalLevel DocumentUnmarshalLevel) (*Document, *sgbucket.BucketDocument) {
 	// If we are using xattrs or Couchbase Server doesn't support them, an upgrade isn't going to be in progress
-	if context.UseXattrs() || !context.Bucket.IsSupported(sgbucket.DataStoreFeatureXattrs) {
+	if context.UseXattrs() || !context.dataStore.IsSupported(sgbucket.BucketStoreFeatureXattrs) {
 		return nil, nil
 	}
 
@@ -2380,7 +2400,7 @@ func (context *DatabaseContext) checkForUpgrade(key string, unmarshalLevel Docum
 
 // Given a document ID and a set of revision IDs, looks up which ones are not known. Returns an
 // array of the unknown revisions, and an array of known revisions that might be recent ancestors.
-func (db *Database) RevDiff(ctx context.Context, docid string, revids []string) (missing, possible []string) {
+func (db *DatabaseCollectionWithUser) RevDiff(ctx context.Context, docid string, revids []string) (missing, possible []string) {
 	if strings.HasPrefix(docid, "_design/") && db.user != nil {
 		return // Users can't upload design docs, so ignore them
 	}
@@ -2389,7 +2409,7 @@ func (db *Database) RevDiff(ctx context.Context, docid string, revids []string) 
 
 	if db.UseXattrs() {
 		var xattrValue []byte
-		cas, err := db.Bucket.GetXattr(docid, base.SyncXattrName, &xattrValue)
+		cas, err := db.dataStore.GetXattr(docid, base.SyncXattrName, &xattrValue)
 
 		if err != nil {
 			if !base.IsDocNotFoundError(err) {
@@ -2461,7 +2481,7 @@ const (
 
 // Given a docID/revID to be pushed by a client, check whether it can be added _without conflict_.
 // This is used by the BLIP replication code in "allow_conflicts=false" mode.
-func (db *Database) CheckProposedRev(ctx context.Context, docid string, revid string, parentRevID string) (status ProposedRevStatus, currentRev string) {
+func (db *DatabaseCollection) CheckProposedRev(ctx context.Context, docid string, revid string, parentRevID string) (status ProposedRevStatus, currentRev string) {
 	doc, err := db.GetDocument(ctx, docid, DocUnmarshalAll)
 	if err != nil {
 		if !base.IsDocNotFoundError(err) {

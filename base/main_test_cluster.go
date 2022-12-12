@@ -10,7 +10,6 @@ package base
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -23,7 +22,7 @@ type tbpCluster interface {
 	getBucketNames() ([]string, error)
 	insertBucket(name string, quotaMB int) error
 	removeBucket(name string) error
-	openTestBucket(name tbpBucketName, waitUntilReady time.Duration, usingNamedCollections bool) (Bucket, Bucket, error)
+	openTestBucket(name tbpBucketName, waitUntilReady time.Duration) (Bucket, error)
 	supportsCollections() (bool, error)
 	close() error
 }
@@ -138,50 +137,19 @@ func (c *tbpClusterV2) removeBucket(name string) error {
 }
 
 // openTestBucket opens the bucket of the given name for the gocb cluster in the given TestBucketPool.
-func (c *tbpClusterV2) openTestBucket(testBucketName tbpBucketName, waitUntilReady time.Duration, usingNamedCollections bool) (Bucket, Bucket, error) {
+func (c *tbpClusterV2) openTestBucket(testBucketName tbpBucketName, waitUntilReady time.Duration) (Bucket, error) {
 
 	bucketCluster := initV2Cluster(c.server)
 
-	bucketSpec := getBucketSpec(testBucketName, usingNamedCollections)
+	// bucketSpec := getTestBucketSpec(testBucketName, usingNamedCollections)
+	bucketSpec := getTestBucketSpec(testBucketName)
 
-	// Create scope and collection on server, first drop any scope and collect in the bucket and then create
-	// new scope + collection
-	bucket := bucketCluster.Bucket(bucketSpec.BucketName)
-	err := bucket.WaitUntilReady(waitUntilReady, nil)
+	bucketFromSpec, err := GetGocbV2BucketFromCluster(bucketCluster, bucketSpec, waitUntilReady, false)
 	if err != nil {
-		return nil, nil, err
-	}
-	DebugfCtx(context.TODO(), KeySGTest, "Got bucket %s", testBucketName)
-
-	if err := dropAllScopesAndCollections(bucket); err != nil && !errors.Is(err, ErrCollectionsUnsupported) {
-		return nil, nil, err
+		return nil, err
 	}
 
-	bucketFromSpec, err := GetCollectionFromCluster(bucketCluster, bucketSpec, waitUntilReady)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	specScope, specCollection := bucketSpecScopeAndCollection(bucketSpec)
-	if specScope != DefaultScope || specCollection != DefaultCollection {
-		err := CreateBucketScopesAndCollections(context.TODO(), bucketSpec,
-			map[string][]string{
-				specScope: []string{specCollection},
-			})
-		if err != nil {
-			return nil, nil, err
-		}
-		defaultSpec := getBucketSpec(testBucketName, usingNamedCollections)
-		defaultSpec.Scope = nil
-		defaultSpec.Collection = nil
-		unnamedCollectionBucket, err := GetCollectionFromCluster(bucketCluster, defaultSpec, waitUntilReady)
-		if err != nil {
-			return nil, nil, err
-		}
-		return bucketFromSpec, unnamedCollectionBucket, nil
-
-	}
-	return nil, bucketFromSpec, nil
+	return bucketFromSpec, nil
 }
 
 func (c *tbpClusterV2) close() error {

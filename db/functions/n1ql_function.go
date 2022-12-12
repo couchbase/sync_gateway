@@ -65,8 +65,9 @@ func (fn *n1qlInvocation) Iterate() (sgbucket.QueryResultIterator, error) {
 	fn.n1qlArgs["user"] = &userArg
 
 	// Run the N1QL query:
-	iter, err := fn.db.N1QLQueryWithStats(fn.ctx, db.QueryTypeUserFunctionPrefix+fn.name, fn.Code, fn.n1qlArgs,
-		base.RequestPlus, false)
+	// TODO: Multi-collection support for user functions is not implemented.
+	iter, err := db.N1QLQueryWithStats(fn.ctx, fn.db.Bucket.DefaultDataStore(), db.QueryTypeUserFunctionPrefix+fn.name, fn.Code, fn.n1qlArgs,
+		base.RequestPlus, false, fn.db.DbStats, fn.db.Options.SlowQueryWarningThreshold)
 
 	if err != nil {
 		// Return a friendlier error:
@@ -80,7 +81,7 @@ func (fn *n1qlInvocation) Iterate() (sgbucket.QueryResultIterator, error) {
 		}
 	}
 	// Do a final timeout check, so the caller will know not to do any more work if time's up:
-	return iter, fn.db.CheckTimeout(fn.ctx)
+	return iter, db.CheckTimeout(fn.ctx)
 }
 
 func (fn *n1qlInvocation) Run() (any, error) {

@@ -77,12 +77,10 @@ func TestSubChangesSince(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
-	testDb := rt.GetDatabase()
-
 	rq := blip.NewRequest()
 	rq.Properties["since"] = `"1"`
 
-	subChangesParams, err := db.NewSubChangesParams(base.TestCtx(t), rq, db.SequenceID{}, nil, testDb.ParseSequenceID)
+	subChangesParams, err := db.NewSubChangesParams(base.TestCtx(t), rq, db.SequenceID{}, nil, db.ParseJSONSequenceID)
 	require.NoError(t, err)
 
 	seqID := subChangesParams.Since()
@@ -96,8 +94,6 @@ func TestSubChangesFuture(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
-	testDb := rt.GetDatabase()
-
 	latestSeq := func() (db.SequenceID, error) {
 		return db.SequenceID{Seq: 999}, nil
 	}
@@ -106,7 +102,7 @@ func TestSubChangesFuture(t *testing.T) {
 	rq.Properties["future"] = "true"
 	rq.Properties["since"] = `"1"`
 
-	subChangesParams, err := db.NewSubChangesParams(base.TestCtx(t), rq, db.SequenceID{}, latestSeq, testDb.ParseSequenceID)
+	subChangesParams, err := db.NewSubChangesParams(base.TestCtx(t), rq, db.SequenceID{}, latestSeq, db.ParseJSONSequenceID)
 	require.NoError(t, err)
 
 	seqID := subChangesParams.Since()

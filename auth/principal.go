@@ -24,33 +24,6 @@ type Principal interface {
 	Sequence() uint64
 	SetSequence(sequence uint64)
 
-	// The set of channels the Principal belongs to, and what sequence access was granted.
-	// Returns nil if invalidated.
-	// For both roles and users, the set of channels is the union of ExplicitChannels, JWTChannels, and any channels
-	// they are granted through a sync function.
-	//
-	// NOTE: channels a user has access to through a role are *not* included in Channels(), so the user could have
-	// access to more documents than included in Channels. CanSeeChannel will also check against the user's roles.
-	Channels() ch.TimedSet
-
-	// The channels the Principal was explicitly granted access to thru the admin API.
-	ExplicitChannels() ch.TimedSet
-
-	// Sets the explicit channels the Principal has access to.
-	SetExplicitChannels(ch.TimedSet, uint64)
-
-	GetChannelInvalSeq() uint64
-
-	SetChannelInvalSeq(uint64)
-
-	// The set of invalidated channels
-	// Returns nil if not invalidated
-	InvalidatedChannels() ch.TimedSet
-
-	ChannelHistory() TimedSetHistory
-
-	SetChannelHistory(history TimedSetHistory)
-
 	// Returns true if the Principal has access to the given channel.
 	CanSeeChannel(channel string) bool
 
@@ -71,7 +44,6 @@ type Principal interface {
 	DocID() string
 	accessViewKey() string
 	validate() error
-	setChannels(ch.TimedSet)
 
 	// Cas value for the associated principal document in the bucket
 	Cas() uint64
@@ -79,6 +51,14 @@ type Principal interface {
 
 	setDeleted(bool)
 	IsDeleted() bool
+
+	// Principal includes the PrincipalCollectionAccess interface for operations against
+	// the _default._default collection (stored directly on the principal for backward
+	// compatibility)
+	PrincipalCollectionAccess
+
+	// Principals implement the CollectionChannelAPI for collection-scoped operations
+	CollectionChannelAPI
 }
 
 // Role is basically the same as Principal, just concrete. Users can inherit channels from Roles.
@@ -120,8 +100,6 @@ type User interface {
 
 	JWTRoles() ch.TimedSet
 	SetJWTRoles(ch.TimedSet, uint64)
-	JWTChannels() ch.TimedSet
-	SetJWTChannels(ch.TimedSet, uint64)
 	JWTIssuer() string
 	SetJWTIssuer(string)
 	JWTLastUpdated() time.Time
@@ -160,14 +138,19 @@ type User interface {
 	FilterToAvailableChannels(channels ch.Set) (filtered ch.TimedSet, removed []string)
 
 	setRolesSince(ch.TimedSet)
+
+	UserCollectionChannelAPI
+
+	UserCollectionAccess
 }
 
 // PrincipalConfig represents a user/role as a JSON object.
 // Used to define a user/role within DbConfig, and structures the request/response body in the admin REST API
 // for /db/_user/*
 type PrincipalConfig struct {
-	Name             *string  `json:"name,omitempty"`
-	ExplicitChannels base.Set `json:"admin_channels,omitempty"`
+	Name             *string                                       `json:"name,omitempty"`
+	ExplicitChannels base.Set                                      `json:"admin_channels,omitempty"`
+	CollectionAccess map[string]map[string]*CollectionAccessConfig `json:"collection_access,omitempty"`
 	// Fields below only apply to Users, not Roles:
 	Email             *string  `json:"email,omitempty"`
 	Disabled          *bool    `json:"disabled,omitempty"`
@@ -179,6 +162,14 @@ type PrincipalConfig struct {
 	JWTIssuer      *string    `json:"jwt_issuer,omitempty"`
 	JWTRoles       base.Set   `json:"jwt_roles,omitempty"`
 	JWTChannels    base.Set   `json:"jwt_channels,omitempty"`
+	JWTLastUpdated *time.Time `json:"jwt_last_updated,omitempty"`
+}
+
+type CollectionAccessConfig struct {
+	ExplicitChannels_ base.Set `json:"admin_channels,omitempty"`
+	// read-only
+	Channels_      base.Set   `json:"all_channels,omitempty"`
+	JWTChannels_   base.Set   `json:"jwt_channels,omitempty"` // TODO: JWT properties should only be populated for user but would like to share scope/collection map
 	JWTLastUpdated *time.Time `json:"jwt_last_updated,omitempty"`
 }
 
@@ -229,5 +220,35 @@ func (u PrincipalConfig) Merge(other PrincipalConfig) PrincipalConfig {
 		JWTRoles:          base.CoalesceSets(other.JWTRoles, u.JWTRoles),
 		JWTChannels:       base.CoalesceSets(other.JWTChannels, u.JWTChannels),
 		JWTLastUpdated:    base.Coalesce(other.JWTLastUpdated, u.JWTLastUpdated),
+	}
+}
+
+// Helper function to set explicit channels for a collection
+func (u *PrincipalConfig) SetExplicitChannels(scopeName, collectionName string, channels ...string) {
+	channelSet := base.SetFromArray(channels)
+	if u.CollectionAccess == nil {
+		u.CollectionAccess = map[string]map[string]*CollectionAccessConfig{
+			scopeName: {
+				collectionName: {
+					ExplicitChannels_: channelSet,
+				},
+			},
+		}
+		return
+	}
+	if scope, ok := u.CollectionAccess[scopeName]; !ok {
+		u.CollectionAccess[scopeName] = map[string]*CollectionAccessConfig{
+			collectionName: {
+				ExplicitChannels_: channelSet,
+			},
+		}
+	} else {
+		if collection, ok := scope[collectionName]; !ok {
+			scope[collectionName] = &CollectionAccessConfig{
+				ExplicitChannels_: channelSet,
+			}
+		} else {
+			collection.ExplicitChannels_ = channelSet
+		}
 	}
 }

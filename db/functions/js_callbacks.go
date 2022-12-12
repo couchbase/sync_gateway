@@ -17,6 +17,7 @@ import (
 	"net/http"
 
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/db"
 	"github.com/robertkrimen/otto"
 )
 
@@ -143,14 +144,15 @@ func (runner *jsRunner) do_func(funcName string, params map[string]any, sudo boo
 
 // Implementation of JS `user.get(docID, docType?)` function
 func (runner *jsRunner) do_get(docID string, docType *string, sudo bool) (any, error) {
-	if err := runner.currentDB.CheckTimeout(runner.ctx); err != nil {
+	if err := db.CheckTimeout(runner.ctx); err != nil {
 		return nil, err
 	} else if sudo {
 		user := runner.currentDB.User()
 		runner.currentDB.SetUser(nil)
 		defer func() { runner.currentDB.SetUser(user) }()
 	}
-	rev, err := runner.currentDB.GetRev(runner.ctx, docID, "", false, nil)
+	collection := runner.currentDB.GetSingleDatabaseCollectionWithUser()
+	rev, err := collection.GetRev(runner.ctx, docID, "", false, nil)
 	if err != nil {
 		status, _ := base.ErrorAsHTTPStatus(err)
 		if status == http.StatusNotFound {
@@ -182,7 +184,7 @@ func (runner *jsRunner) do_graphql(query string, params map[string]any, sudo boo
 
 // Implementation of JS `user.save(body, docID?)` function
 func (runner *jsRunner) do_save(body map[string]any, docIDPtr *string, sudo bool) (*string, error) {
-	if err := runner.currentDB.CheckTimeout(runner.ctx); err != nil {
+	if err := db.CheckTimeout(runner.ctx); err != nil {
 		return nil, err
 	} else if sudo {
 		exitSudo := runner.enterSudo()
@@ -206,10 +208,10 @@ func (runner *jsRunner) do_save(body map[string]any, docIDPtr *string, sudo bool
 		}
 	}
 	delete(body, "_id")
-
+	collection := runner.currentDB.GetSingleDatabaseCollectionWithUser()
 	if _, found := body["_rev"]; found {
 		// If caller provided `_rev` property, use MVCC as normal:
-		_, _, err := runner.currentDB.Put(runner.ctx, docID, body)
+		_, _, err := collection.Put(runner.ctx, docID, body)
 		if err == nil {
 			return &docID, err // success
 		} else if status, _ := base.ErrorAsHTTPStatus(err); status == http.StatusConflict {
@@ -222,7 +224,7 @@ func (runner *jsRunner) do_save(body map[string]any, docIDPtr *string, sudo bool
 		// If caller didn't provide a `_rev` property, fall back to "last writer wins":
 		// get the current revision if any, and pass it to Put so that the save always succeeds.
 		for {
-			rev, err := runner.currentDB.GetRev(runner.ctx, docID, "", false, []string{})
+			rev, err := collection.GetRev(runner.ctx, docID, "", false, []string{})
 			if err != nil {
 				if status, _ := base.ErrorAsHTTPStatus(err); status != http.StatusNotFound {
 					return nil, err
@@ -234,7 +236,7 @@ func (runner *jsRunner) do_save(body map[string]any, docIDPtr *string, sudo bool
 				body["_rev"] = rev.RevID
 			}
 
-			_, _, err = runner.currentDB.Put(runner.ctx, docID, body)
+			_, _, err = collection.Put(runner.ctx, docID, body)
 			if err == nil {
 				break // success!
 			} else if status, _ := base.ErrorAsHTTPStatus(err); status != http.StatusConflict {

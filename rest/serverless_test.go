@@ -27,7 +27,7 @@ func TestServerlessPollBuckets(t *testing.T) {
 	}
 
 	// Get test bucket
-	tb1 := base.GetTestBucketDefaultCollection(t)
+	tb1 := base.GetTestBucket(t)
 	defer tb1.Close()
 
 	rt := NewRestTester(t, &RestTesterConfig{
@@ -176,6 +176,56 @@ func TestServerlessBucketCredentialsFetchDatabases(t *testing.T) {
 	found, _, err = rt.ServerContext().fetchDatabase(ctx, "db")
 	assert.NoError(t, err)
 	assert.False(t, found)
+}
+
+func TestServerlessGoCBConnectionString(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server")
+	}
+	tests := []struct {
+		name            string
+		expectedConnStr string
+		specKvConn      string
+		kvConnCount     int
+	}{
+		{
+			name:            "serverless connection",
+			expectedConnStr: "?idle_http_connection_timeout=90000&kv_pool_size=1&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
+			kvConnCount:     1,
+		},
+		{
+			name:            "serverless connection with kv pool specified",
+			specKvConn:      "?idle_http_connection_timeout=90000&kv_pool_size=3&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
+			expectedConnStr: "?idle_http_connection_timeout=90000&kv_pool_size=3&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
+			kvConnCount:     3,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			tb := base.GetTestBucket(t)
+			defer tb.Close()
+			bucketServer := tb.BucketSpec.Server
+			test.expectedConnStr = bucketServer + test.expectedConnStr
+
+			if test.specKvConn != "" {
+				tb.BucketSpec.Server = bucketServer + "?kv_pool_size=3"
+				tb.BucketSpec.KvPoolSize = 3
+			}
+
+			rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb, PersistentConfig: true, serverless: true})
+			defer rt.Close()
+			sc := rt.ServerContext()
+			require.True(t, sc.Config.IsServerless())
+
+			resp := rt.SendAdminRequest(http.MethodPut, "/db/", fmt.Sprintf(`{"bucket": "%s", "use_views": %t, "num_index_replicas": 0}`,
+				tb.GetName(), base.TestsDisableGSI()))
+			RequireStatus(t, resp, http.StatusCreated)
+
+			assert.Equal(t, test.expectedConnStr, sc.getConnectionString("db"))
+			assert.Equal(t, test.kvConnCount, sc.getKVConnectionPol("db"))
+		})
+	}
+
 }
 
 func TestServerlessSuspendDatabase(t *testing.T) {
@@ -578,4 +628,61 @@ func TestServerlessUnsuspendAdminAuth(t *testing.T) {
 	// Attempt to get DB that does not exist
 	resp = rt.SendAdminRequestWithAuth(http.MethodGet, "/invaliddb/doc", "", base.TestClusterUsername(), base.TestClusterPassword())
 	assertHTTPErrorReason(t, resp, http.StatusForbidden, "")
+}
+
+func TestImportPartitionsServerless(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server")
+	}
+	tests := []struct {
+		name               string
+		importPartition    *uint16
+		expectedPartitions *uint16
+		serverless         bool
+	}{
+		{
+			name:               "serverless partitions",
+			expectedPartitions: base.Uint16Ptr(6),
+			serverless:         true,
+		},
+		{
+			name:               "serverless partitions with import_partition specified",
+			importPartition:    base.Uint16Ptr(8),
+			expectedPartitions: base.Uint16Ptr(8),
+			serverless:         true,
+		},
+		{
+			name:               "non serverless partitions",
+			expectedPartitions: base.Uint16Ptr(16),
+			serverless:         false,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			expectedPartitions := test.expectedPartitions
+			if !base.IsEnterpriseEdition() {
+				t.Logf("Import partitions setting is only supported in EE")
+				expectedPartitions = nil
+			}
+
+			tb := base.GetTestBucket(t)
+			defer tb.Close()
+			rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb, PersistentConfig: true, serverless: test.serverless})
+			defer rt.Close()
+			sc := rt.ServerContext()
+
+			var dbconf *DbConfig
+			if test.name == "serverless partitions with import_partition specified" {
+				resp := rt.SendAdminRequest(http.MethodPut, "/db/", fmt.Sprintf(`{"bucket": "%s", "use_views": %t, "num_index_replicas": 0, "import_partitions": 8}`,
+					tb.GetName(), base.TestsDisableGSI()))
+				RequireStatus(t, resp, http.StatusCreated)
+				dbconf = sc.GetDbConfig("db")
+			} else {
+				dbconf = DefaultDbConfig(sc.Config)
+			}
+
+			assert.Equal(t, expectedPartitions, dbconf.ImportPartitions)
+		})
+	}
 }

@@ -98,18 +98,6 @@ func (dc *DbConfig) MakeBucketSpec() base.BucketSpec {
 		tlsPort = bc.KvTLSPort
 	}
 
-	// WIP: Collections Phase 1 - Grab just one scope/collection from the defined set.
-	// Phase 2 (multi collection) means DatabaseContext needs a set of BucketSpec/Collections, not just one...
-	var scope, collection *string
-	for scopeName, scopeConfig := range dc.Scopes {
-		scope = &scopeName
-		for collectionName := range scopeConfig.Collections {
-			base.WarnfCtx(context.TODO(), "WIP Collections (Phase 1) - Running db %q in scope %q collection %q", dc.Name, scopeName, collectionName)
-			collection = &collectionName
-			break
-		}
-	}
-
 	return base.BucketSpec{
 		Server:                server,
 		BucketName:            bucketName,
@@ -119,8 +107,6 @@ func (dc *DbConfig) MakeBucketSpec() base.BucketSpec {
 		KvTLSPort:             tlsPort,
 		Auth:                  bc,
 		MaxConcurrentQueryOps: bc.MaxConcurrentQueryOps,
-		Scope:                 scope,
-		Collection:            collection,
 	}
 }
 
@@ -853,11 +839,6 @@ func (dbConfig *DbConfig) validateVersion(ctx context.Context, isEnterpriseEditi
 		}
 
 		for scopeName, scopeConfig := range dbConfig.Scopes {
-			// WIP: Collections Phase 1 - Only allow a single collection
-			if len(scopeConfig.Collections) != 1 {
-				base.WarnfCtx(ctx, "WIP Collections Phase 1 only supports a single collection - had %d", len(scopeConfig.Collections))
-			}
-
 			if len(scopeConfig.Collections) == 0 {
 				multiError = multiError.Append(fmt.Errorf("must specify at least one collection in scope %v", scopeName))
 				continue

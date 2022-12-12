@@ -102,7 +102,7 @@ type SingleChannelCache interface {
 
 type singleChannelCacheImpl struct {
 	channelID        channels.ID          // The channel
-	queryHandler     ChannelQueryHandler  // Database connection (used for view queries)
+	queryHandler     ChannelQueryHandler  // Channel query function
 	logs             LogEntries           // Log entries in sequence order
 	validFrom        uint64               // First sequence that logs is valid for, not necessarily the seq number of a change entry.
 	lock             sync.RWMutex         // Controls access to logs, validFrom
@@ -218,7 +218,7 @@ func (c *singleChannelCacheImpl) wouldBeImmediatelyPruned(change *LogEntry) bool
 }
 
 // Remove purges the given doc IDs from the channel cache and returns the number of items removed.
-func (c *singleChannelCacheImpl) Remove(docIDs []string, startTime time.Time) (count int) {
+func (c *singleChannelCacheImpl) Remove(collectionID uint32, docIDs []string, startTime time.Time) (count int) {
 	// Exit early if there's no work to do
 	if len(docIDs) == 0 {
 		return 0

@@ -25,13 +25,14 @@ import (
 
 /** A group that users can belong to, with associated channel permissions. */
 type roleImpl struct {
-	Name_             string          `json:"name,omitempty"`
-	ExplicitChannels_ ch.TimedSet     `json:"admin_channels,omitempty"`
-	Channels_         ch.TimedSet     `json:"all_channels"`
-	Sequence_         uint64          `json:"sequence"`
-	ChannelHistory_   TimedSetHistory `json:"channel_history,omitempty"`   // Added to when a previously granted channel is revoked. Calculated inside of rebuildChannels.
-	ChannelInvalSeq   uint64          `json:"channel_inval_seq,omitempty"` // Sequence at which the channels were invalidated. Data remains in Channels_ for history calculation.
-	Deleted           bool            `json:"deleted,omitempty"`
+	Name_             string                                  `json:"name,omitempty"`
+	ExplicitChannels_ ch.TimedSet                             `json:"admin_channels,omitempty"`
+	Channels_         ch.TimedSet                             `json:"all_channels"`
+	Sequence_         uint64                                  `json:"sequence"`
+	ChannelHistory_   TimedSetHistory                         `json:"channel_history,omitempty"`   // Added to when a previously granted channel is revoked. Calculated inside of rebuildChannels.
+	ChannelInvalSeq   uint64                                  `json:"channel_inval_seq,omitempty"` // Sequence at which the channels were invalidated. Data remains in Channels_ for history calculation.
+	Deleted           bool                                    `json:"deleted,omitempty"`
+	CollectionsAccess map[string]map[string]*CollectionAccess `json:"collection_access,omitempty"` // Nested maps of CollectionAccess, indexed by scope and collection name
 	vbNo              *uint16
 	cas               uint64
 }
@@ -95,10 +96,23 @@ func (pair *GrantHistorySequencePair) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func (role *roleImpl) initRole(name string, channels base.Set) error {
-	channels = ch.ExpandingStar(channels)
+func (role *roleImpl) initRole(name string, channels base.Set, collections map[string]map[string]struct{}) error {
 	role.Name_ = name
-	role.ExplicitChannels_ = ch.AtSequence(channels, 1)
+	// Grant the user the specified channels for all specified collections.  If none are
+	// specified, grant to the default collection.
+	if len(collections) == 0 {
+		if err := role.initChannels(base.DefaultScope, base.DefaultCollection, channels); err != nil {
+			return err
+		}
+	} else {
+		for scopeName, scope := range collections {
+			for collectionName, _ := range scope {
+				if err := role.initChannels(scopeName, collectionName, channels); err != nil {
+					return err
+				}
+			}
+		}
+	}
 	return role.validate()
 }
 
@@ -203,10 +217,32 @@ func (auth *Authenticator) NewRole(name string, channels base.Set) (Role, error)
 		role.SetChannelHistory(existingRole.ChannelHistory())
 	}
 
-	if err := role.initRole(name, channels); err != nil {
+	if err := role.initRole(name, channels, auth.Collections); err != nil {
 		return nil, err
 	}
-	if err := auth.rebuildChannels(role); err != nil {
+	if _, err := auth.rebuildChannels(role); err != nil {
+		return nil, err
+	}
+	return role, nil
+}
+
+// Creates a new Role object.
+func (auth *Authenticator) NewRoleNoChannels(name string) (Role, error) {
+	role := &roleImpl{}
+	existingRole, err := auth.GetRoleIncDeleted(name)
+	if err != nil {
+		return nil, err
+	}
+
+	if existingRole != nil && existingRole.IsDeleted() {
+		role.SetCas(existingRole.Cas())
+		role.SetChannelHistory(existingRole.ChannelHistory())
+	}
+
+	if err := role.initRole(name, nil, nil); err != nil {
+		return nil, err
+	}
+	if _, err := auth.rebuildChannels(role); err != nil {
 		return nil, err
 	}
 	return role, nil
@@ -253,6 +289,7 @@ func (role *roleImpl) IsDeleted() bool {
 	return role.Deleted
 }
 
+// Retrieves Channels for the default collection
 func (role *roleImpl) Channels() ch.TimedSet {
 	if role.ChannelInvalSeq != 0 {
 		return nil

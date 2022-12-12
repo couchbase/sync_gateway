@@ -42,7 +42,7 @@ const (
 var MaxSequenceIncrFrequency = 1000 * time.Millisecond
 
 type sequenceAllocator struct {
-	bucket                  base.Bucket         // Bucket whose counter to use
+	datastore               base.DataStore      // Bucket whose counter to use
 	dbStats                 *base.DatabaseStats // For updating per-db sequence allocation stats
 	mutex                   sync.Mutex          // Makes this object thread-safe
 	last                    uint64              // The last sequence allocated by this allocator.
@@ -54,14 +54,14 @@ type sequenceAllocator struct {
 	releaseSequenceWait     time.Duration       // Supports test customization
 }
 
-func newSequenceAllocator(bucket base.Bucket, dbStatsMap *base.DatabaseStats) (*sequenceAllocator, error) {
+func newSequenceAllocator(datastore base.DataStore, dbStatsMap *base.DatabaseStats) (*sequenceAllocator, error) {
 	if dbStatsMap == nil {
 		return nil, fmt.Errorf("dbStatsMap parameter must be non-nil")
 	}
 
 	s := &sequenceAllocator{
-		bucket:  bucket,
-		dbStats: dbStatsMap,
+		datastore: datastore,
+		dbStats:   dbStatsMap,
 	}
 	s.terminator = make(chan struct{})
 	s.sequenceBatchSize = idleBatchSize
@@ -215,12 +215,12 @@ func (s *sequenceAllocator) _reserveSequenceRange() error {
 
 // Gets the _sync:seq document value.  Retry handling provided by bucket.Get.
 func (s *sequenceAllocator) getSequence() (max uint64, err error) {
-	return base.GetCounter(s.bucket, base.SyncSeqKey)
+	return base.GetCounter(s.datastore, base.SyncSeqKey)
 }
 
 // Increments the _sync:seq document.  Retry handling provided by bucket.Incr.
 func (s *sequenceAllocator) incrementSequence(numToReserve uint64) (max uint64, err error) {
-	value, err := s.bucket.Incr(base.SyncSeqKey, numToReserve, numToReserve, 0)
+	value, err := s.datastore.Incr(base.SyncSeqKey, numToReserve, numToReserve, 0)
 	if err == nil {
 		s.dbStats.SequenceIncrCount.Add(1)
 	}
@@ -233,7 +233,7 @@ func (s *sequenceAllocator) releaseSequence(sequence uint64) error {
 	key := fmt.Sprintf("%s%d", base.UnusedSeqPrefix, sequence)
 	body := make([]byte, 8)
 	binary.LittleEndian.PutUint64(body, sequence)
-	_, err := s.bucket.AddRaw(key, UnusedSequenceTTL, body)
+	_, err := s.datastore.AddRaw(key, UnusedSequenceTTL, body)
 	if err != nil {
 		return err
 	}
@@ -250,7 +250,7 @@ func (s *sequenceAllocator) releaseSequenceRange(fromSequence, toSequence uint64
 	body := make([]byte, 16)
 	binary.LittleEndian.PutUint64(body[:8], fromSequence)
 	binary.LittleEndian.PutUint64(body[8:16], toSequence)
-	_, err := s.bucket.AddRaw(key, UnusedSequenceTTL, body)
+	_, err := s.datastore.AddRaw(key, UnusedSequenceTTL, body)
 	if err != nil {
 		return err
 	}

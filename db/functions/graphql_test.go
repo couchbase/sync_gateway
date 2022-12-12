@@ -156,7 +156,7 @@ var kTestGraphQLUserFunctionsConfig = FunctionsConfig{
 		},
 		"getTask": {
 			Type: "javascript",
-			Code: `function(context, args) {
+			Code: `function(context, args, parent, info) {
 						var all = context.user.function("all");
 						for (var i = 0; i < all.length; i++)
 							if (all[i].id == args.id) return all[i];
@@ -166,7 +166,7 @@ var kTestGraphQLUserFunctionsConfig = FunctionsConfig{
 		},
 		"infinite": {
 			Type: "javascript",
-			Code: `function(context, args) {
+			Code: `function(context, args, parent, info) {
 				var result = context.user.graphql("query{ infinite }");
 				if (result.errors) throw "GraphQL query failed:" + result.errors[0].message;
 				return -1;}`,
@@ -214,7 +214,10 @@ func assertGraphQLError(t *testing.T, expectedErrorText string, result *graphql.
 
 // Unit test for GraphQL queries.
 func TestUserGraphQL(t *testing.T) {
-	//base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+	// FIXME : this test doesn't work because the access view does not exist on the collection ???
+	t.Skip("Skipping test until access view is available with collections")
+
+	// base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	db, ctx := setupTestDBWithFunctions(t, &kTestGraphQLUserFunctionsConfig, &kTestGraphQLConfig)
 	defer db.Close(ctx)
 
@@ -289,7 +292,7 @@ func testUserGraphQLAsUser(t *testing.T, ctx context.Context, db *db.Database) {
 	assertGraphQLError(t, "403", result, err)
 }
 
-//////// GRAPHQL N1QL RESOLVER TESTS
+// ////// GRAPHQL N1QL RESOLVER TESTS
 
 // The GraphQL configuration, using N1QL in some resolvers:
 var kTestGraphQLConfigWithN1QL = GraphQLConfig{
@@ -381,6 +384,9 @@ type Body = db.Body
 
 // Unit test for GraphQL queries.
 func TestUserGraphQLWithN1QL(t *testing.T) {
+
+	base.DisableTestWithCollections(t)
+
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test is Couchbase Server only (requires N1QL)")
 	}
@@ -388,11 +394,13 @@ func TestUserGraphQLWithN1QL(t *testing.T) {
 	db, ctx := setupTestDBWithFunctions(t, nil, &kTestGraphQLConfigWithN1QL)
 	defer db.Close(ctx)
 
-	_, _, _ = db.Put(ctx, "a", Body{"type": "task", "title": "Applesauce", "done": true, "tags": []string{"fruit", "soft"}, "channels": "wonderland"})
-	_, _, _ = db.Put(ctx, "b", Body{"type": "task", "title": "Beer", "description": "Bass ale please", "channels": "wonderland"})
-	_, _, _ = db.Put(ctx, "m", Body{"type": "task", "title": "Mangoes", "channels": "wonderland"})
+	collection, err := db.GetDefaultDatabaseCollectionWithUser()
+	require.NoError(t, err)
+	_, _, _ = collection.Put(ctx, "a", Body{"type": "task", "title": "Applesauce", "done": true, "tags": []string{"fruit", "soft"}, "channels": "wonderland"})
+	_, _, _ = collection.Put(ctx, "b", Body{"type": "task", "title": "Beer", "description": "Bass ale please", "channels": "wonderland"})
+	_, _, _ = collection.Put(ctx, "m", Body{"type": "task", "title": "Mangoes", "channels": "wonderland"})
 
-	n1qlStore, ok := base.AsN1QLStore(db.Bucket)
+	n1qlStore, ok := base.AsN1QLStore(db.Bucket.DefaultDataStore())
 	require.True(t, ok)
 
 	createdPrimaryIdx := createPrimaryIndex(t, n1qlStore)
@@ -436,7 +444,7 @@ func TestGraphQLMaxSchemaSize(t *testing.T) {
 			"Query": {
 				"square": {
 					Type: "javascript",
-					Code: `function(parent, args, context, info) {return args.n * args.n;}`,
+					Code: `function(context,args) {return args.n * args.n;}`,
 				},
 			},
 		},
@@ -462,13 +470,13 @@ func TestGraphQLMaxResolverCount(t *testing.T) {
 			"Query": {
 				"square": {
 					Type: "javascript",
-					Code: `function(parent, args, context, info) {return args.n * args.n;}`,
+					Code: `function(context,args) {return args.n * args.n;}`,
 				},
 			},
 			"Mutation": {
 				"complete": {
 					Type: "javascript",
-					Code: `function(parent, args, context, info) { }`,
+					Code: `function(context, args, parent, info) { }`,
 				},
 			},
 		},

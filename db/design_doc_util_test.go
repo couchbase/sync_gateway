@@ -11,7 +11,7 @@ package db
 import (
 	"testing"
 
-	"github.com/couchbase/sync_gateway/base"
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -24,15 +24,15 @@ func setDesignDocPreviousVersionsForTest(t testing.TB, versions ...string) {
 	DesignDocPreviousVersions = versions
 }
 
-// assertDesignDocExists ensures that the design doc exists in the bucket.
-func assertDesignDocExists(t testing.TB, bucket base.Bucket, ddocName string) bool {
-	_, err := bucket.GetDDoc(ddocName)
+// assertDesignDocExists ensures that the design doc exists in the dataStore.
+func assertDesignDocExists(t testing.TB, viewStore sgbucket.ViewStore, ddocName string) bool {
+	_, err := viewStore.GetDDoc(ddocName)
 	return assert.NoErrorf(t, err, "Design doc %s should exist but got an error fetching it: %v", ddocName, err)
 }
 
-// assertDesignDocDoesNotExist ensures that the design doc does not exist in the bucket.
-func assertDesignDocNotExists(t testing.TB, bucket base.Bucket, ddocName string) bool {
-	ddoc, err := bucket.GetDDoc(ddocName)
+// assertDesignDocDoesNotExist ensures that the design doc does not exist in the dataStore.
+func assertDesignDocNotExists(t testing.TB, viewStore sgbucket.ViewStore, ddocName string) bool {
+	ddoc, err := viewStore.GetDDoc(ddocName)
 	if err == nil {
 		return assert.Failf(t, "Design doc %s should not exist but but it did: %v", ddocName, ddoc)
 	}

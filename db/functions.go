@@ -119,6 +119,8 @@ func CheckRequestSize[T int | int64](actualSize T, maxSize *int) error {
 // Utility that returns a rough estimate of the original size of the JSON a value was parsed from.
 func EstimateSizeOfJSON(args any) int {
 	switch arg := args.(type) {
+	case nil:
+		return 4
 	case bool:
 		return 4
 	case int64:
@@ -126,7 +128,7 @@ func EstimateSizeOfJSON(args any) int {
 	case float64:
 		return 8
 	case json.Number:
-		return len(arg) + 2
+		return len(arg)
 	case string:
 		return len(arg) + 2
 	case []any:
@@ -136,7 +138,7 @@ func EstimateSizeOfJSON(args any) int {
 		}
 		return size
 	case map[string]any:
-		size := 0
+		size := 2
 		for key, item := range arg {
 			size += len(key) + EstimateSizeOfJSON(item) + 4
 		}
