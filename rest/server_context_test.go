@@ -275,6 +275,7 @@ outerLoop:
 			}
 			formattedHttpHost := fmt.Sprintf("%s://%s:%d", protocol, httpHost.Host, httpHost.Port)
 
+			t.Logf("formattedHttpHost: %s, ep: %s", formattedHttpHost, ep)
 			if formattedHttpHost == ep {
 				existsOneMatchingEndpoint = true
 				break outerLoop
@@ -580,7 +581,7 @@ func TestServerContextSetupCollectionsSupport(t *testing.T) {
 
 	tb := base.GetTestBucket(t)
 	defer tb.Close()
-	if tb.IsSupported(sgbucket.DataStoreFeatureCollections) {
+	if tb.IsSupported(sgbucket.BucketStoreFeatureCollections) {
 		t.Skip("Only runs on datastores without collections support")
 	}
 

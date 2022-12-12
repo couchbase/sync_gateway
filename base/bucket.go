@@ -48,15 +48,20 @@ type WrappingBucket interface {
 	GetUnderlyingBucket() Bucket
 }
 
-// CouchbaseStore defines operations specific to Couchbase data stores
-type CouchbaseStore interface {
-	BucketName() string
+// WrappingDataStore interface used to identify datastores that wrap an underlying
+// datastore (leaky datastore)
+type WrappingDatastore interface {
+	GetUnderlyingDataStore() DataStore
+}
+
+// CouchbaseBucketStore defines operations specific to Couchbase Bucket
+type CouchbaseBucketStore interface {
+	GetName() string
 	MgmtEps() ([]string, error)
 	MetadataPurgeInterval() (time.Duration, error)
 	ServerUUID() (uuid string, err error)
 	MaxTTL() (int, error)
 	HttpClient() *http.Client
-	GetExpiry(k string) (expiry uint32, getMetaError error)
 	GetSpec() BucketSpec
 	GetMaxVbno() (uint16, error)
 
@@ -64,22 +69,35 @@ type CouchbaseStore interface {
 	// a map of UUIDS and a map of high sequence numbers (map from vbno -> seq)
 	GetStatsVbSeqno(maxVbno uint16, useAbsHighSeqNo bool) (uuids map[uint16]uint64, highSeqnos map[uint16]uint64, seqErr error)
 
-	// mgmtRequest uses the CouchbaseStore's http client to make an http request against a management endpoint.
+	// mgmtRequest uses the CouchbaseBucketStore's http client to make an http request against a management endpoint.
 	mgmtRequest(method, uri, contentType string, body io.Reader) (*http.Response, error)
 }
 
-func AsCouchbaseStore(b Bucket) (CouchbaseStore, bool) {
-	couchbaseBucket, ok := GetBaseBucket(b).(CouchbaseStore)
+func AsCouchbaseBucketStore(b Bucket) (CouchbaseBucketStore, bool) {
+	couchbaseBucket, ok := GetBaseBucket(b).(CouchbaseBucketStore)
 	return couchbaseBucket, ok
 }
 
 // GetBaseBucket returns the lowest level non-wrapping bucket wrapped by one or more WrappingBuckets
 func GetBaseBucket(b Bucket) Bucket {
-	wb, ok := b.(WrappingBucket)
-	if ok {
+	if wb, ok := b.(WrappingBucket); ok {
 		return GetBaseBucket(wb.GetUnderlyingBucket())
 	}
 	return b
+}
+
+// GetBaseDataStore returns the lowest level non-wrapping datastore wrapped by one or more WrappingBuckets
+func GetBaseDataStore(ds DataStore) DataStore {
+	if wds, ok := ds.(WrappingDatastore); ok {
+		return GetBaseDataStore(wds.GetUnderlyingDataStore())
+	}
+	return ds
+}
+
+// AsDataStoreName is a temporary thing until DataStoreName is implemented on wrappers (pending further design work on FQName...)
+func AsDataStoreName(ds DataStore) (sgbucket.DataStoreName, bool) {
+	dsn, ok := GetBaseDataStore(ds).(sgbucket.DataStoreName)
+	return dsn, ok
 }
 
 func init() {
@@ -88,7 +106,9 @@ func init() {
 	gomemcached.MaxBodyLen = int(20 * 1024 * 1024)
 }
 
-type Bucket sgbucket.DataStore
+type DataStore sgbucket.DataStore
+type Bucket sgbucket.BucketStore
+
 type FeedArguments sgbucket.FeedArguments
 type TapFeed sgbucket.MutationFeed
 
@@ -112,7 +132,6 @@ type BucketSpec struct {
 	MaxConcurrentQueryOps         *int           // maximum number of concurrent query operations (default: DefaultMaxConcurrentQueryOps)
 	BucketOpTimeout               *time.Duration // How long bucket ops should block returning "operation timed out". If nil, uses GoCB default.  GoCB buckets only.
 	KvPoolSize                    int            // gocb kv_pool_size - number of pipelines per node. Initialized on GetGoCBConnString
-	Scope, Collection             *string        // An optional named scope/collection. If not specified, the _default scope/collection will be used.
 }
 
 // Create a RetrySleeper based on the bucket spec properties.  Used to retry bucket operations after transient errors.
@@ -302,10 +321,10 @@ func GetBucket(spec BucketSpec) (bucket Bucket, err error) {
 	if spec.IsWalrusBucket() {
 		InfofCtx(context.TODO(), KeyAll, "Opening Walrus database %s on <%s>", MD(spec.BucketName), SD(spec.Server))
 		sgbucket.SetLogging(ConsoleLogKey().Enabled(KeyBucket))
-		bucket, err = walrus.GetBucket(spec.Server, DefaultPool, spec.BucketName)
+		bucket, err = walrus.GetCollectionBucket(spec.Server, spec.BucketName)
 		// If feed type is not specified (defaults to DCP) or isn't TAP, wrap with pseudo-vbucket handling for walrus
 		if spec.FeedType != TapFeedType {
-			bucket = &LeakyBucket{bucket: bucket, config: LeakyBucketConfig{TapFeedVbuckets: true}}
+			bucket = &LeakyBucket{bucket: bucket, config: &LeakyBucketConfig{TapFeedVbuckets: true}}
 		}
 	} else {
 
@@ -315,7 +334,7 @@ func GetBucket(spec BucketSpec) (bucket Bucket, err error) {
 		}
 		InfofCtx(context.TODO(), KeyAll, "Opening Couchbase database %s on <%s> as user %q", MD(spec.BucketName), SD(spec.Server), UD(username))
 
-		bucket, err = GetCouchbaseCollection(spec)
+		bucket, err = GetGoCBv2Bucket(spec)
 		if err != nil {
 			return nil, err
 		}
@@ -323,7 +342,7 @@ func GetBucket(spec BucketSpec) (bucket Bucket, err error) {
 		// If XATTRS are enabled via enable_shared_bucket_access config flag, assert that Couchbase Server is 5.0
 		// or later, otherwise refuse to connect to the bucket since pre 5.0 versions don't support XATTRs
 		if spec.UseXattrs {
-			if !bucket.IsSupported(sgbucket.DataStoreFeatureXattrs) {
+			if !bucket.IsSupported(sgbucket.BucketStoreFeatureXattrs) {
 				WarnfCtx(context.Background(), "If using XATTRS, Couchbase Server version must be >= 5.0.")
 				return nil, ErrFatalBucketConnection
 			}
@@ -331,30 +350,32 @@ func GetBucket(spec BucketSpec) (bucket Bucket, err error) {
 
 	}
 
-	if LogDebugEnabled(KeyBucket) {
-		bucket = &LoggingBucket{bucket: bucket}
-	}
-	return
+	// TODO: CBG-2529 - LoggingBucket has been removed - pending a new approach to logging all bucket operations
+	// if LogDebugEnabled(KeyBucket) {
+	// bucket = &LoggingBucket{bucket: bucket}
+	// }
+
+	return bucket, nil
 }
 
 // GetCounter returns a uint64 result for the given counter key.
 // If the given key is not found in the bucket, this function returns a result of zero.
-func GetCounter(bucket Bucket, k string) (result uint64, err error) {
-	_, err = bucket.Get(k, &result)
-	if bucket.IsError(err, sgbucket.KeyNotFoundError) {
+func GetCounter(datastore DataStore, k string) (result uint64, err error) {
+	_, err = datastore.Get(k, &result)
+	if datastore.IsError(err, sgbucket.KeyNotFoundError) {
 		return 0, nil
 	}
 	return result, err
 }
 
-func IsKeyNotFoundError(bucket Bucket, err error) bool {
+func IsKeyNotFoundError(datastore DataStore, err error) bool {
 
 	if err == nil {
 		return false
 	}
 
 	unwrappedErr := pkgerrors.Cause(err)
-	return bucket.IsError(unwrappedErr, sgbucket.KeyNotFoundError)
+	return datastore.IsError(unwrappedErr, sgbucket.KeyNotFoundError)
 }
 
 func IsCasMismatch(err error) bool {
@@ -381,22 +402,25 @@ func IsCasMismatch(err error) bool {
 // (DCP for any couchbase bucket, TAP otherwise)
 func GetFeedType(bucket Bucket) (feedType string) {
 	switch typedBucket := bucket.(type) {
-	case *Collection:
+	case *GocbV2Bucket:
+		return DcpFeedType
+	case *walrus.CollectionBucket:
 		return DcpFeedType
 	case *LeakyBucket:
 		return GetFeedType(typedBucket.bucket)
-	case *LoggingBucket:
-		return GetFeedType(typedBucket.bucket)
 	case *TestBucket:
 		return GetFeedType(typedBucket.Bucket)
+	case *walrus.WalrusBucket:
+		return TapFeedType
 	default:
+		// unknown bucket type?
 		return TapFeedType
 	}
 }
 
 // Gets the bucket max TTL, or 0 if no TTL was set.  Sync gateway should fail to bring the DB online if this is non-zero,
 // since it's not meant to operate against buckets that auto-delete data.
-func getMaxTTL(store CouchbaseStore) (int, error) {
+func getMaxTTL(store CouchbaseBucketStore) (int, error) {
 	var bucketResponseWithMaxTTL struct {
 		MaxTTLSeconds int `json:"maxTTL,omitempty"`
 	}
@@ -422,7 +446,7 @@ func getMaxTTL(store CouchbaseStore) (int, error) {
 }
 
 // Get the Server UUID of the bucket, this is also known as the Cluster UUID
-func getServerUUID(store CouchbaseStore) (uuid string, err error) {
+func getServerUUID(store CouchbaseBucketStore) (uuid string, err error) {
 	resp, err := store.mgmtRequest(http.MethodGet, "/pools", "application/json", nil)
 	if err != nil {
 		return "", err
@@ -448,10 +472,10 @@ func getServerUUID(store CouchbaseStore) (uuid string, err error) {
 
 // Gets the metadata purge interval for the bucket.  First checks for a bucket-specific value.  If not
 // found, retrieves the cluster-wide value.
-func getMetadataPurgeInterval(store CouchbaseStore) (time.Duration, error) {
+func getMetadataPurgeInterval(store CouchbaseBucketStore) (time.Duration, error) {
 
 	// Bucket-specific settings
-	uri := fmt.Sprintf("/pools/default/buckets/%s", store.BucketName())
+	uri := fmt.Sprintf("/pools/default/buckets/%s", store.GetName())
 	bucketPurgeInterval, err := retrievePurgeInterval(store, uri)
 	if bucketPurgeInterval > 0 || err != nil {
 		return bucketPurgeInterval, err
@@ -471,7 +495,7 @@ func getMetadataPurgeInterval(store CouchbaseStore) (time.Duration, error) {
 // Helper function to retrieve a Metadata Purge Interval from server and convert to hours.  Works for any uri
 // that returns 'purgeInterval' as a root-level property (which includes the two server endpoints for
 // bucket and server purge intervals).
-func retrievePurgeInterval(bucket CouchbaseStore, uri string) (time.Duration, error) {
+func retrievePurgeInterval(bucket CouchbaseBucketStore, uri string) (time.Duration, error) {
 
 	// Both of the purge interval endpoints (cluster and bucket) return purgeInterval in the same way
 	var purgeResponse struct {
@@ -510,4 +534,26 @@ func ensureBodyClosed(body io.ReadCloser) {
 	if err != nil {
 		DebugfCtx(context.TODO(), KeyBucket, "Failed to close socket: %v", err)
 	}
+}
+
+// AsViewStore returns a ViewStore if the underlying dataStore implements ViewStore.
+func AsViewStore(ds DataStore) (sgbucket.ViewStore, bool) {
+	viewStore, ok := ds.(sgbucket.ViewStore)
+	return viewStore, ok
+}
+
+// AsSubdocStore returns a SubdocStore if the underlying dataStore implements and supports subdoc operations.
+func AsSubdocStore(ds DataStore) (sgbucket.SubdocStore, bool) {
+	subdocStore, ok := ds.(sgbucket.SubdocStore)
+	return subdocStore, ok && ds.IsSupported(sgbucket.BucketStoreFeatureSubdocOperations)
+}
+
+// WaitUntilDataStoreExists will try to perform an operation in the given DataStore until it can succeed.
+//
+// There's no WaitForReady operation in GoCB for collections, only Buckets, so attempting to use Exists in this way this seems like our best option to check for availability.
+func WaitUntilDataStoreExists(ds DataStore) error {
+	return WaitForNoError(func() error {
+		_, err := ds.Exists("WaitUntilDataStoreExists")
+		return err
+	})
 }

@@ -1183,14 +1183,14 @@ func TestJWTRolesChannels(t *testing.T) {
 
 			testBucket := base.GetTestBucket(t)
 			defer testBucket.Close()
-
+			dataStore := testBucket.GetSingleDataStore()
 			testMockComputer := mockComputerV2{
 				roles:        map[string]ch.TimedSet{},
 				channels:     map[string]ch.TimedSet{},
 				roleChannels: map[string]ch.TimedSet{},
 			}
 
-			auth := NewAuthenticator(testBucket, &testMockComputer, DefaultAuthenticatorOptions())
+			auth := NewAuthenticator(dataStore, &testMockComputer, DefaultAuthenticatorOptions())
 
 			provider := &OIDCProvider{
 				Name: "foo",
@@ -1243,7 +1243,8 @@ func TestJWTRolesChannels(t *testing.T) {
 				user.SetJWTLastUpdated(*updates.JWTLastUpdated)
 
 				require.NoError(t, auth.rebuildRoles(user))
-				require.NoError(t, auth.rebuildChannels(user))
+				_, rebuildErr := auth.rebuildChannels(user)
+				require.NoError(t, rebuildErr)
 
 				if user.RoleNames() == nil {
 					require.Empty(t, login.expectedRoles, "user's roles were nil when we expected roles")

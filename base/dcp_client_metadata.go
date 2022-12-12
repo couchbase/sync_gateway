@@ -19,7 +19,7 @@ import (
 type DCPMetadataStoreType int
 
 const (
-	// DCPMetadataCS uses CouchbaseStore interface backed metadata storage
+	// DCPMetadataCS uses CouchbaseBucketStore interface backed metadata storage
 	DCPMetadataStoreCS = iota
 	// DCPMetadataInMemory uses in memory metadata storage
 	DCPMetadataStoreInMemory
@@ -148,18 +148,18 @@ func BuildDCPMetadataSliceFromVBUUIDs(vbUUIDS []uint64) []DCPMetadata {
 	return metadata
 }
 
-// DCPMetadataCS stores DCP metadata in the specified CouchbaseStore.  It does not require that the store is the
+// DCPMetadataCS stores DCP metadata in the specified CouchbaseBucketStore.  It does not require that the store is the
 // same one being streamed over DCP.
 type DCPMetadataCS struct {
-	bucket    Bucket
+	dataStore DataStore
 	keyPrefix string
 	metadata  []DCPMetadata
 }
 
-func NewDCPMetadataCS(store Bucket, numVbuckets uint16, numWorkers int, keyPrefix string) *DCPMetadataCS {
+func NewDCPMetadataCS(store DataStore, numVbuckets uint16, numWorkers int, keyPrefix string) *DCPMetadataCS {
 
 	m := &DCPMetadataCS{
-		bucket:    store,
+		dataStore: store,
 		keyPrefix: keyPrefix,
 		metadata:  make([]DCPMetadata, numVbuckets),
 	}
@@ -224,7 +224,7 @@ func (m *DCPMetadataCS) Persist(workerID int, vbIDs []uint16) {
 	for _, vbID := range vbIDs {
 		meta.DCPMeta[vbID] = m.metadata[vbID]
 	}
-	err := m.bucket.Set(m.getMetadataKey(workerID), 0, nil, meta)
+	err := m.dataStore.Set(m.getMetadataKey(workerID), 0, nil, meta)
 	if err != nil {
 		InfofCtx(context.TODO(), KeyDCP, "Unable to persist DCP metadata: %v", err)
 	} else {
@@ -236,9 +236,9 @@ func (m *DCPMetadataCS) Persist(workerID int, vbIDs []uint16) {
 
 func (m *DCPMetadataCS) load(workerID int) {
 	var meta WorkerMetadata
-	_, err := m.bucket.Get(m.getMetadataKey(workerID), &meta)
+	_, err := m.dataStore.Get(m.getMetadataKey(workerID), &meta)
 	if err != nil {
-		if IsKeyNotFoundError(m.bucket, err) {
+		if IsKeyNotFoundError(m.dataStore, err) {
 			return
 		}
 		InfofCtx(context.TODO(), KeyDCP, "Error loading persisted metadata - metadata will be reset for worker %d: %s", workerID, err)
@@ -253,8 +253,8 @@ func (m *DCPMetadataCS) load(workerID int) {
 
 func (m *DCPMetadataCS) Purge(numWorkers int) {
 	for i := 0; i < numWorkers; i++ {
-		err := m.bucket.Delete(m.getMetadataKey(i))
-		if err != nil && !IsKeyNotFoundError(m.bucket, err) {
+		err := m.dataStore.Delete(m.getMetadataKey(i))
+		if err != nil && !IsKeyNotFoundError(m.dataStore, err) {
 			InfofCtx(context.TODO(), KeyDCP, "Unable to remove DCP checkpoint for key %s: %v", m.getMetadataKey(i), err)
 		}
 	}

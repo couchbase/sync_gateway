@@ -25,15 +25,14 @@ import (
 
 func TestChannelCacheMaxSize(t *testing.T) {
 
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyCache)
-
 	bucket := base.GetTestBucket(t)
-
 	ctx := base.TestCtx(t)
 	dbCtx, err := NewDatabaseContext(ctx, "db", bucket, false, DatabaseContextOptions{})
 	require.NoError(t, err)
 	defer dbCtx.Close(ctx)
-	cache := dbCtx.changeCache.getChannelCache()
+
+	collection := dbCtx.GetSingleDatabaseCollection()
+	cache := collection.changeCache.getChannelCache()
 
 	collectionID := dbCtx.GetSingleDatabaseCollection().GetCollectionID()
 
@@ -88,10 +87,9 @@ func TestChannelCacheSimpleCompact(t *testing.T) {
 	dbstats, err := stats.NewDBStats("", false, false, false)
 	require.NoError(t, err)
 	testStats := dbstats.Cache()
-	queryHandler := &testQueryHandler{}
 	activeChannelStat := &base.SgwIntStat{}
 	activeChannels := channels.NewActiveChannels(activeChannelStat)
-	cache, err := newChannelCache("testDb", options, queryHandler, activeChannels, testStats)
+	cache, err := newChannelCache("testDb", options, testQueryHandlerFactory, activeChannels, testStats)
 	require.NoError(t, err, "Background task error whilst creating channel cache")
 	defer cache.Stop()
 
@@ -129,10 +127,9 @@ func TestChannelCacheCompactInactiveChannels(t *testing.T) {
 	require.NoError(t, err)
 	dbstats, err := stats.NewDBStats("", false, false, false)
 	testStats := dbstats.Cache()
-	queryHandler := &testQueryHandler{}
 	activeChannelStat := &base.SgwIntStat{}
 	activeChannels := channels.NewActiveChannels(activeChannelStat)
-	cache, err := newChannelCache("testDb", options, queryHandler, activeChannels, testStats)
+	cache, err := newChannelCache("testDb", options, testQueryHandlerFactory, activeChannels, testStats)
 	require.NoError(t, err, "Background task error whilst creating channel cache")
 	defer cache.Stop()
 
@@ -188,10 +185,9 @@ func TestChannelCacheCompactNRU(t *testing.T) {
 	dbstats, err := stats.NewDBStats("", false, false, false)
 	require.NoError(t, err)
 	testStats := dbstats.Cache()
-	queryHandler := &testQueryHandler{}
 	activeChannelStat := &base.SgwIntStat{}
 	activeChannels := channels.NewActiveChannels(activeChannelStat)
-	cache, err := newChannelCache("testDb", options, queryHandler, activeChannels, testStats)
+	cache, err := newChannelCache("testDb", options, testQueryHandlerFactory, activeChannels, testStats)
 	require.NoError(t, err, "Background task error whilst creating channel cache")
 	defer cache.Stop()
 
@@ -288,7 +284,7 @@ func TestChannelCacheHighLoadCacheHit(t *testing.T) {
 	queryHandler := &testQueryHandler{}
 	activeChannelStat := &base.SgwIntStat{}
 	activeChannels := channels.NewActiveChannels(activeChannelStat)
-	cache, err := newChannelCache("testDb", options, queryHandler, activeChannels, testStats)
+	cache, err := newChannelCache("testDb", options, queryHandler.asFactory, activeChannels, testStats)
 	require.NoError(t, err, "Background task error whilst creating channel cache")
 	defer cache.Stop()
 
@@ -362,7 +358,7 @@ func TestChannelCacheHighLoadCacheMiss(t *testing.T) {
 	queryHandler := &testQueryHandler{}
 	activeChannelStat := &base.SgwIntStat{}
 	activeChannels := channels.NewActiveChannels(activeChannelStat)
-	cache, err := newChannelCache("testDb", options, queryHandler, activeChannels, testStats)
+	cache, err := newChannelCache("testDb", options, queryHandler.asFactory, activeChannels, testStats)
 	require.NoError(t, err, "Background task error whilst creating channel cache")
 	defer cache.Stop()
 
@@ -431,7 +427,7 @@ func TestChannelCacheBypass(t *testing.T) {
 	queryHandler := &testQueryHandler{}
 	activeChannelStat := &base.SgwIntStat{}
 	activeChannels := channels.NewActiveChannels(activeChannelStat)
-	cache, err := newChannelCache("testDb", options, queryHandler, activeChannels, testStats)
+	cache, err := newChannelCache("testDb", options, queryHandler.asFactory, activeChannels, testStats)
 	require.NoError(t, err, "Background task error whilst creating channel cache")
 	defer cache.Stop()
 
@@ -477,17 +473,27 @@ func waitForCompaction(cache *channelCacheImpl) (compactionComplete bool) {
 	return false
 }
 
+// Used for singleChannelCache testing with non-shared testQueryHandler
+func testQueryHandlerFactory(collectionID uint32) (ChannelQueryHandler, error) {
+	return &testQueryHandler{}, nil
+}
+
 type testQueryHandler struct {
 	entries    LogEntries
 	queryCount int
 	lock       sync.RWMutex
 }
 
-func (qh *testQueryHandler) getChangesInChannelFromQuery(ctx context.Context, channelName string, startSeq, endSeq uint64, limit int, activeOnly bool) (LogEntries, error) {
+// Used to initialize channel cache with a shared, single TestQueryHandler
+func (qh *testQueryHandler) asFactory(collectionID uint32) (ChannelQueryHandler, error) {
+	return qh, nil
+}
+
+func (qh *testQueryHandler) getChangesInChannelFromQuery(ctx context.Context, channel string, startSeq, endSeq uint64, limit int, activeOnly bool) (LogEntries, error) {
 	queryEntries := make(LogEntries, 0)
 	qh.lock.RLock()
 	for _, entry := range qh.entries {
-		_, ok := entry.Channels[channelName]
+		_, ok := entry.Channels[channel]
 		if ok {
 			if activeOnly && !entry.IsActive() {
 				continue
@@ -528,7 +534,7 @@ func TestChannelCacheBackgroundTaskWithIllegalTimeInterval(t *testing.T) {
 	activeChannelStat := &base.SgwIntStat{}
 	activeChannels := channels.NewActiveChannels(activeChannelStat)
 
-	cache, err := newChannelCache("testDb", options, queryHandler, activeChannels, testStats)
+	cache, err := newChannelCache("testDb", options, queryHandler.asFactory, activeChannels, testStats)
 	assert.Error(t, err, "Background task error whilst creating channel cache")
 	assert.Nil(t, cache)
 

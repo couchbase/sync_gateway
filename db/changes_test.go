@@ -67,13 +67,13 @@ func TestFilterToAvailableChannels(t *testing.T) {
 				_, _, err = collection.Put(ctx, "doc"+id, Body{"channels": []string{"ch" + id}})
 				require.NoError(t, err)
 			}
-			err = db.WaitForPendingChanges(base.TestCtx(t))
+			err = collection.WaitForPendingChanges(base.TestCtx(t))
 			require.NoError(t, err)
 
-			db.user, err = auth.GetUser("test")
+			collection.user, err = auth.GetUser("test")
 			require.NoError(t, err)
 
-			ch, err := db.GetChanges(ctx, testCase.accessChans, getChangesOptionsWithZeroSeq())
+			ch, err := collection.GetChanges(ctx, testCase.accessChans, getChangesOptionsWithZeroSeq())
 			require.NoError(t, err)
 			require.Len(t, ch, len(testCase.expectedDocsReturned))
 
@@ -90,6 +90,10 @@ func TestFilterToAvailableChannels(t *testing.T) {
 
 // Unit test for bug #314
 func TestChangesAfterChannelAdded(t *testing.T) {
+
+	if base.TestsUseNamedCollections() {
+		t.Skip("Disabled for non-default collection based on use of GetPrincipalForTest")
+	}
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
@@ -115,15 +119,16 @@ func TestChangesAfterChannelAdded(t *testing.T) {
 	userInfo, err := db.GetPrincipalForTest(t, "naomi", true)
 	assert.True(t, userInfo != nil)
 	userInfo.ExplicitChannels = base.SetOf("ABC", "PBS")
+
 	_, err = db.UpdatePrincipal(base.TestCtx(t), userInfo, true, true)
 	assert.NoError(t, err, "UpdatePrincipal failed")
 
-	err = db.WaitForPendingChanges(base.TestCtx(t))
+	err = collection.WaitForPendingChanges(base.TestCtx(t))
 	assert.NoError(t, err)
 
 	// Check the _changes feed:
-	db.user, _ = authenticator.GetUser("naomi")
-	changes, err := db.GetChanges(ctx, base.SetOf("*"), getChangesOptionsWithZeroSeq())
+	collection.user, _ = authenticator.GetUser("naomi")
+	changes, err := collection.GetChanges(ctx, base.SetOf("*"), getChangesOptionsWithZeroSeq())
 	assert.NoError(t, err, "Couldn't GetChanges")
 	printChanges(changes)
 	require.Len(t, changes, 3)
@@ -142,7 +147,7 @@ func TestChangesAfterChannelAdded(t *testing.T) {
 	assert.True(t, changes[2].principalDoc)
 
 	lastSeq := getLastSeq(changes)
-	lastSeq, _ = ParseSequenceID(lastSeq.String())
+	lastSeq, _ = ParsePlainSequenceID(lastSeq.String())
 
 	// Add a new doc (sequence 3):
 	revid, _, err := collection.Put(ctx, "doc2", Body{"channels": []string{"PBS"}})
@@ -151,7 +156,7 @@ func TestChangesAfterChannelAdded(t *testing.T) {
 	// Check the _changes feed -- this is to make sure the changeCache properly received
 	// sequence 2 (the user doc) and isn't stuck waiting for it.
 	cacheWaiter.AddAndWait(1)
-	changes, err = db.GetChanges(ctx, base.SetOf("*"), getChangesOptionsWithSeq(lastSeq))
+	changes, err = collection.GetChanges(ctx, base.SetOf("*"), getChangesOptionsWithSeq(lastSeq))
 
 	assert.NoError(t, err, "Couldn't GetChanges (2nd)")
 
@@ -160,7 +165,7 @@ func TestChangesAfterChannelAdded(t *testing.T) {
 	assert.Equal(t, []ChangeRev{{"rev": revid}}, changes[0].Changes)
 
 	// validate from zero
-	changes, err = db.GetChanges(ctx, base.SetOf("*"), getChangesOptionsWithZeroSeq())
+	changes, err = collection.GetChanges(ctx, base.SetOf("*"), getChangesOptionsWithZeroSeq())
 	assert.NoError(t, err, "Couldn't GetChanges")
 	printChanges(changes)
 
@@ -220,8 +225,8 @@ func TestDocDeletionFromChannelCoalescedRemoved(t *testing.T) {
 	require.NoError(t, err)
 	cacheWaiter.AddAndWait(1)
 
-	db.user, _ = authenticator.GetUser("alice")
-	changes, err := db.GetChanges(ctx, base.SetOf("*"), getChangesOptionsWithZeroSeq())
+	collection.user, _ = authenticator.GetUser("alice")
+	changes, err := collection.GetChanges(ctx, base.SetOf("*"), getChangesOptionsWithZeroSeq())
 	assert.NoError(t, err, "Couldn't GetChanges")
 	printChanges(changes)
 	assert.Equal(t, 1, len(changes))
@@ -233,10 +238,10 @@ func TestDocDeletionFromChannelCoalescedRemoved(t *testing.T) {
 		collectionID: collectionID}, changes[0])
 
 	lastSeq := getLastSeq(changes)
-	lastSeq, _ = ParseSequenceID(lastSeq.String())
+	lastSeq, _ = ParsePlainSequenceID(lastSeq.String())
 
 	// Get raw document from the bucket
-	rv, _, _ := db.Bucket.GetRaw("alpha") // cas, err
+	rv, _, _ := collection.dataStore.GetRaw("alpha") // cas, err
 
 	// Unmarshall into nested maps
 	var x map[string]interface{}
@@ -260,12 +265,12 @@ func TestDocDeletionFromChannelCoalescedRemoved(t *testing.T) {
 	b, err := base.JSONMarshal(x)
 
 	// Update raw document in the bucket
-	assert.NoError(t, db.Bucket.SetRaw("alpha", 0, nil, b))
+	assert.NoError(t, collection.dataStore.SetRaw("alpha", 0, nil, b))
 
 	// Check the _changes feed -- this is to make sure the changeCache properly received
 	// sequence 3 and isn't stuck waiting for it.
 	cacheWaiter.AddAndWait(1)
-	changes, err = db.GetChanges(ctx, base.SetOf("*"), getChangesOptionsWithSeq(lastSeq))
+	changes, err = collection.GetChanges(ctx, base.SetOf("*"), getChangesOptionsWithSeq(lastSeq))
 
 	assert.NoError(t, err, "Couldn't GetChanges (2nd)")
 
@@ -305,8 +310,8 @@ func TestDocDeletionFromChannelCoalesced(t *testing.T) {
 	require.NoError(t, err)
 	cacheWaiter.AddAndWait(1)
 
-	db.user, _ = authenticator.GetUser("alice")
-	changes, err := db.GetChanges(ctx, base.SetOf("*"), getChangesOptionsWithZeroSeq())
+	collection.user, _ = authenticator.GetUser("alice")
+	changes, err := collection.GetChanges(ctx, base.SetOf("*"), getChangesOptionsWithZeroSeq())
 	assert.NoError(t, err, "Couldn't GetChanges")
 	printChanges(changes)
 
@@ -319,10 +324,10 @@ func TestDocDeletionFromChannelCoalesced(t *testing.T) {
 		collectionID: collectionID}, changes[0])
 
 	lastSeq := getLastSeq(changes)
-	lastSeq, _ = ParseSequenceID(lastSeq.String())
+	lastSeq, _ = ParsePlainSequenceID(lastSeq.String())
 
 	// Get raw document from the bucket
-	rv, _, _ := db.Bucket.GetRaw("alpha") // cas, err
+	rv, _, _ := collection.dataStore.GetRaw("alpha") // cas, err
 
 	// Unmarshall into nested maps
 	var x map[string]interface{}
@@ -342,13 +347,13 @@ func TestDocDeletionFromChannelCoalesced(t *testing.T) {
 	b, err := base.JSONMarshal(x)
 
 	// Update raw document in the bucket
-	require.NoError(t, db.Bucket.SetRaw("alpha", 0, nil, b))
+	require.NoError(t, collection.dataStore.SetRaw("alpha", 0, nil, b))
 
 	// Check the _changes feed -- this is to make sure the changeCache properly received
 	// sequence 3 (the modified document) and isn't stuck waiting for it.
 	cacheWaiter.AddAndWait(1)
 
-	changes, err = db.GetChanges(ctx, base.SetOf("*"), getChangesOptionsWithSeq(lastSeq))
+	changes, err = collection.GetChanges(ctx, base.SetOf("*"), getChangesOptionsWithSeq(lastSeq))
 
 	assert.NoError(t, err, "Couldn't GetChanges (2nd)")
 
@@ -386,7 +391,7 @@ func TestActiveOnlyCacheUpdate(t *testing.T) {
 		require.NoError(t, err, "Couldn't delete document")
 	}
 
-	waitErr := db.WaitForPendingChanges(base.TestCtx(t))
+	waitErr := collection.WaitForPendingChanges(base.TestCtx(t))
 	assert.NoError(t, waitErr)
 
 	changesOptions := ChangesOptions{
@@ -398,7 +403,7 @@ func TestActiveOnlyCacheUpdate(t *testing.T) {
 	initQueryCount := db.DbStats.Cache().ViewQueries.Value()
 
 	// Get changes with active_only=true
-	activeChanges, err := db.GetChanges(ctx, base.SetOf("*"), changesOptions)
+	activeChanges, err := collection.GetChanges(ctx, base.SetOf("*"), changesOptions)
 	require.NoError(t, err, "Error getting changes with active_only true")
 	require.Equal(t, 5, len(activeChanges))
 
@@ -408,7 +413,7 @@ func TestActiveOnlyCacheUpdate(t *testing.T) {
 
 	// Get changes with active_only=false, validate that triggers a new query
 	changesOptions.ActiveOnly = false
-	allChanges, err := db.GetChanges(ctx, base.SetOf("*"), changesOptions)
+	allChanges, err := collection.GetChanges(ctx, base.SetOf("*"), changesOptions)
 	require.NoError(t, err, "Error getting changes with active_only true")
 	require.Equal(t, 10, len(allChanges))
 
@@ -417,7 +422,7 @@ func TestActiveOnlyCacheUpdate(t *testing.T) {
 
 	// Get changes with active_only=false again, verify results are served from the cache
 	changesOptions.ActiveOnly = false
-	allChanges, err = db.GetChanges(ctx, base.SetOf("*"), changesOptions)
+	allChanges, err = collection.GetChanges(ctx, base.SetOf("*"), changesOptions)
 	require.NoError(t, err, "Error getting changes with active_only true")
 	require.Equal(t, 10, len(allChanges))
 
@@ -496,7 +501,7 @@ func BenchmarkChangesFeedDocUnmarshalling(b *testing.B) {
 
 		changesCtx, changesCtxCancel := context.WithCancel(context.Background())
 		options.ChangesCtx = changesCtx
-		feed, err := db.MultiChangesFeed(ctx, base.SetOf("*"), options)
+		feed, err := collection.MultiChangesFeed(ctx, base.SetOf("*"), options)
 		if err != nil {
 			b.Fatalf("Error getting changes feed: %v", err)
 		}

@@ -104,7 +104,7 @@ func (h *handler) handleCreateDB() error {
 				return httpErr
 			}
 			if errors.Is(err, base.ErrAuthError) {
-				return base.HTTPErrorf(http.StatusForbidden, "auth failure accessing provided bucket: %s", bucket)
+				return base.HTTPErrorf(http.StatusForbidden, "Provided bucket credentials do not have access to specified bucket: %s", bucket)
 			}
 			if errors.Is(err, base.ErrAlreadyExists) {
 				return base.HTTPErrorf(http.StatusConflict, "couldn't load database: %s", err)
@@ -952,8 +952,7 @@ func (h *handler) handleGetRawDoc() error {
 		includeDoc = false
 	}
 
-	collection := h.db.GetSingleDatabaseCollectionWithUser()
-	doc, err := collection.GetDocument(h.ctx(), docid, db.DocUnmarshalSync)
+	doc, err := h.collection.GetDocument(h.ctx(), docid, db.DocUnmarshalSync)
 	if err != nil {
 		return err
 	}
@@ -1004,8 +1003,7 @@ func (h *handler) handleGetRawDoc() error {
 func (h *handler) handleGetRevTree() error {
 	h.assertAdminOnly()
 	docid := h.PathVar("docid")
-	collection := h.db.GetSingleDatabaseCollectionWithUser()
-	doc, err := collection.GetDocument(h.ctx(), docid, db.DocUnmarshalAll)
+	doc, err := h.collection.GetDocument(h.ctx(), docid, db.DocUnmarshalAll)
 
 	if doc != nil {
 		h.writeText([]byte(doc.History.RenderGraphvizDot()))
@@ -1211,6 +1209,34 @@ func marshalPrincipal(princ auth.Principal, includeDynamicGrantInfo bool) auth.P
 		Name:             &name,
 		ExplicitChannels: princ.ExplicitChannels().AsSet(),
 	}
+
+	collectionAccess := princ.GetCollectionsAccess()
+	if collectionAccess != nil {
+		info.CollectionAccess = make(map[string]map[string]*auth.CollectionAccessConfig)
+		for scopeName, scope := range collectionAccess {
+			scopeAccessConfig := make(map[string]*auth.CollectionAccessConfig)
+			for collectionName, collection := range scope {
+				collectionAccessConfig := &auth.CollectionAccessConfig{
+					ExplicitChannels_: collection.ExplicitChannels().AsSet(),
+				}
+				if includeDynamicGrantInfo {
+					if user, ok := princ.(auth.User); ok {
+						collectionAccessConfig.Channels_ = user.InheritedCollectionChannels(scopeName, collectionName).AsSet()
+						collectionAccessConfig.JWTChannels_ = user.CollectionJWTChannels(scopeName, collectionName).AsSet()
+						lastUpdated := collection.JWTLastUpdated
+						if lastUpdated != nil && !lastUpdated.IsZero() {
+							collectionAccessConfig.JWTLastUpdated = lastUpdated
+						}
+					} else {
+						collectionAccessConfig.Channels_ = princ.CollectionChannels(scopeName, collectionName).AsSet()
+					}
+				}
+				scopeAccessConfig[collectionName] = collectionAccessConfig
+			}
+			info.CollectionAccess[scopeName] = scopeAccessConfig
+		}
+	}
+
 	if user, ok := princ.(auth.User); ok {
 		email := user.Email()
 		info.Email = &email
@@ -1453,7 +1479,6 @@ func (h *handler) handlePurge() error {
 	h.setHeader("Cache-Control", "private, max-age=0, no-cache, no-store")
 	_, _ = h.response.Write([]byte("{\"purged\":{\r\n"))
 	var first bool = true
-	collection := h.db.GetSingleDatabaseCollectionWithUser()
 
 	for key, value := range input {
 		// For each one validate that the revision list is set to ["*"], otherwise skip doc and log warning
@@ -1473,7 +1498,7 @@ func (h *handler) handlePurge() error {
 			}
 
 			// Attempt to delete document, if successful add to response, otherwise log warning
-			err = collection.Purge(h.ctx(), key)
+			err = h.collection.Purge(h.ctx(), key)
 			if err == nil {
 
 				docIDs = append(docIDs, key)
@@ -1499,7 +1524,7 @@ func (h *handler) handlePurge() error {
 	}
 
 	if len(docIDs) > 0 {
-		count := h.db.GetChangeCache().Remove(docIDs, startTime)
+		count := h.collection.RemoveFromChangeCache(docIDs, startTime)
 		base.DebugfCtx(h.ctx(), base.KeyCache, "Purged %d items from caches", count)
 	}
 

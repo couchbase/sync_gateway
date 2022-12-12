@@ -27,8 +27,8 @@ func TestCreateSession(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAuth)
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
-
-	auth := NewAuthenticator(testBucket, nil, DefaultAuthenticatorOptions())
+	dataStore := testBucket.GetSingleDataStore()
+	auth := NewAuthenticator(dataStore, nil, DefaultAuthenticatorOptions())
 
 	// Create session with a username and valid TTL of 2 hours.
 	session, err := auth.CreateSession(username, 2*time.Hour)
@@ -67,8 +67,8 @@ func TestDeleteSession(t *testing.T) {
 	var username string = "Alice"
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
-
-	auth := NewAuthenticator(testBucket, nil, DefaultAuthenticatorOptions())
+	dataStore := testBucket.GetSingleDataStore()
+	auth := NewAuthenticator(dataStore, nil, DefaultAuthenticatorOptions())
 
 	id, err := base.GenerateRandomSecret()
 	require.NoError(t, err)
@@ -80,7 +80,7 @@ func TestDeleteSession(t *testing.T) {
 		Ttl:        24 * time.Hour,
 	}
 	const noSessionExpiry = 0
-	assert.NoError(t, testBucket.Set(DocIDForSession(mockSession.ID), noSessionExpiry, nil, mockSession))
+	assert.NoError(t, dataStore.Set(DocIDForSession(mockSession.ID), noSessionExpiry, nil, mockSession))
 	assert.NoError(t, auth.DeleteSession(mockSession.ID))
 
 	// Just to verify the session has been deleted gracefully.
@@ -96,8 +96,8 @@ func TestMakeSessionCookie(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAuth)
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
-
-	auth := NewAuthenticator(testBucket, nil, DefaultAuthenticatorOptions())
+	dataStore := testBucket.GetSingleDataStore()
+	auth := NewAuthenticator(dataStore, nil, DefaultAuthenticatorOptions())
 
 	sessionID, err := base.GenerateRandomSecret()
 	require.NoError(t, err)
@@ -122,8 +122,8 @@ func TestMakeSessionCookie(t *testing.T) {
 func TestMakeSessionCookieProperties(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
-
-	auth := NewAuthenticator(testBucket, nil, DefaultAuthenticatorOptions())
+	dataStore := testBucket.GetSingleDataStore()
+	auth := NewAuthenticator(dataStore, nil, DefaultAuthenticatorOptions())
 
 	sessionID, err := base.GenerateRandomSecret()
 	require.NoError(t, err)
@@ -157,8 +157,8 @@ func TestDeleteSessionForCookie(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAuth)
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
-
-	auth := NewAuthenticator(testBucket, nil, DefaultAuthenticatorOptions())
+	dataStore := testBucket.GetSingleDataStore()
+	auth := NewAuthenticator(dataStore, nil, DefaultAuthenticatorOptions())
 
 	sessionID, err := base.GenerateRandomSecret()
 	require.NoError(t, err)

@@ -125,13 +125,12 @@ func (db *DatabaseCollectionWithUser) importDoc(ctx context.Context, docid strin
 	var alreadyImportedDoc *Document
 
 	mutationOptions := sgbucket.MutateInOptions{}
-	if db.Bucket.IsSupported(sgbucket.DataStoreFeaturePreserveExpiry) {
+	if db.dataStore.IsSupported(sgbucket.BucketStoreFeaturePreserveExpiry) {
 		mutationOptions.PreserveExpiry = true
 	} else {
 		// Get the doc expiry if it wasn't passed in and preserve expiry is not supported
 		if expiry == nil {
-			cbStore, _ := base.AsCouchbaseStore(db.Bucket)
-			getExpiry, getExpiryErr := cbStore.GetExpiry(docid)
+			getExpiry, getExpiryErr := db.dataStore.GetExpiry(docid)
 			if getExpiryErr != nil {
 				return nil, getExpiryErr
 			}
@@ -162,8 +161,7 @@ func (db *DatabaseCollectionWithUser) importDoc(ctx context.Context, docid strin
 
 				if !mutationOptions.PreserveExpiry {
 					// Reload the doc expiry if GoCB is not preserving expiry
-					cbStore, _ := base.AsCouchbaseStore(db.Bucket)
-					expiry, getExpiryErr := cbStore.GetExpiry(newDoc.ID)
+					expiry, getExpiryErr := db.dataStore.GetExpiry(newDoc.ID)
 					if getExpiryErr != nil {
 						return nil, nil, false, nil, getExpiryErr
 					}
@@ -373,7 +371,7 @@ func (db *DatabaseCollectionWithUser) migrateMetadata(ctx context.Context, docid
 	}
 
 	// Move any large revision bodies to external storage
-	err = doc.migrateRevisionBodies(db.Bucket)
+	err = doc.migrateRevisionBodies(db.dataStore)
 	if err != nil {
 		base.InfofCtx(ctx, base.KeyMigrate, "Error migrating revision bodies to external storage, doc %q, (cas=%d), Error: %v", base.UD(docid), doc.Cas, err)
 	}
@@ -387,7 +385,7 @@ func (db *DatabaseCollectionWithUser) migrateMetadata(ctx context.Context, docid
 	// Use WriteWithXattr to handle both normal migration and tombstone migration (xattr creation, body delete)
 	isDelete := doc.hasFlag(channels.Deleted)
 	deleteBody := isDelete && len(existingDoc.Body) > 0
-	casOut, writeErr := db.Bucket.WriteWithXattr(docid, base.SyncXattrName, existingDoc.Expiry, existingDoc.Cas, opts, value, xattrValue, isDelete, deleteBody)
+	casOut, writeErr := db.dataStore.WriteWithXattr(docid, base.SyncXattrName, existingDoc.Expiry, existingDoc.Cas, opts, value, xattrValue, isDelete, deleteBody)
 	if writeErr == nil {
 		doc.Cas = casOut
 		base.InfofCtx(ctx, base.KeyMigrate, "Successfully migrated doc %q", base.UD(docid))

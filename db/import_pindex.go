@@ -89,7 +89,7 @@ func OpenImportPIndexImplUsing(indexType, path, indexParams string, restart func
 func (il *importListener) NewImportDest() (cbgt.Dest, error) {
 	callback := il.ProcessFeedEvent
 
-	maxVbNo, err := il.metaStore.GetMaxVbno() // can safely assume that all collections on the same bucket will have the same vbNo
+	maxVbNo, err := il.bucket.GetMaxVbno() // can safely assume that all collections on the same bucket will have the same vbNo
 	if err != nil {
 		return nil, err
 	}
@@ -97,6 +97,10 @@ func (il *importListener) NewImportDest() (cbgt.Dest, error) {
 	importFeedStatsMap := il.dbStats.ImportFeedMapStats
 	importPartitionStat := il.importStats.ImportPartitions
 
-	importDest, _ := base.NewDCPDest(il.loggingCtx, callback, il.metaStore, maxVbNo, true, importFeedStatsMap.Map, base.DCPImportFeedID, importPartitionStat, il.checkpointPrefix)
+	importDest, _, err := base.NewDCPDest(il.loggingCtx, callback, il.bucket, maxVbNo, true, importFeedStatsMap.Map, base.DCPImportFeedID, importPartitionStat, il.checkpointPrefix)
+	if err != nil {
+		return nil, err
+	}
+
 	return importDest, nil
 }

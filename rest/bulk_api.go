@@ -19,10 +19,10 @@ import (
 	"strings"
 	"time"
 
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	ch "github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
-	pkgerrors "github.com/pkg/errors"
 )
 
 // HTTP handler for _all_docs
@@ -116,7 +116,6 @@ func (h *handler) handleAllDocs() error {
 
 	// Subroutine that creates a response row for a document:
 	totalRows := 0
-	collection := h.db.GetSingleDatabaseCollectionWithUser()
 	createRow := func(doc db.IDRevAndSequence, channels []string) *allDocsRow {
 		row := &allDocsRow{Key: doc.DocID}
 		value := allDocsRowValue{}
@@ -130,7 +129,7 @@ func (h *handler) handleAllDocs() error {
 
 		if explicitDocIDs != nil || includeDocs || includeAccess {
 			// Fetch the document body and other metadata that lives with it:
-			bodyBytes, channelSet, access, roleAccess, _, _, currentRevID, removed, err := collection.Get1xRevAndChannels(h.ctx(), doc.DocID, doc.RevID, includeRevs)
+			bodyBytes, channelSet, access, roleAccess, _, _, currentRevID, removed, err := h.collection.Get1xRevAndChannels(h.ctx(), doc.DocID, doc.RevID, includeRevs)
 			if err != nil {
 				row.Status, _ = base.ErrorAsHTTPStatus(err)
 				return row
@@ -203,7 +202,7 @@ func (h *handler) handleAllDocs() error {
 	lastSeq, _ := h.db.LastSequence()
 	h.setHeader("Content-Type", "application/json")
 	// response.Write below would set Status OK implicitly. We manually do it here to ensure that our handler knows
-	//that the header has been written to, meaning we can prevent it from attempting to set the header again later on.
+	// that the header has been written to, meaning we can prevent it from attempting to set the header again later on.
 	h.writeStatus(http.StatusOK, http.StatusText(http.StatusOK))
 	_, _ = h.response.Write([]byte(`{"rows":[` + "\n"))
 	if explicitDocIDs != nil {
@@ -217,7 +216,7 @@ func (h *handler) handleAllDocs() error {
 
 		}
 	} else {
-		if err := h.db.ForEachDocID(h.ctx(), writeDoc, options); err != nil {
+		if err := h.collection.ForEachDocID(h.ctx(), writeDoc, options); err != nil {
 			return err
 		}
 	}
@@ -233,7 +232,11 @@ func (h *handler) handleDump() error {
 	viewName := h.PathVar("view")
 	base.InfofCtx(h.ctx(), base.KeyHTTP, "Dump view %q", base.MD(viewName))
 	opts := db.Body{"stale": false, "reduce": false}
-	result, err := h.db.Bucket.View(db.DesignDocSyncGateway(), viewName, opts)
+	vs, ok := h.db.Bucket.(sgbucket.ViewStore)
+	if !ok {
+		return base.HTTPErrorf(http.StatusInternalServerError, "bucket does not support views")
+	}
+	result, err := vs.View(db.DesignDocSyncGateway(), viewName, opts)
 	if err != nil {
 		return err
 	}
@@ -265,7 +268,7 @@ func (h *handler) handleRepair() error {
 		return errors.New("_repair endpoint disabled")
 	}
 
-	base.InfofCtx(h.ctx(), base.KeyHTTP, "Repair bucket")
+	/*base.InfofCtx(h.ctx(), base.KeyHTTP, "Repair bucket")
 
 	// Todo: is this actually needed or does something else in the handler do it?  I can't find that..
 	defer func() {
@@ -300,6 +303,10 @@ func (h *handler) handleRepair() error {
 	_, err = h.response.Write(resultMarshalled)
 
 	return err
+
+	*/
+
+	return nil
 }
 
 // HTTP handler for _dumpchannel
@@ -308,9 +315,7 @@ func (h *handler) handleDumpChannel() error {
 	since := h.getIntQuery("since", 0)
 	base.InfofCtx(h.ctx(), base.KeyHTTP, "Dump channel %q", base.UD(channelName))
 
-	collection := h.db.GetSingleDatabaseCollection()
-	collectionID := collection.GetCollectionID()
-	chanLog := h.db.GetChangeLog(ch.NewID(channelName, collectionID), since)
+	chanLog, _ := h.collection.GetChangeLog(ch.NewID(channelName, h.collection.GetCollectionID()), since)
 	if chanLog == nil {
 		return base.HTTPErrorf(http.StatusNotFound, "no such channel")
 	}
@@ -425,8 +430,7 @@ func (h *handler) handleBulkGet() error {
 			}
 
 			if err == nil {
-				collection := h.db.GetSingleDatabaseCollectionWithUser()
-				body, err = collection.Get1xRevBodyWithHistory(h.ctx(), docid, revid, docRevsLimit, revsFrom, attsSince, showExp)
+				body, err = h.collection.Get1xRevBodyWithHistory(h.ctx(), docid, revid, docRevsLimit, revsFrom, attsSince, showExp)
 			}
 
 			if err != nil {
@@ -494,7 +498,6 @@ func (h *handler) handleBulkDocs() error {
 	}
 
 	result := make([]db.Body, 0, len(docs))
-	collection := h.db.GetSingleDatabaseCollectionWithUser()
 	for _, item := range docs {
 		doc := item.(map[string]interface{})
 		docid, _ := doc[db.BodyId].(string)
@@ -502,9 +505,9 @@ func (h *handler) handleBulkDocs() error {
 		var revid string
 		if newEdits {
 			if docid != "" {
-				revid, _, err = collection.Put(h.ctx(), docid, doc)
+				revid, _, err = h.collection.Put(h.ctx(), docid, doc)
 			} else {
-				docid, revid, _, err = collection.Post(h.ctx(), doc)
+				docid, revid, _, err = h.collection.Post(h.ctx(), doc)
 			}
 		} else {
 			revisions := db.ParseRevisions(doc)
@@ -512,7 +515,7 @@ func (h *handler) handleBulkDocs() error {
 				err = base.HTTPErrorf(http.StatusBadRequest, "Bad _revisions")
 			} else {
 				revid = revisions[0]
-				_, _, err = collection.PutExistingRevWithBody(h.ctx(), docid, doc, revisions, false)
+				_, _, err = h.collection.PutExistingRevWithBody(h.ctx(), docid, doc, revisions, false)
 			}
 		}
 
@@ -543,7 +546,7 @@ func (h *handler) handleBulkDocs() error {
 		offset := len("_local/")
 		docid, _ := doc[db.BodyId].(string)
 		idslug := docid[offset:]
-		revid, err = collection.PutSpecial(db.DocTypeLocal, idslug, doc)
+		revid, err = h.collection.PutSpecial(db.DocTypeLocal, idslug, doc)
 		status := db.Body{}
 		status["id"] = docid
 		if err != nil {
