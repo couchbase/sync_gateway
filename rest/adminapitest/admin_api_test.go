@@ -1986,17 +1986,20 @@ func TestInvalidDBConfig(t *testing.T) {
 	// Put db config with invalid sync fn
 	resp = rest.BootstrapAdminRequest(t, http.MethodPut, "/db/_config", `{"sync": "function(){"}`)
 	resp.RequireStatus(http.StatusBadRequest)
-	assert.True(t, strings.Contains(resp.Body, "invalid javascript syntax"))
+	assert.Contains(t, resp.Body, "invalid javascript syntax")
 
-	// Put invalid sync fn via sync specific endpoint
-	resp = rest.BootstrapAdminRequest(t, http.MethodPut, "/db/_config/sync", `function(){`)
-	resp.RequireStatus(http.StatusBadRequest)
-	assert.True(t, strings.Contains(resp.Body, "invalid javascript syntax"))
+	for _, keyspace := range []string{"db", "db._default._default", "db._default"} {
 
-	// Put invalid import fn via import specific endpoint
-	resp = rest.BootstrapAdminRequest(t, http.MethodPut, "/db/_config/import_filter", `function(){`)
-	resp.RequireStatus(http.StatusBadRequest)
-	assert.True(t, strings.Contains(resp.Body, "invalid javascript syntax"))
+		// Put invalid sync fn via sync specific endpoint
+		resp = rest.BootstrapAdminRequest(t, http.MethodPut, fmt.Sprintf("/%s/_config/sync", keyspace), `function(){`)
+		resp.RequireStatus(http.StatusBadRequest)
+		assert.True(t, strings.Contains(resp.Body, "invalid javascript syntax"))
+
+		// Put invalid import fn via import specific endpoint
+		resp = rest.BootstrapAdminRequest(t, http.MethodPut, fmt.Sprintf("/%s/_config/import_filter", keyspace), `function(){`)
+		resp.RequireStatus(http.StatusBadRequest)
+		assert.True(t, strings.Contains(resp.Body, "invalid javascript syntax"))
+	}
 }
 
 func TestCreateDbOnNonExistentBucket(t *testing.T) {
@@ -2490,12 +2493,13 @@ func TestDbOfflineConfigPersistent(t *testing.T) {
 	resp.RequireStatus(http.StatusOK)
 	dbConfigBeforeOffline := resp.Body
 
-	resp = rest.BootstrapAdminRequest(t, http.MethodGet, "/db/_config/import_filter", "")
-	resp.RequireResponse(http.StatusOK, importFilter)
+	for _, keyspace := range []string{"db", "db._default", "db._default._default"} {
+		resp = rest.BootstrapAdminRequest(t, http.MethodGet, fmt.Sprintf("/%s/_config/import_filter", keyspace), "")
+		resp.RequireResponse(http.StatusOK, importFilter)
 
-	resp = rest.BootstrapAdminRequest(t, http.MethodGet, "/db/_config/sync", "")
-	resp.RequireResponse(http.StatusOK, syncFunc)
-
+		resp = rest.BootstrapAdminRequest(t, http.MethodGet, fmt.Sprintf("/%s/_config/sync", keyspace), "")
+		resp.RequireResponse(http.StatusOK, syncFunc)
+	}
 	// Take DB offline
 	resp = rest.BootstrapAdminRequest(t, http.MethodPost, "/db/_offline", "")
 	resp.RequireStatus(http.StatusOK)
@@ -2504,11 +2508,13 @@ func TestDbOfflineConfigPersistent(t *testing.T) {
 	resp = rest.BootstrapAdminRequest(t, http.MethodGet, "/db/_config", "")
 	resp.RequireResponse(http.StatusOK, dbConfigBeforeOffline)
 
-	resp = rest.BootstrapAdminRequest(t, http.MethodGet, "/db/_config/import_filter", "")
-	resp.RequireResponse(http.StatusOK, importFilter)
+	for _, keyspace := range []string{"db", "db._default", "db._default._default"} {
+		resp = rest.BootstrapAdminRequest(t, http.MethodGet, fmt.Sprintf("/%s/_config/import_filter", keyspace), "")
+		resp.RequireResponse(http.StatusOK, importFilter)
 
-	resp = rest.BootstrapAdminRequest(t, http.MethodGet, "/db/_config/sync", "")
-	resp.RequireResponse(http.StatusOK, syncFunc)
+		resp = rest.BootstrapAdminRequest(t, http.MethodGet, fmt.Sprintf("/%s/_config/sync", keyspace), "")
+		resp.RequireResponse(http.StatusOK, syncFunc)
+	}
 }
 
 // TestDbConfigPersistentSGVersions ensures that cluster-wide config updates are not applied to older nodes to avoid pushing invalid configuration.
@@ -2710,14 +2716,15 @@ func TestDeleteFunctionsWhileDbOffline(t *testing.T) {
 		resp = rest.BootstrapAdminRequest(t, http.MethodGet, "/db/TestImportDoc", "")
 		resp.RequireStatus(http.StatusNotFound)
 
-		// Persist configs
-		resp = rest.BootstrapAdminRequest(t, http.MethodDelete, "/db/_config/import_filter", "")
-		resp.RequireStatus(http.StatusOK)
+		for _, keyspace := range []string{"db", "db._default", "db._default._default"} {
+			// Persist configs
+			resp = rest.BootstrapAdminRequest(t, http.MethodDelete, fmt.Sprintf("/%s/_config/import_filter", keyspace), "")
+			resp.RequireStatus(http.StatusOK)
 
-		// Check configs match
-		resp = rest.BootstrapAdminRequest(t, http.MethodGet, "/db/_config/import_filter", "")
-		resp.RequireResponse(http.StatusOK, "")
-
+			// Check configs match
+			resp = rest.BootstrapAdminRequest(t, http.MethodGet, fmt.Sprintf("/%s/_config/import_filter", keyspace), "")
+			resp.RequireResponse(http.StatusOK, "")
+		}
 		// On-demand import - allowed doc after restored default import filter
 		resp = rest.BootstrapAdminRequest(t, http.MethodGet, "/db/TestImportDoc", "")
 		resp.RequireStatus(http.StatusOK)
@@ -2771,22 +2778,25 @@ func TestSetFunctionsWhileDbOffline(t *testing.T) {
 	resp.RequireStatus(http.StatusOK)
 
 	// Persist configs
-	resp = rest.BootstrapAdminRequest(t, http.MethodPut, "/db/_config/import_filter", importFilter)
-	resp.RequireStatus(http.StatusOK)
+	for _, keyspace := range []string{"db", "db._default", "db._default._default"} {
+		resp = rest.BootstrapAdminRequest(t, http.MethodPut, fmt.Sprintf("/%s/_config/import_filter", keyspace), importFilter)
+		resp.RequireStatus(http.StatusOK)
 
-	resp = rest.BootstrapAdminRequest(t, http.MethodPut, "/db/_config/sync", syncFunc)
-	resp.RequireStatus(http.StatusOK)
-
+		resp = rest.BootstrapAdminRequest(t, http.MethodPut, fmt.Sprintf("/%s/_config/sync", keyspace), syncFunc)
+		resp.RequireStatus(http.StatusOK)
+	}
 	// Take DB online
 	resp = rest.BootstrapAdminRequest(t, http.MethodPost, "/db/_online", "")
 	resp.RequireStatus(http.StatusOK)
 
 	// Check configs match
-	resp = rest.BootstrapAdminRequest(t, http.MethodGet, "/db/_config/import_filter", "")
-	resp.RequireResponse(http.StatusOK, importFilter)
+	for _, keyspace := range []string{"db", "db._default", "db._default._default"} {
+		resp = rest.BootstrapAdminRequest(t, http.MethodGet, fmt.Sprintf("/%s/_config/import_filter", keyspace), "")
+		resp.RequireResponse(http.StatusOK, importFilter)
 
-	resp = rest.BootstrapAdminRequest(t, http.MethodGet, "/db/_config/sync", "")
-	resp.RequireResponse(http.StatusOK, syncFunc)
+		resp = rest.BootstrapAdminRequest(t, http.MethodGet, fmt.Sprintf("/%s/_config/sync", keyspace), "")
+		resp.RequireResponse(http.StatusOK, syncFunc)
+	}
 }
 
 func TestEmptyStringJavascriptFunctions(t *testing.T) {
