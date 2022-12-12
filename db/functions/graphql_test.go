@@ -134,33 +134,35 @@ var kTestGraphQLConfig = GraphQLConfig{
 }
 
 // JS function helpers:
-var kTestGraphQLUserFunctionsConfig = FunctionConfigMap{
-	"all": {
-		Type: "javascript",
-		Code: `function(context, args) {
+var kTestGraphQLUserFunctionsConfig = FunctionsConfig{
+	Definitions: FunctionsDefs{
+		"all": {
+			Type: "javascript",
+			Code: `function(context, args) {
 						return [
 						{id: "a", "title": "Applesauce", done:true, tags:["fruit","soft"]},
 						{id: "b", "title": "Beer", description: "Bass ale please"},
 						{id: "m", "title": "Mangoes"} ];}`,
-		Allow: &Allow{Channels: []string{"*"}},
-	},
-	"getTask": {
-		Type: "javascript",
-		Code: `function(context, args, parent, info) {
+			Allow: &Allow{Channels: []string{"*"}},
+		},
+		"getTask": {
+			Type: "javascript",
+			Code: `function(context, args, parent, info) {
 						var all = context.user.function("all");
 						for (var i = 0; i < all.length; i++)
 							if (all[i].id == args.id) return all[i];
 						return undefined;}`,
-		Args:  []string{"id"},
-		Allow: &Allow{Channels: []string{"*"}},
-	},
-	"infinite": {
-		Type: "javascript",
-		Code: `function(context, args, parent, info) {
+			Args:  []string{"id"},
+			Allow: &Allow{Channels: []string{"*"}},
+		},
+		"infinite": {
+			Type: "javascript",
+			Code: `function(context, args, parent, info) {
 				var result = context.user.graphql("query{ infinite }");
 				if (result.errors) throw "GraphQL query failed:" + result.errors[0].message;
 				return -1;}`,
-		Allow: &Allow{Channels: []string{"*"}},
+			Allow: &Allow{Channels: []string{"*"}},
+		},
 	},
 }
 
@@ -207,7 +209,7 @@ func TestUserGraphQL(t *testing.T) {
 	t.Skip("Skipping test until access view is available with collections")
 
 	// base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
-	db, ctx := setupTestDBWithFunctions(t, kTestGraphQLUserFunctionsConfig, &kTestGraphQLConfig)
+	db, ctx := setupTestDBWithFunctions(t, &kTestGraphQLUserFunctionsConfig, &kTestGraphQLConfig)
 	defer db.Close(ctx)
 
 	// First run the tests as an admin:
@@ -408,7 +410,67 @@ func TestUserGraphQLWithN1QL(t *testing.T) {
 	assertGraphQLResult(t, `{"task":{"description":"Bass ale please","title":"Beer"}}`, result, err)
 }
 
-func setupTestDBWithFunctions(t *testing.T, fnConfig FunctionConfigMap, gqConfig *GraphQLConfig) (*db.Database, context.Context) {
+func TestGraphQLMaxSchemaSize(t *testing.T) {
+	var schema = `
+	type Task {
+		id: ID!
+		title: String!
+		description: String
+		done: Boolean
+		tags: [String!]
+		secretNotes: String		# Admin-only
+	}`
+	var config = GraphQLConfig{
+		MaxSchemaSize: base.IntPtr(20),
+		Schema:        &schema,
+		Resolvers: map[string]GraphQLResolverConfig{
+			"Query": {
+				"square": {
+					Type: "javascript",
+					Code: `function(context,args) {return args.n * args.n;}`,
+				},
+			},
+		},
+	}
+	_, err := CompileGraphQL(&config)
+	assert.ErrorContains(t, err, "GraphQL schema too large (> 20 bytes)")
+}
+
+func TestGraphQLMaxResolverCount(t *testing.T) {
+	var schema = `
+	type Task {
+		id: ID!
+		title: String!
+		description: String
+		done: Boolean
+		tags: [String!]
+		secretNotes: String		# Admin-only
+	}`
+	var config = GraphQLConfig{
+		MaxResolverCount: base.IntPtr(1),
+		Schema:           &schema,
+		Resolvers: map[string]GraphQLResolverConfig{
+			"Query": {
+				"square": {
+					Type: "javascript",
+					Code: `function(context,args) {return args.n * args.n;}`,
+				},
+			},
+			"Mutation": {
+				"complete": {
+					Type: "javascript",
+					Code: `function(context, args, parent, info) { }`,
+				},
+			},
+		},
+	}
+	_, err := CompileGraphQL(&config)
+	assert.ErrorContains(t, err, "too many GraphQL resolvers (> 1)")
+}
+
+//////// UTILITY FUNCTIONS
+
+func setupTestDBWithFunctions(t *testing.T, fnConfig *FunctionsConfig, gqConfig *GraphQLConfig) (*db.Database, context.Context) {
 	cacheOptions := db.DefaultCacheOptions()
 	options := db.DatabaseContextOptions{
 		UseViews:     base.TestsDisableGSI(),
@@ -417,7 +479,7 @@ func setupTestDBWithFunctions(t *testing.T, fnConfig FunctionConfigMap, gqConfig
 	}
 	var err error
 	if fnConfig != nil {
-		options.UserFunctions, err = CompileFunctions(fnConfig)
+		options.UserFunctions, err = CompileFunctions(*fnConfig)
 		assert.NoError(t, err)
 	}
 	if gqConfig != nil {

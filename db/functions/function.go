@@ -29,10 +29,17 @@ import (
 //////// CONFIGURATION TYPES:
 
 // Top level user-function config object: the map of names to queries.
-type FunctionConfigMap = map[string]*FunctionConfig
+type FunctionsConfig struct {
+	Definitions      FunctionsDefs `json:"definitions"`                  // The function definitions
+	MaxFunctionCount *int          `json:"max_function_count,omitempty"` // Maximum number of functions
+	MaxCodeSize      *int          `json:"max_code_size,omitempty"`      // Maximum length (in bytes) of a function's code
+	MaxRequestSize   *int          `json:"max_request_size,omitempty"`   // Maximum size of the JSON-encoded function arguments
+}
+
+type FunctionsDefs = map[string]*FunctionConfig
 
 // Defines a JavaScript or N1QL function that a client can invoke by name.
-// (Its name is the key in the FunctionConfigMap.)
+// (Its name is the key in the FunctionsDefs.)
 type FunctionConfig struct {
 	Type  string   `json:"type"`
 	Code  string   `json:"code"`            // Javascript function or N1QL 'SELECT'
@@ -60,26 +67,29 @@ type functionImpl struct {
 }
 
 // Compiles the functions in a UserFunctionConfigMap, returning UserFunctions.
-func CompileFunctions(config FunctionConfigMap) (db.UserFunctions, error) {
-	fns := db.UserFunctions{}
+func CompileFunctions(config FunctionsConfig) (*db.UserFunctions, error) {
+	if config.MaxFunctionCount != nil && len(config.Definitions) > *config.MaxFunctionCount {
+		return nil, fmt.Errorf("too many functions declared (> %d)", *config.MaxFunctionCount)
+	}
+	fns := db.UserFunctions{
+		MaxRequestSize: config.MaxRequestSize,
+		Definitions:    map[string]db.UserFunction{},
+	}
 	var multiError *base.MultiError
-	for name, fnConfig := range config {
-		if userFn, err := CompileFunction(name, fnConfig); err == nil {
-			fns[name] = userFn
+	for name, fnConfig := range config.Definitions {
+		if config.MaxCodeSize != nil && len(fnConfig.Code) > *config.MaxCodeSize {
+			multiError = multiError.Append(fmt.Errorf("function code too large (> %d bytes)", *config.MaxCodeSize))
+		} else if userFn, err := compileFunction(name, "user function", fnConfig); err == nil {
+			fns.Definitions[name] = userFn
 		} else {
 			multiError = multiError.Append(err)
 		}
 	}
-	return fns, multiError.ErrorOrNil()
+	return &fns, multiError.ErrorOrNil()
 }
 
-// Compiles a function from its configuration.
-func CompileFunction(name string, fnConfig *FunctionConfig) (db.UserFunction, error) {
-	return compileFunction(name, "user function", fnConfig)
-}
-
-// Validates a UserFunctionConfigMap.
-func ValidateFunctions(ctx context.Context, config FunctionConfigMap) error {
+// Validates a FunctionsConfig.
+func ValidateFunctions(ctx context.Context, config FunctionsConfig) error {
 	_, err := CompileFunctions(config)
 	return err
 }
@@ -131,7 +141,7 @@ func (fn *functionImpl) AllowByDefault(allow bool) {
 // Creates an Invocation of a UserFunction.
 func (fn *functionImpl) Invoke(database *db.Database, args map[string]any, mutationAllowed bool, ctx context.Context) (db.UserFunctionInvocation, error) {
 	if ctx == nil {
-		panic("missing context to UserFunction.Invoke")
+		return nil, fmt.Errorf("missing context to UserFunction.Invoke")
 	}
 
 	if err := db.CheckTimeout(ctx); err != nil {

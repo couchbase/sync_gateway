@@ -22,18 +22,20 @@ import (
 )
 
 var kGraphQLTestConfig = &DatabaseConfig{DbConfig: DbConfig{
-	UserFunctions: map[string]*functions.FunctionConfig{
-		"square": {
-			Type:  "javascript",
-			Code:  "function(context,args) {return args.n * args.n;}",
-			Args:  []string{"n"},
-			Allow: &functions.Allow{Channels: []string{"*"}},
-		},
-		"squareN1QL": {
-			Type:  "query",
-			Code:  "SELECT $args.n * $args.n AS square",
-			Args:  []string{"n"},
-			Allow: &functions.Allow{Channels: []string{"*"}},
+	UserFunctions: &functions.FunctionsConfig{
+		Definitions: functions.FunctionsDefs{
+			"square": {
+				Type:  "javascript",
+				Code:  "function(context,args) {return args.n * args.n;}",
+				Args:  []string{"n"},
+				Allow: &functions.Allow{Channels: []string{"*"}},
+			},
+			"squareN1QL": {
+				Type:  "query",
+				Code:  "SELECT $args.n * $args.n AS square",
+				Args:  []string{"n"},
+				Allow: &functions.Allow{Channels: []string{"*"}},
+			},
 		},
 	},
 	GraphQL: &functions.GraphQLConfig{
@@ -89,7 +91,7 @@ func testConcurrently(t *testing.T, rt *RestTester, testFunc func() bool) bool {
 	return assert.LessOrEqual(t, concurrentDuration, 1.1*numTasks*sequentialDuration)
 }
 
-func TestUserQueries(t *testing.T) {
+func TestFunctions(t *testing.T) {
 	rt := NewRestTester(t, &RestTesterConfig{GuestEnabled: true, EnableUserQueries: true})
 	defer rt.Close()
 	rt.DatabaseConfig = kGraphQLTestConfig
@@ -105,7 +107,7 @@ func TestUserQueries(t *testing.T) {
 	})
 }
 
-func TestUserQueriesConcurrently(t *testing.T) {
+func TestFunctionsConcurrently(t *testing.T) {
 	rt := NewRestTester(t, &RestTesterConfig{GuestEnabled: true, EnableUserQueries: true})
 	defer rt.Close()
 	rt.DatabaseConfig = kGraphQLTestConfig

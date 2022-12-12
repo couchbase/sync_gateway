@@ -12,6 +12,7 @@ package db
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"time"
@@ -30,7 +31,10 @@ const UserFunctionTimeout = 60 * time.Second
 //////// USER FUNCTIONS
 
 // A map from names to user functions.
-type UserFunctions = map[string]UserFunction
+type UserFunctions struct {
+	Definitions    map[string]UserFunction
+	MaxRequestSize *int
+}
 
 // A JavaScript function or N1QL query that can be invoked by a client.
 // (Created by functions.CompileUserFunction or functions.CompileUserFunctions)
@@ -61,6 +65,9 @@ type UserFunctionInvocation interface {
 // Represents a compiled GraphQL schema and its resolver functions.
 // Created by functions.CompileGraphQL.
 type GraphQL interface {
+	// The configuration's maximum request size (in bytes); or nil if none.
+	MaxRequestSize() *int
+
 	// Runs a GraphQL query on behalf of a user, presumably invoked via a REST or BLIP API.
 	Query(db *Database, query string, operationName string, variables map[string]interface{}, mutationAllowed bool, ctx context.Context) (*graphql.Result, error)
 
@@ -72,11 +79,12 @@ type GraphQL interface {
 
 // Looks up a UserFunction by name and returns an Invocation.
 func (db *Database) GetUserFunction(name string, args map[string]interface{}, mutationAllowed bool, ctx context.Context) (UserFunctionInvocation, error) {
-	if fn, found := db.Options.UserFunctions[name]; found {
-		return fn.Invoke(db, args, mutationAllowed, ctx)
-	} else {
-		return nil, missingError(db.User(), "function", name)
+	if db.Options.UserFunctions != nil {
+		if fn, found := db.Options.UserFunctions.Definitions[name]; found {
+			return fn.Invoke(db, args, mutationAllowed, ctx)
+		}
 	}
+	return nil, missingError(db.User(), "function", name)
 }
 
 // Calls a user function by name, returning all the results at once.
@@ -90,10 +98,54 @@ func (db *Database) CallUserFunction(name string, args map[string]interface{}, m
 
 // Top-level public method to run a GraphQL query on a db.Database.
 func (db *Database) UserGraphQLQuery(query string, operationName string, variables map[string]interface{}, mutationAllowed bool, ctx context.Context) (*graphql.Result, error) {
-	if graphql := db.Options.GraphQL; graphql != nil {
-		return db.Options.GraphQL.Query(db, query, operationName, variables, mutationAllowed, ctx)
-	} else {
+	if graphql := db.Options.GraphQL; graphql == nil {
 		return nil, base.HTTPErrorf(http.StatusServiceUnavailable, "GraphQL is not configured")
+	} else {
+		return graphql.Query(db, query, operationName, variables, mutationAllowed, ctx)
+	}
+}
+
+//////// UTILITIES
+
+// Returns an HTTP 413 error if `maxSize` is non-nil and less than `actualSize`.
+func CheckRequestSize[T int | int64](actualSize T, maxSize *int) error {
+	if maxSize != nil && int64(actualSize) > int64(*maxSize) {
+		return base.HTTPErrorf(http.StatusRequestEntityTooLarge, "Arguments too large")
+	} else {
+		return nil
+	}
+}
+
+// Utility that returns a rough estimate of the original size of the JSON a value was parsed from.
+func EstimateSizeOfJSON(args any) int {
+	switch arg := args.(type) {
+	case nil:
+		return 4
+	case bool:
+		return 4
+	case int64:
+		return 4
+	case float64:
+		return 8
+	case json.Number:
+		return len(arg)
+	case string:
+		return len(arg) + 2
+	case []any:
+		size := 2
+		for _, item := range arg {
+			size += EstimateSizeOfJSON(item) + 1
+		}
+		return size
+	case map[string]any:
+		size := 2
+		for key, item := range arg {
+			size += len(key) + EstimateSizeOfJSON(item) + 4
+		}
+		return size
+	default:
+		//log.Printf("*** sizeOfArgs doesn't handle %T", arg)
+		return 1
 	}
 }
 

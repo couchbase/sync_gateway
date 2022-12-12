@@ -163,7 +163,7 @@ type DbConfig struct {
 	Guest                            *auth.PrincipalConfig            `json:"guest,omitempty"`                                // Guest user settings
 	JavascriptTimeoutSecs            *uint32                          `json:"javascript_timeout_secs,omitempty"`              // The amount of seconds a Javascript function can run for. Set to 0 for no timeout.
 	GraphQL                          *functions.GraphQLConfig         `json:"graphql,omitempty"`                              // GraphQL configuration & resolver fns
-	UserFunctions                    functions.FunctionConfigMap      `json:"functions,omitempty"`                            // Named JS fns for clients to call
+	UserFunctions                    *functions.FunctionsConfig       `json:"functions,omitempty"`                            // Named JS fns for clients to call
 	Suspendable                      *bool                            `json:"suspendable,omitempty"`                          // Allow the database to be suspended
 }
 
@@ -869,7 +869,7 @@ func (dbConfig *DbConfig) validateVersion(ctx context.Context, isEnterpriseEditi
 	}
 
 	if dbConfig.UserFunctions != nil {
-		if err := functions.ValidateFunctions(ctx, dbConfig.UserFunctions); err != nil {
+		if err := functions.ValidateFunctions(ctx, *dbConfig.UserFunctions); err != nil {
 			multiError = multiError.Append(err)
 		}
 	}
