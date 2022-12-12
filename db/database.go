@@ -132,9 +132,9 @@ type DatabaseContext struct {
 	singleCollection             *DatabaseCollection            // Temporary collection
 	CollectionByID               map[uint32]*DatabaseCollection // A map keyed by collection ID to Collection
 	CollectionNames              map[string]map[string]struct{} // Map of scope, collection names
-	UserFunctions                *UserFunctions           // JS/N1QL functions clients can call
-	GraphQL                      GraphQL                  // GraphQL query interface
-	V8VMs                        js.VMPool                // A pool of preconfigured V8 instances
+	UserFunctions                *UserFunctions                 // JS/N1QL functions clients can call
+	GraphQL                      GraphQL                        // GraphQL query interface
+	V8VMs                        js.VMPool                      // A pool of preconfigured V8 instances
 }
 
 type Scope struct {
@@ -172,8 +172,8 @@ type DatabaseContextOptions struct {
 	JavascriptTimeout             time.Duration // Max time the JS functions run for (ie. sync fn, import filter)
 	Serverless                    bool          // If running in serverless mode
 	Scopes                        ScopesOptions
-	skipRegisterImportPIndex      bool           // if set, skips the global gocb PIndex registration
-	MetadataStore                 base.DataStore // If set, use this location/connection for SG metadata storage - if not set, metadata is stored using the same location/connection as the bucket used for data storage.
+	skipRegisterImportPIndex      bool                       // if set, skips the global gocb PIndex registration
+	MetadataStore                 base.DataStore             // If set, use this location/connection for SG metadata storage - if not set, metadata is stored using the same location/connection as the bucket used for data storage.
 	FunctionsConfig               IFunctionsAndGraphQLConfig // JS/N1QL functions clients can call
 }
 
@@ -381,7 +381,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 	dbContext.V8VMs.Init(MaxV8VMs)
 
 	if options.ImportOptions.ImportFilterSource != nil {
-		options.ImportOptions.ImportFilter = NewImportFilterFunction(&dbContext.V8VMs, *options.ImportOptions.ImportFilterSource, options.JavascriptTimeout)
+		dbContext.Options.ImportOptions.ImportFilter = NewImportFilterFunction(&dbContext.V8VMs, *options.ImportOptions.ImportFilterSource, options.JavascriptTimeout)
 	}
 
 	cleanupFunctions = append(cleanupFunctions, func() {

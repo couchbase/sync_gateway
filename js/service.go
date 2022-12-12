@@ -3,6 +3,7 @@ package js
 import (
 	"context"
 
+	"github.com/couchbase/sync_gateway/base"
 	v8 "rogchap.com/v8go"
 )
 
@@ -33,6 +34,7 @@ func NewService(host ServiceHost, name string, jsFunctionSource string) *Service
 // The implementation can extend the Service's JavaScript template environment by defining globals
 // and/or callback functions.
 func NewCustomService(host ServiceHost, name string, factory TemplateFactory) *Service {
+	base.DebugfCtx(context.Background(), base.KeyJavascript, "Creating JavaScript service %q", name)
 	return &Service{
 		host: host,
 		id:   host.registerService(factory),
@@ -63,6 +65,7 @@ func (service *Service) Host() ServiceHost { return service.host }
 // - If the host is a VM, this call will fail if there is another Runner in use belonging to any
 //   Service hosted by that VM.
 func (service *Service) GetRunner() (*Runner, error) {
+	base.DebugfCtx(context.Background(), base.KeyJavascript, "Running JavaScript service %q", service.name)
 	return service.host.getRunner(service)
 }
 
