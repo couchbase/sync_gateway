@@ -339,6 +339,9 @@ func TestImportFilterEndpoint(t *testing.T) {
 	resp = BootstrapAdminRequest(t, http.MethodGet, "/db1/importDoc1", "")
 	resp.RequireStatus(http.StatusOK)
 
+	resp = BootstrapAdminRequest(t, http.MethodPost, "/db1/_offline", "")
+	resp.RequireStatus(http.StatusOK)
+
 	// Modify the import filter to always reject import
 	resp = BootstrapAdminRequest(t, http.MethodPut, "/db1/_config/import_filter", `function(){return false}`)
 	resp.RequireStatus(http.StatusOK)
@@ -346,6 +349,9 @@ func TestImportFilterEndpoint(t *testing.T) {
 	// Add a document
 	err = tb.Bucket.DefaultDataStore().Set("importDoc2", 0, nil, []byte("{}"))
 	assert.NoError(t, err)
+
+	resp = BootstrapAdminRequest(t, http.MethodPost, "/db1/_online", "")
+	resp.RequireStatus(http.StatusOK)
 
 	// Ensure document is not imported and is rejected based on updated filter
 	resp = BootstrapAdminRequest(t, http.MethodGet, "/db1/importDoc2", "")

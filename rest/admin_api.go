@@ -908,7 +908,6 @@ func (h *handler) handlePutCollectionConfigImportFilter() error {
 	if err != nil {
 		return err
 	}
-
 	bucket := h.db.Bucket.GetName()
 
 	var updatedDbConfig *DatabaseConfig
@@ -932,8 +931,6 @@ func (h *handler) handlePutCollectionConfigImportFilter() error {
 			} else if base.IsDefaultCollection(h.collection.ScopeName(), h.collection.Name()) {
 				bucketDbConfig.ImportFilter = &js
 			}
-
-			bucketDbConfig.ImportFilter = &js
 
 			if err := bucketDbConfig.validate(h.ctx(), !h.getBoolQuery(paramDisableOIDCValidation)); err != nil {
 				return nil, base.HTTPErrorf(http.StatusBadRequest, err.Error())
