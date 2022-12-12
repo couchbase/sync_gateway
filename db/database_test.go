@@ -2735,7 +2735,6 @@ func TestGetDatabaseCollectionWithUserDefaultCollection(t *testing.T) {
 			collection: base.DefaultCollection,
 			err:        false,
 		},
-		/* CBG-2568 This test passes under walrus/views but not GSI, needs to be fixed when making walrus collection aware.
 		{
 			name:       "_default._default-not-in-config",
 			scope:      base.DefaultScope,
@@ -2743,15 +2742,14 @@ func TestGetDatabaseCollectionWithUserDefaultCollection(t *testing.T) {
 			err:        true,
 			options: DatabaseContextOptions{
 				Scopes: map[string]ScopeOptions{
-					"foo": ScopeOptions{
+					dataStoreName.ScopeName(): ScopeOptions{
 						Collections: map[string]CollectionOptions{
-							"bar": {},
+							dataStoreName.CollectionName(): {},
 						},
 					},
 				},
 			},
 		},
-		*/
 		{
 			name:       "_default._default-inconfig",
 			scope:      base.DefaultScope,
