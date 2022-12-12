@@ -2105,45 +2105,45 @@ func TestSwitchDbConfigCollectionName(t *testing.T) {
 		tb.Close()
 	}()
 
-	err = base.CreateBucketScopesAndCollections(base.TestCtx(t), tb.BucketSpec, map[string][]string{
-		"foo": {
-			"bar",
-			"baz",
-		},
-	})
-	require.NoError(t, err)
+	dataStore1 := tb.GetNamedDataStore(1)
+	dataStore1Name, ok := base.AsDataStoreName(dataStore1)
+	require.True(t, ok)
+	dataStore2 := tb.GetNamedDataStore(2)
+	dataStore2Name, ok := base.AsDataStoreName(dataStore2)
+	require.True(t, ok)
+	keyspace1 := fmt.Sprintf("%s.%s.%s", "db", dataStore1Name.ScopeName(), dataStore1Name.CollectionName())
+	keyspace2 := fmt.Sprintf("%s.%s.%s", "db", dataStore2Name.ScopeName(), dataStore2Name.CollectionName())
 
-	// create db
 	resp := rest.BootstrapAdminRequest(t, http.MethodPut, "/db/", fmt.Sprintf(
-		`{"bucket": "%s", "scopes": {"foo": {"collections": {"bar": {}}}}, "num_index_replicas": 0, "enable_shared_bucket_access": true, "use_views": false}`,
-		tb.GetName(),
+		`{"bucket": "%s", "scopes": {"%s": {"collections": {"%s": {}}}}, "num_index_replicas": 0, "enable_shared_bucket_access": true, "use_views": false}`,
+		tb.GetName(), dataStore1Name.ScopeName(), dataStore1Name.CollectionName(),
 	))
 	resp.RequireStatus(http.StatusCreated)
 
 	// put a doc in db
-	resp = rest.BootstrapAdminRequest(t, http.MethodPut, "/db.foo.bar/10001", `{"type":"test_doc"}`)
+	resp = rest.BootstrapAdminRequest(t, http.MethodPut, fmt.Sprintf("/%s/10001", keyspace1), `{"type":"test_doc"}`)
 	resp.RequireStatus(http.StatusCreated)
 
 	// update config to another collection
 	resp = rest.BootstrapAdminRequest(t, http.MethodPost, "/db/_config", fmt.Sprintf(
-		`{"bucket": "%s", "scopes": {"foo": {"collections": {"baz": {}}}}, "num_index_replicas": 0, "enable_shared_bucket_access": true, "use_views": false}`,
-		tb.GetName(),
+		`{"bucket": "%s", "scopes": {"%s": {"collections": {"%s": {}}}}, "num_index_replicas": 0, "enable_shared_bucket_access": true, "use_views": false}`,
+		tb.GetName(), dataStore2Name.ScopeName(), dataStore2Name.CollectionName(),
 	))
 	resp.RequireStatus(http.StatusCreated)
 
 	// put doc in new collection
-	resp = rest.BootstrapAdminRequest(t, http.MethodPut, "/db.foo.baz/10001", `{"type":"test_doc1"}`)
+	resp = rest.BootstrapAdminRequest(t, http.MethodPut, fmt.Sprintf("/%s/10001", keyspace2), `{"type":"test_doc1"}`)
 	resp.RequireStatus(http.StatusCreated)
 
 	// update back to original collection config
 	resp = rest.BootstrapAdminRequest(t, http.MethodPost, "/db/_config", fmt.Sprintf(
-		`{"bucket": "%s", "scopes": {"foo": {"collections": {"bar": {}}}}, "num_index_replicas": 0, "enable_shared_bucket_access": true, "use_views": false}`,
-		tb.GetName(),
+		`{"bucket": "%s", "scopes": {"%s": {"collections": {"%s": {}}}}, "num_index_replicas": 0, "enable_shared_bucket_access": true, "use_views": false}`,
+		tb.GetName(), dataStore1Name.ScopeName(), dataStore1Name.CollectionName(),
 	))
 	resp.RequireStatus(http.StatusCreated)
 
 	// put doc in original collection name
-	resp = rest.BootstrapAdminRequest(t, http.MethodPut, "/db.foo.bar/100", `{"type":"test_doc1"}`)
+	resp = rest.BootstrapAdminRequest(t, http.MethodPut, fmt.Sprintf("/%s/100", keyspace1), `{"type":"test_doc1"}`)
 	resp.RequireStatus(http.StatusCreated)
 }
 
