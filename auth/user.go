@@ -276,6 +276,21 @@ func (user *userImpl) revokedChannels(since uint64, lowSeq uint64, triggeredBy u
 	return user.RevokedCollectionChannels(base.DefaultScope, base.DefaultCollection, since, lowSeq, triggeredBy)
 }
 
+func (user *userImpl) RevokedChannelsForCollections(since uint64, lowSeq uint64, triggeredBy uint64) RevokedChannels {
+	coll := user.GetCollectionsAccess()
+	rev := RevokedChannels{}
+
+	for scope, collections := range coll {
+		for collection, _ := range collections {
+			revocations := user.RevokedCollectionChannels(scope, collection, since, lowSeq, triggeredBy)
+			for k, v := range revocations {
+				rev.add(k, v)
+			}
+		}
+	}
+	return rev
+}
+
 // RevokedCollectionChannels returns a map of revoked channels for the collection => most recent sequence at which access to that channel was lost
 // Steps:
 // Get revoked roles and for each:

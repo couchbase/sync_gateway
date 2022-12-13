@@ -121,6 +121,8 @@ type User interface {
 
 	revokedChannels(since uint64, lowSeq uint64, triggeredBy uint64) RevokedChannels
 
+	RevokedChannelsForCollections(since uint64, lowSeq uint64, triggeredBy uint64) RevokedChannels
+
 	// Obtains the period over which the user had access to the given channel. Either directly or via a role.
 	channelGrantedPeriods(chanName string) ([]GrantHistorySequencePair, error)
 

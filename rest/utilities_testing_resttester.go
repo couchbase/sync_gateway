@@ -58,6 +58,25 @@ func (rt *RestTester) PutDoc(docID string, body string) (response PutDocResponse
 	return response
 }
 
+func (rt *RestTester) PutDocCollection(docID string, body string) (response PutDocResponse) {
+	rawResponse := rt.SendAdminRequest("PUT", "/db.sg_test_0.sg_test_0/"+docID, body)
+	RequireStatus(rt.TB, rawResponse, 201)
+	require.NoError(rt.TB, base.JSONUnmarshal(rawResponse.Body.Bytes(), &response))
+	require.True(rt.TB, response.Ok)
+	require.NotEmpty(rt.TB, response.Rev)
+	return response
+}
+
+func (rt *RestTester) UpdateDocCollection(docID, revID, body string) (response PutDocResponse) {
+	resource := fmt.Sprintf("/db.sg_test_0.sg_test_0/%s?rev=%s", docID, revID)
+	rawResponse := rt.SendAdminRequest(http.MethodPut, resource, body)
+	RequireStatus(rt.TB, rawResponse, http.StatusCreated)
+	require.NoError(rt.TB, base.JSONUnmarshal(rawResponse.Body.Bytes(), &response))
+	require.True(rt.TB, response.Ok)
+	require.NotEmpty(rt.TB, response.Rev)
+	return response
+}
+
 func (rt *RestTester) UpdateDoc(docID, revID, body string) (response PutDocResponse) {
 	resource := fmt.Sprintf("/%s/%s?rev=%s", rt.GetSingleKeyspace(), docID, revID)
 	rawResponse := rt.SendAdminRequest(http.MethodPut, resource, body)

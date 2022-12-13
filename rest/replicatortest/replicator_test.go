@@ -868,6 +868,152 @@ func TestPullOneshotReplicationAPI(t *testing.T) {
 
 }
 
+func TestPurgeWhenUserChannelRevoked(t *testing.T) {
+
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeyReplicate, base.KeyChanges)
+
+	activeRT, remoteRT, _, teardown := rest.SetupSGRPeers(t)
+	defer teardown()
+	srv := httptest.NewServer(remoteRT.TestPublicHandler())
+	passiveDBURL, _ := url.Parse(srv.URL + "/db")
+	reqHeaders := map[string]string{}
+	remoteRT.DatabaseConfig.AutoImport = true
+
+	tb := remoteRT.TestBucket
+	tb2 := activeRT.TestBucket
+
+	resp := remoteRT.SendAdminRequest(http.MethodPost, "/db/_config", fmt.Sprintf(
+		`{"bucket": "%s", "scopes": {"sg_test_0": {"collections": {"sg_test_0": {}}}}, "num_index_replicas": 0, "use_views": %t, "import_docs": true}`,
+		tb.BucketSpec.BucketName, base.TestsDisableGSI(),
+	))
+	rest.RequireStatus(t, resp, http.StatusCreated)
+
+	resp = activeRT.SendAdminRequest(http.MethodPost, "/db/_config", fmt.Sprintf(
+		`{"bucket": "%s", "scopes": {"sg_test_0": {"collections": {"sg_test_0": {}}}}, "num_index_replicas": 0, "use_views": %t, "import_docs": true}`,
+		tb2.BucketSpec.BucketName, base.TestsDisableGSI(),
+	))
+	rest.RequireStatus(t, resp, http.StatusCreated)
+
+	resp = activeRT.SendAdminRequest(http.MethodPost, "/db/_user/", `{"name" : "test1", "password" : "couchbase", "admin_channels" : ["A", "B"], "collection_access":{"sg_test_0":{"sg_test_0":{"admin_channels":["A", "B"]}}}}`)
+	rest.RequireStatus(t, resp, http.StatusCreated)
+
+	resp = activeRT.SendAdminRequest(http.MethodGet, "/db/_user/test1", "")
+	fmt.Println(resp.Code, resp.Body)
+
+	resp = remoteRT.SendAdminRequest(http.MethodPost, "/db/_user/", `{"name" : "testRemote", "password" : "couchbase", "admin_channels" : ["A", "B"], "collection_access":{"sg_test_0":{"sg_test_0":{"admin_channels":["A", "B"]}}}}`)
+	rest.RequireStatus(t, resp, http.StatusCreated)
+
+	resp = remoteRT.SendAdminRequest(http.MethodGet, "/db/_user/testRemote", "")
+	fmt.Println(resp.Code, resp.Body)
+
+	//docresp := remoteRT.PutDocCollection("10", `{"source":"remote", "channels":["A", "B"]}`)
+	//assert.True(t, docresp.Ok)
+	//rev := docresp.Rev
+	putDocs(t, remoteRT)
+
+	resp = remoteRT.SendAdminRequest(http.MethodGet, "/db.sg_test_0.sg_test_0/10", "")
+	fmt.Println(resp.Code, resp.Body)
+
+	resp = remoteRT.SendAdminRequest(http.MethodGet, "/db/_all_docs?include_docs=true", "")
+	fmt.Println(resp.Body)
+	rest.RequireStatus(t, resp, http.StatusOK)
+
+	resp = activeRT.SendAdminRequest(http.MethodPut, "/db/_replication/"+t.Name(), fmt.Sprintf(`{"remote" : "%s", "remote_username" : "%s", "remote_password" : "%s", 
+			"direction" : "pull", "purge_on_removal": true}`, passiveDBURL.String(), "testRemote", "couchbase"))
+	rest.RequireStatus(t, resp, http.StatusCreated)
+	activeRT.WaitForReplicationStatus(t.Name(), db.ReplicationStateRunning)
+	activeRT.WaitForAssignedReplications(1)
+
+	activeRT.WaitForReplicationStatus(t.Name(), db.ReplicationStateStopped)
+	time.Sleep(8 * time.Second)
+
+	resp = activeRT.SendAdminRequest(http.MethodGet, "/db/_all_docs?include_docs=true", "")
+	fmt.Println(resp.Body)
+	rest.RequireStatus(t, resp, http.StatusOK)
+	resp = activeRT.SendUserRequestWithHeaders(http.MethodGet, "/db/_all_docs?include_docs=true", "", reqHeaders, "test1", "couchbase")
+	fmt.Println(resp.Body)
+	rest.RequireStatus(t, resp, http.StatusOK)
+
+	//docresp1 := remoteRT.UpdateDocCollection("10", rev, `{"source":"remote", "channels" : ["B"]}`)
+	//assert.True(t, docresp1.Ok)
+	//rev = docresp.Rev
+	updateDocs(t, remoteRT)
+
+	resp = remoteRT.SendAdminRequest(http.MethodPut, "/db/_user/testRemote", `{"name" : "testRemote", "password" : "couchbase", "admin_channels" : ["B"], "collection_access":{"sg_test_0":{"sg_test_0":{"admin_channels":["B"]}}}}`)
+	rest.RequireStatus(t, resp, http.StatusOK)
+	resp = remoteRT.SendAdminRequest(http.MethodGet, "/db/_user/testRemote", "")
+	fmt.Println(resp.Code, resp.Body)
+	rest.RequireStatus(t, resp, http.StatusOK)
+
+	resp = activeRT.SendAdminRequest(http.MethodPut, "/db/_replication/"+t.Name(), fmt.Sprintf(`{"remote" : "%s", "remote_username" : "%s", "remote_password" : "%s", 
+			"direction" : "pull", "purge_on_removal": true}`, passiveDBURL.String(), "testRemote", "couchbase"))
+	rest.RequireStatus(t, resp, http.StatusOK)
+
+	log.Println("second replication")
+
+	resp = activeRT.SendAdminRequest(http.MethodPut, "/db/_replicationStatus/"+t.Name()+"?action=start", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+
+	activeRT.WaitForReplicationStatus(t.Name(), db.ReplicationStateRunning)
+	activeRT.WaitForReplicationStatus(t.Name(), db.ReplicationStateStopped)
+
+	resp = activeRT.SendAdminRequest(http.MethodGet, "/db/_all_docs?include_docs=true", "")
+	fmt.Println(resp.Body)
+	rest.RequireStatus(t, resp, http.StatusOK)
+
+	resp = remoteRT.SendAdminRequest(http.MethodPut, "/db/_user/testRemote", `{"name" : "testRemote", "password" : "couchbase", "admin_channels" : [], "collection_access":{"sg_test_0":{"sg_test_0":{"admin_channels":[]}}}}`)
+	rest.RequireStatus(t, resp, http.StatusOK)
+	resp = remoteRT.SendAdminRequest(http.MethodGet, "/db/_user/testRemote", "")
+	fmt.Println(resp.Code, resp.Body)
+	rest.RequireStatus(t, resp, http.StatusOK)
+
+	resp = activeRT.SendAdminRequest(http.MethodPut, "/db/_replication/"+t.Name(), fmt.Sprintf(`{"remote" : "%s", "remote_username" : "%s", "remote_password" : "%s",
+				"direction" : "pull", "purge_on_removal": true}`, passiveDBURL.String(), "testRemote", "couchbase"))
+	rest.RequireStatus(t, resp, http.StatusOK)
+
+	log.Println("Final replication")
+
+	resp = activeRT.SendAdminRequest(http.MethodPut, "/db/_replicationStatus/"+t.Name()+"?action=start", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+
+	activeRT.WaitForReplicationStatus(t.Name(), db.ReplicationStateStopped)
+
+	base.WaitForStat(func() int64 {
+		status := activeRT.GetReplicationStatus(t.Name())
+		return status.PullReplicationStatus.DocsPurged
+	}, 1000)
+
+	resp = activeRT.SendAdminRequest(http.MethodGet, "/db/_all_docs?include_docs=true", "")
+	fmt.Println(resp.Body)
+	rest.RequireStatus(t, resp, http.StatusOK)
+
+	resp = activeRT.SendUserRequestWithHeaders(http.MethodGet, "/db.sg_test_0.sg_test_0/10", "", reqHeaders, "test1", "couchbase")
+	rest.RequireStatus(t, resp, http.StatusNotFound)
+
+}
+
+func updateDocs(t *testing.T, rt *rest.RestTester) {
+	var docresp rest.PutDocResponse
+	var get db.Body
+	var rev string
+	for i := 0; i < 1000; i++ {
+		get = rt.GetDoc(fmt.Sprint(i))
+		rev = get.ExtractRev()
+		docresp = rt.UpdateDocCollection(fmt.Sprint(i), rev, `{"source":"remote", "channels":["B"]}`)
+		assert.True(t, docresp.Ok)
+		//rev := docresp.Rev
+	}
+}
+
+func putDocs(t *testing.T, rt *rest.RestTester) {
+	var docresp rest.PutDocResponse
+	for i := 0; i < 1000; i++ {
+		docresp = rt.PutDocCollection(fmt.Sprint(i), `{"source":"remote", "channels":["A", "B"]}`)
+		assert.True(t, docresp.Ok)
+		//rev := docresp.Rev
+	}
+}
+
 // TestReplicationConcurrentPush
 //   - Starts 2 RestTesters, one active, and one passive.
 //   - Creates two continuous push replications on rt1 via the REST API for two channels
