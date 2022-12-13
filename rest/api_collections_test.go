@@ -106,14 +106,10 @@ func TestCollectionsPutDocInKeyspace(t *testing.T) {
 
 // TestCollectionsPublicChannel ensures that a doc routed to the public channel is accessible by a user with no other access.
 func TestCollectionsPublicChannel(t *testing.T) {
-	base.TestRequiresCollections(t)
-
 	tb := base.GetTestBucket(t)
 	defer tb.Close()
 
-	// dbName is the default name from RestTester
-
-	ds := tb.GetNamedDataStore(1)
+	ds := tb.GetSingleDataStore()
 	dataStoreName, ok := base.AsDataStoreName(ds)
 	require.True(t, ok)
 	keyspaceName := "db" + "." + dataStoreName.ScopeName() + "." + dataStoreName.CollectionName()
