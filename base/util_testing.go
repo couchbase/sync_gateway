@@ -22,6 +22,7 @@ import (
 	"os"
 	"runtime"
 	"runtime/pprof"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -131,12 +132,21 @@ func (tb *TestBucket) GetNamedDataStore(count int) DataStore {
 func (tb *TestBucket) GetNonDefaultDatastoreNames() []sgbucket.DataStoreName {
 	allDataStoreNames, err := tb.ListDataStores()
 	require.NoError(tb.t, err)
-	var nonDefaultDataStoreNames []sgbucket.DataStoreName
+	var keyspaces []string
 	for _, name := range allDataStoreNames {
 		if IsDefaultCollection(name.ScopeName(), name.CollectionName()) {
 			continue
 		}
-		nonDefaultDataStoreNames = append(nonDefaultDataStoreNames, name)
+		keyspaces = append(keyspaces, fmt.Sprintf("%s.%s", name.ScopeName(), name.CollectionName()))
+	}
+	sort.Strings(keyspaces)
+	var nonDefaultDataStoreNames []sgbucket.DataStoreName
+	for _, keyspace := range keyspaces {
+		scopeAndCollection := strings.Split(keyspace, ScopeCollectionSeparator)
+		nonDefaultDataStoreNames = append(nonDefaultDataStoreNames,
+			ScopeAndCollectionName{
+				Scope:      scopeAndCollection[0],
+				Collection: scopeAndCollection[1]})
 	}
 	return nonDefaultDataStoreNames
 }
@@ -723,6 +733,18 @@ func TemporarilyDisableTestUsingDCPWithCollections(t *testing.T) {
 func DisableTestWithCollections(t *testing.T) {
 	if TestsUseNamedCollections() {
 		t.Skip("Skipping test because collections are enabled")
+	}
+}
+
+// SkipImportTestsIfNotEnabled skips test that exercise import features
+func SkipImportTestsIfNotEnabled(t *testing.T) {
+
+	if !TestUseXattrs() {
+		t.Skip("XATTR based tests not enabled.  Enable via SG_TEST_USE_XATTRS=true environment variable")
+	}
+
+	if UnitTestUrlIsWalrus() {
+		t.Skip("This test won't work under walrus until https://github.com/couchbase/sync_gateway/issues/2390")
 	}
 }
 

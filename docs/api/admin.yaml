@@ -96,10 +96,10 @@ paths:
     $ref: ./paths/admin/_post_upgrade.yaml
   '/{db}/_config':
     $ref: './paths/admin/{db}~_config.yaml'
-  '/{db}/_config/sync':
-    $ref: './paths/admin/{db}~_config~sync.yaml'
-  '/{db}/_config/import_filter':
-    $ref: './paths/admin/{db}~_config~import_filter.yaml'
+  '/{keyspace}/_config/sync':
+    $ref: './paths/admin/{keyspace}~_config~sync.yaml'
+  '/{keyspace}/_config/import_filter':
+    $ref: './paths/admin/{keyspace}~_config~import_filter.yaml'
   '/{keyspace}/_resync':
     $ref: './paths/admin/{keyspace}~_resync.yaml'
   '/{keyspace}/_purge':

@@ -27,17 +27,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func SkipImportTestsIfNotEnabled(t *testing.T) {
-
-	if !base.TestUseXattrs() {
-		t.Skip("XATTR based tests not enabled.  Enable via SG_TEST_USE_XATTRS=true environment variable")
-	}
-
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test won't work under walrus until https://github.com/couchbase/sync_gateway/issues/2390")
-	}
-}
-
 // gocb V2 accepts expiry as a duration and converts to a uint32 epoch time, then does the reverse on retrieval.
 // Sync Gateway's bucket interface uses uint32 expiry. The net result is that expiry values written and then read via SG's
 // bucket API go through a transformation based on time.Now (or time.Until) that can result in inexact matches.
@@ -49,7 +38,7 @@ func assertExpiry(t testing.TB, expected uint32, actual uint32) {
 // Test import of an SDK delete.
 func TestXattrImportOldDoc(t *testing.T) {
 
-	SkipImportTestsIfNotEnabled(t)
+	base.SkipImportTestsIfNotEnabled(t)
 
 	rtConfig := rest.RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) {
@@ -136,7 +125,7 @@ func TestXattrImportOldDoc(t *testing.T) {
 // Test import ancestor handling
 func TestXattrImportOldDocRevHistory(t *testing.T) {
 
-	SkipImportTestsIfNotEnabled(t)
+	base.SkipImportTestsIfNotEnabled(t)
 
 	rtConfig := rest.RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) {
@@ -194,7 +183,7 @@ func TestXattrImportOldDocRevHistory(t *testing.T) {
 // Validate tombstone w/ xattrs
 func TestXattrSGTombstone(t *testing.T) {
 
-	SkipImportTestsIfNotEnabled(t)
+	base.SkipImportTestsIfNotEnabled(t)
 
 	rtConfig := rest.RestTesterConfig{SyncFn: `
 		function(doc, oldDoc) { channel(doc.channels) }`}
@@ -242,7 +231,7 @@ func TestXattrImportOnCasFailure(t *testing.T) {
 	// Scenario fully covered by functional test.
 	t.Skip("WARNING: TEST DISABLED")
 
-	SkipImportTestsIfNotEnabled(t)
+	base.SkipImportTestsIfNotEnabled(t)
 
 	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
@@ -302,7 +291,7 @@ func TestXattrImportOnCasFailure(t *testing.T) {
 // Attempt to delete then recreate a document through SG
 func TestXattrResurrectViaSG(t *testing.T) {
 
-	SkipImportTestsIfNotEnabled(t)
+	base.SkipImportTestsIfNotEnabled(t)
 
 	rtConfig := rest.RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
@@ -348,7 +337,7 @@ func TestXattrResurrectViaSG(t *testing.T) {
 // Attempt to delete then recreate a document through the SDK
 func TestXattrResurrectViaSDK(t *testing.T) {
 
-	SkipImportTestsIfNotEnabled(t)
+	base.SkipImportTestsIfNotEnabled(t)
 
 	rtConfig := rest.RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
@@ -413,7 +402,7 @@ func TestXattrResurrectViaSDK(t *testing.T) {
 // Attempt to delete a document that's already been deleted via the SDK
 func TestXattrDoubleDelete(t *testing.T) {
 
-	SkipImportTestsIfNotEnabled(t)
+	base.SkipImportTestsIfNotEnabled(t)
 
 	rtConfig := rest.RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
@@ -460,7 +449,7 @@ func TestXattrDoubleDelete(t *testing.T) {
 
 func TestViewQueryTombstoneRetrieval(t *testing.T) {
 
-	SkipImportTestsIfNotEnabled(t)
+	base.SkipImportTestsIfNotEnabled(t)
 
 	if !base.TestsDisableGSI() {
 		t.Skip("views tests are not applicable under GSI")
@@ -538,7 +527,7 @@ func TestViewQueryTombstoneRetrieval(t *testing.T) {
 
 func TestXattrImportFilterOptIn(t *testing.T) {
 
-	SkipImportTestsIfNotEnabled(t)
+	base.SkipImportTestsIfNotEnabled(t)
 
 	importFilter := `function (doc) { return doc.type == "mobile"}`
 	rtConfig := rest.RestTesterConfig{
@@ -548,7 +537,7 @@ func TestXattrImportFilterOptIn(t *testing.T) {
 			ImportFilter: &importFilter,
 		}},
 	}
-	rt := rest.NewRestTester(t, &rtConfig)
+	rt := rest.NewRestTesterDefaultCollection(t, &rtConfig) // use default collection since we are using default sync function
 	defer rt.Close()
 	dataStore := rt.GetSingleDataStore()
 
@@ -588,7 +577,7 @@ func TestXattrImportFilterOptIn(t *testing.T) {
 }
 
 func TestImportFilterLogging(t *testing.T) {
-	SkipImportTestsIfNotEnabled(t)
+	base.SkipImportTestsIfNotEnabled(t)
 
 	importFilter := `function (doc) { console.error("Error"); return doc.type == "mobile"; }`
 	rtConfig := rest.RestTesterConfig{
@@ -598,7 +587,7 @@ func TestImportFilterLogging(t *testing.T) {
 			AutoImport:   false,
 		}},
 	}
-	rt := rest.NewRestTester(t, &rtConfig)
+	rt := rest.NewRestTesterDefaultCollection(t, &rtConfig) // use default collection since we are using default sync function
 	defer rt.Close()
 
 	// Add document to bucket
@@ -631,7 +620,7 @@ func TestImportFilterLogging(t *testing.T) {
 // should detect and not import/create new revision during read-triggered import
 func TestXattrImportMultipleActorOnDemandGet(t *testing.T) {
 
-	SkipImportTestsIfNotEnabled(t)
+	base.SkipImportTestsIfNotEnabled(t)
 
 	rtConfig := rest.RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
@@ -687,7 +676,7 @@ func TestXattrImportMultipleActorOnDemandGet(t *testing.T) {
 // should detect and not import/create new revision during write-triggered import
 func TestXattrImportMultipleActorOnDemandPut(t *testing.T) {
 
-	SkipImportTestsIfNotEnabled(t)
+	base.SkipImportTestsIfNotEnabled(t)
 
 	rtConfig := rest.RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
@@ -745,7 +734,7 @@ func TestXattrImportMultipleActorOnDemandPut(t *testing.T) {
 // should detect and not import/create new revision during feed-based import
 func TestXattrImportMultipleActorOnDemandFeed(t *testing.T) {
 
-	SkipImportTestsIfNotEnabled(t)
+	base.SkipImportTestsIfNotEnabled(t)
 
 	rtConfig := rest.RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
@@ -819,7 +808,7 @@ func TestXattrImportMultipleActorOnDemandFeed(t *testing.T) {
 // should detect and not import/create new revision during read-triggered import
 func TestXattrImportLargeNumbers(t *testing.T) {
 
-	SkipImportTestsIfNotEnabled(t)
+	base.SkipImportTestsIfNotEnabled(t)
 
 	rtConfig := rest.RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
@@ -867,7 +856,7 @@ type treeHistory struct {
 // Test migration of a 1.4 doc with large inline revisions.  Validate they get migrated out of the body
 func TestMigrateLargeInlineRevisions(t *testing.T) {
 
-	SkipImportTestsIfNotEnabled(t)
+	base.SkipImportTestsIfNotEnabled(t)
 
 	rtConfig := rest.RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
@@ -935,7 +924,7 @@ func TestMigrateLargeInlineRevisions(t *testing.T) {
 // Test migration of a 1.4 doc that's been tombstoned
 func TestMigrateTombstone(t *testing.T) {
 
-	SkipImportTestsIfNotEnabled(t)
+	base.SkipImportTestsIfNotEnabled(t)
 
 	rtConfig := rest.RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
@@ -1003,7 +992,7 @@ func TestMigrateTombstone(t *testing.T) {
 // Test migration of a 1.5 doc that already includes some external revision storage from docmeta to xattr.
 func TestMigrateWithExternalRevisions(t *testing.T) {
 
-	SkipImportTestsIfNotEnabled(t)
+	base.SkipImportTestsIfNotEnabled(t)
 
 	rtConfig := rest.RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
@@ -1303,7 +1292,7 @@ func TestCheckForUpgradeFeed(t *testing.T) {
 // Write a doc via SDK with an expiry value.  Verify that expiry is preserved when doc is imported via DCP feed
 func TestXattrFeedBasedImportPreservesExpiry(t *testing.T) {
 
-	SkipImportTestsIfNotEnabled(t)
+	base.SkipImportTestsIfNotEnabled(t)
 
 	rtConfig := rest.RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
@@ -1364,7 +1353,7 @@ func TestXattrFeedBasedImportPreservesExpiry(t *testing.T) {
 // Test migration of a 1.5 doc that has an expiry value.
 func TestFeedBasedMigrateWithExpiry(t *testing.T) {
 
-	SkipImportTestsIfNotEnabled(t)
+	base.SkipImportTestsIfNotEnabled(t)
 
 	rtConfig := rest.RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
@@ -1413,7 +1402,7 @@ func TestFeedBasedMigrateWithExpiry(t *testing.T) {
 // the incoming write
 func TestOnDemandWriteImportReplacingNullDoc(t *testing.T) {
 
-	SkipImportTestsIfNotEnabled(t)
+	base.SkipImportTestsIfNotEnabled(t)
 
 	rtConfig := rest.RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
@@ -1450,7 +1439,7 @@ func TestOnDemandWriteImportReplacingNullDoc(t *testing.T) {
 // import (GET or WRITE)
 func TestXattrOnDemandImportPreservesExpiry(t *testing.T) {
 
-	SkipImportTestsIfNotEnabled(t)
+	base.SkipImportTestsIfNotEnabled(t)
 
 	mobileBody := make(map[string]interface{})
 	mobileBody["type"] = "mobile"
@@ -1536,7 +1525,7 @@ func TestXattrOnDemandImportPreservesExpiry(t *testing.T) {
 // import (GET or WRITE)
 func TestOnDemandMigrateWithExpiry(t *testing.T) {
 
-	SkipImportTestsIfNotEnabled(t)
+	base.SkipImportTestsIfNotEnabled(t)
 
 	triggerOnDemandViaGet := func(rt *rest.RestTester, key string) {
 		// Attempt to get the documents via Sync Gateway.  Will trigger on-demand migrate.
@@ -1609,7 +1598,7 @@ func TestOnDemandMigrateWithExpiry(t *testing.T) {
 // Write through SG, non-imported SDK write, subsequent SG write
 func TestXattrSGWriteOfNonImportedDoc(t *testing.T) {
 
-	SkipImportTestsIfNotEnabled(t)
+	base.SkipImportTestsIfNotEnabled(t)
 
 	importFilter := `function (doc) { return doc.type == "mobile"}`
 	rtConfig := rest.RestTesterConfig{
@@ -1619,7 +1608,7 @@ func TestXattrSGWriteOfNonImportedDoc(t *testing.T) {
 			ImportFilter: &importFilter,
 		}},
 	}
-	rt := rest.NewRestTester(t, &rtConfig)
+	rt := rest.NewRestTesterDefaultCollection(t, &rtConfig) // use default collection since we are using default sync function
 	defer rt.Close()
 
 	log.Printf("Starting get bucket....")
@@ -1689,7 +1678,7 @@ func TestImportBinaryDoc(t *testing.T) {
 // TestImportZeroValueDecimalPlaces tests that docs containing numbers of the form 0.0000 are imported correctly.
 func TestImportZeroValueDecimalPlaces(t *testing.T) {
 
-	SkipImportTestsIfNotEnabled(t)
+	base.SkipImportTestsIfNotEnabled(t)
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyImport)
 
@@ -1752,7 +1741,7 @@ func TestImportZeroValueDecimalPlaces(t *testing.T) {
 // TestImportZeroValueDecimalPlacesScientificNotation tests that docs containing numbers of the form 0e10 are imported correctly.
 func TestImportZeroValueDecimalPlacesScientificNotation(t *testing.T) {
 
-	SkipImportTestsIfNotEnabled(t)
+	base.SkipImportTestsIfNotEnabled(t)
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyImport)
 
@@ -1816,7 +1805,7 @@ func TestImportZeroValueDecimalPlacesScientificNotation(t *testing.T) {
 // Test creation of backup revision on import
 func TestImportRevisionCopy(t *testing.T) {
 
-	SkipImportTestsIfNotEnabled(t)
+	base.SkipImportTestsIfNotEnabled(t)
 
 	rtConfig := rest.RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
@@ -1873,7 +1862,7 @@ func TestImportRevisionCopy(t *testing.T) {
 // Test creation of backup revision on import, when rev is no longer available in rev cache.
 func TestImportRevisionCopyUnavailable(t *testing.T) {
 
-	SkipImportTestsIfNotEnabled(t)
+	base.SkipImportTestsIfNotEnabled(t)
 
 	rtConfig := rest.RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
@@ -1934,7 +1923,7 @@ func TestImportRevisionCopyUnavailable(t *testing.T) {
 // Verify config flag for import creation of backup revision on import
 func TestImportRevisionCopyDisabled(t *testing.T) {
 
-	SkipImportTestsIfNotEnabled(t)
+	base.SkipImportTestsIfNotEnabled(t)
 
 	// ImportBackupOldRev not set in config, defaults to false
 	rtConfig := rest.RestTesterConfig{
@@ -1997,7 +1986,7 @@ func TestDcpBackfill(t *testing.T) {
 
 	t.Skip("Test disabled pending CBG-560")
 
-	SkipImportTestsIfNotEnabled(t)
+	base.SkipImportTestsIfNotEnabled(t)
 
 	rt := rest.NewRestTester(t, nil)
 
@@ -2053,7 +2042,7 @@ func TestDcpBackfill(t *testing.T) {
 // Validate SG behaviour if there's an unexpected body on a tombstone
 func TestUnexpectedBodyOnTombstone(t *testing.T) {
 
-	SkipImportTestsIfNotEnabled(t)
+	base.SkipImportTestsIfNotEnabled(t)
 
 	rtConfig := rest.RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
@@ -2158,7 +2147,7 @@ func assertXattrSyncMetaRevGeneration(t *testing.T, dataStore base.DataStore, ke
 }
 
 func TestDeletedEmptyDocumentImport(t *testing.T) {
-	SkipImportTestsIfNotEnabled(t)
+	base.SkipImportTestsIfNotEnabled(t)
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyImport)
 	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
@@ -2190,7 +2179,7 @@ func TestDeletedEmptyDocumentImport(t *testing.T) {
 
 // Check deleted document via SDK is getting imported if it is included in through ImportFilter function.
 func TestDeletedDocumentImportWithImportFilter(t *testing.T) {
-	SkipImportTestsIfNotEnabled(t)
+	base.SkipImportTestsIfNotEnabled(t)
 	rtConfig := rest.RestTesterConfig{
 		SyncFn: `function(doc) {console.log("Doc in Sync Fn:" + JSON.stringify(doc))}`,
 		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
@@ -2241,7 +2230,7 @@ func TestDeletedDocumentImportWithImportFilter(t *testing.T) {
 // CBG-1995: Test the support for using an underscore prefix in the top-level body of a document
 // CBG-2023: Test preventing underscore attachments
 func TestImportInternalPropertiesHandling(t *testing.T) {
-	SkipImportTestsIfNotEnabled(t)
+	base.SkipImportTestsIfNotEnabled(t)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
 	testCases := []struct {
@@ -2373,7 +2362,7 @@ func TestImportInternalPropertiesHandling(t *testing.T) {
 // Test import of an SDK expiry change
 func TestImportTouch(t *testing.T) {
 
-	SkipImportTestsIfNotEnabled(t)
+	base.SkipImportTestsIfNotEnabled(t)
 
 	rtConfig := rest.RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) {
@@ -2820,7 +2809,7 @@ func TestImportFilterTimeout(t *testing.T) {
 	importFilter := `function(doc) { while(true) { } }`
 
 	rtConfig := rest.RestTesterConfig{DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{ImportFilter: &importFilter, AutoImport: false, JavascriptTimeoutSecs: base.Uint32Ptr(1)}}}
-	rt := rest.NewRestTester(t, &rtConfig)
+	rt := rest.NewRestTesterDefaultCollection(t, &rtConfig) // use default collection since we are using default sync function
 	defer rt.Close()
 
 	added, err := rt.GetSingleDataStore().AddRaw("doc", 0, []byte(fmt.Sprintf(`{"foo": "bar"}`)))

@@ -221,18 +221,18 @@ func CreateAdminRouter(sc *ServerContext) *mux.Router {
 	dbr.Handle("/_config",
 		makeOfflineHandler(sc, adminPrivs, []Permission{PermUpdateDb, PermConfigureSyncFn, PermConfigureAuth}, []Permission{PermUpdateDb, PermConfigureSyncFn, PermConfigureAuth}, (*handler).handlePutDbConfig)).Methods("PUT", "POST")
 
-	dbr.Handle("/_config/sync",
-		makeOfflineHandler(sc, adminPrivs, []Permission{PermUpdateDb, PermConfigureSyncFn}, nil, (*handler).handleGetDbConfigSync)).Methods("GET")
-	dbr.Handle("/_config/sync",
-		makeOfflineHandler(sc, adminPrivs, []Permission{PermUpdateDb, PermConfigureSyncFn}, nil, (*handler).handlePutDbConfigSync)).Methods("PUT")
-	dbr.Handle("/_config/sync",
-		makeOfflineHandler(sc, adminPrivs, []Permission{PermUpdateDb, PermConfigureSyncFn}, nil, (*handler).handleDeleteDbConfigSync)).Methods("DELETE")
-	dbr.Handle("/_config/import_filter",
-		makeOfflineHandler(sc, adminPrivs, []Permission{PermUpdateDb}, nil, (*handler).handleGetDbConfigImportFilter)).Methods("GET")
-	dbr.Handle("/_config/import_filter",
-		makeOfflineHandler(sc, adminPrivs, []Permission{PermUpdateDb}, nil, (*handler).handlePutDbConfigImportFilter)).Methods("PUT")
-	dbr.Handle("/_config/import_filter",
-		makeOfflineHandler(sc, adminPrivs, []Permission{PermUpdateDb}, nil, (*handler).handleDeleteDbConfigImportFilter)).Methods("DELETE")
+	keyspace.Handle("/_config/sync",
+		makeOfflineHandler(sc, adminPrivs, []Permission{PermUpdateDb, PermConfigureSyncFn}, nil, (*handler).handleGetCollectionConfigSync)).Methods("GET")
+	keyspace.Handle("/_config/sync",
+		makeOfflineHandler(sc, adminPrivs, []Permission{PermUpdateDb, PermConfigureSyncFn}, nil, (*handler).handlePutCollectionConfigSync)).Methods("PUT")
+	keyspace.Handle("/_config/sync",
+		makeOfflineHandler(sc, adminPrivs, []Permission{PermUpdateDb, PermConfigureSyncFn}, nil, (*handler).handleDeleteCollectionConfigSync)).Methods("DELETE")
+	keyspace.Handle("/_config/import_filter",
+		makeOfflineHandler(sc, adminPrivs, []Permission{PermUpdateDb}, nil, (*handler).handleGetCollectionConfigImportFilter)).Methods("GET")
+	keyspace.Handle("/_config/import_filter",
+		makeOfflineHandler(sc, adminPrivs, []Permission{PermUpdateDb}, nil, (*handler).handlePutCollectionConfigImportFilter)).Methods("PUT")
+	keyspace.Handle("/_config/import_filter",
+		makeOfflineHandler(sc, adminPrivs, []Permission{PermUpdateDb}, nil, (*handler).handleDeleteCollectionConfigImportFilter)).Methods("DELETE")
 
 	dbr.Handle("/_flush",
 		makeHandler(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handleFlush)).Methods("POST")
