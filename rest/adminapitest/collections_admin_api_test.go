@@ -19,6 +19,8 @@ import (
 )
 
 func TestCollectionsSyncImportFunctions(t *testing.T) {
+	base.SkipImportTestsIfNotEnabled(t)
+
 	tb := base.GetTestBucket(t)
 	defer tb.Close()
 

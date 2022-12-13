@@ -736,6 +736,18 @@ func DisableTestWithCollections(t *testing.T) {
 	}
 }
 
+// SkipImportTestsIfNotEnabled skips test that exercise import features
+func SkipImportTestsIfNotEnabled(t *testing.T) {
+
+	if !TestUseXattrs() {
+		t.Skip("XATTR based tests not enabled.  Enable via SG_TEST_USE_XATTRS=true environment variable")
+	}
+
+	if UnitTestUrlIsWalrus() {
+		t.Skip("This test won't work under walrus until https://github.com/couchbase/sync_gateway/issues/2390")
+	}
+}
+
 // CreateBucketScopesAndCollections will create the given scopes and collections within the given BucketSpec.
 func CreateBucketScopesAndCollections(ctx context.Context, bucketSpec BucketSpec, scopes map[string][]string) error {
 	atLeastOneScope := false

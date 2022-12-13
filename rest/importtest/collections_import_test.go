@@ -21,7 +21,7 @@ import (
 
 func TestMultiCollectionImportFilter(t *testing.T) {
 
-	SkipImportTestsIfNotEnabled(t)
+	base.SkipImportTestsIfNotEnabled(t)
 
 	importFilter1 := `function (doc) { return doc.type == "mobile"}`
 	importFilter2 := `function (doc) { return doc.type == "onprem"}`
