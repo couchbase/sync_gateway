@@ -669,18 +669,12 @@ func (h *handler) handleDeleteCollectionConfigSync() error {
 			if h.headerDoesNotMatchEtag(bucketDbConfig.Version) {
 				return nil, base.HTTPErrorf(http.StatusPreconditionFailed, "Provided If-Match header does not match current config version")
 			}
-			if base.IsDefaultCollection(h.collection.ScopeName(), h.collection.Name()) {
-				bucketDbConfig.Sync = nil
-			}
 			if bucketDbConfig.Scopes != nil {
-				scope, ok := bucketDbConfig.Scopes[h.collection.ScopeName()]
-				if ok {
-					collectionConfig, ok := scope.Collections[h.collection.Name()]
-					if ok {
-						collectionConfig.SyncFn = nil
-
-					}
-				}
+				config := bucketDbConfig.Scopes[h.collection.ScopeName()].Collections[h.collection.Name()]
+				config.SyncFn = nil
+				bucketDbConfig.Scopes[h.collection.ScopeName()].Collections[h.collection.Name()] = config
+			} else if base.IsDefaultCollection(h.collection.ScopeName(), h.collection.Name()) {
+				bucketDbConfig.Sync = nil
 			}
 
 			bucketDbConfig.Version, err = GenerateDatabaseConfigVersionID(bucketDbConfig.Version, &bucketDbConfig.DbConfig)
@@ -744,10 +738,9 @@ func (h *handler) handlePutCollectionConfigSync() error {
 			}
 
 			if bucketDbConfig.Scopes != nil {
-				scope := bucketDbConfig.Scopes[h.collection.ScopeName()]
-				collectionConfig := scope.Collections[h.collection.Name()]
-				collectionConfig.SyncFn = &js
-
+				config := bucketDbConfig.Scopes[h.collection.ScopeName()].Collections[h.collection.Name()]
+				config.SyncFn = &js
+				bucketDbConfig.Scopes[h.collection.ScopeName()].Collections[h.collection.Name()] = config
 			} else if base.IsDefaultCollection(h.collection.ScopeName(), h.collection.Name()) {
 				bucketDbConfig.Sync = &js
 			}
@@ -850,19 +843,14 @@ func (h *handler) handleDeleteCollectionConfigImportFilter() error {
 				return nil, base.HTTPErrorf(http.StatusPreconditionFailed, "Provided If-Match header does not match current config version")
 			}
 
-			if base.IsDefaultCollection(h.collection.ScopeName(), h.collection.Name()) {
+			if bucketDbConfig.Scopes != nil {
+				config := bucketDbConfig.Scopes[h.collection.ScopeName()].Collections[h.collection.Name()]
+				config.ImportFilter = nil
+				bucketDbConfig.Scopes[h.collection.ScopeName()].Collections[h.collection.Name()] = config
+			} else if base.IsDefaultCollection(h.collection.ScopeName(), h.collection.Name()) {
 				bucketDbConfig.ImportFilter = nil
 			}
-			if bucketDbConfig.Scopes != nil {
-				scope, ok := bucketDbConfig.Scopes[h.collection.ScopeName()]
-				if ok {
-					collectionConfig, ok := scope.Collections[h.collection.Name()]
-					if ok {
-						collectionConfig.ImportFilter = nil
 
-					}
-				}
-			}
 			bucketDbConfig.Version, err = GenerateDatabaseConfigVersionID(bucketDbConfig.Version, &bucketDbConfig.DbConfig)
 			if err != nil {
 				return nil, err
@@ -924,10 +912,9 @@ func (h *handler) handlePutCollectionConfigImportFilter() error {
 			}
 
 			if bucketDbConfig.Scopes != nil {
-				scope := bucketDbConfig.Scopes[h.collection.ScopeName()]
-				collectionConfig := scope.Collections[h.collection.Name()]
-				collectionConfig.ImportFilter = &js
-
+				config := bucketDbConfig.Scopes[h.collection.ScopeName()].Collections[h.collection.Name()]
+				config.ImportFilter = &js
+				bucketDbConfig.Scopes[h.collection.ScopeName()].Collections[h.collection.Name()] = config
 			} else if base.IsDefaultCollection(h.collection.ScopeName(), h.collection.Name()) {
 				bucketDbConfig.ImportFilter = &js
 			}
