@@ -570,16 +570,14 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 				Collections: make(map[string]db.CollectionOptions, len(scopeCfg.Collections)),
 			}
 			for collName, collCfg := range scopeCfg.Collections {
-				var importOptions *db.ImportOptions
+				var importFilter *db.ImportFilterFunction
 				if collCfg.ImportFilter != nil {
-					importOptions = newBaseImportOptions(&config.DbConfig,
-						sc.Config.IsServerless())
-					importOptions.ImportFilter = db.NewImportFilterFunction(*collCfg.ImportFilter, javascriptTimeout)
+					importFilter = db.NewImportFilterFunction(*collCfg.ImportFilter, javascriptTimeout)
 				}
 
 				contextOptions.Scopes[scopeName].Collections[collName] = db.CollectionOptions{
-					Sync:          collCfg.SyncFn,
-					ImportOptions: importOptions,
+					Sync:         collCfg.SyncFn,
+					ImportFilter: importFilter,
 				}
 
 			}
@@ -711,9 +709,6 @@ func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConf
 
 	// Identify import options
 	importOptions := newBaseImportOptions(config, sc.Config.IsServerless())
-	if config.ImportFilter != nil {
-		importOptions.ImportFilter = db.NewImportFilterFunction(*config.ImportFilter, javascriptTimeout)
-	}
 
 	// Check for deprecated cache options. If new are set they will take priority but will still log warnings
 	warnings := config.deprecatedConfigCacheFallback()
@@ -928,6 +923,11 @@ func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConf
 		// UserQueries:               config.UserQueries,   // behind feature flag (see below)
 		// UserFunctions:             config.UserFunctions, // behind feature flag (see below)
 		// GraphQL:                   config.GraphQL,       // behind feature flag (see below)
+	}
+
+	// Set up default import filter
+	if config.ImportFilter != nil {
+		contextOptions.DefaultCollectionImportFilter = db.NewImportFilterFunction(*config.ImportFilter, javascriptTimeout)
 	}
 
 	if sc.Config.Unsupported.UserQueries != nil && *sc.Config.Unsupported.UserQueries {

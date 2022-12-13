@@ -144,19 +144,20 @@ type DatabaseContextOptions struct {
 	LocalJWTConfig                auth.LocalJWTConfig
 	DBOnlineCallback              DBOnlineCallback // Callback function to take the DB back online
 	ImportOptions                 ImportOptions
-	EnableXattr                   bool             // Use xattr for _sync
-	LocalDocExpirySecs            uint32           // The _local doc expiry time in seconds
-	SecureCookieOverride          bool             // Pass-through DBConfig.SecureCookieOverride
-	SessionCookieName             string           // Pass-through DbConfig.SessionCookieName
-	SessionCookieHttpOnly         bool             // Pass-through DbConfig.SessionCookieHTTPOnly
-	UserFunctions                 UserFunctions    // JS/N1QL functions clients can call
-	GraphQL                       GraphQL          // GraphQL query interface
-	AllowConflicts                *bool            // False forbids creating conflicts
-	SendWWWAuthenticateHeader     *bool            // False disables setting of 'WWW-Authenticate' header
-	DisablePasswordAuthentication bool             // True enforces OIDC/guest only
-	UseViews                      bool             // Force use of views
-	DeltaSyncOptions              DeltaSyncOptions // Delta Sync Options
-	CompactInterval               uint32           // Interval in seconds between compaction is automatically ran - 0 means don't run
+	ImportFilter                  *ImportFilterFunction // Opt-in filter for document import
+	EnableXattr                   bool                  // Use xattr for _sync
+	LocalDocExpirySecs            uint32                // The _local doc expiry time in seconds
+	SecureCookieOverride          bool                  // Pass-through DBConfig.SecureCookieOverride
+	SessionCookieName             string                // Pass-through DbConfig.SessionCookieName
+	SessionCookieHttpOnly         bool                  // Pass-through DbConfig.SessionCookieHTTPOnly
+	UserFunctions                 UserFunctions         // JS/N1QL functions clients can call
+	GraphQL                       GraphQL               // GraphQL query interface
+	AllowConflicts                *bool                 // False forbids creating conflicts
+	SendWWWAuthenticateHeader     *bool                 // False disables setting of 'WWW-Authenticate' header
+	DisablePasswordAuthentication bool                  // True enforces OIDC/guest only
+	UseViews                      bool                  // Force use of views
+	DeltaSyncOptions              DeltaSyncOptions      // Delta Sync Options
+	CompactInterval               uint32                // Interval in seconds between compaction is automatically ran - 0 means don't run
 	SGReplicateOptions            SGReplicateOptions
 	SlowQueryWarningThreshold     time.Duration
 	QueryPaginationLimit          int    // Limit used for pagination of queries. If not set defaults to DefaultQueryPaginationLimit
@@ -167,8 +168,9 @@ type DatabaseContextOptions struct {
 	JavascriptTimeout             time.Duration // Max time the JS functions run for (ie. sync fn, import filter)
 	Serverless                    bool          // If running in serverless mode
 	Scopes                        ScopesOptions
-	skipRegisterImportPIndex      bool           // if set, skips the global gocb PIndex registration
-	MetadataStore                 base.DataStore // If set, use this location/connection for SG metadata storage - if not set, metadata is stored using the same location/connection as the bucket used for data storage.
+	skipRegisterImportPIndex      bool                  // if set, skips the global gocb PIndex registration
+	MetadataStore                 base.DataStore        // If set, use this location/connection for SG metadata storage - if not set, metadata is stored using the same location/connection as the bucket used for data storage.
+	DefaultCollectionImportFilter *ImportFilterFunction // Opt-in filter for document import, for when collections are not supported
 }
 
 type ScopesOptions map[string]ScopeOptions
@@ -178,8 +180,8 @@ type ScopeOptions struct {
 }
 
 type CollectionOptions struct {
-	Sync          *string        // Collection sync function
-	ImportOptions *ImportOptions // Collection import filter and options
+	Sync         *string               // Collection sync function
+	ImportFilter *ImportFilterFunction // Opt-in filter for document import
 }
 
 type SGReplicateOptions struct {
@@ -232,9 +234,8 @@ type WarningThresholds struct {
 
 // Options associated with the import of documents not written by Sync Gateway
 type ImportOptions struct {
-	ImportFilter     *ImportFilterFunction // Opt-in filter for document import
-	BackupOldRev     bool                  // Create temporary backup of old revision body when available
-	ImportPartitions uint16                // Number of partitions for import
+	BackupOldRev     bool   // Create temporary backup of old revision body when available
+	ImportPartitions uint16 // Number of partitions for import
 }
 
 // Represents a simulated CouchDB database. A new instance is created for each HTTP request,
@@ -453,11 +454,8 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 					syncFn = *collOpts.Sync
 				}
 
-				if collOpts.ImportOptions != nil {
-					dbCollection.importOptions = *collOpts.ImportOptions
-				} else {
-					dbCollection.importOptions = dbContext.Options.ImportOptions
-
+				if collOpts.ImportFilter != nil {
+					dbCollection.importFilterFunction = collOpts.ImportFilter
 				}
 
 				_, err = dbCollection.UpdateSyncFun(ctx, syncFn)
@@ -479,6 +477,9 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 		dbCollection, err := newDatabaseCollection(ctx, dbContext, dataStore)
 		if err != nil {
 			return nil, err
+		}
+		if options.DefaultCollectionImportFilter != nil {
+			dbCollection.importFilterFunction = options.DefaultCollectionImportFilter
 		}
 
 		dbContext.CollectionByID[base.DefaultCollectionID] = dbCollection

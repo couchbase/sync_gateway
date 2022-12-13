@@ -20,12 +20,12 @@ import (
 
 // DatabaseCollection provides a representation of a single collection of a database.
 type DatabaseCollection struct {
-	dataStore     base.DataStore          // Storage
-	revisionCache RevisionCache           // Cache of recently-accessed doc revisions
-	changeCache   *changeCache            // Cache of recently-access channels
-	dbCtx         *DatabaseContext        // pointer to database context to allow passthrough of functions
-	ChannelMapper *channels.ChannelMapper // Collection's sync function
-	importOptions ImportOptions           // collections import options
+	dataStore            base.DataStore          // Storage
+	revisionCache        RevisionCache           // Cache of recently-accessed doc revisions
+	changeCache          *changeCache            // Cache of recently-access channels
+	dbCtx                *DatabaseContext        // pointer to database context to allow passthrough of functions
+	ChannelMapper        *channels.ChannelMapper // Collection's sync function
+	importFilterFunction *ImportFilterFunction   // collections import options
 }
 
 // DatabaseCollectionWithUser represents CouchDB database. A new instance is created for each request,
@@ -149,7 +149,7 @@ func (c *DatabaseCollection) ForceAPIForbiddenErrors() bool {
 
 // importFilter returns the sync function.
 func (c *DatabaseCollection) importFilter() *ImportFilterFunction {
-	return c.importOptions.ImportFilter
+	return c.importFilterFunction
 }
 
 // IsClosed returns true if the underlying collection has been closed.
