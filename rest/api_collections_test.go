@@ -9,6 +9,7 @@
 package rest
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
@@ -149,6 +150,18 @@ func TestCollectionsPublicChannel(t *testing.T) {
 	RequireStatus(t, resp, http.StatusCreated)
 	resp = rt.SendUserRequestWithHeaders(http.MethodGet, pathPrivate, "", nil, username, password)
 	RequireStatus(t, resp, http.StatusForbidden)
+
+	resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/"+keyspaceName+"/_all_docs?include_docs=true", "", nil, username, password)
+	RequireStatus(t, resp, http.StatusOK)
+	t.Logf("all docs resp: %s", resp.BodyBytes())
+	var alldocsresp struct {
+		Rows      []interface{} `json:"rows"`
+		TotalRows int           `json:"total_rows"`
+	}
+	err := json.Unmarshal(resp.BodyBytes(), &alldocsresp)
+	require.NoError(t, err)
+	assert.Equal(t, 1, alldocsresp.TotalRows)
+	assert.Len(t, alldocsresp.Rows, 1)
 }
 
 // TestNoCollectionsPutDocWithKeyspace ensures that a keyspace can't be used to insert a doc on a database not configured for collections.
