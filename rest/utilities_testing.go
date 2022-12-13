@@ -92,9 +92,13 @@ type RestTester struct {
 	closed                  bool
 }
 
-// NewRestTester returns a rest tester backed by a single database and a single collection. This collection may be named or default collection based on global test configuration.
-func NewRestTester(tb testing.TB, restConfig *RestTesterConfig) *RestTester {
-	return newRestTester(tb, restConfig, useSingleCollection, 1)
+// NewRestTester returns a rest tester and corresponding keyspace backed by a single database and a single collection. This collection may be named or default collection based on global test configuration.
+func NewRestTester(tb testing.TB, restConfig *RestTesterConfig) (*RestTester, string) {
+	rt := newRestTester(tb, restConfig, useSingleCollection, 1)
+	if rt.PersistentConfig {
+		return rt, ""
+	}
+	return rt, rt.GetSingleKeyspace()
 }
 
 // newRestTester creates the underlying rest testers, use public functions.
@@ -458,7 +462,6 @@ func (rt *RestTester) GetSingleTestDatabaseCollection() *db.DatabaseCollection {
 // GetSingleDataStore will return a datastore if there is only one collection configured on the RestTester database.
 func (rt *RestTester) GetSingleDataStore() base.DataStore {
 	collection := rt.GetSingleTestDatabaseCollection()
-	fmt.Println(collection.ScopeName())
 	return rt.GetDatabase().Bucket.NamedDataStore(base.ScopeAndCollectionName{
 		Scope:      collection.ScopeName(),
 		Collection: collection.Name(),
@@ -1194,7 +1197,7 @@ func NewBlipTesterFromSpec(tb testing.TB, spec BlipTesterSpec) (*BlipTester, err
 		EnableNoConflictsMode: spec.noConflictsMode,
 		GuestEnabled:          spec.GuestEnabled,
 	}
-	var rt = NewRestTester(tb, &rtConfig)
+	rt, _ := NewRestTester(tb, &rtConfig)
 	return createBlipTesterWithSpec(tb, spec, rt)
 }
 
@@ -2091,12 +2094,13 @@ func (rt *RestTester) getKeyspaces() []string {
 	return keyspaces
 }
 
-// getKeyspace return the name of a single keyspace if the rest tester is configured with one database and one collection.
-func (rt *RestTester) getKeyspace() string {
+// getSingleKeyspace the name of the keyspace if there is only one test collection on one database.
+func (rt *RestTester) GetSingleKeyspace() string {
 	db := rt.GetDatabase()
-	require.Equal(rt.TB, 1, len(db.CollectionByID), "getKeyspace can only be called if the database has a single collection")
+	require.Equal(rt.TB, 1, len(db.CollectionByID), "Database is configured with more collection")
 	for _, collection := range db.CollectionByID {
 		return getRESTKeyspace(rt.TB, db.Name, collection)
 	}
+	rt.TB.Error("Could not find any collections")
 	return ""
 }

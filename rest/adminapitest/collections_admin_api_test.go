@@ -27,7 +27,7 @@ func TestCollectionsSyncImportFunctions(t *testing.T) {
 	tb := base.GetTestBucket(t)
 	defer tb.Close()
 
-	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
+	rt, _ := rest.NewRestTester(t, &rest.RestTesterConfig{
 		CustomTestBucket: tb,
 		PersistentConfig: true,
 	})
@@ -74,12 +74,6 @@ func TestCollectionsSyncImportFunctions(t *testing.T) {
 	)
 	resp := rt.SendAdminRequest(http.MethodPut, "/db/", bucketConfig)
 	rest.RequireStatus(t, resp, http.StatusCreated)
-
-	resp = rt.SendAdminRequest(http.MethodGet, "/db/_config/import_filter", "")
-	rest.RequireStatus(t, resp, http.StatusBadRequest)
-
-	resp = rt.SendAdminRequest(http.MethodGet, "/db/_config/sync", "")
-	rest.RequireStatus(t, resp, http.StatusBadRequest)
 
 	resp = rt.SendAdminRequest(http.MethodGet, fmt.Sprintf("/%s/_config/sync", keyspace1), "")
 	rest.RequireStatus(t, resp, http.StatusOK)

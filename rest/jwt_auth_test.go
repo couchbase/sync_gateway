@@ -86,7 +86,7 @@ func TestLocalJWTAuthenticationE2E(t *testing.T) {
 				},
 			}
 			restTesterConfig := RestTesterConfig{DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{LocalJWTConfig: providers}}}
-			restTester := NewRestTester(t, &restTesterConfig)
+			restTester, _ := NewRestTester(t, &restTesterConfig)
 			require.NoError(t, restTester.SetAdminParty(false))
 			defer restTester.Close()
 
@@ -234,7 +234,7 @@ func TestLocalJWTAuthenticationEdgeCases(t *testing.T) {
 			restTesterConfig := RestTesterConfig{DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{LocalJWTConfig: auth.LocalJWTConfig{
 				testProviderName: cfg,
 			}}}}
-			restTester := NewRestTester(t, &restTesterConfig)
+			restTester, _ := NewRestTester(t, &restTesterConfig)
 			require.NoError(t, restTester.SetAdminParty(false))
 			defer restTester.Close()
 
@@ -248,7 +248,7 @@ func TestLocalJWTAuthenticationEdgeCases(t *testing.T) {
 				require.NoError(t, err, "Failed to register test user %s", createUserName)
 			}
 
-			req, err := http.NewRequest(http.MethodPost, mockSyncGatewayURL+"/db/_session", bytes.NewBufferString("{}"))
+			req, err := http.NewRequest(http.MethodPost, mockSyncGatewayURL+"/"+restTester.GetDatabase().Name+"/_session", bytes.NewBufferString("{}"))
 			require.NoError(t, err)
 
 			req.Header.Set("Authorization", BearerToken+" "+token)
@@ -372,7 +372,7 @@ func TestLocalJWTAndOIDCCoexistence(t *testing.T) {
 		base.SetUpTestLogging(t, base.LevelDebug, base.KeyAuth, base.KeyHTTP)
 
 		restTesterConfig := RestTesterConfig{DatabaseConfig: &DatabaseConfig{DbConfig: *config}}
-		restTester := NewRestTester(t, &restTesterConfig)
+		restTester, _ := NewRestTester(t, &restTesterConfig)
 		require.NoError(t, restTester.SetAdminParty(false))
 		defer restTester.Close()
 

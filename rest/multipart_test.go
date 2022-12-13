@@ -29,7 +29,7 @@ import (
 )
 
 func TestWriteMultipartDocument(t *testing.T) {
-	rt := NewRestTester(t, nil)
+	rt, keyspace := NewRestTester(t, nil)
 	defer rt.Close()
 
 	reqHeaders := map[string]string{
@@ -42,10 +42,10 @@ Content-Type: application/json
 {"key":"foo","value":"bar"}
 --0123456789--`
 
-	response := rt.SendAdminRequestWithHeaders(http.MethodPut, "/db/doc1", bodyText, reqHeaders)
+	response := rt.SendAdminRequestWithHeaders(http.MethodPut, fmt.Sprintf("/%s/doc1", keyspace), bodyText, reqHeaders)
 	RequireStatus(t, response, http.StatusCreated)
 
-	response = rt.SendAdminRequestWithHeaders(http.MethodGet, "/db/doc1", "", reqHeaders)
+	response = rt.SendAdminRequestWithHeaders(http.MethodGet, fmt.Sprintf("/%s/doc1", keyspace), "", reqHeaders)
 	log.Printf("response: %v", string(response.BodyBytes()))
 	RequireStatus(t, response, http.StatusOK)
 }
@@ -119,7 +119,7 @@ func TestReadJSONFromMIME(t *testing.T) {
 }
 
 func TestReadMultipartDocument(t *testing.T) {
-	rt := NewRestTester(t, nil)
+	rt, keyspace := NewRestTester(t, nil)
 	defer rt.Close()
 
 	reqHeaders := map[string]string{
@@ -137,10 +137,10 @@ Content-Disposition: attachment; filename=att.txt
 {"root":"Jacques' JSON attachment"}
 --123--`
 
-	response := rt.SendAdminRequestWithHeaders(http.MethodPut, "/db/doc1", bodyText, reqHeaders)
+	response := rt.SendAdminRequestWithHeaders(http.MethodPut, fmt.Sprintf("/%s/doc1", keyspace), bodyText, reqHeaders)
 	RequireStatus(t, response, http.StatusCreated)
 
-	response = rt.SendAdminRequestWithHeaders(http.MethodGet, "/db/doc1", "", reqHeaders)
+	response = rt.SendAdminRequestWithHeaders(http.MethodGet, fmt.Sprintf("/%s/doc1", keyspace), "", reqHeaders)
 	RequireStatus(t, response, http.StatusOK)
 
 	var body db.Body

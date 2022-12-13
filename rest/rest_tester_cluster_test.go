@@ -120,7 +120,7 @@ func NewRestTesterCluster(t *testing.T, config *RestTesterClusterConfig) *RestTe
 	for i := 0; i < int(config.numNodes); i++ {
 		wg.Add(1)
 		go func() {
-			rt := NewRestTester(t, config.rtConfig)
+			rt, _ := NewRestTester(t, config.rtConfig)
 			// initialize the RestTester before we attempt to use it
 			_ = rt.ServerContext()
 			restTesters = append(restTesters, rt)

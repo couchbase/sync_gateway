@@ -1023,10 +1023,10 @@ func TestParseCommandLineWithIllegalOptionBucket(t *testing.T) {
 }
 
 func TestPutInvalidConfig(t *testing.T) {
-	rt := NewRestTester(t, nil)
+	rt, keyspace := NewRestTester(t, nil)
 	defer rt.Close()
 
-	response := rt.SendAdminRequest("PUT", "/db/_config", `{"db": {"server": "walrus"}}`)
+	response := rt.SendAdminRequest("PUT", fmt.Sprintf("/%s/_config", keyspace), `{"db": {"server": "walrus"}}`)
 	assert.Equal(t, http.StatusBadRequest, response.Code)
 }
 

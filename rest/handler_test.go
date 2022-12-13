@@ -85,6 +85,9 @@ func TestParseHTTPRangeHeader(t *testing.T) {
 func TestHTTPLoggingRedaction(t *testing.T) {
 
 	base.LongRunningTest(t)
+	rt, keyspace := NewRestTester(t, nil)
+	defer rt.Close()
+
 	cases := []struct {
 		name, method, path, expectedLog string
 		admin                           bool
@@ -104,28 +107,28 @@ func TestHTTPLoggingRedaction(t *testing.T) {
 		{
 			name:        "raw-docid",
 			method:      http.MethodGet,
-			path:        "/db/_raw/test",
-			expectedLog: "/db/_raw/<ud>test</ud>",
+			path:        fmt.Sprintf("/%s/_raw/test", keyspace),
+			expectedLog: fmt.Sprintf("/%s/_raw/<ud>test</ud>", keyspace),
 			admin:       true,
 		},
 		{
 			name:        "revtree-docid",
 			method:      http.MethodGet,
-			path:        "/db/_revtree/test",
-			expectedLog: "/db/_revtree/<ud>test</ud>",
+			path:        fmt.Sprintf("/%s/_revtree/test", keyspace),
+			expectedLog: fmt.Sprintf("/%s/_revtree/<ud>test</ud>", keyspace),
 			admin:       true,
 		},
 		{
 			name:        "docid-attach",
 			method:      http.MethodGet,
-			path:        "/db/test/attach",
-			expectedLog: "/db/<ud>test</ud>/<ud>attach</ud>",
+			path:        fmt.Sprintf("/%s/test/attach", keyspace),
+			expectedLog: fmt.Sprintf("/%s/<ud>test</ud>/<ud>attach</ud>", keyspace),
 		},
 		{
 			name:        "docid-attach-equalnames",
 			method:      http.MethodGet,
-			path:        "/db/test/test",
-			expectedLog: "/db/<ud>test</ud>/<ud>test</ud>",
+			path:        fmt.Sprintf("/%s/test/test", keyspace),
+			expectedLog: fmt.Sprintf("/%s/<ud>test</ud>/<ud>test</ud>", keyspace),
 		},
 		{
 			name:        "user",
@@ -151,15 +154,12 @@ func TestHTTPLoggingRedaction(t *testing.T) {
 		{
 			name:        "CBG-2059",
 			method:      http.MethodGet,
-			path:        "/db/db",
-			expectedLog: "/db/<ud>db</ud>",
+			path:        fmt.Sprintf("/%s/db", keyspace),
+			expectedLog: fmt.Sprintf("/%s/<ud>db</ud>", keyspace),
 		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			rt := NewRestTester(t, nil)
-			defer rt.Close()
-
 			base.AssertLogContains(t, tc.expectedLog, func() {
 				if tc.admin {
 					_ = rt.SendAdminRequest(tc.method, tc.path, "")

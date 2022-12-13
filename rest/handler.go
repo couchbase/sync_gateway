@@ -423,11 +423,13 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 		if dbContext.Scopes != nil {
 			// If scopes are defined on the database but not in th an empty scope to refer to the one SG is running with, rather than falling back to _default
 			if keyspaceScope == nil {
-				// TODO: There could be a configurable dbContext.defaultNamedScope if we allow >1 scope
-				//       for now we don't need it - just use the one we're running with.
-				for scopeName := range dbContext.Scopes {
-					keyspaceScope = &scopeName
-					break
+				if len(dbContext.Scopes) == 1 {
+					for scopeName, _ := range dbContext.Scopes {
+						keyspaceScope = base.StringPtr(scopeName)
+					}
+
+				} else {
+					return base.HTTPErrorf(http.StatusBadRequest, "Ambiguous keyspace: %s.%s", base.MD(keyspaceDb), base.MD(base.StringDefault(keyspaceScope, "")))
 				}
 			}
 			scope, foundScope := dbContext.Scopes[*keyspaceScope]
@@ -440,11 +442,7 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 					// _default doesn't exist for a non-default scope - so make it a required element if it's ambiguous
 					return base.HTTPErrorf(http.StatusBadRequest, "Ambiguous keyspace: %s.%s", base.MD(keyspaceDb), base.MD(base.StringDefault(keyspaceScope, "")))
 				}
-				// one collection only - use that one
-				for collectionName := range scope.Collections {
-					keyspaceCollection = &collectionName
-					break
-				}
+				keyspaceScope = base.StringPtr(base.DefaultCollection)
 			}
 			_, foundCollection := scope.Collections[*keyspaceCollection]
 			if !foundCollection {

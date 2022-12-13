@@ -25,9 +25,6 @@ import (
 // TestCollectionsPutDocInKeyspace creates a collection and starts up a RestTester instance on it.
 // Ensures that various keyspaces can or can't be used to insert a doc in the collection.
 func TestCollectionsPutDocInKeyspace(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("CBG-2554 walrus returns access errors that CBS does not")
-	}
 	base.TestRequiresCollections(t)
 	const (
 		username = "alice"
@@ -35,7 +32,7 @@ func TestCollectionsPutDocInKeyspace(t *testing.T) {
 		// dbName is the default name from RestTester
 		dbName = "db"
 	)
-	rt := NewRestTester(t, &RestTesterConfig{
+	rt, keyspace := NewRestTester(t, &RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{
 			DbConfig: DbConfig{
 				Users: map[string]*auth.PrincipalConfig{
@@ -63,7 +60,7 @@ func TestCollectionsPutDocInKeyspace(t *testing.T) {
 		*/
 		{
 			name:           "fully qualified",
-			keyspace:       strings.Join([]string{dbName, dataStoreName.ScopeName(), dataStoreName.CollectionName()}, base.ScopeCollectionSeparator),
+			keyspace:       keyspace,
 			expectedStatus: http.StatusCreated,
 		},
 		{
@@ -112,7 +109,7 @@ func TestCollectionsPublicChannel(t *testing.T) {
 		password = "pass"
 	)
 
-	rt := NewRestTester(t, &RestTesterConfig{
+	rt, keyspace := NewRestTester(t, &RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{
 			DbConfig: DbConfig{
 				Users: map[string]*auth.PrincipalConfig{
@@ -122,8 +119,6 @@ func TestCollectionsPublicChannel(t *testing.T) {
 		},
 	})
 	defer rt.Close()
-
-	keyspace := rt.getKeyspace()
 
 	pathPublic := fmt.Sprintf("/%s/%s", keyspace, "docpublic")
 	resp := rt.SendAdminRequest(http.MethodPut, pathPublic, `{"channels":["!"]}`)
@@ -193,28 +188,16 @@ func TestSingleCollectionDCP(t *testing.T) {
 		t.Skip("Test relies on import - needs xattrs")
 	}
 
-	tb := base.GetTestBucket(t)
-	defer tb.Close()
-
-	tc, err := base.AsCollection(tb.GetSingleDataStore())
-	require.NoError(t, err)
-
-	rt := NewRestTester(t, &RestTesterConfig{
-		CustomTestBucket: tb,
+	rt, _ := NewRestTester(t, &RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{
 			DbConfig: DbConfig{
 				AutoImport: true,
-				Scopes: ScopesConfig{
-					tc.ScopeName(): ScopeConfig{
-						Collections: map[string]CollectionConfig{
-							tc.CollectionName(): {},
-						},
-					},
-				},
 			},
 		},
 	})
 	defer rt.Close()
+
+	tc := rt.GetSingleDataStore()
 
 	const docID = "doc1"
 
@@ -250,7 +233,7 @@ func TestMultiCollectionDCP(t *testing.T) {
 		},
 	})
 	require.NoError(t, err)
-	rt := NewRestTester(t, &RestTesterConfig{
+	rt, _ := NewRestTester(t, &RestTesterConfig{
 		CustomTestBucket: tb.NoCloseClone(),
 		DatabaseConfig: &DatabaseConfig{
 			DbConfig: DbConfig{
@@ -295,13 +278,12 @@ func TestCollectionsBasicIndexQuery(t *testing.T) {
 
 	base.TestRequiresCollections(t)
 
-	rt := NewRestTester(t, nil)
+	rt, keyspace := NewRestTester(t, nil)
 	defer rt.Close()
 
 	const docID = "doc1"
 
 	collection := rt.GetSingleTestDatabaseCollection()
-	keyspace := getRESTKeyspace(t, "db", collection)
 
 	resp := rt.SendAdminRequest(http.MethodPut, fmt.Sprintf("/%s/%s", keyspace, docID), `{"test":true}`)
 	RequireStatus(t, resp, http.StatusCreated)
@@ -370,7 +352,7 @@ func TestCollectionsSGIndexQuery(t *testing.T) {
 		invalidDocID = "doc2"
 	)
 
-	rt := NewRestTester(t, &RestTesterConfig{
+	rt, keyspace := NewRestTester(t, &RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{
 			DbConfig: DbConfig{
 				UseViews: useViews,
@@ -384,8 +366,6 @@ func TestCollectionsSGIndexQuery(t *testing.T) {
 		},
 	})
 	defer rt.Close()
-
-	keyspace := getRESTKeyspace(t, "db", rt.GetSingleTestDatabaseCollection())
 
 	resp := rt.SendAdminRequest(http.MethodPut, fmt.Sprintf("/%s/%s", keyspace, validDocID), `{"test": true, "channels": ["`+validChannel+`"]}`)
 	RequireStatus(t, resp, http.StatusCreated)

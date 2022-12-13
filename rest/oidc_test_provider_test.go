@@ -158,7 +158,7 @@ func restTesterConfigWithTestProviderEnabled() RestTesterConfig {
 func TestProviderOIDCAuthWithTlsSkipVerifyEnabled(t *testing.T) {
 	restTesterConfig := restTesterConfigWithTestProviderEnabled()
 	restTesterConfig.DatabaseConfig.Unsupported.OidcTlsSkipVerify = true
-	restTester := NewRestTester(t, &restTesterConfig)
+	restTester, _ := NewRestTester(t, &restTesterConfig)
 	require.NoError(t, restTester.SetAdminParty(false))
 	defer restTester.Close()
 	mockSyncGateway := httptest.NewTLSServer(restTester.TestPublicHandler())
@@ -214,7 +214,7 @@ func TestProviderOIDCAuthWithTlsSkipVerifyDisabled(t *testing.T) {
 	base.LongRunningTest(t)
 	restTesterConfig := restTesterConfigWithTestProviderEnabled()
 	restTesterConfig.DatabaseConfig.Unsupported.OidcTlsSkipVerify = false
-	restTester := NewRestTester(t, &restTesterConfig)
+	restTester, _ := NewRestTester(t, &restTesterConfig)
 	require.NoError(t, restTester.SetAdminParty(false))
 	defer restTester.Close()
 	mockSyncGateway := httptest.NewTLSServer(restTester.TestPublicHandler())

@@ -32,7 +32,7 @@ import (
 func TestActiveReplicatorBlipsync(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyHTTPResp)
 
-	rt := NewRestTester(t, &RestTesterConfig{
+	rt, _ := NewRestTester(t, &RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			Users: map[string]*auth.PrincipalConfig{
 				"alice": {Password: base.StringPtr("pass")},
@@ -95,7 +95,7 @@ func TestActiveReplicatorBlipsync(t *testing.T) {
 
 func TestBlipSyncNonUpgradableConnection(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyHTTPResp)
-	rt := NewRestTester(t, &RestTesterConfig{
+	rt, _ := NewRestTester(t, &RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			Users: map[string]*auth.PrincipalConfig{
 				"alice": {Password: base.StringPtr("pass")},
@@ -125,22 +125,23 @@ func TestBlipSyncNonUpgradableConnection(t *testing.T) {
 func TestReplicatorDeprecatedCredentials(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
 
-	passiveRT := NewRestTester(t, &RestTesterConfig{DatabaseConfig: &DatabaseConfig{
-		DbConfig: DbConfig{
-			Users: map[string]*auth.PrincipalConfig{
-				"alice": {
-					Password: base.StringPtr("pass"),
+	passiveRT := NewRestTesterDefaultCollection(t, //  CBG-2319: replicator currently requires default collection
+		&RestTesterConfig{DatabaseConfig: &DatabaseConfig{
+			DbConfig: DbConfig{
+				Users: map[string]*auth.PrincipalConfig{
+					"alice": {
+						Password: base.StringPtr("pass"),
+					},
 				},
 			},
 		},
-	},
-	})
+		})
 	defer passiveRT.Close()
 
 	adminSrv := httptest.NewServer(passiveRT.TestPublicHandler())
 	defer adminSrv.Close()
 
-	activeRT := NewRestTester(t, nil)
+	activeRT, _ := NewRestTester(t, nil)
 	defer activeRT.Close()
 	activeCtx := activeRT.Context()
 
@@ -189,9 +190,10 @@ func TestReplicatorDeprecatedCredentials(t *testing.T) {
 func TestReplicatorCheckpointOnStop(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
 
-	passiveRT := NewRestTester(t, &RestTesterConfig{
-		DatabaseConfig: &DatabaseConfig{}, // replicator requires default collection
-	})
+	passiveRT := NewRestTesterDefaultCollection(t, //  CBG-2319: replicator currently requires default collection
+		&RestTesterConfig{
+			DatabaseConfig: &DatabaseConfig{}, // replicator requires default collection
+		})
 	defer passiveRT.Close()
 
 	adminSrv := httptest.NewServer(passiveRT.TestAdminHandler())
@@ -262,7 +264,7 @@ func TestGroupIDReplications(t *testing.T) {
 	defer activeBucket.Close()
 
 	// Set up passive bucket RT
-	rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: passiveBucket})
+	rt, _ := NewRestTester(t, &RestTesterConfig{CustomTestBucket: passiveBucket})
 	defer rt.Close()
 
 	// Make rt listen on an actual HTTP port, so it can receive replications
@@ -366,7 +368,7 @@ func TestGroupIDReplications(t *testing.T) {
 // Reproduces panic seen in CBG-1053
 func TestAdhocReplicationStatus(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll, base.KeyReplicate)
-	rt := NewRestTester(t, &RestTesterConfig{SgReplicateEnabled: true})
+	rt, _ := NewRestTester(t, &RestTesterConfig{SgReplicateEnabled: true})
 	defer rt.Close()
 
 	srv := httptest.NewServer(rt.TestAdminHandler())
@@ -551,7 +553,7 @@ function (doc) {
 	}
 }
 func TestBasicGetReplicator2(t *testing.T) {
-	rt := NewRestTester(t, nil)
+	rt := NewRestTesterDefaultCollection(t, nil) //  CBG-2319: replicator currently requires default collection
 	defer rt.Close()
 
 	var body db.Body
@@ -587,7 +589,7 @@ func TestBasicGetReplicator2(t *testing.T) {
 	}
 }
 func TestBasicPutReplicator2(t *testing.T) {
-	rt := NewRestTester(t, nil)
+	rt := NewRestTesterDefaultCollection(t, nil) //  CBG-2319: replicator currently requires default collection
 	defer rt.Close()
 
 	var (
@@ -633,7 +635,7 @@ func TestBasicPutReplicator2(t *testing.T) {
 }
 
 func TestDeletedPutReplicator2(t *testing.T) {
-	rt := NewRestTester(t, nil)
+	rt := NewRestTesterDefaultCollection(t, nil) //  CBG-2319: replicator currently requires default collection
 	defer rt.Close()
 
 	var body db.Body

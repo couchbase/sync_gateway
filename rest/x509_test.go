@@ -33,7 +33,7 @@ func TestX509RoundtripUsingIP(t *testing.T) {
 	tb, _, _, _ := setupX509Tests(t, true)
 	defer tb.Close()
 
-	rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb, useTLSServer: true})
+	rt, _ := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb, useTLSServer: true})
 	defer rt.Close()
 
 	// write a doc to ensure bucket ops work
@@ -53,7 +53,7 @@ func TestX509RoundtripUsingDomain(t *testing.T) {
 	tb, _, _, _ := setupX509Tests(t, false)
 	defer tb.Close()
 
-	rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb, useTLSServer: true})
+	rt, _ := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb, useTLSServer: true})
 	defer rt.Close()
 
 	// write a doc to ensure bucket ops work
@@ -92,7 +92,7 @@ func TestAttachmentCompactionRun(t *testing.T) {
 	tb, _, _, _ := setupX509Tests(t, true)
 	defer tb.Close()
 
-	rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb, useTLSServer: true})
+	rt, _ := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb, useTLSServer: true})
 	defer rt.Close()
 	ctx := rt.Context()
 

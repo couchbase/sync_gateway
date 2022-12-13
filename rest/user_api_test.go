@@ -97,7 +97,7 @@ func TestUsersAPIDetailsViews(t *testing.T) {
 			},
 		},
 	}
-	rt := NewRestTester(t, rtConfig)
+	rt, _ := NewRestTester(t, rtConfig)
 	defer rt.Close()
 
 	// Validate error handling
@@ -125,7 +125,7 @@ func TestUsersAPIDetails(t *testing.T) {
 			},
 		},
 	}
-	rt := NewRestTester(t, rtConfig)
+	rt, _ := NewRestTester(t, rtConfig)
 	defer rt.Close()
 
 	validateUsersNameOnlyFalse(t, rt)
@@ -149,7 +149,7 @@ func TestUsersAPIDetailsWithoutGuest(t *testing.T) {
 		},
 		GuestEnabled: false,
 	}
-	rt := NewRestTester(t, rtConfig)
+	rt, _ := NewRestTester(t, rtConfig)
 	defer rt.Close()
 
 	validateUsersNameOnlyFalse(t, rt)
@@ -175,7 +175,7 @@ func TestUsersAPIDetailsWithLimit(t *testing.T) {
 			},
 		},
 	}
-	rt := NewRestTester(t, rtConfig)
+	rt, _ := NewRestTester(t, rtConfig)
 	defer rt.Close()
 
 	// Validate the zero user case with limit
@@ -372,7 +372,7 @@ func TestGuestUser(t *testing.T) {
 
 	guestUserEndpoint := fmt.Sprintf("/db/_user/%s", base.GuestUsername)
 
-	rt := NewRestTester(t, nil)
+	rt, _ := NewRestTester(t, nil)
 	defer rt.Close()
 
 	response := rt.SendAdminRequest(http.MethodGet, guestUserEndpoint, "")
@@ -407,7 +407,7 @@ func TestGuestUser(t *testing.T) {
 }
 
 func TestUserAndRoleResponseContentType(t *testing.T) {
-	rt := NewRestTester(t, nil)
+	rt, _ := NewRestTester(t, nil)
 	defer rt.Close()
 
 	// Create a user 'christopher' through PUT request with empty request body.
@@ -554,7 +554,7 @@ func TestUserXattrsRawGet(t *testing.T) {
 	docKey := t.Name()
 	xattrKey := "xattrKey"
 
-	rt := NewRestTester(t, &RestTesterConfig{
+	rt, keyspace := NewRestTester(t, &RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{
 			DbConfig: DbConfig{
 				AutoImport:   true,
@@ -569,7 +569,7 @@ func TestUserXattrsRawGet(t *testing.T) {
 		t.Skip("Test requires Couchbase Bucket")
 	}
 
-	resp := rt.SendAdminRequest("PUT", "/db/"+docKey, "{}")
+	resp := rt.SendAdminRequest("PUT", fmt.Sprintf("/%s/%s", keyspace, docKey), "{}")
 	RequireStatus(t, resp, http.StatusCreated)
 	require.NoError(t, rt.WaitForPendingChanges())
 
@@ -580,7 +580,7 @@ func TestUserXattrsRawGet(t *testing.T) {
 		return rt.GetDatabase().DbStats.SharedBucketImportStats.ImportCount.Value() == 1
 	})
 
-	resp = rt.SendAdminRequest("GET", "/db/_raw/"+docKey, "")
+	resp = rt.SendAdminRequest("GET", fmt.Sprintf("/%s/_raw/%s", keyspace, docKey), "")
 	RequireStatus(t, resp, http.StatusOK)
 
 	var RawReturn struct {
@@ -682,7 +682,7 @@ func TestObtainUserChannelsForDeletedRoleCasFail(t *testing.T) {
 func TestUserPasswordValidation(t *testing.T) {
 
 	// PUT a user
-	rt := NewRestTester(t, nil)
+	rt, _ := NewRestTester(t, nil)
 	defer rt.Close()
 
 	response := rt.SendAdminRequest("PUT", "/db/_user/snej", `{"email":"jens@couchbase.com", "password":"letmein", "admin_channels":["foo", "bar"]}`)
@@ -731,7 +731,7 @@ func TestUserPasswordValidation(t *testing.T) {
 func TestUserAllowEmptyPassword(t *testing.T) {
 
 	// PUT a user
-	rt := NewRestTester(t, &RestTesterConfig{DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{AllowEmptyPassword: base.BoolPtr(true)}}})
+	rt, _ := NewRestTester(t, &RestTesterConfig{DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{AllowEmptyPassword: base.BoolPtr(true)}}})
 	defer rt.Close()
 
 	response := rt.SendAdminRequest("PUT", "/db/_user/snej", `{"email":"jens@couchbase.com", "password":"letmein", "admin_channels":["foo", "bar"]}`)
@@ -779,7 +779,7 @@ func TestUserAllowEmptyPassword(t *testing.T) {
 }
 
 func TestPrincipalForbidUpdatingChannels(t *testing.T) {
-	rt := NewRestTester(t, &RestTesterConfig{})
+	rt, _ := NewRestTester(t, &RestTesterConfig{})
 	defer rt.Close()
 
 	// Users
@@ -956,7 +956,7 @@ func TestUserDeleteDuringChangesWithAccess(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyChanges, base.KeyCache, base.KeyHTTP)
 
 	rtConfig := RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel); if(doc.type == "setaccess") { access(doc.owner, doc.channel);}}`}
-	rt := NewRestTester(t, &rtConfig)
+	rt, keyspace := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
 	response := rt.SendAdminRequest("PUT", "/db/_user/bernard", `{"name":"bernard", "password":"letmein", "admin_channels":["foo"]}`)
@@ -966,7 +966,7 @@ func TestUserDeleteDuringChangesWithAccess(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		changesResponse := rt.Send(RequestByUser("GET", "/db/_changes?feed=continuous&since=0&timeout=3000", "", "bernard"))
+		changesResponse := rt.Send(RequestByUser("GET", fmt.Sprintf("/%s/_changes?feed=continuous&since=0&timeout=3000", keyspace), "", "bernard"))
 		// When testing single threaded, this reproduces the issue described in #809.
 		// When testing multithreaded (-cpu 4 -race), there are three (valid) possibilities"
 		// 1. The DELETE gets processed before the _changes auth completes: this will return 401
@@ -988,14 +988,14 @@ func TestUserDeleteDuringChangesWithAccess(t *testing.T) {
 
 	// TODO: sleep required to ensure the changes feed iteration starts before the delete gets processed.
 	time.Sleep(500 * time.Millisecond)
-	rt.SendAdminRequest("PUT", "/db/bernard_doc1", `{"type":"setaccess", "owner":"bernard","channel":"foo"}`)
+	rt.SendAdminRequest("PUT", fmt.Sprintf("/%s/bernard_doc1", keyspace), `{"type":"setaccess", "owner":"bernard","channel":"foo"}`)
 	rt.SendAdminRequest("DELETE", "/db/_user/bernard", "")
-	rt.SendAdminRequest("PUT", "/db/manny_doc1", `{"type":"setaccess", "owner":"manny","channel":"bar"}`)
-	rt.SendAdminRequest("PUT", "/db/bernard_doc2", `{"type":"general", "channel":"foo"}`)
+	rt.SendAdminRequest("PUT", fmt.Sprintf("/%s/manny_doc1", keyspace), `{"type":"setaccess", "owner":"manny","channel":"bar"}`)
+	rt.SendAdminRequest("PUT", fmt.Sprintf("/%s/bernard_doc2", keyspace), `{"type":"general", "channel":"foo"}`)
 
 	// case 3
 	for i := 0; i <= 5; i++ {
-		docId := fmt.Sprintf("/db/bernard_doc%d", i+3)
+		docId := fmt.Sprintf("/%s/bernard_doc%d", keyspace, i+3)
 		response = rt.SendAdminRequest("PUT", docId, `{"type":"setaccess", "owner":"bernard", "channel":"foo"}`)
 	}
 
@@ -1111,7 +1111,7 @@ func TestFunkyUsernames(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.Name, func(t *testing.T) {
 			require.Truef(t, auth.IsValidPrincipalName(tc.UserName), "expected '%s' to be accepted", tc.UserName)
-			rt := NewRestTester(t, nil)
+			rt, keyspace := NewRestTester(t, nil)
 			defer rt.Close()
 
 			ctx := rt.Context()
@@ -1122,20 +1122,20 @@ func TestFunkyUsernames(t *testing.T) {
 			require.NoError(t, err)
 			require.NoError(t, a.Save(user))
 
-			response := rt.Send(RequestByUser("PUT", "/db/AC+DC", `{"foo":"bar", "channels": ["foo"]}`, tc.UserName))
+			response := rt.Send(RequestByUser("PUT", fmt.Sprintf("/%s/AC+DC", keyspace), `{"foo":"bar", "channels": ["foo"]}`, tc.UserName))
 			RequireStatus(t, response, 201)
 
-			response = rt.Send(RequestByUser("GET", "/db/_all_docs", "", tc.UserName))
+			response = rt.Send(RequestByUser("GET", fmt.Sprintf("/%s/_all_docs", keyspace), "", tc.UserName))
 			RequireStatus(t, response, 200)
 
-			response = rt.Send(RequestByUser("GET", "/db/AC+DC", "", tc.UserName))
+			response = rt.Send(RequestByUser("GET", fmt.Sprintf("/%s/AC+DC", keyspace), "", tc.UserName))
 			RequireStatus(t, response, 200)
 			var overlay struct {
 				Rev string `json:"_rev"`
 			}
 			require.NoError(t, json.Unmarshal(response.Body.Bytes(), &overlay))
 
-			response = rt.Send(RequestByUser("DELETE", "/db/AC+DC?rev="+overlay.Rev, "", tc.UserName))
+			response = rt.Send(RequestByUser("DELETE", fmt.Sprintf("/%s/AC+DC?rev=%s", keyspace, overlay.Rev), "", tc.UserName))
 			RequireStatus(t, response, 200)
 		})
 	}
@@ -1194,7 +1194,7 @@ func TestRemovingUserXattr(t *testing.T) {
 			channelName := "testChan"
 
 			// Sync function to set channel access to whatever xattr is
-			rt := NewRestTester(t, &RestTesterConfig{
+			rt, _ := NewRestTester(t, &RestTesterConfig{
 				DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 					AutoImport:   testCase.autoImport,
 					UserXattrKey: xattrKey,
@@ -1278,7 +1278,7 @@ func TestUserXattrAvoidRevisionIDGeneration(t *testing.T) {
 	channelName := "testChan"
 
 	// Sync function to set channel access to whatever xattr is
-	rt := NewRestTester(t, &RestTesterConfig{
+	rt, keyspace := NewRestTester(t, &RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			AutoImport:   true,
 			UserXattrKey: xattrKey,
@@ -1304,7 +1304,7 @@ func TestUserXattrAvoidRevisionIDGeneration(t *testing.T) {
 	require.True(t, ok)
 
 	// Initial PUT
-	resp := rt.SendAdminRequest("PUT", "/db/"+docKey, `{}`)
+	resp := rt.SendAdminRequest("PUT", fmt.Sprintf("/%s/%s", keyspace, docKey), `{}`)
 	RequireStatus(t, resp, http.StatusCreated)
 
 	require.NoError(t, rt.WaitForPendingChanges())
@@ -1361,7 +1361,7 @@ func TestUserXattrAvoidRevisionIDGeneration(t *testing.T) {
 
 func TestGetUserCollectionAccess(t *testing.T) {
 
-	rt := NewRestTester(t, nil)
+	rt, _ := NewRestTester(t, nil)
 	defer rt.Close()
 
 	// Create a user with collection metadata

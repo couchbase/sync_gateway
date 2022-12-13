@@ -276,7 +276,7 @@ func TestNumAccessErrors(t *testing.T) {
 		SyncFn: `function(doc, oldDoc){if (doc.channels.indexOf("foo") > -1){requireRole("foobar")}}`,
 	}
 
-	rt := NewRestTester(t, &rtConfig)
+	rt, keyspace := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
 	ctx := rt.Context()
@@ -287,13 +287,13 @@ func TestNumAccessErrors(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NoError(t, a.Save(user))
 
-	response := rt.Send(RequestByUser("PUT", "/db/doc", `{"prop":true, "channels":["foo"]}`, "user"))
+	response := rt.Send(RequestByUser("PUT", fmt.Sprintf("/%s/doc", keyspace), `{"prop":true, "channels":["foo"]}`, "user"))
 	RequireStatus(t, response, 403)
 
 	base.WaitForStat(func() int64 { return rt.GetDatabase().DbStats.SecurityStats.NumAccessErrors.Value() }, 1)
 }
 func TestUserHasDocAccessDocNotFound(t *testing.T) {
-	rt := NewRestTester(t, &RestTesterConfig{
+	rt, keyspace := NewRestTester(t, &RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			QueryPaginationLimit: base.IntPtr(2),
 			CacheConfig: &CacheConfig{
@@ -309,7 +309,7 @@ func TestUserHasDocAccessDocNotFound(t *testing.T) {
 	defer rt.Close()
 	ctx := rt.Context()
 
-	resp := rt.SendAdminRequest("PUT", "/db/doc", `{"channels": ["A"]}`)
+	resp := rt.SendAdminRequest("PUT", fmt.Sprintf("/%s/doc", keyspace), `{"channels": ["A"]}`)
 	RequireStatus(t, resp, http.StatusCreated)
 
 	database, err := db.CreateDatabase(rt.GetDatabase())
@@ -986,7 +986,7 @@ func TestAccessOnTombstone(t *testing.T) {
 			 }
 			 channel(doc.channel)
 		 }`}
-	rt := NewRestTester(t, &rtConfig)
+	rt, keyspace := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
 	ctx := rt.Context()
@@ -1002,7 +1002,7 @@ func TestAccessOnTombstone(t *testing.T) {
 	assert.NoError(t, a.Save(bernard))
 
 	// Create doc that gives user access to its channel
-	response := rt.SendAdminRequest("PUT", "/db/alpha", `{"owner":"bernard", "channel":"PBS"}`)
+	response := rt.SendAdminRequest("PUT", fmt.Sprintf("/%s/alpha", keyspace), `{"owner":"bernard", "channel":"PBS"}`)
 	RequireStatus(t, response, 201)
 	var body db.Body
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
@@ -1016,7 +1016,7 @@ func TestAccessOnTombstone(t *testing.T) {
 	var changes struct {
 		Results []db.ChangeEntry
 	}
-	response = rt.Send(RequestByUser("GET", "/db/_changes", "", "bernard"))
+	response = rt.Send(RequestByUser("GET", fmt.Sprintf("/%s/_changes", keyspace), "", "bernard"))
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	err = base.JSONUnmarshal(response.Body.Bytes(), &changes)
 	assert.NoError(t, err)
@@ -1026,11 +1026,11 @@ func TestAccessOnTombstone(t *testing.T) {
 	}
 
 	// Delete the document
-	response = rt.SendAdminRequest("DELETE", fmt.Sprintf("/db/alpha?rev=%s", revId), "")
+	response = rt.SendAdminRequest("DELETE", fmt.Sprintf("/%s/alpha?rev=%s", keyspace, revId), "")
 	RequireStatus(t, response, 200)
 
 	// Make sure it actually was deleted
-	response = rt.SendAdminRequest("GET", "/db/alpha", "")
+	response = rt.SendAdminRequest("GET", fmt.Sprintf("/%s/alpha", keyspace), "")
 	RequireStatus(t, response, 404)
 
 	// Wait for change caching to complete
@@ -1038,7 +1038,7 @@ func TestAccessOnTombstone(t *testing.T) {
 
 	// Check user access again:
 	changes.Results = nil
-	response = rt.Send(RequestByUser("GET", "/db/_changes", "", "bernard"))
+	response = rt.Send(RequestByUser("GET", fmt.Sprintf("/%s/_changes", keyspace), "", "bernard"))
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &changes))
 	require.Len(t, changes.Results, 1)
@@ -1054,7 +1054,7 @@ func TestDynamicChannelGrant(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAccess)
 
 	rtConfig := RestTesterConfig{SyncFn: `function(doc) {if(doc.type == "setaccess") {channel(doc.channel); access(doc.owner, doc.channel);} else { channel(doc.channel)}}`}
-	rt := NewRestTester(t, &rtConfig)
+	rt, keyspace := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
 	ctx := rt.Context()
@@ -1069,9 +1069,6 @@ func TestDynamicChannelGrant(t *testing.T) {
 	user, err = a.NewUser("user1", "letmein", nil)
 	require.NoError(t, err)
 	require.NoError(t, a.Save(user))
-
-	collection := rt.GetDatabase().GetSingleDatabaseCollection()
-	keyspace := fmt.Sprintf("%s.%s.%s", "db", collection.ScopeName(), collection.Name())
 
 	// Create a document in channel chan1
 	response := rt.Send(RequestByUser("PUT", "/"+keyspace+"/doc1", `{"channel":"chan1", "greeting":"hello"}`, "user1"))
@@ -1114,7 +1111,7 @@ func TestRoleChannelGrantInheritance(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAccess)
 
 	rtConfig := RestTesterConfig{SyncFn: `function(doc) {if(doc.type == "setaccess") {channel(doc.channel); access(doc.owner, doc.channel);} else { channel(doc.channel)}}`}
-	rt := NewRestTester(t, &rtConfig)
+	rt, keyspace := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
 	ctx := rt.Context()
@@ -1123,7 +1120,6 @@ func TestRoleChannelGrantInheritance(t *testing.T) {
 	collection := rt.GetDatabase().GetSingleDatabaseCollection()
 	scopeName := collection.ScopeName()
 	collectionName := collection.Name()
-	keyspace := fmt.Sprintf("%s.%s.%s", "db", scopeName, collectionName)
 
 	user, err := a.GetUser("")
 	assert.NoError(t, err)
@@ -1212,7 +1208,7 @@ func TestPublicChannel(t *testing.T) {
                  channel(doc.channel)
               }
            }`}
-	rt := NewRestTester(t, &rtConfig)
+	rt, keyspace := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
 	ctx := rt.Context()
@@ -1227,9 +1223,6 @@ func TestPublicChannel(t *testing.T) {
 	user, err = a.NewUser("user1", "letmein", nil)
 	require.NoError(t, err)
 	require.NoError(t, a.Save(user))
-
-	collection := rt.GetDatabase().GetSingleDatabaseCollection()
-	keyspace := fmt.Sprintf("%s.%s.%s", "db", collection.ScopeName(), collection.Name())
 
 	// Create a document in public channel
 	response := rt.Send(RequestByUser("PUT", "/"+keyspace+"/publicDoc", `{"type":"public", "greeting":"hello"}`, "user1"))

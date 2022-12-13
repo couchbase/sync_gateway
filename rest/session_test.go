@@ -24,7 +24,7 @@ import (
 
 func TestCORSLoginOriginOnSessionPost(t *testing.T) {
 
-	rt := NewRestTester(t, nil)
+	rt, _ := NewRestTester(t, nil)
 	defer rt.Close()
 
 	reqHeaders := map[string]string{
@@ -40,7 +40,7 @@ func TestCORSLoginOriginOnSessionPost(t *testing.T) {
 
 // #issue 991
 func TestCORSLoginOriginOnSessionPostNoCORSConfig(t *testing.T) {
-	rt := NewRestTester(t, nil)
+	rt, _ := NewRestTester(t, nil)
 	defer rt.Close()
 
 	reqHeaders := map[string]string{
@@ -56,7 +56,7 @@ func TestCORSLoginOriginOnSessionPostNoCORSConfig(t *testing.T) {
 }
 
 func TestNoCORSOriginOnSessionPost(t *testing.T) {
-	rt := NewRestTester(t, nil)
+	rt, _ := NewRestTester(t, nil)
 	defer rt.Close()
 
 	reqHeaders := map[string]string{
@@ -71,7 +71,7 @@ func TestNoCORSOriginOnSessionPost(t *testing.T) {
 }
 
 func TestCORSLogoutOriginOnSessionDelete(t *testing.T) {
-	rt := NewRestTester(t, &RestTesterConfig{GuestEnabled: true})
+	rt, _ := NewRestTester(t, &RestTesterConfig{GuestEnabled: true})
 	defer rt.Close()
 
 	reqHeaders := map[string]string{
@@ -87,7 +87,7 @@ func TestCORSLogoutOriginOnSessionDelete(t *testing.T) {
 }
 
 func TestCORSLogoutOriginOnSessionDeleteNoCORSConfig(t *testing.T) {
-	rt := NewRestTester(t, &RestTesterConfig{GuestEnabled: true})
+	rt, _ := NewRestTester(t, &RestTesterConfig{GuestEnabled: true})
 	defer rt.Close()
 
 	reqHeaders := map[string]string{
@@ -107,7 +107,7 @@ func TestCORSLogoutOriginOnSessionDeleteNoCORSConfig(t *testing.T) {
 }
 
 func TestNoCORSOriginOnSessionDelete(t *testing.T) {
-	rt := NewRestTester(t, &RestTesterConfig{GuestEnabled: true})
+	rt, _ := NewRestTester(t, &RestTesterConfig{GuestEnabled: true})
 	defer rt.Close()
 
 	reqHeaders := map[string]string{
@@ -123,15 +123,15 @@ func TestNoCORSOriginOnSessionDelete(t *testing.T) {
 }
 
 func TestInvalidSession(t *testing.T) {
-	rt := NewRestTester(t, nil)
+	rt, keyspace := NewRestTester(t, nil)
 	defer rt.Close()
 
-	response := rt.SendAdminRequest("PUT", "/db/testdoc", `{"hi": "there"}`)
+	response := rt.SendAdminRequest("PUT", fmt.Sprintf("/%s/testdoc", keyspace), `{"hi": "there"}`)
 	RequireStatus(t, response, 201)
 
 	headers := map[string]string{}
 	headers["Cookie"] = fmt.Sprintf("%s=%s", auth.DefaultCookieName, "FakeSession")
-	response = rt.SendRequestWithHeaders("GET", "/db/testdoc", "", headers)
+	response = rt.SendRequestWithHeaders("GET", fmt.Sprintf("/%s/testdoc", keyspace), "", headers)
 	RequireStatus(t, response, 401)
 
 	var body db.Body
@@ -186,7 +186,7 @@ func TestBasicAuthWithSessionCookie(t *testing.T) {
 
 // Try to create session with invalid cert but valid credentials
 func TestSessionFail(t *testing.T) {
-	rt := NewRestTester(t, nil)
+	rt, _ := NewRestTester(t, nil)
 	defer rt.Close()
 
 	// Create user
@@ -214,7 +214,7 @@ func TestSessionFail(t *testing.T) {
 }
 
 func TestLogin(t *testing.T) {
-	rt := NewRestTester(t, nil)
+	rt, _ := NewRestTester(t, nil)
 	defer rt.Close()
 
 	a := auth.NewAuthenticator(rt.MetadataStore(), nil, auth.DefaultAuthenticatorOptions())
@@ -243,14 +243,20 @@ func TestLogin(t *testing.T) {
 }
 func TestCustomCookieName(t *testing.T) {
 
-	rt := NewRestTester(t, nil)
-	defer rt.Close()
-
 	customCookieName := "TestCustomCookieName"
-	rt.DatabaseConfig = &DatabaseConfig{DbConfig: DbConfig{
-		Name:              "db",
-		SessionCookieName: customCookieName,
-	}}
+
+	rt, keyspace := NewRestTester(t,
+		&RestTesterConfig{
+			DatabaseConfig: &DatabaseConfig{
+				DbConfig: DbConfig{
+					Name:              "db",
+					SessionCookieName: customCookieName,
+				},
+			},
+		},
+	)
+
+	defer rt.Close()
 
 	// Disable guest user
 	a := auth.NewAuthenticator(rt.MetadataStore(), nil, auth.DefaultAuthenticatorOptions())
@@ -278,12 +284,12 @@ func TestCustomCookieName(t *testing.T) {
 	// Attempt to use default cookie name to authenticate -- expect a 401 error
 	headers := map[string]string{}
 	headers["Cookie"] = fmt.Sprintf("%s=%s", auth.DefaultCookieName, cookie.Value)
-	resp = rt.SendRequestWithHeaders("GET", "/db/foo", `{}`, headers)
+	resp = rt.SendRequestWithHeaders("GET", fmt.Sprintf("/%s/foo", keyspace), `{}`, headers)
 	assert.Equal(t, 401, resp.Result().StatusCode)
 
 	// Attempt to use custom cookie name to authenticate
 	headers["Cookie"] = fmt.Sprintf("%s=%s", customCookieName, cookie.Value)
-	resp = rt.SendRequestWithHeaders("POST", "/db/", `{"_id": "foo", "key": "val"}`, headers)
+	resp = rt.SendRequestWithHeaders("POST", fmt.Sprintf("/%s/", keyspace), `{"_id": "foo", "key": "val"}`, headers)
 	assert.Equal(t, 200, resp.Result().StatusCode)
 
 }
@@ -292,7 +298,7 @@ func TestCustomCookieName(t *testing.T) {
 // fixes #974
 func TestSessionTtlGreaterThan30Days(t *testing.T) {
 
-	rt := NewRestTester(t, nil)
+	rt, _ := NewRestTester(t, nil)
 	defer rt.Close()
 
 	a := auth.NewAuthenticator(rt.MetadataStore(), nil, auth.DefaultAuthenticatorOptions())
@@ -345,7 +351,7 @@ func TestSessionTtlGreaterThan30Days(t *testing.T) {
 // Check whether the session is getting extended or refreshed if 10% or more of the current
 // expiration time has elapsed.
 func TestSessionExtension(t *testing.T) {
-	rt := NewRestTester(t, &RestTesterConfig{GuestEnabled: true})
+	rt, keyspace := NewRestTester(t, &RestTesterConfig{GuestEnabled: true})
 	defer rt.Close()
 
 	id, err := base.GenerateRandomSecret()
@@ -365,12 +371,12 @@ func TestSessionExtension(t *testing.T) {
 		"Cookie": auth.DefaultCookieName + "=" + fakeSession.ID,
 	}
 
-	response := rt.SendRequestWithHeaders("PUT", "/db/doc1", `{"hi": "there"}`, reqHeaders)
+	response := rt.SendRequestWithHeaders("PUT", fmt.Sprintf("/%s/doc1", keyspace), `{"hi": "there"}`, reqHeaders)
 	log.Printf("PUT Request: Set-Cookie: %v", response.Header().Get("Set-Cookie"))
 	RequireStatus(t, response, http.StatusCreated)
 	assert.Contains(t, response.Header().Get("Set-Cookie"), auth.DefaultCookieName+"="+fakeSession.ID)
 
-	response = rt.SendRequestWithHeaders("GET", "/db/doc1", "", reqHeaders)
+	response = rt.SendRequestWithHeaders("GET", fmt.Sprintf("/%s/doc1", keyspace), "", reqHeaders)
 	log.Printf("GET Request: Set-Cookie: %v", response.Header().Get("Set-Cookie"))
 	RequireStatus(t, response, http.StatusOK)
 	assert.Equal(t, "", response.Header().Get("Set-Cookie"))
@@ -381,7 +387,7 @@ func TestSessionExtension(t *testing.T) {
 	// removes all items with expiration times that have passed.
 	assert.NoError(t, rt.MetadataStore().Delete(auth.DocIDForSession(fakeSession.ID)))
 
-	response = rt.SendRequestWithHeaders("GET", "/db/doc1", "", reqHeaders)
+	response = rt.SendRequestWithHeaders("GET", fmt.Sprintf("/%s/doc1", keyspace), "", reqHeaders)
 	log.Printf("GET Request: Set-Cookie: %v", response.Header().Get("Set-Cookie"))
 	RequireStatus(t, response, http.StatusUnauthorized)
 
@@ -389,7 +395,7 @@ func TestSessionExtension(t *testing.T) {
 
 func TestSessionAPI(t *testing.T) {
 
-	rt := NewRestTester(t, nil)
+	rt, _ := NewRestTester(t, nil)
 	defer rt.Close()
 
 	// create session test users
@@ -487,7 +493,7 @@ func createSession(t *testing.T, rt *RestTester, username string) string {
 }
 
 func TestSessionExpirationDateTimeFormat(t *testing.T) {
-	rt := NewRestTester(t, nil)
+	rt, _ := NewRestTester(t, nil)
 	defer rt.Close()
 
 	authenticator := auth.NewAuthenticator(rt.MetadataStore(), nil, auth.DefaultAuthenticatorOptions())

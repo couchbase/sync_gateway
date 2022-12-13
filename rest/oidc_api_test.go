@@ -416,7 +416,7 @@ func TestGetOIDCCallbackURL(t *testing.T) {
 			providers := auth.OIDCProviderMap{"foo": mockProvider("foo"), "bar": mockProvider("bar")}
 			openIDConnectOptions := auth.OIDCOptions{Providers: providers, DefaultProvider: base.StringPtr("foo")}
 			rtConfig := RestTesterConfig{DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{OIDCConfig: &openIDConnectOptions}}}
-			rt := NewRestTester(t, &rtConfig)
+			rt := NewRestTesterDefaultCollection(t, &rtConfig)
 			defer rt.Close()
 
 			mockAuthServer, err := newMockAuthServer()
@@ -839,7 +839,7 @@ func TestOpenIDConnectAuthCodeFlow(t *testing.T) {
 
 			opts := auth.OIDCOptions{Providers: tc.providers, DefaultProvider: &tc.defaultProvider}
 			restTesterConfig := RestTesterConfig{DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{OIDCConfig: &opts}}}
-			restTester := NewRestTester(t, &restTesterConfig)
+			restTester, _ := NewRestTester(t, &restTesterConfig)
 			require.NoError(t, restTester.SetAdminParty(false))
 			defer restTester.Close()
 
@@ -1760,7 +1760,7 @@ func TestCallbackStateClientCookies(t *testing.T) {
 			OIDCConfig: &opts,
 		}},
 	}
-	restTester := NewRestTester(t, &restTesterConfig)
+	restTester, _ := NewRestTester(t, &restTesterConfig)
 	require.NoError(t, restTester.SetAdminParty(false))
 	defer restTester.Close()
 
@@ -2000,7 +2000,7 @@ func TestOpenIDConnectAuthCodeFlowWithUsernameClaim(t *testing.T) {
 					OIDCConfig: &opts,
 				}},
 			}
-			restTester := NewRestTester(t, &restTesterConfig)
+			restTester, _ := NewRestTester(t, &restTesterConfig)
 			require.NoError(t, restTester.SetAdminParty(false))
 			defer restTester.Close()
 

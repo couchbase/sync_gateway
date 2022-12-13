@@ -30,14 +30,14 @@ type PutDocResponse struct {
 }
 
 func (rt *RestTester) GetDoc(docID string) (body db.Body) {
-	rawResponse := rt.SendAdminRequest("GET", "/db/"+docID, "")
+	rawResponse := rt.SendAdminRequest("GET", fmt.Sprintf("/%s/%s", rt.GetSingleKeyspace(), docID), "")
 	RequireStatus(rt.TB, rawResponse, 200)
 	require.NoError(rt.TB, base.JSONUnmarshal(rawResponse.Body.Bytes(), &body))
 	return body
 }
 
 func (rt *RestTester) CreateDoc(t *testing.T, docid string) string {
-	response := rt.SendAdminRequest("PUT", "/db/"+docid, `{"prop":true}`)
+	response := rt.SendAdminRequest("PUT", fmt.Sprintf("/%s/%s", rt.GetSingleKeyspace(), docid), `{"prop":true}`)
 	RequireStatus(t, response, 201)
 	var body db.Body
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
@@ -50,7 +50,7 @@ func (rt *RestTester) CreateDoc(t *testing.T, docid string) string {
 }
 
 func (rt *RestTester) PutDoc(docID string, body string) (response PutDocResponse) {
-	rawResponse := rt.SendAdminRequest("PUT", "/db/"+docID, body)
+	rawResponse := rt.SendAdminRequest("PUT", fmt.Sprintf("/%s/%s", rt.GetSingleKeyspace(), docID), body)
 	RequireStatus(rt.TB, rawResponse, 201)
 	require.NoError(rt.TB, base.JSONUnmarshal(rawResponse.Body.Bytes(), &response))
 	require.True(rt.TB, response.Ok)
@@ -59,7 +59,7 @@ func (rt *RestTester) PutDoc(docID string, body string) (response PutDocResponse
 }
 
 func (rt *RestTester) UpdateDoc(docID, revID, body string) (response PutDocResponse) {
-	resource := fmt.Sprintf("/db/%s?rev=%s", docID, revID)
+	resource := fmt.Sprintf("/%s/%s?rev=%s", rt.GetSingleKeyspace(), docID, revID)
 	rawResponse := rt.SendAdminRequest(http.MethodPut, resource, body)
 	RequireStatus(rt.TB, rawResponse, http.StatusCreated)
 	require.NoError(rt.TB, base.JSONUnmarshal(rawResponse.Body.Bytes(), &response))
@@ -89,7 +89,7 @@ func (rt *RestTester) upsertDoc(docID string, body string) (response PutDocRespo
 
 func (rt *RestTester) DeleteDoc(docID, revID string) {
 	RequireStatus(rt.TB, rt.SendAdminRequest(http.MethodDelete,
-		fmt.Sprintf("/db/%s?rev=%s", docID, revID), ""), http.StatusOK)
+		fmt.Sprintf("/%s/%s?rev=%s", rt.GetSingleKeyspace(), docID, revID), ""), http.StatusOK)
 }
 
 func (rt *RestTester) WaitForRev(docID string, revID string) error {

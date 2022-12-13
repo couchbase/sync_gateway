@@ -10,6 +10,7 @@ package rest
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"testing"
 
@@ -22,7 +23,7 @@ import (
 func (rt *RestTester) WaitForAttachmentCompactionStatus(t *testing.T, state db.BackgroundProcessState) db.AttachmentManagerResponse {
 	var response db.AttachmentManagerResponse
 	err := rt.WaitForConditionWithOptions(func() bool {
-		resp := rt.SendAdminRequest("GET", "/db/_compact?type=attachment", "")
+		resp := rt.SendAdminRequest("GET", fmt.Sprintf("/%s/_compact?type=attachment", rt.GetSingleKeyspace()), "")
 		RequireStatus(t, resp, http.StatusOK)
 
 		err := base.JSONUnmarshal(resp.BodyBytes(), &response)

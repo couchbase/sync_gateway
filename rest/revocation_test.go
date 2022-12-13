@@ -1474,9 +1474,10 @@ func TestReplicatorRevocations(t *testing.T) {
 	defer rt2.Close()
 
 	// Active
-	rt1 := NewRestTester(t, &RestTesterConfig{
-		CustomTestBucket: base.GetTestBucket(t),
-	})
+	rt1 := NewRestTesterDefaultCollection(t, //  CBG-2319: replicator currently requires default collection
+		&RestTesterConfig{
+			CustomTestBucket: base.GetTestBucket(t),
+		})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
 
@@ -1533,9 +1534,10 @@ func TestReplicatorRevocationsNoRev(t *testing.T) {
 	defer rt2.Close()
 
 	// Active
-	rt1 := NewRestTester(t, &RestTesterConfig{
-		CustomTestBucket: base.GetTestBucket(t),
-	})
+	rt1 := NewRestTesterDefaultCollection(t, //  CBG-2319: replicator currently requires default collection
+		&RestTesterConfig{
+			CustomTestBucket: base.GetTestBucket(t),
+		})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
 
@@ -1593,9 +1595,10 @@ func TestReplicatorRevocationsNoRevButAlternateAccess(t *testing.T) {
 	defer rt2.Close()
 
 	// Active
-	rt1 := NewRestTester(t, &RestTesterConfig{
-		CustomTestBucket: base.GetTestBucket(t),
-	})
+	rt1 := NewRestTesterDefaultCollection(t, //  CBG-2319: replicator currently requires default collection
+		&RestTesterConfig{
+			CustomTestBucket: base.GetTestBucket(t),
+		})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
 
@@ -1661,9 +1664,10 @@ func TestReplicatorRevocationsMultipleAlternateAccess(t *testing.T) {
 	defer rt2.Close()
 
 	// Active
-	rt1 := NewRestTester(t, &RestTesterConfig{
-		CustomTestBucket: base.GetTestBucket(t),
-	})
+	rt1 := NewRestTesterDefaultCollection(t, //  CBG-2319: replicator currently requires default collection
+		&RestTesterConfig{
+			CustomTestBucket: base.GetTestBucket(t),
+		})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
 
@@ -1770,9 +1774,10 @@ func TestReplicatorRevocationsWithTombstoneResurrection(t *testing.T) {
 	defer rt2.Close()
 
 	// Active
-	rt1 := NewRestTester(t, &RestTesterConfig{
-		CustomTestBucket: base.GetTestBucket(t),
-	})
+	rt1 := NewRestTesterDefaultCollection(t, //  CBG-2319: replicator currently requires default collection
+		&RestTesterConfig{
+			CustomTestBucket: base.GetTestBucket(t),
+		})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
 
@@ -1863,9 +1868,10 @@ func TestReplicatorRevocationsFromZero(t *testing.T) {
 	defer rt2.Close()
 
 	// Active
-	rt1 := NewRestTester(t, &RestTesterConfig{
-		CustomTestBucket: base.GetTestBucket(t),
-	})
+	rt1 := NewRestTesterDefaultCollection(t, //  CBG-2319: replicator currently requires default collection
+		&RestTesterConfig{
+			CustomTestBucket: base.GetTestBucket(t),
+		})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
 
@@ -2147,9 +2153,10 @@ func TestRevocationNoRev(t *testing.T) {
 
 // Regression test for CBG-2183.
 func TestBlipRevokeNonExistentRole(t *testing.T) {
-	rt := NewRestTester(t, &RestTesterConfig{
-		GuestEnabled: false,
-	})
+	rt := NewRestTesterDefaultCollection(t, // CBG-2619: make collection aware
+		&RestTesterConfig{
+			GuestEnabled: false,
+		})
 	defer rt.Close()
 
 	base.SetUpTestLogging(t, base.LevelTrace, base.KeyAll)
@@ -2195,9 +2202,10 @@ func TestReplicatorSwitchPurgeNoReset(t *testing.T) {
 	defer rt2.Close()
 
 	// Active
-	rt1 := NewRestTester(t, &RestTesterConfig{
-		CustomTestBucket: base.GetTestBucket(t),
-	})
+	rt1 := NewRestTesterDefaultCollection(t, //  CBG-2319: replicator currently requires default collection
+		&RestTesterConfig{
+			CustomTestBucket: base.GetTestBucket(t),
+		})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
 
