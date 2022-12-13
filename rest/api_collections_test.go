@@ -107,51 +107,37 @@ func TestCollectionsPutDocInKeyspace(t *testing.T) {
 
 // TestCollectionsPublicChannel ensures that a doc routed to the public channel is accessible by a user with no other access.
 func TestCollectionsPublicChannel(t *testing.T) {
-	tb := base.GetTestBucket(t)
-	defer tb.Close()
-
-	ds := tb.GetSingleDataStore()
-	dataStoreName, ok := base.AsDataStoreName(ds)
-	require.True(t, ok)
-	keyspaceName := "db" + "." + dataStoreName.ScopeName() + "." + dataStoreName.CollectionName()
-
 	const (
 		username = "alice"
 		password = "pass"
 	)
 
 	rt := NewRestTester(t, &RestTesterConfig{
-		CustomTestBucket: tb.NoCloseClone(),
 		DatabaseConfig: &DatabaseConfig{
 			DbConfig: DbConfig{
 				Users: map[string]*auth.PrincipalConfig{
 					username: {Password: base.StringPtr(password)},
-				},
-				Scopes: ScopesConfig{
-					dataStoreName.ScopeName(): ScopeConfig{
-						Collections: map[string]CollectionConfig{
-							dataStoreName.CollectionName(): {},
-						},
-					},
 				},
 			},
 		},
 	})
 	defer rt.Close()
 
-	pathPublic := fmt.Sprintf("/%s/%s", keyspaceName, "docpublic")
+	keyspace := rt.getKeyspace()
+
+	pathPublic := fmt.Sprintf("/%s/%s", keyspace, "docpublic")
 	resp := rt.SendAdminRequest(http.MethodPut, pathPublic, `{"channels":["!"]}`)
 	RequireStatus(t, resp, http.StatusCreated)
 	resp = rt.SendUserRequestWithHeaders(http.MethodGet, pathPublic, "", nil, username, password)
 	RequireStatus(t, resp, http.StatusOK)
 
-	pathPrivate := fmt.Sprintf("/%s/%s", keyspaceName, "docprivate")
+	pathPrivate := fmt.Sprintf("/%s/%s", keyspace, "docprivate")
 	resp = rt.SendAdminRequest(http.MethodPut, pathPrivate, `{"channels":["a"]}`)
 	RequireStatus(t, resp, http.StatusCreated)
 	resp = rt.SendUserRequestWithHeaders(http.MethodGet, pathPrivate, "", nil, username, password)
 	RequireStatus(t, resp, http.StatusForbidden)
 
-	resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/"+keyspaceName+"/_all_docs?include_docs=true", "", nil, username, password)
+	resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/"+keyspace+"/_all_docs?include_docs=true", "", nil, username, password)
 	RequireStatus(t, resp, http.StatusOK)
 	t.Logf("all docs resp: %s", resp.BodyBytes())
 	var alldocsresp struct {

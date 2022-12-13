@@ -2077,7 +2077,7 @@ func getRESTKeyspace(_ testing.TB, dbName string, collection *db.DatabaseCollect
 	return strings.Join([]string{dbName, collection.ScopeName(), collection.Name()}, base.ScopeCollectionSeparator)
 }
 
-// Return the names of all the keyspaces on the rest tester. Currently assumes a single database.
+// getKeyspaces returns the names of all the keyspaces on the rest tester. Currently assumes a single database.
 func (rt *RestTester) getKeyspaces() []string {
 	db := rt.GetDatabase()
 	var keyspaces []string
@@ -2086,4 +2086,14 @@ func (rt *RestTester) getKeyspaces() []string {
 	}
 	sort.Strings(keyspaces)
 	return keyspaces
+}
+
+// getKeyspace return the name of a single keyspace if the rest tester is configured with one database and one collection.
+func (rt *RestTester) getKeyspace() string {
+	db := rt.GetDatabase()
+	require.Equal(rt.TB, 1, len(db.CollectionByID), "getKeyspace can only be called if the database has a single collection")
+	for _, collection := range db.CollectionByID {
+		return getRESTKeyspace(rt.TB, db.Name, collection)
+	}
+	return ""
 }
