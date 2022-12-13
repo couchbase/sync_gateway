@@ -104,6 +104,57 @@ func TestCollectionsPutDocInKeyspace(t *testing.T) {
 	}
 }
 
+// TestCollectionsPublicChannel ensures that a doc routed to the public channel is accessible by a user with no other access.
+func TestCollectionsPublicChannel(t *testing.T) {
+	base.TestRequiresCollections(t)
+
+	tb := base.GetTestBucket(t)
+	defer tb.Close()
+
+	// dbName is the default name from RestTester
+
+	ds := tb.GetNamedDataStore(1)
+	dataStoreName, ok := base.AsDataStoreName(ds)
+	require.True(t, ok)
+	keyspaceName := "db" + "." + dataStoreName.ScopeName() + "." + dataStoreName.CollectionName()
+
+	const (
+		username = "alice"
+		password = "pass"
+	)
+
+	rt := NewRestTester(t, &RestTesterConfig{
+		CustomTestBucket: tb.NoCloseClone(),
+		DatabaseConfig: &DatabaseConfig{
+			DbConfig: DbConfig{
+				Users: map[string]*auth.PrincipalConfig{
+					username: {Password: base.StringPtr(password)},
+				},
+				Scopes: ScopesConfig{
+					dataStoreName.ScopeName(): ScopeConfig{
+						Collections: map[string]CollectionConfig{
+							dataStoreName.CollectionName(): {},
+						},
+					},
+				},
+			},
+		},
+	})
+	defer rt.Close()
+
+	pathPublic := fmt.Sprintf("/%s/%s", keyspaceName, "docpublic")
+	resp := rt.SendAdminRequest(http.MethodPut, pathPublic, `{"channels":["!"]}`)
+	RequireStatus(t, resp, http.StatusCreated)
+	resp = rt.SendUserRequestWithHeaders(http.MethodGet, pathPublic, "", nil, username, password)
+	RequireStatus(t, resp, http.StatusOK)
+
+	pathPrivate := fmt.Sprintf("/%s/%s", keyspaceName, "docprivate")
+	resp = rt.SendAdminRequest(http.MethodPut, pathPrivate, `{"channels":["a"]}`)
+	RequireStatus(t, resp, http.StatusCreated)
+	resp = rt.SendUserRequestWithHeaders(http.MethodGet, pathPrivate, "", nil, username, password)
+	RequireStatus(t, resp, http.StatusForbidden)
+}
+
 // TestNoCollectionsPutDocWithKeyspace ensures that a keyspace can't be used to insert a doc on a database not configured for collections.
 func TestNoCollectionsPutDocWithKeyspace(t *testing.T) {
 	tb := base.GetTestBucket(t)
