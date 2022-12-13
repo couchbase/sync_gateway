@@ -26,7 +26,9 @@ func TestMultiCollectionChangesAdmin(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeyChanges, base.KeyCache)
 
-	rt, keyspaces := rest.NewRestTesterMultipleCollections(t, nil, 2)
+	numCollections := 2
+	base.RequireNumTestDataStores(t, numCollections)
+	rt, keyspaces := rest.NewRestTesterMultipleCollections(t, nil, numCollections)
 	defer rt.Close()
 
 	c1Keyspace := keyspaces[0]
@@ -82,7 +84,9 @@ func TestMultiCollectionChangesAdminSameChannelName(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeyChanges, base.KeyCache)
 
-	rt, keyspaces := rest.NewRestTesterMultipleCollections(t, nil, 2)
+	numCollections := 2
+	base.RequireNumTestDataStores(t, numCollections)
+	rt, keyspaces := rest.NewRestTesterMultipleCollections(t, nil, numCollections)
 	defer rt.Close()
 
 	c1Keyspace := keyspaces[0]
@@ -136,8 +140,9 @@ func TestMultiCollectionChangesAdminSameChannelName(t *testing.T) {
 func TestMultiCollectionChangesUser(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeyChanges, base.KeyCache, base.KeyCRUD)
-
-	rt, keyspaces := rest.NewRestTesterMultipleCollections(t, nil, 2)
+	numCollections := 2
+	base.RequireNumTestDataStores(t, numCollections)
+	rt, keyspaces := rest.NewRestTesterMultipleCollections(t, nil, numCollections)
 	defer rt.Close()
 
 	c1Keyspace := keyspaces[0]
@@ -200,8 +205,9 @@ func TestMultiCollectionChangesUser(t *testing.T) {
 func TestMultiCollectionChangesUserDynamicGrant(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeyChanges, base.KeyCache, base.KeyCRUD)
-
-	rt, keyspaces := rest.NewRestTesterMultipleCollections(t, nil, 2)
+	numCollections := 2
+	base.RequireNumTestDataStores(t, numCollections)
+	rt, keyspaces := rest.NewRestTesterMultipleCollections(t, nil, numCollections)
 	defer rt.Close()
 
 	c1Keyspace := keyspaces[0]
@@ -268,8 +274,9 @@ func TestMultiCollectionChangesUserDynamicGrant(t *testing.T) {
 func TestMultiCollectionChangesUserDynamicGrantDCP(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeyChanges, base.KeyCache, base.KeyCRUD)
-
-	rt, keyspaces := rest.NewRestTesterMultipleCollections(t, nil, 2)
+	numCollections := 2
+	base.RequireNumTestDataStores(t, numCollections)
+	rt, keyspaces := rest.NewRestTesterMultipleCollections(t, nil, numCollections)
 	defer rt.Close()
 
 	c1Keyspace := keyspaces[0]
@@ -364,8 +371,10 @@ func TestMultiCollectionChangesUserDynamicGrantDCP(t *testing.T) {
 func TestMultiCollectionChangesCustomSyncFunctions(t *testing.T) {
 	base.TestRequiresCollections(t)
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeyChanges, base.KeyCache, base.KeyCRUD)
-	testBucket := base.GetTestBucket(t)
 	numCollections := 2
+	base.RequireNumTestDataStores(t, numCollections)
+
+	testBucket := base.GetTestBucket(t)
 	scopesConfig := rest.GetCollectionsConfig(t, testBucket, numCollections)
 	dataStoreNames := rest.GetDataStoreNamesFromScopesConfig(scopesConfig)
 

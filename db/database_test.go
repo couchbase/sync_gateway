@@ -1104,31 +1104,33 @@ func TestConflicts(t *testing.T) {
 
 }
 
-func TestConflictRevLimit(t *testing.T) {
+func TestConflictRevLimitDefault(t *testing.T) {
 
 	// Test Default Is the higher of the two
 	db, ctx := setupTestDB(t)
-	assert.Equal(t, uint32(DefaultRevsLimitConflicts), db.RevsLimit)
 	defer db.Close(ctx)
+	assert.Equal(t, uint32(DefaultRevsLimitConflicts), db.RevsLimit)
+}
 
+func TestConflictRevLimitAllowConflictsTrue(t *testing.T) {
 	// Test AllowConflicts
 	dbOptions := DatabaseContextOptions{
 		AllowConflicts: base.BoolPtr(true),
 	}
 
-	db, ctx = SetupTestDBWithOptions(t, dbOptions)
-	assert.Equal(t, uint32(DefaultRevsLimitConflicts), db.RevsLimit)
+	db, ctx := SetupTestDBWithOptions(t, dbOptions)
 	defer db.Close(ctx)
+	assert.Equal(t, uint32(DefaultRevsLimitConflicts), db.RevsLimit)
+}
 
-	// Test AllowConflicts false
-	dbOptions = DatabaseContextOptions{
+func TestConflictRevLimitAllowConflictsFalse(t *testing.T) {
+	dbOptions := DatabaseContextOptions{
 		AllowConflicts: base.BoolPtr(false),
 	}
 
-	db, ctx = SetupTestDBWithOptions(t, dbOptions)
-	assert.Equal(t, uint32(DefaultRevsLimitNoConflicts), db.RevsLimit)
+	db, ctx := SetupTestDBWithOptions(t, dbOptions)
 	defer db.Close(ctx)
-
+	assert.Equal(t, uint32(DefaultRevsLimitNoConflicts), db.RevsLimit)
 }
 
 func TestNoConflictsMode(t *testing.T) {
@@ -2700,11 +2702,12 @@ func TestGetDatabaseCollectionWithUserNoScopesConfigured(t *testing.T) {
 
 func TestGetDatabaseCollectionWithUserDefaultCollection(t *testing.T) {
 	base.TestRequiresCollections(t)
+	base.RequireNumTestDataStores(t, 1)
 
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close()
 
-	ds := bucket.GetNamedDataStore(1)
+	ds := bucket.GetNamedDataStore(0)
 	require.NotNil(t, ds)
 
 	dataStoreName, ok := base.AsDataStoreName(ds)

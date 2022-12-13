@@ -2080,6 +2080,8 @@ func TestSwitchDbConfigCollectionName(t *testing.T) {
 	}
 	base.TestRequiresCollections(t)
 
+	base.RequireNumTestDataStores(t, 2)
+
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyConfig)
 	serverErr := make(chan error, 0)
 
@@ -2105,10 +2107,10 @@ func TestSwitchDbConfigCollectionName(t *testing.T) {
 		tb.Close()
 	}()
 
-	dataStore1 := tb.GetNamedDataStore(1)
+	dataStore1 := tb.GetNamedDataStore(0)
 	dataStore1Name, ok := base.AsDataStoreName(dataStore1)
 	require.True(t, ok)
-	dataStore2 := tb.GetNamedDataStore(2)
+	dataStore2 := tb.GetNamedDataStore(1)
 	dataStore2Name, ok := base.AsDataStoreName(dataStore2)
 	require.True(t, ok)
 	keyspace1 := fmt.Sprintf("%s.%s.%s", "db", dataStore1Name.ScopeName(), dataStore1Name.CollectionName())
