@@ -548,7 +548,7 @@ func TestXattrImportFilterOptIn(t *testing.T) {
 			ImportFilter: &importFilter,
 		}},
 	}
-	rt := rest.NewRestTester(t, &rtConfig)
+	rt := rest.NewRestTesterDefaultCollection(t, &rtConfig) // use default collection since we are using default sync function
 	defer rt.Close()
 	dataStore := rt.GetSingleDataStore()
 
@@ -598,7 +598,7 @@ func TestImportFilterLogging(t *testing.T) {
 			AutoImport:   false,
 		}},
 	}
-	rt := rest.NewRestTester(t, &rtConfig)
+	rt := rest.NewRestTesterDefaultCollection(t, &rtConfig) // use default collection since we are using default sync function
 	defer rt.Close()
 
 	// Add document to bucket
@@ -1619,7 +1619,7 @@ func TestXattrSGWriteOfNonImportedDoc(t *testing.T) {
 			ImportFilter: &importFilter,
 		}},
 	}
-	rt := rest.NewRestTester(t, &rtConfig)
+	rt := rest.NewRestTesterDefaultCollection(t, &rtConfig) // use default collection since we are using default sync function
 	defer rt.Close()
 
 	log.Printf("Starting get bucket....")
@@ -2820,7 +2820,7 @@ func TestImportFilterTimeout(t *testing.T) {
 	importFilter := `function(doc) { while(true) { } }`
 
 	rtConfig := rest.RestTesterConfig{DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{ImportFilter: &importFilter, AutoImport: false, JavascriptTimeoutSecs: base.Uint32Ptr(1)}}}
-	rt := rest.NewRestTester(t, &rtConfig)
+	rt := rest.NewRestTesterDefaultCollection(t, &rtConfig) // use default collection since we are using default sync function
 	defer rt.Close()
 
 	added, err := rt.GetSingleDataStore().AddRaw("doc", 0, []byte(fmt.Sprintf(`{"foo": "bar"}`)))
