@@ -74,6 +74,7 @@ func (apr *ActivePullReplicator) _connect() error {
 	apr.checkpointerCtx, apr.checkpointerCtxCancel = context.WithCancel(apr.ctx)
 	if err := apr._initCheckpointer(); err != nil {
 		// clean up anything we've opened so far
+		base.TracefCtx(apr.ctx, base.KeyReplicate, "Error initialising checkpoint in _connect. Closing everything.")
 		apr.checkpointerCtx = nil
 		apr.blipSender.Close()
 		apr.blipSyncContext.Close()
@@ -94,6 +95,7 @@ func (apr *ActivePullReplicator) _connect() error {
 
 	if err := subChangesRequest.Send(apr.blipSender); err != nil {
 		// clean up anything we've opened so far
+		base.TracefCtx(apr.ctx, base.KeyReplicate, "cancelling the checkpointer context inside _connect where we send blip request")
 		apr.checkpointerCtxCancel()
 		apr.checkpointerCtx = nil
 		apr.blipSender.Close()
@@ -118,14 +120,16 @@ func (apr *ActivePullReplicator) Complete() {
 		apr.lock.Unlock()
 		return
 	}
-
+	base.TracefCtx(apr.ctx, base.KeyReplicate, "Before calling waitForExpectedSequences in Complete()")
 	err := apr.Checkpointer.waitForExpectedSequences()
 	if err != nil {
 		base.InfofCtx(apr.ctx, base.KeyReplicate, "Timeout draining replication %s - stopping: %v", apr.config.ID, err)
 	}
+	base.TracefCtx(apr.ctx, base.KeyReplicate, "Before calling waitForExpectedSequences in Complete()")
 
 	apr._stop()
 
+	base.TracefCtx(apr.ctx, base.KeyReplicate, "Calling disconnect from Complete() in active replicator pull")
 	stopErr := apr._disconnect()
 	if stopErr != nil {
 		base.InfofCtx(apr.ctx, base.KeyReplicate, "Error attempting to stop replication %s: %v", apr.config.ID, stopErr)
@@ -227,6 +231,7 @@ func (apr *ActivePullReplicator) registerCheckpointerCallbacks() {
 		apr.blipSyncContext.emptyChangesMessageCallback = func() {
 			// Complete blocks waiting for pending rev messages, so needs
 			// it's own goroutine
+			base.TracefCtx(apr.ctx, base.KeyReplicate, "calling complete from registerCheckpointerCallbacks, because we have empty callback")
 			go apr.Complete()
 		}
 	}
@@ -234,6 +239,7 @@ func (apr *ActivePullReplicator) registerCheckpointerCallbacks() {
 
 // Stop stops the pull replication and waits for the sub changes goroutine to finish.
 func (apr *ActivePullReplicator) Stop() error {
+	base.TracefCtx(apr.ctx, base.KeyReplicate, "Calling stop and disconnect from Stop()")
 	if err := apr.stopAndDisconnect(); err != nil {
 		return err
 	}

@@ -362,7 +362,7 @@ func TestMultiCollectionChangesUserDynamicGrantDCP(t *testing.T) {
 }
 
 func TestMultiCollectionChangesCustomSyncFunctions(t *testing.T) {
-
+	base.TestRequiresCollections(t)
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeyChanges, base.KeyCache, base.KeyCRUD)
 	testBucket := base.GetTestBucket(t)
 	numCollections := 2

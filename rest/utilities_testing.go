@@ -122,6 +122,9 @@ func NewRestTesterDefaultCollection(tb testing.TB, restConfig *RestTesterConfig)
 
 // NewRestTester multiple collections a rest tester backed by a single database and any number of collections and the names of the keyspaces of collections created.
 func NewRestTesterMultipleCollections(tb testing.TB, restConfig *RestTesterConfig, numCollections int) (*RestTester, []string) {
+	if !base.TestsUseNamedCollections() {
+		tb.Skip("This test requires named collections and is running against a bucket type that does not support them")
+	}
 	if numCollections == 0 {
 		tb.Errorf("0 is not a valid number of collections to specify")
 	}

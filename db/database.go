@@ -167,8 +167,9 @@ type DatabaseContextOptions struct {
 	JavascriptTimeout             time.Duration // Max time the JS functions run for (ie. sync fn, import filter)
 	Serverless                    bool          // If running in serverless mode
 	Scopes                        ScopesOptions
-	skipRegisterImportPIndex      bool           // if set, skips the global gocb PIndex registration
-	MetadataStore                 base.DataStore // If set, use this location/connection for SG metadata storage - if not set, metadata is stored using the same location/connection as the bucket used for data storage.
+	skipRegisterImportPIndex      bool                  // if set, skips the global gocb PIndex registration
+	MetadataStore                 base.DataStore        // If set, use this location/connection for SG metadata storage - if not set, metadata is stored using the same location/connection as the bucket used for data storage.
+	DefaultCollectionImportFilter *ImportFilterFunction // Opt-in filter for document import, for when collections are not supported
 }
 
 type ScopesOptions map[string]ScopeOptions
@@ -178,8 +179,8 @@ type ScopeOptions struct {
 }
 
 type CollectionOptions struct {
-	Sync *string // Collection sync function
-
+	Sync         *string               // Collection sync function
+	ImportFilter *ImportFilterFunction // Opt-in filter for document import
 }
 
 type SGReplicateOptions struct {
@@ -232,9 +233,8 @@ type WarningThresholds struct {
 
 // Options associated with the import of documents not written by Sync Gateway
 type ImportOptions struct {
-	ImportFilter     *ImportFilterFunction // Opt-in filter for document import
-	BackupOldRev     bool                  // Create temporary backup of old revision body when available
-	ImportPartitions uint16                // Number of partitions for import
+	BackupOldRev     bool   // Create temporary backup of old revision body when available
+	ImportPartitions uint16 // Number of partitions for import
 }
 
 // Represents a simulated CouchDB database. A new instance is created for each HTTP request,
@@ -452,10 +452,16 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 				if collOpts.Sync != nil {
 					syncFn = *collOpts.Sync
 				}
+
+				if collOpts.ImportFilter != nil {
+					dbCollection.importFilterFunction = collOpts.ImportFilter
+				}
+
 				_, err = dbCollection.UpdateSyncFun(ctx, syncFn)
 				if err != nil {
 					return nil, err
 				}
+
 				dbContext.Scopes[scopeName].Collections[collName] = dbCollection
 
 				collectionID := dbCollection.GetCollectionID()
@@ -470,6 +476,9 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 		dbCollection, err := newDatabaseCollection(ctx, dbContext, dataStore)
 		if err != nil {
 			return nil, err
+		}
+		if options.DefaultCollectionImportFilter != nil {
+			dbCollection.importFilterFunction = options.DefaultCollectionImportFilter
 		}
 
 		dbContext.CollectionByID[base.DefaultCollectionID] = dbCollection
