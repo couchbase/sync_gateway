@@ -933,7 +933,7 @@ func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConf
 	if sc.Config.Unsupported.UserQueries != nil && *sc.Config.Unsupported.UserQueries {
 		var err error
 		if config.UserFunctions != nil {
-			contextOptions.UserFunctions, err = functions.CompileFunctions(config.UserFunctions)
+			contextOptions.UserFunctions, err = functions.CompileFunctions(*config.UserFunctions)
 			if err != nil {
 				return contextOptions, err
 			}

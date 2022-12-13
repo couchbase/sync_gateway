@@ -227,9 +227,6 @@ func TestCollectionsPeerDoesNotHave(t *testing.T) {
 
 func TestCollectionsReplication(t *testing.T) {
 	base.TestRequiresCollections(t)
-	if base.TestsDisableGSI() {
-		t.Skip("only works with GSI")
-	}
 
 	rt := NewRestTester(t, &RestTesterConfig{
 		GuestEnabled: true,
