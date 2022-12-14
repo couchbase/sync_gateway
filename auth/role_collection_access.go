@@ -151,7 +151,7 @@ func (role *roleImpl) SetCollectionChannelHistory(scope, collection string, hist
 // A nil Role means access control is disabled, so the function will return true.
 func (role *roleImpl) CanSeeCollectionChannel(scope, collection, channel string) bool {
 	if base.IsDefaultCollection(scope, collection) {
-		return role.CanSeeChannel(channel)
+		return role.canSeeChannel(channel)
 	}
 
 	if role == nil {
@@ -166,7 +166,7 @@ func (role *roleImpl) CanSeeCollectionChannel(scope, collection, channel string)
 // Returns the sequence number since which the Role has been able to access the channel, else zero.
 func (role *roleImpl) canSeeCollectionChannelSince(scope, collection, channel string) uint64 {
 	if base.IsDefaultCollection(scope, collection) {
-		return role.CanSeeChannelSince(channel)
+		return role.canSeeChannelSince(channel)
 	}
 
 	if cc, ok := role.getCollectionAccess(scope, collection); ok {
@@ -181,7 +181,7 @@ func (role *roleImpl) canSeeCollectionChannelSince(scope, collection, channel st
 
 func (role *roleImpl) authorizeAllCollectionChannels(scope, collection string, channels base.Set) error {
 	if base.IsDefaultCollection(scope, collection) {
-		return role.AuthorizeAllChannels(channels)
+		return role.authorizeAllChannels(channels)
 	}
 
 	if ca, ok := role.getCollectionAccess(scope, collection); ok {
@@ -205,7 +205,7 @@ func (role *roleImpl) authorizeAllCollectionChannels(scope, collection string, c
 // Returns an error if the Principal does not have access to any of the channels in the set.
 func (role *roleImpl) AuthorizeAnyCollectionChannel(scope, collection string, channels base.Set) error {
 	if base.IsDefaultCollection(scope, collection) {
-		return role.AuthorizeAnyChannel(channels)
+		return role.authorizeAnyChannel(channels)
 	}
 
 	if ca, ok := role.getCollectionAccess(scope, collection); ok {

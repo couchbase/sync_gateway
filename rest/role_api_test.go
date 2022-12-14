@@ -335,7 +335,7 @@ func TestRoleAccessChanges(t *testing.T) {
 			"!":     channels.NewVbSimpleSequence(1),
 			"alpha": channels.NewVbSimpleSequence(alice.Sequence()),
 			"gamma": channels.NewVbSimpleSequence(roleGrantSequence),
-		}, alice.InheritedChannels())
+		}, alice.InheritedCollectionChannels(base.DefaultScope, base.DefaultCollection))
 
 	assert.Equal(t,
 
@@ -350,7 +350,7 @@ func TestRoleAccessChanges(t *testing.T) {
 		channels.TimedSet{
 			"!":    channels.NewVbSimpleSequence(1),
 			"beta": channels.NewVbSimpleSequence(zegpold.Sequence()),
-		}, zegpold.InheritedChannels())
+		}, zegpold.InheritedCollectionChannels(base.DefaultScope, base.DefaultCollection))
 
 	assert.Equal(t, channels.TimedSet{}, zegpold.RoleNames())
 
@@ -391,7 +391,7 @@ func TestRoleAccessChanges(t *testing.T) {
 		channels.TimedSet{
 			"!":     channels.NewVbSimpleSequence(0x1),
 			"alpha": channels.NewVbSimpleSequence(alice.Sequence()),
-		}, alice.InheritedChannels())
+		}, alice.InheritedCollectionChannels(base.DefaultScope, base.DefaultCollection))
 
 	zegpold, _ = a.GetUser("zegpold")
 	assert.Equal(t,
@@ -400,7 +400,7 @@ func TestRoleAccessChanges(t *testing.T) {
 			"!":     channels.NewVbSimpleSequence(0x1),
 			"beta":  channels.NewVbSimpleSequence(zegpold.Sequence()),
 			"gamma": channels.NewVbSimpleSequence(updatedRoleGrantSequence),
-		}, zegpold.InheritedChannels())
+		}, zegpold.InheritedCollectionChannels(base.DefaultScope, base.DefaultCollection))
 
 	// The complete _changes feed for zegpold contains docs g1 and b1:
 	cacheWaiter.Wait()

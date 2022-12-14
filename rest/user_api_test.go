@@ -290,7 +290,7 @@ func TestUserAPI(t *testing.T) {
 	user, _ := rt.ServerContext().Database(ctx, "db").Authenticator(ctx).GetUser("snej")
 	assert.Equal(t, "snej", user.Name())
 	assert.Equal(t, "jens@couchbase.com", user.Email())
-	assert.Equal(t, channels.TimedSet{"bar": channels.NewVbSimpleSequence(0x1), "foo": channels.NewVbSimpleSequence(0x1)}, user.ExplicitChannels())
+	assert.Equal(t, channels.TimedSet{"bar": channels.NewVbSimpleSequence(0x1), "foo": channels.NewVbSimpleSequence(0x1)}, user.CollectionExplicitChannels(base.DefaultScope, base.DefaultCollection))
 	assert.True(t, user.Authenticate("letmein"))
 
 	// Change the password and verify it:
@@ -398,7 +398,7 @@ func TestGuestUser(t *testing.T) {
 	ctx := rt.Context()
 	user, _ := rt.ServerContext().Database(ctx, "db").Authenticator(ctx).GetUser("")
 	assert.Empty(t, user.Name())
-	assert.Nil(t, user.ExplicitChannels())
+	assert.Nil(t, user.CollectionExplicitChannels(base.DefaultScope, base.DefaultCollection))
 	assert.True(t, user.Disabled())
 
 	// We can't delete the guest user, but we should get a reasonable error back.
@@ -608,7 +608,7 @@ func TestObtainUserChannelsForDeletedRoleCasFail(t *testing.T) {
 			true,
 		},
 		{
-			"Delete On InheritedChannels",
+			"Delete On inheritedChannels",
 			false,
 		},
 	}
@@ -670,7 +670,7 @@ func TestObtainUserChannelsForDeletedRoleCasFail(t *testing.T) {
 				triggerCallback = true
 			}
 
-			assert.Equal(t, []string{"!"}, user.InheritedChannels().AllKeys())
+			assert.Equal(t, []string{"!"}, user.InheritedCollectionChannels(base.DefaultScope, base.DefaultCollection).AllKeys())
 
 			// Ensure callback ran
 			assert.False(t, triggerCallback)

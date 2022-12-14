@@ -423,9 +423,9 @@ func (dbc *DatabaseContext) GetPrincipalForTest(tb testing.TB, name string, isUs
 	}
 	info = new(auth.PrincipalConfig)
 	info.Name = &name
-	info.ExplicitChannels = princ.ExplicitChannels().AsSet()
+	info.ExplicitChannels = princ.CollectionExplicitChannels(base.DefaultScope, base.DefaultCollection).AsSet()
 	if user, ok := princ.(auth.User); ok {
-		info.Channels = user.InheritedChannels().AsSet()
+		info.Channels = user.InheritedCollectionChannels(base.DefaultScope, base.DefaultCollection).AsSet()
 		email := user.Email()
 		info.Email = &email
 		info.Disabled = base.BoolPtr(user.Disabled())

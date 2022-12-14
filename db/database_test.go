@@ -1445,20 +1445,17 @@ func TestAccessFunctionValidation(t *testing.T) {
 
 func TestAccessFunctionDb(t *testing.T) {
 
-	if base.TestsUseNamedCollections() {
-		t.Skip("Disabled for non-default collection until CBG-2554")
-	}
-
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 	collection := db.GetSingleDatabaseCollectionWithUser()
 
-	authenticator := auth.NewAuthenticator(db.MetadataStore, db, auth.DefaultAuthenticatorOptions())
+	authenticator := db.Authenticator(ctx)
 
 	var err error
 	db.ChannelMapper = channels.NewChannelMapper(`function(doc){access(doc.users,doc.userChannels);}`, 0)
 
-	user, _ := authenticator.NewUser("naomi", "letmein", channels.BaseSetOf(t, "Netflix"))
+	user, err := authenticator.NewUser("naomi", "letmein", channels.BaseSetOf(t, "Netflix"))
+	require.NoError(t, err)
 	user.SetExplicitRoles(channels.TimedSet{"animefan": channels.NewVbSimpleSequence(1), "tumblr": channels.NewVbSimpleSequence(1)}, 1)
 	assert.NoError(t, authenticator.Save(user), "Save")
 
@@ -1478,10 +1475,10 @@ func TestAccessFunctionDb(t *testing.T) {
 	user, err = authenticator.GetUser("naomi")
 	assert.NoError(t, err, "GetUser")
 	expected := channels.AtSequence(channels.BaseSetOf(t, "Hulu", "Netflix", "!"), 1)
-	assert.Equal(t, expected, user.Channels())
+	assert.Equal(t, expected, user.CollectionChannels(collection.ScopeName(), collection.Name()))
 
 	expected.AddChannel("CrunchyRoll", 2)
-	assert.Equal(t, expected, user.InheritedChannels())
+	assert.Equal(t, expected, user.InheritedCollectionChannels(collection.ScopeName(), collection.Name()))
 }
 
 func TestDocIDs(t *testing.T) {
