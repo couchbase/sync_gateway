@@ -274,6 +274,7 @@ func (i *SGIndex) createIfNeeded(bucket base.N1QLStore, useXattrs bool, numRepli
 		if indexMeta == nil {
 			return false, fmt.Errorf("No metadata retrieved for existing index %s", indexName)
 		}
+
 		if indexMeta.State == base.IndexStateDeferred {
 			// Two possible scenarios when index already exists in deferred state:
 			//  1. Another SG is in the process of index creation
@@ -338,6 +339,11 @@ func (i *SGIndex) createIfNeeded(bucket base.N1QLStore, useXattrs bool, numRepli
 	return isDeferred, nil
 }
 
+// isAllDocsIndex returns if given Index is AllDocs Index or not
+func isAllDocsIndex(i SGIndex) bool {
+	return i.simpleName == sgIndexes[IndexAllDocs].simpleName
+}
+
 // Initializes Sync Gateway indexes for bucket.  Creates required indexes if not found, then waits for index readiness.
 func InitializeIndexes(n1QLStore base.N1QLStore, useXattrs bool, numReplicas uint, failFast bool, isServerless bool) error {
 
@@ -346,6 +352,12 @@ func InitializeIndexes(n1QLStore base.N1QLStore, useXattrs bool, numReplicas uin
 	// Create any indexes that aren't present
 	deferredIndexes := make([]string, 0)
 	for _, sgIndex := range sgIndexes {
+
+		// only create allDocs Index if EnableStarChannel is set to true
+		if isAllDocsIndex(sgIndex) && !EnableStarChannelLog {
+			base.DebugfCtx(context.TODO(), base.KeyAll, "Skipping index: %s because EnableStarChannel is set to %t...", sgIndex.simpleName, EnableStarChannelLog)
+			continue
+		}
 
 		if !sgIndex.shouldCreate(isServerless) {
 			base.DebugfCtx(context.TODO(), base.KeyAll, "Skipping index for Serverless: %s...", sgIndex.simpleName)
@@ -387,6 +399,11 @@ func waitForIndexes(bucket base.N1QLStore, useXattrs, isServerless, failfast boo
 		if sgIndex.isXattrOnly() && !useXattrs {
 			continue
 		}
+
+		if isAllDocsIndex(sgIndex) && !EnableStarChannelLog {
+			continue
+		}
+
 		if !sgIndex.shouldCreate(isServerless) {
 			continue
 		}
@@ -514,6 +531,9 @@ func GetIndexesName(isServerless, xattr bool) []string {
 
 	for _, sgIndex := range sgIndexes {
 		if sgIndex.isXattrOnly() && !xattr {
+			continue
+		}
+		if isAllDocsIndex(sgIndex) && !EnableStarChannelLog {
 			continue
 		}
 		if sgIndex.shouldCreate(isServerless) {

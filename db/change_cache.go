@@ -155,7 +155,7 @@ func DefaultCacheOptions() CacheOptions {
 // Initializes a new changeCache.
 // lastSequence is the last known database sequence assigned.
 // notifyChange is an optional function that will be called to notify of channel changes.
-// After calling Init(), you must call .Start() to start useing the cache, otherwise it will be in a locked state
+// After calling Init(), you must call .Start() to start using the cache, otherwise it will be in a locked state
 // and callers will block on trying to obtain the lock.
 func (c *changeCache) Init(logCtx context.Context, collection *DatabaseCollection, channelCache ChannelCache, notifyChange func(channels.Set), options *CacheOptions) error {
 	c.collection = collection

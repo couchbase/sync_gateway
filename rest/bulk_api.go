@@ -27,6 +27,11 @@ import (
 
 // HTTP handler for _all_docs
 func (h *handler) handleAllDocs() error {
+
+	if !db.EnableStarChannelLog {
+		return base.HTTPErrorf(http.StatusBadRequest, "_all_docs endpoint is only available when `enable_star_channel` is true")
+	}
+
 	// http://wiki.apache.org/couchdb/HTTP_Bulk_Document_API
 	includeDocs := h.getBoolQuery("include_docs")
 	includeChannels := h.getBoolQuery("channels")
