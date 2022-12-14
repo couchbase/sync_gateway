@@ -105,6 +105,7 @@ func (tb *TestBucket) NoCloseClone() *TestBucket {
 
 // GetTestBucket returns a test bucket from a pool.
 func GetTestBucket(t testing.TB) *TestBucket {
+	//debug.PrintStack()
 	return getTestBucket(t)
 }
 
@@ -125,7 +126,7 @@ func (tb *TestBucket) GetNamedDataStore(count int) DataStore {
 	if count > len(dataStoreNames) {
 		tb.t.Errorf("You are requesting more datastores %d than are available on this test instance %d", dataStoreNames, count)
 	}
-	return tb.Bucket.NamedDataStore(dataStoreNames[count-1])
+	return tb.Bucket.NamedDataStore(dataStoreNames[count])
 }
 
 // Return a sorted list of data store names
@@ -155,7 +156,7 @@ func (tb *TestBucket) GetNonDefaultDatastoreNames() []sgbucket.DataStoreName {
 // This may be the default collection, or a named collection depending on whether SG_TEST_USE_DEFAULT_COLLECTION is set.
 func (b *TestBucket) GetSingleDataStore() sgbucket.DataStore {
 	if TestsUseNamedCollections() {
-		return b.GetNamedDataStore(1)
+		return b.GetNamedDataStore(0)
 	}
 	return b.Bucket.DefaultDataStore()
 }
