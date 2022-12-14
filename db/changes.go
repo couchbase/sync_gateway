@@ -1285,14 +1285,14 @@ func createChangesEntry(ctx context.Context, docid string, db *DatabaseCollectio
 	userCanSeeDocChannel := false
 
 	// If admin, or the user has the star channel, include it in the results
-	if db.user == nil || db.user.Channels().Contains(channels.UserStarChannel) {
+	if db.user == nil || db.user.CollectionChannels(db.ScopeName(), db.Name()).Contains(channels.UserStarChannel) {
 		userCanSeeDocChannel = true
 	} else if len(populatedDoc.Channels) > 0 {
 		// Iterate over the doc's channels, including in the results:
 		//   - the active revision is in a channel the user can see (removal==nil)
 		//   - the doc has been removed from a user's channel later the requested since value (removal.Seq > options.Since.Seq).  In this case, we need to send removal:true changes entry
 		for channel, removal := range populatedDoc.Channels {
-			if db.user.CanSeeChannel(channel) && (removal == nil || removal.Seq > options.Since.Seq) {
+			if db.user.CanSeeCollectionChannel(db.ScopeName(), db.Name(), channel) && (removal == nil || removal.Seq > options.Since.Seq) {
 				userCanSeeDocChannel = true
 				// If removal, update removed channels and deleted flag.
 				if removal != nil {
