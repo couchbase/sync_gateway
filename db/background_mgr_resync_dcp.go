@@ -137,8 +137,11 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]interface
 	if err != nil {
 		return err
 	}
-	collectionID := base.DefaultCollectionID
-	collectionIDs := []uint32{collectionID}
+
+	collectionIDs := make([]uint32, 0, len(db.CollectionByID))
+	for collectionID := range db.CollectionByID {
+		collectionIDs = append(collectionIDs, collectionID)
+	}
 
 	clientOptions, err := getReSyncDCPClientOptions(collectionIDs, db.Options.GroupID)
 	if err != nil {
