@@ -28,8 +28,8 @@ const openStreamTimeout = 30 * time.Second
 const openRetryCount = uint32(10)
 const defaultNumWorkers = 8
 
+// DCP buffer size values based off if we are running in serverless or not
 const DefaultDCPBufferServerless = 1 * 1024 * 1024
-
 const DefaultDCPBuffer = 20 * 1024 * 1024
 
 const getVbSeqnoTimeout = 30 * time.Second
@@ -62,7 +62,7 @@ type DCPClient struct {
 	dbStats                    *expvar.Map                    // Stats for database
 	agentPriority              gocbcore.DcpAgentPriority      // agentPriority specifies the priority level for a dcp stream
 	collectionIDs              []uint32                       // collectionIDs used by gocbcore, if empty, uses default collections
-	Serverless                 bool
+	Serverless                 bool                           // Serverless flag is used to check if Sync Gateway is running in serverless mode or not
 }
 
 type DCPClientOptions struct {
@@ -225,7 +225,6 @@ func (dc *DCPClient) Start() (doneChan chan error, err error) {
 		}
 	}
 	dc.startWorkers()
-	fmt.Println("conn string at the agent code", dc.spec.Server)
 
 	for i := uint16(0); i < dc.numVbuckets; i++ {
 		openErr := dc.openStream(i, openRetryCount)
@@ -317,7 +316,6 @@ func (dc *DCPClient) initAgent(spec BucketSpec) error {
 	if dc.Serverless {
 		agentConfig.DCPConfig.BufferSize = DefaultDCPBufferServerless
 	}
-	fmt.Println("Buffer size", agentConfig.DCPConfig.BufferSize)
 	agentConfig.SecurityConfig.Auth = auth
 	agentConfig.SecurityConfig.TLSRootCAProvider = tlsRootCAProvider
 	agentConfig.UserAgent = "SyncGatewayDCP"

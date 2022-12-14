@@ -223,6 +223,7 @@ type UnsupportedOptions struct {
 	ConnectedClient            bool                     `json:"connected_client,omitempty"`              // Enables BLIP connected-client APIs
 	UseQueryBasedResyncManager bool                     `json:"use_query_resync_manager,omitempty"`      // Config option to use Query based resync manager to perform Resync op
 	DCPReadBuffer             *int                     `json:"dcp_read_buffer,omitempty"`
+	KVBufferSize              int                      `json:"kv_buffer,omitempty"`
 }
 
 type WarningThresholds struct {
@@ -686,14 +687,6 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 	}
 	dbContext.TombstoneCompactionManager = NewTombstoneCompactionManager()
 	dbContext.AttachmentCompactionManager = NewAttachmentCompactionManager(metadataStore)
-
-	/*
-		f, _ := os.Create("./serverless3_profile_NewDbCtx-import-1bucket.pb.gz")
-		defer f.Close()
-		runtime.GC()
-		_ = pprof.WriteHeapProfile(f)
-
-	*/
 
 	return dbContext, nil
 }

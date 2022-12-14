@@ -382,6 +382,13 @@ func GetBucketSpec(ctx context.Context, config *DatabaseConfig, serverConfig *St
 		spec.ViewQueryTimeoutSecs = config.ViewQueryTimeoutSecs
 	}
 
+	if config.Unsupported != nil && config.Unsupported.KVBufferSize != 0 {
+		spec.KvBufferSize = config.Unsupported.KVBufferSize
+	}
+	if config.Unsupported != nil && config.Unsupported.DCPReadBuffer != 0 {
+		spec.DcpBuffer = config.Unsupported.DCPReadBuffer
+	}
+
 	spec.UseXattrs = config.UseXattrs()
 	if !spec.UseXattrs {
 		base.WarnfCtx(ctx, "Running Sync Gateway without shared bucket access is deprecated. Recommendation: set enable_shared_bucket_access=true")
@@ -1386,8 +1393,6 @@ func initClusterAgent(ctx context.Context, clusterAddress, clusterUser, clusterP
 	if err != nil {
 		return nil, err
 	}
-	config.KVConfig.PoolSize = 1
-	config.KVConfig.ConnectionBufferSize = base.DefaultKvBufferSizeServerless
 
 	agent, err := gocbcore.CreateAgent(&config)
 	if err != nil {

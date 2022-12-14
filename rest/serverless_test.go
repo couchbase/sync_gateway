@@ -190,13 +190,13 @@ func TestServerlessGoCBConnectionString(t *testing.T) {
 	}{
 		{
 			name:            "serverless connection",
-			expectedConnStr: "?idle_http_connection_timeout=90000&kv_pool_size=1&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
+			expectedConnStr: "?dcp_buffer_size=1048576&idle_http_connection_timeout=90000&kv_buffer_size=1048576&kv_pool_size=1&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
 			kvConnCount:     1,
 		},
 		{
 			name:            "serverless connection with kv pool specified",
 			specKvConn:      "?idle_http_connection_timeout=90000&kv_pool_size=3&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
-			expectedConnStr: "?idle_http_connection_timeout=90000&kv_pool_size=3&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
+			expectedConnStr: "?dcp_buffer_size=1048576&idle_http_connection_timeout=90000&kv_buffer_size=1048576&kv_pool_size=3&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
 			kvConnCount:     3,
 		},
 	}
@@ -223,6 +223,54 @@ func TestServerlessGoCBConnectionString(t *testing.T) {
 
 			assert.Equal(t, test.expectedConnStr, sc.getConnectionString("db"))
 			assert.Equal(t, test.kvConnCount, sc.getKVConnectionPol("db"))
+		})
+	}
+
+}
+
+func TestServerlessUnsupportedOptions(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server")
+	}
+	tests := []struct {
+		name            string
+		expectedConnStr string
+		kvBuffer        int
+		dcpBuffer       int
+	}{
+		{
+			name:            "unsupported options specified",
+			expectedConnStr: "?dcp_buffer_size=3000&idle_http_connection_timeout=90000&kv_buffer_size=2000&kv_pool_size=1&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
+			kvBuffer:        2000,
+			dcpBuffer:       3000,
+		},
+		{
+			name:            "default serverless",
+			expectedConnStr: "?dcp_buffer_size=1048576&idle_http_connection_timeout=90000&kv_buffer_size=1048576&kv_pool_size=1&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			tb := base.GetTestBucket(t)
+			defer tb.Close()
+			bucketServer := tb.BucketSpec.Server
+			test.expectedConnStr = bucketServer + test.expectedConnStr
+
+			rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb, PersistentConfig: true, serverless: true})
+			defer rt.Close()
+			sc := rt.ServerContext()
+			require.True(t, sc.Config.IsServerless())
+
+			if test.name == "unsupported options specified" {
+				resp := rt.SendAdminRequest(http.MethodPut, "/db/", fmt.Sprintf(`{"bucket": "%s", "use_views": %t, "num_index_replicas": 0, "unsupported": {"dcp_read_buffer": %d, "kv_buffer": %d}}`,
+					tb.GetName(), base.TestsDisableGSI(), test.dcpBuffer, test.kvBuffer))
+				RequireStatus(t, resp, http.StatusCreated)
+			} else {
+				resp := rt.SendAdminRequest(http.MethodPut, "/db/", fmt.Sprintf(`{"bucket": "%s", "use_views": %t, "num_index_replicas": 0}`,
+					tb.GetName(), base.TestsDisableGSI()))
+				RequireStatus(t, resp, http.StatusCreated)
+			}
+			assert.Equal(t, test.expectedConnStr, sc.getConnectionString("db"))
 		})
 	}
 
@@ -585,10 +633,12 @@ func TestServerlessUnsuspendAPI(t *testing.T) {
 	require.NotNil(t, sc.databases_["db"])
 }
 
+// !Test and helper method will be gone when ready for final review!
 func addDocs(bucket base.TestBucket) error {
 	var err error
 	for i := 0; i < 2000; i++ {
-		_, err = bucket.AddRaw(fmt.Sprint(i), 0, []byte(fmt.Sprintf(`{"foo": "bar"}`)))
+		datastore := bucket.GetSingleDataStore()
+		_, err = datastore.AddRaw(fmt.Sprint(i), 0, []byte(fmt.Sprintf(`{"foo": "bar"}`)))
 	}
 	if err != nil {
 		return err
@@ -597,6 +647,9 @@ func addDocs(bucket base.TestBucket) error {
 }
 
 func TestBuffer(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("Only works for server")
+	}
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	rt := NewRestTester(t, &RestTesterConfig{PersistentConfig: true, serverless: true, AdminInterfaceAuthentication: true})

@@ -150,6 +150,7 @@ type SGFeedSourceParams struct {
 	// Collections within the scope that the feed would cover.
 	Collections []string `json:"collections,omitempty"`
 
+	// DCPBuffer size for the dcp feed to use
 	DCPBuffer uint32 `json:"dcp_buffer,omitempty"`
 }
 

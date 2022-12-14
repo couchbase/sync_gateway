@@ -361,7 +361,6 @@ func initCBGTManager(ctx context.Context, bucket Bucket, spec BucketSpec, cfgSG 
 		username, password, _ := spec.Auth.GetCredentials()
 		addCbgtCredentials(dbName, bucket.GetName(), username, password, spec.Certpath, spec.Keypath)
 	}
-	fmt.Println("Conn string at shard:", serverURL, spec.Server)
 
 	if spec.IsTLS() {
 		bucketUUID, err := bucket.UUID()
