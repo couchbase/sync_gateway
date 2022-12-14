@@ -86,10 +86,21 @@ func TestJSFunctionAsGuest(t *testing.T) {
 	}
 
 	sendReqFn := rt.SendRequest
-	testUserFunctionsCommon(t, rt, sendReqFn)
 
 	t.Run("function not configured", func(t *testing.T) {
 		response := sendReqFn("GET", "/db/_function/xxxx", "")
+		assert.Equal(t, 401, response.Result().StatusCode)
+		assert.Contains(t, string(response.BodyBytes()), "login required")
+	})
+
+	t.Run("allow all", func(t *testing.T) {
+		response := sendReqFn("GET", "/db/_function/allow_all", "")
+		assert.Equal(t, 200, response.Result().StatusCode)
+		assert.EqualValues(t, `"OK"`, string(response.BodyBytes()))
+	})
+
+	t.Run("user required", func(t *testing.T) {
+		response := sendReqFn("POST", "/db/_function/square", `{"numero": 42}`)
 		assert.Equal(t, 401, response.Result().StatusCode)
 		assert.Contains(t, string(response.BodyBytes()), "login required")
 	})
@@ -214,13 +225,24 @@ func TestN1QLFunctionAsGuest(t *testing.T) {
 
 	sendReqFn := rt.SendRequest
 
-	testUserQueriesCommon(t, rt, sendReqFn)
-
 	t.Run("select user", func(t *testing.T) {
 		response := sendReqFn("GET", "/db/_function/user", "")
-		assert.Equal(t, 200, response.Result().StatusCode)
-		assert.True(t, strings.HasPrefix(string(response.BodyBytes()), `[{"user":{"channels":["`))
-		assert.True(t, strings.HasSuffix(string(response.BodyBytes()), "\"],\"email\":\"\",\"name\":\"\"}}\n]\n"))
+		if !assert.Equal(t, 200, response.Result().StatusCode) {
+			return
+		}
+		var body []map[string]any
+		if !assert.NoError(t, json.Unmarshal(response.BodyBytes(), &body)) {
+			return
+		}
+		user, ok := body[0]["user"].(map[string]any)
+		assert.True(t, ok, "Result 'user' property is missing or not an object")
+		assert.Equal(t, "", user["name"])
+	})
+
+	t.Run("user required", func(t *testing.T) {
+		response := sendReqFn("POST", "/db/_function/square", `{"numero": 16}`)
+		assert.Equal(t, 401, response.Result().StatusCode)
+		assert.Contains(t, string(response.BodyBytes()), "login required")
 	})
 
 	t.Run("admin only", func(t *testing.T) {
