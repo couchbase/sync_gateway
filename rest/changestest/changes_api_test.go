@@ -1730,6 +1730,17 @@ func TestChangesActiveOnlyInteger(t *testing.T) {
 	}
 }
 
+// Expects adminChannels of the form `admin_channels":["alpha"]`
+// If scope and collection are non-zero, builds collection access string for the collection
+func adminChannelGrant(scopeName, collectionName, adminChannels string) (collectionAdminChannels string) {
+
+	if scopeName == base.DefaultScope && collectionName == base.DefaultCollection {
+		return adminChannels
+	}
+
+	return fmt.Sprintf(`"collection_access":{%q: {%q: {%s}}}`, scopeName, collectionName, adminChannels)
+}
+
 func TestOneShotChangesWithExplicitDocIds(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyNone)
@@ -1737,29 +1748,39 @@ func TestOneShotChangesWithExplicitDocIds(t *testing.T) {
 	defer db.SuspendSequenceBatching()()
 
 	rtConfig := rest.RestTesterConfig{
-		SyncFn: `function(doc) {channel(doc.channels)}`,
+		SyncFn: `function(doc) {
+			if (doc.type == "grant") {
+				access(doc.user, doc.channels)
+			} else {
+				channel(doc.channels)
+			}
+		}`,
 	}
-	rt := rest.NewRestTesterDefaultCollection(t, &rtConfig) // CBG-2618: fix collection channel access
+	rt := rest.NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
+	collection := rt.GetSingleTestDatabaseCollection()
+	c := collection.Name()
+	s := collection.ScopeName()
+
 	// Create user1
-	response := rt.SendAdminRequest("PUT", "/db/_user/user1", `{"email":"user1@couchbase.com", "password":"letmein", "admin_channels":["alpha"]}`)
+	response := rt.SendAdminRequest("PUT", "/db/_user/user1", `{"email":"user1@couchbase.com", "password":"letmein", `+adminChannelGrant(s, c, `"admin_channels":["alpha"]`)+`}`)
 	rest.RequireStatus(t, response, 201)
 
 	// Create user2
-	response = rt.SendAdminRequest("PUT", "/db/_user/user2", `{"email":"user2@couchbase.com", "password":"letmein", "admin_channels":["beta"]}`)
+	response = rt.SendAdminRequest("PUT", "/db/_user/user2", `{"email":"user2@couchbase.com", "password":"letmein", `+adminChannelGrant(s, c, `"admin_channels":["beta"]`)+`}`)
 	rest.RequireStatus(t, response, 201)
 
 	// Create user3
-	response = rt.SendAdminRequest("PUT", "/db/_user/user3", `{"email":"user3@couchbase.com", "password":"letmein", "admin_channels":["alpha","beta"]}`)
+	response = rt.SendAdminRequest("PUT", "/db/_user/user3", `{"email":"user3@couchbase.com", "password":"letmein", `+adminChannelGrant(s, c, `"admin_channels":["alpha","beta"]`)+`}`)
 	rest.RequireStatus(t, response, 201)
 
 	// Create user4
-	response = rt.SendAdminRequest("PUT", "/db/_user/user4", `{"email":"user4@couchbase.com", "password":"letmein", "admin_channels":[]}`)
+	response = rt.SendAdminRequest("PUT", "/db/_user/user4", `{"email":"user4@couchbase.com", "password":"letmein"}`)
 	rest.RequireStatus(t, response, 201)
 
 	// Create user5
-	response = rt.SendAdminRequest("PUT", "/db/_user/user5", `{"email":"user5@couchbase.com", "password":"letmein", "admin_channels":["*"]}`)
+	response = rt.SendAdminRequest("PUT", "/db/_user/user5", `{"email":"user5@couchbase.com", "password":"letmein", `+adminChannelGrant(s, c, `"admin_channels":["*"]`)+`}`)
 	rest.RequireStatus(t, response, 201)
 
 	// Create docs
