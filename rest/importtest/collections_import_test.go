@@ -22,15 +22,17 @@ import (
 func TestMultiCollectionImportFilter(t *testing.T) {
 
 	base.SkipImportTestsIfNotEnabled(t)
-
-	importFilter1 := `function (doc) { return doc.type == "mobile"}`
-	importFilter2 := `function (doc) { return doc.type == "onprem"}`
+	numCollections := 2
+	base.RequireNumTestDataStores(t, numCollections)
 
 	testBucket := base.GetTestBucket(t)
-	numCollections := 2
+	defer testBucket.Close()
+
 	scopesConfig := rest.GetCollectionsConfig(t, testBucket, numCollections)
 	dataStoreNames := rest.GetDataStoreNamesFromScopesConfig(scopesConfig)
 
+	importFilter1 := `function (doc) { return doc.type == "mobile"}`
+	importFilter2 := `function (doc) { return doc.type == "onprem"}`
 	scopesConfig[dataStoreNames[0].ScopeName()].Collections[dataStoreNames[0].CollectionName()] = rest.CollectionConfig{
 		ImportFilter: &importFilter1,
 	}
@@ -39,7 +41,7 @@ func TestMultiCollectionImportFilter(t *testing.T) {
 	}
 
 	rtConfig := &rest.RestTesterConfig{
-		CustomTestBucket: testBucket,
+		CustomTestBucket: testBucket.NoCloseClone(),
 		DatabaseConfig: &rest.DatabaseConfig{
 			DbConfig: rest.DbConfig{
 				Scopes: scopesConfig,
@@ -50,9 +52,9 @@ func TestMultiCollectionImportFilter(t *testing.T) {
 	rt, keyspaces := rest.NewRestTesterMultipleCollections(t, rtConfig, numCollections)
 	defer rt.Close()
 
-	dataStore1 := rt.TestBucket.GetNamedDataStore(1)
+	dataStore1 := rt.TestBucket.GetNamedDataStore(0)
 	keyspace1 := keyspaces[0]
-	dataStore2 := rt.TestBucket.GetNamedDataStore(2)
+	dataStore2 := rt.TestBucket.GetNamedDataStore(1)
 	keyspace2 := keyspaces[1]
 
 	defaultKeyspace := "db._default._default"

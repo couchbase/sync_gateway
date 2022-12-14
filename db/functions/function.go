@@ -283,7 +283,7 @@ func (fn *functionImpl) authorize(user auth.User, args map[string]any) error {
 				return nil
 			} else if channel, err := expandPattern(channelPattern, args, user); err != nil {
 				return err
-			} else if user.CanSeeChannel(channel) {
+			} else if user.CanSeeCollectionChannel(base.DefaultScope, base.DefaultCollection, channel) {
 				return nil // User has access to one of the allowed channels
 			}
 		}

@@ -1104,31 +1104,33 @@ func TestConflicts(t *testing.T) {
 
 }
 
-func TestConflictRevLimit(t *testing.T) {
+func TestConflictRevLimitDefault(t *testing.T) {
 
 	// Test Default Is the higher of the two
 	db, ctx := setupTestDB(t)
-	assert.Equal(t, uint32(DefaultRevsLimitConflicts), db.RevsLimit)
 	defer db.Close(ctx)
+	assert.Equal(t, uint32(DefaultRevsLimitConflicts), db.RevsLimit)
+}
 
+func TestConflictRevLimitAllowConflictsTrue(t *testing.T) {
 	// Test AllowConflicts
 	dbOptions := DatabaseContextOptions{
 		AllowConflicts: base.BoolPtr(true),
 	}
 
-	db, ctx = SetupTestDBWithOptions(t, dbOptions)
-	assert.Equal(t, uint32(DefaultRevsLimitConflicts), db.RevsLimit)
+	db, ctx := SetupTestDBWithOptions(t, dbOptions)
 	defer db.Close(ctx)
+	assert.Equal(t, uint32(DefaultRevsLimitConflicts), db.RevsLimit)
+}
 
-	// Test AllowConflicts false
-	dbOptions = DatabaseContextOptions{
+func TestConflictRevLimitAllowConflictsFalse(t *testing.T) {
+	dbOptions := DatabaseContextOptions{
 		AllowConflicts: base.BoolPtr(false),
 	}
 
-	db, ctx = SetupTestDBWithOptions(t, dbOptions)
-	assert.Equal(t, uint32(DefaultRevsLimitNoConflicts), db.RevsLimit)
+	db, ctx := SetupTestDBWithOptions(t, dbOptions)
 	defer db.Close(ctx)
-
+	assert.Equal(t, uint32(DefaultRevsLimitNoConflicts), db.RevsLimit)
 }
 
 func TestNoConflictsMode(t *testing.T) {
@@ -1443,20 +1445,17 @@ func TestAccessFunctionValidation(t *testing.T) {
 
 func TestAccessFunctionDb(t *testing.T) {
 
-	if base.TestsUseNamedCollections() {
-		t.Skip("Disabled for non-default collection until CBG-2554")
-	}
-
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 	collection := db.GetSingleDatabaseCollectionWithUser()
 
-	authenticator := auth.NewAuthenticator(db.MetadataStore, db, auth.DefaultAuthenticatorOptions())
+	authenticator := db.Authenticator(ctx)
 
 	var err error
 	db.ChannelMapper = channels.NewChannelMapper(`function(doc){access(doc.users,doc.userChannels);}`, 0)
 
-	user, _ := authenticator.NewUser("naomi", "letmein", channels.BaseSetOf(t, "Netflix"))
+	user, err := authenticator.NewUser("naomi", "letmein", channels.BaseSetOf(t, "Netflix"))
+	require.NoError(t, err)
 	user.SetExplicitRoles(channels.TimedSet{"animefan": channels.NewVbSimpleSequence(1), "tumblr": channels.NewVbSimpleSequence(1)}, 1)
 	assert.NoError(t, authenticator.Save(user), "Save")
 
@@ -1476,10 +1475,10 @@ func TestAccessFunctionDb(t *testing.T) {
 	user, err = authenticator.GetUser("naomi")
 	assert.NoError(t, err, "GetUser")
 	expected := channels.AtSequence(channels.BaseSetOf(t, "Hulu", "Netflix", "!"), 1)
-	assert.Equal(t, expected, user.Channels())
+	assert.Equal(t, expected, user.CollectionChannels(collection.ScopeName(), collection.Name()))
 
 	expected.AddChannel("CrunchyRoll", 2)
-	assert.Equal(t, expected, user.InheritedChannels())
+	assert.Equal(t, expected, user.InheritedCollectionChannels(collection.ScopeName(), collection.Name()))
 }
 
 func TestDocIDs(t *testing.T) {
@@ -2700,11 +2699,12 @@ func TestGetDatabaseCollectionWithUserNoScopesConfigured(t *testing.T) {
 
 func TestGetDatabaseCollectionWithUserDefaultCollection(t *testing.T) {
 	base.TestRequiresCollections(t)
+	base.RequireNumTestDataStores(t, 1)
 
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close()
 
-	ds := bucket.GetNamedDataStore(1)
+	ds := bucket.GetNamedDataStore(0)
 	require.NotNil(t, ds)
 
 	dataStoreName, ok := base.AsDataStoreName(ds)

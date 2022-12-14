@@ -1288,7 +1288,7 @@ func marshalPrincipal(princ auth.Principal, includeDynamicGrantInfo bool) auth.P
 		info.Disabled = base.BoolPtr(user.Disabled())
 		info.ExplicitRoleNames = user.ExplicitRoles().AsSet()
 		if includeDynamicGrantInfo {
-			info.Channels = user.InheritedChannels().AsSet()
+			info.Channels = user.InheritedCollectionChannels(base.DefaultScope, base.DefaultCollection).AsSet()
 			info.RoleNames = user.RoleNames().AllKeys()
 			info.JWTIssuer = base.StringPtr(user.JWTIssuer())
 			info.JWTRoles = user.JWTRoles().AsSet()

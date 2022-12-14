@@ -108,7 +108,7 @@ func (dbc *DatabaseContext) UpdatePrincipal(ctx context.Context, updates *auth.P
 			}
 		}
 
-		updatedExplicitChannels := princ.ExplicitChannels()
+		updatedExplicitChannels := princ.CollectionExplicitChannels(base.DefaultScope, base.DefaultCollection)
 		if updatedExplicitChannels == nil {
 			updatedExplicitChannels = ch.TimedSet{}
 		}

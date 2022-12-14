@@ -1263,8 +1263,8 @@ func TestWasDocInChannelAtSeq(t *testing.T) {
 	assert.Len(t, changes.Results, 1)
 }
 
-// Test does not directly run ChannelGrantedPeriods but aims to test this through performing revocation operations
-// that will hit the various cases that ChannelGrantedPeriods will handle
+// Test does not directly run channelGrantedPeriods but aims to test this through performing revocation operations
+// that will hit the various cases that channelGrantedPeriods will handle
 func TestChannelGrantedPeriods(t *testing.T) {
 	defer db.SuspendSequenceBatching()()
 	revocationTester, rt := InitScenario(t, nil)

@@ -75,7 +75,7 @@ func (user *userImpl) InheritedCollectionChannels(scope, collection string) ch.T
 func (user *userImpl) AuthorizeAnyCollectionChannel(scope, collection string, channels base.Set) error {
 
 	if base.IsDefaultCollection(scope, collection) {
-		return user.AuthorizeAnyChannel(channels)
+		return user.authorizeAnyChannel(channels)
 	}
 
 	// User access

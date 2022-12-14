@@ -21,6 +21,9 @@ import (
 func TestCollectionsSyncImportFunctions(t *testing.T) {
 	base.SkipImportTestsIfNotEnabled(t)
 
+	numCollections := 2
+	base.RequireNumTestDataStores(t, numCollections)
+
 	tb := base.GetTestBucket(t)
 	defer tb.Close()
 
@@ -35,10 +38,10 @@ func TestCollectionsSyncImportFunctions(t *testing.T) {
 	syncFunction1 := `function (doc) { console.log('syncFunction1'); return true }`
 	syncFunction2 := `function (doc) { console.log('syncFunction2'); return doc.type == 'onprem'}`
 
-	dataStore1 := tb.GetNamedDataStore(1)
+	dataStore1 := tb.GetNamedDataStore(0)
 	dataStore1Name, ok := base.AsDataStoreName(dataStore1)
 	require.True(t, ok)
-	dataStore2 := tb.GetNamedDataStore(2)
+	dataStore2 := tb.GetNamedDataStore(1)
 	dataStore2Name, ok := base.AsDataStoreName(dataStore2)
 	require.True(t, ok)
 	keyspace1 := fmt.Sprintf("%s.%s.%s", "db", dataStore1Name.ScopeName(), dataStore1Name.CollectionName())

@@ -339,7 +339,7 @@ func (db *DatabaseCollectionWithUser) wasDocInChannelPriorToRevocation(ctx conte
 	}
 
 	// Obtain periods where the channel we're interested in was accessible by the user
-	channelAccessPeriods, err := db.user.ChannelGrantedPeriods(chanName)
+	channelAccessPeriods, err := db.user.CollectionChannelGrantedPeriods(db.ScopeName(), db.Name(), chanName)
 	if err != nil {
 		return false, err
 	}
@@ -582,14 +582,14 @@ func (db *DatabaseCollectionWithUser) checkForUserUpdates(ctx context.Context, u
 		userChangeCount = newCount
 
 		if db.user != nil {
-			previousChannels = db.user.InheritedChannels()
+			previousChannels = db.user.InheritedCollectionChannels(db.ScopeName(), db.Name())
 			previousRoles := db.user.RoleNames()
 			if err := db.ReloadUser(ctx); err != nil {
 				base.WarnfCtx(ctx, "Error reloading user %q: %v", base.UD(db.user.Name()), err)
 				return false, 0, nil, err
 			}
 			// check whether channel set has changed
-			singleCollectionChannels := db.user.InheritedChannels().CompareKeys(previousChannels)
+			singleCollectionChannels := db.user.InheritedCollectionChannels(db.ScopeName(), db.Name()).CompareKeys(previousChannels)
 			collectionID := db.GetCollectionID()
 
 			for channelName, changed := range singleCollectionChannels {
@@ -821,7 +821,7 @@ func (db *DatabaseCollectionWithUser) SimpleMultiChangesFeed(ctx context.Context
 				}
 
 				if options.Revocations && db.user != nil && !options.ActiveOnly {
-					channelsToRevoke := db.user.RevokedChannels(options.Since.Seq, options.Since.LowSeq, options.Since.TriggeredBy)
+					channelsToRevoke := db.user.RevokedCollectionChannels(db.ScopeName(), db.Name(), options.Since.Seq, options.Since.LowSeq, options.Since.TriggeredBy)
 					for channel, revokedSeq := range channelsToRevoke {
 						revocationSinceSeq := options.Since.SafeSequence()
 						revokeFrom := uint64(0)
@@ -1285,14 +1285,14 @@ func createChangesEntry(ctx context.Context, docid string, db *DatabaseCollectio
 	userCanSeeDocChannel := false
 
 	// If admin, or the user has the star channel, include it in the results
-	if db.user == nil || db.user.Channels().Contains(channels.UserStarChannel) {
+	if db.user == nil || db.user.CollectionChannels(db.ScopeName(), db.Name()).Contains(channels.UserStarChannel) {
 		userCanSeeDocChannel = true
 	} else if len(populatedDoc.Channels) > 0 {
 		// Iterate over the doc's channels, including in the results:
 		//   - the active revision is in a channel the user can see (removal==nil)
 		//   - the doc has been removed from a user's channel later the requested since value (removal.Seq > options.Since.Seq).  In this case, we need to send removal:true changes entry
 		for channel, removal := range populatedDoc.Channels {
-			if db.user.CanSeeChannel(channel) && (removal == nil || removal.Seq > options.Since.Seq) {
+			if db.user.CanSeeCollectionChannel(db.ScopeName(), db.Name(), channel) && (removal == nil || removal.Seq > options.Since.Seq) {
 				userCanSeeDocChannel = true
 				// If removal, update removed channels and deleted flag.
 				if removal != nil {
