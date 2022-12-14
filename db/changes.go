@@ -339,7 +339,7 @@ func (db *DatabaseCollectionWithUser) wasDocInChannelPriorToRevocation(ctx conte
 	}
 
 	// Obtain periods where the channel we're interested in was accessible by the user
-	channelAccessPeriods, err := db.user.ChannelGrantedPeriods(chanName)
+	channelAccessPeriods, err := db.user.CollectionChannelGrantedPeriods(db.ScopeName(), db.Name(), chanName)
 	if err != nil {
 		return false, err
 	}
@@ -582,14 +582,14 @@ func (db *DatabaseCollectionWithUser) checkForUserUpdates(ctx context.Context, u
 		userChangeCount = newCount
 
 		if db.user != nil {
-			previousChannels = db.user.InheritedChannels()
+			previousChannels = db.user.InheritedCollectionChannels(db.ScopeName(), db.Name())
 			previousRoles := db.user.RoleNames()
 			if err := db.ReloadUser(ctx); err != nil {
 				base.WarnfCtx(ctx, "Error reloading user %q: %v", base.UD(db.user.Name()), err)
 				return false, 0, nil, err
 			}
 			// check whether channel set has changed
-			singleCollectionChannels := db.user.InheritedChannels().CompareKeys(previousChannels)
+			singleCollectionChannels := db.user.InheritedCollectionChannels(db.ScopeName(), db.Name()).CompareKeys(previousChannels)
 			collectionID := db.GetCollectionID()
 
 			for channelName, changed := range singleCollectionChannels {
@@ -821,7 +821,7 @@ func (db *DatabaseCollectionWithUser) SimpleMultiChangesFeed(ctx context.Context
 				}
 
 				if options.Revocations && db.user != nil && !options.ActiveOnly {
-					channelsToRevoke := db.user.RevokedChannels(options.Since.Seq, options.Since.LowSeq, options.Since.TriggeredBy)
+					channelsToRevoke := db.user.RevokedCollectionChannels(db.ScopeName(), db.Name(), options.Since.Seq, options.Since.LowSeq, options.Since.TriggeredBy)
 					for channel, revokedSeq := range channelsToRevoke {
 						revocationSinceSeq := options.Since.SafeSequence()
 						revokeFrom := uint64(0)

@@ -47,16 +47,16 @@ func TestUserCollectionAccess(t *testing.T) {
 	otherCollection := "collection2"
 	nonMatchingCollections := [][2]string{{base.DefaultScope, base.DefaultCollection}, {scope, otherCollection}, {otherScope, collection}, {otherScope, otherCollection}}
 	// Default collection checks - should not have access based on authenticator
-	assert.Equal(t, ch.BaseSetOf(t), user.ExpandWildCardChannel(ch.BaseSetOf(t, "*")))
-	assert.False(t, user.CanSeeChannel("x"))
-	assert.False(t, user.CanSeeChannel("!"))
+	assert.Equal(t, ch.BaseSetOf(t), user.expandWildCardChannel(ch.BaseSetOf(t, "*")))
+	assert.False(t, user.canSeeChannel("x"))
+	assert.False(t, user.canSeeChannel("!"))
 	assert.True(t, canSeeAllChannels(user, ch.BaseSetOf(t)))
 	assert.False(t, canSeeAllChannels(user, ch.BaseSetOf(t, "x")))
 	assert.False(t, canSeeAllChannels(user, ch.BaseSetOf(t, "x", "y")))
 	assert.False(t, canSeeAllChannels(user, ch.BaseSetOf(t, "*")))
-	assert.False(t, user.AuthorizeAllChannels(ch.BaseSetOf(t, "*")) == nil)
-	assert.False(t, user.AuthorizeAnyChannel(ch.BaseSetOf(t, "x", "y")) == nil)
-	assert.False(t, user.AuthorizeAnyChannel(ch.BaseSetOf(t)) == nil)
+	assert.False(t, user.authorizeAllChannels(ch.BaseSetOf(t, "*")) == nil)
+	assert.False(t, user.authorizeAnyChannel(ch.BaseSetOf(t, "x", "y")) == nil)
+	assert.False(t, user.authorizeAnyChannel(ch.BaseSetOf(t)) == nil)
 	// Named collection checks
 	assert.Equal(t, ch.BaseSetOf(t, "!"), user.expandCollectionWildCardChannel(scope, collection, ch.BaseSetOf(t, "*")))
 	assert.True(t, canSeeAllCollectionChannels(scope, collection, user, ch.BaseSetOf(t)))
@@ -128,16 +128,16 @@ func TestUserCollectionAccess(t *testing.T) {
 	// User with wildcard access:
 	user.setCollectionChannels(scope, collection, ch.AtSequence(ch.BaseSetOf(t, "*", "q"), 1))
 	// Legacy default collection checks
-	assert.Equal(t, ch.BaseSetOf(t), user.ExpandWildCardChannel(ch.BaseSetOf(t, "*")))
-	assert.False(t, user.CanSeeChannel("*"))
+	assert.Equal(t, ch.BaseSetOf(t), user.expandWildCardChannel(ch.BaseSetOf(t, "*")))
+	assert.False(t, user.canSeeChannel("*"))
 	assert.True(t, canSeeAllChannels(user, ch.BaseSetOf(t)))
 	assert.False(t, canSeeAllChannels(user, ch.BaseSetOf(t, "x")))
 	assert.False(t, canSeeAllChannels(user, ch.BaseSetOf(t, "x", "y")))
-	assert.False(t, user.AuthorizeAllChannels(ch.BaseSetOf(t, "x", "y")) == nil)
-	assert.False(t, user.AuthorizeAllChannels(ch.BaseSetOf(t, "*")) == nil)
-	assert.False(t, user.AuthorizeAnyChannel(ch.BaseSetOf(t, "x")) == nil)
-	assert.False(t, user.AuthorizeAnyChannel(ch.BaseSetOf(t, "*")) == nil)
-	assert.False(t, user.AuthorizeAnyChannel(ch.BaseSetOf(t)) == nil)
+	assert.False(t, user.authorizeAllChannels(ch.BaseSetOf(t, "x", "y")) == nil)
+	assert.False(t, user.authorizeAllChannels(ch.BaseSetOf(t, "*")) == nil)
+	assert.False(t, user.authorizeAnyChannel(ch.BaseSetOf(t, "x")) == nil)
+	assert.False(t, user.authorizeAnyChannel(ch.BaseSetOf(t, "*")) == nil)
+	assert.False(t, user.authorizeAnyChannel(ch.BaseSetOf(t)) == nil)
 	// Matching named collection checks
 	assert.Equal(t, ch.BaseSetOf(t, "*", "q"), user.expandCollectionWildCardChannel(scope, collection, ch.BaseSetOf(t, "*")))
 	assert.True(t, canSeeAllCollectionChannels(scope, collection, user, ch.BaseSetOf(t)))

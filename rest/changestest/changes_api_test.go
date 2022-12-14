@@ -1734,7 +1734,7 @@ func TestChangesActiveOnlyInteger(t *testing.T) {
 // If scope and collection are non-zero, builds collection access string for the collection
 func adminChannelGrant(scopeName, collectionName, adminChannels string) (collectionAdminChannels string) {
 
-	if scopeName == base.DefaultScope && collectionName == base.DefaultCollection {
+	if base.IsDefaultCollection(scopeName, collectionName) {
 		return adminChannels
 	}
 

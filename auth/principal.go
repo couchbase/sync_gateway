@@ -25,17 +25,17 @@ type Principal interface {
 	SetSequence(sequence uint64)
 
 	// Returns true if the Principal has access to the given channel.
-	CanSeeChannel(channel string) bool
+	canSeeChannel(channel string) bool
 
 	// If the Principal has access to the given channel, returns the sequence number at which
 	// access was granted; else returns zero.
-	CanSeeChannelSince(channel string) uint64
+	canSeeChannelSince(channel string) uint64
 
 	// Returns an error if the Principal does not have access to all the channels in the set.
-	AuthorizeAllChannels(channels base.Set) error
+	authorizeAllChannels(channels base.Set) error
 
 	// Returns an error if the Principal does not have access to any of the channels in the set.
-	AuthorizeAnyChannel(channels base.Set) error
+	authorizeAnyChannel(channels base.Set) error
 
 	// Returns an appropriate HTTPError for unauthorized access -- a 401 if the receiver is
 	// the guest user, else 403.
@@ -119,23 +119,23 @@ type User interface {
 
 	InitializeRoles()
 
-	RevokedChannels(since uint64, lowSeq uint64, triggeredBy uint64) RevokedChannels
+	revokedChannels(since uint64, lowSeq uint64, triggeredBy uint64) RevokedChannels
 
 	// Obtains the period over which the user had access to the given channel. Either directly or via a role.
-	ChannelGrantedPeriods(chanName string) ([]GrantHistorySequencePair, error)
+	channelGrantedPeriods(chanName string) ([]GrantHistorySequencePair, error)
 
 	// Every channel the user has access to, including those inherited from Roles.
-	InheritedChannels() ch.TimedSet
+	inheritedChannels() ch.TimedSet
 
 	// If the input set contains the wildcard "*" channel, returns the user's InheritedChannels;
 	// else returns the input channel list unaltered.
-	ExpandWildCardChannel(channels base.Set) base.Set
+	expandWildCardChannel(channels base.Set) base.Set
 
 	// Returns a TimedSet containing only the channels from the input set that the user has access
 	// to, annotated with the sequence number at which access was granted.
 	// Returns a string array containing any channels filtered out due to the user not having access
 	// to them.
-	FilterToAvailableChannels(channels ch.Set) (filtered ch.TimedSet, removed []string)
+	filterToAvailableChannels(channels ch.Set) (filtered ch.TimedSet, removed []string)
 
 	setRolesSince(ch.TimedSet)
 

@@ -90,7 +90,7 @@ type UserCollectionChannelAPI interface {
 	// to them.
 	FilterToAvailableCollectionChannels(scope, collection string, channels ch.Set) (filtered ch.TimedSet, removed []string)
 
-	// If the input set contains the wildcard "*" channel, returns the user's InheritedChannels for the collection;
+	// If the input set contains the wildcard "*" channel, returns the user's inheritedChannels for the collection;
 	// else returns the input channel list unaltered.
 	expandCollectionWildCardChannel(scope, collection string, channels base.Set) base.Set
 }
@@ -105,7 +105,7 @@ type PrincipalCollectionAccess interface {
 	// they are granted through a sync function.
 	//
 	// NOTE: channels a user has access to through a role are *not* included in Channels(), so the user could have
-	// access to more documents than included in Channels. CanSeeChannel will also check against the user's roles.
+	// access to more documents than included in Channels. canSeeChannel will also check against the user's roles.
 	Channels() ch.TimedSet
 
 	// Sets the explicit channels the Principal has access to.
