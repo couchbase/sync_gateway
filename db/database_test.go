@@ -1450,7 +1450,6 @@ func TestAccessFunctionDb(t *testing.T) {
 	collection := db.GetSingleDatabaseCollectionWithUser()
 
 	authenticator := db.Authenticator(ctx)
-	//authenticator := auth.NewAuthenticator(db.MetadataStore, db, auth.DefaultAuthenticatorOptions())
 
 	var err error
 	db.ChannelMapper = channels.NewChannelMapper(`function(doc){access(doc.users,doc.userChannels);}`, 0)
