@@ -157,22 +157,22 @@ func (tester *ChannelRevocationTester) getChanges(sinceSeq interface{}, expected
 func InitScenario(t *testing.T, rtConfig *RestTesterConfig) (ChannelRevocationTester, *RestTester) {
 	defaultSyncFn := `
 			function (doc, oldDoc){
-				if (doc._id === 'userRoles'){				
+				if (doc._id === 'userRoles'){
 					for (var key in doc.roles){
 						role(key, doc.roles[key]);
 					}
 				}
-				if (doc._id === 'roleChannels'){				
+				if (doc._id === 'roleChannels'){
 					for (var key in doc.channels){
 						access(key, doc.channels[key]);
 					}
 				}
-				if (doc._id === 'userChannels'){				
+				if (doc._id === 'userChannels'){
 					for (var key in doc.channels){
 						access(key, doc.channels[key]);
 					}
 				}
-				if (doc._id.indexOf("doc") >= 0){				
+				if (doc._id.indexOf("doc") >= 0){
 					channel(doc.channels);
 				}
 			}`
@@ -1430,12 +1430,12 @@ func TestRevocationWithUserXattrs(t *testing.T) {
 		}},
 		SyncFn: `
 			function (doc, oldDoc, meta){
-				if (doc._id === 'accessDoc' && meta.xattrs.channelInfo !== undefined){
+				if (doc._id === 'accessDoc' && meta.xattrs.channelInfo){
 					for (var key in meta.xattrs.channelInfo.userChannels){
 						access(key, meta.xattrs.channelInfo.userChannels[key]);
 					}
 				}
-				if (doc._id.indexOf("doc") >= 0){				
+				if (doc._id.indexOf("doc") >= 0){
 					channel(doc.channels);
 				}
 			}`,
