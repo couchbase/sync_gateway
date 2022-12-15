@@ -152,7 +152,7 @@ func TestCBGTIndexCreation(t *testing.T) {
 			// Use an in-memory cfg, set up cbgt manager
 			ctx := LogContextWith(TestCtx(t), &DatabaseLogContext{DatabaseName: tc.dbName})
 			cfg := cbgt.NewCfgMem()
-			context, err := initCBGTManager(ctx, bucket, spec, cfg, "testIndexCreation", tc.dbName)
+			context, err := initCBGTManager(ctx, bucket, spec, cfg, "testIndexCreation", tc.dbName, spec.Serverless)
 			assert.NoError(t, err)
 			defer context.RemoveFeedCredentials(tc.dbName)
 
@@ -256,7 +256,7 @@ func TestCBGTIndexCreationSafeLegacyName(t *testing.T) {
 	// Use an in-memory cfg, set up cbgt manager
 	ctx := TestCtx(t)
 	cfg := cbgt.NewCfgMem()
-	context, err := initCBGTManager(ctx, bucket, spec, cfg, "testIndexCreation", testDbName)
+	context, err := initCBGTManager(ctx, bucket, spec, cfg, "testIndexCreation", testDbName, spec.Serverless)
 	assert.NoError(t, err)
 	defer context.RemoveFeedCredentials(testDbName)
 
@@ -333,7 +333,7 @@ func TestCBGTIndexCreationUnsafeLegacyName(t *testing.T) {
 	// Use an in-memory cfg, set up cbgt manager
 	ctx := TestCtx(t)
 	cfg := cbgt.NewCfgMem()
-	context, err := initCBGTManager(ctx, bucket, spec, cfg, "testIndexCreation", unsafeTestDBName)
+	context, err := initCBGTManager(ctx, bucket, spec, cfg, "testIndexCreation", unsafeTestDBName, spec.Serverless)
 	assert.NoError(t, err)
 	defer context.RemoveFeedCredentials(unsafeTestDBName)
 
@@ -433,7 +433,7 @@ func TestConcurrentCBGTIndexCreation(t *testing.T) {
 
 			ctx := TestCtx(t)
 			managerUUID := fmt.Sprintf("%s%d", t.Name(), i)
-			context, err := initCBGTManager(ctx, bucket, spec, cfg, managerUUID, testDBName)
+			context, err := initCBGTManager(ctx, bucket, spec, cfg, managerUUID, testDBName, spec.Serverless)
 			assert.NoError(t, err)
 
 			// StartManager starts the manager and creates the index
