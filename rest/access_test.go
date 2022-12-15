@@ -26,13 +26,14 @@ import (
 )
 
 func TestPublicChanGuestAccess(t *testing.T) {
-	rt := NewRestTester(t, &RestTesterConfig{
-		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
-			Guest: &auth.PrincipalConfig{
-				Disabled: base.BoolPtr(false),
-			},
-		}},
-	})
+	rt := NewRestTesterDefaultCollection(t, // CBG-2618: fix collection channel access
+		&RestTesterConfig{
+			DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
+				Guest: &auth.PrincipalConfig{
+					Disabled: base.BoolPtr(false),
+				},
+			}},
+		})
 	defer rt.Close()
 
 	// Create a document on the public channel
@@ -79,10 +80,10 @@ func TestStarAccess(t *testing.T) {
 	}
 
 	// Create some docs:
-	rt := NewRestTester(t, nil)
+	rt := NewRestTesterDefaultCollection(t, nil) // CBG-2618: fix collection channel access
 	defer rt.Close()
 
-	a := auth.NewAuthenticator(rt.Bucket(), nil, auth.DefaultAuthenticatorOptions())
+	a := auth.NewAuthenticator(rt.MetadataStore(), nil, auth.DefaultAuthenticatorOptions())
 	var changes struct {
 		Results []db.ChangeEntry
 	}
@@ -351,8 +352,9 @@ func TestForceAPIForbiddenErrors(t *testing.T) {
 				AssertStatus(t, resp, statusIfForbiddenErrorsFalse)
 			}
 
-			rt := NewRestTester(t, &RestTesterConfig{
-				SyncFn: `
+			rt := NewRestTesterDefaultCollection(t, // CBG-2618: fix collection channel access
+				&RestTesterConfig{
+					SyncFn: `
 				function(doc, oldDoc) {
 					if (!doc.doNotSync) {
 						access("NoPerms", "chan2");
@@ -361,24 +363,24 @@ func TestForceAPIForbiddenErrors(t *testing.T) {
 						channel(doc.channels);
 					}
 				}`,
-				DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
-					Unsupported: &db.UnsupportedOptions{
-						ForceAPIForbiddenErrors: test.forceForbiddenErrors,
-					},
-					Guest: &auth.PrincipalConfig{
-						Disabled: base.BoolPtr(false),
-					},
-					Users: map[string]*auth.PrincipalConfig{
-						"NoPerms": {
-							Password: base.StringPtr("password"),
+					DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
+						Unsupported: &db.UnsupportedOptions{
+							ForceAPIForbiddenErrors: test.forceForbiddenErrors,
 						},
-						"Perms": {
-							ExplicitChannels: base.SetOf("chan"),
-							Password:         base.StringPtr("password"),
+						Guest: &auth.PrincipalConfig{
+							Disabled: base.BoolPtr(false),
 						},
-					},
-				}},
-			})
+						Users: map[string]*auth.PrincipalConfig{
+							"NoPerms": {
+								Password: base.StringPtr("password"),
+							},
+							"Perms": {
+								ExplicitChannels: base.SetOf("chan"),
+								Password:         base.StringPtr("password"),
+							},
+						},
+					}},
+				})
 			defer rt.Close()
 
 			// Create the initial document
@@ -527,7 +529,7 @@ func TestBulkDocsChangeToAccess(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAccess)
 
 	rtConfig := RestTesterConfig{SyncFn: `function(doc) {if(doc.type == "setaccess") {channel(doc.channel); access(doc.owner, doc.channel);} else { requireAccess(doc.channel)}}`}
-	rt := NewRestTester(t, &rtConfig)
+	rt := NewRestTesterDefaultCollection(t, &rtConfig)
 	defer rt.Close()
 
 	ctx := rt.Context()
@@ -559,8 +561,7 @@ func TestBulkDocsChangeToAccess(t *testing.T) {
 
 // Test _all_docs API call under different security scenarios
 func TestAllDocsAccessControl(t *testing.T) {
-	// restTester := initRestTester(db.IntSequenceType, `function(doc) {channel(doc.channels);}`)
-	rt := NewRestTester(t, nil)
+	rt := NewRestTesterDefaultCollection(t, nil) // CBG-2618: fix collection channel access
 	defer rt.Close()
 	type allDocsRow struct {
 		ID    string `json:"id"`
@@ -580,7 +581,7 @@ func TestAllDocsAccessControl(t *testing.T) {
 	}
 
 	// Create some docs:
-	a := auth.NewAuthenticator(rt.Bucket(), nil, auth.DefaultAuthenticatorOptions())
+	a := auth.NewAuthenticator(rt.MetadataStore(), nil, auth.DefaultAuthenticatorOptions())
 	guest, err := a.GetUser("")
 	assert.NoError(t, err)
 	guest.SetDisabled(false)
@@ -796,7 +797,7 @@ func TestChannelAccessChanges(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache, base.KeyChanges, base.KeyCRUD)
 
 	rtConfig := RestTesterConfig{SyncFn: `function(doc) {access(doc.owner, doc._id);channel(doc.channel)}`}
-	rt := NewRestTester(t, &rtConfig)
+	rt := NewRestTesterDefaultCollection(t, &rtConfig) // CBG-2618: fix collection channel access
 	defer rt.Close()
 
 	ctx := rt.Context()
@@ -1046,4 +1047,201 @@ func TestAccessOnTombstone(t *testing.T) {
 		assert.Equal(t, true, changes.Results[0].Deleted)
 	}
 
+}
+
+func TestDynamicChannelGrant(t *testing.T) {
+
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAccess)
+
+	rtConfig := RestTesterConfig{SyncFn: `function(doc) {if(doc.type == "setaccess") {channel(doc.channel); access(doc.owner, doc.channel);} else { channel(doc.channel)}}`}
+	rt := NewRestTester(t, &rtConfig)
+	defer rt.Close()
+
+	ctx := rt.Context()
+	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
+	user, err := a.GetUser("")
+	assert.NoError(t, err)
+	user.SetDisabled(true)
+	err = a.Save(user)
+	require.NoError(t, err)
+
+	// Create a test user
+	user, err = a.NewUser("user1", "letmein", nil)
+	require.NoError(t, err)
+	require.NoError(t, a.Save(user))
+
+	collection := rt.GetDatabase().GetSingleDatabaseCollection()
+	keyspace := fmt.Sprintf("%s.%s.%s", "db", collection.ScopeName(), collection.Name())
+
+	// Create a document in channel chan1
+	response := rt.Send(RequestByUser("PUT", "/"+keyspace+"/doc1", `{"channel":"chan1", "greeting":"hello"}`, "user1"))
+	RequireStatus(t, response, 201)
+
+	// Verify user cannot access document
+	response = rt.Send(RequestByUser("GET", "/"+keyspace+"/doc1", "", "user1"))
+	RequireStatus(t, response, 403)
+
+	// Write access granting document
+	response = rt.Send(RequestByUser("PUT", "/"+keyspace+"/grant1", `{"type":"setaccess", "owner":"user1", "channel":"chan1"}`, "user1"))
+	RequireStatus(t, response, 201)
+
+	// Verify user can access document
+	response = rt.Send(RequestByUser("GET", "/"+keyspace+"/doc1", "", "user1"))
+	RequireStatus(t, response, 200)
+
+	var body db.Body
+	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
+	assert.Equal(t, "hello", body["greeting"])
+
+	// Create a document in channel chan2
+	response = rt.Send(RequestByUser("PUT", "/"+keyspace+"/doc2", `{"channel":"chan2", "greeting":"hello"}`, "user1"))
+	RequireStatus(t, response, 201)
+
+	// Write access granting document for chan2 (tests invalidation when channels/inval_seq exists)
+	response = rt.Send(RequestByUser("PUT", "/"+keyspace+"/grant2", `{"type":"setaccess", "owner":"user1", "channel":"chan2"}`, "user1"))
+	RequireStatus(t, response, 201)
+
+	// Verify user can now access both documents
+	response = rt.Send(RequestByUser("GET", "/"+keyspace+"/doc1", "", "user1"))
+	RequireStatus(t, response, 200)
+	response = rt.Send(RequestByUser("GET", "/"+keyspace+"/doc2", "", "user1"))
+	RequireStatus(t, response, 200)
+}
+
+// Verify a dynamic grant of a channel to a role is inherited by a user with that role
+func TestRoleChannelGrantInheritance(t *testing.T) {
+
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAccess)
+
+	rtConfig := RestTesterConfig{SyncFn: `function(doc) {if(doc.type == "setaccess") {channel(doc.channel); access(doc.owner, doc.channel);} else { channel(doc.channel)}}`}
+	rt := NewRestTester(t, &rtConfig)
+	defer rt.Close()
+
+	ctx := rt.Context()
+	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
+
+	collection := rt.GetDatabase().GetSingleDatabaseCollection()
+	scopeName := collection.ScopeName()
+	collectionName := collection.Name()
+	keyspace := fmt.Sprintf("%s.%s.%s", "db", scopeName, collectionName)
+
+	user, err := a.GetUser("")
+	assert.NoError(t, err)
+	user.SetDisabled(true)
+	err = a.Save(user)
+	require.NoError(t, err)
+
+	// Create a role with admin grant of chan1
+	role, err := a.NewRole("role1", nil)
+	role.SetCollectionExplicitChannels(scopeName, collectionName, channels.TimedSet{"chan1": channels.NewVbSimpleSequence(1)}, 1)
+	require.NoError(t, err)
+	require.NoError(t, a.Save(role))
+
+	// Create a test user with access to the role
+	user, err = a.NewUser("user1", "letmein", nil)
+	require.NoError(t, err)
+	user.SetExplicitRoles(channels.TimedSet{"role1": channels.NewVbSimpleSequence(1)}, 1)
+	require.NoError(t, a.Save(user))
+
+	// Create documents in channels chan1, chan2, chan3
+	response := rt.Send(RequestByUser("PUT", "/"+keyspace+"/doc1", `{"channel":"chan1", "greeting":"hello"}`, "user1"))
+	RequireStatus(t, response, 201)
+	response = rt.Send(RequestByUser("PUT", "/"+keyspace+"/doc2", `{"channel":"chan2", "greeting":"hello"}`, "user1"))
+	RequireStatus(t, response, 201)
+	response = rt.Send(RequestByUser("PUT", "/"+keyspace+"/doc3", `{"channel":"chan3", "greeting":"hello"}`, "user1"))
+	RequireStatus(t, response, 201)
+
+	// Verify user can access document in admin role channel (chan1)
+	response = rt.Send(RequestByUser("GET", "/"+keyspace+"/doc1", "", "user1"))
+	RequireStatus(t, response, 200)
+
+	// Verify user cannot access other documents
+	response = rt.Send(RequestByUser("GET", "/"+keyspace+"/doc2", "", "user1"))
+	RequireStatus(t, response, 403)
+	response = rt.Send(RequestByUser("GET", "/"+keyspace+"/doc3", "", "user1"))
+	RequireStatus(t, response, 403)
+
+	// Write access granting document (grants chan2 to role role1)
+	response = rt.Send(RequestByUser("PUT", "/"+keyspace+"/grant1", `{"type":"setaccess", "owner":"role:role1", "channel":"chan2"}`, "user1"))
+	RequireStatus(t, response, 201)
+	grant1Rev := RespRevID(t, response)
+
+	// Verify user can access document
+	response = rt.Send(RequestByUser("GET", "/"+keyspace+"/doc2", "", "user1"))
+	RequireStatus(t, response, 200)
+
+	var body db.Body
+	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
+	assert.Equal(t, "hello", body["greeting"])
+
+	// Write access granting document for chan2 (tests invalidation when channels/inval_seq exists)
+	response = rt.Send(RequestByUser("PUT", "/"+keyspace+"/grant2", `{"type":"setaccess", "owner":"role:role1", "channel":"chan3"}`, "user1"))
+	RequireStatus(t, response, 201)
+
+	// Verify user can now access all three documents
+	response = rt.Send(RequestByUser("GET", "/"+keyspace+"/doc1", "", "user1"))
+	RequireStatus(t, response, 200)
+	response = rt.Send(RequestByUser("GET", "/"+keyspace+"/doc2", "", "user1"))
+	RequireStatus(t, response, 200)
+	response = rt.Send(RequestByUser("GET", "/"+keyspace+"/doc3", "", "user1"))
+	RequireStatus(t, response, 200)
+
+	// Revoke access to chan2 (dynamic)
+	response = rt.Send(RequestByUser("PUT", "/"+keyspace+"/grant1?rev="+grant1Rev, `{"type":"setaccess", "owner":"none", "channel":"chan2"}`, "user1"))
+	RequireStatus(t, response, 201)
+
+	// Verify user cannot access doc in revoked channel, but can successfully access remaining documents
+	response = rt.Send(RequestByUser("GET", "/"+keyspace+"/doc2", "", "user1"))
+	RequireStatus(t, response, 403)
+	response = rt.Send(RequestByUser("GET", "/"+keyspace+"/doc1", "", "user1"))
+	RequireStatus(t, response, 200)
+	response = rt.Send(RequestByUser("GET", "/"+keyspace+"/doc3", "", "user1"))
+	RequireStatus(t, response, 200)
+
+}
+
+func TestPublicChannel(t *testing.T) {
+
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAccess, base.KeyHTTP, base.KeyHTTPResp)
+
+	rtConfig := RestTesterConfig{SyncFn: `
+           function(doc) {
+              if(doc.type == "public") {
+                 channel("!")
+              } else { 
+                 channel(doc.channel)
+              }
+           }`}
+	rt := NewRestTester(t, &rtConfig)
+	defer rt.Close()
+
+	ctx := rt.Context()
+	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
+	user, err := a.GetUser("")
+	require.NoError(t, err)
+	user.SetDisabled(true)
+	err = a.Save(user)
+	require.NoError(t, err)
+
+	// Create a test user
+	user, err = a.NewUser("user1", "letmein", nil)
+	require.NoError(t, err)
+	require.NoError(t, a.Save(user))
+
+	collection := rt.GetDatabase().GetSingleDatabaseCollection()
+	keyspace := fmt.Sprintf("%s.%s.%s", "db", collection.ScopeName(), collection.Name())
+
+	// Create a document in public channel
+	response := rt.Send(RequestByUser("PUT", "/"+keyspace+"/publicDoc", `{"type":"public", "greeting":"hello"}`, "user1"))
+	RequireStatus(t, response, 201)
+
+	// Create a document in non-public channel
+	response = rt.Send(RequestByUser("PUT", "/"+keyspace+"/privateDoc", `{"channel":"restricted", "greeting":"hello"}`, "user1"))
+	RequireStatus(t, response, 201)
+
+	// Verify user can access public document, cannot access non-public document
+	response = rt.Send(RequestByUser("GET", "/"+keyspace+"/publicDoc", "", "user1"))
+	RequireStatus(t, response, 200)
+	response = rt.Send(RequestByUser("GET", "/"+keyspace+"/privateDoc", "", "user1"))
+	RequireStatus(t, response, 403)
 }

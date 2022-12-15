@@ -36,10 +36,11 @@ func reduceTestCheckpointInterval(interval time.Duration) func() {
 func addActiveRT(t *testing.T, testBucket *base.TestBucket) (activeRT *rest.RestTester) {
 
 	// Create a new rest tester, using a NoCloseClone of testBucket, which disables the TestBucketPool teardown
-	activeRT = rest.NewRestTester(t, &rest.RestTesterConfig{
-		CustomTestBucket:   testBucket.NoCloseClone(),
-		SgReplicateEnabled: true,
-	})
+	activeRT = rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+		&rest.RestTesterConfig{
+			CustomTestBucket:   testBucket.NoCloseClone(),
+			SgReplicateEnabled: true,
+		})
 
 	// If this is a walrus bucket, we need to jump through some hoops to ensure the shared in-memory walrus bucket isn't
 	// deleted when bucket.Close() is called during DatabaseContext.Close().
@@ -47,13 +48,18 @@ func addActiveRT(t *testing.T, testBucket *base.TestBucket) (activeRT *rest.Rest
 	// Because RestTester has Sync Gateway create the database context and bucket based on the bucketSpec, we can't
 	// set up the leakyBucket wrapper prior to bucket creation.
 	// Instead, we need to modify the leaky bucket config (created for vbno handling) after the fact.
-	leakyBucket, ok := activeRT.GetDatabase().Bucket.(*base.LeakyBucket)
+	leakyBucket, ok := base.AsLeakyBucket(activeRT.GetDatabase().Bucket)
 	if ok {
-		underlyingBucket := leakyBucket.GetUnderlyingBucket()
-		if _, ok := underlyingBucket.(*walrus.WalrusBucket); ok {
+		ub := leakyBucket.GetUnderlyingBucket()
+		_, isWalrusBucket := ub.(*walrus.WalrusBucket)
+		_, isWalrusCollectionBucket := ub.(*walrus.CollectionBucket)
+		if isWalrusBucket || isWalrusCollectionBucket {
 			leakyBucket.SetIgnoreClose(true)
 		}
 	}
+
+	// Trigger the lazy load of bucket for RestTester startup
+	_ = activeRT.Bucket()
 
 	return activeRT
 }
@@ -67,9 +73,9 @@ func requireRevID(t *testing.T, rt *rest.RestTester, docID, revID string) {
 }
 func requireErrorKeyNotFound(t *testing.T, rt *rest.RestTester, docID string) {
 	var body []byte
-	_, err := rt.Bucket().Get(docID, &body)
+	_, err := rt.Bucket().DefaultDataStore().Get(docID, &body)
 	require.Error(t, err)
-	require.True(t, base.IsKeyNotFoundError(rt.Bucket(), err))
+	require.True(t, base.IsKeyNotFoundError(rt.Bucket().DefaultDataStore(), err))
 }
 
 // waitForTombstone waits until the specified tombstone revision is available

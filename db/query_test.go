@@ -327,12 +327,12 @@ func TestCoveringQueries(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 
-	n1QLStore, ok := base.AsN1QLStore(db.Bucket)
+	collection := db.GetSingleDatabaseCollection()
+	n1QLStore, ok := base.AsN1QLStore(collection.dataStore)
 	if !ok {
 		t.Errorf("Unable to get n1QLStore for testBucket")
 	}
 
-	collection := db.GetSingleDatabaseCollection()
 	// channels
 	channelsStatement, params := collection.buildChannelsQuery("ABC", 0, 10, 100, false)
 	plan, explainErr := n1QLStore.ExplainQuery(channelsStatement, params)
@@ -354,7 +354,7 @@ func TestCoveringQueries(t *testing.T) {
 	// Access and roleAccess currently aren't covering, because of the need to target the user property by name
 	// in the SELECT.
 	// Including here for ease-of-conversion when we get an indexing enhancement to support covered queries.
-	accessStatement := db.buildAccessQuery("user1")
+	accessStatement := collection.buildAccessQuery("user1")
 	plan, explainErr = n1QLStore.ExplainQuery(accessStatement, nil)
 	assert.NoError(t, explainErr, "Error generating explain for access query")
 	covered = IsCovered(plan)
@@ -397,6 +397,7 @@ func TestAllDocsQuery(t *testing.T) {
 	var row map[string]interface{}
 	rowCount := 0
 	for results.Next(&row) {
+		t.Logf("row[%d]: %v", rowCount, row)
 		rowCount++
 	}
 	assert.Equal(t, 10, rowCount)
@@ -409,6 +410,7 @@ func TestAllDocsQuery(t *testing.T) {
 	assert.NoError(t, queryErr, "Query error")
 	rowCount = 0
 	for results.Next(&row) {
+		t.Logf("row[%d]: %v", rowCount, row)
 		rowCount++
 	}
 	assert.Equal(t, 10, rowCount)
@@ -421,6 +423,7 @@ func TestAllDocsQuery(t *testing.T) {
 	assert.NoError(t, queryErr, "Query error")
 	rowCount = 0
 	for results.Next(&row) {
+		t.Logf("row[%d]: %v", rowCount, row)
 		assert.NotEqual(t, row["id"], "InvalidData")
 		rowCount++
 	}
@@ -434,6 +437,7 @@ func TestAllDocsQuery(t *testing.T) {
 	assert.NoError(t, queryErr, "Query error")
 	rowCount = 0
 	for results.Next(&row) {
+		t.Logf("row[%d]: %v", rowCount, row)
 		rowCount++
 	}
 	assert.Equal(t, 10, rowCount)
@@ -442,6 +446,7 @@ func TestAllDocsQuery(t *testing.T) {
 }
 
 func TestAccessQuery(t *testing.T) {
+
 	if base.UnitTestUrlIsWalrus() || base.TestsDisableGSI() {
 		t.Skip("This test is Couchbase Server and UseViews=false only")
 	}
@@ -461,7 +466,7 @@ func TestAccessQuery(t *testing.T) {
 
 	// Standard query
 	username := "user1"
-	results, queryErr := db.QueryAccess(base.TestCtx(t), username)
+	results, queryErr := collection.QueryAccess(base.TestCtx(t), username)
 	assert.NoError(t, queryErr, "Query error")
 	var row map[string]interface{}
 	rowCount := 0
@@ -476,7 +481,7 @@ func TestAccessQuery(t *testing.T) {
 	usernames := []string{"user1'", "user1?", "user1 ! user2$"}
 	// usernames = append(usernames, "user1`AND") // TODO: MB-50619 - broken until Server 7.1.0
 	for _, username := range usernames {
-		results, queryErr = db.QueryAccess(base.TestCtx(t), username)
+		results, queryErr = collection.QueryAccess(base.TestCtx(t), username)
 		assert.NoError(t, queryErr, "Query error")
 		rowCount = 0
 		for results.Next(&row) {
@@ -488,6 +493,7 @@ func TestAccessQuery(t *testing.T) {
 }
 
 func TestRoleAccessQuery(t *testing.T) {
+
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test is Couchbase Server only")
 	}
@@ -507,7 +513,7 @@ func TestRoleAccessQuery(t *testing.T) {
 
 	// Standard query
 	username := "user1"
-	results, queryErr := db.QueryRoleAccess(base.TestCtx(t), username)
+	results, queryErr := collection.QueryRoleAccess(base.TestCtx(t), username)
 	assert.NoError(t, queryErr, "Query error")
 	var row map[string]interface{}
 	rowCount := 0
@@ -522,7 +528,7 @@ func TestRoleAccessQuery(t *testing.T) {
 	usernames := []string{"user1'", "user1?", "user1 ! user2$"}
 	// usernames = append(usernames, "user1`AND") // TODO: MB-50619 - broken until Server 7.1.0
 	for _, username := range usernames {
-		results, queryErr = db.QueryRoleAccess(base.TestCtx(t), username)
+		results, queryErr = collection.QueryRoleAccess(base.TestCtx(t), username)
 		assert.NoError(t, queryErr, "Query error")
 		rowCount = 0
 		for results.Next(&row) {

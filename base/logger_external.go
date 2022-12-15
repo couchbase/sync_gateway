@@ -55,7 +55,7 @@ func (GoCBLogger) Log(level gocb.LogLevel, offset int, format string, v ...inter
 		logTo(context.TODO(), LevelWarn, KeyAll, KeyGoCB.String()+": "+format, v...)
 	case gocb.LogInfo:
 		logTo(context.TODO(), LevelDebug, KeyGoCB, format, v...)
-	case gocb.LogDebug, gocb.LogTrace:
+	case gocb.LogDebug, gocb.LogTrace, gocb.LogSched:
 		logTo(context.TODO(), LevelTrace, KeyGoCB, format, v...)
 	}
 	return nil

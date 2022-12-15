@@ -431,10 +431,8 @@ func TestBlipSubChangesDocIDFilter(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)
 
-	bt, err := NewBlipTester(t)
-	assert.NoError(t, err, "Error creating BlipTester")
+	bt := NewBlipTesterDefaultCollection(t)
 	defer bt.Close()
-
 	// Counter/Waitgroup to help ensure that all callbacks on continuous changes handler are received
 	receivedChangesWg := sync.WaitGroup{}
 	receivedCaughtUpChange := false
@@ -757,15 +755,15 @@ func TestPublicPortAuthentication(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)
 
 	// Create bliptester that is connected as user1, with access to the user1 channel
-	btUser1, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
-		connectingUsername: "user1",
-		connectingPassword: "1234",
-	})
-	require.NoError(t, err, "Error creating BlipTester")
+	btUser1 := NewBlipTesterDefaultCollectionFromSpec(t, // CBG-2619: make collection aware
+		BlipTesterSpec{
+			connectingUsername: "user1",
+			connectingPassword: "1234",
+		})
 	defer btUser1.Close()
 
 	// Send the user1 doc
-	_, _, _, err = btUser1.SendRev(
+	_, _, _, err := btUser1.SendRev(
 		"foo",
 		"1-abc",
 		[]byte(`{"key": "val", "channels": ["user1"]}`),
@@ -820,8 +818,10 @@ function(doc, oldDoc) {
 }
 
 `
-	rtConfig := RestTesterConfig{SyncFn: syncFunction}
-	var rt = NewRestTester(t, &rtConfig)
+	rtConfig := RestTesterConfig{
+		SyncFn: syncFunction,
+	}
+	var rt = NewRestTesterDefaultCollection(t, &rtConfig) // CBG-2619: make collection aware
 	defer rt.Close()
 	ctx := rt.Context()
 
@@ -1311,8 +1311,10 @@ func TestReloadUser(t *testing.T) {
     `
 
 	// Setup
-	rtConfig := RestTesterConfig{SyncFn: syncFn}
-	rt := NewRestTester(t, &rtConfig)
+	rtConfig := RestTesterConfig{
+		SyncFn: syncFn,
+	}
+	rt := NewRestTesterDefaultCollection(t, &rtConfig) // CBG-2619: make collection aware
 	defer rt.Close()
 	ctx := rt.Context()
 	bt, err := NewBlipTesterFromSpecWithRT(t, &BlipTesterSpec{
@@ -1412,11 +1414,10 @@ func TestAccessGrantViaAdminApi(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)
 
 	// Create blip tester
-	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
+	bt := NewBlipTesterDefaultCollectionFromSpec(t, BlipTesterSpec{
 		connectingUsername: "user1",
 		connectingPassword: "1234",
 	})
-	require.NoError(t, err, "Unexpected error creating BlipTester")
 	defer bt.Close()
 
 	// Add a doc in the PBS channel
@@ -1673,7 +1674,7 @@ func TestGetRemovedDoc(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)
 
-	rt := NewRestTester(t, nil)
+	rt := NewRestTesterDefaultCollection(t, nil) // CBG-2619: make collection aware
 	defer rt.Close()
 	btSpec := BlipTesterSpec{
 		connectingUsername: "user1",
@@ -1739,7 +1740,7 @@ func TestGetRemovedDoc(t *testing.T) {
 
 	// Delete any temp revisions in case this prevents the bug from showing up (didn't make a difference)
 	tempRevisionDocID := base.RevPrefix + "foo:5:3-cde"
-	err = rt.GetDatabase().Bucket.Delete(tempRevisionDocID)
+	err = rt.GetDatabase().Bucket.DefaultDataStore().Delete(tempRevisionDocID)
 	assert.NoError(t, err, "Unexpected Error")
 
 	// Try to get rev 3 via BLIP API and assert that _removed == true
@@ -1946,7 +1947,7 @@ func TestRemovedMessageWithAlternateAccess(t *testing.T) {
 	defer db.SuspendSequenceBatching()()
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
-	rt := NewRestTester(t, nil)
+	rt := NewRestTesterDefaultCollection(t, nil) // CBG-2619: make collection aware
 	defer rt.Close()
 
 	resp := rt.SendAdminRequest("PUT", "/db/_user/user", `{"admin_channels": ["A", "B"], "password": "test"}`)
@@ -2052,7 +2053,7 @@ func TestRemovedMessageWithAlternateAccessAndChannelFilteredReplication(t *testi
 	defer db.SuspendSequenceBatching()()
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
-	rt := NewRestTester(t, nil)
+	rt := NewRestTesterDefaultCollection(t, nil) // CBG-2619: make collection aware
 	defer rt.Close()
 
 	resp := rt.SendAdminRequest("PUT", "/db/_user/user", `{"admin_channels": ["A", "B"], "password": "test"}`)
@@ -2354,7 +2355,10 @@ func TestBlipInternalPropertiesHandling(t *testing.T) {
 	}
 
 	// Setup
-	rt := NewRestTester(t, &RestTesterConfig{GuestEnabled: true})
+	rt := NewRestTesterDefaultCollection(t, // CBG-2619: make collection aware
+		&RestTesterConfig{
+			GuestEnabled: true,
+		})
 	defer rt.Close()
 
 	client, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
@@ -2385,7 +2389,7 @@ func TestBlipInternalPropertiesHandling(t *testing.T) {
 			require.NoError(t, err)
 
 			var bucketDoc map[string]interface{}
-			_, err = rt.Bucket().Get(docID, &bucketDoc)
+			_, err = rt.Bucket().DefaultDataStore().Get(docID, &bucketDoc)
 			assert.NoError(t, err)
 			body := rt.GetDoc(docID)
 			// Confirm input body is in the bucket doc
@@ -2440,7 +2444,8 @@ func TestProcessRevIncrementsStat(t *testing.T) {
 	err = activeRT.WaitForRev("doc", rev)
 	require.NoError(t, err)
 
-	assert.EqualValues(t, 1, pullStats.HandleRevCount.Value())
+	_, ok := base.WaitForStat(pullStats.HandleRevCount.Value, 1)
+	require.True(t, ok)
 	assert.NotEqualValues(t, 0, pullStats.HandleRevBytes.Value())
 	// Confirm connected client count has not increased, which uses same processRev code
 	assert.EqualValues(t, 0, pullStats.HandlePutRevCount.Value())
@@ -2532,7 +2537,7 @@ func TestSendRevisionNoRevHandling(t *testing.T) {
 			})
 			defer rt.Close()
 
-			leakyBucket, ok := base.AsLeakyBucket(rt.Bucket())
+			leakyDataStore, ok := base.AsLeakyDataStore(rt.Bucket().DefaultDataStore())
 			require.True(t, ok)
 
 			btc, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
@@ -2550,7 +2555,7 @@ func TestSendRevisionNoRevHandling(t *testing.T) {
 			RequireStatus(t, resp, http.StatusCreated)
 
 			// Make the LeakyBucket return an error
-			leakyBucket.SetGetRawCallback(func(key string) error {
+			leakyDataStore.SetGetRawCallback(func(key string) error {
 				return test.error
 			})
 

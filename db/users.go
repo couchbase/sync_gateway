@@ -78,10 +78,10 @@ func (dbc *DatabaseContext) UpdatePrincipal(ctx context.Context, updates *auth.P
 					err = base.HTTPErrorf(http.StatusBadRequest, "Error creating user: %s", reason)
 					return replaced, err
 				}
-				user, err = authenticator.NewUser(*updates.Name, "", nil)
+				user, err = authenticator.NewUserNoChannels(*updates.Name, "")
 				princ = user
 			} else {
-				princ, err = authenticator.NewRole(*updates.Name, nil)
+				princ, err = authenticator.NewRoleNoChannels(*updates.Name)
 			}
 			if err != nil {
 				return replaced, fmt.Errorf("Error creating user/role: %w", err)
@@ -108,11 +108,16 @@ func (dbc *DatabaseContext) UpdatePrincipal(ctx context.Context, updates *auth.P
 			}
 		}
 
-		updatedExplicitChannels := princ.ExplicitChannels()
+		updatedExplicitChannels := princ.CollectionExplicitChannels(base.DefaultScope, base.DefaultCollection)
 		if updatedExplicitChannels == nil {
 			updatedExplicitChannels = ch.TimedSet{}
 		}
 		if updates.ExplicitChannels != nil && !updatedExplicitChannels.Equals(updates.ExplicitChannels) {
+			changed = true
+		}
+
+		collectionAccessChanged := dbc.RequiresCollectionAccessUpdate(ctx, princ, updates.CollectionAccess)
+		if collectionAccessChanged {
 			changed = true
 		}
 
@@ -191,6 +196,10 @@ func (dbc *DatabaseContext) UpdatePrincipal(ctx context.Context, updates *auth.P
 			princ.SetExplicitChannels(updatedExplicitChannels, nextSeq)
 		}
 
+		if collectionAccessChanged {
+			dbc.UpdateCollectionExplicitChannels(ctx, princ, updates.CollectionAccess, nextSeq)
+		}
+
 		if isUser {
 			if updates.ExplicitRoleNames != nil && updatedExplicitRoles.UpdateAtSequence(updates.ExplicitRoleNames, nextSeq) {
 				user.SetExplicitRoles(updatedExplicitRoles, nextSeq)
@@ -216,4 +225,56 @@ func (dbc *DatabaseContext) UpdatePrincipal(ctx context.Context, updates *auth.P
 
 	base.ErrorfCtx(ctx, "CAS mismatch updating principal %s - exceeded retry count. Latest failure: %v", base.UD(princ.Name()), err)
 	return replaced, err
+}
+
+// UpdateCollectionExplicitChannels identifies whether a config update requires an update to the principal's collectionAccess.
+func (dbc *DatabaseContext) UpdateCollectionExplicitChannels(ctx context.Context, princ auth.Principal, updates map[string]map[string]*auth.CollectionAccessConfig, seq uint64) {
+	for scopeName, scope := range updates {
+		if scope == nil {
+			// TODO: do we need the ability to delete a whole scope at once?  Probably not necessary
+			//existed := princ.DeleteScopeExplicitChannels(scopeName)
+			//if existed {
+			//	updated = true
+			//}
+			base.InfofCtx(ctx, base.KeyAuth, "Scope %s did not specify any collections during principal update - ignoring", base.MD(scopeName))
+		} else {
+			for collectionName, updatedCollectionAccess := range scope {
+				if updatedCollectionAccess == nil {
+					if princ.CollectionExplicitChannels(scopeName, collectionName) != nil {
+						princ.SetCollectionExplicitChannels(scopeName, collectionName, nil, seq)
+					}
+				} else {
+					updatedExplicitChannels := princ.CollectionExplicitChannels(scopeName, collectionName)
+					if updatedExplicitChannels == nil {
+						updatedExplicitChannels = ch.TimedSet{}
+					}
+					changed := updatedExplicitChannels.UpdateAtSequence(updatedCollectionAccess.ExplicitChannels_, seq)
+					if changed {
+						princ.SetCollectionExplicitChannels(scopeName, collectionName, updatedExplicitChannels, seq)
+					}
+				}
+			}
+		}
+	}
+}
+
+// RequiresCollectionAccessUpdate returns true if the provided map of CollectionAccessConfig requires an update to the principal
+func (dbc *DatabaseContext) RequiresCollectionAccessUpdate(ctx context.Context, princ auth.Principal, updates map[string]map[string]*auth.CollectionAccessConfig) (requiresUpdate bool) {
+
+	for scopeName, scope := range updates {
+		if scope != nil {
+			for collectionName, updatedCollectionAccess := range scope {
+				if updatedCollectionAccess == nil {
+					if princ.CollectionExplicitChannels(scopeName, collectionName) != nil {
+						return true
+					}
+				} else {
+					if !princ.CollectionExplicitChannels(scopeName, collectionName).Equals(updatedCollectionAccess.ExplicitChannels_) {
+						return true
+					}
+				}
+			}
+		}
+	}
+	return false
 }

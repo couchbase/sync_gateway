@@ -22,44 +22,46 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-var kUserN1QLFunctionsConfig = FunctionConfigMap{
-	"airports_in_city": &FunctionConfig{
-		Type:  "query",
-		Code:  `SELECT $args.city AS city`,
-		Args:  []string{"city"},
-		Allow: &Allow{Channels: []string{"city-$city", "allcities"}},
-	},
-	"square": &FunctionConfig{
-		Type:  "query",
-		Code:  "SELECT $args.numero * $args.numero AS square",
-		Args:  []string{"numero"},
-		Allow: &Allow{Channels: []string{"wonderland"}},
-	},
-	"user": &FunctionConfig{
-		Type:  "query",
-		Code:  "SELECT $user AS `user`",
-		Allow: &Allow{Channels: []string{"*"}},
-	},
-	"user_parts": &FunctionConfig{
-		Type:  "query",
-		Code:  "SELECT $user.name AS name, $user.email AS email",
-		Allow: &Allow{Channels: []string{"user-$(user.name)"}},
-	},
-	"admin_only": &FunctionConfig{
-		Type:  "query",
-		Code:  `SELECT "ok" AS status`,
-		Allow: nil, // no 'allow' property means admin-only
-	},
-	"inject": &FunctionConfig{
-		Type:  "query",
-		Code:  `SELECT $args.foo`,
-		Args:  []string{"foo"},
-		Allow: &Allow{Channels: []string{"*"}},
-	},
-	"syntax_error": &FunctionConfig{
-		Type:  "query",
-		Code:  "SELEKT OOK? FR0M OOK!",
-		Allow: allowAll,
+var kUserN1QLFunctionsConfig = FunctionsConfig{
+	Definitions: FunctionsDefs{
+		"airports_in_city": &FunctionConfig{
+			Type:  "query",
+			Code:  `SELECT $args.city AS city`,
+			Args:  []string{"city"},
+			Allow: &Allow{Channels: []string{"city-$city", "allcities"}},
+		},
+		"square": &FunctionConfig{
+			Type:  "query",
+			Code:  "SELECT $args.numero * $args.numero AS square",
+			Args:  []string{"numero"},
+			Allow: &Allow{Channels: []string{"wonderland"}},
+		},
+		"user": &FunctionConfig{
+			Type:  "query",
+			Code:  "SELECT $user AS `user`",
+			Allow: &Allow{Channels: []string{"*"}},
+		},
+		"user_parts": &FunctionConfig{
+			Type:  "query",
+			Code:  "SELECT $user.name AS name, $user.email AS email",
+			Allow: &Allow{Channels: []string{"user-$(user.name)"}},
+		},
+		"admin_only": &FunctionConfig{
+			Type:  "query",
+			Code:  `SELECT "ok" AS status`,
+			Allow: nil, // no 'allow' property means admin-only
+		},
+		"inject": &FunctionConfig{
+			Type:  "query",
+			Code:  `SELECT $args.foo`,
+			Args:  []string{"foo"},
+			Allow: &Allow{Channels: []string{"*"}},
+		},
+		"syntax_error": &FunctionConfig{
+			Type:  "query",
+			Code:  "SELEKT OOK? FR0M OOK!",
+			Allow: allowAll,
+		},
 	},
 }
 
@@ -96,8 +98,12 @@ func TestUserN1QLQueries(t *testing.T) {
 		t.Skip("This test is Couchbase Server only (requires N1QL)")
 	}
 
-	//base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
-	db, ctx := setupTestDBWithFunctions(t, kUserN1QLFunctionsConfig, nil)
+	if base.TestsUseNamedCollections() {
+		t.Skip("Requires collection-aware function security (CBG-2597)")
+	}
+
+	// base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+	db, ctx := setupTestDBWithFunctions(t, &kUserN1QLFunctionsConfig, nil)
 	defer db.Close(ctx)
 
 	// First run the tests as an admin:

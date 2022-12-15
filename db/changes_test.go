@@ -91,6 +91,10 @@ func TestFilterToAvailableChannels(t *testing.T) {
 // Unit test for bug #314
 func TestChangesAfterChannelAdded(t *testing.T) {
 
+	if base.TestsUseNamedCollections() {
+		t.Skip("Disabled for non-default collection based on use of GetPrincipalForTest")
+	}
+
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 	collection := db.GetSingleDatabaseCollectionWithUser()
@@ -115,6 +119,7 @@ func TestChangesAfterChannelAdded(t *testing.T) {
 	userInfo, err := db.GetPrincipalForTest(t, "naomi", true)
 	assert.True(t, userInfo != nil)
 	userInfo.ExplicitChannels = base.SetOf("ABC", "PBS")
+
 	_, err = db.UpdatePrincipal(base.TestCtx(t), userInfo, true, true)
 	assert.NoError(t, err, "UpdatePrincipal failed")
 
@@ -142,7 +147,7 @@ func TestChangesAfterChannelAdded(t *testing.T) {
 	assert.True(t, changes[2].principalDoc)
 
 	lastSeq := getLastSeq(changes)
-	lastSeq, _ = ParseSequenceID(lastSeq.String())
+	lastSeq, _ = ParsePlainSequenceID(lastSeq.String())
 
 	// Add a new doc (sequence 3):
 	revid, _, err := collection.Put(ctx, "doc2", Body{"channels": []string{"PBS"}})
@@ -233,10 +238,10 @@ func TestDocDeletionFromChannelCoalescedRemoved(t *testing.T) {
 		collectionID: collectionID}, changes[0])
 
 	lastSeq := getLastSeq(changes)
-	lastSeq, _ = ParseSequenceID(lastSeq.String())
+	lastSeq, _ = ParsePlainSequenceID(lastSeq.String())
 
 	// Get raw document from the bucket
-	rv, _, _ := db.Bucket.GetRaw("alpha") // cas, err
+	rv, _, _ := collection.dataStore.GetRaw("alpha") // cas, err
 
 	// Unmarshall into nested maps
 	var x map[string]interface{}
@@ -260,7 +265,7 @@ func TestDocDeletionFromChannelCoalescedRemoved(t *testing.T) {
 	b, err := base.JSONMarshal(x)
 
 	// Update raw document in the bucket
-	assert.NoError(t, db.Bucket.SetRaw("alpha", 0, nil, b))
+	assert.NoError(t, collection.dataStore.SetRaw("alpha", 0, nil, b))
 
 	// Check the _changes feed -- this is to make sure the changeCache properly received
 	// sequence 3 and isn't stuck waiting for it.
@@ -319,10 +324,10 @@ func TestDocDeletionFromChannelCoalesced(t *testing.T) {
 		collectionID: collectionID}, changes[0])
 
 	lastSeq := getLastSeq(changes)
-	lastSeq, _ = ParseSequenceID(lastSeq.String())
+	lastSeq, _ = ParsePlainSequenceID(lastSeq.String())
 
 	// Get raw document from the bucket
-	rv, _, _ := db.Bucket.GetRaw("alpha") // cas, err
+	rv, _, _ := collection.dataStore.GetRaw("alpha") // cas, err
 
 	// Unmarshall into nested maps
 	var x map[string]interface{}
@@ -342,7 +347,7 @@ func TestDocDeletionFromChannelCoalesced(t *testing.T) {
 	b, err := base.JSONMarshal(x)
 
 	// Update raw document in the bucket
-	require.NoError(t, db.Bucket.SetRaw("alpha", 0, nil, b))
+	require.NoError(t, collection.dataStore.SetRaw("alpha", 0, nil, b))
 
 	// Check the _changes feed -- this is to make sure the changeCache properly received
 	// sequence 3 (the modified document) and isn't stuck waiting for it.

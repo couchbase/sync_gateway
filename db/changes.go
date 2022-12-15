@@ -196,7 +196,16 @@ func (db *DatabaseCollectionWithUser) buildRevokedFeed(ctx context.Context, ch c
 	paginationOptions.Since.Seq = revokeFrom
 
 	// Use a bypass channel cache for revocations (CBG-1695)
-	singleChannelCache := db.changeCache.getChannelCache().getBypassChannelCache(ch)
+	singleChannelCache, err := db.changeCache.getChannelCache().getBypassChannelCache(ch)
+	if err != nil {
+		base.WarnfCtx(ctx, "Error obtaining channel cache for channel %q: %v", base.UD(singleChannelCache.ChannelID()), err)
+		change := ChangeEntry{
+			Err: base.ErrChannelFeed,
+		}
+		feed <- &change
+		close(feed)
+		return feed
+	}
 
 	go func() {
 		defer base.FatalPanicHandler()
@@ -328,14 +337,14 @@ func UserHasDocAccess(ctx context.Context, db *DatabaseCollectionWithUser, docID
 		return true, nil
 	}
 
-	authErr := db.user.AuthorizeAnyChannel(currentRev.Channels)
+	authErr := db.user.AuthorizeAnyCollectionChannel(db.ScopeName(), db.Name(), currentRev.Channels)
 	return authErr == nil, nil
 }
 
 // Checks if a document needs to be revoked. This is used in the case where the since < doc sequence
 func (db *DatabaseCollectionWithUser) wasDocInChannelPriorToRevocation(ctx context.Context, syncData SyncData, docID, chanName string, since uint64) (bool, error) {
 	// Obtain periods where the channel we're interested in was accessible by the user
-	channelAccessPeriods, err := db.user.ChannelGrantedPeriods(chanName)
+	channelAccessPeriods, err := db.user.CollectionChannelGrantedPeriods(db.ScopeName(), db.Name(), chanName)
 	if err != nil {
 		return false, err
 	}
@@ -578,14 +587,14 @@ func (db *DatabaseCollectionWithUser) checkForUserUpdates(ctx context.Context, u
 		userChangeCount = newCount
 
 		if db.user != nil {
-			previousChannels = db.user.InheritedChannels()
+			previousChannels = db.user.InheritedCollectionChannels(db.ScopeName(), db.Name())
 			previousRoles := db.user.RoleNames()
 			if err := db.ReloadUser(ctx); err != nil {
 				base.WarnfCtx(ctx, "Error reloading user %q: %v", base.UD(db.user.Name()), err)
 				return false, 0, nil, err
 			}
 			// check whether channel set has changed
-			singleCollectionChannels := db.user.InheritedChannels().CompareKeys(previousChannels)
+			singleCollectionChannels := db.user.InheritedCollectionChannels(db.ScopeName(), db.Name()).CompareKeys(previousChannels)
 			collectionID := db.GetCollectionID()
 
 			for channelName, changed := range singleCollectionChannels {
@@ -662,7 +671,7 @@ func (db *DatabaseCollectionWithUser) SimpleMultiChangesFeed(ctx context.Context
 		// have been available to the user:
 		channelsSince := channels.TimedSetByCollectionID{}
 		if db.user != nil {
-			chansSince, channelsRemoved := db.user.FilterToAvailableChannels(chans)
+			chansSince, channelsRemoved := db.user.FilterToAvailableCollectionChannels(db.ScopeName(), db.Name(), chans)
 			if len(channelsRemoved) > 0 {
 				base.InfofCtx(ctx, base.KeyChanges, "Channels %s request without access by user %s", base.UD(channelsRemoved), base.UD(db.user.Name()))
 			}
@@ -731,7 +740,13 @@ func (db *DatabaseCollectionWithUser) SimpleMultiChangesFeed(ctx context.Context
 					chanID := channels.NewID(chanName, collectionID)
 					// Obtain a SingleChannelCache instance to use for both normal and late feeds.  Required to ensure consistency
 					// if cache is evicted during processing
-					singleChannelCache := db.changeCache.getChannelCache().getSingleChannelCache(chanID)
+					singleChannelCache, err := db.changeCache.getChannelCache().getSingleChannelCache(chanID)
+					if err != nil {
+						base.WarnfCtx(ctx, "Unable to obtain channel cache for %v, terminating feed", chanID)
+						change := makeErrorEntry("Channel cache unavailable, terminating feed")
+						output <- &change
+						return
+					}
 
 					// Set up late sequence handling first, as we need to roll back the regular feed on error
 					// Handles previously skipped sequences prior to options.Since that
@@ -811,7 +826,7 @@ func (db *DatabaseCollectionWithUser) SimpleMultiChangesFeed(ctx context.Context
 				}
 
 				if options.Revocations && db.user != nil && !options.ActiveOnly {
-					channelsToRevoke := db.user.RevokedChannels(options.Since.Seq, options.Since.LowSeq, options.Since.TriggeredBy)
+					channelsToRevoke := db.user.RevokedCollectionChannels(db.ScopeName(), db.Name(), options.Since.Seq, options.Since.LowSeq, options.Since.TriggeredBy)
 					for channel, revokedSeq := range channelsToRevoke {
 						revocationSinceSeq := options.Since.SafeSequence()
 						revokeFrom := uint64(0)
@@ -1025,7 +1040,7 @@ func (db *DatabaseCollectionWithUser) SimpleMultiChangesFeed(ctx context.Context
 				return
 			}
 			if userChanged && db.user != nil {
-				newChannelsSince, _ := db.user.FilterToAvailableChannels(chans)
+				newChannelsSince, _ := db.user.FilterToAvailableCollectionChannels(db.ScopeName(), db.Name(), chans)
 				// change when we support multiple collections
 				singleCollectionChannels := newChannelsSince.CompareKeys(channelsSince[singleCollectionID])
 
@@ -1096,8 +1111,7 @@ func (db *DatabaseCollectionWithUser) GetChanges(ctx context.Context, channels b
 }
 
 // Returns the set of cached log entries for a given channel
-func (db *DatabaseCollection) GetChangeLog(channel channels.ID, afterSeq uint64) (entries []*LogEntry) {
-
+func (db *DatabaseCollection) GetChangeLog(channel channels.ID, afterSeq uint64) (entries []*LogEntry, err error) {
 	return db.changeCache.getChannelCache().GetCachedChanges(channel)
 }
 
@@ -1199,8 +1213,8 @@ func (db *DatabaseCollectionWithUser) getLateFeed(feedHandler *lateSequenceFeed,
 
 // Closes a single late sequence feed.
 func (db *DatabaseCollectionWithUser) closeLateFeed(feedHandler *lateSequenceFeed) {
-	singleChannelCache := db.changeCache.getChannelCache().getSingleChannelCache(feedHandler.channel)
-	if !singleChannelCache.SupportsLateFeed() {
+	singleChannelCache, err := db.changeCache.getChannelCache().getSingleChannelCache(feedHandler.channel)
+	if err != nil || !singleChannelCache.SupportsLateFeed() {
 		return
 	}
 	if singleChannelCache.LateSequenceUUID() == feedHandler.lateSequenceUUID {
@@ -1276,14 +1290,14 @@ func createChangesEntry(ctx context.Context, docid string, db *DatabaseCollectio
 	userCanSeeDocChannel := false
 
 	// If admin, or the user has the star channel, include it in the results
-	if db.user == nil || db.user.Channels().Contains(channels.UserStarChannel) {
+	if db.user == nil || db.user.CollectionChannels(db.ScopeName(), db.Name()).Contains(channels.UserStarChannel) {
 		userCanSeeDocChannel = true
 	} else if len(populatedDoc.Channels) > 0 {
 		// Iterate over the doc's channels, including in the results:
 		//   - the active revision is in a channel the user can see (removal==nil)
 		//   - the doc has been removed from a user's channel later the requested since value (removal.Seq > options.Since.Seq).  In this case, we need to send removal:true changes entry
 		for channel, removal := range populatedDoc.Channels {
-			if db.user.CanSeeChannel(channel) && (removal == nil || removal.Seq > options.Since.Seq) {
+			if db.user.CanSeeCollectionChannel(db.ScopeName(), db.Name(), channel) && (removal == nil || removal.Seq > options.Since.Seq) {
 				userCanSeeDocChannel = true
 				// If removal, update removed channels and deleted flag.
 				if removal != nil {

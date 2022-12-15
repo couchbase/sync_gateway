@@ -66,9 +66,14 @@ type DCPDest struct {
 	metaInitComplete   []bool      // Whether metadata initialization has been completed, per vbNo
 }
 
-func NewDCPDest(ctx context.Context, callback sgbucket.FeedEventCallbackFunc, bucket Bucket, maxVbNo uint16, persistCheckpoints bool, dcpStats *expvar.Map, feedID string, importPartitionStat *SgwIntStat, checkpointPrefix string) (SGDest, context.Context) {
+func NewDCPDest(ctx context.Context, callback sgbucket.FeedEventCallbackFunc, bucket Bucket, maxVbNo uint16, persistCheckpoints bool, dcpStats *expvar.Map, feedID string, importPartitionStat *SgwIntStat, checkpointPrefix string) (SGDest, context.Context, error) {
 
-	dcpCommon := NewDCPCommon(ctx, callback, bucket, maxVbNo, persistCheckpoints, dcpStats, feedID, checkpointPrefix)
+	// TODO: Metadata store?
+	metadataStore := bucket.DefaultDataStore()
+	dcpCommon, err := NewDCPCommon(ctx, callback, bucket, metadataStore, maxVbNo, persistCheckpoints, dcpStats, feedID, checkpointPrefix)
+	if err != nil {
+		return nil, nil, err
+	}
 
 	d := &DCPDest{
 		DCPCommon:          dcpCommon,
@@ -85,10 +90,10 @@ func NewDCPDest(ctx context.Context, callback sgbucket.FeedEventCallbackFunc, bu
 	if LogDebugEnabled(KeyDCP) {
 		InfofCtx(d.loggingCtx, KeyDCP, "Using DCP Logging Receiver")
 		logRec := &DCPLoggingDest{dest: d}
-		return logRec, d.loggingCtx
+		return logRec, d.loggingCtx, nil
 	}
 
-	return d, d.loggingCtx
+	return d, d.loggingCtx, nil
 }
 
 func (d *DCPDest) Close() error {

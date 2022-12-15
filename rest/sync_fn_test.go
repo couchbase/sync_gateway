@@ -373,7 +373,7 @@ func TestDBOfflinePostResync(t *testing.T) {
 		assert.NoError(t, err)
 
 		var val interface{}
-		_, err = rt.Bucket().Get(rt.GetDatabase().ResyncManager.GetHeartbeatDocID(t), &val)
+		_, err = rt.MetadataStore().Get(rt.GetDatabase().ResyncManager.GetHeartbeatDocID(t), &val)
 
 		return status.State == db.BackgroundProcessStateCompleted && base.IsDocNotFoundError(err)
 	})
@@ -423,7 +423,7 @@ func TestDBOfflineSingleResync(t *testing.T) {
 		assert.NoError(t, err)
 
 		var val interface{}
-		_, err = rt.Bucket().Get(rt.GetDatabase().ResyncManager.GetHeartbeatDocID(t), &val)
+		_, err = rt.MetadataStore().Get(rt.GetDatabase().ResyncManager.GetHeartbeatDocID(t), &val)
 
 		return status.State == db.BackgroundProcessStateCompleted && base.IsDocNotFoundError(err)
 	})
@@ -507,7 +507,7 @@ func TestResync(t *testing.T) {
 				assert.NoError(t, err)
 
 				var val interface{}
-				_, err = rt.Bucket().Get(rt.GetDatabase().ResyncManager.GetHeartbeatDocID(t), &val)
+				_, err = rt.MetadataStore().Get(rt.GetDatabase().ResyncManager.GetHeartbeatDocID(t), &val)
 
 				if resyncManagerStatus.State == db.BackgroundProcessStateCompleted && base.IsDocNotFoundError(err) {
 					return true
@@ -557,7 +557,7 @@ func TestResyncErrorScenarios(t *testing.T) {
 	)
 	defer rt.Close()
 
-	leakyBucket, ok := base.AsLeakyBucket(rt.Bucket())
+	leakyDataStore, ok := base.AsLeakyDataStore(rt.Bucket().DefaultDataStore())
 	require.Truef(t, ok, "Wanted *base.LeakyBucket but got %T", leakyTestBucket.Bucket)
 
 	var (
@@ -566,7 +566,7 @@ func TestResyncErrorScenarios(t *testing.T) {
 	)
 
 	if base.TestsDisableGSI() {
-		leakyBucket.SetPostQueryCallback(func(ddoc, viewName string, params map[string]interface{}) {
+		leakyDataStore.SetPostQueryCallback(func(ddoc, viewName string, params map[string]interface{}) {
 			if useCallback {
 				callbackFired = true
 				response := rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
@@ -575,7 +575,7 @@ func TestResyncErrorScenarios(t *testing.T) {
 			}
 		})
 	} else {
-		leakyBucket.SetPostN1QLQueryCallback(func() {
+		leakyDataStore.SetPostN1QLQueryCallback(func() {
 			if useCallback {
 				callbackFired = true
 				response := rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
@@ -654,7 +654,7 @@ func TestResyncStop(t *testing.T) {
 	)
 	defer rt.Close()
 
-	leakyBucket, ok := base.AsLeakyBucket(rt.Bucket())
+	leakyDataStore, ok := base.AsLeakyDataStore(rt.Bucket().DefaultDataStore())
 	require.Truef(t, ok, "Wanted *base.LeakyBucket but got %T", leakyTestBucket.Bucket)
 
 	var (
@@ -663,7 +663,7 @@ func TestResyncStop(t *testing.T) {
 	)
 
 	if base.TestsDisableGSI() {
-		leakyBucket.SetPostQueryCallback(func(ddoc, viewName string, params map[string]interface{}) {
+		leakyDataStore.SetPostQueryCallback(func(ddoc, viewName string, params map[string]interface{}) {
 			if useCallback {
 				callbackFired = true
 				response := rt.SendAdminRequest("POST", "/db/_resync?action=stop", "")
@@ -672,7 +672,7 @@ func TestResyncStop(t *testing.T) {
 			}
 		})
 	} else {
-		leakyBucket.SetPostN1QLQueryCallback(func() {
+		leakyDataStore.SetPostN1QLQueryCallback(func() {
 			if useCallback {
 				callbackFired = true
 				response := rt.SendAdminRequest("POST", "/db/_resync?action=stop", "")
@@ -713,6 +713,9 @@ func TestResyncStop(t *testing.T) {
 }
 
 func TestResyncRegenerateSequences(t *testing.T) {
+
+	// FIXME: PersistentWalrusBucket doesn't support collections yet
+	t.Skip("PersistentWalrusBucket doesn't support collections yet")
 
 	base.LongRunningTest(t)
 	syncFn := `
@@ -767,11 +770,11 @@ func TestResyncRegenerateSequences(t *testing.T) {
 	response = rt.SendAdminRequest("PUT", fmt.Sprintf("/db/_user/%s", username), fmt.Sprintf(`{"name":"%s", "password":"letmein", "admin_channels":["channel_1"], "admin_roles": ["%s"]}`, username, role))
 	RequireStatus(t, response, http.StatusCreated)
 
-	_, err := rt.Bucket().Get(base.RolePrefix+"role1", &body)
+	_, err := rt.MetadataStore().Get(base.RolePrefix+"role1", &body)
 	assert.NoError(t, err)
 	role1SeqBefore := body["sequence"].(float64)
 
-	_, err = rt.Bucket().Get(base.UserPrefix+"user1", &body)
+	_, err = rt.MetadataStore().Get(base.UserPrefix+"user1", &body)
 	assert.NoError(t, err)
 	user1SeqBefore := body["sequence"].(float64)
 
@@ -823,11 +826,11 @@ func TestResyncRegenerateSequences(t *testing.T) {
 	WaitAndAssertBackgroundManagerState(t, db.BackgroundProcessStateCompleted, rt.GetDatabase().ResyncManager.GetRunState)
 	WaitAndAssertBackgroundManagerExpiredHeartbeat(t, rt.GetDatabase().ResyncManager)
 
-	_, err = rt.Bucket().Get(base.RolePrefix+"role1", &body)
+	_, err = rt.MetadataStore().Get(base.RolePrefix+"role1", &body)
 	assert.NoError(t, err)
 	role1SeqAfter := body["sequence"].(float64)
 
-	_, err = rt.Bucket().Get(base.UserPrefix+"user1", &body)
+	_, err = rt.MetadataStore().Get(base.UserPrefix+"user1", &body)
 	assert.NoError(t, err)
 	user1SeqAfter := body["sequence"].(float64)
 
@@ -861,7 +864,8 @@ func TestResyncRegenerateSequences(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Data is wiped from walrus when brought back online
-	request, _ = http.NewRequest("GET", "/db/_changes?since="+changesResp.LastSeq, nil)
+	request, err = http.NewRequest("GET", "/db/_changes?since="+changesResp.LastSeq, nil)
+	require.NoError(t, err)
 	request.SetBasicAuth("user1", "letmein")
 	response = rt.Send(request)
 	RequireStatus(t, response, http.StatusOK)

@@ -25,7 +25,7 @@ type importListener struct {
 	bucketName       string                                // Used for logging
 	terminator       chan bool                             // Signal to cause cbdatasource bucketdatasource.Close() to be called, which removes dcp receiver
 	dbName           string                                // used for naming the DCP feed
-	metaStore        base.Bucket                           // collection to store DCP metadata
+	bucket           base.Bucket                           // bucket to get vb stats for feed
 	collections      map[uint32]DatabaseCollectionWithUser // Admin databases used for import, keyed by collection ID (CB-server-side)
 	dbStats          *base.DatabaseStats                   // Database stats group
 	importStats      *base.SharedBucketImportStats         // import stats group
@@ -48,7 +48,7 @@ func (il *importListener) StartImportFeed(ctx context.Context, bucket base.Bucke
 	il.bucketName = bucket.GetName()
 	il.dbName = dbContext.Name
 	il.loggingCtx = ctx
-	il.metaStore = dbContext.Bucket // FIXME(CBG-2266): use proper metadata collection
+	il.bucket = bucket
 	il.collections = make(map[uint32]DatabaseCollectionWithUser)
 	il.dbStats = dbStats.Database()
 	il.importStats = dbStats.SharedBucketImport()
@@ -64,11 +64,12 @@ func (il *importListener) StartImportFeed(ctx context.Context, bucket base.Bucke
 	}
 
 	if !dbContext.onlyDefaultCollection() {
-		coll, err := base.AsCollection(bucket)
+		gocbv2Bucket, err := base.AsGocbV2Bucket(bucket)
 		if err != nil {
-			return fmt.Errorf("configured with named collections, but bucket is not collection: %w", err)
+			return err
 		}
-		collectionManifest, err := coll.GetCollectionManifest()
+
+		collectionManifest, err := gocbv2Bucket.GetCollectionManifest()
 		if err != nil {
 			return fmt.Errorf("failed to load collection manifest: %w", err)
 		}
@@ -120,19 +121,21 @@ func (il *importListener) StartImportFeed(ctx context.Context, bucket base.Bucke
 	base.InfofCtx(ctx, base.KeyDCP, "Starting DCP import feed for bucket: %q ", base.UD(bucket.GetName()))
 
 	// TODO: need to clean up StartDCPFeed to push bucket dependencies down
-	cbStore, ok := base.AsCouchbaseStore(bucket)
+	cbStore, ok := base.AsCouchbaseBucketStore(bucket)
 	if !ok {
 		// walrus is not a couchbasestore
 		return bucket.StartDCPFeed(feedArgs, il.ProcessFeedEvent, importFeedStatsMap.Map)
 	}
+
 	if !base.IsEnterpriseEdition() {
 		groupID := ""
-		collection, err := base.AsCollection(bucket)
+		gocbv2Bucket, err := base.AsGocbV2Bucket(bucket)
 		if err != nil {
 			return err
 		}
-		return base.StartGocbDCPFeed(collection, bucket.GetName(), feedArgs, il.ProcessFeedEvent, importFeedStatsMap.Map, base.DCPMetadataStoreCS, groupID)
+		return base.StartGocbDCPFeed(gocbv2Bucket, bucket.GetName(), feedArgs, il.ProcessFeedEvent, importFeedStatsMap.Map, base.DCPMetadataStoreCS, groupID)
 	}
+
 	il.cbgtContext, err = base.StartShardedDCPFeed(ctx, dbContext.Name, dbContext.Options.GroupID, dbContext.UUID, dbContext.Heartbeater,
 		bucket, cbStore.GetSpec(), scopeName, collectionNamesByScope[scopeName], dbContext.Options.ImportOptions.ImportPartitions, dbContext.CfgSG)
 	return err

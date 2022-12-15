@@ -856,7 +856,7 @@ func Float32Ptr(f float32) *float32 {
 func CouchbaseURIToHttpURL(bucket Bucket, couchbaseUri string, connSpec *gocbconnstr.ConnSpec) (httpUrls []string, err error) {
 
 	// If we're using a couchbase bucket, use the bucket to retrieve the mgmt endpoints.
-	cbBucket, ok := AsCouchbaseStore(bucket)
+	cbBucket, ok := AsCouchbaseBucketStore(bucket)
 	if ok {
 		return cbBucket.MgmtEps()
 	}
@@ -1723,4 +1723,13 @@ func AllOrNoneNil(vals ...interface{}) bool {
 		}
 	}
 	return nonNil == 0 || nonNil == len(vals)
+}
+
+// WaitForNoError runs the callback until it no longer returns an error.
+func WaitForNoError(callback func() error) error {
+	err, _ := RetryLoop("wait for no error", func() (bool, error, interface{}) {
+		callbackErr := callback()
+		return callbackErr != nil, callbackErr, nil
+	}, CreateMaxDoublingSleeperFunc(30, 10, 1000))
+	return err
 }

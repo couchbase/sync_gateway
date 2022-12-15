@@ -307,7 +307,8 @@ func TestOpenIDConnectTestProviderWithRealWorldToken(t *testing.T) {
 						},
 					},
 				}}}
-			restTester := NewRestTester(t, &restTesterConfig)
+			restTester := NewRestTesterDefaultCollection(t, // CBG-2618: fix collection channel access
+				&restTesterConfig)
 			require.NoError(t, restTester.SetAdminParty(false))
 			defer restTester.Close()
 
@@ -409,7 +410,8 @@ func TestOIDCWithBasicAuthDisabled(t *testing.T) {
 			},
 			DisablePasswordAuth: base.BoolPtr(true),
 		}}}
-	restTester := NewRestTester(t, &restTesterConfig)
+	restTester := NewRestTesterDefaultCollection(t, // CBG-2618: fix collection channel access
+		&restTesterConfig)
 	require.NoError(t, restTester.SetAdminParty(false))
 	defer restTester.Close()
 

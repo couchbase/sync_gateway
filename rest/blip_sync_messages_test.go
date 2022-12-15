@@ -80,7 +80,7 @@ func TestSubChangesSince(t *testing.T) {
 	rq := blip.NewRequest()
 	rq.Properties["since"] = `"1"`
 
-	subChangesParams, err := db.NewSubChangesParams(base.TestCtx(t), rq, db.SequenceID{}, nil, db.ParseSequenceID)
+	subChangesParams, err := db.NewSubChangesParams(base.TestCtx(t), rq, db.SequenceID{}, nil, db.ParseJSONSequenceID)
 	require.NoError(t, err)
 
 	seqID := subChangesParams.Since()
@@ -102,7 +102,7 @@ func TestSubChangesFuture(t *testing.T) {
 	rq.Properties["future"] = "true"
 	rq.Properties["since"] = `"1"`
 
-	subChangesParams, err := db.NewSubChangesParams(base.TestCtx(t), rq, db.SequenceID{}, latestSeq, db.ParseSequenceID)
+	subChangesParams, err := db.NewSubChangesParams(base.TestCtx(t), rq, db.SequenceID{}, latestSeq, db.ParseJSONSequenceID)
 	require.NoError(t, err)
 
 	seqID := subChangesParams.Since()

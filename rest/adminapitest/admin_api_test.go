@@ -1068,6 +1068,43 @@ func TestHandlePutDbConfigWithBackticks(t *testing.T) {
 	assert.Equal(t, syncFunc, respBody["sync"].(string))
 }
 
+func TestHandlePutDbConfigWithBackticksCollections(t *testing.T) {
+	rt := rest.NewRestTester(t, nil)
+	defer rt.Close()
+
+	// Get database info before putting config.
+	resp := rt.SendAdminRequest(http.MethodGet, "/backticks/", "")
+	rest.RequireStatus(t, resp, http.StatusNotFound)
+
+	// Create database with valid JSON config that contains sync function enclosed in backticks.
+	syncFunc := `function(doc, oldDoc) { console.log("foo");}`
+	// ` + "`" + syncFunc + "`" + `
+	reqBodyWithBackticks := `{
+        "server": "walrus:",
+        "bucket": "backticks",
+		"enable_shared_bucket_access":false,
+		"scopes": {
+			"scope1": {
+			  "collections" : {
+				"collection1":{   
+        			"sync": ` + "`" + syncFunc + "`" + `
+ 				}
+   			  }
+			}
+  		}
+	}`
+	resp = rt.SendAdminRequest(http.MethodPut, "/backticks/", reqBodyWithBackticks)
+	rest.RequireStatus(t, resp, http.StatusCreated)
+
+	// Get database config after putting config.
+	resp = rt.SendAdminRequest(http.MethodGet, "/backticks/_config?include_runtime=true", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+	var respConfig rest.DbConfig
+	require.NoError(t, base.JSONUnmarshal(resp.Body.Bytes(), &respConfig))
+	assert.Equal(t, "walrus:", *respConfig.Server)
+	assert.Equal(t, syncFunc, *respConfig.Scopes["scope1"].Collections["collection1"].SyncFn)
+}
+
 func TestHandleDBConfig(t *testing.T) {
 	tb := base.GetTestBucket(t)
 
@@ -1262,6 +1299,9 @@ func TestConfigRedaction(t *testing.T) {
 }
 
 func TestSoftDeleteCasMismatch(t *testing.T) {
+	// FIXME: LeakyBucket not supported for metadata collection
+	t.Skip("LeakyBucket not supported for metadata collection")
+
 	if !base.UnitTestUrlIsWalrus() {
 		t.Skip("Skip LeakyBucket test when running in integration")
 	}
@@ -1273,13 +1313,13 @@ func TestSoftDeleteCasMismatch(t *testing.T) {
 	resp := rt.SendAdminRequest("PUT", "/db/_role/role", `{"admin_channels":["channel"]}`)
 	rest.RequireStatus(t, resp, http.StatusCreated)
 
-	leakyBucket, ok := base.AsLeakyBucket(rt.TestBucket)
+	leakyDataStore, ok := base.AsLeakyDataStore(rt.TestBucket.GetSingleDataStore())
 	require.True(t, ok)
 
 	// Set callback to trigger a DELETE AFTER an update. This will trigger a CAS mismatch.
 	// Update is done on a GetRole operation so this delete is done between a GET and save operation.
 	triggerCallback := true
-	leakyBucket.SetPostUpdateCallback(func(key string) {
+	leakyDataStore.SetPostUpdateCallback(func(key string) {
 		if triggerCallback {
 			triggerCallback = false
 			resp = rt.SendAdminRequest("DELETE", "/db/_role/role", ``)
@@ -1985,11 +2025,11 @@ func TestCreateDbOnNonExistentBucket(t *testing.T) {
 
 	resp := rest.BootstrapAdminRequest(t, http.MethodPut, "/db/", `{"bucket": "nonexistentbucket"}`)
 	resp.RequireStatus(http.StatusForbidden)
-	assert.Contains(t, resp.Body, "auth failure accessing provided bucket: nonexistentbucket")
+	assert.Contains(t, resp.Body, "Provided bucket credentials do not have access to specified bucket: nonexistentbucket")
 
 	resp = rest.BootstrapAdminRequest(t, http.MethodPut, "/nonexistentbucket/", `{}`)
 	resp.RequireStatus(http.StatusForbidden)
-	assert.Contains(t, resp.Body, "auth failure accessing provided bucket: nonexistentbucket")
+	assert.Contains(t, resp.Body, "Provided bucket credentials do not have access to specified bucket: nonexistentbucket")
 }
 
 func TestPutDbConfigChangeName(t *testing.T) {
@@ -2035,7 +2075,12 @@ func TestPutDbConfigChangeName(t *testing.T) {
 }
 
 func TestSwitchDbConfigCollectionName(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("can not create new buckets and scopes in walrus")
+	}
 	base.TestRequiresCollections(t)
+
+	base.RequireNumTestDataStores(t, 2)
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyConfig)
 	serverErr := make(chan error, 0)
@@ -2062,45 +2107,45 @@ func TestSwitchDbConfigCollectionName(t *testing.T) {
 		tb.Close()
 	}()
 
-	err = base.CreateBucketScopesAndCollections(base.TestCtx(t), tb.BucketSpec, map[string][]string{
-		"foo": {
-			"bar",
-			"baz",
-		},
-	})
-	require.NoError(t, err)
+	dataStore1 := tb.GetNamedDataStore(0)
+	dataStore1Name, ok := base.AsDataStoreName(dataStore1)
+	require.True(t, ok)
+	dataStore2 := tb.GetNamedDataStore(1)
+	dataStore2Name, ok := base.AsDataStoreName(dataStore2)
+	require.True(t, ok)
+	keyspace1 := fmt.Sprintf("%s.%s.%s", "db", dataStore1Name.ScopeName(), dataStore1Name.CollectionName())
+	keyspace2 := fmt.Sprintf("%s.%s.%s", "db", dataStore2Name.ScopeName(), dataStore2Name.CollectionName())
 
-	// create db
 	resp := rest.BootstrapAdminRequest(t, http.MethodPut, "/db/", fmt.Sprintf(
-		`{"bucket": "%s", "scopes": {"foo": {"collections": {"bar": {}}}}, "num_index_replicas": 0, "enable_shared_bucket_access": true, "use_views": false}`,
-		tb.GetName(),
+		`{"bucket": "%s", "scopes": {"%s": {"collections": {"%s": {}}}}, "num_index_replicas": 0, "enable_shared_bucket_access": true, "use_views": false}`,
+		tb.GetName(), dataStore1Name.ScopeName(), dataStore1Name.CollectionName(),
 	))
 	resp.RequireStatus(http.StatusCreated)
 
 	// put a doc in db
-	resp = rest.BootstrapAdminRequest(t, http.MethodPut, "/db.foo.bar/10001", `{"type":"test_doc"}`)
+	resp = rest.BootstrapAdminRequest(t, http.MethodPut, fmt.Sprintf("/%s/10001", keyspace1), `{"type":"test_doc"}`)
 	resp.RequireStatus(http.StatusCreated)
 
 	// update config to another collection
 	resp = rest.BootstrapAdminRequest(t, http.MethodPost, "/db/_config", fmt.Sprintf(
-		`{"bucket": "%s", "scopes": {"foo": {"collections": {"baz": {}}}}, "num_index_replicas": 0, "enable_shared_bucket_access": true, "use_views": false}`,
-		tb.GetName(),
+		`{"bucket": "%s", "scopes": {"%s": {"collections": {"%s": {}}}}, "num_index_replicas": 0, "enable_shared_bucket_access": true, "use_views": false}`,
+		tb.GetName(), dataStore2Name.ScopeName(), dataStore2Name.CollectionName(),
 	))
 	resp.RequireStatus(http.StatusCreated)
 
 	// put doc in new collection
-	resp = rest.BootstrapAdminRequest(t, http.MethodPut, "/db.foo.baz/10001", `{"type":"test_doc1"}`)
+	resp = rest.BootstrapAdminRequest(t, http.MethodPut, fmt.Sprintf("/%s/10001", keyspace2), `{"type":"test_doc1"}`)
 	resp.RequireStatus(http.StatusCreated)
 
 	// update back to original collection config
 	resp = rest.BootstrapAdminRequest(t, http.MethodPost, "/db/_config", fmt.Sprintf(
-		`{"bucket": "%s", "scopes": {"foo": {"collections": {"bar": {}}}}, "num_index_replicas": 0, "enable_shared_bucket_access": true, "use_views": false}`,
-		tb.GetName(),
+		`{"bucket": "%s", "scopes": {"%s": {"collections": {"%s": {}}}}, "num_index_replicas": 0, "enable_shared_bucket_access": true, "use_views": false}`,
+		tb.GetName(), dataStore1Name.ScopeName(), dataStore1Name.CollectionName(),
 	))
 	resp.RequireStatus(http.StatusCreated)
 
 	// put doc in original collection name
-	resp = rest.BootstrapAdminRequest(t, http.MethodPut, "/db.foo.bar/100", `{"type":"test_doc1"}`)
+	resp = rest.BootstrapAdminRequest(t, http.MethodPut, fmt.Sprintf("/%s/100", keyspace1), `{"type":"test_doc1"}`)
 	resp.RequireStatus(http.StatusCreated)
 }
 
@@ -2617,7 +2662,7 @@ func TestDeleteFunctionsWhileDbOffline(t *testing.T) {
 
 	// Get a test bucket, and use it to create the database.
 	// FIXME: CBG-2266 this test reads in persistent config
-	tb := base.GetTestBucketDefaultCollection(t)
+	tb := base.GetTestBucket(t)
 	defer func() { tb.Close() }()
 
 	// Initial DB config
@@ -2658,7 +2703,8 @@ func TestDeleteFunctionsWhileDbOffline(t *testing.T) {
 	resp.RequireStatus(http.StatusCreated)
 
 	if base.TestUseXattrs() {
-		add, err := tb.Add("TestImportDoc", 0, db.Document{ID: "TestImportDoc", RevID: "1-abc"})
+		// default data store - we're not using a named scope/collection in this test
+		add, err := tb.DefaultDataStore().Add("TestImportDoc", 0, db.Document{ID: "TestImportDoc", RevID: "1-abc"})
 		require.NoError(t, err)
 		require.Equal(t, true, add)
 
@@ -2972,7 +3018,7 @@ func TestApiInternalPropertiesHandling(t *testing.T) {
 			rest.RequireStatus(t, resp, http.StatusCreated)
 
 			var bucketDoc map[string]interface{}
-			_, err = rt.Bucket().Get(docID, &bucketDoc)
+			_, err = rt.GetSingleDataStore().Get(docID, &bucketDoc)
 			assert.NoError(t, err)
 			body := rt.GetDoc(docID)
 			// Confirm input body is in the bucket doc
@@ -3124,7 +3170,7 @@ func TestTombstoneCompactionPurgeInterval(t *testing.T) {
 	dbc := rt.GetDatabase()
 	ctx := rt.Context()
 
-	cbStore, _ := base.AsCouchbaseStore(rt.Bucket())
+	cbStore, _ := base.AsCouchbaseBucketStore(rt.Bucket())
 	serverPurgeInterval, err := cbStore.MetadataPurgeInterval()
 	require.NoError(t, err)
 	// Set server purge interval back to what it was for bucket reuse

@@ -27,12 +27,19 @@ import (
 
 // Configuration for GraphQL.
 type GraphQLConfig struct {
-	Schema     *string                          `json:"schema,omitempty"`     // Schema in SDL syntax
-	SchemaFile *string                          `json:"schemaFile,omitempty"` // Path of schema file
-	Resolvers  map[string]GraphQLResolverConfig `json:"resolvers"`            // Defines query/mutation code
+	Schema           *string         `json:"schema,omitempty"`             // Schema in SDL syntax
+	SchemaFile       *string         `json:"schemaFile,omitempty"`         // Path of schema file
+	Resolvers        GraphQLTypesMap `json:"resolvers"`                    // Defines query/mutation code
+	MaxSchemaSize    *int            `json:"max_schema_size,omitempty"`    // Maximum length (in bytes) of GraphQL schema; default is 0, for unlimited
+	MaxResolverCount *int            `json:"max_resolver_count,omitempty"` // Maximum number of GraphQL resolvers; default is 0, for unlimited
+	MaxCodeSize      *int            `json:"max_code_size,omitempty"`      // Maximum length (in bytes) of a function's code
+	MaxRequestSize   *int            `json:"max_request_size,omitempty"`   // Maximum size of the encoded query & arguments
 }
 
-// Maps GraphQL query/mutation names to the resolvers that implement them.
+// Maps GraphQL type names (incl. "Query") to their resolvers.
+type GraphQLTypesMap map[string]GraphQLResolverConfig
+
+// Maps GraphQL field names to the resolvers that implement them.
 type GraphQLResolverConfig map[string]FunctionConfig
 
 //////// QUERYING
@@ -52,6 +59,10 @@ func (gq *graphQLImpl) Query(database *db.Database, query string, operationName 
 		Context:        ctx,
 	})
 	return result, nil
+}
+
+func (gq *graphQLImpl) MaxRequestSize() *int {
+	return gq.config.MaxRequestSize
 }
 
 func (gq *graphQLImpl) N1QLQueryNames() []string {
@@ -98,16 +109,21 @@ func (config *GraphQLConfig) Validate(ctx context.Context) error {
 	return err
 }
 
-func (config *GraphQLConfig) compileSchema() (graphql.Schema, error) {
+func (config *GraphQLConfig) compileSchema() (schema graphql.Schema, err error) {
 	// Get the schema source, from either `schema` or `schemaFile`:
 	schemaSource, err := config.getSchema()
 	if err != nil {
-		return graphql.Schema{}, err
+		return schema, err
+	}
+	if config.MaxSchemaSize != nil && len(schemaSource) > *config.MaxSchemaSize {
+		return schema, fmt.Errorf("GraphQL schema too large (> %d bytes)", *config.MaxSchemaSize)
 	}
 
 	var multiError *base.MultiError
+	resolverCount := 0
 	// Assemble the resolvers:
 	resolvers := map[string]any{}
+ResolverLoop:
 	for name, resolver := range config.Resolvers {
 		fieldMap := map[string]*gqltools.FieldResolve{}
 		var typeNameResolver graphql.ResolveTypeFn
@@ -118,13 +134,20 @@ func (config *GraphQLConfig) compileSchema() (graphql.Schema, error) {
 				// The "__typename" resolver returns the name of the concrete type of an
 				// instance of an interface.
 				typeNameResolver, err = config.compileTypeNameResolver(name, fnConfig)
+				resolverCount += 1
 			} else {
 				var fn graphql.FieldResolveFn
 				fn, err = config.compileFieldResolver(name, fieldName, fnConfig)
 				fieldMap[fieldName] = &gqltools.FieldResolve{Resolve: fn}
+				resolverCount += 1
 			}
 			if err != nil {
 				multiError = multiError.Append(err)
+			}
+			if config.MaxResolverCount != nil && resolverCount > *config.MaxResolverCount {
+				err = fmt.Errorf("too many GraphQL resolvers (> %d)", *config.MaxResolverCount)
+				multiError = multiError.Append(err)
+				break ResolverLoop // stop
 			}
 		}
 		if typeNameResolver == nil {
@@ -139,11 +162,11 @@ func (config *GraphQLConfig) compileSchema() (graphql.Schema, error) {
 		}
 	}
 	if multiError != nil {
-		return graphql.Schema{}, multiError.ErrorOrNil()
+		return schema, multiError.ErrorOrNil()
 	}
 
 	// Now compile the schema and create the graphql.Schema object:
-	schema, err := gqltools.MakeExecutableSchema(gqltools.ExecutableSchema{
+	schema, err = gqltools.MakeExecutableSchema(gqltools.ExecutableSchema{
 		TypeDefs:  schemaSource,
 		Resolvers: resolvers,
 		Debug:     true, // This enables logging of unresolved-type errors

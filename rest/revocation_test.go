@@ -186,7 +186,7 @@ func InitScenario(t *testing.T, rtConfig *RestTesterConfig) (ChannelRevocationTe
 			rtConfig.SyncFn = defaultSyncFn
 		}
 	}
-	rt := NewRestTester(t, rtConfig)
+	rt := NewRestTesterDefaultCollection(t, rtConfig) // CBG-2618: fix collection channel access
 
 	revocationTester := ChannelRevocationTester{
 		test:       t,
@@ -888,7 +888,7 @@ func TestEnsureRevocationUsingDocHistory(t *testing.T) {
 func TestRevocationWithAdminChannels(t *testing.T) {
 	defer db.SuspendSequenceBatching()()
 
-	rt := NewRestTester(t, nil)
+	rt := NewRestTesterDefaultCollection(t, nil) // CBG-2618: fix collection channel access
 	defer rt.Close()
 
 	resp := rt.SendAdminRequest("PUT", "/db/_user/user", `{"admin_channels": ["A"], "password": "letmein"}`)
@@ -918,7 +918,7 @@ func TestRevocationWithAdminChannels(t *testing.T) {
 func TestRevocationWithAdminRoles(t *testing.T) {
 	defer db.SuspendSequenceBatching()()
 
-	rt := NewRestTester(t, nil)
+	rt := NewRestTesterDefaultCollection(t, nil) // CBG-2618: fix collection channel access
 	defer rt.Close()
 
 	resp := rt.SendAdminRequest("PUT", "/db/_role/role", `{"admin_channels": ["A"]}`)
@@ -1212,11 +1212,11 @@ func TestRevocationUserHasDocAccessDocNotFound(t *testing.T) {
 	revocationTester.removeRoleChannel("foo", "A")
 	require.NoError(t, rt.WaitForPendingChanges())
 
-	leakyBucket, ok := base.AsLeakyBucket(rt.Bucket())
+	leakyDataStore, ok := base.AsLeakyDataStore(rt.Bucket().DefaultDataStore())
 	require.True(t, ok)
 
-	leakyBucket.SetGetRawCallback(func(s string) error {
-		require.NoError(t, leakyBucket.Delete("doc"))
+	leakyDataStore.SetGetRawCallback(func(s string) error {
+		require.NoError(t, leakyDataStore.Delete("doc"))
 		return nil
 	})
 
@@ -1262,8 +1262,8 @@ func TestWasDocInChannelAtSeq(t *testing.T) {
 	assert.Len(t, changes.Results, 1)
 }
 
-// Test does not directly run ChannelGrantedPeriods but aims to test this through performing revocation operations
-// that will hit the various cases that ChannelGrantedPeriods will handle
+// Test does not directly run channelGrantedPeriods but aims to test this through performing revocation operations
+// that will hit the various cases that channelGrantedPeriods will handle
 func TestChannelGrantedPeriods(t *testing.T) {
 	defer db.SuspendSequenceBatching()()
 	revocationTester, rt := InitScenario(t, nil)
@@ -1442,7 +1442,7 @@ func TestRevocationWithUserXattrs(t *testing.T) {
 
 	defer rt.Close()
 
-	collection, err := base.AsCollection(rt.Bucket())
+	collection, err := base.AsCollection(rt.Bucket().DefaultDataStore())
 	if err != nil {
 		t.Skip("Test requires Couchbase Bucket")
 	}

@@ -56,7 +56,7 @@ func TestMigrateMetadata(t *testing.T) {
 	// Create via the SDK with sync metadata intact
 	expirySeconds := time.Second * 30
 	syncMetaExpiry := time.Now().Add(expirySeconds)
-	_, err = db.Bucket.Add(key, uint32(syncMetaExpiry.Unix()), bodyBytes)
+	_, err = collection.dataStore.Add(key, uint32(syncMetaExpiry.Unix()), bodyBytes)
 	assert.NoError(t, err, "Error writing doc w/ expiry")
 
 	// Get the existing bucket doc
@@ -74,7 +74,7 @@ func TestMigrateMetadata(t *testing.T) {
 		exp := uint32(laterSyncMetaExpiry.Unix())
 		return bodyBytes, &exp, false, nil
 	}
-	_, err = db.Bucket.Update(
+	_, err = collection.dataStore.Update(
 		key,
 		uint32(laterSyncMetaExpiry.Unix()), // it's a bit confusing why the expiry needs to be passed here AND via the callback fn
 		updateCallbackFn,
@@ -149,7 +149,7 @@ func TestImportWithStaleBucketDocCorrectExpiry(t *testing.T) {
 			// Create via the SDK
 			expiryDuration := time.Minute * 30
 			syncMetaExpiry := time.Now().Add(expiryDuration)
-			_, err = db.Bucket.Add(key, uint32(syncMetaExpiry.Unix()), bodyBytes)
+			_, err = collection.dataStore.Add(key, uint32(syncMetaExpiry.Unix()), bodyBytes)
 			assert.NoError(t, err, "Error writing doc w/ expiry")
 
 			// Get the existing bucket doc
@@ -173,7 +173,7 @@ func TestImportWithStaleBucketDocCorrectExpiry(t *testing.T) {
 				exp := uint32(laterSyncMetaExpiry.Unix())
 				return bodyBytes, &exp, false, nil
 			}
-			_, err = db.Bucket.Update(
+			_, err = collection.dataStore.Update(
 				key,
 				uint32(laterSyncMetaExpiry.Unix()), // it's a bit confusing why the expiry needs to be passed here AND via the callback fn
 				updateCallbackFn,
@@ -185,11 +185,10 @@ func TestImportWithStaleBucketDocCorrectExpiry(t *testing.T) {
 			assert.NoError(t, errImportDoc, "Unexpected error")
 
 			// Make sure the doc in the bucket has expected XATTR
-			assertXattrSyncMetaRevGeneration(t, db.Bucket, key, testCase.expectedGeneration)
+			assertXattrSyncMetaRevGeneration(t, collection.dataStore, key, testCase.expectedGeneration)
 
 			// Verify the expiry has been preserved after the import
-			cbStore, _ := base.AsCouchbaseStore(db.Bucket)
-			expiry, err = cbStore.GetExpiry(key)
+			expiry, err = collection.dataStore.GetExpiry(key)
 			require.NoError(t, err, "Error calling GetExpiry()")
 			updatedExpiryDuration := base.CbsExpiryToDuration(expiry)
 			assert.True(t, updatedExpiryDuration > expiryDuration)
@@ -246,8 +245,9 @@ func TestImportWithCasFailureUpdate(t *testing.T) {
 				}
 			}`
 
-			cas, _ := db.Bucket.Get(key, &body)
-			_, err := db.Bucket.WriteCas(key, 0, 0, cas, []byte(valStr), sgbucket.Raw)
+			collection := db.GetSingleDatabaseCollectionWithUser()
+			cas, _ := collection.dataStore.Get(key, &body)
+			_, err := collection.dataStore.WriteCas(key, 0, 0, cas, []byte(valStr), sgbucket.Raw)
 			assert.NoError(t, err)
 		}
 	}
@@ -287,8 +287,9 @@ func TestImportWithCasFailureUpdate(t *testing.T) {
 				"time_saved": "2017-11-29T12:46:13.456631-08:00"
 			}`
 
-			cas, _ := db.Bucket.GetWithXattr(key, base.SyncXattrName, "", &body, &xattr, nil)
-			_, err := db.Bucket.WriteCasWithXattr(key, base.SyncXattrName, 0, cas, nil, []byte(valStr), []byte(xattrStr))
+			collection := db.GetSingleDatabaseCollectionWithUser()
+			cas, _ := collection.dataStore.GetWithXattr(key, base.SyncXattrName, "", &body, &xattr, nil)
+			_, err := collection.dataStore.WriteCasWithXattr(key, base.SyncXattrName, 0, cas, nil, []byte(valStr), []byte(xattrStr))
 			assert.NoError(t, err)
 		}
 	}
@@ -317,7 +318,7 @@ func TestImportWithCasFailureUpdate(t *testing.T) {
 			assert.NoError(t, err, "Error unmarshalling body")
 
 			// Put a doc with inline sync data via sdk
-			_, err = db.Bucket.Add(testcase.docname, 0, bodyBytes)
+			_, err = collection.dataStore.Add(testcase.docname, 0, bodyBytes)
 			assert.NoError(t, err)
 
 			// Get the existing bucket doc
@@ -339,7 +340,7 @@ func TestImportWithCasFailureUpdate(t *testing.T) {
 			var bodyOut map[string]interface{}
 			var xattrOut map[string]interface{}
 
-			_, err = db.Bucket.GetWithXattr(testcase.docname, base.SyncXattrName, "", &bodyOut, &xattrOut, nil)
+			_, err = collection.dataStore.GetWithXattr(testcase.docname, base.SyncXattrName, "", &bodyOut, &xattrOut, nil)
 			assert.NoError(t, err)
 
 			assert.Equal(t, "2-abc", xattrOut["rev"])
@@ -423,9 +424,9 @@ func TestImportNullDocRaw(t *testing.T) {
 	assert.True(t, importedDoc == nil, "Expected no imported doc")
 }
 
-func assertXattrSyncMetaRevGeneration(t *testing.T, bucket base.Bucket, key string, expectedRevGeneration int) {
+func assertXattrSyncMetaRevGeneration(t *testing.T, dataStore base.DataStore, key string, expectedRevGeneration int) {
 	xattr := map[string]interface{}{}
-	_, err := bucket.GetWithXattr(key, base.SyncXattrName, "", nil, &xattr, nil)
+	_, err := dataStore.GetWithXattr(key, base.SyncXattrName, "", nil, &xattr, nil)
 	assert.NoError(t, err, "Error Getting Xattr")
 	revision, ok := xattr["rev"]
 	assert.True(t, ok)
