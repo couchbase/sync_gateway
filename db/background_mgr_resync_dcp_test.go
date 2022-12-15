@@ -138,7 +138,9 @@ func TestResyncDCPInit(t *testing.T) {
 	}
 }
 
-func TestResycnManagerDCPStopInMidWay(t *testing.T) {
+func TestResyncManagerDCPStopInMidWay(t *testing.T) {
+	base.TemporarilyDisableTestUsingDCPWithCollections(t)
+
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Test requires Couchbase Server")
 	}
@@ -189,10 +191,11 @@ func TestResycnManagerDCPStopInMidWay(t *testing.T) {
 }
 
 func TestResyncManagerDCPStart(t *testing.T) {
+	base.TemporarilyDisableTestUsingDCPWithCollections(t)
+
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Test requires Couchbase Server")
 	}
-	base.LongRunningTest(t)
 
 	t.Run("Resync without updating sync function", func(t *testing.T) {
 		docsToCreate := 100
@@ -215,7 +218,7 @@ func TestResyncManagerDCPStart(t *testing.T) {
 			rawStatus, _ := resycMgr.GetStatus()
 			_ = json.Unmarshal(rawStatus, &status)
 			return status.State == BackgroundProcessStateCompleted
-		}, 30, 200)
+		}, 200, 200)
 		require.NoError(t, err)
 
 		stats := getResyncStats(resycMgr.Process)
@@ -244,7 +247,7 @@ func TestResyncManagerDCPStart(t *testing.T) {
 			rawStatus, _ := resycMgr.GetStatus()
 			_ = json.Unmarshal(rawStatus, &status)
 			return status.State == BackgroundProcessStateCompleted
-		}, 30, 200)
+		}, 200, 200)
 		require.NoError(t, err)
 
 		stats := getResyncStats(resycMgr.Process)
@@ -256,7 +259,9 @@ func TestResyncManagerDCPStart(t *testing.T) {
 	})
 }
 
-func TestResycnManagerDCPRunTwice(t *testing.T) {
+func TestResyncManagerDCPRunTwice(t *testing.T) {
+	base.TemporarilyDisableTestUsingDCPWithCollections(t)
+
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Test requires Couchbase Server")
 	}
@@ -306,6 +311,8 @@ func TestResycnManagerDCPRunTwice(t *testing.T) {
 }
 
 func TestResycnManagerDCPResumeStoppedProcess(t *testing.T) {
+	base.TemporarilyDisableTestUsingDCPWithCollections(t)
+
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Test requires Couchbase Server")
 	}
