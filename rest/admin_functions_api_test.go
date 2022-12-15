@@ -54,7 +54,7 @@ func TestFunctionsConfigMVCC(t *testing.T) {
 			Definitions: functions.FunctionsDefs{
 				"xxx": {
 					Type: "javascript",
-					Code: "function(x,y){return 42;}",
+					Code: "function(context,args){return 42;}",
 				},
 				"xxxN1QL": {
 					Type: "query",
@@ -122,7 +122,7 @@ func TestFunctionsConfigMVCC(t *testing.T) {
 	t.Run("Function", func(t *testing.T) {
 		runTest(t, "/db/_config/functions/xxx", `{
 			"type": "javascript",
-			"code": "function(){return 69;}"
+			"code": "function(context,args){return 69;}"
 		}`)
 	})
 
@@ -136,7 +136,7 @@ func TestFunctionsConfigMVCC(t *testing.T) {
 	t.Run("Functions", func(t *testing.T) {
 		runTest(t, "/db/_config/functions", `{
 			"definitions": {
-				"zzz": {"type": "javascript", "code": "function(){return 69;}"} } }`)
+				"zzz": {"type": "javascript", "code": "function(context,args){return 69;}"} } }`)
 	})
 
 	t.Run("GraphQL", func(t *testing.T) {
