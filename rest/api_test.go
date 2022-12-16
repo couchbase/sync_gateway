@@ -174,20 +174,20 @@ func TestFunkyDocIDs(t *testing.T) {
 
 	rt.CreateDoc(t, "AC%2FDC")
 
-	response := rt.SendAdminRequest("GET", "/"+keyspace+"/AC%2FDC", "")
+	response := rt.SendAdminRequest("GET", "/{{.keyspace}}/AC%2FDC", "")
 	RequireStatus(t, response, 200)
 
 	rt.CreateDoc(t, "AC+DC")
-	response = rt.SendAdminRequest("GET", fmt.Sprintf("/%s/AC+DC", keyspace), "")
+	response = rt.SendAdminRequest("GET", "/{{.keyspace}}/AC+DC", "")
 	RequireStatus(t, response, 200)
 
 	rt.CreateDoc(t, "AC+DC+GC")
-	response = rt.SendAdminRequest("GET", fmt.Sprintf("/%s/AC+DC+GC", keyspace), "")
+	response = rt.SendAdminRequest("GET", "/{{.keyspace}}/AC+DC+GC", "")
 	RequireStatus(t, response, 200)
 
-	response = rt.SendAdminRequest("PUT", fmt.Sprintf("/%s/foo+bar+moo+car", keyspace), `{"prop":true}`)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/foo+bar+moo+car", `{"prop":true}`)
 	RequireStatus(t, response, 201)
-	response = rt.SendAdminRequest("GET", fmt.Sprintf("/%s/foo+bar+moo+car", keyspace), "")
+	response = rt.SendAdminRequest("GET", "/{{.keyspace}}/foo+bar+moo+car", "")
 	RequireStatus(t, response, 200)
 
 	rt.CreateDoc(t, "AC%2BDC2")

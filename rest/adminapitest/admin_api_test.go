@@ -442,21 +442,23 @@ func TestDBOffline503Response(t *testing.T) {
 	rt, _ := rest.NewRestTester(t, nil)
 	defer rt.Close()
 
+	response := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc1", "{}")
+	rest.RequireStatus(t, response, http.StatusCreated)
 	log.Printf("Taking DB offline")
-	response := rt.SendAdminRequest("GET", "/db/", "")
+	response = rt.SendAdminRequest("GET", "/{{.db}}/", "")
 	var body db.Body
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.True(t, body["state"].(string) == "Online")
 
-	response = rt.SendAdminRequest("POST", "/db/_offline", "")
+	response = rt.SendAdminRequest("POST", "/{{.db}}/_offline", "")
 	rest.RequireStatus(t, response, 200)
 
-	response = rt.SendAdminRequest("GET", "/db/", "")
+	response = rt.SendAdminRequest("GET", "/{{.db}}/", "")
 	body = nil
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.True(t, body["state"].(string) == "Offline")
 
-	rest.RequireStatus(t, rt.SendRequest("GET", "/db/doc1", ""), 503)
+	rest.RequireStatus(t, rt.SendRequest("GET", "/{{.keyspace}}/doc1", ""), 503)
 }
 
 // Take DB offline and ensure can put db config

@@ -26,6 +26,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"text/template"
 	"time"
 
 	"github.com/couchbase/go-blip"
@@ -552,7 +553,7 @@ func (rt *RestTester) Close() {
 }
 
 func (rt *RestTester) SendRequest(method, resource string, body string) *TestResponse {
-	return rt.Send(Request(method, resource, body))
+	return rt.Send(Request(method, rt.templateResource(resource), body))
 }
 
 func (rt *RestTester) SendRequestWithHeaders(method, resource string, body string, headers map[string]string) *TestResponse {
@@ -572,9 +573,25 @@ func (rt *RestTester) SendUserRequestWithHeaders(method, resource string, body s
 	return rt.Send(req)
 }
 
+func (rt *RestTester) templateResource(resource string) string {
+	fmt.Println(resource)
+	tmpl, err := template.New("urltemplate").Parse(resource)
+	require.NoError(rt.TB, err)
+	data := make(map[string]string)
+	database := rt.GetDatabase()
+	if len(database.CollectionByID) == 1 {
+		data["keyspace"] = rt.GetSingleKeyspace()
+		data["db"] = rt.GetDatabase().Name
+	}
+	var uri bytes.Buffer
+	err = tmpl.Execute(&uri, data)
+	require.NoError(rt.TB, err)
+	return uri.String()
+}
+
 func (rt *RestTester) SendAdminRequestWithAuth(method, resource string, body string, username string, password string) *TestResponse {
 	input := bytes.NewBufferString(body)
-	request, err := http.NewRequest(method, "http://localhost"+resource, input)
+	request, err := http.NewRequest(method, "http://localhost"+rt.templateResource(resource), input)
 	require.NoError(rt.TB, err)
 
 	request.SetBasicAuth(username, password)
@@ -726,7 +743,7 @@ func (rt *RestTester) WaitForConditionShouldRetry(conditionFunc func() (shouldRe
 
 func (rt *RestTester) SendAdminRequest(method, resource string, body string) *TestResponse {
 	input := bytes.NewBufferString(body)
-	request, err := http.NewRequest(method, "http://localhost"+resource, input)
+	request, err := http.NewRequest(method, "http://localhost"+rt.templateResource(resource), input)
 	require.NoError(rt.TB, err)
 
 	response := &TestResponse{ResponseRecorder: httptest.NewRecorder(), Req: request}
