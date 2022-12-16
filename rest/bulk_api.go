@@ -29,7 +29,7 @@ import (
 func (h *handler) handleAllDocs() error {
 
 	if !db.EnableStarChannelLog {
-		return base.HTTPErrorf(http.StatusBadRequest, "_all_docs endpoint is only available when `enable_star_channel` is true")
+		return base.HTTPErrorf(http.StatusBadRequest, "_all_docs endpoint is only available when '*' Channel is enabled. set 'cache.channel_cache.enable_star_channel':true in Sync Gateway's database config.")
 	}
 
 	// http://wiki.apache.org/couchdb/HTTP_Bulk_Document_API
