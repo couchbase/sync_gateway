@@ -59,7 +59,7 @@ post:
     - Admin only endpoints
     - Database Security
 head:
-  summary: /{db}/_users/
+  summary: /{db}/_user/
   responses:
     '200':
       description: OK
