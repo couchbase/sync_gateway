@@ -805,23 +805,33 @@ func (dbCtx *DatabaseContext) RemoveObsoleteDesignDocs(previewOnly bool) (remove
 	return removeObsoleteDesignDocs(context.TODO(), viewStore, previewOnly, dbCtx.UseViews())
 }
 
-// Removes previous versions of Sync Gateway's indexes found on the server
-func (dbCtx *DatabaseContext) RemoveObsoleteIndexes(ctx context.Context, previewOnly bool) (removedIndexes []string, err error) {
+// Removes previous versions of Sync Gateway's indexes found on the server. Returns a map of indexes removed by collection name.
+func (dbCtx *DatabaseContext) RemoveObsoleteIndexes(ctx context.Context, previewOnly bool) (map[string][]string, error) {
 
 	if !dbCtx.Bucket.IsSupported(sgbucket.BucketStoreFeatureN1ql) {
-		return removedIndexes, nil
+		return nil, nil
 	}
 
-	// TODO: CBG-2533 Multi-collection removal (iterate over each collection here?)
-	dataStore := dbCtx.Bucket.DefaultDataStore()
+	removedIndexesByCollection := make(map[string][]string)
+	var errs *base.MultiError
+	for _, collection := range dbCtx.CollectionByID {
+		collectionName := fmt.Sprintf("%s.%s", collection.ScopeName(), collection.Name())
+		n1qlStore, ok := base.AsN1QLStore(collection.dataStore)
+		if !ok {
+			err := fmt.Sprintf("Cannot remove obsolete indexes for non-gocb collection %s - skipping.", collectionName)
+			base.WarnfCtx(ctx, err)
+			errs = errs.Append(errors.New(err))
+			continue
+		}
 
-	n1qlStore, ok := base.AsN1QLStore(dataStore)
-	if !ok {
-		base.WarnfCtx(ctx, "Cannot remove obsolete indexes for non-gocb bucket - skipping.")
-		return make([]string, 0), nil
+		removedIndexes, err := removeObsoleteIndexes(n1qlStore, previewOnly, dbCtx.UseXattrs(), dbCtx.UseViews(), sgIndexes)
+		if err != nil {
+			errs = errs.Append(err)
+			continue
+		}
+		removedIndexesByCollection[collectionName] = removedIndexes
 	}
-
-	return removeObsoleteIndexes(n1qlStore, previewOnly, dbCtx.UseXattrs(), dbCtx.UseViews(), sgIndexes)
+	return removedIndexesByCollection, errs.ErrorOrNil()
 }
 
 // Trigger terminate check handling for connected continuous replications.
