@@ -60,6 +60,10 @@ func TestPublicChanGuestAccess(t *testing.T) {
 
 func TestStarAccess(t *testing.T) {
 
+	if !db.EnableStarChannelLog {
+		t.Skip("This test requires StarChannel to be enabled")
+	}
+
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyChanges)
 
 	type allDocsRow struct {
@@ -561,6 +565,10 @@ func TestBulkDocsChangeToAccess(t *testing.T) {
 
 // Test _all_docs API call under different security scenarios
 func TestAllDocsAccessControl(t *testing.T) {
+	if !db.EnableStarChannelLog {
+		t.Skip("This test requires StarChannel to be enabled")
+	}
+
 	rt := NewRestTesterDefaultCollection(t, nil) // CBG-2618: fix collection channel access
 	defer rt.Close()
 	type allDocsRow struct {

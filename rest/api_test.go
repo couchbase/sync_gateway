@@ -1094,6 +1094,9 @@ func TestResponseEncoding(t *testing.T) {
 }
 
 func TestAllDocsChannelsAfterChannelMove(t *testing.T) {
+	if !db.EnableStarChannelLog {
+		t.Skip("This test requires StarChannel to be enabled")
+	}
 
 	type allDocsRow struct {
 		ID    string `json:"id"`

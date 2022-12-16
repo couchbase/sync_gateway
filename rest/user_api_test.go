@@ -1125,8 +1125,11 @@ func TestFunkyUsernames(t *testing.T) {
 			response := rt.Send(RequestByUser("PUT", "/db/AC+DC", `{"foo":"bar", "channels": ["foo"]}`, tc.UserName))
 			RequireStatus(t, response, 201)
 
-			response = rt.Send(RequestByUser("GET", "/db/_all_docs", "", tc.UserName))
-			RequireStatus(t, response, 200)
+			// _all_docs only works when EnableStarChannelLog is set to true
+			if db.EnableStarChannelLog {
+				response = rt.Send(RequestByUser("GET", "/db/_all_docs", "", tc.UserName))
+				RequireStatus(t, response, 200)
+			}
 
 			response = rt.Send(RequestByUser("GET", "/db/AC+DC", "", tc.UserName))
 			RequireStatus(t, response, 200)

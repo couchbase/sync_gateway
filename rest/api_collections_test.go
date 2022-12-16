@@ -18,6 +18,7 @@ import (
 	"github.com/couchbase/gocb/v2"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/db"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -107,6 +108,10 @@ func TestCollectionsPutDocInKeyspace(t *testing.T) {
 
 // TestCollectionsPublicChannel ensures that a doc routed to the public channel is accessible by a user with no other access.
 func TestCollectionsPublicChannel(t *testing.T) {
+	if !db.EnableStarChannelLog {
+		t.Skip("This test requires StarChannel to be enabled")
+	}
+
 	const (
 		username = "alice"
 		password = "pass"
