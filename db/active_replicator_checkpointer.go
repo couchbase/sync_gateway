@@ -280,29 +280,20 @@ func (c *Checkpointer) _updateCheckpointLists() (safeSeq *SequenceID) {
 	// if we have many remaining expectedSeqs, see if we can shrink the lists even more
 	// compact contiguous blocks of sequences by keeping only the last processed sequence in both lists
 	if len(c.expectedSeqs) > c.expectedSeqCompactionThreshold {
-		compactedExpectedSeqs := make([]SequenceID, 0)
 		// compact processed sequences up to but not including the last one to ensure
 		// we're not keeping large amounts of intermediate sequence numbers in memory
-		// TODO: Reverse loop?
-		for i := 0; i < len(c.expectedSeqs); i++ {
+		for i := len(c.expectedSeqs) - 2; i >= 0; i-- {
 			current := c.expectedSeqs[i]
-			if i == len(c.expectedSeqs)-1 {
-				// end of the set - keep the last sequence
-				compactedExpectedSeqs = append(compactedExpectedSeqs, current)
-				break
-			}
 			next := c.expectedSeqs[i+1]
 			_, processedCurrent := c.processedSeqs[current]
 			_, processedNext := c.processedSeqs[next]
 			if processedCurrent && processedNext {
 				// remove the current sequence from both sets, since we know we've also processed the next sequence
 				delete(c.processedSeqs, current)
-			} else {
-				// this seq or next seq was not processed yet, so keep current in the list
-				compactedExpectedSeqs = append(compactedExpectedSeqs, current)
+				// remove i from expectedSeqs
+				c.expectedSeqs = append(c.expectedSeqs[:i], c.expectedSeqs[i+1:]...)
 			}
 		}
-		c.expectedSeqs = compactedExpectedSeqs
 	}
 
 	c.stats.ExpectedSequenceLenPostCleanup = len(c.expectedSeqs)
