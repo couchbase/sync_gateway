@@ -280,17 +280,15 @@ func (c *Checkpointer) _updateCheckpointLists() (safeSeq *SequenceID) {
 	// if we have many remaining expectedSeqs, see if we can shrink the lists even more
 	// compact contiguous blocks of sequences by keeping only the last processed sequence in both lists
 	if len(c.expectedSeqs) > c.expectedSeqCompactionThreshold {
-		// compact processed sequences up to but not including the last one to ensure
-		// we're not keeping large amounts of intermediate sequence numbers in memory
+		// start at the one before the end of the list (since we know we need to retain that one anyway, if it's processed)
 		for i := len(c.expectedSeqs) - 2; i >= 0; i-- {
 			current := c.expectedSeqs[i]
 			next := c.expectedSeqs[i+1]
 			_, processedCurrent := c.processedSeqs[current]
 			_, processedNext := c.processedSeqs[next]
 			if processedCurrent && processedNext {
-				// remove the current sequence from both sets, since we know we've also processed the next sequence
+				// remove the current sequence from both sets, since we know we've also processed the next sequence and are able to checkpoint that
 				delete(c.processedSeqs, current)
-				// remove i from expectedSeqs
 				c.expectedSeqs = append(c.expectedSeqs[:i], c.expectedSeqs[i+1:]...)
 			}
 		}
