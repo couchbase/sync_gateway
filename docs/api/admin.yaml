@@ -120,7 +120,7 @@ paths:
     $ref: './paths/admin/{db}~_repair.yaml'
   /_all_dbs:
     $ref: ./paths/admin/_all_dbs.yaml
-  '/{keyspace}/_compact':
+  '/{db}/_compact':
     $ref: './paths/admin/{keyspace}~_compact.yaml'
   '/{db}/':
     $ref: './paths/admin/{db}~.yaml'
