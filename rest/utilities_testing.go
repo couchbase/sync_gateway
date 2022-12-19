@@ -94,12 +94,8 @@ type RestTester struct {
 }
 
 // NewRestTester returns a rest tester and corresponding keyspace backed by a single database and a single collection. This collection may be named or default collection based on global test configuration.
-func NewRestTester(tb testing.TB, restConfig *RestTesterConfig) (*RestTester, string) {
-	rt := newRestTester(tb, restConfig, useSingleCollection, 1)
-	if rt.PersistentConfig {
-		return rt, ""
-	}
-	return rt, rt.GetSingleKeyspace()
+func NewRestTester(tb testing.TB, restConfig *RestTesterConfig) *RestTester {
+	return newRestTester(tb, restConfig, useSingleCollection, 1)
 }
 
 // newRestTester creates the underlying rest testers, use public functions.
@@ -670,7 +666,6 @@ func (rt *RestTester) CreateWaitForChangesRetryWorker(numChangesExpected int, ch
 
 		var changes ChangesResults
 		var response *TestResponse
-
 		if useAdminPort {
 			response = rt.SendAdminRequest("GET", changesURL, "")
 
@@ -697,7 +692,7 @@ func (rt *RestTester) WaitForChanges(numChangesExpected int, changesURL, usernam
 	changes ChangesResults,
 	err error) {
 
-	waitForChangesWorker := rt.CreateWaitForChangesRetryWorker(numChangesExpected, changesURL, username, useAdminPort)
+	waitForChangesWorker := rt.CreateWaitForChangesRetryWorker(numChangesExpected, rt.templateResource(changesURL), username, useAdminPort)
 
 	sleeper := base.CreateSleeperFunc(200, 100)
 
@@ -879,7 +874,7 @@ func (rt *RestTester) waitForDBState(stateWant string) (err error) {
 
 func (rt *RestTester) SendAdminRequestWithHeaders(method, resource string, body string, headers map[string]string) *TestResponse {
 	input := bytes.NewBufferString(body)
-	request, _ := http.NewRequest(method, "http://localhost"+resource, input)
+	request, _ := http.NewRequest(method, "http://localhost"+rt.templateResource(resource), input)
 	for k, v := range headers {
 		request.Header.Set(k, v)
 	}
@@ -1223,7 +1218,7 @@ func NewBlipTesterFromSpec(tb testing.TB, spec BlipTesterSpec) (*BlipTester, err
 		EnableNoConflictsMode: spec.noConflictsMode,
 		GuestEnabled:          spec.GuestEnabled,
 	}
-	rt, _ := NewRestTester(tb, &rtConfig)
+	rt := NewRestTester(tb, &rtConfig)
 	return createBlipTesterWithSpec(tb, spec, rt)
 }
 

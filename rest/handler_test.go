@@ -85,8 +85,10 @@ func TestParseHTTPRangeHeader(t *testing.T) {
 func TestHTTPLoggingRedaction(t *testing.T) {
 
 	base.LongRunningTest(t)
-	rt, keyspace := NewRestTester(t, nil)
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
+
+	keyspace := rt.GetSingleKeyspace()
 
 	cases := []struct {
 		name, method, path, expectedLog string

@@ -49,7 +49,7 @@ func init() {
 // ////// AND NOW THE TESTS:
 
 func TestRoot(t *testing.T) {
-	rt, _ := NewRestTester(t, nil)
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
 	response := rt.SendRequest("GET", "/", "")
@@ -69,7 +69,7 @@ func TestRoot(t *testing.T) {
 }
 
 func TestDBRoot(t *testing.T) {
-	rt, _ := NewRestTester(t, &RestTesterConfig{GuestEnabled: true})
+	rt := NewRestTester(t, &RestTesterConfig{GuestEnabled: true})
 	defer rt.Close()
 
 	response := rt.SendRequest("GET", "/db/", "")
@@ -89,7 +89,7 @@ func TestDBRoot(t *testing.T) {
 }
 
 func TestDisablePublicBasicAuth(t *testing.T) {
-	rt, _ := NewRestTester(t, &RestTesterConfig{
+	rt := NewRestTester(t, &RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{
 			DbConfig: DbConfig{
 				DisablePasswordAuth: base.BoolPtr(true),
@@ -112,7 +112,7 @@ func TestDisablePublicBasicAuth(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NoError(t, a.Save(user))
 
-	response = rt.Send(RequestByUser(http.MethodGet, "/db/", "", "user1"))
+	response = rt.SendUserRequest(http.MethodGet, "/db/", "", "user1")
 	RequireStatus(t, response, http.StatusUnauthorized)
 	assert.NotContains(t, response.Header(), "WWW-Authenticate", "expected to not receive a WWW-Auth header when password auth is disabled")
 
@@ -122,7 +122,7 @@ func TestDisablePublicBasicAuth(t *testing.T) {
 
 	// As a sanity check, ensure it does work when the setting is disabled
 	rt.ServerContext().Database(ctx, "db").Options.DisablePasswordAuthentication = false
-	response = rt.Send(RequestByUser(http.MethodGet, "/db/", "", "user1"))
+	response = rt.SendUserRequest(http.MethodGet, "/db/", "", "user1")
 	RequireStatus(t, response, http.StatusOK)
 
 	response = rt.SendRequest(http.MethodPost, "/db/_session", `{"name":"user1","password":"letmein"}`)
@@ -130,18 +130,18 @@ func TestDisablePublicBasicAuth(t *testing.T) {
 }
 
 func TestDocLifecycle(t *testing.T) {
-	rt, keyspace := NewRestTester(t, nil)
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
 	revid := rt.CreateDoc(t, "doc")
 	assert.Equal(t, "1-45ca73d819d5b1c9b8eea95290e79004", revid)
 
-	response := rt.SendAdminRequest("DELETE", fmt.Sprintf("/%s/doc?rev=%s", keyspace, revid), "")
+	response := rt.SendAdminRequest("DELETE", "/{{.keyspace}}/doc?rev="+revid, "")
 	RequireStatus(t, response, 200)
 }
 
 func TestDocumentUpdateWithNullBody(t *testing.T) {
-	rt, keyspace := NewRestTester(t, nil)
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
 	ctx := rt.Context()
@@ -157,19 +157,19 @@ func TestDocumentUpdateWithNullBody(t *testing.T) {
 	assert.NoError(t, a.Save(user))
 
 	// Create document
-	response := rt.Send(RequestByUser("PUT", fmt.Sprintf("/%s/doc", keyspace), `{"prop":true, "channels":["foo"]}`, "user1"))
+	response := rt.SendUserRequest("PUT", "/{{.keyspace}}/doc", `{"prop":true, "channels":["foo"]}`, "user1")
 	RequireStatus(t, response, 201)
 	var body db.Body
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	revid := body["rev"].(string)
 
 	// Put new revision with null body
-	response = rt.Send(RequestByUser("PUT", fmt.Sprintf("/%s/doc?rev=%s", keyspace, revid), "", "user1"))
+	response = rt.SendUserRequest("PUT", "/{{.keyspace}}/doc?rev="+revid, "", "user1")
 	RequireStatus(t, response, 400)
 }
 
 func TestFunkyDocIDs(t *testing.T) {
-	rt, keyspace := NewRestTester(t, nil)
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
 	rt.CreateDoc(t, "AC%2FDC")
@@ -191,32 +191,32 @@ func TestFunkyDocIDs(t *testing.T) {
 	RequireStatus(t, response, 200)
 
 	rt.CreateDoc(t, "AC%2BDC2")
-	response = rt.SendAdminRequest("GET", "/"+keyspace+"/AC%2BDC2", "")
+	response = rt.SendAdminRequest("GET", "/{{.keyspace}}/AC%2BDC2", "")
 	RequireStatus(t, response, 200)
 
 	rt.CreateDoc(t, "AC%2BDC%2BGC2")
-	response = rt.SendAdminRequest("GET", "/"+keyspace+"/AC%2BDC%2BGC2", "")
+	response = rt.SendAdminRequest("GET", "/{{.keyspace}}/AC%2BDC%2BGC2", "")
 	RequireStatus(t, response, 200)
 
-	response = rt.SendAdminRequest("PUT", "/"+keyspace+"/foo%2Bbar%2Bmoo%2Bcar2", `{"prop":true}`)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/foo%2Bbar%2Bmoo%2Bcar2", `{"prop":true}`)
 	RequireStatus(t, response, 201)
-	response = rt.SendAdminRequest("GET", "/"+keyspace+"/foo%2Bbar%2Bmoo%2Bcar2", "")
+	response = rt.SendAdminRequest("GET", "/{{.keyspace}}/foo%2Bbar%2Bmoo%2Bcar2", "")
 	RequireStatus(t, response, 200)
 
-	response = rt.SendAdminRequest("PUT", "/"+keyspace+"/foo%2Bbar+moo%2Bcar3", `{"prop":true}`)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/foo%2Bbar+moo%2Bcar3", `{"prop":true}`)
 	RequireStatus(t, response, 201)
-	response = rt.SendAdminRequest("GET", "/"+keyspace+"/foo+bar%2Bmoo+car3", "")
+	response = rt.SendAdminRequest("GET", "/{{.keyspace}}/foo+bar%2Bmoo+car3", "")
 	RequireStatus(t, response, 200)
 }
 
 func TestCORSOrigin(t *testing.T) {
-	rt, keyspace := NewRestTester(t, nil)
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
 	reqHeaders := map[string]string{
 		"Origin": "http://example.com",
 	}
-	response := rt.SendRequestWithHeaders("GET", "/"+keyspace+"/", "", reqHeaders)
+	response := rt.SendRequestWithHeaders("GET", "/{{.keyspace}}/", "", reqHeaders)
 	assert.Equal(t, "http://example.com", response.Header().Get("Access-Control-Allow-Origin"))
 
 	// now test a non-listed origin
@@ -224,21 +224,21 @@ func TestCORSOrigin(t *testing.T) {
 	reqHeaders = map[string]string{
 		"Origin": "http://hack0r.com",
 	}
-	response = rt.SendRequestWithHeaders("GET", "/"+keyspace+"/", "", reqHeaders)
+	response = rt.SendRequestWithHeaders("GET", "/{{.keyspace}}/", "", reqHeaders)
 	assert.Equal(t, "*", response.Header().Get("Access-Control-Allow-Origin"))
 
 	// now test another origin in config
 	reqHeaders = map[string]string{
 		"Origin": "http://staging.example.com",
 	}
-	response = rt.SendRequestWithHeaders("GET", "/"+keyspace+"/", "", reqHeaders)
+	response = rt.SendRequestWithHeaders("GET", "/{{.keyspace}}/", "", reqHeaders)
 	assert.Equal(t, "http://staging.example.com", response.Header().Get("Access-Control-Allow-Origin"))
 
 	// test no header on _admin apis
 	reqHeaders = map[string]string{
 		"Origin": "http://example.com",
 	}
-	response = rt.SendAdminRequestWithHeaders("GET", "/"+keyspace+"/_all_docs", "", reqHeaders)
+	response = rt.SendAdminRequestWithHeaders("GET", "/{{.keyspace}}/_all_docs", "", reqHeaders)
 	assert.Equal(t, "", response.Header().Get("Access-Control-Allow-Origin"))
 
 	// test with a config without * should reject non-matches
@@ -249,7 +249,7 @@ func TestCORSOrigin(t *testing.T) {
 	reqHeaders = map[string]string{
 		"Origin": "http://hack0r.com",
 	}
-	response = rt.SendRequestWithHeaders("GET", "/"+keyspace+"/", "", reqHeaders)
+	response = rt.SendRequestWithHeaders("GET", "/{{.keyspace}}/", "", reqHeaders)
 	assert.Equal(t, "", response.Header().Get("Access-Control-Allow-Origin"))
 }
 
@@ -263,11 +263,11 @@ func assertGatewayStatus(t *testing.T, response *TestResponse, expected int) {
 }
 
 func TestBulkDocs(t *testing.T) {
-	rt, keyspace := NewRestTester(t, nil)
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
 	input := `{"docs": [{"_id": "bulk1", "n": 1}, {"_id": "bulk2", "n": 2}, {"_id": "_local/bulk3", "n": 3}]}`
-	response := rt.SendAdminRequest("POST", fmt.Sprintf("/%s/_bulk_docs", keyspace), input)
+	response := rt.SendAdminRequest("POST", "/{{.keyspace}}/_bulk_docs", input)
 	RequireStatus(t, response, 201)
 
 	var docs []interface{}
@@ -275,7 +275,7 @@ func TestBulkDocs(t *testing.T) {
 	assert.Len(t, docs, 3)
 	assert.Equal(t, map[string]interface{}{"rev": "1-50133ddd8e49efad34ad9ecae4cb9907", "id": "bulk1"}, docs[0])
 
-	response = rt.SendAdminRequest("GET", fmt.Sprintf("/%s/bulk1", keyspace), "")
+	response = rt.SendAdminRequest("GET", "/{{.keyspace}}/bulk1", "")
 	RequireStatus(t, response, 200)
 	var respBody db.Body
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &respBody))
@@ -285,7 +285,7 @@ func TestBulkDocs(t *testing.T) {
 	assert.Equal(t, map[string]interface{}{"rev": "1-035168c88bd4b80fb098a8da72f881ce", "id": "bulk2"}, docs[1])
 	assert.Equal(t, map[string]interface{}{"rev": "0-1", "id": "_local/bulk3"}, docs[2])
 
-	response = rt.SendAdminRequest("GET", fmt.Sprintf("/%s/_local/bulk3", keyspace), "")
+	response = rt.SendAdminRequest("GET", "/{{.keyspace}}/_local/bulk3", "")
 	RequireStatus(t, response, 200)
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &respBody))
 	assert.Equal(t, "_local/bulk3", respBody[db.BodyId])
@@ -294,12 +294,12 @@ func TestBulkDocs(t *testing.T) {
 
 	// update all documents
 	input = `{"docs": [{"_id": "bulk1", "_rev" : "1-50133ddd8e49efad34ad9ecae4cb9907", "n": 10}, {"_id": "bulk2", "_rev":"1-035168c88bd4b80fb098a8da72f881ce", "n": 20}, {"_id": "_local/bulk3","_rev":"0-1","n": 30}]}`
-	response = rt.SendAdminRequest("POST", fmt.Sprintf("/%s/_bulk_docs", keyspace), input)
+	response = rt.SendAdminRequest("POST", "/{{.keyspace}}/_bulk_docs", input)
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &docs))
 	assert.Len(t, docs, 3)
 	assert.Equal(t, map[string]interface{}{"rev": "2-7e384b16e63ee3218349ee568f156d6f", "id": "bulk1"}, docs[0])
 
-	response = rt.SendAdminRequest("GET", fmt.Sprintf("/%s/_local/bulk3", keyspace), "")
+	response = rt.SendAdminRequest("GET", "/{{.keyspace}}/_local/bulk3", "")
 	RequireStatus(t, response, 200)
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &respBody))
 	assert.Equal(t, "_local/bulk3", respBody[db.BodyId])
@@ -308,11 +308,11 @@ func TestBulkDocs(t *testing.T) {
 }
 
 func TestBulkDocsIDGeneration(t *testing.T) {
-	rt, keyspace := NewRestTester(t, nil)
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
 	input := `{"docs": [{"n": 1}, {"_id": 123, "n": 2}]}`
-	response := rt.SendAdminRequest("POST", fmt.Sprintf("/%s/_bulk_docs", keyspace), input)
+	response := rt.SendAdminRequest("POST", "/{{.keyspace}}/_bulk_docs", input)
 	RequireStatus(t, response, 201)
 	var docs []map[string]string
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &docs))
@@ -669,25 +669,25 @@ func TestBulkDocsUnusedSequencesMultiRevDoc2SG(t *testing.T) {
 */
 
 func TestBulkDocsEmptyDocs(t *testing.T) {
-	rt, keyspace := NewRestTester(t, nil)
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
 	input := `{}`
-	response := rt.SendAdminRequest("POST", fmt.Sprintf("/%s/_bulk_docs", keyspace), input)
+	response := rt.SendAdminRequest("POST", "/{{.keyspace}}/_bulk_docs", input)
 	RequireStatus(t, response, 400)
 }
 
 func TestBulkDocsMalformedDocs(t *testing.T) {
-	rt, keyspace := NewRestTester(t, nil)
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
 	input := `{"docs":["A","B"]}`
-	response := rt.SendAdminRequest("POST", fmt.Sprintf("/%s/_bulk_docs", keyspace), input)
+	response := rt.SendAdminRequest("POST", "/{{.keyspace}}/_bulk_docs", input)
 	RequireStatus(t, response, 400)
 
 	// For non-string id, ensure it reverts to id generation and doesn't panic
 	input = `{"docs": [{"_id": 3, "n": 1}]}`
-	response = rt.SendAdminRequest("POST", fmt.Sprintf("/%s/_bulk_docs", keyspace), input)
+	response = rt.SendAdminRequest("POST", "/{{.keyspace}}/_bulk_docs", input)
 	log.Printf("response:%s", response.Body.Bytes())
 	RequireStatus(t, response, 201)
 }
@@ -695,7 +695,7 @@ func TestBulkDocsMalformedDocs(t *testing.T) {
 // TestBulkGetEfficientBodyCompression makes sure that the multipart writer of the bulk get response is efficiently compressing the document bodies.
 // This is to catch a case where document bodies are marshalled with random property ordering, and reducing compression ratio between multiple doc body instances.
 func TestBulkGetEfficientBodyCompression(t *testing.T) {
-	rt, keyspace := NewRestTester(t, nil)
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 	const (
 		numDocs = 300
@@ -712,7 +712,7 @@ func TestBulkGetEfficientBodyCompression(t *testing.T) {
 	// create a bunch of identical large-ish docs
 	for i := 0; i < numDocs; i++ {
 		resp := rt.SendAdminRequest(http.MethodPut,
-			fmt.Sprintf("/%s/%s", keyspace, docKeyPrefix+strconv.Itoa(i)), doc)
+			"/{{.keyspace}}/"+docKeyPrefix+strconv.Itoa(i), doc)
 		RequireStatus(t, resp, http.StatusCreated)
 	}
 
@@ -729,7 +729,7 @@ func TestBulkGetEfficientBodyCompression(t *testing.T) {
 	}
 
 	// request an uncompressed _bulk_get
-	resp := rt.SendAdminRequestWithHeaders(http.MethodPost, fmt.Sprintf("/%s/_bulk_get", keyspace), bulkGetBody, bulkGetHeaders)
+	resp := rt.SendAdminRequestWithHeaders(http.MethodPost, "/{{.keyspace}}/_bulk_get", bulkGetBody, bulkGetHeaders)
 	RequireStatus(t, resp, http.StatusOK)
 
 	uncompressedBodyLen := resp.Body.Len()
@@ -737,7 +737,7 @@ func TestBulkGetEfficientBodyCompression(t *testing.T) {
 
 	// try the request again, but accept gzip encoding
 	bulkGetHeaders["Accept-Encoding"] = "gzip"
-	resp = rt.SendAdminRequestWithHeaders(http.MethodPost, fmt.Sprintf("/%s/_bulk_get", keyspace), bulkGetBody, bulkGetHeaders)
+	resp = rt.SendAdminRequestWithHeaders(http.MethodPost, "/{{.keyspace}}/_bulk_get", bulkGetBody, bulkGetHeaders)
 	RequireStatus(t, resp, http.StatusOK)
 
 	compressedBodyLen := resp.Body.Len()
@@ -748,16 +748,16 @@ func TestBulkGetEfficientBodyCompression(t *testing.T) {
 }
 
 func TestBulkGetEmptyDocs(t *testing.T) {
-	rt, keyspace := NewRestTester(t, nil)
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
 	input := `{}`
-	response := rt.SendAdminRequest("POST", fmt.Sprintf("/%s/_bulk_get", keyspace), input)
+	response := rt.SendAdminRequest("POST", "/{{.keyspace}}/_bulk_get", input)
 	RequireStatus(t, response, 400)
 }
 
 func TestBulkDocsNoEdits(t *testing.T) {
-	rt, keyspace := NewRestTester(t, nil)
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
 	input := `{"new_edits":false, "docs": [
@@ -766,7 +766,7 @@ func TestBulkDocsNoEdits(t *testing.T) {
                     {"_id": "bdne2", "_rev": "34-def", "n": 2,
                      "_revisions": {"start": 34, "ids": ["def", "three", "two", "one"]}}
               ]}`
-	response := rt.SendAdminRequest("POST", fmt.Sprintf("/%s/_bulk_docs", keyspace), input)
+	response := rt.SendAdminRequest("POST", "/{{.keyspace}}/_bulk_docs", input)
 	RequireStatus(t, response, 201)
 	var docs []interface{}
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &docs))
@@ -780,7 +780,7 @@ func TestBulkDocsNoEdits(t *testing.T) {
                   {"_id": "bdne1", "_rev": "14-jkl", "n": 111,
                    "_revisions": {"start": 14, "ids": ["jkl", "def", "abc", "eleven", "ten", "nine"]}}
             ]}`
-	response = rt.SendAdminRequest("POST", fmt.Sprintf("/%s/_bulk_docs", keyspace), input)
+	response = rt.SendAdminRequest("POST", "/{{.keyspace}}/_bulk_docs", input)
 	RequireStatus(t, response, 201)
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &docs))
 	assert.Equal(t, 1, len(docs))
@@ -792,7 +792,7 @@ type RevDiffResponse map[string][]string
 type RevsDiffResponse map[string]RevDiffResponse
 
 func TestRevsDiff(t *testing.T) {
-	rt, keyspace := NewRestTester(t, &RestTesterConfig{GuestEnabled: true})
+	rt := NewRestTester(t, &RestTesterConfig{GuestEnabled: true})
 	defer rt.Close()
 
 	// Create some docs:
@@ -802,7 +802,7 @@ func TestRevsDiff(t *testing.T) {
                     {"_id": "rd2", "_rev": "34-def", "n": 2,
                      "_revisions": {"start": 34, "ids": ["def", "three", "two", "one"]}}
               ]}`
-	response := rt.SendRequest("POST", fmt.Sprintf("/%s/_bulk_docs", keyspace), input)
+	response := rt.SendRequest("POST", "/{{.keyspace}}/_bulk_docs", input)
 	RequireStatus(t, response, 201)
 
 	// Now call _revs_diff:
@@ -811,7 +811,7 @@ func TestRevsDiff(t *testing.T) {
               "rd9": ["1-a", "2-b", "3-c"],
               "_design/ddoc": ["1-woo"]
              }`
-	response = rt.SendRequest("POST", fmt.Sprintf("/%s/_revs_diff", keyspace), input)
+	response = rt.SendRequest("POST", "/{{.keyspace}}/_revs_diff", input)
 	RequireStatus(t, response, 200)
 	var diffResponse RevsDiffResponse
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &diffResponse))
@@ -824,7 +824,7 @@ func TestRevsDiff(t *testing.T) {
 }
 
 func TestOpenRevs(t *testing.T) {
-	rt, keyspace := NewRestTester(t, nil)
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
 	// Create some docs:
@@ -832,13 +832,13 @@ func TestOpenRevs(t *testing.T) {
                     {"_id": "or1", "_rev": "12-abc", "n": 1,
                      "_revisions": {"start": 12, "ids": ["abc", "eleven", "ten", "nine"]}}
               ]}`
-	response := rt.SendAdminRequest("POST", fmt.Sprintf("/%s/_bulk_docs", keyspace), input)
+	response := rt.SendAdminRequest("POST", "/{{.keyspace}}/_bulk_docs", input)
 	RequireStatus(t, response, 201)
 
 	reqHeaders := map[string]string{
 		"Accept": "application/json",
 	}
-	response = rt.SendAdminRequestWithHeaders("GET", fmt.Sprintf(`/%s/or1?open_revs=["12-abc","10-ten"]`, keyspace), "", reqHeaders)
+	response = rt.SendAdminRequestWithHeaders("GET", `/{{.keyspace}}/or1?open_revs=["12-abc","10-ten"]`, "", reqHeaders)
 	RequireStatus(t, response, 200)
 
 	var respBody []map[string]interface{}
@@ -859,7 +859,7 @@ func TestOpenRevs(t *testing.T) {
 // Covers feature implemented in issue #2992
 func TestBulkGetPerDocRevsLimit(t *testing.T) {
 
-	rt, keyspace := NewRestTester(t, nil)
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
 	// Map of doc IDs to latest rev IDs
@@ -874,17 +874,17 @@ func TestBulkGetPerDocRevsLimit(t *testing.T) {
 	for k := range docs {
 		var body db.Body
 
-		response := rt.SendAdminRequest("PUT", fmt.Sprintf("/%s/%v", keyspace, k), fmt.Sprintf(`{"val":"1-%s"}`, k))
+		response := rt.SendAdminRequest("PUT", fmt.Sprintf("/{{.keyspace}}/%v", k), fmt.Sprintf(`{"val":"1-%s"}`, k))
 		RequireStatus(t, response, 201)
 		require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 		rev := body["rev"].(string)
 
-		response = rt.SendAdminRequest("PUT", fmt.Sprintf("/%s/%v?rev=%s", keyspace, k, rev), fmt.Sprintf(`{"val":"2-%s"}`, k))
+		response = rt.SendAdminRequest("PUT", fmt.Sprintf("/{{.keyspace}}/%v?rev=%s", k, rev), fmt.Sprintf(`{"val":"2-%s"}`, k))
 		RequireStatus(t, response, 201)
 		require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 		rev = body["rev"].(string)
 
-		response = rt.SendAdminRequest("PUT", fmt.Sprintf("/%s/%v?rev=%s", keyspace, k, rev), fmt.Sprintf(`{"val":"3-%s"}`, k))
+		response = rt.SendAdminRequest("PUT", fmt.Sprintf("/{{.keyspace}}/%v?rev=%s", k, rev), fmt.Sprintf(`{"val":"3-%s"}`, k))
 		RequireStatus(t, response, 201)
 		require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 		rev = body["rev"].(string)
@@ -895,7 +895,7 @@ func TestBulkGetPerDocRevsLimit(t *testing.T) {
 	reqRevsLimit := 2
 
 	// Fetch docs by bulk with varying revs_limits
-	bulkGetResponse := rt.SendAdminRequest("POST", fmt.Sprintf("/%s/_bulk_get?revs=true&revs_limit=%v", keyspace, reqRevsLimit), fmt.Sprintf(`
+	bulkGetResponse := rt.SendAdminRequest("POST", fmt.Sprintf("/{{.keyspace}}/_bulk_get?revs=true&revs_limit=%v", reqRevsLimit), fmt.Sprintf(`
 		{
 			"docs": [
 				{
@@ -976,15 +976,15 @@ readerLoop:
 }
 
 func TestLocalDocs(t *testing.T) {
-	rt, keyspace := NewRestTester(t, nil)
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
-	response := rt.SendAdminRequest("GET", fmt.Sprintf("/%s/_local/loc1", keyspace), "")
+	response := rt.SendAdminRequest("GET", "/{{.keyspace}}/_local/loc1", "")
 	RequireStatus(t, response, 404)
 
-	response = rt.SendAdminRequest("PUT", fmt.Sprintf("/%s/_local/loc1", keyspace), `{"hi": "there"}`)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/_local/loc1", `{"hi": "there"}`)
 	RequireStatus(t, response, 201)
-	response = rt.SendAdminRequest("GET", fmt.Sprintf("/%s/_local/loc1", keyspace), "")
+	response = rt.SendAdminRequest("GET", "/{{.keyspace}}/_local/loc1", "")
 	RequireStatus(t, response, 200)
 	var respBody db.Body
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &respBody))
@@ -992,11 +992,11 @@ func TestLocalDocs(t *testing.T) {
 	assert.Equal(t, "0-1", respBody[db.BodyRev])
 	assert.Equal(t, "there", respBody["hi"])
 
-	response = rt.SendAdminRequest("PUT", fmt.Sprintf("/%s/_local/loc1", keyspace), `{"hi": "there"}`)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/_local/loc1", `{"hi": "there"}`)
 	RequireStatus(t, response, 409)
-	response = rt.SendAdminRequest("PUT", fmt.Sprintf("/%s/_local/loc1", keyspace), `{"hi": "again", "_rev": "0-1"}`)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/_local/loc1", `{"hi": "again", "_rev": "0-1"}`)
 	RequireStatus(t, response, 201)
-	response = rt.SendAdminRequest("GET", fmt.Sprintf("/%s/_local/loc1", keyspace), "")
+	response = rt.SendAdminRequest("GET", "/{{.keyspace}}/_local/loc1", "")
 	RequireStatus(t, response, 200)
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &respBody))
 	assert.Equal(t, "_local/loc1", respBody[db.BodyId])
@@ -1004,30 +1004,30 @@ func TestLocalDocs(t *testing.T) {
 	assert.Equal(t, "again", respBody["hi"])
 
 	// Check the handling of large integers, which caused trouble for us at one point:
-	response = rt.SendAdminRequest("PUT", fmt.Sprintf("/%s/_local/loc1", keyspace), `{"big": 123456789, "_rev": "0-2"}`)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/_local/loc1", `{"big": 123456789, "_rev": "0-2"}`)
 	RequireStatus(t, response, 201)
-	response = rt.SendAdminRequest("GET", fmt.Sprintf("/%s/_local/loc1", keyspace), "")
+	response = rt.SendAdminRequest("GET", "/{{.keyspace}}/_local/loc1", "")
 	RequireStatus(t, response, 200)
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &respBody))
 	assert.Equal(t, "_local/loc1", respBody[db.BodyId])
 	assert.Equal(t, "0-3", respBody[db.BodyRev])
 	assert.Equal(t, float64(123456789), respBody["big"])
 
-	response = rt.SendAdminRequest("DELETE", fmt.Sprintf("/%s/_local/loc1", keyspace), "")
+	response = rt.SendAdminRequest("DELETE", "/{{.keyspace}}/_local/loc1", "")
 	RequireStatus(t, response, 409)
-	response = rt.SendAdminRequest("DELETE", fmt.Sprintf("/%s/_local/loc1?rev=0-3", keyspace), "")
+	response = rt.SendAdminRequest("DELETE", "/{{.keyspace}}/_local/loc1?rev=0-3", "")
 	RequireStatus(t, response, 200)
-	response = rt.SendAdminRequest("GET", fmt.Sprintf("/%s/_local/loc1", keyspace), "")
+	response = rt.SendAdminRequest("GET", "/{{.keyspace}}/_local/loc1", "")
 	RequireStatus(t, response, 404)
-	response = rt.SendAdminRequest("DELETE", fmt.Sprintf("/%s/_local/loc1", keyspace), "")
+	response = rt.SendAdminRequest("DELETE", "/{{.keyspace}}/_local/loc1", "")
 	RequireStatus(t, response, 404)
 
 	// Check the handling of URL encoded slash at end of _local%2Fdoc
-	response = rt.SendAdminRequest("PUT", "/"+keyspace+"/_local%2Floc12", `{"hi": "there"}`)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/_local%2Floc12", `{"hi": "there"}`)
 	RequireStatus(t, response, 201)
-	response = rt.SendAdminRequest("GET", fmt.Sprintf("/%s/_local/loc2", keyspace), "")
+	response = rt.SendAdminRequest("GET", "/{{.keyspace}}/_local/loc2", "")
 	RequireStatus(t, response, 404)
-	response = rt.SendAdminRequest("DELETE", "/"+keyspace+"/_local%2floc2", "")
+	response = rt.SendAdminRequest("DELETE", "/{{.keyspace}}/_local%2floc2", "")
 	RequireStatus(t, response, 404)
 }
 
@@ -1037,7 +1037,7 @@ func TestLocalDocExpiry(t *testing.T) {
 		t.Skip("Test requires Couchbase Server bucket for expiry")
 	}
 
-	rt, keyspace := NewRestTester(t, nil)
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
 	timeNow := uint32(time.Now().Unix())
@@ -1047,7 +1047,7 @@ func TestLocalDocExpiry(t *testing.T) {
 	rt.GetDatabase().Options.LocalDocExpirySecs = uint32(60 * 30)
 	log.Printf("Expiry expected between %d and %d", timeNow, oneMoreHour)
 
-	response := rt.SendAdminRequest("PUT", fmt.Sprintf("/%s/_local/loc1", keyspace), `{"hi": "there"}`)
+	response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/_local/loc1", `{"hi": "there"}`)
 	RequireStatus(t, response, 201)
 
 	localDocKey := db.RealSpecialDocID(db.DocTypeLocal, "loc1")
@@ -1059,7 +1059,7 @@ func TestLocalDocExpiry(t *testing.T) {
 	assert.NoError(t, getMetaError)
 
 	// Retrieve local doc, ensure non-zero expiry is preserved
-	response = rt.SendAdminRequest("GET", fmt.Sprintf("/%s/_local/loc1", keyspace), "")
+	response = rt.SendAdminRequest("GET", "/{{.keyspace}}/_local/loc1", "")
 	RequireStatus(t, response, 200)
 	expiry, getMetaError = dataStore.GetExpiry(localDocKey)
 	log.Printf("Expiry after GET is %v", expiry)
@@ -1076,12 +1076,12 @@ func TestResponseEncoding(t *testing.T) {
 	}
 	docJSON := fmt.Sprintf(`{"long": %q}`, str)
 
-	rt, keyspace := NewRestTester(t, nil)
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
-	response := rt.SendAdminRequest("PUT", fmt.Sprintf("/%s/_local/loc1", keyspace), docJSON)
+	response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/_local/loc1", docJSON)
 	RequireStatus(t, response, 201)
-	response = rt.SendAdminRequestWithHeaders("GET", fmt.Sprintf("/%s/_local/loc1", keyspace), "",
+	response = rt.SendAdminRequestWithHeaders("GET", "/{{.keyspace}}/_local/loc1", "",
 		map[string]string{"Accept-Encoding": "foo, gzip, bar"})
 	RequireStatus(t, response, 200)
 	assert.Equal(t, "gzip", response.Header().Get("Content-Encoding"))
@@ -1113,7 +1113,7 @@ func TestAllDocsChannelsAfterChannelMove(t *testing.T) {
 	}
 
 	rtConfig := RestTesterConfig{SyncFn: `function(doc) {channel(doc.channels)}`}
-	rt, keyspace := NewRestTester(t, &rtConfig)
+	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
 	ctx := rt.Context()
@@ -1125,7 +1125,7 @@ func TestAllDocsChannelsAfterChannelMove(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Create a doc
-	response := rt.Send(Request("PUT", fmt.Sprintf("/%s/doc1", keyspace), `{"foo":"bar", "channels":["ch1"]}`))
+	response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1", `{"foo":"bar", "channels":["ch1"]}`)
 	RequireStatus(t, response, 201)
 	var body db.Body
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
@@ -1133,7 +1133,7 @@ func TestAllDocsChannelsAfterChannelMove(t *testing.T) {
 	doc1RevID := body["rev"].(string)
 
 	// Run GET _all_docs as admin with channels=true:
-	response = rt.SendAdminRequest("GET", fmt.Sprintf("/%s/_all_docs?channels=true", keyspace), "")
+	response = rt.SendAdminRequest("GET", "/{{.keyspace}}/_all_docs?channels=true", "")
 	RequireStatus(t, response, 200)
 
 	log.Printf("Admin response = %s", response.Body.Bytes())
@@ -1145,7 +1145,7 @@ func TestAllDocsChannelsAfterChannelMove(t *testing.T) {
 
 	// Run POST _all_docs as admin with explicit docIDs and channels=true:
 	keys := `{"keys": ["doc1"]}`
-	response = rt.SendAdminRequest("POST", fmt.Sprintf("/%s/_all_docs?channels=true", keyspace), keys)
+	response = rt.SendAdminRequest("POST", "/{{.keyspace}}/_all_docs?channels=true", keys)
 	RequireStatus(t, response, 200)
 
 	log.Printf("Admin response = %s", response.Body.Bytes())
@@ -1157,11 +1157,11 @@ func TestAllDocsChannelsAfterChannelMove(t *testing.T) {
 
 	// Commit rev 2 that maps to a differenet channel
 	str := fmt.Sprintf(`{"foo":"bar", "channels":["ch2"], "_rev":%q}`, doc1RevID)
-	RequireStatus(t, rt.Send(Request("PUT", fmt.Sprintf("/%s/doc1", keyspace), str)), 201)
+	RequireStatus(t, rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1", str), 201)
 
 	// Run GET _all_docs as admin with channels=true
 	// Make sure that only the new channel appears in the docs channel list
-	response = rt.SendAdminRequest("GET", fmt.Sprintf("/%s/_all_docs?channels=true", keyspace), "")
+	response = rt.SendAdminRequest("GET", "/{{.keyspace}}/_all_docs?channels=true", "")
 	RequireStatus(t, response, 200)
 
 	log.Printf("Admin response = %s", response.Body.Bytes())
@@ -1174,7 +1174,7 @@ func TestAllDocsChannelsAfterChannelMove(t *testing.T) {
 	// Run POST _all_docs as admin with explicit docIDs and channels=true
 	// Make sure that only the new channel appears in the docs channel list
 	keys = `{"keys": ["doc1"]}`
-	response = rt.SendAdminRequest("POST", fmt.Sprintf("/%s/_all_docs?channels=true", keyspace), keys)
+	response = rt.SendAdminRequest("POST", "/{{.keyspace}}/_all_docs?channels=true", keys)
 	RequireStatus(t, response, 200)
 
 	log.Printf("Admin response = %s", response.Body.Bytes())
@@ -1186,7 +1186,7 @@ func TestAllDocsChannelsAfterChannelMove(t *testing.T) {
 }
 
 func TestAddingLargeDoc(t *testing.T) {
-	rt, keyspace := NewRestTester(t, nil)
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 	defer func() { walrus.MaxDocSize = 0 }()
 
@@ -1194,10 +1194,10 @@ func TestAddingLargeDoc(t *testing.T) {
 
 	docBody := `{"value":"` + base64.StdEncoding.EncodeToString(make([]byte, 22000000)) + `"}`
 
-	response := rt.SendAdminRequest("PUT", fmt.Sprintf("/%s/doc1", keyspace), docBody)
+	response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1", docBody)
 	assert.Equal(t, http.StatusRequestEntityTooLarge, response.Code)
 
-	response = rt.SendAdminRequest("GET", fmt.Sprintf("/%s/doc1", keyspace), "")
+	response = rt.SendAdminRequest("GET", "/{{.keyspace}}/doc1", "")
 	assert.Equal(t, http.StatusNotFound, response.Code)
 }
 
@@ -1216,7 +1216,7 @@ func TestOldDocHandling(t *testing.T) {
 				}
 			}
 		}`}
-	rt, keyspace := NewRestTester(t, &rtConfig)
+	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
 	ctx := rt.Context()
@@ -1232,7 +1232,7 @@ func TestOldDocHandling(t *testing.T) {
 	assert.NoError(t, a.Save(frank))
 
 	// Create a doc:
-	response := rt.Send(Request("PUT", fmt.Sprintf("/%s/testOldDocId", keyspace), `{"foo":"bar"}`))
+	response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/testOldDocId", `{"foo":"bar"}`)
 	RequireStatus(t, response, 201)
 	var body db.Body
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
@@ -1241,13 +1241,13 @@ func TestOldDocHandling(t *testing.T) {
 
 	// Update a document to validate oldDoc id handling.  Will reject if old doc id not available
 	str := fmt.Sprintf(`{"foo":"ball", "_rev":%q}`, alphaRevID)
-	RequireStatus(t, rt.Send(Request("PUT", fmt.Sprintf("/%s/testOldDocId", keyspace), str)), 201)
+	RequireStatus(t, rt.SendAdminRequest("PUT", "/{{.keyspace}}/testOldDocId", str), 201)
 
 }
 
 // Test for issue #562
 func TestCreateTarget(t *testing.T) {
-	rt, _ := NewRestTester(t, nil)
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
 	// Attempt to create existing target DB on public API
@@ -1322,7 +1322,7 @@ func TestEventConfigValidationInvalid(t *testing.T) {
 // NOTE: to repro, you must run with -race flag
 func TestBulkGetRevPruning(t *testing.T) {
 
-	rt, keyspace := NewRestTester(t, nil)
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
 	var body db.Body
@@ -1336,7 +1336,7 @@ func TestBulkGetRevPruning(t *testing.T) {
 	maxIterationsPerBulkGetGoroutine := 200
 
 	// Do a write
-	response := rt.SendAdminRequest("PUT", fmt.Sprintf("/%s/doc1", keyspace), `{"channels":[]}`)
+	response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1", `{"channels":[]}`)
 	RequireStatus(t, response, 201)
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	revId := body["rev"]
@@ -1344,13 +1344,13 @@ func TestBulkGetRevPruning(t *testing.T) {
 	// Update 10 times
 	for i := 0; i < 20; i++ {
 		str := fmt.Sprintf(`{"_rev":%q}`, revId)
-		response = rt.SendAdminRequest("PUT", fmt.Sprintf("/%s/doc1", keyspace), str)
+		response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1", str)
 		require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 		revId = body["rev"]
 	}
 
 	// Get latest rev id
-	response = rt.SendAdminRequest("GET", fmt.Sprintf("/%s/doc1", keyspace), "")
+	response = rt.SendAdminRequest("GET", "/{{.keyspace}}/doc1", "")
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	revId = body[db.BodyRev]
 
@@ -1364,7 +1364,7 @@ func TestBulkGetRevPruning(t *testing.T) {
 			defer wg.Done()
 			for j := 0; j < maxIterationsPerBulkGetGoroutine; j++ {
 				bulkGetDocs := fmt.Sprintf(`{"docs": [{"id": "doc1", "rev": "%v"}]}`, revId)
-				bulkGetResponse := rt.SendAdminRequest("POST", fmt.Sprintf("/%s/_bulk_get?revs=true&revs_limit=2", keyspace), bulkGetDocs)
+				bulkGetResponse := rt.SendAdminRequest("POST", "/{{.keyspace}}/_bulk_get?revs=true&revs_limit=2", bulkGetDocs)
 				if bulkGetResponse.Code != 200 {
 					panic(fmt.Sprintf("Got unexpected response: %v", bulkGetResponse))
 				}
@@ -1382,33 +1382,33 @@ func TestBulkGetRevPruning(t *testing.T) {
 // TestDocExpiry validates the value of the expiry as set in the document.  It doesn't validate actual expiration (not supported
 // in walrus).
 func TestDocExpiry(t *testing.T) {
-	rt, keyspace := NewRestTester(t, nil)
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
 	var body db.Body
-	response := rt.SendAdminRequest("PUT", fmt.Sprintf("/%s/expNumericTTL", keyspace), `{"_exp":100}`)
+	response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/expNumericTTL", `{"_exp":100}`)
 	RequireStatus(t, response, 201)
 
 	// Validate that exp isn't returned on the standard GET, bulk get
-	response = rt.SendAdminRequest("GET", fmt.Sprintf("/%s/expNumericTTL", keyspace), "")
+	response = rt.SendAdminRequest("GET", "/{{.keyspace}}/expNumericTTL", "")
 	RequireStatus(t, response, 200)
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	_, ok := body["_exp"]
 	assert.Equal(t, false, ok)
 
 	bulkGetDocs := `{"docs": [{"id": "expNumericTTL", "rev": "1-ca9ad22802b66f662ff171f226211d5c"}]}`
-	response = rt.SendAdminRequest("POST", fmt.Sprintf("/%s/_bulk_get", keyspace), bulkGetDocs)
+	response = rt.SendAdminRequest("POST", "/{{.keyspace}}/_bulk_get", bulkGetDocs)
 	RequireStatus(t, response, 200)
 	responseString := string(response.Body.Bytes())
 	assert.True(t, !strings.Contains(responseString, "_exp"), "Bulk get response contains _exp property when show_exp not set.")
 
-	response = rt.SendAdminRequest("POST", fmt.Sprintf("/%s/_bulk_get?show_exp=true", keyspace), bulkGetDocs)
+	response = rt.SendAdminRequest("POST", "/{{.keyspace}}/_bulk_get?show_exp=true", bulkGetDocs)
 	RequireStatus(t, response, 200)
 	responseString = string(response.Body.Bytes())
 	assert.True(t, strings.Contains(responseString, "_exp"), "Bulk get response doesn't contain _exp property when show_exp was set.")
 
 	body = nil
-	response = rt.SendAdminRequest("GET", fmt.Sprintf("/%s/expNumericTTL?show_exp=true", keyspace), "")
+	response = rt.SendAdminRequest("GET", "/{{.keyspace}}/expNumericTTL?show_exp=true", "")
 	RequireStatus(t, response, 200)
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	_, ok = body["_exp"]
@@ -1416,9 +1416,9 @@ func TestDocExpiry(t *testing.T) {
 
 	// Validate other exp formats
 	body = nil
-	response = rt.SendAdminRequest("PUT", fmt.Sprintf("/%s/expNumericUnix", keyspace), `{"val":1, "_exp":4260211200}`)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/expNumericUnix", `{"val":1, "_exp":4260211200}`)
 	RequireStatus(t, response, 201)
-	response = rt.SendAdminRequest("GET", fmt.Sprintf("/%s/expNumericUnix?show_exp=true", keyspace), "")
+	response = rt.SendAdminRequest("GET", "/{{.keyspace}}/expNumericUnix?show_exp=true", "")
 	RequireStatus(t, response, 200)
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	log.Printf("numeric unix response: %s", response.Body.Bytes())
@@ -1426,36 +1426,36 @@ func TestDocExpiry(t *testing.T) {
 	assert.Equal(t, true, ok)
 
 	body = nil
-	response = rt.SendAdminRequest("PUT", fmt.Sprintf("/%s/expNumericString", keyspace), `{"val":1, "_exp":"100"}`)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/expNumericString", `{"val":1, "_exp":"100"}`)
 	RequireStatus(t, response, 201)
-	response = rt.SendAdminRequest("GET", fmt.Sprintf("/%s/expNumericString?show_exp=true", keyspace), "")
+	response = rt.SendAdminRequest("GET", "/{{.keyspace}}/expNumericString?show_exp=true", "")
 	RequireStatus(t, response, 200)
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	_, ok = body["_exp"]
 	assert.Equal(t, true, ok)
 
 	body = nil
-	response = rt.SendAdminRequest("PUT", fmt.Sprintf("/%s/expBadString", keyspace), `{"_exp":"abc"}`)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/expBadString", `{"_exp":"abc"}`)
 	RequireStatus(t, response, 400)
-	response = rt.SendAdminRequest("GET", fmt.Sprintf("/%s/expBadString?show_exp=true", keyspace), "")
+	response = rt.SendAdminRequest("GET", "/{{.keyspace}}/expBadString?show_exp=true", "")
 	RequireStatus(t, response, 404)
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	_, ok = body["_exp"]
 	assert.Equal(t, false, ok)
 
 	body = nil
-	response = rt.SendAdminRequest("PUT", fmt.Sprintf("/%s/expDateString", keyspace), `{"_exp":"2105-01-01T00:00:00.000+00:00"}`)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/expDateString", `{"_exp":"2105-01-01T00:00:00.000+00:00"}`)
 	RequireStatus(t, response, 201)
-	response = rt.SendAdminRequest("GET", fmt.Sprintf("/%s/expDateString?show_exp=true", keyspace), "")
+	response = rt.SendAdminRequest("GET", "/{{.keyspace}}/expDateString?show_exp=true", "")
 	RequireStatus(t, response, 200)
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	_, ok = body["_exp"]
 	assert.Equal(t, true, ok)
 
 	body = nil
-	response = rt.SendAdminRequest("PUT", fmt.Sprintf("/%s/expBadDateString", keyspace), `{"_exp":"2105-0321-01T00:00:00.000+00:00"}`)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/expBadDateString", `{"_exp":"2105-0321-01T00:00:00.000+00:00"}`)
 	RequireStatus(t, response, 400)
-	response = rt.SendAdminRequest("GET", fmt.Sprintf("/%s/expBadDateString?show_exp=true", keyspace), "")
+	response = rt.SendAdminRequest("GET", "/{{.keyspace}}/expBadDateString?show_exp=true", "")
 	RequireStatus(t, response, 404)
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	_, ok = body["_exp"]
@@ -1466,14 +1466,14 @@ func TestDocExpiry(t *testing.T) {
 // Validate that sync function based expiry writes the _exp property to SG metadata in addition to setting CBS expiry
 func TestDocSyncFunctionExpiry(t *testing.T) {
 	rtConfig := RestTesterConfig{SyncFn: `function(doc) {expiry(doc.expiry)}`}
-	rt, keyspace := NewRestTester(t, &rtConfig)
+	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
 	var body db.Body
-	response := rt.SendAdminRequest("PUT", fmt.Sprintf("/%s/expNumericTTL", keyspace), `{"expiry":100}`)
+	response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/expNumericTTL", `{"expiry":100}`)
 	RequireStatus(t, response, 201)
 
-	response = rt.SendAdminRequest("GET", fmt.Sprintf("/%s/expNumericTTL?show_exp=true", keyspace), "")
+	response = rt.SendAdminRequest("GET", "/{{.keyspace}}/expNumericTTL?show_exp=true", "")
 	RequireStatus(t, response, 200)
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	value, ok := body["_exp"]
@@ -1494,7 +1494,7 @@ func TestWriteTombstonedDocUsingXattrs(t *testing.T) {
 
 	// This doesn't need to specify XATTR's because that is controlled by the test
 	// env variable: SG_TEST_USE_XATTRS
-	rt, keyspace := NewRestTester(t, nil)
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
 	bulkDocsBody := `
@@ -1517,7 +1517,7 @@ func TestWriteTombstonedDocUsingXattrs(t *testing.T) {
 }
 `
 
-	response := rt.SendAdminRequest("POST", fmt.Sprintf("/%s/_bulk_docs", keyspace), bulkDocsBody)
+	response := rt.SendAdminRequest("POST", "/{{.keyspace}}/_bulk_docs", bulkDocsBody)
 	log.Printf("Response: %s", response.Body)
 
 	bulkDocsResponse := []map[string]interface{}{}
@@ -1555,7 +1555,7 @@ func TestLongpollWithWildcard(t *testing.T) {
 		Last_Seq db.SequenceID
 	}
 	rtConfig := RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel);}`}
-	rt, keyspace := NewRestTester(t, &rtConfig)
+	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
 	ctx := rt.Context()
@@ -1573,7 +1573,7 @@ func TestLongpollWithWildcard(t *testing.T) {
 	err = db.RestartListener()
 	assert.True(t, err == nil)
 	// Put a document to increment the counter for the * channel
-	response := rt.Send(Request("PUT", fmt.Sprintf("/%s/lost", keyspace), `{"channel":["ABC"]}`))
+	response := rt.Send(Request("PUT", "/{{.keyspace}}/lost", `{"channel":["ABC"]}`))
 	RequireStatus(t, response, 201)
 
 	// Previous bug: changeWaiter was treating the implicit '*' wildcard in the _changes request as the '*' channel, so the wait counter
@@ -1585,7 +1585,7 @@ func TestLongpollWithWildcard(t *testing.T) {
 		wg.Add(1)
 		defer wg.Done()
 		changesJSON := `{"style":"all_docs", "heartbeat":300000, "feed":"longpoll", "limit":50, "since":"0"}`
-		changesResponse := rt.Send(RequestByUser("POST", fmt.Sprintf("/%s/_changes", keyspace), changesJSON, "bernard"))
+		changesResponse := rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", changesJSON, "bernard")
 		log.Printf("_changes looks like: %s", changesResponse.Body.Bytes())
 		err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
 		// Checkthat the changes loop isn't returning an empty result immediately (the previous bug) - should
@@ -1595,7 +1595,7 @@ func TestLongpollWithWildcard(t *testing.T) {
 
 	// Send a doc that will properly close the longpoll response
 	time.Sleep(1 * time.Second)
-	response = rt.Send(Request("PUT", fmt.Sprintf("/%s/sherlock", keyspace), `{"channel":["PBS"]}`))
+	response = rt.Send(Request("PUT", "/{{.keyspace}}/sherlock", `{"channel":["PBS"]}`))
 	wg.Wait()
 }
 
@@ -1672,7 +1672,7 @@ func TestUnsupportedConfig(t *testing.T) {
 }
 
 func TestDocIDFilterResurrection(t *testing.T) {
-	rt, keyspace := NewRestTester(t, nil)
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
 	// Create User
@@ -1683,28 +1683,27 @@ func TestDocIDFilterResurrection(t *testing.T) {
 	assert.NoError(t, a.Save(jacques))
 
 	// Create Doc
-	response := rt.SendAdminRequest("PUT", fmt.Sprintf("/%s/doc1", keyspace), `{"channels": ["A"]}`)
+	response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1", `{"channels": ["A"]}`)
 	assert.Equal(t, http.StatusCreated, response.Code)
 	var body db.Body
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	docRevID := body["rev"].(string)
 
 	// Delete Doc
-	response = rt.SendAdminRequest("DELETE", fmt.Sprintf("/%s/doc1?rev=%s", keyspace, docRevID), "")
+	response = rt.SendAdminRequest("DELETE", "/{{.keyspace}}/doc1?rev="+docRevID, "")
 	assert.Equal(t, http.StatusOK, response.Code)
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	docRevID2 := body["rev"].(string)
 
 	// Update / Revive Doc
-	response = rt.SendAdminRequest("PUT", fmt.Sprintf("/%s/doc1?rev=%s", keyspace, docRevID2), `{"channels": ["B"]}`)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1?rev="+docRevID2, `{"channels": ["B"]}`)
 	assert.Equal(t, http.StatusCreated, response.Code)
 
 	require.NoError(t, rt.WaitForPendingChanges())
 
 	// Changes call
-	request, _ := http.NewRequest("GET", fmt.Sprintf("/%s/_changes", keyspace), nil)
-	request.SetBasicAuth("jacques", "letmein")
-	response = rt.Send(request)
+	response = rt.SendUserRequest(
+		"GET", "/{{.keyspace}}/_changes", "", "jacques")
 	assert.Equal(t, http.StatusOK, response.Code)
 
 	var changesResponse = make(map[string]interface{})
@@ -1716,17 +1715,17 @@ func TestChanCacheActiveRevsStat(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
-	rt, keyspace := NewRestTester(t, nil)
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
 	responseBody := make(map[string]interface{})
-	response := rt.SendAdminRequest("PUT", fmt.Sprintf("/%s/testdoc", keyspace), `{"value":"a value", "channels":["a"]}`)
+	response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/testdoc", `{"value":"a value", "channels":["a"]}`)
 	err := base.JSONUnmarshal(response.Body.Bytes(), &responseBody)
 	assert.NoError(t, err)
 	rev1 := fmt.Sprint(responseBody["rev"])
 	RequireStatus(t, response, http.StatusCreated)
 
-	response = rt.SendAdminRequest("PUT", fmt.Sprintf("/%s/testdoc2", keyspace), `{"value":"a value", "channels":["a"]}`)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/testdoc2", `{"value":"a value", "channels":["a"]}`)
 	err = base.JSONUnmarshal(response.Body.Bytes(), &responseBody)
 	assert.NoError(t, err)
 	rev2 := fmt.Sprint(responseBody["rev"])
@@ -1735,13 +1734,13 @@ func TestChanCacheActiveRevsStat(t *testing.T) {
 	err = rt.WaitForPendingChanges()
 	assert.NoError(t, err)
 
-	response = rt.SendAdminRequest("GET", fmt.Sprintf("/%s/_changes?active_only=true&include_docs=true&filter=sync_gateway/bychannel&channels=a&feed=normal&since=0&heartbeat=0&timeout=300000", keyspace), "")
+	response = rt.SendAdminRequest("GET", "/{{.keyspace}}/_changes?active_only=true&include_docs=true&filter=sync_gateway/bychannel&channels=a&feed=normal&since=0&heartbeat=0&timeout=300000", "")
 	RequireStatus(t, response, http.StatusOK)
 
-	response = rt.SendAdminRequest("PUT", fmt.Sprintf("/%s/testdoc?new_edits=true&rev=%s", keyspace, rev1), `{"value":"a value", "channels":[]}`)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/testdoc?new_edits=true&rev="+rev1, `{"value":"a value", "channels":[]}`)
 	RequireStatus(t, response, http.StatusCreated)
 
-	response = rt.SendAdminRequest("PUT", fmt.Sprintf("/%s/testdoc2?new_edits=true&rev=%s", keyspace, rev2), `{"value":"a value", "channels":[]}`)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/testdoc2?new_edits=true&rev="+rev2, `{"value":"a value", "channels":[]}`)
 	RequireStatus(t, response, http.StatusCreated)
 
 	err = rt.WaitForPendingChanges()
@@ -1752,10 +1751,10 @@ func TestChanCacheActiveRevsStat(t *testing.T) {
 }
 
 func TestGetRawDocumentError(t *testing.T) {
-	rt, keyspace := NewRestTester(t, nil)
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
-	response := rt.SendAdminRequest("GET", fmt.Sprintf("/%s/_raw/doc", keyspace), ``)
+	response := rt.SendAdminRequest("GET", "/{{.keyspace}}/_raw/doc", ``)
 	assert.Equal(t, http.StatusNotFound, response.Code)
 }
 
@@ -1793,11 +1792,11 @@ func TestWebhookProperties(t *testing.T) {
 			},
 		},
 	}
-	rt, keyspace := NewRestTester(t, rtConfig)
+	rt := NewRestTester(t, rtConfig)
 	defer rt.Close()
 
 	wg.Add(1)
-	rt.SendAdminRequest("PUT", fmt.Sprintf("/%s/doc1", keyspace), `{"foo": "bar"}`)
+	rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1", `{"foo": "bar"}`)
 
 	if base.TestUseXattrs() {
 		wg.Add(1)
@@ -1842,11 +1841,11 @@ func TestWebhookSpecialProperties(t *testing.T) {
 			},
 		},
 	}
-	rt, keyspace := NewRestTester(t, rtConfig)
+	rt := NewRestTester(t, rtConfig)
 	defer rt.Close()
 
 	wg.Add(1)
-	res := rt.SendAdminRequest("PUT", fmt.Sprintf("/%s/%s", keyspace, t.Name()), `{"foo": "bar", "_deleted": true}`)
+	res := rt.SendAdminRequest("PUT", "/{{.keyspace}}/"+t.Name(), `{"foo": "bar", "_deleted": true}`)
 	RequireStatus(t, res, http.StatusCreated)
 	wg.Wait()
 }
@@ -1855,18 +1854,18 @@ func Benchmark_RestApiGetDocPerformance(b *testing.B) {
 
 	base.SetUpBenchmarkLogging(b, base.LevelInfo, base.KeyHTTP)
 
-	prt, keyspace := NewRestTester(b, nil)
+	prt := NewRestTester(b, nil)
 	defer prt.Close()
 
 	// Create test document
-	prt.SendRequest("PUT", fmt.Sprintf("/%s/doc", keyspace), `{"prop":true}`)
+	prt.SendRequest("PUT", "/{{.keyspace}}/doc", `{"prop":true}`)
 
 	b.ResetTimer()
 
 	b.RunParallel(func(pb *testing.PB) {
 		// GET the document until test run has completed
 		for pb.Next() {
-			prt.SendRequest("GET", fmt.Sprintf("/%s/doc", keyspace), "")
+			prt.SendRequest("GET", "/{{.keyspace}}/doc", "")
 		}
 	})
 }
@@ -1876,7 +1875,7 @@ var threekdoc = `{"cols":["Name","Address","Location","phone"],"data":[["Melyssa
 func Benchmark_RestApiPutDocPerformanceDefaultSyncFunc(b *testing.B) {
 	base.SetUpBenchmarkLogging(b, base.LevelInfo, base.KeyHTTP)
 
-	prt, keyspace := NewRestTester(b, nil)
+	prt := NewRestTester(b, nil)
 	defer prt.Close()
 
 	b.ResetTimer()
@@ -1886,7 +1885,7 @@ func Benchmark_RestApiPutDocPerformanceDefaultSyncFunc(b *testing.B) {
 		for pb.Next() {
 			docid, err := base.GenerateRandomID()
 			require.NoError(b, err)
-			prt.SendRequest("PUT", fmt.Sprintf("/%s/doc-%v", keyspace, docid), threekdoc)
+			prt.SendRequest("PUT", fmt.Sprintf("/{{.keyspace}}/doc-%v", docid), threekdoc)
 		}
 	})
 }
@@ -1896,7 +1895,7 @@ func Benchmark_RestApiPutDocPerformanceExplicitSyncFunc(b *testing.B) {
 	base.SetUpBenchmarkLogging(b, base.LevelInfo, base.KeyHTTP)
 
 	qrtConfig := RestTesterConfig{SyncFn: `function(doc, oldDoc){channel(doc.channels);}`}
-	qrt, keyspace := NewRestTester(b, &qrtConfig)
+	qrt := NewRestTester(b, &qrtConfig)
 	defer qrt.Close()
 
 	b.ResetTimer()
@@ -1906,7 +1905,7 @@ func Benchmark_RestApiPutDocPerformanceExplicitSyncFunc(b *testing.B) {
 		for pb.Next() {
 			docid, err := base.GenerateRandomID()
 			require.NoError(b, err)
-			qrt.SendRequest("PUT", fmt.Sprintf("/%s/doc-%v", keyspace, docid), threekdoc)
+			qrt.SendRequest("PUT", fmt.Sprintf("/{{.keyspace}}/doc-%v", docid), threekdoc)
 		}
 	})
 }
@@ -1914,13 +1913,13 @@ func Benchmark_RestApiPutDocPerformanceExplicitSyncFunc(b *testing.B) {
 func Benchmark_RestApiGetDocPerformanceFullRevCache(b *testing.B) {
 	base.SetUpBenchmarkLogging(b, base.LevelWarn, base.KeyHTTP)
 	// Create test documents
-	rt, keyspace := NewRestTester(b, nil)
+	rt := NewRestTester(b, nil)
 	defer rt.Close()
 	keys := make([]string, 5000)
 	for i := 0; i < 5000; i++ {
 		key := fmt.Sprintf("doc%d", i)
 		keys[i] = key
-		rt.SendRequest("PUT", fmt.Sprintf("/%s/%s", keyspace, key), `{"prop":true}`)
+		rt.SendRequest("PUT", "/{{.keyspace}}/"+key, `{"prop":true}`)
 	}
 
 	b.ResetTimer()
@@ -1929,13 +1928,13 @@ func Benchmark_RestApiGetDocPerformanceFullRevCache(b *testing.B) {
 		// GET the document until test run has completed
 		for pb.Next() {
 			key := keys[rand.Intn(5000)]
-			rt.SendRequest("GET", fmt.Sprintf("/%s/%s?rev=1-45ca73d819d5b1c9b8eea95290e79004", keyspace, key), "")
+			rt.SendRequest("GET", fmt.Sprintf("/{{.keyspace}}/%s?rev=1-45ca73d819d5b1c9b8eea95290e79004", key), "")
 		}
 	})
 }
 
 func TestHandleProfiling(t *testing.T) {
-	rt, _ := NewRestTester(t, nil)
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
 	dirPath := t.TempDir()
@@ -2007,7 +2006,7 @@ func TestHandleProfiling(t *testing.T) {
 }
 
 func TestHandleHeapProfiling(t *testing.T) {
-	rt, _ := NewRestTester(t, nil)
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
 	dirPath := t.TempDir()
@@ -2033,7 +2032,7 @@ func TestHandleHeapProfiling(t *testing.T) {
 }
 
 func TestHandlePprofsCmdlineAndSymbol(t *testing.T) {
-	rt, _ := NewRestTester(t, nil)
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
 	tests := []struct {
@@ -2067,7 +2066,7 @@ func TestHandlePprofs(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping test in short mode.")
 	}
-	rt, _ := NewRestTester(t, nil)
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
 	tests := []struct {
@@ -2125,7 +2124,7 @@ func TestHandlePprofs(t *testing.T) {
 }
 
 func TestHandleStats(t *testing.T) {
-	rt, _ := NewRestTester(t, nil)
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
 	// Get request for fetching runtime and other stats
@@ -2164,7 +2163,7 @@ func TestHideProductInfo(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(fmt.Sprintf("hide:%v admin:%v", test.hideProductInfo, test.admin), func(t *testing.T) {
-			rt, _ := NewRestTester(t, &RestTesterConfig{HideProductInfo: test.hideProductInfo})
+			rt := NewRestTester(t, &RestTesterConfig{HideProductInfo: test.hideProductInfo})
 			defer rt.Close()
 
 			// admins can always see product info, even if setting is enabled
@@ -2202,13 +2201,13 @@ func TestHideProductInfo(t *testing.T) {
 }
 
 func TestDeleteNonExistentDoc(t *testing.T) {
-	rt, keyspace := NewRestTester(t, nil)
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
-	response := rt.SendAdminRequest("DELETE", fmt.Sprintf("/%s/fake", keyspace), "")
+	response := rt.SendAdminRequest("DELETE", "/{{.keyspace}}/fake", "")
 	RequireStatus(t, response, http.StatusOK)
 
-	response = rt.SendAdminRequest("GET", fmt.Sprintf("/%s/fake", keyspace), "")
+	response = rt.SendAdminRequest("GET", "/{{.keyspace}}/fake", "")
 	RequireStatus(t, response, http.StatusNotFound)
 
 	var body map[string]interface{}
@@ -2225,19 +2224,19 @@ func TestDeleteNonExistentDoc(t *testing.T) {
 
 // CBG-1153
 func TestDeleteEmptyBodyDoc(t *testing.T) {
-	rt, keyspace := NewRestTester(t, nil)
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
 	var body db.Body
-	response := rt.SendAdminRequest("PUT", fmt.Sprintf("/%s/doc1", keyspace), "{}")
+	response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1", "{}")
 	RequireStatus(t, response, http.StatusCreated)
 	assert.NoError(t, json.Unmarshal(response.BodyBytes(), &body))
 	rev := body["rev"].(string)
 
-	response = rt.SendAdminRequest("DELETE", fmt.Sprintf("/%s/doc1?rev=%s", keyspace, rev), "")
+	response = rt.SendAdminRequest("DELETE", "/{{.keyspace}}/doc1?rev="+rev, "")
 	RequireStatus(t, response, http.StatusOK)
 
-	response = rt.SendAdminRequest("GET", fmt.Sprintf("/%s/doc1", keyspace), "")
+	response = rt.SendAdminRequest("GET", "/{{.keyspace}}/doc1", "")
 	RequireStatus(t, response, http.StatusNotFound)
 
 	var doc map[string]interface{}
@@ -2252,29 +2251,29 @@ func TestDeleteEmptyBodyDoc(t *testing.T) {
 }
 
 func TestPutEmptyDoc(t *testing.T) {
-	rt, keyspace := NewRestTester(t, nil)
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
-	response := rt.SendAdminRequest("PUT", fmt.Sprintf("/%s/doc", keyspace), "{}")
+	response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc", "{}")
 	RequireStatus(t, response, http.StatusCreated)
 
-	response = rt.SendAdminRequest("GET", fmt.Sprintf("/%s/doc", keyspace), "")
+	response = rt.SendAdminRequest("GET", "/{{.keyspace}}/doc", "")
 	RequireStatus(t, response, http.StatusOK)
 	assert.Equal(t, `{"_id":"doc","_rev":"1-ca9ad22802b66f662ff171f226211d5c"}`, string(response.BodyBytes()))
 
-	response = rt.SendAdminRequest("PUT", fmt.Sprintf("/%s/doc?rev=1-ca9ad22802b66f662ff171f226211d5c", keyspace), `{"val": "newval"}`)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc?rev=1-ca9ad22802b66f662ff171f226211d5c", `{"val": "newval"}`)
 	RequireStatus(t, response, http.StatusCreated)
 
-	response = rt.SendAdminRequest("GET", fmt.Sprintf("/%s/doc", keyspace), "")
+	response = rt.SendAdminRequest("GET", "/{{.keyspace}}/doc", "")
 	RequireStatus(t, response, http.StatusOK)
 	assert.Equal(t, `{"_id":"doc","_rev":"2-2f981cadffde70e8a1d9dc386a410e0d","val":"newval"}`, string(response.BodyBytes()))
 }
 
 func TestTombstonedBulkDocs(t *testing.T) {
-	rt, keyspace := NewRestTester(t, nil)
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
-	response := rt.SendAdminRequest("POST", fmt.Sprintf("/%s/_bulk_docs", keyspace), `{"new_edits": false, "docs": [{"_id":"`+t.Name()+`", "_deleted": true, "_revisions":{"start":9, "ids":["c45c049b7fe6cf64cd8595c1990f6504", "6e01ac52ffd5ce6a4f7f4024c08d296f"]}}]}`)
+	response := rt.SendAdminRequest("POST", "/{{.keyspace}}/_bulk_docs", `{"new_edits": false, "docs": [{"_id":"`+t.Name()+`", "_deleted": true, "_revisions":{"start":9, "ids":["c45c049b7fe6cf64cd8595c1990f6504", "6e01ac52ffd5ce6a4f7f4024c08d296f"]}}]}`)
 	RequireStatus(t, response, http.StatusCreated)
 
 	var body map[string]interface{}
@@ -2295,7 +2294,7 @@ func TestTombstonedBulkDocsWithPriorPurge(t *testing.T) {
 	}
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
-	rt, keyspace := NewRestTester(t, &RestTesterConfig{
+	rt := NewRestTester(t, &RestTesterConfig{
 		SyncFn: `function(doc,oldDoc){
 			console.log("doc:"+JSON.stringify(doc))
 			console.log("oldDoc:"+JSON.stringify(oldDoc))
@@ -2314,10 +2313,10 @@ func TestTombstonedBulkDocsWithPriorPurge(t *testing.T) {
 	_, err := dataStore.Add(t.Name(), 0, map[string]interface{}{"val": "val"})
 	require.NoError(t, err)
 
-	resp := rt.SendAdminRequest("POST", fmt.Sprintf("/%s/_purge", keyspace), `{"`+t.Name()+`": ["*"]}`)
+	resp := rt.SendAdminRequest("POST", "/{{.keyspace}}/_purge", `{"`+t.Name()+`": ["*"]}`)
 	RequireStatus(t, resp, http.StatusOK)
 
-	response := rt.SendAdminRequest("POST", fmt.Sprintf("/%s/_bulk_docs", keyspace), `{"new_edits": false, "docs": [{"_id":"`+t.Name()+`", "_deleted": true, "_revisions":{"start":9, "ids":["c45c049b7fe6cf64cd8595c1990f6504", "6e01ac52ffd5ce6a4f7f4024c08d296f"]}}]}`)
+	response := rt.SendAdminRequest("POST", "/{{.keyspace}}/_bulk_docs", `{"new_edits": false, "docs": [{"_id":"`+t.Name()+`", "_deleted": true, "_revisions":{"start":9, "ids":["c45c049b7fe6cf64cd8595c1990f6504", "6e01ac52ffd5ce6a4f7f4024c08d296f"]}}]}`)
 	RequireStatus(t, response, http.StatusCreated)
 
 	var body map[string]interface{}
@@ -2335,7 +2334,7 @@ func TestTombstonedBulkDocsWithExistingTombstone(t *testing.T) {
 	}
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
-	rt, keyspace := NewRestTester(t, &RestTesterConfig{
+	rt := NewRestTester(t, &RestTesterConfig{
 		SyncFn: `function(doc,oldDoc){
 			console.log("doc:"+JSON.stringify(doc))
 			console.log("oldDoc:"+JSON.stringify(oldDoc))
@@ -2360,7 +2359,7 @@ func TestTombstonedBulkDocsWithExistingTombstone(t *testing.T) {
 	_, err = bucket.DefaultDataStore().Remove(t.Name(), insCas)
 	require.NoError(t, err)
 
-	response := rt.SendAdminRequest("POST", fmt.Sprintf("/%s/_bulk_docs", keyspace), `{"new_edits": false, "docs": [{"_id":"`+t.Name()+`", "_deleted": true, "_revisions":{"start":9, "ids":["c45c049b7fe6cf64cd8595c1990f6504", "6e01ac52ffd5ce6a4f7f4024c08d296f"]}}]}`)
+	response := rt.SendAdminRequest("POST", "/{{.keyspace}}/_bulk_docs", `{"new_edits": false, "docs": [{"_id":"`+t.Name()+`", "_deleted": true, "_revisions":{"start":9, "ids":["c45c049b7fe6cf64cd8595c1990f6504", "6e01ac52ffd5ce6a4f7f4024c08d296f"]}}]}`)
 	RequireStatus(t, response, http.StatusCreated)
 
 	var body map[string]interface{}
@@ -2372,7 +2371,7 @@ func TestTombstonedBulkDocsWithExistingTombstone(t *testing.T) {
 }
 
 func TestUptimeStat(t *testing.T) {
-	rt, _ := NewRestTester(t, nil)
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
 	uptime1, err := strconv.Atoi(base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().Uptime.String())
@@ -2388,14 +2387,14 @@ func TestUptimeStat(t *testing.T) {
 func TestDocumentChannelHistory(t *testing.T) {
 	defer db.SuspendSequenceBatching()()
 
-	rt, keyspace := NewRestTester(t, nil)
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
 	var body db.Body
 
 	// Create doc in channel test and ensure a single channel history entry with only a start sequence
 	// and no old channel history entries
-	resp := rt.SendAdminRequest("PUT", fmt.Sprintf("/%s/doc", keyspace), `{"channels": ["test"]}`)
+	resp := rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc", `{"channels": ["test"]}`)
 	RequireStatus(t, resp, http.StatusCreated)
 	err := json.Unmarshal(resp.BodyBytes(), &body)
 	assert.NoError(t, err)
@@ -2408,7 +2407,7 @@ func TestDocumentChannelHistory(t *testing.T) {
 
 	// Update doc to remove from channel and ensure a single channel history entry with both start and end sequences
 	// and no old channel history entries
-	resp = rt.SendAdminRequest("PUT", fmt.Sprintf("/%s/doc?rev=%s", keyspace, body["rev"].(string)), `{"channels": []}`)
+	resp = rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc?rev="+body["rev"].(string), `{"channels": []}`)
 	RequireStatus(t, resp, http.StatusCreated)
 	err = json.Unmarshal(resp.BodyBytes(), &body)
 	assert.NoError(t, err)
@@ -2421,7 +2420,7 @@ func TestDocumentChannelHistory(t *testing.T) {
 
 	// Update doc to add to channels test and test2 and ensure a single channel history entry for both test and test2
 	// both with start sequences only and ensure old test entry was moved to old
-	resp = rt.SendAdminRequest("PUT", fmt.Sprintf("/%s/doc?rev=%s", keyspace, body["rev"].(string)), `{"channels": ["test", "test2"]}`)
+	resp = rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc?rev="+body["rev"].(string), `{"channels": ["test", "test2"]}`)
 	RequireStatus(t, resp, http.StatusCreated)
 	err = json.Unmarshal(resp.BodyBytes(), &body)
 	assert.NoError(t, err)
@@ -2438,7 +2437,7 @@ func TestDocumentChannelHistory(t *testing.T) {
 func TestChannelHistoryLegacyDoc(t *testing.T) {
 	defer db.SuspendSequenceBatching()()
 
-	rt, keyspace := NewRestTester(t, nil)
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
 	docData := `
@@ -2481,12 +2480,12 @@ func TestChannelHistoryLegacyDoc(t *testing.T) {
 	var body db.Body
 
 	// Get doc and ensure its available
-	resp := rt.SendAdminRequest("GET", fmt.Sprintf("/%s/doc1", keyspace), "")
+	resp := rt.SendAdminRequest("GET", "/{{.keyspace}}/doc1", "")
 	RequireStatus(t, resp, http.StatusOK)
 
 	// Remove doc from channel and ensure that channel history is built correctly with current end sequence and
 	// setting start sequence
-	resp = rt.SendAdminRequest("PUT", fmt.Sprintf("/%s/doc1?rev=1-08267a64bf0e3963bab7dece1ea0887a", keyspace), `{"channels": []}`)
+	resp = rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1?rev=1-08267a64bf0e3963bab7dece1ea0887a", `{"channels": []}`)
 	RequireStatus(t, resp, http.StatusCreated)
 	err = json.Unmarshal(resp.BodyBytes(), &body)
 	assert.NoError(t, err)
@@ -2509,7 +2508,7 @@ func (rt *RestTester) CreateDocReturnRev(t *testing.T, docID string, revID strin
 	bodyJSON, err := base.JSONMarshal(bodyIn)
 	assert.NoError(t, err)
 
-	url := fmt.Sprintf("/%s/%s", rt.GetSingleKeyspace(), docID)
+	url := "/{{.keyspace}}/" + docID
 	if revID != "" {
 		url += "?rev=" + revID
 	}
@@ -2544,10 +2543,10 @@ func TestMetricsHandler(t *testing.T) {
 	require.NoError(t, err)
 	context.Close(context.AddDatabaseLogContext(ctx))
 
-	rt, keyspace := NewRestTester(t, nil)
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
-	rt.SendAdminRequest("PUT", fmt.Sprintf("/%s/doc", keyspace), "{}")
+	rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc", "{}")
 
 	srv := httptest.NewServer(rt.TestMetricsHandler())
 	defer srv.Close()
@@ -2581,7 +2580,7 @@ func TestMetricsHandler(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Ensure metrics endpoint is not serving any other routes
-	resp, err = httpClient.Get(srv.URL + fmt.Sprintf("/%s/", keyspace))
+	resp, err = httpClient.Get(srv.URL + "/" + rt.GetSingleKeyspace() + "/")
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusNotFound, resp.StatusCode)
 	err = resp.Body.Close()
@@ -2590,7 +2589,7 @@ func TestMetricsHandler(t *testing.T) {
 
 func TestDocChannelSetPruning(t *testing.T) {
 	defer db.SuspendSequenceBatching()()
-	rt, _ := NewRestTester(t, nil)
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
 	revID := rt.CreateDocReturnRev(t, "doc", "", map[string]interface{}{"channels": []string{"a"}})
@@ -2610,19 +2609,19 @@ func TestDocChannelSetPruning(t *testing.T) {
 }
 
 func TestTombstoneCompactionAPI(t *testing.T) {
-	rt, keyspace := NewRestTester(t, nil)
+	rt := NewRestTester(t, nil)
 	rt.GetDatabase().PurgeInterval = 0
 	defer rt.Close()
 
 	for i := 0; i < 100; i++ {
-		resp := rt.SendAdminRequest("PUT", fmt.Sprintf("/%s/doc%d", keyspace, i), "{}")
+		resp := rt.SendAdminRequest("PUT", fmt.Sprintf("/{{.keyspace}}/doc%d", i), "{}")
 		RequireStatus(t, resp, http.StatusCreated)
 		rev := RespRevID(t, resp)
-		resp = rt.SendAdminRequest("DELETE", fmt.Sprintf("/%s/doc%d?rev=%s", keyspace, i, rev), "{}")
+		resp = rt.SendAdminRequest("DELETE", fmt.Sprintf("/{{.keyspace}}/doc%d?rev=%s", i, rev), "{}")
 		RequireStatus(t, resp, http.StatusOK)
 	}
 
-	resp := rt.SendAdminRequest("GET", fmt.Sprintf("/%s/_compact", keyspace), "")
+	resp := rt.SendAdminRequest("GET", "/{{.keyspace}}/_compact", "")
 	RequireStatus(t, resp, http.StatusOK)
 
 	var tombstoneCompactionStatus db.TombstoneManagerResponse
@@ -2635,11 +2634,11 @@ func TestTombstoneCompactionAPI(t *testing.T) {
 	firstStartTimeStat := rt.GetDatabase().DbStats.Database().CompactionAttachmentStartTime.Value()
 	assert.NotEqual(t, 0, firstStartTimeStat)
 
-	resp = rt.SendAdminRequest("POST", fmt.Sprintf("/%s/_compact", keyspace), "")
+	resp = rt.SendAdminRequest("POST", "/{{.keyspace}}/_compact", "")
 	RequireStatus(t, resp, http.StatusOK)
 
 	err = rt.WaitForCondition(func() bool {
-		resp = rt.SendAdminRequest("GET", fmt.Sprintf("/%s/_compact", keyspace), "")
+		resp = rt.SendAdminRequest("GET", "/{{.keyspace}}/_compact", "")
 		RequireStatus(t, resp, http.StatusOK)
 
 		err = base.JSONUnmarshal(resp.BodyBytes(), &tombstoneCompactionStatus)
@@ -2650,7 +2649,7 @@ func TestTombstoneCompactionAPI(t *testing.T) {
 	assert.NoError(t, err)
 	assert.True(t, rt.GetDatabase().DbStats.Database().CompactionAttachmentStartTime.Value() > firstStartTimeStat)
 
-	resp = rt.SendAdminRequest("GET", fmt.Sprintf("/%s/_compact", keyspace), "")
+	resp = rt.SendAdminRequest("GET", "/{{.keyspace}}/_compact", "")
 	RequireStatus(t, resp, http.StatusOK)
 	err = base.JSONUnmarshal(resp.BodyBytes(), &tombstoneCompactionStatus)
 	assert.NoError(t, err)

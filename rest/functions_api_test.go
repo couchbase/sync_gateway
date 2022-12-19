@@ -93,7 +93,7 @@ func testConcurrently(t *testing.T, rt *RestTester, testFunc func() bool) bool {
 }
 
 func TestFunctions(t *testing.T) {
-	rt, _ := NewRestTester(t, &RestTesterConfig{GuestEnabled: true, EnableUserQueries: true, DatabaseConfig: kGraphQLTestConfig})
+	rt := NewRestTester(t, &RestTesterConfig{GuestEnabled: true, EnableUserQueries: true, DatabaseConfig: kGraphQLTestConfig})
 	defer rt.Close()
 
 	t.Run("GraphQL with variables", func(t *testing.T) {
@@ -108,7 +108,7 @@ func TestFunctions(t *testing.T) {
 }
 
 func TestFunctionsConcurrently(t *testing.T) {
-	rt, _ := NewRestTester(t, &RestTesterConfig{GuestEnabled: true, EnableUserQueries: true, DatabaseConfig: kGraphQLTestConfig})
+	rt := NewRestTester(t, &RestTesterConfig{GuestEnabled: true, EnableUserQueries: true, DatabaseConfig: kGraphQLTestConfig})
 	defer rt.Close()
 
 	dbName := rt.GetDatabase().Name

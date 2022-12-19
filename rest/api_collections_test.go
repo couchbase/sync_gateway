@@ -32,7 +32,7 @@ func TestCollectionsPutDocInKeyspace(t *testing.T) {
 		// dbName is the default name from RestTester
 		dbName = "db"
 	)
-	rt, keyspace := NewRestTester(t, &RestTesterConfig{
+	rt := NewRestTester(t, &RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{
 			DbConfig: DbConfig{
 				Users: map[string]*auth.PrincipalConfig{
@@ -60,7 +60,7 @@ func TestCollectionsPutDocInKeyspace(t *testing.T) {
 		*/
 		{
 			name:           "fully qualified",
-			keyspace:       keyspace,
+			keyspace:       rt.GetSingleKeyspace(),
 			expectedStatus: http.StatusCreated,
 		},
 		{
@@ -109,7 +109,7 @@ func TestCollectionsPublicChannel(t *testing.T) {
 		password = "pass"
 	)
 
-	rt, keyspace := NewRestTester(t, &RestTesterConfig{
+	rt := NewRestTester(t, &RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{
 			DbConfig: DbConfig{
 				Users: map[string]*auth.PrincipalConfig{
@@ -120,19 +120,19 @@ func TestCollectionsPublicChannel(t *testing.T) {
 	})
 	defer rt.Close()
 
-	pathPublic := fmt.Sprintf("/%s/%s", keyspace, "docpublic")
+	pathPublic := "/{{.keyspace}}/docpublic"
 	resp := rt.SendAdminRequest(http.MethodPut, pathPublic, `{"channels":["!"]}`)
 	RequireStatus(t, resp, http.StatusCreated)
 	resp = rt.SendUserRequestWithHeaders(http.MethodGet, pathPublic, "", nil, username, password)
 	RequireStatus(t, resp, http.StatusOK)
 
-	pathPrivate := fmt.Sprintf("/%s/%s", keyspace, "docprivate")
+	pathPrivate := "/{{.keyspace}}/docprivate"
 	resp = rt.SendAdminRequest(http.MethodPut, pathPrivate, `{"channels":["a"]}`)
 	RequireStatus(t, resp, http.StatusCreated)
 	resp = rt.SendUserRequestWithHeaders(http.MethodGet, pathPrivate, "", nil, username, password)
 	RequireStatus(t, resp, http.StatusForbidden)
 
-	resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/"+keyspace+"/_all_docs?include_docs=true", "", nil, username, password)
+	resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.keyspace}}/_all_docs?include_docs=true", "", nil, username, password)
 	RequireStatus(t, resp, http.StatusOK)
 	t.Logf("all docs resp: %s", resp.BodyBytes())
 	var alldocsresp struct {
@@ -188,7 +188,7 @@ func TestSingleCollectionDCP(t *testing.T) {
 		t.Skip("Test relies on import - needs xattrs")
 	}
 
-	rt, _ := NewRestTester(t, &RestTesterConfig{
+	rt := NewRestTester(t, &RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{
 			DbConfig: DbConfig{
 				AutoImport: true,
@@ -233,7 +233,7 @@ func TestMultiCollectionDCP(t *testing.T) {
 		},
 	})
 	require.NoError(t, err)
-	rt, _ := NewRestTester(t, &RestTesterConfig{
+	rt := NewRestTester(t, &RestTesterConfig{
 		CustomTestBucket: tb.NoCloseClone(),
 		DatabaseConfig: &DatabaseConfig{
 			DbConfig: DbConfig{
@@ -278,14 +278,14 @@ func TestCollectionsBasicIndexQuery(t *testing.T) {
 
 	base.TestRequiresCollections(t)
 
-	rt, keyspace := NewRestTester(t, nil)
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
 	const docID = "doc1"
 
 	collection := rt.GetSingleTestDatabaseCollection()
 
-	resp := rt.SendAdminRequest(http.MethodPut, fmt.Sprintf("/%s/%s", keyspace, docID), `{"test":true}`)
+	resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID, `{"test":true}`)
 	RequireStatus(t, resp, http.StatusCreated)
 
 	// use the rt.Bucket which has got the foo.bar scope/collection set up
@@ -352,7 +352,7 @@ func TestCollectionsSGIndexQuery(t *testing.T) {
 		invalidDocID = "doc2"
 	)
 
-	rt, keyspace := NewRestTester(t, &RestTesterConfig{
+	rt := NewRestTester(t, &RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{
 			DbConfig: DbConfig{
 				UseViews: useViews,
@@ -367,9 +367,9 @@ func TestCollectionsSGIndexQuery(t *testing.T) {
 	})
 	defer rt.Close()
 
-	resp := rt.SendAdminRequest(http.MethodPut, fmt.Sprintf("/%s/%s", keyspace, validDocID), `{"test": true, "channels": ["`+validChannel+`"]}`)
+	resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+validDocID, `{"test": true, "channels": ["`+validChannel+`"]}`)
 	RequireStatus(t, resp, http.StatusCreated)
-	resp = rt.SendAdminRequest(http.MethodPut, fmt.Sprintf("/%s/%s", keyspace, invalidDocID), `{"test": true, "channels": ["`+invalidChannel+`"]}`)
+	resp = rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+invalidDocID, `{"test": true, "channels": ["`+invalidChannel+`"]}`)
 	RequireStatus(t, resp, http.StatusCreated)
 
 	resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/db/_all_docs", ``, nil, username, password)
@@ -385,12 +385,12 @@ func TestCollectionsSGIndexQuery(t *testing.T) {
 	require.Len(t, allDocsResponse.Rows, 1)
 	assert.Equal(t, validDocID, allDocsResponse.Rows[0].ID)
 
-	resp = rt.SendUserRequestWithHeaders(http.MethodGet, fmt.Sprintf("/%s/%s", keyspace, validDocID), ``, nil, username, password)
+	resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.keyspace}}/"+validDocID, ``, nil, username, password)
 	RequireStatus(t, resp, http.StatusOK)
-	resp = rt.SendUserRequestWithHeaders(http.MethodGet, fmt.Sprintf("/%s/%s", keyspace, invalidDocID), ``, nil, username, password)
+	resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.keyspace}}/"+invalidDocID, ``, nil, username, password)
 	RequireStatus(t, resp, http.StatusForbidden)
 
-	_, err := rt.WaitForChanges(1, "/db/_changes", username, false)
+	_, err := rt.WaitForChanges(1, "/{{.keyspace}}/_changes", username, false)
 	require.NoError(t, err)
 }
 

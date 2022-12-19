@@ -345,7 +345,7 @@ func TestLegacyConfigPrinciplesMigration(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("CBS required")
 	}
-	rt, _ := NewRestTester(t, nil)
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 	bucket := rt.Bucket()
 	rt.GetDatabase().AllowEmptyPassword = true // So users don't have to have password set

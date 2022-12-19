@@ -28,7 +28,7 @@ func TestBlipGetCollections(t *testing.T) {
 	// checkpointIDWithError := "checkpointError"
 
 	const defaultScopeAndCollection = "_default._default"
-	rt, _ := NewRestTester(t, &RestTesterConfig{
+	rt := NewRestTester(t, &RestTesterConfig{
 		GuestEnabled: true,
 		// leakyBucketConfig: &base.LeakyBucketConfig{
 		//	GetRawCallback: func(key string) error {
@@ -153,7 +153,7 @@ func TestBlipGetCollections(t *testing.T) {
 func TestBlipGetCollectionsAndSetCheckpoint(t *testing.T) {
 	base.TestRequiresCollections(t)
 
-	rt, _ := NewRestTester(t, &RestTesterConfig{
+	rt := NewRestTester(t, &RestTesterConfig{
 		GuestEnabled: true,
 	})
 	defer rt.Close()
@@ -212,7 +212,7 @@ func TestBlipGetCollectionsAndSetCheckpoint(t *testing.T) {
 func TestCollectionsPeerDoesNotHave(t *testing.T) {
 	base.TestRequiresCollections(t)
 
-	rt, _ := NewRestTester(t, &RestTesterConfig{
+	rt := NewRestTester(t, &RestTesterConfig{
 		GuestEnabled: true,
 	})
 	defer rt.Close()
@@ -228,7 +228,7 @@ func TestCollectionsPeerDoesNotHave(t *testing.T) {
 func TestCollectionsReplication(t *testing.T) {
 	base.TestRequiresCollections(t)
 
-	rt, _ := NewRestTester(t, &RestTesterConfig{
+	rt := NewRestTester(t, &RestTesterConfig{
 		GuestEnabled: true,
 	})
 	defer rt.Close()

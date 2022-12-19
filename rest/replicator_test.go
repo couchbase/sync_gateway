@@ -32,7 +32,7 @@ import (
 func TestActiveReplicatorBlipsync(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyHTTPResp)
 
-	rt, _ := NewRestTester(t, &RestTesterConfig{
+	rt := NewRestTester(t, &RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			Users: map[string]*auth.PrincipalConfig{
 				"alice": {Password: base.StringPtr("pass")},
@@ -95,7 +95,7 @@ func TestActiveReplicatorBlipsync(t *testing.T) {
 
 func TestBlipSyncNonUpgradableConnection(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyHTTPResp)
-	rt, _ := NewRestTester(t, &RestTesterConfig{
+	rt := NewRestTester(t, &RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			Users: map[string]*auth.PrincipalConfig{
 				"alice": {Password: base.StringPtr("pass")},
@@ -141,7 +141,7 @@ func TestReplicatorDeprecatedCredentials(t *testing.T) {
 	adminSrv := httptest.NewServer(passiveRT.TestPublicHandler())
 	defer adminSrv.Close()
 
-	activeRT, _ := NewRestTester(t, nil)
+	activeRT := NewRestTester(t, nil)
 	defer activeRT.Close()
 	activeCtx := activeRT.Context()
 
@@ -264,7 +264,7 @@ func TestGroupIDReplications(t *testing.T) {
 	defer activeBucket.Close()
 
 	// Set up passive bucket RT
-	rt, _ := NewRestTester(t, &RestTesterConfig{CustomTestBucket: passiveBucket})
+	rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: passiveBucket})
 	defer rt.Close()
 
 	// Make rt listen on an actual HTTP port, so it can receive replications
@@ -368,7 +368,7 @@ func TestGroupIDReplications(t *testing.T) {
 // Reproduces panic seen in CBG-1053
 func TestAdhocReplicationStatus(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll, base.KeyReplicate)
-	rt, _ := NewRestTester(t, &RestTesterConfig{SgReplicateEnabled: true})
+	rt := NewRestTester(t, &RestTesterConfig{SgReplicateEnabled: true})
 	defer rt.Close()
 
 	srv := httptest.NewServer(rt.TestAdminHandler())

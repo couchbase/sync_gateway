@@ -27,7 +27,7 @@ func TestCollectionsSyncImportFunctions(t *testing.T) {
 	tb := base.GetTestBucket(t)
 	defer tb.Close()
 
-	rt, _ := rest.NewRestTester(t, &rest.RestTesterConfig{
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
 		CustomTestBucket: tb,
 		PersistentConfig: true,
 	})

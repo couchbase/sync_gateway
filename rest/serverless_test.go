@@ -30,7 +30,7 @@ func TestServerlessPollBuckets(t *testing.T) {
 	tb1 := base.GetTestBucket(t)
 	defer tb1.Close()
 
-	rt, _ := NewRestTester(t, &RestTesterConfig{
+	rt := NewRestTester(t, &RestTesterConfig{
 		CustomTestBucket: tb1,
 		serverless:       true,
 		PersistentConfig: true,
@@ -52,7 +52,7 @@ func TestServerlessPollBuckets(t *testing.T) {
 	assert.Empty(t, configs)
 
 	// Create a database
-	rt2, _ := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb1, PersistentConfig: true, groupID: &sc.Config.Bootstrap.ConfigGroupID})
+	rt2 := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb1, PersistentConfig: true, groupID: &sc.Config.Bootstrap.ConfigGroupID})
 	defer rt2.Close()
 	// Create a new db on the RT to confirm fetch won't retrieve it (due to bucket not being in BucketCredentials)
 	resp := rt2.SendAdminRequest(http.MethodPut, "/db/", fmt.Sprintf(`{
@@ -124,7 +124,7 @@ func TestServerlessDBSetupForceCreds(t *testing.T) {
 	}
 	for _, test := range testCases {
 		t.Run(test.name, func(t *testing.T) {
-			rt, _ := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb1, serverless: true, PersistentConfig: true})
+			rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb1, serverless: true, PersistentConfig: true})
 			defer rt.Close()
 
 			if test.perBucketCreds != nil {
@@ -150,7 +150,7 @@ func TestServerlessBucketCredentialsFetchDatabases(t *testing.T) {
 
 	tb1 := base.GetTestBucket(t)
 	defer tb1.Close()
-	rt, _ := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb1, PersistentConfig: true, serverless: true,
+	rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb1, PersistentConfig: true, serverless: true,
 		MutateStartupConfig: func(config *StartupConfig) {
 			config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(0)
 		},
@@ -212,7 +212,7 @@ func TestServerlessGoCBConnectionString(t *testing.T) {
 				tb.BucketSpec.KvPoolSize = 3
 			}
 
-			rt, _ := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb, PersistentConfig: true, serverless: true})
+			rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb, PersistentConfig: true, serverless: true})
 			defer rt.Close()
 			sc := rt.ServerContext()
 			require.True(t, sc.Config.IsServerless())
@@ -237,7 +237,7 @@ func TestServerlessSuspendDatabase(t *testing.T) {
 	tb := base.GetTestBucket(t)
 	defer tb.Close()
 
-	rt, _ := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb, PersistentConfig: true, serverless: true})
+	rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb, PersistentConfig: true, serverless: true})
 	defer rt.Close()
 
 	sc := rt.ServerContext()
@@ -309,7 +309,7 @@ func TestServerlessUnsuspendFetchFallback(t *testing.T) {
 	tb := base.GetTestBucket(t)
 	defer tb.Close()
 
-	rt, _ := NewRestTester(t, &RestTesterConfig{
+	rt := NewRestTester(t, &RestTesterConfig{
 		CustomTestBucket: tb,
 		serverless:       true,
 		PersistentConfig: true,
@@ -355,7 +355,7 @@ func TestServerlessFetchConfigsLimited(t *testing.T) {
 	tb := base.GetTestBucket(t)
 	defer tb.Close()
 
-	rt, _ := NewRestTester(t, &RestTesterConfig{
+	rt := NewRestTester(t, &RestTesterConfig{
 		CustomTestBucket: tb,
 		PersistentConfig: true,
 		MutateStartupConfig: func(config *StartupConfig) {
@@ -427,7 +427,7 @@ func TestServerlessUpdateSuspendedDb(t *testing.T) {
 	tb := base.GetTestBucket(t)
 	defer tb.Close()
 
-	rt, _ := NewRestTester(t, &RestTesterConfig{
+	rt := NewRestTester(t, &RestTesterConfig{
 		CustomTestBucket: tb,
 		PersistentConfig: true,
 		MutateStartupConfig: func(config *StartupConfig) {
@@ -514,7 +514,7 @@ func TestSuspendingFlags(t *testing.T) {
 			tb := base.GetTestBucket(t)
 			defer tb.Close()
 
-			rt, _ := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb, PersistentConfig: true, serverless: test.serverlessMode})
+			rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb, PersistentConfig: true, serverless: test.serverlessMode})
 			defer rt.Close()
 
 			sc := rt.ServerContext()
@@ -557,7 +557,7 @@ func TestServerlessUnsuspendAPI(t *testing.T) {
 	tb := base.GetTestBucket(t)
 	defer tb.Close()
 
-	rt, _ := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb, PersistentConfig: true, serverless: true})
+	rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb, PersistentConfig: true, serverless: true})
 	defer rt.Close()
 
 	sc := rt.ServerContext()
@@ -594,7 +594,7 @@ func TestServerlessUnsuspendAdminAuth(t *testing.T) {
 	tb := base.GetTestBucket(t)
 	defer tb.Close()
 
-	rt, _ := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb, PersistentConfig: true, serverless: true, AdminInterfaceAuthentication: true})
+	rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb, PersistentConfig: true, serverless: true, AdminInterfaceAuthentication: true})
 	defer rt.Close()
 
 	sc := rt.ServerContext()
@@ -668,7 +668,7 @@ func TestImportPartitionsServerless(t *testing.T) {
 
 			tb := base.GetTestBucket(t)
 			defer tb.Close()
-			rt, _ := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb, PersistentConfig: true, serverless: test.serverless})
+			rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb, PersistentConfig: true, serverless: test.serverless})
 			defer rt.Close()
 			sc := rt.ServerContext()
 

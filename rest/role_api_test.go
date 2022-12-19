@@ -25,7 +25,7 @@ import (
 )
 
 func TestRolePurge(t *testing.T) {
-	rt, _ := NewRestTester(t, nil)
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
 	// Create role
@@ -64,7 +64,7 @@ func TestRolePurge(t *testing.T) {
 }
 func TestRoleAPI(t *testing.T) {
 
-	rt, _ := NewRestTester(t, nil)
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
 	// PUT a role

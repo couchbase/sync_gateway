@@ -74,7 +74,7 @@ func TestAddRevision(t *testing.T) {
 // Reproduces SG #3283
 func TestSubChangesSince(t *testing.T) {
 
-	rt, _ := NewRestTester(t, nil)
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
 	rq := blip.NewRequest()
@@ -91,7 +91,7 @@ func TestSubChangesSince(t *testing.T) {
 // Tests parsing the "future" mode of subChanges.
 func TestSubChangesFuture(t *testing.T) {
 
-	rt, _ := NewRestTester(t, nil)
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
 	latestSeq := func() (db.SequenceID, error) {

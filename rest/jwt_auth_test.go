@@ -86,7 +86,7 @@ func TestLocalJWTAuthenticationE2E(t *testing.T) {
 				},
 			}
 			restTesterConfig := RestTesterConfig{DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{LocalJWTConfig: providers}}}
-			restTester, _ := NewRestTester(t, &restTesterConfig)
+			restTester := NewRestTester(t, &restTesterConfig)
 			require.NoError(t, restTester.SetAdminParty(false))
 			defer restTester.Close()
 
@@ -234,7 +234,7 @@ func TestLocalJWTAuthenticationEdgeCases(t *testing.T) {
 			restTesterConfig := RestTesterConfig{DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{LocalJWTConfig: auth.LocalJWTConfig{
 				testProviderName: cfg,
 			}}}}
-			restTester, _ := NewRestTester(t, &restTesterConfig)
+			restTester := NewRestTester(t, &restTesterConfig)
 			require.NoError(t, restTester.SetAdminParty(false))
 			defer restTester.Close()
 
@@ -372,7 +372,7 @@ func TestLocalJWTAndOIDCCoexistence(t *testing.T) {
 		base.SetUpTestLogging(t, base.LevelDebug, base.KeyAuth, base.KeyHTTP)
 
 		restTesterConfig := RestTesterConfig{DatabaseConfig: &DatabaseConfig{DbConfig: *config}}
-		restTester, _ := NewRestTester(t, &restTesterConfig)
+		restTester := NewRestTester(t, &restTesterConfig)
 		require.NoError(t, restTester.SetAdminParty(false))
 		defer restTester.Close()
 

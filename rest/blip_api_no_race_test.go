@@ -43,7 +43,7 @@ func TestBlipPusherUpdateDatabase(t *testing.T) {
 		GuestEnabled:     true,
 		CustomTestBucket: tb.NoCloseClone(),
 	}
-	rt, keyspace := NewRestTester(t, &rtConfig)
+	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
 	client, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
@@ -75,7 +75,7 @@ func TestBlipPusherUpdateDatabase(t *testing.T) {
 	}()
 
 	// and wait for a few to be done before we proceed with updating database config underneath replication
-	_, err = rt.WaitForChanges(5, fmt.Sprintf("/%s/_changes", keyspace), "", true)
+	_, err = rt.WaitForChanges(5, "/{{.keyspace}}/_changes", "", true)
 	require.NoError(t, err)
 
 	// just change the sync function to cause the database to reload

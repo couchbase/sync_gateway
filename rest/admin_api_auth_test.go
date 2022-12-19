@@ -115,7 +115,7 @@ func TestCheckPermissions(t *testing.T) {
 		},
 	}
 
-	rt, _ := NewRestTester(t, nil)
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
 	eps, httpClient, err := rt.ServerContext().ObtainManagementEndpointsAndHTTPClient()
@@ -177,7 +177,7 @@ func TestCheckRoles(t *testing.T) {
 		t.Skip("Test requires Couchbase Server")
 	}
 
-	rt, _ := NewRestTester(t, nil)
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
 	testCases := []struct {
@@ -289,7 +289,7 @@ func TestAdminAuth(t *testing.T) {
 		t.Skip("Test requires Couchbase Server")
 	}
 
-	rt, _ := NewRestTester(t, nil)
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
 	BucketFullAccessRoleTest := fmt.Sprintf("bucket_full_access[%s]", rt.Bucket().GetName())
@@ -484,7 +484,7 @@ func TestAdminAPIAuth(t *testing.T) {
 		t.Skipf("URI %s can not start with couchbases://", serverURL)
 	}
 
-	rt, _ := NewRestTester(t, &RestTesterConfig{
+	rt := NewRestTester(t, &RestTesterConfig{
 		AdminInterfaceAuthentication:   true,
 		metricsInterfaceAuthentication: true,
 	})
@@ -1014,7 +1014,7 @@ func TestDisablePermissionCheck(t *testing.T) {
 
 	for _, testCase := range testCases {
 		t.Run(testCase.Name, func(t *testing.T) {
-			rt, _ := NewRestTester(t, &RestTesterConfig{
+			rt := NewRestTester(t, &RestTesterConfig{
 				enableAdminAuthPermissionsCheck: testCase.DoPermissionCheck,
 			})
 			defer rt.Close()
@@ -1051,7 +1051,7 @@ func TestNewlyCreateSGWPermissions(t *testing.T) {
 	syncGatewayConfigurator := "sync_gateway_configurator"
 	syncGatewayReplicator := "sync_gateway_replicator"
 
-	rt, _ := NewRestTester(t, &RestTesterConfig{
+	rt := NewRestTester(t, &RestTesterConfig{
 		AdminInterfaceAuthentication:    true,
 		enableAdminAuthPermissionsCheck: true,
 	})
@@ -1515,7 +1515,7 @@ func TestCreateDBSpecificBucketPerm(t *testing.T) {
 
 	base.RequireNumTestBuckets(t, 2)
 
-	rt, _ := NewRestTester(t, &RestTesterConfig{
+	rt := NewRestTester(t, &RestTesterConfig{
 		AdminInterfaceAuthentication: true,
 	})
 	defer rt.Close()

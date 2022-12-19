@@ -9,7 +9,6 @@
 package rest
 
 import (
-	"fmt"
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -22,28 +21,28 @@ import (
 
 // When feature flag is not enabled, all API calls return 404:
 func TestFunctionsConfigGetWithoutFeatureFlag(t *testing.T) {
-	rt, keyspace := NewRestTester(t, &RestTesterConfig{EnableUserQueries: false})
+	rt := NewRestTester(t, &RestTesterConfig{EnableUserQueries: false})
 	defer rt.Close()
 
 	t.Run("Functions, Non-Admin", func(t *testing.T) {
-		response := rt.SendRequest("GET", fmt.Sprintf("/%s/_config/functions", keyspace), "")
+		response := rt.SendRequest("GET", "/{{.keyspace}}/_config/functions", "")
 		assert.Equal(t, 404, response.Result().StatusCode)
 	})
 	t.Run("All Functions", func(t *testing.T) {
-		response := rt.SendAdminRequest("GET", fmt.Sprintf("/%s/_config/functions", keyspace), "")
+		response := rt.SendAdminRequest("GET", "/{{.keyspace}}/_config/functions", "")
 		assert.Equal(t, 404, response.Result().StatusCode)
 	})
 	t.Run("Single Function", func(t *testing.T) {
-		response := rt.SendAdminRequest("GET", fmt.Sprintf("/%s/_config/functions/cube", keyspace), "")
+		response := rt.SendAdminRequest("GET", "/{{.keyspace}}/_config/functions/cube", "")
 		assert.Equal(t, 404, response.Result().StatusCode)
 	})
 
 	t.Run("GraphQL, Non-Admin", func(t *testing.T) {
-		response := rt.SendRequest("GET", fmt.Sprintf("/%s/_config/graphql", keyspace), "")
+		response := rt.SendRequest("GET", "/{{.keyspace}}/_config/graphql", "")
 		assert.Equal(t, 404, response.Result().StatusCode)
 	})
 	t.Run("GraphQL", func(t *testing.T) {
-		response := rt.SendAdminRequest("GET", fmt.Sprintf("/%s/_config/graphql", keyspace), "")
+		response := rt.SendAdminRequest("GET", "/{{.keyspace}}/_config/graphql", "")
 		assert.Equal(t, 404, response.Result().StatusCode)
 	})
 }
@@ -446,7 +445,7 @@ func newRestTesterForUserQueries(t *testing.T, queryConfig DbConfig) *RestTester
 		return nil
 	}
 
-	rt, _ := NewRestTester(t, &RestTesterConfig{
+	rt := NewRestTester(t, &RestTesterConfig{
 		groupID:           base.StringPtr(t.Name()), // Avoids race conditions between tests
 		EnableUserQueries: true,
 		PersistentConfig:  true,

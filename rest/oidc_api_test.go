@@ -839,7 +839,7 @@ func TestOpenIDConnectAuthCodeFlow(t *testing.T) {
 
 			opts := auth.OIDCOptions{Providers: tc.providers, DefaultProvider: &tc.defaultProvider}
 			restTesterConfig := RestTesterConfig{DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{OIDCConfig: &opts}}}
-			restTester, _ := NewRestTester(t, &restTesterConfig)
+			restTester := NewRestTester(t, &restTesterConfig)
 			require.NoError(t, restTester.SetAdminParty(false))
 			defer restTester.Close()
 
@@ -1760,7 +1760,7 @@ func TestCallbackStateClientCookies(t *testing.T) {
 			OIDCConfig: &opts,
 		}},
 	}
-	restTester, _ := NewRestTester(t, &restTesterConfig)
+	restTester := NewRestTester(t, &restTesterConfig)
 	require.NoError(t, restTester.SetAdminParty(false))
 	defer restTester.Close()
 
@@ -2000,7 +2000,7 @@ func TestOpenIDConnectAuthCodeFlowWithUsernameClaim(t *testing.T) {
 					OIDCConfig: &opts,
 				}},
 			}
-			restTester, _ := NewRestTester(t, &restTesterConfig)
+			restTester := NewRestTester(t, &restTesterConfig)
 			require.NoError(t, restTester.SetAdminParty(false))
 			defer restTester.Close()
 

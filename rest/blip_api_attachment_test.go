@@ -44,7 +44,7 @@ func TestBlipPushPullV2AttachmentV2Client(t *testing.T) {
 		},
 		GuestEnabled: true,
 	}
-	rt, keyspace := NewRestTester(t, &rtConfig)
+	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
 	opts := &BlipTesterClientOpts{}
@@ -59,7 +59,7 @@ func TestBlipPushPullV2AttachmentV2Client(t *testing.T) {
 
 	// Create doc revision with attachment on SG.
 	bodyText := `{"greetings":[{"hi": "alice"}],"_attachments":{"hello.txt":{"data":"aGVsbG8gd29ybGQ="}}}`
-	response := rt.SendAdminRequest(http.MethodPut, "/"+keyspace+"/"+docID, bodyText)
+	response := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID, bodyText)
 	assert.Equal(t, http.StatusCreated, response.Code)
 
 	// Wait for the document to be replicated to client.
@@ -79,7 +79,7 @@ func TestBlipPushPullV2AttachmentV2Client(t *testing.T) {
 	_, ok = btc.pushReplication.WaitForMessage(2)
 	assert.True(t, ok)
 
-	resp := rt.SendAdminRequest(http.MethodGet, "/"+keyspace+"/"+docID+"?rev="+revId, "")
+	resp := rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/"+docID+"?rev="+revId, "")
 	assert.Equal(t, http.StatusOK, resp.Code)
 	var respBody db.Body
 	assert.NoError(t, base.JSONUnmarshal(resp.Body.Bytes(), &respBody))
@@ -122,7 +122,7 @@ func TestBlipPushPullV2AttachmentV3Client(t *testing.T) {
 		},
 		GuestEnabled: true,
 	}
-	rt, keyspace := NewRestTester(t, &rtConfig)
+	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
 	btc, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
@@ -135,7 +135,7 @@ func TestBlipPushPullV2AttachmentV3Client(t *testing.T) {
 
 	// Create doc revision with attachment on SG.
 	bodyText := `{"greetings":[{"hi": "alice"}],"_attachments":{"hello.txt":{"data":"aGVsbG8gd29ybGQ="}}}`
-	response := rt.SendAdminRequest(http.MethodPut, "/"+keyspace+"/"+docID, bodyText)
+	response := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID, bodyText)
 	assert.Equal(t, http.StatusCreated, response.Code)
 
 	// Wait for the document to be replicated to client.
@@ -155,7 +155,7 @@ func TestBlipPushPullV2AttachmentV3Client(t *testing.T) {
 	_, ok = btc.pushReplication.WaitForMessage(2)
 	assert.True(t, ok)
 
-	resp := rt.SendAdminRequest(http.MethodGet, "/"+keyspace+"/"+docID+"?rev="+revId, "")
+	resp := rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/"+docID+"?rev="+revId, "")
 	assert.Equal(t, http.StatusOK, resp.Code)
 	var respBody db.Body
 	assert.NoError(t, base.JSONUnmarshal(resp.Body.Bytes(), &respBody))
@@ -184,7 +184,7 @@ func TestBlipPushPullNewAttachmentCommonAncestor(t *testing.T) {
 	rtConfig := RestTesterConfig{
 		GuestEnabled: true,
 	}
-	rt, keyspace := NewRestTester(t, &rtConfig)
+	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
 	btc, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
@@ -209,7 +209,7 @@ func TestBlipPushPullNewAttachmentCommonAncestor(t *testing.T) {
 	_, ok := btc.pushReplication.WaitForMessage(2)
 	assert.True(t, ok)
 
-	resp := rt.SendAdminRequest(http.MethodGet, "/"+keyspace+"/"+docID+"?rev="+revId, "")
+	resp := rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/"+docID+"?rev="+revId, "")
 	assert.Equal(t, http.StatusOK, resp.Code)
 
 	// CBL updates the doc w/ two more revisions, 3-abc, 4-abc,
@@ -223,7 +223,7 @@ func TestBlipPushPullNewAttachmentCommonAncestor(t *testing.T) {
 	_, ok = btc.pushReplication.WaitForMessage(4)
 	assert.True(t, ok)
 
-	resp = rt.SendAdminRequest(http.MethodGet, "/"+keyspace+"/"+docID+"?rev="+revId, "")
+	resp = rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/"+docID+"?rev="+revId, "")
 	assert.Equal(t, http.StatusOK, resp.Code)
 
 	var respBody db.Body
@@ -255,7 +255,7 @@ func TestBlipPushPullNewAttachmentNoCommonAncestor(t *testing.T) {
 	rtConfig := RestTesterConfig{
 		GuestEnabled: true,
 	}
-	rt, keyspace := NewRestTester(t, &rtConfig)
+	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
 	btc, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
@@ -282,7 +282,7 @@ func TestBlipPushPullNewAttachmentNoCommonAncestor(t *testing.T) {
 	_, ok := btc.pushReplication.WaitForMessage(2)
 	assert.True(t, ok)
 
-	resp := rt.SendAdminRequest(http.MethodGet, "/"+keyspace+"/"+docID+"?rev="+revId, "")
+	resp := rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/"+docID+"?rev="+revId, "")
 	assert.Equal(t, http.StatusOK, resp.Code)
 
 	var respBody db.Body

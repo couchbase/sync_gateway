@@ -104,7 +104,7 @@ func TestBlipDeltaSyncPushPullNewAttachment(t *testing.T) {
 		}},
 		GuestEnabled: true,
 	}
-	rt, keyspace := NewRestTester(t, &rtConfig)
+	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
 	btc, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
@@ -118,7 +118,7 @@ func TestBlipDeltaSyncPushPullNewAttachment(t *testing.T) {
 
 	// Create doc1 rev 1-77d9041e49931ceef58a1eef5fd032e8 on SG with an attachment
 	bodyText := `{"greetings":[{"hi": "alice"}],"_attachments":{"hello.txt":{"data":"aGVsbG8gd29ybGQ="}}}`
-	response := rt.SendAdminRequest(http.MethodPut, "/"+keyspace+"/"+docID, bodyText)
+	response := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID, bodyText)
 	assert.Equal(t, http.StatusCreated, response.Code)
 
 	// Wait for the document to be replicated at the client
@@ -138,7 +138,7 @@ func TestBlipDeltaSyncPushPullNewAttachment(t *testing.T) {
 	_, ok = btc.pushReplication.WaitForMessage(2)
 	assert.True(t, ok)
 
-	resp := rt.SendAdminRequest(http.MethodGet, "/"+keyspace+"/"+docID+"?rev="+revId, "")
+	resp := rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/"+docID+"?rev="+revId, "")
 	assert.Equal(t, http.StatusOK, resp.Code)
 	var respBody db.Body
 	assert.NoError(t, base.JSONUnmarshal(resp.Body.Bytes(), &respBody))
@@ -181,7 +181,7 @@ func TestBlipDeltaSyncNewAttachmentPull(t *testing.T) {
 		}},
 		GuestEnabled: true,
 	}
-	rt, keyspace := NewRestTester(t, &rtConfig)
+	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
 	client, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
@@ -193,7 +193,7 @@ func TestBlipDeltaSyncNewAttachmentPull(t *testing.T) {
 	assert.NoError(t, err)
 
 	// create doc1 rev 1-0335a345b6ffed05707ccc4cbc1b67f4
-	resp := rt.SendAdminRequest(http.MethodPut, fmt.Sprintf("/%s/doc1", keyspace), `{"greetings": [{"hello": "world!"}, {"hi": "alice"}]}`)
+	resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc1", `{"greetings": [{"hello": "world!"}, {"hi": "alice"}]}`)
 	assert.Equal(t, http.StatusCreated, resp.Code)
 
 	data, ok := client.WaitForRev("doc1", "1-0335a345b6ffed05707ccc4cbc1b67f4")
@@ -201,7 +201,7 @@ func TestBlipDeltaSyncNewAttachmentPull(t *testing.T) {
 	assert.Equal(t, `{"greetings":[{"hello":"world!"},{"hi":"alice"}]}`, string(data))
 
 	// create doc1 rev 2-10000d5ec533b29b117e60274b1e3653 on SG with the first attachment
-	resp = rt.SendAdminRequest(http.MethodPut, fmt.Sprintf("/%s/doc1?rev=1-0335a345b6ffed05707ccc4cbc1b67f4", keyspace), `{"greetings": [{"hello": "world!"}, {"hi": "alice"}], "_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="}}}`)
+	resp = rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc1?rev=1-0335a345b6ffed05707ccc4cbc1b67f4", `{"greetings": [{"hello": "world!"}, {"hi": "alice"}], "_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="}}}`)
 	assert.Equal(t, http.StatusCreated, resp.Code)
 	fmt.Println(resp.Body.String())
 
@@ -247,7 +247,7 @@ func TestBlipDeltaSyncNewAttachmentPull(t *testing.T) {
 		assert.Contains(t, string(msgBody), `"greetings":[{"hello":"world!"},{"hi":"alice"}]`)
 	}
 
-	resp = rt.SendAdminRequest(http.MethodGet, fmt.Sprintf("/%s/doc1?rev=2-10000d5ec533b29b117e60274b1e3653", keyspace), "")
+	resp = rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/doc1?rev=2-10000d5ec533b29b117e60274b1e3653", "")
 	assert.Equal(t, http.StatusOK, resp.Code)
 	var respBody db.Body
 	assert.NoError(t, base.JSONUnmarshal(resp.Body.Bytes(), &respBody))
@@ -286,8 +286,6 @@ func TestBlipDeltaSyncPull(t *testing.T) {
 		&rtConfig)
 	defer rt.Close()
 
-	keyspace := "db"
-
 	var deltaSentCount int64
 
 	if rt.GetDatabase().DbStats.DeltaSync() != nil {
@@ -303,7 +301,7 @@ func TestBlipDeltaSyncPull(t *testing.T) {
 	assert.NoError(t, err)
 
 	// create doc1 rev 1-0335a345b6ffed05707ccc4cbc1b67f4
-	resp := rt.SendAdminRequest(http.MethodPut, fmt.Sprintf("/%s/doc1", keyspace), `{"greetings": [{"hello": "world!"}, {"hi": "alice"}]}`)
+	resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc1", `{"greetings": [{"hello": "world!"}, {"hi": "alice"}]}`)
 	assert.Equal(t, http.StatusCreated, resp.Code)
 
 	data, ok := client.WaitForRev("doc1", "1-0335a345b6ffed05707ccc4cbc1b67f4")
@@ -368,10 +366,9 @@ func TestBlipDeltaSyncPullResend(t *testing.T) {
 	rt := NewRestTesterDefaultCollection(t, // CBG-2619: make collection aware
 		&rtConfig)
 	defer rt.Close()
-	keyspace := "db"
 
 	// create doc1 rev 1
-	resp := rt.SendAdminRequest(http.MethodPut, fmt.Sprintf("/%s/doc1", keyspace), `{"greetings": [{"hello": "world!"}, {"hi": "alice"}]}`)
+	resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc1", `{"greetings": [{"hello": "world!"}, {"hi": "alice"}]}`)
 	assert.Equal(t, http.StatusCreated, resp.Code)
 	rev1ID := RespRevID(t, resp)
 
@@ -733,7 +730,6 @@ func TestBlipDeltaSyncPullRevCache(t *testing.T) {
 	rt := NewRestTesterDefaultCollection(t, // CBG-2619: make collection aware
 		&rtConfig)
 	defer rt.Close()
-	keyspace := "db"
 
 	client, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
 	require.NoError(t, err)
@@ -744,7 +740,7 @@ func TestBlipDeltaSyncPullRevCache(t *testing.T) {
 	assert.NoError(t, err)
 
 	// create doc1 rev 1-0335a345b6ffed05707ccc4cbc1b67f4
-	resp := rt.SendAdminRequest(http.MethodPut, fmt.Sprintf("/%s/doc1", keyspace), `{"greetings": [{"hello": "world!"}, {"hi": "alice"}]}`)
+	resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc1", `{"greetings": [{"hello": "world!"}, {"hi": "alice"}]}`)
 	assert.Equal(t, http.StatusCreated, resp.Code)
 
 	data, ok := client.WaitForRev("doc1", "1-0335a345b6ffed05707ccc4cbc1b67f4")
@@ -827,7 +823,6 @@ func TestBlipDeltaSyncPush(t *testing.T) {
 	rt := NewRestTesterDefaultCollection(t, // CBG-2619: make collection aware
 		&rtConfig)
 	defer rt.Close()
-	keyspace := "db"
 
 	client, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
 	require.NoError(t, err)
@@ -838,7 +833,7 @@ func TestBlipDeltaSyncPush(t *testing.T) {
 	assert.NoError(t, err)
 
 	// create doc1 rev 1-0335a345b6ffed05707ccc4cbc1b67f4
-	resp := rt.SendAdminRequest(http.MethodPut, fmt.Sprintf("/%s/doc1", keyspace), `{"greetings": [{"hello": "world!"}, {"hi": "alice"}]}`)
+	resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc1", `{"greetings": [{"hello": "world!"}, {"hi": "alice"}]}`)
 	assert.Equal(t, http.StatusCreated, resp.Code)
 
 	data, ok := client.WaitForRev("doc1", "1-0335a345b6ffed05707ccc4cbc1b67f4")
@@ -940,7 +935,6 @@ func TestBlipNonDeltaSyncPush(t *testing.T) {
 	rt := NewRestTesterDefaultCollection(t, // CBG-2619: make collection aware
 		&rtConfig)
 	defer rt.Close()
-	keyspace := "db"
 
 	client, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
 	require.NoError(t, err)
@@ -951,7 +945,7 @@ func TestBlipNonDeltaSyncPush(t *testing.T) {
 	assert.NoError(t, err)
 
 	// create doc1 rev 1-0335a345b6ffed05707ccc4cbc1b67f4
-	resp := rt.SendAdminRequest(http.MethodPut, fmt.Sprintf("/%s/doc1", keyspace), `{"greetings": [{"hello": "world!"}, {"hi": "alice"}]}`)
+	resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc1", `{"greetings": [{"hello": "world!"}, {"hi": "alice"}]}`)
 	assert.Equal(t, http.StatusCreated, resp.Code)
 
 	data, ok := client.WaitForRev("doc1", "1-0335a345b6ffed05707ccc4cbc1b67f4")

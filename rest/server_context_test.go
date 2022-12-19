@@ -251,7 +251,7 @@ func TestObtainManagementEndpointsFromServerContext(t *testing.T) {
 		t.Skip("Test requires Couchbase Server")
 	}
 
-	rt, _ := NewRestTester(t, nil)
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
 	eps, _, err := rt.ServerContext().ObtainManagementEndpointsAndHTTPClient()

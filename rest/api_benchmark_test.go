@@ -69,31 +69,31 @@ func BenchmarkReadOps_Get(b *testing.B) {
 
 	base.DisableTestLogging(b)
 
-	rt, keyspace := NewRestTester(b, nil)
+	rt := NewRestTester(b, nil)
 	defer rt.Close()
 	defer PurgeDoc(rt, "doc1k")
 
 	doc1k_putDoc := fmt.Sprintf(doc_1k_format, "")
-	response := rt.SendAdminRequest("PUT", fmt.Sprintf("/%s/doc1k", keyspace), doc1k_putDoc)
+	response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1k", doc1k_putDoc)
 	var body db.Body
 	require.NoError(b, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	revid := body["rev"].(string)
 
 	// Create user
 	username := "user1"
-	rt.SendAdminRequest("PUT", fmt.Sprintf("/%s/_user/%s", keyspace, username), fmt.Sprintf(`{"name":"%s", "password":"letmein", "admin_channels":["channel_1"]}`, username))
+	rt.SendAdminRequest("PUT", "/{{.db}}/_user/"+username, fmt.Sprintf(`{"name":"%s", "password":"letmein", "admin_channels":["channel_1"]}`, username))
 
 	getBenchmarks := []struct {
 		name   string
 		URI    string
 		asUser string
 	}{
-		{"Admin_Simple", fmt.Sprintf("/%s/doc1k", keyspace), ""},
-		{"Admin_WithRev", fmt.Sprintf("/%s/doc1k?rev=%s", keyspace, revid), ""},
-		{"Admin_OpenRevsAll", fmt.Sprintf("/%s/doc1k?open_revs=all&rev=%s", keyspace, revid), ""},
-		{"User_Simple", fmt.Sprintf("/%s/doc1k", keyspace), username},
-		{"User_WithRev", fmt.Sprintf("/%s/doc1k?rev=%s", keyspace, revid), username},
-		{"User_OpenRevsAll", fmt.Sprintf("/%s/doc1k?open_revs=all&rev=%s", keyspace, revid), username},
+		{"Admin_Simple", "/{{.keyspace}}/doc1k", ""},
+		{"Admin_WithRev", "/{{.keyspace}}/doc1k?rev=" + revid, ""},
+		{"Admin_OpenRevsAll", "/{{.keyspace}}/doc1k?open_revs=all&rev=" + revid, ""},
+		{"User_Simple", "/{{.keyspace}}/doc1k", username},
+		{"User_WithRev", "/{{.keyspace}}/doc1k?rev=" + revid, username},
+		{"User_OpenRevsAll", "/{{.keyspace}}/doc1k?open_revs=all&rev=" + revid, username},
 	}
 
 	for _, bm := range getBenchmarks {
@@ -120,7 +120,7 @@ func BenchmarkReadOps_GetRevCacheMisses(b *testing.B) {
 
 	base.DisableTestLogging(b)
 
-	rt, keyspace := NewRestTester(b, nil)
+	rt := NewRestTester(b, nil)
 	defer rt.Close()
 	defer PurgeDoc(rt, "doc1k")
 
@@ -132,7 +132,7 @@ func BenchmarkReadOps_GetRevCacheMisses(b *testing.B) {
 	numDocs := int(revCacheSize + 1)
 	var revid string
 	for i := 0; i < numDocs; i++ {
-		response := rt.SendAdminRequest("PUT", fmt.Sprintf("/%s/doc1k_%d", keyspace, i), doc1k_putDoc)
+		response := rt.SendAdminRequest("PUT", fmt.Sprintf("/{{.keyspace}}/doc1k_%d", i), doc1k_putDoc)
 		// revid will be the same for all docs
 		if i == 0 {
 			var body db.Body
@@ -143,7 +143,7 @@ func BenchmarkReadOps_GetRevCacheMisses(b *testing.B) {
 
 	// Create user
 	username := "user1"
-	rt.SendAdminRequest("PUT", fmt.Sprintf("/%s/_user/%s", keyspace, username), fmt.Sprintf(`{"name":"%s", "password":"letmein", "admin_channels":["channel_1"]}`, username))
+	rt.SendAdminRequest("PUT", "/{{.keyspace}}/_user/"+username, fmt.Sprintf(`{"name":"%s", "password":"letmein", "admin_channels":["channel_1"]}`, username))
 
 	getBenchmarks := []struct {
 		name   string
@@ -187,13 +187,13 @@ func BenchmarkReadOps_Changes(b *testing.B) {
 
 	base.DisableTestLogging(b)
 
-	rt, keyspace := NewRestTester(b, nil)
+	rt := NewRestTester(b, nil)
 	defer rt.Close()
 	defer PurgeDoc(rt, "doc1k")
 
 	// Create user
 	username := "user1"
-	rt.SendAdminRequest("PUT", fmt.Sprintf("/%s/_user/%s", keyspace, username), fmt.Sprintf(`{"name":"%s", "password":"letmein", "admin_channels":["channel_1"]}`, username))
+	rt.SendAdminRequest("PUT", "/{{.db}}/_user/"+username, fmt.Sprintf(`{"name":"%s", "password":"letmein", "admin_channels":["channel_1"]}`, username))
 
 	doc1k_putDoc := fmt.Sprintf(doc_1k_format, "")
 
@@ -260,7 +260,7 @@ func BenchmarkReadOps_RevsDiff(b *testing.B) {
 
 	base.DisableTestLogging(b)
 
-	rt, keyspace := NewRestTester(b, nil)
+	rt := NewRestTester(b, nil)
 	defer rt.Close()
 	defer PurgeDoc(rt, "doc1k")
 
@@ -274,7 +274,7 @@ func BenchmarkReadOps_RevsDiff(b *testing.B) {
 
 	doc1k_bulkDocs_entry := fmt.Sprintf(doc_1k_format, doc1k_bulkDocs_meta)
 	bulkDocs_body := fmt.Sprintf(`{"new_edits":false, "docs": [%s]}`, doc1k_bulkDocs_entry)
-	response := rt.SendAdminRequest("POST", fmt.Sprintf("/%s/_bulk_docs", keyspace), bulkDocs_body)
+	response := rt.SendAdminRequest("POST", "/{{.keyspace}}/_bulk_docs", bulkDocs_body)
 	if response.Code != 201 {
 		log.Printf("Unexpected response: %d", response.Code)
 		log.Printf("Response:%s", response.Body.Bytes())

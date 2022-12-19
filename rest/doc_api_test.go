@@ -100,7 +100,7 @@ func TestDocumentNumbers(t *testing.T) {
 		}
 	}`
 	rtConfig := RestTesterConfig{SyncFn: syncFn}
-	rt, keyspace := NewRestTester(t, &rtConfig)
+	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
@@ -108,11 +108,11 @@ func TestDocumentNumbers(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(ts *testing.T) {
 			// Create document
-			response := rt.SendAdminRequest("PUT", fmt.Sprintf("/%s/%s", keyspace, test.name), test.body)
+			response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/"+test.name, test.body)
 			RequireStatus(ts, response, 201)
 
 			// Get document, validate number value
-			getResponse := rt.SendAdminRequest("GET", fmt.Sprintf("/%s/%s", keyspace, test.name), "")
+			getResponse := rt.SendAdminRequest("GET", "/{{.keyspace}}/"+test.name, "")
 			RequireStatus(ts, getResponse, 200)
 
 			// Check the raw bytes, because unmarshalling the response would be another opportunity for the number to get modified
@@ -122,7 +122,7 @@ func TestDocumentNumbers(t *testing.T) {
 			}
 
 			// Check channel assignment
-			getRawResponse := rt.SendAdminRequest("GET", fmt.Sprintf("/%s/_raw/%s?redact=false", keyspace, test.name), "")
+			getRawResponse := rt.SendAdminRequest("GET", fmt.Sprintf("/{{.keyspace}}/_raw/%s?redact=false", test.name), "")
 			var rawResponse RawResponse
 			require.NoError(ts, base.JSONUnmarshal(getRawResponse.Body.Bytes(), &rawResponse))
 			log.Printf("raw response: %s", getRawResponse.Body.Bytes())
@@ -135,7 +135,7 @@ func TestDocumentNumbers(t *testing.T) {
 }
 
 func TestGuestReadOnly(t *testing.T) {
-	rt, keyspace := NewRestTester(t, &RestTesterConfig{
+	rt := NewRestTester(t, &RestTesterConfig{
 		GuestEnabled: true,
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			Unsupported: &db.UnsupportedOptions{
@@ -149,16 +149,16 @@ func TestGuestReadOnly(t *testing.T) {
 
 	rt.GetDatabase()
 	// Write a document as admin
-	response := rt.SendAdminRequest("PUT", fmt.Sprintf("/%s/doc", keyspace), "{}")
+	response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc", "{}")
 	RequireStatus(t, response, http.StatusCreated)
 
 	// Attempt to read as guest
-	response = rt.SendRequest("GET", fmt.Sprintf("/%s/doc", keyspace), "")
+	response = rt.SendRequest("GET", "/{{.keyspace}}/doc", "")
 	RequireStatus(t, response, http.StatusOK)
 	assert.Equal(t, `{"_id":"doc","_rev":"1-ca9ad22802b66f662ff171f226211d5c"}`, string(response.BodyBytes()))
 
 	// Attempt to write as guest
-	response = rt.SendRequest("PUT", fmt.Sprintf("/%s/doc?rev=1-ca9ad22802b66f662ff171f226211d5c", keyspace), `{"val": "newval"}`)
+	response = rt.SendRequest("PUT", "/{{.keyspace}}/doc?rev=1-ca9ad22802b66f662ff171f226211d5c", `{"val": "newval"}`)
 	RequireStatus(t, response, http.StatusForbidden)
 
 }
