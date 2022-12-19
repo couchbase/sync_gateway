@@ -96,11 +96,6 @@ func (apr *ActivePushReplicator) _connect() error {
 		serialNumber:    apr.blipSyncContext.incrementSerialNumber(),
 	}
 
-	seq, err := ParseSequenceID(apr.Checkpointer.lastCheckpointSeq)
-	if err != nil {
-		base.WarnfCtx(apr.ctx, "couldn't parse checkpointed sequence ID, starting push from seq:0")
-	}
-
 	var channels base.Set
 	if apr.config.FilterChannels != nil {
 		channels = base.SetFromArray(apr.config.FilterChannels)
@@ -128,7 +123,7 @@ func (apr *ActivePushReplicator) _connect() error {
 		defer apr.activeSendChanges.Set(false)
 		isComplete := bh.sendChanges(s, &sendChangesOptions{
 			docIDs:            apr.config.DocIDs,
-			since:             seq,
+			since:             apr.Checkpointer.lastCheckpointSeq,
 			continuous:        apr.config.Continuous,
 			activeOnly:        apr.config.ActiveOnly,
 			batchSize:         int(apr.config.ChangesBatchSize),
@@ -213,7 +208,7 @@ func (apr *ActivePushReplicator) GetStatus() *ReplicationStatus {
 	apr.lock.RLock()
 	defer apr.lock.RUnlock()
 	if apr.Checkpointer != nil {
-		lastSeqPushed = apr.Checkpointer.calculateSafeProcessedSeq()
+		lastSeqPushed = apr.Checkpointer.calculateSafeProcessedSeq().String()
 	}
 	status := apr.getPushStatus(lastSeqPushed)
 	return status

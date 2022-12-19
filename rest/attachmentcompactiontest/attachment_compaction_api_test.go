@@ -28,6 +28,8 @@ func TestAttachmentCompactionAPI(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
+	base.TemporarilyDisableTestUsingDCPWithCollections(t)
+
 	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 
@@ -66,6 +68,10 @@ func TestAttachmentCompactionAPI(t *testing.T) {
 	})
 	require.NoError(t, err)
 
+	dataStore := rt.GetSingleDataStore()
+	collection := &db.DatabaseCollectionWithUser{
+		DatabaseCollection: rt.GetSingleTestDatabaseCollection(),
+	}
 	// Create some legacy attachments to be marked but not compacted
 	ctx := rt.Context()
 	for i := 0; i < 20; i++ {
@@ -74,12 +80,12 @@ func TestAttachmentCompactionAPI(t *testing.T) {
 		attBody := map[string]interface{}{"value": strconv.Itoa(i)}
 		attJSONBody, err := base.JSONMarshal(attBody)
 		require.NoError(t, err)
-		rest.CreateLegacyAttachmentDoc(t, ctx, &db.Database{DatabaseContext: rt.GetDatabase()}, docID, []byte("{}"), attID, attJSONBody)
+		rest.CreateLegacyAttachmentDoc(t, ctx, collection, dataStore, docID, []byte("{}"), attID, attJSONBody)
 	}
 
 	// Create some 'unmarked' attachments
 	makeUnmarkedDoc := func(docid string) {
-		err := rt.GetDatabase().Bucket.DefaultDataStore().SetRaw(docid, 0, nil, []byte("{}"))
+		err := dataStore.SetRaw(docid, 0, nil, []byte("{}"))
 		require.NoError(t, err)
 	}
 
@@ -210,12 +216,15 @@ func TestAttachmentCompactionDryRun(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
+	base.TemporarilyDisableTestUsingDCPWithCollections(t)
+
 	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 
+	dataStore := rt.GetSingleDataStore()
 	// Create some 'unmarked' attachments
 	makeUnmarkedDoc := func(docid string) {
-		err := rt.GetDatabase().Bucket.DefaultDataStore().SetRaw(docid, 0, nil, []byte("{}"))
+		err := dataStore.SetRaw(docid, 0, nil, []byte("{}"))
 		assert.NoError(t, err)
 	}
 
@@ -233,7 +242,7 @@ func TestAttachmentCompactionDryRun(t *testing.T) {
 	assert.Equal(t, int64(5), status.PurgedAttachments)
 
 	for _, docID := range attachmentKeys {
-		_, _, err := rt.GetDatabase().Bucket.DefaultDataStore().GetRaw(docID)
+		_, _, err := dataStore.GetRaw(docID)
 		assert.NoError(t, err)
 	}
 
@@ -244,7 +253,7 @@ func TestAttachmentCompactionDryRun(t *testing.T) {
 	assert.Equal(t, int64(5), status.PurgedAttachments) // FIXME (bbrks) 25???? leak from other tests?
 
 	for _, docID := range attachmentKeys {
-		_, _, err := rt.GetDatabase().Bucket.DefaultDataStore().GetRaw(docID)
+		_, _, err := dataStore.GetRaw(docID)
 		assert.Error(t, err)
 		assert.True(t, base.IsDocNotFoundError(err))
 	}
@@ -292,27 +301,34 @@ func TestAttachmentCompactionInvalidDocs(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
+	base.TemporarilyDisableTestUsingDCPWithCollections(t)
+
 	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 	ctx := rt.Context()
 
+	dataStore := rt.GetSingleDataStore()
 	// Create a raw binary doc
-	_, err := rt.Bucket().DefaultDataStore().AddRaw("binary", 0, []byte("binary doc"))
+	_, err := dataStore.AddRaw("binary", 0, []byte("binary doc"))
 	assert.NoError(t, err)
 
 	// Create a CBS tombstone
-	_, err = rt.Bucket().DefaultDataStore().AddRaw("deleted", 0, []byte("{}"))
+	_, err = dataStore.AddRaw("deleted", 0, []byte("{}"))
 	assert.NoError(t, err)
-	err = rt.Bucket().DefaultDataStore().Delete("deleted")
+	err = dataStore.Delete("deleted")
 	assert.NoError(t, err)
+
+	collection := &db.DatabaseCollectionWithUser{
+		DatabaseCollection: rt.GetSingleTestDatabaseCollection(),
+	}
 
 	// Also create an actual legacy attachment to ensure they are still processed
-	rest.CreateLegacyAttachmentDoc(t, ctx, &db.Database{DatabaseContext: rt.GetDatabase()}, "docID", []byte("{}"), "attKey", []byte("{}"))
+	rest.CreateLegacyAttachmentDoc(t, ctx, collection, dataStore, "docID", []byte("{}"), "attKey", []byte("{}"))
 
 	// Create attachment with no doc reference
-	err = rt.GetDatabase().Bucket.DefaultDataStore().SetRaw(base.AttPrefix+"test", 0, nil, []byte("{}"))
+	err = dataStore.SetRaw(base.AttPrefix+"test", 0, nil, []byte("{}"))
 	assert.NoError(t, err)
-	err = rt.GetDatabase().Bucket.DefaultDataStore().SetRaw(base.AttPrefix+"test2", 0, nil, []byte("{}"))
+	err = dataStore.SetRaw(base.AttPrefix+"test2", 0, nil, []byte("{}"))
 	assert.NoError(t, err)
 
 	// Write a normal doc to ensure this passes through fine
@@ -375,13 +391,17 @@ func TestAttachmentCompactionAbort(t *testing.T) {
 	defer rt.Close()
 	ctx := rt.Context()
 
+	dataStore := rt.GetSingleDataStore()
+	collection := &db.DatabaseCollectionWithUser{
+		DatabaseCollection: rt.GetSingleTestDatabaseCollection(),
+	}
 	for i := 0; i < 1000; i++ {
 		docID := fmt.Sprintf("testDoc-%d", i)
 		attID := fmt.Sprintf("testAtt-%d", i)
 		attBody := map[string]interface{}{"value": strconv.Itoa(i)}
 		attJSONBody, err := base.JSONMarshal(attBody)
 		assert.NoError(t, err)
-		rest.CreateLegacyAttachmentDoc(t, ctx, &db.Database{DatabaseContext: rt.GetDatabase()}, docID, []byte("{}"), attID, attJSONBody)
+		rest.CreateLegacyAttachmentDoc(t, ctx, collection, dataStore, docID, []byte("{}"), attID, attJSONBody)
 	}
 
 	resp := rt.SendAdminRequest("POST", "/db/_compact?type=attachment", "")

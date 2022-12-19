@@ -56,7 +56,7 @@ func (h *handler) handleAllDocs() error {
 	// Get the set of channels the user has access to; nil if user is admin or has access to user "*"
 	var availableChannels ch.TimedSet
 	if h.user != nil {
-		availableChannels = h.user.InheritedChannels()
+		availableChannels = h.user.InheritedCollectionChannels(h.collection.ScopeName(), h.collection.Name())
 		if availableChannels == nil {
 			// TODO: CBG-1948
 			panic("no channels for user?")
@@ -216,7 +216,7 @@ func (h *handler) handleAllDocs() error {
 
 		}
 	} else {
-		if err := h.db.GetSingleDatabaseCollection().ForEachDocID(h.ctx(), writeDoc, options); err != nil {
+		if err := h.collection.ForEachDocID(h.ctx(), writeDoc, options); err != nil {
 			return err
 		}
 	}

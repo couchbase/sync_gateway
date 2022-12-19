@@ -1068,6 +1068,43 @@ func TestHandlePutDbConfigWithBackticks(t *testing.T) {
 	assert.Equal(t, syncFunc, respBody["sync"].(string))
 }
 
+func TestHandlePutDbConfigWithBackticksCollections(t *testing.T) {
+	rt := rest.NewRestTester(t, nil)
+	defer rt.Close()
+
+	// Get database info before putting config.
+	resp := rt.SendAdminRequest(http.MethodGet, "/backticks/", "")
+	rest.RequireStatus(t, resp, http.StatusNotFound)
+
+	// Create database with valid JSON config that contains sync function enclosed in backticks.
+	syncFunc := `function(doc, oldDoc) { console.log("foo");}`
+	// ` + "`" + syncFunc + "`" + `
+	reqBodyWithBackticks := `{
+        "server": "walrus:",
+        "bucket": "backticks",
+		"enable_shared_bucket_access":false,
+		"scopes": {
+			"scope1": {
+			  "collections" : {
+				"collection1":{   
+        			"sync": ` + "`" + syncFunc + "`" + `
+ 				}
+   			  }
+			}
+  		}
+	}`
+	resp = rt.SendAdminRequest(http.MethodPut, "/backticks/", reqBodyWithBackticks)
+	rest.RequireStatus(t, resp, http.StatusCreated)
+
+	// Get database config after putting config.
+	resp = rt.SendAdminRequest(http.MethodGet, "/backticks/_config?include_runtime=true", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+	var respConfig rest.DbConfig
+	require.NoError(t, base.JSONUnmarshal(resp.Body.Bytes(), &respConfig))
+	assert.Equal(t, "walrus:", *respConfig.Server)
+	assert.Equal(t, syncFunc, *respConfig.Scopes["scope1"].Collections["collection1"].SyncFn)
+}
+
 func TestHandleDBConfig(t *testing.T) {
 	tb := base.GetTestBucket(t)
 
@@ -2043,6 +2080,8 @@ func TestSwitchDbConfigCollectionName(t *testing.T) {
 	}
 	base.TestRequiresCollections(t)
 
+	base.RequireNumTestDataStores(t, 2)
+
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyConfig)
 	serverErr := make(chan error, 0)
 
@@ -2068,45 +2107,45 @@ func TestSwitchDbConfigCollectionName(t *testing.T) {
 		tb.Close()
 	}()
 
-	err = base.CreateBucketScopesAndCollections(base.TestCtx(t), tb.BucketSpec, map[string][]string{
-		"foo": {
-			"bar",
-			"baz",
-		},
-	})
-	require.NoError(t, err)
+	dataStore1 := tb.GetNamedDataStore(0)
+	dataStore1Name, ok := base.AsDataStoreName(dataStore1)
+	require.True(t, ok)
+	dataStore2 := tb.GetNamedDataStore(1)
+	dataStore2Name, ok := base.AsDataStoreName(dataStore2)
+	require.True(t, ok)
+	keyspace1 := fmt.Sprintf("%s.%s.%s", "db", dataStore1Name.ScopeName(), dataStore1Name.CollectionName())
+	keyspace2 := fmt.Sprintf("%s.%s.%s", "db", dataStore2Name.ScopeName(), dataStore2Name.CollectionName())
 
-	// create db
 	resp := rest.BootstrapAdminRequest(t, http.MethodPut, "/db/", fmt.Sprintf(
-		`{"bucket": "%s", "scopes": {"foo": {"collections": {"bar": {}}}}, "num_index_replicas": 0, "enable_shared_bucket_access": true, "use_views": false}`,
-		tb.GetName(),
+		`{"bucket": "%s", "scopes": {"%s": {"collections": {"%s": {}}}}, "num_index_replicas": 0, "enable_shared_bucket_access": true, "use_views": false}`,
+		tb.GetName(), dataStore1Name.ScopeName(), dataStore1Name.CollectionName(),
 	))
 	resp.RequireStatus(http.StatusCreated)
 
 	// put a doc in db
-	resp = rest.BootstrapAdminRequest(t, http.MethodPut, "/db.foo.bar/10001", `{"type":"test_doc"}`)
+	resp = rest.BootstrapAdminRequest(t, http.MethodPut, fmt.Sprintf("/%s/10001", keyspace1), `{"type":"test_doc"}`)
 	resp.RequireStatus(http.StatusCreated)
 
 	// update config to another collection
 	resp = rest.BootstrapAdminRequest(t, http.MethodPost, "/db/_config", fmt.Sprintf(
-		`{"bucket": "%s", "scopes": {"foo": {"collections": {"baz": {}}}}, "num_index_replicas": 0, "enable_shared_bucket_access": true, "use_views": false}`,
-		tb.GetName(),
+		`{"bucket": "%s", "scopes": {"%s": {"collections": {"%s": {}}}}, "num_index_replicas": 0, "enable_shared_bucket_access": true, "use_views": false}`,
+		tb.GetName(), dataStore2Name.ScopeName(), dataStore2Name.CollectionName(),
 	))
 	resp.RequireStatus(http.StatusCreated)
 
 	// put doc in new collection
-	resp = rest.BootstrapAdminRequest(t, http.MethodPut, "/db.foo.baz/10001", `{"type":"test_doc1"}`)
+	resp = rest.BootstrapAdminRequest(t, http.MethodPut, fmt.Sprintf("/%s/10001", keyspace2), `{"type":"test_doc1"}`)
 	resp.RequireStatus(http.StatusCreated)
 
 	// update back to original collection config
 	resp = rest.BootstrapAdminRequest(t, http.MethodPost, "/db/_config", fmt.Sprintf(
-		`{"bucket": "%s", "scopes": {"foo": {"collections": {"bar": {}}}}, "num_index_replicas": 0, "enable_shared_bucket_access": true, "use_views": false}`,
-		tb.GetName(),
+		`{"bucket": "%s", "scopes": {"%s": {"collections": {"%s": {}}}}, "num_index_replicas": 0, "enable_shared_bucket_access": true, "use_views": false}`,
+		tb.GetName(), dataStore1Name.ScopeName(), dataStore1Name.CollectionName(),
 	))
 	resp.RequireStatus(http.StatusCreated)
 
 	// put doc in original collection name
-	resp = rest.BootstrapAdminRequest(t, http.MethodPut, "/db.foo.bar/100", `{"type":"test_doc1"}`)
+	resp = rest.BootstrapAdminRequest(t, http.MethodPut, fmt.Sprintf("/%s/100", keyspace1), `{"type":"test_doc1"}`)
 	resp.RequireStatus(http.StatusCreated)
 }
 
@@ -2979,7 +3018,7 @@ func TestApiInternalPropertiesHandling(t *testing.T) {
 			rest.RequireStatus(t, resp, http.StatusCreated)
 
 			var bucketDoc map[string]interface{}
-			_, err = rt.Bucket().DefaultDataStore().Get(docID, &bucketDoc)
+			_, err = rt.GetSingleDataStore().Get(docID, &bucketDoc)
 			assert.NoError(t, err)
 			body := rt.GetDoc(docID)
 			// Confirm input body is in the bucket doc

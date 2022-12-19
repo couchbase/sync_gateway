@@ -272,7 +272,7 @@ func (revokedChannels RevokedChannels) add(chanName string, triggeredBy uint64) 
 	}
 }
 
-func (user *userImpl) RevokedChannels(since uint64, lowSeq uint64, triggeredBy uint64) RevokedChannels {
+func (user *userImpl) revokedChannels(since uint64, lowSeq uint64, triggeredBy uint64) RevokedChannels {
 	return user.RevokedCollectionChannels(base.DefaultScope, base.DefaultCollection, since, lowSeq, triggeredBy)
 }
 
@@ -393,7 +393,7 @@ func (user *userImpl) RevokedCollectionChannels(scope string, collection string,
 	return combinedRevokedChannels
 }
 
-func (user *userImpl) ChannelGrantedPeriods(chanName string) ([]GrantHistorySequencePair, error) {
+func (user *userImpl) channelGrantedPeriods(chanName string) ([]GrantHistorySequencePair, error) {
 	return user.CollectionChannelGrantedPeriods(base.DefaultScope, base.DefaultCollection, chanName)
 }
 
@@ -568,37 +568,37 @@ func (user *userImpl) InitializeRoles() {
 	_ = user.GetRoles()
 }
 
-func (user *userImpl) CanSeeChannel(channel string) bool {
-	if user.roleImpl.CanSeeChannel(channel) {
+func (user *userImpl) canSeeChannel(channel string) bool {
+	if user.roleImpl.canSeeChannel(channel) {
 		return true
 	}
 	for _, role := range user.GetRoles() {
-		if role.CanSeeChannel(channel) {
+		if role.canSeeChannel(channel) {
 			return true
 		}
 	}
 	return false
 }
 
-func (user *userImpl) CanSeeChannelSince(channel string) uint64 {
-	minSeq := user.roleImpl.CanSeeChannelSince(channel)
+func (user *userImpl) canSeeChannelSince(channel string) uint64 {
+	minSeq := user.roleImpl.canSeeChannelSince(channel)
 	for _, role := range user.GetRoles() {
-		if seq := role.CanSeeChannelSince(channel); seq > 0 && (seq < minSeq || minSeq == 0) {
+		if seq := role.canSeeChannelSince(channel); seq > 0 && (seq < minSeq || minSeq == 0) {
 			minSeq = seq
 		}
 	}
 	return minSeq
 }
 
-func (user *userImpl) AuthorizeAllChannels(channels base.Set) error {
+func (user *userImpl) authorizeAllChannels(channels base.Set) error {
 	return authorizeAllChannels(user, channels)
 }
 
-func (user *userImpl) AuthorizeAnyChannel(channels base.Set) error {
+func (user *userImpl) authorizeAnyChannel(channels base.Set) error {
 	return authorizeAnyChannel(user, channels)
 }
 
-func (user *userImpl) InheritedChannels() ch.TimedSet {
+func (user *userImpl) inheritedChannels() ch.TimedSet {
 	channels := user.Channels().Copy()
 	for _, role := range user.GetRoles() {
 		roleSince := user.RoleNames()[role.Name()]
@@ -619,7 +619,7 @@ func (user *userImpl) InheritedChannels() ch.TimedSet {
 }
 
 // If a channel list contains the all-channel wildcard, replace it with all the user's accessible channels.
-func (user *userImpl) ExpandWildCardChannel(channels base.Set) base.Set {
+func (user *userImpl) expandWildCardChannel(channels base.Set) base.Set {
 	return user.expandCollectionWildCardChannel(base.DefaultScope, base.DefaultCollection, channels)
 }
 
@@ -630,7 +630,7 @@ func (user *userImpl) expandCollectionWildCardChannel(scope, collection string, 
 	return channels
 }
 
-func (user *userImpl) FilterToAvailableChannels(channels ch.Set) (filtered ch.TimedSet, removed []string) {
+func (user *userImpl) filterToAvailableChannels(channels ch.Set) (filtered ch.TimedSet, removed []string) {
 	return user.FilterToAvailableCollectionChannels(base.DefaultScope, base.DefaultCollection, channels)
 }
 
@@ -650,7 +650,7 @@ func (user *userImpl) FilterToAvailableCollectionChannels(scope, collection stri
 
 func (user *userImpl) GetAddedChannels(channels ch.TimedSet) base.Set {
 	output := base.Set{}
-	for userChannel := range user.InheritedChannels() {
+	for userChannel := range user.inheritedChannels() {
 		_, found := channels[userChannel]
 		if !found {
 			output[userChannel] = struct{}{}

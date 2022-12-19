@@ -1051,7 +1051,8 @@ func TestLocalDocExpiry(t *testing.T) {
 	RequireStatus(t, response, 201)
 
 	localDocKey := db.RealSpecialDocID(db.DocTypeLocal, "loc1")
-	expiry, getMetaError := rt.Bucket().DefaultDataStore().GetExpiry(localDocKey)
+	dataStore := rt.GetSingleDataStore()
+	expiry, getMetaError := dataStore.GetExpiry(localDocKey)
 	log.Printf("Expiry after PUT is %v", expiry)
 	assert.True(t, expiry > timeNow, "expiry is not greater than current time")
 	assert.True(t, expiry < oneMoreHour, "expiry is not greater than current time")
@@ -1060,7 +1061,7 @@ func TestLocalDocExpiry(t *testing.T) {
 	// Retrieve local doc, ensure non-zero expiry is preserved
 	response = rt.SendAdminRequest("GET", "/db/_local/loc1", "")
 	RequireStatus(t, response, 200)
-	expiry, getMetaError = rt.Bucket().DefaultDataStore().GetExpiry(localDocKey)
+	expiry, getMetaError = dataStore.GetExpiry(localDocKey)
 	log.Printf("Expiry after GET is %v", expiry)
 	assert.True(t, expiry > timeNow, "expiry is not greater than current time")
 	assert.True(t, expiry < oneMoreHour, "expiry is not greater than current time")
@@ -1531,8 +1532,7 @@ func TestWriteTombstonedDocUsingXattrs(t *testing.T) {
 	}
 
 	// Fetch the xattr and make sure it contains the above value
-	baseBucket := rt.GetDatabase().Bucket
-	subdocXattrStore, _ := base.AsSubdocXattrStore(baseBucket.DefaultDataStore())
+	subdocXattrStore, _ := base.AsSubdocXattrStore(rt.GetSingleDataStore())
 	var retrievedVal map[string]interface{}
 	var retrievedXattr map[string]interface{}
 	_, err = subdocXattrStore.SubdocGetBodyAndXattr("-21SK00U-ujxUO9fU2HezxL", base.SyncXattrName, "", &retrievedVal, &retrievedXattr, nil)
@@ -1803,7 +1803,7 @@ func TestWebhookProperties(t *testing.T) {
 		wg.Add(1)
 		body := make(map[string]interface{})
 		body["foo"] = "bar"
-		added, err := rt.Bucket().DefaultDataStore().Add("doc2", 0, body)
+		added, err := rt.GetSingleDataStore().Add("doc2", 0, body)
 		assert.True(t, added)
 		assert.NoError(t, err)
 	}
@@ -2212,7 +2212,7 @@ func TestDeleteNonExistentDoc(t *testing.T) {
 	RequireStatus(t, response, http.StatusNotFound)
 
 	var body map[string]interface{}
-	_, err := rt.GetDatabase().Bucket.DefaultDataStore().Get("fake", &body)
+	_, err := rt.GetSingleDataStore().Get("fake", &body)
 
 	if base.TestUseXattrs() {
 		assert.Error(t, err)
@@ -2241,7 +2241,7 @@ func TestDeleteEmptyBodyDoc(t *testing.T) {
 	RequireStatus(t, response, http.StatusNotFound)
 
 	var doc map[string]interface{}
-	_, err := rt.GetDatabase().Bucket.DefaultDataStore().Get("doc1", &doc)
+	_, err := rt.GetSingleDataStore().Get("doc1", &doc)
 
 	if base.TestUseXattrs() {
 		assert.Error(t, err)
@@ -2278,7 +2278,7 @@ func TestTombstonedBulkDocs(t *testing.T) {
 	RequireStatus(t, response, http.StatusCreated)
 
 	var body map[string]interface{}
-	_, err := rt.GetDatabase().Bucket.DefaultDataStore().Get(t.Name(), &body)
+	_, err := rt.GetSingleDataStore().Get(t.Name(), &body)
 
 	if base.TestUseXattrs() {
 		assert.Error(t, err)
@@ -2310,7 +2310,8 @@ func TestTombstonedBulkDocsWithPriorPurge(t *testing.T) {
 		t.Skip("Requires Couchbase bucket")
 	}
 
-	_, err := bucket.DefaultDataStore().Add(t.Name(), 0, map[string]interface{}{"val": "val"})
+	dataStore := rt.GetSingleDataStore()
+	_, err := dataStore.Add(t.Name(), 0, map[string]interface{}{"val": "val"})
 	require.NoError(t, err)
 
 	resp := rt.SendAdminRequest("POST", "/db/_purge", `{"`+t.Name()+`": ["*"]}`)
@@ -2320,7 +2321,7 @@ func TestTombstonedBulkDocsWithPriorPurge(t *testing.T) {
 	RequireStatus(t, response, http.StatusCreated)
 
 	var body map[string]interface{}
-	_, err = rt.GetDatabase().Bucket.DefaultDataStore().Get(t.Name(), &body)
+	_, err = dataStore.Get(t.Name(), &body)
 
 	assert.Error(t, err)
 	assert.True(t, base.IsDocNotFoundError(err))
@@ -2474,7 +2475,7 @@ func TestChannelHistoryLegacyDoc(t *testing.T) {
 	}`
 
 	// Insert raw 'legacy' doc with no channel history info
-	err := rt.GetDatabase().Bucket.DefaultDataStore().Set("doc1", 0, nil, []byte(docData))
+	err := rt.GetSingleDataStore().Set("doc1", 0, nil, []byte(docData))
 	assert.NoError(t, err)
 
 	var body db.Body

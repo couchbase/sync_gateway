@@ -43,7 +43,8 @@ func TestUsersAPI(t *testing.T) {
 			},
 		},
 	}
-	rt := NewRestTester(t, rtConfig)
+	rt := NewRestTesterDefaultCollection(t, // CBG-2618: fix collection channel access
+		rtConfig)
 	defer rt.Close()
 
 	// Validate the zero user case
@@ -261,7 +262,7 @@ func TestUsersAPIDetailsWithLimit(t *testing.T) {
 func TestUserAPI(t *testing.T) {
 
 	// PUT a user
-	rt := NewRestTester(t, nil)
+	rt := NewRestTesterDefaultCollection(t, nil) // CBG-2618: fix collection channel access
 	defer rt.Close()
 	ctx := rt.Context()
 
@@ -289,7 +290,7 @@ func TestUserAPI(t *testing.T) {
 	user, _ := rt.ServerContext().Database(ctx, "db").Authenticator(ctx).GetUser("snej")
 	assert.Equal(t, "snej", user.Name())
 	assert.Equal(t, "jens@couchbase.com", user.Email())
-	assert.Equal(t, channels.TimedSet{"bar": channels.NewVbSimpleSequence(0x1), "foo": channels.NewVbSimpleSequence(0x1)}, user.ExplicitChannels())
+	assert.Equal(t, channels.TimedSet{"bar": channels.NewVbSimpleSequence(0x1), "foo": channels.NewVbSimpleSequence(0x1)}, user.CollectionExplicitChannels(base.DefaultScope, base.DefaultCollection))
 	assert.True(t, user.Authenticate("letmein"))
 
 	// Change the password and verify it:
@@ -397,7 +398,7 @@ func TestGuestUser(t *testing.T) {
 	ctx := rt.Context()
 	user, _ := rt.ServerContext().Database(ctx, "db").Authenticator(ctx).GetUser("")
 	assert.Empty(t, user.Name())
-	assert.Nil(t, user.ExplicitChannels())
+	assert.Nil(t, user.CollectionExplicitChannels(base.DefaultScope, base.DefaultCollection))
 	assert.True(t, user.Disabled())
 
 	// We can't delete the guest user, but we should get a reasonable error back.
@@ -563,7 +564,7 @@ func TestUserXattrsRawGet(t *testing.T) {
 	})
 	defer rt.Close()
 
-	userXattrStore, ok := base.AsUserXattrStore(rt.Bucket().DefaultDataStore())
+	userXattrStore, ok := base.AsUserXattrStore(rt.GetSingleDataStore())
 	if !ok {
 		t.Skip("Test requires Couchbase Bucket")
 	}
@@ -607,15 +608,16 @@ func TestObtainUserChannelsForDeletedRoleCasFail(t *testing.T) {
 			true,
 		},
 		{
-			"Delete On InheritedChannels",
+			"Delete On inheritedChannels",
 			false,
 		},
 	}
 
 	for _, testCase := range testCases {
 		t.Run(testCase.Name, func(t *testing.T) {
-			rt := NewRestTester(t, &RestTesterConfig{
-				SyncFn: `
+			rt := NewRestTesterDefaultCollection(t, // CBG-2618: fix collection channel access
+				&RestTesterConfig{
+					SyncFn: `
 			function(doc, oldDoc){
 				if (doc._id === 'roleChannels'){
 					access('role:role', doc.channels)
@@ -625,7 +627,7 @@ func TestObtainUserChannelsForDeletedRoleCasFail(t *testing.T) {
 				}
 			}
 		`,
-			})
+				})
 			defer rt.Close()
 
 			// Create role
@@ -668,7 +670,7 @@ func TestObtainUserChannelsForDeletedRoleCasFail(t *testing.T) {
 				triggerCallback = true
 			}
 
-			assert.Equal(t, []string{"!"}, user.InheritedChannels().AllKeys())
+			assert.Equal(t, []string{"!"}, user.InheritedCollectionChannels(base.DefaultScope, base.DefaultCollection).AllKeys())
 
 			// Ensure callback ran
 			assert.False(t, triggerCallback)
@@ -842,8 +844,11 @@ function(doc, oldDoc) {
 }
 
 `
-	rtConfig := RestTesterConfig{SyncFn: syncFunction}
-	var rt = NewRestTester(t, &rtConfig)
+	rtConfig := RestTesterConfig{
+		SyncFn: syncFunction,
+	}
+	rt := NewRestTesterDefaultCollection(t, // CBG-2618: fix collection channel access
+		&rtConfig)
 	defer rt.Close()
 
 	response := rt.SendAdminRequest("PUT", "/db/_user/bernard", `{"name":"bernard", "password":"letmein", "admin_channels":["profile-bernard"]}`)
@@ -1204,7 +1209,7 @@ func TestRemovingUserXattr(t *testing.T) {
 
 			defer rt.Close()
 
-			gocbBucket, ok := base.AsUserXattrStore(rt.Bucket().DefaultDataStore())
+			gocbBucket, ok := base.AsUserXattrStore(rt.GetSingleDataStore())
 			if !ok {
 				t.Skip("Test requires Couchbase Bucket")
 			}
@@ -1226,7 +1231,7 @@ func TestRemovingUserXattr(t *testing.T) {
 
 			// Get sync data for doc and ensure user xattr has been used correctly to set channel
 			var syncData db.SyncData
-			subdocStore, ok := base.AsSubdocXattrStore(rt.Bucket().DefaultDataStore())
+			subdocStore, ok := base.AsSubdocXattrStore(rt.GetSingleDataStore())
 			require.True(t, ok)
 			_, err = subdocStore.SubdocGetXattr(docKey, base.SyncXattrName, &syncData)
 			assert.NoError(t, err)
@@ -1289,12 +1294,13 @@ func TestUserXattrAvoidRevisionIDGeneration(t *testing.T) {
 
 	defer rt.Close()
 
-	userXattrStore, ok := base.AsUserXattrStore(rt.Bucket().DefaultDataStore())
+	dataStore := rt.GetSingleDataStore()
+	userXattrStore, ok := base.AsUserXattrStore(dataStore)
 	if !ok {
 		t.Skip("Test requires Couchbase Bucket")
 	}
 
-	subdocXattrStore, ok := base.AsSubdocXattrStore(rt.Bucket().DefaultDataStore())
+	subdocXattrStore, ok := base.AsSubdocXattrStore(dataStore)
 	require.True(t, ok)
 
 	// Initial PUT
@@ -1337,7 +1343,7 @@ func TestUserXattrAvoidRevisionIDGeneration(t *testing.T) {
 	assert.Equal(t, []string{channelName}, syncData2.Channels.KeySet())
 	assert.Equal(t, syncData2.Channels.KeySet(), docRev2.Channels.ToArray())
 
-	err = rt.Bucket().DefaultDataStore().Set(docKey, 0, nil, []byte(`{"update": "update"}`))
+	err = rt.GetSingleDataStore().Set(docKey, 0, nil, []byte(`{"update": "update"}`))
 	assert.NoError(t, err)
 
 	err = rt.WaitForCondition(func() bool {

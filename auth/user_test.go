@@ -268,9 +268,9 @@ func TestCanSeeChannelSince(t *testing.T) {
 		"video": channels.NewVbSimpleSequence(1)})
 
 	for channel := range freeChannels {
-		assert.Equal(t, uint64(1), user.CanSeeChannelSince(channel))
+		assert.Equal(t, uint64(1), user.canSeeChannelSince(channel))
 	}
-	assert.Equal(t, uint64(0), user.CanSeeChannelSince("unknown"))
+	assert.Equal(t, uint64(0), user.canSeeChannelSince("unknown"))
 }
 
 func TestGetAddedChannels(t *testing.T) {

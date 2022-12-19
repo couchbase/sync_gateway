@@ -122,7 +122,7 @@ type DatabaseContext struct {
 	ServeInsecureAttachmentTypes bool                           // Attachment content type will bypass the content-disposition handling, default false
 	NoX509HTTPClient             *http.Client                   // A HTTP Client from gocb to use the management endpoints
 	ServerContextHasStarted      chan struct{}                  // Closed via PostStartup once the server has fully started
-	userFunctions                UserFunctions                  // client-callable JavaScript functions
+	userFunctions                *UserFunctions                 // client-callable JavaScript functions
 	graphQL                      *GraphQL                       // GraphQL query evaluator
 	Scopes                       map[string]Scope               // A map keyed by scope name containing a set of scopes/collections. Nil if running with only _default._default
 	singleCollection             *DatabaseCollection            // Temporary collection
@@ -149,7 +149,7 @@ type DatabaseContextOptions struct {
 	SecureCookieOverride          bool             // Pass-through DBConfig.SecureCookieOverride
 	SessionCookieName             string           // Pass-through DbConfig.SessionCookieName
 	SessionCookieHttpOnly         bool             // Pass-through DbConfig.SessionCookieHTTPOnly
-	UserFunctions                 UserFunctions    // JS/N1QL functions clients can call
+	UserFunctions                 *UserFunctions   // JS/N1QL functions clients can call
 	GraphQL                       GraphQL          // GraphQL query interface
 	AllowConflicts                *bool            // False forbids creating conflicts
 	SendWWWAuthenticateHeader     *bool            // False disables setting of 'WWW-Authenticate' header
@@ -167,8 +167,9 @@ type DatabaseContextOptions struct {
 	JavascriptTimeout             time.Duration // Max time the JS functions run for (ie. sync fn, import filter)
 	Serverless                    bool          // If running in serverless mode
 	Scopes                        ScopesOptions
-	skipRegisterImportPIndex      bool           // if set, skips the global gocb PIndex registration
-	MetadataStore                 base.DataStore // If set, use this location/connection for SG metadata storage - if not set, metadata is stored using the same location/connection as the bucket used for data storage.
+	skipRegisterImportPIndex      bool                  // if set, skips the global gocb PIndex registration
+	MetadataStore                 base.DataStore        // If set, use this location/connection for SG metadata storage - if not set, metadata is stored using the same location/connection as the bucket used for data storage.
+	DefaultCollectionImportFilter *ImportFilterFunction // Opt-in filter for document import, for when collections are not supported
 }
 
 type ScopesOptions map[string]ScopeOptions
@@ -177,7 +178,10 @@ type ScopeOptions struct {
 	Collections map[string]CollectionOptions
 }
 
-type CollectionOptions struct{}
+type CollectionOptions struct {
+	Sync         *string               // Collection sync function
+	ImportFilter *ImportFilterFunction // Opt-in filter for document import
+}
 
 type SGReplicateOptions struct {
 	Enabled               bool          // Whether this node can be assigned sg-replicate replications
@@ -229,9 +233,8 @@ type WarningThresholds struct {
 
 // Options associated with the import of documents not written by Sync Gateway
 type ImportOptions struct {
-	ImportFilter     *ImportFilterFunction // Opt-in filter for document import
-	BackupOldRev     bool                  // Create temporary backup of old revision body when available
-	ImportPartitions uint16                // Number of partitions for import
+	BackupOldRev     bool   // Create temporary backup of old revision body when available
+	ImportPartitions uint16 // Number of partitions for import
 }
 
 // Represents a simulated CouchDB database. A new instance is created for each HTTP request,
@@ -439,12 +442,26 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 				Collections: make(map[string]*DatabaseCollection, len(scope.Collections)),
 			}
 			collectionNameMap := make(map[string]struct{}, len(scope.Collections))
-			for collName := range scope.Collections {
+			for collName, collOpts := range scope.Collections {
 				dataStore := bucket.NamedDataStore(base.ScopeAndCollectionName{Scope: scopeName, Collection: collName})
 				dbCollection, err := newDatabaseCollection(ctx, dbContext, dataStore)
 				if err != nil {
 					return nil, err
 				}
+				syncFn := ""
+				if collOpts.Sync != nil {
+					syncFn = *collOpts.Sync
+				}
+
+				if collOpts.ImportFilter != nil {
+					dbCollection.importFilterFunction = collOpts.ImportFilter
+				}
+
+				_, err = dbCollection.UpdateSyncFun(ctx, syncFn)
+				if err != nil {
+					return nil, err
+				}
+
 				dbContext.Scopes[scopeName].Collections[collName] = dbCollection
 
 				collectionID := dbCollection.GetCollectionID()
@@ -459,6 +476,9 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 		dbCollection, err := newDatabaseCollection(ctx, dbContext, dataStore)
 		if err != nil {
 			return nil, err
+		}
+		if options.DefaultCollectionImportFilter != nil {
+			dbCollection.importFilterFunction = options.DefaultCollectionImportFilter
 		}
 
 		dbContext.CollectionByID[base.DefaultCollectionID] = dbCollection
@@ -1958,9 +1978,11 @@ func initDatabaseStats(dbName string, autoImport bool, options DatabaseContextOp
 		}
 	}
 
-	for _, fn := range options.UserFunctions {
-		if queryName, ok := fn.N1QLQueryName(); ok {
-			queryNames = append(queryNames, queryName)
+	if options.UserFunctions != nil {
+		for _, fn := range options.UserFunctions.Definitions {
+			if queryName, ok := fn.N1QLQueryName(); ok {
+				queryNames = append(queryNames, queryName)
+			}
 		}
 	}
 	if options.GraphQL != nil {

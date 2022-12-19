@@ -183,9 +183,9 @@ func (h *handler) addDatabaseLogContext(dbName string) {
 	}
 }
 
-// parseKeyspace will return a db, scope and collection for a given '.' separated keyspace string.
+// ParseKeyspace will return a db, scope and collection for a given '.' separated keyspace string.
 // Returns nil for scope and/or collection if not present in the keyspace string.
-func parseKeyspace(ks string) (db string, scope, collection *string, err error) {
+func ParseKeyspace(ks string) (db string, scope, collection *string, err error) {
 	parts := strings.Split(ks, base.ScopeCollectionSeparator)
 	switch len(parts) {
 	case 1:
@@ -256,7 +256,7 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 	// If there is a "keyspace" path variable in the route, parse the keyspace:
 	ks := h.PathVar("keyspace")
 	if ks != "" {
-		keyspaceDb, keyspaceScope, keyspaceCollection, err = parseKeyspace(ks)
+		keyspaceDb, keyspaceScope, keyspaceCollection, err = ParseKeyspace(ks)
 		if err != nil {
 			return err
 		}

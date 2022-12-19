@@ -189,17 +189,18 @@ func (rt *RestTester) GetReplicationStatuses(queryString string) (statuses []db.
 func SetupSGRPeers(t *testing.T) (activeRT *RestTester, passiveRT *RestTester, remoteDBURLString string, teardown func()) {
 	// Set up passive RestTester (rt2)
 	passiveTestBucket := base.GetTestBucket(t)
-	passiveRT = NewRestTester(t, &RestTesterConfig{
-		CustomTestBucket: passiveTestBucket.NoCloseClone(),
-		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
-			Users: map[string]*auth.PrincipalConfig{
-				"alice": {
-					Password:         base.StringPtr("pass"),
-					ExplicitChannels: base.SetOf("*"),
+	passiveRT = NewRestTesterDefaultCollection(t, // CBG-2619: make collection aware
+		&RestTesterConfig{
+			CustomTestBucket: passiveTestBucket.NoCloseClone(),
+			DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
+				Users: map[string]*auth.PrincipalConfig{
+					"alice": {
+						Password:         base.StringPtr("pass"),
+						ExplicitChannels: base.SetOf("*"),
+					},
 				},
-			},
-		}},
-	})
+			}},
+		})
 	// Initalize RT and bucket
 	_ = passiveRT.Bucket()
 
@@ -212,10 +213,11 @@ func SetupSGRPeers(t *testing.T) (activeRT *RestTester, passiveRT *RestTester, r
 
 	// Set up active RestTester (rt1)
 	activeTestBucket := base.GetTestBucket(t)
-	activeRT = NewRestTester(t, &RestTesterConfig{
-		CustomTestBucket:   activeTestBucket.NoCloseClone(),
-		SgReplicateEnabled: true,
-	})
+	activeRT = NewRestTesterDefaultCollection(t, // CBG-2619: make collection aware
+		&RestTesterConfig{
+			CustomTestBucket:   activeTestBucket.NoCloseClone(),
+			SgReplicateEnabled: true,
+		})
 	// Initalize RT and bucket
 	_ = activeRT.Bucket()
 

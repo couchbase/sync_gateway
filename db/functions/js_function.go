@@ -14,6 +14,8 @@ import (
 	"context"
 	_ "embed"
 
+	"github.com/couchbase/sync_gateway/base"
+
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/graphql-go/graphql"
@@ -34,16 +36,16 @@ func (fn *jsInvocation) Iterate() (sgbucket.QueryResultIterator, error) {
 }
 
 func (fn *jsInvocation) Run() (any, error) {
-	return fn.call(db.MakeUserCtx(fn.db.User()), fn.args)
+	return fn.call(db.MakeUserCtx(fn.db.User(), base.DefaultScope, base.DefaultCollection), fn.args)
 }
 
 func (fn *jsInvocation) Resolve(params graphql.ResolveParams) (any, error) {
-	return fn.call(db.MakeUserCtx(fn.db.User()), params.Args, params.Source, resolverInfo(params))
+	return fn.call(db.MakeUserCtx(fn.db.User(), base.DefaultScope, base.DefaultCollection), params.Args, params.Source, resolverInfo(params))
 }
 
 func (fn *jsInvocation) ResolveType(params graphql.ResolveTypeParams) (any, error) {
 	info := map[string]any{}
-	return fn.call(db.MakeUserCtx(fn.db.User()), params.Value, info)
+	return fn.call(db.MakeUserCtx(fn.db.User(), base.DefaultScope, base.DefaultCollection), params.Value, info)
 }
 
 func (fn *jsInvocation) call(jsArgs ...any) (any, error) {
