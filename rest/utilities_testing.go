@@ -129,7 +129,7 @@ func NewRestTesterMultipleCollections(tb testing.TB, restConfig *RestTesterConfi
 		tb.Errorf("0 is not a valid number of collections to specify")
 	}
 	rt := newRestTester(tb, restConfig, useMultipleCollection, numCollections)
-	return rt, rt.getKeyspaces()
+	return rt, rt.GetKeyspaces()
 }
 
 func (rt *RestTester) Bucket() base.Bucket {
@@ -2080,8 +2080,8 @@ func getRESTKeyspace(_ testing.TB, dbName string, collection *db.DatabaseCollect
 	return strings.Join([]string{dbName, collection.ScopeName(), collection.Name()}, base.ScopeCollectionSeparator)
 }
 
-// getKeyspaces returns the names of all the keyspaces on the rest tester. Currently assumes a single database.
-func (rt *RestTester) getKeyspaces() []string {
+// GetKeyspaces returns the names of all the keyspaces on the rest tester. Currently assumes a single database.
+func (rt *RestTester) GetKeyspaces() []string {
 	db := rt.GetDatabase()
 	var keyspaces []string
 	for _, collection := range db.CollectionByID {

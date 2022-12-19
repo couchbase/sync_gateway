@@ -3908,7 +3908,12 @@ func TestTombstoneCompaction(t *testing.T) {
 		t.Skip("If running with no xattrs compact acts as a no-op")
 	}
 
-	rt := rest.NewRestTester(t, nil)
+	var rt *rest.RestTester
+	if base.TestsUseNamedCollections() {
+		rt, _ = rest.NewRestTesterMultipleCollections(t, nil, 2)
+	} else {
+		rt = rest.NewRestTester(t, nil)
+	}
 	rt.GetDatabase().PurgeInterval = 0
 	defer rt.Close()
 
@@ -3919,20 +3924,21 @@ func TestTombstoneCompaction(t *testing.T) {
 
 		count := 0
 
-		for count < numDocs {
-			count++
-			response := rt.SendAdminRequest("POST", "/db/", `{"foo":"bar"}`)
-			assert.Equal(t, 200, response.Code)
-			var body db.Body
-			err := base.JSONUnmarshal(response.Body.Bytes(), &body)
-			assert.NoError(t, err)
-			revId := body["rev"].(string)
-			docId := body["id"].(string)
+		for _, keyspace := range rt.GetKeyspaces() {
+			for count < numDocs {
+				count++
+				response := rt.SendAdminRequest("POST", fmt.Sprintf("/%s/", keyspace), `{"foo":"bar"}`)
+				assert.Equal(t, 200, response.Code)
+				var body db.Body
+				err := base.JSONUnmarshal(response.Body.Bytes(), &body)
+				assert.NoError(t, err)
+				revId := body["rev"].(string)
+				docId := body["id"].(string)
 
-			response = rt.SendAdminRequest("DELETE", fmt.Sprintf("/db/%s?rev=%s", docId, revId), "")
-			assert.Equal(t, 200, response.Code)
+				response = rt.SendAdminRequest("DELETE", fmt.Sprintf("/%s/%s?rev=%s", keyspace, docId, revId), "")
+				assert.Equal(t, 200, response.Code)
+			}
 		}
-
 		resp := rt.SendAdminRequest("POST", "/db/_compact", "")
 		rest.RequireStatus(t, resp, http.StatusOK)
 

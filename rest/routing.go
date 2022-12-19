@@ -157,14 +157,14 @@ func CreateAdminRouter(sc *ServerContext) *mux.Router {
 		makeHandler(sc, adminPrivs, []Permission{PermReadAppData}, nil, (*handler).handleGetRawDoc)).Methods("GET", "HEAD")
 	keyspace.Handle("/_revtree/{docid:"+docRegex+"}",
 		makeHandler(sc, adminPrivs, []Permission{PermReadAppData}, nil, (*handler).handleGetRevTree)).Methods("GET")
-	keyspace.Handle("/_compact",
-		makeHandler(sc, adminPrivs, []Permission{PermUpdateDb}, nil, (*handler).handleCompact)).Methods("POST")
-	keyspace.Handle("/_compact",
-		makeHandler(sc, adminPrivs, []Permission{PermUpdateDb}, nil, (*handler).handleGetCompact)).Methods("GET")
 	keyspace.Handle("/_dumpchannel/{channel}",
 		makeHandler(sc, adminPrivs, []Permission{PermReadAppData}, nil, (*handler).handleDumpChannel)).Methods("GET")
 
 	// Database handlers (multi collection):
+	dbr.Handle("/_compact",
+		makeHandler(sc, adminPrivs, []Permission{PermUpdateDb}, nil, (*handler).handleCompact)).Methods("POST")
+	dbr.Handle("/_compact",
+		makeHandler(sc, adminPrivs, []Permission{PermUpdateDb}, nil, (*handler).handleGetCompact)).Methods("GET")
 	dbr.Handle("/_session",
 		makeHandler(sc, adminPrivs, []Permission{PermWritePrincipal}, nil, (*handler).createUserSession)).Methods("POST")
 	dbr.Handle("/_session/{sessionid}",
