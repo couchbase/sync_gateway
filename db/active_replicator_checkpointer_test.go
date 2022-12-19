@@ -114,6 +114,29 @@ func TestCheckpointerSafeSeq(t *testing.T) {
 			expectedExpectedSeqs:    []SequenceID{},
 			expectedProcessedSeqs:   map[SequenceID]struct{}{},
 		},
+		{
+			name: "compound sequence triggered by",
+			c: &Checkpointer{
+				expectedSeqs:  []SequenceID{{Seq: 1}, {Seq: 3, LowSeq: 1}, {Seq: 2, TriggeredBy: 4}},
+				processedSeqs: map[SequenceID]struct{}{{Seq: 1}: {}, {Seq: 3, LowSeq: 1}: {}, {Seq: 2, TriggeredBy: 4}: {}},
+			},
+			expectedSafeSeq:         &SequenceID{Seq: 2, TriggeredBy: 4},
+			expectedExpectedSeqsIdx: 2,
+			expectedExpectedSeqs:    []SequenceID{},
+			expectedProcessedSeqs:   map[SequenceID]struct{}{},
+		},
+		{
+			name: "skipped with many intermediate processed",
+			c: &Checkpointer{
+				expectedSeqs:                   []SequenceID{{Seq: 1}, {Seq: 2}, {Seq: 3}, {Seq: 4}, {Seq: 5}, {Seq: 6}, {Seq: 7}, {Seq: 8}, {Seq: 9}, {Seq: 10}, {Seq: 11}, {Seq: 12}, {Seq: 13}, {Seq: 14}, {Seq: 15}, {Seq: 16}},
+				processedSeqs:                  map[SequenceID]struct{}{{Seq: 1}: {}, {Seq: 2}: {}, {Seq: 4}: {}, {Seq: 5}: {}, {Seq: 6}: {}, {Seq: 8}: {}, {Seq: 9}: {}, {Seq: 10}: {}, {Seq: 11}: {}, {Seq: 12}: {}, {Seq: 13}: {}, {Seq: 14}: {}},
+				expectedSeqCompactionThreshold: 5, // this many expected seqs to trigger compaction
+			},
+			expectedSafeSeq:         &SequenceID{Seq: 2},
+			expectedExpectedSeqsIdx: 1,
+			expectedExpectedSeqs:    []SequenceID{{Seq: 3}, {Seq: 6}, {Seq: 7}, {Seq: 14}, {Seq: 15}, {Seq: 16}},
+			expectedProcessedSeqs:   map[SequenceID]struct{}{{Seq: 6}: {}, {Seq: 14}: {}},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

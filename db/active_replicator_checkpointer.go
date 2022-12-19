@@ -49,6 +49,10 @@ type Checkpointer struct {
 	// lastCheckpointSeq is the last checkpointed sequence
 	lastCheckpointSeq SequenceID
 
+	// expectedSeqCompactionThreshold is the number of expected sequences that we'll tolerate before considering compacting away already processed sequences
+	// time vs. space complexity tradeoff, since we need to iterate over the expectedSeqs slice to compact it
+	expectedSeqCompactionThreshold int
+
 	stats CheckpointerStats
 
 	// closeWg waits for the time-based checkpointer goroutine to finish.
@@ -72,17 +76,18 @@ type CheckpointerStats struct {
 
 func NewCheckpointer(ctx context.Context, clientID string, configHash string, blipSender *blip.Sender, replicatorConfig *ActiveReplicatorConfig, statusCallback statusFunc) *Checkpointer {
 	return &Checkpointer{
-		clientID:           clientID,
-		configHash:         configHash,
-		blipSender:         blipSender,
-		activeDB:           replicatorConfig.ActiveDB,
-		expectedSeqs:       make([]SequenceID, 0),
-		processedSeqs:      make(map[SequenceID]struct{}),
-		idAndRevLookup:     make(map[IDAndRev]SequenceID),
-		checkpointInterval: replicatorConfig.CheckpointInterval,
-		ctx:                ctx,
-		stats:              CheckpointerStats{},
-		statusCallback:     statusCallback,
+		clientID:                       clientID,
+		configHash:                     configHash,
+		blipSender:                     blipSender,
+		activeDB:                       replicatorConfig.ActiveDB,
+		expectedSeqs:                   make([]SequenceID, 0),
+		processedSeqs:                  make(map[SequenceID]struct{}),
+		idAndRevLookup:                 make(map[IDAndRev]SequenceID),
+		checkpointInterval:             replicatorConfig.CheckpointInterval,
+		ctx:                            ctx,
+		stats:                          CheckpointerStats{},
+		statusCallback:                 statusCallback,
+		expectedSeqCompactionThreshold: 100,
 	}
 }
 
@@ -246,6 +251,7 @@ func (c *Checkpointer) Stats() CheckpointerStats {
 }
 
 // _updateCheckpointLists determines the highest checkpointable sequence, and trims the processedSeqs/expectedSeqs lists up to this point.
+// We will also remove all but the last processed sequence as we know we're able to checkpoint safely up to that point without leaving any intermediate sequence numbers around.
 func (c *Checkpointer) _updateCheckpointLists() (safeSeq *SequenceID) {
 	base.TracefCtx(c.ctx, base.KeyReplicate, "checkpointer: _updateCheckpointLists(expectedSeqs: %v, processedSeqs: %v)", c.expectedSeqs, c.processedSeqs)
 	base.TracefCtx(c.ctx, base.KeyReplicate, "Inside update checkpoint lists")
@@ -270,6 +276,34 @@ func (c *Checkpointer) _updateCheckpointLists() (safeSeq *SequenceID) {
 
 	// trim expectedSeqs list from beginning up to first unprocessed seq
 	c.expectedSeqs = c.expectedSeqs[maxI+1:]
+
+	// if we have many remaining expectedSeqs, see if we can shrink the lists even more
+	// compact contiguous blocks of sequences by keeping only the last processed sequence in both lists
+	if len(c.expectedSeqs) > c.expectedSeqCompactionThreshold {
+		compactedExpectedSeqs := make([]SequenceID, 0)
+		// compact processed sequences up to but not including the last one to ensure
+		// we're not keeping large amounts of intermediate sequence numbers in memory
+		// TODO: Reverse loop?
+		for i := 0; i < len(c.expectedSeqs); i++ {
+			current := c.expectedSeqs[i]
+			if i == len(c.expectedSeqs)-1 {
+				// end of the set - keep the last sequence
+				compactedExpectedSeqs = append(compactedExpectedSeqs, current)
+				break
+			}
+			next := c.expectedSeqs[i+1]
+			_, processedCurrent := c.processedSeqs[current]
+			_, processedNext := c.processedSeqs[next]
+			if processedCurrent && processedNext {
+				// remove the current sequence from both sets, since we know we've also processed the next sequence
+				delete(c.processedSeqs, current)
+			} else {
+				// this seq or next seq was not processed yet, so keep current in the list
+				compactedExpectedSeqs = append(compactedExpectedSeqs, current)
+			}
+		}
+		c.expectedSeqs = compactedExpectedSeqs
+	}
 
 	c.stats.ExpectedSequenceLenPostCleanup = len(c.expectedSeqs)
 	c.stats.ProcessedSequenceLenPostCleanup = len(c.processedSeqs)
