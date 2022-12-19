@@ -805,33 +805,59 @@ func (dbCtx *DatabaseContext) RemoveObsoleteDesignDocs(previewOnly bool) (remove
 	return removeObsoleteDesignDocs(context.TODO(), viewStore, previewOnly, dbCtx.UseViews())
 }
 
+// getDataStores returns all datastores on the database, including metadatastore
+func (dbCtx *DatabaseContext) getDataStores() []sgbucket.DataStore {
+	datastores := make([]sgbucket.DataStore, 0, len(dbCtx.CollectionByID))
+	for _, collection := range dbCtx.CollectionByID {
+		datastores = append(datastores, collection.dataStore)
+	}
+	_, hasDefaultCollection := dbCtx.CollectionByID[base.DefaultCollectionID]
+	if !hasDefaultCollection {
+		datastores = append(datastores, dbCtx.MetadataStore)
+	}
+	return datastores
+}
+
 // Removes previous versions of Sync Gateway's indexes found on the server. Returns a map of indexes removed by collection name.
-func (dbCtx *DatabaseContext) RemoveObsoleteIndexes(ctx context.Context, previewOnly bool) (map[string][]string, error) {
+func (dbCtx *DatabaseContext) RemoveObsoleteIndexes(ctx context.Context, previewOnly bool) ([]string, error) {
 
 	if !dbCtx.Bucket.IsSupported(sgbucket.BucketStoreFeatureN1ql) {
 		return nil, nil
 	}
-
-	removedIndexesByCollection := make(map[string][]string)
 	var errs *base.MultiError
-	for _, collection := range dbCtx.CollectionByID {
-		collectionName := fmt.Sprintf("%s.%s", collection.ScopeName(), collection.Name())
-		n1qlStore, ok := base.AsN1QLStore(collection.dataStore)
+	var removedIndexes []string
+	for _, dataStore := range dbCtx.getDataStores() {
+		dsName, ok := base.AsDataStoreName(dataStore)
 		if !ok {
-			err := fmt.Sprintf("Cannot remove obsolete indexes for non-gocb collection %s - skipping.", collectionName)
+			err := fmt.Sprintf("Cannot get datastore name from %s", dataStore)
 			base.WarnfCtx(ctx, err)
 			errs = errs.Append(errors.New(err))
 			continue
 		}
-
-		removedIndexes, err := removeObsoleteIndexes(n1qlStore, previewOnly, dbCtx.UseXattrs(), dbCtx.UseViews(), sgIndexes)
+		collectionName := fmt.Sprintf("`%s`.`%s`", dsName.ScopeName(), dsName.CollectionName())
+		n1qlStore, ok := base.AsN1QLStore(dataStore)
+		if !ok {
+			err := fmt.Sprintf("Cannot remove obsolete indexes for non-gocb collection %s - skipping.", base.MD(collectionName))
+			base.WarnfCtx(ctx, err)
+			errs = errs.Append(errors.New(err))
+			continue
+		}
+		collectionRemovedIndexes, err := removeObsoleteIndexes(n1qlStore, previewOnly, dbCtx.UseXattrs(), dbCtx.UseViews(), sgIndexes)
 		if err != nil {
 			errs = errs.Append(err)
 			continue
 		}
-		removedIndexesByCollection[collectionName] = removedIndexes
+		onlyDefaultCollection := dbCtx.onlyDefaultCollection()
+		for _, idxName := range collectionRemovedIndexes {
+			if onlyDefaultCollection {
+				removedIndexes = append(removedIndexes, idxName)
+			} else {
+				removedIndexes = append(removedIndexes,
+					fmt.Sprintf("%s.%s", collectionName, idxName))
+			}
+		}
 	}
-	return removedIndexesByCollection, errs.ErrorOrNil()
+	return removedIndexes, errs.ErrorOrNil()
 }
 
 // Trigger terminate check handling for connected continuous replications.

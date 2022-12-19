@@ -502,12 +502,14 @@ func SetupTestDBForDataStoreWithOptions(t testing.TB, tBucket *base.TestBucket, 
 		if !ok {
 			t.Fatalf("dataStore (%T) did not implement DataStoreName", dataStore)
 		}
-		dbcOptions.Scopes = map[string]ScopeOptions{
-			dsn.ScopeName(): {
-				Collections: map[string]CollectionOptions{
-					dsn.CollectionName(): {},
+		if dbcOptions.Scopes == nil {
+			dbcOptions.Scopes = map[string]ScopeOptions{
+				dsn.ScopeName(): {
+					Collections: map[string]CollectionOptions{
+						dsn.CollectionName(): {},
+					},
 				},
-			},
+			}
 		}
 	}
 
@@ -517,4 +519,30 @@ func SetupTestDBForDataStoreWithOptions(t testing.TB, tBucket *base.TestBucket, 
 	require.NoError(t, err, "Couldn't create database 'db'")
 	ctx = db.AddDatabaseLogContext(ctx)
 	return db, ctx
+}
+
+// getScopesOptions sets up a ScopesOptions from a TestBucket for use with non default collections to pass in DatabaseContextOptions.
+func getScopesOptions(t testing.TB, testBucket *base.TestBucket, numCollections int) ScopesOptions {
+	// Get a datastore as provided by the test
+	stores := testBucket.GetNonDefaultDatastoreNames()
+	require.True(t, len(stores) >= numCollections, "Requested more collections %d than found on testBucket %d", numCollections, len(stores))
+
+	scopesConfig := ScopesOptions{}
+	for i := 0; i < numCollections; i++ {
+		dataStoreName := stores[i]
+		if scopeConfig, ok := scopesConfig[dataStoreName.ScopeName()]; ok {
+			if _, ok := scopeConfig.Collections[dataStoreName.CollectionName()]; ok {
+				// already present
+			} else {
+				scopeConfig.Collections[dataStoreName.CollectionName()] = CollectionOptions{}
+			}
+		} else {
+			scopesConfig[dataStoreName.ScopeName()] = ScopeOptions{
+				Collections: map[string]CollectionOptions{
+					dataStoreName.CollectionName(): {},
+				}}
+		}
+
+	}
+	return scopesConfig
 }
