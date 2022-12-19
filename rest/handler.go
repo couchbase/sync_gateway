@@ -442,7 +442,7 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 					// _default doesn't exist for a non-default scope - so make it a required element if it's ambiguous
 					return base.HTTPErrorf(http.StatusBadRequest, "Ambiguous keyspace: %s.%s", base.MD(keyspaceDb), base.MD(base.StringDefault(keyspaceScope, "")))
 				}
-				keyspaceScope = base.StringPtr(base.DefaultCollection)
+				keyspaceCollection = base.StringPtr(base.DefaultCollection)
 			}
 			_, foundCollection := scope.Collections[*keyspaceCollection]
 			if !foundCollection {
