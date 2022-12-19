@@ -2628,6 +2628,10 @@ func TestAttachmentDeleteOnExpiry(t *testing.T) {
 
 }
 func TestUpdateExistingAttachment(t *testing.T) {
+	if !db.EnableStarChannelLog {
+		t.Skip("This test requires StarChannel to be enabled")
+	}
+
 	rt := NewRestTester(t, &RestTesterConfig{
 		GuestEnabled: true,
 	})
@@ -2697,6 +2701,9 @@ func TestUpdateExistingAttachment(t *testing.T) {
 // TestPushUnknownAttachmentAsStub sets revpos to an older generation, for an attachment that doesn't exist on the server.
 // Verifies that getAttachment is triggered, and attachment is properly persisted.
 func TestPushUnknownAttachmentAsStub(t *testing.T) {
+	if !db.EnableStarChannelLog {
+		t.Skip("This test requires StarChannel to be enabled")
+	}
 	rt := NewRestTester(t, &RestTesterConfig{
 		GuestEnabled: true,
 	})
@@ -2746,6 +2753,10 @@ func TestPushUnknownAttachmentAsStub(t *testing.T) {
 }
 
 func TestMinRevPosWorkToAvoidUnnecessaryProveAttachment(t *testing.T) {
+	if !db.EnableStarChannelLog {
+		t.Skip("This test requires StarChannel to be enabled")
+	}
+
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	rt := NewRestTester(t, &RestTesterConfig{
 		GuestEnabled: true,
@@ -2787,6 +2798,10 @@ func TestMinRevPosWorkToAvoidUnnecessaryProveAttachment(t *testing.T) {
 	assert.Equal(t, proveAttachmentBefore, proveAttachmentAfter)
 }
 func TestAttachmentWithErroneousRevPos(t *testing.T) {
+	if !db.EnableStarChannelLog {
+		t.Skip("This test requires StarChannel to be enabled")
+	}
+
 	rt := NewRestTester(t, &RestTesterConfig{
 		GuestEnabled: true,
 	})
@@ -2964,6 +2979,10 @@ func TestPutInvalidAttachment(t *testing.T) {
 // validates that proveAttachment isn't being invoked when the attachment is already present and the
 // digest doesn't change, regardless of revpos.
 func TestCBLRevposHandling(t *testing.T) {
+	if !db.EnableStarChannelLog {
+		t.Skip("This test requires StarChannel to be enabled")
+	}
+
 	rt := NewRestTester(t, &RestTesterConfig{
 		GuestEnabled: true,
 	})

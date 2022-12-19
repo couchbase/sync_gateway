@@ -879,6 +879,10 @@ func TestChangesFromCompoundSinceViaDocGrant(t *testing.T) {
 // Reproduces CBG-1113 and #1329 (even with the fix in PR #1360)
 // Tests all combinations of HTTP feed types, admin/non-admin, and with and without a manual notify to wake up.
 func TestChangeWaiterExitOnChangesTermination(t *testing.T) {
+	if !db.EnableStarChannelLog {
+		t.Skip("This test requires StarChannel to be enabled")
+	}
+
 	base.LongRunningTest(t)
 
 	const username = "bernard"
@@ -1191,6 +1195,9 @@ func TestChangesLoopingWhenLowSequenceOneShotUser(t *testing.T) {
 // subsequent requests for the current low sequence value don't return results (avoids loops for
 // longpoll as well as clients doing repeated one-off changes requests - see #1309)
 func TestChangesLoopingWhenLowSequenceOneShotAdmin(t *testing.T) {
+	if !db.EnableStarChannelLog {
+		t.Skip("This test requires StarChannel to be enabled")
+	}
 
 	if base.TestUseXattrs() {
 		t.Skip("This test cannot run in xattr mode until WriteDirect() is updated.  See https://github.com/couchbase/sync_gateway/issues/2666#issuecomment-311183219")

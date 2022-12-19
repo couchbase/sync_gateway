@@ -368,6 +368,9 @@ func TestDocDeletionFromChannelCoalesced(t *testing.T) {
 }
 
 func TestActiveOnlyCacheUpdate(t *testing.T) {
+	if !EnableStarChannelLog {
+		t.Skip("This test requires StarChannel to be enabled")
+	}
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)

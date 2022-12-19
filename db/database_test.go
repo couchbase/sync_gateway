@@ -794,6 +794,9 @@ func allDocIDs(ctx context.Context, collection *DatabaseCollection) (docs []AllD
 }
 
 func TestAllDocsOnly(t *testing.T) {
+	if !EnableStarChannelLog {
+		t.Skip("This test requires StarChannel to be enabled")
+	}
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyCache)
 
@@ -1358,6 +1361,9 @@ func TestAllowConflictsFalseTombstoneExistingConflictNewEditsFalse(t *testing.T)
 }
 
 func TestSyncFnOnPush(t *testing.T) {
+	if !EnableStarChannelLog {
+		t.Skip("This test requires StarChannel to be enabled")
+	}
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
@@ -1715,6 +1721,9 @@ func TestRecentSequenceHistory(t *testing.T) {
 }
 
 func TestChannelView(t *testing.T) {
+	if !EnableStarChannelLog {
+		t.Skip("This test requires StarChannel to be enabled")
+	}
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)

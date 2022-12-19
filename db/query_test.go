@@ -133,6 +133,9 @@ func TestQueryChannelsStatsN1ql(t *testing.T) {
 
 // Validate query and stats for sequence view query
 func TestQuerySequencesStatsView(t *testing.T) {
+	if !EnableStarChannelLog {
+		t.Skip("This test requires StarChannel to be enabled")
+	}
 
 	db, ctx := setupTestDBWithViewsEnabled(t)
 	defer db.Close(ctx)

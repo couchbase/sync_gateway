@@ -870,6 +870,10 @@ func TestPurgeWithSomeInvalidDocs(t *testing.T) {
 }
 
 func TestRawRedaction(t *testing.T) {
+	if !db.EnableStarChannelLog {
+		t.Skip("This test requires StarChannel to be enabled")
+	}
+
 	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 

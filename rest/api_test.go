@@ -2405,8 +2405,14 @@ func TestDocumentChannelHistory(t *testing.T) {
 	syncData, err := rt.GetDatabase().GetSingleDatabaseCollection().GetDocSyncData(base.TestCtx(t), "doc")
 	assert.NoError(t, err)
 
-	require.Len(t, syncData.ChannelSet, 1)
-	assert.Equal(t, syncData.ChannelSet[0], db.ChannelSetEntry{Name: "test", Start: 1, End: 0})
+	// when db.EnableStarChannelLog=false, we add '*' channel manually in sync function
+	if db.EnableStarChannelLog {
+		require.Len(t, syncData.ChannelSet, 1)
+	} else {
+		require.Len(t, syncData.ChannelSet, 2)
+		assert.Contains(t, syncData.ChannelSet, db.ChannelSetEntry{Name: "*", Start: 1, End: 0})
+	}
+	assert.Contains(t, syncData.ChannelSet, db.ChannelSetEntry{Name: "test", Start: 1, End: 0})
 	assert.Len(t, syncData.ChannelSetHistory, 0)
 
 	// Update doc to remove from channel and ensure a single channel history entry with both start and end sequences
@@ -2418,8 +2424,13 @@ func TestDocumentChannelHistory(t *testing.T) {
 	syncData, err = rt.GetDatabase().GetSingleDatabaseCollection().GetDocSyncData(base.TestCtx(t), "doc")
 	assert.NoError(t, err)
 
-	require.Len(t, syncData.ChannelSet, 1)
-	assert.Equal(t, syncData.ChannelSet[0], db.ChannelSetEntry{Name: "test", Start: 1, End: 2})
+	if db.EnableStarChannelLog {
+		require.Len(t, syncData.ChannelSet, 1)
+	} else {
+		require.Len(t, syncData.ChannelSet, 2)
+		assert.Contains(t, syncData.ChannelSet, db.ChannelSetEntry{Name: "*", Start: 1, End: 0})
+	}
+	assert.Contains(t, syncData.ChannelSet, db.ChannelSetEntry{Name: "test", Start: 1, End: 2})
 	assert.Len(t, syncData.ChannelSetHistory, 0)
 
 	// Update doc to add to channels test and test2 and ensure a single channel history entry for both test and test2
@@ -2430,8 +2441,12 @@ func TestDocumentChannelHistory(t *testing.T) {
 	assert.NoError(t, err)
 	syncData, err = rt.GetDatabase().GetSingleDatabaseCollection().GetDocSyncData(base.TestCtx(t), "doc")
 	assert.NoError(t, err)
-
-	require.Len(t, syncData.ChannelSet, 2)
+	// when db.EnableStarChannelLog=false, we add '*' channel manually in sync function
+	if db.EnableStarChannelLog {
+		require.Len(t, syncData.ChannelSet, 2)
+	} else {
+		require.Len(t, syncData.ChannelSet, 3)
+	}
 	assert.Contains(t, syncData.ChannelSet, db.ChannelSetEntry{Name: "test", Start: 3, End: 0})
 	assert.Contains(t, syncData.ChannelSet, db.ChannelSetEntry{Name: "test2", Start: 3, End: 0})
 	require.Len(t, syncData.ChannelSetHistory, 1)
@@ -2439,6 +2454,10 @@ func TestDocumentChannelHistory(t *testing.T) {
 }
 
 func TestChannelHistoryLegacyDoc(t *testing.T) {
+	if !db.EnableStarChannelLog {
+		t.Skip("This test requires StarChannel to be enabled")
+	}
+
 	defer db.SuspendSequenceBatching()()
 
 	rt := NewRestTester(t, nil)

@@ -3685,6 +3685,10 @@ func TestActiveReplicatorPullPurgeOnRemoval(t *testing.T) {
 //   - Publishes the REST API on a httptest server for the passive node (so the active can connect to it)
 //   - Uses an ActiveReplicator configured for pull to start pulling changes from rt2.
 func TestActiveReplicatorPullConflict(t *testing.T) {
+	if !db.EnableStarChannelLog {
+		t.Skip("This test requires StarChannel to be enabled")
+	}
+
 	base.LongRunningTest(t)
 
 	// scenarios
@@ -3917,6 +3921,9 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 //   - Uses an ActiveReplicator configured for pushAndPull from rt2.
 //   - verifies expected conflict resolution, and that expected result is replicated to both peers
 func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
+	if !db.EnableStarChannelLog {
+		t.Skip("This test requires StarChannel to be enabled")
+	}
 
 	base.LongRunningTest(t)
 
@@ -5592,6 +5599,9 @@ func TestActiveReplicatorReconnectSendActions(t *testing.T) {
 //   - Publishes the REST API on a httptest server for the passive node (so the active can connect to it)
 //   - Uses an ActiveReplicator configured for pull to start pulling changes from rt2.
 func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
+	if !db.EnableStarChannelLog {
+		t.Skip("This test requires StarChannel to be enabled")
+	}
 
 	base.LongRunningTest(t)
 
@@ -5907,6 +5917,10 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 	}
 }
 func TestSGR2TombstoneConflictHandling(t *testing.T) {
+	if !db.EnableStarChannelLog {
+		t.Skip("This test requires StarChannel to be enabled")
+	}
+
 	base.LongRunningTest(t)
 
 	base.RequireNumTestBuckets(t, 2)
@@ -6961,6 +6975,10 @@ func TestReplicatorConflictAttachment(t *testing.T) {
 	}
 }
 func TestConflictResolveMergeWithMutatedRev(t *testing.T) {
+	if !db.EnableStarChannelLog {
+		t.Skip("This test requires StarChannel to be enabled")
+	}
+
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	base.RequireNumTestBuckets(t, 2)
@@ -7333,6 +7351,10 @@ func TestReplicatorIgnoreRemovalBodies(t *testing.T) {
 // CBG-1995: Test the support for using an underscore prefix in the top-level body of a document
 // Tests replication and Rest API
 func TestUnderscorePrefixSupport(t *testing.T) {
+	if !db.EnableStarChannelLog {
+		t.Skip("This test requires StarChannel to be enabled")
+	}
+
 	base.RequireNumTestBuckets(t, 2)
 
 	// Passive //

@@ -33,6 +33,10 @@ import (
 // 4. Update doc in the test client and keep the same attachment stub.
 // 5. Have that update pushed via the continuous replication started in step 2
 func TestBlipPushPullV2AttachmentV2Client(t *testing.T) {
+	if !db.EnableStarChannelLog {
+		t.Skip("This test requires StarChannel to be enabled")
+	}
+
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 	rtConfig := RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{
@@ -111,6 +115,10 @@ func TestBlipPushPullV2AttachmentV2Client(t *testing.T) {
 // 4. Update doc in the test client and keep the same attachment stub.
 // 5. Have that update pushed via the continuous replication started in step 2
 func TestBlipPushPullV2AttachmentV3Client(t *testing.T) {
+	if !db.EnableStarChannelLog {
+		t.Skip("This test requires StarChannel to be enabled")
+	}
+
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 	rtConfig := RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{
