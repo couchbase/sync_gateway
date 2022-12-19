@@ -12,7 +12,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"gopkg.in/couchbaselabs/gocbconnstr.v1"
 	"net/url"
 	"reflect"
 	"strconv"
@@ -21,6 +20,7 @@ import (
 
 	"github.com/couchbase/gocb/v2"
 	"github.com/imdario/mergo"
+	"gopkg.in/couchbaselabs/gocbconnstr.v1"
 )
 
 // BootstrapConnection is the interface that can be used to bootstrap Sync Gateway against a Couchbase Server cluster.
