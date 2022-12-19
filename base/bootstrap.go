@@ -12,7 +12,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	gocbconnstr "github.com/couchbase/gocbcore/v10/connstr"
+	"gopkg.in/couchbaselabs/gocbconnstr.v1"
 	"net/url"
 	"reflect"
 	"strconv"

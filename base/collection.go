@@ -248,7 +248,6 @@ func (b *GocbV2Bucket) IsSupported(feature sgbucket.BucketStoreFeature) bool {
 
 func (b *GocbV2Bucket) StartDCPFeed(args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map) error {
 	groupID := ""
-	fmt.Println("Bucket spec is", b.Spec.Serverless)
 	return StartGocbDCPFeed(b, b.Spec.BucketName, args, callback, dbStats, DCPMetadataStoreInMemory, groupID, b.Spec.Serverless)
 }
 
