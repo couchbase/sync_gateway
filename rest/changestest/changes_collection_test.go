@@ -28,16 +28,13 @@ func TestMultiCollectionChangesAdmin(t *testing.T) {
 
 	numCollections := 2
 	base.RequireNumTestDataStores(t, numCollections)
-	rt, keyspaces := rest.NewRestTesterMultipleCollections(t, nil, numCollections)
+	rt := rest.NewRestTesterMultipleCollections(t, nil, numCollections)
 	defer rt.Close()
 
-	c1Keyspace := keyspaces[0]
-	c2Keyspace := keyspaces[1]
-
 	// Put several documents, will be retrieved via query
-	response := rt.SendAdminRequest("PUT", "/"+c1Keyspace+"/pbs1", `{"value":1, "channels":["PBS"]}`)
+	response := rt.SendAdminRequest("PUT", "/{{.keyspace1}}/pbs1", `{"value":1, "channels":["PBS"]}`)
 	rest.RequireStatus(t, response, 201)
-	response = rt.SendAdminRequest("PUT", "/"+c2Keyspace+"/abc1", `{"value":1, "channels":["ABC"]}`)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace2}}/abc1", `{"value":1, "channels":["ABC"]}`)
 	rest.RequireStatus(t, response, 201)
 
 	_ = rt.WaitForPendingChanges()
@@ -48,32 +45,32 @@ func TestMultiCollectionChangesAdmin(t *testing.T) {
 	}
 
 	// Issue changes request.  Will initialize cache for channels, and return docs via query
-	changesResponse := rt.SendAdminRequest("GET", "/"+c1Keyspace+"/_changes?since=0", "")
+	changesResponse := rt.SendAdminRequest("GET", "/{{.keyspace1}}/_changes?since=0", "")
 	err := base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
 	assert.NoError(t, err, "Error unmarshalling changes response")
 	require.Len(t, changes.Results, 1)
 	logChangesResponse(t, changesResponse.Body.Bytes())
 
-	changesResponse = rt.SendAdminRequest("GET", "/"+c2Keyspace+"/_changes?since=0", "")
+	changesResponse = rt.SendAdminRequest("GET", "/{{.keyspace2}}/_changes?since=0", "")
 	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
 	assert.NoError(t, err, "Error unmarshalling changes response")
 	require.Len(t, changes.Results, 1)
 	logChangesResponse(t, changesResponse.Body.Bytes())
 
 	// Put more documents, should be served via DCP/cache
-	response = rt.SendAdminRequest("PUT", "/"+c1Keyspace+"/pbs2", `{"value":1, "channels":["PBS"]}`)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace1}}/pbs2", `{"value":1, "channels":["PBS"]}`)
 	rest.RequireStatus(t, response, 201)
-	response = rt.SendAdminRequest("PUT", "/"+c2Keyspace+"/abc2", `{"value":1, "channels":["ABC"]}`)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace2}}/abc2", `{"value":1, "channels":["ABC"]}`)
 	rest.RequireStatus(t, response, 201)
 	_ = rt.WaitForPendingChanges()
 
-	changesResponse = rt.SendAdminRequest("GET", "/"+c1Keyspace+"/_changes?since=0", "")
+	changesResponse = rt.SendAdminRequest("GET", "/{{.keyspace1}}/_changes?since=0", "")
 	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
 	assert.NoError(t, err, "Error unmarshalling changes response")
 	require.Len(t, changes.Results, 2)
 	logChangesResponse(t, changesResponse.Body.Bytes())
 
-	changesResponse = rt.SendAdminRequest("GET", "/"+c2Keyspace+"/_changes?since=0", "")
+	changesResponse = rt.SendAdminRequest("GET", "/{{.keyspace2}}/_changes?since=0", "")
 	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
 	assert.NoError(t, err, "Error unmarshalling changes response")
 	require.Len(t, changes.Results, 2)
@@ -86,16 +83,13 @@ func TestMultiCollectionChangesAdminSameChannelName(t *testing.T) {
 
 	numCollections := 2
 	base.RequireNumTestDataStores(t, numCollections)
-	rt, keyspaces := rest.NewRestTesterMultipleCollections(t, nil, numCollections)
+	rt := rest.NewRestTesterMultipleCollections(t, nil, numCollections)
 	defer rt.Close()
 
-	c1Keyspace := keyspaces[0]
-	c2Keyspace := keyspaces[1]
-
 	// Put several documents, will be retrieved via query
-	response := rt.SendAdminRequest("PUT", "/"+c1Keyspace+"/pbs1_c1", `{"value":1, "channels":["PBS"]}`)
+	response := rt.SendAdminRequest("PUT", "/{{.keyspace1}}/pbs1_c1", `{"value":1, "channels":["PBS"]}`)
 	rest.RequireStatus(t, response, 201)
-	response = rt.SendAdminRequest("PUT", "/"+c2Keyspace+"/pbs1_c2", `{"value":1, "channels":["PBS"]}`)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace2}}/pbs1_c2", `{"value":1, "channels":["PBS"]}`)
 	rest.RequireStatus(t, response, 201)
 	_ = rt.WaitForPendingChanges()
 
@@ -105,32 +99,32 @@ func TestMultiCollectionChangesAdminSameChannelName(t *testing.T) {
 	}
 
 	// Issue changes request.  Will initialize cache for channels, and return docs via query
-	changesResponse := rt.SendAdminRequest("GET", "/"+c1Keyspace+"/_changes?since=0", "")
+	changesResponse := rt.SendAdminRequest("GET", "/{{.keyspace1}}/_changes?since=0", "")
 	err := base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
 	assert.NoError(t, err, "Error unmarshalling changes response")
 	require.Len(t, changes.Results, 1)
 	logChangesResponse(t, changesResponse.Body.Bytes())
 
-	changesResponse = rt.SendAdminRequest("GET", "/"+c2Keyspace+"/_changes?since=0", "")
+	changesResponse = rt.SendAdminRequest("GET", "/{{.keyspace2}}/_changes?since=0", "")
 	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
 	assert.NoError(t, err, "Error unmarshalling changes response")
 	require.Len(t, changes.Results, 1)
 	logChangesResponse(t, changesResponse.Body.Bytes())
 
 	// Put more documents, should be served via DCP/cache
-	response = rt.SendAdminRequest("PUT", "/"+c1Keyspace+"/pbs2_c1", `{"value":1, "channels":["PBS"]}`)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace1}}/pbs2_c1", `{"value":1, "channels":["PBS"]}`)
 	rest.RequireStatus(t, response, 201)
-	response = rt.SendAdminRequest("PUT", "/"+c2Keyspace+"/pbs2_c2", `{"value":1, "channels":["PBS"]}`)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace2}}/pbs2_c2", `{"value":1, "channels":["PBS"]}`)
 	rest.RequireStatus(t, response, 201)
 	_ = rt.WaitForPendingChanges()
 
-	changesResponse = rt.SendAdminRequest("GET", "/"+c1Keyspace+"/_changes?since=0", "")
+	changesResponse = rt.SendAdminRequest("GET", "/{{.keyspace1}}/_changes?since=0", "")
 	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
 	assert.NoError(t, err, "Error unmarshalling changes response")
 	require.Len(t, changes.Results, 2)
 	logChangesResponse(t, changesResponse.Body.Bytes())
 
-	changesResponse = rt.SendAdminRequest("GET", "/"+c2Keyspace+"/_changes?since=0", "")
+	changesResponse = rt.SendAdminRequest("GET", "/{{.keyspace2}}/_changes?since=0", "")
 	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
 	assert.NoError(t, err, "Error unmarshalling changes response")
 	require.Len(t, changes.Results, 2)
@@ -142,11 +136,8 @@ func TestMultiCollectionChangesUser(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeyChanges, base.KeyCache, base.KeyCRUD)
 	numCollections := 2
 	base.RequireNumTestDataStores(t, numCollections)
-	rt, keyspaces := rest.NewRestTesterMultipleCollections(t, nil, numCollections)
+	rt := rest.NewRestTesterMultipleCollections(t, nil, numCollections)
 	defer rt.Close()
-
-	c1Keyspace := keyspaces[0]
-	c2Keyspace := keyspaces[1]
 
 	// Create user with access to channel PBS in both collections
 	ctx := rt.Context()
@@ -156,9 +147,9 @@ func TestMultiCollectionChangesUser(t *testing.T) {
 	assert.NoError(t, a.Save(bernard))
 
 	// Put several documents, will be retrieved via query
-	response := rt.SendAdminRequest("PUT", "/"+c1Keyspace+"/pbs1_c1", `{"value":1, "channels":["PBS"]}`)
+	response := rt.SendAdminRequest("PUT", "/{{.keyspace1}}/pbs1_c1", `{"value":1, "channels":["PBS"]}`)
 	rest.RequireStatus(t, response, 201)
-	response = rt.SendAdminRequest("PUT", "/"+c2Keyspace+"/pbs1_c2", `{"value":1, "channels":["PBS"]}`)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace2}}/pbs1_c2", `{"value":1, "channels":["PBS"]}`)
 	rest.RequireStatus(t, response, 201)
 	_ = rt.WaitForPendingChanges()
 
@@ -168,32 +159,32 @@ func TestMultiCollectionChangesUser(t *testing.T) {
 	}
 
 	// Issue changes request.  Will initialize cache for channels, and return docs via query
-	changesResponse := rt.SendUserRequest("GET", "/"+c1Keyspace+"/_changes?since=0", "", "bernard")
+	changesResponse := rt.SendUserRequest("GET", "/{{.keyspace1}}/_changes?since=0", "", "bernard")
 	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
 	assert.NoError(t, err, "Error unmarshalling changes response")
 	require.Len(t, changes.Results, 1)
 	logChangesResponse(t, changesResponse.Body.Bytes())
 
-	changesResponse = rt.SendUserRequest("GET", "/"+c2Keyspace+"/_changes?since=0", "", "bernard")
+	changesResponse = rt.SendUserRequest("GET", "/{{.keyspace2}}/_changes?since=0", "", "bernard")
 	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
 	assert.NoError(t, err, "Error unmarshalling changes response")
 	require.Len(t, changes.Results, 1)
 	logChangesResponse(t, changesResponse.Body.Bytes())
 
 	// Put more documents, should be served via DCP/cache
-	response = rt.SendAdminRequest("PUT", "/"+c1Keyspace+"/pbs2_c1", `{"value":1, "channels":["PBS"]}`)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace1}}/pbs2_c1", `{"value":1, "channels":["PBS"]}`)
 	rest.RequireStatus(t, response, 201)
-	response = rt.SendAdminRequest("PUT", "/"+c2Keyspace+"/pbs2_c2", `{"value":1, "channels":["PBS"]}`)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace2}}/pbs2_c2", `{"value":1, "channels":["PBS"]}`)
 	rest.RequireStatus(t, response, 201)
 	_ = rt.WaitForPendingChanges()
 
-	changesResponse = rt.SendUserRequest("GET", "/"+c1Keyspace+"/_changes?since=0", "", "bernard")
+	changesResponse = rt.SendUserRequest("GET", "/{{.keyspace1}}/_changes?since=0", "", "bernard")
 	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
 	assert.NoError(t, err, "Error unmarshalling changes response")
 	require.Len(t, changes.Results, 2)
 	logChangesResponse(t, changesResponse.Body.Bytes())
 
-	changesResponse = rt.SendUserRequest("GET", "/"+c2Keyspace+"/_changes?since=0", "", "bernard")
+	changesResponse = rt.SendUserRequest("GET", "/{{.keyspace2}}/_changes?since=0", "", "bernard")
 	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
 	assert.NoError(t, err, "Error unmarshalling changes response")
 	require.Len(t, changes.Results, 2)
@@ -207,11 +198,8 @@ func TestMultiCollectionChangesUserDynamicGrant(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeyChanges, base.KeyCache, base.KeyCRUD)
 	numCollections := 2
 	base.RequireNumTestDataStores(t, numCollections)
-	rt, keyspaces := rest.NewRestTesterMultipleCollections(t, nil, numCollections)
+	rt := rest.NewRestTesterMultipleCollections(t, nil, numCollections)
 	defer rt.Close()
-
-	c1Keyspace := keyspaces[0]
-	c2Keyspace := keyspaces[1]
 
 	// Create user with access to channel PBS in both collections
 	ctx := rt.Context()
@@ -221,13 +209,13 @@ func TestMultiCollectionChangesUserDynamicGrant(t *testing.T) {
 	assert.NoError(t, a.Save(bernard))
 
 	// Put several documents
-	response := rt.SendAdminRequest("PUT", "/"+c1Keyspace+"/pbs1_c1", `{"value":1, "channels":["PBS"]}`)
+	response := rt.SendAdminRequest("PUT", "/{{.keyspace1}}/pbs1_c1", `{"value":1, "channels":["PBS"]}`)
 	rest.RequireStatus(t, response, 201)
-	response = rt.SendAdminRequest("PUT", "/"+c1Keyspace+"/abc1_c1", `{"value":1, "channels":["ABC"]}`)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace1}}/abc1_c1", `{"value":1, "channels":["ABC"]}`)
 	rest.RequireStatus(t, response, 201)
-	response = rt.SendAdminRequest("PUT", "/"+c2Keyspace+"/pbs1_c2", `{"value":1, "channels":["PBS"]}`)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace2}}/pbs1_c2", `{"value":1, "channels":["PBS"]}`)
 	rest.RequireStatus(t, response, 201)
-	response = rt.SendAdminRequest("PUT", "/"+c2Keyspace+"/abc1_c2", `{"value":1, "channels":["ABC"]}`)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace2}}/abc1_c2", `{"value":1, "channels":["ABC"]}`)
 	rest.RequireStatus(t, response, 201)
 	_ = rt.WaitForPendingChanges()
 
@@ -237,13 +225,13 @@ func TestMultiCollectionChangesUserDynamicGrant(t *testing.T) {
 	}
 
 	// Issue changes request.  Will initialize cache for channels, and return docs via query
-	changesResponse := rt.SendUserRequest("GET", "/"+c1Keyspace+"/_changes?since=0", "", "bernard")
+	changesResponse := rt.SendUserRequest("GET", "/{{.keyspace1}}/_changes?since=0", "", "bernard")
 	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
 	assert.NoError(t, err, "Error unmarshalling changes response")
 	require.Len(t, changes.Results, 1)
 	logChangesResponse(t, changesResponse.Body.Bytes())
 
-	changesResponse = rt.SendUserRequest("GET", "/"+c2Keyspace+"/_changes?since=0", "", "bernard")
+	changesResponse = rt.SendUserRequest("GET", "/{{.keyspace2}}/_changes?since=0", "", "bernard")
 	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
 	assert.NoError(t, err, "Error unmarshalling changes response")
 	require.Len(t, changes.Results, 1)
@@ -251,18 +239,18 @@ func TestMultiCollectionChangesUserDynamicGrant(t *testing.T) {
 	lastSeq := changes.Last_Seq
 
 	// Grant user access to channel ABC in collection 1
-	err = rt.SetAdminChannels("bernard", c1Keyspace, "ABC", "PBS")
+	err = rt.SetAdminChannels("bernard", rt.GetKeyspaces()[0], "ABC", "PBS")
 	require.NoError(t, err)
 
 	// confirm that change from c1 is sent, along with user doc
-	changesResponse = rt.SendUserRequest("GET", "/"+c1Keyspace+"/_changes?since="+lastSeq.String(), "", "bernard")
+	changesResponse = rt.SendUserRequest("GET", "/{{.keyspace1}}/_changes?since="+lastSeq.String(), "", "bernard")
 	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
 	assert.NoError(t, err, "Error unmarshalling changes response")
 	require.Len(t, changes.Results, 2)
 	logChangesResponse(t, changesResponse.Body.Bytes())
 
 	// Confirm that access hasn't been granted in c2, expect only user doc
-	changesResponse = rt.SendUserRequest("GET", "/"+c2Keyspace+"/_changes?since="+lastSeq.String(), "", "bernard")
+	changesResponse = rt.SendUserRequest("GET", "/{{.keyspace2}}/_changes?since="+lastSeq.String(), "", "bernard")
 	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
 	assert.NoError(t, err, "Error unmarshalling changes response")
 	require.Len(t, changes.Results, 1)
@@ -276,11 +264,8 @@ func TestMultiCollectionChangesUserDynamicGrantDCP(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeyChanges, base.KeyCache, base.KeyCRUD)
 	numCollections := 2
 	base.RequireNumTestDataStores(t, numCollections)
-	rt, keyspaces := rest.NewRestTesterMultipleCollections(t, nil, numCollections)
+	rt := rest.NewRestTesterMultipleCollections(t, nil, numCollections)
 	defer rt.Close()
-
-	c1Keyspace := keyspaces[0]
-	c2Keyspace := keyspaces[1]
 
 	// Create user with access to channel PBS in both collections
 	ctx := rt.Context()
@@ -290,13 +275,13 @@ func TestMultiCollectionChangesUserDynamicGrantDCP(t *testing.T) {
 	assert.NoError(t, a.Save(bernard))
 
 	// Put several documents
-	response := rt.SendAdminRequest("PUT", "/"+c1Keyspace+"/pbs1_c1", `{"value":1, "channels":["PBS"]}`)
+	response := rt.SendAdminRequest("PUT", "/{{.keyspace1}}/pbs1_c1", `{"value":1, "channels":["PBS"]}`)
 	rest.RequireStatus(t, response, 201)
-	response = rt.SendAdminRequest("PUT", "/"+c1Keyspace+"/abc1_c1", `{"value":1, "channels":["ABC"]}`)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace1}}/abc1_c1", `{"value":1, "channels":["ABC"]}`)
 	rest.RequireStatus(t, response, 201)
-	response = rt.SendAdminRequest("PUT", "/"+c2Keyspace+"/pbs1_c2", `{"value":1, "channels":["PBS"]}`)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace2}}/pbs1_c2", `{"value":1, "channels":["PBS"]}`)
 	rest.RequireStatus(t, response, 201)
-	response = rt.SendAdminRequest("PUT", "/"+c2Keyspace+"/abc1_c2", `{"value":1, "channels":["ABC"]}`)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace2}}/abc1_c2", `{"value":1, "channels":["ABC"]}`)
 	rest.RequireStatus(t, response, 201)
 	_ = rt.WaitForPendingChanges()
 
@@ -306,13 +291,13 @@ func TestMultiCollectionChangesUserDynamicGrantDCP(t *testing.T) {
 	}
 
 	// Issue changes request.  Will initialize cache for user channel (PBS), and return docs via query
-	changesResponse := rt.SendUserRequest("GET", "/"+c1Keyspace+"/_changes?since=0", "", "bernard")
+	changesResponse := rt.SendUserRequest("GET", "/{{.keyspace1}}/_changes?since=0", "", "bernard")
 	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
 	assert.NoError(t, err, "Error unmarshalling changes response")
 	require.Len(t, changes.Results, 1)
 	logChangesResponse(t, changesResponse.Body.Bytes())
 
-	changesResponse = rt.SendUserRequest("GET", "/"+c2Keyspace+"/_changes?since=0", "", "bernard")
+	changesResponse = rt.SendUserRequest("GET", "/{{.keyspace2}}/_changes?since=0", "", "bernard")
 	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
 	assert.NoError(t, err, "Error unmarshalling changes response")
 	require.Len(t, changes.Results, 1)
@@ -320,30 +305,30 @@ func TestMultiCollectionChangesUserDynamicGrantDCP(t *testing.T) {
 	lastSeq := changes.Last_Seq
 
 	// Issue admin changes request for channel ABC, to initialize cache for that channel in each collection
-	changesResponse = rt.SendAdminRequest("GET", "/"+c1Keyspace+"/_changes?filter=sync_gateway/bychannel&channels=ABC", "")
+	changesResponse = rt.SendAdminRequest("GET", "/{{.keyspace1}}/_changes?filter=sync_gateway/bychannel&channels=ABC", "")
 	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
 	assert.NoError(t, err, "Error unmarshalling changes response")
 	require.Len(t, changes.Results, 1)
 	logChangesResponse(t, changesResponse.Body.Bytes())
 
-	changesResponse = rt.SendAdminRequest("GET", "/"+c2Keyspace+"/_changes?filter=sync_gateway/bychannel&channels=ABC", "")
+	changesResponse = rt.SendAdminRequest("GET", "/{{.keyspace2}}/_changes?filter=sync_gateway/bychannel&channels=ABC", "")
 	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
 	assert.NoError(t, err, "Error unmarshalling changes response")
 	require.Len(t, changes.Results, 1)
 	logChangesResponse(t, changesResponse.Body.Bytes())
 
 	// Grant user access to channel ABC in collection 1
-	err = rt.SetAdminChannels("bernard", c1Keyspace, "ABC", "PBS")
+	err = rt.SetAdminChannels("bernard", rt.GetKeyspaces()[0], "ABC", "PBS")
 	require.NoError(t, err)
 
 	// Write additional docs to the cached channels, should be served via DCP/cache
-	response = rt.SendAdminRequest("PUT", "/"+c1Keyspace+"/abc2_c1", `{"value":1, "channels":["ABC"]}`)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace1}}/abc2_c1", `{"value":1, "channels":["ABC"]}`)
 	rest.RequireStatus(t, response, 201)
-	response = rt.SendAdminRequest("PUT", "/"+c2Keyspace+"/abc2_c2", `{"value":1, "channels":["ABC"]}`)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace2}}/abc2_c2", `{"value":1, "channels":["ABC"]}`)
 	rest.RequireStatus(t, response, 201)
-	response = rt.SendAdminRequest("PUT", "/"+c1Keyspace+"/pbs2_c1", `{"value":1, "channels":["PBS"]}`)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace1}}/pbs2_c1", `{"value":1, "channels":["PBS"]}`)
 	rest.RequireStatus(t, response, 201)
-	response = rt.SendAdminRequest("PUT", "/"+c2Keyspace+"/pbs2_c2", `{"value":1, "channels":["PBS"]}`)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace2}}/pbs2_c2", `{"value":1, "channels":["PBS"]}`)
 	rest.RequireStatus(t, response, 201)
 	_ = rt.WaitForPendingChanges()
 
@@ -352,7 +337,7 @@ func TestMultiCollectionChangesUserDynamicGrantDCP(t *testing.T) {
 	//  - user doc
 	//  - 1 PBS docs after lastSeq
 	//  - 1 ABC docs after lastSeq
-	changesResponse = rt.SendUserRequest("GET", "/"+c1Keyspace+"/_changes?since="+lastSeq.String(), "", "bernard")
+	changesResponse = rt.SendUserRequest("GET", "/{{.keyspace1}}/_changes?since="+lastSeq.String(), "", "bernard")
 	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
 	assert.NoError(t, err, "Error unmarshalling changes response")
 	assert.Len(t, changes.Results, 4)
@@ -361,7 +346,7 @@ func TestMultiCollectionChangesUserDynamicGrantDCP(t *testing.T) {
 	// Expect 2 documents in collection without ABC grant
 	//  - user doc
 	//  - 1 PBS doc after lastSeq
-	changesResponse = rt.SendUserRequest("GET", "/"+c2Keyspace+"/_changes?since="+lastSeq.String(), "", "bernard")
+	changesResponse = rt.SendUserRequest("GET", "/{{.keyspace2}}/_changes?since="+lastSeq.String(), "", "bernard")
 	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
 	assert.NoError(t, err, "Error unmarshalling changes response")
 	assert.Len(t, changes.Results, 2)
@@ -398,11 +383,8 @@ func TestMultiCollectionChangesCustomSyncFunctions(t *testing.T) {
 		},
 	}
 
-	rt, keyspaces := rest.NewRestTesterMultipleCollections(t, rtConfig, numCollections)
+	rt := rest.NewRestTesterMultipleCollections(t, rtConfig, numCollections)
 	defer rt.Close()
-
-	c1Keyspace := keyspaces[0]
-	c2Keyspace := keyspaces[1]
 
 	// Create user with access to channel collection1 in both collections
 	ctx := rt.Context()
@@ -412,11 +394,11 @@ func TestMultiCollectionChangesCustomSyncFunctions(t *testing.T) {
 	assert.NoError(t, a.Save(bernard))
 
 	// Put two documents
-	response := rt.SendAdminRequest("PUT", "/"+c1Keyspace+"/doc1", `{"value":1}`)
+	response := rt.SendAdminRequest("PUT", "/{{.keyspace1}}/doc1", `{"value":1}`)
 	rest.RequireStatus(t, response, 201)
-	response = rt.SendAdminRequest("PUT", "/"+c2Keyspace+"/doc1", `{"value":1}`)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace2}}/doc1", `{"value":1}`)
 	rest.RequireStatus(t, response, 201)
-	response = rt.SendAdminRequest("PUT", "/"+c2Keyspace+"/publicDoc", `{"value":1, "public":true}`)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace2}}/publicDoc", `{"value":1, "public":true}`)
 	rest.RequireStatus(t, response, 201)
 	_ = rt.WaitForPendingChanges()
 
@@ -426,14 +408,14 @@ func TestMultiCollectionChangesCustomSyncFunctions(t *testing.T) {
 	}
 
 	// Issue changes request.  Will initialize cache for channels, and return docs via query
-	changesResponse := rt.SendUserRequest("GET", "/"+c1Keyspace+"/_changes?since=0", "", "bernard")
+	changesResponse := rt.SendUserRequest("GET", "/{{.keyspace1}}/_changes?since=0", "", "bernard")
 	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
 	assert.NoError(t, err, "Error unmarshalling changes response")
 	require.Len(t, changes.Results, 1)
 	assert.Equal(t, "doc1", changes.Results[0].ID)
 	logChangesResponse(t, changesResponse.Body.Bytes())
 
-	changesResponse = rt.SendUserRequest("GET", "/"+c2Keyspace+"/_changes?since=0", "", "bernard")
+	changesResponse = rt.SendUserRequest("GET", "/{{.keyspace2}}/_changes?since=0", "", "bernard")
 	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
 	assert.NoError(t, err, "Error unmarshalling changes response")
 	require.Len(t, changes.Results, 1)

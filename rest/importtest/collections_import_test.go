@@ -49,13 +49,13 @@ func TestMultiCollectionImportFilter(t *testing.T) {
 		},
 	}
 
-	rt, keyspaces := rest.NewRestTesterMultipleCollections(t, rtConfig, numCollections)
+	rt := rest.NewRestTesterMultipleCollections(t, rtConfig, numCollections)
 	defer rt.Close()
 
 	dataStore1 := rt.TestBucket.GetNamedDataStore(0)
-	keyspace1 := keyspaces[0]
+	keyspace1 := "{{.keyspace1}}"
 	dataStore2 := rt.TestBucket.GetNamedDataStore(1)
-	keyspace2 := keyspaces[1]
+	keyspace2 := "{{.keyspace2}}"
 
 	defaultKeyspace := "db._default._default"
 	keyspaceNotFound := fmt.Sprintf("keyspace %s not found", defaultKeyspace)
@@ -92,11 +92,11 @@ func TestMultiCollectionImportFilter(t *testing.T) {
 	}
 
 	// Attempt to get the documents via Sync Gateway.  Will trigger on-demand import.
-	response := rt.SendAdminRequest(http.MethodGet, fmt.Sprintf("/%s/%s", keyspace1, mobileKey), "")
+	response := rt.SendAdminRequest(http.MethodGet, "/{{.keyspace1}}/"+mobileKey, "")
 	assert.Equal(t, 200, response.Code)
 	assertDocProperty(t, response, "type", "mobile")
 
-	response = rt.SendAdminRequest(http.MethodGet, fmt.Sprintf("/%s/%s", keyspace2, onPremKey), "")
+	response = rt.SendAdminRequest(http.MethodGet, "/{{.keyspace2}}/"+onPremKey, "")
 	assert.Equal(t, 200, response.Code)
 	assertDocProperty(t, response, "type", "onprem")
 
@@ -125,10 +125,10 @@ func TestMultiCollectionImportFilter(t *testing.T) {
 	}
 
 	// PUT to existing document that hasn't been imported.
-	for _, keyspace := range keyspaces {
+	for _, keyspace := range []string{keyspace1, keyspace2} {
 		sgWriteBody := `{"type":"whatever I want - I'm writing through SG",
 	                 "channels": "ABC"}`
-		response = rt.SendAdminRequest(http.MethodPut, fmt.Sprintf("/%s/%s", keyspace, nonMobileKey), sgWriteBody)
+		response = rt.SendAdminRequest(http.MethodPut, keyspace+"/"+nonMobileKey, sgWriteBody)
 		assert.Equal(t, 201, response.Code)
 		assertDocProperty(t, response, "id", "TestImportFilterInvalid")
 		assertDocProperty(t, response, "rev", "1-25c26cdf9d7771e07f00be1d13f7fb7c")

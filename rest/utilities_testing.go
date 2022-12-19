@@ -126,15 +126,14 @@ func NewRestTesterDefaultCollection(tb testing.TB, restConfig *RestTesterConfig)
 }
 
 // NewRestTester multiple collections a rest tester backed by a single database and any number of collections and the names of the keyspaces of collections created.
-func NewRestTesterMultipleCollections(tb testing.TB, restConfig *RestTesterConfig, numCollections int) (*RestTester, []string) {
+func NewRestTesterMultipleCollections(tb testing.TB, restConfig *RestTesterConfig, numCollections int) *RestTester {
 	if !base.TestsUseNamedCollections() {
 		tb.Skip("This test requires named collections and is running against a bucket type that does not support them")
 	}
 	if numCollections == 0 {
 		tb.Errorf("0 is not a valid number of collections to specify")
 	}
-	rt := newRestTester(tb, restConfig, useMultipleCollection, numCollections)
-	return rt, rt.getKeyspaces()
+	return newRestTester(tb, restConfig, useMultipleCollection, numCollections)
 }
 
 func (rt *RestTester) Bucket() base.Bucket {
@@ -557,7 +556,7 @@ func (rt *RestTester) SendRequest(method, resource string, body string) *TestRes
 }
 
 func (rt *RestTester) SendRequestWithHeaders(method, resource string, body string, headers map[string]string) *TestResponse {
-	req := Request(method, resource, body)
+	req := Request(method, rt.templateResource(resource), body)
 	for k, v := range headers {
 		req.Header.Set(k, v)
 	}
@@ -565,7 +564,7 @@ func (rt *RestTester) SendRequestWithHeaders(method, resource string, body strin
 }
 
 func (rt *RestTester) SendUserRequestWithHeaders(method, resource string, body string, headers map[string]string, username string, password string) *TestResponse {
-	req := Request(method, resource, body)
+	req := Request(method, rt.templateResource(resource), body)
 	req.SetBasicAuth(username, password)
 	for k, v := range headers {
 		req.Header.Set(k, v)
@@ -573,15 +572,25 @@ func (rt *RestTester) SendUserRequestWithHeaders(method, resource string, body s
 	return rt.Send(req)
 }
 
+// templateResource provides some convenience templates for standard values.
+//
+// * If there is a single database: {{.db}} refers to single db
+// * If there is only a single collection: {{.keyspace}} refers to a single collection, named or unamed
+// * If there are multiple collections, defined is {{.keyspace1}},{{.keyspace2}},...
 func (rt *RestTester) templateResource(resource string) string {
-	fmt.Println(resource)
 	tmpl, err := template.New("urltemplate").Parse(resource)
 	require.NoError(rt.TB, err)
 	data := make(map[string]string)
 	database := rt.GetDatabase()
+	if len(rt.ServerContext().AllDatabases()) == 1 {
+		data["db"] = rt.GetDatabase().Name
+	}
 	if len(database.CollectionByID) == 1 {
 		data["keyspace"] = rt.GetSingleKeyspace()
-		data["db"] = rt.GetDatabase().Name
+	} else {
+		for i, keyspace := range rt.GetKeyspaces() {
+			data[fmt.Sprintf("keyspace%d", i+1)] = keyspace
+		}
 	}
 	var uri bytes.Buffer
 	err = tmpl.Execute(&uri, data)
@@ -754,7 +763,7 @@ func (rt *RestTester) SendAdminRequest(method, resource string, body string) *Te
 }
 
 func (rt *RestTester) SendUserRequest(method, resource string, body string, username string) *TestResponse {
-	return rt.Send(RequestByUser(method, resource, body, username))
+	return rt.Send(RequestByUser(method, rt.templateResource(resource), body, username))
 }
 
 func (rt *RestTester) WaitForNUserViewResults(numResultsExpected int, viewUrlPath string, user auth.User, password string) (viewResult sgbucket.ViewResult, err error) {
@@ -2100,8 +2109,8 @@ func getRESTKeyspace(_ testing.TB, dbName string, collection *db.DatabaseCollect
 	return strings.Join([]string{dbName, collection.ScopeName(), collection.Name()}, base.ScopeCollectionSeparator)
 }
 
-// getKeyspaces returns the names of all the keyspaces on the rest tester. Currently assumes a single database.
-func (rt *RestTester) getKeyspaces() []string {
+// GetKeyspaces returns the names of all the keyspaces on the rest tester. Currently assumes a single database.
+func (rt *RestTester) GetKeyspaces() []string {
 	db := rt.GetDatabase()
 	var keyspaces []string
 	for _, collection := range db.CollectionByID {
