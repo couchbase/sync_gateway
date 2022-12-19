@@ -44,7 +44,7 @@ func TestGetGoCBConnString(t *testing.T) {
 			bucketSpec: BucketSpec{
 				Server: "http://localhost:8091",
 			},
-			expectedConnStr: "http://localhost:8091?idle_http_connection_timeout=90000&kv_pool_size=2&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
+			expectedConnStr: "http://localhost:8091?dcp_buffer_size=20971520&idle_http_connection_timeout=90000&kv_buffer_size=20971520&kv_pool_size=2&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
 		},
 		{
 			name: "v2 no CA cert path",
@@ -52,7 +52,7 @@ func TestGetGoCBConnString(t *testing.T) {
 				Server:               "http://localhost:8091?custom=true&kv_pool_size=3",
 				ViewQueryTimeoutSecs: &queryTimeout,
 			},
-			expectedConnStr: "http://localhost:8091?custom=true&idle_http_connection_timeout=90000&kv_pool_size=3&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
+			expectedConnStr: "http://localhost:8091?custom=true&dcp_buffer_size=20971520&idle_http_connection_timeout=90000&kv_buffer_size=20971520&kv_pool_size=3&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
 		},
 		{
 			name: "v2 all values",
@@ -63,7 +63,7 @@ func TestGetGoCBConnString(t *testing.T) {
 				Keypath:              "/my/key/path",
 				CACertPath:           "./myCACertPath",
 			},
-			expectedConnStr: "http://localhost:8091?ca_cert_path=.%2FmyCACertPath&custom=true&idle_http_connection_timeout=90000&kv_pool_size=3&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
+			expectedConnStr: "http://localhost:8091?ca_cert_path=.%2FmyCACertPath&custom=true&dcp_buffer_size=20971520&idle_http_connection_timeout=90000&kv_buffer_size=20971520&kv_pool_size=3&max_idle_http_connections=64000&max_perhost_idle_http_connections=256",
 		},
 	}
 

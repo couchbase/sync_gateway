@@ -12,7 +12,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	gocbconnstr "github.com/couchbase/gocbcore/v10/connstr"
+	"net/url"
 	"reflect"
+	"strconv"
 	"sync"
 	"time"
 
@@ -32,6 +35,8 @@ type BootstrapConnection interface {
 	UpdateConfig(bucket, groupID string, updateCallback func(rawBucketConfig []byte, rawBucketConfigCas uint64) (updatedConfig []byte, err error)) (newCAS uint64, err error)
 	// Close releases any long-lived connections
 	Close()
+
+	SetConnectionStringServerless() error
 }
 
 // CouchbaseCluster is a GoCBv2 implementation of BootstrapConnection
@@ -124,6 +129,34 @@ func NewCouchbaseCluster(server, username, password,
 	}
 
 	return cbCluster, nil
+}
+
+func (cc *CouchbaseCluster) SetConnectionStringServerless() error {
+	connSpec, err := gocbconnstr.Parse(cc.server)
+	if err != nil {
+		return err
+	}
+	if connSpec.Options == nil {
+		connSpec.Options = map[string][]string{}
+	}
+
+	asValues := url.Values(connSpec.Options)
+
+	fromConnStr := asValues.Get("kv_pool_size")
+	if fromConnStr == "" {
+		asValues.Set("kv_pool_size", strconv.Itoa(DefaultGocbKvPoolSizeServerless))
+	}
+	fromConnStr = asValues.Get("kv_buffer_size")
+	if fromConnStr == "" {
+		asValues.Set("kv_buffer_size", strconv.Itoa(DefaultKvBufferSizeServerless))
+	}
+	fromConnStr = asValues.Get("dcp_buffer_size")
+	if fromConnStr == "" {
+		asValues.Set("dcp_buffer_size", strconv.Itoa(DefaultDCPBufferServerless))
+	}
+	connSpec.Options = asValues
+	cc.server = connSpec.String()
+	return nil
 }
 
 // connect attempts to open a gocb.Cluster connection. Callers will be responsible for closing the connection.
