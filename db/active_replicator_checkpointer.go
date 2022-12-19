@@ -131,7 +131,10 @@ func (c *Checkpointer) AddProcessedSeqIDAndRev(seq *SequenceID, idAndRev IDAndRe
 	c.lock.Lock()
 
 	if seq == nil {
-		foundSeq, _ := c.idAndRevLookup[idAndRev]
+		foundSeq, ok := c.idAndRevLookup[idAndRev]
+		if !ok {
+			base.WarnfCtx(c.ctx, "Unable to find matching sequence for %q / %q", base.UD(idAndRev.DocID), idAndRev.RevID)
+		}
 		seq = &foundSeq
 	}
 	// should remove entry in the map even if we have a seq available
@@ -244,7 +247,7 @@ func (c *Checkpointer) Stats() CheckpointerStats {
 
 // _updateCheckpointLists determines the highest checkpointable sequence, and trims the processedSeqs/expectedSeqs lists up to this point.
 func (c *Checkpointer) _updateCheckpointLists() (safeSeq *SequenceID) {
-	base.TracefCtx(c.ctx, base.KeyReplicate, "checkpointer: _updateCheckpointLists(expectedSeqs: %v, procssedSeqs: %v)", c.expectedSeqs, c.processedSeqs)
+	base.TracefCtx(c.ctx, base.KeyReplicate, "checkpointer: _updateCheckpointLists(expectedSeqs: %v, processedSeqs: %v)", c.expectedSeqs, c.processedSeqs)
 	base.TracefCtx(c.ctx, base.KeyReplicate, "Inside update checkpoint lists")
 
 	c.stats.ExpectedSequenceLen = len(c.expectedSeqs)
@@ -265,7 +268,7 @@ func (c *Checkpointer) _updateCheckpointLists() (safeSeq *SequenceID) {
 		base.TracefCtx(c.ctx, base.KeyReplicate, "checkpointer: _updateCheckpointLists removed seq %v from processedSeqs map", removeSeq)
 	}
 
-	// trim expectedSeqs list for all processed seqs
+	// trim expectedSeqs list from beginning up to first unprocessed seq
 	c.expectedSeqs = c.expectedSeqs[maxI+1:]
 
 	c.stats.ExpectedSequenceLenPostCleanup = len(c.expectedSeqs)
