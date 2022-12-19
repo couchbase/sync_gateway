@@ -15,6 +15,7 @@ on:
       - 'release/*'
       - 'CBG*'
       - 'ci-*'
+      - 'feature*'
   pull_request:
     branches:
       - 'master'
