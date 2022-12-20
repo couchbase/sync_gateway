@@ -1166,7 +1166,7 @@ func TestRemovingUserXattr(t *testing.T) {
 			name:       "GET",
 			autoImport: false,
 			importTrigger: func(t *testing.T, rt *RestTester, docKey string) {
-				resp := rt.SendAdminRequest("GET", "/db/"+docKey, "")
+				resp := rt.SendAdminRequest("GET", "/{{.keyspace}}/"+docKey, "")
 				RequireStatus(t, resp, http.StatusOK)
 			},
 		},
@@ -1174,7 +1174,7 @@ func TestRemovingUserXattr(t *testing.T) {
 			name:       "PUT",
 			autoImport: false,
 			importTrigger: func(t *testing.T, rt *RestTester, docKey string) {
-				resp := rt.SendAdminRequest("PUT", "/db/"+docKey, "{}")
+				resp := rt.SendAdminRequest("PUT", "/{{.keyspace}}/"+docKey, "{}")
 				RequireStatus(t, resp, http.StatusConflict)
 			},
 		},
@@ -1215,7 +1215,7 @@ func TestRemovingUserXattr(t *testing.T) {
 			}
 
 			// Initial PUT
-			resp := rt.SendAdminRequest("PUT", "/db/"+docKey, `{}`)
+			resp := rt.SendAdminRequest("PUT", "/{{.keyspace}}/"+docKey, `{}`)
 			RequireStatus(t, resp, http.StatusCreated)
 
 			// Add xattr
