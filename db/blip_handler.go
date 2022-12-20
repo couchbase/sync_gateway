@@ -519,7 +519,7 @@ func (bh *blipHandler) sendBatchOfChanges(sender *blip.Sender, changeArray [][]i
 			return err
 		}
 
-		handleChangesResponseDb := bh.copyContextDatabase()
+		handleChangesResponseDbCollection := bh.copyDatabaseCollectionWithUser(bh.collectionIdx)
 
 		sendTime := time.Now()
 		if !bh.sendBLIPMessage(sender, outrq) {
@@ -531,8 +531,8 @@ func (bh *blipHandler) sendBatchOfChanges(sender *blip.Sender, changeArray [][]i
 
 		bh.replicationStats.SendChangesCount.Add(int64(len(changeArray)))
 		// Spawn a goroutine to await the client's response:
-		go func(bh *blipHandler, sender *blip.Sender, response *blip.Message, changeArray [][]interface{}, sendTime time.Time, database *Database) {
-			if err := bh.handleChangesResponse(sender, response, changeArray, sendTime, database); err != nil {
+		go func(bh *blipHandler, sender *blip.Sender, response *blip.Message, changeArray [][]interface{}, sendTime time.Time, dbCollection *DatabaseCollectionWithUser) {
+			if err := bh.handleChangesResponse(sender, response, changeArray, sendTime, dbCollection); err != nil {
 				base.WarnfCtx(bh.loggingCtx, "Error from bh.handleChangesResponse: %v", err)
 				if bh.fatalErrorCallback != nil {
 					bh.fatalErrorCallback(err)
@@ -546,7 +546,7 @@ func (bh *blipHandler) sendBatchOfChanges(sender *blip.Sender, changeArray [][]i
 			}
 
 			atomic.AddInt64(&bh.changesPendingResponseCount, -1)
-		}(bh, sender, outrq.Response(), changeArray, sendTime, handleChangesResponseDb)
+		}(bh, sender, outrq.Response(), changeArray, sendTime, handleChangesResponseDbCollection)
 	} else {
 		outrq.SetNoReply(true)
 		if !bh.sendBLIPMessage(sender, outrq) {
