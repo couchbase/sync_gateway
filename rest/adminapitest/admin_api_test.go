@@ -2119,6 +2119,8 @@ func TestSwitchDbConfigCollectionName(t *testing.T) {
 	dataStore2Name, ok := base.AsDataStoreName(dataStore2)
 	require.True(t, ok)
 
+	keyspace1 := fmt.Sprintf("db.%s.%s", dataStore1Name.ScopeName(),
+		dataStore1Name.CollectionName())
 	resp := rest.BootstrapAdminRequest(t, http.MethodPut, "/db/", fmt.Sprintf(
 		`{"bucket": "%s", "scopes": {"%s": {"collections": {"%s": {}}}}, "num_index_replicas": 0, "enable_shared_bucket_access": true, "use_views": false}`,
 		tb.GetName(), dataStore1Name.ScopeName(), dataStore1Name.CollectionName(),
@@ -2126,7 +2128,7 @@ func TestSwitchDbConfigCollectionName(t *testing.T) {
 	resp.RequireStatus(http.StatusCreated)
 
 	// put a doc in db
-	resp = rest.BootstrapAdminRequest(t, http.MethodPut, "/{{.keyspace}}/10001", `{"type":"test_doc"}`)
+	resp = rest.BootstrapAdminRequest(t, http.MethodPut, "/"+keyspace1+"/10001", `{"type":"test_doc"}`)
 	resp.RequireStatus(http.StatusCreated)
 
 	// update config to another collection
@@ -2137,7 +2139,7 @@ func TestSwitchDbConfigCollectionName(t *testing.T) {
 	resp.RequireStatus(http.StatusCreated)
 
 	// put doc in new collection
-	resp = rest.BootstrapAdminRequest(t, http.MethodPut, "/{{.keyspace}}/10001", `{"type":"test_doc1"}`)
+	resp = rest.BootstrapAdminRequest(t, http.MethodPut, fmt.Sprintf("/db.%s.%s/10001", dataStore2Name.ScopeName(), dataStore2Name.CollectionName()), `{"type":"test_doc1"}`)
 	resp.RequireStatus(http.StatusCreated)
 
 	// update back to original collection config
@@ -2148,7 +2150,7 @@ func TestSwitchDbConfigCollectionName(t *testing.T) {
 	resp.RequireStatus(http.StatusCreated)
 
 	// put doc in original collection name
-	resp = rest.BootstrapAdminRequest(t, http.MethodPut, "/{{.keyspace}}/100", `{"type":"test_doc1"}`)
+	resp = rest.BootstrapAdminRequest(t, http.MethodPut, fmt.Sprintf("/%s/100", keyspace1), `{"type":"test_doc1"}`)
 	resp.RequireStatus(http.StatusCreated)
 }
 

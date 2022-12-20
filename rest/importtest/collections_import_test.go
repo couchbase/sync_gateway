@@ -52,6 +52,7 @@ func TestMultiCollectionImportFilter(t *testing.T) {
 	rt := rest.NewRestTesterMultipleCollections(t, rtConfig, numCollections)
 	defer rt.Close()
 
+	_ = rt.Bucket() // populates rest tester
 	dataStore1 := rt.TestBucket.GetNamedDataStore(0)
 	keyspace1 := "{{.keyspace1}}"
 	dataStore2 := rt.TestBucket.GetNamedDataStore(1)
@@ -128,7 +129,7 @@ func TestMultiCollectionImportFilter(t *testing.T) {
 	for _, keyspace := range []string{keyspace1, keyspace2} {
 		sgWriteBody := `{"type":"whatever I want - I'm writing through SG",
 	                 "channels": "ABC"}`
-		response = rt.SendAdminRequest(http.MethodPut, keyspace+"/"+nonMobileKey, sgWriteBody)
+		response = rt.SendAdminRequest(http.MethodPut, "/"+keyspace+"/"+nonMobileKey, sgWriteBody)
 		assert.Equal(t, 201, response.Code)
 		assertDocProperty(t, response, "id", "TestImportFilterInvalid")
 		assertDocProperty(t, response, "rev", "1-25c26cdf9d7771e07f00be1d13f7fb7c")

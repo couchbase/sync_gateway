@@ -577,15 +577,17 @@ func (rt *RestTester) templateResource(resource string) string {
 	tmpl, err := template.New("urltemplate").Parse(resource)
 	require.NoError(rt.TB, err)
 	data := make(map[string]string)
-	database := rt.GetDatabase()
 	if len(rt.ServerContext().AllDatabases()) == 1 {
 		data["db"] = rt.GetDatabase().Name
 	}
-	if len(database.CollectionByID) == 1 {
-		data["keyspace"] = rt.GetSingleKeyspace()
-	} else {
-		for i, keyspace := range rt.GetKeyspaces() {
-			data[fmt.Sprintf("keyspace%d", i+1)] = keyspace
+	database := rt.GetDatabase()
+	if database != nil {
+		if len(database.CollectionByID) == 1 {
+			data["keyspace"] = rt.GetSingleKeyspace()
+		} else {
+			for i, keyspace := range rt.GetKeyspaces() {
+				data[fmt.Sprintf("keyspace%d", i+1)] = keyspace
+			}
 		}
 	}
 	var uri bytes.Buffer
