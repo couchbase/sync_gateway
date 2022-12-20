@@ -177,8 +177,8 @@ func TestCheckpointerSafeSeq(t *testing.T) {
 			//    expected:  [2 4 6 8 9]
 			//    processed: [  4 6 8  ]
 			// can be safely compacted to:
-			//    expected:  [2 6 9]
-			//    processed: [  6  ]
+			//    expected:  [2 8 9]
+			//    processed: [  8  ]
 			name: "processed compaction non-sequential (out of order)",
 			c: &Checkpointer{
 				expectedSeqs:                   genExpectedForTest(t, "2", "1", "6", "8", "4", "9"),
@@ -187,8 +187,8 @@ func TestCheckpointerSafeSeq(t *testing.T) {
 			},
 			expectedSafeSeq:         &SequenceID{Seq: 1},
 			expectedExpectedSeqsIdx: 0,
-			expectedExpectedSeqs:    genExpectedForTest(t, "2", "6", "9"),
-			expectedProcessedSeqs:   genProcessedForTest(t, "6"),
+			expectedExpectedSeqs:    genExpectedForTest(t, "2", "8", "9"),
+			expectedProcessedSeqs:   genProcessedForTest(t, "8"),
 		},
 		{
 			name: "multiple skipped processed compaction",
