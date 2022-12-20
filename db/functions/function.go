@@ -13,6 +13,8 @@ package functions
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"os"
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
@@ -105,12 +107,10 @@ func CompileFunctions(fnConfig *FunctionsConfig, gqConfig *GraphQLConfig, vms *j
 	if fnConfig == nil && gqConfig == nil {
 		return
 	}
+	if gqConfig, err = readSchema(gqConfig); err != nil {
+		return
+	}
 
-	// var vms js.VMPool
-	// vms.Init(kMaxCachedV8Environments)
-	// if err != nil {
-	// 	return nil, nil, err
-	// }
 	service := js.NewCustomService(vms, "functions", makeService(fnConfig, gqConfig))
 
 	if fnConfig != nil {
@@ -160,6 +160,10 @@ func newStandaloneEvaluator(ctx context.Context, fnConfig *FunctionsConfig, gqCo
 
 // Validates a FunctionsConfig & GraphQLConfig.
 func ValidateFunctions(ctx context.Context, fnConfig *FunctionsConfig, gqConfig *GraphQLConfig) error {
+	gqConfig, err := readSchema(gqConfig)
+	if err != nil {
+		return err
+	}
 	eval, vm, err := newStandaloneEvaluator(ctx, fnConfig, gqConfig, &databaseDelegate{ctx: ctx})
 	if err == nil && eval != nil {
 		eval.close()
@@ -240,6 +244,30 @@ func (inv *functionInvocation) RunAsJSON() ([]byte, error) {
 }
 
 //////// GRAPHQLIMPL
+
+// If the config's SchemaFile is set, reads the file and puts its contents into Schema.
+// Returns a _copy_ of the config, to avoid mutating the original.
+func readSchema(gq *GraphQLConfig) (*GraphQLConfig, error) {
+	if gq == nil {
+		return gq, nil
+	} else if gq.SchemaFile != nil {
+		// Read schema file:
+		if gq.Schema != nil {
+			return nil, fmt.Errorf("GraphQL: can't give both `schema` and `schemaFile`")
+		} else if schema, err := os.ReadFile(*gq.SchemaFile); err != nil {
+			return nil, fmt.Errorf("GraphQL: can't read schema file %s: %w", *gq.SchemaFile, err)
+		} else {
+			mutConfig := *gq
+			mutConfig.Schema = base.StringPtr(string(schema))
+			mutConfig.SchemaFile = nil
+			return &mutConfig, nil
+		}
+	} else if gq.Schema != nil {
+		return gq, nil
+	} else {
+		return nil, fmt.Errorf("GraphQL: either `schema` or `schemaFile` must be given")
+	}
+}
 
 // Implementation of db.graphQLImpl interface.
 type graphQLImpl struct {
