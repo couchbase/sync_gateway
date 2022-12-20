@@ -1115,7 +1115,8 @@ func TestFunkyUsernames(t *testing.T) {
 			defer rt.Close()
 
 			ctx := rt.Context()
-			a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
+			database := rt.ServerContext().Database(ctx, "db")
+			a := database.Authenticator(ctx)
 
 			// Create a test user
 			user, err := a.NewUser(tc.UserName, "letmein", channels.BaseSetOf(t, "foo"))
@@ -1126,7 +1127,7 @@ func TestFunkyUsernames(t *testing.T) {
 			RequireStatus(t, response, 201)
 
 			// _all_docs only works when EnableStarChannelLog is set to true
-			if db.EnableStarChannelLog {
+			if database.Options.EnableStarChannel {
 				response = rt.Send(RequestByUser("GET", "/db/_all_docs", "", tc.UserName))
 				RequireStatus(t, response, 200)
 			}

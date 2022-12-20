@@ -60,10 +60,6 @@ func TestPublicChanGuestAccess(t *testing.T) {
 
 func TestStarAccess(t *testing.T) {
 
-	if !db.EnableStarChannelLog {
-		t.Skip("This test requires StarChannel to be enabled")
-	}
-
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyChanges)
 
 	type allDocsRow struct {
@@ -86,6 +82,11 @@ func TestStarAccess(t *testing.T) {
 	// Create some docs:
 	rt := NewRestTesterDefaultCollection(t, nil) // CBG-2618: fix collection channel access
 	defer rt.Close()
+
+	database := rt.ServerContext().Database(rt.Context(), "db")
+	if !database.Options.EnableStarChannel {
+		t.Skip("This test requires StarChannel to be enabled")
+	}
 
 	a := auth.NewAuthenticator(rt.MetadataStore(), nil, auth.DefaultAuthenticatorOptions())
 	var changes struct {
@@ -565,12 +566,15 @@ func TestBulkDocsChangeToAccess(t *testing.T) {
 
 // Test _all_docs API call under different security scenarios
 func TestAllDocsAccessControl(t *testing.T) {
-	if !db.EnableStarChannelLog {
-		t.Skip("This test requires StarChannel to be enabled")
-	}
 
 	rt := NewRestTesterDefaultCollection(t, nil) // CBG-2618: fix collection channel access
 	defer rt.Close()
+
+	database := rt.ServerContext().Database(rt.Context(), "db")
+	if !database.Options.EnableStarChannel {
+		t.Skip("This test requires StarChannel to be enabled")
+	}
+
 	type allDocsRow struct {
 		ID    string `json:"id"`
 		Key   string `json:"key"`

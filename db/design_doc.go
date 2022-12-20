@@ -342,7 +342,7 @@ func stripSyncProperty(row *sgbucket.ViewRow) {
 	}
 }
 
-func InitializeViews(ctx context.Context, ds sgbucket.DataStore) error {
+func InitializeViews(ctx context.Context, ds sgbucket.DataStore, enableStarChannel bool) error {
 	collection, ok := ds.(*base.Collection)
 	if ok && !collection.IsDefaultScopeCollection() {
 		return fmt.Errorf("Can not initialize views on a non default collection")
@@ -359,7 +359,7 @@ func InitializeViews(ctx context.Context, ds sgbucket.DataStore) error {
 	// If not present, install design docs and views
 	if !ddocsExist {
 		base.InfofCtx(ctx, base.KeyAll, "Design docs for current view version (%s) do not exist - creating...", DesignDocVersion)
-		if err := installViews(ctx, viewStore); err != nil {
+		if err := installViews(ctx, viewStore, enableStarChannel); err != nil {
 			return err
 		}
 	}
@@ -385,7 +385,7 @@ func checkExistingDDocs(ctx context.Context, viewStore sgbucket.ViewStore) bool 
 	return false
 }
 
-func installViews(ctx context.Context, viewStore sgbucket.ViewStore) error {
+func installViews(ctx context.Context, viewStore sgbucket.ViewStore, enableStarChannel bool) error {
 
 	// syncData specifies the path to Sync Gateway sync metadata used in the map function -
 	// in the document body when xattrs available, in the mobile xattr when xattrs enabled.
@@ -492,7 +492,7 @@ func installViews(ctx context.Context, viewStore sgbucket.ViewStore) error {
 						}
 					}`
 
-	channels_map = fmt.Sprintf(channels_map, syncData, base.SyncDocPrefix, ch.Deleted, EnableStarChannelLog,
+	channels_map = fmt.Sprintf(channels_map, syncData, base.SyncDocPrefix, ch.Deleted, enableStarChannel,
 		ch.Removed|ch.Deleted, ch.Removed)
 
 	// Channel access view, used by ComputeChannelsForPrincipal()

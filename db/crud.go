@@ -2225,7 +2225,7 @@ func (db *DatabaseCollectionWithUser) getChannelsAndAccess(ctx context.Context, 
 
 		var output *channels.ChannelMapperOutput
 		output, err = db.channelMapper().MapToChannelsAndAccess(body, oldJson, metaMap,
-			MakeUserCtx(db.user, db.ScopeName(), db.Name()), !EnableStarChannelLog)
+			MakeUserCtx(db.user, db.ScopeName(), db.Name()), db.dbCtx.Options.EnableStarChannel)
 
 		db.dbStats().Database().SyncFunctionTime.Add(time.Since(startTime).Nanoseconds())
 
@@ -2264,7 +2264,7 @@ func (db *DatabaseCollectionWithUser) getChannelsAndAccess(ctx context.Context, 
 				base.WarnfCtx(ctx, "Channel names must be string values only. Ignoring non-string channels: %s", base.UD(nonStrings))
 			}
 
-			if !EnableStarChannelLog {
+			if !db.dbCtx.Options.EnableStarChannel {
 				array = append(array, channels.UserStarChannel)
 			}
 			result, err = channels.SetFromArray(array, channels.KeepStar)

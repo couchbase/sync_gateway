@@ -870,12 +870,14 @@ func TestPurgeWithSomeInvalidDocs(t *testing.T) {
 }
 
 func TestRawRedaction(t *testing.T) {
-	if !db.EnableStarChannelLog {
-		t.Skip("This test requires StarChannel to be enabled")
-	}
 
 	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
+
+	database := rt.ServerContext().Database(rt.Context(), "db")
+	if !database.Options.EnableStarChannel {
+		t.Skip("This test requires StarChannel to be enabled")
+	}
 
 	res := rt.SendAdminRequest("PUT", "/db/testdoc", `{"foo":"bar", "channels": ["achannel"]}`)
 	rest.RequireStatus(t, res, http.StatusCreated)

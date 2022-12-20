@@ -368,13 +368,13 @@ func TestDocDeletionFromChannelCoalesced(t *testing.T) {
 }
 
 func TestActiveOnlyCacheUpdate(t *testing.T) {
-	if !EnableStarChannelLog {
-		t.Skip("This test requires StarChannel to be enabled")
-	}
-
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 	collection := db.GetSingleDatabaseCollectionWithUser()
+
+	if !db.Options.EnableStarChannel {
+		t.Skip("This test requires StarChannel to be enabled")
+	}
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyChanges, base.KeyCache)
 	// Create 10 documents

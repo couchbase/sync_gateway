@@ -170,6 +170,7 @@ type DatabaseContextOptions struct {
 	skipRegisterImportPIndex      bool                  // if set, skips the global gocb PIndex registration
 	MetadataStore                 base.DataStore        // If set, use this location/connection for SG metadata storage - if not set, metadata is stored using the same location/connection as the bucket used for data storage.
 	DefaultCollectionImportFilter *ImportFilterFunction // Opt-in filter for document import, for when collections are not supported
+	EnableStarChannel             bool
 }
 
 type ScopesOptions map[string]ScopeOptions

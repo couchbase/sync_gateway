@@ -879,9 +879,6 @@ func TestChangesFromCompoundSinceViaDocGrant(t *testing.T) {
 // Reproduces CBG-1113 and #1329 (even with the fix in PR #1360)
 // Tests all combinations of HTTP feed types, admin/non-admin, and with and without a manual notify to wake up.
 func TestChangeWaiterExitOnChangesTermination(t *testing.T) {
-	if !db.EnableStarChannelLog {
-		t.Skip("This test requires StarChannel to be enabled")
-	}
 
 	base.LongRunningTest(t)
 
@@ -923,6 +920,11 @@ func TestChangeWaiterExitOnChangesTermination(t *testing.T) {
 
 			rt := rest.NewRestTester(t, nil)
 			defer rt.Close()
+
+			database := rt.ServerContext().Database(rt.Context(), "db")
+			if !database.Options.EnableStarChannel {
+				t.Skip("This test requires StarChannel to be enabled")
+			}
 
 			activeCaughtUpStatWaiter := rt.GetDatabase().NewStatWaiter(rt.GetDatabase().DbStats.CBLReplicationPull().NumPullReplCaughtUp, t)
 			totalCaughtUpStatWaiter := rt.GetDatabase().NewStatWaiter(rt.GetDatabase().DbStats.CBLReplicationPull().NumPullReplTotalCaughtUp, t)
@@ -1195,9 +1197,6 @@ func TestChangesLoopingWhenLowSequenceOneShotUser(t *testing.T) {
 // subsequent requests for the current low sequence value don't return results (avoids loops for
 // longpoll as well as clients doing repeated one-off changes requests - see #1309)
 func TestChangesLoopingWhenLowSequenceOneShotAdmin(t *testing.T) {
-	if !db.EnableStarChannelLog {
-		t.Skip("This test requires StarChannel to be enabled")
-	}
 
 	if base.TestUseXattrs() {
 		t.Skip("This test cannot run in xattr mode until WriteDirect() is updated.  See https://github.com/couchbase/sync_gateway/issues/2666#issuecomment-311183219")
@@ -1226,6 +1225,9 @@ func TestChangesLoopingWhenLowSequenceOneShotAdmin(t *testing.T) {
 	ctx := rt.Context()
 	testDb := rt.ServerContext().Database(ctx, "db")
 
+	if !testDb.Options.EnableStarChannel {
+		t.Skip("This test requires StarChannel to be enabled")
+	}
 	// Simulate 5 non-skipped writes (seq 1,2,3,4,5)
 	WriteDirect(testDb, []string{"PBS"}, 1)
 	WriteDirect(testDb, []string{"PBS"}, 2)

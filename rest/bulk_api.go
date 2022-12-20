@@ -28,7 +28,9 @@ import (
 // HTTP handler for _all_docs
 func (h *handler) handleAllDocs() error {
 
-	if !db.EnableStarChannelLog {
+	dbName := h.db.Bucket.GetName()
+
+	if h.server.databases_[dbName] != nil && !h.server.databases_[dbName].Options.EnableStarChannel {
 		return base.HTTPErrorf(http.StatusBadRequest, "_all_docs endpoint is only available when '*' Channel is enabled. set 'cache.channel_cache.enable_star_channel':true in Sync Gateway's database config.")
 	}
 

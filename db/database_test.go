@@ -794,10 +794,6 @@ func allDocIDs(ctx context.Context, collection *DatabaseCollection) (docs []AllD
 }
 
 func TestAllDocsOnly(t *testing.T) {
-	if !EnableStarChannelLog {
-		t.Skip("This test requires StarChannel to be enabled")
-	}
-
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyCache)
 
 	// Lower the log max length so no more than 50 items will be kept.
@@ -806,6 +802,11 @@ func TestAllDocsOnly(t *testing.T) {
 
 	db, ctx := setupTestDBWithCacheOptions(t, cacheOptions)
 	defer db.Close(ctx)
+
+	if !db.Options.EnableStarChannel {
+		t.Skip("This test requires StarChannel to be enabled")
+	}
+
 	collection := db.GetSingleDatabaseCollectionWithUser()
 
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
@@ -1361,14 +1362,15 @@ func TestAllowConflictsFalseTombstoneExistingConflictNewEditsFalse(t *testing.T)
 }
 
 func TestSyncFnOnPush(t *testing.T) {
-	if !EnableStarChannelLog {
-		t.Skip("This test requires StarChannel to be enabled")
-	}
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	collection := db.GetSingleDatabaseCollectionWithUser()
 
+	if !db.Options.EnableStarChannel {
+		t.Skip("This test requires StarChannel to be enabled")
+	}
+
+	collection := db.GetSingleDatabaseCollectionWithUser()
 	db.ChannelMapper = channels.NewChannelMapper(`function(doc, oldDoc) {
 		log("doc _id = "+doc._id+", _rev = "+doc._rev);
 		if (oldDoc)
@@ -1721,12 +1723,13 @@ func TestRecentSequenceHistory(t *testing.T) {
 }
 
 func TestChannelView(t *testing.T) {
-	if !EnableStarChannelLog {
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
+
+	if !db.Options.EnableStarChannel {
 		t.Skip("This test requires StarChannel to be enabled")
 	}
 
-	db, ctx := setupTestDB(t)
-	defer db.Close(ctx)
 	collection := db.GetSingleDatabaseCollectionWithUser()
 	collectionID := collection.GetCollectionID()
 

@@ -3685,9 +3685,6 @@ func TestActiveReplicatorPullPurgeOnRemoval(t *testing.T) {
 //   - Publishes the REST API on a httptest server for the passive node (so the active can connect to it)
 //   - Uses an ActiveReplicator configured for pull to start pulling changes from rt2.
 func TestActiveReplicatorPullConflict(t *testing.T) {
-	if !db.EnableStarChannelLog {
-		t.Skip("This test requires StarChannel to be enabled")
-	}
 
 	base.LongRunningTest(t)
 
@@ -3819,6 +3816,11 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 			defer rt1.Close()
 			ctx1 := rt1.Context()
 
+			database := rt1.ServerContext().Database(ctx1, "db")
+			if !database.Options.EnableStarChannel {
+				t.Skip("This test requires StarChannel to be enabled")
+			}
+
 			// Create revision on rt1 (local)
 			resp, err = rt1.PutDocumentWithRevID(docID, test.localRevID, "", test.localRevisionBody)
 			assert.NoError(t, err)
@@ -3921,10 +3923,6 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 //   - Uses an ActiveReplicator configured for pushAndPull from rt2.
 //   - verifies expected conflict resolution, and that expected result is replicated to both peers
 func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
-	if !db.EnableStarChannelLog {
-		t.Skip("This test requires StarChannel to be enabled")
-	}
-
 	base.LongRunningTest(t)
 
 	// scenarios
@@ -4053,6 +4051,11 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 				})
 			defer rt1.Close()
 			ctx1 := rt1.Context()
+
+			database := rt1.ServerContext().Database(ctx1, "db")
+			if !database.Options.EnableStarChannel {
+				t.Skip("This test requires StarChannel to be enabled")
+			}
 
 			// Create revision on rt1 (local)
 			if test.commonAncestorRevID != "" {
@@ -5599,10 +5602,6 @@ func TestActiveReplicatorReconnectSendActions(t *testing.T) {
 //   - Publishes the REST API on a httptest server for the passive node (so the active can connect to it)
 //   - Uses an ActiveReplicator configured for pull to start pulling changes from rt2.
 func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
-	if !db.EnableStarChannelLog {
-		t.Skip("This test requires StarChannel to be enabled")
-	}
-
 	base.LongRunningTest(t)
 
 	createRevID := func(generation int, parentRevID string, body db.Body) string {
@@ -5917,10 +5916,6 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 	}
 }
 func TestSGR2TombstoneConflictHandling(t *testing.T) {
-	if !db.EnableStarChannelLog {
-		t.Skip("This test requires StarChannel to be enabled")
-	}
-
 	base.LongRunningTest(t)
 
 	base.RequireNumTestBuckets(t, 2)
@@ -6054,6 +6049,11 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 					SgReplicateEnabled: true,
 				})
 			defer localActiveRT.Close()
+
+			database := localActiveRT.ServerContext().Database(localActiveRT.Context(), "db")
+			if !database.Options.EnableStarChannel {
+				t.Skip("This test requires StarChannel to be enabled")
+			}
 
 			replConf := `
 			{
@@ -6975,10 +6975,6 @@ func TestReplicatorConflictAttachment(t *testing.T) {
 	}
 }
 func TestConflictResolveMergeWithMutatedRev(t *testing.T) {
-	if !db.EnableStarChannelLog {
-		t.Skip("This test requires StarChannel to be enabled")
-	}
-
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	base.RequireNumTestBuckets(t, 2)
@@ -6994,6 +6990,11 @@ func TestConflictResolveMergeWithMutatedRev(t *testing.T) {
 		})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
+
+	database := rt1.ServerContext().Database(ctx1, "db")
+	if !database.Options.EnableStarChannel {
+		t.Skip("This test requires StarChannel to be enabled")
+	}
 
 	srv := httptest.NewServer(rt2.TestAdminHandler())
 	defer srv.Close()
@@ -7351,10 +7352,6 @@ func TestReplicatorIgnoreRemovalBodies(t *testing.T) {
 // CBG-1995: Test the support for using an underscore prefix in the top-level body of a document
 // Tests replication and Rest API
 func TestUnderscorePrefixSupport(t *testing.T) {
-	if !db.EnableStarChannelLog {
-		t.Skip("This test requires StarChannel to be enabled")
-	}
-
 	base.RequireNumTestBuckets(t, 2)
 
 	// Passive //
@@ -7369,6 +7366,11 @@ func TestUnderscorePrefixSupport(t *testing.T) {
 	activeRT := rest.NewRestTesterDefaultCollection(t, nil) // CBG-2319: replicator currently requires default collection
 	defer activeRT.Close()
 	activeCtx := activeRT.Context()
+
+	database := activeRT.ServerContext().Database(activeCtx, "db")
+	if !database.Options.EnableStarChannel {
+		t.Skip("This test requires StarChannel to be enabled")
+	}
 
 	// Create the document
 	docID := t.Name()

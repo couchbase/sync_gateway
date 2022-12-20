@@ -1094,10 +1094,6 @@ func TestResponseEncoding(t *testing.T) {
 }
 
 func TestAllDocsChannelsAfterChannelMove(t *testing.T) {
-	if !db.EnableStarChannelLog {
-		t.Skip("This test requires StarChannel to be enabled")
-	}
-
 	type allDocsRow struct {
 		ID    string `json:"id"`
 		Key   string `json:"key"`
@@ -1118,6 +1114,11 @@ func TestAllDocsChannelsAfterChannelMove(t *testing.T) {
 	rtConfig := RestTesterConfig{SyncFn: `function(doc) {channel(doc.channels)}`}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
+
+	database := rt.ServerContext().Database(rt.Context(), "db")
+	if !database.Options.EnableStarChannel {
+		t.Skip("This test requires StarChannel to be enabled")
+	}
 
 	ctx := rt.Context()
 	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
@@ -2394,6 +2395,8 @@ func TestDocumentChannelHistory(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
+	database := rt.ServerContext().Database(rt.Context(), "db")
+
 	var body db.Body
 
 	// Create doc in channel test and ensure a single channel history entry with only a start sequence
@@ -2406,7 +2409,7 @@ func TestDocumentChannelHistory(t *testing.T) {
 	assert.NoError(t, err)
 
 	// when db.EnableStarChannelLog=false, we add '*' channel manually in sync function
-	if db.EnableStarChannelLog {
+	if database.Options.EnableStarChannel {
 		require.Len(t, syncData.ChannelSet, 1)
 	} else {
 		require.Len(t, syncData.ChannelSet, 2)
@@ -2424,7 +2427,7 @@ func TestDocumentChannelHistory(t *testing.T) {
 	syncData, err = rt.GetDatabase().GetSingleDatabaseCollection().GetDocSyncData(base.TestCtx(t), "doc")
 	assert.NoError(t, err)
 
-	if db.EnableStarChannelLog {
+	if database.Options.EnableStarChannel {
 		require.Len(t, syncData.ChannelSet, 1)
 	} else {
 		require.Len(t, syncData.ChannelSet, 2)
@@ -2441,8 +2444,8 @@ func TestDocumentChannelHistory(t *testing.T) {
 	assert.NoError(t, err)
 	syncData, err = rt.GetDatabase().GetSingleDatabaseCollection().GetDocSyncData(base.TestCtx(t), "doc")
 	assert.NoError(t, err)
-	// when db.EnableStarChannelLog=false, we add '*' channel manually in sync function
-	if db.EnableStarChannelLog {
+	// when database.Options.EnableStarChannel=false, we add '*' channel manually in sync function
+	if database.Options.EnableStarChannel {
 		require.Len(t, syncData.ChannelSet, 2)
 	} else {
 		require.Len(t, syncData.ChannelSet, 3)
@@ -2454,14 +2457,15 @@ func TestDocumentChannelHistory(t *testing.T) {
 }
 
 func TestChannelHistoryLegacyDoc(t *testing.T) {
-	if !db.EnableStarChannelLog {
-		t.Skip("This test requires StarChannel to be enabled")
-	}
-
 	defer db.SuspendSequenceBatching()()
 
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
+
+	database := rt.ServerContext().Database(rt.Context(), "db")
+	if !database.Options.EnableStarChannel {
+		t.Skip("This test requires StarChannel to be enabled")
+	}
 
 	docData := `
 	{

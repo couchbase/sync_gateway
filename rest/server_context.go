@@ -26,11 +26,11 @@ import (
 	"sync/atomic"
 	"time"
 
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/db/functions"
 
 	"github.com/couchbase/gocbcore/v10"
-	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 )
@@ -449,60 +449,6 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		useViews = true
 	}
 
-	// initDataStore is a function to initialize Views or GSI indexes for a datastore
-	initDataStore := func(ds base.DataStore) error {
-		if useViews {
-			return db.InitializeViews(ctx, ds)
-		}
-
-		gsiSupported := bucket.IsSupported(sgbucket.BucketStoreFeatureN1ql)
-		if !gsiSupported {
-			return errors.New("Sync Gateway was unable to connect to a query node on the provided Couchbase Server cluster.  Ensure a query node is accessible, or set 'use_views':true in Sync Gateway's database config.")
-		}
-
-		numReplicas := DefaultNumIndexReplicas
-		if config.NumIndexReplicas != nil {
-			numReplicas = *config.NumIndexReplicas
-		}
-		n1qlStore, ok := base.AsN1QLStore(ds)
-		if !ok {
-			return errors.New("Cannot create indexes on non-Couchbase data store.")
-
-		}
-		indexErr := db.InitializeIndexes(n1qlStore, config.UseXattrs(), numReplicas, false, sc.Config.IsServerless())
-		if indexErr != nil {
-			return indexErr
-		}
-
-		return nil
-	}
-
-	if len(config.Scopes) > 0 {
-		if !bucket.IsSupported(sgbucket.BucketStoreFeatureCollections) {
-			return nil, errCollectionsUnsupported
-		}
-
-		for scopeName, scopeConfig := range config.Scopes {
-			for collectionName, _ := range scopeConfig.Collections {
-				dataStore := bucket.NamedDataStore(base.ScopeAndCollectionName{Scope: scopeName, Collection: collectionName})
-
-				// Check if scope/collection specified exists. Will enter retry loop if connection unsuccessful
-				if err := base.WaitUntilDataStoreExists(dataStore); err != nil {
-					return nil, fmt.Errorf("attempting to create/update database with a scope/collection that is not found")
-				}
-
-				if err := initDataStore(dataStore); err != nil {
-					return nil, err
-				}
-			}
-		}
-	} else {
-		// no scopes configured - init the default data store
-		if err := initDataStore(bucket.DefaultDataStore()); err != nil {
-			return nil, err
-		}
-	}
-
 	// Process unsupported config options or store runtime defaults if not set
 	if config.Unsupported == nil {
 		config.Unsupported = &db.UnsupportedOptions{}
@@ -600,6 +546,60 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	dbcontext.BucketSpec = spec
 	dbcontext.ServerContextHasStarted = sc.hasStarted
 	dbcontext.NoX509HTTPClient = sc.NoX509HTTPClient
+
+	// initDataStore is a function to initialize Views or GSI indexes for a datastore
+	initDataStore := func(ds base.DataStore) error {
+		if useViews {
+			return db.InitializeViews(ctx, ds, dbcontext.Options.EnableStarChannel)
+		}
+
+		gsiSupported := bucket.IsSupported(sgbucket.BucketStoreFeatureN1ql)
+		if !gsiSupported {
+			return errors.New("Sync Gateway was unable to connect to a query node on the provided Couchbase Server cluster.  Ensure a query node is accessible, or set 'use_views':true in Sync Gateway's database config.")
+		}
+
+		numReplicas := DefaultNumIndexReplicas
+		if config.NumIndexReplicas != nil {
+			numReplicas = *config.NumIndexReplicas
+		}
+		n1qlStore, ok := base.AsN1QLStore(ds)
+		if !ok {
+			return errors.New("Cannot create indexes on non-Couchbase data store.")
+
+		}
+		indexErr := db.InitializeIndexes(n1qlStore, config.UseXattrs(), numReplicas, false, sc.Config.IsServerless(), dbcontext.Options.EnableStarChannel)
+		if indexErr != nil {
+			return indexErr
+		}
+
+		return nil
+	}
+
+	if len(config.Scopes) > 0 {
+		if !bucket.IsSupported(sgbucket.BucketStoreFeatureCollections) {
+			return nil, errCollectionsUnsupported
+		}
+
+		for scopeName, scopeConfig := range config.Scopes {
+			for collectionName, _ := range scopeConfig.Collections {
+				dataStore := bucket.NamedDataStore(base.ScopeAndCollectionName{Scope: scopeName, Collection: collectionName})
+
+				// Check if scope/collection specified exists. Will enter retry loop if connection unsuccessful
+				if err := base.WaitUntilDataStoreExists(dataStore); err != nil {
+					return nil, fmt.Errorf("attempting to create/update database with a scope/collection that is not found")
+				}
+
+				if err := initDataStore(dataStore); err != nil {
+					return nil, err
+				}
+			}
+		}
+	} else {
+		// no scopes configured - init the default data store
+		if err := initDataStore(bucket.DefaultDataStore()); err != nil {
+			return nil, err
+		}
+	}
 
 	syncFn := ""
 	if config.Sync != nil {
@@ -715,6 +715,8 @@ func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConf
 	for _, warnLog := range warnings {
 		base.WarnfCtx(ctx, warnLog)
 	}
+	enableStarChannel := true
+
 	// Set cache properties, if present
 	cacheOptions := db.DefaultCacheOptions()
 	revCacheOptions := db.DefaultRevisionCacheOptions()
@@ -732,6 +734,7 @@ func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConf
 			// set EnableStarChannelLog directly here (instead of via NewDatabaseContext), so that it's set when we create the channels view in ConnectToBucket
 			if config.CacheConfig.ChannelCacheConfig.EnableStarChannel != nil {
 				db.EnableStarChannelLog = *config.CacheConfig.ChannelCacheConfig.EnableStarChannel
+				enableStarChannel = *config.CacheConfig.ChannelCacheConfig.EnableStarChannel
 			}
 			if config.CacheConfig.ChannelCacheConfig.MaxLength != nil {
 				cacheOptions.ChannelCacheMaxLength = *config.CacheConfig.ChannelCacheConfig.MaxLength
@@ -920,6 +923,7 @@ func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConf
 		GroupID:                   groupID,
 		JavascriptTimeout:         javascriptTimeout,
 		Serverless:                sc.Config.IsServerless(),
+		EnableStarChannel:         enableStarChannel,
 		// UserQueries:               config.UserQueries,   // behind feature flag (see below)
 		// UserFunctions:             config.UserFunctions, // behind feature flag (see below)
 		// GraphQL:                   config.GraphQL,       // behind feature flag (see below)

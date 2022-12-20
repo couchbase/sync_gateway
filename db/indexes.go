@@ -345,7 +345,7 @@ func isAllDocsIndex(i SGIndex) bool {
 }
 
 // Initializes Sync Gateway indexes for bucket.  Creates required indexes if not found, then waits for index readiness.
-func InitializeIndexes(n1QLStore base.N1QLStore, useXattrs bool, numReplicas uint, failFast bool, isServerless bool) error {
+func InitializeIndexes(n1QLStore base.N1QLStore, useXattrs bool, numReplicas uint, failFast bool, isServerless bool, enableStarChannel bool) error {
 
 	base.InfofCtx(context.TODO(), base.KeyAll, "Initializing indexes with numReplicas: %d...", numReplicas)
 
@@ -353,8 +353,8 @@ func InitializeIndexes(n1QLStore base.N1QLStore, useXattrs bool, numReplicas uin
 	deferredIndexes := make([]string, 0)
 	for _, sgIndex := range sgIndexes {
 
-		// only create allDocs Index if EnableStarChannel is set to true
-		if isAllDocsIndex(sgIndex) && !EnableStarChannelLog {
+		// only create allDocs Index if enableStarChannel is set to true
+		if isAllDocsIndex(sgIndex) && !enableStarChannel {
 			base.DebugfCtx(context.TODO(), base.KeyAll, "Skipping index: %s because EnableStarChannel is set to %t...", sgIndex.simpleName, EnableStarChannelLog)
 			continue
 		}

@@ -33,9 +33,6 @@ import (
 // 4. Update doc in the test client and keep the same attachment stub.
 // 5. Have that update pushed via the continuous replication started in step 2
 func TestBlipPushPullV2AttachmentV2Client(t *testing.T) {
-	if !db.EnableStarChannelLog {
-		t.Skip("This test requires StarChannel to be enabled")
-	}
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 	rtConfig := RestTesterConfig{
@@ -50,6 +47,11 @@ func TestBlipPushPullV2AttachmentV2Client(t *testing.T) {
 	}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
+
+	database := rt.ServerContext().Database(rt.Context(), "db")
+	if !database.Options.EnableStarChannel {
+		t.Skip("This test requires StarChannel to be enabled")
+	}
 
 	opts := &BlipTesterClientOpts{}
 	opts.SupportedBLIPProtocols = []string{db.BlipCBMobileReplicationV2}
@@ -115,9 +117,6 @@ func TestBlipPushPullV2AttachmentV2Client(t *testing.T) {
 // 4. Update doc in the test client and keep the same attachment stub.
 // 5. Have that update pushed via the continuous replication started in step 2
 func TestBlipPushPullV2AttachmentV3Client(t *testing.T) {
-	if !db.EnableStarChannelLog {
-		t.Skip("This test requires StarChannel to be enabled")
-	}
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 	rtConfig := RestTesterConfig{
@@ -132,6 +131,11 @@ func TestBlipPushPullV2AttachmentV3Client(t *testing.T) {
 	}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
+
+	database := rt.ServerContext().Database(rt.Context(), "db")
+	if !database.Options.EnableStarChannel {
+		t.Skip("This test requires StarChannel to be enabled")
+	}
 
 	btc, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
 	require.NoError(t, err)

@@ -39,7 +39,7 @@ var SkippedSeqCleanViewBatch = 50 // Max number of sequences checked per query d
 
 // Enable keeping a channel-log for the "*" channel (channel.UserStarChannel). The only time this channel is needed is if
 // someone has access to "*" (e.g. admin-party) and tracks its changes feed.
-var EnableStarChannelLog = false
+var EnableStarChannelLog = true
 
 // Manages a cache of the recent change history of all channels.
 //
