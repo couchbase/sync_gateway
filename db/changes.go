@@ -346,8 +346,9 @@ func (db *DatabaseCollectionWithUser) wasDocInChannelPriorToRevocation(ctx conte
 
 	// Iterate over the channel history information on the document and find any periods where the doc was in the
 	// channel and the channel was accessible by the user
+	isStarChan := chanName == channels.UserStarChannel
 	for _, docHistoryEntry := range append(syncData.ChannelSet, syncData.ChannelSetHistory...) {
-		if docHistoryEntry.Name != chanName {
+		if !isStarChan && docHistoryEntry.Name != chanName {
 			continue
 		}
 
