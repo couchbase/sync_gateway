@@ -258,10 +258,6 @@ func (db *DatabaseCollectionWithUser) buildRevokedFeed(ctx context.Context, ch c
 						base.InfofCtx(ctx, base.KeyChanges, "Error getting sync data, seq: %v in channel %s, skipping document. Error: %v", seqID, base.UD(singleChannelCache.ChannelID()), err)
 						continue
 					}
-					if syncData.History == nil {
-						base.TracefCtx(ctx, base.KeyChanges, "Document history empty: %s, no revocation sent", base.UD(logEntry.DocID))
-						continue
-					}
 					requiresRevocation, err := db.wasDocInChannelPriorToRevocation(ctx, syncData, logEntry.DocID, singleChannelCache.ChannelID().Name, revocationSinceSeq)
 					if err != nil {
 						change := ChangeEntry{
