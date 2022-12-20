@@ -22,6 +22,8 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 )
 
+const defaultExpectedSeqCompactionThreshold = 100
+
 // Checkpointer implements replicator checkpointing, by keeping two lists of sequences. Those which we expect to be processing revs for (either push or pull), and a map for those which we have done so on.
 // Periodically (based on a time interval), these two lists are used to calculate the highest sequence number which we've not had a gap for yet, and send a SetCheckpoint message for this sequence.
 type Checkpointer struct {
@@ -87,7 +89,7 @@ func NewCheckpointer(ctx context.Context, clientID string, configHash string, bl
 		ctx:                            ctx,
 		stats:                          CheckpointerStats{},
 		statusCallback:                 statusCallback,
-		expectedSeqCompactionThreshold: 100,
+		expectedSeqCompactionThreshold: defaultExpectedSeqCompactionThreshold,
 	}
 }
 
