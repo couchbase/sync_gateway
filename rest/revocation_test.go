@@ -1868,9 +1868,10 @@ func TestReplicatorRevocationsWithStarChannel(t *testing.T) {
 	defer rt2.Close()
 
 	// Active
-	rt1 := NewRestTester(t, &RestTesterConfig{
-		CustomTestBucket: base.GetTestBucket(t),
-	})
+	rt1 := NewRestTesterDefaultCollection(t, //  CBG-2319: replicator currently requires default collection
+		&RestTesterConfig{
+			CustomTestBucket: base.GetTestBucket(t),
+		})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
 
