@@ -1455,6 +1455,7 @@ func (db *Database) Compact(ctx context.Context, skipRunningStateCheck bool, cal
 	for _, c := range db.CollectionByID {
 		// create admin collection interface
 		collection, err := db.GetDatabaseCollectionWithUser(c.ScopeName(), c.Name())
+		ctx := base.CollectionNameCtx(ctx, collection.Name())
 		if err != nil {
 			base.WarnfCtx(ctx, "Tombstone compaction could not get collection: %s", err)
 			continue
