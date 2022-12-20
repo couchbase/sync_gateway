@@ -171,6 +171,26 @@ func TestCheckpointerSafeSeq(t *testing.T) {
 			expectedProcessedSeqs:   genProcessedForTest(t, "5"),
 		},
 		{
+			// ensure we maintain enough sequences that we can checkpoint expected but not yet processed without retaining the full list of processed sequences
+			// in most cases this will be keeping the last processed sequence and removing all prior ones, until the missing sequence in the list.
+			// e.g.
+			//    expected:  [2 4 6 8 9]
+			//    processed: [  4 6 8  ]
+			// can be safely compacted to:
+			//    expected:  [2 6 9]
+			//    processed: [  6  ]
+			name: "processed compaction non-sequential (out of order)",
+			c: &Checkpointer{
+				expectedSeqs:                   genExpectedForTest(t, "2", "1", "6", "8", "4", "9"),
+				processedSeqs:                  genProcessedForTest(t, "4", "1", "6", "8"),
+				expectedSeqCompactionThreshold: 3, // this many expected seqs to trigger compaction
+			},
+			expectedSafeSeq:         &SequenceID{Seq: 1},
+			expectedExpectedSeqsIdx: 0,
+			expectedExpectedSeqs:    genExpectedForTest(t, "2", "6", "9"),
+			expectedProcessedSeqs:   genProcessedForTest(t, "6"),
+		},
+		{
 			name: "multiple skipped processed compaction",
 			c: &Checkpointer{
 				expectedSeqs:                   genExpectedForTest(t, "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20"),
