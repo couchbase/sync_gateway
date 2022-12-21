@@ -64,13 +64,13 @@ func (bh *blipHandler) handleGetCollections(rq *blip.Message) error {
 		scopeOnDb, ok := bh.db.Scopes[*scope]
 		if !ok {
 			checkpoints[i] = nil
-			bh.collectionMapping = append(bh.collectionMapping, nil)
+			bh.collectionContexts = append(bh.collectionContexts, nil)
 			continue
 		}
 		collection, ok := scopeOnDb.Collections[*collectionName]
 		if !ok {
 			checkpoints[i] = nil
-			bh.collectionMapping = append(bh.collectionMapping, nil)
+			bh.collectionContexts = append(bh.collectionContexts, nil)
 			continue
 		}
 		key := CheckpointDocIDPrefix + requestBody.CheckpointIDs[i]
@@ -79,7 +79,7 @@ func (bh *blipHandler) handleGetCollections(rq *blip.Message) error {
 			status, _ := base.ErrorAsHTTPStatus(err)
 			if status == http.StatusNotFound {
 				checkpoints[i] = Body{}
-				bh.collectionMapping = append(bh.collectionMapping, collection)
+				bh.collectionContexts = append(bh.collectionContexts, &BlipSyncCollectionContext{dbCollection: collection})
 			} else {
 				errMsg := fmt.Sprintf("Unable to fetch client checkpoint %q for collection %s: %s", key, scopeAndCollection, err)
 				base.WarnfCtx(bh.loggingCtx, errMsg)
@@ -89,7 +89,7 @@ func (bh *blipHandler) handleGetCollections(rq *blip.Message) error {
 		}
 		delete(value, BodyId)
 		checkpoints[i] = value
-		bh.collectionMapping = append(bh.collectionMapping, collection)
+		bh.collectionContexts = append(bh.collectionContexts, &BlipSyncCollectionContext{dbCollection: collection})
 	}
 	response := rq.Response()
 	if response == nil {
@@ -99,11 +99,11 @@ func (bh *blipHandler) handleGetCollections(rq *blip.Message) error {
 }
 
 func (bsc *BlipSyncContext) getCollectionIndexForDB(collection *DatabaseCollectionWithUser) (int, bool) {
-	if bsc.collectionMapping == nil {
+	if bsc.collectionContexts == nil {
 		return 0, false
 	}
-	for i, iCollection := range bsc.collectionMapping {
-		if iCollection.ScopeName == collection.ScopeName && iCollection.Name == collection.Name {
+	for i, collectionCtx := range bsc.collectionContexts {
+		if collectionCtx.dbCollection.ScopeName == collection.ScopeName && collectionCtx.dbCollection.Name == collection.Name {
 			return i, true
 		}
 	}

@@ -90,7 +90,6 @@ type BlipSyncContext struct {
 	handlerSerialNumber              uint64                                         // Each handler within a context gets a unique serial number for logging
 	terminatorOnce                   sync.Once                                      // Used to ensure the terminator channel below is only ever closed once.
 	terminator                       chan bool                                      // Closed during BlipSyncContext.close(). Ensures termination of async goroutines.
-	activeSubChanges                 base.AtomicBool                                // Flag for whether there is a subChanges subscription currently active.  Atomic access
 	useDeltas                        bool                                           // Whether deltas can be used for this connection - This should be set via setUseDeltas()
 	sgCanUseDeltas                   bool                                           // Whether deltas can be used by Sync Gateway for this connection
 	userChangeWaiter                 *ChangeWaiter                                  // Tracks whether the users/roles associated with the replication have changed
@@ -125,7 +124,14 @@ type BlipSyncContext struct {
 	// when readOnly is true, handleRev requests are rejected
 	readOnly bool
 
-	collectionMapping []*DatabaseCollection // Mapping of array id to collection mapping
+	collectionContexts        []*BlipSyncCollectionContext // Indexed by replication collectionIdx to store per-collection information on a replication
+	nonCollectionAwareContext *BlipSyncCollectionContext   // Indexed by replication collectionIdx to store per-collection information on a replication
+}
+
+// BlipSyncCollectionContext stores information about a single collection for a BlipSyncContext
+type BlipSyncCollectionContext struct {
+	dbCollection     *DatabaseCollection
+	activeSubChanges base.AtomicBool // Flag for whether there is a subChanges subscription currently active.  Atomic access
 }
 
 // AllowedAttachment contains the metadata for handling allowed attachments
@@ -242,15 +248,8 @@ func (bsc *BlipSyncContext) copyDatabaseCollectionWithUser(collectionIdx *int) *
 	defer bsc.dbUserLock.RUnlock()
 	user := bsc.blipContextDb.User()
 	if collectionIdx != nil {
-		return &DatabaseCollectionWithUser{DatabaseCollection: bsc.collectionMapping[*collectionIdx], user: user}
+		return &DatabaseCollectionWithUser{DatabaseCollection: bsc.collectionContexts[*collectionIdx].dbCollection, user: user}
 	}
-	/* put into place in CBG-2527
-	// There is a panic handler on the calling function but no way to pass error
-	c, err := bsc.blipContextDb.GetDefaultDatabaseCollection()
-	if err != nil {
-		panic(err)
-	}
-	*/
 	c := bsc.blipContextDb.GetSingleDatabaseCollection()
 	return &DatabaseCollectionWithUser{DatabaseCollection: c, user: user}
 }

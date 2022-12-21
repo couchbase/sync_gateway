@@ -149,9 +149,12 @@ func collectionBlipHandler(next blipHandlerFunc) blipHandlerFunc {
 				DatabaseCollection: bh.db.singleCollection,
 				user:               bh.db.user,
 			}
+			if bh.nonCollectionAwareContext == nil {
+				bh.nonCollectionAwareContext = &BlipSyncCollectionContext{dbCollection: bh.collection.DatabaseCollection}
+			}
 			return next(bh, bm)
 		}
-		if len(bh.collectionMapping) == 0 {
+		if len(bh.collectionContexts) == 0 {
 			return base.HTTPErrorf(http.StatusBadRequest, "Passing collection requires calling %s first", MessageGetCollections)
 		}
 
@@ -160,19 +163,19 @@ func collectionBlipHandler(next blipHandlerFunc) blipHandlerFunc {
 			return base.HTTPErrorf(http.StatusBadRequest, "collection property needs to be an int, was %q", collectionIndexStr)
 		}
 
-		if len(bh.collectionMapping) <= collectionIndex {
+		if len(bh.collectionContexts) <= collectionIndex {
 			return base.HTTPErrorf(http.StatusBadRequest, "Collection index %d is outside indexes set by GetCollections", collectionIndex)
 		}
 		bh.collectionIdx = &collectionIndex
-		collection := bh.collectionMapping[collectionIndex]
-		if collection == nil {
+		collectionCtx := bh.collectionContexts[collectionIndex]
+		if collectionCtx == nil {
 			return base.HTTPErrorf(http.StatusBadRequest, "Collection index %d does not match a valid collection from GetCollections", collectionIndex)
 		}
-		bh.loggingCtx = base.CollectionCtx(bh.BlipSyncContext.loggingCtx, collection.Name)
 		bh.collection = &DatabaseCollectionWithUser{
-			DatabaseCollection: bh.collectionMapping[collectionIndex],
+			DatabaseCollection: collectionCtx.dbCollection,
 			user:               bh.db.user,
 		}
+		bh.loggingCtx = base.CollectionCtx(bh.BlipSyncContext.loggingCtx, bh.collection.Name)
 		// Call down to the underlying handler and return it's value
 		return next(bh, bm)
 	}
@@ -248,12 +251,14 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 	}
 
 	// Ensure that only _one_ subChanges subscription can be open on this blip connection at any given time.  SG #3222.
-	if !bh.activeSubChanges.CASRetry(false, true) {
-		// FIXME CBG-2653: Disabling activeSubChanges check for multi-collection to unblock CBL testing.
-		if bh.collectionIdx == nil {
-			return fmt.Errorf("blipHandler already has an outstanding continuous subChanges.  Cannot open another one")
-		}
-		base.WarnfCtx(bh.loggingCtx, "blipHandler already has an outstanding continuous subChanges. Continuing anyway (CBG-2653)")
+	var collectionCtx *BlipSyncCollectionContext
+	if bh.collectionIdx == nil {
+		collectionCtx = bh.nonCollectionAwareContext
+	} else {
+		collectionCtx = bh.collectionContexts[*bh.collectionIdx]
+	}
+	if !collectionCtx.activeSubChanges.CASRetry(false, true) {
+		return fmt.Errorf("blipHandler for collection %d already has an outstanding subChanges. Cannot open another one", *bh.collectionIdx)
 	}
 
 	// Create ctx if it has been cancelled
@@ -304,7 +309,13 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 
 		defer func() {
 			bh.changesCtxCancel()
-			bh.activeSubChanges.Set(false)
+			var collectionCtx *BlipSyncCollectionContext
+			if bh.collectionIdx == nil {
+				collectionCtx = bh.nonCollectionAwareContext
+			} else {
+				collectionCtx = bh.collectionContexts[*bh.collectionIdx]
+			}
+			collectionCtx.activeSubChanges.Set(false)
 		}()
 		// sendChanges runs until blip context closes, or fails due to error
 		startTime := time.Now()

@@ -194,12 +194,45 @@ func (a *activeReplicatorCommon) _disconnect() error {
 	}
 
 	if a.blipSyncContext != nil {
+		a.stopSubChanges()
 		base.TracefCtx(a.ctx, base.KeyReplicate, "closing blip sync context")
 		a.blipSyncContext.Close()
 		a.blipSyncContext = nil
 	}
 
 	return nil
+}
+
+// stopSubChanges stops any active subChanges requests
+func (a *activeReplicatorCommon) stopSubChanges() {
+	base.TracefCtx(a.ctx, base.KeyReplicate, "closing active subChanges")
+	const (
+		maxWaitTime   = 10 * time.Second
+		retryInterval = 10 * time.Millisecond
+	)
+	ctx, cancel := context.WithDeadline(a.ctx, time.Now().Add(maxWaitTime))
+	defer cancel()
+	t := time.NewTicker(retryInterval)
+	defer t.Stop()
+
+retry:
+	for {
+		select {
+		case <-ctx.Done():
+			break retry
+		case <-t.C:
+			// wait until all activeSubChanges have stopped
+			for _, collectionCtx := range a.blipSyncContext.collectionContexts {
+				if collectionCtx.activeSubChanges.IsTrue() {
+					continue retry
+				}
+			}
+			if a.blipSyncContext.nonCollectionAwareContext.activeSubChanges.IsTrue() {
+				continue retry
+			}
+			break retry
+		}
+	}
 }
 
 // _stop aborts any replicator processes that run outside of a running replication (e.g: async reconnect handling)
