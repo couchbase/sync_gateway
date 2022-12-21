@@ -87,11 +87,9 @@ func TestStarAccess(t *testing.T) {
 	// Create some docs:
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
-	collection := rt.GetSingleTestDatabaseCollection()
-	c := collection.Name()
-	s := collection.ScopeName()
 
 	a := auth.NewAuthenticator(rt.MetadataStore(), nil, auth.DefaultAuthenticatorOptions())
+	a.Collections = rt.GetDatabase().CollectionNames
 	var changes struct {
 		Results []db.ChangeEntry
 	}
@@ -109,14 +107,20 @@ func TestStarAccess(t *testing.T) {
 	// document added to no channel should only end up available to users with * access
 	RequireStatus(t, rt.SendRequest("PUT", "/db/doc6", `{"channels":[]}`), 201)
 
+	guest, err = a.GetUser("")
+	assert.NoError(t, err)
 	guest.SetDisabled(true)
 	err = a.Save(guest)
 	assert.NoError(t, err)
 	//
 	// Part 1 - Tests for user with single channel access:
 	//
-	response := rt.SendAdminRequest("PUT", "/db/_user/bernard", `{"password":"letmein",`+AdminChannelGrant(s, c, `"admin_channels":["books"]`)+`}`)
-	RequireStatus(t, response, 201)
+	//response := rt.SendAdminRequest("PUT", "/db/_user/bernard", `{"password":"letmein",`+AdminChannelGrant(s, c, `"admin_channels":["books"]`)+`}`)
+	//RequireStatus(t, response, 201)
+	bernard, _ := a.NewUser("bernard", "letmein", channels.BaseSetOf(t, "books"))
+	assert.NoError(t, a.Save(bernard))
+	response := rt.SendAdminRequest("GET", "/db/_user/bernard", ``)
+	fmt.Println(response.Body)
 
 	// GET /db/docid - basic test for channel user has
 	response := rt.SendUserRequest("GET", "/db/doc1", "", "bernard")
@@ -190,8 +194,8 @@ func TestStarAccess(t *testing.T) {
 	//
 
 	// Create a user:
-	response = rt.SendAdminRequest("PUT", "/db/_user/fran", `{"password":"letmein",`+AdminChannelGrant(s, c, `"admin_channels":["*"]`)+`}`)
-	RequireStatus(t, response, 201)
+	fran, _ := a.NewUser("fran", "letmein", channels.BaseSetOf(t, "*"))
+	assert.NoError(t, a.Save(fran))
 
 	// GET /db/docid - basic test for doc that has channel
 	response = rt.SendUserRequest("GET", "/db/doc1", "", "fran")
@@ -573,9 +577,6 @@ func TestBulkDocsChangeToAccess(t *testing.T) {
 func TestAllDocsAccessControl(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
-	collection := rt.GetSingleTestDatabaseCollection()
-	c := collection.Name()
-	s := collection.ScopeName()
 	type allDocsRow struct {
 		ID    string `json:"id"`
 		Key   string `json:"key"`
@@ -595,6 +596,7 @@ func TestAllDocsAccessControl(t *testing.T) {
 
 	// Create some docs:
 	a := auth.NewAuthenticator(rt.MetadataStore(), nil, auth.DefaultAuthenticatorOptions())
+	a.Collections = rt.GetDatabase().CollectionNames
 	guest, err := a.GetUser("")
 	assert.NoError(t, err)
 	guest.SetDisabled(false)
@@ -614,8 +616,8 @@ func TestAllDocsAccessControl(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Create a user:
-	resp := rt.SendAdminRequest(http.MethodPut, "/db/_user/alice", `{"password": "letmein", `+AdminChannelGrant(s, c, `"admin_channels": ["Cinemax"]`)+`}`)
-	RequireStatus(t, resp, http.StatusCreated)
+	alice, err := a.NewUser("alice", "letmein", channels.BaseSetOf(t, "Cinemax"))
+	assert.NoError(t, a.Save(alice))
 
 	// Get a single doc the user has access to:
 	request, _ := http.NewRequest("GET", "/db/doc3", nil)
