@@ -912,6 +912,9 @@ func TestResyncRegenerateSequences(t *testing.T) {
 		},
 	)
 	defer rt.Close()
+	collection := rt.GetSingleTestDatabaseCollection()
+	c := collection.Name()
+	s := collection.ScopeName()
 
 	_, ok := (rt.GetDatabase().ResyncManager.Process).(*db.ResyncManagerDCP)
 	if ok && base.UnitTestUrlIsWalrus() {
@@ -936,11 +939,11 @@ func TestResyncRegenerateSequences(t *testing.T) {
 	}
 
 	role := "role1"
-	response = rt.SendAdminRequest("PUT", fmt.Sprintf("/db/_role/%s", role), fmt.Sprintf(`{"name":"%s", "admin_channels":["channel_1"]}`, role))
+	response = rt.SendAdminRequest("PUT", fmt.Sprintf("/db/_role/%s", role), fmt.Sprintf(`{"name":"%s",`+AdminChannelGrant(s, c, `"admin_channels":["channel_1"]`)+`}`, role))
 	RequireStatus(t, response, http.StatusCreated)
 
 	username := "user1"
-	response = rt.SendAdminRequest("PUT", fmt.Sprintf("/db/_user/%s", username), fmt.Sprintf(`{"name":"%s", "password":"letmein", "admin_channels":["channel_1"], "admin_roles": ["%s"]}`, username, role))
+	response = rt.SendAdminRequest("PUT", fmt.Sprintf("/db/_user/%s", username), fmt.Sprintf(`{"name":"%s", "password":"letmein", `+AdminChannelGrant(s, c, `"admin_channels":["channel_1"]`)+`, "admin_roles": ["%s"]}`, username, role))
 	RequireStatus(t, response, http.StatusCreated)
 
 	_, err := rt.MetadataStore().Get(base.RolePrefix+"role1", &body)

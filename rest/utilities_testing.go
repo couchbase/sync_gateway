@@ -1388,6 +1388,15 @@ func (bt *BlipTester) SendRev(docId, docRev string, body []byte, properties blip
 
 }
 
+func AdminChannelGrant(scopeName, collectionName, adminChannels string) (collectionAdminChannels string) {
+
+	if base.IsDefaultCollection(scopeName, collectionName) {
+		return adminChannels
+	}
+
+	return fmt.Sprintf(`"collection_access":{%q: {%q: {%s}}}`, scopeName, collectionName, adminChannels)
+}
+
 func getChangesHandler(changesFinishedWg, revsFinishedWg *sync.WaitGroup) func(request *blip.Message) {
 	return func(request *blip.Message) {
 		// Send a response telling the other side we want ALL revisions

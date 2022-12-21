@@ -16,6 +16,7 @@ import (
 	"crypto/rsa"
 	"encoding/json"
 	"fmt"
+	ch "github.com/couchbase/sync_gateway/channels"
 	"net/http"
 	"net/http/httptest"
 	"runtime"
@@ -449,9 +450,12 @@ func TestLocalJWTRolesChannels(t *testing.T) {
 	restTesterConfig := RestTesterConfig{DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{LocalJWTConfig: auth.LocalJWTConfig{
 		testProviderName: baseProvider,
 	}}}}
-	restTester := NewRestTesterDefaultCollection(t, &restTesterConfig) // CBG-2618: fix collection channel access
+	restTester := NewRestTester(t, &restTesterConfig) // CBG-2618: fix collection channel access
 	require.NoError(t, restTester.SetAdminParty(false))
 	defer restTester.Close()
+	collection := restTester.GetSingleTestDatabaseCollection()
+	c := collection.Name()
+	s := collection.ScopeName()
 
 	token := auth.CreateTestJWT(t, jose.RS256, testRSAKeypair, auth.JWTHeaders{
 		"alg": jose.RS256,
@@ -476,8 +480,11 @@ func TestLocalJWTRolesChannels(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, user)
 
+	user.SetCollectionJWTChannels(s, c, ch.AtSequence(ch.BaseSetOf(t, "jwt_only_channel"), 1), 1)
+	fmt.Println(user.CollectionJWTChannels(s, c))
+
 	assert.Contains(t, user.RoleNames(), "jwt_only_role")
-	assert.Contains(t, user.Channels().AllKeys(), "jwt_only_channel")
+	assert.Contains(t, user.CollectionJWTChannels(s, c).AllKeys(), "jwt_only_channel")
 	assert.Equal(t, testIssuer, user.JWTIssuer())
 	// FIXME: Temporary skip prior to CBG-2214 - Windows time resolution is not good enough to do this greater (but not equals) assertion
 	if runtime.GOOS != "windows" {

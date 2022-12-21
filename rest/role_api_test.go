@@ -27,9 +27,12 @@ import (
 func TestRolePurge(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
+	collection := rt.GetSingleTestDatabaseCollection()
+	c := collection.Name()
+	s := collection.ScopeName()
 
 	// Create role
-	resp := rt.SendAdminRequest("PUT", "/db/_role/role", `{"admin_channels":["channel"]}`)
+	resp := rt.SendAdminRequest("PUT", "/db/_role/role", `{`+AdminChannelGrant(s, c, `"admin_channels":["channel"]`)+`}`)
 	RequireStatus(t, resp, http.StatusCreated)
 
 	// Delete role
@@ -46,7 +49,7 @@ func TestRolePurge(t *testing.T) {
 	assert.NotNil(t, role)
 
 	// Re-create role
-	resp = rt.SendAdminRequest("PUT", "/db/_role/role", `{"admin_channels":["channel"]}`)
+	resp = rt.SendAdminRequest("PUT", "/db/_role/role", `{`+AdminChannelGrant(s, c, `"admin_channels":["channel"]`)+`}`)
 	RequireStatus(t, resp, http.StatusCreated)
 
 	// Delete role again but with purge flag
@@ -66,12 +69,15 @@ func TestRoleAPI(t *testing.T) {
 
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
+	collection := rt.GetSingleTestDatabaseCollection()
+	c := collection.Name()
+	s := collection.ScopeName()
 
 	// PUT a role
 	RequireStatus(t, rt.SendAdminRequest("GET", "/db/_role/hipster", ""), 404)
-	response := rt.SendAdminRequest("PUT", "/db/_role/hipster", `{"admin_channels":["fedoras", "fixies"]}`)
+	response := rt.SendAdminRequest("PUT", "/db/_role/hipster", `{`+AdminChannelGrant(s, c, `"admin_channels":["fedoras", "fixies"]`)+`}`)
 	RequireStatus(t, response, 201)
-	response = rt.SendAdminRequest("PUT", "/db/_role/testdeleted", `{"admin_channels":["fedoras", "fixies"]}`)
+	response = rt.SendAdminRequest("PUT", "/db/_role/testdeleted", `{`+AdminChannelGrant(s, c, `"admin_channels":["fedoras", "fixies"]`)+`}`)
 	RequireStatus(t, response, 201)
 	RequireStatus(t, rt.SendAdminRequest("DELETE", "/db/_role/testdeleted", ""), 200)
 
@@ -80,8 +86,9 @@ func TestRoleAPI(t *testing.T) {
 	RequireStatus(t, response, 200)
 	var body db.Body
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
+	bodyAccess := fmt.Sprintf(`map[%v:map[%v:map[admin_channels:[fedoras fixies] all_channels:[! fedoras fixies]]]]`, s, c)
 	assert.Equal(t, "hipster", body["name"])
-	assert.Equal(t, []interface{}{"fedoras", "fixies"}, body["admin_channels"])
+	assert.Equal(t, bodyAccess, fmt.Sprint(body["collection_access"]))
 	assert.Equal(t, nil, body["password"])
 
 	response = rt.SendAdminRequest("GET", "/db/_role/", "")
@@ -93,9 +100,9 @@ func TestRoleAPI(t *testing.T) {
 	RequireStatus(t, rt.SendAdminRequest("GET", "/db/_role/hipster", ""), 404)
 
 	// POST a role
-	response = rt.SendAdminRequest("POST", "/db/_role", `{"name":"hipster", "admin_channels":["fedoras", "fixies"]}`)
+	response = rt.SendAdminRequest("POST", "/db/_role", `{"name":"hipster",`+AdminChannelGrant(s, c, `"admin_channels":["fedoras", "fixies"]`)+`}`)
 	RequireStatus(t, response, 301)
-	response = rt.SendAdminRequest("POST", "/db/_role/", `{"name":"hipster", "admin_channels":["fedoras", "fixies"]}`)
+	response = rt.SendAdminRequest("POST", "/db/_role/", `{"name":"hipster",`+AdminChannelGrant(s, c, `"admin_channels":["fedoras", "fixies"]`)+`}`)
 	RequireStatus(t, response, 201)
 	response = rt.SendAdminRequest("GET", "/db/_role/hipster", "")
 	RequireStatus(t, response, 200)
@@ -138,11 +145,14 @@ func TestFunkyRoleNames(t *testing.T) {
 			require.NoError(t, err)
 			const username = "user1"
 			syncFn := fmt.Sprintf(`function(doc) {channel(doc.channels); role("%s", %s);}`, username, string(roleNameJSON))
-			rt := NewRestTesterDefaultCollection(t, // CBG-2618: fix collection channel access
+			rt := NewRestTester(t, // CBG-2618: fix collection channel access
 				&RestTesterConfig{
 					SyncFn: syncFn,
 				})
 			defer rt.Close()
+			collection := rt.GetSingleTestDatabaseCollection()
+			c := collection.Name()
+			s := collection.ScopeName()
 
 			ctx := rt.Context()
 			a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
@@ -153,7 +163,7 @@ func TestFunkyRoleNames(t *testing.T) {
 			require.NoError(t, a.Save(user))
 
 			// Create role
-			response := rt.SendAdminRequest("PUT", fmt.Sprintf("/db/_role/%s", url.PathEscape(tc.RoleName)), `{"admin_channels": ["testchannel"]}`)
+			response := rt.SendAdminRequest("PUT", fmt.Sprintf("/db/_role/%s", url.PathEscape(tc.RoleName)), `{`+AdminChannelGrant(s, c, `"admin_channels": ["testchannel"]`)+`}`)
 			RequireStatus(t, response, 201)
 
 			// Create test document
@@ -181,7 +191,7 @@ func TestBulkDocsChangeToRoleAccess(t *testing.T) {
 		}`,
 		DatabaseConfig: &DatabaseConfig{}, // revocation requires collection specific channel access
 	}
-	rt := NewRestTesterDefaultCollection(t, // CBG-2618: fix collection channel access
+	rt := NewRestTester(t, // CBG-2618: fix collection channel access
 		&rtConfig)
 	defer rt.Close()
 	ctx := rt.Context()
@@ -229,9 +239,12 @@ func TestRoleAssignmentBeforeUserExists(t *testing.T) {
 	rtConfig := RestTesterConfig{SyncFn: `function(doc) {role(doc.user, doc.role);channel(doc.channel)}`,
 		DatabaseConfig: &DatabaseConfig{}, // revocation requires collection specific channel access
 	}
-	rt := NewRestTesterDefaultCollection(t, // CBG-2618: fix collection channel access
+	rt := NewRestTester(t, // CBG-2618: fix collection channel access
 		&rtConfig)
 	defer rt.Close()
+	collection := rt.GetSingleTestDatabaseCollection()
+	c := collection.Name()
+	s := collection.ScopeName()
 
 	ctx := rt.Context()
 	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
@@ -242,7 +255,7 @@ func TestRoleAssignmentBeforeUserExists(t *testing.T) {
 	assert.NoError(t, err)
 
 	// POST a role
-	response := rt.SendAdminRequest("POST", "/db/_role/", `{"name":"role1","admin_channels":["chan1"]}`)
+	response := rt.SendAdminRequest("POST", "/db/_role/", `{"name":"role1",`+AdminChannelGrant(s, c, `"admin_channels":["chan1"]`)+`}`)
 	RequireStatus(t, response, 201)
 	response = rt.SendAdminRequest("GET", "/db/_role/role1", "")
 	RequireStatus(t, response, 200)
@@ -263,10 +276,11 @@ func TestRoleAssignmentBeforeUserExists(t *testing.T) {
 	response = rt.SendAdminRequest("GET", "/db/_user/user1", "")
 	RequireStatus(t, response, 200)
 	body = nil
+	bodyAccess := fmt.Sprintf(`map[%v:map[%v:map[all_channels:[! chan1]]]]`, s, c)
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.Equal(t, "user1", body["name"])
 	assert.Equal(t, []interface{}{"role1"}, body["roles"])
-	assert.Equal(t, []interface{}{"!", "chan1"}, body["all_channels"])
+	assert.Equal(t, bodyAccess, fmt.Sprint(body["collection_access"]))
 
 	// goassert.DeepEquals(t, body["admin_roles"], []interface{}{"hipster"})
 	// goassert.DeepEquals(t, body["all_channels"], []interface{}{"bar", "fedoras", "fixies", "foo"})
@@ -276,9 +290,12 @@ func TestRoleAccessChanges(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAccess, base.KeyCRUD, base.KeyChanges)
 
 	rtConfig := RestTesterConfig{SyncFn: `function(doc) {role(doc.user, doc.role);channel(doc.channel)}`}
-	rt := NewRestTesterDefaultCollection(t, // CBG-2618: fix collection channel access
+	rt := NewRestTester(t, // CBG-2618: fix collection channel access
 		&rtConfig)
 	defer rt.Close()
+	collection := rt.GetSingleTestDatabaseCollection()
+	c := collection.Name()
+	s := collection.ScopeName()
 
 	ctx := rt.Context()
 	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
@@ -290,13 +307,13 @@ func TestRoleAccessChanges(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Create users:
-	response := rt.SendAdminRequest("PUT", "/db/_user/alice", `{"password":"letmein", "admin_channels":["alpha"]}`)
+	response := rt.SendAdminRequest("PUT", "/db/_user/alice", `{"password":"letmein",`+AdminChannelGrant(s, c, `"admin_channels":["alpha"]`)+`}`)
 	RequireStatus(t, response, 201)
 
-	response = rt.SendAdminRequest("PUT", "/db/_user/zegpold", `{"password":"letmein", "admin_channels":["beta"]}`)
+	response = rt.SendAdminRequest("PUT", "/db/_user/zegpold", `{"password":"letmein",`+AdminChannelGrant(s, c, `"admin_channels":["beta"]`)+`}`)
 	RequireStatus(t, response, 201)
 
-	response = rt.SendAdminRequest("PUT", "/db/_role/hipster", `{"admin_channels":["gamma"]}`)
+	response = rt.SendAdminRequest("PUT", "/db/_role/hipster", `{`+AdminChannelGrant(s, c, `"admin_channels":["gamma"]`)+`}`)
 	RequireStatus(t, response, 201)
 	/*
 		alice, err := a.NewUser("alice", "letmein", channels.BaseSetOf(t, "alpha"))
@@ -335,7 +352,7 @@ func TestRoleAccessChanges(t *testing.T) {
 			"!":     channels.NewVbSimpleSequence(1),
 			"alpha": channels.NewVbSimpleSequence(alice.Sequence()),
 			"gamma": channels.NewVbSimpleSequence(roleGrantSequence),
-		}, alice.InheritedCollectionChannels(base.DefaultScope, base.DefaultCollection))
+		}, alice.InheritedCollectionChannels(s, c))
 
 	assert.Equal(t,
 
@@ -350,7 +367,7 @@ func TestRoleAccessChanges(t *testing.T) {
 		channels.TimedSet{
 			"!":    channels.NewVbSimpleSequence(1),
 			"beta": channels.NewVbSimpleSequence(zegpold.Sequence()),
-		}, zegpold.InheritedCollectionChannels(base.DefaultScope, base.DefaultCollection))
+		}, zegpold.InheritedCollectionChannels(s, c))
 
 	assert.Equal(t, channels.TimedSet{}, zegpold.RoleNames())
 
@@ -391,7 +408,7 @@ func TestRoleAccessChanges(t *testing.T) {
 		channels.TimedSet{
 			"!":     channels.NewVbSimpleSequence(0x1),
 			"alpha": channels.NewVbSimpleSequence(alice.Sequence()),
-		}, alice.InheritedCollectionChannels(base.DefaultScope, base.DefaultCollection))
+		}, alice.InheritedCollectionChannels(s, c))
 
 	zegpold, _ = a.GetUser("zegpold")
 	assert.Equal(t,
@@ -400,7 +417,7 @@ func TestRoleAccessChanges(t *testing.T) {
 			"!":     channels.NewVbSimpleSequence(0x1),
 			"beta":  channels.NewVbSimpleSequence(zegpold.Sequence()),
 			"gamma": channels.NewVbSimpleSequence(updatedRoleGrantSequence),
-		}, zegpold.InheritedCollectionChannels(base.DefaultScope, base.DefaultCollection))
+		}, zegpold.InheritedCollectionChannels(s, c))
 
 	// The complete _changes feed for zegpold contains docs g1 and b1:
 	cacheWaiter.Wait()

@@ -144,13 +144,16 @@ func TestInvalidSession(t *testing.T) {
 // Test for issue 758 - basic auth with stale session cookie
 func TestBasicAuthWithSessionCookie(t *testing.T) {
 
-	rt := NewRestTesterDefaultCollection(t, nil) // CBG-2618: fix collection channel access
+	rt := NewRestTester(t, nil) // CBG-2618: fix collection channel access
 	defer rt.Close()
+	collection := rt.GetSingleTestDatabaseCollection()
+	c := collection.Name()
+	s := collection.ScopeName()
 
 	// Create two users
-	response := rt.SendAdminRequest("PUT", "/db/_user/bernard", `{"name":"bernard", "password":"letmein", "admin_channels":["bernard"]}`)
+	response := rt.SendAdminRequest("PUT", "/db/_user/bernard", `{"name":"bernard", "password":"letmein",`+AdminChannelGrant(s, c, `"admin_channels":["bernard"]`)+`}`)
 	RequireStatus(t, response, 201)
-	response = rt.SendAdminRequest("PUT", "/db/_user/manny", `{"name":"manny", "password":"letmein","admin_channels":["manny"]}`)
+	response = rt.SendAdminRequest("PUT", "/db/_user/manny", `{"name":"manny", "password":"letmein",`+AdminChannelGrant(s, c, `"admin_channels":["manny"]`)+`}`)
 	RequireStatus(t, response, 201)
 
 	// Create a session for the first user
@@ -188,9 +191,12 @@ func TestBasicAuthWithSessionCookie(t *testing.T) {
 func TestSessionFail(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
+	collection := rt.GetSingleTestDatabaseCollection()
+	c := collection.Name()
+	s := collection.ScopeName()
 
 	// Create user
-	response := rt.SendAdminRequest("PUT", "/db/_user/user1", `{"name":"user1", "password":"letmein", "admin_channels":["user1"]}`)
+	response := rt.SendAdminRequest("PUT", "/db/_user/user1", `{"name":"user1", "password":"letmein",`+AdminChannelGrant(s, c, `"admin_channels":["user1"]`)+`}`)
 	RequireStatus(t, response, http.StatusCreated)
 
 	id, err := base.GenerateRandomSecret()

@@ -26,7 +26,7 @@ import (
 )
 
 func TestPublicChanGuestAccess(t *testing.T) {
-	rt := NewRestTesterDefaultCollection(t, // CBG-2618: fix collection channel access
+	rt := NewRestTester(t, // CBG-2618: fix collection channel access
 		&RestTesterConfig{
 			DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 				Guest: &auth.PrincipalConfig{
@@ -80,8 +80,11 @@ func TestStarAccess(t *testing.T) {
 	}
 
 	// Create some docs:
-	rt := NewRestTesterDefaultCollection(t, nil) // CBG-2618: fix collection channel access
+	rt := NewRestTester(t, nil) // CBG-2618: fix collection channel access
 	defer rt.Close()
+	collection := rt.GetSingleTestDatabaseCollection()
+	c := collection.Name()
+	s := collection.ScopeName()
 
 	a := auth.NewAuthenticator(rt.MetadataStore(), nil, auth.DefaultAuthenticatorOptions())
 	var changes struct {
@@ -107,8 +110,10 @@ func TestStarAccess(t *testing.T) {
 	//
 	// Part 1 - Tests for user with single channel access:
 	//
-	bernard, err := a.NewUser("bernard", "letmein", channels.BaseSetOf(t, "books"))
-	assert.NoError(t, a.Save(bernard))
+	//bernard, err := a.NewUser("bernard", "letmein", channels.BaseSetOf(t, "books"))
+	//assert.NoError(t, a.Save(bernard))
+	response := rt.SendAdminRequest("PUT", "/db/_user/bernard", `{"password":"letmein",`+AdminChannelGrant(s, c, `"admin_channels":["books"]`)+`}`)
+	RequireStatus(t, response, 201)
 
 	// GET /db/docid - basic test for channel user has
 	response := rt.SendUserRequest("GET", "/db/doc1", "", "bernard")
@@ -182,8 +187,10 @@ func TestStarAccess(t *testing.T) {
 	//
 
 	// Create a user:
-	fran, err := a.NewUser("fran", "letmein", channels.BaseSetOf(t, "*"))
-	assert.NoError(t, a.Save(fran))
+	//fran, err := a.NewUser("fran", "letmein", channels.BaseSetOf(t, "*"))
+	//assert.NoError(t, a.Save(fran))
+	response = rt.SendAdminRequest("PUT", "/db/_user/fran", `{"password":"letmein",`+AdminChannelGrant(s, c, `"admin_channels":["*"]`)+`}`)
+	RequireStatus(t, response, 201)
 
 	// GET /db/docid - basic test for doc that has channel
 	response = rt.SendUserRequest("GET", "/db/doc1", "", "fran")
@@ -349,7 +356,7 @@ func TestForceAPIForbiddenErrors(t *testing.T) {
 				AssertStatus(t, resp, statusIfForbiddenErrorsFalse)
 			}
 
-			rt := NewRestTesterDefaultCollection(t, // CBG-2618: fix collection channel access
+			rt := NewRestTester(t, // CBG-2618: fix collection channel access
 				&RestTesterConfig{
 					SyncFn: `
 				function(doc, oldDoc) {
@@ -372,16 +379,22 @@ func TestForceAPIForbiddenErrors(t *testing.T) {
 								Password: base.StringPtr("password"),
 							},
 							"Perms": {
-								ExplicitChannels: base.SetOf("chan"),
-								Password:         base.StringPtr("password"),
+								//ExplicitChannels: base.SetOf("chan"),
+								Password: base.StringPtr("password"),
 							},
 						},
 					}},
 				})
 			defer rt.Close()
+			collection := rt.GetSingleTestDatabaseCollection()
+			c := collection.Name()
+			s := collection.ScopeName()
+
+			resp := rt.SendAdminRequest(http.MethodPut, "/db/_user/Perms", `{"password": "password", `+AdminChannelGrant(s, c, `"admin_channels": "chan"`)+`}`)
+			RequireStatus(t, resp, http.StatusOK)
 
 			// Create the initial document
-			resp := rt.SendAdminRequest(http.MethodPut, "/db/doc", `{"doNotSync": true, "foo": "bar", "channels": "chan", "_attachment":{"attach": {"data": "`+base64.StdEncoding.EncodeToString([]byte("attachmentA"))+`"}}}`)
+			resp = rt.SendAdminRequest(http.MethodPut, "/db/doc", `{"doNotSync": true, "foo": "bar", "channels": "chan", "_attachment":{"attach": {"data": "`+base64.StdEncoding.EncodeToString([]byte("attachmentA"))+`"}}}`)
 			RequireStatus(t, resp, http.StatusCreated)
 			rev := RespRevID(t, resp)
 
@@ -558,8 +571,11 @@ func TestBulkDocsChangeToAccess(t *testing.T) {
 
 // Test _all_docs API call under different security scenarios
 func TestAllDocsAccessControl(t *testing.T) {
-	rt := NewRestTesterDefaultCollection(t, nil) // CBG-2618: fix collection channel access
+	rt := NewRestTester(t, nil) // CBG-2618: fix collection channel access
 	defer rt.Close()
+	collection := rt.GetSingleTestDatabaseCollection()
+	c := collection.Name()
+	s := collection.ScopeName()
 	type allDocsRow struct {
 		ID    string `json:"id"`
 		Key   string `json:"key"`
@@ -591,22 +607,24 @@ func TestAllDocsAccessControl(t *testing.T) {
 	RequireStatus(t, rt.SendRequest("PUT", "/db/doc2", `{"channels":["CBS"]}`), 201)
 	RequireStatus(t, rt.SendRequest("PUT", "/db/doc1", `{"channels":[]}`), 201)
 
+	guest, err = a.GetUser("")
+	assert.NoError(t, err)
 	guest.SetDisabled(true)
 	err = a.Save(guest)
 	assert.NoError(t, err)
 
 	// Create a user:
-	alice, err := a.NewUser("alice", "letmein", channels.BaseSetOf(t, "Cinemax"))
-	assert.NoError(t, a.Save(alice))
+	resp := rt.SendAdminRequest(http.MethodPut, "/db/_user/alice", `{"password": "letmein", `+AdminChannelGrant(s, c, `"admin_channels": ["Cinemax"]`)+`}`)
+	RequireStatus(t, resp, http.StatusCreated)
 
 	// Get a single doc the user has access to:
-	request, _ := http.NewRequest("GET", "/db/doc3", nil)
+	request, _ := http.NewRequest("GET", "/db."+s+"."+c+"/doc3", nil)
 	request.SetBasicAuth("alice", "letmein")
 	response := rt.Send(request)
 	RequireStatus(t, response, 200)
 
 	// Get a single doc the user doesn't have access to:
-	request, _ = http.NewRequest("GET", "/db/doc2", nil)
+	request, _ = http.NewRequest("GET", "/db."+s+"."+c+"/doc2", nil)
 	request.SetBasicAuth("alice", "letmein")
 	response = rt.Send(request)
 	RequireStatus(t, response, 403)
@@ -794,8 +812,11 @@ func TestChannelAccessChanges(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache, base.KeyChanges, base.KeyCRUD)
 
 	rtConfig := RestTesterConfig{SyncFn: `function(doc) {access(doc.owner, doc._id);channel(doc.channel)}`}
-	rt := NewRestTesterDefaultCollection(t, &rtConfig) // CBG-2618: fix collection channel access
+	rt := NewRestTester(t, &rtConfig) // CBG-2618: fix collection channel access
 	defer rt.Close()
+	collection := rt.GetSingleTestDatabaseCollection()
+	c := collection.Name()
+	s := collection.ScopeName()
 
 	ctx := rt.Context()
 	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
@@ -860,7 +881,7 @@ func TestChannelAccessChanges(t *testing.T) {
 			"zero":  channels.NewVbSimpleSequence(uint64(1)),
 			"alpha": channels.NewVbSimpleSequence(uint64(1)),
 			"delta": channels.NewVbSimpleSequence(deltaGrantDocSeq),
-		}, alice.Channels())
+		}, alice.CollectionChannels(s, c))
 
 	zegpold, _ = a.GetUser("zegpold")
 	assert.Equal(
@@ -870,7 +891,7 @@ func TestChannelAccessChanges(t *testing.T) {
 			"!":     channels.NewVbSimpleSequence(uint64(1)),
 			"zero":  channels.NewVbSimpleSequence(uint64(1)),
 			"gamma": channels.NewVbSimpleSequence(gammaGrantDocSeq),
-		}, zegpold.Channels())
+		}, zegpold.CollectionChannels(s, c))
 
 	// Update a document to revoke access to alice and grant it to zegpold:
 	str := fmt.Sprintf(`{"owner":"zegpold", "_rev":%q}`, alphaRevID)
@@ -888,7 +909,7 @@ func TestChannelAccessChanges(t *testing.T) {
 			"!":     channels.NewVbSimpleSequence(uint64(1)),
 			"zero":  channels.NewVbSimpleSequence(uint64(1)),
 			"delta": channels.NewVbSimpleSequence(deltaGrantDocSeq),
-		}, alice.Channels())
+		}, alice.CollectionChannels(s, c))
 
 	zegpold, _ = a.GetUser("zegpold")
 	assert.Equal(
@@ -899,7 +920,7 @@ func TestChannelAccessChanges(t *testing.T) {
 			"zero":  channels.NewVbSimpleSequence(uint64(1)),
 			"alpha": channels.NewVbSimpleSequence(alphaGrantDocSeq),
 			"gamma": channels.NewVbSimpleSequence(gammaGrantDocSeq),
-		}, zegpold.Channels())
+		}, zegpold.CollectionChannels(s, c))
 
 	rt.MustWaitForDoc("alpha", t)
 
@@ -946,12 +967,12 @@ func TestChannelAccessChanges(t *testing.T) {
 	dbc := rt.ServerContext().Database(ctx, "db")
 	database, _ := db.GetDatabase(dbc, nil)
 
-	collection := rt.GetSingleTestDatabaseCollectionWithUser()
+	collectionUser := database.GetSingleDatabaseCollectionWithUser()
 
 	changed, err := database.UpdateSyncFun(ctx, `function(doc) {access("alice", "beta");channel("beta");}`)
 	assert.NoError(t, err)
 	assert.True(t, changed)
-	changeCount, err := collection.UpdateAllDocChannels(ctx, false, func(docsProcessed, docsChanged *int) {}, base.NewSafeTerminator())
+	changeCount, err := collectionUser.UpdateAllDocChannels(ctx, false, func(docsProcessed, docsChanged *int) {}, base.NewSafeTerminator())
 	assert.NoError(t, err)
 	assert.Equal(t, 9, changeCount)
 

@@ -43,9 +43,12 @@ func TestUsersAPI(t *testing.T) {
 			},
 		},
 	}
-	rt := NewRestTesterDefaultCollection(t, // CBG-2618: fix collection channel access
+	rt := NewRestTester(t, // CBG-2618: fix collection channel access
 		rtConfig)
 	defer rt.Close()
+	collection := rt.GetSingleTestDatabaseCollection()
+	c := collection.Name()
+	s := collection.ScopeName()
 
 	// Validate the zero user case
 	var responseUsers []string
@@ -58,7 +61,7 @@ func TestUsersAPI(t *testing.T) {
 	// Test for user counts going from 1 to a few multiples of QueryPaginationLimit to check boundary conditions
 	for i := 1; i < 13; i++ {
 		userName := fmt.Sprintf("user%d", i)
-		response := rt.SendAdminRequest("PUT", "/db/_user/"+userName, `{"password":"letmein", "admin_channels":["foo", "bar"]}`)
+		response := rt.SendAdminRequest("PUT", "/db/_user/"+userName, `{"password":"letmein", `+AdminChannelGrant(s, c, `"admin_channels":["foo", "bar"]`)+`}`)
 		RequireStatus(t, response, 201)
 
 		// check user count
@@ -177,6 +180,9 @@ func TestUsersAPIDetailsWithLimit(t *testing.T) {
 	}
 	rt := NewRestTester(t, rtConfig)
 	defer rt.Close()
+	collection := rt.GetSingleTestDatabaseCollection()
+	c := collection.Name()
+	s := collection.ScopeName()
 
 	// Validate the zero user case with limit
 	var responseUsers []auth.PrincipalConfig
@@ -190,7 +196,7 @@ func TestUsersAPIDetailsWithLimit(t *testing.T) {
 	numUsers := 12
 	for i := 1; i <= numUsers; i++ {
 		userName := fmt.Sprintf("user%d", i)
-		response := rt.SendAdminRequest("PUT", "/db/_user/"+userName, `{"password":"letmein", "admin_channels":["foo", "bar"]}`)
+		response := rt.SendAdminRequest("PUT", "/db/_user/"+userName, `{"password":"letmein",`+AdminChannelGrant(s, c, `"admin_channels":["foo", "bar"]`)+`}`)
 		RequireStatus(t, response, 201)
 	}
 
@@ -262,12 +268,15 @@ func TestUsersAPIDetailsWithLimit(t *testing.T) {
 func TestUserAPI(t *testing.T) {
 
 	// PUT a user
-	rt := NewRestTesterDefaultCollection(t, nil) // CBG-2618: fix collection channel access
+	rt := NewRestTester(t, nil) // CBG-2618: fix collection channel access
 	defer rt.Close()
 	ctx := rt.Context()
+	collection := rt.GetSingleTestDatabaseCollection()
+	c := collection.Name()
+	s := collection.ScopeName()
 
 	RequireStatus(t, rt.SendAdminRequest("GET", "/db/_user/snej", ""), 404)
-	response := rt.SendAdminRequest("PUT", "/db/_user/snej", `{"email":"jens@couchbase.com", "password":"letmein", "admin_channels":["foo", "bar"]}`)
+	response := rt.SendAdminRequest("PUT", "/db/_user/snej", `{"email":"jens@couchbase.com", "password":"letmein", `+AdminChannelGrant(s, c, `"admin_channels":["foo", "bar"]`)+`}`)
 	RequireStatus(t, response, 201)
 
 	// GET the user and make sure the result is OK
@@ -294,7 +303,7 @@ func TestUserAPI(t *testing.T) {
 	assert.True(t, user.Authenticate("letmein"))
 
 	// Change the password and verify it:
-	response = rt.SendAdminRequest("PUT", "/db/_user/snej", `{"email":"jens@couchbase.com", "password":"123", "admin_channels":["foo", "bar"]}`)
+	response = rt.SendAdminRequest("PUT", "/db/_user/snej", `{"email":"jens@couchbase.com", "password":"123", `+AdminChannelGrant(s, c, `"admin_channels":["foo", "bar"]`)+`}`)
 	RequireStatus(t, response, 200)
 
 	user, _ = rt.ServerContext().Database(ctx, "db").Authenticator(ctx).GetUser("snej")
@@ -305,10 +314,10 @@ func TestUserAPI(t *testing.T) {
 	RequireStatus(t, rt.SendAdminRequest("GET", "/db/_user/snej", ""), 404)
 
 	// POST a user
-	response = rt.SendAdminRequest("POST", "/db/_user", `{"name":"snej", "password":"letmein", "admin_channels":["foo", "bar"]}`)
+	response = rt.SendAdminRequest("POST", "/db/_user", `{"name":"snej", "password":"letmein", `+AdminChannelGrant(s, c, `"admin_channels":["foo", "bar"]`)+`}`)
 	RequireStatus(t, response, 301)
 
-	response = rt.SendAdminRequest("POST", "/db/_user/", `{"name":"snej", "password":"letmein", "admin_channels":["foo", "bar"]}`)
+	response = rt.SendAdminRequest("POST", "/db/_user/", `{"name":"snej", "password":"letmein", `+AdminChannelGrant(s, c, `"admin_channels":["foo", "bar"]`)+`}`)
 	RequireStatus(t, response, 201)
 	response = rt.SendAdminRequest("GET", "/db/_user/snej", "")
 	RequireStatus(t, response, 200)
@@ -318,11 +327,11 @@ func TestUserAPI(t *testing.T) {
 
 	// Create a role
 	RequireStatus(t, rt.SendAdminRequest("GET", "/db/_role/hipster", ""), 404)
-	response = rt.SendAdminRequest("PUT", "/db/_role/hipster", `{"admin_channels":["fedoras", "fixies"]}`)
+	response = rt.SendAdminRequest("PUT", "/db/_role/hipster", `{`+AdminChannelGrant(s, c, `"admin_channels":["fedoras", "fixies"]`)+`}`)
 	RequireStatus(t, response, 201)
 
 	// Give the user that role
-	response = rt.SendAdminRequest("PUT", "/db/_user/snej", `{"admin_channels":["foo", "bar"],"admin_roles":["hipster"]}`)
+	response = rt.SendAdminRequest("PUT", "/db/_user/snej", `{`+AdminChannelGrant(s, c, `"admin_channels":["foo", "bar"]`)+`, "admin_roles":["hipster"]}`)
 	RequireStatus(t, response, 200)
 
 	// GET the user and verify that it shows the channels inherited from the role
@@ -337,7 +346,7 @@ func TestUserAPI(t *testing.T) {
 	RequireStatus(t, rt.SendAdminRequest("DELETE", "/db/_user/snej", ""), 200)
 
 	// POST a user with URL encoded '|' in name see #2870
-	RequireStatus(t, rt.SendAdminRequest("POST", "/db/_user/", `{"name":"0%7C59", "password":"letmein", "admin_channels":["foo", "bar"]}`), 201)
+	RequireStatus(t, rt.SendAdminRequest("POST", "/db/_user/", `{"name":"0%7C59", "password":"letmein", `+AdminChannelGrant(s, c, `"admin_channels":["foo", "bar"]`+`}`)), 201)
 
 	// GET the user, will fail
 	RequireStatus(t, rt.SendAdminRequest("GET", "/db/_user/0%7C59", ""), 404)
@@ -352,7 +361,7 @@ func TestUserAPI(t *testing.T) {
 	RequireStatus(t, rt.SendAdminRequest("DELETE", "/db/_user/0%257C59", ""), 200)
 
 	// POST a user with URL encoded '|' and non-encoded @ in name see #2870
-	RequireStatus(t, rt.SendAdminRequest("POST", "/db/_user/", `{"name":"0%7C@59", "password":"letmein", "admin_channels":["foo", "bar"]}`), 201)
+	RequireStatus(t, rt.SendAdminRequest("POST", "/db/_user/", `{"name":"0%7C@59", "password":"letmein", `+AdminChannelGrant(s, c, `"admin_channels":["foo", "bar"]`+`}`)), 201)
 
 	// GET the user, will fail
 	RequireStatus(t, rt.SendAdminRequest("GET", "/db/_user/0%7C@59", ""), 404)
@@ -409,6 +418,9 @@ func TestGuestUser(t *testing.T) {
 func TestUserAndRoleResponseContentType(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
+	collection := rt.GetSingleTestDatabaseCollection()
+	c := collection.Name()
+	s := collection.ScopeName()
 
 	// Create a user 'christopher' through PUT request with empty request body.
 	var responseBody db.Body
@@ -426,13 +438,13 @@ func TestUserAndRoleResponseContentType(t *testing.T) {
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &responseBody))
 
 	// Create a user 'alice' through PUT request.
-	body = `{"email":"alice@couchbase.com","password":"cGFzc3dvcmQ=","admin_channels":["foo", "bar"]}`
+	body = `{"email":"alice@couchbase.com","password":"cGFzc3dvcmQ=",` + AdminChannelGrant(s, c, `"admin_channels":["foo", "bar"]`) + `}`
 	response = rt.SendAdminRequest(http.MethodPut, "/db/_user/alice", body)
 	assert.Equal(t, http.StatusCreated, response.Code)
 	assert.Empty(t, response.Header().Get("Content-Type"))
 
 	// Create another user 'bob' through POST request.
-	body = `{"name":"bob","email":"bob@couchbase.com","password":"cGFzc3dvcmQ=","admin_channels":["foo", "bar"]}`
+	body = `{"name":"bob","email":"bob@couchbase.com","password":"cGFzc3dvcmQ=",` + AdminChannelGrant(s, c, `"admin_channels":["foo", "bar"]`) + `}`
 	response = rt.SendAdminRequest(http.MethodPost, "/db/_user/", body)
 	assert.Equal(t, http.StatusCreated, response.Code)
 	assert.Empty(t, response.Header().Get("Content-Type"))
@@ -506,13 +518,13 @@ func TestUserAndRoleResponseContentType(t *testing.T) {
 	assert.Empty(t, response.Header().Get("Content-Type"))
 
 	// Create a role 'developer' through POST request
-	body = `{"name":"developer","admin_channels":["channel1", "channel2"]}`
+	body = `{"name":"developer",` + AdminChannelGrant(s, c, `"admin_channels":["channel1", "channel2"]`) + `}`
 	response = rt.SendAdminRequest(http.MethodPost, "/db/_role/", body)
 	assert.Equal(t, http.StatusCreated, response.Code)
 	assert.Empty(t, response.Header().Get("Content-Type"))
 
 	// Create another role 'coder' through PUT request.
-	body = `{"admin_channels":["channel3", "channel4"]}`
+	body = `{` + AdminChannelGrant(s, c, `"admin_channels":["channel3", "channel4"]`) + `}`
 	response = rt.SendAdminRequest(http.MethodPut, "/db/_role/coder", body)
 	assert.Equal(t, http.StatusCreated, response.Code)
 	assert.Empty(t, response.Header().Get("Content-Type"))
@@ -615,7 +627,7 @@ func TestObtainUserChannelsForDeletedRoleCasFail(t *testing.T) {
 
 	for _, testCase := range testCases {
 		t.Run(testCase.Name, func(t *testing.T) {
-			rt := NewRestTesterDefaultCollection(t, // CBG-2618: fix collection channel access
+			rt := NewRestTester(t, // CBG-2618: fix collection channel access
 				&RestTesterConfig{
 					SyncFn: `
 			function(doc, oldDoc){
@@ -629,9 +641,12 @@ func TestObtainUserChannelsForDeletedRoleCasFail(t *testing.T) {
 		`,
 				})
 			defer rt.Close()
+			collection := rt.GetSingleTestDatabaseCollection()
+			c := collection.Name()
+			s := collection.ScopeName()
 
 			// Create role
-			resp := rt.SendAdminRequest("PUT", "/db/_role/role", `{"admin_channels":["channel"]}`)
+			resp := rt.SendAdminRequest("PUT", "/db/_role/role", `{`+AdminChannelGrant(s, c, `"admin_channels":["channel"]`)+`}`)
 			RequireStatus(t, resp, http.StatusCreated)
 
 			// Create user
@@ -684,32 +699,35 @@ func TestUserPasswordValidation(t *testing.T) {
 	// PUT a user
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
+	collection := rt.GetSingleTestDatabaseCollection()
+	c := collection.Name()
+	s := collection.ScopeName()
 
-	response := rt.SendAdminRequest("PUT", "/db/_user/snej", `{"email":"jens@couchbase.com", "password":"letmein", "admin_channels":["foo", "bar"]}`)
+	response := rt.SendAdminRequest("PUT", "/db/_user/snej", `{"email":"jens@couchbase.com", "password":"letmein", `+AdminChannelGrant(s, c, `"admin_channels":["foo", "bar"]`)+`}`)
 	RequireStatus(t, response, 201)
 
 	// PUT a user without a password, should fail
-	response = rt.SendAdminRequest("PUT", "/db/_user/ajresnopassword", `{"email":"ajres@couchbase.com", "admin_channels":["foo", "bar"]}`)
+	response = rt.SendAdminRequest("PUT", "/db/_user/ajresnopassword", `{"email":"ajres@couchbase.com", `+AdminChannelGrant(s, c, `"admin_channels":["foo", "bar"]`)+`}`)
 	RequireStatus(t, response, 400)
 
 	// POST a user without a password, should fail
-	response = rt.SendAdminRequest("POST", "/db/_user/", `{"name":"ajresnopassword", "email":"ajres@couchbase.com", "admin_channels":["foo", "bar"]}`)
+	response = rt.SendAdminRequest("POST", "/db/_user/", `{"name":"ajresnopassword", "email":"ajres@couchbase.com", `+AdminChannelGrant(s, c, `"admin_channels":["foo", "bar"]`)+`}`)
 	RequireStatus(t, response, 400)
 
 	// PUT a user with a two character password, should fail
-	response = rt.SendAdminRequest("PUT", "/db/_user/ajresnopassword", `{"email":"ajres@couchbase.com", "password":"in", "admin_channels":["foo", "bar"]}`)
+	response = rt.SendAdminRequest("PUT", "/db/_user/ajresnopassword", `{"email":"ajres@couchbase.com", "password":"in", `+AdminChannelGrant(s, c, `"admin_channels":["foo", "bar"]`)+`}`)
 	RequireStatus(t, response, 400)
 
 	// POST a user with a two character password, should fail
-	response = rt.SendAdminRequest("POST", "/db/_user/", `{"name":"ajresnopassword", "email":"ajres@couchbase.com", "password":"an", "admin_channels":["foo", "bar"]}`)
+	response = rt.SendAdminRequest("POST", "/db/_user/", `{"name":"ajresnopassword", "email":"ajres@couchbase.com", "password":"an", `+AdminChannelGrant(s, c, `"admin_channels":["foo", "bar"]`)+`}`)
 	RequireStatus(t, response, 400)
 
 	// PUT a user with a zero character password, should fail
-	response = rt.SendAdminRequest("PUT", "/db/_user/ajresnopassword", `{"email":"ajres@couchbase.com", "password":"", "admin_channels":["foo", "bar"]}`)
+	response = rt.SendAdminRequest("PUT", "/db/_user/ajresnopassword", `{"email":"ajres@couchbase.com", "password":"", `+AdminChannelGrant(s, c, `"admin_channels":["foo", "bar"]`)+`}`)
 	RequireStatus(t, response, 400)
 
 	// POST a user with a zero character password, should fail
-	response = rt.SendAdminRequest("POST", "/db/_user/", `{"name":"ajresnopassword", "email":"ajres@couchbase.com", "password":"", "admin_channels":["foo", "bar"]}`)
+	response = rt.SendAdminRequest("POST", "/db/_user/", `{"name":"ajresnopassword", "email":"ajres@couchbase.com", "password":"", `+AdminChannelGrant(s, c, `"admin_channels":["foo", "bar"]`)+`}`)
 	RequireStatus(t, response, 400)
 
 	// PUT update a user with a two character password, should fail
@@ -847,11 +865,14 @@ function(doc, oldDoc) {
 	rtConfig := RestTesterConfig{
 		SyncFn: syncFunction,
 	}
-	rt := NewRestTesterDefaultCollection(t, // CBG-2618: fix collection channel access
+	rt := NewRestTester(t, // CBG-2618: fix collection channel access
 		&rtConfig)
 	defer rt.Close()
+	collection := rt.GetSingleTestDatabaseCollection()
+	c := collection.Name()
+	s := collection.ScopeName()
 
-	response := rt.SendAdminRequest("PUT", "/db/_user/bernard", `{"name":"bernard", "password":"letmein", "admin_channels":["profile-bernard"]}`)
+	response := rt.SendAdminRequest("PUT", "/db/_user/bernard", `{"name":"bernard", "password":"letmein",`+AdminChannelGrant(s, c, `"admin_channels":["profile-bernard"]`)+`}`)
 	RequireStatus(t, response, 201)
 
 	// Try to force channel initialisation for user bernard
