@@ -11,7 +11,6 @@ licenses/APL2.txt.
 package rest
 
 import (
-	"fmt"
 	"log"
 	"sync"
 	"testing"
@@ -98,7 +97,7 @@ func TestFunctions(t *testing.T) {
 
 	t.Run("GraphQL with variables", func(t *testing.T) {
 		testConcurrently(t, rt, func() bool {
-			response := rt.SendRequest("POST", fmt.Sprintf("/%s/_graphql", rt.GetDatabase().Name),
+			response := rt.SendRequest("POST", "/{{.db}}/_graphql",
 				`{"query": "query($number:Int!){ square(n:$number) }",
 				  "variables": {"number": 13}}`)
 			return assert.Equal(t, 200, response.Result().StatusCode) &&
@@ -111,10 +110,9 @@ func TestFunctionsConcurrently(t *testing.T) {
 	rt := NewRestTester(t, &RestTesterConfig{GuestEnabled: true, EnableUserQueries: true, DatabaseConfig: kGraphQLTestConfig})
 	defer rt.Close()
 
-	dbName := rt.GetDatabase().Name
 	t.Run("Function", func(t *testing.T) {
 		testConcurrently(t, rt, func() bool {
-			response := rt.SendRequest("GET", fmt.Sprintf("/%s/_function/square?n=13", dbName), "")
+			response := rt.SendRequest("GET", "/{{.db}}/_function/square?n=13", "")
 			return assert.Equal(t, 200, response.Result().StatusCode) &&
 				assert.Equal(t, "169", string(response.BodyBytes()))
 		})
@@ -122,7 +120,7 @@ func TestFunctionsConcurrently(t *testing.T) {
 
 	t.Run("GraphQL", func(t *testing.T) {
 		testConcurrently(t, rt, func() bool {
-			response := rt.SendRequest("POST", fmt.Sprintf("/%s/_graphql", dbName), `{"query":"query{ square(n:13) }"}`)
+			response := rt.SendRequest("POST", "/{{.db}}/_graphql", `{"query":"query{ square(n:13) }"}`)
 			return assert.Equal(t, 200, response.Result().StatusCode) &&
 				assert.Equal(t, "{\"data\":{\"square\":169}}", string(response.BodyBytes()))
 		})
@@ -133,7 +131,7 @@ func TestFunctionsConcurrently(t *testing.T) {
 			t.Skip("Skipping query subtest")
 		} else {
 			testConcurrently(t, rt, func() bool {
-				response := rt.SendRequest("GET", fmt.Sprintf("/%s/_function/squareN1QL?n=13", dbName), "")
+				response := rt.SendRequest("GET", "/{{.db}}/_function/squareN1QL?n=13", "")
 				return assert.Equal(t, 200, response.Result().StatusCode) &&
 					assert.Equal(t, "[{\"square\":169}\n]\n", string(response.BodyBytes()))
 			})

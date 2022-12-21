@@ -577,7 +577,7 @@ func (rt *RestTester) templateResource(resource string) string {
 	tmpl, err := template.New("urltemplate").Parse(resource)
 	require.NoError(rt.TB, err)
 	data := make(map[string]string)
-	if len(rt.ServerContext().AllDatabases()) == 1 {
+	if rt.ServerContext() != nil && len(rt.ServerContext().AllDatabases()) == 1 {
 		data["db"] = rt.GetDatabase().Name
 	}
 	database := rt.GetDatabase()

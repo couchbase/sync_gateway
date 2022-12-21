@@ -102,7 +102,7 @@ func TestDisablePublicBasicAuth(t *testing.T) {
 	defer rt.Close()
 	ctx := rt.Context()
 
-	response := rt.SendRequest(http.MethodGet, "/db/", "")
+	response := rt.SendRequest(http.MethodGet, "/{{.db}}/", "")
 	RequireStatus(t, response, http.StatusUnauthorized)
 	assert.NotContains(t, response.Header(), "WWW-Authenticate", "expected to not receive a WWW-Auth header when password auth is disabled")
 
@@ -112,20 +112,20 @@ func TestDisablePublicBasicAuth(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NoError(t, a.Save(user))
 
-	response = rt.SendUserRequest(http.MethodGet, "/db/", "", "user1")
+	response = rt.SendUserRequest(http.MethodGet, "/{{.db}}/", "", "user1")
 	RequireStatus(t, response, http.StatusUnauthorized)
 	assert.NotContains(t, response.Header(), "WWW-Authenticate", "expected to not receive a WWW-Auth header when password auth is disabled")
 
 	// Also check that we can't create a session through POST /db/_session
-	response = rt.SendRequest(http.MethodPost, "/db/_session", `{"name":"user1","password":"letmein"}`)
+	response = rt.SendRequest(http.MethodPost, "/{{.db}}/_session", `{"name":"user1","password":"letmein"}`)
 	RequireStatus(t, response, http.StatusUnauthorized)
 
 	// As a sanity check, ensure it does work when the setting is disabled
 	rt.ServerContext().Database(ctx, "db").Options.DisablePasswordAuthentication = false
-	response = rt.SendUserRequest(http.MethodGet, "/db/", "", "user1")
+	response = rt.SendUserRequest(http.MethodGet, "/{{.db}}/", "", "user1")
 	RequireStatus(t, response, http.StatusOK)
 
-	response = rt.SendRequest(http.MethodPost, "/db/_session", `{"name":"user1","password":"letmein"}`)
+	response = rt.SendRequest(http.MethodPost, "/{{.db}}/_session", `{"name":"user1","password":"letmein"}`)
 	RequireStatus(t, response, http.StatusOK)
 }
 
@@ -1878,6 +1878,7 @@ func Benchmark_RestApiPutDocPerformanceDefaultSyncFunc(b *testing.B) {
 	prt := NewRestTester(b, nil)
 	defer prt.Close()
 
+	_ = prt.Bucket() // prep bucket for parallel access
 	b.ResetTimer()
 
 	b.RunParallel(func(pb *testing.PB) {
@@ -1898,6 +1899,7 @@ func Benchmark_RestApiPutDocPerformanceExplicitSyncFunc(b *testing.B) {
 	qrt := NewRestTester(b, &qrtConfig)
 	defer qrt.Close()
 
+	_ = qrt.Bucket() // prep bucket for parallel access
 	b.ResetTimer()
 
 	b.RunParallel(func(pb *testing.PB) {

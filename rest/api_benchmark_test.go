@@ -69,7 +69,7 @@ func BenchmarkReadOps_Get(b *testing.B) {
 
 	base.DisableTestLogging(b)
 
-	rt := NewRestTester(b, nil)
+	rt := NewRestTesterDefaultCollection(b, nil) // use non default in CBG-2618
 	defer rt.Close()
 	defer PurgeDoc(rt, "doc1k")
 
@@ -103,11 +103,12 @@ func BenchmarkReadOps_Get(b *testing.B) {
 				if bm.asUser == "" {
 					getResponse = rt.SendAdminRequest("GET", bm.URI, "")
 				} else {
-					getResponse = rt.Send(RequestByUser("GET", bm.URI, "", bm.asUser))
+					getResponse = rt.SendUserRequest("GET", bm.URI, "", bm.asUser)
 				}
 				b.StopTimer()
 				if getResponse.Code != 200 {
 					log.Printf("Unexpected response status code: %d", getResponse.Code)
+					panic("here")
 				}
 				b.StartTimer()
 			}
@@ -120,7 +121,7 @@ func BenchmarkReadOps_GetRevCacheMisses(b *testing.B) {
 
 	base.DisableTestLogging(b)
 
-	rt := NewRestTester(b, nil)
+	rt := NewRestTesterDefaultCollection(b, nil) // use non default in CBG-2618
 	defer rt.Close()
 	defer PurgeDoc(rt, "doc1k")
 
@@ -143,19 +144,19 @@ func BenchmarkReadOps_GetRevCacheMisses(b *testing.B) {
 
 	// Create user
 	username := "user1"
-	rt.SendAdminRequest("PUT", "/{{.keyspace}}/_user/"+username, fmt.Sprintf(`{"name":"%s", "password":"letmein", "admin_channels":["channel_1"]}`, username))
+	rt.SendAdminRequest("PUT", "/{{.db}}/_user/"+username, fmt.Sprintf(`{"name":"%s", "password":"letmein", "admin_channels":["channel_1"]}`, username))
 
 	getBenchmarks := []struct {
 		name   string
 		URI    string
 		asUser string
 	}{
-		{"Admin_Simple", "/db/doc1k", ""},
-		{"Admin_WithRev", fmt.Sprintf("/db/doc1k?rev=%s", revid), ""},
-		{"Admin_OpenRevsAll", fmt.Sprintf("/db/doc1k?open_revs=all&rev=%s", revid), ""},
-		{"User_Simple", "/db/doc1k", username},
-		{"User_WithRev", fmt.Sprintf("/db/doc1k?rev=%s", revid), username},
-		{"User_OpenRevsAll", fmt.Sprintf("/db/doc1k?open_revs=all&rev=%s", revid), username},
+		{"Admin_Simple", "/{{.keyspace}}/doc1k", ""},
+		{"Admin_WithRev", fmt.Sprintf("/{{.keyspace}}/doc1k?rev=%s", revid), ""},
+		{"Admin_OpenRevsAll", fmt.Sprintf("/{{.keyspace}}/doc1k?open_revs=all&rev=%s", revid), ""},
+		{"User_Simple", "/{{.keyspace}}/doc1k", username},
+		{"User_WithRev", fmt.Sprintf("/{{.keyspace}}/doc1k?rev=%s", revid), username},
+		{"User_OpenRevsAll", fmt.Sprintf("/{{.keyspace}}/doc1k?open_revs=all&rev=%s", revid), username},
 	}
 
 	for _, bm := range getBenchmarks {
@@ -171,11 +172,12 @@ func BenchmarkReadOps_GetRevCacheMisses(b *testing.B) {
 				if bm.asUser == "" {
 					getResponse = rt.SendAdminRequest("GET", docURI, "")
 				} else {
-					getResponse = rt.Send(RequestByUser("GET", docURI, "", bm.asUser))
+					getResponse = rt.SendUserRequest("GET", docURI, "", bm.asUser)
 				}
 				b.StopTimer()
 				if getResponse.Code != 200 {
 					log.Printf("Unexpected response status code: %d", getResponse.Code)
+					panic("here")
 				}
 				b.StartTimer()
 			}
@@ -187,7 +189,7 @@ func BenchmarkReadOps_Changes(b *testing.B) {
 
 	base.DisableTestLogging(b)
 
-	rt := NewRestTester(b, nil)
+	rt := NewRestTesterDefaultCollection(b, nil) // use non default in CBG-2618
 	defer rt.Close()
 	defer PurgeDoc(rt, "doc1k")
 
@@ -198,7 +200,7 @@ func BenchmarkReadOps_Changes(b *testing.B) {
 	doc1k_putDoc := fmt.Sprintf(doc_1k_format, "")
 
 	// Create branched doc
-	response := rt.SendAdminRequest("PUT", "/db/doc1k", doc1k_putDoc)
+	response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1k", doc1k_putDoc)
 	if response.Code != 201 {
 		log.Printf("Unexpected create response: %d  %s", response.Code, response.Body.Bytes())
 	}
@@ -207,14 +209,14 @@ func BenchmarkReadOps_Changes(b *testing.B) {
 	require.NoError(b, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	revid := body["rev"].(string)
 	_, rev1_digest := db.ParseRevID(revid)
-	response = rt.SendAdminRequest("PUT", fmt.Sprintf("/db/doc1k?rev=%s", revid), doc1k_putDoc)
+	response = rt.SendAdminRequest("PUT", fmt.Sprintf("/{{.keyspace}}/doc1k?rev=%s", revid), doc1k_putDoc)
 	if response.Code != 201 {
 		log.Printf("Unexpected add rev response: %d  %s", response.Code, response.Body.Bytes())
 	}
 
 	doc1k_rev2_meta := fmt.Sprintf(`"_revisions":{"start":2, "ids":["two", "%s"]},`, rev1_digest)
 	doc1k_rev2 := fmt.Sprintf(doc_1k_format, doc1k_rev2_meta)
-	response = rt.SendAdminRequest("PUT", "/db/doc1k?new_edits=false", doc1k_rev2)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1k?new_edits=false", doc1k_rev2)
 	if response.Code != 201 {
 		log.Printf("Unexpected add conflicting rev response: %d  %s", response.Code, response.Body.Bytes())
 	}
@@ -225,16 +227,16 @@ func BenchmarkReadOps_Changes(b *testing.B) {
 		URI    string
 		asUser string
 	}{
-		{"Admin_Simple", "/db/_changes?since=1", ""},
-		{"Admin_Longpoll", "/db/_changes?since=1&feed=longpoll", ""},
-		{"Admin_StyleAllDocs", "/db/_changes?since=1&style=all_docs", ""},
-		{"Admin_StyleAllDocsChannelFilter", "/db/_changes?since=1&style=all_docs&filter=sync_gateway/bychannel&channels=channel_1", ""},
-		{"Admin_IncludeDocs", "/db/_changes?since=1&include_docs=true", ""},
-		{"User_Simple", "/db/_changes?since=1", username},
-		{"User_Longpoll", "/db/_changes?since=1&feed=longpoll", username},
-		{"User_StyleAllDocs", "/db/_changes?since=1&style=all_docs", username},
-		{"User_StyleAllDocsChannelFilter", "/db/_changes?since=1&style=all_docs&filter=sync_gateway/bychannel&channels=channel_1", username},
-		{"User_IncludeDocs", "/db/_changes?since=1&include_docs=true", username},
+		{"Admin_Simple", "/{{.keyspace}}/_changes?since=1", ""},
+		{"Admin_Longpoll", "/{{.keyspace}}/_changes?since=1&feed=longpoll", ""},
+		{"Admin_StyleAllDocs", "/{{.keyspace}}/_changes?since=1&style=all_docs", ""},
+		{"Admin_StyleAllDocsChannelFilter", "/{{.keyspace}}/_changes?since=1&style=all_docs&filter=sync_gateway/bychannel&channels=channel_1", ""},
+		{"Admin_IncludeDocs", "/{{.keyspace}}/_changes?since=1&include_docs=true", ""},
+		{"User_Simple", "/{{.keyspace}}/_changes?since=1", username},
+		{"User_Longpoll", "/{{.keyspace}}/_changes?since=1&feed=longpoll", username},
+		{"User_StyleAllDocs", "/{{.keyspace}}/_changes?since=1&style=all_docs", username},
+		{"User_StyleAllDocsChannelFilter", "/{{.keyspace}}/_changes?since=1&style=all_docs&filter=sync_gateway/bychannel&channels=channel_1", username},
+		{"User_IncludeDocs", "/{{.keyspace}}/_changes?since=1&include_docs=true", username},
 	}
 
 	for _, bm := range changesBenchmarks {
@@ -244,11 +246,12 @@ func BenchmarkReadOps_Changes(b *testing.B) {
 				if bm.asUser == "" {
 					changesResponse = rt.SendAdminRequest("GET", bm.URI, "")
 				} else {
-					changesResponse = rt.Send(RequestByUser("GET", bm.URI, "", bm.asUser))
+					changesResponse = rt.SendUserRequest("GET", bm.URI, "", bm.asUser)
 				}
 				b.StopTimer()
 				if changesResponse.Code != 200 {
 					log.Printf("Unexpected response status code: %d", changesResponse.Code)
+					panic("here")
 				}
 				b.StartTimer()
 			}
@@ -282,7 +285,7 @@ func BenchmarkReadOps_RevsDiff(b *testing.B) {
 
 	// Create user
 	username := "user1"
-	rt.SendAdminRequest("PUT", fmt.Sprintf("/db/_user/%s", username), fmt.Sprintf(`{"name":"%s", "password":"letmein", "admin_channels":["channel_1"]}`, username))
+	rt.SendAdminRequest("PUT", fmt.Sprintf("/{{.db}}/_user/%s", username), fmt.Sprintf(`{"name":"%s", "password":"letmein", "admin_channels":["channel_1"]}`, username))
 
 	revsDiffBody := `{"doc1k": ["10-ten", "9-nine"]}`
 	revsDiffBenchmarks := []struct {
@@ -290,8 +293,8 @@ func BenchmarkReadOps_RevsDiff(b *testing.B) {
 		URI    string
 		asUser string
 	}{
-		{"Admin", "/db/_revs_diff", ""},
-		{"User", "/db/_revs_diff", username},
+		{"Admin", "/{{.keyspace}}/_revs_diff", ""},
+		{"User", "/{{.keyspace}}/_revs_diff", username},
 	}
 
 	for _, bm := range revsDiffBenchmarks {
@@ -301,7 +304,7 @@ func BenchmarkReadOps_RevsDiff(b *testing.B) {
 				if bm.asUser == "" {
 					getResponse = rt.SendAdminRequest("POST", bm.URI, revsDiffBody)
 				} else {
-					getResponse = rt.Send(RequestByUser("POST", bm.URI, revsDiffBody, bm.asUser))
+					getResponse = rt.SendUserRequest("POST", bm.URI, revsDiffBody, bm.asUser)
 				}
 				b.StopTimer()
 				if getResponse.Code != 200 {
@@ -315,7 +318,7 @@ func BenchmarkReadOps_RevsDiff(b *testing.B) {
 }
 
 func PurgeDoc(rt *RestTester, docid string) {
-	response := rt.SendAdminRequest("POST", "/db/_purge", fmt.Sprintf(`{"%s":["*"]}`, docid))
+	response := rt.SendAdminRequest("POST", "/{{.keyspace}}/_purge", fmt.Sprintf(`{"%s":["*"]}`, docid))
 	if response.Code != 200 {
 		log.Printf("Unexpected purge response: %d  %s", response.Code, response.Body.Bytes())
 	}

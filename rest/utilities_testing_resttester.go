@@ -30,7 +30,7 @@ type PutDocResponse struct {
 }
 
 func (rt *RestTester) GetDoc(docID string) (body db.Body) {
-	rawResponse := rt.SendAdminRequest("GET", fmt.Sprintf("/%s/%s", rt.GetSingleKeyspace(), docID), "")
+	rawResponse := rt.SendAdminRequest("GET", "/{{.keyspace}}/"+docID, "")
 	RequireStatus(rt.TB, rawResponse, 200)
 	require.NoError(rt.TB, base.JSONUnmarshal(rawResponse.Body.Bytes(), &body))
 	return body

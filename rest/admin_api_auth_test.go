@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"reflect"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -496,127 +497,97 @@ func TestAdminAPIAuth(t *testing.T) {
 	dbConfigRaw, err := base.JSONMarshal(dbConfig)
 	require.NoError(t, err)
 
-	type urlPrefixType int
-	const (
-		noPrefix = iota
-		dbPrefix
-		collectionPrefix
-	)
-
 	endPoints := []struct {
 		Method          string
-		urlPrefix       urlPrefixType
 		Endpoint        string
 		SkipSuccessTest bool
 		body            string // The body to use in requests. Default: `{}`
 	}{
 		{
-			Method:    "POST",
-			urlPrefix: dbPrefix,
-			Endpoint:  "/_session",
+			Method:   "POST",
+			Endpoint: "/{{.db}}/_session",
 		},
 		{
-			Method:    "GET",
-			urlPrefix: dbPrefix,
-			Endpoint:  "/_session/id",
+			Method:   "GET",
+			Endpoint: "/{{.db}}/_session/id",
 		},
 		{
-			Method:    "DELETE",
-			urlPrefix: dbPrefix,
-			Endpoint:  "/_session/id",
+			Method:   "DELETE",
+			Endpoint: "/{{.db}}/_session/id",
 		},
 		{
-			Method:    "GET",
-			urlPrefix: collectionPrefix,
-			Endpoint:  "/_raw/doc",
+			Method:   "GET",
+			Endpoint: "/{{.keyspace}}/_raw/doc",
 		},
 		{
-			Method:    "GET",
-			urlPrefix: dbPrefix,
-			Endpoint:  "/_user/",
-		}, {
-			Method:    "POST",
-			urlPrefix: dbPrefix,
-			Endpoint:  "/_user/",
-		}, {
-			Method:    "GET",
-			urlPrefix: dbPrefix,
-			Endpoint:  "/_user/user",
-		}, {
-			Method:    "PUT",
-			urlPrefix: dbPrefix,
-			Endpoint:  "/_user/user",
-		}, {
-			Method:    "DELETE",
-			urlPrefix: dbPrefix,
-			Endpoint:  "/_user/user",
-		}, {
-			Method:    "DELETE",
-			urlPrefix: dbPrefix,
-			Endpoint:  "/_user/user/_session",
-		}, {
-			Method:    "DELETE",
-			urlPrefix: dbPrefix,
-			Endpoint:  "/_user/user/_session/id",
+			Method:   "GET",
+			Endpoint: "/{{.db}}/_user/",
 		},
 		{
-			Method:    "GET",
-			urlPrefix: dbPrefix,
-			Endpoint:  "/_role/",
-		}, {
-			Method:    "POST",
-			urlPrefix: dbPrefix,
-			Endpoint:  "/_role/",
+			Method:   "POST",
+			Endpoint: "/{{.db}}/_user/",
 		},
 		{
-			Method:    "GET",
-			urlPrefix: dbPrefix,
-			Endpoint:  "/_role/role",
+			Method:   "GET",
+			Endpoint: "/{{.db}}/_user/user",
 		}, {
-			Method:    "PUT",
-			urlPrefix: dbPrefix,
-			Endpoint:  "/_role/role",
+			Method:   "PUT",
+			Endpoint: "/{{.db}}/_user/user",
 		}, {
-			Method:    "DELETE",
-			urlPrefix: dbPrefix,
-			Endpoint:  "/_role/role",
+			Method:   "DELETE",
+			Endpoint: "/{{.db}}/_user/user",
 		}, {
-			Method:    "GET",
-			urlPrefix: dbPrefix,
-			Endpoint:  "/_replication/",
+			Method:   "DELETE",
+			Endpoint: "/{{.db}}/_user/user/_session",
 		}, {
-			Method:    "POST",
-			urlPrefix: dbPrefix,
-			Endpoint:  "/_replication/",
-		}, {
-			Method:    "GET",
-			urlPrefix: dbPrefix,
-			Endpoint:  "/_replication/id",
+			Method:   "DELETE",
+			Endpoint: "/{{.db}}/_user/user/_session/id",
 		},
 		{
-			Method:    "PUT",
-			urlPrefix: dbPrefix,
-			Endpoint:  "/_replication/id",
+			Method:   "GET",
+			Endpoint: "/{{.db}}/_role/",
+		}, {
+			Method:   "POST",
+			Endpoint: "/{{.db}}/_role/",
 		},
 		{
-			Method:    "DELETE",
-			urlPrefix: dbPrefix,
-			Endpoint:  "/_replication/id",
+			Method:   "GET",
+			Endpoint: "/{{.db}}/_role/role",
+		}, {
+			Method:   "PUT",
+			Endpoint: "/{{.db}}/_role/role",
+		}, {
+			Method:   "DELETE",
+			Endpoint: "/{{.db}}/_role/role",
+		}, {
+			Method:   "GET",
+			Endpoint: "/{{.db}}/_replication/",
+		}, {
+			Method:   "POST",
+			Endpoint: "/{{.db}}/_replication/",
+		}, {
+			Method:   "GET",
+			Endpoint: "/{{.db}}/_replication/id",
 		},
 		{
-			Method:    "GET",
-			urlPrefix: dbPrefix,
-			Endpoint:  "/_replicationStatus/",
+			Method:   "PUT",
+			Endpoint: "/{{.db}}/_replication/id",
 		},
 		{
-			Method:    "GET",
-			urlPrefix: dbPrefix,
-			Endpoint:  "/_replicationStatus/id",
+			Method:   "DELETE",
+			Endpoint: "/{{.db}}/_replication/id",
 		},
 		{
-			Method:    "PUT",
-			urlPrefix: dbPrefix,
-			Endpoint:  "/_replicationStatus/id",
+			Method:   "GET",
+			Endpoint: "/{{.db}}/_replicationStatus/",
+		},
+		{
+			Method:   "GET",
+			Endpoint: "/{{.db}}/_replicationStatus/id",
+		},
+		{
+			Method:   "PUT",
+			Endpoint: "/{{.db}}/_replicationStatus/id",
 		},
 		{
 			Method:   "GET",
@@ -715,77 +686,62 @@ func TestAdminAPIAuth(t *testing.T) {
 			Endpoint: "/_post_upgrade",
 		},
 		{
-			Method:    "GET",
-			urlPrefix: dbPrefix,
-			Endpoint:  "/_config",
+			Method:   "GET",
+			Endpoint: "/{{.db}}/_config",
 		},
 		{
-			Method:    "PUT",
-			urlPrefix: dbPrefix,
-			Endpoint:  "/_config",
-			body:      string(dbConfigRaw),
+			Method:   "PUT",
+			Endpoint: "/{{.db}}/_config",
+			body:     string(dbConfigRaw),
 		},
 		{
-			Method:    "GET",
-			urlPrefix: collectionPrefix,
-			Endpoint:  "/_resync",
+			Method:   "GET",
+			Endpoint: "/{{.keyspace}}/_resync",
 		},
 		{
-			Method:    "POST",
-			urlPrefix: collectionPrefix,
-			Endpoint:  "/_resync",
+			Method:   "POST",
+			Endpoint: "/{{.keyspace}}/_resync",
 		},
 		{
-			Method:    "POST",
-			urlPrefix: collectionPrefix,
-			Endpoint:  "/_purge",
+			Method:   "POST",
+			Endpoint: "/{{.keyspace}}/_purge",
 		},
 		{
-			Method:    "POST",
-			urlPrefix: dbPrefix,
-			Endpoint:  "/_flush",
+			Method:   "POST",
+			Endpoint: "/{{.db}}/_flush",
 		},
 		{
 			Method:          "POST",
-			urlPrefix:       dbPrefix,
-			Endpoint:        "/_offline",
+			Endpoint:        "/{{.db}}/_offline",
 			SkipSuccessTest: true,
 		},
 		{
-			Method:    "POST",
-			urlPrefix: dbPrefix,
-
-			Endpoint: "/_online",
+			Method:   "POST",
+			Endpoint: "/{{.db}}/_online",
 		},
 		{
-			Method:    "GET",
-			urlPrefix: dbPrefix,
-			Endpoint:  "/_dump/view",
+			Method:   "GET",
+			Endpoint: "/{{.db}}/_dump/view",
 		},
 		{
-			Method:    "GET",
-			urlPrefix: dbPrefix,
-			Endpoint:  "/_view/view",
+			Method:   "GET",
+			Endpoint: "/{{.db}}/_view/view",
 		},
 		{
-			Method:    "GET",
-			urlPrefix: collectionPrefix,
-			Endpoint:  "/_dumpchannel/channel",
+			Method:   "GET",
+			Endpoint: "/{{.keyspace}}/_dumpchannel/channel",
 		},
 		{
-			Method:    "POST",
-			urlPrefix: dbPrefix,
-			Endpoint:  "/_repair",
+			Method:   "POST",
+			Endpoint: "/{{.db}}/_repair",
 		},
 		{
-			Method:    "PUT",
-			urlPrefix: collectionPrefix,
-			Endpoint:  "/db",
+			Method:   "PUT",
+			Endpoint: "/{{.keyspace}}/db",
 		},
 		{
 			Method:          "DELETE",
-			urlPrefix:       dbPrefix,
-			Endpoint:        "/",
+			Endpoint:        "/{{.db}}/",
 			SkipSuccessTest: true,
 		},
 		{
@@ -793,116 +749,94 @@ func TestAdminAPIAuth(t *testing.T) {
 			Endpoint: "/_all_dbs",
 		},
 		{
-			Method:    "POST",
-			urlPrefix: collectionPrefix,
-			Endpoint:  "/_compact",
+			Method:   "POST",
+			Endpoint: "/{{.keyspace}}/_compact",
 		},
 		{
 			Method:          "GET",
-			urlPrefix:       dbPrefix,
-			Endpoint:        "/",
+			Endpoint:        "/{{.db}}/",
 			SkipSuccessTest: true,
 		},
 		{
 			Method:          "POST",
-			urlPrefix:       dbPrefix,
-			Endpoint:        "/",
+			Endpoint:        "/{{.db}}/",
 			SkipSuccessTest: true,
 		},
 		{
-			Method:    "GET",
-			urlPrefix: collectionPrefix,
-			Endpoint:  "/_all_docs",
+			Method:   "GET",
+			Endpoint: "/{{.keyspace}}/_all_docs",
 		},
 		{
-			Method:    "POST",
-			urlPrefix: collectionPrefix,
-			Endpoint:  "/_bulk_docs",
+			Method:   "POST",
+			Endpoint: "/{{.keyspace}}/_bulk_docs",
 		},
 		{
-			Method:    "POST",
-			urlPrefix: collectionPrefix,
-			Endpoint:  "/_bulk_get",
+			Method:   "POST",
+			Endpoint: "/{{.keyspace}}/_bulk_get",
 		},
 		{
-			Method:    "GET",
-			urlPrefix: collectionPrefix,
-			Endpoint:  "/_changes",
+			Method:   "GET",
+			Endpoint: "/{{.keyspace}}/_changes",
 		},
 		{
-			Method:    "GET",
-			urlPrefix: dbPrefix,
-			Endpoint:  "/_design/ddoc",
+			Method:   "GET",
+			Endpoint: "/{{.db}}/_design/ddoc",
 		},
 		{
-			Method:    "PUT",
-			urlPrefix: dbPrefix,
-			Endpoint:  "/_design/ddoc",
+			Method:   "PUT",
+			Endpoint: "/{{.db}}/_design/ddoc",
 		},
 		{
-			Method:    "DELETE",
-			urlPrefix: dbPrefix,
-			Endpoint:  "/_design/ddoc",
+			Method:   "DELETE",
+			Endpoint: "/{{.db}}/_design/ddoc",
 		},
 		{
-			Method:    "GET",
-			urlPrefix: dbPrefix,
-			Endpoint:  "/_design/ddoc/_view/view",
+			Method:   "GET",
+			Endpoint: "/{{.db}}/_design/ddoc/_view/view",
 		},
 		{
-			Method:    "POST",
-			urlPrefix: dbPrefix,
-			Endpoint:  "/_ensure_full_commit",
+			Method:   "POST",
+			Endpoint: "/{{.db}}/_ensure_full_commit",
 		},
 		{
-			Method:    "POST",
-			urlPrefix: collectionPrefix,
-			Endpoint:  "/_revs_diff",
+			Method:   "POST",
+			Endpoint: "/{{.keyspace}}/_revs_diff",
 		},
 		{
-			Method:    "GET",
-			urlPrefix: collectionPrefix,
-			Endpoint:  "/_local/docid",
+			Method:   "GET",
+			Endpoint: "/{{.keyspace}}/_local/docid",
 		},
 		{
-			Method:    "PUT",
-			urlPrefix: collectionPrefix,
-			Endpoint:  "/_local/docid",
+			Method:   "PUT",
+			Endpoint: "/{{.keyspace}}/_local/docid",
 		},
 		{
-			Method:    "DELETE",
-			urlPrefix: collectionPrefix,
-			Endpoint:  "/_local/docid",
+			Method:   "DELETE",
+			Endpoint: "/{{.keyspace}}/_local/docid",
 		},
 		{
-			Method:    "GET",
-			urlPrefix: collectionPrefix,
-			Endpoint:  "/docid",
+			Method:   "GET",
+			Endpoint: "/{{.keyspace}}/docid",
 		},
 		{
-			Method:    "PUT",
-			urlPrefix: collectionPrefix,
-			Endpoint:  "/docid",
+			Method:   "PUT",
+			Endpoint: "/{{.keyspace}}/docid",
 		},
 		{
-			Method:    "DELETE",
-			urlPrefix: collectionPrefix,
-			Endpoint:  "/docid",
+			Method:   "DELETE",
+			Endpoint: "/{{.keyspace}}/docid",
 		},
 		{
-			Method:    "GET",
-			urlPrefix: collectionPrefix,
-			Endpoint:  "/docid/attachid",
+			Method:   "GET",
+			Endpoint: "/{{.keyspace}}/docid/attachid",
 		},
 		{
-			Method:    "PUT",
-			urlPrefix: collectionPrefix,
-			Endpoint:  "/docid/attachid",
+			Method:   "PUT",
+			Endpoint: "/{{.keyspace}}/docid/attachid",
 		},
 		{
-			Method:    "GET",
-			urlPrefix: dbPrefix,
-			Endpoint:  "/_blipsync",
+			Method:   "GET",
+			Endpoint: "/{{.db}}/_blipsync",
 		},
 	}
 
@@ -926,19 +860,12 @@ func TestAdminAPIAuth(t *testing.T) {
 		if endPoint.body != "" {
 			body = endPoint.body
 		}
-		formattedEndpoint := endPoint.Endpoint
-		if endPoint.urlPrefix == dbPrefix {
-			formattedEndpoint = "/" + rt.GetDatabase().Name + formattedEndpoint
-		} else if endPoint.urlPrefix == collectionPrefix {
 
-			formattedEndpoint = "/" + rt.GetSingleKeyspace() + formattedEndpoint
-		}
-
-		t.Run(endPoint.Method+formattedEndpoint, func(t *testing.T) {
-			resp := rt.SendAdminRequest(endPoint.Method, formattedEndpoint, body)
+		t.Run(endPoint.Method+endPoint.Endpoint, func(t *testing.T) {
+			resp := rt.SendAdminRequest(endPoint.Method, endPoint.Endpoint, body)
 			RequireStatus(t, resp, http.StatusUnauthorized)
 
-			resp = rt.SendAdminRequestWithAuth(endPoint.Method, formattedEndpoint, body, "noaccess", "password")
+			resp = rt.SendAdminRequestWithAuth(endPoint.Method, endPoint.Endpoint, body, "noaccess", "password")
 			RequireStatus(t, resp, http.StatusForbidden)
 
 			if !endPoint.SkipSuccessTest {
@@ -946,18 +873,18 @@ func TestAdminAPIAuth(t *testing.T) {
 				// For some of the endpoints they have other requirements, such as setting up users and others require
 				// bodies. Rather than doing a full test of the endpoint itself this will at least confirm that they pass
 				// the auth stage.
-				if endPoint.urlPrefix != noPrefix {
-					resp = rt.SendAdminRequestWithAuth(endPoint.Method, formattedEndpoint, body, "MobileSyncGatewayUser", "password")
+				if strings.HasPrefix(endPoint.Endpoint, "/{{.") {
+					resp = rt.SendAdminRequestWithAuth(endPoint.Method, endPoint.Endpoint, body, "MobileSyncGatewayUser", "password")
 					assert.True(t, resp.Code != http.StatusUnauthorized && resp.Code != http.StatusForbidden)
 				} else {
-					resp = rt.SendAdminRequestWithAuth(endPoint.Method, formattedEndpoint, body, "ROAdminUser", "password")
+					resp = rt.SendAdminRequestWithAuth(endPoint.Method, endPoint.Endpoint, body, "ROAdminUser", "password")
 					if endPoint.Method == http.MethodGet || endPoint.Method == http.MethodHead || endPoint.Method == http.MethodOptions {
 						assert.True(t, resp.Code != http.StatusUnauthorized && resp.Code != http.StatusForbidden)
 					} else {
 						RequireStatus(t, resp, http.StatusForbidden)
 					}
 
-					resp = rt.SendAdminRequestWithAuth(endPoint.Method, formattedEndpoint, body, "ClusterAdminUser", "password")
+					resp = rt.SendAdminRequestWithAuth(endPoint.Method, endPoint.Endpoint, body, "ClusterAdminUser", "password")
 					assert.True(t, resp.Code != http.StatusUnauthorized && resp.Code != http.StatusForbidden)
 
 				}
