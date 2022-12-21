@@ -32,7 +32,7 @@ licenses/APL2.txt.
 
 
     <!-- Sync Gateway -->
-    <project name="sync_gateway" path="godeps/src/github.com/couchbase/sync_gateway" remote="couchbase" revision="release/2.8.3.3"/>
+    <project name="sync_gateway" path="godeps/src/github.com/couchbase/sync_gateway" remote="couchbase" revision="release/2.8.3.4"/>
 
     <!-- Dependencies for Sync Gateway (and possibly Sync Gateway Accel too) -->
 
