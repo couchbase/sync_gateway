@@ -416,7 +416,7 @@ func TestGetOIDCCallbackURL(t *testing.T) {
 			providers := auth.OIDCProviderMap{"foo": mockProvider("foo"), "bar": mockProvider("bar")}
 			openIDConnectOptions := auth.OIDCOptions{Providers: providers, DefaultProvider: base.StringPtr("foo")}
 			rtConfig := RestTesterConfig{DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{OIDCConfig: &openIDConnectOptions}}}
-			rt := NewRestTesterDefaultCollection(t, &rtConfig)
+			rt := NewRestTester(t, &rtConfig)
 			defer rt.Close()
 
 			mockAuthServer, err := newMockAuthServer()
