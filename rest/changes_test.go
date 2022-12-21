@@ -92,7 +92,7 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 	rtConfig := RestTesterConfig{
 		SyncFn: `function(doc) {channel(doc.channels)}`,
 	}
-	rt := NewRestTester(t, &rtConfig) // CBG-2618: fix collection channel access
+	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 	collection := rt.GetSingleTestDatabaseCollection()
 	c := collection.Name()

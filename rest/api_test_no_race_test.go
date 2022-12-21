@@ -16,11 +16,11 @@ package rest
 
 import (
 	"fmt"
-	"github.com/couchbase/sync_gateway/channels"
 	"sync"
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -30,12 +30,9 @@ func TestChangesAccessNotifyInteger(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyChanges, base.KeyHTTP)
 
-	rt := NewRestTester(t, // CBG-2618: fix collection channel access
+	rt := NewRestTester(t,
 		&RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel); access(doc.accessUser, doc.accessChannel);}`})
 	defer rt.Close()
-	collection := rt.GetSingleTestDatabaseCollection()
-	c := collection.Name()
-	s := collection.ScopeName()
 
 	// Create user:
 	ctx := rt.Context()
@@ -45,7 +42,7 @@ func TestChangesAccessNotifyInteger(t *testing.T) {
 	assert.NoError(t, a.Save(bernard))
 
 	// Put several documents in channel PBS
-	response := rt.SendAdminRequest("PUT", "/db."+s+"."+c+"/pbs1", `{"value":1, "channel":["PBS"]}`)
+	response := rt.SendAdminRequest("PUT", "/db/pbs1", `{"value":1, "channel":["PBS"]}`)
 	RequireStatus(t, response, 201)
 	response = rt.SendAdminRequest("PUT", "/db/pbs2", `{"value":2, "channel":["PBS"]}`)
 	RequireStatus(t, response, 201)
@@ -63,7 +60,7 @@ func TestChangesAccessNotifyInteger(t *testing.T) {
 			Last_Seq db.SequenceID
 		}
 		changesJSON := `{"style":"all_docs", "heartbeat":300000, "feed":"longpoll", "limit":50, "since":"0"}`
-		changesResponse := rt.Send(RequestByUser("POST", "/db."+s+"."+c+"/_changes", changesJSON, "bernard"))
+		changesResponse := rt.Send(RequestByUser("POST", "/db/_changes", changesJSON, "bernard"))
 		err := base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
 		assert.NoError(t, err)
 		assert.Equal(t, 3, len(changes.Results))

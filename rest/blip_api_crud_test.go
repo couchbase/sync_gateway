@@ -821,20 +821,12 @@ function(doc, oldDoc) {
 	rtConfig := RestTesterConfig{
 		SyncFn: syncFunction,
 	}
-	var rt = NewRestTester(t, &rtConfig) // CBG-2619: make collection aware
+	var rt = NewRestTesterDefaultCollection(t, &rtConfig) // CBG-2619: make collection aware
 	defer rt.Close()
 	ctx := rt.Context()
-	checkpointID1 := "checkpoint1"
 	collection := rt.GetSingleTestDatabaseCollection()
 	c := collection.Name()
 	s := collection.ScopeName()
-	properties := blip.Properties{}
-	properties[db.BlipCollection] = "0"
-	getCollectionsRequest, err := db.NewGetCollectionsMessage(db.GetCollectionsRequestBody{
-		CheckpointIDs: []string{checkpointID1},
-		Collections:   []string{fmt.Sprintf("%s.%s", collection.ScopeName(), collection.Name())},
-	})
-	require.NoError(t, err)
 
 	// Create bliptester that is connected as user1, with no access to channel ABC
 	bt, err := NewBlipTesterFromSpecWithRT(t, &BlipTesterSpec{
@@ -842,17 +834,13 @@ function(doc, oldDoc) {
 		connectingPassword: "1234",
 	}, rt)
 	assert.NoError(t, err, "Error creating BlipTester")
-	b := bt.sender.Send(getCollectionsRequest)
-	assert.True(t, b)
-	resp := getCollectionsRequest.Response()
-	require.NotNil(t, resp)
 
 	// Attempt to send a doc, should be rejected
 	_, _, _, sendErr := bt.SendRev(
 		"foo",
 		"1-abc",
 		[]byte(`{"key": "val"}`),
-		properties,
+		blip.Properties{},
 	)
 	assert.Error(t, sendErr, "Expected error sending rev (403 sg missing channel access)")
 
@@ -878,7 +866,7 @@ function(doc, oldDoc) {
 		"foo",
 		"1-abc",
 		[]byte(`{"key": "val"}`),
-		properties,
+		blip.Properties{},
 	)
 	assert.NoError(t, sendErr)
 

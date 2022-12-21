@@ -26,7 +26,7 @@ import (
 )
 
 func TestPublicChanGuestAccess(t *testing.T) {
-	rt := NewRestTester(t, // CBG-2618: fix collection channel access
+	rt := NewRestTester(t,
 		&RestTesterConfig{
 			DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 				Guest: &auth.PrincipalConfig{
@@ -35,6 +35,9 @@ func TestPublicChanGuestAccess(t *testing.T) {
 			}},
 		})
 	defer rt.Close()
+	collection := rt.GetSingleTestDatabaseCollection()
+	c := collection.Name()
+	s := collection.ScopeName()
 
 	// Create a document on the public channel
 	resp := rt.SendAdminRequest(http.MethodPut, "/db/doc", `{"channels": ["!"], "foo": "bar"}`)
@@ -48,7 +51,9 @@ func TestPublicChanGuestAccess(t *testing.T) {
 	resp = rt.SendAdminRequest(http.MethodGet, "/db/_user/GUEST", ``)
 	RequireStatus(t, resp, http.StatusOK)
 	fmt.Println("GUEST user:", resp.Body.String())
-	assert.EqualValues(t, []interface{}{"!"}, resp.GetRestDocument()["all_channels"])
+	expected := fmt.Sprintf(`map[%s:map[%s:map[all_channels:[!]]]]`, s, c)
+	collectionAccess := resp.GetRestDocument()["collection_access"]
+	assert.EqualValues(t, expected, fmt.Sprint(collectionAccess))
 
 	// Confirm guest user cannot access other channels it has no access too
 	resp = rt.SendAdminRequest(http.MethodPut, "/db/docNoAccess", `{"channels": ["cookie"], "foo": "bar"}`)
@@ -80,7 +85,7 @@ func TestStarAccess(t *testing.T) {
 	}
 
 	// Create some docs:
-	rt := NewRestTester(t, nil) // CBG-2618: fix collection channel access
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 	collection := rt.GetSingleTestDatabaseCollection()
 	c := collection.Name()
@@ -110,8 +115,6 @@ func TestStarAccess(t *testing.T) {
 	//
 	// Part 1 - Tests for user with single channel access:
 	//
-	//bernard, err := a.NewUser("bernard", "letmein", channels.BaseSetOf(t, "books"))
-	//assert.NoError(t, a.Save(bernard))
 	response := rt.SendAdminRequest("PUT", "/db/_user/bernard", `{"password":"letmein",`+AdminChannelGrant(s, c, `"admin_channels":["books"]`)+`}`)
 	RequireStatus(t, response, 201)
 
@@ -187,8 +190,6 @@ func TestStarAccess(t *testing.T) {
 	//
 
 	// Create a user:
-	//fran, err := a.NewUser("fran", "letmein", channels.BaseSetOf(t, "*"))
-	//assert.NoError(t, a.Save(fran))
 	response = rt.SendAdminRequest("PUT", "/db/_user/fran", `{"password":"letmein",`+AdminChannelGrant(s, c, `"admin_channels":["*"]`)+`}`)
 	RequireStatus(t, response, 201)
 
@@ -356,7 +357,7 @@ func TestForceAPIForbiddenErrors(t *testing.T) {
 				AssertStatus(t, resp, statusIfForbiddenErrorsFalse)
 			}
 
-			rt := NewRestTester(t, // CBG-2618: fix collection channel access
+			rt := NewRestTester(t,
 				&RestTesterConfig{
 					SyncFn: `
 				function(doc, oldDoc) {
@@ -379,7 +380,6 @@ func TestForceAPIForbiddenErrors(t *testing.T) {
 								Password: base.StringPtr("password"),
 							},
 							"Perms": {
-								//ExplicitChannels: base.SetOf("chan"),
 								Password: base.StringPtr("password"),
 							},
 						},
@@ -571,7 +571,7 @@ func TestBulkDocsChangeToAccess(t *testing.T) {
 
 // Test _all_docs API call under different security scenarios
 func TestAllDocsAccessControl(t *testing.T) {
-	rt := NewRestTester(t, nil) // CBG-2618: fix collection channel access
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 	collection := rt.GetSingleTestDatabaseCollection()
 	c := collection.Name()
@@ -618,13 +618,13 @@ func TestAllDocsAccessControl(t *testing.T) {
 	RequireStatus(t, resp, http.StatusCreated)
 
 	// Get a single doc the user has access to:
-	request, _ := http.NewRequest("GET", "/db."+s+"."+c+"/doc3", nil)
+	request, _ := http.NewRequest("GET", "/db/doc3", nil)
 	request.SetBasicAuth("alice", "letmein")
 	response := rt.Send(request)
 	RequireStatus(t, response, 200)
 
 	// Get a single doc the user doesn't have access to:
-	request, _ = http.NewRequest("GET", "/db."+s+"."+c+"/doc2", nil)
+	request, _ = http.NewRequest("GET", "/db/doc2", nil)
 	request.SetBasicAuth("alice", "letmein")
 	response = rt.Send(request)
 	RequireStatus(t, response, 403)
@@ -812,7 +812,7 @@ func TestChannelAccessChanges(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache, base.KeyChanges, base.KeyCRUD)
 
 	rtConfig := RestTesterConfig{SyncFn: `function(doc) {access(doc.owner, doc._id);channel(doc.channel)}`}
-	rt := NewRestTester(t, &rtConfig) // CBG-2618: fix collection channel access
+	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 	collection := rt.GetSingleTestDatabaseCollection()
 	c := collection.Name()

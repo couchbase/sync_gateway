@@ -450,7 +450,7 @@ func TestLocalJWTRolesChannels(t *testing.T) {
 	restTesterConfig := RestTesterConfig{DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{LocalJWTConfig: auth.LocalJWTConfig{
 		testProviderName: baseProvider,
 	}}}}
-	restTester := NewRestTester(t, &restTesterConfig) // CBG-2618: fix collection channel access
+	restTester := NewRestTester(t, &restTesterConfig)
 	require.NoError(t, restTester.SetAdminParty(false))
 	defer restTester.Close()
 	collection := restTester.GetSingleTestDatabaseCollection()

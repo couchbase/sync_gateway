@@ -43,7 +43,7 @@ func TestUsersAPI(t *testing.T) {
 			},
 		},
 	}
-	rt := NewRestTester(t, // CBG-2618: fix collection channel access
+	rt := NewRestTester(t,
 		rtConfig)
 	defer rt.Close()
 	collection := rt.GetSingleTestDatabaseCollection()
@@ -268,7 +268,7 @@ func TestUsersAPIDetailsWithLimit(t *testing.T) {
 func TestUserAPI(t *testing.T) {
 
 	// PUT a user
-	rt := NewRestTester(t, nil) // CBG-2618: fix collection channel access
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 	ctx := rt.Context()
 	collection := rt.GetSingleTestDatabaseCollection()
@@ -627,7 +627,7 @@ func TestObtainUserChannelsForDeletedRoleCasFail(t *testing.T) {
 
 	for _, testCase := range testCases {
 		t.Run(testCase.Name, func(t *testing.T) {
-			rt := NewRestTester(t, // CBG-2618: fix collection channel access
+			rt := NewRestTester(t,
 				&RestTesterConfig{
 					SyncFn: `
 			function(doc, oldDoc){
@@ -865,7 +865,7 @@ function(doc, oldDoc) {
 	rtConfig := RestTesterConfig{
 		SyncFn: syncFunction,
 	}
-	rt := NewRestTester(t, // CBG-2618: fix collection channel access
+	rt := NewRestTester(t,
 		&rtConfig)
 	defer rt.Close()
 	collection := rt.GetSingleTestDatabaseCollection()

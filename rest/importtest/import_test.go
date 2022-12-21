@@ -53,7 +53,7 @@ func TestXattrImportOldDoc(t *testing.T) {
 			AutoImport: false,
 		}},
 	}
-	rt := rest.NewRestTester(t, // CBG-2618: fix collection channel access
+	rt := rest.NewRestTester(t,
 		&rtConfig)
 	defer rt.Close()
 
@@ -624,7 +624,7 @@ func TestXattrImportMultipleActorOnDemandGet(t *testing.T) {
 			AutoImport: false,
 		}},
 	}
-	rt := rest.NewRestTester(t, &rtConfig) // CBG-2618: fix collection channel access
+	rt := rest.NewRestTester(t, &rtConfig)
 	defer rt.Close()
 	dataStore := rt.GetSingleDataStore()
 
@@ -680,7 +680,7 @@ func TestXattrImportMultipleActorOnDemandPut(t *testing.T) {
 			AutoImport: false,
 		}},
 	}
-	rt := rest.NewRestTester(t, &rtConfig) // CBG-2618: fix collection channel access
+	rt := rest.NewRestTester(t, &rtConfig)
 	defer rt.Close()
 	dataStore := rt.GetSingleDataStore()
 

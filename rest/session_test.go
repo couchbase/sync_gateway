@@ -144,7 +144,7 @@ func TestInvalidSession(t *testing.T) {
 // Test for issue 758 - basic auth with stale session cookie
 func TestBasicAuthWithSessionCookie(t *testing.T) {
 
-	rt := NewRestTester(t, nil) // CBG-2618: fix collection channel access
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 	collection := rt.GetSingleTestDatabaseCollection()
 	c := collection.Name()

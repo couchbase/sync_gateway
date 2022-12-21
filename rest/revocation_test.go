@@ -188,7 +188,7 @@ func InitScenario(t *testing.T, rtConfig *RestTesterConfig) (ChannelRevocationTe
 		}
 	}
 
-	rt := NewRestTester(t, rtConfig) // CBG-2618: fix collection channel access
+	rt := NewRestTester(t, rtConfig)
 
 	revocationTester := ChannelRevocationTester{
 		test:       t,
@@ -890,7 +890,7 @@ func TestEnsureRevocationUsingDocHistory(t *testing.T) {
 func TestRevocationWithAdminChannels(t *testing.T) {
 	defer db.SuspendSequenceBatching()()
 
-	rt := NewRestTester(t, nil) // CBG-2618: fix collection channel access
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 	collection := rt.GetSingleTestDatabaseCollection()
 	c := collection.Name()
@@ -902,7 +902,7 @@ func TestRevocationWithAdminChannels(t *testing.T) {
 	resp = rt.SendAdminRequest("PUT", "/db/doc", `{"channels": ["A"]}`)
 	RequireStatus(t, resp, http.StatusCreated)
 
-	changes, err := rt.WaitForChanges(2, "/db."+s+"."+c+"/_changes?since=0&revocations=true", "user", false)
+	changes, err := rt.WaitForChanges(2, "/db/_changes?since=0&revocations=true", "user", false)
 	require.NoError(t, err)
 	assert.Equal(t, 2, len(changes.Results))
 
@@ -912,7 +912,7 @@ func TestRevocationWithAdminChannels(t *testing.T) {
 	resp = rt.SendAdminRequest("PUT", "/db/_user/user", `{`+AdminChannelGrant(s, c, `"admin_channels": []`)+`, "password": "letmein"}`)
 	RequireStatus(t, resp, http.StatusOK)
 
-	changes, err = rt.WaitForChanges(2, fmt.Sprintf("/db."+s+"."+c+"/_changes?since=%d&revocations=true", 2), "user", false)
+	changes, err = rt.WaitForChanges(2, fmt.Sprintf("/db/_changes?since=%d&revocations=true", 2), "user", false)
 	require.NoError(t, err)
 	require.Equal(t, 2, len(changes.Results))
 
@@ -923,7 +923,7 @@ func TestRevocationWithAdminChannels(t *testing.T) {
 func TestRevocationWithAdminRoles(t *testing.T) {
 	defer db.SuspendSequenceBatching()()
 
-	rt := NewRestTester(t, nil) // CBG-2618: fix collection channel access
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 	collection := rt.GetSingleTestDatabaseCollection()
 	c := collection.Name()
@@ -938,7 +938,7 @@ func TestRevocationWithAdminRoles(t *testing.T) {
 	resp = rt.SendAdminRequest("PUT", "/db/doc", `{"channels": ["A"]}`)
 	RequireStatus(t, resp, http.StatusCreated)
 
-	changes, err := rt.WaitForChanges(2, "/db."+s+"."+c+"/_changes?since=0&revocations=true", "user", false)
+	changes, err := rt.WaitForChanges(2, "/db/_changes?since=0&revocations=true", "user", false)
 	require.NoError(t, err)
 	assert.Equal(t, 2, len(changes.Results))
 
@@ -948,7 +948,7 @@ func TestRevocationWithAdminRoles(t *testing.T) {
 	resp = rt.SendAdminRequest("PUT", "/db/_user/user", `{"admin_roles": []}`)
 	RequireStatus(t, resp, http.StatusOK)
 
-	changes, err = rt.WaitForChanges(2, fmt.Sprintf("/db."+s+"."+c+"/_changes?since=%d&revocations=true", 3), "user", false)
+	changes, err = rt.WaitForChanges(2, fmt.Sprintf("/db/_changes?since=%d&revocations=true", 3), "user", false)
 	require.NoError(t, err)
 	require.Equal(t, 2, len(changes.Results))
 
