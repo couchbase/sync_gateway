@@ -119,11 +119,6 @@ func NewCouchbaseCluster(server, username, password,
 		bucketConnectionMode: bucketMode,
 	}
 
-	err = cbCluster.SetConnectionStringServerless()
-	if err != nil {
-		return nil, err
-	}
-
 	if bucketMode == CachedClusterConnections {
 		cbCluster.cachedBucketConnections = make(map[string]*cachedBucket)
 	}

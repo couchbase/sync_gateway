@@ -228,56 +228,6 @@ func TestServerlessGoCBConnectionString(t *testing.T) {
 
 }
 
-func addDocs(t *testing.T, bucket base.TestBucket) error {
-	var err error
-	var add bool
-	for i := 0; i < 2000; i++ {
-		datastore := bucket.GetSingleDataStore()
-		add, err = datastore.AddRaw(fmt.Sprint(i), 0, []byte(fmt.Sprintf(`{"foo": "bar"}`)))
-		assert.True(t, add)
-	}
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-func TestBuffer(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("Only works for server")
-	}
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
-
-	rt := NewRestTester(t, &RestTesterConfig{PersistentConfig: true, serverless: true, AdminInterfaceAuthentication: true})
-	defer rt.Close()
-
-	tb1 := base.GetTestBucket(t)
-	fmt.Println(tb1.GetName())
-	fmt.Println(tb1.BucketSpec.Auth.GetCredentials())
-	rt.RestTesterConfig.CustomTestBucket = tb1
-	defer tb1.Close()
-
-	err := addDocs(t, *tb1)
-	require.NoError(t, err)
-
-	resp := rt.SendAdminRequestWithAuth(http.MethodPut, "/db1/", fmt.Sprintf(`{
-		"bucket": "%s",
-		"use_views": %t,
-		"import_docs": %t,
-		"num_index_replicas": 0
-	}`, tb1.GetName(), base.TestsDisableGSI(), true), base.TestClusterUsername(), base.TestClusterPassword())
-	fmt.Println("here")
-	RequireStatus(t, resp, http.StatusCreated)
-
-	time.Sleep(8 * time.Second)
-
-	//path := ""
-
-	//resp := rt.SendAdminRequestWithAuth(http.MethodPost, "/_heap", fmt.Sprintf(`{"file": "%s"}`, path), base.TestClusterUsername(), base.TestClusterPassword())
-	//RequireStatus(t, resp, http.StatusOK)
-
-}
-
 func TestServerlessUnsupportedOptions(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
@@ -320,6 +270,7 @@ func TestServerlessUnsupportedOptions(t *testing.T) {
 					tb.GetName(), base.TestsDisableGSI()))
 				RequireStatus(t, resp, http.StatusCreated)
 			}
+			fmt.Println(test.expectedConnStr)
 			assert.Equal(t, test.expectedConnStr, sc.getConnectionString("db"))
 		})
 	}
