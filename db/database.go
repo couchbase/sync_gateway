@@ -128,6 +128,7 @@ type DatabaseContext struct {
 	singleCollection             *DatabaseCollection            // Temporary collection
 	CollectionByID               map[uint32]*DatabaseCollection // A map keyed by collection ID to Collection
 	CollectionNames              map[string]map[string]struct{} // Map of scope, collection names
+	AllDocsIndexExists           bool
 }
 
 type Scope struct {
