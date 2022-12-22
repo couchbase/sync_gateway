@@ -3861,8 +3861,6 @@ func TestCacheCompactDuringChangesWait(t *testing.T) {
 func TestTombstoneCompaction(t *testing.T) {
 	base.LongRunningTest(t)
 
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
-
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Walrus does not support Xattrs")
 	}
@@ -3871,7 +3869,14 @@ func TestTombstoneCompaction(t *testing.T) {
 		t.Skip("If running with no xattrs compact acts as a no-op")
 	}
 
-	rt := rest.NewRestTester(t, nil)
+	var rt *rest.RestTester
+	numCollections := 1
+	if base.TestsUseNamedCollections() {
+		numCollections = 2
+		rt = rest.NewRestTesterMultipleCollections(t, nil, numCollections)
+	} else {
+		rt = rest.NewRestTester(t, nil)
+	}
 	rt.GetDatabase().PurgeInterval = 0
 	defer rt.Close()
 
@@ -3884,19 +3889,20 @@ func TestTombstoneCompaction(t *testing.T) {
 
 		for count < numDocs {
 			count++
-			response := rt.SendAdminRequest("POST", "/{{.keyspace}}/", `{"foo":"bar"}`)
-			assert.Equal(t, 200, response.Code)
-			var body db.Body
-			err := base.JSONUnmarshal(response.Body.Bytes(), &body)
-			assert.NoError(t, err)
-			revId := body["rev"].(string)
-			docId := body["id"].(string)
+			for _, keyspace := range rt.GetKeyspaces() {
+				response := rt.SendAdminRequest("POST", fmt.Sprintf("/%s/", keyspace), `{"foo":"bar"}`)
+				assert.Equal(t, 200, response.Code)
+				var body db.Body
+				err := base.JSONUnmarshal(response.Body.Bytes(), &body)
+				assert.NoError(t, err)
+				revId := body["rev"].(string)
+				docId := body["id"].(string)
 
-			response = rt.SendAdminRequest("DELETE", fmt.Sprintf("/{{.keyspace}}/%s?rev=%s", docId, revId), "")
-			assert.Equal(t, 200, response.Code)
+				response = rt.SendAdminRequest("DELETE", fmt.Sprintf("/{{.keyspace}}/%s?rev=%s", docId, revId), "")
+				assert.Equal(t, 200, response.Code)
+			}
 		}
-
-		resp := rt.SendAdminRequest("POST", "/{{.keyspace}}/_compact", "")
+		resp := rt.SendAdminRequest("POST", "/{{.db}}/_compact", "")
 		rest.RequireStatus(t, resp, http.StatusOK)
 
 		err := rt.WaitForCondition(func() bool {
@@ -3905,8 +3911,8 @@ func TestTombstoneCompaction(t *testing.T) {
 		})
 		assert.NoError(t, err)
 
-		compactionTotal += numDocs
-		assert.Equal(t, compactionTotal, int(rt.GetDatabase().DbStats.Database().NumTombstonesCompacted.Value()))
+		compactionTotal += (numDocs * numCollections)
+		require.Equal(t, compactionTotal, int(rt.GetDatabase().DbStats.Database().NumTombstonesCompacted.Value()))
 
 		var actualBatches int64
 		if base.TestsDisableGSI() {
@@ -3915,8 +3921,8 @@ func TestTombstoneCompaction(t *testing.T) {
 			actualBatches = rt.GetDatabase().DbStats.Query(db.QueryTypeTombstones).QueryCount.Value()
 		}
 
-		expectedBatches += numDocs/db.QueryTombstoneBatch + 1
-		assert.Equal(t, expectedBatches, int(actualBatches))
+		expectedBatches += (numDocs/db.QueryTombstoneBatch + 1) * numCollections
+		require.Equal(t, expectedBatches, int(actualBatches))
 	}
 
 	// Multiples of Batch Size

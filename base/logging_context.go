@@ -102,8 +102,16 @@ func bucketNameCtx(parent context.Context, bucketName string) context.Context {
 	return LogContextWith(parent, &newCtx)
 }
 
-// bucketNameCtx extends the parent context with a bucket name.
-func keyspaceNameCtx(parent context.Context, bucketName, scopeName, collectionName string) context.Context {
+// CollectionNameCtx extends the parent context with a bucket name.
+func CollectionNameCtx(parent context.Context, collectionName string) context.Context {
+	newCtx := KeyspaceLogContext{
+		Keyspace: collectionName,
+	}
+	return LogContextWith(parent, &newCtx)
+}
+
+// testKeyspaceNameCtx extends the parent context with a bucket name.
+func testKeyspaceNameCtx(parent context.Context, bucketName, scopeName, collectionName string) context.Context {
 	parentLogCtx, _ := parent.Value(requestContextKey).(LogContext)
 	newCtx := LogContext{
 		TestName:           parentLogCtx.TestName,
@@ -121,6 +129,7 @@ const (
 	requestContextKey LogContextKey = iota
 	serverLogContextKey
 	databaseLogContextKey
+	keyspaceLogContextKey
 )
 
 // ContextAdder interface should be implemented by all custom contexts.
@@ -133,7 +142,7 @@ type ContextAdder interface {
 
 // allLogContextKeys contains the keys of all custom contexts,
 // and is used when writing log prefixes (addPrefixes)
-var allLogContextKeys = [...]LogContextKey{requestContextKey, serverLogContextKey, databaseLogContextKey}
+var allLogContextKeys = [...]LogContextKey{requestContextKey, serverLogContextKey, databaseLogContextKey, keyspaceLogContextKey}
 
 // LogContextWith is called to add custom context to the go context.
 // All custom contexts should implement ContextAdder interface
@@ -169,6 +178,23 @@ func (c *DatabaseLogContext) getContextKey() LogContextKey {
 func (c *DatabaseLogContext) addContext(format string) string {
 	if c != nil && c.DatabaseName != "" {
 		format = "db:" + c.DatabaseName + " " + format
+	}
+	return format
+}
+
+// KeyspaceLogContext provides database context data for logging
+type KeyspaceLogContext struct {
+	Keyspace string
+}
+
+func (c *KeyspaceLogContext) getContextKey() LogContextKey {
+	return databaseLogContextKey
+}
+
+func (c *KeyspaceLogContext) addContext(format string) string {
+	if c.Keyspace != "" {
+		format = "ks:" + c.Keyspace + " " + format
+
 	}
 	return format
 }

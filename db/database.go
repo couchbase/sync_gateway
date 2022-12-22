@@ -1487,77 +1487,81 @@ func (db *Database) Compact(ctx context.Context, skipRunningStateCheck bool, cal
 	}
 	base.InfofCtx(ctx, base.KeyAll, "Tombstone compaction using the metadata purge interval of %.2f days.", db.PurgeInterval.Hours()/24)
 
-	// TODO CBG-2534 Multi-collection support
-	dataStore := db.Bucket.DefaultDataStore()
-
 	purgeBody := Body{"_purged": true}
-	for {
-		purgedDocs := make([]string, 0)
-		results, err := db.singleCollection.QueryTombstones(ctx, purgeOlderThan, QueryTombstoneBatch)
+	for _, c := range db.CollectionByID {
+		// create admin collection interface
+		collection, err := db.GetDatabaseCollectionWithUser(c.ScopeName(), c.Name())
 		if err != nil {
-			return 0, err
+			base.WarnfCtx(ctx, "Tombstone compaction could not get collection: %s", err)
+			continue
 		}
-		var tombstonesRow QueryIdRow
-		var resultCount int
-		for results.Next(&tombstonesRow) {
-			select {
-			case <-terminator.Done():
-				closeErr := results.Close()
-				if closeErr != nil {
-					return 0, closeErr
+		ctx := base.CollectionNameCtx(ctx, collection.Name())
+		for {
+			purgedDocs := make([]string, 0)
+			results, err := collection.QueryTombstones(ctx, purgeOlderThan, QueryTombstoneBatch)
+			if err != nil {
+				return 0, err
+			}
+			var tombstonesRow QueryIdRow
+			var resultCount int
+			for results.Next(&tombstonesRow) {
+				select {
+				case <-terminator.Done():
+					closeErr := results.Close()
+					if closeErr != nil {
+						return 0, closeErr
+					}
+					return purgedDocCount, nil
+				default:
 				}
-				return purgedDocCount, nil
-			default:
+
+				resultCount++
+				base.DebugfCtx(ctx, base.KeyCRUD, "\tDeleting %q", tombstonesRow.Id)
+				// First, attempt to purge.
+				purgeErr := collection.Purge(ctx, tombstonesRow.Id)
+				if purgeErr == nil {
+					purgedDocs = append(purgedDocs, tombstonesRow.Id)
+				} else if base.IsDocNotFoundError(purgeErr) {
+					// If key no longer exists, need to add and remove to trigger removal from view
+					_, addErr := collection.dataStore.Add(tombstonesRow.Id, 0, purgeBody)
+					if addErr != nil {
+						base.WarnfCtx(ctx, "Error compacting key %s (add) - tombstone will not be compacted.  %v", base.UD(tombstonesRow.Id), addErr)
+						continue
+					}
+
+					// At this point, the doc is not in a usable state for mobile
+					// so mark it to be removed from cache, even if the subsequent delete fails
+					purgedDocs = append(purgedDocs, tombstonesRow.Id)
+
+					if delErr := collection.dataStore.Delete(tombstonesRow.Id); delErr != nil {
+						base.ErrorfCtx(ctx, "Error compacting key %s (delete) - tombstone will not be compacted.  %v", base.UD(tombstonesRow.Id), delErr)
+					}
+				} else {
+					base.WarnfCtx(ctx, "Error compacting key %s (purge) - tombstone will not be compacted.  %v", base.UD(tombstonesRow.Id), purgeErr)
+				}
 			}
 
-			resultCount++
-			base.DebugfCtx(ctx, base.KeyCRUD, "\tDeleting %q", tombstonesRow.Id)
-			// First, attempt to purge.
-			purgeErr := db.GetSingleDatabaseCollectionWithUser().Purge(ctx, tombstonesRow.Id)
-			if purgeErr == nil {
-				purgedDocs = append(purgedDocs, tombstonesRow.Id)
-			} else if base.IsDocNotFoundError(purgeErr) {
-				// If key no longer exists, need to add and remove to trigger removal from view
-				_, addErr := dataStore.Add(tombstonesRow.Id, 0, purgeBody)
-				if addErr != nil {
-					base.WarnfCtx(ctx, "Error compacting key %s (add) - tombstone will not be compacted.  %v", base.UD(tombstonesRow.Id), addErr)
-					continue
-				}
-
-				// At this point, the doc is not in a usable state for mobile
-				// so mark it to be removed from cache, even if the subsequent delete fails
-				purgedDocs = append(purgedDocs, tombstonesRow.Id)
-
-				if delErr := dataStore.Delete(tombstonesRow.Id); delErr != nil {
-					base.ErrorfCtx(ctx, "Error compacting key %s (delete) - tombstone will not be compacted.  %v", base.UD(tombstonesRow.Id), delErr)
-				}
-			} else {
-				base.WarnfCtx(ctx, "Error compacting key %s (purge) - tombstone will not be compacted.  %v", base.UD(tombstonesRow.Id), purgeErr)
+			err = results.Close()
+			if err != nil {
+				return 0, err
 			}
-		}
 
-		err = results.Close()
-		if err != nil {
-			return 0, err
-		}
+			// Now purge them from all channel caches
+			count := len(purgedDocs)
+			purgedDocCount += count
+			if count > 0 {
+				collection.RemoveFromChangeCache(purgedDocs, startTime)
+				collection.dbStats().Database().NumTombstonesCompacted.Add(int64(count))
+			}
+			base.DebugfCtx(ctx, base.KeyAll, "Compacted %v tombstones", count)
 
-		// Now purge them from all channel caches
-		count := len(purgedDocs)
-		purgedDocCount += count
-		if count > 0 {
-			collection := db.GetSingleDatabaseCollection() // CBG-2561
-			collection.RemoveFromChangeCache(purgedDocs, startTime)
-			db.DbStats.Database().NumTombstonesCompacted.Add(int64(count))
-		}
-		base.DebugfCtx(ctx, base.KeyAll, "Compacted %v tombstones", count)
+			callback(&purgedDocCount)
 
-		callback(&purgedDocCount)
-
-		if resultCount < QueryTombstoneBatch {
-			break
+			if resultCount < QueryTombstoneBatch {
+				break
+			}
 		}
 	}
-
 	base.InfofCtx(ctx, base.KeyAll, "Finished compaction of purged tombstones for %s... Total Tombstones Compacted: %d", base.MD(db.Name), purgedDocCount)
 
 	return purgedDocCount, nil

@@ -2623,7 +2623,7 @@ func TestTombstoneCompactionAPI(t *testing.T) {
 		RequireStatus(t, resp, http.StatusOK)
 	}
 
-	resp := rt.SendAdminRequest("GET", "/{{.keyspace}}/_compact", "")
+	resp := rt.SendAdminRequest("GET", "/{{.db}}/_compact", "")
 	RequireStatus(t, resp, http.StatusOK)
 
 	var tombstoneCompactionStatus db.TombstoneManagerResponse
@@ -2636,11 +2636,11 @@ func TestTombstoneCompactionAPI(t *testing.T) {
 	firstStartTimeStat := rt.GetDatabase().DbStats.Database().CompactionAttachmentStartTime.Value()
 	assert.NotEqual(t, 0, firstStartTimeStat)
 
-	resp = rt.SendAdminRequest("POST", "/{{.keyspace}}/_compact", "")
+	resp = rt.SendAdminRequest("POST", "/{{.db}}/_compact", "")
 	RequireStatus(t, resp, http.StatusOK)
 
 	err = rt.WaitForCondition(func() bool {
-		resp = rt.SendAdminRequest("GET", "/{{.keyspace}}/_compact", "")
+		resp = rt.SendAdminRequest("GET", "/{{.db}}/_compact", "")
 		RequireStatus(t, resp, http.StatusOK)
 
 		err = base.JSONUnmarshal(resp.BodyBytes(), &tombstoneCompactionStatus)
@@ -2651,7 +2651,7 @@ func TestTombstoneCompactionAPI(t *testing.T) {
 	assert.NoError(t, err)
 	assert.True(t, rt.GetDatabase().DbStats.Database().CompactionAttachmentStartTime.Value() > firstStartTimeStat)
 
-	resp = rt.SendAdminRequest("GET", "/{{.keyspace}}/_compact", "")
+	resp = rt.SendAdminRequest("GET", "/{{.db}}/_compact", "")
 	RequireStatus(t, resp, http.StatusOK)
 	err = base.JSONUnmarshal(resp.BodyBytes(), &tombstoneCompactionStatus)
 	assert.NoError(t, err)
