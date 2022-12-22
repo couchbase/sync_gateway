@@ -569,7 +569,7 @@ func TestUserXattrsRawGet(t *testing.T) {
 		t.Skip("Test requires Couchbase Bucket")
 	}
 
-	resp := rt.SendAdminRequest("PUT", "/db/"+docKey, "{}")
+	resp := rt.SendAdminRequest("PUT", "/{{.keyspace}}/"+docKey, "{}")
 	RequireStatus(t, resp, http.StatusCreated)
 	require.NoError(t, rt.WaitForPendingChanges())
 
@@ -580,7 +580,7 @@ func TestUserXattrsRawGet(t *testing.T) {
 		return rt.GetDatabase().DbStats.SharedBucketImportStats.ImportCount.Value() == 1
 	})
 
-	resp = rt.SendAdminRequest("GET", "/db/_raw/"+docKey, "")
+	resp = rt.SendAdminRequest("GET", "/{{.keyspace}}/_raw/"+docKey, "")
 	RequireStatus(t, resp, http.StatusOK)
 
 	var RawReturn struct {
@@ -966,7 +966,7 @@ func TestUserDeleteDuringChangesWithAccess(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		changesResponse := rt.Send(RequestByUser("GET", "/db/_changes?feed=continuous&since=0&timeout=3000", "", "bernard"))
+		changesResponse := rt.Send(RequestByUser("GET", "/{{.keyspace}}/_changes?feed=continuous&since=0&timeout=3000", "", "bernard"))
 		// When testing single threaded, this reproduces the issue described in #809.
 		// When testing multithreaded (-cpu 4 -race), there are three (valid) possibilities"
 		// 1. The DELETE gets processed before the _changes auth completes: this will return 401
@@ -988,14 +988,14 @@ func TestUserDeleteDuringChangesWithAccess(t *testing.T) {
 
 	// TODO: sleep required to ensure the changes feed iteration starts before the delete gets processed.
 	time.Sleep(500 * time.Millisecond)
-	rt.SendAdminRequest("PUT", "/db/bernard_doc1", `{"type":"setaccess", "owner":"bernard","channel":"foo"}`)
+	rt.SendAdminRequest("PUT", "/{{.keyspace}}/bernard_doc1", `{"type":"setaccess", "owner":"bernard","channel":"foo"}`)
 	rt.SendAdminRequest("DELETE", "/db/_user/bernard", "")
-	rt.SendAdminRequest("PUT", "/db/manny_doc1", `{"type":"setaccess", "owner":"manny","channel":"bar"}`)
-	rt.SendAdminRequest("PUT", "/db/bernard_doc2", `{"type":"general", "channel":"foo"}`)
+	rt.SendAdminRequest("PUT", "/{{.keyspace}}/manny_doc1", `{"type":"setaccess", "owner":"manny","channel":"bar"}`)
+	rt.SendAdminRequest("PUT", "/{{.keyspace}}/bernard_doc2", `{"type":"general", "channel":"foo"}`)
 
 	// case 3
 	for i := 0; i <= 5; i++ {
-		docId := fmt.Sprintf("/db/bernard_doc%d", i+3)
+		docId := fmt.Sprintf("/{{.keyspace}}/bernard_doc%d", i+3)
 		response = rt.SendAdminRequest("PUT", docId, `{"type":"setaccess", "owner":"bernard", "channel":"foo"}`)
 	}
 
@@ -1122,20 +1122,20 @@ func TestFunkyUsernames(t *testing.T) {
 			require.NoError(t, err)
 			require.NoError(t, a.Save(user))
 
-			response := rt.Send(RequestByUser("PUT", "/db/AC+DC", `{"foo":"bar", "channels": ["foo"]}`, tc.UserName))
+			response := rt.SendUserRequest("PUT", "/{{.keyspace}}/AC+DC", `{"foo":"bar", "channels": ["foo"]}`, tc.UserName)
 			RequireStatus(t, response, 201)
 
-			response = rt.Send(RequestByUser("GET", "/db/_all_docs", "", tc.UserName))
+			response = rt.SendUserRequest("GET", "/{{.keyspace}}/_all_docs", "", tc.UserName)
 			RequireStatus(t, response, 200)
 
-			response = rt.Send(RequestByUser("GET", "/db/AC+DC", "", tc.UserName))
+			response = rt.SendUserRequest("GET", "/{{.keyspace}}/AC+DC", "", tc.UserName)
 			RequireStatus(t, response, 200)
 			var overlay struct {
 				Rev string `json:"_rev"`
 			}
 			require.NoError(t, json.Unmarshal(response.Body.Bytes(), &overlay))
 
-			response = rt.Send(RequestByUser("DELETE", "/db/AC+DC?rev="+overlay.Rev, "", tc.UserName))
+			response = rt.SendUserRequest("DELETE", "/{{.keyspace}}/AC+DC?rev="+overlay.Rev, "", tc.UserName)
 			RequireStatus(t, response, 200)
 		})
 	}
@@ -1166,7 +1166,7 @@ func TestRemovingUserXattr(t *testing.T) {
 			name:       "GET",
 			autoImport: false,
 			importTrigger: func(t *testing.T, rt *RestTester, docKey string) {
-				resp := rt.SendAdminRequest("GET", "/db/"+docKey, "")
+				resp := rt.SendAdminRequest("GET", "/{{.keyspace}}/"+docKey, "")
 				RequireStatus(t, resp, http.StatusOK)
 			},
 		},
@@ -1174,7 +1174,7 @@ func TestRemovingUserXattr(t *testing.T) {
 			name:       "PUT",
 			autoImport: false,
 			importTrigger: func(t *testing.T, rt *RestTester, docKey string) {
-				resp := rt.SendAdminRequest("PUT", "/db/"+docKey, "{}")
+				resp := rt.SendAdminRequest("PUT", "/{{.keyspace}}/"+docKey, "{}")
 				RequireStatus(t, resp, http.StatusConflict)
 			},
 		},
@@ -1215,7 +1215,7 @@ func TestRemovingUserXattr(t *testing.T) {
 			}
 
 			// Initial PUT
-			resp := rt.SendAdminRequest("PUT", "/db/"+docKey, `{}`)
+			resp := rt.SendAdminRequest("PUT", "/{{.keyspace}}/"+docKey, `{}`)
 			RequireStatus(t, resp, http.StatusCreated)
 
 			// Add xattr
@@ -1304,7 +1304,7 @@ func TestUserXattrAvoidRevisionIDGeneration(t *testing.T) {
 	require.True(t, ok)
 
 	// Initial PUT
-	resp := rt.SendAdminRequest("PUT", "/db/"+docKey, `{}`)
+	resp := rt.SendAdminRequest("PUT", "/{{.keyspace}}/"+docKey, `{}`)
 	RequireStatus(t, resp, http.StatusCreated)
 
 	require.NoError(t, rt.WaitForPendingChanges())

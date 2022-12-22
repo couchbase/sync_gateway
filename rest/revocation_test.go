@@ -1474,9 +1474,10 @@ func TestReplicatorRevocations(t *testing.T) {
 	defer rt2.Close()
 
 	// Active
-	rt1 := NewRestTester(t, &RestTesterConfig{
-		CustomTestBucket: base.GetTestBucket(t),
-	})
+	rt1 := NewRestTesterDefaultCollection(t, //  CBG-2319: replicator currently requires default collection
+		&RestTesterConfig{
+			CustomTestBucket: base.GetTestBucket(t),
+		})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
 
@@ -1533,9 +1534,10 @@ func TestReplicatorRevocationsNoRev(t *testing.T) {
 	defer rt2.Close()
 
 	// Active
-	rt1 := NewRestTester(t, &RestTesterConfig{
-		CustomTestBucket: base.GetTestBucket(t),
-	})
+	rt1 := NewRestTesterDefaultCollection(t, //  CBG-2319: replicator currently requires default collection
+		&RestTesterConfig{
+			CustomTestBucket: base.GetTestBucket(t),
+		})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
 
@@ -1593,9 +1595,10 @@ func TestReplicatorRevocationsNoRevButAlternateAccess(t *testing.T) {
 	defer rt2.Close()
 
 	// Active
-	rt1 := NewRestTester(t, &RestTesterConfig{
-		CustomTestBucket: base.GetTestBucket(t),
-	})
+	rt1 := NewRestTesterDefaultCollection(t, //  CBG-2319: replicator currently requires default collection
+		&RestTesterConfig{
+			CustomTestBucket: base.GetTestBucket(t),
+		})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
 
@@ -1661,9 +1664,10 @@ func TestReplicatorRevocationsMultipleAlternateAccess(t *testing.T) {
 	defer rt2.Close()
 
 	// Active
-	rt1 := NewRestTester(t, &RestTesterConfig{
-		CustomTestBucket: base.GetTestBucket(t),
-	})
+	rt1 := NewRestTesterDefaultCollection(t, //  CBG-2319: replicator currently requires default collection
+		&RestTesterConfig{
+			CustomTestBucket: base.GetTestBucket(t),
+		})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
 
@@ -1770,9 +1774,10 @@ func TestReplicatorRevocationsWithTombstoneResurrection(t *testing.T) {
 	defer rt2.Close()
 
 	// Active
-	rt1 := NewRestTester(t, &RestTesterConfig{
-		CustomTestBucket: base.GetTestBucket(t),
-	})
+	rt1 := NewRestTesterDefaultCollection(t, //  CBG-2319: replicator currently requires default collection
+		&RestTesterConfig{
+			CustomTestBucket: base.GetTestBucket(t),
+		})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
 
@@ -1853,6 +1858,95 @@ func TestReplicatorRevocationsWithTombstoneResurrection(t *testing.T) {
 	assert.NoError(t, err)
 }
 
+func TestReplicatorRevocationsWithStarChannel(t *testing.T) {
+	base.RequireNumTestBuckets(t, 2)
+
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll) // CBG-1981
+
+	// Passive
+	_, rt2 := InitScenario(t, nil)
+	defer rt2.Close()
+
+	// Active
+	rt1 := NewRestTesterDefaultCollection(t, //  CBG-2319: replicator currently requires default collection
+		&RestTesterConfig{
+			CustomTestBucket: base.GetTestBucket(t),
+		})
+	defer rt1.Close()
+	ctx1 := rt1.Context()
+
+	// Setup replicator
+	srv := httptest.NewServer(rt2.TestPublicHandler())
+	defer srv.Close()
+
+	passiveDBURL, err := url.Parse(srv.URL + "/db")
+	require.NoError(t, err)
+
+	passiveDBURL.User = url.UserPassword("user", "test")
+	sgwStats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false)
+	require.NoError(t, err)
+	dbstats, err := sgwStats.DBReplicatorStats(t.Name())
+	require.NoError(t, err)
+
+	_ = rt2.CreateDocReturnRev(t, "docA", "", map[string][]string{"channels": []string{"A"}})
+	_ = rt2.CreateDocReturnRev(t, "docAB", "", map[string][]string{"channels": []string{"A", "B"}})
+	_ = rt2.CreateDocReturnRev(t, "docB", "", map[string][]string{"channels": []string{"B"}})
+	_ = rt2.CreateDocReturnRev(t, "docABC", "", map[string][]string{"channels": []string{"A", "B", "C"}})
+	_ = rt2.CreateDocReturnRev(t, "docC", "", map[string][]string{"channels": []string{"C"}})
+	require.NoError(t, rt2.WaitForPendingChanges())
+
+	ar := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
+		ID:          t.Name(),
+		Direction:   db.ActiveReplicatorTypePull,
+		RemoteDBURL: passiveDBURL,
+		ActiveDB: &db.Database{
+			DatabaseContext: rt1.GetDatabase(),
+		},
+		Continuous:          false,
+		PurgeOnRemoval:      true,
+		ReplicationStatsMap: dbstats,
+	})
+	resp := rt2.SendAdminRequest("PUT", "/db/_user/user", `{"name": "user", "password": "test", "admin_channels": ["*"]}`)
+	RequireStatus(t, resp, http.StatusOK)
+
+	require.NoError(t, ar.Start(ctx1))
+
+	defer func() {
+		assert.NoError(t, ar.Stop())
+	}()
+
+	// Wait for docs to turn up on local / rt1
+	changesResults, err := rt1.WaitForChanges(5, "/db/_changes?since=0", "", true)
+	require.NoError(t, err)
+	assert.Len(t, changesResults.Results, 5)
+
+	// Revoke A and ensure docA, docAB, docABC get purged from local
+	resp = rt2.SendAdminRequest("PUT", "/db/_user/user", `{"name": "user", "password": "test", "admin_channels": []}`)
+	RequireStatus(t, resp, http.StatusOK)
+
+	assert.NoError(t, ar.Stop())
+
+	require.NoError(t, ar.Start(ctx1))
+
+	err = rt1.WaitForCondition(func() bool {
+		resp := rt1.SendAdminRequest("GET", "/db/docA", "")
+		return resp.Code == http.StatusNotFound
+	})
+	assert.NoError(t, err)
+
+	err = rt1.WaitForCondition(func() bool {
+		resp := rt1.SendAdminRequest("GET", "/db/docAB", "")
+		return resp.Code == http.StatusNotFound
+	})
+	assert.NoError(t, err)
+
+	err = rt1.WaitForCondition(func() bool {
+		resp := rt1.SendAdminRequest("GET", "/db/docABC", "")
+		return resp.Code == http.StatusNotFound
+	})
+	assert.NoError(t, err)
+}
+
 func TestReplicatorRevocationsFromZero(t *testing.T) {
 	defer db.SuspendSequenceBatching()()
 
@@ -1863,9 +1957,10 @@ func TestReplicatorRevocationsFromZero(t *testing.T) {
 	defer rt2.Close()
 
 	// Active
-	rt1 := NewRestTester(t, &RestTesterConfig{
-		CustomTestBucket: base.GetTestBucket(t),
-	})
+	rt1 := NewRestTesterDefaultCollection(t, //  CBG-2319: replicator currently requires default collection
+		&RestTesterConfig{
+			CustomTestBucket: base.GetTestBucket(t),
+		})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
 
@@ -2147,9 +2242,10 @@ func TestRevocationNoRev(t *testing.T) {
 
 // Regression test for CBG-2183.
 func TestBlipRevokeNonExistentRole(t *testing.T) {
-	rt := NewRestTester(t, &RestTesterConfig{
-		GuestEnabled: false,
-	})
+	rt := NewRestTesterDefaultCollection(t, // CBG-2619: make collection aware
+		&RestTesterConfig{
+			GuestEnabled: false,
+		})
 	defer rt.Close()
 
 	base.SetUpTestLogging(t, base.LevelTrace, base.KeyAll)
@@ -2195,9 +2291,10 @@ func TestReplicatorSwitchPurgeNoReset(t *testing.T) {
 	defer rt2.Close()
 
 	// Active
-	rt1 := NewRestTester(t, &RestTesterConfig{
-		CustomTestBucket: base.GetTestBucket(t),
-	})
+	rt1 := NewRestTesterDefaultCollection(t, //  CBG-2319: replicator currently requires default collection
+		&RestTesterConfig{
+			CustomTestBucket: base.GetTestBucket(t),
+		})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
 

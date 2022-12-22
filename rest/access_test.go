@@ -111,20 +111,20 @@ func TestStarAccess(t *testing.T) {
 	assert.NoError(t, a.Save(bernard))
 
 	// GET /db/docid - basic test for channel user has
-	response := rt.Send(RequestByUser("GET", "/db/doc1", "", "bernard"))
+	response := rt.SendUserRequest("GET", "/db/doc1", "", "bernard")
 	RequireStatus(t, response, 200)
 
 	// GET /db/docid - negative test for channel user doesn't have
-	response = rt.Send(RequestByUser("GET", "/db/doc2", "", "bernard"))
+	response = rt.SendUserRequest("GET", "/db/doc2", "", "bernard")
 	RequireStatus(t, response, 403)
 
 	// GET /db/docid - test for doc with ! channel
-	response = rt.Send(RequestByUser("GET", "/db/doc3", "", "bernard"))
+	response = rt.SendUserRequest("GET", "/db/doc3", "", "bernard")
 	RequireStatus(t, response, 200)
 
 	// GET /db/_all_docs?channels=true
 	// Check that _all_docs returns the docs the user has access to:
-	response = rt.Send(RequestByUser("GET", "/db/_all_docs?channels=true", "", "bernard"))
+	response = rt.SendUserRequest("GET", "/db/_all_docs?channels=true", "", "bernard")
 	RequireStatus(t, response, 200)
 
 	log.Printf("Response = %s", response.Body.Bytes())
@@ -141,7 +141,7 @@ func TestStarAccess(t *testing.T) {
 	_ = rt.WaitForSequence(expectedSeq)
 
 	// GET /db/_changes
-	response = rt.Send(RequestByUser("GET", "/db/_changes", "", "bernard"))
+	response = rt.SendUserRequest("GET", "/db/_changes", "", "bernard")
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	err = base.JSONUnmarshal(response.Body.Bytes(), &changes)
 	assert.NoError(t, err)
@@ -151,7 +151,7 @@ func TestStarAccess(t *testing.T) {
 	assert.Equal(t, uint64(1), since.Seq)
 
 	// GET /db/_changes for single channel
-	response = rt.Send(RequestByUser("GET", "/db/_changes?filter=sync_gateway/bychannel&channels=books", "", "bernard"))
+	response = rt.SendUserRequest("GET", "/db/_changes?filter=sync_gateway/bychannel&channels=books", "", "bernard")
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	err = base.JSONUnmarshal(response.Body.Bytes(), &changes)
 	assert.NoError(t, err)
@@ -161,7 +161,7 @@ func TestStarAccess(t *testing.T) {
 	assert.Equal(t, uint64(1), since.Seq)
 
 	// GET /db/_changes for ! channel
-	response = rt.Send(RequestByUser("GET", "/db/_changes?filter=sync_gateway/bychannel&channels=!", "", "bernard"))
+	response = rt.SendUserRequest("GET", "/db/_changes?filter=sync_gateway/bychannel&channels=!", "", "bernard")
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	err = base.JSONUnmarshal(response.Body.Bytes(), &changes)
 	assert.NoError(t, err)
@@ -171,7 +171,7 @@ func TestStarAccess(t *testing.T) {
 	assert.Equal(t, uint64(3), since.Seq)
 
 	// GET /db/_changes for unauthorized channel
-	response = rt.Send(RequestByUser("GET", "/db/_changes?filter=sync_gateway/bychannel&channels=gifts", "", "bernard"))
+	response = rt.SendUserRequest("GET", "/db/_changes?filter=sync_gateway/bychannel&channels=gifts", "", "bernard")
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	err = base.JSONUnmarshal(response.Body.Bytes(), &changes)
 	assert.NoError(t, err)
@@ -186,16 +186,16 @@ func TestStarAccess(t *testing.T) {
 	assert.NoError(t, a.Save(fran))
 
 	// GET /db/docid - basic test for doc that has channel
-	response = rt.Send(RequestByUser("GET", "/db/doc1", "", "fran"))
+	response = rt.SendUserRequest("GET", "/db/doc1", "", "fran")
 	RequireStatus(t, response, 200)
 
 	// GET /db/docid - test for doc with ! channel
-	response = rt.Send(RequestByUser("GET", "/db/doc3", "", "fran"))
+	response = rt.SendUserRequest("GET", "/db/doc3", "", "fran")
 	RequireStatus(t, response, 200)
 
 	// GET /db/_all_docs?channels=true
 	// Check that _all_docs returns all docs (based on user * channel)
-	response = rt.Send(RequestByUser("GET", "/db/_all_docs?channels=true", "", "fran"))
+	response = rt.SendUserRequest("GET", "/db/_all_docs?channels=true", "", "fran")
 	RequireStatus(t, response, 200)
 
 	log.Printf("Response = %s", response.Body.Bytes())
@@ -206,7 +206,7 @@ func TestStarAccess(t *testing.T) {
 	assert.Equal(t, []string{"books"}, allDocsResult.Rows[0].Value.Channels)
 
 	// GET /db/_changes
-	response = rt.Send(RequestByUser("GET", "/db/_changes", "", "fran"))
+	response = rt.SendUserRequest("GET", "/db/_changes", "", "fran")
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	err = base.JSONUnmarshal(response.Body.Bytes(), &changes)
 	assert.NoError(t, err)
@@ -216,7 +216,7 @@ func TestStarAccess(t *testing.T) {
 	assert.Equal(t, uint64(1), since.Seq)
 
 	// GET /db/_changes for ! channel
-	response = rt.Send(RequestByUser("GET", "/db/_changes?filter=sync_gateway/bychannel&channels=!", "", "fran"))
+	response = rt.SendUserRequest("GET", "/db/_changes?filter=sync_gateway/bychannel&channels=!", "", "fran")
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	err = base.JSONUnmarshal(response.Body.Bytes(), &changes)
 	assert.NoError(t, err)
@@ -233,16 +233,16 @@ func TestStarAccess(t *testing.T) {
 	assert.NoError(t, a.Save(manny))
 
 	// GET /db/docid - basic test for doc that has channel
-	response = rt.Send(RequestByUser("GET", "/db/doc1", "", "manny"))
+	response = rt.SendUserRequest("GET", "/db/doc1", "", "manny")
 	RequireStatus(t, response, 403)
 
 	// GET /db/docid - test for doc with ! channel
-	response = rt.Send(RequestByUser("GET", "/db/doc3", "", "manny"))
+	response = rt.SendUserRequest("GET", "/db/doc3", "", "manny")
 	RequireStatus(t, response, 200)
 
 	// GET /db/_all_docs?channels=true
 	// Check that _all_docs only returns ! docs (based on doc ! channel)
-	response = rt.Send(RequestByUser("GET", "/db/_all_docs?channels=true", "", "manny"))
+	response = rt.SendUserRequest("GET", "/db/_all_docs?channels=true", "", "manny")
 	RequireStatus(t, response, 200)
 	log.Printf("Response = %s", response.Body.Bytes())
 	err = base.JSONUnmarshal(response.Body.Bytes(), &allDocsResult)
@@ -251,7 +251,7 @@ func TestStarAccess(t *testing.T) {
 	assert.Equal(t, "doc3", allDocsResult.Rows[0].ID)
 
 	// GET /db/_changes
-	response = rt.Send(RequestByUser("GET", "/db/_changes", "", "manny"))
+	response = rt.SendUserRequest("GET", "/db/_changes", "", "manny")
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	err = base.JSONUnmarshal(response.Body.Bytes(), &changes)
 	assert.NoError(t, err)
@@ -261,7 +261,7 @@ func TestStarAccess(t *testing.T) {
 	assert.Equal(t, uint64(3), since.Seq)
 
 	// GET /db/_changes for ! channel
-	response = rt.Send(RequestByUser("GET", "/db/_changes?filter=sync_gateway/bychannel&channels=!", "", "manny"))
+	response = rt.SendUserRequest("GET", "/db/_changes?filter=sync_gateway/bychannel&channels=!", "", "manny")
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	err = base.JSONUnmarshal(response.Body.Bytes(), &changes)
 	assert.NoError(t, err)
@@ -287,7 +287,7 @@ func TestNumAccessErrors(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NoError(t, a.Save(user))
 
-	response := rt.Send(RequestByUser("PUT", "/db/doc", `{"prop":true, "channels":["foo"]}`, "user"))
+	response := rt.SendUserRequest("PUT", "/{{.keyspace}}/doc", `{"prop":true, "channels":["foo"]}`, "user")
 	RequireStatus(t, response, 403)
 
 	base.WaitForStat(func() int64 { return rt.GetDatabase().DbStats.SecurityStats.NumAccessErrors.Value() }, 1)
@@ -309,7 +309,7 @@ func TestUserHasDocAccessDocNotFound(t *testing.T) {
 	defer rt.Close()
 	ctx := rt.Context()
 
-	resp := rt.SendAdminRequest("PUT", "/db/doc", `{"channels": ["A"]}`)
+	resp := rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc", `{"channels": ["A"]}`)
 	RequireStatus(t, resp, http.StatusCreated)
 
 	database, err := db.CreateDatabase(rt.GetDatabase())
@@ -547,7 +547,7 @@ func TestBulkDocsChangeToAccess(t *testing.T) {
 
 	input := `{"docs": [{"_id": "bulk1", "type" : "setaccess", "owner":"user1" , "channel":"chan1"}, {"_id": "bulk2" , "channel":"chan1"}]}`
 
-	response := rt.Send(RequestByUser("POST", "/db/_bulk_docs", input, "user1"))
+	response := rt.SendUserRequest("POST", "/db/_bulk_docs", input, "user1")
 	RequireStatus(t, response, 201)
 
 	var docs []interface{}
@@ -834,7 +834,7 @@ func TestChannelAccessChanges(t *testing.T) {
 	rt.MustWaitForDoc("g1", t)
 
 	changes := ChangesResults{}
-	response = rt.Send(RequestByUser("GET", "/db/_changes", "", "zegpold"))
+	response = rt.SendUserRequest("GET", "/db/_changes", "", "zegpold")
 	err = base.JSONUnmarshal(response.Body.Bytes(), &changes)
 
 	assert.NoError(t, err)
@@ -908,7 +908,7 @@ func TestChannelAccessChanges(t *testing.T) {
 
 	// Look at alice's _changes feed:
 	changes = ChangesResults{}
-	response = rt.Send(RequestByUser("GET", "/db/_changes", "", "alice"))
+	response = rt.SendUserRequest("GET", "/db/_changes", "", "alice")
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &changes))
 	require.Len(t, changes.Results, 1)
 	assert.NoError(t, err)
@@ -916,7 +916,7 @@ func TestChannelAccessChanges(t *testing.T) {
 
 	// The complete _changes feed for zegpold contains docs a1 and g1:
 	changes = ChangesResults{}
-	response = rt.Send(RequestByUser("GET", "/db/_changes", "", "zegpold"))
+	response = rt.SendUserRequest("GET", "/db/_changes", "", "zegpold")
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &changes))
 	assert.NoError(t, err)
 	require.Len(t, changes.Results, 2)
@@ -928,8 +928,8 @@ func TestChannelAccessChanges(t *testing.T) {
 
 	// Changes feed with since=gamma:8 would ordinarily be empty, but zegpold got access to channel
 	// alpha after sequence 8, so the pre-existing docs in that channel are included:
-	response = rt.Send(RequestByUser("GET", fmt.Sprintf("/db/_changes?since=\"%s\"", since),
-		"", "zegpold"))
+	response = rt.SendUserRequest("GET", fmt.Sprintf("/db/_changes?since=\"%s\"", since),
+		"", "zegpold")
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	changes.Results = nil
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &changes))
@@ -1002,7 +1002,7 @@ func TestAccessOnTombstone(t *testing.T) {
 	assert.NoError(t, a.Save(bernard))
 
 	// Create doc that gives user access to its channel
-	response := rt.SendAdminRequest("PUT", "/db/alpha", `{"owner":"bernard", "channel":"PBS"}`)
+	response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/alpha", `{"owner":"bernard", "channel":"PBS"}`)
 	RequireStatus(t, response, 201)
 	var body db.Body
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
@@ -1016,7 +1016,7 @@ func TestAccessOnTombstone(t *testing.T) {
 	var changes struct {
 		Results []db.ChangeEntry
 	}
-	response = rt.Send(RequestByUser("GET", "/db/_changes", "", "bernard"))
+	response = rt.SendUserRequest("GET", "/{{.keyspace}}/_changes", "", "bernard")
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	err = base.JSONUnmarshal(response.Body.Bytes(), &changes)
 	assert.NoError(t, err)
@@ -1026,11 +1026,11 @@ func TestAccessOnTombstone(t *testing.T) {
 	}
 
 	// Delete the document
-	response = rt.SendAdminRequest("DELETE", fmt.Sprintf("/db/alpha?rev=%s", revId), "")
+	response = rt.SendAdminRequest("DELETE", "/{{.keyspace}}/alpha?rev="+revId, "")
 	RequireStatus(t, response, 200)
 
 	// Make sure it actually was deleted
-	response = rt.SendAdminRequest("GET", "/db/alpha", "")
+	response = rt.SendAdminRequest("GET", "/{{.keyspace}}/alpha", "")
 	RequireStatus(t, response, 404)
 
 	// Wait for change caching to complete
@@ -1038,7 +1038,7 @@ func TestAccessOnTombstone(t *testing.T) {
 
 	// Check user access again:
 	changes.Results = nil
-	response = rt.Send(RequestByUser("GET", "/db/_changes", "", "bernard"))
+	response = rt.SendUserRequest("GET", "/{{.keyspace}}/_changes", "", "bernard")
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &changes))
 	require.Len(t, changes.Results, 1)
@@ -1070,23 +1070,20 @@ func TestDynamicChannelGrant(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, a.Save(user))
 
-	collection := rt.GetDatabase().GetSingleDatabaseCollection()
-	keyspace := fmt.Sprintf("%s.%s.%s", "db", collection.ScopeName(), collection.Name())
-
 	// Create a document in channel chan1
-	response := rt.Send(RequestByUser("PUT", "/"+keyspace+"/doc1", `{"channel":"chan1", "greeting":"hello"}`, "user1"))
+	response := rt.SendUserRequest("PUT", "/{{.keyspace}}/doc1", `{"channel":"chan1", "greeting":"hello"}`, "user1")
 	RequireStatus(t, response, 201)
 
 	// Verify user cannot access document
-	response = rt.Send(RequestByUser("GET", "/"+keyspace+"/doc1", "", "user1"))
+	response = rt.SendUserRequest("GET", "/{{.keyspace}}/doc1", "", "user1")
 	RequireStatus(t, response, 403)
 
 	// Write access granting document
-	response = rt.Send(RequestByUser("PUT", "/"+keyspace+"/grant1", `{"type":"setaccess", "owner":"user1", "channel":"chan1"}`, "user1"))
+	response = rt.SendUserRequest("PUT", "/{{.keyspace}}/grant1", `{"type":"setaccess", "owner":"user1", "channel":"chan1"}`, "user1")
 	RequireStatus(t, response, 201)
 
 	// Verify user can access document
-	response = rt.Send(RequestByUser("GET", "/"+keyspace+"/doc1", "", "user1"))
+	response = rt.SendUserRequest("GET", "/{{.keyspace}}/doc1", "", "user1")
 	RequireStatus(t, response, 200)
 
 	var body db.Body
@@ -1094,17 +1091,17 @@ func TestDynamicChannelGrant(t *testing.T) {
 	assert.Equal(t, "hello", body["greeting"])
 
 	// Create a document in channel chan2
-	response = rt.Send(RequestByUser("PUT", "/"+keyspace+"/doc2", `{"channel":"chan2", "greeting":"hello"}`, "user1"))
+	response = rt.SendUserRequest("PUT", "/{{.keyspace}}/doc2", `{"channel":"chan2", "greeting":"hello"}`, "user1")
 	RequireStatus(t, response, 201)
 
 	// Write access granting document for chan2 (tests invalidation when channels/inval_seq exists)
-	response = rt.Send(RequestByUser("PUT", "/"+keyspace+"/grant2", `{"type":"setaccess", "owner":"user1", "channel":"chan2"}`, "user1"))
+	response = rt.SendUserRequest("PUT", "/{{.keyspace}}/grant2", `{"type":"setaccess", "owner":"user1", "channel":"chan2"}`, "user1")
 	RequireStatus(t, response, 201)
 
 	// Verify user can now access both documents
-	response = rt.Send(RequestByUser("GET", "/"+keyspace+"/doc1", "", "user1"))
+	response = rt.SendUserRequest("GET", "/{{.keyspace}}/doc1", "", "user1")
 	RequireStatus(t, response, 200)
-	response = rt.Send(RequestByUser("GET", "/"+keyspace+"/doc2", "", "user1"))
+	response = rt.SendUserRequest("GET", "/{{.keyspace}}/doc2", "", "user1")
 	RequireStatus(t, response, 200)
 }
 
@@ -1123,7 +1120,6 @@ func TestRoleChannelGrantInheritance(t *testing.T) {
 	collection := rt.GetDatabase().GetSingleDatabaseCollection()
 	scopeName := collection.ScopeName()
 	collectionName := collection.Name()
-	keyspace := fmt.Sprintf("%s.%s.%s", "db", scopeName, collectionName)
 
 	user, err := a.GetUser("")
 	assert.NoError(t, err)
@@ -1144,30 +1140,30 @@ func TestRoleChannelGrantInheritance(t *testing.T) {
 	require.NoError(t, a.Save(user))
 
 	// Create documents in channels chan1, chan2, chan3
-	response := rt.Send(RequestByUser("PUT", "/"+keyspace+"/doc1", `{"channel":"chan1", "greeting":"hello"}`, "user1"))
+	response := rt.SendUserRequest("PUT", "/{{.keyspace}}/doc1", `{"channel":"chan1", "greeting":"hello"}`, "user1")
 	RequireStatus(t, response, 201)
-	response = rt.Send(RequestByUser("PUT", "/"+keyspace+"/doc2", `{"channel":"chan2", "greeting":"hello"}`, "user1"))
+	response = rt.SendUserRequest("PUT", "/{{.keyspace}}/doc2", `{"channel":"chan2", "greeting":"hello"}`, "user1")
 	RequireStatus(t, response, 201)
-	response = rt.Send(RequestByUser("PUT", "/"+keyspace+"/doc3", `{"channel":"chan3", "greeting":"hello"}`, "user1"))
+	response = rt.SendUserRequest("PUT", "/{{.keyspace}}/doc3", `{"channel":"chan3", "greeting":"hello"}`, "user1")
 	RequireStatus(t, response, 201)
 
 	// Verify user can access document in admin role channel (chan1)
-	response = rt.Send(RequestByUser("GET", "/"+keyspace+"/doc1", "", "user1"))
+	response = rt.SendUserRequest("GET", "/{{.keyspace}}/doc1", "", "user1")
 	RequireStatus(t, response, 200)
 
 	// Verify user cannot access other documents
-	response = rt.Send(RequestByUser("GET", "/"+keyspace+"/doc2", "", "user1"))
+	response = rt.SendUserRequest("GET", "/{{.keyspace}}/doc2", "", "user1")
 	RequireStatus(t, response, 403)
-	response = rt.Send(RequestByUser("GET", "/"+keyspace+"/doc3", "", "user1"))
+	response = rt.SendUserRequest("GET", "/{{.keyspace}}/doc3", "", "user1")
 	RequireStatus(t, response, 403)
 
 	// Write access granting document (grants chan2 to role role1)
-	response = rt.Send(RequestByUser("PUT", "/"+keyspace+"/grant1", `{"type":"setaccess", "owner":"role:role1", "channel":"chan2"}`, "user1"))
+	response = rt.SendUserRequest("PUT", "/{{.keyspace}}/grant1", `{"type":"setaccess", "owner":"role:role1", "channel":"chan2"}`, "user1")
 	RequireStatus(t, response, 201)
 	grant1Rev := RespRevID(t, response)
 
 	// Verify user can access document
-	response = rt.Send(RequestByUser("GET", "/"+keyspace+"/doc2", "", "user1"))
+	response = rt.SendUserRequest("GET", "/{{.keyspace}}/doc2", "", "user1")
 	RequireStatus(t, response, 200)
 
 	var body db.Body
@@ -1175,27 +1171,27 @@ func TestRoleChannelGrantInheritance(t *testing.T) {
 	assert.Equal(t, "hello", body["greeting"])
 
 	// Write access granting document for chan2 (tests invalidation when channels/inval_seq exists)
-	response = rt.Send(RequestByUser("PUT", "/"+keyspace+"/grant2", `{"type":"setaccess", "owner":"role:role1", "channel":"chan3"}`, "user1"))
+	response = rt.SendUserRequest("PUT", "/{{.keyspace}}/grant2", `{"type":"setaccess", "owner":"role:role1", "channel":"chan3"}`, "user1")
 	RequireStatus(t, response, 201)
 
 	// Verify user can now access all three documents
-	response = rt.Send(RequestByUser("GET", "/"+keyspace+"/doc1", "", "user1"))
+	response = rt.SendUserRequest("GET", "/{{.keyspace}}/doc1", "", "user1")
 	RequireStatus(t, response, 200)
-	response = rt.Send(RequestByUser("GET", "/"+keyspace+"/doc2", "", "user1"))
+	response = rt.SendUserRequest("GET", "/{{.keyspace}}/doc2", "", "user1")
 	RequireStatus(t, response, 200)
-	response = rt.Send(RequestByUser("GET", "/"+keyspace+"/doc3", "", "user1"))
+	response = rt.SendUserRequest("GET", "/{{.keyspace}}/doc3", "", "user1")
 	RequireStatus(t, response, 200)
 
 	// Revoke access to chan2 (dynamic)
-	response = rt.Send(RequestByUser("PUT", "/"+keyspace+"/grant1?rev="+grant1Rev, `{"type":"setaccess", "owner":"none", "channel":"chan2"}`, "user1"))
+	response = rt.SendUserRequest("PUT", "/{{.keyspace}}/grant1?rev="+grant1Rev, `{"type":"setaccess", "owner":"none", "channel":"chan2"}`, "user1")
 	RequireStatus(t, response, 201)
 
 	// Verify user cannot access doc in revoked channel, but can successfully access remaining documents
-	response = rt.Send(RequestByUser("GET", "/"+keyspace+"/doc2", "", "user1"))
+	response = rt.SendUserRequest("GET", "/{{.keyspace}}/doc2", "", "user1")
 	RequireStatus(t, response, 403)
-	response = rt.Send(RequestByUser("GET", "/"+keyspace+"/doc1", "", "user1"))
+	response = rt.SendUserRequest("GET", "/{{.keyspace}}/doc1", "", "user1")
 	RequireStatus(t, response, 200)
-	response = rt.Send(RequestByUser("GET", "/"+keyspace+"/doc3", "", "user1"))
+	response = rt.SendUserRequest("GET", "/{{.keyspace}}/doc3", "", "user1")
 	RequireStatus(t, response, 200)
 
 }
@@ -1228,20 +1224,17 @@ func TestPublicChannel(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, a.Save(user))
 
-	collection := rt.GetDatabase().GetSingleDatabaseCollection()
-	keyspace := fmt.Sprintf("%s.%s.%s", "db", collection.ScopeName(), collection.Name())
-
 	// Create a document in public channel
-	response := rt.Send(RequestByUser("PUT", "/"+keyspace+"/publicDoc", `{"type":"public", "greeting":"hello"}`, "user1"))
+	response := rt.SendUserRequest("PUT", "/{{.keyspace}}/publicDoc", `{"type":"public", "greeting":"hello"}`, "user1")
 	RequireStatus(t, response, 201)
 
 	// Create a document in non-public channel
-	response = rt.Send(RequestByUser("PUT", "/"+keyspace+"/privateDoc", `{"channel":"restricted", "greeting":"hello"}`, "user1"))
+	response = rt.SendUserRequest("PUT", "/{{.keyspace}}/privateDoc", `{"channel":"restricted", "greeting":"hello"}`, "user1")
 	RequireStatus(t, response, 201)
 
 	// Verify user can access public document, cannot access non-public document
-	response = rt.Send(RequestByUser("GET", "/"+keyspace+"/publicDoc", "", "user1"))
+	response = rt.SendUserRequest("GET", "/{{.keyspace}}/publicDoc", "", "user1")
 	RequireStatus(t, response, 200)
-	response = rt.Send(RequestByUser("GET", "/"+keyspace+"/privateDoc", "", "user1"))
+	response = rt.SendUserRequest("GET", "/{{.keyspace}}/privateDoc", "", "user1")
 	RequireStatus(t, response, 403)
 }

@@ -126,12 +126,12 @@ func TestInvalidSession(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
-	response := rt.SendAdminRequest("PUT", "/db/testdoc", `{"hi": "there"}`)
+	response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/testdoc", `{"hi": "there"}`)
 	RequireStatus(t, response, 201)
 
 	headers := map[string]string{}
 	headers["Cookie"] = fmt.Sprintf("%s=%s", auth.DefaultCookieName, "FakeSession")
-	response = rt.SendRequestWithHeaders("GET", "/db/testdoc", "", headers)
+	response = rt.SendRequestWithHeaders("GET", "/{{.keyspace}}/testdoc", "", headers)
 	RequireStatus(t, response, 401)
 
 	var body db.Body
@@ -243,14 +243,20 @@ func TestLogin(t *testing.T) {
 }
 func TestCustomCookieName(t *testing.T) {
 
-	rt := NewRestTester(t, nil)
-	defer rt.Close()
-
 	customCookieName := "TestCustomCookieName"
-	rt.DatabaseConfig = &DatabaseConfig{DbConfig: DbConfig{
-		Name:              "db",
-		SessionCookieName: customCookieName,
-	}}
+
+	rt := NewRestTester(t,
+		&RestTesterConfig{
+			DatabaseConfig: &DatabaseConfig{
+				DbConfig: DbConfig{
+					Name:              "db",
+					SessionCookieName: customCookieName,
+				},
+			},
+		},
+	)
+
+	defer rt.Close()
 
 	// Disable guest user
 	a := auth.NewAuthenticator(rt.MetadataStore(), nil, auth.DefaultAuthenticatorOptions())
@@ -278,12 +284,12 @@ func TestCustomCookieName(t *testing.T) {
 	// Attempt to use default cookie name to authenticate -- expect a 401 error
 	headers := map[string]string{}
 	headers["Cookie"] = fmt.Sprintf("%s=%s", auth.DefaultCookieName, cookie.Value)
-	resp = rt.SendRequestWithHeaders("GET", "/db/foo", `{}`, headers)
+	resp = rt.SendRequestWithHeaders("GET", "/{{.keyspace}}/foo", `{}`, headers)
 	assert.Equal(t, 401, resp.Result().StatusCode)
 
 	// Attempt to use custom cookie name to authenticate
 	headers["Cookie"] = fmt.Sprintf("%s=%s", customCookieName, cookie.Value)
-	resp = rt.SendRequestWithHeaders("POST", "/db/", `{"_id": "foo", "key": "val"}`, headers)
+	resp = rt.SendRequestWithHeaders("POST", "/{{.keyspace}}/", `{"_id": "foo", "key": "val"}`, headers)
 	assert.Equal(t, 200, resp.Result().StatusCode)
 
 }
@@ -365,12 +371,12 @@ func TestSessionExtension(t *testing.T) {
 		"Cookie": auth.DefaultCookieName + "=" + fakeSession.ID,
 	}
 
-	response := rt.SendRequestWithHeaders("PUT", "/db/doc1", `{"hi": "there"}`, reqHeaders)
+	response := rt.SendRequestWithHeaders("PUT", "/{{.keyspace}}/doc1", `{"hi": "there"}`, reqHeaders)
 	log.Printf("PUT Request: Set-Cookie: %v", response.Header().Get("Set-Cookie"))
 	RequireStatus(t, response, http.StatusCreated)
 	assert.Contains(t, response.Header().Get("Set-Cookie"), auth.DefaultCookieName+"="+fakeSession.ID)
 
-	response = rt.SendRequestWithHeaders("GET", "/db/doc1", "", reqHeaders)
+	response = rt.SendRequestWithHeaders("GET", "/{{.keyspace}}/doc1", "", reqHeaders)
 	log.Printf("GET Request: Set-Cookie: %v", response.Header().Get("Set-Cookie"))
 	RequireStatus(t, response, http.StatusOK)
 	assert.Equal(t, "", response.Header().Get("Set-Cookie"))
@@ -381,7 +387,7 @@ func TestSessionExtension(t *testing.T) {
 	// removes all items with expiration times that have passed.
 	assert.NoError(t, rt.MetadataStore().Delete(auth.DocIDForSession(fakeSession.ID)))
 
-	response = rt.SendRequestWithHeaders("GET", "/db/doc1", "", reqHeaders)
+	response = rt.SendRequestWithHeaders("GET", "/{{.keyspace}}/doc1", "", reqHeaders)
 	log.Printf("GET Request: Set-Cookie: %v", response.Header().Get("Set-Cookie"))
 	RequireStatus(t, response, http.StatusUnauthorized)
 

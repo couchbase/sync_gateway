@@ -888,7 +888,7 @@ function(doc, oldDoc) {
 `
 
 	rtConfig := RestTesterConfig{SyncFn: syncFunction}
-	var rt = NewRestTester(t, &rtConfig)
+	rt := NewRestTesterDefaultCollection(t, &rtConfig) // CBG-2619
 	defer rt.Close()
 
 	// Create bliptester that is connected as user1, with no access to channel ABC
@@ -1013,7 +1013,7 @@ function(doc, oldDoc) {
 
 `
 	rtConfig := RestTesterConfig{SyncFn: syncFunction}
-	var rt = NewRestTester(t, &rtConfig)
+	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
 	// Create bliptester that is connected as user1, with no access to channel ABC
@@ -1148,7 +1148,7 @@ func TestBlipSendAndGetRev(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)
 
-	rt := NewRestTester(t, nil)
+	rt := NewRestTesterDefaultCollection(t, nil) // CBG-2619: make collection aware
 	defer rt.Close()
 	btSpec := BlipTesterSpec{
 		connectingUsername: "user1",
@@ -1165,7 +1165,7 @@ func TestBlipSendAndGetRev(t *testing.T) {
 	assert.Equal(t, "", resp.Properties["Error-Code"])
 
 	// Get non-deleted rev
-	response := bt.restTester.SendAdminRequest("GET", "/db/sendAndGetRev?rev=1-abc", "")
+	response := bt.restTester.SendAdminRequest("GET", "/{{.keyspace}}/sendAndGetRev?rev=1-abc", "")
 	RequireStatus(t, response, 200)
 	var responseBody RestDocument
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &responseBody), "Error unmarshalling GET doc response")
@@ -1214,7 +1214,7 @@ func TestBlipSendAndGetLargeNumberRev(t *testing.T) {
 	assert.Equal(t, "", resp.Properties["Error-Code"])
 
 	// Get non-deleted rev
-	response := bt.restTester.SendAdminRequest("GET", "/db/largeNumberRev?rev=1-abc", "")
+	response := bt.restTester.SendAdminRequest("GET", "/{{.keyspace}}/largeNumberRev?rev=1-abc", "")
 	RequireStatus(t, response, 200) // Check the raw bytes, because unmarshalling the response would be another opportunity for the number to get modified
 	responseString := string(response.Body.Bytes())
 	if !strings.Contains(responseString, `9223372036854775807`) {
@@ -1268,7 +1268,7 @@ func TestBlipSetCheckpoint(t *testing.T) {
 	assert.Equal(t, "0-1", checkpointRev)
 
 	// Validate checkpoint existence in bucket (local file name "/" needs to be URL encoded as %252F)
-	response := rt.SendAdminRequest("GET", "/db/_local/checkpoint%252Ftestclient", "")
+	response := rt.SendAdminRequest("GET", "/{{.keyspace}}/_local/checkpoint%252Ftestclient", "")
 	RequireStatus(t, response, 200)
 	var responseBody map[string]interface{}
 	err = base.JSONUnmarshal(response.Body.Bytes(), &responseBody)
@@ -1389,7 +1389,7 @@ func TestAccessGrantViaSyncFunction(t *testing.T) {
 	)
 
 	// Put document that triggers access grant for user to channel PBS
-	response := rt.SendAdminRequest("PUT", "/db/access1", `{"accessUser":"user1", "accessChannel":["PBS"]}`)
+	response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/access1", `{"accessUser":"user1", "accessChannel":["PBS"]}`)
 	RequireStatus(t, response, 201)
 
 	// Add another doc in the PBS channel
@@ -1827,7 +1827,7 @@ func TestBlipPullRevMessageHistory(t *testing.T) {
 		}},
 		GuestEnabled: true,
 	}
-	rt := NewRestTester(t, &rtConfig)
+	rt := NewRestTesterDefaultCollection(t, &rtConfig) // CBG-2619: make collection aware
 	defer rt.Close()
 
 	client, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
@@ -1839,7 +1839,7 @@ func TestBlipPullRevMessageHistory(t *testing.T) {
 	assert.NoError(t, err)
 
 	// create doc1 rev 1-0335a345b6ffed05707ccc4cbc1b67f4
-	resp := rt.SendAdminRequest(http.MethodPut, "/db/doc1", `{"greetings": [{"hello": "world!"}, {"hi": "alice"}]}`)
+	resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc1", `{"greetings": [{"hello": "world!"}, {"hi": "alice"}]}`)
 	assert.Equal(t, http.StatusCreated, resp.Code)
 
 	data, ok := client.WaitForRev("doc1", "1-0335a345b6ffed05707ccc4cbc1b67f4")
@@ -1847,7 +1847,7 @@ func TestBlipPullRevMessageHistory(t *testing.T) {
 	assert.Equal(t, `{"greetings":[{"hello":"world!"},{"hi":"alice"}]}`, string(data))
 
 	// create doc1 rev 2-959f0e9ad32d84ff652fb91d8d0caa7e
-	resp = rt.SendAdminRequest(http.MethodPut, "/db/doc1?rev=1-0335a345b6ffed05707ccc4cbc1b67f4", `{"greetings": [{"hello": "world!"}, {"hi": "alice"}, {"howdy": 12345678901234567890}]}`)
+	resp = rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc1?rev=1-0335a345b6ffed05707ccc4cbc1b67f4", `{"greetings": [{"hello": "world!"}, {"hi": "alice"}, {"howdy": 12345678901234567890}]}`)
 	assert.Equal(t, http.StatusCreated, resp.Code)
 
 	data, ok = client.WaitForRev("doc1", "2-26359894b20d89c97638e71c40482f28")
@@ -1864,7 +1864,7 @@ func TestActiveOnlyContinuous(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
-	rt := NewRestTester(t, &RestTesterConfig{GuestEnabled: true})
+	rt := NewRestTesterDefaultCollection(t, &RestTesterConfig{GuestEnabled: true}) // CBG-2619: make collection aware
 	defer rt.Close()
 
 	btc, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
@@ -1886,7 +1886,7 @@ func TestActiveOnlyContinuous(t *testing.T) {
 	assert.Equal(t, `{"test":true}`, string(rev))
 
 	// delete the doc and make sure the client still gets the tombstone replicated
-	resp = rt.SendAdminRequest(http.MethodDelete, "/db/doc1?rev="+docResp.Rev, ``)
+	resp = rt.SendAdminRequest(http.MethodDelete, "/{{.keyspace}}/doc1?rev="+docResp.Rev, ``)
 	RequireStatus(t, resp, http.StatusOK)
 	require.NoError(t, base.JSONUnmarshal(resp.Body.Bytes(), &docResp))
 
@@ -2531,10 +2531,11 @@ func TestSendRevisionNoRevHandling(t *testing.T) {
 	for _, test := range testCases {
 		t.Run(fmt.Sprintf("%s", test.error), func(t *testing.T) {
 			docName := fmt.Sprintf("%s", test.error)
-			rt := NewRestTester(t, &RestTesterConfig{
-				GuestEnabled:     true,
-				CustomTestBucket: base.GetTestBucket(t).LeakyBucketClone(base.LeakyBucketConfig{}),
-			})
+			rt := NewRestTesterDefaultCollection(t, // CBG-2619: make collection aware
+				&RestTesterConfig{
+					GuestEnabled:     true,
+					CustomTestBucket: base.GetTestBucket(t).LeakyBucketClone(base.LeakyBucketConfig{}),
+				})
 			defer rt.Close()
 
 			leakyDataStore, ok := base.AsLeakyDataStore(rt.Bucket().DefaultDataStore())
