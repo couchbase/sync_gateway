@@ -255,7 +255,7 @@ func (db *DatabaseCollectionWithUser) buildRevokedFeed(ctx context.Context, ch c
 					// Get doc sync data so we can verify the docs grant history
 					syncData, err := db.GetDocSyncData(ctx, logEntry.DocID)
 					if err != nil {
-						base.InfofCtx(ctx, base.KeyChanges, "Error getting sync data, seq: %v in channel %s, skipping document. Error: %v", seqID, base.UD(singleChannelCache.ChannelID()), err)
+						base.InfofCtx(ctx, base.KeyChanges, "Couldn't get history for doc %q for channel %s, skipping revocation checks: %v", base.UD(logEntry.DocID), base.UD(singleChannelCache.ChannelID()), err)
 						continue
 					}
 					requiresRevocation, err := db.wasDocInChannelPriorToRevocation(ctx, syncData, logEntry.DocID, singleChannelCache.ChannelID().Name, revocationSinceSeq)
