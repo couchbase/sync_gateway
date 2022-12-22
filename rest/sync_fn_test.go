@@ -57,7 +57,7 @@ func TestSyncFnBodyProperties(t *testing.T) {
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
-	response := rt.SendAdminRequest("PUT", "/db/"+testDocID, `{"`+testdataKey+`":true}`)
+	response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/"+testDocID, `{"`+testdataKey+`":true}`)
 	RequireStatus(t, response, 201)
 
 	syncData, err := rt.GetDatabase().GetSingleDatabaseCollection().GetDocSyncData(base.TestCtx(t), testDocID)
@@ -99,14 +99,14 @@ func TestSyncFnBodyPropertiesTombstone(t *testing.T) {
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
-	response := rt.SendAdminRequest("PUT", "/db/"+testDocID, `{"`+testdataKey+`":true}`)
+	response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/"+testDocID, `{"`+testdataKey+`":true}`)
 	RequireStatus(t, response, 201)
 	var body db.Body
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.Equal(t, true, body["ok"])
 	revID := body["rev"].(string)
 
-	response = rt.SendAdminRequest("DELETE", "/db/"+testDocID+"?rev="+revID, `{}`)
+	response = rt.SendAdminRequest("DELETE", fmt.Sprintf("/{{.keyspace}}/%s?rev=%s", testDocID, revID), `{}`)
 	RequireStatus(t, response, 200)
 
 	syncData, err := rt.GetDatabase().GetSingleDatabaseCollection().GetDocSyncData(base.TestCtx(t), testDocID)
@@ -147,14 +147,14 @@ func TestSyncFnOldDocBodyProperties(t *testing.T) {
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
-	response := rt.SendAdminRequest("PUT", "/db/"+testDocID, `{"`+testdataKey+`":true}`)
+	response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/"+testDocID, `{"`+testdataKey+`":true}`)
 	RequireStatus(t, response, 201)
 	var body db.Body
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.Equal(t, true, body["ok"])
 	revID := body["rev"].(string)
 
-	response = rt.SendAdminRequest("PUT", "/db/"+testDocID+"?rev="+revID, `{"`+testdataKey+`":true,"update":2}`)
+	response = rt.SendAdminRequest("PUT", fmt.Sprintf("/{{.keyspace}}/%s?rev=%s", testDocID, revID), `{"`+testdataKey+`":true,"update":2}`)
 	RequireStatus(t, response, 201)
 
 	syncData, err := rt.GetDatabase().GetSingleDatabaseCollection().GetDocSyncData(base.TestCtx(t), testDocID)
@@ -196,21 +196,21 @@ func TestSyncFnOldDocBodyPropertiesTombstoneResurrect(t *testing.T) {
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
-	response := rt.SendAdminRequest("PUT", "/db/"+testDocID, `{"`+testdataKey+`":true}`)
+	response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/"+testDocID, `{"`+testdataKey+`":true}`)
 	RequireStatus(t, response, 201)
 	var body db.Body
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.Equal(t, true, body["ok"])
 	revID := body["rev"].(string)
 
-	response = rt.SendAdminRequest("DELETE", "/db/"+testDocID+"?rev="+revID, `{}`)
+	response = rt.SendAdminRequest("DELETE", fmt.Sprintf("/{{.keyspace}}/%s?rev=%s", testDocID, revID), `{}`)
 	RequireStatus(t, response, 200)
 	body = nil
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.Equal(t, true, body["ok"])
 	revID = body["rev"].(string)
 
-	response = rt.SendAdminRequest("PUT", "/db/"+testDocID+"?rev="+revID, `{"`+testdataKey+`":true}`)
+	response = rt.SendAdminRequest("PUT", fmt.Sprintf("/{{.keyspace}}/%s?rev=%s", testDocID, revID), `{"`+testdataKey+`":true}`)
 	RequireStatus(t, response, 201)
 
 	syncData, err := rt.GetDatabase().GetSingleDatabaseCollection().GetDocSyncData(base.TestCtx(t), testDocID)
@@ -261,34 +261,34 @@ func TestSyncFnDocBodyPropertiesSwitchActiveTombstone(t *testing.T) {
 	defer rt.Close()
 
 	// rev 1-a
-	resp := rt.SendAdminRequest("PUT", "/db/"+testDocID, `{"`+testdataKey+`":1}`)
+	resp := rt.SendAdminRequest("PUT", "/{{.keyspace}}/"+testDocID, `{"`+testdataKey+`":1}`)
 	RequireStatus(t, resp, 201)
 	rev1ID := RespRevID(t, resp)
 
 	// rev 2-a
-	resp = rt.SendAdminRequest("PUT", "/db/"+testDocID+"?rev="+rev1ID, `{"`+testdataKey+`":2}`)
+	resp = rt.SendAdminRequest("PUT", fmt.Sprintf("/{{.keyspace}}/%s?rev=%s", testDocID, rev1ID), `{"`+testdataKey+`":2}`)
 	RequireStatus(t, resp, 201)
 	rev2aID := RespRevID(t, resp)
 
 	// rev 3-a
-	resp = rt.SendAdminRequest("PUT", "/db/"+testDocID+"?rev="+rev2aID, `{"`+testdataKey+`":3,"syncOldDocBodyCheck":true}`)
+	resp = rt.SendAdminRequest("PUT", fmt.Sprintf("/{{.keyspace}}/%s?rev=%s", testDocID, rev2aID), `{"`+testdataKey+`":3,"syncOldDocBodyCheck":true}`)
 	RequireStatus(t, resp, 201)
 	rev3aID := RespRevID(t, resp)
 
 	// rev 2-b
 	_, rev1Hash := db.ParseRevID(rev1ID)
-	resp = rt.SendAdminRequest("PUT", "/db/"+testDocID+"?new_edits=false", `{"`+db.BodyRevisions+`":{"start":2,"ids":["b", "`+rev1Hash+`"]}}`)
+	resp = rt.SendAdminRequest("PUT", fmt.Sprintf("/{{.keyspace}}/%s?new_edits=false", testDocID), `{"`+db.BodyRevisions+`":{"start":2,"ids":["b", "`+rev1Hash+`"]}}`)
 	RequireStatus(t, resp, 201)
 	rev2bID := RespRevID(t, resp)
 
 	// tombstone at 4-a
-	resp = rt.SendAdminRequest("DELETE", "/db/"+testDocID+"?rev="+rev3aID, `{}`)
+	resp = rt.SendAdminRequest("DELETE", fmt.Sprintf("/{{.keyspace}}/%s?rev=%s", testDocID, rev3aID), `{}`)
 	RequireStatus(t, resp, 200)
 
 	numErrorsBefore, err := strconv.Atoi(base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().ErrorCount.String())
 	assert.NoError(t, err)
 	// tombstone at 3-b
-	resp = rt.SendAdminRequest("DELETE", "/db/"+testDocID+"?rev="+rev2bID, `{}`)
+	resp = rt.SendAdminRequest("DELETE", fmt.Sprintf("/{{.keyspace}}/%s?rev=%s", testDocID, rev2bID), `{}`)
 	RequireStatus(t, resp, 200)
 
 	numErrorsAfter, err := strconv.Atoi(base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().ErrorCount.String())
@@ -318,7 +318,7 @@ func TestSyncFunctionErrorLogging(t *testing.T) {
 	numErrors, err := strconv.Atoi(base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().ErrorCount.String())
 	assert.NoError(t, err)
 
-	response := rt.SendAdminRequest("PUT", "/db/doc1", `{"foo": "bar"}`)
+	response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1", `{"foo": "bar"}`)
 	assert.Equal(t, http.StatusCreated, response.Code)
 
 	numErrorsAfter, err := strconv.Atoi(base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().ErrorCount.String())
@@ -337,7 +337,7 @@ func TestSyncFnTimeout(t *testing.T) {
 	syncFnFinishedWG := sync.WaitGroup{}
 	syncFnFinishedWG.Add(1)
 	go func() {
-		response := rt.SendAdminRequest("PUT", "/db/doc", `{"foo": "bar"}`)
+		response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc", `{"foo": "bar"}`)
 		assertHTTPErrorReason(t, response, 500, "JS sync function timed out")
 		syncFnFinishedWG.Done()
 	}()
@@ -365,9 +365,9 @@ func TestDBOfflinePostResync(t *testing.T) {
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.True(t, body["state"].(string) == "Offline")
 
-	RequireStatus(t, rt.SendAdminRequest("POST", "/db/_resync?action=start", ""), 200)
+	RequireStatus(t, rt.SendAdminRequest("POST", "/{{.keyspace}}/_resync?action=start", ""), 200)
 	err := rt.WaitForCondition(func() bool {
-		response := rt.SendAdminRequest("GET", "/db/_resync", "")
+		response := rt.SendAdminRequest("GET", "/{{.keyspace}}/_resync", "")
 		var status db.ResyncManagerResponse
 		err := json.Unmarshal(response.BodyBytes(), &status)
 		assert.NoError(t, err)
@@ -410,14 +410,14 @@ func TestDBOfflineSingleResync(t *testing.T) {
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.True(t, body["state"].(string) == "Offline")
 
-	response = rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
+	response = rt.SendAdminRequest("POST", "/{{.keyspace}}/_resync?action=start", "")
 	RequireStatus(t, response, http.StatusOK)
 
 	// Send a second _resync request.  This must return a 400 since the first one is blocked processing
-	RequireStatus(t, rt.SendAdminRequest("POST", "/db/_resync?action=start", ""), 503)
+	RequireStatus(t, rt.SendAdminRequest("POST", "/{{.keyspace}}/_resync?action=start", ""), 503)
 
 	err := rt.WaitForCondition(func() bool {
-		response := rt.SendAdminRequest("GET", "/db/_resync", "")
+		response := rt.SendAdminRequest("GET", "/{{.keyspace}}/_resync", "")
 		var status db.ResyncManagerResponse
 		err := json.Unmarshal(response.BodyBytes(), &status)
 		assert.NoError(t, err)
@@ -486,7 +486,7 @@ func TestResync(t *testing.T) {
 				rt.CreateDoc(t, fmt.Sprintf("doc%d", i))
 			}
 
-			response := rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
+			response := rt.SendAdminRequest("POST", "/{{.keyspace}}/_resync?action=start", "")
 			RequireStatus(t, response, http.StatusServiceUnavailable)
 
 			response = rt.SendAdminRequest("POST", "/db/_offline", "")
@@ -497,12 +497,12 @@ func TestResync(t *testing.T) {
 				return state == db.DBOffline
 			})
 
-			response = rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
+			response = rt.SendAdminRequest("POST", "/{{.keyspace}}/_resync?action=start", "")
 			RequireStatus(t, response, http.StatusOK)
 
 			var resyncManagerStatus db.ResyncManagerResponse
 			err := rt.WaitForCondition(func() bool {
-				response := rt.SendAdminRequest("GET", "/db/_resync", "")
+				response := rt.SendAdminRequest("GET", "/{{.keyspace}}/_resync", "")
 				err := json.Unmarshal(response.BodyBytes(), &resyncManagerStatus)
 				assert.NoError(t, err)
 
@@ -569,7 +569,7 @@ func TestResyncErrorScenarios(t *testing.T) {
 		leakyDataStore.SetPostQueryCallback(func(ddoc, viewName string, params map[string]interface{}) {
 			if useCallback {
 				callbackFired = true
-				response := rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
+				response := rt.SendAdminRequest("POST", "/{{.keyspace}}/_resync?action=start", "")
 				RequireStatus(t, response, http.StatusServiceUnavailable)
 				useCallback = false
 			}
@@ -578,7 +578,7 @@ func TestResyncErrorScenarios(t *testing.T) {
 		leakyDataStore.SetPostN1QLQueryCallback(func() {
 			if useCallback {
 				callbackFired = true
-				response := rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
+				response := rt.SendAdminRequest("POST", "/{{.keyspace}}/_resync?action=start", "")
 				RequireStatus(t, response, http.StatusServiceUnavailable)
 				useCallback = false
 			}
@@ -589,13 +589,13 @@ func TestResyncErrorScenarios(t *testing.T) {
 		rt.CreateDoc(t, fmt.Sprintf("doc%d", i))
 	}
 
-	response := rt.SendAdminRequest("GET", "/db/_resync", "")
+	response := rt.SendAdminRequest("GET", "/{{.keyspace}}/_resync", "")
 	RequireStatus(t, response, http.StatusOK)
 
-	response = rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
+	response = rt.SendAdminRequest("POST", "/{{.keyspace}}/_resync?action=start", "")
 	RequireStatus(t, response, http.StatusServiceUnavailable)
 
-	response = rt.SendAdminRequest("POST", "/db/_resync?action=stop", "")
+	response = rt.SendAdminRequest("POST", "/{{.keyspace}}/_resync?action=stop", "")
 	RequireStatus(t, response, http.StatusBadRequest)
 
 	response = rt.SendAdminRequest("POST", "/db/_offline", "")
@@ -607,20 +607,20 @@ func TestResyncErrorScenarios(t *testing.T) {
 	})
 
 	useCallback = true
-	response = rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
+	response = rt.SendAdminRequest("POST", "/{{.keyspace}}/_resync?action=start", "")
 	RequireStatus(t, response, http.StatusOK)
 
 	WaitAndAssertBackgroundManagerState(t, db.BackgroundProcessStateCompleted, rt.GetDatabase().ResyncManager.GetRunState)
 	WaitAndAssertBackgroundManagerExpiredHeartbeat(t, rt.GetDatabase().ResyncManager)
 
-	response = rt.SendAdminRequest("POST", "/db/_resync?action=stop", "")
+	response = rt.SendAdminRequest("POST", "/{{.keyspace}}/_resync?action=stop", "")
 	RequireStatus(t, response, http.StatusBadRequest)
 
-	response = rt.SendAdminRequest("POST", "/db/_resync?action=invalid", "")
+	response = rt.SendAdminRequest("POST", "/{{.keyspace}}/_resync?action=invalid", "")
 	RequireStatus(t, response, http.StatusBadRequest)
 
 	// Test empty action, should default to start
-	response = rt.SendAdminRequest("POST", "/db/_resync", "")
+	response = rt.SendAdminRequest("POST", "/{{.keyspace}}/_resync", "")
 	RequireStatus(t, response, http.StatusOK)
 
 	WaitAndAssertBackgroundManagerState(t, db.BackgroundProcessStateCompleted, rt.GetDatabase().ResyncManager.GetRunState)
@@ -666,7 +666,7 @@ func TestResyncStop(t *testing.T) {
 		leakyDataStore.SetPostQueryCallback(func(ddoc, viewName string, params map[string]interface{}) {
 			if useCallback {
 				callbackFired = true
-				response := rt.SendAdminRequest("POST", "/db/_resync?action=stop", "")
+				response := rt.SendAdminRequest("POST", "/{{.keyspace}}/_resync?action=stop", "")
 				RequireStatus(t, response, http.StatusOK)
 				useCallback = false
 			}
@@ -675,7 +675,7 @@ func TestResyncStop(t *testing.T) {
 		leakyDataStore.SetPostN1QLQueryCallback(func() {
 			if useCallback {
 				callbackFired = true
-				response := rt.SendAdminRequest("POST", "/db/_resync?action=stop", "")
+				response := rt.SendAdminRequest("POST", "/{{.keyspace}}/_resync?action=stop", "")
 				RequireStatus(t, response, http.StatusOK)
 				useCallback = false
 			}
@@ -700,7 +700,7 @@ func TestResyncStop(t *testing.T) {
 	})
 
 	useCallback = true
-	response = rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
+	response = rt.SendAdminRequest("POST", "/{{.keyspace}}/_resync?action=start", "")
 	RequireStatus(t, response, http.StatusOK)
 
 	WaitAndAssertBackgroundManagerState(t, db.BackgroundProcessStateStopped, rt.GetDatabase().ResyncManager.GetRunState)
@@ -907,13 +907,13 @@ func TestResyncPersistence(t *testing.T) {
 		return state == db.DBOffline
 	})
 
-	resp = rt1.SendAdminRequest("POST", "/db/_resync?action=start", "")
+	resp = rt1.SendAdminRequest("POST", "/{{.keyspace}}/_resync?action=start", "")
 	RequireStatus(t, resp, http.StatusOK)
 
 	// Wait for resync to complete
 	var resyncManagerStatus db.ResyncManagerResponse
 	err := rt1.WaitForCondition(func() bool {
-		resp = rt1.SendAdminRequest("GET", "/db/_resync", "")
+		resp = rt1.SendAdminRequest("GET", "/{{.keyspace}}/_resync", "")
 		err := json.Unmarshal(resp.BodyBytes(), &resyncManagerStatus)
 		assert.NoError(t, err)
 
@@ -927,7 +927,7 @@ func TestResyncPersistence(t *testing.T) {
 	require.NoError(t, err)
 
 	// Check statuses match
-	resp2 := rt2.SendAdminRequest("GET", "/db/_resync", "")
+	resp2 := rt2.SendAdminRequest("GET", "/{{.keyspace}}/_resync", "")
 	RequireStatus(t, resp, http.StatusOK)
 	fmt.Printf("RT1 Resync Status: %s\n", resp.BodyBytes())
 	fmt.Printf("RT2 Resync Status: %s\n", resp2.BodyBytes())

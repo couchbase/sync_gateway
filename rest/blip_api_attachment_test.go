@@ -59,7 +59,7 @@ func TestBlipPushPullV2AttachmentV2Client(t *testing.T) {
 
 	// Create doc revision with attachment on SG.
 	bodyText := `{"greetings":[{"hi": "alice"}],"_attachments":{"hello.txt":{"data":"aGVsbG8gd29ybGQ="}}}`
-	response := rt.SendAdminRequest(http.MethodPut, "/db/"+docID, bodyText)
+	response := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID, bodyText)
 	assert.Equal(t, http.StatusCreated, response.Code)
 
 	// Wait for the document to be replicated to client.
@@ -79,7 +79,7 @@ func TestBlipPushPullV2AttachmentV2Client(t *testing.T) {
 	_, ok = btc.pushReplication.WaitForMessage(2)
 	assert.True(t, ok)
 
-	resp := rt.SendAdminRequest(http.MethodGet, "/db/"+docID+"?rev="+revId, "")
+	resp := rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/"+docID+"?rev="+revId, "")
 	assert.Equal(t, http.StatusOK, resp.Code)
 	var respBody db.Body
 	assert.NoError(t, base.JSONUnmarshal(resp.Body.Bytes(), &respBody))
@@ -135,7 +135,7 @@ func TestBlipPushPullV2AttachmentV3Client(t *testing.T) {
 
 	// Create doc revision with attachment on SG.
 	bodyText := `{"greetings":[{"hi": "alice"}],"_attachments":{"hello.txt":{"data":"aGVsbG8gd29ybGQ="}}}`
-	response := rt.SendAdminRequest(http.MethodPut, "/db/"+docID, bodyText)
+	response := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID, bodyText)
 	assert.Equal(t, http.StatusCreated, response.Code)
 
 	// Wait for the document to be replicated to client.
@@ -155,7 +155,7 @@ func TestBlipPushPullV2AttachmentV3Client(t *testing.T) {
 	_, ok = btc.pushReplication.WaitForMessage(2)
 	assert.True(t, ok)
 
-	resp := rt.SendAdminRequest(http.MethodGet, "/db/"+docID+"?rev="+revId, "")
+	resp := rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/"+docID+"?rev="+revId, "")
 	assert.Equal(t, http.StatusOK, resp.Code)
 	var respBody db.Body
 	assert.NoError(t, base.JSONUnmarshal(resp.Body.Bytes(), &respBody))
@@ -209,7 +209,7 @@ func TestBlipPushPullNewAttachmentCommonAncestor(t *testing.T) {
 	_, ok := btc.pushReplication.WaitForMessage(2)
 	assert.True(t, ok)
 
-	resp := rt.SendAdminRequest(http.MethodGet, "/db/"+docID+"?rev="+revId, "")
+	resp := rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/"+docID+"?rev="+revId, "")
 	assert.Equal(t, http.StatusOK, resp.Code)
 
 	// CBL updates the doc w/ two more revisions, 3-abc, 4-abc,
@@ -223,7 +223,7 @@ func TestBlipPushPullNewAttachmentCommonAncestor(t *testing.T) {
 	_, ok = btc.pushReplication.WaitForMessage(4)
 	assert.True(t, ok)
 
-	resp = rt.SendAdminRequest(http.MethodGet, "/db/"+docID+"?rev="+revId, "")
+	resp = rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/"+docID+"?rev="+revId, "")
 	assert.Equal(t, http.StatusOK, resp.Code)
 
 	var respBody db.Body
@@ -282,7 +282,7 @@ func TestBlipPushPullNewAttachmentNoCommonAncestor(t *testing.T) {
 	_, ok := btc.pushReplication.WaitForMessage(2)
 	assert.True(t, ok)
 
-	resp := rt.SendAdminRequest(http.MethodGet, "/db/"+docID+"?rev="+revId, "")
+	resp := rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/"+docID+"?rev="+revId, "")
 	assert.Equal(t, http.StatusOK, resp.Code)
 
 	var respBody db.Body
@@ -411,10 +411,11 @@ func TestPutAttachmentViaBlipGetViaBlip(t *testing.T) {
 
 // TestBlipAttachNameChange tests CBL handling - attachments with changed names are sent as stubs, and not new attachments
 func TestBlipAttachNameChange(t *testing.T) {
-	rt := NewRestTester(t, &RestTesterConfig{
+	rt := NewRestTesterDefaultCollection(t, &RestTesterConfig{ // CBG-2619
 		GuestEnabled: true,
 	})
 	defer rt.Close()
+	keyspace := "db"
 
 	client1, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
 	require.NoError(t, err)
@@ -447,18 +448,18 @@ func TestBlipAttachNameChange(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, bucketAttachmentA, attachmentA)
 
-	resp := rt.SendAdminRequest("GET", "/db/doc/attach", "")
+	resp := rt.SendAdminRequest("GET", fmt.Sprintf("/%s/doc/attach", keyspace), "")
 	RequireStatus(t, resp, http.StatusOK)
 	assert.Equal(t, attachmentA, resp.BodyBytes())
 }
 
 // TestBlipLegacyAttachNameChange ensures that CBL name changes for legacy attachments are handled correctly
 func TestBlipLegacyAttachNameChange(t *testing.T) {
-	rt := NewRestTester(t, &RestTesterConfig{
+	rt := NewRestTesterDefaultCollection(t, &RestTesterConfig{ // CBG-2619
 		GuestEnabled: true,
 	})
 	defer rt.Close()
-
+	keyspace := "db"
 	client1, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
 	require.NoError(t, err)
 	defer client1.Close()
@@ -499,18 +500,18 @@ func TestBlipLegacyAttachNameChange(t *testing.T) {
 	err = rt.WaitForRev("doc", revID)
 	require.NoError(t, err)
 
-	resp := rt.SendAdminRequest("GET", "/db/doc/attach", "")
+	resp := rt.SendAdminRequest("GET", fmt.Sprintf("/%s/doc/attach", keyspace), "")
 	RequireStatus(t, resp, http.StatusOK)
 	assert.Equal(t, attBody, resp.BodyBytes())
 }
 
-// TestBlipLegacyAttachNameChange ensures that CBL updates for documents associated with legacy attachments are handled correctly
+// TestBlipLegacyAttachDocUpdate ensures that CBL updates for documents associated with legacy attachments are handled correctly
 func TestBlipLegacyAttachDocUpdate(t *testing.T) {
-	rt := NewRestTester(t, &RestTesterConfig{
+	rt := NewRestTesterDefaultCollection(t, &RestTesterConfig{ // CBG-2619
 		GuestEnabled: true,
 	})
 	defer rt.Close()
-
+	keyspace := "db"
 	client1, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
 	require.NoError(t, err)
 	defer client1.Close()
@@ -552,7 +553,7 @@ func TestBlipLegacyAttachDocUpdate(t *testing.T) {
 	err = rt.WaitForRev("doc", revID)
 	require.NoError(t, err)
 
-	resp := rt.SendAdminRequest("GET", "/db/doc/"+attName, "")
+	resp := rt.SendAdminRequest("GET", fmt.Sprintf("/%s/doc/%s", keyspace, attName), "")
 	RequireStatus(t, resp, http.StatusOK)
 	assert.Equal(t, attBody, resp.BodyBytes())
 

@@ -22,7 +22,7 @@ import (
 func (rt *RestTester) WaitForAttachmentCompactionStatus(t *testing.T, state db.BackgroundProcessState) db.AttachmentManagerResponse {
 	var response db.AttachmentManagerResponse
 	err := rt.WaitForConditionWithOptions(func() bool {
-		resp := rt.SendAdminRequest("GET", "/db/_compact?type=attachment", "")
+		resp := rt.SendAdminRequest("GET", "/{{.keyspace}}/_compact?type=attachment", "")
 		RequireStatus(t, resp, http.StatusOK)
 
 		err := base.JSONUnmarshal(resp.BodyBytes(), &response)

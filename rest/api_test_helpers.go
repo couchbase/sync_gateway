@@ -20,7 +20,7 @@ import (
 )
 
 func (rt *RestTester) RequireDocNotFound(docID string) {
-	rawResponse := rt.SendAdminRequest(http.MethodGet, "/db/"+docID, "")
+	rawResponse := rt.SendAdminRequest(http.MethodGet, fmt.Sprintf("/%s/%s", rt.GetSingleKeyspace(), docID), "")
 	RequireStatus(rt.TB, rawResponse, http.StatusNotFound)
 }
 
@@ -31,7 +31,7 @@ func (rt *RestTester) TombstoneDoc(docID string, revID string) {
 
 // prugeDoc removes all the revisions (active and tombstones) of the specified document.
 func (rt *RestTester) PurgeDoc(docID string) {
-	response := rt.SendAdminRequest(http.MethodPost, "/db/_purge", fmt.Sprintf(`{"%s":["*"]}`, docID))
+	response := rt.SendAdminRequest(http.MethodPost, fmt.Sprintf("/%s/_purge", rt.GetSingleKeyspace()), fmt.Sprintf(`{"%s":["*"]}`, docID))
 	RequireStatus(rt.TB, response, http.StatusOK)
 	var body map[string]interface{}
 	require.NoError(rt.TB, base.JSONUnmarshal(response.Body.Bytes(), &body))

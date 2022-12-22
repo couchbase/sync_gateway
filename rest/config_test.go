@@ -1026,7 +1026,7 @@ func TestPutInvalidConfig(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
-	response := rt.SendAdminRequest("PUT", "/db/_config", `{"db": {"server": "walrus"}}`)
+	response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/_config", `{"db": {"server": "walrus"}}`)
 	assert.Equal(t, http.StatusBadRequest, response.Code)
 }
 
