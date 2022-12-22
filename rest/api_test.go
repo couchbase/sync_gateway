@@ -1116,6 +1116,10 @@ func TestAllDocsChannelsAfterChannelMove(t *testing.T) {
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
+	if !rt.ServerContext().IsAllDocsIndexExistFor(rt.GetDatabase().Name) {
+		t.Skip("This test requires AllDocs index to be present")
+	}
+
 	ctx := rt.Context()
 	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
 	guest, err := a.GetUser("")

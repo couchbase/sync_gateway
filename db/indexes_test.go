@@ -232,7 +232,7 @@ func TestPostUpgradeMultipleCollections(t *testing.T) {
 	for _, dataStore := range db.getDataStores() {
 		n1qlStore, ok := base.AsN1QLStore(dataStore)
 		assert.True(t, ok)
-		err := InitializeIndexes(n1qlStore, useXattrs, 0, false, false)
+		_, err := InitializeIndexes(n1qlStore, useXattrs, 0, false, false)
 		require.NoError(t, err)
 	}
 

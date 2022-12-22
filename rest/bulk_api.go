@@ -27,14 +27,14 @@ import (
 
 // HTTP handler for _all_docs
 func (h *handler) handleAllDocs() error {
-	dbName := h.db.Bucket.GetName()
+	dbName := h.db.Name
 
 	if h.server.databases_[dbName] == nil {
 		return base.HTTPErrorf(http.StatusInternalServerError, "could not find database context for %s", dbName)
 	}
 
-	if !h.server.databases_[dbName].AllDocsIndexExists {
-		return base.HTTPErrorf(http.StatusBadRequest, "_all_docs endpoint is only available when '*' Channel is enabled. set 'cache.channel_cache.enable_star_channel':true in Sync Gateway's database config.")
+	if !h.server.IsAllDocsIndexExistFor(dbName) {
+		return base.HTTPErrorf(http.StatusBadRequest, "all_docs endpoint is not available for db %s", dbName)
 	}
 
 	// http://wiki.apache.org/couchdb/HTTP_Bulk_Document_API

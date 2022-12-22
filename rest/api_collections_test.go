@@ -120,6 +120,10 @@ func TestCollectionsPublicChannel(t *testing.T) {
 	})
 	defer rt.Close()
 
+	if !rt.ServerContext().IsAllDocsIndexExistFor(rt.GetDatabase().Name) {
+		t.Skip("This test requires AllDocs index to be present")
+	}
+
 	pathPublic := "/{{.keyspace}}/docpublic"
 	resp := rt.SendAdminRequest(http.MethodPut, pathPublic, `{"channels":["!"]}`)
 	RequireStatus(t, resp, http.StatusCreated)
