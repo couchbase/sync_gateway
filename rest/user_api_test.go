@@ -279,6 +279,8 @@ func TestUserAPI(t *testing.T) {
 	response := rt.SendAdminRequest("PUT", "/db/_user/snej", `{"email":"jens@couchbase.com", "password":"letmein", `+AdminChannelGrant(s, c, `"admin_channels":["foo", "bar"]`)+`}`)
 	RequireStatus(t, response, 201)
 
+	user, err := rt.ServerContext().Database(ctx, "db").Authenticator(ctx).GetUser("snej")
+	require.NoError(t, err)
 	// GET the user and make sure the result is OK
 	response = rt.SendAdminRequest("GET", "/db/_user/snej", "")
 	RequireStatus(t, response, 200)
@@ -286,8 +288,8 @@ func TestUserAPI(t *testing.T) {
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.Equal(t, "snej", body["name"])
 	assert.Equal(t, "jens@couchbase.com", body["email"])
-	assert.Equal(t, []interface{}{"bar", "foo"}, body["admin_channels"])
-	assert.Equal(t, []interface{}{"!", "bar", "foo"}, body["all_channels"])
+	assert.Contains(t, "bar:1,foo:1", user.CollectionExplicitChannels(s, c).String())
+	assert.Contains(t, "!:1,bar:1,foo:1", user.CollectionChannels(s, c).String())
 	assert.Equal(t, nil, body["password"])
 
 	// Check the list of all users:
@@ -296,10 +298,10 @@ func TestUserAPI(t *testing.T) {
 	assert.Equal(t, `["snej"]`, string(response.Body.Bytes()))
 
 	// Check that the actual User object is correct:
-	user, _ := rt.ServerContext().Database(ctx, "db").Authenticator(ctx).GetUser("snej")
+	user, _ = rt.ServerContext().Database(ctx, "db").Authenticator(ctx).GetUser("snej")
 	assert.Equal(t, "snej", user.Name())
 	assert.Equal(t, "jens@couchbase.com", user.Email())
-	assert.Equal(t, channels.TimedSet{"bar": channels.NewVbSimpleSequence(0x1), "foo": channels.NewVbSimpleSequence(0x1)}, user.CollectionExplicitChannels(base.DefaultScope, base.DefaultCollection))
+	assert.Equal(t, channels.TimedSet{"bar": channels.NewVbSimpleSequence(0x1), "foo": channels.NewVbSimpleSequence(0x1)}, user.CollectionExplicitChannels(s, c))
 	assert.True(t, user.Authenticate("letmein"))
 
 	// Change the password and verify it:
@@ -337,10 +339,11 @@ func TestUserAPI(t *testing.T) {
 	// GET the user and verify that it shows the channels inherited from the role
 	response = rt.SendAdminRequest("GET", "/db/_user/snej", "")
 	RequireStatus(t, response, 200)
+	user, _ = rt.ServerContext().Database(ctx, "db").Authenticator(ctx).GetUser("snej")
 	body = nil
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.Equal(t, []interface{}{"hipster"}, body["admin_roles"])
-	assert.Equal(t, []interface{}{"!", "bar", "fedoras", "fixies", "foo"}, body["all_channels"])
+	assert.Equal(t, "!:1,bar:3,foo:3", user.CollectionChannels(s, c).String())
 
 	// DELETE the user
 	RequireStatus(t, rt.SendAdminRequest("DELETE", "/db/_user/snej", ""), 200)
@@ -654,11 +657,11 @@ func TestObtainUserChannelsForDeletedRoleCasFail(t *testing.T) {
 			RequireStatus(t, resp, http.StatusCreated)
 
 			// Add channel to role
-			resp = rt.SendAdminRequest("PUT", "/db/roleChannels", `{"channels": "inherit"}`)
+			resp = rt.SendAdminRequest("PUT", "/{{.keyspace}}/roleChannels", `{"channels": "inherit"}`)
 			RequireStatus(t, resp, http.StatusCreated)
 
 			// Add role to user
-			resp = rt.SendAdminRequest("PUT", "/db/userRoles", `{"roles": "role:role"}`)
+			resp = rt.SendAdminRequest("PUT", "/{{.keyspace}}/userRoles", `{"roles": "role:role"}`)
 			RequireStatus(t, resp, http.StatusCreated)
 
 			leakyDataStore, ok := base.AsLeakyDataStore(rt.TestBucket.GetSingleDataStore())
@@ -685,7 +688,7 @@ func TestObtainUserChannelsForDeletedRoleCasFail(t *testing.T) {
 				triggerCallback = true
 			}
 
-			assert.Equal(t, []string{"!"}, user.InheritedCollectionChannels(base.DefaultScope, base.DefaultCollection).AllKeys())
+			assert.Equal(t, []string{"!"}, user.InheritedCollectionChannels(s, c).AllKeys())
 
 			// Ensure callback ran
 			assert.False(t, triggerCallback)
@@ -890,7 +893,7 @@ function(doc, oldDoc) {
 		input = input + fmt.Sprintf(`{"_id":"%s", "type":"list"}`, docId)
 	}
 	input = input + `]}`
-	response = rt.SendAdminRequest("POST", "/db/_bulk_docs", input)
+	response = rt.SendAdminRequest("POST", "/db."+s+"."+c+"/_bulk_docs", input)
 
 	// Start changes feed
 	var wg sync.WaitGroup
@@ -917,7 +920,7 @@ function(doc, oldDoc) {
 			// Timeout allows us to read continuous changes after processing is complete.  Needs to be long enough to
 			// ensure it doesn't terminate before the first change is sent.
 			log.Printf("Invoking _changes?feed=continuous&since=%s&timeout=2000", since)
-			changesResponse := rt.Send(RequestByUser("GET", fmt.Sprintf("/db/_changes?feed=continuous&since=%s&timeout=2000", since), "", "bernard"))
+			changesResponse := rt.Send(RequestByUser("GET", fmt.Sprintf("/db."+s+"."+c+"/_changes?feed=continuous&since=%s&timeout=2000", since), "", "bernard"))
 
 			changes, err := readContinuousChanges(changesResponse)
 			assert.NoError(t, err)
@@ -962,7 +965,7 @@ function(doc, oldDoc) {
 		input = input + `]}`
 
 		log.Printf("Sending 2nd round of _bulk_docs")
-		response = rt.Send(RequestByUser("POST", "/db/_bulk_docs", input, "bernard"))
+		response = rt.Send(RequestByUser("POST", "/db."+s+"."+c+"/_bulk_docs", input, "bernard"))
 		log.Printf("Sent 2nd round of _bulk_docs")
 
 	}

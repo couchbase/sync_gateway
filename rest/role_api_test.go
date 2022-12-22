@@ -167,11 +167,11 @@ func TestFunkyRoleNames(t *testing.T) {
 			RequireStatus(t, response, 201)
 
 			// Create test document
-			response = rt.SendAdminRequest("PUT", "/db/testdoc", `{"channels":["testchannel"]}`)
+			response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/testdoc", `{"channels":["testchannel"]}`)
 			RequireStatus(t, response, 201)
 
 			// Assert user can access it
-			response = rt.Send(RequestByUser("GET", "/db/testdoc", "", username))
+			response = rt.Send(RequestByUser("GET", "/db."+s+"."+c+"/testdoc", "", username))
 			RequireStatus(t, response, 200)
 		})
 	}
@@ -195,6 +195,9 @@ func TestBulkDocsChangeToRoleAccess(t *testing.T) {
 		&rtConfig)
 	defer rt.Close()
 	ctx := rt.Context()
+	collection := rt.GetSingleTestDatabaseCollection()
+	c := collection.Name()
+	s := collection.ScopeName()
 
 	// Create a role with no channels assigned to it
 	authenticator := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
@@ -221,7 +224,7 @@ func TestBulkDocsChangeToRoleAccess(t *testing.T) {
 				}
 				]}`
 
-	response := rt.Send(RequestByUser("POST", "/db/_bulk_docs", input, "user1"))
+	response := rt.Send(RequestByUser("POST", "/db."+s+"."+c+"/_bulk_docs", input, "user1"))
 	RequireStatus(t, response, 201)
 
 	var docs []interface{}
@@ -264,7 +267,7 @@ func TestRoleAssignmentBeforeUserExists(t *testing.T) {
 	assert.Equal(t, "role1", body["name"])
 
 	// Put document to trigger sync function
-	response = rt.Send(Request("PUT", "/db/doc1", `{"user":"user1", "role":"role:role1", "channel":"chan1"}`)) // seq=1
+	response = rt.Send(Request("PUT", "/db."+s+"."+c+"/doc1", `{"user":"user1", "role":"role:role1", "channel":"chan1"}`)) // seq=1
 	RequireStatus(t, response, 201)
 	body = nil
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
@@ -328,7 +331,7 @@ func TestRoleAccessChanges(t *testing.T) {
 	// Create some docs in the channels:
 	cacheWaiter := rt.ServerContext().Database(ctx, "db").NewDCPCachingCountWaiter(t)
 	cacheWaiter.Add(1)
-	response = rt.Send(Request("PUT", "/db/fashion",
+	response = rt.Send(Request("PUT", "/db."+s+"."+c+"/fashion",
 		`{"user":"alice","role":["role:hipster","role:bogus"]}`))
 	RequireStatus(t, response, 201)
 	var body db.Body
@@ -337,17 +340,17 @@ func TestRoleAccessChanges(t *testing.T) {
 	fashionRevID := body["rev"].(string)
 
 	roleGrantSequence := rt.GetDocumentSequence("fashion")
+	fmt.Println("current role grant sequence", roleGrantSequence)
 
 	cacheWaiter.Add(4)
-	RequireStatus(t, rt.Send(Request("PUT", "/db/g1", `{"channel":"gamma"}`)), 201)
-	RequireStatus(t, rt.Send(Request("PUT", "/db/a1", `{"channel":"alpha"}`)), 201)
-	RequireStatus(t, rt.Send(Request("PUT", "/db/b1", `{"channel":"beta"}`)), 201)
-	RequireStatus(t, rt.Send(Request("PUT", "/db/d1", `{"channel":"delta"}`)), 201)
+	RequireStatus(t, rt.Send(Request("PUT", "/db."+s+"."+c+"/g1", `{"channel":"gamma"}`)), 201)
+	RequireStatus(t, rt.Send(Request("PUT", "/db."+s+"."+c+"/a1", `{"channel":"alpha"}`)), 201)
+	RequireStatus(t, rt.Send(Request("PUT", "/db."+s+"."+c+"/b1", `{"channel":"beta"}`)), 201)
+	RequireStatus(t, rt.Send(Request("PUT", "/db."+s+"."+c+"/d1", `{"channel":"delta"}`)), 201)
 
 	// Check user access:
 	alice, _ := a.GetUser("alice")
 	assert.Equal(t,
-
 		channels.TimedSet{
 			"!":     channels.NewVbSimpleSequence(1),
 			"alpha": channels.NewVbSimpleSequence(alice.Sequence()),
@@ -355,7 +358,6 @@ func TestRoleAccessChanges(t *testing.T) {
 		}, alice.InheritedCollectionChannels(s, c))
 
 	assert.Equal(t,
-
 		channels.TimedSet{
 			"bogus":   channels.NewVbSimpleSequence(roleGrantSequence),
 			"hipster": channels.NewVbSimpleSequence(roleGrantSequence),
@@ -378,7 +380,7 @@ func TestRoleAccessChanges(t *testing.T) {
 	}
 
 	cacheWaiter.Wait()
-	response = rt.Send(RequestByUser("GET", "/db/_changes", "", "alice"))
+	response = rt.Send(RequestByUser("GET", "/db."+s+"."+c+"/_changes", "", "alice"))
 	log.Printf("1st _changes looks like: %s", response.Body.Bytes())
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &changes))
 	require.Equal(t, 3, len(changes.Results))
@@ -386,7 +388,7 @@ func TestRoleAccessChanges(t *testing.T) {
 	assert.Equal(t, "g1", changes.Results[1].ID)
 	assert.Equal(t, "a1", changes.Results[2].ID)
 
-	response = rt.Send(RequestByUser("GET", "/db/_changes", "", "zegpold"))
+	response = rt.Send(RequestByUser("GET", "/db."+s+"."+c+"/_changes", "", "zegpold"))
 	log.Printf("2nd _changes looks like: %s", response.Body.Bytes())
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &changes))
 	require.Equal(t, 2, len(changes.Results))
@@ -397,14 +399,13 @@ func TestRoleAccessChanges(t *testing.T) {
 	// Update "fashion" doc to grant zegpold the role "hipster" and take it away from alice:
 	cacheWaiter.Add(1)
 	str := fmt.Sprintf(`{"user":"zegpold", "role":"role:hipster", "_rev":%q}`, fashionRevID)
-	RequireStatus(t, rt.Send(Request("PUT", "/db/fashion", str)), 201)
+	RequireStatus(t, rt.Send(Request("PUT", "/db."+s+"."+c+"/fashion", str)), 201)
 
 	updatedRoleGrantSequence := rt.GetDocumentSequence("fashion")
 
 	// Check user access again:
 	alice, _ = a.GetUser("alice")
 	assert.Equal(t,
-
 		channels.TimedSet{
 			"!":     channels.NewVbSimpleSequence(0x1),
 			"alpha": channels.NewVbSimpleSequence(alice.Sequence()),
@@ -412,7 +413,6 @@ func TestRoleAccessChanges(t *testing.T) {
 
 	zegpold, _ = a.GetUser("zegpold")
 	assert.Equal(t,
-
 		channels.TimedSet{
 			"!":     channels.NewVbSimpleSequence(0x1),
 			"beta":  channels.NewVbSimpleSequence(zegpold.Sequence()),
@@ -422,7 +422,7 @@ func TestRoleAccessChanges(t *testing.T) {
 	// The complete _changes feed for zegpold contains docs g1 and b1:
 	cacheWaiter.Wait()
 	changes.Results = nil
-	response = rt.Send(RequestByUser("GET", "/db/_changes", "", "zegpold"))
+	response = rt.Send(RequestByUser("GET", "/db."+s+"."+c+"/_changes", "", "zegpold"))
 	log.Printf("3rd _changes looks like: %s", response.Body.Bytes())
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &changes))
 	log.Printf("changes: %+v", changes.Results)
@@ -433,7 +433,7 @@ func TestRoleAccessChanges(t *testing.T) {
 
 	// Changes feed with since=lastSeqPreGrant would ordinarily be empty, but zegpold got access to channel
 	// gamma after lastSeqPreGrant, so the pre-existing docs in that channel are included:
-	response = rt.Send(RequestByUser("GET", fmt.Sprintf("/db/_changes?since=%v", lastSeqPreGrant), "", "zegpold"))
+	response = rt.Send(RequestByUser("GET", fmt.Sprintf("/db."+s+"."+c+"/_changes?since=%v", lastSeqPreGrant), "", "zegpold"))
 	log.Printf("4th _changes looks like: %s", response.Body.Bytes())
 	changes.Results = nil
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &changes))

@@ -954,7 +954,7 @@ type RawResponse struct {
 // GetDocumentSequence looks up the sequence for a document using the _raw endpoint.
 // Used by tests that need to validate sequences (for grants, etc)
 func (rt *RestTester) GetDocumentSequence(key string) (sequence uint64) {
-	response := rt.SendAdminRequest("GET", fmt.Sprintf("/db/_raw/%s", key), "")
+	response := rt.SendAdminRequest("GET", fmt.Sprintf("/{{.keyspace}}/_raw/%s", key), "")
 	if response.Code != 200 {
 		return 0
 	}

@@ -1959,7 +1959,7 @@ func TestRemovedMessageWithAlternateAccess(t *testing.T) {
 	c := collection.Name()
 	s := collection.ScopeName()
 
-	resp := rt.SendAdminRequest("PUT", "/db/_user/user", `{`+AdminChannelGrant(s, c, `"admin_channels": ["A", "B"]`)+`"password": "test"}`)
+	resp := rt.SendAdminRequest("PUT", "/db/_user/user", `{`+AdminChannelGrant(s, c, `"admin_channels": ["A", "B"]`)+`, "password": "test"}`)
 	RequireStatus(t, resp, http.StatusCreated)
 
 	btc, err := NewBlipTesterClientOptsWithRT(t, rt, &BlipTesterClientOpts{

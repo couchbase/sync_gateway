@@ -297,13 +297,13 @@ func TestPostChangesWithQueryString(t *testing.T) {
 	defer rt.Close()
 
 	// Put several documents
-	response := rt.SendAdminRequest("PUT", "/db/pbs1", `{"value":1, "channel":["PBS"]}`)
+	response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/pbs1", `{"value":1, "channel":["PBS"]}`)
 	rest.RequireStatus(t, response, 201)
-	response = rt.SendAdminRequest("PUT", "/db/abc1", `{"value":1, "channel":["ABC"]}`)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/abc1", `{"value":1, "channel":["ABC"]}`)
 	rest.RequireStatus(t, response, 201)
-	response = rt.SendAdminRequest("PUT", "/db/pbs2", `{"value":2, "channel":["PBS"]}`)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/pbs2", `{"value":2, "channel":["PBS"]}`)
 	rest.RequireStatus(t, response, 201)
-	response = rt.SendAdminRequest("PUT", "/db/pbs3", `{"value":3, "channel":["PBS"]}`)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/pbs3", `{"value":3, "channel":["PBS"]}`)
 	rest.RequireStatus(t, response, 201)
 
 	_ = rt.WaitForPendingChanges()
@@ -315,7 +315,7 @@ func TestPostChangesWithQueryString(t *testing.T) {
 
 	// Test basic properties
 	changesJSON := `{"heartbeat":50, "feed":"normal", "limit":1, "since":"3"}`
-	changesResponse := rt.SendAdminRequest("POST", "/db/_changes?feed=longpoll&limit=10&since=0&heartbeat=50000", changesJSON)
+	changesResponse := rt.SendAdminRequest("POST", "/{{.keyspace}}/_changes?feed=longpoll&limit=10&since=0&heartbeat=50000", changesJSON)
 
 	err := base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
 	assert.NoError(t, err, "Error unmarshalling changes response")
@@ -327,7 +327,7 @@ func TestPostChangesWithQueryString(t *testing.T) {
 		Last_Seq db.SequenceID
 	}
 	changesJSON = `{"feed":"longpoll"}`
-	changesResponse = rt.SendAdminRequest("POST", "/db/_changes?feed=longpoll&filter=sync_gateway/bychannel&channels=ABC", changesJSON)
+	changesResponse = rt.SendAdminRequest("POST", "/{{.keyspace}}/_changes?feed=longpoll&filter=sync_gateway/bychannel&channels=ABC", changesJSON)
 
 	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &filteredChanges)
 	assert.NoError(t, err, "Error unmarshalling changes response")
@@ -347,15 +347,15 @@ func postChangesSince(t *testing.T, rt *rest.RestTester) {
 	cacheWaiter := rt.GetDatabase().NewDCPCachingCountWaiter(t)
 
 	// Put several documents
-	response = rt.SendAdminRequest("PUT", "/db/pbs1-0000609", `{"channel":["PBS"]}`)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/pbs1-0000609", `{"channel":["PBS"]}`)
 	rest.RequireStatus(t, response, 201)
-	response = rt.SendAdminRequest("PUT", "/db/samevbdiffchannel-0000609", `{"channel":["ABC"]}`)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/samevbdiffchannel-0000609", `{"channel":["ABC"]}`)
 	rest.RequireStatus(t, response, 201)
-	response = rt.SendAdminRequest("PUT", "/db/samevbdiffchannel-0000799", `{"channel":["PBS"]}`)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/samevbdiffchannel-0000799", `{"channel":["PBS"]}`)
 	rest.RequireStatus(t, response, 201)
-	response = rt.SendAdminRequest("PUT", "/db/pbs2-0000609", `{"channel":["PBS"]}`)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/pbs2-0000609", `{"channel":["PBS"]}`)
 	rest.RequireStatus(t, response, 201)
-	response = rt.SendAdminRequest("PUT", "/db/pbs3-0000609", `{"channel":["PBS"]}`)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/pbs3-0000609", `{"channel":["PBS"]}`)
 	rest.RequireStatus(t, response, 201)
 	cacheWaiter.AddAndWait(5)
 
@@ -364,7 +364,7 @@ func postChangesSince(t *testing.T, rt *rest.RestTester) {
 		Last_Seq interface{}
 	}
 	changesJSON := `{"style":"all_docs", "heartbeat":300000, "feed":"longpoll", "limit":50, "since":"0"}`
-	changesResponse := rt.SendUserRequest("POST", "/db/_changes", changesJSON, "bernard")
+	changesResponse := rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", changesJSON, "bernard")
 
 	err := base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
 	log.Printf("Changes:%s", changesResponse.Body.Bytes())
@@ -372,18 +372,18 @@ func postChangesSince(t *testing.T, rt *rest.RestTester) {
 	require.Len(t, changes.Results, 5)
 
 	// Put several more documents, some to the same vbuckets
-	response = rt.SendAdminRequest("PUT", "/db/pbs1-0000799", `{"value":1, "channel":["PBS"]}`)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/pbs1-0000799", `{"value":1, "channel":["PBS"]}`)
 	rest.RequireStatus(t, response, 201)
-	response = rt.SendAdminRequest("PUT", "/db/abc1-0000609", `{"value":1, "channel":["ABC"]}`)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/abc1-0000609", `{"value":1, "channel":["ABC"]}`)
 	rest.RequireStatus(t, response, 201)
-	response = rt.SendAdminRequest("PUT", "/db/pbs2-0000799", `{"value":2, "channel":["PBS"]}`)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/pbs2-0000799", `{"value":2, "channel":["PBS"]}`)
 	rest.RequireStatus(t, response, 201)
-	response = rt.SendAdminRequest("PUT", "/db/pbs4", `{"value":4, "channel":["PBS"]}`)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/pbs4", `{"value":4, "channel":["PBS"]}`)
 	rest.RequireStatus(t, response, 201)
 	cacheWaiter.AddAndWait(4)
 
 	changesJSON = fmt.Sprintf(`{"style":"all_docs", "heartbeat":300000, "feed":"longpoll", "limit":50, "since":"%s"}`, changes.Last_Seq)
-	changesResponse = rt.SendUserRequest("POST", "/db/_changes", changesJSON, "bernard")
+	changesResponse = rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", changesJSON, "bernard")
 	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
 	log.Printf("Changes:%s", changesResponse.Body.Bytes())
 	assert.NoError(t, err, "Error unmarshalling changes response")
@@ -480,15 +480,15 @@ func TestPostChangesAdminChannelGrant(t *testing.T) {
 	cacheWaiter := rt.GetDatabase().NewDCPCachingCountWaiter(t)
 
 	// Put several documents in channel ABC and PBS
-	response := rt.SendAdminRequest("PUT", "/db/pbs-1", `{"channel":["PBS"]}`)
+	response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/pbs-1", `{"channel":["PBS"]}`)
 	rest.RequireStatus(t, response, 201)
-	response = rt.SendAdminRequest("PUT", "/db/pbs-2", `{"channel":["PBS"]}`)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/pbs-2", `{"channel":["PBS"]}`)
 	rest.RequireStatus(t, response, 201)
-	response = rt.SendAdminRequest("PUT", "/db/pbs-3", `{"channel":["PBS"]}`)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/pbs-3", `{"channel":["PBS"]}`)
 	rest.RequireStatus(t, response, 201)
-	response = rt.SendAdminRequest("PUT", "/db/pbs-4", `{"channel":["PBS"]}`)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/pbs-4", `{"channel":["PBS"]}`)
 	rest.RequireStatus(t, response, 201)
-	response = rt.SendAdminRequest("PUT", "/db/abc-1", `{"channel":["ABC"]}`)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/abc-1", `{"channel":["ABC"]}`)
 	rest.RequireStatus(t, response, 201)
 	cacheWaiter.AddAndWait(5)
 
@@ -498,7 +498,7 @@ func TestPostChangesAdminChannelGrant(t *testing.T) {
 	}
 
 	// Issue simple changes request
-	changesResponse := rt.SendUserRequest("GET", "/db/_changes", "", "bernard")
+	changesResponse := rt.SendUserRequest("GET", "/{{.keyspace}}/_changes", "", "bernard")
 	rest.RequireStatus(t, changesResponse, 200)
 
 	log.Printf("Response:%+v", changesResponse.Body)
@@ -513,7 +513,7 @@ func TestPostChangesAdminChannelGrant(t *testing.T) {
 	time.Sleep(500 * time.Millisecond)
 
 	// Issue a new changes request with since=last_seq ensure that user receives all records for channel PBS
-	changesResponse = rt.SendUserRequest("GET", fmt.Sprintf("/db/_changes?since=%s", changes.Last_Seq),
+	changesResponse = rt.SendUserRequest("GET", fmt.Sprintf("/{{.keyspace}}/_changes?since=%s", changes.Last_Seq),
 		"", "bernard")
 	rest.RequireStatus(t, changesResponse, 200)
 
@@ -526,15 +526,15 @@ func TestPostChangesAdminChannelGrant(t *testing.T) {
 	require.Len(t, changes.Results, 5) // 4 PBS docs, plus the updated user doc
 
 	// Write a few more docs
-	response = rt.SendAdminRequest("PUT", "/db/pbs-5", `{"channel":["PBS"]}`)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/pbs-5", `{"channel":["PBS"]}`)
 	rest.RequireStatus(t, response, 201)
-	response = rt.SendAdminRequest("PUT", "/db/abc-2", `{"channel":["ABC"]}`)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/abc-2", `{"channel":["ABC"]}`)
 	rest.RequireStatus(t, response, 201)
 
 	cacheWaiter.AddAndWait(2)
 
 	// Issue another changes request - ensure we don't backfill again
-	changesResponse = rt.SendUserRequest("GET", fmt.Sprintf("/db/_changes?since=%s", changes.Last_Seq),
+	changesResponse = rt.SendUserRequest("GET", fmt.Sprintf("/{{.keyspace}}/_changes?since=%s", changes.Last_Seq),
 		"", "bernard")
 	rest.RequireStatus(t, changesResponse, 200)
 	log.Printf("Response:%+v", changesResponse.Body)
@@ -631,7 +631,7 @@ func TestPostChangesAdminChannelGrantRemoval(t *testing.T) {
 		`{"seq":26,"id":"abc-2","deleted":true,"removed":["ABC"],"changes":[{"rev":"2-6055be21d970eb690f48452505ea02ed"}]}`,
 		`{"seq":27,"id":"abc-3","removed":["ABC"],"changes":[{"rev":"2-09b89154aa9a0e1620da0d86528d406a"}]}`,
 	}
-	changes, err := rt.WaitForChanges(len(expectedResults), "/db/_changes", "bernard", false)
+	changes, err := rt.WaitForChanges(len(expectedResults), "/{{.keyspace}}/_changes", "bernard", false)
 	require.NoError(t, err, "Error retrieving changes results")
 
 	for index, result := range changes.Results {
@@ -660,7 +660,7 @@ func TestPostChangesAdminChannelGrantRemoval(t *testing.T) {
 		`{"seq":28,"id":"_user/bernard","changes":[]}`,
 	}
 	changes, err = rt.WaitForChanges(len(expectedResults),
-		fmt.Sprintf("/db/_changes?since=%s", changes.Last_Seq), "bernard", false)
+		fmt.Sprintf("/{{.keyspace}}/_changes?since=%s", changes.Last_Seq), "bernard", false)
 	require.NoError(t, err, "Error retrieving changes results")
 
 	for index, result := range changes.Results {
@@ -695,7 +695,7 @@ func TestPostChangesAdminChannelGrantRemoval(t *testing.T) {
 		`{"seq":32,"id":"mix-7","changes":[{"rev":"1-32f69cdbf1772a8e064f15e928a18f85"}]}`,
 	}
 	changes, err = rt.WaitForChanges(len(expectedResults),
-		fmt.Sprintf("/db/_changes?since=28:5"), "bernard", false)
+		fmt.Sprintf("/{{.keyspace}}/_changes?since=28:5"), "bernard", false)
 	require.NoError(t, err, "Error retrieving changes results")
 
 	for index, result := range changes.Results {
@@ -758,7 +758,7 @@ func TestPostChangesAdminChannelGrantRemovalWithLimit(t *testing.T) {
 	cacheWaiter.AddAndWait(3)
 
 	// Issue changes request with limit less than 5.  Expect to get pbs-5, user doc, and abc-1
-	changes, err := rt.WaitForChanges(0, "/db/_changes?limit=3", "bernard", false)
+	changes, err := rt.WaitForChanges(0, "/{{.keyspace}}/_changes?limit=3", "bernard", false)
 	assert.NoError(t, err)
 	require.Equal(t, len(changes.Results), 3)
 	assert.Equal(t, "pbs-5", changes.Results[0].ID)
@@ -767,7 +767,7 @@ func TestPostChangesAdminChannelGrantRemovalWithLimit(t *testing.T) {
 	lastSeq := changes.Last_Seq
 
 	// Issue a second changes request, expect to see last 2 documents.
-	moreChanges, err := rt.WaitForChanges(0, fmt.Sprintf("/db/_changes?limit=3&since=%s", lastSeq), "bernard", false)
+	moreChanges, err := rt.WaitForChanges(0, fmt.Sprintf("/{{.keyspace}}/_changes?limit=3&since=%s", lastSeq), "bernard", false)
 	assert.NoError(t, err)
 	require.Equal(t, 2, len(moreChanges.Results))
 	assert.Equal(t, "abc-2", moreChanges.Results[0].ID)
@@ -1022,7 +1022,7 @@ func TestChangesLoopingWhenLowSequence(t *testing.T) {
 		Results  []db.ChangeEntry
 		Last_Seq db.SequenceID
 	}
-	response = rt.SendUserRequest("GET", "/db/_changes", "", "bernard")
+	response = rt.SendUserRequest("GET", "/{{.keyspace}}/_changes", "", "bernard")
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &changes))
 	require.Equal(t, 4, len(changes.Results))
@@ -1033,7 +1033,7 @@ func TestChangesLoopingWhenLowSequence(t *testing.T) {
 	// Send another changes request before any changes, with the last_seq received from the last changes ("2::6")
 	changesJSON := fmt.Sprintf(`{"since":"%s"}`, changes.Last_Seq)
 	log.Printf("sending changes JSON: %s", changesJSON)
-	response = rt.SendUserRequest("POST", "/db/_changes", changesJSON, "bernard")
+	response = rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", changesJSON, "bernard")
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &changes))
 	require.Len(t, changes.Results, 0)
@@ -1047,7 +1047,7 @@ func TestChangesLoopingWhenLowSequence(t *testing.T) {
 	time.Sleep(50 * time.Millisecond)
 
 	// Send another changes request with the same since ("2::6") to ensure we see data once there are changes
-	response = rt.SendUserRequest("POST", "/db/_changes", changesJSON, "bernard")
+	response = rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", changesJSON, "bernard")
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &changes))
 	require.Len(t, changes.Results, 3)
@@ -1059,7 +1059,7 @@ func TestChangesLoopingWhenLowSequence(t *testing.T) {
 	// Send another changes request with the same since ("2::6") to ensure we see data once there are changes
 	changesJSON = fmt.Sprintf(`{"since":"%s"}`, changes.Last_Seq)
 	log.Printf("sending changes JSON: %s", changesJSON)
-	response = rt.SendUserRequest("POST", "/db/_changes", changesJSON, "bernard")
+	response = rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", changesJSON, "bernard")
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &changes))
 	require.Len(t, changes.Results, 1)
@@ -1118,7 +1118,7 @@ func TestChangesLoopingWhenLowSequenceOneShotUser(t *testing.T) {
 		Results  []db.ChangeEntry
 		Last_Seq string
 	}
-	response = rt.SendUserRequest("GET", "/db/_changes", "", "bernard")
+	response = rt.SendUserRequest("GET", "/{{.keyspace}}/_changes", "", "bernard")
 	log.Printf("_changes 1 looks like: %s", response.Body.Bytes())
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &changes))
 	require.Len(t, changes.Results, 5) // Includes user doc
@@ -1136,7 +1136,7 @@ func TestChangesLoopingWhenLowSequenceOneShotUser(t *testing.T) {
 	// Send another changes request with the last_seq received from the last changes ("5")
 	changesJSON := fmt.Sprintf(`{"since":"%s"}`, changes.Last_Seq)
 	log.Printf("sending changes JSON: %s", changesJSON)
-	response = rt.SendUserRequest("POST", "/db/_changes", changesJSON, "bernard")
+	response = rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", changesJSON, "bernard")
 	log.Printf("_changes 2 looks like: %s", response.Body.Bytes())
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &changes))
 	require.Len(t, changes.Results, 4)
@@ -1150,7 +1150,7 @@ func TestChangesLoopingWhenLowSequenceOneShotUser(t *testing.T) {
 	// Send another changes request with the last_seq received from the last changes ("5")
 	changesJSON = fmt.Sprintf(`{"since":"%s"}`, changes.Last_Seq)
 	log.Printf("sending changes JSON: %s", changesJSON)
-	response = rt.SendUserRequest("POST", "/db/_changes", changesJSON, "bernard")
+	response = rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", changesJSON, "bernard")
 	log.Printf("_changes 3 looks like: %s", response.Body.Bytes())
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &changes))
 	require.Len(t, changes.Results, 2)
@@ -1163,7 +1163,7 @@ func TestChangesLoopingWhenLowSequenceOneShotUser(t *testing.T) {
 
 	changesJSON = fmt.Sprintf(`{"since":"%s"}`, changes.Last_Seq)
 	log.Printf("sending changes JSON: %s", changesJSON)
-	response = rt.SendUserRequest("POST", "/db/_changes", changesJSON, "bernard")
+	response = rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", changesJSON, "bernard")
 	log.Printf("_changes 4 looks like: %s", response.Body.Bytes())
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &changes))
 
@@ -1253,7 +1253,7 @@ func TestChangesLoopingWhenLowSequenceOneShotAdmin(t *testing.T) {
 		Results  []db.ChangeEntry
 		Last_Seq string
 	}
-	response := rt.SendAdminRequest("GET", "/db/_changes", "")
+	response := rt.SendAdminRequest("GET", "/{{.keyspace}}/_changes", "")
 	log.Printf("_changes 1 looks like: %s", response.Body.Bytes())
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &changes))
 	require.Len(t, changes.Results, 5)
@@ -1271,7 +1271,7 @@ func TestChangesLoopingWhenLowSequenceOneShotAdmin(t *testing.T) {
 	// Send another changes request with the last_seq received from the last changes ("5")
 	changesJSON := fmt.Sprintf(`{"since":"%s"}`, changes.Last_Seq)
 	log.Printf("sending changes JSON: %s", changesJSON)
-	response = rt.SendAdminRequest("POST", "/db/_changes", changesJSON)
+	response = rt.SendAdminRequest("POST", "/{{.keyspace}}/_changes", changesJSON)
 	log.Printf("_changes 2 looks like: %s", response.Body.Bytes())
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &changes))
 	require.Len(t, changes.Results, 4)
@@ -1285,7 +1285,7 @@ func TestChangesLoopingWhenLowSequenceOneShotAdmin(t *testing.T) {
 	// Send another changes request with the last_seq received from the last changes ("5")
 	changesJSON = fmt.Sprintf(`{"since":"%s"}`, changes.Last_Seq)
 	log.Printf("sending changes JSON: %s", changesJSON)
-	response = rt.SendAdminRequest("POST", "/db/_changes", changesJSON)
+	response = rt.SendAdminRequest("POST", "/{{.keyspace}}/_changes", changesJSON)
 	log.Printf("_changes 3 looks like: %s", response.Body.Bytes())
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &changes))
 	require.Len(t, changes.Results, 2)
@@ -1298,7 +1298,7 @@ func TestChangesLoopingWhenLowSequenceOneShotAdmin(t *testing.T) {
 
 	changesJSON = fmt.Sprintf(`{"since":"%s"}`, changes.Last_Seq)
 	log.Printf("sending changes JSON: %s", changesJSON)
-	response = rt.SendAdminRequest("POST", "/db/_changes", changesJSON)
+	response = rt.SendAdminRequest("POST", "/{{.keyspace}}/_changes", changesJSON)
 	log.Printf("_changes 4 looks like: %s", response.Body.Bytes())
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &changes))
 
@@ -1392,7 +1392,7 @@ func TestChangesLoopingWhenLowSequenceLongpollUser(t *testing.T) {
 		Results  []db.ChangeEntry
 		Last_Seq string
 	}
-	response = rt.SendUserRequest("GET", "/db/_changes", "", "bernard")
+	response = rt.SendUserRequest("GET", "/{{.keyspace}}/_changes", "", "bernard")
 	log.Printf("_changes 1 looks like: %s", response.Body.Bytes())
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &changes))
 	require.Len(t, changes.Results, 5) // Includes user doc
@@ -1410,7 +1410,7 @@ func TestChangesLoopingWhenLowSequenceLongpollUser(t *testing.T) {
 	// Send another changes request with the last_seq received from the last changes ("5")
 	changesJSON := fmt.Sprintf(`{"since":"%s"}`, changes.Last_Seq)
 	log.Printf("sending changes JSON: %s", changesJSON)
-	response = rt.SendUserRequest("POST", "/db/_changes", changesJSON, "bernard")
+	response = rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", changesJSON, "bernard")
 	log.Printf("_changes 2 looks like: %s", response.Body.Bytes())
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &changes))
 	require.Len(t, changes.Results, 4)
@@ -1424,7 +1424,7 @@ func TestChangesLoopingWhenLowSequenceLongpollUser(t *testing.T) {
 	// Send another changes request with the last_seq received from the last changes ("5")
 	changesJSON = fmt.Sprintf(`{"since":"%s"}`, changes.Last_Seq)
 	log.Printf("sending changes JSON: %s", changesJSON)
-	response = rt.SendUserRequest("POST", "/db/_changes", changesJSON, "bernard")
+	response = rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", changesJSON, "bernard")
 	log.Printf("_changes 3 looks like: %s", response.Body.Bytes())
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &changes))
 	require.Len(t, changes.Results, 2)
@@ -1438,7 +1438,7 @@ func TestChangesLoopingWhenLowSequenceLongpollUser(t *testing.T) {
 		defer longpollWg.Done()
 		longpollChangesJSON := fmt.Sprintf(`{"since":"%s", "feed":"longpoll"}`, changes.Last_Seq)
 		log.Printf("starting longpoll changes w/ JSON: %s", longpollChangesJSON)
-		longPollResponse := rt.SendUserRequest("POST", "/db/_changes", longpollChangesJSON, "bernard")
+		longPollResponse := rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", longpollChangesJSON, "bernard")
 		log.Printf("longpoll changes looks like: %s", longPollResponse.Body.Bytes())
 		assert.NoError(t, base.JSONUnmarshal(longPollResponse.Body.Bytes(), &changes))
 		// Expect to get 6 through 12
@@ -1920,7 +1920,7 @@ func TestOneShotChangesWithExplicitDocIds(t *testing.T) {
 }
 
 func updateTestDoc(rt *rest.RestTester, docid string, revid string, body string) (newRevId string, err error) {
-	path := fmt.Sprintf("/db/%s", docid)
+	path := fmt.Sprintf("/{{.keyspace}}/%s", docid)
 	if revid != "" {
 		path = fmt.Sprintf("%s?rev=%s", path, revid)
 	}
@@ -1969,7 +1969,7 @@ func TestChangesIncludeDocs(t *testing.T) {
 	// Tombstoned
 	revid, err = updateTestDoc(rt, "doc_tombstone", "", `{"type": "tombstone", "channels":["alpha"]}`)
 	assert.NoError(t, err, "Error updating doc")
-	response = rt.SendAdminRequest("DELETE", fmt.Sprintf("/db/doc_tombstone?rev=%s", revid), "")
+	response = rt.SendAdminRequest("DELETE", fmt.Sprintf("/{{.keyspace}}/doc_tombstone?rev=%s", revid), "")
 	rest.RequireStatus(t, response, 200)
 
 	// Removed
@@ -2005,7 +2005,7 @@ func TestChangesIncludeDocs(t *testing.T) {
 	reqHeaders := map[string]string{
 		"Content-Type": attachmentContentType,
 	}
-	response = rt.SendAdminRequestWithHeaders("PUT", fmt.Sprintf("/db/doc_attachment/attach1?rev=%s", revid),
+	response = rt.SendAdminRequestWithHeaders("PUT", fmt.Sprintf("/{{.keyspace}}/doc_attachment/attach1?rev=%s", revid),
 		attachmentBody, reqHeaders)
 	rest.RequireStatus(t, response, 201)
 
@@ -2020,7 +2020,7 @@ func TestChangesIncludeDocs(t *testing.T) {
 	assert.NoError(t, err)
 	newEdits_conflict := `{"type": "conflict", "channels":["alpha"],
                    "_revisions": {"start": 2, "ids": ["conflicting_rev", "19a316235cdd9d695d73765dc527d903"]}}`
-	response = rt.SendAdminRequest("PUT", "/db/doc_conflict?new_edits=false", newEdits_conflict)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc_conflict?new_edits=false", newEdits_conflict)
 	rest.RequireStatus(t, response, 201)
 
 	// Resolved conflict
@@ -2030,9 +2030,9 @@ func TestChangesIncludeDocs(t *testing.T) {
 	assert.NoError(t, err)
 	newEdits_conflict = `{"type": "resolved_conflict", "channels":["alpha"],
                    "_revisions": {"start": 2, "ids": ["conflicting_rev", "4e123c0497a1a6975540977ec127c06c"]}}`
-	response = rt.SendAdminRequest("PUT", "/db/doc_resolved_conflict?new_edits=false", newEdits_conflict)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc_resolved_conflict?new_edits=false", newEdits_conflict)
 	rest.RequireStatus(t, response, 201)
-	response = rt.SendAdminRequest("DELETE", "/db/doc_resolved_conflict?rev=2-conflicting_rev", "")
+	response = rt.SendAdminRequest("DELETE", "/{{.keyspace}}/doc_resolved_conflict?rev=2-conflicting_rev", "")
 	rest.RequireStatus(t, response, 200)
 
 	require.NoError(t, rt.WaitForPendingChanges())
@@ -2048,7 +2048,7 @@ func TestChangesIncludeDocs(t *testing.T) {
 	expectedResults[7] = `{"seq":19,"id":"doc_large_numbers","doc":{"_id":"doc_large_numbers","_rev":"1-2721633d9000e606e9c642e98f2f5ae7","channels":["alpha"],"largefloat":1234567890.1234,"largeint":1234567890,"type":"large_numbers"},"changes":[{"rev":"1-2721633d9000e606e9c642e98f2f5ae7"}]}`
 	expectedResults[8] = `{"seq":22,"id":"doc_conflict","doc":{"_id":"doc_conflict","_rev":"2-conflicting_rev","channels":["alpha"],"type":"conflict"},"changes":[{"rev":"2-conflicting_rev"}]}`
 	expectedResults[9] = `{"seq":26,"id":"doc_resolved_conflict","doc":{"_id":"doc_resolved_conflict","_rev":"2-251ba04e5889887152df5e7a350745b4","channels":["alpha"],"type":"resolved_conflict"},"changes":[{"rev":"2-251ba04e5889887152df5e7a350745b4"}]}`
-	changesResponse := rt.SendUserRequest("GET", "/db/_changes?include_docs=true", "", "user1")
+	changesResponse := rt.SendUserRequest("GET", "/{{.keyspace}}/_changes?include_docs=true", "", "user1")
 
 	var changes rest.ChangesResults
 	assert.NoError(t, base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes))
@@ -2087,7 +2087,7 @@ func TestChangesIncludeDocs(t *testing.T) {
 		}
 	}
 
-	postFlushChangesResponse := rt.SendUserRequest("GET", "/db/_changes?include_docs=true", "", "user1")
+	postFlushChangesResponse := rt.SendUserRequest("GET", "/{{.keyspace}}/_changes?include_docs=true", "", "user1")
 
 	var postFlushChanges rest.ChangesResults
 	assert.NoError(t, base.JSONUnmarshal(postFlushChangesResponse.Body.Bytes(), &postFlushChanges))
@@ -2129,7 +2129,7 @@ func TestChangesIncludeDocs(t *testing.T) {
 	expectedStyleAllDocs[8] = `{"seq":22,"id":"doc_conflict","changes":[{"rev":"2-conflicting_rev"},{"rev":"2-869a7167ccbad634753105568055bd61"}]}`
 	expectedStyleAllDocs[9] = `{"seq":26,"id":"doc_resolved_conflict","changes":[{"rev":"2-251ba04e5889887152df5e7a350745b4"},{"rev":"3-f25ad98ef169791adec6c1d385717b84"}]}`
 
-	styleAllDocsChangesResponse := rt.SendUserRequest("GET", "/db/_changes?style=all_docs", "", "user1")
+	styleAllDocsChangesResponse := rt.SendUserRequest("GET", "/{{.keyspace}}/_changes?style=all_docs", "", "user1")
 	var allDocsChanges struct {
 		Results []*json.RawMessage
 	}
@@ -2144,7 +2144,7 @@ func TestChangesIncludeDocs(t *testing.T) {
 	expectedResults[8] = `{"seq":22,"id":"doc_conflict","doc":{"_id":"doc_conflict","_rev":"2-conflicting_rev","channels":["alpha"],"type":"conflict"},"changes":[{"rev":"2-conflicting_rev"},{"rev":"2-869a7167ccbad634753105568055bd61"}]}`
 	expectedResults[9] = `{"seq":26,"id":"doc_resolved_conflict","doc":{"_id":"doc_resolved_conflict","_rev":"2-251ba04e5889887152df5e7a350745b4","channels":["alpha"],"type":"resolved_conflict"},"changes":[{"rev":"2-251ba04e5889887152df5e7a350745b4"},{"rev":"3-f25ad98ef169791adec6c1d385717b84"}]}`
 
-	combinedChangesResponse := rt.SendUserRequest("GET", "/db/_changes?style=all_docs&include_docs=true", "", "user1")
+	combinedChangesResponse := rt.SendUserRequest("GET", "/{{.keyspace}}/_changes?style=all_docs&include_docs=true", "", "user1")
 	var combinedChanges rest.ChangesResults
 	assert.NoError(t, base.JSONUnmarshal(combinedChangesResponse.Body.Bytes(), &combinedChanges))
 	assert.Equal(t, len(expectedResults), len(combinedChanges.Results))
@@ -3717,11 +3717,11 @@ func TestIncludeDocsWithPrincipals(t *testing.T) {
 	rest.RequireStatus(t, response, 201)
 
 	// Put several documents
-	response = rt.SendAdminRequest("PUT", "/db/doc1", `{"channels":["PBS"]}`)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1", `{"channels":["PBS"]}`)
 	rest.RequireStatus(t, response, 201)
-	response = rt.SendAdminRequest("PUT", "/db/doc2", `{"channels":["PBS"]}`)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc2", `{"channels":["PBS"]}`)
 	rest.RequireStatus(t, response, 201)
-	response = rt.SendAdminRequest("PUT", "/db/doc3", `{"channels":["PBS"]}`)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc3", `{"channels":["PBS"]}`)
 	rest.RequireStatus(t, response, 201)
 
 	cacheWaiter.AddAndWait(3)
@@ -3733,7 +3733,7 @@ func TestIncludeDocsWithPrincipals(t *testing.T) {
 
 	// Get as admin
 	changes.Results = nil
-	changesResponse := rt.SendAdminRequest("GET", "/db/_changes?include_docs=true", "")
+	changesResponse := rt.SendAdminRequest("GET", "/{{.keyspace}}/_changes?include_docs=true", "")
 	err := base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
 	log.Printf("admin response: %s", changesResponse.Body.Bytes())
 	assert.NoError(t, err, "Error unmarshalling changes response")
@@ -3742,7 +3742,7 @@ func TestIncludeDocsWithPrincipals(t *testing.T) {
 
 	// Get as user
 	changes.Results = nil
-	userChangesResponse := rt.SendUserRequest("GET", "/db/_changes?include_docs=true", "", "includeDocsUser")
+	userChangesResponse := rt.SendUserRequest("GET", "/{{.keyspace}}/_changes?include_docs=true", "", "includeDocsUser")
 	err = base.JSONUnmarshal(userChangesResponse.Body.Bytes(), &changes)
 	log.Printf("userChangesResponse: %s", userChangesResponse.Body.Bytes())
 	assert.NoError(t, err, "Error unmarshalling changes response")
@@ -3770,13 +3770,13 @@ func TestChangesAdminChannelGrantLongpollNotify(t *testing.T) {
 	assert.NoError(t, a.Save(bernard))
 
 	// Put several documents in channel PBS
-	response := rt.SendAdminRequest("PUT", "/db/pbs-1", `{"channels":["PBS"]}`)
+	response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/pbs-1", `{"channels":["PBS"]}`)
 	rest.RequireStatus(t, response, 201)
-	response = rt.SendAdminRequest("PUT", "/db/pbs-2", `{"channels":["PBS"]}`)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/pbs-2", `{"channels":["PBS"]}`)
 	rest.RequireStatus(t, response, 201)
-	response = rt.SendAdminRequest("PUT", "/db/pbs-3", `{"channels":["PBS"]}`)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/pbs-3", `{"channels":["PBS"]}`)
 	rest.RequireStatus(t, response, 201)
-	response = rt.SendAdminRequest("PUT", "/db/pbs-4", `{"channels":["PBS"]}`)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/pbs-4", `{"channels":["PBS"]}`)
 	rest.RequireStatus(t, response, 201)
 
 	var changes struct {
@@ -3792,7 +3792,7 @@ func TestChangesAdminChannelGrantLongpollNotify(t *testing.T) {
 	go func() {
 		defer longpollWg.Done()
 		longpollChangesJSON := `{"since":0, "feed":"longpoll"}`
-		longPollResponse := rt.SendUserRequest("POST", "/db/_changes", longpollChangesJSON, "bernard")
+		longPollResponse := rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", longpollChangesJSON, "bernard")
 		log.Printf("longpoll changes response looks like: %s", longPollResponse.Body.Bytes())
 		assert.NoError(t, base.JSONUnmarshal(longPollResponse.Body.Bytes(), &changes))
 		// Expect to get 4 docs plus user doc

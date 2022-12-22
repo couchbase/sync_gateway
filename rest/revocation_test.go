@@ -116,7 +116,7 @@ func (tester *ChannelRevocationTester) fillToSeq(seq uint64) {
 
 	loopCount := seq - currentSeq
 	for i := 0; i < int(loopCount); i++ {
-		requestURL := "/db/fillerDoc"
+		requestURL := "/{{.keyspace}}/fillerDoc"
 		if tester.fillerDocRev != "" {
 			requestURL += "?rev=" + tester.fillerDocRev
 		}
@@ -139,7 +139,7 @@ func (tester *ChannelRevocationTester) getChanges(sinceSeq interface{}, expected
 	assert.NoError(tester.test, err)
 
 	err = tester.restTester.WaitForCondition(func() bool {
-		resp := tester.restTester.SendUserRequestWithHeaders("GET", fmt.Sprintf("/db/_changes?since=%v&revocations=true", sinceSeq), "", nil, "user", "test")
+		resp := tester.restTester.SendUserRequestWithHeaders("GET", fmt.Sprintf("/{{.keyspace}}/_changes?since=%v&revocations=true", sinceSeq), "", nil, "user", "test")
 		require.Equal(tester.test, http.StatusOK, resp.Code)
 		err := json.Unmarshal(resp.BodyBytes(), &changes)
 		require.NoError(tester.test, err)
@@ -210,7 +210,7 @@ func TestRevocationScenario1(t *testing.T) {
 	revocationTester, rt := InitScenario(t, nil)
 	defer rt.Close()
 
-	resp := rt.SendAdminRequest("PUT", "/db/doc1", `{"channels": "ch1"}`)
+	resp := rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1", `{"channels": "ch1"}`)
 	RequireStatus(t, resp, http.StatusCreated)
 
 	revocationTester.fillToSeq(4)
@@ -261,7 +261,7 @@ func TestRevocationScenario2(t *testing.T) {
 	revocationTester, rt := InitScenario(t, nil)
 	defer rt.Close()
 
-	resp := rt.SendAdminRequest("PUT", "/db/doc1", `{"channels": "ch1"}`)
+	resp := rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1", `{"channels": "ch1"}`)
 	RequireStatus(t, resp, http.StatusCreated)
 
 	revocationTester.fillToSeq(4)
@@ -313,7 +313,7 @@ func TestRevocationScenario3(t *testing.T) {
 	revocationTester, rt := InitScenario(t, nil)
 	defer rt.Close()
 
-	resp := rt.SendAdminRequest("PUT", "/db/doc1", `{"channels": "ch1"}`)
+	resp := rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1", `{"channels": "ch1"}`)
 	RequireStatus(t, resp, http.StatusCreated)
 
 	revocationTester.fillToSeq(4)
@@ -365,7 +365,7 @@ func TestRevocationScenario4(t *testing.T) {
 	revocationTester, rt := InitScenario(t, nil)
 	defer rt.Close()
 
-	resp := rt.SendAdminRequest("PUT", "/db/doc1", `{"channels": "ch1"}`)
+	resp := rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1", `{"channels": "ch1"}`)
 	RequireStatus(t, resp, http.StatusCreated)
 
 	revocationTester.fillToSeq(4)
@@ -417,7 +417,7 @@ func TestRevocationScenario5(t *testing.T) {
 	revocationTester, rt := InitScenario(t, nil)
 	defer rt.Close()
 
-	resp := rt.SendAdminRequest("PUT", "/db/doc1", `{"channels": "ch1"}`)
+	resp := rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1", `{"channels": "ch1"}`)
 	RequireStatus(t, resp, http.StatusCreated)
 
 	revocationTester.fillToSeq(4)
@@ -463,7 +463,7 @@ func TestRevocationScenario6(t *testing.T) {
 	revocationTester, rt := InitScenario(t, nil)
 	defer rt.Close()
 
-	resp := rt.SendAdminRequest("PUT", "/db/doc1", `{"channels": "ch1"}`)
+	resp := rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1", `{"channels": "ch1"}`)
 	RequireStatus(t, resp, http.StatusCreated)
 
 	revocationTester.fillToSeq(4)
@@ -510,7 +510,7 @@ func TestRevocationScenario7(t *testing.T) {
 	revocationTester, rt := InitScenario(t, nil)
 	defer rt.Close()
 
-	resp := rt.SendAdminRequest("PUT", "/db/doc1", `{"channels": "ch1"}`)
+	resp := rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1", `{"channels": "ch1"}`)
 	RequireStatus(t, resp, http.StatusCreated)
 
 	revocationTester.fillToSeq(4)
@@ -557,7 +557,7 @@ func TestRevocationScenario8(t *testing.T) {
 	revocationTester, rt := InitScenario(t, nil)
 	defer rt.Close()
 
-	resp := rt.SendAdminRequest("PUT", "/db/doc1", `{"channels": "ch1"}`)
+	resp := rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1", `{"channels": "ch1"}`)
 	RequireStatus(t, resp, http.StatusCreated)
 
 	revocationTester.fillToSeq(4)
@@ -597,7 +597,7 @@ func TestRevocationScenario9(t *testing.T) {
 	revocationTester, rt := InitScenario(t, nil)
 	defer rt.Close()
 
-	resp := rt.SendAdminRequest("PUT", "/db/doc1", `{"channels": "ch1"}`)
+	resp := rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1", `{"channels": "ch1"}`)
 	RequireStatus(t, resp, http.StatusCreated)
 
 	revocationTester.fillToSeq(4)
@@ -637,7 +637,7 @@ func TestRevocationScenario10(t *testing.T) {
 	revocationTester, rt := InitScenario(t, nil)
 	defer rt.Close()
 
-	resp := rt.SendAdminRequest("PUT", "/db/doc1", `{"channels": "ch1"}`)
+	resp := rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1", `{"channels": "ch1"}`)
 	RequireStatus(t, resp, http.StatusCreated)
 
 	revocationTester.fillToSeq(4)
@@ -677,7 +677,7 @@ func TestRevocationScenario11(t *testing.T) {
 	revocationTester, rt := InitScenario(t, nil)
 	defer rt.Close()
 
-	resp := rt.SendAdminRequest("PUT", "/db/doc1", `{"channels": "ch1"}`)
+	resp := rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1", `{"channels": "ch1"}`)
 	RequireStatus(t, resp, http.StatusCreated)
 
 	revocationTester.fillToSeq(4)
@@ -718,7 +718,7 @@ func TestRevocationScenario12(t *testing.T) {
 	revocationTester, rt := InitScenario(t, nil)
 	defer rt.Close()
 
-	resp := rt.SendAdminRequest("PUT", "/db/doc1", `{"channels": "ch1"}`)
+	resp := rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1", `{"channels": "ch1"}`)
 	RequireStatus(t, resp, http.StatusCreated)
 
 	revocationTester.fillToSeq(4)
@@ -758,7 +758,7 @@ func TestRevocationScenario13(t *testing.T) {
 	revocationTester, rt := InitScenario(t, nil)
 	defer rt.Close()
 
-	resp := rt.SendAdminRequest("PUT", "/db/doc1", `{"channels": "ch1"}`)
+	resp := rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1", `{"channels": "ch1"}`)
 	RequireStatus(t, resp, http.StatusCreated)
 
 	revocationTester.fillToSeq(4)
@@ -797,7 +797,7 @@ func TestRevocationScenario14(t *testing.T) {
 	revocationTester, rt := InitScenario(t, nil)
 	defer rt.Close()
 
-	resp := rt.SendAdminRequest("PUT", "/db/doc1", `{"channels": "ch1"}`)
+	resp := rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1", `{"channels": "ch1"}`)
 	RequireStatus(t, resp, http.StatusCreated)
 
 	revocationTester.fillToSeq(4)
@@ -899,10 +899,10 @@ func TestRevocationWithAdminChannels(t *testing.T) {
 	resp := rt.SendAdminRequest("PUT", "/db/_user/user", `{`+AdminChannelGrant(s, c, `"admin_channels": ["A"]`)+`, "password": "letmein"}`)
 	RequireStatus(t, resp, http.StatusCreated)
 
-	resp = rt.SendAdminRequest("PUT", "/db/doc", `{"channels": ["A"]}`)
+	resp = rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc", `{"channels": ["A"]}`)
 	RequireStatus(t, resp, http.StatusCreated)
 
-	changes, err := rt.WaitForChanges(2, "/db/_changes?since=0&revocations=true", "user", false)
+	changes, err := rt.WaitForChanges(2, "/{{.keyspace}}/_changes?since=0&revocations=true", "user", false)
 	require.NoError(t, err)
 	assert.Equal(t, 2, len(changes.Results))
 
@@ -912,7 +912,7 @@ func TestRevocationWithAdminChannels(t *testing.T) {
 	resp = rt.SendAdminRequest("PUT", "/db/_user/user", `{`+AdminChannelGrant(s, c, `"admin_channels": []`)+`, "password": "letmein"}`)
 	RequireStatus(t, resp, http.StatusOK)
 
-	changes, err = rt.WaitForChanges(2, fmt.Sprintf("/db/_changes?since=%d&revocations=true", 2), "user", false)
+	changes, err = rt.WaitForChanges(2, fmt.Sprintf("/{{.keyspace}}/_changes?since=%d&revocations=true", 2), "user", false)
 	require.NoError(t, err)
 	require.Equal(t, 2, len(changes.Results))
 
@@ -935,10 +935,10 @@ func TestRevocationWithAdminRoles(t *testing.T) {
 	resp = rt.SendAdminRequest("PUT", "/db/_user/user", `{"admin_roles": ["role"], "password": "letmein"}`)
 	RequireStatus(t, resp, http.StatusCreated)
 
-	resp = rt.SendAdminRequest("PUT", "/db/doc", `{"channels": ["A"]}`)
+	resp = rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc", `{"channels": ["A"]}`)
 	RequireStatus(t, resp, http.StatusCreated)
 
-	changes, err := rt.WaitForChanges(2, "/db/_changes?since=0&revocations=true", "user", false)
+	changes, err := rt.WaitForChanges(2, "/{{.keyspace}}/_changes?since=0&revocations=true", "user", false)
 	require.NoError(t, err)
 	assert.Equal(t, 2, len(changes.Results))
 
@@ -948,7 +948,7 @@ func TestRevocationWithAdminRoles(t *testing.T) {
 	resp = rt.SendAdminRequest("PUT", "/db/_user/user", `{"admin_roles": []}`)
 	RequireStatus(t, resp, http.StatusOK)
 
-	changes, err = rt.WaitForChanges(2, fmt.Sprintf("/db/_changes?since=%d&revocations=true", 3), "user", false)
+	changes, err = rt.WaitForChanges(2, fmt.Sprintf("/{{.keyspace}}/_changes?since=%d&revocations=true", 3), "user", false)
 	require.NoError(t, err)
 	require.Equal(t, 2, len(changes.Results))
 
@@ -1169,7 +1169,7 @@ func TestRevocationsWithQueryLimitChangesLimit(t *testing.T) {
 	waitForUserChangesWithLimit := func(sinceVal interface{}, limit int) ChangesResults {
 		var changesRes ChangesResults
 		err := rt.WaitForCondition(func() bool {
-			resp := rt.SendUserRequestWithHeaders("GET", fmt.Sprintf("/db/_changes?since=%v&revocations=true&limit=%d", sinceVal, limit), "", nil, "user", "test")
+			resp := rt.SendUserRequestWithHeaders("GET", fmt.Sprintf("/{{.keyspace}}/_changes?since=%v&revocations=true&limit=%d", sinceVal, limit), "", nil, "user", "test")
 			require.Equal(t, http.StatusOK, resp.Code)
 			err := json.Unmarshal(resp.BodyBytes(), &changesRes)
 			require.NoError(t, err)
@@ -1207,11 +1207,14 @@ func TestRevocationUserHasDocAccessDocNotFound(t *testing.T) {
 		}},
 	})
 	defer rt.Close()
+	collection := rt.GetSingleTestDatabaseCollection()
+	c := collection.Name()
+	s := collection.ScopeName()
 
 	revocationTester.addRole("user", "foo")
 	revocationTester.addRoleChannel("foo", "A")
 
-	resp := rt.SendAdminRequest("PUT", "/db/doc", `{"channels": ["A"]}`)
+	resp := rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc", `{"channels": ["A"]}`)
 	RequireStatus(t, resp, http.StatusCreated)
 
 	changes := revocationTester.getChanges(0, 2)
@@ -1220,13 +1223,16 @@ func TestRevocationUserHasDocAccessDocNotFound(t *testing.T) {
 	revocationTester.removeRoleChannel("foo", "A")
 	require.NoError(t, rt.WaitForPendingChanges())
 
-	leakyDataStore, ok := base.AsLeakyDataStore(rt.Bucket().DefaultDataStore())
-	require.True(t, ok)
-
-	leakyDataStore.SetGetRawCallback(func(s string) error {
-		require.NoError(t, leakyDataStore.Delete("doc"))
-		return nil
-	})
+	dataStores, err := rt.Bucket().ListDataStores()
+	require.NoError(t, err)
+	for _, dataStoreName := range dataStores {
+		if dataStoreName.ScopeName() == s && dataStoreName.CollectionName() == c {
+			fmt.Println(dataStoreName.CollectionName())
+			fmt.Println(dataStoreName)
+			data := rt.Bucket().NamedDataStore(dataStoreName)
+			require.NoError(t, data.Delete("doc"))
+		}
+	}
 
 	changes = revocationTester.getChanges(changes.Last_Seq, 1)
 	require.Len(t, changes.Results, 1)
@@ -1316,11 +1322,14 @@ func TestChannelHistoryPruning(t *testing.T) {
 	defer db.SuspendSequenceBatching()()
 	revocationTester, rt := InitScenario(t, nil)
 	defer rt.Close()
+	collection := rt.GetSingleTestDatabaseCollection()
+	c := collection.Name()
+	s := collection.ScopeName()
 
 	revocationTester.addRole("user", "foo")
 	revocationTester.addRoleChannel("foo", "a")
 
-	resp := rt.SendAdminRequest("PUT", "/db/doc1", `{"channels": ["a"]}`)
+	resp := rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1", `{"channels": ["a"]}`)
 	RequireStatus(t, resp, http.StatusCreated)
 
 	// Enter a load of history by looping over adding and removing a channel. Needs a get changes in there to trigger
@@ -1339,13 +1348,13 @@ func TestChannelHistoryPruning(t *testing.T) {
 	authenticator := rt.GetDatabase().Authenticator(base.TestCtx(t))
 	role, err := authenticator.GetRole("foo")
 	assert.NoError(t, err)
-	require.Contains(t, role.ChannelHistory(), "a")
-	require.Len(t, role.ChannelHistory()["a"].Entries, 10)
-	assert.Equal(t, role.ChannelHistory()["a"].Entries[0], auth.GrantHistorySequencePair{StartSeq: 4, EndSeq: 26})
+	require.Contains(t, role.CollectionChannelHistory(s, c), "a")
+	require.Len(t, role.CollectionChannelHistory(s, c)["a"].Entries, 10)
+	assert.Equal(t, role.CollectionChannelHistory(s, c)["a"].Entries[0], auth.GrantHistorySequencePair{StartSeq: 4, EndSeq: 26})
 
 	// Add an additional channel to ensure only the latter one is pruned
 	revocationTester.addRoleChannel("foo", "b")
-	resp = rt.SendAdminRequest("PUT", "/db/doc2", `{"channels": ["b"]}`)
+	resp = rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc2", `{"channels": ["b"]}`)
 	RequireStatus(t, resp, http.StatusCreated)
 	changes = revocationTester.getChanges(changes.Last_Seq, 2)
 	assert.Len(t, changes.Results, 2)
@@ -1357,7 +1366,7 @@ func TestChannelHistoryPruning(t *testing.T) {
 	// pruning those entries.
 	role, err = authenticator.GetRole("foo")
 	assert.NoError(t, err)
-	channelHistory := role.ChannelHistory()
+	channelHistory := role.CollectionChannelHistory(s, c)
 	aHistory := channelHistory["a"]
 	aHistory.UpdatedAt = time.Now().Add(-31 * time.Hour * 24).Unix()
 	channelHistory["a"] = aHistory
@@ -1368,7 +1377,7 @@ func TestChannelHistoryPruning(t *testing.T) {
 
 	// Add another so we have something to wait on
 	revocationTester.addRoleChannel("foo", "random")
-	resp = rt.SendAdminRequest("PUT", "/db/doc3", `{"channels": ["random"]}`)
+	resp = rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc3", `{"channels": ["random"]}`)
 
 	changes = revocationTester.getChanges(changes.Last_Seq, 1)
 	assert.Len(t, changes.Results, 1)
@@ -1376,8 +1385,8 @@ func TestChannelHistoryPruning(t *testing.T) {
 	role, err = authenticator.GetRole("foo")
 	assert.NoError(t, err)
 
-	assert.NotContains(t, role.ChannelHistory(), "a")
-	assert.Contains(t, role.ChannelHistory(), "b")
+	assert.NotContains(t, role.CollectionChannelHistory(s, c), "a")
+	assert.Contains(t, role.CollectionChannelHistory(s, c), "b")
 }
 
 func TestChannelRevocationWithContiguousSequences(t *testing.T) {
@@ -1491,7 +1500,7 @@ func TestReplicatorRevocations(t *testing.T) {
 	revocationTester.addRole("user", "foo")
 	revocationTester.addRoleChannel("foo", "chanA")
 
-	resp := rt2.SendAdminRequest("PUT", "/db/doc1", `{"channels": "chanA"}`)
+	resp := rt2.SendAdminRequest("PUT", "/{{.keyspace}}/doc1", `{"channels": "chanA"}`)
 	RequireStatus(t, resp, http.StatusCreated)
 
 	srv := httptest.NewServer(rt2.TestPublicHandler())
@@ -1521,7 +1530,7 @@ func TestReplicatorRevocations(t *testing.T) {
 	require.NoError(t, ar.Start(ctx1))
 	rt1.WaitForReplicationStatus(t.Name(), db.ReplicationStateStopped)
 
-	resp = rt1.SendAdminRequest("GET", "/db/doc1", "")
+	resp = rt1.SendAdminRequest("GET", "/{{.keyspace}}/doc1", "")
 	RequireStatus(t, resp, http.StatusOK)
 
 	revocationTester.removeRole("user", "foo")
@@ -1529,7 +1538,7 @@ func TestReplicatorRevocations(t *testing.T) {
 	require.NoError(t, ar.Start(ctx1))
 	rt1.WaitForReplicationStatus(t.Name(), db.ReplicationStateStopped)
 
-	resp = rt1.SendAdminRequest("GET", "/db/doc1", "")
+	resp = rt1.SendAdminRequest("GET", "/{{.keyspace}}/doc1", "")
 	RequireStatus(t, resp, http.StatusNotFound)
 }
 
@@ -1843,10 +1852,10 @@ func TestReplicatorRevocationsWithTombstoneResurrection(t *testing.T) {
 	require.NoError(t, ar.Stop())
 	rt1.WaitForReplicationStatus(ar.ID, db.ReplicationStateStopped)
 
-	resp = rt2.SendAdminRequest("DELETE", "/db/docA?rev="+docARev, "")
+	resp = rt2.SendAdminRequest("DELETE", "/{{.keyspace}}/docA?rev="+docARev, "")
 	RequireStatus(t, resp, http.StatusOK)
 
-	resp = rt2.SendAdminRequest("DELETE", "/db/docA1?rev="+docA1Rev, "")
+	resp = rt2.SendAdminRequest("DELETE", "/{{.keyspace}}/docA1?rev="+docA1Rev, "")
 	RequireStatus(t, resp, http.StatusOK)
 
 	resp = rt2.SendAdminRequest("PUT", "/db/_user/user", `{"name": "user", "password": "letmein",`+AdminChannelGrant(rt2_Scope, rt2_collectionName, `"admin_channels": ["B"]`)+`}`)
@@ -1885,6 +1894,9 @@ func TestReplicatorRevocationsWithStarChannel(t *testing.T) {
 	// Passive
 	_, rt2 := InitScenario(t, nil)
 	defer rt2.Close()
+	rt2_collection := rt2.GetSingleTestDatabaseCollection()
+	rt2_collectionName := rt2_collection.Name()
+	rt2_Scope := rt2_collection.ScopeName()
 
 	// Active
 	rt1 := NewRestTesterDefaultCollection(t, //  CBG-2319: replicator currently requires default collection
@@ -1925,7 +1937,7 @@ func TestReplicatorRevocationsWithStarChannel(t *testing.T) {
 		PurgeOnRemoval:      true,
 		ReplicationStatsMap: dbstats,
 	})
-	resp := rt2.SendAdminRequest("PUT", "/db/_user/user", `{"name": "user", "password": "test", "admin_channels": ["*"]}`)
+	resp := rt2.SendAdminRequest("PUT", "/db/_user/user", `{"name": "user", "password": "test", `+AdminChannelGrant(rt2_Scope, rt2_collectionName, `"admin_channels": ["*"]`)+`}`)
 	RequireStatus(t, resp, http.StatusOK)
 
 	require.NoError(t, ar.Start(ctx1))
@@ -1935,12 +1947,12 @@ func TestReplicatorRevocationsWithStarChannel(t *testing.T) {
 	}()
 
 	// Wait for docs to turn up on local / rt1
-	changesResults, err := rt1.WaitForChanges(5, "/db/_changes?since=0", "", true)
+	changesResults, err := rt1.WaitForChanges(5, "/{{.keyspace}}/_changes?since=0", "", true)
 	require.NoError(t, err)
 	assert.Len(t, changesResults.Results, 5)
 
 	// Revoke A and ensure docA, docAB, docABC get purged from local
-	resp = rt2.SendAdminRequest("PUT", "/db/_user/user", `{"name": "user", "password": "test", "admin_channels": []}`)
+	resp = rt2.SendAdminRequest("PUT", "/db/_user/user", `{"name": "user", "password": "test", `+AdminChannelGrant(rt2_Scope, rt2_collectionName, `"admin_channels": []`)+`}`)
 	RequireStatus(t, resp, http.StatusOK)
 
 	assert.NoError(t, ar.Stop())
@@ -1948,19 +1960,19 @@ func TestReplicatorRevocationsWithStarChannel(t *testing.T) {
 	require.NoError(t, ar.Start(ctx1))
 
 	err = rt1.WaitForCondition(func() bool {
-		resp := rt1.SendAdminRequest("GET", "/db/docA", "")
+		resp := rt1.SendAdminRequest("GET", "/{{.keyspace}}/docA", "")
 		return resp.Code == http.StatusNotFound
 	})
 	assert.NoError(t, err)
 
 	err = rt1.WaitForCondition(func() bool {
-		resp := rt1.SendAdminRequest("GET", "/db/docAB", "")
+		resp := rt1.SendAdminRequest("GET", "/{{.keyspace}}/docAB", "")
 		return resp.Code == http.StatusNotFound
 	})
 	assert.NoError(t, err)
 
 	err = rt1.WaitForCondition(func() bool {
-		resp := rt1.SendAdminRequest("GET", "/db/docABC", "")
+		resp := rt1.SendAdminRequest("GET", "/{{.keyspace}}/docABC", "")
 		return resp.Code == http.StatusNotFound
 	})
 	assert.NoError(t, err)
@@ -1979,7 +1991,7 @@ func TestReplicatorRevocationsFromZero(t *testing.T) {
 	rt2_Scope := rt2_collection.ScopeName()
 
 	// Active
-	rt1 := NewRestTesterDefaultCollection(t, //  CBG-2319: replicator currently requires default collection
+	rt1 := NewRestTester(t, //  CBG-2319: replicator currently requires default collection
 		&RestTesterConfig{
 			CustomTestBucket: base.GetTestBucket(t),
 		})

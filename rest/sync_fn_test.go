@@ -929,7 +929,7 @@ func TestResyncRegenerateSequences(t *testing.T) {
 		docID := fmt.Sprintf("doc%d", i)
 		rt.CreateDoc(t, docID)
 
-		response = rt.SendAdminRequest("GET", "/db/_raw/"+docID, "")
+		response = rt.SendAdminRequest("GET", "/{{.keyspace}}/_raw/"+docID, "")
 		require.Equal(t, http.StatusOK, response.Code)
 
 		err := json.Unmarshal(response.BodyBytes(), &body)
@@ -939,7 +939,7 @@ func TestResyncRegenerateSequences(t *testing.T) {
 	}
 
 	role := "role1"
-	response = rt.SendAdminRequest("PUT", fmt.Sprintf("/db/_role/%s", role), fmt.Sprintf(`{"name":"%s",`+AdminChannelGrant(s, c, `"admin_channels":["channel_1"]`)+`}`, role))
+	response = rt.SendAdminRequest("PUT", fmt.Sprintf("/{{.keyspace}}/_role/%s", role), fmt.Sprintf(`{"name":"%s",`+AdminChannelGrant(s, c, `"admin_channels":["channel_1"]`)+`}`, role))
 	RequireStatus(t, response, http.StatusCreated)
 
 	username := "user1"
@@ -954,10 +954,10 @@ func TestResyncRegenerateSequences(t *testing.T) {
 	assert.NoError(t, err)
 	user1SeqBefore := body["sequence"].(float64)
 
-	response = rt.SendAdminRequest("PUT", "/db/userdoc", `{"userdoc": true}`)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/userdoc", `{"userdoc": true}`)
 	RequireStatus(t, response, http.StatusCreated)
 
-	response = rt.SendAdminRequest("PUT", "/db/userdoc2", `{"userdoc": true}`)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/userdoc2", `{"userdoc": true}`)
 	RequireStatus(t, response, http.StatusCreated)
 
 	// Let everything catch up before opening changes feed
@@ -981,7 +981,7 @@ func TestResyncRegenerateSequences(t *testing.T) {
 	}
 
 	var changesResp ChangesResp
-	request, _ := http.NewRequest("GET", "/db/_changes", nil)
+	request, _ := http.NewRequest("GET", "/{{.keyspace}}/_changes", nil)
 	request.SetBasicAuth("user1", "letmein")
 	response = rt.Send(request)
 	RequireStatus(t, response, http.StatusOK)
@@ -1043,7 +1043,7 @@ func TestResyncRegenerateSequences(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Data is wiped from walrus when brought back online
-	request, err = http.NewRequest("GET", "/db/_changes?since="+changesResp.LastSeq, nil)
+	request, err = http.NewRequest("GET", "/{{.keyspace}}/_changes?since="+changesResp.LastSeq, nil)
 	require.NoError(t, err)
 	request.SetBasicAuth("user1", "letmein")
 	response = rt.Send(request)

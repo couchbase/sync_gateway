@@ -11,7 +11,6 @@ package rest
 import (
 	"bytes"
 	"encoding/base64"
-	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -40,11 +39,11 @@ func TestPublicChanGuestAccess(t *testing.T) {
 	s := collection.ScopeName()
 
 	// Create a document on the public channel
-	resp := rt.SendAdminRequest(http.MethodPut, "/db/doc", `{"channels": ["!"], "foo": "bar"}`)
+	resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc", `{"channels": ["!"], "foo": "bar"}`)
 	RequireStatus(t, resp, http.StatusCreated)
 
 	// Check guest user has access to public channel
-	resp = rt.SendRequest(http.MethodGet, "/db/doc", "")
+	resp = rt.SendRequest(http.MethodGet, "/{{.keyspace}}/doc", "")
 	RequireStatus(t, resp, http.StatusOK)
 	assert.EqualValues(t, "bar", resp.GetRestDocument()["foo"])
 
@@ -56,10 +55,10 @@ func TestPublicChanGuestAccess(t *testing.T) {
 	assert.EqualValues(t, expected, fmt.Sprint(collectionAccess))
 
 	// Confirm guest user cannot access other channels it has no access too
-	resp = rt.SendAdminRequest(http.MethodPut, "/db/docNoAccess", `{"channels": ["cookie"], "foo": "bar"}`)
+	resp = rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/docNoAccess", `{"channels": ["cookie"], "foo": "bar"}`)
 	RequireStatus(t, resp, http.StatusCreated)
 
-	resp = rt.SendRequest(http.MethodGet, "/db/docNoAccess", "")
+	resp = rt.SendRequest(http.MethodGet, "/{{.keyspace}}/docNoAccess", "")
 	RequireStatus(t, resp, http.StatusForbidden)
 }
 
@@ -99,13 +98,13 @@ func TestStarAccess(t *testing.T) {
 	err = a.Save(guest)
 	assert.NoError(t, err)
 
-	RequireStatus(t, rt.SendRequest("PUT", "/db/doc1", `{"channels":["books"]}`), 201)
-	RequireStatus(t, rt.SendRequest("PUT", "/db/doc2", `{"channels":["gifts"]}`), 201)
-	RequireStatus(t, rt.SendRequest("PUT", "/db/doc3", `{"channels":["!"]}`), 201)
-	RequireStatus(t, rt.SendRequest("PUT", "/db/doc4", `{"channels":["gifts"]}`), 201)
-	RequireStatus(t, rt.SendRequest("PUT", "/db/doc5", `{"channels":["!"]}`), 201)
+	RequireStatus(t, rt.SendRequest("PUT", "/{{.keyspace}}/doc1", `{"channels":["books"]}`), 201)
+	RequireStatus(t, rt.SendRequest("PUT", "/{{.keyspace}}/doc2", `{"channels":["gifts"]}`), 201)
+	RequireStatus(t, rt.SendRequest("PUT", "/{{.keyspace}}/doc3", `{"channels":["!"]}`), 201)
+	RequireStatus(t, rt.SendRequest("PUT", "/{{.keyspace}}/doc4", `{"channels":["gifts"]}`), 201)
+	RequireStatus(t, rt.SendRequest("PUT", "/{{.keyspace}}/doc5", `{"channels":["!"]}`), 201)
 	// document added to no channel should only end up available to users with * access
-	RequireStatus(t, rt.SendRequest("PUT", "/db/doc6", `{"channels":[]}`), 201)
+	RequireStatus(t, rt.SendRequest("PUT", "/{{.keyspace}}/doc6", `{"channels":[]}`), 201)
 
 	guest, err = a.GetUser("")
 	assert.NoError(t, err)
@@ -123,20 +122,20 @@ func TestStarAccess(t *testing.T) {
 	fmt.Println(response.Body)
 
 	// GET /db/docid - basic test for channel user has
-	response := rt.SendUserRequest("GET", "/db/doc1", "", "bernard")
+	response = rt.SendUserRequest("GET", "/{{.keyspace}}/doc1", "", "bernard")
 	RequireStatus(t, response, 200)
 
 	// GET /db/docid - negative test for channel user doesn't have
-	response = rt.SendUserRequest("GET", "/db/doc2", "", "bernard")
+	response = rt.SendUserRequest("GET", "/{{.keyspace}}/doc2", "", "bernard")
 	RequireStatus(t, response, 403)
 
 	// GET /db/docid - test for doc with ! channel
-	response = rt.SendUserRequest("GET", "/db/doc3", "", "bernard")
+	response = rt.SendUserRequest("GET", "/{{.keyspace}}/doc3", "", "bernard")
 	RequireStatus(t, response, 200)
 
 	// GET /db/_all_docs?channels=true
 	// Check that _all_docs returns the docs the user has access to:
-	response = rt.SendUserRequest("GET", "/db/_all_docs?channels=true", "", "bernard")
+	response = rt.SendUserRequest("GET", "/{{.keyspace}}/_all_docs?channels=true", "", "bernard")
 	RequireStatus(t, response, 200)
 
 	log.Printf("Response = %s", response.Body.Bytes())
@@ -153,7 +152,7 @@ func TestStarAccess(t *testing.T) {
 	_ = rt.WaitForSequence(expectedSeq)
 
 	// GET /db/_changes
-	response = rt.SendUserRequest("GET", "/db/_changes", "", "bernard")
+	response = rt.SendUserRequest("GET", "/{{.keyspace}}/_changes", "", "bernard")
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	err = base.JSONUnmarshal(response.Body.Bytes(), &changes)
 	assert.NoError(t, err)
@@ -163,7 +162,7 @@ func TestStarAccess(t *testing.T) {
 	assert.Equal(t, uint64(1), since.Seq)
 
 	// GET /db/_changes for single channel
-	response = rt.SendUserRequest("GET", "/db/_changes?filter=sync_gateway/bychannel&channels=books", "", "bernard")
+	response = rt.SendUserRequest("GET", "/{{.keyspace}}/_changes?filter=sync_gateway/bychannel&channels=books", "", "bernard")
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	err = base.JSONUnmarshal(response.Body.Bytes(), &changes)
 	assert.NoError(t, err)
@@ -173,7 +172,7 @@ func TestStarAccess(t *testing.T) {
 	assert.Equal(t, uint64(1), since.Seq)
 
 	// GET /db/_changes for ! channel
-	response = rt.SendUserRequest("GET", "/db/_changes?filter=sync_gateway/bychannel&channels=!", "", "bernard")
+	response = rt.SendUserRequest("GET", "/{{.keyspace}}/_changes?filter=sync_gateway/bychannel&channels=!", "", "bernard")
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	err = base.JSONUnmarshal(response.Body.Bytes(), &changes)
 	assert.NoError(t, err)
@@ -183,7 +182,7 @@ func TestStarAccess(t *testing.T) {
 	assert.Equal(t, uint64(3), since.Seq)
 
 	// GET /db/_changes for unauthorized channel
-	response = rt.SendUserRequest("GET", "/db/_changes?filter=sync_gateway/bychannel&channels=gifts", "", "bernard")
+	response = rt.SendUserRequest("GET", "/{{.keyspace}}/_changes?filter=sync_gateway/bychannel&channels=gifts", "", "bernard")
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	err = base.JSONUnmarshal(response.Body.Bytes(), &changes)
 	assert.NoError(t, err)
@@ -198,16 +197,16 @@ func TestStarAccess(t *testing.T) {
 	assert.NoError(t, a.Save(fran))
 
 	// GET /db/docid - basic test for doc that has channel
-	response = rt.SendUserRequest("GET", "/db/doc1", "", "fran")
+	response = rt.SendUserRequest("GET", "/{{.keyspace}}/doc1", "", "fran")
 	RequireStatus(t, response, 200)
 
 	// GET /db/docid - test for doc with ! channel
-	response = rt.SendUserRequest("GET", "/db/doc3", "", "fran")
+	response = rt.SendUserRequest("GET", "/{{.keyspace}}/doc3", "", "fran")
 	RequireStatus(t, response, 200)
 
 	// GET /db/_all_docs?channels=true
 	// Check that _all_docs returns all docs (based on user * channel)
-	response = rt.SendUserRequest("GET", "/db/_all_docs?channels=true", "", "fran")
+	response = rt.SendUserRequest("GET", "/{{.keyspace}}/_all_docs?channels=true", "", "fran")
 	RequireStatus(t, response, 200)
 
 	log.Printf("Response = %s", response.Body.Bytes())
@@ -218,7 +217,7 @@ func TestStarAccess(t *testing.T) {
 	assert.Equal(t, []string{"books"}, allDocsResult.Rows[0].Value.Channels)
 
 	// GET /db/_changes
-	response = rt.SendUserRequest("GET", "/db/_changes", "", "fran")
+	response = rt.SendUserRequest("GET", "/{{.keyspace}}/_changes", "", "fran")
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	err = base.JSONUnmarshal(response.Body.Bytes(), &changes)
 	assert.NoError(t, err)
@@ -228,7 +227,7 @@ func TestStarAccess(t *testing.T) {
 	assert.Equal(t, uint64(1), since.Seq)
 
 	// GET /db/_changes for ! channel
-	response = rt.SendUserRequest("GET", "/db/_changes?filter=sync_gateway/bychannel&channels=!", "", "fran")
+	response = rt.SendUserRequest("GET", "/{{.keyspace}}/_changes?filter=sync_gateway/bychannel&channels=!", "", "fran")
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	err = base.JSONUnmarshal(response.Body.Bytes(), &changes)
 	assert.NoError(t, err)
@@ -245,16 +244,16 @@ func TestStarAccess(t *testing.T) {
 	assert.NoError(t, a.Save(manny))
 
 	// GET /db/docid - basic test for doc that has channel
-	response = rt.SendUserRequest("GET", "/db/doc1", "", "manny")
+	response = rt.SendUserRequest("GET", "/{{.keyspace}}/doc1", "", "manny")
 	RequireStatus(t, response, 403)
 
 	// GET /db/docid - test for doc with ! channel
-	response = rt.SendUserRequest("GET", "/db/doc3", "", "manny")
+	response = rt.SendUserRequest("GET", "/{{.keyspace}}/doc3", "", "manny")
 	RequireStatus(t, response, 200)
 
 	// GET /db/_all_docs?channels=true
 	// Check that _all_docs only returns ! docs (based on doc ! channel)
-	response = rt.SendUserRequest("GET", "/db/_all_docs?channels=true", "", "manny")
+	response = rt.SendUserRequest("GET", "/{{.keyspace}}/_all_docs?channels=true", "", "manny")
 	RequireStatus(t, response, 200)
 	log.Printf("Response = %s", response.Body.Bytes())
 	err = base.JSONUnmarshal(response.Body.Bytes(), &allDocsResult)
@@ -263,7 +262,7 @@ func TestStarAccess(t *testing.T) {
 	assert.Equal(t, "doc3", allDocsResult.Rows[0].ID)
 
 	// GET /db/_changes
-	response = rt.SendUserRequest("GET", "/db/_changes", "", "manny")
+	response = rt.SendUserRequest("GET", "/{{.keyspace}}/_changes", "", "manny")
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	err = base.JSONUnmarshal(response.Body.Bytes(), &changes)
 	assert.NoError(t, err)
@@ -273,7 +272,7 @@ func TestStarAccess(t *testing.T) {
 	assert.Equal(t, uint64(3), since.Seq)
 
 	// GET /db/_changes for ! channel
-	response = rt.SendUserRequest("GET", "/db/_changes?filter=sync_gateway/bychannel&channels=!", "", "manny")
+	response = rt.SendUserRequest("GET", "/{{.keyspace}}/_changes?filter=sync_gateway/bychannel&channels=!", "", "manny")
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	err = base.JSONUnmarshal(response.Body.Bytes(), &changes)
 	assert.NoError(t, err)
@@ -390,150 +389,155 @@ func TestForceAPIForbiddenErrors(t *testing.T) {
 					}},
 				})
 			defer rt.Close()
+			ctx := base.TestCtx(t)
+			a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
 			collection := rt.GetSingleTestDatabaseCollection()
 			c := collection.Name()
 			s := collection.ScopeName()
 
-			resp := rt.SendAdminRequest(http.MethodPut, "/db/_user/Perms", `{"password": "password", `+AdminChannelGrant(s, c, `"admin_channels": "chan"`)+`}`)
+			resp := rt.SendAdminRequest(http.MethodPut, "/db/_user/Perms", `{"password": "password", `+AdminChannelGrant(s, c, `"admin_channels": ["chan"]`)+`}`)
 			RequireStatus(t, resp, http.StatusOK)
 
 			// Create the initial document
-			resp = rt.SendAdminRequest(http.MethodPut, "/db/doc", `{"doNotSync": true, "foo": "bar", "channels": "chan", "_attachment":{"attach": {"data": "`+base64.StdEncoding.EncodeToString([]byte("attachmentA"))+`"}}}`)
+			resp = rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc", `{"doNotSync": true, "foo": "bar", "channels": "chan", "_attachment":{"attach": {"data": "`+base64.StdEncoding.EncodeToString([]byte("attachmentA"))+`"}}}`)
 			RequireStatus(t, resp, http.StatusCreated)
 			rev := RespRevID(t, resp)
 
 			// GET requests
 			// User has no permissions to access document
-			resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/db/doc", "", nil, "NoPerms", "password")
+			resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.keyspace}}/doc", "", nil, "NoPerms", "password")
 			assertRespStatus(resp, http.StatusForbidden)
 
 			// Guest has no permissions to access document
-			resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/db/doc", "", nil, "", "")
+			resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.keyspace}}/doc", "", nil, "", "")
 			assertRespStatus(resp, http.StatusForbidden)
 
 			// User has no permissions to access rev
-			resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/db/doc?rev="+rev, "", nil, "NoPerms", "password")
+			resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.keyspace}}/doc?rev="+rev, "", nil, "NoPerms", "password")
 			assertRespStatus(resp, http.StatusOK)
 
 			// Guest has no permissions to access rev
-			resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/db/doc?rev="+rev, "", nil, "", "")
+			resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.keyspace}}/doc?rev="+rev, "", nil, "", "")
 			assertRespStatus(resp, http.StatusOK)
 
 			// Attachments should be forbidden as well
-			resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/db/doc/attach", "", nil, "NoPerms", "password")
+			resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.keyspace}}/doc/attach", "", nil, "NoPerms", "password")
 			assertRespStatus(resp, http.StatusForbidden)
 
 			// Attachment revs should be forbidden as well
-			resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/db/doc/attach?rev="+rev, "", nil, "NoPerms", "password")
+			resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.keyspace}}/doc/attach?rev="+rev, "", nil, "NoPerms", "password")
 			assertRespStatus(resp, http.StatusNotFound)
 
 			// Attachments should be forbidden for guests as well
-			resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/db/doc/attach", "", nil, "", "")
+			resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.keyspace}}/doc/attach", "", nil, "", "")
 			assertRespStatus(resp, http.StatusForbidden)
 
 			// Attachment revs should be forbidden for guests as well
-			resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/db/doc/attach?rev="+rev, "", nil, "", "")
+			resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.keyspace}}/doc/attach?rev="+rev, "", nil, "", "")
 			assertRespStatus(resp, http.StatusNotFound)
 
 			// Document does not exist should cause 403
-			resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/db/notfound", "", nil, "NoPerms", "password")
+			resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.keyspace}}/notfound", "", nil, "NoPerms", "password")
 			assertRespStatus(resp, http.StatusNotFound)
 
 			// Document does not exist for guest should cause 403
-			resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/db/notfound", "", nil, "", "")
+			resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.keyspace}}/notfound", "", nil, "", "")
 			assertRespStatus(resp, http.StatusNotFound)
 
 			// PUT requests
 			// PUT doc with user with no write perms
-			resp = rt.SendUserRequestWithHeaders(http.MethodPut, "/db/doc", `{}`, nil, "NoPerms", "password")
+			resp = rt.SendUserRequestWithHeaders(http.MethodPut, "/{{.keyspace}}/doc", `{}`, nil, "NoPerms", "password")
 			assertRespStatus(resp, http.StatusConflict)
 
 			// PUT with rev
-			resp = rt.SendUserRequestWithHeaders(http.MethodPut, "/db/doc?rev="+rev, `{}`, nil, "NoPerms", "password")
+			resp = rt.SendUserRequestWithHeaders(http.MethodPut, "/{{.keyspace}}/doc?rev="+rev, `{}`, nil, "NoPerms", "password")
 			assertRespStatus(resp, http.StatusForbidden)
 
 			// PUT with incorrect rev
-			resp = rt.SendUserRequestWithHeaders(http.MethodPut, "/db/doc?rev=1-abc", `{}`, nil, "NoPerms", "password")
+			resp = rt.SendUserRequestWithHeaders(http.MethodPut, "/{{.keyspace}}/doc?rev=1-abc", `{}`, nil, "NoPerms", "password")
 			assertRespStatus(resp, http.StatusConflict)
 
 			// PUT request as Guest
-			resp = rt.SendUserRequestWithHeaders(http.MethodPut, "/db/doc", `{}`, nil, "", "")
+			resp = rt.SendUserRequestWithHeaders(http.MethodPut, "/{{.keyspace}}/doc", `{}`, nil, "", "")
 			assertRespStatus(resp, http.StatusConflict)
 
 			// PUT with rev as Guest
-			resp = rt.SendUserRequestWithHeaders(http.MethodPut, "/db/doc?rev="+rev, `{}`, nil, "", "")
+			resp = rt.SendUserRequestWithHeaders(http.MethodPut, "/{{.keyspace}}/doc?rev="+rev, `{}`, nil, "", "")
 			assertRespStatus(resp, http.StatusForbidden)
 
 			// PUT with incorrect rev as Guest
-			resp = rt.SendUserRequestWithHeaders(http.MethodPut, "/db/doc?rev=1-abc", `{}`, nil, "", "")
+			resp = rt.SendUserRequestWithHeaders(http.MethodPut, "/{{.keyspace}}/doc?rev=1-abc", `{}`, nil, "", "")
 			assertRespStatus(resp, http.StatusConflict)
 
 			// PUT with access but no rev
-			resp = rt.SendUserRequestWithHeaders(http.MethodPut, "/db/doc", `{}`, nil, "Perms", "password")
+			resp = rt.SendUserRequestWithHeaders(http.MethodPut, "/{{.keyspace}}/doc", `{}`, nil, "Perms", "password")
 			assertHTTPErrorReason(t, resp, http.StatusConflict, "Document exists")
 
 			// PUT with access but wrong rev
-			resp = rt.SendUserRequestWithHeaders(http.MethodPut, "/db/doc?rev=1-abc", `{}`, nil, "Perms", "password")
+			resp = rt.SendUserRequestWithHeaders(http.MethodPut, "/{{.keyspace}}/doc?rev=1-abc", `{}`, nil, "Perms", "password")
 			assertHTTPErrorReason(t, resp, http.StatusConflict, "Document revision conflict")
 
 			// Confirm no access grants where granted
 			resp = rt.SendAdminRequest(http.MethodGet, "/db/_user/NoPerms", ``)
 			RequireStatus(t, resp, http.StatusOK)
-			var allChannels struct {
-				Channels []string `json:"all_channels"`
-			}
-			err := json.Unmarshal(resp.BodyBytes(), &allChannels)
-			require.NoError(t, err)
-			assert.NotContains(t, allChannels.Channels, "chan2")
+
+			user, err := a.GetUser("NoPerms")
+			assert.NoError(t, err)
+			collAccess := user.GetCollectionsAccess()[s][c]
+			assert.NotContains(t, collAccess.Channels_.String(), "chan2")
 
 			resp = rt.SendAdminRequest(http.MethodGet, "/db/_user/Perms", ``)
 			RequireStatus(t, resp, http.StatusOK)
-			err = json.Unmarshal(resp.BodyBytes(), &allChannels)
-			require.NoError(t, err)
-			assert.NotContains(t, allChannels.Channels, "chan2")
+
+			user, err = a.GetUser("NoPerms")
+			assert.NoError(t, err)
+			collAccess = user.GetCollectionsAccess()[s][c]
+			assert.NotContains(t, collAccess.Channels_.String(), "chan2")
 
 			// Successful PUT which will grant access grants
-			resp = rt.SendUserRequestWithHeaders(http.MethodPut, "/db/doc?rev="+rev, `{"channels": "chan"}`, nil, "Perms", "password")
+			resp = rt.SendUserRequestWithHeaders(http.MethodPut, "/{{.keyspace}}/doc?rev="+rev, `{"channels": "chan"}`, nil, "Perms", "password")
 			AssertStatus(t, resp, http.StatusCreated)
 
 			// Make sure channel access grant was successful
 			resp = rt.SendAdminRequest(http.MethodGet, "/db/_user/Perms", ``)
 			RequireStatus(t, resp, http.StatusOK)
-			err = json.Unmarshal(resp.BodyBytes(), &allChannels)
-			require.NoError(t, err)
-			assert.Contains(t, allChannels.Channels, "chan2")
+
+			user, err = a.GetUser("Perms")
+			assert.NoError(t, err)
+			collAccess = user.GetCollectionsAccess()[s][c]
+			assert.Contains(t, collAccess.Channels_.String(), "chan2")
 
 			// DELETE requests
 			// Attempt to delete document with no permissions
-			resp = rt.SendUserRequestWithHeaders(http.MethodDelete, "/db/doc", "", nil, "NoPerms", "password")
+			resp = rt.SendUserRequestWithHeaders(http.MethodDelete, "/{{.keyspace}}/doc", "", nil, "NoPerms", "password")
 			assertRespStatus(resp, http.StatusConflict)
 
 			// Attempt to delete document rev with no permissions
-			resp = rt.SendUserRequestWithHeaders(http.MethodDelete, "/db/doc?rev="+rev, "", nil, "NoPerms", "password")
+			resp = rt.SendUserRequestWithHeaders(http.MethodDelete, "/{{.keyspace}}/doc?rev="+rev, "", nil, "NoPerms", "password")
 			assertRespStatus(resp, http.StatusConflict)
 
 			// Attempt to delete document with wrong rev
-			resp = rt.SendUserRequestWithHeaders(http.MethodDelete, "/db/doc?rev=1-abc", "", nil, "NoPerms", "password")
+			resp = rt.SendUserRequestWithHeaders(http.MethodDelete, "/{{.keyspace}}/doc?rev=1-abc", "", nil, "NoPerms", "password")
 			assertRespStatus(resp, http.StatusConflict)
 
 			// Attempt to delete document document that does not exist
-			resp = rt.SendUserRequestWithHeaders(http.MethodDelete, "/db/notfound", "", nil, "NoPerms", "password")
+			resp = rt.SendUserRequestWithHeaders(http.MethodDelete, "/{{.keyspace}}/notfound", "", nil, "NoPerms", "password")
 			assertRespStatus(resp, http.StatusForbidden)
 
 			// Attempt to delete document with no permissions as guest
-			resp = rt.SendUserRequestWithHeaders(http.MethodDelete, "/db/doc", "", nil, "", "")
+			resp = rt.SendUserRequestWithHeaders(http.MethodDelete, "/{{.keyspace}}/doc", "", nil, "", "")
 			assertRespStatus(resp, http.StatusConflict)
 
 			// Attempt to delete document rev with no write perms as guest
-			resp = rt.SendUserRequestWithHeaders(http.MethodDelete, "/db/doc?rev="+rev, "", nil, "", "")
+			resp = rt.SendUserRequestWithHeaders(http.MethodDelete, "/{{.keyspace}}/doc?rev="+rev, "", nil, "", "")
 			assertRespStatus(resp, http.StatusConflict)
 
 			// Attempt to delete document with wrong rev as guest
-			resp = rt.SendUserRequestWithHeaders(http.MethodDelete, "/db/doc?rev=1-abc", "", nil, "", "")
+			resp = rt.SendUserRequestWithHeaders(http.MethodDelete, "/{{.keyspace}}/doc?rev=1-abc", "", nil, "", "")
 			assertRespStatus(resp, http.StatusConflict)
 
 			// Attempt to delete document that does not exist as guest
-			resp = rt.SendUserRequestWithHeaders(http.MethodDelete, "/db/notfound", "", nil, "", "")
+			resp = rt.SendUserRequestWithHeaders(http.MethodDelete, "/{{.keyspace}}/notfound", "", nil, "", "")
 			assertRespStatus(resp, http.StatusForbidden)
 		})
 	}
@@ -577,6 +581,10 @@ func TestBulkDocsChangeToAccess(t *testing.T) {
 func TestAllDocsAccessControl(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
+	collection := rt.GetSingleTestDatabaseCollection()
+	c := collection.Name()
+	s := collection.ScopeName()
+
 	type allDocsRow struct {
 		ID    string `json:"id"`
 		Key   string `json:"key"`
@@ -603,11 +611,11 @@ func TestAllDocsAccessControl(t *testing.T) {
 	err = a.Save(guest)
 	assert.NoError(t, err)
 
-	RequireStatus(t, rt.SendRequest("PUT", "/db/doc5", `{"channels":"Cinemax"}`), 201)
-	RequireStatus(t, rt.SendRequest("PUT", "/db/doc4", `{"channels":["WB", "Cinemax"]}`), 201)
-	RequireStatus(t, rt.SendRequest("PUT", "/db/doc3", `{"channels":["CBS", "Cinemax"]}`), 201)
-	RequireStatus(t, rt.SendRequest("PUT", "/db/doc2", `{"channels":["CBS"]}`), 201)
-	RequireStatus(t, rt.SendRequest("PUT", "/db/doc1", `{"channels":[]}`), 201)
+	RequireStatus(t, rt.SendRequest("PUT", "/{{.keyspace}}/doc5", `{"channels":"Cinemax"}`), 201)
+	RequireStatus(t, rt.SendRequest("PUT", "/{{.keyspace}}/doc4", `{"channels":["WB", "Cinemax"]}`), 201)
+	RequireStatus(t, rt.SendRequest("PUT", "/{{.keyspace}}/doc3", `{"channels":["CBS", "Cinemax"]}`), 201)
+	RequireStatus(t, rt.SendRequest("PUT", "/{{.keyspace}}/doc2", `{"channels":["CBS"]}`), 201)
+	RequireStatus(t, rt.SendRequest("PUT", "/{{.keyspace}}/doc1", `{"channels":[]}`), 201)
 
 	guest, err = a.GetUser("")
 	assert.NoError(t, err)
@@ -620,19 +628,19 @@ func TestAllDocsAccessControl(t *testing.T) {
 	assert.NoError(t, a.Save(alice))
 
 	// Get a single doc the user has access to:
-	request, _ := http.NewRequest("GET", "/db/doc3", nil)
+	request, _ := http.NewRequest("GET", "/db."+s+"."+c+"/doc3", nil)
 	request.SetBasicAuth("alice", "letmein")
 	response := rt.Send(request)
 	RequireStatus(t, response, 200)
 
 	// Get a single doc the user doesn't have access to:
-	request, _ = http.NewRequest("GET", "/db/doc2", nil)
+	request, _ = http.NewRequest("GET", "/db."+s+"."+c+"/doc2", nil)
 	request.SetBasicAuth("alice", "letmein")
 	response = rt.Send(request)
 	RequireStatus(t, response, 403)
 
 	// Check that _all_docs only returns the docs the user has access to:
-	request, _ = http.NewRequest("GET", "/db/_all_docs?channels=true", nil)
+	request, _ = http.NewRequest("GET", "/db."+s+"."+c+"/_all_docs?channels=true", nil)
 	request.SetBasicAuth("alice", "letmein")
 	response = rt.Send(request)
 	RequireStatus(t, response, 200)
@@ -650,7 +658,7 @@ func TestAllDocsAccessControl(t *testing.T) {
 	assert.Equal(t, []string{"Cinemax"}, allDocsResult.Rows[2].Value.Channels)
 
 	// Check all docs limit option
-	request, _ = http.NewRequest("GET", "/db/_all_docs?limit=1&channels=true", nil)
+	request, _ = http.NewRequest("GET", "/db."+s+"."+c+"/_all_docs?limit=1&channels=true", nil)
 	request.SetBasicAuth("alice", "letmein")
 	response = rt.Send(request)
 	RequireStatus(t, response, 200)
@@ -664,7 +672,7 @@ func TestAllDocsAccessControl(t *testing.T) {
 	assert.Equal(t, []string{"Cinemax"}, allDocsResult.Rows[0].Value.Channels)
 
 	// Check all docs startkey option
-	request, _ = http.NewRequest("GET", "/db/_all_docs?startkey=doc5&channels=true", nil)
+	request, _ = http.NewRequest("GET", "/db."+s+"."+c+"/_all_docs?startkey=doc5&channels=true", nil)
 	request.SetBasicAuth("alice", "letmein")
 	response = rt.Send(request)
 	RequireStatus(t, response, 200)
@@ -678,7 +686,7 @@ func TestAllDocsAccessControl(t *testing.T) {
 	assert.Equal(t, []string{"Cinemax"}, allDocsResult.Rows[0].Value.Channels)
 
 	// Check all docs startkey option with double quote
-	request, _ = http.NewRequest("GET", `/db/_all_docs?startkey="doc5"&channels=true`, nil)
+	request, _ = http.NewRequest("GET", `/db.`+s+`.`+c+`/_all_docs?startkey="doc5"&channels=true`, nil)
 	request.SetBasicAuth("alice", "letmein")
 	response = rt.Send(request)
 	RequireStatus(t, response, 200)
@@ -692,7 +700,7 @@ func TestAllDocsAccessControl(t *testing.T) {
 	assert.Equal(t, []string{"Cinemax"}, allDocsResult.Rows[0].Value.Channels)
 
 	// Check all docs endkey option
-	request, _ = http.NewRequest("GET", "/db/_all_docs?endkey=doc3&channels=true", nil)
+	request, _ = http.NewRequest("GET", "/db."+s+"."+c+"/_all_docs?endkey=doc3&channels=true", nil)
 	request.SetBasicAuth("alice", "letmein")
 	response = rt.Send(request)
 	RequireStatus(t, response, 200)
@@ -706,7 +714,7 @@ func TestAllDocsAccessControl(t *testing.T) {
 	assert.Equal(t, []string{"Cinemax"}, allDocsResult.Rows[0].Value.Channels)
 
 	// Check all docs endkey option
-	request, _ = http.NewRequest("GET", `/db/_all_docs?endkey="doc3"&channels=true`, nil)
+	request, _ = http.NewRequest("GET", `/db.`+s+`.`+c+`/_all_docs?endkey="doc3"&channels=true`, nil)
 	request.SetBasicAuth("alice", "letmein")
 	response = rt.Send(request)
 	RequireStatus(t, response, 200)
@@ -720,7 +728,7 @@ func TestAllDocsAccessControl(t *testing.T) {
 	assert.Equal(t, []string{"Cinemax"}, allDocsResult.Rows[0].Value.Channels)
 
 	// Check _all_docs with include_docs option:
-	request, _ = http.NewRequest("GET", "/db/_all_docs?include_docs=true", nil)
+	request, _ = http.NewRequest("GET", "/db."+s+"."+c+"/_all_docs?include_docs=true", nil)
 	request.SetBasicAuth("alice", "letmein")
 	response = rt.Send(request)
 	RequireStatus(t, response, 200)
@@ -736,7 +744,7 @@ func TestAllDocsAccessControl(t *testing.T) {
 
 	// Check POST to _all_docs:
 	body := `{"keys": ["doc4", "doc1", "doc3", "b0gus"]}`
-	request, _ = http.NewRequest("POST", "/db/_all_docs?channels=true", bytes.NewBufferString(body))
+	request, _ = http.NewRequest("POST", "/db."+s+"."+c+"/_all_docs?channels=true", bytes.NewBufferString(body))
 	request.SetBasicAuth("alice", "letmein")
 	response = rt.Send(request)
 	RequireStatus(t, response, 200)
@@ -761,7 +769,7 @@ func TestAllDocsAccessControl(t *testing.T) {
 	assert.Equal(t, "", allDocsResult.Rows[3].Value.Rev)
 
 	// Check GET to _all_docs with keys parameter:
-	request, _ = http.NewRequest("GET", `/db/_all_docs?channels=true&keys=%5B%22doc4%22%2C%22doc1%22%2C%22doc3%22%2C%22b0gus%22%5D`, nil)
+	request, _ = http.NewRequest("GET", `/db.`+s+`.`+c+`/_all_docs?channels=true&keys=%5B%22doc4%22%2C%22doc1%22%2C%22doc3%22%2C%22b0gus%22%5D`, nil)
 	request.SetBasicAuth("alice", "letmein")
 	response = rt.Send(request)
 	RequireStatus(t, response, 200)
@@ -783,7 +791,7 @@ func TestAllDocsAccessControl(t *testing.T) {
 
 	// Check POST to _all_docs with limit option:
 	body = `{"keys": ["doc4", "doc1", "doc3", "b0gus"]}`
-	request, _ = http.NewRequest("POST", "/db/_all_docs?limit=1&channels=true", bytes.NewBufferString(body))
+	request, _ = http.NewRequest("POST", "/db."+s+"."+c+"/_all_docs?limit=1&channels=true", bytes.NewBufferString(body))
 	request.SetBasicAuth("alice", "letmein")
 	response = rt.Send(request)
 	RequireStatus(t, response, 200)
@@ -798,7 +806,7 @@ func TestAllDocsAccessControl(t *testing.T) {
 	assert.Equal(t, []string{"Cinemax"}, allDocsResult.Rows[0].Value.Channels)
 
 	// Check _all_docs as admin:
-	response = rt.SendAdminRequest("GET", "/db/_all_docs", "")
+	response = rt.SendAdminRequest("GET", "/db."+s+"."+c+"/_all_docs", "")
 	RequireStatus(t, response, 200)
 
 	log.Printf("Admin response = %s", response.Body.Bytes())
@@ -835,26 +843,26 @@ func TestChannelAccessChanges(t *testing.T) {
 	assert.NoError(t, a.Save(zegpold))
 
 	// Create some docs that give users access:
-	response := rt.Send(Request("PUT", "/db/alpha", `{"owner":"alice"}`))
+	response := rt.Send(Request("PUT", "/db."+s+"."+c+"/alpha", `{"owner":"alice"}`))
 	RequireStatus(t, response, 201)
 	var body db.Body
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.Equal(t, true, body["ok"])
 	alphaRevID := body["rev"].(string)
 
-	RequireStatus(t, rt.Send(Request("PUT", "/db/beta", `{"owner":"boadecia"}`)), 201)
-	RequireStatus(t, rt.Send(Request("PUT", "/db/delta", `{"owner":"alice"}`)), 201)
-	RequireStatus(t, rt.Send(Request("PUT", "/db/gamma", `{"owner":"zegpold"}`)), 201)
+	RequireStatus(t, rt.Send(Request("PUT", "/db."+s+"."+c+"/beta", `{"owner":"boadecia"}`)), 201)
+	RequireStatus(t, rt.Send(Request("PUT", "/db."+s+"."+c+"/delta", `{"owner":"alice"}`)), 201)
+	RequireStatus(t, rt.Send(Request("PUT", "/db."+s+"."+c+"/gamma", `{"owner":"zegpold"}`)), 201)
 
-	RequireStatus(t, rt.Send(Request("PUT", "/db/a1", `{"channel":"alpha"}`)), 201)
-	RequireStatus(t, rt.Send(Request("PUT", "/db/b1", `{"channel":"beta"}`)), 201)
-	RequireStatus(t, rt.Send(Request("PUT", "/db/d1", `{"channel":"delta"}`)), 201)
-	RequireStatus(t, rt.Send(Request("PUT", "/db/g1", `{"channel":"gamma"}`)), 201)
+	RequireStatus(t, rt.Send(Request("PUT", "/db."+s+"."+c+"/a1", `{"channel":"alpha"}`)), 201)
+	RequireStatus(t, rt.Send(Request("PUT", "/db."+s+"."+c+"/b1", `{"channel":"beta"}`)), 201)
+	RequireStatus(t, rt.Send(Request("PUT", "/db."+s+"."+c+"/d1", `{"channel":"delta"}`)), 201)
+	RequireStatus(t, rt.Send(Request("PUT", "/db."+s+"."+c+"/g1", `{"channel":"gamma"}`)), 201)
 
 	rt.MustWaitForDoc("g1", t)
 
 	changes := ChangesResults{}
-	response = rt.SendUserRequest("GET", "/db/_changes", "", "zegpold")
+	response = rt.SendUserRequest("GET", "/db."+s+"."+c+"/_changes", "", "zegpold")
 	err = base.JSONUnmarshal(response.Body.Bytes(), &changes)
 
 	assert.NoError(t, err)
@@ -897,7 +905,7 @@ func TestChannelAccessChanges(t *testing.T) {
 
 	// Update a document to revoke access to alice and grant it to zegpold:
 	str := fmt.Sprintf(`{"owner":"zegpold", "_rev":%q}`, alphaRevID)
-	RequireStatus(t, rt.Send(Request("PUT", "/db/alpha", str)), 201)
+	RequireStatus(t, rt.Send(Request("PUT", "/db."+s+"."+c+"/alpha", str)), 201)
 
 	alphaGrantDocSeq, err := rt.SequenceForDoc("alpha")
 	assert.NoError(t, err, "Error retrieving document sequence")
@@ -928,7 +936,7 @@ func TestChannelAccessChanges(t *testing.T) {
 
 	// Look at alice's _changes feed:
 	changes = ChangesResults{}
-	response = rt.SendUserRequest("GET", "/db/_changes", "", "alice")
+	response = rt.SendUserRequest("GET", "/db."+s+"."+c+"/_changes", "", "alice")
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &changes))
 	require.Len(t, changes.Results, 1)
 	assert.NoError(t, err)
@@ -936,7 +944,7 @@ func TestChannelAccessChanges(t *testing.T) {
 
 	// The complete _changes feed for zegpold contains docs a1 and g1:
 	changes = ChangesResults{}
-	response = rt.SendUserRequest("GET", "/db/_changes", "", "zegpold")
+	response = rt.SendUserRequest("GET", "/db."+s+"."+c+"/_changes", "", "zegpold")
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &changes))
 	assert.NoError(t, err)
 	require.Len(t, changes.Results, 2)
@@ -948,7 +956,7 @@ func TestChannelAccessChanges(t *testing.T) {
 
 	// Changes feed with since=gamma:8 would ordinarily be empty, but zegpold got access to channel
 	// alpha after sequence 8, so the pre-existing docs in that channel are included:
-	response = rt.SendUserRequest("GET", fmt.Sprintf("/db/_changes?since=\"%s\"", since),
+	response = rt.SendUserRequest("GET", fmt.Sprintf("/db."+s+"."+c+"/_changes?since=\"%s\"", since),
 		"", "zegpold")
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	changes.Results = nil
@@ -957,7 +965,7 @@ func TestChannelAccessChanges(t *testing.T) {
 	assert.Equal(t, "a1", changes.Results[0].ID)
 
 	// What happens if we call access() with a nonexistent username?
-	RequireStatus(t, rt.Send(Request("PUT", "/db/epsilon", `{"owner":"waldo"}`)), 201) // seq 10
+	RequireStatus(t, rt.Send(Request("PUT", "/db."+s+"."+c+"/epsilon", `{"owner":"waldo"}`)), 201) // seq 10
 
 	// Must wait for sequence to arrive in cache, since the cache processor will be paused when UpdateSyncFun() is called
 	// below, which could lead to a data race if the cache processor is paused while it's processing a change
@@ -979,7 +987,7 @@ func TestChannelAccessChanges(t *testing.T) {
 	assert.Equal(t, 9, changeCount)
 
 	expectedIDs := []string{"beta", "delta", "gamma", "a1", "b1", "d1", "g1", "alpha", "epsilon"}
-	changes, err = rt.WaitForChanges(len(expectedIDs), "/db/_changes", "alice", false)
+	changes, err = rt.WaitForChanges(len(expectedIDs), "/db."+s+"."+c+"/_changes", "alice", false)
 	assert.NoError(t, err, "Unexpected error")
 	log.Printf("_changes looks like: %+v", changes)
 	assert.Equal(t, len(expectedIDs), len(changes.Results))
