@@ -256,23 +256,23 @@ func (i *SGIndex) shouldCreate(isServerless bool) bool {
 
 // Creates index associated with specified SGIndex if not already present.  Always defers build - a subsequent BUILD INDEX
 // will need to be invoked for any created indexes.
-func (i *SGIndex) createIfNeeded(bucket base.N1QLStore, useXattrs bool, numReplica uint) (isDeferred bool, err error) {
+func (i *SGIndex) createIfNeeded(bucket base.N1QLStore, useXattrs bool, numReplica uint) (isDeferred bool, isCreated bool, err error) {
 
 	if i.isXattrOnly() && !useXattrs {
-		return false, nil
+		return false, false, nil
 	}
 
 	indexName := i.fullIndexName(useXattrs)
 
 	exists, indexMeta, metaErr := bucket.GetIndexMeta(indexName)
 	if metaErr != nil {
-		return false, metaErr
+		return false, false, metaErr
 	}
 
 	// For already existing indexes, check whether they need to be built.
 	if exists {
 		if indexMeta == nil {
-			return false, fmt.Errorf("No metadata retrieved for existing index %s", indexName)
+			return false, true, fmt.Errorf("No metadata retrieved for existing index %s", indexName)
 		}
 		if indexMeta.State == base.IndexStateDeferred {
 			// Two possible scenarios when index already exists in deferred state:
@@ -284,13 +284,18 @@ func (i *SGIndex) createIfNeeded(bucket base.N1QLStore, useXattrs bool, numRepli
 			time.Sleep(10 * time.Second)
 			exists, indexMeta, metaErr = bucket.GetIndexMeta(indexName)
 			if metaErr != nil || indexMeta == nil {
-				return false, fmt.Errorf("Error retrieving index metadata after defer wait. IndexMeta: %v Error:%v", indexMeta, metaErr)
+				return false, false, fmt.Errorf("Error retrieving index metadata after defer wait. IndexMeta: %v Error:%v", indexMeta, metaErr)
 			}
 			if indexMeta.State == base.IndexStateDeferred {
-				return true, nil
+				return true, true, nil
 			}
 		}
-		return false, nil
+		return false, true, nil
+	}
+
+	// Do not create AllDoc Index if it does not exist already
+	if isAllDocsIndex(i) {
+		return false, false, nil
 	}
 
 	logCtx := context.TODO()
@@ -331,20 +336,26 @@ func (i *SGIndex) createIfNeeded(bucket base.N1QLStore, useXattrs bool, numRepli
 	err, _ = base.RetryLoop(description, worker, sleeper)
 
 	if err != nil {
-		return false, pkgerrors.Wrapf(err, "Error installing Couchbase index: %v", indexName)
+		return false, false, pkgerrors.Wrapf(err, "Error installing Couchbase index: %v", indexName)
 	}
 
 	base.InfofCtx(logCtx, base.KeyQuery, "Index %s created successfully", indexName)
-	return isDeferred, nil
+	return isDeferred, true, nil
+}
+
+func isAllDocsIndex(i *SGIndex) bool {
+	return i.simpleName == sgIndexes[IndexAllDocs].simpleName
 }
 
 // Initializes Sync Gateway indexes for bucket.  Creates required indexes if not found, then waits for index readiness.
-func InitializeIndexes(n1QLStore base.N1QLStore, useXattrs bool, numReplicas uint, failFast bool, isServerless bool) error {
+func InitializeIndexes(n1QLStore base.N1QLStore, useXattrs bool, numReplicas uint, failFast bool, isServerless bool) (bool, error) {
 
 	base.InfofCtx(context.TODO(), base.KeyAll, "Initializing indexes with numReplicas: %d...", numReplicas)
 
 	// Create any indexes that aren't present
 	deferredIndexes := make([]string, 0)
+	allDocsIndexCreated := false
+
 	for _, sgIndex := range sgIndexes {
 
 		if !sgIndex.shouldCreate(isServerless) {
@@ -353,9 +364,12 @@ func InitializeIndexes(n1QLStore base.N1QLStore, useXattrs bool, numReplicas uin
 		}
 
 		fullIndexName := sgIndex.fullIndexName(useXattrs)
-		isDeferred, err := sgIndex.createIfNeeded(n1QLStore, useXattrs, numReplicas)
+		isDeferred, isCreated, err := sgIndex.createIfNeeded(n1QLStore, useXattrs, numReplicas)
 		if err != nil {
-			return base.RedactErrorf("Unable to install index %s: %v", base.MD(sgIndex.simpleName), err)
+			return false, base.RedactErrorf("Unable to install index %s: %v", base.MD(sgIndex.simpleName), err)
+		}
+		if isAllDocsIndex(&sgIndex) {
+			allDocsIndexCreated = isCreated
 		}
 
 		if isDeferred {
@@ -368,16 +382,16 @@ func InitializeIndexes(n1QLStore base.N1QLStore, useXattrs bool, numReplicas uin
 		buildErr := base.BuildDeferredIndexes(n1QLStore, deferredIndexes)
 		if buildErr != nil {
 			base.InfofCtx(context.TODO(), base.KeyQuery, "Error building deferred indexes.  Error: %v", buildErr)
-			return buildErr
+			return allDocsIndexCreated, buildErr
 		}
 	}
 
 	// Wait for initial readiness queries to complete
-	return waitForIndexes(n1QLStore, useXattrs, isServerless, failFast)
+	return allDocsIndexCreated, waitForIndexes(n1QLStore, useXattrs, isServerless, failFast, allDocsIndexCreated)
 }
 
 // Issue a consistency=request_plus query against critical indexes to guarantee indexing is complete and indexes are ready.
-func waitForIndexes(bucket base.N1QLStore, useXattrs, isServerless, failfast bool) error {
+func waitForIndexes(bucket base.N1QLStore, useXattrs, isServerless, failfast bool, allDocsIndexCreated bool) error {
 	logCtx := context.TODO()
 	base.InfofCtx(logCtx, base.KeyAll, "Verifying index availability for bucket %s...", base.MD(bucket.GetName()))
 	var indexes []string
@@ -387,6 +401,10 @@ func waitForIndexes(bucket base.N1QLStore, useXattrs, isServerless, failfast boo
 		if sgIndex.isXattrOnly() && !useXattrs {
 			continue
 		}
+		if isAllDocsIndex(&sgIndex) && !allDocsIndexCreated {
+			continue
+		}
+
 		if !sgIndex.shouldCreate(isServerless) {
 			continue
 		}
