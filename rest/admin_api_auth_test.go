@@ -750,7 +750,7 @@ func TestAdminAPIAuth(t *testing.T) {
 		},
 		{
 			Method:   "POST",
-			Endpoint: "/{{.keyspace}}/_compact",
+			Endpoint: "/{{.db}}/_compact",
 		},
 		{
 			Method:          "GET",
