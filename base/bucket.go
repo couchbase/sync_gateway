@@ -134,7 +134,6 @@ type BucketSpec struct {
 	KvPoolSize                    int            // gocb kv_pool_size - number of pipelines per node. Initialized on GetGoCBConnString
 	KvBufferSize                  int            // gocb kv buffer size for number of pipelines made. Inititialised on the gocb connection string
 	DcpBuffer                     int            // gocb dcp buffer size inititialised on the gocb connection string
-	Serverless                    bool
 }
 
 // Create a RetrySleeper based on the bucket spec properties.  Used to retry bucket operations after transient errors.

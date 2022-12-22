@@ -174,10 +174,6 @@ func cbgtFeedParams(spec BucketSpec, scope string, collections []string, dbName 
 		feedParams.Collections = collections
 	}
 
-	if spec.Serverless == true {
-		feedParams.DCPBuffer = 1000000
-	}
-
 	paramBytes, err := JSONMarshal(feedParams)
 	if err != nil {
 		return "", err

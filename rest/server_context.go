@@ -430,7 +430,6 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 			return nil, err
 		}
 		spec.Server = connStr
-		spec.Serverless = true
 	}
 
 	if sc.databases_[dbName] != nil {
