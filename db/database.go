@@ -1729,7 +1729,7 @@ func (db *Database) UpdateSyncFun(ctx context.Context, syncFun string) (changed 
 // To be used when the JavaScript sync function changes.
 type updateAllDocChannelsCallbackFunc func(docsProcessed, docsChanged *int)
 
-func (db *DatabaseCollectionWithUser) UpdateAllDocChannels(ctx context.Context, regenerateSequences bool, callback updateAllDocChannelsCallbackFunc, terminator *base.SafeTerminator) (int, error) {
+func (db *DatabaseCollectionWithUser) UpdateAllDocChannels(ctx context.Context, regenerateSequences bool, callback updateAllDocChannelsCallbackFunc, terminator *base.SafeTerminator, shouldAddStarChannel bool) (int, error) {
 	base.InfofCtx(ctx, base.KeyAll, "Recomputing document channels...")
 	base.InfofCtx(ctx, base.KeyAll, "Re-running sync function on all documents...")
 
@@ -1776,7 +1776,7 @@ func (db *DatabaseCollectionWithUser) UpdateAllDocChannels(ctx context.Context, 
 			key := realDocID(docid)
 			queryRowCount++
 			docsProcessed++
-			highSeq, unusedSequences, err = db.resyncDocument(ctx, docid, key, regenerateSequences, unusedSequences)
+			highSeq, unusedSequences, err = db.resyncDocument(ctx, docid, key, regenerateSequences, unusedSequences, shouldAddStarChannel)
 			if err == nil {
 				docsChanged++
 			} else if err != base.ErrUpdateCancel {
@@ -1881,7 +1881,7 @@ func (db *DatabaseCollection) releaseSequences(ctx context.Context, sequences []
 	}
 }
 
-func (db *DatabaseCollectionWithUser) getResyncedDocument(ctx context.Context, doc *Document, regenerateSequences bool, unusedSequences []uint64) (updatedDoc *Document, shouldUpdate bool, updatedExpiry *uint32, highSeq uint64, updatedUnusedSequences []uint64, err error) {
+func (db *DatabaseCollectionWithUser) getResyncedDocument(ctx context.Context, doc *Document, regenerateSequences bool, unusedSequences []uint64, shouldAddStarChannel bool) (updatedDoc *Document, shouldUpdate bool, updatedExpiry *uint32, highSeq uint64, updatedUnusedSequences []uint64, err error) {
 	docid := doc.ID
 	forceUpdate := false
 	if !doc.HasValidSyncData() {
@@ -1907,7 +1907,7 @@ func (db *DatabaseCollectionWithUser) getResyncedDocument(ctx context.Context, d
 		if err != nil {
 			return
 		}
-		channels, access, roles, syncExpiry, _, err := db.getChannelsAndAccess(ctx, doc, body, metaMap, rev.ID)
+		channels, access, roles, syncExpiry, _, err := db.getChannelsAndAccess(ctx, doc, body, metaMap, rev.ID, shouldAddStarChannel)
 		if err != nil {
 			// Probably the validator rejected the doc
 			base.WarnfCtx(ctx, "Error calling sync() on doc %q: %v", base.UD(docid), err)
@@ -1943,7 +1943,7 @@ func (db *DatabaseCollectionWithUser) getResyncedDocument(ctx context.Context, d
 	return doc, shouldUpdate, updatedExpiry, doc.Sequence, updatedUnusedSequences, nil
 }
 
-func (db *DatabaseCollectionWithUser) resyncDocument(ctx context.Context, docid, key string, regenerateSequences bool, unusedSequences []uint64) (updatedHighSeq uint64, updatedUnusedSequences []uint64, err error) {
+func (db *DatabaseCollectionWithUser) resyncDocument(ctx context.Context, docid, key string, regenerateSequences bool, unusedSequences []uint64, shouldAddStarChannel bool) (updatedHighSeq uint64, updatedUnusedSequences []uint64, err error) {
 	var updatedDoc *Document
 	var shouldUpdate bool
 	var updatedExpiry *uint32
@@ -1959,7 +1959,7 @@ func (db *DatabaseCollectionWithUser) resyncDocument(ctx context.Context, docid,
 			if err != nil {
 				return nil, nil, deleteDoc, nil, err
 			}
-			updatedDoc, shouldUpdate, updatedExpiry, updatedHighSeq, unusedSequences, err = db.getResyncedDocument(ctx, doc, regenerateSequences, unusedSequences)
+			updatedDoc, shouldUpdate, updatedExpiry, updatedHighSeq, unusedSequences, err = db.getResyncedDocument(ctx, doc, regenerateSequences, unusedSequences, shouldAddStarChannel)
 			if err != nil {
 				return nil, nil, deleteDoc, nil, err
 			}
@@ -1987,7 +1987,7 @@ func (db *DatabaseCollectionWithUser) resyncDocument(ctx context.Context, docid,
 			if err != nil {
 				return nil, nil, false, err
 			}
-			updatedDoc, shouldUpdate, updatedExpiry, updatedHighSeq, unusedSequences, err = db.getResyncedDocument(ctx, doc, regenerateSequences, unusedSequences)
+			updatedDoc, shouldUpdate, updatedExpiry, updatedHighSeq, unusedSequences, err = db.getResyncedDocument(ctx, doc, regenerateSequences, unusedSequences, shouldAddStarChannel)
 			if err != nil {
 				return nil, nil, false, err
 			}

@@ -155,9 +155,10 @@ func TestResyncManagerDCPStopInMidWay(t *testing.T) {
 	defer resycMgr.resetStatus()
 
 	options := map[string]interface{}{
-		"database":            db,
-		"regenerateSequences": false,
-		"collections":         ResyncCollections{},
+		"database":             db,
+		"regenerateSequences":  false,
+		"collections":          ResyncCollections{},
+		"shouldAddStarChannel": true,
 	}
 
 	err := resycMgr.Start(ctx, options)
@@ -208,9 +209,10 @@ func TestResyncManagerDCPStart(t *testing.T) {
 		db.ResyncManager = resyncMgr
 
 		options := map[string]interface{}{
-			"database":            db,
-			"regenerateSequences": false,
-			"collections":         ResyncCollections{},
+			"database":             db,
+			"regenerateSequences":  false,
+			"collections":          ResyncCollections{},
+			"shouldAddStarChannel": true,
 		}
 		err := resyncMgr.Start(ctx, options)
 		require.NoError(t, err)
@@ -242,9 +244,10 @@ func TestResyncManagerDCPStart(t *testing.T) {
 		log.Printf("initialStats: processed[%v] changed[%v]", initialStats.DocsProcessed, initialStats.DocsChanged)
 
 		options := map[string]interface{}{
-			"database":            db,
-			"regenerateSequences": false,
-			"collections":         ResyncCollections{},
+			"database":             db,
+			"regenerateSequences":  false,
+			"collections":          ResyncCollections{},
+			"shouldAddStarChannel": true,
 		}
 
 		err := resyncMgr.Start(ctx, options)
@@ -282,9 +285,10 @@ func TestResyncManagerDCPRunTwice(t *testing.T) {
 	db.ResyncManager = resycMgr
 
 	options := map[string]interface{}{
-		"database":            db,
-		"regenerateSequences": false,
-		"collections":         ResyncCollections{},
+		"database":             db,
+		"regenerateSequences":  false,
+		"collections":          ResyncCollections{},
+		"shouldAddStarChannel": true,
 	}
 
 	err := resycMgr.Start(ctx, options)
@@ -333,9 +337,10 @@ func TestResycnManagerDCPResumeStoppedProcess(t *testing.T) {
 	db.ResyncManager = resycMgr
 
 	options := map[string]interface{}{
-		"database":            db,
-		"regenerateSequences": false,
-		"collections":         ResyncCollections{},
+		"database":             db,
+		"regenerateSequences":  false,
+		"collections":          ResyncCollections{},
+		"shouldAddStarChannel": true,
 	}
 
 	err := resycMgr.Start(ctx, options)

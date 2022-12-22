@@ -555,7 +555,7 @@ func (context *DatabaseCollection) buildChannelsQuery(channelName string, startS
 
 	channelQuery := QueryChannels
 	index := sgIndexes[IndexChannels]
-	if channelName == channels.UserStarChannel {
+	if channelName == channels.UserStarChannel && context.dbCtx.AllDocsIndexExists {
 		channelQuery = QueryStarChannel
 		index = sgIndexes[IndexAllDocs]
 	}

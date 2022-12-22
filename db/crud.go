@@ -1466,7 +1466,7 @@ func (db *DatabaseCollectionWithUser) prepareSyncFn(doc *Document, newDoc *Docum
 // Run the sync function on the given document and body. Need to inject the document ID and rev ID temporarily to run
 // the sync function.
 func (db *DatabaseCollectionWithUser) runSyncFn(ctx context.Context, doc *Document, body Body, metaMap map[string]interface{}, newRevId string) (*uint32, string, base.Set, channels.AccessMap, channels.AccessMap, error) {
-	channelSet, access, roles, syncExpiry, oldBody, err := db.getChannelsAndAccess(ctx, doc, body, metaMap, newRevId)
+	channelSet, access, roles, syncExpiry, oldBody, err := db.getChannelsAndAccess(ctx, doc, body, metaMap, newRevId, !db.dbCtx.AllDocsIndexExists)
 	if err != nil {
 		return nil, ``, nil, nil, nil, err
 	}
@@ -1491,7 +1491,7 @@ func (db *DatabaseCollectionWithUser) recalculateSyncFnForActiveRev(ctx context.
 	if curBody != nil {
 		base.DebugfCtx(ctx, base.KeyCRUD, "updateDoc(%q): Rev %q causes %q to become current again",
 			base.UD(doc.ID), newRevID, doc.CurrentRev)
-		channelSet, access, roles, syncExpiry, oldBodyJSON, err = db.getChannelsAndAccess(ctx, doc, curBody, metaMap, doc.CurrentRev)
+		channelSet, access, roles, syncExpiry, oldBodyJSON, err = db.getChannelsAndAccess(ctx, doc, curBody, metaMap, doc.CurrentRev, !db.dbCtx.AllDocsIndexExists)
 		if err != nil {
 			return
 		}
@@ -2202,7 +2202,7 @@ func (db *DatabaseCollectionWithUser) Purge(ctx context.Context, key string) err
 
 // Calls the JS sync function to assign the doc to channels, grant users
 // access to channels, and reject invalid documents.
-func (db *DatabaseCollectionWithUser) getChannelsAndAccess(ctx context.Context, doc *Document, body Body, metaMap map[string]interface{}, revID string) (
+func (db *DatabaseCollectionWithUser) getChannelsAndAccess(ctx context.Context, doc *Document, body Body, metaMap map[string]interface{}, revID string, shouldAddStarChannel bool) (
 	result base.Set,
 	access channels.AccessMap,
 	roles channels.AccessMap,
@@ -2232,7 +2232,7 @@ func (db *DatabaseCollectionWithUser) getChannelsAndAccess(ctx context.Context, 
 
 		startTime := time.Now()
 		output, err = db.channelMapper().MapToChannelsAndAccess(body, oldJson, metaMap,
-			MakeUserCtx(db.user, db.ScopeName(), db.Name()))
+			MakeUserCtx(db.user, db.ScopeName(), db.Name()), shouldAddStarChannel)
 		syncFunctionTimeNano := time.Since(startTime).Nanoseconds()
 
 		db.dbStats().Database().SyncFunctionTime.Add(syncFunctionTimeNano)
@@ -2276,6 +2276,10 @@ func (db *DatabaseCollectionWithUser) getChannelsAndAccess(ctx context.Context, 
 			if nonStrings != nil {
 				base.WarnfCtx(ctx, "Channel names must be string values only. Ignoring non-string channels: %s", base.UD(nonStrings))
 			}
+			if shouldAddStarChannel {
+				array = append(array, channels.UserStarChannel)
+			}
+
 			result, err = channels.SetFromArray(array, channels.KeepStar)
 		}
 	}

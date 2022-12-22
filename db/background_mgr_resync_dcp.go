@@ -91,6 +91,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]interface
 	db := options["database"].(*Database)
 	regenerateSequences := options["regenerateSequences"].(bool)
 	resyncCollections := options["collections"].(ResyncCollections)
+	shouldAddStarChannel := options["shouldAddStarChannel"].(bool)
 
 	resyncLoggingID := "Resync: " + r.ResyncID
 
@@ -125,7 +126,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]interface
 		databaseCollection := db.CollectionByID[event.CollectionID]
 		_, unusedSequences, err := (&DatabaseCollectionWithUser{
 			DatabaseCollection: databaseCollection,
-		}).resyncDocument(ctx, docID, key, regenerateSequences, []uint64{})
+		}).resyncDocument(ctx, docID, key, regenerateSequences, []uint64{}, shouldAddStarChannel)
 
 		databaseCollection.releaseSequences(ctx, unusedSequences)
 
