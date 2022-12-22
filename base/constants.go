@@ -117,9 +117,6 @@ const (
 	// Number of kv connections (pipelines) per Couchbase Server node when running in serverless
 	DefaultGocbKvPoolSizeServerless = 1
 
-	// kv connections buffer size per Couchbase Server node
-	DefaultGoCBKvBufferSize = 20 * 1024 * 1024
-
 	// kv connections buffer size per Couchbase Server node when running in serverless
 	DefaultKvBufferSizeServerless = 1 * 1024 * 1024
 

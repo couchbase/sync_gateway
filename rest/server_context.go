@@ -422,9 +422,9 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	}
 	if sc.Config.IsServerless() {
 		connStr, err := spec.GetGoCBConnString(&base.GoCBConnStringParams{
-			KVPoolSize:   base.DefaultGocbKvPoolSizeServerless,
-			KVBufferSize: base.DefaultKvBufferSizeServerless,
-			DCPBuffer:    base.DefaultDCPBufferServerless,
+			KVPoolSize:    base.DefaultGocbKvPoolSizeServerless,
+			KVBufferSize:  base.DefaultKvBufferSizeServerless,
+			DCPBufferSize: base.DefaultDCPBufferServerless,
 		})
 		if err != nil {
 			return nil, err

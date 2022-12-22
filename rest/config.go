@@ -1359,10 +1359,6 @@ func (sc *ServerContext) findBucketWithCallback(callback func(bucket string) (ex
 		for bucket, _ := range sc.Config.BucketCredentials {
 			buckets = append(buckets, bucket)
 		}
-		err = sc.BootstrapContext.Connection.SetConnectionStringServerless()
-		if err != nil {
-			return false, nil, err
-		}
 	} else {
 		buckets, err = sc.BootstrapContext.Connection.GetConfigBuckets()
 		if err != nil {
@@ -1503,10 +1499,6 @@ func (sc *ServerContext) FetchConfigs(ctx context.Context, isInitialStartup bool
 		//		i++
 		//	}
 		// }
-		err = sc.BootstrapContext.Connection.SetConnectionStringServerless()
-		if err != nil {
-			return nil, err
-		}
 	} else {
 		buckets, err = sc.BootstrapContext.Connection.GetConfigBuckets()
 		if err != nil {

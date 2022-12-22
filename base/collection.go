@@ -248,7 +248,7 @@ func (b *GocbV2Bucket) IsSupported(feature sgbucket.BucketStoreFeature) bool {
 
 func (b *GocbV2Bucket) StartDCPFeed(args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map) error {
 	groupID := ""
-	return StartGocbDCPFeed(b, b.Spec.BucketName, args, callback, dbStats, DCPMetadataStoreInMemory, groupID, b.Spec.Serverless)
+	return StartGocbDCPFeed(b, b.Spec.BucketName, args, callback, dbStats, DCPMetadataStoreInMemory, groupID)
 }
 
 func (b *GocbV2Bucket) StartTapFeed(args sgbucket.FeedArguments, dbStats *expvar.Map) (sgbucket.MutationFeed, error) {

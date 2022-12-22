@@ -132,8 +132,8 @@ type BucketSpec struct {
 	MaxConcurrentQueryOps         *int           // maximum number of concurrent query operations (default: DefaultMaxConcurrentQueryOps)
 	BucketOpTimeout               *time.Duration // How long bucket ops should block returning "operation timed out". If nil, uses GoCB default.  GoCB buckets only.
 	KvPoolSize                    int            // gocb kv_pool_size - number of pipelines per node. Initialized on GetGoCBConnString
-	KvBufferSize                  int
-	DcpBuffer                     int
+	KvBufferSize                  int            // gocb kv buffer size for number of pipelines made. Inititialised on the gocb connection string
+	DcpBuffer                     int            // gocb dcp buffer size inititialised on the gocb connection string
 	Serverless                    bool
 }
 
@@ -164,9 +164,9 @@ func (spec BucketSpec) UseClientCert() bool {
 type GoCBConnStringParams struct {
 	// The KV pool size, KV buffer size and DCP buffer size are passed down to gocbcore.
 	// Defaults to different values based on being in serverless or not.
-	KVPoolSize   int
-	KVBufferSize int
-	DCPBuffer    int
+	KVPoolSize    int
+	KVBufferSize  int
+	DCPBufferSize int
 }
 
 // FillDefaults replaces any unset fields in this GoCBConnStringParams with their default values.
@@ -175,10 +175,10 @@ func (p *GoCBConnStringParams) FillDefaults() {
 		p.KVPoolSize = DefaultGocbKvPoolSize
 	}
 	if p.KVBufferSize == 0 {
-		p.KVBufferSize = DefaultGoCBKvBufferSize
+		p.KVBufferSize = 0
 	}
-	if p.DCPBuffer == 0 {
-		p.DCPBuffer = DefaultDCPBuffer
+	if p.DCPBufferSize == 0 {
+		p.DCPBufferSize = 0
 	}
 }
 
@@ -200,32 +200,32 @@ func (spec *BucketSpec) GetGoCBConnString(params *GoCBConnStringParams) (string,
 	asValues := url.Values(connSpec.Options)
 
 	// Add kv_pool_size as used in both GoCB versions
-	fromConnStr := asValues.Get("kv_pool_size")
-	if fromConnStr == "" {
+	poolSizeFromConnStr := asValues.Get("kv_pool_size")
+	if poolSizeFromConnStr == "" {
 		asValues.Set("kv_pool_size", strconv.Itoa(params.KVPoolSize))
 		spec.KvPoolSize = params.KVPoolSize
 	} else {
-		spec.KvPoolSize, _ = strconv.Atoi(fromConnStr)
+		spec.KvPoolSize, _ = strconv.Atoi(poolSizeFromConnStr)
 	}
 
-	fromConnStr = asValues.Get("kv_buffer_size")
-	if fromConnStr == "" && spec.KvBufferSize != 0 {
+	kvBufferfromConnStr := asValues.Get("kv_buffer_size")
+	if kvBufferfromConnStr == "" && spec.KvBufferSize != 0 {
 		asValues.Set("kv_buffer_size", strconv.Itoa(spec.KvBufferSize))
-	} else if fromConnStr == "" {
+	} else if kvBufferfromConnStr == "" && params.KVBufferSize != 0 {
 		asValues.Set("kv_buffer_size", strconv.Itoa(params.KVBufferSize))
 		spec.KvBufferSize = params.KVBufferSize
 	} else {
-		spec.KvBufferSize, _ = strconv.Atoi(fromConnStr)
+		spec.KvBufferSize, _ = strconv.Atoi(kvBufferfromConnStr)
 	}
 
-	fromConnStr = asValues.Get("dcp_buffer_size")
-	if fromConnStr == "" && spec.DcpBuffer != 0 {
+	dcpBufferfromConnStr := asValues.Get("dcp_buffer_size")
+	if dcpBufferfromConnStr == "" && spec.DcpBuffer != 0 {
 		asValues.Set("dcp_buffer_size", strconv.Itoa(spec.DcpBuffer))
-	} else if fromConnStr == "" {
-		asValues.Set("dcp_buffer_size", strconv.Itoa(params.DCPBuffer))
-		spec.DcpBuffer = params.DCPBuffer
+	} else if dcpBufferfromConnStr == "" && params.DCPBufferSize != 0 {
+		asValues.Set("dcp_buffer_size", strconv.Itoa(params.DCPBufferSize))
+		spec.DcpBuffer = params.DCPBufferSize
 	} else {
-		spec.DcpBuffer, _ = strconv.Atoi(fromConnStr)
+		spec.DcpBuffer, _ = strconv.Atoi(dcpBufferfromConnStr)
 	}
 
 	addGoCBv2ConnValues(spec, &asValues)
