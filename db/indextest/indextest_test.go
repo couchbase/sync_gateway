@@ -457,7 +457,7 @@ func setupN1QLStore(bucket base.Bucket, isServerless bool) ([]base.N1QLStore, re
 			return nil, nil, fmt.Errorf("Unable to get n1QLStore for testBucket")
 		}
 
-		if err := db.InitializeIndexes(n1QLStore, base.TestUseXattrs(), 0, false, isServerless); err != nil {
+		if _, err := db.InitializeIndexes(n1QLStore, base.TestUseXattrs(), 0, false, isServerless); err != nil {
 			return nil, nil, err
 		}
 		outN1QLStores = append(outN1QLStores, n1QLStore)
