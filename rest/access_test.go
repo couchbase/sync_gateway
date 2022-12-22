@@ -83,6 +83,8 @@ func TestStarAccess(t *testing.T) {
 	rt := NewRestTesterDefaultCollection(t, nil) // CBG-2618: fix collection channel access
 	defer rt.Close()
 
+	isAllDocsIndexExist := rt.ServerContext().IsAllDocsIndexExistFor(rt.GetDatabase().Name)
+
 	a := auth.NewAuthenticator(rt.MetadataStore(), nil, auth.DefaultAuthenticatorOptions())
 	var changes struct {
 		Results []db.ChangeEntry
@@ -125,16 +127,20 @@ func TestStarAccess(t *testing.T) {
 	// GET /db/_all_docs?channels=true
 	// Check that _all_docs returns the docs the user has access to:
 	response = rt.SendUserRequest("GET", "/db/_all_docs?channels=true", "", "bernard")
-	RequireStatus(t, response, 200)
+	if isAllDocsIndexExist {
+		RequireStatus(t, response, 200)
 
-	log.Printf("Response = %s", response.Body.Bytes())
-	err = base.JSONUnmarshal(response.Body.Bytes(), &allDocsResult)
-	assert.NoError(t, err)
-	assert.Equal(t, 3, len(allDocsResult.Rows))
-	assert.Equal(t, "doc1", allDocsResult.Rows[0].ID)
-	assert.Equal(t, []string{"books"}, allDocsResult.Rows[0].Value.Channels)
-	assert.Equal(t, "doc3", allDocsResult.Rows[1].ID)
-	assert.Equal(t, []string{"!"}, allDocsResult.Rows[1].Value.Channels)
+		log.Printf("Response = %s", response.Body.Bytes())
+		err = base.JSONUnmarshal(response.Body.Bytes(), &allDocsResult)
+		assert.NoError(t, err)
+		assert.Equal(t, 3, len(allDocsResult.Rows))
+		assert.Equal(t, "doc1", allDocsResult.Rows[0].ID)
+		assert.Equal(t, []string{"books"}, allDocsResult.Rows[0].Value.Channels)
+		assert.Equal(t, "doc3", allDocsResult.Rows[1].ID)
+		assert.Equal(t, []string{"!"}, allDocsResult.Rows[1].Value.Channels)
+	} else {
+		RequireStatus(t, response, 400)
+	}
 
 	// Ensure docs have been processed before issuing changes requests
 	expectedSeq := uint64(6)
@@ -196,15 +202,18 @@ func TestStarAccess(t *testing.T) {
 	// GET /db/_all_docs?channels=true
 	// Check that _all_docs returns all docs (based on user * channel)
 	response = rt.SendUserRequest("GET", "/db/_all_docs?channels=true", "", "fran")
-	RequireStatus(t, response, 200)
+	if isAllDocsIndexExist {
+		RequireStatus(t, response, 200)
 
-	log.Printf("Response = %s", response.Body.Bytes())
-	err = base.JSONUnmarshal(response.Body.Bytes(), &allDocsResult)
-	assert.NoError(t, err)
-	assert.Equal(t, 6, len(allDocsResult.Rows))
-	assert.Equal(t, "doc1", allDocsResult.Rows[0].ID)
-	assert.Equal(t, []string{"books"}, allDocsResult.Rows[0].Value.Channels)
-
+		log.Printf("Response = %s", response.Body.Bytes())
+		err = base.JSONUnmarshal(response.Body.Bytes(), &allDocsResult)
+		assert.NoError(t, err)
+		assert.Equal(t, 6, len(allDocsResult.Rows))
+		assert.Equal(t, "doc1", allDocsResult.Rows[0].ID)
+		assert.Equal(t, []string{"books"}, allDocsResult.Rows[0].Value.Channels)
+	} else {
+		RequireStatus(t, response, 400)
+	}
 	// GET /db/_changes
 	response = rt.SendUserRequest("GET", "/db/_changes", "", "fran")
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
@@ -243,13 +252,16 @@ func TestStarAccess(t *testing.T) {
 	// GET /db/_all_docs?channels=true
 	// Check that _all_docs only returns ! docs (based on doc ! channel)
 	response = rt.SendUserRequest("GET", "/db/_all_docs?channels=true", "", "manny")
-	RequireStatus(t, response, 200)
-	log.Printf("Response = %s", response.Body.Bytes())
-	err = base.JSONUnmarshal(response.Body.Bytes(), &allDocsResult)
-	assert.NoError(t, err)
-	assert.Equal(t, 2, len(allDocsResult.Rows))
-	assert.Equal(t, "doc3", allDocsResult.Rows[0].ID)
-
+	if isAllDocsIndexExist {
+		RequireStatus(t, response, 200)
+		log.Printf("Response = %s", response.Body.Bytes())
+		err = base.JSONUnmarshal(response.Body.Bytes(), &allDocsResult)
+		assert.NoError(t, err)
+		assert.Equal(t, 2, len(allDocsResult.Rows))
+		assert.Equal(t, "doc3", allDocsResult.Rows[0].ID)
+	} else {
+		RequireStatus(t, response, 400)
+	}
 	// GET /db/_changes
 	response = rt.SendUserRequest("GET", "/db/_changes", "", "manny")
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
@@ -563,6 +575,11 @@ func TestBulkDocsChangeToAccess(t *testing.T) {
 func TestAllDocsAccessControl(t *testing.T) {
 	rt := NewRestTesterDefaultCollection(t, nil) // CBG-2618: fix collection channel access
 	defer rt.Close()
+
+	if !rt.ServerContext().IsAllDocsIndexExistFor(rt.GetDatabase().Name) {
+		t.Skip("This test requires AllDocs index to be present")
+	}
+
 	type allDocsRow struct {
 		ID    string `json:"id"`
 		Key   string `json:"key"`
