@@ -1387,6 +1387,9 @@ func (sc *ServerContext) forEachDbConfig(callback func(bucket string) (exit bool
 
 	for _, bucket := range buckets {
 		exit, err := callback(bucket)
+		if err == base.ErrNotFound {
+			continue
+		}
 		if err != nil {
 			return err
 		}
