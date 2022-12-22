@@ -1117,6 +1117,8 @@ func TestFunkyUsernames(t *testing.T) {
 			ctx := rt.Context()
 			a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
 
+			isAllDocsIndexExist := rt.ServerContext().IsAllDocsIndexExistFor(rt.GetDatabase().Name)
+
 			// Create a test user
 			user, err := a.NewUser(tc.UserName, "letmein", channels.BaseSetOf(t, "foo"))
 			require.NoError(t, err)
@@ -1125,8 +1127,10 @@ func TestFunkyUsernames(t *testing.T) {
 			response := rt.SendUserRequest("PUT", "/{{.keyspace}}/AC+DC", `{"foo":"bar", "channels": ["foo"]}`, tc.UserName)
 			RequireStatus(t, response, 201)
 
-			response = rt.SendUserRequest("GET", "/{{.keyspace}}/_all_docs", "", tc.UserName)
-			RequireStatus(t, response, 200)
+			if isAllDocsIndexExist {
+				response = rt.SendUserRequest("GET", "/{{.keyspace}}/_all_docs", "", tc.UserName)
+				RequireStatus(t, response, 200)
+			}
 
 			response = rt.SendUserRequest("GET", "/{{.keyspace}}/AC+DC", "", tc.UserName)
 			RequireStatus(t, response, 200)

@@ -273,6 +273,7 @@ func TestRemoveIndexesUseViewsTrueAndFalse(t *testing.T) {
 
 	_, err := removeObsoleteDesignDocs(ctx, viewStore, !db.UseXattrs(), db.UseViews())
 	assert.NoError(t, err)
+
 	_, err = removeObsoleteDesignDocs(ctx, viewStore, !db.UseXattrs(), !db.UseViews())
 	assert.NoError(t, err)
 

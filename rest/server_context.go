@@ -156,6 +156,11 @@ func (sc *ServerContext) PostStartup() {
 	close(sc.hasStarted)
 }
 
+// IsAllDocsIndexExistFor returns if AllDocs index exists for given db
+func (sc *ServerContext) IsAllDocsIndexExistFor(dbName string) bool {
+	return sc.databases_[dbName] != nil && sc.databases_[dbName].AllDocsIndexExists
+}
+
 // serverContextStopMaxWait is the maximum amount of time to wait for
 // background goroutines to terminate before the server is stopped.
 const serverContextStopMaxWait = 30 * time.Second
@@ -453,7 +458,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	// initDataStore is a function to initialize Views or GSI indexes for a datastore
 	initDataStore := func(ds base.DataStore) (bool, error) {
 		if useViews {
-			return true, db.InitializeViews(ctx, ds)
+			return false, db.InitializeViews(ctx, ds)
 		}
 
 		gsiSupported := bucket.IsSupported(sgbucket.BucketStoreFeatureN1ql)
