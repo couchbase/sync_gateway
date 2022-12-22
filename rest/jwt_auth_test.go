@@ -16,7 +16,6 @@ import (
 	"crypto/rsa"
 	"encoding/json"
 	"fmt"
-	ch "github.com/couchbase/sync_gateway/channels"
 	"net/http"
 	"net/http/httptest"
 	"runtime"
@@ -26,6 +25,7 @@ import (
 
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
+	ch "github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
