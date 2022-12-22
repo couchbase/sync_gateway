@@ -75,12 +75,6 @@ func TestCollectionsSyncImportFunctions(t *testing.T) {
 	resp := rt.SendAdminRequest(http.MethodPut, "/db/", bucketConfig)
 	rest.RequireStatus(t, resp, http.StatusCreated)
 
-	resp = rt.SendAdminRequest(http.MethodGet, "/db/_config/import_filter", "")
-	rest.RequireStatus(t, resp, http.StatusBadRequest)
-
-	resp = rt.SendAdminRequest(http.MethodGet, "/db/_config/sync", "")
-	rest.RequireStatus(t, resp, http.StatusBadRequest)
-
 	resp = rt.SendAdminRequest(http.MethodGet, fmt.Sprintf("/%s/_config/sync", keyspace1), "")
 	rest.RequireStatus(t, resp, http.StatusOK)
 	require.Equal(t, syncFunction1, resp.Body.String())

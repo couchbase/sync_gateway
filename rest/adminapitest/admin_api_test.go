@@ -81,7 +81,7 @@ func TestPutDocSpecialChar(t *testing.T) {
 			if testCase.eeOnly && !base.IsEnterpriseEdition() {
 				t.Skipf("Skipping enterprise-only test")
 			}
-			tr := rt.SendAdminRequest(testCase.method, fmt.Sprintf("/db/%s", testCase.pathDocID), testCase.body)
+			tr := rt.SendAdminRequest(testCase.method, "/{{.keyspace}}/"+testCase.pathDocID, testCase.body)
 			rest.RequireStatus(t, tr, testCase.expectedResp)
 			var body map[string]interface{}
 			err := json.Unmarshal(tr.BodyBytes(), &body)
@@ -90,7 +90,7 @@ func TestPutDocSpecialChar(t *testing.T) {
 	}
 
 	t.Run("Delete Double quote Doc ID", func(t *testing.T) { // Should be done for Local Document deletion when it returns response
-		tr := rt.SendAdminRequest("PUT", fmt.Sprintf("/db/%s", `del"ete"Me`), "{}") // Create the doc to delete
+		tr := rt.SendAdminRequest("PUT", "/{{.keyspace}}/"+`del"ete"Me`, "{}") // Create the doc to delete
 		rest.RequireStatus(t, tr, http.StatusCreated)
 		var putBody struct {
 			Rev string `json:"rev"`
@@ -98,7 +98,7 @@ func TestPutDocSpecialChar(t *testing.T) {
 		err := json.Unmarshal(tr.BodyBytes(), &putBody)
 		assert.NoError(t, err)
 
-		tr = rt.SendAdminRequest("DELETE", fmt.Sprintf("/db/%s?rev=%s", `del"ete"Me`, putBody.Rev), "{}")
+		tr = rt.SendAdminRequest("DELETE", fmt.Sprintf("/{{.keyspace}}/%s?rev=%s", `del"ete"Me`, putBody.Rev), "{}")
 		rest.RequireStatus(t, tr, http.StatusOK)
 		var body map[string]interface{}
 		err = json.Unmarshal(tr.BodyBytes(), &body)
@@ -109,13 +109,13 @@ func TestPutDocSpecialChar(t *testing.T) {
 // Reproduces #3048 Panic when attempting to make invalid update to a conflicting document
 func TestNoPanicInvalidUpdate(t *testing.T) {
 
-	var rt = rest.NewRestTester(t, nil)
+	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 
 	docId := "conflictTest"
 
 	// Create doc
-	response := rt.SendAdminRequest("PUT", fmt.Sprintf("/db/%s", docId), `{"value":"initial"}`)
+	response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/"+docId, `{"value":"initial"}`)
 	response.DumpBody()
 
 	rest.RequireStatus(t, response, http.StatusCreated)
@@ -131,7 +131,7 @@ func TestNoPanicInvalidUpdate(t *testing.T) {
 	assert.Equal(t, 1, revGeneration)
 
 	// Update doc (normal update, no conflicting revisions added)
-	response = rt.SendAdminRequest("PUT", fmt.Sprintf("/db/%s", docId), fmt.Sprintf(`{"value":"secondval", db.BodyRev:"%s"}`, revId))
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/"+docId, fmt.Sprintf(`{"value":"secondval", db.BodyRev:"%s"}`, revId))
 	response.DumpBody()
 
 	// Create conflict
@@ -139,7 +139,7 @@ func TestNoPanicInvalidUpdate(t *testing.T) {
                   {"value": "conflictval",
                    "_revisions": {"start": 2, "ids": ["conflicting_rev", "%s"]}}`, revIdHash)
 
-	response = rt.SendAdminRequest("PUT", fmt.Sprintf("/db/%s?new_edits=false", docId), input)
+	response = rt.SendAdminRequest("PUT", fmt.Sprintf("/{{.keyspace}}/%s?new_edits=false", docId), input)
 	response.DumpBody()
 	if err := base.JSONUnmarshal(response.Body.Bytes(), &responseDoc); err != nil {
 		t.Fatalf("Error unmarshalling response: %v", err)
@@ -149,7 +149,7 @@ func TestNoPanicInvalidUpdate(t *testing.T) {
 	assert.Equal(t, 2, revGeneration)
 
 	// Create conflict again, should be a no-op and return the same response as previous attempt
-	response = rt.SendAdminRequest("PUT", fmt.Sprintf("/db/%s?new_edits=false", docId), input)
+	response = rt.SendAdminRequest("PUT", fmt.Sprintf("/{{.keyspace}}/%s?new_edits=false", docId), input)
 	response.DumpBody()
 	if err := base.JSONUnmarshal(response.Body.Bytes(), &responseDoc); err != nil {
 		t.Fatalf("Error unmarshalling response: %v", err)
@@ -334,8 +334,8 @@ func TestFlush(t *testing.T) {
 
 	rt.CreateDoc(t, "doc1")
 	rt.CreateDoc(t, "doc2")
-	rest.RequireStatus(t, rt.SendAdminRequest("GET", "/db/doc1", ""), 200)
-	rest.RequireStatus(t, rt.SendAdminRequest("GET", "/db/doc2", ""), 200)
+	rest.RequireStatus(t, rt.SendAdminRequest("GET", "/{{.keyspace}}/doc1", ""), 200)
+	rest.RequireStatus(t, rt.SendAdminRequest("GET", "/{{.keyspace}}/doc2", ""), 200)
 
 	log.Printf("Flushing db...")
 	rest.RequireStatus(t, rt.SendAdminRequest("POST", "/db/_flush", ""), 200)
@@ -343,8 +343,9 @@ func TestFlush(t *testing.T) {
 
 	// After the flush, the db exists but the documents are gone:
 	rest.RequireStatus(t, rt.SendAdminRequest("GET", "/db/", ""), 200)
-	rest.RequireStatus(t, rt.SendAdminRequest("GET", "/db/doc1", ""), 404)
-	rest.RequireStatus(t, rt.SendAdminRequest("GET", "/db/doc2", ""), 404)
+
+	rest.RequireStatus(t, rt.SendAdminRequest("GET", "/{{.keyspace}}/doc1", ""), 404)
+	rest.RequireStatus(t, rt.SendAdminRequest("GET", "/{{.keyspace}}/doc2", ""), 404)
 }
 
 // Test a single call to take DB offline
@@ -438,21 +439,23 @@ func TestDBOffline503Response(t *testing.T) {
 	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 
+	response := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc1", "{}")
+	rest.RequireStatus(t, response, http.StatusCreated)
 	log.Printf("Taking DB offline")
-	response := rt.SendAdminRequest("GET", "/db/", "")
+	response = rt.SendAdminRequest("GET", "/{{.db}}/", "")
 	var body db.Body
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.True(t, body["state"].(string) == "Online")
 
-	response = rt.SendAdminRequest("POST", "/db/_offline", "")
+	response = rt.SendAdminRequest("POST", "/{{.db}}/_offline", "")
 	rest.RequireStatus(t, response, 200)
 
-	response = rt.SendAdminRequest("GET", "/db/", "")
+	response = rt.SendAdminRequest("GET", "/{{.db}}/", "")
 	body = nil
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.True(t, body["state"].(string) == "Offline")
 
-	rest.RequireStatus(t, rt.SendRequest("GET", "/db/doc1", ""), 503)
+	rest.RequireStatus(t, rt.SendRequest("GET", "/{{.keyspace}}/doc1", ""), 503)
 }
 
 // Take DB offline and ensure can put db config
@@ -482,17 +485,20 @@ func TestDBOfflinePutDbConfig(t *testing.T) {
 // Reproduces #2223
 func TestDBGetConfigNames(t *testing.T) {
 
-	rt := rest.NewRestTester(t, nil)
-	defer rt.Close()
-
 	p := "password"
-
-	rt.DatabaseConfig = &rest.DatabaseConfig{DbConfig: rest.DbConfig{
-		Users: map[string]*auth.PrincipalConfig{
-			"alice": &auth.PrincipalConfig{Password: &p},
-			"bob":   &auth.PrincipalConfig{Password: &p},
+	rt := rest.NewRestTester(t,
+		&rest.RestTesterConfig{
+			DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
+				Users: map[string]*auth.PrincipalConfig{
+					"alice": &auth.PrincipalConfig{Password: &p},
+					"bob":   &auth.PrincipalConfig{Password: &p},
+				},
+			},
+			},
 		},
-	}}
+	)
+
+	defer rt.Close()
 
 	response := rt.SendAdminRequest("GET", "/db/_config?include_runtime=true", "")
 	var body rest.DbConfig
@@ -729,7 +735,7 @@ func TestPurgeWithBadJsonPayload(t *testing.T) {
 	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 
-	response := rt.SendAdminRequest("POST", "/db/_purge", "foo")
+	response := rt.SendAdminRequest("POST", "/{{.keyspace}}/_purge", "foo")
 	rest.RequireStatus(t, response, 400)
 }
 
@@ -738,7 +744,7 @@ func TestPurgeWithNonArrayRevisionList(t *testing.T) {
 	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 
-	response := rt.SendAdminRequest("POST", "/db/_purge", `{"foo":"list"}`)
+	response := rt.SendAdminRequest("POST", "/{{.keyspace}}/_purge", `{"foo":"list"}`)
 	rest.RequireStatus(t, response, 200)
 
 	var body map[string]interface{}
@@ -751,7 +757,7 @@ func TestPurgeWithEmptyRevisionList(t *testing.T) {
 	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 
-	response := rt.SendAdminRequest("POST", "/db/_purge", `{"foo":[]}`)
+	response := rt.SendAdminRequest("POST", "/{{.keyspace}}/_purge", `{"foo":[]}`)
 	rest.RequireStatus(t, response, 200)
 
 	var body map[string]interface{}
@@ -764,7 +770,7 @@ func TestPurgeWithGreaterThanOneRevision(t *testing.T) {
 	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 
-	response := rt.SendAdminRequest("POST", "/db/_purge", `{"foo":["rev1","rev2"]}`)
+	response := rt.SendAdminRequest("POST", "/{{.keyspace}}/_purge", `{"foo":["rev1","rev2"]}`)
 	rest.RequireStatus(t, response, 200)
 
 	var body map[string]interface{}
@@ -777,7 +783,7 @@ func TestPurgeWithNonStarRevision(t *testing.T) {
 	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 
-	response := rt.SendAdminRequest("POST", "/db/_purge", `{"foo":["rev1"]}`)
+	response := rt.SendAdminRequest("POST", "/{{.keyspace}}/_purge", `{"foo":["rev1"]}`)
 	rest.RequireStatus(t, response, 200)
 
 	var body map[string]interface{}
@@ -789,26 +795,26 @@ func TestPurgeWithStarRevision(t *testing.T) {
 	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 
-	rest.RequireStatus(t, rt.SendAdminRequest("PUT", "/db/doc1", `{"foo":"bar"}`), 201)
+	rest.RequireStatus(t, rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1", `{"foo":"bar"}`), 201)
 
-	response := rt.SendAdminRequest("POST", "/db/_purge", `{"doc1":["*"]}`)
+	response := rt.SendAdminRequest("POST", "/{{.keyspace}}/_purge", `{"doc1":["*"]}`)
 	rest.RequireStatus(t, response, 200)
 	var body map[string]interface{}
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.Equal(t, map[string]interface{}{"purged": map[string]interface{}{"doc1": []interface{}{"*"}}}, body)
 
 	// Create new versions of the doc1 without conflicts
-	rest.RequireStatus(t, rt.SendAdminRequest("PUT", "/db/doc1", `{"foo":"bar"}`), 201)
+	rest.RequireStatus(t, rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1", `{"foo":"bar"}`), 201)
 }
 
 func TestPurgeWithMultipleValidDocs(t *testing.T) {
 	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 
-	rest.RequireStatus(t, rt.SendAdminRequest("PUT", "/db/doc1", `{"foo":"bar"}`), 201)
-	rest.RequireStatus(t, rt.SendAdminRequest("PUT", "/db/doc2", `{"moo":"car"}`), 201)
+	rest.RequireStatus(t, rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1", `{"foo":"bar"}`), 201)
+	rest.RequireStatus(t, rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc2", `{"moo":"car"}`), 201)
 
-	response := rt.SendAdminRequest("POST", "/db/_purge", `{"doc1":["*"],"doc2":["*"]}`)
+	response := rt.SendAdminRequest("POST", "/{{.keyspace}}/_purge", `{"doc1":["*"],"doc2":["*"]}`)
 	rest.RequireStatus(t, response, 200)
 
 	var body map[string]interface{}
@@ -816,8 +822,8 @@ func TestPurgeWithMultipleValidDocs(t *testing.T) {
 	assert.Equal(t, map[string]interface{}{"purged": map[string]interface{}{"doc1": []interface{}{"*"}, "doc2": []interface{}{"*"}}}, body)
 
 	// Create new versions of the docs without conflicts
-	rest.RequireStatus(t, rt.SendAdminRequest("PUT", "/db/doc1", `{"foo":"bar"}`), 201)
-	rest.RequireStatus(t, rt.SendAdminRequest("PUT", "/db/doc2", `{"moo":"car"}`), 201)
+	rest.RequireStatus(t, rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1", `{"foo":"bar"}`), 201)
+	rest.RequireStatus(t, rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc2", `{"moo":"car"}`), 201)
 }
 
 // TestPurgeWithChannelCache will make sure thant upon calling _purge, the channel caches are also cleaned
@@ -826,10 +832,10 @@ func TestPurgeWithChannelCache(t *testing.T) {
 	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 
-	rest.RequireStatus(t, rt.SendAdminRequest("PUT", "/db/doc1", `{"foo":"bar", "channels": ["abc", "def"]}`), http.StatusCreated)
-	rest.RequireStatus(t, rt.SendAdminRequest("PUT", "/db/doc2", `{"moo":"car", "channels": ["abc"]}`), http.StatusCreated)
+	rest.RequireStatus(t, rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1", `{"foo":"bar", "channels": ["abc", "def"]}`), http.StatusCreated)
+	rest.RequireStatus(t, rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc2", `{"moo":"car", "channels": ["abc"]}`), http.StatusCreated)
 
-	changes, err := rt.WaitForChanges(2, "/db/_changes?filter=sync_gateway/bychannel&channels=abc,def", "", true)
+	changes, err := rt.WaitForChanges(2, "/{{.keyspace}}/_changes?filter=sync_gateway/bychannel&channels=abc,def", "", true)
 	require.NoError(t, err, "Error waiting for changes")
 	base.RequireAllAssertions(t,
 		assert.Equal(t, "doc1", changes.Results[0].ID),
@@ -837,13 +843,13 @@ func TestPurgeWithChannelCache(t *testing.T) {
 	)
 
 	// Purge "doc1"
-	resp := rt.SendAdminRequest("POST", "/db/_purge", `{"doc1":["*"]}`)
+	resp := rt.SendAdminRequest("POST", "/{{.keyspace}}/_purge", `{"doc1":["*"]}`)
 	rest.RequireStatus(t, resp, http.StatusOK)
 	var body map[string]interface{}
 	require.NoError(t, base.JSONUnmarshal(resp.Body.Bytes(), &body))
 	assert.Equal(t, map[string]interface{}{"purged": map[string]interface{}{"doc1": []interface{}{"*"}}}, body)
 
-	changes, err = rt.WaitForChanges(1, "/db/_changes?filter=sync_gateway/bychannel&channels=abc,def", "", true)
+	changes, err = rt.WaitForChanges(1, "/{{.keyspace}}/_changes?filter=sync_gateway/bychannel&channels=abc,def", "", true)
 	require.NoError(t, err, "Error waiting for changes")
 	assert.Equal(t, "doc2", changes.Results[0].ID)
 
@@ -853,31 +859,31 @@ func TestPurgeWithSomeInvalidDocs(t *testing.T) {
 	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 
-	rest.RequireStatus(t, rt.SendAdminRequest("PUT", "/db/doc1", `{"foo":"bar"}`), 201)
-	rest.RequireStatus(t, rt.SendAdminRequest("PUT", "/db/doc2", `{"moo":"car"}`), 201)
+	rest.RequireStatus(t, rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1", `{"foo":"bar"}`), 201)
+	rest.RequireStatus(t, rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc2", `{"moo":"car"}`), 201)
 
-	response := rt.SendAdminRequest("POST", "/db/_purge", `{"doc1":["*"],"doc2":["1-123"]}`)
+	response := rt.SendAdminRequest("POST", "/{{.keyspace}}/_purge", `{"doc1":["*"],"doc2":["1-123"]}`)
 	rest.RequireStatus(t, response, 200)
 	var body map[string]interface{}
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.Equal(t, map[string]interface{}{"purged": map[string]interface{}{"doc1": []interface{}{"*"}}}, body)
 
 	// Create new versions of the doc1 without conflicts
-	rest.RequireStatus(t, rt.SendAdminRequest("PUT", "/db/doc1", `{"foo":"bar"}`), 201)
+	rest.RequireStatus(t, rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1", `{"foo":"bar"}`), 201)
 
 	// Create new versions of the doc2 fails because it already exists
-	rest.RequireStatus(t, rt.SendAdminRequest("PUT", "/db/doc2", `{"moo":"car"}`), 409)
+	rest.RequireStatus(t, rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc2", `{"moo":"car"}`), 409)
 }
 
 func TestRawRedaction(t *testing.T) {
 	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 
-	res := rt.SendAdminRequest("PUT", "/db/testdoc", `{"foo":"bar", "channels": ["achannel"]}`)
+	res := rt.SendAdminRequest("PUT", "/{{.keyspace}}/testdoc", `{"foo":"bar", "channels": ["achannel"]}`)
 	rest.RequireStatus(t, res, http.StatusCreated)
 
 	// Test redact being disabled by default
-	res = rt.SendAdminRequest("GET", "/db/_raw/testdoc", ``)
+	res = rt.SendAdminRequest("GET", "/{{.keyspace}}/_raw/testdoc", ``)
 	var body map[string]interface{}
 	err := base.JSONUnmarshal(res.Body.Bytes(), &body)
 	assert.NoError(t, err)
@@ -887,7 +893,7 @@ func TestRawRedaction(t *testing.T) {
 
 	// Test redacted
 	body = map[string]interface{}{}
-	res = rt.SendAdminRequest("GET", "/db/_raw/testdoc?redact=true&include_doc=false", ``)
+	res = rt.SendAdminRequest("GET", "/{{.keyspace}}/_raw/testdoc?redact=true&include_doc=false", ``)
 	err = base.JSONUnmarshal(res.Body.Bytes(), &body)
 	assert.NoError(t, err)
 	syncData = body[base.SyncPropertyName]
@@ -897,18 +903,18 @@ func TestRawRedaction(t *testing.T) {
 
 	// Test include doc false doesn't return doc
 	body = map[string]interface{}{}
-	res = rt.SendAdminRequest("GET", "/db/_raw/testdoc?include_doc=false", ``)
+	res = rt.SendAdminRequest("GET", "/{{.keyspace}}/_raw/testdoc?include_doc=false", ``)
 	assert.NotContains(t, res.Body.String(), "foo")
 
 	// Test doc is returned by default
 	body = map[string]interface{}{}
-	res = rt.SendAdminRequest("GET", "/db/_raw/testdoc", ``)
+	res = rt.SendAdminRequest("GET", "/{{.keyspace}}/_raw/testdoc", ``)
 	err = base.JSONUnmarshal(res.Body.Bytes(), &body)
 	assert.NoError(t, err)
 	assert.Equal(t, body["foo"], "bar")
 
 	// Test that you can't use include_doc and redact at the same time
-	res = rt.SendAdminRequest("GET", "/db/_raw/testdoc?include_doc=true&redact=true", ``)
+	res = rt.SendAdminRequest("GET", "/{{.keyspace}}/_raw/testdoc?include_doc=true&redact=true", ``)
 	rest.RequireStatus(t, res, http.StatusBadRequest)
 }
 
@@ -919,11 +925,11 @@ func TestRawTombstone(t *testing.T) {
 	const docID = "testdoc"
 
 	// Create a doc
-	resp := rt.SendAdminRequest(http.MethodPut, "/db/"+docID, `{"foo":"bar"}`)
+	resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID, `{"foo":"bar"}`)
 	rest.RequireStatus(t, resp, http.StatusCreated)
 	revID := rest.RespRevID(t, resp)
 
-	resp = rt.SendAdminRequest(http.MethodGet, "/db/_raw/"+docID, ``)
+	resp = rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/_raw/"+docID, ``)
 	assert.Equal(t, "application/json", resp.Header().Get("Content-Type"))
 	assert.NotContains(t, string(resp.BodyBytes()), `"_id":"`+docID+`"`)
 	assert.NotContains(t, string(resp.BodyBytes()), `"_rev":"`+revID+`"`)
@@ -931,11 +937,11 @@ func TestRawTombstone(t *testing.T) {
 	assert.NotContains(t, string(resp.BodyBytes()), `"_deleted":true`)
 
 	// Delete the doc
-	resp = rt.SendAdminRequest(http.MethodDelete, "/db/"+docID+"?rev="+revID, ``)
+	resp = rt.SendAdminRequest(http.MethodDelete, fmt.Sprintf("/{{.keyspace}}/%s?rev=%s", docID, revID), ``)
 	rest.RequireStatus(t, resp, http.StatusOK)
 	revID = rest.RespRevID(t, resp)
 
-	resp = rt.SendAdminRequest(http.MethodGet, "/db/_raw/"+docID, ``)
+	resp = rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/_raw/"+docID, ``)
 	assert.Equal(t, "application/json", resp.Header().Get("Content-Type"))
 	assert.NotContains(t, string(resp.BodyBytes()), `"_id":"`+docID+`"`)
 	assert.NotContains(t, string(resp.BodyBytes()), `"_rev":"`+revID+`"`)
@@ -1241,13 +1247,13 @@ func TestHandleGetRevTree(t *testing.T) {
     	{"_id": "foo", "type": "user", "updated_at": "2016-06-26T17:37:49.715Z", "status": "offline", "_rev": "1-456"}, 
     	{"_id": "foo", "type": "user", "updated_at": "2016-06-25T17:37:49.715Z", "status": "offline", "_rev": "1-789"}]}`
 
-	resp := rt.SendAdminRequest(http.MethodPost, "/db/_bulk_docs", reqBodyJson)
+	resp := rt.SendAdminRequest(http.MethodPost, "/{{.keyspace}}/_bulk_docs", reqBodyJson)
 	rest.RequireStatus(t, resp, http.StatusCreated)
 	respBodyExpected := `[{"id":"foo","rev":"1-123"},{"id":"foo","rev":"1-456"},{"id":"foo","rev":"1-789"}]`
 	assert.Equal(t, respBodyExpected, resp.Body.String())
 
 	// Get the revision tree  of the user foo
-	resp = rt.SendAdminRequest(http.MethodGet, "/db/_revtree/foo", "")
+	resp = rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/_revtree/foo", "")
 	rest.RequireStatus(t, resp, http.StatusOK)
 	assert.Contains(t, resp.Body.String(), "1-123")
 	assert.Contains(t, resp.Body.String(), "1-456")
@@ -1334,7 +1340,6 @@ func TestSoftDeleteCasMismatch(t *testing.T) {
 // Test warnings being issued when a new channel is created with over 250 characters - CBG-1475
 func TestChannelNameSizeWarningBoundaries(t *testing.T) {
 	syncFn := "function sync(doc, oldDoc) { channel(doc.chan); }"
-	var rt *rest.RestTester
 
 	testCases := []struct {
 		name                string
@@ -1387,7 +1392,7 @@ func TestChannelNameSizeWarningBoundaries(t *testing.T) {
 			if test.warnThresholdLength != base.DefaultWarnThresholdChannelNameSize {
 				thresholdConfig = &db.WarningThresholds{ChannelNameSize: &test.warnThresholdLength}
 			}
-			rt = rest.NewRestTester(t, &rest.RestTesterConfig{
+			rt := rest.NewRestTester(t, &rest.RestTesterConfig{
 				SyncFn: syncFn,
 				DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
 					Unsupported: &db.UnsupportedOptions{
@@ -1402,7 +1407,7 @@ func TestChannelNameSizeWarningBoundaries(t *testing.T) {
 
 			docId := fmt.Sprintf("doc%v", test.channelLength)
 			chanName := strings.Repeat("A", test.channelLength)
-			tr := rt.SendAdminRequest("PUT", "/db/"+docId, `{"chan":"`+chanName+`"}`)
+			tr := rt.SendAdminRequest("PUT", "/{{.keyspace}}/"+docId, `{"chan":"`+chanName+`"}`)
 
 			rest.RequireStatus(t, tr, http.StatusCreated)
 			chanNameWarnCountAfter := rt.ServerContext().Database(ctx, "db").DbStats.Database().WarnChannelNameSizeCount.Value()
@@ -1424,13 +1429,13 @@ func TestChannelNameSizeWarningUpdateExistingDoc(t *testing.T) {
 	// Update doc - should warn
 	chanName := strings.Repeat("B", int(base.DefaultWarnThresholdChannelNameSize)+5)
 	t.Run("Update doc without changing channel", func(t *testing.T) {
-		tr := rt.SendAdminRequest("PUT", "/db/replace", `{"chan":"`+chanName+`"}`) // init doc
+		tr := rt.SendAdminRequest("PUT", "/{{.keyspace}}/replace", `{"chan":"`+chanName+`"}`) // init doc
 		rest.RequireStatus(t, tr, http.StatusCreated)
 
 		ctx := rt.Context()
 		before := rt.ServerContext().Database(ctx, "db").DbStats.Database().WarnChannelNameSizeCount.Value()
 		revId := rest.RespRevID(t, tr)
-		tr = rt.SendAdminRequest("PUT", "/db/replace?rev="+revId, `{"chan":"`+chanName+`", "data":"test"}`)
+		tr = rt.SendAdminRequest("PUT", "/{{.keyspace}}/replace?rev="+revId, `{"chan":"`+chanName+`", "data":"test"}`)
 		rest.RequireStatus(t, tr, http.StatusCreated)
 		after := rt.ServerContext().Database(ctx, "db").DbStats.Database().WarnChannelNameSizeCount.Value()
 		assert.Equal(t, before+1, after)
@@ -1448,14 +1453,14 @@ func TestChannelNameSizeWarningDocChannelUpdate(t *testing.T) {
 	t.Run("Update doc with new channel", func(t *testing.T) {
 
 		chanName := strings.Repeat("C", channelLength)
-		tr := rt.SendAdminRequest("PUT", "/db/replaceNewChannel", `{"chan":"`+chanName+`"}`) // init doc
+		tr := rt.SendAdminRequest("PUT", "/{{.keyspace}}/replaceNewChannel", `{"chan":"`+chanName+`"}`) // init doc
 		rest.RequireStatus(t, tr, http.StatusCreated)
 
 		ctx := rt.Context()
 		before := rt.ServerContext().Database(ctx, "db").DbStats.Database().WarnChannelNameSizeCount.Value()
 		revId := rest.RespRevID(t, tr)
 		chanName = strings.Repeat("D", channelLength+5)
-		tr = rt.SendAdminRequest("PUT", "/db/replaceNewChannel?rev="+revId, fmt.Sprintf(`{"chan":"`+chanName+`", "data":"test"}`))
+		tr = rt.SendAdminRequest("PUT", "/{{.keyspace}}/replaceNewChannel?rev="+revId, fmt.Sprintf(`{"chan":"`+chanName+`", "data":"test"}`))
 		rest.RequireStatus(t, tr, http.StatusCreated)
 		after := rt.ServerContext().Database(ctx, "db").DbStats.Database().WarnChannelNameSizeCount.Value()
 		assert.Equal(t, before+1, after)
@@ -1472,13 +1477,13 @@ func TestChannelNameSizeWarningDeleteChannel(t *testing.T) {
 	// Delete channel over max len - no warning
 	t.Run("Delete channel over max length", func(t *testing.T) {
 		chanName := strings.Repeat("F", channelLength)
-		tr := rt.SendAdminRequest("PUT", "/db/deleteme", `{"chan":"`+chanName+`"}`) // init channel
+		tr := rt.SendAdminRequest("PUT", "/{{.keyspace}}/deleteme", `{"chan":"`+chanName+`"}`) // init channel
 		rest.RequireStatus(t, tr, http.StatusCreated)
 
 		ctx := rt.Context()
 		before := rt.ServerContext().Database(ctx, "db").DbStats.Database().WarnChannelNameSizeCount.Value()
 		revId := rest.RespRevID(t, tr)
-		tr = rt.SendAdminRequest("DELETE", "/db/deleteme?rev="+revId, "")
+		tr = rt.SendAdminRequest("DELETE", "/{{.keyspace}}/deleteme?rev="+revId, "")
 		rest.RequireStatus(t, tr, http.StatusOK)
 		after := rt.ServerContext().Database(ctx, "db").DbStats.Database().WarnChannelNameSizeCount.Value()
 		assert.Equal(t, before, after)
@@ -1666,7 +1671,7 @@ func TestLoggingDeprecationWarning(t *testing.T) {
 	defer rt.Close()
 
 	// Create doc just to startup server and force any initial warnings
-	resp := rt.SendAdminRequest("PUT", "/db/doc", "{}")
+	resp := rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc", "{}")
 	rest.RequireStatus(t, resp, http.StatusCreated)
 
 	warnCountBefore := base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().WarnCount.Value()
@@ -2113,9 +2118,9 @@ func TestSwitchDbConfigCollectionName(t *testing.T) {
 	dataStore2 := tb.GetNamedDataStore(1)
 	dataStore2Name, ok := base.AsDataStoreName(dataStore2)
 	require.True(t, ok)
-	keyspace1 := fmt.Sprintf("%s.%s.%s", "db", dataStore1Name.ScopeName(), dataStore1Name.CollectionName())
-	keyspace2 := fmt.Sprintf("%s.%s.%s", "db", dataStore2Name.ScopeName(), dataStore2Name.CollectionName())
 
+	keyspace1 := fmt.Sprintf("db.%s.%s", dataStore1Name.ScopeName(),
+		dataStore1Name.CollectionName())
 	resp := rest.BootstrapAdminRequest(t, http.MethodPut, "/db/", fmt.Sprintf(
 		`{"bucket": "%s", "scopes": {"%s": {"collections": {"%s": {}}}}, "num_index_replicas": 0, "enable_shared_bucket_access": true, "use_views": false}`,
 		tb.GetName(), dataStore1Name.ScopeName(), dataStore1Name.CollectionName(),
@@ -2123,7 +2128,7 @@ func TestSwitchDbConfigCollectionName(t *testing.T) {
 	resp.RequireStatus(http.StatusCreated)
 
 	// put a doc in db
-	resp = rest.BootstrapAdminRequest(t, http.MethodPut, fmt.Sprintf("/%s/10001", keyspace1), `{"type":"test_doc"}`)
+	resp = rest.BootstrapAdminRequest(t, http.MethodPut, "/"+keyspace1+"/10001", `{"type":"test_doc"}`)
 	resp.RequireStatus(http.StatusCreated)
 
 	// update config to another collection
@@ -2134,7 +2139,7 @@ func TestSwitchDbConfigCollectionName(t *testing.T) {
 	resp.RequireStatus(http.StatusCreated)
 
 	// put doc in new collection
-	resp = rest.BootstrapAdminRequest(t, http.MethodPut, fmt.Sprintf("/%s/10001", keyspace2), `{"type":"test_doc1"}`)
+	resp = rest.BootstrapAdminRequest(t, http.MethodPut, fmt.Sprintf("/db.%s.%s/10001", dataStore2Name.ScopeName(), dataStore2Name.CollectionName()), `{"type":"test_doc1"}`)
 	resp.RequireStatus(http.StatusCreated)
 
 	// update back to original collection config
@@ -3010,7 +3015,7 @@ func TestApiInternalPropertiesHandling(t *testing.T) {
 			rawBody, err := json.Marshal(test.inputBody)
 			require.NoError(t, err)
 
-			resp := rt.SendAdminRequest("PUT", "/db/"+docID, string(rawBody))
+			resp := rt.SendAdminRequest("PUT", "/{{.keyspace}}/"+docID, string(rawBody))
 			if test.expectedErrorStatus != nil {
 				rest.RequireStatus(t, resp, *test.expectedErrorStatus)
 				return
@@ -3087,7 +3092,7 @@ func TestPutIDRevMatchBody(t *testing.T) {
 	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 	// Create document to create rev from
-	resp := rt.SendAdminRequest("PUT", "/db/doc", "{}")
+	resp := rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc", "{}")
 	rest.RequireStatus(t, resp, 201)
 	rev := rest.RespRevID(t, resp)
 
@@ -3102,7 +3107,7 @@ func TestPutIDRevMatchBody(t *testing.T) {
 				docRev = strings.ReplaceAll(docRev, "[REV]", rev)
 			}
 
-			resp = rt.SendAdminRequest("PUT", "/db/"+docID+"?rev="+docRev, docBody)
+			resp = rt.SendAdminRequest("PUT", fmt.Sprintf("/{{.keyspace}}/%s?rev=%s", docID, docRev), docBody)
 			if test.expectError {
 				rest.RequireStatus(t, resp, 400)
 				return

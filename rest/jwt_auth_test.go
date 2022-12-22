@@ -248,7 +248,7 @@ func TestLocalJWTAuthenticationEdgeCases(t *testing.T) {
 				require.NoError(t, err, "Failed to register test user %s", createUserName)
 			}
 
-			req, err := http.NewRequest(http.MethodPost, mockSyncGatewayURL+"/db/_session", bytes.NewBufferString("{}"))
+			req, err := http.NewRequest(http.MethodPost, mockSyncGatewayURL+"/"+restTester.GetDatabase().Name+"/_session", bytes.NewBufferString("{}"))
 			require.NoError(t, err)
 
 			req.Header.Set("Authorization", BearerToken+" "+token)
