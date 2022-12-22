@@ -354,7 +354,7 @@ func TestImportFilterEndpoint(t *testing.T) {
 	require.NoError(t, sc.WaitForRESTAPIs())
 
 	// Get a test bucket, and use it to create the database.
-	tb := base.GetTestBucketDefaultCollection(t)
+	tb := base.GetTestBucket(t)
 	defer func() {
 		fmt.Println("closing test bucket")
 		tb.Close()
@@ -372,7 +372,7 @@ func TestImportFilterEndpoint(t *testing.T) {
 	resp.RequireStatus(http.StatusOK)
 
 	// Add a document
-	err = tb.Bucket.Set("importDoc1", 0, nil, []byte("{}"))
+	err = tb.Bucket.DefaultDataStore().Set("importDoc1", 0, nil, []byte("{}"))
 	assert.NoError(t, err)
 
 	// Ensure document is imported based on default import filter
@@ -384,7 +384,7 @@ func TestImportFilterEndpoint(t *testing.T) {
 	resp.RequireStatus(http.StatusOK)
 
 	// Add a document
-	err = tb.Bucket.Set("importDoc2", 0, nil, []byte("{}"))
+	err = tb.Bucket.DefaultDataStore().Set("importDoc2", 0, nil, []byte("{}"))
 	assert.NoError(t, err)
 
 	// Ensure document is not imported and is rejected based on updated filter
@@ -396,7 +396,7 @@ func TestImportFilterEndpoint(t *testing.T) {
 	resp.RequireStatus(http.StatusOK)
 
 	// Add a document
-	err = tb.Bucket.Set("importDoc3", 0, nil, []byte("{}"))
+	err = tb.Bucket.DefaultDataStore().Set("importDoc3", 0, nil, []byte("{}"))
 	assert.NoError(t, err)
 
 	// Ensure document is imported based on default import filter

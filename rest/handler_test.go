@@ -85,6 +85,11 @@ func TestParseHTTPRangeHeader(t *testing.T) {
 func TestHTTPLoggingRedaction(t *testing.T) {
 
 	base.LongRunningTest(t)
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	keyspace := rt.GetSingleKeyspace()
+
 	cases := []struct {
 		name, method, path, expectedLog string
 		admin                           bool
@@ -104,28 +109,28 @@ func TestHTTPLoggingRedaction(t *testing.T) {
 		{
 			name:        "raw-docid",
 			method:      http.MethodGet,
-			path:        "/db/_raw/test",
-			expectedLog: "/db/_raw/<ud>test</ud>",
+			path:        fmt.Sprintf("/%s/_raw/test", keyspace),
+			expectedLog: fmt.Sprintf("/%s/_raw/<ud>test</ud>", keyspace),
 			admin:       true,
 		},
 		{
 			name:        "revtree-docid",
 			method:      http.MethodGet,
-			path:        "/db/_revtree/test",
-			expectedLog: "/db/_revtree/<ud>test</ud>",
+			path:        fmt.Sprintf("/%s/_revtree/test", keyspace),
+			expectedLog: fmt.Sprintf("/%s/_revtree/<ud>test</ud>", keyspace),
 			admin:       true,
 		},
 		{
 			name:        "docid-attach",
 			method:      http.MethodGet,
-			path:        "/db/test/attach",
-			expectedLog: "/db/<ud>test</ud>/<ud>attach</ud>",
+			path:        fmt.Sprintf("/%s/test/attach", keyspace),
+			expectedLog: fmt.Sprintf("/%s/<ud>test</ud>/<ud>attach</ud>", keyspace),
 		},
 		{
 			name:        "docid-attach-equalnames",
 			method:      http.MethodGet,
-			path:        "/db/test/test",
-			expectedLog: "/db/<ud>test</ud>/<ud>test</ud>",
+			path:        fmt.Sprintf("/%s/test/test", keyspace),
+			expectedLog: fmt.Sprintf("/%s/<ud>test</ud>/<ud>test</ud>", keyspace),
 		},
 		{
 			name:        "user",
@@ -151,15 +156,12 @@ func TestHTTPLoggingRedaction(t *testing.T) {
 		{
 			name:        "CBG-2059",
 			method:      http.MethodGet,
-			path:        "/db/db",
-			expectedLog: "/db/<ud>db</ud>",
+			path:        fmt.Sprintf("/%s/db", keyspace),
+			expectedLog: fmt.Sprintf("/%s/<ud>db</ud>", keyspace),
 		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			rt := NewRestTester(t, nil)
-			defer rt.Close()
-
 			base.AssertLogContains(t, tc.expectedLog, func() {
 				if tc.admin {
 					_ = rt.SendAdminRequest(tc.method, tc.path, "")
@@ -223,13 +225,13 @@ func Test_parseKeyspace(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.ks, func(t *testing.T) {
-			gotDb, gotScope, gotCollection, err := parseKeyspace(tt.ks)
-			if !tt.wantErr(t, err, fmt.Sprintf("parseKeyspace(%v)", tt.ks)) {
+			gotDb, gotScope, gotCollection, err := ParseKeyspace(tt.ks)
+			if !tt.wantErr(t, err, fmt.Sprintf("ParseKeyspace(%v)", tt.ks)) {
 				return
 			}
-			assert.Equalf(t, tt.wantDb, gotDb, "parseKeyspace(%v)", tt.ks)
-			assert.Equalf(t, tt.wantScope, gotScope, "parseKeyspace(%v)", tt.ks)
-			assert.Equalf(t, tt.wantCollection, gotCollection, "parseKeyspace(%v)", tt.ks)
+			assert.Equalf(t, tt.wantDb, gotDb, "ParseKeyspace(%v)", tt.ks)
+			assert.Equalf(t, tt.wantScope, gotScope, "ParseKeyspace(%v)", tt.ks)
+			assert.Equalf(t, tt.wantCollection, gotCollection, "ParseKeyspace(%v)", tt.ks)
 		})
 	}
 }
@@ -237,6 +239,6 @@ func Test_parseKeyspace(t *testing.T) {
 func Benchmark_parseKeyspace(b *testing.B) {
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		_, _, _, _ = parseKeyspace("d.s.c")
+		_, _, _, _ = ParseKeyspace("d.s.c")
 	}
 }

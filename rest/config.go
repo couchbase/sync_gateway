@@ -98,18 +98,6 @@ func (dc *DbConfig) MakeBucketSpec() base.BucketSpec {
 		tlsPort = bc.KvTLSPort
 	}
 
-	// WIP: Collections Phase 1 - Grab just one scope/collection from the defined set.
-	// Phase 2 (multi collection) means DatabaseContext needs a set of BucketSpec/Collections, not just one...
-	var scope, collection *string
-	for scopeName, scopeConfig := range dc.Scopes {
-		scope = &scopeName
-		for collectionName := range scopeConfig.Collections {
-			base.WarnfCtx(context.TODO(), "WIP Collections (Phase 1) - Running db %q in scope %q collection %q", dc.Name, scopeName, collectionName)
-			collection = &collectionName
-			break
-		}
-	}
-
 	return base.BucketSpec{
 		Server:                server,
 		BucketName:            bucketName,
@@ -119,8 +107,6 @@ func (dc *DbConfig) MakeBucketSpec() base.BucketSpec {
 		KvTLSPort:             tlsPort,
 		Auth:                  bc,
 		MaxConcurrentQueryOps: bc.MaxConcurrentQueryOps,
-		Scope:                 scope,
-		Collection:            collection,
 	}
 }
 
@@ -177,7 +163,7 @@ type DbConfig struct {
 	Guest                            *auth.PrincipalConfig            `json:"guest,omitempty"`                                // Guest user settings
 	JavascriptTimeoutSecs            *uint32                          `json:"javascript_timeout_secs,omitempty"`              // The amount of seconds a Javascript function can run for. Set to 0 for no timeout.
 	GraphQL                          *functions.GraphQLConfig         `json:"graphql,omitempty"`                              // GraphQL configuration & resolver fns
-	UserFunctions                    functions.FunctionConfigMap      `json:"functions,omitempty"`                            // Named JS fns for clients to call
+	UserFunctions                    *functions.FunctionsConfig       `json:"functions,omitempty"`                            // Named JS fns for clients to call
 	Suspendable                      *bool                            `json:"suspendable,omitempty"`                          // Allow the database to be suspended
 }
 
@@ -853,11 +839,6 @@ func (dbConfig *DbConfig) validateVersion(ctx context.Context, isEnterpriseEditi
 		}
 
 		for scopeName, scopeConfig := range dbConfig.Scopes {
-			// WIP: Collections Phase 1 - Only allow a single collection
-			if len(scopeConfig.Collections) != 1 {
-				base.WarnfCtx(ctx, "WIP Collections Phase 1 only supports a single collection - had %d", len(scopeConfig.Collections))
-			}
-
 			if len(scopeConfig.Collections) == 0 {
 				multiError = multiError.Append(fmt.Errorf("must specify at least one collection in scope %v", scopeName))
 				continue
@@ -888,7 +869,7 @@ func (dbConfig *DbConfig) validateVersion(ctx context.Context, isEnterpriseEditi
 	}
 
 	if dbConfig.UserFunctions != nil {
-		if err := functions.ValidateFunctions(ctx, dbConfig.UserFunctions); err != nil {
+		if err := functions.ValidateFunctions(ctx, *dbConfig.UserFunctions); err != nil {
 			multiError = multiError.Append(err)
 		}
 	}

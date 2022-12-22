@@ -43,7 +43,8 @@ func TestUsersAPI(t *testing.T) {
 			},
 		},
 	}
-	rt := NewRestTester(t, rtConfig)
+	rt := NewRestTesterDefaultCollection(t, // CBG-2618: fix collection channel access
+		rtConfig)
 	defer rt.Close()
 
 	// Validate the zero user case
@@ -261,7 +262,7 @@ func TestUsersAPIDetailsWithLimit(t *testing.T) {
 func TestUserAPI(t *testing.T) {
 
 	// PUT a user
-	rt := NewRestTester(t, nil)
+	rt := NewRestTesterDefaultCollection(t, nil) // CBG-2618: fix collection channel access
 	defer rt.Close()
 	ctx := rt.Context()
 
@@ -289,7 +290,7 @@ func TestUserAPI(t *testing.T) {
 	user, _ := rt.ServerContext().Database(ctx, "db").Authenticator(ctx).GetUser("snej")
 	assert.Equal(t, "snej", user.Name())
 	assert.Equal(t, "jens@couchbase.com", user.Email())
-	assert.Equal(t, channels.TimedSet{"bar": channels.NewVbSimpleSequence(0x1), "foo": channels.NewVbSimpleSequence(0x1)}, user.ExplicitChannels())
+	assert.Equal(t, channels.TimedSet{"bar": channels.NewVbSimpleSequence(0x1), "foo": channels.NewVbSimpleSequence(0x1)}, user.CollectionExplicitChannels(base.DefaultScope, base.DefaultCollection))
 	assert.True(t, user.Authenticate("letmein"))
 
 	// Change the password and verify it:
@@ -306,7 +307,6 @@ func TestUserAPI(t *testing.T) {
 	// POST a user
 	response = rt.SendAdminRequest("POST", "/db/_user", `{"name":"snej", "password":"letmein", "admin_channels":["foo", "bar"]}`)
 	RequireStatus(t, response, 301)
-	rt.Bucket().Dump()
 
 	response = rt.SendAdminRequest("POST", "/db/_user/", `{"name":"snej", "password":"letmein", "admin_channels":["foo", "bar"]}`)
 	RequireStatus(t, response, 201)
@@ -398,7 +398,7 @@ func TestGuestUser(t *testing.T) {
 	ctx := rt.Context()
 	user, _ := rt.ServerContext().Database(ctx, "db").Authenticator(ctx).GetUser("")
 	assert.Empty(t, user.Name())
-	assert.Nil(t, user.ExplicitChannels())
+	assert.Nil(t, user.CollectionExplicitChannels(base.DefaultScope, base.DefaultCollection))
 	assert.True(t, user.Disabled())
 
 	// We can't delete the guest user, but we should get a reasonable error back.
@@ -477,7 +477,7 @@ func TestUserAndRoleResponseContentType(t *testing.T) {
 	assert.Equal(t, "application/json", response.Header().Get("Content-Type"))
 
 	// Create a new user and save to database to create user session.
-	authenticator := auth.NewAuthenticator(rt.Bucket(), nil, auth.DefaultAuthenticatorOptions())
+	authenticator := auth.NewAuthenticator(rt.MetadataStore(), nil, auth.DefaultAuthenticatorOptions())
 	user, err := authenticator.NewUser("eve", "cGFzc3dvcmQ=", channels.BaseSetOf(t, "*"))
 	assert.NoError(t, err, "Couldn't create new user")
 	assert.NoError(t, authenticator.Save(user), "Couldn't save new user")
@@ -564,12 +564,12 @@ func TestUserXattrsRawGet(t *testing.T) {
 	})
 	defer rt.Close()
 
-	userXattrStore, ok := base.AsUserXattrStore(rt.Bucket())
+	userXattrStore, ok := base.AsUserXattrStore(rt.GetSingleDataStore())
 	if !ok {
 		t.Skip("Test requires Couchbase Bucket")
 	}
 
-	resp := rt.SendAdminRequest("PUT", "/db/"+docKey, "{}")
+	resp := rt.SendAdminRequest("PUT", "/{{.keyspace}}/"+docKey, "{}")
 	RequireStatus(t, resp, http.StatusCreated)
 	require.NoError(t, rt.WaitForPendingChanges())
 
@@ -580,7 +580,7 @@ func TestUserXattrsRawGet(t *testing.T) {
 		return rt.GetDatabase().DbStats.SharedBucketImportStats.ImportCount.Value() == 1
 	})
 
-	resp = rt.SendAdminRequest("GET", "/db/_raw/"+docKey, "")
+	resp = rt.SendAdminRequest("GET", "/{{.keyspace}}/_raw/"+docKey, "")
 	RequireStatus(t, resp, http.StatusOK)
 
 	var RawReturn struct {
@@ -608,15 +608,16 @@ func TestObtainUserChannelsForDeletedRoleCasFail(t *testing.T) {
 			true,
 		},
 		{
-			"Delete On InheritedChannels",
+			"Delete On inheritedChannels",
 			false,
 		},
 	}
 
 	for _, testCase := range testCases {
 		t.Run(testCase.Name, func(t *testing.T) {
-			rt := NewRestTester(t, &RestTesterConfig{
-				SyncFn: `
+			rt := NewRestTesterDefaultCollection(t, // CBG-2618: fix collection channel access
+				&RestTesterConfig{
+					SyncFn: `
 			function(doc, oldDoc){
 				if (doc._id === 'roleChannels'){
 					access('role:role', doc.channels)
@@ -626,7 +627,7 @@ func TestObtainUserChannelsForDeletedRoleCasFail(t *testing.T) {
 				}
 			}
 		`,
-			})
+				})
 			defer rt.Close()
 
 			// Create role
@@ -645,11 +646,11 @@ func TestObtainUserChannelsForDeletedRoleCasFail(t *testing.T) {
 			resp = rt.SendAdminRequest("PUT", "/db/userRoles", `{"roles": "role:role"}`)
 			RequireStatus(t, resp, http.StatusCreated)
 
-			leakyBucket, ok := base.AsLeakyBucket(rt.TestBucket)
+			leakyDataStore, ok := base.AsLeakyDataStore(rt.TestBucket.GetSingleDataStore())
 			require.True(t, ok)
 
 			triggerCallback := false
-			leakyBucket.SetUpdateCallback(func(key string) {
+			leakyDataStore.SetUpdateCallback(func(key string) {
 				if triggerCallback {
 					triggerCallback = false
 					resp = rt.SendAdminRequest("DELETE", "/db/_role/role", ``)
@@ -669,7 +670,7 @@ func TestObtainUserChannelsForDeletedRoleCasFail(t *testing.T) {
 				triggerCallback = true
 			}
 
-			assert.Equal(t, []string{"!"}, user.InheritedChannels().AllKeys())
+			assert.Equal(t, []string{"!"}, user.InheritedCollectionChannels(base.DefaultScope, base.DefaultCollection).AllKeys())
 
 			// Ensure callback ran
 			assert.False(t, triggerCallback)
@@ -843,8 +844,11 @@ function(doc, oldDoc) {
 }
 
 `
-	rtConfig := RestTesterConfig{SyncFn: syncFunction}
-	var rt = NewRestTester(t, &rtConfig)
+	rtConfig := RestTesterConfig{
+		SyncFn: syncFunction,
+	}
+	rt := NewRestTesterDefaultCollection(t, // CBG-2618: fix collection channel access
+		&rtConfig)
 	defer rt.Close()
 
 	response := rt.SendAdminRequest("PUT", "/db/_user/bernard", `{"name":"bernard", "password":"letmein", "admin_channels":["profile-bernard"]}`)
@@ -962,7 +966,7 @@ func TestUserDeleteDuringChangesWithAccess(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		changesResponse := rt.Send(RequestByUser("GET", "/db/_changes?feed=continuous&since=0&timeout=3000", "", "bernard"))
+		changesResponse := rt.Send(RequestByUser("GET", "/{{.keyspace}}/_changes?feed=continuous&since=0&timeout=3000", "", "bernard"))
 		// When testing single threaded, this reproduces the issue described in #809.
 		// When testing multithreaded (-cpu 4 -race), there are three (valid) possibilities"
 		// 1. The DELETE gets processed before the _changes auth completes: this will return 401
@@ -984,14 +988,14 @@ func TestUserDeleteDuringChangesWithAccess(t *testing.T) {
 
 	// TODO: sleep required to ensure the changes feed iteration starts before the delete gets processed.
 	time.Sleep(500 * time.Millisecond)
-	rt.SendAdminRequest("PUT", "/db/bernard_doc1", `{"type":"setaccess", "owner":"bernard","channel":"foo"}`)
+	rt.SendAdminRequest("PUT", "/{{.keyspace}}/bernard_doc1", `{"type":"setaccess", "owner":"bernard","channel":"foo"}`)
 	rt.SendAdminRequest("DELETE", "/db/_user/bernard", "")
-	rt.SendAdminRequest("PUT", "/db/manny_doc1", `{"type":"setaccess", "owner":"manny","channel":"bar"}`)
-	rt.SendAdminRequest("PUT", "/db/bernard_doc2", `{"type":"general", "channel":"foo"}`)
+	rt.SendAdminRequest("PUT", "/{{.keyspace}}/manny_doc1", `{"type":"setaccess", "owner":"manny","channel":"bar"}`)
+	rt.SendAdminRequest("PUT", "/{{.keyspace}}/bernard_doc2", `{"type":"general", "channel":"foo"}`)
 
 	// case 3
 	for i := 0; i <= 5; i++ {
-		docId := fmt.Sprintf("/db/bernard_doc%d", i+3)
+		docId := fmt.Sprintf("/{{.keyspace}}/bernard_doc%d", i+3)
 		response = rt.SendAdminRequest("PUT", docId, `{"type":"setaccess", "owner":"bernard", "channel":"foo"}`)
 	}
 
@@ -1118,20 +1122,20 @@ func TestFunkyUsernames(t *testing.T) {
 			require.NoError(t, err)
 			require.NoError(t, a.Save(user))
 
-			response := rt.Send(RequestByUser("PUT", "/db/AC+DC", `{"foo":"bar", "channels": ["foo"]}`, tc.UserName))
+			response := rt.SendUserRequest("PUT", "/{{.keyspace}}/AC+DC", `{"foo":"bar", "channels": ["foo"]}`, tc.UserName)
 			RequireStatus(t, response, 201)
 
-			response = rt.Send(RequestByUser("GET", "/db/_all_docs", "", tc.UserName))
+			response = rt.SendUserRequest("GET", "/{{.keyspace}}/_all_docs", "", tc.UserName)
 			RequireStatus(t, response, 200)
 
-			response = rt.Send(RequestByUser("GET", "/db/AC+DC", "", tc.UserName))
+			response = rt.SendUserRequest("GET", "/{{.keyspace}}/AC+DC", "", tc.UserName)
 			RequireStatus(t, response, 200)
 			var overlay struct {
 				Rev string `json:"_rev"`
 			}
 			require.NoError(t, json.Unmarshal(response.Body.Bytes(), &overlay))
 
-			response = rt.Send(RequestByUser("DELETE", "/db/AC+DC?rev="+overlay.Rev, "", tc.UserName))
+			response = rt.SendUserRequest("DELETE", "/{{.keyspace}}/AC+DC?rev="+overlay.Rev, "", tc.UserName)
 			RequireStatus(t, response, 200)
 		})
 	}
@@ -1162,7 +1166,7 @@ func TestRemovingUserXattr(t *testing.T) {
 			name:       "GET",
 			autoImport: false,
 			importTrigger: func(t *testing.T, rt *RestTester, docKey string) {
-				resp := rt.SendAdminRequest("GET", "/db/"+docKey, "")
+				resp := rt.SendAdminRequest("GET", "/{{.keyspace}}/"+docKey, "")
 				RequireStatus(t, resp, http.StatusOK)
 			},
 		},
@@ -1170,7 +1174,7 @@ func TestRemovingUserXattr(t *testing.T) {
 			name:       "PUT",
 			autoImport: false,
 			importTrigger: func(t *testing.T, rt *RestTester, docKey string) {
-				resp := rt.SendAdminRequest("PUT", "/db/"+docKey, "{}")
+				resp := rt.SendAdminRequest("PUT", "/{{.keyspace}}/"+docKey, "{}")
 				RequireStatus(t, resp, http.StatusConflict)
 			},
 		},
@@ -1205,13 +1209,13 @@ func TestRemovingUserXattr(t *testing.T) {
 
 			defer rt.Close()
 
-			gocbBucket, ok := base.AsUserXattrStore(rt.Bucket())
+			gocbBucket, ok := base.AsUserXattrStore(rt.GetSingleDataStore())
 			if !ok {
 				t.Skip("Test requires Couchbase Bucket")
 			}
 
 			// Initial PUT
-			resp := rt.SendAdminRequest("PUT", "/db/"+docKey, `{}`)
+			resp := rt.SendAdminRequest("PUT", "/{{.keyspace}}/"+docKey, `{}`)
 			RequireStatus(t, resp, http.StatusCreated)
 
 			// Add xattr
@@ -1227,7 +1231,7 @@ func TestRemovingUserXattr(t *testing.T) {
 
 			// Get sync data for doc and ensure user xattr has been used correctly to set channel
 			var syncData db.SyncData
-			subdocStore, ok := base.AsSubdocXattrStore(rt.Bucket())
+			subdocStore, ok := base.AsSubdocXattrStore(rt.GetSingleDataStore())
 			require.True(t, ok)
 			_, err = subdocStore.SubdocGetXattr(docKey, base.SyncXattrName, &syncData)
 			assert.NoError(t, err)
@@ -1290,16 +1294,17 @@ func TestUserXattrAvoidRevisionIDGeneration(t *testing.T) {
 
 	defer rt.Close()
 
-	userXattrStore, ok := base.AsUserXattrStore(rt.Bucket())
+	dataStore := rt.GetSingleDataStore()
+	userXattrStore, ok := base.AsUserXattrStore(dataStore)
 	if !ok {
 		t.Skip("Test requires Couchbase Bucket")
 	}
 
-	subdocXattrStore, ok := base.AsSubdocXattrStore(rt.Bucket())
+	subdocXattrStore, ok := base.AsSubdocXattrStore(dataStore)
 	require.True(t, ok)
 
 	// Initial PUT
-	resp := rt.SendAdminRequest("PUT", "/db/"+docKey, `{}`)
+	resp := rt.SendAdminRequest("PUT", "/{{.keyspace}}/"+docKey, `{}`)
 	RequireStatus(t, resp, http.StatusCreated)
 
 	require.NoError(t, rt.WaitForPendingChanges())
@@ -1338,7 +1343,7 @@ func TestUserXattrAvoidRevisionIDGeneration(t *testing.T) {
 	assert.Equal(t, []string{channelName}, syncData2.Channels.KeySet())
 	assert.Equal(t, syncData2.Channels.KeySet(), docRev2.Channels.ToArray())
 
-	err = rt.Bucket().Set(docKey, 0, nil, []byte(`{"update": "update"}`))
+	err = rt.GetSingleDataStore().Set(docKey, 0, nil, []byte(`{"update": "update"}`))
 	assert.NoError(t, err)
 
 	err = rt.WaitForCondition(func() bool {
@@ -1352,4 +1357,60 @@ func TestUserXattrAvoidRevisionIDGeneration(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.NotEqual(t, syncData2.CurrentRev, syncData3.CurrentRev)
+}
+
+func TestGetUserCollectionAccess(t *testing.T) {
+
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	// Create a user with collection metadata
+	userPayload := `{
+		"email":"alice@couchbase.com", 
+		"password":"letmein", 
+		"admin_channels":["foo", "bar"],
+		"collection_access": {
+			"scope1": {
+				"collection1": {
+					"admin_channels":["foo", "bar1"]
+				}
+			}
+		}
+	}`
+
+	putResponse := rt.SendAdminRequest("PUT", "/db/_user/alice", userPayload)
+	RequireStatus(t, putResponse, 201)
+
+	getResponse := rt.SendAdminRequest("GET", "/db/_user/alice", "")
+	RequireStatus(t, getResponse, 200)
+	log.Printf("response:%s", getResponse.Body.Bytes())
+	var responseConfig auth.PrincipalConfig
+	err := json.Unmarshal(getResponse.Body.Bytes(), &responseConfig)
+	require.NoError(t, err)
+	collectionAccess, ok := responseConfig.CollectionAccess["scope1"]["collection1"]
+	require.True(t, ok)
+	assert.Equal(t, channels.BaseSetOf(t, "foo", "bar1"), collectionAccess.ExplicitChannels_)
+	// TODO: computed channels requires authenticator populated with collection set, pending CBG-2266
+	//assert.Equal(t, channels.BaseSetOf(t), collectionAccess.Channels_)
+	assert.Nil(t, collectionAccess.JWTChannels_)
+	assert.Nil(t, collectionAccess.JWTLastUpdated)
+
+	// TODO: Additional test cases still required:
+	//  GET _user
+	//  1. Hide entries for collections that are no longer part of the database
+	//
+	//  GET _role
+	//  1. Standard get
+	//  2. Hide entries for collections that are no longer part of the database
+	//
+	//  INSERT _user
+	//  1. Attempt to write read-only properties (error)
+	//  2. Attempt to write collections that aren't defined for the database (error)
+	//  INSERT _role
+	//  1. Attempt to write read-only properties (error)
+	//  2. Attempt to write collections that aren't defined for the database (error)
+	//  UPDATE _user
+	//  0. Upsert of single collection (preserve existing)
+	//  1. Delete collection admin channels
+	//  2. Delete scope
 }

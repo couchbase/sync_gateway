@@ -228,9 +228,6 @@ func (c *changeCache) Stop() {
 	// Wait for changeCache background tasks to finish.
 	waitForBGTCompletion(context.TODO(), BGTCompletionMaxWait, c.backgroundTasks, c.collection.Name())
 
-	// Stop the channel cache and it's background tasks.
-	c.channelCache.Stop()
-
 	c.lock.Lock()
 	c.logsDisabled = true
 	c.lock.Unlock()
@@ -774,6 +771,11 @@ func (c *changeCache) _addToCache(change *LogEntry) []channels.ID {
 
 	if change.IsPrincipal {
 		c.channelCache.AddPrincipal(change)
+		return nil
+	}
+
+	// FIXME: Until CBG-2333, changeCache will perform sequence buffering for all collections, but should not cache
+	if change.CollectionID != c.collection.GetCollectionID() {
 		return nil
 	}
 

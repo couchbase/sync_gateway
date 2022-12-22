@@ -22,6 +22,7 @@ import (
 	"os"
 	"runtime"
 	"runtime/pprof"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -29,6 +30,7 @@ import (
 	"time"
 
 	"github.com/couchbase/gocb/v2"
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -37,22 +39,34 @@ import (
 // util_test.go, which is only accessible from the base package.
 
 var TestExternalRevStorage = false
-var numOpenBucketsByName map[string]int32
-var mutexNumOpenBucketsByName sync.Mutex
 
 func init() {
 
 	// Prevent https://issues.couchbase.com/browse/MB-24237
 	rand.Seed(time.Now().UTC().UnixNano())
-
-	numOpenBucketsByName = map[string]int32{}
-
 }
 
 type TestBucket struct {
 	Bucket
 	BucketSpec BucketSpec
 	closeFn    func()
+	t          testing.TB
+}
+
+var _ Bucket = &TestBucket{}
+
+// DefaultDataStore is intentionally not implemented for TestBucket
+// DEPRECATED: Should use GetSingleDataStore
+func (b *TestBucket) DefaultDataStore() sgbucket.DataStore {
+	b.t.Logf("Tests directly using TestBucket should use GetSingleDataStore accessor!")
+	return b.Bucket.DefaultDataStore()
+}
+
+// NamedDataStore is intentionally not implemented for TestBucket
+// DEPRECATED: Should use GetNamedDataStore
+func (b *TestBucket) NamedDataStore(name sgbucket.DataStoreName) sgbucket.DataStore {
+	b.t.Logf("Tests directly using TestBucket should use GetNamedDataStore accessor!")
+	return b.Bucket.NamedDataStore(name)
 }
 
 func (tb TestBucket) Close() {
@@ -69,6 +83,7 @@ func (tb *TestBucket) LeakyBucketClone(c LeakyBucketConfig) *TestBucket {
 		Bucket:     NewLeakyBucket(tb.Bucket, c),
 		BucketSpec: tb.BucketSpec,
 		closeFn:    tb.Close,
+		t:          tb.t,
 	}
 }
 
@@ -84,41 +99,73 @@ func (tb *TestBucket) NoCloseClone() *TestBucket {
 		Bucket:     NoCloseClone(tb.Bucket),
 		BucketSpec: tb.BucketSpec,
 		closeFn:    func() {},
+		t:          tb.t,
 	}
-}
-
-func getDefaultCollectionType() tbpCollectionType {
-	if GTestBucketPool.UsingNamedCollections() {
-		return tbpCollectionNamed
-	}
-	return tbpCollectionDefault
-
 }
 
 // GetTestBucket returns a test bucket from a pool.
 func GetTestBucket(t testing.TB) *TestBucket {
-	return getTestBucket(t, getDefaultCollectionType())
-}
-
-// GetTestBucketNamedCollection will return a TestBucket from a pool if using couchbase server that has a non default scope and scope.
-func GetTestBucketNamedCollection(t testing.TB) *TestBucket {
-	return getTestBucket(t, tbpCollectionNamed)
-}
-
-// GetTestBucketNamedCollection will return a TestBucket from a pool if using couchbase server that has _default._default scope and collection.
-func GetTestBucketDefaultCollection(t testing.TB) *TestBucket {
-	return getTestBucket(t, tbpCollectionDefault)
+	//debug.PrintStack()
+	return getTestBucket(t)
 }
 
 // getTestBucket returns a bucket from the bucket pool
-func getTestBucket(t testing.TB, collectionType tbpCollectionType) *TestBucket {
-	bucket, spec, closeFn := GTestBucketPool.getTestBucketAndSpec(t, collectionType)
+func getTestBucket(t testing.TB) *TestBucket {
+	bucket, spec, closeFn := GTestBucketPool.getTestBucketAndSpec(t)
 	return &TestBucket{
 		Bucket:     bucket,
 		BucketSpec: spec,
 		closeFn:    closeFn,
+		t:          t,
 	}
 }
+
+// GetNamedDataStore returns a named datastore from the TestBucket. Each number (starting from 0, indicates which data store you'll get.
+func (tb *TestBucket) GetNamedDataStore(count int) DataStore {
+	dataStoreNames := tb.GetNonDefaultDatastoreNames()
+	if count > len(dataStoreNames) {
+		tb.t.Errorf("You are requesting more datastores %d than are available on this test instance %d", dataStoreNames, count)
+	}
+	return tb.Bucket.NamedDataStore(dataStoreNames[count])
+}
+
+// Return a sorted list of data store names
+func (tb *TestBucket) GetNonDefaultDatastoreNames() []sgbucket.DataStoreName {
+	allDataStoreNames, err := tb.ListDataStores()
+	require.NoError(tb.t, err)
+	var keyspaces []string
+	for _, name := range allDataStoreNames {
+		if IsDefaultCollection(name.ScopeName(), name.CollectionName()) {
+			continue
+		}
+		keyspaces = append(keyspaces, fmt.Sprintf("%s.%s", name.ScopeName(), name.CollectionName()))
+	}
+	sort.Strings(keyspaces)
+	var nonDefaultDataStoreNames []sgbucket.DataStoreName
+	for _, keyspace := range keyspaces {
+		scopeAndCollection := strings.Split(keyspace, ScopeCollectionSeparator)
+		nonDefaultDataStoreNames = append(nonDefaultDataStoreNames,
+			ScopeAndCollectionName{
+				Scope:      scopeAndCollection[0],
+				Collection: scopeAndCollection[1]})
+	}
+	return nonDefaultDataStoreNames
+}
+
+// GetSingleDataStore returns a DataStore that can be used for testing.
+// This may be the default collection, or a named collection depending on whether SG_TEST_USE_DEFAULT_COLLECTION is set.
+func (b *TestBucket) GetSingleDataStore() sgbucket.DataStore {
+	if TestsUseNamedCollections() {
+		return b.GetNamedDataStore(0)
+	}
+	return b.Bucket.DefaultDataStore()
+}
+
+// GetDefaultDataStore returns the default DataStore. This is likely never actually wanted over GetSingleDataStore, so is left commented until absolutely required.
+// func (b *TestBucket) GetDefaultDataStore() sgbucket.DataStore {
+// 	b.t.Logf("Using default collection - Are you sure you want this instead of GetSingleDataStore() ?")
+// 	return b.Bucket.DefaultDataStore()
+// }
 
 // Gets a Walrus bucket which will be persisted to a temporary directory
 // Returns both the test bucket which is persisted and a function which can be used to remove the created temporary
@@ -140,6 +187,7 @@ func GetPersistentWalrusBucket(t testing.TB) (*TestBucket, func()) {
 		Bucket:     bucket,
 		BucketSpec: spec,
 		closeFn:    closeFn,
+		t:          t,
 	}, removeFileFunc
 }
 
@@ -667,33 +715,37 @@ func RequireWaitForStat(t testing.TB, getStatFunc func() int64, expected int64) 
 	require.Equal(t, expected, val)
 }
 
-// CB Server compat version for the integration test server
-var testClusterCompatVersion int
-var getTestClusterCompatVersionOnce sync.Once
-
-var minCompatVersionForCollections = encodeClusterVersion(7, 0)
-
 // TestRequiresCollections will skip the current test if the Couchbase Server version it is running against does not
 // support collections.
 func TestRequiresCollections(t *testing.T) {
+	if ok, err := GTestBucketPool.canUseNamedCollections(); err != nil {
+		t.Skipf("Skipping test - collections not supported: %v", err)
+	} else if !ok {
+		t.Skipf("Skipping test - collections not enabled")
+	}
+}
+
+// TemporarilyDisableTestUsingDCPWithCollections will skip the current test if using named collections to avoid MB-53448 prior to CB 7.2 until we've implemented a SG-side workaround (CBG-2605)
+func TemporarilyDisableTestUsingDCPWithCollections(t *testing.T) {
+	DisableTestWithCollections(t)
+}
+
+// DisableTestWithCollections will skip the current test if using named collections.
+func DisableTestWithCollections(t *testing.T) {
+	if TestsUseNamedCollections() {
+		t.Skip("Skipping test because collections are enabled")
+	}
+}
+
+// SkipImportTestsIfNotEnabled skips test that exercise import features
+func SkipImportTestsIfNotEnabled(t *testing.T) {
+
+	if !TestUseXattrs() {
+		t.Skip("XATTR based tests not enabled.  Enable via SG_TEST_USE_XATTRS=true environment variable")
+	}
+
 	if UnitTestUrlIsWalrus() {
-		t.Skip("Walrus does not support scopes and collections")
-	}
-
-	c, ok := GTestBucketPool.cluster.(*tbpClusterV2)
-	if !ok {
-		t.Skipf("GTestBucketPool cluster is %T, can't support collections", GTestBucketPool.cluster)
-	}
-
-	getTestClusterCompatVersionOnce.Do(func() {
-		testClusterCompatVersion = c.getMinClusterCompatVersion()
-	})
-
-	if testClusterCompatVersion < minCompatVersionForCollections {
-		t.Skip("Collections not supported")
-	}
-	if TestsDisableGSI() {
-		t.Skip("Collections requires GSI")
+		t.Skip("This test won't work under walrus until https://github.com/couchbase/sync_gateway/issues/2390")
 	}
 }
 
@@ -746,8 +798,11 @@ func CreateBucketScopesAndCollections(ctx context.Context, bucketSpec BucketSpec
 				return fmt.Errorf("failed to create collection %s in scope %s: %w", collectionName, scopeName, err)
 			}
 			DebugfCtx(ctx, KeySGTest, "Created collection %s.%s", scopeName, collectionName)
-			if err := WaitUntilScopeAndCollectionExists(cluster.Bucket(bucketSpec.BucketName).Scope(scopeName).Collection(collectionName)); err != nil {
+			if err := WaitForNoError(func() error {
+				_, err := cluster.Bucket(bucketSpec.BucketName).Scope(scopeName).Collection(collectionName).Exists("WaitForExists", nil)
 				return err
+			}); err != nil {
+				return fmt.Errorf("failed to wait for collection %s.%s to exist: %w", scopeName, collectionName, err)
 			}
 			DebugfCtx(ctx, KeySGTest, "Collection now exists %s.%s", scopeName, collectionName)
 		}

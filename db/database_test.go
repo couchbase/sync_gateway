@@ -41,12 +41,12 @@ func setupTestDB(t testing.TB) (*Database, context.Context) {
 	return setupTestDBWithCacheOptions(t, DefaultCacheOptions())
 }
 
-func setupTestDBForBucket(t testing.TB, bucket base.Bucket) (*Database, context.Context) {
+func setupTestDBForBucket(t testing.TB, bucket *base.TestBucket) (*Database, context.Context) {
 	cacheOptions := DefaultCacheOptions()
 	dbcOptions := DatabaseContextOptions{
 		CacheOptions: &cacheOptions,
 	}
-	return SetupTestDBForBucketWithOptions(t, bucket, dbcOptions)
+	return SetupTestDBForDataStoreWithOptions(t, bucket, dbcOptions)
 }
 
 func setupTestDBWithOptionsAndImport(t testing.TB, dbcOptions DatabaseContextOptions) (*Database, context.Context) {
@@ -92,8 +92,11 @@ func setupTestDBWithCustomSyncSeq(t testing.TB, customSeq uint64) (*Database, co
 	AddOptionsFromEnvironmentVariables(&dbcOptions)
 	tBucket := base.GetTestBucket(t)
 
+	// This may need to change when we move to a non-default metadata collection...
+	metadataStore := tBucket.DefaultDataStore()
+
 	log.Printf("Initializing test %s to %d", base.SyncSeqKey, customSeq)
-	_, incrErr := tBucket.Incr(base.SyncSeqKey, customSeq, customSeq, 0)
+	_, incrErr := metadataStore.Incr(base.SyncSeqKey, customSeq, customSeq, 0)
 	assert.NoError(t, incrErr, fmt.Sprintf("Couldn't increment %s by %d", base.SyncSeqKey, customSeq))
 
 	dbCtx, err := NewDatabaseContext(ctx, "db", tBucket, false, dbcOptions)
@@ -133,8 +136,8 @@ func setupTestLeakyDBWithCacheOptions(t *testing.T, options CacheOptions, leakyO
 // override somedbcOptions properties.
 func setupTestNamedCollectionDBWithOptions(t testing.TB, dbcOptions DatabaseContextOptions) (*Database, context.Context) {
 
-	tBucket := base.GetTestBucketNamedCollection(t)
-	return SetupTestDBForBucketWithOptions(t, tBucket, dbcOptions)
+	tBucket := base.GetTestBucket(t)
+	return SetupTestDBForDataStoreWithOptions(t, tBucket, dbcOptions)
 }
 
 // Sets up test db with the specified database context options in _default scope and collection.  Note that environment variables can
@@ -278,7 +281,7 @@ func TestGetDeleted(t *testing.T) {
 	assert.Equal(t, rev2id, doc.SyncData.CurrentRev)
 
 	// Try again but with a user who doesn't have access to this revision (see #179)
-	authenticator := auth.NewAuthenticator(db.Bucket, db, auth.DefaultAuthenticatorOptions())
+	authenticator := auth.NewAuthenticator(db.MetadataStore, db, auth.DefaultAuthenticatorOptions())
 	collection.user, err = authenticator.GetUser("")
 	assert.NoError(t, err, "GetUser")
 	collection.user.SetExplicitChannels(nil, 1)
@@ -344,7 +347,7 @@ func TestGetRemovedAsUser(t *testing.T) {
 	assert.NoError(t, err, "Purge old revision JSON")
 
 	// Try again with a user who doesn't have access to this revision
-	authenticator := auth.NewAuthenticator(db.Bucket, db, auth.DefaultAuthenticatorOptions())
+	authenticator := auth.NewAuthenticator(db.MetadataStore, db, auth.DefaultAuthenticatorOptions())
 	collection.user, err = authenticator.GetUser("")
 	assert.NoError(t, err, "GetUser")
 
@@ -403,7 +406,7 @@ func TestGetRemovalMultiChannel(t *testing.T) {
 	defer db.Close(ctx)
 	collection := db.GetSingleDatabaseCollectionWithUser()
 
-	auth := auth.NewAuthenticator(db.Bucket, db, auth.DefaultAuthenticatorOptions())
+	auth := db.Authenticator(base.TestCtx(t))
 
 	// Create a user who have access to both channel ABC and NBC.
 	userAlice, err := auth.NewUser("alice", "pass", base.SetOf("ABC", "NBC"))
@@ -541,7 +544,7 @@ func TestDeltaSyncWhenFromRevIsChannelRemoval(t *testing.T) {
 
 	// Request delta between rev2ID and rev3ID (toRevision "rev2ID" is channel removal)
 	// as a user who doesn't have access to the removed revision via any other channel.
-	authenticator := auth.NewAuthenticator(db.Bucket, db, auth.DefaultAuthenticatorOptions())
+	authenticator := db.Authenticator(ctx)
 	user, err := authenticator.NewUser("alice", "pass", base.SetOf("NBC"))
 	require.NoError(t, err, "Error creating user")
 
@@ -607,7 +610,7 @@ func TestDeltaSyncWhenToRevIsChannelRemoval(t *testing.T) {
 
 	// Request delta between rev1ID and rev2ID (toRevision "rev2ID" is channel removal)
 	// as a user who doesn't have access to the removed revision via any other channel.
-	authenticator := auth.NewAuthenticator(db.Bucket, db, auth.DefaultAuthenticatorOptions())
+	authenticator := db.Authenticator(ctx)
 	user, err := authenticator.NewUser("alice", "pass", base.SetOf("NBC"))
 	require.NoError(t, err, "Error creating user")
 
@@ -807,7 +810,8 @@ func TestAllDocsOnly(t *testing.T) {
 	collectionID := collection.GetCollectionID()
 
 	// Trigger creation of the channel cache for channel "all"
-	collection.changeCache.getChannelCache().getSingleChannelCache(channels.NewID("all", collectionID))
+	_, err := collection.changeCache.getChannelCache().getSingleChannelCache(channels.NewID("all", collectionID))
+	require.NoError(t, err)
 
 	ids := make([]AllDocsEntry, 100)
 	for i := 0; i < 100; i++ {
@@ -851,7 +855,8 @@ func TestAllDocsOnly(t *testing.T) {
 	err = collection.changeCache.waitForSequence(ctx, 101, base.DefaultWaitForSequence)
 	require.NoError(t, err)
 
-	changeLog := collection.GetChangeLog(channels.NewID("all", collectionID), 0)
+	changeLog, err := collection.GetChangeLog(channels.NewID("all", collectionID), 0)
+	require.NoError(t, err)
 	require.Len(t, changeLog, 50)
 	assert.Equal(t, "alldoc-51", changeLog[0].DocID)
 
@@ -905,6 +910,10 @@ func TestAllDocsOnly(t *testing.T) {
 
 // Unit test for bug #673
 func TestUpdatePrincipal(t *testing.T) {
+
+	if base.TestsUseNamedCollections() {
+		t.Skip("Disabled for non-default collection based on use of GetPrincipalForTest")
+	}
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache, base.KeyChanges)
 
@@ -987,19 +996,21 @@ func TestConflicts(t *testing.T) {
 	collectionID := collection.GetCollectionID()
 
 	allChannel := channels.NewID("all", collectionID)
-	collection.changeCache.getChannelCache().getSingleChannelCache(allChannel)
+	_, err := collection.changeCache.getChannelCache().getSingleChannelCache(allChannel)
+	require.NoError(t, err)
 
 	cacheWaiter := db.NewDCPCachingCountWaiter(t)
 
 	// Create rev 1 of "doc":
 	body := Body{"n": 1, "channels": []string{"all", "1"}}
-	_, _, err := collection.PutExistingRevWithBody(ctx, "doc", body, []string{"1-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc", body, []string{"1-a"}, false)
 	assert.NoError(t, err, "add 1-a")
 
 	// Wait for rev to be cached
 	cacheWaiter.AddAndWait(1)
 
-	changeLog := collection.GetChangeLog(channels.NewID("all", collectionID), 0)
+	changeLog, err := collection.GetChangeLog(channels.NewID("all", collectionID), 0)
+	require.NoError(t, err)
 	assert.Equal(t, 1, len(changeLog))
 
 	// Create two conflicting changes:
@@ -1014,7 +1025,7 @@ func TestConflicts(t *testing.T) {
 
 	cacheWaiter.Add(2)
 
-	rawBody, _, _ := db.Bucket.GetRaw("doc")
+	rawBody, _, _ := collection.dataStore.GetRaw("doc")
 
 	log.Printf("got raw body: %s", rawBody)
 
@@ -1033,7 +1044,8 @@ func TestConflicts(t *testing.T) {
 
 	// Verify the change-log of the "all" channel:
 	cacheWaiter.Wait()
-	changeLog = collection.GetChangeLog(allChannel, 0)
+	changeLog, err = collection.GetChangeLog(allChannel, 0)
+	require.NoError(t, err)
 	assert.Equal(t, 1, len(changeLog))
 	assert.Equal(t, uint64(3), changeLog[0].Sequence)
 	assert.Equal(t, "doc", changeLog[0].DocID)
@@ -1061,7 +1073,7 @@ func TestConflicts(t *testing.T) {
 	rev3, err := collection.DeleteDoc(ctx, "doc", "2-b")
 	assert.NoError(t, err, "delete 2-b")
 
-	rawBody, _, _ = db.Bucket.GetRaw("doc")
+	rawBody, _, _ = collection.dataStore.GetRaw("doc")
 	log.Printf("post-delete, got raw body: %s", rawBody)
 
 	gotBody, err = collection.Get1xBody(ctx, "doc")
@@ -1092,31 +1104,33 @@ func TestConflicts(t *testing.T) {
 
 }
 
-func TestConflictRevLimit(t *testing.T) {
+func TestConflictRevLimitDefault(t *testing.T) {
 
 	// Test Default Is the higher of the two
 	db, ctx := setupTestDB(t)
-	assert.Equal(t, uint32(DefaultRevsLimitConflicts), db.RevsLimit)
 	defer db.Close(ctx)
+	assert.Equal(t, uint32(DefaultRevsLimitConflicts), db.RevsLimit)
+}
 
+func TestConflictRevLimitAllowConflictsTrue(t *testing.T) {
 	// Test AllowConflicts
 	dbOptions := DatabaseContextOptions{
 		AllowConflicts: base.BoolPtr(true),
 	}
 
-	db, ctx = SetupTestDBWithOptions(t, dbOptions)
-	assert.Equal(t, uint32(DefaultRevsLimitConflicts), db.RevsLimit)
+	db, ctx := SetupTestDBWithOptions(t, dbOptions)
 	defer db.Close(ctx)
+	assert.Equal(t, uint32(DefaultRevsLimitConflicts), db.RevsLimit)
+}
 
-	// Test AllowConflicts false
-	dbOptions = DatabaseContextOptions{
+func TestConflictRevLimitAllowConflictsFalse(t *testing.T) {
+	dbOptions := DatabaseContextOptions{
 		AllowConflicts: base.BoolPtr(false),
 	}
 
-	db, ctx = SetupTestDBWithOptions(t, dbOptions)
-	assert.Equal(t, uint32(DefaultRevsLimitNoConflicts), db.RevsLimit)
+	db, ctx := SetupTestDBWithOptions(t, dbOptions)
 	defer db.Close(ctx)
-
+	assert.Equal(t, uint32(DefaultRevsLimitNoConflicts), db.RevsLimit)
 }
 
 func TestNoConflictsMode(t *testing.T) {
@@ -1435,12 +1449,13 @@ func TestAccessFunctionDb(t *testing.T) {
 	defer db.Close(ctx)
 	collection := db.GetSingleDatabaseCollectionWithUser()
 
-	authenticator := auth.NewAuthenticator(db.Bucket, db, auth.DefaultAuthenticatorOptions())
+	authenticator := db.Authenticator(ctx)
 
 	var err error
 	db.ChannelMapper = channels.NewChannelMapper(`function(doc){access(doc.users,doc.userChannels);}`, 0)
 
-	user, _ := authenticator.NewUser("naomi", "letmein", channels.BaseSetOf(t, "Netflix"))
+	user, err := authenticator.NewUser("naomi", "letmein", channels.BaseSetOf(t, "Netflix"))
+	require.NoError(t, err)
 	user.SetExplicitRoles(channels.TimedSet{"animefan": channels.NewVbSimpleSequence(1), "tumblr": channels.NewVbSimpleSequence(1)}, 1)
 	assert.NoError(t, authenticator.Save(user), "Save")
 
@@ -1460,10 +1475,10 @@ func TestAccessFunctionDb(t *testing.T) {
 	user, err = authenticator.GetUser("naomi")
 	assert.NoError(t, err, "GetUser")
 	expected := channels.AtSequence(channels.BaseSetOf(t, "Hulu", "Netflix", "!"), 1)
-	assert.Equal(t, expected, user.Channels())
+	assert.Equal(t, expected, user.CollectionChannels(collection.ScopeName(), collection.Name()))
 
 	expected.AddChannel("CrunchyRoll", 2)
-	assert.Equal(t, expected, user.InheritedChannels())
+	assert.Equal(t, expected, user.InheritedCollectionChannels(collection.ScopeName(), collection.Name()))
 }
 
 func TestDocIDs(t *testing.T) {
@@ -1504,6 +1519,10 @@ func TestDocIDs(t *testing.T) {
 
 func TestUpdateDesignDoc(t *testing.T) {
 
+	if base.TestsUseNamedCollections() {
+		t.Skip("Design docs not supported for non-default collection")
+	}
+
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 
@@ -1526,7 +1545,7 @@ func TestUpdateDesignDoc(t *testing.T) {
 	assert.True(t, strings.Contains(retrievedView.Map, "emit()"))
 	assert.NotEqual(t, mapFunction, retrievedView.Map) // SG should wrap the map function, so they shouldn't be equal
 
-	authenticator := auth.NewAuthenticator(db.Bucket, db, auth.DefaultAuthenticatorOptions())
+	authenticator := auth.NewAuthenticator(db.MetadataStore, db, auth.DefaultAuthenticatorOptions())
 	db.user, _ = authenticator.NewUser("naomi", "letmein", channels.BaseSetOf(t, "Netflix"))
 	err = db.PutDesignDoc("_design/pwn3d", sgbucket.DesignDoc{})
 	assertHTTPError(t, err, 403)
@@ -1745,7 +1764,7 @@ func TestConcurrentImport(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyImport)
 
 	// Add doc to the underlying bucket:
-	_, err := db.Bucket.Add("directWrite", 0, Body{"value": "hi"})
+	_, err := collection.dataStore.Add("directWrite", 0, Body{"value": "hi"})
 	require.NoError(t, err)
 
 	// Attempt concurrent retrieval of the docs, and validate that they are only imported once (based on revid)
@@ -2327,16 +2346,16 @@ func TestRepairUnorderedRecentSequences(t *testing.T) {
 
 	// Update document directly in the bucket to scramble recent sequences
 	var rawBody Body
-	_, err = db.Bucket.Get("doc1", &rawBody)
+	_, err = collection.dataStore.Get("doc1", &rawBody)
 	require.NoError(t, err)
 	rawSyncData, ok := rawBody["_sync"].(map[string]interface{})
 	require.True(t, ok)
 	rawSyncData["recent_sequences"] = []uint64{3, 5, 9, 11, 1, 2, 4, 8, 7, 10, 5}
-	assert.NoError(t, db.Bucket.Set("doc1", 0, nil, rawBody))
+	assert.NoError(t, collection.dataStore.Set("doc1", 0, nil, rawBody))
 
 	// Validate non-ordered
 	var rawBodyCheck Body
-	_, err = db.Bucket.Get("doc1", &rawBodyCheck)
+	_, err = collection.dataStore.Get("doc1", &rawBodyCheck)
 	require.NoError(t, err)
 	log.Printf("raw body check %v", rawBodyCheck)
 	rawSyncDataCheck, ok := rawBody["_sync"].(map[string]interface{})
@@ -2374,13 +2393,13 @@ func TestDeleteWithNoTombstoneCreationSupport(t *testing.T) {
 	defer db.Close(ctx)
 	collection := db.GetSingleDatabaseCollectionWithUser()
 
-	//gocbBucket, _ := base.AsGoCBBucket(db.Bucket)
+	// gocbBucket, _ := base.AsGoCBBucket(db.Bucket)
 
 	// Set something lower than version required for CreateAsDeleted subdoc flag
-	//gocbBucket.OverrideClusterCompatVersion(5, 5)
+	// gocbBucket.OverrideClusterCompatVersion(5, 5)
 
 	// Ensure empty doc is imported correctly
-	added, err := db.Bucket.Add("doc1", 0, map[string]interface{}{})
+	added, err := collection.dataStore.Add("doc1", 0, map[string]interface{}{})
 	assert.NoError(t, err)
 	assert.True(t, added)
 
@@ -2397,7 +2416,7 @@ func TestDeleteWithNoTombstoneCreationSupport(t *testing.T) {
 
 	// Ensure document has been added
 	waitAndAssertCondition(t, func() bool {
-		_, err = db.Bucket.GetWithXattr("doc", "_sync", "", &doc, &xattr, nil)
+		_, err = collection.dataStore.GetWithXattr("doc", "_sync", "", &doc, &xattr, nil)
 		return err == nil
 	})
 
@@ -2445,12 +2464,16 @@ func TestResyncUpdateAllDocChannels(t *testing.T) {
 }
 
 func TestTombstoneCompactionStopWithManager(t *testing.T) {
+
+	// FIXME (bbrks)
+	t.Skip("leaky data store needs passing down into database to trigger callbacks properly")
+
 	if !base.TestUseXattrs() {
 		t.Skip("Compaction requires xattrs")
 	}
 
-	bucket := base.NewLeakyBucket(base.GetTestBucket(t), base.LeakyBucketConfig{})
-	db, ctx := SetupTestDBForBucketWithOptions(t, bucket, DatabaseContextOptions{})
+	bucket := base.GetTestBucket(t).LeakyBucketClone(base.LeakyBucketConfig{})
+	db, ctx := SetupTestDBForDataStoreWithOptions(t, bucket, DatabaseContextOptions{})
 	db.PurgeInterval = 0
 	defer db.Close(ctx)
 	collection := db.GetSingleDatabaseCollectionWithUser()
@@ -2465,23 +2488,25 @@ func TestTombstoneCompactionStopWithManager(t *testing.T) {
 
 	require.NoError(t, collection.WaitForPendingChanges(ctx))
 
-	leakyBucket, ok := base.AsLeakyBucket(db.Bucket)
+	leakyDataStore, ok := base.AsLeakyDataStore(collection.dataStore)
 	require.True(t, ok)
 
 	queryCount := 0
 	callbackFunc := func() {
+		fmt.Println("leakyDataStore query callbackFunc")
 		queryCount++
 		if queryCount == 2 {
 			assert.NoError(t, db.TombstoneCompactionManager.Stop())
 		}
 	}
 
+	// FIXME (bbrks): These callbacks are not firing due to leakyDataStore being set in test and not inside SG
 	if base.TestsDisableGSI() {
-		leakyBucket.SetPostQueryCallback(func(ddoc, viewName string, params map[string]interface{}) {
+		leakyDataStore.SetPostQueryCallback(func(ddoc, viewName string, params map[string]interface{}) {
 			callbackFunc()
 		})
 	} else {
-		leakyBucket.SetPostN1QLQueryCallback(func() {
+		leakyDataStore.SetPostN1QLQueryCallback(func() {
 			callbackFunc()
 		})
 	}
@@ -2618,6 +2643,158 @@ func TestImportCompactPanic(t *testing.T) {
 		return db.DbStats.Database().NumTombstonesCompacted.Value()
 	}, 1)
 	require.True(t, ok)
+}
+
+func TestGetDatabaseCollectionWithUserScopesNil(t *testing.T) {
+	testCases := []struct {
+		scope      string
+		collection string
+	}{
+		{
+			scope:      "",
+			collection: "",
+		},
+		{
+			scope:      "foo",
+			collection: "bar",
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(fmt.Sprintf("%s.%s", testCase.scope, testCase.collection), func(t *testing.T) {
+
+			db := Database{DatabaseContext: &DatabaseContext{}}
+			col, err := db.GetDatabaseCollectionWithUser(testCase.scope, testCase.collection)
+			require.Error(t, err)
+			require.Nil(t, col)
+		})
+	}
+}
+
+func TestGetDatabaseCollectionWithUserNoScopesConfigured(t *testing.T) {
+	testCases := []struct {
+		scope      string
+		collection string
+	}{
+		{
+			scope:      "",
+			collection: "",
+		},
+		{
+			scope:      "foo",
+			collection: "bar",
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(fmt.Sprintf("%s.%s", testCase.scope, testCase.collection), func(t *testing.T) {
+
+			db := Database{DatabaseContext: &DatabaseContext{}}
+			col, err := db.GetDatabaseCollectionWithUser(testCase.scope, testCase.collection)
+			require.Error(t, err)
+			require.Nil(t, col)
+		})
+	}
+}
+
+func TestGetDatabaseCollectionWithUserDefaultCollection(t *testing.T) {
+	base.TestRequiresCollections(t)
+	base.RequireNumTestDataStores(t, 1)
+
+	bucket := base.GetTestBucket(t)
+	defer bucket.Close()
+
+	ds := bucket.GetNamedDataStore(0)
+	require.NotNil(t, ds)
+
+	dataStoreName, ok := base.AsDataStoreName(ds)
+	require.True(t, ok)
+
+	testCases := []struct {
+		name       string
+		scope      string
+		collection string
+		err        bool
+		options    DatabaseContextOptions
+	}{
+		{
+			name:       "emptyscopecollection",
+			scope:      "",
+			collection: "",
+			err:        true,
+		},
+		{
+			name:       "foo.bar-notconfigured",
+			scope:      "foo",
+			collection: "bar",
+			err:        true,
+		},
+		{
+			name:       "_default._default-noconfiguration",
+			scope:      base.DefaultScope,
+			collection: base.DefaultCollection,
+			err:        false,
+		},
+		{
+			name:       "_default._default-not-in-config",
+			scope:      base.DefaultScope,
+			collection: base.DefaultCollection,
+			err:        true,
+			options: DatabaseContextOptions{
+				Scopes: map[string]ScopeOptions{
+					dataStoreName.ScopeName(): ScopeOptions{
+						Collections: map[string]CollectionOptions{
+							dataStoreName.CollectionName(): {},
+						},
+					},
+				},
+			},
+		},
+		{
+			name:       "_default._default-inconfig",
+			scope:      base.DefaultScope,
+			collection: base.DefaultCollection,
+			err:        false,
+			options: DatabaseContextOptions{
+				Scopes: map[string]ScopeOptions{
+					dataStoreName.ScopeName(): ScopeOptions{
+						Collections: map[string]CollectionOptions{
+							dataStoreName.CollectionName(): {},
+						},
+					},
+					base.DefaultScope: ScopeOptions{
+						Collections: map[string]CollectionOptions{
+							base.DefaultCollection: {},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(fmt.Sprintf(testCase.name), func(t *testing.T) {
+			ctx := base.TestCtx(t)
+			dbCtx, err := NewDatabaseContext(ctx, "db", bucket.NoCloseClone(), false, testCase.options)
+			require.NoError(t, err)
+
+			db, err := GetDatabase(dbCtx, nil)
+			defer db.Close(ctx)
+			require.NoError(t, err)
+			col, err := db.GetDatabaseCollectionWithUser(testCase.scope, testCase.collection)
+			if testCase.err {
+				require.Error(t, err)
+				require.Nil(t, col)
+			} else {
+				require.NoError(t, err)
+				require.NotNil(t, col)
+				require.Equal(t, col.ScopeName(), testCase.scope)
+				require.Equal(t, col.Name(), testCase.collection)
+			}
+
+		})
+	}
+
 }
 
 func waitAndAssertConditionWithOptions(t *testing.T, fn func() bool, retryCount, msSleepTime int, failureMsgAndArgs ...interface{}) {

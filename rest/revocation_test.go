@@ -186,8 +186,7 @@ func InitScenario(t *testing.T, rtConfig *RestTesterConfig) (ChannelRevocationTe
 			rtConfig.SyncFn = defaultSyncFn
 		}
 	}
-
-	rt := NewRestTester(t, rtConfig)
+	rt := NewRestTesterDefaultCollection(t, rtConfig) // CBG-2618: fix collection channel access
 
 	revocationTester := ChannelRevocationTester{
 		test:       t,
@@ -889,7 +888,7 @@ func TestEnsureRevocationUsingDocHistory(t *testing.T) {
 func TestRevocationWithAdminChannels(t *testing.T) {
 	defer db.SuspendSequenceBatching()()
 
-	rt := NewRestTester(t, nil)
+	rt := NewRestTesterDefaultCollection(t, nil) // CBG-2618: fix collection channel access
 	defer rt.Close()
 
 	resp := rt.SendAdminRequest("PUT", "/db/_user/user", `{"admin_channels": ["A"], "password": "letmein"}`)
@@ -919,7 +918,7 @@ func TestRevocationWithAdminChannels(t *testing.T) {
 func TestRevocationWithAdminRoles(t *testing.T) {
 	defer db.SuspendSequenceBatching()()
 
-	rt := NewRestTester(t, nil)
+	rt := NewRestTesterDefaultCollection(t, nil) // CBG-2618: fix collection channel access
 	defer rt.Close()
 
 	resp := rt.SendAdminRequest("PUT", "/db/_role/role", `{"admin_channels": ["A"]}`)
@@ -1213,11 +1212,11 @@ func TestRevocationUserHasDocAccessDocNotFound(t *testing.T) {
 	revocationTester.removeRoleChannel("foo", "A")
 	require.NoError(t, rt.WaitForPendingChanges())
 
-	leakyBucket, ok := base.AsLeakyBucket(rt.Bucket())
+	leakyDataStore, ok := base.AsLeakyDataStore(rt.Bucket().DefaultDataStore())
 	require.True(t, ok)
 
-	leakyBucket.SetGetRawCallback(func(s string) error {
-		require.NoError(t, leakyBucket.Delete("doc"))
+	leakyDataStore.SetGetRawCallback(func(s string) error {
+		require.NoError(t, leakyDataStore.Delete("doc"))
 		return nil
 	})
 
@@ -1263,8 +1262,8 @@ func TestWasDocInChannelAtSeq(t *testing.T) {
 	assert.Len(t, changes.Results, 1)
 }
 
-// Test does not directly run ChannelGrantedPeriods but aims to test this through performing revocation operations
-// that will hit the various cases that ChannelGrantedPeriods will handle
+// Test does not directly run channelGrantedPeriods but aims to test this through performing revocation operations
+// that will hit the various cases that channelGrantedPeriods will handle
 func TestChannelGrantedPeriods(t *testing.T) {
 	defer db.SuspendSequenceBatching()()
 	revocationTester, rt := InitScenario(t, nil)
@@ -1443,7 +1442,7 @@ func TestRevocationWithUserXattrs(t *testing.T) {
 
 	defer rt.Close()
 
-	collection, err := base.AsCollection(rt.Bucket())
+	collection, err := base.AsCollection(rt.Bucket().DefaultDataStore())
 	if err != nil {
 		t.Skip("Test requires Couchbase Bucket")
 	}
@@ -1474,9 +1473,10 @@ func TestReplicatorRevocations(t *testing.T) {
 	defer rt2.Close()
 
 	// Active
-	rt1 := NewRestTester(t, &RestTesterConfig{
-		CustomTestBucket: base.GetTestBucket(t),
-	})
+	rt1 := NewRestTesterDefaultCollection(t, //  CBG-2319: replicator currently requires default collection
+		&RestTesterConfig{
+			CustomTestBucket: base.GetTestBucket(t),
+		})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
 
@@ -1533,9 +1533,10 @@ func TestReplicatorRevocationsNoRev(t *testing.T) {
 	defer rt2.Close()
 
 	// Active
-	rt1 := NewRestTester(t, &RestTesterConfig{
-		CustomTestBucket: base.GetTestBucket(t),
-	})
+	rt1 := NewRestTesterDefaultCollection(t, //  CBG-2319: replicator currently requires default collection
+		&RestTesterConfig{
+			CustomTestBucket: base.GetTestBucket(t),
+		})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
 
@@ -1593,9 +1594,10 @@ func TestReplicatorRevocationsNoRevButAlternateAccess(t *testing.T) {
 	defer rt2.Close()
 
 	// Active
-	rt1 := NewRestTester(t, &RestTesterConfig{
-		CustomTestBucket: base.GetTestBucket(t),
-	})
+	rt1 := NewRestTesterDefaultCollection(t, //  CBG-2319: replicator currently requires default collection
+		&RestTesterConfig{
+			CustomTestBucket: base.GetTestBucket(t),
+		})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
 
@@ -1661,9 +1663,10 @@ func TestReplicatorRevocationsMultipleAlternateAccess(t *testing.T) {
 	defer rt2.Close()
 
 	// Active
-	rt1 := NewRestTester(t, &RestTesterConfig{
-		CustomTestBucket: base.GetTestBucket(t),
-	})
+	rt1 := NewRestTesterDefaultCollection(t, //  CBG-2319: replicator currently requires default collection
+		&RestTesterConfig{
+			CustomTestBucket: base.GetTestBucket(t),
+		})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
 
@@ -1770,9 +1773,10 @@ func TestReplicatorRevocationsWithTombstoneResurrection(t *testing.T) {
 	defer rt2.Close()
 
 	// Active
-	rt1 := NewRestTester(t, &RestTesterConfig{
-		CustomTestBucket: base.GetTestBucket(t),
-	})
+	rt1 := NewRestTesterDefaultCollection(t, //  CBG-2319: replicator currently requires default collection
+		&RestTesterConfig{
+			CustomTestBucket: base.GetTestBucket(t),
+		})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
 
@@ -1853,6 +1857,95 @@ func TestReplicatorRevocationsWithTombstoneResurrection(t *testing.T) {
 	assert.NoError(t, err)
 }
 
+func TestReplicatorRevocationsWithStarChannel(t *testing.T) {
+	base.RequireNumTestBuckets(t, 2)
+
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll) // CBG-1981
+
+	// Passive
+	_, rt2 := InitScenario(t, nil)
+	defer rt2.Close()
+
+	// Active
+	rt1 := NewRestTesterDefaultCollection(t, //  CBG-2319: replicator currently requires default collection
+		&RestTesterConfig{
+			CustomTestBucket: base.GetTestBucket(t),
+		})
+	defer rt1.Close()
+	ctx1 := rt1.Context()
+
+	// Setup replicator
+	srv := httptest.NewServer(rt2.TestPublicHandler())
+	defer srv.Close()
+
+	passiveDBURL, err := url.Parse(srv.URL + "/db")
+	require.NoError(t, err)
+
+	passiveDBURL.User = url.UserPassword("user", "test")
+	sgwStats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false)
+	require.NoError(t, err)
+	dbstats, err := sgwStats.DBReplicatorStats(t.Name())
+	require.NoError(t, err)
+
+	_ = rt2.CreateDocReturnRev(t, "docA", "", map[string][]string{"channels": []string{"A"}})
+	_ = rt2.CreateDocReturnRev(t, "docAB", "", map[string][]string{"channels": []string{"A", "B"}})
+	_ = rt2.CreateDocReturnRev(t, "docB", "", map[string][]string{"channels": []string{"B"}})
+	_ = rt2.CreateDocReturnRev(t, "docABC", "", map[string][]string{"channels": []string{"A", "B", "C"}})
+	_ = rt2.CreateDocReturnRev(t, "docC", "", map[string][]string{"channels": []string{"C"}})
+	require.NoError(t, rt2.WaitForPendingChanges())
+
+	ar := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
+		ID:          t.Name(),
+		Direction:   db.ActiveReplicatorTypePull,
+		RemoteDBURL: passiveDBURL,
+		ActiveDB: &db.Database{
+			DatabaseContext: rt1.GetDatabase(),
+		},
+		Continuous:          false,
+		PurgeOnRemoval:      true,
+		ReplicationStatsMap: dbstats,
+	})
+	resp := rt2.SendAdminRequest("PUT", "/db/_user/user", `{"name": "user", "password": "test", "admin_channels": ["*"]}`)
+	RequireStatus(t, resp, http.StatusOK)
+
+	require.NoError(t, ar.Start(ctx1))
+
+	defer func() {
+		assert.NoError(t, ar.Stop())
+	}()
+
+	// Wait for docs to turn up on local / rt1
+	changesResults, err := rt1.WaitForChanges(5, "/db/_changes?since=0", "", true)
+	require.NoError(t, err)
+	assert.Len(t, changesResults.Results, 5)
+
+	// Revoke A and ensure docA, docAB, docABC get purged from local
+	resp = rt2.SendAdminRequest("PUT", "/db/_user/user", `{"name": "user", "password": "test", "admin_channels": []}`)
+	RequireStatus(t, resp, http.StatusOK)
+
+	assert.NoError(t, ar.Stop())
+
+	require.NoError(t, ar.Start(ctx1))
+
+	err = rt1.WaitForCondition(func() bool {
+		resp := rt1.SendAdminRequest("GET", "/db/docA", "")
+		return resp.Code == http.StatusNotFound
+	})
+	assert.NoError(t, err)
+
+	err = rt1.WaitForCondition(func() bool {
+		resp := rt1.SendAdminRequest("GET", "/db/docAB", "")
+		return resp.Code == http.StatusNotFound
+	})
+	assert.NoError(t, err)
+
+	err = rt1.WaitForCondition(func() bool {
+		resp := rt1.SendAdminRequest("GET", "/db/docABC", "")
+		return resp.Code == http.StatusNotFound
+	})
+	assert.NoError(t, err)
+}
+
 func TestReplicatorRevocationsFromZero(t *testing.T) {
 	defer db.SuspendSequenceBatching()()
 
@@ -1863,9 +1956,10 @@ func TestReplicatorRevocationsFromZero(t *testing.T) {
 	defer rt2.Close()
 
 	// Active
-	rt1 := NewRestTester(t, &RestTesterConfig{
-		CustomTestBucket: base.GetTestBucket(t),
-	})
+	rt1 := NewRestTesterDefaultCollection(t, //  CBG-2319: replicator currently requires default collection
+		&RestTesterConfig{
+			CustomTestBucket: base.GetTestBucket(t),
+		})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
 
@@ -2145,11 +2239,77 @@ func TestRevocationNoRev(t *testing.T) {
 	assert.Equal(t, deletedFlag, int64(2))
 }
 
+func TestRevocationGetSyncDataError(t *testing.T) {
+	defer db.SuspendSequenceBatching()()
+	var throw bool
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
+	// Two callbacks to cover usage with CBS/Xattrs and without
+	revocationTester, rt := InitScenario(
+		t, &RestTesterConfig{
+			leakyBucketConfig: &base.LeakyBucketConfig{
+				GetWithXattrCallback: func(key string) error {
+					return fmt.Errorf("Leaky Bucket GetWithXattrCallback Error")
+				}, GetRawCallback: func(key string) error {
+					if throw {
+						return fmt.Errorf("Leaky Bucket GetRawCallback Error")
+					}
+					return nil
+				},
+			},
+		},
+	)
+
+	defer rt.Close()
+
+	btc, err := NewBlipTesterClientOptsWithRT(t, rt, &BlipTesterClientOpts{
+		Username:        "user",
+		Channels:        []string{"*"},
+		ClientDeltas:    false,
+		SendRevocations: true,
+	})
+	assert.NoError(t, err)
+	defer btc.Close()
+
+	// Add channel to role and role to user
+	revocationTester.addRoleChannel("foo", "A")
+	revocationTester.addRole("user", "foo")
+
+	// Skip to seq 4 and then create doc in channel A
+	revocationTester.fillToSeq(4)
+	revID := rt.CreateDocReturnRev(t, "doc", "", map[string]interface{}{"channels": "A"})
+
+	require.NoError(t, rt.WaitForPendingChanges())
+	firstOneShotSinceSeq := rt.GetDocumentSequence("doc")
+
+	// OneShot pull to grab doc
+	err = btc.StartOneshotPull()
+	assert.NoError(t, err)
+	throw = true
+	_, ok := btc.WaitForRev("doc", "1-ad48b5c9d9c47b98532a3d8164ec0ae7")
+	require.True(t, ok)
+
+	// Remove role from user
+	revocationTester.removeRole("user", "foo")
+
+	revID = rt.CreateDocReturnRev(t, "doc", revID, map[string]interface{}{"channels": "A", "val": "mutate"})
+
+	waitRevID := rt.CreateDocReturnRev(t, "docmarker", "", map[string]interface{}{"channels": "!"})
+	require.NoError(t, rt.WaitForPendingChanges())
+
+	lastSeqStr := strconv.FormatUint(firstOneShotSinceSeq, 10)
+	err = btc.StartPullSince("false", lastSeqStr, "false")
+	assert.NoError(t, err)
+
+	_, ok = btc.WaitForRev("docmarker", waitRevID)
+	require.True(t, ok)
+}
+
 // Regression test for CBG-2183.
 func TestBlipRevokeNonExistentRole(t *testing.T) {
-	rt := NewRestTester(t, &RestTesterConfig{
-		GuestEnabled: false,
-	})
+	rt := NewRestTesterDefaultCollection(t, // CBG-2619: make collection aware
+		&RestTesterConfig{
+			GuestEnabled: false,
+		})
 	defer rt.Close()
 
 	base.SetUpTestLogging(t, base.LevelTrace, base.KeyAll)
@@ -2195,9 +2355,10 @@ func TestReplicatorSwitchPurgeNoReset(t *testing.T) {
 	defer rt2.Close()
 
 	// Active
-	rt1 := NewRestTester(t, &RestTesterConfig{
-		CustomTestBucket: base.GetTestBucket(t),
-	})
+	rt1 := NewRestTesterDefaultCollection(t, //  CBG-2319: replicator currently requires default collection
+		&RestTesterConfig{
+			CustomTestBucket: base.GetTestBucket(t),
+		})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
 

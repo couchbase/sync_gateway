@@ -248,7 +248,7 @@ func TestLocalJWTAuthenticationEdgeCases(t *testing.T) {
 				require.NoError(t, err, "Failed to register test user %s", createUserName)
 			}
 
-			req, err := http.NewRequest(http.MethodPost, mockSyncGatewayURL+"/db/_session", bytes.NewBufferString("{}"))
+			req, err := http.NewRequest(http.MethodPost, mockSyncGatewayURL+"/"+restTester.GetDatabase().Name+"/_session", bytes.NewBufferString("{}"))
 			require.NoError(t, err)
 
 			req.Header.Set("Authorization", BearerToken+" "+token)
@@ -449,7 +449,7 @@ func TestLocalJWTRolesChannels(t *testing.T) {
 	restTesterConfig := RestTesterConfig{DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{LocalJWTConfig: auth.LocalJWTConfig{
 		testProviderName: baseProvider,
 	}}}}
-	restTester := NewRestTester(t, &restTesterConfig)
+	restTester := NewRestTesterDefaultCollection(t, &restTesterConfig) // CBG-2618: fix collection channel access
 	require.NoError(t, restTester.SetAdminParty(false))
 	defer restTester.Close()
 

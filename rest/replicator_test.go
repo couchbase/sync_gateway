@@ -23,6 +23,7 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -124,16 +125,17 @@ func TestBlipSyncNonUpgradableConnection(t *testing.T) {
 func TestReplicatorDeprecatedCredentials(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
 
-	passiveRT := NewRestTester(t, &RestTesterConfig{DatabaseConfig: &DatabaseConfig{
-		DbConfig: DbConfig{
-			Users: map[string]*auth.PrincipalConfig{
-				"alice": {
-					Password: base.StringPtr("pass"),
+	passiveRT := NewRestTesterDefaultCollection(t, //  CBG-2319: replicator currently requires default collection
+		&RestTesterConfig{DatabaseConfig: &DatabaseConfig{
+			DbConfig: DbConfig{
+				Users: map[string]*auth.PrincipalConfig{
+					"alice": {
+						Password: base.StringPtr("pass"),
+					},
 				},
 			},
 		},
-	},
-	})
+		})
 	defer passiveRT.Close()
 
 	adminSrv := httptest.NewServer(passiveRT.TestPublicHandler())
@@ -188,13 +190,16 @@ func TestReplicatorDeprecatedCredentials(t *testing.T) {
 func TestReplicatorCheckpointOnStop(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
 
-	passiveRT := NewRestTester(t, nil)
+	passiveRT := NewRestTesterDefaultCollection(t, //  CBG-2319: replicator currently requires default collection
+		&RestTesterConfig{
+			DatabaseConfig: &DatabaseConfig{}, // replicator requires default collection
+		})
 	defer passiveRT.Close()
 
 	adminSrv := httptest.NewServer(passiveRT.TestAdminHandler())
 	defer adminSrv.Close()
 
-	activeRT := NewRestTester(t, nil)
+	activeRT := NewRestTesterDefaultCollection(t, nil) //  CBG-2319: replicator currently requires default collection
 	defer activeRT.Close()
 	activeCtx := activeRT.Context()
 
@@ -252,10 +257,10 @@ func TestGroupIDReplications(t *testing.T) {
 	// FIXME: CBG-2266 this test reads in persistent config
 
 	// Create test buckets to replicate between
-	passiveBucket := base.GetTestBucketDefaultCollection(t)
+	passiveBucket := base.GetTestBucket(t)
 	defer passiveBucket.Close()
 
-	activeBucket := base.GetTestBucketDefaultCollection(t)
+	activeBucket := base.GetTestBucket(t)
 	defer activeBucket.Close()
 
 	// Set up passive bucket RT
@@ -282,10 +287,9 @@ func TestGroupIDReplications(t *testing.T) {
 		config.API.PublicInterface = fmt.Sprintf("127.0.0.1:%d", 4984+BootstrapTestPortOffset+portOffset)
 		config.API.AdminInterface = adminInterface
 		config.API.MetricsInterface = fmt.Sprintf("127.0.0.1:%d", 4986+BootstrapTestPortOffset+portOffset)
-		config.Bootstrap.ConfigGroupID = group
-		if group == "" {
-			config.Bootstrap.ConfigGroupID = PersistentConfigDefaultGroupID
-		}
+		uniqueUUID, err := uuid.NewRandom()
+		require.NoError(t, err)
+		config.Bootstrap.ConfigGroupID = group + uniqueUUID.String()
 
 		ctx := base.TestCtx(t)
 		sc, err := SetupServerContext(ctx, &config, true)
@@ -332,7 +336,8 @@ func TestGroupIDReplications(t *testing.T) {
 		channel := "chan" + group
 		key := "doc" + group
 		body := fmt.Sprintf(`{"channels":["%s"]}`, channel)
-		added, err := activeBucket.Add(key, 0, []byte(body))
+		// default data store - we're not using a named scope/collection in this test
+		added, err := activeBucket.DefaultDataStore().Add(key, 0, []byte(body))
 		require.NoError(t, err)
 		require.True(t, added)
 
@@ -433,7 +438,7 @@ function (doc) {
 				}},
 			}
 			// Set up buckets, rest testers, and set up servers
-			passiveRT := NewRestTester(t, rtConfig)
+			passiveRT := NewRestTesterDefaultCollection(t, rtConfig) //  CBG-2319: replicator currently requires default collection
 			defer passiveRT.Close()
 
 			publicSrv := httptest.NewServer(passiveRT.TestPublicHandler())
@@ -442,7 +447,7 @@ function (doc) {
 			adminSrv := httptest.NewServer(passiveRT.TestAdminHandler())
 			defer adminSrv.Close()
 
-			activeRT := NewRestTester(t, rtConfig)
+			activeRT := NewRestTesterDefaultCollection(t, rtConfig) //  CBG-2319: replicator currently requires default collection
 			defer activeRT.Close()
 
 			// Change RT depending on direction
@@ -548,7 +553,7 @@ function (doc) {
 	}
 }
 func TestBasicGetReplicator2(t *testing.T) {
-	rt := NewRestTester(t, nil)
+	rt := NewRestTesterDefaultCollection(t, nil) //  CBG-2319: replicator currently requires default collection
 	defer rt.Close()
 
 	var body db.Body
@@ -584,7 +589,7 @@ func TestBasicGetReplicator2(t *testing.T) {
 	}
 }
 func TestBasicPutReplicator2(t *testing.T) {
-	rt := NewRestTester(t, nil)
+	rt := NewRestTesterDefaultCollection(t, nil) //  CBG-2319: replicator currently requires default collection
 	defer rt.Close()
 
 	var (
@@ -630,7 +635,7 @@ func TestBasicPutReplicator2(t *testing.T) {
 }
 
 func TestDeletedPutReplicator2(t *testing.T) {
-	rt := NewRestTester(t, nil)
+	rt := NewRestTesterDefaultCollection(t, nil) //  CBG-2319: replicator currently requires default collection
 	defer rt.Close()
 
 	var body db.Body

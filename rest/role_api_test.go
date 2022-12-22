@@ -138,9 +138,10 @@ func TestFunkyRoleNames(t *testing.T) {
 			require.NoError(t, err)
 			const username = "user1"
 			syncFn := fmt.Sprintf(`function(doc) {channel(doc.channels); role("%s", %s);}`, username, string(roleNameJSON))
-			rt := NewRestTester(t, &RestTesterConfig{
-				SyncFn: syncFn,
-			})
+			rt := NewRestTesterDefaultCollection(t, // CBG-2618: fix collection channel access
+				&RestTesterConfig{
+					SyncFn: syncFn,
+				})
 			defer rt.Close()
 
 			ctx := rt.Context()
@@ -177,8 +178,11 @@ func TestBulkDocsChangeToRoleAccess(t *testing.T) {
 			} else {
 				requireAccess(doc.mustHaveAccess)
 			}
-		}`}
-	rt := NewRestTester(t, &rtConfig)
+		}`,
+		DatabaseConfig: &DatabaseConfig{}, // revocation requires collection specific channel access
+	}
+	rt := NewRestTesterDefaultCollection(t, // CBG-2618: fix collection channel access
+		&rtConfig)
 	defer rt.Close()
 	ctx := rt.Context()
 
@@ -222,8 +226,11 @@ func TestRoleAssignmentBeforeUserExists(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAccess, base.KeyCRUD, base.KeyChanges)
 
-	rtConfig := RestTesterConfig{SyncFn: `function(doc) {role(doc.user, doc.role);channel(doc.channel)}`}
-	rt := NewRestTester(t, &rtConfig)
+	rtConfig := RestTesterConfig{SyncFn: `function(doc) {role(doc.user, doc.role);channel(doc.channel)}`,
+		DatabaseConfig: &DatabaseConfig{}, // revocation requires collection specific channel access
+	}
+	rt := NewRestTesterDefaultCollection(t, // CBG-2618: fix collection channel access
+		&rtConfig)
 	defer rt.Close()
 
 	ctx := rt.Context()
@@ -269,7 +276,8 @@ func TestRoleAccessChanges(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAccess, base.KeyCRUD, base.KeyChanges)
 
 	rtConfig := RestTesterConfig{SyncFn: `function(doc) {role(doc.user, doc.role);channel(doc.channel)}`}
-	rt := NewRestTester(t, &rtConfig)
+	rt := NewRestTesterDefaultCollection(t, // CBG-2618: fix collection channel access
+		&rtConfig)
 	defer rt.Close()
 
 	ctx := rt.Context()
@@ -327,7 +335,7 @@ func TestRoleAccessChanges(t *testing.T) {
 			"!":     channels.NewVbSimpleSequence(1),
 			"alpha": channels.NewVbSimpleSequence(alice.Sequence()),
 			"gamma": channels.NewVbSimpleSequence(roleGrantSequence),
-		}, alice.InheritedChannels())
+		}, alice.InheritedCollectionChannels(base.DefaultScope, base.DefaultCollection))
 
 	assert.Equal(t,
 
@@ -342,7 +350,7 @@ func TestRoleAccessChanges(t *testing.T) {
 		channels.TimedSet{
 			"!":    channels.NewVbSimpleSequence(1),
 			"beta": channels.NewVbSimpleSequence(zegpold.Sequence()),
-		}, zegpold.InheritedChannels())
+		}, zegpold.InheritedCollectionChannels(base.DefaultScope, base.DefaultCollection))
 
 	assert.Equal(t, channels.TimedSet{}, zegpold.RoleNames())
 
@@ -383,7 +391,7 @@ func TestRoleAccessChanges(t *testing.T) {
 		channels.TimedSet{
 			"!":     channels.NewVbSimpleSequence(0x1),
 			"alpha": channels.NewVbSimpleSequence(alice.Sequence()),
-		}, alice.InheritedChannels())
+		}, alice.InheritedCollectionChannels(base.DefaultScope, base.DefaultCollection))
 
 	zegpold, _ = a.GetUser("zegpold")
 	assert.Equal(t,
@@ -392,7 +400,7 @@ func TestRoleAccessChanges(t *testing.T) {
 			"!":     channels.NewVbSimpleSequence(0x1),
 			"beta":  channels.NewVbSimpleSequence(zegpold.Sequence()),
 			"gamma": channels.NewVbSimpleSequence(updatedRoleGrantSequence),
-		}, zegpold.InheritedChannels())
+		}, zegpold.InheritedCollectionChannels(base.DefaultScope, base.DefaultCollection))
 
 	// The complete _changes feed for zegpold contains docs g1 and b1:
 	cacheWaiter.Wait()

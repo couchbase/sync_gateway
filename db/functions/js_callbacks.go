@@ -100,10 +100,7 @@ func (runner *jsRunner) do_get(docID string, docType *string, sudo bool) (any, e
 		runner.currentDB.SetUser(nil)
 		defer func() { runner.currentDB.SetUser(user) }()
 	}
-	collection, err := runner.currentDB.GetDefaultDatabaseCollectionWithUser()
-	if err != nil {
-		return nil, err
-	}
+	collection := runner.currentDB.GetSingleDatabaseCollectionWithUser()
 	rev, err := collection.GetRev(runner.ctx, docID, "", false, nil)
 	if err != nil {
 		status, _ := base.ErrorAsHTTPStatus(err)

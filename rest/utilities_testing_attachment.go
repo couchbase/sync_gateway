@@ -22,7 +22,7 @@ import (
 func (rt *RestTester) WaitForAttachmentCompactionStatus(t *testing.T, state db.BackgroundProcessState) db.AttachmentManagerResponse {
 	var response db.AttachmentManagerResponse
 	err := rt.WaitForConditionWithOptions(func() bool {
-		resp := rt.SendAdminRequest("GET", "/db/_compact?type=attachment", "")
+		resp := rt.SendAdminRequest("GET", "/{{.keyspace}}/_compact?type=attachment", "")
 		RequireStatus(t, resp, http.StatusOK)
 
 		err := base.JSONUnmarshal(resp.BodyBytes(), &response)
@@ -35,26 +35,24 @@ func (rt *RestTester) WaitForAttachmentCompactionStatus(t *testing.T, state db.B
 	return response
 }
 
-func CreateLegacyAttachmentDoc(t *testing.T, ctx context.Context, testDB *db.Database, docID string, body []byte, attID string, attBody []byte) string {
+func CreateLegacyAttachmentDoc(t *testing.T, ctx context.Context, collection *db.DatabaseCollectionWithUser, dataStore base.DataStore, docID string, body []byte, attID string, attBody []byte) string {
 	if !base.TestUseXattrs() {
 		t.Skip("Requires xattrs")
 	}
-
 	attDigest := db.Sha1DigestKey(attBody)
 
 	attDocID := db.MakeAttachmentKey(db.AttVersion1, docID, attDigest)
-	_, err := testDB.Bucket.AddRaw(attDocID, 0, attBody)
+	_, err := dataStore.AddRaw(attDocID, 0, attBody)
 	require.NoError(t, err)
 
 	var unmarshalledBody db.Body
 	err = base.JSONUnmarshal(body, &unmarshalledBody)
 	require.NoError(t, err)
 
-	collection := testDB.GetSingleDatabaseCollectionWithUser()
 	_, _, err = collection.Put(ctx, docID, unmarshalledBody)
 	require.NoError(t, err)
 
-	_, err = testDB.Bucket.WriteUpdateWithXattr(docID, base.SyncXattrName, "", 0, nil, nil, func(doc []byte, xattr []byte, userXattr []byte, cas uint64) (updatedDoc []byte, updatedXattr []byte, deletedDoc bool, expiry *uint32, err error) {
+	_, err = dataStore.WriteUpdateWithXattr(docID, base.SyncXattrName, "", 0, nil, nil, func(doc []byte, xattr []byte, userXattr []byte, cas uint64) (updatedDoc []byte, updatedXattr []byte, deletedDoc bool, expiry *uint32, err error) {
 		attachmentSyncData := map[string]interface{}{
 			attID: map[string]interface{}{
 				"content_type": "application/json",

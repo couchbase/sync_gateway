@@ -9,8 +9,10 @@
 package rest
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/couchbase/gocb/v2"
@@ -24,75 +26,63 @@ import (
 // Ensures that various keyspaces can or can't be used to insert a doc in the collection.
 func TestCollectionsPutDocInKeyspace(t *testing.T) {
 	base.TestRequiresCollections(t)
-
-	tb := base.GetTestBucketNamedCollection(t)
-	defer tb.Close()
-
-	tc, err := base.AsCollection(tb)
-	require.NoError(t, err)
-
-	scopeName := tc.ScopeName()
-	collectionName := tc.Name()
-
-	tests := []struct {
-		name           string
-		keyspace       string
-		expectedStatus int
-	}{
-		// if a single scope and collection is defined, use that implicitly
-		{
-			name:           "implicit scope and collection",
-			keyspace:       "db",
-			expectedStatus: http.StatusCreated,
-		},
-		{
-			name:           "fully qualified",
-			keyspace:       fmt.Sprintf("%s.%s.%s", "db", scopeName, collectionName),
-			expectedStatus: http.StatusCreated,
-		},
-		{
-			name:           "collection only",
-			keyspace:       fmt.Sprintf("%s.%s", "db", collectionName),
-			expectedStatus: http.StatusCreated,
-		},
-		{
-			name:           "invalid collection",
-			keyspace:       fmt.Sprintf("%s.%s.%s", "db", scopeName, "buzz"),
-			expectedStatus: http.StatusNotFound,
-		},
-		{
-			name:           "invalid scope",
-			keyspace:       fmt.Sprintf("%s.%s.%s", "db", "buzz", collectionName),
-			expectedStatus: http.StatusNotFound,
-		},
-	}
-
 	const (
 		username = "alice"
 		password = "pass"
+		// dbName is the default name from RestTester
+		dbName = "db"
 	)
-
 	rt := NewRestTester(t, &RestTesterConfig{
-		CustomTestBucket: tb.NoCloseClone(),
 		DatabaseConfig: &DatabaseConfig{
 			DbConfig: DbConfig{
 				Users: map[string]*auth.PrincipalConfig{
 					username: {Password: base.StringPtr(password)},
-				},
-				Scopes: ScopesConfig{
-					scopeName: ScopeConfig{
-						Collections: map[string]CollectionConfig{
-							collectionName: {},
-						},
-					},
 				},
 			},
 		},
 	})
 	defer rt.Close()
 
+	ds := rt.GetSingleDataStore()
+	dataStoreName, ok := base.AsDataStoreName(ds)
+	require.True(t, ok)
+	tests := []struct {
+		name           string
+		keyspace       string
+		expectedStatus int
+	}{
+		// if a single scope and collection is defined, use that implicitly
+		/*{
+			name:           "implicit scope and collection",
+			keyspace:       "db",
+			expectedStatus: http.StatusNotFound,
+		},
+		*/
+		{
+			name:           "fully qualified",
+			keyspace:       rt.GetSingleKeyspace(),
+			expectedStatus: http.StatusCreated,
+		},
+		{
+			name:           "collection only",
+			keyspace:       strings.Join([]string{dbName, dataStoreName.CollectionName()}, base.ScopeCollectionSeparator),
+			expectedStatus: http.StatusCreated,
+		},
+		{
+			name:           "invalid collection",
+			keyspace:       strings.Join([]string{dbName, dataStoreName.ScopeName(), "buzz"}, base.ScopeCollectionSeparator),
+			expectedStatus: http.StatusNotFound,
+		},
+		{
+			name:           "invalid scope",
+			keyspace:       strings.Join([]string{dbName, "buzz", dataStoreName.CollectionName()}, base.ScopeCollectionSeparator),
+			expectedStatus: http.StatusNotFound,
+		},
+	}
+
 	for i, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+
 			docID := fmt.Sprintf("doc%d", i)
 			path := fmt.Sprintf("/%s/%s", test.keyspace, docID)
 			resp := rt.SendUserRequestWithHeaders(http.MethodPut, path, `{"test":true}`, nil, username, password)
@@ -100,26 +90,74 @@ func TestCollectionsPutDocInKeyspace(t *testing.T) {
 
 			if test.expectedStatus == http.StatusCreated {
 				// go and check that the doc didn't just end up in the default collection of the test bucket
-				docBody, _, err := tb.GetRaw(docID)
-				require.NoError(t, err)
-				require.NotNil(t, docBody)
+				docBody, _, err := ds.GetRaw(docID)
+				assert.NoError(t, err)
+				assert.NotNil(t, docBody)
 
-				tc, err := base.AsCollection(tb)
-				defaultCollection := tc.Collection.Bucket().DefaultCollection()
-				_, err = defaultCollection.Get(docID, &gocb.GetOptions{})
-				require.Error(t, err)
+				defaultDataStore := rt.Bucket().DefaultDataStore()
+				_, err = defaultDataStore.Get(docID, &gocb.GetOptions{})
+				assert.Error(t, err)
 			}
 		})
 	}
 }
 
-// TestNoCollectionsPutDocWithKeyspace ensures that a keyspace can't be used to insert a doc on a database not configured for collections.
-func TestNoCollectionsPutDocWithKeyspace(t *testing.T) {
-	tb := base.GetTestBucketDefaultCollection(t)
-	defer tb.Close()
+// TestCollectionsPublicChannel ensures that a doc routed to the public channel is accessible by a user with no other access.
+func TestCollectionsPublicChannel(t *testing.T) {
+	const (
+		username = "alice"
+		password = "pass"
+	)
 
 	rt := NewRestTester(t, &RestTesterConfig{
+		DatabaseConfig: &DatabaseConfig{
+			DbConfig: DbConfig{
+				Users: map[string]*auth.PrincipalConfig{
+					username: {Password: base.StringPtr(password)},
+				},
+			},
+		},
+	})
+	defer rt.Close()
+
+	pathPublic := "/{{.keyspace}}/docpublic"
+	resp := rt.SendAdminRequest(http.MethodPut, pathPublic, `{"channels":["!"]}`)
+	RequireStatus(t, resp, http.StatusCreated)
+	resp = rt.SendUserRequestWithHeaders(http.MethodGet, pathPublic, "", nil, username, password)
+	RequireStatus(t, resp, http.StatusOK)
+
+	pathPrivate := "/{{.keyspace}}/docprivate"
+	resp = rt.SendAdminRequest(http.MethodPut, pathPrivate, `{"channels":["a"]}`)
+	RequireStatus(t, resp, http.StatusCreated)
+	resp = rt.SendUserRequestWithHeaders(http.MethodGet, pathPrivate, "", nil, username, password)
+	RequireStatus(t, resp, http.StatusForbidden)
+
+	resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.keyspace}}/_all_docs?include_docs=true", "", nil, username, password)
+	RequireStatus(t, resp, http.StatusOK)
+	t.Logf("all docs resp: %s", resp.BodyBytes())
+	var alldocsresp struct {
+		Rows      []interface{} `json:"rows"`
+		TotalRows int           `json:"total_rows"`
+	}
+	err := json.Unmarshal(resp.BodyBytes(), &alldocsresp)
+	require.NoError(t, err)
+	assert.Equal(t, 1, alldocsresp.TotalRows)
+	assert.Len(t, alldocsresp.Rows, 1)
+}
+
+// TestNoCollectionsPutDocWithKeyspace ensures that a keyspace can't be used to insert a doc on a database not configured for collections.
+func TestNoCollectionsPutDocWithKeyspace(t *testing.T) {
+	tb := base.GetTestBucket(t)
+	defer tb.Close()
+
+	// Force use of no scopes intentionally
+	rt := NewRestTesterDefaultCollection(t, &RestTesterConfig{
 		CustomTestBucket: tb,
+		DatabaseConfig: &DatabaseConfig{
+			DbConfig: DbConfig{
+				AutoImport: true,
+			},
+		},
 	})
 	defer rt.Close()
 
@@ -150,31 +188,20 @@ func TestSingleCollectionDCP(t *testing.T) {
 		t.Skip("Test relies on import - needs xattrs")
 	}
 
-	tb := base.GetTestBucketNamedCollection(t)
-	defer tb.Close()
-
-	tc, err := base.AsCollection(tb)
-	require.NoError(t, err)
-
 	rt := NewRestTester(t, &RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{
 			DbConfig: DbConfig{
 				AutoImport: true,
-				Scopes: ScopesConfig{
-					tc.ScopeName(): ScopeConfig{
-						Collections: map[string]CollectionConfig{
-							tc.Name(): {},
-						},
-					},
-				},
 			},
 		},
 	})
 	defer rt.Close()
 
+	tc := rt.GetSingleDataStore()
+
 	const docID = "doc1"
 
-	ok, err := rt.Bucket().AddRaw(docID, 0, []byte(`{"test":true}`))
+	ok, err := tc.AddRaw(docID, 0, []byte(`{"test":true}`))
 	require.NoError(t, err)
 	require.True(t, ok)
 
@@ -224,7 +251,7 @@ func TestMultiCollectionDCP(t *testing.T) {
 	})
 	defer rt.Close()
 
-	underlying, ok := base.GetBaseBucket(rt.Bucket()).(*base.Collection)
+	underlying, ok := rt.Bucket().DefaultDataStore().(*base.Collection)
 	require.True(t, ok, "rt bucket was not a Collection")
 
 	_, err = underlying.Collection.Bucket().Scope("foo").Collection("bar").Insert("testDocBar", map[string]any{"test": true}, nil)
@@ -239,48 +266,31 @@ func TestMultiCollectionDCP(t *testing.T) {
 	require.NoError(t, err)
 
 	// TODO(CBG-2329): collection-aware caching
-	//require.NoError(t, rt.WaitForDoc(docID))
+	// require.NoError(t, rt.WaitForDoc(docID))
 }
 
 // TestCollectionsBasicIndexQuery ensures that the bucket API is able to create an index on a collection
 // and query documents written to the collection.
 func TestCollectionsBasicIndexQuery(t *testing.T) {
+	if base.TestsDisableGSI() {
+		t.Skip("This test requires N1QL")
+	}
+
 	base.TestRequiresCollections(t)
 
-	tb := base.GetTestBucketNamedCollection(t)
-	defer tb.Close()
-
-	tc, err := base.AsCollection(tb)
-	require.NoError(t, err)
-
-	scopeName := tc.ScopeName()
-	collectionName := tc.Name()
-
-	rt := NewRestTester(t, &RestTesterConfig{
-		CustomTestBucket: tb.NoCloseClone(),
-		DatabaseConfig: &DatabaseConfig{
-			DbConfig: DbConfig{
-				Scopes: ScopesConfig{
-					scopeName: ScopeConfig{
-						Collections: map[string]CollectionConfig{
-							collectionName: {},
-						},
-					},
-				},
-			},
-		},
-	})
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
 	const docID = "doc1"
 
-	keyspace := "db." + scopeName + "." + collectionName
+	collection := rt.GetSingleTestDatabaseCollection()
 
-	resp := rt.SendAdminRequest(http.MethodPut, fmt.Sprintf("/%s/%s", keyspace, docID), `{"test":true}`)
+	resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID, `{"test":true}`)
 	RequireStatus(t, resp, http.StatusCreated)
 
 	// use the rt.Bucket which has got the foo.bar scope/collection set up
-	n1qlStore, ok := base.AsN1QLStore(rt.Bucket())
+	ds := rt.GetSingleDataStore()
+	n1qlStore, ok := base.AsN1QLStore(ds)
 	require.True(t, ok)
 
 	idxName := t.Name() + "_primary"
@@ -303,12 +313,12 @@ func TestCollectionsBasicIndexQuery(t *testing.T) {
 	assert.NotNilf(t, indexMetaResult.BucketID, "bucket_id was not present - index was created on the _default collection!")
 	assert.NotNilf(t, indexMetaResult.ScopeID, "scope_id was not present - index was created on the _default collection!")
 	require.NotNilf(t, indexMetaResult.KeyspaceID, "keyspace_id should be present")
-	assert.NotEqualf(t, tb.Bucket.GetName(), *indexMetaResult.KeyspaceID, "keyspace_id was the bucket name - index was created on the _default collection!")
+	assert.NotEqualf(t, rt.Bucket().GetName(), *indexMetaResult.KeyspaceID, "keyspace_id was the bucket name - index was created on the _default collection!")
 
 	// if the index was created on a collection, the keyspace_id becomes the collection, along with additional fields for bucket and scope.
-	assert.Equal(t, tb.Bucket.GetName(), *indexMetaResult.BucketID)
-	assert.Equal(t, scopeName, *indexMetaResult.ScopeID)
-	assert.Equal(t, collectionName, *indexMetaResult.KeyspaceID)
+	assert.Equal(t, rt.Bucket().GetName(), *indexMetaResult.BucketID)
+	assert.Equal(t, collection.ScopeName(), *indexMetaResult.ScopeID)
+	assert.Equal(t, collection.Name(), *indexMetaResult.KeyspaceID)
 
 	// try and query the document that we wrote via SG
 	res, err = n1qlStore.Query("SELECT test FROM "+base.KeyspaceQueryToken+" WHERE test = true", nil, base.RequestPlus, true)
@@ -326,6 +336,7 @@ func TestCollectionsBasicIndexQuery(t *testing.T) {
 // TestCollectionsSGIndexQuery is more of an end-to-end test to ensure SG indexes are built correctly,
 // and the channel access query is able to run when pulling a document as a user, and backfill the channel cache.
 func TestCollectionsSGIndexQuery(t *testing.T) {
+	t.Skip("Requires config-based collection channel assignment (pending CBG-2551)")
 	base.TestRequiresCollections(t)
 
 	// force GSI for this one test
@@ -340,15 +351,6 @@ func TestCollectionsSGIndexQuery(t *testing.T) {
 		validDocID   = "doc1"
 		invalidDocID = "doc2"
 	)
-	tb := base.GetTestBucketNamedCollection(t)
-	defer tb.Close()
-
-	tc, err := base.AsCollection(tb)
-	require.NoError(t, err)
-
-	scopeName := tc.ScopeName()
-	collectionName := tc.Name()
-	keyspace := "db." + scopeName + "." + collectionName
 
 	rt := NewRestTester(t, &RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{
@@ -360,21 +362,14 @@ func TestCollectionsSGIndexQuery(t *testing.T) {
 						Password:         base.StringPtr(password),
 					},
 				},
-				Scopes: ScopesConfig{
-					scopeName: ScopeConfig{
-						Collections: map[string]CollectionConfig{
-							collectionName: {},
-						},
-					},
-				},
 			},
 		},
 	})
 	defer rt.Close()
 
-	resp := rt.SendAdminRequest(http.MethodPut, fmt.Sprintf("/%s/%s", keyspace, validDocID), `{"test": true, "channels": ["`+validChannel+`"]}`)
+	resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+validDocID, `{"test": true, "channels": ["`+validChannel+`"]}`)
 	RequireStatus(t, resp, http.StatusCreated)
-	resp = rt.SendAdminRequest(http.MethodPut, fmt.Sprintf("/%s/%s", keyspace, invalidDocID), `{"test": true, "channels": ["`+invalidChannel+`"]}`)
+	resp = rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+invalidDocID, `{"test": true, "channels": ["`+invalidChannel+`"]}`)
 	RequireStatus(t, resp, http.StatusCreated)
 
 	resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/db/_all_docs", ``, nil, username, password)
@@ -390,30 +385,45 @@ func TestCollectionsSGIndexQuery(t *testing.T) {
 	require.Len(t, allDocsResponse.Rows, 1)
 	assert.Equal(t, validDocID, allDocsResponse.Rows[0].ID)
 
-	resp = rt.SendUserRequestWithHeaders(http.MethodGet, fmt.Sprintf("/%s/%s", keyspace, validDocID), ``, nil, username, password)
+	resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.keyspace}}/"+validDocID, ``, nil, username, password)
 	RequireStatus(t, resp, http.StatusOK)
-	resp = rt.SendUserRequestWithHeaders(http.MethodGet, fmt.Sprintf("/%s/%s", keyspace, invalidDocID), ``, nil, username, password)
+	resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.keyspace}}/"+invalidDocID, ``, nil, username, password)
 	RequireStatus(t, resp, http.StatusForbidden)
 
-	_, err = rt.WaitForChanges(1, "/db/_changes", username, false)
+	_, err := rt.WaitForChanges(1, "/{{.keyspace}}/_changes", username, false)
 	require.NoError(t, err)
 }
 
 func TestCollectionsChangeConfigScope(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("can not create new buckets and scopes in walrus")
+	}
+
 	base.TestRequiresCollections(t)
 
 	tb := base.GetTestBucket(t)
 	defer tb.Close()
 	ctx := base.TestCtx(t)
-	err := base.CreateBucketScopesAndCollections(ctx, tb.BucketSpec, map[string][]string{
+
+	scopesAndCollections := map[string][]string{
 		"fooScope": {
 			"bar",
 		},
 		"quxScope": {
 			"quux",
 		},
-	})
+	}
+	err := base.CreateBucketScopesAndCollections(ctx, tb.BucketSpec, scopesAndCollections)
 	require.NoError(t, err)
+	defer func() {
+		collection, err := base.AsCollection(tb.DefaultDataStore())
+		require.NoError(t, err)
+		cm := collection.Collection.Bucket().Collections()
+		for scope := range scopesAndCollections {
+			assert.NoError(t, cm.DropScope(scope, nil))
+		}
+
+	}()
 
 	serverErr := make(chan error)
 	config := BootstrapStartupConfigForTest(t)

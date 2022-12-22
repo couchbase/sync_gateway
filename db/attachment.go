@@ -231,13 +231,13 @@ func DeleteAttachmentVersion(attachments AttachmentsMeta) {
 
 // GetAttachment retrieves an attachment given its key.
 func (db *DatabaseCollection) GetAttachment(key string) ([]byte, error) {
-	v, _, err := db.Bucket.GetRaw(key)
+	v, _, err := db.dataStore.GetRaw(key)
 	return v, err
 }
 
 // Stores a base64-encoded attachment and returns the key to get it by.
 func (db *DatabaseCollectionWithUser) setAttachment(ctx context.Context, key string, value []byte) error {
-	_, err := db.Bucket.AddRaw(key, 0, value)
+	_, err := db.dataStore.AddRaw(key, 0, value)
 	if err == nil {
 		base.InfofCtx(ctx, base.KeyCRUD, "\tAdded attachment %q", base.UD(key))
 	}
@@ -250,7 +250,7 @@ func (db *DatabaseCollectionWithUser) setAttachments(ctx context.Context, attach
 		if attachmentSize > int64(maxAttachmentSizeBytes) {
 			return ErrAttachmentTooLarge
 		}
-		_, err := db.Bucket.AddRaw(key, 0, data)
+		_, err := db.dataStore.AddRaw(key, 0, data)
 		if err == nil {
 			base.InfofCtx(ctx, base.KeyCRUD, "\tAdded attachment %q", base.UD(key))
 			db.dbStats().CBLReplicationPush().AttachmentPushCount.Add(1)

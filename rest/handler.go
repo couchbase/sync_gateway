@@ -88,8 +88,7 @@ type handler struct {
 	statusMessage         string
 	requestBody           io.ReadCloser
 	db                    *db.Database
-	keyspaceScope         string
-	keyspaceCollection    string
+	collection            *db.DatabaseCollectionWithUser
 	user                  auth.User
 	authorizedAdminUser   string
 	privs                 handlerPrivs
@@ -184,9 +183,9 @@ func (h *handler) addDatabaseLogContext(dbName string) {
 	}
 }
 
-// parseKeyspace will return a db, scope and collection for a given '.' separated keyspace string.
+// ParseKeyspace will return a db, scope and collection for a given '.' separated keyspace string.
 // Returns nil for scope and/or collection if not present in the keyspace string.
-func parseKeyspace(ks string) (db string, scope, collection *string, err error) {
+func ParseKeyspace(ks string) (db string, scope, collection *string, err error) {
 	parts := strings.Split(ks, base.ScopeCollectionSeparator)
 	switch len(parts) {
 	case 1:
@@ -255,8 +254,9 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 	var keyspaceScope, keyspaceCollection *string
 
 	// If there is a "keyspace" path variable in the route, parse the keyspace:
-	if ks := h.PathVar("keyspace"); ks != "" {
-		keyspaceDb, keyspaceScope, keyspaceCollection, err = parseKeyspace(ks)
+	ks := h.PathVar("keyspace")
+	if ks != "" {
+		keyspaceDb, keyspaceScope, keyspaceCollection, err = ParseKeyspace(ks)
 		if err != nil {
 			return err
 		}
@@ -294,45 +294,7 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 
 	// If this call is in the context of a DB make sure the DB is in a valid state
 	if dbContext != nil {
-		// Named collections handling
-		if dbContext.Scopes != nil {
-			// Allow an empty scope to refer to the one SG is running with, rather than falling back to _default
-			if keyspaceScope == nil {
-				// TODO: There could be a configurable dbContext.defaultNamedScope if we allow >1 scope
-				//       for now we don't need it - just use the one we're running with.
-				for scopeName := range dbContext.Scopes {
-					keyspaceScope = &scopeName
-					break
-				}
-			}
-			scope, foundScope := dbContext.Scopes[*keyspaceScope]
-			if !foundScope {
-				return base.HTTPErrorf(http.StatusNotFound, "keyspace %s.%s.%s not found", base.MD(keyspaceDb), base.MD(base.StringDefault(keyspaceScope, "")), base.MD(base.StringDefault(keyspaceCollection, "")))
-			}
-
-			if keyspaceCollection == nil {
-				if len(scope.Collections) > 1 {
-					// _default doesn't exist for a non-default scope - so make it a required element if it's ambiguous
-					return base.HTTPErrorf(http.StatusBadRequest, "Ambiguous keyspace: %s.%s", base.MD(keyspaceDb), base.MD(base.StringDefault(keyspaceScope, "")))
-				}
-				keyspaceCollection = dbContext.BucketSpec.Collection
-			}
-			_, foundCollection := scope.Collections[*keyspaceCollection]
-			if !foundCollection {
-				return base.HTTPErrorf(http.StatusNotFound, "keyspace %s.%s.%s not found", base.MD(keyspaceDb), base.MD(base.StringDefault(keyspaceScope, "")), base.MD(base.StringDefault(keyspaceCollection, "")))
-			}
-		} else {
-			if keyspaceScope != nil && *keyspaceScope != base.DefaultScope || keyspaceCollection != nil && *keyspaceCollection != base.DefaultCollection {
-				// request tried specifying a named collection on a non-named collections database
-				return base.HTTPErrorf(http.StatusNotFound, "keyspace %s.%s.%s not found", base.MD(keyspaceDb), base.MD(base.StringDefault(keyspaceScope, "")), base.MD(base.StringDefault(keyspaceCollection, "")))
-			}
-			// Set these for handlers that expect a scope/collection to be set, even if not using named collections.
-			keyspaceScope = base.StringPtr(base.DefaultScope)
-			keyspaceCollection = base.StringPtr(base.DefaultCollection)
-		}
-
 		if !h.runOffline {
-
 			// get a read lock on the dbContext
 			// When the lock is returned we know that the db state will not be changed by
 			// any other call
@@ -456,15 +418,61 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 		}
 	}
 
+	// Collection keyspace handling
+	if ks != "" {
+		if dbContext.Scopes != nil {
+			// If scopes are defined on the database but not in th an empty scope to refer to the one SG is running with, rather than falling back to _default
+			if keyspaceScope == nil {
+				if len(dbContext.Scopes) == 1 {
+					for scopeName, _ := range dbContext.Scopes {
+						keyspaceScope = base.StringPtr(scopeName)
+					}
+
+				} else {
+					return base.HTTPErrorf(http.StatusBadRequest, "Ambiguous keyspace: %s.%s", base.MD(keyspaceDb), base.MD(base.StringDefault(keyspaceScope, "")))
+				}
+			}
+			scope, foundScope := dbContext.Scopes[*keyspaceScope]
+			if !foundScope {
+				return base.HTTPErrorf(http.StatusNotFound, "keyspace %s.%s.%s not found", base.MD(keyspaceDb), base.MD(base.StringDefault(keyspaceScope, "")), base.MD(base.StringDefault(keyspaceCollection, "")))
+			}
+
+			if keyspaceCollection == nil {
+				if len(scope.Collections) > 1 {
+					// _default doesn't exist for a non-default scope - so make it a required element if it's ambiguous
+					return base.HTTPErrorf(http.StatusBadRequest, "Ambiguous keyspace: %s.%s", base.MD(keyspaceDb), base.MD(base.StringDefault(keyspaceScope, "")))
+				}
+				keyspaceCollection = base.StringPtr(base.DefaultCollection)
+			}
+			_, foundCollection := scope.Collections[*keyspaceCollection]
+			if !foundCollection {
+				return base.HTTPErrorf(http.StatusNotFound, "keyspace %s.%s.%s not found", base.MD(keyspaceDb), base.MD(base.StringDefault(keyspaceScope, "")), base.MD(base.StringDefault(keyspaceCollection, "")))
+			}
+		} else {
+			if keyspaceScope != nil && *keyspaceScope != base.DefaultScope || keyspaceCollection != nil && *keyspaceCollection != base.DefaultCollection {
+				// request tried specifying a named collection on a non-named collections database
+				return base.HTTPErrorf(http.StatusNotFound, "keyspace %s.%s.%s not found", base.MD(keyspaceDb), base.MD(base.StringDefault(keyspaceScope, "")), base.MD(base.StringDefault(keyspaceCollection, "")))
+			}
+			// Set these for handlers that expect a scope/collection to be set, even if not using named collections.
+			keyspaceScope = base.StringPtr(base.DefaultScope)
+			keyspaceCollection = base.StringPtr(base.DefaultCollection)
+		}
+	}
+
 	h.logRequestLine()
 	isRequestLogged = true
 
 	// Now set the request's Database (i.e. context + user)
 	if dbContext != nil {
-		h.keyspaceScope, h.keyspaceCollection = *keyspaceScope, *keyspaceCollection
 		h.db, err = db.GetDatabase(dbContext, h.user)
 		if err != nil {
 			return err
+		}
+		if ks != "" {
+			h.collection, err = h.db.GetDatabaseCollectionWithUser(*keyspaceScope, *keyspaceCollection)
+			if err != nil {
+				return err
+			}
 		}
 	}
 

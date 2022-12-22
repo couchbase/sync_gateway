@@ -19,6 +19,7 @@ import (
 	"math"
 	"time"
 
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	pkgerrors "github.com/pkg/errors"
@@ -664,7 +665,7 @@ type RevLoaderFunc func(key string) ([]byte, error)
 
 // RevisionBodyLoader retrieves a non-winning revision body stored outside the document metadata
 func (db *DatabaseCollection) RevisionBodyLoader(key string) ([]byte, error) {
-	body, _, err := db.Bucket.GetRaw(key)
+	body, _, err := db.dataStore.GetRaw(key)
 	return body, err
 }
 
@@ -762,7 +763,7 @@ func (doc *Document) setNonWinningRevisionBody(revid string, body []byte, storeI
 
 // persistModifiedRevisionBodies writes new non-inline revisions to the bucket.
 // Should be invoked BEFORE the document is successfully committed.
-func (doc *Document) persistModifiedRevisionBodies(bucket base.Bucket) error {
+func (doc *Document) persistModifiedRevisionBodies(datastore sgbucket.DataStore) error {
 
 	for _, revID := range doc.addedRevisionBodies {
 		// if this rev is also in the delete set, skip add/delete
@@ -781,7 +782,7 @@ func (doc *Document) persistModifiedRevisionBodies(bucket base.Bucket) error {
 		}
 
 		// If addRaw indicates that the doc already exists, can ignore.  Another writer already persisted this rev backup.
-		addErr := doc.persistRevisionBody(bucket, revInfo.BodyKey, revInfo.Body)
+		addErr := doc.persistRevisionBody(datastore, revInfo.BodyKey, revInfo.Body)
 		if addErr != nil {
 			return err
 		}
@@ -793,10 +794,10 @@ func (doc *Document) persistModifiedRevisionBodies(bucket base.Bucket) error {
 
 // deleteRemovedRevisionBodies deletes obsolete non-inline revisions from the bucket.
 // Should be invoked AFTER the document is successfully committed.
-func (doc *Document) deleteRemovedRevisionBodies(bucket base.Bucket) {
+func (doc *Document) deleteRemovedRevisionBodies(dataStore base.DataStore) {
 
 	for _, revBodyKey := range doc.removedRevisionBodyKeys {
-		deleteErr := bucket.Delete(revBodyKey)
+		deleteErr := dataStore.Delete(revBodyKey)
 		if deleteErr != nil {
 			base.WarnfCtx(context.TODO(), "Unable to delete old revision body using key %s - will not be deleted from bucket.", revBodyKey)
 		}
@@ -804,13 +805,13 @@ func (doc *Document) deleteRemovedRevisionBodies(bucket base.Bucket) {
 	doc.removedRevisionBodyKeys = map[string]string{}
 }
 
-func (doc *Document) persistRevisionBody(bucket base.Bucket, key string, body []byte) error {
-	_, err := bucket.AddRaw(key, 0, body)
+func (doc *Document) persistRevisionBody(datastore sgbucket.DataStore, key string, body []byte) error {
+	_, err := datastore.AddRaw(key, 0, body)
 	return err
 }
 
 // Move any large revision bodies to external document storage
-func (doc *Document) migrateRevisionBodies(bucket base.Bucket) error {
+func (doc *Document) migrateRevisionBodies(dataStore base.DataStore) error {
 
 	for _, revID := range doc.History.GetLeaves() {
 		revInfo, err := doc.History.getInfo(revID)
@@ -819,7 +820,7 @@ func (doc *Document) migrateRevisionBodies(bucket base.Bucket) error {
 		}
 		if len(revInfo.Body) > MaximumInlineBodySize {
 			bodyKey := generateRevBodyKey(doc.ID, revID)
-			persistErr := doc.persistRevisionBody(bucket, bodyKey, revInfo.Body)
+			persistErr := doc.persistRevisionBody(dataStore, bodyKey, revInfo.Body)
 			if persistErr != nil {
 				base.WarnfCtx(context.TODO(), "Unable to store revision body for doc %s, rev %s externally: %v", base.UD(doc.ID), revID, persistErr)
 				continue

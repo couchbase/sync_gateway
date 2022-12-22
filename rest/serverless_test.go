@@ -27,7 +27,7 @@ func TestServerlessPollBuckets(t *testing.T) {
 	}
 
 	// Get test bucket
-	tb1 := base.GetTestBucketDefaultCollection(t)
+	tb1 := base.GetTestBucket(t)
 	defer tb1.Close()
 
 	rt := NewRestTester(t, &RestTesterConfig{
@@ -660,12 +660,19 @@ func TestImportPartitionsServerless(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			var dbconf *DbConfig
+			expectedPartitions := test.expectedPartitions
+			if !base.IsEnterpriseEdition() {
+				t.Logf("Import partitions setting is only supported in EE")
+				expectedPartitions = nil
+			}
+
 			tb := base.GetTestBucket(t)
 			defer tb.Close()
 			rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb, PersistentConfig: true, serverless: test.serverless})
 			defer rt.Close()
 			sc := rt.ServerContext()
+
+			var dbconf *DbConfig
 			if test.name == "serverless partitions with import_partition specified" {
 				resp := rt.SendAdminRequest(http.MethodPut, "/db/", fmt.Sprintf(`{"bucket": "%s", "use_views": %t, "num_index_replicas": 0, "import_partitions": 8}`,
 					tb.GetName(), base.TestsDisableGSI()))
@@ -675,7 +682,7 @@ func TestImportPartitionsServerless(t *testing.T) {
 				dbconf = DefaultDbConfig(sc.Config)
 			}
 
-			assert.Equal(t, test.expectedPartitions, dbconf.ImportPartitions)
+			assert.Equal(t, expectedPartitions, dbconf.ImportPartitions)
 		})
 	}
 }

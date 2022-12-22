@@ -59,9 +59,7 @@ func (role *roleImpl) CollectionChannels(scope, collection string) ch.TimedSet {
 		}
 		return cc.Channels_
 	}
-	// Access always granted to public channel, even if channels aren't otherwise defined for the collection
-	// always grant access to the public document channel
-	return ch.TimedSet{ch.DocumentStarChannel: ch.NewVbSimpleSequence(1)}
+	return nil
 }
 
 func (role *roleImpl) CollectionExplicitChannels(scope, collection string) ch.TimedSet {
@@ -70,7 +68,7 @@ func (role *roleImpl) CollectionExplicitChannels(scope, collection string) ch.Ti
 	}
 
 	if cc, ok := role.getCollectionAccess(scope, collection); ok {
-		return cc.ExplicitChannels_
+		return cc.ExplicitChannels()
 	}
 	return nil
 }
@@ -82,8 +80,7 @@ func (role *roleImpl) SetCollectionExplicitChannels(scope, collection string, ch
 	}
 
 	cc := role.getOrCreateCollectionAccess(scope, collection)
-	cc.ExplicitChannels_ = channels
-	cc.ChannelInvalSeq = invalSeq
+	cc.SetExplicitChannels(channels, invalSeq)
 }
 
 func (role *roleImpl) setCollectionChannels(scope, collection string, channels ch.TimedSet) {
@@ -154,14 +151,14 @@ func (role *roleImpl) SetCollectionChannelHistory(scope, collection string, hist
 // A nil Role means access control is disabled, so the function will return true.
 func (role *roleImpl) CanSeeCollectionChannel(scope, collection, channel string) bool {
 	if base.IsDefaultCollection(scope, collection) {
-		return role.CanSeeChannel(channel)
+		return role.canSeeChannel(channel)
 	}
 
 	if role == nil {
 		return true
 	}
 	if cc, ok := role.getCollectionAccess(scope, collection); ok {
-		return cc.Channels().Contains(channel) || cc.Channels().Contains(ch.UserStarChannel)
+		return cc.CanSeeChannel(channel)
 	}
 	return false
 }
@@ -169,7 +166,7 @@ func (role *roleImpl) CanSeeCollectionChannel(scope, collection, channel string)
 // Returns the sequence number since which the Role has been able to access the channel, else zero.
 func (role *roleImpl) canSeeCollectionChannelSince(scope, collection, channel string) uint64 {
 	if base.IsDefaultCollection(scope, collection) {
-		return role.CanSeeChannelSince(channel)
+		return role.canSeeChannelSince(channel)
 	}
 
 	if cc, ok := role.getCollectionAccess(scope, collection); ok {
@@ -177,13 +174,14 @@ func (role *roleImpl) canSeeCollectionChannelSince(scope, collection, channel st
 		if seq.Sequence == 0 {
 			seq = cc.Channels()[ch.UserStarChannel]
 		}
+		return seq.Sequence
 	}
 	return 0
 }
 
 func (role *roleImpl) authorizeAllCollectionChannels(scope, collection string, channels base.Set) error {
 	if base.IsDefaultCollection(scope, collection) {
-		return role.AuthorizeAllChannels(channels)
+		return role.authorizeAllChannels(channels)
 	}
 
 	if ca, ok := role.getCollectionAccess(scope, collection); ok {
@@ -205,9 +203,9 @@ func (role *roleImpl) authorizeAllCollectionChannels(scope, collection string, c
 }
 
 // Returns an error if the Principal does not have access to any of the channels in the set.
-func (role *roleImpl) authorizeAnyCollectionChannel(scope, collection string, channels base.Set) error {
+func (role *roleImpl) AuthorizeAnyCollectionChannel(scope, collection string, channels base.Set) error {
 	if base.IsDefaultCollection(scope, collection) {
-		return role.AuthorizeAnyChannel(channels)
+		return role.authorizeAnyChannel(channels)
 	}
 
 	if ca, ok := role.getCollectionAccess(scope, collection); ok {
@@ -222,4 +220,16 @@ func (role *roleImpl) authorizeAnyCollectionChannel(scope, collection string, ch
 		}
 	}
 	return role.UnauthError("You are not allowed to see this")
+}
+
+// initChannels grants the specified channels to the role as an admin grant, and performs
+// validation on the channel set.
+func (role *roleImpl) initChannels(scopeName, collectionName string, channels base.Set) error {
+	channels = ch.ExpandingStar(channels)
+	role.SetCollectionExplicitChannels(scopeName, collectionName, ch.AtSequence(channels, 1), 0)
+	return role.CollectionExplicitChannels(scopeName, collectionName).Validate()
+}
+
+func (role *roleImpl) GetCollectionsAccess() map[string]map[string]*CollectionAccess {
+	return role.CollectionsAccess
 }

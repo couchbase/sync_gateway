@@ -214,7 +214,7 @@ func TestAttachments(t *testing.T) {
 	assert.Equal(t, float64(2), bye["revpos"])
 
 	log.Printf("Expire body of rev 1, then add a child...") // test fix of #498
-	err = db.Bucket.Delete(oldRevisionKey("doc1", rev1id))
+	err = collection.dataStore.Delete(oldRevisionKey("doc1", rev1id))
 	assert.NoError(t, err, "Couldn't compact old revision")
 	rev2Bstr := `{"_attachments": {"bye.txt": {"stub":true,"revpos":1,"digest":"sha1-gwwPApfQR9bzBKpqoEYwFmKp98A="}}, "_rev": "2-f000"}`
 	var body2B Body
@@ -242,14 +242,11 @@ func TestAttachmentForRejectedDocument(t *testing.T) {
 	var body Body
 	require.NoError(t, base.JSONUnmarshal([]byte(docBody), &body))
 	_, _, err = collection.Put(ctx, "doc1", unjson(docBody))
-	log.Printf("Got error on put doc:%v", err)
-	db.Bucket.Dump()
+	require.Error(t, err)
 
 	// Attempt to retrieve the attachment doc
-	_, _, err = db.Bucket.GetRaw(base.AttPrefix + "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=")
-
-	assert.True(t, err != nil, "Expect error when attempting to retrieve attachment document after doc is rejected.")
-
+	_, _, err = db.Bucket.DefaultDataStore().GetRaw(base.AttPrefix + "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=")
+	require.Error(t, err, "Expected error when attempting to retrieve attachment document after doc is rejected.")
 }
 
 func TestAttachmentRetrievalUsingRevCache(t *testing.T) {
@@ -886,12 +883,12 @@ func TestMigrateBodyAttachments(t *testing.T) {
 		assert.NoError(t, err)
 
 		if base.TestUseXattrs() {
-			_, err = bucket.WriteCasWithXattr(docKey, base.SyncXattrName, 0, 0, nil, bodyVal, xattrVal)
+			_, err = collection.dataStore.WriteCasWithXattr(docKey, base.SyncXattrName, 0, 0, nil, bodyVal, xattrVal)
 			assert.NoError(t, err)
 		} else {
 			newBody, err := base.InjectJSONPropertiesFromBytes([]byte(bodyPre25), base.KVPairBytes{Key: base.SyncPropertyName, Val: []byte(syncData)})
 			assert.NoError(t, err)
-			ok, err := bucket.Add(docKey, 0, newBody)
+			ok, err := collection.dataStore.Add(docKey, 0, newBody)
 			assert.NoError(t, err)
 			assert.True(t, ok)
 		}
@@ -1193,12 +1190,12 @@ func TestMigrateBodyAttachmentsMerge(t *testing.T) {
 	assert.NoError(t, err)
 
 	if base.TestUseXattrs() {
-		_, err = bucket.WriteCasWithXattr(docKey, base.SyncXattrName, 0, 0, nil, bodyVal, xattrVal)
+		_, err = collection.dataStore.WriteCasWithXattr(docKey, base.SyncXattrName, 0, 0, nil, bodyVal, xattrVal)
 		assert.NoError(t, err)
 	} else {
 		newBody, err := base.InjectJSONPropertiesFromBytes([]byte(bodyPre25), base.KVPairBytes{Key: base.SyncPropertyName, Val: []byte(syncData)})
 		assert.NoError(t, err)
-		ok, err := bucket.Add(docKey, 0, newBody)
+		ok, err := collection.dataStore.Add(docKey, 0, newBody)
 		assert.NoError(t, err)
 		assert.True(t, ok)
 	}
@@ -1381,12 +1378,12 @@ func TestMigrateBodyAttachmentsMergeConflicting(t *testing.T) {
 	assert.NoError(t, err)
 
 	if base.TestUseXattrs() {
-		_, err = bucket.WriteCasWithXattr(docKey, base.SyncXattrName, 0, 0, nil, bodyVal, xattrVal)
+		_, err = collection.dataStore.WriteCasWithXattr(docKey, base.SyncXattrName, 0, 0, nil, bodyVal, xattrVal)
 		assert.NoError(t, err)
 	} else {
 		newBody, err := base.InjectJSONPropertiesFromBytes([]byte(bodyPre25), base.KVPairBytes{Key: base.SyncPropertyName, Val: []byte(syncData)})
 		assert.NoError(t, err)
-		ok, err := bucket.Add(docKey, 0, newBody)
+		ok, err := collection.dataStore.Add(docKey, 0, newBody)
 		assert.NoError(t, err)
 		assert.True(t, ok)
 	}

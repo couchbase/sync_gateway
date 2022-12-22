@@ -22,7 +22,7 @@ import (
 )
 
 func TestDesignDocs(t *testing.T) {
-	rt := NewRestTester(t, &RestTesterConfig{GuestEnabled: true})
+	rt := NewRestTesterDefaultCollection(t, &RestTesterConfig{GuestEnabled: true}) // views only use default collection
 	defer rt.Close()
 
 	response := rt.SendRequest(http.MethodGet, "/db/_design/foo", "")
@@ -53,7 +53,7 @@ func TestDesignDocs(t *testing.T) {
 }
 
 func TestViewQuery(t *testing.T) {
-	rt := NewRestTester(t, &RestTesterConfig{GuestEnabled: true})
+	rt := NewRestTesterDefaultCollection(t, &RestTesterConfig{GuestEnabled: true}) // views only use default collection
 	defer rt.Close()
 
 	if !base.TestsDisableGSI() {
@@ -100,7 +100,7 @@ func TestViewQueryMultipleViews(t *testing.T) {
 		t.Skip("views tests are not applicable under GSI")
 	}
 
-	rt := NewRestTester(t, &RestTesterConfig{GuestEnabled: true})
+	rt := NewRestTesterDefaultCollection(t, &RestTesterConfig{GuestEnabled: true}) // views only use default collection
 	defer rt.Close()
 
 	// Define three views
@@ -133,7 +133,7 @@ func TestViewQueryWithParams(t *testing.T) {
 		t.Skip("views tests are not applicable under GSI")
 	}
 
-	rt := NewRestTester(t, &RestTesterConfig{GuestEnabled: true})
+	rt := NewRestTesterDefaultCollection(t, &RestTesterConfig{GuestEnabled: true}) // views only use default collection
 	defer rt.Close()
 
 	response := rt.SendAdminRequest(http.MethodPut, "/db/_design/foodoc", `{"views": {"foobarview": {"map": "function(doc, meta) {if (doc.value == \"foo\") {emit(doc.key, null);}}"}}}`)
@@ -161,7 +161,7 @@ func TestViewQueryUserAccess(t *testing.T) {
 		t.Skip("views tests are not applicable under GSI")
 	}
 
-	rt := NewRestTester(t, &RestTesterConfig{GuestEnabled: true})
+	rt := NewRestTesterDefaultCollection(t, &RestTesterConfig{GuestEnabled: true}) // views only use default collection
 	defer rt.Close()
 
 	ctx := rt.Context()
@@ -257,7 +257,8 @@ func TestUserViewQuery(t *testing.T) {
 		SyncFn:       `function(doc) {channel(doc.channel)}`,
 		GuestEnabled: true,
 	}
-	rt := NewRestTester(t, &rtConfig)
+
+	rt := NewRestTesterDefaultCollection(t, &rtConfig) // views only use default collection
 	defer rt.Close()
 
 	ctx := rt.Context()
@@ -335,7 +336,7 @@ func TestAdminReduceViewQuery(t *testing.T) {
 		SyncFn:       `function(doc) {channel(doc.channel)}`,
 		GuestEnabled: true,
 	}
-	rt := NewRestTester(t, &rtConfig)
+	rt := NewRestTesterDefaultCollection(t, &rtConfig) // views only use default collection
 	defer rt.Close()
 
 	// Create a view with a reduce:
@@ -390,7 +391,7 @@ func TestAdminReduceSumQuery(t *testing.T) {
 		SyncFn:       `function(doc) {channel(doc.channel)}`,
 		GuestEnabled: true,
 	}
-	rt := NewRestTester(t, &rtConfig)
+	rt := NewRestTesterDefaultCollection(t, &rtConfig) // views only use default collection
 	defer rt.Close()
 
 	// Create a view with a reduce:
@@ -430,7 +431,7 @@ func TestAdminGroupReduceSumQuery(t *testing.T) {
 		SyncFn:       `function(doc) {channel(doc.channel)}`,
 		GuestEnabled: true,
 	}
-	rt := NewRestTester(t, &rtConfig)
+	rt := NewRestTesterDefaultCollection(t, &rtConfig) // views only use default collection
 	defer rt.Close()
 
 	// Create a view with a reduce:
@@ -469,8 +470,10 @@ func TestViewQueryWithKeys(t *testing.T) {
 		t.Skip("views tests are not applicable under GSI")
 	}
 
-	rtConfig := RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel)}`}
-	rt := NewRestTester(t, &rtConfig)
+	rtConfig := RestTesterConfig{
+		SyncFn: `function(doc) {channel(doc.channel)}`,
+	}
+	rt := NewRestTesterDefaultCollection(t, &rtConfig) // views only use default collection
 	defer rt.Close()
 
 	// Create a view
@@ -511,7 +514,7 @@ func TestViewQueryWithCompositeKeys(t *testing.T) {
 	}
 
 	rtConfig := RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel)}`}
-	rt := NewRestTester(t, &rtConfig)
+	rt := NewRestTesterDefaultCollection(t, &rtConfig) // views only use default collection
 	defer rt.Close()
 
 	// Create a view
@@ -551,7 +554,7 @@ func TestViewQueryWithIntKeys(t *testing.T) {
 	}
 
 	rtConfig := RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel)}`}
-	rt := NewRestTester(t, &rtConfig)
+	rt := NewRestTesterDefaultCollection(t, &rtConfig) // views only use default collection
 	defer rt.Close()
 
 	// Create a view
@@ -591,7 +594,7 @@ func TestAdminGroupLevelReduceSumQuery(t *testing.T) {
 		SyncFn:       `function(doc) {channel(doc.channel)}`,
 		GuestEnabled: true,
 	}
-	rt := NewRestTester(t, &rtConfig)
+	rt := NewRestTesterDefaultCollection(t, &rtConfig) // views only use default collection
 	defer rt.Close()
 
 	// Create a view with a reduce:
@@ -621,7 +624,9 @@ func TestAdminGroupLevelReduceSumQuery(t *testing.T) {
 }
 
 func TestPostInstallCleanup(t *testing.T) {
-	rtConfig := RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel)}`}
+	rtConfig := RestTesterConfig{
+		SyncFn: `function(doc) {channel(doc.channel)}`,
+	}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
@@ -631,15 +636,19 @@ func TestPostInstallCleanup(t *testing.T) {
 
 	bucket := rt.Bucket()
 	mapFunction := `function (doc, meta) { emit(); }`
+
+	viewStore, ok := base.AsViewStore(bucket.DefaultDataStore())
+	require.True(t, ok)
+
 	// Create design docs in obsolete format
-	err = bucket.PutDDoc(db.DesignDocSyncGatewayPrefix, &sgbucket.DesignDoc{
+	err = viewStore.PutDDoc(db.DesignDocSyncGatewayPrefix, &sgbucket.DesignDoc{
 		Views: sgbucket.ViewMap{
 			"channels": sgbucket.ViewDef{Map: mapFunction},
 		},
 	})
 	assert.NoError(t, err, "Unable to create design doc (DesignDocSyncGatewayPrefix)")
 
-	err = bucket.PutDDoc(db.DesignDocSyncHousekeepingPrefix, &sgbucket.DesignDoc{
+	err = viewStore.PutDDoc(db.DesignDocSyncHousekeepingPrefix, &sgbucket.DesignDoc{
 		Views: sgbucket.ViewMap{
 			"all_docs": sgbucket.ViewDef{Map: mapFunction},
 		},
@@ -683,7 +692,7 @@ func TestViewQueryWrappers(t *testing.T) {
 	if !base.TestsDisableGSI() {
 		t.Skip("views tests are not applicable under GSI")
 	}
-	rt := NewRestTester(t, nil)
+	rt := NewRestTesterDefaultCollection(t, nil) // views only use default collection
 	defer rt.Close()
 
 	ctx := rt.Context()
@@ -743,13 +752,13 @@ func TestViewQueryWithXattrAndNonXattr(t *testing.T) {
 
 	// Document with sync data in body
 	body := `{"_sync": { "rev": "1-fc2cf22c5e5007bd966869ebfe9e276a", "sequence": 2, "recent_sequences": [ 2 ], "history": { "revs": [ "1-fc2cf22c5e5007bd966869ebfe9e276a" ], "parents": [ -1], "channels": [ null ] }, "cas": "","value_crc32c": "", "time_saved": "2019-04-10T12:40:04.490083+01:00" }, "value": "foo"}`
-	ok, err := rt.Bucket().Add("doc2", 0, []byte(body))
+	ok, err := rt.Bucket().DefaultDataStore().Add("doc2", 0, []byte(body))
 	assert.True(t, ok)
 	assert.NoError(t, err)
 
 	// Should handle the case where there is no sync data
 	body = `{"value": "foo"}`
-	ok, err = rt.Bucket().Add("doc3", 0, []byte(body))
+	ok, err = rt.Bucket().DefaultDataStore().Add("doc3", 0, []byte(body))
 	assert.True(t, ok)
 	assert.NoError(t, err)
 

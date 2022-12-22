@@ -96,10 +96,23 @@ func (pair *GrantHistorySequencePair) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func (role *roleImpl) initRole(name string, channels base.Set) error {
-	channels = ch.ExpandingStar(channels)
+func (role *roleImpl) initRole(name string, channels base.Set, collections map[string]map[string]struct{}) error {
 	role.Name_ = name
-	role.ExplicitChannels_ = ch.AtSequence(channels, 1)
+	// Grant the user the specified channels for all specified collections.  If none are
+	// specified, grant to the default collection.
+	if len(collections) == 0 {
+		if err := role.initChannels(base.DefaultScope, base.DefaultCollection, channels); err != nil {
+			return err
+		}
+	} else {
+		for scopeName, scope := range collections {
+			for collectionName, _ := range scope {
+				if err := role.initChannels(scopeName, collectionName, channels); err != nil {
+					return err
+				}
+			}
+		}
+	}
 	return role.validate()
 }
 
@@ -204,10 +217,32 @@ func (auth *Authenticator) NewRole(name string, channels base.Set) (Role, error)
 		role.SetChannelHistory(existingRole.ChannelHistory())
 	}
 
-	if err := role.initRole(name, channels); err != nil {
+	if err := role.initRole(name, channels, auth.Collections); err != nil {
 		return nil, err
 	}
-	if err := auth.rebuildChannels(role); err != nil {
+	if _, err := auth.rebuildChannels(role); err != nil {
+		return nil, err
+	}
+	return role, nil
+}
+
+// Creates a new Role object.
+func (auth *Authenticator) NewRoleNoChannels(name string) (Role, error) {
+	role := &roleImpl{}
+	existingRole, err := auth.GetRoleIncDeleted(name)
+	if err != nil {
+		return nil, err
+	}
+
+	if existingRole != nil && existingRole.IsDeleted() {
+		role.SetCas(existingRole.Cas())
+		role.SetChannelHistory(existingRole.ChannelHistory())
+	}
+
+	if err := role.initRole(name, nil, nil); err != nil {
+		return nil, err
+	}
+	if _, err := auth.rebuildChannels(role); err != nil {
 		return nil, err
 	}
 	return role, nil
@@ -317,12 +352,12 @@ func (role *roleImpl) UnauthError(message string) error {
 
 // Returns true if the Role is allowed to access the channel.
 // A nil Role means access control is disabled, so the function will return true.
-func (role *roleImpl) CanSeeChannel(channel string) bool {
+func (role *roleImpl) canSeeChannel(channel string) bool {
 	return role == nil || role.Channels().Contains(channel) || role.Channels().Contains(ch.UserStarChannel)
 }
 
 // Returns the sequence number since which the Role has been able to access the channel, else zero.
-func (role *roleImpl) CanSeeChannelSince(channel string) uint64 {
+func (role *roleImpl) canSeeChannelSince(channel string) uint64 {
 	seq := role.Channels()[channel]
 	if seq.Sequence == 0 {
 		seq = role.Channels()[ch.UserStarChannel]
@@ -330,11 +365,11 @@ func (role *roleImpl) CanSeeChannelSince(channel string) uint64 {
 	return seq.Sequence
 }
 
-func (role *roleImpl) AuthorizeAllChannels(channels base.Set) error {
+func (role *roleImpl) authorizeAllChannels(channels base.Set) error {
 	return authorizeAllChannels(role, channels)
 }
 
-func (role *roleImpl) AuthorizeAnyChannel(channels base.Set) error {
+func (role *roleImpl) authorizeAnyChannel(channels base.Set) error {
 	return authorizeAnyChannel(role, channels)
 }
 
@@ -343,7 +378,7 @@ func (role *roleImpl) AuthorizeAnyChannel(channels base.Set) error {
 func authorizeAllChannels(princ Principal, channels base.Set) error {
 	var forbidden []string
 	for channel := range channels {
-		if !princ.CanSeeChannel(channel) {
+		if !princ.canSeeChannel(channel) {
 			if forbidden == nil {
 				forbidden = make([]string, 0, len(channels))
 			}
@@ -361,7 +396,7 @@ func authorizeAllChannels(princ Principal, channels base.Set) error {
 func authorizeAnyChannel(princ Principal, channels base.Set) error {
 	if len(channels) > 0 {
 		for channel := range channels {
-			if princ.CanSeeChannel(channel) {
+			if princ.canSeeChannel(channel) {
 				return nil
 			}
 		}
@@ -369,11 +404,4 @@ func authorizeAnyChannel(princ Principal, channels base.Set) error {
 		return nil
 	}
 	return princ.UnauthError("You are not allowed to see this")
-}
-
-func (ca *CollectionAccess) Channels() ch.TimedSet {
-	if ca.ChannelInvalSeq != 0 {
-		return nil
-	}
-	return ca.Channels_
 }
