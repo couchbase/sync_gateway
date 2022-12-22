@@ -162,9 +162,6 @@ func TestPostUpgradeIndexesVersionChange(t *testing.T) {
 	if base.TestsDisableGSI() {
 		t.Skip("This test only works with Couchbase Server and UseViews=false")
 	}
-	if !base.TestUseXattrs() {
-		t.Skip("This test has expectation of starting with xattrs=true")
-	}
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
