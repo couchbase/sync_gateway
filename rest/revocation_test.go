@@ -10,7 +10,6 @@ package rest
 import (
 	"encoding/json"
 	"fmt"
-	sgbucket "github.com/couchbase/sg-bucket"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -20,6 +19,7 @@ import (
 	"time"
 
 	"github.com/couchbase/go-blip"
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
