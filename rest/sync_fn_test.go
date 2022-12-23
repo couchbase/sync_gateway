@@ -42,6 +42,7 @@ func TestSyncFnBodyProperties(t *testing.T) {
 		testdataKey,
 		db.BodyId,
 		db.BodyRev,
+		"*",
 	}
 
 	// This sync function routes into channels based on top-level properties contained in doc
@@ -84,6 +85,7 @@ func TestSyncFnBodyPropertiesTombstone(t *testing.T) {
 		db.BodyId,
 		db.BodyRev,
 		db.BodyDeleted,
+		"*",
 	}
 
 	// This sync function routes into channels based on top-level properties contained in doc
@@ -131,6 +133,7 @@ func TestSyncFnOldDocBodyProperties(t *testing.T) {
 	expectedProperties := []string{
 		testdataKey,
 		db.BodyId,
+		"*",
 	}
 
 	// This sync function routes into channels based on top-level properties contained in oldDoc
@@ -180,6 +183,7 @@ func TestSyncFnOldDocBodyPropertiesTombstoneResurrect(t *testing.T) {
 		testdataKey,
 		db.BodyId,
 		db.BodyDeleted,
+		"*",
 	}
 
 	// This sync function routes into channels based on top-level properties contained in oldDoc

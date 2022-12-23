@@ -105,6 +105,8 @@ func TestDocumentNumbers(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
+	shouldExpectStarChannel := !rt.GetDatabase().AllDocsIndexExists
+
 	for _, test := range tests {
 		t.Run(test.name, func(ts *testing.T) {
 			// Create document
@@ -126,7 +128,11 @@ func TestDocumentNumbers(t *testing.T) {
 			var rawResponse RawResponse
 			require.NoError(ts, base.JSONUnmarshal(getRawResponse.Body.Bytes(), &rawResponse))
 			log.Printf("raw response: %s", getRawResponse.Body.Bytes())
-			assert.Equal(ts, 1, len(rawResponse.Sync.Channels))
+			if shouldExpectStarChannel {
+				assert.Equal(ts, 2, len(rawResponse.Sync.Channels))
+			} else {
+				assert.Equal(ts, 1, len(rawResponse.Sync.Channels))
+			}
 			assert.True(ts, HasActiveChannel(rawResponse.Sync.Channels, test.expectedFormatChannel), fmt.Sprintf("Expected channel %s was not found in document channels (%s)", test.expectedFormatChannel, test.name))
 
 		})

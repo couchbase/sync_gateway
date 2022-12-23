@@ -2223,8 +2223,8 @@ func TestRawRedaction(t *testing.T) {
 	err := base.JSONUnmarshal(res.Body.Bytes(), &body)
 	assert.NoError(t, err)
 	syncData := body[base.SyncPropertyName]
-	assert.Equal(t, map[string]interface{}{"achannel": nil}, syncData.(map[string]interface{})["channels"])
-	assert.Equal(t, []interface{}([]interface{}{[]interface{}{"achannel"}}), syncData.(map[string]interface{})["history"].(map[string]interface{})["channels"])
+	assert.Equal(t, map[string]interface{}{"achannel": nil, "*": nil}, syncData.(map[string]interface{})["channels"])
+	assert.Equal(t, []interface{}([]interface{}{[]interface{}{"*", "achannel"}}), syncData.(map[string]interface{})["history"].(map[string]interface{})["channels"])
 
 	// Test redacted
 	body = map[string]interface{}{}

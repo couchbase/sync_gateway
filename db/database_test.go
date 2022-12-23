@@ -1389,11 +1389,12 @@ func TestSyncFnOnPush(t *testing.T) {
 	// Check that the doc has the correct channel (test for issue #300)
 	doc, err := collection.GetDocument(ctx, "doc1", DocUnmarshalAll)
 	assert.Equal(t, channels.ChannelMap{
+		"*":      nil,
 		"clibup": nil,
 		"public": &channels.ChannelRemoval{Seq: 2, RevID: "4-four"},
 	}, doc.Channels)
 
-	assert.Equal(t, base.SetOf("clibup"), doc.History["4-four"].Channels)
+	assert.Equal(t, base.SetOf("*", "clibup"), doc.History["4-four"].Channels)
 }
 
 func TestInvalidChannel(t *testing.T) {
@@ -2456,7 +2457,7 @@ func TestResyncUpdateAllDocChannels(t *testing.T) {
 		return state == DBOffline
 	})
 
-	_, err = collection.UpdateAllDocChannels(ctx, false, func(docsProcessed, docsChanged *int) {}, base.NewSafeTerminator(), false)
+	_, err = collection.UpdateAllDocChannels(ctx, false, func(docsProcessed, docsChanged *int) {}, base.NewSafeTerminator(), !db.AllDocsIndexExists)
 	assert.NoError(t, err)
 
 	syncFnCount := int(db.DbStats.Database().SyncFunctionCount.Value())
