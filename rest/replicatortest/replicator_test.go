@@ -992,6 +992,22 @@ func TestPurgeWhenUserChannelRevoked(t *testing.T) {
 
 }
 
+func TestHop(t *testing.T) {
+	activeRT := rest.NewRestTester(t, nil)
+	resp := activeRT.SendAdminRequest(http.MethodPost, "/db/_config", fmt.Sprintf(
+		`{"bucket": "%s", "scopes": {"sg_test_0": {"collections": {"sg_test_1": {}}}}, "num_index_replicas": 0, "use_views": %t, "import_docs": true}`,
+		activeRT.Bucket().GetName(), base.TestsDisableGSI(),
+	))
+	rest.RequireStatus(t, resp, http.StatusCreated)
+
+	resp = activeRT.SendAdminRequest(http.MethodGet, "/db/_all_docs?include_docs=true", "")
+	fmt.Println(resp.Body)
+	fmt.Println(activeRT.TestBucket.Bucket.GetName())
+	putDocs(t, activeRT)
+	time.Sleep(30 * time.Second)
+	fmt.Println("lol")
+}
+
 func updateDocs(t *testing.T, rt *rest.RestTester) {
 	var docresp rest.PutDocResponse
 	var get db.Body
@@ -999,7 +1015,7 @@ func updateDocs(t *testing.T, rt *rest.RestTester) {
 	for i := 0; i < 1000; i++ {
 		get = rt.GetDoc(fmt.Sprint(i))
 		rev = get.ExtractRev()
-		docresp = rt.UpdateDocCollection(fmt.Sprint(i), rev, `{"source":"remote", "channels":["B"]}`)
+		docresp = rt.UpdateDoc(fmt.Sprint(i), rev, `{"source":"remote", "channels":["B"]}`)
 		assert.True(t, docresp.Ok)
 		//rev := docresp.Rev
 	}
@@ -1008,7 +1024,7 @@ func updateDocs(t *testing.T, rt *rest.RestTester) {
 func putDocs(t *testing.T, rt *rest.RestTester) {
 	var docresp rest.PutDocResponse
 	for i := 0; i < 1000; i++ {
-		docresp = rt.PutDocCollection(fmt.Sprint(i), `{"source":"remote", "channels":["A", "B"]}`)
+		docresp = rt.PutDoc(fmt.Sprint(i), `{"source":"remote", "channels":["A", "B"]}`)
 		assert.True(t, docresp.Ok)
 		//rev := docresp.Rev
 	}
