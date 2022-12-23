@@ -14,6 +14,8 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/stretchr/testify/assert"
 )
@@ -51,6 +53,28 @@ func TestParseSequenceID(t *testing.T) {
 	assert.True(t, err != nil)
 	s, err = parseIntegerSequenceID("123:ggg")
 	assert.True(t, err != nil)
+
+	// Parse sequences with metadata components
+	s, err = parseIntegerSequenceID("10-1234")
+	assert.NoError(t, err, "parseIntegerSequenceID")
+	assert.Equal(t, SequenceID{MetaSeq: 10, Seq: 1234}, s)
+
+	s, err = parseIntegerSequenceID("10:456-1234")
+	assert.NoError(t, err, "parseIntegerSequenceID")
+	assert.Equal(t, SequenceID{MetaSeq: 10, BackfillSeq: 456, Seq: 1234}, s)
+
+	s, err = parseIntegerSequenceID("10:456-1234::5678")
+	assert.NoError(t, err, "parseIntegerSequenceID")
+	assert.Equal(t, SequenceID{MetaSeq: 10, BackfillSeq: 456, LowSeq: 1234, Seq: 5678}, s)
+
+	// Malformed sequences with metadata components
+	s, err = parseIntegerSequenceID("10-")
+	assert.True(t, err != nil)
+	s, err = parseIntegerSequenceID("10:13:234-15")
+	assert.True(t, err != nil)
+	s, err = parseIntegerSequenceID("-234")
+	assert.True(t, err != nil)
+
 }
 
 func BenchmarkParseSequenceID(b *testing.B) {
@@ -66,6 +90,7 @@ func BenchmarkParseSequenceID(b *testing.B) {
 		"::1",
 		"10:11:12:13",
 		"123:ggg",
+		"10:456-1234::5678",
 	}
 
 	for _, test := range tests {
@@ -78,17 +103,36 @@ func BenchmarkParseSequenceID(b *testing.B) {
 	}
 }
 
-func TestMarshalSequenceID(t *testing.T) {
-	s := SequenceID{Seq: 1234}
-	assert.Equal(t, "1234", s.String())
-	asJson, err := base.JSONMarshal(s)
-	assert.NoError(t, err, "Marshal failed")
-	assert.Equal(t, "1234", string(asJson))
+func TestMarshalSequenceIDAndString(t *testing.T) {
+	type testCase struct {
+		seq                SequenceID
+		expectedString     string
+		expectedJSONString string
+	}
+	tests := []testCase{
+		{SequenceID{Seq: 1234}, "1234", "1234"},
+		{SequenceID{Seq: 1234, TriggeredBy: 5678}, "5678:1234", `"5678:1234"`},
+		{SequenceID{Seq: 789, TriggeredBy: 456, LowSeq: 123}, "123:456:789", `"123:456:789"`},
+		{SequenceID{Seq: 789, LowSeq: 123}, "123::789", `"123::789"`},
+		{SequenceID{MetaSeq: 10, Seq: 789}, "10-789", `"10-789"`},
+		{SequenceID{MetaSeq: 10, Seq: 789, LowSeq: 123}, "10-123::789", `"10-123::789"`},
+		{SequenceID{MetaSeq: 10, BackfillSeq: 234, Seq: 789, LowSeq: 123}, "10:234-123::789", `"10:234-123::789"`},
+		{SequenceID{MetaSeq: 10, BackfillSeq: 234, Seq: 789}, "10:234-789", `"10:234-789"`},
+	}
 
-	var s2 SequenceID
-	err = base.JSONUnmarshal(asJson, &s2)
-	assert.NoError(t, err, "Unmarshal failed")
-	assert.Equal(t, s, s2)
+	for _, testCase := range tests {
+		s := testCase.seq
+		assert.Equal(t, testCase.expectedString, s.String())
+		asJson, err := base.JSONMarshal(s)
+		assert.NoError(t, err, "Marshal failed")
+		assert.Equal(t, testCase.expectedJSONString, string(asJson))
+
+		var s2 SequenceID
+		err = base.JSONUnmarshal(asJson, &s2)
+		assert.NoError(t, err, "Unmarshal failed")
+		assert.Equal(t, s, s2)
+	}
+
 }
 
 func TestSequenceIDUnmarshalJSON(t *testing.T) {
@@ -111,6 +155,12 @@ func TestSequenceIDUnmarshalJSON(t *testing.T) {
 	assert.NoError(t, err, "UnmarshalJSON failed")
 	assert.Equal(t, SequenceID{LowSeq: 220, TriggeredBy: 0, Seq: 222}, s)
 
+	str = "10:100-220::222"
+	s = SequenceID{}
+	err = s.UnmarshalJSON([]byte(str))
+	assert.NoError(t, err, "UnmarshalJSON failed")
+	assert.Equal(t, SequenceID{MetaSeq: 10, BackfillSeq: 100, LowSeq: 220, TriggeredBy: 0, Seq: 222}, s)
+
 	str = "\"234\""
 	s = SequenceID{}
 	err = s.UnmarshalJSON([]byte(str))
@@ -128,19 +178,12 @@ func TestSequenceIDUnmarshalJSON(t *testing.T) {
 	err = s.UnmarshalJSON([]byte(str))
 	assert.NoError(t, err, "UnmarshalJSON failed")
 	assert.Equal(t, SequenceID{LowSeq: 220, TriggeredBy: 0, Seq: 222}, s)
-}
 
-func TestMarshalTriggeredSequenceID(t *testing.T) {
-	s := SequenceID{TriggeredBy: 5678, Seq: 1234}
-	assert.Equal(t, "5678:1234", s.String())
-	asJson, err := base.JSONMarshal(s)
-	assert.NoError(t, err, "Marshal failed")
-	assert.Equal(t, "\"5678:1234\"", string(asJson))
-
-	var s2 SequenceID
-	err = base.JSONUnmarshal(asJson, &s2)
-	assert.NoError(t, err, "Unmarshal failed")
-	assert.Equal(t, s, s2)
+	str = "\"10:100-220::222\""
+	s = SequenceID{}
+	err = s.UnmarshalJSON([]byte(str))
+	assert.NoError(t, err, "UnmarshalJSON failed")
+	assert.Equal(t, SequenceID{MetaSeq: 10, BackfillSeq: 100, LowSeq: 220, TriggeredBy: 0, Seq: 222}, s)
 }
 
 func TestCompareSequenceIDs(t *testing.T) {
@@ -174,6 +217,39 @@ func TestCompareSequenceIDsLowSeq(t *testing.T) {
 		for j := 0; j < len(orderedSeqs); j++ {
 			t.Run(fmt.Sprintf("%v<%v==%v", orderedSeqs[i], orderedSeqs[j], i < j), func(t *testing.T) {
 				assert.Equalf(t, i < j, orderedSeqs[i].Before(orderedSeqs[j]), "expected %v < %v", orderedSeqs[i], orderedSeqs[j])
+			})
+		}
+	}
+}
+
+func TestCompareSequenceIDsMetaSeq(t *testing.T) {
+
+	orderedSeqs := []string{
+		"10-123",
+		"10-124:10",
+		"10-124",
+		"10-124::130",
+		"10-124::135",
+		"10-125::130",
+		"10-126",
+		"11-126",
+		"11-127",
+		"12:100-127",
+		"12:101-127",
+		"12-127",
+		"13-100",
+	}
+
+	for i := 0; i < len(orderedSeqs); i++ {
+		for j := 0; j < len(orderedSeqs); j++ {
+			seq_i := SequenceID{}
+			err := seq_i.UnmarshalJSON([]byte(orderedSeqs[i]))
+			require.NoError(t, err)
+			seq_j := SequenceID{}
+			err = seq_j.UnmarshalJSON([]byte(orderedSeqs[j]))
+			require.NoError(t, err)
+			t.Run(fmt.Sprintf("%v<%v==%v", seq_i, seq_j, i < j), func(t *testing.T) {
+				assert.Equalf(t, i < j, seq_i.Before(seq_j), "expected %v < %v", orderedSeqs[i], orderedSeqs[j])
 			})
 		}
 	}

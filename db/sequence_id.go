@@ -31,9 +31,11 @@ import (
 // SequenceID doesn't do any clock hash management - it's expected that hashing has already been done (if required)
 // when the clock is set.
 type SequenceID struct {
-	TriggeredBy uint64 // Int sequence: The sequence # that triggered this (0 if none)
-	LowSeq      uint64 // Int sequence: Lowest contiguous sequence seen on the feed
-	Seq         uint64 // Int sequence: The actual internal sequence
+	MetaSeq     uint64 // The metadata sequence (for users, roles, grants)
+	BackfillSeq uint64 // When backfilling a channel grant or revocation, the sequence being replicated
+	TriggeredBy uint64 // When using the default collection, the sequence # that triggered this (0 if none)
+	LowSeq      uint64 // Lowest contiguous sequence seen on the feed
+	Seq         uint64 // The actual internal sequence
 }
 
 var MaxSequenceID = SequenceID{
@@ -41,19 +43,27 @@ var MaxSequenceID = SequenceID{
 }
 
 // Format sequence ID to send to clients.  Sequence IDs can be in one of the following formats:
+//  Collection format - used when metadata and data are not stored in the same collection.  TriggeredBy is not used in this case
+//   MetaSeq-Seq              				- Simple sequence
+//   MetaSeq-LowSeq::Seq      				- When LowSeq is non-zero.  (skipped sequence handling)
+//   MetadataSeq:BackfillSeq-Seq  			- When BackfillSeq is non-zero (revocation or backfill)
+//   MetadataSeq:BackfillSeq-LowSeq::Seq 	- BackfillSeq and LowSeq both non-zero.  Revocation/backfill with skipped sequences
 //
-//	Seq                    - simple sequence
-//	TriggeredBy:Seq        - when TriggeredBy is non-zero, LowSeq is zero
-//	LowSeq:TriggeredBy:Seq - when LowSeq is non-zero.
-//
-// When LowSeq is non-zero but TriggeredBy is zero, will appear as LowSeq::Seq.
-// When LowSeq is non-zero but is greater than s.Seq (occurs when sending previously skipped sequences), ignore LowSeq.
+//  Default collection format (used when metadata and data are stored in the _default._default collection)
+//	 Seq                    - simple sequence
+//	 TriggeredBy:Seq        - when TriggeredBy is non-zero, LowSeq is zero
+//	 LowSeq:TriggeredBy:Seq - when LowSeq is non-zero.
+//   LowSeq::Seq            - When LowSeq is non-zero, TriggeredBy is zero
+// 		When LowSeq is non-zero but is greater than s.Seq (occurs when sending previously skipped sequences), ignore LowSeq.
 func (s SequenceID) String() string {
-	return s.intSeqToString()
+	if s.MetaSeq != 0 {
+		return s.MetaFormat()
+	} else {
+		return s.SingleCollectionFormat()
+	}
 }
 
-func (s SequenceID) intSeqToString() string {
-
+func (s SequenceID) SingleCollectionFormat() string {
 	if s.LowSeq > 0 && s.LowSeq < s.Seq {
 		if s.TriggeredBy > 0 {
 			return fmt.Sprintf("%d:%d:%d", s.LowSeq, s.TriggeredBy, s.Seq)
@@ -66,6 +76,13 @@ func (s SequenceID) intSeqToString() string {
 	} else {
 		return strconv.FormatUint(s.Seq, 10)
 	}
+}
+
+func (s SequenceID) MetaFormat() string {
+	if s.BackfillSeq == 0 {
+		return fmt.Sprintf("%d-%s", s.MetaSeq, s.SingleCollectionFormat())
+	}
+	return fmt.Sprintf("%d:%d-%s", s.MetaSeq, s.BackfillSeq, s.SingleCollectionFormat())
 }
 
 func seqStr(seq interface{}) string {
@@ -95,26 +112,46 @@ func parseIntegerSequenceID(str string) (s SequenceID, err error) {
 	if str == "" {
 		return SequenceID{}, nil
 	}
+
+	// Check for metadata sequence format (MetaSeq, BackfillSeq)
+	metaPartStr, nonMetaPartStr, found := strings.Cut(str, "-")
+	if found {
+		metaSeqStr, backfillSeqStr, found := strings.Cut(metaPartStr, ":")
+		if found {
+			if s.MetaSeq, err = ParseSequenceComponent(metaSeqStr, false); err != nil {
+				return
+			}
+			if s.BackfillSeq, err = ParseSequenceComponent(backfillSeqStr, false); err != nil {
+				return
+			}
+		} else {
+			if s.MetaSeq, err = ParseSequenceComponent(metaPartStr, false); err != nil {
+				return
+			}
+		}
+		str = nonMetaPartStr
+	}
+
 	components := strings.Split(str, ":")
 	if len(components) == 1 {
 		// Just the internal sequence
-		s.Seq, err = ParseIntSequenceComponent(components[0], false)
+		s.Seq, err = ParseSequenceComponent(components[0], false)
 	} else if len(components) == 2 {
 		// TriggeredBy and InternalSequence
-		if s.TriggeredBy, err = ParseIntSequenceComponent(components[0], false); err != nil {
+		if s.TriggeredBy, err = ParseSequenceComponent(components[0], false); err != nil {
 			return
 		}
-		if s.Seq, err = ParseIntSequenceComponent(components[1], false); err != nil {
+		if s.Seq, err = ParseSequenceComponent(components[1], false); err != nil {
 			return
 		}
 	} else if len(components) == 3 {
-		if s.LowSeq, err = ParseIntSequenceComponent(components[0], false); err != nil {
+		if s.LowSeq, err = ParseSequenceComponent(components[0], false); err != nil {
 			return
 		}
-		if s.TriggeredBy, err = ParseIntSequenceComponent(components[1], true); err != nil {
+		if s.TriggeredBy, err = ParseSequenceComponent(components[1], true); err != nil {
 			return
 		}
-		if s.Seq, err = ParseIntSequenceComponent(components[2], false); err != nil {
+		if s.Seq, err = ParseSequenceComponent(components[2], false); err != nil {
 			return
 		}
 	} else {
@@ -127,7 +164,7 @@ func parseIntegerSequenceID(str string) (s SequenceID, err error) {
 	return
 }
 
-func ParseIntSequenceComponent(component string, allowEmpty bool) (uint64, error) {
+func ParseSequenceComponent(component string, allowEmpty bool) (uint64, error) {
 	value := uint64(0)
 	if allowEmpty && component == "" {
 		return value, nil
@@ -139,7 +176,7 @@ func ParseIntSequenceComponent(component string, allowEmpty bool) (uint64, error
 
 func (s SequenceID) MarshalJSON() ([]byte, error) {
 
-	if s.TriggeredBy > 0 || s.LowSeq > 0 {
+	if s.TriggeredBy > 0 || s.LowSeq > 0 || s.MetaSeq > 0 {
 		return []byte(fmt.Sprintf("\"%s\"", s.String())), nil
 	} else {
 		return []byte(strconv.FormatUint(s.Seq, 10)), nil
@@ -148,10 +185,10 @@ func (s SequenceID) MarshalJSON() ([]byte, error) {
 }
 
 func (s *SequenceID) UnmarshalJSON(data []byte) error {
-	return s.unmarshalIntSequence(data)
+	return s.unmarshalSequence(data)
 }
 
-func (s *SequenceID) unmarshalIntSequence(data []byte) error {
+func (s *SequenceID) unmarshalSequence(data []byte) error {
 	var raw string
 	err := base.JSONUnmarshal(data, &raw)
 	if err != nil {
@@ -172,17 +209,32 @@ func (s SequenceID) SafeSequence() uint64 {
 }
 
 func (s SequenceID) IsNonZero() bool {
-	return s.Seq > 0
+	return s.Seq > 0 || s.MetaSeq > 0
 }
 
 // Equality of sequences, based on seq, triggered by and low hash
 func (s SequenceID) Equals(s2 SequenceID) bool {
-	return s.SafeSequence() == s2.SafeSequence() && s.TriggeredBy == s2.TriggeredBy
+	return s.SafeSequence() == s2.SafeSequence() && s.TriggeredBy == s2.TriggeredBy && s.MetaSeq == s2.MetaSeq && s.BackfillSeq == s2.BackfillSeq
 }
 
 // The most significant value is TriggeredBy, unless it's zero, in which case use Seq.
-// The tricky part is that "n" sorts after "n:m" for any nonzero m
+// The tricky part is that "n" sorts after "n:m" for any nonzero m, for both triggeredBy:Seq and metaSeq:backfillSeq
 func (s SequenceID) Before(s2 SequenceID) bool {
+
+	// Check metaSeq first
+	if s.MetaSeq != s2.MetaSeq {
+		return s.MetaSeq < s2.MetaSeq
+	}
+	if s.BackfillSeq != s2.BackfillSeq {
+		if s.BackfillSeq == 0 {
+			return false
+		}
+		if s2.BackfillSeq == 0 {
+			return true
+		}
+		return s.BackfillSeq < s2.BackfillSeq
+	}
+
 	// using SafeSequence for comparison, which takes the lower of LowSeq and Seq
 	if s.TriggeredBy == s2.TriggeredBy {
 		if s.SafeSequence() == s2.SafeSequence() {
