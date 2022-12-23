@@ -13,7 +13,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/couchbase/sync_gateway/auth"
 	"math"
 	"runtime/debug"
 	"sort"
@@ -822,7 +821,6 @@ func (db *DatabaseCollectionWithUser) SimpleMultiChangesFeed(ctx context.Context
 				if db.user != nil {
 					feeds = db.appendUserFeed(feeds, options)
 				}
-				var channelsToRevoke auth.RevokedChannels
 				if options.Revocations && db.user != nil && !options.ActiveOnly {
 					channelsToRevoke := db.user.RevokedCollectionChannels(db.ScopeName(), db.Name(), options.Since.Seq, options.Since.LowSeq, options.Since.TriggeredBy)
 					for channel, revokedSeq := range channelsToRevoke {

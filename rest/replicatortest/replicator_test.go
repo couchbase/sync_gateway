@@ -906,15 +906,12 @@ func TestPurgeWhenUserChannelRevoked(t *testing.T) {
 	resp = remoteRT.SendAdminRequest(http.MethodGet, "/db/_user/testRemote", "")
 	fmt.Println(resp.Code, resp.Body)
 
-	//docresp := remoteRT.PutDocCollection("10", `{"source":"remote", "channels":["A", "B"]}`)
-	//assert.True(t, docresp.Ok)
-	//rev := docresp.Rev
 	putDocs(t, remoteRT)
 
 	resp = remoteRT.SendAdminRequest(http.MethodGet, "/db.sg_test_0.sg_test_0/10", "")
 	fmt.Println(resp.Code, resp.Body)
 
-	resp = remoteRT.SendAdminRequest(http.MethodGet, "/db/_all_docs?include_docs=true", "")
+	resp = remoteRT.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/_all_docs?include_docs=true", "")
 	fmt.Println(resp.Body)
 	rest.RequireStatus(t, resp, http.StatusOK)
 
@@ -927,16 +924,13 @@ func TestPurgeWhenUserChannelRevoked(t *testing.T) {
 	activeRT.WaitForReplicationStatus(t.Name(), db.ReplicationStateStopped)
 	time.Sleep(8 * time.Second)
 
-	resp = activeRT.SendAdminRequest(http.MethodGet, "/db/_all_docs?include_docs=true", "")
+	resp = activeRT.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/_all_docs?include_docs=true", "")
 	fmt.Println(resp.Body)
 	rest.RequireStatus(t, resp, http.StatusOK)
-	resp = activeRT.SendUserRequestWithHeaders(http.MethodGet, "/db/_all_docs?include_docs=true", "", reqHeaders, "test1", "couchbase")
+	resp = activeRT.SendUserRequestWithHeaders(http.MethodGet, "/{{.keyspace}}/_all_docs?include_docs=true", "", reqHeaders, "test1", "couchbase")
 	fmt.Println(resp.Body)
 	rest.RequireStatus(t, resp, http.StatusOK)
 
-	//docresp1 := remoteRT.UpdateDocCollection("10", rev, `{"source":"remote", "channels" : ["B"]}`)
-	//assert.True(t, docresp1.Ok)
-	//rev = docresp.Rev
 	updateDocs(t, remoteRT)
 
 	resp = remoteRT.SendAdminRequest(http.MethodPut, "/db/_user/testRemote", `{"name" : "testRemote", "password" : "couchbase", "admin_channels" : ["B"], "collection_access":{"sg_test_0":{"sg_test_0":{"admin_channels":["B"]}}}}`)
@@ -957,7 +951,7 @@ func TestPurgeWhenUserChannelRevoked(t *testing.T) {
 	activeRT.WaitForReplicationStatus(t.Name(), db.ReplicationStateRunning)
 	activeRT.WaitForReplicationStatus(t.Name(), db.ReplicationStateStopped)
 
-	resp = activeRT.SendAdminRequest(http.MethodGet, "/db/_all_docs?include_docs=true", "")
+	resp = activeRT.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/_all_docs?include_docs=true", "")
 	fmt.Println(resp.Body)
 	rest.RequireStatus(t, resp, http.StatusOK)
 
@@ -983,7 +977,7 @@ func TestPurgeWhenUserChannelRevoked(t *testing.T) {
 		return status.PullReplicationStatus.DocsPurged
 	}, 1000)
 
-	resp = activeRT.SendAdminRequest(http.MethodGet, "/db/_all_docs?include_docs=true", "")
+	resp = activeRT.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/_all_docs?include_docs=true", "")
 	fmt.Println(resp.Body)
 	rest.RequireStatus(t, resp, http.StatusOK)
 
