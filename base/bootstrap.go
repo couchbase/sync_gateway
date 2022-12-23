@@ -35,8 +35,6 @@ type BootstrapConnection interface {
 	UpdateConfig(bucket, groupID string, updateCallback func(rawBucketConfig []byte, rawBucketConfigCas uint64) (updatedConfig []byte, err error)) (newCAS uint64, err error)
 	// Close releases any long-lived connections
 	Close()
-	// To enusre connections to the cluster when running in serverless are being made in serverless values
-	SetConnectionStringServerless() error
 }
 
 // CouchbaseCluster is a GoCBv2 implementation of BootstrapConnection

@@ -1721,6 +1721,9 @@ func (sc *ServerContext) initializeCouchbaseServerConnections(ctx context.Contex
 		if err != nil {
 			return err
 		}
+		if sc.Config.IsServerless() {
+			couchbaseCluster.SetConnectionStringServerless()
+		}
 
 		sc.BootstrapContext.Connection = couchbaseCluster
 
