@@ -481,7 +481,6 @@ func TestLocalJWTRolesChannels(t *testing.T) {
 	require.NotNil(t, user)
 
 	user.SetCollectionJWTChannels(s, c, ch.AtSequence(ch.BaseSetOf(t, "jwt_only_channel"), 1), 1)
-	fmt.Println(user.CollectionJWTChannels(s, c))
 
 	assert.Contains(t, user.RoleNames(), "jwt_only_role")
 	assert.Contains(t, user.CollectionJWTChannels(s, c).AllKeys(), "jwt_only_channel")

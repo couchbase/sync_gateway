@@ -1777,15 +1777,15 @@ func TestOneShotChangesWithExplicitDocIds(t *testing.T) {
 	s := collection.ScopeName()
 
 	// Create user1
-	response := rt.SendAdminRequest("PUT", "/db/_user/user1", `{"email":"user1@couchbase.com", "password":"letmein", `+rest.AdminChannelGrant(s, c, `"admin_channels":["alpha"]`)+`}`)
+	response := rt.SendAdminRequest("PUT", "/{{.db}}/_user/user1", `{"email":"user1@couchbase.com", "password":"letmein", `+rest.AdminChannelGrant(s, c, `"admin_channels":["alpha"]`)+`}`)
 	rest.RequireStatus(t, response, 201)
 
 	// Create user2
-	response = rt.SendAdminRequest("PUT", "/db/_user/user2", `{"email":"user2@couchbase.com", "password":"letmein", `+rest.AdminChannelGrant(s, c, `"admin_channels":["beta"]`)+`}`)
+	response = rt.SendAdminRequest("PUT", "/{{.db}}/_user/user2", `{"email":"user2@couchbase.com", "password":"letmein", `+rest.AdminChannelGrant(s, c, `"admin_channels":["beta"]`)+`}`)
 	rest.RequireStatus(t, response, 201)
 
 	// Create user3
-	response = rt.SendAdminRequest("PUT", "/db/_user/user3", `{"email":"user3@couchbase.com", "password":"letmein", `+rest.AdminChannelGrant(s, c, `"admin_channels":["alpha","beta"]`)+`}`)
+	response = rt.SendAdminRequest("PUT", "/{{.db}}/_user/user3", `{"email":"user3@couchbase.com", "password":"letmein", `+rest.AdminChannelGrant(s, c, `"admin_channels":["alpha","beta"]`)+`}`)
 	rest.RequireStatus(t, response, 201)
 
 	// Create user4
@@ -1793,7 +1793,7 @@ func TestOneShotChangesWithExplicitDocIds(t *testing.T) {
 	rest.RequireStatus(t, response, 201)
 
 	// Create user5
-	response = rt.SendAdminRequest("PUT", "/db/_user/user5", `{"email":"user5@couchbase.com", "password":"letmein", `+rest.AdminChannelGrant(s, c, `"admin_channels":["*"]`)+`}`)
+	response = rt.SendAdminRequest("PUT", "/{{.db}}/_user/user5", `{"email":"user5@couchbase.com", "password":"letmein", `+rest.AdminChannelGrant(s, c, `"admin_channels":["*"]`)+`}`)
 	rest.RequireStatus(t, response, 201)
 
 	// Create docs

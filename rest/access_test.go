@@ -862,7 +862,7 @@ func TestChannelAccessChanges(t *testing.T) {
 	rt.MustWaitForDoc("g1", t)
 
 	changes := ChangesResults{}
-	response = rt.SendUserRequest("GET", "/db."+s+"."+c+"/_changes", "", "zegpold")
+	response = rt.SendUserRequest("GET", "/{{.keyspace}}/_changes", "", "zegpold")
 	err = base.JSONUnmarshal(response.Body.Bytes(), &changes)
 
 	assert.NoError(t, err)
@@ -936,7 +936,7 @@ func TestChannelAccessChanges(t *testing.T) {
 
 	// Look at alice's _changes feed:
 	changes = ChangesResults{}
-	response = rt.SendUserRequest("GET", "/db."+s+"."+c+"/_changes", "", "alice")
+	response = rt.SendUserRequest("GET", "/{{.keyspace}}/_changes", "", "alice")
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &changes))
 	require.Len(t, changes.Results, 1)
 	assert.NoError(t, err)
@@ -944,7 +944,7 @@ func TestChannelAccessChanges(t *testing.T) {
 
 	// The complete _changes feed for zegpold contains docs a1 and g1:
 	changes = ChangesResults{}
-	response = rt.SendUserRequest("GET", "/db."+s+"."+c+"/_changes", "", "zegpold")
+	response = rt.SendUserRequest("GET", "/{{.keyspace}}/_changes", "", "zegpold")
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &changes))
 	assert.NoError(t, err)
 	require.Len(t, changes.Results, 2)
@@ -956,7 +956,7 @@ func TestChannelAccessChanges(t *testing.T) {
 
 	// Changes feed with since=gamma:8 would ordinarily be empty, but zegpold got access to channel
 	// alpha after sequence 8, so the pre-existing docs in that channel are included:
-	response = rt.SendUserRequest("GET", fmt.Sprintf("/db."+s+"."+c+"/_changes?since=\"%s\"", since),
+	response = rt.SendUserRequest("GET", fmt.Sprintf("/{{.keyspace}}/_changes?since=\"%s\"", since),
 		"", "zegpold")
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	changes.Results = nil
