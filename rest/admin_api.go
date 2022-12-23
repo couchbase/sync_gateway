@@ -964,23 +964,19 @@ func (h *handler) handleDeleteDB() error {
 
 	var bucket string
 
-	dbContext, _ := h.server.GetDatabase(h.ctx(), dbName)
-
-	if dbContext != nil {
-		bucket = dbContext.Bucket.GetName()
-	} else if h.server.persistentConfig {
-		bucket, _ = h.server.bucketNameFromDbName(dbName)
-	}
-
 	if h.server.persistentConfig {
+		bucket, _ = h.server.bucketNameFromDbName(dbName)
 		_, err := h.server.BootstrapContext.Connection.UpdateConfig(bucket, h.server.Config.Bootstrap.ConfigGroupID, func(rawBucketConfig []byte, rawBucketConfigCas uint64) (updatedConfig []byte, err error) {
 			return nil, nil
 		})
 		if err != nil {
 			return base.HTTPErrorf(http.StatusInternalServerError, "couldn't remove database %q from bucket %q: %s", base.MD(dbName), base.MD(bucket), err.Error())
 		}
+		_, _ = h.response.Write([]byte("{}"))
+		return nil
 	}
-	if !h.server.RemoveDatabase(h.ctx(), dbName) && bucket == "" {
+
+	if !h.server.RemoveDatabase(h.ctx(), dbName) {
 		return base.HTTPErrorf(http.StatusNotFound, "no such database %q", dbName)
 	}
 	_, _ = h.response.Write([]byte("{}"))

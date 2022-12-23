@@ -1351,7 +1351,7 @@ func (sc *ServerContext) _fetchAndLoadDatabase(ctx context.Context, dbName strin
 	return true, nil
 }
 
-func (sc *ServerContext) forEachDbConfig(callback func(bucket string) (exit bool, err error)) (err error) {
+func (sc *ServerContext) findBucketWithCallback(callback func(bucket string) (exit bool, err error)) (err error) {
 	// rewritten loop from FetchDatabase as part of CBG-2420 PR review
 	var buckets []string
 	if sc.Config.IsServerless() {
@@ -1419,7 +1419,8 @@ func (sc *ServerContext) fetchDatabase(ctx context.Context, dbName string) (foun
 		return true, nil
 	}
 
-	err = sc.forEachDbConfig(callback)
+	err = sc.findBucketWithCallback(callback)
+
 	if err != nil {
 		return false, nil, err
 	}
@@ -1429,6 +1430,14 @@ func (sc *ServerContext) fetchDatabase(ctx context.Context, dbName string) (foun
 
 func (sc *ServerContext) bucketNameFromDbName(dbName string) (bucketName string, found bool) {
 	// Minimal representation of config struct to be tolerant of invalid database configurations where we still need to find a database name
+	// see if we find the database in-memory first, otherwise fall back to scanning buckets for db configs
+	sc.lock.RLock()
+	dbc, ok := sc.databases_[dbName]
+	sc.lock.RUnlock()
+
+	if ok {
+		return dbc.Bucket.GetName(), true
+	}
 	var cfgDbName struct {
 		Name string `json:"name"`
 	}
@@ -1443,8 +1452,11 @@ func (sc *ServerContext) bucketNameFromDbName(dbName string) (bucketName string,
 		}
 		return false, nil
 	}
-	err := sc.forEachDbConfig(callback)
+	err := sc.findBucketWithCallback(callback)
 	if err != nil {
+		return "", false
+	}
+	if bucketName == "" {
 		return "", false
 	}
 	return bucketName, true
