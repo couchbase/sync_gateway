@@ -1586,6 +1586,43 @@ func GetHttpClient(insecureSkipVerify bool) *http.Client {
 	return http.DefaultClient
 }
 
+// Like GetHttpClient, and also turns off the NODELAY option on the underlying TCP socket.
+// This is better for WebSockets and BLIP, as it allows multiple small messages to be combined in
+// one IP packet instead of generating lots of tiny packets.
+func GetHttpClientForWebSocket(insecureSkipVerify bool) *http.Client {
+	transport := DefaultHTTPTransport()
+	dial := transport.DialContext
+	transport.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
+		conn, err := dial(ctx, network, addr)
+		if err == nil {
+			turnOffNoDelay(ctx, conn)
+		}
+		return conn, err
+	}
+
+	if insecureSkipVerify {
+		if transport.TLSClientConfig == nil {
+			transport.TLSClientConfig = new(tls.Config)
+		}
+		transport.TLSClientConfig.InsecureSkipVerify = true
+	}
+	return &http.Client{Transport: transport}
+}
+
+// Turns off TCP NODELAY on a TCP connection.
+// On success returns true; on failure logs a warning and returns false.
+// (There's really no reason for a caller to take note of the return value.)
+func turnOffNoDelay(ctx context.Context, conn net.Conn) bool {
+	if tcpConn, ok := conn.(*net.TCPConn); !ok {
+		WarnfCtx(ctx, "Couldn't turn off NODELAY for %v: it's not a TCPConn", conn)
+	} else if err := tcpConn.SetNoDelay(false); err != nil {
+		WarnfCtx(ctx, "Couldn't turn off NODELAY for %v: %v", conn, err)
+	} else {
+		return true
+	}
+	return false
+}
+
 // IsConnectionRefusedError returns true if the given error is due to a connection being actively refused.
 func IsConnectionRefusedError(err error) bool {
 	if err == nil {
