@@ -269,6 +269,66 @@ func TestMultiCollectionDCP(t *testing.T) {
 	// require.NoError(t, rt.WaitForDoc(docID))
 }
 
+func TestMultiCollectionChannelAccess(t *testing.T) {
+	base.TestRequiresCollections(t)
+
+	if !base.TestUseXattrs() {
+		t.Skip("Test relies on import - needs xattrs")
+	}
+
+	tb := base.GetTestBucket(t)
+	defer tb.Close()
+
+	ctx := base.TestCtx(t)
+	err := base.CreateBucketScopesAndCollections(ctx, tb.BucketSpec, map[string][]string{
+		"foo": {
+			"bar",
+			"baz",
+		},
+	})
+	require.NoError(t, err)
+	rt := NewRestTester(t, &RestTesterConfig{
+		SyncFn: `{
+		access(doc.username, [doc.grant1,doc.grant2])
+		}`,
+		CustomTestBucket: tb.NoCloseClone(),
+		DatabaseConfig: &DatabaseConfig{
+			DbConfig: DbConfig{
+				AutoImport: true,
+				Scopes: ScopesConfig{
+					"foo": ScopeConfig{
+						Collections: map[string]CollectionConfig{
+							"bar": {},
+							"baz": {},
+						},
+					},
+				},
+			},
+		},
+	})
+	defer rt.Close()
+
+	underlying, ok := rt.Bucket().DefaultDataStore().(*base.Collection)
+	require.True(t, ok, "rt bucket was not a Collection")
+	resp := rt.SendAdminRequest("PUT", "/{{db}}/_user/userA", `{""}`)
+
+	_, err = underlying.Collection.Bucket().Scope("foo").Collection("bar").Insert("testDocBar1", map[string]any{"username": "userA", "grant1": "A", "grant2": "B"}, nil)
+	require.NoError(t, err)
+	_, err = underlying.Collection.Bucket().Scope("foo").Collection("bar").Insert("testDocBar2", map[string]any{"username": "userA", "grant1": "A", "grant2": "B"}, nil)
+	require.NoError(t, err)
+	_, err = underlying.Collection.Bucket().Scope("foo").Collection("baz").Insert("testDocBaz1", map[string]any{"username": "userA", "grant1": "A", "grant2": "B"}, nil)
+	require.NoError(t, err)
+	_, err = underlying.Collection.Bucket().Scope("foo").Collection("baz").Insert("testDocBaz2", map[string]any{"username": "userA", "grant1": "A", "grant2": "B"}, nil)
+	require.NoError(t, err)
+
+	// ensure the doc is picked up by the import DCP feed and actually gets imported
+	err = rt.WaitForCondition(func() bool {
+		return rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value() == 2
+	})
+	require.NoError(t, err)
+
+}
+
 // TestCollectionsBasicIndexQuery ensures that the bucket API is able to create an index on a collection
 // and query documents written to the collection.
 func TestCollectionsBasicIndexQuery(t *testing.T) {
