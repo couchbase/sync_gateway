@@ -2117,13 +2117,19 @@ func (rt *RestTester) GetKeyspaces() []string {
 	return keyspaces
 }
 
-// getSingleKeyspace the name of the keyspace if there is only one test collection on one database.
+// GetSingleKeyspace the name of the keyspace if there is only one test collection on one database.
 func (rt *RestTester) GetSingleKeyspace() string {
 	db := rt.GetDatabase()
-	require.Equal(rt.TB, 1, len(db.CollectionByID), "Database is configured with more collection")
-	for _, collection := range db.CollectionByID {
+	require.Equal(rt.TB, 1, len(db.CollectionByID), "Database must be configured with only one collection to use this function")
+	for id, collection := range db.CollectionByID {
+		if id == base.DefaultCollectionID {
+			// for backwards compatibility (and user-friendliness),
+			// we can optionally just use `/db/` instead of `/db._default._default/`
+			// Return this format to get coverage of both formats.
+			return db.Name
+		}
 		return getRESTKeyspace(rt.TB, db.Name, collection)
 	}
-	rt.TB.Error("Could not find any collections")
+	rt.TB.Fatal("Had no collection to return a keyspace for") // should be unreachable given length check above
 	return ""
 }
