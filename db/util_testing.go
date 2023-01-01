@@ -521,12 +521,16 @@ func SetupTestDBForDataStoreWithOptions(t testing.TB, tBucket *base.TestBucket, 
 }
 
 // getScopesOptions sets up a ScopesOptions from a TestBucket for use with non default collections to pass in DatabaseContextOptions.
-func getScopesOptions(t testing.TB, testBucket *base.TestBucket, numCollections int) ScopesOptions {
+func getScopesOptions(t testing.TB, testBucket *base.TestBucket, numCollections int, useDefaultCollection bool) ScopesOptions {
 	// Get a datastore as provided by the test
 	stores := testBucket.GetNonDefaultDatastoreNames()
 	require.True(t, len(stores) >= numCollections, "Requested more collections %d than found on testBucket %d", numCollections, len(stores))
 
 	scopesConfig := ScopesOptions{}
+	nonDefaultCollections := numCollections
+	if useDefaultCollection {
+		nonDefaultCollections -= 1
+	}
 	for i := 0; i < numCollections; i++ {
 		dataStoreName := stores[i]
 		if scopeConfig, ok := scopesConfig[dataStoreName.ScopeName()]; ok {
@@ -543,5 +547,12 @@ func getScopesOptions(t testing.TB, testBucket *base.TestBucket, numCollections 
 		}
 
 	}
+	if useDefaultCollection {
+		scopesConfig[base.DefaultScope] = ScopeOptions{
+			Collections: map[string]CollectionOptions{
+				base.DefaultCollection: {},
+			}}
+	}
+
 	return scopesConfig
 }

@@ -28,19 +28,17 @@ func TestAttachmentMark(t *testing.T) {
 		t.Skip("Requires CBS")
 	}
 
-	base.TemporarilyDisableTestUsingDCPWithCollections(t)
-
-	testDb, ctx := setupTestDB(t)
+	testDb, ctx := setupTestDBWithDefaultCollection(t)
 	defer testDb.Close(ctx)
 
-	databaseCollection := testDb.GetSingleDatabaseCollectionWithUser()
-	collectionID := databaseCollection.GetCollectionID()
-	dataStore := databaseCollection.dataStore
+	collection, err := testDb.GetDatabaseCollectionWithUser(base.DefaultScope, base.DefaultCollection)
+	require.NoError(t, err)
+	dataStore := collection.dataStore
 
 	body := map[string]interface{}{"foo": "bar"}
 	for i := 0; i < 10; i++ {
 		key := fmt.Sprintf("%s_%d", t.Name(), i)
-		_, _, err := databaseCollection.Put(ctx, key, body)
+		_, _, err := collection.Put(ctx, key, body)
 		assert.NoError(t, err)
 	}
 
@@ -51,18 +49,18 @@ func TestAttachmentMark(t *testing.T) {
 		attBody := map[string]interface{}{"value": strconv.Itoa(i)}
 		attJSONBody, err := base.JSONMarshal(attBody)
 		assert.NoError(t, err)
-		attKeys = append(attKeys, CreateLegacyAttachmentDoc(t, ctx, databaseCollection, docID, []byte("{}"), attKey, attJSONBody))
+		attKeys = append(attKeys, CreateLegacyAttachmentDoc(t, ctx, collection, docID, []byte("{}"), attKey, attJSONBody))
 	}
 
-	err := dataStore.SetRaw("testDocx", 0, nil, []byte("{}"))
+	err = dataStore.SetRaw("testDocx", 0, nil, []byte("{}"))
 	assert.NoError(t, err)
 
-	attKeys = append(attKeys, createConflictingDocOneLeafHasAttachmentBodyMap(t, "conflictAtt", "attForConflict", []byte(`{"value": "att"}`), databaseCollection))
-	attKeys = append(attKeys, createConflictingDocOneLeafHasAttachmentBodyKey(t, "conflictAttBodyKey", "attForConflict2", []byte(`{"val": "bodyKeyAtt"}`), databaseCollection))
-	attKeys = append(attKeys, createDocWithInBodyAttachment(t, ctx, "inBodyDoc", []byte(`{}`), "attForInBodyRef", []byte(`{"val": "inBodyAtt"}`), databaseCollection))
+	attKeys = append(attKeys, createConflictingDocOneLeafHasAttachmentBodyMap(t, "conflictAtt", "attForConflict", []byte(`{"value": "att"}`), collection))
+	attKeys = append(attKeys, createConflictingDocOneLeafHasAttachmentBodyKey(t, "conflictAttBodyKey", "attForConflict2", []byte(`{"val": "bodyKeyAtt"}`), collection))
+	attKeys = append(attKeys, createDocWithInBodyAttachment(t, ctx, "inBodyDoc", []byte(`{}`), "attForInBodyRef", []byte(`{"val": "inBodyAtt"}`), collection))
 
 	terminator := base.NewSafeTerminator()
-	attachmentsMarked, _, err := attachmentCompactMarkPhase(ctx, dataStore, collectionID, testDb, t.Name(), terminator, &base.AtomicInt{})
+	attachmentsMarked, _, err := attachmentCompactMarkPhase(ctx, dataStore, collection.GetCollectionID(), testDb, t.Name(), terminator, &base.AtomicInt{})
 	assert.NoError(t, err)
 	assert.Equal(t, int64(13), attachmentsMarked)
 
@@ -82,16 +80,14 @@ func TestAttachmentMark(t *testing.T) {
 
 func TestAttachmentSweep(t *testing.T) {
 
-	base.TemporarilyDisableTestUsingDCPWithCollections(t)
-
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Requires CBS")
 	}
 
-	testDb, ctx := setupTestDB(t)
+	testDb, ctx := setupTestDBWithDefaultCollection(t)
 	defer testDb.Close(ctx)
+
 	dataStore := testDb.Bucket.DefaultDataStore()
-	collectionID := testDb.GetSingleDatabaseCollection().GetCollectionID()
 
 	makeMarkedDoc := func(docid string, compactID string) {
 		err := dataStore.SetRaw(docid, 0, nil, []byte("{}"))
@@ -124,7 +120,7 @@ func TestAttachmentSweep(t *testing.T) {
 	}
 
 	terminator := base.NewSafeTerminator()
-	purged, err := attachmentCompactSweepPhase(ctx, dataStore, collectionID, testDb, t.Name(), nil, false, terminator, &base.AtomicInt{})
+	purged, err := attachmentCompactSweepPhase(ctx, dataStore, base.DefaultCollectionID, testDb, t.Name(), nil, false, terminator, &base.AtomicInt{})
 	assert.NoError(t, err)
 
 	assert.Equal(t, int64(11), purged)
@@ -134,7 +130,6 @@ func TestAttachmentCleanup(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Requires CBS")
 	}
-	base.TemporarilyDisableTestUsingDCPWithCollections(t)
 	testDb, ctx := setupTestDB(t)
 	defer testDb.Close(ctx)
 	collection := testDb.GetSingleDatabaseCollection()
@@ -242,14 +237,13 @@ func TestAttachmentMarkAndSweepAndCleanup(t *testing.T) {
 		t.Skip("Requires CBS")
 	}
 
-	base.TemporarilyDisableTestUsingDCPWithCollections(t)
-
-	testDb, ctx := setupTestDB(t)
+	testDb, ctx := setupTestDBWithDefaultCollection(t)
 	defer testDb.Close(ctx)
-	dataStore := testDb.Bucket.DefaultDataStore()
-	collectionID := testDb.GetSingleDatabaseCollection().GetCollectionID()
 
-	collection := testDb.GetSingleDatabaseCollectionWithUser()
+	collection, err := testDb.GetDatabaseCollectionWithUser(base.DefaultScope, base.DefaultCollection)
+	require.NoError(t, err)
+	dataStore := collection.dataStore
+
 	attKeys := make([]string, 0, 15)
 	for i := 0; i < 10; i++ {
 		docID := fmt.Sprintf("testDoc-%d", i)
@@ -272,11 +266,11 @@ func TestAttachmentMarkAndSweepAndCleanup(t *testing.T) {
 	}
 
 	terminator := base.NewSafeTerminator()
-	attachmentsMarked, vbUUIDS, err := attachmentCompactMarkPhase(ctx, dataStore, collectionID, testDb, t.Name(), terminator, &base.AtomicInt{})
+	attachmentsMarked, vbUUIDS, err := attachmentCompactMarkPhase(ctx, dataStore, collection.GetCollectionID(), testDb, t.Name(), terminator, &base.AtomicInt{})
 	assert.NoError(t, err)
 	assert.Equal(t, int64(10), attachmentsMarked)
 
-	attachmentsPurged, err := attachmentCompactSweepPhase(ctx, dataStore, collectionID, testDb, t.Name(), vbUUIDS, false, terminator, &base.AtomicInt{})
+	attachmentsPurged, err := attachmentCompactSweepPhase(ctx, dataStore, collection.GetCollectionID(), testDb, t.Name(), vbUUIDS, false, terminator, &base.AtomicInt{})
 	assert.NoError(t, err)
 	assert.Equal(t, int64(5), attachmentsPurged)
 
@@ -294,7 +288,7 @@ func TestAttachmentMarkAndSweepAndCleanup(t *testing.T) {
 		}
 	}
 
-	err = attachmentCompactCleanupPhase(ctx, dataStore, collectionID, testDb, t.Name(), vbUUIDS, terminator)
+	err = attachmentCompactCleanupPhase(ctx, dataStore, collection.GetCollectionID(), testDb, t.Name(), vbUUIDS, terminator)
 	assert.NoError(t, err)
 
 	for _, attDocKey := range attKeys {
@@ -314,9 +308,7 @@ func TestAttachmentCompactionRunTwice(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
 	}
-
-	base.TemporarilyDisableTestUsingDCPWithCollections(t)
-
+	t.Skip("FIXME: something doesn't work with leaky buckets")
 	b := base.GetTestBucket(t).LeakyBucketClone(base.LeakyBucketConfig{})
 	defer b.Close()
 
@@ -463,15 +455,14 @@ func TestAttachmentCompactionStopImmediateStart(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
-	base.TemporarilyDisableTestUsingDCPWithCollections(t)
 	b := base.GetTestBucket(t).LeakyBucketClone(base.LeakyBucketConfig{})
 	defer b.Close()
 
-	testDB1, ctx1 := setupTestDBForBucket(t, b)
+	testDB1, ctx1 := setupTestDBForBucketWithDefaultCollection(t, b)
 	defer testDB1.Close(ctx1)
 	db1DataStore := testDB1.Bucket.DefaultDataStore()
 
-	testDB2, ctx2 := setupTestDBForBucket(t, b.NoCloseClone())
+	testDB2, ctx2 := setupTestDBForBucketWithDefaultCollection(t, b.NoCloseClone())
 	defer testDB2.Close(ctx2)
 
 	var err error
@@ -567,8 +558,6 @@ func TestAttachmentProcessError(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
-	base.TemporarilyDisableTestUsingDCPWithCollections(t)
-
 	b := base.GetTestBucket(t).LeakyBucketClone(base.LeakyBucketConfig{
 		SetXattrCallback: func(key string) error {
 			return fmt.Errorf("some error")
@@ -576,13 +565,15 @@ func TestAttachmentProcessError(t *testing.T) {
 	})
 	defer b.Close()
 
-	testDB1, ctx1 := setupTestDBForBucket(t, b)
+	testDB1, ctx1 := setupTestDBForBucketWithDefaultCollection(t, b)
 	defer testDB1.Close(ctx1)
 
-	collection := testDB1.GetSingleDatabaseCollectionWithUser()
+	collection, err := testDB1.GetDatabaseCollectionWithUser(base.DefaultScope, base.DefaultCollection)
+	require.NoError(t, err)
+
 	CreateLegacyAttachmentDoc(t, ctx1, collection, "docID", []byte("{}"), "attKey", []byte("{}"))
 
-	err := testDB1.AttachmentCompactionManager.Start(ctx1, map[string]interface{}{"database": testDB1})
+	err = testDB1.AttachmentCompactionManager.Start(ctx1, map[string]interface{}{"database": testDB1})
 	assert.NoError(t, err)
 
 	var status AttachmentManagerResponse
@@ -608,11 +599,10 @@ func TestAttachmentDifferentVBUUIDsBetweenPhases(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
-	base.TemporarilyDisableTestUsingDCPWithCollections(t)
 	testDB, ctx := setupTestDB(t)
 	defer testDB.Close(ctx)
 	dataStore := testDB.Bucket.DefaultDataStore()
-	collectionID := testDB.GetSingleDatabaseCollection().GetCollectionID()
+	collectionID := base.DefaultCollectionID
 
 	// Run mark phase as usual
 	terminator := base.NewSafeTerminator()
@@ -851,17 +841,16 @@ func createDocWithInBodyAttachment(t *testing.T, ctx context.Context, docID stri
 func TestAttachmentCompactIncorrectStat(t *testing.T) {
 	base.LongRunningTest(t)
 
-	base.TemporarilyDisableTestUsingDCPWithCollections(t)
-
 	const docsToCreate = 10_000
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Requires CBS")
 	}
 
-	testDb, ctx := setupTestDB(t)
+	testDb, ctx := setupTestDBWithDefaultCollection(t)
 	defer testDb.Close(ctx)
+
 	dataStore := testDb.Bucket.DefaultDataStore()
-	collectionID := testDb.GetSingleDatabaseCollection().GetCollectionID()
+	collectionID := base.DefaultCollectionID
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 

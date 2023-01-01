@@ -53,7 +53,7 @@ func RequireNumTestBuckets(t *testing.T, numRequired int) {
 }
 
 // RequireNumTestDataStores skips the given test if there are not enough test buckets available to use.
-func RequireNumTestDataStores(t *testing.T, numRequired int) {
+func RequireNumTestDataStores(t testing.TB, numRequired int) {
 	TestRequiresCollections(t)
 	available := tbpNumCollectionsPerBucket()
 	if available < numRequired {

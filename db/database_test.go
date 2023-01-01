@@ -49,6 +49,29 @@ func setupTestDBForBucket(t testing.TB, bucket *base.TestBucket) (*Database, con
 	return SetupTestDBForDataStoreWithOptions(t, bucket, dbcOptions)
 }
 
+// setupTestDBForBucketWithDefaultCollection makes sure a default collection is always present.
+func setupTestDBForBucketWithDefaultCollection(t testing.TB, bucket *base.TestBucket) (*Database, context.Context) {
+	cacheOptions := DefaultCacheOptions()
+	dbcOptions := DatabaseContextOptions{
+		CacheOptions: &cacheOptions,
+	}
+	if base.TestsUseNamedCollections() {
+		numCollections := 2
+		base.RequireNumTestDataStores(t, numCollections)
+		dbcOptions.Scopes = getScopesOptions(t, bucket, numCollections, true)
+	}
+
+	return SetupTestDBForDataStoreWithOptions(t, bucket, dbcOptions)
+
+}
+
+// setupTestDBWithDefaultCollection makes sure a default collection is always present.
+func setupTestDBWithDefaultCollection(t testing.TB) (*Database, context.Context) {
+
+	bucket := base.GetTestBucket(t)
+	return setupTestDBForBucketWithDefaultCollection(t, bucket)
+}
+
 func setupTestDBWithOptionsAndImport(t testing.TB, dbcOptions DatabaseContextOptions) (*Database, context.Context) {
 	ctx := base.TestCtx(t)
 	AddOptionsFromEnvironmentVariables(&dbcOptions)

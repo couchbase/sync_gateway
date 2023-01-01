@@ -28,11 +28,16 @@ func TestAttachmentCompactionAPI(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
-	base.TemporarilyDisableTestUsingDCPWithCollections(t)
-
-	rt := rest.NewRestTester(t, nil)
+	// attachment compaction has to run on default collection, we can't run on multiple scopes right now for SG_TEST_USE_DEFAULT_COLLECTION = false
+	rt := rest.NewRestTesterDefaultCollection(t, nil)
 	defer rt.Close()
 
+	// cleanup attachments left behind
+	defer func() {
+		resp := rt.SendAdminRequest("POST", "/{{.db}}/_compact?type=attachment&reset=true", "")
+		rest.RequireStatus(t, resp, http.StatusOK)
+		_ = rt.WaitForAttachmentCompactionStatus(t, db.BackgroundProcessStateCompleted)
+	}()
 	// Perform GET before compact has been ran, ensure it starts in valid 'stopped' state
 	resp := rt.SendAdminRequest("GET", "/{{.db}}/_compact?type=attachment", "")
 	rest.RequireStatus(t, resp, http.StatusOK)
@@ -215,9 +220,8 @@ func TestAttachmentCompactionDryRun(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
-	base.TemporarilyDisableTestUsingDCPWithCollections(t)
-
-	rt := rest.NewRestTester(t, nil)
+	// attachment compaction has to run on default collection, we can't run on multiple scopes right now for SG_TEST_USE_DEFAULT_COLLECTION = false
+	rt := rest.NewRestTesterDefaultCollection(t, nil)
 	defer rt.Close()
 
 	dataStore := rt.GetSingleDataStore()
@@ -249,7 +253,7 @@ func TestAttachmentCompactionDryRun(t *testing.T) {
 	rest.RequireStatus(t, resp, http.StatusOK)
 	status = rt.WaitForAttachmentCompactionStatus(t, db.BackgroundProcessStateCompleted)
 	assert.False(t, status.DryRun)
-	assert.Equal(t, int64(5), status.PurgedAttachments) // FIXME (bbrks) 25???? leak from other tests?
+	assert.Equal(t, int64(5), status.PurgedAttachments)
 
 	for _, docID := range attachmentKeys {
 		_, _, err := dataStore.GetRaw(docID)
@@ -300,9 +304,8 @@ func TestAttachmentCompactionInvalidDocs(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
-	base.TemporarilyDisableTestUsingDCPWithCollections(t)
-
-	rt := rest.NewRestTester(t, nil)
+	// attachment compaction has to run on default collection, we can't run on multiple scopes right now for SG_TEST_USE_DEFAULT_COLLECTION = false
+	rt := rest.NewRestTesterDefaultCollection(t, nil)
 	defer rt.Close()
 	ctx := rt.Context()
 

@@ -214,7 +214,7 @@ func TestPostUpgradeMultipleCollections(t *testing.T) {
 	if base.TestsUseNamedCollections() {
 		numCollections := 2
 		base.RequireNumTestDataStores(t, numCollections)
-		dbOptions.Scopes = getScopesOptions(t, tb, numCollections)
+		dbOptions.Scopes = getScopesOptions(t, tb, numCollections, false)
 	}
 
 	db, ctx := SetupTestDBForDataStoreWithOptions(t, tb, dbOptions)
