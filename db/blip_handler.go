@@ -248,7 +248,11 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 
 	// Ensure that only _one_ subChanges subscription can be open on this blip connection at any given time.  SG #3222.
 	if !bh.activeSubChanges.CASRetry(false, true) {
-		return fmt.Errorf("blipHandler already has an outstanding continous subChanges.  Cannot open another one")
+		// FIXME CBG-2653: Disabling activeSubChanges check for multi-collection to unblock CBL testing.
+		if bh.collectionIdx == nil {
+			return fmt.Errorf("blipHandler already has an outstanding continuous subChanges.  Cannot open another one")
+		}
+		base.WarnfCtx(bh.loggingCtx, "blipHandler already has an outstanding continuous subChanges. Continuing anyway (CBG-2653)")
 	}
 
 	// Create ctx if it has been cancelled
