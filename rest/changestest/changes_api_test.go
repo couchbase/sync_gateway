@@ -3898,7 +3898,7 @@ func TestTombstoneCompaction(t *testing.T) {
 				revId := body["rev"].(string)
 				docId := body["id"].(string)
 
-				response = rt.SendAdminRequest("DELETE", fmt.Sprintf("/{{.keyspace}}/%s?rev=%s", docId, revId), "")
+				response = rt.SendAdminRequest("DELETE", fmt.Sprintf("/%s/%s?rev=%s", keyspace, docId, revId), "")
 				assert.Equal(t, 200, response.Code)
 			}
 		}
