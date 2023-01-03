@@ -485,7 +485,7 @@ func TestForceAPIForbiddenErrors(t *testing.T) {
 			var allChannels struct {
 				Channels []string `json:"all_channels"`
 			}
-			if base.TestsDisableGSI() {
+			if base.IsDefaultCollection(collection.Name(), collection.ScopeName()) {
 				err := json.Unmarshal(resp.BodyBytes(), &allChannels)
 				require.NoError(t, err)
 				assert.NotContains(t, allChannels.Channels, "chan2")
@@ -497,7 +497,7 @@ func TestForceAPIForbiddenErrors(t *testing.T) {
 			resp = rt.SendAdminRequest(http.MethodGet, "/db/_user/Perms", ``)
 			RequireStatus(t, resp, http.StatusOK)
 
-			if base.TestsDisableGSI() {
+			if base.IsDefaultCollection(collection.Name(), collection.ScopeName()) {
 				err = json.Unmarshal(resp.BodyBytes(), &allChannels)
 				require.NoError(t, err)
 				assert.NotContains(t, allChannels.Channels, "chan2")
@@ -515,7 +515,7 @@ func TestForceAPIForbiddenErrors(t *testing.T) {
 			// Make sure channel access grant was successful
 			resp = rt.SendAdminRequest(http.MethodGet, "/db/_user/Perms", ``)
 			RequireStatus(t, resp, http.StatusOK)
-			if base.TestsDisableGSI() {
+			if base.IsDefaultCollection(collection.Name(), collection.ScopeName()) {
 				err = json.Unmarshal(resp.BodyBytes(), &allChannels)
 				require.NoError(t, err)
 				assert.Contains(t, allChannels.Channels, "chan2")
