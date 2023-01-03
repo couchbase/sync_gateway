@@ -139,8 +139,6 @@ func TestResyncDCPInit(t *testing.T) {
 }
 
 func TestResyncManagerDCPStopInMidWay(t *testing.T) {
-	base.TemporarilyDisableTestUsingDCPWithCollections(t)
-
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Test requires Couchbase Server")
 	}
@@ -191,8 +189,6 @@ func TestResyncManagerDCPStopInMidWay(t *testing.T) {
 }
 
 func TestResyncManagerDCPStart(t *testing.T) {
-	base.TemporarilyDisableTestUsingDCPWithCollections(t)
-
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Test requires Couchbase Server")
 	}
@@ -260,8 +256,6 @@ func TestResyncManagerDCPStart(t *testing.T) {
 }
 
 func TestResyncManagerDCPRunTwice(t *testing.T) {
-	base.TemporarilyDisableTestUsingDCPWithCollections(t)
-
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Test requires Couchbase Server")
 	}
@@ -311,8 +305,6 @@ func TestResyncManagerDCPRunTwice(t *testing.T) {
 }
 
 func TestResycnManagerDCPResumeStoppedProcess(t *testing.T) {
-	base.TemporarilyDisableTestUsingDCPWithCollections(t)
-
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Test requires Couchbase Server")
 	}

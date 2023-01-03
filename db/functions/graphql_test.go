@@ -18,6 +18,7 @@ import (
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
+
 	"github.com/graphql-go/graphql"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -488,7 +489,7 @@ func setupTestDBWithFunctions(t *testing.T, fnConfig *FunctionsConfig, gqConfig 
 	}
 
 	tBucket := base.GetTestBucket(t)
-	return db.SetupTestDBForDataStoreWithOptions(t, tBucket, options)
+	return db.SetupTestDBForDataStoreWithOptions(t, tBucket, options, db.UseNamedCollectionsIfAble)
 }
 
 // createPrimaryIndex returns true if there was no index created before

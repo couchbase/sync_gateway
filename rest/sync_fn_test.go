@@ -667,8 +667,6 @@ func TestResyncErrorScenarios(t *testing.T) {
 }
 
 func TestResyncErrorScenariosUsingDCPStream(t *testing.T) {
-	base.TemporarilyDisableTestUsingDCPWithCollections(t)
-
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test doesn't work with walrus")
 	}
@@ -829,8 +827,6 @@ func TestResyncStop(t *testing.T) {
 }
 
 func TestResyncStopUsingDCPStream(t *testing.T) {
-	base.TemporarilyDisableTestUsingDCPWithCollections(t)
-
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test doesn't work with walrus")
 	}

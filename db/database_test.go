@@ -143,7 +143,7 @@ func setupTestLeakyDBWithCacheOptions(t *testing.T, options CacheOptions, leakyO
 func setupTestNamedCollectionDBWithOptions(t testing.TB, dbcOptions DatabaseContextOptions) (*Database, context.Context) {
 
 	tBucket := base.GetTestBucket(t)
-	return SetupTestDBForDataStoreWithOptions(t, tBucket, dbcOptions, useNamedCollectionsIfAble)
+	return SetupTestDBForDataStoreWithOptions(t, tBucket, dbcOptions, UseNamedCollectionsIfAble)
 }
 
 // Sets up test db with the specified database context options in _default scope and collection.  Note that environment variables can
@@ -2479,7 +2479,7 @@ func TestTombstoneCompactionStopWithManager(t *testing.T) {
 	}
 
 	bucket := base.GetTestBucket(t).LeakyBucketClone(base.LeakyBucketConfig{})
-	db, ctx := SetupTestDBForDataStoreWithOptions(t, bucket, DatabaseContextOptions{}, useNamedCollectionsIfAble)
+	db, ctx := SetupTestDBForDataStoreWithOptions(t, bucket, DatabaseContextOptions{}, UseNamedCollectionsIfAble)
 	db.PurgeInterval = 0
 	defer db.Close(ctx)
 	collection := db.GetSingleDatabaseCollectionWithUser()
@@ -2669,7 +2669,7 @@ func Test_invalidateAllPrincipalsCache(t *testing.T) {
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close()
 
-	db, ctx := setupTestDBForBucket(t, bucket)
+	db, ctx := setupTestDBForBucket(t, bucket, UseNamedCollectionsIfAble)
 	defer db.Close(ctx)
 	db.Options.QueryPaginationLimit = 100
 

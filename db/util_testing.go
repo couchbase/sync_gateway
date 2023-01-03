@@ -28,7 +28,7 @@ import (
 type namedCollectionTestConfig uint8
 
 const (
-	useNamedCollectionsIfAble = iota
+	UseNamedCollectionsIfAble = iota
 	useDefaultCollectionOnly
 )
 
@@ -495,14 +495,14 @@ func AddOptionsFromEnvironmentVariables(dbcOptions *DatabaseContextOptions) {
 // override somedbcOptions properties.
 func SetupTestDBWithOptions(t testing.TB, dbcOptions DatabaseContextOptions) (*Database, context.Context) {
 	tBucket := base.GetTestBucket(t)
-	return SetupTestDBForDataStoreWithOptions(t, tBucket, dbcOptions, useNamedCollectionsIfAble)
+	return SetupTestDBForDataStoreWithOptions(t, tBucket, dbcOptions, UseNamedCollectionsIfAble)
 }
 
 func SetupTestDBForDataStoreWithOptions(t testing.TB, tBucket *base.TestBucket, dbcOptions DatabaseContextOptions, namedCollectionConfig namedCollectionTestConfig) (*Database, context.Context) {
 	ctx := base.TestCtx(t)
 	AddOptionsFromEnvironmentVariables(&dbcOptions)
 
-	if namedCollectionConfig == useNamedCollectionsIfAble && base.TestsUseNamedCollections() {
+	if namedCollectionConfig == UseNamedCollectionsIfAble && base.TestsUseNamedCollections() {
 		dataStore := tBucket.GetSingleDataStore()
 		dsn, ok := base.AsDataStoreName(dataStore)
 		if !ok {
