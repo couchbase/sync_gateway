@@ -151,7 +151,7 @@ func TestStarAccess(t *testing.T) {
 	require.NoError(t, err)
 
 	// GET /db/_changes
-	response = rt.SendUserRequest("GET", "/{{.keyspace}}/_changes", "", "bernard")
+	response = rt.SendUserRequest("GET", "/{{.keyspace}}/_changes?since=0", "", "bernard")
 	RequireStatus(t, response, 200)
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	err = base.JSONUnmarshal(response.Body.Bytes(), &changes)
