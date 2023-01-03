@@ -2103,6 +2103,12 @@ func (sc *ServerContext) suspendDatabase(t *testing.T, ctx context.Context, dbNa
 
 // getRESTkeyspace returns a keyspace for REST URIs
 func getRESTKeyspace(_ testing.TB, dbName string, collection *db.DatabaseCollection) string {
+	if base.IsDefaultCollection(collection.ScopeName(), collection.Name()) {
+		// for backwards compatibility (and user-friendliness),
+		// we can optionally just use `/db/` instead of `/db._default._default/`
+		// Return this format to get coverage of both formats.
+		return dbName
+	}
 	return strings.Join([]string{dbName, collection.ScopeName(), collection.Name()}, base.ScopeCollectionSeparator)
 }
 
@@ -2121,13 +2127,7 @@ func (rt *RestTester) GetKeyspaces() []string {
 func (rt *RestTester) GetSingleKeyspace() string {
 	db := rt.GetDatabase()
 	require.Equal(rt.TB, 1, len(db.CollectionByID), "Database must be configured with only one collection to use this function")
-	for id, collection := range db.CollectionByID {
-		if id == base.DefaultCollectionID {
-			// for backwards compatibility (and user-friendliness),
-			// we can optionally just use `/db/` instead of `/db._default._default/`
-			// Return this format to get coverage of both formats.
-			return db.Name
-		}
+	for _, collection := range db.CollectionByID {
 		return getRESTKeyspace(rt.TB, db.Name, collection)
 	}
 	rt.TB.Fatal("Had no collection to return a keyspace for") // should be unreachable given length check above
