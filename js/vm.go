@@ -3,6 +3,7 @@ package js
 import (
 	_ "embed"
 	"fmt"
+	"time"
 
 	"github.com/pkg/errors"
 	v8 "rogchap.com/v8go"
@@ -26,6 +27,7 @@ type VM struct {
 	runners      []*Runner              // Available Runners, indexed by serviceID
 	curRunner    *Runner                // Currently active Runner, if any
 	returnToPool *VMPool                // Pool to return me to, or nil
+	lastReturned time.Time              // Time that VM was last returned to its pool
 }
 
 // Creates a JavaScript virtual machine that can run Services.
@@ -109,6 +111,11 @@ func (vm *VM) getTemplate(service *Service) (Template, error) {
 		vm.templates[service.id] = tmpl
 	}
 	return tmpl, nil
+}
+
+func (vm *VM) hasInitializedService(service *Service) bool {
+	id := int(service.id)
+	return id < len(vm.templates) && vm.templates[id] != nil
 }
 
 // Produces a Runner object that can run the given service.
