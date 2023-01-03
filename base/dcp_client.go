@@ -149,7 +149,7 @@ func (dc *DCPClient) getCollectionHighSeqNos(collectionID uint32) ([]uint64, err
 		highSeqNoError <- err
 	}
 	_, seqErr := dc.agent.GetVbucketSeqnos(
-		0,                       // serverIdx (leave at 0 for now)
+		0,                       // use 0, which is an active server node
 		memd.VbucketStateActive, // active vbuckets only
 		vbucketSeqnoOptions,     // contains collectionID
 		highSeqNoCallback)

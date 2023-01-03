@@ -214,10 +214,10 @@ func TestPostUpgradeMultipleCollections(t *testing.T) {
 	if base.TestsUseNamedCollections() {
 		numCollections := 2
 		base.RequireNumTestDataStores(t, numCollections)
-		dbOptions.Scopes = getScopesOptions(t, tb, numCollections, false)
+		dbOptions.Scopes = getScopesOptions(t, tb, numCollections)
 	}
 
-	db, ctx := SetupTestDBForDataStoreWithOptions(t, tb, dbOptions)
+	db, ctx := SetupTestDBForDataStoreWithOptions(t, tb, dbOptions, useNamedCollectionsIfAble)
 	defer db.Close(ctx)
 
 	// make sure RemoveObsoleteIndexes is a no-op before adding obsolete indexes

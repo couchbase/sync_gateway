@@ -488,14 +488,14 @@ func AddOptionsFromEnvironmentVariables(dbcOptions *DatabaseContextOptions) {
 // override somedbcOptions properties.
 func SetupTestDBWithOptions(t testing.TB, dbcOptions DatabaseContextOptions) (*Database, context.Context) {
 	tBucket := base.GetTestBucket(t)
-	return SetupTestDBForDataStoreWithOptions(t, tBucket, dbcOptions)
+	return SetupTestDBForDataStoreWithOptions(t, tBucket, dbcOptions, useNamedCollectionsIfAble)
 }
 
-func SetupTestDBForDataStoreWithOptions(t testing.TB, tBucket *base.TestBucket, dbcOptions DatabaseContextOptions) (*Database, context.Context) {
+func SetupTestDBForDataStoreWithOptions(t testing.TB, tBucket *base.TestBucket, dbcOptions DatabaseContextOptions, namedCollection namedCollectionConfig) (*Database, context.Context) {
 	ctx := base.TestCtx(t)
 	AddOptionsFromEnvironmentVariables(&dbcOptions)
 
-	if base.TestsUseNamedCollections() {
+	if namedCollection == useNamedCollectionsIfAble && base.TestsUseNamedCollections() {
 		dataStore := tBucket.GetSingleDataStore()
 		dsn, ok := base.AsDataStoreName(dataStore)
 		if !ok {
@@ -521,16 +521,12 @@ func SetupTestDBForDataStoreWithOptions(t testing.TB, tBucket *base.TestBucket, 
 }
 
 // getScopesOptions sets up a ScopesOptions from a TestBucket for use with non default collections to pass in DatabaseContextOptions.
-func getScopesOptions(t testing.TB, testBucket *base.TestBucket, numCollections int, useDefaultCollection bool) ScopesOptions {
+func getScopesOptions(t testing.TB, testBucket *base.TestBucket, numCollections int) ScopesOptions {
 	// Get a datastore as provided by the test
 	stores := testBucket.GetNonDefaultDatastoreNames()
 	require.True(t, len(stores) >= numCollections, "Requested more collections %d than found on testBucket %d", numCollections, len(stores))
 
 	scopesConfig := ScopesOptions{}
-	nonDefaultCollections := numCollections
-	if useDefaultCollection {
-		nonDefaultCollections -= 1
-	}
 	for i := 0; i < numCollections; i++ {
 		dataStoreName := stores[i]
 		if scopeConfig, ok := scopesConfig[dataStoreName.ScopeName()]; ok {
@@ -547,12 +543,5 @@ func getScopesOptions(t testing.TB, testBucket *base.TestBucket, numCollections 
 		}
 
 	}
-	if useDefaultCollection {
-		scopesConfig[base.DefaultScope] = ScopeOptions{
-			Collections: map[string]CollectionOptions{
-				base.DefaultCollection: {},
-			}}
-	}
-
 	return scopesConfig
 }

@@ -36,40 +36,29 @@ func init() {
 	underscore.Disable() // It really slows down unit tests (by making otto.New take a lot longer)
 }
 
+type namedCollectionConfig uint8
+
+const (
+	useNamedCollectionsIfAble = iota
+	useDefaultCollectionOnly
+)
+
 // Note: It is important to call db.Close() on the returned database.
 func setupTestDB(t testing.TB) (*Database, context.Context) {
 	return setupTestDBWithCacheOptions(t, DefaultCacheOptions())
 }
 
-func setupTestDBForBucket(t testing.TB, bucket *base.TestBucket) (*Database, context.Context) {
-	cacheOptions := DefaultCacheOptions()
-	dbcOptions := DatabaseContextOptions{
-		CacheOptions: &cacheOptions,
-	}
-	return SetupTestDBForDataStoreWithOptions(t, bucket, dbcOptions)
-}
-
-// setupTestDBForBucketWithDefaultCollection makes sure a default collection is always present.
-func setupTestDBForBucketWithDefaultCollection(t testing.TB, bucket *base.TestBucket) (*Database, context.Context) {
-	cacheOptions := DefaultCacheOptions()
-	dbcOptions := DatabaseContextOptions{
-		CacheOptions: &cacheOptions,
-	}
-	if base.TestsUseNamedCollections() {
-		numCollections := 2
-		base.RequireNumTestDataStores(t, numCollections)
-		dbcOptions.Scopes = getScopesOptions(t, bucket, numCollections, true)
-	}
-
-	return SetupTestDBForDataStoreWithOptions(t, bucket, dbcOptions)
-
-}
-
-// setupTestDBWithDefaultCollection makes sure a default collection is always present.
-func setupTestDBWithDefaultCollection(t testing.TB) (*Database, context.Context) {
-
+func setupTestDBDefaultCollection(t testing.TB) (*Database, context.Context) {
 	bucket := base.GetTestBucket(t)
-	return setupTestDBForBucketWithDefaultCollection(t, bucket)
+	return setupTestDBForBucket(t, bucket, useDefaultCollectionOnly)
+}
+
+func setupTestDBForBucket(t testing.TB, bucket *base.TestBucket, namedCollection namedCollectionConfig) (*Database, context.Context) {
+	cacheOptions := DefaultCacheOptions()
+	dbcOptions := DatabaseContextOptions{
+		CacheOptions: &cacheOptions,
+	}
+	return SetupTestDBForDataStoreWithOptions(t, bucket, dbcOptions, namedCollection)
 }
 
 func setupTestDBWithOptionsAndImport(t testing.TB, dbcOptions DatabaseContextOptions) (*Database, context.Context) {
@@ -103,7 +92,8 @@ func setupTestDBWithViewsEnabled(t testing.TB) (*Database, context.Context) {
 	dbcOptions := DatabaseContextOptions{
 		UseViews: true,
 	}
-	return SetupTestDBWithOptions(t, dbcOptions)
+	tBucket := base.GetTestBucket(t)
+	return SetupTestDBForDataStoreWithOptions(t, tBucket, dbcOptions, useDefaultCollectionOnly)
 }
 
 // Sets up a test bucket with _sync:seq initialized to a high value prior to database creation.  Used to test
@@ -160,7 +150,7 @@ func setupTestLeakyDBWithCacheOptions(t *testing.T, options CacheOptions, leakyO
 func setupTestNamedCollectionDBWithOptions(t testing.TB, dbcOptions DatabaseContextOptions) (*Database, context.Context) {
 
 	tBucket := base.GetTestBucket(t)
-	return SetupTestDBForDataStoreWithOptions(t, tBucket, dbcOptions)
+	return SetupTestDBForDataStoreWithOptions(t, tBucket, dbcOptions, useNamedCollectionsIfAble)
 }
 
 // Sets up test db with the specified database context options in _default scope and collection.  Note that environment variables can
@@ -2496,7 +2486,7 @@ func TestTombstoneCompactionStopWithManager(t *testing.T) {
 	}
 
 	bucket := base.GetTestBucket(t).LeakyBucketClone(base.LeakyBucketConfig{})
-	db, ctx := SetupTestDBForDataStoreWithOptions(t, bucket, DatabaseContextOptions{})
+	db, ctx := SetupTestDBForDataStoreWithOptions(t, bucket, DatabaseContextOptions{}, useNamedCollectionsIfAble)
 	db.PurgeInterval = 0
 	defer db.Close(ctx)
 	collection := db.GetSingleDatabaseCollectionWithUser()
