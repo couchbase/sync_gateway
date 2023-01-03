@@ -279,53 +279,75 @@ func TestMultiCollectionChannelAccess(t *testing.T) {
 	tb := base.GetTestBucket(t)
 	defer tb.Close()
 
-	ctx := base.TestCtx(t)
-	err := base.CreateBucketScopesAndCollections(ctx, tb.BucketSpec, map[string][]string{
-		"foo": {
-			"bar",
-			"baz",
-		},
-	})
-	require.NoError(t, err)
-	rt := NewRestTester(t, &RestTesterConfig{
-		SyncFn: `{
-		access(doc.username, [doc.grant1,doc.grant2])
-		}`,
-		CustomTestBucket: tb.NoCloseClone(),
+	scopesConfig := GetCollectionsConfig(t, tb, 2)
+	dataStoreNames := GetDataStoreNamesFromScopesConfig(scopesConfig)
+	c1SyncFunction := `function(doc) {access(doc.username, [doc.grant1,doc.grant2]);
+						channel(doc.chan);
+				}`
+
+	scopesConfig[dataStoreNames[0].ScopeName()].Collections[dataStoreNames[0].CollectionName()] = CollectionConfig{SyncFn: &c1SyncFunction}
+	scopesConfig[dataStoreNames[1].ScopeName()].Collections[dataStoreNames[1].CollectionName()] = CollectionConfig{SyncFn: &c1SyncFunction}
+
+	rtConfig := &RestTesterConfig{
+		CustomTestBucket: tb,
 		DatabaseConfig: &DatabaseConfig{
 			DbConfig: DbConfig{
-				AutoImport: true,
-				Scopes: ScopesConfig{
-					"foo": ScopeConfig{
-						Collections: map[string]CollectionConfig{
-							"bar": {},
-							"baz": {},
-						},
-					},
-				},
+				Scopes: scopesConfig,
 			},
 		},
-	})
+	}
+	rt := NewRestTesterMultipleCollections(t, rtConfig, 2)
 	defer rt.Close()
 
-	underlying, ok := rt.Bucket().DefaultDataStore().(*base.Collection)
-	require.True(t, ok, "rt bucket was not a Collection")
-	resp := rt.SendAdminRequest("PUT", "/{{db}}/_user/userA", `{""}`)
+	//underlying, ok := rt.Bucket().DefaultDataStore().(*base.Collection)
+	//require.True(t, ok, "rt bucket was not a Collection")
+	userPayload := fmt.Sprintf(`{
+		"password":"letmein",
+		"collection_access": {
+			"%s": {
+				"{collection}": {
+					"admin_channels":{channels}
+				}
+			}
+		}
+	}`, dataStoreNames[0].ScopeName())
+	r := strings.NewReplacer("{collection}", dataStoreNames[0].CollectionName(), "{channels}", `["A"]`)
+	userApayload := r.Replace(userPayload)
+	resp := rt.SendAdminRequest("PUT", "/db/_user/userA", userApayload)
+	RequireStatus(t, resp, http.StatusCreated)
 
-	_, err = underlying.Collection.Bucket().Scope("foo").Collection("bar").Insert("testDocBar1", map[string]any{"username": "userA", "grant1": "A", "grant2": "B"}, nil)
-	require.NoError(t, err)
-	_, err = underlying.Collection.Bucket().Scope("foo").Collection("bar").Insert("testDocBar2", map[string]any{"username": "userA", "grant1": "A", "grant2": "B"}, nil)
-	require.NoError(t, err)
-	_, err = underlying.Collection.Bucket().Scope("foo").Collection("baz").Insert("testDocBaz1", map[string]any{"username": "userA", "grant1": "A", "grant2": "B"}, nil)
-	require.NoError(t, err)
-	_, err = underlying.Collection.Bucket().Scope("foo").Collection("baz").Insert("testDocBaz2", map[string]any{"username": "userA", "grant1": "A", "grant2": "B"}, nil)
-	require.NoError(t, err)
+	r = strings.NewReplacer("{collection}", dataStoreNames[0].CollectionName(), "{channels}", `["B"]`)
+	userBpayload := r.Replace(userPayload)
+	resp = rt.SendAdminRequest("PUT", "/db/_user/userB", userBpayload)
+	RequireStatus(t, resp, http.StatusCreated)
 
-	// ensure the doc is picked up by the import DCP feed and actually gets imported
-	err = rt.WaitForCondition(func() bool {
-		return rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value() == 2
-	})
-	require.NoError(t, err)
+	r = strings.NewReplacer("{collection}", dataStoreNames[0].CollectionName(), "{channels}", `["A","B"]`)
+	userABpayload := r.Replace(userPayload)
+	resp = rt.SendAdminRequest("PUT", "/db/_user/userAB", userABpayload)
+	RequireStatus(t, resp, http.StatusCreated)
+
+	//_, err = underlying.Collection.Bucket().Scope("foo").Collection("bar").Insert("testDocBarA", map[string]any{"username": "userA", "grant1": "A", "grant2": "A", "admin_channels": `["A"]`}, nil)
+	resp = rt.SendAdminRequest("PUT", "/{{.keyspace1}}/testDocBarA", `{"username": "userA", "grant1": "A", "chan":["A"]}`)
+	RequireStatus(t, resp, http.StatusCreated)
+	resp = rt.SendAdminRequest("PUT", "/{{.keyspace1}}/testDocBarB", `{"username": "userB", "grant1": "A", "chan":["B"]}`)
+	RequireStatus(t, resp, http.StatusCreated)
+	resp = rt.SendAdminRequest("PUT", "/{{.keyspace1}}/testDocBarAB", `{"username": "userAB", "grant1": "A", "chan":["A","B"]}`)
+	RequireStatus(t, resp, http.StatusCreated)
+	resp = rt.SendAdminRequest("PUT", "/{{.keyspace2}}/testDocBazA", `{"username": "userA", "grant1": "A", "chan":["A"]}`)
+	RequireStatus(t, resp, http.StatusCreated)
+	resp = rt.SendAdminRequest("PUT", "/{{.keyspace2}}/testDocBazB", `{"username": "userB", "grant1": "A", "chan":["B"]}`)
+	RequireStatus(t, resp, http.StatusCreated)
+
+	resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.keyspace1}}/testDocBarA", "", nil, "userA", "letmein")
+	RequireStatus(t, resp, http.StatusOK) // Static channel grant
+	resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.keyspace1}}/testDocBarA", "", nil, "userB", "letmein")
+	RequireStatus(t, resp, http.StatusOK) // dynamic channel grant
+	resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.keyspace1}}/testDocBarB", "", nil, "userA", "letmein")
+	RequireStatus(t, resp, http.StatusForbidden)
+	resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.keyspace2}}/testDocBazB", "", nil, "userB", "letmein")
+	RequireStatus(t, resp, http.StatusForbidden)
+	resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.keyspace1}}/testDocBarAB", "", nil, "userA", "letmein")
+	RequireStatus(t, resp, http.StatusOK)
 
 }
 
