@@ -147,13 +147,11 @@ func TestBasicAuthWithSessionCookie(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 	collection := rt.GetSingleTestDatabaseCollection()
-	c := collection.Name()
-	s := collection.ScopeName()
 
 	// Create two users
-	response := rt.SendAdminRequest("PUT", "/db/_user/bernard", `{"name":"bernard", "password":"letmein",`+AdminChannelGrant(s, c, `"admin_channels":["bernard"]`)+`}`)
+	response := rt.SendAdminRequest("PUT", "/db/_user/bernard", `{"name":"bernard", "password":"letmein",`+AdminChannelGrant(collection, `"admin_channels":["bernard"]`)+`}`)
 	RequireStatus(t, response, 201)
-	response = rt.SendAdminRequest("PUT", "/db/_user/manny", `{"name":"manny", "password":"letmein",`+AdminChannelGrant(s, c, `"admin_channels":["manny"]`)+`}`)
+	response = rt.SendAdminRequest("PUT", "/db/_user/manny", `{"name":"manny", "password":"letmein",`+AdminChannelGrant(collection, `"admin_channels":["manny"]`)+`}`)
 	RequireStatus(t, response, 201)
 
 	// Create a session for the first user
@@ -173,11 +171,11 @@ func TestBasicAuthWithSessionCookie(t *testing.T) {
 	RequireStatus(t, response, 200)
 
 	// Create a doc as the second user, with basic auth, channel-restricted to the second user
-	response = rt.Send(RequestByUser("PUT", "/db."+s+"."+c+"/mannyDoc", `{"hi": "there", "channels":["manny"]}`, "manny"))
+	response = rt.SendUserRequest("PUT", "/{{.keyspace}}/mannyDoc", `{"hi": "there", "channels":["manny"]}`, "manny")
 	RequireStatus(t, response, 201)
-	response = rt.Send(RequestByUser("GET", "/db."+s+"."+c+"/mannyDoc", "", "manny"))
+	response = rt.SendUserRequest("GET", "/{{.keyspace}}/mannyDoc", "", "manny")
 	RequireStatus(t, response, 200)
-	response = rt.Send(RequestByUser("GET", "/db."+s+"."+c+"/bernardDoc", "", "manny"))
+	response = rt.SendUserRequest("GET", "/{{.keyspace}}/bernardDoc", "", "manny")
 	RequireStatus(t, response, 403)
 
 	// Attempt to retrieve the docs with the first user's cookie, second user's basic auth credentials.  Basic Auth should take precedence
@@ -192,11 +190,9 @@ func TestSessionFail(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 	collection := rt.GetSingleTestDatabaseCollection()
-	c := collection.Name()
-	s := collection.ScopeName()
 
 	// Create user
-	response := rt.SendAdminRequest("PUT", "/db/_user/user1", `{"name":"user1", "password":"letmein",`+AdminChannelGrant(s, c, `"admin_channels":["user1"]`)+`}`)
+	response := rt.SendAdminRequest("PUT", "/db/_user/user1", `{"name":"user1", "password":"letmein",`+AdminChannelGrant(collection, `"admin_channels":["user1"]`)+`}`)
 	RequireStatus(t, response, http.StatusCreated)
 
 	id, err := base.GenerateRandomSecret()

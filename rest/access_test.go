@@ -11,6 +11,7 @@ package rest
 import (
 	"bytes"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -114,12 +115,9 @@ func TestStarAccess(t *testing.T) {
 	//
 	// Part 1 - Tests for user with single channel access:
 	//
-	//response := rt.SendAdminRequest("PUT", "/db/_user/bernard", `{"password":"letmein",`+AdminChannelGrant(s, c, `"admin_channels":["books"]`)+`}`)
-	//RequireStatus(t, response, 201)
 	bernard, _ := a.NewUser("bernard", "letmein", channels.BaseSetOf(t, "books"))
 	assert.NoError(t, a.Save(bernard))
-	response := rt.SendAdminRequest("GET", "/db/_user/bernard", ``)
-	fmt.Println(response.Body)
+	response := rt.SendAdminRequest("GET", "/{{.db}}/_user/bernard", ``)
 
 	// GET /db/docid - basic test for channel user has
 	response = rt.SendUserRequest("GET", "/{{.keyspace}}/doc1", "", "bernard")
@@ -193,7 +191,8 @@ func TestStarAccess(t *testing.T) {
 	//
 
 	// Create a user:
-	fran, _ := a.NewUser("fran", "letmein", channels.BaseSetOf(t, "*"))
+	fran, err := a.NewUser("fran", "letmein", channels.BaseSetOf(t, "*"))
+	assert.NoError(t, err)
 	assert.NoError(t, a.Save(fran))
 
 	// GET /db/docid - basic test for doc that has channel
@@ -395,7 +394,7 @@ func TestForceAPIForbiddenErrors(t *testing.T) {
 			c := collection.Name()
 			s := collection.ScopeName()
 
-			resp := rt.SendAdminRequest(http.MethodPut, "/db/_user/Perms", `{"password": "password", `+AdminChannelGrant(s, c, `"admin_channels": ["chan"]`)+`}`)
+			resp := rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/Perms", `{"password": "password", `+AdminChannelGrant(collection, `"admin_channels": ["chan"]`)+`}`)
 			RequireStatus(t, resp, http.StatusOK)
 
 			// Create the initial document
@@ -483,16 +482,31 @@ func TestForceAPIForbiddenErrors(t *testing.T) {
 
 			user, err := a.GetUser("NoPerms")
 			assert.NoError(t, err)
-			collAccess := user.GetCollectionsAccess()[s][c]
-			assert.NotContains(t, collAccess.Channels_.String(), "chan2")
+			var allChannels struct {
+				Channels []string `json:"all_channels"`
+			}
+			if base.TestsDisableGSI() {
+				err := json.Unmarshal(resp.BodyBytes(), &allChannels)
+				require.NoError(t, err)
+				assert.NotContains(t, allChannels.Channels, "chan2")
+			} else {
+				collAccess := user.GetCollectionsAccess()[s][c]
+				assert.NotContains(t, collAccess.Channels_.String(), "chan2")
+			}
 
 			resp = rt.SendAdminRequest(http.MethodGet, "/db/_user/Perms", ``)
 			RequireStatus(t, resp, http.StatusOK)
 
-			user, err = a.GetUser("NoPerms")
-			assert.NoError(t, err)
-			collAccess = user.GetCollectionsAccess()[s][c]
-			assert.NotContains(t, collAccess.Channels_.String(), "chan2")
+			if base.TestsDisableGSI() {
+				err = json.Unmarshal(resp.BodyBytes(), &allChannels)
+				require.NoError(t, err)
+				assert.NotContains(t, allChannels.Channels, "chan2")
+			} else {
+				user, err = a.GetUser("NoPerms")
+				assert.NoError(t, err)
+				collAccess := user.GetCollectionsAccess()[s][c]
+				assert.NotContains(t, collAccess.Channels_.String(), "chan2")
+			}
 
 			// Successful PUT which will grant access grants
 			resp = rt.SendUserRequestWithHeaders(http.MethodPut, "/{{.keyspace}}/doc?rev="+rev, `{"channels": "chan"}`, nil, "Perms", "password")
@@ -501,11 +515,16 @@ func TestForceAPIForbiddenErrors(t *testing.T) {
 			// Make sure channel access grant was successful
 			resp = rt.SendAdminRequest(http.MethodGet, "/db/_user/Perms", ``)
 			RequireStatus(t, resp, http.StatusOK)
-
-			user, err = a.GetUser("Perms")
-			assert.NoError(t, err)
-			collAccess = user.GetCollectionsAccess()[s][c]
-			assert.Contains(t, collAccess.Channels_.String(), "chan2")
+			if base.TestsDisableGSI() {
+				err = json.Unmarshal(resp.BodyBytes(), &allChannels)
+				require.NoError(t, err)
+				assert.Contains(t, allChannels.Channels, "chan2")
+			} else {
+				user, err = a.GetUser("Perms")
+				assert.NoError(t, err)
+				collAccess := user.GetCollectionsAccess()[s][c]
+				assert.Contains(t, collAccess.Channels_.String(), "chan2")
+			}
 
 			// DELETE requests
 			// Attempt to delete document with no permissions
@@ -850,14 +869,14 @@ func TestChannelAccessChanges(t *testing.T) {
 	assert.Equal(t, true, body["ok"])
 	alphaRevID := body["rev"].(string)
 
-	RequireStatus(t, rt.Send(Request("PUT", "/db."+s+"."+c+"/beta", `{"owner":"boadecia"}`)), 201)
-	RequireStatus(t, rt.Send(Request("PUT", "/db."+s+"."+c+"/delta", `{"owner":"alice"}`)), 201)
-	RequireStatus(t, rt.Send(Request("PUT", "/db."+s+"."+c+"/gamma", `{"owner":"zegpold"}`)), 201)
+	RequireStatus(t, rt.SendRequest("PUT", "/{{.keyspace}}/beta", `{"owner":"boadecia"}`), 201)
+	RequireStatus(t, rt.SendRequest("PUT", "/{{.keyspace}}/delta", `{"owner":"alice"}`), 201)
+	RequireStatus(t, rt.SendRequest("PUT", "/{{.keyspace}}/gamma", `{"owner":"zegpold"}`), 201)
 
-	RequireStatus(t, rt.Send(Request("PUT", "/db."+s+"."+c+"/a1", `{"channel":"alpha"}`)), 201)
-	RequireStatus(t, rt.Send(Request("PUT", "/db."+s+"."+c+"/b1", `{"channel":"beta"}`)), 201)
-	RequireStatus(t, rt.Send(Request("PUT", "/db."+s+"."+c+"/d1", `{"channel":"delta"}`)), 201)
-	RequireStatus(t, rt.Send(Request("PUT", "/db."+s+"."+c+"/g1", `{"channel":"gamma"}`)), 201)
+	RequireStatus(t, rt.SendRequest("PUT", "/{{.keyspace}}/a1", `{"channel":"alpha"}`), 201)
+	RequireStatus(t, rt.SendRequest("PUT", "/{{.keyspace}}/b1", `{"channel":"beta"}`), 201)
+	RequireStatus(t, rt.SendRequest("PUT", "/{{.keyspace}}/d1", `{"channel":"delta"}`), 201)
+	RequireStatus(t, rt.SendRequest("PUT", "/{{.keyspace}}/g1", `{"channel":"gamma"}`), 201)
 
 	rt.MustWaitForDoc("g1", t)
 

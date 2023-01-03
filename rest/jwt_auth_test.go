@@ -25,7 +25,7 @@ import (
 
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
-	ch "github.com/couchbase/sync_gateway/channels"
+	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -480,7 +480,7 @@ func TestLocalJWTRolesChannels(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, user)
 
-	user.SetCollectionJWTChannels(s, c, ch.AtSequence(ch.BaseSetOf(t, "jwt_only_channel"), 1), 1)
+	user.SetCollectionJWTChannels(s, c, channels.AtSequence(channels.BaseSetOf(t, "jwt_only_channel"), 1), 1)
 
 	assert.Contains(t, user.RoleNames(), "jwt_only_role")
 	assert.Contains(t, user.CollectionJWTChannels(s, c).AllKeys(), "jwt_only_channel")

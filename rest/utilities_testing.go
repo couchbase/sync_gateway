@@ -1388,13 +1388,27 @@ func (bt *BlipTester) SendRev(docId, docRev string, body []byte, properties blip
 
 }
 
-func AdminChannelGrant(scopeName, collectionName, adminChannels string) (collectionAdminChannels string) {
-
+func AdminChannelGrant(collection *db.DatabaseCollection, adminChannels string) (collectionAdminChannels string) {
+	collectionName := collection.Name()
+	scopeName := collection.ScopeName()
 	if base.IsDefaultCollection(scopeName, collectionName) {
 		return adminChannels
 	}
 
 	return fmt.Sprintf(`"collection_access":{%q: {%q: {%s}}}`, scopeName, collectionName, adminChannels)
+}
+
+func GetNamedDatastore(dataStores []sgbucket.DataStoreName, collection *db.DatabaseCollection) sgbucket.DataStoreName {
+	var data sgbucket.DataStoreName
+	c := collection.Name()
+	s := collection.ScopeName()
+	for _, dataStoreName := range dataStores {
+		if dataStoreName.ScopeName() == s && dataStoreName.CollectionName() == c {
+			data = dataStoreName
+			return data
+		}
+	}
+	return nil
 }
 
 func getChangesHandler(changesFinishedWg, revsFinishedWg *sync.WaitGroup) func(request *blip.Message) {

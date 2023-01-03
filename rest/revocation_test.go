@@ -894,10 +894,8 @@ func TestRevocationWithAdminChannels(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 	collection := rt.GetSingleTestDatabaseCollection()
-	c := collection.Name()
-	s := collection.ScopeName()
 
-	resp := rt.SendAdminRequest("PUT", "/db/_user/user", `{`+AdminChannelGrant(s, c, `"admin_channels": ["A"]`)+`, "password": "letmein"}`)
+	resp := rt.SendAdminRequest("PUT", "/db/_user/user", `{`+AdminChannelGrant(collection, `"admin_channels": ["A"]`)+`, "password": "letmein"}`)
 	RequireStatus(t, resp, http.StatusCreated)
 
 	resp = rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc", `{"channels": ["A"]}`)
@@ -910,7 +908,7 @@ func TestRevocationWithAdminChannels(t *testing.T) {
 	assert.Equal(t, "doc", changes.Results[1].ID)
 	assert.False(t, changes.Results[0].Revoked)
 
-	resp = rt.SendAdminRequest("PUT", "/db/_user/user", `{`+AdminChannelGrant(s, c, `"admin_channels": []`)+`, "password": "letmein"}`)
+	resp = rt.SendAdminRequest("PUT", "/db/_user/user", `{`+AdminChannelGrant(collection, `"admin_channels": []`)+`, "password": "letmein"}`)
 	RequireStatus(t, resp, http.StatusOK)
 
 	changes, err = rt.WaitForChanges(2, fmt.Sprintf("/{{.keyspace}}/_changes?since=%d&revocations=true", 2), "user", false)
@@ -927,10 +925,8 @@ func TestRevocationWithAdminRoles(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 	collection := rt.GetSingleTestDatabaseCollection()
-	c := collection.Name()
-	s := collection.ScopeName()
 
-	resp := rt.SendAdminRequest("PUT", "/db/_role/role", `{`+AdminChannelGrant(s, c, `"admin_channels": ["A"]`)+`}`)
+	resp := rt.SendAdminRequest("PUT", "/db/_role/role", `{`+AdminChannelGrant(collection, `"admin_channels": ["A"]`)+`}`)
 	RequireStatus(t, resp, http.StatusCreated)
 
 	resp = rt.SendAdminRequest("PUT", "/db/_user/user", `{"admin_roles": ["role"], "password": "letmein"}`)
@@ -1209,8 +1205,6 @@ func TestRevocationUserHasDocAccessDocNotFound(t *testing.T) {
 	})
 	defer rt.Close()
 	collection := rt.GetSingleTestDatabaseCollection()
-	c := collection.Name()
-	s := collection.ScopeName()
 
 	revocationTester.addRole("user", "foo")
 	revocationTester.addRoleChannel("foo", "A")
@@ -1226,14 +1220,9 @@ func TestRevocationUserHasDocAccessDocNotFound(t *testing.T) {
 
 	dataStores, err := rt.Bucket().ListDataStores()
 	require.NoError(t, err)
-	for _, dataStoreName := range dataStores {
-		if dataStoreName.ScopeName() == s && dataStoreName.CollectionName() == c {
-			fmt.Println(dataStoreName.CollectionName())
-			fmt.Println(dataStoreName)
-			data := rt.Bucket().NamedDataStore(dataStoreName)
-			require.NoError(t, data.Delete("doc"))
-		}
-	}
+	dataName := GetNamedDatastore(dataStores, collection)
+	data := rt.Bucket().NamedDataStore(dataName)
+	require.NoError(t, data.Delete("doc"))
 
 	changes = revocationTester.getChanges(changes.Last_Seq, 1)
 	require.Len(t, changes.Results, 1)
@@ -1460,16 +1449,12 @@ func TestRevocationWithUserXattrs(t *testing.T) {
 
 	defer rt.Close()
 	collection := rt.GetSingleTestDatabaseCollection()
-	c := collection.Name()
-	s := collection.ScopeName()
 
 	var data sgbucket.DataStore
 	dataStores, _ := rt.Bucket().ListDataStores()
-	for _, dataStoreName := range dataStores {
-		if dataStoreName.ScopeName() == s && dataStoreName.CollectionName() == c {
-			data = rt.Bucket().NamedDataStore(dataStoreName)
-		}
-	}
+	dataName := GetNamedDatastore(dataStores, collection)
+	data = rt.Bucket().NamedDataStore(dataName)
+
 	userXattrStore, ok := base.AsUserXattrStore(data)
 	require.True(t, ok)
 
@@ -1688,8 +1673,6 @@ func TestReplicatorRevocationsMultipleAlternateAccess(t *testing.T) {
 	revocationTester, rt2 := InitScenario(t, nil)
 	defer rt2.Close()
 	rt2_collection := rt2.GetSingleTestDatabaseCollection()
-	rt2_collectionName := rt2_collection.Name()
-	rt2_Scope := rt2_collection.ScopeName()
 
 	// Active
 	rt1 := NewRestTesterDefaultCollection(t, //  CBG-2319: replicator currently requires default collection
@@ -1732,7 +1715,7 @@ func TestReplicatorRevocationsMultipleAlternateAccess(t *testing.T) {
 	resp := rt2.SendAdminRequest("PUT", "/db/_user/user", `{"name": "user", "password": "letmein"}`)
 	RequireStatus(t, resp, http.StatusOK)
 
-	resp = rt2.SendAdminRequest("PUT", "/db/_role/foo", `{`+AdminChannelGrant(rt2_Scope, rt2_collectionName, `"admin_channels": ["A", "B", "C"]`)+`}`)
+	resp = rt2.SendAdminRequest("PUT", "/db/_role/foo", `{`+AdminChannelGrant(rt2_collection, `"admin_channels": ["A", "B", "C"]`)+`}`)
 	RequireStatus(t, resp, http.StatusOK)
 
 	revocationTester.addRole("user", "foo")
@@ -1749,7 +1732,7 @@ func TestReplicatorRevocationsMultipleAlternateAccess(t *testing.T) {
 	assert.Len(t, changesResults.Results, 5)
 
 	// Revoke C and ensure docC gets purged from local
-	resp = rt2.SendAdminRequest("PUT", "/db/_role/foo", `{`+AdminChannelGrant(rt2_Scope, rt2_collectionName, `"admin_channels": ["A", "B"]`)+`}`)
+	resp = rt2.SendAdminRequest("PUT", "/db/_role/foo", `{`+AdminChannelGrant(rt2_collection, `"admin_channels": ["A", "B"]`)+`}`)
 	RequireStatus(t, resp, http.StatusOK)
 
 	err = rt1.WaitForCondition(func() bool {
@@ -1759,7 +1742,7 @@ func TestReplicatorRevocationsMultipleAlternateAccess(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Revoke B and ensure docB gets purged from local
-	resp = rt2.SendAdminRequest("PUT", "/db/_role/foo", `{`+AdminChannelGrant(rt2_Scope, rt2_collectionName, `"admin_channels": ["A"]`)+`}`)
+	resp = rt2.SendAdminRequest("PUT", "/db/_role/foo", `{`+AdminChannelGrant(rt2_collection, `"admin_channels": ["A"]`)+`}`)
 	RequireStatus(t, resp, http.StatusOK)
 
 	err = rt1.WaitForCondition(func() bool {
@@ -1769,7 +1752,7 @@ func TestReplicatorRevocationsMultipleAlternateAccess(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Revoke A and ensure docA, docAB, docABC gets purged from local
-	resp = rt2.SendAdminRequest("PUT", "/db/_role/foo", `{`+AdminChannelGrant(rt2_Scope, rt2_collectionName, `"admin_channels": []`)+`}`)
+	resp = rt2.SendAdminRequest("PUT", "/db/_role/foo", `{`+AdminChannelGrant(rt2_collection, `"admin_channels": []`)+`}`)
 	RequireStatus(t, resp, http.StatusOK)
 
 	err = rt1.WaitForCondition(func() bool {
@@ -1801,8 +1784,6 @@ func TestReplicatorRevocationsWithTombstoneResurrection(t *testing.T) {
 	_, rt2 := InitScenario(t, nil)
 	defer rt2.Close()
 	rt2_collection := rt2.GetSingleTestDatabaseCollection()
-	rt2_collectionName := rt2_collection.Name()
-	rt2_Scope := rt2_collection.ScopeName()
 
 	// Active
 	rt1 := NewRestTesterDefaultCollection(t, //  CBG-2319: replicator currently requires default collection
@@ -1812,7 +1793,7 @@ func TestReplicatorRevocationsWithTombstoneResurrection(t *testing.T) {
 	defer rt1.Close()
 	ctx1 := rt1.Context()
 
-	resp := rt2.SendAdminRequest("PUT", "/db/_user/user", `{"name": "user", "password": "letmein",`+AdminChannelGrant(rt2_Scope, rt2_collectionName, `"admin_channels": ["A", "B"]`)+`}`)
+	resp := rt2.SendAdminRequest("PUT", "/db/_user/user", `{"name": "user", "password": "letmein",`+AdminChannelGrant(rt2_collection, `"admin_channels": ["A", "B"]`)+`}`)
 	RequireStatus(t, resp, http.StatusOK)
 
 	// Setup replicator
@@ -1861,7 +1842,7 @@ func TestReplicatorRevocationsWithTombstoneResurrection(t *testing.T) {
 	resp = rt2.SendAdminRequest("DELETE", "/{{.keyspace}}/docA1?rev="+docA1Rev, "")
 	RequireStatus(t, resp, http.StatusOK)
 
-	resp = rt2.SendAdminRequest("PUT", "/db/_user/user", `{"name": "user", "password": "letmein",`+AdminChannelGrant(rt2_Scope, rt2_collectionName, `"admin_channels": ["B"]`)+`}`)
+	resp = rt2.SendAdminRequest("PUT", "/db/_user/user", `{"name": "user", "password": "letmein",`+AdminChannelGrant(rt2_collection, `"admin_channels": ["B"]`)+`}`)
 	RequireStatus(t, resp, http.StatusOK)
 
 	require.NoError(t, ar.Start(ctx1))
@@ -1898,8 +1879,6 @@ func TestReplicatorRevocationsWithStarChannel(t *testing.T) {
 	_, rt2 := InitScenario(t, nil)
 	defer rt2.Close()
 	rt2_collection := rt2.GetSingleTestDatabaseCollection()
-	rt2_collectionName := rt2_collection.Name()
-	rt2_Scope := rt2_collection.ScopeName()
 
 	// Active
 	rt1 := NewRestTesterDefaultCollection(t, //  CBG-2319: replicator currently requires default collection
@@ -1940,7 +1919,7 @@ func TestReplicatorRevocationsWithStarChannel(t *testing.T) {
 		PurgeOnRemoval:      true,
 		ReplicationStatsMap: dbstats,
 	})
-	resp := rt2.SendAdminRequest("PUT", "/db/_user/user", `{"name": "user", "password": "test", `+AdminChannelGrant(rt2_Scope, rt2_collectionName, `"admin_channels": ["*"]`)+`}`)
+	resp := rt2.SendAdminRequest("PUT", "/db/_user/user", `{"name": "user", "password": "test", `+AdminChannelGrant(rt2_collection, `"admin_channels": ["*"]`)+`}`)
 	RequireStatus(t, resp, http.StatusOK)
 
 	require.NoError(t, ar.Start(ctx1))
@@ -1955,7 +1934,7 @@ func TestReplicatorRevocationsWithStarChannel(t *testing.T) {
 	assert.Len(t, changesResults.Results, 5)
 
 	// Revoke A and ensure docA, docAB, docABC get purged from local
-	resp = rt2.SendAdminRequest("PUT", "/db/_user/user", `{"name": "user", "password": "test", `+AdminChannelGrant(rt2_Scope, rt2_collectionName, `"admin_channels": []`)+`}`)
+	resp = rt2.SendAdminRequest("PUT", "/db/_user/user", `{"name": "user", "password": "test", `+AdminChannelGrant(rt2_collection, `"admin_channels": []`)+`}`)
 	RequireStatus(t, resp, http.StatusOK)
 
 	assert.NoError(t, ar.Stop())
@@ -1990,8 +1969,6 @@ func TestReplicatorRevocationsFromZero(t *testing.T) {
 	_, rt2 := InitScenario(t, nil)
 	defer rt2.Close()
 	rt2_collection := rt2.GetSingleTestDatabaseCollection()
-	rt2_collectionName := rt2_collection.Name()
-	rt2_Scope := rt2_collection.ScopeName()
 
 	// Active
 	rt1 := NewRestTester(t, //  CBG-2319: replicator currently requires default collection
@@ -2001,7 +1978,7 @@ func TestReplicatorRevocationsFromZero(t *testing.T) {
 	defer rt1.Close()
 	ctx1 := rt1.Context()
 
-	resp := rt2.SendAdminRequest("PUT", "/db/_user/user", `{"name": "user", "password": "letmein", `+AdminChannelGrant(rt2_Scope, rt2_collectionName, `"admin_channels": ["A", "B"]`)+`}`)
+	resp := rt2.SendAdminRequest("PUT", "/db/_user/user", `{"name": "user", "password": "letmein", `+AdminChannelGrant(rt2_collection, `"admin_channels": ["A", "B"]`)+`}`)
 	RequireStatus(t, resp, http.StatusOK)
 
 	// Setup replicator
@@ -2065,7 +2042,7 @@ func TestReplicatorRevocationsFromZero(t *testing.T) {
 	// Reset checkpoint (since 0)
 	require.NoError(t, ar.Reset())
 
-	resp = rt2.SendAdminRequest("PUT", "/db/_user/user", `{"name": "user", "password": "letmein",`+AdminChannelGrant(rt2_Scope, rt2_collectionName, `"admin_channels": ["B"]`)+`}`)
+	resp = rt2.SendAdminRequest("PUT", "/db/_user/user", `{"name": "user", "password": "letmein",`+AdminChannelGrant(rt2_collection, `"admin_channels": ["B"]`)+`}`)
 	RequireStatus(t, resp, http.StatusOK)
 
 	require.NoError(t, ar.Start(ctx1))
@@ -2350,14 +2327,12 @@ func TestBlipRevokeNonExistentRole(t *testing.T) {
 		})
 	defer rt.Close()
 	collection := rt.GetSingleTestDatabaseCollection()
-	c := collection.Name()
-	s := collection.ScopeName()
 
 	base.SetUpTestLogging(t, base.LevelTrace, base.KeyAll)
 
 	// 1. Create user with admin_roles including two roles not previously defined (a1 and a2, for example)
 	const testUsername = "bilbo"
-	res := rt.SendAdminRequest(http.MethodPut, fmt.Sprintf("/%s/_user/%s", rt.GetDatabase().Name, testUsername), fmt.Sprintf(`{"name": %q, "password": "test", "admin_roles": ["a1", "a2"], `+AdminChannelGrant(s, c, `"admin_channels": ["c1"]`)+`}`, testUsername))
+	res := rt.SendAdminRequest(http.MethodPut, fmt.Sprintf("/%s/_user/%s", rt.GetDatabase().Name, testUsername), fmt.Sprintf(`{"name": %q, "password": "test", "admin_roles": ["a1", "a2"], `+AdminChannelGrant(collection, `"admin_channels": ["c1"]`)+`}`, testUsername))
 	RequireStatus(t, res, http.StatusCreated)
 
 	// Create a doc so we have something to replicate
@@ -2366,7 +2341,7 @@ func TestBlipRevokeNonExistentRole(t *testing.T) {
 
 	// 3. Update the user to not reference one of the roles (update to ['a1'], for example)
 	// [also revoke channel c1 so the doc shows up in the revocation queries]
-	res = rt.SendAdminRequest(http.MethodPut, fmt.Sprintf("/%s/_user/%s", rt.GetDatabase().Name, testUsername), fmt.Sprintf(`{"name": %q, "password": "test", "admin_roles": ["a1"], `+AdminChannelGrant(s, c, `"admin_channels": []`)+`}`, testUsername))
+	res = rt.SendAdminRequest(http.MethodPut, fmt.Sprintf("/%s/_user/%s", rt.GetDatabase().Name, testUsername), fmt.Sprintf(`{"name": %q, "password": "test", "admin_roles": ["a1"], `+AdminChannelGrant(collection, `"admin_channels": []`)+`}`, testUsername))
 	RequireStatus(t, res, http.StatusOK)
 
 	// 4. Try to sync
@@ -2395,8 +2370,6 @@ func TestReplicatorSwitchPurgeNoReset(t *testing.T) {
 	_, rt2 := InitScenario(t, nil)
 	defer rt2.Close()
 	rt2_collection := rt2.GetSingleTestDatabaseCollection()
-	rt2_collectionName := rt2_collection.Name()
-	rt2_Scope := rt2_collection.ScopeName()
 
 	// Active
 	rt1 := NewRestTesterDefaultCollection(t, //  CBG-2319: replicator currently requires default collection
@@ -2406,7 +2379,7 @@ func TestReplicatorSwitchPurgeNoReset(t *testing.T) {
 	defer rt1.Close()
 	ctx1 := rt1.Context()
 
-	resp := rt2.SendAdminRequest("PUT", "/db/_user/user", `{"name": "user", "password": "letmein", `+AdminChannelGrant(rt2_Scope, rt2_collectionName, `"admin_channels": ["A", "B"]`)+`}`)
+	resp := rt2.SendAdminRequest("PUT", "/db/_user/user", `{"name": "user", "password": "letmein", `+AdminChannelGrant(rt2_collection, `"admin_channels": ["A", "B"]`)+`}`)
 	RequireStatus(t, resp, http.StatusOK)
 
 	// Setup replicator
@@ -2455,7 +2428,7 @@ func TestReplicatorSwitchPurgeNoReset(t *testing.T) {
 	require.NoError(t, ar.Stop())
 	rt1.WaitForReplicationStatus(ar.ID, db.ReplicationStateStopped)
 
-	resp = rt2.SendAdminRequest("PUT", "/db/_user/user", `{"name": "user", "password": "letmein",`+AdminChannelGrant(rt2_Scope, rt2_collectionName, `"admin_channels": ["B"]`)+`}`)
+	resp = rt2.SendAdminRequest("PUT", "/db/_user/user", `{"name": "user", "password": "letmein",`+AdminChannelGrant(rt2_collection, `"admin_channels": ["B"]`)+`}`)
 	RequireStatus(t, resp, http.StatusOK)
 
 	// Add another few docs to 'bump' rt1's seq no. Otherwise it'll end up revoking next time as the above user PUT is

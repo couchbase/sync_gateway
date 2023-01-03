@@ -337,11 +337,9 @@ func TestPostChangesWithQueryString(t *testing.T) {
 // Basic _changes test with since value
 func postChangesSince(t *testing.T, rt *rest.RestTester) {
 	collection := rt.GetSingleTestDatabaseCollection()
-	c := collection.Name()
-	s := collection.ScopeName()
 
 	// Create user
-	response := rt.SendAdminRequest("PUT", "/db/_user/bernard", `{"email":"bernard@bb.com", "password":"letmein",`+rest.AdminChannelGrant(s, c, `"admin_channels":["PBS"]`)+`}`)
+	response := rt.SendAdminRequest("PUT", "/db/_user/bernard", `{"email":"bernard@bb.com", "password":"letmein",`+rest.AdminChannelGrant(collection, `"admin_channels":["PBS"]`)+`}`)
 	rest.RequireStatus(t, response, 201)
 
 	cacheWaiter := rt.GetDatabase().NewDCPCachingCountWaiter(t)
@@ -467,8 +465,6 @@ func TestPostChangesAdminChannelGrant(t *testing.T) {
 		})
 	defer rt.Close()
 	collection := rt.GetSingleTestDatabaseCollection()
-	c := collection.Name()
-	s := collection.ScopeName()
 
 	// Create user with access to channel ABC:
 	ctx := rt.Context()
@@ -507,7 +503,7 @@ func TestPostChangesAdminChannelGrant(t *testing.T) {
 	require.Len(t, changes.Results, 1)
 
 	// Update the user doc to grant access to PBS
-	response = rt.SendAdminRequest("PUT", "/db/_user/bernard", `{`+rest.AdminChannelGrant(s, c, `"admin_channels":["ABC", "PBS"]`)+`}`)
+	response = rt.SendAdminRequest("PUT", "/db/_user/bernard", `{`+rest.AdminChannelGrant(collection, `"admin_channels":["ABC", "PBS"]`)+`}`)
 	rest.RequireStatus(t, response, 200)
 
 	time.Sleep(500 * time.Millisecond)
@@ -557,8 +553,6 @@ func TestPostChangesAdminChannelGrantRemoval(t *testing.T) {
 		&rest.RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel);}`})
 	defer rt.Close()
 	collection := rt.GetSingleTestDatabaseCollection()
-	c := collection.Name()
-	s := collection.ScopeName()
 
 	// Create user with access to channel ABC:
 	ctx := rt.Context()
@@ -645,7 +639,7 @@ func TestPostChangesAdminChannelGrantRemoval(t *testing.T) {
 	}
 
 	// Update the user doc to grant access to PBS, HBO in addition to ABC
-	response := rt.SendAdminRequest(http.MethodPut, "/db/_user/bernard", `{`+rest.AdminChannelGrant(s, c, `"admin_channels":["ABC", "PBS", "HBO"]`)+`}`)
+	response := rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/bernard", `{`+rest.AdminChannelGrant(collection, `"admin_channels":["ABC", "PBS", "HBO"]`)+`}`)
 	rest.RequireStatus(t, response, http.StatusOK)
 
 	// Issue a new changes request with since=last_seq ensure that user receives all records for channels PBS, HBO.
@@ -716,8 +710,6 @@ func TestPostChangesAdminChannelGrantRemovalWithLimit(t *testing.T) {
 		&rest.RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel);}`})
 	defer rt.Close()
 	collection := rt.GetSingleTestDatabaseCollection()
-	c := collection.Name()
-	s := collection.ScopeName()
 
 	// Create user with access to channel ABC:
 	ctx := rt.Context()
@@ -748,7 +740,7 @@ func TestPostChangesAdminChannelGrantRemovalWithLimit(t *testing.T) {
 	cacheWaiter.AddAndWait(1)
 
 	// Grant user access to channel PBS
-	userResponse := rt.SendAdminRequest("PUT", "/db/_user/bernard", `{`+rest.AdminChannelGrant(s, c, `"admin_channels":["ABC","PBS"]`)+`}`)
+	userResponse := rt.SendAdminRequest("PUT", "/{{.db}}/_user/bernard", `{`+rest.AdminChannelGrant(collection, `"admin_channels":["ABC","PBS"]`)+`}`)
 	rest.RequireStatus(t, userResponse, 200)
 
 	// Put several documents in channel ABC
@@ -1003,18 +995,16 @@ func TestChangesLoopingWhenLowSequence(t *testing.T) {
 	ctx := rt.Context()
 	testDb := rt.ServerContext().Database(ctx, "db")
 	collection := testDb.GetSingleDatabaseCollection()
-	c := collection.Name()
-	s := collection.ScopeName()
 
 	// Create user:
 	rest.RequireStatus(t, rt.SendAdminRequest("GET", "/db/_user/bernard", ""), 404)
-	response := rt.SendAdminRequest("PUT", "/db/_user/bernard", `{"email":"bernard@couchbase.com", "password":"letmein",`+rest.AdminChannelGrant(s, c, `"admin_channels":["PBS"]`)+`}`)
+	response := rt.SendAdminRequest("PUT", "/db/_user/bernard", `{"email":"bernard@couchbase.com", "password":"letmein",`+rest.AdminChannelGrant(collection, `"admin_channels":["PBS"]`)+`}`)
 	rest.RequireStatus(t, response, 201)
 
 	// Simulate seq 3 and 4 being delayed - write 1,2,5,6
-	WriteDirect(testDb, []string{"PBS"}, 2, s, c)
-	WriteDirect(testDb, []string{"PBS"}, 5, s, c)
-	WriteDirect(testDb, []string{"PBS"}, 6, s, c)
+	WriteDirect(testDb, []string{"PBS"}, 2, collection)
+	WriteDirect(testDb, []string{"PBS"}, 5, collection)
+	WriteDirect(testDb, []string{"PBS"}, 6, collection)
 	require.NoError(t, testDb.GetSingleDatabaseCollection().WaitForSequenceNotSkipped(ctx, 6))
 
 	// Check the _changes feed:
@@ -1039,7 +1029,7 @@ func TestChangesLoopingWhenLowSequence(t *testing.T) {
 	require.Len(t, changes.Results, 0)
 
 	// Send a missing doc - low sequence should move to 3
-	WriteDirect(testDb, []string{"PBS"}, 3, s, c)
+	WriteDirect(testDb, []string{"PBS"}, 3, collection)
 	require.NoError(t, rt.WaitForSequence(3))
 
 	// WaitForSequence doesn't wait for low sequence to be updated on each channel - additional delay to ensure
@@ -1053,7 +1043,7 @@ func TestChangesLoopingWhenLowSequence(t *testing.T) {
 	require.Len(t, changes.Results, 3)
 
 	// Send a later doc - low sequence still 3, high sequence goes to 7
-	WriteDirect(testDb, []string{"PBS"}, 7, s, c)
+	WriteDirect(testDb, []string{"PBS"}, 7, collection)
 	require.NoError(t, testDb.GetSingleDatabaseCollection().WaitForSequenceNotSkipped(ctx, 7))
 
 	// Send another changes request with the same since ("2::6") to ensure we see data once there are changes
@@ -1098,19 +1088,17 @@ func TestChangesLoopingWhenLowSequenceOneShotUser(t *testing.T) {
 	ctx := rt.Context()
 	testDb := rt.ServerContext().Database(ctx, "db")
 	collection := testDb.GetSingleDatabaseCollection()
-	c := collection.Name()
-	s := collection.ScopeName()
 
 	// Create user:
 	rest.RequireStatus(t, rt.SendAdminRequest("GET", "/db/_user/bernard", ""), 404)
-	response := rt.SendAdminRequest("PUT", "/db/_user/bernard", `{"email":"bernard@couchbase.com", "password":"letmein",`+rest.AdminChannelGrant(s, c, `"admin_channels":["PBS"]`)+`}`)
+	response := rt.SendAdminRequest("PUT", "/db/_user/bernard", `{"email":"bernard@couchbase.com", "password":"letmein",`+rest.AdminChannelGrant(collection, `"admin_channels":["PBS"]`)+`}`)
 	rest.RequireStatus(t, response, 201)
 
 	// Simulate 4 non-skipped writes (seq 2,3,4,5)
-	WriteDirect(testDb, []string{"PBS"}, 2, s, c)
-	WriteDirect(testDb, []string{"PBS"}, 3, s, c)
-	WriteDirect(testDb, []string{"PBS"}, 4, s, c)
-	WriteDirect(testDb, []string{"PBS"}, 5, s, c)
+	WriteDirect(testDb, []string{"PBS"}, 2, collection)
+	WriteDirect(testDb, []string{"PBS"}, 3, collection)
+	WriteDirect(testDb, []string{"PBS"}, 4, collection)
+	WriteDirect(testDb, []string{"PBS"}, 5, collection)
 	require.NoError(t, testDb.GetSingleDatabaseCollection().WaitForSequenceNotSkipped(ctx, 5))
 
 	// Check the _changes feed:
@@ -1127,10 +1115,10 @@ func TestChangesLoopingWhenLowSequenceOneShotUser(t *testing.T) {
 	assert.Equal(t, "5", changes.Last_Seq)
 
 	// Skip sequence 6, write docs 7-10
-	WriteDirect(testDb, []string{"PBS"}, 7, s, c)
-	WriteDirect(testDb, []string{"PBS"}, 8, s, c)
-	WriteDirect(testDb, []string{"PBS"}, 9, s, c)
-	WriteDirect(testDb, []string{"PBS"}, 10, s, c)
+	WriteDirect(testDb, []string{"PBS"}, 7, collection)
+	WriteDirect(testDb, []string{"PBS"}, 8, collection)
+	WriteDirect(testDb, []string{"PBS"}, 9, collection)
+	WriteDirect(testDb, []string{"PBS"}, 10, collection)
 	require.NoError(t, testDb.GetSingleDatabaseCollection().WaitForSequenceNotSkipped(ctx, 10))
 
 	// Send another changes request with the last_seq received from the last changes ("5")
@@ -1143,8 +1131,8 @@ func TestChangesLoopingWhenLowSequenceOneShotUser(t *testing.T) {
 	assert.Equal(t, "5::10", changes.Last_Seq)
 
 	// Write a few more docs
-	WriteDirect(testDb, []string{"PBS"}, 11, s, c)
-	WriteDirect(testDb, []string{"PBS"}, 12, s, c)
+	WriteDirect(testDb, []string{"PBS"}, 11, collection)
+	WriteDirect(testDb, []string{"PBS"}, 12, collection)
 	require.NoError(t, testDb.GetSingleDatabaseCollection().WaitForSequenceNotSkipped(ctx, 12))
 
 	// Send another changes request with the last_seq received from the last changes ("5")
@@ -1157,8 +1145,8 @@ func TestChangesLoopingWhenLowSequenceOneShotUser(t *testing.T) {
 	assert.Equal(t, "5::12", changes.Last_Seq)
 
 	// Write another doc, then the skipped doc - both should be sent, last_seq should move to 13
-	WriteDirect(testDb, []string{"PBS"}, 13, s, c)
-	WriteDirect(testDb, []string{"PBS"}, 6, c, c)
+	WriteDirect(testDb, []string{"PBS"}, 13, collection)
+	WriteDirect(testDb, []string{"PBS"}, 6, collection)
 	require.NoError(t, rt.WaitForSequence(13))
 
 	changesJSON = fmt.Sprintf(`{"since":"%s"}`, changes.Last_Seq)
@@ -1233,18 +1221,16 @@ func TestChangesLoopingWhenLowSequenceOneShotAdmin(t *testing.T) {
 	rt := rest.NewRestTester(t, &rtConfig)
 	defer rt.Close()
 	collection := rt.GetSingleTestDatabaseCollection()
-	c := collection.Name()
-	s := collection.ScopeName()
 
 	ctx := rt.Context()
 	testDb := rt.ServerContext().Database(ctx, "db")
 
 	// Simulate 5 non-skipped writes (seq 1,2,3,4,5)
-	WriteDirect(testDb, []string{"PBS"}, 1, s, c)
-	WriteDirect(testDb, []string{"PBS"}, 2, s, c)
-	WriteDirect(testDb, []string{"PBS"}, 3, s, c)
-	WriteDirect(testDb, []string{"PBS"}, 4, s, c)
-	WriteDirect(testDb, []string{"PBS"}, 5, s, c)
+	WriteDirect(testDb, []string{"PBS"}, 1, collection)
+	WriteDirect(testDb, []string{"PBS"}, 2, collection)
+	WriteDirect(testDb, []string{"PBS"}, 3, collection)
+	WriteDirect(testDb, []string{"PBS"}, 4, collection)
+	WriteDirect(testDb, []string{"PBS"}, 5, collection)
 	require.NoError(t, testDb.GetSingleDatabaseCollection().WaitForSequenceNotSkipped(ctx, 5))
 	resp := rt.SendAdminRequest("GET", "/db/_all_docs", "")
 	fmt.Println(resp.Body)
@@ -1262,10 +1248,10 @@ func TestChangesLoopingWhenLowSequenceOneShotAdmin(t *testing.T) {
 	assert.Equal(t, "5", changes.Last_Seq)
 
 	// Skip sequence 6, write docs 7-10
-	WriteDirect(testDb, []string{"PBS"}, 7, s, c)
-	WriteDirect(testDb, []string{"PBS"}, 8, s, c)
-	WriteDirect(testDb, []string{"PBS"}, 9, s, c)
-	WriteDirect(testDb, []string{"PBS"}, 10, s, c)
+	WriteDirect(testDb, []string{"PBS"}, 7, collection)
+	WriteDirect(testDb, []string{"PBS"}, 8, collection)
+	WriteDirect(testDb, []string{"PBS"}, 9, collection)
+	WriteDirect(testDb, []string{"PBS"}, 10, collection)
 	require.NoError(t, testDb.GetSingleDatabaseCollection().WaitForSequenceNotSkipped(ctx, 10))
 
 	// Send another changes request with the last_seq received from the last changes ("5")
@@ -1278,8 +1264,8 @@ func TestChangesLoopingWhenLowSequenceOneShotAdmin(t *testing.T) {
 	assert.Equal(t, "5::10", changes.Last_Seq)
 
 	// Write a few more docs
-	WriteDirect(testDb, []string{"PBS"}, 11, s, c)
-	WriteDirect(testDb, []string{"PBS"}, 12, s, c)
+	WriteDirect(testDb, []string{"PBS"}, 11, collection)
+	WriteDirect(testDb, []string{"PBS"}, 12, collection)
 	require.NoError(t, testDb.GetSingleDatabaseCollection().WaitForSequenceNotSkipped(ctx, 12))
 
 	// Send another changes request with the last_seq received from the last changes ("5")
@@ -1292,8 +1278,8 @@ func TestChangesLoopingWhenLowSequenceOneShotAdmin(t *testing.T) {
 	assert.Equal(t, "5::12", changes.Last_Seq)
 
 	// Write another doc, then the skipped doc - both should be sent, last_seq should move to 13
-	WriteDirect(testDb, []string{"PBS"}, 13, s, c)
-	WriteDirect(testDb, []string{"PBS"}, 6, s, c)
+	WriteDirect(testDb, []string{"PBS"}, 13, collection)
+	WriteDirect(testDb, []string{"PBS"}, 6, collection)
 	require.NoError(t, rt.WaitForSequence(13))
 
 	changesJSON = fmt.Sprintf(`{"since":"%s"}`, changes.Last_Seq)
@@ -1372,19 +1358,17 @@ func TestChangesLoopingWhenLowSequenceLongpollUser(t *testing.T) {
 	ctx := rt.Context()
 	testDb := rt.ServerContext().Database(ctx, "db")
 	collection := testDb.GetSingleDatabaseCollection()
-	c := collection.Name()
-	s := collection.ScopeName()
 
 	// Create user:
 	rest.RequireStatus(t, rt.SendAdminRequest("GET", "/db/_user/bernard", ""), 404)
-	response := rt.SendAdminRequest("PUT", "/db/_user/bernard", `{"email":"bernard@couchbase.com", "password":"letmein",`+rest.AdminChannelGrant(s, c, `"admin_channels":["PBS"]`)+`}`)
+	response := rt.SendAdminRequest("PUT", "/db/_user/bernard", `{"email":"bernard@couchbase.com", "password":"letmein",`+rest.AdminChannelGrant(collection, `"admin_channels":["PBS"]`)+`}`)
 	rest.RequireStatus(t, response, 201)
 
 	// Simulate 4 non-skipped writes (seq 2,3,4,5)
-	WriteDirect(testDb, []string{"PBS"}, 2, s, c)
-	WriteDirect(testDb, []string{"PBS"}, 3, s, c)
-	WriteDirect(testDb, []string{"PBS"}, 4, s, c)
-	WriteDirect(testDb, []string{"PBS"}, 5, s, c)
+	WriteDirect(testDb, []string{"PBS"}, 2, collection)
+	WriteDirect(testDb, []string{"PBS"}, 3, collection)
+	WriteDirect(testDb, []string{"PBS"}, 4, collection)
+	WriteDirect(testDb, []string{"PBS"}, 5, collection)
 	require.NoError(t, testDb.GetSingleDatabaseCollection().WaitForSequenceNotSkipped(ctx, 5))
 
 	// Check the _changes feed:
@@ -1401,10 +1385,10 @@ func TestChangesLoopingWhenLowSequenceLongpollUser(t *testing.T) {
 	assert.Equal(t, "5", changes.Last_Seq)
 
 	// Skip sequence 6, write docs 7-10
-	WriteDirect(testDb, []string{"PBS"}, 7, s, c)
-	WriteDirect(testDb, []string{"PBS"}, 8, s, c)
-	WriteDirect(testDb, []string{"PBS"}, 9, s, c)
-	WriteDirect(testDb, []string{"PBS"}, 10, s, c)
+	WriteDirect(testDb, []string{"PBS"}, 7, collection)
+	WriteDirect(testDb, []string{"PBS"}, 8, collection)
+	WriteDirect(testDb, []string{"PBS"}, 9, collection)
+	WriteDirect(testDb, []string{"PBS"}, 10, collection)
 	require.NoError(t, testDb.GetSingleDatabaseCollection().WaitForSequenceNotSkipped(ctx, 10))
 
 	// Send another changes request with the last_seq received from the last changes ("5")
@@ -1417,8 +1401,8 @@ func TestChangesLoopingWhenLowSequenceLongpollUser(t *testing.T) {
 	assert.Equal(t, "5::10", changes.Last_Seq)
 
 	// Write a few more docs
-	WriteDirect(testDb, []string{"PBS"}, 11, s, c)
-	WriteDirect(testDb, []string{"PBS"}, 12, s, c)
+	WriteDirect(testDb, []string{"PBS"}, 11, collection)
+	WriteDirect(testDb, []string{"PBS"}, 12, collection)
 	require.NoError(t, testDb.GetSingleDatabaseCollection().WaitForSequenceNotSkipped(ctx, 12))
 
 	// Send another changes request with the last_seq received from the last changes ("5")
@@ -1450,7 +1434,7 @@ func TestChangesLoopingWhenLowSequenceLongpollUser(t *testing.T) {
 	require.NoError(t, rt.GetDatabase().WaitForCaughtUp(caughtUpCount+1))
 
 	// Write the skipped doc, wait for longpoll to return
-	WriteDirect(testDb, []string{"PBS"}, 6, s, c)
+	WriteDirect(testDb, []string{"PBS"}, 6, collection)
 	// WriteDirect(testDb, []string{"PBS"}, 13)
 	longpollWg.Wait()
 
@@ -1773,19 +1757,17 @@ func TestOneShotChangesWithExplicitDocIds(t *testing.T) {
 	defer rt.Close()
 
 	collection := rt.GetSingleTestDatabaseCollection()
-	c := collection.Name()
-	s := collection.ScopeName()
 
 	// Create user1
-	response := rt.SendAdminRequest("PUT", "/{{.db}}/_user/user1", `{"email":"user1@couchbase.com", "password":"letmein", `+rest.AdminChannelGrant(s, c, `"admin_channels":["alpha"]`)+`}`)
+	response := rt.SendAdminRequest("PUT", "/{{.db}}/_user/user1", `{"email":"user1@couchbase.com", "password":"letmein", `+rest.AdminChannelGrant(collection, `"admin_channels":["alpha"]`)+`}`)
 	rest.RequireStatus(t, response, 201)
 
 	// Create user2
-	response = rt.SendAdminRequest("PUT", "/{{.db}}/_user/user2", `{"email":"user2@couchbase.com", "password":"letmein", `+rest.AdminChannelGrant(s, c, `"admin_channels":["beta"]`)+`}`)
+	response = rt.SendAdminRequest("PUT", "/{{.db}}/_user/user2", `{"email":"user2@couchbase.com", "password":"letmein", `+rest.AdminChannelGrant(collection, `"admin_channels":["beta"]`)+`}`)
 	rest.RequireStatus(t, response, 201)
 
 	// Create user3
-	response = rt.SendAdminRequest("PUT", "/{{.db}}/_user/user3", `{"email":"user3@couchbase.com", "password":"letmein", `+rest.AdminChannelGrant(s, c, `"admin_channels":["alpha","beta"]`)+`}`)
+	response = rt.SendAdminRequest("PUT", "/{{.db}}/_user/user3", `{"email":"user3@couchbase.com", "password":"letmein", `+rest.AdminChannelGrant(collection, `"admin_channels":["alpha","beta"]`)+`}`)
 	rest.RequireStatus(t, response, 201)
 
 	// Create user4
@@ -1793,7 +1775,7 @@ func TestOneShotChangesWithExplicitDocIds(t *testing.T) {
 	rest.RequireStatus(t, response, 201)
 
 	// Create user5
-	response = rt.SendAdminRequest("PUT", "/{{.db}}/_user/user5", `{"email":"user5@couchbase.com", "password":"letmein", `+rest.AdminChannelGrant(s, c, `"admin_channels":["*"]`)+`}`)
+	response = rt.SendAdminRequest("PUT", "/{{.db}}/_user/user5", `{"email":"user5@couchbase.com", "password":"letmein", `+rest.AdminChannelGrant(collection, `"admin_channels":["*"]`)+`}`)
 	rest.RequireStatus(t, response, 201)
 
 	// Create docs
@@ -1951,7 +1933,7 @@ func TestChangesIncludeDocs(t *testing.T) {
 	s := collection.ScopeName()
 
 	// Create user1
-	response := rt.SendAdminRequest("PUT", "/db/_user/user1", `{"email":"user1@couchbase.com", "password":"letmein",`+rest.AdminChannelGrant(s, c, `"admin_channels":["alpha", "beta"]`)+`}`)
+	response := rt.SendAdminRequest("PUT", "/db/_user/user1", `{"email":"user1@couchbase.com", "password":"letmein",`+rest.AdminChannelGrant(collection, `"admin_channels":["alpha", "beta"]`)+`}`)
 	rest.RequireStatus(t, response, 201)
 
 	// Create docs for each scenario
@@ -3704,16 +3686,14 @@ func TestIncludeDocsWithPrincipals(t *testing.T) {
 	ctx := rt.Context()
 	testDb := rt.ServerContext().Database(ctx, "db")
 	collection := testDb.GetSingleDatabaseCollection()
-	c := collection.Name()
-	s := collection.ScopeName()
 
 	cacheWaiter := testDb.NewDCPCachingCountWaiter(t)
 
 	// Put users
-	response := rt.SendAdminRequest("PUT", "/db/_user/includeDocsUser", `{"name":"includeDocsUser","password":"letmein",`+rest.AdminChannelGrant(s, c, `"admin_channels":["*"]`)+`}`)
+	response := rt.SendAdminRequest("PUT", "/db/_user/includeDocsUser", `{"name":"includeDocsUser","password":"letmein",`+rest.AdminChannelGrant(collection, `"admin_channels":["*"]`)+`}`)
 	rest.RequireStatus(t, response, 201)
 
-	response = rt.SendAdminRequest("PUT", "/db/_user/includeDocsUser2", `{"name":"includeDocsUser2","password":"letmein",`+rest.AdminChannelGrant(s, c, `"admin_channels":["*"]`)+`}`)
+	response = rt.SendAdminRequest("PUT", "/db/_user/includeDocsUser2", `{"name":"includeDocsUser2","password":"letmein",`+rest.AdminChannelGrant(collection, `"admin_channels":["*"]`)+`}`)
 	rest.RequireStatus(t, response, 201)
 
 	// Put several documents
@@ -3759,8 +3739,6 @@ func TestChangesAdminChannelGrantLongpollNotify(t *testing.T) {
 	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 	collection := rt.GetSingleTestDatabaseCollection()
-	c := collection.Name()
-	s := collection.ScopeName()
 
 	// Create user with access to channel ABC:
 	ctx := rt.Context()
@@ -3802,7 +3780,7 @@ func TestChangesAdminChannelGrantLongpollNotify(t *testing.T) {
 	require.NoError(t, rt.GetDatabase().WaitForCaughtUp(caughtUpCount+1))
 
 	// Update the user doc to grant access to PBS
-	response = rt.SendAdminRequest("PUT", "/db/_user/bernard", `{`+rest.AdminChannelGrant(s, c, `"admin_channels":["ABC", "PBS"]`)+`}`)
+	response = rt.SendAdminRequest("PUT", "/db/_user/bernard", `{`+rest.AdminChannelGrant(collection, `"admin_channels":["ABC", "PBS"]`)+`}`)
 	rest.RequireStatus(t, response, 200)
 
 	// Wait for longpoll to return
@@ -3978,12 +3956,12 @@ func waitForCompactStopped(dbc *db.DatabaseContext) error {
 
 // ////// HELPERS:
 
-func WriteDirect(testDb *db.DatabaseContext, channelArray []string, sequence uint64, scope string, collection string) {
+func WriteDirect(testDb *db.DatabaseContext, channelArray []string, sequence uint64, collection *db.DatabaseCollection) {
 	docId := fmt.Sprintf("doc-%v", sequence)
-	WriteDirectWithKey(testDb, docId, channelArray, sequence, scope, collection)
+	WriteDirectWithKey(testDb, docId, channelArray, sequence, collection)
 }
 
-func WriteDirectWithKey(testDb *db.DatabaseContext, key string, channelArray []string, sequence uint64, scope string, collection string) {
+func WriteDirectWithKey(testDb *db.DatabaseContext, key string, channelArray []string, sequence uint64, collection *db.DatabaseCollection) {
 
 	if base.TestUseXattrs() {
 		panic(fmt.Sprintf("WriteDirectWithKey() cannot be used in tests that are xattr enabled"))
@@ -4008,14 +3986,11 @@ func WriteDirectWithKey(testDb *db.DatabaseContext, key string, channelArray []s
 	// syncData := fmt.Sprintf(`{"rev":"%s", "sequence":%d, "channels":%s, "TimeSaved":"%s"}`, rev, sequence, chanMap, time.Now())
 
 	dataStores, _ := testDb.Bucket.ListDataStores()
-	for _, dataStoreName := range dataStores {
-		if dataStoreName.ScopeName() == scope && dataStoreName.CollectionName() == collection {
-			data := testDb.Bucket.NamedDataStore(dataStoreName)
-			_, err := data.Add(key, 0, db.Body{base.SyncPropertyName: syncData, "key": key})
-			if err != nil {
-				base.PanicfCtx(context.TODO(), "Error while add ket to bucket: %v", err)
-			}
-		}
+	dataName := rest.GetNamedDatastore(dataStores, collection)
+	data := testDb.Bucket.NamedDataStore(dataName)
+	_, err := data.Add(key, 0, db.Body{base.SyncPropertyName: syncData, "key": key})
+	if err != nil {
+		base.PanicfCtx(context.TODO(), "Error while add ket to bucket: %v", err)
 	}
 
 }

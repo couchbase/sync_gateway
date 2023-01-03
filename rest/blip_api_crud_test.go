@@ -825,8 +825,6 @@ function(doc, oldDoc) {
 	defer rt.Close()
 	ctx := rt.Context()
 	collection := rt.GetSingleTestDatabaseCollection()
-	c := collection.Name()
-	s := collection.ScopeName()
 
 	// Create bliptester that is connected as user1, with no access to channel ABC
 	bt, err := NewBlipTesterFromSpecWithRT(t, &BlipTesterSpec{
@@ -855,7 +853,7 @@ function(doc, oldDoc) {
 	userWaiter := userDb.NewUserWaiter()
 
 	// Update the user to grant them access to ABC
-	response := rt.SendAdminRequest("PUT", "/db/_user/user1", `{`+AdminChannelGrant(s, c, `"admin_channels":["ABC"]`)+`}`)
+	response := rt.SendAdminRequest("PUT", "/db/_user/user1", `{`+AdminChannelGrant(collection, `"admin_channels":["ABC"]`)+`}`)
 	RequireStatus(t, response, 200)
 
 	// Wait for notification
@@ -1422,9 +1420,7 @@ func TestAccessGrantViaAdminApi(t *testing.T) {
 		connectingPassword: "1234",
 	})
 	defer bt.Close()
-	collection := bt.DatabaseContext().GetSingleDatabaseCollection()
-	c := collection.Name()
-	s := collection.ScopeName()
+	collection := bt.restTester.GetSingleTestDatabaseCollection()
 
 	// Add a doc in the PBS channel
 	_, _, _, _ = bt.SendRev(
@@ -1435,7 +1431,7 @@ func TestAccessGrantViaAdminApi(t *testing.T) {
 	)
 
 	// Update the user doc to grant access to PBS
-	response := bt.restTester.SendAdminRequest("PUT", "/db/_user/user1", `{`+AdminChannelGrant(s, c, `"admin_channels":["user1", "PBS"]`)+`}`)
+	response := bt.restTester.SendAdminRequest("PUT", "/db/_user/user1", `{`+AdminChannelGrant(collection, `"admin_channels":["user1", "PBS"]`)+`}`)
 	RequireStatus(t, response, 200)
 
 	// Add another doc in the PBS channel
@@ -1956,10 +1952,8 @@ func TestRemovedMessageWithAlternateAccess(t *testing.T) {
 	rt := NewRestTesterDefaultCollection(t, nil) // CBG-2619: make collection aware
 	defer rt.Close()
 	collection := rt.GetSingleTestDatabaseCollection()
-	c := collection.Name()
-	s := collection.ScopeName()
 
-	resp := rt.SendAdminRequest("PUT", "/db/_user/user", `{`+AdminChannelGrant(s, c, `"admin_channels": ["A", "B"]`)+`, "password": "test"}`)
+	resp := rt.SendAdminRequest("PUT", "/db/_user/user", `{`+AdminChannelGrant(collection, `"admin_channels": ["A", "B"]`)+`, "password": "test"}`)
 	RequireStatus(t, resp, http.StatusCreated)
 
 	btc, err := NewBlipTesterClientOptsWithRT(t, rt, &BlipTesterClientOpts{
@@ -2065,10 +2059,8 @@ func TestRemovedMessageWithAlternateAccessAndChannelFilteredReplication(t *testi
 	rt := NewRestTesterDefaultCollection(t, nil) // CBG-2619: make collection aware
 	defer rt.Close()
 	collection := rt.GetSingleTestDatabaseCollection()
-	c := collection.Name()
-	s := collection.ScopeName()
 
-	resp := rt.SendAdminRequest("PUT", "/db/_user/user", `{`+AdminChannelGrant(s, c, `"admin_channels": ["A", "B"]`)+`, "password": "test"}`)
+	resp := rt.SendAdminRequest("PUT", "/db/_user/user", `{`+AdminChannelGrant(collection, `"admin_channels": ["A", "B"]`)+`, "password": "test"}`)
 	RequireStatus(t, resp, http.StatusCreated)
 
 	btc, err := NewBlipTesterClientOptsWithRT(t, rt, &BlipTesterClientOpts{

@@ -33,9 +33,6 @@ func TestChangesAccessNotifyInteger(t *testing.T) {
 	rt := NewRestTester(t,
 		&RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel); access(doc.accessUser, doc.accessChannel);}`})
 	defer rt.Close()
-	collection := rt.GetSingleTestDatabaseCollection()
-	c := collection.Name()
-	s := collection.ScopeName()
 
 	// Create user:
 	ctx := rt.Context()
@@ -63,7 +60,7 @@ func TestChangesAccessNotifyInteger(t *testing.T) {
 			Last_Seq db.SequenceID
 		}
 		changesJSON := `{"style":"all_docs", "heartbeat":300000, "feed":"longpoll", "limit":50, "since":"0"}`
-		changesResponse := rt.Send(RequestByUser("POST", "/db."+s+"."+c+"/_changes", changesJSON, "bernard"))
+		changesResponse := rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", changesJSON, "bernard")
 		err := base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
 		assert.NoError(t, err)
 		assert.Equal(t, 3, len(changes.Results))
@@ -93,11 +90,9 @@ func TestChangesNotifyChannelFilter(t *testing.T) {
 	defer rt.Close()
 
 	collection := rt.GetSingleTestDatabaseCollection()
-	s := collection.ScopeName()
-	c := collection.Name()
 
 	// Create user:
-	userResponse := rt.SendAdminRequest("PUT", "/db/_user/bernard", `{"name":"bernard", "password":"letmein", `+AdminChannelGrant(s, c, `"admin_channels":["ABC"]`)+`}`)
+	userResponse := rt.SendAdminRequest("PUT", "/db/_user/bernard", `{"name":"bernard", "password":"letmein", `+AdminChannelGrant(collection, `"admin_channels":["ABC"]`)+`}`)
 	RequireStatus(t, userResponse, 201)
 
 	// Get user, to trigger all_channels calculation and bump the user change count BEFORE we write the PBS docs - otherwise the user key count
@@ -133,7 +128,7 @@ func TestChangesNotifyChannelFilter(t *testing.T) {
 					 "filter":"` + base.ByChannelFilter + `",
 					 "channels":"ABC,PBS"}`
 	sinceZeroJSON := fmt.Sprintf(changesJSON, "0")
-	changesResponse := rt.Send(RequestByUser("POST", "/db."+s+"."+c+"/_changes", sinceZeroJSON, "bernard"))
+	changesResponse := rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", sinceZeroJSON, "bernard")
 	err := base.JSONUnmarshal(changesResponse.Body.Bytes(), &initialChanges)
 	assert.NoError(t, err, "Unexpected error unmarshalling initialChanges")
 	lastSeq := initialChanges.Last_Seq.String()
@@ -151,7 +146,7 @@ func TestChangesNotifyChannelFilter(t *testing.T) {
 			Last_Seq db.SequenceID
 		}
 		sinceLastJSON := fmt.Sprintf(changesJSON, lastSeq)
-		changesResponse := rt.Send(RequestByUser("POST", "/db."+s+"."+c+"/_changes", sinceLastJSON, "bernard"))
+		changesResponse := rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", sinceLastJSON, "bernard")
 		err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
 		assert.Equal(t, 1, len(changes.Results))
 	}()
