@@ -147,10 +147,12 @@ func TestStarAccess(t *testing.T) {
 
 	// Ensure docs have been processed before issuing changes requests
 	expectedSeq := uint64(6)
-	_ = rt.WaitForSequence(expectedSeq)
+	err = rt.WaitForSequence(expectedSeq)
+	require.NoError(t, err)
 
 	// GET /db/_changes
 	response = rt.SendUserRequest("GET", "/{{.keyspace}}/_changes", "", "bernard")
+	RequireStatus(t, response, 200)
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	err = base.JSONUnmarshal(response.Body.Bytes(), &changes)
 	assert.NoError(t, err)
