@@ -25,6 +25,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+type namedCollectionTestConfig uint8
+
+const (
+	useNamedCollectionsIfAble = iota
+	useDefaultCollectionOnly
+)
+
 // Workaround SG #3570 by doing a polling loop until the star channel query returns 0 results.
 // Uses the star channel index as a proxy to indicate that _all_ indexes are empty (which might not be true)
 func WaitForIndexEmpty(store base.N1QLStore, useXattrs bool) error {
@@ -491,11 +498,11 @@ func SetupTestDBWithOptions(t testing.TB, dbcOptions DatabaseContextOptions) (*D
 	return SetupTestDBForDataStoreWithOptions(t, tBucket, dbcOptions, useNamedCollectionsIfAble)
 }
 
-func SetupTestDBForDataStoreWithOptions(t testing.TB, tBucket *base.TestBucket, dbcOptions DatabaseContextOptions, namedCollection namedCollectionConfig) (*Database, context.Context) {
+func SetupTestDBForDataStoreWithOptions(t testing.TB, tBucket *base.TestBucket, dbcOptions DatabaseContextOptions, namedCollectionConfig namedCollectionTestConfig) (*Database, context.Context) {
 	ctx := base.TestCtx(t)
 	AddOptionsFromEnvironmentVariables(&dbcOptions)
 
-	if namedCollection == useNamedCollectionsIfAble && base.TestsUseNamedCollections() {
+	if namedCollectionConfig == useNamedCollectionsIfAble && base.TestsUseNamedCollections() {
 		dataStore := tBucket.GetSingleDataStore()
 		dsn, ok := base.AsDataStoreName(dataStore)
 		if !ok {

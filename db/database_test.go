@@ -36,13 +36,6 @@ func init() {
 	underscore.Disable() // It really slows down unit tests (by making otto.New take a lot longer)
 }
 
-type namedCollectionConfig uint8
-
-const (
-	useNamedCollectionsIfAble = iota
-	useDefaultCollectionOnly
-)
-
 // Note: It is important to call db.Close() on the returned database.
 func setupTestDB(t testing.TB) (*Database, context.Context) {
 	return setupTestDBWithCacheOptions(t, DefaultCacheOptions())
@@ -53,12 +46,12 @@ func setupTestDBDefaultCollection(t testing.TB) (*Database, context.Context) {
 	return setupTestDBForBucket(t, bucket, useDefaultCollectionOnly)
 }
 
-func setupTestDBForBucket(t testing.TB, bucket *base.TestBucket, namedCollection namedCollectionConfig) (*Database, context.Context) {
+func setupTestDBForBucket(t testing.TB, bucket *base.TestBucket, namedCollectionConfig namedCollectionTestConfig) (*Database, context.Context) {
 	cacheOptions := DefaultCacheOptions()
 	dbcOptions := DatabaseContextOptions{
 		CacheOptions: &cacheOptions,
 	}
-	return SetupTestDBForDataStoreWithOptions(t, bucket, dbcOptions, namedCollection)
+	return SetupTestDBForDataStoreWithOptions(t, bucket, dbcOptions, namedCollectionConfig)
 }
 
 func setupTestDBWithOptionsAndImport(t testing.TB, dbcOptions DatabaseContextOptions) (*Database, context.Context) {
