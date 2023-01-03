@@ -12,9 +12,11 @@ import (
 // General V8 API docs: https://v8.dev/docs/embed
 
 // Represents a JavaScript virtual machine, an "Isolate" in V8 terminology.
-// This doesn't do much on its own; it acts as a host for Service and Runner objects.
+// This doesn't do much on its own; it acts as a ServiceHost for Service and Runner objects.
 //
 // **Not thread-safe!** A VM instance must be used only on one goroutine at a time.
+// A Service whose ServiceHost is a VM can only be used on a single goroutine; any concurrent
+// use will trigger a panic in VM.getRunner.
 // The VMPool takes care of this, by vending VM instances that are known not to be in use.
 type VM struct {
 	iso          *v8.Isolate            // A V8 virtual machine. NOT THREAD SAFE.
@@ -69,7 +71,7 @@ func (vm *VM) release() {
 
 func (vm *VM) registerService(factory TemplateFactory) serviceID {
 	if vm.iso == nil {
-		panic("uninitialized js.VM")
+		panic("You forgot to initialize a js.VM") // Must call NewVM()
 	}
 	return vm.services.addService(factory)
 }
@@ -111,6 +113,8 @@ func (vm *VM) getTemplate(service *Service) (Template, error) {
 
 // Produces a Runner object that can run the given service.
 // Be sure to call Runner.Return when done.
+// Since VM is single-threaded, calling getRunner when a Runner already exists and hasn't been
+// returned yet is assumed to be illegal concurrent access; it will trigger a panic.
 func (vm *VM) getRunner(service *Service) (*Runner, error) {
 	if vm.curRunner != nil {
 		panic("VM already has a Runner")
@@ -138,7 +142,7 @@ func (vm *VM) getRunner(service *Service) (*Runner, error) {
 }
 
 // Called by Runner.Return; either closes its V8 resources or saves it for reuse.
-// Also returns the VM to its Pool (or closes it.)
+// Also returns the VM to its Pool, if it came from one.
 func (vm *VM) returnRunner(r *Runner) {
 	r.goContext = nil
 	if vm.curRunner == r {

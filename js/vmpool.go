@@ -10,8 +10,8 @@ import (
 
 //////// VM POOL
 
-// A thread-safe host for Services and Runners that owns a set of VMs and allocates an available
-// one when a Runner is needed.
+// A thread-safe ServiceHost for Services and Runners that owns a set of VMs
+// and allocates an available one when a Runner is needed.
 type VMPool struct {
 	vms      chan *VM               // Cache of idle VMs
 	counter  chan int               // Each item in this channel represents availability of a VM
@@ -20,7 +20,7 @@ type VMPool struct {
 	inUse    int32                  // Number of VMs currently in use ("checked out".) *ATOMIC*
 }
 
-// Creates a `VMPool`, a thread-safe host for Services and Runners
+// Creates a `VMPool`, a thread-safe ServiceHost for Services and Runners.
 // `maxVMs` is the maximum number of V8 instances (VM objects) it will provide; a reasonable value
 // for this is the number of CPU cores.
 func NewVMPool(maxVMs int) *VMPool {
@@ -29,7 +29,7 @@ func NewVMPool(maxVMs int) *VMPool {
 	return pool
 }
 
-// Initializes a `VMPool`, a thread-safe host for Services and Runners
+// Initializes a `VMPool`, a thread-safe ServiceHost for Services and Runners
 // `maxVMs` is the maximum number of V8 instances (VM objects) it will provide; a reasonable value
 // for this is the number of CPU cores.
 func (pool *VMPool) Init(maxVMs int) {
@@ -73,7 +73,7 @@ func (pool *VMPool) PurgeUnusedVMs() {
 
 func (pool *VMPool) registerService(factory TemplateFactory) serviceID {
 	if pool.services == nil {
-		panic("You are calling an uninitialized VMPool")
+		panic("You forgot to initialize a VMPool") // failed to call Init or NewVMPool
 	}
 	return pool.services.addService(factory)
 }

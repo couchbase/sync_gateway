@@ -14,7 +14,7 @@ import (
 // A Template belongs to both a Service and a VM. It's created the first time the Service needs to
 // create a Runner in that VM.
 //
-// Once the Template is initialized, each Runner's V8 context is very cheaply initialized by
+// Once the Template is initialized, each Runner's V8 Context is very cheaply initialized by
 // making references to these templates, without needing to compile or run anything.
 //
 // Many clients -- those that just need to run a single JS function with no callbacks -- can
@@ -23,8 +23,9 @@ import (
 // Very few clients will need to implement this interface; most can just use the BasicTemplate
 // struct that implements it, which is passed to NewCustomService's callback.
 type Template interface {
-	// The JavaScript global namespace: an object representing the environment's global variables.
-	// Any named property set on this object by the Set method is exposed as a global variable.
+	// The JavaScript global namespace.
+	// Any named property set on this object by the Set method is exposed as a global
+	// variable/context/function.
 	Global() *v8.ObjectTemplate
 
 	// The compiled script. When the Service is instantiated as a Runner, _before_ the runner is
@@ -35,7 +36,7 @@ type Template interface {
 	Name() string
 
 	// If this returns true, a Runner instance will be cached by a VM and reused for the next call.
-	// This is faster, but it means that any changes to the Runner's global variables will persist;
+	// This is faster, but it means that any changes to the Runner's global variables will persist.
 	Reusable() bool
 }
 
@@ -48,6 +49,9 @@ func BasicTemplateFactory(fnSource string) TemplateFactory {
 }
 
 // Base implementation of Template.
+// Manages a Service's initial JS runtime environment -- its script code, main function
+// and global functions & variables -- in the form of V8 "template" objects.
+//
 // "Subclasses" can be created by embedding this in another struct; this is useful if you create
 // additional object or function templates and need to store references to them for use by the
 // Runner.

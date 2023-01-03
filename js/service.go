@@ -24,6 +24,7 @@ type ServiceHost interface {
 }
 
 // Creates a new Service in a ServiceHost (a VM or VMPool.)
+// The name is primarily for logging; it does not need to be unique.
 // The source code should be of the form `function(arg1,arg2…) {…body…; return result;}`.
 // If you have a more complex script, like one that defines several functions, use NewCustomService.
 func NewService(host ServiceHost, name string, jsFunctionSource string) *Service {
@@ -42,7 +43,7 @@ func NewCustomService(host ServiceHost, name string, factory TemplateFactory) *S
 	}
 }
 
-// Factory/initialization function for Services that need to add JS globals or callbacks or
+// A factory/initialization function for Services that need to add JS globals or callbacks or
 // otherwise extend their runtime environment. They do this by operating on its Template.
 //
 // The function's parameter is a BasicTemplate that doesn't have a script yet.
@@ -51,7 +52,7 @@ func NewCustomService(host ServiceHost, name string, factory TemplateFactory) *S
 // implements Template (which presumably includes a pointer to the BasicTemplate) and return that.
 type TemplateFactory func(base *BasicTemplate) (Template, error)
 
-// The Service's name.
+// The Service's name, given when it was created.
 func (service *Service) Name() string { return service.name }
 
 // The VM or VMPool that provides the Service's runtime environment.

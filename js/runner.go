@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
-	"rogchap.com/v8go"
 	v8 "rogchap.com/v8go" // Docs: https://pkg.go.dev/rogchap.com/v8go
 )
 
@@ -154,7 +153,7 @@ func (r *Runner) JustCall(fn *v8.Function, this v8.Valuer, args ...v8.Valuer) (*
 		}
 	}
 	val, err := fn.Call(this, args...)
-	if jsErr, ok := err.(*v8go.JSError); ok && strings.HasPrefix(jsErr.Message, "ExecutionTerminated:") {
+	if jsErr, ok := err.(*v8.JSError); ok && strings.HasPrefix(jsErr.Message, "ExecutionTerminated:") {
 		err = context.DeadlineExceeded
 	}
 	return val, err
