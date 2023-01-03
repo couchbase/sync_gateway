@@ -118,6 +118,8 @@ func TestStarAccess(t *testing.T) {
 	bernard, _ := a.NewUser("bernard", "letmein", channels.BaseSetOf(t, "books"))
 	assert.NoError(t, a.Save(bernard))
 	response := rt.SendAdminRequest("GET", "/{{.db}}/_user/bernard", ``)
+	RequireStatus(t, response, 200)
+	fmt.Println(response.Body)
 
 	// GET /db/docid - basic test for channel user has
 	response = rt.SendUserRequest("GET", "/{{.keyspace}}/doc1", "", "bernard")
@@ -139,11 +141,11 @@ func TestStarAccess(t *testing.T) {
 	log.Printf("Response = %s", response.Body.Bytes())
 	err = base.JSONUnmarshal(response.Body.Bytes(), &allDocsResult)
 	assert.NoError(t, err)
-	assert.Equal(t, 3, len(allDocsResult.Rows))
-	assert.Equal(t, "doc1", allDocsResult.Rows[0].ID)
-	assert.Equal(t, []string{"books"}, allDocsResult.Rows[0].Value.Channels)
-	assert.Equal(t, "doc3", allDocsResult.Rows[1].ID)
-	assert.Equal(t, []string{"!"}, allDocsResult.Rows[1].Value.Channels)
+	require.Equal(t, 3, len(allDocsResult.Rows))
+	require.Equal(t, "doc1", allDocsResult.Rows[0].ID)
+	require.Equal(t, []string{"books"}, allDocsResult.Rows[0].Value.Channels)
+	require.Equal(t, "doc3", allDocsResult.Rows[1].ID)
+	require.Equal(t, []string{"!"}, allDocsResult.Rows[1].Value.Channels)
 
 	// Ensure docs have been processed before issuing changes requests
 	expectedSeq := uint64(6)
@@ -151,15 +153,15 @@ func TestStarAccess(t *testing.T) {
 	require.NoError(t, err)
 
 	// GET /db/_changes
-	response = rt.SendUserRequest("GET", "/{{.keyspace}}/_changes?since=0", "", "bernard")
+	response = rt.SendUserRequest("GET", "/{{.keyspace}}/_changes", "", "bernard")
 	RequireStatus(t, response, 200)
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	err = base.JSONUnmarshal(response.Body.Bytes(), &changes)
 	assert.NoError(t, err)
-	assert.Equal(t, 3, len(changes.Results))
+	require.Equal(t, 3, len(changes.Results))
 	since := changes.Results[0].Seq
-	assert.Equal(t, "doc1", changes.Results[0].ID)
-	assert.Equal(t, uint64(1), since.Seq)
+	require.Equal(t, "doc1", changes.Results[0].ID)
+	require.Equal(t, uint64(1), since.Seq)
 
 	// GET /db/_changes for single channel
 	response = rt.SendUserRequest("GET", "/{{.keyspace}}/_changes?filter=sync_gateway/bychannel&channels=books", "", "bernard")
