@@ -35,6 +35,7 @@ var _ BackgroundManagerProcessI = &AttachmentCompactionManager{}
 
 func NewAttachmentCompactionManager(metadataStore base.DataStore) *BackgroundManager {
 	return &BackgroundManager{
+		name:    "attachment_compaction",
 		Process: &AttachmentCompactionManager{},
 		clusterAwareOptions: &ClusterAwareBackgroundManagerOptions{
 			metadataStore: metadataStore,

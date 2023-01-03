@@ -47,6 +47,7 @@ const (
 // BackgroundManager this is the over-arching type which is exposed in DatabaseContext
 type BackgroundManager struct {
 	BackgroundManagerStatus
+	name                                   string
 	lastError                              error
 	terminator                             *base.SafeTerminator
 	backgroundManagerStatusUpdateWaitGroup sync.WaitGroup
@@ -94,6 +95,11 @@ type BackgroundManagerProcessI interface {
 }
 
 type updateStatusCallbackFunc func() error
+
+// GetName returns name of the background manager
+func (b *BackgroundManager) GetName() string {
+	return b.name
+}
 
 func (b *BackgroundManager) Start(ctx context.Context, options map[string]interface{}) error {
 	err := b.markStart()
@@ -390,8 +396,7 @@ func (b *BackgroundManager) setRunState(state BackgroundProcessState) {
 	b.State = state
 }
 
-// Currently only test
-func (b *BackgroundManager) GetRunState(t testing.TB) BackgroundProcessState {
+func (b *BackgroundManager) GetRunState() BackgroundProcessState {
 	b.lock.Lock()
 	defer b.lock.Unlock()
 	return b.State
