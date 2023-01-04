@@ -274,8 +274,13 @@ func (h *handler) handleGetResync() error {
 }
 
 func (h *handler) handlePostResync() error {
+
 	action := h.getQuery("action")
 	regenerateSequences, _ := h.getOptBoolQuery("regenerate_sequences", false)
+	body, err := h.readBody()
+	if err != nil {
+		return err
+	}
 
 	if action != "" && action != string(db.BackgroundProcessActionStart) && action != string(db.BackgroundProcessActionStop) {
 		return base.HTTPErrorf(http.StatusBadRequest, "Unknown parameter for 'action'. Must be start or stop")
@@ -290,6 +295,7 @@ func (h *handler) handlePostResync() error {
 			err := h.db.ResyncManager.Start(h.ctx(), map[string]interface{}{
 				"database":            h.db,
 				"regenerateSequences": regenerateSequences,
+				"collections":         body,
 			})
 			if err != nil {
 				return err
