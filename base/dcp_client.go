@@ -169,6 +169,15 @@ func (dc *DCPClient) getCollectionHighSeqNos(collectionID uint32) ([]uint64, err
 // getHighSeqNos returns the maximum sequence number for every collection configured by the DCP agent.
 func (dc *DCPClient) getHighSeqNos() ([]uint64, error) {
 	highSeqNos := make([]uint64, dc.numVbuckets)
+	// The starting sequence from previous metadata can be higher than the ending sequence number
+	// for the collection we are looking at, if the DCP feed for the vbucket has processed more
+	// data on a different collection than the ones considered by this DCP feed.
+	for vbNo := uint16(0); vbNo < dc.numVbuckets; vbNo++ {
+		existingEndSeqNo := uint64(dc.metadata.GetMeta(vbNo).StartSeqNo)
+		if existingEndSeqNo != math.MaxUint64 {
+			highSeqNos[vbNo] = existingEndSeqNo
+		}
+	}
 	for _, collectionID := range dc.collectionIDs {
 		colHighSeqNos, err := dc.getCollectionHighSeqNos(collectionID)
 		if err != nil {
@@ -461,6 +470,7 @@ func (dc *DCPClient) openStreamRequest(vbID uint16) error {
 		}
 		openStreamError <- err
 	}
+
 	_, openErr := dc.agent.OpenStream(vbID,
 		memd.DcpStreamAddFlagActiveOnly,
 		vbMeta.VbUUID,
