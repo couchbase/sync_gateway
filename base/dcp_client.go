@@ -28,6 +28,8 @@ const openStreamTimeout = 30 * time.Second
 const openRetryCount = uint32(10)
 const defaultNumWorkers = 8
 
+const getVbSeqnoTimeout = 30 * time.Second
+
 const infiniteOpenStreamRetries = uint32(math.MaxUint32)
 
 type endStreamCallbackFunc func(e endStreamEvent)
@@ -142,8 +144,8 @@ func (dc *DCPClient) getCollectionHighSeqNos(collectionID uint32) ([]uint64, err
 	highSeqNoError := make(chan error)
 	highSeqNoCallback := func(entries []gocbcore.VbSeqNoEntry, err error) {
 		if err == nil {
-			for i, entry := range entries {
-				highSeqNos[i] = uint64(entry.SeqNo)
+			for _, entry := range entries {
+				highSeqNos[entry.VbID] = uint64(entry.SeqNo)
 			}
 		}
 		highSeqNoError <- err
@@ -161,7 +163,7 @@ func (dc *DCPClient) getCollectionHighSeqNos(collectionID uint32) ([]uint64, err
 	select {
 	case err := <-highSeqNoError:
 		return highSeqNos, err
-	case <-time.After(openStreamTimeout):
+	case <-time.After(getVbSeqnoTimeout):
 		return nil, ErrTimeout
 	}
 }
@@ -169,9 +171,8 @@ func (dc *DCPClient) getCollectionHighSeqNos(collectionID uint32) ([]uint64, err
 // getHighSeqNos returns the maximum sequence number for every collection configured by the DCP agent.
 func (dc *DCPClient) getHighSeqNos() ([]uint64, error) {
 	highSeqNos := make([]uint64, dc.numVbuckets)
-	// The starting sequence from previous metadata can be higher than the ending sequence number
-	// for the collection we are looking at, if the DCP feed for the vbucket has processed more
-	// data on a different collection than the ones considered by this DCP feed.
+	// Initialize highSeqNo to the current metadata's StartSeqNo - we don't want to use a value lower than what
+	// we've already processed
 	for vbNo := uint16(0); vbNo < dc.numVbuckets; vbNo++ {
 		highSeqNos[vbNo] = uint64(dc.metadata.GetMeta(vbNo).StartSeqNo)
 	}
@@ -180,12 +181,11 @@ func (dc *DCPClient) getHighSeqNos() ([]uint64, error) {
 		if err != nil {
 			return nil, err
 		}
-		for i, seqNo := range colHighSeqNos {
-			if highSeqNos[i] < seqNo {
-				highSeqNos[i] = seqNo
+		for i, colHighSeqNo := range colHighSeqNos {
+			if colHighSeqNo > highSeqNos[i] {
+				highSeqNos[i] = colHighSeqNo
 			}
 		}
-
 	}
 	return highSeqNos, nil
 }
