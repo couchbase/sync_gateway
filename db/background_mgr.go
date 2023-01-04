@@ -316,7 +316,13 @@ func (b *BackgroundManager) getStatusFromCluster() ([]byte, error) {
 				// avoid this unmarshal / marshal work from having to happen again, next time GET is called.
 				// If there is an error we can just ignore it as worst case we run this unmarshal / marshal again on
 				// next request
-				_, _ = b.clusterAwareOptions.metadataStore.WriteSubDoc(b.clusterAwareOptions.StatusDocID(), "status", statusCas, status)
+				_, err = b.clusterAwareOptions.metadataStore.WriteSubDoc(b.clusterAwareOptions.StatusDocID(), "status", statusCas, status)
+				if err != nil {
+					status, _, err = b.clusterAwareOptions.metadataStore.GetSubDocRaw(b.clusterAwareOptions.StatusDocID(), "status")
+					if err != nil {
+						return nil, err
+					}
+				}
 			}
 		}
 	}
