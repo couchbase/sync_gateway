@@ -271,6 +271,7 @@ func TestMultiCollectionDCP(t *testing.T) {
 
 func TestMultiCollectionChannelAccess(t *testing.T) {
 	base.TestRequiresCollections(t)
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	if !base.TestUseXattrs() {
 		t.Skip("Test relies on import - needs xattrs")
@@ -279,7 +280,7 @@ func TestMultiCollectionChannelAccess(t *testing.T) {
 	tb := base.GetTestBucket(t)
 	defer tb.Close()
 
-	scopesConfig := GetCollectionsConfig(t, tb, 2)
+	scopesConfig := GetCollectionsConfig(t, tb, 3)
 	dataStoreNames := GetDataStoreNamesFromScopesConfig(scopesConfig)
 	c1SyncFunction := `function(doc) {access(doc.username, [doc.grant1,doc.grant2]);
 						channel(doc.chan);
@@ -290,40 +291,33 @@ func TestMultiCollectionChannelAccess(t *testing.T) {
 
 	rtConfig := &RestTesterConfig{
 		CustomTestBucket: tb,
-		DatabaseConfig: &DatabaseConfig{
-			DbConfig: DbConfig{
-				Scopes: scopesConfig,
-			},
-		},
+		PersistentConfig: true,
 	}
-	rt := NewRestTesterMultipleCollections(t, rtConfig, 2)
-	defer rt.Close()
 
-	//underlying, ok := rt.Bucket().DefaultDataStore().(*base.Collection)
-	//require.True(t, ok, "rt bucket was not a Collection")
-	userPayload := fmt.Sprintf(`{
+	rt := NewRestTesterMultipleCollections(t, rtConfig, 3)
+	defer rt.Close()
+	scopesConfigString, err := json.Marshal(scopesConfig)
+	resp := rt.SendAdminRequest("PUT", "/db/", fmt.Sprintf(
+		`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "use_views": %t, "scopes":%s}`,
+		tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(), scopesConfigString))
+	RequireStatus(t, resp, http.StatusCreated)
+
+	userPayload := `{
 		"password":"letmein",
 		"collection_access": {
 			"%s": {
-				"{collection}": {
-					"admin_channels":{channels}
+				"%s": {
+					"admin_channels":%s
 				}
 			}
 		}
-	}`, dataStoreNames[0].ScopeName())
-	r := strings.NewReplacer("{collection}", dataStoreNames[0].CollectionName(), "{channels}", `["A"]`)
-	userApayload := r.Replace(userPayload)
-	resp := rt.SendAdminRequest("PUT", "/db/_user/userA", userApayload)
-	RequireStatus(t, resp, http.StatusCreated)
+	}`
 
-	r = strings.NewReplacer("{collection}", dataStoreNames[0].CollectionName(), "{channels}", `["B"]`)
-	userBpayload := r.Replace(userPayload)
-	resp = rt.SendAdminRequest("PUT", "/db/_user/userB", userBpayload)
+	resp = rt.SendAdminRequest("PUT", "/db/_user/userA", fmt.Sprintf(userPayload, dataStoreNames[0].ScopeName(), dataStoreNames[0], `["A"]`))
 	RequireStatus(t, resp, http.StatusCreated)
-
-	r = strings.NewReplacer("{collection}", dataStoreNames[0].CollectionName(), "{channels}", `["A","B"]`)
-	userABpayload := r.Replace(userPayload)
-	resp = rt.SendAdminRequest("PUT", "/db/_user/userAB", userABpayload)
+	resp = rt.SendAdminRequest("PUT", "/db/_user/userB", fmt.Sprintf(userPayload, dataStoreNames[0].ScopeName(), dataStoreNames[0], `["B"]`))
+	RequireStatus(t, resp, http.StatusCreated)
+	resp = rt.SendAdminRequest("PUT", "/db/_user/userAB", fmt.Sprintf(userPayload, dataStoreNames[0].ScopeName(), dataStoreNames[0], `["A","B"]`))
 	RequireStatus(t, resp, http.StatusCreated)
 
 	//_, err = underlying.Collection.Bucket().Scope("foo").Collection("bar").Insert("testDocBarA", map[string]any{"username": "userA", "grant1": "A", "grant2": "A", "admin_channels": `["A"]`}, nil)
@@ -347,6 +341,29 @@ func TestMultiCollectionChannelAccess(t *testing.T) {
 	resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.keyspace2}}/testDocBazB", "", nil, "userB", "letmein")
 	RequireStatus(t, resp, http.StatusForbidden)
 	resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.keyspace1}}/testDocBarAB", "", nil, "userA", "letmein")
+	RequireStatus(t, resp, http.StatusOK)
+
+	// Add a new collection and update the db config
+	scopesConfig[dataStoreNames[2].ScopeName()].Collections[dataStoreNames[2].CollectionName()] = CollectionConfig{SyncFn: &c1SyncFunction}
+	_, err = rt.ReplaceDbConfig("db", DbConfig{Scopes: scopesConfig})
+	require.NoError(t, err)
+
+	// Put a doc in new collection and make sure it cant be accessed
+	resp = rt.SendAdminRequest("PUT", "/{{.keyspace3}}/testDocBazA", `{"username": "userA", "grant1": "A", "chan":["A"]}`)
+	RequireStatus(t, resp, http.StatusCreated)
+	resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.keyspace3}}/testDocBazA", "", nil, "userA", "letmein")
+	RequireStatus(t, resp, http.StatusForbidden)
+
+	// Update user to set some channels on new collection
+	resp = rt.SendAdminRequest("PUT", "/db/_user/userB", fmt.Sprintf(userPayload, dataStoreNames[2].ScopeName(), dataStoreNames[2], `["B"]`))
+	RequireStatus(t, resp, http.StatusOK)
+
+	// Ensure users can access the given channels in new collection, can't access docs in other channels on the new collection
+	resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.keyspace3}}/testDocBazA", "", nil, "userB", "letmein")
+	RequireStatus(t, resp, http.StatusForbidden)
+	resp = rt.SendAdminRequest(http.MethodPut, "/{{.keyspace3}}/testDocBazB", `{"username": "userB", "grant1": "A", "chan":["B"]}`)
+	RequireStatus(t, resp, http.StatusCreated)
+	resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.keyspace3}}/testDocBazB", "", nil, "userB", "letmein")
 	RequireStatus(t, resp, http.StatusOK)
 
 }
