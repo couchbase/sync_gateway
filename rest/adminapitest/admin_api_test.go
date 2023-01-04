@@ -3361,6 +3361,13 @@ func TestConfigsIncludeDefaults(t *testing.T) {
 
 	serverErr := make(chan error, 0)
 
+	// Get a test bucket, to use to create the database.
+	tb := base.GetTestBucket(t)
+	defer func() {
+		fmt.Println("closing test bucket")
+		tb.Close()
+	}()
+
 	// Start SG with no databases
 	ctx := base.TestCtx(t)
 	config := rest.BootstrapStartupConfigForTest(t)
@@ -3376,12 +3383,6 @@ func TestConfigsIncludeDefaults(t *testing.T) {
 	}()
 	require.NoError(t, sc.WaitForRESTAPIs())
 
-	// Get a test bucket, and use it to create the database.
-	tb := base.GetTestBucket(t)
-	defer func() {
-		fmt.Println("closing test bucket")
-		tb.Close()
-	}()
 	resp := rest.BootstrapAdminRequest(t, http.MethodPut, "/db/",
 		fmt.Sprintf(
 			`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "use_views": %t}`,
