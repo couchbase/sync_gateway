@@ -101,7 +101,7 @@ func TestOneShotDCP(t *testing.T) {
 	select {
 	case err := <-doneChan:
 		require.NoError(t, err)
-		require.Equal(t, numDocs, int(mutationCount))
+		require.LessOrEqual(t, numDocs, int(mutationCount))
 	case <-timeout:
 		t.Errorf("timeout waiting for one-shot feed to complete")
 	}

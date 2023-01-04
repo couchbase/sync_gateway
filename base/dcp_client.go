@@ -49,7 +49,6 @@ type DCPClient struct {
 	activeVbuckets             map[uint16]struct{}            // vbuckets that have an open stream
 	activeVbucketLock          sync.Mutex                     // Synchronization for activeVbuckets
 	oneShot                    bool                           // Whether DCP feed should be one-shot
-	endSeqNos                  []uint64                       // endSeqNos for one-shot DCP feeds
 	closing                    AtomicBool                     // Set when the client is closing (either due to internal or external request)
 	closeError                 error                          // Will be set to a non-nil value for unexpected error
 	closeErrorLock             sync.Mutex                     // Synchronization on close error
@@ -196,8 +195,6 @@ func (dc *DCPClient) configureOneShot() error {
 	if err != nil {
 		return err
 	}
-	// Set endSeqNos on client for use by stream observer
-	dc.endSeqNos = highSeqNos
 
 	// Set endSeqNos on client metadata for use when opening streams
 	endSeqNos := make(map[uint16]uint64, dc.numVbuckets)
