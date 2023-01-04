@@ -83,12 +83,14 @@ func TestAttachmentSweep(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Requires CBS")
 	}
+	if base.TestsUseNamedCollections() {
+		t.Skip("This test only works with default collection")
+	}
 
-	testDb, ctx := setupTestDBDefaultCollection(t)
+	testDb, ctx := setupTestDB(t)
 	defer testDb.Close(ctx)
 	dataStore := testDb.Bucket.DefaultDataStore()
 	collectionID := testDb.GetSingleDatabaseCollection().GetCollectionID()
-	require.Equal(t, collectionID, base.DefaultCollectionID)
 
 	makeMarkedDoc := func(docid string, compactID string) {
 		err := dataStore.SetRaw(docid, 0, nil, []byte("{}"))
@@ -238,7 +240,11 @@ func TestAttachmentMarkAndSweepAndCleanup(t *testing.T) {
 		t.Skip("Requires CBS")
 	}
 
-	testDb, ctx := setupTestDBDefaultCollection(t)
+	if base.TestsUseNamedCollections() {
+		t.Skip("This test only works with default collection")
+	}
+
+	testDb, ctx := setupTestDB(t)
 	defer testDb.Close(ctx)
 	dataStore := testDb.Bucket.DefaultDataStore()
 	collectionID := testDb.GetSingleDatabaseCollection().GetCollectionID()
@@ -309,14 +315,18 @@ func TestAttachmentCompactionRunTwice(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
+	if base.TestsUseNamedCollections() {
+		t.Skip("This test only works with default collection")
+	}
+
 	b := base.GetTestBucket(t).LeakyBucketClone(base.LeakyBucketConfig{})
 	defer b.Close()
 
-	testDB1, ctx1 := setupTestDBForBucket(t, b, useDefaultCollectionOnly)
+	testDB1, ctx1 := setupTestDBForBucket(t, b)
 	defer testDB1.Close(ctx1)
 	db1DataStore := testDB1.Bucket.DefaultDataStore()
 
-	testDB2, ctx2 := setupTestDBForBucket(t, b.NoCloseClone(), useDefaultCollectionOnly)
+	testDB2, ctx2 := setupTestDBForBucket(t, b.NoCloseClone())
 	defer testDB2.Close(ctx2)
 
 	var err error
@@ -455,14 +465,18 @@ func TestAttachmentCompactionStopImmediateStart(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
+	if base.TestsUseNamedCollections() {
+		t.Skip("This test only works with default collection")
+	}
+
 	b := base.GetTestBucket(t).LeakyBucketClone(base.LeakyBucketConfig{})
 	defer b.Close()
 
-	testDB1, ctx1 := setupTestDBForBucket(t, b, useDefaultCollectionOnly)
+	testDB1, ctx1 := setupTestDBForBucket(t, b)
 	defer testDB1.Close(ctx1)
 	db1DataStore := testDB1.Bucket.DefaultDataStore()
 
-	testDB2, ctx2 := setupTestDBForBucket(t, b.NoCloseClone(), useDefaultCollectionOnly)
+	testDB2, ctx2 := setupTestDBForBucket(t, b.NoCloseClone())
 	defer testDB2.Close(ctx2)
 
 	var err error
@@ -565,7 +579,7 @@ func TestAttachmentProcessError(t *testing.T) {
 	})
 	defer b.Close()
 
-	testDB1, ctx1 := setupTestDBForBucket(t, b, useDefaultCollectionOnly)
+	testDB1, ctx1 := setupTestDBForBucket(t, b)
 	defer testDB1.Close(ctx1)
 
 	collection := testDB1.GetSingleDatabaseCollectionWithUser()

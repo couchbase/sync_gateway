@@ -489,7 +489,7 @@ func setupTestDBWithFunctions(t *testing.T, fnConfig *FunctionsConfig, gqConfig 
 	}
 
 	tBucket := base.GetTestBucket(t)
-	return db.SetupTestDBForDataStoreWithOptions(t, tBucket, options, db.UseNamedCollectionsIfAble)
+	return db.SetupTestDBForDataStoreWithOptions(t, tBucket, options)
 }
 
 // createPrimaryIndex returns true if there was no index created before

@@ -41,17 +41,12 @@ func setupTestDB(t testing.TB) (*Database, context.Context) {
 	return setupTestDBWithCacheOptions(t, DefaultCacheOptions())
 }
 
-func setupTestDBDefaultCollection(t testing.TB) (*Database, context.Context) {
-	bucket := base.GetTestBucket(t)
-	return setupTestDBForBucket(t, bucket, useDefaultCollectionOnly)
-}
-
-func setupTestDBForBucket(t testing.TB, bucket *base.TestBucket, namedCollectionConfig namedCollectionTestConfig) (*Database, context.Context) {
+func setupTestDBForBucket(t testing.TB, bucket *base.TestBucket) (*Database, context.Context) {
 	cacheOptions := DefaultCacheOptions()
 	dbcOptions := DatabaseContextOptions{
 		CacheOptions: &cacheOptions,
 	}
-	return SetupTestDBForDataStoreWithOptions(t, bucket, dbcOptions, namedCollectionConfig)
+	return SetupTestDBForDataStoreWithOptions(t, bucket, dbcOptions)
 }
 
 func setupTestDBWithOptionsAndImport(t testing.TB, dbcOptions DatabaseContextOptions) (*Database, context.Context) {
@@ -85,8 +80,7 @@ func setupTestDBWithViewsEnabled(t testing.TB) (*Database, context.Context) {
 	dbcOptions := DatabaseContextOptions{
 		UseViews: true,
 	}
-	tBucket := base.GetTestBucket(t)
-	return SetupTestDBForDataStoreWithOptions(t, tBucket, dbcOptions, useDefaultCollectionOnly)
+	return SetupTestDBWithOptions(t, dbcOptions)
 }
 
 // Sets up a test bucket with _sync:seq initialized to a high value prior to database creation.  Used to test
@@ -143,7 +137,7 @@ func setupTestLeakyDBWithCacheOptions(t *testing.T, options CacheOptions, leakyO
 func setupTestNamedCollectionDBWithOptions(t testing.TB, dbcOptions DatabaseContextOptions) (*Database, context.Context) {
 
 	tBucket := base.GetTestBucket(t)
-	return SetupTestDBForDataStoreWithOptions(t, tBucket, dbcOptions, UseNamedCollectionsIfAble)
+	return SetupTestDBForDataStoreWithOptions(t, tBucket, dbcOptions)
 }
 
 // Sets up test db with the specified database context options in _default scope and collection.  Note that environment variables can
@@ -2479,7 +2473,7 @@ func TestTombstoneCompactionStopWithManager(t *testing.T) {
 	}
 
 	bucket := base.GetTestBucket(t).LeakyBucketClone(base.LeakyBucketConfig{})
-	db, ctx := SetupTestDBForDataStoreWithOptions(t, bucket, DatabaseContextOptions{}, UseNamedCollectionsIfAble)
+	db, ctx := SetupTestDBForDataStoreWithOptions(t, bucket, DatabaseContextOptions{})
 	db.PurgeInterval = 0
 	defer db.Close(ctx)
 	collection := db.GetSingleDatabaseCollectionWithUser()
@@ -2669,7 +2663,7 @@ func Test_invalidateAllPrincipalsCache(t *testing.T) {
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close()
 
-	db, ctx := setupTestDBForBucket(t, bucket, UseNamedCollectionsIfAble)
+	db, ctx := setupTestDBForBucket(t, bucket)
 	defer db.Close(ctx)
 	db.Options.QueryPaginationLimit = 100
 
