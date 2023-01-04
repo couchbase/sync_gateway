@@ -147,10 +147,6 @@ func CreateAdminRouter(sc *ServerContext) *mux.Router {
 	r, dbr, keyspace := createCommonRouter(sc, adminPrivs)
 
 	// Keyspace handlers (single collection):
-	keyspace.Handle("/_resync",
-		makeOfflineHandler(sc, adminPrivs, []Permission{PermUpdateDb}, nil, (*handler).handleGetResync)).Methods("GET")
-	keyspace.Handle("/_resync",
-		makeOfflineHandler(sc, adminPrivs, []Permission{PermUpdateDb}, nil, (*handler).handlePostResync)).Methods("POST")
 	keyspace.Handle("/_purge",
 		makeHandler(sc, adminPrivs, []Permission{PermWriteAppData}, nil, (*handler).handlePurge)).Methods("POST")
 	keyspace.Handle("/_raw/{docid:"+docRegex+"}",
@@ -161,6 +157,10 @@ func CreateAdminRouter(sc *ServerContext) *mux.Router {
 		makeHandler(sc, adminPrivs, []Permission{PermReadAppData}, nil, (*handler).handleDumpChannel)).Methods("GET")
 
 	// Database handlers (multi collection):
+	dbr.Handle("/_resync",
+		makeOfflineHandler(sc, adminPrivs, []Permission{PermUpdateDb}, nil, (*handler).handleGetResync)).Methods("GET")
+	dbr.Handle("/_resync",
+		makeOfflineHandler(sc, adminPrivs, []Permission{PermUpdateDb}, nil, (*handler).handlePostResync)).Methods("POST")
 	dbr.Handle("/_compact",
 		makeHandler(sc, adminPrivs, []Permission{PermUpdateDb}, nil, (*handler).handleCompact)).Methods("POST")
 	dbr.Handle("/_compact",
