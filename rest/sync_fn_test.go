@@ -356,10 +356,6 @@ func TestDBOfflinePostResync(t *testing.T) {
 		t.Skip("This test doesn't work with Walrus when ResyncManagerDCP is used")
 	}
 
-	if isDCPResync {
-		base.TemporarilyDisableTestUsingDCPWithCollections(t)
-	}
-
 	log.Printf("Taking DB offline")
 	response := rt.SendAdminRequest("GET", "/db/", "")
 	var body db.Body
@@ -402,9 +398,6 @@ func TestDBOfflineSingleResync(t *testing.T) {
 	_, isDCPResync := (rt.GetDatabase().ResyncManager.Process).(*db.ResyncManagerDCP)
 	if isDCPResync && base.UnitTestUrlIsWalrus() {
 		t.Skip("This test doesn't work with Walrus when ResyncManagerDCP is used")
-	}
-	if isDCPResync {
-		base.TemporarilyDisableTestUsingDCPWithCollections(t)
 	}
 
 	// create documents in DB to cause resync to take a few seconds
@@ -502,9 +495,6 @@ func TestResync(t *testing.T) {
 			_, isDCPResync := (rt.GetDatabase().ResyncManager.Process).(*db.ResyncManagerDCP)
 			if isDCPResync && base.UnitTestUrlIsWalrus() {
 				t.Skip("This test doesn't work with Walrus when ResyncManagerDCP is used")
-			}
-			if isDCPResync {
-				base.TemporarilyDisableTestUsingDCPWithCollections(t)
 			}
 
 			for i := 0; i < testCase.docsCreated; i++ {
@@ -1066,8 +1056,6 @@ func TestResyncPersistence(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
 	}
-
-	base.TemporarilyDisableTestUsingDCPWithCollections(t)
 
 	tb := base.GetTestBucket(t)
 	noCloseTB := tb.NoCloseClone()
