@@ -440,17 +440,25 @@ func (context *DatabaseContext) buildChannelsQuery(channelName string, startSeq 
 	// Channel queries use a prepared query
 	params = make(map[string]interface{}, 3)
 	params[QueryParamChannelName] = channelName
-	params[QueryParamStartSeq] = startSeq
+	params[QueryParamStartSeq] = N1QLSafeUint64(startSeq)
+	// If endSeq isn't defined, set to max int64.
 	if endSeq == 0 {
-		// If endSeq isn't defined, set to max uint64
-		endSeq = math.MaxUint64
-	} else if endSeq < math.MaxUint64 {
+		endSeq = math.MaxInt64
+	} else if endSeq < math.MaxInt64 {
 		// channels query isn't based on inclusive end - add one to ensure complete result set
 		endSeq++
 	}
-	params[QueryParamEndSeq] = endSeq
+	params[QueryParamEndSeq] = N1QLSafeUint64(endSeq)
 
 	return channelQueryStatement, params
+}
+
+// N1QL only supports int64 values (https://issues.couchbase.com/browse/MB-24464), so restrict parameter values to this range
+func N1QLSafeUint64(value uint64) uint64 {
+	if value > math.MaxInt64 {
+		return math.MaxInt64
+	}
+	return value
 }
 
 func (context *DatabaseContext) QueryResync(limit int, startSeq, endSeq uint64) (sgbucket.QueryResultIterator, error) {
