@@ -173,10 +173,7 @@ func (dc *DCPClient) getHighSeqNos() ([]uint64, error) {
 	// for the collection we are looking at, if the DCP feed for the vbucket has processed more
 	// data on a different collection than the ones considered by this DCP feed.
 	for vbNo := uint16(0); vbNo < dc.numVbuckets; vbNo++ {
-		existingEndSeqNo := uint64(dc.metadata.GetMeta(vbNo).StartSeqNo)
-		if existingEndSeqNo != math.MaxUint64 {
-			highSeqNos[vbNo] = existingEndSeqNo
-		}
+		highSeqNos[vbNo] = uint64(dc.metadata.GetMeta(vbNo).StartSeqNo)
 	}
 	for _, collectionID := range dc.collectionIDs {
 		colHighSeqNos, err := dc.getCollectionHighSeqNos(collectionID)
