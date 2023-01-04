@@ -806,10 +806,9 @@ func (context *DatabaseContext) stopBackgroundManagers() []*BackgroundManager {
 // waitForBackgroundManagersToStop wait for given BackgroundManagers to stop within given time
 func waitForBackgroundManagersToStop(ctx context.Context, waitTimeMax time.Duration, bgManagers []*BackgroundManager) {
 	timeout := time.NewTicker(waitTimeMax)
-	interval := time.NewTicker(1 * time.Second)
 	defer timeout.Stop()
-	defer interval.Stop()
-
+	retryInterval := 1 * time.Millisecond
+	maxRetryInterval := 1 * time.Second
 	for {
 		select {
 		case <-timeout.C:
@@ -821,7 +820,7 @@ func waitForBackgroundManagersToStop(ctx context.Context, waitTimeMax time.Durat
 			}
 			base.WarnfCtx(ctx, "Background Managers [%s] failed to stop within deadline of %s.", runningBackgroundManagerNames, waitTimeMax)
 			return
-		case <-interval.C:
+		case <-time.After(retryInterval):
 			stoppedServices := 0
 			for _, bgManager := range bgManagers {
 				state := bgManager.GetRunState()
@@ -831,6 +830,14 @@ func waitForBackgroundManagersToStop(ctx context.Context, waitTimeMax time.Durat
 			}
 			if stoppedServices == len(bgManagers) {
 				return
+			}
+
+			// exponential backoff with max wait
+			if retryInterval < maxRetryInterval {
+				retryInterval = retryInterval * 2
+				if retryInterval > maxRetryInterval {
+					retryInterval = maxRetryInterval
+				}
 			}
 		}
 	}
