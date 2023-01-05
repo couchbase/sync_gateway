@@ -696,11 +696,11 @@ func TestAdminAPIAuth(t *testing.T) {
 		},
 		{
 			Method:   "GET",
-			Endpoint: "/{{.keyspace}}/_resync",
+			Endpoint: "/{{.db}}/_resync",
 		},
 		{
 			Method:   "POST",
-			Endpoint: "/{{.keyspace}}/_resync",
+			Endpoint: "/{{.db}}/_resync",
 		},
 		{
 			Method:   "POST",
