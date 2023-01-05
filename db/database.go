@@ -444,9 +444,9 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 			}
 			collectionNameMap := make(map[string]struct{}, len(scope.Collections))
 			for collName, collOpts := range scope.Collections {
-				ksCtx := base.KeyspaceCtx(ctx, scopeName, collName)
+				ctx := base.KeyspaceCtx(ctx, scopeName, collName)
 				dataStore := bucket.NamedDataStore(base.ScopeAndCollectionName{Scope: scopeName, Collection: collName})
-				dbCollection, err := newDatabaseCollection(ksCtx, dbContext, dataStore)
+				dbCollection, err := newDatabaseCollection(ctx, dbContext, dataStore)
 				if err != nil {
 					return nil, err
 				}
