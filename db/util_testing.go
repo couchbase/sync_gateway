@@ -14,7 +14,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math"
 	"testing"
 	"time"
 
@@ -56,7 +55,7 @@ func isIndexEmpty(store base.N1QLStore, useXattrs bool) (bool, error) {
 	starChannelQueryStatement = replaceIndexTokensQuery(starChannelQueryStatement, sgIndexes[IndexAllDocs], useXattrs)
 	params := map[string]interface{}{}
 	params[QueryParamStartSeq] = 0
-	params[QueryParamEndSeq] = math.MaxInt64
+	params[QueryParamEndSeq] = N1QLMaxInt64
 
 	// Execute the query
 	results, err := store.Query(starChannelQueryStatement, params, base.RequestPlus, true)
