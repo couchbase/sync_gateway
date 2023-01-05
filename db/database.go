@@ -444,8 +444,9 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 			}
 			collectionNameMap := make(map[string]struct{}, len(scope.Collections))
 			for collName, collOpts := range scope.Collections {
+				ksCtx := base.KeyspaceCtx(ctx, scopeName, collName)
 				dataStore := bucket.NamedDataStore(base.ScopeAndCollectionName{Scope: scopeName, Collection: collName})
-				dbCollection, err := newDatabaseCollection(ctx, dbContext, dataStore)
+				dbCollection, err := newDatabaseCollection(ksCtx, dbContext, dataStore)
 				if err != nil {
 					return nil, err
 				}
@@ -2287,13 +2288,7 @@ func (dbc *Database) GetSingleDatabaseCollectionWithUser() *DatabaseCollectionWi
 }
 
 // newDatabaseCollection returns a collection which inherits values from the database but is specific to a given DataStore.
-func newDatabaseCollection(dbCtx context.Context, dbContext *DatabaseContext, dataStore base.DataStore) (*DatabaseCollection, error) {
-	dsn, ok := base.AsDataStoreName(dataStore)
-	if !ok {
-		return nil, fmt.Errorf("unable to get datastore name from dataStore")
-	}
-	ctx := base.KeyspaceCtx(dbCtx, dsn.ScopeName(), dsn.CollectionName())
-
+func newDatabaseCollection(ctx context.Context, dbContext *DatabaseContext, dataStore base.DataStore) (*DatabaseCollection, error) {
 	dbCollection := &DatabaseCollection{
 		dataStore:   dataStore,
 		dbCtx:       dbContext,
