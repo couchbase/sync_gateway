@@ -222,19 +222,27 @@ User:
         Mandatory. unless `allow_empty_password` is `true` in the database configs.
       type: string
     admin_channels:
-      description: A list of channels to explicitly grant to the user.
+      description: A list of channels to explicitly grant to the user for the default collection.
       type: array
       items:
         type: string
     all_channels:
       description: |-
-        All the channels that the user has been granted access to.
+        All the channels that the user has been granted access to for the default collection.
 
         Access could have been granted through the sync function, roles, or explicitly on the user under the `admin_channels` property.
       type: array
       items:
         type: string
       readOnly: true
+    collection_access:
+      description: A set of access grants by scope and collection.
+      type: object
+      additionalProperties:
+        description: An object keyed by scope, containing a set of collections.
+        type: object
+        additionalProperties:
+          $ref: '#/CollectionAccessConfig'
     email:
       description: The email address of the user.
       type: string
@@ -277,6 +285,35 @@ User:
       format: date-time
       readOnly: true
   title: User
+CollectionAccessConfig:
+  description: An object keyed by collection name, defines access for the collection.
+  type: object
+  properties:
+    admin_channels:
+      description: A list of channels to explicitly grant to the user.
+      type: array
+      items:
+        type: string
+    all_channels:
+      description: |-
+        All the channels that the user has been granted access to.
+
+        Access could have been granted through the sync function, roles, or explicitly on the user under the `admin_channels` property.
+      type: array
+      items:
+        type: string
+      readOnly: true
+    jwt_channels:
+      description: The channels that the user has been granted access to through channels_claim.
+      type: array
+      items:
+        type: string
+      readOnly: true
+    jwt_last_updated:
+      description: The last time that the user's JWT roles/channels were updated.
+      type: string
+      format: date-time
+      readOnly: true
 Role:
   description: Properties associated with a role
   type: object
@@ -288,19 +325,27 @@ Role:
         Role names can only have alphanumeric ASCII characters and underscores.
       type: string
     admin_channels:
-      description: The channels that users in the role are able to access.
+      description: The channels that users in the role are able to access for the default collection.
       type: array
       items:
         type: string
     all_channels:
       description: |-
-        The channels that the role grants access to.
+        The channels that the role grants access to for the default collection.
 
         These channels could have been assigned by the Sync function or using the `admin_channels` property.
       type: array
       items:
         type: string
       readOnly: true
+    collection_access:
+      description: A set of access grants by scope and collection.
+      type: object
+      additionalProperties:
+        description: An object keyed by scope, containing a set of collections.
+        type: object
+        additionalProperties:
+          $ref: '#/CollectionAccessConfig'
   title: Role
 User-session-information:
   type: object
