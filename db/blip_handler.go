@@ -59,8 +59,8 @@ type blipHandler struct {
 	db            *Database                   // Handler-specific copy of the BlipSyncContext's blipContextDb
 	collection    *DatabaseCollectionWithUser // Handler-specific copy of the BlipSyncContext's collection specific DB
 	collectionIdx *int                        // index into BlipSyncContext.collectionMapping for the collection
-
-	serialNumber uint64 // This blip handler's serial number to differentiate logs w/ other handlers
+	loggingCtx    context.Context             // inherited from BlipSyncContext.loggingCtx with additional handler-only information (like keyspace)
+	serialNumber  uint64                      // This blip handler's serial number to differentiate logs w/ other handlers
 }
 
 // BlipSyncContextClientType represents whether to replicate to another Sync Gateway or Couchbase Lite
@@ -168,6 +168,7 @@ func collectionBlipHandler(next blipHandlerFunc) blipHandlerFunc {
 		if collection == nil {
 			return base.HTTPErrorf(http.StatusBadRequest, "Collection index %d does not match a valid collection from GetCollections", collectionIndex)
 		}
+		bh.loggingCtx = base.KeyspaceCtx(bh.BlipSyncContext.loggingCtx, collection.ScopeName(), collection.Name())
 		bh.collection = &DatabaseCollectionWithUser{
 			DatabaseCollection: bh.collectionMapping[collectionIndex],
 			user:               bh.db.user,

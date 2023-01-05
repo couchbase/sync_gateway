@@ -1577,13 +1577,16 @@ func (db *Database) Compact(ctx context.Context, skipRunningStateCheck bool, cal
 
 	purgeBody := Body{"_purged": true}
 	for _, c := range db.CollectionByID {
+		// shadow ctx, sot that we can't misuse the parent's inside the loop
+		ctx := base.KeyspaceCtx(ctx, c.ScopeName(), c.Name())
+
 		// create admin collection interface
 		collection, err := db.GetDatabaseCollectionWithUser(c.ScopeName(), c.Name())
 		if err != nil {
 			base.WarnfCtx(ctx, "Tombstone compaction could not get collection: %s", err)
 			continue
 		}
-		ctx := base.CollectionNameCtx(ctx, collection.Name())
+
 		for {
 			purgedDocs := make([]string, 0)
 			results, err := collection.QueryTombstones(ctx, purgeOlderThan, QueryTombstoneBatch)
@@ -2284,7 +2287,13 @@ func (dbc *Database) GetSingleDatabaseCollectionWithUser() *DatabaseCollectionWi
 }
 
 // newDatabaseCollection returns a collection which inherits values from the database but is specific to a given DataStore.
-func newDatabaseCollection(ctx context.Context, dbContext *DatabaseContext, dataStore base.DataStore) (*DatabaseCollection, error) {
+func newDatabaseCollection(dbCtx context.Context, dbContext *DatabaseContext, dataStore base.DataStore) (*DatabaseCollection, error) {
+	dsn, ok := base.AsDataStoreName(dataStore)
+	if !ok {
+		return nil, fmt.Errorf("unable to get datastore name from dataStore")
+	}
+	ctx := base.KeyspaceCtx(dbCtx, dsn.ScopeName(), dsn.CollectionName())
+
 	dbCollection := &DatabaseCollection{
 		dataStore:   dataStore,
 		dbCtx:       dbContext,

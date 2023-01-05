@@ -102,10 +102,11 @@ func bucketNameCtx(parent context.Context, bucketName string) context.Context {
 	return LogContextWith(parent, &newCtx)
 }
 
-// CollectionNameCtx extends the parent context with a bucket name.
-func CollectionNameCtx(parent context.Context, collectionName string) context.Context {
+// KeyspaceCtx extends the parent context with a collection name.
+func KeyspaceCtx(parent context.Context, scopeName, collectionName string) context.Context {
 	newCtx := KeyspaceLogContext{
-		Keyspace: collectionName,
+		Scope:      scopeName,
+		Collection: collectionName,
 	}
 	return LogContextWith(parent, &newCtx)
 }
@@ -182,18 +183,19 @@ func (c *DatabaseLogContext) addContext(format string) string {
 	return format
 }
 
-// KeyspaceLogContext provides database context data for logging
+// KeyspaceLogContext provides keyspace context data for logging
 type KeyspaceLogContext struct {
-	Keyspace string
+	Scope      string
+	Collection string
 }
 
 func (c *KeyspaceLogContext) getContextKey() LogContextKey {
-	return databaseLogContextKey
+	return keyspaceLogContextKey
 }
 
 func (c *KeyspaceLogContext) addContext(format string) string {
-	if c.Keyspace != "" {
-		format = "ks:" + c.Keyspace + " " + format
+	if c.Scope != "" || c.Collection != "" {
+		format = "ks:" + c.Scope + "." + c.Collection + " " + format
 
 	}
 	return format
