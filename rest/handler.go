@@ -266,7 +266,9 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 		if err != nil {
 			return err
 		}
-		h.addKeyspaceContext(*keyspaceScope, *keyspaceCollection)
+		if keyspaceScope != nil && keyspaceCollection != nil {
+			h.addKeyspaceContext(*keyspaceScope, *keyspaceCollection)
+		}
 	}
 
 	// look up the database context:
