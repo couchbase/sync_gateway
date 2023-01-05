@@ -444,7 +444,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 			}
 			collectionNameMap := make(map[string]struct{}, len(scope.Collections))
 			for collName, collOpts := range scope.Collections {
-				ctx := base.KeyspaceCtx(ctx, scopeName, collName)
+				ctx := base.CollectionCtx(ctx, collName)
 				dataStore := bucket.NamedDataStore(base.ScopeAndCollectionName{Scope: scopeName, Collection: collName})
 				dbCollection, err := newDatabaseCollection(ctx, dbContext, dataStore)
 				if err != nil {
@@ -1579,7 +1579,7 @@ func (db *Database) Compact(ctx context.Context, skipRunningStateCheck bool, cal
 	purgeBody := Body{"_purged": true}
 	for _, c := range db.CollectionByID {
 		// shadow ctx, sot that we can't misuse the parent's inside the loop
-		ctx := base.KeyspaceCtx(ctx, c.ScopeName(), c.Name())
+		ctx := base.CollectionCtx(ctx, c.Name())
 
 		// create admin collection interface
 		collection, err := db.GetDatabaseCollectionWithUser(c.ScopeName(), c.Name())

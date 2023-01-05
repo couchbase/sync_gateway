@@ -183,9 +183,9 @@ func (h *handler) addDatabaseLogContext(dbName string) {
 	}
 }
 
-func (h *handler) addKeyspaceContext(scopeName, collectionName string) {
-	if scopeName != "" || collectionName != "" {
-		h.rqCtx = base.LogContextWith(h.ctx(), &base.KeyspaceLogContext{Scope: scopeName, Collection: collectionName})
+func (h *handler) addCollectionLogContext(collectionName string) {
+	if collectionName != "" {
+		h.rqCtx = base.LogContextWith(h.ctx(), &base.CollectionLogContext{Collection: collectionName})
 	}
 }
 
@@ -266,8 +266,8 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 		if err != nil {
 			return err
 		}
-		if keyspaceScope != nil && keyspaceCollection != nil {
-			h.addKeyspaceContext(*keyspaceScope, *keyspaceCollection)
+		if keyspaceCollection != nil {
+			h.addCollectionLogContext(*keyspaceCollection)
 		}
 	}
 

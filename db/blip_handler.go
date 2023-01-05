@@ -168,7 +168,7 @@ func collectionBlipHandler(next blipHandlerFunc) blipHandlerFunc {
 		if collection == nil {
 			return base.HTTPErrorf(http.StatusBadRequest, "Collection index %d does not match a valid collection from GetCollections", collectionIndex)
 		}
-		bh.loggingCtx = base.KeyspaceCtx(bh.BlipSyncContext.loggingCtx, collection.ScopeName(), collection.Name())
+		bh.loggingCtx = base.CollectionCtx(bh.BlipSyncContext.loggingCtx, collection.Name())
 		bh.collection = &DatabaseCollectionWithUser{
 			DatabaseCollection: bh.collectionMapping[collectionIndex],
 			user:               bh.db.user,
