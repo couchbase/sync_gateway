@@ -982,7 +982,7 @@ func TestResyncUsingDCPStreamForNamedCollection(t *testing.T) {
 		return state == db.DBOffline
 	})
 
-	// Run resync for single collection
+	// Run resync for single collection // Request body {"scopeName": ["collection1Name", "collection2Name"]}
 	resp = rt.SendAdminRequest("POST", "/db/_resync?action=start", fmt.Sprintf("{\"%s\": [\"%s\"]}", dataStore1Name.ScopeName(), dataStore1Name.CollectionName()))
 	rest.RequireStatus(t, resp, http.StatusOK)
 

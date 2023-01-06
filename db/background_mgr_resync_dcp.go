@@ -33,8 +33,8 @@ type ResyncManagerDCP struct {
 	lock          sync.RWMutex
 }
 
-// ResyncPostReqBody contains map of scope names with collection names against which resync needs to run
-type ResyncPostReqBody map[string][]string
+// resyncPostReqBody contains map of scope names with collection names against which resync needs to run
+type resyncPostReqBody map[string][]string
 
 var _ BackgroundManagerProcessI = &ResyncManagerDCP{}
 
@@ -229,7 +229,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]interface
 }
 
 func getCollectionIdsFromBody(requestBody []byte, db *Database, bucket *base.GocbV2Bucket) ([]uint32, bool, error) {
-	var collectionsMap ResyncPostReqBody
+	var collectionsMap resyncPostReqBody
 	if len(requestBody) != 0 {
 		if err := json.Unmarshal(requestBody, &collectionsMap); err != nil {
 			return nil, false, fmt.Errorf("failed to unmarshal request body: %w", err)
