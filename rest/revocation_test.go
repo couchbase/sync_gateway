@@ -155,6 +155,7 @@ func (tester *ChannelRevocationTester) getChanges(sinceSeq interface{}, expected
 }
 
 func InitScenario(t *testing.T, rtConfig *RestTesterConfig) (ChannelRevocationTester, *RestTester) {
+
 	defaultSyncFn := `
 			function (doc, oldDoc){
 				if (doc._id === 'userRoles'){				
