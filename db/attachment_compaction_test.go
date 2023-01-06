@@ -572,6 +572,9 @@ func TestAttachmentProcessError(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
+	if base.TestsUseNamedCollections() {
+		t.Skip("This test only works against default collection (legacy attachment cleanup)")
+	}
 	b := base.GetTestBucket(t).LeakyBucketClone(base.LeakyBucketConfig{
 		SetXattrCallback: func(key string) error {
 			return fmt.Errorf("some error")
@@ -853,6 +856,9 @@ func createDocWithInBodyAttachment(t *testing.T, ctx context.Context, docID stri
 func TestAttachmentCompactIncorrectStat(t *testing.T) {
 	base.LongRunningTest(t)
 
+	if base.TestsUseNamedCollections() {
+		t.Skip("This test only works against default collection (legacy attachment cleanup)")
+	}
 	const docsToCreate = 10_000
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Requires CBS")
