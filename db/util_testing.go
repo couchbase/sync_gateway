@@ -5,7 +5,6 @@ import (
 	"errors"
 	"expvar"
 	"fmt"
-	"math"
 	"testing"
 	"time"
 
@@ -44,7 +43,7 @@ func isIndexEmpty(bucket *base.CouchbaseBucketGoCB, useXattrs bool) (bool, error
 	starChannelQueryStatement = replaceIndexTokensQuery(starChannelQueryStatement, sgIndexes[IndexAllDocs], useXattrs)
 	params := map[string]interface{}{}
 	params[QueryParamStartSeq] = 0
-	params[QueryParamEndSeq] = math.MaxInt64
+	params[QueryParamEndSeq] = N1QLMaxInt64
 
 	// Execute the query
 	results, err := bucket.Query(starChannelQueryStatement, params, gocb.RequestPlus, true)
