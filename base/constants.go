@@ -146,7 +146,8 @@ const (
 	RedactedStr = "xxxxx"
 
 	// DefaultJavascriptTimeoutSecs is number of seconds before Javascript functions (i.e. the sync function or import filter) timeout
-	DefaultJavascriptTimeoutSecs = uint32(60)
+	// If set to zero, timeout is disabled.
+	DefaultJavascriptTimeoutSecs = uint32(0)
 )
 
 const (

@@ -28,6 +28,7 @@ var _ BackgroundManagerProcessI = &TombstoneCompactionManager{}
 
 func NewTombstoneCompactionManager() *BackgroundManager {
 	return &BackgroundManager{
+		name:       "tombstone_compaction",
 		Process:    &TombstoneCompactionManager{},
 		terminator: base.NewSafeTerminator(),
 	}

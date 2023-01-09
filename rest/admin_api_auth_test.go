@@ -696,11 +696,11 @@ func TestAdminAPIAuth(t *testing.T) {
 		},
 		{
 			Method:   "GET",
-			Endpoint: "/{{.keyspace}}/_resync",
+			Endpoint: "/{{.db}}/_resync",
 		},
 		{
 			Method:   "POST",
-			Endpoint: "/{{.keyspace}}/_resync",
+			Endpoint: "/{{.db}}/_resync",
 		},
 		{
 			Method:   "POST",
@@ -1442,13 +1442,13 @@ func TestCreateDBSpecificBucketPerm(t *testing.T) {
 
 	base.RequireNumTestBuckets(t, 2)
 
+	tb := base.GetTestBucket(t)
+	defer tb.Close()
+
 	rt := NewRestTester(t, &RestTesterConfig{
 		AdminInterfaceAuthentication: true,
 	})
 	defer rt.Close()
-
-	tb := base.GetTestBucket(t)
-	defer tb.Close()
 
 	eps, httpClient, err := rt.ServerContext().ObtainManagementEndpointsAndHTTPClient()
 	require.NoError(t, err)

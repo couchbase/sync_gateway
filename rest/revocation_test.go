@@ -146,7 +146,7 @@ func (tester *ChannelRevocationTester) getChanges(sinceSeq interface{}, expected
 
 		return len(changes.Results) == expectedLength
 	})
-	assert.NoError(tester.test, err, fmt.Sprintf("Unexpected: %d. Expected %d", len(changes.Results), expectedLength))
+	require.NoError(tester.test, err, fmt.Sprintf("Unexpected: %d. Expected %d", len(changes.Results), expectedLength))
 
 	err = tester.restTester.WaitForPendingChanges()
 	assert.NoError(tester.test, err)
@@ -155,6 +155,7 @@ func (tester *ChannelRevocationTester) getChanges(sinceSeq interface{}, expected
 }
 
 func InitScenario(t *testing.T, rtConfig *RestTesterConfig) (ChannelRevocationTester, *RestTester) {
+
 	defaultSyncFn := `
 			function (doc, oldDoc){
 				if (doc._id === 'userRoles'){				
