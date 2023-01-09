@@ -375,6 +375,55 @@ func TestResycnManagerDCPResumeStoppedProcess(t *testing.T) {
 	assert.GreaterOrEqual(t, db.DbStats.Database().SyncFunctionCount.Value(), int64(docsToCreate))
 }
 
+func Test_unmarshalResyncPostReqBody(t *testing.T) {
+	testCases := []struct {
+		title     string
+		body      string
+		expected  *ResyncPostReqBody
+		Expecterr bool
+	}{
+		{
+			title: "multiple scopes with multiple collections",
+			body: `{
+				"scopes" :{
+					"scopeName": ["scopeName_coll0", "scopeName_coll1"],
+					"scopeName2": ["scopeName2_coll0", "scopeName2_coll1"]
+				}
+			}`,
+			expected: &ResyncPostReqBody{
+				Scope: map[string][]string{
+					"scopeName":  {"scopeName_coll0", "scopeName_coll1"},
+					"scopeName2": {"scopeName2_coll0", "scopeName2_coll1"},
+				},
+			},
+		},
+		{
+			title:    "empty body",
+			body:     "",
+			expected: &ResyncPostReqBody{},
+		},
+		{
+			title:     "invalid body",
+			body:      "random",
+			expected:  nil,
+			Expecterr: true,
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.title, func(t *testing.T) {
+			resyncPostReqBody, err := unmarshalResyncPostReqBody([]byte(testCase.body))
+			if testCase.Expecterr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+
+			require.Equal(t, testCase.expected, resyncPostReqBody)
+		})
+	}
+}
+
 // helper function to insert documents equals to docsToCreate, and update sync function if updateResyncFuncAfterDocsAdded set to true
 func setupTestDBForResyncWithDocs(t *testing.T, docsToCreate int, updateResyncFuncAfterDocsAdded bool) (*Database, context.Context) {
 	db, ctx := setupTestDB(t)

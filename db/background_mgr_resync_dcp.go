@@ -33,8 +33,11 @@ type ResyncManagerDCP struct {
 	lock          sync.RWMutex
 }
 
-// resyncPostReqBody contains map of scope names with collection names against which resync needs to run
-type resyncPostReqBody map[string][]string
+// ResyncPostReqBody contains map of scope names with collection names against which resync needs to run
+type ResyncPostReqBody struct {
+	Scope               map[string][]string `json:"scopes,omitempty"`
+	RegenerateSequences bool                `json:"regenerate_sequences,omitempty"`
+}
 
 var _ BackgroundManagerProcessI = &ResyncManagerDCP{}
 
@@ -91,7 +94,7 @@ func (r *ResyncManagerDCP) Init(ctx context.Context, options map[string]interfac
 func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]interface{}, persistClusterStatusCallback updateStatusCallbackFunc, terminator *base.SafeTerminator) error {
 	db := options["database"].(*Database)
 	regenerateSequences := options["regenerateSequences"].(bool)
-	scopeCollectionsNames := options["collections"].([]byte)
+	resyncPostReqBodyBytes := options["collections"].([]byte)
 
 	resyncLoggingID := "Resync: " + r.ResyncID
 
@@ -143,8 +146,17 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]interface
 		return err
 	}
 
+	resyncPostBody, err := unmarshalResyncPostReqBody(resyncPostReqBodyBytes)
+	if err != nil {
+		base.InfofCtx(ctx, base.KeyAll, "[%s] Failed to unmarshal: %v", resyncLoggingID, err)
+		return err
+	}
+
+	// Regenerate sequences if it is set true via query param or via request body
+	regenerateSequences = regenerateSequences || resyncPostBody.RegenerateSequences
+
 	// Get collectionIds
-	collectionIDs, hasAllCollections, err := getCollectionIdsFromBody(scopeCollectionsNames, db, bucket)
+	collectionIDs, hasAllCollections, err := getCollectionIds(db, resyncPostBody)
 	if err != nil {
 		return err
 	}
@@ -228,35 +240,36 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]interface
 	return nil
 }
 
-func getCollectionIdsFromBody(requestBody []byte, db *Database, bucket *base.GocbV2Bucket) ([]uint32, bool, error) {
-	var collectionsMap resyncPostReqBody
-	if len(requestBody) != 0 {
-		if err := json.Unmarshal(requestBody, &collectionsMap); err != nil {
-			return nil, false, fmt.Errorf("failed to unmarshal request body: %w", err)
-		}
+func unmarshalResyncPostReqBody(body []byte) (*ResyncPostReqBody, error) {
+	resyncPostReqBody := &ResyncPostReqBody{}
+	if len(body) == 0 {
+		return resyncPostReqBody, nil
 	}
+	if err := json.Unmarshal(body, resyncPostReqBody); err != nil {
+		return nil, err
+	}
+	return resyncPostReqBody, nil
+}
 
+func getCollectionIds(db *Database, resyncReqBody *ResyncPostReqBody) ([]uint32, bool, error) {
 	collectionIDs := make([]uint32, 0)
 	var hasAllCollections bool
-	if len(collectionsMap) == 0 {
+
+	if len(resyncReqBody.Scope) == 0 {
 		hasAllCollections = true
 		for collectionID := range db.CollectionByID {
 			collectionIDs = append(collectionIDs, collectionID)
 		}
 	} else {
 		hasAllCollections = false
-		collectionManifest, err := bucket.GetCollectionManifest()
-		if err != nil {
-			return nil, hasAllCollections, fmt.Errorf("failed to load collection manifest: %w", err)
-		}
 
-		for scopeName, collNames := range collectionsMap {
-			for _, collName := range collNames {
-				collID, ok := base.GetIDForCollection(collectionManifest, scopeName, collName)
-				if !ok {
-					return nil, hasAllCollections, fmt.Errorf("failed to find ID for collection %s.%s", base.MD(scopeName).Redact(), base.MD(collName).Redact())
+		for scopeName, collectionsName := range resyncReqBody.Scope {
+			for _, collectionName := range collectionsName {
+				collection, err := db.GetDatabaseCollection(scopeName, collectionName)
+				if err != nil {
+					return nil, hasAllCollections, fmt.Errorf("failed to find ID for collection %s.%s", base.MD(scopeName).Redact(), base.MD(collectionName).Redact())
 				}
-				collectionIDs = append(collectionIDs, collID)
+				collectionIDs = append(collectionIDs, collection.GetCollectionID())
 			}
 		}
 	}

@@ -982,8 +982,13 @@ func TestResyncUsingDCPStreamForNamedCollection(t *testing.T) {
 		return state == db.DBOffline
 	})
 
-	// Run resync for single collection // Request body {"scopeName": ["collection1Name", "collection2Name"]}
-	resp = rt.SendAdminRequest("POST", "/db/_resync?action=start", fmt.Sprintf("{\"%s\": [\"%s\"]}", dataStore1Name.ScopeName(), dataStore1Name.CollectionName()))
+	// Run resync for single collection // Request body {"scopes": "scopeName": ["collection1Name", "collection2Name"]}}
+	body := fmt.Sprintf(`{
+			"scopes" :{
+				"%s": ["%s"]
+			}
+		}`, dataStore1Name.ScopeName(), dataStore1Name.CollectionName())
+	resp = rt.SendAdminRequest("POST", "/db/_resync?action=start", body)
 	rest.RequireStatus(t, resp, http.StatusOK)
 
 	var resyncManagerStatus db.ResyncManagerResponseDCP
@@ -998,7 +1003,7 @@ func TestResyncUsingDCPStreamForNamedCollection(t *testing.T) {
 			return false
 		}
 	}, 200, 200)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	assert.Equal(t, 0, int(resyncManagerStatus.DocsChanged))
 	assert.Equal(t, 10, int(resyncManagerStatus.DocsProcessed))
@@ -1019,11 +1024,10 @@ func TestResyncUsingDCPStreamForNamedCollection(t *testing.T) {
 			return false
 		}
 	}, 200, 200)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	assert.Equal(t, 0, int(resyncManagerStatus.DocsChanged))
 	assert.Equal(t, 20, int(resyncManagerStatus.DocsProcessed))
-
 }
 
 func TestResyncErrorScenarios(t *testing.T) {
