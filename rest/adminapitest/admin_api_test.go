@@ -554,8 +554,6 @@ func TestDBOfflinePostResync(t *testing.T) {
 }
 
 func TestDBOfflinePostResyncUsingDCPStream(t *testing.T) {
-	base.TemporarilyDisableTestUsingDCPWithCollections(t)
-
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test doesn't work with walrus")
 	}
@@ -654,8 +652,6 @@ func TestDBOfflineSingleResync(t *testing.T) {
 }
 
 func TestDBOfflineSingleResyncUsingDCPStream(t *testing.T) {
-	base.TemporarilyDisableTestUsingDCPWithCollections(t)
-
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test doesn't works with walrus")
 	}
@@ -817,8 +813,6 @@ func TestResync(t *testing.T) {
 }
 
 func TestResyncUsingDCPStream(t *testing.T) {
-	base.TemporarilyDisableTestUsingDCPWithCollections(t)
-
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test doesn't works with walrus")
 	}
@@ -1011,8 +1005,6 @@ func TestResyncErrorScenarios(t *testing.T) {
 }
 
 func TestResyncErrorScenariosUsingDCPStream(t *testing.T) {
-	base.TemporarilyDisableTestUsingDCPWithCollections(t)
-
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test doesn't works with walrus")
 	}
@@ -1186,8 +1178,6 @@ func TestResyncStop(t *testing.T) {
 }
 
 func TestResyncStopUsingDCPStream(t *testing.T) {
-	base.TemporarilyDisableTestUsingDCPWithCollections(t)
-
 	if base.UnitTestUrlIsWalrus() {
 		// Walrus doesn't support Collections which is required to create DCP stream
 		t.Skip("This test doesn't works with walrus")
@@ -1424,8 +1414,6 @@ func TestResyncRegenerateSequences(t *testing.T) {
 }
 
 func TestResyncRegenerateSequencesUsingDCPStream(t *testing.T) {
-	base.TemporarilyDisableTestUsingDCPWithCollections(t)
-
 	// FIXME: PersistentWalrusBucket doesn't support collections yet
 	t.Skip("PersistentWalrusBucket doesn't support collections yet")
 

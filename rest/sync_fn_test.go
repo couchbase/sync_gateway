@@ -356,10 +356,6 @@ func TestDBOfflinePostResync(t *testing.T) {
 		t.Skip("This test doesn't work with Walrus when ResyncManagerDCP is used")
 	}
 
-	if isDCPResync {
-		base.TemporarilyDisableTestUsingDCPWithCollections(t)
-	}
-
 	log.Printf("Taking DB offline")
 	response := rt.SendAdminRequest("GET", "/db/", "")
 	var body db.Body
@@ -374,9 +370,9 @@ func TestDBOfflinePostResync(t *testing.T) {
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.True(t, body["state"].(string) == "Offline")
 
-	RequireStatus(t, rt.SendAdminRequest("POST", "/{{.keyspace}}/_resync?action=start", ""), 200)
+	RequireStatus(t, rt.SendAdminRequest("POST", "/{{.db}}/_resync?action=start", ""), 200)
 	err := rt.WaitForCondition(func() bool {
-		response := rt.SendAdminRequest("GET", "/{{.keyspace}}/_resync", "")
+		response := rt.SendAdminRequest("GET", "/{{.db}}/_resync", "")
 		var status db.ResyncManagerResponse
 		err := json.Unmarshal(response.BodyBytes(), &status)
 		assert.NoError(t, err)
@@ -403,9 +399,6 @@ func TestDBOfflineSingleResync(t *testing.T) {
 	if isDCPResync && base.UnitTestUrlIsWalrus() {
 		t.Skip("This test doesn't work with Walrus when ResyncManagerDCP is used")
 	}
-	if isDCPResync {
-		base.TemporarilyDisableTestUsingDCPWithCollections(t)
-	}
 
 	// create documents in DB to cause resync to take a few seconds
 	for i := 0; i < 1000; i++ {
@@ -427,14 +420,14 @@ func TestDBOfflineSingleResync(t *testing.T) {
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.True(t, body["state"].(string) == "Offline")
 
-	response = rt.SendAdminRequest("POST", "/{{.keyspace}}/_resync?action=start", "")
+	response = rt.SendAdminRequest("POST", "/{{.db}}/_resync?action=start", "")
 	RequireStatus(t, response, http.StatusOK)
 
 	// Send a second _resync request.  This must return a 400 since the first one is blocked processing
-	RequireStatus(t, rt.SendAdminRequest("POST", "/{{.keyspace}}/_resync?action=start", ""), 503)
+	RequireStatus(t, rt.SendAdminRequest("POST", "/{{.db}}/_resync?action=start", ""), 503)
 
 	err := rt.WaitForCondition(func() bool {
-		response := rt.SendAdminRequest("GET", "/{{.keyspace}}/_resync", "")
+		response := rt.SendAdminRequest("GET", "/{{.db}}/_resync", "")
 		var status db.ResyncManagerResponse
 		err := json.Unmarshal(response.BodyBytes(), &status)
 		assert.NoError(t, err)
@@ -503,15 +496,12 @@ func TestResync(t *testing.T) {
 			if isDCPResync && base.UnitTestUrlIsWalrus() {
 				t.Skip("This test doesn't work with Walrus when ResyncManagerDCP is used")
 			}
-			if isDCPResync {
-				base.TemporarilyDisableTestUsingDCPWithCollections(t)
-			}
 
 			for i := 0; i < testCase.docsCreated; i++ {
 				rt.CreateDoc(t, fmt.Sprintf("doc%d", i))
 			}
 
-			response := rt.SendAdminRequest("POST", "/{{.keyspace}}/_resync?action=start", "")
+			response := rt.SendAdminRequest("POST", "/{{.db}}/_resync?action=start", "")
 			RequireStatus(t, response, http.StatusServiceUnavailable)
 
 			response = rt.SendAdminRequest("POST", "/db/_offline", "")
@@ -522,12 +512,12 @@ func TestResync(t *testing.T) {
 				return state == db.DBOffline
 			})
 
-			response = rt.SendAdminRequest("POST", "/{{.keyspace}}/_resync?action=start", "")
+			response = rt.SendAdminRequest("POST", "/{{.db}}/_resync?action=start", "")
 			RequireStatus(t, response, http.StatusOK)
 
 			var resyncManagerStatus db.ResyncManagerResponse
 			err := rt.WaitForCondition(func() bool {
-				response := rt.SendAdminRequest("GET", "/{{.keyspace}}/_resync", "")
+				response := rt.SendAdminRequest("GET", "/{{.db}}/_resync", "")
 				err := json.Unmarshal(response.BodyBytes(), &resyncManagerStatus)
 				assert.NoError(t, err)
 
@@ -667,8 +657,6 @@ func TestResyncErrorScenarios(t *testing.T) {
 }
 
 func TestResyncErrorScenariosUsingDCPStream(t *testing.T) {
-	base.TemporarilyDisableTestUsingDCPWithCollections(t)
-
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test doesn't work with walrus")
 	}
@@ -829,8 +817,6 @@ func TestResyncStop(t *testing.T) {
 }
 
 func TestResyncStopUsingDCPStream(t *testing.T) {
-	base.TemporarilyDisableTestUsingDCPWithCollections(t)
-
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test doesn't work with walrus")
 	}
@@ -1071,8 +1057,6 @@ func TestResyncPersistence(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
-	base.TemporarilyDisableTestUsingDCPWithCollections(t)
-
 	tb := base.GetTestBucket(t)
 	noCloseTB := tb.NoCloseClone()
 
@@ -1099,13 +1083,13 @@ func TestResyncPersistence(t *testing.T) {
 		return state == db.DBOffline
 	})
 
-	resp = rt1.SendAdminRequest("POST", "/{{.keyspace}}/_resync?action=start", "")
+	resp = rt1.SendAdminRequest("POST", "/{{.db}}/_resync?action=start", "")
 	RequireStatus(t, resp, http.StatusOK)
 
 	// Wait for resync to complete
 	var resyncManagerStatus db.ResyncManagerResponse
 	err := rt1.WaitForCondition(func() bool {
-		resp = rt1.SendAdminRequest("GET", "/{{.keyspace}}/_resync", "")
+		resp = rt1.SendAdminRequest("GET", "/{{.db}}/_resync", "")
 		err := json.Unmarshal(resp.BodyBytes(), &resyncManagerStatus)
 		assert.NoError(t, err)
 
@@ -1119,7 +1103,7 @@ func TestResyncPersistence(t *testing.T) {
 	require.NoError(t, err)
 
 	// Check statuses match
-	resp2 := rt2.SendAdminRequest("GET", "/{{.keyspace}}/_resync", "")
+	resp2 := rt2.SendAdminRequest("GET", "/{{.db}}/_resync", "")
 	RequireStatus(t, resp, http.StatusOK)
 	fmt.Printf("RT1 Resync Status: %s\n", resp.BodyBytes())
 	fmt.Printf("RT2 Resync Status: %s\n", resp2.BodyBytes())
