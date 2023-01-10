@@ -329,7 +329,7 @@ func filterViewResult(input sgbucket.ViewResult, user auth.User, applyChannelFil
 // Is any item of channels found in visibleChannels?
 func channelsIntersect(visibleChannels ch.TimedSet, channels []interface{}) bool {
 	for _, channel := range channels {
-		if visibleChannels.Contains(channel.(string)) || channel == "*" {
+		if visibleChannels.Contains(channel.(string)) {
 			return true
 		}
 	}
