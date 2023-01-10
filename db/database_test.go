@@ -824,7 +824,10 @@ func TestAllDocsOnly(t *testing.T) {
 		revid, _, err := collection.Put(ctx, ids[i].DocID, body)
 		ids[i].RevID = revid
 		ids[i].Sequence = uint64(i + 1)
-		ids[i].Channels = channels
+		// `*` channels gets added to docs for new creation.
+		// add `*` channel to expected channels
+		ids[i].Channels = append(channels, "*")
+
 		assert.NoError(t, err, "Couldn't create document")
 	}
 
