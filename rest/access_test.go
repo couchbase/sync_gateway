@@ -120,6 +120,7 @@ func TestStarAccess(t *testing.T) {
 	response := rt.SendAdminRequest("GET", "/{{.db}}/_user/bernard", ``)
 	RequireStatus(t, response, 200)
 	fmt.Println(response.Body)
+	fmt.Println("after user")
 
 	// GET /db/docid - basic test for channel user has
 	response = rt.SendUserRequest("GET", "/{{.keyspace}}/doc1", "", "bernard")
