@@ -208,9 +208,7 @@ func (spec *BucketSpec) GetGoCBConnString(params *GoCBConnStringParams) (string,
 	}
 
 	kvBufferfromConnStr := asValues.Get("kv_buffer_size")
-	if kvBufferfromConnStr == "" && spec.KvBufferSize != 0 {
-		asValues.Set("kv_buffer_size", strconv.Itoa(spec.KvBufferSize))
-	} else if kvBufferfromConnStr == "" && params.KVBufferSize != 0 {
+	if kvBufferfromConnStr == "" && params.KVBufferSize != 0 {
 		asValues.Set("kv_buffer_size", strconv.Itoa(params.KVBufferSize))
 		spec.KvBufferSize = params.KVBufferSize
 	} else {
@@ -218,9 +216,7 @@ func (spec *BucketSpec) GetGoCBConnString(params *GoCBConnStringParams) (string,
 	}
 
 	dcpBufferfromConnStr := asValues.Get("dcp_buffer_size")
-	if dcpBufferfromConnStr == "" && spec.DcpBuffer != 0 {
-		asValues.Set("dcp_buffer_size", strconv.Itoa(spec.DcpBuffer))
-	} else if dcpBufferfromConnStr == "" && params.DCPBufferSize != 0 {
+	if dcpBufferfromConnStr == "" && params.DCPBufferSize != 0 {
 		asValues.Set("dcp_buffer_size", strconv.Itoa(params.DCPBufferSize))
 		spec.DcpBuffer = params.DCPBufferSize
 	} else {
