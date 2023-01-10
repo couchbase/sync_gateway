@@ -431,11 +431,15 @@ func TestBlipSubChangesDocIDFilter(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)
 
-	bt := NewBlipTesterDefaultCollection(t)
+	bt, err := NewBlipTester(t)
+	require.NoError(t, err)
 	defer bt.Close()
+	collection := bt.restTester.GetSingleTestDatabaseCollection()
 	// Counter/Waitgroup to help ensure that all callbacks on continuous changes handler are received
 	receivedChangesWg := sync.WaitGroup{}
 	receivedCaughtUpChange := false
+	properties, err := bt.BlipCollectionSetup(collection)
+	require.NoError(t, err)
 
 	// Build set of docids
 	docIDsSent := make([]string, 0)
@@ -532,7 +536,7 @@ func TestBlipSubChangesDocIDFilter(t *testing.T) {
 			docID,
 			"1-abc",
 			[]byte(`{"key": "val"}`),
-			blip.Properties{},
+			properties,
 		)
 		assert.NoError(t, err)
 		_, err = revResponse.Body()
@@ -551,6 +555,7 @@ func TestBlipSubChangesDocIDFilter(t *testing.T) {
 	subChangesRequest.SetProfile("subChanges")
 	subChangesRequest.Properties["continuous"] = "false"
 	subChangesRequest.Properties["batch"] = "10" // default batch size is 200, lower this to 5 to make sure we get multiple batches
+	subChangesRequest.Properties[db.BlipCollection] = "0"
 	subChangesRequest.SetCompressed(false)
 
 	body := db.SubChangesBody{DocIDs: docIDsExpected}
@@ -755,19 +760,23 @@ func TestPublicPortAuthentication(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)
 
 	// Create bliptester that is connected as user1, with access to the user1 channel
-	btUser1 := NewBlipTesterDefaultCollectionFromSpec(t, // CBG-2619: make collection aware
+	btUser1, err := NewBlipTesterFromSpec(t, // CBG-2619: make collection aware
 		BlipTesterSpec{
 			connectingUsername: "user1",
 			connectingPassword: "1234",
 		})
+	require.NoError(t, err)
 	defer btUser1.Close()
+	blipTestCollection1 := btUser1.restTester.GetSingleTestDatabaseCollection()
+	blipTestProperties1, err := btUser1.BlipCollectionSetup(blipTestCollection1)
+	require.NoError(t, err)
 
 	// Send the user1 doc
-	_, _, _, err := btUser1.SendRev(
+	_, _, _, err = btUser1.SendRev(
 		"foo",
 		"1-abc",
 		[]byte(`{"key": "val", "channels": ["user1"]}`),
-		blip.Properties{},
+		blipTestProperties1,
 	)
 	require.NoError(t, err, "Error sending revision")
 
@@ -779,13 +788,16 @@ func TestPublicPortAuthentication(t *testing.T) {
 	}, btUser1.restTester) // re-use rest tester, otherwise it will create a new underlying bucket in walrus case
 	require.NoError(t, err, "Error creating BlipTester")
 	defer btUser2.Close()
+	blipTestCollection2 := btUser2.restTester.GetSingleTestDatabaseCollection()
+	blipTestProperties2, err := btUser2.BlipCollectionSetup(blipTestCollection2)
+	require.NoError(t, err)
 
 	// Send the user2 doc, which is in a "random" channel, but it should be accessible due to * channel access
 	_, _, _, err = btUser2.SendRev(
 		"foo2",
 		"1-abcd",
 		[]byte(`{"key": "val", "channels": ["NBC"]}`),
-		blip.Properties{},
+		blipTestProperties2,
 	)
 	require.NoError(t, err, "Error sending revision")
 
@@ -821,10 +833,11 @@ function(doc, oldDoc) {
 	rtConfig := RestTesterConfig{
 		SyncFn: syncFunction,
 	}
-	var rt = NewRestTesterDefaultCollection(t, &rtConfig) // CBG-2619: make collection aware
+	var rt = NewRestTester(t, &rtConfig) // CBG-2619: make collection aware
 	defer rt.Close()
 	ctx := rt.Context()
 	collection := rt.GetSingleTestDatabaseCollection()
+	properties := blip.Properties{}
 
 	// Create bliptester that is connected as user1, with no access to channel ABC
 	bt, err := NewBlipTesterFromSpecWithRT(t, &BlipTesterSpec{
@@ -832,13 +845,15 @@ function(doc, oldDoc) {
 		connectingPassword: "1234",
 	}, rt)
 	assert.NoError(t, err, "Error creating BlipTester")
+	properties, err = bt.BlipCollectionSetup(collection)
+	require.NoError(t, err)
 
 	// Attempt to send a doc, should be rejected
 	_, _, _, sendErr := bt.SendRev(
 		"foo",
 		"1-abc",
 		[]byte(`{"key": "val"}`),
-		blip.Properties{},
+		properties,
 	)
 	assert.Error(t, sendErr, "Expected error sending rev (403 sg missing channel access)")
 
@@ -864,12 +879,12 @@ function(doc, oldDoc) {
 		"foo",
 		"1-abc",
 		[]byte(`{"key": "val"}`),
-		blip.Properties{},
+		properties,
 	)
 	assert.NoError(t, sendErr)
 
 	// Validate that the doc was written (GET request doesn't get a 404)
-	getResponse := rt.SendAdminRequest("GET", "/db/foo", "")
+	getResponse := rt.SendAdminRequest("GET", "/{{.keyspace}}/foo", "")
 	RequireStatus(t, getResponse, 200)
 
 }
@@ -889,8 +904,9 @@ function(doc, oldDoc) {
 `
 
 	rtConfig := RestTesterConfig{SyncFn: syncFunction}
-	rt := NewRestTesterDefaultCollection(t, &rtConfig) // CBG-2619
+	rt := NewRestTester(t, &rtConfig) // CBG-2619
 	defer rt.Close()
+	collection := rt.GetSingleTestDatabaseCollection()
 
 	// Create bliptester that is connected as user1, with no access to channel ABC
 	bt, err := NewBlipTesterFromSpecWithRT(t, &BlipTesterSpec{
@@ -899,6 +915,8 @@ function(doc, oldDoc) {
 	}, rt)
 	assert.NoError(t, err, "Error creating BlipTester")
 	defer bt.Close()
+	_, err = bt.BlipCollectionSetup(collection)
+	require.NoError(t, err)
 
 	// Counter/Waitgroup to help ensure that all callbacks on continuous changes handler are received
 	receivedChangesWg := sync.WaitGroup{}
@@ -977,6 +995,7 @@ function(doc, oldDoc) {
 	subChangesRequest.SetProfile("subChanges")
 	subChangesRequest.Properties["continuous"] = "true"
 	subChangesRequest.Properties["batch"] = "10" // default batch size is 200, lower this to 10 to make sure we get multiple batches
+	subChangesRequest.Properties[db.BlipCollection] = "0"
 	subChangesRequest.SetCompressed(false)
 	sent := bt.sender.Send(subChangesRequest)
 	assert.True(t, sent)
@@ -986,7 +1005,7 @@ function(doc, oldDoc) {
 	// Write a doc that grants user1 access to channel ABC, and doc is also in channel ABC
 	receivedChangesWg.Add(1)
 	revsFinishedWg.Add(1)
-	response := rt.SendAdminRequest("PUT", "/db/grantDoc", `{"accessUser":"user1", "accessChannel":"ABC", "channels":["ABC"]}`)
+	response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/grantDoc", `{"accessUser":"user1", "accessChannel":"ABC", "channels":["ABC"]}`)
 	RequireStatus(t, response, 201)
 	require.NoError(t, rt.WaitForPendingChanges())
 
@@ -1149,7 +1168,7 @@ func TestBlipSendAndGetRev(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)
 
-	rt := NewRestTesterDefaultCollection(t, nil) // CBG-2619: make collection aware
+	rt := NewRestTester(t, nil) // CBG-2619: make collection aware
 	defer rt.Close()
 	btSpec := BlipTesterSpec{
 		connectingUsername: "user1",
@@ -1158,9 +1177,12 @@ func TestBlipSendAndGetRev(t *testing.T) {
 	bt, err := NewBlipTesterFromSpecWithRT(t, &btSpec, rt)
 	require.NoError(t, err, "Unexpected error creating BlipTester")
 	defer bt.Close()
+	collection := rt.GetSingleTestDatabaseCollection()
+	properties, err := bt.BlipCollectionSetup(collection)
+	require.NoError(t, err)
 
 	// Send non-deleted rev
-	sent, _, resp, err := bt.SendRev("sendAndGetRev", "1-abc", []byte(`{"key": "val", "channels": ["user1"]}`), blip.Properties{})
+	sent, _, resp, err := bt.SendRev("sendAndGetRev", "1-abc", []byte(`{"key": "val", "channels": ["user1"]}`), properties)
 	assert.True(t, sent)
 	assert.NoError(t, err)
 	assert.Equal(t, "", resp.Properties["Error-Code"])
@@ -1181,7 +1203,7 @@ func TestBlipSendAndGetRev(t *testing.T) {
 	assert.Equal(t, "", resp.Properties["Error-Code"])
 
 	// Get the tombstoned document
-	response = bt.restTester.SendAdminRequest("GET", "/db/sendAndGetRev?rev=2-bcd", "")
+	response = bt.restTester.SendAdminRequest("GET", "/{{.keyspace}}/sendAndGetRev?rev=2-bcd", "")
 	RequireStatus(t, response, 200)
 	responseBody = RestDocument{}
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &responseBody), "Error unmarshalling GET doc response")
@@ -1315,7 +1337,7 @@ func TestReloadUser(t *testing.T) {
 	rtConfig := RestTesterConfig{
 		SyncFn: syncFn,
 	}
-	rt := NewRestTesterDefaultCollection(t, &rtConfig) // CBG-2619: make collection aware
+	rt := NewRestTester(t, &rtConfig) // CBG-2619: make collection aware
 	defer rt.Close()
 	ctx := rt.Context()
 	bt, err := NewBlipTesterFromSpecWithRT(t, &BlipTesterSpec{
@@ -1324,6 +1346,9 @@ func TestReloadUser(t *testing.T) {
 	}, rt)
 	require.NoError(t, err, "Unexpected error creating BlipTester")
 	defer bt.Close()
+	collection := rt.GetSingleTestDatabaseCollection()
+	properties, err := bt.BlipCollectionSetup(collection)
+	require.NoError(t, err)
 
 	// Set up a ChangeWaiter for this test, to block until the user change notification happens
 	dbc := rt.GetDatabase()
@@ -1336,7 +1361,7 @@ func TestReloadUser(t *testing.T) {
 	userWaiter := userDb.NewUserWaiter()
 
 	// Put document that triggers access grant for user to channel PBS
-	response := rt.SendAdminRequest("PUT", "/db/access1", `{"accessUser":"user1", "accessChannel":["PBS"]}`)
+	response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/access1", `{"accessUser":"user1", "accessChannel":["PBS"]}`)
 	RequireStatus(t, response, 201)
 
 	// Wait for notification
@@ -1347,7 +1372,7 @@ func TestReloadUser(t *testing.T) {
 		"foo",
 		"1-abc",
 		[]byte(`{"key": "val", "channels": ["PBS"]}`),
-		blip.Properties{},
+		properties,
 	)
 	assert.NoError(t, err)
 
@@ -1418,19 +1443,22 @@ func TestAccessGrantViaAdminApi(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)
 
 	// Create blip tester
-	bt := NewBlipTesterDefaultCollectionFromSpec(t, BlipTesterSpec{
+	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
 		connectingUsername: "user1",
 		connectingPassword: "1234",
 	})
 	defer bt.Close()
+	require.NoError(t, err)
 	collection := bt.restTester.GetSingleTestDatabaseCollection()
+	properties, err := bt.BlipCollectionSetup(collection)
+	require.NoError(t, err)
 
 	// Add a doc in the PBS channel
 	_, _, _, _ = bt.SendRev(
 		"foo",
 		"1-abc",
 		[]byte(`{"key": "val", "channels": ["PBS"]}`),
-		blip.Properties{},
+		properties,
 	)
 
 	// Update the user doc to grant access to PBS
@@ -1442,7 +1470,7 @@ func TestAccessGrantViaAdminApi(t *testing.T) {
 		"foo2",
 		"1-abc",
 		[]byte(`{"key": "val", "channels": ["PBS"]}`),
-		blip.Properties{},
+		properties,
 	)
 
 	// Make sure we can see both docs in the changes
@@ -1678,7 +1706,7 @@ func TestGetRemovedDoc(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)
 
-	rt := NewRestTesterDefaultCollection(t, nil) // CBG-2619: make collection aware
+	rt := NewRestTester(t, nil) // CBG-2619: make collection aware
 	defer rt.Close()
 	btSpec := BlipTesterSpec{
 		connectingUsername: "user1",
@@ -1688,6 +1716,10 @@ func TestGetRemovedDoc(t *testing.T) {
 	bt, err := NewBlipTesterFromSpecWithRT(t, &btSpec, rt)
 	require.NoError(t, err, "Unexpected error creating BlipTester")
 	defer bt.Close()
+
+	collection := rt.GetSingleTestDatabaseCollection()
+	propertiesBT1, err := bt.BlipCollectionSetup(collection)
+	require.NoError(t, err)
 
 	// Workaround data race (https://gist.github.com/tleyden/0ace70b8a38b76a7beee95529610b6cf) that happens because
 	// there are multiple goroutines accessing the bt.blipContext.HandlerForProfile map.
@@ -1702,9 +1734,11 @@ func TestGetRemovedDoc(t *testing.T) {
 	bt2, err := NewBlipTesterFromSpecWithRT(t, &btSpec2, rt)
 	require.NoError(t, err, "Unexpected error creating BlipTester")
 	defer bt2.Close()
+	_, err = bt2.BlipCollectionSetup(collection)
+	require.NoError(t, err)
 
 	// Add rev-1 in channel user1
-	sent, _, resp, err := bt.SendRev("foo", "1-abc", []byte(`{"key": "val", "channels": ["user1"]}`), blip.Properties{})
+	sent, _, resp, err := bt.SendRev("foo", "1-abc", []byte(`{"key": "val", "channels": ["user1"]}`), propertiesBT1)
 	assert.True(t, sent)
 	require.NoError(t, err)                        // no error
 	assert.Empty(t, resp.Properties["Error-Code"]) // no error
@@ -1744,7 +1778,7 @@ func TestGetRemovedDoc(t *testing.T) {
 
 	// Delete any temp revisions in case this prevents the bug from showing up (didn't make a difference)
 	tempRevisionDocID := base.RevPrefix + "foo:5:3-cde"
-	err = rt.GetDatabase().Bucket.DefaultDataStore().Delete(tempRevisionDocID)
+	err = rt.GetSingleDataStore().Delete(tempRevisionDocID)
 	assert.NoError(t, err, "Unexpected Error")
 
 	// Try to get rev 3 via BLIP API and assert that _removed == true
@@ -1755,7 +1789,7 @@ func TestGetRemovedDoc(t *testing.T) {
 	// Try to get rev 3 via REST API, and assert that _removed == true
 	headers := map[string]string{}
 	headers["Authorization"] = "Basic " + base64.StdEncoding.EncodeToString([]byte(btSpec.connectingUsername+":"+btSpec.connectingPassword))
-	response := rt.SendRequestWithHeaders("GET", "/db/foo?rev=3-cde", "", headers)
+	response := rt.SendRequestWithHeaders("GET", "/{{.keyspace}}/foo?rev=3-cde", "", headers)
 	restDocument := response.GetRestDocument()
 	assert.True(t, restDocument.IsRemoved())
 
@@ -1831,32 +1865,52 @@ func TestBlipPullRevMessageHistory(t *testing.T) {
 		}},
 		GuestEnabled: true,
 	}
-	rt := NewRestTesterDefaultCollection(t, &rtConfig) // CBG-2619: make collection aware
+	rt := NewRestTester(t, &rtConfig) // CBG-2619: make collection aware
 	defer rt.Close()
+	collection := rt.GetSingleTestDatabaseCollection()
 
-	client, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
+	client, isDefault, err := BlipClientInitialization(t, rt, collection, nil)
 	require.NoError(t, err)
 	defer client.Close()
 	client.ClientDeltas = true
+	btcCollection, err := client.BlipClientCollectionSetup(collection)
+	require.NoError(t, err)
 
-	err = client.StartPull()
-	assert.NoError(t, err)
+	if isDefault {
+		err = client.StartPull()
+		assert.NoError(t, err)
+	} else {
+		err = btcCollection.StartPull()
+		assert.NoError(t, err)
+	}
 
 	// create doc1 rev 1-0335a345b6ffed05707ccc4cbc1b67f4
 	resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc1", `{"greetings": [{"hello": "world!"}, {"hi": "alice"}]}`)
 	assert.Equal(t, http.StatusCreated, resp.Code)
 
-	data, ok := client.WaitForRev("doc1", "1-0335a345b6ffed05707ccc4cbc1b67f4")
-	assert.True(t, ok)
-	assert.Equal(t, `{"greetings":[{"hello":"world!"},{"hi":"alice"}]}`, string(data))
+	if isDefault {
+		data, ok := client.WaitForRev("doc1", "1-0335a345b6ffed05707ccc4cbc1b67f4")
+		assert.True(t, ok)
+		assert.Equal(t, `{"greetings":[{"hello":"world!"},{"hi":"alice"}]}`, string(data))
+	} else {
+		data, ok := btcCollection.WaitForRev("doc1", "1-0335a345b6ffed05707ccc4cbc1b67f4")
+		assert.True(t, ok)
+		assert.Equal(t, `{"greetings":[{"hello":"world!"},{"hi":"alice"}]}`, string(data))
+	}
 
 	// create doc1 rev 2-959f0e9ad32d84ff652fb91d8d0caa7e
 	resp = rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc1?rev=1-0335a345b6ffed05707ccc4cbc1b67f4", `{"greetings": [{"hello": "world!"}, {"hi": "alice"}, {"howdy": 12345678901234567890}]}`)
 	assert.Equal(t, http.StatusCreated, resp.Code)
 
-	data, ok = client.WaitForRev("doc1", "2-26359894b20d89c97638e71c40482f28")
-	assert.True(t, ok)
-	assert.Equal(t, `{"greetings":[{"hello":"world!"},{"hi":"alice"},{"howdy":12345678901234567890}]}`, string(data))
+	if isDefault {
+		data, ok := client.WaitForRev("doc1", "2-26359894b20d89c97638e71c40482f28")
+		assert.True(t, ok)
+		assert.Equal(t, `{"greetings":[{"hello":"world!"},{"hi":"alice"},{"howdy":12345678901234567890}]}`, string(data))
+	} else {
+		data, ok := btcCollection.WaitForRev("doc1", "2-26359894b20d89c97638e71c40482f28")
+		assert.True(t, ok)
+		assert.Equal(t, `{"greetings":[{"hello":"world!"},{"hi":"alice"},{"howdy":12345678901234567890}]}`, string(data))
+	}
 
 	msg, ok := client.pullReplication.WaitForMessage(5)
 	assert.True(t, ok)
@@ -1868,14 +1922,18 @@ func TestActiveOnlyContinuous(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
-	rt := NewRestTesterDefaultCollection(t, &RestTesterConfig{GuestEnabled: true}) // CBG-2619: make collection aware
+	rt := NewRestTester(t, &RestTesterConfig{GuestEnabled: true}) // CBG-2619: make collection aware
 	defer rt.Close()
+	collection := rt.GetSingleTestDatabaseCollection()
 
-	btc, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
+	btc, isDefault, err := BlipClientInitialization(t, rt, collection, nil)
 	require.NoError(t, err)
 	defer btc.Close()
 
-	resp := rt.SendAdminRequest(http.MethodPut, "/db/doc1", `{"test":true}`)
+	btcCollection, err := btc.BlipClientCollectionSetup(collection)
+	require.NoError(t, err)
+
+	resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc1", `{"test":true}`)
 	RequireStatus(t, resp, http.StatusCreated)
 	var docResp struct {
 		Rev string `json:"rev"`
@@ -1883,20 +1941,32 @@ func TestActiveOnlyContinuous(t *testing.T) {
 	require.NoError(t, base.JSONUnmarshal(resp.Body.Bytes(), &docResp))
 
 	// start an initial pull
-	require.NoError(t, btc.StartPullSince("true", "0", "true"))
-
-	rev, found := btc.WaitForRev("doc1", docResp.Rev)
-	assert.True(t, found)
-	assert.Equal(t, `{"test":true}`, string(rev))
+	if isDefault {
+		require.NoError(t, btc.StartPullSince("true", "0", "true"))
+		rev, found := btc.WaitForRev("doc1", docResp.Rev)
+		assert.True(t, found)
+		assert.Equal(t, `{"test":true}`, string(rev))
+	} else {
+		require.NoError(t, btcCollection.StartPullSince("true", "0", "true", ""))
+		rev, found := btcCollection.WaitForRev("doc1", docResp.Rev)
+		assert.True(t, found)
+		assert.Equal(t, `{"test":true}`, string(rev))
+	}
 
 	// delete the doc and make sure the client still gets the tombstone replicated
 	resp = rt.SendAdminRequest(http.MethodDelete, "/{{.keyspace}}/doc1?rev="+docResp.Rev, ``)
 	RequireStatus(t, resp, http.StatusOK)
 	require.NoError(t, base.JSONUnmarshal(resp.Body.Bytes(), &docResp))
 
-	rev, found = btc.WaitForRev("doc1", docResp.Rev)
-	assert.True(t, found)
-	assert.Equal(t, `{}`, string(rev))
+	if isDefault {
+		rev, found := btc.WaitForRev("doc1", docResp.Rev)
+		assert.True(t, found)
+		assert.Equal(t, `{}`, string(rev))
+	} else {
+		rev, found := btcCollection.WaitForRev("doc1", docResp.Rev)
+		assert.True(t, found)
+		assert.Equal(t, `{}`, string(rev))
+	}
 }
 
 // Test that exercises Sync Gateway's norev handler
@@ -1952,54 +2022,68 @@ func TestRemovedMessageWithAlternateAccess(t *testing.T) {
 	defer db.SuspendSequenceBatching()()
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
-	rt := NewRestTesterDefaultCollection(t, nil) // CBG-2619: make collection aware
+	rt := NewRestTester(t, nil) // CBG-2619: make collection aware
 	defer rt.Close()
 	collection := rt.GetSingleTestDatabaseCollection()
 
 	resp := rt.SendAdminRequest("PUT", "/db/_user/user", GetUserPayload(t, "user", "test", "", collection, []string{"A", "B"}, nil))
 	RequireStatus(t, resp, http.StatusCreated)
 
-	btc, err := NewBlipTesterClientOptsWithRT(t, rt, &BlipTesterClientOpts{
+	btc, isDefault, err := BlipClientInitialization(t, rt, collection, &BlipTesterClientOpts{
 		Username:        "user",
 		Channels:        []string{"*"},
 		ClientDeltas:    false,
 		SendRevocations: true,
 	})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	defer btc.Close()
+	btcCollection, err := btc.BlipClientCollectionSetup(collection)
+	require.NoError(t, err)
 
 	docRevID := rt.CreateDocReturnRev(t, "doc", "", map[string]interface{}{"channels": []string{"A", "B"}})
 
-	changes, err := rt.WaitForChanges(1, "/db/_changes?since=0&revocations=true", "user", true)
+	changes, err := rt.WaitForChanges(1, "/{{.keyspace}}/_changes?since=0&revocations=true", "user", true)
 	require.NoError(t, err)
 	assert.Equal(t, 1, len(changes.Results))
 	assert.Equal(t, "doc", changes.Results[0].ID)
 	assert.Equal(t, "1-9b49fa26d87ad363b2b08de73ff029a9", changes.Results[0].Changes[0]["rev"])
 
-	err = btc.StartOneshotPull()
-	assert.NoError(t, err)
-
-	_, ok := btc.WaitForRev("doc", "1-9b49fa26d87ad363b2b08de73ff029a9")
-	assert.True(t, ok)
+	if isDefault {
+		err = btc.StartOneshotPull()
+		assert.NoError(t, err)
+		_, ok := btc.WaitForRev("doc", "1-9b49fa26d87ad363b2b08de73ff029a9")
+		assert.True(t, ok)
+	} else {
+		err = btcCollection.StartOneshotPull()
+		assert.NoError(t, err)
+		_, ok := btcCollection.WaitForRev("doc", "1-9b49fa26d87ad363b2b08de73ff029a9")
+		assert.True(t, ok)
+	}
 
 	docRevID = rt.CreateDocReturnRev(t, "doc", docRevID, map[string]interface{}{"channels": []string{"B"}})
 
-	changes, err = rt.WaitForChanges(1, fmt.Sprintf("/db/_changes?since=%s&revocations=true", changes.Last_Seq), "user", true)
+	changes, err = rt.WaitForChanges(1, fmt.Sprintf("/{{.keyspace}}/_changes?since=%s&revocations=true", changes.Last_Seq), "user", true)
 	require.NoError(t, err)
 	assert.Equal(t, 1, len(changes.Results))
 	assert.Equal(t, "doc", changes.Results[0].ID)
 	assert.Equal(t, "2-f0d4cbcdd4a9ec835799055fdba45263", changes.Results[0].Changes[0]["rev"])
 
-	err = btc.StartOneshotPull()
-	assert.NoError(t, err)
-
-	_, ok = btc.WaitForRev("doc", "2-f0d4cbcdd4a9ec835799055fdba45263")
-	assert.True(t, ok)
+	if isDefault {
+		err = btc.StartOneshotPull()
+		assert.NoError(t, err)
+		_, ok := btc.WaitForRev("doc", "2-f0d4cbcdd4a9ec835799055fdba45263")
+		assert.True(t, ok)
+	} else {
+		err = btcCollection.StartOneshotPull()
+		assert.NoError(t, err)
+		_, ok := btcCollection.WaitForRev("doc", "2-f0d4cbcdd4a9ec835799055fdba45263")
+		assert.True(t, ok)
+	}
 
 	_ = rt.CreateDocReturnRev(t, "doc", docRevID, map[string]interface{}{"channels": []string{}})
 	_ = rt.CreateDocReturnRev(t, "docmarker", "", map[string]interface{}{"channels": []string{"!"}})
 
-	changes, err = rt.WaitForChanges(2, fmt.Sprintf("/db/_changes?since=%s&revocations=true", changes.Last_Seq), "user", true)
+	changes, err = rt.WaitForChanges(2, fmt.Sprintf("/{{.keyspace}}/_changes?since=%s&revocations=true", changes.Last_Seq), "user", true)
 	require.NoError(t, err)
 	assert.Len(t, changes.Results, 2)
 	assert.Equal(t, "doc", changes.Results[0].ID)
@@ -2009,11 +2093,17 @@ func TestRemovedMessageWithAlternateAccess(t *testing.T) {
 	assert.Equal(t, "1-999bcad4aab47f0a8a24bd9d3598060c", changes.Results[1].Changes[0]["rev"])
 	assert.False(t, changes.Results[1].Revoked)
 
-	err = btc.StartOneshotPull()
-	assert.NoError(t, err)
-
-	_, ok = btc.WaitForRev("docmarker", "1-999bcad4aab47f0a8a24bd9d3598060c")
-	assert.True(t, ok)
+	if isDefault {
+		err = btc.StartOneshotPull()
+		assert.NoError(t, err)
+		_, ok := btc.WaitForRev("docmarker", "1-999bcad4aab47f0a8a24bd9d3598060c")
+		assert.True(t, ok)
+	} else {
+		err = btcCollection.StartOneshotPull()
+		assert.NoError(t, err)
+		_, ok := btcCollection.WaitForRev("docmarker", "1-999bcad4aab47f0a8a24bd9d3598060c")
+		assert.True(t, ok)
+	}
 
 	messages := btc.pullReplication.GetMessages()
 
@@ -2059,66 +2149,87 @@ func TestRemovedMessageWithAlternateAccessAndChannelFilteredReplication(t *testi
 	defer db.SuspendSequenceBatching()()
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
-	rt := NewRestTesterDefaultCollection(t, nil) // CBG-2619: make collection aware
+	rt := NewRestTester(t, nil) // CBG-2619: make collection aware
 	defer rt.Close()
 	collection := rt.GetSingleTestDatabaseCollection()
+	var ok bool
 
 	resp := rt.SendAdminRequest("PUT", "/db/_user/user", GetUserPayload(t, "user", "test", "", collection, []string{"A", "B"}, nil))
 	RequireStatus(t, resp, http.StatusCreated)
 
-	btc, err := NewBlipTesterClientOptsWithRT(t, rt, &BlipTesterClientOpts{
+	btc, isDefault, err := BlipClientInitialization(t, rt, collection, &BlipTesterClientOpts{
 		Username:        "user",
 		Channels:        []string{"*"},
 		ClientDeltas:    false,
 		SendRevocations: true,
 	})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	defer btc.Close()
+	btcCollection, err := btc.BlipClientCollectionSetup(collection)
+	require.NoError(t, err)
 
 	docRevID := rt.CreateDocReturnRev(t, "doc", "", map[string]interface{}{"channels": []string{"A", "B"}})
 
-	changes, err := rt.WaitForChanges(1, "/db/_changes?since=0&revocations=true", "user", true)
+	changes, err := rt.WaitForChanges(1, "/{{.keyspace}}/_changes?since=0&revocations=true", "user", true)
 	require.NoError(t, err)
 	assert.Equal(t, 1, len(changes.Results))
 	assert.Equal(t, "doc", changes.Results[0].ID)
 	assert.Equal(t, "1-9b49fa26d87ad363b2b08de73ff029a9", changes.Results[0].Changes[0]["rev"])
 
-	err = btc.StartOneshotPull()
-	assert.NoError(t, err)
-
-	_, ok := btc.WaitForRev("doc", "1-9b49fa26d87ad363b2b08de73ff029a9")
-	assert.True(t, ok)
+	if isDefault {
+		err = btc.StartOneshotPull()
+		assert.NoError(t, err)
+		_, ok = btc.WaitForRev("doc", "1-9b49fa26d87ad363b2b08de73ff029a9")
+		assert.True(t, ok)
+	} else {
+		err = btcCollection.StartOneshotPull()
+		assert.NoError(t, err)
+		_, ok = btcCollection.WaitForRev("doc", "1-9b49fa26d87ad363b2b08de73ff029a9")
+		assert.True(t, ok)
+	}
 
 	docRevID = rt.CreateDocReturnRev(t, "doc", docRevID, map[string]interface{}{"channels": []string{"C"}})
 
 	// At this point changes should send revocation, as document isn't in any of the user's channels
-	changes, err = rt.WaitForChanges(1, "/db/_changes?filter=sync_gateway/bychannel&channels=A&since=0&revocations=true", "user", true)
+	changes, err = rt.WaitForChanges(1, "/{{.keyspace}}/_changes?filter=sync_gateway/bychannel&channels=A&since=0&revocations=true", "user", true)
 	require.NoError(t, err)
 	assert.Equal(t, 1, len(changes.Results))
 	assert.Equal(t, "doc", changes.Results[0].ID)
 	assert.Equal(t, docRevID, changes.Results[0].Changes[0]["rev"])
 
-	err = btc.StartOneshotPullFiltered("A")
-	assert.NoError(t, err)
-
-	_, ok = btc.WaitForRev("doc", docRevID)
-	assert.True(t, ok)
+	if isDefault {
+		err = btc.StartOneshotPullFiltered("A")
+		assert.NoError(t, err)
+		_, ok = btc.WaitForRev("doc", docRevID)
+		assert.True(t, ok)
+	} else {
+		err = btcCollection.StartOneshotPullFiltered("A")
+		assert.NoError(t, err)
+		_, ok = btcCollection.WaitForRev("doc", docRevID)
+		assert.True(t, ok)
+	}
 
 	_ = rt.CreateDocReturnRev(t, "doc", docRevID, map[string]interface{}{"channels": []string{"B"}})
 	markerDocRevID := rt.CreateDocReturnRev(t, "docmarker", "", map[string]interface{}{"channels": []string{"A"}})
 
 	// Revocation should not be sent over blip, as document is now in user's channels - only marker document should be received
-	changes, err = rt.WaitForChanges(1, "/db/_changes?filter=sync_gateway/bychannel&channels=A&since=0&revocations=true", "user", true)
+	changes, err = rt.WaitForChanges(1, "/{{.keyspace}}/_changes?filter=sync_gateway/bychannel&channels=A&since=0&revocations=true", "user", true)
 	require.NoError(t, err)
 	assert.Len(t, changes.Results, 2) // _changes still gets two results, as we don't support 3.0 removal handling over REST API
 	assert.Equal(t, "doc", changes.Results[0].ID)
 	assert.Equal(t, "docmarker", changes.Results[1].ID)
 
-	err = btc.StartOneshotPullFiltered("A")
-	assert.NoError(t, err)
-
-	_, ok = btc.WaitForRev("docmarker", markerDocRevID)
-	assert.True(t, ok)
+	if isDefault {
+		err = btc.StartOneshotPullFiltered("A")
+		assert.NoError(t, err)
+		_, ok = btc.WaitForRev("docmarker", markerDocRevID)
+		assert.True(t, ok)
+	} else {
+		err = btcCollection.StartOneshotPullFiltered("A")
+		assert.NoError(t, err)
+		_, ok = btcCollection.WaitForRev("docmarker", markerDocRevID)
+		assert.True(t, ok)
+	}
 
 	messages := btc.pullReplication.GetMessages()
 
@@ -2361,15 +2472,18 @@ func TestBlipInternalPropertiesHandling(t *testing.T) {
 	}
 
 	// Setup
-	rt := NewRestTesterDefaultCollection(t, // CBG-2619: make collection aware
+	rt := NewRestTester(t, // CBG-2619: make collection aware
 		&RestTesterConfig{
 			GuestEnabled: true,
 		})
 	defer rt.Close()
+	collection := rt.GetSingleTestDatabaseCollection()
 
-	client, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
+	client, isDefault, err := BlipClientInitialization(t, rt, collection, nil)
 	require.NoError(t, err)
 	defer client.Close()
+	btcCollection, err := client.BlipClientCollectionSetup(collection)
+	require.NoError(t, err)
 
 	// Track last sequence for next changes feed
 	var changes ChangesResults
@@ -2381,7 +2495,11 @@ func TestBlipInternalPropertiesHandling(t *testing.T) {
 			rawBody, err := json.Marshal(test.inputBody)
 			require.NoError(t, err)
 
-			_, err = client.PushRev(docID, "", rawBody)
+			if isDefault {
+				_, err = client.PushRev(docID, "", rawBody)
+			} else {
+				_, err = btcCollection.PushRev(docID, "", rawBody)
+			}
 			if test.expectReject {
 				assert.Error(t, err)
 				return
@@ -2391,11 +2509,11 @@ func TestBlipInternalPropertiesHandling(t *testing.T) {
 			// Wait for rev to be received on RT
 			err = rt.WaitForPendingChanges()
 			require.NoError(t, err)
-			changes, err = rt.WaitForChanges(1, fmt.Sprintf("/db/_changes?since=%s", changes.Last_Seq), "", true)
+			changes, err = rt.WaitForChanges(1, fmt.Sprintf("/{{.keyspace}}/_changes?since=%s", changes.Last_Seq), "", true)
 			require.NoError(t, err)
 
 			var bucketDoc map[string]interface{}
-			_, err = rt.Bucket().DefaultDataStore().Get(docID, &bucketDoc)
+			_, err = rt.GetSingleDataStore().Get(docID, &bucketDoc)
 			assert.NoError(t, err)
 			body := rt.GetDoc(docID)
 			// Confirm input body is in the bucket doc
@@ -2537,19 +2655,22 @@ func TestSendRevisionNoRevHandling(t *testing.T) {
 	for _, test := range testCases {
 		t.Run(fmt.Sprintf("%s", test.error), func(t *testing.T) {
 			docName := fmt.Sprintf("%s", test.error)
-			rt := NewRestTesterDefaultCollection(t, // CBG-2619: make collection aware
+			rt := NewRestTester(t, // CBG-2619: make collection aware
 				&RestTesterConfig{
 					GuestEnabled:     true,
 					CustomTestBucket: base.GetTestBucket(t).LeakyBucketClone(base.LeakyBucketConfig{}),
 				})
 			defer rt.Close()
+			collection := rt.GetSingleTestDatabaseCollection()
 
 			leakyDataStore, ok := base.AsLeakyDataStore(rt.Bucket().DefaultDataStore())
 			require.True(t, ok)
 
-			btc, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
+			btc, isDefault, err := BlipClientInitialization(t, rt, collection, nil)
 			require.NoError(t, err)
 			defer btc.Close()
+			btcCollection, err := btc.BlipClientCollectionSetup(collection)
+			require.NoError(t, err)
 
 			// Change noRev handler so it's known when a noRev is received
 			recievedNoRevs := make(chan *blip.Message)
@@ -2558,7 +2679,7 @@ func TestSendRevisionNoRevHandling(t *testing.T) {
 				recievedNoRevs <- msg
 			}
 
-			resp := rt.SendAdminRequest(http.MethodPut, "/db/"+docName, `{"foo":"bar"}`)
+			resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docName, `{"foo":"bar"}`)
 			RequireStatus(t, resp, http.StatusCreated)
 
 			// Make the LeakyBucket return an error
@@ -2569,8 +2690,13 @@ func TestSendRevisionNoRevHandling(t *testing.T) {
 			// Flush cache so document has to be retrieved from the leaky bucket
 			rt.GetDatabase().GetSingleDatabaseCollection().FlushRevisionCacheForTest()
 
-			err = btc.StartPull()
-			require.NoError(t, err)
+			if isDefault {
+				err = btc.StartPull()
+				require.NoError(t, err)
+			} else {
+				err = btcCollection.StartPull()
+				require.NoError(t, err)
+			}
 
 			// Wait 3 seconds for noRev to be received
 			select {
@@ -2587,8 +2713,13 @@ func TestSendRevisionNoRevHandling(t *testing.T) {
 			}
 
 			// Make sure document did not get replicated
-			_, found := btc.GetRev(docName, RespRevID(t, resp))
-			assert.False(t, found)
+			if isDefault {
+				_, found := btc.GetRev(docName, RespRevID(t, resp))
+				assert.False(t, found)
+			} else {
+				_, found := btcCollection.GetRev(docName, RespRevID(t, resp))
+				assert.False(t, found)
+			}
 		})
 	}
 }

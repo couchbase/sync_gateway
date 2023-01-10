@@ -2627,17 +2627,21 @@ func TestAttachmentDeleteOnExpiry(t *testing.T) {
 
 }
 func TestUpdateExistingAttachment(t *testing.T) {
-	rt := NewRestTesterDefaultCollection(t, &RestTesterConfig{ // CBG-2619
+	rt := NewRestTester(t, &RestTesterConfig{ // CBG-2619
 		GuestEnabled: true,
 	})
 	defer rt.Close()
+	collection := rt.GetSingleTestDatabaseCollection()
 
-	btc, err := NewBlipTesterClient(t, rt)
+	btc, isDefault, err := BlipClientInitialization(t, rt, collection, nil)
 	assert.NoError(t, err)
 	defer btc.Close()
+	btcCollection, err := btc.BlipClientCollectionSetup(collection)
+	require.NoError(t, err)
 
 	var doc1Body db.Body
 	var doc2Body db.Body
+	var revIDDoc1, revIDDoc2 string
 
 	// Add doc1 and doc2
 	req := rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1", `{}`)
@@ -2654,21 +2658,36 @@ func TestUpdateExistingAttachment(t *testing.T) {
 	err = json.Unmarshal(doc2Bytes, &doc2Body)
 	assert.NoError(t, err)
 
-	err = btc.StartOneshotPull()
-	assert.NoError(t, err)
-
-	_, ok := btc.WaitForRev("doc1", "1-ca9ad22802b66f662ff171f226211d5c")
-	require.True(t, ok)
-	_, ok = btc.WaitForRev("doc2", "1-ca9ad22802b66f662ff171f226211d5c")
-	require.True(t, ok)
+	if isDefault {
+		err = btc.StartOneshotPull()
+		assert.NoError(t, err)
+		_, ok := btc.WaitForRev("doc1", "1-ca9ad22802b66f662ff171f226211d5c")
+		require.True(t, ok)
+		_, ok = btc.WaitForRev("doc2", "1-ca9ad22802b66f662ff171f226211d5c")
+		require.True(t, ok)
+	} else {
+		err = btcCollection.StartOneshotPull()
+		assert.NoError(t, err)
+		_, ok := btcCollection.WaitForRev("doc1", "1-ca9ad22802b66f662ff171f226211d5c")
+		require.True(t, ok)
+		_, ok = btcCollection.WaitForRev("doc2", "1-ca9ad22802b66f662ff171f226211d5c")
+		require.True(t, ok)
+	}
 
 	attachmentAData := base64.StdEncoding.EncodeToString([]byte("attachmentA"))
 	attachmentBData := base64.StdEncoding.EncodeToString([]byte("attachmentB"))
 
-	revIDDoc1, err := btc.PushRev("doc1", doc1Body["rev"].(string), []byte(`{"key": "val", "_attachments": {"attachment": {"data": "`+attachmentAData+`"}}}`))
-	require.NoError(t, err)
-	revIDDoc2, err := btc.PushRev("doc2", doc2Body["rev"].(string), []byte(`{"key": "val", "_attachments": {"attachment": {"data": "`+attachmentBData+`"}}}`))
-	require.NoError(t, err)
+	if isDefault {
+		revIDDoc1, err = btc.PushRev("doc1", doc1Body["rev"].(string), []byte(`{"key": "val", "_attachments": {"attachment": {"data": "`+attachmentAData+`"}}}`))
+		require.NoError(t, err)
+		revIDDoc2, err = btc.PushRev("doc2", doc2Body["rev"].(string), []byte(`{"key": "val", "_attachments": {"attachment": {"data": "`+attachmentBData+`"}}}`))
+		require.NoError(t, err)
+	} else {
+		revIDDoc1, err = btcCollection.PushRev("doc1", doc1Body["rev"].(string), []byte(`{"key": "val", "_attachments": {"attachment": {"data": "`+attachmentAData+`"}}}`))
+		require.NoError(t, err)
+		revIDDoc2, err = btcCollection.PushRev("doc2", doc2Body["rev"].(string), []byte(`{"key": "val", "_attachments": {"attachment": {"data": "`+attachmentBData+`"}}}`))
+		require.NoError(t, err)
+	}
 
 	err = rt.WaitForRev("doc1", revIDDoc1)
 	assert.NoError(t, err)
@@ -2678,8 +2697,13 @@ func TestUpdateExistingAttachment(t *testing.T) {
 	_, err = rt.GetSingleTestDatabaseCollection().GetDocument(base.TestCtx(t), "doc1", db.DocUnmarshalAll)
 	_, err = rt.GetSingleTestDatabaseCollection().GetDocument(base.TestCtx(t), "doc2", db.DocUnmarshalAll)
 
-	revIDDoc1, err = btc.PushRev("doc1", revIDDoc1, []byte(`{"key": "val", "_attachments":{"attachment":{"digest":"sha1-SKk0IV40XSHW37d3H0xpv2+z9Ck=","length":11,"content_type":"","stub":true,"revpos":3}}}`))
-	require.NoError(t, err)
+	if isDefault {
+		revIDDoc1, err = btc.PushRev("doc1", revIDDoc1, []byte(`{"key": "val", "_attachments":{"attachment":{"digest":"sha1-SKk0IV40XSHW37d3H0xpv2+z9Ck=","length":11,"content_type":"","stub":true,"revpos":3}}}`))
+		require.NoError(t, err)
+	} else {
+		revIDDoc1, err = btcCollection.PushRev("doc1", revIDDoc1, []byte(`{"key": "val", "_attachments":{"attachment":{"digest":"sha1-SKk0IV40XSHW37d3H0xpv2+z9Ck=","length":11,"content_type":"","stub":true,"revpos":3}}}`))
+		require.NoError(t, err)
+	}
 
 	err = rt.WaitForRev("doc1", revIDDoc1)
 	assert.NoError(t, err)
@@ -2696,14 +2720,18 @@ func TestUpdateExistingAttachment(t *testing.T) {
 // TestPushUnknownAttachmentAsStub sets revpos to an older generation, for an attachment that doesn't exist on the server.
 // Verifies that getAttachment is triggered, and attachment is properly persisted.
 func TestPushUnknownAttachmentAsStub(t *testing.T) {
-	rt := NewRestTesterDefaultCollection(t, &RestTesterConfig{ // CBG-2619
+	rt := NewRestTester(t, &RestTesterConfig{ // CBG-2619
 		GuestEnabled: true,
 	})
 	defer rt.Close()
+	collection := rt.GetSingleTestDatabaseCollection()
+	var revIDDoc1, rev1ID string
 
-	btc, err := NewBlipTesterClient(t, rt)
+	btc, isDefault, err := BlipClientInitialization(t, rt, collection, nil)
 	assert.NoError(t, err)
 	defer btc.Close()
+	btcCollection, err := btc.BlipClientCollectionSetup(collection)
+	require.NoError(t, err)
 
 	var doc1Body db.Body
 
@@ -2717,22 +2745,36 @@ func TestPushUnknownAttachmentAsStub(t *testing.T) {
 	err = json.Unmarshal(doc1Bytes, &doc1Body)
 	assert.NoError(t, err)
 
-	err = btc.StartOneshotPull()
-	assert.NoError(t, err)
-
-	rev1ID := "1-ca9ad22802b66f662ff171f226211d5c"
-	_, ok := btc.WaitForRev("doc1", rev1ID)
-	require.True(t, ok)
+	if isDefault {
+		err = btc.StartOneshotPull()
+		assert.NoError(t, err)
+		rev1ID = "1-ca9ad22802b66f662ff171f226211d5c"
+		_, ok := btc.WaitForRev("doc1", rev1ID)
+		require.True(t, ok)
+	} else {
+		err = btcCollection.StartOneshotPull()
+		assert.NoError(t, err)
+		rev1ID = "1-ca9ad22802b66f662ff171f226211d5c"
+		_, ok := btcCollection.WaitForRev("doc1", rev1ID)
+		require.True(t, ok)
+	}
 
 	// force attachment into test client's store to validate it's fetched
 	attachmentAData := base64.StdEncoding.EncodeToString([]byte("attachmentA"))
 	contentType := "text/plain"
-	length, digest, err := btc.saveAttachment(contentType, attachmentAData)
-	require.NoError(t, err)
-
-	// Update doc1, include reference to non-existing attachment with recent revpos
-	revIDDoc1, err := btc.PushRev("doc1", rev1ID, []byte(fmt.Sprintf(`{"key": "val", "_attachments":{"attachment":{"digest":"%s","length":%d,"content_type":"%s","stub":true,"revpos":1}}}`, digest, length, contentType)))
-	require.NoError(t, err)
+	if isDefault {
+		length, digest, err := btc.saveAttachment(contentType, attachmentAData)
+		require.NoError(t, err)
+		// Update doc1, include reference to non-existing attachment with recent revpos
+		revIDDoc1, err = btc.PushRev("doc1", rev1ID, []byte(fmt.Sprintf(`{"key": "val", "_attachments":{"attachment":{"digest":"%s","length":%d,"content_type":"%s","stub":true,"revpos":1}}}`, digest, length, contentType)))
+		require.NoError(t, err)
+	} else {
+		length, digest, err := btcCollection.saveAttachment(contentType, attachmentAData)
+		require.NoError(t, err)
+		// Update doc1, include reference to non-existing attachment with recent revpos
+		revIDDoc1, err = btcCollection.PushRev("doc1", rev1ID, []byte(fmt.Sprintf(`{"key": "val", "_attachments":{"attachment":{"digest":"%s","length":%d,"content_type":"%s","stub":true,"revpos":1}}}`, digest, length, contentType)))
+		require.NoError(t, err)
+	}
 
 	err = rt.WaitForRev("doc1", revIDDoc1)
 	assert.NoError(t, err)
@@ -2943,7 +2985,7 @@ func TestPutInvalidAttachment(t *testing.T) {
 				attachmentBody:   test.invalidAttachmentBody,
 				attachmentDigest: digest,
 			}
-			sent, _, resp := bt.SendRevWithAttachment(input)
+			sent, _, resp := bt.SendRevWithAttachment(input, nil)
 			assert.True(t, sent)
 
 			// Make sure we get the expected response back
@@ -2963,17 +3005,21 @@ func TestPutInvalidAttachment(t *testing.T) {
 // validates that proveAttachment isn't being invoked when the attachment is already present and the
 // digest doesn't change, regardless of revpos.
 func TestCBLRevposHandling(t *testing.T) {
-	rt := NewRestTesterDefaultCollection(t, &RestTesterConfig{ // CBG-2619
+	rt := NewRestTester(t, &RestTesterConfig{ // CBG-2619
 		GuestEnabled: true,
 	})
 	defer rt.Close()
+	collection := rt.GetSingleTestDatabaseCollection()
 
-	btc, err := NewBlipTesterClient(t, rt)
+	btc, isDefault, err := BlipClientInitialization(t, rt, collection, nil)
 	assert.NoError(t, err)
 	defer btc.Close()
+	btcCollection, err := btc.BlipClientCollectionSetup(collection)
+	require.NoError(t, err)
 
 	var doc1Body db.Body
 	var doc2Body db.Body
+	var revIDDoc1, revIDDoc2 string
 
 	// Add doc1 and doc2
 	req := rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1", `{}`)
@@ -2990,21 +3036,36 @@ func TestCBLRevposHandling(t *testing.T) {
 	err = json.Unmarshal(doc2Bytes, &doc2Body)
 	assert.NoError(t, err)
 
-	err = btc.StartOneshotPull()
-	assert.NoError(t, err)
-
-	_, ok := btc.WaitForRev("doc1", "1-ca9ad22802b66f662ff171f226211d5c")
-	require.True(t, ok)
-	_, ok = btc.WaitForRev("doc2", "1-ca9ad22802b66f662ff171f226211d5c")
-	require.True(t, ok)
+	if isDefault {
+		err = btc.StartOneshotPull()
+		assert.NoError(t, err)
+		_, ok := btc.WaitForRev("doc1", "1-ca9ad22802b66f662ff171f226211d5c")
+		require.True(t, ok)
+		_, ok = btc.WaitForRev("doc2", "1-ca9ad22802b66f662ff171f226211d5c")
+		require.True(t, ok)
+	} else {
+		err = btcCollection.StartOneshotPull()
+		assert.NoError(t, err)
+		_, ok := btcCollection.WaitForRev("doc1", "1-ca9ad22802b66f662ff171f226211d5c")
+		require.True(t, ok)
+		_, ok = btcCollection.WaitForRev("doc2", "1-ca9ad22802b66f662ff171f226211d5c")
+		require.True(t, ok)
+	}
 
 	attachmentAData := base64.StdEncoding.EncodeToString([]byte("attachmentA"))
 	attachmentBData := base64.StdEncoding.EncodeToString([]byte("attachmentB"))
 
-	revIDDoc1, err := btc.PushRev("doc1", doc1Body["rev"].(string), []byte(`{"key": "val", "_attachments": {"attachment": {"data": "`+attachmentAData+`"}}}`))
-	require.NoError(t, err)
-	revIDDoc2, err := btc.PushRev("doc2", doc2Body["rev"].(string), []byte(`{"key": "val", "_attachments": {"attachment": {"data": "`+attachmentBData+`"}}}`))
-	require.NoError(t, err)
+	if isDefault {
+		revIDDoc1, err = btc.PushRev("doc1", doc1Body["rev"].(string), []byte(`{"key": "val", "_attachments": {"attachment": {"data": "`+attachmentAData+`"}}}`))
+		require.NoError(t, err)
+		revIDDoc2, err = btc.PushRev("doc2", doc2Body["rev"].(string), []byte(`{"key": "val", "_attachments": {"attachment": {"data": "`+attachmentBData+`"}}}`))
+		require.NoError(t, err)
+	} else {
+		revIDDoc1, err = btcCollection.PushRev("doc1", doc1Body["rev"].(string), []byte(`{"key": "val", "_attachments": {"attachment": {"data": "`+attachmentAData+`"}}}`))
+		require.NoError(t, err)
+		revIDDoc2, err = btcCollection.PushRev("doc2", doc2Body["rev"].(string), []byte(`{"key": "val", "_attachments": {"attachment": {"data": "`+attachmentBData+`"}}}`))
+		require.NoError(t, err)
+	}
 
 	err = rt.WaitForRev("doc1", revIDDoc1)
 	assert.NoError(t, err)
@@ -3015,15 +3076,25 @@ func TestCBLRevposHandling(t *testing.T) {
 	_, err = rt.GetDatabase().GetSingleDatabaseCollection().GetDocument(base.TestCtx(t), "doc2", db.DocUnmarshalAll)
 
 	// Update doc1, don't change attachment, use correct revpos
-	revIDDoc1, err = btc.PushRev("doc1", revIDDoc1, []byte(`{"key": "val", "_attachments":{"attachment":{"digest":"sha1-wzp8ZyykdEuZ9GuqmxQ7XDrY7Co=","length":11,"content_type":"","stub":true,"revpos":2}}}`))
-	require.NoError(t, err)
+	if isDefault {
+		revIDDoc1, err = btc.PushRev("doc1", revIDDoc1, []byte(`{"key": "val", "_attachments":{"attachment":{"digest":"sha1-wzp8ZyykdEuZ9GuqmxQ7XDrY7Co=","length":11,"content_type":"","stub":true,"revpos":2}}}`))
+		require.NoError(t, err)
+	} else {
+		revIDDoc1, err = btcCollection.PushRev("doc1", revIDDoc1, []byte(`{"key": "val", "_attachments":{"attachment":{"digest":"sha1-wzp8ZyykdEuZ9GuqmxQ7XDrY7Co=","length":11,"content_type":"","stub":true,"revpos":2}}}`))
+		require.NoError(t, err)
+	}
 
 	err = rt.WaitForRev("doc1", revIDDoc1)
 	assert.NoError(t, err)
 
 	// Update doc1, don't change attachment, use revpos=generation of revid, as CBL 2.x does.  Should not proveAttachment on digest match.
-	revIDDoc1, err = btc.PushRev("doc1", revIDDoc1, []byte(`{"key": "val", "_attachments":{"attachment":{"digest":"sha1-wzp8ZyykdEuZ9GuqmxQ7XDrY7Co=","length":11,"content_type":"","stub":true,"revpos":4}}}`))
-	require.NoError(t, err)
+	if isDefault {
+		revIDDoc1, err = btc.PushRev("doc1", revIDDoc1, []byte(`{"key": "val", "_attachments":{"attachment":{"digest":"sha1-wzp8ZyykdEuZ9GuqmxQ7XDrY7Co=","length":11,"content_type":"","stub":true,"revpos":4}}}`))
+		require.NoError(t, err)
+	} else {
+		revIDDoc1, err = btcCollection.PushRev("doc1", revIDDoc1, []byte(`{"key": "val", "_attachments":{"attachment":{"digest":"sha1-wzp8ZyykdEuZ9GuqmxQ7XDrY7Co=","length":11,"content_type":"","stub":true,"revpos":4}}}`))
+		require.NoError(t, err)
+	}
 
 	// Validate attachment exists
 	attResponse := rt.SendAdminRequest("GET", "/{{.keyspace}}/doc1/attachment", "")
@@ -3032,8 +3103,13 @@ func TestCBLRevposHandling(t *testing.T) {
 
 	attachmentPushCount := rt.GetDatabase().DbStats.CBLReplicationPushStats.AttachmentPushCount.Value()
 	// Update doc1, change attachment digest with CBL revpos=generation.  Should getAttachment
-	_, err = btc.PushRev("doc1", revIDDoc1, []byte(`{"key": "val", "_attachments":{"attachment":{"digest":"sha1-SKk0IV40XSHW37d3H0xpv2+z9Ck=","length":11,"content_type":"","stub":true,"revpos":5}}}`))
-	require.NoError(t, err)
+	if isDefault {
+		_, err = btc.PushRev("doc1", revIDDoc1, []byte(`{"key": "val", "_attachments":{"attachment":{"digest":"sha1-SKk0IV40XSHW37d3H0xpv2+z9Ck=","length":11,"content_type":"","stub":true,"revpos":5}}}`))
+		require.NoError(t, err)
+	} else {
+		_, err = btcCollection.PushRev("doc1", revIDDoc1, []byte(`{"key": "val", "_attachments":{"attachment":{"digest":"sha1-SKk0IV40XSHW37d3H0xpv2+z9Ck=","length":11,"content_type":"","stub":true,"revpos":5}}}`))
+		require.NoError(t, err)
+	}
 
 	// Validate attachment exists and is updated
 	attResponse = rt.SendAdminRequest("GET", "/{{.keyspace}}/doc1/attachment", "")

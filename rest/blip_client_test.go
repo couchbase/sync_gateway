@@ -1059,8 +1059,16 @@ func (btc *BlipTesterClient) AttachmentsLock() *sync.RWMutex {
 	return &btc.SingleCollection().attachmentsLock
 }
 
+func (btc *BlipTesterCollectionClient) AttachmentsLock() *sync.RWMutex {
+	return &btc.attachmentsLock
+}
+
 func (btc *BlipTesterClient) Attachments() map[string][]byte {
 	return btc.SingleCollection().attachments
+}
+
+func (btc *BlipTesterCollectionClient) Attachments() map[string][]byte {
+	return btc.attachments
 }
 
 func (btc *BlipTesterClient) UnsubPullChanges() ([]byte, error) {
@@ -1111,4 +1119,62 @@ func (btc *BlipTesterCollectionClient) sendPullMsg(msg *blip.Message) error {
 func (btc *BlipTesterCollectionClient) sendPushMsg(msg *blip.Message) error {
 	btc.addCollectionProperty(msg)
 	return btc.parent.pushReplication.sendMsg(msg)
+}
+
+func (btc *BlipTesterClient) BlipClientCollectionSetup(collection *db.DatabaseCollection) (*BlipTesterCollectionClient, error) {
+	var btcCollection *BlipTesterCollectionClient
+	scopeAndCollectionKey := strings.Join([]string{collection.ScopeName(), collection.Name()}, base.ScopeCollectionSeparator)
+	if !base.IsDefaultCollection(collection.ScopeName(), collection.Name()) {
+		checkpointID1 := "checkpoint1"
+		getCollectionsRequest, err := db.NewGetCollectionsMessage(db.GetCollectionsRequestBody{
+			CheckpointIDs: []string{checkpointID1},
+			Collections:   []string{fmt.Sprintf("%s.%s", collection.ScopeName(), collection.Name())},
+		})
+		if err != nil {
+			return nil, err
+		}
+		err = btc.pushReplication.sendMsg(getCollectionsRequest)
+		if err != nil {
+			return nil, err
+		}
+		resp := getCollectionsRequest.Response()
+		if resp == nil {
+			return nil, fmt.Errorf("error in getCollections response")
+		}
+		btcCollection, err = btc.Collection(scopeAndCollectionKey)
+		if err != nil {
+			return nil, err
+		}
+		_, found := btc.pushReplication.WaitForMessage(getCollectionsRequest.SerialNumber())
+		if !found {
+			return nil, fmt.Errorf("error waiting for getCollections serial number to be stored by the replicator")
+		}
+	}
+	return btcCollection, nil
+}
+
+func BlipClientInitialization(t *testing.T, rt *RestTester, collection *db.DatabaseCollection, options *BlipTesterClientOpts) (*BlipTesterClient, bool, error) {
+	scopeAndCollectionKey := strings.Join([]string{collection.ScopeName(), collection.Name()}, base.ScopeCollectionSeparator)
+	var isDefault bool
+	var client *BlipTesterClient
+	var err error
+
+	if base.IsDefaultCollection(collection.ScopeName(), collection.Name()) {
+		client, err = NewBlipTesterClientOptsWithRT(t, rt, options)
+		isDefault = true
+		if err != nil {
+			return nil, isDefault, err
+		}
+	} else {
+		if options == nil {
+			options = &BlipTesterClientOpts{}
+		}
+		options.Collections = []string{scopeAndCollectionKey}
+		isDefault = false
+		client, err = NewBlipTesterClientOptsWithRT(t, rt, options)
+		if err != nil {
+			return nil, isDefault, err
+		}
+	}
+	return client, isDefault, nil
 }

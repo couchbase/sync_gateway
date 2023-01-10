@@ -14,9 +14,6 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"net/http"
-	"testing"
-
 	"github.com/couchbase/go-blip"
 	"github.com/couchbase/gocb/v2"
 	sgbucket "github.com/couchbase/sg-bucket"
@@ -24,6 +21,8 @@ import (
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"net/http"
+	"testing"
 )
 
 // Test pushing and pulling v2 attachments with v2 client
@@ -319,12 +318,16 @@ func TestPutAttachmentViaBlipGetViaRest(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)
 
 	// Create blip tester
-	bt := NewBlipTesterDefaultCollectionFromSpec(t, // CBG-2619 // make collection aware
+	bt, err := NewBlipTesterFromSpec(t, // CBG-2619 // make collection aware
 		BlipTesterSpec{
 			connectingUsername: "user1",
 			connectingPassword: "1234",
 		})
+	require.NoError(t, err)
 	defer bt.Close()
+	collection := bt.restTester.GetSingleTestDatabaseCollection()
+	properties, err := bt.BlipCollectionSetup(collection)
+	require.NoError(t, err)
 
 	attachmentBody := "attach"
 	digest := db.Sha1DigestKey([]byte(attachmentBody))
@@ -337,7 +340,7 @@ func TestPutAttachmentViaBlipGetViaRest(t *testing.T) {
 		attachmentBody:   attachmentBody,
 		attachmentDigest: digest,
 	}
-	bt.SendRevWithAttachment(input)
+	bt.SendRevWithAttachment(input, properties)
 
 	// Try to fetch the attachment directly via getAttachment, expected to fail w/ 403 error for security reasons
 	// since it's not in the context of responding to a "rev" request from the peer.
@@ -345,6 +348,7 @@ func TestPutAttachmentViaBlipGetViaRest(t *testing.T) {
 	getAttachmentRequest.SetProfile(db.MessageGetAttachment)
 	getAttachmentRequest.Properties[db.GetAttachmentDigest] = input.attachmentDigest
 	getAttachmentRequest.Properties[db.GetAttachmentID] = input.docId
+	getAttachmentRequest.Properties[db.BlipCollection] = "0"
 	sent := bt.sender.Send(getAttachmentRequest)
 	if !sent {
 		panic(fmt.Sprintf("Failed to send request for doc: %v", input.docId))
@@ -355,7 +359,7 @@ func TestPutAttachmentViaBlipGetViaRest(t *testing.T) {
 	assert.True(t, hasErrorCode)
 
 	// Get the attachment via REST api and make sure it matches the attachment pushed earlier
-	response := bt.restTester.SendAdminRequest("GET", fmt.Sprintf("/db/%s/%s", input.docId, input.attachmentName), ``)
+	response := bt.restTester.SendAdminRequest("GET", fmt.Sprintf("/{{.keyspace}}/%s/%s", input.docId, input.attachmentName), ``)
 	assert.Equal(t, input.attachmentBody, response.Body.String())
 
 }
@@ -363,12 +367,16 @@ func TestPutAttachmentViaBlipGetViaBlip(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)
 
 	// Create blip tester
-	bt := NewBlipTesterDefaultCollectionFromSpec(t, BlipTesterSpec{
+	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
 		connectingUsername:          "user1",
 		connectingPassword:          "1234",
 		connectingUserChannelGrants: []string{"*"}, // All channels
 	})
+	require.NoError(t, err)
 	defer bt.Close()
+	collection := bt.restTester.GetSingleTestDatabaseCollection()
+	properties, err := bt.BlipCollectionSetup(collection)
+	require.NoError(t, err)
 
 	attachmentBody := "attach"
 	digest := db.Sha1DigestKey([]byte(attachmentBody))
@@ -382,7 +390,7 @@ func TestPutAttachmentViaBlipGetViaBlip(t *testing.T) {
 		attachmentBody:   attachmentBody,
 		attachmentDigest: digest,
 	}
-	sent, _, _ := bt.SendRevWithAttachment(input)
+	sent, _, _ := bt.SendRevWithAttachment(input, properties)
 	assert.True(t, sent)
 
 	// Get all docs and attachment via subChanges request
@@ -411,13 +419,15 @@ func TestPutAttachmentViaBlipGetViaBlip(t *testing.T) {
 
 // TestBlipAttachNameChange tests CBL handling - attachments with changed names are sent as stubs, and not new attachments
 func TestBlipAttachNameChange(t *testing.T) {
-	rt := NewRestTesterDefaultCollection(t, &RestTesterConfig{ // CBG-2619
+	rt := NewRestTester(t, &RestTesterConfig{ // CBG-2619
 		GuestEnabled: true,
 	})
 	defer rt.Close()
-	keyspace := "db"
+	collection := rt.GetSingleTestDatabaseCollection()
+	var err error
+	var rev string
 
-	client1, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
+	client1, isDefault, err := BlipClientInitialization(t, rt, collection, nil)
 	require.NoError(t, err)
 	defer client1.Close()
 	base.SetUpTestLogging(t, base.LevelTrace, base.KeySync, base.KeySyncMsg, base.KeyWebSocket, base.KeyWebSocketFrame, base.KeyHTTP, base.KeyCRUD)
@@ -425,10 +435,17 @@ func TestBlipAttachNameChange(t *testing.T) {
 	attachmentA := []byte("attachmentA")
 	attachmentAData := base64.StdEncoding.EncodeToString(attachmentA)
 	digest := db.Sha1DigestKey(attachmentA)
+	btcCollection, err := client1.BlipClientCollectionSetup(collection)
+	require.NoError(t, err)
 
 	// Push initial attachment data
-	rev, err := client1.PushRev("doc", "", []byte(`{"key":"val","_attachments":{"attachment": {"data":"`+attachmentAData+`"}}}`))
-	require.NoError(t, err)
+	if isDefault {
+		rev, err = client1.PushRev("doc", "", []byte(`{"key":"val","_attachments":{"attachment": {"data":"`+attachmentAData+`"}}}`))
+		require.NoError(t, err)
+	} else {
+		rev, err = btcCollection.PushRev("doc", "", []byte(`{"key":"val","_attachments":{"attachment": {"data":"`+attachmentAData+`"}}}`))
+		require.NoError(t, err)
+	}
 
 	// Confirm attachment is in the bucket
 	attachmentAKey := db.MakeAttachmentKey(2, "doc", digest)
@@ -438,8 +455,13 @@ func TestBlipAttachNameChange(t *testing.T) {
 
 	// Simulate changing only the attachment name over CBL
 	// Use revpos 2 to simulate revpos bug in CBL 2.8 - 3.0.0
-	rev, err = client1.PushRev("doc", rev, []byte(`{"key":"val","_attachments":{"attach":{"revpos":2,"content_type":"","length":11,"stub":true,"digest":"`+digest+`"}}}`))
-	require.NoError(t, err)
+	if isDefault {
+		rev, err = client1.PushRev("doc", rev, []byte(`{"key":"val","_attachments":{"attach":{"revpos":2,"content_type":"","length":11,"stub":true,"digest":"`+digest+`"}}}`))
+		require.NoError(t, err)
+	} else {
+		rev, err = btcCollection.PushRev("doc", rev, []byte(`{"key":"val","_attachments":{"attach":{"revpos":2,"content_type":"","length":11,"stub":true,"digest":"`+digest+`"}}}`))
+		require.NoError(t, err)
+	}
 	err = rt.WaitForRev("doc", rev)
 	require.NoError(t, err)
 
@@ -448,23 +470,25 @@ func TestBlipAttachNameChange(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, bucketAttachmentA, attachmentA)
 
-	resp := rt.SendAdminRequest("GET", fmt.Sprintf("/%s/doc/attach", keyspace), "")
+	resp := rt.SendAdminRequest("GET", "/{{.keyspace}}/doc/attach", "")
 	RequireStatus(t, resp, http.StatusOK)
 	assert.Equal(t, attachmentA, resp.BodyBytes())
 }
 
 // TestBlipLegacyAttachNameChange ensures that CBL name changes for legacy attachments are handled correctly
 func TestBlipLegacyAttachNameChange(t *testing.T) {
-	rt := NewRestTesterDefaultCollection(t, &RestTesterConfig{ // CBG-2619
+	rt := NewRestTester(t, &RestTesterConfig{ // CBG-2619
 		GuestEnabled: true,
 	})
 	defer rt.Close()
-	keyspace := "db"
-	client1, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
+	collection := rt.GetSingleTestDatabaseCollection()
+	client1, isDefault, err := BlipClientInitialization(t, rt, collection, nil)
 	require.NoError(t, err)
 	defer client1.Close()
 	base.SetUpTestLogging(t, base.LevelTrace, base.KeySync, base.KeySyncMsg, base.KeyWebSocket, base.KeyWebSocketFrame, base.KeyHTTP, base.KeyCRUD)
 
+	btcCollection, err := client1.BlipClientCollectionSetup(collection)
+	require.NoError(t, err)
 	// Create document in the bucket with a legacy attachment
 	docID := "doc"
 	attBody := []byte(`hi`)
@@ -481,11 +505,19 @@ func TestBlipLegacyAttachNameChange(t *testing.T) {
 	require.NotEmpty(t, revID)
 
 	// Store the document and attachment on the test client
-	err = client1.StoreRevOnClient(docID, revID, rawDoc)
-	require.NoError(t, err)
-	client1.AttachmentsLock().Lock()
-	client1.Attachments()[digest] = attBody
-	client1.AttachmentsLock().Unlock()
+	if isDefault {
+		err = client1.StoreRevOnClient(docID, revID, rawDoc)
+		require.NoError(t, err)
+		client1.AttachmentsLock().Lock()
+		client1.Attachments()[digest] = attBody
+		client1.AttachmentsLock().Unlock()
+	} else {
+		err = btcCollection.StoreRevOnClient(docID, revID, rawDoc)
+		require.NoError(t, err)
+		btcCollection.AttachmentsLock().Lock()
+		btcCollection.Attachments()[digest] = attBody
+		btcCollection.AttachmentsLock().Unlock()
+	}
 
 	// Confirm attachment is in the bucket
 	attachmentAKey := db.MakeAttachmentKey(1, "doc", digest)
@@ -495,27 +527,34 @@ func TestBlipLegacyAttachNameChange(t *testing.T) {
 
 	// Simulate changing only the attachment name over CBL
 	// Use revpos 2 to simulate revpos bug in CBL 2.8 - 3.0.0
-	revID, err = client1.PushRev("doc", revID, []byte(`{"key":"val","_attachments":{"attach":{"revpos":2,"content_type":"test/plain","length":2,"stub":true,"digest":"`+digest+`"}}}`))
-	require.NoError(t, err)
+	if isDefault {
+		revID, err = client1.PushRev("doc", revID, []byte(`{"key":"val","_attachments":{"attach":{"revpos":2,"content_type":"test/plain","length":2,"stub":true,"digest":"`+digest+`"}}}`))
+		require.NoError(t, err)
+	} else {
+		revID, err = btcCollection.PushRev("doc", revID, []byte(`{"key":"val","_attachments":{"attach":{"revpos":2,"content_type":"test/plain","length":2,"stub":true,"digest":"`+digest+`"}}}`))
+		require.NoError(t, err)
+	}
 	err = rt.WaitForRev("doc", revID)
 	require.NoError(t, err)
 
-	resp := rt.SendAdminRequest("GET", fmt.Sprintf("/%s/doc/attach", keyspace), "")
+	resp := rt.SendAdminRequest("GET", "/{{.keyspace}}/doc/attach", "")
 	RequireStatus(t, resp, http.StatusOK)
 	assert.Equal(t, attBody, resp.BodyBytes())
 }
 
 // TestBlipLegacyAttachDocUpdate ensures that CBL updates for documents associated with legacy attachments are handled correctly
 func TestBlipLegacyAttachDocUpdate(t *testing.T) {
-	rt := NewRestTesterDefaultCollection(t, &RestTesterConfig{ // CBG-2619
+	rt := NewRestTester(t, &RestTesterConfig{ // CBG-2619
 		GuestEnabled: true,
 	})
 	defer rt.Close()
-	keyspace := "db"
-	client1, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
+	collection := rt.GetSingleTestDatabaseCollection()
+	client1, isDefault, err := BlipClientInitialization(t, rt, collection, nil)
 	require.NoError(t, err)
 	defer client1.Close()
 	base.SetUpTestLogging(t, base.LevelTrace, base.KeySync, base.KeySyncMsg, base.KeyWebSocket, base.KeyWebSocketFrame, base.KeyHTTP, base.KeyCRUD)
+	btcCollection, err := client1.BlipClientCollectionSetup(collection)
+	require.NoError(t, err)
 
 	// Create document in the bucket with a legacy attachment.  Properties here align with rawDocWithAttachmentAndSyncMeta
 	docID := "doc"
@@ -534,11 +573,19 @@ func TestBlipLegacyAttachDocUpdate(t *testing.T) {
 	require.NotEmpty(t, revID)
 
 	// Store the document and attachment on the test client
-	err = client1.StoreRevOnClient(docID, revID, rawDoc)
-	require.NoError(t, err)
-	client1.AttachmentsLock().Lock()
-	client1.Attachments()[digest] = attBody
-	client1.AttachmentsLock().Unlock()
+	if isDefault {
+		err = client1.StoreRevOnClient(docID, revID, rawDoc)
+		require.NoError(t, err)
+		client1.AttachmentsLock().Lock()
+		client1.Attachments()[digest] = attBody
+		client1.AttachmentsLock().Unlock()
+	} else {
+		err = btcCollection.StoreRevOnClient(docID, revID, rawDoc)
+		require.NoError(t, err)
+		btcCollection.AttachmentsLock().Lock()
+		btcCollection.Attachments()[digest] = attBody
+		btcCollection.AttachmentsLock().Unlock()
+	}
 
 	// Confirm attachment is in the bucket
 	attachmentAKey := db.MakeAttachmentKey(1, "doc", digest)
@@ -548,12 +595,17 @@ func TestBlipLegacyAttachDocUpdate(t *testing.T) {
 	require.EqualValues(t, bucketAttachmentA, attBody)
 
 	// Update the document, leaving body intact
-	revID, err = client1.PushRev("doc", revID, []byte(`{"key":"val1","_attachments":{"`+attName+`":{"revpos":2,"content_type":"text/plain","length":2,"stub":true,"digest":"`+digest+`"}}}`))
-	require.NoError(t, err)
+	if isDefault {
+		revID, err = client1.PushRev("doc", revID, []byte(`{"key":"val1","_attachments":{"`+attName+`":{"revpos":2,"content_type":"text/plain","length":2,"stub":true,"digest":"`+digest+`"}}}`))
+		require.NoError(t, err)
+	} else {
+		revID, err = btcCollection.PushRev("doc", revID, []byte(`{"key":"val1","_attachments":{"`+attName+`":{"revpos":2,"content_type":"text/plain","length":2,"stub":true,"digest":"`+digest+`"}}}`))
+		require.NoError(t, err)
+	}
 	err = rt.WaitForRev("doc", revID)
 	require.NoError(t, err)
 
-	resp := rt.SendAdminRequest("GET", fmt.Sprintf("/%s/doc/%s", keyspace, attName), "")
+	resp := rt.SendAdminRequest("GET", fmt.Sprintf("/{{.keyspace}}/doc/%s", attName), "")
 	RequireStatus(t, resp, http.StatusOK)
 	assert.Equal(t, attBody, resp.BodyBytes())
 

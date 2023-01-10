@@ -1200,24 +1200,6 @@ func NewBlipTesterFromSpecWithRT(tb testing.TB, spec *BlipTesterSpec, rt *RestTe
 	return blipTester, err
 }
 
-// NewBlipTesterDefaultCollection creates a blip tester that has a RestTester only using a single database and `_default._default` collection.
-func NewBlipTesterDefaultCollection(tb testing.TB) *BlipTester {
-	return NewBlipTesterDefaultCollectionFromSpec(tb, BlipTesterSpec{GuestEnabled: true})
-}
-
-// NewBlipTesterDefaultCollectionFromSpec creates a blip tester that has a RestTester only using a single database and `_default._default` collection.
-func NewBlipTesterDefaultCollectionFromSpec(tb testing.TB, spec BlipTesterSpec) *BlipTester {
-	rtConfig := RestTesterConfig{
-		EnableNoConflictsMode: spec.noConflictsMode,
-		GuestEnabled:          spec.GuestEnabled,
-		DatabaseConfig:        &DatabaseConfig{},
-	}
-	rt := newRestTester(tb, &rtConfig, useSingleCollectionDefaultOnly, 1)
-	bt, err := createBlipTesterWithSpec(tb, spec, rt)
-	require.NoError(tb, err)
-	return bt
-}
-
 // Create a BlipTester using the default spec
 func NewBlipTester(tb testing.TB) (*BlipTester, error) {
 	return NewBlipTesterFromSpec(tb, getDefaultBlipTesterSpec())
@@ -1262,11 +1244,12 @@ func createBlipTesterWithSpec(tb testing.TB, spec BlipTesterSpec, rt *RestTester
 			return nil, err
 		}
 		adminChannelsStr := string(adminChannelsJson)
+		adminChannelsStr = `"admin_channels": ` + adminChannelsStr
 
-		userDocBody := fmt.Sprintf(`{"name":"%s", "password":"%s", "admin_channels":%s}`,
+		userDocBody := fmt.Sprintf(`{"name":"%s", "password":"%s", %s}`,
 			spec.connectingUsername,
 			spec.connectingPassword,
-			adminChannelsStr,
+			AdminChannelGrant(bt.restTester.GetSingleTestDatabaseCollection(), adminChannelsStr),
 		)
 		log.Printf("Creating user: %v", userDocBody)
 
@@ -1637,7 +1620,7 @@ type SendRevWithAttachmentInput struct {
 }
 
 // Warning: this can only be called from a single goroutine, given the fact it registers profile handlers.
-func (bt *BlipTester) SendRevWithAttachment(input SendRevWithAttachmentInput) (sent bool, req, res *blip.Message) {
+func (bt *BlipTester) SendRevWithAttachment(input SendRevWithAttachmentInput, properties blip.Properties) (sent bool, req, res *blip.Message) {
 
 	defer func() {
 		// Clean up all profile handlers that are registered as part of this test
@@ -1688,7 +1671,7 @@ func (bt *BlipTester) SendRevWithAttachment(input SendRevWithAttachmentInput) (s
 		input.revId,
 		input.history,
 		docBody,
-		blip.Properties{},
+		properties,
 	)
 	// Expect a callback to the getAttachment endpoint
 	getAttachmentWg.Wait()

@@ -2320,7 +2320,7 @@ func TestRevocationGetSyncDataError(t *testing.T) {
 
 // Regression test for CBG-2183.
 func TestBlipRevokeNonExistentRole(t *testing.T) {
-	rt := NewRestTesterDefaultCollection(t, // CBG-2619: make collection aware
+	rt := NewRestTester(t, // CBG-2619: make collection aware
 		&RestTesterConfig{
 			GuestEnabled: false,
 		})
@@ -2334,7 +2334,7 @@ func TestBlipRevokeNonExistentRole(t *testing.T) {
 	RequireStatus(t, res, http.StatusCreated)
 
 	// Create a doc so we have something to replicate
-	res = rt.SendAdminRequest(http.MethodPut, fmt.Sprintf("/%s/testdoc", rt.GetDatabase().Name), `{"channels": ["c1"]}`)
+	res = rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/testdoc", `{"channels": ["c1"]}`)
 	RequireStatus(t, res, http.StatusCreated)
 
 	// 3. Update the user to not reference one of the roles (update to ['a1'], for example)
@@ -2349,8 +2349,14 @@ func TestBlipRevokeNonExistentRole(t *testing.T) {
 	})
 	require.NoError(t, err)
 	defer bt.Close()
+	btcCollection, err := bt.BlipClientCollectionSetup(collection)
+	require.NoError(t, err)
 
-	require.NoError(t, bt.StartPull())
+	if isDefault {
+		require.NoError(t, bt.StartPull())
+	} else {
+		require.NoError(t, btcCollection.StartPull())
+	}
 	// in the failing case we'll panic before hitting this
 	base.WaitForStat(func() int64 {
 		return rt.GetDatabase().DbStats.CBLReplicationPull().NumPullReplCaughtUp.Value()
