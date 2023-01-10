@@ -149,9 +149,6 @@ type SGFeedSourceParams struct {
 
 	// Collections within the scope that the feed would cover.
 	Collections []string `json:"collections,omitempty"`
-
-	// DCPBuffer size for the dcp feed to use
-	DCPBuffer uint32 `json:"dcp_buffer,omitempty"`
 }
 
 type SGFeedIndexParams struct {
@@ -249,10 +246,6 @@ func addCbgtAuthToDCPParams(dcpParams string) string {
 	} else {
 		feedParamsWithAuth.AuthUser = creds.username
 		feedParamsWithAuth.AuthPassword = creds.password
-	}
-
-	if sgSourceParams.DCPBuffer != 0 {
-		feedParamsWithAuth.FeedBufferSizeBytes = sgSourceParams.DCPBuffer
 	}
 
 	marshalledParamsWithAuth, marshalErr := JSONMarshal(feedParamsWithAuth)
