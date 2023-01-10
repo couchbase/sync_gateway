@@ -3,6 +3,7 @@ package js
 import (
 	"encoding/json"
 	"math"
+	"math/big"
 	"strconv"
 	"testing"
 	"time"
@@ -161,7 +162,9 @@ func TestNumbers(t *testing.T) {
 		hugeInt := json.Number("1234567890123456789012345678901234567890")
 		result, err := service.Run(ctx, hugeInt, string(hugeInt))
 		if assert.NoError(t, err) {
-			assert.EqualValues(t, bigIntWithString(string(hugeInt)), result)
+			ibig := new(big.Int)
+			ibig, _ = ibig.SetString(string(hugeInt), 10)
+			assert.EqualValues(t, ibig, result)
 		}
 	})
 

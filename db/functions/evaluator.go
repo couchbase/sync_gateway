@@ -187,38 +187,44 @@ func (eval *evaluator) setMutationAllowed(allowed bool) {
 
 // Calls a named function. Result is returned as JSON data.
 func (eval *evaluator) callFunction(name string, args map[string]any) ([]byte, error) {
-	user, roles, channels := eval.v8Credentials()
-	// Calling JS method API.callFunction (api.ts)
-	v8Result, err := eval.runner.Call(eval.functionFn, eval.api,
-		eval.runner.NewString(name),
-		mustSucceed(eval.runner.NewJSONString(args)),
-		user, roles, channels,
-		mustSucceed(eval.runner.NewValue(eval.mutationAllowed)))
-
-	if err == nil {
-		if result, ok := js.StringToGo(v8Result); ok {
-			return []byte(result), nil
-		}
-	}
-	return nil, unpackError(err)
+	return eval.wrapCall(func() (*v8.Value, error) {
+		// Calling JS method API.callFunction (api.ts)
+		user, roles, channels := eval.v8Credentials()
+		return eval.runner.Call(eval.functionFn, eval.api,
+			eval.runner.NewString(name),
+			mustSucceed(eval.runner.NewJSONString(args)),
+			user, roles, channels,
+			mustSucceed(eval.runner.NewValue(eval.mutationAllowed)))
+	})
 }
 
 // Performs a GraphQL query. Result is an object of the usual GraphQL result shape, i.e. with `data` and/or `errors` properties. It is returned as a JSON string.
 func (eval *evaluator) callGraphQL(query string, operationName string, variables map[string]any) ([]byte, error) {
-	user, roles, channels := eval.v8Credentials()
-	// Calling JS method API.callGraphQL (api.ts)
-	v8Result, err := eval.runner.Call(eval.graphqlFn, eval.api,
-		eval.runner.NewString(query),
-		eval.runner.NewString(operationName),
-		mustSucceed(eval.runner.NewJSONString(variables)),
-		user, roles, channels,
-		mustSucceed(eval.runner.NewValue(eval.mutationAllowed)))
-	if err == nil {
-		if result, ok := js.StringToGo(v8Result); ok {
-			return []byte(result), nil
+	return eval.wrapCall(func() (*v8.Value, error) {
+		user, roles, channels := eval.v8Credentials()
+		// Calling JS method API.callGraphQL (api.ts)
+		return eval.runner.Call(eval.graphqlFn, eval.api,
+			eval.runner.NewString(query),
+			eval.runner.NewString(operationName),
+			mustSucceed(eval.runner.NewJSONString(variables)),
+			user, roles, channels,
+			mustSucceed(eval.runner.NewValue(eval.mutationAllowed)))
+	})
+}
+
+// wraps a callback that makes a JS call. Converts the return value and error appropriately,
+// and uses WithScopedValues so temporary values get cleaned up.
+func (eval *evaluator) wrapCall(fn func() (*v8.Value, error)) (result []byte, err error) {
+	eval.runner.WithTemporaryValues(func() {
+		if v8Result, v8Err := fn(); v8Err == nil {
+			if resultStr, ok := js.StringToGo(v8Result); ok {
+				result = []byte(resultStr)
+			}
+		} else {
+			err = unpackError(v8Err)
 		}
-	}
-	return nil, unpackError(err)
+	})
+	return
 }
 
 // Encodes credentials as 3 parameters to pass to JS.

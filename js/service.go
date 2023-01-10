@@ -78,7 +78,11 @@ func (service *Service) WithRunner(fn func(*Runner) (any, error)) (any, error) {
 		return nil, err
 	}
 	defer runner.Return()
-	return fn(runner)
+	var result any
+	runner.WithTemporaryValues(func() {
+		result, err = fn(runner)
+	})
+	return result, err
 }
 
 // A high-level method that runs a service in a VM without your needing to interact with a Runner.

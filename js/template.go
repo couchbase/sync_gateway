@@ -119,14 +119,21 @@ func (t *BasicTemplate) NewCallback(callback TemplateCallback) *v8.FunctionTempl
 // Converts a Go value to a JavaScript value (*v8.Value). Supported types are:
 // - nil (converted to `null`)
 // - boolean
-// - int, int32, int64, uint32, uint64, float64
+// - integer and float types (32-bit and larger)
 // - *big.Int
 // - json.Number
 // - string
-func (t *BasicTemplate) NewValue(val any) (*v8.Value, error) { return newValue(t.vm.iso, val) }
+func (t *BasicTemplate) NewValue(val any) (*v8.Value, error) {
+	if val == nil {
+		return v8.Null(t.vm.iso), nil // v8.NewValue panics if given nil :-p
+	}
+	return v8.NewValue(t.vm.iso, val)
+}
 
 // Creates a JS string value.
-func (t *BasicTemplate) NewString(str string) *v8.Value { return newString(t.vm.iso, str) }
+func (t *BasicTemplate) NewString(str string) *v8.Value {
+	return newString(t.vm.iso, str)
+}
 
 //////// INTERNALS:
 

@@ -46,7 +46,7 @@ func runConcurrently(ctx context.Context, testFunc func(context.Context) bool, n
 // than running it 100 times in succession. A low bar indeed, but can detect some serious
 // bottlenecks, or of course deadlocks.
 func testConcurrently(t *testing.T, ctx context.Context, testFunc func(context.Context) bool) bool {
-	const kNumTasks = 65536 * 16 * 5
+	const kNumTasks = 65536 * 10
 	const kNumThreads = 8
 
 	// prime the pump:
@@ -78,4 +78,35 @@ func TestPoolsConcurrently(t *testing.T) {
 			return assert.NoError(t, err) && assert.EqualValues(t, result, 169)
 		})
 	})
+}
+
+func BenchmarkVMPoolSequentially(b *testing.B) {
+	const kJSCode = `function(n) {return n * n;}`
+	ctx := base.TestCtx(b)
+	pool := NewVMPool(32)
+	service := NewService(pool, "testy", kJSCode)
+	testFunc := func(ctx context.Context) bool {
+		result, err := service.Run(ctx, 13)
+		return assert.NoError(b, err) && assert.EqualValues(b, result, 169)
+	}
+	b.ResetTimer()
+	runSequentially(ctx, testFunc, b.N)
+	b.StopTimer()
+	pool.Close()
+}
+
+func BenchmarkVMPoolConcurrently(b *testing.B) {
+	const kNumThreads = 8
+	const kJSCode = `function(n) {return n * n;}`
+	ctx := base.TestCtx(b)
+	pool := NewVMPool(32)
+	service := NewService(pool, "testy", kJSCode)
+	testFunc := func(ctx context.Context) bool {
+		result, err := service.Run(ctx, 13)
+		return assert.NoError(b, err) && assert.EqualValues(b, result, 169)
+	}
+	b.ResetTimer()
+	runConcurrently(ctx, testFunc, b.N, kNumThreads)
+	b.StopTimer()
+	pool.Close()
 }

@@ -42,6 +42,9 @@ func (vm *VM) Close() {
 	if vm.returnToPool != nil {
 		panic("Don't Close a VM that belongs to a VMPool")
 	}
+	if cur := vm.curRunner; cur != nil {
+		cur.Return()
+	}
 	for _, runner := range vm.runners {
 		runner.close()
 	}
@@ -145,6 +148,7 @@ func (vm *VM) getRunner(service *Service) (*Runner, error) {
 		runner.vm = vm
 	}
 	vm.curRunner = runner
+	vm.iso.Lock()
 	return runner, nil
 }
 
@@ -153,6 +157,7 @@ func (vm *VM) getRunner(service *Service) (*Runner, error) {
 func (vm *VM) returnRunner(r *Runner) {
 	r.goContext = nil
 	if vm.curRunner == r {
+		vm.iso.Unlock()
 		vm.curRunner = nil
 	} else if r.vm != vm {
 		panic("Runner returned to wrong VM!")

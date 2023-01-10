@@ -188,6 +188,10 @@ func (r *Runner) ResolvePromise(val *v8.Value, err error) (*v8.Value, error) {
 	}
 }
 
+func (r *Runner) WithTemporaryValues(fn func()) {
+	r.ctx.WithTemporaryValues(fn)
+}
+
 //////// CONVERTING GO VALUES TO JAVASCRIPT:
 
 // Converts its arguments to an array of V8 values by calling Runner.NewValue on each one.
@@ -213,7 +217,10 @@ func (r *Runner) ConvertArgs(args ...any) ([]v8.Valuer, error) {
 // - JSONString -- will be parsed by V8's JSON.parse
 // - Any JSON Marshalable type -- will be marshaled to JSON then parsed by V8's JSON.parse
 func (r *Runner) NewValue(val any) (v8Val *v8.Value, err error) {
-	v8Val, err = newValue(r.vm.iso, val)
+	if val == nil {
+		return r.NullValue(), nil // v8.NewValue panics if given nil :-p
+	}
+	v8Val, err = r.ctx.NewValue(val)
 	if err != nil {
 		if jsonStr, ok := val.(JSONString); ok {
 			if jsonStr != "" {
@@ -233,7 +240,7 @@ func (r *Runner) NewValue(val any) (v8Val *v8.Value, err error) {
 type JSONString string
 
 // Creates a JavaScript number value.
-func (r *Runner) NewInt(i int) *v8.Value { return newInt(r.vm.iso, i) }
+func (r *Runner) NewInt(i int) *v8.Value { return mustSucceed(r.ctx.NewValue(i)) }
 
 // Creates a JavaScript string value.
 func (r *Runner) NewString(str string) *v8.Value { return newString(r.vm.iso, str) }
