@@ -117,13 +117,9 @@ func TestStarAccess(t *testing.T) {
 	//
 	bernard, _ := a.NewUser("bernard", "letmein", channels.BaseSetOf(t, "books"))
 	assert.NoError(t, a.Save(bernard))
-	response := rt.SendAdminRequest("GET", "/{{.db}}/_user/bernard", ``)
-	RequireStatus(t, response, 200)
-	fmt.Println(response.Body)
-	fmt.Println("after user")
 
 	// GET /db/docid - basic test for channel user has
-	response = rt.SendUserRequest("GET", "/{{.keyspace}}/doc1", "", "bernard")
+	response := rt.SendUserRequest("GET", "/{{.keyspace}}/doc1", "", "bernard")
 	RequireStatus(t, response, 200)
 
 	// GET /db/docid - negative test for channel user doesn't have
