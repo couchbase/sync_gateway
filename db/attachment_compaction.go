@@ -140,6 +140,7 @@ func attachmentCompactMarkPhase(ctx context.Context, dataStore base.DataStore, c
 	if err != nil {
 		return 0, nil, err
 	}
+
 	bucket, err := base.AsGocbV2Bucket(db.Bucket)
 	if err != nil {
 		return 0, nil, err
@@ -506,6 +507,7 @@ func attachmentCompactCleanupPhase(ctx context.Context, dataStore base.DataStore
 	if err != nil {
 		return err
 	}
+
 	dcpClient, err := base.NewDCPClient(dcpFeedKey, callback, *clientOptions, bucket)
 	if err != nil {
 		base.WarnfCtx(ctx, "[%s] Failed to create attachment compaction DCP client! %v", compactionLoggingID, err)

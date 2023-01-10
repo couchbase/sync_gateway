@@ -105,7 +105,6 @@ func NewDCPClient(ID string, callback sgbucket.FeedEventCallbackFunc, options DC
 		dbStats:             options.DbStats,
 		agentPriority:       options.AgentPriority,
 		collectionIDs:       options.CollectionIDs,
-		oneShot:             options.OneShot,
 	}
 
 	// Initialize active vbuckets
