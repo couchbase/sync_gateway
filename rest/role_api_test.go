@@ -84,9 +84,13 @@ func TestRoleAPI(t *testing.T) {
 	RequireStatus(t, response, 200)
 	var body db.Body
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
-	bodyAccess := fmt.Sprintf(`map[%v:map[%v:map[admin_channels:[fedoras fixies] all_channels:[! fedoras fixies]]]]`, s, c)
 	assert.Equal(t, "hipster", body["name"])
-	assert.Equal(t, bodyAccess, fmt.Sprint(body["collection_access"]))
+	if base.IsDefaultCollection(s, c) {
+		assert.Equal(t, []interface{}{"fedoras", "fixies"}, body["admin_channels"])
+	} else {
+		bodyAccess := fmt.Sprintf(`map[%v:map[%v:map[admin_channels:[fedoras fixies] all_channels:[! fedoras fixies]]]]`, s, c)
+		assert.Equal(t, bodyAccess, fmt.Sprint(body["collection_access"]))
+	}
 	assert.Equal(t, nil, body["password"])
 
 	response = rt.SendAdminRequest("GET", "/db/_role/", "")
@@ -272,11 +276,15 @@ func TestRoleAssignmentBeforeUserExists(t *testing.T) {
 	response = rt.SendAdminRequest("GET", "/db/_user/user1", "")
 	RequireStatus(t, response, 200)
 	body = nil
-	bodyAccess := fmt.Sprintf(`map[%v:map[%v:map[all_channels:[! chan1]]]]`, s, c)
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.Equal(t, "user1", body["name"])
 	assert.Equal(t, []interface{}{"role1"}, body["roles"])
-	assert.Equal(t, bodyAccess, fmt.Sprint(body["collection_access"]))
+	if base.IsDefaultCollection(s, c) {
+		assert.Equal(t, []interface{}{"!", "chan1"}, body["all_channels"])
+	} else {
+		bodyAccess := fmt.Sprintf(`map[%v:map[%v:map[all_channels:[! chan1]]]]`, s, c)
+		assert.Equal(t, bodyAccess, fmt.Sprint(body["collection_access"]))
+	}
 
 	// goassert.DeepEquals(t, body["admin_roles"], []interface{}{"hipster"})
 	// goassert.DeepEquals(t, body["all_channels"], []interface{}{"bar", "fedoras", "fixies", "foo"})

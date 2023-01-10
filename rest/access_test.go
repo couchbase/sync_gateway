@@ -51,9 +51,13 @@ func TestPublicChanGuestAccess(t *testing.T) {
 	resp = rt.SendAdminRequest(http.MethodGet, "/db/_user/GUEST", ``)
 	RequireStatus(t, resp, http.StatusOK)
 	fmt.Println("GUEST user:", resp.Body.String())
-	expected := fmt.Sprintf(`map[%s:map[%s:map[all_channels:[!]]]]`, s, c)
-	collectionAccess := resp.GetRestDocument()["collection_access"]
-	assert.EqualValues(t, expected, fmt.Sprint(collectionAccess))
+	if base.IsDefaultCollection(s, c) {
+		assert.EqualValues(t, []interface{}{"!"}, resp.GetRestDocument()["all_channels"])
+	} else {
+		expected := fmt.Sprintf(`map[%s:map[%s:map[all_channels:[!]]]]`, s, c)
+		collectionAccess := resp.GetRestDocument()["collection_access"]
+		assert.EqualValues(t, expected, fmt.Sprint(collectionAccess))
+	}
 
 	// Confirm guest user cannot access other channels it has no access too
 	resp = rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/docNoAccess", `{"channels": ["cookie"], "foo": "bar"}`)
