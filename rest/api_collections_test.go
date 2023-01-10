@@ -313,6 +313,7 @@ func TestMultiCollectionChannelAccess(t *testing.T) {
 		}
 	}`
 
+	// Create a few users with access to various channels via admin grants
 	resp = rt.SendAdminRequest("PUT", "/db/_user/userA", fmt.Sprintf(userPayload, dataStoreNames[0].ScopeName(), dataStoreNames[0], `["A"]`))
 	RequireStatus(t, resp, http.StatusCreated)
 	resp = rt.SendAdminRequest("PUT", "/db/_user/userB", fmt.Sprintf(userPayload, dataStoreNames[0].ScopeName(), dataStoreNames[0], `["B"]`))
@@ -320,7 +321,7 @@ func TestMultiCollectionChannelAccess(t *testing.T) {
 	resp = rt.SendAdminRequest("PUT", "/db/_user/userAB", fmt.Sprintf(userPayload, dataStoreNames[0].ScopeName(), dataStoreNames[0], `["A","B"]`))
 	RequireStatus(t, resp, http.StatusCreated)
 
-	//_, err = underlying.Collection.Bucket().Scope("foo").Collection("bar").Insert("testDocBarA", map[string]any{"username": "userA", "grant1": "A", "grant2": "A", "admin_channels": `["A"]`}, nil)
+	// Write docs to both collections in various channels
 	resp = rt.SendAdminRequest("PUT", "/{{.keyspace1}}/testDocBarA", `{"username": "userA", "grant1": "A", "chan":["A"]}`)
 	RequireStatus(t, resp, http.StatusCreated)
 	resp = rt.SendAdminRequest("PUT", "/{{.keyspace1}}/testDocBarB", `{"username": "userB", "grant1": "A", "chan":["B"]}`)
@@ -332,6 +333,7 @@ func TestMultiCollectionChannelAccess(t *testing.T) {
 	resp = rt.SendAdminRequest("PUT", "/{{.keyspace2}}/testDocBazB", `{"username": "userB", "grant1": "A", "chan":["B"]}`)
 	RequireStatus(t, resp, http.StatusCreated)
 
+	// Ensure users can only see documents in the appropriate collection/channels they should be able to have access to
 	resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.keyspace1}}/testDocBarA", "", nil, "userA", "letmein")
 	RequireStatus(t, resp, http.StatusOK) // Static channel grant
 	resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.keyspace1}}/testDocBarA", "", nil, "userB", "letmein")
@@ -345,11 +347,17 @@ func TestMultiCollectionChannelAccess(t *testing.T) {
 
 	// Add a new collection and update the db config
 	scopesConfig[dataStoreNames[2].ScopeName()].Collections[dataStoreNames[2].CollectionName()] = CollectionConfig{SyncFn: &c1SyncFunction}
-	_, err = rt.ReplaceDbConfig("db", DbConfig{Scopes: scopesConfig})
+	scopesConfigString, err = json.Marshal(scopesConfig)
+	resp = rt.SendAdminRequest("PUT", "/db/_config", fmt.Sprintf(
+		`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "use_views": %t, "scopes":%s}`,
+		tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(), string(scopesConfigString)))
+	RequireStatus(t, resp, http.StatusCreated)
+	fmt.Println(string(scopesConfigString))
+
 	require.NoError(t, err)
 
 	// Put a doc in new collection and make sure it cant be accessed
-	resp = rt.SendAdminRequest("PUT", "/{{.keyspace3}}/testDocBazA", `{"username": "userA", "grant1": "A", "chan":["A"]}`)
+	resp = rt.SendAdminRequest("PUT", "/{{.keyspace3}}/testDocBazA", `{"username": "userA", "grant1": "A", "chan":["B"]}`)
 	RequireStatus(t, resp, http.StatusCreated)
 	resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.keyspace3}}/testDocBazA", "", nil, "userA", "letmein")
 	RequireStatus(t, resp, http.StatusForbidden)
@@ -357,15 +365,23 @@ func TestMultiCollectionChannelAccess(t *testing.T) {
 	// Update user to set some channels on new collection
 	resp = rt.SendAdminRequest("PUT", "/db/_user/userB", fmt.Sprintf(userPayload, dataStoreNames[2].ScopeName(), dataStoreNames[2], `["B"]`))
 	RequireStatus(t, resp, http.StatusOK)
+	fmt.Println(userPayload)
+	resp = rt.SendAdminRequest("PUT", "/db/_user/userAB", fmt.Sprintf(userPayload, dataStoreNames[2].ScopeName(), dataStoreNames[2], `["A","B"]`))
+	RequireStatus(t, resp, http.StatusOK)
+	fmt.Println(userPayload)
+	resp = rt.SendAdminRequest("PUT", "/db/_user/userABc", fmt.Sprintf(userPayload, dataStoreNames[2].ScopeName(), dataStoreNames[2], `["A","B"]`))
+	RequireStatus(t, resp, http.StatusCreated)
+	fmt.Println(userPayload)
 
 	// Ensure users can access the given channels in new collection, can't access docs in other channels on the new collection
 	resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.keyspace3}}/testDocBazA", "", nil, "userB", "letmein")
 	RequireStatus(t, resp, http.StatusForbidden)
-	resp = rt.SendAdminRequest(http.MethodPut, "/{{.keyspace3}}/testDocBazB", `{"username": "userB", "grant1": "A", "chan":["B"]}`)
+	resp = rt.SendAdminRequest(http.MethodPut, "/{{.keyspace3}}/testDocBazB", `{"chan":["B"]}`)
 	RequireStatus(t, resp, http.StatusCreated)
+	resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.keyspace3}}/testDocBazB", "", nil, "userA", "letmein")
+	RequireStatus(t, resp, http.StatusOK)
 	resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.keyspace3}}/testDocBazB", "", nil, "userB", "letmein")
 	RequireStatus(t, resp, http.StatusOK)
-
 }
 
 // TestCollectionsBasicIndexQuery ensures that the bucket API is able to create an index on a collection
