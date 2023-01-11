@@ -1149,32 +1149,31 @@ func (btc *BlipTesterClient) BlipClientCollectionSetup(collection *db.DatabaseCo
 		if !found {
 			return nil, fmt.Errorf("error waiting for getCollections serial number to be stored by the replicator")
 		}
+	} else {
+		btcCollection = btc.DefaultCollection()
 	}
 	return btcCollection, nil
 }
 
-func BlipClientInitialization(t *testing.T, rt *RestTester, collection *db.DatabaseCollection, options *BlipTesterClientOpts) (*BlipTesterClient, bool, error) {
+func BlipClientInitialization(t *testing.T, rt *RestTester, collection *db.DatabaseCollection, options *BlipTesterClientOpts) (*BlipTesterClient, error) {
 	scopeAndCollectionKey := strings.Join([]string{collection.ScopeName(), collection.Name()}, base.ScopeCollectionSeparator)
-	var isDefault bool
 	var client *BlipTesterClient
 	var err error
 
 	if base.IsDefaultCollection(collection.ScopeName(), collection.Name()) {
 		client, err = NewBlipTesterClientOptsWithRT(t, rt, options)
-		isDefault = true
 		if err != nil {
-			return nil, isDefault, err
+			return nil, err
 		}
 	} else {
 		if options == nil {
 			options = &BlipTesterClientOpts{}
 		}
 		options.Collections = []string{scopeAndCollectionKey}
-		isDefault = false
 		client, err = NewBlipTesterClientOptsWithRT(t, rt, options)
 		if err != nil {
-			return nil, isDefault, err
+			return nil, err
 		}
 	}
-	return client, isDefault, nil
+	return client, nil
 }

@@ -2320,7 +2320,7 @@ func TestRevocationGetSyncDataError(t *testing.T) {
 
 // Regression test for CBG-2183.
 func TestBlipRevokeNonExistentRole(t *testing.T) {
-	rt := NewRestTester(t, // CBG-2619: make collection aware
+	rt := NewRestTester(t,
 		&RestTesterConfig{
 			GuestEnabled: false,
 		})
@@ -2352,11 +2352,8 @@ func TestBlipRevokeNonExistentRole(t *testing.T) {
 	btcCollection, err := bt.BlipClientCollectionSetup(collection)
 	require.NoError(t, err)
 
-	if isDefault {
-		require.NoError(t, bt.StartPull())
-	} else {
-		require.NoError(t, btcCollection.StartPull())
-	}
+	require.NoError(t, btcCollection.StartPull())
+
 	// in the failing case we'll panic before hitting this
 	base.WaitForStat(func() int64 {
 		return rt.GetDatabase().DbStats.CBLReplicationPull().NumPullReplCaughtUp.Value()
