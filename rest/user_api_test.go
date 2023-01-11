@@ -335,11 +335,15 @@ func TestUserAPI(t *testing.T) {
 	// GET the user and verify that it shows the channels inherited from the role
 	response = rt.SendAdminRequest("GET", "/db/_user/snej", "")
 	RequireStatus(t, response, 200)
-	user, _ = rt.ServerContext().Database(ctx, "db").Authenticator(ctx).GetUser("snej")
 	body = nil
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.Equal(t, []interface{}{"hipster"}, body["admin_roles"])
-	assert.Equal(t, "!:1,bar:3,foo:3", user.CollectionChannels(s, c).String())
+	if base.IsDefaultCollection(s, c) {
+		assert.Equal(t, []interface{}{"!", "bar", "fedoras", "fixies", "foo"}, body["all_channels"])
+	} else {
+		expected := "map[sg_test_0:map[sg_test_0:map[admin_channels:[bar foo] all_channels:[! bar fedoras fixies foo]]]]"
+		assert.Equal(t, expected, fmt.Sprint(body["collection_access"]))
+	}
 
 	// DELETE the user
 	RequireStatus(t, rt.SendAdminRequest("DELETE", "/db/_user/snej", ""), 200)

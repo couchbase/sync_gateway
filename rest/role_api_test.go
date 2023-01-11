@@ -264,7 +264,7 @@ func TestRoleAssignmentBeforeUserExists(t *testing.T) {
 	assert.Equal(t, "role1", body["name"])
 
 	// Put document to trigger sync function
-	response = rt.Send(Request("PUT", "/db."+s+"."+c+"/doc1", `{"user":"user1", "role":"role:role1", "channel":"chan1"}`)) // seq=1
+	response = rt.SendRequest("PUT", "/{{.keyspace}}/doc1", `{"user":"user1", "role":"role:role1", "channel":"chan1"}`) // seq=1
 	RequireStatus(t, response, 201)
 	body = nil
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
@@ -332,8 +332,7 @@ func TestRoleAccessChanges(t *testing.T) {
 	// Create some docs in the channels:
 	cacheWaiter := rt.ServerContext().Database(ctx, "db").NewDCPCachingCountWaiter(t)
 	cacheWaiter.Add(1)
-	response = rt.Send(Request("PUT", "/db."+s+"."+c+"/fashion",
-		`{"user":"alice","role":["role:hipster","role:bogus"]}`))
+	response = rt.SendRequest("PUT", "/{{.keyspace}}/fashion", `{"user":"alice","role":["role:hipster","role:bogus"]}`)
 	RequireStatus(t, response, 201)
 	var body db.Body
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
@@ -400,7 +399,8 @@ func TestRoleAccessChanges(t *testing.T) {
 	// Update "fashion" doc to grant zegpold the role "hipster" and take it away from alice:
 	cacheWaiter.Add(1)
 	str := fmt.Sprintf(`{"user":"zegpold", "role":"role:hipster", "_rev":%q}`, fashionRevID)
-	RequireStatus(t, rt.Send(Request("PUT", "/db."+s+"."+c+"/fashion", str)), 201)
+	response = rt.SendRequest("PUT", "/{{.keyspace}}/fashion", str)
+	RequireStatus(t, response, 201)
 
 	updatedRoleGrantSequence := rt.GetDocumentSequence("fashion")
 

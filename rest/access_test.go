@@ -9,7 +9,6 @@
 package rest
 
 import (
-	"bytes"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -119,7 +118,8 @@ func TestStarAccess(t *testing.T) {
 	//
 	// Part 1 - Tests for user with single channel access:
 	//
-	bernard, _ := a.NewUser("bernard", "letmein", channels.BaseSetOf(t, "books"))
+	bernard, err := a.NewUser("bernard", "letmein", channels.BaseSetOf(t, "books"))
+	assert.NoError(t, err)
 	assert.NoError(t, a.Save(bernard))
 
 	// GET /db/docid - basic test for channel user has
@@ -652,21 +652,15 @@ func TestAllDocsAccessControl(t *testing.T) {
 	assert.NoError(t, a.Save(alice))
 
 	// Get a single doc the user has access to:
-	request, _ := http.NewRequest("GET", "/db."+s+"."+c+"/doc3", nil)
-	request.SetBasicAuth("alice", "letmein")
-	response := rt.Send(request)
+	response := rt.SendUserRequest(http.MethodGet, "/{{.keyspace}}/doc3", "", "alice")
 	RequireStatus(t, response, 200)
 
 	// Get a single doc the user doesn't have access to:
-	request, _ = http.NewRequest("GET", "/db."+s+"."+c+"/doc2", nil)
-	request.SetBasicAuth("alice", "letmein")
-	response = rt.Send(request)
+	response = rt.SendUserRequest(http.MethodGet, "/{{.keyspace}}/doc2", "", "alice")
 	RequireStatus(t, response, 403)
 
 	// Check that _all_docs only returns the docs the user has access to:
-	request, _ = http.NewRequest("GET", "/db."+s+"."+c+"/_all_docs?channels=true", nil)
-	request.SetBasicAuth("alice", "letmein")
-	response = rt.Send(request)
+	response = rt.SendUserRequest(http.MethodGet, "/{{.keyspace}}/_all_docs?channels=true", "", "alice")
 	RequireStatus(t, response, 200)
 
 	allDocsResult := allDocsResponse{}
@@ -682,9 +676,7 @@ func TestAllDocsAccessControl(t *testing.T) {
 	assert.Equal(t, []string{"Cinemax"}, allDocsResult.Rows[2].Value.Channels)
 
 	// Check all docs limit option
-	request, _ = http.NewRequest("GET", "/db."+s+"."+c+"/_all_docs?limit=1&channels=true", nil)
-	request.SetBasicAuth("alice", "letmein")
-	response = rt.Send(request)
+	response = rt.SendUserRequest(http.MethodGet, "/{{.keyspace}}/_all_docs?limit=1&channels=true", "", "alice")
 	RequireStatus(t, response, 200)
 
 	log.Printf("Response = %s", response.Body.Bytes())
@@ -696,9 +688,7 @@ func TestAllDocsAccessControl(t *testing.T) {
 	assert.Equal(t, []string{"Cinemax"}, allDocsResult.Rows[0].Value.Channels)
 
 	// Check all docs startkey option
-	request, _ = http.NewRequest("GET", "/db."+s+"."+c+"/_all_docs?startkey=doc5&channels=true", nil)
-	request.SetBasicAuth("alice", "letmein")
-	response = rt.Send(request)
+	response = rt.SendUserRequest(http.MethodGet, "/{{.keyspace}}/_all_docs?startkey=doc5&channels=true", "", "alice")
 	RequireStatus(t, response, 200)
 
 	log.Printf("Response = %s", response.Body.Bytes())
@@ -710,9 +700,7 @@ func TestAllDocsAccessControl(t *testing.T) {
 	assert.Equal(t, []string{"Cinemax"}, allDocsResult.Rows[0].Value.Channels)
 
 	// Check all docs startkey option with double quote
-	request, _ = http.NewRequest("GET", `/db.`+s+`.`+c+`/_all_docs?startkey="doc5"&channels=true`, nil)
-	request.SetBasicAuth("alice", "letmein")
-	response = rt.Send(request)
+	response = rt.SendUserRequest(http.MethodGet, "/{{.keyspace}}/_all_docs?startkey=doc5&channels=true", "", "alice")
 	RequireStatus(t, response, 200)
 
 	log.Printf("Response = %s", response.Body.Bytes())
@@ -724,9 +712,7 @@ func TestAllDocsAccessControl(t *testing.T) {
 	assert.Equal(t, []string{"Cinemax"}, allDocsResult.Rows[0].Value.Channels)
 
 	// Check all docs endkey option
-	request, _ = http.NewRequest("GET", "/db."+s+"."+c+"/_all_docs?endkey=doc3&channels=true", nil)
-	request.SetBasicAuth("alice", "letmein")
-	response = rt.Send(request)
+	response = rt.SendUserRequest(http.MethodGet, "/{{.keyspace}}/_all_docs?endkey=doc3&channels=true", "", "alice")
 	RequireStatus(t, response, 200)
 
 	log.Printf("Response = %s", response.Body.Bytes())
@@ -738,9 +724,7 @@ func TestAllDocsAccessControl(t *testing.T) {
 	assert.Equal(t, []string{"Cinemax"}, allDocsResult.Rows[0].Value.Channels)
 
 	// Check all docs endkey option
-	request, _ = http.NewRequest("GET", `/db.`+s+`.`+c+`/_all_docs?endkey="doc3"&channels=true`, nil)
-	request.SetBasicAuth("alice", "letmein")
-	response = rt.Send(request)
+	response = rt.SendUserRequest(http.MethodGet, "/{{.keyspace}}/_all_docs?endkey=doc3&channels=true", "", "alice")
 	RequireStatus(t, response, 200)
 
 	log.Printf("Response = %s", response.Body.Bytes())
@@ -752,9 +736,7 @@ func TestAllDocsAccessControl(t *testing.T) {
 	assert.Equal(t, []string{"Cinemax"}, allDocsResult.Rows[0].Value.Channels)
 
 	// Check _all_docs with include_docs option:
-	request, _ = http.NewRequest("GET", "/db."+s+"."+c+"/_all_docs?include_docs=true", nil)
-	request.SetBasicAuth("alice", "letmein")
-	response = rt.Send(request)
+	response = rt.SendUserRequest(http.MethodGet, "/{{.keyspace}}/_all_docs?include_docs=true", "", "alice")
 	RequireStatus(t, response, 200)
 
 	log.Printf("Response = %s", response.Body.Bytes())
@@ -768,9 +750,7 @@ func TestAllDocsAccessControl(t *testing.T) {
 
 	// Check POST to _all_docs:
 	body := `{"keys": ["doc4", "doc1", "doc3", "b0gus"]}`
-	request, _ = http.NewRequest("POST", "/db."+s+"."+c+"/_all_docs?channels=true", bytes.NewBufferString(body))
-	request.SetBasicAuth("alice", "letmein")
-	response = rt.Send(request)
+	response = rt.SendUserRequest(http.MethodPost, "/{{.keyspace}}/_all_docs?channels=true", body, "alice")
 	RequireStatus(t, response, 200)
 
 	log.Printf("Response from POST _all_docs = %s", response.Body.Bytes())
@@ -793,9 +773,7 @@ func TestAllDocsAccessControl(t *testing.T) {
 	assert.Equal(t, "", allDocsResult.Rows[3].Value.Rev)
 
 	// Check GET to _all_docs with keys parameter:
-	request, _ = http.NewRequest("GET", `/db.`+s+`.`+c+`/_all_docs?channels=true&keys=%5B%22doc4%22%2C%22doc1%22%2C%22doc3%22%2C%22b0gus%22%5D`, nil)
-	request.SetBasicAuth("alice", "letmein")
-	response = rt.Send(request)
+	response = rt.SendUserRequest(http.MethodGet, "/{{.keyspace}}/_all_docs?channels=true&keys=%5B%22doc4%22%2C%22doc1%22%2C%22doc3%22%2C%22b0gus%22%5D", "", "alice")
 	RequireStatus(t, response, 200)
 
 	log.Printf("Response from GET _all_docs = %s", response.Body.Bytes())
@@ -815,9 +793,7 @@ func TestAllDocsAccessControl(t *testing.T) {
 
 	// Check POST to _all_docs with limit option:
 	body = `{"keys": ["doc4", "doc1", "doc3", "b0gus"]}`
-	request, _ = http.NewRequest("POST", "/db."+s+"."+c+"/_all_docs?limit=1&channels=true", bytes.NewBufferString(body))
-	request.SetBasicAuth("alice", "letmein")
-	response = rt.Send(request)
+	response = rt.SendUserRequest(http.MethodPost, "/{{.keyspace}}/_all_docs?limit=1&channels=true", body, "alice")
 	RequireStatus(t, response, 200)
 
 	log.Printf("Response from POST _all_docs = %s", response.Body.Bytes())
@@ -831,6 +807,7 @@ func TestAllDocsAccessControl(t *testing.T) {
 
 	// Check _all_docs as admin:
 	response = rt.SendAdminRequest("GET", "/db."+s+"."+c+"/_all_docs", "")
+	response = rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/_all_docs", "")
 	RequireStatus(t, response, 200)
 
 	log.Printf("Admin response = %s", response.Body.Bytes())
@@ -867,7 +844,7 @@ func TestChannelAccessChanges(t *testing.T) {
 	assert.NoError(t, a.Save(zegpold))
 
 	// Create some docs that give users access:
-	response := rt.Send(Request("PUT", "/db."+s+"."+c+"/alpha", `{"owner":"alice"}`))
+	response := rt.SendRequest(http.MethodPut, "/{{.keyspace}}/alpha", `{"owner":"alice"}`)
 	RequireStatus(t, response, 201)
 	var body db.Body
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
@@ -929,7 +906,8 @@ func TestChannelAccessChanges(t *testing.T) {
 
 	// Update a document to revoke access to alice and grant it to zegpold:
 	str := fmt.Sprintf(`{"owner":"zegpold", "_rev":%q}`, alphaRevID)
-	RequireStatus(t, rt.Send(Request("PUT", "/db."+s+"."+c+"/alpha", str)), 201)
+	response = rt.SendRequest(http.MethodPut, "/{{.keyspace}}/alpha", str)
+	RequireStatus(t, response, http.StatusCreated)
 
 	alphaGrantDocSeq, err := rt.SequenceForDoc("alpha")
 	assert.NoError(t, err, "Error retrieving document sequence")
@@ -989,7 +967,8 @@ func TestChannelAccessChanges(t *testing.T) {
 	assert.Equal(t, "a1", changes.Results[0].ID)
 
 	// What happens if we call access() with a nonexistent username?
-	RequireStatus(t, rt.Send(Request("PUT", "/db."+s+"."+c+"/epsilon", `{"owner":"waldo"}`)), 201) // seq 10
+	response = rt.SendRequest(http.MethodPut, "/{{.keyspace}}/epsilon", `{"owner":"waldo"}`) // seq 10
+	RequireStatus(t, response, http.StatusCreated)
 
 	// Must wait for sequence to arrive in cache, since the cache processor will be paused when UpdateSyncFun() is called
 	// below, which could lead to a data race if the cache processor is paused while it's processing a change
@@ -1011,7 +990,7 @@ func TestChannelAccessChanges(t *testing.T) {
 	assert.Equal(t, 9, changeCount)
 
 	expectedIDs := []string{"beta", "delta", "gamma", "a1", "b1", "d1", "g1", "alpha", "epsilon"}
-	changes, err = rt.WaitForChanges(len(expectedIDs), "/db."+s+"."+c+"/_changes", "alice", false)
+	changes, err = rt.WaitForChanges(len(expectedIDs), "/{{.keyspace}}/_changes", "alice", false)
 	assert.NoError(t, err, "Unexpected error")
 	log.Printf("_changes looks like: %+v", changes)
 	assert.Equal(t, len(expectedIDs), len(changes.Results))

@@ -1222,7 +1222,12 @@ func TestRevocationUserHasDocAccessDocNotFound(t *testing.T) {
 	require.NoError(t, err)
 	dataName := GetNamedDatastore(dataStores, collection)
 	data := rt.Bucket().NamedDataStore(dataName)
-	require.NoError(t, data.Delete("doc"))
+	leakyDataStore, ok := base.AsLeakyDataStore(data)
+	require.True(t, ok)
+	leakyDataStore.SetGetRawCallback(func(s string) error {
+		require.NoError(t, leakyDataStore.Delete("doc"))
+		return nil
+	})
 
 	changes = revocationTester.getChanges(changes.Last_Seq, 1)
 	require.Len(t, changes.Results, 1)
