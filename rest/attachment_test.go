@@ -2627,7 +2627,7 @@ func TestAttachmentDeleteOnExpiry(t *testing.T) {
 
 }
 func TestUpdateExistingAttachment(t *testing.T) {
-	rt := NewRestTester(t, &RestTesterConfig{ // CBG-2619
+	rt := NewRestTester(t, &RestTesterConfig{
 		GuestEnabled: true,
 	})
 	defer rt.Close()
@@ -2698,7 +2698,7 @@ func TestUpdateExistingAttachment(t *testing.T) {
 // TestPushUnknownAttachmentAsStub sets revpos to an older generation, for an attachment that doesn't exist on the server.
 // Verifies that getAttachment is triggered, and attachment is properly persisted.
 func TestPushUnknownAttachmentAsStub(t *testing.T) {
-	rt := NewRestTester(t, &RestTesterConfig{ // CBG-2619
+	rt := NewRestTester(t, &RestTesterConfig{
 		GuestEnabled: true,
 	})
 	defer rt.Close()
@@ -2967,7 +2967,7 @@ func TestPutInvalidAttachment(t *testing.T) {
 // validates that proveAttachment isn't being invoked when the attachment is already present and the
 // digest doesn't change, regardless of revpos.
 func TestCBLRevposHandling(t *testing.T) {
-	rt := NewRestTester(t, &RestTesterConfig{ // CBG-2619
+	rt := NewRestTester(t, &RestTesterConfig{
 		GuestEnabled: true,
 	})
 	defer rt.Close()

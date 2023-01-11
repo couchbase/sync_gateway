@@ -762,7 +762,7 @@ func TestPublicPortAuthentication(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)
 
 	// Create bliptester that is connected as user1, with access to the user1 channel
-	btUser1, err := NewBlipTesterFromSpec(t, // CBG-2619: make collection aware
+	btUser1, err := NewBlipTesterFromSpec(t,
 		BlipTesterSpec{
 			connectingUsername: "user1",
 			connectingPassword: "1234",

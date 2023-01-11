@@ -420,7 +420,7 @@ func TestPutAttachmentViaBlipGetViaBlip(t *testing.T) {
 
 // TestBlipAttachNameChange tests CBL handling - attachments with changed names are sent as stubs, and not new attachments
 func TestBlipAttachNameChange(t *testing.T) {
-	rt := NewRestTester(t, &RestTesterConfig{ // CBG-2619
+	rt := NewRestTester(t, &RestTesterConfig{
 		GuestEnabled: true,
 	})
 	defer rt.Close()
@@ -466,7 +466,7 @@ func TestBlipAttachNameChange(t *testing.T) {
 
 // TestBlipLegacyAttachNameChange ensures that CBL name changes for legacy attachments are handled correctly
 func TestBlipLegacyAttachNameChange(t *testing.T) {
-	rt := NewRestTester(t, &RestTesterConfig{ // CBG-2619
+	rt := NewRestTester(t, &RestTesterConfig{
 		GuestEnabled: true,
 	})
 	defer rt.Close()
@@ -521,7 +521,7 @@ func TestBlipLegacyAttachNameChange(t *testing.T) {
 
 // TestBlipLegacyAttachDocUpdate ensures that CBL updates for documents associated with legacy attachments are handled correctly
 func TestBlipLegacyAttachDocUpdate(t *testing.T) {
-	rt := NewRestTester(t, &RestTesterConfig{ // CBG-2619
+	rt := NewRestTester(t, &RestTesterConfig{
 		GuestEnabled: true,
 	})
 	defer rt.Close()
