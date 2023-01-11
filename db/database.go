@@ -444,6 +444,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 			}
 			collectionNameMap := make(map[string]struct{}, len(scope.Collections))
 			for collName, collOpts := range scope.Collections {
+				ctx := base.CollectionCtx(ctx, collName)
 				dataStore := bucket.NamedDataStore(base.ScopeAndCollectionName{Scope: scopeName, Collection: collName})
 				dbCollection, err := newDatabaseCollection(ctx, dbContext, dataStore)
 				if err != nil {
@@ -1577,13 +1578,16 @@ func (db *Database) Compact(ctx context.Context, skipRunningStateCheck bool, cal
 
 	purgeBody := Body{"_purged": true}
 	for _, c := range db.CollectionByID {
+		// shadow ctx, sot that we can't misuse the parent's inside the loop
+		ctx := base.CollectionCtx(ctx, c.Name())
+
 		// create admin collection interface
 		collection, err := db.GetDatabaseCollectionWithUser(c.ScopeName(), c.Name())
 		if err != nil {
 			base.WarnfCtx(ctx, "Tombstone compaction could not get collection: %s", err)
 			continue
 		}
-		ctx := base.CollectionNameCtx(ctx, collection.Name())
+
 		for {
 			purgedDocs := make([]string, 0)
 			results, err := collection.QueryTombstones(ctx, purgeOlderThan, QueryTombstoneBatch)

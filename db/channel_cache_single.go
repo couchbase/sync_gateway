@@ -428,7 +428,7 @@ func (c *singleChannelCacheImpl) GetChanges(options ChangesOptions) ([]*LogEntry
 			resultValidTo = resultFromQuery[numResults-1].Sequence
 		}
 		if len(resultFromCache) < c.options.ChannelCacheMaxLength {
-			c.prependChanges(resultFromQuery, startSeq, resultValidTo)
+			c.prependChanges(options.LoggingCtx, resultFromQuery, startSeq, resultValidTo)
 		}
 	}
 
@@ -573,10 +573,9 @@ func (c *singleChannelCacheImpl) insertChange(log *LogEntries, change *LogEntry)
 // the cache.
 //
 // Returns the number of entries actually prepended.
-func (c *singleChannelCacheImpl) prependChanges(changes LogEntries, changesValidFrom uint64, changesValidTo uint64) int {
+func (c *singleChannelCacheImpl) prependChanges(logCtx context.Context, changes LogEntries, changesValidFrom uint64, changesValidTo uint64) int {
 	c.lock.Lock()
 	defer c.lock.Unlock()
-	logCtx := context.TODO()
 
 	// If set of changes to prepend is empty, check whether validFrom should be updated
 	if len(changes) == 0 {

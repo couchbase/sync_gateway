@@ -183,6 +183,12 @@ func (h *handler) addDatabaseLogContext(dbName string) {
 	}
 }
 
+func (h *handler) addCollectionLogContext(collectionName string) {
+	if collectionName != "" {
+		h.rqCtx = base.LogContextWith(h.ctx(), &base.CollectionLogContext{Collection: collectionName})
+	}
+}
+
 // ParseKeyspace will return a db, scope and collection for a given '.' separated keyspace string.
 // Returns nil for scope and/or collection if not present in the keyspace string.
 func ParseKeyspace(ks string) (db string, scope, collection *string, err error) {
@@ -259,6 +265,9 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 		keyspaceDb, keyspaceScope, keyspaceCollection, err = ParseKeyspace(ks)
 		if err != nil {
 			return err
+		}
+		if keyspaceCollection != nil {
+			h.addCollectionLogContext(*keyspaceCollection)
 		}
 	}
 
