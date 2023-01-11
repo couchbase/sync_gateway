@@ -844,6 +844,8 @@ func TestBlipDeltaSyncPush(t *testing.T) {
 		&rtConfig)
 	defer rt.Close()
 	collection := rt.GetSingleTestDatabaseCollection()
+	var msg *blip.Message
+	var ok bool
 
 	client, err := BlipClientInitialization(t, rt, collection, nil)
 	require.NoError(t, err)
@@ -868,8 +870,13 @@ func TestBlipDeltaSyncPush(t *testing.T) {
 	assert.Equal(t, "2-abc", newRev)
 
 	// Check EE is delta, and CE is full-body replication
-	msg, ok := client.pushReplication.WaitForMessage(3)
-	assert.True(t, ok)
+	if base.IsDefaultCollection(collection.ScopeName(), collection.Name()) {
+		msg, ok = client.pushReplication.WaitForMessage(2)
+		assert.True(t, ok)
+	} else {
+		msg, ok = client.pushReplication.WaitForMessage(3)
+		assert.True(t, ok)
+	}
 
 	if base.IsEnterpriseEdition() {
 		// Check the request was sent with the correct deltaSrc property
@@ -959,6 +966,8 @@ func TestBlipNonDeltaSyncPush(t *testing.T) {
 		&rtConfig)
 	defer rt.Close()
 	collection := rt.GetSingleTestDatabaseCollection()
+	var msg *blip.Message
+	var ok bool
 
 	client, err := BlipClientInitialization(t, rt, collection, nil)
 	require.NoError(t, err)
@@ -982,8 +991,13 @@ func TestBlipNonDeltaSyncPush(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, "2-abc", newRev)
 	// Check EE is delta, and CE is full-body replication
-	msg, ok := client.pushReplication.WaitForMessage(3)
-	assert.True(t, ok)
+	if base.IsDefaultCollection(collection.ScopeName(), collection.Name()) {
+		msg, ok = client.pushReplication.WaitForMessage(2)
+		assert.True(t, ok)
+	} else {
+		msg, ok = client.pushReplication.WaitForMessage(3)
+		assert.True(t, ok)
+	}
 
 	// Check the request was NOT sent with a deltaSrc property
 	assert.Equal(t, "", msg.Properties[db.RevMessageDeltaSrc])
