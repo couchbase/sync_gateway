@@ -7,7 +7,7 @@
 # the file licenses/APL2.txt.
 
 parameters:
-  - $ref: ../../components/parameters.yaml#/keyspace
+  - $ref: ../../components/parameters.yaml#/db
 get:
   summary: Get resync status
   description: |-
@@ -60,6 +60,20 @@ post:
       description: '**Use this only when requested to do so by the Couchbase support team** This request will regenerate the sequence numbers for each document processed.'
       schema:
         type: boolean
+  requestBody:
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            scopes:
+              description: This controls for which collections resync will run
+              type: object
+              $ref: ../../components/schemas.yaml#/ResyncScopesMap
+            regenerate_sequences:
+              description: This can be used as an alternative to query param `regenerate_sequences`. If either query param or this is set to true, then the request will regenerate the sequence numbers for each document processed.
+              type: boolean
+              default: false
   responses:
     '200':
       description: successfully changed the status of the resync operation
