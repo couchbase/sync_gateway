@@ -898,6 +898,138 @@ func TestResyncUsingDCPStream(t *testing.T) {
 	}
 }
 
+func TestResyncForNamedCollection(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("can not create new buckets and scopes in walrus")
+	}
+	base.TestRequiresCollections(t)
+
+	base.RequireNumTestDataStores(t, 2)
+
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyConfig)
+	serverErr := make(chan error)
+
+	syncFn := `
+	function(doc) {
+		channel("x")
+	}`
+
+	rt := rest.NewRestTester(t,
+		&rest.RestTesterConfig{
+			SyncFn: syncFn,
+		},
+	)
+	defer rt.Close()
+
+	_, ok := (rt.GetDatabase().ResyncManager.Process).(*db.ResyncManager)
+	if !ok {
+		t.Skip("This test only works when ResyncManager is used")
+	}
+	// Start SG with no databases
+	ctx := base.TestCtx(t)
+	config := rest.BootstrapStartupConfigForTest(t)
+	sc, err := rest.SetupServerContext(ctx, &config, true)
+	require.NoError(t, err)
+	defer func() {
+		sc.Close(ctx)
+		require.NoError(t, <-serverErr)
+	}()
+
+	go func() {
+		serverErr <- rest.StartServer(ctx, &config, sc)
+	}()
+	require.NoError(t, sc.WaitForRESTAPIs())
+
+	// Get a test bucket, and add new scopes and collections to it.
+	tb := base.GetTestBucket(t)
+	defer func() {
+		log.Println("closing test bucket")
+		tb.Close()
+	}()
+
+	dataStore1 := tb.GetNamedDataStore(0)
+	dataStore1Name, ok := base.AsDataStoreName(dataStore1)
+	require.True(t, ok)
+	dataStore2 := tb.GetNamedDataStore(1)
+	dataStore2Name, ok := base.AsDataStoreName(dataStore2)
+	require.True(t, ok)
+
+	keyspace1 := fmt.Sprintf("db.%s.%s", dataStore1Name.ScopeName(),
+		dataStore1Name.CollectionName())
+	keyspace2 := fmt.Sprintf("db.%s.%s", dataStore2Name.ScopeName(),
+		dataStore2Name.CollectionName())
+
+	resp := rt.SendAdminRequest(http.MethodPost, "/db/_config", fmt.Sprintf(
+		`{"bucket": "%s", "scopes": {"%s": {"collections": {"%s": {}, "%s":{}}}}, "num_index_replicas": 0, "enable_shared_bucket_access": true, "use_views": false}`,
+		tb.GetName(), dataStore1Name.ScopeName(), dataStore1Name.CollectionName(), dataStore2Name.CollectionName(),
+	))
+	rest.RequireStatus(t, resp, http.StatusCreated)
+
+	// put a docs in both collections
+	for i := 1; i <= 10; i++ {
+		resp = rt.SendAdminRequest(http.MethodPut, fmt.Sprintf("/%s/1000%d", keyspace1, i), `{"type":"test_doc"}`)
+		rest.RequireStatus(t, resp, http.StatusCreated)
+
+		resp = rt.SendAdminRequest(http.MethodPut, fmt.Sprintf("/%s/1000%d", keyspace2, i), `{"type":"test_doc"}`)
+		rest.RequireStatus(t, resp, http.StatusCreated)
+	}
+
+	resp = rt.SendAdminRequest(http.MethodPost, "/db/_offline", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+
+	rest.WaitAndAssertCondition(t, func() bool {
+		state := atomic.LoadUint32(&rt.GetDatabase().State)
+		return state == db.DBOffline
+	})
+
+	// Run resync for single collection // Request body {"scopes": "scopeName": ["collection1Name", "collection2Name"]}}
+	body := fmt.Sprintf(`{
+			"scopes" :{
+				"%s": ["%s"]
+			}
+		}`, dataStore1Name.ScopeName(), dataStore1Name.CollectionName())
+	resp = rt.SendAdminRequest("POST", "/db/_resync?action=start", body)
+	rest.RequireStatus(t, resp, http.StatusOK)
+
+	var resyncManagerStatus db.ResyncManagerResponse
+	err = rt.WaitForConditionWithOptions(func() bool {
+		response := rt.SendAdminRequest("GET", "/db/_resync", "")
+		err := json.Unmarshal(response.BodyBytes(), &resyncManagerStatus)
+		assert.NoError(t, err)
+
+		if resyncManagerStatus.State == db.BackgroundProcessStateCompleted {
+			return true
+		} else {
+			return false
+		}
+	}, 200, 200)
+	require.NoError(t, err)
+
+	assert.Equal(t, 0, int(resyncManagerStatus.DocsChanged))
+	assert.Equal(t, 10, int(resyncManagerStatus.DocsProcessed))
+
+	// Run resync for all collections
+	resp = rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+
+	resyncManagerStatus = db.ResyncManagerResponse{}
+	err = rt.WaitForConditionWithOptions(func() bool {
+		response := rt.SendAdminRequest("GET", "/db/_resync", "")
+		err := json.Unmarshal(response.BodyBytes(), &resyncManagerStatus)
+		assert.NoError(t, err)
+
+		if resyncManagerStatus.State == db.BackgroundProcessStateCompleted {
+			return true
+		} else {
+			return false
+		}
+	}, 200, 200)
+	require.NoError(t, err)
+
+	assert.Equal(t, 0, int(resyncManagerStatus.DocsChanged))
+	assert.Equal(t, 20, int(resyncManagerStatus.DocsProcessed))
+}
+
 func TestResyncUsingDCPStreamForNamedCollection(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("can not create new buckets and scopes in walrus")
