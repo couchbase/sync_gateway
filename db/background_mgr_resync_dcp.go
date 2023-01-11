@@ -10,7 +10,6 @@ package db
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 	"sync"
@@ -94,7 +93,7 @@ func (r *ResyncManagerDCP) Init(ctx context.Context, options map[string]interfac
 func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]interface{}, persistClusterStatusCallback updateStatusCallbackFunc, terminator *base.SafeTerminator) error {
 	db := options["database"].(*Database)
 	regenerateSequences := options["regenerateSequences"].(bool)
-	resyncPostReqBodyBytes := options["collections"].([]byte)
+	resyncPostBody := options["collections"].(*ResyncPostReqBody)
 
 	resyncLoggingID := "Resync: " + r.ResyncID
 
@@ -143,12 +142,6 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]interface
 
 	bucket, err := base.AsGocbV2Bucket(db.Bucket)
 	if err != nil {
-		return err
-	}
-
-	resyncPostBody, err := unmarshalResyncPostReqBody(resyncPostReqBodyBytes)
-	if err != nil {
-		base.InfofCtx(ctx, base.KeyAll, "[%s] Failed to unmarshal: %v", resyncLoggingID, err)
 		return err
 	}
 
@@ -238,17 +231,6 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]interface
 	}
 
 	return nil
-}
-
-func unmarshalResyncPostReqBody(body []byte) (*ResyncPostReqBody, error) {
-	resyncPostReqBody := &ResyncPostReqBody{}
-	if len(body) == 0 {
-		return resyncPostReqBody, nil
-	}
-	if err := json.Unmarshal(body, resyncPostReqBody); err != nil {
-		return nil, err
-	}
-	return resyncPostReqBody, nil
 }
 
 func getCollectionIds(db *Database, resyncReqBody *ResyncPostReqBody) ([]uint32, bool, error) {

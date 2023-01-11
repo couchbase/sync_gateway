@@ -157,7 +157,7 @@ func TestResyncManagerDCPStopInMidWay(t *testing.T) {
 	options := map[string]interface{}{
 		"database":            db,
 		"regenerateSequences": false,
-		"collections":         []byte(""),
+		"collections":         &ResyncPostReqBody{},
 	}
 
 	err := resycMgr.Start(ctx, options)
@@ -210,7 +210,7 @@ func TestResyncManagerDCPStart(t *testing.T) {
 		options := map[string]interface{}{
 			"database":            db,
 			"regenerateSequences": false,
-			"collections":         []byte(""),
+			"collections":         &ResyncPostReqBody{},
 		}
 		err := resyncMgr.Start(ctx, options)
 		require.NoError(t, err)
@@ -244,7 +244,7 @@ func TestResyncManagerDCPStart(t *testing.T) {
 		options := map[string]interface{}{
 			"database":            db,
 			"regenerateSequences": false,
-			"collections":         []byte(""),
+			"collections":         &ResyncPostReqBody{},
 		}
 
 		err := resyncMgr.Start(ctx, options)
@@ -284,7 +284,7 @@ func TestResyncManagerDCPRunTwice(t *testing.T) {
 	options := map[string]interface{}{
 		"database":            db,
 		"regenerateSequences": false,
-		"collections":         []byte(""),
+		"collections":         &ResyncPostReqBody{},
 	}
 
 	err := resycMgr.Start(ctx, options)
@@ -335,7 +335,7 @@ func TestResycnManagerDCPResumeStoppedProcess(t *testing.T) {
 	options := map[string]interface{}{
 		"database":            db,
 		"regenerateSequences": false,
-		"collections":         []byte(""),
+		"collections":         &ResyncPostReqBody{},
 	}
 
 	err := resycMgr.Start(ctx, options)
@@ -383,55 +383,6 @@ func TestResycnManagerDCPResumeStoppedProcess(t *testing.T) {
 	assert.Equal(t, int64(docsToCreate), stats.DocsChanged)
 
 	assert.GreaterOrEqual(t, db.DbStats.Database().SyncFunctionCount.Value(), int64(docsToCreate))
-}
-
-func Test_unmarshalResyncPostReqBody(t *testing.T) {
-	testCases := []struct {
-		title     string
-		body      string
-		expected  *ResyncPostReqBody
-		Expecterr bool
-	}{
-		{
-			title: "multiple scopes with multiple collections",
-			body: `{
-				"scopes" :{
-					"scopeName": ["scopeName_coll0", "scopeName_coll1"],
-					"scopeName2": ["scopeName2_coll0", "scopeName2_coll1"]
-				}
-			}`,
-			expected: &ResyncPostReqBody{
-				Scope: map[string][]string{
-					"scopeName":  {"scopeName_coll0", "scopeName_coll1"},
-					"scopeName2": {"scopeName2_coll0", "scopeName2_coll1"},
-				},
-			},
-		},
-		{
-			title:    "empty body",
-			body:     "",
-			expected: &ResyncPostReqBody{},
-		},
-		{
-			title:     "invalid body",
-			body:      "random",
-			expected:  nil,
-			Expecterr: true,
-		},
-	}
-
-	for _, testCase := range testCases {
-		t.Run(testCase.title, func(t *testing.T) {
-			resyncPostReqBody, err := unmarshalResyncPostReqBody([]byte(testCase.body))
-			if testCase.Expecterr {
-				require.Error(t, err)
-			} else {
-				require.NoError(t, err)
-			}
-
-			require.Equal(t, testCase.expected, resyncPostReqBody)
-		})
-	}
 }
 
 // helper function to insert documents equals to docsToCreate, and update sync function if updateResyncFuncAfterDocsAdded set to true

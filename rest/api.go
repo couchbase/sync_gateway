@@ -9,6 +9,7 @@
 package rest
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	httpprof "net/http/pprof"
@@ -282,6 +283,13 @@ func (h *handler) handlePostResync() error {
 		return err
 	}
 
+	resyncPostReqBody := &db.ResyncPostReqBody{}
+	if len(body) != 0 {
+		if err := json.Unmarshal(body, resyncPostReqBody); err != nil {
+			return err
+		}
+	}
+
 	if action != "" && action != string(db.BackgroundProcessActionStart) && action != string(db.BackgroundProcessActionStop) {
 		return base.HTTPErrorf(http.StatusBadRequest, "Unknown parameter for 'action'. Must be start or stop")
 	}
@@ -295,7 +303,7 @@ func (h *handler) handlePostResync() error {
 			err := h.db.ResyncManager.Start(h.ctx(), map[string]interface{}{
 				"database":            h.db,
 				"regenerateSequences": regenerateSequences,
-				"collections":         body,
+				"collections":         resyncPostReqBody,
 			})
 			if err != nil {
 				return err
