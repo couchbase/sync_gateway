@@ -1404,7 +1404,6 @@ func AdminChannelGrant(princ auth.PrincipalConfig, collection *db.DatabaseCollec
 	if err != nil {
 		return "", err
 	}
-	fmt.Println(string(payload))
 
 	return string(payload), nil
 }
