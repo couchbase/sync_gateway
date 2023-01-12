@@ -1395,7 +1395,11 @@ func AdminChannelGrant(princ auth.PrincipalConfig, collection *db.DatabaseCollec
 	scopeName := collection.ScopeName()
 
 	if base.IsDefaultCollection(scopeName, collectionName) {
-		princ.ExplicitChannels = base.SetFromArray(adminChannels)
+		if len(adminChannels) == 0 {
+			princ.ExplicitChannels = base.SetOf("[]")
+		} else {
+			princ.ExplicitChannels = base.SetFromArray(adminChannels)
+		}
 	} else {
 		princ.SetExplicitChannels(scopeName, collectionName, adminChannels...)
 	}
