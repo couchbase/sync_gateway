@@ -258,7 +258,10 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 			return err
 		}
 		if h.user != nil && h.user.Name() == "" && dbContext != nil && dbContext.IsGuestReadOnly() {
-			if requiresWritePermission(accessPermissions) {
+			// Prevent read-only guest access to any endpoint requiring write permissions except
+			// blipsync.  Read-only guest handling for websocket replication (blipsync) is evaluated
+			// at the blip message level to support read-only pull replications.
+			if requiresWritePermission(accessPermissions) && !h.pathTemplateContains("_blipsync") {
 				return base.HTTPErrorf(http.StatusForbidden, auth.GuestUserReadOnly)
 			}
 		}
@@ -1189,4 +1192,14 @@ func requiresWritePermission(accessPermissions []Permission) bool {
 		}
 	}
 	return false
+}
+
+// Checks whether the mux path template for the current route contains the specified pattern
+func (h *handler) pathTemplateContains(pattern string) bool {
+	route := mux.CurrentRoute(h.rq)
+	pathTemplate, err := route.GetPathTemplate()
+	if err != nil {
+		return false
+	}
+	return strings.Contains(pathTemplate, pattern)
 }
