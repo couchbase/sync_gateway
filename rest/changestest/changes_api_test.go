@@ -1268,7 +1268,6 @@ func TestChangesLoopingWhenLowSequenceOneShotAdmin(t *testing.T) {
 	WriteDirect([]string{"PBS"}, 5, collection)
 	require.NoError(t, testDb.GetSingleDatabaseCollection().WaitForSequenceNotSkipped(ctx, 5))
 	resp := rt.SendAdminRequest("GET", "/db/_all_docs", "")
-	fmt.Println(resp.Body)
 	// Check the _changes feed:
 	var changes struct {
 		Results  []db.ChangeEntry

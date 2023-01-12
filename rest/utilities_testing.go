@@ -1388,8 +1388,7 @@ func (bt *BlipTester) SendRev(docId, docRev string, body []byte, properties blip
 
 }
 
-// Expects adminChannels of the form `admin_channels":["alpha"]`
-// If scope and collection are non-zero, builds collection access string for the collection
+// AdminChannelGrant takes a set of channels and will allocate the channels to user/role based on whether you are using named collections or not
 func AdminChannelGrant(princ auth.PrincipalConfig, collection *db.DatabaseCollection, adminChannels []string) (string, error) {
 	collectionName := collection.Name()
 	scopeName := collection.ScopeName()

@@ -372,7 +372,6 @@ func TestRoleAccessChanges(t *testing.T) {
 	fashionRevID := body["rev"].(string)
 
 	roleGrantSequence := rt.GetDocumentSequence("fashion")
-	fmt.Println("current role grant sequence", roleGrantSequence)
 
 	cacheWaiter.Add(4)
 	RequireStatus(t, rt.SendRequest("PUT", "/{{.keyspace}}/g1", `{"channel":"gamma"}`), 201)
