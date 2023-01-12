@@ -11,7 +11,6 @@ package rest
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/couchbase/sync_gateway/auth"
 	"log"
 	"net/http"
 	"strconv"
@@ -20,6 +19,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/stretchr/testify/assert"
