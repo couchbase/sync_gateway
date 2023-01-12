@@ -398,7 +398,10 @@ func (b *GocbV2Bucket) BucketItemCount() (itemCount int, err error) {
 	}
 
 	for _, dsn := range dataStoreNames {
-		ds := b.NamedDataStore(dsn)
+		ds, err := b.NamedDataStore(dsn)
+		if err != nil {
+			return 0, err
+		}
 		ns, ok := AsN1QLStore(ds)
 		if !ok {
 			return 0, fmt.Errorf("DataStore %v %T is not a N1QLStore", ds.GetName(), ds)
@@ -621,14 +624,19 @@ func (b *GocbV2Bucket) DefaultDataStore() sgbucket.DataStore {
 }
 
 // NamedDataStore returns a collection on a bucket within the given scope and collection.
-func (b *GocbV2Bucket) NamedDataStore(name sgbucket.DataStoreName) sgbucket.DataStore {
+func (b *GocbV2Bucket) NamedDataStore(name sgbucket.DataStoreName) (sgbucket.DataStore, error) {
+	err := WaitForNoError(func() error {
+		_, err := NewCollection(
+			b, b.bucket.Scope(name.ScopeName()).Collection(name.CollectionName()))
+		return err
+	})
+	if err != nil {
+		return nil, ErrAuthError
+	}
 	c, err := NewCollection(
 		b,
 		b.bucket.Scope(name.ScopeName()).Collection(name.CollectionName()))
-	if err != nil {
-		panic(err)
-	}
-	return c
+	return c, nil
 }
 
 func GetCollectionID(dataStore DataStore) uint32 {

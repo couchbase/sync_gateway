@@ -393,6 +393,28 @@ func TestCollectionsSGIndexQuery(t *testing.T) {
 	_, err := rt.WaitForChanges(1, "/{{.keyspace}}/_changes", username, false)
 	require.NoError(t, err)
 }
+func TestCollectionsPutDBInexistentCollection(t *testing.T) {
+	base.TestRequiresCollections(t)
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+
+	if !base.TestUseXattrs() {
+		t.Skip("Test relies on import - needs xattrs")
+	}
+
+	tb := base.GetTestBucket(t)
+	defer tb.Close()
+
+	rtConfig := &RestTesterConfig{
+		CustomTestBucket: tb,
+		PersistentConfig: true,
+	}
+
+	rt := NewRestTesterMultipleCollections(t, rtConfig, 1)
+	defer rt.Close()
+
+	resp := rt.SendAdminRequest("PUT", "/db/", fmt.Sprintf(`{"bucket": "%s", "num_index_replicas":0, "scopes": {"new_scope": {"collections": {"new_collection": {}}}}}`, tb.GetName()))
+	RequireStatus(t, resp, http.StatusForbidden)
+}
 
 func TestCollectionsChangeConfigScope(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {

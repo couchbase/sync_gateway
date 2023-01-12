@@ -160,7 +160,8 @@ func (rt *RestTester) Bucket() base.Bucket {
 
 	if rt.InitSyncSeq > 0 {
 		log.Printf("Initializing %s to %d", base.SyncSeqKey, rt.InitSyncSeq)
-		_, incrErr := testBucket.GetSingleDataStore().Incr(base.SyncSeqKey, rt.InitSyncSeq, rt.InitSyncSeq, 0)
+		tbDatastore := testBucket.GetSingleDataStore()
+		_, incrErr := tbDatastore.Incr(base.SyncSeqKey, rt.InitSyncSeq, rt.InitSyncSeq, 0)
 		if incrErr != nil {
 			rt.TB.Fatalf("Error initializing %s in test bucket: %v", base.SyncSeqKey, incrErr)
 		}
@@ -458,10 +459,12 @@ func (rt *RestTester) GetSingleTestDatabaseCollection() *db.DatabaseCollection {
 // GetSingleDataStore will return a datastore if there is only one collection configured on the RestTester database.
 func (rt *RestTester) GetSingleDataStore() base.DataStore {
 	collection := rt.GetSingleTestDatabaseCollection()
-	return rt.GetDatabase().Bucket.NamedDataStore(base.ScopeAndCollectionName{
+	ds, err := rt.GetDatabase().Bucket.NamedDataStore(base.ScopeAndCollectionName{
 		Scope:      collection.ScopeName(),
 		Collection: collection.Name(),
 	})
+	require.NoError(rt.TB, err)
+	return ds
 }
 
 func (rt *RestTester) MustWaitForDoc(docid string, t testing.TB) {

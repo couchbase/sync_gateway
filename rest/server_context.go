@@ -484,8 +484,13 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 
 		for scopeName, scopeConfig := range config.Scopes {
 			for collectionName, _ := range scopeConfig.Collections {
-				dataStore := bucket.NamedDataStore(base.ScopeAndCollectionName{Scope: scopeName, Collection: collectionName})
-
+				dataStore, err := bucket.NamedDataStore(base.ScopeAndCollectionName{Scope: scopeName, Collection: collectionName})
+				if err != nil {
+					if errors.Is(err, base.ErrAuthError) {
+						return nil, err
+					}
+					return nil, fmt.Errorf("error attempting to create/update database: %s", err)
+				}
 				// Check if scope/collection specified exists. Will enter retry loop if connection unsuccessful
 				if err := base.WaitUntilDataStoreExists(dataStore); err != nil {
 					return nil, fmt.Errorf("attempting to create/update database with a scope/collection that is not found")

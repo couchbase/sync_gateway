@@ -587,7 +587,11 @@ var N1QLBucketEmptierFunc TBPBucketReadierFunc = func(ctx context.Context, b Buc
 		return err
 	}
 	for _, dataStoreName := range dataStores {
-		n1qlStore, ok := AsN1QLStore(b.NamedDataStore(dataStoreName))
+		dataStore, err := b.NamedDataStore(dataStoreName)
+		if err != nil {
+			return err
+		}
+		n1qlStore, ok := AsN1QLStore(dataStore)
 		if !ok {
 			return errors.New("N1QLBucketEmptierFunc used with non-N1QL store")
 		}
