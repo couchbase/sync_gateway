@@ -3181,10 +3181,12 @@ func TestSwitchDbConfigCollectionName(t *testing.T) {
 		tb.Close()
 	}()
 
-	dataStore1 := tb.GetNamedDataStore(0)
+	dataStore1, err := tb.GetNamedDataStore(0)
+	require.NoError(t, err)
 	dataStore1Name, ok := base.AsDataStoreName(dataStore1)
 	require.True(t, ok)
-	dataStore2 := tb.GetNamedDataStore(1)
+	dataStore2, err := tb.GetNamedDataStore(1)
+	require.NoError(t, err)
 	dataStore2Name, ok := base.AsDataStoreName(dataStore2)
 	require.True(t, ok)
 
