@@ -386,9 +386,9 @@ func TestUserAPI(t *testing.T) {
 	princConfig := auth.PrincipalConfig{}
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &princConfig))
 	assert.Equal(t, []string{"hipster"}, princConfig.ExplicitRoleNames.ToArray())
-	channels := princConfig.GetChannels(s, c).ToArray()
-	sort.Strings(channels)
-	assert.Equal(t, []string{"!", "bar", "fedoras", "fixies", "foo"}, channels)
+	allChans = princConfig.GetChannels(s, c).ToArray()
+	sort.Strings(allChans)
+	assert.Equal(t, []string{"!", "bar", "fedoras", "fixies", "foo"}, allChans)
 
 	// DELETE the user
 	RequireStatus(t, rt.SendAdminRequest("DELETE", "/db/_user/snej", ""), 200)

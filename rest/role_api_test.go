@@ -14,6 +14,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"sort"
 	"testing"
 
 	"github.com/couchbase/sync_gateway/auth"
@@ -292,7 +293,9 @@ func TestRoleAssignmentBeforeUserExists(t *testing.T) {
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &user))
 	assert.Equal(t, "user1", *user.Name)
 	assert.Equal(t, []string{"role1"}, user.RoleNames)
-	assert.Equal(t, []string{"!", "chan1"}, user.GetChannels(s, c).ToArray())
+	allChans := user.GetChannels(s, c).ToArray()
+	sort.Strings(allChans)
+	assert.Equal(t, []string{"!", "chan1"}, allChans)
 
 	// goassert.DeepEquals(t, body["admin_roles"], []interface{}{"hipster"})
 	// goassert.DeepEquals(t, body["all_channels"], []interface{}{"bar", "fedoras", "fixies", "foo"})

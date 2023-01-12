@@ -14,7 +14,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"github.com/couchbase/sync_gateway/auth"
 	"log"
 	"net/http"
 	"net/url"
@@ -26,6 +25,7 @@ import (
 
 	"github.com/couchbase/go-blip"
 	"github.com/couchbase/gocb/v2"
+	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/stretchr/testify/assert"

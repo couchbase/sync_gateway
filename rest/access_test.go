@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"sort"
 	"testing"
 
 	"github.com/couchbase/sync_gateway/auth"
@@ -53,7 +54,9 @@ func TestPublicChanGuestAccess(t *testing.T) {
 	fmt.Println("GUEST user:", resp.Body.String())
 	err := json.Unmarshal(resp.BodyBytes(), &user)
 	require.NoError(t, err)
-	assert.EqualValues(t, []string{"!"}, user.GetChannels(s, c).ToArray())
+	allChans := user.GetChannels(s, c).ToArray()
+	sort.Strings(allChans)
+	assert.EqualValues(t, []string{"!"}, allChans)
 
 	// Confirm guest user cannot access other channels it has no access too
 	resp = rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/docNoAccess", `{"channels": ["cookie"], "foo": "bar"}`)
