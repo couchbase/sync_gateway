@@ -10,6 +10,7 @@ package rest
 
 import (
 	"fmt"
+	"github.com/couchbase/sync_gateway/auth"
 	"log"
 	"net/http"
 	"net/http/httptest"
@@ -104,7 +105,15 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 	assert.NoError(t, a.Save(guest))
 
 	// Create user1
-	response := rt.SendAdminRequest("PUT", "/db/_user/user1", `{"email":"user1@couchbase.com", "password":"letmein",`+AdminChannelGrant(collection, `"admin_channels":["alpha"]`)+`}`)
+	email := "user1@couchbase.com"
+	pass := "letmein"
+	userConfig := auth.PrincipalConfig{
+		Password: &pass,
+		Email:    &email,
+	}
+	payload, err := AdminChannelGrant(userConfig, collection, []string{"alpha"})
+	require.NoError(t, err)
+	response := rt.SendAdminRequest("PUT", "/db/_user/user1", payload)
 	RequireStatus(t, response, 201)
 
 	// Create 100 docs
@@ -128,7 +137,11 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 	assert.Equal(t, "doc98", changesResults.Results[49].ID)
 
 	// Create user2
-	response = rt.SendAdminRequest("PUT", "/db/_user/user2", `{"email":"user2@couchbase.com", "password":"letmein",`+AdminChannelGrant(collection, `"admin_channels":["alpha"]`)+`}`)
+	email = "user2@couchbase.com"
+	userConfig.Email = &email
+	payload, err = AdminChannelGrant(userConfig, collection, []string{"alpha"})
+	require.NoError(t, err)
+	response = rt.SendAdminRequest("PUT", "/db/_user/user2", payload)
 	RequireStatus(t, response, 201)
 
 	// Retrieve all changes for user2 with no limits
@@ -138,7 +151,10 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 	assert.Equal(t, "doc99", changesResults.Results[99].ID)
 
 	// Create user3
-	response = rt.SendAdminRequest("PUT", "/db/_user/user3", `{"email":"user3@couchbase.com", "password":"letmein",`+AdminChannelGrant(collection, `"admin_channels":["alpha"]`)+`}`)
+	email = "user3@couchbase.com"
+	userConfig.Email = &email
+	payload, err = AdminChannelGrant(userConfig, collection, []string{"alpha"})
+	response = rt.SendAdminRequest("PUT", "/db/_user/user3", payload)
 	RequireStatus(t, response, 201)
 
 	getUserResponse := rt.SendAdminRequest("GET", "/db/_user/user3", "")
@@ -164,7 +180,11 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 	assert.Equal(t, "doc99", changesResults.Results[49].ID)
 
 	// Create user4
-	response = rt.SendAdminRequest("PUT", "/db/_user/user4", `{"email":"user4@couchbase.com", "password":"letmein",`+AdminChannelGrant(collection, `"admin_channels":["alpha"]`)+`}`)
+	email = "user4@couchbase.com"
+	userConfig.Email = &email
+	payload, err = AdminChannelGrant(userConfig, collection, []string{"alpha"})
+	require.NoError(t, err)
+	response = rt.SendAdminRequest("PUT", "/db/_user/user4", payload)
 	RequireStatus(t, response, 201)
 	// Get the sequence from the user doc to validate against the triggered by value in the changes results
 	user4, _ := rt.GetDatabase().Authenticator(base.TestCtx(t)).GetUser("user4")

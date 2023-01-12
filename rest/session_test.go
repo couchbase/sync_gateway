@@ -9,17 +9,16 @@ package rest
 
 import (
 	"fmt"
-	"log"
-	"net/http"
-	"testing"
-	"time"
-
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"log"
+	"net/http"
+	"testing"
+	"time"
 )
 
 func TestCORSLoginOriginOnSessionPost(t *testing.T) {
@@ -149,9 +148,24 @@ func TestBasicAuthWithSessionCookie(t *testing.T) {
 	collection := rt.GetSingleTestDatabaseCollection()
 
 	// Create two users
-	response := rt.SendAdminRequest("PUT", "/db/_user/bernard", `{"name":"bernard", "password":"letmein",`+AdminChannelGrant(collection, `"admin_channels":["bernard"]`)+`}`)
+	name := "bernard"
+	pass := "letmein"
+	bernard := auth.PrincipalConfig{
+		Name:     &name,
+		Password: &pass,
+	}
+	payload, err := AdminChannelGrant(bernard, collection, []string{"bernard"})
+	require.NoError(t, err)
+	response := rt.SendAdminRequest("PUT", "/db/_user/bernard", payload)
 	RequireStatus(t, response, 201)
-	response = rt.SendAdminRequest("PUT", "/db/_user/manny", `{"name":"manny", "password":"letmein",`+AdminChannelGrant(collection, `"admin_channels":["manny"]`)+`}`)
+	name = "manny"
+	manny := auth.PrincipalConfig{
+		Name:     &name,
+		Password: &pass,
+	}
+	payload, err = AdminChannelGrant(manny, collection, []string{"manny"})
+	require.NoError(t, err)
+	response = rt.SendAdminRequest("PUT", "/db/_user/manny", payload)
 	RequireStatus(t, response, 201)
 
 	// Create a session for the first user
@@ -192,7 +206,15 @@ func TestSessionFail(t *testing.T) {
 	collection := rt.GetSingleTestDatabaseCollection()
 
 	// Create user
-	response := rt.SendAdminRequest("PUT", "/db/_user/user1", `{"name":"user1", "password":"letmein",`+AdminChannelGrant(collection, `"admin_channels":["user1"]`)+`}`)
+	name := "user1"
+	pass := "letmein"
+	user1 := auth.PrincipalConfig{
+		Name:     &name,
+		Password: &pass,
+	}
+	payload, err := AdminChannelGrant(user1, collection, []string{"user1"})
+	require.NoError(t, err)
+	response := rt.SendAdminRequest("PUT", "/db/_user/user1", payload)
 	RequireStatus(t, response, http.StatusCreated)
 
 	id, err := base.GenerateRandomSecret()

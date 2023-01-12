@@ -49,14 +49,11 @@ func TestPublicChanGuestAccess(t *testing.T) {
 
 	resp = rt.SendAdminRequest(http.MethodGet, "/db/_user/GUEST", ``)
 	RequireStatus(t, resp, http.StatusOK)
+	user := auth.PrincipalConfig{}
 	fmt.Println("GUEST user:", resp.Body.String())
-	if base.IsDefaultCollection(s, c) {
-		assert.EqualValues(t, []interface{}{"!"}, resp.GetRestDocument()["all_channels"])
-	} else {
-		expected := fmt.Sprintf(`map[%s:map[%s:map[all_channels:[!]]]]`, s, c)
-		collectionAccess := resp.GetRestDocument()["collection_access"]
-		assert.EqualValues(t, expected, fmt.Sprint(collectionAccess))
-	}
+	err := json.Unmarshal(resp.BodyBytes(), &user)
+	require.NoError(t, err)
+	assert.EqualValues(t, []string{"!"}, user.GetChannels(s, c).ToArray())
 
 	// Confirm guest user cannot access other channels it has no access too
 	resp = rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/docNoAccess", `{"channels": ["cookie"], "foo": "bar"}`)
@@ -393,13 +390,17 @@ func TestForceAPIForbiddenErrors(t *testing.T) {
 					}},
 				})
 			defer rt.Close()
-			ctx := base.TestCtx(t)
-			a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
 			collection := rt.GetSingleTestDatabaseCollection()
 			c := collection.Name()
 			s := collection.ScopeName()
 
-			resp := rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/Perms", `{"password": "password", `+AdminChannelGrant(collection, `"admin_channels": ["chan"]`)+`}`)
+			pass := "password"
+			userConfig := auth.PrincipalConfig{
+				Password: &pass,
+			}
+			payload, err := AdminChannelGrant(userConfig, collection, []string{"chan"})
+			require.NoError(t, err)
+			resp := rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/Perms", payload)
 			RequireStatus(t, resp, http.StatusOK)
 
 			// Create the initial document
@@ -485,33 +486,17 @@ func TestForceAPIForbiddenErrors(t *testing.T) {
 			resp = rt.SendAdminRequest(http.MethodGet, "/db/_user/NoPerms", ``)
 			RequireStatus(t, resp, http.StatusOK)
 
-			user, err := a.GetUser("NoPerms")
-			assert.NoError(t, err)
-			var allChannels struct {
-				Channels []string `json:"all_channels"`
-			}
-			if base.IsDefaultCollection(collection.Name(), collection.ScopeName()) {
-				err := json.Unmarshal(resp.BodyBytes(), &allChannels)
-				require.NoError(t, err)
-				assert.NotContains(t, allChannels.Channels, "chan2")
-			} else {
-				collAccess := user.GetCollectionsAccess()[s][c]
-				assert.NotContains(t, collAccess.Channels_.String(), "chan2")
-			}
+			user := auth.PrincipalConfig{}
+			err = json.Unmarshal(resp.BodyBytes(), &user)
+			require.NoError(t, err)
+			assert.NotContains(t, user.GetChannels(s, c).ToArray(), "chan2")
 
 			resp = rt.SendAdminRequest(http.MethodGet, "/db/_user/Perms", ``)
 			RequireStatus(t, resp, http.StatusOK)
 
-			if base.IsDefaultCollection(collection.Name(), collection.ScopeName()) {
-				err = json.Unmarshal(resp.BodyBytes(), &allChannels)
-				require.NoError(t, err)
-				assert.NotContains(t, allChannels.Channels, "chan2")
-			} else {
-				user, err = a.GetUser("NoPerms")
-				assert.NoError(t, err)
-				collAccess := user.GetCollectionsAccess()[s][c]
-				assert.NotContains(t, collAccess.Channels_.String(), "chan2")
-			}
+			err = json.Unmarshal(resp.BodyBytes(), &user)
+			require.NoError(t, err)
+			assert.NotContains(t, user.GetChannels(s, c).ToArray(), "chan2")
 
 			// Successful PUT which will grant access grants
 			resp = rt.SendUserRequestWithHeaders(http.MethodPut, "/{{.keyspace}}/doc?rev="+rev, `{"channels": "chan"}`, nil, "Perms", "password")
@@ -520,16 +505,10 @@ func TestForceAPIForbiddenErrors(t *testing.T) {
 			// Make sure channel access grant was successful
 			resp = rt.SendAdminRequest(http.MethodGet, "/db/_user/Perms", ``)
 			RequireStatus(t, resp, http.StatusOK)
-			if base.IsDefaultCollection(collection.Name(), collection.ScopeName()) {
-				err = json.Unmarshal(resp.BodyBytes(), &allChannels)
-				require.NoError(t, err)
-				assert.Contains(t, allChannels.Channels, "chan2")
-			} else {
-				user, err = a.GetUser("Perms")
-				assert.NoError(t, err)
-				collAccess := user.GetCollectionsAccess()[s][c]
-				assert.Contains(t, collAccess.Channels_.String(), "chan2")
-			}
+
+			err = json.Unmarshal(resp.BodyBytes(), &user)
+			require.NoError(t, err)
+			assert.Contains(t, user.GetChannels(s, c).ToArray(), "chan2")
 
 			// DELETE requests
 			// Attempt to delete document with no permissions
@@ -605,9 +584,6 @@ func TestBulkDocsChangeToAccess(t *testing.T) {
 func TestAllDocsAccessControl(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
-	collection := rt.GetSingleTestDatabaseCollection()
-	c := collection.Name()
-	s := collection.ScopeName()
 
 	type allDocsRow struct {
 		ID    string `json:"id"`
@@ -806,7 +782,6 @@ func TestAllDocsAccessControl(t *testing.T) {
 	assert.Equal(t, []string{"Cinemax"}, allDocsResult.Rows[0].Value.Channels)
 
 	// Check _all_docs as admin:
-	response = rt.SendAdminRequest("GET", "/db."+s+"."+c+"/_all_docs", "")
 	response = rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/_all_docs", "")
 	RequireStatus(t, response, 200)
 
@@ -980,12 +955,12 @@ func TestChannelAccessChanges(t *testing.T) {
 	dbc := rt.ServerContext().Database(ctx, "db")
 	database, _ := db.GetDatabase(dbc, nil)
 
-	collectionUser := database.GetSingleDatabaseCollectionWithUser()
+	collectionWithUser := database.GetSingleDatabaseCollectionWithUser()
 
 	changed, err := database.UpdateSyncFun(ctx, `function(doc) {access("alice", "beta");channel("beta");}`)
 	assert.NoError(t, err)
 	assert.True(t, changed)
-	changeCount, err := collectionUser.UpdateAllDocChannels(ctx, false, func(docsProcessed, docsChanged *int) {}, base.NewSafeTerminator())
+	changeCount, err := collectionWithUser.UpdateAllDocChannels(ctx, false, func(docsProcessed, docsChanged *int) {}, base.NewSafeTerminator())
 	assert.NoError(t, err)
 	assert.Equal(t, 9, changeCount)
 

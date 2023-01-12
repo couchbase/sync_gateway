@@ -30,7 +30,10 @@ func TestRolePurge(t *testing.T) {
 	collection := rt.GetSingleTestDatabaseCollection()
 
 	// Create role
-	resp := rt.SendAdminRequest("PUT", "/db/_role/role", `{`+AdminChannelGrant(collection, `"admin_channels":["channel"]`)+`}`)
+	roleConfig := auth.PrincipalConfig{}
+	payload, err := AdminChannelGrant(roleConfig, collection, []string{"channel"})
+	require.NoError(t, err)
+	resp := rt.SendAdminRequest("PUT", "/db/_role/role", payload)
 	RequireStatus(t, resp, http.StatusCreated)
 
 	// Delete role
@@ -47,7 +50,8 @@ func TestRolePurge(t *testing.T) {
 	assert.NotNil(t, role)
 
 	// Re-create role
-	resp = rt.SendAdminRequest("PUT", "/db/_role/role", `{`+AdminChannelGrant(collection, `"admin_channels":["channel"]`)+`}`)
+	payload, err = AdminChannelGrant(roleConfig, collection, []string{"channel"})
+	resp = rt.SendAdminRequest("PUT", "/db/_role/role", payload)
 	RequireStatus(t, resp, http.StatusCreated)
 
 	// Delete role again but with purge flag
@@ -68,30 +72,27 @@ func TestRoleAPI(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 	collection := rt.GetSingleTestDatabaseCollection()
-	c := collection.Name()
-	s := collection.ScopeName()
+	hipsterConfig := auth.PrincipalConfig{}
+	payload, err := AdminChannelGrant(hipsterConfig, collection, []string{"fedoras", "fixies"})
+	require.NoError(t, err)
 
 	// PUT a role
 	RequireStatus(t, rt.SendAdminRequest("GET", "/db/_role/hipster", ""), 404)
-	response := rt.SendAdminRequest("PUT", "/db/_role/hipster", `{`+AdminChannelGrant(collection, `"admin_channels":["fedoras", "fixies"]`)+`}`)
+	response := rt.SendAdminRequest("PUT", "/db/_role/hipster", payload)
 	RequireStatus(t, response, 201)
-	response = rt.SendAdminRequest("PUT", "/db/_role/testdeleted", `{`+AdminChannelGrant(collection, `"admin_channels":["fedoras", "fixies"]`)+`}`)
+	payload, err = AdminChannelGrant(hipsterConfig, collection, []string{"fedoras", "fixies"})
+	response = rt.SendAdminRequest("PUT", "/db/_role/testdeleted", payload)
 	RequireStatus(t, response, 201)
 	RequireStatus(t, rt.SendAdminRequest("DELETE", "/db/_role/testdeleted", ""), 200)
 
 	// GET the role and make sure the result is OK
 	response = rt.SendAdminRequest("GET", "/db/_role/hipster", "")
 	RequireStatus(t, response, 200)
-	var body db.Body
-	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
-	assert.Equal(t, "hipster", body["name"])
-	if base.IsDefaultCollection(s, c) {
-		assert.Equal(t, []interface{}{"fedoras", "fixies"}, body["admin_channels"])
-	} else {
-		bodyAccess := fmt.Sprintf(`map[%v:map[%v:map[admin_channels:[fedoras fixies] all_channels:[! fedoras fixies]]]]`, s, c)
-		assert.Equal(t, bodyAccess, fmt.Sprint(body["collection_access"]))
-	}
-	assert.Equal(t, nil, body["password"])
+	role := auth.PrincipalConfig{}
+	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &role))
+	assert.Equal(t, "hipster", *role.Name)
+	var expPassword *string
+	assert.Equal(t, expPassword, role.Password)
 
 	response = rt.SendAdminRequest("GET", "/db/_role/", "")
 	RequireStatus(t, response, 200)
@@ -102,15 +103,18 @@ func TestRoleAPI(t *testing.T) {
 	RequireStatus(t, rt.SendAdminRequest("GET", "/db/_role/hipster", ""), 404)
 
 	// POST a role
-	response = rt.SendAdminRequest("POST", "/db/_role", `{"name":"hipster",`+AdminChannelGrant(collection, `"admin_channels":["fedoras", "fixies"]`)+`}`)
+	name := "hipster"
+	hipsterConfig.Name = &name
+	payload, err = AdminChannelGrant(hipsterConfig, collection, []string{"fedoras", "fixies"})
+	require.NoError(t, err)
+	response = rt.SendAdminRequest("POST", "/db/_role", payload)
 	RequireStatus(t, response, 301)
-	response = rt.SendAdminRequest("POST", "/db/_role/", `{"name":"hipster",`+AdminChannelGrant(collection, `"admin_channels":["fedoras", "fixies"]`)+`}`)
+	response = rt.SendAdminRequest("POST", "/db/_role/", payload)
 	RequireStatus(t, response, 201)
 	response = rt.SendAdminRequest("GET", "/db/_role/hipster", "")
 	RequireStatus(t, response, 200)
-	body = nil
-	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
-	assert.Equal(t, "hipster", body["name"])
+	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &role))
+	assert.Equal(t, "hipster", *role.Name)
 	RequireStatus(t, rt.SendAdminRequest("DELETE", "/db/_role/hipster", ""), 200)
 
 	// GET including deleted
@@ -163,7 +167,10 @@ func TestFunkyRoleNames(t *testing.T) {
 			require.NoError(t, a.Save(user))
 
 			// Create role
-			response := rt.SendAdminRequest("PUT", fmt.Sprintf("/db/_role/%s", url.PathEscape(tc.RoleName)), `{`+AdminChannelGrant(collection, `"admin_channels": ["testchannel"]`)+`}`)
+			role := auth.PrincipalConfig{}
+			payload, err := AdminChannelGrant(role, collection, []string{"testchannel"})
+			require.NoError(t, err)
+			response := rt.SendAdminRequest("PUT", fmt.Sprintf("/db/_role/%s", url.PathEscape(tc.RoleName)), payload)
 			RequireStatus(t, response, 201)
 
 			// Create test document
@@ -255,7 +262,13 @@ func TestRoleAssignmentBeforeUserExists(t *testing.T) {
 	assert.NoError(t, err)
 
 	// POST a role
-	response := rt.SendAdminRequest("POST", "/db/_role/", `{"name":"role1",`+AdminChannelGrant(collection, `"admin_channels":["chan1"]`)+`}`)
+	name := "role1"
+	role1 := auth.PrincipalConfig{
+		Name: &name,
+	}
+	payload, err := AdminChannelGrant(role1, collection, []string{"chan1"})
+	require.NoError(t, err)
+	response := rt.SendAdminRequest("POST", "/db/_role/", payload)
 	RequireStatus(t, response, 201)
 	response = rt.SendAdminRequest("GET", "/db/_role/role1", "")
 	RequireStatus(t, response, 200)
@@ -275,16 +288,11 @@ func TestRoleAssignmentBeforeUserExists(t *testing.T) {
 	RequireStatus(t, response, 201)
 	response = rt.SendAdminRequest("GET", "/db/_user/user1", "")
 	RequireStatus(t, response, 200)
-	body = nil
-	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
-	assert.Equal(t, "user1", body["name"])
-	assert.Equal(t, []interface{}{"role1"}, body["roles"])
-	if base.IsDefaultCollection(s, c) {
-		assert.Equal(t, []interface{}{"!", "chan1"}, body["all_channels"])
-	} else {
-		bodyAccess := fmt.Sprintf(`map[%v:map[%v:map[all_channels:[! chan1]]]]`, s, c)
-		assert.Equal(t, bodyAccess, fmt.Sprint(body["collection_access"]))
-	}
+	user := auth.PrincipalConfig{}
+	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &user))
+	assert.Equal(t, "user1", *user.Name)
+	assert.Equal(t, []string{"role1"}, user.RoleNames)
+	assert.Equal(t, []string{"!", "chan1"}, user.GetChannels(s, c).ToArray())
 
 	// goassert.DeepEquals(t, body["admin_roles"], []interface{}{"hipster"})
 	// goassert.DeepEquals(t, body["all_channels"], []interface{}{"bar", "fedoras", "fixies", "foo"})
@@ -311,13 +319,34 @@ func TestRoleAccessChanges(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Create users:
-	response := rt.SendAdminRequest("PUT", "/db/_user/alice", `{"password":"letmein",`+AdminChannelGrant(collection, `"admin_channels":["alpha"]`)+`}`)
+	name := "alice"
+	pass := "letmein"
+	aliceConfig := auth.PrincipalConfig{
+		Name:     &name,
+		Password: &pass,
+	}
+	payload, err := AdminChannelGrant(aliceConfig, collection, []string{"alpha"})
+	require.NoError(t, err)
+	response := rt.SendAdminRequest("PUT", "/db/_user/alice", payload)
 	RequireStatus(t, response, 201)
 
-	response = rt.SendAdminRequest("PUT", "/db/_user/zegpold", `{"password":"letmein",`+AdminChannelGrant(collection, `"admin_channels":["beta"]`)+`}`)
+	name = "zegpold"
+	zegpoldConfig := auth.PrincipalConfig{
+		Name:     &name,
+		Password: &pass,
+	}
+	payload, err = AdminChannelGrant(zegpoldConfig, collection, []string{"beta"})
+	require.NoError(t, err)
+	response = rt.SendAdminRequest("PUT", "/db/_user/zegpold", payload)
 	RequireStatus(t, response, 201)
 
-	response = rt.SendAdminRequest("PUT", "/db/_role/hipster", `{`+AdminChannelGrant(collection, `"admin_channels":["gamma"]`)+`}`)
+	name = "hipster"
+	hipsterConfig := auth.PrincipalConfig{
+		Name: &name,
+	}
+	payload, err = AdminChannelGrant(hipsterConfig, collection, []string{"gamma"})
+	require.NoError(t, err)
+	response = rt.SendAdminRequest("PUT", "/db/_role/hipster", payload)
 	RequireStatus(t, response, 201)
 	/*
 		alice, err := a.NewUser("alice", "letmein", channels.BaseSetOf(t, "alpha"))

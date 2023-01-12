@@ -19,7 +19,6 @@ import (
 	"time"
 
 	"github.com/couchbase/go-blip"
-	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
@@ -895,7 +894,13 @@ func TestRevocationWithAdminChannels(t *testing.T) {
 	defer rt.Close()
 	collection := rt.GetSingleTestDatabaseCollection()
 
-	resp := rt.SendAdminRequest("PUT", "/db/_user/user", `{`+AdminChannelGrant(collection, `"admin_channels": ["A"]`)+`, "password": "letmein"}`)
+	pass := "letmein"
+	user := auth.PrincipalConfig{
+		Password: &pass,
+	}
+	payload, err := AdminChannelGrant(user, collection, []string{"A"})
+	require.NoError(t, err)
+	resp := rt.SendAdminRequest("PUT", "/db/_user/user", payload)
 	RequireStatus(t, resp, http.StatusCreated)
 
 	resp = rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc", `{"channels": ["A"]}`)
@@ -908,7 +913,9 @@ func TestRevocationWithAdminChannels(t *testing.T) {
 	assert.Equal(t, "doc", changes.Results[1].ID)
 	assert.False(t, changes.Results[0].Revoked)
 
-	resp = rt.SendAdminRequest("PUT", "/db/_user/user", `{`+AdminChannelGrant(collection, `"admin_channels": []`)+`, "password": "letmein"}`)
+	payload, err = AdminChannelGrant(user, collection, []string{})
+	require.NoError(t, err)
+	resp = rt.SendAdminRequest("PUT", "/db/_user/user", payload)
 	RequireStatus(t, resp, http.StatusOK)
 
 	changes, err = rt.WaitForChanges(2, fmt.Sprintf("/{{.keyspace}}/_changes?since=%d&revocations=true", 2), "user", false)
@@ -926,7 +933,10 @@ func TestRevocationWithAdminRoles(t *testing.T) {
 	defer rt.Close()
 	collection := rt.GetSingleTestDatabaseCollection()
 
-	resp := rt.SendAdminRequest("PUT", "/db/_role/role", `{`+AdminChannelGrant(collection, `"admin_channels": ["A"]`)+`}`)
+	role := auth.PrincipalConfig{}
+	payload, err := AdminChannelGrant(role, collection, []string{"A"})
+	require.NoError(t, err)
+	resp := rt.SendAdminRequest("PUT", "/db/_role/role", payload)
 	RequireStatus(t, resp, http.StatusCreated)
 
 	resp = rt.SendAdminRequest("PUT", "/db/_user/user", `{"admin_roles": ["role"], "password": "letmein"}`)
@@ -1218,10 +1228,7 @@ func TestRevocationUserHasDocAccessDocNotFound(t *testing.T) {
 	revocationTester.removeRoleChannel("foo", "A")
 	require.NoError(t, rt.WaitForPendingChanges())
 
-	dataStores, err := rt.Bucket().ListDataStores()
-	require.NoError(t, err)
-	dataName := GetNamedDatastore(dataStores, collection)
-	data := rt.Bucket().NamedDataStore(dataName)
+	data := collection.GetCollectionDatastore()
 	leakyDataStore, ok := base.AsLeakyDataStore(data)
 	require.True(t, ok)
 	leakyDataStore.SetGetRawCallback(func(s string) error {
@@ -1455,10 +1462,7 @@ func TestRevocationWithUserXattrs(t *testing.T) {
 	defer rt.Close()
 	collection := rt.GetSingleTestDatabaseCollection()
 
-	var data sgbucket.DataStore
-	dataStores, _ := rt.Bucket().ListDataStores()
-	dataName := GetNamedDatastore(dataStores, collection)
-	data = rt.Bucket().NamedDataStore(dataName)
+	data := collection.GetCollectionDatastore()
 
 	userXattrStore, ok := base.AsUserXattrStore(data)
 	require.True(t, ok)
@@ -1720,7 +1724,10 @@ func TestReplicatorRevocationsMultipleAlternateAccess(t *testing.T) {
 	resp := rt2.SendAdminRequest("PUT", "/db/_user/user", `{"name": "user", "password": "letmein"}`)
 	RequireStatus(t, resp, http.StatusOK)
 
-	resp = rt2.SendAdminRequest("PUT", "/db/_role/foo", `{`+AdminChannelGrant(rt2_collection, `"admin_channels": ["A", "B", "C"]`)+`}`)
+	foo := auth.PrincipalConfig{}
+	payload, err := AdminChannelGrant(foo, rt2_collection, []string{"A", "B", "C"})
+	require.NoError(t, err)
+	resp = rt2.SendAdminRequest("PUT", "/db/_role/foo", payload)
 	RequireStatus(t, resp, http.StatusOK)
 
 	revocationTester.addRole("user", "foo")
@@ -1737,7 +1744,9 @@ func TestReplicatorRevocationsMultipleAlternateAccess(t *testing.T) {
 	assert.Len(t, changesResults.Results, 5)
 
 	// Revoke C and ensure docC gets purged from local
-	resp = rt2.SendAdminRequest("PUT", "/db/_role/foo", `{`+AdminChannelGrant(rt2_collection, `"admin_channels": ["A", "B"]`)+`}`)
+	payload, err = AdminChannelGrant(foo, rt2_collection, []string{"A", "B"})
+	require.NoError(t, err)
+	resp = rt2.SendAdminRequest("PUT", "/db/_role/foo", payload)
 	RequireStatus(t, resp, http.StatusOK)
 
 	err = rt1.WaitForCondition(func() bool {
@@ -1747,7 +1756,9 @@ func TestReplicatorRevocationsMultipleAlternateAccess(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Revoke B and ensure docB gets purged from local
-	resp = rt2.SendAdminRequest("PUT", "/db/_role/foo", `{`+AdminChannelGrant(rt2_collection, `"admin_channels": ["A"]`)+`}`)
+	payload, err = AdminChannelGrant(foo, rt2_collection, []string{"A"})
+	require.NoError(t, err)
+	resp = rt2.SendAdminRequest("PUT", "/db/_role/foo", payload)
 	RequireStatus(t, resp, http.StatusOK)
 
 	err = rt1.WaitForCondition(func() bool {
@@ -1757,7 +1768,9 @@ func TestReplicatorRevocationsMultipleAlternateAccess(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Revoke A and ensure docA, docAB, docABC gets purged from local
-	resp = rt2.SendAdminRequest("PUT", "/db/_role/foo", `{`+AdminChannelGrant(rt2_collection, `"admin_channels": []`)+`}`)
+	payload, err = AdminChannelGrant(foo, rt2_collection, []string{})
+	require.NoError(t, err)
+	resp = rt2.SendAdminRequest("PUT", "/db/_role/foo", payload)
 	RequireStatus(t, resp, http.StatusOK)
 
 	err = rt1.WaitForCondition(func() bool {
@@ -1798,7 +1811,15 @@ func TestReplicatorRevocationsWithTombstoneResurrection(t *testing.T) {
 	defer rt1.Close()
 	ctx1 := rt1.Context()
 
-	resp := rt2.SendAdminRequest("PUT", "/db/_user/user", `{"name": "user", "password": "letmein",`+AdminChannelGrant(rt2_collection, `"admin_channels": ["A", "B"]`)+`}`)
+	name := "user"
+	pass := "letmein"
+	user := auth.PrincipalConfig{
+		Name:     &name,
+		Password: &pass,
+	}
+	payload, err := AdminChannelGrant(user, rt2_collection, []string{"A", "B"})
+	require.NoError(t, err)
+	resp := rt2.SendAdminRequest("PUT", "/db/_user/user", payload)
 	RequireStatus(t, resp, http.StatusOK)
 
 	// Setup replicator
@@ -1847,7 +1868,9 @@ func TestReplicatorRevocationsWithTombstoneResurrection(t *testing.T) {
 	resp = rt2.SendAdminRequest("DELETE", "/{{.keyspace}}/docA1?rev="+docA1Rev, "")
 	RequireStatus(t, resp, http.StatusOK)
 
-	resp = rt2.SendAdminRequest("PUT", "/db/_user/user", `{"name": "user", "password": "letmein",`+AdminChannelGrant(rt2_collection, `"admin_channels": ["B"]`)+`}`)
+	payload, err = AdminChannelGrant(user, rt2_collection, []string{"B"})
+	require.NoError(t, err)
+	resp = rt2.SendAdminRequest("PUT", "/db/_user/user", payload)
 	RequireStatus(t, resp, http.StatusOK)
 
 	require.NoError(t, ar.Start(ctx1))
@@ -1924,7 +1947,14 @@ func TestReplicatorRevocationsWithStarChannel(t *testing.T) {
 		PurgeOnRemoval:      true,
 		ReplicationStatsMap: dbstats,
 	})
-	resp := rt2.SendAdminRequest("PUT", "/db/_user/user", `{"name": "user", "password": "test", `+AdminChannelGrant(rt2_collection, `"admin_channels": ["*"]`)+`}`)
+	name := "user"
+	pass := "test"
+	user := auth.PrincipalConfig{
+		Name:     &name,
+		Password: &pass,
+	}
+	payload, err := AdminChannelGrant(user, rt2_collection, []string{"*"})
+	resp := rt2.SendAdminRequest("PUT", "/db/_user/user", payload)
 	RequireStatus(t, resp, http.StatusOK)
 
 	require.NoError(t, ar.Start(ctx1))
@@ -1939,7 +1969,8 @@ func TestReplicatorRevocationsWithStarChannel(t *testing.T) {
 	assert.Len(t, changesResults.Results, 5)
 
 	// Revoke A and ensure docA, docAB, docABC get purged from local
-	resp = rt2.SendAdminRequest("PUT", "/db/_user/user", `{"name": "user", "password": "test", `+AdminChannelGrant(rt2_collection, `"admin_channels": []`)+`}`)
+	payload, err = AdminChannelGrant(user, rt2_collection, []string{})
+	resp = rt2.SendAdminRequest("PUT", "/db/_user/user", payload)
 	RequireStatus(t, resp, http.StatusOK)
 
 	assert.NoError(t, ar.Stop())
@@ -1983,7 +2014,14 @@ func TestReplicatorRevocationsFromZero(t *testing.T) {
 	defer rt1.Close()
 	ctx1 := rt1.Context()
 
-	resp := rt2.SendAdminRequest("PUT", "/db/_user/user", `{"name": "user", "password": "letmein", `+AdminChannelGrant(rt2_collection, `"admin_channels": ["A", "B"]`)+`}`)
+	name := "user"
+	pass := "letmein"
+	user := auth.PrincipalConfig{
+		Name:     &name,
+		Password: &pass,
+	}
+	payload, err := AdminChannelGrant(user, rt2_collection, []string{"A", "B"})
+	resp := rt2.SendAdminRequest("PUT", "/db/_user/user", payload)
 	RequireStatus(t, resp, http.StatusOK)
 
 	// Setup replicator
@@ -2047,7 +2085,9 @@ func TestReplicatorRevocationsFromZero(t *testing.T) {
 	// Reset checkpoint (since 0)
 	require.NoError(t, ar.Reset())
 
-	resp = rt2.SendAdminRequest("PUT", "/db/_user/user", `{"name": "user", "password": "letmein",`+AdminChannelGrant(rt2_collection, `"admin_channels": ["B"]`)+`}`)
+	payload, err = AdminChannelGrant(user, rt2_collection, []string{"B"})
+	require.NoError(t, err)
+	resp = rt2.SendAdminRequest("PUT", "/db/_user/user", payload)
 	RequireStatus(t, resp, http.StatusOK)
 
 	require.NoError(t, ar.Start(ctx1))
@@ -2336,8 +2376,15 @@ func TestBlipRevokeNonExistentRole(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelTrace, base.KeyAll)
 
 	// 1. Create user with admin_roles including two roles not previously defined (a1 and a2, for example)
-	const testUsername = "bilbo"
-	res := rt.SendAdminRequest(http.MethodPut, fmt.Sprintf("/%s/_user/%s", rt.GetDatabase().Name, testUsername), fmt.Sprintf(`{"name": %q, "password": "test", "admin_roles": ["a1", "a2"], `+AdminChannelGrant(collection, `"admin_channels": ["c1"]`)+`}`, testUsername))
+	testUsername := "bilbo"
+	testPassword := "test"
+	user := auth.PrincipalConfig{
+		Name:              &testUsername,
+		Password:          &testPassword,
+		ExplicitRoleNames: base.SetOf("a1", "a2"),
+	}
+	payload, err := AdminChannelGrant(user, collection, []string{"c1"})
+	res := rt.SendAdminRequest(http.MethodPut, fmt.Sprintf("/%s/_user/%s", rt.GetDatabase().Name, testUsername), payload)
 	RequireStatus(t, res, http.StatusCreated)
 
 	// Create a doc so we have something to replicate
@@ -2346,7 +2393,9 @@ func TestBlipRevokeNonExistentRole(t *testing.T) {
 
 	// 3. Update the user to not reference one of the roles (update to ['a1'], for example)
 	// [also revoke channel c1 so the doc shows up in the revocation queries]
-	res = rt.SendAdminRequest(http.MethodPut, fmt.Sprintf("/%s/_user/%s", rt.GetDatabase().Name, testUsername), fmt.Sprintf(`{"name": %q, "password": "test", "admin_roles": ["a1"], `+AdminChannelGrant(collection, `"admin_channels": []`)+`}`, testUsername))
+	user.ExplicitRoleNames = base.SetOf("a1")
+	payload, err = AdminChannelGrant(user, collection, []string{})
+	res = rt.SendAdminRequest(http.MethodPut, fmt.Sprintf("/%s/_user/%s", rt.GetDatabase().Name, testUsername), payload)
 	RequireStatus(t, res, http.StatusOK)
 
 	// 4. Try to sync
@@ -2384,7 +2433,15 @@ func TestReplicatorSwitchPurgeNoReset(t *testing.T) {
 	defer rt1.Close()
 	ctx1 := rt1.Context()
 
-	resp := rt2.SendAdminRequest("PUT", "/db/_user/user", `{"name": "user", "password": "letmein", `+AdminChannelGrant(rt2_collection, `"admin_channels": ["A", "B"]`)+`}`)
+	name := "user"
+	pass := "letmein"
+	user := auth.PrincipalConfig{
+		Name:     &name,
+		Password: &pass,
+	}
+	payload, err := AdminChannelGrant(user, rt2_collection, []string{"A", "B"})
+	require.NoError(t, err)
+	resp := rt2.SendAdminRequest("PUT", "/db/_user/user", payload)
 	RequireStatus(t, resp, http.StatusOK)
 
 	// Setup replicator
@@ -2433,7 +2490,9 @@ func TestReplicatorSwitchPurgeNoReset(t *testing.T) {
 	require.NoError(t, ar.Stop())
 	rt1.WaitForReplicationStatus(ar.ID, db.ReplicationStateStopped)
 
-	resp = rt2.SendAdminRequest("PUT", "/db/_user/user", `{"name": "user", "password": "letmein",`+AdminChannelGrant(rt2_collection, `"admin_channels": ["B"]`)+`}`)
+	payload, err = AdminChannelGrant(user, rt2_collection, []string{"B"})
+	require.NoError(t, err)
+	resp = rt2.SendAdminRequest("PUT", "/db/_user/user", payload)
 	RequireStatus(t, resp, http.StatusOK)
 
 	// Add another few docs to 'bump' rt1's seq no. Otherwise it'll end up revoking next time as the above user PUT is

@@ -14,6 +14,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"github.com/couchbase/sync_gateway/auth"
 	"log"
 	"net/http"
 	"net/url"
@@ -853,7 +854,10 @@ function(doc, oldDoc) {
 	userWaiter := userDb.NewUserWaiter()
 
 	// Update the user to grant them access to ABC
-	response := rt.SendAdminRequest("PUT", "/db/_user/user1", `{`+AdminChannelGrant(collection, `"admin_channels":["ABC"]`)+`}`)
+	userConfig := auth.PrincipalConfig{}
+	payload, err := AdminChannelGrant(userConfig, collection, []string{"ABC"})
+	require.NoError(t, err)
+	response := rt.SendAdminRequest("PUT", "/db/_user/user1", payload)
 	RequireStatus(t, response, 200)
 
 	// Wait for notification
@@ -1431,7 +1435,10 @@ func TestAccessGrantViaAdminApi(t *testing.T) {
 	)
 
 	// Update the user doc to grant access to PBS
-	response := bt.restTester.SendAdminRequest("PUT", "/db/_user/user1", `{`+AdminChannelGrant(collection, `"admin_channels":["user1", "PBS"]`)+`}`)
+	userConfig := auth.PrincipalConfig{}
+	payload, err := AdminChannelGrant(userConfig, collection, []string{"user1", "PBS"})
+	require.NoError(t, err)
+	response := bt.restTester.SendAdminRequest("PUT", "/db/_user/user1", payload)
 	RequireStatus(t, response, 200)
 
 	// Add another doc in the PBS channel
@@ -1953,7 +1960,13 @@ func TestRemovedMessageWithAlternateAccess(t *testing.T) {
 	defer rt.Close()
 	collection := rt.GetSingleTestDatabaseCollection()
 
-	resp := rt.SendAdminRequest("PUT", "/db/_user/user", `{`+AdminChannelGrant(collection, `"admin_channels": ["A", "B"]`)+`, "password": "test"}`)
+	pass := "test"
+	userConfig := auth.PrincipalConfig{
+		Password: &pass,
+	}
+	payload, err := AdminChannelGrant(userConfig, collection, []string{"A", "B"})
+	require.NoError(t, err)
+	resp := rt.SendAdminRequest("PUT", "/db/_user/user", payload)
 	RequireStatus(t, resp, http.StatusCreated)
 
 	btc, err := NewBlipTesterClientOptsWithRT(t, rt, &BlipTesterClientOpts{
@@ -2060,7 +2073,12 @@ func TestRemovedMessageWithAlternateAccessAndChannelFilteredReplication(t *testi
 	defer rt.Close()
 	collection := rt.GetSingleTestDatabaseCollection()
 
-	resp := rt.SendAdminRequest("PUT", "/db/_user/user", `{`+AdminChannelGrant(collection, `"admin_channels": ["A", "B"]`)+`, "password": "test"}`)
+	pass := "test"
+	userConfig := auth.PrincipalConfig{
+		Password: &pass,
+	}
+	payload, err := AdminChannelGrant(userConfig, collection, []string{"A", "B"})
+	resp := rt.SendAdminRequest("PUT", "/db/_user/user", payload)
 	RequireStatus(t, resp, http.StatusCreated)
 
 	btc, err := NewBlipTesterClientOptsWithRT(t, rt, &BlipTesterClientOpts{

@@ -11,6 +11,7 @@ package rest
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/couchbase/sync_gateway/auth"
 	"log"
 	"net/http"
 	"strconv"
@@ -937,14 +938,25 @@ func TestResyncRegenerateSequences(t *testing.T) {
 	}
 
 	role := "role1"
-	response = rt.SendAdminRequest("PUT", fmt.Sprintf("/{{.keyspace}}/_role/%s", role), fmt.Sprintf(`{"name":"%s",`+AdminChannelGrant(collection, `"admin_channels":["channel_1"]`)+`}`, role))
+	princConfig := auth.PrincipalConfig{
+		Name: &role,
+	}
+	payload, err := AdminChannelGrant(princConfig, collection, []string{"channel_1"})
+	require.NoError(t, err)
+	response = rt.SendAdminRequest("PUT", fmt.Sprintf("/{{.keyspace}}/_role/%s", role), payload)
 	RequireStatus(t, response, http.StatusCreated)
 
 	username := "user1"
-	response = rt.SendAdminRequest("PUT", fmt.Sprintf("/db/_user/%s", username), fmt.Sprintf(`{"name":"%s", "password":"letmein", `+AdminChannelGrant(collection, `"admin_channels":["channel_1"]`)+`, "admin_roles": ["%s"]}`, username, role))
+	pass := "letmein"
+	princConfig.Name = &username
+	princConfig.Password = &pass
+	princConfig.ExplicitRoleNames = base.SetOf("role1")
+	payload, err = AdminChannelGrant(princConfig, collection, []string{"channel_1"})
+	require.NoError(t, err)
+	response = rt.SendAdminRequest("PUT", fmt.Sprintf("/db/_user/%s", username), payload)
 	RequireStatus(t, response, http.StatusCreated)
 
-	_, err := rt.MetadataStore().Get(base.RolePrefix+"role1", &body)
+	_, err = rt.MetadataStore().Get(base.RolePrefix+"role1", &body)
 	assert.NoError(t, err)
 	role1SeqBefore := body["sequence"].(float64)
 

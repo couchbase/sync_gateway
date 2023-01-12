@@ -1390,27 +1390,23 @@ func (bt *BlipTester) SendRev(docId, docRev string, body []byte, properties blip
 
 // Expects adminChannels of the form `admin_channels":["alpha"]`
 // If scope and collection are non-zero, builds collection access string for the collection
-func AdminChannelGrant(collection *db.DatabaseCollection, adminChannels string) (collectionAdminChannels string) {
+func AdminChannelGrant(princ auth.PrincipalConfig, collection *db.DatabaseCollection, adminChannels []string) (string, error) {
 	collectionName := collection.Name()
 	scopeName := collection.ScopeName()
+
 	if base.IsDefaultCollection(scopeName, collectionName) {
-		return adminChannels
+		princ.ExplicitChannels = base.SetFromArray(adminChannels)
+	} else {
+		princ.SetExplicitChannels(scopeName, collectionName, adminChannels...)
 	}
 
-	return fmt.Sprintf(`"collection_access":{%q: {%q: {%s}}}`, scopeName, collectionName, adminChannels)
-}
-
-func GetNamedDatastore(dataStores []sgbucket.DataStoreName, collection *db.DatabaseCollection) sgbucket.DataStoreName {
-	var data sgbucket.DataStoreName
-	c := collection.Name()
-	s := collection.ScopeName()
-	for _, dataStoreName := range dataStores {
-		if dataStoreName.ScopeName() == s && dataStoreName.CollectionName() == c {
-			data = dataStoreName
-			return data
-		}
+	payload, err := json.Marshal(princ)
+	if err != nil {
+		return "", err
 	}
-	return nil
+	fmt.Println(string(payload))
+
+	return string(payload), nil
 }
 
 func getChangesHandler(changesFinishedWg, revsFinishedWg *sync.WaitGroup) func(request *blip.Message) {
