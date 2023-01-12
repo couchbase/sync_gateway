@@ -322,7 +322,7 @@ func TestResyncManagerDCPRunTwice(t *testing.T) {
 	assert.Equal(t, db.DbStats.Database().SyncFunctionCount.Value(), int64(docsToCreate))
 }
 
-func TestResycnManagerDCPResumeStoppedProcess(t *testing.T) {
+func TestResyncManagerDCPResumeStoppedProcess(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Test requires Couchbase Server")
 	}

@@ -182,6 +182,8 @@ func WaitForUserWaiterChange(userWaiter *ChangeWaiter) bool {
 
 // emptyAllDocsIndex ensures the AllDocs index for the given bucket is empty. Works similarly to db.Compact, except on a different index and without a DatabaseContext
 func emptyAllDocsIndex(ctx context.Context, dataStore sgbucket.DataStore, tbp *base.TestBucketPool) (numCompacted int, err error) {
+	base.InfofCtx(ctx, base.KeyAll, "emptyAllDocsIndex called")
+
 	purgedDocCount := 0
 	purgeBody := Body{"_purged": true}
 
@@ -197,6 +199,7 @@ WHERE META(ks).xattrs._sync.sequence >= 0
     AND META(ks).xattrs._sync.sequence < 9223372036854775807
     AND META(ks).id NOT LIKE '\\_sync:%'`
 	results, err := n1qlStore.Query(statement, nil, base.RequestPlus, true)
+	base.InfofCtx(ctx, base.KeyAll, "emptyAllDocsIndex failed to remove allDocsIndex %+v", err)
 	if err != nil {
 		return 0, err
 	}
@@ -227,11 +230,13 @@ WHERE META(ks).xattrs._sync.sequence >= 0
 		}
 	}
 	err = results.Close()
+	base.InfofCtx(ctx, base.KeyAll, "emptyAllDocsIndex results.Close %+v", err)
+
 	if err != nil {
 		return 0, err
 	}
 
-	tbp.Logf(ctx, "Finished compaction ... Total docs purged: %d", purgedDocCount)
+	base.InfofCtx(ctx, base.KeyAll, "Finished compaction ... Total docs purged: %d", purgedDocCount)
 	return purgedDocCount, nil
 }
 
@@ -261,6 +266,8 @@ var viewsAndGSIBucketReadier base.TBPBucketReadierFunc = func(ctx context.Contex
 			return err
 		}
 		if _, err := emptyAllDocsIndex(ctx, dataStore, tbp); err != nil {
+			base.InfofCtx(ctx, base.KeyAll, "emptyAllDocsIndex error %+v", err)
+
 			return err
 		}
 
@@ -269,6 +276,8 @@ var viewsAndGSIBucketReadier base.TBPBucketReadierFunc = func(ctx context.Contex
 			return errors.New("attempting to empty indexes with non-N1QL store")
 		}
 		tbp.Logf(ctx, "waiting for empty bucket indexes")
+		base.InfofCtx(ctx, base.KeyAll, "waiting for empty bucket indexes")
+		// we can't init indexes concurrently, so we'll just wait for them to be empty after emptying instead of recreating.
 		// we can't init indexes concurrently, so we'll just wait for them to be empty after emptying instead of recreating.
 		if err := WaitForIndexEmpty(n1qlStore, base.TestUseXattrs()); err != nil {
 			tbp.Logf(ctx, "WaitForIndexEmpty returned an error: %v", err)

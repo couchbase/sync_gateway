@@ -109,7 +109,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]interface
 		var err error
 		docID := string(event.Key)
 		key := realDocID(docID)
-		base.TracefCtx(ctx, base.KeyAll, "[%s] Received DCP event %d for doc %v", resyncLoggingID, event.Opcode, base.UD(docID))
+		base.DebugfCtx(ctx, base.KeyAll, "[%s] Received DCP event %d for doc %v", resyncLoggingID, event.Opcode, base.UD(docID))
 		// Don't want to process raw binary docs
 		// The binary check should suffice but for additional safety also check for empty bodies
 		if event.DataType == base.MemcachedDataTypeRaw || len(event.Value) == 0 {
