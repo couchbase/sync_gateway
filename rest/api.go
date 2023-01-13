@@ -274,6 +274,12 @@ func (h *handler) handleGetResync() error {
 	return nil
 }
 
+// ResyncPostReqBody represents Resync POST body to run resync for custom collections
+type ResyncPostReqBody struct {
+	Scope               db.ResyncCollections `json:"scopes,omitempty"`
+	RegenerateSequences bool                 `json:"regenerate_sequences,omitempty"`
+}
+
 func (h *handler) handlePostResync() error {
 
 	action := h.getQuery("action")
@@ -283,9 +289,9 @@ func (h *handler) handlePostResync() error {
 		return err
 	}
 
-	resyncPostReqBody := &db.ResyncPostReqBody{}
+	resyncPostReqBody := ResyncPostReqBody{}
 	if len(body) != 0 {
-		if err := json.Unmarshal(body, resyncPostReqBody); err != nil {
+		if err := json.Unmarshal(body, &resyncPostReqBody); err != nil {
 			return err
 		}
 	}
@@ -298,12 +304,15 @@ func (h *handler) handlePostResync() error {
 		action = string(db.BackgroundProcessActionStart)
 	}
 
+	// Regenerate sequences if it is set true via query param or via request body
+	regenerateSequences = regenerateSequences || resyncPostReqBody.RegenerateSequences
+
 	if action == string(db.BackgroundProcessActionStart) {
 		if atomic.CompareAndSwapUint32(&h.db.State, db.DBOffline, db.DBResyncing) {
 			err := h.db.ResyncManager.Start(h.ctx(), map[string]interface{}{
 				"database":            h.db,
 				"regenerateSequences": regenerateSequences,
-				"collections":         resyncPostReqBody,
+				"collections":         resyncPostReqBody.Scope,
 			})
 			if err != nil {
 				return err

@@ -157,7 +157,7 @@ func TestResyncManagerDCPStopInMidWay(t *testing.T) {
 	options := map[string]interface{}{
 		"database":            db,
 		"regenerateSequences": false,
-		"collections":         &ResyncPostReqBody{},
+		"collections":         ResyncCollections{},
 	}
 
 	err := resycMgr.Start(ctx, options)
@@ -210,7 +210,7 @@ func TestResyncManagerDCPStart(t *testing.T) {
 		options := map[string]interface{}{
 			"database":            db,
 			"regenerateSequences": false,
-			"collections":         &ResyncPostReqBody{},
+			"collections":         ResyncCollections{},
 		}
 		err := resyncMgr.Start(ctx, options)
 		require.NoError(t, err)
@@ -244,7 +244,7 @@ func TestResyncManagerDCPStart(t *testing.T) {
 		options := map[string]interface{}{
 			"database":            db,
 			"regenerateSequences": false,
-			"collections":         &ResyncPostReqBody{},
+			"collections":         ResyncCollections{},
 		}
 
 		err := resyncMgr.Start(ctx, options)
@@ -284,7 +284,7 @@ func TestResyncManagerDCPRunTwice(t *testing.T) {
 	options := map[string]interface{}{
 		"database":            db,
 		"regenerateSequences": false,
-		"collections":         &ResyncPostReqBody{},
+		"collections":         ResyncCollections{},
 	}
 
 	err := resycMgr.Start(ctx, options)
@@ -335,7 +335,7 @@ func TestResycnManagerDCPResumeStoppedProcess(t *testing.T) {
 	options := map[string]interface{}{
 		"database":            db,
 		"regenerateSequences": false,
-		"collections":         &ResyncPostReqBody{},
+		"collections":         ResyncCollections{},
 	}
 
 	err := resycMgr.Start(ctx, options)

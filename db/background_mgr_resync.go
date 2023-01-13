@@ -47,7 +47,7 @@ func (r *ResyncManager) Init(ctx context.Context, options map[string]interface{}
 func (r *ResyncManager) Run(ctx context.Context, options map[string]interface{}, persistClusterStatusCallback updateStatusCallbackFunc, terminator *base.SafeTerminator) error {
 	database := options["database"].(*Database)
 	regenerateSequences := options["regenerateSequences"].(bool)
-	resyncPostBody := options["collections"].(*ResyncPostReqBody)
+	resyncCollections := options["collections"].(ResyncCollections)
 
 	persistClusterStatus := func() {
 		err := persistClusterStatusCallback()
@@ -63,10 +63,7 @@ func (r *ResyncManager) Run(ctx context.Context, options map[string]interface{},
 		persistClusterStatus()
 	}
 
-	// Regenerate sequences if it is set true via query param or via request body
-	regenerateSequences = regenerateSequences || resyncPostBody.RegenerateSequences
-
-	collectionIDs, hasAllCollections, err := getCollectionIds(database, resyncPostBody)
+	collectionIDs, hasAllCollections, err := getCollectionIds(database, resyncCollections)
 	if err != nil {
 		return err
 	}

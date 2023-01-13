@@ -32,11 +32,8 @@ type ResyncManagerDCP struct {
 	lock          sync.RWMutex
 }
 
-// ResyncPostReqBody contains map of scope names with collection names against which resync needs to run
-type ResyncPostReqBody struct {
-	Scope               map[string][]string `json:"scopes,omitempty"`
-	RegenerateSequences bool                `json:"regenerate_sequences,omitempty"`
-}
+// ResyncCollections contains map of scope names with collection names against which resync needs to run
+type ResyncCollections map[string][]string
 
 var _ BackgroundManagerProcessI = &ResyncManagerDCP{}
 
@@ -93,7 +90,7 @@ func (r *ResyncManagerDCP) Init(ctx context.Context, options map[string]interfac
 func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]interface{}, persistClusterStatusCallback updateStatusCallbackFunc, terminator *base.SafeTerminator) error {
 	db := options["database"].(*Database)
 	regenerateSequences := options["regenerateSequences"].(bool)
-	resyncPostBody := options["collections"].(*ResyncPostReqBody)
+	resyncCollections := options["collections"].(ResyncCollections)
 
 	resyncLoggingID := "Resync: " + r.ResyncID
 
@@ -145,11 +142,8 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]interface
 		return err
 	}
 
-	// Regenerate sequences if it is set true via query param or via request body
-	regenerateSequences = regenerateSequences || resyncPostBody.RegenerateSequences
-
 	// Get collectionIds
-	collectionIDs, hasAllCollections, err := getCollectionIds(db, resyncPostBody)
+	collectionIDs, hasAllCollections, err := getCollectionIds(db, resyncCollections)
 	if err != nil {
 		return err
 	}
@@ -233,11 +227,11 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]interface
 	return nil
 }
 
-func getCollectionIds(db *Database, resyncReqBody *ResyncPostReqBody) ([]uint32, bool, error) {
+func getCollectionIds(db *Database, resyncCollections ResyncCollections) ([]uint32, bool, error) {
 	collectionIDs := make([]uint32, 0)
 	var hasAllCollections bool
 
-	if len(resyncReqBody.Scope) == 0 {
+	if len(resyncCollections) == 0 {
 		hasAllCollections = true
 		for collectionID := range db.CollectionByID {
 			collectionIDs = append(collectionIDs, collectionID)
@@ -245,7 +239,7 @@ func getCollectionIds(db *Database, resyncReqBody *ResyncPostReqBody) ([]uint32,
 	} else {
 		hasAllCollections = false
 
-		for scopeName, collectionsName := range resyncReqBody.Scope {
+		for scopeName, collectionsName := range resyncCollections {
 			for _, collectionName := range collectionsName {
 				collection, err := db.GetDatabaseCollection(scopeName, collectionName)
 				if err != nil {
