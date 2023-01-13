@@ -631,7 +631,7 @@ func (b *GocbV2Bucket) NamedDataStore(name sgbucket.DataStoreName) (sgbucket.Dat
 		return err
 	})
 	if err != nil {
-		return nil, ErrAuthError
+		return nil, fmt.Errorf("attempting to create/update database with a scope/collection that is not found: %w", ErrAuthError)
 	}
 	c, err := NewCollection(
 		b,

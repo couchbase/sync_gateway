@@ -1594,9 +1594,6 @@ func (sc *ServerContext) _applyConfig(ctx context.Context, cnf DatabaseConfig, f
 	// TODO: Dynamic update instead of reload
 	if err := sc._reloadDatabaseWithConfig(ctx, cnf, failFast); err != nil {
 		// remove these entries we just created above if the database hasn't loaded properly
-		if errors.Is(err, base.ErrAuthError) {
-			return false, err
-		}
 		return false, fmt.Errorf("couldn't reload database: %w", err)
 	}
 
