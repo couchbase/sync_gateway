@@ -2223,6 +2223,12 @@ func (dbCtx *DatabaseContext) onlyDefaultCollection() bool {
 	return exists
 }
 
+// hasDefaultCollection is true if the database is configured with default collection
+func (dbCtx *DatabaseContext) hasDefaultCollection() bool {
+	_, exists := dbCtx.CollectionByID[base.DefaultCollectionID]
+	return exists
+}
+
 // GetDatabaseCollectionWithUser returns a DatabaseCollectionWithUser if the collection exists on the database, otherwise error.
 func (dbc *Database) GetDatabaseCollectionWithUser(scopeName, collectionName string) (*DatabaseCollectionWithUser, error) {
 	collection, err := dbc.GetDatabaseCollection(scopeName, collectionName)

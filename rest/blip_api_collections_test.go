@@ -11,6 +11,7 @@ package rest
 import (
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -28,17 +29,7 @@ func TestBlipGetCollections(t *testing.T) {
 	// checkpointIDWithError := "checkpointError"
 
 	const defaultScopeAndCollection = "_default._default"
-	rt := NewRestTester(t, &RestTesterConfig{
-		GuestEnabled: true,
-		// leakyBucketConfig: &base.LeakyBucketConfig{
-		//	GetRawCallback: func(key string) error {
-		//		if key == db.CheckpointDocIDPrefix+checkpointIDWithError {
-		//			return fmt.Errorf("a unique error")
-		//		}
-		//		return nil
-		//	},
-		// },
-	})
+	rt := NewRestTesterMultipleCollections(t, nil, 1)
 	defer rt.Close()
 
 	btc, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
@@ -148,6 +139,34 @@ func TestBlipGetCollections(t *testing.T) {
 			require.Equal(t, testCase.resultBody, checkpoints)
 		})
 	}
+}
+
+func TestBlipReplicationNoDefaultCollection(t *testing.T) {
+	base.TestRequiresCollections(t)
+
+	rt := NewRestTester(t, &RestTesterConfig{
+		GuestEnabled: true,
+	})
+	defer rt.Close()
+
+	btc, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
+	require.NoError(t, err)
+	defer btc.Close()
+
+	checkpointID1 := "checkpoint1"
+	checkpoint1Body := db.Body{"seq": "123"}
+	collection := rt.GetSingleTestDatabaseCollection()
+	revID, err := collection.PutSpecial(db.DocTypeLocal, db.CheckpointDocIDPrefix+checkpointID1, checkpoint1Body)
+	require.NoError(t, err)
+	checkpoint1RevID := "0-1"
+	require.Equal(t, checkpoint1RevID, revID)
+
+	subChangesRequest := blip.NewRequest()
+	subChangesRequest.SetProfile(db.MessageSubChanges)
+
+	require.NoError(t, btc.pullReplication.sendMsg(subChangesRequest))
+	resp := subChangesRequest.Response()
+	require.Equal(t, strconv.Itoa(http.StatusBadRequest), resp.Properties[db.BlipErrorCode])
 }
 
 func TestBlipGetCollectionsAndSetCheckpoint(t *testing.T) {
