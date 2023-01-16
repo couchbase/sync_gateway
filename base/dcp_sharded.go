@@ -299,7 +299,7 @@ func initCBGTManager(ctx context.Context, bucket Bucket, spec BucketSpec, cfgSG 
 	//   		https://github.com/couchbaselabs/cbgt/issues/25
 	bindHttp := uuid
 	defaultValues := &GoCBConnStringParams{
-		KVPoolSize:    spec.KvPoolSize,
+		KVPoolSize:    GoCBPoolSizeDCP,
 		KVBufferSize:  spec.KvBufferSize,
 		DCPBufferSize: spec.DcpBuffer,
 	}

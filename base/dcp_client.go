@@ -275,7 +275,7 @@ func (dc *DCPClient) close() {
 
 func (dc *DCPClient) initAgent(spec BucketSpec) error {
 	defaultValues := &GoCBConnStringParams{
-		KVPoolSize:    spec.KvPoolSize,
+		KVPoolSize:    GoCBPoolSizeDCP,
 		KVBufferSize:  spec.KvBufferSize,
 		DCPBufferSize: spec.DcpBuffer,
 	}
