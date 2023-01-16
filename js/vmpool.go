@@ -146,10 +146,10 @@ func (pool *VMPool) pop(service *Service) (vm *VM, inUse int) {
 	pool.mutex.Lock()
 	defer pool.mutex.Unlock()
 
-	if n := len(pool.vms_); n > 0 {
-		pool.curInUse_ += 1
-		inUse = pool.curInUse_
+	pool.curInUse_ += 1
+	inUse = pool.curInUse_
 
+	if n := len(pool.vms_); n > 0 {
 		// Find the most recently-used VM that already has this service:
 		vms := pool.vms_
 		var i int

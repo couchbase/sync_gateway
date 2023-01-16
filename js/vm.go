@@ -24,7 +24,7 @@ type VM struct {
 	setupScript  *v8.UnboundScript      // JS code to set up a new v8.Context
 	services     *servicesConfiguration // Factories for services
 	templates    []Template             // Already-created Templates, indexed by serviceID
-	runners      []*Runner              // Available Runners, indexed by serviceID
+	runners      []*Runner              // Available Runners, indexed by serviceID. nil if in-use
 	curRunner    *Runner                // Currently active Runner, if any
 	returnToPool *VMPool                // Pool to return me to, or nil
 	lastReturned time.Time              // Time that VM was last returned to its pool
@@ -46,7 +46,9 @@ func (vm *VM) Close() {
 		cur.Return()
 	}
 	for _, runner := range vm.runners {
-		runner.close()
+		if runner != nil {
+			runner.close()
+		}
 	}
 	vm.templates = nil
 	if vm.iso != nil {
@@ -126,8 +128,11 @@ func (vm *VM) hasInitializedService(service *Service) bool {
 // Since VM is single-threaded, calling getRunner when a Runner already exists and hasn't been
 // returned yet is assumed to be illegal concurrent access; it will trigger a panic.
 func (vm *VM) getRunner(service *Service) (*Runner, error) {
+	if vm.iso == nil {
+		return nil, fmt.Errorf("the VM has been closed")
+	}
 	if vm.curRunner != nil {
-		panic("VM already has a Runner")
+		panic("illegal access to VM: already has a Runner")
 	}
 	var runner *Runner
 	index := int(service.id)
