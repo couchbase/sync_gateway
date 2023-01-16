@@ -160,7 +160,7 @@ func TestDatabase(t *testing.T) {
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	collection := db.GetSingleDatabaseCollectionWithUser()
+	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 	// Test creating & updating a document:
 	log.Printf("Create rev 1...")
@@ -255,7 +255,7 @@ func TestGetDeleted(t *testing.T) {
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	collection := db.GetSingleDatabaseCollectionWithUser()
+	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 	body := Body{"key1": 1234}
 	rev1id, _, err := collection.Put(ctx, "doc1", body)
@@ -296,7 +296,7 @@ func TestGetRemovedAsUser(t *testing.T) {
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	collection := db.GetSingleDatabaseCollectionWithUser()
+	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 	rev1body := Body{
 		"key1":     1234,
@@ -404,7 +404,7 @@ func TestIsServerless(t *testing.T) {
 func TestGetRemovalMultiChannel(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	collection := db.GetSingleDatabaseCollectionWithUser()
+	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 	auth := db.Authenticator(base.TestCtx(t))
 
@@ -508,7 +508,7 @@ func TestGetRemovalMultiChannel(t *testing.T) {
 func TestDeltaSyncWhenFromRevIsChannelRemoval(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	collection := db.GetSingleDatabaseCollectionWithUser()
+	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 	// Create the first revision of doc1.
 	rev1Body := Body{
@@ -574,7 +574,7 @@ func TestDeltaSyncWhenFromRevIsChannelRemoval(t *testing.T) {
 func TestDeltaSyncWhenToRevIsChannelRemoval(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	collection := db.GetSingleDatabaseCollectionWithUser()
+	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 	// Create the first revision of doc1.
 	rev1Body := Body{
@@ -641,7 +641,7 @@ func TestGetRemoved(t *testing.T) {
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	collection := db.GetSingleDatabaseCollectionWithUser()
+	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 	rev1body := Body{
 		"key1":     1234,
@@ -708,7 +708,7 @@ func TestGetRemovedAndDeleted(t *testing.T) {
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	collection := db.GetSingleDatabaseCollectionWithUser()
+	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 	rev1body := Body{
 		"key1":     1234,
@@ -803,7 +803,7 @@ func TestAllDocsOnly(t *testing.T) {
 
 	db, ctx := setupTestDBWithCacheOptions(t, cacheOptions)
 	defer db.Close(ctx)
-	collection := db.GetSingleDatabaseCollectionWithUser()
+	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
@@ -951,7 +951,7 @@ func TestRepeatedConflict(t *testing.T) {
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	collection := db.GetSingleDatabaseCollectionWithUser()
+	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 	// Create rev 1 of "doc":
 	body := Body{"n": 1, "channels": []string{"all", "1"}}
@@ -988,7 +988,7 @@ func TestConflicts(t *testing.T) {
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	collection := db.GetSingleDatabaseCollectionWithUser()
+	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
@@ -1137,7 +1137,7 @@ func TestNoConflictsMode(t *testing.T) {
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	collection := db.GetSingleDatabaseCollectionWithUser()
+	collection := GetSingleDatabaseCollectionWithUser(t, db)
 	// Strictly speaking, this flag should be set before opening the database, but it only affects
 	// Put operations and replication, so it doesn't make a difference if we do it afterwards.
 	db.Options.AllowConflicts = base.BoolPtr(false)
@@ -1215,7 +1215,7 @@ func TestNoConflictsMode(t *testing.T) {
 func TestAllowConflictsFalseTombstoneExistingConflict(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	collection := db.GetSingleDatabaseCollectionWithUser()
+	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 	// Create documents with multiple non-deleted branches
 	log.Printf("Creating docs")
@@ -1292,7 +1292,7 @@ func TestAllowConflictsFalseTombstoneExistingConflict(t *testing.T) {
 func TestAllowConflictsFalseTombstoneExistingConflictNewEditsFalse(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	collection := db.GetSingleDatabaseCollectionWithUser()
+	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 	// Create documents with multiple non-deleted branches
 	log.Printf("Creating docs")
@@ -1361,7 +1361,7 @@ func TestSyncFnOnPush(t *testing.T) {
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	collection := db.GetSingleDatabaseCollectionWithUser()
+	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 	db.ChannelMapper = channels.NewChannelMapper(`function(doc, oldDoc) {
 		log("doc _id = "+doc._id+", _rev = "+doc._rev);
@@ -1400,7 +1400,7 @@ func TestInvalidChannel(t *testing.T) {
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	collection := db.GetSingleDatabaseCollectionWithUser()
+	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
@@ -1413,7 +1413,7 @@ func TestAccessFunctionValidation(t *testing.T) {
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	collection := db.GetSingleDatabaseCollectionWithUser()
+	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 	var err error
 	db.ChannelMapper = channels.NewChannelMapper(`function(doc){access(doc.users,doc.userChannels);}`, 0)
@@ -1447,7 +1447,7 @@ func TestAccessFunctionDb(t *testing.T) {
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	collection := db.GetSingleDatabaseCollectionWithUser()
+	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 	authenticator := db.Authenticator(ctx)
 
@@ -1555,7 +1555,7 @@ func TestPostWithExistingId(t *testing.T) {
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	collection := db.GetSingleDatabaseCollectionWithUser()
+	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 	// Test creating a document with existing id property:
 	customDocId := "customIdValue"
@@ -1591,7 +1591,7 @@ func TestWithNullPropertyKey(t *testing.T) {
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	collection := db.GetSingleDatabaseCollectionWithUser()
+	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 	// Test creating a document with null property key
 	customDocId := "customIdValue"
@@ -1607,7 +1607,7 @@ func TestWithNullPropertyKey(t *testing.T) {
 func TestPostWithUserSpecialProperty(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	collection := db.GetSingleDatabaseCollectionWithUser()
+	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 	// Test creating a document with existing id property:
 	customDocId := "customIdValue"
@@ -1641,7 +1641,7 @@ func TestRecentSequenceHistory(t *testing.T) {
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	collection := db.GetSingleDatabaseCollectionWithUser()
+	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 	seqTracker := uint64(0)
 
@@ -1718,7 +1718,7 @@ func TestChannelView(t *testing.T) {
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	collection := db.GetSingleDatabaseCollectionWithUser()
+	collection := GetSingleDatabaseCollectionWithUser(t, db)
 	collectionID := collection.GetCollectionID()
 
 	// Create doc
@@ -1759,7 +1759,7 @@ func TestConcurrentImport(t *testing.T) {
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	collection := db.GetSingleDatabaseCollectionWithUser()
+	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyImport)
 
@@ -1794,7 +1794,7 @@ func BenchmarkDatabase(b *testing.B) {
 			BucketName: fmt.Sprintf("b-%d", i)})
 		dbCtx, _ := NewDatabaseContext(ctx, "db", bucket, false, DatabaseContextOptions{})
 		db, _ := CreateDatabase(dbCtx)
-		collection := db.GetSingleDatabaseCollectionWithUser()
+		collection := GetSingleDatabaseCollectionWithUser(b, db)
 
 		body := Body{"key1": "value1", "key2": 1234}
 		_, _, _ = collection.Put(ctx, fmt.Sprintf("doc%d", i), body)
@@ -1812,7 +1812,7 @@ func BenchmarkPut(b *testing.B) {
 		BucketName: "Bucket"})
 	context, _ := NewDatabaseContext(ctx, "db", bucket, false, DatabaseContextOptions{})
 	db, _ := CreateDatabase(context)
-	collection := db.GetSingleDatabaseCollectionWithUser()
+	collection := GetSingleDatabaseCollectionWithUser(b, db)
 
 	body := Body{"key1": "value1", "key2": 1234}
 	b.ResetTimer()
@@ -2022,7 +2022,7 @@ func TestSyncFnMutateBody(t *testing.T) {
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	collection := db.GetSingleDatabaseCollectionWithUser()
+	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 	db.ChannelMapper = channels.NewChannelMapper(`function(doc, oldDoc) {
 		doc.key1 = "mutatedValue"
@@ -2057,7 +2057,7 @@ func TestConcurrentPushSameNewRevision(t *testing.T) {
 		if enableCallback {
 			enableCallback = false
 			body := Body{"name": "Bob", "age": 52}
-			collection := db.GetSingleDatabaseCollectionWithUser()
+			collection := GetSingleDatabaseCollectionWithUser(t, db)
 			revId, _, err := collection.Put(ctx, "doc1", body)
 			assert.NoError(t, err, "Couldn't create document")
 			assert.NotEmpty(t, revId)
@@ -2071,7 +2071,7 @@ func TestConcurrentPushSameNewRevision(t *testing.T) {
 
 	db, ctx = setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), queryCallbackConfig)
 	defer db.Close(ctx)
-	collection := db.GetSingleDatabaseCollectionWithUser()
+	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 	enableCallback = true
 
@@ -2099,7 +2099,7 @@ func TestConcurrentPushSameNewNonWinningRevision(t *testing.T) {
 		if enableCallback {
 			enableCallback = false
 			body := Body{"name": "Emily", "age": 20}
-			collection := db.GetSingleDatabaseCollectionWithUser()
+			collection := GetSingleDatabaseCollectionWithUser(t, db)
 			_, _, err := collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"3-b", "2-b", "1-a"}, false)
 			assert.NoError(t, err, "Adding revision 3-b")
 		}
@@ -2112,7 +2112,7 @@ func TestConcurrentPushSameNewNonWinningRevision(t *testing.T) {
 
 	db, ctx = setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), queryCallbackConfig)
 	defer db.Close(ctx)
-	collection := db.GetSingleDatabaseCollectionWithUser()
+	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 	body := Body{"name": "Olivia", "age": 80}
 	_, _, err := collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"1-a"}, false)
@@ -2157,7 +2157,7 @@ func TestConcurrentPushSameTombstoneWinningRevision(t *testing.T) {
 		if enableCallback {
 			enableCallback = false
 			body := Body{"name": "Charlie", "age": 10, BodyDeleted: true}
-			collection := db.GetSingleDatabaseCollectionWithUser()
+			collection := GetSingleDatabaseCollectionWithUser(t, db)
 			_, _, err := collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"4-a", "3-a", "2-a", "1-a"}, false)
 			assert.NoError(t, err, "Couldn't add revision 4-a (tombstone)")
 		}
@@ -2170,7 +2170,7 @@ func TestConcurrentPushSameTombstoneWinningRevision(t *testing.T) {
 
 	db, ctx = setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), queryCallbackConfig)
 	defer db.Close(ctx)
-	collection := db.GetSingleDatabaseCollectionWithUser()
+	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 	body := Body{"name": "Olivia", "age": 80}
 	_, _, err := collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"1-a"}, false)
@@ -2215,7 +2215,7 @@ func TestConcurrentPushDifferentUpdateNonWinningRevision(t *testing.T) {
 		if enableCallback {
 			enableCallback = false
 			body := Body{"name": "Joshua", "age": 11}
-			collection := db.GetSingleDatabaseCollectionWithUser()
+			collection := GetSingleDatabaseCollectionWithUser(t, db)
 			_, _, err := collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"3-b1", "2-b", "1-a"}, false)
 			assert.NoError(t, err, "Couldn't add revision 3-b1")
 		}
@@ -2228,7 +2228,7 @@ func TestConcurrentPushDifferentUpdateNonWinningRevision(t *testing.T) {
 
 	db, ctx = setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), queryCallbackConfig)
 	defer db.Close(ctx)
-	collection := db.GetSingleDatabaseCollectionWithUser()
+	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 	body := Body{"name": "Olivia", "age": 80}
 	_, _, err := collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"1-a"}, false)
@@ -2286,7 +2286,7 @@ func TestIncreasingRecentSequences(t *testing.T) {
 		if enableCallback {
 			enableCallback = false
 			// Write a doc
-			collection := db.GetSingleDatabaseCollectionWithUser()
+			collection := GetSingleDatabaseCollectionWithUser(t, db)
 			_, _, err := collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"2-abc", revid}, true)
 			assert.NoError(t, err)
 		}
@@ -2294,7 +2294,7 @@ func TestIncreasingRecentSequences(t *testing.T) {
 
 	db, ctx = setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), base.LeakyBucketConfig{UpdateCallback: writeUpdateCallback})
 	defer db.Close(ctx)
-	collection := db.GetSingleDatabaseCollectionWithUser()
+	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 	err := json.Unmarshal([]byte(`{"prop": "value"}`), &body)
 	assert.NoError(t, err)
@@ -2322,7 +2322,7 @@ func TestRepairUnorderedRecentSequences(t *testing.T) {
 
 	db, ctx = setupTestDB(t)
 	defer db.Close(ctx)
-	collection := db.GetSingleDatabaseCollectionWithUser()
+	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 	err := json.Unmarshal([]byte(`{"prop": "value"}`), &body)
 	require.NoError(t, err)
@@ -2391,7 +2391,7 @@ func TestDeleteWithNoTombstoneCreationSupport(t *testing.T) {
 
 	db, ctx := setupTestDBWithOptionsAndImport(t, DatabaseContextOptions{})
 	defer db.Close(ctx)
-	collection := db.GetSingleDatabaseCollectionWithUser()
+	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 	// gocbBucket, _ := base.AsGoCBBucket(db.Bucket)
 
@@ -2434,7 +2434,7 @@ func TestResyncUpdateAllDocChannels(t *testing.T) {
 	}`
 
 	db, ctx := SetupTestDBWithOptions(t, DatabaseContextOptions{QueryPaginationLimit: 5000})
-	collection := db.GetSingleDatabaseCollectionWithUser()
+	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 	_, err := db.UpdateSyncFun(ctx, syncFn)
 	assert.NoError(t, err)
@@ -2476,7 +2476,7 @@ func TestTombstoneCompactionStopWithManager(t *testing.T) {
 	db, ctx := SetupTestDBForDataStoreWithOptions(t, bucket, DatabaseContextOptions{})
 	db.PurgeInterval = 0
 	defer db.Close(ctx)
-	collection := db.GetSingleDatabaseCollectionWithUser()
+	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 	for i := 0; i < 300; i++ {
 		docID := fmt.Sprintf("doc%d", i)
@@ -2790,7 +2790,7 @@ func Test_resyncDocument(t *testing.T) {
 			db.Options.EnableXattr = testCase.useXattr
 			db.Options.QueryPaginationLimit = 100
 			db.ChannelMapper = channels.NewDefaultChannelMapper()
-			collection := db.GetSingleDatabaseCollectionWithUser()
+			collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 			syncFn := `
 	function sync(doc, oldDoc){
@@ -2821,7 +2821,7 @@ func Test_resyncDocument(t *testing.T) {
 			err = collection.WaitForPendingChanges(ctx)
 			require.NoError(t, err)
 
-			syncData, err := db.singleCollection.GetDocSyncData(ctx, docID)
+			syncData, err := collection.GetDocSyncData(ctx, docID)
 			assert.NoError(t, err)
 
 			assert.Len(t, syncData.ChannelSet, 2)
@@ -2860,7 +2860,7 @@ func Test_getUpdatedDocument(t *testing.T) {
 		doc, err := unmarshalDocument(docID, raw)
 		require.NoError(t, err)
 
-		collection := db.GetSingleDatabaseCollectionWithUser()
+		collection := GetSingleDatabaseCollectionWithUser(t, db)
 		_, _, _, _, _, err = collection.getResyncedDocument(ctx, doc, false, []uint64{})
 		assert.Equal(t, base.ErrUpdateCancel, err)
 	})
@@ -2870,7 +2870,7 @@ func Test_getUpdatedDocument(t *testing.T) {
 		defer db.Close(ctx)
 		db.Options.QueryPaginationLimit = 100
 		db.ChannelMapper = channels.NewDefaultChannelMapper()
-		collection := db.GetSingleDatabaseCollectionWithUser()
+		collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 		syncFn := `
 	function sync(doc, oldDoc){
@@ -2922,7 +2922,7 @@ func TestImportCompactPanic(t *testing.T) {
 	})
 	defer db.Close(ctx)
 	db.PurgeInterval = 0
-	collection := db.GetSingleDatabaseCollectionWithUser()
+	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 	// Create a document, then delete it, to create a tombstone
 	rev, doc, err := collection.Put(ctx, "test", Body{})

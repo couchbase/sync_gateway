@@ -148,12 +148,8 @@ func TestXattrImportOldDocRevHistory(t *testing.T) {
 	putResponse := rt.PutDoc(docID, `{"val":-1}`)
 	revID := putResponse.Rev
 
-	// Get db.Database to perform PurgeOldRevisionJSON
-	dbc := rt.GetDatabase()
-	database, err := db.GetDatabase(dbc, nil)
-	assert.NoError(t, err)
+	collection := rt.GetSingleTestDatabaseCollectionWithUser()
 
-	collection := database.GetSingleDatabaseCollectionWithUser()
 	ctx := rt.Context()
 	for i := 0; i < 10; i++ {
 		updateResponse := rt.UpdateDoc(docID, revID, fmt.Sprintf(`{"val":%d}`, i))
@@ -166,7 +162,7 @@ func TestXattrImportOldDocRevHistory(t *testing.T) {
 	// 2. Modify doc via SDK
 	updatedBody := make(map[string]interface{})
 	updatedBody["test"] = "TestAncestorImport"
-	err = dataStore.Set(docID, 0, nil, updatedBody)
+	err := dataStore.Set(docID, 0, nil, updatedBody)
 	assert.NoError(t, err)
 
 	// Attempt to get the document via Sync Gateway, to trigger import

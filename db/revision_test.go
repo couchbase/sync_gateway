@@ -107,7 +107,7 @@ func TestBackupOldRevision(t *testing.T) {
 		RevMaxAgeSeconds: DefaultDeltaSyncRevMaxAge,
 	}})
 	defer db.Close(ctx)
-	collection := db.GetSingleDatabaseCollectionWithUser()
+	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 	docID := t.Name()
 

@@ -312,10 +312,7 @@ func TestUserHasDocAccessDocNotFound(t *testing.T) {
 	resp := rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc", `{"channels": ["A"]}`)
 	RequireStatus(t, resp, http.StatusCreated)
 
-	database, err := db.CreateDatabase(rt.GetDatabase())
-	assert.NoError(t, err)
-
-	collection := database.GetSingleDatabaseCollectionWithUser()
+	collection := rt.GetSingleTestDatabaseCollectionWithUser()
 	userHasDocAccess, err := db.UserHasDocAccess(ctx, collection, "doc")
 	assert.NoError(t, err)
 	assert.True(t, userHasDocAccess)
@@ -949,7 +946,7 @@ func TestChannelAccessChanges(t *testing.T) {
 	dbc := rt.ServerContext().Database(ctx, "db")
 	database, _ := db.GetDatabase(dbc, nil)
 
-	collection := database.GetSingleDatabaseCollectionWithUser()
+	collection := rt.GetSingleTestDatabaseCollectionWithUser()
 
 	changed, err := database.UpdateSyncFun(ctx, `function(doc) {access("alice", "beta");channel("beta");}`)
 	assert.NoError(t, err)

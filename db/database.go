@@ -2279,14 +2279,6 @@ func (dbc *DatabaseContext) GetSingleDatabaseCollection() *DatabaseCollection {
 	return dbc.singleCollection
 }
 
-// GetSingleDatabaseCollectionWithCollection is a temporary function to return a single collection. This should be a temporary function while collection work is ongoing.
-func (dbc *Database) GetSingleDatabaseCollectionWithUser() *DatabaseCollectionWithUser {
-	return &DatabaseCollectionWithUser{
-		DatabaseCollection: dbc.GetSingleDatabaseCollection(),
-		user:               dbc.user,
-	}
-}
-
 // newDatabaseCollection returns a collection which inherits values from the database but is specific to a given DataStore.
 func newDatabaseCollection(ctx context.Context, dbContext *DatabaseContext, dataStore base.DataStore) (*DatabaseCollection, error) {
 	dbCollection := &DatabaseCollection{
