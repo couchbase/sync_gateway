@@ -271,6 +271,9 @@ func TestMultiCollectionDCP(t *testing.T) {
 
 func TestMultiCollectionChannelAccess(t *testing.T) {
 	base.TestRequiresCollections(t)
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server")
+	}
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	tb := base.GetTestBucket(t)
@@ -334,8 +337,7 @@ func TestMultiCollectionChannelAccess(t *testing.T) {
 
 	// Ensure users can only see documents in the appropriate collection/channels they should be able to have access to
 	resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.keyspace1}}/testDocBarA", "", nil, "userA", "letmein")
-	RequireStatus(t, resp, http.StatusOK) // Static channel grant
-
+	RequireStatus(t, resp, http.StatusOK)
 	resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.keyspace1}}/testDocBarB", "", nil, "userA", "letmein")
 	RequireStatus(t, resp, http.StatusForbidden)
 	resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.keyspace2}}/testDocBazB", "", nil, "userB", "letmein")
