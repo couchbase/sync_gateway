@@ -271,12 +271,6 @@ func TestMultiCollectionDCP(t *testing.T) {
 
 func TestMultiCollectionDynamicChannelAccess(t *testing.T) {
 	base.TestRequiresCollections(t)
-	//base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
-
-	if !base.TestUseXattrs() {
-		t.Skip("Test relies on import - needs xattrs")
-	}
-
 	tb := base.GetTestBucket(t)
 	defer tb.Close()
 
@@ -291,17 +285,16 @@ func TestMultiCollectionDynamicChannelAccess(t *testing.T) {
 
 	rtConfig := &RestTesterConfig{
 		CustomTestBucket: tb,
-		PersistentConfig: true,
+		//PersistentConfig: true,
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
+			Scopes:           scopesConfig,
+			NumIndexReplicas: base.UintPtr(0),
+		},
+		},
 	}
 
 	rt := NewRestTesterMultipleCollections(t, rtConfig, 3)
 	defer rt.Close()
-	scopesConfigString, err := json.Marshal(scopesConfig)
-	require.NoError(t, err)
-	resp := rt.SendAdminRequest("PUT", "/db/", fmt.Sprintf(
-		`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "use_views": %t, "scopes":%s}`,
-		tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(), scopesConfigString))
-	RequireStatus(t, resp, http.StatusCreated)
 
 	userPayload := `{
       "password":"letmein",
@@ -314,30 +307,36 @@ func TestMultiCollectionDynamicChannelAccess(t *testing.T) {
       }
    }`
 	// Create a few users without any channel access
-	resp = rt.SendAdminRequest("PUT", "/db/_user/userA", fmt.Sprintf(userPayload, dataStoreNames[0].ScopeName(), dataStoreNames[0], `[]`))
+	resp := rt.SendAdminRequest("PUT", "/db/_user/alice", fmt.Sprintf(userPayload, dataStoreNames[0].ScopeName(), dataStoreNames[0], `[]`))
 	RequireStatus(t, resp, http.StatusCreated)
-	resp = rt.SendAdminRequest("PUT", "/db/_user/userB", fmt.Sprintf(userPayload, dataStoreNames[0].ScopeName(), dataStoreNames[0], `[]`))
+	resp = rt.SendAdminRequest("PUT", "/db/_user/bob", fmt.Sprintf(userPayload, dataStoreNames[0].ScopeName(), dataStoreNames[0], `[]`))
 	RequireStatus(t, resp, http.StatusCreated)
-	resp = rt.SendAdminRequest("PUT", "/db/_user/userAB", fmt.Sprintf(userPayload, dataStoreNames[0].ScopeName(), dataStoreNames[0], `[]`))
+	resp = rt.SendAdminRequest("PUT", "/db/_user/abby", fmt.Sprintf(userPayload, dataStoreNames[0].ScopeName(), dataStoreNames[0], `[]`))
 	RequireStatus(t, resp, http.StatusCreated)
 
 	// Write docs in each collection that runs the per-collection sync functions that grant users access to various channels
-	resp = rt.SendAdminRequest("PUT", "/{{.keyspace1}}/testDocBarA", `{"username": "userA", "grant1": "A", "chan":["A"]}`)
+	resp = rt.SendAdminRequest("PUT", "/{{.keyspace1}}/testDocBarA", `{"username": "alice", "grant1": "A", "chan":["A"]}`)
 	RequireStatus(t, resp, http.StatusCreated)
-	resp = rt.SendAdminRequest("PUT", "/{{.keyspace1}}/testDocBarB", `{"username": "userB", "grant1": "A", "chan":["A"]}`)
+	resp = rt.SendAdminRequest("PUT", "/{{.keyspace1}}/testDocBarB", `{"username": "bob", "grant1": "B", "chan":["B"]}`)
 	RequireStatus(t, resp, http.StatusCreated)
-	resp = rt.SendAdminRequest("PUT", "/{{.keyspace2}}/testDocBazA", `{"username": "userA", "grant1": "A", "chan":["A"]}`)
+	resp = rt.SendAdminRequest("PUT", "/{{.keyspace2}}/testDocBazAB", `{"username": "abby", "grant1": "A", "grant2": "B","chan":["A"]}`)
+	RequireStatus(t, resp, http.StatusCreated)
+	resp = rt.SendAdminRequest("PUT", "/{{.keyspace2}}/testDocBazB", `{"chan":["B"]}`)
 	RequireStatus(t, resp, http.StatusCreated)
 
 	// Ensure users get given access to the channel in the appropriate collection, and is not accidentally granting access for a channel of the same name in another collection
-	resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.keyspace1}}/testDocBarA", "", nil, "userB", "letmein")
-	RequireStatus(t, resp, http.StatusOK)
-	resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.keyspace1}}/testDocBarA", "", nil, "userAB", "letmein")
+	resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.keyspace1}}/testDocBarA", "", nil, "bob", "letmein")
 	RequireStatus(t, resp, http.StatusForbidden)
-	resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.keyspace2}}/testDocBazA", "", nil, "userA", "letmein")
-	RequireStatus(t, resp, http.StatusOK)
-	resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.keyspace2}}/testDocBazA", "", nil, "userB", "letmein")
+	resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.keyspace1}}/testDocBarA", "", nil, "abby", "letmein")
 	RequireStatus(t, resp, http.StatusForbidden)
+	resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.keyspace1}}/testDocBarA", "", nil, "alice", "letmein")
+	RequireStatus(t, resp, http.StatusOK)
+	resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.keyspace2}}/testDocBazAB", "", nil, "alice", "letmein")
+	RequireStatus(t, resp, http.StatusForbidden)
+	resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.keyspace2}}/testDocBazB", "", nil, "bob", "letmein")
+	RequireStatus(t, resp, http.StatusForbidden)
+	resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.keyspace2}}/testDocBazB", "", nil, "abby", "letmein")
+	RequireStatus(t, resp, http.StatusOK)
 
 }
 
