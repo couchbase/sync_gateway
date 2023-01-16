@@ -348,8 +348,8 @@ func TestMultiCollectionChannelAccess(t *testing.T) {
 	scopesConfigString, err = json.Marshal(scopesConfig)
 	require.NoError(t, err)
 	resp = rt.SendAdminRequest("PUT", "/db/_config", fmt.Sprintf(
-		`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "use_views": %t, "scopes":%s}`,
-		tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(), string(scopesConfigString)))
+		`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "scopes":%s}`,
+		tb.GetName(), base.TestUseXattrs(), string(scopesConfigString)))
 	RequireStatus(t, resp, http.StatusCreated)
 
 	// Put a doc in new collection and make sure it cant be accessed
