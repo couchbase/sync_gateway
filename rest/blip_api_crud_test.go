@@ -65,7 +65,7 @@ func TestBlipPushRevisionInspectChanges(t *testing.T) {
 	assert.NoError(t, err, "Error reading changes response body")
 	err = base.JSONUnmarshal(body, &changeList)
 	assert.NoError(t, err, "Error unmarshalling response body")
-	assert.Equal(t, 1, len(changeList)) // Should be 1 row, corresponding to the single doc that was queried in changes
+	require.Equal(t, 1, len(changeList)) // Should be 1 row, corresponding to the single doc that was queried in changes
 	changeRow := changeList[0]
 	assert.Equal(t, 0, len(changeRow)) // Should be empty, meaning the server is saying it doesn't have the revision yet
 
@@ -248,7 +248,7 @@ func TestContinuousChangesSubscription(t *testing.T) {
 			[]byte(`{"key": "val"}`),
 			blip.Properties{},
 		)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		_, err = revResponse.Body()
 		assert.NoError(t, err, "Error unmarshalling response body")
@@ -361,7 +361,7 @@ func TestBlipOneShotChangesSubscription(t *testing.T) {
 			[]byte(`{"key": "val"}`),
 			blip.Properties{},
 		)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		_, err = revResponse.Body()
 		assert.NoError(t, err, "Error unmarshalling response body")
 		receivedChangesWg.Add(1)
@@ -410,7 +410,7 @@ func TestBlipOneShotChangesSubscription(t *testing.T) {
 			[]byte(`{"key": "val"}`),
 			blip.Properties{},
 		)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		_, err = revResponse.Body()
 		assert.NoError(t, err, "Error unmarshalling response body")
 		receivedChangesWg.Add(1)
@@ -1381,24 +1381,27 @@ func TestAccessGrantViaSyncFunction(t *testing.T) {
 	defer bt.Close()
 
 	// Add a doc in the PBS channel
-	_, _, _, _ = bt.SendRev(
+	_, _, _, err = bt.SendRev(
 		"foo",
 		"1-abc",
 		[]byte(`{"key": "val", "channels": ["PBS"]}`),
 		blip.Properties{},
 	)
 
+	require.NoError(t, err)
+
 	// Put document that triggers access grant for user to channel PBS
 	response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/access1", `{"accessUser":"user1", "accessChannel":["PBS"]}`)
 	RequireStatus(t, response, 201)
 
 	// Add another doc in the PBS channel
-	_, _, _, _ = bt.SendRev(
+	_, _, _, err = bt.SendRev(
 		"foo2",
 		"1-abc",
 		[]byte(`{"key": "val", "channels": ["PBS"]}`),
 		blip.Properties{},
 	)
+	require.NoError(t, err)
 
 	// Make sure we can see it by getting changes
 	changes := bt.WaitForNumChanges(2)
@@ -1552,7 +1555,7 @@ func TestPutInvalidRevSyncFnReject(t *testing.T) {
 	// Since doc is rejected by sync function, expect a 403 error
 	errorCode, hasErrorCode := revResponse.Properties["Error-Code"]
 	assert.True(t, hasErrorCode)
-	assert.Equal(t, "403", errorCode)
+	require.Equal(t, "403", errorCode)
 
 	// Make sure that a one-off GetChanges() returns no documents
 	changes := bt.GetChanges()
@@ -1589,8 +1592,7 @@ func TestPutInvalidRevMalformedBody(t *testing.T) {
 	// Since doc is rejected by sync function, expect a 403 error
 	errorCode, hasErrorCode := revResponse.Properties["Error-Code"]
 	assert.True(t, hasErrorCode)
-	// FIXME: This used to check for error 500 -- No longer does readJSON in handleRev so fails at different point
-	assert.Equal(t, "400", errorCode)
+	require.Equal(t, "400", errorCode)
 
 	// Make sure that a one-off GetChanges() returns no documents
 	changes := bt.GetChanges()
@@ -1613,7 +1615,7 @@ func TestPutRevNoConflictsMode(t *testing.T) {
 
 	sent, _, resp, err := bt.SendRev("foo", "1-abc", []byte(`{"key": "val"}`), blip.Properties{})
 	assert.True(t, sent)
-	assert.NoError(t, err)                             // no error
+	require.NoError(t, err)                            // no error
 	assert.Equal(t, "", resp.Properties["Error-Code"]) // no error
 
 	sent, _, resp, err = bt.SendRev("foo", "1-def", []byte(`{"key": "val"}`), blip.Properties{"noconflicts": "true"})
@@ -1643,7 +1645,7 @@ func TestPutRevConflictsMode(t *testing.T) {
 
 	sent, _, resp, err := bt.SendRev("foo", "1-abc", []byte(`{"key": "val"}`), blip.Properties{})
 	assert.True(t, sent)
-	assert.NoError(t, err)                             // no error
+	require.NoError(t, err)                            // no error
 	assert.Equal(t, "", resp.Properties["Error-Code"]) // no error
 
 	sent, _, resp, err = bt.SendRev("foo", "1-def", []byte(`{"key": "val"}`), blip.Properties{"noconflicts": "false"})
@@ -1702,21 +1704,21 @@ func TestGetRemovedDoc(t *testing.T) {
 	// Add rev-1 in channel user1
 	sent, _, resp, err := bt.SendRev("foo", "1-abc", []byte(`{"key": "val", "channels": ["user1"]}`), blip.Properties{})
 	assert.True(t, sent)
-	assert.NoError(t, err)                         // no error
+	require.NoError(t, err)                        // no error
 	assert.Empty(t, resp.Properties["Error-Code"]) // no error
 
 	// Add rev-2 in channel user1
 	history := []string{"1-abc"}
 	sent, _, resp, err = bt.SendRevWithHistory("foo", "2-bcd", history, []byte(`{"key": "val", "channels": ["user1"]}`), blip.Properties{"noconflicts": "true"})
 	assert.True(t, sent)
-	assert.NoError(t, err)                         // no error
+	require.NoError(t, err)                        // no error
 	assert.Empty(t, resp.Properties["Error-Code"]) // no error
 
 	require.NoError(t, rt.GetDatabase().GetSingleDatabaseCollection().WaitForPendingChanges(base.TestCtx(t)))
 
 	// Try to get rev 2 via BLIP API and assert that _removed == false
 	resultDoc, err := bt.GetDocAtRev("foo", "2-bcd")
-	assert.NoError(t, err, "Unexpected Error")
+	require.NoError(t, err, "Unexpected Error")
 	assert.False(t, resultDoc.IsRemoved())
 
 	// Add rev-3, remove from channel user1 and put into channel another_channel
@@ -1784,7 +1786,7 @@ func TestMissingNoRev(t *testing.T) {
 		docRev := fmt.Sprintf("1-abc%d", i)
 		sent, _, resp, err := bt.SendRev(docID, docRev, []byte(`{"key": "val", "channels": ["ABC"]}`), blip.Properties{})
 		assert.True(t, sent)
-		log.Printf("resp: %v, err: %v", resp, err)
+		require.NoError(t, err, "resp is %s", resp)
 	}
 
 	// Get a reference to the database

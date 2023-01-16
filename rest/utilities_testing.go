@@ -1558,14 +1558,17 @@ func (bt *BlipTester) SendRevWithAttachment(input SendRevWithAttachmentInput) (s
 
 	// Push a rev with an attachment.
 	getAttachmentWg.Add(1)
-	sent, req, res, _ = bt.SendRevWithHistory(
+	sent, req, res, err = bt.SendRevWithHistory(
 		input.docId,
 		input.revId,
 		input.history,
 		docBody,
 		blip.Properties{},
 	)
-
+	if err != nil {
+		getAttachmentWg.Done()
+		bt.restTester.TB.Fatalf("Unexpected error sending revs: %s", err)
+	}
 	// Expect a callback to the getAttachment endpoint
 	getAttachmentWg.Wait()
 
@@ -1812,6 +1815,10 @@ func (bt *BlipTester) SubscribeToChanges(continuous bool, changes chan<- *blip.M
 	subChangesResponse := subChangesRequest.Response()
 	if subChangesResponse.SerialNumber() != subChangesRequest.SerialNumber() {
 		panic(fmt.Sprintf("subChangesResponse.SerialNumber() != subChangesRequest.SerialNumber().  %v != %v", subChangesResponse.SerialNumber(), subChangesRequest.SerialNumber()))
+	}
+	errCode := subChangesResponse.Properties[db.BlipErrorCode]
+	if errCode != "" {
+		bt.restTester.TB.Fatalf("Error sending subChanges request: %s", errCode)
 	}
 
 }
