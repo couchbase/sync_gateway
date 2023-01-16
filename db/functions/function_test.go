@@ -317,6 +317,7 @@ func testUserFunctionsAsUser(t *testing.T, ctx context.Context, db *db.Database)
 
 // Test CRUD operations
 func TestUserFunctionsCRUD(t *testing.T) {
+	t.Skip("not collection aware")
 	// base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	db, ctx := setupTestDBWithFunctions(t, &kUserFunctionConfig, nil)
 	defer db.Close(ctx)

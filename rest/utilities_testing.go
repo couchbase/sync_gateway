@@ -447,12 +447,14 @@ func (rt *RestTester) GetDatabase() *db.DatabaseContext {
 
 // GetSingleTestDatabaseCollection will return a DatabaseCollection if there is only one. Depending on test environment configuration, it may or may not be the default collection.
 func (rt *RestTester) GetSingleTestDatabaseCollection() *db.DatabaseCollection {
-	database := rt.GetDatabase()
-	require.Equal(rt.TB, 1, len(database.CollectionByID))
-	for _, collection := range database.CollectionByID {
-		return collection
+	return db.GetSingleDatabaseCollection(rt.TB, rt.GetDatabase())
+}
+
+// GetSingleTestDatabaseCollectionWithUser will return a DatabaseCollection if there is only one. Depending on test environment configuration, it may or may not be the default collection.
+func (rt *RestTester) GetSingleTestDatabaseCollectionWithUser() *db.DatabaseCollectionWithUser {
+	return &db.DatabaseCollectionWithUser{
+		DatabaseCollection: rt.GetSingleTestDatabaseCollection(),
 	}
-	return nil
 }
 
 // GetSingleDataStore will return a datastore if there is only one collection configured on the RestTester database.
@@ -1565,7 +1567,6 @@ func (bt *BlipTester) SendRevWithAttachment(input SendRevWithAttachmentInput) (s
 		docBody,
 		blip.Properties{},
 	)
-
 	// Expect a callback to the getAttachment endpoint
 	getAttachmentWg.Wait()
 

@@ -55,7 +55,7 @@ func TestFilterToAvailableChannels(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			db, ctx := setupTestDB(t)
 			defer db.Close(ctx)
-			collection := db.GetSingleDatabaseCollectionWithUser()
+			collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 			auth := db.Authenticator(base.TestCtx(t))
 			user, err := auth.NewUser("test", "pass", testCase.userChans)
@@ -97,7 +97,7 @@ func TestChangesAfterChannelAdded(t *testing.T) {
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	collection := db.GetSingleDatabaseCollectionWithUser()
+	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache, base.KeyChanges)
 
@@ -209,7 +209,7 @@ func TestDocDeletionFromChannelCoalescedRemoved(t *testing.T) {
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	collection := db.GetSingleDatabaseCollectionWithUser()
+	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
@@ -294,7 +294,7 @@ func TestDocDeletionFromChannelCoalesced(t *testing.T) {
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	collection := db.GetSingleDatabaseCollectionWithUser()
+	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
@@ -371,7 +371,7 @@ func TestActiveOnlyCacheUpdate(t *testing.T) {
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	collection := db.GetSingleDatabaseCollectionWithUser()
+	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyChanges, base.KeyCache)
 	// Create 10 documents
@@ -437,7 +437,7 @@ func BenchmarkChangesFeedDocUnmarshalling(b *testing.B) {
 
 	db, ctx := setupTestDB(b)
 	defer db.Close(ctx)
-	collection := db.GetSingleDatabaseCollectionWithUser()
+	collection := GetSingleDatabaseCollectionWithUser(b, db)
 
 	fieldVal := func(valSizeBytes int) string {
 		buffer := bytes.Buffer{}

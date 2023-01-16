@@ -1800,7 +1800,7 @@ func TestMissingNoRev(t *testing.T) {
 
 	// Purge one doc
 	doc0Id := fmt.Sprintf("doc-%d", 0)
-	err = targetDb.GetSingleDatabaseCollectionWithUser().Purge(ctx, doc0Id)
+	err = rt.GetSingleTestDatabaseCollectionWithUser().Purge(ctx, doc0Id)
 	assert.NoError(t, err, "failed")
 
 	// Flush rev cache
