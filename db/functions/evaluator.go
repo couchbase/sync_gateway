@@ -152,11 +152,11 @@ func newEvaluator(runner *js.Runner) (*evaluator, error) {
 	// Check the API.errors property for configuration errors:
 	if errorsVal, err := eval.api.Get("errors"); err != nil {
 		return nil, err
-	} else if errorsObj, _ := errorsVal.AsObject(); errorsObj != nil {
+	} else if errorArray, _ := errorsVal.AsArray(); errorArray != nil {
 		var errors base.MultiError
-		var i uint32
-		for i = 0; errorsObj.HasIdx(i); i++ {
-			if errorVal, err := errorsObj.GetIdx(i); err == nil {
+		len := errorArray.Length()
+		for i := uint32(0); i < len; i++ {
+			if errorVal, err := errorArray.GetIdx(i); err == nil {
 				errors.Append(fmt.Errorf(errorVal.String()))
 			}
 		}
