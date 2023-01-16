@@ -1,6 +1,7 @@
 package js
 
 import (
+	"fmt"
 	"log"
 	"runtime"
 	"sync"
@@ -15,11 +16,11 @@ import (
 const kVMPoolTestTimeout = 90 * time.Second
 
 func runSequentially(ctx context.Context, testFunc func(context.Context) bool, numTasks int) time.Duration {
-	myCtx, cancel := context.WithTimeout(ctx, kVMPoolTestTimeout)
+	ctx, cancel := context.WithTimeout(ctx, kVMPoolTestTimeout)
 	defer cancel()
 	startTime := time.Now()
 	for i := 0; i < numTasks; i++ {
-		testFunc(myCtx)
+		testFunc(ctx)
 	}
 	return time.Since(startTime)
 }
@@ -80,7 +81,7 @@ func TestPoolsConcurrently(t *testing.T) {
 	})
 }
 
-func BenchmarkVMPoolSequentially(b *testing.B) {
+func BenchmarkVMPoolIntsSequentially(b *testing.B) {
 	const kJSCode = `function(n) {return n * n;}`
 	ctx := base.TestCtx(b)
 	pool := NewVMPool(32)
@@ -95,7 +96,7 @@ func BenchmarkVMPoolSequentially(b *testing.B) {
 	pool.Close()
 }
 
-func BenchmarkVMPoolConcurrently(b *testing.B) {
+func BenchmarkVMPoolIntsConcurrently(b *testing.B) {
 	const kNumThreads = 8
 	const kJSCode = `function(n) {return n * n;}`
 	ctx := base.TestCtx(b)
@@ -104,6 +105,38 @@ func BenchmarkVMPoolConcurrently(b *testing.B) {
 	testFunc := func(ctx context.Context) bool {
 		result, err := service.Run(ctx, 13)
 		return assert.NoError(b, err) && assert.EqualValues(b, result, 169)
+	}
+	b.ResetTimer()
+	runConcurrently(ctx, testFunc, b.N, kNumThreads)
+	b.StopTimer()
+	pool.Close()
+}
+
+func BenchmarkVMPoolStringsSequentially(b *testing.B) {
+	fmt.Printf("-------- N = %d -------\n", b.N)
+	const kJSCode = `function(str) {return str + str;}`
+	ctx := base.TestCtx(b)
+	pool := NewVMPool(32)
+	service := NewService(pool, "testy", kJSCode)
+	testFunc := func(ctx context.Context) bool {
+		result, err := service.Run(ctx, "This is a test of the js package")
+		return assert.NoError(b, err) && assert.EqualValues(b, result, "This is a test of the js packageThis is a test of the js package")
+	}
+	b.ResetTimer()
+	runSequentially(ctx, testFunc, b.N)
+	b.StopTimer()
+	pool.Close()
+}
+
+func BenchmarkVMPoolStringsConcurrently(b *testing.B) {
+	const kNumThreads = 8
+	const kJSCode = `function(str) {return str + str;}`
+	ctx := base.TestCtx(b)
+	pool := NewVMPool(32)
+	service := NewService(pool, "testy", kJSCode)
+	testFunc := func(ctx context.Context) bool {
+		result, err := service.Run(ctx, "This is a test of the js package")
+		return assert.NoError(b, err) && assert.EqualValues(b, result, "This is a test of the js packageThis is a test of the js package")
 	}
 	b.ResetTimer()
 	runConcurrently(ctx, testFunc, b.N, kNumThreads)
