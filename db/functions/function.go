@@ -299,16 +299,14 @@ func expandPattern(pattern string, args map[string]any, user auth.User) (string,
 	if strings.IndexByte(pattern, '$') < 0 {
 		return pattern, nil
 	}
-	badConfig := false
 	var err error
 	channel := kChannelPropertyRegexp.ReplaceAllStringFunc(pattern, func(matched string) string {
-		if badConfig {
+		if err != nil {
 			return ""
 		} else if matched == "\\$" {
 			return "$"
 		} else if !strings.HasPrefix(matched, "${") || !strings.HasSuffix(matched, "}") {
 			err = base.HTTPErrorf(http.StatusInternalServerError, "missing curly-brace in pattern %q", matched)
-			badConfig = true
 			return ""
 		}
 		arg := matched[2 : len(matched)-1]
@@ -318,9 +316,6 @@ func expandPattern(pattern string, args map[string]any, user auth.User) (string,
 			var rval reflect.Value
 			rval, err = evalKeyPath(args, arg[5:])
 			if err != nil {
-				if err := err.(*base.HTTPError); err != nil && err.Status >= http.StatusInternalServerError {
-					badConfig = true
-				}
 				return ""
 			}
 
@@ -330,10 +325,10 @@ func expandPattern(pattern string, args map[string]any, user auth.User) (string,
 			}
 			if rval.Kind() == reflect.String {
 				return rval.String()
-			} else if rval.CanInt() || rval.CanUint() || rval.CanFloat() {
+			} else if rval.CanInt() || rval.CanUint() || rval.CanFloat() || rval.Kind() == reflect.Bool {
 				return fmt.Sprintf("%v", rval)
 			} else {
-				err = base.HTTPErrorf(http.StatusBadRequest, "argument %q must be a string or number, not %v", arg, rval.Kind())
+				err = base.HTTPErrorf(http.StatusBadRequest, "argument %q must be a string or number or boolean, not %v", arg, rval.Kind())
 				return ""
 			}
 		} else if arg == "context.user.name" {
@@ -344,7 +339,6 @@ func expandPattern(pattern string, args map[string]any, user auth.User) (string,
 			}
 		} else {
 			err = base.HTTPErrorf(http.StatusInternalServerError, "invalid variable expression %q", matched)
-			badConfig = true
 			return ""
 		}
 	})
