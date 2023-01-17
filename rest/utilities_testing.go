@@ -1388,7 +1388,8 @@ func (bt *BlipTester) SendRev(docId, docRev string, body []byte, properties blip
 
 }
 
-func GetUserPayload(username, password, email string, collection *db.DatabaseCollection, chans, roles []string) (string, error) {
+// GetUserPayload will take username, password, email, channels and roles you want to assign a user and create the appropriate payload for the _user endpoint
+func GetUserPayload(t *testing.T, username, password, email string, collection *db.DatabaseCollection, chans, roles []string) string {
 	config := auth.PrincipalConfig{}
 	if username != "" {
 		config.Name = &username
@@ -1403,13 +1404,12 @@ func GetUserPayload(username, password, email string, collection *db.DatabaseCol
 		config.ExplicitRoleNames = base.SetOf(roles...)
 	}
 	marshalledConfig, err := addChannelsToPrincipal(config, collection, chans)
-	if err != nil {
-		return "", err
-	}
-	return string(marshalledConfig), nil
+	require.NoError(t, err)
+	return string(marshalledConfig)
 }
 
-func GetRolePayload(roleName, password string, collection *db.DatabaseCollection, chans []string) (string, error) {
+// GetRolePayload will take roleName, password and channels you want to assign a particular role and return the appropriate payload for the _role endpoint
+func GetRolePayload(t *testing.T, roleName, password string, collection *db.DatabaseCollection, chans []string) string {
 	config := auth.PrincipalConfig{}
 	if roleName != "" {
 		config.Name = &roleName
@@ -1418,12 +1418,11 @@ func GetRolePayload(roleName, password string, collection *db.DatabaseCollection
 		config.Password = &password
 	}
 	marshalledConfig, err := addChannelsToPrincipal(config, collection, chans)
-	if err != nil {
-		return "", err
-	}
-	return string(marshalledConfig), nil
+	require.NoError(t, err)
+	return string(marshalledConfig)
 }
 
+// add channels to principal depending if running with collections or not. then marshal the principal config
 func addChannelsToPrincipal(config auth.PrincipalConfig, collection *db.DatabaseCollection, chans []string) ([]byte, error) {
 	if base.IsDefaultCollection(collection.ScopeName(), collection.Name()) {
 		if len(chans) == 0 {

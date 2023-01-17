@@ -48,7 +48,6 @@ func TestUsersAPI(t *testing.T) {
 		rtConfig)
 	defer rt.Close()
 	collection := rt.GetSingleTestDatabaseCollection()
-	var payload string
 
 	// Validate the zero user case
 	var responseUsers []string
@@ -61,9 +60,7 @@ func TestUsersAPI(t *testing.T) {
 	// Test for user counts going from 1 to a few multiples of QueryPaginationLimit to check boundary conditions
 	for i := 1; i < 13; i++ {
 		userName := fmt.Sprintf("user%d", i)
-		payload, err = GetUserPayload("", "letmein", "", collection, []string{"foo", "bar"}, nil)
-		require.NoError(t, err)
-		response := rt.SendAdminRequest("PUT", "/db/_user/"+userName, payload)
+		response := rt.SendAdminRequest("PUT", "/db/_user/"+userName, GetUserPayload(t, "", "letmein", "", collection, []string{"foo", "bar"}, nil))
 		RequireStatus(t, response, 201)
 
 		// check user count
@@ -183,7 +180,6 @@ func TestUsersAPIDetailsWithLimit(t *testing.T) {
 	rt := NewRestTester(t, rtConfig)
 	defer rt.Close()
 	collection := rt.GetSingleTestDatabaseCollection()
-	var payload string
 
 	// Validate the zero user case with limit
 	var responseUsers []auth.PrincipalConfig
@@ -197,9 +193,7 @@ func TestUsersAPIDetailsWithLimit(t *testing.T) {
 	numUsers := 12
 	for i := 1; i <= numUsers; i++ {
 		userName := fmt.Sprintf("user%d", i)
-		payload, err = GetUserPayload("", "letmein", "", collection, []string{"foo", "bar"}, nil)
-		require.NoError(t, err)
-		response := rt.SendAdminRequest("PUT", "/db/_user/"+userName, payload)
+		response := rt.SendAdminRequest("PUT", "/db/_user/"+userName, GetUserPayload(t, "", "letmein", "", collection, []string{"foo", "bar"}, nil))
 		RequireStatus(t, response, 201)
 	}
 
@@ -280,9 +274,7 @@ func TestUserAPI(t *testing.T) {
 
 	RequireStatus(t, rt.SendAdminRequest("GET", "/db/_user/snej", ""), 404)
 
-	payload, err := GetUserPayload("", "letmein", "jens@couchbase.com", collection, []string{"foo", "bar"}, nil)
-	require.NoError(t, err)
-	response := rt.SendAdminRequest("PUT", "/db/_user/snej", payload)
+	response := rt.SendAdminRequest("PUT", "/db/_user/snej", GetUserPayload(t, "", "letmein", "jens@couchbase.com", collection, []string{"foo", "bar"}, nil))
 	RequireStatus(t, response, 201)
 
 	user, err := rt.ServerContext().Database(ctx, "db").Authenticator(ctx).GetUser("snej")
@@ -316,9 +308,7 @@ func TestUserAPI(t *testing.T) {
 	assert.True(t, user.Authenticate("letmein"))
 
 	// Change the password and verify it:
-	payload, err = GetUserPayload("", "123", "", collection, []string{"foo", "bar"}, nil)
-	require.NoError(t, err)
-	response = rt.SendAdminRequest("PUT", "/db/_user/snej", payload)
+	response = rt.SendAdminRequest("PUT", "/db/_user/snej", GetUserPayload(t, "", "123", "", collection, []string{"foo", "bar"}, nil))
 	RequireStatus(t, response, 200)
 
 	user, _ = rt.ServerContext().Database(ctx, "db").Authenticator(ctx).GetUser("snej")
@@ -329,12 +319,10 @@ func TestUserAPI(t *testing.T) {
 	RequireStatus(t, rt.SendAdminRequest("GET", "/db/_user/snej", ""), 404)
 
 	// POST a user
-	payload, err = GetUserPayload("snej", "letmein", "", collection, []string{"foo", "bar"}, nil)
-	require.NoError(t, err)
-	response = rt.SendAdminRequest("POST", "/db/_user", payload)
+	response = rt.SendAdminRequest("POST", "/db/_user", GetUserPayload(t, "snej", "letmein", "", collection, []string{"foo", "bar"}, nil))
 	RequireStatus(t, response, 301)
 
-	response = rt.SendAdminRequest("POST", "/db/_user/", payload)
+	response = rt.SendAdminRequest("POST", "/db/_user/", GetUserPayload(t, "snej", "letmein", "", collection, []string{"foo", "bar"}, nil))
 	RequireStatus(t, response, 201)
 	response = rt.SendAdminRequest("GET", "/db/_user/snej", "")
 	RequireStatus(t, response, 200)
@@ -344,15 +332,11 @@ func TestUserAPI(t *testing.T) {
 
 	// Create a role
 	RequireStatus(t, rt.SendAdminRequest("GET", "/db/_role/hipster", ""), 404)
-	payload, err = GetRolePayload("", "", collection, []string{"fedoras", "fixies"})
-	require.NoError(t, err)
-	response = rt.SendAdminRequest("PUT", "/db/_role/hipster", payload)
+	response = rt.SendAdminRequest("PUT", "/db/_role/hipster", GetRolePayload(t, "", "", collection, []string{"fedoras", "fixies"}))
 	RequireStatus(t, response, 201)
 
 	// Give the user that role
-	payload, err = GetUserPayload("", "", "", collection, []string{"foo", "bar"}, []string{"hipster"})
-	require.NoError(t, err)
-	response = rt.SendAdminRequest("PUT", "/db/_user/snej", payload)
+	response = rt.SendAdminRequest("PUT", "/db/_user/snej", GetUserPayload(t, "", "", "", collection, []string{"foo", "bar"}, []string{"hipster"}))
 	RequireStatus(t, response, 200)
 
 	// GET the user and verify that it shows the channels inherited from the role
@@ -369,9 +353,7 @@ func TestUserAPI(t *testing.T) {
 	RequireStatus(t, rt.SendAdminRequest("DELETE", "/db/_user/snej", ""), 200)
 
 	// POST a user with URL encoded '|' in name see #2870
-	payload, err = GetUserPayload("0%7C59", "letmein", "", collection, []string{"foo", "bar"}, nil)
-	require.NoError(t, err)
-	RequireStatus(t, rt.SendAdminRequest("POST", "/db/_user/", payload), 201)
+	RequireStatus(t, rt.SendAdminRequest("POST", "/db/_user/", GetUserPayload(t, "0%7C59", "letmein", "", collection, []string{"foo", "bar"}, nil)), 201)
 
 	// GET the user, will fail
 	RequireStatus(t, rt.SendAdminRequest("GET", "/db/_user/0%7C59", ""), 404)
@@ -386,9 +368,7 @@ func TestUserAPI(t *testing.T) {
 	RequireStatus(t, rt.SendAdminRequest("DELETE", "/db/_user/0%257C59", ""), 200)
 
 	// POST a user with URL encoded '|' and non-encoded @ in name see #2870
-	payload, err = GetUserPayload("0%7C@59", "letmein", "", collection, []string{"foo", "bar"}, nil)
-	require.NoError(t, err)
-	RequireStatus(t, rt.SendAdminRequest("POST", "/db/_user/", payload), 201)
+	RequireStatus(t, rt.SendAdminRequest("POST", "/db/_user/", GetUserPayload(t, "0%7C@59", "letmein", "", collection, []string{"foo", "bar"}, nil)), 201)
 
 	// GET the user, will fail
 	RequireStatus(t, rt.SendAdminRequest("GET", "/db/_user/0%7C@59", ""), 404)
@@ -461,16 +441,12 @@ func TestUserAndRoleResponseContentType(t *testing.T) {
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &responseBody))
 
 	// Create a user 'alice' through PUT request.
-	payload, err := GetUserPayload("", "cGFzc3dvcmQ=", "alice@couchbase.com", collection, []string{"foo", "bar"}, nil)
-	require.NoError(t, err)
-	response = rt.SendAdminRequest(http.MethodPut, "/db/_user/alice", payload)
+	response = rt.SendAdminRequest(http.MethodPut, "/db/_user/alice", GetUserPayload(t, "", "cGFzc3dvcmQ=", "alice@couchbase.com", collection, []string{"foo", "bar"}, nil))
 	assert.Equal(t, http.StatusCreated, response.Code)
 	assert.Empty(t, response.Header().Get("Content-Type"))
 
 	// Create another user 'bob' through POST request.
-	payload, err = GetUserPayload("bob", "cGFzc3dvcmQ=", "bob@couchbase.com", collection, []string{"foo", "bar"}, nil)
-	require.NoError(t, err)
-	response = rt.SendAdminRequest(http.MethodPost, "/db/_user/", payload)
+	response = rt.SendAdminRequest(http.MethodPost, "/db/_user/", GetUserPayload(t, "bob", "cGFzc3dvcmQ=", "bob@couchbase.com", collection, []string{"foo", "bar"}, nil))
 	assert.Equal(t, http.StatusCreated, response.Code)
 	assert.Empty(t, response.Header().Get("Content-Type"))
 
@@ -543,16 +519,12 @@ func TestUserAndRoleResponseContentType(t *testing.T) {
 	assert.Empty(t, response.Header().Get("Content-Type"))
 
 	// Create a role 'developer' through POST request
-	payload, err = GetRolePayload("developer", "", collection, []string{"channel1", "channel2"})
-	require.NoError(t, err)
-	response = rt.SendAdminRequest(http.MethodPost, "/db/_role/", payload)
+	response = rt.SendAdminRequest(http.MethodPost, "/db/_role/", GetRolePayload(t, "developer", "", collection, []string{"channel1", "channel2"}))
 	assert.Equal(t, http.StatusCreated, response.Code)
 	assert.Empty(t, response.Header().Get("Content-Type"))
 
 	// Create another role 'coder' through PUT request.
-	payload, err = GetRolePayload("", "", collection, []string{"channel3", "channel4"})
-	require.NoError(t, err)
-	response = rt.SendAdminRequest(http.MethodPut, "/db/_role/coder", payload)
+	response = rt.SendAdminRequest(http.MethodPut, "/db/_role/coder", GetRolePayload(t, "", "", collection, []string{"channel3", "channel4"}))
 	assert.Equal(t, http.StatusCreated, response.Code)
 	assert.Empty(t, response.Header().Get("Content-Type"))
 
@@ -673,9 +645,7 @@ func TestObtainUserChannelsForDeletedRoleCasFail(t *testing.T) {
 			s := collection.ScopeName()
 
 			// Create role
-			payload, err := GetRolePayload("", "", collection, []string{"channel"})
-			require.NoError(t, err)
-			resp := rt.SendAdminRequest("PUT", "/db/_role/role", payload)
+			resp := rt.SendAdminRequest("PUT", "/db/_role/role", GetRolePayload(t, "", "", collection, []string{"channel"}))
 			RequireStatus(t, resp, http.StatusCreated)
 
 			// Create user
@@ -730,41 +700,31 @@ func TestUserPasswordValidation(t *testing.T) {
 	defer rt.Close()
 	collection := rt.GetSingleTestDatabaseCollection()
 
-	payload, err := GetUserPayload("", "letmein", "jens@couchbase.com", collection, []string{"foo", "bar"}, nil)
-	require.NoError(t, err)
-	response := rt.SendAdminRequest("PUT", "/db/_user/snej", payload)
+	response := rt.SendAdminRequest("PUT", "/db/_user/snej", GetUserPayload(t, "", "letmein", "jens@couchbase.com", collection, []string{"foo", "bar"}, nil))
 	RequireStatus(t, response, 201)
 
 	// PUT a user without a password, should fail
-	payload, err = GetUserPayload("", "", "ajres@couchbase.com", collection, []string{"foo", "bar"}, nil)
-	require.NoError(t, err)
-	response = rt.SendAdminRequest("PUT", "/db/_user/ajresnopassword", payload)
+	response = rt.SendAdminRequest("PUT", "/db/_user/ajresnopassword", GetUserPayload(t, "", "", "ajres@couchbase.com", collection, []string{"foo", "bar"}, nil))
 	RequireStatus(t, response, 400)
 
 	// POST a user without a password, should fail
-	payload, err = GetUserPayload("ajresnopassword", "", "", collection, []string{"foo", "bar"}, nil)
-	require.NoError(t, err)
-	response = rt.SendAdminRequest("POST", "/db/_user/", payload)
+	response = rt.SendAdminRequest("POST", "/db/_user/", GetUserPayload(t, "ajresnopassword", "", "", collection, []string{"foo", "bar"}, nil))
 	RequireStatus(t, response, 400)
 
 	// PUT a user with a two character password, should fail
-	payload, err = GetUserPayload("ajresnopassword", "in", "", collection, []string{"foo", "bar"}, nil)
-	require.NoError(t, err)
-	response = rt.SendAdminRequest("PUT", "/db/_user/ajresnopassword", payload)
+	response = rt.SendAdminRequest("PUT", "/db/_user/ajresnopassword", GetUserPayload(t, "ajresnopassword", "in", "", collection, []string{"foo", "bar"}, nil))
 	RequireStatus(t, response, 400)
 
 	// POST a user with a two character password, should fail
-	response = rt.SendAdminRequest("POST", "/db/_user/", payload)
+	response = rt.SendAdminRequest("POST", "/db/_user/", GetUserPayload(t, "ajresnopassword", "in", "", collection, []string{"foo", "bar"}, nil))
 	RequireStatus(t, response, 400)
 
 	// PUT a user with a zero character password, should fail
-	payload, err = GetUserPayload("ajresnopassword", "", "", collection, []string{"foo", "bar"}, nil)
-	require.NoError(t, err)
-	response = rt.SendAdminRequest("PUT", "/db/_user/ajresnopassword", payload)
+	response = rt.SendAdminRequest("PUT", "/db/_user/ajresnopassword", GetUserPayload(t, "ajresnopassword", "", "", collection, []string{"foo", "bar"}, nil))
 	RequireStatus(t, response, 400)
 
 	// POST a user with a zero character password, should fail
-	response = rt.SendAdminRequest("POST", "/db/_user/", payload)
+	response = rt.SendAdminRequest("POST", "/db/_user/", GetUserPayload(t, "ajresnopassword", "", "", collection, []string{"foo", "bar"}, nil))
 	RequireStatus(t, response, 400)
 
 	// PUT update a user with a two character password, should fail
@@ -907,9 +867,7 @@ function(doc, oldDoc) {
 	defer rt.Close()
 	collection := rt.GetSingleTestDatabaseCollection()
 
-	payload, err := GetUserPayload("bernard", "letmein", "", collection, []string{"profile-bernard"}, nil)
-	require.NoError(t, err)
-	response := rt.SendAdminRequest("PUT", "/{{.db}}/_user/bernard", payload)
+	response := rt.SendAdminRequest("PUT", "/{{.db}}/_user/bernard", GetUserPayload(t, "bernard", "letmein", "", collection, []string{"profile-bernard"}, nil))
 	RequireStatus(t, response, 201)
 
 	// Try to force channel initialisation for user bernard

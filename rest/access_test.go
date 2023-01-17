@@ -397,9 +397,7 @@ func TestForceAPIForbiddenErrors(t *testing.T) {
 			c := collection.Name()
 			s := collection.ScopeName()
 
-			payload, err := GetUserPayload("Perms", "password", "", collection, []string{"chan"}, nil)
-			require.NoError(t, err)
-			resp := rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/Perms", payload)
+			resp := rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/Perms", GetUserPayload(t, "Perms", "password", "", collection, []string{"chan"}, nil))
 			RequireStatus(t, resp, http.StatusOK)
 
 			// Create the initial document
@@ -486,7 +484,7 @@ func TestForceAPIForbiddenErrors(t *testing.T) {
 			RequireStatus(t, resp, http.StatusOK)
 
 			user := auth.PrincipalConfig{}
-			err = json.Unmarshal(resp.BodyBytes(), &user)
+			err := json.Unmarshal(resp.BodyBytes(), &user)
 			require.NoError(t, err)
 			assert.NotContains(t, user.GetChannels(s, c).ToArray(), "chan2")
 

@@ -339,9 +339,7 @@ func postChangesSince(t *testing.T, rt *rest.RestTester) {
 	collection := rt.GetSingleTestDatabaseCollection()
 
 	// Create user
-	payload, err := rest.GetUserPayload("", "letmein", "bernard@bb.com", collection, []string{"PBS"}, nil)
-	require.NoError(t, err)
-	response := rt.SendAdminRequest("PUT", "/db/_user/bernard", payload)
+	response := rt.SendAdminRequest("PUT", "/db/_user/bernard", rest.GetUserPayload(t, "", "letmein", "bernard@bb.com", collection, []string{"PBS"}, nil))
 	rest.RequireStatus(t, response, 201)
 
 	cacheWaiter := rt.GetDatabase().NewDCPCachingCountWaiter(t)
@@ -505,9 +503,7 @@ func TestPostChangesAdminChannelGrant(t *testing.T) {
 	require.Len(t, changes.Results, 1)
 
 	// Update the user doc to grant access to PBS
-	payload, err := rest.GetUserPayload("", "", "", collection, []string{"ABC", "PBS"}, nil)
-	require.NoError(t, err)
-	response = rt.SendAdminRequest("PUT", "/db/_user/bernard", payload)
+	response = rt.SendAdminRequest("PUT", "/db/_user/bernard", rest.GetUserPayload(t, "", "", "", collection, []string{"ABC", "PBS"}, nil))
 	rest.RequireStatus(t, response, 200)
 
 	time.Sleep(500 * time.Millisecond)
@@ -643,10 +639,7 @@ func TestPostChangesAdminChannelGrantRemoval(t *testing.T) {
 	}
 
 	// Update the user doc to grant access to PBS, HBO in addition to ABC
-	require.NoError(t, err)
-	payload, err := rest.GetUserPayload("", "", "", collection, []string{"ABC", "PBS", "HBO"}, nil)
-	require.NoError(t, err)
-	response := rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/bernard", payload)
+	response := rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/bernard", rest.GetUserPayload(t, "", "", "", collection, []string{"ABC", "PBS", "HBO"}, nil))
 	rest.RequireStatus(t, response, http.StatusOK)
 
 	// Issue a new changes request with since=last_seq ensure that user receives all records for channels PBS, HBO.
@@ -747,9 +740,7 @@ func TestPostChangesAdminChannelGrantRemovalWithLimit(t *testing.T) {
 	cacheWaiter.AddAndWait(1)
 
 	// Grant user access to channel PBS
-	payload, err := rest.GetUserPayload("", "", "", collection, []string{"ABC", "PBS"}, nil)
-	require.NoError(t, err)
-	userResponse := rt.SendAdminRequest("PUT", "/{{.db}}/_user/bernard", payload)
+	userResponse := rt.SendAdminRequest("PUT", "/{{.db}}/_user/bernard", rest.GetUserPayload(t, "", "", "", collection, []string{"ABC", "PBS"}, nil))
 	rest.RequireStatus(t, userResponse, 200)
 
 	// Put several documents in channel ABC
@@ -1006,10 +997,8 @@ func TestChangesLoopingWhenLowSequence(t *testing.T) {
 	collection := testDb.GetSingleDatabaseCollection()
 
 	// Create user:
-	payload, err := rest.GetUserPayload("", "letmein", "bernard@couchbase.com", collection, []string{"PBS"}, nil)
-	require.NoError(t, err)
 	rest.RequireStatus(t, rt.SendAdminRequest("GET", "/db/_user/bernard", ""), 404)
-	response := rt.SendAdminRequest("PUT", "/db/_user/bernard", payload)
+	response := rt.SendAdminRequest("PUT", "/db/_user/bernard", rest.GetUserPayload(t, "", "letmein", "bernard@couchbase.com", collection, []string{"PBS"}, nil))
 	rest.RequireStatus(t, response, 201)
 
 	// Simulate seq 3 and 4 being delayed - write 1,2,5,6
@@ -1102,9 +1091,7 @@ func TestChangesLoopingWhenLowSequenceOneShotUser(t *testing.T) {
 
 	// Create user:
 	rest.RequireStatus(t, rt.SendAdminRequest("GET", "/db/_user/bernard", ""), 404)
-	payload, err := rest.GetUserPayload("", "letmein", "bernard@couchbase.com", collection, []string{"PBS"}, nil)
-	require.NoError(t, err)
-	response := rt.SendAdminRequest("PUT", "/db/_user/bernard", payload)
+	response := rt.SendAdminRequest("PUT", "/db/_user/bernard", rest.GetUserPayload(t, "", "letmein", "bernard@couchbase.com", collection, []string{"PBS"}, nil))
 	rest.RequireStatus(t, response, 201)
 
 	// Simulate 4 non-skipped writes (seq 2,3,4,5)
@@ -1372,9 +1359,7 @@ func TestChangesLoopingWhenLowSequenceLongpollUser(t *testing.T) {
 
 	// Create user:
 	rest.RequireStatus(t, rt.SendAdminRequest("GET", "/db/_user/bernard", ""), 404)
-	payload, err := rest.GetUserPayload("", "letmein", "bernard@couchbase.com", collection, []string{"PBS"}, nil)
-	require.NoError(t, err)
-	response := rt.SendAdminRequest("PUT", "/db/_user/bernard", payload)
+	response := rt.SendAdminRequest("PUT", "/db/_user/bernard", rest.GetUserPayload(t, "", "letmein", "bernard@couchbase.com", collection, []string{"PBS"}, nil))
 	rest.RequireStatus(t, response, 201)
 
 	// Simulate 4 non-skipped writes (seq 2,3,4,5)
@@ -1772,21 +1757,15 @@ func TestOneShotChangesWithExplicitDocIds(t *testing.T) {
 	collection := rt.GetSingleTestDatabaseCollection()
 
 	// Create user1
-	payload, err := rest.GetUserPayload("", "letmein", "user1@couchbase.com", collection, []string{"alpha"}, nil)
-	require.NoError(t, err)
-	response := rt.SendAdminRequest("PUT", "/{{.db}}/_user/user1", payload)
+	response := rt.SendAdminRequest("PUT", "/{{.db}}/_user/user1", rest.GetUserPayload(t, "", "letmein", "user1@couchbase.com", collection, []string{"alpha"}, nil))
 	rest.RequireStatus(t, response, 201)
 
 	// Create user2
-	payload, err = rest.GetUserPayload("", "letmein", "user2@couchbase.com", collection, []string{"beta"}, nil)
-	require.NoError(t, err)
-	response = rt.SendAdminRequest("PUT", "/{{.db}}/_user/user2", payload)
+	response = rt.SendAdminRequest("PUT", "/{{.db}}/_user/user2", rest.GetUserPayload(t, "", "letmein", "user2@couchbase.com", collection, []string{"beta"}, nil))
 	rest.RequireStatus(t, response, 201)
 
 	// Create user3
-	payload, err = rest.GetUserPayload("", "letmein", "user3@couchbase.com", collection, []string{"alpha", "beta"}, nil)
-	require.NoError(t, err)
-	response = rt.SendAdminRequest("PUT", "/{{.db}}/_user/user3", payload)
+	response = rt.SendAdminRequest("PUT", "/{{.db}}/_user/user3", rest.GetUserPayload(t, "", "letmein", "user3@couchbase.com", collection, []string{"alpha", "beta"}, nil))
 	rest.RequireStatus(t, response, 201)
 
 	// Create user4
@@ -1794,9 +1773,7 @@ func TestOneShotChangesWithExplicitDocIds(t *testing.T) {
 	rest.RequireStatus(t, response, 201)
 
 	// Create user5
-	payload, err = rest.GetUserPayload("", "letmein", "user5@couchbase.com", collection, []string{"*"}, nil)
-	require.NoError(t, err)
-	response = rt.SendAdminRequest("PUT", "/{{.db}}/_user/user5", payload)
+	response = rt.SendAdminRequest("PUT", "/{{.db}}/_user/user5", rest.GetUserPayload(t, "", "letmein", "user5@couchbase.com", collection, []string{"*"}, nil))
 	rest.RequireStatus(t, response, 201)
 
 	// Create docs
@@ -1952,9 +1929,7 @@ func TestChangesIncludeDocs(t *testing.T) {
 	collection := testDB.GetSingleDatabaseCollection()
 
 	// Create user1
-	payload, err := rest.GetUserPayload("", "letmein", "user1@couchbase.com", collection, []string{"alpha", "beta"}, nil)
-	require.NoError(t, err)
-	response := rt.SendAdminRequest("PUT", "/db/_user/user1", payload)
+	response := rt.SendAdminRequest("PUT", "/db/_user/user1", rest.GetUserPayload(t, "", "letmein", "user1@couchbase.com", collection, []string{"alpha", "beta"}, nil))
 	rest.RequireStatus(t, response, 201)
 
 	// Create docs for each scenario
@@ -3707,14 +3682,10 @@ func TestIncludeDocsWithPrincipals(t *testing.T) {
 	cacheWaiter := testDb.NewDCPCachingCountWaiter(t)
 
 	// Put users
-	payload, err := rest.GetUserPayload("includeDocsUser", "letmein", "", collection, []string{"*"}, nil)
-	require.NoError(t, err)
-	response := rt.SendAdminRequest("PUT", "/db/_user/includeDocsUser", payload)
+	response := rt.SendAdminRequest("PUT", "/db/_user/includeDocsUser", rest.GetUserPayload(t, "includeDocsUser", "letmein", "", collection, []string{"*"}, nil))
 	rest.RequireStatus(t, response, 201)
 
-	payload, err = rest.GetUserPayload("includeDocsUser2", "letmein", "", collection, []string{"*"}, nil)
-	require.NoError(t, err)
-	response = rt.SendAdminRequest("PUT", "/db/_user/includeDocsUser2", payload)
+	response = rt.SendAdminRequest("PUT", "/db/_user/includeDocsUser2", rest.GetUserPayload(t, "includeDocsUser2", "letmein", "", collection, []string{"*"}, nil))
 	rest.RequireStatus(t, response, 201)
 
 	// Put several documents
@@ -3801,9 +3772,7 @@ func TestChangesAdminChannelGrantLongpollNotify(t *testing.T) {
 	require.NoError(t, rt.GetDatabase().WaitForCaughtUp(caughtUpCount+1))
 
 	// Update the user doc to grant access to PBS
-	payload, err := rest.GetUserPayload("", "", "", collection, []string{"ABC", "PBS"}, nil)
-	require.NoError(t, err)
-	response = rt.SendAdminRequest("PUT", "/db/_user/bernard", payload)
+	response = rt.SendAdminRequest("PUT", "/db/_user/bernard", rest.GetUserPayload(t, "", "", "", collection, []string{"ABC", "PBS"}, nil))
 	rest.RequireStatus(t, response, 200)
 
 	// Wait for longpoll to return

@@ -149,14 +149,10 @@ func TestBasicAuthWithSessionCookie(t *testing.T) {
 	collection := rt.GetSingleTestDatabaseCollection()
 
 	// Create two users
-	payload, err := GetUserPayload("bernard", "letmein", "", collection, []string{"bernard"}, nil)
-	require.NoError(t, err)
-	response := rt.SendAdminRequest("PUT", "/db/_user/bernard", payload)
+	response := rt.SendAdminRequest("PUT", "/db/_user/bernard", GetUserPayload(t, "bernard", "letmein", "", collection, []string{"bernard"}, nil))
 	RequireStatus(t, response, 201)
 
-	payload, err = GetUserPayload("manny", "letmein", "", collection, []string{"manny"}, nil)
-	require.NoError(t, err)
-	response = rt.SendAdminRequest("PUT", "/db/_user/manny", payload)
+	response = rt.SendAdminRequest("PUT", "/db/_user/manny", GetUserPayload(t, "manny", "letmein", "", collection, []string{"manny"}, nil))
 	RequireStatus(t, response, 201)
 
 	// Create a session for the first user
@@ -197,9 +193,7 @@ func TestSessionFail(t *testing.T) {
 	collection := rt.GetSingleTestDatabaseCollection()
 
 	// Create user
-	payload, err := GetUserPayload("user1", "letmein", "", collection, []string{"user1"}, nil)
-	require.NoError(t, err)
-	response := rt.SendAdminRequest("PUT", "/db/_user/user1", payload)
+	response := rt.SendAdminRequest("PUT", "/db/_user/user1", GetUserPayload(t, "user1", "letmein", "", collection, []string{"user1"}, nil))
 	RequireStatus(t, response, http.StatusCreated)
 
 	id, err := base.GenerateRandomSecret()

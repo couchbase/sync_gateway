@@ -853,9 +853,7 @@ function(doc, oldDoc) {
 	userWaiter := userDb.NewUserWaiter()
 
 	// Update the user to grant them access to ABC
-	payload, err := GetUserPayload("user1", "", "", collection, []string{"ABC"}, nil)
-	require.NoError(t, err)
-	response := rt.SendAdminRequest("PUT", "/db/_user/user1", payload)
+	response := rt.SendAdminRequest("PUT", "/db/_user/user1", GetUserPayload(t, "user1", "", "", collection, []string{"ABC"}, nil))
 	RequireStatus(t, response, 200)
 
 	// Wait for notification
@@ -1433,9 +1431,7 @@ func TestAccessGrantViaAdminApi(t *testing.T) {
 	)
 
 	// Update the user doc to grant access to PBS
-	payload, err := GetUserPayload("user1", "", "", collection, []string{"user1", "PBS"}, nil)
-	require.NoError(t, err)
-	response := bt.restTester.SendAdminRequest("PUT", "/db/_user/user1", payload)
+	response := bt.restTester.SendAdminRequest("PUT", "/db/_user/user1", GetUserPayload(t, "user1", "", "", collection, []string{"user1", "PBS"}, nil))
 	RequireStatus(t, response, 200)
 
 	// Add another doc in the PBS channel
@@ -1957,9 +1953,7 @@ func TestRemovedMessageWithAlternateAccess(t *testing.T) {
 	defer rt.Close()
 	collection := rt.GetSingleTestDatabaseCollection()
 
-	payload, err := GetUserPayload("user", "test", "", collection, []string{"A", "B"}, nil)
-	require.NoError(t, err)
-	resp := rt.SendAdminRequest("PUT", "/db/_user/user", payload)
+	resp := rt.SendAdminRequest("PUT", "/db/_user/user", GetUserPayload(t, "user", "test", "", collection, []string{"A", "B"}, nil))
 	RequireStatus(t, resp, http.StatusCreated)
 
 	btc, err := NewBlipTesterClientOptsWithRT(t, rt, &BlipTesterClientOpts{
@@ -2066,8 +2060,7 @@ func TestRemovedMessageWithAlternateAccessAndChannelFilteredReplication(t *testi
 	defer rt.Close()
 	collection := rt.GetSingleTestDatabaseCollection()
 
-	payload, err := GetUserPayload("user", "test", "", collection, []string{"A", "B"}, nil)
-	resp := rt.SendAdminRequest("PUT", "/db/_user/user", payload)
+	resp := rt.SendAdminRequest("PUT", "/db/_user/user", GetUserPayload(t, "user", "test", "", collection, []string{"A", "B"}, nil))
 	RequireStatus(t, resp, http.StatusCreated)
 
 	btc, err := NewBlipTesterClientOptsWithRT(t, rt, &BlipTesterClientOpts{

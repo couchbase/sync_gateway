@@ -936,17 +936,13 @@ func TestResyncRegenerateSequences(t *testing.T) {
 		docSeqArr = append(docSeqArr, body["_sync"].(map[string]interface{})["sequence"].(float64))
 	}
 
-	payload, err := GetRolePayload("role1", "", collection, []string{"channel_1"})
-	require.NoError(t, err)
-	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/_role/role1", payload)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/_role/role1", GetRolePayload(t, "role1", "", collection, []string{"channel_1"}))
 	RequireStatus(t, response, http.StatusCreated)
 
-	payload, err = GetUserPayload("user1", "letmein", "", collection, []string{"channel_1"}, []string{"role1"})
-	require.NoError(t, err)
-	response = rt.SendAdminRequest("PUT", "/db/_user/user1", payload)
+	response = rt.SendAdminRequest("PUT", "/db/_user/user1", GetUserPayload(t, "user1", "letmein", "", collection, []string{"channel_1"}, []string{"role1"}))
 	RequireStatus(t, response, http.StatusCreated)
 
-	_, err = rt.MetadataStore().Get(base.RolePrefix+"role1", &body)
+	_, err := rt.MetadataStore().Get(base.RolePrefix+"role1", &body)
 	assert.NoError(t, err)
 	role1SeqBefore := body["sequence"].(float64)
 

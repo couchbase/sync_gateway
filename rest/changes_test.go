@@ -104,9 +104,7 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 	assert.NoError(t, a.Save(guest))
 
 	// Create user1
-	payload, err := GetUserPayload("user1", "letmein", "user1@couchbase.com", collection, []string{"alpha"}, nil)
-	require.NoError(t, err)
-	response := rt.SendAdminRequest("PUT", "/db/_user/user1", payload)
+	response := rt.SendAdminRequest("PUT", "/db/_user/user1", GetUserPayload(t, "user1", "letmein", "user1@couchbase.com", collection, []string{"alpha"}, nil))
 	RequireStatus(t, response, 201)
 
 	// Create 100 docs
@@ -130,9 +128,7 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 	assert.Equal(t, "doc98", changesResults.Results[49].ID)
 
 	// Create user2
-	payload, err = GetUserPayload("user2", "letmein", "user2@couchbase.com", collection, []string{"alpha"}, nil)
-	require.NoError(t, err)
-	response = rt.SendAdminRequest("PUT", "/db/_user/user2", payload)
+	response = rt.SendAdminRequest("PUT", "/db/_user/user2", GetUserPayload(t, "user2", "letmein", "user2@couchbase.com", collection, []string{"alpha"}, nil))
 	RequireStatus(t, response, 201)
 
 	// Retrieve all changes for user2 with no limits
@@ -142,8 +138,7 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 	assert.Equal(t, "doc99", changesResults.Results[99].ID)
 
 	// Create user3
-	payload, err = GetUserPayload("user3", "letmein", "user3@couchbase.com", collection, []string{"alpha"}, nil)
-	response = rt.SendAdminRequest("PUT", "/db/_user/user3", payload)
+	response = rt.SendAdminRequest("PUT", "/db/_user/user3", GetUserPayload(t, "user3", "letmein", "user3@couchbase.com", collection, []string{"alpha"}, nil))
 	RequireStatus(t, response, 201)
 
 	getUserResponse := rt.SendAdminRequest("GET", "/db/_user/user3", "")
@@ -169,9 +164,7 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 	assert.Equal(t, "doc99", changesResults.Results[49].ID)
 
 	// Create user4
-	payload, err = GetUserPayload("user4", "letmein", "user4@couchbase.com", collection, []string{"alpha"}, nil)
-	require.NoError(t, err)
-	response = rt.SendAdminRequest("PUT", "/db/_user/user4", payload)
+	response = rt.SendAdminRequest("PUT", "/db/_user/user4", GetUserPayload(t, "user4", "letmein", "user4@couchbase.com", collection, []string{"alpha"}, nil))
 	RequireStatus(t, response, 201)
 	// Get the sequence from the user doc to validate against the triggered by value in the changes results
 	user4, _ := rt.GetDatabase().Authenticator(base.TestCtx(t)).GetUser("user4")
