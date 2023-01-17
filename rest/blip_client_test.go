@@ -25,16 +25,18 @@ import (
 	"github.com/couchbase/go-blip"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
+
 	"github.com/google/uuid"
+	"github.com/stretchr/testify/require"
 )
 
 type BlipTesterClientOpts struct {
-	ClientDeltas           bool // Support deltas on the client side
-	Username               string
-	Channels               []string
-	SendRevocations        bool
-	SupportedBLIPProtocols []string
-	Collections            []string
+	ClientDeltas                  bool // Support deltas on the client side
+	Username                      string
+	Channels                      []string
+	SendRevocations               bool
+	SupportedBLIPProtocols        []string
+	SkipCollectionsInitialization bool
 
 	// a deltaSrc rev ID for which to reject a delta
 	rejectDeltasForSrcRev string
@@ -48,7 +50,8 @@ type BlipTesterClient struct {
 	pullReplication *BlipTesterReplicator // SG -> CBL replications
 	pushReplication *BlipTesterReplicator // CBL -> SG replications
 
-	CollectionClients map[string]*BlipTesterCollectionClient
+	collectionClients        []*BlipTesterCollectionClient
+	nonCollectionAwareClient *BlipTesterCollectionClient
 }
 
 type BlipTesterCollectionClient struct {
@@ -111,12 +114,7 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 			panic("no digest sent with proveAttachment")
 		}
 
-		collection, err := btc.getCollectionNameFromMessage(msg)
-		if err != nil {
-			panic(fmt.Sprintf("error occurred getting collection %v", err))
-		}
-
-		btcr := btc.CollectionClients[collection]
+		btcr := btc.getCollectionClientFromMessage(msg)
 
 		attData, err := btcr.getAttachment(digest)
 		if err != nil {
@@ -133,12 +131,7 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 	btr.bt.blipContext.HandlerForProfile[db.MessageChanges] = func(msg *blip.Message) {
 		btr.storeMessage(msg)
 
-		collection, err := btc.getCollectionNameFromMessage(msg)
-		if err != nil {
-			panic(fmt.Sprintf("error occurred getting collection %v", err))
-		}
-
-		btcr := btc.CollectionClients[collection]
+		btcr := btc.getCollectionClientFromMessage(msg)
 
 		// Exit early when there's nothing to do
 		if msg.NoReply() {
@@ -233,12 +226,7 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 	btr.bt.blipContext.HandlerForProfile[db.MessageRev] = func(msg *blip.Message) {
 		btc.pullReplication.storeMessage(msg)
 
-		collection, err := btc.getCollectionNameFromMessage(msg)
-		if err != nil {
-			panic(fmt.Sprintf("error occurred getting collection %v", err))
-		}
-
-		btcr := btc.CollectionClients[collection]
+		btcr := btc.getCollectionClientFromMessage(msg)
 
 		docID := msg.Properties[db.RevMessageID]
 		revID := msg.Properties[db.RevMessageRev]
@@ -407,12 +395,7 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 			base.PanicfCtx(context.TODO(), "couldn't find digest in getAttachment message properties")
 		}
 
-		collection, err := btc.getCollectionNameFromMessage(msg)
-		if err != nil {
-			panic(fmt.Sprintf("error occurred getting collection %v", err))
-		}
-
-		btcr := btc.CollectionClients[collection]
+		btcr := btc.getCollectionClientFromMessage(msg)
 
 		attachment, err := btcr.getAttachment(digest)
 		if err != nil {
@@ -491,12 +474,13 @@ func (btc *BlipTesterCollectionClient) getLastReplicatedRev(docID string) (revID
 	return revID, ok
 }
 
-func newBlipTesterReplication(tb testing.TB, id string, btc *BlipTesterClient) (*BlipTesterReplicator, error) {
+func newBlipTesterReplication(tb testing.TB, id string, btc *BlipTesterClient, skipCollectionsInitialization bool) (*BlipTesterReplicator, error) {
 	bt, err := NewBlipTesterFromSpecWithRT(tb, &BlipTesterSpec{
-		connectingPassword:          "test",
-		connectingUsername:          btc.Username,
-		connectingUserChannelGrants: btc.Channels,
-		blipProtocols:               btc.SupportedBLIPProtocols,
+		connectingPassword:            "test",
+		connectingUsername:            btc.Username,
+		connectingUserChannelGrants:   btc.Channels,
+		blipProtocols:                 btc.SupportedBLIPProtocols,
+		skipCollectionsInitialization: skipCollectionsInitialization,
 	}, btc.rt)
 	if err != nil {
 		return nil, err
@@ -513,11 +497,24 @@ func newBlipTesterReplication(tb testing.TB, id string, btc *BlipTesterClient) (
 	return r, nil
 }
 
+// getCollectionsForBLIP
+func getCollectionsForBLIP(_ testing.TB, rt *RestTester) []string {
+	db := rt.GetDatabase()
+	var collections []string
+	for _, collection := range db.CollectionByID {
+		if base.IsDefaultCollection(collection.ScopeName(), collection.Name()) {
+			continue
+		}
+		collections = append(collections,
+			strings.Join([]string{collection.ScopeName(), collection.Name()}, base.ScopeCollectionSeparator))
+	}
+	return collections
+}
+
 func createBlipTesterClientOpts(tb testing.TB, rt *RestTester, opts *BlipTesterClientOpts) (client *BlipTesterClient, err error) {
 	if opts == nil {
 		opts = &BlipTesterClientOpts{}
 	}
-
 	btc := BlipTesterClient{
 		BlipTesterClientOpts: *opts,
 		rt:                   rt,
@@ -528,71 +525,29 @@ func createBlipTesterClientOpts(tb testing.TB, rt *RestTester, opts *BlipTesterC
 		return nil, err
 	}
 
-	if btc.pushReplication, err = newBlipTesterReplication(btc.rt.TB, "push"+id.String(), &btc); err != nil {
+	if btc.pushReplication, err = newBlipTesterReplication(btc.rt.TB, "push"+id.String(), &btc, opts.SkipCollectionsInitialization); err != nil {
 		return nil, err
 	}
-	if btc.pullReplication, err = newBlipTesterReplication(btc.rt.TB, "pull"+id.String(), &btc); err != nil {
+	if btc.pullReplication, err = newBlipTesterReplication(btc.rt.TB, "pull"+id.String(), &btc, opts.SkipCollectionsInitialization); err != nil {
 		return nil, err
 	}
 
-	btc.CollectionClients = make(map[string]*BlipTesterCollectionClient)
-
-	if len(opts.Collections) != 0 {
-		getCollectionsRequest := blip.NewRequest()
-		getCollectionsRequest.SetProfile(db.MessageGetCollections)
-
-		checkpointIDs := make([]string, len(btc.Collections))
-		for i := range checkpointIDs {
-			checkpointIDs[i] = btc.pullReplication.id
-		}
-
-		requestBody := db.GetCollectionsRequestBody{
-			Collections:   btc.Collections,
-			CheckpointIDs: checkpointIDs,
-		}
-		body, err := base.JSONMarshal(requestBody)
-		if err != nil {
-			return nil, err
-		}
-
-		getCollectionsRequest.SetBody(body)
-		if err := btc.pullReplication.sendMsg(getCollectionsRequest); err != nil {
-			return nil, err
-		}
-
-		type CollectionsResponseEntry struct {
-			LastSequence *int    `json:"last_sequence"`
-			Rev          *string `json:"rev"`
-		}
-
-		response, err := getCollectionsRequest.Response().Body()
-		if err != nil {
-			return nil, err
-		}
-
-		var collectionResponse []*CollectionsResponseEntry
-		err = base.JSONUnmarshal(response, &collectionResponse)
-		if err != nil {
-			return nil, err
-		}
-
-		for i, perCollectionResponse := range collectionResponse {
-			if perCollectionResponse == nil {
-				return nil, fmt.Errorf("collection doesn't exist on peer %s", opts.Collections[i])
-			}
-		}
-	}
-
-	if len(opts.Collections) == 0 {
-		if err := btc.initCollectionReplication("", -1); err != nil {
-			return nil, err
-		}
-	} else {
-		for i, collection := range opts.Collections {
+	collections := getCollectionsForBLIP(tb, rt)
+	if !opts.SkipCollectionsInitialization && len(collections) > 0 {
+		btc.collectionClients = make([]*BlipTesterCollectionClient, len(collections))
+		for i, collection := range collections {
 			if err := btc.initCollectionReplication(collection, i); err != nil {
 				return nil, err
 			}
 		}
+	} else {
+		btc.nonCollectionAwareClient = &BlipTesterCollectionClient{
+			docs:              make(map[string]map[string]*BodyMessagePair),
+			attachments:       make(map[string][]byte),
+			lastReplicatedRev: make(map[string]string),
+			parent:            &btc,
+		}
+
 	}
 
 	return &btc, nil
@@ -618,8 +573,11 @@ func NewBlipTesterClientOptsWithRT(tb testing.TB, rt *RestTester, opts *BlipTest
 func (btc *BlipTesterClient) Close() {
 	btc.pullReplication.Close()
 	btc.pushReplication.Close()
-	for _, collectionReplicator := range btc.CollectionClients {
-		collectionReplicator.Close()
+	for _, collectionClient := range btc.collectionClients {
+		collectionClient.Close()
+	}
+	if btc.nonCollectionAwareClient != nil {
+		btc.nonCollectionAwareClient.Close()
 	}
 }
 
@@ -634,22 +592,16 @@ func (btc *BlipTesterClient) initCollectionReplication(collection string, collec
 	btcReplicator.collection = collection
 	btcReplicator.collectionIdx = collectionIdx
 
-	btc.CollectionClients[collection] = btcReplicator
+	btc.collectionClients[collectionIdx] = btcReplicator
 	return nil
 }
 
-// DefaultCollection() just returns the client's default collection
-func (btc *BlipTesterClient) DefaultCollection() *BlipTesterCollectionClient {
-	return btc.CollectionClients[""]
-}
-
-func (btc *BlipTesterClient) Collection(collection string) (*BlipTesterCollectionClient, error) {
-	btcr, ok := btc.CollectionClients[collection]
-	if !ok {
-		return nil, fmt.Errorf("doesn't exist")
+func (btc *BlipTesterClient) SingleCollection() *BlipTesterCollectionClient {
+	if btc.nonCollectionAwareClient != nil {
+		return btc.nonCollectionAwareClient
 	}
-
-	return btcr, nil
+	require.Equal(btc.rt.TB, 1, len(btc.collectionClients))
+	return btc.collectionClients[0]
 }
 
 // StartPull will begin a continuous pull replication since 0 between the client and server
@@ -795,6 +747,8 @@ func (btc *BlipTesterCollectionClient) PushRevWithHistory(docID, parentRev strin
 	proposeChangesRequest.SetProfile(db.MessageProposeChanges)
 	proposeChangesRequest.SetBody([]byte(fmt.Sprintf(`[["%s","%s","%s"]]`, docID, newRevID, parentRev)))
 
+	btc.addCollectionProperty(proposeChangesRequest)
+
 	if err := btc.sendPushMsg(proposeChangesRequest); err != nil {
 		return "", err
 	}
@@ -820,6 +774,7 @@ func (btc *BlipTesterCollectionClient) PushRevWithHistory(docID, parentRev strin
 	revRequest.Properties[db.RevMessageRev] = newRevID
 	revRequest.Properties[db.RevMessageHistory] = strings.Join(revisionHistory, ",")
 
+	btc.addCollectionProperty(revRequest)
 	if btc.parent.ClientDeltas && proposeChangesResponse.Properties[db.ProposeChangesResponseDeltas] == "true" {
 		base.DebugfCtx(context.TODO(), base.KeySync, "Sending deltas from test client")
 		var parentDocJSON, newDocJSON db.Body
@@ -1038,63 +993,63 @@ func (btc *BlipTesterCollectionClient) GetBlipRevMessage(docID, revID string) (m
 }
 
 func (btc *BlipTesterClient) StartPull() error {
-	return btc.DefaultCollection().StartPull()
+	return btc.SingleCollection().StartPull()
 }
 
 func (btc *BlipTesterClient) WaitForRev(docID string, revID string) ([]byte, bool) {
-	return btc.DefaultCollection().WaitForRev(docID, revID)
+	return btc.SingleCollection().WaitForRev(docID, revID)
 }
 
 func (btc *BlipTesterClient) WaitForBlipRevMessage(docID string, revID string) (*blip.Message, bool) {
-	return btc.DefaultCollection().WaitForBlipRevMessage(docID, revID)
+	return btc.SingleCollection().WaitForBlipRevMessage(docID, revID)
 }
 
 func (btc *BlipTesterClient) StartOneshotPull() error {
-	return btc.DefaultCollection().StartOneshotPull()
+	return btc.SingleCollection().StartOneshotPull()
 }
 
 func (btc *BlipTesterClient) StartOneshotPullFiltered(channels string) error {
-	return btc.DefaultCollection().StartOneshotPullFiltered(channels)
+	return btc.SingleCollection().StartOneshotPullFiltered(channels)
 }
 
 func (btc *BlipTesterClient) PushRev(docID string, revID string, body []byte) (string, error) {
-	return btc.DefaultCollection().PushRev(docID, revID, body)
+	return btc.SingleCollection().PushRev(docID, revID, body)
 }
 
 func (btc *BlipTesterClient) StartPullSince(continuous, since, activeOnly string) error {
-	return btc.DefaultCollection().StartPullSince(continuous, since, activeOnly, "")
+	return btc.SingleCollection().StartPullSince(continuous, since, activeOnly, "")
 }
 
 func (btc *BlipTesterClient) StartFilteredPullSince(continuous, since, activeOnly string, channels string) error {
-	return btc.DefaultCollection().StartPullSince(continuous, since, activeOnly, channels)
+	return btc.SingleCollection().StartPullSince(continuous, since, activeOnly, channels)
 }
 
 func (btc *BlipTesterClient) GetRev(docID, revID string) ([]byte, bool) {
-	return btc.DefaultCollection().GetRev(docID, revID)
+	return btc.SingleCollection().GetRev(docID, revID)
 }
 
 func (btc *BlipTesterClient) saveAttachment(contentType string, attachmentData string) (int, string, error) {
-	return btc.DefaultCollection().saveAttachment(contentType, attachmentData)
+	return btc.SingleCollection().saveAttachment(contentType, attachmentData)
 }
 
 func (btc *BlipTesterClient) StoreRevOnClient(docID, revID string, body []byte) error {
-	return btc.DefaultCollection().StoreRevOnClient(docID, revID, body)
+	return btc.SingleCollection().StoreRevOnClient(docID, revID, body)
 }
 
 func (btc *BlipTesterClient) PushRevWithHistory(docID, revID string, body []byte, revCount, prunedRevCount int) (string, error) {
-	return btc.DefaultCollection().PushRevWithHistory(docID, revID, body, revCount, prunedRevCount)
+	return btc.SingleCollection().PushRevWithHistory(docID, revID, body, revCount, prunedRevCount)
 }
 
 func (btc *BlipTesterClient) AttachmentsLock() *sync.RWMutex {
-	return &btc.DefaultCollection().attachmentsLock
+	return &btc.SingleCollection().attachmentsLock
 }
 
 func (btc *BlipTesterClient) Attachments() map[string][]byte {
-	return btc.DefaultCollection().attachments
+	return btc.SingleCollection().attachments
 }
 
 func (btc *BlipTesterClient) UnsubPullChanges() ([]byte, error) {
-	return btc.DefaultCollection().UnsubPullChanges()
+	return btc.SingleCollection().UnsubPullChanges()
 }
 
 func (btc *BlipTesterCollectionClient) addCollectionProperty(msg *blip.Message) *blip.Message {
@@ -1105,25 +1060,29 @@ func (btc *BlipTesterCollectionClient) addCollectionProperty(msg *blip.Message) 
 	return msg
 }
 
-func (btc *BlipTesterClient) getCollectionNameFromMessage(msg *blip.Message) (string, error) {
-	collectionIdx := msg.Properties[db.BlipCollection]
-	if len(btc.Collections) == 0 {
-		return "", nil
+func (bt *BlipTester) addCollectionProperty(msg *blip.Message) *blip.Message {
+	if bt.useCollections == true {
+		msg.Properties[db.BlipCollection] = "0"
+	}
+
+	return msg
+}
+
+func (btc *BlipTesterClient) getCollectionClientFromMessage(msg *blip.Message) *BlipTesterCollectionClient {
+	collectionIdx, exists := msg.Properties[db.BlipCollection]
+	if !exists {
+		require.NotNil(btc.rt.TB, btc.nonCollectionAwareClient)
+		return btc.nonCollectionAwareClient
 	}
 
 	if collectionIdx == "" {
-		return "", fmt.Errorf("no collection given in %q message", msg.Profile())
+		btc.rt.TB.Fatalf("no collection given in %q message", msg.Profile())
 	}
 
 	idx, err := strconv.Atoi(collectionIdx)
-	if err != nil {
-		return "", err
-	}
-
-	if len(btc.Collections) < idx+1 {
-		return "", fmt.Errorf("idx %d not valid", idx)
-	}
-	return btc.Collections[idx], nil
+	require.NoError(btc.rt.TB, err)
+	require.Greater(btc.rt.TB, len(btc.collectionClients), idx)
+	return btc.collectionClients[idx]
 }
 
 func (btc *BlipTesterCollectionClient) sendPullMsg(msg *blip.Message) error {

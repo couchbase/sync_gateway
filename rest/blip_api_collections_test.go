@@ -12,13 +12,11 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
-	"strings"
 	"testing"
 
 	"github.com/couchbase/go-blip"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -29,10 +27,14 @@ func TestBlipGetCollections(t *testing.T) {
 	// checkpointIDWithError := "checkpointError"
 
 	const defaultScopeAndCollection = "_default._default"
-	rt := NewRestTesterMultipleCollections(t, nil, 1)
+	rt := NewRestTesterMultipleCollections(t, &RestTesterConfig{GuestEnabled: true}, 1)
 	defer rt.Close()
 
-	btc, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
+	btc, err := NewBlipTesterClientOptsWithRT(t, rt,
+		&BlipTesterClientOpts{
+			SkipCollectionsInitialization: true,
+		},
+	)
 	require.NoError(t, err)
 	defer btc.Close()
 
@@ -228,22 +230,6 @@ func TestBlipGetCollectionsAndSetCheckpoint(t *testing.T) {
 
 }
 
-func TestCollectionsPeerDoesNotHave(t *testing.T) {
-	base.TestRequiresCollections(t)
-
-	rt := NewRestTester(t, &RestTesterConfig{
-		GuestEnabled: true,
-	})
-	defer rt.Close()
-
-	_, err := NewBlipTesterClientOptsWithRT(t, rt, &BlipTesterClientOpts{
-		Collections: []string{"barScope.barCollection"},
-	})
-	require.Error(t, err)
-
-	assert.Equal(t, "collection doesn't exist on peer barScope.barCollection", err.Error())
-}
-
 func TestCollectionsReplication(t *testing.T) {
 	base.TestRequiresCollections(t)
 
@@ -252,22 +238,16 @@ func TestCollectionsReplication(t *testing.T) {
 	})
 	defer rt.Close()
 
-	collection := rt.GetSingleTestDatabaseCollection()
-	scopeAndCollectionKey := strings.Join([]string{collection.ScopeName(), collection.Name()}, base.ScopeCollectionSeparator)
-
-	btc, err := NewBlipTesterClientOptsWithRT(t, rt, &BlipTesterClientOpts{
-		Collections: []string{scopeAndCollectionKey},
-	})
+	btc, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
 	require.NoError(t, err)
 	defer btc.Close()
 
-	resp := rt.SendAdminRequest(http.MethodPut, "/db."+scopeAndCollectionKey+"/doc1", "{}")
+	resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc1", "{}")
 	RequireStatus(t, resp, http.StatusCreated)
 
 	require.NoError(t, rt.WaitForPendingChanges())
 
-	btcCollection, err := btc.Collection(scopeAndCollectionKey)
-	require.NoError(t, err)
+	btcCollection := btc.SingleCollection()
 
 	err = btcCollection.StartOneshotPull()
 	require.NoError(t, err)

@@ -1126,6 +1126,9 @@ type BlipTesterSpec struct {
 
 	// Supported blipProtocols for the client to use in order of preference
 	blipProtocols []string
+
+	// If true, do not automatically initialize GetCollections handshake
+	skipCollectionsInitialization bool
 }
 
 // State associated with a BlipTester
@@ -1152,7 +1155,7 @@ type BlipTester struct {
 
 	// Set when we receive a reply to a getCollections request. Used to verify that all messages after that contain a
 	// `collection` property.
-	useCollections *base.AtomicBool
+	useCollections bool
 }
 
 // Close the bliptester
@@ -1228,7 +1231,7 @@ func NewBlipTesterFromSpec(tb testing.TB, spec BlipTesterSpec) (*BlipTester, err
 func createBlipTesterWithSpec(tb testing.TB, spec BlipTesterSpec, rt *RestTester) (*BlipTester, error) {
 	bt := &BlipTester{
 		restTester:     rt,
-		useCollections: base.NewAtomicBool(false),
+		useCollections: rt.collectionConfig != useSingleCollectionDefaultOnly,
 	}
 
 	// Since blip requests all go over the public handler, wrap the public handler with the httptest server
@@ -1318,8 +1321,49 @@ func createBlipTesterWithSpec(tb testing.TB, spec BlipTesterSpec, rt *RestTester
 		return nil, err
 	}
 
+	if !spec.skipCollectionsInitialization {
+		bt.initializeCollections(bt.restTester.getCollectionsForBLIP())
+	}
+
 	return bt, nil
 
+}
+
+func (bt *BlipTester) initializeCollections(collections []string) {
+	getCollectionsRequest := blip.NewRequest()
+	getCollectionsRequest.SetProfile(db.MessageGetCollections)
+
+	checkpointIDs := make([]string, len(collections))
+	for i := range checkpointIDs {
+		checkpointIDs[i] = "0"
+	}
+
+	requestBody := db.GetCollectionsRequestBody{
+		Collections:   collections,
+		CheckpointIDs: checkpointIDs,
+	}
+	body, err := base.JSONMarshal(requestBody)
+	require.NoError(bt.restTester.TB, err)
+
+	getCollectionsRequest.SetBody(body)
+	sent := bt.sender.Send(getCollectionsRequest)
+	require.True(bt.restTester.TB, sent)
+
+	type CollectionsResponseEntry struct {
+		LastSequence *int    `json:"last_sequence"`
+		Rev          *string `json:"rev"`
+	}
+
+	response, err := getCollectionsRequest.Response().Body()
+	require.NoError(bt.restTester.TB, err)
+
+	var collectionResponse []*CollectionsResponseEntry
+	err = base.JSONUnmarshal(response, &collectionResponse)
+	require.NoError(bt.restTester.TB, err)
+
+	for _, perCollectionResponse := range collectionResponse {
+		require.NotNil(bt.restTester.TB, perCollectionResponse)
+	}
 }
 
 func (bt *BlipTester) SetCheckpoint(client string, checkpointRev string, body []byte) (sent bool, req *db.SetCheckpointMessage, res *db.SetCheckpointResponse, err error) {
@@ -1358,6 +1402,7 @@ func (bt *BlipTester) SendRevWithHistory(docId, docRev string, revHistory []stri
 	for k, v := range properties {
 		revRequest.Properties[k] = v
 	}
+	bt.addCollectionProperty(revRequest)
 
 	revRequest.SetBody(body)
 	sent = bt.sender.Send(revRequest)
@@ -1565,10 +1610,6 @@ func (bt *BlipTester) SendRevWithAttachment(input SendRevWithAttachmentInput) (s
 		docBody,
 		blip.Properties{},
 	)
-	if err != nil {
-		getAttachmentWg.Done()
-		bt.restTester.TB.Fatalf("Unexpected error sending revs: %s", err)
-	}
 	// Expect a callback to the getAttachment endpoint
 	getAttachmentWg.Wait()
 
@@ -2139,4 +2180,18 @@ func (rt *RestTester) GetSingleKeyspace() string {
 	}
 	rt.TB.Fatal("Had no collection to return a keyspace for") // should be unreachable given length check above
 	return ""
+}
+
+// getCollectionsForBLIP
+func (rt *RestTester) getCollectionsForBLIP() []string {
+	db := rt.GetDatabase()
+	var collections []string
+	for _, collection := range db.CollectionByID {
+		if base.IsDefaultCollection(collection.ScopeName(), collection.Name()) {
+			continue
+		}
+		collections = append(collections,
+			strings.Join([]string{collection.ScopeName(), collection.Name()}, base.ScopeCollectionSeparator))
+	}
+	return collections
 }
