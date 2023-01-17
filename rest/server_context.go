@@ -483,8 +483,8 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		}
 
 		for scopeName, scopeConfig := range config.Scopes {
-			var dataStore sgbucket.DataStore
 			for collectionName, _ := range scopeConfig.Collections {
+				var dataStore sgbucket.DataStore
 				err := base.WaitForNoError(func() error {
 					dataStore, err = bucket.NamedDataStore(base.ScopeAndCollectionName{Scope: scopeName, Collection: collectionName})
 					return err

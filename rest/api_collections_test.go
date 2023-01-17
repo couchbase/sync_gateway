@@ -412,7 +412,7 @@ func TestCollectionsPutDBInexistentCollection(t *testing.T) {
 	rt := NewRestTesterMultipleCollections(t, rtConfig, 1)
 	defer rt.Close()
 
-	resp := rt.SendAdminRequest("PUT", "/db/", fmt.Sprintf(`{"bucket": "%s", "num_index_replicas":0, "scopes": {"new_scope": {"collections": {"new_collection": {}}}}}`, tb.GetName()))
+	resp := rt.SendAdminRequest("PUT", "/db2/", fmt.Sprintf(`{"bucket": "%s", "num_index_replicas":0, "scopes": {"_default": {"collections": {"new_collection": {}}}}}`, tb.GetName()))
 	RequireStatus(t, resp, http.StatusForbidden)
 }
 

@@ -629,7 +629,10 @@ func (b *GocbV2Bucket) NamedDataStore(name sgbucket.DataStoreName) (sgbucket.Dat
 		b,
 		b.bucket.Scope(name.ScopeName()).Collection(name.CollectionName()))
 	if err != nil {
-		return nil, fmt.Errorf("attempting to create/update database with a scope/collection that is not found: %w", ErrAuthError)
+		if errors.Is(err, gocb.ErrCollectionNotFound) || errors.Is(err, gocb.ErrScopeNotFound) {
+			return nil, ErrAuthError
+		}
+		return nil, err
 	}
 	return c, nil
 }
