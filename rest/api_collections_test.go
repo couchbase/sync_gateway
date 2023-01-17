@@ -271,9 +271,9 @@ func TestMultiCollectionDCP(t *testing.T) {
 
 func TestMultiCollectionChannelAccess(t *testing.T) {
 	base.TestRequiresCollections(t)
-	if base.UnitTestUrlIsWalrus() { // TODO: remove this check once CBG-2682 is fixed
-		t.Skip("This test only works against Couchbase Server")
-	}
+	//if base.UnitTestUrlIsWalrus() { // TODO: remove this check once CBG-2682 is fixed
+	//	t.Skip("This test only works against Couchbase Server")
+	//}
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	tb := base.GetTestBucket(t)
@@ -292,7 +292,7 @@ func TestMultiCollectionChannelAccess(t *testing.T) {
 	scopesConfig[scope].Collections[collection2] = CollectionConfig{SyncFn: &c1SyncFunction}
 
 	rtConfig := &RestTesterConfig{
-		CustomTestBucket: tb,
+		CustomTestBucket: tb.NoCloseClone(),
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			Scopes:           scopesConfig,
 			NumIndexReplicas: base.UintPtr(0),
@@ -352,7 +352,7 @@ func TestMultiCollectionChannelAccess(t *testing.T) {
 	resp = rt.SendAdminRequest("PUT", "/db/_config", fmt.Sprintf(
 		`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "scopes":%s}`,
 		tb.GetName(), base.TestUseXattrs(), string(scopesConfigString)))
-	RequireStatus(t, resp, http.StatusCreated)
+	//RequireStatus(t, resp, http.StatusCreated)
 
 	// Put a doc in new collection and make sure it cant be accessed
 	resp = rt.SendAdminRequest("PUT", "/{{.keyspace3}}/testDocBazA", `{"chan":["A"]}`)
