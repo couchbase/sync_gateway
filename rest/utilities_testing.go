@@ -1321,8 +1321,9 @@ func createBlipTesterWithSpec(tb testing.TB, spec BlipTesterSpec, rt *RestTester
 		return nil, err
 	}
 
-	if !spec.skipCollectionsInitialization {
-		bt.initializeCollections(bt.restTester.getCollectionsForBLIP())
+	collections := bt.restTester.getCollectionsForBLIP()
+	if !spec.skipCollectionsInitialization && len(collections) > 0 {
+		bt.initializeCollections(collections)
 	}
 
 	return bt, nil
@@ -1364,6 +1365,14 @@ func (bt *BlipTester) initializeCollections(collections []string) {
 	for _, perCollectionResponse := range collectionResponse {
 		require.NotNil(bt.restTester.TB, perCollectionResponse)
 	}
+}
+
+func (bt *BlipTester) addCollectionProperty(msg *blip.Message) *blip.Message {
+	if bt.useCollections == true {
+		msg.Properties[db.BlipCollection] = "0"
+	}
+
+	return msg
 }
 
 func (bt *BlipTester) SetCheckpoint(client string, checkpointRev string, body []byte) (sent bool, req *db.SetCheckpointMessage, res *db.SetCheckpointResponse, err error) {

@@ -1068,14 +1068,6 @@ func (bt *BlipTesterClient) addCollectionProperty(msg *blip.Message) *blip.Messa
 	return msg
 }
 
-func (bt *BlipTester) addCollectionProperty(msg *blip.Message) *blip.Message {
-	if bt.useCollections == true {
-		msg.Properties[db.BlipCollection] = "0"
-	}
-
-	return msg
-}
-
 func (btc *BlipTesterClient) getCollectionClientFromMessage(msg *blip.Message) *BlipTesterCollectionClient {
 	collectionIdx, exists := msg.Properties[db.BlipCollection]
 	if !exists {
