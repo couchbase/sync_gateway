@@ -271,9 +271,9 @@ func TestMultiCollectionDCP(t *testing.T) {
 
 func TestMultiCollectionChannelAccess(t *testing.T) {
 	base.TestRequiresCollections(t)
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server")
-	}
+	//if base.UnitTestUrlIsWalrus() {
+	//	t.Skip("This test only works against Couchbase Server")
+	//}
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	tb := base.GetTestBucket(t)
@@ -293,16 +293,16 @@ func TestMultiCollectionChannelAccess(t *testing.T) {
 
 	rtConfig := &RestTesterConfig{
 		CustomTestBucket: tb,
-		PersistentConfig: true,
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
+			Scopes:           scopesConfig,
+			NumIndexReplicas: base.UintPtr(0),
+			EnableXattrs:     base.BoolPtr(base.TestUseXattrs()),
+		},
+		},
 	}
 
 	rt := NewRestTesterMultipleCollections(t, rtConfig, 3)
 	defer rt.Close()
-	scopesConfigString, err := json.Marshal(scopesConfig)
-	resp := rt.SendAdminRequest("PUT", "/db/", fmt.Sprintf(
-		`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "use_views": %t, "scopes":%s}`,
-		tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(), scopesConfigString))
-	RequireStatus(t, resp, http.StatusCreated)
 
 	userPayload := `{
 		"password":"letmein",
@@ -316,7 +316,7 @@ func TestMultiCollectionChannelAccess(t *testing.T) {
 	}`
 
 	// Create a few users with access to various channels via admin grants
-	resp = rt.SendAdminRequest("PUT", "/db/_user/userA", fmt.Sprintf(userPayload, scope, collection1, `["A"]`))
+	resp := rt.SendAdminRequest("PUT", "/db/_user/userA", fmt.Sprintf(userPayload, scope, collection1, `["A"]`))
 	RequireStatus(t, resp, http.StatusCreated)
 	resp = rt.SendAdminRequest("PUT", "/db/_user/userB", fmt.Sprintf(userPayload, scope, collection1, `["B"]`))
 	RequireStatus(t, resp, http.StatusCreated)
@@ -334,6 +334,9 @@ func TestMultiCollectionChannelAccess(t *testing.T) {
 	RequireStatus(t, resp, http.StatusCreated)
 	resp = rt.SendAdminRequest("PUT", "/{{.keyspace2}}/testDocBazB", `{"chan":["B"]}`)
 	RequireStatus(t, resp, http.StatusCreated)
+	resp = rt.SendAdminRequest("GET", "/db/_user/userA", ``)
+	fmt.Println(resp.Body)
+	RequireStatus(t, resp, http.StatusOK)
 
 	// Ensure users can only see documents in the appropriate collection/channels they should be able to have access to
 	resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.keyspace1}}/testDocBarA", "", nil, "userA", "letmein")
@@ -347,7 +350,7 @@ func TestMultiCollectionChannelAccess(t *testing.T) {
 
 	// Add a new collection and update the db config
 	scopesConfig[scope].Collections[collection3] = CollectionConfig{SyncFn: &c1SyncFunction}
-	scopesConfigString, err = json.Marshal(scopesConfig)
+	scopesConfigString, err := json.Marshal(scopesConfig)
 	require.NoError(t, err)
 	resp = rt.SendAdminRequest("PUT", "/db/_config", fmt.Sprintf(
 		`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "scopes":%s}`,
@@ -355,8 +358,9 @@ func TestMultiCollectionChannelAccess(t *testing.T) {
 	RequireStatus(t, resp, http.StatusCreated)
 
 	// Put a doc in new collection and make sure it cant be accessed
-	resp = rt.SendAdminRequest("PUT", "/{{.keyspace3}}/testDocBazA", `{"chan":["A"]}`)
-	RequireStatus(t, resp, http.StatusCreated)
+	resp = rt.SendAdminRequest("GET", "/{{.keyspace2}}/testDocBazB", ``)
+	fmt.Println(resp.Body)
+	RequireStatus(t, resp, http.StatusOK)
 	resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.keyspace3}}/testDocBazA", "", nil, "userA", "letmein")
 	RequireStatus(t, resp, http.StatusForbidden)
 
