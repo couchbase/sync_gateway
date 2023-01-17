@@ -364,7 +364,7 @@ func postChangesSince(t *testing.T, rt *rest.RestTester) {
 	changesJSON := `{"style":"all_docs", "heartbeat":300000, "feed":"longpoll", "limit":50, "since":"0"}`
 	changesResponse := rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", changesJSON, "bernard")
 
-	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
+	err := base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
 	log.Printf("Changes:%s", changesResponse.Body.Bytes())
 	assert.NoError(t, err, "Error unmarshalling changes response")
 	require.Len(t, changes.Results, 5)
@@ -1934,7 +1934,7 @@ func TestChangesIncludeDocs(t *testing.T) {
 
 	// Create docs for each scenario
 	// Active
-	_, err = updateTestDoc(rt, "doc_active", "", `{"type": "active", "channels":["alpha"]}`)
+	_, err := updateTestDoc(rt, "doc_active", "", `{"type": "active", "channels":["alpha"]}`)
 	assert.NoError(t, err, "Error updating doc")
 
 	// Multi-revision
@@ -3706,7 +3706,7 @@ func TestIncludeDocsWithPrincipals(t *testing.T) {
 	// Get as admin
 	changes.Results = nil
 	changesResponse := rt.SendAdminRequest("GET", "/{{.keyspace}}/_changes?include_docs=true", "")
-	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
+	err := base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
 	log.Printf("admin response: %s", changesResponse.Body.Bytes())
 	assert.NoError(t, err, "Error unmarshalling changes response")
 	// Expect three docs, no user docs
