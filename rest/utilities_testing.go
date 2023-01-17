@@ -954,7 +954,7 @@ type RawResponse struct {
 // GetDocumentSequence looks up the sequence for a document using the _raw endpoint.
 // Used by tests that need to validate sequences (for grants, etc)
 func (rt *RestTester) GetDocumentSequence(key string) (sequence uint64) {
-	response := rt.SendAdminRequest("GET", fmt.Sprintf("/db/_raw/%s", key), "")
+	response := rt.SendAdminRequest("GET", fmt.Sprintf("/{{.keyspace}}/_raw/%s", key), "")
 	if response.Code != 200 {
 		return 0
 	}
@@ -1386,6 +1386,58 @@ func (bt *BlipTester) SendRev(docId, docRev string, body []byte, properties blip
 
 	return bt.SendRevWithHistory(docId, docRev, []string{}, body, properties)
 
+}
+
+// GetUserPayload will take username, password, email, channels and roles you want to assign a user and create the appropriate payload for the _user endpoint
+func GetUserPayload(t *testing.T, username, password, email string, collection *db.DatabaseCollection, chans, roles []string) string {
+	config := auth.PrincipalConfig{}
+	if username != "" {
+		config.Name = &username
+	}
+	if password != "" {
+		config.Password = &password
+	}
+	if email != "" {
+		config.Email = &email
+	}
+	if len(roles) != 0 {
+		config.ExplicitRoleNames = base.SetOf(roles...)
+	}
+	marshalledConfig, err := addChannelsToPrincipal(config, collection, chans)
+	require.NoError(t, err)
+	return string(marshalledConfig)
+}
+
+// GetRolePayload will take roleName, password and channels you want to assign a particular role and return the appropriate payload for the _role endpoint
+func GetRolePayload(t *testing.T, roleName, password string, collection *db.DatabaseCollection, chans []string) string {
+	config := auth.PrincipalConfig{}
+	if roleName != "" {
+		config.Name = &roleName
+	}
+	if password != "" {
+		config.Password = &password
+	}
+	marshalledConfig, err := addChannelsToPrincipal(config, collection, chans)
+	require.NoError(t, err)
+	return string(marshalledConfig)
+}
+
+// add channels to principal depending if running with collections or not. then marshal the principal config
+func addChannelsToPrincipal(config auth.PrincipalConfig, collection *db.DatabaseCollection, chans []string) ([]byte, error) {
+	if base.IsDefaultCollection(collection.ScopeName(), collection.Name()) {
+		if len(chans) == 0 {
+			config.ExplicitChannels = base.SetOf("[]")
+		} else {
+			config.ExplicitChannels = base.SetFromArray(chans)
+		}
+	} else {
+		config.SetExplicitChannels(collection.ScopeName(), collection.Name(), chans...)
+	}
+	payload, err := json.Marshal(config)
+	if err != nil {
+		return []byte{}, err
+	}
+	return payload, nil
 }
 
 func getChangesHandler(changesFinishedWg, revsFinishedWg *sync.WaitGroup) func(request *blip.Message) {

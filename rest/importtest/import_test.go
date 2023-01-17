@@ -53,7 +53,7 @@ func TestXattrImportOldDoc(t *testing.T) {
 			AutoImport: false,
 		}},
 	}
-	rt := rest.NewRestTesterDefaultCollection(t, // CBG-2618: fix collection channel access
+	rt := rest.NewRestTester(t,
 		&rtConfig)
 	defer rt.Close()
 
@@ -71,7 +71,7 @@ func TestXattrImportOldDoc(t *testing.T) {
 	assert.NoError(t, err, "Unable to insert doc TestImportDelete")
 
 	// Attempt to get the document via Sync Gateway, to trigger import.  On import of a create, oldDoc should be nil.
-	response := rt.SendAdminRequest("GET", "/db/_raw/TestImportDelete?redact=false", "")
+	response := rt.SendAdminRequest("GET", "/{{.keyspace}}/_raw/TestImportDelete?redact=false", "")
 	assert.Equal(t, 200, response.Code)
 	var rawInsertResponse rest.RawResponse
 	err = base.JSONUnmarshal(response.Body.Bytes(), &rawInsertResponse)
@@ -90,7 +90,7 @@ func TestXattrImportOldDoc(t *testing.T) {
 	assert.NoError(t, err, "Unable to update doc TestImportDelete")
 
 	// Attempt to get the document via Sync Gateway, to trigger import.  On import of a create, oldDoc should be nil.
-	response = rt.SendAdminRequest("GET", "/db/_raw/TestImportDelete?redact=false", "")
+	response = rt.SendAdminRequest("GET", "/{{.keyspace}}/_raw/TestImportDelete?redact=false", "")
 	assert.Equal(t, 200, response.Code)
 	var rawUpdateResponse rest.RawResponse
 	err = base.JSONUnmarshal(response.Body.Bytes(), &rawUpdateResponse)
@@ -108,7 +108,7 @@ func TestXattrImportOldDoc(t *testing.T) {
 	err = dataStore.Delete(key)
 	assert.NoError(t, err, "Unable to delete doc TestImportDelete")
 
-	response = rt.SendAdminRequest("GET", "/db/_raw/TestImportDelete?redact=false", "")
+	response = rt.SendAdminRequest("GET", "/{{.keyspace}}/_raw/TestImportDelete?redact=false", "")
 	assert.Equal(t, 200, response.Code)
 	var rawDeleteResponse rest.RawResponse
 	err = base.JSONUnmarshal(response.Body.Bytes(), &rawDeleteResponse)
@@ -624,7 +624,7 @@ func TestXattrImportMultipleActorOnDemandGet(t *testing.T) {
 			AutoImport: false,
 		}},
 	}
-	rt := rest.NewRestTesterDefaultCollection(t, &rtConfig) // CBG-2618: fix collection channel access
+	rt := rest.NewRestTester(t, &rtConfig)
 	defer rt.Close()
 	dataStore := rt.GetSingleDataStore()
 
@@ -638,7 +638,7 @@ func TestXattrImportMultipleActorOnDemandGet(t *testing.T) {
 	assert.NoError(t, err, "Error writing SDK doc")
 
 	// Attempt to get the document via Sync Gateway.  Will trigger on-demand import.
-	response := rt.SendAdminRequest("GET", "/db/"+mobileKey, "")
+	response := rt.SendAdminRequest("GET", "/{{.keyspace}}/"+mobileKey, "")
 	assert.Equal(t, 200, response.Code)
 	// Extract rev from response for comparison with second GET below
 	var body db.Body
@@ -660,7 +660,7 @@ func TestXattrImportMultipleActorOnDemandGet(t *testing.T) {
 	assert.NoError(t, mutateErr, "Error updating non-mobile xattr for multi-actor document")
 
 	// Attempt to get the document again via Sync Gateway.  Should not trigger import.
-	response = rt.SendAdminRequest("GET", "/db/"+mobileKey, "")
+	response = rt.SendAdminRequest("GET", "/{{.keyspace}}/"+mobileKey, "")
 	assert.Equal(t, 200, response.Code)
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	newRevId := body[db.BodyRev].(string)
@@ -680,7 +680,7 @@ func TestXattrImportMultipleActorOnDemandPut(t *testing.T) {
 			AutoImport: false,
 		}},
 	}
-	rt := rest.NewRestTesterDefaultCollection(t, &rtConfig) // CBG-2618: fix collection channel access
+	rt := rest.NewRestTester(t, &rtConfig)
 	defer rt.Close()
 	dataStore := rt.GetSingleDataStore()
 
