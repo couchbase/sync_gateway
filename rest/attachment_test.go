@@ -2631,12 +2631,11 @@ func TestUpdateExistingAttachment(t *testing.T) {
 		GuestEnabled: true,
 	})
 	defer rt.Close()
-	collection := rt.GetSingleTestDatabaseCollection()
 
-	btc, err := BlipClientInitialization(t, rt, collection, nil)
+	btc, btcCollection, err := BlipClientInitialization(t, rt, nil)
 	assert.NoError(t, err)
 	defer btc.Close()
-	btcCollection, err := btc.BlipClientCollectionSetup(collection)
+	_, err = btc.pushReplication.bt.BlipCollectionSetup(rt)
 	require.NoError(t, err)
 
 	var doc1Body db.Body
@@ -2702,12 +2701,11 @@ func TestPushUnknownAttachmentAsStub(t *testing.T) {
 		GuestEnabled: true,
 	})
 	defer rt.Close()
-	collection := rt.GetSingleTestDatabaseCollection()
 
-	btc, err := BlipClientInitialization(t, rt, collection, nil)
+	btc, btcCollection, err := BlipClientInitialization(t, rt, nil)
 	assert.NoError(t, err)
 	defer btc.Close()
-	btcCollection, err := btc.BlipClientCollectionSetup(collection)
+	_, err = btc.pushReplication.bt.BlipCollectionSetup(rt)
 	require.NoError(t, err)
 
 	var doc1Body db.Body
@@ -2770,7 +2768,7 @@ func TestMinRevPosWorkToAvoidUnnecessaryProveAttachment(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Replicate data to client and ensure doc arrives
-	err = btc.StartOneshotPull()
+	err = btc.DefaultCollection().StartOneshotPull()
 	assert.NoError(t, err)
 	_, found := btc.WaitForRev("doc", initialRevID)
 	assert.True(t, found)
@@ -2805,7 +2803,7 @@ func TestAttachmentWithErroneousRevPos(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Pull rev and attachment down to client
-	err = btc.StartOneshotPull()
+	err = btc.DefaultCollection().StartOneshotPull()
 	assert.NoError(t, err)
 	_, found := btc.WaitForRev("doc", revid)
 	assert.True(t, found)
@@ -2971,12 +2969,11 @@ func TestCBLRevposHandling(t *testing.T) {
 		GuestEnabled: true,
 	})
 	defer rt.Close()
-	collection := rt.GetSingleTestDatabaseCollection()
 
-	btc, err := BlipClientInitialization(t, rt, collection, nil)
+	btc, btcCollection, err := BlipClientInitialization(t, rt, nil)
 	assert.NoError(t, err)
 	defer btc.Close()
-	btcCollection, err := btc.BlipClientCollectionSetup(collection)
+	_, err = btc.pushReplication.bt.BlipCollectionSetup(rt)
 	require.NoError(t, err)
 
 	var doc1Body db.Body

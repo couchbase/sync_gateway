@@ -327,7 +327,7 @@ func TestPutAttachmentViaBlipGetViaRest(t *testing.T) {
 	require.NoError(t, err)
 	defer bt.Close()
 	collection := bt.restTester.GetSingleTestDatabaseCollection()
-	properties, err := bt.BlipCollectionSetup(collection)
+	properties, err := bt.BlipCollectionSetup(bt.restTester)
 	require.NoError(t, err)
 
 	attachmentBody := "attach"
@@ -377,8 +377,7 @@ func TestPutAttachmentViaBlipGetViaBlip(t *testing.T) {
 	})
 	require.NoError(t, err)
 	defer bt.Close()
-	collection := bt.restTester.GetSingleTestDatabaseCollection()
-	properties, err := bt.BlipCollectionSetup(collection)
+	properties, err := bt.BlipCollectionSetup(bt.restTester)
 	require.NoError(t, err)
 
 	attachmentBody := "attach"
@@ -426,9 +425,8 @@ func TestBlipAttachNameChange(t *testing.T) {
 		GuestEnabled: true,
 	})
 	defer rt.Close()
-	collection := rt.GetSingleTestDatabaseCollection()
 
-	client1, err := BlipClientInitialization(t, rt, collection, nil)
+	client1, btcCollection, err := BlipClientInitialization(t, rt, nil)
 	require.NoError(t, err)
 	defer client1.Close()
 	base.SetUpTestLogging(t, base.LevelTrace, base.KeySync, base.KeySyncMsg, base.KeyWebSocket, base.KeyWebSocketFrame, base.KeyHTTP, base.KeyCRUD)
@@ -436,7 +434,7 @@ func TestBlipAttachNameChange(t *testing.T) {
 	attachmentA := []byte("attachmentA")
 	attachmentAData := base64.StdEncoding.EncodeToString(attachmentA)
 	digest := db.Sha1DigestKey(attachmentA)
-	btcCollection, err := client1.BlipClientCollectionSetup(collection)
+	_, err = client1.pushReplication.bt.BlipCollectionSetup(rt)
 	require.NoError(t, err)
 
 	// Push initial attachment data
@@ -472,13 +470,12 @@ func TestBlipLegacyAttachNameChange(t *testing.T) {
 		GuestEnabled: true,
 	})
 	defer rt.Close()
-	collection := rt.GetSingleTestDatabaseCollection()
-	client1, err := BlipClientInitialization(t, rt, collection, nil)
+	client1, btcCollection, err := BlipClientInitialization(t, rt, nil)
 	require.NoError(t, err)
 	defer client1.Close()
 	base.SetUpTestLogging(t, base.LevelTrace, base.KeySync, base.KeySyncMsg, base.KeyWebSocket, base.KeyWebSocketFrame, base.KeyHTTP, base.KeyCRUD)
 
-	btcCollection, err := client1.BlipClientCollectionSetup(collection)
+	_, err = client1.pushReplication.bt.BlipCollectionSetup(rt)
 	require.NoError(t, err)
 	// Create document in the bucket with a legacy attachment
 	docID := "doc"
@@ -527,12 +524,11 @@ func TestBlipLegacyAttachDocUpdate(t *testing.T) {
 		GuestEnabled: true,
 	})
 	defer rt.Close()
-	collection := rt.GetSingleTestDatabaseCollection()
-	client1, err := BlipClientInitialization(t, rt, collection, nil)
+	client1, btcCollection, err := BlipClientInitialization(t, rt, nil)
 	require.NoError(t, err)
 	defer client1.Close()
 	base.SetUpTestLogging(t, base.LevelTrace, base.KeySync, base.KeySyncMsg, base.KeyWebSocket, base.KeyWebSocketFrame, base.KeyHTTP, base.KeyCRUD)
-	btcCollection, err := client1.BlipClientCollectionSetup(collection)
+	_, err = client1.pushReplication.bt.BlipCollectionSetup(rt)
 	require.NoError(t, err)
 
 	// Create document in the bucket with a legacy attachment.  Properties here align with rawDocWithAttachmentAndSyncMeta

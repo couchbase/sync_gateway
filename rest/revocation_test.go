@@ -2093,7 +2093,7 @@ func TestRevocationMessage(t *testing.T) {
 	require.NoError(t, rt.WaitForPendingChanges())
 
 	// Start pull
-	err = btc.StartOneshotPull()
+	err = btc.DefaultCollection().StartOneshotPull()
 	assert.NoError(t, err)
 
 	// Wait for doc revision to come over
@@ -2204,7 +2204,7 @@ func TestRevocationNoRev(t *testing.T) {
 	firstOneShotSinceSeq := rt.GetDocumentSequence("doc")
 
 	// OneShot pull to grab doc
-	err = btc.StartOneshotPull()
+	err = btc.DefaultCollection().StartOneshotPull()
 	assert.NoError(t, err)
 
 	_, ok := btc.WaitForRev("doc", "1-ad48b5c9d9c47b98532a3d8164ec0ae7")
@@ -2296,7 +2296,7 @@ func TestRevocationGetSyncDataError(t *testing.T) {
 	firstOneShotSinceSeq := rt.GetDocumentSequence("doc")
 
 	// OneShot pull to grab doc
-	err = btc.StartOneshotPull()
+	err = btc.DefaultCollection().StartOneshotPull()
 	assert.NoError(t, err)
 	throw = true
 	_, ok := btc.WaitForRev("doc", "1-ad48b5c9d9c47b98532a3d8164ec0ae7")
@@ -2349,7 +2349,7 @@ func TestBlipRevokeNonExistentRole(t *testing.T) {
 	})
 	require.NoError(t, err)
 	defer bt.Close()
-	btcCollection, err := bt.BlipClientCollectionSetup(collection)
+	_, err = bt.pushReplication.bt.BlipCollectionSetup(rt)
 	require.NoError(t, err)
 
 	require.NoError(t, btcCollection.StartPull())

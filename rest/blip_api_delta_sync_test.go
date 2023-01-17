@@ -44,12 +44,12 @@ func TestBlipDeltaSyncPushAttachment(t *testing.T) {
 			GuestEnabled: true,
 		})
 	defer rt.Close()
-	collection := rt.GetSingleTestDatabaseCollection()
 
-	btc, err := BlipClientInitialization(t, rt, collection, nil)
+	btc, btcCollection, err := BlipClientInitialization(t, rt, nil)
 	require.NoError(t, err)
 	defer btc.Close()
-	btcCollection, err := btc.BlipClientCollectionSetup(collection)
+	require.NoError(t, err)
+	_, err = btc.pushReplication.bt.BlipCollectionSetup(rt)
 	require.NoError(t, err)
 
 	// Push first rev
@@ -291,7 +291,6 @@ func TestBlipDeltaSyncPull(t *testing.T) {
 	rt := NewRestTester(t,
 		&rtConfig)
 	defer rt.Close()
-	collection := rt.GetSingleTestDatabaseCollection()
 
 	var deltaSentCount int64
 
@@ -299,10 +298,10 @@ func TestBlipDeltaSyncPull(t *testing.T) {
 		deltaSentCount = rt.GetDatabase().DbStats.DeltaSync().DeltasSent.Value()
 	}
 
-	client, err := BlipClientInitialization(t, rt, collection, nil)
+	client, btcCollection, err := BlipClientInitialization(t, rt, nil)
 	require.NoError(t, err)
 	defer client.Close()
-	btcCollection, err := client.BlipClientCollectionSetup(collection)
+	_, err = client.pushReplication.bt.BlipCollectionSetup(rt)
 	require.NoError(t, err)
 
 	client.ClientDeltas = true
@@ -374,7 +373,6 @@ func TestBlipDeltaSyncPullResend(t *testing.T) {
 	rt := NewRestTester(t,
 		&rtConfig)
 	defer rt.Close()
-	collection := rt.GetSingleTestDatabaseCollection()
 
 	// create doc1 rev 1
 	resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc1", `{"greetings": [{"hello": "world!"}, {"hi": "alice"}]}`)
@@ -383,10 +381,10 @@ func TestBlipDeltaSyncPullResend(t *testing.T) {
 
 	deltaSentCount := rt.GetDatabase().DbStats.DeltaSync().DeltasSent.Value()
 
-	client, err := BlipClientInitialization(t, rt, collection, nil)
+	client, btcCollection, err := BlipClientInitialization(t, rt, nil)
 	require.NoError(t, err)
 	defer client.Close()
-	btcCollection, err := client.BlipClientCollectionSetup(collection)
+	_, err = client.pushReplication.bt.BlipCollectionSetup(rt)
 	require.NoError(t, err)
 
 	// reject deltas built ontop of rev 1
@@ -441,9 +439,8 @@ func TestBlipDeltaSyncPullRemoved(t *testing.T) {
 	rt := NewRestTester(t,
 		&rtConfig)
 	defer rt.Close()
-	collection := rt.GetSingleTestDatabaseCollection()
 
-	client, err := BlipClientInitialization(t, rt, collection, &BlipTesterClientOpts{
+	client, btcCollection, err := BlipClientInitialization(t, rt, &BlipTesterClientOpts{
 		Username:               "alice",
 		Channels:               []string{"public"},
 		ClientDeltas:           true,
@@ -451,7 +448,7 @@ func TestBlipDeltaSyncPullRemoved(t *testing.T) {
 	})
 	require.NoError(t, err)
 	defer client.Close()
-	btcCollection, err := client.BlipClientCollectionSetup(collection)
+	_, err = client.pushReplication.bt.BlipCollectionSetup(rt)
 	require.NoError(t, err)
 
 	err = btcCollection.StartPull()
@@ -500,7 +497,6 @@ func TestBlipDeltaSyncPullTombstoned(t *testing.T) {
 	rt := NewRestTester(t,
 		&rtConfig)
 	defer rt.Close()
-	collection := rt.GetSingleTestDatabaseCollection()
 
 	var deltaCacheHitsStart int64
 	var deltaCacheMissesStart int64
@@ -514,14 +510,14 @@ func TestBlipDeltaSyncPullTombstoned(t *testing.T) {
 		deltasSentStart = rt.GetDatabase().DbStats.DeltaSync().DeltasSent.Value()
 	}
 
-	client, err := BlipClientInitialization(t, rt, collection, &BlipTesterClientOpts{
+	client, btcCollection, err := BlipClientInitialization(t, rt, &BlipTesterClientOpts{
 		Username:     "alice",
 		Channels:     []string{"public"},
 		ClientDeltas: true,
 	})
 	require.NoError(t, err)
 	defer client.Close()
-	btcCollection, err := client.BlipClientCollectionSetup(collection)
+	_, err = client.pushReplication.bt.BlipCollectionSetup(rt)
 	require.NoError(t, err)
 
 	err = btcCollection.StartPull()
@@ -599,7 +595,6 @@ func TestBlipDeltaSyncPullTombstonedStarChan(t *testing.T) {
 	rt := NewRestTester(t,
 		&rtConfig)
 	defer rt.Close()
-	collection := rt.GetSingleTestDatabaseCollection()
 
 	var deltaCacheHitsStart int64
 	var deltaCacheMissesStart int64
@@ -612,24 +607,24 @@ func TestBlipDeltaSyncPullTombstonedStarChan(t *testing.T) {
 		deltasRequestedStart = rt.GetDatabase().DbStats.DeltaSync().DeltasRequested.Value()
 		deltasSentStart = rt.GetDatabase().DbStats.DeltaSync().DeltasSent.Value()
 	}
-	client1, err := BlipClientInitialization(t, rt, collection, &BlipTesterClientOpts{
+	client1, btcCollection1, err := BlipClientInitialization(t, rt, &BlipTesterClientOpts{
 		Username:     "client1",
 		Channels:     []string{"*"},
 		ClientDeltas: true,
 	})
 	require.NoError(t, err)
 	defer client1.Close()
-	btcCollection1, err := client1.BlipClientCollectionSetup(collection)
+	_, err = client1.pushReplication.bt.BlipCollectionSetup(rt)
 	require.NoError(t, err)
 
-	client2, err := BlipClientInitialization(t, rt, collection, &BlipTesterClientOpts{
+	client2, btcCollection2, err := BlipClientInitialization(t, rt, &BlipTesterClientOpts{
 		Username:     "client2",
 		Channels:     []string{"*"},
 		ClientDeltas: true,
 	})
 	require.NoError(t, err)
 	defer client2.Close()
-	btcCollection2, err := client2.BlipClientCollectionSetup(collection)
+	_, err = client2.pushReplication.bt.BlipCollectionSetup(rt)
 	require.NoError(t, err)
 
 	err = btcCollection1.StartPull()
@@ -748,12 +743,11 @@ func TestBlipDeltaSyncPullRevCache(t *testing.T) {
 	rt := NewRestTester(t,
 		&rtConfig)
 	defer rt.Close()
-	collection := rt.GetSingleTestDatabaseCollection()
 
-	client, err := BlipClientInitialization(t, rt, collection, nil)
+	client, btcCollection1, err := BlipClientInitialization(t, rt, nil)
 	require.NoError(t, err)
 	defer client.Close()
-	btcCollection1, err := client.BlipClientCollectionSetup(collection)
+	_, err = client.pushReplication.bt.BlipCollectionSetup(rt)
 	require.NoError(t, err)
 
 	client.ClientDeltas = true
@@ -770,10 +764,10 @@ func TestBlipDeltaSyncPullRevCache(t *testing.T) {
 
 	// Perform a one-shot pull as client 2 to pull down the first revision
 
-	client2, err := BlipClientInitialization(t, rt, collection, nil)
+	client2, btcCollection2, err := BlipClientInitialization(t, rt, nil)
 	require.NoError(t, err)
 	defer client2.Close()
-	btcCollection2, err := client2.BlipClientCollectionSetup(collection)
+	_, err = client2.pushReplication.bt.BlipCollectionSetup(rt)
 	require.NoError(t, err)
 
 	client2.ClientDeltas = true
@@ -847,11 +841,11 @@ func TestBlipDeltaSyncPush(t *testing.T) {
 	var msg *blip.Message
 	var ok bool
 
-	client, err := BlipClientInitialization(t, rt, collection, nil)
+	client, btcCollection, err := BlipClientInitialization(t, rt, nil)
 	require.NoError(t, err)
 	defer client.Close()
 	client.ClientDeltas = true
-	btcCollection, err := client.BlipClientCollectionSetup(collection)
+	_, err = client.pushReplication.bt.BlipCollectionSetup(rt)
 	require.NoError(t, err)
 
 	err = btcCollection.StartPull()
@@ -969,10 +963,10 @@ func TestBlipNonDeltaSyncPush(t *testing.T) {
 	var msg *blip.Message
 	var ok bool
 
-	client, err := BlipClientInitialization(t, rt, collection, nil)
+	client, btcCollection, err := BlipClientInitialization(t, rt, nil)
 	require.NoError(t, err)
 	defer client.Close()
-	btcCollection, err := client.BlipClientCollectionSetup(collection)
+	_, err = client.pushReplication.bt.BlipCollectionSetup(rt)
 	require.NoError(t, err)
 
 	client.ClientDeltas = false

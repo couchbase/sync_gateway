@@ -1238,19 +1238,10 @@ func createBlipTesterWithSpec(tb testing.TB, spec BlipTesterSpec, rt *RestTester
 			adminChannels = append(adminChannels, spec.connectingUserChannelGrants...)
 		}
 
-		// serialize admin channels to json array
-		adminChannelsJson, err := base.JSONMarshal(adminChannels)
+		userDocBody, err := GetUserPayload(spec.connectingUsername, spec.connectingPassword, "", bt.restTester.GetSingleTestDatabaseCollection(), adminChannels, nil)
 		if err != nil {
 			return nil, err
 		}
-		adminChannelsStr := string(adminChannelsJson)
-		adminChannelsStr = `"admin_channels": ` + adminChannelsStr
-
-		userDocBody := fmt.Sprintf(`{"name":"%s", "password":"%s", %s}`,
-			spec.connectingUsername,
-			spec.connectingPassword,
-			AdminChannelGrant(bt.restTester.GetSingleTestDatabaseCollection(), adminChannelsStr),
-		)
 		log.Printf("Creating user: %v", userDocBody)
 
 		// Create a user.  NOTE: this must come *after* the bt.rt.TestPublicHandler() call, otherwise it will end up getting ignored
