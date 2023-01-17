@@ -147,24 +147,24 @@ func CreateAdminRouter(sc *ServerContext) *mux.Router {
 	r, dbr, keyspace := createCommonRouter(sc, adminPrivs)
 
 	// Keyspace handlers (single collection):
-	keyspace.Handle("/_resync",
-		makeOfflineHandler(sc, adminPrivs, []Permission{PermUpdateDb}, nil, (*handler).handleGetResync)).Methods("GET")
-	keyspace.Handle("/_resync",
-		makeOfflineHandler(sc, adminPrivs, []Permission{PermUpdateDb}, nil, (*handler).handlePostResync)).Methods("POST")
 	keyspace.Handle("/_purge",
 		makeHandler(sc, adminPrivs, []Permission{PermWriteAppData}, nil, (*handler).handlePurge)).Methods("POST")
 	keyspace.Handle("/_raw/{docid:"+docRegex+"}",
 		makeHandler(sc, adminPrivs, []Permission{PermReadAppData}, nil, (*handler).handleGetRawDoc)).Methods("GET", "HEAD")
 	keyspace.Handle("/_revtree/{docid:"+docRegex+"}",
 		makeHandler(sc, adminPrivs, []Permission{PermReadAppData}, nil, (*handler).handleGetRevTree)).Methods("GET")
-	keyspace.Handle("/_compact",
-		makeHandler(sc, adminPrivs, []Permission{PermUpdateDb}, nil, (*handler).handleCompact)).Methods("POST")
-	keyspace.Handle("/_compact",
-		makeHandler(sc, adminPrivs, []Permission{PermUpdateDb}, nil, (*handler).handleGetCompact)).Methods("GET")
 	keyspace.Handle("/_dumpchannel/{channel}",
 		makeHandler(sc, adminPrivs, []Permission{PermReadAppData}, nil, (*handler).handleDumpChannel)).Methods("GET")
 
 	// Database handlers (multi collection):
+	dbr.Handle("/_resync",
+		makeOfflineHandler(sc, adminPrivs, []Permission{PermUpdateDb}, nil, (*handler).handleGetResync)).Methods("GET")
+	dbr.Handle("/_resync",
+		makeOfflineHandler(sc, adminPrivs, []Permission{PermUpdateDb}, nil, (*handler).handlePostResync)).Methods("POST")
+	dbr.Handle("/_compact",
+		makeHandler(sc, adminPrivs, []Permission{PermUpdateDb}, nil, (*handler).handleCompact)).Methods("POST")
+	dbr.Handle("/_compact",
+		makeHandler(sc, adminPrivs, []Permission{PermUpdateDb}, nil, (*handler).handleGetCompact)).Methods("GET")
 	dbr.Handle("/_session",
 		makeHandler(sc, adminPrivs, []Permission{PermWritePrincipal}, nil, (*handler).createUserSession)).Methods("POST")
 	dbr.Handle("/_session/{sessionid}",
@@ -323,7 +323,7 @@ func CreateAdminRouter(sc *ServerContext) *mux.Router {
 	// so the handlers are moved to the admin port.
 	r.Handle("/{newdb:"+dbRegex+"}/",
 		makeHandlerSpecificAuthScope(sc, adminPrivs, []Permission{PermCreateDb}, nil, (*handler).handleCreateDB, getAuthScopeHandleCreateDB)).Methods("PUT")
-	r.Handle("/{db:"+dbRegex+"}/",
+	r.Handle("/{olddb:"+dbRegex+"}/",
 		makeOfflineHandler(sc, adminPrivs, []Permission{PermDeleteDb}, nil, (*handler).handleDeleteDB)).Methods("DELETE")
 
 	r.Handle("/_all_dbs",

@@ -298,10 +298,13 @@ func initCBGTManager(ctx context.Context, bucket Bucket, spec BucketSpec, cfgSG 
 	//   		https://github.com/couchbaselabs/cbgt/issues/1
 	//   		https://github.com/couchbaselabs/cbgt/issues/25
 	bindHttp := uuid
+	defaultValues := &GoCBConnStringParams{
+		KVPoolSize:    GoCBPoolSizeDCP,
+		KVBufferSize:  spec.KvBufferSize,
+		DCPBufferSize: spec.DcpBuffer,
+	}
 
-	serverURL, err := spec.GetGoCBConnString(&GoCBConnStringParams{
-		KVPoolSize: GoCBPoolSizeDCP,
-	})
+	serverURL, err := spec.GetGoCBConnString(defaultValues)
 	if err != nil {
 		return nil, err
 	}

@@ -102,8 +102,16 @@ func bucketNameCtx(parent context.Context, bucketName string) context.Context {
 	return LogContextWith(parent, &newCtx)
 }
 
-// bucketNameCtx extends the parent context with a bucket name.
-func keyspaceNameCtx(parent context.Context, bucketName, scopeName, collectionName string) context.Context {
+// CollectionCtx extends the parent context with a collection name.
+func CollectionCtx(parent context.Context, collectionName string) context.Context {
+	newCtx := CollectionLogContext{
+		Collection: collectionName,
+	}
+	return LogContextWith(parent, &newCtx)
+}
+
+// testKeyspaceNameCtx extends the parent context with a bucket name.
+func testKeyspaceNameCtx(parent context.Context, bucketName, scopeName, collectionName string) context.Context {
 	parentLogCtx, _ := parent.Value(requestContextKey).(LogContext)
 	newCtx := LogContext{
 		TestName:           parentLogCtx.TestName,
@@ -121,6 +129,7 @@ const (
 	requestContextKey LogContextKey = iota
 	serverLogContextKey
 	databaseLogContextKey
+	keyspaceLogContextKey
 )
 
 // ContextAdder interface should be implemented by all custom contexts.
@@ -133,7 +142,7 @@ type ContextAdder interface {
 
 // allLogContextKeys contains the keys of all custom contexts,
 // and is used when writing log prefixes (addPrefixes)
-var allLogContextKeys = [...]LogContextKey{requestContextKey, serverLogContextKey, databaseLogContextKey}
+var allLogContextKeys = [...]LogContextKey{requestContextKey, serverLogContextKey, databaseLogContextKey, keyspaceLogContextKey}
 
 // LogContextWith is called to add custom context to the go context.
 // All custom contexts should implement ContextAdder interface
@@ -169,6 +178,23 @@ func (c *DatabaseLogContext) getContextKey() LogContextKey {
 func (c *DatabaseLogContext) addContext(format string) string {
 	if c != nil && c.DatabaseName != "" {
 		format = "db:" + c.DatabaseName + " " + format
+	}
+	return format
+}
+
+// CollectionLogContext provides collection context data for logging
+type CollectionLogContext struct {
+	Collection string
+}
+
+func (c *CollectionLogContext) getContextKey() LogContextKey {
+	return keyspaceLogContextKey
+}
+
+func (c *CollectionLogContext) addContext(format string) string {
+	if c.Collection != "" {
+		format = "col:" + c.Collection + " " + format
+
 	}
 	return format
 }

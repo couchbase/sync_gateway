@@ -250,8 +250,15 @@ func (db *DatabaseCollectionWithUser) buildRevokedFeed(ctx context.Context, ch c
 				// If its less than we can send a standard revocation with Sequence ID as above.
 				// Otherwise: we need to determine whether a previous revision of the document was in the channel prior
 				// to the since value, and only send a revocation if that was the case
+
 				if logEntry.Sequence > sinceVal {
-					requiresRevocation, err := db.wasDocInChannelPriorToRevocation(ctx, logEntry.DocID, singleChannelCache.ChannelID().Name, revocationSinceSeq)
+					// Get doc sync data so we can verify the docs grant history
+					syncData, err := db.GetDocSyncData(ctx, logEntry.DocID)
+					if err != nil {
+						base.InfofCtx(ctx, base.KeyChanges, "Couldn't get history for doc %q for channel %s, skipping revocation checks: %v", base.UD(logEntry.DocID), base.UD(singleChannelCache.ChannelID()), err)
+						continue
+					}
+					requiresRevocation, err := db.wasDocInChannelPriorToRevocation(ctx, syncData, logEntry.DocID, singleChannelCache.ChannelID().Name, revocationSinceSeq)
 					if err != nil {
 						change := ChangeEntry{
 							Err: base.ErrChannelFeed,
@@ -331,13 +338,7 @@ func UserHasDocAccess(ctx context.Context, db *DatabaseCollectionWithUser, docID
 }
 
 // Checks if a document needs to be revoked. This is used in the case where the since < doc sequence
-func (db *DatabaseCollectionWithUser) wasDocInChannelPriorToRevocation(ctx context.Context, docID, chanName string, since uint64) (bool, error) {
-	// Get doc sync data so we can verify the docs grant history
-	syncData, err := db.GetDocSyncData(ctx, docID)
-	if err != nil {
-		return false, err
-	}
-
+func (db *DatabaseCollectionWithUser) wasDocInChannelPriorToRevocation(ctx context.Context, syncData SyncData, docID, chanName string, since uint64) (bool, error) {
 	// Obtain periods where the channel we're interested in was accessible by the user
 	channelAccessPeriods, err := db.user.CollectionChannelGrantedPeriods(db.ScopeName(), db.Name(), chanName)
 	if err != nil {
@@ -346,8 +347,9 @@ func (db *DatabaseCollectionWithUser) wasDocInChannelPriorToRevocation(ctx conte
 
 	// Iterate over the channel history information on the document and find any periods where the doc was in the
 	// channel and the channel was accessible by the user
+	isStarChan := chanName == channels.UserStarChannel
 	for _, docHistoryEntry := range append(syncData.ChannelSet, syncData.ChannelSetHistory...) {
-		if docHistoryEntry.Name != chanName {
+		if !isStarChan && docHistoryEntry.Name != chanName {
 			continue
 		}
 

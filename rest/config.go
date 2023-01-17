@@ -1351,7 +1351,8 @@ func (sc *ServerContext) _fetchAndLoadDatabase(ctx context.Context, dbName strin
 	return true, nil
 }
 
-func (sc *ServerContext) fetchDatabase(ctx context.Context, dbName string) (found bool, dbConfig *DatabaseConfig, err error) {
+func (sc *ServerContext) findBucketWithCallback(callback func(bucket string) (exit bool, err error)) (err error) {
+	// rewritten loop from FetchDatabase as part of CBG-2420 PR review
 	var buckets []string
 	if sc.Config.IsServerless() {
 		buckets = make([]string, 0, len(sc.Config.BucketCredentials))
@@ -1361,27 +1362,31 @@ func (sc *ServerContext) fetchDatabase(ctx context.Context, dbName string) (foun
 	} else {
 		buckets, err = sc.BootstrapContext.Connection.GetConfigBuckets()
 		if err != nil {
-			return false, nil, fmt.Errorf("couldn't get buckets from cluster: %w", err)
-		}
-	}
-
-	// move bucket matching dbName to the front so it's searched first
-	for i, bucket := range buckets {
-		if bucket == dbName {
-			buckets = append(buckets[i:], buckets[:i]...)
+			return fmt.Errorf("couldn't get buckets from cluster: %w", err)
 		}
 	}
 
 	for _, bucket := range buckets {
-		var cnf DatabaseConfig
+		exit, err := callback(bucket)
+		if exit {
+			return err
+		}
+	}
+	return base.ErrNotFound
+}
+
+func (sc *ServerContext) fetchDatabase(ctx context.Context, dbName string) (found bool, dbConfig *DatabaseConfig, err error) {
+	// loop code moved to foreachDbConfig
+	var cnf DatabaseConfig
+	callback := func(bucket string) (exit bool, err error) {
 		cas, err := sc.BootstrapContext.Connection.GetConfig(bucket, sc.Config.Bootstrap.ConfigGroupID, &cnf)
 		if err == base.ErrNotFound {
 			base.DebugfCtx(ctx, base.KeyConfig, "%q did not contain config in group %q", bucket, sc.Config.Bootstrap.ConfigGroupID)
-			continue
+			return false, err
 		}
 		if err != nil {
 			base.DebugfCtx(ctx, base.KeyConfig, "unable to fetch config in group %q from bucket %q: %v", sc.Config.Bootstrap.ConfigGroupID, bucket, err)
-			continue
+			return false, err
 		}
 
 		if cnf.Name == "" {
@@ -1390,7 +1395,7 @@ func (sc *ServerContext) fetchDatabase(ctx context.Context, dbName string) (foun
 
 		if cnf.Name != dbName {
 			base.TracefCtx(ctx, base.KeyConfig, "%q did not contain config in group %q for db %q", bucket, sc.Config.Bootstrap.ConfigGroupID, dbName)
-			continue
+			return false, err
 		}
 
 		cnf.cfgCas = cas
@@ -1411,10 +1416,50 @@ func (sc *ServerContext) fetchDatabase(ctx context.Context, dbName string) (foun
 			cnf.KeyPath = sc.Config.Bootstrap.X509KeyPath
 		}
 		base.TracefCtx(ctx, base.KeyConfig, "Got config for bucket %q with cas %d", bucket, cas)
-		return true, &cnf, nil
+		return true, nil
 	}
 
-	return false, nil, nil
+	err = sc.findBucketWithCallback(callback)
+
+	if err != nil {
+		return false, nil, err
+	}
+
+	return true, &cnf, nil
+}
+
+func (sc *ServerContext) bucketNameFromDbName(dbName string) (bucketName string, found bool) {
+	// Minimal representation of config struct to be tolerant of invalid database configurations where we still need to find a database name
+	// see if we find the database in-memory first, otherwise fall back to scanning buckets for db configs
+	sc.lock.RLock()
+	dbc, ok := sc.databases_[dbName]
+	sc.lock.RUnlock()
+
+	if ok {
+		return dbc.Bucket.GetName(), true
+	}
+	var cfgDbName struct {
+		Name string `json:"name"`
+	}
+	callback := func(bucket string) (exit bool, err error) {
+		_, err = sc.BootstrapContext.Connection.GetConfig(bucket, sc.Config.Bootstrap.ConfigGroupID, &cfgDbName)
+		if err != nil && err != base.ErrNotFound {
+			return true, err
+		}
+		if dbName == cfgDbName.Name {
+			bucketName = bucket
+			return true, nil
+		}
+		return false, nil
+	}
+	err := sc.findBucketWithCallback(callback)
+	if err != nil {
+		return "", false
+	}
+	if bucketName == "" {
+		return "", false
+	}
+	return bucketName, true
 }
 
 // fetchConfigsSince returns database configs from the server context. These configs are refreshed before returning if

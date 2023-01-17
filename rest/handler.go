@@ -183,6 +183,12 @@ func (h *handler) addDatabaseLogContext(dbName string) {
 	}
 }
 
+func (h *handler) addCollectionLogContext(collectionName string) {
+	if collectionName != "" {
+		h.rqCtx = base.LogContextWith(h.ctx(), &base.CollectionLogContext{Collection: collectionName})
+	}
+}
+
 // ParseKeyspace will return a db, scope and collection for a given '.' separated keyspace string.
 // Returns nil for scope and/or collection if not present in the keyspace string.
 func ParseKeyspace(ks string) (db string, scope, collection *string, err error) {
@@ -260,6 +266,9 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 		if err != nil {
 			return err
 		}
+		if keyspaceCollection != nil {
+			h.addCollectionLogContext(*keyspaceCollection)
+		}
 	}
 
 	// look up the database context:
@@ -322,7 +331,10 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 			return err
 		}
 		if h.user != nil && h.user.Name() == "" && dbContext != nil && dbContext.IsGuestReadOnly() {
-			if requiresWritePermission(accessPermissions) {
+			// Prevent read-only guest access to any endpoint requiring write permissions except
+			// blipsync.  Read-only guest handling for websocket replication (blipsync) is evaluated
+			// at the blip message level to support read-only pull replications.
+			if requiresWritePermission(accessPermissions) && !h.pathTemplateContains("_blipsync") {
 				return base.HTTPErrorf(http.StatusForbidden, auth.GuestUserReadOnly)
 			}
 		}
@@ -423,11 +435,13 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 		if dbContext.Scopes != nil {
 			// If scopes are defined on the database but not in th an empty scope to refer to the one SG is running with, rather than falling back to _default
 			if keyspaceScope == nil {
-				// TODO: There could be a configurable dbContext.defaultNamedScope if we allow >1 scope
-				//       for now we don't need it - just use the one we're running with.
-				for scopeName := range dbContext.Scopes {
-					keyspaceScope = &scopeName
-					break
+				if len(dbContext.Scopes) == 1 {
+					for scopeName, _ := range dbContext.Scopes {
+						keyspaceScope = base.StringPtr(scopeName)
+					}
+
+				} else {
+					return base.HTTPErrorf(http.StatusBadRequest, "Ambiguous keyspace: %s.%s", base.MD(keyspaceDb), base.MD(base.StringDefault(keyspaceScope, "")))
 				}
 			}
 			scope, foundScope := dbContext.Scopes[*keyspaceScope]
@@ -440,11 +454,7 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 					// _default doesn't exist for a non-default scope - so make it a required element if it's ambiguous
 					return base.HTTPErrorf(http.StatusBadRequest, "Ambiguous keyspace: %s.%s", base.MD(keyspaceDb), base.MD(base.StringDefault(keyspaceScope, "")))
 				}
-				// one collection only - use that one
-				for collectionName := range scope.Collections {
-					keyspaceCollection = &collectionName
-					break
-				}
+				keyspaceCollection = base.StringPtr(base.DefaultCollection)
 			}
 			_, foundCollection := scope.Collections[*keyspaceCollection]
 			if !foundCollection {
@@ -1402,4 +1412,14 @@ func requiresWritePermission(accessPermissions []Permission) bool {
 		}
 	}
 	return false
+}
+
+// Checks whether the mux path template for the current route contains the specified pattern
+func (h *handler) pathTemplateContains(pattern string) bool {
+	route := mux.CurrentRoute(h.rq)
+	pathTemplate, err := route.GetPathTemplate()
+	if err != nil {
+		return false
+	}
+	return strings.Contains(pathTemplate, pattern)
 }

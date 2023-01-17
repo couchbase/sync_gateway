@@ -59,8 +59,8 @@ type blipHandler struct {
 	db            *Database                   // Handler-specific copy of the BlipSyncContext's blipContextDb
 	collection    *DatabaseCollectionWithUser // Handler-specific copy of the BlipSyncContext's collection specific DB
 	collectionIdx *int                        // index into BlipSyncContext.collectionMapping for the collection
-
-	serialNumber uint64 // This blip handler's serial number to differentiate logs w/ other handlers
+	loggingCtx    context.Context             // inherited from BlipSyncContext.loggingCtx with additional handler-only information (like keyspace)
+	serialNumber  uint64                      // This blip handler's serial number to differentiate logs w/ other handlers
 }
 
 // BlipSyncContextClientType represents whether to replicate to another Sync Gateway or Couchbase Lite
@@ -141,13 +141,20 @@ func collectionBlipHandler(next blipHandlerFunc) blipHandlerFunc {
 	return func(bh *blipHandler, bm *blip.Message) error {
 		collectionIndexStr, ok := bm.Properties[BlipCollection]
 		if !ok {
-			bh.collection = bh.db.GetSingleDatabaseCollectionWithUser()
-			/* put into place in CBG-2527
-			var err error
-			bh.collection, err = bh.db.GetDefaultDatabaseCollectionWithUser()
-			if err != nil {
-				return base.HTTPErrorf(http.StatusBadRequest, "%s", err)
+			// temp use private method
+			bh.collection = &DatabaseCollectionWithUser{
+				DatabaseCollection: bh.db.singleCollection,
+				user:               bh.db.user,
 			}
+			/*
+				if !bh.db.hasDefaultCollection() {
+					return base.HTTPErrorf(http.StatusBadRequest, "Method requires passing a collection property and a prior GetCollections message")
+				}
+				var err error
+				bh.collection, err = bh.db.GetDefaultDatabaseCollectionWithUser()
+				if err != nil {
+					return base.HTTPErrorf(http.StatusBadRequest, "%s", err)
+				}
 			*/
 			return next(bh, bm)
 		}
@@ -168,6 +175,7 @@ func collectionBlipHandler(next blipHandlerFunc) blipHandlerFunc {
 		if collection == nil {
 			return base.HTTPErrorf(http.StatusBadRequest, "Collection index %d does not match a valid collection from GetCollections", collectionIndex)
 		}
+		bh.loggingCtx = base.CollectionCtx(bh.BlipSyncContext.loggingCtx, collection.Name())
 		bh.collection = &DatabaseCollectionWithUser{
 			DatabaseCollection: bh.collectionMapping[collectionIndex],
 			user:               bh.db.user,
@@ -248,7 +256,11 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 
 	// Ensure that only _one_ subChanges subscription can be open on this blip connection at any given time.  SG #3222.
 	if !bh.activeSubChanges.CASRetry(false, true) {
-		return fmt.Errorf("blipHandler already has an outstanding continous subChanges.  Cannot open another one")
+		// FIXME CBG-2653: Disabling activeSubChanges check for multi-collection to unblock CBL testing.
+		if bh.collectionIdx == nil {
+			return fmt.Errorf("blipHandler already has an outstanding continuous subChanges.  Cannot open another one")
+		}
+		base.WarnfCtx(bh.loggingCtx, "blipHandler already has an outstanding continuous subChanges. Continuing anyway (CBG-2653)")
 	}
 
 	// Create ctx if it has been cancelled
@@ -519,7 +531,7 @@ func (bh *blipHandler) sendBatchOfChanges(sender *blip.Sender, changeArray [][]i
 			return err
 		}
 
-		handleChangesResponseDb := bh.copyContextDatabase()
+		handleChangesResponseDbCollection := bh.copyDatabaseCollectionWithUser(bh.collectionIdx)
 
 		sendTime := time.Now()
 		if !bh.sendBLIPMessage(sender, outrq) {
@@ -531,8 +543,8 @@ func (bh *blipHandler) sendBatchOfChanges(sender *blip.Sender, changeArray [][]i
 
 		bh.replicationStats.SendChangesCount.Add(int64(len(changeArray)))
 		// Spawn a goroutine to await the client's response:
-		go func(bh *blipHandler, sender *blip.Sender, response *blip.Message, changeArray [][]interface{}, sendTime time.Time, database *Database) {
-			if err := bh.handleChangesResponse(sender, response, changeArray, sendTime, database); err != nil {
+		go func(bh *blipHandler, sender *blip.Sender, response *blip.Message, changeArray [][]interface{}, sendTime time.Time, dbCollection *DatabaseCollectionWithUser) {
+			if err := bh.handleChangesResponse(sender, response, changeArray, sendTime, dbCollection); err != nil {
 				base.WarnfCtx(bh.loggingCtx, "Error from bh.handleChangesResponse: %v", err)
 				if bh.fatalErrorCallback != nil {
 					bh.fatalErrorCallback(err)
@@ -546,7 +558,7 @@ func (bh *blipHandler) sendBatchOfChanges(sender *blip.Sender, changeArray [][]i
 			}
 
 			atomic.AddInt64(&bh.changesPendingResponseCount, -1)
-		}(bh, sender, outrq.Response(), changeArray, sendTime, handleChangesResponseDb)
+		}(bh, sender, outrq.Response(), changeArray, sendTime, handleChangesResponseDbCollection)
 	} else {
 		outrq.SetNoReply(true)
 		if !bh.sendBLIPMessage(sender, outrq) {
@@ -653,7 +665,7 @@ func (bh *blipHandler) handleChanges(rq *blip.Message) error {
 			if bh.sgr2PullAlreadyKnownSeqsCallback != nil {
 				seq, err := ParseJSONSequenceID(seqStr(change[0]))
 				if err != nil {
-					base.WarnfCtx(bh.loggingCtx, "Unable to parse known sequence %q for %q/%q: %v", change[0], base.UD(docID), revID, err)
+					base.WarnfCtx(bh.loggingCtx, "Unable to parse known sequence %q for %q / %q: %v", change[0], base.UD(docID), revID, err)
 				} else {
 					// we're not able to checkpoint a sequence we can't parse and aren't expecting so just skip the callback if we errored
 					alreadyKnownSeqs = append(alreadyKnownSeqs, seq)
@@ -676,7 +688,7 @@ func (bh *blipHandler) handleChanges(rq *blip.Message) error {
 				seq, err := ParseJSONSequenceID(seqStr(change[0]))
 				if err != nil {
 					// We've already asked for the doc/rev for the sequence so assume we're going to receive it... Just log this and carry on
-					base.WarnfCtx(bh.loggingCtx, "Unable to parse expected sequence %q for %q/%q: %v", change[0], base.UD(docID), revID, err)
+					base.WarnfCtx(bh.loggingCtx, "Unable to parse expected sequence %q for %q / %q: %v", change[0], base.UD(docID), revID, err)
 				} else {
 					expectedSeqs[IDAndRev{DocID: docID, RevID: revID}] = seq
 				}
@@ -825,16 +837,16 @@ func (bsc *BlipSyncContext) sendRevAsDelta(sender *blip.Sender, docID, revID str
 
 func (bh *blipHandler) handleNoRev(rq *blip.Message) error {
 	docID, revID := rq.Properties[NorevMessageId], rq.Properties[NorevMessageRev]
-	base.InfofCtx(bh.loggingCtx, base.KeySyncMsg, "%s: norev for doc %q / %q - error: %q - reason: %q",
-		rq.String(), base.UD(docID), revID, rq.Properties[NorevMessageError], rq.Properties[NorevMessageReason])
+	var seqStr string
+	if bh.blipContext.ActiveSubprotocol() == BlipCBMobileReplicationV2 && bh.clientType == BLIPClientTypeSGR2 {
+		seqStr = rq.Properties[NorevMessageSeq]
+	} else {
+		seqStr = rq.Properties[NorevMessageSequence]
+	}
+	base.InfofCtx(bh.loggingCtx, base.KeySyncMsg, "%s: norev for doc %q / %q seq:%q - error: %q - reason: %q",
+		rq.String(), base.UD(docID), revID, seqStr, rq.Properties[NorevMessageError], rq.Properties[NorevMessageReason])
 
 	if bh.sgr2PullProcessedSeqCallback != nil {
-		var seqStr string
-		if bh.blipContext.ActiveSubprotocol() == BlipCBMobileReplicationV2 && bh.clientType == BLIPClientTypeSGR2 {
-			seqStr = rq.Properties[NorevMessageSeq]
-		} else {
-			seqStr = rq.Properties[NorevMessageSequence]
-		}
 		seq, err := ParseJSONSequenceID(seqStr)
 		if err != nil {
 			base.WarnfCtx(bh.loggingCtx, "Unable to parse sequence %q from norev message: %w - not tracking for checkpointing", seqStr, err)

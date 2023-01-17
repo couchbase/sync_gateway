@@ -125,16 +125,17 @@ func TestBlipSyncNonUpgradableConnection(t *testing.T) {
 func TestReplicatorDeprecatedCredentials(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
 
-	passiveRT := NewRestTester(t, &RestTesterConfig{DatabaseConfig: &DatabaseConfig{
-		DbConfig: DbConfig{
-			Users: map[string]*auth.PrincipalConfig{
-				"alice": {
-					Password: base.StringPtr("pass"),
+	passiveRT := NewRestTesterDefaultCollection(t, //  CBG-2319: replicator currently requires default collection
+		&RestTesterConfig{DatabaseConfig: &DatabaseConfig{
+			DbConfig: DbConfig{
+				Users: map[string]*auth.PrincipalConfig{
+					"alice": {
+						Password: base.StringPtr("pass"),
+					},
 				},
 			},
 		},
-	},
-	})
+		})
 	defer passiveRT.Close()
 
 	adminSrv := httptest.NewServer(passiveRT.TestPublicHandler())
@@ -189,9 +190,10 @@ func TestReplicatorDeprecatedCredentials(t *testing.T) {
 func TestReplicatorCheckpointOnStop(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
 
-	passiveRT := NewRestTester(t, &RestTesterConfig{
-		DatabaseConfig: &DatabaseConfig{}, // replicator requires default collection
-	})
+	passiveRT := NewRestTesterDefaultCollection(t, //  CBG-2319: replicator currently requires default collection
+		&RestTesterConfig{
+			DatabaseConfig: &DatabaseConfig{}, // replicator requires default collection
+		})
 	defer passiveRT.Close()
 
 	adminSrv := httptest.NewServer(passiveRT.TestAdminHandler())
@@ -206,9 +208,7 @@ func TestReplicatorCheckpointOnStop(t *testing.T) {
 	err := activeRT.GetDatabase().SGReplicateMgr.StartReplications(activeCtx)
 	require.NoError(t, err)
 
-	database, err := db.CreateDatabase(activeRT.GetDatabase())
-	require.NoError(t, err)
-	rev, doc, err := database.GetSingleDatabaseCollectionWithUser().Put(activeCtx, "test", db.Body{})
+	rev, doc, err := activeRT.GetSingleTestDatabaseCollectionWithUser().Put(activeCtx, "test", db.Body{})
 	require.NoError(t, err)
 	seq := strconv.FormatUint(doc.Sequence, 10)
 
@@ -551,7 +551,7 @@ function (doc) {
 	}
 }
 func TestBasicGetReplicator2(t *testing.T) {
-	rt := NewRestTester(t, nil)
+	rt := NewRestTesterDefaultCollection(t, nil) //  CBG-2319: replicator currently requires default collection
 	defer rt.Close()
 
 	var body db.Body
@@ -587,7 +587,7 @@ func TestBasicGetReplicator2(t *testing.T) {
 	}
 }
 func TestBasicPutReplicator2(t *testing.T) {
-	rt := NewRestTester(t, nil)
+	rt := NewRestTesterDefaultCollection(t, nil) //  CBG-2319: replicator currently requires default collection
 	defer rt.Close()
 
 	var (
@@ -633,7 +633,7 @@ func TestBasicPutReplicator2(t *testing.T) {
 }
 
 func TestDeletedPutReplicator2(t *testing.T) {
-	rt := NewRestTester(t, nil)
+	rt := NewRestTesterDefaultCollection(t, nil) //  CBG-2319: replicator currently requires default collection
 	defer rt.Close()
 
 	var body db.Body

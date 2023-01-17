@@ -83,6 +83,15 @@ func (lds *LeakyDataStore) GetRaw(k string) (v []byte, cas uint64, err error) {
 	}
 	return lds.dataStore.GetRaw(k)
 }
+func (lds *LeakyDataStore) GetWithXattr(k string, xattr string, userXattrKey string, rv interface{}, xv interface{}, uxv interface{}) (cas uint64, err error) {
+	if lds.config.GetWithXattrCallback != nil {
+		if err := lds.config.GetWithXattrCallback(k); err != nil {
+			return 0, err
+		}
+	}
+	return lds.dataStore.GetWithXattr(k, xattr, userXattrKey, rv, xv, uxv)
+}
+
 func (lds *LeakyDataStore) GetAndTouchRaw(k string, exp uint32) (v []byte, cas uint64, err error) {
 	return lds.dataStore.GetAndTouchRaw(k, exp)
 }
@@ -264,10 +273,6 @@ func (lds *LeakyDataStore) DeleteXattrs(k string, xattrKeys ...string) (err erro
 
 func (lds *LeakyDataStore) SubdocInsert(docID string, fieldPath string, cas uint64, value interface{}) error {
 	return lds.dataStore.SubdocInsert(docID, fieldPath, cas, value)
-}
-
-func (lds *LeakyDataStore) GetWithXattr(k string, xattr string, userXattrKey string, rv interface{}, xv interface{}, uxv interface{}) (cas uint64, err error) {
-	return lds.dataStore.GetWithXattr(k, xattr, userXattrKey, rv, xv, uxv)
 }
 
 func (lds *LeakyDataStore) DeleteWithXattr(k string, xattr string) error {

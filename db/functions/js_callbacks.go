@@ -151,7 +151,10 @@ func (runner *jsRunner) do_get(docID string, docType *string, sudo bool) (any, e
 		runner.currentDB.SetUser(nil)
 		defer func() { runner.currentDB.SetUser(user) }()
 	}
-	collection := runner.currentDB.GetSingleDatabaseCollectionWithUser()
+	collection, err := runner.currentDB.GetDefaultDatabaseCollectionWithUser()
+	if err != nil {
+		return nil, err
+	}
 	rev, err := collection.GetRev(runner.ctx, docID, "", false, nil)
 	if err != nil {
 		status, _ := base.ErrorAsHTTPStatus(err)
@@ -208,7 +211,10 @@ func (runner *jsRunner) do_save(body map[string]any, docIDPtr *string, sudo bool
 		}
 	}
 	delete(body, "_id")
-	collection := runner.currentDB.GetSingleDatabaseCollectionWithUser()
+	collection, err := runner.currentDB.GetDefaultDatabaseCollectionWithUser()
+	if err != nil {
+		return nil, err
+	}
 	if _, found := body["_rev"]; found {
 		// If caller provided `_rev` property, use MVCC as normal:
 		_, _, err := collection.Put(runner.ctx, docID, body)

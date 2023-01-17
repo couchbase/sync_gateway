@@ -92,8 +92,9 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 	rtConfig := RestTesterConfig{
 		SyncFn: `function(doc) {channel(doc.channels)}`,
 	}
-	rt := NewRestTesterDefaultCollection(t, &rtConfig) // CBG-2618: fix collection channel access
+	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
+	collection := rt.GetSingleTestDatabaseCollection()
 
 	ctx := rt.Context()
 	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
@@ -103,41 +104,41 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 	assert.NoError(t, a.Save(guest))
 
 	// Create user1
-	response := rt.SendAdminRequest("PUT", "/db/_user/user1", `{"email":"user1@couchbase.com", "password":"letmein", "admin_channels":["alpha"]}`)
+	response := rt.SendAdminRequest("PUT", "/db/_user/user1", GetUserPayload(t, "user1", "letmein", "user1@couchbase.com", collection, []string{"alpha"}, nil))
 	RequireStatus(t, response, 201)
 
 	// Create 100 docs
 	for i := 0; i < 100; i++ {
-		docpath := fmt.Sprintf("/db/doc%d", i)
-		RequireStatus(t, rt.Send(Request("PUT", docpath, `{"foo": "bar", "channels":["alpha"]}`)), 201)
+		docpath := fmt.Sprintf("/{{.keyspace}}/doc%d", i)
+		RequireStatus(t, rt.SendRequest("PUT", docpath, `{"foo": "bar", "channels":["alpha"]}`), 201)
 	}
 
 	limit := 50
-	changesResults, err := rt.WaitForChanges(50, fmt.Sprintf("/db/_changes?limit=%d", limit), "user1", false)
+	changesResults, err := rt.WaitForChanges(50, fmt.Sprintf("/{{.keyspace}}/_changes?limit=%d", limit), "user1", false)
 	assert.NoError(t, err, "Unexpected error")
 	require.Len(t, changesResults.Results, 50)
 	since := changesResults.Results[49].Seq
 	assert.Equal(t, "doc48", changesResults.Results[49].ID)
 
 	// // Check the _changes feed with  since and limit, to get second half of feed
-	changesResults, err = rt.WaitForChanges(50, fmt.Sprintf("/db/_changes?since=\"%s\"&limit=%d", since, limit), "user1", false)
+	changesResults, err = rt.WaitForChanges(50, fmt.Sprintf("/{{.keyspace}}/_changes?since=\"%s\"&limit=%d", since, limit), "user1", false)
 	assert.NoError(t, err, "Unexpected error")
 	require.Len(t, changesResults.Results, 50)
 	since = changesResults.Results[49].Seq
 	assert.Equal(t, "doc98", changesResults.Results[49].ID)
 
 	// Create user2
-	response = rt.SendAdminRequest("PUT", "/db/_user/user2", `{"email":"user2@couchbase.com", "password":"letmein", "admin_channels":["alpha"]}`)
+	response = rt.SendAdminRequest("PUT", "/db/_user/user2", GetUserPayload(t, "user2", "letmein", "user2@couchbase.com", collection, []string{"alpha"}, nil))
 	RequireStatus(t, response, 201)
 
 	// Retrieve all changes for user2 with no limits
-	changesResults, err = rt.WaitForChanges(101, fmt.Sprintf("/db/_changes"), "user2", false)
+	changesResults, err = rt.WaitForChanges(101, fmt.Sprintf("/{{.keyspace}}/_changes"), "user2", false)
 	assert.NoError(t, err, "Unexpected error")
 	require.Len(t, changesResults.Results, 101)
 	assert.Equal(t, "doc99", changesResults.Results[99].ID)
 
 	// Create user3
-	response = rt.SendAdminRequest("PUT", "/db/_user/user3", `{"email":"user3@couchbase.com", "password":"letmein", "admin_channels":["alpha"]}`)
+	response = rt.SendAdminRequest("PUT", "/db/_user/user3", GetUserPayload(t, "user3", "letmein", "user3@couchbase.com", collection, []string{"alpha"}, nil))
 	RequireStatus(t, response, 201)
 
 	getUserResponse := rt.SendAdminRequest("GET", "/db/_user/user3", "")
@@ -149,7 +150,7 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 	userSequence := user3.Sequence()
 
 	// Get first 50 document changes.
-	changesResults, err = rt.WaitForChanges(50, fmt.Sprintf("/db/_changes?limit=%d", limit), "user3", false)
+	changesResults, err = rt.WaitForChanges(50, fmt.Sprintf("/{{.keyspace}}/_changes?limit=%d", limit), "user3", false)
 	assert.NoError(t, err, "Unexpected error")
 	require.Len(t, changesResults.Results, 50)
 	since = changesResults.Results[49].Seq
@@ -157,19 +158,19 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 	assert.Equal(t, userSequence, since.TriggeredBy)
 
 	// // Get remainder of changes i.e. no limit parameter
-	changesResults, err = rt.WaitForChanges(51, fmt.Sprintf("/db/_changes?since=\"%s\"", since), "user3", false)
+	changesResults, err = rt.WaitForChanges(51, fmt.Sprintf("/{{.keyspace}}/_changes?since=\"%s\"", since), "user3", false)
 	assert.NoError(t, err, "Unexpected error")
 	require.Len(t, changesResults.Results, 51)
 	assert.Equal(t, "doc99", changesResults.Results[49].ID)
 
 	// Create user4
-	response = rt.SendAdminRequest("PUT", "/db/_user/user4", `{"email":"user4@couchbase.com", "password":"letmein", "admin_channels":["alpha"]}`)
+	response = rt.SendAdminRequest("PUT", "/db/_user/user4", GetUserPayload(t, "user4", "letmein", "user4@couchbase.com", collection, []string{"alpha"}, nil))
 	RequireStatus(t, response, 201)
 	// Get the sequence from the user doc to validate against the triggered by value in the changes results
 	user4, _ := rt.GetDatabase().Authenticator(base.TestCtx(t)).GetUser("user4")
 	user4Sequence := user4.Sequence()
 
-	changesResults, err = rt.WaitForChanges(50, fmt.Sprintf("/db/_changes?limit=%d", limit), "user4", false)
+	changesResults, err = rt.WaitForChanges(50, fmt.Sprintf("/{{.keyspace}}/_changes?limit=%d", limit), "user4", false)
 	assert.NoError(t, err, "Unexpected error")
 	require.Len(t, changesResults.Results, 50)
 	since = changesResults.Results[49].Seq
@@ -177,7 +178,7 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 	assert.Equal(t, user4Sequence, since.TriggeredBy)
 
 	// // Check the _changes feed with  since and limit, to get second half of feed
-	changesResults, err = rt.WaitForChanges(50, fmt.Sprintf("/db/_changes?since=%s&limit=%d", since, limit), "user4", false)
+	changesResults, err = rt.WaitForChanges(50, fmt.Sprintf("/{{.keyspace}}/_changes?since=%s&limit=%d", since, limit), "user4", false)
 	assert.Equal(t, nil, err)
 	require.Len(t, changesResults.Results, 50)
 	assert.Equal(t, "doc99", changesResults.Results[49].ID)
@@ -233,19 +234,19 @@ func TestWebhookWinningRevChangedEvent(t *testing.T) {
 	defer rt.Close()
 
 	wg.Add(2)
-	res := rt.SendAdminRequest("PUT", "/db/doc1", `{"foo":"bar"}`)
+	res := rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1", `{"foo":"bar"}`)
 	RequireStatus(t, res, http.StatusCreated)
 	rev1 := RespRevID(t, res)
 	_, rev1Hash := db.ParseRevID(rev1)
 
 	// push winning branch
 	wg.Add(2)
-	res = rt.SendAdminRequest("PUT", "/db/doc1?new_edits=false", `{"foo":"buzz","_revisions":{"start":3,"ids":["buzz","bar","`+rev1Hash+`"]}}`)
+	res = rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1?new_edits=false", `{"foo":"buzz","_revisions":{"start":3,"ids":["buzz","bar","`+rev1Hash+`"]}}`)
 	RequireStatus(t, res, http.StatusCreated)
 
 	// push non-winning branch
 	wg.Add(1)
-	res = rt.SendAdminRequest("PUT", "/db/doc1?new_edits=false", `{"foo":"buzzzzz","_revisions":{"start":2,"ids":["buzzzzz","`+rev1Hash+`"]}}`)
+	res = rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1?new_edits=false", `{"foo":"buzzzzz","_revisions":{"start":2,"ids":["buzzzzz","`+rev1Hash+`"]}}`)
 	RequireStatus(t, res, http.StatusCreated)
 
 	wg.Wait()
@@ -254,7 +255,7 @@ func TestWebhookWinningRevChangedEvent(t *testing.T) {
 
 	// tombstone the winning branch and ensure we get a rev changed message for the promoted branch
 	wg.Add(2)
-	res = rt.SendAdminRequest("DELETE", "/db/doc1?rev=3-buzz", ``)
+	res = rt.SendAdminRequest("DELETE", "/{{.keyspace}}/doc1?rev=3-buzz", ``)
 	RequireStatus(t, res, http.StatusOK)
 
 	wg.Wait()
@@ -263,12 +264,12 @@ func TestWebhookWinningRevChangedEvent(t *testing.T) {
 
 	// push a separate winning branch
 	wg.Add(2)
-	res = rt.SendAdminRequest("PUT", "/db/doc1?new_edits=false", `{"foo":"quux","_revisions":{"start":4,"ids":["quux", "buzz","bar","`+rev1Hash+`"]}}`)
+	res = rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1?new_edits=false", `{"foo":"quux","_revisions":{"start":4,"ids":["quux", "buzz","bar","`+rev1Hash+`"]}}`)
 	RequireStatus(t, res, http.StatusCreated)
 
 	// tombstone the winning branch, we should get a second webhook fired for rev 2-buzzzzz now it's been resurrected
 	wg.Add(2)
-	res = rt.SendAdminRequest("DELETE", "/db/doc1?rev=4-quux", ``)
+	res = rt.SendAdminRequest("DELETE", "/{{.keyspace}}/doc1?rev=4-quux", ``)
 	RequireStatus(t, res, http.StatusOK)
 
 	wg.Wait()

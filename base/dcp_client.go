@@ -28,6 +28,11 @@ const openStreamTimeout = 30 * time.Second
 const openRetryCount = uint32(10)
 const defaultNumWorkers = 8
 
+// DCP buffer size if we are running in serverless
+const DefaultDCPBufferServerless = 1 * 1024 * 1024
+
+const getVbSeqnoTimeout = 30 * time.Second
+
 const infiniteOpenStreamRetries = uint32(math.MaxUint32)
 
 type endStreamCallbackFunc func(e endStreamEvent)
@@ -100,7 +105,6 @@ func NewDCPClient(ID string, callback sgbucket.FeedEventCallbackFunc, options DC
 		dbStats:             options.DbStats,
 		agentPriority:       options.AgentPriority,
 		collectionIDs:       options.CollectionIDs,
-		oneShot:             options.OneShot,
 	}
 
 	// Initialize active vbuckets
@@ -126,7 +130,82 @@ func NewDCPClient(ID string, callback sgbucket.FeedEventCallbackFunc, options DC
 		}
 	}
 
+	client.oneShot = options.OneShot
+
 	return client, nil
+}
+
+// getCollectionHighSeqNo returns the highSeqNo for a given KV collection ID.
+func (dc *DCPClient) getCollectionHighSeqNos(collectionID uint32) ([]uint64, error) {
+	vbucketSeqnoOptions := gocbcore.GetVbucketSeqnoOptions{
+		FilterOptions: &gocbcore.GetVbucketSeqnoFilterOptions{
+			CollectionID: collectionID,
+		},
+	}
+	highSeqNos := make([]uint64, dc.numVbuckets)
+	highSeqNoError := make(chan error)
+	highSeqNoCallback := func(entries []gocbcore.VbSeqNoEntry, err error) {
+		if err == nil {
+			for _, entry := range entries {
+				highSeqNos[entry.VbID] = uint64(entry.SeqNo)
+			}
+		}
+		highSeqNoError <- err
+	}
+	_, seqErr := dc.agent.GetVbucketSeqnos(
+		0,                       // use 0, which is an active server node
+		memd.VbucketStateActive, // active vbuckets only
+		vbucketSeqnoOptions,     // contains collectionID
+		highSeqNoCallback)
+
+	if seqErr != nil {
+		return nil, seqErr
+	}
+
+	select {
+	case err := <-highSeqNoError:
+		return highSeqNos, err
+	case <-time.After(getVbSeqnoTimeout):
+		return nil, ErrTimeout
+	}
+}
+
+// getHighSeqNos returns the maximum sequence number for every collection configured by the DCP agent.
+func (dc *DCPClient) getHighSeqNos() ([]uint64, error) {
+	highSeqNos := make([]uint64, dc.numVbuckets)
+	// Initialize highSeqNo to the current metadata's StartSeqNo - we don't want to use a value lower than what
+	// we've already processed
+	for vbNo := uint16(0); vbNo < dc.numVbuckets; vbNo++ {
+		highSeqNos[vbNo] = uint64(dc.metadata.GetMeta(vbNo).StartSeqNo)
+	}
+	for _, collectionID := range dc.collectionIDs {
+		colHighSeqNos, err := dc.getCollectionHighSeqNos(collectionID)
+		if err != nil {
+			return nil, err
+		}
+		for i, colHighSeqNo := range colHighSeqNos {
+			if colHighSeqNo > highSeqNos[i] {
+				highSeqNos[i] = colHighSeqNo
+			}
+		}
+	}
+	return highSeqNos, nil
+}
+
+// configureOneShot sets highSeqnos for a one shot feed.
+func (dc *DCPClient) configureOneShot() error {
+	highSeqNos, err := dc.getHighSeqNos()
+	if err != nil {
+		return err
+	}
+
+	// Set endSeqNos on client metadata for use when opening streams
+	endSeqNos := make(map[uint16]uint64, dc.numVbuckets)
+	for vbNo, highSeqNo := range highSeqNos {
+		endSeqNos[uint16(vbNo)] = highSeqNo
+	}
+	dc.metadata.SetEndSeqNos(endSeqNos)
+	return nil
 }
 
 // Start returns an error and a channel to indicate when the DCPClient is done. If Start returns an error, DCPClient.Close() needs to be called.
@@ -134,6 +213,12 @@ func (dc *DCPClient) Start() (doneChan chan error, err error) {
 	err = dc.initAgent(dc.spec)
 	if err != nil {
 		return dc.doneChannel, err
+	}
+	if dc.oneShot {
+		err = dc.configureOneShot()
+		if err != nil {
+			return dc.doneChannel, err
+		}
 	}
 	dc.startWorkers()
 
@@ -189,9 +274,12 @@ func (dc *DCPClient) close() {
 }
 
 func (dc *DCPClient) initAgent(spec BucketSpec) error {
-	connStr, err := spec.GetGoCBConnString(&GoCBConnStringParams{
-		KVPoolSize: GoCBPoolSizeDCP,
-	})
+	defaultValues := &GoCBConnStringParams{
+		KVPoolSize:    GoCBPoolSizeDCP,
+		KVBufferSize:  spec.KvBufferSize,
+		DCPBufferSize: spec.DcpBuffer,
+	}
+	connStr, err := spec.GetGoCBConnString(defaultValues)
 	if err != nil {
 		return err
 	}
@@ -366,11 +454,6 @@ func (dc *DCPClient) openStreamRequest(vbID uint16) error {
 		}
 		options.FilterOptions = &gocbcore.OpenStreamFilterOptions{CollectionIDs: collIds}
 	}
-	flags := memd.DcpStreamAddFlagActiveOnly
-	if dc.oneShot {
-		flags |= memd.DcpStreamAddFlagLatest
-	}
-
 	openStreamError := make(chan error)
 	openStreamCallback := func(f []gocbcore.FailoverEntry, err error) {
 		if err == nil {
@@ -387,8 +470,9 @@ func (dc *DCPClient) openStreamRequest(vbID uint16) error {
 		}
 		openStreamError <- err
 	}
+
 	_, openErr := dc.agent.OpenStream(vbID,
-		flags,
+		memd.DcpStreamAddFlagActiveOnly,
 		vbMeta.VbUUID,
 		vbMeta.StartSeqNo,
 		vbMeta.EndSeqNo,

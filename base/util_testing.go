@@ -717,17 +717,12 @@ func RequireWaitForStat(t testing.TB, getStatFunc func() int64, expected int64) 
 
 // TestRequiresCollections will skip the current test if the Couchbase Server version it is running against does not
 // support collections.
-func TestRequiresCollections(t *testing.T) {
+func TestRequiresCollections(t testing.TB) {
 	if ok, err := GTestBucketPool.canUseNamedCollections(); err != nil {
 		t.Skipf("Skipping test - collections not supported: %v", err)
 	} else if !ok {
 		t.Skipf("Skipping test - collections not enabled")
 	}
-}
-
-// TemporarilyDisableTestUsingDCPWithCollections will skip the current test if using named collections to avoid MB-53448 prior to CB 7.2 until we've implemented a SG-side workaround (CBG-2605)
-func TemporarilyDisableTestUsingDCPWithCollections(t *testing.T) {
-	DisableTestWithCollections(t)
 }
 
 // DisableTestWithCollections will skip the current test if using named collections.

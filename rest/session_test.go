@@ -126,12 +126,12 @@ func TestInvalidSession(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
-	response := rt.SendAdminRequest("PUT", "/db/testdoc", `{"hi": "there"}`)
+	response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/testdoc", `{"hi": "there"}`)
 	RequireStatus(t, response, 201)
 
 	headers := map[string]string{}
 	headers["Cookie"] = fmt.Sprintf("%s=%s", auth.DefaultCookieName, "FakeSession")
-	response = rt.SendRequestWithHeaders("GET", "/db/testdoc", "", headers)
+	response = rt.SendRequestWithHeaders("GET", "/{{.keyspace}}/testdoc", "", headers)
 	RequireStatus(t, response, 401)
 
 	var body db.Body
@@ -144,13 +144,15 @@ func TestInvalidSession(t *testing.T) {
 // Test for issue 758 - basic auth with stale session cookie
 func TestBasicAuthWithSessionCookie(t *testing.T) {
 
-	rt := NewRestTesterDefaultCollection(t, nil) // CBG-2618: fix collection channel access
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
+	collection := rt.GetSingleTestDatabaseCollection()
 
 	// Create two users
-	response := rt.SendAdminRequest("PUT", "/db/_user/bernard", `{"name":"bernard", "password":"letmein", "admin_channels":["bernard"]}`)
+	response := rt.SendAdminRequest("PUT", "/db/_user/bernard", GetUserPayload(t, "bernard", "letmein", "", collection, []string{"bernard"}, nil))
 	RequireStatus(t, response, 201)
-	response = rt.SendAdminRequest("PUT", "/db/_user/manny", `{"name":"manny", "password":"letmein","admin_channels":["manny"]}`)
+
+	response = rt.SendAdminRequest("PUT", "/db/_user/manny", GetUserPayload(t, "manny", "letmein", "", collection, []string{"manny"}, nil))
 	RequireStatus(t, response, 201)
 
 	// Create a session for the first user
@@ -164,23 +166,23 @@ func TestBasicAuthWithSessionCookie(t *testing.T) {
 	reqHeaders := map[string]string{
 		"Cookie": cookie,
 	}
-	response = rt.SendRequestWithHeaders("PUT", "/db/bernardDoc", `{"hi": "there", "channels":["bernard"]}`, reqHeaders)
+	response = rt.SendRequestWithHeaders("PUT", "/{{.keyspace}}/bernardDoc", `{"hi": "there", "channels":["bernard"]}`, reqHeaders)
 	RequireStatus(t, response, 201)
-	response = rt.SendRequestWithHeaders("GET", "/db/bernardDoc", "", reqHeaders)
+	response = rt.SendRequestWithHeaders("GET", "/{{.keyspace}}/bernardDoc", "", reqHeaders)
 	RequireStatus(t, response, 200)
 
 	// Create a doc as the second user, with basic auth, channel-restricted to the second user
-	response = rt.Send(RequestByUser("PUT", "/db/mannyDoc", `{"hi": "there", "channels":["manny"]}`, "manny"))
+	response = rt.SendUserRequest("PUT", "/{{.keyspace}}/mannyDoc", `{"hi": "there", "channels":["manny"]}`, "manny")
 	RequireStatus(t, response, 201)
-	response = rt.Send(RequestByUser("GET", "/db/mannyDoc", "", "manny"))
+	response = rt.SendUserRequest("GET", "/{{.keyspace}}/mannyDoc", "", "manny")
 	RequireStatus(t, response, 200)
-	response = rt.Send(RequestByUser("GET", "/db/bernardDoc", "", "manny"))
+	response = rt.SendUserRequest("GET", "/{{.keyspace}}/bernardDoc", "", "manny")
 	RequireStatus(t, response, 403)
 
 	// Attempt to retrieve the docs with the first user's cookie, second user's basic auth credentials.  Basic Auth should take precedence
-	response = rt.SendUserRequestWithHeaders("GET", "/db/bernardDoc", "", reqHeaders, "manny", "letmein")
+	response = rt.SendUserRequestWithHeaders("GET", "/{{.keyspace}}/bernardDoc", "", reqHeaders, "manny", "letmein")
 	RequireStatus(t, response, 403)
-	response = rt.SendUserRequestWithHeaders("GET", "/db/mannyDoc", "", reqHeaders, "manny", "letmein")
+	response = rt.SendUserRequestWithHeaders("GET", "/{{.keyspace}}/mannyDoc", "", reqHeaders, "manny", "letmein")
 	RequireStatus(t, response, 200)
 }
 
@@ -188,9 +190,10 @@ func TestBasicAuthWithSessionCookie(t *testing.T) {
 func TestSessionFail(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
+	collection := rt.GetSingleTestDatabaseCollection()
 
 	// Create user
-	response := rt.SendAdminRequest("PUT", "/db/_user/user1", `{"name":"user1", "password":"letmein", "admin_channels":["user1"]}`)
+	response := rt.SendAdminRequest("PUT", "/db/_user/user1", GetUserPayload(t, "user1", "letmein", "", collection, []string{"user1"}, nil))
 	RequireStatus(t, response, http.StatusCreated)
 
 	id, err := base.GenerateRandomSecret()
@@ -243,14 +246,20 @@ func TestLogin(t *testing.T) {
 }
 func TestCustomCookieName(t *testing.T) {
 
-	rt := NewRestTester(t, nil)
-	defer rt.Close()
-
 	customCookieName := "TestCustomCookieName"
-	rt.DatabaseConfig = &DatabaseConfig{DbConfig: DbConfig{
-		Name:              "db",
-		SessionCookieName: customCookieName,
-	}}
+
+	rt := NewRestTester(t,
+		&RestTesterConfig{
+			DatabaseConfig: &DatabaseConfig{
+				DbConfig: DbConfig{
+					Name:              "db",
+					SessionCookieName: customCookieName,
+				},
+			},
+		},
+	)
+
+	defer rt.Close()
 
 	// Disable guest user
 	a := auth.NewAuthenticator(rt.MetadataStore(), nil, auth.DefaultAuthenticatorOptions())
@@ -278,12 +287,12 @@ func TestCustomCookieName(t *testing.T) {
 	// Attempt to use default cookie name to authenticate -- expect a 401 error
 	headers := map[string]string{}
 	headers["Cookie"] = fmt.Sprintf("%s=%s", auth.DefaultCookieName, cookie.Value)
-	resp = rt.SendRequestWithHeaders("GET", "/db/foo", `{}`, headers)
+	resp = rt.SendRequestWithHeaders("GET", "/{{.keyspace}}/foo", `{}`, headers)
 	assert.Equal(t, 401, resp.Result().StatusCode)
 
 	// Attempt to use custom cookie name to authenticate
 	headers["Cookie"] = fmt.Sprintf("%s=%s", customCookieName, cookie.Value)
-	resp = rt.SendRequestWithHeaders("POST", "/db/", `{"_id": "foo", "key": "val"}`, headers)
+	resp = rt.SendRequestWithHeaders("POST", "/{{.keyspace}}/", `{"_id": "foo", "key": "val"}`, headers)
 	assert.Equal(t, 200, resp.Result().StatusCode)
 
 }
@@ -365,12 +374,12 @@ func TestSessionExtension(t *testing.T) {
 		"Cookie": auth.DefaultCookieName + "=" + fakeSession.ID,
 	}
 
-	response := rt.SendRequestWithHeaders("PUT", "/db/doc1", `{"hi": "there"}`, reqHeaders)
+	response := rt.SendRequestWithHeaders("PUT", "/{{.keyspace}}/doc1", `{"hi": "there"}`, reqHeaders)
 	log.Printf("PUT Request: Set-Cookie: %v", response.Header().Get("Set-Cookie"))
 	RequireStatus(t, response, http.StatusCreated)
 	assert.Contains(t, response.Header().Get("Set-Cookie"), auth.DefaultCookieName+"="+fakeSession.ID)
 
-	response = rt.SendRequestWithHeaders("GET", "/db/doc1", "", reqHeaders)
+	response = rt.SendRequestWithHeaders("GET", "/{{.keyspace}}/doc1", "", reqHeaders)
 	log.Printf("GET Request: Set-Cookie: %v", response.Header().Get("Set-Cookie"))
 	RequireStatus(t, response, http.StatusOK)
 	assert.Equal(t, "", response.Header().Get("Set-Cookie"))
@@ -381,7 +390,7 @@ func TestSessionExtension(t *testing.T) {
 	// removes all items with expiration times that have passed.
 	assert.NoError(t, rt.MetadataStore().Delete(auth.DocIDForSession(fakeSession.ID)))
 
-	response = rt.SendRequestWithHeaders("GET", "/db/doc1", "", reqHeaders)
+	response = rt.SendRequestWithHeaders("GET", "/{{.keyspace}}/doc1", "", reqHeaders)
 	log.Printf("GET Request: Set-Cookie: %v", response.Header().Get("Set-Cookie"))
 	RequireStatus(t, response, http.StatusUnauthorized)
 

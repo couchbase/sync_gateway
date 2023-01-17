@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"reflect"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -498,118 +499,95 @@ func TestAdminAPIAuth(t *testing.T) {
 
 	endPoints := []struct {
 		Method          string
-		DBScoped        bool
 		Endpoint        string
 		SkipSuccessTest bool
 		body            string // The body to use in requests. Default: `{}`
 	}{
 		{
 			Method:   "POST",
-			DBScoped: true,
-			Endpoint: "/_session",
+			Endpoint: "/{{.db}}/_session",
 		},
 		{
 			Method:   "GET",
-			DBScoped: true,
-			Endpoint: "/_session/id",
+			Endpoint: "/{{.db}}/_session/id",
 		},
 		{
 			Method:   "DELETE",
-			DBScoped: true,
-			Endpoint: "/_session/id",
+			Endpoint: "/{{.db}}/_session/id",
 		},
 		{
 			Method:   "GET",
-			DBScoped: true,
-			Endpoint: "/_raw/doc",
+			Endpoint: "/{{.keyspace}}/_raw/doc",
 		},
 		{
 			Method:   "GET",
-			DBScoped: true,
-			Endpoint: "/_user/",
+			Endpoint: "/{{.db}}/_user/",
+		},
+		{
+			Method:   "POST",
+			Endpoint: "/{{.db}}/_user/",
+		},
+		{
+			Method:   "GET",
+			Endpoint: "/{{.db}}/_user/user",
+		}, {
+			Method:   "PUT",
+			Endpoint: "/{{.db}}/_user/user",
+		}, {
+			Method:   "DELETE",
+			Endpoint: "/{{.db}}/_user/user",
+		}, {
+			Method:   "DELETE",
+			Endpoint: "/{{.db}}/_user/user/_session",
+		}, {
+			Method:   "DELETE",
+			Endpoint: "/{{.db}}/_user/user/_session/id",
+		},
+		{
+			Method:   "GET",
+			Endpoint: "/{{.db}}/_role/",
 		}, {
 			Method:   "POST",
-			DBScoped: true,
-			Endpoint: "/_user/",
-		}, {
-			Method:   "GET",
-			DBScoped: true,
-			Endpoint: "/_user/user",
-		}, {
-			Method:   "PUT",
-			DBScoped: true,
-			Endpoint: "/_user/user",
-		}, {
-			Method:   "DELETE",
-			DBScoped: true,
-			Endpoint: "/_user/user",
-		}, {
-			Method:   "DELETE",
-			DBScoped: true,
-			Endpoint: "/_user/user/_session",
-		}, {
-			Method:   "DELETE",
-			DBScoped: true,
-			Endpoint: "/_user/user/_session/id",
+			Endpoint: "/{{.db}}/_role/",
 		},
 		{
 			Method:   "GET",
-			DBScoped: true,
-			Endpoint: "/_role/",
+			Endpoint: "/{{.db}}/_role/role",
+		}, {
+			Method:   "PUT",
+			Endpoint: "/{{.db}}/_role/role",
+		}, {
+			Method:   "DELETE",
+			Endpoint: "/{{.db}}/_role/role",
+		}, {
+			Method:   "GET",
+			Endpoint: "/{{.db}}/_replication/",
 		}, {
 			Method:   "POST",
-			DBScoped: true,
-			Endpoint: "/_role/",
-		},
-		{
-			Method:   "GET",
-			DBScoped: true,
-			Endpoint: "/_role/role",
-		}, {
-			Method:   "PUT",
-			DBScoped: true,
-			Endpoint: "/_role/role",
-		}, {
-			Method:   "DELETE",
-			DBScoped: true,
-			Endpoint: "/_role/role",
+			Endpoint: "/{{.db}}/_replication/",
 		}, {
 			Method:   "GET",
-			DBScoped: true,
-			Endpoint: "/_replication/",
-		}, {
-			Method:   "POST",
-			DBScoped: true,
-			Endpoint: "/_replication/",
-		}, {
-			Method:   "GET",
-			DBScoped: true,
-			Endpoint: "/_replication/id",
+			Endpoint: "/{{.db}}/_replication/id",
 		},
 		{
 			Method:   "PUT",
-			DBScoped: true,
-			Endpoint: "/_replication/id",
+			Endpoint: "/{{.db}}/_replication/id",
 		},
 		{
 			Method:   "DELETE",
-			DBScoped: true,
-			Endpoint: "/_replication/id",
+			Endpoint: "/{{.db}}/_replication/id",
 		},
 		{
 			Method:   "GET",
-			DBScoped: true,
-			Endpoint: "/_replicationStatus/",
+			Endpoint: "/{{.db}}/_replicationStatus/",
 		},
 		{
 			Method:   "GET",
-			DBScoped: true,
-			Endpoint: "/_replicationStatus/id",
+			Endpoint: "/{{.db}}/_replicationStatus/id",
 		},
 		{
 			Method:   "PUT",
-			DBScoped: true,
-			Endpoint: "/_replicationStatus/id",
+			Endpoint: "/{{.db}}/_replicationStatus/id",
 		},
 		{
 			Method:   "GET",
@@ -709,75 +687,61 @@ func TestAdminAPIAuth(t *testing.T) {
 		},
 		{
 			Method:   "GET",
-			DBScoped: true,
-			Endpoint: "/_config",
+			Endpoint: "/{{.db}}/_config",
 		},
 		{
 			Method:   "PUT",
-			DBScoped: true,
-			Endpoint: "/_config",
+			Endpoint: "/{{.db}}/_config",
 			body:     string(dbConfigRaw),
 		},
 		{
 			Method:   "GET",
-			DBScoped: true,
-			Endpoint: "/_resync",
+			Endpoint: "/{{.db}}/_resync",
 		},
 		{
 			Method:   "POST",
-			DBScoped: true,
-			Endpoint: "/_resync",
+			Endpoint: "/{{.db}}/_resync",
 		},
 		{
 			Method:   "POST",
-			DBScoped: true,
-			Endpoint: "/_purge",
+			Endpoint: "/{{.keyspace}}/_purge",
 		},
 		{
 			Method:   "POST",
-			DBScoped: true,
-			Endpoint: "/_flush",
+			Endpoint: "/{{.db}}/_flush",
 		},
 		{
 			Method:          "POST",
-			DBScoped:        true,
-			Endpoint:        "/_offline",
+			Endpoint:        "/{{.db}}/_offline",
 			SkipSuccessTest: true,
 		},
 		{
 			Method:   "POST",
-			DBScoped: true,
-			Endpoint: "/_online",
+			Endpoint: "/{{.db}}/_online",
 		},
 		{
 			Method:   "GET",
-			DBScoped: true,
-			Endpoint: "/_dump/view",
+			Endpoint: "/{{.db}}/_dump/view",
 		},
 		{
 			Method:   "GET",
-			DBScoped: true,
-			Endpoint: "/_view/view",
+			Endpoint: "/{{.db}}/_view/view",
 		},
 		{
 			Method:   "GET",
-			DBScoped: true,
-			Endpoint: "/_dumpchannel/channel",
+			Endpoint: "/{{.keyspace}}/_dumpchannel/channel",
 		},
 		{
 			Method:   "POST",
-			DBScoped: true,
-			Endpoint: "/_repair",
+			Endpoint: "/{{.db}}/_repair",
 		},
 		{
 			Method:   "PUT",
-			DBScoped: true,
-			Endpoint: "/db",
+			Endpoint: "/{{.keyspace}}/db",
 		},
 		{
 			Method:          "DELETE",
-			DBScoped:        true,
-			Endpoint:        "/",
+			Endpoint:        "/{{.db}}/",
 			SkipSuccessTest: true,
 		},
 		{
@@ -786,115 +750,93 @@ func TestAdminAPIAuth(t *testing.T) {
 		},
 		{
 			Method:   "POST",
-			DBScoped: true,
-			Endpoint: "/_compact",
+			Endpoint: "/{{.db}}/_compact",
 		},
 		{
 			Method:          "GET",
-			DBScoped:        true,
-			Endpoint:        "/",
+			Endpoint:        "/{{.db}}/",
 			SkipSuccessTest: true,
 		},
 		{
 			Method:          "POST",
-			DBScoped:        true,
-			Endpoint:        "/",
+			Endpoint:        "/{{.db}}/",
 			SkipSuccessTest: true,
 		},
 		{
 			Method:   "GET",
-			DBScoped: true,
-			Endpoint: "/_all_docs",
+			Endpoint: "/{{.keyspace}}/_all_docs",
 		},
 		{
 			Method:   "POST",
-			DBScoped: true,
-			Endpoint: "/_bulk_docs",
+			Endpoint: "/{{.keyspace}}/_bulk_docs",
 		},
 		{
 			Method:   "POST",
-			DBScoped: true,
-			Endpoint: "/_bulk_get",
+			Endpoint: "/{{.keyspace}}/_bulk_get",
 		},
 		{
 			Method:   "GET",
-			DBScoped: true,
-			Endpoint: "/_changes",
+			Endpoint: "/{{.keyspace}}/_changes",
 		},
 		{
 			Method:   "GET",
-			DBScoped: true,
-			Endpoint: "/_design/ddoc",
+			Endpoint: "/{{.db}}/_design/ddoc",
 		},
 		{
 			Method:   "PUT",
-			DBScoped: true,
-			Endpoint: "/_design/ddoc",
+			Endpoint: "/{{.db}}/_design/ddoc",
 		},
 		{
 			Method:   "DELETE",
-			DBScoped: true,
-			Endpoint: "/_design/ddoc",
+			Endpoint: "/{{.db}}/_design/ddoc",
 		},
 		{
 			Method:   "GET",
-			DBScoped: true,
-			Endpoint: "/_design/ddoc/_view/view",
+			Endpoint: "/{{.db}}/_design/ddoc/_view/view",
 		},
 		{
 			Method:   "POST",
-			DBScoped: true,
-			Endpoint: "/_ensure_full_commit",
+			Endpoint: "/{{.db}}/_ensure_full_commit",
 		},
 		{
 			Method:   "POST",
-			DBScoped: true,
-			Endpoint: "/_revs_diff",
+			Endpoint: "/{{.keyspace}}/_revs_diff",
 		},
 		{
 			Method:   "GET",
-			DBScoped: true,
-			Endpoint: "/_local/docid",
+			Endpoint: "/{{.keyspace}}/_local/docid",
 		},
 		{
 			Method:   "PUT",
-			DBScoped: true,
-			Endpoint: "/_local/docid",
+			Endpoint: "/{{.keyspace}}/_local/docid",
 		},
 		{
 			Method:   "DELETE",
-			DBScoped: true,
-			Endpoint: "/_local/docid",
+			Endpoint: "/{{.keyspace}}/_local/docid",
 		},
 		{
 			Method:   "GET",
-			DBScoped: true,
-			Endpoint: "/docid",
+			Endpoint: "/{{.keyspace}}/docid",
 		},
 		{
 			Method:   "PUT",
-			DBScoped: true,
-			Endpoint: "/docid",
+			Endpoint: "/{{.keyspace}}/docid",
 		},
 		{
 			Method:   "DELETE",
-			DBScoped: true,
-			Endpoint: "/docid",
+			Endpoint: "/{{.keyspace}}/docid",
 		},
 		{
 			Method:   "GET",
-			DBScoped: true,
-			Endpoint: "/docid/attachid",
+			Endpoint: "/{{.keyspace}}/docid/attachid",
 		},
 		{
 			Method:   "PUT",
-			DBScoped: true,
-			Endpoint: "/docid/attachid",
+			Endpoint: "/{{.keyspace}}/docid/attachid",
 		},
 		{
 			Method:   "GET",
-			DBScoped: true,
-			Endpoint: "/_blipsync",
+			Endpoint: "/{{.db}}/_blipsync",
 		},
 	}
 
@@ -918,15 +860,12 @@ func TestAdminAPIAuth(t *testing.T) {
 		if endPoint.body != "" {
 			body = endPoint.body
 		}
-		formattedEndpoint := endPoint.Endpoint
-		if endPoint.DBScoped {
-			formattedEndpoint = "/db" + formattedEndpoint
-		}
-		t.Run(endPoint.Method+formattedEndpoint, func(t *testing.T) {
-			resp := rt.SendAdminRequest(endPoint.Method, formattedEndpoint, body)
+
+		t.Run(endPoint.Method+endPoint.Endpoint, func(t *testing.T) {
+			resp := rt.SendAdminRequest(endPoint.Method, endPoint.Endpoint, body)
 			RequireStatus(t, resp, http.StatusUnauthorized)
 
-			resp = rt.SendAdminRequestWithAuth(endPoint.Method, formattedEndpoint, body, "noaccess", "password")
+			resp = rt.SendAdminRequestWithAuth(endPoint.Method, endPoint.Endpoint, body, "noaccess", "password")
 			RequireStatus(t, resp, http.StatusForbidden)
 
 			if !endPoint.SkipSuccessTest {
@@ -934,18 +873,18 @@ func TestAdminAPIAuth(t *testing.T) {
 				// For some of the endpoints they have other requirements, such as setting up users and others require
 				// bodies. Rather than doing a full test of the endpoint itself this will at least confirm that they pass
 				// the auth stage.
-				if endPoint.DBScoped {
-					resp = rt.SendAdminRequestWithAuth(endPoint.Method, formattedEndpoint, body, "MobileSyncGatewayUser", "password")
+				if strings.HasPrefix(endPoint.Endpoint, "/{{.") {
+					resp = rt.SendAdminRequestWithAuth(endPoint.Method, endPoint.Endpoint, body, "MobileSyncGatewayUser", "password")
 					assert.True(t, resp.Code != http.StatusUnauthorized && resp.Code != http.StatusForbidden)
 				} else {
-					resp = rt.SendAdminRequestWithAuth(endPoint.Method, formattedEndpoint, body, "ROAdminUser", "password")
+					resp = rt.SendAdminRequestWithAuth(endPoint.Method, endPoint.Endpoint, body, "ROAdminUser", "password")
 					if endPoint.Method == http.MethodGet || endPoint.Method == http.MethodHead || endPoint.Method == http.MethodOptions {
 						assert.True(t, resp.Code != http.StatusUnauthorized && resp.Code != http.StatusForbidden)
 					} else {
 						RequireStatus(t, resp, http.StatusForbidden)
 					}
 
-					resp = rt.SendAdminRequestWithAuth(endPoint.Method, formattedEndpoint, body, "ClusterAdminUser", "password")
+					resp = rt.SendAdminRequestWithAuth(endPoint.Method, endPoint.Endpoint, body, "ClusterAdminUser", "password")
 					assert.True(t, resp.Code != http.StatusUnauthorized && resp.Code != http.StatusForbidden)
 
 				}
@@ -1503,13 +1442,13 @@ func TestCreateDBSpecificBucketPerm(t *testing.T) {
 
 	base.RequireNumTestBuckets(t, 2)
 
+	tb := base.GetTestBucket(t)
+	defer tb.Close()
+
 	rt := NewRestTester(t, &RestTesterConfig{
 		AdminInterfaceAuthentication: true,
 	})
 	defer rt.Close()
-
-	tb := base.GetTestBucket(t)
-	defer tb.Close()
 
 	eps, httpClient, err := rt.ServerContext().ObtainManagementEndpointsAndHTTPClient()
 	require.NoError(t, err)

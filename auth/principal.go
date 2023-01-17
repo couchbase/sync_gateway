@@ -252,3 +252,17 @@ func (u *PrincipalConfig) SetExplicitChannels(scopeName, collectionName string, 
 		}
 	}
 }
+
+func (u *PrincipalConfig) GetExplicitChannels(scopeName, collectionName string) base.Set {
+	if base.IsDefaultCollection(scopeName, collectionName) {
+		return u.ExplicitChannels
+	}
+	return u.CollectionAccess[scopeName][collectionName].ExplicitChannels_
+}
+
+func (u *PrincipalConfig) GetChannels(scopeName, collectionName string) base.Set {
+	if base.IsDefaultCollection(scopeName, collectionName) {
+		return u.Channels
+	}
+	return u.CollectionAccess[scopeName][collectionName].Channels_
+}

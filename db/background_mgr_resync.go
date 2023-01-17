@@ -30,6 +30,7 @@ var _ BackgroundManagerProcessI = &ResyncManager{}
 
 func NewResyncManager(metadataStore base.DataStore) *BackgroundManager {
 	return &BackgroundManager{
+		name:    "resync",
 		Process: &ResyncManager{},
 		clusterAwareOptions: &ClusterAwareBackgroundManagerOptions{
 			metadataStore: metadataStore,

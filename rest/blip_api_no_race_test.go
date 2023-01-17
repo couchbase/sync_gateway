@@ -75,7 +75,7 @@ func TestBlipPusherUpdateDatabase(t *testing.T) {
 	}()
 
 	// and wait for a few to be done before we proceed with updating database config underneath replication
-	_, err = rt.WaitForChanges(5, "/db/_changes", "", true)
+	_, err = rt.WaitForChanges(5, "/{{.keyspace}}/_changes", "", true)
 	require.NoError(t, err)
 
 	// just change the sync function to cause the database to reload
