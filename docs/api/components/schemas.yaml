@@ -1375,6 +1375,12 @@ Database:
         force_api_forbidden_errors:
           description: Force REST API errors to return forbidden
           type: boolean
+        dcp_read_buffer:
+          description: Set the dcp feed to use a different read buffer size.
+          type: number
+        kv_buffer:
+          description: Set the kv pool to use a different buffer size.
+          type: number
     local_jwt:
       description: Configuration for Local JWT authentication.
       type: object

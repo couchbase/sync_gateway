@@ -555,3 +555,19 @@ func getScopesOptions(t testing.TB, testBucket *base.TestBucket, numCollections 
 	}
 	return scopesConfig
 }
+
+func GetSingleDatabaseCollectionWithUser(tb testing.TB, database *Database) *DatabaseCollectionWithUser {
+	return &DatabaseCollectionWithUser{
+		DatabaseCollection: GetSingleDatabaseCollection(tb, database.DatabaseContext),
+		user:               database.user,
+	}
+}
+
+func GetSingleDatabaseCollection(tb testing.TB, database *DatabaseContext) *DatabaseCollection {
+	require.Equal(tb, 1, len(database.CollectionByID), "Database must only have a single collection configured")
+	for _, collection := range database.CollectionByID {
+		return collection
+	}
+	tb.Fatalf("Could not find a collection")
+	return nil
+}

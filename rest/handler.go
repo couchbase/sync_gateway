@@ -183,6 +183,12 @@ func (h *handler) addDatabaseLogContext(dbName string) {
 	}
 }
 
+func (h *handler) addCollectionLogContext(collectionName string) {
+	if collectionName != "" {
+		h.rqCtx = base.LogContextWith(h.ctx(), &base.CollectionLogContext{Collection: collectionName})
+	}
+}
+
 // ParseKeyspace will return a db, scope and collection for a given '.' separated keyspace string.
 // Returns nil for scope and/or collection if not present in the keyspace string.
 func ParseKeyspace(ks string) (db string, scope, collection *string, err error) {
@@ -260,6 +266,9 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 		if err != nil {
 			return err
 		}
+		if keyspaceCollection != nil {
+			h.addCollectionLogContext(*keyspaceCollection)
+		}
 	}
 
 	// look up the database context:
@@ -322,7 +331,10 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 			return err
 		}
 		if h.user != nil && h.user.Name() == "" && dbContext != nil && dbContext.IsGuestReadOnly() {
-			if requiresWritePermission(accessPermissions) {
+			// Prevent read-only guest access to any endpoint requiring write permissions except
+			// blipsync.  Read-only guest handling for websocket replication (blipsync) is evaluated
+			// at the blip message level to support read-only pull replications.
+			if requiresWritePermission(accessPermissions) && !h.pathTemplateContains("_blipsync") {
 				return base.HTTPErrorf(http.StatusForbidden, auth.GuestUserReadOnly)
 			}
 		}
@@ -1400,4 +1412,14 @@ func requiresWritePermission(accessPermissions []Permission) bool {
 		}
 	}
 	return false
+}
+
+// Checks whether the mux path template for the current route contains the specified pattern
+func (h *handler) pathTemplateContains(pattern string) bool {
+	route := mux.CurrentRoute(h.rq)
+	pathTemplate, err := route.GetPathTemplate()
+	if err != nil {
+		return false
+	}
+	return strings.Contains(pathTemplate, pattern)
 }

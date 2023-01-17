@@ -387,7 +387,7 @@ function sync(doc, oldDoc){
 	_, err := db.UpdateSyncFun(ctx, syncFn)
 	require.NoError(t, err)
 
-	collection := db.GetSingleDatabaseCollectionWithUser()
+	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 	// Create the docs that will be marked and not swept
 	body := map[string]interface{}{"foo": "bar"}

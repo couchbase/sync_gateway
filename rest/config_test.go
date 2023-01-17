@@ -2604,12 +2604,16 @@ func TestCollectionsValidation(t *testing.T) {
 // We get OS specific errors on x509.UnknownAuthorityError so we switch the expected error string if on darwin OS
 func requireErrorWithX509UnknownAuthority(t testing.TB, actual, expected error) {
 	expectedErrorString := expected.Error()
-	switch errorType := expected.(type) {
-	case x509.UnknownAuthorityError:
-		expectedErrorString = errorType.Error()
-		if runtime.GOOS == "darwin" {
-			expectedErrorString = "certificate is not trusted"
-		}
+	if strings.Contains(actual.Error(), expectedErrorString) {
+		return
 	}
+
+	// workaround for versions of go affected by https://github.com/golang/go/issues/56891
+	isMacOS := runtime.GOOS == "darwin"
+	_, isX509Error := expected.(x509.UnknownAuthorityError)
+	if isX509Error && isMacOS {
+		expectedErrorString = "certificate is not trusted"
+	}
+
 	require.ErrorContains(t, actual, expectedErrorString)
 }

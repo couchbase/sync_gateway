@@ -912,6 +912,7 @@ func TestResyncRegenerateSequences(t *testing.T) {
 		},
 	)
 	defer rt.Close()
+	collection := rt.GetSingleTestDatabaseCollection()
 
 	_, ok := (rt.GetDatabase().ResyncManager.Process).(*db.ResyncManagerDCP)
 	if ok && base.UnitTestUrlIsWalrus() {
@@ -926,7 +927,7 @@ func TestResyncRegenerateSequences(t *testing.T) {
 		docID := fmt.Sprintf("doc%d", i)
 		rt.CreateDoc(t, docID)
 
-		response = rt.SendAdminRequest("GET", "/db/_raw/"+docID, "")
+		response = rt.SendAdminRequest("GET", "/{{.keyspace}}/_raw/"+docID, "")
 		require.Equal(t, http.StatusOK, response.Code)
 
 		err := json.Unmarshal(response.BodyBytes(), &body)
@@ -935,12 +936,10 @@ func TestResyncRegenerateSequences(t *testing.T) {
 		docSeqArr = append(docSeqArr, body["_sync"].(map[string]interface{})["sequence"].(float64))
 	}
 
-	role := "role1"
-	response = rt.SendAdminRequest("PUT", fmt.Sprintf("/db/_role/%s", role), fmt.Sprintf(`{"name":"%s", "admin_channels":["channel_1"]}`, role))
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/_role/role1", GetRolePayload(t, "role1", "", collection, []string{"channel_1"}))
 	RequireStatus(t, response, http.StatusCreated)
 
-	username := "user1"
-	response = rt.SendAdminRequest("PUT", fmt.Sprintf("/db/_user/%s", username), fmt.Sprintf(`{"name":"%s", "password":"letmein", "admin_channels":["channel_1"], "admin_roles": ["%s"]}`, username, role))
+	response = rt.SendAdminRequest("PUT", "/db/_user/user1", GetUserPayload(t, "user1", "letmein", "", collection, []string{"channel_1"}, []string{"role1"}))
 	RequireStatus(t, response, http.StatusCreated)
 
 	_, err := rt.MetadataStore().Get(base.RolePrefix+"role1", &body)
@@ -951,10 +950,10 @@ func TestResyncRegenerateSequences(t *testing.T) {
 	assert.NoError(t, err)
 	user1SeqBefore := body["sequence"].(float64)
 
-	response = rt.SendAdminRequest("PUT", "/db/userdoc", `{"userdoc": true}`)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/userdoc", `{"userdoc": true}`)
 	RequireStatus(t, response, http.StatusCreated)
 
-	response = rt.SendAdminRequest("PUT", "/db/userdoc2", `{"userdoc": true}`)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/userdoc2", `{"userdoc": true}`)
 	RequireStatus(t, response, http.StatusCreated)
 
 	// Let everything catch up before opening changes feed
@@ -978,7 +977,7 @@ func TestResyncRegenerateSequences(t *testing.T) {
 	}
 
 	var changesResp ChangesResp
-	request, _ := http.NewRequest("GET", "/db/_changes", nil)
+	request, _ := http.NewRequest("GET", "/{{.keyspace}}/_changes", nil)
 	request.SetBasicAuth("user1", "letmein")
 	response = rt.Send(request)
 	RequireStatus(t, response, http.StatusOK)
@@ -1040,7 +1039,7 @@ func TestResyncRegenerateSequences(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Data is wiped from walrus when brought back online
-	request, err = http.NewRequest("GET", "/db/_changes?since="+changesResp.LastSeq, nil)
+	request, err = http.NewRequest("GET", "/{{.keyspace}}/_changes?since="+changesResp.LastSeq, nil)
 	require.NoError(t, err)
 	request.SetBasicAuth("user1", "letmein")
 	response = rt.Send(request)

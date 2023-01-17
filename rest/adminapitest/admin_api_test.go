@@ -760,7 +760,7 @@ func TestResync(t *testing.T) {
 
 			_, ok := (rt.GetDatabase().ResyncManager.Process).(*db.ResyncManager)
 			if !ok {
-				t.Skip("This test only works when ResyncManager is used")
+				rt.GetDatabase().ResyncManager = db.NewResyncManager(rt.GetSingleDataStore())
 			}
 
 			for i := 0; i < testCase.docsCreated; i++ {
@@ -845,7 +845,7 @@ func TestResyncUsingDCPStream(t *testing.T) {
 
 			_, ok := (rt.GetDatabase().ResyncManager.Process).(*db.ResyncManagerDCP)
 			if !ok {
-				t.Skip("This test only works when ResyncManagerDCP is used")
+				rt.GetDatabase().ResyncManager = db.NewResyncManagerDCP(rt.GetSingleDataStore())
 			}
 
 			for i := 0; i < testCase.docsCreated; i++ {
@@ -923,7 +923,7 @@ func TestResyncErrorScenarios(t *testing.T) {
 
 	_, ok := (rt.GetDatabase().ResyncManager.Process).(*db.ResyncManager)
 	if !ok {
-		t.Skip("This test only works when ResyncManager is used")
+		rt.GetDatabase().ResyncManager = db.NewResyncManager(rt.GetSingleDataStore())
 	}
 
 	leakyDataStore, ok := base.AsLeakyDataStore(rt.TestBucket.GetSingleDataStore())
@@ -1026,7 +1026,7 @@ func TestResyncErrorScenariosUsingDCPStream(t *testing.T) {
 
 	_, ok := (rt.GetDatabase().ResyncManager.Process).(*db.ResyncManagerDCP)
 	if !ok {
-		t.Skip("This test only works when ResyncManagerDCP is used")
+		rt.GetDatabase().ResyncManager = db.NewResyncManagerDCP(rt.GetSingleDataStore())
 	}
 
 	numOfDocs := 1000
@@ -1113,7 +1113,7 @@ func TestResyncStop(t *testing.T) {
 
 	_, ok := (rt.GetDatabase().ResyncManager.Process).(*db.ResyncManager)
 	if !ok {
-		t.Skip("This test only works when ResyncManager is used")
+		rt.GetDatabase().ResyncManager = db.NewResyncManager(rt.GetSingleDataStore())
 	}
 
 	leakyDataStore, ok := base.AsLeakyDataStore(rt.TestBucket.GetSingleDataStore())
@@ -1200,7 +1200,7 @@ func TestResyncStopUsingDCPStream(t *testing.T) {
 
 	_, ok := (rt.GetDatabase().ResyncManager.Process).(*db.ResyncManagerDCP)
 	if !ok {
-		t.Skip("This test only works when ResyncManagerDCP is used")
+		rt.GetDatabase().ResyncManager = db.NewResyncManagerDCP(rt.GetSingleDataStore())
 	}
 
 	numOfDocs := 1000
@@ -1276,7 +1276,7 @@ func TestResyncRegenerateSequences(t *testing.T) {
 
 	_, ok := (rt.GetDatabase().ResyncManager.Process).(*db.ResyncManager)
 	if !ok {
-		t.Skip("This test only works when ResyncManager is used")
+		rt.GetDatabase().ResyncManager = db.NewResyncManager(rt.GetSingleDataStore())
 	}
 
 	var response *rest.TestResponse
@@ -1441,9 +1441,8 @@ func TestResyncRegenerateSequencesUsingDCPStream(t *testing.T) {
 	)
 	defer rt.Close()
 
-	_, ok := (rt.GetDatabase().ResyncManager.Process).(*db.ResyncManagerDCP)
-	if !ok {
-		t.Skip("This test only works when ResyncManagerDCP is used")
+	if _, ok := (rt.GetDatabase().ResyncManager.Process).(*db.ResyncManagerDCP); !ok {
+		rt.GetDatabase().ResyncManager = db.NewResyncManagerDCP(rt.GetSingleDataStore())
 	}
 
 	var response *rest.TestResponse

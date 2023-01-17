@@ -4815,13 +4815,12 @@ func TestActiveReplicatorRecoverFromRemoteRollback(t *testing.T) {
 	err = rt2.Bucket().DefaultDataStore().Set(checkpointDocID, 0, nil, firstCheckpoint)
 	assert.NoError(t, err)
 
-	rt2db, err := db.GetDatabase(rt2.GetDatabase(), nil)
-	require.NoError(t, err)
-	err = rt2db.GetSingleDatabaseCollectionWithUser().Purge(ctx2, docID+"2")
+	rt2collection := rt2.GetSingleTestDatabaseCollectionWithUser()
+	err = rt2collection.Purge(ctx2, docID+"2")
 	assert.NoError(t, err)
 
-	require.NoError(t, rt2.GetDatabase().GetSingleDatabaseCollection().FlushChannelCache(ctx2))
-	rt2.GetDatabase().GetSingleDatabaseCollection().FlushRevisionCacheForTest()
+	require.NoError(t, rt2collection.FlushChannelCache(ctx2))
+	rt2collection.FlushRevisionCacheForTest()
 
 	assert.NoError(t, ar.Start(ctx1))
 
@@ -4831,7 +4830,7 @@ func TestActiveReplicatorRecoverFromRemoteRollback(t *testing.T) {
 	require.Len(t, changesResults.Results, 1)
 	assert.Equal(t, docID+"2", changesResults.Results[0].ID)
 
-	doc, err = rt2.GetDatabase().GetSingleDatabaseCollection().GetDocument(ctx2, docID, db.DocUnmarshalAll)
+	doc, err = rt2collection.GetDocument(ctx2, docID, db.DocUnmarshalAll)
 	require.NoError(t, err)
 
 	body, err = doc.GetDeepMutableBody()
