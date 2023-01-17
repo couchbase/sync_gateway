@@ -1230,8 +1230,11 @@ func NewBlipTesterFromSpec(tb testing.TB, spec BlipTesterSpec) (*BlipTester, err
 // Create a BlipTester using the given spec
 func createBlipTesterWithSpec(tb testing.TB, spec BlipTesterSpec, rt *RestTester) (*BlipTester, error) {
 	bt := &BlipTester{
-		restTester:     rt,
-		useCollections: rt.collectionConfig != useSingleCollectionDefaultOnly,
+		restTester: rt,
+	}
+
+	if !rt.GetDatabase().OnlyDefaultCollection() {
+		bt.useCollections = true
 	}
 
 	// Since blip requests all go over the public handler, wrap the public handler with the httptest server
