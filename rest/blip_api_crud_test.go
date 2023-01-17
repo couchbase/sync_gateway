@@ -57,6 +57,7 @@ func TestBlipPushRevisionInspectChanges(t *testing.T) {
 	changesRequest := blip.NewRequest()
 	changesRequest.SetProfile("changes")
 	changesRequest.SetBody([]byte(`[["1", "foo", "1-abc", false]]`)) // [sequence, docID, revID]
+	bt.addCollectionProperty(changesRequest)
 	sent := bt.sender.Send(changesRequest)
 	assert.True(t, sent)
 	changesResponse := changesRequest.Response()
@@ -86,6 +87,7 @@ func TestBlipPushRevisionInspectChanges(t *testing.T) {
 	changesRequest2 := blip.NewRequest()
 	changesRequest2.SetProfile("changes")
 	changesRequest2.SetBody([]byte(`[["2", "foo", "2-xyz", false]]`)) // [sequence, docID, revID]
+	bt.addCollectionProperty(changesRequest2)
 	sent2 := bt.sender.Send(changesRequest2)
 	assert.True(t, sent2)
 	changesResponse2 := changesRequest2.Response()
@@ -141,6 +143,7 @@ func TestBlipPushRevisionInspectChanges(t *testing.T) {
 	subChangesRequest := blip.NewRequest()
 	subChangesRequest.SetProfile("subChanges")
 	subChangesRequest.Properties["continuous"] = "true"
+	bt.addCollectionProperty(subChangesRequest)
 	sent = bt.sender.Send(subChangesRequest)
 	assert.True(t, sent)
 	// Also expect the "changes" profile handler above to be called back again with an empty request that
@@ -233,6 +236,7 @@ func TestContinuousChangesSubscription(t *testing.T) {
 	subChangesRequest.SetProfile("subChanges")
 	subChangesRequest.Properties["continuous"] = "true"
 	subChangesRequest.Properties["batch"] = "10" // default batch size is 200, lower this to 10 to make sure we get multiple batches
+	bt.addCollectionProperty(subChangesRequest)
 	subChangesRequest.SetCompressed(false)
 	sent := bt.sender.Send(subChangesRequest)
 	assert.True(t, sent)
@@ -375,6 +379,7 @@ func TestBlipOneShotChangesSubscription(t *testing.T) {
 	subChangesRequest.SetProfile("subChanges")
 	subChangesRequest.Properties["continuous"] = "false"
 	subChangesRequest.Properties["batch"] = "10" // default batch size is 200, lower this to 10 to make sure we get multiple batches
+	bt.addCollectionProperty(subChangesRequest)
 	subChangesRequest.SetCompressed(false)
 	sent := bt.sender.Send(subChangesRequest)
 	assert.True(t, sent)
@@ -551,6 +556,7 @@ func TestBlipSubChangesDocIDFilter(t *testing.T) {
 	subChangesRequest.SetProfile("subChanges")
 	subChangesRequest.Properties["continuous"] = "false"
 	subChangesRequest.Properties["batch"] = "10" // default batch size is 200, lower this to 5 to make sure we get multiple batches
+	bt.addCollectionProperty(subChangesRequest)
 	subChangesRequest.SetCompressed(false)
 
 	body := db.SubChangesBody{DocIDs: docIDsExpected}
@@ -607,6 +613,7 @@ func TestProposedChangesNoConflictsMode(t *testing.T) {
 	proposeChangesRequest := blip.NewRequest()
 	proposeChangesRequest.SetProfile("proposeChanges")
 	proposeChangesRequest.SetCompressed(true)
+	bt.addCollectionProperty(proposeChangesRequest)
 
 	// According to proposeChanges spec:
 	// proposedChanges entries are of the form: [docID, revID, serverRevID]
@@ -715,6 +722,7 @@ func TestProposedChangesIncludeConflictingRev(t *testing.T) {
 	proposeChangesRequest.SetProfile("proposeChanges")
 	proposeChangesRequest.SetCompressed(true)
 	proposeChangesRequest.Properties[db.ProposeChangesConflictsIncludeRev] = "true"
+	bt.addCollectionProperty(proposeChangesRequest)
 
 	// proposedChanges entries are of the form: [docID, revID, parentRevID], where parentRevID is optional
 	proposedChanges := make([][]interface{}, 0)
@@ -976,6 +984,7 @@ function(doc, oldDoc) {
 	subChangesRequest.SetProfile("subChanges")
 	subChangesRequest.Properties["continuous"] = "true"
 	subChangesRequest.Properties["batch"] = "10" // default batch size is 200, lower this to 10 to make sure we get multiple batches
+	bt.addCollectionProperty(subChangesRequest)
 	subChangesRequest.SetCompressed(false)
 	sent := bt.sender.Send(subChangesRequest)
 	assert.True(t, sent)
@@ -1103,6 +1112,7 @@ function(doc, oldDoc) {
 	subChangesRequest.SetProfile("subChanges")
 	subChangesRequest.Properties["continuous"] = "true"
 	subChangesRequest.Properties["batch"] = "10" // default batch size is 200, lower this to 10 to make sure we get multiple batches
+	bt.addCollectionProperty(subChangesRequest)
 	subChangesRequest.SetCompressed(false)
 	sent := bt.sender.Send(subChangesRequest)
 	assert.True(t, sent)
@@ -1468,6 +1478,7 @@ func TestCheckpoint(t *testing.T) {
 	request.SetCompressed(true)
 	request.SetProfile("getCheckpoint")
 	request.Properties["client"] = client
+	bt.addCollectionProperty(request)
 	sent := bt.sender.Send(request)
 	if !sent {
 		panic(fmt.Sprintf("Failed to get checkpoint for client: %v", client))
@@ -1484,6 +1495,7 @@ func TestCheckpoint(t *testing.T) {
 	requestSetCheckpoint.SetCompressed(true)
 	requestSetCheckpoint.SetProfile("setCheckpoint")
 	requestSetCheckpoint.Properties["client"] = client
+	bt.addCollectionProperty(requestSetCheckpoint)
 	checkpointBody := db.Body{"Key": "Value"}
 	assert.NoError(t, requestSetCheckpoint.SetJSONBody(checkpointBody))
 	// requestSetCheckpoint.Properties["rev"] = "rev1"
@@ -1501,6 +1513,7 @@ func TestCheckpoint(t *testing.T) {
 	requestGetCheckpoint2.SetCompressed(true)
 	requestGetCheckpoint2.SetProfile("getCheckpoint")
 	requestGetCheckpoint2.Properties["client"] = client
+	bt.addCollectionProperty(requestGetCheckpoint2)
 	sent = bt.sender.Send(requestGetCheckpoint2)
 	if !sent {
 		panic(fmt.Sprintf("Failed to get checkpoint for client: %v", client))
@@ -1546,6 +1559,7 @@ func TestPutInvalidRevSyncFnReject(t *testing.T) {
 	revRequest.Properties["id"] = "foo"
 	revRequest.Properties["rev"] = "1-aaa"
 	revRequest.Properties["deleted"] = "false"
+	bt.addCollectionProperty(revRequest)
 	revRequest.SetBody([]byte(`{"key": "val", "channels": ["CNN"]}`))
 	sent := bt.sender.Send(revRequest)
 	assert.True(t, sent)
@@ -1915,6 +1929,7 @@ func TestBlipNorev(t *testing.T) {
 	norevMsg.SetSequence(db.SequenceID{Seq: 50})
 	norevMsg.SetError("404")
 	norevMsg.SetReason("couldn't send xyz")
+	btc.addCollectionProperty(norevMsg.Message)
 
 	// Couchbase Lite always sends noreply=true for norev messages
 	// but set to false so we can block waiting for a reply
@@ -2153,8 +2168,7 @@ func TestMultipleOutstandingChangesSubscriptions(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
-	bt, err := NewBlipTester(t)
-	require.NoError(t, err, "Error creating BlipTester")
+	bt := NewBlipTesterDefaultCollection(t)
 	defer bt.Close()
 
 	bt.blipContext.HandlerForProfile["changes"] = func(request *blip.Message) {
@@ -2180,6 +2194,7 @@ func TestMultipleOutstandingChangesSubscriptions(t *testing.T) {
 	subChangesRequest.SetProfile("subChanges")
 	subChangesRequest.Properties["continuous"] = "false"
 	subChangesRequest.SetCompressed(false)
+	bt.addCollectionProperty(subChangesRequest)
 	sent := bt.sender.Send(subChangesRequest)
 	require.True(t, sent)
 	subChangesResponse := subChangesRequest.Response()
@@ -2200,6 +2215,7 @@ func TestMultipleOutstandingChangesSubscriptions(t *testing.T) {
 	subChangesRequest = blip.NewRequest()
 	subChangesRequest.SetProfile("subChanges")
 	subChangesRequest.Properties["continuous"] = "true"
+	bt.addCollectionProperty(subChangesRequest)
 	subChangesRequest.SetCompressed(false)
 	sent = bt.sender.Send(subChangesRequest)
 	require.True(t, sent)
@@ -2222,6 +2238,7 @@ func TestMultipleOutstandingChangesSubscriptions(t *testing.T) {
 	subChangesRequest.SetProfile("subChanges")
 	subChangesRequest.Properties["continuous"] = "true"
 	subChangesRequest.SetCompressed(false)
+	bt.addCollectionProperty(subChangesRequest)
 	sent = bt.sender.Send(subChangesRequest)
 	require.True(t, sent)
 	subChangesResponse = subChangesRequest.Response()
@@ -2241,6 +2258,7 @@ func TestMultipleOutstandingChangesSubscriptions(t *testing.T) {
 	subChangesRequest.SetProfile("subChanges")
 	subChangesRequest.Properties["continuous"] = "false"
 	subChangesRequest.SetCompressed(false)
+	bt.addCollectionProperty(subChangesRequest)
 	sent = bt.sender.Send(subChangesRequest)
 	require.True(t, sent)
 	subChangesResponse = subChangesRequest.Response()
@@ -2472,6 +2490,7 @@ func TestSendRevAsReadOnlyGuest(t *testing.T) {
 	revRequest.Properties["deleted"] = "false"
 	revRequest.Properties["id"] = "writeGuest"
 	revRequest.Properties["rev"] = "1-abc"
+	bt.addCollectionProperty(revRequest)
 	revRequest.SetBody([]byte(`{"key": "val"}`))
 
 	sent := bt.sender.Send(revRequest)
@@ -2494,6 +2513,7 @@ func TestSendRevAsReadOnlyGuest(t *testing.T) {
 	revRequest.Properties["deleted"] = "false"
 	revRequest.Properties["id"] = "readOnlyGuest"
 	revRequest.Properties["rev"] = "1-abc"
+	bt.addCollectionProperty(revRequest)
 	revRequest.SetBody([]byte(`{"key": "val"}`))
 
 	sent = bt.sender.Send(revRequest)

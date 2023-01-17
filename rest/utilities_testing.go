@@ -1373,6 +1373,7 @@ func (bt *BlipTester) SetCheckpoint(client string, checkpointRev string, body []
 	scm.SetClient(client)
 	scm.SetRev(checkpointRev)
 	scm.SetBody(body)
+	bt.addCollectionProperty(scm.Message)
 
 	sent = bt.sender.Send(scm.Message)
 	if !sent {
@@ -1532,6 +1533,7 @@ func (bt *BlipTester) GetDocAtRev(requestedDocID, requestedDocRev string) (resul
 	subChangesRequest := blip.NewRequest()
 	subChangesRequest.SetProfile("subChanges")
 	subChangesRequest.Properties["continuous"] = "false"
+	bt.addCollectionProperty(subChangesRequest)
 
 	sent := bt.sender.Send(subChangesRequest)
 	if !sent {
@@ -1805,6 +1807,7 @@ func (bt *BlipTester) PullDocs() (docs map[string]RestDocument) {
 	subChangesRequest := blip.NewRequest()
 	subChangesRequest.SetProfile("subChanges")
 	subChangesRequest.Properties["continuous"] = "false"
+	bt.addCollectionProperty(subChangesRequest)
 
 	sent := bt.sender.Send(subChangesRequest)
 	if !sent {
@@ -1842,6 +1845,7 @@ func (bt *BlipTester) SubscribeToChanges(continuous bool, changes chan<- *blip.M
 	// Send subChanges to subscribe to changes, which will cause the "changes" profile handler above to be called back
 	subChangesRequest := blip.NewRequest()
 	subChangesRequest.SetProfile("subChanges")
+	bt.addCollectionProperty(subChangesRequest)
 	switch continuous {
 	case true:
 		subChangesRequest.Properties["continuous"] = "true"
