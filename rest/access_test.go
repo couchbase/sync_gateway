@@ -954,7 +954,7 @@ func TestChannelAccessChanges(t *testing.T) {
 	dbc := rt.ServerContext().Database(ctx, "db")
 	database, _ := db.GetDatabase(dbc, nil)
 
-	collectionWithUser := database.GetSingleDatabaseCollectionWithUser()
+	collectionWithUser := db.GetSingleDatabaseCollectionWithUser(t, database)
 
 	changed, err := database.UpdateSyncFun(ctx, `function(doc) {access("alice", "beta");channel("beta");}`)
 	assert.NoError(t, err)
