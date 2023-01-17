@@ -149,22 +149,12 @@ func TestBasicAuthWithSessionCookie(t *testing.T) {
 	collection := rt.GetSingleTestDatabaseCollection()
 
 	// Create two users
-	name := "bernard"
-	pass := "letmein"
-	bernard := auth.PrincipalConfig{
-		Name:     &name,
-		Password: &pass,
-	}
-	payload, err := AdminChannelGrant(bernard, collection, []string{"bernard"})
+	payload, err := GetUserPayload("bernard", "letmein", "", collection, []string{"bernard"}, nil)
 	require.NoError(t, err)
 	response := rt.SendAdminRequest("PUT", "/db/_user/bernard", payload)
 	RequireStatus(t, response, 201)
-	name = "manny"
-	manny := auth.PrincipalConfig{
-		Name:     &name,
-		Password: &pass,
-	}
-	payload, err = AdminChannelGrant(manny, collection, []string{"manny"})
+
+	payload, err = GetUserPayload("manny", "letmein", "", collection, []string{"manny"}, nil)
 	require.NoError(t, err)
 	response = rt.SendAdminRequest("PUT", "/db/_user/manny", payload)
 	RequireStatus(t, response, 201)
@@ -207,13 +197,7 @@ func TestSessionFail(t *testing.T) {
 	collection := rt.GetSingleTestDatabaseCollection()
 
 	// Create user
-	name := "user1"
-	pass := "letmein"
-	user1 := auth.PrincipalConfig{
-		Name:     &name,
-		Password: &pass,
-	}
-	payload, err := AdminChannelGrant(user1, collection, []string{"user1"})
+	payload, err := GetUserPayload("user1", "letmein", "", collection, []string{"user1"}, nil)
 	require.NoError(t, err)
 	response := rt.SendAdminRequest("PUT", "/db/_user/user1", payload)
 	RequireStatus(t, response, http.StatusCreated)

@@ -25,7 +25,6 @@ import (
 
 	"github.com/couchbase/go-blip"
 	"github.com/couchbase/gocb/v2"
-	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/stretchr/testify/assert"
@@ -854,8 +853,7 @@ function(doc, oldDoc) {
 	userWaiter := userDb.NewUserWaiter()
 
 	// Update the user to grant them access to ABC
-	userConfig := auth.PrincipalConfig{}
-	payload, err := AdminChannelGrant(userConfig, collection, []string{"ABC"})
+	payload, err := GetUserPayload("user1", "", "", collection, []string{"ABC"}, nil)
 	require.NoError(t, err)
 	response := rt.SendAdminRequest("PUT", "/db/_user/user1", payload)
 	RequireStatus(t, response, 200)
@@ -1435,8 +1433,7 @@ func TestAccessGrantViaAdminApi(t *testing.T) {
 	)
 
 	// Update the user doc to grant access to PBS
-	userConfig := auth.PrincipalConfig{}
-	payload, err := AdminChannelGrant(userConfig, collection, []string{"user1", "PBS"})
+	payload, err := GetUserPayload("user1", "", "", collection, []string{"user1", "PBS"}, nil)
 	require.NoError(t, err)
 	response := bt.restTester.SendAdminRequest("PUT", "/db/_user/user1", payload)
 	RequireStatus(t, response, 200)
@@ -1960,11 +1957,7 @@ func TestRemovedMessageWithAlternateAccess(t *testing.T) {
 	defer rt.Close()
 	collection := rt.GetSingleTestDatabaseCollection()
 
-	pass := "test"
-	userConfig := auth.PrincipalConfig{
-		Password: &pass,
-	}
-	payload, err := AdminChannelGrant(userConfig, collection, []string{"A", "B"})
+	payload, err := GetUserPayload("user", "test", "", collection, []string{"A", "B"}, nil)
 	require.NoError(t, err)
 	resp := rt.SendAdminRequest("PUT", "/db/_user/user", payload)
 	RequireStatus(t, resp, http.StatusCreated)
@@ -2073,11 +2066,7 @@ func TestRemovedMessageWithAlternateAccessAndChannelFilteredReplication(t *testi
 	defer rt.Close()
 	collection := rt.GetSingleTestDatabaseCollection()
 
-	pass := "test"
-	userConfig := auth.PrincipalConfig{
-		Password: &pass,
-	}
-	payload, err := AdminChannelGrant(userConfig, collection, []string{"A", "B"})
+	payload, err := GetUserPayload("user", "test", "", collection, []string{"A", "B"}, nil)
 	resp := rt.SendAdminRequest("PUT", "/db/_user/user", payload)
 	RequireStatus(t, resp, http.StatusCreated)
 

@@ -58,15 +58,10 @@ func TestUsersAPI(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, 0, len(responseUsers))
 
-	pass := "letmein"
-	userConfig := auth.PrincipalConfig{
-		Password: &pass,
-	}
-
 	// Test for user counts going from 1 to a few multiples of QueryPaginationLimit to check boundary conditions
 	for i := 1; i < 13; i++ {
 		userName := fmt.Sprintf("user%d", i)
-		payload, err = AdminChannelGrant(userConfig, collection, []string{"foo", "bar"})
+		payload, err = GetUserPayload("", "letmein", "", collection, []string{"foo", "bar"}, nil)
 		require.NoError(t, err)
 		response := rt.SendAdminRequest("PUT", "/db/_user/"+userName, payload)
 		RequireStatus(t, response, 201)
@@ -199,14 +194,10 @@ func TestUsersAPIDetailsWithLimit(t *testing.T) {
 	assert.Equal(t, 0, len(responseUsers))
 
 	// Create users
-	pass := "letmein"
-	userConfig := auth.PrincipalConfig{
-		Password: &pass,
-	}
 	numUsers := 12
 	for i := 1; i <= numUsers; i++ {
 		userName := fmt.Sprintf("user%d", i)
-		payload, err = AdminChannelGrant(userConfig, collection, []string{"foo", "bar"})
+		payload, err = GetUserPayload("", "letmein", "", collection, []string{"foo", "bar"}, nil)
 		require.NoError(t, err)
 		response := rt.SendAdminRequest("PUT", "/db/_user/"+userName, payload)
 		RequireStatus(t, response, 201)
@@ -288,13 +279,8 @@ func TestUserAPI(t *testing.T) {
 	s := collection.ScopeName()
 
 	RequireStatus(t, rt.SendAdminRequest("GET", "/db/_user/snej", ""), 404)
-	email := "jens@couchbase.com"
-	pass := "letmein"
-	userConfig := auth.PrincipalConfig{
-		Email:    &email,
-		Password: &pass,
-	}
-	payload, err := AdminChannelGrant(userConfig, collection, []string{"foo", "bar"})
+
+	payload, err := GetUserPayload("", "letmein", "jens@couchbase.com", collection, []string{"foo", "bar"}, nil)
 	require.NoError(t, err)
 	response := rt.SendAdminRequest("PUT", "/db/_user/snej", payload)
 	RequireStatus(t, response, 201)
@@ -330,9 +316,7 @@ func TestUserAPI(t *testing.T) {
 	assert.True(t, user.Authenticate("letmein"))
 
 	// Change the password and verify it:
-	pass = "123"
-	userConfig.Password = &pass
-	payload, err = AdminChannelGrant(userConfig, collection, []string{"foo", "bar"})
+	payload, err = GetUserPayload("", "123", "", collection, []string{"foo", "bar"}, nil)
 	require.NoError(t, err)
 	response = rt.SendAdminRequest("PUT", "/db/_user/snej", payload)
 	RequireStatus(t, response, 200)
@@ -345,12 +329,7 @@ func TestUserAPI(t *testing.T) {
 	RequireStatus(t, rt.SendAdminRequest("GET", "/db/_user/snej", ""), 404)
 
 	// POST a user
-	name := "snej"
-	pass = "letmein"
-	userConfig.Name = &name
-	userConfig.Password = &pass
-	userConfig.Email = nil
-	payload, err = AdminChannelGrant(userConfig, collection, []string{"foo", "bar"})
+	payload, err = GetUserPayload("snej", "letmein", "", collection, []string{"foo", "bar"}, nil)
 	require.NoError(t, err)
 	response = rt.SendAdminRequest("POST", "/db/_user", payload)
 	RequireStatus(t, response, 301)
@@ -365,17 +344,13 @@ func TestUserAPI(t *testing.T) {
 
 	// Create a role
 	RequireStatus(t, rt.SendAdminRequest("GET", "/db/_role/hipster", ""), 404)
-	roleConfig := auth.PrincipalConfig{}
-	payload, err = AdminChannelGrant(roleConfig, collection, []string{"fedoras", "fixies"})
+	payload, err = GetRolePayload("", "", collection, []string{"fedoras", "fixies"})
 	require.NoError(t, err)
 	response = rt.SendAdminRequest("PUT", "/db/_role/hipster", payload)
 	RequireStatus(t, response, 201)
 
 	// Give the user that role
-	userConfig1 := auth.PrincipalConfig{
-		ExplicitRoleNames: base.SetOf("hipster"),
-	}
-	payload, err = AdminChannelGrant(userConfig1, collection, []string{"foo", "bar"})
+	payload, err = GetUserPayload("", "", "", collection, []string{"foo", "bar"}, []string{"hipster"})
 	require.NoError(t, err)
 	response = rt.SendAdminRequest("PUT", "/db/_user/snej", payload)
 	RequireStatus(t, response, 200)
@@ -394,12 +369,7 @@ func TestUserAPI(t *testing.T) {
 	RequireStatus(t, rt.SendAdminRequest("DELETE", "/db/_user/snej", ""), 200)
 
 	// POST a user with URL encoded '|' in name see #2870
-	name = "0%7C59"
-	urlConfig := auth.PrincipalConfig{
-		Name:     &name,
-		Password: &pass,
-	}
-	payload, err = AdminChannelGrant(urlConfig, collection, []string{"foo", "bar"})
+	payload, err = GetUserPayload("0%7C59", "letmein", "", collection, []string{"foo", "bar"}, nil)
 	require.NoError(t, err)
 	RequireStatus(t, rt.SendAdminRequest("POST", "/db/_user/", payload), 201)
 
@@ -416,9 +386,7 @@ func TestUserAPI(t *testing.T) {
 	RequireStatus(t, rt.SendAdminRequest("DELETE", "/db/_user/0%257C59", ""), 200)
 
 	// POST a user with URL encoded '|' and non-encoded @ in name see #2870
-	name = "0%7C@59"
-	urlConfig.Name = &name
-	payload, err = AdminChannelGrant(urlConfig, collection, []string{"foo", "bar"})
+	payload, err = GetUserPayload("0%7C@59", "letmein", "", collection, []string{"foo", "bar"}, nil)
 	require.NoError(t, err)
 	RequireStatus(t, rt.SendAdminRequest("POST", "/db/_user/", payload), 201)
 
@@ -478,7 +446,6 @@ func TestUserAndRoleResponseContentType(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 	collection := rt.GetSingleTestDatabaseCollection()
-	userConfig := auth.PrincipalConfig{}
 
 	// Create a user 'christopher' through PUT request with empty request body.
 	var responseBody db.Body
@@ -494,22 +461,14 @@ func TestUserAndRoleResponseContentType(t *testing.T) {
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &responseBody))
 
 	// Create a user 'alice' through PUT request.
-	email := "alice@couchbase.com"
-	pass := "cGFzc3dvcmQ="
-	userConfig.Email = &email
-	userConfig.Password = &pass
-	payload, err := AdminChannelGrant(userConfig, collection, []string{"foo", "bar"})
+	payload, err := GetUserPayload("", "cGFzc3dvcmQ=", "alice@couchbase.com", collection, []string{"foo", "bar"}, nil)
 	require.NoError(t, err)
 	response = rt.SendAdminRequest(http.MethodPut, "/db/_user/alice", payload)
 	assert.Equal(t, http.StatusCreated, response.Code)
 	assert.Empty(t, response.Header().Get("Content-Type"))
 
 	// Create another user 'bob' through POST request.
-	email = "bob@couchbase.com"
-	pass = "cGFzc3dvcmQ="
-	name := "bob"
-	userConfig.Name = &name
-	payload, err = AdminChannelGrant(userConfig, collection, []string{"foo", "bar"})
+	payload, err = GetUserPayload("bob", "cGFzc3dvcmQ=", "bob@couchbase.com", collection, []string{"foo", "bar"}, nil)
 	require.NoError(t, err)
 	response = rt.SendAdminRequest(http.MethodPost, "/db/_user/", payload)
 	assert.Equal(t, http.StatusCreated, response.Code)
@@ -584,19 +543,14 @@ func TestUserAndRoleResponseContentType(t *testing.T) {
 	assert.Empty(t, response.Header().Get("Content-Type"))
 
 	// Create a role 'developer' through POST request
-	name = "developer"
-	roleConfig := auth.PrincipalConfig{
-		Name: &name,
-	}
-	payload, err = AdminChannelGrant(roleConfig, collection, []string{"channel1", "channel2"})
+	payload, err = GetRolePayload("developer", "", collection, []string{"channel1", "channel2"})
 	require.NoError(t, err)
 	response = rt.SendAdminRequest(http.MethodPost, "/db/_role/", payload)
 	assert.Equal(t, http.StatusCreated, response.Code)
 	assert.Empty(t, response.Header().Get("Content-Type"))
 
 	// Create another role 'coder' through PUT request.
-	roleConfig.Name = nil
-	payload, err = AdminChannelGrant(roleConfig, collection, []string{"channel3", "channel4"})
+	payload, err = GetRolePayload("", "", collection, []string{"channel3", "channel4"})
 	require.NoError(t, err)
 	response = rt.SendAdminRequest(http.MethodPut, "/db/_role/coder", payload)
 	assert.Equal(t, http.StatusCreated, response.Code)
@@ -719,8 +673,7 @@ func TestObtainUserChannelsForDeletedRoleCasFail(t *testing.T) {
 			s := collection.ScopeName()
 
 			// Create role
-			roleConfig := auth.PrincipalConfig{}
-			payload, err := AdminChannelGrant(roleConfig, collection, []string{"channel"})
+			payload, err := GetRolePayload("", "", collection, []string{"channel"})
 			require.NoError(t, err)
 			resp := rt.SendAdminRequest("PUT", "/db/_role/role", payload)
 			RequireStatus(t, resp, http.StatusCreated)
@@ -776,38 +729,26 @@ func TestUserPasswordValidation(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 	collection := rt.GetSingleTestDatabaseCollection()
-	email := "jens@couchbase.com"
-	pass := "letmein"
-	userConfig := auth.PrincipalConfig{
-		Password: &pass,
-		Email:    &email,
-	}
 
-	payload, err := AdminChannelGrant(userConfig, collection, []string{"foo", "bar"})
+	payload, err := GetUserPayload("", "letmein", "jens@couchbase.com", collection, []string{"foo", "bar"}, nil)
 	require.NoError(t, err)
 	response := rt.SendAdminRequest("PUT", "/db/_user/snej", payload)
 	RequireStatus(t, response, 201)
 
 	// PUT a user without a password, should fail
-	email = "ajres@couchbase.com"
-	userConfig.Email = &email
-	userConfig.Password = nil
-	payload, err = AdminChannelGrant(userConfig, collection, []string{"foo", "bar"})
+	payload, err = GetUserPayload("", "", "ajres@couchbase.com", collection, []string{"foo", "bar"}, nil)
 	require.NoError(t, err)
 	response = rt.SendAdminRequest("PUT", "/db/_user/ajresnopassword", payload)
 	RequireStatus(t, response, 400)
 
 	// POST a user without a password, should fail
-	name := "ajresnopassword"
-	userConfig.Name = &name
-	payload, err = AdminChannelGrant(userConfig, collection, []string{"foo", "bar"})
+	payload, err = GetUserPayload("ajresnopassword", "", "", collection, []string{"foo", "bar"}, nil)
 	require.NoError(t, err)
 	response = rt.SendAdminRequest("POST", "/db/_user/", payload)
 	RequireStatus(t, response, 400)
 
 	// PUT a user with a two character password, should fail
-	pass = "in"
-	payload, err = AdminChannelGrant(userConfig, collection, []string{"foo", "bar"})
+	payload, err = GetUserPayload("ajresnopassword", "in", "", collection, []string{"foo", "bar"}, nil)
 	require.NoError(t, err)
 	response = rt.SendAdminRequest("PUT", "/db/_user/ajresnopassword", payload)
 	RequireStatus(t, response, 400)
@@ -817,9 +758,7 @@ func TestUserPasswordValidation(t *testing.T) {
 	RequireStatus(t, response, 400)
 
 	// PUT a user with a zero character password, should fail
-	pass = ""
-	userConfig.Password = &pass
-	payload, err = AdminChannelGrant(userConfig, collection, []string{"foo", "bar"})
+	payload, err = GetUserPayload("ajresnopassword", "", "", collection, []string{"foo", "bar"}, nil)
 	require.NoError(t, err)
 	response = rt.SendAdminRequest("PUT", "/db/_user/ajresnopassword", payload)
 	RequireStatus(t, response, 400)
@@ -967,14 +906,8 @@ function(doc, oldDoc) {
 		&rtConfig)
 	defer rt.Close()
 	collection := rt.GetSingleTestDatabaseCollection()
-	name := "bernard"
-	pass := "letmein"
-	userConfig := auth.PrincipalConfig{
-		Name:     &name,
-		Password: &pass,
-	}
 
-	payload, err := AdminChannelGrant(userConfig, collection, []string{"profile-bernard"})
+	payload, err := GetUserPayload("bernard", "letmein", "", collection, []string{"profile-bernard"}, nil)
 	require.NoError(t, err)
 	response := rt.SendAdminRequest("PUT", "/{{.db}}/_user/bernard", payload)
 	RequireStatus(t, response, 201)

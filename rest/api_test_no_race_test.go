@@ -19,7 +19,6 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
@@ -93,13 +92,7 @@ func TestChangesNotifyChannelFilter(t *testing.T) {
 	collection := rt.GetSingleTestDatabaseCollection()
 
 	// Create user:
-	name := "bernard"
-	password := "letmein"
-	bernard := auth.PrincipalConfig{
-		Name:     &name,
-		Password: &password,
-	}
-	payload, err := AdminChannelGrant(bernard, collection, []string{"ABC"})
+	payload, err := GetUserPayload("bernard", "letmein", "", collection, []string{"ABC"}, nil)
 	require.NoError(t, err)
 	userResponse := rt.SendAdminRequest("PUT", "/db/_user/bernard", payload)
 	RequireStatus(t, userResponse, 201)

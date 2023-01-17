@@ -397,11 +397,7 @@ func TestForceAPIForbiddenErrors(t *testing.T) {
 			c := collection.Name()
 			s := collection.ScopeName()
 
-			pass := "password"
-			userConfig := auth.PrincipalConfig{
-				Password: &pass,
-			}
-			payload, err := AdminChannelGrant(userConfig, collection, []string{"chan"})
+			payload, err := GetUserPayload("Perms", "password", "", collection, []string{"chan"}, nil)
 			require.NoError(t, err)
 			resp := rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/Perms", payload)
 			RequireStatus(t, resp, http.StatusOK)

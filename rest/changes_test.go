@@ -18,7 +18,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/stretchr/testify/assert"
@@ -105,13 +104,7 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 	assert.NoError(t, a.Save(guest))
 
 	// Create user1
-	email := "user1@couchbase.com"
-	pass := "letmein"
-	userConfig := auth.PrincipalConfig{
-		Password: &pass,
-		Email:    &email,
-	}
-	payload, err := AdminChannelGrant(userConfig, collection, []string{"alpha"})
+	payload, err := GetUserPayload("user1", "letmein", "user1@couchbase.com", collection, []string{"alpha"}, nil)
 	require.NoError(t, err)
 	response := rt.SendAdminRequest("PUT", "/db/_user/user1", payload)
 	RequireStatus(t, response, 201)
@@ -137,9 +130,7 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 	assert.Equal(t, "doc98", changesResults.Results[49].ID)
 
 	// Create user2
-	email = "user2@couchbase.com"
-	userConfig.Email = &email
-	payload, err = AdminChannelGrant(userConfig, collection, []string{"alpha"})
+	payload, err = GetUserPayload("user2", "letmein", "user2@couchbase.com", collection, []string{"alpha"}, nil)
 	require.NoError(t, err)
 	response = rt.SendAdminRequest("PUT", "/db/_user/user2", payload)
 	RequireStatus(t, response, 201)
@@ -151,9 +142,7 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 	assert.Equal(t, "doc99", changesResults.Results[99].ID)
 
 	// Create user3
-	email = "user3@couchbase.com"
-	userConfig.Email = &email
-	payload, err = AdminChannelGrant(userConfig, collection, []string{"alpha"})
+	payload, err = GetUserPayload("user3", "letmein", "user3@couchbase.com", collection, []string{"alpha"}, nil)
 	response = rt.SendAdminRequest("PUT", "/db/_user/user3", payload)
 	RequireStatus(t, response, 201)
 
@@ -180,9 +169,7 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 	assert.Equal(t, "doc99", changesResults.Results[49].ID)
 
 	// Create user4
-	email = "user4@couchbase.com"
-	userConfig.Email = &email
-	payload, err = AdminChannelGrant(userConfig, collection, []string{"alpha"})
+	payload, err = GetUserPayload("user4", "letmein", "user4@couchbase.com", collection, []string{"alpha"}, nil)
 	require.NoError(t, err)
 	response = rt.SendAdminRequest("PUT", "/db/_user/user4", payload)
 	RequireStatus(t, response, 201)

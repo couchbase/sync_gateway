@@ -19,7 +19,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/stretchr/testify/assert"
@@ -937,23 +936,14 @@ func TestResyncRegenerateSequences(t *testing.T) {
 		docSeqArr = append(docSeqArr, body["_sync"].(map[string]interface{})["sequence"].(float64))
 	}
 
-	role := "role1"
-	princConfig := auth.PrincipalConfig{
-		Name: &role,
-	}
-	payload, err := AdminChannelGrant(princConfig, collection, []string{"channel_1"})
+	payload, err := GetRolePayload("role1", "", collection, []string{"channel_1"})
 	require.NoError(t, err)
-	response = rt.SendAdminRequest("PUT", fmt.Sprintf("/{{.keyspace}}/_role/%s", role), payload)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/_role/role1", payload)
 	RequireStatus(t, response, http.StatusCreated)
 
-	username := "user1"
-	pass := "letmein"
-	princConfig.Name = &username
-	princConfig.Password = &pass
-	princConfig.ExplicitRoleNames = base.SetOf("role1")
-	payload, err = AdminChannelGrant(princConfig, collection, []string{"channel_1"})
+	payload, err = GetUserPayload("user1", "letmein", "", collection, []string{"channel_1"}, []string{"role1"})
 	require.NoError(t, err)
-	response = rt.SendAdminRequest("PUT", fmt.Sprintf("/db/_user/%s", username), payload)
+	response = rt.SendAdminRequest("PUT", "/db/_user/user1", payload)
 	RequireStatus(t, response, http.StatusCreated)
 
 	_, err = rt.MetadataStore().Get(base.RolePrefix+"role1", &body)

@@ -31,8 +31,7 @@ func TestRolePurge(t *testing.T) {
 	collection := rt.GetSingleTestDatabaseCollection()
 
 	// Create role
-	roleConfig := auth.PrincipalConfig{}
-	payload, err := AdminChannelGrant(roleConfig, collection, []string{"channel"})
+	payload, err := GetRolePayload("", "", collection, []string{"channel"})
 	require.NoError(t, err)
 	resp := rt.SendAdminRequest("PUT", "/db/_role/role", payload)
 	RequireStatus(t, resp, http.StatusCreated)
@@ -51,7 +50,7 @@ func TestRolePurge(t *testing.T) {
 	assert.NotNil(t, role)
 
 	// Re-create role
-	payload, err = AdminChannelGrant(roleConfig, collection, []string{"channel"})
+	payload, err = GetRolePayload("", "", collection, []string{"channel"})
 	resp = rt.SendAdminRequest("PUT", "/db/_role/role", payload)
 	RequireStatus(t, resp, http.StatusCreated)
 
@@ -73,15 +72,15 @@ func TestRoleAPI(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 	collection := rt.GetSingleTestDatabaseCollection()
-	hipsterConfig := auth.PrincipalConfig{}
-	payload, err := AdminChannelGrant(hipsterConfig, collection, []string{"fedoras", "fixies"})
+	payload, err := GetRolePayload("", "", collection, []string{"fedoras", "fixies"})
 	require.NoError(t, err)
 
 	// PUT a role
 	RequireStatus(t, rt.SendAdminRequest("GET", "/db/_role/hipster", ""), 404)
 	response := rt.SendAdminRequest("PUT", "/db/_role/hipster", payload)
 	RequireStatus(t, response, 201)
-	payload, err = AdminChannelGrant(hipsterConfig, collection, []string{"fedoras", "fixies"})
+	payload, err = GetRolePayload("", "", collection, []string{"fedoras", "fixies"})
+	require.NoError(t, err)
 	response = rt.SendAdminRequest("PUT", "/db/_role/testdeleted", payload)
 	RequireStatus(t, response, 201)
 	RequireStatus(t, rt.SendAdminRequest("DELETE", "/db/_role/testdeleted", ""), 200)
@@ -104,9 +103,7 @@ func TestRoleAPI(t *testing.T) {
 	RequireStatus(t, rt.SendAdminRequest("GET", "/db/_role/hipster", ""), 404)
 
 	// POST a role
-	name := "hipster"
-	hipsterConfig.Name = &name
-	payload, err = AdminChannelGrant(hipsterConfig, collection, []string{"fedoras", "fixies"})
+	payload, err = GetRolePayload("hipster", "", collection, []string{"fedoras", "fixies"})
 	require.NoError(t, err)
 	response = rt.SendAdminRequest("POST", "/db/_role", payload)
 	RequireStatus(t, response, 301)
@@ -168,8 +165,7 @@ func TestFunkyRoleNames(t *testing.T) {
 			require.NoError(t, a.Save(user))
 
 			// Create role
-			role := auth.PrincipalConfig{}
-			payload, err := AdminChannelGrant(role, collection, []string{"testchannel"})
+			payload, err := GetRolePayload("", "", collection, []string{"testchannel"})
 			require.NoError(t, err)
 			response := rt.SendAdminRequest("PUT", fmt.Sprintf("/db/_role/%s", url.PathEscape(tc.RoleName)), payload)
 			RequireStatus(t, response, 201)
@@ -263,11 +259,7 @@ func TestRoleAssignmentBeforeUserExists(t *testing.T) {
 	assert.NoError(t, err)
 
 	// POST a role
-	name := "role1"
-	role1 := auth.PrincipalConfig{
-		Name: &name,
-	}
-	payload, err := AdminChannelGrant(role1, collection, []string{"chan1"})
+	payload, err := GetRolePayload("role1", "", collection, []string{"chan1"})
 	require.NoError(t, err)
 	response := rt.SendAdminRequest("POST", "/db/_role/", payload)
 	RequireStatus(t, response, 201)
@@ -322,32 +314,17 @@ func TestRoleAccessChanges(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Create users:
-	name := "alice"
-	pass := "letmein"
-	aliceConfig := auth.PrincipalConfig{
-		Name:     &name,
-		Password: &pass,
-	}
-	payload, err := AdminChannelGrant(aliceConfig, collection, []string{"alpha"})
+	payload, err := GetUserPayload("alice", "letmein", "", collection, []string{"alpha"}, nil)
 	require.NoError(t, err)
 	response := rt.SendAdminRequest("PUT", "/db/_user/alice", payload)
 	RequireStatus(t, response, 201)
 
-	name = "zegpold"
-	zegpoldConfig := auth.PrincipalConfig{
-		Name:     &name,
-		Password: &pass,
-	}
-	payload, err = AdminChannelGrant(zegpoldConfig, collection, []string{"beta"})
+	payload, err = GetUserPayload("zegpold", "letmein", "", collection, []string{"beta"}, nil)
 	require.NoError(t, err)
 	response = rt.SendAdminRequest("PUT", "/db/_user/zegpold", payload)
 	RequireStatus(t, response, 201)
 
-	name = "hipster"
-	hipsterConfig := auth.PrincipalConfig{
-		Name: &name,
-	}
-	payload, err = AdminChannelGrant(hipsterConfig, collection, []string{"gamma"})
+	payload, err = GetRolePayload("hipster", "", collection, []string{"gamma"})
 	require.NoError(t, err)
 	response = rt.SendAdminRequest("PUT", "/db/_role/hipster", payload)
 	RequireStatus(t, response, 201)

@@ -1388,27 +1388,57 @@ func (bt *BlipTester) SendRev(docId, docRev string, body []byte, properties blip
 
 }
 
-// AdminChannelGrant takes a set of channels and will allocate the channels to user/role based on whether you are using named collections or not
-func AdminChannelGrant(princ auth.PrincipalConfig, collection *db.DatabaseCollection, adminChannels []string) (string, error) {
-	collectionName := collection.Name()
-	scopeName := collection.ScopeName()
-
-	if base.IsDefaultCollection(scopeName, collectionName) {
-		if len(adminChannels) == 0 {
-			princ.ExplicitChannels = base.SetOf("[]")
-		} else {
-			princ.ExplicitChannels = base.SetFromArray(adminChannels)
-		}
-	} else {
-		princ.SetExplicitChannels(scopeName, collectionName, adminChannels...)
+func GetUserPayload(username, password, email string, collection *db.DatabaseCollection, chans, roles []string) (string, error) {
+	config := auth.PrincipalConfig{}
+	if username != "" {
+		config.Name = &username
 	}
-
-	payload, err := json.Marshal(princ)
+	if password != "" {
+		config.Password = &password
+	}
+	if email != "" {
+		config.Email = &email
+	}
+	if len(roles) != 0 {
+		config.ExplicitRoleNames = base.SetOf(roles...)
+	}
+	marshalledConfig, err := addChannelsToPrincipal(config, collection, chans)
 	if err != nil {
 		return "", err
 	}
+	return string(marshalledConfig), nil
+}
 
-	return string(payload), nil
+func GetRolePayload(roleName, password string, collection *db.DatabaseCollection, chans []string) (string, error) {
+	config := auth.PrincipalConfig{}
+	if roleName != "" {
+		config.Name = &roleName
+	}
+	if password != "" {
+		config.Password = &password
+	}
+	marshalledConfig, err := addChannelsToPrincipal(config, collection, chans)
+	if err != nil {
+		return "", err
+	}
+	return string(marshalledConfig), nil
+}
+
+func addChannelsToPrincipal(config auth.PrincipalConfig, collection *db.DatabaseCollection, chans []string) ([]byte, error) {
+	if base.IsDefaultCollection(collection.ScopeName(), collection.Name()) {
+		if len(chans) == 0 {
+			config.ExplicitChannels = base.SetOf("[]")
+		} else {
+			config.ExplicitChannels = base.SetFromArray(chans)
+		}
+	} else {
+		config.SetExplicitChannels(collection.ScopeName(), collection.Name(), chans...)
+	}
+	payload, err := json.Marshal(config)
+	if err != nil {
+		return []byte{}, err
+	}
+	return payload, nil
 }
 
 func getChangesHandler(changesFinishedWg, revsFinishedWg *sync.WaitGroup) func(request *blip.Message) {

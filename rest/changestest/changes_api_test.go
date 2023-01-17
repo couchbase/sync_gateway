@@ -20,7 +20,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
@@ -340,13 +339,7 @@ func postChangesSince(t *testing.T, rt *rest.RestTester) {
 	collection := rt.GetSingleTestDatabaseCollection()
 
 	// Create user
-	email := "bernard@bb.com"
-	pass := "letmein"
-	userConfig := auth.PrincipalConfig{
-		Password: &pass,
-		Email:    &email,
-	}
-	payload, err := rest.AdminChannelGrant(userConfig, collection, []string{"PBS"})
+	payload, err := rest.GetUserPayload("", "letmein", "bernard@bb.com", collection, []string{"PBS"}, nil)
 	require.NoError(t, err)
 	response := rt.SendAdminRequest("PUT", "/db/_user/bernard", payload)
 	rest.RequireStatus(t, response, 201)
@@ -512,8 +505,7 @@ func TestPostChangesAdminChannelGrant(t *testing.T) {
 	require.Len(t, changes.Results, 1)
 
 	// Update the user doc to grant access to PBS
-	userConfig := auth.PrincipalConfig{}
-	payload, err := rest.AdminChannelGrant(userConfig, collection, []string{"ABC", "PBS"})
+	payload, err := rest.GetUserPayload("", "", "", collection, []string{"ABC", "PBS"}, nil)
 	require.NoError(t, err)
 	response = rt.SendAdminRequest("PUT", "/db/_user/bernard", payload)
 	rest.RequireStatus(t, response, 200)
@@ -651,9 +643,8 @@ func TestPostChangesAdminChannelGrantRemoval(t *testing.T) {
 	}
 
 	// Update the user doc to grant access to PBS, HBO in addition to ABC
-	userConfig := auth.PrincipalConfig{}
 	require.NoError(t, err)
-	payload, err := rest.AdminChannelGrant(userConfig, collection, []string{"ABC", "PBS", "HBO"})
+	payload, err := rest.GetUserPayload("", "", "", collection, []string{"ABC", "PBS", "HBO"}, nil)
 	require.NoError(t, err)
 	response := rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/bernard", payload)
 	rest.RequireStatus(t, response, http.StatusOK)
@@ -756,8 +747,7 @@ func TestPostChangesAdminChannelGrantRemovalWithLimit(t *testing.T) {
 	cacheWaiter.AddAndWait(1)
 
 	// Grant user access to channel PBS
-	userConfig := auth.PrincipalConfig{}
-	payload, err := rest.AdminChannelGrant(userConfig, collection, []string{"ABC", "PBS"})
+	payload, err := rest.GetUserPayload("", "", "", collection, []string{"ABC", "PBS"}, nil)
 	require.NoError(t, err)
 	userResponse := rt.SendAdminRequest("PUT", "/{{.db}}/_user/bernard", payload)
 	rest.RequireStatus(t, userResponse, 200)
@@ -1016,13 +1006,7 @@ func TestChangesLoopingWhenLowSequence(t *testing.T) {
 	collection := testDb.GetSingleDatabaseCollection()
 
 	// Create user:
-	email := "bernard@couchbase.com"
-	pass := "letmein"
-	userConfig := auth.PrincipalConfig{
-		Password: &pass,
-		Email:    &email,
-	}
-	payload, err := rest.AdminChannelGrant(userConfig, collection, []string{"PBS"})
+	payload, err := rest.GetUserPayload("", "letmein", "bernard@couchbase.com", collection, []string{"PBS"}, nil)
 	require.NoError(t, err)
 	rest.RequireStatus(t, rt.SendAdminRequest("GET", "/db/_user/bernard", ""), 404)
 	response := rt.SendAdminRequest("PUT", "/db/_user/bernard", payload)
@@ -1117,14 +1101,8 @@ func TestChangesLoopingWhenLowSequenceOneShotUser(t *testing.T) {
 	collection := testDb.GetSingleDatabaseCollection()
 
 	// Create user:
-	email := "bernard@couchbase.com"
-	pass := "letmein"
 	rest.RequireStatus(t, rt.SendAdminRequest("GET", "/db/_user/bernard", ""), 404)
-	userConfig := auth.PrincipalConfig{
-		Password: &pass,
-		Email:    &email,
-	}
-	payload, err := rest.AdminChannelGrant(userConfig, collection, []string{"PBS"})
+	payload, err := rest.GetUserPayload("", "letmein", "bernard@couchbase.com", collection, []string{"PBS"}, nil)
 	require.NoError(t, err)
 	response := rt.SendAdminRequest("PUT", "/db/_user/bernard", payload)
 	rest.RequireStatus(t, response, 201)
@@ -1393,14 +1371,8 @@ func TestChangesLoopingWhenLowSequenceLongpollUser(t *testing.T) {
 	collection := testDb.GetSingleDatabaseCollection()
 
 	// Create user:
-	email := "bernard@couchbase.com"
-	pass := "letmein"
 	rest.RequireStatus(t, rt.SendAdminRequest("GET", "/db/_user/bernard", ""), 404)
-	userConfig := auth.PrincipalConfig{
-		Password: &pass,
-		Email:    &email,
-	}
-	payload, err := rest.AdminChannelGrant(userConfig, collection, []string{"PBS"})
+	payload, err := rest.GetUserPayload("", "letmein", "bernard@couchbase.com", collection, []string{"PBS"}, nil)
 	require.NoError(t, err)
 	response := rt.SendAdminRequest("PUT", "/db/_user/bernard", payload)
 	rest.RequireStatus(t, response, 201)
@@ -1800,28 +1772,19 @@ func TestOneShotChangesWithExplicitDocIds(t *testing.T) {
 	collection := rt.GetSingleTestDatabaseCollection()
 
 	// Create user1
-	email := "user1@couchbase.com"
-	pass := "letmein"
-	userConfig := auth.PrincipalConfig{
-		Password: &pass,
-		Email:    &email,
-	}
-	payload, err := rest.AdminChannelGrant(userConfig, collection, []string{"alpha"})
+	payload, err := rest.GetUserPayload("", "letmein", "user1@couchbase.com", collection, []string{"alpha"}, nil)
 	require.NoError(t, err)
 	response := rt.SendAdminRequest("PUT", "/{{.db}}/_user/user1", payload)
 	rest.RequireStatus(t, response, 201)
 
 	// Create user2
-	email = "user2@couchbase.com"
-	userConfig.Email = &email
-	payload, err = rest.AdminChannelGrant(userConfig, collection, []string{"beta"})
+	payload, err = rest.GetUserPayload("", "letmein", "user2@couchbase.com", collection, []string{"beta"}, nil)
 	require.NoError(t, err)
 	response = rt.SendAdminRequest("PUT", "/{{.db}}/_user/user2", payload)
 	rest.RequireStatus(t, response, 201)
 
 	// Create user3
-	email = "user3@couchbase.com"
-	payload, err = rest.AdminChannelGrant(userConfig, collection, []string{"alpha", "beta"})
+	payload, err = rest.GetUserPayload("", "letmein", "user3@couchbase.com", collection, []string{"alpha", "beta"}, nil)
 	require.NoError(t, err)
 	response = rt.SendAdminRequest("PUT", "/{{.db}}/_user/user3", payload)
 	rest.RequireStatus(t, response, 201)
@@ -1831,9 +1794,7 @@ func TestOneShotChangesWithExplicitDocIds(t *testing.T) {
 	rest.RequireStatus(t, response, 201)
 
 	// Create user5
-	email = "user5@couchbase.com"
-	userConfig.Email = &email
-	payload, err = rest.AdminChannelGrant(userConfig, collection, []string{"*"})
+	payload, err = rest.GetUserPayload("", "letmein", "user5@couchbase.com", collection, []string{"*"}, nil)
 	require.NoError(t, err)
 	response = rt.SendAdminRequest("PUT", "/{{.db}}/_user/user5", payload)
 	rest.RequireStatus(t, response, 201)
@@ -1991,13 +1952,7 @@ func TestChangesIncludeDocs(t *testing.T) {
 	collection := testDB.GetSingleDatabaseCollection()
 
 	// Create user1
-	email := "user1@couchbase.com"
-	pass := "letmein"
-	userConfig := auth.PrincipalConfig{
-		Password: &pass,
-		Email:    &email,
-	}
-	payload, err := rest.AdminChannelGrant(userConfig, collection, []string{"alpha", "beta"})
+	payload, err := rest.GetUserPayload("", "letmein", "user1@couchbase.com", collection, []string{"alpha", "beta"}, nil)
 	require.NoError(t, err)
 	response := rt.SendAdminRequest("PUT", "/db/_user/user1", payload)
 	rest.RequireStatus(t, response, 201)
@@ -3752,20 +3707,12 @@ func TestIncludeDocsWithPrincipals(t *testing.T) {
 	cacheWaiter := testDb.NewDCPCachingCountWaiter(t)
 
 	// Put users
-	name := "includeDocsUser"
-	pass := "letmein"
-	userConfig := auth.PrincipalConfig{
-		Name:     &name,
-		Password: &pass,
-	}
-	payload, err := rest.AdminChannelGrant(userConfig, collection, []string{"*"})
+	payload, err := rest.GetUserPayload("includeDocsUser", "letmein", "", collection, []string{"*"}, nil)
 	require.NoError(t, err)
 	response := rt.SendAdminRequest("PUT", "/db/_user/includeDocsUser", payload)
 	rest.RequireStatus(t, response, 201)
 
-	name = "includeDocsUser2"
-	userConfig.Name = &name
-	payload, err = rest.AdminChannelGrant(userConfig, collection, []string{"*"})
+	payload, err = rest.GetUserPayload("includeDocsUser2", "letmein", "", collection, []string{"*"}, nil)
 	require.NoError(t, err)
 	response = rt.SendAdminRequest("PUT", "/db/_user/includeDocsUser2", payload)
 	rest.RequireStatus(t, response, 201)
@@ -3854,8 +3801,7 @@ func TestChangesAdminChannelGrantLongpollNotify(t *testing.T) {
 	require.NoError(t, rt.GetDatabase().WaitForCaughtUp(caughtUpCount+1))
 
 	// Update the user doc to grant access to PBS
-	userConfig := auth.PrincipalConfig{}
-	payload, err := rest.AdminChannelGrant(userConfig, collection, []string{"ABC", "PBS"})
+	payload, err := rest.GetUserPayload("", "", "", collection, []string{"ABC", "PBS"}, nil)
 	require.NoError(t, err)
 	response = rt.SendAdminRequest("PUT", "/db/_user/bernard", payload)
 	rest.RequireStatus(t, response, 200)
