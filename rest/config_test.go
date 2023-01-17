@@ -37,6 +37,7 @@ import (
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
+	"github.com/couchbase/sync_gateway/js"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -2385,9 +2386,11 @@ func Test_validateJavascriptFunction(t *testing.T) {
 			wantErr:     assert.NoError,
 		},
 	}
+	vm := js.NewVM()
+	defer vm.Close()
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			gotIsEmpty, err := validateJavascriptFunction(test.jsFunc)
+			gotIsEmpty, err := validateJavascriptFunction(vm, test.jsFunc, 0, 0)
 			if !test.wantErr(t, err, fmt.Sprintf("validateJavascriptFunction(%v)", test.jsFunc)) {
 				return
 			}

@@ -13,6 +13,25 @@ import (
 	"golang.org/x/net/context"
 )
 
+func TestValidateJavascriptFunction(t *testing.T) {
+	vm := NewVM()
+	defer vm.Close()
+
+	assert.NoError(t, vm.ValidateJavascriptFunction(`function(doc) {return doc.x;}`, 1, 1))
+	assert.NoError(t, vm.ValidateJavascriptFunction(`(doc,foo) => {return doc.x;}`, 2, 2))
+
+	err := vm.ValidateJavascriptFunction(`function() {return doc.x;}`, 1, 2)
+	assert.ErrorContains(t, err, "function must have at least 1 parameters")
+	err = vm.ValidateJavascriptFunction(`function(doc, foo, bar) {return doc.x;}`, 1, 2)
+	assert.ErrorContains(t, err, "function must have no more than 2 parameters")
+	err = vm.ValidateJavascriptFunction(`function(doc) {return doc.x;`, 1, 1)
+	assert.ErrorContains(t, err, "SyntaxError")
+	err = vm.ValidateJavascriptFunction(`"not a function"`, 1, 1)
+	assert.ErrorContains(t, err, "code is not a function, but a string")
+	err = vm.ValidateJavascriptFunction(`17 + 34`, 1, 1)
+	assert.ErrorContains(t, err, "code is not a function, but a number")
+}
+
 const kVMPoolTestTimeout = 90 * time.Second
 
 func runSequentially(ctx context.Context, testFunc func(context.Context) bool, numTasks int) time.Duration {

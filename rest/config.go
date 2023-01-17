@@ -30,11 +30,11 @@ import (
 	"golang.org/x/crypto/bcrypt"
 	"gopkg.in/square/go-jose.v2"
 
-	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/db/functions"
+	"github.com/couchbase/sync_gateway/js"
 )
 
 var (
@@ -684,13 +684,15 @@ func (dbConfig *DbConfig) validateVersion(ctx context.Context, isEnterpriseEditi
 		base.WarnfCtx(ctx, `"pool" config option is not supported. The pool will be set to "default". The option should be removed from config file.`)
 	}
 
-	if isEmpty, err := validateJavascriptFunction(dbConfig.Sync); err != nil {
+	vm := js.NewVM()
+	defer vm.Close()
+	if isEmpty, err := validateJavascriptFunction(vm, dbConfig.Sync, 1, 3); err != nil {
 		multiError = multiError.Append(fmt.Errorf("sync function error: %w", err))
 	} else if isEmpty {
 		dbConfig.Sync = nil
 	}
 
-	if isEmpty, err := validateJavascriptFunction(dbConfig.ImportFilter); err != nil {
+	if isEmpty, err := validateJavascriptFunction(vm, dbConfig.ImportFilter, 1, 999); err != nil {
 		multiError = multiError.Append(fmt.Errorf("import filter error: %w", err))
 	} else if isEmpty {
 		dbConfig.ImportFilter = nil
@@ -858,13 +860,13 @@ func (dbConfig *DbConfig) validateVersion(ctx context.Context, isEnterpriseEditi
 
 			// validate each collection's config
 			for collectionName, collectionConfig := range scopeConfig.Collections {
-				if isEmpty, err := validateJavascriptFunction(collectionConfig.SyncFn); err != nil {
+				if isEmpty, err := validateJavascriptFunction(vm, collectionConfig.SyncFn, 1, 3); err != nil {
 					multiError = multiError.Append(fmt.Errorf("collection %q sync function error: %w", collectionName, err))
 				} else if isEmpty {
 					collectionConfig.SyncFn = nil
 				}
 
-				if isEmpty, err := validateJavascriptFunction(collectionConfig.ImportFilter); err != nil {
+				if isEmpty, err := validateJavascriptFunction(vm, collectionConfig.ImportFilter, 1, 99); err != nil {
 					multiError = multiError.Append(fmt.Errorf("collection %q import filter error: %w", collectionName, err))
 				} else if isEmpty {
 					collectionConfig.ImportFilter = nil
@@ -960,9 +962,9 @@ func (dbConfig *DbConfig) deprecatedConfigCacheFallback() (warnings []string) {
 }
 
 // validateJavascriptFunction returns an error if the javascript function was invalid, if set.
-func validateJavascriptFunction(jsFunc *string) (isEmpty bool, err error) {
+func validateJavascriptFunction(vm *js.VM, jsFunc *string, minArgs int, maxArgs int) (isEmpty bool, err error) {
 	if jsFunc != nil && strings.TrimSpace(*jsFunc) != "" {
-		if _, err := sgbucket.NewJSRunner(*jsFunc, 0); err != nil {
+		if err := vm.ValidateJavascriptFunction(*jsFunc, minArgs, maxArgs); err != nil {
 			return false, fmt.Errorf("invalid javascript syntax: %w", err)
 		}
 		return false, nil

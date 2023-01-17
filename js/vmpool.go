@@ -79,11 +79,11 @@ func (pool *VMPool) PurgeUnusedVMs() {
 
 //////// INTERNALS:
 
-func (pool *VMPool) registerService(factory TemplateFactory) serviceID {
+func (pool *VMPool) registerService(factory TemplateFactory, name string) serviceID {
 	if pool.services == nil {
 		panic("You forgot to initialize a VMPool") // failed to call Init or NewVMPool
 	}
-	return pool.services.addService(factory)
+	return pool.services.addService(factory, name)
 }
 
 // Produces an idle `VM` that can be used by this goroutine.

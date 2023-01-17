@@ -19,7 +19,7 @@ type serviceID uint32 // internal ID, used as an array index in VM and VMPool.
 // A provider of a JavaScript runtime for Services. VM and VMPool implement this.
 type ServiceHost interface {
 	Close()
-	registerService(factory TemplateFactory) serviceID
+	registerService(factory TemplateFactory, name string) serviceID
 	getRunner(*Service) (*Runner, error)
 }
 
@@ -38,7 +38,7 @@ func NewCustomService(host ServiceHost, name string, factory TemplateFactory) *S
 	base.DebugfCtx(context.Background(), base.KeyJavascript, "Creating JavaScript service %q", name)
 	return &Service{
 		host: host,
-		id:   host.registerService(factory),
+		id:   host.registerService(factory, name),
 		name: name,
 	}
 }

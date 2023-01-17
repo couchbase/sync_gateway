@@ -1,6 +1,7 @@
 package js
 
 import (
+	"context"
 	_ "embed"
 	"fmt"
 	"time"
@@ -57,6 +58,37 @@ func (vm *VM) Close() {
 	}
 }
 
+// Looks up an already-registered service by name. Returns nil if not found.
+func (vm *VM) FindService(name string) *Service {
+	if id, ok := vm.services.findService(name); ok {
+		return &Service{host: vm, id: id, name: name}
+	} else {
+		return nil
+	}
+}
+
+// Syntax-checks a string containing a JavaScript function definition
+func (vm *VM) ValidateJavascriptFunction(jsFunc string, minArgs int, maxArgs int) error {
+	service := vm.FindService("Validate")
+	if service == nil {
+		service = NewService(vm, "Validate", `
+			function(jsFunc, minArgs, maxArgs) {
+				let fn = Function('"use strict"; return ' + jsFunc)()
+				let typ = typeof(fn);
+				if (typ !== 'function') {
+					throw "code is not a function, but a " + typ;
+				} else if (fn.length < minArgs) {
+					throw "function must have at least " + minArgs + " parameters";
+				} else if (fn.length > minArgs) {
+					throw "function must have no more than " + maxArgs + " parameters";
+				}
+			}
+		`)
+	}
+	_, err := service.Run(context.Background(), jsFunc, minArgs, maxArgs)
+	return err
+}
+
 //////// INTERNALS:
 
 func newVM(services *servicesConfiguration) *VM {
@@ -76,11 +108,11 @@ func (vm *VM) release() {
 	}
 }
 
-func (vm *VM) registerService(factory TemplateFactory) serviceID {
+func (vm *VM) registerService(factory TemplateFactory, name string) serviceID {
 	if vm.iso == nil {
 		panic("You forgot to initialize a js.VM") // Must call NewVM()
 	}
-	return vm.services.addService(factory)
+	return vm.services.addService(factory, name)
 }
 
 // Returns a Template for the given Service.
