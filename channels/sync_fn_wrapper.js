@@ -18,9 +18,9 @@ function() {
     {
         /****  Variables used during the call but not visible to the sync fn ****/
 
-        let userCtx;		// object with keys .name, .roles, .channels
-        let shouldValidate;	// if false, 'require...' functions are no-ops
-        let result;			// object to be returned, with keys .channels, .access
+        let gUserCtx;		    // object with keys .name, .roles, .channels
+        let gShouldValidate;	// if false, 'require...' functions are no-ops
+        let gResult;			// object to be returned, with keys .channels, .access
 
 
         /**** Utility functions ****/
@@ -99,22 +99,22 @@ function() {
         /**** Validation functions ****/
 
         globalThis.requireAdmin = function() {
-            if (shouldValidate)
+            if (gShouldValidate)
                 throw({forbidden: "%s"});
         }
 
         globalThis.requireUser = function(nameOrNames) {
-            if (shouldValidate && !match(nameOrNames, userCtx.name))
+            if (gShouldValidate && !match(nameOrNames, gUserCtx.name))
                 throw({forbidden: "%s"});
         }
 
         globalThis.requireRole = function(roles) {
-            if (shouldValidate && !matchInObject(roles, userCtx.roles))
+            if (gShouldValidate && !matchInObject(roles, gUserCtx.roles))
                 throw({forbidden: "%s"});
         }
 
         globalThis.requireAccess = function(channels) {
-            if (shouldValidate && !matchInArray(channels, userCtx.channels))
+            if (gShouldValidate && !matchInArray(channels, gUserCtx.channels))
                 throw({forbidden: "%s"});
         }
 
@@ -122,27 +122,27 @@ function() {
         /**** Access grant functions ****/
 
         globalThis.channel = function(...channels) {
-            appendTo(channels, result.channels)
+            appendTo(channels, gResult.channels)
         }
 
         globalThis.access = function(user, channels) {
-            if (result.access === undefined) result.access = {}
-            appendForUser(result.access, user, channels);
+            if (gResult.access === undefined) gResult.access = {}
+            appendForUser(gResult.access, user, channels);
         }
 
         globalThis.role = function(user, roles) {
-            if (result.roles === undefined) result.roles = {}
-            appendForUser(result.roles, user, roles);
+            if (gResult.roles === undefined) gResult.roles = {}
+            appendForUser(gResult.roles, user, roles);
         }
 
         globalThis.expiry = function(x) {
             if (typeof(x) === 'number' || typeof(x) === 'string')
-                result.expiry = x;
+                gResult.expiry = x;
         }
 
         globalThis.reject = function(status, message) {
-            result.rejectionStatus = status;
-            result.rejectionMessage = message;
+            gResult.rejectionStatus = status;
+            gResult.rejectionMessage = message;
         }
 
         globalThis.log = console.log;
@@ -153,8 +153,7 @@ function() {
 
         /**** The function that runs the sync function ****/
 
-        return function (docID, revID, newDoc, oldDoc, meta, _userCtx) {
-            newDoc = JSON.parse(newDoc);
+        return function (docID, revID, newDoc, oldDocJSON, metaKey, metaValueJSON, _userCtx) {
             if (docID) {
                 newDoc._id = docID;
             }
@@ -162,18 +161,31 @@ function() {
                 newDoc._rev = revID;
             }
 
-            if (oldDoc) {
-                oldDoc = JSON.parse(oldDoc);
-                if (docID) {
-                    oldDoc._id = docID;
+            let oldDoc = undefined;
+            let meta = undefined;
+            if (syncFn.length >= 2) {
+                if (oldDocJSON) {
+                    oldDoc = JSON.parse(oldDocJSON);
+                    if (docID) {
+                        oldDoc._id = docID;
+                    }
+                } else {
+                    oldDoc = null;
                 }
-            } else {
-                oldDoc = null;
+
+                if (syncFn.length >= 3) {
+                    // Construct meta dict. This is not passed as JSON to avoid the overhead of
+                    // marshaling/unmarshaling in the common case where there's no value.
+                    meta = {xattrs: null};
+                    if (metaKey != "") {
+                        meta.xattrs = {[metaKey]: JSON.parse(metaValueJSON)};
+                    }
+                }
             }
 
-            userCtx = _userCtx;
-            shouldValidate = (userCtx != null && userCtx.name != null);
-            result = { channels: [] };
+            gUserCtx = _userCtx;
+            gShouldValidate = (gUserCtx != null && gUserCtx.name != null);
+            gResult = { channels: [] };
 
             try {
                 syncFn(newDoc, oldDoc, meta);
@@ -186,12 +198,12 @@ function() {
                     throw(x);
             }
 
-            // Go has trouble getting arbitrary keys from V8 objects, so help it out:
-            if (result.access !== undefined)
-                result.accessKeys = Object.getOwnPropertyNames(result.access);
-            if (result.roles !== undefined)
-                result.rolesKeys = Object.getOwnPropertyNames(result.roles);
-            return result;
+            // v8go has no API for iterating keys of V8 objects, so help it out:
+            if (gResult.access !== undefined)
+                gResult.accessKeys = Object.getOwnPropertyNames(gResult.access);
+            if (gResult.roles !== undefined)
+                gResult.rolesKeys = Object.getOwnPropertyNames(gResult.roles);
+            return gResult;
         }
     }
 }()

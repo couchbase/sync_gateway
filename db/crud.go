@@ -1433,7 +1433,7 @@ func (db *DatabaseCollectionWithUser) storeOldBodyInRevTreeAndUpdateCurrent(ctx 
 	}
 }
 
-func (db *DatabaseCollectionWithUser) prepareSyncFn(doc *Document, newDoc *Document) (mutableBody Body, metaMap map[string]interface{}, newRevID string, err error) {
+func (db *DatabaseCollectionWithUser) prepareSyncFn(doc *Document, newDoc *Document) (mutableBody Body, metaMap channels.MetaMap, newRevID string, err error) {
 	// Marshal raw user xattrs for use in Sync Fn. If this fails we can bail out so we should do early as possible.
 	metaMap, err = doc.GetMetaMap(db.userXattrKey())
 	if err != nil {
@@ -1463,7 +1463,7 @@ func (db *DatabaseCollectionWithUser) prepareSyncFn(doc *Document, newDoc *Docum
 
 // Run the sync function on the given document and body. Need to inject the document ID and rev ID temporarily to run
 // the sync function.
-func (db *DatabaseCollectionWithUser) runSyncFn(ctx context.Context, doc *Document, body Body, metaMap map[string]interface{}, newRevId string) (*uint32, string, base.Set, channels.AccessMap, channels.AccessMap, error) {
+func (db *DatabaseCollectionWithUser) runSyncFn(ctx context.Context, doc *Document, body Body, metaMap channels.MetaMap, newRevId string) (*uint32, string, base.Set, channels.AccessMap, channels.AccessMap, error) {
 	channelSet, access, roles, syncExpiry, oldBody, err := db.getChannelsAndAccess(ctx, doc, body, metaMap, newRevId)
 	if err != nil {
 		return nil, ``, nil, nil, nil, err
@@ -1472,7 +1472,7 @@ func (db *DatabaseCollectionWithUser) runSyncFn(ctx context.Context, doc *Docume
 	return syncExpiry, oldBody, channelSet, access, roles, nil
 }
 
-func (db *DatabaseCollectionWithUser) recalculateSyncFnForActiveRev(ctx context.Context, doc *Document, metaMap map[string]interface{}, newRevID string) (channelSet base.Set, access, roles channels.AccessMap, syncExpiry *uint32, oldBodyJSON string, err error) {
+func (db *DatabaseCollectionWithUser) recalculateSyncFnForActiveRev(ctx context.Context, doc *Document, metaMap channels.MetaMap, newRevID string) (channelSet base.Set, access, roles channels.AccessMap, syncExpiry *uint32, oldBodyJSON string, err error) {
 	// In some cases an older revision might become the current one. If so, get its
 	// channels & access, for purposes of updating the doc:
 	curBodyBytes, err := db.getAvailable1xRev(ctx, doc, doc.CurrentRev)
@@ -2198,7 +2198,7 @@ func (db *DatabaseCollectionWithUser) Purge(ctx context.Context, key string) err
 
 // Calls the JS sync function to assign the doc to channels, grant users
 // access to channels, and reject invalid documents.
-func (db *DatabaseCollectionWithUser) getChannelsAndAccess(ctx context.Context, doc *Document, body Body, metaMap map[string]interface{}, revID string) (
+func (db *DatabaseCollectionWithUser) getChannelsAndAccess(ctx context.Context, doc *Document, body Body, metaMap channels.MetaMap, revID string) (
 	result base.Set,
 	access channels.AccessMap,
 	roles channels.AccessMap,

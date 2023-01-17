@@ -36,6 +36,12 @@ func AccessNameToPrincipalName(accessPrincipalName string) (principalName string
 	return accessPrincipalName, false
 }
 
+// Document metadata passed to the sync function
+type MetaMap struct {
+	Key       string // xattr key; "" if none
+	JSONValue []byte // raw JSON value of xattr key; nil if none
+}
+
 // Prefix used to identify roles in access grants
 const RoleAccessPrefix = "role:"
 
@@ -113,7 +119,7 @@ func wrappedFuncSource(funcSource string) string {
 }
 
 // Runs the sync function. Thread-safe.
-func (mapper *ChannelMapper) MapToChannelsAndAccess(body map[string]any, oldBodyJSON string, metaMap map[string]interface{}, userCtx map[string]interface{}) (*ChannelMapperOutput, error) {
+func (mapper *ChannelMapper) MapToChannelsAndAccess(body map[string]any, oldBodyJSON string, metaMap MetaMap, userCtx map[string]interface{}) (*ChannelMapperOutput, error) {
 	bodyJSON, err := json.Marshal(body)
 	if err != nil {
 		return nil, err
@@ -124,7 +130,7 @@ func (mapper *ChannelMapper) MapToChannelsAndAccess(body map[string]any, oldBody
 }
 
 // Runs the sync function. Thread-safe.
-func (mapper *ChannelMapper) MapToChannelsAndAccess2(docID string, revID string, bodyJSON string, oldBodyJSON string, metaMap map[string]interface{}, userCtx map[string]interface{}) (*ChannelMapperOutput, error) {
+func (mapper *ChannelMapper) MapToChannelsAndAccess2(docID string, revID string, bodyJSON string, oldBodyJSON string, metaMap MetaMap, userCtx map[string]interface{}) (*ChannelMapperOutput, error) {
 	result, err := mapper.service.WithRunner(func(runner *js.Runner) (any, error) {
 		ctx := context.Background()
 		if mapper.timeout > 0 {
@@ -143,11 +149,11 @@ func callSyncFn(runner *js.Runner,
 	revID string,
 	bodyJSON string,
 	oldBodyJSON string,
-	metaMap map[string]interface{},
+	metaMap MetaMap,
 	userCtx map[string]interface{}) (*ChannelMapperOutput, error) {
 
 	// Call the sync fn:
-	args, err := runner.ConvertArgs(docID, revID, bodyJSON, oldBodyJSON, metaMap, userCtx)
+	args, err := runner.ConvertArgs(docID, revID, js.JSONString(bodyJSON), oldBodyJSON, metaMap.Key, string(metaMap.JSONValue), userCtx)
 	if err != nil {
 		return nil, err
 	}

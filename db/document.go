@@ -330,24 +330,12 @@ func (doc *Document) BodyBytes() ([]byte, error) {
 // Builds the Meta Map for use in the Sync Function. This meta map currently only includes the user xattr, however, this
 // can be expanded upon in the future.
 // NOTE: emptyMetaMap() is used within tests in channelmapper_test.go and therefore this should be expanded if the below is
-func (doc *Document) GetMetaMap(userXattrKey string) (map[string]interface{}, error) {
-	xattrsMap := map[string]interface{}{}
-
-	if userXattrKey != "" {
-		var userXattr interface{}
-
-		if len(doc.rawUserXattr) > 0 {
-			err := base.JSONUnmarshal(doc.rawUserXattr, &userXattr)
-			if err != nil {
-				return nil, err
-			}
-		}
-		xattrsMap[userXattrKey] = userXattr
+func (doc *Document) GetMetaMap(userXattrKey string) (channels.MetaMap, error) {
+	result := channels.MetaMap{Key: userXattrKey}
+	if userXattrKey != "" && len(doc.rawUserXattr) > 0 {
+		result.JSONValue = doc.rawUserXattr
 	}
-
-	return map[string]interface{}{
-		base.MetaMapXattrsKey: xattrsMap,
-	}, nil
+	return result, nil
 }
 
 func (doc *Document) SetCrc32cUserXattrHash() {

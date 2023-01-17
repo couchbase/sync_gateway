@@ -9,6 +9,7 @@
 package channels
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -24,10 +25,8 @@ func parse(jsonStr string) map[string]interface{} {
 	return parsed
 }
 
-func emptyMetaMap() map[string]interface{} {
-	return map[string]interface{}{
-		base.MetaMapXattrsKey: nil,
-	}
+func emptyMetaMap() MetaMap {
+	return MetaMap{}
 }
 
 var noUser = map[string]interface{}{"name": nil, "channels": []string{}}
@@ -562,14 +561,10 @@ func TestMetaMap(t *testing.T) {
 	defer mapper.closeVMs()
 
 	channels := []string{"chan1", "chan2"}
-
-	metaMap := map[string]interface{}{
-		base.MetaMapXattrsKey: map[string]interface{}{
-			"myxattr": map[string]interface{}{
-				"channels": channels,
-			},
-		},
-	}
+	attr, _ := json.Marshal(map[string]interface{}{
+		"channels": channels,
+	})
+	metaMap := MetaMap{Key: "myxattr", JSONValue: attr}
 
 	res, err := mapper.MapToChannelsAndAccess(parse(`{}`), `{}`, metaMap, noUser)
 	require.NoError(t, err)
@@ -581,13 +576,9 @@ func TestNilMetaMap(t *testing.T) {
 	mapper := newChannelMapperWithVMs(`function(doc, oldDoc, meta) {channel(meta.xattrs.myxattr.val);}`, 0)
 	defer mapper.closeVMs()
 
-	metaMap := map[string]interface{}{
-		base.MetaMapXattrsKey: map[string]interface{}{
-			"": nil,
-		},
-	}
+	metaMap := MetaMap{}
 
 	_, err := mapper.MapToChannelsAndAccess(parse(`{}`), `{}`, metaMap, noUser)
 	require.Error(t, err)
-	assert.ErrorContains(t, err, "TypeError: Cannot read properties of undefined (reading 'val')")
+	assert.ErrorContains(t, err, "TypeError: Cannot read properties of null (reading 'myxattr')")
 }
