@@ -79,7 +79,7 @@ func (vm *VM) ValidateJavascriptFunction(jsFunc string, minArgs int, maxArgs int
 					throw "code is not a function, but a " + typ;
 				} else if (fn.length < minArgs) {
 					throw "function must have at least " + minArgs + " parameters";
-				} else if (fn.length > minArgs) {
+				} else if (fn.length > maxArgs) {
 					throw "function must have no more than " + maxArgs + " parameters";
 				}
 			}
