@@ -262,7 +262,7 @@ func TestGroupIDReplications(t *testing.T) {
 	defer activeBucket.Close()
 
 	// Set up passive bucket RT
-	rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: passiveBucket})
+	rt := NewRestTesterDefaultCollection(t, &RestTesterConfig{CustomTestBucket: passiveBucket}) //  CBG-2319: replicator currently requires default collection
 	defer rt.Close()
 
 	// Make rt listen on an actual HTTP port, so it can receive replications
