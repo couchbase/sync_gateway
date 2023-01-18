@@ -450,8 +450,10 @@ func setupN1QLStore(bucket base.Bucket, isServerless bool) ([]base.N1QLStore, re
 
 	outN1QLStores := make([]base.N1QLStore, 0)
 	for _, dataStoreName := range dataStoreNames {
-		dataStore := bucket.NamedDataStore(dataStoreName)
-
+		dataStore, err := bucket.NamedDataStore(dataStoreName)
+		if err != nil {
+			return nil, nil, err
+		}
 		n1QLStore, ok := base.AsN1QLStore(dataStore)
 		if !ok {
 			return nil, nil, fmt.Errorf("Unable to get n1QLStore for testBucket")

@@ -464,6 +464,27 @@ func TestCollectionsSGIndexQuery(t *testing.T) {
 	_, err := rt.WaitForChanges(1, "/{{.keyspace}}/_changes", username, false)
 	require.NoError(t, err)
 }
+func TestCollectionsPutDBInexistentCollection(t *testing.T) {
+	base.TestRequiresCollections(t)
+
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server")
+	}
+
+	tb := base.GetTestBucket(t)
+	defer tb.Close()
+
+	rtConfig := &RestTesterConfig{
+		CustomTestBucket: tb,
+		PersistentConfig: true,
+	}
+
+	rt := NewRestTesterMultipleCollections(t, rtConfig, 1)
+	defer rt.Close()
+
+	resp := rt.SendAdminRequest("PUT", "/db2/", fmt.Sprintf(`{"bucket": "%s", "num_index_replicas":0, "scopes": {"_default": {"collections": {"new_collection": {}}}}}`, tb.GetName()))
+	RequireStatus(t, resp, http.StatusForbidden)
+}
 
 func TestCollectionsChangeConfigScope(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {

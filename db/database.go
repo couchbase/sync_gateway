@@ -447,7 +447,10 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 			collectionNameMap := make(map[string]struct{}, len(scope.Collections))
 			for collName, collOpts := range scope.Collections {
 				ctx := base.CollectionCtx(ctx, collName)
-				dataStore := bucket.NamedDataStore(base.ScopeAndCollectionName{Scope: scopeName, Collection: collName})
+				dataStore, err := bucket.NamedDataStore(base.ScopeAndCollectionName{Scope: scopeName, Collection: collName})
+				if err != nil {
+					return nil, err
+				}
 				dbCollection, err := newDatabaseCollection(ctx, dbContext, dataStore)
 				if err != nil {
 					return nil, err
