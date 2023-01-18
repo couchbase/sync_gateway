@@ -2245,7 +2245,7 @@ func (dbc *Database) GetDatabaseCollectionWithUser(scopeName, collectionName str
 
 // GetDatabaseCollection returns a collection if one exists, otherwise error.
 func (dbc *DatabaseContext) GetDatabaseCollection(scopeName, collectionName string) (*DatabaseCollection, error) {
-	if base.IsDefaultCollection(scopeName, collectionName) && dbc.OnlyDefaultCollection() {
+	if base.IsDefaultCollection(scopeName, collectionName) {
 		return dbc.GetDefaultDatabaseCollection()
 	}
 	if dbc.Scopes == nil {

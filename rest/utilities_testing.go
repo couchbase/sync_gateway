@@ -2265,10 +2265,10 @@ func (rt *RestTester) GetSingleKeyspace() string {
 func (rt *RestTester) getCollectionsForBLIP() []string {
 	db := rt.GetDatabase()
 	var collections []string
+	if !rt.GetDatabase().OnlyDefaultCollection() {
+		return collections
+	}
 	for _, collection := range db.CollectionByID {
-		if db.OnlyDefaultCollection() && base.IsDefaultCollection(collection.ScopeName(), collection.Name()) {
-			continue
-		}
 		collections = append(collections,
 			strings.Join([]string{collection.ScopeName(), collection.Name()}, base.ScopeCollectionSeparator))
 	}
