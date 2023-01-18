@@ -694,7 +694,7 @@ func TestXattrImportMultipleActorOnDemandPut(t *testing.T) {
 	assert.NoError(t, err, "Error writing SDK doc")
 
 	// Attempt to get the document via Sync Gateway.  Will trigger on-demand import.
-	response := rt.SendAdminRequest("GET", "/db/"+mobileKey, "")
+	response := rt.SendAdminRequest("GET", "/{{.keyspace}}/"+mobileKey, "")
 	assert.Equal(t, 200, response.Code)
 	// Extract rev from response for comparison with second GET below
 	var body db.Body
@@ -716,7 +716,7 @@ func TestXattrImportMultipleActorOnDemandPut(t *testing.T) {
 
 	// Attempt to update the document again via Sync Gateway.  Should not trigger import, PUT should be successful,
 	// rev should have generation 2.
-	putResponse := rt.SendAdminRequest("PUT", fmt.Sprintf("/db/%s?rev=%s", mobileKey, revId), `{"updated":true}`)
+	putResponse := rt.SendAdminRequest("PUT", fmt.Sprintf("/{{.keyspace}}/%s?rev=%s", mobileKey, revId), `{"updated":true}`)
 	assert.Equal(t, 201, putResponse.Code)
 	assert.NoError(t, base.JSONUnmarshal(putResponse.Body.Bytes(), &body))
 	log.Printf("Put response details: %s", putResponse.Body.Bytes())
