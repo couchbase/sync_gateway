@@ -222,6 +222,8 @@ type UnsupportedOptions struct {
 	ForceAPIForbiddenErrors    bool                     `json:"force_api_forbidden_errors,omitempty"`    // Config option to force the REST API to return forbidden errors
 	ConnectedClient            bool                     `json:"connected_client,omitempty"`              // Enables BLIP connected-client APIs
 	UseQueryBasedResyncManager bool                     `json:"use_query_resync_manager,omitempty"`      // Config option to use Query based resync manager to perform Resync op
+	DCPReadBuffer              int                      `json:"dcp_read_buffer,omitempty"`               // Enables user to set their own DCP read buffer
+	KVBufferSize               int                      `json:"kv_buffer,omitempty"`                     // Enables user to set their own KV pool buffer
 }
 
 type WarningThresholds struct {
@@ -2283,14 +2285,6 @@ func (dbc *Database) GetDefaultDatabaseCollectionWithUser() (*DatabaseCollection
 // GetSingleDatabaseCollection is a temporary function to return a single collection. This should be a temporary function while collection work is ongoing.
 func (dbc *DatabaseContext) GetSingleDatabaseCollection() *DatabaseCollection {
 	return dbc.singleCollection
-}
-
-// GetSingleDatabaseCollectionWithCollection is a temporary function to return a single collection. This should be a temporary function while collection work is ongoing.
-func (dbc *Database) GetSingleDatabaseCollectionWithUser() *DatabaseCollectionWithUser {
-	return &DatabaseCollectionWithUser{
-		DatabaseCollection: dbc.GetSingleDatabaseCollection(),
-		user:               dbc.user,
-	}
 }
 
 // newDatabaseCollection returns a collection which inherits values from the database but is specific to a given DataStore.

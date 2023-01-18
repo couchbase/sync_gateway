@@ -144,7 +144,11 @@ func collectionBlipHandler(next blipHandlerFunc) blipHandlerFunc {
 			if !bh.db.hasDefaultCollection() {
 				return base.HTTPErrorf(http.StatusBadRequest, "Method requires passing a collection property and a prior GetCollections message")
 			}
-			bh.collection = bh.db.GetSingleDatabaseCollectionWithUser()
+			// temp use private method
+			bh.collection = &DatabaseCollectionWithUser{
+				DatabaseCollection: bh.db.singleCollection,
+				user:               bh.db.user,
+			}
 			return next(bh, bm)
 		}
 		if len(bh.collectionMapping) == 0 {
