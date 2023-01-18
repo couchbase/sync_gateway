@@ -466,10 +466,9 @@ func TestCollectionsSGIndexQuery(t *testing.T) {
 }
 func TestCollectionsPutDBInexistentCollection(t *testing.T) {
 	base.TestRequiresCollections(t)
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
-	if !base.TestUseXattrs() {
-		t.Skip("Test relies on import - needs xattrs")
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server")
 	}
 
 	tb := base.GetTestBucket(t)
