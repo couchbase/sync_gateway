@@ -2705,17 +2705,10 @@ func Test_invalidateAllPrincipalsCache(t *testing.T) {
 	if base.TestsUseNamedCollections() {
 		dataStoreName := collection.dataStore.GetName()
 		var scopeName, collectionName string
-		if base.UnitTestUrlIsWalrus() {
-			// Format: sg_test_0:sg_test_0
-			dataStoreNameSlice := strings.Split(dataStoreName, ":")
-			require.Len(t, dataStoreNameSlice, 2)
-			scopeName, collectionName = dataStoreNameSlice[0], dataStoreNameSlice[1]
-		} else {
-			// Format: sg_int_0_1671048846916047000.sg_test_0.sg_test_0
-			dataStoreNameSlice := strings.Split(dataStoreName, ".")
-			require.Len(t, dataStoreNameSlice, 3)
-			scopeName, collectionName = dataStoreNameSlice[1], dataStoreNameSlice[2]
-		}
+		// Format: sg_int_0_1671048846916047000.sg_test_0.sg_test_0
+		dataStoreNameSlice := strings.Split(dataStoreName, ".")
+		require.Len(t, dataStoreNameSlice, 3)
+		scopeName, collectionName = dataStoreNameSlice[1], dataStoreNameSlice[2]
 
 		// Example of Raw response when named collection is used
 		// Role {"name":"role0","all_channels":null,"sequence":1,
