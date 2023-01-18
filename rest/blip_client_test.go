@@ -497,7 +497,7 @@ func newBlipTesterReplication(tb testing.TB, id string, btc *BlipTesterClient, s
 	return r, nil
 }
 
-// getCollectionsForBLIP
+// getCollectionsForBLIP returns collections configured by a single database instance on a restTester. If only default collection exists, it will skip returning it to test "legacy" blip mode.
 func getCollectionsForBLIP(_ testing.TB, rt *RestTester) []string {
 	db := rt.GetDatabase()
 	var collections []string
@@ -596,12 +596,27 @@ func (btc *BlipTesterClient) initCollectionReplication(collection string, collec
 	return nil
 }
 
+// SingleCollection returns a single collection blip tester if the RestTester database is configured with only one collection. Otherwise, throw a fatal test error.
 func (btc *BlipTesterClient) SingleCollection() *BlipTesterCollectionClient {
 	if btc.nonCollectionAwareClient != nil {
 		return btc.nonCollectionAwareClient
 	}
 	require.Equal(btc.rt.TB, 1, len(btc.collectionClients))
 	return btc.collectionClients[0]
+}
+
+// Collection return a collection blip tester by name, if configured in the RestTester database. Otherwise, throw a fatal test error.
+func (btc *BlipTesterClient) Collection(collectionName string) *BlipTesterCollectionClient {
+	if collectionName == "_default._default" && btc.nonCollectionAwareClient != nil {
+		return btc.nonCollectionAwareClient
+	}
+	for _, collectionClient := range btc.collectionClients {
+		if collectionClient.collection == collectionName {
+			return collectionClient
+		}
+	}
+	btc.rt.TB.Fatalf("Could not find collection %s in BlipTesterClient", collectionName)
+	return nil
 }
 
 // StartPull will begin a continuous pull replication since 0 between the client and server
@@ -1052,25 +1067,28 @@ func (btc *BlipTesterClient) UnsubPullChanges() ([]byte, error) {
 	return btc.SingleCollection().UnsubPullChanges()
 }
 
-func (btc *BlipTesterCollectionClient) addCollectionProperty(msg *blip.Message) *blip.Message {
+func (btc *BlipTesterCollectionClient) addCollectionProperty(msg *blip.Message) {
 	if btc.collection != "" {
 		msg.Properties[db.BlipCollection] = strconv.Itoa(btc.collectionIdx)
 	}
-
-	return msg
 }
 
+// addCollectionProperty will automatically add a collection. If we are running with the default collection, or a single named collection, automatically add the right value. If there are multiple collections on the database, the test will fatally exit, since the behavior is undefined.
 func (bt *BlipTesterClient) addCollectionProperty(msg *blip.Message) *blip.Message {
 	if bt.nonCollectionAwareClient == nil {
+		require.Equal(bt.rt.TB, 1, len(bt.collectionClients), "Multiple collection clients, exist so assuming that the only named collection is the single element of an array is not valid")
 		msg.Properties[db.BlipCollection] = "0"
 	}
 
 	return msg
 }
 
+// getCollectionClientFromMessage returns a the right blip tester client. This works automatically when BlipTesterClient is initialized when skipCollectionsInitialization is false.
 func (btc *BlipTesterClient) getCollectionClientFromMessage(msg *blip.Message) *BlipTesterCollectionClient {
 	collectionIdx, exists := msg.Properties[db.BlipCollection]
 	if !exists {
+		// If a collection property is passed, assume that the BlipTesterClient hasn't been initialized with collections.
+		// If this fails, this means a message wasn't sent with the correct BlipCollection property, see use of addCollectionProperty
 		require.NotNil(btc.rt.TB, btc.nonCollectionAwareClient)
 		return btc.nonCollectionAwareClient
 	}

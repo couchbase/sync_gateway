@@ -1370,8 +1370,17 @@ func (bt *BlipTester) initializeCollections(collections []string) {
 	}
 }
 
+// newRequest returns a blip msg with a collection property enabled. This function is only ssafe to call if there is a single collection running.
+func (bt *BlipTester) newRequest() *blip.Message {
+	msg := blip.NewRequest()
+	bt.addCollectionProperty(msg)
+	return msg
+}
+
+// addCollectionProperty will automatically add a collection. If we are running with the default collection, or a single named collection, automatically add the right value. If there are multiple collections on the database, the test will fatally exit, since the behavior is undefined.
 func (bt *BlipTester) addCollectionProperty(msg *blip.Message) *blip.Message {
 	if bt.useCollections == true {
+		require.Equal(bt.restTester.TB, 1, len(bt.restTester.GetDatabase().CollectionByID), "Multiple collection exist on the database so we are unable to choose which collection to specify in BlipCollection property")
 		msg.Properties[db.BlipCollection] = "0"
 	}
 
@@ -2198,12 +2207,12 @@ func (rt *RestTester) GetSingleKeyspace() string {
 	return ""
 }
 
-// getCollectionsForBLIP
+// getCollectionsForBLIP returns scope.collection strings for blip to process GetCollections messages. To test legacy functionality when SG_TEST_USE_DEFAULT_COLLECTION=true, don't return default collection if it is the only collection available.
 func (rt *RestTester) getCollectionsForBLIP() []string {
 	db := rt.GetDatabase()
 	var collections []string
 	for _, collection := range db.CollectionByID {
-		if base.IsDefaultCollection(collection.ScopeName(), collection.Name()) {
+		if db.OnlyDefaultCollection() && base.IsDefaultCollection(collection.ScopeName(), collection.Name()) {
 			continue
 		}
 		collections = append(collections,
