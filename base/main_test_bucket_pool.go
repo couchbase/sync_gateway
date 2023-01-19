@@ -225,7 +225,16 @@ func (tbp *TestBucketPool) GetWalrusTestBucket(t testing.TB, url string) (b Buck
 		atomic.AddInt32(&tbp.stats.NumBucketsClosed, 1)
 		atomic.AddInt64(&tbp.stats.TotalInuseBucketNano, time.Since(openedStart).Nanoseconds())
 		tbp.markBucketClosed(t, b)
-		b.Close()
+		if url == kTestWalrusURL {
+			b.Close()
+		} else {
+			// Persisted buckets should call close and delete
+			closeErr := walrusBucket.CloseAndDelete()
+			if closeErr != nil {
+				tbp.Logf(ctx, "Unexpected error closing persistent walrus bucket: %v", closeErr)
+			}
+		}
+
 	}
 }
 
@@ -253,14 +262,20 @@ func (tbp *TestBucketPool) GetExistingBucket(t testing.TB) (b Bucket, s BucketSp
 // GetTestBucketAndSpec returns a bucket to be used during a test.
 // The returned teardownFn MUST be called once the test is done,
 // which closes the bucket, readies it for a new test, and releases back into the pool.
-func (tbp *TestBucketPool) getTestBucketAndSpec(t testing.TB) (b Bucket, s BucketSpec, teardownFn func()) {
+// persistentBucket flag determines behaviour for walrus buckets only; Couchbase bucket
+// behaviour is defined by the bucket pool readier/init.
+func (tbp *TestBucketPool) getTestBucketAndSpec(t testing.TB, persistentBucket bool) (b Bucket, s BucketSpec, teardownFn func()) {
 
 	ctx := TestCtx(t)
 
 	// Return a new Walrus bucket when tbp has not been initialized
 	if !tbp.integrationMode {
 		tbp.Logf(ctx, "Getting walrus test bucket - tbp.integrationMode is not set")
-		return tbp.GetWalrusTestBucket(t, kTestWalrusURL)
+		walrusURL := kTestWalrusURL
+		if persistentBucket {
+			walrusURL = walrusURL + t.TempDir()
+		}
+		return tbp.GetWalrusTestBucket(t, walrusURL)
 	}
 
 	if tbp.useExistingBucket {
