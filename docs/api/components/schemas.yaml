@@ -2269,3 +2269,13 @@ NodeInfo:
   required:
     - couchdb
     - vendor
+ResyncScopesMap:
+  description: 'scope name with one or more collection names for which resync will be triggered'
+  type: object
+  additionalProperties:
+    $ref: '#/CollectionNames'
+CollectionNames:
+  description: 'List of collection names'
+  type: array
+  items:
+    type: string

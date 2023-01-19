@@ -9,6 +9,7 @@
 package rest
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	httpprof "net/http/pprof"
@@ -273,9 +274,27 @@ func (h *handler) handleGetResync() error {
 	return nil
 }
 
+// ResyncPostReqBody represents Resync POST body to run resync for custom collections
+type ResyncPostReqBody struct {
+	Scope               db.ResyncCollections `json:"scopes,omitempty"`
+	RegenerateSequences bool                 `json:"regenerate_sequences,omitempty"`
+}
+
 func (h *handler) handlePostResync() error {
+
 	action := h.getQuery("action")
 	regenerateSequences, _ := h.getOptBoolQuery("regenerate_sequences", false)
+	body, err := h.readBody()
+	if err != nil {
+		return err
+	}
+
+	resyncPostReqBody := ResyncPostReqBody{}
+	if len(body) != 0 {
+		if err := json.Unmarshal(body, &resyncPostReqBody); err != nil {
+			return err
+		}
+	}
 
 	if action != "" && action != string(db.BackgroundProcessActionStart) && action != string(db.BackgroundProcessActionStop) {
 		return base.HTTPErrorf(http.StatusBadRequest, "Unknown parameter for 'action'. Must be start or stop")
@@ -285,11 +304,15 @@ func (h *handler) handlePostResync() error {
 		action = string(db.BackgroundProcessActionStart)
 	}
 
+	// Regenerate sequences if it is set true via query param or via request body
+	regenerateSequences = regenerateSequences || resyncPostReqBody.RegenerateSequences
+
 	if action == string(db.BackgroundProcessActionStart) {
 		if atomic.CompareAndSwapUint32(&h.db.State, db.DBOffline, db.DBResyncing) {
 			err := h.db.ResyncManager.Start(h.ctx(), map[string]interface{}{
 				"database":            h.db,
 				"regenerateSequences": regenerateSequences,
+				"collections":         resyncPostReqBody.Scope,
 			})
 			if err != nil {
 				return err

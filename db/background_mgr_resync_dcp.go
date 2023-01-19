@@ -32,6 +32,9 @@ type ResyncManagerDCP struct {
 	lock          sync.RWMutex
 }
 
+// ResyncCollections contains map of scope names with collection names against which resync needs to run
+type ResyncCollections map[string][]string
+
 var _ BackgroundManagerProcessI = &ResyncManagerDCP{}
 
 func NewResyncManagerDCP(metadataStore base.DataStore) *BackgroundManager {
@@ -87,6 +90,7 @@ func (r *ResyncManagerDCP) Init(ctx context.Context, options map[string]interfac
 func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]interface{}, persistClusterStatusCallback updateStatusCallbackFunc, terminator *base.SafeTerminator) error {
 	db := options["database"].(*Database)
 	regenerateSequences := options["regenerateSequences"].(bool)
+	resyncCollections := options["collections"].(ResyncCollections)
 
 	resyncLoggingID := "Resync: " + r.ResyncID
 
@@ -133,14 +137,20 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]interface
 		return true
 	}
 
-	collection, err := base.AsGocbV2Bucket(db.Bucket)
+	bucket, err := base.AsGocbV2Bucket(db.Bucket)
 	if err != nil {
 		return err
 	}
 
-	collectionIDs := make([]uint32, 0, len(db.CollectionByID))
-	for collectionID := range db.CollectionByID {
-		collectionIDs = append(collectionIDs, collectionID)
+	// Get collectionIds
+	collectionIDs, hasAllCollections, err := getCollectionIds(db, resyncCollections)
+	if err != nil {
+		return err
+	}
+	if hasAllCollections {
+		base.InfofCtx(ctx, base.KeyAll, "[%s] running resync against all collections", resyncLoggingID)
+	} else {
+		base.InfofCtx(ctx, base.KeyAll, "[%s] running resync against specified collections", resyncLoggingID)
 	}
 
 	clientOptions, err := getReSyncDCPClientOptions(collectionIDs, db.Options.GroupID)
@@ -149,7 +159,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]interface
 	}
 
 	dcpFeedKey := generateResyncDCPStreamName(r.ResyncID)
-	dcpClient, err := base.NewDCPClient(dcpFeedKey, callback, *clientOptions, collection)
+	dcpClient, err := base.NewDCPClient(dcpFeedKey, callback, *clientOptions, bucket)
 	if err != nil {
 		base.WarnfCtx(ctx, "[%s] Failed to create resync DCP client! %v", resyncLoggingID, err)
 		return err
@@ -215,6 +225,31 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]interface
 	}
 
 	return nil
+}
+
+func getCollectionIds(db *Database, resyncCollections ResyncCollections) ([]uint32, bool, error) {
+	collectionIDs := make([]uint32, 0)
+	var hasAllCollections bool
+
+	if len(resyncCollections) == 0 {
+		hasAllCollections = true
+		for collectionID := range db.CollectionByID {
+			collectionIDs = append(collectionIDs, collectionID)
+		}
+	} else {
+		hasAllCollections = false
+
+		for scopeName, collectionsName := range resyncCollections {
+			for _, collectionName := range collectionsName {
+				collection, err := db.GetDatabaseCollection(scopeName, collectionName)
+				if err != nil {
+					return nil, hasAllCollections, fmt.Errorf("failed to find ID for collection %s.%s", base.MD(scopeName).Redact(), base.MD(collectionName).Redact())
+				}
+				collectionIDs = append(collectionIDs, collection.GetCollectionID())
+			}
+		}
+	}
+	return collectionIDs, hasAllCollections, nil
 }
 
 func (r *ResyncManagerDCP) ResetStatus() {
