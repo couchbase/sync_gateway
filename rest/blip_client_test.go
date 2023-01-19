@@ -1120,36 +1120,3 @@ func (btc *BlipTesterCollectionClient) sendPushMsg(msg *blip.Message) error {
 	btc.addCollectionProperty(msg)
 	return btc.parent.pushReplication.sendMsg(msg)
 }
-
-/*
-func BlipClientInitialization(t *testing.T, rt *RestTester, options *BlipTesterClientOpts) (*BlipTesterClient, *BlipTesterCollectionClient, error) {
-	collection := rt.GetSingleTestDatabaseCollection()
-	scopeAndCollectionKey := strings.Join([]string{collection.ScopeName(), collection.Name()}, base.ScopeCollectionSeparator)
-	var client *BlipTesterClient
-	var err error
-	var btcCollection *BlipTesterCollectionClient
-
-	if base.IsDefaultCollection(collection.ScopeName(), collection.Name()) {
-		client, err = NewBlipTesterClientOptsWithRT(t, rt, options)
-		if err != nil {
-			return nil, nil, err
-		}
-		btcCollection = client.SingleCollection()
-	} else {
-		if options == nil {
-			options = &BlipTesterClientOpts{}
-		}
-		options.Collections = []string{scopeAndCollectionKey}
-		client, err = NewBlipTesterClientOptsWithRT(t, rt, options)
-		if err != nil {
-			return nil, nil, err
-		}
-		btcCollection, err = client.Collection(scopeAndCollectionKey)
-		if err != nil {
-			return nil, nil, err
-		}
-	}
-	return client, btcCollection, nil
-}
-
-*/
