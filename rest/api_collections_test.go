@@ -276,18 +276,18 @@ func TestMultiCollectionChannelAccess(t *testing.T) {
 	tb := base.GetPersistentTestBucket(t)
 	defer tb.Close()
 
-	scopesConfig := GetCollectionsConfig(t, tb, 3)
+	scopesConfig := GetCollectionsConfig(t, tb, 2)
 	dataStoreNames := GetDataStoreNamesFromScopesConfig(scopesConfig)
 	c1SyncFunction := `function(doc) {channel(doc.chan);}`
 
 	scope := dataStoreNames[0].ScopeName()
 	collection1 := dataStoreNames[0].CollectionName()
 	collection2 := dataStoreNames[1].CollectionName()
-	collection3 := dataStoreNames[2].CollectionName()
 
 	scopesConfig[scope].Collections[collection1] = CollectionConfig{SyncFn: &c1SyncFunction}
 	scopesConfig[scope].Collections[collection2] = CollectionConfig{SyncFn: &c1SyncFunction}
 
+	fmt.Println(scopesConfig)
 	rtConfig := &RestTesterConfig{
 		CustomTestBucket: tb.NoCloseClone(),
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
@@ -343,13 +343,20 @@ func TestMultiCollectionChannelAccess(t *testing.T) {
 	RequireStatus(t, resp, http.StatusOK)
 
 	// Add a new collection and update the db config
+	scopesConfig = GetCollectionsConfig(t, tb, 3)
+	dataStoreNames = GetDataStoreNamesFromScopesConfig(scopesConfig)
+
+	collection3 := dataStoreNames[2].CollectionName()
+	scopesConfig[scope].Collections[collection1] = CollectionConfig{SyncFn: &c1SyncFunction}
+	scopesConfig[scope].Collections[collection2] = CollectionConfig{SyncFn: &c1SyncFunction}
 	scopesConfig[scope].Collections[collection3] = CollectionConfig{SyncFn: &c1SyncFunction}
 	scopesConfigString, err := json.Marshal(scopesConfig)
 	require.NoError(t, err)
+
 	resp = rt.SendAdminRequest("PUT", "/db/_config", fmt.Sprintf(
 		`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "scopes":%s}`,
 		tb.GetName(), base.TestUseXattrs(), string(scopesConfigString)))
-	//RequireStatus(t, resp, http.StatusCreated)
+	RequireStatus(t, resp, http.StatusCreated)
 
 	// Put a doc in new collection and make sure it cant be accessed
 	resp = rt.SendAdminRequest("PUT", "/{{.keyspace3}}/testDocBazA", `{"chan":["A"]}`)
