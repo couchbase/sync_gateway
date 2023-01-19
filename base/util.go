@@ -54,6 +54,7 @@ type NonCancellableContext struct {
 	Ctx context.Context
 }
 
+// NewNonCancelCtx creates a new background context struct for operations that require a fresh context
 func NewNonCancelCtx() NonCancellableContext {
 	ctxStruct := NonCancellableContext{
 		Ctx: context.Background(),
