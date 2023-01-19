@@ -1131,6 +1131,9 @@ type BlipTesterSpec struct {
 
 	// Supported blipProtocols for the client to use in order of preference
 	blipProtocols []string
+
+	// If true, do not automatically initialize GetCollections handshake
+	skipCollectionsInitialization bool
 }
 
 // State associated with a BlipTester
@@ -1157,7 +1160,7 @@ type BlipTester struct {
 
 	// Set when we receive a reply to a getCollections request. Used to verify that all messages after that contain a
 	// `collection` property.
-	useCollections *base.AtomicBool
+	useCollections bool
 }
 
 // Close the bliptester
@@ -1232,8 +1235,11 @@ func NewBlipTesterFromSpec(tb testing.TB, spec BlipTesterSpec) (*BlipTester, err
 // Create a BlipTester using the given spec
 func createBlipTesterWithSpec(tb testing.TB, spec BlipTesterSpec, rt *RestTester) (*BlipTester, error) {
 	bt := &BlipTester{
-		restTester:     rt,
-		useCollections: base.NewAtomicBool(false),
+		restTester: rt,
+	}
+
+	if !rt.GetDatabase().OnlyDefaultCollection() {
+		bt.useCollections = true
 	}
 
 	// Since blip requests all go over the public handler, wrap the public handler with the httptest server
@@ -1323,8 +1329,67 @@ func createBlipTesterWithSpec(tb testing.TB, spec BlipTesterSpec, rt *RestTester
 		return nil, err
 	}
 
+	collections := bt.restTester.getCollectionsForBLIP()
+	if !spec.skipCollectionsInitialization && len(collections) > 0 {
+		bt.initializeCollections(collections)
+	}
+
 	return bt, nil
 
+}
+
+func (bt *BlipTester) initializeCollections(collections []string) {
+	getCollectionsRequest := blip.NewRequest()
+	getCollectionsRequest.SetProfile(db.MessageGetCollections)
+
+	checkpointIDs := make([]string, len(collections))
+	for i := range checkpointIDs {
+		checkpointIDs[i] = "0"
+	}
+
+	requestBody := db.GetCollectionsRequestBody{
+		Collections:   collections,
+		CheckpointIDs: checkpointIDs,
+	}
+	body, err := base.JSONMarshal(requestBody)
+	require.NoError(bt.restTester.TB, err)
+
+	getCollectionsRequest.SetBody(body)
+	sent := bt.sender.Send(getCollectionsRequest)
+	require.True(bt.restTester.TB, sent)
+
+	type CollectionsResponseEntry struct {
+		LastSequence *int    `json:"last_sequence"`
+		Rev          *string `json:"rev"`
+	}
+
+	response, err := getCollectionsRequest.Response().Body()
+	require.NoError(bt.restTester.TB, err)
+
+	var collectionResponse []*CollectionsResponseEntry
+	err = base.JSONUnmarshal(response, &collectionResponse)
+	require.NoError(bt.restTester.TB, err)
+
+	for _, perCollectionResponse := range collectionResponse {
+		require.NotNil(bt.restTester.TB, perCollectionResponse)
+	}
+}
+
+// newRequest returns a blip msg with a collection property enabled. This function is only ssafe to call if there is a single collection running.
+func (bt *BlipTester) newRequest() *blip.Message {
+	msg := blip.NewRequest()
+	bt.addCollectionProperty(msg)
+	return msg
+}
+
+// addCollectionProperty will automatically add a collection. If we are running with the default collection, or a single named collection, automatically add the right value. If there are multiple collections on the database, the test will fatally exit, since the behavior is undefined.
+func (bt *BlipTester) addCollectionProperty(msg *blip.Message) *blip.Message {
+	if bt.useCollections == true {
+		require.Equal(bt.restTester.TB, 1, len(bt.restTester.GetDatabase().CollectionByID), "Multiple collection exist on the database so we are unable to choose which collection to specify in BlipCollection property")
+		msg.Properties[db.BlipCollection] = "0"
+	}
+
+	return msg
 }
 
 func (bt *BlipTester) SetCheckpoint(client string, checkpointRev string, body []byte) (sent bool, req *db.SetCheckpointMessage, res *db.SetCheckpointResponse, err error) {
@@ -1334,6 +1399,7 @@ func (bt *BlipTester) SetCheckpoint(client string, checkpointRev string, body []
 	scm.SetClient(client)
 	scm.SetRev(checkpointRev)
 	scm.SetBody(body)
+	bt.addCollectionProperty(scm.Message)
 
 	sent = bt.sender.Send(scm.Message)
 	if !sent {
@@ -1363,6 +1429,7 @@ func (bt *BlipTester) SendRevWithHistory(docId, docRev string, revHistory []stri
 	for k, v := range properties {
 		revRequest.Properties[k] = v
 	}
+	bt.addCollectionProperty(revRequest)
 
 	revRequest.SetBody(body)
 	sent = bt.sender.Send(revRequest)
@@ -1544,6 +1611,7 @@ func (bt *BlipTester) GetDocAtRev(requestedDocID, requestedDocRev string) (resul
 	subChangesRequest := blip.NewRequest()
 	subChangesRequest.SetProfile("subChanges")
 	subChangesRequest.Properties["continuous"] = "false"
+	bt.addCollectionProperty(subChangesRequest)
 
 	sent := bt.sender.Send(subChangesRequest)
 	if !sent {
@@ -1615,7 +1683,7 @@ func (bt *BlipTester) SendRevWithAttachment(input SendRevWithAttachmentInput) (s
 
 	// Push a rev with an attachment.
 	getAttachmentWg.Add(1)
-	sent, req, res, _ = bt.SendRevWithHistory(
+	sent, req, res, err = bt.SendRevWithHistory(
 		input.docId,
 		input.revId,
 		input.history,
@@ -1817,6 +1885,7 @@ func (bt *BlipTester) PullDocs() (docs map[string]RestDocument) {
 	subChangesRequest := blip.NewRequest()
 	subChangesRequest.SetProfile("subChanges")
 	subChangesRequest.Properties["continuous"] = "false"
+	bt.addCollectionProperty(subChangesRequest)
 
 	sent := bt.sender.Send(subChangesRequest)
 	if !sent {
@@ -1854,6 +1923,7 @@ func (bt *BlipTester) SubscribeToChanges(continuous bool, changes chan<- *blip.M
 	// Send subChanges to subscribe to changes, which will cause the "changes" profile handler above to be called back
 	subChangesRequest := blip.NewRequest()
 	subChangesRequest.SetProfile("subChanges")
+	bt.addCollectionProperty(subChangesRequest)
 	switch continuous {
 	case true:
 		subChangesRequest.Properties["continuous"] = "true"
@@ -1868,6 +1938,10 @@ func (bt *BlipTester) SubscribeToChanges(continuous bool, changes chan<- *blip.M
 	subChangesResponse := subChangesRequest.Response()
 	if subChangesResponse.SerialNumber() != subChangesRequest.SerialNumber() {
 		panic(fmt.Sprintf("subChangesResponse.SerialNumber() != subChangesRequest.SerialNumber().  %v != %v", subChangesResponse.SerialNumber(), subChangesRequest.SerialNumber()))
+	}
+	errCode := subChangesResponse.Properties[db.BlipErrorCode]
+	if errCode != "" {
+		bt.restTester.TB.Fatalf("Error sending subChanges request: %s", errCode)
 	}
 
 }
@@ -2188,4 +2262,18 @@ func (rt *RestTester) GetSingleKeyspace() string {
 	}
 	rt.TB.Fatal("Had no collection to return a keyspace for") // should be unreachable given length check above
 	return ""
+}
+
+// getCollectionsForBLIP returns scope.collection strings for blip to process GetCollections messages. To test legacy functionality when SG_TEST_USE_DEFAULT_COLLECTION=true, don't return default collection if it is the only collection available.
+func (rt *RestTester) getCollectionsForBLIP() []string {
+	db := rt.GetDatabase()
+	var collections []string
+	if rt.GetDatabase().OnlyDefaultCollection() {
+		return collections
+	}
+	for _, collection := range db.CollectionByID {
+		collections = append(collections,
+			strings.Join([]string{collection.ScopeName(), collection.Name()}, base.ScopeCollectionSeparator))
+	}
+	return collections
 }

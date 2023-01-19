@@ -941,7 +941,7 @@ func (dbCtx *DatabaseContext) RemoveObsoleteIndexes(ctx context.Context, preview
 			errs = errs.Append(err)
 			continue
 		}
-		onlyDefaultCollection := dbCtx.onlyDefaultCollection()
+		onlyDefaultCollection := dbCtx.OnlyDefaultCollection()
 		for _, idxName := range collectionRemovedIndexes {
 			if onlyDefaultCollection {
 				removedIndexes = append(removedIndexes, idxName)
@@ -2220,10 +2220,16 @@ func (dbCtx *DatabaseContext) AddDatabaseLogContext(ctx context.Context) context
 }
 
 // onlyDefaultCollection is true if the database is only configured with default collection.
-func (dbCtx *DatabaseContext) onlyDefaultCollection() bool {
+func (dbCtx *DatabaseContext) OnlyDefaultCollection() bool {
 	if len(dbCtx.CollectionByID) > 1 {
 		return false
 	}
+	_, exists := dbCtx.CollectionByID[base.DefaultCollectionID]
+	return exists
+}
+
+// hasDefaultCollection is true if the database is configured with default collection
+func (dbCtx *DatabaseContext) hasDefaultCollection() bool {
 	_, exists := dbCtx.CollectionByID[base.DefaultCollectionID]
 	return exists
 }
@@ -2242,7 +2248,7 @@ func (dbc *Database) GetDatabaseCollectionWithUser(scopeName, collectionName str
 
 // GetDatabaseCollection returns a collection if one exists, otherwise error.
 func (dbc *DatabaseContext) GetDatabaseCollection(scopeName, collectionName string) (*DatabaseCollection, error) {
-	if base.IsDefaultCollection(scopeName, collectionName) && dbc.onlyDefaultCollection() {
+	if base.IsDefaultCollection(scopeName, collectionName) {
 		return dbc.GetDefaultDatabaseCollection()
 	}
 	if dbc.Scopes == nil {

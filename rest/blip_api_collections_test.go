@@ -11,13 +11,12 @@ package rest
 import (
 	"fmt"
 	"net/http"
-	"strings"
+	"strconv"
 	"testing"
 
 	"github.com/couchbase/go-blip"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -28,20 +27,14 @@ func TestBlipGetCollections(t *testing.T) {
 	// checkpointIDWithError := "checkpointError"
 
 	const defaultScopeAndCollection = "_default._default"
-	rt := NewRestTester(t, &RestTesterConfig{
-		GuestEnabled: true,
-		// leakyBucketConfig: &base.LeakyBucketConfig{
-		//	GetRawCallback: func(key string) error {
-		//		if key == db.CheckpointDocIDPrefix+checkpointIDWithError {
-		//			return fmt.Errorf("a unique error")
-		//		}
-		//		return nil
-		//	},
-		// },
-	})
+	rt := NewRestTesterMultipleCollections(t, &RestTesterConfig{GuestEnabled: true}, 1)
 	defer rt.Close()
 
-	btc, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
+	btc, err := NewBlipTesterClientOptsWithRT(t, rt,
+		&BlipTesterClientOpts{
+			SkipCollectionsInitialization: true,
+		},
+	)
 	require.NoError(t, err)
 	defer btc.Close()
 
@@ -150,6 +143,34 @@ func TestBlipGetCollections(t *testing.T) {
 	}
 }
 
+func TestBlipReplicationNoDefaultCollection(t *testing.T) {
+	base.TestRequiresCollections(t)
+
+	rt := NewRestTester(t, &RestTesterConfig{
+		GuestEnabled: true,
+	})
+	defer rt.Close()
+
+	btc, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
+	require.NoError(t, err)
+	defer btc.Close()
+
+	checkpointID1 := "checkpoint1"
+	checkpoint1Body := db.Body{"seq": "123"}
+	collection := rt.GetSingleTestDatabaseCollection()
+	revID, err := collection.PutSpecial(db.DocTypeLocal, db.CheckpointDocIDPrefix+checkpointID1, checkpoint1Body)
+	require.NoError(t, err)
+	checkpoint1RevID := "0-1"
+	require.Equal(t, checkpoint1RevID, revID)
+
+	subChangesRequest := blip.NewRequest()
+	subChangesRequest.SetProfile(db.MessageSubChanges)
+
+	require.NoError(t, btc.pullReplication.sendMsg(subChangesRequest))
+	resp := subChangesRequest.Response()
+	require.Equal(t, strconv.Itoa(http.StatusBadRequest), resp.Properties[db.BlipErrorCode])
+}
+
 func TestBlipGetCollectionsAndSetCheckpoint(t *testing.T) {
 	base.TestRequiresCollections(t)
 
@@ -209,22 +230,6 @@ func TestBlipGetCollectionsAndSetCheckpoint(t *testing.T) {
 
 }
 
-func TestCollectionsPeerDoesNotHave(t *testing.T) {
-	base.TestRequiresCollections(t)
-
-	rt := NewRestTester(t, &RestTesterConfig{
-		GuestEnabled: true,
-	})
-	defer rt.Close()
-
-	_, err := NewBlipTesterClientOptsWithRT(t, rt, &BlipTesterClientOpts{
-		Collections: []string{"barScope.barCollection"},
-	})
-	require.Error(t, err)
-
-	assert.Equal(t, "collection doesn't exist on peer barScope.barCollection", err.Error())
-}
-
 func TestCollectionsReplication(t *testing.T) {
 	base.TestRequiresCollections(t)
 
@@ -233,22 +238,16 @@ func TestCollectionsReplication(t *testing.T) {
 	})
 	defer rt.Close()
 
-	collection := rt.GetSingleTestDatabaseCollection()
-	scopeAndCollectionKey := strings.Join([]string{collection.ScopeName(), collection.Name()}, base.ScopeCollectionSeparator)
-
-	btc, err := NewBlipTesterClientOptsWithRT(t, rt, &BlipTesterClientOpts{
-		Collections: []string{scopeAndCollectionKey},
-	})
+	btc, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
 	require.NoError(t, err)
 	defer btc.Close()
 
-	resp := rt.SendAdminRequest(http.MethodPut, "/db."+scopeAndCollectionKey+"/doc1", "{}")
+	resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc1", "{}")
 	RequireStatus(t, resp, http.StatusCreated)
 
 	require.NoError(t, rt.WaitForPendingChanges())
 
-	btcCollection, err := btc.Collection(scopeAndCollectionKey)
-	require.NoError(t, err)
+	btcCollection := btc.SingleCollection()
 
 	err = btcCollection.StartOneshotPull()
 	require.NoError(t, err)
