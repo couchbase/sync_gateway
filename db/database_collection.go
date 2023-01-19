@@ -43,6 +43,10 @@ func (c *DatabaseCollection) AllowConflicts() bool {
 	return base.DefaultAllowConflicts
 }
 
+func (c *DatabaseCollection) GetCollectionDatastore() base.DataStore {
+	return c.dataStore
+}
+
 // allPrincipalIDs returns the IDs of all users and roles, including deleted Roles
 func (c *DatabaseCollection) allPrincipalIDs(ctx context.Context) (users, roles []string, err error) {
 	return c.dbCtx.AllPrincipalIDs(ctx)

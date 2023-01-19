@@ -28,8 +28,6 @@ const oneShotDCPTimeout = 5 * time.Minute
 
 func TestOneShotDCP(t *testing.T) {
 
-	TemporarilyDisableTestUsingDCPWithCollections(t)
-
 	if UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
 	}
@@ -51,9 +49,6 @@ func TestOneShotDCP(t *testing.T) {
 	// create callback
 	mutationCount := uint64(0)
 	counterCallback := func(event sgbucket.FeedEvent) bool {
-		if bytes.HasPrefix(event.Key, []byte(SyncDocPrefix)) {
-			return false
-		}
 		atomic.AddUint64(&mutationCount, 1)
 		return false
 	}
@@ -106,14 +101,9 @@ func TestOneShotDCP(t *testing.T) {
 	select {
 	case err := <-doneChan:
 		require.NoError(t, err)
-		if TestsUseNamedCollections() {
-			// CBG-2454, sometimes we get extra docs from TO_LATEST with collections
-			require.LessOrEqual(t, numDocs, int(mutationCount))
-		} else {
-			require.Equal(t, numDocs, int(mutationCount))
-		}
+		require.LessOrEqual(t, numDocs, int(mutationCount))
 	case <-timeout:
-		require.Fail(t, "timeout waiting for one-shot feed to complete")
+		t.Errorf("timeout waiting for one-shot feed to complete")
 	}
 
 }
@@ -188,8 +178,6 @@ func TestTerminateDCPFeed(t *testing.T) {
 // TestDCPClientMultiFeedConsistency tests for DCP rollback between execution of two DCP feeds, based on
 // changes in the VbUUID
 func TestDCPClientMultiFeedConsistency(t *testing.T) {
-
-	TemporarilyDisableTestUsingDCPWithCollections(t)
 
 	if UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
@@ -326,8 +314,6 @@ func TestDCPClientMultiFeedConsistency(t *testing.T) {
 // TestResumeInterruptedFeed uses persisted metadata to resume the feed
 func TestResumeStoppedFeed(t *testing.T) {
 
-	TemporarilyDisableTestUsingDCPWithCollections(t)
-
 	if UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
 	}
@@ -417,8 +403,6 @@ func TestResumeStoppedFeed(t *testing.T) {
 		OneShot:        true,
 		CollectionIDs:  collectionIDs,
 	}
-	collection, ok = dataStore.(*Collection)
-	require.True(t, ok)
 
 	dcpClient2, err := NewDCPClient(feedID, secondCallback, dcpClientOpts, gocbv2Bucket)
 	require.NoError(t, err)

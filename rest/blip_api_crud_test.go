@@ -54,7 +54,7 @@ func TestBlipPushRevisionInspectChanges(t *testing.T) {
 
 	// Verify Sync Gateway will accept the doc revision that is about to be sent
 	var changeList [][]interface{}
-	changesRequest := blip.NewRequest()
+	changesRequest := bt.newRequest()
 	changesRequest.SetProfile("changes")
 	changesRequest.SetBody([]byte(`[["1", "foo", "1-abc", false]]`)) // [sequence, docID, revID]
 	sent := bt.sender.Send(changesRequest)
@@ -65,7 +65,7 @@ func TestBlipPushRevisionInspectChanges(t *testing.T) {
 	assert.NoError(t, err, "Error reading changes response body")
 	err = base.JSONUnmarshal(body, &changeList)
 	assert.NoError(t, err, "Error unmarshalling response body")
-	assert.Equal(t, 1, len(changeList)) // Should be 1 row, corresponding to the single doc that was queried in changes
+	require.Equal(t, 1, len(changeList)) // Should be 1 row, corresponding to the single doc that was queried in changes
 	changeRow := changeList[0]
 	assert.Equal(t, 0, len(changeRow)) // Should be empty, meaning the server is saying it doesn't have the revision yet
 
@@ -83,7 +83,7 @@ func TestBlipPushRevisionInspectChanges(t *testing.T) {
 
 	// Call changes with a hypothetical new revision, assert that it returns last pushed revision
 	var changeList2 [][]interface{}
-	changesRequest2 := blip.NewRequest()
+	changesRequest2 := bt.newRequest()
 	changesRequest2.SetProfile("changes")
 	changesRequest2.SetBody([]byte(`[["2", "foo", "2-xyz", false]]`)) // [sequence, docID, revID]
 	sent2 := bt.sender.Send(changesRequest2)
@@ -138,7 +138,7 @@ func TestBlipPushRevisionInspectChanges(t *testing.T) {
 	}
 
 	// Send subChanges to subscribe to changes, which will cause the "changes" profile handler above to be called back
-	subChangesRequest := blip.NewRequest()
+	subChangesRequest := bt.newRequest()
 	subChangesRequest.SetProfile("subChanges")
 	subChangesRequest.Properties["continuous"] = "true"
 	sent = bt.sender.Send(subChangesRequest)
@@ -229,7 +229,7 @@ func TestContinuousChangesSubscription(t *testing.T) {
 	}
 
 	// Send subChanges to subscribe to changes, which will cause the "changes" profile handler above to be called back
-	subChangesRequest := blip.NewRequest()
+	subChangesRequest := bt.newRequest()
 	subChangesRequest.SetProfile("subChanges")
 	subChangesRequest.Properties["continuous"] = "true"
 	subChangesRequest.Properties["batch"] = "10" // default batch size is 200, lower this to 10 to make sure we get multiple batches
@@ -248,7 +248,7 @@ func TestContinuousChangesSubscription(t *testing.T) {
 			[]byte(`{"key": "val"}`),
 			blip.Properties{},
 		)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		_, err = revResponse.Body()
 		assert.NoError(t, err, "Error unmarshalling response body")
@@ -361,7 +361,7 @@ func TestBlipOneShotChangesSubscription(t *testing.T) {
 			[]byte(`{"key": "val"}`),
 			blip.Properties{},
 		)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		_, err = revResponse.Body()
 		assert.NoError(t, err, "Error unmarshalling response body")
 		receivedChangesWg.Add(1)
@@ -371,7 +371,7 @@ func TestBlipOneShotChangesSubscription(t *testing.T) {
 	cacheWaiter.Wait()
 
 	// Send subChanges to subscribe to changes, which will cause the "changes" profile handler above to be called back
-	subChangesRequest := blip.NewRequest()
+	subChangesRequest := bt.newRequest()
 	subChangesRequest.SetProfile("subChanges")
 	subChangesRequest.Properties["continuous"] = "false"
 	subChangesRequest.Properties["batch"] = "10" // default batch size is 200, lower this to 10 to make sure we get multiple batches
@@ -410,7 +410,7 @@ func TestBlipOneShotChangesSubscription(t *testing.T) {
 			[]byte(`{"key": "val"}`),
 			blip.Properties{},
 		)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		_, err = revResponse.Body()
 		assert.NoError(t, err, "Error unmarshalling response body")
 		receivedChangesWg.Add(1)
@@ -547,7 +547,7 @@ func TestBlipSubChangesDocIDFilter(t *testing.T) {
 	// TODO: Attempt a subChanges w/ continuous=true and docID filter
 
 	// Send subChanges to subscribe to changes, which will cause the "changes" profile handler above to be called back
-	subChangesRequest := blip.NewRequest()
+	subChangesRequest := bt.newRequest()
 	subChangesRequest.SetProfile("subChanges")
 	subChangesRequest.Properties["continuous"] = "false"
 	subChangesRequest.Properties["batch"] = "10" // default batch size is 200, lower this to 5 to make sure we get multiple batches
@@ -604,7 +604,7 @@ func TestProposedChangesNoConflictsMode(t *testing.T) {
 	assert.NoError(t, err, "Error creating BlipTester")
 	defer bt.Close()
 
-	proposeChangesRequest := blip.NewRequest()
+	proposeChangesRequest := bt.newRequest()
 	proposeChangesRequest.SetProfile("proposeChanges")
 	proposeChangesRequest.SetCompressed(true)
 
@@ -711,7 +711,7 @@ func TestProposedChangesIncludeConflictingRev(t *testing.T) {
 		},
 	}
 
-	proposeChangesRequest := blip.NewRequest()
+	proposeChangesRequest := bt.newRequest()
 	proposeChangesRequest.SetProfile("proposeChanges")
 	proposeChangesRequest.SetCompressed(true)
 	proposeChangesRequest.Properties[db.ProposeChangesConflictsIncludeRev] = "true"
@@ -824,6 +824,7 @@ function(doc, oldDoc) {
 	var rt = NewRestTesterDefaultCollection(t, &rtConfig) // CBG-2619: make collection aware
 	defer rt.Close()
 	ctx := rt.Context()
+	collection := rt.GetSingleTestDatabaseCollection()
 
 	// Create bliptester that is connected as user1, with no access to channel ABC
 	bt, err := NewBlipTesterFromSpecWithRT(t, &BlipTesterSpec{
@@ -852,7 +853,7 @@ function(doc, oldDoc) {
 	userWaiter := userDb.NewUserWaiter()
 
 	// Update the user to grant them access to ABC
-	response := rt.SendAdminRequest("PUT", "/db/_user/user1", `{"admin_channels":["ABC"]}`)
+	response := rt.SendAdminRequest("PUT", "/db/_user/user1", GetUserPayload(t, "user1", "", "", collection, []string{"ABC"}, nil))
 	RequireStatus(t, response, 200)
 
 	// Wait for notification
@@ -972,7 +973,7 @@ function(doc, oldDoc) {
 	}
 
 	// Send subChanges to subscribe to changes, which will cause the "changes" profile handler above to be called back
-	subChangesRequest := blip.NewRequest()
+	subChangesRequest := bt.newRequest()
 	subChangesRequest.SetProfile("subChanges")
 	subChangesRequest.Properties["continuous"] = "true"
 	subChangesRequest.Properties["batch"] = "10" // default batch size is 200, lower this to 10 to make sure we get multiple batches
@@ -1099,7 +1100,7 @@ function(doc, oldDoc) {
 	}
 
 	// Send subChanges to subscribe to changes, which will cause the "changes" profile handler above to be called back
-	subChangesRequest := blip.NewRequest()
+	subChangesRequest := bt.newRequest()
 	subChangesRequest.SetProfile("subChanges")
 	subChangesRequest.Properties["continuous"] = "true"
 	subChangesRequest.Properties["batch"] = "10" // default batch size is 200, lower this to 10 to make sure we get multiple batches
@@ -1381,24 +1382,27 @@ func TestAccessGrantViaSyncFunction(t *testing.T) {
 	defer bt.Close()
 
 	// Add a doc in the PBS channel
-	_, _, _, _ = bt.SendRev(
+	_, _, _, err = bt.SendRev(
 		"foo",
 		"1-abc",
 		[]byte(`{"key": "val", "channels": ["PBS"]}`),
 		blip.Properties{},
 	)
 
+	require.NoError(t, err)
+
 	// Put document that triggers access grant for user to channel PBS
 	response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/access1", `{"accessUser":"user1", "accessChannel":["PBS"]}`)
 	RequireStatus(t, response, 201)
 
 	// Add another doc in the PBS channel
-	_, _, _, _ = bt.SendRev(
+	_, _, _, err = bt.SendRev(
 		"foo2",
 		"1-abc",
 		[]byte(`{"key": "val", "channels": ["PBS"]}`),
 		blip.Properties{},
 	)
+	require.NoError(t, err)
 
 	// Make sure we can see it by getting changes
 	changes := bt.WaitForNumChanges(2)
@@ -1419,6 +1423,7 @@ func TestAccessGrantViaAdminApi(t *testing.T) {
 		connectingPassword: "1234",
 	})
 	defer bt.Close()
+	collection := bt.restTester.GetSingleTestDatabaseCollection()
 
 	// Add a doc in the PBS channel
 	_, _, _, _ = bt.SendRev(
@@ -1429,7 +1434,7 @@ func TestAccessGrantViaAdminApi(t *testing.T) {
 	)
 
 	// Update the user doc to grant access to PBS
-	response := bt.restTester.SendAdminRequest("PUT", "/db/_user/user1", `{"admin_channels":["user1", "PBS"]}`)
+	response := bt.restTester.SendAdminRequest("PUT", "/db/_user/user1", GetUserPayload(t, "user1", "", "", collection, []string{"user1", "PBS"}, nil))
 	RequireStatus(t, response, 200)
 
 	// Add another doc in the PBS channel
@@ -1461,7 +1466,7 @@ func TestCheckpoint(t *testing.T) {
 	client := "testClient"
 
 	// Get the checkpoint -- expect to be missing at this point
-	request := blip.NewRequest()
+	request := bt.newRequest()
 	request.SetCompressed(true)
 	request.SetProfile("getCheckpoint")
 	request.Properties["client"] = client
@@ -1477,7 +1482,7 @@ func TestCheckpoint(t *testing.T) {
 	assert.Equal(t, "404", errorcode)
 
 	// Set a checkpoint
-	requestSetCheckpoint := blip.NewRequest()
+	requestSetCheckpoint := bt.newRequest()
 	requestSetCheckpoint.SetCompressed(true)
 	requestSetCheckpoint.SetProfile("setCheckpoint")
 	requestSetCheckpoint.Properties["client"] = client
@@ -1494,7 +1499,7 @@ func TestCheckpoint(t *testing.T) {
 	log.Printf("responseSetCheckpoint body: %s", body)
 
 	// Get the checkpoint and make sure it has the expected value
-	requestGetCheckpoint2 := blip.NewRequest()
+	requestGetCheckpoint2 := bt.newRequest()
 	requestGetCheckpoint2.SetCompressed(true)
 	requestGetCheckpoint2.SetProfile("getCheckpoint")
 	requestGetCheckpoint2.Properties["client"] = client
@@ -1537,7 +1542,7 @@ func TestPutInvalidRevSyncFnReject(t *testing.T) {
 
 	// Add a doc that will be rejected by sync function, since user
 	// does not have access to the CNN channel
-	revRequest := blip.NewRequest()
+	revRequest := bt.newRequest()
 	revRequest.SetCompressed(false)
 	revRequest.SetProfile("rev")
 	revRequest.Properties["id"] = "foo"
@@ -1552,7 +1557,7 @@ func TestPutInvalidRevSyncFnReject(t *testing.T) {
 	// Since doc is rejected by sync function, expect a 403 error
 	errorCode, hasErrorCode := revResponse.Properties["Error-Code"]
 	assert.True(t, hasErrorCode)
-	assert.Equal(t, "403", errorCode)
+	require.Equal(t, "403", errorCode)
 
 	// Make sure that a one-off GetChanges() returns no documents
 	changes := bt.GetChanges()
@@ -1589,8 +1594,7 @@ func TestPutInvalidRevMalformedBody(t *testing.T) {
 	// Since doc is rejected by sync function, expect a 403 error
 	errorCode, hasErrorCode := revResponse.Properties["Error-Code"]
 	assert.True(t, hasErrorCode)
-	// FIXME: This used to check for error 500 -- No longer does readJSON in handleRev so fails at different point
-	assert.Equal(t, "400", errorCode)
+	require.Equal(t, "400", errorCode)
 
 	// Make sure that a one-off GetChanges() returns no documents
 	changes := bt.GetChanges()
@@ -1613,7 +1617,7 @@ func TestPutRevNoConflictsMode(t *testing.T) {
 
 	sent, _, resp, err := bt.SendRev("foo", "1-abc", []byte(`{"key": "val"}`), blip.Properties{})
 	assert.True(t, sent)
-	assert.NoError(t, err)                             // no error
+	require.NoError(t, err)                            // no error
 	assert.Equal(t, "", resp.Properties["Error-Code"]) // no error
 
 	sent, _, resp, err = bt.SendRev("foo", "1-def", []byte(`{"key": "val"}`), blip.Properties{"noconflicts": "true"})
@@ -1643,7 +1647,7 @@ func TestPutRevConflictsMode(t *testing.T) {
 
 	sent, _, resp, err := bt.SendRev("foo", "1-abc", []byte(`{"key": "val"}`), blip.Properties{})
 	assert.True(t, sent)
-	assert.NoError(t, err)                             // no error
+	require.NoError(t, err)                            // no error
 	assert.Equal(t, "", resp.Properties["Error-Code"]) // no error
 
 	sent, _, resp, err = bt.SendRev("foo", "1-def", []byte(`{"key": "val"}`), blip.Properties{"noconflicts": "false"})
@@ -1702,21 +1706,21 @@ func TestGetRemovedDoc(t *testing.T) {
 	// Add rev-1 in channel user1
 	sent, _, resp, err := bt.SendRev("foo", "1-abc", []byte(`{"key": "val", "channels": ["user1"]}`), blip.Properties{})
 	assert.True(t, sent)
-	assert.NoError(t, err)                         // no error
+	require.NoError(t, err)                        // no error
 	assert.Empty(t, resp.Properties["Error-Code"]) // no error
 
 	// Add rev-2 in channel user1
 	history := []string{"1-abc"}
 	sent, _, resp, err = bt.SendRevWithHistory("foo", "2-bcd", history, []byte(`{"key": "val", "channels": ["user1"]}`), blip.Properties{"noconflicts": "true"})
 	assert.True(t, sent)
-	assert.NoError(t, err)                         // no error
+	require.NoError(t, err)                        // no error
 	assert.Empty(t, resp.Properties["Error-Code"]) // no error
 
 	require.NoError(t, rt.GetDatabase().GetSingleDatabaseCollection().WaitForPendingChanges(base.TestCtx(t)))
 
 	// Try to get rev 2 via BLIP API and assert that _removed == false
 	resultDoc, err := bt.GetDocAtRev("foo", "2-bcd")
-	assert.NoError(t, err, "Unexpected Error")
+	require.NoError(t, err, "Unexpected Error")
 	assert.False(t, resultDoc.IsRemoved())
 
 	// Add rev-3, remove from channel user1 and put into channel another_channel
@@ -1784,7 +1788,7 @@ func TestMissingNoRev(t *testing.T) {
 		docRev := fmt.Sprintf("1-abc%d", i)
 		sent, _, resp, err := bt.SendRev(docID, docRev, []byte(`{"key": "val", "channels": ["ABC"]}`), blip.Properties{})
 		assert.True(t, sent)
-		log.Printf("resp: %v, err: %v", resp, err)
+		require.NoError(t, err, "resp is %s", resp)
 	}
 
 	// Get a reference to the database
@@ -1800,7 +1804,7 @@ func TestMissingNoRev(t *testing.T) {
 
 	// Purge one doc
 	doc0Id := fmt.Sprintf("doc-%d", 0)
-	err = targetDb.GetSingleDatabaseCollectionWithUser().Purge(ctx, doc0Id)
+	err = rt.GetSingleTestDatabaseCollectionWithUser().Purge(ctx, doc0Id)
 	assert.NoError(t, err, "failed")
 
 	// Flush rev cache
@@ -1913,6 +1917,7 @@ func TestBlipNorev(t *testing.T) {
 	norevMsg.SetSequence(db.SequenceID{Seq: 50})
 	norevMsg.SetError("404")
 	norevMsg.SetReason("couldn't send xyz")
+	btc.addCollectionProperty(norevMsg.Message)
 
 	// Couchbase Lite always sends noreply=true for norev messages
 	// but set to false so we can block waiting for a reply
@@ -1949,8 +1954,9 @@ func TestRemovedMessageWithAlternateAccess(t *testing.T) {
 
 	rt := NewRestTesterDefaultCollection(t, nil) // CBG-2619: make collection aware
 	defer rt.Close()
+	collection := rt.GetSingleTestDatabaseCollection()
 
-	resp := rt.SendAdminRequest("PUT", "/db/_user/user", `{"admin_channels": ["A", "B"], "password": "test"}`)
+	resp := rt.SendAdminRequest("PUT", "/db/_user/user", GetUserPayload(t, "user", "test", "", collection, []string{"A", "B"}, nil))
 	RequireStatus(t, resp, http.StatusCreated)
 
 	btc, err := NewBlipTesterClientOptsWithRT(t, rt, &BlipTesterClientOpts{
@@ -2055,8 +2061,9 @@ func TestRemovedMessageWithAlternateAccessAndChannelFilteredReplication(t *testi
 
 	rt := NewRestTesterDefaultCollection(t, nil) // CBG-2619: make collection aware
 	defer rt.Close()
+	collection := rt.GetSingleTestDatabaseCollection()
 
-	resp := rt.SendAdminRequest("PUT", "/db/_user/user", `{"admin_channels": ["A", "B"], "password": "test"}`)
+	resp := rt.SendAdminRequest("PUT", "/db/_user/user", GetUserPayload(t, "user", "test", "", collection, []string{"A", "B"}, nil))
 	RequireStatus(t, resp, http.StatusCreated)
 
 	btc, err := NewBlipTesterClientOptsWithRT(t, rt, &BlipTesterClientOpts{
@@ -2151,8 +2158,7 @@ func TestMultipleOutstandingChangesSubscriptions(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
-	bt, err := NewBlipTester(t)
-	require.NoError(t, err, "Error creating BlipTester")
+	bt := NewBlipTesterDefaultCollection(t)
 	defer bt.Close()
 
 	bt.blipContext.HandlerForProfile["changes"] = func(request *blip.Message) {
@@ -2174,7 +2180,7 @@ func TestMultipleOutstandingChangesSubscriptions(t *testing.T) {
 	require.EqualValues(t, 0, pullStats.NumPullReplSinceZero.Value())
 
 	// Open an initial continuous = false subChanges request, which we'd expect to release the lock after it's "caught up".
-	subChangesRequest := blip.NewRequest()
+	subChangesRequest := bt.newRequest()
 	subChangesRequest.SetProfile("subChanges")
 	subChangesRequest.Properties["continuous"] = "false"
 	subChangesRequest.SetCompressed(false)
@@ -2195,7 +2201,7 @@ func TestMultipleOutstandingChangesSubscriptions(t *testing.T) {
 	base.RequireWaitForStat(t, pullStats.NumPullReplSinceZero.Value, 1)
 
 	// Send continous subChanges to subscribe to changes, which will cause the "changes" profile handler above to be called back
-	subChangesRequest = blip.NewRequest()
+	subChangesRequest = bt.newRequest()
 	subChangesRequest.SetProfile("subChanges")
 	subChangesRequest.Properties["continuous"] = "true"
 	subChangesRequest.SetCompressed(false)
@@ -2216,7 +2222,7 @@ func TestMultipleOutstandingChangesSubscriptions(t *testing.T) {
 	base.RequireWaitForStat(t, pullStats.NumPullReplSinceZero.Value, 2)
 
 	// Send a second continuous subchanges request, expect an error
-	subChangesRequest = blip.NewRequest()
+	subChangesRequest = bt.newRequest()
 	subChangesRequest.SetProfile("subChanges")
 	subChangesRequest.Properties["continuous"] = "true"
 	subChangesRequest.SetCompressed(false)
@@ -2235,7 +2241,7 @@ func TestMultipleOutstandingChangesSubscriptions(t *testing.T) {
 	base.RequireWaitForStat(t, pullStats.NumPullReplSinceZero.Value, 2)
 
 	// Even a subsequent continuous = false subChanges request should return an error. This isn't restricted to only continuous changes.
-	subChangesRequest = blip.NewRequest()
+	subChangesRequest = bt.newRequest()
 	subChangesRequest.SetProfile("subChanges")
 	subChangesRequest.Properties["continuous"] = "false"
 	subChangesRequest.SetCompressed(false)
@@ -2464,7 +2470,7 @@ func TestSendRevAsReadOnlyGuest(t *testing.T) {
 	defer bt.Close()
 
 	// Send rev as guest with read-only=false
-	revRequest := blip.NewRequest()
+	revRequest := bt.newRequest()
 	revRequest.SetCompressed(false)
 	revRequest.SetProfile("rev")
 	revRequest.Properties["deleted"] = "false"
@@ -2486,7 +2492,7 @@ func TestSendRevAsReadOnlyGuest(t *testing.T) {
 	// Send rev as guest with read-only=true
 	bt.DatabaseContext().Options.UnsupportedOptions.GuestReadOnly = true
 
-	revRequest = blip.NewRequest()
+	revRequest = bt.newRequest()
 	revRequest.SetCompressed(false)
 	revRequest.SetProfile("rev")
 	revRequest.Properties["deleted"] = "false"

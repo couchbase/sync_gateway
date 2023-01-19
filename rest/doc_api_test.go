@@ -161,4 +161,15 @@ func TestGuestReadOnly(t *testing.T) {
 	response = rt.SendRequest("PUT", "/{{.keyspace}}/doc?rev=1-ca9ad22802b66f662ff171f226211d5c", `{"val": "newval"}`)
 	RequireStatus(t, response, http.StatusForbidden)
 
+	// Attempt to access _blipsync as guest - blip sync handling for read-only GUEST is applied at replication level (to allow pull-only replications).
+	// Should succeed permission check, and only fail on websocket upgrade
+	response = rt.SendRequest("GET", "/{{.db}}/_blipsync", "")
+	RequireStatus(t, response, http.StatusUpgradeRequired)
+
+	// Verify matching on _blipsync path doesn't incorrectly match docs, attachments
+	response = rt.SendRequest("PUT", "/{{.keyspace}}/doc_named_blipsync", "")
+	RequireStatus(t, response, http.StatusForbidden)
+	response = rt.SendRequest("PUT", "/{{.keyspace}}/doc/_blipsync", "")
+	RequireStatus(t, response, http.StatusForbidden)
+
 }

@@ -67,7 +67,7 @@ func TestRevisionCacheLoad(t *testing.T) {
 
 	db, ctx := setupTestDBWithViewsEnabled(t)
 	defer db.Close(ctx)
-	collection := db.GetSingleDatabaseCollectionWithUser()
+	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 	base.TestExternalRevStorage = true
 
@@ -107,7 +107,7 @@ func TestHasAttachmentsFlag(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	collection := db.GetSingleDatabaseCollectionWithUser()
+	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 	base.TestExternalRevStorage = true
 	prop_1000_bytes := base.CreateProperty(1000)
@@ -186,7 +186,7 @@ func TestHasAttachmentsFlagForLegacyAttachments(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	collection := db.GetSingleDatabaseCollectionWithUser()
+	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 	base.TestExternalRevStorage = true
 	prop_1000_bytes := base.CreateProperty(1000)
@@ -308,7 +308,7 @@ func TestRevisionStorageConflictAndTombstones(t *testing.T) {
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	collection := db.GetSingleDatabaseCollectionWithUser()
+	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 	base.TestExternalRevStorage = true
 
@@ -492,7 +492,7 @@ func TestRevisionStoragePruneTombstone(t *testing.T) {
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	collection := db.GetSingleDatabaseCollectionWithUser()
+	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 	base.TestExternalRevStorage = true
 
@@ -651,7 +651,7 @@ func TestOldRevisionStorage(t *testing.T) {
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	collection := db.GetSingleDatabaseCollectionWithUser()
+	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 	prop_1000_bytes := base.CreateProperty(1000)
 
@@ -813,7 +813,7 @@ func TestOldRevisionStorageError(t *testing.T) {
 	}
 	db, ctx := setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), leakyConfig)
 	defer db.Close(ctx)
-	collection := db.GetSingleDatabaseCollectionWithUser()
+	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 	db.ChannelMapper = channels.NewChannelMapper(`function(doc, oldDoc) {channel(doc.channels);}`, 0)
 
@@ -944,7 +944,7 @@ func TestLargeSequence(t *testing.T) {
 
 	db, ctx := setupTestDBWithCustomSyncSeq(t, 9223372036854775807)
 	defer db.Close(ctx)
-	collection := db.GetSingleDatabaseCollectionWithUser()
+	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
@@ -984,8 +984,8 @@ const rawDocMalformedRevisionStorage = `
 func TestMalformedRevisionStorageRecovery(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	collection := db.GetSingleDatabaseCollectionWithUser()
 
+	collection := GetSingleDatabaseCollectionWithUser(t, db)
 	db.ChannelMapper = channels.NewChannelMapper(`function(doc, oldDoc) {channel(doc.channels);}`, 0)
 
 	// Create a document with a malformed revision body (due to https://github.com/couchbase/sync_gateway/issues/3692) in the bucket
@@ -1035,7 +1035,7 @@ func BenchmarkDatabaseGet1xRev(b *testing.B) {
 
 	db, ctx := setupTestDB(b)
 	defer db.Close(ctx)
-	collection := db.GetSingleDatabaseCollectionWithUser()
+	collection := GetSingleDatabaseCollectionWithUser(b, db)
 
 	body := Body{"foo": "bar", "rev": "1-a"}
 	_, _, _ = collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"1-a"}, false)
@@ -1092,7 +1092,7 @@ func BenchmarkDatabaseGetRev(b *testing.B) {
 
 	db, ctx := setupTestDB(b)
 	defer db.Close(ctx)
-	collection := db.GetSingleDatabaseCollectionWithUser()
+	collection := GetSingleDatabaseCollectionWithUser(b, db)
 
 	body := Body{"foo": "bar", "rev": "1-a"}
 	_, _, _ = collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"1-a"}, false)
@@ -1150,7 +1150,7 @@ func BenchmarkHandleRevDelta(b *testing.B) {
 
 	db, ctx := setupTestDB(b)
 	defer db.Close(ctx)
-	collection := db.GetSingleDatabaseCollectionWithUser()
+	collection := GetSingleDatabaseCollectionWithUser(b, db)
 
 	body := Body{"foo": "bar"}
 	_, _, _ = collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"1-a"}, false)
@@ -1202,7 +1202,7 @@ func TestGetAvailableRevAttachments(t *testing.T) {
 	defer context.Close(ctx)
 	db, err := CreateDatabase(context)
 	require.NoError(t, err, "Couldn't create database 'db'")
-	collection := db.GetSingleDatabaseCollectionWithUser()
+	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 	// Create the very first revision of the document with attachment; let's call this as rev 1-a
 	payload := `{"sku":"6213100","_attachments":{"camera.txt":{"data":"Q2Fub24gRU9TIDVEIE1hcmsgSVY="}}}`
@@ -1244,7 +1244,7 @@ func TestGet1xRevAndChannels(t *testing.T) {
 	defer context.Close(ctx)
 	db, err := CreateDatabase(context)
 	require.NoError(t, err, "Couldn't create database 'db'")
-	collection := db.GetSingleDatabaseCollectionWithUser()
+	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 	docId := "dd6d2dcc679d12b9430a9787bab45b33"
 	payload := `{"sku":"6213100","_attachments":{"camera.txt":{"data":"Q2Fub24gRU9TIDVEIE1hcmsgSVY="}}}`
@@ -1309,7 +1309,7 @@ func TestGet1xRevFromDoc(t *testing.T) {
 	defer context.Close(ctx)
 	db, err := CreateDatabase(context)
 	require.NoError(t, err, "Couldn't create database 'db'")
-	collection := db.GetSingleDatabaseCollectionWithUser()
+	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 	// Create the first revision of the document
 	docId := "356779a9a1696714480f57fa3fb66d4c"

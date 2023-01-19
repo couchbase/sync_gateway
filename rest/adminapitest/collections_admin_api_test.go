@@ -38,10 +38,12 @@ func TestCollectionsSyncImportFunctions(t *testing.T) {
 	syncFunction1 := `function (doc) { console.log('syncFunction1'); return true }`
 	syncFunction2 := `function (doc) { console.log('syncFunction2'); return doc.type == 'onprem'}`
 
-	dataStore1 := tb.GetNamedDataStore(0)
+	dataStore1, err := tb.GetNamedDataStore(0)
+	require.NoError(t, err)
 	dataStore1Name, ok := base.AsDataStoreName(dataStore1)
 	require.True(t, ok)
-	dataStore2 := tb.GetNamedDataStore(1)
+	dataStore2, err := tb.GetNamedDataStore(1)
+	require.NoError(t, err)
 	dataStore2Name, ok := base.AsDataStoreName(dataStore2)
 	require.True(t, ok)
 	keyspace1 := fmt.Sprintf("%s.%s.%s", "db", dataStore1Name.ScopeName(), dataStore1Name.CollectionName())

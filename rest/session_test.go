@@ -144,13 +144,15 @@ func TestInvalidSession(t *testing.T) {
 // Test for issue 758 - basic auth with stale session cookie
 func TestBasicAuthWithSessionCookie(t *testing.T) {
 
-	rt := NewRestTesterDefaultCollection(t, nil) // CBG-2618: fix collection channel access
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
+	collection := rt.GetSingleTestDatabaseCollection()
 
 	// Create two users
-	response := rt.SendAdminRequest("PUT", "/db/_user/bernard", `{"name":"bernard", "password":"letmein", "admin_channels":["bernard"]}`)
+	response := rt.SendAdminRequest("PUT", "/db/_user/bernard", GetUserPayload(t, "bernard", "letmein", "", collection, []string{"bernard"}, nil))
 	RequireStatus(t, response, 201)
-	response = rt.SendAdminRequest("PUT", "/db/_user/manny", `{"name":"manny", "password":"letmein","admin_channels":["manny"]}`)
+
+	response = rt.SendAdminRequest("PUT", "/db/_user/manny", GetUserPayload(t, "manny", "letmein", "", collection, []string{"manny"}, nil))
 	RequireStatus(t, response, 201)
 
 	// Create a session for the first user
@@ -164,23 +166,23 @@ func TestBasicAuthWithSessionCookie(t *testing.T) {
 	reqHeaders := map[string]string{
 		"Cookie": cookie,
 	}
-	response = rt.SendRequestWithHeaders("PUT", "/db/bernardDoc", `{"hi": "there", "channels":["bernard"]}`, reqHeaders)
+	response = rt.SendRequestWithHeaders("PUT", "/{{.keyspace}}/bernardDoc", `{"hi": "there", "channels":["bernard"]}`, reqHeaders)
 	RequireStatus(t, response, 201)
-	response = rt.SendRequestWithHeaders("GET", "/db/bernardDoc", "", reqHeaders)
+	response = rt.SendRequestWithHeaders("GET", "/{{.keyspace}}/bernardDoc", "", reqHeaders)
 	RequireStatus(t, response, 200)
 
 	// Create a doc as the second user, with basic auth, channel-restricted to the second user
-	response = rt.Send(RequestByUser("PUT", "/db/mannyDoc", `{"hi": "there", "channels":["manny"]}`, "manny"))
+	response = rt.SendUserRequest("PUT", "/{{.keyspace}}/mannyDoc", `{"hi": "there", "channels":["manny"]}`, "manny")
 	RequireStatus(t, response, 201)
-	response = rt.Send(RequestByUser("GET", "/db/mannyDoc", "", "manny"))
+	response = rt.SendUserRequest("GET", "/{{.keyspace}}/mannyDoc", "", "manny")
 	RequireStatus(t, response, 200)
-	response = rt.Send(RequestByUser("GET", "/db/bernardDoc", "", "manny"))
+	response = rt.SendUserRequest("GET", "/{{.keyspace}}/bernardDoc", "", "manny")
 	RequireStatus(t, response, 403)
 
 	// Attempt to retrieve the docs with the first user's cookie, second user's basic auth credentials.  Basic Auth should take precedence
-	response = rt.SendUserRequestWithHeaders("GET", "/db/bernardDoc", "", reqHeaders, "manny", "letmein")
+	response = rt.SendUserRequestWithHeaders("GET", "/{{.keyspace}}/bernardDoc", "", reqHeaders, "manny", "letmein")
 	RequireStatus(t, response, 403)
-	response = rt.SendUserRequestWithHeaders("GET", "/db/mannyDoc", "", reqHeaders, "manny", "letmein")
+	response = rt.SendUserRequestWithHeaders("GET", "/{{.keyspace}}/mannyDoc", "", reqHeaders, "manny", "letmein")
 	RequireStatus(t, response, 200)
 }
 
@@ -188,9 +190,10 @@ func TestBasicAuthWithSessionCookie(t *testing.T) {
 func TestSessionFail(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
+	collection := rt.GetSingleTestDatabaseCollection()
 
 	// Create user
-	response := rt.SendAdminRequest("PUT", "/db/_user/user1", `{"name":"user1", "password":"letmein", "admin_channels":["user1"]}`)
+	response := rt.SendAdminRequest("PUT", "/db/_user/user1", GetUserPayload(t, "user1", "letmein", "", collection, []string{"user1"}, nil))
 	RequireStatus(t, response, http.StatusCreated)
 
 	id, err := base.GenerateRandomSecret()

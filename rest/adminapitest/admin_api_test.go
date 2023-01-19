@@ -554,8 +554,6 @@ func TestDBOfflinePostResync(t *testing.T) {
 }
 
 func TestDBOfflinePostResyncUsingDCPStream(t *testing.T) {
-	base.TemporarilyDisableTestUsingDCPWithCollections(t)
-
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test doesn't work with walrus")
 	}
@@ -654,8 +652,6 @@ func TestDBOfflineSingleResync(t *testing.T) {
 }
 
 func TestDBOfflineSingleResyncUsingDCPStream(t *testing.T) {
-	base.TemporarilyDisableTestUsingDCPWithCollections(t)
-
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test doesn't works with walrus")
 	}
@@ -764,7 +760,7 @@ func TestResync(t *testing.T) {
 
 			_, ok := (rt.GetDatabase().ResyncManager.Process).(*db.ResyncManager)
 			if !ok {
-				t.Skip("This test only works when ResyncManager is used")
+				rt.GetDatabase().ResyncManager = db.NewResyncManager(rt.GetSingleDataStore())
 			}
 
 			for i := 0; i < testCase.docsCreated; i++ {
@@ -817,8 +813,6 @@ func TestResync(t *testing.T) {
 }
 
 func TestResyncUsingDCPStream(t *testing.T) {
-	base.TemporarilyDisableTestUsingDCPWithCollections(t)
-
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test doesn't works with walrus")
 	}
@@ -851,7 +845,7 @@ func TestResyncUsingDCPStream(t *testing.T) {
 
 			_, ok := (rt.GetDatabase().ResyncManager.Process).(*db.ResyncManagerDCP)
 			if !ok {
-				t.Skip("This test only works when ResyncManagerDCP is used")
+				rt.GetDatabase().ResyncManager = db.NewResyncManagerDCP(rt.GetSingleDataStore())
 			}
 
 			for i := 0; i < testCase.docsCreated; i++ {
@@ -929,7 +923,7 @@ func TestResyncErrorScenarios(t *testing.T) {
 
 	_, ok := (rt.GetDatabase().ResyncManager.Process).(*db.ResyncManager)
 	if !ok {
-		t.Skip("This test only works when ResyncManager is used")
+		rt.GetDatabase().ResyncManager = db.NewResyncManager(rt.GetSingleDataStore())
 	}
 
 	leakyDataStore, ok := base.AsLeakyDataStore(rt.TestBucket.GetSingleDataStore())
@@ -1011,8 +1005,6 @@ func TestResyncErrorScenarios(t *testing.T) {
 }
 
 func TestResyncErrorScenariosUsingDCPStream(t *testing.T) {
-	base.TemporarilyDisableTestUsingDCPWithCollections(t)
-
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test doesn't works with walrus")
 	}
@@ -1034,7 +1026,7 @@ func TestResyncErrorScenariosUsingDCPStream(t *testing.T) {
 
 	_, ok := (rt.GetDatabase().ResyncManager.Process).(*db.ResyncManagerDCP)
 	if !ok {
-		t.Skip("This test only works when ResyncManagerDCP is used")
+		rt.GetDatabase().ResyncManager = db.NewResyncManagerDCP(rt.GetSingleDataStore())
 	}
 
 	numOfDocs := 1000
@@ -1121,7 +1113,7 @@ func TestResyncStop(t *testing.T) {
 
 	_, ok := (rt.GetDatabase().ResyncManager.Process).(*db.ResyncManager)
 	if !ok {
-		t.Skip("This test only works when ResyncManager is used")
+		rt.GetDatabase().ResyncManager = db.NewResyncManager(rt.GetSingleDataStore())
 	}
 
 	leakyDataStore, ok := base.AsLeakyDataStore(rt.TestBucket.GetSingleDataStore())
@@ -1186,8 +1178,6 @@ func TestResyncStop(t *testing.T) {
 }
 
 func TestResyncStopUsingDCPStream(t *testing.T) {
-	base.TemporarilyDisableTestUsingDCPWithCollections(t)
-
 	if base.UnitTestUrlIsWalrus() {
 		// Walrus doesn't support Collections which is required to create DCP stream
 		t.Skip("This test doesn't works with walrus")
@@ -1210,7 +1200,7 @@ func TestResyncStopUsingDCPStream(t *testing.T) {
 
 	_, ok := (rt.GetDatabase().ResyncManager.Process).(*db.ResyncManagerDCP)
 	if !ok {
-		t.Skip("This test only works when ResyncManagerDCP is used")
+		rt.GetDatabase().ResyncManager = db.NewResyncManagerDCP(rt.GetSingleDataStore())
 	}
 
 	numOfDocs := 1000
@@ -1286,7 +1276,7 @@ func TestResyncRegenerateSequences(t *testing.T) {
 
 	_, ok := (rt.GetDatabase().ResyncManager.Process).(*db.ResyncManager)
 	if !ok {
-		t.Skip("This test only works when ResyncManager is used")
+		rt.GetDatabase().ResyncManager = db.NewResyncManager(rt.GetSingleDataStore())
 	}
 
 	var response *rest.TestResponse
@@ -1424,8 +1414,6 @@ func TestResyncRegenerateSequences(t *testing.T) {
 }
 
 func TestResyncRegenerateSequencesUsingDCPStream(t *testing.T) {
-	base.TemporarilyDisableTestUsingDCPWithCollections(t)
-
 	// FIXME: PersistentWalrusBucket doesn't support collections yet
 	t.Skip("PersistentWalrusBucket doesn't support collections yet")
 
@@ -1453,9 +1441,8 @@ func TestResyncRegenerateSequencesUsingDCPStream(t *testing.T) {
 	)
 	defer rt.Close()
 
-	_, ok := (rt.GetDatabase().ResyncManager.Process).(*db.ResyncManagerDCP)
-	if !ok {
-		t.Skip("This test only works when ResyncManagerDCP is used")
+	if _, ok := (rt.GetDatabase().ResyncManager.Process).(*db.ResyncManagerDCP); !ok {
+		rt.GetDatabase().ResyncManager = db.NewResyncManagerDCP(rt.GetSingleDataStore())
 	}
 
 	var response *rest.TestResponse
@@ -3111,11 +3098,10 @@ func TestCreateDbOnNonExistentBucket(t *testing.T) {
 
 	resp := rest.BootstrapAdminRequest(t, http.MethodPut, "/db/", `{"bucket": "nonexistentbucket"}`)
 	resp.RequireStatus(http.StatusForbidden)
-	assert.Contains(t, resp.Body, "Provided bucket credentials do not have access to specified bucket: nonexistentbucket")
-
+	assert.Contains(t, resp.Body, "Provided credentials do not have access to specified bucket/scope/collection")
 	resp = rest.BootstrapAdminRequest(t, http.MethodPut, "/nonexistentbucket/", `{}`)
 	resp.RequireStatus(http.StatusForbidden)
-	assert.Contains(t, resp.Body, "Provided bucket credentials do not have access to specified bucket: nonexistentbucket")
+	assert.Contains(t, resp.Body, "Provided credentials do not have access to specified bucket/scope/collection")
 }
 
 func TestPutDbConfigChangeName(t *testing.T) {
@@ -3193,10 +3179,12 @@ func TestSwitchDbConfigCollectionName(t *testing.T) {
 		tb.Close()
 	}()
 
-	dataStore1 := tb.GetNamedDataStore(0)
+	dataStore1, err := tb.GetNamedDataStore(0)
+	require.NoError(t, err)
 	dataStore1Name, ok := base.AsDataStoreName(dataStore1)
 	require.True(t, ok)
-	dataStore2 := tb.GetNamedDataStore(1)
+	dataStore2, err := tb.GetNamedDataStore(1)
+	require.NoError(t, err)
 	dataStore2Name, ok := base.AsDataStoreName(dataStore2)
 	require.True(t, ok)
 

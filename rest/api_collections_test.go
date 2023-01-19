@@ -269,6 +269,190 @@ func TestMultiCollectionDCP(t *testing.T) {
 	// require.NoError(t, rt.WaitForDoc(docID))
 }
 
+
+func TestMultiCollectionChannelAccess(t *testing.T) {
+	base.TestRequiresCollections(t)
+	//if base.UnitTestUrlIsWalrus() { // TODO: remove this check once CBG-2682 is fixed
+	//	t.Skip("This test only works against Couchbase Server")
+	//}
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+
+	tb := base.GetTestBucket(t)
+	defer tb.Close()
+
+	scopesConfig := GetCollectionsConfig(t, tb, 3)
+	dataStoreNames := GetDataStoreNamesFromScopesConfig(scopesConfig)
+	c1SyncFunction := `function(doc) {channel(doc.chan);}`
+
+	scope := dataStoreNames[0].ScopeName()
+	collection1 := dataStoreNames[0].CollectionName()
+	collection2 := dataStoreNames[1].CollectionName()
+	collection3 := dataStoreNames[2].CollectionName()
+
+	scopesConfig[scope].Collections[collection1] = CollectionConfig{SyncFn: &c1SyncFunction}
+	scopesConfig[scope].Collections[collection2] = CollectionConfig{SyncFn: &c1SyncFunction}
+
+	rtConfig := &RestTesterConfig{
+		CustomTestBucket: tb.NoCloseClone(),
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
+			Scopes:           scopesConfig,
+			NumIndexReplicas: base.UintPtr(0),
+			EnableXattrs:     base.BoolPtr(base.TestUseXattrs()),
+		},
+		},
+	}
+
+	rt := NewRestTesterMultipleCollections(t, rtConfig, 3)
+	defer rt.Close()
+
+	userPayload := `{
+		"password":"letmein",
+		"collection_access": {
+			"%s": {
+				"%s": {
+					"admin_channels":%s
+				}
+			}
+		}
+	}`
+
+	// Create a few users with access to various channels via admin grants
+	resp := rt.SendAdminRequest("PUT", "/db/_user/userA", fmt.Sprintf(userPayload, scope, collection1, `["A"]`))
+	RequireStatus(t, resp, http.StatusCreated)
+	resp = rt.SendAdminRequest("PUT", "/db/_user/userB", fmt.Sprintf(userPayload, scope, collection1, `["B"]`))
+	RequireStatus(t, resp, http.StatusCreated)
+	resp = rt.SendAdminRequest("PUT", "/db/_user/userAB", fmt.Sprintf(userPayload, scope, collection1, `["A","B"]`))
+	RequireStatus(t, resp, http.StatusCreated)
+
+	// Write docs to both collections in various channels
+	resp = rt.SendAdminRequest("PUT", "/{{.keyspace1}}/testDocBarA", `{"chan":["A"]}`)
+	RequireStatus(t, resp, http.StatusCreated)
+	resp = rt.SendAdminRequest("PUT", "/{{.keyspace1}}/testDocBarB", `{"chan":["B"]}`)
+	RequireStatus(t, resp, http.StatusCreated)
+	resp = rt.SendAdminRequest("PUT", "/{{.keyspace1}}/testDocBarAB", `{"chan":["A","B"]}`)
+	RequireStatus(t, resp, http.StatusCreated)
+	resp = rt.SendAdminRequest("PUT", "/{{.keyspace2}}/testDocBazA", `{"chan":["A"]}`)
+	RequireStatus(t, resp, http.StatusCreated)
+	resp = rt.SendAdminRequest("PUT", "/{{.keyspace2}}/testDocBazB", `{"chan":["B"]}`)
+	RequireStatus(t, resp, http.StatusCreated)
+
+	// Ensure users can only see documents in the appropriate collection/channels they should be able to have access to
+	resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.keyspace1}}/testDocBarA", "", nil, "userA", "letmein")
+	RequireStatus(t, resp, http.StatusOK)
+	resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.keyspace1}}/testDocBarB", "", nil, "userA", "letmein")
+	RequireStatus(t, resp, http.StatusForbidden)
+	resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.keyspace2}}/testDocBazB", "", nil, "userB", "letmein")
+	RequireStatus(t, resp, http.StatusForbidden)
+	resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.keyspace1}}/testDocBarAB", "", nil, "userA", "letmein")
+	RequireStatus(t, resp, http.StatusOK)
+
+	// Add a new collection and update the db config
+	scopesConfig[scope].Collections[collection3] = CollectionConfig{SyncFn: &c1SyncFunction}
+	scopesConfigString, err := json.Marshal(scopesConfig)
+	require.NoError(t, err)
+	resp = rt.SendAdminRequest("PUT", "/db/_config", fmt.Sprintf(
+		`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "scopes":%s}`,
+		tb.GetName(), base.TestUseXattrs(), string(scopesConfigString)))
+	//RequireStatus(t, resp, http.StatusCreated)
+
+	// Put a doc in new collection and make sure it cant be accessed
+	resp = rt.SendAdminRequest("PUT", "/{{.keyspace3}}/testDocBazA", `{"chan":["A"]}`)
+	RequireStatus(t, resp, http.StatusCreated)
+	resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.keyspace3}}/testDocBazA", "", nil, "userA", "letmein")
+	RequireStatus(t, resp, http.StatusForbidden)
+
+	// Update user to set some channels on new collection
+	resp = rt.SendAdminRequest("PUT", "/db/_user/userB", fmt.Sprintf(userPayload, scope, collection3, `["B"]`))
+	RequireStatus(t, resp, http.StatusOK)
+	resp = rt.SendAdminRequest("PUT", "/db/_user/userAB", fmt.Sprintf(userPayload, scope, collection3, `["A","B"]`))
+	RequireStatus(t, resp, http.StatusOK)
+
+	// Ensure users can access the given channels in new collection, can't access docs in other channels on the new collection
+	resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.keyspace3}}/testDocBazA", "", nil, "userB", "letmein")
+	RequireStatus(t, resp, http.StatusForbidden)
+	resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.keyspace3}}/testDocBazA", "", nil, "userAB", "letmein")
+	RequireStatus(t, resp, http.StatusOK)
+
+	resp = rt.SendAdminRequest(http.MethodPut, "/{{.keyspace3}}/testDocBazB", `{"chan":["B"]}`)
+	RequireStatus(t, resp, http.StatusCreated)
+	resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.keyspace3}}/testDocBazB", "", nil, "userB", "letmein")
+	RequireStatus(t, resp, http.StatusOK)
+	resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.keyspace3}}/testDocBazB", "", nil, "userAB", "letmein")
+	RequireStatus(t, resp, http.StatusOK)
+}
+
+
+func TestMultiCollectionDynamicChannelAccess(t *testing.T) {
+	base.TestRequiresCollections(t)
+	tb := base.GetTestBucket(t)
+	defer tb.Close()
+
+	scopesConfig := GetCollectionsConfig(t, tb, 2)
+	dataStoreNames := GetDataStoreNamesFromScopesConfig(scopesConfig)
+	c1SyncFunction := `function(doc) {access(doc.username, [doc.grant1,doc.grant2]);
+                  channel(doc.chan);
+            }`
+
+	scopesConfig[dataStoreNames[0].ScopeName()].Collections[dataStoreNames[0].CollectionName()] = CollectionConfig{SyncFn: &c1SyncFunction}
+	scopesConfig[dataStoreNames[1].ScopeName()].Collections[dataStoreNames[1].CollectionName()] = CollectionConfig{SyncFn: &c1SyncFunction}
+
+	rtConfig := &RestTesterConfig{
+		CustomTestBucket: tb,
+		//PersistentConfig: true,
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
+			Scopes:           scopesConfig,
+			NumIndexReplicas: base.UintPtr(0),
+		},
+		},
+	}
+
+	rt := NewRestTesterMultipleCollections(t, rtConfig, 3)
+	defer rt.Close()
+
+	userPayload := `{
+      "password":"letmein",
+      "collection_access": {
+         "%s": {
+            "%s": {
+               "admin_channels":%s
+            }
+         }
+      }
+   }`
+	// Create a few users without any channel access
+	resp := rt.SendAdminRequest("PUT", "/db/_user/alice", fmt.Sprintf(userPayload, dataStoreNames[0].ScopeName(), dataStoreNames[0], `[]`))
+	RequireStatus(t, resp, http.StatusCreated)
+	resp = rt.SendAdminRequest("PUT", "/db/_user/bob", fmt.Sprintf(userPayload, dataStoreNames[0].ScopeName(), dataStoreNames[0], `[]`))
+	RequireStatus(t, resp, http.StatusCreated)
+	resp = rt.SendAdminRequest("PUT", "/db/_user/abby", fmt.Sprintf(userPayload, dataStoreNames[0].ScopeName(), dataStoreNames[0], `[]`))
+	RequireStatus(t, resp, http.StatusCreated)
+
+	// Write docs in each collection that runs the per-collection sync functions that grant users access to various channels
+	resp = rt.SendAdminRequest("PUT", "/{{.keyspace1}}/testDocBarA", `{"username": "alice", "grant1": "A", "chan":["A"]}`)
+	RequireStatus(t, resp, http.StatusCreated)
+	resp = rt.SendAdminRequest("PUT", "/{{.keyspace1}}/testDocBarB", `{"username": "bob", "grant1": "B", "chan":["B"]}`)
+	RequireStatus(t, resp, http.StatusCreated)
+	resp = rt.SendAdminRequest("PUT", "/{{.keyspace2}}/testDocBazAB", `{"username": "abby", "grant1": "A", "grant2": "B","chan":["A"]}`)
+	RequireStatus(t, resp, http.StatusCreated)
+	resp = rt.SendAdminRequest("PUT", "/{{.keyspace2}}/testDocBazB", `{"chan":["B"]}`)
+	RequireStatus(t, resp, http.StatusCreated)
+
+	// Ensure users get given access to the channel in the appropriate collection, and is not accidentally granting access for a channel of the same name in another collection
+	resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.keyspace1}}/testDocBarA", "", nil, "bob", "letmein")
+	RequireStatus(t, resp, http.StatusForbidden)
+	resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.keyspace1}}/testDocBarA", "", nil, "abby", "letmein")
+	RequireStatus(t, resp, http.StatusForbidden)
+	resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.keyspace1}}/testDocBarA", "", nil, "alice", "letmein")
+	RequireStatus(t, resp, http.StatusOK)
+	resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.keyspace2}}/testDocBazAB", "", nil, "alice", "letmein")
+	RequireStatus(t, resp, http.StatusForbidden)
+	resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.keyspace2}}/testDocBazB", "", nil, "bob", "letmein")
+	RequireStatus(t, resp, http.StatusForbidden)
+	resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.keyspace2}}/testDocBazB", "", nil, "abby", "letmein")
+	RequireStatus(t, resp, http.StatusOK)
+
+}
+
 func TestMultiCollectionChannelAccess(t *testing.T) {
 	base.TestRequiresCollections(t)
 	//if base.UnitTestUrlIsWalrus() { // TODO: remove this check once CBG-2682 is fixed
@@ -503,6 +687,27 @@ func TestCollectionsSGIndexQuery(t *testing.T) {
 
 	_, err := rt.WaitForChanges(1, "/{{.keyspace}}/_changes", username, false)
 	require.NoError(t, err)
+}
+func TestCollectionsPutDBInexistentCollection(t *testing.T) {
+	base.TestRequiresCollections(t)
+
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server")
+	}
+
+	tb := base.GetTestBucket(t)
+	defer tb.Close()
+
+	rtConfig := &RestTesterConfig{
+		CustomTestBucket: tb,
+		PersistentConfig: true,
+	}
+
+	rt := NewRestTesterMultipleCollections(t, rtConfig, 1)
+	defer rt.Close()
+
+	resp := rt.SendAdminRequest("PUT", "/db2/", fmt.Sprintf(`{"bucket": "%s", "num_index_replicas":0, "scopes": {"_default": {"collections": {"new_collection": {}}}}}`, tb.GetName()))
+	RequireStatus(t, resp, http.StatusForbidden)
 }
 
 func TestCollectionsChangeConfigScope(t *testing.T) {

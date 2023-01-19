@@ -222,6 +222,8 @@ type UnsupportedOptions struct {
 	ForceAPIForbiddenErrors    bool                     `json:"force_api_forbidden_errors,omitempty"`    // Config option to force the REST API to return forbidden errors
 	ConnectedClient            bool                     `json:"connected_client,omitempty"`              // Enables BLIP connected-client APIs
 	UseQueryBasedResyncManager bool                     `json:"use_query_resync_manager,omitempty"`      // Config option to use Query based resync manager to perform Resync op
+	DCPReadBuffer              int                      `json:"dcp_read_buffer,omitempty"`               // Enables user to set their own DCP read buffer
+	KVBufferSize               int                      `json:"kv_buffer,omitempty"`                     // Enables user to set their own KV pool buffer
 }
 
 type WarningThresholds struct {
@@ -444,7 +446,11 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 			}
 			collectionNameMap := make(map[string]struct{}, len(scope.Collections))
 			for collName, collOpts := range scope.Collections {
-				dataStore := bucket.NamedDataStore(base.ScopeAndCollectionName{Scope: scopeName, Collection: collName})
+				ctx := base.CollectionCtx(ctx, collName)
+				dataStore, err := bucket.NamedDataStore(base.ScopeAndCollectionName{Scope: scopeName, Collection: collName})
+				if err != nil {
+					return nil, err
+				}
 				dbCollection, err := newDatabaseCollection(ctx, dbContext, dataStore)
 				if err != nil {
 					return nil, err
@@ -935,7 +941,7 @@ func (dbCtx *DatabaseContext) RemoveObsoleteIndexes(ctx context.Context, preview
 			errs = errs.Append(err)
 			continue
 		}
-		onlyDefaultCollection := dbCtx.onlyDefaultCollection()
+		onlyDefaultCollection := dbCtx.OnlyDefaultCollection()
 		for _, idxName := range collectionRemovedIndexes {
 			if onlyDefaultCollection {
 				removedIndexes = append(removedIndexes, idxName)
@@ -1577,13 +1583,16 @@ func (db *Database) Compact(ctx context.Context, skipRunningStateCheck bool, cal
 
 	purgeBody := Body{"_purged": true}
 	for _, c := range db.CollectionByID {
+		// shadow ctx, sot that we can't misuse the parent's inside the loop
+		ctx := base.CollectionCtx(ctx, c.Name())
+
 		// create admin collection interface
 		collection, err := db.GetDatabaseCollectionWithUser(c.ScopeName(), c.Name())
 		if err != nil {
 			base.WarnfCtx(ctx, "Tombstone compaction could not get collection: %s", err)
 			continue
 		}
-		ctx := base.CollectionNameCtx(ctx, collection.Name())
+
 		for {
 			purgedDocs := make([]string, 0)
 			results, err := collection.QueryTombstones(ctx, purgeOlderThan, QueryTombstoneBatch)
@@ -2211,10 +2220,16 @@ func (dbCtx *DatabaseContext) AddDatabaseLogContext(ctx context.Context) context
 }
 
 // onlyDefaultCollection is true if the database is only configured with default collection.
-func (dbCtx *DatabaseContext) onlyDefaultCollection() bool {
+func (dbCtx *DatabaseContext) OnlyDefaultCollection() bool {
 	if len(dbCtx.CollectionByID) > 1 {
 		return false
 	}
+	_, exists := dbCtx.CollectionByID[base.DefaultCollectionID]
+	return exists
+}
+
+// hasDefaultCollection is true if the database is configured with default collection
+func (dbCtx *DatabaseContext) hasDefaultCollection() bool {
 	_, exists := dbCtx.CollectionByID[base.DefaultCollectionID]
 	return exists
 }
@@ -2233,7 +2248,7 @@ func (dbc *Database) GetDatabaseCollectionWithUser(scopeName, collectionName str
 
 // GetDatabaseCollection returns a collection if one exists, otherwise error.
 func (dbc *DatabaseContext) GetDatabaseCollection(scopeName, collectionName string) (*DatabaseCollection, error) {
-	if base.IsDefaultCollection(scopeName, collectionName) && dbc.onlyDefaultCollection() {
+	if base.IsDefaultCollection(scopeName, collectionName) {
 		return dbc.GetDefaultDatabaseCollection()
 	}
 	if dbc.Scopes == nil {
@@ -2273,14 +2288,6 @@ func (dbc *Database) GetDefaultDatabaseCollectionWithUser() (*DatabaseCollection
 // GetSingleDatabaseCollection is a temporary function to return a single collection. This should be a temporary function while collection work is ongoing.
 func (dbc *DatabaseContext) GetSingleDatabaseCollection() *DatabaseCollection {
 	return dbc.singleCollection
-}
-
-// GetSingleDatabaseCollectionWithCollection is a temporary function to return a single collection. This should be a temporary function while collection work is ongoing.
-func (dbc *Database) GetSingleDatabaseCollectionWithUser() *DatabaseCollectionWithUser {
-	return &DatabaseCollectionWithUser{
-		DatabaseCollection: dbc.GetSingleDatabaseCollection(),
-		user:               dbc.user,
-	}
 }
 
 // newDatabaseCollection returns a collection which inherits values from the database but is specific to a given DataStore.

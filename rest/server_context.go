@@ -382,6 +382,13 @@ func GetBucketSpec(ctx context.Context, config *DatabaseConfig, serverConfig *St
 		spec.ViewQueryTimeoutSecs = config.ViewQueryTimeoutSecs
 	}
 
+	if config.Unsupported != nil && config.Unsupported.KVBufferSize != 0 {
+		spec.KvBufferSize = config.Unsupported.KVBufferSize
+	}
+	if config.Unsupported != nil && config.Unsupported.DCPReadBuffer != 0 {
+		spec.DcpBuffer = config.Unsupported.DCPReadBuffer
+	}
+
 	spec.UseXattrs = config.UseXattrs()
 	if !spec.UseXattrs {
 		base.WarnfCtx(ctx, "Running Sync Gateway without shared bucket access is deprecated. Recommendation: set enable_shared_bucket_access=true")
@@ -414,7 +421,18 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		spec.Server = sc.Config.Bootstrap.Server
 	}
 	if sc.Config.IsServerless() {
-		connStr, err := spec.GetGoCBConnString(&base.GoCBConnStringParams{KVPoolSize: base.DefaultGocbKvPoolSizeServerless})
+		params := &base.GoCBConnStringParams{
+			KVPoolSize:    base.DefaultGocbKvPoolSizeServerless,
+			KVBufferSize:  base.DefaultKvBufferSizeServerless,
+			DCPBufferSize: base.DefaultDCPBufferServerless,
+		}
+		if spec.KvBufferSize != 0 {
+			params.KVBufferSize = spec.KvBufferSize
+		}
+		if spec.DcpBuffer != 0 {
+			params.DCPBufferSize = spec.DcpBuffer
+		}
+		connStr, err := spec.GetGoCBConnString(params)
 		if err != nil {
 			return nil, err
 		}
@@ -484,8 +502,14 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 
 		for scopeName, scopeConfig := range config.Scopes {
 			for collectionName, _ := range scopeConfig.Collections {
-				dataStore := bucket.NamedDataStore(base.ScopeAndCollectionName{Scope: scopeName, Collection: collectionName})
-
+				var dataStore sgbucket.DataStore
+				err := base.WaitForNoError(func() error {
+					dataStore, err = bucket.NamedDataStore(base.ScopeAndCollectionName{Scope: scopeName, Collection: collectionName})
+					return err
+				})
+				if err != nil {
+					return nil, fmt.Errorf("error attempting to create/update database: %w", err)
+				}
 				// Check if scope/collection specified exists. Will enter retry loop if connection unsuccessful
 				if err := base.WaitUntilDataStoreExists(dataStore); err != nil {
 					return nil, fmt.Errorf("attempting to create/update database with a scope/collection that is not found")
@@ -1709,6 +1733,12 @@ func (sc *ServerContext) initializeCouchbaseServerConnections(ctx context.Contex
 		// couchbaseCluster, err := CreateCouchbaseClusterFromStartupConfig(sc.Config, base.PerUseClusterConnections)
 		if err != nil {
 			return err
+		}
+		if sc.Config.IsServerless() {
+			err := couchbaseCluster.SetConnectionStringServerless()
+			if err != nil {
+				return err
+			}
 		}
 
 		sc.BootstrapContext.Connection = couchbaseCluster

@@ -256,7 +256,10 @@ var viewsAndGSIBucketReadier base.TBPBucketReadierFunc = func(ctx context.Contex
 		return err
 	}
 	for _, dataStoreName := range dataStores {
-		dataStore := b.NamedDataStore(dataStoreName)
+		dataStore, err := b.NamedDataStore(dataStoreName)
+		if err != nil {
+			return err
+		}
 		if _, err := emptyAllDocsIndex(ctx, dataStore, tbp); err != nil {
 			return err
 		}
@@ -276,7 +279,11 @@ var viewsAndGSIBucketReadier base.TBPBucketReadierFunc = func(ctx context.Contex
 	if len(dataStores) == 1 {
 		dataStoreName := dataStores[0]
 		if base.IsDefaultCollection(dataStoreName.ScopeName(), dataStoreName.CollectionName()) {
-			if err := viewBucketReadier(ctx, b.NamedDataStore(dataStoreName), tbp); err != nil {
+			dataStore, err := b.NamedDataStore(dataStoreName)
+			if err != nil {
+				return err
+			}
+			if err := viewBucketReadier(ctx, dataStore, tbp); err != nil {
 				return err
 			}
 		}
@@ -305,7 +312,10 @@ var viewsAndGSIBucketInit base.TBPBucketInitFunc = func(ctx context.Context, b b
 	}
 
 	for _, dataStoreName := range dataStores {
-		dataStore := b.NamedDataStore(dataStoreName)
+		dataStore, err := b.NamedDataStore(dataStoreName)
+		if err != nil {
+			return err
+		}
 
 		// Views
 		if skipGSI || base.TestsDisableGSI() {
@@ -338,7 +348,7 @@ var viewsAndGSIBucketInit base.TBPBucketInitFunc = func(ctx context.Context, b b
 			return err
 		}
 
-		err := n1qlStore.CreatePrimaryIndex(base.PrimaryIndexName, nil)
+		err = n1qlStore.CreatePrimaryIndex(base.PrimaryIndexName, nil)
 		if err != nil {
 			return err
 		}
@@ -544,4 +554,20 @@ func getScopesOptions(t testing.TB, testBucket *base.TestBucket, numCollections 
 
 	}
 	return scopesConfig
+}
+
+func GetSingleDatabaseCollectionWithUser(tb testing.TB, database *Database) *DatabaseCollectionWithUser {
+	return &DatabaseCollectionWithUser{
+		DatabaseCollection: GetSingleDatabaseCollection(tb, database.DatabaseContext),
+		user:               database.user,
+	}
+}
+
+func GetSingleDatabaseCollection(tb testing.TB, database *DatabaseContext) *DatabaseCollection {
+	require.Equal(tb, 1, len(database.CollectionByID), "Database must only have a single collection configured")
+	for _, collection := range database.CollectionByID {
+		return collection
+	}
+	tb.Fatalf("Could not find a collection")
+	return nil
 }

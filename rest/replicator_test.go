@@ -32,7 +32,7 @@ import (
 func TestActiveReplicatorBlipsync(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyHTTPResp)
 
-	rt := NewRestTester(t, &RestTesterConfig{
+	rt := NewRestTesterDefaultCollection(t, &RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			Users: map[string]*auth.PrincipalConfig{
 				"alice": {Password: base.StringPtr("pass")},
@@ -208,9 +208,7 @@ func TestReplicatorCheckpointOnStop(t *testing.T) {
 	err := activeRT.GetDatabase().SGReplicateMgr.StartReplications(activeCtx)
 	require.NoError(t, err)
 
-	database, err := db.CreateDatabase(activeRT.GetDatabase())
-	require.NoError(t, err)
-	rev, doc, err := database.GetSingleDatabaseCollectionWithUser().Put(activeCtx, "test", db.Body{})
+	rev, doc, err := activeRT.GetSingleTestDatabaseCollectionWithUser().Put(activeCtx, "test", db.Body{})
 	require.NoError(t, err)
 	seq := strconv.FormatUint(doc.Sequence, 10)
 
@@ -264,7 +262,7 @@ func TestGroupIDReplications(t *testing.T) {
 	defer activeBucket.Close()
 
 	// Set up passive bucket RT
-	rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: passiveBucket})
+	rt := NewRestTesterDefaultCollection(t, &RestTesterConfig{CustomTestBucket: passiveBucket}) //  CBG-2319: replicator currently requires default collection
 	defer rt.Close()
 
 	// Make rt listen on an actual HTTP port, so it can receive replications
@@ -368,7 +366,7 @@ func TestGroupIDReplications(t *testing.T) {
 // Reproduces panic seen in CBG-1053
 func TestAdhocReplicationStatus(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll, base.KeyReplicate)
-	rt := NewRestTester(t, &RestTesterConfig{SgReplicateEnabled: true})
+	rt := NewRestTesterDefaultCollection(t, &RestTesterConfig{SgReplicateEnabled: true})
 	defer rt.Close()
 
 	srv := httptest.NewServer(rt.TestAdminHandler())

@@ -12,6 +12,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"testing"
 	"time"
 
@@ -139,8 +140,6 @@ func TestResyncDCPInit(t *testing.T) {
 }
 
 func TestResyncManagerDCPStopInMidWay(t *testing.T) {
-	base.TemporarilyDisableTestUsingDCPWithCollections(t)
-
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Test requires Couchbase Server")
 	}
@@ -191,8 +190,8 @@ func TestResyncManagerDCPStopInMidWay(t *testing.T) {
 }
 
 func TestResyncManagerDCPStart(t *testing.T) {
-	base.TemporarilyDisableTestUsingDCPWithCollections(t)
 
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Test requires Couchbase Server")
 	}
@@ -202,26 +201,26 @@ func TestResyncManagerDCPStart(t *testing.T) {
 		db, ctx := setupTestDBForResyncWithDocs(t, docsToCreate, false)
 		defer db.Close(ctx)
 
-		resycMgr := NewResyncManagerDCP(db.MetadataStore)
-		require.NotNil(t, resycMgr)
-		db.ResyncManager = resycMgr
+		resyncMgr := NewResyncManagerDCP(db.MetadataStore)
+		require.NotNil(t, resyncMgr)
+		db.ResyncManager = resyncMgr
 
 		options := make(map[string]interface{})
 		options["database"] = db
 		options["regenerateSequences"] = false
 
-		err := resycMgr.Start(ctx, options)
+		err := resyncMgr.Start(ctx, options)
 		require.NoError(t, err)
 
 		err = WaitForConditionWithOptions(func() bool {
 			var status BackgroundManagerStatus
-			rawStatus, _ := resycMgr.GetStatus()
+			rawStatus, _ := resyncMgr.GetStatus()
 			_ = json.Unmarshal(rawStatus, &status)
 			return status.State == BackgroundProcessStateCompleted
 		}, 200, 200)
 		require.NoError(t, err)
 
-		stats := getResyncStats(resycMgr.Process)
+		stats := getResyncStats(resyncMgr.Process)
 		assert.Equal(t, int64(docsToCreate), stats.DocsProcessed)
 		assert.Equal(t, int64(0), stats.DocsChanged)
 
@@ -233,24 +232,27 @@ func TestResyncManagerDCPStart(t *testing.T) {
 		db, ctx := setupTestDBForResyncWithDocs(t, docsToCreate, true)
 		defer db.Close(ctx)
 
-		resycMgr := NewResyncManagerDCP(db.MetadataStore)
-		require.NotNil(t, resycMgr)
+		resyncMgr := NewResyncManagerDCP(db.MetadataStore)
+		require.NotNil(t, resyncMgr)
+
+		initialStats := getResyncStats(resyncMgr.Process)
+		log.Printf("initialStats: processed[%v] changed[%v]", initialStats.DocsProcessed, initialStats.DocsChanged)
 
 		options := make(map[string]interface{})
 		options["database"] = db
 		options["regenerateSequences"] = false
-		err := resycMgr.Start(ctx, options)
+		err := resyncMgr.Start(ctx, options)
 		require.NoError(t, err)
 
 		err = WaitForConditionWithOptions(func() bool {
 			var status BackgroundManagerStatus
-			rawStatus, _ := resycMgr.GetStatus()
+			rawStatus, _ := resyncMgr.GetStatus()
 			_ = json.Unmarshal(rawStatus, &status)
 			return status.State == BackgroundProcessStateCompleted
 		}, 200, 200)
 		require.NoError(t, err)
 
-		stats := getResyncStats(resycMgr.Process)
+		stats := getResyncStats(resyncMgr.Process)
 		assert.InDelta(t, int64(docsToCreate), stats.DocsProcessed, 2)
 		assert.Equal(t, int64(docsToCreate), stats.DocsChanged)
 
@@ -260,8 +262,6 @@ func TestResyncManagerDCPStart(t *testing.T) {
 }
 
 func TestResyncManagerDCPRunTwice(t *testing.T) {
-	base.TemporarilyDisableTestUsingDCPWithCollections(t)
-
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Test requires Couchbase Server")
 	}
@@ -311,8 +311,6 @@ func TestResyncManagerDCPRunTwice(t *testing.T) {
 }
 
 func TestResycnManagerDCPResumeStoppedProcess(t *testing.T) {
-	base.TemporarilyDisableTestUsingDCPWithCollections(t)
-
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Test requires Couchbase Server")
 	}
@@ -389,7 +387,7 @@ function sync(doc, oldDoc){
 	_, err := db.UpdateSyncFun(ctx, syncFn)
 	require.NoError(t, err)
 
-	collection := db.GetSingleDatabaseCollectionWithUser()
+	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 	// Create the docs that will be marked and not swept
 	body := map[string]interface{}{"foo": "bar"}

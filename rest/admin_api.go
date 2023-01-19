@@ -104,7 +104,7 @@ func (h *handler) handleCreateDB() error {
 				return httpErr
 			}
 			if errors.Is(err, base.ErrAuthError) {
-				return base.HTTPErrorf(http.StatusForbidden, "Provided bucket credentials do not have access to specified bucket: %s", bucket)
+				return base.HTTPErrorf(http.StatusForbidden, "Provided credentials do not have access to specified bucket/scope/collection")
 			}
 			if errors.Is(err, base.ErrAlreadyExists) {
 				return base.HTTPErrorf(http.StatusConflict, "couldn't load database: %s", err)
@@ -960,19 +960,25 @@ func (h *handler) handlePutCollectionConfigImportFilter() error {
 // In non-persistent mode, the endpoint just removes the database from the node.
 func (h *handler) handleDeleteDB() error {
 	h.assertAdminOnly()
+	dbName := h.PathVar("olddb")
+
+	var bucket string
 
 	if h.server.persistentConfig {
-		bucket := h.db.Bucket.GetName()
+		bucket, _ = h.server.bucketNameFromDbName(dbName)
 		_, err := h.server.BootstrapContext.Connection.UpdateConfig(bucket, h.server.Config.Bootstrap.ConfigGroupID, func(rawBucketConfig []byte, rawBucketConfigCas uint64) (updatedConfig []byte, err error) {
 			return nil, nil
 		})
 		if err != nil {
-			return base.HTTPErrorf(http.StatusInternalServerError, "couldn't remove database %q from bucket %q: %s", base.MD(h.db.Name), base.MD(bucket), err.Error())
+			return base.HTTPErrorf(http.StatusInternalServerError, "couldn't remove database %q from bucket %q: %s", base.MD(dbName), base.MD(bucket), err.Error())
 		}
+		h.server.RemoveDatabase(h.ctx(), dbName) // unhandled 404 to allow broken config deletion (CBG-2420)
+		_, _ = h.response.Write([]byte("{}"))
+		return nil
 	}
 
-	if !h.server.RemoveDatabase(h.ctx(), h.db.Name) {
-		return base.HTTPErrorf(http.StatusNotFound, "missing")
+	if !h.server.RemoveDatabase(h.ctx(), dbName) {
+		return base.HTTPErrorf(http.StatusNotFound, "no such database %q", dbName)
 	}
 	_, _ = h.response.Write([]byte("{}"))
 	return nil

@@ -23,7 +23,7 @@ func TestDynamicChannelGrant(t *testing.T) {
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	dbCollection := db.GetSingleDatabaseCollectionWithUser()
+	dbCollection := GetSingleDatabaseCollectionWithUser(t, db)
 
 	db.ChannelMapper = channels.NewChannelMapper(`
 	function(doc) {

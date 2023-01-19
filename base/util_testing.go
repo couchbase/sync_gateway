@@ -64,7 +64,7 @@ func (b *TestBucket) DefaultDataStore() sgbucket.DataStore {
 
 // NamedDataStore is intentionally not implemented for TestBucket
 // DEPRECATED: Should use GetNamedDataStore
-func (b *TestBucket) NamedDataStore(name sgbucket.DataStoreName) sgbucket.DataStore {
+func (b *TestBucket) NamedDataStore(name sgbucket.DataStoreName) (sgbucket.DataStore, error) {
 	b.t.Logf("Tests directly using TestBucket should use GetNamedDataStore accessor!")
 	return b.Bucket.NamedDataStore(name)
 }
@@ -105,13 +105,19 @@ func (tb *TestBucket) NoCloseClone() *TestBucket {
 
 // GetTestBucket returns a test bucket from a pool.
 func GetTestBucket(t testing.TB) *TestBucket {
-	//debug.PrintStack()
-	return getTestBucket(t)
+	return getTestBucket(t, false)
 }
 
-// getTestBucket returns a bucket from the bucket pool
-func getTestBucket(t testing.TB) *TestBucket {
-	bucket, spec, closeFn := GTestBucketPool.getTestBucketAndSpec(t)
+// GetTestBucket returns a test bucket from a pool.  If running with walrus buckets, will persist bucket data
+// across bucket close.
+func GetPersistentTestBucket(t testing.TB) *TestBucket {
+	return getTestBucket(t, true)
+}
+
+// getTestBucket returns a bucket from the bucket pool.  Persistent flag determines behaviour for walrus
+// buckets only - Couchbase bucket behaviour is defined by the bucket pool readier/init.
+func getTestBucket(t testing.TB, persistent bool) *TestBucket {
+	bucket, spec, closeFn := GTestBucketPool.getTestBucketAndSpec(t, persistent)
 	return &TestBucket{
 		Bucket:     bucket,
 		BucketSpec: spec,
@@ -121,7 +127,7 @@ func getTestBucket(t testing.TB) *TestBucket {
 }
 
 // GetNamedDataStore returns a named datastore from the TestBucket. Each number (starting from 0, indicates which data store you'll get.
-func (tb *TestBucket) GetNamedDataStore(count int) DataStore {
+func (tb *TestBucket) GetNamedDataStore(count int) (DataStore, error) {
 	dataStoreNames := tb.GetNonDefaultDatastoreNames()
 	if count > len(dataStoreNames) {
 		tb.t.Errorf("You are requesting more datastores %d than are available on this test instance %d", dataStoreNames, count)
@@ -156,7 +162,9 @@ func (tb *TestBucket) GetNonDefaultDatastoreNames() []sgbucket.DataStoreName {
 // This may be the default collection, or a named collection depending on whether SG_TEST_USE_DEFAULT_COLLECTION is set.
 func (b *TestBucket) GetSingleDataStore() sgbucket.DataStore {
 	if TestsUseNamedCollections() {
-		return b.GetNamedDataStore(0)
+		ds, err := b.GetNamedDataStore(0)
+		require.NoError(b.t, err)
+		return ds
 	}
 	return b.Bucket.DefaultDataStore()
 }
@@ -171,6 +179,7 @@ func (b *TestBucket) GetSingleDataStore() sgbucket.DataStore {
 // Returns both the test bucket which is persisted and a function which can be used to remove the created temporary
 // directory once the test has finished with it.
 func GetPersistentWalrusBucket(t testing.TB) (*TestBucket, func()) {
+
 	tempDir, err := os.MkdirTemp("", "walrustemp")
 	require.NoError(t, err)
 
@@ -717,17 +726,12 @@ func RequireWaitForStat(t testing.TB, getStatFunc func() int64, expected int64) 
 
 // TestRequiresCollections will skip the current test if the Couchbase Server version it is running against does not
 // support collections.
-func TestRequiresCollections(t *testing.T) {
+func TestRequiresCollections(t testing.TB) {
 	if ok, err := GTestBucketPool.canUseNamedCollections(); err != nil {
 		t.Skipf("Skipping test - collections not supported: %v", err)
 	} else if !ok {
 		t.Skipf("Skipping test - collections not enabled")
 	}
-}
-
-// TemporarilyDisableTestUsingDCPWithCollections will skip the current test if using named collections to avoid MB-53448 prior to CB 7.2 until we've implemented a SG-side workaround (CBG-2605)
-func TemporarilyDisableTestUsingDCPWithCollections(t *testing.T) {
-	DisableTestWithCollections(t)
 }
 
 // DisableTestWithCollections will skip the current test if using named collections.

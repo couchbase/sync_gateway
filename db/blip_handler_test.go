@@ -133,9 +133,13 @@ func TestCollectionBlipHandler(t *testing.T) {
 	}
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
+			ctx := base.TestCtx(t)
 			bh := blipHandler{
-				db:              allDB,
-				BlipSyncContext: &BlipSyncContext{collectionMapping: testCase.collectionMapping},
+				db: allDB,
+				BlipSyncContext: &BlipSyncContext{
+					loggingCtx:        ctx,
+					collectionMapping: testCase.collectionMapping,
+				},
 			}
 
 			passedMiddleware := false
