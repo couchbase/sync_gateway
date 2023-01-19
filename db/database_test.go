@@ -2813,7 +2813,7 @@ func Test_resyncDocument(t *testing.T) {
 			_, err = db.UpdateSyncFun(ctx, syncFn)
 			require.NoError(t, err)
 
-			_, _, err = collection.resyncDocument(ctx, docID, realDocID(docID), false, []uint64{10}, false)
+			_, _, err = collection.resyncDocument(ctx, docID, realDocID(docID), false, []uint64{10}, true)
 			require.NoError(t, err)
 			err = collection.WaitForPendingChanges(ctx)
 			require.NoError(t, err)
@@ -2821,8 +2821,8 @@ func Test_resyncDocument(t *testing.T) {
 			syncData, err := collection.GetDocSyncData(ctx, docID)
 			assert.NoError(t, err)
 
-			assert.Len(t, syncData.ChannelSet, 2)
-			assert.Len(t, syncData.Channels, 2)
+			assert.Len(t, syncData.ChannelSet, 3)
+			assert.Len(t, syncData.Channels, 3)
 			found := false
 
 			for _, chSet := range syncData.ChannelSet {

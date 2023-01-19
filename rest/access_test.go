@@ -138,7 +138,7 @@ func TestStarAccess(t *testing.T) {
 
 	// GET /db/_all_docs?channels=true
 	// Check that _all_docs returns the docs the user has access to:
-	response = rt.SendUserRequest("GET", "/db/_all_docs?channels=true", "", "bernard")
+	response = rt.SendUserRequest("GET", "/{{.keyspace}}/_all_docs?channels=true", "", "bernard")
 	if isAllDocsIndexExist {
 		RequireStatus(t, response, 200)
 
@@ -216,7 +216,7 @@ func TestStarAccess(t *testing.T) {
 
 	// GET /db/_all_docs?channels=true
 	// Check that _all_docs returns all docs (based on user * channel)
-	response = rt.SendUserRequest("GET", "/db/_all_docs?channels=true", "", "fran")
+	response = rt.SendUserRequest("GET", "/{{.keyspace}}/_all_docs?channels=true", "", "fran")
 	if isAllDocsIndexExist {
 		RequireStatus(t, response, 200)
 
@@ -266,7 +266,7 @@ func TestStarAccess(t *testing.T) {
 
 	// GET /db/_all_docs?channels=true
 	// Check that _all_docs only returns ! docs (based on doc ! channel)
-	response = rt.SendUserRequest("GET", "/db/_all_docs?channels=true", "", "manny")
+	response = rt.SendUserRequest("GET", "/{{.keyspace}}/_all_docs?channels=true", "", "manny")
 	if isAllDocsIndexExist {
 		RequireStatus(t, response, 200)
 		log.Printf("Response = %s", response.Body.Bytes())
