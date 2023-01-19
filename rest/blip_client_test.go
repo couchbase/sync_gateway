@@ -1121,6 +1121,7 @@ func (btc *BlipTesterCollectionClient) sendPushMsg(msg *blip.Message) error {
 	return btc.parent.pushReplication.sendMsg(msg)
 }
 
+/*
 func BlipClientInitialization(t *testing.T, rt *RestTester, options *BlipTesterClientOpts) (*BlipTesterClient, *BlipTesterCollectionClient, error) {
 	collection := rt.GetSingleTestDatabaseCollection()
 	scopeAndCollectionKey := strings.Join([]string{collection.ScopeName(), collection.Name()}, base.ScopeCollectionSeparator)
@@ -1133,7 +1134,7 @@ func BlipClientInitialization(t *testing.T, rt *RestTester, options *BlipTesterC
 		if err != nil {
 			return nil, nil, err
 		}
-		btcCollection = client.DefaultCollection()
+		btcCollection = client.SingleCollection()
 	} else {
 		if options == nil {
 			options = &BlipTesterClientOpts{}
@@ -1150,3 +1151,5 @@ func BlipClientInitialization(t *testing.T, rt *RestTester, options *BlipTesterC
 	}
 	return client, btcCollection, nil
 }
+
+*/

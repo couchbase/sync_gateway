@@ -1200,6 +1200,24 @@ func NewBlipTesterFromSpecWithRT(tb testing.TB, spec *BlipTesterSpec, rt *RestTe
 	return blipTester, err
 }
 
+// NewBlipTesterDefaultCollection creates a blip tester that has a RestTester only using a single database and `_default._default` collection.
+func NewBlipTesterDefaultCollection(tb testing.TB) *BlipTester {
+	return NewBlipTesterDefaultCollectionFromSpec(tb, BlipTesterSpec{GuestEnabled: true})
+}
+
+// NewBlipTesterDefaultCollectionFromSpec creates a blip tester that has a RestTester only using a single database and `_default._default` collection.
+func NewBlipTesterDefaultCollectionFromSpec(tb testing.TB, spec BlipTesterSpec) *BlipTester {
+	rtConfig := RestTesterConfig{
+		EnableNoConflictsMode: spec.noConflictsMode,
+		GuestEnabled:          spec.GuestEnabled,
+		DatabaseConfig:        &DatabaseConfig{},
+	}
+	rt := newRestTester(tb, &rtConfig, useSingleCollectionDefaultOnly, 1)
+	bt, err := createBlipTesterWithSpec(tb, spec, rt)
+	require.NoError(tb, err)
+	return bt
+}
+
 // Create a BlipTester using the default spec
 func NewBlipTester(tb testing.TB) (*BlipTester, error) {
 	return NewBlipTesterFromSpec(tb, getDefaultBlipTesterSpec())
@@ -1238,7 +1256,7 @@ func createBlipTesterWithSpec(tb testing.TB, spec BlipTesterSpec, rt *RestTester
 			adminChannels = append(adminChannels, spec.connectingUserChannelGrants...)
 		}
 
-		userDocBody, err := GetUserPayload(spec.connectingUsername, spec.connectingPassword, "", bt.restTester.GetSingleTestDatabaseCollection(), adminChannels, nil)
+		userDocBody, err := getUserBodyDoc(spec.connectingUsername, spec.connectingPassword, bt.restTester.GetSingleTestDatabaseCollection(), adminChannels)
 		if err != nil {
 			return nil, err
 		}
@@ -1310,6 +1328,21 @@ func createBlipTesterWithSpec(tb testing.TB, spec BlipTesterSpec, rt *RestTester
 
 	return bt, nil
 
+}
+
+func getUserBodyDoc(username, password string, collection *db.DatabaseCollection, adminChans []string) (string, error) {
+	config := auth.PrincipalConfig{}
+	if username != "" {
+		config.Name = &username
+	}
+	if password != "" {
+		config.Password = &password
+	}
+	marshalledConfig, err := addChannelsToPrincipal(config, collection, adminChans)
+	if err != nil {
+		return "", err
+	}
+	return string(marshalledConfig), nil
 }
 
 func (bt *BlipTester) initializeCollections(collections []string) {
@@ -1484,6 +1517,16 @@ func addChannelsToPrincipal(config auth.PrincipalConfig, collection *db.Database
 	return payload, nil
 }
 
+func getBlipProperties(rt *RestTester) blip.Properties {
+	collection := rt.GetSingleTestDatabaseCollection()
+	properties := blip.Properties{}
+	if base.IsDefaultCollection(collection.ScopeName(), collection.Name()) {
+		return properties
+	}
+	properties[db.BlipCollection] = "0"
+	return properties
+}
+
 func getChangesHandler(changesFinishedWg, revsFinishedWg *sync.WaitGroup) func(request *blip.Message) {
 	return func(request *blip.Message) {
 		// Send a response telling the other side we want ALL revisions
@@ -1611,7 +1654,7 @@ type SendRevWithAttachmentInput struct {
 }
 
 // Warning: this can only be called from a single goroutine, given the fact it registers profile handlers.
-func (bt *BlipTester) SendRevWithAttachment(input SendRevWithAttachmentInput, properties blip.Properties) (sent bool, req, res *blip.Message) {
+func (bt *BlipTester) SendRevWithAttachment(input SendRevWithAttachmentInput) (sent bool, req, res *blip.Message) {
 
 	defer func() {
 		// Clean up all profile handlers that are registered as part of this test
@@ -1662,7 +1705,7 @@ func (bt *BlipTester) SendRevWithAttachment(input SendRevWithAttachmentInput, pr
 		input.revId,
 		input.history,
 		docBody,
-		properties,
+		blip.Properties{},
 	)
 	// Expect a callback to the getAttachment endpoint
 	getAttachmentWg.Wait()

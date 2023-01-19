@@ -45,21 +45,19 @@ func TestBlipDeltaSyncPushAttachment(t *testing.T) {
 		})
 	defer rt.Close()
 
-	btc, btcCollection, err := BlipClientInitialization(t, rt, nil)
+	btc, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
 	require.NoError(t, err)
 	defer btc.Close()
 	require.NoError(t, err)
-	_, err = btc.pushReplication.bt.BlipCollectionSetup(rt)
-	require.NoError(t, err)
 
 	// Push first rev
-	revID, err := btcCollection.PushRev(docID, "", []byte(`{"key":"val"}`))
+	revID, err := btc.PushRev(docID, "", []byte(`{"key":"val"}`))
 	require.NoError(t, err)
 
 	// Push second rev with an attachment (no delta yet)
 	attData := base64.StdEncoding.EncodeToString([]byte("attach"))
 
-	revID, err = btcCollection.PushRev(docID, revID, []byte(`{"key":"val","_attachments":{"myAttachment":{"data":"`+attData+`"}}}`))
+	revID, err = btc.PushRev(docID, revID, []byte(`{"key":"val","_attachments":{"myAttachment":{"data":"`+attData+`"}}}`))
 	require.NoError(t, err)
 
 	syncData, err := rt.GetDatabase().GetSingleDatabaseCollection().GetDocSyncData(base.TestCtx(t), docID)
@@ -73,13 +71,13 @@ func TestBlipDeltaSyncPushAttachment(t *testing.T) {
 	btc.ClientDeltas = true
 
 	// Get existing body with the stub attachment, insert a new property and push as delta.
-	body, found := btcCollection.GetRev(docID, revID)
+	body, found := btc.GetRev(docID, revID)
 	require.True(t, found)
 
 	newBody, err := base.InjectJSONPropertiesFromBytes(body, base.KVPairBytes{Key: "update", Val: []byte(`true`)})
 	require.NoError(t, err)
 
-	revID, err = btcCollection.PushRev(docID, revID, newBody)
+	revID, err = btc.PushRev(docID, revID, newBody)
 	require.NoError(t, err)
 
 	syncData, err = rt.GetDatabase().GetSingleDatabaseCollection().GetDocSyncData(base.TestCtx(t), docID)
@@ -298,21 +296,19 @@ func TestBlipDeltaSyncPull(t *testing.T) {
 		deltaSentCount = rt.GetDatabase().DbStats.DeltaSync().DeltasSent.Value()
 	}
 
-	client, btcCollection, err := BlipClientInitialization(t, rt, nil)
+	client, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
 	require.NoError(t, err)
 	defer client.Close()
-	_, err = client.pushReplication.bt.BlipCollectionSetup(rt)
-	require.NoError(t, err)
 
 	client.ClientDeltas = true
-	err = btcCollection.StartPull()
+	err = client.StartPull()
 	assert.NoError(t, err)
 
 	// create doc1 rev 1-0335a345b6ffed05707ccc4cbc1b67f4
 	resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc1", `{"greetings": [{"hello": "world!"}, {"hi": "alice"}]}`)
 	assert.Equal(t, http.StatusCreated, resp.Code)
 
-	data, ok := btcCollection.WaitForRev("doc1", "1-0335a345b6ffed05707ccc4cbc1b67f4")
+	data, ok := client.WaitForRev("doc1", "1-0335a345b6ffed05707ccc4cbc1b67f4")
 	assert.True(t, ok)
 	assert.Equal(t, `{"greetings":[{"hello":"world!"},{"hi":"alice"}]}`, string(data))
 
@@ -320,10 +316,10 @@ func TestBlipDeltaSyncPull(t *testing.T) {
 	resp = rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc1?rev=1-0335a345b6ffed05707ccc4cbc1b67f4", `{"greetings": [{"hello": "world!"}, {"hi": "alice"}, {"howdy": 12345678901234567890}]}`)
 	assert.Equal(t, http.StatusCreated, resp.Code)
 
-	data, ok = btcCollection.WaitForRev("doc1", "2-26359894b20d89c97638e71c40482f28")
+	data, ok = client.WaitForRev("doc1", "2-26359894b20d89c97638e71c40482f28")
 	assert.True(t, ok)
 	assert.Equal(t, `{"greetings":[{"hello":"world!"},{"hi":"alice"},{"howdy":12345678901234567890}]}`, string(data))
-	msg, ok := btcCollection.WaitForBlipRevMessage("doc1", "2-26359894b20d89c97638e71c40482f28")
+	msg, ok := client.WaitForBlipRevMessage("doc1", "2-26359894b20d89c97638e71c40482f28")
 	assert.True(t, ok)
 
 	// Check EE is delta, and CE is full-body replication
@@ -381,19 +377,17 @@ func TestBlipDeltaSyncPullResend(t *testing.T) {
 
 	deltaSentCount := rt.GetDatabase().DbStats.DeltaSync().DeltasSent.Value()
 
-	client, btcCollection, err := BlipClientInitialization(t, rt, nil)
+	client, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
 	require.NoError(t, err)
 	defer client.Close()
-	_, err = client.pushReplication.bt.BlipCollectionSetup(rt)
-	require.NoError(t, err)
 
 	// reject deltas built ontop of rev 1
 	client.rejectDeltasForSrcRev = rev1ID
 
 	client.ClientDeltas = true
-	err = btcCollection.StartPull()
+	err = client.StartPull()
 	assert.NoError(t, err)
-	data, ok := btcCollection.WaitForRev("doc1", rev1ID)
+	data, ok := client.WaitForRev("doc1", rev1ID)
 	assert.True(t, ok)
 	assert.Equal(t, `{"greetings":[{"hello":"world!"},{"hi":"alice"}]}`, string(data))
 
@@ -402,7 +396,7 @@ func TestBlipDeltaSyncPullResend(t *testing.T) {
 	assert.Equal(t, http.StatusCreated, resp.Code)
 	rev2ID := RespRevID(t, resp)
 
-	data, ok = btcCollection.WaitForRev("doc1", rev2ID)
+	data, ok = client.WaitForRev("doc1", rev2ID)
 	assert.True(t, ok)
 	assert.Equal(t, `{"greetings":[{"hello":"world!"},{"hi":"alice"},{"howdy":12345678901234567890}]}`, string(data))
 
@@ -417,7 +411,7 @@ func TestBlipDeltaSyncPullResend(t *testing.T) {
 	assert.Equal(t, `{"greetings":{"2-":[{"howdy":12345678901234567890}]}}`, string(msgBody))
 	assert.Equal(t, deltaSentCount+1, rt.GetDatabase().DbStats.DeltaSync().DeltasSent.Value())
 
-	msg, ok = btcCollection.WaitForBlipRevMessage("doc1", "2-26359894b20d89c97638e71c40482f28")
+	msg, ok = client.WaitForBlipRevMessage("doc1", "2-26359894b20d89c97638e71c40482f28")
 	assert.True(t, ok)
 
 	// Check the resent request was NOT sent with a deltaSrc property
@@ -440,7 +434,7 @@ func TestBlipDeltaSyncPullRemoved(t *testing.T) {
 		&rtConfig)
 	defer rt.Close()
 
-	client, btcCollection, err := BlipClientInitialization(t, rt, &BlipTesterClientOpts{
+	client, err := NewBlipTesterClientOptsWithRT(t, rt, &BlipTesterClientOpts{
 		Username:               "alice",
 		Channels:               []string{"public"},
 		ClientDeltas:           true,
@@ -448,17 +442,15 @@ func TestBlipDeltaSyncPullRemoved(t *testing.T) {
 	})
 	require.NoError(t, err)
 	defer client.Close()
-	_, err = client.pushReplication.bt.BlipCollectionSetup(rt)
-	require.NoError(t, err)
 
-	err = btcCollection.StartPull()
+	err = client.StartPull()
 	assert.NoError(t, err)
 
 	// create doc1 rev 1-1513b53e2738671e634d9dd111f48de0
 	resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc1", `{"channels": ["public"], "greetings": [{"hello": "world!"}]}`)
 	assert.Equal(t, http.StatusCreated, resp.Code)
 
-	data, ok := btcCollection.WaitForRev("doc1", "1-1513b53e2738671e634d9dd111f48de0")
+	data, ok := client.WaitForRev("doc1", "1-1513b53e2738671e634d9dd111f48de0")
 	assert.True(t, ok)
 	assert.Contains(t, string(data), `"channels":["public"]`)
 	assert.Contains(t, string(data), `"greetings":[{"hello":"world!"}]`)
@@ -467,7 +459,7 @@ func TestBlipDeltaSyncPullRemoved(t *testing.T) {
 	resp = rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc1?rev=1-1513b53e2738671e634d9dd111f48de0", `{"channels": ["private"], "greetings": [{"hello": "world!"}, {"hi": "bob"}]}`)
 	assert.Equal(t, http.StatusCreated, resp.Code)
 
-	data, ok = btcCollection.WaitForRev("doc1", "2-ff91e11bc1fd12bbb4815a06571859a9")
+	data, ok = client.WaitForRev("doc1", "2-ff91e11bc1fd12bbb4815a06571859a9")
 	assert.True(t, ok)
 	assert.Equal(t, `{"_removed":true}`, string(data))
 
@@ -510,24 +502,22 @@ func TestBlipDeltaSyncPullTombstoned(t *testing.T) {
 		deltasSentStart = rt.GetDatabase().DbStats.DeltaSync().DeltasSent.Value()
 	}
 
-	client, btcCollection, err := BlipClientInitialization(t, rt, &BlipTesterClientOpts{
+	client, err := NewBlipTesterClientOptsWithRT(t, rt, &BlipTesterClientOpts{
 		Username:     "alice",
 		Channels:     []string{"public"},
 		ClientDeltas: true,
 	})
 	require.NoError(t, err)
 	defer client.Close()
-	_, err = client.pushReplication.bt.BlipCollectionSetup(rt)
-	require.NoError(t, err)
 
-	err = btcCollection.StartPull()
+	err = client.StartPull()
 	assert.NoError(t, err)
 
 	// create doc1 rev 1-e89945d756a1d444fa212bffbbb31941
 	resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc1", `{"channels": ["public"], "greetings": [{"hello": "world!"}]}`)
 	assert.Equal(t, http.StatusCreated, resp.Code)
 
-	data, ok := btcCollection.WaitForRev("doc1", "1-1513b53e2738671e634d9dd111f48de0")
+	data, ok := client.WaitForRev("doc1", "1-1513b53e2738671e634d9dd111f48de0")
 	assert.True(t, ok)
 	assert.Contains(t, string(data), `"channels":["public"]`)
 	assert.Contains(t, string(data), `"greetings":[{"hello":"world!"}]`)
@@ -536,7 +526,7 @@ func TestBlipDeltaSyncPullTombstoned(t *testing.T) {
 	resp = rt.SendAdminRequest(http.MethodDelete, "/{{.keyspace}}/doc1?rev=1-1513b53e2738671e634d9dd111f48de0", "")
 	assert.Equal(t, http.StatusOK, resp.Code)
 
-	data, ok = btcCollection.WaitForRev("doc1", "2-ed278cbc310c9abeea414da15d0b2cac")
+	data, ok = client.WaitForRev("doc1", "2-ed278cbc310c9abeea414da15d0b2cac")
 	assert.True(t, ok)
 	assert.Equal(t, `{}`, string(data))
 
@@ -607,42 +597,38 @@ func TestBlipDeltaSyncPullTombstonedStarChan(t *testing.T) {
 		deltasRequestedStart = rt.GetDatabase().DbStats.DeltaSync().DeltasRequested.Value()
 		deltasSentStart = rt.GetDatabase().DbStats.DeltaSync().DeltasSent.Value()
 	}
-	client1, btcCollection1, err := BlipClientInitialization(t, rt, &BlipTesterClientOpts{
+	client1, err := NewBlipTesterClientOptsWithRT(t, rt, &BlipTesterClientOpts{
 		Username:     "client1",
 		Channels:     []string{"*"},
 		ClientDeltas: true,
 	})
 	require.NoError(t, err)
 	defer client1.Close()
-	_, err = client1.pushReplication.bt.BlipCollectionSetup(rt)
-	require.NoError(t, err)
 
-	client2, btcCollection2, err := BlipClientInitialization(t, rt, &BlipTesterClientOpts{
+	client2, err := NewBlipTesterClientOptsWithRT(t, rt, &BlipTesterClientOpts{
 		Username:     "client2",
 		Channels:     []string{"*"},
 		ClientDeltas: true,
 	})
 	require.NoError(t, err)
 	defer client2.Close()
-	_, err = client2.pushReplication.bt.BlipCollectionSetup(rt)
-	require.NoError(t, err)
 
-	err = btcCollection1.StartPull()
+	err = client1.StartPull()
 	require.NoError(t, err)
 
 	// create doc1 rev 1-e89945d756a1d444fa212bffbbb31941
 	resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc1", `{"channels": ["public"], "greetings": [{"hello": "world!"}]}`)
 	assert.Equal(t, http.StatusCreated, resp.Code)
 
-	data, ok := btcCollection1.WaitForRev("doc1", "1-1513b53e2738671e634d9dd111f48de0")
+	data, ok := client1.WaitForRev("doc1", "1-1513b53e2738671e634d9dd111f48de0")
 	assert.True(t, ok)
 	assert.Contains(t, string(data), `"channels":["public"]`)
 	assert.Contains(t, string(data), `"greetings":[{"hello":"world!"}]`)
 
 	// Have client2 get only rev-1 and then stop replicating
-	err = btcCollection2.StartOneshotPull()
+	err = client2.StartOneshotPull()
 	assert.NoError(t, err)
-	data, ok = btcCollection2.WaitForRev("doc1", "1-1513b53e2738671e634d9dd111f48de0")
+	data, ok = client2.WaitForRev("doc1", "1-1513b53e2738671e634d9dd111f48de0")
 	assert.True(t, ok)
 	assert.Contains(t, string(data), `"channels":["public"]`)
 	assert.Contains(t, string(data), `"greetings":[{"hello":"world!"}]`)
@@ -651,10 +637,10 @@ func TestBlipDeltaSyncPullTombstonedStarChan(t *testing.T) {
 	resp = rt.SendAdminRequest(http.MethodDelete, "/{{.keyspace}}/doc1?rev=1-1513b53e2738671e634d9dd111f48de0", `{"test": true"`)
 	assert.Equal(t, http.StatusOK, resp.Code)
 
-	data, ok = btcCollection1.WaitForRev("doc1", "2-ed278cbc310c9abeea414da15d0b2cac")
+	data, ok = client1.WaitForRev("doc1", "2-ed278cbc310c9abeea414da15d0b2cac")
 	assert.True(t, ok)
 	assert.Equal(t, `{}`, string(data))
-	msg, ok := btcCollection1.WaitForBlipRevMessage("doc1", "2-ed278cbc310c9abeea414da15d0b2cac") // docid, revid to get the message
+	msg, ok := client1.WaitForBlipRevMessage("doc1", "2-ed278cbc310c9abeea414da15d0b2cac") // docid, revid to get the message
 	assert.True(t, ok)
 
 	if !assert.Equal(t, db.MessageRev, msg.Profile()) {
@@ -673,12 +659,12 @@ func TestBlipDeltaSyncPullTombstonedStarChan(t *testing.T) {
 	}
 
 	// Sync Gateway will have cached the tombstone delta, so client 2 should be able to retrieve it from the cache
-	err = btcCollection2.StartOneshotPull()
+	err = client2.StartOneshotPull()
 	assert.NoError(t, err)
-	data, ok = btcCollection2.WaitForRev("doc1", "2-ed278cbc310c9abeea414da15d0b2cac")
+	data, ok = client2.WaitForRev("doc1", "2-ed278cbc310c9abeea414da15d0b2cac")
 	assert.True(t, ok)
 	assert.Equal(t, `{}`, string(data))
-	msg, ok = btcCollection2.WaitForBlipRevMessage("doc1", "2-ed278cbc310c9abeea414da15d0b2cac")
+	msg, ok = client2.WaitForBlipRevMessage("doc1", "2-ed278cbc310c9abeea414da15d0b2cac")
 	assert.True(t, ok)
 
 	if !assert.Equal(t, db.MessageRev, msg.Profile()) {
@@ -744,36 +730,32 @@ func TestBlipDeltaSyncPullRevCache(t *testing.T) {
 		&rtConfig)
 	defer rt.Close()
 
-	client, btcCollection1, err := BlipClientInitialization(t, rt, nil)
+	client, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
 	require.NoError(t, err)
 	defer client.Close()
-	_, err = client.pushReplication.bt.BlipCollectionSetup(rt)
-	require.NoError(t, err)
 
 	client.ClientDeltas = true
-	err = btcCollection1.StartPull()
+	err = client.StartPull()
 	assert.NoError(t, err)
 
 	// create doc1 rev 1-0335a345b6ffed05707ccc4cbc1b67f4
 	resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc1", `{"greetings": [{"hello": "world!"}, {"hi": "alice"}]}`)
 	assert.Equal(t, http.StatusCreated, resp.Code)
 
-	data, ok := btcCollection1.WaitForRev("doc1", "1-0335a345b6ffed05707ccc4cbc1b67f4")
+	data, ok := client.WaitForRev("doc1", "1-0335a345b6ffed05707ccc4cbc1b67f4")
 	assert.True(t, ok)
 	assert.Equal(t, `{"greetings":[{"hello":"world!"},{"hi":"alice"}]}`, string(data))
 
 	// Perform a one-shot pull as client 2 to pull down the first revision
 
-	client2, btcCollection2, err := BlipClientInitialization(t, rt, nil)
+	client2, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
 	require.NoError(t, err)
 	defer client2.Close()
-	_, err = client2.pushReplication.bt.BlipCollectionSetup(rt)
-	require.NoError(t, err)
 
 	client2.ClientDeltas = true
-	err = btcCollection2.StartOneshotPull()
+	err = client2.StartOneshotPull()
 	assert.NoError(t, err)
-	data, ok = btcCollection2.WaitForRev("doc1", "1-0335a345b6ffed05707ccc4cbc1b67f4")
+	data, ok = client2.WaitForRev("doc1", "1-0335a345b6ffed05707ccc4cbc1b67f4")
 	assert.True(t, ok)
 	assert.Equal(t, `{"greetings":[{"hello":"world!"},{"hi":"alice"}]}`, string(data))
 
@@ -781,10 +763,10 @@ func TestBlipDeltaSyncPullRevCache(t *testing.T) {
 	resp = rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc1?rev=1-0335a345b6ffed05707ccc4cbc1b67f4", `{"greetings": [{"hello": "world!"}, {"hi": "alice"}, {"howdy": "bob"}]}`)
 	assert.Equal(t, http.StatusCreated, resp.Code)
 
-	data, ok = btcCollection1.WaitForRev("doc1", "2-959f0e9ad32d84ff652fb91d8d0caa7e")
+	data, ok = client.WaitForRev("doc1", "2-959f0e9ad32d84ff652fb91d8d0caa7e")
 	assert.True(t, ok)
 	assert.Equal(t, `{"greetings":[{"hello":"world!"},{"hi":"alice"},{"howdy":"bob"}]}`, string(data))
-	msg, ok := btcCollection1.WaitForBlipRevMessage("doc1", "2-959f0e9ad32d84ff652fb91d8d0caa7e")
+	msg, ok := client.WaitForBlipRevMessage("doc1", "2-959f0e9ad32d84ff652fb91d8d0caa7e")
 	assert.True(t, ok)
 
 	// Check EE is delta
@@ -800,9 +782,9 @@ func TestBlipDeltaSyncPullRevCache(t *testing.T) {
 
 	// Run another one shot pull to get the 2nd revision - validate it comes as delta, and uses cached version
 	client2.ClientDeltas = true
-	err = btcCollection2.StartOneshotPull()
+	err = client2.StartOneshotPull()
 	assert.NoError(t, err)
-	msg2, ok := btcCollection2.WaitForBlipRevMessage("doc1", "2-959f0e9ad32d84ff652fb91d8d0caa7e")
+	msg2, ok := client2.WaitForBlipRevMessage("doc1", "2-959f0e9ad32d84ff652fb91d8d0caa7e")
 	assert.True(t, ok)
 
 	// Check the request was sent with the correct deltaSrc property
@@ -841,25 +823,23 @@ func TestBlipDeltaSyncPush(t *testing.T) {
 	var msg *blip.Message
 	var ok bool
 
-	client, btcCollection, err := BlipClientInitialization(t, rt, nil)
+	client, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
 	require.NoError(t, err)
 	defer client.Close()
 	client.ClientDeltas = true
-	_, err = client.pushReplication.bt.BlipCollectionSetup(rt)
-	require.NoError(t, err)
 
-	err = btcCollection.StartPull()
+	err = client.StartPull()
 	assert.NoError(t, err)
 
 	// create doc1 rev 1-0335a345b6ffed05707ccc4cbc1b67f4
 	resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc1", `{"greetings": [{"hello": "world!"}, {"hi": "alice"}]}`)
 	assert.Equal(t, http.StatusCreated, resp.Code)
 
-	data, ok := btcCollection.WaitForRev("doc1", "1-0335a345b6ffed05707ccc4cbc1b67f4")
+	data, ok := client.WaitForRev("doc1", "1-0335a345b6ffed05707ccc4cbc1b67f4")
 	assert.True(t, ok)
 	assert.Equal(t, `{"greetings":[{"hello":"world!"},{"hi":"alice"}]}`, string(data))
 	// create doc1 rev 2-abc on client
-	newRev, err := btcCollection.PushRev("doc1", "1-0335a345b6ffed05707ccc4cbc1b67f4", []byte(`{"greetings":[{"hello":"world!"},{"hi":"alice"},{"howdy":"bob"}]}`))
+	newRev, err := client.PushRev("doc1", "1-0335a345b6ffed05707ccc4cbc1b67f4", []byte(`{"greetings":[{"hello":"world!"},{"hi":"alice"},{"howdy":"bob"}]}`))
 	assert.NoError(t, err)
 	assert.Equal(t, "2-abc", newRev)
 
@@ -910,7 +890,7 @@ func TestBlipDeltaSyncPush(t *testing.T) {
 	resp = rt.SendAdminRequest(http.MethodDelete, "/{{.keyspace}}/doc1?rev="+newRev, "")
 	assert.Equal(t, http.StatusOK, resp.Code)
 
-	data, ok = btcCollection.WaitForRev("doc1", "3-fcc2db8cdbf1831799b7a39bb57edd71")
+	data, ok = client.WaitForRev("doc1", "3-fcc2db8cdbf1831799b7a39bb57edd71")
 	assert.True(t, ok)
 	assert.Equal(t, `{}`, string(data))
 
@@ -920,7 +900,7 @@ func TestBlipDeltaSyncPush(t *testing.T) {
 		deltaPushDocCountStart = rt.GetDatabase().DbStats.DeltaSync().DeltaPushDocCount.Value()
 	}
 
-	revID, err := btcCollection.PushRev("doc1", "3-fcc2db8cdbf1831799b7a39bb57edd71", []byte(`{"undelete":true}`))
+	revID, err := client.PushRev("doc1", "3-fcc2db8cdbf1831799b7a39bb57edd71", []byte(`{"undelete":true}`))
 
 	if base.IsEnterpriseEdition() {
 		// Now make the client push up a delta that has the parent of the tombstone.
@@ -963,25 +943,23 @@ func TestBlipNonDeltaSyncPush(t *testing.T) {
 	var msg *blip.Message
 	var ok bool
 
-	client, btcCollection, err := BlipClientInitialization(t, rt, nil)
+	client, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
 	require.NoError(t, err)
 	defer client.Close()
-	_, err = client.pushReplication.bt.BlipCollectionSetup(rt)
-	require.NoError(t, err)
 
 	client.ClientDeltas = false
-	err = btcCollection.StartPull()
+	err = client.StartPull()
 	assert.NoError(t, err)
 
 	// create doc1 rev 1-0335a345b6ffed05707ccc4cbc1b67f4
 	resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc1", `{"greetings": [{"hello": "world!"}, {"hi": "alice"}]}`)
 	assert.Equal(t, http.StatusCreated, resp.Code)
 
-	data, ok := btcCollection.WaitForRev("doc1", "1-0335a345b6ffed05707ccc4cbc1b67f4")
+	data, ok := client.WaitForRev("doc1", "1-0335a345b6ffed05707ccc4cbc1b67f4")
 	assert.True(t, ok)
 	assert.Equal(t, `{"greetings":[{"hello":"world!"},{"hi":"alice"}]}`, string(data))
 	// create doc1 rev 2-abcxyz on client
-	newRev, err := btcCollection.PushRev("doc1", "1-0335a345b6ffed05707ccc4cbc1b67f4", []byte(`{"greetings":[{"hello":"world!"},{"hi":"alice"},{"howdy":"bob"}]}`))
+	newRev, err := client.PushRev("doc1", "1-0335a345b6ffed05707ccc4cbc1b67f4", []byte(`{"greetings":[{"hello":"world!"},{"hi":"alice"},{"howdy":"bob"}]}`))
 	assert.NoError(t, err)
 	assert.Equal(t, "2-abc", newRev)
 	// Check EE is delta, and CE is full-body replication
