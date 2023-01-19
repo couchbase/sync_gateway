@@ -593,7 +593,10 @@ func (bh *blipHandler) handleChanges(rq *blip.Message) error {
 		// Note that this doesn't mean that rev messages associated with previous changes
 		// messages have been fully processed
 		if bh.emptyChangesMessageCallback != nil {
-			bh.emptyChangesMessageCallback()
+			callback, exists := bh.emptyChangesMessageCallback[bh.collection.GetCollectionID()]
+			if exists {
+				callback()
+			}
 		}
 		return nil
 	}
@@ -700,10 +703,17 @@ func (bh *blipHandler) handleChanges(rq *blip.Message) error {
 	response.SetBody(output.Bytes())
 
 	if bh.sgr2PullAddExpectedSeqsCallback != nil {
-		bh.sgr2PullAddExpectedSeqsCallback(expectedSeqs)
+		callback, exists := bh.sgr2PullAddExpectedSeqsCallback[bh.collection.GetCollectionID()]
+		if exists {
+			callback(expectedSeqs)
+		}
 	}
+
 	if bh.sgr2PullAlreadyKnownSeqsCallback != nil {
-		bh.sgr2PullAlreadyKnownSeqsCallback(alreadyKnownSeqs...)
+		callback, exists := bh.sgr2PullAlreadyKnownSeqsCallback[bh.collection.GetCollectionID()]
+		if exists {
+			callback(alreadyKnownSeqs...)
+		}
 	}
 
 	return nil
@@ -840,11 +850,15 @@ func (bh *blipHandler) handleNoRev(rq *blip.Message) error {
 		rq.String(), base.UD(docID), revID, seqStr, rq.Properties[NorevMessageError], rq.Properties[NorevMessageReason])
 
 	if bh.sgr2PullProcessedSeqCallback != nil {
-		seq, err := ParseJSONSequenceID(seqStr)
-		if err != nil {
-			base.WarnfCtx(bh.loggingCtx, "Unable to parse sequence %q from norev message: %w - not tracking for checkpointing", seqStr, err)
-		} else {
-			bh.sgr2PullProcessedSeqCallback(&seq, IDAndRev{DocID: docID, RevID: revID})
+		callback, exists := bh.sgr2PullProcessedSeqCallback[bh.collection.GetCollectionID()]
+		if exists {
+
+			seq, err := ParseJSONSequenceID(seqStr)
+			if err != nil {
+				base.WarnfCtx(bh.loggingCtx, "Unable to parse sequence %q from norev message: %w - not tracking for checkpointing", seqStr, err)
+			} else {
+				callback(&seq, IDAndRev{DocID: docID, RevID: revID})
+			}
 		}
 	}
 
@@ -917,12 +931,16 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 			}
 			stats.docsPurgedCount.Add(1)
 			if bh.sgr2PullProcessedSeqCallback != nil {
-				seqStr := rq.Properties[RevMessageSequence]
-				seq, err := ParseJSONSequenceID(seqStr)
-				if err != nil {
-					base.WarnfCtx(bh.loggingCtx, "Unable to parse sequence %q from rev message: %w - not tracking for checkpointing", seqStr, err)
-				} else {
-					bh.sgr2PullProcessedSeqCallback(&seq, IDAndRev{DocID: docID, RevID: revID})
+				callback, exists := bh.sgr2PullProcessedSeqCallback[bh.collection.GetCollectionID()]
+				if exists {
+
+					seqStr := rq.Properties[RevMessageSequence]
+					seq, err := ParseJSONSequenceID(seqStr)
+					if err != nil {
+						base.WarnfCtx(bh.loggingCtx, "Unable to parse sequence %q from rev message: %w - not tracking for checkpointing", seqStr, err)
+					} else {
+						callback(&seq, IDAndRev{DocID: docID, RevID: revID})
+					}
 				}
 			}
 			return nil
@@ -1133,12 +1151,15 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 	}
 
 	if bh.sgr2PullProcessedSeqCallback != nil {
-		seqProperty := rq.Properties[RevMessageSequence]
-		seq, err := ParseJSONSequenceID(seqProperty)
-		if err != nil {
-			base.WarnfCtx(bh.loggingCtx, "Unable to parse sequence %q from rev message: %w - not tracking for checkpointing", seqProperty, err)
-		} else {
-			bh.sgr2PullProcessedSeqCallback(&seq, IDAndRev{DocID: docID, RevID: revID})
+		callback, exists := bh.sgr2PullProcessedSeqCallback[bh.collection.GetCollectionID()]
+		if exists {
+			seqProperty := rq.Properties[RevMessageSequence]
+			seq, err := ParseJSONSequenceID(seqProperty)
+			if err != nil {
+				base.WarnfCtx(bh.loggingCtx, "Unable to parse sequence %q from rev message: %w - not tracking for checkpointing", seqProperty, err)
+			} else {
+				callback(&seq, IDAndRev{DocID: docID, RevID: revID})
+			}
 		}
 	}
 

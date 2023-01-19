@@ -30,9 +30,9 @@ const (
 type activeReplicatorCommon struct {
 	config                *ActiveReplicatorConfig
 	blipSyncContext       *BlipSyncContext
-	blipSender            *blip.Sender
+	blipSenders           map[base.ScopeAndCollectionName]*blip.Sender // map of collections to blip senders
 	Stats                 expvar.Map
-	Checkpointer          *Checkpointer
+	Checkpointers         map[base.ScopeAndCollectionName]*Checkpointer // map of collections to checkpoints
 	checkpointerCtx       context.Context
 	checkpointerCtxCancel context.CancelFunc
 	CheckpointID          string // Used for checkpoint retrieval when Checkpointer isn't available
@@ -67,6 +67,8 @@ func newActiveReplicatorCommon(config *ActiveReplicatorConfig, direction ActiveR
 		state:            ReplicationStateStopped,
 		replicationStats: replicationStats,
 		CheckpointID:     config.checkpointPrefix + checkpointID,
+		blipSenders:      make(map[base.ScopeAndCollectionName]*blip.Sender),
+		Checkpointers:    make(map[base.ScopeAndCollectionName]*Checkpointer),
 	}
 }
 
@@ -182,15 +184,19 @@ func (a *activeReplicatorCommon) _disconnect() error {
 	if a.checkpointerCtx != nil {
 		base.TracefCtx(a.ctx, base.KeyReplicate, "cancelling checkpointer context inside _disconnect")
 		a.checkpointerCtxCancel()
-		a.Checkpointer.CheckpointNow()
-		a.Checkpointer.closeWg.Wait()
+		for _, checkpointer := range a.Checkpointers {
+			checkpointer.CheckpointNow()
+			checkpointer.closeWg.Wait()
+		}
 	}
 	a.checkpointerCtx = nil
 
-	if a.blipSender != nil {
+	if a.blipSenders != nil {
 		base.TracefCtx(a.ctx, base.KeyReplicate, "closing blip sender")
-		a.blipSender.Close()
-		a.blipSender = nil
+		for _, blipSender := range a.blipSenders {
+			blipSender.Close()
+		}
+		a.blipSenders = nil
 	}
 
 	if a.blipSyncContext != nil {
@@ -271,8 +277,10 @@ func (a *activeReplicatorCommon) GetStats() *BlipSyncStats {
 
 func (a *activeReplicatorCommon) _publishStatus() {
 	status, errorMessage := a.getStateWithErrorMessage()
-	if a.Checkpointer != nil {
-		a.Checkpointer.setLocalCheckpointStatus(status, errorMessage)
+	if a.Checkpointers != nil {
+		for _, checkpointer := range a.Checkpointers {
+			checkpointer.setLocalCheckpointStatus(status, errorMessage)
+		}
 	} else {
 		setLocalCheckpointStatus(a.ctx, a.config.ActiveDB, a.CheckpointID, status, errorMessage)
 	}

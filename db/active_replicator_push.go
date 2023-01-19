@@ -67,7 +67,7 @@ var PreHydrogenTargetAllowConflictsError = errors.New("cannot run replication to
 // _connect opens up a connection, and starts replicating.
 func (apr *ActivePushReplicator) _connect() error {
 	var err error
-	apr.blipSender, apr.blipSyncContext, err = connect(apr.activeReplicatorCommon, "-push")
+	apr.blipSenders, apr.blipSyncContext, err = connect(apr.activeReplicatorCommon, "-push")
 	if err != nil {
 		return err
 	}
@@ -78,13 +78,16 @@ func (apr *ActivePushReplicator) _connect() error {
 
 	// wrap the replicator context with a cancelFunc that can be called to abort the checkpointer from _disconnect
 	apr.checkpointerCtx, apr.checkpointerCtxCancel = context.WithCancel(apr.ctx)
-	if err := apr._initCheckpointer(); err != nil {
-		// clean up anything we've opened so far
-		apr.blipSender.Close()
-		apr.blipSyncContext.Close()
-		return err
+	for _, collection := range apr.config.Collections {
+		if err := apr._initCheckpointer(collection); err != nil {
+			// clean up anything we've opened so far
+			for _, blipSender := range apr.blipSenders {
+				blipSender.Close()
+			}
+			apr.blipSyncContext.Close()
+			return err
+		}
 	}
-
 	singleCollection := &DatabaseCollectionWithUser{
 		DatabaseCollection: apr.config.ActiveDB.GetSingleDatabaseCollection(),
 		user:               apr.config.ActiveDB.user,
@@ -119,25 +122,26 @@ func (apr *ActivePushReplicator) _connect() error {
 	}
 
 	apr.activeSendChanges.Set(true)
-	go func(s *blip.Sender) {
-		defer apr.activeSendChanges.Set(false)
-		isComplete := bh.sendChanges(s, &sendChangesOptions{
-			docIDs:            apr.config.DocIDs,
-			since:             apr.Checkpointer.lastCheckpointSeq,
-			continuous:        apr.config.Continuous,
-			activeOnly:        apr.config.ActiveOnly,
-			batchSize:         int(apr.config.ChangesBatchSize),
-			revocations:       apr.config.PurgeOnRemoval,
-			channels:          channels,
-			clientType:        clientTypeSGR2,
-			ignoreNoConflicts: true, // force the passive side to accept a "changes" message, even in no conflicts mode.
-		})
-		// On a normal completion, call complete for the replication
-		if isComplete {
-			apr.Complete()
-		}
-	}(apr.blipSender)
-
+	for collection, blipSender := range apr.blipSenders {
+		go func(s *blip.Sender) {
+			defer apr.activeSendChanges.Set(false)
+			isComplete := bh.sendChanges(s, &sendChangesOptions{
+				docIDs:            apr.config.DocIDs,
+				since:             apr.Checkpointers[collection].lastCheckpointSeq,
+				continuous:        apr.config.Continuous,
+				activeOnly:        apr.config.ActiveOnly,
+				batchSize:         int(apr.config.ChangesBatchSize),
+				revocations:       apr.config.PurgeOnRemoval,
+				channels:          channels,
+				clientType:        clientTypeSGR2,
+				ignoreNoConflicts: true, // force the passive side to accept a "changes" message, even in no conflicts mode.
+			})
+			// On a normal completion, call complete for the replication
+			if isComplete {
+				apr.Complete()
+			}
+		}(blipSender)
+	}
 	apr.setState(ReplicationStateRunning)
 	return nil
 }
@@ -157,11 +161,12 @@ func (apr *ActivePushReplicator) Complete() {
 		base.InfofCtx(apr.ctx, base.KeyReplicate, "Timeout waiting for pending changes response for replication %s - stopping: %v", apr.config.ID, err)
 	}
 
-	err = apr.Checkpointer.waitForExpectedSequences()
-	if err != nil {
-		base.InfofCtx(apr.ctx, base.KeyReplicate, "Timeout draining replication %s - stopping: %v", apr.config.ID, err)
+	for _, checkpointer := range apr.Checkpointers {
+		err = checkpointer.waitForExpectedSequences()
+		if err != nil {
+			base.InfofCtx(apr.ctx, base.KeyReplicate, "Timeout draining replication %s - stopping: %v", apr.config.ID, err)
+		}
 	}
-
 	apr._stop()
 
 	stopErr := apr._disconnect()
@@ -180,23 +185,28 @@ func (apr *ActivePushReplicator) Complete() {
 	}
 }
 
-func (apr *ActivePushReplicator) _initCheckpointer() error {
+func (apr *ActivePushReplicator) _initCheckpointer(collectionName base.ScopeAndCollectionName) error {
 
 	checkpointHash, hashErr := apr.config.CheckpointHash()
 	if hashErr != nil {
 		return hashErr
 	}
-	apr.Checkpointer = NewCheckpointer(apr.checkpointerCtx, apr.CheckpointID, checkpointHash, apr.blipSender, apr.config, apr.getPushStatus)
+	collection, err := apr.config.ActiveDB.GetDatabaseCollection(collectionName.ScopeName(), collectionName.CollectionName())
+	if err != nil {
+		return err
+	}
+	checkpointer := NewCheckpointer(apr.checkpointerCtx, apr.CheckpointID, checkpointHash, apr.blipSenders[collectionName], apr.config, collection, apr.getPushStatus)
 
-	var err error
-	apr.initialStatus, err = apr.Checkpointer.fetchCheckpoints()
+	apr.initialStatus, err = checkpointer.fetchCheckpoints()
 	base.InfofCtx(apr.ctx, base.KeyReplicate, "Initialized push replication status: %+v", apr.initialStatus)
 	if err != nil {
 		return err
 	}
 
-	apr.registerCheckpointerCallbacks()
-	apr.Checkpointer.Start()
+	apr.registerCheckpointerCallbacks(collection.GetCollectionID(), checkpointer)
+
+	apr.Checkpointers[collectionName] = checkpointer
+	checkpointer.Start()
 
 	return nil
 }
@@ -207,9 +217,17 @@ func (apr *ActivePushReplicator) GetStatus() *ReplicationStatus {
 	var lastSeqPushed string
 	apr.lock.RLock()
 	defer apr.lock.RUnlock()
-	if apr.Checkpointer != nil {
-		lastSeqPushed = apr.Checkpointer.calculateSafeProcessedSeq().String()
+	if apr.Checkpointers != nil {
+		var highestSeq SequenceID
+		for _, checkpointer := range apr.Checkpointers {
+			lastSeqPulled := checkpointer.calculateSafeProcessedSeq()
+			if lastSeqPulled.Seq >= highestSeq.Seq {
+				highestSeq = lastSeqPulled
+			}
+		}
+		lastSeqPushed = highestSeq.String()
 	}
+
 	status := apr.getPushStatus(lastSeqPushed)
 	return status
 }
@@ -238,26 +256,27 @@ func (apr *ActivePushReplicator) reset() error {
 	if apr.state != ReplicationStateStopped {
 		return fmt.Errorf("reset invoked for replication %s when the replication was not stopped", apr.config.ID)
 	}
-	// TODO: this needs pointing at all collections the replicator is configured for!
-	collection := apr.config.ActiveDB.GetSingleDatabaseCollection()
-	if err := resetLocalCheckpoint(collection.dataStore, apr.CheckpointID); err != nil {
-		return err
+	for _, collection := range apr.config.Collections {
+		collection, err := apr.config.ActiveDB.GetDatabaseCollection(collection.ScopeName(), collection.CollectionName())
+		if err != nil {
+			return err
+		}
+		if err := resetLocalCheckpoint(collection.dataStore, apr.CheckpointID); err != nil {
+			return err
+		}
 	}
-
 	apr.lock.Lock()
-	apr.Checkpointer = nil
+	apr.Checkpointers = nil
 	apr.lock.Unlock()
 
 	return nil
 }
 
 // registerCheckpointerCallbacks registers appropriate callback functions for checkpointing.
-func (apr *ActivePushReplicator) registerCheckpointerCallbacks() {
-	apr.blipSyncContext.sgr2PushAlreadyKnownSeqsCallback = apr.Checkpointer.AddAlreadyKnownSeq
-
-	apr.blipSyncContext.sgr2PushAddExpectedSeqsCallback = apr.Checkpointer.AddExpectedSeqs
-
-	apr.blipSyncContext.sgr2PushProcessedSeqCallback = apr.Checkpointer.AddProcessedSeq
+func (apr *ActivePushReplicator) registerCheckpointerCallbacks(collectionID uint32, checkpointer *Checkpointer) {
+	apr.blipSyncContext.sgr2PushAlreadyKnownSeqsCallback[collectionID] = checkpointer.AddAlreadyKnownSeq
+	apr.blipSyncContext.sgr2PushAddExpectedSeqsCallback[collectionID] = checkpointer.AddExpectedSeqs
+	apr.blipSyncContext.sgr2PushProcessedSeqCallback[collectionID] = checkpointer.AddProcessedSeq
 }
 
 // waitForExpectedSequences waits for the pending changes response count

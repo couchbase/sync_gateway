@@ -33,6 +33,16 @@ type ActiveReplicator struct {
 
 // NewActiveReplicator returns a bidirectional active replicator for the given config.
 func NewActiveReplicator(ctx context.Context, config *ActiveReplicatorConfig) *ActiveReplicator {
+	// setup all collections if none are specified
+	if len(config.Collections) == 0 {
+		var replicatorCollections []base.ScopeAndCollectionName
+		for _, collection := range config.ActiveDB.CollectionByID {
+			replicatorCollections = append(replicatorCollections, base.ScopeAndCollectionName{collection.ScopeName(), collection.Name()})
+		}
+		config.Collections = replicatorCollections
+
+	}
+
 	ar := &ActiveReplicator{
 		ID:        config.ID,
 		config:    config,
@@ -198,7 +208,7 @@ func (ar *ActiveReplicator) GetStatus() *ReplicationStatus {
 	return status
 }
 
-func connect(arc *activeReplicatorCommon, idSuffix string) (blipSender *blip.Sender, bsc *BlipSyncContext, err error) {
+func connect(arc *activeReplicatorCommon, idSuffix string) (blipSender map[base.ScopeAndCollectionName]*blip.Sender, bsc *BlipSyncContext, err error) {
 	arc.replicationStats.NumConnectAttempts.Add(1)
 
 	blipContext, err := NewSGBlipContext(arc.ctx, arc.config.ID+idSuffix)
@@ -221,13 +231,15 @@ func connect(arc *activeReplicatorCommon, idSuffix string) (blipSender *blip.Sen
 	if arc.config.DeltasEnabled == false {
 		bsc.sgCanUseDeltas = false
 	}
-
-	blipSender, err = blipSync(*arc.config.RemoteDBURL, blipContext, arc.config.InsecureSkipVerify)
-	if err != nil {
-		return nil, nil, err
+	blipSenders := make(map[base.ScopeAndCollectionName]*blip.Sender)
+	for _, collection := range arc.config.Collections {
+		blipSender, err := blipSync(*arc.config.RemoteDBURL, blipContext, arc.config.InsecureSkipVerify)
+		if err != nil {
+			return nil, nil, err
+		}
+		blipSenders[collection] = blipSender
 	}
-
-	return blipSender, bsc, nil
+	return blipSenders, bsc, nil
 }
 
 // blipSync opens a connection to the target, and returns a blip.Sender to send messages over.

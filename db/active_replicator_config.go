@@ -68,6 +68,8 @@ type ActiveReplicatorConfig struct {
 	PurgeOnRemoval bool
 	// ActiveDB is a reference to the active database context.
 	ActiveDB *Database
+	// Collections represent the names of the collections to replicate
+	Collections []base.ScopeAndCollectionName
 	// WebsocketPingInterval is the time between websocket heartbeats sent by the active replicator.
 	WebsocketPingInterval time.Duration
 	// Conflict resolver

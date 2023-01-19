@@ -551,6 +551,9 @@ func (m *sgReplicateManager) NewActiveReplicatorConfig(config *ReplicationCfg) (
 		RunAs:              config.RunAs,
 	}
 
+	for _, collection := range activeDB.CollectionByID {
+		rc.Collections = append(rc.Collections, base.ScopeAndCollectionName{collection.ScopeName(), collection.Name()})
+	}
 	rc.MaxReconnectInterval = defaultMaxReconnectInterval
 	if config.MaxBackoff != 0 {
 		rc.MaxReconnectInterval = time.Duration(config.MaxBackoff) * time.Minute
