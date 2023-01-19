@@ -48,6 +48,19 @@ const (
 	kMaxDeltaTtlDuration = 60 * 60 * 24 * 30 * time.Second
 )
 
+// NonCancellableContext is here to stroe a context that is not cancellable. Used to explicitly state when a change from
+// a cancellable context to a context withoutr contex is required
+type NonCancellableContext struct {
+	Ctx context.Context
+}
+
+func NewNonCancelCtx() NonCancellableContext {
+	ctxStruct := NonCancellableContext{
+		Ctx: context.Background(),
+	}
+	return ctxStruct
+}
+
 // RedactBasicAuthURLUserAndPassword returns the given string, with a redacted HTTP basic auth component.
 func RedactBasicAuthURLUserAndPassword(urlIn string) string {
 	redactedUrl, err := RedactBasicAuthURL(urlIn, false)

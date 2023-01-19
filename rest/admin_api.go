@@ -10,7 +10,6 @@ package rest
 
 import (
 	"bytes"
-	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -38,13 +37,9 @@ const paramDeleted = "deleted"
 
 // ////// DATABASE MAINTENANCE:
 
-type nonCancellableContext struct {
-	ctx context.Context
-}
-
 // "Create" a database (actually just register an existing bucket)
 func (h *handler) handleCreateDB() error {
-	contextNoCancel := createNonCancelCtx()
+	contextNoCancel := base.NewNonCancelCtx()
 	h.assertAdminOnly()
 	dbName := h.PathVar("newdb")
 	config, err := h.readSanitizeDbConfigJSON()
@@ -65,7 +60,7 @@ func (h *handler) handleCreateDB() error {
 			return base.HTTPErrorf(http.StatusBadRequest, err.Error())
 		}
 
-		if err := config.validate(contextNoCancel.ctx, validateOIDC); err != nil {
+		if err := config.validate(h.ctx(), validateOIDC); err != nil {
 			return base.HTTPErrorf(http.StatusBadRequest, err.Error())
 		}
 
@@ -103,7 +98,7 @@ func (h *handler) handleCreateDB() error {
 				"Duplicate database name %q", dbName)
 		}
 
-		_, err = h.server._applyConfig(contextNoCancel.ctx, loadedConfig, true, false)
+		_, err = h.server._applyConfig(contextNoCancel, loadedConfig, true, false)
 		if err != nil {
 			var httpErr *base.HTTPError
 			if errors.As(err, &httpErr) {
@@ -122,12 +117,12 @@ func (h *handler) handleCreateDB() error {
 		cas, err := h.server.BootstrapContext.Connection.InsertConfig(bucket, h.server.Config.Bootstrap.ConfigGroupID, persistedConfig)
 		if err != nil {
 			// unload the requested database config to prevent the cluster being in an inconsistent state
-			h.server._removeDatabase(contextNoCancel.ctx, dbName)
+			h.server._removeDatabase(contextNoCancel.Ctx, dbName)
 			if errors.Is(err, base.ErrAuthError) {
 				return base.HTTPErrorf(http.StatusForbidden, "auth failure accessing provided bucket using bootstrap credentials: %s", bucket)
 			} else if errors.Is(err, base.ErrAlreadyExists) {
 				// on-demand config load if someone else beat us to db creation
-				if _, err := h.server._fetchAndLoadDatabase(contextNoCancel.ctx, dbName); err != nil {
+				if _, err := h.server._fetchAndLoadDatabase(contextNoCancel, dbName); err != nil {
 					base.WarnfCtx(h.ctx(), "Couldn't load database after conflicting create: %v", err)
 				}
 				return base.HTTPErrorf(http.StatusPreconditionFailed, // what CouchDB returns
@@ -144,7 +139,7 @@ func (h *handler) handleCreateDB() error {
 		}
 
 		// load database in-memory for non-persistent nodes
-		if _, err := h.server.AddDatabaseFromConfigFailFast(contextNoCancel.ctx, DatabaseConfig{DbConfig: *config}); err != nil {
+		if _, err := h.server.AddDatabaseFromConfigFailFast(contextNoCancel, DatabaseConfig{DbConfig: *config}); err != nil {
 			if errors.Is(err, base.ErrAuthError) {
 				return base.HTTPErrorf(http.StatusForbidden, "auth failure using provided bucket credentials for database %s", base.MD(config.Name))
 			}
@@ -153,13 +148,6 @@ func (h *handler) handleCreateDB() error {
 	}
 
 	return base.HTTPErrorf(http.StatusCreated, "created")
-}
-
-func createNonCancelCtx() nonCancellableContext {
-	ctxStruct := nonCancellableContext{
-		ctx: context.Background(),
-	}
-	return ctxStruct
 }
 
 // getAuthScopeHandleCreateDB is used in the router to supply an auth scope for the admin api auth. Takes the JSON body
@@ -183,7 +171,6 @@ func getAuthScopeHandleCreateDB(bodyJSON []byte) (string, error) {
 // Take a DB online, first reload the DB config
 func (h *handler) handleDbOnline() error {
 	h.assertAdminOnly()
-	contextNoCancel := createNonCancelCtx()
 	dbState := atomic.LoadUint32(&h.db.State)
 	// If the DB is already transitioning to: online or is online silently return
 	if dbState == db.DBOnline || dbState == db.DBStarting {
@@ -211,7 +198,7 @@ func (h *handler) handleDbOnline() error {
 	base.InfofCtx(h.ctx(), base.KeyCRUD, "Taking Database : %v, online in %v seconds", base.MD(h.db.Name), input.Delay)
 	go func() {
 		time.Sleep(time.Duration(input.Delay) * time.Second)
-		h.server.TakeDbOnline(contextNoCancel.ctx, h.db.DatabaseContext)
+		h.server.TakeDbOnline(base.NewNonCancelCtx(), h.db.DatabaseContext)
 	}()
 
 	return nil
@@ -220,9 +207,8 @@ func (h *handler) handleDbOnline() error {
 // Take a DB offline
 func (h *handler) handleDbOffline() error {
 	h.assertAdminOnly()
-	contextNoCancel := createNonCancelCtx()
 	var err error
-	if err = h.db.TakeDbOffline(contextNoCancel.ctx, "ADMIN Request"); err != nil {
+	if err = h.db.TakeDbOffline(base.NewNonCancelCtx(), "ADMIN Request"); err != nil {
 		base.InfofCtx(h.ctx(), base.KeyCRUD, "Unable to take Database : %v, offline", base.MD(h.db.Name))
 	}
 
@@ -465,7 +451,7 @@ func (h *handler) handlePutConfig() error {
 // handlePutDbConfig Upserts a new database config
 func (h *handler) handlePutDbConfig() (err error) {
 	h.assertAdminOnly()
-	contextNoCancel := createNonCancelCtx()
+	contextNoCancel := base.NewNonCancelCtx()
 
 	var dbConfig *DbConfig
 
@@ -528,7 +514,7 @@ func (h *handler) handlePutDbConfig() (err error) {
 
 	if !h.server.persistentConfig {
 		updatedDbConfig := &DatabaseConfig{DbConfig: *dbConfig}
-		err = updatedDbConfig.validate(contextNoCancel.ctx, validateOIDC)
+		err = updatedDbConfig.validate(h.ctx(), validateOIDC)
 		if err != nil {
 			return base.HTTPErrorf(http.StatusBadRequest, err.Error())
 		}
@@ -537,7 +523,7 @@ func (h *handler) handlePutDbConfig() (err error) {
 		if err := updatedDbConfig.setup(dbName, h.server.Config.Bootstrap, dbCreds, nil, false); err != nil {
 			return err
 		}
-		if err := h.server.ReloadDatabaseWithConfig(contextNoCancel.ctx, *updatedDbConfig); err != nil {
+		if err := h.server.ReloadDatabaseWithConfig(contextNoCancel, *updatedDbConfig); err != nil {
 			return err
 		}
 		return base.HTTPErrorf(http.StatusCreated, "updated")
@@ -573,7 +559,7 @@ func (h *handler) handlePutDbConfig() (err error) {
 			if err := dbConfig.validatePersistentDbConfig(); err != nil {
 				return nil, base.HTTPErrorf(http.StatusBadRequest, err.Error())
 			}
-			if err := bucketDbConfig.validateConfigUpdate(contextNoCancel.ctx, oldBucketDbConfig, validateOIDC); err != nil {
+			if err := bucketDbConfig.validateConfigUpdate(h.ctx(), oldBucketDbConfig, validateOIDC); err != nil {
 				return nil, base.HTTPErrorf(http.StatusBadRequest, err.Error())
 			}
 
@@ -599,7 +585,7 @@ func (h *handler) handlePutDbConfig() (err error) {
 			}
 
 			// Load the new dbConfig before we persist the update.
-			err = h.server.ReloadDatabaseWithConfig(contextNoCancel.ctx, tmpConfig)
+			err = h.server.ReloadDatabaseWithConfig(contextNoCancel, tmpConfig)
 			if err != nil {
 				return nil, err
 			}
@@ -609,7 +595,7 @@ func (h *handler) handlePutDbConfig() (err error) {
 	if err != nil {
 		base.WarnfCtx(h.ctx(), "Couldn't update config for database - rolling back: %v", err)
 		// failed to start the new database config - rollback and return the original error for the user
-		if _, err := h.server.fetchAndLoadDatabase(contextNoCancel.ctx, dbName); err != nil {
+		if _, err := h.server.fetchAndLoadDatabase(contextNoCancel, dbName); err != nil {
 			base.WarnfCtx(h.ctx(), "got error rolling back database %q after failed update: %v", base.UD(dbName), err)
 		}
 		return err

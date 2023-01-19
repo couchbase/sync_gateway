@@ -999,8 +999,8 @@ func (dc *DatabaseContext) TakeDbOffline(ctx context.Context, reason string) err
 	}
 }
 
-func (db *Database) TakeDbOffline(ctx context.Context, reason string) error {
-	return db.DatabaseContext.TakeDbOffline(ctx, reason)
+func (db *Database) TakeDbOffline(nonContextStruct base.NonCancellableContext, reason string) error {
+	return db.DatabaseContext.TakeDbOffline(nonContextStruct.Ctx, reason)
 }
 
 func (context *DatabaseContext) Authenticator(ctx context.Context) *auth.Authenticator {
