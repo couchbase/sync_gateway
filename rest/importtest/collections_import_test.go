@@ -22,10 +22,10 @@ import (
 func TestMultiCollectionImportFilter(t *testing.T) {
 
 	base.SkipImportTestsIfNotEnabled(t)
-	numCollections := 2
+	numCollections := 3
 	base.RequireNumTestDataStores(t, numCollections)
 
-	testBucket := base.GetTestBucket(t)
+	testBucket := base.GetPersistentTestBucket(t)
 	defer testBucket.Close()
 
 	scopesConfig := rest.GetCollectionsConfig(t, testBucket, numCollections)
@@ -33,6 +33,8 @@ func TestMultiCollectionImportFilter(t *testing.T) {
 
 	importFilter1 := `function (doc) { return doc.type == "mobile"}`
 	importFilter2 := `function (doc) { return doc.type == "onprem"}`
+	importFilter3 := `function (doc) { return doc.type == "private"}`
+
 	scopesConfig[dataStoreNames[0].ScopeName()].Collections[dataStoreNames[0].CollectionName()] = rest.CollectionConfig{
 		ImportFilter: &importFilter1,
 	}
@@ -59,6 +61,9 @@ func TestMultiCollectionImportFilter(t *testing.T) {
 	dataStore2, err := rt.TestBucket.GetNamedDataStore(1)
 	require.NoError(t, err)
 	keyspace2 := "{{.keyspace2}}"
+	dataStore3, err := rt.TestBucket.GetNamedDataStore(2)
+	require.NoError(t, err)
+	keyspace3 := "{{.keyspace3}}"
 
 	defaultKeyspace := "db._default._default"
 	keyspaceNotFound := fmt.Sprintf("keyspace %s not found", defaultKeyspace)
@@ -93,9 +98,13 @@ func TestMultiCollectionImportFilter(t *testing.T) {
 		_, err := dataStore.Add(onPremKey, 0, onPremBody)
 		require.NoError(t, err, "Error writing SDK doc")
 	}
+	response := rt.SendAdminRequest(http.MethodGet, fmt.Sprintf("/%s/%s", keyspace3, onPremKey), "")
+	assert.Equal(t, 404, response.Code)
+	response = rt.SendAdminRequest(http.MethodPut, fmt.Sprintf("/%s/%s", keyspace3, "onPremKey"), "{}")
+	assert.Equal(t, 201, response.Code)
 
 	// Attempt to get the documents via Sync Gateway.  Will trigger on-demand import.
-	response := rt.SendAdminRequest(http.MethodGet, "/{{.keyspace1}}/"+mobileKey, "")
+	response = rt.SendAdminRequest(http.MethodGet, "/{{.keyspace1}}/"+mobileKey, "")
 	assert.Equal(t, 200, response.Code)
 	assertDocProperty(t, response, "type", "mobile")
 
@@ -105,7 +114,7 @@ func TestMultiCollectionImportFilter(t *testing.T) {
 
 	// Make sure mobile doc doesn't end up in other collection
 	for _, keyspace := range []string{defaultKeyspace, keyspace2} {
-		response = rt.SendAdminRequest(http.MethodGet, fmt.Sprintf("/%s/%s", keyspace, nonMobileKey), "")
+		response = rt.SendAdminRequest(http.MethodGet, fmt.Sprintf("/%s/%s", keyspace, mobileKey), "")
 		assert.Equal(t, 404, response.Code)
 		if keyspace == defaultKeyspace {
 			assertDocProperty(t, response, "reason", keyspaceNotFound)
@@ -117,6 +126,18 @@ func TestMultiCollectionImportFilter(t *testing.T) {
 
 	// Make sure on prem doc doesn't end up in other collection
 	for _, keyspace := range []string{defaultKeyspace, keyspace1} {
+		response = rt.SendAdminRequest(http.MethodGet, fmt.Sprintf("/%s/%s", keyspace, onPremKey), "")
+		assert.Equal(t, 404, response.Code)
+		if keyspace == defaultKeyspace {
+			assertDocProperty(t, response, "reason", keyspaceNotFound)
+		} else {
+			assertDocProperty(t, response, "reason", "Not imported")
+
+		}
+	}
+
+	// Make sure non-mobile doc is never imported
+	for _, keyspace := range []string{defaultKeyspace, keyspace1, keyspace2} {
 		response = rt.SendAdminRequest(http.MethodGet, fmt.Sprintf("/%s/%s", keyspace, nonMobileKey), "")
 		assert.Equal(t, 404, response.Code)
 		if keyspace == defaultKeyspace {
@@ -136,4 +157,44 @@ func TestMultiCollectionImportFilter(t *testing.T) {
 		assertDocProperty(t, response, "id", "TestImportFilterInvalid")
 		assertDocProperty(t, response, "rev", "1-25c26cdf9d7771e07f00be1d13f7fb7c")
 	}
+	scopesConfig[dataStoreNames[2].ScopeName()].Collections[dataStoreNames[2].CollectionName()] = rest.CollectionConfig{ImportFilter: &importFilter3}
+	//scopesConfigString, err := json.Marshal(scopesConfig)
+	require.NoError(t, err)
+
+	//response = rt.SendAdminRequest("PUT", "/db/_config", fmt.Sprintf(
+	//	`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "scopes":%s}`,
+	//	testBucket.GetName(), base.TestUseXattrs(), string(scopesConfigString)))
+	//rest.RequireStatus(t, response, http.StatusCreated)
+
+	dataStores = []base.DataStore{dataStore1, dataStore2, dataStore3}
+	prvKey := "TestImportFilter3Valid"
+	prvBody := make(map[string]interface{})
+	prvBody["type"] = "private"
+	prvBody["channels"] = "ABC"
+	for _, dataStore := range dataStores {
+		fmt.Println(dataStore.GetName())
+		_, err := dataStore.Add(prvKey, 0, prvBody)
+		require.NoError(t, err, "Error writing SDK doc")
+	}
+
+	// Attempt to get the documents via Sync Gateway.  Will trigger on-demand import.
+	response = rt.SendAdminRequest(http.MethodGet, "/{{.keyspace3}}/"+prvKey, "")
+	assert.Equal(t, 200, response.Code)
+	assertDocProperty(t, response, "type", "private")
+
+	//response = rt.SendAdminRequest(http.MethodGet, "/{{.keyspace3}}/"+mobileKey, "")
+	//assert.Equal(t, 200, response.Code)
+
+	// Make sure private doc doesn't end up in other collection
+	for _, keyspace := range []string{defaultKeyspace, keyspace1, keyspace2} {
+		response = rt.SendAdminRequest(http.MethodGet, fmt.Sprintf("/%s/%s", keyspace, prvKey), "")
+		assert.Equal(t, 404, response.Code)
+		if keyspace == defaultKeyspace {
+			assertDocProperty(t, response, "reason", keyspaceNotFound)
+		} else {
+			assertDocProperty(t, response, "reason", "Not imported")
+
+		}
+	}
+
 }
