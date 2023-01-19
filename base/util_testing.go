@@ -105,13 +105,19 @@ func (tb *TestBucket) NoCloseClone() *TestBucket {
 
 // GetTestBucket returns a test bucket from a pool.
 func GetTestBucket(t testing.TB) *TestBucket {
-	//debug.PrintStack()
-	return getTestBucket(t)
+	return getTestBucket(t, false)
 }
 
-// getTestBucket returns a bucket from the bucket pool
-func getTestBucket(t testing.TB) *TestBucket {
-	bucket, spec, closeFn := GTestBucketPool.getTestBucketAndSpec(t)
+// GetTestBucket returns a test bucket from a pool.  If running with walrus buckets, will persist bucket data
+// across bucket close.
+func GetPersistentTestBucket(t testing.TB) *TestBucket {
+	return getTestBucket(t, true)
+}
+
+// getTestBucket returns a bucket from the bucket pool.  Persistent flag determines behaviour for walrus
+// buckets only - Couchbase bucket behaviour is defined by the bucket pool readier/init.
+func getTestBucket(t testing.TB, persistent bool) *TestBucket {
+	bucket, spec, closeFn := GTestBucketPool.getTestBucketAndSpec(t, persistent)
 	return &TestBucket{
 		Bucket:     bucket,
 		BucketSpec: spec,
@@ -173,6 +179,7 @@ func (b *TestBucket) GetSingleDataStore() sgbucket.DataStore {
 // Returns both the test bucket which is persisted and a function which can be used to remove the created temporary
 // directory once the test has finished with it.
 func GetPersistentWalrusBucket(t testing.TB) (*TestBucket, func()) {
+
 	tempDir, err := os.MkdirTemp("", "walrustemp")
 	require.NoError(t, err)
 
