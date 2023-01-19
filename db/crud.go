@@ -915,6 +915,7 @@ func (db *DatabaseCollectionWithUser) Put(ctx context.Context, docid string, bod
 					return nil, nil, false, nil, ErrForbidden
 				}
 
+				doc._rawBody = nil //TEMP: Hack to fix getChannelsAndAccess
 				_, _, _, _, _, err = db.runSyncFn(ctx, doc, mutableBody, metaMap, newRevID)
 				if err != nil {
 					base.DebugfCtx(ctx, base.KeyCRUD, "Could not modify doc %q due to %s and sync func rejection: %v", base.UD(doc.ID), conflictErr, err)
@@ -2227,21 +2228,21 @@ func (db *DatabaseCollectionWithUser) getChannelsAndAccess(ctx context.Context, 
 		var bodyJson []byte
 		if doc._rawBody != nil && body[BodyDeleted] == nil {
 			bodyJson = doc._rawBody
-			/*
-				// Verify that body and _rawBody match:
-				checkBody := body.DeepCopy()
-				delete(checkBody, "_id")
-				delete(checkBody, "_rev")
-				jCheck, _ := json.Marshal(checkBody)
-				var raw Body
-				raw.Unmarshal(doc._rawBody)
-				jRaw, _ := json.Marshal(raw)
-				if string(jCheck) != string(jRaw) {
-					panic(fmt.Sprintf("body doesn't match rawBody:\nbody= %s\nraw=  %s", jCheck, jRaw))
-				}
-				// End of verification
-			*/
-		} else {
+			// TEMP: Verify that body and _rawBody match:
+			checkBody := body.DeepCopy()
+			delete(checkBody, "_id")
+			delete(checkBody, "_rev")
+			jCheck, _ := json.Marshal(checkBody)
+			var raw Body
+			raw.Unmarshal(doc._rawBody)
+			jRaw, _ := json.Marshal(raw)
+			if string(jCheck) != string(jRaw) {
+				base.WarnfCtx(ctx, "$$$$$ getChannelsAndAccess: body doesn't match rawBody:\nbody= %s\nraw=  %s", jCheck, jRaw)
+				bodyJson = nil
+			}
+			// End of verification
+		}
+		if bodyJson == nil {
 			if bodyJson, err = json.Marshal(body); err != nil {
 				return
 			}
@@ -2251,7 +2252,7 @@ func (db *DatabaseCollectionWithUser) getChannelsAndAccess(ctx context.Context, 
 
 		var output *channels.ChannelMapperOutput
 		output, err = db.channelMapper().MapToChannelsAndAccess2(docID, revID, string(bodyJson), oldJson, metaMap,
-			MakeUserCtx(db.user))
+			MakeUserCtx(db.user, db.ScopeName(), db.Name()))
 
 		db.dbStats().Database().SyncFunctionTime.Add(time.Since(startTime).Nanoseconds())
 
@@ -2296,14 +2297,14 @@ func (db *DatabaseCollectionWithUser) getChannelsAndAccess(ctx context.Context, 
 }
 
 // Creates a userCtx object to be passed to the sync function
-func MakeUserCtx(user auth.User) map[string]interface{} {
+func MakeUserCtx(user auth.User, scopeName string, collectionName string) map[string]interface{} {
 	if user == nil {
 		return nil
 	}
 	return map[string]interface{}{
 		"name":     user.Name(),
 		"roles":    user.RoleNames(),
-		"channels": user.InheritedChannels().AllKeys(),
+		"channels": user.InheritedCollectionChannels(scopeName, collectionName).AllKeys(),
 	}
 }
 

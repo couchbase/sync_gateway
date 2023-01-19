@@ -11,6 +11,7 @@ package rest
 import (
 	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/couchbase/go-blip"
@@ -26,32 +27,9 @@ func TestBlipGetCollections(t *testing.T) {
 
 	// checkpointIDWithError := "checkpointError"
 
-	tb := base.GetTestBucket(t)
-	defer tb.Close()
-
-	ds := tb.GetNamedDataStore()
-	dataStoreName, ok := base.AsDataStoreName(ds)
-	require.True(t, ok)
-
-	scopeName := dataStoreName.ScopeName()
-	collectionName := dataStoreName.CollectionName()
-
-	scopeAndCollection := fmt.Sprintf("%s.%s", scopeName, collectionName)
 	const defaultScopeAndCollection = "_default._default"
 	rt := NewRestTester(t, &RestTesterConfig{
-		CustomTestBucket: tb.NoCloseClone(),
-		GuestEnabled:     true,
-		DatabaseConfig: &DatabaseConfig{
-			DbConfig: DbConfig{
-				Scopes: ScopesConfig{
-					scopeName: ScopeConfig{
-						Collections: map[string]CollectionConfig{
-							collectionName: {},
-						},
-					},
-				},
-			},
-		},
+		GuestEnabled: true,
 		// leakyBucketConfig: &base.LeakyBucketConfig{
 		//	GetRawCallback: func(key string) error {
 		//		if key == db.CheckpointDocIDPrefix+checkpointIDWithError {
@@ -69,8 +47,9 @@ func TestBlipGetCollections(t *testing.T) {
 
 	checkpointID1 := "checkpoint1"
 	checkpoint1Body := db.Body{"seq": "123"}
-	dbInstance := db.Database{DatabaseContext: rt.GetDatabase()}
-	revID, err := dbInstance.GetSingleDatabaseCollection().PutSpecial(db.DocTypeLocal, db.CheckpointDocIDPrefix+checkpointID1, checkpoint1Body)
+	collection := rt.GetSingleTestDatabaseCollection()
+	scopeAndCollection := fmt.Sprintf("%s.%s", collection.ScopeName(), collection.Name())
+	revID, err := collection.PutSpecial(db.DocTypeLocal, db.CheckpointDocIDPrefix+checkpointID1, checkpoint1Body)
 	require.NoError(t, err)
 	checkpoint1RevID := "0-1"
 	require.Equal(t, checkpoint1RevID, revID)
@@ -174,31 +153,9 @@ func TestBlipGetCollections(t *testing.T) {
 func TestBlipGetCollectionsAndSetCheckpoint(t *testing.T) {
 	base.TestRequiresCollections(t)
 
-	tb := base.GetTestBucket(t)
-	defer tb.Close()
-
-	ds := tb.GetSingleDataStore()
-	namedDataStore, ok := base.AsDataStoreName(ds)
-	require.True(t, ok)
-
-	scopeName := namedDataStore.ScopeName()
-	collectionName := namedDataStore.CollectionName()
-
 	rt := NewRestTester(t, &RestTesterConfig{
 		GuestEnabled: true,
-		DatabaseConfig: &DatabaseConfig{
-			DbConfig: DbConfig{
-				Scopes: ScopesConfig{
-					scopeName: ScopeConfig{
-						Collections: map[string]CollectionConfig{
-							collectionName: {},
-						},
-					},
-				},
-			},
-		},
 	})
-
 	defer rt.Close()
 
 	btc, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
@@ -207,14 +164,14 @@ func TestBlipGetCollectionsAndSetCheckpoint(t *testing.T) {
 
 	checkpointID1 := "checkpoint1"
 	checkpoint1Body := db.Body{"seq": "123"}
-	dbInstance := db.Database{DatabaseContext: rt.GetDatabase()}
-	revID, err := dbInstance.GetSingleDatabaseCollection().PutSpecial(db.DocTypeLocal, db.CheckpointDocIDPrefix+checkpointID1, checkpoint1Body)
+	collection := rt.GetSingleTestDatabaseCollection()
+	revID, err := collection.PutSpecial(db.DocTypeLocal, db.CheckpointDocIDPrefix+checkpointID1, checkpoint1Body)
 	require.NoError(t, err)
 	checkpoint1RevID := "0-1"
 	require.Equal(t, checkpoint1RevID, revID)
 	getCollectionsRequest, err := db.NewGetCollectionsMessage(db.GetCollectionsRequestBody{
 		CheckpointIDs: []string{checkpointID1},
-		Collections:   []string{fmt.Sprintf("%s.%s", scopeName, collectionName)},
+		Collections:   []string{fmt.Sprintf("%s.%s", collection.ScopeName(), collection.Name())},
 	})
 
 	require.NoError(t, err)
@@ -255,27 +212,8 @@ func TestBlipGetCollectionsAndSetCheckpoint(t *testing.T) {
 func TestCollectionsPeerDoesNotHave(t *testing.T) {
 	base.TestRequiresCollections(t)
 
-	tb := base.GetTestBucket(t)
-	defer tb.Close()
-
-	ds := tb.GetSingleDataStore()
-	namedDataStore, ok := base.AsDataStoreName(ds)
-	require.True(t, ok)
-
 	rt := NewRestTester(t, &RestTesterConfig{
-		GuestEnabled:     true,
-		CustomTestBucket: tb,
-		DatabaseConfig: &DatabaseConfig{
-			DbConfig: DbConfig{
-				Scopes: ScopesConfig{
-					namedDataStore.ScopeName(): ScopeConfig{
-						Collections: map[string]CollectionConfig{
-							namedDataStore.CollectionName(): {},
-						},
-					},
-				},
-			},
-		},
+		GuestEnabled: true,
 	})
 	defer rt.Close()
 
@@ -289,36 +227,14 @@ func TestCollectionsPeerDoesNotHave(t *testing.T) {
 
 func TestCollectionsReplication(t *testing.T) {
 	base.TestRequiresCollections(t)
-	if base.TestsDisableGSI() {
-		t.Skip("only works with GSI")
-	}
-
-	tb := base.GetTestBucket(t)
-	defer tb.Close()
-
-	tc, err := base.AsCollection(tb.GetSingleDataStore())
-	require.NoError(t, err)
-
-	scopeKey := tc.ScopeName()
-	collectionKey := tc.CollectionName()
-
-	scopeAndCollectionKey := scopeKey + "." + collectionKey
 
 	rt := NewRestTester(t, &RestTesterConfig{
 		GuestEnabled: true,
-		DatabaseConfig: &DatabaseConfig{
-			DbConfig: DbConfig{
-				Scopes: ScopesConfig{
-					scopeKey: ScopeConfig{
-						Collections: map[string]CollectionConfig{
-							collectionKey: {},
-						},
-					},
-				},
-			},
-		},
 	})
 	defer rt.Close()
+
+	collection := rt.GetSingleTestDatabaseCollection()
+	scopeAndCollectionKey := strings.Join([]string{collection.ScopeName(), collection.Name()}, base.ScopeCollectionSeparator)
 
 	btc, err := NewBlipTesterClientOptsWithRT(t, rt, &BlipTesterClientOpts{
 		Collections: []string{scopeAndCollectionKey},

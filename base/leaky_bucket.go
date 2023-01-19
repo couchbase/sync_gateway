@@ -1,6 +1,5 @@
 /*
 Copyright 2016-Present Couchbase, Inc.
-
 Use of this software is governed by the Business Source License included in
 the file licenses/BSL-Couchbase.txt.  As of the Change Date specified in that
 file, in accordance with the Business Source License, use of this software will
@@ -126,7 +125,8 @@ type LeakyBucketConfig struct {
 
 	// GetRawCallback issues a callback prior to running GetRaw. Allows tests to issue a doc mutation or deletion prior
 	// to GetRaw being ran.
-	GetRawCallback func(key string) error
+	GetRawCallback       func(key string) error
+	GetWithXattrCallback func(key string) error
 
 	PostUpdateCallback func(key string)
 

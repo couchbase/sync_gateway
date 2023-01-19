@@ -27,7 +27,7 @@ jobs:
     steps:
       - uses: actions/setup-go@v3
         with:
-          go-version: 1.18.5
+          go-version: 1.19.5
       - uses: actions/checkout@v3
       - name: go-build
         run: go build "./..."
@@ -38,7 +38,7 @@ jobs:
     steps:
       - uses: actions/setup-go@v3
         with:
-          go-version: 1.18.5
+          go-version: 1.19.5
       - run: go install github.com/google/addlicense@latest
       - uses: actions/checkout@v3
       - run: addlicense -check -f licenses/addlicense.tmpl .
@@ -49,7 +49,7 @@ jobs:
     steps:
       - uses: actions/setup-go@v3
         with:
-          go-version: 1.18.5
+          go-version: 1.19.5
       - uses: actions/checkout@v3
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v3
@@ -68,7 +68,7 @@ jobs:
     steps:
       - uses: actions/setup-go@v3
         with:
-          go-version: 1.18.5
+          go-version: 1.19.5
       - uses: actions/checkout@v3
       - name: Build
         run: go build -v "./..."
@@ -88,7 +88,7 @@ jobs:
     steps:
       - uses: actions/setup-go@v3
         with:
-          go-version: 1.18.5
+          go-version: 1.19.5
       - uses: actions/checkout@v3
       - name: Run Tests
         run: go test -race -timeout=30m -count=1 -json -v "./..." | tee test.json | jq -s -jr 'sort_by(.Package,.Time) | .[].Output | select (. != null )'

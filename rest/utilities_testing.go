@@ -22,9 +22,11 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"runtime/debug"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
+	"text/template"
 	"time"
 
 	"github.com/couchbase/go-blip"
@@ -64,7 +66,17 @@ type RestTesterConfig struct {
 	PersistentConfig                bool
 	groupID                         *string
 	serverless                      bool // Runs SG in serverless mode. Must be used in conjunction with persistent config
+	collectionConfig                collectionConfiguration
+	numCollections                  int
 }
+
+type collectionConfiguration uint8
+
+const (
+	useSingleCollection = iota
+	useSingleCollectionDefaultOnly
+	useMultipleCollection
+)
 
 // RestTester provides a fake server for testing endpoints
 type RestTester struct {
@@ -81,7 +93,13 @@ type RestTester struct {
 	closed                  bool
 }
 
+// NewRestTester returns a rest tester and corresponding keyspace backed by a single database and a single collection. This collection may be named or default collection based on global test configuration.
 func NewRestTester(tb testing.TB, restConfig *RestTesterConfig) *RestTester {
+	return newRestTester(tb, restConfig, useSingleCollection, 1)
+}
+
+// newRestTester creates the underlying rest testers, use public functions.
+func newRestTester(tb testing.TB, restConfig *RestTesterConfig, collectionConfig collectionConfiguration, numCollections int) *RestTester {
 	var rt RestTester
 	if tb == nil {
 		panic("tester parameter cannot be nil")
@@ -92,8 +110,26 @@ func NewRestTester(tb testing.TB, restConfig *RestTesterConfig) *RestTester {
 	} else {
 		rt.RestTesterConfig = &RestTesterConfig{}
 	}
+	rt.RestTesterConfig.collectionConfig = collectionConfig
+	rt.RestTesterConfig.numCollections = numCollections
 	rt.RestTesterConfig.useTLSServer = base.ServerIsTLS(base.UnitTestUrl())
 	return &rt
+}
+
+// NewRestTester returns a rest tester backed by a single database and a single default collection.
+func NewRestTesterDefaultCollection(tb testing.TB, restConfig *RestTesterConfig) *RestTester {
+	return newRestTester(tb, restConfig, useSingleCollectionDefaultOnly, 1)
+}
+
+// NewRestTester multiple collections a rest tester backed by a single database and any number of collections and the names of the keyspaces of collections created.
+func NewRestTesterMultipleCollections(tb testing.TB, restConfig *RestTesterConfig, numCollections int) *RestTester {
+	if !base.TestsUseNamedCollections() {
+		tb.Skip("This test requires named collections and is running against a bucket type that does not support them")
+	}
+	if numCollections == 0 {
+		tb.Errorf("0 is not a valid number of collections to specify")
+	}
+	return newRestTester(tb, restConfig, useMultipleCollection, numCollections)
 }
 
 func (rt *RestTester) Bucket() base.Bucket {
@@ -236,9 +272,15 @@ func (rt *RestTester) Bucket() base.Bucket {
 			// If no db config was passed in, create one
 			rt.DatabaseConfig = &DatabaseConfig{}
 		}
-
 		if rt.DatabaseConfig.UseViews == nil {
 			rt.DatabaseConfig.UseViews = base.BoolPtr(base.TestsDisableGSI())
+		}
+		if base.TestsUseNamedCollections() && rt.collectionConfig != useSingleCollectionDefaultOnly && (!*rt.DatabaseConfig.UseViews || base.UnitTestUrlIsWalrus()) {
+			// If scopes is already set, assume the caller has a plan
+			if rt.DatabaseConfig.Scopes == nil {
+				// Configure non default collections by default
+				rt.DatabaseConfig.Scopes = GetCollectionsConfig(rt.TB, testBucket, rt.numCollections)
+			}
 		}
 
 		// numReplicas set to 0 for test buckets, since it should assume that there may only be one indexing node.
@@ -268,29 +310,6 @@ func (rt *RestTester) Bucket() base.Bucket {
 		}
 
 		if rt.leakyBucketConfig != nil {
-			// Scopes and collections have to be set on the bucket being passed in for the db to use.
-			// WIP: Collections Phase 1 - Grab just one scope/collection from the defined set.
-			// Phase 2 (multi collection) means DatabaseContext needs a set of BucketSpec/Collections, not just one...
-			/* FIXME: TOR
-			var scope, collection *string
-			for scopeName, scopeConfig := range rt.RestTesterConfig.DatabaseConfig.Scopes {
-				scope = &scopeName
-				for collectionName := range scopeConfig.Collections {
-					collection = &collectionName
-					break
-				}
-			}
-			if scope != nil && collection != nil {
-				collectionBucket, err := base.AsCollection(testBucket.Bucket)
-				if err != nil {
-					rt.TB.Fatalf("Could not get collection from bucket with type %T: %v", testBucket.Bucket, err)
-				}
-
-				collectionBucket.Bucket.Spec.Scope = scope
-				collectionBucket.Bucket.Spec.Collection = collection
-				collectionBucket.Collection = collectionBucket.Collection.Bucket().Scope(*scope).Collection(*collection)
-			}
-			*/
 			_, err = rt.RestTesterServerContext.AddDatabaseFromConfigWithBucket(ctx, rt.TB, *rt.DatabaseConfig, testBucket.Bucket)
 		} else {
 			_, err = rt.RestTesterServerContext.AddDatabaseFromConfig(ctx, *rt.DatabaseConfig)
@@ -321,6 +340,51 @@ func (rt *RestTester) Bucket() base.Bucket {
 // MetadataStore returns the datastore for the database on the RestTester
 func (rt *RestTester) MetadataStore() base.DataStore {
 	return rt.GetDatabase().MetadataStore
+}
+
+// GetCollectionsConfig sets up a ScopesConfig from a TestBucket for use with non default collections.
+func GetCollectionsConfig(t testing.TB, testBucket *base.TestBucket, numCollections int) ScopesConfig {
+	// Get a datastore as provided by the test
+	stores := testBucket.GetNonDefaultDatastoreNames()
+	require.True(t, len(stores) >= numCollections, "Requested more collections %d than found on testBucket %d", numCollections, len(stores))
+
+	scopesConfig := ScopesConfig{}
+	for i := 0; i < numCollections; i++ {
+		dataStoreName := stores[i]
+		if scopeConfig, ok := scopesConfig[dataStoreName.ScopeName()]; ok {
+			if _, ok := scopeConfig.Collections[dataStoreName.CollectionName()]; ok {
+				// already present
+			} else {
+				scopeConfig.Collections[dataStoreName.CollectionName()] = CollectionConfig{}
+			}
+		} else {
+			scopesConfig[dataStoreName.ScopeName()] = ScopeConfig{
+				Collections: map[string]CollectionConfig{
+					dataStoreName.CollectionName(): {},
+				}}
+		}
+
+	}
+	return scopesConfig
+}
+
+// GetSingleDataStoreNamesFromScopes config returns a lexically sorted list of configured datastores.
+func GetDataStoreNamesFromScopesConfig(config ScopesConfig) []sgbucket.DataStoreName {
+	var names []string
+	for scopeName, scopeConfig := range config {
+		for collectionName, _ := range scopeConfig.Collections {
+			names = append(names, fmt.Sprintf("%s%s%s", scopeName, base.ScopeCollectionSeparator, collectionName))
+		}
+
+	}
+	sort.Strings(names)
+	var dataStoreNames []sgbucket.DataStoreName
+	for _, scopeAndCollection := range names {
+		keyspace := strings.Split(scopeAndCollection, base.ScopeCollectionSeparator)
+		dataStoreNames = append(dataStoreNames, base.ScopeAndCollectionName{Scope: keyspace[0], Collection: keyspace[1]})
+	}
+	return dataStoreNames
+
 }
 
 // LeakyBucket gets the bucket from the RestTester as a leaky bucket allowing for callbacks to be set on the fly.
@@ -372,13 +436,34 @@ func (rt *RestTester) UpsertDbConfig(dbName string, config DbConfig) (*TestRespo
 	return resp, nil
 }
 
-// Returns first database found for server context.
+// GetDatabase Returns first database found for server context.
 func (rt *RestTester) GetDatabase() *db.DatabaseContext {
 
 	for _, database := range rt.ServerContext().AllDatabases() {
 		return database
 	}
 	return nil
+}
+
+// GetSingleTestDatabaseCollection will return a DatabaseCollection if there is only one. Depending on test environment configuration, it may or may not be the default collection.
+func (rt *RestTester) GetSingleTestDatabaseCollection() *db.DatabaseCollection {
+	return db.GetSingleDatabaseCollection(rt.TB, rt.GetDatabase())
+}
+
+// GetSingleTestDatabaseCollectionWithUser will return a DatabaseCollection if there is only one. Depending on test environment configuration, it may or may not be the default collection.
+func (rt *RestTester) GetSingleTestDatabaseCollectionWithUser() *db.DatabaseCollectionWithUser {
+	return &db.DatabaseCollectionWithUser{
+		DatabaseCollection: rt.GetSingleTestDatabaseCollection(),
+	}
+}
+
+// GetSingleDataStore will return a datastore if there is only one collection configured on the RestTester database.
+func (rt *RestTester) GetSingleDataStore() base.DataStore {
+	collection := rt.GetSingleTestDatabaseCollection()
+	return rt.GetDatabase().Bucket.NamedDataStore(base.ScopeAndCollectionName{
+		Scope:      collection.ScopeName(),
+		Collection: collection.Name(),
+	})
 }
 
 func (rt *RestTester) MustWaitForDoc(docid string, t testing.TB) {
@@ -465,11 +550,11 @@ func (rt *RestTester) Close() {
 }
 
 func (rt *RestTester) SendRequest(method, resource string, body string) *TestResponse {
-	return rt.Send(Request(method, resource, body))
+	return rt.Send(Request(method, rt.templateResource(resource), body))
 }
 
 func (rt *RestTester) SendRequestWithHeaders(method, resource string, body string, headers map[string]string) *TestResponse {
-	req := Request(method, resource, body)
+	req := Request(method, rt.templateResource(resource), body)
 	for k, v := range headers {
 		req.Header.Set(k, v)
 	}
@@ -477,7 +562,7 @@ func (rt *RestTester) SendRequestWithHeaders(method, resource string, body strin
 }
 
 func (rt *RestTester) SendUserRequestWithHeaders(method, resource string, body string, headers map[string]string, username string, password string) *TestResponse {
-	req := Request(method, resource, body)
+	req := Request(method, rt.templateResource(resource), body)
 	req.SetBasicAuth(username, password)
 	for k, v := range headers {
 		req.Header.Set(k, v)
@@ -485,9 +570,37 @@ func (rt *RestTester) SendUserRequestWithHeaders(method, resource string, body s
 	return rt.Send(req)
 }
 
+// templateResource provides some convenience templates for standard values.
+//
+// * If there is a single database: {{.db}} refers to single db
+// * If there is only a single collection: {{.keyspace}} refers to a single collection, named or unamed
+// * If there are multiple collections, defined is {{.keyspace1}},{{.keyspace2}},...
+func (rt *RestTester) templateResource(resource string) string {
+	tmpl, err := template.New("urltemplate").Parse(resource)
+	require.NoError(rt.TB, err)
+	data := make(map[string]string)
+	if rt.ServerContext() != nil && len(rt.ServerContext().AllDatabases()) == 1 {
+		data["db"] = rt.GetDatabase().Name
+	}
+	database := rt.GetDatabase()
+	if database != nil {
+		if len(database.CollectionByID) == 1 {
+			data["keyspace"] = rt.GetSingleKeyspace()
+		} else {
+			for i, keyspace := range rt.GetKeyspaces() {
+				data[fmt.Sprintf("keyspace%d", i+1)] = keyspace
+			}
+		}
+	}
+	var uri bytes.Buffer
+	err = tmpl.Execute(&uri, data)
+	require.NoError(rt.TB, err)
+	return uri.String()
+}
+
 func (rt *RestTester) SendAdminRequestWithAuth(method, resource string, body string, username string, password string) *TestResponse {
 	input := bytes.NewBufferString(body)
-	request, err := http.NewRequest(method, "http://localhost"+resource, input)
+	request, err := http.NewRequest(method, "http://localhost"+rt.templateResource(resource), input)
 	require.NoError(rt.TB, err)
 
 	request.SetBasicAuth(username, password)
@@ -557,7 +670,6 @@ func (rt *RestTester) CreateWaitForChangesRetryWorker(numChangesExpected int, ch
 
 		var changes ChangesResults
 		var response *TestResponse
-
 		if useAdminPort {
 			response = rt.SendAdminRequest("GET", changesURL, "")
 
@@ -584,7 +696,7 @@ func (rt *RestTester) WaitForChanges(numChangesExpected int, changesURL, usernam
 	changes ChangesResults,
 	err error) {
 
-	waitForChangesWorker := rt.CreateWaitForChangesRetryWorker(numChangesExpected, changesURL, username, useAdminPort)
+	waitForChangesWorker := rt.CreateWaitForChangesRetryWorker(numChangesExpected, rt.templateResource(changesURL), username, useAdminPort)
 
 	sleeper := base.CreateSleeperFunc(200, 100)
 
@@ -639,7 +751,7 @@ func (rt *RestTester) WaitForConditionShouldRetry(conditionFunc func() (shouldRe
 
 func (rt *RestTester) SendAdminRequest(method, resource string, body string) *TestResponse {
 	input := bytes.NewBufferString(body)
-	request, err := http.NewRequest(method, "http://localhost"+resource, input)
+	request, err := http.NewRequest(method, "http://localhost"+rt.templateResource(resource), input)
 	require.NoError(rt.TB, err)
 
 	response := &TestResponse{ResponseRecorder: httptest.NewRecorder(), Req: request}
@@ -647,6 +759,10 @@ func (rt *RestTester) SendAdminRequest(method, resource string, body string) *Te
 
 	rt.TestAdminHandler().ServeHTTP(response, request)
 	return response
+}
+
+func (rt *RestTester) SendUserRequest(method, resource string, body string, username string) *TestResponse {
+	return rt.Send(RequestByUser(method, rt.templateResource(resource), body, username))
 }
 
 func (rt *RestTester) WaitForNUserViewResults(numResultsExpected int, viewUrlPath string, user auth.User, password string) (viewResult sgbucket.ViewResult, err error) {
@@ -762,7 +878,7 @@ func (rt *RestTester) waitForDBState(stateWant string) (err error) {
 
 func (rt *RestTester) SendAdminRequestWithHeaders(method, resource string, body string, headers map[string]string) *TestResponse {
 	input := bytes.NewBufferString(body)
-	request, _ := http.NewRequest(method, "http://localhost"+resource, input)
+	request, _ := http.NewRequest(method, "http://localhost"+rt.templateResource(resource), input)
 	for k, v := range headers {
 		request.Header.Set(k, v)
 	}
@@ -798,6 +914,33 @@ func (rt *RestTester) PutDocumentWithRevID(docID string, newRevID string, parent
 	return resp, nil
 }
 
+func (rt *RestTester) SetAdminChannels(username string, keyspace string, channels ...string) error {
+
+	dbName, scopeName, collectionName, err := ParseKeyspace(keyspace)
+	if err != nil {
+		return err
+	}
+	// Get the current user document
+	userResponse := rt.SendAdminRequest("GET", "/"+dbName+"/_user/"+username, "")
+	if userResponse.Code != 200 {
+		return fmt.Errorf("User %s not found", username)
+	}
+
+	var currentConfig auth.PrincipalConfig
+	if err := base.JSONUnmarshal(userResponse.Body.Bytes(), &currentConfig); err != nil {
+		return err
+	}
+
+	currentConfig.SetExplicitChannels(*scopeName, *collectionName, channels...)
+	newConfigBytes, _ := base.JSONMarshal(currentConfig)
+
+	userResponse = rt.SendAdminRequest("PUT", "/"+dbName+"/_user/"+username, string(newConfigBytes))
+	if userResponse.Code != 200 {
+		return fmt.Errorf("User update failed: %s", userResponse.Body.Bytes())
+	}
+	return nil
+}
+
 type SimpleSync struct {
 	Channels map[string]interface{}
 	Rev      string
@@ -811,7 +954,7 @@ type RawResponse struct {
 // GetDocumentSequence looks up the sequence for a document using the _raw endpoint.
 // Used by tests that need to validate sequences (for grants, etc)
 func (rt *RestTester) GetDocumentSequence(key string) (sequence uint64) {
-	response := rt.SendAdminRequest("GET", fmt.Sprintf("/db/_raw/%s", key), "")
+	response := rt.SendAdminRequest("GET", fmt.Sprintf("/{{.keyspace}}/_raw/%s", key), "")
 	if response.Code != 200 {
 		return 0
 	}
@@ -1031,10 +1174,15 @@ func (bt BlipTester) DatabaseContext() *db.DatabaseContext {
 	return nil
 }
 
+// getBlipTesterSpec returns a default tester specification.
+func getDefaultBlipTesterSpec() BlipTesterSpec {
+	return BlipTesterSpec{GuestEnabled: true}
+}
+
+// NewBlipTesterFromSpecWithRT creates a blip tester from an existing rest tester
 func NewBlipTesterFromSpecWithRT(tb testing.TB, spec *BlipTesterSpec, rt *RestTester) (blipTester *BlipTester, err error) {
 	blipTesterSpec := spec
 	if spec == nil {
-		// Default spec
 		blipTesterSpec = &BlipTesterSpec{}
 	}
 	blipTester, err = createBlipTesterWithSpec(tb, *blipTesterSpec, rt)
@@ -1046,10 +1194,27 @@ func NewBlipTesterFromSpecWithRT(tb testing.TB, spec *BlipTesterSpec, rt *RestTe
 	return blipTester, err
 }
 
+// NewBlipTesterDefaultCollection creates a blip tester that has a RestTester only using a single database and `_default._default` collection.
+func NewBlipTesterDefaultCollection(tb testing.TB) *BlipTester {
+	return NewBlipTesterDefaultCollectionFromSpec(tb, BlipTesterSpec{GuestEnabled: true})
+}
+
+// NewBlipTesterDefaultCollectionFromSpec creates a blip tester that has a RestTester only using a single database and `_default._default` collection.
+func NewBlipTesterDefaultCollectionFromSpec(tb testing.TB, spec BlipTesterSpec) *BlipTester {
+	rtConfig := RestTesterConfig{
+		EnableNoConflictsMode: spec.noConflictsMode,
+		GuestEnabled:          spec.GuestEnabled,
+		DatabaseConfig:        &DatabaseConfig{},
+	}
+	rt := newRestTester(tb, &rtConfig, useSingleCollectionDefaultOnly, 1)
+	bt, err := createBlipTesterWithSpec(tb, spec, rt)
+	require.NoError(tb, err)
+	return bt
+}
+
 // Create a BlipTester using the default spec
 func NewBlipTester(tb testing.TB) (*BlipTester, error) {
-	defaultSpec := BlipTesterSpec{GuestEnabled: true}
-	return NewBlipTesterFromSpec(tb, defaultSpec)
+	return NewBlipTesterFromSpec(tb, getDefaultBlipTesterSpec())
 }
 
 func NewBlipTesterFromSpec(tb testing.TB, spec BlipTesterSpec) (*BlipTester, error) {
@@ -1057,7 +1222,7 @@ func NewBlipTesterFromSpec(tb testing.TB, spec BlipTesterSpec) (*BlipTester, err
 		EnableNoConflictsMode: spec.noConflictsMode,
 		GuestEnabled:          spec.GuestEnabled,
 	}
-	var rt = NewRestTester(tb, &rtConfig)
+	rt := NewRestTester(tb, &rtConfig)
 	return createBlipTesterWithSpec(tb, spec, rt)
 }
 
@@ -1221,6 +1386,58 @@ func (bt *BlipTester) SendRev(docId, docRev string, body []byte, properties blip
 
 	return bt.SendRevWithHistory(docId, docRev, []string{}, body, properties)
 
+}
+
+// GetUserPayload will take username, password, email, channels and roles you want to assign a user and create the appropriate payload for the _user endpoint
+func GetUserPayload(t *testing.T, username, password, email string, collection *db.DatabaseCollection, chans, roles []string) string {
+	config := auth.PrincipalConfig{}
+	if username != "" {
+		config.Name = &username
+	}
+	if password != "" {
+		config.Password = &password
+	}
+	if email != "" {
+		config.Email = &email
+	}
+	if len(roles) != 0 {
+		config.ExplicitRoleNames = base.SetOf(roles...)
+	}
+	marshalledConfig, err := addChannelsToPrincipal(config, collection, chans)
+	require.NoError(t, err)
+	return string(marshalledConfig)
+}
+
+// GetRolePayload will take roleName, password and channels you want to assign a particular role and return the appropriate payload for the _role endpoint
+func GetRolePayload(t *testing.T, roleName, password string, collection *db.DatabaseCollection, chans []string) string {
+	config := auth.PrincipalConfig{}
+	if roleName != "" {
+		config.Name = &roleName
+	}
+	if password != "" {
+		config.Password = &password
+	}
+	marshalledConfig, err := addChannelsToPrincipal(config, collection, chans)
+	require.NoError(t, err)
+	return string(marshalledConfig)
+}
+
+// add channels to principal depending if running with collections or not. then marshal the principal config
+func addChannelsToPrincipal(config auth.PrincipalConfig, collection *db.DatabaseCollection, chans []string) ([]byte, error) {
+	if base.IsDefaultCollection(collection.ScopeName(), collection.Name()) {
+		if len(chans) == 0 {
+			config.ExplicitChannels = base.SetOf("[]")
+		} else {
+			config.ExplicitChannels = base.SetFromArray(chans)
+		}
+	} else {
+		config.SetExplicitChannels(collection.ScopeName(), collection.Name(), chans...)
+	}
+	payload, err := json.Marshal(config)
+	if err != nil {
+		return []byte{}, err
+	}
+	return payload, nil
 }
 
 func getChangesHandler(changesFinishedWg, revsFinishedWg *sync.WaitGroup) func(request *blip.Message) {
@@ -1402,7 +1619,6 @@ func (bt *BlipTester) SendRevWithAttachment(input SendRevWithAttachmentInput) (s
 		docBody,
 		blip.Properties{},
 	)
-
 	// Expect a callback to the getAttachment endpoint
 	getAttachmentWg.Wait()
 
@@ -1936,4 +2152,37 @@ func (sc *ServerContext) suspendDatabase(t *testing.T, ctx context.Context, dbNa
 	defer sc.lock.Unlock()
 
 	return sc._suspendDatabase(ctx, dbName)
+}
+
+// getRESTkeyspace returns a keyspace for REST URIs
+func getRESTKeyspace(_ testing.TB, dbName string, collection *db.DatabaseCollection) string {
+	if base.IsDefaultCollection(collection.ScopeName(), collection.Name()) {
+		// for backwards compatibility (and user-friendliness),
+		// we can optionally just use `/db/` instead of `/db._default._default/`
+		// Return this format to get coverage of both formats.
+		return dbName
+	}
+	return strings.Join([]string{dbName, collection.ScopeName(), collection.Name()}, base.ScopeCollectionSeparator)
+}
+
+// GetKeyspaces returns the names of all the keyspaces on the rest tester. Currently assumes a single database.
+func (rt *RestTester) GetKeyspaces() []string {
+	db := rt.GetDatabase()
+	var keyspaces []string
+	for _, collection := range db.CollectionByID {
+		keyspaces = append(keyspaces, getRESTKeyspace(rt.TB, db.Name, collection))
+	}
+	sort.Strings(keyspaces)
+	return keyspaces
+}
+
+// GetSingleKeyspace the name of the keyspace if there is only one test collection on one database.
+func (rt *RestTester) GetSingleKeyspace() string {
+	db := rt.GetDatabase()
+	require.Equal(rt.TB, 1, len(db.CollectionByID), "Database must be configured with only one collection to use this function")
+	for _, collection := range db.CollectionByID {
+		return getRESTKeyspace(rt.TB, db.Name, collection)
+	}
+	rt.TB.Fatal("Had no collection to return a keyspace for") // should be unreachable given length check above
+	return ""
 }

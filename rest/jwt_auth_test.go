@@ -25,6 +25,7 @@ import (
 
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -248,7 +249,7 @@ func TestLocalJWTAuthenticationEdgeCases(t *testing.T) {
 				require.NoError(t, err, "Failed to register test user %s", createUserName)
 			}
 
-			req, err := http.NewRequest(http.MethodPost, mockSyncGatewayURL+"/db/_session", bytes.NewBufferString("{}"))
+			req, err := http.NewRequest(http.MethodPost, mockSyncGatewayURL+"/"+restTester.GetDatabase().Name+"/_session", bytes.NewBufferString("{}"))
 			require.NoError(t, err)
 
 			req.Header.Set("Authorization", BearerToken+" "+token)
@@ -452,6 +453,9 @@ func TestLocalJWTRolesChannels(t *testing.T) {
 	restTester := NewRestTester(t, &restTesterConfig)
 	require.NoError(t, restTester.SetAdminParty(false))
 	defer restTester.Close()
+	collection := restTester.GetSingleTestDatabaseCollection()
+	c := collection.Name()
+	s := collection.ScopeName()
 
 	token := auth.CreateTestJWT(t, jose.RS256, testRSAKeypair, auth.JWTHeaders{
 		"alg": jose.RS256,
@@ -476,8 +480,10 @@ func TestLocalJWTRolesChannels(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, user)
 
+	user.SetCollectionJWTChannels(s, c, channels.AtSequence(channels.BaseSetOf(t, "jwt_only_channel"), 1), 1)
+
 	assert.Contains(t, user.RoleNames(), "jwt_only_role")
-	assert.Contains(t, user.Channels().AllKeys(), "jwt_only_channel")
+	assert.Contains(t, user.CollectionJWTChannels(s, c).AllKeys(), "jwt_only_channel")
 	assert.Equal(t, testIssuer, user.JWTIssuer())
 	// FIXME: Temporary skip prior to CBG-2214 - Windows time resolution is not good enough to do this greater (but not equals) assertion
 	if runtime.GOOS != "windows" {

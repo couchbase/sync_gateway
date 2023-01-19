@@ -56,7 +56,7 @@ func (h *handler) handleAllDocs() error {
 	// Get the set of channels the user has access to; nil if user is admin or has access to user "*"
 	var availableChannels ch.TimedSet
 	if h.user != nil {
-		availableChannels = h.user.InheritedChannels()
+		availableChannels = h.user.InheritedCollectionChannels(h.collection.ScopeName(), h.collection.Name())
 		if availableChannels == nil {
 			// TODO: CBG-1948
 			panic("no channels for user?")
@@ -216,7 +216,7 @@ func (h *handler) handleAllDocs() error {
 
 		}
 	} else {
-		if err := h.db.GetSingleDatabaseCollection().ForEachDocID(h.ctx(), writeDoc, options); err != nil {
+		if err := h.collection.ForEachDocID(h.ctx(), writeDoc, options); err != nil {
 			return err
 		}
 	}
@@ -315,7 +315,7 @@ func (h *handler) handleDumpChannel() error {
 	since := h.getIntQuery("since", 0)
 	base.InfofCtx(h.ctx(), base.KeyHTTP, "Dump channel %q", base.UD(channelName))
 
-	chanLog := h.collection.GetChangeLog(ch.NewID(channelName, h.collection.GetCollectionID()), since)
+	chanLog, _ := h.collection.GetChangeLog(ch.NewID(channelName, h.collection.GetCollectionID()), since)
 	if chanLog == nil {
 		return base.HTTPErrorf(http.StatusNotFound, "no such channel")
 	}

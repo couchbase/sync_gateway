@@ -1027,7 +1027,7 @@ func TestPutInvalidConfig(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
-	response := rt.SendAdminRequest("PUT", "/db/_config", `{"db": {"server": "walrus"}}`)
+	response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/_config", `{"db": {"server": "walrus"}}`)
 	assert.Equal(t, http.StatusBadRequest, response.Code)
 }
 
@@ -2193,19 +2193,19 @@ func TestInvalidJavascriptFunctions(t *testing.T) {
 		},
 		{
 			"Valid Sync Fn No Import",
-			base.StringPtr(`function(){}`),
+			base.StringPtr(`function(doc){}`),
 			nil,
 			0,
-			base.StringPtr(`function(){}`),
+			base.StringPtr(`function(doc){}`),
 			nil,
 		},
 		{
 			"Valid Import Fn No Sync",
 			nil,
-			base.StringPtr(`function(){}`),
+			base.StringPtr(`function(doc){}`),
 			0,
 			nil,
-			base.StringPtr(`function(){}`),
+			base.StringPtr(`function(doc){}`),
 		},
 		{
 			"Both empty",
@@ -2225,7 +2225,7 @@ func TestInvalidJavascriptFunctions(t *testing.T) {
 		},
 		{
 			"Invalid Sync Fn No Import",
-			base.StringPtr(`function(){`),
+			base.StringPtr(`function(doc){`),
 			nil,
 			1,
 			nil,
@@ -2244,15 +2244,15 @@ func TestInvalidJavascriptFunctions(t *testing.T) {
 		{
 			"Invalid Import Fn No Sync",
 			nil,
-			base.StringPtr(`function(){`),
+			base.StringPtr(`function(doc){`),
 			1,
 			nil,
 			nil,
 		},
 		{
 			"Both invalid",
-			base.StringPtr(`function(){`),
-			base.StringPtr(`function(){`),
+			base.StringPtr(`function(doc){`),
+			base.StringPtr(`function(doc){`),
 			2,
 			nil,
 			nil,
@@ -2608,12 +2608,16 @@ func TestCollectionsValidation(t *testing.T) {
 // We get OS specific errors on x509.UnknownAuthorityError so we switch the expected error string if on darwin OS
 func requireErrorWithX509UnknownAuthority(t testing.TB, actual, expected error) {
 	expectedErrorString := expected.Error()
-	switch errorType := expected.(type) {
-	case x509.UnknownAuthorityError:
-		expectedErrorString = errorType.Error()
-		if runtime.GOOS == "darwin" {
-			expectedErrorString = "certificate is not trusted"
-		}
+	if strings.Contains(actual.Error(), expectedErrorString) {
+		return
 	}
+
+	// workaround for versions of go affected by https://github.com/golang/go/issues/56891
+	isMacOS := runtime.GOOS == "darwin"
+	_, isX509Error := expected.(x509.UnknownAuthorityError)
+	if isX509Error && isMacOS {
+		expectedErrorString = "certificate is not trusted"
+	}
+
 	require.ErrorContains(t, actual, expectedErrorString)
 }

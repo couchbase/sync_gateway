@@ -96,10 +96,10 @@ paths:
     $ref: ./paths/admin/_post_upgrade.yaml
   '/{db}/_config':
     $ref: './paths/admin/{db}~_config.yaml'
-  '/{db}/_config/sync':
-    $ref: './paths/admin/{db}~_config~sync.yaml'
-  '/{db}/_config/import_filter':
-    $ref: './paths/admin/{db}~_config~import_filter.yaml'
+  '/{keyspace}/_config/sync':
+    $ref: './paths/admin/{keyspace}~_config~sync.yaml'
+  '/{keyspace}/_config/import_filter':
+    $ref: './paths/admin/{keyspace}~_config~import_filter.yaml'
   '/{keyspace}/_resync':
     $ref: './paths/admin/{keyspace}~_resync.yaml'
   '/{keyspace}/_purge':
@@ -114,14 +114,14 @@ paths:
     $ref: './paths/admin/{db}~_dump~{view}.yaml'
   '/{db}/_view/{view}':
     $ref: './paths/admin/{db}~_view~{view}.yaml'
-  '/{db}/_dumpchannel/{channel}':
-    $ref: './paths/admin/{db}~_dumpchannel~{channel}.yaml'
+  '/{keyspace}/_dumpchannel/{channel}':
+    $ref: './paths/admin/{keyspace}~_dumpchannel~{channel}.yaml'
   '/{db}/_repair':
     $ref: './paths/admin/{db}~_repair.yaml'
   /_all_dbs:
     $ref: ./paths/admin/_all_dbs.yaml
-  '/{keyspace}/_compact':
-    $ref: './paths/admin/{keyspace}~_compact.yaml'
+  '/{db}/_compact':
+    $ref: './paths/admin/{db}~_compact.yaml'
   '/{db}/':
     $ref: './paths/admin/{db}~.yaml'
   '/{keyspace}/':
@@ -130,14 +130,14 @@ paths:
     $ref: ./paths/admin/_expvar.yaml
   /:
     $ref: ./paths/admin/~.yaml
-  '/{db}/_all_docs':
-    $ref: './paths/admin/{db}~_all_docs.yaml'
+  '/{keyspace}/_all_docs':
+    $ref: './paths/admin/{keyspace}~_all_docs.yaml'
   '/{keyspace}/_bulk_docs':
     $ref: './paths/admin/{keyspace}~_bulk_docs.yaml'
   '/{keyspace}/_bulk_get':
     $ref: './paths/admin/{keyspace}~_bulk_get.yaml'
-  '/{db}/_changes':
-    $ref: './paths/admin/{db}~_changes.yaml'
+  '/{keyspace}/_changes':
+    $ref: './paths/admin/{keyspace}~_changes.yaml'
   '/{db}/_design/{ddoc}':
     $ref: './paths/admin/{db}~_design~{ddoc}.yaml'
   '/{db}/_design/{ddoc}/_view/{view}':

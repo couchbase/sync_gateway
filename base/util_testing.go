@@ -22,6 +22,7 @@ import (
 	"os"
 	"runtime"
 	"runtime/pprof"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -104,6 +105,7 @@ func (tb *TestBucket) NoCloseClone() *TestBucket {
 
 // GetTestBucket returns a test bucket from a pool.
 func GetTestBucket(t testing.TB) *TestBucket {
+	//debug.PrintStack()
 	return getTestBucket(t)
 }
 
@@ -118,25 +120,43 @@ func getTestBucket(t testing.TB) *TestBucket {
 	}
 }
 
-// GetNamedDataStore returns a named datastore from the TestBucket.
-func (tb *TestBucket) GetNamedDataStore() DataStore {
-	dataStoreNames, err := tb.ListDataStores()
+// GetNamedDataStore returns a named datastore from the TestBucket. Each number (starting from 0, indicates which data store you'll get.
+func (tb *TestBucket) GetNamedDataStore(count int) DataStore {
+	dataStoreNames := tb.GetNonDefaultDatastoreNames()
+	if count > len(dataStoreNames) {
+		tb.t.Errorf("You are requesting more datastores %d than are available on this test instance %d", dataStoreNames, count)
+	}
+	return tb.Bucket.NamedDataStore(dataStoreNames[count])
+}
+
+// Return a sorted list of data store names
+func (tb *TestBucket) GetNonDefaultDatastoreNames() []sgbucket.DataStoreName {
+	allDataStoreNames, err := tb.ListDataStores()
 	require.NoError(tb.t, err)
-	for _, name := range dataStoreNames {
+	var keyspaces []string
+	for _, name := range allDataStoreNames {
 		if IsDefaultCollection(name.ScopeName(), name.CollectionName()) {
 			continue
 		}
-		return tb.Bucket.NamedDataStore(name)
+		keyspaces = append(keyspaces, fmt.Sprintf("%s.%s", name.ScopeName(), name.CollectionName()))
 	}
-	tb.t.Error("Could not find a named collection")
-	return nil
+	sort.Strings(keyspaces)
+	var nonDefaultDataStoreNames []sgbucket.DataStoreName
+	for _, keyspace := range keyspaces {
+		scopeAndCollection := strings.Split(keyspace, ScopeCollectionSeparator)
+		nonDefaultDataStoreNames = append(nonDefaultDataStoreNames,
+			ScopeAndCollectionName{
+				Scope:      scopeAndCollection[0],
+				Collection: scopeAndCollection[1]})
+	}
+	return nonDefaultDataStoreNames
 }
 
 // GetSingleDataStore returns a DataStore that can be used for testing.
 // This may be the default collection, or a named collection depending on whether SG_TEST_USE_DEFAULT_COLLECTION is set.
 func (b *TestBucket) GetSingleDataStore() sgbucket.DataStore {
 	if TestsUseNamedCollections() {
-		return b.GetNamedDataStore()
+		return b.GetNamedDataStore(0)
 	}
 	return b.Bucket.DefaultDataStore()
 }
@@ -697,7 +717,7 @@ func RequireWaitForStat(t testing.TB, getStatFunc func() int64, expected int64) 
 
 // TestRequiresCollections will skip the current test if the Couchbase Server version it is running against does not
 // support collections.
-func TestRequiresCollections(t *testing.T) {
+func TestRequiresCollections(t testing.TB) {
 	if ok, err := GTestBucketPool.canUseNamedCollections(); err != nil {
 		t.Skipf("Skipping test - collections not supported: %v", err)
 	} else if !ok {
@@ -705,15 +725,22 @@ func TestRequiresCollections(t *testing.T) {
 	}
 }
 
-// TemporarilyDisableTestUsingDCPWithCollections will skip the current test if using named collections to avoid MB-53448 prior to CB 7.2 until we've implemented a SG-side workaround (CBG-2605)
-func TemporarilyDisableTestUsingDCPWithCollections(t *testing.T) {
-	DisableTestWithCollections(t)
-}
-
 // DisableTestWithCollections will skip the current test if using named collections.
 func DisableTestWithCollections(t *testing.T) {
 	if TestsUseNamedCollections() {
 		t.Skip("Skipping test because collections are enabled")
+	}
+}
+
+// SkipImportTestsIfNotEnabled skips test that exercise import features
+func SkipImportTestsIfNotEnabled(t *testing.T) {
+
+	if !TestUseXattrs() {
+		t.Skip("XATTR based tests not enabled.  Enable via SG_TEST_USE_XATTRS=true environment variable")
+	}
+
+	if UnitTestUrlIsWalrus() {
+		t.Skip("This test won't work under walrus until https://github.com/couchbase/sync_gateway/issues/2390")
 	}
 }
 

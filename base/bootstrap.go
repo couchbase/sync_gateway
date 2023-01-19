@@ -12,12 +12,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 	"reflect"
+	"strconv"
 	"sync"
 	"time"
 
 	"github.com/couchbase/gocb/v2"
 	"github.com/imdario/mergo"
+	"gopkg.in/couchbaselabs/gocbconnstr.v1"
 )
 
 // BootstrapConnection is the interface that can be used to bootstrap Sync Gateway against a Couchbase Server cluster.
@@ -124,6 +127,34 @@ func NewCouchbaseCluster(server, username, password,
 	}
 
 	return cbCluster, nil
+}
+
+func (cc *CouchbaseCluster) SetConnectionStringServerless() error {
+	connSpec, err := gocbconnstr.Parse(cc.server)
+	if err != nil {
+		return err
+	}
+	if connSpec.Options == nil {
+		connSpec.Options = map[string][]string{}
+	}
+
+	asValues := url.Values(connSpec.Options)
+
+	fromConnStr := asValues.Get("kv_pool_size")
+	if fromConnStr == "" {
+		asValues.Set("kv_pool_size", strconv.Itoa(DefaultGocbKvPoolSizeServerless))
+	}
+	fromConnStr = asValues.Get("kv_buffer_size")
+	if fromConnStr == "" {
+		asValues.Set("kv_buffer_size", strconv.Itoa(DefaultKvBufferSizeServerless))
+	}
+	fromConnStr = asValues.Get("dcp_buffer_size")
+	if fromConnStr == "" {
+		asValues.Set("dcp_buffer_size", strconv.Itoa(DefaultDCPBufferServerless))
+	}
+	connSpec.Options = asValues
+	cc.server = connSpec.String()
+	return nil
 }
 
 // connect attempts to open a gocb.Cluster connection. Callers will be responsible for closing the connection.

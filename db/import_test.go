@@ -46,7 +46,7 @@ func TestMigrateMetadata(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 
-	collection := db.GetSingleDatabaseCollectionWithUser()
+	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 	key := "TestMigrateMetadata"
 	bodyBytes := rawDocWithSyncMeta()
@@ -118,7 +118,7 @@ func TestImportWithStaleBucketDocCorrectExpiry(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 
-	collection := db.GetSingleDatabaseCollectionWithUser()
+	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 	type testcase struct {
 		docBody            []byte
@@ -246,7 +246,7 @@ func TestImportWithCasFailureUpdate(t *testing.T) {
 				}
 			}`
 
-			collection := db.GetSingleDatabaseCollectionWithUser()
+			collection := GetSingleDatabaseCollectionWithUser(t, db)
 			cas, _ := collection.dataStore.Get(key, &body)
 			_, err := collection.dataStore.WriteCas(key, 0, 0, cas, []byte(valStr), sgbucket.Raw)
 			assert.NoError(t, err)
@@ -288,7 +288,7 @@ func TestImportWithCasFailureUpdate(t *testing.T) {
 				"time_saved": "2017-11-29T12:46:13.456631-08:00"
 			}`
 
-			collection := db.GetSingleDatabaseCollectionWithUser()
+			collection := GetSingleDatabaseCollectionWithUser(t, db)
 			cas, _ := collection.dataStore.GetWithXattr(key, base.SyncXattrName, "", &body, &xattr, nil)
 			_, err := collection.dataStore.WriteCasWithXattr(key, base.SyncXattrName, 0, cas, nil, []byte(valStr), []byte(xattrStr))
 			assert.NoError(t, err)
@@ -311,7 +311,7 @@ func TestImportWithCasFailureUpdate(t *testing.T) {
 			db, ctx = setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), base.LeakyBucketConfig{WriteWithXattrCallback: testcase.callback})
 			defer db.Close(ctx)
 
-			collection := db.GetSingleDatabaseCollectionWithUser()
+			collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 			bodyBytes := rawDocWithSyncMeta()
 			body := Body{}
@@ -396,8 +396,7 @@ func TestImportNullDoc(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 
-	collection := db.GetSingleDatabaseCollectionWithUser()
-
+	collection := GetSingleDatabaseCollectionWithUser(t, db)
 	key := "TestImportNullDoc"
 	var body Body
 	rawNull := []byte("null")
@@ -415,7 +414,7 @@ func TestImportNullDocRaw(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 
-	collection := db.GetSingleDatabaseCollectionWithUser()
+	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 	// Feed import of null doc
 	exp := uint32(0)

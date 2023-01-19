@@ -25,24 +25,24 @@ func TestFunctionsConfigGetWithoutFeatureFlag(t *testing.T) {
 	defer rt.Close()
 
 	t.Run("Functions, Non-Admin", func(t *testing.T) {
-		response := rt.SendRequest("GET", "/db/_config/functions", "")
+		response := rt.SendRequest("GET", "/{{.keyspace}}/_config/functions", "")
 		assert.Equal(t, 404, response.Result().StatusCode)
 	})
 	t.Run("All Functions", func(t *testing.T) {
-		response := rt.SendAdminRequest("GET", "/db/_config/functions", "")
+		response := rt.SendAdminRequest("GET", "/{{.keyspace}}/_config/functions", "")
 		assert.Equal(t, 404, response.Result().StatusCode)
 	})
 	t.Run("Single Function", func(t *testing.T) {
-		response := rt.SendAdminRequest("GET", "/db/_config/functions/cube", "")
+		response := rt.SendAdminRequest("GET", "/{{.keyspace}}/_config/functions/cube", "")
 		assert.Equal(t, 404, response.Result().StatusCode)
 	})
 
 	t.Run("GraphQL, Non-Admin", func(t *testing.T) {
-		response := rt.SendRequest("GET", "/db/_config/graphql", "")
+		response := rt.SendRequest("GET", "/{{.keyspace}}/_config/graphql", "")
 		assert.Equal(t, 404, response.Result().StatusCode)
 	})
 	t.Run("GraphQL", func(t *testing.T) {
-		response := rt.SendAdminRequest("GET", "/db/_config/graphql", "")
+		response := rt.SendAdminRequest("GET", "/{{.keyspace}}/_config/graphql", "")
 		assert.Equal(t, 404, response.Result().StatusCode)
 	})
 }

@@ -97,13 +97,12 @@ func testConcurrently(t *testing.T, rt *RestTester, testFunc func() bool) bool {
 }
 
 func TestFunctions(t *testing.T) {
-	rt := NewRestTester(t, &RestTesterConfig{GuestEnabled: true, EnableUserQueries: true})
+	rt := NewRestTester(t, &RestTesterConfig{GuestEnabled: true, EnableUserQueries: true, DatabaseConfig: kGraphQLTestConfig})
 	defer rt.Close()
-	rt.DatabaseConfig = kGraphQLTestConfig
 
 	t.Run("GraphQL with variables", func(t *testing.T) {
 		testConcurrently(t, rt, func() bool {
-			response := rt.SendRequest("POST", "/db/_graphql",
+			response := rt.SendRequest("POST", "/{{.db}}/_graphql",
 				`{"query": "query($number:Int!){ square(n:$number) }",
 				  "variables": {"number": 13}}`)
 			return assert.Equal(t, 200, response.Result().StatusCode) &&
@@ -113,13 +112,12 @@ func TestFunctions(t *testing.T) {
 }
 
 func TestFunctionsConcurrently(t *testing.T) {
-	rt := NewRestTester(t, &RestTesterConfig{GuestEnabled: true, EnableUserQueries: true})
+	rt := NewRestTester(t, &RestTesterConfig{GuestEnabled: true, EnableUserQueries: true, DatabaseConfig: kGraphQLTestConfig})
 	defer rt.Close()
-	rt.DatabaseConfig = kGraphQLTestConfig
 
 	t.Run("Function", func(t *testing.T) {
 		testConcurrently(t, rt, func() bool {
-			response := rt.SendRequest("GET", "/db/_function/square?n=13", "")
+			response := rt.SendRequest("GET", "/{{.db}}/_function/square?n=13", "")
 			return assert.Equal(t, 200, response.Result().StatusCode) &&
 				assert.Equal(t, "169", string(response.BodyBytes()))
 		})
@@ -127,7 +125,7 @@ func TestFunctionsConcurrently(t *testing.T) {
 
 	t.Run("GraphQL", func(t *testing.T) {
 		testConcurrently(t, rt, func() bool {
-			response := rt.SendRequest("POST", "/db/_graphql", `{"query":"query{ square(n:13) }"}`)
+			response := rt.SendRequest("POST", "/{{.db}}/_graphql", `{"query":"query{ square(n:13) }"}`)
 			return assert.Equal(t, 200, response.Result().StatusCode) &&
 				assert.Equal(t, "{\"data\":{\"square\":169}}", string(response.BodyBytes()))
 		})
@@ -138,7 +136,7 @@ func TestFunctionsConcurrently(t *testing.T) {
 			t.Skip("Skipping query subtest")
 		} else {
 			testConcurrently(t, rt, func() bool {
-				response := rt.SendRequest("GET", "/db/_function/squareN1QL?n=13", "")
+				response := rt.SendRequest("GET", "/{{.db}}/_function/squareN1QL?n=13", "")
 				return assert.Equal(t, 200, response.Result().StatusCode) &&
 					assert.Equal(t, "[{\"square\":169}]", string(response.BodyBytes()))
 			})

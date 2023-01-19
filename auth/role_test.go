@@ -50,10 +50,10 @@ func TestAuthorizeChannelsRole(t *testing.T) {
 	err = auth.Save(role)
 	assert.NoError(t, err)
 
-	assert.NoError(t, role.AuthorizeAllChannels(channels.BaseSetOf(t, "superuser")))
-	assert.Error(t, role.AuthorizeAllChannels(channels.BaseSetOf(t, "unknown")))
-	assert.NoError(t, role.AuthorizeAnyChannel(channels.BaseSetOf(t, "superuser", "unknown")))
-	assert.Error(t, role.AuthorizeAllChannels(channels.BaseSetOf(t, "unknown1", "unknown2")))
+	assert.NoError(t, role.authorizeAllChannels(channels.BaseSetOf(t, "superuser")))
+	assert.Error(t, role.authorizeAllChannels(channels.BaseSetOf(t, "unknown")))
+	assert.NoError(t, role.authorizeAnyChannel(channels.BaseSetOf(t, "superuser", "unknown")))
+	assert.Error(t, role.authorizeAllChannels(channels.BaseSetOf(t, "unknown1", "unknown2")))
 }
 
 func BenchmarkIsValidPrincipalName(b *testing.B) {

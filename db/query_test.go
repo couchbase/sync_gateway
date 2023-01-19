@@ -32,7 +32,7 @@ func TestQueryChannelsStatsView(t *testing.T) {
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	collection := db.GetSingleDatabaseCollectionWithUser()
+	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 	// docID -> Sequence
 	docSeqMap := make(map[string]uint64, 3)
@@ -87,7 +87,7 @@ func TestQueryChannelsStatsN1ql(t *testing.T) {
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	collection := db.GetSingleDatabaseCollectionWithUser()
+	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 	// docID -> Sequence
 	docSeqMap := make(map[string]uint64, 3)
@@ -136,7 +136,7 @@ func TestQuerySequencesStatsView(t *testing.T) {
 
 	db, ctx := setupTestDBWithViewsEnabled(t)
 	defer db.Close(ctx)
-	collection := db.GetSingleDatabaseCollectionWithUser()
+	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 	// docID -> Sequence
 	docSeqMap := make(map[string]uint64, 20)
@@ -232,7 +232,7 @@ func TestQuerySequencesStatsN1ql(t *testing.T) {
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	collection := db.GetSingleDatabaseCollectionWithUser()
+	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 	// docID -> Sequence
 	docSeqMap := make(map[string]uint64, 20)
@@ -381,7 +381,7 @@ func TestAllDocsQuery(t *testing.T) {
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	collection := db.GetSingleDatabaseCollectionWithUser()
+	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 	// Add docs with channel assignment
 	for i := 1; i <= 10; i++ {
@@ -453,7 +453,7 @@ func TestAccessQuery(t *testing.T) {
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	collection := db.GetSingleDatabaseCollectionWithUser()
+	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 	db.ChannelMapper = channels.NewChannelMapper(&db.V8VMs, `function(doc, oldDoc) {
 	access(doc.accessUser, doc.accessChannel)
@@ -500,7 +500,7 @@ func TestRoleAccessQuery(t *testing.T) {
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	collection := db.GetSingleDatabaseCollectionWithUser()
+	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 	db.ChannelMapper = channels.NewChannelMapper(&db.V8VMs, `function(doc, oldDoc) {
 	role(doc.accessUser, "role:" + doc.accessChannel)
@@ -556,7 +556,7 @@ func TestQueryChannelsActiveOnlyWithLimit(t *testing.T) {
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	collection := db.GetSingleDatabaseCollectionWithUser()
+	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 	docIdFlagMap := make(map[string]uint8)
 	var startSeq, endSeq uint64

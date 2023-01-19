@@ -180,7 +180,7 @@ func TestRevisionCacheInternalProperties(t *testing.T) {
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	collection := db.GetSingleDatabaseCollectionWithUser()
+	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 	// Invalid _revisions property will be stripped.  Should also not be present in the rev cache.
 	rev1body := Body{
@@ -230,7 +230,7 @@ func TestBypassRevisionCache(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 
-	collection := db.GetSingleDatabaseCollectionWithUser()
+	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 	docBody := Body{
 		"value": 1234,
@@ -292,7 +292,7 @@ func TestPutRevisionCacheAttachmentProperty(t *testing.T) {
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	collection := db.GetSingleDatabaseCollectionWithUser()
+	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 	rev1body := Body{
 		"value":         1234,
@@ -334,7 +334,7 @@ func TestPutExistingRevRevisionCacheAttachmentProperty(t *testing.T) {
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	collection := db.GetSingleDatabaseCollectionWithUser()
+	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 	docKey := "doc1"
 	rev1body := Body{
@@ -446,7 +446,7 @@ func TestConcurrentLoad(t *testing.T) {
 func TestInvalidate(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	collection := db.GetSingleDatabaseCollectionWithUser()
+	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 	rev1id, _, err := collection.Put(ctx, "doc", Body{"val": 123})
 	assert.NoError(t, err)

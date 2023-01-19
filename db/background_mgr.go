@@ -47,6 +47,7 @@ const (
 // BackgroundManager this is the over-arching type which is exposed in DatabaseContext
 type BackgroundManager struct {
 	BackgroundManagerStatus
+	name                                   string
 	lastError                              error
 	terminator                             *base.SafeTerminator
 	backgroundManagerStatusUpdateWaitGroup sync.WaitGroup
@@ -94,6 +95,11 @@ type BackgroundManagerProcessI interface {
 }
 
 type updateStatusCallbackFunc func() error
+
+// GetName returns name of the background manager
+func (b *BackgroundManager) GetName() string {
+	return b.name
+}
 
 func (b *BackgroundManager) Start(ctx context.Context, options map[string]interface{}) error {
 	err := b.markStart()
@@ -310,7 +316,13 @@ func (b *BackgroundManager) getStatusFromCluster() ([]byte, error) {
 				// avoid this unmarshal / marshal work from having to happen again, next time GET is called.
 				// If there is an error we can just ignore it as worst case we run this unmarshal / marshal again on
 				// next request
-				_, _ = b.clusterAwareOptions.metadataStore.WriteSubDoc(b.clusterAwareOptions.StatusDocID(), "status", statusCas, status)
+				_, err = b.clusterAwareOptions.metadataStore.WriteSubDoc(b.clusterAwareOptions.StatusDocID(), "status", statusCas, status)
+				if err != nil {
+					status, _, err = b.clusterAwareOptions.metadataStore.GetSubDocRaw(b.clusterAwareOptions.StatusDocID(), "status")
+					if err != nil {
+						return nil, err
+					}
+				}
 			}
 		}
 	}
@@ -390,8 +402,7 @@ func (b *BackgroundManager) setRunState(state BackgroundProcessState) {
 	b.State = state
 }
 
-// Currently only test
-func (b *BackgroundManager) GetRunState(t testing.TB) BackgroundProcessState {
+func (b *BackgroundManager) GetRunState() BackgroundProcessState {
 	b.lock.Lock()
 	defer b.lock.Unlock()
 	return b.State

@@ -382,6 +382,13 @@ func GetBucketSpec(ctx context.Context, config *DatabaseConfig, serverConfig *St
 		spec.ViewQueryTimeoutSecs = config.ViewQueryTimeoutSecs
 	}
 
+	if config.Unsupported != nil && config.Unsupported.KVBufferSize != 0 {
+		spec.KvBufferSize = config.Unsupported.KVBufferSize
+	}
+	if config.Unsupported != nil && config.Unsupported.DCPReadBuffer != 0 {
+		spec.DcpBuffer = config.Unsupported.DCPReadBuffer
+	}
+
 	spec.UseXattrs = config.UseXattrs()
 	if !spec.UseXattrs {
 		base.WarnfCtx(ctx, "Running Sync Gateway without shared bucket access is deprecated. Recommendation: set enable_shared_bucket_access=true")
@@ -414,7 +421,18 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		spec.Server = sc.Config.Bootstrap.Server
 	}
 	if sc.Config.IsServerless() {
-		connStr, err := spec.GetGoCBConnString(&base.GoCBConnStringParams{KVPoolSize: base.DefaultGocbKvPoolSizeServerless})
+		params := &base.GoCBConnStringParams{
+			KVPoolSize:    base.DefaultGocbKvPoolSizeServerless,
+			KVBufferSize:  base.DefaultKvBufferSizeServerless,
+			DCPBufferSize: base.DefaultDCPBufferServerless,
+		}
+		if spec.KvBufferSize != 0 {
+			params.KVBufferSize = spec.KvBufferSize
+		}
+		if spec.DcpBuffer != 0 {
+			params.DCPBufferSize = spec.DcpBuffer
+		}
+		connStr, err := spec.GetGoCBConnString(params)
 		if err != nil {
 			return nil, err
 		}
@@ -567,8 +585,12 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 			contextOptions.Scopes[scopeName] = db.ScopeOptions{
 				Collections: make(map[string]db.CollectionOptions, len(scopeCfg.Collections)),
 			}
-			for collName := range scopeCfg.Collections {
-				contextOptions.Scopes[scopeName].Collections[collName] = db.CollectionOptions{}
+			for collName, collCfg := range scopeCfg.Collections {
+				contextOptions.Scopes[scopeName].Collections[collName] = db.CollectionOptions{
+					Sync:               collCfg.SyncFn,
+					ImportFilterSource: collCfg.ImportFilter,
+				}
+
 			}
 		}
 	}
@@ -666,27 +688,39 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	return dbcontext, nil
 }
 
-func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConfig, dbName string) (db.DatabaseContextOptions, error) {
-
-	// Get timeout to use for import filter function and db context
+// getJavascriptTimeout returns the duration javascript functions can run.
+func getJavascriptTimeout(config *DbConfig) time.Duration {
 	javascriptTimeout := time.Duration(base.DefaultJavascriptTimeoutSecs) * time.Second
 	if config.JavascriptTimeoutSecs != nil {
 		javascriptTimeout = time.Duration(*config.JavascriptTimeoutSecs) * time.Second
 	}
+	return javascriptTimeout
+}
 
+// newBaseImportOptions returns a prepopulated ImportOptions struct with values that are database wide.
+func newBaseImportOptions(config *DbConfig, serverless bool) *db.ImportOptions {
 	// Identify import options
 	importOptions := db.ImportOptions{
 		ImportFilterSource: config.ImportFilter,
 		BackupOldRev:       base.BoolDefault(config.ImportBackupOldRev, false),
-		ImportPartitions:   base.DefaultImportPartitions,
 	}
-	importOptions.BackupOldRev = base.BoolDefault(config.ImportBackupOldRev, false)
 
 	if config.ImportPartitions == nil {
-		importOptions.ImportPartitions = base.GetDefaultImportPartitions(sc.Config.IsServerless())
+		importOptions.ImportPartitions = base.GetDefaultImportPartitions(serverless)
 	} else {
 		importOptions.ImportPartitions = *config.ImportPartitions
 	}
+	return &importOptions
+
+}
+
+func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConfig, dbName string) (db.DatabaseContextOptions, error) {
+
+	// Get timeout to use for import filter function and db context
+	javascriptTimeout := getJavascriptTimeout(config)
+
+	// Identify import options
+	importOptions := newBaseImportOptions(config, sc.Config.IsServerless())
 
 	// Check for deprecated cache options. If new are set they will take priority but will still log warnings
 	warnings := config.deprecatedConfigCacheFallback()
@@ -876,7 +910,7 @@ func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConf
 		OIDCOptions:                   config.OIDCConfig,
 		LocalJWTConfig:                config.LocalJWTConfig,
 		DBOnlineCallback:              dbOnlineCallback,
-		ImportOptions:                 importOptions,
+		ImportOptions:                 *importOptions,
 		EnableXattr:                   config.UseXattrs(),
 		SecureCookieOverride:          secureCookieOverride,
 		SessionCookieName:             config.SessionCookieName,
@@ -892,12 +926,13 @@ func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConf
 			Enabled:               sgReplicateEnabled,
 			WebsocketPingInterval: sgReplicateWebsocketPingInterval,
 		},
-		SlowQueryWarningThreshold: slowQueryWarningThreshold,
-		ClientPartitionWindow:     clientPartitionWindow,
-		BcryptCost:                bcryptCost,
-		GroupID:                   groupID,
-		JavascriptTimeout:         javascriptTimeout,
-		Serverless:                sc.Config.IsServerless(),
+		SlowQueryWarningThreshold:     slowQueryWarningThreshold,
+		ClientPartitionWindow:         clientPartitionWindow,
+		BcryptCost:                    bcryptCost,
+		GroupID:                       groupID,
+		JavascriptTimeout:             javascriptTimeout,
+		Serverless:                    sc.Config.IsServerless(),
+		DefaultCollectionImportFilter: config.ImportFilter,
 		// FunctionsConfig:        config.UserFunctions, // behind feature flag (see below)
 		// GraphQLConfig:          config.GraphQL,       // behind feature flag (see below)
 	}
@@ -1672,6 +1707,12 @@ func (sc *ServerContext) initializeCouchbaseServerConnections(ctx context.Contex
 		// couchbaseCluster, err := CreateCouchbaseClusterFromStartupConfig(sc.Config, base.PerUseClusterConnections)
 		if err != nil {
 			return err
+		}
+		if sc.Config.IsServerless() {
+			err := couchbaseCluster.SetConnectionStringServerless()
+			if err != nil {
+				return err
+			}
 		}
 
 		sc.BootstrapContext.Connection = couchbaseCluster

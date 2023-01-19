@@ -51,7 +51,7 @@ type ChannelCache interface {
 	GetChanges(ch channels.ID, options ChangesOptions) ([]*LogEntry, error)
 
 	// Returns the set of all cached data for a given channel (intended for diagnostic usage)
-	GetCachedChanges(ch channels.ID) []*LogEntry
+	GetCachedChanges(ch channels.ID) ([]*LogEntry, error)
 
 	// Clear reinitializes the cache to an empty state
 	Clear()
@@ -64,24 +64,27 @@ type ChannelCache interface {
 	GetHighCacheSequence() uint64
 
 	// Access to individual channel cache
-	getSingleChannelCache(ch channels.ID) SingleChannelCache
+	getSingleChannelCache(ch channels.ID) (SingleChannelCache, error)
 
 	// Access to individual bypass channel cache
-	getBypassChannelCache(ch channels.ID) SingleChannelCache
+	getBypassChannelCache(ch channels.ID) (SingleChannelCache, error)
 
 	// Stop stops the channel cache and it's background tasks.
 	Stop()
 }
 
-// ChannelQueryHandler interface is implemented by databaseContext.
+// ChannelQueryHandler interface is implemented by databaseContext and databaseCollection.
 type ChannelQueryHandler interface {
-	getChangesInChannelFromQuery(ctx context.Context, channelName channels.ID, startSeq, endSeq uint64, limit int, activeOnly bool) (LogEntries, error)
+	getChangesInChannelFromQuery(ctx context.Context, channelName string, startSeq, endSeq uint64, limit int, activeOnly bool) (LogEntries, error)
 }
+
+// Function that returns a ChannelQueryHandlerFunc for the specified collectionID
+type ChannelQueryHandlerFactory func(collectionID uint32) (ChannelQueryHandler, error)
 
 type StableSequenceCallbackFunc func() uint64
 
 type channelCacheImpl struct {
-	queryHandler         ChannelQueryHandler           // Passed to singleChannelCacheImpl for view queries.
+	queryHandlerFactory  ChannelQueryHandlerFactory    // Factory to look up ChannelQueryHandler for a collectionID
 	channelCaches        *channels.RangeSafeCollection // A collection of singleChannelCaches
 	backgroundTasks      []BackgroundTask              // List of background tasks specific to channel cache.
 	dbName               string                        // Name of the database associated with the channel cache.
@@ -100,14 +103,14 @@ type channelCacheImpl struct {
 }
 
 func NewChannelCacheForContext(options ChannelCacheOptions, context *DatabaseContext) (*channelCacheImpl, error) {
-	return newChannelCache(context.Name, options, context, context.activeChannels, context.DbStats.Cache())
+	return newChannelCache(context.Name, options, context.getQueryHandlerForCollection, context.activeChannels, context.DbStats.Cache())
 }
 
-func newChannelCache(dbName string, options ChannelCacheOptions, queryHandler ChannelQueryHandler,
+func newChannelCache(dbName string, options ChannelCacheOptions, queryHandlerFactory ChannelQueryHandlerFactory,
 	activeChannels *channels.ActiveChannels, cacheStats *base.CacheStats) (*channelCacheImpl, error) {
 
 	channelCache := &channelCacheImpl{
-		queryHandler:         queryHandler,
+		queryHandlerFactory:  queryHandlerFactory,
 		channelCaches:        channels.NewRangeSafeCollection(),
 		dbName:               dbName,
 		terminator:           make(chan bool),
@@ -174,7 +177,7 @@ func (c *channelCacheImpl) updateHighCacheSequence(sequence uint64) {
 
 // GetSingleChannelCache will create the cache for the channel if it doesn't exist.  If the cache is at
 // capacity, will return a bypass channel cache.
-func (c *channelCacheImpl) getSingleChannelCache(ch channels.ID) SingleChannelCache {
+func (c *channelCacheImpl) getSingleChannelCache(ch channels.ID) (SingleChannelCache, error) {
 
 	return c.getChannelCache(ch)
 }
@@ -269,13 +272,21 @@ func (c *channelCacheImpl) Remove(collectionID uint32, docIDs []string, startTim
 
 func (c *channelCacheImpl) GetChanges(ch channels.ID, options ChangesOptions) ([]*LogEntry, error) {
 
-	return c.getChannelCache(ch).GetChanges(options)
+	cache, err := c.getChannelCache(ch)
+	if err != nil {
+		return nil, err
+	}
+	return cache.GetChanges(options)
 }
 
-func (c *channelCacheImpl) GetCachedChanges(channel channels.ID) []*LogEntry {
+func (c *channelCacheImpl) GetCachedChanges(channel channels.ID) ([]*LogEntry, error) {
 	options := ChangesOptions{Since: SequenceID{Seq: 0}}
-	_, changes := c.getChannelCache(channel).GetCachedChanges(options)
-	return changes
+	cache, err := c.getChannelCache(channel)
+	if err != nil {
+		return nil, err
+	}
+	_, changes := cache.GetCachedChanges(options)
+	return changes, nil
 }
 
 // CleanAgedItems prunes the caches based on age of items. Error returned to fulfill BackgroundTaskFunc signature.
@@ -294,34 +305,43 @@ func (c *channelCacheImpl) cleanAgedItems(ctx context.Context) error {
 	return nil
 }
 
-func (c *channelCacheImpl) getChannelCache(channel channels.ID) SingleChannelCache {
+func (c *channelCacheImpl) getChannelCache(channel channels.ID) (SingleChannelCache, error) {
 
 	cacheValue, found := c.channelCaches.Get(channel)
 	if found {
-		return AsSingleChannelCache(cacheValue)
+		return AsSingleChannelCache(cacheValue), nil
 	}
 
 	// Attempt to add a singleChannelCache for the channel name.  If unsuccessful, return a bypass channel cache
 	singleChannelCache, ok := c.addChannelCache(channel)
 	if ok {
-		return singleChannelCache
+		return singleChannelCache, nil
+	}
+
+	queryHandler, err := c.queryHandlerFactory(channel.CollectionID)
+	if err != nil {
+		return nil, err
 	}
 
 	bypassChannelCache := &bypassChannelCache{
 		channel:      channel,
-		queryHandler: c.queryHandler,
+		queryHandler: queryHandler,
 	}
 	c.cacheStats.ChannelCacheBypassCount.Add(1)
-	return bypassChannelCache
+	return bypassChannelCache, nil
 
 }
 
-func (c *channelCacheImpl) getBypassChannelCache(ch channels.ID) SingleChannelCache {
+func (c *channelCacheImpl) getBypassChannelCache(ch channels.ID) (SingleChannelCache, error) {
+	queryHandler, err := c.queryHandlerFactory(ch.CollectionID)
+	if err != nil {
+		return nil, err
+	}
 	bypassChannelCache := &bypassChannelCache{
 		channel:      ch,
-		queryHandler: c.queryHandler,
+		queryHandler: queryHandler,
 	}
-	return bypassChannelCache
+	return bypassChannelCache, nil
 }
 
 // Converts an RangeSafeCollection value to a singleChannelCacheImpl.  On type
@@ -350,12 +370,19 @@ func (c *channelCacheImpl) addChannelCache(channel channels.ID) (*singleChannelC
 		return nil, false
 	}
 
+	// Return nil if a queryHandler can't be obtained for the collectionID
+	queryHandler, err := c.queryHandlerFactory(channel.CollectionID)
+	if err != nil {
+		return nil, false
+	}
+
 	c.validFromLock.Lock()
 
 	// Everything after the current high sequence will be added to the cache via the feed
 	validFrom := c.GetHighCacheSequence() + 1
 
-	singleChannelCache := newChannelCacheWithOptions(c.queryHandler, channel, validFrom, c.options, c.cacheStats)
+	singleChannelCache :=
+		newChannelCacheWithOptions(queryHandler, channel, validFrom, c.options, c.cacheStats)
 	cacheValue, created, cacheSize := c.channelCaches.GetOrInsert(channel, singleChannelCache)
 	c.validFromLock.Unlock()
 

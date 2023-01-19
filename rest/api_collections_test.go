@@ -9,6 +9,7 @@
 package rest
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
@@ -24,21 +25,27 @@ import (
 // TestCollectionsPutDocInKeyspace creates a collection and starts up a RestTester instance on it.
 // Ensures that various keyspaces can or can't be used to insert a doc in the collection.
 func TestCollectionsPutDocInKeyspace(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("CBG-2554 walrus returns access errors that CBS does not")
-	}
 	base.TestRequiresCollections(t)
+	const (
+		username = "alice"
+		password = "pass"
+		// dbName is the default name from RestTester
+		dbName = "db"
+	)
+	rt := NewRestTester(t, &RestTesterConfig{
+		DatabaseConfig: &DatabaseConfig{
+			DbConfig: DbConfig{
+				Users: map[string]*auth.PrincipalConfig{
+					username: {Password: base.StringPtr(password)},
+				},
+			},
+		},
+	})
+	defer rt.Close()
 
-	tb := base.GetTestBucket(t)
-	defer tb.Close()
-
-	// dbName is the default name from RestTester
-	dbName := "db"
-
-	ds := tb.GetNamedDataStore()
+	ds := rt.GetSingleDataStore()
 	dataStoreName, ok := base.AsDataStoreName(ds)
 	require.True(t, ok)
-
 	tests := []struct {
 		name           string
 		keyspace       string
@@ -53,7 +60,7 @@ func TestCollectionsPutDocInKeyspace(t *testing.T) {
 		*/
 		{
 			name:           "fully qualified",
-			keyspace:       strings.Join([]string{dbName, dataStoreName.ScopeName(), dataStoreName.CollectionName()}, base.ScopeCollectionSeparator),
+			keyspace:       rt.GetSingleKeyspace(),
 			expectedStatus: http.StatusCreated,
 		},
 		{
@@ -73,31 +80,8 @@ func TestCollectionsPutDocInKeyspace(t *testing.T) {
 		},
 	}
 
-	const (
-		username = "alice"
-		password = "pass"
-	)
 	for i, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-
-			rt := NewRestTester(t, &RestTesterConfig{
-				CustomTestBucket: tb.NoCloseClone(),
-				DatabaseConfig: &DatabaseConfig{
-					DbConfig: DbConfig{
-						Users: map[string]*auth.PrincipalConfig{
-							username: {Password: base.StringPtr(password)},
-						},
-						Scopes: ScopesConfig{
-							dataStoreName.ScopeName(): ScopeConfig{
-								Collections: map[string]CollectionConfig{
-									dataStoreName.CollectionName(): {},
-								},
-							},
-						},
-					},
-				},
-			})
-			defer rt.Close()
 
 			docID := fmt.Sprintf("doc%d", i)
 			path := fmt.Sprintf("/%s/%s", test.keyspace, docID)
@@ -118,13 +102,62 @@ func TestCollectionsPutDocInKeyspace(t *testing.T) {
 	}
 }
 
+// TestCollectionsPublicChannel ensures that a doc routed to the public channel is accessible by a user with no other access.
+func TestCollectionsPublicChannel(t *testing.T) {
+	const (
+		username = "alice"
+		password = "pass"
+	)
+
+	rt := NewRestTester(t, &RestTesterConfig{
+		DatabaseConfig: &DatabaseConfig{
+			DbConfig: DbConfig{
+				Users: map[string]*auth.PrincipalConfig{
+					username: {Password: base.StringPtr(password)},
+				},
+			},
+		},
+	})
+	defer rt.Close()
+
+	pathPublic := "/{{.keyspace}}/docpublic"
+	resp := rt.SendAdminRequest(http.MethodPut, pathPublic, `{"channels":["!"]}`)
+	RequireStatus(t, resp, http.StatusCreated)
+	resp = rt.SendUserRequestWithHeaders(http.MethodGet, pathPublic, "", nil, username, password)
+	RequireStatus(t, resp, http.StatusOK)
+
+	pathPrivate := "/{{.keyspace}}/docprivate"
+	resp = rt.SendAdminRequest(http.MethodPut, pathPrivate, `{"channels":["a"]}`)
+	RequireStatus(t, resp, http.StatusCreated)
+	resp = rt.SendUserRequestWithHeaders(http.MethodGet, pathPrivate, "", nil, username, password)
+	RequireStatus(t, resp, http.StatusForbidden)
+
+	resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.keyspace}}/_all_docs?include_docs=true", "", nil, username, password)
+	RequireStatus(t, resp, http.StatusOK)
+	t.Logf("all docs resp: %s", resp.BodyBytes())
+	var alldocsresp struct {
+		Rows      []interface{} `json:"rows"`
+		TotalRows int           `json:"total_rows"`
+	}
+	err := json.Unmarshal(resp.BodyBytes(), &alldocsresp)
+	require.NoError(t, err)
+	assert.Equal(t, 1, alldocsresp.TotalRows)
+	assert.Len(t, alldocsresp.Rows, 1)
+}
+
 // TestNoCollectionsPutDocWithKeyspace ensures that a keyspace can't be used to insert a doc on a database not configured for collections.
 func TestNoCollectionsPutDocWithKeyspace(t *testing.T) {
 	tb := base.GetTestBucket(t)
 	defer tb.Close()
 
-	rt := NewRestTester(t, &RestTesterConfig{
+	// Force use of no scopes intentionally
+	rt := NewRestTesterDefaultCollection(t, &RestTesterConfig{
 		CustomTestBucket: tb,
+		DatabaseConfig: &DatabaseConfig{
+			DbConfig: DbConfig{
+				AutoImport: true,
+			},
+		},
 	})
 	defer rt.Close()
 
@@ -155,28 +188,16 @@ func TestSingleCollectionDCP(t *testing.T) {
 		t.Skip("Test relies on import - needs xattrs")
 	}
 
-	tb := base.GetTestBucket(t)
-	defer tb.Close()
-
-	tc, err := base.AsCollection(tb.GetSingleDataStore())
-	require.NoError(t, err)
-
 	rt := NewRestTester(t, &RestTesterConfig{
-		CustomTestBucket: tb,
 		DatabaseConfig: &DatabaseConfig{
 			DbConfig: DbConfig{
 				AutoImport: true,
-				Scopes: ScopesConfig{
-					tc.ScopeName(): ScopeConfig{
-						Collections: map[string]CollectionConfig{
-							tc.CollectionName(): {},
-						},
-					},
-				},
 			},
 		},
 	})
 	defer rt.Close()
+
+	tc := rt.GetSingleDataStore()
 
 	const docID = "doc1"
 
@@ -248,6 +269,77 @@ func TestMultiCollectionDCP(t *testing.T) {
 	// require.NoError(t, rt.WaitForDoc(docID))
 }
 
+func TestMultiCollectionDynamicChannelAccess(t *testing.T) {
+	base.TestRequiresCollections(t)
+	tb := base.GetTestBucket(t)
+	defer tb.Close()
+
+	scopesConfig := GetCollectionsConfig(t, tb, 2)
+	dataStoreNames := GetDataStoreNamesFromScopesConfig(scopesConfig)
+	c1SyncFunction := `function(doc) {access(doc.username, [doc.grant1,doc.grant2]);
+                  channel(doc.chan);
+            }`
+
+	scopesConfig[dataStoreNames[0].ScopeName()].Collections[dataStoreNames[0].CollectionName()] = CollectionConfig{SyncFn: &c1SyncFunction}
+	scopesConfig[dataStoreNames[1].ScopeName()].Collections[dataStoreNames[1].CollectionName()] = CollectionConfig{SyncFn: &c1SyncFunction}
+
+	rtConfig := &RestTesterConfig{
+		CustomTestBucket: tb,
+		//PersistentConfig: true,
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
+			Scopes:           scopesConfig,
+			NumIndexReplicas: base.UintPtr(0),
+		},
+		},
+	}
+
+	rt := NewRestTesterMultipleCollections(t, rtConfig, 3)
+	defer rt.Close()
+
+	userPayload := `{
+      "password":"letmein",
+      "collection_access": {
+         "%s": {
+            "%s": {
+               "admin_channels":%s
+            }
+         }
+      }
+   }`
+	// Create a few users without any channel access
+	resp := rt.SendAdminRequest("PUT", "/db/_user/alice", fmt.Sprintf(userPayload, dataStoreNames[0].ScopeName(), dataStoreNames[0], `[]`))
+	RequireStatus(t, resp, http.StatusCreated)
+	resp = rt.SendAdminRequest("PUT", "/db/_user/bob", fmt.Sprintf(userPayload, dataStoreNames[0].ScopeName(), dataStoreNames[0], `[]`))
+	RequireStatus(t, resp, http.StatusCreated)
+	resp = rt.SendAdminRequest("PUT", "/db/_user/abby", fmt.Sprintf(userPayload, dataStoreNames[0].ScopeName(), dataStoreNames[0], `[]`))
+	RequireStatus(t, resp, http.StatusCreated)
+
+	// Write docs in each collection that runs the per-collection sync functions that grant users access to various channels
+	resp = rt.SendAdminRequest("PUT", "/{{.keyspace1}}/testDocBarA", `{"username": "alice", "grant1": "A", "chan":["A"]}`)
+	RequireStatus(t, resp, http.StatusCreated)
+	resp = rt.SendAdminRequest("PUT", "/{{.keyspace1}}/testDocBarB", `{"username": "bob", "grant1": "B", "chan":["B"]}`)
+	RequireStatus(t, resp, http.StatusCreated)
+	resp = rt.SendAdminRequest("PUT", "/{{.keyspace2}}/testDocBazAB", `{"username": "abby", "grant1": "A", "grant2": "B","chan":["A"]}`)
+	RequireStatus(t, resp, http.StatusCreated)
+	resp = rt.SendAdminRequest("PUT", "/{{.keyspace2}}/testDocBazB", `{"chan":["B"]}`)
+	RequireStatus(t, resp, http.StatusCreated)
+
+	// Ensure users get given access to the channel in the appropriate collection, and is not accidentally granting access for a channel of the same name in another collection
+	resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.keyspace1}}/testDocBarA", "", nil, "bob", "letmein")
+	RequireStatus(t, resp, http.StatusForbidden)
+	resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.keyspace1}}/testDocBarA", "", nil, "abby", "letmein")
+	RequireStatus(t, resp, http.StatusForbidden)
+	resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.keyspace1}}/testDocBarA", "", nil, "alice", "letmein")
+	RequireStatus(t, resp, http.StatusOK)
+	resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.keyspace2}}/testDocBazAB", "", nil, "alice", "letmein")
+	RequireStatus(t, resp, http.StatusForbidden)
+	resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.keyspace2}}/testDocBazB", "", nil, "bob", "letmein")
+	RequireStatus(t, resp, http.StatusForbidden)
+	resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.keyspace2}}/testDocBazB", "", nil, "abby", "letmein")
+	RequireStatus(t, resp, http.StatusOK)
+
+}
+
 // TestCollectionsBasicIndexQuery ensures that the bucket API is able to create an index on a collection
 // and query documents written to the collection.
 func TestCollectionsBasicIndexQuery(t *testing.T) {
@@ -257,37 +349,18 @@ func TestCollectionsBasicIndexQuery(t *testing.T) {
 
 	base.TestRequiresCollections(t)
 
-	tb := base.GetTestBucket(t)
-	defer tb.Close()
-
-	ds := tb.GetNamedDataStore()
-	dataStoreName, ok := base.AsDataStoreName(ds)
-	require.True(t, ok)
-
-	rt := NewRestTester(t, &RestTesterConfig{
-		CustomTestBucket: tb.NoCloseClone(),
-		DatabaseConfig: &DatabaseConfig{
-			DbConfig: DbConfig{
-				Scopes: ScopesConfig{
-					dataStoreName.ScopeName(): ScopeConfig{
-						Collections: map[string]CollectionConfig{
-							dataStoreName.CollectionName(): {},
-						},
-					},
-				},
-			},
-		},
-	})
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
 	const docID = "doc1"
 
-	keyspace := strings.Join([]string{"db", dataStoreName.ScopeName(), dataStoreName.CollectionName()}, base.ScopeCollectionSeparator)
+	collection := rt.GetSingleTestDatabaseCollection()
 
-	resp := rt.SendAdminRequest(http.MethodPut, fmt.Sprintf("/%s/%s", keyspace, docID), `{"test":true}`)
+	resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID, `{"test":true}`)
 	RequireStatus(t, resp, http.StatusCreated)
 
 	// use the rt.Bucket which has got the foo.bar scope/collection set up
+	ds := rt.GetSingleDataStore()
 	n1qlStore, ok := base.AsN1QLStore(ds)
 	require.True(t, ok)
 
@@ -315,8 +388,8 @@ func TestCollectionsBasicIndexQuery(t *testing.T) {
 
 	// if the index was created on a collection, the keyspace_id becomes the collection, along with additional fields for bucket and scope.
 	assert.Equal(t, rt.Bucket().GetName(), *indexMetaResult.BucketID)
-	assert.Equal(t, dataStoreName.ScopeName(), *indexMetaResult.ScopeID)
-	assert.Equal(t, dataStoreName.CollectionName(), *indexMetaResult.KeyspaceID)
+	assert.Equal(t, collection.ScopeName(), *indexMetaResult.ScopeID)
+	assert.Equal(t, collection.Name(), *indexMetaResult.KeyspaceID)
 
 	// try and query the document that we wrote via SG
 	res, err = n1qlStore.Query("SELECT test FROM "+base.KeyspaceQueryToken+" WHERE test = true", nil, base.RequestPlus, true)
@@ -350,16 +423,6 @@ func TestCollectionsSGIndexQuery(t *testing.T) {
 		invalidDocID = "doc2"
 	)
 
-	tb := base.GetTestBucket(t)
-	defer tb.Close()
-
-	ds := tb.GetNamedDataStore()
-
-	dataStoreName, ok := base.AsDataStoreName(ds)
-	require.True(t, ok)
-
-	keyspace := strings.Join([]string{"db", dataStoreName.ScopeName(), dataStoreName.CollectionName()}, base.ScopeCollectionSeparator)
-
 	rt := NewRestTester(t, &RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{
 			DbConfig: DbConfig{
@@ -370,21 +433,14 @@ func TestCollectionsSGIndexQuery(t *testing.T) {
 						Password:         base.StringPtr(password),
 					},
 				},
-				Scopes: ScopesConfig{
-					dataStoreName.ScopeName(): ScopeConfig{
-						Collections: map[string]CollectionConfig{
-							dataStoreName.CollectionName(): {},
-						},
-					},
-				},
 			},
 		},
 	})
 	defer rt.Close()
 
-	resp := rt.SendAdminRequest(http.MethodPut, fmt.Sprintf("/%s/%s", keyspace, validDocID), `{"test": true, "channels": ["`+validChannel+`"]}`)
+	resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+validDocID, `{"test": true, "channels": ["`+validChannel+`"]}`)
 	RequireStatus(t, resp, http.StatusCreated)
-	resp = rt.SendAdminRequest(http.MethodPut, fmt.Sprintf("/%s/%s", keyspace, invalidDocID), `{"test": true, "channels": ["`+invalidChannel+`"]}`)
+	resp = rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+invalidDocID, `{"test": true, "channels": ["`+invalidChannel+`"]}`)
 	RequireStatus(t, resp, http.StatusCreated)
 
 	resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/db/_all_docs", ``, nil, username, password)
@@ -400,12 +456,12 @@ func TestCollectionsSGIndexQuery(t *testing.T) {
 	require.Len(t, allDocsResponse.Rows, 1)
 	assert.Equal(t, validDocID, allDocsResponse.Rows[0].ID)
 
-	resp = rt.SendUserRequestWithHeaders(http.MethodGet, fmt.Sprintf("/%s/%s", keyspace, validDocID), ``, nil, username, password)
+	resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.keyspace}}/"+validDocID, ``, nil, username, password)
 	RequireStatus(t, resp, http.StatusOK)
-	resp = rt.SendUserRequestWithHeaders(http.MethodGet, fmt.Sprintf("/%s/%s", keyspace, invalidDocID), ``, nil, username, password)
+	resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.keyspace}}/"+invalidDocID, ``, nil, username, password)
 	RequireStatus(t, resp, http.StatusForbidden)
 
-	_, err := rt.WaitForChanges(1, "/db/_changes", username, false)
+	_, err := rt.WaitForChanges(1, "/{{.keyspace}}/_changes", username, false)
 	require.NoError(t, err)
 }
 

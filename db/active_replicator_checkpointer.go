@@ -22,6 +22,8 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 )
 
+const defaultExpectedSeqCompactionThreshold = 100
+
 // Checkpointer implements replicator checkpointing, by keeping two lists of sequences. Those which we expect to be processing revs for (either push or pull), and a map for those which we have done so on.
 // Periodically (based on a time interval), these two lists are used to calculate the highest sequence number which we've not had a gap for yet, and send a SetCheckpoint message for this sequence.
 type Checkpointer struct {
@@ -34,12 +36,12 @@ type Checkpointer struct {
 	// lock guards the expectedSeqs slice, and processedSeqs map
 	lock sync.Mutex
 	// expectedSeqs is an ordered list of sequence IDs we expect to process revs for
-	expectedSeqs []string
+	expectedSeqs []SequenceID
 	// processedSeqs is a map of sequence IDs we've processed revs for
-	processedSeqs map[string]struct{}
+	processedSeqs map[SequenceID]struct{}
 	// idAndRevLookup is a temporary map of DocID/RevID pair to sequence number,
 	// to handle cases where we receive a message that doesn't contain a sequence.
-	idAndRevLookup map[IDAndRev]string
+	idAndRevLookup map[IDAndRev]SequenceID
 	// ctx is used to stop the checkpointer goroutine
 	ctx context.Context
 	// lastRemoteCheckpointRevID is the last known remote checkpoint RevID.
@@ -47,7 +49,11 @@ type Checkpointer struct {
 	// lastLocalCheckpointRevID is the last known local checkpoint RevID.
 	lastLocalCheckpointRevID string
 	// lastCheckpointSeq is the last checkpointed sequence
-	lastCheckpointSeq string
+	lastCheckpointSeq SequenceID
+
+	// expectedSeqCompactionThreshold is the number of expected sequences that we'll tolerate before considering compacting away already processed sequences
+	// time vs. space complexity tradeoff, since we need to iterate over the expectedSeqs slice to compact it
+	expectedSeqCompactionThreshold int
 
 	stats CheckpointerStats
 
@@ -58,33 +64,39 @@ type Checkpointer struct {
 type statusFunc func(lastSeq string) *ReplicationStatus
 
 type CheckpointerStats struct {
-	ExpectedSequenceCount     int64
-	ProcessedSequenceCount    int64
-	AlreadyKnownSequenceCount int64
-	SetCheckpointCount        int64
-	GetCheckpointHitCount     int64
-	GetCheckpointMissCount    int64
+	ExpectedSequenceCount           int64
+	ExpectedSequenceLen             int
+	ExpectedSequenceLenPostCleanup  int
+	ProcessedSequenceCount          int64
+	ProcessedSequenceLen            int
+	ProcessedSequenceLenPostCleanup int
+	AlreadyKnownSequenceCount       int64
+	SetCheckpointCount              int64
+	GetCheckpointHitCount           int64
+	GetCheckpointMissCount          int64
 }
 
 func NewCheckpointer(ctx context.Context, clientID string, configHash string, blipSender *blip.Sender, replicatorConfig *ActiveReplicatorConfig, statusCallback statusFunc) *Checkpointer {
 	return &Checkpointer{
-		clientID:           clientID,
-		configHash:         configHash,
-		blipSender:         blipSender,
-		activeDB:           replicatorConfig.ActiveDB,
-		expectedSeqs:       make([]string, 0),
-		processedSeqs:      make(map[string]struct{}),
-		idAndRevLookup:     make(map[IDAndRev]string),
-		checkpointInterval: replicatorConfig.CheckpointInterval,
-		ctx:                ctx,
-		stats:              CheckpointerStats{},
-		statusCallback:     statusCallback,
+		clientID:                       clientID,
+		configHash:                     configHash,
+		blipSender:                     blipSender,
+		activeDB:                       replicatorConfig.ActiveDB,
+		expectedSeqs:                   make([]SequenceID, 0),
+		processedSeqs:                  make(map[SequenceID]struct{}),
+		idAndRevLookup:                 make(map[IDAndRev]SequenceID),
+		checkpointInterval:             replicatorConfig.CheckpointInterval,
+		ctx:                            ctx,
+		stats:                          CheckpointerStats{},
+		statusCallback:                 statusCallback,
+		expectedSeqCompactionThreshold: defaultExpectedSeqCompactionThreshold,
 	}
 }
 
-func (c *Checkpointer) AddAlreadyKnownSeq(seq ...string) {
+func (c *Checkpointer) AddAlreadyKnownSeq(seq ...SequenceID) {
 	select {
 	case <-c.ctx.Done():
+		base.TracefCtx(c.ctx, base.KeyReplicate, "Inside AddAlreadyKnownSeq and context has been cancelled")
 		// replicator already closed, bail out of checkpointing work
 		return
 	default:
@@ -99,9 +111,10 @@ func (c *Checkpointer) AddAlreadyKnownSeq(seq ...string) {
 	c.lock.Unlock()
 }
 
-func (c *Checkpointer) AddProcessedSeq(seq string) {
+func (c *Checkpointer) AddProcessedSeq(seq SequenceID) {
 	select {
 	case <-c.ctx.Done():
+		base.TracefCtx(c.ctx, base.KeyReplicate, "Inside AddProcessedSeq and context has been cancelled")
 		// replicator already closed, bail out of checkpointing work
 		return
 	default:
@@ -113,9 +126,10 @@ func (c *Checkpointer) AddProcessedSeq(seq string) {
 	c.lock.Unlock()
 }
 
-func (c *Checkpointer) AddProcessedSeqIDAndRev(seq string, idAndRev IDAndRev) {
+func (c *Checkpointer) AddProcessedSeqIDAndRev(seq *SequenceID, idAndRev IDAndRev) {
 	select {
 	case <-c.ctx.Done():
+		base.TracefCtx(c.ctx, base.KeyReplicate, "Inside AddProcessedSeqIDAndRev and context has been cancelled")
 		// replicator already closed, bail out of checkpointing work
 		return
 	default:
@@ -123,19 +137,23 @@ func (c *Checkpointer) AddProcessedSeqIDAndRev(seq string, idAndRev IDAndRev) {
 
 	c.lock.Lock()
 
-	if seq == "" {
-		seq, _ = c.idAndRevLookup[idAndRev]
+	if seq == nil {
+		foundSeq, ok := c.idAndRevLookup[idAndRev]
+		if !ok {
+			base.WarnfCtx(c.ctx, "Unable to find matching sequence for %q / %q", base.UD(idAndRev.DocID), idAndRev.RevID)
+		}
+		seq = &foundSeq
 	}
 	// should remove entry in the map even if we have a seq available
 	delete(c.idAndRevLookup, idAndRev)
 
-	c.processedSeqs[seq] = struct{}{}
+	c.processedSeqs[*seq] = struct{}{}
 	c.stats.ProcessedSequenceCount++
 
 	c.lock.Unlock()
 }
 
-func (c *Checkpointer) AddExpectedSeqs(seqs ...string) {
+func (c *Checkpointer) AddExpectedSeqs(seqs ...SequenceID) {
 	if len(seqs) == 0 {
 		// nothing to do
 		return
@@ -144,6 +162,7 @@ func (c *Checkpointer) AddExpectedSeqs(seqs ...string) {
 	select {
 	case <-c.ctx.Done():
 		// replicator already closed, bail out of checkpointing work
+		base.TracefCtx(c.ctx, base.KeyReplicate, "Inside AddExpectedSeqs and context has been cancelled")
 		return
 	default:
 	}
@@ -154,7 +173,7 @@ func (c *Checkpointer) AddExpectedSeqs(seqs ...string) {
 	c.lock.Unlock()
 }
 
-func (c *Checkpointer) AddExpectedSeqIDAndRevs(seqs map[IDAndRev]string) {
+func (c *Checkpointer) AddExpectedSeqIDAndRevs(seqs map[IDAndRev]SequenceID) {
 	if len(seqs) == 0 {
 		// nothing to do
 		return
@@ -163,6 +182,7 @@ func (c *Checkpointer) AddExpectedSeqIDAndRevs(seqs map[IDAndRev]string) {
 	select {
 	case <-c.ctx.Done():
 		// replicator already closed, bail out of checkpointing work
+		base.TracefCtx(c.ctx, base.KeyReplicate, "Inside AddExpectedSeqIDAndRevs and context has been cancelled")
 		return
 	default:
 	}
@@ -187,6 +207,7 @@ func (c *Checkpointer) Start() {
 			for {
 				select {
 				case <-ticker.C:
+					base.TracefCtx(c.ctx, base.KeyReplicate, "calling checkpoint now. context is not cancelled here")
 					c.CheckpointNow()
 				case <-c.ctx.Done():
 					base.DebugfCtx(c.ctx, base.KeyReplicate, "checkpointer goroutine stopped")
@@ -207,12 +228,12 @@ func (c *Checkpointer) CheckpointNow() {
 	defer c.lock.Unlock()
 
 	// Retrieve status after obtaining the lock to ensure
-	status := c.statusCallback(c._calculateSafeProcessedSeq())
+	status := c.statusCallback(c._calculateSafeProcessedSeq().String())
 
 	base.TracefCtx(c.ctx, base.KeyReplicate, "checkpointer: running")
 
 	seq := c._updateCheckpointLists()
-	if seq == "" {
+	if seq == nil {
 		return
 	}
 
@@ -232,26 +253,50 @@ func (c *Checkpointer) Stats() CheckpointerStats {
 }
 
 // _updateCheckpointLists determines the highest checkpointable sequence, and trims the processedSeqs/expectedSeqs lists up to this point.
-func (c *Checkpointer) _updateCheckpointLists() (safeSeq string) {
-	base.TracefCtx(c.ctx, base.KeyReplicate, "checkpointer: _updateCheckpointLists(expectedSeqs: %v, procssedSeqs: %v)", c.expectedSeqs, c.processedSeqs)
+// We will also remove all but the last processed sequence as we know we're able to checkpoint safely up to that point without leaving any intermediate sequence numbers around.
+func (c *Checkpointer) _updateCheckpointLists() (safeSeq *SequenceID) {
+	base.TracefCtx(c.ctx, base.KeyReplicate, "checkpointer: _updateCheckpointLists(expectedSeqs: %v, processedSeqs: %v)", c.expectedSeqs, c.processedSeqs)
+	base.TracefCtx(c.ctx, base.KeyReplicate, "Inside update checkpoint lists")
+
+	c.stats.ExpectedSequenceLen = len(c.expectedSeqs)
+	c.stats.ProcessedSequenceLen = len(c.processedSeqs)
 
 	maxI := c._calculateSafeExpectedSeqsIdx()
-	if maxI == -1 {
-		// nothing to do
-		return ""
+
+	if maxI > -1 {
+		seq := c.expectedSeqs[maxI]
+
+		// removes to-be checkpointed sequences from processedSeqs list
+		for i := 0; i <= maxI; i++ {
+			removeSeq := c.expectedSeqs[i]
+			delete(c.processedSeqs, removeSeq)
+			base.TracefCtx(c.ctx, base.KeyReplicate, "checkpointer: _updateCheckpointLists removed seq %v from processedSeqs map", removeSeq)
+		}
+
+		// trim expectedSeqs list from beginning up to first unprocessed seq
+		c.expectedSeqs = c.expectedSeqs[maxI+1:]
+		safeSeq = &seq
 	}
 
-	safeSeq = c.expectedSeqs[maxI]
-
-	// removes to-be checkpointed sequences from processedSeqs list
-	for i := 0; i <= maxI; i++ {
-		removeSeq := c.expectedSeqs[i]
-		delete(c.processedSeqs, removeSeq)
-		base.TracefCtx(c.ctx, base.KeyReplicate, "checkpointer: _updateCheckpointLists removed seq %v from processedSeqs map", removeSeq)
+	// if we have many remaining expectedSeqs, see if we can shrink the lists even more
+	// compact contiguous blocks of sequences by keeping only the last processed sequence in both lists
+	if len(c.expectedSeqs) > c.expectedSeqCompactionThreshold {
+		// start at the one before the end of the list (since we know we need to retain that one anyway, if it's processed)
+		for i := len(c.expectedSeqs) - 2; i >= 0; i-- {
+			current := c.expectedSeqs[i]
+			next := c.expectedSeqs[i+1]
+			_, processedCurrent := c.processedSeqs[current]
+			_, processedNext := c.processedSeqs[next]
+			if processedCurrent && processedNext {
+				// remove the current sequence from both sets, since we know we've also processed the next sequence and are able to checkpoint that
+				delete(c.processedSeqs, current)
+				c.expectedSeqs = append(c.expectedSeqs[:i], c.expectedSeqs[i+1:]...)
+			}
+		}
 	}
 
-	// trim expectedSeqs list for all processed seqs
-	c.expectedSeqs = c.expectedSeqs[maxI+1:]
+	c.stats.ExpectedSequenceLenPostCleanup = len(c.expectedSeqs)
+	c.stats.ProcessedSequenceLenPostCleanup = len(c.processedSeqs)
 
 	return safeSeq
 }
@@ -262,10 +307,7 @@ func (c *Checkpointer) _calculateSafeExpectedSeqsIdx() int {
 	safeIdx := -1
 
 	sort.Slice(c.expectedSeqs, func(i, j int) bool {
-		seqI, _ := parseIntegerSequenceID(c.expectedSeqs[i])
-		seqJ, _ := parseIntegerSequenceID(c.expectedSeqs[j])
-
-		return seqI.Before(seqJ)
+		return c.expectedSeqs[i].Before(c.expectedSeqs[j])
 	})
 
 	// iterates over each (ordered) expected sequence and stops when we find the first sequence we've yet to process a rev message for
@@ -280,13 +322,13 @@ func (c *Checkpointer) _calculateSafeExpectedSeqsIdx() int {
 }
 
 // calculateSafeProcessedSeq returns the sequence last processed that is able to be checkpointed, or the last checkpointed sequence.
-func (c *Checkpointer) calculateSafeProcessedSeq() string {
+func (c *Checkpointer) calculateSafeProcessedSeq() SequenceID {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	return c._calculateSafeProcessedSeq()
 }
 
-func (c *Checkpointer) _calculateSafeProcessedSeq() string {
+func (c *Checkpointer) _calculateSafeProcessedSeq() SequenceID {
 	idx := c._calculateSafeExpectedSeqsIdx()
 	if idx == -1 {
 		return c.lastCheckpointSeq
@@ -414,25 +456,31 @@ func (c *Checkpointer) fetchCheckpoints() (*ReplicationStatus, error) {
 		checkpointSeq = ""
 	}
 
-	base.InfofCtx(c.ctx, base.KeyReplicate, "using checkpointed seq: %q", checkpointSeq)
-
-	if checkpointSeq == "" {
-		c.stats.GetCheckpointMissCount++
+	var parsedCheckpointSeq SequenceID
+	if checkpointSeq != "" {
+		parsedCheckpointSeq, err = ParsePlainSequenceID(checkpointSeq)
+		if err == nil {
+			c.stats.GetCheckpointHitCount++
+		} else {
+			base.WarnfCtx(c.ctx, "couldn't parse checkpoint sequence %q, unable to use previous checkpoint: %v", checkpointSeq, err)
+			c.stats.GetCheckpointMissCount++
+		}
 	} else {
-		c.stats.GetCheckpointHitCount++
+		c.stats.GetCheckpointMissCount++
 	}
 
-	c.lastCheckpointSeq = checkpointSeq
+	base.InfofCtx(c.ctx, base.KeyReplicate, "using checkpointed seq: %q", parsedCheckpointSeq.String())
+	c.lastCheckpointSeq = parsedCheckpointSeq
 
 	return status, nil
 }
 
-func (c *Checkpointer) _setCheckpoints(seq string, status *ReplicationStatus) (err error) {
-	base.TracefCtx(c.ctx, base.KeyReplicate, "setCheckpoints(%v)", seq)
-
+func (c *Checkpointer) _setCheckpoints(seq *SequenceID, status *ReplicationStatus) (err error) {
+	seqStr := seq.String()
+	base.TracefCtx(c.ctx, base.KeyReplicate, "setCheckpoints(%v)", seqStr)
 	c.lastLocalCheckpointRevID, err = c.setLocalCheckpointWithRetry(
 		&replicationCheckpoint{
-			LastSeq:    seq,
+			LastSeq:    seqStr,
 			Rev:        c.lastLocalCheckpointRevID,
 			ConfigHash: c.configHash,
 			Status:     status,
@@ -443,7 +491,7 @@ func (c *Checkpointer) _setCheckpoints(seq string, status *ReplicationStatus) (e
 
 	c.lastRemoteCheckpointRevID, err = c.setRemoteCheckpointWithRetry(
 		&replicationCheckpoint{
-			LastSeq:    seq,
+			LastSeq:    seqStr,
 			Rev:        c.lastRemoteCheckpointRevID,
 			ConfigHash: c.configHash,
 		})
@@ -451,7 +499,7 @@ func (c *Checkpointer) _setCheckpoints(seq string, status *ReplicationStatus) (e
 		return err
 	}
 
-	c.lastCheckpointSeq = seq
+	c.lastCheckpointSeq = *seq
 	c.stats.SetCheckpointCount++
 
 	return nil
@@ -581,6 +629,7 @@ func (c *Checkpointer) waitForExpectedSequences() error {
 	waitCount := 0
 	for waitCount < 100 {
 		expectedCount, processedCount := c.getCounts()
+		base.TracefCtx(c.ctx, base.KeyReplicate, "Inside waitForExpectedSequences loop expected %d and processed %d", expectedCount, processedCount)
 		if expectedCount == 0 {
 			return nil
 		}
@@ -590,6 +639,7 @@ func (c *Checkpointer) waitForExpectedSequences() error {
 			// in case of bugs that result in expectedCount==processedCount, but the
 			// sets are not identical.  In that scenario, want to sleep before retrying
 			updatedExpectedCount, _ := c.getCounts()
+			base.TracefCtx(c.ctx, base.KeyReplicate, "Inside waitForExpectedSequences updated expected count %d", updatedExpectedCount)
 			if updatedExpectedCount == 0 {
 				return nil
 			}

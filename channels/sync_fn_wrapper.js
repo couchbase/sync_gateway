@@ -178,7 +178,8 @@ function() {
                     // marshaling/unmarshaling in the common case where there's no value.
                     meta = {xattrs: null};
                     if (metaKey != "") {
-                        meta.xattrs = {[metaKey]: JSON.parse(metaValueJSON)};
+                        var metaVal = metaValueJSON ? JSON.parse(metaValueJSON) : null;
+                        meta.xattrs = {[metaKey]: metaVal};
                     }
                 }
             }

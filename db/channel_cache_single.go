@@ -102,7 +102,7 @@ type SingleChannelCache interface {
 
 type singleChannelCacheImpl struct {
 	channelID        channels.ID          // The channel
-	queryHandler     ChannelQueryHandler  // Database connection (used for view queries)
+	queryHandler     ChannelQueryHandler  // Channel query function
 	logs             LogEntries           // Log entries in sequence order
 	validFrom        uint64               // First sequence that logs is valid for, not necessarily the seq number of a change entry.
 	lock             sync.RWMutex         // Controls access to logs, validFrom
@@ -413,7 +413,7 @@ func (c *singleChannelCacheImpl) GetChanges(options ChangesOptions) ([]*LogEntry
 	// overlap, which helps confirm that we've got everything.
 	c.cacheStats.ChannelCacheMisses.Add(1)
 	endSeq := cacheValidFrom
-	resultFromQuery, err := c.queryHandler.getChangesInChannelFromQuery(options.LoggingCtx, c.channelID, startSeq, endSeq, options.Limit, options.ActiveOnly)
+	resultFromQuery, err := c.queryHandler.getChangesInChannelFromQuery(options.LoggingCtx, c.channelID.Name, startSeq, endSeq, options.Limit, options.ActiveOnly)
 	if err != nil {
 		return nil, err
 	}
@@ -428,7 +428,7 @@ func (c *singleChannelCacheImpl) GetChanges(options ChangesOptions) ([]*LogEntry
 			resultValidTo = resultFromQuery[numResults-1].Sequence
 		}
 		if len(resultFromCache) < c.options.ChannelCacheMaxLength {
-			c.prependChanges(resultFromQuery, startSeq, resultValidTo)
+			c.prependChanges(options.LoggingCtx, resultFromQuery, startSeq, resultValidTo)
 		}
 	}
 
@@ -573,10 +573,9 @@ func (c *singleChannelCacheImpl) insertChange(log *LogEntries, change *LogEntry)
 // the cache.
 //
 // Returns the number of entries actually prepended.
-func (c *singleChannelCacheImpl) prependChanges(changes LogEntries, changesValidFrom uint64, changesValidTo uint64) int {
+func (c *singleChannelCacheImpl) prependChanges(logCtx context.Context, changes LogEntries, changesValidFrom uint64, changesValidTo uint64) int {
 	c.lock.Lock()
 	defer c.lock.Unlock()
-	logCtx := context.TODO()
 
 	// If set of changes to prepend is empty, check whether validFrom should be updated
 	if len(changes) == 0 {
@@ -836,7 +835,7 @@ type bypassChannelCache struct {
 func (b *bypassChannelCache) GetChanges(options ChangesOptions) ([]*LogEntry, error) {
 	startSeq := options.Since.SafeSequence() + 1
 	endSeq := uint64(math.MaxUint64)
-	return b.queryHandler.getChangesInChannelFromQuery(options.LoggingCtx, b.channel, startSeq, endSeq, options.Limit, options.ActiveOnly)
+	return b.queryHandler.getChangesInChannelFromQuery(options.LoggingCtx, b.channel.Name, startSeq, endSeq, options.Limit, options.ActiveOnly)
 }
 
 // No cached changes for bypassChannelCache

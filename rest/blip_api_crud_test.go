@@ -431,10 +431,8 @@ func TestBlipSubChangesDocIDFilter(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)
 
-	bt, err := NewBlipTester(t)
-	assert.NoError(t, err, "Error creating BlipTester")
+	bt := NewBlipTesterDefaultCollection(t)
 	defer bt.Close()
-
 	// Counter/Waitgroup to help ensure that all callbacks on continuous changes handler are received
 	receivedChangesWg := sync.WaitGroup{}
 	receivedCaughtUpChange := false
@@ -757,15 +755,15 @@ func TestPublicPortAuthentication(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)
 
 	// Create bliptester that is connected as user1, with access to the user1 channel
-	btUser1, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
-		connectingUsername: "user1",
-		connectingPassword: "1234",
-	})
-	require.NoError(t, err, "Error creating BlipTester")
+	btUser1 := NewBlipTesterDefaultCollectionFromSpec(t, // CBG-2619: make collection aware
+		BlipTesterSpec{
+			connectingUsername: "user1",
+			connectingPassword: "1234",
+		})
 	defer btUser1.Close()
 
 	// Send the user1 doc
-	_, _, _, err = btUser1.SendRev(
+	_, _, _, err := btUser1.SendRev(
 		"foo",
 		"1-abc",
 		[]byte(`{"key": "val", "channels": ["user1"]}`),
@@ -820,10 +818,13 @@ function(doc, oldDoc) {
 }
 
 `
-	rtConfig := RestTesterConfig{SyncFn: syncFunction}
-	var rt = NewRestTester(t, &rtConfig)
+	rtConfig := RestTesterConfig{
+		SyncFn: syncFunction,
+	}
+	var rt = NewRestTesterDefaultCollection(t, &rtConfig) // CBG-2619: make collection aware
 	defer rt.Close()
 	ctx := rt.Context()
+	collection := rt.GetSingleTestDatabaseCollection()
 
 	// Create bliptester that is connected as user1, with no access to channel ABC
 	bt, err := NewBlipTesterFromSpecWithRT(t, &BlipTesterSpec{
@@ -852,7 +853,7 @@ function(doc, oldDoc) {
 	userWaiter := userDb.NewUserWaiter()
 
 	// Update the user to grant them access to ABC
-	response := rt.SendAdminRequest("PUT", "/db/_user/user1", `{"admin_channels":["ABC"]}`)
+	response := rt.SendAdminRequest("PUT", "/db/_user/user1", GetUserPayload(t, "user1", "", "", collection, []string{"ABC"}, nil))
 	RequireStatus(t, response, 200)
 
 	// Wait for notification
@@ -888,7 +889,7 @@ function(doc, oldDoc) {
 `
 
 	rtConfig := RestTesterConfig{SyncFn: syncFunction}
-	var rt = NewRestTester(t, &rtConfig)
+	rt := NewRestTesterDefaultCollection(t, &rtConfig) // CBG-2619
 	defer rt.Close()
 
 	// Create bliptester that is connected as user1, with no access to channel ABC
@@ -1013,7 +1014,7 @@ function(doc, oldDoc) {
 
 `
 	rtConfig := RestTesterConfig{SyncFn: syncFunction}
-	var rt = NewRestTester(t, &rtConfig)
+	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
 	// Create bliptester that is connected as user1, with no access to channel ABC
@@ -1148,7 +1149,7 @@ func TestBlipSendAndGetRev(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)
 
-	rt := NewRestTester(t, nil)
+	rt := NewRestTesterDefaultCollection(t, nil) // CBG-2619: make collection aware
 	defer rt.Close()
 	btSpec := BlipTesterSpec{
 		connectingUsername: "user1",
@@ -1165,7 +1166,7 @@ func TestBlipSendAndGetRev(t *testing.T) {
 	assert.Equal(t, "", resp.Properties["Error-Code"])
 
 	// Get non-deleted rev
-	response := bt.restTester.SendAdminRequest("GET", "/db/sendAndGetRev?rev=1-abc", "")
+	response := bt.restTester.SendAdminRequest("GET", "/{{.keyspace}}/sendAndGetRev?rev=1-abc", "")
 	RequireStatus(t, response, 200)
 	var responseBody RestDocument
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &responseBody), "Error unmarshalling GET doc response")
@@ -1214,7 +1215,7 @@ func TestBlipSendAndGetLargeNumberRev(t *testing.T) {
 	assert.Equal(t, "", resp.Properties["Error-Code"])
 
 	// Get non-deleted rev
-	response := bt.restTester.SendAdminRequest("GET", "/db/largeNumberRev?rev=1-abc", "")
+	response := bt.restTester.SendAdminRequest("GET", "/{{.keyspace}}/largeNumberRev?rev=1-abc", "")
 	RequireStatus(t, response, 200) // Check the raw bytes, because unmarshalling the response would be another opportunity for the number to get modified
 	responseString := string(response.Body.Bytes())
 	if !strings.Contains(responseString, `9223372036854775807`) {
@@ -1268,7 +1269,7 @@ func TestBlipSetCheckpoint(t *testing.T) {
 	assert.Equal(t, "0-1", checkpointRev)
 
 	// Validate checkpoint existence in bucket (local file name "/" needs to be URL encoded as %252F)
-	response := rt.SendAdminRequest("GET", "/db/_local/checkpoint%252Ftestclient", "")
+	response := rt.SendAdminRequest("GET", "/{{.keyspace}}/_local/checkpoint%252Ftestclient", "")
 	RequireStatus(t, response, 200)
 	var responseBody map[string]interface{}
 	err = base.JSONUnmarshal(response.Body.Bytes(), &responseBody)
@@ -1311,8 +1312,10 @@ func TestReloadUser(t *testing.T) {
     `
 
 	// Setup
-	rtConfig := RestTesterConfig{SyncFn: syncFn}
-	rt := NewRestTester(t, &rtConfig)
+	rtConfig := RestTesterConfig{
+		SyncFn: syncFn,
+	}
+	rt := NewRestTesterDefaultCollection(t, &rtConfig) // CBG-2619: make collection aware
 	defer rt.Close()
 	ctx := rt.Context()
 	bt, err := NewBlipTesterFromSpecWithRT(t, &BlipTesterSpec{
@@ -1387,7 +1390,7 @@ func TestAccessGrantViaSyncFunction(t *testing.T) {
 	)
 
 	// Put document that triggers access grant for user to channel PBS
-	response := rt.SendAdminRequest("PUT", "/db/access1", `{"accessUser":"user1", "accessChannel":["PBS"]}`)
+	response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/access1", `{"accessUser":"user1", "accessChannel":["PBS"]}`)
 	RequireStatus(t, response, 201)
 
 	// Add another doc in the PBS channel
@@ -1412,12 +1415,12 @@ func TestAccessGrantViaAdminApi(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)
 
 	// Create blip tester
-	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
+	bt := NewBlipTesterDefaultCollectionFromSpec(t, BlipTesterSpec{
 		connectingUsername: "user1",
 		connectingPassword: "1234",
 	})
-	require.NoError(t, err, "Unexpected error creating BlipTester")
 	defer bt.Close()
+	collection := bt.restTester.GetSingleTestDatabaseCollection()
 
 	// Add a doc in the PBS channel
 	_, _, _, _ = bt.SendRev(
@@ -1428,7 +1431,7 @@ func TestAccessGrantViaAdminApi(t *testing.T) {
 	)
 
 	// Update the user doc to grant access to PBS
-	response := bt.restTester.SendAdminRequest("PUT", "/db/_user/user1", `{"admin_channels":["user1", "PBS"]}`)
+	response := bt.restTester.SendAdminRequest("PUT", "/db/_user/user1", GetUserPayload(t, "user1", "", "", collection, []string{"user1", "PBS"}, nil))
 	RequireStatus(t, response, 200)
 
 	// Add another doc in the PBS channel
@@ -1673,7 +1676,7 @@ func TestGetRemovedDoc(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)
 
-	rt := NewRestTester(t, nil)
+	rt := NewRestTesterDefaultCollection(t, nil) // CBG-2619: make collection aware
 	defer rt.Close()
 	btSpec := BlipTesterSpec{
 		connectingUsername: "user1",
@@ -1799,7 +1802,7 @@ func TestMissingNoRev(t *testing.T) {
 
 	// Purge one doc
 	doc0Id := fmt.Sprintf("doc-%d", 0)
-	err = targetDb.GetSingleDatabaseCollectionWithUser().Purge(ctx, doc0Id)
+	err = rt.GetSingleTestDatabaseCollectionWithUser().Purge(ctx, doc0Id)
 	assert.NoError(t, err, "failed")
 
 	// Flush rev cache
@@ -1826,7 +1829,7 @@ func TestBlipPullRevMessageHistory(t *testing.T) {
 		}},
 		GuestEnabled: true,
 	}
-	rt := NewRestTester(t, &rtConfig)
+	rt := NewRestTesterDefaultCollection(t, &rtConfig) // CBG-2619: make collection aware
 	defer rt.Close()
 
 	client, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
@@ -1838,7 +1841,7 @@ func TestBlipPullRevMessageHistory(t *testing.T) {
 	assert.NoError(t, err)
 
 	// create doc1 rev 1-0335a345b6ffed05707ccc4cbc1b67f4
-	resp := rt.SendAdminRequest(http.MethodPut, "/db/doc1", `{"greetings": [{"hello": "world!"}, {"hi": "alice"}]}`)
+	resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc1", `{"greetings": [{"hello": "world!"}, {"hi": "alice"}]}`)
 	assert.Equal(t, http.StatusCreated, resp.Code)
 
 	data, ok := client.WaitForRev("doc1", "1-0335a345b6ffed05707ccc4cbc1b67f4")
@@ -1846,7 +1849,7 @@ func TestBlipPullRevMessageHistory(t *testing.T) {
 	assert.Equal(t, `{"greetings":[{"hello":"world!"},{"hi":"alice"}]}`, string(data))
 
 	// create doc1 rev 2-959f0e9ad32d84ff652fb91d8d0caa7e
-	resp = rt.SendAdminRequest(http.MethodPut, "/db/doc1?rev=1-0335a345b6ffed05707ccc4cbc1b67f4", `{"greetings": [{"hello": "world!"}, {"hi": "alice"}, {"howdy": 12345678901234567890}]}`)
+	resp = rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc1?rev=1-0335a345b6ffed05707ccc4cbc1b67f4", `{"greetings": [{"hello": "world!"}, {"hi": "alice"}, {"howdy": 12345678901234567890}]}`)
 	assert.Equal(t, http.StatusCreated, resp.Code)
 
 	data, ok = client.WaitForRev("doc1", "2-26359894b20d89c97638e71c40482f28")
@@ -1863,7 +1866,7 @@ func TestActiveOnlyContinuous(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
-	rt := NewRestTester(t, &RestTesterConfig{GuestEnabled: true})
+	rt := NewRestTesterDefaultCollection(t, &RestTesterConfig{GuestEnabled: true}) // CBG-2619: make collection aware
 	defer rt.Close()
 
 	btc, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
@@ -1885,7 +1888,7 @@ func TestActiveOnlyContinuous(t *testing.T) {
 	assert.Equal(t, `{"test":true}`, string(rev))
 
 	// delete the doc and make sure the client still gets the tombstone replicated
-	resp = rt.SendAdminRequest(http.MethodDelete, "/db/doc1?rev="+docResp.Rev, ``)
+	resp = rt.SendAdminRequest(http.MethodDelete, "/{{.keyspace}}/doc1?rev="+docResp.Rev, ``)
 	RequireStatus(t, resp, http.StatusOK)
 	require.NoError(t, base.JSONUnmarshal(resp.Body.Bytes(), &docResp))
 
@@ -1946,10 +1949,11 @@ func TestRemovedMessageWithAlternateAccess(t *testing.T) {
 	defer db.SuspendSequenceBatching()()
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
-	rt := NewRestTester(t, nil)
+	rt := NewRestTesterDefaultCollection(t, nil) // CBG-2619: make collection aware
 	defer rt.Close()
+	collection := rt.GetSingleTestDatabaseCollection()
 
-	resp := rt.SendAdminRequest("PUT", "/db/_user/user", `{"admin_channels": ["A", "B"], "password": "test"}`)
+	resp := rt.SendAdminRequest("PUT", "/db/_user/user", GetUserPayload(t, "user", "test", "", collection, []string{"A", "B"}, nil))
 	RequireStatus(t, resp, http.StatusCreated)
 
 	btc, err := NewBlipTesterClientOptsWithRT(t, rt, &BlipTesterClientOpts{
@@ -2052,10 +2056,11 @@ func TestRemovedMessageWithAlternateAccessAndChannelFilteredReplication(t *testi
 	defer db.SuspendSequenceBatching()()
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
-	rt := NewRestTester(t, nil)
+	rt := NewRestTesterDefaultCollection(t, nil) // CBG-2619: make collection aware
 	defer rt.Close()
+	collection := rt.GetSingleTestDatabaseCollection()
 
-	resp := rt.SendAdminRequest("PUT", "/db/_user/user", `{"admin_channels": ["A", "B"], "password": "test"}`)
+	resp := rt.SendAdminRequest("PUT", "/db/_user/user", GetUserPayload(t, "user", "test", "", collection, []string{"A", "B"}, nil))
 	RequireStatus(t, resp, http.StatusCreated)
 
 	btc, err := NewBlipTesterClientOptsWithRT(t, rt, &BlipTesterClientOpts{
@@ -2354,7 +2359,10 @@ func TestBlipInternalPropertiesHandling(t *testing.T) {
 	}
 
 	// Setup
-	rt := NewRestTester(t, &RestTesterConfig{GuestEnabled: true})
+	rt := NewRestTesterDefaultCollection(t, // CBG-2619: make collection aware
+		&RestTesterConfig{
+			GuestEnabled: true,
+		})
 	defer rt.Close()
 
 	client, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
@@ -2527,10 +2535,11 @@ func TestSendRevisionNoRevHandling(t *testing.T) {
 	for _, test := range testCases {
 		t.Run(fmt.Sprintf("%s", test.error), func(t *testing.T) {
 			docName := fmt.Sprintf("%s", test.error)
-			rt := NewRestTester(t, &RestTesterConfig{
-				GuestEnabled:     true,
-				CustomTestBucket: base.GetTestBucket(t).LeakyBucketClone(base.LeakyBucketConfig{}),
-			})
+			rt := NewRestTesterDefaultCollection(t, // CBG-2619: make collection aware
+				&RestTesterConfig{
+					GuestEnabled:     true,
+					CustomTestBucket: base.GetTestBucket(t).LeakyBucketClone(base.LeakyBucketConfig{}),
+				})
 			defer rt.Close()
 
 			leakyDataStore, ok := base.AsLeakyDataStore(rt.Bucket().DefaultDataStore())

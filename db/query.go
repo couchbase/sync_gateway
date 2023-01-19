@@ -14,7 +14,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math"
 	"strings"
 	"time"
 
@@ -27,6 +26,10 @@ import (
 type QueryIdRow struct {
 	Id string
 }
+
+const (
+	N1QLMaxInt64 = 9223372036854775000 // Use this for compatibly with all server versions, see MB-54930 for discussion
+)
 
 const (
 	QueryTypeAccess              = "access"
@@ -521,7 +524,6 @@ func (context *DatabaseCollection) QueryChannels(ctx context.Context, channelNam
 	// (which is backed by IndexAllDocs) is used.  The QueryStarChannel result schema is a subset of the
 	// QueryChannels result schema (removal handling isn't needed for the star channel).
 	channelQueryStatement, params := context.buildChannelsQuery(channelName, startSeq, endSeq, limit, activeOnly)
-
 	return N1QLQueryWithStats(ctx, context.dataStore, QueryChannels.name, channelQueryStatement, params, base.RequestPlus, QueryChannels.adhoc, context.dbStats(), context.slowQueryWarningThreshold())
 }
 
@@ -568,17 +570,25 @@ func (context *DatabaseCollection) buildChannelsQuery(channelName string, startS
 	// Channel queries use a prepared query
 	params = make(map[string]interface{}, 3)
 	params[QueryParamChannelName] = channelName
-	params[QueryParamStartSeq] = startSeq
+	params[QueryParamStartSeq] = N1QLSafeUint64(startSeq)
+	// If endSeq isn't defined, set to max int64.
 	if endSeq == 0 {
-		// If endSeq isn't defined, set to max uint64
-		endSeq = math.MaxUint64
-	} else if endSeq < math.MaxUint64 {
+		endSeq = N1QLMaxInt64
+	} else if endSeq < N1QLMaxInt64 {
 		// channels query isn't based on inclusive end - add one to ensure complete result set
 		endSeq++
 	}
-	params[QueryParamEndSeq] = endSeq
+	params[QueryParamEndSeq] = N1QLSafeUint64(endSeq)
 
 	return channelQueryStatement, params
+}
+
+// N1QL only supports int64 values (https://issues.couchbase.com/browse/MB-24464), so restrict parameter values to this range
+func N1QLSafeUint64(value uint64) uint64 {
+	if value > N1QLMaxInt64 {
+		return N1QLMaxInt64
+	}
+	return value
 }
 
 func (context *DatabaseCollection) QueryResync(ctx context.Context, limit int, startSeq, endSeq uint64) (sgbucket.QueryResultIterator, error) {

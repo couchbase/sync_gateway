@@ -11,6 +11,7 @@ licenses/APL2.txt.
 package db
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -156,6 +157,24 @@ func TestCompareSequenceIDs(t *testing.T) {
 	for i := 0; i < len(orderedSeqs); i++ {
 		for j := 0; j < len(orderedSeqs); j++ {
 			assert.Equal(t, i < j, orderedSeqs[i].Before(orderedSeqs[j]))
+		}
+	}
+}
+
+func TestCompareSequenceIDsLowSeq(t *testing.T) {
+	orderedSeqs := []SequenceID{
+		{LowSeq: 1200, Seq: 1233},
+		{LowSeq: 1205, Seq: 1234},
+		{Seq: 1234},
+		{LowSeq: 1234, Seq: 5677},
+		{LowSeq: 1234, Seq: 5678},
+	}
+
+	for i := 0; i < len(orderedSeqs); i++ {
+		for j := 0; j < len(orderedSeqs); j++ {
+			t.Run(fmt.Sprintf("%v<%v==%v", orderedSeqs[i], orderedSeqs[j], i < j), func(t *testing.T) {
+				assert.Equalf(t, i < j, orderedSeqs[i].Before(orderedSeqs[j]), "expected %v < %v", orderedSeqs[i], orderedSeqs[j])
+			})
 		}
 	}
 }

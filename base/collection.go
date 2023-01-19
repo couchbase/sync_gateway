@@ -574,6 +574,9 @@ func (b *GocbV2Bucket) releaseQueryOp() {
 }
 
 func (b *GocbV2Bucket) ListDataStores() ([]sgbucket.DataStoreName, error) {
+	if !b.IsSupported(sgbucket.BucketStoreFeatureCollections) {
+		return []sgbucket.DataStoreName{ScopeAndCollectionName{DefaultScope, DefaultCollection}}, nil
+	}
 	scopes, err := b.bucket.Collections().GetAllScopes(nil)
 	if err != nil {
 		return nil, err

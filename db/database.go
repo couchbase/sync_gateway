@@ -77,7 +77,7 @@ const (
 )
 
 // BGTCompletionMaxWait is the maximum amount of time to wait for
-// completion of all background tasks before the server is stopped.
+// completion of all background tasks and background managers before the server is stopped.
 const BGTCompletionMaxWait = 30 * time.Second
 
 // Max number of V8 instances to create (per database)
@@ -126,7 +126,7 @@ type DatabaseContext struct {
 	ServeInsecureAttachmentTypes bool                           // Attachment content type will bypass the content-disposition handling, default false
 	NoX509HTTPClient             *http.Client                   // A HTTP Client from gocb to use the management endpoints
 	ServerContextHasStarted      chan struct{}                  // Closed via PostStartup once the server has fully started
-	userFunctions                UserFunctions                  // client-callable JavaScript functions
+	userFunctions                *UserFunctions                 // client-callable JavaScript functions
 	graphQL                      *GraphQL                       // GraphQL query evaluator
 	Scopes                       map[string]Scope               // A map keyed by scope name containing a set of scopes/collections. Nil if running with only _default._default
 	singleCollection             *DatabaseCollection            // Temporary collection
@@ -174,6 +174,7 @@ type DatabaseContextOptions struct {
 	Scopes                        ScopesOptions
 	skipRegisterImportPIndex      bool                       // if set, skips the global gocb PIndex registration
 	MetadataStore                 base.DataStore             // If set, use this location/connection for SG metadata storage - if not set, metadata is stored using the same location/connection as the bucket used for data storage.
+	DefaultCollectionImportFilter *string                    // Opt-in filter for document import, for when collections are not supported
 	FunctionsConfig               IFunctionsAndGraphQLConfig // JS/N1QL functions clients can call
 }
 
@@ -183,7 +184,11 @@ type ScopeOptions struct {
 	Collections map[string]CollectionOptions
 }
 
-type CollectionOptions struct{}
+type CollectionOptions struct {
+	Sync               *string               // Collection sync function
+	ImportFilterSource *string               // Source code of ImportFilter
+	ImportFilter       *ImportFilterFunction // Opt-in filter for document import
+}
 
 type SGReplicateOptions struct {
 	Enabled               bool          // Whether this node can be assigned sg-replicate replications
@@ -212,17 +217,20 @@ type APIEndpoints struct {
 
 // UnsupportedOptions are not supported for external use
 type UnsupportedOptions struct {
-	UserViews                 *UserViewsOptions        `json:"user_views,omitempty"`                    // Config settings for user views
-	OidcTestProvider          *OidcTestProviderOptions `json:"oidc_test_provider,omitempty"`            // Config settings for OIDC Provider
-	APIEndpoints              *APIEndpoints            `json:"api_endpoints,omitempty"`                 // Config settings for API endpoints
-	WarningThresholds         *WarningThresholds       `json:"warning_thresholds,omitempty"`            // Warning thresholds related to _sync size
-	DisableCleanSkippedQuery  bool                     `json:"disable_clean_skipped_query,omitempty"`   // Clean skipped sequence processing bypasses final check
-	OidcTlsSkipVerify         bool                     `json:"oidc_tls_skip_verify,omitempty"`          // Config option to enable self-signed certs for OIDC testing.
-	SgrTlsSkipVerify          bool                     `json:"sgr_tls_skip_verify,omitempty"`           // Config option to enable self-signed certs for SG-Replicate testing.
-	RemoteConfigTlsSkipVerify bool                     `json:"remote_config_tls_skip_verify,omitempty"` // Config option to enable self signed certificates for external JavaScript load.
-	GuestReadOnly             bool                     `json:"guest_read_only,omitempty"`               // Config option to restrict GUEST document access to read-only
-	ForceAPIForbiddenErrors   bool                     `json:"force_api_forbidden_errors,omitempty"`    // Config option to force the REST API to return forbidden errors
-	ConnectedClient           bool                     `json:"connected_client,omitempty"`              // Enables BLIP connected-client APIs
+	UserViews                  *UserViewsOptions        `json:"user_views,omitempty"`                    // Config settings for user views
+	OidcTestProvider           *OidcTestProviderOptions `json:"oidc_test_provider,omitempty"`            // Config settings for OIDC Provider
+	APIEndpoints               *APIEndpoints            `json:"api_endpoints,omitempty"`                 // Config settings for API endpoints
+	WarningThresholds          *WarningThresholds       `json:"warning_thresholds,omitempty"`            // Warning thresholds related to _sync size
+	DisableCleanSkippedQuery   bool                     `json:"disable_clean_skipped_query,omitempty"`   // Clean skipped sequence processing bypasses final check
+	OidcTlsSkipVerify          bool                     `json:"oidc_tls_skip_verify,omitempty"`          // Config option to enable self-signed certs for OIDC testing.
+	SgrTlsSkipVerify           bool                     `json:"sgr_tls_skip_verify,omitempty"`           // Config option to enable self-signed certs for SG-Replicate testing.
+	RemoteConfigTlsSkipVerify  bool                     `json:"remote_config_tls_skip_verify,omitempty"` // Config option to enable self signed certificates for external JavaScript load.
+	GuestReadOnly              bool                     `json:"guest_read_only,omitempty"`               // Config option to restrict GUEST document access to read-only
+	ForceAPIForbiddenErrors    bool                     `json:"force_api_forbidden_errors,omitempty"`    // Config option to force the REST API to return forbidden errors
+	ConnectedClient            bool                     `json:"connected_client,omitempty"`              // Enables BLIP connected-client APIs
+	UseQueryBasedResyncManager bool                     `json:"use_query_resync_manager,omitempty"`      // Config option to use Query based resync manager to perform Resync op
+	DCPReadBuffer              int                      `json:"dcp_read_buffer,omitempty"`               // Enables user to set their own DCP read buffer
+	KVBufferSize               int                      `json:"kv_buffer,omitempty"`                     // Enables user to set their own KV pool buffer
 }
 
 type WarningThresholds struct {
@@ -442,6 +450,9 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 		dbContext.CfgSG = cbgt.NewCfgMem()
 	}
 
+	// Initialize the tap Listener for notify handling
+	dbContext.mutationListener.Init(bucket.GetName(), options.GroupID)
+
 	if len(options.Scopes) > 0 {
 		dbContext.Scopes = make(map[string]Scope, len(options.Scopes))
 		dbContext.CollectionNames = make(map[string]map[string]struct{}, len(options.Scopes))
@@ -450,12 +461,27 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 				Collections: make(map[string]*DatabaseCollection, len(scope.Collections)),
 			}
 			collectionNameMap := make(map[string]struct{}, len(scope.Collections))
-			for collName := range scope.Collections {
+			for collName, collOpts := range scope.Collections {
+				ctx := base.CollectionCtx(ctx, collName)
 				dataStore := bucket.NamedDataStore(base.ScopeAndCollectionName{Scope: scopeName, Collection: collName})
 				dbCollection, err := newDatabaseCollection(ctx, dbContext, dataStore)
 				if err != nil {
 					return nil, err
 				}
+				syncFn := ""
+				if collOpts.Sync != nil {
+					syncFn = *collOpts.Sync
+				}
+
+				if collOpts.ImportFilterSource != nil {
+					dbCollection.importFilterFunction = NewImportFilterFunction(&dbContext.V8VMs, *collOpts.ImportFilterSource, options.JavascriptTimeout)
+				}
+
+				_, err = dbCollection.UpdateSyncFun(ctx, syncFn)
+				if err != nil {
+					return nil, err
+				}
+
 				dbContext.Scopes[scopeName].Collections[collName] = dbCollection
 
 				collectionID := dbCollection.GetCollectionID()
@@ -471,13 +497,13 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 		if err != nil {
 			return nil, err
 		}
+		if options.DefaultCollectionImportFilter != nil {
+			dbCollection.importFilterFunction = NewImportFilterFunction(&dbContext.V8VMs, *options.DefaultCollectionImportFilter, options.JavascriptTimeout)
+		}
 
 		dbContext.CollectionByID[base.DefaultCollectionID] = dbCollection
 		dbContext.singleCollection = dbCollection
 	}
-
-	// Initialize the tap Listener for notify handling
-	dbContext.mutationListener.Init(bucket.GetName(), options.GroupID)
 
 	// Initialize sg-replicate manager
 	dbContext.SGReplicateMgr, err = NewSGReplicateManager(ctx, dbContext, dbContext.CfgSG)
@@ -670,7 +696,11 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 		// No cleanup necessary, stop heartbeater above will take care of it
 	}
 
-	dbContext.ResyncManager = NewResyncManager(metadataStore)
+	if dbContext.UseQueryBasedResyncManager() {
+		dbContext.ResyncManager = NewResyncManager(metadataStore)
+	} else {
+		dbContext.ResyncManager = NewResyncManagerDCP(metadataStore)
+	}
 	dbContext.TombstoneCompactionManager = NewTombstoneCompactionManager()
 	dbContext.AttachmentCompactionManager = NewAttachmentCompactionManager(metadataStore)
 
@@ -702,8 +732,9 @@ func (context *DatabaseContext) GetOIDCProvider(providerName string) (*auth.OIDC
 	}
 }
 
-func (context *DatabaseContext) SetOnChangeCallback(callback DocChangedFunc) {
-	context.mutationListener.OnDocChanged = callback
+// Registers an on change callback.  Each change cache (per collection) will register here
+func (context *DatabaseContext) RegisterOnChangeCallback(collectionID uint32, callback DocChangedFunc) error {
+	return context.mutationListener.RegisterOnChangeCallback(collectionID, callback)
 }
 
 func (dbCtx *DatabaseContext) GetServerUUID(ctx context.Context) string {
@@ -738,6 +769,10 @@ func (context *DatabaseContext) Close(ctx context.Context) {
 
 	context.OIDCProviders.Stop()
 	close(context.terminator)
+
+	// Stop All background processors
+	bgManagers := context.stopBackgroundManagers()
+
 	// Wait for database background tasks to finish.
 	waitForBGTCompletion(ctx, BGTCompletionMaxWait, context.backgroundTasks, context.Name)
 	context.sequences.Stop()
@@ -752,12 +787,91 @@ func (context *DatabaseContext) Close(ctx context.Context) {
 	if context.SGReplicateMgr != nil {
 		context.SGReplicateMgr.Stop()
 	}
+
+	waitForBackgroundManagersToStop(ctx, BGTCompletionMaxWait, bgManagers)
+
 	context.Bucket.Close()
 	context.Bucket = nil
 
 	base.RemovePerDbStats(context.Name)
 
 	context.V8VMs.Close()
+}
+
+// stopBackgroundManagers stops any running BackgroundManager.
+// Returns a list of BackgroundManager it signalled to stop
+func (context *DatabaseContext) stopBackgroundManagers() []*BackgroundManager {
+	bgManagers := make([]*BackgroundManager, 0)
+
+	if context.ResyncManager != nil {
+		if !isBackgroundManagerStopped(context.ResyncManager.GetRunState()) {
+			if err := context.ResyncManager.Stop(); err == nil {
+				bgManagers = append(bgManagers, context.ResyncManager)
+			}
+		}
+	}
+
+	if context.AttachmentCompactionManager != nil {
+		if !isBackgroundManagerStopped(context.AttachmentCompactionManager.GetRunState()) {
+			if err := context.AttachmentCompactionManager.Stop(); err == nil {
+				bgManagers = append(bgManagers, context.AttachmentCompactionManager)
+			}
+		}
+	}
+
+	if context.TombstoneCompactionManager != nil {
+		if !isBackgroundManagerStopped(context.TombstoneCompactionManager.GetRunState()) {
+			if err := context.TombstoneCompactionManager.Stop(); err == nil {
+				bgManagers = append(bgManagers, context.TombstoneCompactionManager)
+			}
+		}
+	}
+
+	return bgManagers
+}
+
+// waitForBackgroundManagersToStop wait for given BackgroundManagers to stop within given time
+func waitForBackgroundManagersToStop(ctx context.Context, waitTimeMax time.Duration, bgManagers []*BackgroundManager) {
+	timeout := time.NewTicker(waitTimeMax)
+	defer timeout.Stop()
+	retryInterval := 1 * time.Millisecond
+	maxRetryInterval := 1 * time.Second
+	for {
+		select {
+		case <-timeout.C:
+			runningBackgroundManagerNames := ""
+			for _, bgManager := range bgManagers {
+				if !isBackgroundManagerStopped(bgManager.GetRunState()) {
+					runningBackgroundManagerNames += fmt.Sprintf(" %s", bgManager.GetName())
+				}
+			}
+			base.WarnfCtx(ctx, "Background Managers [%s] failed to stop within deadline of %s.", runningBackgroundManagerNames, waitTimeMax)
+			return
+		case <-time.After(retryInterval):
+			stoppedServices := 0
+			for _, bgManager := range bgManagers {
+				state := bgManager.GetRunState()
+				if isBackgroundManagerStopped(state) {
+					stoppedServices += 1
+				}
+			}
+			if stoppedServices == len(bgManagers) {
+				return
+			}
+
+			// exponential backoff with max wait
+			if retryInterval < maxRetryInterval {
+				retryInterval = retryInterval * 2
+				if retryInterval > maxRetryInterval {
+					retryInterval = maxRetryInterval
+				}
+			}
+		}
+	}
+}
+
+func isBackgroundManagerStopped(state BackgroundProcessState) bool {
+	return state == BackgroundProcessStateStopped || state == BackgroundProcessStateCompleted || state == BackgroundProcessStateError || state == ""
 }
 
 // waitForBGTCompletion waits for all the background tasks to finish.
@@ -806,23 +920,59 @@ func (dbCtx *DatabaseContext) RemoveObsoleteDesignDocs(previewOnly bool) (remove
 	return removeObsoleteDesignDocs(context.TODO(), viewStore, previewOnly, dbCtx.UseViews())
 }
 
-// Removes previous versions of Sync Gateway's indexes found on the server
-func (dbCtx *DatabaseContext) RemoveObsoleteIndexes(ctx context.Context, previewOnly bool) (removedIndexes []string, err error) {
+// getDataStores returns all datastores on the database, including metadatastore
+func (dbCtx *DatabaseContext) getDataStores() []sgbucket.DataStore {
+	datastores := make([]sgbucket.DataStore, 0, len(dbCtx.CollectionByID))
+	for _, collection := range dbCtx.CollectionByID {
+		datastores = append(datastores, collection.dataStore)
+	}
+	_, hasDefaultCollection := dbCtx.CollectionByID[base.DefaultCollectionID]
+	if !hasDefaultCollection {
+		datastores = append(datastores, dbCtx.MetadataStore)
+	}
+	return datastores
+}
+
+// Removes previous versions of Sync Gateway's indexes found on the server. Returns a map of indexes removed by collection name.
+func (dbCtx *DatabaseContext) RemoveObsoleteIndexes(ctx context.Context, previewOnly bool) ([]string, error) {
 
 	if !dbCtx.Bucket.IsSupported(sgbucket.BucketStoreFeatureN1ql) {
-		return removedIndexes, nil
+		return nil, nil
 	}
-
-	// TODO: CBG-2533 Multi-collection removal (iterate over each collection here?)
-	dataStore := dbCtx.Bucket.DefaultDataStore()
-
-	n1qlStore, ok := base.AsN1QLStore(dataStore)
-	if !ok {
-		base.WarnfCtx(ctx, "Cannot remove obsolete indexes for non-gocb bucket - skipping.")
-		return make([]string, 0), nil
+	var errs *base.MultiError
+	var removedIndexes []string
+	for _, dataStore := range dbCtx.getDataStores() {
+		dsName, ok := base.AsDataStoreName(dataStore)
+		if !ok {
+			err := fmt.Sprintf("Cannot get datastore name from %s", dataStore)
+			base.WarnfCtx(ctx, err)
+			errs = errs.Append(errors.New(err))
+			continue
+		}
+		collectionName := fmt.Sprintf("`%s`.`%s`", dsName.ScopeName(), dsName.CollectionName())
+		n1qlStore, ok := base.AsN1QLStore(dataStore)
+		if !ok {
+			err := fmt.Sprintf("Cannot remove obsolete indexes for non-gocb collection %s - skipping.", base.MD(collectionName))
+			base.WarnfCtx(ctx, err)
+			errs = errs.Append(errors.New(err))
+			continue
+		}
+		collectionRemovedIndexes, err := removeObsoleteIndexes(n1qlStore, previewOnly, dbCtx.UseXattrs(), dbCtx.UseViews(), sgIndexes)
+		if err != nil {
+			errs = errs.Append(err)
+			continue
+		}
+		onlyDefaultCollection := dbCtx.onlyDefaultCollection()
+		for _, idxName := range collectionRemovedIndexes {
+			if onlyDefaultCollection {
+				removedIndexes = append(removedIndexes, idxName)
+			} else {
+				removedIndexes = append(removedIndexes,
+					fmt.Sprintf("%s.%s", collectionName, idxName))
+			}
+		}
 	}
-
-	return removeObsoleteIndexes(n1qlStore, previewOnly, dbCtx.UseXattrs(), dbCtx.UseViews(), sgIndexes)
+	return removedIndexes, errs.ErrorOrNil()
 }
 
 // Trigger terminate check handling for connected continuous replications.
@@ -1452,77 +1602,84 @@ func (db *Database) Compact(ctx context.Context, skipRunningStateCheck bool, cal
 	}
 	base.InfofCtx(ctx, base.KeyAll, "Tombstone compaction using the metadata purge interval of %.2f days.", db.PurgeInterval.Hours()/24)
 
-	// TODO CBG-2534 Multi-collection support
-	dataStore := db.Bucket.DefaultDataStore()
-
 	purgeBody := Body{"_purged": true}
-	for {
-		purgedDocs := make([]string, 0)
-		results, err := db.singleCollection.QueryTombstones(ctx, purgeOlderThan, QueryTombstoneBatch)
+	for _, c := range db.CollectionByID {
+		// shadow ctx, sot that we can't misuse the parent's inside the loop
+		ctx := base.CollectionCtx(ctx, c.Name())
+
+		// create admin collection interface
+		collection, err := db.GetDatabaseCollectionWithUser(c.ScopeName(), c.Name())
 		if err != nil {
-			return 0, err
+			base.WarnfCtx(ctx, "Tombstone compaction could not get collection: %s", err)
+			continue
 		}
-		var tombstonesRow QueryIdRow
-		var resultCount int
-		for results.Next(&tombstonesRow) {
-			select {
-			case <-terminator.Done():
-				closeErr := results.Close()
-				if closeErr != nil {
-					return 0, closeErr
+
+		for {
+			purgedDocs := make([]string, 0)
+			results, err := collection.QueryTombstones(ctx, purgeOlderThan, QueryTombstoneBatch)
+			if err != nil {
+				return 0, err
+			}
+			var tombstonesRow QueryIdRow
+			var resultCount int
+			for results.Next(&tombstonesRow) {
+				select {
+				case <-terminator.Done():
+					closeErr := results.Close()
+					if closeErr != nil {
+						return 0, closeErr
+					}
+					return purgedDocCount, nil
+				default:
 				}
-				return purgedDocCount, nil
-			default:
+
+				resultCount++
+				base.DebugfCtx(ctx, base.KeyCRUD, "\tDeleting %q", tombstonesRow.Id)
+				// First, attempt to purge.
+				purgeErr := collection.Purge(ctx, tombstonesRow.Id)
+				if purgeErr == nil {
+					purgedDocs = append(purgedDocs, tombstonesRow.Id)
+				} else if base.IsDocNotFoundError(purgeErr) {
+					// If key no longer exists, need to add and remove to trigger removal from view
+					_, addErr := collection.dataStore.Add(tombstonesRow.Id, 0, purgeBody)
+					if addErr != nil {
+						base.WarnfCtx(ctx, "Error compacting key %s (add) - tombstone will not be compacted.  %v", base.UD(tombstonesRow.Id), addErr)
+						continue
+					}
+
+					// At this point, the doc is not in a usable state for mobile
+					// so mark it to be removed from cache, even if the subsequent delete fails
+					purgedDocs = append(purgedDocs, tombstonesRow.Id)
+
+					if delErr := collection.dataStore.Delete(tombstonesRow.Id); delErr != nil {
+						base.ErrorfCtx(ctx, "Error compacting key %s (delete) - tombstone will not be compacted.  %v", base.UD(tombstonesRow.Id), delErr)
+					}
+				} else {
+					base.WarnfCtx(ctx, "Error compacting key %s (purge) - tombstone will not be compacted.  %v", base.UD(tombstonesRow.Id), purgeErr)
+				}
 			}
 
-			resultCount++
-			base.DebugfCtx(ctx, base.KeyCRUD, "\tDeleting %q", tombstonesRow.Id)
-			// First, attempt to purge.
-			purgeErr := db.GetSingleDatabaseCollectionWithUser().Purge(ctx, tombstonesRow.Id)
-			if purgeErr == nil {
-				purgedDocs = append(purgedDocs, tombstonesRow.Id)
-			} else if base.IsDocNotFoundError(purgeErr) {
-				// If key no longer exists, need to add and remove to trigger removal from view
-				_, addErr := dataStore.Add(tombstonesRow.Id, 0, purgeBody)
-				if addErr != nil {
-					base.WarnfCtx(ctx, "Error compacting key %s (add) - tombstone will not be compacted.  %v", base.UD(tombstonesRow.Id), addErr)
-					continue
-				}
-
-				// At this point, the doc is not in a usable state for mobile
-				// so mark it to be removed from cache, even if the subsequent delete fails
-				purgedDocs = append(purgedDocs, tombstonesRow.Id)
-
-				if delErr := dataStore.Delete(tombstonesRow.Id); delErr != nil {
-					base.ErrorfCtx(ctx, "Error compacting key %s (delete) - tombstone will not be compacted.  %v", base.UD(tombstonesRow.Id), delErr)
-				}
-			} else {
-				base.WarnfCtx(ctx, "Error compacting key %s (purge) - tombstone will not be compacted.  %v", base.UD(tombstonesRow.Id), purgeErr)
+			err = results.Close()
+			if err != nil {
+				return 0, err
 			}
-		}
 
-		err = results.Close()
-		if err != nil {
-			return 0, err
-		}
+			// Now purge them from all channel caches
+			count := len(purgedDocs)
+			purgedDocCount += count
+			if count > 0 {
+				collection.RemoveFromChangeCache(purgedDocs, startTime)
+				collection.dbStats().Database().NumTombstonesCompacted.Add(int64(count))
+			}
+			base.DebugfCtx(ctx, base.KeyAll, "Compacted %v tombstones", count)
 
-		// Now purge them from all channel caches
-		count := len(purgedDocs)
-		purgedDocCount += count
-		if count > 0 {
-			collection := db.GetSingleDatabaseCollection() // CBG-2561
-			collection.RemoveFromChangeCache(purgedDocs, startTime)
-			db.DbStats.Database().NumTombstonesCompacted.Add(int64(count))
-		}
-		base.DebugfCtx(ctx, base.KeyAll, "Compacted %v tombstones", count)
+			callback(&purgedDocCount)
 
-		callback(&purgedDocCount)
-
-		if resultCount < QueryTombstoneBatch {
-			break
+			if resultCount < QueryTombstoneBatch {
+				break
+			}
 		}
 	}
-
 	base.InfofCtx(ctx, base.KeyAll, "Finished compaction of purged tombstones for %s... Total Tombstones Compacted: %d", base.MD(db.Name), purgedDocCount)
 
 	return purgedDocCount, nil
@@ -1631,126 +1788,7 @@ func (db *DatabaseCollectionWithUser) UpdateAllDocChannels(ctx context.Context, 
 			key := realDocID(docid)
 			queryRowCount++
 			docsProcessed++
-			documentUpdateFunc := func(doc *Document) (updatedDoc *Document, shouldUpdate bool, updatedExpiry *uint32, err error) {
-				highSeq = doc.Sequence
-				forceUpdate := false
-				if !doc.HasValidSyncData() {
-					// This is a document not known to the sync gateway. Ignore it:
-					return nil, false, nil, base.ErrUpdateCancel
-				} else {
-					base.DebugfCtx(ctx, base.KeyCRUD, "\tRe-syncing document %q", base.UD(docid))
-				}
-
-				// Run the sync fn over each current/leaf revision, in case there are conflicts:
-				changed := 0
-				doc.History.forEachLeaf(func(rev *RevInfo) {
-					bodyBytes, _, err := db.get1xRevFromDoc(ctx, doc, rev.ID, false)
-					if err != nil {
-						base.WarnfCtx(ctx, "Error getting rev from doc %s/%s %s", base.UD(docid), rev.ID, err)
-					}
-					var body Body
-					if err := body.Unmarshal(bodyBytes); err != nil {
-						base.WarnfCtx(ctx, "Error unmarshalling body %s/%s for sync function %s", base.UD(docid), rev.ID, err)
-						return
-					}
-					metaMap, err := doc.GetMetaMap(db.userXattrKey())
-					if err != nil {
-						return
-					}
-					channels, access, roles, syncExpiry, _, err := db.getChannelsAndAccess(ctx, doc, body, metaMap, rev.ID)
-					if err != nil {
-						// Probably the validator rejected the doc
-						base.WarnfCtx(ctx, "Error calling sync() on doc %q: %v", base.UD(docid), err)
-						access = nil
-						channels = nil
-					}
-					rev.Channels = channels
-
-					if rev.ID == doc.CurrentRev {
-
-						if regenerateSequences {
-							unusedSequences, err = db.assignSequence(ctx, 0, doc, unusedSequences)
-							if err != nil {
-								base.WarnfCtx(ctx, "Unable to assign a sequence number: %v", err)
-							}
-							forceUpdate = true
-						}
-
-						changedChannels, err := doc.updateChannels(ctx, channels)
-						changed = len(doc.Access.updateAccess(doc, access)) +
-							len(doc.RoleAccess.updateAccess(doc, roles)) +
-							len(changedChannels)
-						if err != nil {
-							return
-						}
-						// Only update document expiry based on the current (active) rev
-						if syncExpiry != nil {
-							doc.UpdateExpiry(*syncExpiry)
-							updatedExpiry = syncExpiry
-						}
-					}
-				})
-				shouldUpdate = changed > 0 || forceUpdate
-				return doc, shouldUpdate, updatedExpiry, nil
-			}
-			var err error
-			if db.UseXattrs() {
-				writeUpdateFunc := func(currentValue []byte, currentXattr []byte, currentUserXattr []byte, cas uint64) (
-					raw []byte, rawXattr []byte, deleteDoc bool, expiry *uint32, err error) {
-					// There's no scenario where a doc should from non-deleted to deleted during UpdateAllDocChannels processing,
-					// so deleteDoc is always returned as false.
-					if currentValue == nil || len(currentValue) == 0 {
-						return nil, nil, deleteDoc, nil, base.ErrUpdateCancel
-					}
-					doc, err := unmarshalDocumentWithXattr(docid, currentValue, currentXattr, currentUserXattr, cas, DocUnmarshalAll)
-					if err != nil {
-						return nil, nil, deleteDoc, nil, err
-					}
-					updatedDoc, shouldUpdate, updatedExpiry, err := documentUpdateFunc(doc)
-					if err != nil {
-						return nil, nil, deleteDoc, nil, err
-					}
-					if shouldUpdate {
-						base.InfofCtx(ctx, base.KeyAccess, "Saving updated channels and access grants of %q", base.UD(docid))
-						if updatedExpiry != nil {
-							updatedDoc.UpdateExpiry(*updatedExpiry)
-						}
-
-						doc.SetCrc32cUserXattrHash()
-						raw, rawXattr, err = updatedDoc.MarshalWithXattr()
-						return raw, rawXattr, deleteDoc, updatedExpiry, err
-					} else {
-						return nil, nil, deleteDoc, nil, base.ErrUpdateCancel
-					}
-				}
-				_, err = db.dataStore.WriteUpdateWithXattr(key, base.SyncXattrName, db.userXattrKey(), 0, nil, nil, writeUpdateFunc)
-			} else {
-				_, err = db.dataStore.Update(key, 0, func(currentValue []byte) ([]byte, *uint32, bool, error) {
-					// Be careful: this block can be invoked multiple times if there are races!
-					if currentValue == nil {
-						return nil, nil, false, base.ErrUpdateCancel // someone deleted it?!
-					}
-					doc, err := unmarshalDocument(docid, currentValue)
-					if err != nil {
-						return nil, nil, false, err
-					}
-					updatedDoc, shouldUpdate, updatedExpiry, err := documentUpdateFunc(doc)
-					if err != nil {
-						return nil, nil, false, err
-					}
-					if shouldUpdate {
-						base.InfofCtx(ctx, base.KeyAccess, "Saving updated channels and access grants of %q", base.UD(docid))
-						if updatedExpiry != nil {
-							updatedDoc.UpdateExpiry(*updatedExpiry)
-						}
-
-						updatedBytes, marshalErr := base.JSONMarshal(updatedDoc)
-						return updatedBytes, updatedExpiry, false, marshalErr
-					} else {
-						return nil, nil, false, base.ErrUpdateCancel
-					}
-				})
-			}
+			highSeq, unusedSequences, err = db.resyncDocument(ctx, docid, key, regenerateSequences, unusedSequences)
 			if err == nil {
 				docsChanged++
 			} else if err != base.ErrUpdateCancel {
@@ -1772,72 +1810,213 @@ func (db *DatabaseCollectionWithUser) UpdateAllDocChannels(ctx context.Context, 
 		startSeq = highSeq + 1
 	}
 
-	for _, sequence := range unusedSequences {
-		err := db.sequences().releaseSequence(sequence)
-		if err != nil {
-			base.WarnfCtx(ctx, "Error attempting to release sequence %d. Error %v", sequence, err)
-		}
-	}
+	db.releaseSequences(ctx, unusedSequences)
 
 	if regenerateSequences {
-		users, roles, err := db.allPrincipalIDs(ctx)
-		if err != nil {
+		if err := db.updateAllPrincipalsSequences(ctx); err != nil {
 			return docsChanged, err
 		}
-
-		authr := db.Authenticator(ctx)
-		regeneratePrincipalSequences := func(princ auth.Principal) error {
-			nextSeq, err := db.sequences().nextSequence()
-			if err != nil {
-				return err
-			}
-
-			err = authr.UpdateSequenceNumber(princ, nextSeq)
-			if err != nil {
-				return err
-			}
-
-			return nil
-		}
-
-		for _, role := range roles {
-			role, err := authr.GetRole(role)
-			if err != nil {
-				return docsChanged, err
-			}
-			err = regeneratePrincipalSequences(role)
-			if err != nil {
-				return docsChanged, err
-			}
-		}
-
-		for _, user := range users {
-			user, err := authr.GetUser(user)
-			if err != nil {
-				return docsChanged, err
-			}
-			err = regeneratePrincipalSequences(user)
-			if err != nil {
-				return docsChanged, err
-			}
-		}
-
 	}
 
 	base.InfofCtx(ctx, base.KeyAll, "Finished re-running sync function; %d/%d docs changed", docsChanged, docsProcessed)
 
 	if docsChanged > 0 {
-		// Now invalidate channel cache of all users/roles:
-		base.InfofCtx(ctx, base.KeyAll, "Invalidating channel caches of users/roles...")
-		users, roles, _ := db.allPrincipalIDs(ctx)
-		for _, name := range users {
-			db.invalUserChannels(ctx, name, endSeq)
-		}
-		for _, name := range roles {
-			db.invalRoleChannels(ctx, name, endSeq)
-		}
+		db.invalidateAllPrincipalsCache(ctx, endSeq)
 	}
 	return docsChanged, nil
+}
+
+// invalidate channel cache of all users/roles:
+func (db *DatabaseCollection) invalidateAllPrincipalsCache(ctx context.Context, endSeq uint64) {
+	base.InfofCtx(ctx, base.KeyAll, "Invalidating channel caches of users/roles...")
+	users, roles, _ := db.allPrincipalIDs(ctx)
+	for _, name := range users {
+		db.invalUserChannels(ctx, name, endSeq)
+	}
+	for _, name := range roles {
+		db.invalRoleChannels(ctx, name, endSeq)
+	}
+}
+
+func (db *DatabaseCollection) updateAllPrincipalsSequences(ctx context.Context) error {
+	users, roles, err := db.allPrincipalIDs(ctx)
+	if err != nil {
+		return err
+	}
+
+	authr := db.Authenticator(ctx)
+
+	for _, role := range roles {
+		role, err := authr.GetRole(role)
+		if err != nil {
+			return err
+		}
+		err = db.regeneratePrincipalSequences(authr, role)
+		if err != nil {
+			return err
+		}
+	}
+
+	for _, user := range users {
+		user, err := authr.GetUser(user)
+		if err != nil {
+			return err
+		}
+		err = db.regeneratePrincipalSequences(authr, user)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (db *DatabaseCollection) regeneratePrincipalSequences(authr *auth.Authenticator, princ auth.Principal) error {
+	nextSeq, err := db.sequences().nextSequence()
+	if err != nil {
+		return err
+	}
+
+	err = authr.UpdateSequenceNumber(princ, nextSeq)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (db *DatabaseCollection) releaseSequences(ctx context.Context, sequences []uint64) {
+	for _, sequence := range sequences {
+		err := db.sequences().releaseSequence(sequence)
+		if err != nil {
+			base.WarnfCtx(ctx, "Error attempting to release sequence %d. Error %v", sequence, err)
+		}
+	}
+}
+
+func (db *DatabaseCollectionWithUser) getResyncedDocument(ctx context.Context, doc *Document, regenerateSequences bool, unusedSequences []uint64) (updatedDoc *Document, shouldUpdate bool, updatedExpiry *uint32, highSeq uint64, updatedUnusedSequences []uint64, err error) {
+	docid := doc.ID
+	forceUpdate := false
+	if !doc.HasValidSyncData() {
+		// This is a document not known to the sync gateway. Ignore it:
+		return nil, false, nil, doc.Sequence, unusedSequences, base.ErrUpdateCancel
+	}
+
+	base.DebugfCtx(ctx, base.KeyCRUD, "\tRe-syncing document %q", base.UD(docid))
+
+	// Run the sync fn over each current/leaf revision, in case there are conflicts:
+	changed := 0
+	doc.History.forEachLeaf(func(rev *RevInfo) {
+		bodyBytes, _, err := db.get1xRevFromDoc(ctx, doc, rev.ID, false)
+		if err != nil {
+			base.WarnfCtx(ctx, "Error getting rev from doc %s/%s %s", base.UD(docid), rev.ID, err)
+		}
+		var body Body
+		if err := body.Unmarshal(bodyBytes); err != nil {
+			base.WarnfCtx(ctx, "Error unmarshalling body %s/%s for sync function %s", base.UD(docid), rev.ID, err)
+			return
+		}
+		metaMap, err := doc.GetMetaMap(db.userXattrKey())
+		if err != nil {
+			return
+		}
+		channels, access, roles, syncExpiry, _, err := db.getChannelsAndAccess(ctx, doc, body, metaMap, rev.ID)
+		if err != nil {
+			// Probably the validator rejected the doc
+			base.WarnfCtx(ctx, "Error calling sync() on doc %q: %v", base.UD(docid), err)
+			access = nil
+			channels = nil
+		}
+		rev.Channels = channels
+
+		if rev.ID == doc.CurrentRev {
+			if regenerateSequences {
+				updatedUnusedSequences, err = db.assignSequence(ctx, 0, doc, unusedSequences)
+				if err != nil {
+					base.WarnfCtx(ctx, "Unable to assign a sequence number: %v", err)
+				}
+				forceUpdate = true
+			}
+
+			changedChannels, err := doc.updateChannels(ctx, channels)
+			changed = len(doc.Access.updateAccess(doc, access)) +
+				len(doc.RoleAccess.updateAccess(doc, roles)) +
+				len(changedChannels)
+			if err != nil {
+				return
+			}
+			// Only update document expiry based on the current (active) rev
+			if syncExpiry != nil {
+				doc.UpdateExpiry(*syncExpiry)
+				updatedExpiry = syncExpiry
+			}
+		}
+	})
+	shouldUpdate = changed > 0 || forceUpdate
+	return doc, shouldUpdate, updatedExpiry, doc.Sequence, updatedUnusedSequences, nil
+}
+
+func (db *DatabaseCollectionWithUser) resyncDocument(ctx context.Context, docid, key string, regenerateSequences bool, unusedSequences []uint64) (updatedHighSeq uint64, updatedUnusedSequences []uint64, err error) {
+	var updatedDoc *Document
+	var shouldUpdate bool
+	var updatedExpiry *uint32
+	if db.UseXattrs() {
+		writeUpdateFunc := func(currentValue []byte, currentXattr []byte, currentUserXattr []byte, cas uint64) (
+			raw []byte, rawXattr []byte, deleteDoc bool, expiry *uint32, err error) {
+			// There's no scenario where a doc should from non-deleted to deleted during UpdateAllDocChannels processing,
+			// so deleteDoc is always returned as false.
+			if currentValue == nil || len(currentValue) == 0 {
+				return nil, nil, deleteDoc, nil, base.ErrUpdateCancel
+			}
+			doc, err := unmarshalDocumentWithXattr(docid, currentValue, currentXattr, currentUserXattr, cas, DocUnmarshalAll)
+			if err != nil {
+				return nil, nil, deleteDoc, nil, err
+			}
+			updatedDoc, shouldUpdate, updatedExpiry, updatedHighSeq, unusedSequences, err = db.getResyncedDocument(ctx, doc, regenerateSequences, unusedSequences)
+			if err != nil {
+				return nil, nil, deleteDoc, nil, err
+			}
+			if shouldUpdate {
+				base.InfofCtx(ctx, base.KeyAccess, "Saving updated channels and access grants of %q", base.UD(docid))
+				if updatedExpiry != nil {
+					updatedDoc.UpdateExpiry(*updatedExpiry)
+				}
+
+				doc.SetCrc32cUserXattrHash()
+				raw, rawXattr, err = updatedDoc.MarshalWithXattr()
+				return raw, rawXattr, deleteDoc, updatedExpiry, err
+			} else {
+				return nil, nil, deleteDoc, nil, base.ErrUpdateCancel
+			}
+		}
+		_, err = db.dataStore.WriteUpdateWithXattr(key, base.SyncXattrName, db.userXattrKey(), 0, nil, nil, writeUpdateFunc)
+	} else {
+		_, err = db.dataStore.Update(key, 0, func(currentValue []byte) ([]byte, *uint32, bool, error) {
+			// Be careful: this block can be invoked multiple times if there are races!
+			if currentValue == nil {
+				return nil, nil, false, base.ErrUpdateCancel // someone deleted it?!
+			}
+			doc, err := unmarshalDocument(docid, currentValue)
+			if err != nil {
+				return nil, nil, false, err
+			}
+			updatedDoc, shouldUpdate, updatedExpiry, updatedHighSeq, unusedSequences, err = db.getResyncedDocument(ctx, doc, regenerateSequences, unusedSequences)
+			if err != nil {
+				return nil, nil, false, err
+			}
+			if shouldUpdate {
+				base.InfofCtx(ctx, base.KeyAccess, "Saving updated channels and access grants of %q", base.UD(docid))
+				if updatedExpiry != nil {
+					updatedDoc.UpdateExpiry(*updatedExpiry)
+				}
+
+				updatedBytes, marshalErr := base.JSONMarshal(updatedDoc)
+				return updatedBytes, updatedExpiry, false, marshalErr
+			} else {
+				return nil, nil, false, base.ErrUpdateCancel
+			}
+		})
+	}
+	return updatedHighSeq, unusedSequences, err
 }
 
 func (db *DatabaseCollection) invalUserRoles(ctx context.Context, username string, invalSeq uint64) {
@@ -1915,6 +2094,14 @@ func (context *DatabaseContext) UseXattrs() bool {
 
 func (context *DatabaseContext) UseViews() bool {
 	return context.Options.UseViews
+}
+
+// UseQueryBasedResyncManager returns if query bases resync manager should be used for Resync operation
+func (context *DatabaseContext) UseQueryBasedResyncManager() bool {
+	if context.Options.UnsupportedOptions != nil {
+		return context.Options.UnsupportedOptions.UseQueryBasedResyncManager
+	}
+	return false
 }
 
 func (context *DatabaseContext) DeltaSyncEnabled() bool {
@@ -2111,14 +2298,6 @@ func (dbc *DatabaseContext) GetSingleDatabaseCollection() *DatabaseCollection {
 	return dbc.singleCollection
 }
 
-// GetSingleDatabaseCollectionWithCollection is a temporary function to return a single collection. This should be a temporary function while collection work is ongoing.
-func (dbc *Database) GetSingleDatabaseCollectionWithUser() *DatabaseCollectionWithUser {
-	return &DatabaseCollectionWithUser{
-		DatabaseCollection: dbc.GetSingleDatabaseCollection(),
-		user:               dbc.user,
-	}
-}
-
 // newDatabaseCollection returns a collection which inherits values from the database but is specific to a given DataStore.
 func newDatabaseCollection(ctx context.Context, dbContext *DatabaseContext, dataStore base.DataStore) (*DatabaseCollection, error) {
 	dbCollection := &DatabaseCollection{
@@ -2149,7 +2328,11 @@ func newDatabaseCollection(ctx context.Context, dbContext *DatabaseContext, data
 		return nil, err
 	}
 	// Set the DB Context notifyChange callback to call back the changecache DocChanged callback
-	dbContext.SetOnChangeCallback(dbCollection.changeCache.DocChanged)
+	err = dbContext.RegisterOnChangeCallback(dbCollection.GetCollectionID(), dbCollection.changeCache.DocChanged)
+	if err != nil {
+		base.DebugfCtx(ctx, base.KeyDCP, "Error registering the listener callback for collection %s: %v", dbCollection.GetCollectionID(), err)
+		return nil, err
+	}
 
 	if base.IsEnterpriseEdition() {
 		cfgSG, ok := dbContext.CfgSG.(*base.CfgSG)

@@ -55,7 +55,7 @@ func TestFilterToAvailableChannels(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			db, ctx := setupTestDB(t)
 			defer db.Close(ctx)
-			collection := db.GetSingleDatabaseCollectionWithUser()
+			collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 			auth := db.Authenticator(base.TestCtx(t))
 			user, err := auth.NewUser("test", "pass", testCase.userChans)
@@ -97,7 +97,7 @@ func TestChangesAfterChannelAdded(t *testing.T) {
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	collection := db.GetSingleDatabaseCollectionWithUser()
+	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache, base.KeyChanges)
 
@@ -147,7 +147,7 @@ func TestChangesAfterChannelAdded(t *testing.T) {
 	assert.True(t, changes[2].principalDoc)
 
 	lastSeq := getLastSeq(changes)
-	lastSeq, _ = ParseSequenceID(lastSeq.String())
+	lastSeq, _ = ParsePlainSequenceID(lastSeq.String())
 
 	// Add a new doc (sequence 3):
 	revid, _, err := collection.Put(ctx, "doc2", Body{"channels": []string{"PBS"}})
@@ -209,7 +209,7 @@ func TestDocDeletionFromChannelCoalescedRemoved(t *testing.T) {
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	collection := db.GetSingleDatabaseCollectionWithUser()
+	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 	db.ChannelMapper = channels.NewDefaultChannelMapper(&db.V8VMs)
 
@@ -238,7 +238,7 @@ func TestDocDeletionFromChannelCoalescedRemoved(t *testing.T) {
 		collectionID: collectionID}, changes[0])
 
 	lastSeq := getLastSeq(changes)
-	lastSeq, _ = ParseSequenceID(lastSeq.String())
+	lastSeq, _ = ParsePlainSequenceID(lastSeq.String())
 
 	// Get raw document from the bucket
 	rv, _, _ := collection.dataStore.GetRaw("alpha") // cas, err
@@ -294,7 +294,7 @@ func TestDocDeletionFromChannelCoalesced(t *testing.T) {
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	collection := db.GetSingleDatabaseCollectionWithUser()
+	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 	db.ChannelMapper = channels.NewDefaultChannelMapper(&db.V8VMs)
 
@@ -324,7 +324,7 @@ func TestDocDeletionFromChannelCoalesced(t *testing.T) {
 		collectionID: collectionID}, changes[0])
 
 	lastSeq := getLastSeq(changes)
-	lastSeq, _ = ParseSequenceID(lastSeq.String())
+	lastSeq, _ = ParsePlainSequenceID(lastSeq.String())
 
 	// Get raw document from the bucket
 	rv, _, _ := collection.dataStore.GetRaw("alpha") // cas, err
@@ -371,7 +371,7 @@ func TestActiveOnlyCacheUpdate(t *testing.T) {
 
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-	collection := db.GetSingleDatabaseCollectionWithUser()
+	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyChanges, base.KeyCache)
 	// Create 10 documents
@@ -437,7 +437,7 @@ func BenchmarkChangesFeedDocUnmarshalling(b *testing.B) {
 
 	db, ctx := setupTestDB(b)
 	defer db.Close(ctx)
-	collection := db.GetSingleDatabaseCollectionWithUser()
+	collection := GetSingleDatabaseCollectionWithUser(b, db)
 
 	fieldVal := func(valSizeBytes int) string {
 		buffer := bytes.Buffer{}

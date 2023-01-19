@@ -608,8 +608,8 @@ func (h *handler) handlePutDbConfig() (err error) {
 
 }
 
-// GET database config sync function
-func (h *handler) handleGetDbConfigSync() error {
+// GET collection config sync function
+func (h *handler) handleGetCollectionConfigSync() error {
 	h.assertAdminOnly()
 	var (
 		etagVersion  string
@@ -627,7 +627,17 @@ func (h *handler) handleGetDbConfigSync() error {
 		}
 
 		etagVersion = dbConfig.Version
-		if dbConfig.Sync != nil {
+
+		if dbConfig.Scopes != nil {
+			scope, ok := dbConfig.Scopes[h.collection.ScopeName()]
+			if ok {
+				collectionConfig, ok := scope.Collections[h.collection.Name()]
+				if ok && collectionConfig.SyncFn != nil {
+					syncFunction = *collectionConfig.SyncFn
+
+				}
+			}
+		} else if dbConfig.Sync != nil {
 			syncFunction = *dbConfig.Sync
 		}
 	}
@@ -637,8 +647,8 @@ func (h *handler) handleGetDbConfigSync() error {
 	return nil
 }
 
-// DELETE a database config sync function
-func (h *handler) handleDeleteDbConfigSync() error {
+// DELETE a collection sync function
+func (h *handler) handleDeleteCollectionConfigSync() error {
 	h.assertAdminOnly()
 
 	if !h.server.persistentConfig {
@@ -659,8 +669,14 @@ func (h *handler) handleDeleteDbConfigSync() error {
 			if h.headerDoesNotMatchEtag(bucketDbConfig.Version) {
 				return nil, base.HTTPErrorf(http.StatusPreconditionFailed, "Provided If-Match header does not match current config version")
 			}
+			if bucketDbConfig.Scopes != nil {
+				config := bucketDbConfig.Scopes[h.collection.ScopeName()].Collections[h.collection.Name()]
+				config.SyncFn = nil
+				bucketDbConfig.Scopes[h.collection.ScopeName()].Collections[h.collection.Name()] = config
+			} else if base.IsDefaultCollection(h.collection.ScopeName(), h.collection.Name()) {
+				bucketDbConfig.Sync = nil
+			}
 
-			bucketDbConfig.Sync = nil
 			bucketDbConfig.Version, err = GenerateDatabaseConfigVersionID(bucketDbConfig.Version, &bucketDbConfig.DbConfig)
 			if err != nil {
 				return nil, err
@@ -694,7 +710,7 @@ func (h *handler) handleDeleteDbConfigSync() error {
 	return base.HTTPErrorf(http.StatusOK, "sync function removed")
 }
 
-func (h *handler) handlePutDbConfigSync() error {
+func (h *handler) handlePutCollectionConfigSync() error {
 	h.assertAdminOnly()
 
 	if !h.server.persistentConfig {
@@ -721,7 +737,13 @@ func (h *handler) handlePutDbConfigSync() error {
 				return nil, base.HTTPErrorf(http.StatusPreconditionFailed, "Provided If-Match header does not match current config version")
 			}
 
-			bucketDbConfig.Sync = &js
+			if bucketDbConfig.Scopes != nil {
+				config := bucketDbConfig.Scopes[h.collection.ScopeName()].Collections[h.collection.Name()]
+				config.SyncFn = &js
+				bucketDbConfig.Scopes[h.collection.ScopeName()].Collections[h.collection.Name()] = config
+			} else if base.IsDefaultCollection(h.collection.ScopeName(), h.collection.Name()) {
+				bucketDbConfig.Sync = &js
+			}
 
 			if err := bucketDbConfig.validate(h.ctx(), !h.getBoolQuery(paramDisableOIDCValidation)); err != nil {
 				return nil, base.HTTPErrorf(http.StatusBadRequest, err.Error())
@@ -760,8 +782,8 @@ func (h *handler) handlePutDbConfigSync() error {
 	return base.HTTPErrorf(http.StatusOK, "updated")
 }
 
-// GET database config import filter function
-func (h *handler) handleGetDbConfigImportFilter() error {
+// GET collection config import filter function
+func (h *handler) handleGetCollectionConfigImportFilter() error {
 	h.assertAdminOnly()
 	var (
 		etagVersion          string
@@ -777,8 +799,19 @@ func (h *handler) handleGetDbConfigImportFilter() error {
 			return base.HTTPErrorf(http.StatusNotFound, "database config not found")
 		}
 		etagVersion = dbConfig.Version
-		if dbConfig.ImportFilter != nil {
-			importFilterFunction = *dbConfig.ImportFilter
+		if dbConfig.Scopes != nil {
+			scope, ok := dbConfig.Scopes[h.collection.ScopeName()]
+			if ok {
+				collectionConfig, ok := scope.Collections[h.collection.Name()]
+				if ok && collectionConfig.ImportFilter != nil {
+					importFilterFunction = *collectionConfig.ImportFilter
+
+				}
+			}
+		} else {
+			if dbConfig.ImportFilter != nil {
+				importFilterFunction = *dbConfig.ImportFilter
+			}
 		}
 	}
 
@@ -787,8 +820,8 @@ func (h *handler) handleGetDbConfigImportFilter() error {
 	return nil
 }
 
-// DELETE a database config import filter
-func (h *handler) handleDeleteDbConfigImportFilter() error {
+// DELETE a collection config import filter
+func (h *handler) handleDeleteCollectionConfigImportFilter() error {
 	h.assertAdminOnly()
 
 	if !h.server.persistentConfig {
@@ -810,7 +843,14 @@ func (h *handler) handleDeleteDbConfigImportFilter() error {
 				return nil, base.HTTPErrorf(http.StatusPreconditionFailed, "Provided If-Match header does not match current config version")
 			}
 
-			bucketDbConfig.ImportFilter = nil
+			if bucketDbConfig.Scopes != nil {
+				config := bucketDbConfig.Scopes[h.collection.ScopeName()].Collections[h.collection.Name()]
+				config.ImportFilter = nil
+				bucketDbConfig.Scopes[h.collection.ScopeName()].Collections[h.collection.Name()] = config
+			} else if base.IsDefaultCollection(h.collection.ScopeName(), h.collection.Name()) {
+				bucketDbConfig.ImportFilter = nil
+			}
+
 			bucketDbConfig.Version, err = GenerateDatabaseConfigVersionID(bucketDbConfig.Version, &bucketDbConfig.DbConfig)
 			if err != nil {
 				return nil, err
@@ -845,7 +885,7 @@ func (h *handler) handleDeleteDbConfigImportFilter() error {
 }
 
 // PUT a new database config import filter function
-func (h *handler) handlePutDbConfigImportFilter() error {
+func (h *handler) handlePutCollectionConfigImportFilter() error {
 	h.assertAdminOnly()
 
 	if !h.server.persistentConfig {
@@ -856,7 +896,6 @@ func (h *handler) handlePutDbConfigImportFilter() error {
 	if err != nil {
 		return err
 	}
-
 	bucket := h.db.Bucket.GetName()
 
 	var updatedDbConfig *DatabaseConfig
@@ -872,7 +911,13 @@ func (h *handler) handlePutDbConfigImportFilter() error {
 				return nil, base.HTTPErrorf(http.StatusPreconditionFailed, "Provided If-Match header does not match current config version")
 			}
 
-			bucketDbConfig.ImportFilter = &js
+			if bucketDbConfig.Scopes != nil {
+				config := bucketDbConfig.Scopes[h.collection.ScopeName()].Collections[h.collection.Name()]
+				config.ImportFilter = &js
+				bucketDbConfig.Scopes[h.collection.ScopeName()].Collections[h.collection.Name()] = config
+			} else if base.IsDefaultCollection(h.collection.ScopeName(), h.collection.Name()) {
+				bucketDbConfig.ImportFilter = &js
+			}
 
 			if err := bucketDbConfig.validate(h.ctx(), !h.getBoolQuery(paramDisableOIDCValidation)); err != nil {
 				return nil, base.HTTPErrorf(http.StatusBadRequest, err.Error())
@@ -915,19 +960,25 @@ func (h *handler) handlePutDbConfigImportFilter() error {
 // In non-persistent mode, the endpoint just removes the database from the node.
 func (h *handler) handleDeleteDB() error {
 	h.assertAdminOnly()
+	dbName := h.PathVar("olddb")
+
+	var bucket string
 
 	if h.server.persistentConfig {
-		bucket := h.db.Bucket.GetName()
+		bucket, _ = h.server.bucketNameFromDbName(dbName)
 		_, err := h.server.BootstrapContext.Connection.UpdateConfig(bucket, h.server.Config.Bootstrap.ConfigGroupID, func(rawBucketConfig []byte, rawBucketConfigCas uint64) (updatedConfig []byte, err error) {
 			return nil, nil
 		})
 		if err != nil {
-			return base.HTTPErrorf(http.StatusInternalServerError, "couldn't remove database %q from bucket %q: %s", base.MD(h.db.Name), base.MD(bucket), err.Error())
+			return base.HTTPErrorf(http.StatusInternalServerError, "couldn't remove database %q from bucket %q: %s", base.MD(dbName), base.MD(bucket), err.Error())
 		}
+		h.server.RemoveDatabase(h.ctx(), dbName) // unhandled 404 to allow broken config deletion (CBG-2420)
+		_, _ = h.response.Write([]byte("{}"))
+		return nil
 	}
 
-	if !h.server.RemoveDatabase(h.ctx(), h.db.Name) {
-		return base.HTTPErrorf(http.StatusNotFound, "missing")
+	if !h.server.RemoveDatabase(h.ctx(), dbName) {
+		return base.HTTPErrorf(http.StatusNotFound, "no such database %q", dbName)
 	}
 	_, _ = h.response.Write([]byte("{}"))
 	return nil
@@ -1243,7 +1294,7 @@ func marshalPrincipal(princ auth.Principal, includeDynamicGrantInfo bool) auth.P
 		info.Disabled = base.BoolPtr(user.Disabled())
 		info.ExplicitRoleNames = user.ExplicitRoles().AsSet()
 		if includeDynamicGrantInfo {
-			info.Channels = user.InheritedChannels().AsSet()
+			info.Channels = user.InheritedCollectionChannels(base.DefaultScope, base.DefaultCollection).AsSet()
 			info.RoleNames = user.RoleNames().AllKeys()
 			info.JWTIssuer = base.StringPtr(user.JWTIssuer())
 			info.JWTRoles = user.JWTRoles().AsSet()

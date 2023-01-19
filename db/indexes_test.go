@@ -202,6 +202,52 @@ func TestPostUpgradeIndexesVersionChange(t *testing.T) {
 
 }
 
+func TestPostUpgradeMultipleCollections(t *testing.T) {
+	if base.TestsDisableGSI() {
+		t.Skip("This test only works with Couchbase Server and UseViews=false")
+	}
+
+	tb := base.GetTestBucket(t)
+	defer tb.Close()
+
+	dbOptions := DatabaseContextOptions{}
+	if base.TestsUseNamedCollections() {
+		numCollections := 2
+		base.RequireNumTestDataStores(t, numCollections)
+		dbOptions.Scopes = getScopesOptions(t, tb, numCollections)
+	}
+
+	db, ctx := SetupTestDBForDataStoreWithOptions(t, tb, dbOptions)
+	defer db.Close(ctx)
+
+	// make sure RemoveObsoleteIndexes is a no-op before adding obsolete indexes
+	for _, preview := range []bool{true, false} {
+		removedIndexes, removeErr := db.RemoveObsoleteIndexes(base.TestCtx(t), preview)
+		require.NoError(t, removeErr, "Unexpected error running removeObsoleteIndexes in no-op case")
+		require.Equal(t, 0, len(removedIndexes))
+	}
+	useXattrs := false
+	serverless := false
+
+	for _, dataStore := range db.getDataStores() {
+		n1qlStore, ok := base.AsN1QLStore(dataStore)
+		assert.True(t, ok)
+		err := InitializeIndexes(n1qlStore, useXattrs, 0, false, false)
+		require.NoError(t, err)
+	}
+
+	nonXattrsIndexesPerCollection := len(GetIndexesName(useXattrs, serverless))
+	obsoleteIndexCount := nonXattrsIndexesPerCollection * len(db.getDataStores())
+
+	// make sure RemoveObsoleteIndexes is a no-op before adding obsolete indexes
+	for _, preview := range []bool{true, false} {
+		removedIndexes, removeErr := db.RemoveObsoleteIndexes(base.TestCtx(t), preview)
+		fmt.Println(removedIndexes)
+		require.NoError(t, removeErr, "Unexpected error running removeObsoleteIndexes in no-op case")
+		require.Equal(t, obsoleteIndexCount, len(removedIndexes))
+	}
+}
+
 func TestRemoveIndexesUseViewsTrueAndFalse(t *testing.T) {
 
 	if base.TestsUseNamedCollections() {

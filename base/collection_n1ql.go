@@ -30,7 +30,8 @@ func (c *Collection) IsDefaultScopeCollection() bool {
 }
 
 func IsDefaultCollection(scope, collection string) bool {
-	return scope == DefaultScope && collection == DefaultCollection
+	// check collection first to early exit non-default collection
+	return collection == DefaultCollection && scope == DefaultScope
 }
 
 // EscapedKeyspace returns the escaped fully-qualified identifier for the keyspace (e.g. `bucket`.`scope`.`collection`)

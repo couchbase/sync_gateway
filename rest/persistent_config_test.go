@@ -161,6 +161,46 @@ func TestAutomaticConfigUpgradeError(t *testing.T) {
 	}
 }
 
+func TestUnmarshalBrokenConfig(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("CBS required")
+	}
+
+	tb := base.GetTestBucket(t)
+	defer tb.Close()
+
+	rt := NewRestTester(t, &RestTesterConfig{PersistentConfig: true})
+	defer rt.Close()
+	resp := rt.SendAdminRequest(http.MethodPut, "/newdb/",
+		fmt.Sprintf(
+			`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "use_views": %t}`,
+			tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(),
+		),
+	)
+
+	cnf := make(map[string]interface{}, 1)
+	_, err := rt.ServerContext().BootstrapContext.Connection.GetConfig(tb.GetName(), rt.ServerContext().Config.Bootstrap.ConfigGroupID, &cnf)
+	require.NoError(t, err)
+
+	// Add invalid json fields to the config
+	cnf["num_index_replicas"] = "0"
+
+	// Both calls to UpdateConfig and fetchAndLoadConfigs needed to enter the broken state
+	_, err = rt.ServerContext().BootstrapContext.Connection.UpdateConfig(tb.GetName(), rt.ServerContext().Config.Bootstrap.ConfigGroupID,
+		func(rawBucketConfig []byte, rawBucketConfigCas uint64) (newConfig []byte, err error) {
+			bytes, err := json.Marshal(cnf)
+			return bytes, err
+		})
+	require.NoError(t, err)
+	_, err = rt.ServerContext().fetchAndLoadConfigs(rt.Context(), false)
+	assert.NoError(t, err)
+
+	resp = rt.SendAdminRequest(http.MethodGet, "/newdb/", "")
+	RequireStatus(t, resp, http.StatusNotFound)
+	resp = rt.SendAdminRequest(http.MethodDelete, "/newdb/", "")
+	RequireStatus(t, resp, http.StatusOK)
+}
+
 func TestAutomaticConfigUpgradeExistingConfigAndNewGroup(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("CBS required")

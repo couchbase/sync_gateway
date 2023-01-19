@@ -1044,7 +1044,7 @@ func TestOpenIDConnectImplicitFlow(t *testing.T) {
 
 			opts := auth.OIDCOptions{Providers: tc.providers, DefaultProvider: &tc.defaultProvider}
 			restTesterConfig := RestTesterConfig{DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{OIDCConfig: &opts}}}
-			restTester := NewRestTester(t, &restTesterConfig)
+			restTester := NewRestTesterDefaultCollection(t, &restTesterConfig) // CBG-2618: fix collection channel access
 			require.NoError(t, restTester.SetAdminParty(false))
 			defer restTester.Close()
 
@@ -1114,7 +1114,7 @@ func TestOpenIDConnectImplicitFlowEdgeCases(t *testing.T) {
 
 	opts := auth.OIDCOptions{Providers: providers, DefaultProvider: &defaultProvider}
 	restTesterConfig := RestTesterConfig{DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{OIDCConfig: &opts}}}
-	restTester := NewRestTester(t, &restTesterConfig)
+	restTester := NewRestTesterDefaultCollection(t, &restTesterConfig) // CBG-2618: fix collection channel access
 	require.NoError(t, restTester.SetAdminParty(false))
 	defer restTester.Close()
 
@@ -2110,7 +2110,7 @@ func TestEventuallyReachableOIDCClient(t *testing.T) {
 
 			opts := auth.OIDCOptions{Providers: tc.providers, DefaultProvider: &tc.defaultProvider}
 			restTesterConfig := RestTesterConfig{DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{OIDCConfig: &opts}}}
-			restTester := NewRestTester(t, &restTesterConfig)
+			restTester := NewRestTesterDefaultCollection(t, &restTesterConfig) // CBG-2618: fix collection channel access
 			require.NoError(t, restTester.SetAdminParty(false))
 			defer restTester.Close()
 
@@ -2217,7 +2217,7 @@ func TestOpenIDConnectRolesChannelsClaims(t *testing.T) {
 					OIDCConfig: &opts,
 				}},
 			}
-			restTester := NewRestTester(t, &restTesterConfig)
+			restTester := NewRestTesterDefaultCollection(t, &restTesterConfig) // CBG-2618: fix collection channel access
 			require.NoError(t, restTester.SetAdminParty(false))
 			defer restTester.Close()
 
@@ -2450,20 +2450,21 @@ func TestOpenIDConnectIssuerChange(t *testing.T) {
 		DatabaseConfig:   &DatabaseConfig{DbConfig: DbConfig{}},
 		CustomTestBucket: tb1,
 	}
-	rt1 := NewRestTester(t, &rt1Config)
+	rt1 := NewRestTesterDefaultCollection(t, &rt1Config) // CBG-2618: fix collection channel access
 	require.NoError(t, rt1.SetAdminParty(false))
 	defer rt1.Close()
 
 	msg1 := httptest.NewServer(rt1.TestPublicHandler())
 	defer msg1.Close()
 
-	rt2 := NewRestTester(t, &RestTesterConfig{DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
-		Unsupported: &db.UnsupportedOptions{
-			OidcTestProvider: &db.OidcTestProviderOptions{
-				Enabled: true,
+	rt2 := NewRestTesterDefaultCollection(t, // CBG-2618: fix collection channel access
+		&RestTesterConfig{DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
+			Unsupported: &db.UnsupportedOptions{
+				OidcTestProvider: &db.OidcTestProviderOptions{
+					Enabled: true,
+				},
 			},
-		},
-	}}})
+		}}})
 	defer rt2.Close()
 	msg2 := httptest.NewServer(rt2.TestPublicHandler())
 	defer msg2.Close()
