@@ -229,7 +229,10 @@ func (tbp *TestBucketPool) GetWalrusTestBucket(t testing.TB, url string) (b Buck
 			b.Close()
 		} else {
 			// Persisted buckets should call close and delete
-			_ = walrusBucket.CloseAndDelete()
+			closeErr := walrusBucket.CloseAndDelete()
+			if closeErr != nil {
+				tbp.Logf(ctx, "Unexpected error closing persistent walrus bucket: %v", closeErr)
+			}
 		}
 
 	}
@@ -259,6 +262,8 @@ func (tbp *TestBucketPool) GetExistingBucket(t testing.TB) (b Bucket, s BucketSp
 // GetTestBucketAndSpec returns a bucket to be used during a test.
 // The returned teardownFn MUST be called once the test is done,
 // which closes the bucket, readies it for a new test, and releases back into the pool.
+// persistentBucket flag determines behaviour for walrus buckets only; Couchbase bucket
+// behaviour is defined by the bucket pool readier/init.
 func (tbp *TestBucketPool) getTestBucketAndSpec(t testing.TB, persistentBucket bool) (b Bucket, s BucketSpec, teardownFn func()) {
 
 	ctx := TestCtx(t)

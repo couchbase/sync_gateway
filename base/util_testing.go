@@ -108,12 +108,14 @@ func GetTestBucket(t testing.TB) *TestBucket {
 	return getTestBucket(t, false)
 }
 
-// GetTestBucket returns a test bucket from a pool.
+// GetTestBucket returns a test bucket from a pool.  If running with walrus buckets, will persist bucket data
+// across bucket close.
 func GetPersistentTestBucket(t testing.TB) *TestBucket {
 	return getTestBucket(t, true)
 }
 
-// getTestBucket returns a bucket from the bucket pool
+// getTestBucket returns a bucket from the bucket pool.  Persistent flag determines behaviour for walrus
+// buckets only - Couchbase bucket behaviour is defined by the bucket pool readier/init.
 func getTestBucket(t testing.TB, persistent bool) *TestBucket {
 	bucket, spec, closeFn := GTestBucketPool.getTestBucketAndSpec(t, persistent)
 	return &TestBucket{
