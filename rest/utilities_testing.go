@@ -1868,6 +1868,7 @@ func (bt *BlipTester) PullDocs() (docs map[string]RestDocument) {
 			if bt.blipContext.ActiveSubprotocol() == db.BlipCBMobileReplicationV3 {
 				getAttachmentRequest.Properties[db.GetAttachmentID] = docId
 			}
+			bt.addCollectionProperty(getAttachmentRequest)
 			sent := bt.sender.Send(getAttachmentRequest)
 			if !sent {
 				panic("Unable to get attachment.")
