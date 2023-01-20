@@ -328,6 +328,7 @@ func (db *DatabaseCollectionWithUser) importDoc(ctx context.Context, docid strin
 		docOut = alreadyImportedDoc
 	case nil:
 		db.dbStats().SharedBucketImport().ImportCount.Add(1)
+		db.dbStats().CollectionStat(db.ScopeName(), db.Name()).ImportCount.Add(1)
 		db.dbStats().SharedBucketImport().ImportHighSeq.Set(int64(docOut.SyncData.Sequence))
 		db.dbStats().SharedBucketImport().ImportProcessingTime.Add(time.Since(importStartTime).Nanoseconds())
 		base.DebugfCtx(ctx, base.KeyImport, "Imported %s (delete=%v) as rev %s", base.UD(newDoc.ID), isDelete, newRev)

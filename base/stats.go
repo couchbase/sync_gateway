@@ -35,6 +35,7 @@ const (
 	SubsystemDeltaSyncKey       = "delta_sync"
 	SubsystemGSIViews           = "gsi_views"
 	SubsystemReplication        = "replication"
+	SubsystemCollection         = "collection"
 	SubsystemReplicationPull    = "replication_pull"
 	SubsystemReplicationPush    = "replication_push"
 	SubsystemSecurity           = "security"
@@ -42,6 +43,7 @@ const (
 
 	DatabaseLabelKey    = "database"
 	ReplicationLabelKey = "replication"
+	CollectionLabelKey  = "collection"
 )
 
 const (
@@ -284,6 +286,7 @@ type DbStats struct {
 	DbReplicatorStats       map[string]*DbReplicatorStats `json:"replications,omitempty"`
 	SecurityStats           *SecurityStats                `json:"security,omitempty"`
 	SharedBucketImportStats *SharedBucketImportStats      `json:"shared_bucket_import,omitempty"`
+	CollectionStats         map[string]*CollectionStats   `json:"per_collection,omitempty"`
 }
 
 type CacheStats struct {
@@ -396,6 +399,22 @@ type CBLReplicationPushStats struct {
 	ProposeChangeTime *SgwIntStat `json:"propose_change_time"`
 	// Total time spent processing writes. Measures complete request-to-response time for a write.
 	WriteProcessingTime *SgwIntStat `json:"write_processing_time"`
+}
+
+// CollectionStats are stats that are tracked on a per-collection basis.
+type CollectionStats struct {
+	// The total number of times that the sync_function is evaluated for this collection.
+	SyncFunctionCount *SgwIntStat `json:"sync_function_count"`
+	// The total time spent evaluating the sync_function for this keyspace.
+	SyncFunctionTime *SgwIntStat `json:"sync_function_time"`
+	// The total number of documents rejected by the sync_function for this collection.
+	SyncFunctionRejectCount *SgwIntStat `json:"sync_function_reject_count"`
+	// The total number of documents rejected by write access functions (requireAccess, requireRole, requireUser) for this collection.
+	SyncFunctionRejectAccessCount *SgwIntStat `json:"sync_function_reject_access_count"`
+	// The total number of times the sync function encountered an exception for this collection.
+	SyncFunctionExceptionCount *SgwIntStat `json:"sync_function_exception_count"`
+	// The total number of documents imported to this collection since Sync Gateway node startup.
+	ImportCount *SgwIntStat `json:"import_count"`
 }
 
 type DatabaseStats struct {
@@ -865,6 +884,11 @@ func (s *SgwStats) NewDBStats(name string, deltaSyncEnabled bool, importEnabled 
 		return nil, err
 	}
 
+	err = dbStats.InitCollectionStats(collections...)
+	if err != nil {
+		return nil, err
+	}
+
 	if deltaSyncEnabled {
 		err = dbStats.InitDeltaSyncStats()
 		if err != nil {
@@ -904,6 +928,10 @@ func (s *SgwStats) ClearDBStats(name string) {
 
 	if _, ok := s.DbStats[name]; !ok {
 		return
+	}
+
+	for scopeAndCollectionName := range s.DbStats[name].CollectionStats {
+		s.DbStats[name].unregisterCollectionStats(scopeAndCollectionName)
 	}
 
 	s.DbStats[name].unregisterCacheStats()
@@ -1403,6 +1431,19 @@ func (d *DbStats) unregisterDatabaseStats() {
 	prometheus.Unregister(d.DatabaseStats.SyncFunctionTime)
 }
 
+func (d *DbStats) CollectionStat(scopeName, collectionName string) *CollectionStats {
+	scopeAndCollectionName := scopeName + "." + collectionName
+	if _, ok := d.CollectionStats[scopeAndCollectionName]; !ok {
+		// DbStats was not initialised with this collection upfront in NewDBStats for some reason (_default._default for example, since we pass named collections only ...)
+		stats, err := NewCollectionStats(d.dbName, scopeAndCollectionName)
+		if err != nil {
+			panic(err)
+		}
+		d.CollectionStats[scopeAndCollectionName] = stats
+	}
+	return d.CollectionStats[scopeAndCollectionName]
+}
+
 func (d *DbStats) Database() *DatabaseStats {
 	return d.DatabaseStats
 }
@@ -1519,12 +1560,79 @@ func (d *DbStats) unregisterReplicationStats(replicationID string) {
 	prometheus.Unregister(d.DbReplicatorStats[replicationID].NumHandlersPanicked)
 }
 
+func (d *DbStats) unregisterCollectionStats(scopeAndCollectionName string) {
+	if d.CollectionStats[scopeAndCollectionName] == nil {
+		return
+	}
+
+	prometheus.Unregister(d.CollectionStats[scopeAndCollectionName].SyncFunctionCount)
+	prometheus.Unregister(d.CollectionStats[scopeAndCollectionName].SyncFunctionTime)
+	prometheus.Unregister(d.CollectionStats[scopeAndCollectionName].SyncFunctionRejectCount)
+	prometheus.Unregister(d.CollectionStats[scopeAndCollectionName].SyncFunctionRejectAccessCount)
+	prometheus.Unregister(d.CollectionStats[scopeAndCollectionName].SyncFunctionExceptionCount)
+
+	prometheus.Unregister(d.CollectionStats[scopeAndCollectionName].ImportCount)
+}
+
 func (d *DbStats) unregisterSecurityStats() {
 	prometheus.Unregister(d.SecurityStats.AuthFailedCount)
 	prometheus.Unregister(d.SecurityStats.AuthSuccessCount)
 	prometheus.Unregister(d.SecurityStats.NumAccessErrors)
 	prometheus.Unregister(d.SecurityStats.NumDocsRejected)
 	prometheus.Unregister(d.SecurityStats.TotalAuthTime)
+}
+
+func NewCollectionStats(dbName, scopeAndCollectionName string) (stats *CollectionStats, err error) {
+	labelKeys := []string{DatabaseLabelKey, CollectionLabelKey}
+	labelVals := []string{dbName, scopeAndCollectionName}
+
+	stats = &CollectionStats{}
+
+	stats.SyncFunctionCount, err = NewIntStat(SubsystemCollection, "sync_function_count", labelKeys, labelVals, prometheus.CounterValue, 0)
+	if err != nil {
+		return nil, err
+	}
+	stats.SyncFunctionTime, err = NewIntStat(SubsystemCollection, "sync_function_time", labelKeys, labelVals, prometheus.CounterValue, 0)
+	if err != nil {
+		return nil, err
+	}
+	stats.SyncFunctionRejectCount, err = NewIntStat(SubsystemCollection, "sync_function_reject_count", labelKeys, labelVals, prometheus.CounterValue, 0)
+	if err != nil {
+		return nil, err
+	}
+	stats.SyncFunctionRejectAccessCount, err = NewIntStat(SubsystemCollection, "sync_function_reject_access_count", labelKeys, labelVals, prometheus.CounterValue, 0)
+	if err != nil {
+		return nil, err
+	}
+	stats.SyncFunctionExceptionCount, err = NewIntStat(SubsystemCollection, "sync_function_exception_count", labelKeys, labelVals, prometheus.CounterValue, 0)
+	if err != nil {
+		return nil, err
+	}
+
+	stats.ImportCount, err = NewIntStat(SubsystemCollection, "import_count", labelKeys, labelVals, prometheus.CounterValue, 0)
+	if err != nil {
+		return nil, err
+	}
+
+	return stats, nil
+}
+
+func (d *DbStats) InitCollectionStats(scopeAndCollectionNames ...string) error {
+	if d.CollectionStats == nil || len(scopeAndCollectionNames) == 0 {
+		d.CollectionStats = make(map[string]*CollectionStats, len(scopeAndCollectionNames))
+	}
+
+	for _, scopeAndCollectionName := range scopeAndCollectionNames {
+		if _, ok := d.CollectionStats[scopeAndCollectionName]; !ok {
+			stats, err := NewCollectionStats(d.dbName, scopeAndCollectionName)
+			if err != nil {
+				return err
+			}
+			d.CollectionStats[scopeAndCollectionName] = stats
+		}
+	}
+
+	return nil
 }
 
 func (d *DbStats) DBReplicatorStats(replicationID string) (*DbReplicatorStats, error) {
