@@ -30,7 +30,7 @@ const (
 type activeReplicatorCommon struct {
 	config                *ActiveReplicatorConfig
 	blipSyncContext       *BlipSyncContext
-	blipSenders           map[base.ScopeAndCollectionName]*blip.Sender // map of collections to blip senders
+	blipSender            *blip.Sender
 	Stats                 expvar.Map
 	Checkpointers         map[base.ScopeAndCollectionName]*Checkpointer // map of collections to checkpoints
 	checkpointerCtx       context.Context
@@ -48,6 +48,7 @@ type activeReplicatorCommon struct {
 	reconnectActive       base.AtomicBool // Tracks whether reconnect goroutine is active
 	replicatorConnectFn   func() error    // the function called inside reconnectLoop.
 	activeSendChanges     base.AtomicBool // Tracks whether sendChanges goroutine is active.
+	blipCollectionIDs     map[base.ScopeAndCollectionName]int
 }
 
 func newActiveReplicatorCommon(config *ActiveReplicatorConfig, direction ActiveReplicatorDirection) *activeReplicatorCommon {
@@ -63,12 +64,12 @@ func newActiveReplicatorCommon(config *ActiveReplicatorConfig, direction ActiveR
 	}
 
 	return &activeReplicatorCommon{
-		config:           config,
-		state:            ReplicationStateStopped,
-		replicationStats: replicationStats,
-		CheckpointID:     config.checkpointPrefix + checkpointID,
-		blipSenders:      make(map[base.ScopeAndCollectionName]*blip.Sender),
-		Checkpointers:    make(map[base.ScopeAndCollectionName]*Checkpointer),
+		config:            config,
+		state:             ReplicationStateStopped,
+		replicationStats:  replicationStats,
+		CheckpointID:      config.checkpointPrefix + checkpointID,
+		Checkpointers:     make(map[base.ScopeAndCollectionName]*Checkpointer),
+		blipCollectionIDs: make(map[base.ScopeAndCollectionName]int),
 	}
 }
 
@@ -191,14 +192,11 @@ func (a *activeReplicatorCommon) _disconnect() error {
 	}
 	a.checkpointerCtx = nil
 
-	if a.blipSenders != nil {
+	if a.blipSender != nil {
 		base.TracefCtx(a.ctx, base.KeyReplicate, "closing blip sender")
-		for _, blipSender := range a.blipSenders {
-			blipSender.Close()
-		}
-		a.blipSenders = nil
+		a.blipSender.Close()
+		a.blipSender = nil
 	}
-
 	if a.blipSyncContext != nil {
 		base.TracefCtx(a.ctx, base.KeyReplicate, "closing blip sync context")
 		a.blipSyncContext.Close()

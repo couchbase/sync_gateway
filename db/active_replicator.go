@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strings"
 
 	"github.com/couchbase/go-blip"
 	"github.com/couchbase/sync_gateway/base"
@@ -54,12 +55,19 @@ func NewActiveReplicator(ctx context.Context, config *ActiveReplicatorConfig) *A
 		if ar.config.onComplete != nil {
 			ar.Push.onReplicatorComplete = ar._onReplicationComplete
 		}
+		for i, collection := range config.Collections {
+			ar.Push.blipCollectionIDs[collection] = i
+		}
+
 	}
 
 	if pullReplication := config.Direction == ActiveReplicatorTypePull || config.Direction == ActiveReplicatorTypePushAndPull; pullReplication {
 		ar.Pull = NewPullReplicator(config)
 		if ar.config.onComplete != nil {
 			ar.Pull.onReplicatorComplete = ar._onReplicationComplete
+		}
+		for i, collection := range config.Collections {
+			ar.Pull.blipCollectionIDs[collection] = i
 		}
 	}
 
@@ -208,7 +216,7 @@ func (ar *ActiveReplicator) GetStatus() *ReplicationStatus {
 	return status
 }
 
-func connect(arc *activeReplicatorCommon, idSuffix string) (blipSender map[base.ScopeAndCollectionName]*blip.Sender, bsc *BlipSyncContext, err error) {
+func connect(arc *activeReplicatorCommon, idSuffix string) (s *blip.Sender, bsc *BlipSyncContext, err error) {
 	arc.replicationStats.NumConnectAttempts.Add(1)
 
 	blipContext, err := NewSGBlipContext(arc.ctx, arc.config.ID+idSuffix)
@@ -231,15 +239,44 @@ func connect(arc *activeReplicatorCommon, idSuffix string) (blipSender map[base.
 	if arc.config.DeltasEnabled == false {
 		bsc.sgCanUseDeltas = false
 	}
-	blipSenders := make(map[base.ScopeAndCollectionName]*blip.Sender)
-	for _, collection := range arc.config.Collections {
-		blipSender, err := blipSync(*arc.config.RemoteDBURL, blipContext, arc.config.InsecureSkipVerify)
-		if err != nil {
-			return nil, nil, err
-		}
-		blipSenders[collection] = blipSender
+	blipSender, err := blipSync(*arc.config.RemoteDBURL, blipContext, arc.config.InsecureSkipVerify)
+	if err != nil {
+		return nil, nil, err
 	}
-	return blipSenders, bsc, nil
+	err = collectionsHandshake(arc.ctx, blipSender, arc.config.Collections)
+	if err != nil {
+		return nil, nil, err
+	}
+	return blipSender, bsc, nil
+}
+
+func collectionsHandshake(ctx context.Context, blipSender *blip.Sender, collectionNames []base.ScopeAndCollectionName) error {
+	blipCollections := make([]string, len(collectionNames))
+	for _, collectionName := range collectionNames {
+		blipCollections = append(blipCollections,
+			strings.Join([]string{collectionName.ScopeName(), collectionName.CollectionName()},
+				base.ScopeCollectionSeparator))
+	}
+	body := GetCollectionsRequestBody{
+		CheckpointIDs: make([]string, len(collectionNames)),
+		Collections:   blipCollections,
+	}
+	rq, err := NewGetCollectionsMessage(body)
+	if err != nil {
+		return err
+	}
+	if ok := blipSender.Send(rq); !ok {
+		return fmt.Errorf("closed blip sender")
+	}
+
+	resp := rq.Response()
+
+	if resp == nil {
+		err := fmt.Errorf("couldn't do a get collection handshake")
+		base.DebugfCtx(ctx, base.KeyReplicate, "%s", err)
+		return err
+	}
+	return nil
 }
 
 // blipSync opens a connection to the target, and returns a blip.Sender to send messages over.
@@ -289,7 +326,6 @@ func blipSync(target url.URL, blipContext *blip.Context, insecureSkipVerify bool
 			"Authorization": []string{"Basic " + base64UserInfo(basicAuthCreds)},
 		}
 	}
-
 	return blipContext.DialConfig(&config)
 }
 

@@ -60,7 +60,7 @@ func (apr *ActivePullReplicator) Start(ctx context.Context) error {
 
 func (apr *ActivePullReplicator) _connect() error {
 	var err error
-	apr.blipSenders, apr.blipSyncContext, err = connect(apr.activeReplicatorCommon, "-pull")
+	apr.blipSender, apr.blipSyncContext, err = connect(apr.activeReplicatorCommon, "-pull")
 	if err != nil {
 		return err
 	}
@@ -72,14 +72,12 @@ func (apr *ActivePullReplicator) _connect() error {
 
 	// wrap the replicator context with a cancelFunc that can be called to abort the checkpointer from _disconnect
 	apr.checkpointerCtx, apr.checkpointerCtxCancel = context.WithCancel(apr.ctx)
-	for collection, blipSender := range apr.blipSenders {
+	for _, collection := range apr.config.Collections {
 		if err := apr._initCheckpointer(collection); err != nil {
 			// clean up anything we've opened so far
 			base.TracefCtx(apr.ctx, base.KeyReplicate, "Error initialising checkpoint in _connect. Closing everything.")
 			apr.checkpointerCtx = nil
-			for _, blipSender := range apr.blipSenders {
-				blipSender.Close()
-			}
+			apr.blipSender.Close()
 			apr.blipSyncContext.Close()
 			return err
 		}
@@ -96,13 +94,13 @@ func (apr *ActivePullReplicator) _connect() error {
 			Revocations:    apr.config.PurgeOnRemoval,
 		}
 
-		if err := subChangesRequest.Send(blipSender); err != nil {
+		if err := subChangesRequest.Send(apr.blipSender); err != nil {
 			// clean up anything we've opened so far
 			base.TracefCtx(apr.ctx, base.KeyReplicate, "cancelling the checkpointer context inside _connect where we send blip request")
 			apr.checkpointerCtxCancel()
 			apr.checkpointerCtx = nil
 			// FIXME close all senders
-			blipSender.Close()
+			apr.blipSender.Close()
 			apr.blipSyncContext.Close()
 			return err
 		}
@@ -164,7 +162,7 @@ func (apr *ActivePullReplicator) _initCheckpointer(collectionName base.ScopeAndC
 	if err != nil {
 		return err
 	}
-	checkpointer := NewCheckpointer(apr.checkpointerCtx, apr.CheckpointID, checkpointHash, apr.blipSenders[collectionName], apr.config, collection, apr.getPullStatus)
+	checkpointer := NewCheckpointer(apr.checkpointerCtx, apr.CheckpointID, checkpointHash, apr.blipSender, apr.config, collection, apr.getPullStatus)
 
 	apr.initialStatus, err = checkpointer.fetchCheckpoints()
 	base.InfofCtx(apr.ctx, base.KeyReplicate, "Initialized pull replication status: %+v", apr.initialStatus)

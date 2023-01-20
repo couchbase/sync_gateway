@@ -2425,11 +2425,6 @@ func TestProcessRevIncrementsStat(t *testing.T) {
 	dbstats, err := stats.DBReplicatorStats(t.Name())
 	require.NoError(t, err)
 
-	var replicatorCollections []base.ScopeAndCollectionName
-	for _, collection := range activeRT.GetDatabase().CollectionByID {
-		replicatorCollections = append(replicatorCollections, base.ScopeAndCollectionName{collection.ScopeName(), collection.Name()})
-	}
-
 	ar := db.NewActiveReplicator(activeCtx, &db.ActiveReplicatorConfig{
 		ID:                  t.Name(),
 		Direction:           db.ActiveReplicatorTypePull,
@@ -2437,7 +2432,6 @@ func TestProcessRevIncrementsStat(t *testing.T) {
 		RemoteDBURL:         remoteURL,
 		Continuous:          true,
 		ReplicationStatsMap: dbstats,
-		Collections:         replicatorCollections,
 	})
 	// Confirm all stats starting on 0
 	require.NotNil(t, ar.Pull)

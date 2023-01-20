@@ -189,7 +189,7 @@ func (rt *RestTester) GetReplicationStatuses(queryString string) (statuses []db.
 func SetupSGRPeers(t *testing.T) (activeRT *RestTester, passiveRT *RestTester, remoteDBURLString string, teardown func()) {
 	// Set up passive RestTester (rt2)
 	passiveTestBucket := base.GetTestBucket(t)
-	passiveRT = NewRestTesterDefaultCollection(t, // CBG-2619: make collection aware
+	passiveRT = NewRestTester(t, // CBG-2619: make collection aware
 		&RestTesterConfig{
 			CustomTestBucket: passiveTestBucket.NoCloseClone(),
 			DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
@@ -213,7 +213,7 @@ func SetupSGRPeers(t *testing.T) (activeRT *RestTester, passiveRT *RestTester, r
 
 	// Set up active RestTester (rt1)
 	activeTestBucket := base.GetTestBucket(t)
-	activeRT = NewRestTesterDefaultCollection(t, // CBG-2619: make collection aware
+	activeRT = NewRestTester(t, // CBG-2619: make collection aware
 		&RestTesterConfig{
 			CustomTestBucket:   activeTestBucket.NoCloseClone(),
 			SgReplicateEnabled: true,

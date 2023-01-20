@@ -67,7 +67,7 @@ var PreHydrogenTargetAllowConflictsError = errors.New("cannot run replication to
 // _connect opens up a connection, and starts replicating.
 func (apr *ActivePushReplicator) _connect() error {
 	var err error
-	apr.blipSenders, apr.blipSyncContext, err = connect(apr.activeReplicatorCommon, "-push")
+	apr.blipSender, apr.blipSyncContext, err = connect(apr.activeReplicatorCommon, "-push")
 	if err != nil {
 		return err
 	}
@@ -80,23 +80,10 @@ func (apr *ActivePushReplicator) _connect() error {
 	apr.checkpointerCtx, apr.checkpointerCtxCancel = context.WithCancel(apr.ctx)
 	for _, collection := range apr.config.Collections {
 		if err := apr._initCheckpointer(collection); err != nil {
-			// clean up anything we've opened so far
-			for _, blipSender := range apr.blipSenders {
-				blipSender.Close()
-			}
+			apr.blipSender.Close()
 			apr.blipSyncContext.Close()
 			return err
 		}
-	}
-	singleCollection := &DatabaseCollectionWithUser{
-		DatabaseCollection: apr.config.ActiveDB.GetSingleDatabaseCollection(),
-		user:               apr.config.ActiveDB.user,
-	}
-	bh := blipHandler{
-		BlipSyncContext: apr.blipSyncContext,
-		db:              apr.config.ActiveDB,
-		collection:      singleCollection,
-		serialNumber:    apr.blipSyncContext.incrementSerialNumber(),
 	}
 
 	var channels base.Set
@@ -120,14 +107,27 @@ func (apr *ActivePushReplicator) _connect() error {
 		}
 		// No special handling for error
 	}
+	err = collectionsHandshake(apr.ctx, apr.blipSender, apr.config.Collections)
+	if err != nil {
+		return err
+	}
 
 	apr.activeSendChanges.Set(true)
-	for collection, blipSender := range apr.blipSenders {
+	for collectionName, checkpointer := range apr.Checkpointers {
+		blipCollectionIdx := apr.blipCollectionIDs[collectionName]
+		bh := blipHandler{
+			BlipSyncContext: apr.blipSyncContext,
+			db:              apr.config.ActiveDB,
+			serialNumber:    apr.blipSyncContext.incrementSerialNumber(),
+			collectionIdx:   &blipCollectionIdx,
+		}
+
 		go func(s *blip.Sender) {
 			defer apr.activeSendChanges.Set(false)
+			// FIXME use collection here
 			isComplete := bh.sendChanges(s, &sendChangesOptions{
 				docIDs:            apr.config.DocIDs,
-				since:             apr.Checkpointers[collection].lastCheckpointSeq,
+				since:             checkpointer.lastCheckpointSeq,
 				continuous:        apr.config.Continuous,
 				activeOnly:        apr.config.ActiveOnly,
 				batchSize:         int(apr.config.ChangesBatchSize),
@@ -140,7 +140,7 @@ func (apr *ActivePushReplicator) _connect() error {
 			if isComplete {
 				apr.Complete()
 			}
-		}(blipSender)
+		}(apr.blipSender)
 	}
 	apr.setState(ReplicationStateRunning)
 	return nil
@@ -195,7 +195,7 @@ func (apr *ActivePushReplicator) _initCheckpointer(collectionName base.ScopeAndC
 	if err != nil {
 		return err
 	}
-	checkpointer := NewCheckpointer(apr.checkpointerCtx, apr.CheckpointID, checkpointHash, apr.blipSenders[collectionName], apr.config, collection, apr.getPushStatus)
+	checkpointer := NewCheckpointer(apr.checkpointerCtx, apr.CheckpointID, checkpointHash, apr.blipSender, apr.config, collection, apr.getPushStatus)
 
 	apr.initialStatus, err = checkpointer.fetchCheckpoints()
 	base.InfofCtx(apr.ctx, base.KeyReplicate, "Initialized push replication status: %+v", apr.initialStatus)
