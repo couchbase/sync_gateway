@@ -48,7 +48,6 @@ func TestBlipDeltaSyncPushAttachment(t *testing.T) {
 	btc, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
 	require.NoError(t, err)
 	defer btc.Close()
-	require.NoError(t, err)
 
 	// Push first rev
 	revID, err := btc.PushRev(docID, "", []byte(`{"key":"val"}`))
@@ -820,8 +819,6 @@ func TestBlipDeltaSyncPush(t *testing.T) {
 		&rtConfig)
 	defer rt.Close()
 	collection := rt.GetSingleTestDatabaseCollection()
-	var msg *blip.Message
-	var ok bool
 
 	client, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
 	require.NoError(t, err)
@@ -935,8 +932,6 @@ func TestBlipNonDeltaSyncPush(t *testing.T) {
 		&rtConfig)
 	defer rt.Close()
 	collection := rt.GetSingleTestDatabaseCollection()
-	var msg *blip.Message
-	var ok bool
 
 	client, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
 	require.NoError(t, err)
