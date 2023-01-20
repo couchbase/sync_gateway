@@ -1200,6 +1200,24 @@ func NewBlipTesterFromSpecWithRT(tb testing.TB, spec *BlipTesterSpec, rt *RestTe
 	return blipTester, err
 }
 
+// NewBlipTesterDefaultCollection creates a blip tester that has a RestTester only using a single database and `_default._default` collection.
+func NewBlipTesterDefaultCollection(tb testing.TB) *BlipTester {
+	return NewBlipTesterDefaultCollectionFromSpec(tb, BlipTesterSpec{GuestEnabled: true})
+}
+
+// NewBlipTesterDefaultCollectionFromSpec creates a blip tester that has a RestTester only using a single database and `_default._default` collection.
+func NewBlipTesterDefaultCollectionFromSpec(tb testing.TB, spec BlipTesterSpec) *BlipTester {
+	rtConfig := RestTesterConfig{
+		EnableNoConflictsMode: spec.noConflictsMode,
+		GuestEnabled:          spec.GuestEnabled,
+		DatabaseConfig:        &DatabaseConfig{},
+	}
+	rt := newRestTester(tb, &rtConfig, useSingleCollectionDefaultOnly, 1)
+	bt, err := createBlipTesterWithSpec(tb, spec, rt)
+	require.NoError(tb, err)
+	return bt
+}
+
 // Create a BlipTester using the default spec
 func NewBlipTester(tb testing.TB) (*BlipTester, error) {
 	return NewBlipTesterFromSpec(tb, getDefaultBlipTesterSpec())

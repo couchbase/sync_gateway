@@ -2175,8 +2175,8 @@ func TestMultipleOutstandingChangesSubscriptions(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
-	bt, err := NewBlipTester(t)
-	require.NoError(t, err)
+	// TODO: CBG-2653: change this to use NewBlipTester
+	bt := NewBlipTesterDefaultCollection(t)
 	defer bt.Close()
 
 	bt.blipContext.HandlerForProfile["changes"] = func(request *blip.Message) {
