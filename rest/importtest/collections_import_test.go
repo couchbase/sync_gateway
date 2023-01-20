@@ -57,9 +57,6 @@ func TestMultiCollectionImportFilter(t *testing.T) {
 	dataStore2, err := rt.TestBucket.GetNamedDataStore(1)
 	require.NoError(t, err)
 	keyspace2 := "{{.keyspace2}}"
-	//dataStore3, err := rt.TestBucket.GetNamedDataStore(2)
-	//require.NoError(t, err)
-	//keyspace3 := "{{.keyspace3}}"
 
 	defaultKeyspace := "db._default._default"
 	keyspaceNotFound := fmt.Sprintf("keyspace %s not found", defaultKeyspace)
@@ -182,7 +179,6 @@ func TestMultiCollectionImportFilter(t *testing.T) {
 	prvBody["type"] = "private"
 	prvBody["channels"] = "ABC"
 	for _, dataStore := range dataStores {
-		fmt.Println(dataStore.GetName())
 		_, err := dataStore.Add(prvKey, 0, prvBody)
 		require.NoError(t, err, "Error writing SDK doc")
 	}
@@ -229,7 +225,6 @@ func TestMultiCollectionImportFilter(t *testing.T) {
 	prvBody["type"] = "private"
 	prvBody["channels"] = "ABC"
 	for _, dataStore := range dataStores {
-		fmt.Println(dataStore.GetName())
 		_, err := dataStore.Add(prvKey, 0, prvBody)
 		require.NoError(t, err, "Error writing SDK doc")
 	}
