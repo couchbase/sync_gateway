@@ -27,7 +27,7 @@ func TestSequenceAllocator(t *testing.T) {
 
 	sgw, err := base.NewSyncGatewayStats()
 	require.NoError(t, err)
-	dbstats, err := sgw.NewDBStats("", false, false, false)
+	dbstats, err := sgw.NewDBStats("", false, false, false, nil, nil)
 	require.NoError(t, err)
 	testStats := dbstats.Database()
 
@@ -95,7 +95,7 @@ func TestReleaseSequencesOnStop(t *testing.T) {
 
 	sgw, err := base.NewSyncGatewayStats()
 	require.NoError(t, err)
-	dbstats, err := sgw.NewDBStats("", false, false, false)
+	dbstats, err := sgw.NewDBStats("", false, false, false, nil, nil)
 	require.NoError(t, err)
 	testStats := dbstats.Database()
 
@@ -172,7 +172,7 @@ func TestSequenceAllocatorDeadlock(t *testing.T) {
 
 	sgw, err := base.NewSyncGatewayStats()
 	require.NoError(t, err)
-	dbstats, err := sgw.NewDBStats("", false, false, false)
+	dbstats, err := sgw.NewDBStats("", false, false, false, nil, nil)
 	require.NoError(t, err)
 	testStats := dbstats.Database()
 
@@ -204,7 +204,7 @@ func TestReleaseSequenceWait(t *testing.T) {
 
 	sgw, err := base.NewSyncGatewayStats()
 	require.NoError(t, err)
-	dbstats, err := sgw.NewDBStats("", false, false, false)
+	dbstats, err := sgw.NewDBStats("", false, false, false, nil, nil)
 	require.NoError(t, err)
 	testStats := dbstats.Database()
 

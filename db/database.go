@@ -2156,7 +2156,14 @@ func initDatabaseStats(dbName string, autoImport bool, options DatabaseContextOp
 		queryNames = append(queryNames, options.GraphQL.N1QLQueryNames()...)
 	}
 
-	return base.SyncGatewayStats.NewDBStats(dbName, enabledDeltaSync, enabledImport, enabledViews, queryNames...)
+	var collections []string
+	for scopeName, scope := range options.Scopes {
+		for collectionName := range scope.Collections {
+			collections = append(collections, scopeName+"."+collectionName)
+		}
+	}
+
+	return base.SyncGatewayStats.NewDBStats(dbName, enabledDeltaSync, enabledImport, enabledViews, queryNames, collections)
 }
 
 func (context *DatabaseContext) AllowConflicts() bool {

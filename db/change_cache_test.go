@@ -123,7 +123,7 @@ func TestLateSequenceHandling(t *testing.T) {
 
 	stats, err := base.NewSyncGatewayStats()
 	require.NoError(t, err)
-	dbstats, err := stats.NewDBStats("", false, false, false)
+	dbstats, err := stats.NewDBStats("", false, false, false, nil, nil)
 	require.NoError(t, err)
 
 	cache := newSingleChannelCache(collection, channels.NewID("Test1", collectionID), 0, dbstats.CacheStats)
@@ -199,7 +199,7 @@ func TestLateSequenceHandlingWithMultipleListeners(t *testing.T) {
 
 	stats, err := base.NewSyncGatewayStats()
 	require.NoError(t, err)
-	dbstats, err := stats.NewDBStats("", false, false, false)
+	dbstats, err := stats.NewDBStats("", false, false, false, nil, nil)
 	require.NoError(t, err)
 
 	cache := newSingleChannelCache(collection, channels.NewID("Test1", collectionID), 0, dbstats.CacheStats)

@@ -456,9 +456,9 @@ type DatabaseStats struct {
 	WarnGrantsPerDocCount *SgwIntStat `json:"warn_grants_per_doc_count"`
 	// The total number of warnings relating to the xattr sync data being larger than a configured threshold.
 	WarnXattrSizeCount *SgwIntStat `json:"warn_xattr_size_count"`
-	// The total number of times that the sync_function is evaluated.
+	// The total number of times that a sync function was evaluated for the database (across all collections).
 	SyncFunctionCount *SgwIntStat `json:"sync_function_count"`
-	// The total time spent evaluating the sync_function.
+	// The total time spent evaluating a sync function (across all collections).
 	SyncFunctionTime *SgwIntStat `json:"sync_function_time"`
 
 	// These can be cleaned up in future versions of SGW, implemented as maps to reduce amount of potential risk
@@ -836,56 +836,56 @@ type QueryStat struct {
 	QueryTime       *SgwIntStat
 }
 
-func (s *SgwStats) NewDBStats(name string, deltaSyncEnabled bool, importEnabled bool, viewsEnabled bool, queryNames ...string) (*DbStats, error) {
+func (s *SgwStats) NewDBStats(name string, deltaSyncEnabled bool, importEnabled bool, viewsEnabled bool, queryNames []string, collections []string) (*DbStats, error) {
 	s.dbStatsMapMutex.Lock()
 	defer s.dbStatsMapMutex.Unlock()
-	s.DbStats[name] = &DbStats{
+	dbStats := &DbStats{
 		dbName: name,
 	}
 
 	// These have a pretty good chance of being used so we'll initialise these for every database stat struct created
-	err := s.DbStats[name].initCacheStats()
+	err := dbStats.initCacheStats()
 	if err != nil {
 		return nil, err
 	}
-	err = s.DbStats[name].initCBLReplicationPullStats()
+	err = dbStats.initCBLReplicationPullStats()
 	if err != nil {
 		return nil, err
 	}
-	err = s.DbStats[name].initCBLReplicationPushStats()
+	err = dbStats.initCBLReplicationPushStats()
 	if err != nil {
 		return nil, err
 	}
-	err = s.DbStats[name].initDatabaseStats()
+	err = dbStats.initDatabaseStats()
 	if err != nil {
 		return nil, err
 	}
-	err = s.DbStats[name].initSecurityStats()
+	err = dbStats.initSecurityStats()
 	if err != nil {
 		return nil, err
 	}
 
 	if deltaSyncEnabled {
-		err = s.DbStats[name].InitDeltaSyncStats()
+		err = dbStats.InitDeltaSyncStats()
 		if err != nil {
 			return nil, err
 		}
 	}
 
 	if importEnabled {
-		err = s.DbStats[name].InitSharedBucketImportStats()
+		err = dbStats.InitSharedBucketImportStats()
 		if err != nil {
 			return nil, err
 		}
 	}
 
 	if viewsEnabled {
-		err = s.DbStats[name].InitQueryStats(
+		err = dbStats.InitQueryStats(
 			true,
 			queryNames...,
 		)
 	} else {
-		err = s.DbStats[name].InitQueryStats(
+		err = dbStats.InitQueryStats(
 			false,
 			queryNames...,
 		)
@@ -894,7 +894,8 @@ func (s *SgwStats) NewDBStats(name string, deltaSyncEnabled bool, importEnabled 
 		return nil, err
 	}
 
-	return s.DbStats[name], nil
+	s.DbStats[name] = dbStats
+	return dbStats, nil
 }
 
 func (s *SgwStats) ClearDBStats(name string) {
