@@ -93,11 +93,11 @@ func setupTestDBWithCustomSyncSeq(t testing.TB, customSeq uint64) (*Database, co
 	tBucket := base.GetTestBucket(t)
 
 	// This may need to change when we move to a non-default metadata collection...
-	metadataStore := tBucket.DefaultDataStore()
+	metadataStore := tBucket.GetMetadataStore()
 
-	log.Printf("Initializing test %s to %d", base.SyncSeqKey, customSeq)
-	_, incrErr := metadataStore.Incr(base.SyncSeqKey, customSeq, customSeq, 0)
-	assert.NoError(t, incrErr, fmt.Sprintf("Couldn't increment %s by %d", base.SyncSeqKey, customSeq))
+	log.Printf("Initializing test %s to %d", base.DefaultMetadataKeys.SyncSeqKey(), customSeq)
+	_, incrErr := metadataStore.Incr(base.DefaultMetadataKeys.SyncSeqKey(), customSeq, customSeq, 0)
+	assert.NoError(t, incrErr, fmt.Sprintf("Couldn't increment %s by %d", base.DefaultMetadataKeys.SyncSeqKey(), customSeq))
 
 	dbCtx, err := NewDatabaseContext(ctx, "db", tBucket, false, dbcOptions)
 	assert.NoError(t, err, "Couldn't create context for database 'db'")
@@ -2667,7 +2667,7 @@ func Test_invalidateAllPrincipalsCache(t *testing.T) {
 	defer db.Close(ctx)
 	db.Options.QueryPaginationLimit = 100
 
-	sequenceAllocator, err := newSequenceAllocator(db.MetadataStore, db.DbStats.DatabaseStats)
+	sequenceAllocator, err := newSequenceAllocator(db.MetadataStore, db.DbStats.DatabaseStats, db.MetadataKeys)
 	assert.NoError(t, err)
 
 	db.sequences = sequenceAllocator

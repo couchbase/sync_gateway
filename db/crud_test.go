@@ -1008,7 +1008,7 @@ func TestMalformedRevisionStorageRecovery(t *testing.T) {
 	assert.NoError(t, addErr, "Error writing raw document")
 
 	// Increment _sync:seq to match sequences allocated by raw doc
-	_, incrErr := collection.dataStore.Incr(base.SyncSeqKey, 5, 0, 0)
+	_, incrErr := collection.dataStore.Incr(db.MetadataKeys.SyncSeqKey(), 5, 0, 0)
 	assert.NoError(t, incrErr, "Error incrementing sync:seq")
 
 	// Add child to non-winning revision w/ malformed inline body.

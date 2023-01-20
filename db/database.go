@@ -128,6 +128,8 @@ type DatabaseContext struct {
 	singleCollection             *DatabaseCollection            // Temporary collection
 	CollectionByID               map[uint32]*DatabaseCollection // A map keyed by collection ID to Collection
 	CollectionNames              map[string]map[string]struct{} // Map of scope, collection names
+	MetadataID                   string                         // Unique ID used when storing documents in MetadataStore
+	MetadataKeys                 *base.MetadataKeys             // Factory to generate metadata document keys
 }
 
 type Scope struct {
@@ -181,6 +183,22 @@ type ScopeOptions struct {
 type CollectionOptions struct {
 	Sync         *string               // Collection sync function
 	ImportFilter *ImportFilterFunction // Opt-in filter for document import
+}
+
+// Check whether the specified ScopesOptions only defines the default collection
+func (so ScopesOptions) onlyDefaultCollection() bool {
+	if so == nil || len(so) == 0 {
+		return true
+	}
+	if len(so) > 1 {
+		return false
+	}
+	defaultScope, ok := so[base.DefaultScope]
+	if !ok || len(defaultScope.Collections) > 1 {
+		return false
+	}
+	_, ok = defaultScope.Collections[base.DefaultCollection]
+	return ok
 }
 
 type SGReplicateOptions struct {
@@ -377,6 +395,16 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 		CollectionByID: make(map[uint32]*DatabaseCollection),
 	}
 
+	// Initialize metadata ID and keys
+	if options.Scopes.onlyDefaultCollection() {
+		dbContext.MetadataID = ""
+	} else {
+		// TODO: apply length limit to MetadataPrefix
+		dbContext.MetadataID = dbName
+	}
+	metaKeys := base.NewMetadataKeys(dbContext.MetadataID)
+	dbContext.MetadataKeys = metaKeys
+
 	cleanupFunctions = append(cleanupFunctions, func() {
 		base.SyncGatewayStats.ClearDBStats(dbName)
 	})
@@ -392,7 +420,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 	dbContext.EventMgr = NewEventManager(dbContext.terminator)
 
 	var err error
-	dbContext.sequences, err = newSequenceAllocator(metadataStore, dbContext.DbStats.Database())
+	dbContext.sequences, err = newSequenceAllocator(metadataStore, dbContext.DbStats.Database(), metaKeys)
 	if err != nil {
 		return nil, err
 	}
@@ -435,7 +463,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 	}
 
 	// Initialize the tap Listener for notify handling
-	dbContext.mutationListener.Init(bucket.GetName(), options.GroupID)
+	dbContext.mutationListener.Init(bucket.GetName(), options.GroupID, dbContext.MetadataKeys)
 
 	if len(options.Scopes) > 0 {
 		dbContext.Scopes = make(map[string]Scope, len(options.Scopes))
@@ -881,7 +909,7 @@ func (context *DatabaseContext) RestartListener() error {
 	context.mutationListener.Stop()
 	// Delay needed to properly stop
 	time.Sleep(2 * time.Second)
-	context.mutationListener.Init(context.Bucket.GetName(), context.Options.GroupID)
+	context.mutationListener.Init(context.Bucket.GetName(), context.Options.GroupID, context.MetadataKeys)
 	cacheFeedStatsMap := context.DbStats.Database().CacheFeedMapStats
 	if err := context.mutationListener.Start(context.Bucket, cacheFeedStatsMap.Map, context.Scopes, context.MetadataStore); err != nil {
 		return err
@@ -2314,6 +2342,7 @@ func newDatabaseCollection(ctx context.Context, dbContext *DatabaseContext, data
 		dbContext.channelCache,
 		notifyChange,
 		dbContext.Options.CacheOptions,
+		dbContext.MetadataKeys,
 	)
 	if err != nil {
 		base.DebugfCtx(ctx, base.KeyDCP, "Error initializing the change cache", err)

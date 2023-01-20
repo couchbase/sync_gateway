@@ -41,11 +41,12 @@ type changeListener struct {
 	terminator            chan bool                 // Signal to cause cbdatasource bucketdatasource.Close() to be called, which removes dcp receiver
 	sgCfgPrefix           string                    // SG config key prefix
 	started               base.AtomicBool           // whether the feed has been started
+	metaKeys              *base.MetadataKeys        // Metadata key formatter
 }
 
 type DocChangedFunc func(event sgbucket.FeedEvent)
 
-func (listener *changeListener) Init(name string, groupID string) {
+func (listener *changeListener) Init(name string, groupID string, metaKeys *base.MetadataKeys) {
 	listener.bucketName = name
 	listener.counter = 1
 	listener.terminateCheckCounter = 0
@@ -53,6 +54,7 @@ func (listener *changeListener) Init(name string, groupID string) {
 	listener.tapNotifier = sync.NewCond(&sync.Mutex{})
 	listener.sgCfgPrefix = base.SGCfgPrefixWithGroupID(groupID)
 	listener.OnChangeSubscribers = map[uint32]DocChangedFunc{}
+	listener.metaKeys = metaKeys
 }
 
 // RegisterOnChangeCallback adds a listener to DocChanged events.  Subscription is only supported prior to
@@ -178,7 +180,7 @@ func (listener *changeListener) ProcessFeedEvent(event sgbucket.FeedEvent) bool 
 				listener.OnDocChanged(event)
 			}
 			listener.notifyKey(key)
-		} else if strings.HasPrefix(key, base.UnusedSeqPrefix) || strings.HasPrefix(key, base.UnusedSeqRangePrefix) { // SG unused sequence marker docs
+		} else if strings.HasPrefix(key, listener.metaKeys.UnusedSeqPrefix()) || strings.HasPrefix(key, listener.metaKeys.UnusedSeqRangePrefix()) { // SG unused sequence marker docs
 			if event.Opcode == sgbucket.FeedOpMutation {
 				listener.OnDocChanged(event)
 			}

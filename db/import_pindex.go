@@ -97,7 +97,7 @@ func (il *importListener) NewImportDest() (cbgt.Dest, error) {
 	importFeedStatsMap := il.dbStats.ImportFeedMapStats
 	importPartitionStat := il.importStats.ImportPartitions
 
-	importDest, _, err := base.NewDCPDest(il.loggingCtx, callback, il.bucket, maxVbNo, true, importFeedStatsMap.Map, base.DCPImportFeedID, importPartitionStat, il.checkpointPrefix)
+	importDest, _, err := base.NewDCPDest(il.loggingCtx, callback, il.bucket, maxVbNo, true, importFeedStatsMap.Map, base.DCPImportFeedID, importPartitionStat, il.checkpointPrefix, il.metadataKeys)
 	if err != nil {
 		return nil, err
 	}

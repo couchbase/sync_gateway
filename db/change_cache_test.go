@@ -961,7 +961,7 @@ func TestLowSequenceHandlingWithAccessGrant(t *testing.T) {
 	assert.Len(t, changes, 3)
 	assert.True(t, verifyChangesFullSequences(changes, []string{"1", "2", "2::6"}))
 
-	_, incrErr := db.singleCollection.dataStore.Incr(base.SyncSeqKey, 7, 7, 0)
+	_, incrErr := db.singleCollection.dataStore.Incr(db.MetadataKeys.SyncSeqKey(), 7, 7, 0)
 	require.NoError(t, incrErr)
 
 	// Modify user to have access to both channels (sequence 2):
@@ -2084,7 +2084,7 @@ func BenchmarkProcessEntry(b *testing.B) {
 
 			ctx = context.AddDatabaseLogContext(ctx)
 			changeCache := &changeCache{}
-			if err := changeCache.Init(ctx, collection, context.channelCache, nil, nil); err != nil {
+			if err := changeCache.Init(ctx, collection, context.channelCache, nil, nil, context.MetadataKeys); err != nil {
 				log.Printf("Init failed for changeCache: %v", err)
 				b.Fail()
 			}
@@ -2316,7 +2316,7 @@ func BenchmarkDocChanged(b *testing.B) {
 
 			ctx = context.AddDatabaseLogContext(ctx)
 			changeCache := &changeCache{}
-			if err := changeCache.Init(ctx, collection, context.channelCache, nil, nil); err != nil {
+			if err := changeCache.Init(ctx, collection, context.channelCache, nil, nil, context.MetadataKeys); err != nil {
 				log.Printf("Init failed for changeCache: %v", err)
 				b.Fail()
 			}

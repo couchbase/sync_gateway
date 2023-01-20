@@ -69,6 +69,7 @@ type changeCache struct {
 	internalStats      changeCacheStats        // Running stats for the change cache.  Only applied to expvars on a call to changeCache.updateStats
 	cfgEventCallback   base.CfgEventNotifyFunc // Callback for Cfg updates recieved over the caching feed
 	sgCfgPrefix        string                  // Prefix for SG Cfg doc keys
+	metaKeys           *base.MetadataKeys      // Metadata key formatter
 }
 
 type changeCacheStats struct {
@@ -157,7 +158,7 @@ func DefaultCacheOptions() CacheOptions {
 // notifyChange is an optional function that will be called to notify of channel changes.
 // After calling Init(), you must call .Start() to start useing the cache, otherwise it will be in a locked state
 // and callers will block on trying to obtain the lock.
-func (c *changeCache) Init(logCtx context.Context, collection *DatabaseCollection, channelCache ChannelCache, notifyChange func(channels.Set), options *CacheOptions) error {
+func (c *changeCache) Init(logCtx context.Context, collection *DatabaseCollection, channelCache ChannelCache, notifyChange func(channels.Set), options *CacheOptions, metaKeys *base.MetadataKeys) error {
 	c.collection = collection
 	c.logCtx = logCtx
 
@@ -168,6 +169,7 @@ func (c *changeCache) Init(logCtx context.Context, collection *DatabaseCollectio
 	c.skippedSeqs = NewSkippedSequenceList()
 	c.lastAddPendingTime = time.Now().UnixNano()
 	c.sgCfgPrefix = base.SGCfgPrefixWithGroupID(collection.groupID())
+	c.metaKeys = metaKeys
 
 	// init cache options
 	if options != nil {
@@ -410,11 +412,11 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 	}
 
 	// Is this an unused sequence notification?
-	if strings.HasPrefix(docID, base.UnusedSeqPrefix) {
+	if strings.HasPrefix(docID, c.metaKeys.UnusedSeqPrefix()) {
 		c.processUnusedSequence(docID, event.TimeReceived)
 		return
 	}
-	if strings.HasPrefix(docID, base.UnusedSeqRangePrefix) {
+	if strings.HasPrefix(docID, c.metaKeys.UnusedSeqRangePrefix()) {
 		c.processUnusedSequenceRange(docID)
 		return
 	}
@@ -593,7 +595,7 @@ func (c *changeCache) unmarshalCachePrincipal(docJSON []byte) (cachePrincipal, e
 
 // Process unused sequence notification.  Extracts sequence from docID and sends to cache for buffering
 func (c *changeCache) processUnusedSequence(docID string, timeReceived time.Time) {
-	sequenceStr := strings.TrimPrefix(docID, base.UnusedSeqPrefix)
+	sequenceStr := strings.TrimPrefix(docID, c.metaKeys.UnusedSeqPrefix())
 	sequence, err := strconv.ParseUint(sequenceStr, 10, 64)
 	if err != nil {
 		base.WarnfCtx(c.logCtx, "Unable to identify sequence number for unused sequence notification with key: %s, error: %v", base.UD(docID), err)

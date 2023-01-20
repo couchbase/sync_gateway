@@ -29,9 +29,10 @@ type importListener struct {
 	collections      map[uint32]DatabaseCollectionWithUser // Admin databases used for import, keyed by collection ID (CB-server-side)
 	dbStats          *base.DatabaseStats                   // Database stats group
 	importStats      *base.SharedBucketImportStats         // import stats group
-	cbgtContext      *base.CbgtContext                     // Handle to cbgt manager,cfg
-	checkpointPrefix string                                // DCP checkpoint key prefix
-	loggingCtx       context.Context                       // ctx for logging on event callbacks
+	metadataKeys     *base.MetadataKeys
+	cbgtContext      *base.CbgtContext // Handle to cbgt manager,cfg
+	checkpointPrefix string            // DCP checkpoint key prefix
+	loggingCtx       context.Context   // ctx for logging on event callbacks
 }
 
 func NewImportListener(groupID string) *importListener {
@@ -52,6 +53,7 @@ func (il *importListener) StartImportFeed(ctx context.Context, bucket base.Bucke
 	il.collections = make(map[uint32]DatabaseCollectionWithUser)
 	il.dbStats = dbStats.Database()
 	il.importStats = dbStats.SharedBucketImport()
+	il.metadataKeys = dbContext.MetadataKeys
 
 	collectionNamesByScope := make(map[string][]string)
 	var scopeName string
