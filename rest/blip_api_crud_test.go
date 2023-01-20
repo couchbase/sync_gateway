@@ -438,7 +438,6 @@ func TestBlipSubChangesDocIDFilter(t *testing.T) {
 	// Counter/Waitgroup to help ensure that all callbacks on continuous changes handler are received
 	receivedChangesWg := sync.WaitGroup{}
 	receivedCaughtUpChange := false
-	properties := getBlipProperties(bt.restTester)
 
 	// Build set of docids
 	docIDsSent := make([]string, 0)
@@ -535,7 +534,7 @@ func TestBlipSubChangesDocIDFilter(t *testing.T) {
 			docID,
 			"1-abc",
 			[]byte(`{"key": "val"}`),
-			properties,
+			blip.Properties{},
 		)
 		assert.NoError(t, err)
 		_, err = revResponse.Body()
@@ -768,14 +767,13 @@ func TestPublicPortAuthentication(t *testing.T) {
 		})
 	require.NoError(t, err)
 	defer btUser1.Close()
-	blipTestProperties1 := getBlipProperties(btUser1.restTester)
 
 	// Send the user1 doc
 	_, _, _, err = btUser1.SendRev(
 		"foo",
 		"1-abc",
 		[]byte(`{"key": "val", "channels": ["user1"]}`),
-		blipTestProperties1,
+		blip.Properties{},
 	)
 	require.NoError(t, err, "Error sending revision")
 
@@ -787,15 +785,13 @@ func TestPublicPortAuthentication(t *testing.T) {
 	}, btUser1.restTester) // re-use rest tester, otherwise it will create a new underlying bucket in walrus case
 	require.NoError(t, err, "Error creating BlipTester")
 	defer btUser2.Close()
-	blipTestProperties2 := getBlipProperties(btUser2.restTester)
-	require.NoError(t, err)
 
 	// Send the user2 doc, which is in a "random" channel, but it should be accessible due to * channel access
 	_, _, _, err = btUser2.SendRev(
 		"foo2",
 		"1-abcd",
 		[]byte(`{"key": "val", "channels": ["NBC"]}`),
-		blipTestProperties2,
+		blip.Properties{},
 	)
 	require.NoError(t, err, "Error sending revision")
 
@@ -842,15 +838,13 @@ function(doc, oldDoc) {
 		connectingPassword: "1234",
 	}, rt)
 	assert.NoError(t, err, "Error creating BlipTester")
-	properties := getBlipProperties(rt)
-	require.NoError(t, err)
 
 	// Attempt to send a doc, should be rejected
 	_, _, _, sendErr := bt.SendRev(
 		"foo",
 		"1-abc",
 		[]byte(`{"key": "val"}`),
-		properties,
+		blip.Properties{},
 	)
 	assert.Error(t, sendErr, "Expected error sending rev (403 sg missing channel access)")
 
@@ -876,7 +870,7 @@ function(doc, oldDoc) {
 		"foo",
 		"1-abc",
 		[]byte(`{"key": "val"}`),
-		properties,
+		blip.Properties{},
 	)
 	assert.NoError(t, sendErr)
 
@@ -1174,10 +1168,9 @@ func TestBlipSendAndGetRev(t *testing.T) {
 	bt, err := NewBlipTesterFromSpecWithRT(t, &btSpec, rt)
 	require.NoError(t, err, "Unexpected error creating BlipTester")
 	defer bt.Close()
-	properties := getBlipProperties(rt)
 
 	// Send non-deleted rev
-	sent, _, resp, err := bt.SendRev("sendAndGetRev", "1-abc", []byte(`{"key": "val", "channels": ["user1"]}`), properties)
+	sent, _, resp, err := bt.SendRev("sendAndGetRev", "1-abc", []byte(`{"key": "val", "channels": ["user1"]}`), blip.Properties{})
 	assert.True(t, sent)
 	assert.NoError(t, err)
 	assert.Equal(t, "", resp.Properties["Error-Code"])
@@ -1341,8 +1334,6 @@ func TestReloadUser(t *testing.T) {
 	}, rt)
 	require.NoError(t, err, "Unexpected error creating BlipTester")
 	defer bt.Close()
-	properties := getBlipProperties(rt)
-	require.NoError(t, err)
 
 	// Set up a ChangeWaiter for this test, to block until the user change notification happens
 	dbc := rt.GetDatabase()
@@ -1366,7 +1357,7 @@ func TestReloadUser(t *testing.T) {
 		"foo",
 		"1-abc",
 		[]byte(`{"key": "val", "channels": ["PBS"]}`),
-		properties,
+		blip.Properties{},
 	)
 	assert.NoError(t, err)
 
@@ -1444,14 +1435,13 @@ func TestAccessGrantViaAdminApi(t *testing.T) {
 	defer bt.Close()
 	require.NoError(t, err)
 	collection := bt.restTester.GetSingleTestDatabaseCollection()
-	properties := getBlipProperties(bt.restTester)
 
 	// Add a doc in the PBS channel
 	_, _, _, _ = bt.SendRev(
 		"foo",
 		"1-abc",
 		[]byte(`{"key": "val", "channels": ["PBS"]}`),
-		properties,
+		blip.Properties{},
 	)
 
 	// Update the user doc to grant access to PBS
@@ -1463,7 +1453,7 @@ func TestAccessGrantViaAdminApi(t *testing.T) {
 		"foo2",
 		"1-abc",
 		[]byte(`{"key": "val", "channels": ["PBS"]}`),
-		properties,
+		blip.Properties{},
 	)
 
 	// Make sure we can see both docs in the changes
@@ -1710,9 +1700,6 @@ func TestGetRemovedDoc(t *testing.T) {
 	require.NoError(t, err, "Unexpected error creating BlipTester")
 	defer bt.Close()
 
-	propertiesBT1 := getBlipProperties(rt)
-	require.NoError(t, err)
-
 	// Workaround data race (https://gist.github.com/tleyden/0ace70b8a38b76a7beee95529610b6cf) that happens because
 	// there are multiple goroutines accessing the bt.blipContext.HandlerForProfile map.
 	// The workaround uses a separate blipTester, and therefore a separate context.  It uses a different
@@ -1728,7 +1715,7 @@ func TestGetRemovedDoc(t *testing.T) {
 	defer bt2.Close()
 
 	// Add rev-1 in channel user1
-	sent, _, resp, err := bt.SendRev("foo", "1-abc", []byte(`{"key": "val", "channels": ["user1"]}`), propertiesBT1)
+	sent, _, resp, err := bt.SendRev("foo", "1-abc", []byte(`{"key": "val", "channels": ["user1"]}`), blip.Properties{})
 	assert.True(t, sent)
 	require.NoError(t, err)                        // no error
 	assert.Empty(t, resp.Properties["Error-Code"]) // no error

@@ -1517,16 +1517,6 @@ func addChannelsToPrincipal(config auth.PrincipalConfig, collection *db.Database
 	return payload, nil
 }
 
-func getBlipProperties(rt *RestTester) blip.Properties {
-	collection := rt.GetSingleTestDatabaseCollection()
-	properties := blip.Properties{}
-	if base.IsDefaultCollection(collection.ScopeName(), collection.Name()) {
-		return properties
-	}
-	properties[db.BlipCollection] = "0"
-	return properties
-}
-
 func getChangesHandler(changesFinishedWg, revsFinishedWg *sync.WaitGroup) func(request *blip.Message) {
 	return func(request *blip.Message) {
 		// Send a response telling the other side we want ALL revisions
