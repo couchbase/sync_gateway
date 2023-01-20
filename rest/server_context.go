@@ -467,6 +467,23 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		useViews = true
 	}
 
+	var existingNumPartitioned *uint
+	var isIndexPartitioned *bool
+	if cbs, ok := base.AsCouchbaseBucketStore(bucket); ok {
+		indexesMeta, err := cbs.IndexMeta()
+		if err != nil {
+			return nil, err
+		}
+
+		for _, indexMeta := range indexesMeta {
+			if indexMeta.Partitioned {
+				existingNumPartitioned = &indexMeta.NumPartition
+				isIndexPartitioned = base.BoolPtr(true)
+				break
+			}
+		}
+	}
+
 	// initDataStore is a function to initialize Views or GSI indexes for a datastore
 	initDataStore := func(ds base.DataStore) error {
 		if useViews {
@@ -482,16 +499,10 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		if config.NumIndexReplicas != nil {
 			numReplicas = *config.NumIndexReplicas
 		}
+
 		n1qlStore, ok := base.AsN1QLStore(ds)
 		if !ok {
 			return errors.New("Cannot create indexes on non-Couchbase data store.")
-		}
-
-		var numIndexPartitions *uint
-		if base.IsEnterpriseEdition() {
-			if config.NumIndexPartitions != nil {
-				numIndexPartitions = config.NumIndexPartitions
-			}
 		}
 
 		// we want to create Partition index bydefault for EE edition
@@ -500,6 +511,25 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		if base.IsEnterpriseEdition() {
 			if config.ShouldPartitionIndex != nil {
 				shouldPartitionIndex = *config.ShouldPartitionIndex
+				if isIndexPartitioned != nil && shouldPartitionIndex != *isIndexPartitioned {
+					base.WarnfCtx(ctx, "Sync Gateway doesn't support changing `should_partition_index` for existing index. Drop index if `should_partition_index` must be changed. Falling back to existing value %t for `should_partition_index`", *isIndexPartitioned)
+					shouldPartitionIndex = *isIndexPartitioned
+				}
+
+			}
+		}
+
+		var numIndexPartitions *uint
+		if base.IsEnterpriseEdition() {
+			if config.NumIndexPartitions != nil {
+				numIndexPartitions = config.NumIndexPartitions
+
+				if existingNumPartitioned != nil {
+					if *existingNumPartitioned != *numIndexPartitions {
+						base.WarnfCtx(ctx, "Sync Gateway doesn't support changing `num_index_partitions` for existing index. Drop index if `num_index_partitions` must be changed. Falling back to existing value %d for `num_index_partitions`", *existingNumPartitioned)
+						numIndexPartitions = existingNumPartitioned
+					}
+				}
 			}
 		}
 

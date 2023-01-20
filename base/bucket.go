@@ -61,6 +61,7 @@ type CouchbaseBucketStore interface {
 	MetadataPurgeInterval() (time.Duration, error)
 	ServerUUID() (uuid string, err error)
 	MaxTTL() (int, error)
+	IndexMeta() ([]bucketResponseWithIndexMeta, error)
 	HttpClient() *http.Client
 	GetSpec() BucketSpec
 	GetMaxVbno() (uint16, error)
@@ -470,6 +471,40 @@ func getMaxTTL(store CouchbaseBucketStore) (int, error) {
 	}
 
 	return bucketResponseWithMaxTTL.MaxTTLSeconds, nil
+}
+
+type bucketResponseWithIndexMeta struct {
+	IndexName    string `json:"indexName,omitempty"`
+	Bucket       string `json:"bucket,omitempty"`
+	Scope        string `json:"scope,omitempty"`
+	Collection   string `json:"collection,omitempty"`
+	NumPartition uint   `json:"numPartition,omitempty"`
+	Partitioned  bool   `json:"partitioned,omitempty"`
+}
+
+// Get the existing Index's metadata
+func getIndexMeta(store CouchbaseBucketStore) ([]bucketResponseWithIndexMeta, error) {
+	var response struct {
+		IndexMeta []bucketResponseWithIndexMeta `json:"indexes,omitempty"`
+	}
+
+	resp, err := store.mgmtRequest(http.MethodGet, "/indexStatus", "application/json", nil)
+	if err != nil {
+		return response.IndexMeta, err
+	}
+
+	defer func() { _ = resp.Body.Close() }()
+
+	respBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return response.IndexMeta, err
+	}
+
+	if err := JSONUnmarshal(respBytes, &response); err != nil {
+		return response.IndexMeta, err
+	}
+
+	return response.IndexMeta, nil
 }
 
 // Get the Server UUID of the bucket, this is also known as the Cluster UUID

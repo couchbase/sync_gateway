@@ -453,6 +453,10 @@ func (b *GocbV2Bucket) MaxTTL() (int, error) {
 	return getMaxTTL(b)
 }
 
+func (b *GocbV2Bucket) IndexMeta() ([]bucketResponseWithIndexMeta, error) {
+	return getIndexMeta(b)
+}
+
 func (b *GocbV2Bucket) HttpClient() *http.Client {
 	agent, err := b.getGoCBAgent()
 	if err != nil {
