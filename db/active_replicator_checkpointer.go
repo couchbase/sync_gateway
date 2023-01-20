@@ -31,6 +31,7 @@ type Checkpointer struct {
 	configHash         string
 	blipSender         *blip.Sender
 	collection         *DatabaseCollection
+	blipCollectionIdx  *int
 	checkpointInterval time.Duration
 	statusCallback     statusFunc // callback to retrieve status for associated replication
 	// lock guards the expectedSeqs slice, and processedSeqs map
@@ -76,7 +77,7 @@ type CheckpointerStats struct {
 	GetCheckpointMissCount          int64
 }
 
-func NewCheckpointer(ctx context.Context, clientID string, configHash string, blipSender *blip.Sender, replicatorConfig *ActiveReplicatorConfig, collection *DatabaseCollection, statusCallback statusFunc) *Checkpointer {
+func NewCheckpointer(ctx context.Context, clientID string, configHash string, blipSender *blip.Sender, replicatorConfig *ActiveReplicatorConfig, collection *DatabaseCollection, blipCollectionIdx *int, statusCallback statusFunc) *Checkpointer {
 	return &Checkpointer{
 		clientID:                       clientID,
 		configHash:                     configHash,
@@ -90,6 +91,7 @@ func NewCheckpointer(ctx context.Context, clientID string, configHash string, bl
 		statusCallback:                 statusCallback,
 		expectedSeqCompactionThreshold: defaultExpectedSeqCompactionThreshold,
 		collection:                     collection,
+		blipCollectionIdx:              blipCollectionIdx,
 	}
 }
 
@@ -556,7 +558,8 @@ func (c *Checkpointer) getRemoteCheckpoint() (checkpoint *replicationCheckpoint,
 	base.TracefCtx(c.ctx, base.KeyReplicate, "getRemoteCheckpoint")
 
 	rq := GetSGR2CheckpointRequest{
-		Client: c.clientID,
+		Client:     c.clientID,
+		Collection: c.blipCollectionIdx,
 	}
 
 	if err := rq.Send(c.blipSender); err != nil {

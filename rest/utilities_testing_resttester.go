@@ -94,7 +94,7 @@ func (rt *RestTester) DeleteDoc(docID, revID string) {
 
 func (rt *RestTester) WaitForRev(docID string, revID string) error {
 	return rt.WaitForCondition(func() bool {
-		rawResponse := rt.SendAdminRequest("GET", "/db/"+docID, "")
+		rawResponse := rt.SendAdminRequest("GET", "/{{.keyspace}}/"+docID, "")
 		if rawResponse.Code != 200 && rawResponse.Code != 201 {
 			return false
 		}

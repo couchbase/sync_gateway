@@ -14,6 +14,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/couchbase/go-blip"
@@ -36,6 +37,7 @@ type SubChangesRequest struct {
 	ActiveOnly     bool     // ActiveOnly is set to `true` if the requester doesn't want to be sent tombstones. (optional)
 	Revocations    bool     // Revocations is set to `true` if the requester wants to be send revocation messages (optional)
 	clientType     clientType
+	Collection     *int
 }
 
 var _ blipMessageSender = &SubChangesRequest{}
@@ -56,6 +58,9 @@ func (rq *SubChangesRequest) marshalBLIPRequest() (*blip.Message, error) {
 	msg := blip.NewRequest()
 	msg.SetProfile(MessageSubChanges)
 
+	if rq.Collection != nil {
+		msg.Properties[BlipCollection] = strconv.Itoa(*rq.Collection)
+	}
 	setOptionalProperty(msg.Properties, "client_sgr2", rq.clientType == clientTypeSGR2)
 	setOptionalProperty(msg.Properties, SubChangesContinuous, rq.Continuous)
 	setOptionalProperty(msg.Properties, SubChangesBatch, rq.Batch)
@@ -81,8 +86,8 @@ type SetSGR2CheckpointRequest struct {
 	Client     string  // Client is the unique ID of client checkpoint to retrieve
 	RevID      *string // RevID of the previous checkpoint, if known.
 	Checkpoint Body    // Checkpoint is the actual checkpoint body we're sending.
-
-	msg *blip.Message
+	Collection *int
+	msg        *blip.Message
 }
 
 var _ blipMessageSender = &SetSGR2CheckpointRequest{}
@@ -106,6 +111,9 @@ func (rq *SetSGR2CheckpointRequest) marshalBLIPRequest() (*blip.Message, error) 
 	msg := blip.NewRequest()
 	msg.SetProfile(MessageSetCheckpoint)
 
+	if rq.Collection != nil {
+		msg.Properties[BlipCollection] = strconv.Itoa(*rq.Collection)
+	}
 	setProperty(msg.Properties, SetCheckpointClient, rq.Client)
 	setOptionalProperty(msg.Properties, SetCheckpointRev, rq.RevID)
 
@@ -148,7 +156,8 @@ func (rq *SetSGR2CheckpointRequest) Response() (*SetSGR2CheckpointResponse, erro
 
 // GetSGR2CheckpointRequest is a strongly typed 'getCheckpoint' request for SG-Replicate 2.
 type GetSGR2CheckpointRequest struct {
-	Client string // Client is the unique ID of client checkpoint to retrieve
+	Client     string // Client is the unique ID of client checkpoint to retrieve
+	Collection *int   // Client is the unique ID of client checkpoint to retrieve
 
 	msg *blip.Message
 }
@@ -171,6 +180,9 @@ func (rq *GetSGR2CheckpointRequest) marshalBLIPRequest() *blip.Message {
 	msg := blip.NewRequest()
 	msg.SetProfile(MessageGetCheckpoint)
 
+	if rq.Collection != nil {
+		msg.Properties[BlipCollection] = strconv.Itoa(*rq.Collection)
+	}
 	setProperty(msg.Properties, GetCheckpointClient, rq.Client)
 
 	return msg

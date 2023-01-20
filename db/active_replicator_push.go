@@ -78,8 +78,8 @@ func (apr *ActivePushReplicator) _connect() error {
 
 	// wrap the replicator context with a cancelFunc that can be called to abort the checkpointer from _disconnect
 	apr.checkpointerCtx, apr.checkpointerCtxCancel = context.WithCancel(apr.ctx)
-	for _, collection := range apr.config.Collections {
-		if err := apr._initCheckpointer(collection); err != nil {
+	for i, collection := range apr.config.Collections {
+		if err := apr._initCheckpointer(collection, &i); err != nil {
 			apr.blipSender.Close()
 			apr.blipSyncContext.Close()
 			return err
@@ -185,7 +185,7 @@ func (apr *ActivePushReplicator) Complete() {
 	}
 }
 
-func (apr *ActivePushReplicator) _initCheckpointer(collectionName base.ScopeAndCollectionName) error {
+func (apr *ActivePushReplicator) _initCheckpointer(collectionName base.ScopeAndCollectionName, blipCollectionIdx *int) error {
 
 	checkpointHash, hashErr := apr.config.CheckpointHash()
 	if hashErr != nil {
@@ -195,7 +195,7 @@ func (apr *ActivePushReplicator) _initCheckpointer(collectionName base.ScopeAndC
 	if err != nil {
 		return err
 	}
-	checkpointer := NewCheckpointer(apr.checkpointerCtx, apr.CheckpointID, checkpointHash, apr.blipSender, apr.config, collection, apr.getPushStatus)
+	checkpointer := NewCheckpointer(apr.checkpointerCtx, apr.CheckpointID, checkpointHash, apr.blipSender, apr.config, collection, blipCollectionIdx, apr.getPushStatus)
 
 	apr.initialStatus, err = checkpointer.fetchCheckpoints()
 	base.InfofCtx(apr.ctx, base.KeyReplicate, "Initialized push replication status: %+v", apr.initialStatus)

@@ -252,16 +252,15 @@ func connect(arc *activeReplicatorCommon, idSuffix string) (s *blip.Sender, bsc 
 
 func collectionsHandshake(ctx context.Context, blipSender *blip.Sender, collectionNames []base.ScopeAndCollectionName) error {
 	blipCollections := make([]string, len(collectionNames))
-	for _, collectionName := range collectionNames {
-		blipCollections = append(blipCollections,
-			strings.Join([]string{collectionName.ScopeName(), collectionName.CollectionName()},
-				base.ScopeCollectionSeparator))
+	for i, collectionName := range collectionNames {
+		blipCollections[i] = strings.Join([]string{collectionName.ScopeName(), collectionName.CollectionName()},
+			base.ScopeCollectionSeparator)
 	}
-	body := GetCollectionsRequestBody{
+	rqBody := GetCollectionsRequestBody{
 		CheckpointIDs: make([]string, len(collectionNames)),
 		Collections:   blipCollections,
 	}
-	rq, err := NewGetCollectionsMessage(body)
+	rq, err := NewGetCollectionsMessage(rqBody)
 	if err != nil {
 		return err
 	}
@@ -276,6 +275,16 @@ func collectionsHandshake(ctx context.Context, blipSender *blip.Sender, collecti
 		base.DebugfCtx(ctx, base.KeyReplicate, "%s", err)
 		return err
 	}
+
+	errCode := resp.Properties[BlipErrorCode]
+	if errCode != "" {
+		respBody, err := resp.Body()
+		if err != nil {
+			return err
+		}
+		return fmt.Errorf("Could not perform GetCollections sync: %w", respBody)
+	}
+
 	return nil
 }
 
