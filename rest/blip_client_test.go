@@ -596,6 +596,17 @@ func (btc *BlipTesterClient) initCollectionReplication(collection string, collec
 	return nil
 }
 
+func (btc *BlipTesterClient) waitForReplicationMessage(collection *db.DatabaseCollection, serialNumber blip.MessageNumber) (*blip.Message, bool) {
+	var msg *blip.Message
+	var ok bool
+	if base.IsDefaultCollection(collection.ScopeName(), collection.Name()) {
+		msg, ok = btc.pushReplication.WaitForMessage(serialNumber)
+	} else {
+		msg, ok = btc.pushReplication.WaitForMessage(serialNumber + 1)
+	}
+	return msg, ok
+}
+
 // SingleCollection returns a single collection blip tester if the RestTester database is configured with only one collection. Otherwise, throw a fatal test error.
 func (btc *BlipTesterClient) SingleCollection() *BlipTesterCollectionClient {
 	if btc.nonCollectionAwareClient != nil {

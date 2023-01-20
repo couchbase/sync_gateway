@@ -434,7 +434,6 @@ func TestBlipSubChangesDocIDFilter(t *testing.T) {
 	bt, err := NewBlipTester(t)
 	require.NoError(t, err)
 	defer bt.Close()
-	collection := bt.restTester.GetSingleTestDatabaseCollection()
 	// Counter/Waitgroup to help ensure that all callbacks on continuous changes handler are received
 	receivedChangesWg := sync.WaitGroup{}
 	receivedCaughtUpChange := false
@@ -553,9 +552,6 @@ func TestBlipSubChangesDocIDFilter(t *testing.T) {
 	subChangesRequest.SetProfile("subChanges")
 	subChangesRequest.Properties["continuous"] = "false"
 	subChangesRequest.Properties["batch"] = "10" // default batch size is 200, lower this to 5 to make sure we get multiple batches
-	if !base.IsDefaultCollection(collection.ScopeName(), collection.Name()) {
-		subChangesRequest.Properties[db.BlipCollection] = "0"
-	}
 	subChangesRequest.SetCompressed(false)
 
 	body := db.SubChangesBody{DocIDs: docIDsExpected}
@@ -897,7 +893,6 @@ function(doc, oldDoc) {
 	rtConfig := RestTesterConfig{SyncFn: syncFunction}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
-	collection := rt.GetSingleTestDatabaseCollection()
 
 	// Create bliptester that is connected as user1, with no access to channel ABC
 	bt, err := NewBlipTesterFromSpecWithRT(t, &BlipTesterSpec{
@@ -984,9 +979,6 @@ function(doc, oldDoc) {
 	subChangesRequest.SetProfile("subChanges")
 	subChangesRequest.Properties["continuous"] = "true"
 	subChangesRequest.Properties["batch"] = "10" // default batch size is 200, lower this to 10 to make sure we get multiple batches
-	if !base.IsDefaultCollection(collection.ScopeName(), collection.Name()) {
-		subChangesRequest.Properties[db.BlipCollection] = "0"
-	}
 	subChangesRequest.SetCompressed(false)
 	sent := bt.sender.Send(subChangesRequest)
 	assert.True(t, sent)

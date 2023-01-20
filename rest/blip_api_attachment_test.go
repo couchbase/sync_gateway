@@ -17,7 +17,6 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/couchbase/go-blip"
 	"github.com/couchbase/gocb/v2"
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
@@ -326,7 +325,6 @@ func TestPutAttachmentViaBlipGetViaRest(t *testing.T) {
 		})
 	require.NoError(t, err)
 	defer bt.Close()
-	collection := bt.restTester.GetSingleTestDatabaseCollection()
 
 	attachmentBody := "attach"
 	digest := db.Sha1DigestKey([]byte(attachmentBody))
@@ -343,14 +341,11 @@ func TestPutAttachmentViaBlipGetViaRest(t *testing.T) {
 
 	// Try to fetch the attachment directly via getAttachment, expected to fail w/ 403 error for security reasons
 	// since it's not in the context of responding to a "rev" request from the peer.
-	getAttachmentRequest := blip.NewRequest()
+	getAttachmentRequest := bt.newRequest()
 	getAttachmentRequest.SetProfile(db.MessageGetAttachment)
 	getAttachmentRequest.Properties[db.GetAttachmentDigest] = input.attachmentDigest
-	getAttachmentRequest.Properties[db.GetAttachmentID] = input.docId
-	if !base.IsDefaultCollection(collection.ScopeName(), collection.Name()) {
-		getAttachmentRequest.Properties[db.BlipCollection] = "0"
-	}
 	sent := bt.sender.Send(getAttachmentRequest)
+	getAttachmentRequest.Properties[db.GetAttachmentID] = input.docId
 	if !sent {
 		panic(fmt.Sprintf("Failed to send request for doc: %v", input.docId))
 	}

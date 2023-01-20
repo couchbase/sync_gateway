@@ -844,13 +844,8 @@ func TestBlipDeltaSyncPush(t *testing.T) {
 	assert.Equal(t, "2-abc", newRev)
 
 	// Check EE is delta, and CE is full-body replication
-	if base.IsDefaultCollection(collection.ScopeName(), collection.Name()) {
-		msg, ok = client.pushReplication.WaitForMessage(2)
-		assert.True(t, ok)
-	} else {
-		msg, ok = client.pushReplication.WaitForMessage(3)
-		assert.True(t, ok)
-	}
+	msg, found := client.waitForReplicationMessage(collection, 2)
+	assert.True(t, found)
 
 	if base.IsEnterpriseEdition() {
 		// Check the request was sent with the correct deltaSrc property
@@ -963,13 +958,8 @@ func TestBlipNonDeltaSyncPush(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, "2-abc", newRev)
 	// Check EE is delta, and CE is full-body replication
-	if base.IsDefaultCollection(collection.ScopeName(), collection.Name()) {
-		msg, ok = client.pushReplication.WaitForMessage(2)
-		assert.True(t, ok)
-	} else {
-		msg, ok = client.pushReplication.WaitForMessage(3)
-		assert.True(t, ok)
-	}
+	msg, found := client.waitForReplicationMessage(collection, 2)
+	assert.True(t, found)
 
 	// Check the request was NOT sent with a deltaSrc property
 	assert.Equal(t, "", msg.Properties[db.RevMessageDeltaSrc])
