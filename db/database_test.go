@@ -2448,7 +2448,7 @@ func TestResyncUpdateAllDocChannels(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	err = db.TakeDbOffline(ctx, "")
+	err = db.TakeDbOffline(base.NewNonCancelCtx(), "")
 	assert.NoError(t, err)
 
 	waitAndAssertCondition(t, func() bool {
