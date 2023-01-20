@@ -100,8 +100,8 @@ paths:
     $ref: './paths/admin/{keyspace}~_config~sync.yaml'
   '/{keyspace}/_config/import_filter':
     $ref: './paths/admin/{keyspace}~_config~import_filter.yaml'
-  '/{keyspace}/_resync':
-    $ref: './paths/admin/{keyspace}~_resync.yaml'
+  '/{db}/_resync':
+    $ref: './paths/admin/{db}~_resync.yaml'
   '/{keyspace}/_purge':
     $ref: './paths/admin/{keyspace}~_purge.yaml'
   '/{db}/_flush':

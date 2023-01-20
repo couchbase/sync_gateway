@@ -82,7 +82,7 @@ func testConcurrently(t *testing.T, rt *RestTester, testFunc func() bool) bool {
 	const numTasks = 1000
 
 	// prime the pump:
-	runConcurrently(rt, testFunc, 100)
+	runSequentially(rt, testFunc, 5)
 
 	base.WarnfCtx(context.TODO(), "---- Starting sequential tasks ----")
 	sequentialDuration := runSequentially(rt, testFunc, numTasks)
@@ -97,7 +97,8 @@ func testConcurrently(t *testing.T, rt *RestTester, testFunc func() bool) bool {
 }
 
 func TestFunctions(t *testing.T) {
-	rt := NewRestTester(t, &RestTesterConfig{GuestEnabled: true, EnableUserQueries: true, DatabaseConfig: kGraphQLTestConfig})
+	//TODO: Switch back to NewRestTester()
+	rt := NewRestTesterDefaultCollection(t, &RestTesterConfig{GuestEnabled: true, EnableUserQueries: true, DatabaseConfig: kGraphQLTestConfig})
 	defer rt.Close()
 
 	t.Run("GraphQL with variables", func(t *testing.T) {
@@ -112,7 +113,8 @@ func TestFunctions(t *testing.T) {
 }
 
 func TestFunctionsConcurrently(t *testing.T) {
-	rt := NewRestTester(t, &RestTesterConfig{GuestEnabled: true, EnableUserQueries: true, DatabaseConfig: kGraphQLTestConfig})
+	//TODO: Switch back to NewRestTester()
+	rt := NewRestTesterDefaultCollection(t, &RestTesterConfig{GuestEnabled: true, EnableUserQueries: true, DatabaseConfig: kGraphQLTestConfig})
 	defer rt.Close()
 
 	t.Run("Function", func(t *testing.T) {

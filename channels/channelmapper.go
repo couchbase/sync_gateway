@@ -42,6 +42,21 @@ type MetaMap struct {
 	JSONValue []byte // raw JSON value of xattr key; nil if none
 }
 
+func (meta MetaMap) MarshalJSON() ([]byte, error) {
+	var result string
+	if meta.Key == "" {
+		result = `{"xattrs":null}`
+	} else {
+		result = fmt.Sprintf(`{"xattrs":{%q:`, meta.Key)
+		if meta.JSONValue != nil {
+			result += string(meta.JSONValue) + "}}"
+		} else {
+			result += "null}}"
+		}
+	}
+	return []byte(result), nil
+}
+
 // Prefix used to identify roles in access grants
 const RoleAccessPrefix = "role:"
 

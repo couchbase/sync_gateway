@@ -82,8 +82,12 @@ func (b *LeakyBucket) ListDataStores() ([]sgbucket.DataStoreName, error) {
 	return b.bucket.ListDataStores()
 }
 
-func (b *LeakyBucket) NamedDataStore(name sgbucket.DataStoreName) sgbucket.DataStore {
-	return NewLeakyDataStore(b, b.bucket.NamedDataStore(name), b.config)
+func (b *LeakyBucket) NamedDataStore(name sgbucket.DataStoreName) (sgbucket.DataStore, error) {
+	dataStore, err := b.bucket.NamedDataStore(name)
+	if err != nil {
+		return nil, err
+	}
+	return NewLeakyDataStore(b, dataStore, b.config), nil
 }
 
 func (b *LeakyBucket) GetUnderlyingBucket() Bucket {

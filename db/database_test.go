@@ -2443,7 +2443,7 @@ func TestResyncUpdateAllDocChannels(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	err = db.TakeDbOffline(ctx, "")
+	err = db.TakeDbOffline(base.NewNonCancelCtx(), "")
 	assert.NoError(t, err)
 
 	waitAndAssertCondition(t, func() bool {
@@ -2700,17 +2700,10 @@ func Test_invalidateAllPrincipalsCache(t *testing.T) {
 	if base.TestsUseNamedCollections() {
 		dataStoreName := collection.dataStore.GetName()
 		var scopeName, collectionName string
-		if base.UnitTestUrlIsWalrus() {
-			// Format: sg_test_0:sg_test_0
-			dataStoreNameSlice := strings.Split(dataStoreName, ":")
-			require.Len(t, dataStoreNameSlice, 2)
-			scopeName, collectionName = dataStoreNameSlice[0], dataStoreNameSlice[1]
-		} else {
-			// Format: sg_int_0_1671048846916047000.sg_test_0.sg_test_0
-			dataStoreNameSlice := strings.Split(dataStoreName, ".")
-			require.Len(t, dataStoreNameSlice, 3)
-			scopeName, collectionName = dataStoreNameSlice[1], dataStoreNameSlice[2]
-		}
+		// Format: sg_int_0_1671048846916047000.sg_test_0.sg_test_0
+		dataStoreNameSlice := strings.Split(dataStoreName, ".")
+		require.Len(t, dataStoreNameSlice, 3)
+		scopeName, collectionName = dataStoreNameSlice[1], dataStoreNameSlice[2]
 
 		// Example of Raw response when named collection is used
 		// Role {"name":"role0","all_channels":null,"sequence":1,
@@ -2992,7 +2985,8 @@ func TestGetDatabaseCollectionWithUserDefaultCollection(t *testing.T) {
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close()
 
-	ds := bucket.GetNamedDataStore(0)
+	ds, err := bucket.GetNamedDataStore(0)
+	require.NoError(t, err)
 	require.NotNil(t, ds)
 
 	dataStoreName, ok := base.AsDataStoreName(ds)

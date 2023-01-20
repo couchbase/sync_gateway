@@ -47,6 +47,7 @@ func (r *ResyncManager) Init(ctx context.Context, options map[string]interface{}
 func (r *ResyncManager) Run(ctx context.Context, options map[string]interface{}, persistClusterStatusCallback updateStatusCallbackFunc, terminator *base.SafeTerminator) error {
 	database := options["database"].(*Database)
 	regenerateSequences := options["regenerateSequences"].(bool)
+	resyncCollections := options["collections"].(ResyncCollections)
 
 	persistClusterStatus := func() {
 		err := persistClusterStatusCallback()
@@ -62,9 +63,19 @@ func (r *ResyncManager) Run(ctx context.Context, options map[string]interface{},
 		persistClusterStatus()
 	}
 
-	for _, collection := range database.CollectionByID {
+	collectionIDs, hasAllCollections, err := getCollectionIds(database, resyncCollections)
+	if err != nil {
+		return err
+	}
+	if hasAllCollections {
+		base.InfofCtx(ctx, base.KeyAll, "running resync against all collections")
+	} else {
+		base.InfofCtx(ctx, base.KeyAll, "running resync against specified collections")
+	}
+
+	for _, collectionID := range collectionIDs {
 		_, err := (&DatabaseCollectionWithUser{
-			DatabaseCollection: collection,
+			DatabaseCollection: database.CollectionByID[collectionID],
 		}).UpdateAllDocChannels(ctx, regenerateSequences, callback, terminator)
 		if err != nil {
 			return err

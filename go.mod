@@ -12,9 +12,9 @@ require (
 	github.com/couchbase/gocbcore/v10 v10.1.6
 	github.com/couchbase/gomemcached v0.1.4
 	github.com/couchbase/goutils v0.1.2
-	github.com/couchbase/sg-bucket v0.0.0-20230105171927-06b0d8a5a561
+	github.com/couchbase/sg-bucket v0.0.0-20230113211151-ac6a75f57046
 	github.com/couchbaselabs/go-fleecedelta v0.0.0-20200408160354-2ed3f45fde8f
-	github.com/couchbaselabs/walrus v0.0.0-20221216132452-df0cbd8e1f7b
+	github.com/couchbaselabs/walrus v0.0.0-20230118190455-97ce18d0c47d
 	github.com/elastic/gosigar v0.14.2
 	github.com/felixge/fgprof v0.9.2
 	github.com/google/uuid v1.3.0

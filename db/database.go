@@ -463,7 +463,10 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 			collectionNameMap := make(map[string]struct{}, len(scope.Collections))
 			for collName, collOpts := range scope.Collections {
 				ctx := base.CollectionCtx(ctx, collName)
-				dataStore := bucket.NamedDataStore(base.ScopeAndCollectionName{Scope: scopeName, Collection: collName})
+				dataStore, err := bucket.NamedDataStore(base.ScopeAndCollectionName{Scope: scopeName, Collection: collName})
+				if err != nil {
+					return nil, err
+				}
 				dbCollection, err := newDatabaseCollection(ctx, dbContext, dataStore)
 				if err != nil {
 					return nil, err
@@ -962,7 +965,7 @@ func (dbCtx *DatabaseContext) RemoveObsoleteIndexes(ctx context.Context, preview
 			errs = errs.Append(err)
 			continue
 		}
-		onlyDefaultCollection := dbCtx.onlyDefaultCollection()
+		onlyDefaultCollection := dbCtx.OnlyDefaultCollection()
 		for _, idxName := range collectionRemovedIndexes {
 			if onlyDefaultCollection {
 				removedIndexes = append(removedIndexes, idxName)
@@ -1020,8 +1023,8 @@ func (dc *DatabaseContext) TakeDbOffline(ctx context.Context, reason string) err
 	}
 }
 
-func (db *Database) TakeDbOffline(ctx context.Context, reason string) error {
-	return db.DatabaseContext.TakeDbOffline(ctx, reason)
+func (db *Database) TakeDbOffline(nonContextStruct base.NonCancellableContext, reason string) error {
+	return db.DatabaseContext.TakeDbOffline(nonContextStruct.Ctx, reason)
 }
 
 func (context *DatabaseContext) Authenticator(ctx context.Context) *auth.Authenticator {
@@ -2234,10 +2237,16 @@ func (dbCtx *DatabaseContext) AddDatabaseLogContext(ctx context.Context) context
 }
 
 // onlyDefaultCollection is true if the database is only configured with default collection.
-func (dbCtx *DatabaseContext) onlyDefaultCollection() bool {
+func (dbCtx *DatabaseContext) OnlyDefaultCollection() bool {
 	if len(dbCtx.CollectionByID) > 1 {
 		return false
 	}
+	_, exists := dbCtx.CollectionByID[base.DefaultCollectionID]
+	return exists
+}
+
+// hasDefaultCollection is true if the database is configured with default collection
+func (dbCtx *DatabaseContext) hasDefaultCollection() bool {
 	_, exists := dbCtx.CollectionByID[base.DefaultCollectionID]
 	return exists
 }
@@ -2256,7 +2265,7 @@ func (dbc *Database) GetDatabaseCollectionWithUser(scopeName, collectionName str
 
 // GetDatabaseCollection returns a collection if one exists, otherwise error.
 func (dbc *DatabaseContext) GetDatabaseCollection(scopeName, collectionName string) (*DatabaseCollection, error) {
-	if base.IsDefaultCollection(scopeName, collectionName) && dbc.onlyDefaultCollection() {
+	if base.IsDefaultCollection(scopeName, collectionName) {
 		return dbc.GetDefaultDatabaseCollection()
 	}
 	if dbc.Scopes == nil {

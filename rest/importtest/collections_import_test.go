@@ -53,9 +53,11 @@ func TestMultiCollectionImportFilter(t *testing.T) {
 	defer rt.Close()
 
 	_ = rt.Bucket() // populates rest tester
-	dataStore1 := rt.TestBucket.GetNamedDataStore(0)
+	dataStore1, err := rt.TestBucket.GetNamedDataStore(0)
+	require.NoError(t, err)
 	keyspace1 := "{{.keyspace1}}"
-	dataStore2 := rt.TestBucket.GetNamedDataStore(1)
+	dataStore2, err := rt.TestBucket.GetNamedDataStore(1)
+	require.NoError(t, err)
 	keyspace2 := "{{.keyspace2}}"
 
 	defaultKeyspace := "db._default._default"

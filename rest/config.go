@@ -1328,20 +1328,20 @@ func (sc *ServerContext) fetchAndLoadDatabaseSince(ctx context.Context, dbName s
 	return found, nil
 }
 
-func (sc *ServerContext) fetchAndLoadDatabase(ctx context.Context, dbName string) (found bool, err error) {
+func (sc *ServerContext) fetchAndLoadDatabase(nonContextStruct base.NonCancellableContext, dbName string) (found bool, err error) {
 	sc.lock.Lock()
 	defer sc.lock.Unlock()
-	return sc._fetchAndLoadDatabase(ctx, dbName)
+	return sc._fetchAndLoadDatabase(nonContextStruct, dbName)
 }
 
 // _fetchAndLoadDatabase will attempt to find the given database name first in a matching bucket name,
 // but then fall back to searching through configs in each bucket to try and find a config.
-func (sc *ServerContext) _fetchAndLoadDatabase(ctx context.Context, dbName string) (found bool, err error) {
-	found, dbConfig, err := sc.fetchDatabase(ctx, dbName)
+func (sc *ServerContext) _fetchAndLoadDatabase(nonContextStruct base.NonCancellableContext, dbName string) (found bool, err error) {
+	found, dbConfig, err := sc.fetchDatabase(nonContextStruct.Ctx, dbName)
 	if err != nil || !found {
 		return false, err
 	}
-	sc._applyConfigs(ctx, map[string]DatabaseConfig{dbName: *dbConfig}, false)
+	sc._applyConfigs(nonContextStruct.Ctx, map[string]DatabaseConfig{dbName: *dbConfig}, false)
 
 	return true, nil
 }
@@ -1553,7 +1553,7 @@ func (sc *ServerContext) FetchConfigs(ctx context.Context, isInitialStartup bool
 // _applyConfigs takes a map of dbName->DatabaseConfig and loads them into the ServerContext where necessary.
 func (sc *ServerContext) _applyConfigs(ctx context.Context, dbNameConfigs map[string]DatabaseConfig, isInitialStartup bool) (count int) {
 	for dbName, cnf := range dbNameConfigs {
-		applied, err := sc._applyConfig(ctx, cnf, false, isInitialStartup)
+		applied, err := sc._applyConfig(base.NewNonCancelCtx(), cnf, false, isInitialStartup)
 		if err != nil {
 			base.ErrorfCtx(ctx, "Couldn't apply config for database %q: %v", base.MD(dbName), err)
 			continue
@@ -1573,7 +1573,7 @@ func (sc *ServerContext) applyConfigs(ctx context.Context, dbNameConfigs map[str
 }
 
 // _applyConfig loads the given database, failFast=true will not attempt to retry connecting/loading
-func (sc *ServerContext) _applyConfig(ctx context.Context, cnf DatabaseConfig, failFast, isInitialStartup bool) (applied bool, err error) {
+func (sc *ServerContext) _applyConfig(nonContextStruct base.NonCancellableContext, cnf DatabaseConfig, failFast, isInitialStartup bool) (applied bool, err error) {
 	// 3.0.0 doesn't write a SGVersion, but everything else will
 	configSGVersionStr := "3.0.0"
 	if cnf.SGVersion != "" {
@@ -1589,7 +1589,7 @@ func (sc *ServerContext) _applyConfig(ctx context.Context, cnf DatabaseConfig, f
 		// Skip applying if the config is from a newer SG version than this node and we're not just starting up
 		nodeSGVersion := base.ProductVersion
 		if nodeSGVersion.Less(configSGVersion) {
-			base.WarnfCtx(ctx, "Cannot apply config update from server for db %q, this SG version is older than config's SG version (%s < %s)", cnf.Name, nodeSGVersion.String(), configSGVersion.String())
+			base.WarnfCtx(nonContextStruct.Ctx, "Cannot apply config update from server for db %q, this SG version is older than config's SG version (%s < %s)", cnf.Name, nodeSGVersion.String(), configSGVersion.String())
 			return false, nil
 		}
 	}
@@ -1604,13 +1604,13 @@ func (sc *ServerContext) _applyConfig(ctx context.Context, cnf DatabaseConfig, f
 
 		if cnf.cfgCas == 0 {
 			// force an update when the new config's cas was set to zero prior to load
-			base.InfofCtx(ctx, base.KeyConfig, "Forcing update of config for database %q bucket %q", cnf.Name, *cnf.Bucket)
+			base.InfofCtx(nonContextStruct.Ctx, base.KeyConfig, "Forcing update of config for database %q bucket %q", cnf.Name, *cnf.Bucket)
 		} else {
 			if sc.dbConfigs[foundDbName].cfgCas >= cnf.cfgCas {
-				base.DebugfCtx(ctx, base.KeyConfig, "Database %q bucket %q config has not changed since last update", cnf.Name, *cnf.Bucket)
+				base.DebugfCtx(nonContextStruct.Ctx, base.KeyConfig, "Database %q bucket %q config has not changed since last update", cnf.Name, *cnf.Bucket)
 				return false, nil
 			}
-			base.InfofCtx(ctx, base.KeyConfig, "Updating database %q for bucket %q with new config from bucket", cnf.Name, *cnf.Bucket)
+			base.InfofCtx(nonContextStruct.Ctx, base.KeyConfig, "Updating database %q for bucket %q with new config from bucket", cnf.Name, *cnf.Bucket)
 		}
 	}
 
@@ -1632,7 +1632,7 @@ func (sc *ServerContext) _applyConfig(ctx context.Context, cnf DatabaseConfig, f
 	}
 
 	// TODO: Dynamic update instead of reload
-	if err := sc._reloadDatabaseWithConfig(ctx, cnf, failFast); err != nil {
+	if err := sc._reloadDatabaseWithConfig(nonContextStruct.Ctx, cnf, failFast); err != nil {
 		// remove these entries we just created above if the database hasn't loaded properly
 		return false, fmt.Errorf("couldn't reload database: %w", err)
 	}

@@ -380,7 +380,7 @@ func TestImportFilterEndpoint(t *testing.T) {
 	resp.RequireStatus(http.StatusOK)
 
 	// Modify the import filter to always reject import
-	resp = BootstrapAdminRequest(t, http.MethodPut, "/db1/_config/import_filter", `function(){return false}`)
+	resp = BootstrapAdminRequest(t, http.MethodPut, "/db1/_config/import_filter", `function(doc){return false}`)
 	resp.RequireStatus(http.StatusOK)
 
 	// Add a document

@@ -154,9 +154,11 @@ func TestResyncManagerDCPStopInMidWay(t *testing.T) {
 	db.ResyncManager = resycMgr
 	defer resycMgr.resetStatus()
 
-	options := make(map[string]interface{})
-	options["database"] = db
-	options["regenerateSequences"] = false
+	options := map[string]interface{}{
+		"database":            db,
+		"regenerateSequences": false,
+		"collections":         ResyncCollections{},
+	}
 
 	err := resycMgr.Start(ctx, options)
 	require.NoError(t, err)
@@ -205,10 +207,11 @@ func TestResyncManagerDCPStart(t *testing.T) {
 		require.NotNil(t, resyncMgr)
 		db.ResyncManager = resyncMgr
 
-		options := make(map[string]interface{})
-		options["database"] = db
-		options["regenerateSequences"] = false
-
+		options := map[string]interface{}{
+			"database":            db,
+			"regenerateSequences": false,
+			"collections":         ResyncCollections{},
+		}
 		err := resyncMgr.Start(ctx, options)
 		require.NoError(t, err)
 
@@ -238,9 +241,12 @@ func TestResyncManagerDCPStart(t *testing.T) {
 		initialStats := getResyncStats(resyncMgr.Process)
 		log.Printf("initialStats: processed[%v] changed[%v]", initialStats.DocsProcessed, initialStats.DocsChanged)
 
-		options := make(map[string]interface{})
-		options["database"] = db
-		options["regenerateSequences"] = false
+		options := map[string]interface{}{
+			"database":            db,
+			"regenerateSequences": false,
+			"collections":         ResyncCollections{},
+		}
+
 		err := resyncMgr.Start(ctx, options)
 		require.NoError(t, err)
 
@@ -275,9 +281,11 @@ func TestResyncManagerDCPRunTwice(t *testing.T) {
 	require.NotNil(t, resycMgr)
 	db.ResyncManager = resycMgr
 
-	options := make(map[string]interface{})
-	options["database"] = db
-	options["regenerateSequences"] = false
+	options := map[string]interface{}{
+		"database":            db,
+		"regenerateSequences": false,
+		"collections":         ResyncCollections{},
+	}
 
 	err := resycMgr.Start(ctx, options)
 	require.NoError(t, err)
@@ -324,9 +332,11 @@ func TestResycnManagerDCPResumeStoppedProcess(t *testing.T) {
 	require.NotNil(t, resycMgr)
 	db.ResyncManager = resycMgr
 
-	options := make(map[string]interface{})
-	options["database"] = db
-	options["regenerateSequences"] = false
+	options := map[string]interface{}{
+		"database":            db,
+		"regenerateSequences": false,
+		"collections":         ResyncCollections{},
+	}
 
 	err := resycMgr.Start(ctx, options)
 	require.NoError(t, err)

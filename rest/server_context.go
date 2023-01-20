@@ -237,7 +237,7 @@ func (sc *ServerContext) GetInactiveDatabase(ctx context.Context, name string) (
 			found, err = sc.fetchAndLoadDatabaseSince(ctx, name, sc.Config.Unsupported.Serverless.MinConfigFetchInterval)
 
 		} else {
-			found, err = sc.fetchAndLoadDatabase(ctx, name)
+			found, err = sc.fetchAndLoadDatabase(base.NewNonCancelCtx(), name)
 		}
 		if found {
 			sc.lock.RLock()
@@ -342,10 +342,10 @@ func (sc *ServerContext) ReloadDatabase(ctx context.Context, reloadDbName string
 	return dbContext, err
 }
 
-func (sc *ServerContext) ReloadDatabaseWithConfig(ctx context.Context, config DatabaseConfig) error {
+func (sc *ServerContext) ReloadDatabaseWithConfig(nonContextStruct base.NonCancellableContext, config DatabaseConfig) error {
 	sc.lock.Lock()
 	defer sc.lock.Unlock()
-	return sc._reloadDatabaseWithConfig(ctx, config, true)
+	return sc._reloadDatabaseWithConfig(nonContextStruct.Ctx, config, true)
 }
 
 func (sc *ServerContext) _reloadDatabaseWithConfig(ctx context.Context, config DatabaseConfig, failFast bool) error {
@@ -502,8 +502,14 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 
 		for scopeName, scopeConfig := range config.Scopes {
 			for collectionName, _ := range scopeConfig.Collections {
-				dataStore := bucket.NamedDataStore(base.ScopeAndCollectionName{Scope: scopeName, Collection: collectionName})
-
+				var dataStore sgbucket.DataStore
+				err := base.WaitForNoError(func() error {
+					dataStore, err = bucket.NamedDataStore(base.ScopeAndCollectionName{Scope: scopeName, Collection: collectionName})
+					return err
+				})
+				if err != nil {
+					return nil, fmt.Errorf("error attempting to create/update database: %w", err)
+				}
 				// Check if scope/collection specified exists. Will enter retry loop if connection unsuccessful
 				if err := base.WaitUntilDataStoreExists(dataStore); err != nil {
 					return nil, fmt.Errorf("attempting to create/update database with a scope/collection that is not found")
@@ -778,7 +784,7 @@ func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConf
 	// Create a callback function that will be invoked if the database goes offline and comes
 	// back online again
 	dbOnlineCallback := func(dbContext *db.DatabaseContext) {
-		sc.TakeDbOnline(ctx, dbContext)
+		sc.TakeDbOnline(base.NewNonCancelCtx(), dbContext)
 	}
 
 	oldRevExpirySeconds := base.DefaultOldRevExpirySeconds
@@ -949,7 +955,7 @@ func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConf
 	return contextOptions, nil
 }
 
-func (sc *ServerContext) TakeDbOnline(ctx context.Context, database *db.DatabaseContext) {
+func (sc *ServerContext) TakeDbOnline(nonContextStruct base.NonCancellableContext, database *db.DatabaseContext) {
 
 	// Take a write lock on the Database context, so that we can cycle the underlying Database
 	// without any other call running concurrently
@@ -958,9 +964,9 @@ func (sc *ServerContext) TakeDbOnline(ctx context.Context, database *db.Database
 
 	// We can only transition to Online from Offline state
 	if atomic.CompareAndSwapUint32(&database.State, db.DBOffline, db.DBStarting) {
-		reloadedDb, err := sc.ReloadDatabase(ctx, database.Name)
+		reloadedDb, err := sc.ReloadDatabase(nonContextStruct.Ctx, database.Name)
 		if err != nil {
-			base.ErrorfCtx(ctx, "Error reloading database from config: %v", err)
+			base.ErrorfCtx(nonContextStruct.Ctx, "Error reloading database from config: %v", err)
 			return
 		}
 
@@ -969,7 +975,7 @@ func (sc *ServerContext) TakeDbOnline(ctx context.Context, database *db.Database
 		atomic.StoreUint32(&reloadedDb.State, db.DBOnline)
 
 	} else {
-		base.InfofCtx(ctx, base.KeyCRUD, "Unable to take Database : %v online , database must be in Offline state", base.UD(database.Name))
+		base.InfofCtx(nonContextStruct.Ctx, base.KeyCRUD, "Unable to take Database : %v online , database must be in Offline state", base.UD(database.Name))
 	}
 
 }
@@ -1070,8 +1076,8 @@ func (sc *ServerContext) AddDatabaseFromConfig(ctx context.Context, config Datab
 
 // AddDatabaseFromConfigFailFast adds a database to the ServerContext given its configuration and fails fast.
 // If an existing config is found for the name, returns an error.
-func (sc *ServerContext) AddDatabaseFromConfigFailFast(ctx context.Context, config DatabaseConfig) (*db.DatabaseContext, error) {
-	return sc.getOrAddDatabaseFromConfig(ctx, config, false, db.GetConnectToBucketFn(true))
+func (sc *ServerContext) AddDatabaseFromConfigFailFast(nonContextStruct base.NonCancellableContext, config DatabaseConfig) (*db.DatabaseContext, error) {
+	return sc.getOrAddDatabaseFromConfig(nonContextStruct.Ctx, config, false, db.GetConnectToBucketFn(true))
 }
 
 func (sc *ServerContext) processEventHandlersForEvent(ctx context.Context, events []*EventConfig, eventType db.EventType, dbcontext *db.DatabaseContext) error {

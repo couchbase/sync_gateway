@@ -154,8 +154,7 @@ func (c *DatabaseCollection) ForceAPIForbiddenErrors() bool {
 
 // importFilter returns the import filter function.
 func (c *DatabaseCollection) importFilter() ImportFilterFunction {
-	return c.dbCtx.Options.ImportOptions.ImportFilter
-	//TEMP -- was: 	return c.importFilterFunction
+	return c.importFilterFunction
 }
 
 // IsClosed returns true if the underlying collection has been closed.

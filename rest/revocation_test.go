@@ -188,7 +188,7 @@ func InitScenario(t *testing.T, rtConfig *RestTesterConfig) (ChannelRevocationTe
 		}
 	}
 
-	rt := NewRestTester(t, rtConfig)
+	rt := NewRestTesterDefaultCollection(t, rtConfig) //  CBG-2319: replicator currently requires default collection
 
 	revocationTester := ChannelRevocationTester{
 		test:       t,
@@ -1970,7 +1970,7 @@ func TestReplicatorRevocationsFromZero(t *testing.T) {
 	rt2_collection := rt2.GetSingleTestDatabaseCollection()
 
 	// Active
-	rt1 := NewRestTester(t, //  CBG-2319: replicator currently requires default collection
+	rt1 := NewRestTesterDefaultCollection(t, //  CBG-2319: replicator currently requires default collection
 		&RestTesterConfig{
 			CustomTestBucket: base.GetTestBucket(t),
 		})
