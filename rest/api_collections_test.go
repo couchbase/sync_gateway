@@ -382,6 +382,25 @@ func TestMultiCollectionChannelAccess(t *testing.T) {
 	RequireStatus(t, resp, http.StatusOK)
 	resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.keyspace3}}/testDocBazB", "", nil, "userAB", "letmein")
 	RequireStatus(t, resp, http.StatusOK)
+
+	// Add a new collection and update the db config
+	scopesConfig = GetCollectionsConfig(t, tb, 2)
+	dataStoreNames = GetDataStoreNamesFromScopesConfig(scopesConfig)
+
+	//collection3 := dataStoreNames[2].CollectionName()
+	scopesConfig[scope].Collections[collection1] = CollectionConfig{SyncFn: &c1SyncFunction}
+	scopesConfig[scope].Collections[collection2] = CollectionConfig{SyncFn: &c1SyncFunction}
+	scopesConfigString, err = json.Marshal(scopesConfig)
+	require.NoError(t, err)
+
+	resp = rt.SendAdminRequest("PUT", "/db/_config", fmt.Sprintf(
+		`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "scopes":%s}`,
+		tb.GetName(), base.TestUseXattrs(), string(scopesConfigString)))
+	RequireStatus(t, resp, http.StatusCreated)
+
+	// Ensure users can access the given channels in new collection, can't access docs in other channels on the new collection
+	resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.keyspace3}}/testDocBazA", "", nil, "userB", "letmein")
+	RequireStatus(t, resp, http.StatusBadRequest)
 }
 
 func TestMultiCollectionDynamicChannelAccess(t *testing.T) {
