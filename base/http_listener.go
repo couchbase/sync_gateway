@@ -54,6 +54,14 @@ func ListenAndServeHTTP(addr string, connLimit uint, certFile, keyFile string, h
 			return nil, nil, err
 		}
 	}
+
+	// Callback that turns off TCP NODELAY option when a client transitions to a WebSocket:
+	connStateFunc := func(clientConn net.Conn, state http.ConnState) {
+		if state == http.StateHijacked {
+			turnOffNoDelay(context.Background(), clientConn)
+		}
+	}
+
 	listener, err := ThrottledListen("tcp", addr, connLimit)
 	if err != nil {
 		return nil, nil, err
@@ -68,6 +76,7 @@ func ListenAndServeHTTP(addr string, connLimit uint, certFile, keyFile string, h
 		WriteTimeout:      writeTimeout,
 		ReadHeaderTimeout: readHeaderTimeout,
 		IdleTimeout:       idleTimeout,
+		ConnState:         connStateFunc,
 	}
 
 	serveFn = func() error {

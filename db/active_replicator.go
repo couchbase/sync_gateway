@@ -301,7 +301,7 @@ func blipSync(target url.URL, blipContext *blip.Context, insecureSkipVerify bool
 	if err != nil {
 		return nil, err
 	}
-	client := base.GetHttpClient(insecureSkipVerify)
+	client := base.GetHttpClientForWebSocket(insecureSkipVerify)
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
