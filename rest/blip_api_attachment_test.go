@@ -344,8 +344,8 @@ func TestPutAttachmentViaBlipGetViaRest(t *testing.T) {
 	getAttachmentRequest := bt.newRequest()
 	getAttachmentRequest.SetProfile(db.MessageGetAttachment)
 	getAttachmentRequest.Properties[db.GetAttachmentDigest] = input.attachmentDigest
-	sent := bt.sender.Send(getAttachmentRequest)
 	getAttachmentRequest.Properties[db.GetAttachmentID] = input.docId
+	sent := bt.sender.Send(getAttachmentRequest)
 	if !sent {
 		panic(fmt.Sprintf("Failed to send request for doc: %v", input.docId))
 	}
