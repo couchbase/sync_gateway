@@ -9,6 +9,7 @@
 package importtest
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"testing"
@@ -22,25 +23,20 @@ import (
 func TestMultiCollectionImportFilter(t *testing.T) {
 
 	base.SkipImportTestsIfNotEnabled(t)
-	numCollections := 3
-	base.RequireNumTestDataStores(t, numCollections)
+	base.RequireNumTestDataStores(t, 3)
 
 	testBucket := base.GetPersistentTestBucket(t)
 	defer testBucket.Close()
 
-	scopesConfig := rest.GetCollectionsConfig(t, testBucket, numCollections)
+	scopesConfig := rest.GetCollectionsConfig(t, testBucket, 2)
 	dataStoreNames := rest.GetDataStoreNamesFromScopesConfig(scopesConfig)
 
 	importFilter1 := `function (doc) { return doc.type == "mobile"}`
 	importFilter2 := `function (doc) { return doc.type == "onprem"}`
 	importFilter3 := `function (doc) { return doc.type == "private"}`
 
-	scopesConfig[dataStoreNames[0].ScopeName()].Collections[dataStoreNames[0].CollectionName()] = rest.CollectionConfig{
-		ImportFilter: &importFilter1,
-	}
-	scopesConfig[dataStoreNames[1].ScopeName()].Collections[dataStoreNames[1].CollectionName()] = rest.CollectionConfig{
-		ImportFilter: &importFilter2,
-	}
+	scopesConfig[dataStoreNames[0].ScopeName()].Collections[dataStoreNames[0].CollectionName()] = rest.CollectionConfig{ImportFilter: &importFilter1}
+	scopesConfig[dataStoreNames[1].ScopeName()].Collections[dataStoreNames[1].CollectionName()] = rest.CollectionConfig{ImportFilter: &importFilter2}
 
 	rtConfig := &rest.RestTesterConfig{
 		CustomTestBucket: testBucket.NoCloseClone(),
@@ -51,7 +47,7 @@ func TestMultiCollectionImportFilter(t *testing.T) {
 		},
 	}
 
-	rt := rest.NewRestTesterMultipleCollections(t, rtConfig, numCollections)
+	rt := rest.NewRestTesterMultipleCollections(t, rtConfig, 2)
 	defer rt.Close()
 
 	_ = rt.Bucket() // populates rest tester
@@ -61,9 +57,9 @@ func TestMultiCollectionImportFilter(t *testing.T) {
 	dataStore2, err := rt.TestBucket.GetNamedDataStore(1)
 	require.NoError(t, err)
 	keyspace2 := "{{.keyspace2}}"
-	dataStore3, err := rt.TestBucket.GetNamedDataStore(2)
-	require.NoError(t, err)
-	keyspace3 := "{{.keyspace3}}"
+	//dataStore3, err := rt.TestBucket.GetNamedDataStore(2)
+	//require.NoError(t, err)
+	//keyspace3 := "{{.keyspace3}}"
 
 	defaultKeyspace := "db._default._default"
 	keyspaceNotFound := fmt.Sprintf("keyspace %s not found", defaultKeyspace)
@@ -98,13 +94,9 @@ func TestMultiCollectionImportFilter(t *testing.T) {
 		_, err := dataStore.Add(onPremKey, 0, onPremBody)
 		require.NoError(t, err, "Error writing SDK doc")
 	}
-	response := rt.SendAdminRequest(http.MethodGet, fmt.Sprintf("/%s/%s", keyspace3, onPremKey), "")
-	assert.Equal(t, 404, response.Code)
-	response = rt.SendAdminRequest(http.MethodPut, fmt.Sprintf("/%s/%s", keyspace3, "onPremKey"), "{}")
-	assert.Equal(t, 201, response.Code)
 
 	// Attempt to get the documents via Sync Gateway.  Will trigger on-demand import.
-	response = rt.SendAdminRequest(http.MethodGet, "/{{.keyspace1}}/"+mobileKey, "")
+	response := rt.SendAdminRequest(http.MethodGet, "/{{.keyspace1}}/"+mobileKey, "")
 	assert.Equal(t, 200, response.Code)
 	assertDocProperty(t, response, "type", "mobile")
 
@@ -157,15 +149,33 @@ func TestMultiCollectionImportFilter(t *testing.T) {
 		assertDocProperty(t, response, "id", "TestImportFilterInvalid")
 		assertDocProperty(t, response, "rev", "1-25c26cdf9d7771e07f00be1d13f7fb7c")
 	}
+	// Add a collection
+	scopesConfig = rest.GetCollectionsConfig(t, testBucket, 3)
+	dataStoreNames = rest.GetDataStoreNamesFromScopesConfig(scopesConfig)
+
+	scopesConfig[dataStoreNames[0].ScopeName()].Collections[dataStoreNames[0].CollectionName()] = rest.CollectionConfig{ImportFilter: &importFilter1}
+	scopesConfig[dataStoreNames[1].ScopeName()].Collections[dataStoreNames[1].CollectionName()] = rest.CollectionConfig{ImportFilter: &importFilter2}
 	scopesConfig[dataStoreNames[2].ScopeName()].Collections[dataStoreNames[2].CollectionName()] = rest.CollectionConfig{ImportFilter: &importFilter3}
-	//scopesConfigString, err := json.Marshal(scopesConfig)
+
+	scopesConfigString, err := json.Marshal(scopesConfig)
 	require.NoError(t, err)
 
-	//response = rt.SendAdminRequest("PUT", "/db/_config", fmt.Sprintf(
-	//	`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "scopes":%s}`,
-	//	testBucket.GetName(), base.TestUseXattrs(), string(scopesConfigString)))
-	//rest.RequireStatus(t, response, http.StatusCreated)
+	response = rt.SendAdminRequest("PUT", "/db/_config", fmt.Sprintf(
+		`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "scopes":%s}`,
+		testBucket.GetName(), base.TestUseXattrs(), string(scopesConfigString)))
+	rest.RequireStatus(t, response, http.StatusCreated)
+	rt2 := rest.NewRestTesterMultipleCollections(t, rtConfig, 3)
+	defer rt2.Close()
 
+	_ = rt2.Bucket()
+	dataStore1, err = rt2.TestBucket.GetNamedDataStore(0)
+	require.NoError(t, err)
+	dataStore2, err = rt2.TestBucket.GetNamedDataStore(1)
+	require.NoError(t, err)
+	dataStore3, err := rt2.TestBucket.GetNamedDataStore(2)
+	require.NoError(t, err)
+
+	// Write private doc
 	dataStores = []base.DataStore{dataStore1, dataStore2, dataStore3}
 	prvKey := "TestImportFilter3Valid"
 	prvBody := make(map[string]interface{})
@@ -182,10 +192,7 @@ func TestMultiCollectionImportFilter(t *testing.T) {
 	assert.Equal(t, 200, response.Code)
 	assertDocProperty(t, response, "type", "private")
 
-	//response = rt.SendAdminRequest(http.MethodGet, "/{{.keyspace3}}/"+mobileKey, "")
-	//assert.Equal(t, 200, response.Code)
-
-	// Make sure private doc doesn't end up in other collection
+	// Make sure private doc doesn't end up in other collections
 	for _, keyspace := range []string{defaultKeyspace, keyspace1, keyspace2} {
 		response = rt.SendAdminRequest(http.MethodGet, fmt.Sprintf("/%s/%s", keyspace, prvKey), "")
 		assert.Equal(t, 404, response.Code)
@@ -197,4 +204,47 @@ func TestMultiCollectionImportFilter(t *testing.T) {
 		}
 	}
 
+	// remove a collection from the sgw db
+	scopesConfig = rest.GetCollectionsConfig(t, testBucket, 2)
+	dataStoreNames = rest.GetDataStoreNamesFromScopesConfig(scopesConfig)
+
+	scopesConfig[dataStoreNames[0].ScopeName()].Collections[dataStoreNames[0].CollectionName()] = rest.CollectionConfig{ImportFilter: &importFilter1}
+	scopesConfig[dataStoreNames[1].ScopeName()].Collections[dataStoreNames[1].CollectionName()] = rest.CollectionConfig{ImportFilter: &importFilter2}
+	scopesConfigString, err = json.Marshal(scopesConfig)
+	require.NoError(t, err)
+
+	// remove a collection
+	response = rt.SendAdminRequest("PUT", "/db/_config", fmt.Sprintf(
+		`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "scopes":%s}`,
+		testBucket.GetName(), base.TestUseXattrs(), string(scopesConfigString)))
+
+	rest.RequireStatus(t, response, http.StatusCreated)
+	rt2 = rest.NewRestTesterMultipleCollections(t, rtConfig, 2)
+	defer rt2.Close()
+
+	// Write private doc 2
+	dataStores = []base.DataStore{dataStore1, dataStore2, dataStore3}
+	prvKey = "TestImportFilter3Valid2"
+	prvBody = make(map[string]interface{})
+	prvBody["type"] = "private"
+	prvBody["channels"] = "ABC"
+	for _, dataStore := range dataStores {
+		fmt.Println(dataStore.GetName())
+		_, err := dataStore.Add(prvKey, 0, prvBody)
+		require.NoError(t, err, "Error writing SDK doc")
+	}
+	// Write to removed collection and ensure new docs in the collection are not imported
+	_, err = dataStore3.Add(prvKey, 0, mobileBody)
+	require.NoError(t, err, "Error writing SDK doc")
+
+	for _, keyspace := range []string{defaultKeyspace, keyspace1, keyspace2} {
+		response = rt2.SendAdminRequest(http.MethodGet, fmt.Sprintf("/%s/%s", keyspace, prvKey), "")
+		assert.Equal(t, 404, response.Code)
+		if keyspace == defaultKeyspace {
+			assertDocProperty(t, response, "reason", keyspaceNotFound)
+		} else {
+			assertDocProperty(t, response, "reason", "Not imported")
+
+		}
+	}
 }
