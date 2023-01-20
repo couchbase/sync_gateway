@@ -128,7 +128,6 @@ type DatabaseContext struct {
 	singleCollection             *DatabaseCollection            // Temporary collection
 	CollectionByID               map[uint32]*DatabaseCollection // A map keyed by collection ID to Collection
 	CollectionNames              map[string]map[string]struct{} // Map of scope, collection names
-	MetadataID                   string                         // Unique ID used when storing documents in MetadataStore
 	MetadataKeys                 *base.MetadataKeys             // Factory to generate metadata document keys
 }
 
@@ -396,13 +395,12 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 	}
 
 	// Initialize metadata ID and keys
+	// TODO: apply length limit to MetadataPrefix
+	metadataID := dbName
 	if options.Scopes.onlyDefaultCollection() {
-		dbContext.MetadataID = ""
-	} else {
-		// TODO: apply length limit to MetadataPrefix
-		dbContext.MetadataID = dbName
+		metadataID = ""
 	}
-	metaKeys := base.NewMetadataKeys(dbContext.MetadataID)
+	metaKeys := base.NewMetadataKeys(metadataID)
 	dbContext.MetadataKeys = metaKeys
 
 	cleanupFunctions = append(cleanupFunctions, func() {

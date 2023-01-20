@@ -145,7 +145,7 @@ func formatMetadataKey(metadataPrefix string, metaKey metadataKey) string {
 	return SyncDocMetadataPrefix + metadataPrefix + ":" + metaKey.String()
 }
 
-// formatMetadataKey formats key into the form _sync:[metaKey]
+// formatDefaultMetadataKey formats key into the form _sync:[metaKey]
 func formatDefaultMetadataKey(metaKey metadataKey) string {
 	return SyncDocPrefix + metaKey.String()
 }

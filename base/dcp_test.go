@@ -65,6 +65,7 @@ func TestDCPKeyFilter(t *testing.T) {
 		metaKeys *MetadataKeys
 	}{
 		{"default meta keys", DefaultMetadataKeys},
+		{"default meta keys from empty metaID", NewMetadataKeys("")},
 		{"db specific meta keys", NewMetadataKeys("dbname")},
 	}
 	for _, tc := range testCases {
