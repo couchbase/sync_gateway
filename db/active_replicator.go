@@ -243,7 +243,7 @@ func connect(arc *activeReplicatorCommon, idSuffix string) (s *blip.Sender, bsc 
 	if err != nil {
 		return nil, nil, err
 	}
-	err = collectionsHandshake(arc.ctx, blipSender, arc.config.Collections)
+	err = collectionsHandshake(arc.ctx, arc.config.ActiveDB, bsc, blipSender, arc.config.Collections)
 	if err != nil {
 		return nil, nil, err
 	}
