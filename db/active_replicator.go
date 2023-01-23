@@ -243,22 +243,28 @@ func connect(arc *activeReplicatorCommon, idSuffix string) (s *blip.Sender, bsc 
 	if err != nil {
 		return nil, nil, err
 	}
-	err = collectionsHandshake(arc.ctx, blipSender, arc.config.Collections)
+	err = collectionsHandshake(arc.ctx, arc.config.ActiveDB, bsc, blipSender, arc.config.Collections)
 	if err != nil {
 		return nil, nil, err
 	}
 	return blipSender, bsc, nil
 }
 
-func collectionsHandshake(ctx context.Context, blipSender *blip.Sender, collectionNames []base.ScopeAndCollectionName) error {
-	blipCollections := make([]string, len(collectionNames))
+func collectionsHandshake(ctx context.Context, database *Database, bsc *BlipSyncContext, blipSender *blip.Sender, collectionNames []base.ScopeAndCollectionName) error {
+	blipCollectionNames := make([]string, len(collectionNames))
+	bsc.collectionMapping = make([]*DatabaseCollection, len(collectionNames))
 	for i, collectionName := range collectionNames {
-		blipCollections[i] = strings.Join([]string{collectionName.ScopeName(), collectionName.CollectionName()},
+		blipCollectionNames[i] = strings.Join([]string{collectionName.ScopeName(), collectionName.CollectionName()},
 			base.ScopeCollectionSeparator)
+		var err error
+		bsc.collectionMapping[i], err = database.GetDatabaseCollection(collectionName.ScopeName(), collectionName.CollectionName())
+		if err != nil {
+			return err
+		}
 	}
 	rqBody := GetCollectionsRequestBody{
 		CheckpointIDs: make([]string, len(collectionNames)),
-		Collections:   blipCollections,
+		Collections:   blipCollectionNames,
 	}
 	rq, err := NewGetCollectionsMessage(rqBody)
 	if err != nil {

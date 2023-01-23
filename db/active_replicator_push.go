@@ -107,7 +107,7 @@ func (apr *ActivePushReplicator) _connect() error {
 		}
 		// No special handling for error
 	}
-	err = collectionsHandshake(apr.ctx, apr.blipSender, apr.config.Collections)
+	err = collectionsHandshake(apr.ctx, apr.config.ActiveDB, apr.blipSyncContext, apr.blipSender, apr.config.Collections)
 	if err != nil {
 		return err
 	}
