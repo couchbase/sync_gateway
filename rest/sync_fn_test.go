@@ -327,6 +327,60 @@ func TestSyncFunctionErrorLogging(t *testing.T) {
 	assert.Equal(t, numErrors+1, numErrorsAfter)
 }
 
+func TestSyncFunctionException(t *testing.T) {
+
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyJavascript)
+
+	rtConfig := RestTesterConfig{
+		SyncFn: `
+		function(doc) {
+			if (doc.throwException) {
+				channel(undefinedvariable);
+			}
+			if (doc.throwExplicit) {
+				throw("Explicit exception");
+			}
+			if (doc.require) {
+				requireAdmin();
+			}
+		}`,
+		GuestEnabled: true,
+	}
+
+	rt := NewRestTester(t, &rtConfig)
+	defer rt.Close()
+
+	// Wait for the DB to be ready before attempting to get initial error count
+	assert.NoError(t, rt.WaitForDBOnline())
+
+	numDBSyncExceptionsStart := rt.GetDatabase().DbStats.Database().SyncFunctionExceptionCount.Value()
+
+	// runtime error
+	response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1", `{"throwException":true}`)
+	assert.Equal(t, http.StatusInternalServerError, response.Code)
+	assert.Contains(t, response.Body.String(), "Exception in JS sync function")
+
+	numDBSyncExceptions := rt.GetDatabase().DbStats.Database().SyncFunctionExceptionCount.Value()
+	assert.Equal(t, numDBSyncExceptionsStart+1, numDBSyncExceptions)
+	numDBSyncExceptionsStart = numDBSyncExceptions
+
+	// explicit throws should cause an exception
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc2", `{"throwExplicit":true}`)
+	assert.Equal(t, http.StatusInternalServerError, response.Code)
+	assert.Contains(t, response.Body.String(), "Exception in JS sync function")
+
+	numDBSyncExceptions = rt.GetDatabase().DbStats.Database().SyncFunctionExceptionCount.Value()
+	assert.Equal(t, numDBSyncExceptionsStart+1, numDBSyncExceptions)
+	numDBSyncExceptionsStart = numDBSyncExceptions
+
+	// require methods shouldn't cause a true exception
+	response = rt.SendRequest("PUT", "/{{.keyspace}}/doc3", `{"require":true}`)
+	assert.Equal(t, http.StatusForbidden, response.Code)
+	assert.Contains(t, response.Body.String(), "sg admin required")
+	numDBSyncExceptions = rt.GetDatabase().DbStats.Database().SyncFunctionExceptionCount.Value()
+	assert.Equal(t, numDBSyncExceptionsStart, numDBSyncExceptions)
+}
+
 func TestSyncFnTimeout(t *testing.T) {
 	syncFn := `function(doc) { while(true) {} }`
 
