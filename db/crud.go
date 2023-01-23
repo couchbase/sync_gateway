@@ -2221,7 +2221,7 @@ func (db *DatabaseCollectionWithUser) getChannelsAndAccess(ctx context.Context, 
 	if db.channelMapper() != nil {
 		// Call the ChannelMapper:
 		db.dbStats().Database().SyncFunctionCount.Add(1)
-		db.dbStats().CollectionStat(db.ScopeName(), db.Name()).SyncFunctionCount.Add(1)
+		db.collectionStats.SyncFunctionCount.Add(1)
 
 		var output *channels.ChannelMapperOutput
 
@@ -2231,7 +2231,7 @@ func (db *DatabaseCollectionWithUser) getChannelsAndAccess(ctx context.Context, 
 		syncFunctionTimeNano := time.Since(startTime).Nanoseconds()
 
 		db.dbStats().Database().SyncFunctionTime.Add(syncFunctionTimeNano)
-		db.dbStats().CollectionStat(db.ScopeName(), db.Name()).SyncFunctionTime.Add(syncFunctionTimeNano)
+		db.collectionStats.SyncFunctionTime.Add(syncFunctionTimeNano)
 
 		if err == nil {
 			result = output.Channels
@@ -2243,10 +2243,10 @@ func (db *DatabaseCollectionWithUser) getChannelsAndAccess(ctx context.Context, 
 				base.InfofCtx(ctx, base.KeyAll, "Sync fn rejected doc %q / %q --> %s", base.UD(doc.ID), base.UD(doc.NewestRev), err)
 				base.DebugfCtx(ctx, base.KeyAll, "    rejected doc %q / %q : new=%+v  old=%s", base.UD(doc.ID), base.UD(doc.NewestRev), base.UD(body), base.UD(oldJson))
 				db.dbStats().Security().NumDocsRejected.Add(1)
-				db.dbStats().CollectionStat(db.ScopeName(), db.Name()).SyncFunctionRejectCount.Add(1)
+				db.collectionStats.SyncFunctionRejectCount.Add(1)
 				if isAccessError(err) {
 					db.dbStats().Security().NumAccessErrors.Add(1)
-					db.dbStats().CollectionStat(db.ScopeName(), db.Name()).SyncFunctionRejectAccessCount.Add(1)
+					db.collectionStats.SyncFunctionRejectAccessCount.Add(1)
 				}
 			} else if !validateAccessMap(access) || !validateRoleAccessMap(roles) {
 				err = base.HTTPErrorf(500, "Error in JS sync function")
@@ -2258,7 +2258,7 @@ func (db *DatabaseCollectionWithUser) getChannelsAndAccess(ctx context.Context, 
 				err = base.HTTPErrorf(500, "JS sync function timed out")
 			} else {
 				err = base.HTTPErrorf(500, "Exception in JS sync function")
-				db.dbStats().CollectionStat(db.ScopeName(), db.Name()).SyncFunctionExceptionCount.Add(1)
+				db.collectionStats.SyncFunctionExceptionCount.Add(1)
 			}
 		}
 

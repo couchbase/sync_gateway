@@ -13,6 +13,7 @@ package base
 import (
 	"context"
 	"expvar"
+	"fmt"
 	"log"
 	"math"
 	"strconv"
@@ -1431,17 +1432,13 @@ func (d *DbStats) unregisterDatabaseStats() {
 	prometheus.Unregister(d.DatabaseStats.SyncFunctionTime)
 }
 
-func (d *DbStats) CollectionStat(scopeName, collectionName string) *CollectionStats {
+func (d *DbStats) CollectionStat(scopeName, collectionName string) (*CollectionStats, error) {
 	scopeAndCollectionName := scopeName + "." + collectionName
 	if _, ok := d.CollectionStats[scopeAndCollectionName]; !ok {
-		// DbStats was not initialised with this collection upfront in NewDBStats for some reason (_default._default for example, since we pass named collections only ...)
-		stats, err := NewCollectionStats(d.dbName, scopeAndCollectionName)
-		if err != nil {
-			panic(err)
-		}
-		d.CollectionStats[scopeAndCollectionName] = stats
+		// DbStats was not initialised with this collection upfront in NewDBStats for some reason - not something we'd expect to happen
+		return nil, fmt.Errorf("stats for collection %q not found", scopeAndCollectionName)
 	}
-	return d.CollectionStats[scopeAndCollectionName]
+	return d.CollectionStats[scopeAndCollectionName], nil
 }
 
 func (d *DbStats) Database() *DatabaseStats {

@@ -451,7 +451,11 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 				if err != nil {
 					return nil, err
 				}
-				dbCollection, err := newDatabaseCollection(ctx, dbContext, dataStore)
+				stats, err := dbContext.DbStats.CollectionStat(scopeName, collName)
+				if err != nil {
+					return nil, err
+				}
+				dbCollection, err := newDatabaseCollection(ctx, dbContext, dataStore, stats)
 				if err != nil {
 					return nil, err
 				}
@@ -480,7 +484,11 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 		}
 	} else {
 		dataStore := bucket.DefaultDataStore()
-		dbCollection, err := newDatabaseCollection(ctx, dbContext, dataStore)
+		stats, err := dbContext.DbStats.CollectionStat(base.DefaultScope, base.DefaultCollection)
+		if err != nil {
+			return nil, err
+		}
+		dbCollection, err := newDatabaseCollection(ctx, dbContext, dataStore, stats)
 		if err != nil {
 			return nil, err
 		}
@@ -2157,9 +2165,14 @@ func initDatabaseStats(dbName string, autoImport bool, options DatabaseContextOp
 	}
 
 	var collections []string
-	for scopeName, scope := range options.Scopes {
-		for collectionName := range scope.Collections {
-			collections = append(collections, scopeName+"."+collectionName)
+	if len(options.Scopes) == 0 {
+		base.DebugfCtx(context.TODO(), base.KeyConfig, "No named collections defined for database %q, using default collection for stats", base.MD(dbName))
+		collections = append(collections, base.DefaultScope+"."+base.DefaultCollection)
+	} else {
+		for scopeName, scope := range options.Scopes {
+			for collectionName := range scope.Collections {
+				collections = append(collections, scopeName+"."+collectionName)
+			}
 		}
 	}
 
@@ -2298,11 +2311,12 @@ func (dbc *DatabaseContext) GetSingleDatabaseCollection() *DatabaseCollection {
 }
 
 // newDatabaseCollection returns a collection which inherits values from the database but is specific to a given DataStore.
-func newDatabaseCollection(ctx context.Context, dbContext *DatabaseContext, dataStore base.DataStore) (*DatabaseCollection, error) {
+func newDatabaseCollection(ctx context.Context, dbContext *DatabaseContext, dataStore base.DataStore, stats *base.CollectionStats) (*DatabaseCollection, error) {
 	dbCollection := &DatabaseCollection{
-		dataStore:   dataStore,
-		dbCtx:       dbContext,
-		changeCache: &changeCache{},
+		dataStore:       dataStore,
+		dbCtx:           dbContext,
+		collectionStats: stats,
+		changeCache:     &changeCache{},
 	}
 	dbCollection.revisionCache = NewRevisionCache(
 		dbContext.Options.RevisionCacheOptions,
