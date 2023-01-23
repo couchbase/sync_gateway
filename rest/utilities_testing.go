@@ -913,7 +913,7 @@ func (rt *RestTester) PutDocumentWithRevID(docID string, newRevID string, parent
 	if err != nil {
 		return nil, err
 	}
-	resp := rt.SendAdminRequest(http.MethodPut, "/db/"+docID+"?new_edits=false", string(requestBytes))
+	resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID+"?new_edits=false", string(requestBytes))
 	return resp, nil
 }
 

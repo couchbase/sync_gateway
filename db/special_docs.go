@@ -32,6 +32,10 @@ func (db *DatabaseCollection) GetSpecial(doctype string, docid string) (Body, er
 }
 
 func (db *DatabaseCollection) GetSpecialBytes(doctype string, docid string) ([]byte, error) {
+	return getSpecialBytes(db.dataStore, doctype, docid, db.localDocExpirySecs())
+}
+
+func getSpecialBytes(dataStore base.DataStore, doctype string, docid string, localDocExpirySecs uint32) ([]byte, error) {
 	key := RealSpecialDocID(doctype, docid)
 
 	if key == "" {
@@ -40,10 +44,10 @@ func (db *DatabaseCollection) GetSpecialBytes(doctype string, docid string) ([]b
 
 	var rawDocBytes []byte
 	var err error
-	if doctype == "local" && db.localDocExpirySecs() > 0 {
-		rawDocBytes, _, err = db.dataStore.GetAndTouchRaw(key, base.SecondsToCbsExpiry(int(db.localDocExpirySecs())))
+	if doctype == "local" && localDocExpirySecs > 0 {
+		rawDocBytes, _, err = dataStore.GetAndTouchRaw(key, base.SecondsToCbsExpiry(int(localDocExpirySecs)))
 	} else {
-		rawDocBytes, _, err = db.dataStore.GetRaw(key)
+		rawDocBytes, _, err = dataStore.GetRaw(key)
 	}
 	if err != nil {
 		return nil, err

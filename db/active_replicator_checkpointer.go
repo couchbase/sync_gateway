@@ -713,12 +713,12 @@ func (c *Checkpointer) setLocalCheckpointStatus(status string, errorMessage stri
 	return
 }
 
-func getLocalCheckpoint(collection *DatabaseCollection, clientID string) (*replicationCheckpoint, error) {
+func getLocalCheckpoint(dataStore base.DataStore, clientID string, localDocExpirySecs uint32) (*replicationCheckpoint, error) {
 	base.TracefCtx(context.TODO(), base.KeyReplicate, "getLocalCheckpoint for %s", clientID)
 
-	checkpointBytes, err := collection.GetSpecialBytes(DocTypeLocal, CheckpointDocIDPrefix+clientID)
+	checkpointBytes, err := getSpecialBytes(dataStore, DocTypeLocal, CheckpointDocIDPrefix+clientID, localDocExpirySecs)
 	if err != nil {
-		if !base.IsKeyNotFoundError(collection.dataStore, err) {
+		if !base.IsKeyNotFoundError(dataStore, err) {
 			return nil, err
 		}
 		base.DebugfCtx(context.TODO(), base.KeyReplicate, "couldn't find existing local checkpoint for ID %q", clientID)
@@ -734,7 +734,7 @@ func getLocalCheckpoint(collection *DatabaseCollection, clientID string) (*repli
 func setLocalCheckpointStatus(ctx context.Context, collection *DatabaseCollection, clientID string, status string, errorMessage string) {
 
 	// getCheckpoint to obtain the current rev
-	checkpoint, err := getLocalCheckpoint(collection, clientID)
+	checkpoint, err := getLocalCheckpoint(collection.dataStore, clientID, collection.localDocExpirySecs())
 	if err != nil {
 		base.WarnfCtx(ctx, "Unable to retrieve local checkpoint for %s, status not updated", clientID)
 		return
