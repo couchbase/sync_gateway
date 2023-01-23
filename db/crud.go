@@ -279,6 +279,9 @@ func (db *DatabaseCollectionWithUser) getRev(ctx context.Context, docid, revid s
 		return DocumentRevision{}, ErrMissing
 	}
 
+	db.collectionStats.NumDocReads.Add(1)
+	db.collectionStats.DocReadsBytes.Add(int64(len(revision.BodyBytes)))
+
 	// RequestedHistory is the _revisions returned in the body.  Avoids mutating revision.History, in case it's needed
 	// during attachment processing below
 	requestedHistory := revision.History
@@ -1914,6 +1917,8 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 		return nil, "", err
 	}
 
+	db.collectionStats.NumDocWrites.Add(1)
+	db.collectionStats.DocWritesBytes.Add(int64(docBytes))
 	db.dbStats().Database().NumDocWrites.Add(1)
 	db.dbStats().Database().DocWritesBytes.Add(int64(docBytes))
 	db.dbStats().Database().DocWritesXattrBytes.Add(int64(xattrBytes))

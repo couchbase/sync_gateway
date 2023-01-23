@@ -414,8 +414,19 @@ type CollectionStats struct {
 	SyncFunctionRejectAccessCount *SgwIntStat `json:"sync_function_reject_access_count"`
 	// The total number of times the sync function encountered an exception for this collection.
 	SyncFunctionExceptionCount *SgwIntStat `json:"sync_function_exception_count"`
+
 	// The total number of documents imported to this collection since Sync Gateway node startup.
 	ImportCount *SgwIntStat `json:"import_count"`
+
+	// The total number of documents read from this collection since Sync Gateway node startup (i.e. sending to a client)
+	NumDocReads *SgwIntStat `json:"num_doc_reads"`
+	// The total number of bytes read from this collection as part of document writes since Sync Gateway node startup.
+	DocReadsBytes *SgwIntStat `json:"doc_reads_bytes"`
+
+	// The total number of documents written to this collection since Sync Gateway node startup (i.e. receiving from a client)
+	NumDocWrites *SgwIntStat `json:"num_doc_writes"`
+	// The total number of bytes written to this collection as part of document writes since Sync Gateway node startup.
+	DocWritesBytes *SgwIntStat `json:"doc_writes_bytes"`
 }
 
 type DatabaseStats struct {
@@ -1569,6 +1580,12 @@ func (d *DbStats) unregisterCollectionStats(scopeAndCollectionName string) {
 	prometheus.Unregister(d.CollectionStats[scopeAndCollectionName].SyncFunctionExceptionCount)
 
 	prometheus.Unregister(d.CollectionStats[scopeAndCollectionName].ImportCount)
+
+	prometheus.Unregister(d.CollectionStats[scopeAndCollectionName].NumDocReads)
+	prometheus.Unregister(d.CollectionStats[scopeAndCollectionName].DocReadsBytes)
+
+	prometheus.Unregister(d.CollectionStats[scopeAndCollectionName].NumDocWrites)
+	prometheus.Unregister(d.CollectionStats[scopeAndCollectionName].DocWritesBytes)
 }
 
 func (d *DbStats) unregisterSecurityStats() {
@@ -1607,6 +1624,24 @@ func NewCollectionStats(dbName, scopeAndCollectionName string) (stats *Collectio
 	}
 
 	stats.ImportCount, err = NewIntStat(SubsystemCollection, "import_count", labelKeys, labelVals, prometheus.CounterValue, 0)
+	if err != nil {
+		return nil, err
+	}
+
+	stats.NumDocReads, err = NewIntStat(SubsystemCollection, "num_doc_reads", labelKeys, labelVals, prometheus.CounterValue, 0)
+	if err != nil {
+		return nil, err
+	}
+	stats.DocReadsBytes, err = NewIntStat(SubsystemCollection, "doc_reads_bytes", labelKeys, labelVals, prometheus.CounterValue, 0)
+	if err != nil {
+		return nil, err
+	}
+
+	stats.NumDocWrites, err = NewIntStat(SubsystemCollection, "num_doc_writes", labelKeys, labelVals, prometheus.CounterValue, 0)
+	if err != nil {
+		return nil, err
+	}
+	stats.DocWritesBytes, err = NewIntStat(SubsystemCollection, "doc_writes_bytes", labelKeys, labelVals, prometheus.CounterValue, 0)
 	if err != nil {
 		return nil, err
 	}
