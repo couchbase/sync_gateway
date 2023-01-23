@@ -280,7 +280,14 @@ func (a *activeReplicatorCommon) _publishStatus() {
 			checkpointer.setLocalCheckpointStatus(status, errorMessage)
 		}
 	} else {
-		setLocalCheckpointStatus(a.ctx, a.config.ActiveDB, a.CheckpointID, status, errorMessage)
+		for _, collectionName := range a.config.Collections {
+			collection, err := a.config.ActiveDB.GetDatabaseCollection(collectionName.ScopeName(), collectionName.CollectionName())
+			if err != nil {
+				base.WarnfCtx(a.ctx, "couldn't find collection: %s", err)
+				continue
+			}
+			setLocalCheckpointStatus(a.ctx, collection, a.CheckpointID, status, errorMessage)
+		}
 	}
 
 }

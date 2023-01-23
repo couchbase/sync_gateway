@@ -1466,7 +1466,7 @@ func (bt *BlipTester) SendRev(docId, docRev string, body []byte, properties blip
 }
 
 // GetUserPayload will take username, password, email, channels and roles you want to assign a user and create the appropriate payload for the _user endpoint
-func GetUserPayload(t *testing.T, username, password, email string, collection *db.DatabaseCollection, chans, roles []string) string {
+func GetUserPayload(t testing.TB, username, password, email string, collection *db.DatabaseCollection, chans, roles []string) string {
 	config := auth.PrincipalConfig{}
 	if username != "" {
 		config.Name = &username

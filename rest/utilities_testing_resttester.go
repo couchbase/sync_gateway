@@ -16,7 +16,6 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/stretchr/testify/assert"
@@ -107,7 +106,7 @@ func (rt *RestTester) WaitForRev(docID string, revID string) error {
 func (rt *RestTester) WaitForCheckpointLastSequence(expectedName string) (string, error) {
 	var lastSeq string
 	successFunc := func() bool {
-		val, _, err := rt.Bucket().DefaultDataStore().GetRaw(expectedName)
+		val, _, err := rt.GetSingleDataStore().GetRaw(expectedName)
 		require.NoError(rt.TB, err)
 		var config struct { // db.replicationCheckpoint
 			LastSeq string `json:"last_sequence"`
@@ -192,24 +191,24 @@ func SetupSGRPeers(t *testing.T) (activeRT *RestTester, passiveRT *RestTester, r
 	passiveRT = NewRestTester(t,
 		&RestTesterConfig{
 			CustomTestBucket: passiveTestBucket.NoCloseClone(),
-			DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
-				Users: map[string]*auth.PrincipalConfig{
-					"alice": {
-						Password:         base.StringPtr("pass"),
-						ExplicitChannels: base.SetOf("*"),
-					},
-				},
-			}},
-		})
+		},
+	)
 	// Initalize RT and bucket
 	_ = passiveRT.Bucket()
+
+	const (
+		username = "alice"
+		password = "pass"
+	)
+	resp := passiveRT.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/alice", GetUserPayload(t, username, password, "", passiveRT.GetSingleTestDatabaseCollection(), []string{"*"}, nil))
+	RequireStatus(t, resp, http.StatusCreated)
 
 	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1
 	srv := httptest.NewServer(passiveRT.TestPublicHandler())
 
 	// Build passiveDBURL with basic auth creds
 	passiveDBURL, _ := url.Parse(srv.URL + "/db")
-	passiveDBURL.User = url.UserPassword("alice", "pass")
+	passiveDBURL.User = url.UserPassword(username, password)
 
 	// Set up active RestTester (rt1)
 	activeTestBucket := base.GetTestBucket(t)

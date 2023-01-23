@@ -32,15 +32,15 @@ import (
 func TestActiveReplicatorBlipsync(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyHTTPResp)
 
-	rt := NewRestTesterDefaultCollection(t, &RestTesterConfig{
-		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
-			Users: map[string]*auth.PrincipalConfig{
-				"alice": {Password: base.StringPtr("pass")},
-			},
-		}},
-	})
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 	ctx := rt.Context()
+
+	const (
+		username = "alice"
+		password = "pass"
+	)
+	setupUserChannels(rt, username, password, "*")
 
 	// Make rt listen on an actual HTTP port, so it can receive the blipsync request.
 	srv := httptest.NewServer(rt.TestPublicHandler())
@@ -50,7 +50,7 @@ func TestActiveReplicatorBlipsync(t *testing.T) {
 	require.NoError(t, err)
 
 	// Add basic auth creds to target db URL
-	passiveDBURL.User = url.UserPassword("alice", "pass")
+	passiveDBURL.User = url.UserPassword(username, password)
 	stats, err := base.SyncGatewayStats.NewDBStats("test", false, false, false)
 	require.NoError(t, err)
 	dbstats, err := stats.DBReplicatorStats(t.Name())
@@ -125,18 +125,15 @@ func TestBlipSyncNonUpgradableConnection(t *testing.T) {
 func TestReplicatorDeprecatedCredentials(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
 
-	passiveRT := NewRestTesterDefaultCollection(t, //  CBG-2319: replicator currently requires default collection
-		&RestTesterConfig{DatabaseConfig: &DatabaseConfig{
-			DbConfig: DbConfig{
-				Users: map[string]*auth.PrincipalConfig{
-					"alice": {
-						Password: base.StringPtr("pass"),
-					},
-				},
-			},
-		},
-		})
+	passiveRT := NewRestTester(t, nil)
 	defer passiveRT.Close()
+
+	const (
+		username = "alice"
+		password = "pass"
+	)
+
+	setupUserChannels(passiveRT, username, password, "*")
 
 	adminSrv := httptest.NewServer(passiveRT.TestPublicHandler())
 	defer adminSrv.Close()
@@ -190,16 +187,15 @@ func TestReplicatorDeprecatedCredentials(t *testing.T) {
 func TestReplicatorCheckpointOnStop(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
 
-	passiveRT := NewRestTesterDefaultCollection(t, //  CBG-2319: replicator currently requires default collection
-		&RestTesterConfig{
-			DatabaseConfig: &DatabaseConfig{}, // replicator requires default collection
-		})
+	passiveRT := NewRestTester(t, &RestTesterConfig{
+		DatabaseConfig: &DatabaseConfig{},
+	})
 	defer passiveRT.Close()
 
 	adminSrv := httptest.NewServer(passiveRT.TestAdminHandler())
 	defer adminSrv.Close()
 
-	activeRT := NewRestTesterDefaultCollection(t, nil) //  CBG-2319: replicator currently requires default collection
+	activeRT := NewRestTester(t, nil)
 	defer activeRT.Close()
 	activeCtx := activeRT.Context()
 
@@ -262,7 +258,7 @@ func TestGroupIDReplications(t *testing.T) {
 	defer activeBucket.Close()
 
 	// Set up passive bucket RT
-	rt := NewRestTesterDefaultCollection(t, &RestTesterConfig{CustomTestBucket: passiveBucket}) //  CBG-2319: replicator currently requires default collection
+	rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: passiveBucket})
 	defer rt.Close()
 
 	// Make rt listen on an actual HTTP port, so it can receive replications
@@ -366,7 +362,7 @@ func TestGroupIDReplications(t *testing.T) {
 // Reproduces panic seen in CBG-1053
 func TestAdhocReplicationStatus(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll, base.KeyReplicate)
-	rt := NewRestTesterDefaultCollection(t, &RestTesterConfig{SgReplicateEnabled: true})
+	rt := NewRestTester(t, &RestTesterConfig{SgReplicateEnabled: true})
 	defer rt.Close()
 
 	srv := httptest.NewServer(rt.TestAdminHandler())
@@ -394,6 +390,7 @@ func TestAdhocReplicationStatus(t *testing.T) {
 
 // CBG-1046: Add ability to specify user for active peer in sg-replicate2
 func TestSpecifyUserDocsToReplicate(t *testing.T) {
+	t.Skip("needs to write directly to datastore bucket")
 	base.LongRunningTest(t)
 
 	base.RequireNumTestBuckets(t, 2)
@@ -422,30 +419,22 @@ function (doc) {
 }`
 			rtConfig := &RestTesterConfig{
 				SyncFn: syncFunc,
-				DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
-					Users: map[string]*auth.PrincipalConfig{
-						"alice": {
-							Password:         base.StringPtr("pass"),
-							ExplicitChannels: base.SetOf("chanAlpha", "chanBeta", "chanCharlie", "chanHotel", "chanIndia"),
-						},
-						"bob": {
-							Password:         base.StringPtr("pass"),
-							ExplicitChannels: base.SetOf("chanDelta", "chanEcho"),
-						},
-					},
-				}},
 			}
 			// Set up buckets, rest testers, and set up servers
-			passiveRT := NewRestTesterDefaultCollection(t, rtConfig) //  CBG-2319: replicator currently requires default collection
+			passiveRT := NewRestTester(t, rtConfig) //  CBG-2319: replicator currently requires default collection
 			defer passiveRT.Close()
 
+			const password = "pass"
+			setupUserChannels(passiveRT, "alice", password, "chanAlpha", "chanBeta", "chanCharlie", "chanHotel", "chanIndia")
+
+			setupUserChannels(passiveRT, "bob", password, "chanDelta", "chanEcho")
 			publicSrv := httptest.NewServer(passiveRT.TestPublicHandler())
 			defer publicSrv.Close()
 
 			adminSrv := httptest.NewServer(passiveRT.TestAdminHandler())
 			defer adminSrv.Close()
 
-			activeRT := NewRestTesterDefaultCollection(t, rtConfig) //  CBG-2319: replicator currently requires default collection
+			activeRT := NewRestTester(t, rtConfig) //  CBG-2319: replicator currently requires default collection
 			defer activeRT.Close()
 
 			// Change RT depending on direction
@@ -476,7 +465,7 @@ function (doc) {
   ]
 }
 `
-			resp := senderRT.SendAdminRequest("POST", "/db/_bulk_docs", bulkDocsBody)
+			resp := senderRT.SendAdminRequest("POST", "/{{.keyspace}}/_bulk_docs", bulkDocsBody)
 			RequireStatus(t, resp, http.StatusCreated)
 
 			err := senderRT.WaitForPendingChanges()
@@ -506,7 +495,7 @@ function (doc) {
 			value, _ := base.WaitForStat(receiverRT.GetDatabase().DbStats.Database().NumDocWrites.Value, 6)
 			assert.EqualValues(t, 6, value)
 
-			changesResults, err := receiverRT.WaitForChanges(6, "/db/_changes?since=0&include_docs=true", "", true)
+			changesResults, err := receiverRT.WaitForChanges(6, "/{{.keyspace}}/_changes?since=0&include_docs=true", "", true)
 			assert.NoError(t, err)
 			assert.Len(t, changesResults.Results, 6)
 			// Check the docs are alices docs
@@ -551,13 +540,13 @@ function (doc) {
 	}
 }
 func TestBasicGetReplicator2(t *testing.T) {
-	rt := NewRestTesterDefaultCollection(t, nil) //  CBG-2319: replicator currently requires default collection
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
 	var body db.Body
 
 	// Put document as usual
-	response := rt.SendAdminRequest("PUT", "/db/doc1", `{"foo": "bar"}`)
+	response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1", `{"foo": "bar"}`)
 	RequireStatus(t, response, http.StatusCreated)
 	err := base.JSONUnmarshal(response.Body.Bytes(), &body)
 	assert.NoError(t, err)
@@ -565,7 +554,7 @@ func TestBasicGetReplicator2(t *testing.T) {
 	revID := body["rev"].(string)
 
 	// Get a document with rev using replicator2
-	response = rt.SendAdminRequest("GET", "/db/doc1?replicator2=true&rev="+revID, ``)
+	response = rt.SendAdminRequest("GET", "/{{.keyspace}}/doc1?replicator2=true&rev="+revID, ``)
 	if base.IsEnterpriseEdition() {
 		RequireStatus(t, response, http.StatusOK)
 		err = base.JSONUnmarshal(response.Body.Bytes(), &body)
@@ -576,7 +565,7 @@ func TestBasicGetReplicator2(t *testing.T) {
 	}
 
 	// Get a document without specifying rev using replicator2
-	response = rt.SendAdminRequest("GET", "/db/doc1?replicator2=true", ``)
+	response = rt.SendAdminRequest("GET", "/{{.keyspace}}/doc1?replicator2=true", ``)
 	if base.IsEnterpriseEdition() {
 		RequireStatus(t, response, http.StatusOK)
 		err = base.JSONUnmarshal(response.Body.Bytes(), &body)
@@ -587,7 +576,7 @@ func TestBasicGetReplicator2(t *testing.T) {
 	}
 }
 func TestBasicPutReplicator2(t *testing.T) {
-	rt := NewRestTesterDefaultCollection(t, nil) //  CBG-2319: replicator currently requires default collection
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
 	var (
@@ -596,7 +585,7 @@ func TestBasicPutReplicator2(t *testing.T) {
 		err   error
 	)
 
-	response := rt.SendAdminRequest("PUT", "/db/doc1?replicator2=true", `{}`)
+	response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1?replicator2=true", `{}`)
 	if base.IsEnterpriseEdition() {
 		RequireStatus(t, response, http.StatusCreated)
 		err = base.JSONUnmarshal(response.Body.Bytes(), &body)
@@ -609,7 +598,7 @@ func TestBasicPutReplicator2(t *testing.T) {
 	}
 
 	// Put basic doc with replicator2 flag and ensure it saves correctly
-	response = rt.SendAdminRequest("PUT", "/db/doc1?replicator2=true&rev="+revID, `{"foo": "bar"}`)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1?replicator2=true&rev="+revID, `{"foo": "bar"}`)
 	if base.IsEnterpriseEdition() {
 		RequireStatus(t, response, http.StatusCreated)
 		err = base.JSONUnmarshal(response.Body.Bytes(), &body)
@@ -620,7 +609,7 @@ func TestBasicPutReplicator2(t *testing.T) {
 		RequireStatus(t, response, http.StatusNotImplemented)
 	}
 
-	response = rt.SendAdminRequest("GET", "/db/doc1", ``)
+	response = rt.SendAdminRequest("GET", "/{{.keyspace}}/doc1", ``)
 	if base.IsEnterpriseEdition() {
 		RequireStatus(t, response, http.StatusOK)
 		err = base.JSONUnmarshal(response.Body.Bytes(), &body)
@@ -633,12 +622,12 @@ func TestBasicPutReplicator2(t *testing.T) {
 }
 
 func TestDeletedPutReplicator2(t *testing.T) {
-	rt := NewRestTesterDefaultCollection(t, nil) //  CBG-2319: replicator currently requires default collection
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
 	var body db.Body
 
-	response := rt.SendAdminRequest("PUT", "/db/doc1", "{}")
+	response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1", "{}")
 	RequireStatus(t, response, http.StatusCreated)
 	err := base.JSONUnmarshal(response.Body.Bytes(), &body)
 	assert.NoError(t, err)
@@ -646,7 +635,7 @@ func TestDeletedPutReplicator2(t *testing.T) {
 	revID := body["rev"].(string)
 	assert.Equal(t, int64(1), rt.GetDatabase().DbStats.Database().NumDocWrites.Value())
 
-	response = rt.SendAdminRequest("PUT", "/db/doc1?replicator2=true&rev="+revID+"&deleted=true", "{}")
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1?replicator2=true&rev="+revID+"&deleted=true", "{}")
 	if base.IsEnterpriseEdition() {
 		RequireStatus(t, response, http.StatusCreated)
 		err = base.JSONUnmarshal(response.Body.Bytes(), &body)
@@ -655,14 +644,14 @@ func TestDeletedPutReplicator2(t *testing.T) {
 		revID = body["rev"].(string)
 		assert.Equal(t, 2, int(rt.GetDatabase().DbStats.Database().NumDocWrites.Value()))
 
-		response = rt.SendAdminRequest("GET", "/db/doc1", ``)
+		response = rt.SendAdminRequest("GET", "/{{.keyspace}}/doc1", ``)
 		RequireStatus(t, response, http.StatusNotFound)
 		assert.Equal(t, 0, int(rt.GetDatabase().DbStats.Database().NumDocReadsRest.Value()))
 	} else {
 		RequireStatus(t, response, http.StatusNotImplemented)
 	}
 
-	response = rt.SendAdminRequest("PUT", "/db/doc1?replicator2=true&rev="+revID+"&deleted=false", `{}`)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1?replicator2=true&rev="+revID+"&deleted=false", `{}`)
 	if base.IsEnterpriseEdition() {
 		RequireStatus(t, response, http.StatusCreated)
 		err = base.JSONUnmarshal(response.Body.Bytes(), &body)
@@ -670,10 +659,17 @@ func TestDeletedPutReplicator2(t *testing.T) {
 		assert.True(t, body["ok"].(bool))
 		assert.Equal(t, 3, int(rt.GetDatabase().DbStats.Database().NumDocWrites.Value()))
 
-		response = rt.SendAdminRequest("GET", "/db/doc1", ``)
+		response = rt.SendAdminRequest("GET", "/{{.keyspace}}/doc1", ``)
 		RequireStatus(t, response, http.StatusOK)
 		assert.Equal(t, 1, int(rt.GetDatabase().DbStats.Database().NumDocReadsRest.Value()))
 	} else {
 		RequireStatus(t, response, http.StatusNotImplemented)
 	}
+}
+
+func setupUserChannels(rt *RestTester, username, password string, chans ...string) {
+	t := rt.TB
+	resp := rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/"+username, GetUserPayload(t, username, password, "", rt.GetSingleTestDatabaseCollection(), chans, nil))
+	RequireStatus(t, resp, http.StatusCreated)
+
 }

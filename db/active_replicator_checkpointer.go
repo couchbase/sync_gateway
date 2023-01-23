@@ -586,6 +586,7 @@ func (c *Checkpointer) setRemoteCheckpoint(checkpoint *replicationCheckpoint) (n
 	rq := SetSGR2CheckpointRequest{
 		Client:     c.clientID,
 		Checkpoint: checkpoint.AsBody(),
+		Collection: c.blipCollectionIdx,
 	}
 
 	parentRev, ok := checkpointBody[BodyRev].(string)
@@ -712,10 +713,9 @@ func (c *Checkpointer) setLocalCheckpointStatus(status string, errorMessage stri
 	return
 }
 
-func getLocalCheckpoint(db *DatabaseContext, clientID string) (*replicationCheckpoint, error) {
+func getLocalCheckpoint(collection *DatabaseCollection, clientID string) (*replicationCheckpoint, error) {
 	base.TracefCtx(context.TODO(), base.KeyReplicate, "getLocalCheckpoint for %s", clientID)
 
-	collection := db.GetSingleDatabaseCollection()
 	checkpointBytes, err := collection.GetSpecialBytes(DocTypeLocal, CheckpointDocIDPrefix+clientID)
 	if err != nil {
 		if !base.IsKeyNotFoundError(collection.dataStore, err) {
@@ -731,10 +731,10 @@ func getLocalCheckpoint(db *DatabaseContext, clientID string) (*replicationCheck
 
 // setLocalCheckpointStatus updates status in a replication checkpoint without a checkpointer.  Increments existing
 // rev, preserves non-status fields (seq)
-func setLocalCheckpointStatus(ctx context.Context, db *Database, clientID string, status string, errorMessage string) {
+func setLocalCheckpointStatus(ctx context.Context, collection *DatabaseCollection, clientID string, status string, errorMessage string) {
 
 	// getCheckpoint to obtain the current rev
-	checkpoint, err := getLocalCheckpoint(db.DatabaseContext, clientID)
+	checkpoint, err := getLocalCheckpoint(collection, clientID)
 	if err != nil {
 		base.WarnfCtx(ctx, "Unable to retrieve local checkpoint for %s, status not updated", clientID)
 		return
@@ -750,7 +750,6 @@ func setLocalCheckpointStatus(ctx context.Context, db *Database, clientID string
 	checkpoint.Status.Status = status
 	checkpoint.Status.ErrorMessage = errorMessage
 	base.TracefCtx(ctx, base.KeyReplicate, "setLocalCheckpoint(%v)", checkpoint)
-	collection := db.GetSingleDatabaseCollection()
 	newRev, putErr := collection.putSpecial(DocTypeLocal, CheckpointDocIDPrefix+clientID, checkpoint.Rev, checkpoint.AsBody())
 	if putErr != nil {
 		base.WarnfCtx(ctx, "Unable to persist status in local checkpoint for %s, status not updated: %v", clientID, putErr)

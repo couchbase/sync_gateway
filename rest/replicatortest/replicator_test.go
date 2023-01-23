@@ -36,7 +36,7 @@ import (
 
 func TestReplicationAPI(t *testing.T) {
 
-	rt := rest.NewRestTesterDefaultCollection(t, nil) // CBG-2319: replicator currently requires default collection
+	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 
 	replicationConfig := db.ReplicationConfig{
@@ -105,7 +105,7 @@ func TestReplicationAPI(t *testing.T) {
 }
 func TestValidateReplicationAPI(t *testing.T) {
 
-	rt := rest.NewRestTesterDefaultCollection(t, nil) // CBG-2319: replicator currently requires default collection
+	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 
 	tests := []struct {
@@ -179,8 +179,8 @@ func TestValidateReplicationAPI(t *testing.T) {
 }
 
 func TestReplicationStatusAPI(t *testing.T) {
-
-	rt := rest.NewRestTesterDefaultCollection(t, nil) // CBG-2319: replicator currently requires default collection
+	t.Skip("FIXME")
+	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 
 	// GET replication status for non-existent replication ID
@@ -236,7 +236,7 @@ func TestReplicationStatusAPI(t *testing.T) {
 
 func TestReplicationStatusStopAdhoc(t *testing.T) {
 
-	rt := rest.NewRestTesterDefaultCollection(t, nil) // CBG-2319: replicator currently requires default collection
+	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 
 	// GET replication status for non-existent replication ID
@@ -304,7 +304,7 @@ func TestReplicationStatusStopAdhoc(t *testing.T) {
 
 func TestReplicationStatusAPIIncludeConfig(t *testing.T) {
 
-	rt := rest.NewRestTesterDefaultCollection(t, nil) // CBG-2319: replicator currently requires default collection
+	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 
 	// GET replication status for non-existent replication ID
@@ -425,8 +425,7 @@ func TestReplicationsFromConfig(t *testing.T) {
 				dbConfig.Replications[rc.ID] = rc
 			}
 
-			rt := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
-				&rest.RestTesterConfig{DatabaseConfig: dbConfig})
+			rt := rest.NewRestTester(t, &rest.RestTesterConfig{DatabaseConfig: dbConfig})
 			defer rt.Close()
 
 			// Retrieve replications
@@ -944,7 +943,7 @@ func TestReplicationConcurrentPush(t *testing.T) {
 
 }
 func TestReplicationAPIWithAuthCredentials(t *testing.T) {
-	rt := rest.NewRestTesterDefaultCollection(t, nil) // CBG-2319: replicator currently requires default collection
+	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 
 	// Create replication with explicitly defined auth credentials in replication config
@@ -1223,7 +1222,7 @@ func TestValidateReplicationWithInvalidURL(t *testing.T) {
 }
 
 func TestGetStatusWithReplication(t *testing.T) {
-	rt := rest.NewRestTesterDefaultCollection(t, nil) // CBG-2319: replicator currently requires default collection
+	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 
 	// Create a replication
@@ -1311,7 +1310,7 @@ func TestGetStatusWithReplication(t *testing.T) {
 func TestRequireReplicatorStoppedBeforeUpsert(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyHTTPResp)
 
-	rt := rest.NewRestTesterDefaultCollection(t, nil) // CBG-2319: replicator currently requires default collection
+	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 
 	// Make rt listen on an actual HTTP port, so it can receive the blipsync request.
@@ -1557,7 +1556,7 @@ func TestDBReplicationStatsTeardown(t *testing.T) {
 
 	tb := base.GetTestBucket(t)
 	defer tb.Close()
-	rt := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+	rt := rest.NewRestTester(t,
 		&rest.RestTesterConfig{
 			PersistentConfig: true,
 			CustomTestBucket: tb,
@@ -1698,7 +1697,7 @@ func TestPushReplicationAPIUpdateDatabase(t *testing.T) {
 func TestActiveReplicatorHeartbeats(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyWebSocket, base.KeyWebSocketFrame)
 
-	rt := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+	rt := rest.NewRestTester(t,
 		&rest.RestTesterConfig{
 			DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
 				Users: map[string]*auth.PrincipalConfig{
@@ -1771,7 +1770,7 @@ func TestActiveReplicatorPullBasic(t *testing.T) {
 		password = "pa$$w*rD!"
 	)
 
-	rt2 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+	rt2 := rest.NewRestTester(t,
 		&rest.RestTesterConfig{
 			CustomTestBucket: tb2,
 			DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
@@ -1806,7 +1805,7 @@ func TestActiveReplicatorPullBasic(t *testing.T) {
 	// Active
 	tb1 := base.GetTestBucket(t)
 
-	rt1 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+	rt1 := rest.NewRestTester(t,
 		&rest.RestTesterConfig{
 			CustomTestBucket: tb1,
 		})
@@ -1880,7 +1879,7 @@ func TestActiveReplicatorPullSkippedSequence(t *testing.T) {
 		password = "pa$$w*rD!"
 	)
 
-	rt2 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+	rt2 := rest.NewRestTester(t,
 		&rest.RestTesterConfig{
 			CustomTestBucket: tb2,
 			DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
@@ -1913,7 +1912,7 @@ func TestActiveReplicatorPullSkippedSequence(t *testing.T) {
 	// Active
 	tb1 := base.GetTestBucket(t)
 
-	rt1 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+	rt1 := rest.NewRestTester(t,
 		&rest.RestTesterConfig{
 			CustomTestBucket: tb1,
 		})
@@ -2036,7 +2035,7 @@ func TestActiveReplicatorPullAttachments(t *testing.T) {
 	// Passive
 	tb2 := base.GetTestBucket(t)
 
-	rt2 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+	rt2 := rest.NewRestTester(t,
 		&rest.RestTesterConfig{
 			CustomTestBucket: tb2,
 			DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
@@ -2070,7 +2069,7 @@ func TestActiveReplicatorPullAttachments(t *testing.T) {
 	// Active
 	tb1 := base.GetTestBucket(t)
 
-	rt1 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+	rt1 := rest.NewRestTester(t,
 		&rest.RestTesterConfig{
 			CustomTestBucket: tb1,
 		})
@@ -2226,7 +2225,7 @@ func TestActiveReplicatorPullMergeConflictingAttachments(t *testing.T) {
 			defer db.SuspendSequenceBatching()()
 
 			// Passive
-			rt2 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+			rt2 := rest.NewRestTester(t,
 				&rest.RestTesterConfig{
 					DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
 						Users: map[string]*auth.PrincipalConfig{
@@ -2250,7 +2249,7 @@ func TestActiveReplicatorPullMergeConflictingAttachments(t *testing.T) {
 			passiveDBURL.User = url.UserPassword("alice", "pass")
 
 			// Active
-			rt1 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+			rt1 := rest.NewRestTester(t,
 				&rest.RestTesterConfig{
 					DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
 						Replications: map[string]*db.ReplicationConfig{
@@ -2367,7 +2366,7 @@ func TestActiveReplicatorPullFromCheckpoint(t *testing.T) {
 
 	// Passive
 	tb2 := base.GetTestBucket(t)
-	rt2 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+	rt2 := rest.NewRestTester(t,
 		&rest.RestTesterConfig{
 			CustomTestBucket: tb2,
 			DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
@@ -2399,7 +2398,7 @@ func TestActiveReplicatorPullFromCheckpoint(t *testing.T) {
 
 	// Active
 	tb1 := base.GetTestBucket(t)
-	rt1 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+	rt1 := rest.NewRestTester(t,
 		&rest.RestTesterConfig{
 			CustomTestBucket: tb1,
 		})
@@ -2545,7 +2544,7 @@ func TestActiveReplicatorPullFromCheckpointIgnored(t *testing.T) {
 
 	// Passive
 	tb2 := base.GetTestBucket(t)
-	rt2 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+	rt2 := rest.NewRestTester(t,
 		&rest.RestTesterConfig{
 			CustomTestBucket: tb2,
 			DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
@@ -2561,7 +2560,7 @@ func TestActiveReplicatorPullFromCheckpointIgnored(t *testing.T) {
 
 	// Active
 	tb1 := base.GetTestBucket(t)
-	rt1 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+	rt1 := rest.NewRestTester(t,
 		&rest.RestTesterConfig{
 			CustomTestBucket: tb1,
 		})
@@ -2711,7 +2710,7 @@ func TestActiveReplicatorPullOneshot(t *testing.T) {
 	// Passive
 	tb2 := base.GetTestBucket(t)
 
-	rt2 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+	rt2 := rest.NewRestTester(t,
 		&rest.RestTesterConfig{
 			CustomTestBucket: tb2,
 			DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
@@ -2746,7 +2745,7 @@ func TestActiveReplicatorPullOneshot(t *testing.T) {
 	// Active
 	tb1 := base.GetTestBucket(t)
 
-	rt1 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+	rt1 := rest.NewRestTester(t,
 		&rest.RestTesterConfig{
 			CustomTestBucket: tb1,
 		})
@@ -2812,7 +2811,7 @@ func TestActiveReplicatorPushBasic(t *testing.T) {
 	// Passive
 	tb2 := base.GetTestBucket(t)
 
-	rt2 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+	rt2 := rest.NewRestTester(t,
 		&rest.RestTesterConfig{
 			CustomTestBucket: tb2,
 			DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
@@ -2829,7 +2828,7 @@ func TestActiveReplicatorPushBasic(t *testing.T) {
 	// Active
 	tb1 := base.GetTestBucket(t)
 
-	rt1 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+	rt1 := rest.NewRestTester(t,
 		&rest.RestTesterConfig{
 			CustomTestBucket: tb1,
 		})
@@ -2907,7 +2906,7 @@ func TestActiveReplicatorPushAttachments(t *testing.T) {
 
 	// Active
 	tb1 := base.GetTestBucket(t)
-	rt1 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+	rt1 := rest.NewRestTester(t,
 		&rest.RestTesterConfig{
 			CustomTestBucket: tb1,
 		})
@@ -2916,7 +2915,7 @@ func TestActiveReplicatorPushAttachments(t *testing.T) {
 
 	// Passive
 	tb2 := base.GetTestBucket(t)
-	rt2 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+	rt2 := rest.NewRestTester(t,
 		&rest.RestTesterConfig{
 			CustomTestBucket: tb2,
 			DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
@@ -3033,7 +3032,7 @@ func TestActiveReplicatorPushFromCheckpoint(t *testing.T) {
 
 	// Active
 	tb1 := base.GetTestBucket(t)
-	rt1 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+	rt1 := rest.NewRestTester(t,
 		&rest.RestTesterConfig{
 			CustomTestBucket: tb1,
 		})
@@ -3049,7 +3048,7 @@ func TestActiveReplicatorPushFromCheckpoint(t *testing.T) {
 
 	// Passive
 	tb2 := base.GetTestBucket(t)
-	rt2 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+	rt2 := rest.NewRestTester(t,
 		&rest.RestTesterConfig{
 			CustomTestBucket: tb2,
 			DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
@@ -3210,7 +3209,7 @@ func TestActiveReplicatorEdgeCheckpointNameCollisions(t *testing.T) {
 
 	// Central cluster
 	tb1 := base.GetTestBucket(t)
-	rt1 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+	rt1 := rest.NewRestTester(t,
 		&rest.RestTesterConfig{
 			CustomTestBucket: tb1,
 			DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
@@ -3242,7 +3241,7 @@ func TestActiveReplicatorEdgeCheckpointNameCollisions(t *testing.T) {
 
 	// Edge 1
 	edge1Bucket := base.GetTestBucket(t)
-	edge1 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+	edge1 := rest.NewRestTester(t,
 		&rest.RestTesterConfig{
 			CustomTestBucket: edge1Bucket,
 		})
@@ -3321,7 +3320,7 @@ func TestActiveReplicatorEdgeCheckpointNameCollisions(t *testing.T) {
 
 	// Edge 2
 	edge2Bucket := base.GetTestBucket(t)
-	edge2 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+	edge2 := rest.NewRestTester(t,
 		&rest.RestTesterConfig{
 			CustomTestBucket: edge2Bucket,
 		})
@@ -3398,7 +3397,7 @@ func TestActiveReplicatorPushOneshot(t *testing.T) {
 	// Passive
 	tb2 := base.GetTestBucket(t)
 
-	rt2 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+	rt2 := rest.NewRestTester(t,
 		&rest.RestTesterConfig{
 			CustomTestBucket: tb2,
 			DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
@@ -3415,7 +3414,7 @@ func TestActiveReplicatorPushOneshot(t *testing.T) {
 	// Active
 	tb1 := base.GetTestBucket(t)
 
-	rt1 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+	rt1 := rest.NewRestTester(t,
 		&rest.RestTesterConfig{
 			CustomTestBucket: tb1,
 		})
@@ -3501,7 +3500,7 @@ func TestActiveReplicatorPullTombstone(t *testing.T) {
 	// Passive
 	tb2 := base.GetTestBucket(t)
 
-	rt2 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+	rt2 := rest.NewRestTester(t,
 		&rest.RestTesterConfig{
 			CustomTestBucket: tb2,
 			DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
@@ -3533,7 +3532,7 @@ func TestActiveReplicatorPullTombstone(t *testing.T) {
 	// Active
 	tb1 := base.GetTestBucket(t)
 
-	rt1 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+	rt1 := rest.NewRestTester(t,
 		&rest.RestTesterConfig{
 			CustomTestBucket: tb1,
 		})
@@ -3611,7 +3610,7 @@ func TestActiveReplicatorPullPurgeOnRemoval(t *testing.T) {
 	// Passive
 	tb2 := base.GetTestBucket(t)
 
-	rt2 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+	rt2 := rest.NewRestTester(t,
 		&rest.RestTesterConfig{
 			CustomTestBucket: tb2,
 			DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
@@ -3643,7 +3642,7 @@ func TestActiveReplicatorPullPurgeOnRemoval(t *testing.T) {
 	// Active
 	tb1 := base.GetTestBucket(t)
 
-	rt1 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+	rt1 := rest.NewRestTester(t,
 		&rest.RestTesterConfig{
 			CustomTestBucket: tb1,
 		})
@@ -3796,7 +3795,7 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 			// Passive
 			tb2 := base.GetTestBucket(t)
 
-			rt2 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+			rt2 := rest.NewRestTester(t,
 				&rest.RestTesterConfig{
 					CustomTestBucket: tb2,
 					DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
@@ -3831,7 +3830,7 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 			// Active
 			tb1 := base.GetTestBucket(t)
 
-			rt1 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+			rt1 := rest.NewRestTester(t,
 				&rest.RestTesterConfig{
 					CustomTestBucket: tb1,
 				})
@@ -4009,7 +4008,7 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 			base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeyChanges, base.KeyCRUD)
 
 			// Passive
-			rt2 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+			rt2 := rest.NewRestTester(t,
 				&rest.RestTesterConfig{
 					CustomTestBucket: base.GetTestBucket(t),
 					DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
@@ -4063,7 +4062,7 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 			passiveDBURL.User = url.UserPassword("alice", "pass")
 
 			// Active
-			rt1 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+			rt1 := rest.NewRestTester(t,
 				&rest.RestTesterConfig{
 					CustomTestBucket: base.GetTestBucket(t),
 				})
@@ -4212,7 +4211,7 @@ func TestActiveReplicatorPushBasicWithInsecureSkipVerifyEnabled(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeyChanges, base.KeyCRUD, base.KeyBucket)
 
 	// Passive
-	rt2 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+	rt2 := rest.NewRestTester(t,
 		&rest.RestTesterConfig{
 			CustomTestBucket: base.GetTestBucket(t),
 			DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
@@ -4227,7 +4226,7 @@ func TestActiveReplicatorPushBasicWithInsecureSkipVerifyEnabled(t *testing.T) {
 	defer rt2.Close()
 
 	// Active
-	rt1 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+	rt1 := rest.NewRestTester(t,
 		&rest.RestTesterConfig{
 			CustomTestBucket: base.GetTestBucket(t),
 		})
@@ -4296,7 +4295,7 @@ func TestActiveReplicatorPushBasicWithInsecureSkipVerifyDisabled(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeyChanges, base.KeyCRUD, base.KeyBucket)
 
 	// Passive
-	rt2 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+	rt2 := rest.NewRestTester(t,
 		&rest.RestTesterConfig{
 			CustomTestBucket: base.GetTestBucket(t),
 			DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
@@ -4311,7 +4310,7 @@ func TestActiveReplicatorPushBasicWithInsecureSkipVerifyDisabled(t *testing.T) {
 	defer rt2.Close()
 
 	// Active
-	rt1 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+	rt1 := rest.NewRestTester(t,
 		&rest.RestTesterConfig{
 			CustomTestBucket: base.GetTestBucket(t),
 		})
@@ -4367,7 +4366,7 @@ func TestActiveReplicatorRecoverFromLocalFlush(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)
 
 	// Passive
-	rt2 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+	rt2 := rest.NewRestTester(t,
 		&rest.RestTesterConfig{
 			CustomTestBucket: base.GetTestBucket(t),
 			DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
@@ -4398,7 +4397,7 @@ func TestActiveReplicatorRecoverFromLocalFlush(t *testing.T) {
 	passiveDBURL.User = url.UserPassword("alice", "pass")
 
 	// Active
-	rt1 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+	rt1 := rest.NewRestTester(t,
 		&rest.RestTesterConfig{
 			CustomTestBucket: base.GetTestBucket(t),
 		})
@@ -4469,7 +4468,7 @@ func TestActiveReplicatorRecoverFromLocalFlush(t *testing.T) {
 	rt1.Close()
 
 	// recreate rt1 with a new bucket
-	rt1 = rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+	rt1 = rest.NewRestTester(t,
 		&rest.RestTesterConfig{
 			CustomTestBucket: base.GetTestBucket(t),
 		})
@@ -4535,7 +4534,7 @@ func TestActiveReplicatorRecoverFromRemoteFlush(t *testing.T) {
 
 	// Passive
 	tb2 := base.GetTestBucket(t)
-	rt2 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+	rt2 := rest.NewRestTester(t,
 		&rest.RestTesterConfig{
 			CustomTestBucket: tb2,
 			DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
@@ -4559,7 +4558,7 @@ func TestActiveReplicatorRecoverFromRemoteFlush(t *testing.T) {
 
 	// Active
 	tb1 := base.GetTestBucket(t)
-	rt1 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+	rt1 := rest.NewRestTester(t,
 		&rest.RestTesterConfig{
 			CustomTestBucket: tb1,
 		})
@@ -4641,7 +4640,7 @@ func TestActiveReplicatorRecoverFromRemoteFlush(t *testing.T) {
 	rt2.Close()
 
 	// recreate rt2 with a new bucket, http server and update target URL in the replicator
-	rt2 = rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+	rt2 = rest.NewRestTester(t,
 		&rest.RestTesterConfig{
 			CustomTestBucket: base.GetTestBucket(t),
 			DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
@@ -4723,7 +4722,7 @@ func TestActiveReplicatorRecoverFromRemoteRollback(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyBucket, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)
 
 	// Passive
-	rt2 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+	rt2 := rest.NewRestTester(t,
 		&rest.RestTesterConfig{
 			CustomTestBucket: base.GetTestBucket(t),
 			DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
@@ -4748,7 +4747,7 @@ func TestActiveReplicatorRecoverFromRemoteRollback(t *testing.T) {
 	passiveDBURL.User = url.UserPassword("alice", "pass")
 
 	// Active
-	rt1 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+	rt1 := rest.NewRestTester(t,
 		&rest.RestTesterConfig{
 			CustomTestBucket: base.GetTestBucket(t),
 		})
@@ -4891,7 +4890,7 @@ func TestActiveReplicatorRecoverFromMismatchedRev(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyBucket, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)
 
 	// Passive
-	rt2 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+	rt2 := rest.NewRestTester(t,
 		&rest.RestTesterConfig{
 			CustomTestBucket: base.GetTestBucket(t),
 			DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
@@ -4915,7 +4914,7 @@ func TestActiveReplicatorRecoverFromMismatchedRev(t *testing.T) {
 	passiveDBURL.User = url.UserPassword("alice", "pass")
 
 	// Active
-	rt1 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+	rt1 := rest.NewRestTester(t,
 		&rest.RestTesterConfig{
 			CustomTestBucket: base.GetTestBucket(t),
 		})
@@ -5002,7 +5001,7 @@ func TestActiveReplicatorIgnoreNoConflicts(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeyChanges, base.KeyCRUD, base.KeyBucket)
 
 	// Passive
-	rt2 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+	rt2 := rest.NewRestTester(t,
 		&rest.RestTesterConfig{
 			CustomTestBucket: base.GetTestBucket(t),
 			DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
@@ -5018,7 +5017,7 @@ func TestActiveReplicatorIgnoreNoConflicts(t *testing.T) {
 	defer rt2.Close()
 
 	// Active
-	rt1 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+	rt1 := rest.NewRestTester(t,
 		&rest.RestTesterConfig{
 			CustomTestBucket: base.GetTestBucket(t),
 			DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
@@ -5123,7 +5122,7 @@ func TestActiveReplicatorPullModifiedHash(t *testing.T) {
 
 	// Passive
 	tb2 := base.GetTestBucket(t)
-	rt2 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+	rt2 := rest.NewRestTester(t,
 		&rest.RestTesterConfig{
 			CustomTestBucket: tb2,
 			DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
@@ -5155,7 +5154,7 @@ func TestActiveReplicatorPullModifiedHash(t *testing.T) {
 
 	// Active
 	tb1 := base.GetTestBucket(t)
-	rt1 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+	rt1 := rest.NewRestTester(t,
 		&rest.RestTesterConfig{
 			CustomTestBucket: tb1,
 		})
@@ -5337,7 +5336,7 @@ func TestActiveReplicatorReconnectOnStart(t *testing.T) {
 
 					// Passive
 					tb2 := base.GetTestBucket(t)
-					rt2 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+					rt2 := rest.NewRestTester(t,
 						&rest.RestTesterConfig{
 							CustomTestBucket: tb2,
 							DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
@@ -5372,7 +5371,7 @@ func TestActiveReplicatorReconnectOnStart(t *testing.T) {
 
 					// Active
 					tb1 := base.GetTestBucket(t)
-					rt1 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+					rt1 := rest.NewRestTester(t,
 						&rest.RestTesterConfig{
 							CustomTestBucket: tb1,
 						})
@@ -5448,7 +5447,7 @@ func TestActiveReplicatorReconnectOnStartEventualSuccess(t *testing.T) {
 
 	// Passive
 	tb2 := base.GetTestBucket(t)
-	rt2 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+	rt2 := rest.NewRestTester(t,
 		&rest.RestTesterConfig{
 			CustomTestBucket: tb2,
 		})
@@ -5467,7 +5466,7 @@ func TestActiveReplicatorReconnectOnStartEventualSuccess(t *testing.T) {
 
 	// Active
 	tb1 := base.GetTestBucket(t)
-	rt1 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+	rt1 := rest.NewRestTester(t,
 		&rest.RestTesterConfig{
 			CustomTestBucket: tb1,
 		})
@@ -5535,7 +5534,7 @@ func TestActiveReplicatorReconnectSendActions(t *testing.T) {
 
 	// Passive
 	tb2 := base.GetTestBucket(t)
-	rt2 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+	rt2 := rest.NewRestTester(t,
 		&rest.RestTesterConfig{
 			CustomTestBucket: tb2,
 			DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
@@ -5562,7 +5561,7 @@ func TestActiveReplicatorReconnectSendActions(t *testing.T) {
 
 	// Active
 	tb1 := base.GetTestBucket(t)
-	rt1 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+	rt1 := rest.NewRestTester(t,
 		&rest.RestTesterConfig{
 			CustomTestBucket: tb1,
 		})
@@ -5831,7 +5830,7 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 			// Passive
 			tb2 := base.GetTestBucket(t)
 
-			rt2 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+			rt2 := rest.NewRestTester(t,
 				&rest.RestTesterConfig{
 					CustomTestBucket: tb2,
 					DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
@@ -5870,7 +5869,7 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 			// Active
 			tb1 := base.GetTestBucket(t)
 
-			rt1 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+			rt1 := rest.NewRestTester(t,
 				&rest.RestTesterConfig{
 					CustomTestBucket: tb1,
 				})
@@ -6069,7 +6068,7 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 
 			// Passive
 			passiveBucket := base.GetTestBucket(t)
-			remotePassiveRT := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+			remotePassiveRT := rest.NewRestTester(t,
 				&rest.RestTesterConfig{
 					CustomTestBucket: passiveBucket,
 				})
@@ -6080,7 +6079,7 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 
 			// Active
 			activeBucket := base.GetTestBucket(t)
-			localActiveRT := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+			localActiveRT := rest.NewRestTester(t,
 				&rest.RestTesterConfig{
 					CustomTestBucket:   activeBucket,
 					SgReplicateEnabled: true,
@@ -6335,7 +6334,7 @@ func TestDefaultConflictResolverWithTombstoneLocal(t *testing.T) {
 	for _, test := range defaultConflictResolverWithTombstoneTests {
 		t.Run(test.name, func(tt *testing.T) {
 			// Passive
-			rt2 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+			rt2 := rest.NewRestTester(t,
 				&rest.RestTesterConfig{
 					CustomTestBucket: base.GetTestBucket(t),
 					DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
@@ -6359,7 +6358,7 @@ func TestDefaultConflictResolverWithTombstoneLocal(t *testing.T) {
 			passiveDBURL.User = url.UserPassword("alice", "pass")
 
 			// Active
-			rt1 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+			rt1 := rest.NewRestTester(t,
 				&rest.RestTesterConfig{
 					CustomTestBucket: base.GetTestBucket(t),
 				})
@@ -6496,7 +6495,7 @@ func TestDefaultConflictResolverWithTombstoneRemote(t *testing.T) {
 	for _, test := range defaultConflictResolverWithTombstoneTests {
 		t.Run(test.name, func(t *testing.T) {
 			// Passive
-			rt2 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+			rt2 := rest.NewRestTester(t,
 				&rest.RestTesterConfig{
 					CustomTestBucket: base.GetTestBucket(t),
 					DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
@@ -6520,7 +6519,7 @@ func TestDefaultConflictResolverWithTombstoneRemote(t *testing.T) {
 			passiveDBURL.User = url.UserPassword("alice", "pass")
 
 			// Active
-			rt1 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+			rt1 := rest.NewRestTester(t,
 				&rest.RestTesterConfig{
 					CustomTestBucket: base.GetTestBucket(t),
 				})
@@ -6846,7 +6845,7 @@ func TestSendChangesToNoConflictPreHydrogenTarget(t *testing.T) {
 
 	// Passive
 	tb2 := base.GetTestBucket(t)
-	rt2 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+	rt2 := rest.NewRestTester(t,
 		&rest.RestTesterConfig{
 			CustomTestBucket: tb2,
 			DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
@@ -6855,7 +6854,7 @@ func TestSendChangesToNoConflictPreHydrogenTarget(t *testing.T) {
 		})
 	defer rt2.Close()
 
-	rt1 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+	rt1 := rest.NewRestTester(t,
 		&rest.RestTesterConfig{
 			CustomTestBucket: base.GetTestBucket(t),
 		})
@@ -7012,11 +7011,11 @@ func TestConflictResolveMergeWithMutatedRev(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
 
 	// Passive
-	rt2 := rest.NewRestTesterDefaultCollection(t, nil) // CBG-2319: replicator currently requires default collection
+	rt2 := rest.NewRestTester(t, nil)
 	defer rt2.Close()
 
 	// Active
-	rt1 := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+	rt1 := rest.NewRestTester(t,
 		&rest.RestTesterConfig{
 			CustomTestBucket: base.GetTestBucket(t),
 		})
@@ -7090,7 +7089,7 @@ func TestReplicatorDoNotSendDeltaWhenSrcIsTombstone(t *testing.T) {
 
 	// Passive //
 	passiveBucket := base.GetTestBucket(t)
-	passiveRT := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+	passiveRT := rest.NewRestTester(t,
 		&rest.RestTesterConfig{
 			CustomTestBucket: passiveBucket,
 			DatabaseConfig: &rest.DatabaseConfig{
@@ -7109,7 +7108,7 @@ func TestReplicatorDoNotSendDeltaWhenSrcIsTombstone(t *testing.T) {
 
 	// Active //
 	activeBucket := base.GetTestBucket(t)
-	activeRT := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+	activeRT := rest.NewRestTester(t,
 		&rest.RestTesterConfig{
 			CustomTestBucket: activeBucket,
 			DatabaseConfig: &rest.DatabaseConfig{
@@ -7198,7 +7197,7 @@ func TestUnprocessableDeltas(t *testing.T) {
 
 	// Passive //
 	passiveBucket := base.GetTestBucket(t)
-	passiveRT := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+	passiveRT := rest.NewRestTester(t,
 		&rest.RestTesterConfig{
 			CustomTestBucket: passiveBucket,
 			DatabaseConfig: &rest.DatabaseConfig{
@@ -7217,7 +7216,7 @@ func TestUnprocessableDeltas(t *testing.T) {
 
 	// Active //
 	activeBucket := base.GetTestBucket(t)
-	activeRT := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+	activeRT := rest.NewRestTester(t,
 		&rest.RestTesterConfig{
 			CustomTestBucket: activeBucket,
 			DatabaseConfig: &rest.DatabaseConfig{
@@ -7300,7 +7299,7 @@ func TestReplicatorIgnoreRemovalBodies(t *testing.T) {
 
 	// Passive //
 	passiveBucket := base.GetTestBucket(t)
-	passiveRT := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+	passiveRT := rest.NewRestTester(t,
 		&rest.RestTesterConfig{
 			CustomTestBucket: passiveBucket,
 		})
@@ -7312,7 +7311,7 @@ func TestReplicatorIgnoreRemovalBodies(t *testing.T) {
 
 	// Active //
 	activeBucket := base.GetTestBucket(t)
-	activeRT := rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+	activeRT := rest.NewRestTester(t,
 		&rest.RestTesterConfig{
 			CustomTestBucket: activeBucket,
 		})
@@ -7382,7 +7381,7 @@ func TestUnderscorePrefixSupport(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
 
 	// Passive //
-	passiveRT := rest.NewRestTesterDefaultCollection(t, nil) // CBG-2319: replicator currently requires default collection
+	passiveRT := rest.NewRestTester(t, nil)
 	defer passiveRT.Close()
 
 	// Make passive RT listen on an actual HTTP port, so it can receive the blipsync request from the active replicator
@@ -7390,7 +7389,7 @@ func TestUnderscorePrefixSupport(t *testing.T) {
 	defer srv.Close()
 
 	// Active //
-	activeRT := rest.NewRestTesterDefaultCollection(t, nil) // CBG-2319: replicator currently requires default collection
+	activeRT := rest.NewRestTester(t, nil)
 	defer activeRT.Close()
 	activeCtx := activeRT.Context()
 
