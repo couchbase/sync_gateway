@@ -17,7 +17,6 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/couchbase/go-blip"
 	"github.com/couchbase/gocb/v2"
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
@@ -319,11 +318,12 @@ func TestPutAttachmentViaBlipGetViaRest(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)
 
 	// Create blip tester
-	bt := NewBlipTesterDefaultCollectionFromSpec(t, // CBG-2619 // make collection aware
+	bt, err := NewBlipTesterFromSpec(t,
 		BlipTesterSpec{
 			connectingUsername: "user1",
 			connectingPassword: "1234",
 		})
+	require.NoError(t, err)
 	defer bt.Close()
 
 	attachmentBody := "attach"
@@ -341,7 +341,7 @@ func TestPutAttachmentViaBlipGetViaRest(t *testing.T) {
 
 	// Try to fetch the attachment directly via getAttachment, expected to fail w/ 403 error for security reasons
 	// since it's not in the context of responding to a "rev" request from the peer.
-	getAttachmentRequest := blip.NewRequest()
+	getAttachmentRequest := bt.newRequest()
 	getAttachmentRequest.SetProfile(db.MessageGetAttachment)
 	getAttachmentRequest.Properties[db.GetAttachmentDigest] = input.attachmentDigest
 	getAttachmentRequest.Properties[db.GetAttachmentID] = input.docId
@@ -355,7 +355,7 @@ func TestPutAttachmentViaBlipGetViaRest(t *testing.T) {
 	assert.True(t, hasErrorCode)
 
 	// Get the attachment via REST api and make sure it matches the attachment pushed earlier
-	response := bt.restTester.SendAdminRequest("GET", fmt.Sprintf("/db/%s/%s", input.docId, input.attachmentName), ``)
+	response := bt.restTester.SendAdminRequest("GET", fmt.Sprintf("/{{.keyspace}}/%s/%s", input.docId, input.attachmentName), ``)
 	assert.Equal(t, input.attachmentBody, response.Body.String())
 
 }
@@ -363,11 +363,12 @@ func TestPutAttachmentViaBlipGetViaBlip(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)
 
 	// Create blip tester
-	bt := NewBlipTesterDefaultCollectionFromSpec(t, BlipTesterSpec{
+	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
 		connectingUsername:          "user1",
 		connectingPassword:          "1234",
 		connectingUserChannelGrants: []string{"*"}, // All channels
 	})
+	require.NoError(t, err)
 	defer bt.Close()
 
 	attachmentBody := "attach"
@@ -411,11 +412,10 @@ func TestPutAttachmentViaBlipGetViaBlip(t *testing.T) {
 
 // TestBlipAttachNameChange tests CBL handling - attachments with changed names are sent as stubs, and not new attachments
 func TestBlipAttachNameChange(t *testing.T) {
-	rt := NewRestTesterDefaultCollection(t, &RestTesterConfig{ // CBG-2619
+	rt := NewRestTester(t, &RestTesterConfig{
 		GuestEnabled: true,
 	})
 	defer rt.Close()
-	keyspace := "db"
 
 	client1, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
 	require.NoError(t, err)
@@ -448,18 +448,17 @@ func TestBlipAttachNameChange(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, bucketAttachmentA, attachmentA)
 
-	resp := rt.SendAdminRequest("GET", fmt.Sprintf("/%s/doc/attach", keyspace), "")
+	resp := rt.SendAdminRequest("GET", "/{{.keyspace}}/doc/attach", "")
 	RequireStatus(t, resp, http.StatusOK)
 	assert.Equal(t, attachmentA, resp.BodyBytes())
 }
 
 // TestBlipLegacyAttachNameChange ensures that CBL name changes for legacy attachments are handled correctly
 func TestBlipLegacyAttachNameChange(t *testing.T) {
-	rt := NewRestTesterDefaultCollection(t, &RestTesterConfig{ // CBG-2619
+	rt := NewRestTester(t, &RestTesterConfig{
 		GuestEnabled: true,
 	})
 	defer rt.Close()
-	keyspace := "db"
 	client1, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
 	require.NoError(t, err)
 	defer client1.Close()
@@ -497,21 +496,21 @@ func TestBlipLegacyAttachNameChange(t *testing.T) {
 	// Use revpos 2 to simulate revpos bug in CBL 2.8 - 3.0.0
 	revID, err = client1.PushRev("doc", revID, []byte(`{"key":"val","_attachments":{"attach":{"revpos":2,"content_type":"test/plain","length":2,"stub":true,"digest":"`+digest+`"}}}`))
 	require.NoError(t, err)
+
 	err = rt.WaitForRev("doc", revID)
 	require.NoError(t, err)
 
-	resp := rt.SendAdminRequest("GET", fmt.Sprintf("/%s/doc/attach", keyspace), "")
+	resp := rt.SendAdminRequest("GET", "/{{.keyspace}}/doc/attach", "")
 	RequireStatus(t, resp, http.StatusOK)
 	assert.Equal(t, attBody, resp.BodyBytes())
 }
 
 // TestBlipLegacyAttachDocUpdate ensures that CBL updates for documents associated with legacy attachments are handled correctly
 func TestBlipLegacyAttachDocUpdate(t *testing.T) {
-	rt := NewRestTesterDefaultCollection(t, &RestTesterConfig{ // CBG-2619
+	rt := NewRestTester(t, &RestTesterConfig{
 		GuestEnabled: true,
 	})
 	defer rt.Close()
-	keyspace := "db"
 	client1, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
 	require.NoError(t, err)
 	defer client1.Close()
@@ -550,10 +549,11 @@ func TestBlipLegacyAttachDocUpdate(t *testing.T) {
 	// Update the document, leaving body intact
 	revID, err = client1.PushRev("doc", revID, []byte(`{"key":"val1","_attachments":{"`+attName+`":{"revpos":2,"content_type":"text/plain","length":2,"stub":true,"digest":"`+digest+`"}}}`))
 	require.NoError(t, err)
+
 	err = rt.WaitForRev("doc", revID)
 	require.NoError(t, err)
 
-	resp := rt.SendAdminRequest("GET", fmt.Sprintf("/%s/doc/%s", keyspace, attName), "")
+	resp := rt.SendAdminRequest("GET", fmt.Sprintf("/{{.keyspace}}/doc/%s", attName), "")
 	RequireStatus(t, resp, http.StatusOK)
 	assert.Equal(t, attBody, resp.BodyBytes())
 

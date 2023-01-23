@@ -59,7 +59,7 @@ func (rt *RestTester) PutNewEditsFalse(docID string, newRevID string, parentRevI
 }
 
 func (rt *RestTester) RequireWaitChanges(numChangesExpected int, since string) ChangesResults {
-	changesResults, err := rt.WaitForChanges(numChangesExpected, "/db/_changes?since="+since, "", true)
+	changesResults, err := rt.WaitForChanges(numChangesExpected, "/{{.keyspace}}/_changes?since="+since, "", true)
 	require.NoError(rt.TB, err)
 	require.Len(rt.TB, changesResults.Results, numChangesExpected)
 	return changesResults
