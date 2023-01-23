@@ -99,13 +99,14 @@ func ExplainQuery(store N1QLStore, statement string, params map[string]interface
 func CreateIndex(store N1QLStore, indexName string, expression string, filterExpression string, partitionExpression string, options *N1qlIndexOptions) error {
 	createStatement := fmt.Sprintf("CREATE INDEX `%s` ON %s(%s)", indexName, store.EscapedKeyspace(), expression)
 
+	// Add partition expression, when present
+	if partitionExpression != "" {
+		createStatement = fmt.Sprintf("%s PARTITION BY HASH(%s)", createStatement, partitionExpression)
+	}
+
 	// Add filter expression, when present
 	if filterExpression != "" {
 		createStatement = fmt.Sprintf("%s WHERE %s", createStatement, filterExpression)
-	}
-
-	if partitionExpression != "" {
-		createStatement = fmt.Sprintf("%s PARTITION BY HASH(%s)", createStatement, partitionExpression)
 	}
 
 	// Replace any KeyspaceQueryToken references in the index expression
