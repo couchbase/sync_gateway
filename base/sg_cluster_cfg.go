@@ -20,6 +20,8 @@ import (
 	sgbucket "github.com/couchbase/sg-bucket"
 )
 
+const SGCbgtMetadataVersion = "5.5.0" // cbgt metadata version, matching 3.0 clients
+
 // CfgSG is used to manage shared information between Sync Gateway nodes.
 // It implements cbgt.Cfg for use with cbgt, but can be used for to manage
 // any shared data.  It uses Sync Gateway's existing
@@ -53,6 +55,7 @@ func NewCfgSG(datastore sgbucket.DataStore, groupID string) (*CfgSG, error) {
 		subscriptions: make(map[string][]chan<- cbgt.CfgEvent),
 		keyPrefix:     SGCfgPrefixWithGroupID(groupID),
 	}
+
 	return c, nil
 }
 
@@ -62,6 +65,10 @@ func (c *CfgSG) sgCfgBucketKey(cfgKey string) string {
 
 func (c *CfgSG) Get(cfgKey string, cas uint64) (
 	[]byte, uint64, error) {
+
+	if cfgKey == cbgt.VERSION_KEY {
+		return []byte(SGCbgtMetadataVersion), cas, nil
+	}
 
 	DebugfCtx(c.loggingCtx, KeyCluster, "cfg_sg: Get, key: %s, cas: %d", cfgKey, cas)
 	bucketKey := c.sgCfgBucketKey(cfgKey)
