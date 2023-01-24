@@ -6760,7 +6760,7 @@ func TestLocalWinsConflictResolution(t *testing.T) {
 				log.Printf("-- Waiting for property: %v, got property: %v", test.expectedResult.propertyValue, prop)
 				return ok && prop == test.expectedResult.propertyValue
 			})
-			assert.NoError(t, waitErr)
+			require.NoError(t, waitErr)
 
 			localDoc := activeRT.GetDoc(docID)
 			localRevID := localDoc.ExtractRev()
@@ -6942,7 +6942,7 @@ func TestReplicatorConflictAttachment(t *testing.T) {
 			waitErr := activeRT.WaitForRev(docID, test.expectedFinalRev)
 			assert.NoError(t, waitErr)
 			waitErr = remoteRT.WaitForRev(docID, test.expectedFinalRev)
-			assert.NoError(t, waitErr)
+			require.NoError(t, waitErr)
 
 			localDoc := activeRT.GetDoc(docID)
 			localRevID := localDoc.ExtractRev()
