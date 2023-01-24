@@ -11,11 +11,13 @@ licenses/APL2.txt.
 package rest
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"net/http"
@@ -2284,4 +2286,33 @@ func (rt *RestTester) getCollectionsForBLIP() []string {
 			strings.Join([]string{collection.ScopeName(), collection.Name()}, base.ScopeCollectionSeparator))
 	}
 	return collections
+}
+
+// Reads continuous changes feed response into slice of ChangeEntry
+func (rt *RestTester) ReadContinuousChanges(response *TestResponse) ([]db.ChangeEntry, error) {
+	var change db.ChangeEntry
+	changes := make([]db.ChangeEntry, 0)
+	reader := bufio.NewReader(response.Body)
+	for {
+		entry, readError := reader.ReadBytes('\n')
+		if readError == io.EOF {
+			// done
+			break
+		}
+		if readError != nil {
+			// unexpected read error
+			return changes, readError
+		}
+		entry = bytes.TrimSpace(entry)
+		if len(entry) > 0 {
+			err := base.JSONUnmarshal(entry, &change)
+			if err != nil {
+				return changes, err
+			}
+			changes = append(changes, change)
+			log.Printf("Got change ==> %v", change)
+		}
+
+	}
+	return changes, nil
 }

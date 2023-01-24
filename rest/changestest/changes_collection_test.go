@@ -191,6 +191,93 @@ func TestMultiCollectionChangesUser(t *testing.T) {
 	logChangesResponse(t, changesResponse.Body.Bytes())
 }
 
+func TestMultiCollectionChangesMultipleChannels(t *testing.T) {
+
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeyChanges, base.KeyCache, base.KeyCRUD)
+	numCollections := 2
+	base.RequireNumTestDataStores(t, numCollections)
+	rt := rest.NewRestTesterMultipleCollections(t, nil, numCollections)
+	defer rt.Close()
+
+	// Create user with access to channel PBS in both collections
+	ctx := rt.Context()
+	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
+	bernard, err := a.NewUser("bernard", "letmein", channels.BaseSetOf(t, "PBS"))
+	assert.NoError(t, err)
+	assert.NoError(t, a.Save(bernard))
+	charlie, err := a.NewUser("charlie", "letmein", channels.BaseSetOf(t, "ABC"))
+	assert.NoError(t, err)
+	assert.NoError(t, a.Save(charlie))
+	dan, err := a.NewUser("dan", "letmein", channels.BaseSetOf(t, "DAN"))
+	assert.NoError(t, err)
+	assert.NoError(t, a.Save(dan))
+	pbsdan, err := a.NewUser("PBSdan", "letmein", channels.BaseSetOf(t, "DAN", "PBS"))
+	assert.NoError(t, err)
+	assert.NoError(t, a.Save(pbsdan))
+
+	// Put several documents, will be retrieved via query
+	response := rt.SendAdminRequest("PUT", "/{{.keyspace1}}/pbs1_c1", `{"channels":["PBS"]}`)
+	rest.RequireStatus(t, response, 201)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace1}}/abc1_c1", `{"channels":["ABC"]}`)
+	rest.RequireStatus(t, response, 201)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace1}}/dan1_c1", `{"channels":["DAN"]}`)
+	rest.RequireStatus(t, response, 201)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace2}}/pbs1_c2", `{"channels":["PBS"]}`)
+	rest.RequireStatus(t, response, 201)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace2}}/abc1_c2", `{"channels":["ABC"]}`)
+	rest.RequireStatus(t, response, 201)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace2}}/dan1_c2", `{"channels":["DAN"]}`)
+	rest.RequireStatus(t, response, 201)
+	_ = rt.WaitForPendingChanges()
+
+	var changes struct {
+		Results  []db.ChangeEntry
+		Last_Seq db.SequenceID
+	}
+
+	// Issue changes request.  Will initialize cache for channels, and return docs via querys
+	changesResponse := rt.SendUserRequest("GET", "/{{.keyspace1}}/_changes?since=0", "", "bernard")
+	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
+	assert.NoError(t, err, "Error unmarshalling changes response")
+	require.Len(t, changes.Results, 1)
+	logChangesResponse(t, changesResponse.Body.Bytes())
+
+	changesResponse = rt.SendUserRequest("GET", "/{{.keyspace2}}/_changes?since=0", "", "bernard")
+	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
+	assert.NoError(t, err, "Error unmarshalling changes response")
+	require.Len(t, changes.Results, 1)
+	logChangesResponse(t, changesResponse.Body.Bytes())
+
+	// Put more documents, should be served via DCP/cache
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace1}}/pbs2_c1", `{"value":1, "channels":["PBS"]}`)
+	rest.RequireStatus(t, response, 201)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace1}}/abc2_c1", `{"value":1, "channels":["ABC"]}`)
+	rest.RequireStatus(t, response, 201)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace1}}/dan2_c2", `{"value":1, "channels":["ABC"]}`)
+	rest.RequireStatus(t, response, 201)
+	_ = rt.WaitForPendingChanges()
+
+	changesResponse = rt.SendUserRequest("GET", "/{{.keyspace1}}/_changes?since=0", "", "bernard")
+	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
+	assert.NoError(t, err, "Error unmarshalling changes response")
+	require.Len(t, changes.Results, 2)
+	logChangesResponse(t, changesResponse.Body.Bytes())
+
+	changesResponse = rt.SendUserRequest("GET", "/{{.keyspace2}}/_changes?since=0", "", "bernard")
+	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
+	assert.NoError(t, err, "Error unmarshalling changes response")
+	require.Len(t, changes.Results, 2)
+	logChangesResponse(t, changesResponse.Body.Bytes())
+
+	changesResponse = rt.SendUserRequest("GET", "/{{.keyspace}}/_changes?feed=continuous&timeout=2000", "", "bernard")
+
+	contChanges, err := rt.ReadContinuousChanges(changesResponse)
+	assert.NoError(t, err)
+
+	assert.Len(t, contChanges, 3)
+
+}
+
 // TestMultiCollectionChangesUserDynamicGrant tests a dynamic channel grant when that channel is not already resident
 // in the cache (post-grant changes triggers query backfill of the cache)
 func TestMultiCollectionChangesUserDynamicGrant(t *testing.T) {
