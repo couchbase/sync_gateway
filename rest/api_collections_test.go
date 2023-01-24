@@ -383,7 +383,7 @@ func TestMultiCollectionChannelAccess(t *testing.T) {
 	resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.keyspace3}}/testDocBazB", "", nil, "userAB", "letmein")
 	RequireStatus(t, resp, http.StatusOK)
 
-	// Add a new collection and update the db config
+	// Remove collection and update the db config
 	scopesConfig = GetCollectionsConfig(t, tb, 2)
 	dataStoreNames = GetDataStoreNamesFromScopesConfig(scopesConfig)
 
