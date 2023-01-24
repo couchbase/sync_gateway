@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
 <!--
-Copyright 2020-Present Couchbase, Inc.
+Copyright 2016-Present Couchbase, Inc.
 
 Use of this software is governed by the Business Source License included in
 the file licenses/BSL-Couchbase.txt.  As of the Change Date specified in that
@@ -24,40 +24,42 @@ licenses/APL2.txt.
 
     <!-- Build Scripts (required on CI servers) -->
     <project name="product-texts" path="product-texts" remote="couchbase"/>
-    <project name="build" path="cbbuild" remote="couchbase" revision="sgw-2.8">
-        <annotation name="VERSION" value="2.8.4"   keep="true"/>
+    <project name="build" path="cbbuild" remote="couchbase" revision="465038ca7ddb1eafadf7d439839d43bed1fb42ad">
+        <annotation name="VERSION" value="3.0.4.1"     keep="true"/>
         <annotation name="BLD_NUM" value="@BLD_NUM@" keep="true"/>
         <annotation name="RELEASE" value="@RELEASE@" keep="true"/>
     </project>
 
 
     <!-- Sync Gateway -->
-    <project name="sync_gateway" path="godeps/src/github.com/couchbase/sync_gateway" remote="couchbase" revision="release/2.8.4"/>
+    <project name="sync_gateway" path="godeps/src/github.com/couchbase/sync_gateway" remote="couchbase" revision="465038ca7ddb1eafadf7d439839d43bed1fb42ad"/>
 
     <!-- Dependencies for Sync Gateway (and possibly Sync Gateway Accel too) -->
 
     <project name="go.assert" path="godeps/src/github.com/couchbaselabs/go.assert" remote="couchbaselabs" revision="cfb33e3a0dac05ae1ecbc0e97188c5cf746a1b78"/>
 
-    <project name="retriever" path="godeps/src/github.com/couchbase/retriever" remote="couchbase" revision="19c5a5d92a2f34fb96ae91d26901e4a7076b8020"/>
-
     <project name="sync_gateway_admin_ui" path="godeps/src/github.com/couchbaselabs/sync_gateway_admin_ui" revision="93c74bac9ddc2979ab895a37087c225c998b03bf" remote="couchbaselabs"/>
 
-    <project name="walrus" path="godeps/src/github.com/couchbaselabs/walrus" remote="couchbaselabs" revision="b1349276dedea51b9aec41dc86dd6598bcfc5e01"/>
+    <project name="walrus" path="godeps/src/github.com/couchbaselabs/walrus" remote="couchbaselabs" revision="2ce555a2ee7ae25aa3420d96a576002d797809c8"/>
 
-    <project name="go-couchbase" path="godeps/src/github.com/couchbase/go-couchbase" remote="couchbase" revision="fb2c298255fcbffc24f1cb824ef9d06defcda199"/>
+    <project name="go-couchbase" path="godeps/src/github.com/couchbase/go-couchbase" remote="couchbase" revision="74908f5398d1b5e28a4c8873a7c8931076ad81e3"/>
 
-    <project name="gocb" path="godeps/src/github.com/couchbase/gocb" remote="couchbase" revision="a6e1124eba0e2910e0e4a20cce8dc84e272efea8" />
+    <!-- gocb v2 -->
+    <project name="gocb" path="godeps/src/github.com/couchbase/gocb/v2" remote="couchbase" revision="3fc028aaec8b9dee5d525e98eb92dacdcbb82aba" />
+    <project name="gocbcore" path="godeps/src/github.com/couchbase/gocbcore/v10" remote="couchbase" revision="ed9bb8e33e28683bee2cf609a6c7467b5167b30d"/>
+    <project name="golang-snappy"  path="godeps/src/github.com/golang/snappy" remote="couchbasedeps" revision="723cc1e459b8eea2dea4583200fd60757d40097a" />
+
+    <!-- gocb v1 -->
     <project name="gocb" path="godeps/src/gopkg.in/couchbase/gocb.v1" remote="couchbase" revision="a6e1124eba0e2910e0e4a20cce8dc84e272efea8" />
-
-    <project name="gocbcore" path="godeps/src/gopkg.in/couchbase/gocbcore.v7" remote="couchbase" revision="a01296b76db4c54811679634f70ce6a5683dbda2"/>
+    <project name="gocbcore" path="godeps/src/gopkg.in/couchbase/gocbcore.v7" remote="couchbase" revision="f3290c5cd250f766251019f542c5041f286ff701"/>
 
     <project name="jsonx" path="godeps/src/gopkg.in/couchbaselabs/jsonx.v1" remote="couchbaselabs" revision="5b7baa20429a46a5543ee259664cc86502738cad"/>
 
     <project name="gocbconnstr" path="godeps/src/gopkg.in/couchbaselabs/gocbconnstr.v1" remote="couchbaselabs" revision="8f9a894d174b836c6362de9af75545cf585fc278"/>
 
-    <project name="gomemcached" path="godeps/src/github.com/couchbase/gomemcached" remote="couchbase" revision="db06807997e6f778fe135571140a0c4f1f59723c"/>
+    <project name="gomemcached" path="godeps/src/github.com/couchbase/gomemcached" remote="couchbase" revision="4201f50df22f08f75a0491451fa6507387d41304"/>
 
-    <project name="sg-bucket" path="godeps/src/github.com/couchbase/sg-bucket" remote="couchbase" revision="d4ee4b62887856071adfae0b36636add1946d0c9"/>
+    <project name="sg-bucket" path="godeps/src/github.com/couchbase/sg-bucket" remote="couchbase" revision="178bb7ca1abbce08f5c6f94f5ca8c53ba0aa20aa"/>
 
     <project name="go-bindata-assetfs" path="godeps/src/github.com/elazarl/go-bindata-assetfs" remote="couchbasedeps" revision="30f82fa23fd844bd5bb1e5f216db87fd77b5eb43"/>
 
@@ -75,15 +77,13 @@ licenses/APL2.txt.
 
     <project name="fakehttp" path="godeps/src/github.com/tleyden/fakehttp" remote="tleyden" revision="084795c8f01f195a88c0ca4af0d7228a5ef40c83"/>
 
-    <project name="text" path="godeps/src/golang.org/x/text" remote="couchbasedeps" revision="release-branch.go1.11"/>
+    <project name="text" path="godeps/src/golang.org/x/text" remote="couchbasedeps" revision="refs/tags/v0.3.4"/>
 
     <project name="net" path="godeps/src/golang.org/x/net" remote="couchbasedeps" revision="release-branch.go1.11"/>
 
     <project name="sys" path="godeps/src/golang.org/x/sys" remote="couchbasedeps" revision="release-branch.go1.11"/>
 
     <project name="crypto" path="godeps/src/golang.org/x/crypto" remote="couchbasedeps" revision="release-branch.go1.11"/>
-
-    <project name="sg-replicate" path="godeps/src/github.com/couchbaselabs/sg-replicate" remote="couchbaselabs" revision="6fb5493d6168e70813dd27208456cc36f1394cfd"/>
 
     <project name="clog" path="godeps/src/github.com/couchbase/clog" remote="couchbase" revision="dcae66272b24600ae0005fa06b511cfae8914d3d"/>
 
@@ -105,7 +105,7 @@ licenses/APL2.txt.
 
     <project name="goutils" path="godeps/src/github.com/couchbase/goutils" remote="couchbase" revision="f98adca8eb365032cab838ef4d99453931afa112"/>
 
-    <project name="go-blip" path="godeps/src/github.com/couchbase/go-blip" remote="couchbase" revision="73600c7628b2f93657bfa60083289a6b403615b3"/>
+    <project name="go-blip" path="godeps/src/github.com/couchbase/go-blip" remote="couchbase" revision="3c4edeb16c47cdb3bcd1eeab3b3c5c87832d4923"/>
 
     <project name="errors" path="godeps/src/github.com/pkg/errors" remote="couchbasedeps" revision="f15c970de5b76fac0b59abb32d62c17cc7bed265"/>
 
@@ -129,12 +129,9 @@ licenses/APL2.txt.
     <project groups="notdefault,cb_sg_enterprise" name="go-fleecedelta" path="godeps/src/github.com/couchbaselabs/go-fleecedelta" remote="couchbaselabs_private" revision="2ed3f45fde8f1745eece72968cf673da69f0fd24"/>
     <project groups="notdefault,cb_sg_enterprise" name="go-diff" path="godeps/src/github.com/sergi/go-diff" remote="couchbasedeps" revision="da645544ed44df016359bd4c0e3dc60ee3a0da43"/>
 
-    <project groups="notdefault,cb_sg_enterprise" name="json-iterator-go" path="godeps/src/github.com/json-iterator/go" remote="couchbasedeps" revision="819acad769e54806c920726ac93537ba4e2c22ad"/>
+    <project groups="notdefault,cb_sg_enterprise" name="json-iterator-go" path="godeps/src/github.com/json-iterator/go" remote="couchbasedeps" revision="024077e996b048517130b21ea6bf12aa23055d3d"/>
     <project groups="notdefault,cb_sg_enterprise" name="concurrent" path="godeps/src/github.com/modern-go/concurrent" remote="couchbasedeps" revision="bacd9c7ef1dd9b15be4a9909b8ac7a4e313eec94"/>
     <project groups="notdefault,cb_sg_enterprise" name="reflect2" path="godeps/src/github.com/modern-go/reflect2" remote="couchbasedeps" revision="94122c33edd36123c84d5368cfb2b69df93a0ec8"/>
-
-    <!-- gozip tools -->
-    <project name="ns_server" path="godeps/src/github.com/couchbase/ns_server" remote="couchbase" revision="6d835931f574f25e3781192c09e45a3ee30deb51"/>
 
     <!-- gosigar -->
     <project name="gosigar" path="godeps/src/github.com/elastic/gosigar" remote="couchbasedeps" revision="f498c67133bcded80f5966ee63acfe68cff4e6bf"/>
@@ -147,14 +144,16 @@ licenses/APL2.txt.
     <project name="pprof" path="godeps/src/github.com/google/pprof" remote="couchbasedeps" revision="03e1cf38a040dd596c700aa260c3eddc2bf38987"/>
 
     <!-- prometheus -->
-    <project name="golang_protobuf_extensions" path="godeps/src/github.com/matttproud/golang_protobuf_extensions" remote="couchbasedeps" revision="c182affec369e30f25d3eb8cd8a478dee585ae7d"/>
-    <project name="client_golang" path="godeps/src/github.com/prometheus/client_golang" remote="couchbasedeps" revision="d3accfda2168b0e253f98cff3ef81586e8b88d9f"/>
-    <project name="client_model" path="godeps/src/github.com/prometheus/client_model" remote="couchbasedeps" revision="60555c9708c786597e6b07bf846d0dc5c2a46f54"/>
-    <project name="common" path="godeps/src/github.com/prometheus/common" remote="couchbasedeps" revision="546f1fd8d7df61d94633b254641f9f8f48248ada"/>
-    <project name="procfs" path="godeps/src/github.com/prometheus/procfs" remote="couchbasedeps" revision="869cfc74c3b4eea1f80f29819f1dab68ed3c780e"/>
+    <project name="golang_protobuf_extensions" path="godeps/src/github.com/matttproud/golang_protobuf_extensions" remote="couchbasedeps" revision="c12348ce28de40eed0136aa2b644d0ee0650e56c"/>
+    <project name="client_golang" path="godeps/src/github.com/prometheus/client_golang" remote="couchbasedeps" revision="989baa30fe956631907493ccee1f8e7708660d96"/>
+    <project name="client_model" path="godeps/src/github.com/prometheus/client_model" remote="couchbasedeps" revision="7bc5445566f0fe75b15de23e6b93886e982d7bf9"/>
+    <project name="common" path="godeps/src/github.com/prometheus/common" remote="couchbasedeps" revision="2af6d036253eee1a9a08c6ddf6be6d67537bcdff"/>
+    <project name="procfs" path="godeps/src/github.com/prometheus/procfs" remote="couchbasedeps" revision="f436cbb89ece38bf080d446b3ca27053b305eaac"/>
     <project name="perks" path="godeps/src/github.com/beorn7/perks" remote="couchbasedeps" revision="37c8de3658fcb183f997c4e13e8337516ab753e6"/>
-    <project name="xxhash" path="godeps/src/github.com/cespare/xxhash" remote="couchbasedeps" revision="d7df74196a9e781ede915320c11c378c1b2f3a1f"/>
-    <project name="protobuf" path="godeps/src/github.com/golang/protobuf" remote="couchbasedeps" revision="b5d812f8a3706043e23a9cd5babf2e5423744d30"/>
-    <project name="protobuf-go" path="godeps/src/google.golang.org/protobuf" remote="couchbasedeps" revision="1ecb1f411c1f2ce65a2db6ea4a8ae927182d342e"/>
+    <project name="xxhash" path="godeps/src/github.com/cespare/xxhash" remote="couchbasedeps" revision="e7a6b52374f7e2abfb8abb27249d53a1997b09a7"/>
+    <project name="protobuf" path="godeps/src/github.com/golang/protobuf" remote="couchbasedeps" revision="ae97035608a719c7a1c1c41bed0ae0744bdb0c6f"/>
+    <project name="protobuf-go" path="godeps/src/google.golang.org/protobuf" remote="couchbasedeps" revision="f2d1f6cbe10b90d22296ea09a7217081c2798009"/>
+
+    <project name="mergo" path="godeps/src/github.com/imdario/mergo" remote="couchbasedeps" revision="b968a17bce53738e37f30fd352eb2f7f69ed58a7"/>
 
 </manifest>
