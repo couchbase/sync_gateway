@@ -38,8 +38,10 @@ func TestMultiCollectionImportFilter(t *testing.T) {
 	scopesConfig[dataStoreNames[0].ScopeName()].Collections[dataStoreNames[0].CollectionName()] = rest.CollectionConfig{ImportFilter: &importFilter1}
 	scopesConfig[dataStoreNames[1].ScopeName()].Collections[dataStoreNames[1].CollectionName()] = rest.CollectionConfig{ImportFilter: &importFilter2}
 
+	tb := testBucket.NoCloseClone()
+	fmt.Printf("TESTBUCKET = %s / ncc = %s\n", testBucket.GetName(), tb.GetName())
 	rtConfig := &rest.RestTesterConfig{
-		CustomTestBucket: testBucket.NoCloseClone(),
+		CustomTestBucket: tb,
 		DatabaseConfig: &rest.DatabaseConfig{
 			DbConfig: rest.DbConfig{
 				Scopes: scopesConfig,
@@ -161,14 +163,16 @@ func TestMultiCollectionImportFilter(t *testing.T) {
 		`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "scopes":%s}`,
 		testBucket.GetName(), base.TestUseXattrs(), string(scopesConfigString)))
 	rest.RequireStatus(t, response, http.StatusCreated)
+	response = rt.SendAdminRequest("GET", "/db/_config", "")
+
 	rt2 := rest.NewRestTesterMultipleCollections(t, rtConfig, 3)
 	defer rt2.Close()
 
 	_ = rt2.Bucket()
-	dataStore1, err = rt2.TestBucket.GetNamedDataStore(0)
-	require.NoError(t, err)
-	dataStore2, err = rt2.TestBucket.GetNamedDataStore(1)
-	require.NoError(t, err)
+	//dataStore1, err = rt2.TestBucket.GetNamedDataStore(0)
+	//require.NoError(t, err)
+	//dataStore2, err = rt2.TestBucket.GetNamedDataStore(1)
+	//require.NoError(t, err)
 	dataStore3, err := rt2.TestBucket.GetNamedDataStore(2)
 	require.NoError(t, err)
 
