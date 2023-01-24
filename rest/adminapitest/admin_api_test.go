@@ -900,7 +900,7 @@ func TestResyncUsingDCPStream(t *testing.T) {
 
 func TestResyncForNamedCollection(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
-		t.Skip("can not create new buckets and scopes in walrus")
+		t.Skip("DCP client doesn't work with walrus. Waiting on CBG-2661")
 	}
 	base.TestRequiresCollections(t)
 
@@ -1034,7 +1034,7 @@ func TestResyncForNamedCollection(t *testing.T) {
 
 func TestResyncUsingDCPStreamForNamedCollection(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
-		t.Skip("can not create new buckets and scopes in walrus")
+		t.Skip("DCP client doesn't work with walrus. Waiting on CBG-2661")
 	}
 	base.TestRequiresCollections(t)
 
