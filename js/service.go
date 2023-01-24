@@ -4,7 +4,6 @@ import (
 	"context"
 
 	"github.com/couchbase/sync_gateway/base"
-	v8 "rogchap.com/v8go"
 )
 
 // A Service represents a JavaScript-based API that runs in a VM or VMPool.
@@ -20,7 +19,8 @@ type serviceID uint32 // internal ID, used as an array index in VM and VMPool.
 type ServiceHost interface {
 	Close()
 	registerService(factory TemplateFactory, name string) serviceID
-	getRunner(*Service) (*Runner, error)
+	getRunner(*Service) (Runner, error)
+	withRunner(*Service, func(Runner) (any, error)) (any, error)
 }
 
 // Creates a new Service in a ServiceHost (a VM or VMPool.)
@@ -62,27 +62,18 @@ func (service *Service) Host() ServiceHost { return service.host }
 // This may be a new instance, or (if the Service's Template is reuseable) a recycled one.
 // You **MUST** call its Return method when you're through with it.
 //
-// - If the Service's host is a VMPool, this call will block while all the pool's VMs are in use.
-// - If the host is a VM, this call will fail if there is another Runner in use belonging to any
-//   Service hosted by that VM.
-func (service *Service) GetRunner() (*Runner, error) {
+//   - If the Service's host is a VMPool, this call will block while all the pool's VMs are in use.
+//   - If the host is a VM, this call will fail if there is another Runner in use belonging to any
+//     Service hosted by that VM.
+func (service *Service) GetRunner() (Runner, error) {
 	base.DebugfCtx(context.Background(), base.KeyJavascript, "Running JavaScript service %q", service.name)
 	return service.host.getRunner(service)
 }
 
 // A convenience wrapper around GetRunner that takes care of returning the Runner.
 // It simply returns whatever the callback returns.
-func (service *Service) WithRunner(fn func(*Runner) (any, error)) (any, error) {
-	runner, err := service.GetRunner()
-	if err != nil {
-		return nil, err
-	}
-	defer runner.Return()
-	var result any
-	runner.WithTemporaryValues(func() {
-		result, err = fn(runner)
-	})
-	return result, err
+func (service *Service) WithRunner(fn func(Runner) (any, error)) (any, error) {
+	return service.host.withRunner(service, fn)
 }
 
 // A high-level method that runs a service in a VM without your needing to interact with a Runner.
@@ -90,15 +81,8 @@ func (service *Service) WithRunner(fn func(*Runner) (any, error)) (any, error) {
 // The result is converted back to a Go type.
 // If the function throws a JavaScript exception it's converted to a Go `error`.
 func (service *Service) Run(ctx context.Context, args ...any) (any, error) {
-	return service.WithRunner(func(r *Runner) (any, error) {
-		r.SetContext(ctx)
-		v8args, err := r.ConvertArgs(args...)
-		if err == nil {
-			var val *v8.Value
-			if val, err = r.Run(v8args...); err == nil {
-				return ValueToGo(val)
-			}
-		}
-		return nil, err
+	return service.WithRunner(func(runner Runner) (any, error) {
+		runner.SetContext(ctx)
+		return runner.Run(args...)
 	})
 }

@@ -2118,7 +2118,7 @@ func TestWebhookFilterFunctionLoad(t *testing.T) {
 			terminator := make(chan bool)
 			defer close(terminator)
 			ctx := &db.DatabaseContext{EventMgr: db.NewEventManager(terminator)}
-			ctx.V8VMs.Init(4)
+			ctx.V8VMs.InitV8(4)
 			sc := &ServerContext{}
 			err := sc.initEventHandlers(base.TestCtx(t), ctx, &dbConfig)
 			if test.errExpected != nil {
@@ -2386,7 +2386,7 @@ func Test_validateJavascriptFunction(t *testing.T) {
 			wantErr:     assert.NoError,
 		},
 	}
-	vm := js.NewVM()
+	vm := js.NewV8VM()
 	defer vm.Close()
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

@@ -137,18 +137,18 @@ func CompileFunctions(fnConfig *FunctionsConfig, gqConfig *GraphQLConfig, vms *j
 
 // Creates an evaluator using a new VM not belonging to a pool.
 // Remember to close it when finished!
-func newStandaloneEvaluator(ctx context.Context, fnConfig *FunctionsConfig, gqConfig *GraphQLConfig, delegate evaluatorDelegate) (*evaluator, *js.VM, error) {
+func newStandaloneEvaluator(ctx context.Context, fnConfig *FunctionsConfig, gqConfig *GraphQLConfig, delegate evaluatorDelegate) (*evaluator, js.VM, error) {
 	if fnConfig == nil && gqConfig == nil {
 		return nil, nil, nil
 	}
-	vm := js.NewVM()
+	vm := js.NewV8VM()
 	service := js.NewCustomService(vm, "functions", makeService(fnConfig, gqConfig))
 	if runner, err := service.GetRunner(); err != nil {
 		vm.Close()
 		return nil, nil, err
 	} else {
 		runner.SetContext(ctx)
-		eval, err := newEvaluator(runner)
+		eval, err := newEvaluator(runner.(*js.V8Runner))
 		if err != nil {
 			vm.Close()
 			return nil, nil, err

@@ -72,7 +72,7 @@ func makeService(functions *FunctionsConfig, graphql *GraphQLConfig) js.Template
 // It wraps a js.Runner that was instantiated from the functionService.
 // **Not thread-safe! Must be called only on one goroutine at a time. In fact, all Evaluators created from the same Environment must be called only one one goroutine.**
 type evaluator struct {
-	runner          *js.Runner        // The V8 context
+	runner          *js.V8Runner      // The V8 context
 	api             *v8.Object        // JavaScript `API` object (see api.ts)
 	functionFn      *v8.Function      // JavaScript `API.callFunction()` function
 	graphqlFn       *v8.Function      // JavaScript `API.graphql()` function
@@ -110,6 +110,7 @@ func makeEvaluator(service *js.Service, dbc *db.Database, delegate evaluatorDele
 	if err != nil {
 		return nil, err
 	}
+	v8Runner := runner.(*js.V8Runner)
 
 	if dbc.Options.JavascriptTimeout > 0 {
 		var cancelFn context.CancelFunc
@@ -118,9 +119,9 @@ func makeEvaluator(service *js.Service, dbc *db.Database, delegate evaluatorDele
 	}
 	runner.SetContext(ctx)
 
-	eval, ok := runner.Client.(*evaluator)
+	eval, ok := v8Runner.Client.(*evaluator)
 	if !ok {
-		if eval, err = newEvaluator(runner); err != nil {
+		if eval, err = newEvaluator(v8Runner); err != nil {
 			return nil, err
 		}
 	}
@@ -128,9 +129,9 @@ func makeEvaluator(service *js.Service, dbc *db.Database, delegate evaluatorDele
 	return eval, nil
 }
 
-// Creates an Evaluator, wrapping a js.Runner.
+// Creates an Evaluator, wrapping a js.V8Runner.
 // Usually it's better to call makeEvaluator since that will reuse an existing instance.
-func newEvaluator(runner *js.Runner) (*evaluator, error) {
+func newEvaluator(runner *js.V8Runner) (*evaluator, error) {
 	eval := &evaluator{runner: runner}
 	runner.Client = eval
 
@@ -250,8 +251,8 @@ func (eval *evaluator) v8Credentials() (user *v8.Value, roles *v8.Value, channel
 
 //////// EVALUATOR CALLBACK IMPLEMENTATIONS:
 
-// 	query(fnName: string, n1ql: string, argsJSON: string | undefined, asAdmin: boolean) : string;
-func doQuery(r *js.Runner, this *v8.Object, args []*v8.Value) (any, error) {
+// query(fnName: string, n1ql: string, argsJSON: string | undefined, asAdmin: boolean) : string;
+func doQuery(r *js.V8Runner, this *v8.Object, args []*v8.Value) (any, error) {
 	fnName := args[0].String()
 	n1ql := args[1].String()
 	fnArgs, err := jsonToGoMap(args[2])
@@ -263,8 +264,8 @@ func doQuery(r *js.Runner, this *v8.Object, args []*v8.Value) (any, error) {
 	return eval.delegate.query(fnName, n1ql, fnArgs, asAdmin)
 }
 
-// 	get(docID: string, collection: string, asAdmin: boolean) : string | null;
-func doGet(r *js.Runner, this *v8.Object, args []*v8.Value) (any, error) {
+// get(docID: string, collection: string, asAdmin: boolean) : string | null;
+func doGet(r *js.V8Runner, this *v8.Object, args []*v8.Value) (any, error) {
 	docID := args[0].String()
 	collection := args[1].String()
 	asAdmin := args[2].Boolean()
@@ -272,8 +273,8 @@ func doGet(r *js.Runner, this *v8.Object, args []*v8.Value) (any, error) {
 	return returnAsJSON(eval.delegate.get(docID, collection, asAdmin))
 }
 
-// 	save(docJSON: string, docID: string | undefined, collection: string, asAdmin: boolean) : string | null;
-func doSave(r *js.Runner, this *v8.Object, args []*v8.Value) (any, error) {
+// save(docJSON: string, docID: string | undefined, collection: string, asAdmin: boolean) : string | null;
+func doSave(r *js.V8Runner, this *v8.Object, args []*v8.Value) (any, error) {
 	var docID string
 	doc, err := jsonToGoMap(args[0])
 	if err != nil {
@@ -300,8 +301,8 @@ func doSave(r *js.Runner, this *v8.Object, args []*v8.Value) (any, error) {
 	}
 }
 
-// 	delete(docID: string, revID: string | undefined, collection: string, asAdmin: boolean) : boolean;
-func doDelete(r *js.Runner, this *v8.Object, args []*v8.Value) (any, error) {
+// delete(docID: string, revID: string | undefined, collection: string, asAdmin: boolean) : boolean;
+func doDelete(r *js.V8Runner, this *v8.Object, args []*v8.Value) (any, error) {
 	docID := args[0].String()
 	var revID string
 	if arg1 := args[1]; arg1.IsString() {

@@ -12,9 +12,9 @@ import (
 // and global functions & variables -- in the form of V8 "template" objects.
 //
 // A Template belongs to both a Service and a VM. It's created the first time the Service needs to
-// create a Runner in that VM.
+// create a v8Runner in that VM.
 //
-// Once the Template is initialized, each Runner's V8 Context is very cheaply initialized by
+// Once the Template is initialized, each v8Runner's V8 Context is very cheaply initialized by
 // making references to these templates, without needing to compile or run anything.
 //
 // Many clients -- those that just need to run a single JS function with no callbacks -- can
@@ -28,15 +28,15 @@ type Template interface {
 	// variable/context/function.
 	Global() *v8.ObjectTemplate
 
-	// The compiled script. When the Service is instantiated as a Runner, _before_ the runner is
-	// called, this script is run and its return value becomes the Runner's function entry point.
+	// The compiled script. When the Service is instantiated as a v8Runner, _before_ the runner is
+	// called, this script is run and its return value becomes the v8Runner's function entry point.
 	Script() *v8.UnboundScript
 
 	// The Service's name.
 	Name() string
 
-	// If this returns true, a Runner instance will be cached by a VM and reused for the next call.
-	// This is faster, but it means that any changes to the Runner's global variables will persist.
+	// If this returns true, a v8Runner instance will be cached by a VM and reused for the next call.
+	// This is faster, but it means that any changes to the v8Runner's global variables will persist.
 	Reusable() bool
 }
 
@@ -56,7 +56,7 @@ func BasicTemplateFactory(fnSource string) TemplateFactory {
 // additional object or function templates and need to store references to them for use by the
 // Runner.
 type BasicTemplate struct {
-	vm      *VM
+	vm      *v8VM
 	global  *v8.ObjectTemplate
 	script  *v8.UnboundScript
 	name    string
@@ -86,13 +86,13 @@ func (t *BasicTemplate) SetScript(jsSourceCode string) error {
 // them reset on each run, you can set this to false.
 func (t *BasicTemplate) SetReusable(reuseable bool) { t.oneShot = !reuseable }
 
-// Creates a JS template object, which will be instantiated as a real object in a Runner's context.
+// Creates a JS template object, which will be instantiated as a real object in a v8Runner's context.
 func (t *BasicTemplate) NewObjectTemplate() *v8.ObjectTemplate { return v8.NewObjectTemplate(t.vm.iso) }
 
 // A Go function that can be registered as a callback from JavaScript.
-// For convenience, Service callbacks get passed the Runner instance,
+// For convenience, Service callbacks get passed the v8Runner instance,
 // and return Go values -- allowed types are nil, numbers, bool, string, v8.Value, v8.Object.
-type TemplateCallback = func(r *Runner, this *v8.Object, args []*v8.Value) (result any, err error)
+type TemplateCallback = func(r *V8Runner, this *v8.Object, args []*v8.Value) (result any, err error)
 
 // Defines a JS global function that calls calls into the given Go function.
 func (t *BasicTemplate) GlobalCallback(name string, cb TemplateCallback) {
@@ -137,7 +137,7 @@ func (t *BasicTemplate) NewString(str string) *v8.Value {
 
 //////// INTERNALS:
 
-func newTemplate(vm *VM, name string, factory TemplateFactory) (Template, error) {
+func newTemplate(vm *v8VM, name string, factory TemplateFactory) (Template, error) {
 	basicTmpl := &BasicTemplate{
 		name:   name,
 		vm:     vm,
@@ -158,7 +158,7 @@ func newTemplate(vm *VM, name string, factory TemplateFactory) (Template, error)
 
 // Defines a global `sg_log` function that writes to SG's log.
 func (service *BasicTemplate) defineSgLog() {
-	service.global.Set("sg_log", service.NewCallback(func(r *Runner, this *v8.Object, args []*v8.Value) (any, error) {
+	service.global.Set("sg_log", service.NewCallback(func(r *V8Runner, this *v8.Object, args []*v8.Value) (any, error) {
 		if len(args) >= 2 {
 			level := base.LogLevel(args[0].Integer())
 			msg := args[1].String()

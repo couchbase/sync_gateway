@@ -199,12 +199,7 @@ function() {
                     throw(x);
             }
 
-            // v8go has no API for iterating keys of V8 objects, so help it out:
-            if (gResult.access !== undefined)
-                gResult.accessKeys = Object.getOwnPropertyNames(gResult.access);
-            if (gResult.roles !== undefined)
-                gResult.rolesKeys = Object.getOwnPropertyNames(gResult.roles);
-            return gResult;
+            return JSON.stringify(gResult);
         }
     }
 }()

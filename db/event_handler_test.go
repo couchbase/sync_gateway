@@ -47,7 +47,7 @@ func TestSanitizedUrl(t *testing.T) {
 }
 
 func TestCallValidateFunction(t *testing.T) {
-	host := js.NewVMPool(1)
+	host := js.NewV8VMPool(1)
 
 	// Boolean return type handling of CallValidateFunction; Mock up a document change event and
 	// filter function which returns a bool value while calling CallValidateFunction.

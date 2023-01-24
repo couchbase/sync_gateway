@@ -16,7 +16,7 @@ import (
 
 func TestSquare(t *testing.T) {
 	ctx := base.TestCtx(t)
-	vm := NewVM()
+	vm := NewV8VM()
 	defer vm.Close()
 
 	service := NewService(vm, "square", `function(n) {return n * n;}`)
@@ -24,14 +24,15 @@ func TestSquare(t *testing.T) {
 	assert.Equal(t, vm, service.Host())
 
 	// Test WithRunner:
-	result, err := service.WithRunner(func(runner *Runner) (any, error) {
+	result, err := service.WithRunner(func(irunner Runner) (any, error) {
+		runner := irunner.(*V8Runner)
 		assert.Nil(t, runner.goContext)
 		assert.NotNil(t, runner.ContextOrDefault())
 		runner.SetContext(ctx)
 		assert.Equal(t, ctx, runner.Context())
 		assert.Equal(t, ctx, runner.ContextOrDefault())
 
-		result, err := runner.Run(runner.NewInt(9))
+		result, err := runner.RunWithV8Args(runner.NewInt(9))
 		if err != nil {
 			return nil, err
 		}
@@ -49,7 +50,7 @@ func TestSquare(t *testing.T) {
 func TestJSON(t *testing.T) {
 	ctx := base.TestCtx(t)
 	var pool VMPool
-	pool.Init(4)
+	pool.InitV8(4)
 	defer pool.Close()
 
 	service := NewService(&pool, "length", `function(v) {return v.length;}`)
@@ -67,7 +68,7 @@ func TestJSON(t *testing.T) {
 
 func TestCallback(t *testing.T) {
 	ctx := base.TestCtx(t)
-	vm := NewVM()
+	vm := NewV8VM()
 	defer vm.Close()
 
 	src := `(function() {
@@ -77,7 +78,7 @@ func TestCallback(t *testing.T) {
 	var heyParam string
 
 	// A callback function that's callable from JS as hey(num, str)
-	hey := func(r *Runner, this *v8go.Object, args []*v8go.Value) (result any, err error) {
+	hey := func(r *V8Runner, this *v8go.Object, args []*v8go.Value) (result any, err error) {
 		assert.Equal(t, len(args), 2)
 		assert.Equal(t, int64(1234), args[0].Integer())
 		heyParam = args[1].String()
@@ -99,7 +100,7 @@ func TestCallback(t *testing.T) {
 // Test conversion of numbers into/out of JavaScript.
 func TestNumbers(t *testing.T) {
 	ctx := base.TestCtx(t)
-	vm := NewVM()
+	vm := NewV8VM()
 	defer vm.Close()
 
 	service := NewService(vm, "numbers", `function(n, expectedStr) {
@@ -180,7 +181,7 @@ func TestNumbers(t *testing.T) {
 // For security purposes, verify that JS APIs to do network or file I/O are not present:
 func TestNoIO(t *testing.T) {
 	ctx := base.TestCtx(t)
-	vm := NewVM()
+	vm := NewV8VM()
 	defer vm.Close()
 
 	service := NewService(vm, "check", `function() {
@@ -202,7 +203,7 @@ func TestNoIO(t *testing.T) {
 // Verify that ECMAScript modules can't be loaded. (The older `require` is checked in TestNoIO.)
 func TestNoModules(t *testing.T) {
 	ctx := base.TestCtx(t)
-	vm := NewVM()
+	vm := NewV8VM()
 	defer vm.Close()
 
 	src := `import foo from 'foo';
@@ -217,7 +218,7 @@ func TestNoModules(t *testing.T) {
 }
 
 func TestTimeout(t *testing.T) {
-	vm := NewVM()
+	vm := NewV8VM()
 	defer vm.Close()
 
 	ctx := base.TestCtx(t)

@@ -386,7 +386,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 		CollectionByID: make(map[uint32]*DatabaseCollection),
 	}
 
-	dbContext.V8VMs.Init(MaxV8VMs)
+	dbContext.V8VMs.InitV8(MaxV8VMs)
 
 	if options.ImportOptions.ImportFilterSource != nil {
 		dbContext.Options.ImportOptions.ImportFilter = NewImportFilterFunction(&dbContext.V8VMs, *options.ImportOptions.ImportFilterSource, options.JavascriptTimeout)

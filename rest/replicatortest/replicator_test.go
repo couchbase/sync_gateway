@@ -3688,7 +3688,7 @@ func TestActiveReplicatorPullPurgeOnRemoval(t *testing.T) {
 func TestActiveReplicatorPullConflict(t *testing.T) {
 	base.LongRunningTest(t)
 
-	host := js.NewVMPool(4)
+	host := js.NewV8VMPool(4)
 	defer host.Close()
 
 	// scenarios
@@ -3924,7 +3924,7 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 
 	base.LongRunningTest(t)
 
-	host := js.NewVMPool(4)
+	host := js.NewV8VMPool(4)
 	defer host.Close()
 
 	// scenarios
@@ -5601,7 +5601,7 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 
 	base.LongRunningTest(t)
 
-	host := js.NewVMPool(4)
+	host := js.NewV8VMPool(4)
 	defer host.Close()
 
 	createRevID := func(generation int, parentRevID string, body db.Body) string {
@@ -6249,7 +6249,7 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 // whilst applying default conflict resolution policy through pushAndPull replication.
 func TestDefaultConflictResolverWithTombstoneLocal(t *testing.T) {
 
-	host := js.NewVMPool(4)
+	host := js.NewV8VMPool(4)
 	defer host.Close()
 
 	base.LongRunningTest(t)
@@ -6413,7 +6413,7 @@ func TestDefaultConflictResolverWithTombstoneLocal(t *testing.T) {
 // whilst applying default conflict resolution policy through pushAndPull replication.
 func TestDefaultConflictResolverWithTombstoneRemote(t *testing.T) {
 
-	host := js.NewVMPool(4)
+	host := js.NewV8VMPool(4)
 	defer host.Close()
 
 	base.LongRunningTest(t)
@@ -6980,7 +6980,7 @@ func TestConflictResolveMergeWithMutatedRev(t *testing.T) {
 
 	base.RequireNumTestBuckets(t, 2)
 
-	host := js.NewVMPool(4)
+	host := js.NewV8VMPool(4)
 	defer host.Close()
 
 	// Passive

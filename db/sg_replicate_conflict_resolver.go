@@ -239,7 +239,7 @@ func NewCustomConflictResolver(source string, timeout time.Duration, host js.Ser
 }
 
 // Implementation of the JS "defaultPolicy" callback function:
-func defaultPolicyCallback(runner *js.Runner, this *v8go.Object, args []*v8go.Value) (any, error) {
+func defaultPolicyCallback(runner *js.V8Runner, this *v8go.Object, args []*v8go.Value) (any, error) {
 	if len(args) != 1 {
 		return nil, errors.New("defaultPolicy() takes one parameter")
 	}

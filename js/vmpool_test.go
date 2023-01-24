@@ -14,7 +14,7 @@ import (
 )
 
 func TestValidateJavascriptFunction(t *testing.T) {
-	vm := NewVM()
+	vm := NewV8VM()
 	defer vm.Close()
 
 	assert.NoError(t, vm.ValidateJavascriptFunction(`function(doc) {return doc.x;}`, 1, 1))
@@ -84,12 +84,26 @@ func testConcurrently(t *testing.T, ctx context.Context, testFunc func(context.C
 	return assert.LessOrEqual(t, float64(concurrentDuration), 1.1*float64(sequentialDuration))
 }
 
+func TestPoolsSequentially(t *testing.T) {
+	log.Printf("FYI, GOMAXPROCS = %d", runtime.GOMAXPROCS(0))
+	const kJSCode = `function(n) {return n * n;}`
+
+	ctx := base.TestCtx(t)
+	pool := NewV8VMPool(32)
+	service := NewService(pool, "testy", kJSCode)
+
+	runSequentially(ctx, func(ctx context.Context) bool {
+		result, err := service.Run(ctx, 13)
+		return assert.NoError(t, err) && assert.EqualValues(t, result, 169)
+	}, 10)
+}
+
 func TestPoolsConcurrently(t *testing.T) {
 	log.Printf("FYI, GOMAXPROCS = %d", runtime.GOMAXPROCS(0))
 	const kJSCode = `function(n) {return n * n;}`
 
 	ctx := base.TestCtx(t)
-	pool := NewVMPool(32)
+	pool := NewV8VMPool(32)
 	service := NewService(pool, "testy", kJSCode)
 
 	t.Run("Function", func(t *testing.T) {
@@ -103,7 +117,7 @@ func TestPoolsConcurrently(t *testing.T) {
 func BenchmarkVMPoolIntsSequentially(b *testing.B) {
 	const kJSCode = `function(n) {return n * n;}`
 	ctx := base.TestCtx(b)
-	pool := NewVMPool(32)
+	pool := NewV8VMPool(32)
 	service := NewService(pool, "testy", kJSCode)
 	testFunc := func(ctx context.Context) bool {
 		result, err := service.Run(ctx, 13)
@@ -119,7 +133,7 @@ func BenchmarkVMPoolIntsConcurrently(b *testing.B) {
 	const kNumThreads = 8
 	const kJSCode = `function(n) {return n * n;}`
 	ctx := base.TestCtx(b)
-	pool := NewVMPool(32)
+	pool := NewV8VMPool(32)
 	service := NewService(pool, "testy", kJSCode)
 	testFunc := func(ctx context.Context) bool {
 		result, err := service.Run(ctx, 13)
@@ -135,7 +149,7 @@ func BenchmarkVMPoolStringsSequentially(b *testing.B) {
 	fmt.Printf("-------- N = %d -------\n", b.N)
 	const kJSCode = `function(str) {return str + str;}`
 	ctx := base.TestCtx(b)
-	pool := NewVMPool(32)
+	pool := NewV8VMPool(32)
 	service := NewService(pool, "testy", kJSCode)
 	testFunc := func(ctx context.Context) bool {
 		result, err := service.Run(ctx, "This is a test of the js package")
@@ -151,7 +165,7 @@ func BenchmarkVMPoolStringsConcurrently(b *testing.B) {
 	const kNumThreads = 8
 	const kJSCode = `function(str) {return str + str;}`
 	ctx := base.TestCtx(b)
-	pool := NewVMPool(32)
+	pool := NewV8VMPool(32)
 	service := NewService(pool, "testy", kJSCode)
 	testFunc := func(ctx context.Context) bool {
 		result, err := service.Run(ctx, "This is a test of the js package")

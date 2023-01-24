@@ -623,7 +623,7 @@ func TestIsCfgChanged(t *testing.T) {
 	require.NoError(t, err)
 
 	dbctx := DatabaseContext{Name: "test"}
-	dbctx.V8VMs.Init(4)
+	dbctx.V8VMs.InitV8(4)
 	mgr, err := NewSGReplicateManager(base.TestCtx(t), &dbctx, testCfg)
 	require.NoError(t, err)
 	defer mgr.Stop()

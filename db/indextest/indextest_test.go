@@ -357,7 +357,7 @@ func TestGetRoleIDs(t *testing.T) {
 		t.Skip("This test is Couchbase Server and UseViews=false only")
 	}
 
-	host := js.NewVMPool(4)
+	host := js.NewV8VMPool(4)
 	defer host.Close()
 
 	testCases := []struct {

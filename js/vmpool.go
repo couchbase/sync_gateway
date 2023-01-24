@@ -11,33 +11,45 @@ import (
 
 //////// VM POOL
 
+type vmFactory = func(*servicesConfiguration) VM
+
 // A thread-safe ServiceHost for Services and Runners that owns a set of VMs
 // and allocates an available one when a Runner is needed.
 type VMPool struct {
 	maxInUse  int                    // Max number of simultaneously in-use VMs
 	services  *servicesConfiguration // Defines the services (owned VMs also have references)
 	tickets   chan bool              // Each item in this channel represents availability of a VM
+	factory   vmFactory              // Factory function that creates IVMs
 	mutex     sync.Mutex             // Must be locked to access fields below
-	vms_      []*VM                  // LIFO cache of idle VMs, recently used at end
+	vms_      []VM                   // LIFO cache of idle VMs, recently used at end
 	curInUse_ int                    // Current number of VMs "checked out"
 }
 
-// Creates a `VMPool`, a thread-safe ServiceHost for Services and Runners.
+// Creates a `VMPool`, a thread-safe ServiceHost for Services and Runners, using V8.
 // `maxVMs` is the maximum number of V8 instances (VM objects) it will provide; a reasonable value
 // for this is the number of CPU cores.
-func NewVMPool(maxVMs int) *VMPool {
-	pool := new(VMPool)
-	pool.Init(maxVMs)
-	return pool
+func NewV8VMPool(maxVMs int) *VMPool {
+	return newVMPool(v8Factory, maxVMs)
 }
 
 // Initializes a `VMPool`, a thread-safe ServiceHost for Services and Runners
 // `maxVMs` is the maximum number of V8 instances (VM objects) it will provide; a reasonable value
 // for this is the number of CPU cores.
-func (pool *VMPool) Init(maxVMs int) {
+func (pool *VMPool) InitV8(maxVMs int) {
+	pool.init(v8Factory, maxVMs)
+}
+
+func newVMPool(factory vmFactory, maxVMs int) *VMPool {
+	pool := new(VMPool)
+	pool.init(factory, maxVMs)
+	return pool
+}
+
+func (pool *VMPool) init(factory vmFactory, maxVMs int) {
 	pool.maxInUse = maxVMs
 	pool.services = &servicesConfiguration{}
-	pool.vms_ = make([]*VM, 0, maxVMs)
+	pool.factory = factory
+	pool.vms_ = make([]VM, 0, maxVMs)
 	pool.tickets = make(chan bool, maxVMs)
 	for i := 0; i < maxVMs; i++ {
 		pool.tickets <- true
@@ -81,14 +93,14 @@ func (pool *VMPool) PurgeUnusedVMs() {
 
 func (pool *VMPool) registerService(factory TemplateFactory, name string) serviceID {
 	if pool.services == nil {
-		panic("You forgot to initialize a VMPool") // failed to call Init or NewVMPool
+		panic("You forgot to initialize a VMPool") // failed to call Init or NewV8VMPool
 	}
 	return pool.services.addService(factory, name)
 }
 
 // Produces an idle `VM` that can be used by this goroutine.
 // You MUST call returnVM, or VM.release, when done.
-func (pool *VMPool) getVM(service *Service) (*VM, error) {
+func (pool *VMPool) getVM(service *Service) (VM, error) {
 	// Pull a ticket; this blocks until less than `maxVMs` VMs are in use:
 	if _, ok := <-pool.tickets; !ok {
 		return nil, fmt.Errorf("the VMPool has been closed")
@@ -98,21 +110,21 @@ func (pool *VMPool) getVM(service *Service) (*VM, error) {
 	vm, inUse := pool.pop(service)
 	if vm == nil {
 		// Nothing in the pool, so create a new VM instance.
-		vm = newVM(pool.services)
+		vm = pool.factory(pool.services)
 		base.InfofCtx(context.Background(), base.KeyJavascript,
 			"js.VMPool.getVM: No VMs free; created a new one")
 	}
 
-	vm.returnToPool = pool
+	vm.setReturnToPool(pool)
 	base.DebugfCtx(context.Background(), base.KeyJavascript,
 		"js.VMPool.getVM: %d/%d VMs now in use", inUse, pool.maxInUse)
 	return vm, nil
 }
 
 // Returns a used `VM` back to the pool for reuse; called by VM.Return
-func (pool *VMPool) returnVM(vm *VM) {
-	if vm != nil && vm.returnToPool == pool {
-		vm.returnToPool = nil
+func (pool *VMPool) returnVM(vm VM) {
+	if vm != nil && vm.getReturnToPool() == pool {
+		vm.setReturnToPool(nil)
 
 		inUse := pool.push(vm)
 		base.DebugfCtx(context.Background(), base.KeyJavascript,
@@ -125,7 +137,7 @@ func (pool *VMPool) returnVM(vm *VM) {
 
 // Instantiates a Runner for a named Service, in an available VM.
 // You MUST call Runner.Return when done -- it will return the associated VM too.
-func (pool *VMPool) getRunner(service *Service) (*Runner, error) {
+func (pool *VMPool) getRunner(service *Service) (Runner, error) {
 	if vm, err := pool.getVM(service); err != nil {
 		return nil, err
 	} else if runner, err := vm.getRunner(service); err != nil {
@@ -136,13 +148,23 @@ func (pool *VMPool) getRunner(service *Service) (*Runner, error) {
 	}
 }
 
+func (pool *VMPool) withRunner(service *Service, fn func(Runner) (any, error)) (any, error) {
+	if vm, err := pool.getVM(service); err != nil {
+		return nil, err
+	} else {
+		return vm.withRunner(service, fn)
+		// (I don't need to call returnVM: it will return itself when it's done with its
+		// Runner, because its returnToPool is set.)
+	}
+}
+
 //////// POOL MANAGEMENT --  The low level stuff that requires a mutex.
 
 // A VMPool will stop caching a VM that hasn't been used for this long.
 const kVMStaleDuration = time.Minute
 
 // Just gets a VM from the pool, and increments the in-use count. Thread-safe.
-func (pool *VMPool) pop(service *Service) (vm *VM, inUse int) {
+func (pool *VMPool) pop(service *Service) (vm VM, inUse int) {
 	pool.mutex.Lock()
 	defer pool.mutex.Unlock()
 
@@ -171,9 +193,9 @@ func (pool *VMPool) pop(service *Service) (vm *VM, inUse int) {
 		// If the oldest VM in the pool hasn't been used in a while, get rid of it:
 		if n > 1 {
 			oldest := vms[0]
-			if stale := time.Since(oldest.lastReturned); stale > kVMStaleDuration {
+			if stale := time.Since(oldest.getLastReturned()); stale > kVMStaleDuration {
 				vms = vms[1:]
-				oldest.returnToPool = nil
+				oldest.setReturnToPool(nil)
 				oldest.Close()
 				base.DebugfCtx(context.Background(), base.KeyJavascript,
 					"js.VMPool.pop: Disposed a stale VM not used in %v", stale)
@@ -185,11 +207,10 @@ func (pool *VMPool) pop(service *Service) (vm *VM, inUse int) {
 }
 
 // Just adds a VM to the pool, and decrements the in-use count. Thread-safe.
-func (pool *VMPool) push(vm *VM) (inUse int) {
+func (pool *VMPool) push(vm VM) (inUse int) {
 	pool.mutex.Lock()
 	defer pool.mutex.Unlock()
 
-	vm.lastReturned = time.Now()
 	pool.vms_ = append(pool.vms_, vm)
 	pool.curInUse_ -= 1
 	return pool.curInUse_
@@ -203,7 +224,7 @@ func (pool *VMPool) closeAll() int {
 	pool.mutex.Unlock()
 
 	for _, vm := range vms {
-		vm.returnToPool = nil
+		vm.setReturnToPool(nil)
 		vm.Close()
 	}
 	return len(vms)

@@ -13,16 +13,11 @@ import (
 	_ "embed"
 	"encoding/json"
 	"fmt"
-	"math"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/js"
-	pkgerrors "github.com/pkg/errors"
-	v8 "rogchap.com/v8go"
-	// Docs: https://pkg.go.dev/rogchap.com/v8go
 )
 
 // Maps user names (or role names prefixed with "role:") to arrays of channel or role names
@@ -96,11 +91,6 @@ func NewChannelMapper(owner js.ServiceHost, fnSource string, timeout time.Durati
 	}
 }
 
-// used by tests.
-func newChannelMapperWithVMs(fnSource string, timeout time.Duration) *ChannelMapper {
-	return NewChannelMapper(js.NewVM(), fnSource, timeout)
-}
-
 func (cm *ChannelMapper) closeVMs() {
 	cm.service.Host().Close()
 }
@@ -146,7 +136,7 @@ func (mapper *ChannelMapper) MapToChannelsAndAccess(body map[string]any, oldBody
 
 // Runs the sync function. Thread-safe.
 func (mapper *ChannelMapper) MapToChannelsAndAccess2(docID string, revID string, bodyJSON string, oldBodyJSON string, metaMap MetaMap, userCtx map[string]interface{}) (*ChannelMapperOutput, error) {
-	result, err := mapper.service.WithRunner(func(runner *js.Runner) (any, error) {
+	result, err := mapper.service.WithRunner(func(runner js.Runner) (any, error) {
 		ctx := context.Background()
 		if mapper.timeout > 0 {
 			var cancelFn context.CancelFunc
@@ -159,7 +149,17 @@ func (mapper *ChannelMapper) MapToChannelsAndAccess2(docID string, revID string,
 	return result.(*ChannelMapperOutput), err
 }
 
-func callSyncFn(runner *js.Runner,
+// Parsed version of the JSON object returned by the sync-fn wrapper.
+type syncFnResult = struct {
+	RejectionStatus  int
+	RejectionMessage string
+	Channels         []string
+	Access           map[string][]string
+	Roles            map[string][]string
+	Expiry           any
+}
+
+func callSyncFn(runner js.Runner,
 	docID string,
 	revID string,
 	bodyJSON string,
@@ -168,50 +168,37 @@ func callSyncFn(runner *js.Runner,
 	userCtx map[string]interface{}) (*ChannelMapperOutput, error) {
 
 	// Call the sync fn:
-	args, err := runner.ConvertArgs(docID, revID, js.JSONString(bodyJSON), oldBodyJSON, metaMap.Key, string(metaMap.JSONValue), userCtx)
+	jsResult, err := runner.Run(docID, revID, js.JSONString(bodyJSON), oldBodyJSON, metaMap.Key, string(metaMap.JSONValue), userCtx)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("unexpected error calling sync fn: %w", err)
 	}
-	jsResult, err := runner.RunAsObject(args...)
-	if err != nil {
-		return nil, err
+	var result syncFnResult
+	if err := json.Unmarshal([]byte(jsResult.(string)), &result); err != nil {
+		return nil, fmt.Errorf("unparseable output from sync-fn wrapper: %w", err)
 	}
 
-	// Convert the JavaScript jsResult object to a ChannelMapperOutput:
+	// Convert the JSON result to a ChannelMapperOutput:
 	output := &ChannelMapperOutput{}
-
-	if rej, err := jsResult.Get("rejectionStatus"); err == nil {
-		if status := rej.Integer(); status >= 400 {
-			var message string
-			if msg, err := jsResult.Get("rejectionMessage"); err == nil {
-				message = msg.String()
-			}
-			output.Rejection = base.HTTPErrorf(int(status), message)
-			return output, err
+	if result.RejectionStatus >= 400 {
+		output.Rejection = base.HTTPErrorf(result.RejectionStatus, result.RejectionMessage)
+		return output, nil
+	}
+	if result.Channels != nil {
+		if output.Channels, err = SetFromArray(result.Channels, ExpandStar); err != nil {
+			return nil, err
 		}
 	}
-
-	if jsChannels, err := jsResult.Get("channels"); err != nil {
-		return nil, err
-	} else if channels, err := js.StringArrayToGo(jsChannels); err != nil {
-		return nil, err
-	} else if output.Channels, err = SetFromArray(channels, ExpandStar); err != nil {
+	if output.Access, err = compileJSAccessMap(result.Access, ""); err != nil {
 		return nil, err
 	}
-
-	if output.Access, err = compileJSAccessMap(jsResult, "access", ""); err != nil {
+	if output.Roles, err = compileJSAccessMap(result.Roles, "role:"); err != nil {
 		return nil, err
 	}
-
-	if output.Roles, err = compileJSAccessMap(jsResult, "roles", "role:"); err != nil {
-		return nil, err
-	}
-
-	if jsExp, err := jsResult.Get("expiry"); err == nil {
-		if expiry, reflectErr := reflectExpiry(jsExp); reflectErr == nil {
+	if result.Expiry != nil {
+		if expiry, reflectErr := base.ReflectExpiry(result.Expiry); reflectErr == nil {
 			output.Expiry = expiry
 		} else {
-			base.WarnfCtx(runner.ContextOrDefault(), "SyncRunner: Invalid value passed to expiry().  Value:%+v ", jsExp)
+			base.WarnfCtx(runner.ContextOrDefault(), "sync function set invalid expiry value `%+v` ", result.Expiry)
 		}
 	}
 	return output, nil
@@ -219,40 +206,12 @@ func callSyncFn(runner *js.Runner,
 
 //////// UTILITIES:
 
-// Shortcut to get an object property as an object.
-func v8GetObject(obj *v8.Object, key string) (*v8.Object, error) {
-	if jsVal, err := obj.Get(key); err != nil || jsVal.IsUndefined() {
-		return nil, err
-	} else {
-		return jsVal.AsObject()
-	}
-}
-
 // Converts the "access" or "roles" property of the result into an AccessMap.
-func compileJSAccessMap(jsResult *v8.Object, key string, prefix string) (AccessMap, error) {
-	jsMap, err := v8GetObject(jsResult, key)
-	if err != nil || jsMap == nil {
-		return nil, err
-	}
-	jsKeys, err := v8GetObject(jsResult, key+"Keys")
-	if err != nil {
-		return nil, err
-	}
+func compileJSAccessMap(result map[string][]string, prefix string) (AccessMap, error) {
+	var err error
 	access := make(AccessMap)
-	for i := uint32(0); jsKeys.HasIdx(i); i++ {
-		userVal, err := jsKeys.GetIdx(i)
-		if err != nil {
-			return nil, err
-		}
-		user := userVal.String()
-		jsItems, err := jsMap.Get(user)
-		if err != nil {
-			return nil, err
-		}
-		values, err := js.StringArrayToGo(jsItems)
-		if err != nil {
-			return nil, err
-		} else if len(values) > 0 {
+	for user, values := range result {
+		if len(values) > 0 {
 			if err = stripMandatoryPrefix(values, prefix); err != nil {
 				return nil, err
 			}
@@ -276,38 +235,4 @@ func stripMandatoryPrefix(values []string, prefix string) error {
 		}
 	}
 	return nil
-}
-
-// Adapted from base.ReflectExpiry
-func reflectExpiry(rawExpiry *v8.Value) (*uint32, error) {
-	if rawExpiry.IsNumber() {
-		return validateFloatAsUInt32Expiry(rawExpiry.Number())
-	} else if rawExpiry.IsString() {
-		expiry := rawExpiry.String()
-		// First check if it's a numeric string
-		expInt, err := strconv.ParseInt(expiry, 10, 32)
-		if err == nil {
-			return base.ValidateUint32Expiry(expInt)
-		}
-		// Check if it's an ISO-8601 date
-		expRFC3339, err := time.Parse(time.RFC3339, expiry)
-		if err == nil {
-			return base.ValidateUint32Expiry(expRFC3339.Unix())
-		} else {
-			return nil, pkgerrors.Wrapf(err, "Unable to parse expiry %s as either numeric or date expiry", rawExpiry)
-		}
-	} else if rawExpiry.IsNullOrUndefined() {
-		return nil, nil
-	} else {
-		return nil, fmt.Errorf("unrecognized expiry format")
-	}
-}
-
-// Adapted from base.ValidateUint32Expiry
-func validateFloatAsUInt32Expiry(expiry float64) (*uint32, error) {
-	if expiry < 0 || expiry > math.MaxUint32 {
-		return nil, fmt.Errorf("expiry value is not within valid range: %f", expiry)
-	}
-	uint32Expiry := uint32(expiry)
-	return &uint32Expiry, nil
 }

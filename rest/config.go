@@ -684,7 +684,7 @@ func (dbConfig *DbConfig) validateVersion(ctx context.Context, isEnterpriseEditi
 		base.WarnfCtx(ctx, `"pool" config option is not supported. The pool will be set to "default". The option should be removed from config file.`)
 	}
 
-	vm := js.NewVM()
+	vm := js.NewV8VM()
 	defer vm.Close()
 	if isEmpty, err := validateJavascriptFunction(vm, dbConfig.Sync, 1, 3); err != nil {
 		multiError = multiError.Append(fmt.Errorf("sync function error: %w", err))
@@ -957,7 +957,7 @@ func (dbConfig *DbConfig) deprecatedConfigCacheFallback() (warnings []string) {
 }
 
 // validateJavascriptFunction returns an error if the javascript function was invalid, if set.
-func validateJavascriptFunction(vm *js.VM, jsFunc *string, minArgs int, maxArgs int) (isEmpty bool, err error) {
+func validateJavascriptFunction(vm js.VM, jsFunc *string, minArgs int, maxArgs int) (isEmpty bool, err error) {
 	if jsFunc != nil && strings.TrimSpace(*jsFunc) != "" {
 		if err := vm.ValidateJavascriptFunction(*jsFunc, minArgs, maxArgs); err != nil {
 			return false, fmt.Errorf("invalid javascript syntax: %w", err)
