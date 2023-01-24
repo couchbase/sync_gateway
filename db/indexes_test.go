@@ -122,7 +122,13 @@ func TestInitializeIndexesWithPartition(t *testing.T) {
 			dataStoresName, err := db.Bucket.ListDataStores()
 			require.NoError(t, err)
 
+			// use to eliminate non related data recieved from /indexStatus endpoint
+			dataStoresNameMap := make(map[string]struct{}, len(dataStoresName))
+
 			for _, dataStoreName := range dataStoresName {
+				key := fmt.Sprintf("%s.%s.%s", db.Bucket.GetName(), dataStoreName.ScopeName(), dataStoreName.CollectionName())
+				dataStoresNameMap[key] = struct{}{}
+
 				dataStore, err := db.Bucket.NamedDataStore(dataStoreName)
 				require.NoError(t, err)
 
@@ -138,6 +144,20 @@ func TestInitializeIndexesWithPartition(t *testing.T) {
 				require.NoError(t, err, "Error validating indexes on bucket")
 			}
 
+			partitionedIndexFilter := func(s SGIndex) bool {
+				return s.partitionExpression == ""
+			}
+			partitionedIndexMap := sgIndexNamesAsMap(base.TestUseXattrs(), db.IsServerless(), partitionedIndexFilter)
+
+			expectedNumOfPartitionedIndexPerBucket := 0
+			if test.indexInitConfig.ShouldPartitionIndex {
+				expectedNumOfPartitionedIndexPerBucket = len(dataStoresName) * len(partitionedIndexMap)
+			}
+
+			totalIndexes := len(sgIndexNames(base.TestUseXattrs(), db.IsServerless()))
+
+			totalNumOfPartitionedIndexes := 0
+
 			cbs, ok := base.AsCouchbaseBucketStore(db.Bucket)
 			require.True(t, ok)
 			require.NotNil(t, cbs)
@@ -149,22 +169,17 @@ func TestInitializeIndexesWithPartition(t *testing.T) {
 			waitAndAssertCondition(t, func() bool {
 				indexesMeta, err = cbs.IndexMeta()
 				require.NoError(t, err)
-				return len(indexesMeta) > 0
+				// total records return from /indexStatus should be greater or equals to
+				// num of data store * num of indexes per datastore
+				return len(indexesMeta) >= totalIndexes*len(dataStoresName)
 			})
 
-			partitionedIndexFilter := func(s SGIndex) bool {
-				return s.partitionExpression == ""
-			}
-			partitionedIndexMap := sgIndexNamesAsMap(base.TestUseXattrs(), db.IsServerless(), partitionedIndexFilter)
-
-			expectedNumOfPartitionedIndexPerBucket := 0
-			if test.indexInitConfig.ShouldPartitionIndex {
-				expectedNumOfPartitionedIndexPerBucket = len(dataStoresName) * len(partitionedIndexMap)
-			}
-
-			totalNumOfPartitionedIndexes := 0
-
 			for _, indexMeta := range indexesMeta {
+				key := fmt.Sprintf("%s.%s.%s", indexMeta.Bucket, indexMeta.Scope, indexMeta.Collection)
+				if _, ok := dataStoresNameMap[key]; !ok {
+					continue
+				}
+
 				if _, ok := partitionedIndexMap[indexMeta.IndexName]; !ok {
 					continue
 				}
