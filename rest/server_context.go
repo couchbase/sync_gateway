@@ -468,14 +468,14 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	}
 
 	// initDataStore is a function to initialize Views or GSI indexes for a datastore
-	initDataStore := func(ds base.DataStore) error {
+	initDataStore := func(ds base.DataStore) ([]string, error) {
 		if useViews {
-			return db.InitializeViews(ctx, ds)
+			return []string{}, db.InitializeViews(ctx, ds)
 		}
 
 		gsiSupported := bucket.IsSupported(sgbucket.BucketStoreFeatureN1ql)
 		if !gsiSupported {
-			return errors.New("Sync Gateway was unable to connect to a query node on the provided Couchbase Server cluster.  Ensure a query node is accessible, or set 'use_views':true in Sync Gateway's database config.")
+			return nil, errors.New("Sync Gateway was unable to connect to a query node on the provided Couchbase Server cluster.  Ensure a query node is accessible, or set 'use_views':true in Sync Gateway's database config.")
 		}
 
 		numReplicas := DefaultNumIndexReplicas
@@ -484,16 +484,12 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		}
 		n1qlStore, ok := base.AsN1QLStore(ds)
 		if !ok {
-			return errors.New("Cannot create indexes on non-Couchbase data store.")
-
+			return nil, errors.New("Cannot create indexes on non-Couchbase data store.")
 		}
-		indexErr := db.InitializeIndexes(n1qlStore, config.UseXattrs(), numReplicas, false, sc.Config.IsServerless())
-		if indexErr != nil {
-			return indexErr
-		}
-
-		return nil
+		return db.InitializeIndexes(n1qlStore, config.UseXattrs(), numReplicas, false, sc.Config.IsServerless())
 	}
+
+	deferredIndexesForDataStore := make(map[sgbucket.DataStore][]string)
 
 	if len(config.Scopes) > 0 {
 		if !bucket.IsSupported(sgbucket.BucketStoreFeatureCollections) {
@@ -515,16 +511,60 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 					return nil, fmt.Errorf("attempting to create/update database with a scope/collection that is not found")
 				}
 
-				if err := initDataStore(dataStore); err != nil {
+				deferredIndexes, err := initDataStore(dataStore)
+				if err != nil {
 					return nil, err
 				}
+				deferredIndexesForDataStore[dataStore] = deferredIndexes
 			}
 		}
 	} else {
 		// no scopes configured - init the default data store
-		if err := initDataStore(bucket.DefaultDataStore()); err != nil {
+		deferredIndexes, err := initDataStore(bucket.DefaultDataStore())
+		if err != nil {
 			return nil, err
 		}
+		deferredIndexesForDataStore[bucket.DefaultDataStore()] = deferredIndexes
+	}
+
+	// Build and wait for Indexes to come online
+	wg := sync.WaitGroup{}
+	wg.Add(len(deferredIndexesForDataStore))
+	var buildError error
+
+	for dataStore, deferredIndexes := range deferredIndexesForDataStore {
+		func(dataStore sgbucket.DataStore, deferrdeferredIndexes []string) {
+			defer wg.Done()
+
+			if len(deferredIndexes) == 0 {
+				return
+			}
+
+			// ignoring second boolean return value since if datastore is not N1QLStore,
+			// it would have failed above while creating Indexes in `initDataStore` function
+			n1qlStore, _ := base.AsN1QLStore(dataStore)
+
+			err := base.BuildDeferredIndexes(n1qlStore, deferrdeferredIndexes)
+			if err != nil {
+				base.ErrorfCtx(ctx, "failed to build deferred indexes for datastore %s error %v", n1qlStore.GetName(), err)
+				buildError = err
+				return
+			}
+
+			// base.InfofCtx(ctx, base.KeyAll, "TESTING: n1qlStore %+v, config %+v, sc.Config %v", n1qlStore, config, false, sc.Config)
+
+			err = db.WaitForIndexes(n1qlStore, config.UseXattrs(), false, sc.Config.IsServerless())
+			if err != nil {
+				base.ErrorfCtx(ctx, "error waiting for indexes for datastore %s error %v", n1qlStore.GetName(), err)
+				buildError = err
+				return
+			}
+
+		}(dataStore, deferredIndexes)
+	}
+
+	if buildError != nil {
+		return nil, fmt.Errorf("failed to build or validate indexes for one or more datastore.")
 	}
 
 	// Process unsupported config options or store runtime defaults if not set

@@ -339,7 +339,7 @@ func (i *SGIndex) createIfNeeded(bucket base.N1QLStore, useXattrs bool, numRepli
 }
 
 // Initializes Sync Gateway indexes for bucket.  Creates required indexes if not found, then waits for index readiness.
-func InitializeIndexes(n1QLStore base.N1QLStore, useXattrs bool, numReplicas uint, failFast bool, isServerless bool) error {
+func InitializeIndexes(n1QLStore base.N1QLStore, useXattrs bool, numReplicas uint, failFast bool, isServerless bool) ([]string, error) {
 
 	base.InfofCtx(context.TODO(), base.KeyAll, "Initializing indexes with numReplicas: %d...", numReplicas)
 
@@ -355,7 +355,7 @@ func InitializeIndexes(n1QLStore base.N1QLStore, useXattrs bool, numReplicas uin
 		fullIndexName := sgIndex.fullIndexName(useXattrs)
 		isDeferred, err := sgIndex.createIfNeeded(n1QLStore, useXattrs, numReplicas)
 		if err != nil {
-			return base.RedactErrorf("Unable to install index %s: %v", base.MD(sgIndex.simpleName), err)
+			return nil, base.RedactErrorf("Unable to install index %s: %v", base.MD(sgIndex.simpleName), err)
 		}
 
 		if isDeferred {
@@ -363,21 +363,11 @@ func InitializeIndexes(n1QLStore base.N1QLStore, useXattrs bool, numReplicas uin
 		}
 	}
 
-	// Issue BUILD INDEX for any deferred indexes.
-	if len(deferredIndexes) > 0 {
-		buildErr := base.BuildDeferredIndexes(n1QLStore, deferredIndexes)
-		if buildErr != nil {
-			base.InfofCtx(context.TODO(), base.KeyQuery, "Error building deferred indexes.  Error: %v", buildErr)
-			return buildErr
-		}
-	}
-
-	// Wait for initial readiness queries to complete
-	return waitForIndexes(n1QLStore, useXattrs, isServerless, failFast)
+	return deferredIndexes, nil
 }
 
 // Issue a consistency=request_plus query against critical indexes to guarantee indexing is complete and indexes are ready.
-func waitForIndexes(bucket base.N1QLStore, useXattrs, isServerless, failfast bool) error {
+func WaitForIndexes(bucket base.N1QLStore, useXattrs, isServerless, failfast bool) error {
 	logCtx := context.TODO()
 	base.InfofCtx(logCtx, base.KeyAll, "Verifying index availability for bucket %s...", base.MD(bucket.GetName()))
 	var indexes []string

@@ -344,7 +344,7 @@ var viewsAndGSIBucketInit base.TBPBucketInitFunc = func(ctx context.Context, b b
 			return err
 		}
 		tbp.Logf(ctx, "creating SG bucket indexes")
-		if err := InitializeIndexes(n1qlStore, base.TestUseXattrs(), 0, false, false); err != nil {
+		if err := CreateAndBuildIndex(n1qlStore, base.TestUseXattrs(), false, false); err != nil {
 			return err
 		}
 
@@ -353,6 +353,22 @@ var viewsAndGSIBucketInit base.TBPBucketInitFunc = func(ctx context.Context, b b
 			return err
 		}
 		tbp.Logf(ctx, "finished creating SG bucket indexes")
+	}
+	return nil
+}
+
+func CreateAndBuildIndex(n1QLStore base.N1QLStore, xattrs bool, failFast bool, isServerless bool) error {
+	deferredIndexes, err := InitializeIndexes(n1QLStore, base.TestUseXattrs(), 0, false, isServerless)
+	if err != nil {
+		return err
+	}
+	err = base.BuildDeferredIndexes(n1QLStore, deferredIndexes)
+	if err != nil {
+		return err
+	}
+	err = WaitForIndexes(n1QLStore, base.TestUseXattrs(), false, isServerless)
+	if err != nil {
+		return err
 	}
 	return nil
 }
