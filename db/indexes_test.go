@@ -386,6 +386,7 @@ func TestPostUpgradeMultipleCollections(t *testing.T) {
 	serverless := false
 
 	indexInitConfig := GetDefaultIndexInitConfig()
+	indexInitConfig.UseXattrs = useXattrs
 
 	for _, dataStore := range db.getDataStores() {
 		n1qlStore, ok := base.AsN1QLStore(dataStore)
