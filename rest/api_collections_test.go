@@ -398,7 +398,7 @@ func TestMultiCollectionChannelAccess(t *testing.T) {
 		tb.GetName(), base.TestUseXattrs(), string(scopesConfigString)))
 	RequireStatus(t, resp, http.StatusCreated)
 
-	// Ensure users can access the given channels in new collection, can't access docs in other channels on the new collection
+	// Ensure users can't access docs in a removed collection
 	resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.keyspace3}}/testDocBazA", "", nil, "userB", "letmein")
 	RequireStatus(t, resp, http.StatusBadRequest)
 }
