@@ -491,6 +491,8 @@ type DatabaseStats struct {
 	SyncFunctionCount *SgwIntStat `json:"sync_function_count"`
 	// The total time spent evaluating a sync function (across all collections).
 	SyncFunctionTime *SgwIntStat `json:"sync_function_time"`
+	// The total number of times that a sync function encountered an exception (across all collections).
+	SyncFunctionExceptionCount *SgwIntStat `json:"sync_function_exception_count"`
 
 	// These can be cleaned up in future versions of SGW, implemented as maps to reduce amount of potential risk
 	// prior to Hydrogen release. These are not exported as part of prometheus and only exposed through expvars
@@ -1401,6 +1403,10 @@ func (d *DbStats) initDatabaseStats() error {
 	if err != nil {
 		return err
 	}
+	resUtil.SyncFunctionExceptionCount, err = NewIntStat(SubsystemDatabaseKey, "sync_function_exception_count", labelKeys, labelVals, prometheus.CounterValue, 0)
+	if err != nil {
+		return err
+	}
 	resUtil.ImportFeedMapStats = &ExpVarMapWrapper{new(expvar.Map).Init()}
 
 	resUtil.CacheFeedMapStats = &ExpVarMapWrapper{new(expvar.Map).Init()}
@@ -1441,6 +1447,7 @@ func (d *DbStats) unregisterDatabaseStats() {
 	prometheus.Unregister(d.DatabaseStats.WarnXattrSizeCount)
 	prometheus.Unregister(d.DatabaseStats.SyncFunctionCount)
 	prometheus.Unregister(d.DatabaseStats.SyncFunctionTime)
+	prometheus.Unregister(d.DatabaseStats.SyncFunctionExceptionCount)
 }
 
 func (d *DbStats) CollectionStat(scopeName, collectionName string) (*CollectionStats, error) {

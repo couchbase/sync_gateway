@@ -2264,6 +2264,7 @@ func (db *DatabaseCollectionWithUser) getChannelsAndAccess(ctx context.Context, 
 			} else {
 				err = base.HTTPErrorf(500, "Exception in JS sync function")
 				db.collectionStats.SyncFunctionExceptionCount.Add(1)
+				db.dbStats().Database().SyncFunctionExceptionCount.Add(1)
 			}
 		}
 
