@@ -1113,6 +1113,102 @@ func TestResyncRegenerateSequences(t *testing.T) {
 	assert.True(t, changesRespContains(changesResp, "userdoc2"))
 }
 
+func TestResyncQE(t *testing.T) {
+
+	base.LongRunningTest(t)
+	syncFn := `
+	function(doc) {
+		channel(["channel_1"])
+	}`
+
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
+
+	var testBucket *base.TestBucket
+
+	if base.UnitTestUrlIsWalrus() {
+		var closeFn func()
+		testBucket, closeFn = base.GetPersistentWalrusBucket(t)
+		defer closeFn()
+	} else {
+		testBucket = base.GetTestBucket(t)
+	}
+
+	rt := NewRestTester(t,
+		&RestTesterConfig{
+			SyncFn:           syncFn,
+			CustomTestBucket: testBucket,
+		},
+	)
+	defer rt.Close()
+
+	collection := rt.GetSingleTestDatabaseCollection()
+
+	t.Logf("collection.GetCollectionID() %d", collection.GetCollectionID())
+
+	_, ok := (rt.GetDatabase().ResyncManager.Process).(*db.ResyncManagerDCP)
+	if ok && base.UnitTestUrlIsWalrus() {
+		t.Skip("This test doesn't works with Walrus when ResyncManagerDCP is used")
+	}
+
+	var response *TestResponse
+	var body db.Body
+
+	for i := 0; i < 5; i++ {
+		username := fmt.Sprintf("user_%d", i)
+		response = rt.SendAdminRequest("PUT", "/{{.db}}/_user/"+username, GetUserPayload(t, username, "letmein", "", collection, []string{"channel_0"}, []string{}))
+		RequireStatus(t, response, http.StatusCreated)
+
+		for j := 0; j < 100; j++ {
+			docID := fmt.Sprintf("doc_%s_%d", username, j)
+			response = rt.SendUserRequest("PUT", fmt.Sprintf("/%s/%s", rt.GetSingleKeyspace(), docID), `{"prop":true}`, username)
+			require.Equal(t, http.StatusCreated, response.Code)
+
+			response = rt.SendAdminRequest("GET", "/{{.keyspace}}/_raw/"+docID, "")
+			require.Equal(t, http.StatusOK, response.Code)
+
+			err := json.Unmarshal(response.BodyBytes(), &body)
+			require.NoError(t, err)
+		}
+	}
+
+	username := "user_x"
+	response = rt.SendAdminRequest("PUT", "/{{.db}}/_user/"+username, GetUserPayload(t, username, "letmein", "", collection, []string{"channel_x"}, []string{}))
+	RequireStatus(t, response, http.StatusCreated)
+
+	syncFn = `function(doc,oldDoc){
+        if (doc.channels[0] == "channel_1") {
+            channel([doc.channels[0],"channel_x"]);
+		} 
+	}`
+
+	changed, err := rt.GetDatabase().UpdateSyncFun(rt.Context(), syncFn)
+	require.NoError(t, err)
+	require.True(t, changed)
+
+	response = rt.SendAdminRequest("GET", "/db/_resync", "")
+	RequireStatus(t, response, http.StatusOK)
+
+	response = rt.SendAdminRequest("POST", "/db/_offline", "")
+	RequireStatus(t, response, http.StatusOK)
+
+	response = rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
+	RequireStatus(t, response, http.StatusOK)
+
+	WaitAndAssertBackgroundManagerState(t, db.BackgroundProcessStateCompleted,
+		func(t testing.TB) db.BackgroundProcessState {
+			return rt.GetDatabase().ResyncManager.GetRunState()
+		})
+	WaitAndAssertBackgroundManagerExpiredHeartbeat(t, rt.GetDatabase().ResyncManager)
+
+	response = rt.SendAdminRequest("GET", "/db/_resync", "")
+	RequireStatus(t, response, http.StatusOK)
+	var resyncStatus db.ResyncManagerResponse
+	err = base.JSONUnmarshal(response.BodyBytes(), &resyncStatus)
+	assert.NoError(t, err)
+	assert.Equal(t, 500, resyncStatus.DocsChanged)
+	assert.Equal(t, 500, resyncStatus.DocsProcessed)
+}
+
 // CBG-2150: Tests that resync status is cluster aware
 func TestResyncPersistence(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
