@@ -165,15 +165,11 @@ func TestMultiCollectionImportFilter(t *testing.T) {
 	rest.RequireStatus(t, response, http.StatusCreated)
 	response = rt.SendAdminRequest("GET", "/db/_config", "")
 
-	rt2 := rest.NewRestTesterMultipleCollections(t, rtConfig, 3)
-	defer rt2.Close()
-
-	_ = rt2.Bucket()
 	//dataStore1, err = rt2.TestBucket.GetNamedDataStore(0)
 	//require.NoError(t, err)
 	//dataStore2, err = rt2.TestBucket.GetNamedDataStore(1)
 	//require.NoError(t, err)
-	dataStore3, err := rt2.TestBucket.GetNamedDataStore(2)
+	dataStore3, err := rt.TestBucket.GetNamedDataStore(2)
 	require.NoError(t, err)
 
 	// Write private doc
@@ -219,8 +215,6 @@ func TestMultiCollectionImportFilter(t *testing.T) {
 		testBucket.GetName(), base.TestUseXattrs(), string(scopesConfigString)))
 
 	rest.RequireStatus(t, response, http.StatusCreated)
-	rt2 = rest.NewRestTesterMultipleCollections(t, rtConfig, 2)
-	defer rt2.Close()
 
 	// Write private doc 2
 	dataStores = []base.DataStore{dataStore1, dataStore2, dataStore3}
@@ -237,7 +231,7 @@ func TestMultiCollectionImportFilter(t *testing.T) {
 	require.NoError(t, err, "Error writing SDK doc")
 
 	for _, keyspace := range []string{defaultKeyspace, keyspace1, keyspace2} {
-		response = rt2.SendAdminRequest(http.MethodGet, fmt.Sprintf("/%s/%s", keyspace, prvKey), "")
+		response = rt.SendAdminRequest(http.MethodGet, fmt.Sprintf("/%s/%s", keyspace, prvKey), "")
 		assert.Equal(t, 404, response.Code)
 		if keyspace == defaultKeyspace {
 			assertDocProperty(t, response, "reason", keyspaceNotFound)
