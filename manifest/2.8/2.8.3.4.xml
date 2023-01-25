@@ -25,14 +25,14 @@ licenses/APL2.txt.
     <!-- Build Scripts (required on CI servers) -->
     <project name="product-texts" path="product-texts" remote="couchbase"/>
     <project name="build" path="cbbuild" remote="couchbase" revision="sgw-2.8">
-        <annotation name="VERSION" value="2.8.4"   keep="true"/>
+        <annotation name="VERSION" value="2.8.3.4"   keep="true"/>
         <annotation name="BLD_NUM" value="@BLD_NUM@" keep="true"/>
         <annotation name="RELEASE" value="@RELEASE@" keep="true"/>
     </project>
 
 
     <!-- Sync Gateway -->
-    <project name="sync_gateway" path="godeps/src/github.com/couchbase/sync_gateway" remote="couchbase" revision="release/2.8.4"/>
+    <project name="sync_gateway" path="godeps/src/github.com/couchbase/sync_gateway" remote="couchbase" revision="1b6ae989ca65dd39494be24f0deac2344199b0a7"/>
 
     <!-- Dependencies for Sync Gateway (and possibly Sync Gateway Accel too) -->
 
