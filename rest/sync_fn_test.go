@@ -340,6 +340,9 @@ func TestSyncFunctionException(t *testing.T) {
 			if (doc.throwExplicit) {
 				throw("Explicit exception");
 			}
+			if (doc.throwForbidden) {
+				throw({forbidden: "read only!"})
+			}
 			if (doc.require) {
 				requireAdmin();
 			}
@@ -373,8 +376,15 @@ func TestSyncFunctionException(t *testing.T) {
 	assert.Equal(t, numDBSyncExceptionsStart+1, numDBSyncExceptions)
 	numDBSyncExceptionsStart = numDBSyncExceptions
 
+	// throw with a forbidden property shouldn't cause a true exception
+	response = rt.SendRequest("PUT", "/{{.keyspace}}/doc3", `{"throwForbidden":true}`)
+	assert.Equal(t, http.StatusForbidden, response.Code)
+	assert.Contains(t, response.Body.String(), "read only!")
+	numDBSyncExceptions = rt.GetDatabase().DbStats.Database().SyncFunctionExceptionCount.Value()
+	assert.Equal(t, numDBSyncExceptionsStart, numDBSyncExceptions)
+
 	// require methods shouldn't cause a true exception
-	response = rt.SendRequest("PUT", "/{{.keyspace}}/doc3", `{"require":true}`)
+	response = rt.SendRequest("PUT", "/{{.keyspace}}/doc4", `{"require":true}`)
 	assert.Equal(t, http.StatusForbidden, response.Code)
 	assert.Contains(t, response.Body.String(), "sg admin required")
 	numDBSyncExceptions = rt.GetDatabase().DbStats.Database().SyncFunctionExceptionCount.Value()
