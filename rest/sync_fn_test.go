@@ -375,6 +375,8 @@ func TestSyncFunctionException(t *testing.T) {
 	numDBSyncExceptions = rt.GetDatabase().DbStats.Database().SyncFunctionExceptionCount.Value()
 	assert.Equal(t, numDBSyncExceptionsStart+1, numDBSyncExceptions)
 	numDBSyncExceptionsStart = numDBSyncExceptions
+	numDBSyncRejected := rt.GetDatabase().DbStats.Security().NumDocsRejected.Value()
+	assert.Equal(t, int64(0), numDBSyncRejected)
 
 	// throw with a forbidden property shouldn't cause a true exception
 	response = rt.SendRequest("PUT", "/{{.keyspace}}/doc3", `{"throwForbidden":true}`)
@@ -382,6 +384,8 @@ func TestSyncFunctionException(t *testing.T) {
 	assert.Contains(t, response.Body.String(), "read only!")
 	numDBSyncExceptions = rt.GetDatabase().DbStats.Database().SyncFunctionExceptionCount.Value()
 	assert.Equal(t, numDBSyncExceptionsStart, numDBSyncExceptions)
+	numDBSyncRejected = rt.GetDatabase().DbStats.Security().NumDocsRejected.Value()
+	assert.Equal(t, int64(1), numDBSyncRejected)
 
 	// require methods shouldn't cause a true exception
 	response = rt.SendRequest("PUT", "/{{.keyspace}}/doc4", `{"require":true}`)
@@ -389,6 +393,8 @@ func TestSyncFunctionException(t *testing.T) {
 	assert.Contains(t, response.Body.String(), "sg admin required")
 	numDBSyncExceptions = rt.GetDatabase().DbStats.Database().SyncFunctionExceptionCount.Value()
 	assert.Equal(t, numDBSyncExceptionsStart, numDBSyncExceptions)
+	numDBSyncRejected = rt.GetDatabase().DbStats.Security().NumDocsRejected.Value()
+	assert.Equal(t, int64(2), numDBSyncRejected)
 }
 
 func TestSyncFnTimeout(t *testing.T) {
