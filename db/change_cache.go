@@ -310,19 +310,12 @@ func (c *changeCache) CleanSkippedSequenceQueue(ctx context.Context) error {
 
 	base.InfofCtx(ctx, base.KeyCache, "Starting CleanSkippedSequenceQueue, found %d skipped sequences older than max wait for database %s", len(oldSkippedSequences), base.MD(c.collection.Name()))
 
-	var foundEntries []*LogEntry
-	var pendingRemovals []uint64
-
-	if c.collection.unsupportedOptions() != nil && c.collection.unsupportedOptions().DisableCleanSkippedQuery {
-		pendingRemovals = append(pendingRemovals, oldSkippedSequences...)
-	}
-	oldSkippedSequences = nil
-
 	// Purge sequences not found from the skipped sequence queue
-	numRemoved := c.RemoveSkippedSequences(ctx, pendingRemovals)
+	numRemoved := c.RemoveSkippedSequences(ctx, oldSkippedSequences)
 	c.collection.dbStats().Cache().AbandonedSeqs.Add(numRemoved)
 
-	base.InfofCtx(ctx, base.KeyCache, "CleanSkippedSequenceQueue complete.  Found:%d, Not Found:%d for database %s.", len(foundEntries), len(pendingRemovals), base.MD(c.collection.Name()))
+	base.InfofCtx(ctx, base.KeyCache, "CleanSkippedSequenceQueue complete.  Not Found:%d for database %s.", len(oldSkippedSequences), base.MD(c.collection.Name()))
+	oldSkippedSequences = nil
 	return nil
 }
 
