@@ -334,7 +334,7 @@ func initCBGTManager(ctx context.Context, bucket Bucket, spec BucketSpec, cfgSG 
 
 	// Creates a new cbgt manager.
 	mgr := cbgt.NewManagerEx(
-		cbgt.VERSION, // cbgt metadata version
+		SGCbgtMetadataVersion, // cbgt metadata version, matching 3.0 clients
 		cfgSG,
 		uuid,
 		tags,
