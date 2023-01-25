@@ -47,7 +47,7 @@ var EnableStarChannelLog = true
 //   - Perform sequence buffering to ensure documents are received in sequence order
 //   - Propagating DCP changes down to appropriate channel caches
 type changeCache struct {
-	collection         *DatabaseCollection
+	db                 *DatabaseContext
 	logCtx             context.Context
 	logsDisabled       bool                    // If true, ignore incoming tap changes
 	nextSequence       uint64                  // Next consecutive sequence number to add.  State variable for sequence buffering tracking.  Should use getNextSequence() rather than accessing directly.
@@ -79,10 +79,10 @@ func (c *changeCache) updateStats() {
 
 	c.lock.Lock()
 
-	c.collection.dbStats().Database().HighSeqFeed.SetIfMax(int64(c.internalStats.highSeqFeed))
-	c.collection.dbStats().Cache().PendingSeqLen.Set(int64(c.internalStats.pendingSeqLen))
-	c.collection.dbStats().CBLReplicationPull().MaxPending.SetIfMax(int64(c.internalStats.maxPending))
-	c.collection.dbStats().Cache().HighSeqStable.Set(int64(c._getMaxStableCached()))
+	c.db.DbStats.Database().HighSeqFeed.SetIfMax(int64(c.internalStats.highSeqFeed))
+	c.db.DbStats.Cache().PendingSeqLen.Set(int64(c.internalStats.pendingSeqLen))
+	c.db.DbStats.CBLReplicationPull().MaxPending.SetIfMax(int64(c.internalStats.maxPending))
+	c.db.DbStats.Cache().HighSeqStable.Set(int64(c._getMaxStableCached()))
 
 	c.lock.Unlock()
 }
@@ -155,8 +155,8 @@ func DefaultCacheOptions() CacheOptions {
 // notifyChange is an optional function that will be called to notify of channel changes.
 // After calling Init(), you must call .Start() to start useing the cache, otherwise it will be in a locked state
 // and callers will block on trying to obtain the lock.
-func (c *changeCache) Init(logCtx context.Context, collection *DatabaseCollection, channelCache ChannelCache, notifyChange func(channels.Set), options *CacheOptions) error {
-	c.collection = collection
+func (c *changeCache) Init(logCtx context.Context, dbContext *DatabaseContext, channelCache ChannelCache, notifyChange func(channels.Set), options *CacheOptions) error {
+	c.db = dbContext
 	c.logCtx = logCtx
 
 	c.notifyChange = notifyChange
@@ -165,7 +165,7 @@ func (c *changeCache) Init(logCtx context.Context, collection *DatabaseCollectio
 	c.initTime = time.Now()
 	c.skippedSeqs = NewSkippedSequenceList()
 	c.lastAddPendingTime = time.Now().UnixNano()
-	c.sgCfgPrefix = base.SGCfgPrefixWithGroupID(collection.groupID())
+	c.sgCfgPrefix = base.SGCfgPrefixWithGroupID(c.db.Options.GroupID)
 
 	// init cache options
 	if options != nil {
@@ -176,18 +176,18 @@ func (c *changeCache) Init(logCtx context.Context, collection *DatabaseCollectio
 
 	c.channelCache = channelCache
 
-	base.InfofCtx(c.logCtx, base.KeyCache, "Initializing changes cache for %s.%s.%s with options %+v", base.UD(collection.bucketName()), base.UD(collection.ScopeName()), base.UD(collection.Name()), c.options)
+	base.InfofCtx(c.logCtx, base.KeyCache, "Initializing changes cache for %s with options %+v", base.UD(c.db.Name), c.options)
 
 	heap.Init(&c.pendingLogs)
 
 	// background tasks that perform housekeeping duties on the cache
-	bgt, err := NewBackgroundTask("InsertPendingEntries", c.collection.Name(), c.InsertPendingEntries, c.options.CachePendingSeqMaxWait/2, c.terminator)
+	bgt, err := NewBackgroundTask("InsertPendingEntries", c.db.Name, c.InsertPendingEntries, c.options.CachePendingSeqMaxWait/2, c.terminator)
 	if err != nil {
 		return err
 	}
 	c.backgroundTasks = append(c.backgroundTasks, bgt)
 
-	bgt, err = NewBackgroundTask("CleanSkippedSequenceQueue", c.collection.Name(), c.CleanSkippedSequenceQueue, c.options.CacheSkippedSeqMaxWait/2, c.terminator)
+	bgt, err = NewBackgroundTask("CleanSkippedSequenceQueue", c.db.Name, c.CleanSkippedSequenceQueue, c.options.CacheSkippedSeqMaxWait/2, c.terminator)
 	if err != nil {
 		return err
 	}
@@ -224,7 +224,7 @@ func (c *changeCache) Stop() {
 	close(c.terminator)
 
 	// Wait for changeCache background tasks to finish.
-	waitForBGTCompletion(context.TODO(), BGTCompletionMaxWait, c.backgroundTasks, c.collection.Name())
+	waitForBGTCompletion(context.TODO(), BGTCompletionMaxWait, c.backgroundTasks, c.db.Name)
 
 	c.lock.Lock()
 	c.logsDisabled = true
@@ -256,7 +256,7 @@ func (c *changeCache) Clear() error {
 	// the point at which the change cache was initialized / re-initialized.
 	// No need to touch c.nextSequence here, because we don't want to touch the sequence buffering state.
 	var err error
-	c.initialSequence, err = c.collection.LastSequence()
+	c.initialSequence, err = c.db.LastSequence()
 	if err != nil {
 		return err
 	}
@@ -308,21 +308,21 @@ func (c *changeCache) CleanSkippedSequenceQueue(ctx context.Context) error {
 		return nil
 	}
 
-	base.InfofCtx(ctx, base.KeyCache, "Starting CleanSkippedSequenceQueue, found %d skipped sequences older than max wait for database %s", len(oldSkippedSequences), base.MD(c.collection.Name()))
+	base.InfofCtx(ctx, base.KeyCache, "Starting CleanSkippedSequenceQueue, found %d skipped sequences older than max wait for database %s", len(oldSkippedSequences), base.MD(c.db.Name))
 
 	var foundEntries []*LogEntry
 	var pendingRemovals []uint64
 
-	if c.collection.unsupportedOptions() != nil && c.collection.unsupportedOptions().DisableCleanSkippedQuery {
+	if c.db.Options.UnsupportedOptions != nil && c.db.Options.UnsupportedOptions.DisableCleanSkippedQuery {
 		pendingRemovals = append(pendingRemovals, oldSkippedSequences...)
 	}
 	oldSkippedSequences = nil
 
 	// Purge sequences not found from the skipped sequence queue
 	numRemoved := c.RemoveSkippedSequences(ctx, pendingRemovals)
-	c.collection.dbStats().Cache().AbandonedSeqs.Add(numRemoved)
+	c.db.DbStats.Cache().AbandonedSeqs.Add(numRemoved)
 
-	base.InfofCtx(ctx, base.KeyCache, "CleanSkippedSequenceQueue complete.  Found:%d, Not Found:%d for database %s.", len(foundEntries), len(pendingRemovals), base.MD(c.collection.Name()))
+	base.InfofCtx(ctx, base.KeyCache, "CleanSkippedSequenceQueue complete.  Found:%d, Not Found:%d for database %s.", len(foundEntries), len(pendingRemovals), base.MD(c.db.Name))
 	return nil
 }
 
@@ -370,14 +370,19 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 		return
 	}
 
+	collection, exists := c.db.CollectionByID[event.CollectionID]
+	if !exists {
+		base.WarnfCtx(c.logCtx, "DocChanged: could not find collection with kv ID: %d", event.CollectionID)
+		return
+	}
 	// If this is a binary document (and not one of the above types), we can ignore.  Currently only performing this check when xattrs
 	// are enabled, because walrus doesn't support DataType on feed.
-	if c.collection.UseXattrs() && event.DataType == base.MemcachedDataTypeRaw {
+	if collection.UseXattrs() && event.DataType == base.MemcachedDataTypeRaw {
 		return
 	}
 
 	// First unmarshal the doc (just its metadata, to save time/memory):
-	syncData, rawBody, _, rawUserXattr, err := UnmarshalDocumentSyncDataFromFeed(docJSON, event.DataType, c.collection.userXattrKey(), false)
+	syncData, rawBody, _, rawUserXattr, err := UnmarshalDocumentSyncDataFromFeed(docJSON, event.DataType, collection.userXattrKey(), false)
 	if err != nil {
 		// Avoid log noise related to failed unmarshaling of binary documents.
 		if event.DataType != base.MemcachedDataTypeRaw {
@@ -390,7 +395,7 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 	}
 
 	// If using xattrs and this isn't an SG write, we shouldn't attempt to cache.
-	if c.collection.UseXattrs() {
+	if collection.UseXattrs() {
 		if syncData == nil {
 			return
 		}
@@ -402,14 +407,14 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 
 	// If not using xattrs and no sync metadata found, check whether we're mid-upgrade and attempting to read a doc w/ metadata stored in xattr
 	// before ignoring the mutation.
-	if !c.collection.UseXattrs() && !syncData.HasValidSyncData() {
-		migratedDoc, _ := c.collection.checkForUpgrade(docID, DocUnmarshalNoHistory)
+	if !collection.UseXattrs() && !syncData.HasValidSyncData() {
+		migratedDoc, _ := collection.checkForUpgrade(docID, DocUnmarshalNoHistory)
 		if migratedDoc != nil && migratedDoc.Cas == event.Cas {
 			base.InfofCtx(c.logCtx, base.KeyCache, "Found mobile xattr on doc %q without %s property - caching, assuming upgrade in progress.", base.UD(docID), base.SyncPropertyName)
 			syncData = &migratedDoc.SyncData
 		} else {
 			base.InfofCtx(c.logCtx, base.KeyCache, "changeCache: Doc %q does not have valid sync data.", base.UD(docID))
-			c.collection.dbStats().Cache().NonMobileIgnoredCount.Add(1)
+			collection.dbStats().Cache().NonMobileIgnoredCount.Add(1)
 			return
 		}
 	}
@@ -429,10 +434,10 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 		// Record latency when greater than zero
 		feedNano := feedLatency.Nanoseconds()
 		if feedNano > 0 {
-			c.collection.dbStats().Database().DCPReceivedTime.Add(feedNano)
+			c.db.DbStats.Database().DCPReceivedTime.Add(feedNano)
 		}
 	}
-	c.collection.dbStats().Database().DCPReceivedCount.Add(1)
+	c.db.DbStats.Database().DCPReceivedCount.Add(1)
 
 	// If the doc update wasted any sequences due to conflicts, add empty entries for them:
 	for _, seq := range syncData.UnusedSequences {
@@ -712,11 +717,6 @@ func (c *changeCache) _addToCache(change *LogEntry) []channels.ID {
 		return nil
 	}
 
-	// FIXME: Until CBG-2333, changeCache will perform sequence buffering for all collections, but should not cache
-	if change.CollectionID != c.collection.GetCollectionID() {
-		return nil
-	}
-
 	// updatedChannels tracks the set of channels that should be notified of the change.  This includes
 	// the change's active channels, as well as any channel removals for the active revision.
 	updatedChannels := c.channelCache.AddToCache(change)
@@ -725,8 +725,8 @@ func (c *changeCache) _addToCache(change *LogEntry) []channels.ID {
 	}
 
 	if !change.TimeReceived.IsZero() {
-		c.collection.dbStats().Database().DCPCachingCount.Add(1)
-		c.collection.dbStats().Database().DCPCachingTime.Add(time.Since(change.TimeReceived).Nanoseconds())
+		c.db.DbStats.Database().DCPCachingCount.Add(1)
+		c.db.DbStats.Database().DCPCachingTime.Add(time.Since(change.TimeReceived).Nanoseconds())
 	}
 
 	return updatedChannels
@@ -745,7 +745,7 @@ func (c *changeCache) _addPendingLogs() channels.Set {
 			heap.Pop(&c.pendingLogs)
 			changedChannels = changedChannels.UpdateWithSlice(c._addToCache(change))
 		} else if len(c.pendingLogs) > c.options.CachePendingSeqMaxNum || time.Since(c.pendingLogs[0].TimeReceived) >= c.options.CachePendingSeqMaxWait {
-			c.collection.dbStats().Cache().NumSkippedSeqs.Add(1)
+			c.db.DbStats.Cache().NumSkippedSeqs.Add(1)
 			c.PushSkipped(c.nextSequence)
 			c.nextSequence++
 		} else {
@@ -837,14 +837,14 @@ func (h *LogPriorityQueue) Pop() interface{} {
 
 func (c *changeCache) RemoveSkipped(x uint64) error {
 	err := c.skippedSeqs.Remove(x)
-	c.collection.dbStats().Cache().SkippedSeqLen.Set(int64(c.skippedSeqs.skippedList.Len()))
+	c.db.DbStats.Cache().SkippedSeqLen.Set(int64(c.skippedSeqs.skippedList.Len()))
 	return err
 }
 
 // Removes a set of sequences.  Logs warning on removal error, returns count of successfully removed.
 func (c *changeCache) RemoveSkippedSequences(ctx context.Context, sequences []uint64) (removedCount int64) {
 	numRemoved := c.skippedSeqs.RemoveSequences(ctx, sequences)
-	c.collection.dbStats().Cache().SkippedSeqLen.Set(int64(c.skippedSeqs.skippedList.Len()))
+	c.db.DbStats.Cache().SkippedSeqLen.Set(int64(c.skippedSeqs.skippedList.Len()))
 	return numRemoved
 }
 
@@ -858,7 +858,7 @@ func (c *changeCache) PushSkipped(sequence uint64) {
 		base.InfofCtx(c.logCtx, base.KeyCache, "Error pushing skipped sequence: %d, %v", sequence, err)
 		return
 	}
-	c.collection.dbStats().Cache().SkippedSeqLen.Set(int64(c.skippedSeqs.skippedList.Len()))
+	c.db.DbStats.Cache().SkippedSeqLen.Set(int64(c.skippedSeqs.skippedList.Len()))
 }
 
 func (c *changeCache) GetSkippedSequencesOlderThanMaxWait() (oldSequences []uint64) {
