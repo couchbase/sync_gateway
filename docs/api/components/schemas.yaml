@@ -1360,9 +1360,6 @@ Database:
             channel_name_size:
               description: The number of channel name characters to be used as a threshold for channel name warnings.
               type: number
-        disable_clean_skipped_query:
-          description: Whether to clean skipped sequence processing to bypass final checks.
-          type: boolean
         oidc_tls_skip_verify:
           description: Enable self-signed certificates for OIDC testing.
           type: boolean

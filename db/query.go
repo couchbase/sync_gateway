@@ -527,28 +527,6 @@ func (context *DatabaseCollection) QueryChannels(ctx context.Context, channelNam
 	return N1QLQueryWithStats(ctx, context.dataStore, QueryChannels.name, channelQueryStatement, params, base.RequestPlus, QueryChannels.adhoc, context.dbStats(), context.slowQueryWarningThreshold())
 }
 
-// Query to retrieve keys for the specified sequences.  View query uses star channel, N1QL query uses IndexAllDocs
-func (context *DatabaseCollection) QuerySequences(ctx context.Context, sequences []uint64) (sgbucket.QueryResultIterator, error) {
-
-	if len(sequences) == 0 {
-		return nil, errors.New("No sequences specified for QueryChannelsForSequences")
-	}
-
-	if context.useViews() {
-		opts := changesViewForSequencesOptions(sequences)
-		return context.dbCtx.ViewQueryWithStats(ctx, context.dataStore, DesignDocSyncGateway(), ViewChannels, opts)
-	}
-
-	// N1QL Query
-	sequenceQueryStatement := replaceSyncTokensQuery(QuerySequences.statement, context.UseXattrs())
-	sequenceQueryStatement = replaceIndexTokensQuery(sequenceQueryStatement, sgIndexes[IndexAllDocs], context.UseXattrs())
-
-	params := make(map[string]interface{})
-	params[QueryParamInSequences] = sequences
-
-	return N1QLQueryWithStats(ctx, context.dataStore, QuerySequences.name, sequenceQueryStatement, params, base.RequestPlus, QueryChannels.adhoc, context.dbStats(), context.slowQueryWarningThreshold())
-}
-
 // buildsChannelsQuery constructs the query statement and query parameters for a channels N1QL query.  Also used by unit tests to validate
 // query is covering.
 func (context *DatabaseCollection) buildChannelsQuery(channelName string, startSeq uint64, endSeq uint64, limit int, activeOnly bool) (statement string, params map[string]interface{}) {
@@ -854,21 +832,6 @@ func changesViewOptions(channelName string, startSeq, endSeq uint64, limit int) 
 	}
 	if limit > 0 {
 		optMap[QueryParamLimit] = limit
-	}
-	return optMap
-}
-
-func changesViewForSequencesOptions(sequences []uint64) map[string]interface{} {
-
-	keys := make([]interface{}, len(sequences))
-	for i, sequence := range sequences {
-		key := []interface{}{channels.UserStarChannel, sequence}
-		keys[i] = key
-	}
-
-	optMap := map[string]interface{}{
-		"stale": false,
-		"keys":  keys,
 	}
 	return optMap
 }
