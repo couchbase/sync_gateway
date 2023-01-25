@@ -22,6 +22,7 @@ import (
 type DatabaseCollection struct {
 	dataStore            base.DataStore          // Storage
 	revisionCache        RevisionCache           // Cache of recently-accessed doc revisions
+	collectionStats      *base.CollectionStats   // pointer to the collection stats (to avoid map lookups when used)
 	changeCache          *changeCache            // Cache of recently-access channels
 	dbCtx                *DatabaseContext        // pointer to database context to allow passthrough of functions
 	ChannelMapper        *channels.ChannelMapper // Collection's sync function

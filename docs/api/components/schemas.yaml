@@ -139,6 +139,7 @@ ExpVars:
             This array contains stats for all databases declared in the config file -- see the [Sync Gateway Statistics Schema](./../stats-monitoring.html) for more details on the metrics collected and reported by Sync Gateway.
             The statistics for each {$db_name} database are grouped into:
             - cache related statistics
+            - collections statistics
             - cbl_replication_push
             - cbl_replication_pull
             - database_related_statistics
@@ -156,7 +157,9 @@ ExpVars:
               database:
                 type: object
               per_replication:
-                type: array
+                type: object
+              collections:
+                type: object
               security:
                 type: object
         per_replication:

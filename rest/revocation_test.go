@@ -1502,7 +1502,7 @@ func TestReplicatorRevocations(t *testing.T) {
 	require.NoError(t, err)
 
 	passiveDBURL.User = url.UserPassword("user", "test")
-	sgwStats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false)
+	sgwStats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, nil, nil)
 	require.NoError(t, err)
 	dbstats, err := sgwStats.DBReplicatorStats(t.Name())
 	require.NoError(t, err)
@@ -1561,7 +1561,7 @@ func TestReplicatorRevocationsNoRev(t *testing.T) {
 	require.NoError(t, err)
 
 	passiveDBURL.User = url.UserPassword("user", "test")
-	sgwStats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false)
+	sgwStats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, nil, nil)
 	require.NoError(t, err)
 	dbstats, err := sgwStats.DBReplicatorStats(t.Name())
 	require.NoError(t, err)
@@ -1628,7 +1628,7 @@ func TestReplicatorRevocationsNoRevButAlternateAccess(t *testing.T) {
 	require.NoError(t, err)
 
 	passiveDBURL.User = url.UserPassword("user", "test")
-	sgwStats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false)
+	sgwStats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, nil, nil)
 	require.NoError(t, err)
 	dbstats, err := sgwStats.DBReplicatorStats(t.Name())
 	require.NoError(t, err)
@@ -1688,7 +1688,7 @@ func TestReplicatorRevocationsMultipleAlternateAccess(t *testing.T) {
 	require.NoError(t, err)
 
 	passiveDBURL.User = url.UserPassword("user", "test")
-	sgwStats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false)
+	sgwStats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, nil, nil)
 	require.NoError(t, err)
 	dbstats, err := sgwStats.DBReplicatorStats(t.Name())
 	require.NoError(t, err)
@@ -1802,7 +1802,7 @@ func TestReplicatorRevocationsWithTombstoneResurrection(t *testing.T) {
 	require.NoError(t, err)
 
 	passiveDBURL.User = url.UserPassword("user", "letmein")
-	sgwStats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false)
+	sgwStats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, nil, nil)
 	require.NoError(t, err)
 	dbstats, err := sgwStats.DBReplicatorStats(t.Name())
 	require.NoError(t, err)
@@ -1894,7 +1894,7 @@ func TestReplicatorRevocationsWithStarChannel(t *testing.T) {
 	require.NoError(t, err)
 
 	passiveDBURL.User = url.UserPassword("user", "test")
-	sgwStats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false)
+	sgwStats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, nil, nil)
 	require.NoError(t, err)
 	dbstats, err := sgwStats.DBReplicatorStats(t.Name())
 	require.NoError(t, err)
@@ -1988,7 +1988,7 @@ func TestReplicatorRevocationsFromZero(t *testing.T) {
 	require.NoError(t, err)
 
 	passiveDBURL.User = url.UserPassword("user", "letmein")
-	sgwStats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false)
+	sgwStats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, nil, nil)
 	require.NoError(t, err)
 	dbstats, err := sgwStats.DBReplicatorStats(t.Name())
 	require.NoError(t, err)
@@ -2389,7 +2389,7 @@ func TestReplicatorSwitchPurgeNoReset(t *testing.T) {
 	require.NoError(t, err)
 
 	passiveDBURL.User = url.UserPassword("user", "letmein")
-	sgwStats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false)
+	sgwStats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, nil, nil)
 	require.NoError(t, err)
 	dbstats, err := sgwStats.DBReplicatorStats(t.Name())
 	require.NoError(t, err)
@@ -2448,7 +2448,7 @@ func TestReplicatorSwitchPurgeNoReset(t *testing.T) {
 
 	require.NoError(t, ar.Stop())
 	rt1.WaitForReplicationStatus(ar.ID, db.ReplicationStateStopped)
-	sgwStats, err = base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false)
+	sgwStats, err = base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, nil, nil)
 	require.NoError(t, err)
 	dbstats, err = sgwStats.DBReplicatorStats(t.Name())
 	require.NoError(t, err)
