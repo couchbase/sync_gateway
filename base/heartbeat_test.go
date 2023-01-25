@@ -337,7 +337,7 @@ func TestCBGTManagerHeartbeater(t *testing.T) {
 	options[cbgt.FeedAllotmentOption] = cbgt.FeedAllotmentOnePerPIndex
 	options["managerLoadDataDir"] = "false"
 	testManager := cbgt.NewManagerEx(
-		cbgt.VERSION,
+		SGCbgtMetadataVersion,
 		cbgt.NewCfgMem(),
 		testUUID,
 		nil,
