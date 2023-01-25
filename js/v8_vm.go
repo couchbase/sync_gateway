@@ -17,26 +17,25 @@ type v8VM struct {
 	*baseVM
 	iso         *v8.Isolate       // A V8 virtual machine. NOT THREAD SAFE.
 	setupScript *v8.UnboundScript // JS code to set up a new v8.Context
-	templates   []Template        // Already-created Templates, indexed by serviceID
+	templates   []V8Template      // Already-created Templates, indexed by serviceID
 	runners     []*V8Runner       // Available Runners, indexed by serviceID. nil if in-use
 	curRunner   *V8Runner         // Currently active v8Runner, if any
 }
 
-// Creates a JavaScript virtual machine that can run Services.
-// This object should be used only on a single goroutine at a time.
-func NewV8VM() VM {
-	return v8Factory(&servicesConfiguration{})
+// A VMType for instantiating V8-based VMs and VMPools.
+var V8 = &VMType{
+	name: "V8",
+	factory: func(services *servicesConfiguration) VM {
+		return &v8VM{
+			baseVM:    &baseVM{services: services},
+			iso:       v8.NewIsolate(), // The V8 v8VM
+			templates: []V8Template{},  // Instantiated Services
+			runners:   []*V8Runner{},   // Cached reusable Runners
+		}
+	},
 }
 
-// `vmFactory` function for V8.
-func v8Factory(services *servicesConfiguration) VM {
-	return &v8VM{
-		baseVM:    &baseVM{services: services},
-		iso:       v8.NewIsolate(), // The V8 v8VM
-		templates: []Template{},    // Instantiated Services
-		runners:   []*V8Runner{},   // Cached reusable Runners
-	}
-}
+func (vm *v8VM) Type() *VMType { return V8 }
 
 // Shuts down a v8VM. It's a good idea to call this explicitly when done with it,
 // _unless_ it belongs to a VMPool.
@@ -59,11 +58,7 @@ func (vm *v8VM) Close() {
 
 // Looks up an already-registered service by name. Returns nil if not found.
 func (vm *v8VM) FindService(name string) *Service {
-	if id, ok := vm.services.findService(name); ok {
-		return &Service{host: vm, id: id, name: name}
-	} else {
-		return nil
-	}
+	return vm.services.findServiceNamed(name)
 }
 
 // Syntax-checks a string containing a JavaScript function definition
@@ -99,25 +94,23 @@ func (vm *v8VM) release() {
 	}
 }
 
-func (vm *v8VM) registerService(factory TemplateFactory, name string) serviceID {
+func (vm *v8VM) registerService(service *Service) {
 	if vm.iso == nil {
-		panic("You forgot to initialize a js.v8VM") // Must call NewVM()
+		panic("You forgot to initialize a js.VM") // Must call NewVM()
 	}
-	return vm.services.addService(factory, name)
+	vm.baseVM.registerService(service)
 }
 
 // Returns a Template for the given Service.
-func (vm *v8VM) getTemplate(service *Service) (Template, error) {
-	var tmpl Template
+func (vm *v8VM) getTemplate(service *Service) (V8Template, error) {
+	var tmpl V8Template
+	if !vm.services.hasService(service) {
+		return nil, fmt.Errorf("unknown js.Service instance passed to VM")
+	}
 	if int(service.id) < len(vm.templates) {
 		tmpl = vm.templates[service.id]
 	}
 	if tmpl == nil {
-		factory := vm.services.getService(service.id)
-		if factory == nil {
-			return nil, fmt.Errorf("js.v8VM has no service %q (%d)", service.name, int(service.id))
-		}
-
 		if vm.setupScript == nil {
 			// The setup script points console logging to SG, and loads the Underscore.js library:
 			var err error
@@ -128,7 +121,7 @@ func (vm *v8VM) getTemplate(service *Service) (Template, error) {
 		}
 
 		var err error
-		tmpl, err = newTemplate(vm, service.name, factory)
+		tmpl, err = newV8Template(vm, service)
 		if err != nil {
 			return nil, err
 		}

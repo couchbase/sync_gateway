@@ -815,7 +815,7 @@ func TestOldRevisionStorageError(t *testing.T) {
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
-	db.ChannelMapper = channels.NewChannelMapper(&db.V8VMs, `function(doc, oldDoc) {channel(doc.channels);}`, 0)
+	db.ChannelMapper = channels.NewChannelMapper(&db.JS, `function(doc, oldDoc) {channel(doc.channels);}`, 0)
 
 	// Create rev 1-a
 	log.Printf("Create rev 1-a")
@@ -946,7 +946,7 @@ func TestLargeSequence(t *testing.T) {
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
-	db.ChannelMapper = channels.NewDefaultChannelMapper(&db.V8VMs)
+	db.ChannelMapper = channels.NewDefaultChannelMapper(&db.JS)
 
 	// Write a doc via SG
 	body := Body{"key1": "largeSeqTest"}
@@ -986,7 +986,7 @@ func TestMalformedRevisionStorageRecovery(t *testing.T) {
 	defer db.Close(ctx)
 
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
-	db.ChannelMapper = channels.NewChannelMapper(&db.V8VMs, `function(doc, oldDoc) {channel(doc.channels);}`, 0)
+	db.ChannelMapper = channels.NewChannelMapper(&db.JS, `function(doc, oldDoc) {channel(doc.channels);}`, 0)
 
 	// Create a document with a malformed revision body (due to https://github.com/couchbase/sync_gateway/issues/3692) in the bucket
 	// Document has the following rev tree, with a malformed body of revision 2-b remaining in the revision tree (same set of operations as

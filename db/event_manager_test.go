@@ -438,7 +438,7 @@ func TestWebhookBasic(t *testing.T) {
 	terminator := make(chan bool)
 	defer close(terminator)
 
-	host := js.NewV8VMPool(4)
+	host := js.NewVMPool(js.V8, 4)
 	defer host.Close()
 
 	ts, wr := InitWebhookTest()
@@ -623,7 +623,7 @@ func TestWebhookOldDoc(t *testing.T) {
 	terminator := make(chan bool)
 	defer close(terminator)
 
-	host := js.NewV8VMPool(4)
+	host := js.NewVMPool(js.V8, 4)
 	defer host.Close()
 
 	ts, wr := InitWebhookTest()
@@ -985,7 +985,7 @@ func TestWebhookHandleUnsupportedEventType(t *testing.T) {
 
 // Simulate the filter function processing abort scenario.
 func TestWebhookHandleEventDBStateChangeFilterFuncError(t *testing.T) {
-	host := js.NewV8VMPool(4)
+	host := js.NewVMPool(js.V8, 4)
 	defer host.Close()
 	ts, _ := InitWebhookTest()
 	defer ts.Close()

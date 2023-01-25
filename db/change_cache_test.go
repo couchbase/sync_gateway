@@ -261,7 +261,7 @@ func TestLateSequenceErrorRecovery(t *testing.T) {
 
 	db, ctx := setupTestDBWithCacheOptions(t, shortWaitCache())
 	defer db.Close(ctx)
-	db.ChannelMapper = channels.NewDefaultChannelMapper(&db.V8VMs)
+	db.ChannelMapper = channels.NewDefaultChannelMapper(&db.JS)
 
 	// Create a user with access to channel ABC
 	authenticator := db.Authenticator(ctx)
@@ -393,7 +393,7 @@ func TestLateSequenceHandlingDuringCompact(t *testing.T) {
 	db, ctx := setupTestDBWithCacheOptions(t, cacheOptions)
 	defer db.Close(ctx)
 
-	db.ChannelMapper = channels.NewDefaultChannelMapper(&db.V8VMs)
+	db.ChannelMapper = channels.NewDefaultChannelMapper(&db.JS)
 
 	caughtUpStart := db.DbStats.CBLReplicationPull().NumPullReplCaughtUp.Value()
 
@@ -572,7 +572,7 @@ func TestChannelCacheBufferingWithUserDoc(t *testing.T) {
 
 	collection := db.GetSingleDatabaseCollection()
 	collectionID := collection.GetCollectionID()
-	db.ChannelMapper = channels.NewDefaultChannelMapper(&db.V8VMs)
+	db.ChannelMapper = channels.NewDefaultChannelMapper(&db.JS)
 
 	// Simulate seq 1 (user doc) being delayed - write 2 first
 	WriteDirect(db, []string{"ABC"}, 2)
@@ -612,7 +612,7 @@ func TestChannelCacheBackfill(t *testing.T) {
 
 	db, ctx := setupTestDBWithCacheOptions(t, shortWaitCache())
 	defer db.Close(ctx)
-	db.ChannelMapper = channels.NewDefaultChannelMapper(&db.V8VMs)
+	db.ChannelMapper = channels.NewDefaultChannelMapper(&db.JS)
 
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 	// Create a user with access to channel ABC
@@ -690,7 +690,7 @@ func TestContinuousChangesBackfill(t *testing.T) {
 	db, ctx := setupTestDBWithCacheOptions(t, shortWaitCache())
 	defer db.Close(ctx)
 
-	db.ChannelMapper = channels.NewDefaultChannelMapper(&db.V8VMs)
+	db.ChannelMapper = channels.NewDefaultChannelMapper(&db.JS)
 
 	// Create a user with access to channel ABC
 	authenticator := db.Authenticator(ctx)
@@ -792,7 +792,7 @@ func TestLowSequenceHandling(t *testing.T) {
 	db, ctx := setupTestDBWithCacheOptions(t, shortWaitCache())
 	defer db.Close(ctx)
 
-	db.ChannelMapper = channels.NewDefaultChannelMapper(&db.V8VMs)
+	db.ChannelMapper = channels.NewDefaultChannelMapper(&db.JS)
 
 	// Create a user with access to channel ABC
 	authenticator := db.Authenticator(ctx)
@@ -864,7 +864,7 @@ func TestLowSequenceHandlingAcrossChannels(t *testing.T) {
 	db, ctx := setupTestDBWithCacheOptions(t, shortWaitCache())
 	defer db.Close(ctx)
 
-	db.ChannelMapper = channels.NewDefaultChannelMapper(&db.V8VMs)
+	db.ChannelMapper = channels.NewDefaultChannelMapper(&db.JS)
 
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 	// Create a user with access to channel ABC
@@ -924,7 +924,7 @@ func TestLowSequenceHandlingWithAccessGrant(t *testing.T) {
 	db, ctx := setupTestDBWithCacheOptions(t, shortWaitCache())
 	defer db.Close(ctx)
 
-	db.ChannelMapper = channels.NewDefaultChannelMapper(&db.V8VMs)
+	db.ChannelMapper = channels.NewDefaultChannelMapper(&db.JS)
 
 	// Create a user with access to channel ABC
 	authenticator := db.Authenticator(ctx)
@@ -1044,7 +1044,7 @@ func TestChannelQueryCancellation(t *testing.T) {
 	}
 
 	db, ctx := setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), queryCallbackConfig)
-	db.ChannelMapper = channels.NewDefaultChannelMapper(&db.V8VMs)
+	db.ChannelMapper = channels.NewDefaultChannelMapper(&db.JS)
 	defer db.Close(ctx)
 
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
@@ -1141,7 +1141,7 @@ func TestLowSequenceHandlingNoDuplicates(t *testing.T) {
 	db, ctx := setupTestDBWithCacheOptions(t, shortWaitCache())
 	defer db.Close(ctx)
 
-	db.ChannelMapper = channels.NewDefaultChannelMapper(&db.V8VMs)
+	db.ChannelMapper = channels.NewDefaultChannelMapper(&db.JS)
 
 	// Create a user with access to channel ABC
 	authenticator := db.Authenticator(ctx)
@@ -1239,7 +1239,7 @@ func TestChannelRace(t *testing.T) {
 	db, ctx := setupTestDBWithCacheOptions(t, shortWaitCache())
 	defer db.Close(ctx)
 
-	db.ChannelMapper = channels.NewDefaultChannelMapper(&db.V8VMs)
+	db.ChannelMapper = channels.NewDefaultChannelMapper(&db.JS)
 
 	// Create a user with access to channels "Odd", "Even"
 	authenticator := db.Authenticator(ctx)
@@ -1346,7 +1346,7 @@ func TestSkippedViewRetrieval(t *testing.T) {
 	}
 	db, ctx := setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), leakyConfig)
 	defer db.Close(ctx)
-	db.ChannelMapper = channels.NewDefaultChannelMapper(&db.V8VMs)
+	db.ChannelMapper = channels.NewDefaultChannelMapper(&db.JS)
 
 	// Allow db to initialize and run initial CleanSkippedSequenceQueue
 	time.Sleep(10 * time.Millisecond)
@@ -1454,7 +1454,7 @@ func TestChannelCacheSize(t *testing.T) {
 	db, ctx := setupTestDBWithCacheOptions(t, options)
 	defer db.Close(ctx)
 
-	db.ChannelMapper = channels.NewDefaultChannelMapper(&db.V8VMs)
+	db.ChannelMapper = channels.NewDefaultChannelMapper(&db.JS)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 	// Create a user with access to channel ABC
@@ -1772,7 +1772,7 @@ func TestInitializeEmptyCache(t *testing.T) {
 
 	db, ctx := setupTestDBWithCacheOptions(t, cacheOptions)
 	defer db.Close(ctx)
-	db.ChannelMapper = channels.NewDefaultChannelMapper(&db.V8VMs)
+	db.ChannelMapper = channels.NewDefaultChannelMapper(&db.JS)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 	cacheWaiter := db.NewDCPCachingCountWaiter(t)
@@ -1824,7 +1824,7 @@ func TestInitializeCacheUnderLoad(t *testing.T) {
 
 	db, ctx := setupTestDBWithCacheOptions(t, cacheOptions)
 	defer db.Close(ctx)
-	db.ChannelMapper = channels.NewDefaultChannelMapper(&db.V8VMs)
+	db.ChannelMapper = channels.NewDefaultChannelMapper(&db.JS)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 	// Writes [docCount] documents.  Use wait group (writesDone)to identify when all docs have been written.
@@ -1950,7 +1950,7 @@ func TestChangeCache_InsertPendingEntries(t *testing.T) {
 	db, ctx := setupTestDBWithCacheOptions(t, cacheOptions)
 	defer db.Close(ctx)
 
-	db.ChannelMapper = channels.NewDefaultChannelMapper(&db.V8VMs)
+	db.ChannelMapper = channels.NewDefaultChannelMapper(&db.JS)
 
 	// Create a user with access to some channels
 	authenticator := db.Authenticator(ctx)

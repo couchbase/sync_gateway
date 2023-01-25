@@ -16,6 +16,7 @@ import (
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/js"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -623,7 +624,7 @@ func TestIsCfgChanged(t *testing.T) {
 	require.NoError(t, err)
 
 	dbctx := DatabaseContext{Name: "test"}
-	dbctx.V8VMs.InitV8(4)
+	dbctx.JS.Init(js.V8, 4)
 	mgr, err := NewSGReplicateManager(base.TestCtx(t), &dbctx, testCfg)
 	require.NoError(t, err)
 	defer mgr.Stop()

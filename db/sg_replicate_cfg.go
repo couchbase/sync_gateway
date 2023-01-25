@@ -583,7 +583,7 @@ func (m *sgReplicateManager) NewActiveReplicatorConfig(config *ReplicationCfg) (
 			rc.ConflictResolverFunc, err = NewConflictResolverFunc(ConflictResolverDefault, "", m.dbContext.Options.JavascriptTimeout, nil)
 
 		} else {
-			rc.ConflictResolverFunc, err = NewConflictResolverFunc(config.ConflictResolutionType, config.ConflictResolutionFn, m.dbContext.Options.JavascriptTimeout, &m.dbContext.V8VMs)
+			rc.ConflictResolverFunc, err = NewConflictResolverFunc(config.ConflictResolutionType, config.ConflictResolutionFn, m.dbContext.Options.JavascriptTimeout, &m.dbContext.JS)
 			rc.ConflictResolverFuncSrc = config.ConflictResolutionFn
 		}
 		if err != nil {

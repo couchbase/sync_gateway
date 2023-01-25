@@ -141,7 +141,7 @@ func newStandaloneEvaluator(ctx context.Context, fnConfig *FunctionsConfig, gqCo
 	if fnConfig == nil && gqConfig == nil {
 		return nil, nil, nil
 	}
-	vm := js.NewV8VM()
+	vm := js.NewVM(js.V8)
 	service := js.NewCustomService(vm, "functions", makeService(fnConfig, gqConfig))
 	if runner, err := service.GetRunner(); err != nil {
 		vm.Close()

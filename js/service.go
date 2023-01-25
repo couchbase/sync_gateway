@@ -8,17 +8,21 @@ import (
 
 // A Service represents a JavaScript-based API that runs in a VM or VMPool.
 type Service struct {
-	host ServiceHost
-	id   serviceID
-	name string
+	host             ServiceHost
+	id               serviceID
+	name             string
+	jsFunctionSource string
+	v8Init           TemplateFactory
 }
 
 type serviceID uint32 // internal ID, used as an array index in VM and VMPool.
 
 // A provider of a JavaScript runtime for Services. VM and VMPool implement this.
 type ServiceHost interface {
+	Type() *VMType
 	Close()
-	registerService(factory TemplateFactory, name string) serviceID
+	FindService(name string) *Service
+	registerService(*Service)
 	getRunner(*Service) (Runner, error)
 	withRunner(*Service, func(Runner) (any, error)) (any, error)
 }
@@ -28,19 +32,23 @@ type ServiceHost interface {
 // The source code should be of the form `function(arg1,arg2…) {…body…; return result;}`.
 // If you have a more complex script, like one that defines several functions, use NewCustomService.
 func NewService(host ServiceHost, name string, jsFunctionSource string) *Service {
-	return NewCustomService(host, name, BasicTemplateFactory(jsFunctionSource))
+	base.DebugfCtx(context.Background(), base.KeyJavascript, "Creating JavaScript service %q", name)
+	service := &Service{
+		host:             host,
+		name:             name,
+		jsFunctionSource: jsFunctionSource,
+	}
+	host.registerService(service)
+	return service
 }
 
 // Creates a new Service in a ServiceHost (a VM or VMPool.)
 // The implementation can extend the Service's JavaScript template environment by defining globals
 // and/or callback functions.
 func NewCustomService(host ServiceHost, name string, factory TemplateFactory) *Service {
-	base.DebugfCtx(context.Background(), base.KeyJavascript, "Creating JavaScript service %q", name)
-	return &Service{
-		host: host,
-		id:   host.registerService(factory, name),
-		name: name,
-	}
+	service := NewService(host, name, "")
+	service.v8Init = factory
+	return service
 }
 
 // A factory/initialization function for Services that need to add JS globals or callbacks or
@@ -50,7 +58,7 @@ func NewCustomService(host ServiceHost, name string, factory TemplateFactory) *S
 // The function MUST call its SetScript method.
 // The function may return the Template it was given, or it may instantiate its own struct that
 // implements Template (which presumably includes a pointer to the BasicTemplate) and return that.
-type TemplateFactory func(base *BasicTemplate) (Template, error)
+type TemplateFactory func(base *V8BasicTemplate) (V8Template, error)
 
 // The Service's name, given when it was created.
 func (service *Service) Name() string { return service.name }

@@ -12,19 +12,14 @@ import (
 )
 
 type V8Runner struct {
-	template  Template        // The Service template I'm created from
-	id        serviceID       // The service ID in its VM
-	vm        *v8VM           // The owning VM object
-	ctx       *v8.Context     // V8 object managing this execution context
-	mainFn    *v8.Function    // The entry-point function (returned by the Service's script)
-	goContext context.Context // context.Context value for use by Go callbacks
-	Client    any             // You can put whatever you want here, to point back to your state
+	baseRunner
+	v8vm   *v8VM
+	ctx    *v8.Context  // V8 object managing this execution context
+	mainFn *v8.Function // The entry-point function (returned by the Service's script)
+	Client any          // You can put whatever you want here, to point back to your state
 }
 
-func (r *V8Runner) Template() Template { return r.template }
-func (r *V8Runner) VM() VM             { return r.vm }
-
-func newV8Runner(vm *v8VM, template Template, id serviceID) (*V8Runner, error) {
+func newV8Runner(vm *v8VM, template V8Template, id serviceID) (*V8Runner, error) {
 	// Create a V8 Context and run the setup script in it:
 	ctx := v8.NewContext(vm.iso, template.Global())
 	if _, err := vm.setupScript.Run(ctx); err != nil {
@@ -44,58 +39,32 @@ func newV8Runner(vm *v8VM, template Template, id serviceID) (*V8Runner, error) {
 	}
 
 	return &V8Runner{
-		template: template,
-		id:       id,
-		vm:       vm,
-		ctx:      ctx,
-		mainFn:   mainFn,
+		baseRunner: baseRunner{
+			template: template,
+			id:       id,
+			vm:       vm,
+		},
+		v8vm:   vm,
+		ctx:    ctx,
+		mainFn: mainFn,
 	}, nil
 }
 
 // Always call this when finished with a v8Runner acquired from Service.GetRunner.
 func (r *V8Runner) Return() {
-	r.vm.returnRunner(r)
+	r.v8vm.returnRunner(r)
 }
 
 // Disposes the V8 resources for a runner.
 func (r *V8Runner) close() {
-	if r.vm != nil && r.vm.curRunner == r {
-		r.vm.curRunner = nil
+	if r.vm != nil && r.v8vm.curRunner == r {
+		r.v8vm.curRunner = nil
 	}
 	if r.ctx != nil {
 		r.ctx.Close()
 		r.ctx = nil
 	}
 	r.vm = nil
-}
-
-//////// GO CONTEXT AND TIMEOUT    (not to be confused with v8.Context!)
-
-// Associates a Go Context with this v8Runner.
-// If this Context has a deadline, JS calls will abort if it expires.
-func (r *V8Runner) SetContext(ctx context.Context) { r.goContext = ctx }
-
-// Returns the Go context.Context associated with this v8Runner; nil by default.
-func (r *V8Runner) Context() context.Context { return r.goContext }
-
-// Returns the Go context.Context associated with this v8Runner, else `context.TODO()`.
-func (r *V8Runner) ContextOrDefault() context.Context {
-	if r.goContext != nil {
-		return r.goContext
-	} else {
-		return context.TODO()
-	}
-}
-
-// Returns the remaining duration until the v8Runner's Go Context's deadline, or nil if none.
-func (r *V8Runner) Timeout() *time.Duration {
-	if r.goContext != nil {
-		if deadline, hasDeadline := r.goContext.Deadline(); hasDeadline {
-			timeout := time.Until(deadline)
-			return &timeout
-		}
-	}
-	return nil
 }
 
 //////// CALLING JAVASCRIPT FUNCTIONS
@@ -150,7 +119,7 @@ func (r *V8Runner) JustCall(fn *v8.Function, this v8.Valuer, args ...v8.Valuer) 
 			timer := time.NewTimer(*timeout)
 			completed := make(chan bool)
 			defer close(completed)
-			iso := r.vm.iso
+			iso := r.v8vm.iso
 			go func() {
 				defer timer.Stop()
 
@@ -254,7 +223,7 @@ type JSONString string
 func (r *V8Runner) NewInt(i int) *v8.Value { return mustSucceed(r.ctx.NewValue(i)) }
 
 // Creates a JavaScript string value.
-func (r *V8Runner) NewString(str string) *v8.Value { return newString(r.vm.iso, str) }
+func (r *V8Runner) NewString(str string) *v8.Value { return newString(r.v8vm.iso, str) }
 
 // Marshals a Go value to JSON and returns it as a V8 string.
 func (r *V8Runner) NewJSONString(val any) (*v8.Value, error) { return newJSONString(r.ctx, val) }
@@ -263,10 +232,10 @@ func (r *V8Runner) NewJSONString(val any) (*v8.Value, error) { return newJSONStr
 func (r *V8Runner) JSONParse(json string) (*v8.Value, error) { return v8.JSONParse(r.ctx, json) }
 
 // Returns a value representing JavaScript 'undefined'.
-func (r *V8Runner) UndefinedValue() *v8.Value { return v8.Undefined(r.vm.iso) }
+func (r *V8Runner) UndefinedValue() *v8.Value { return v8.Undefined(r.v8vm.iso) }
 
 // Returns a value representing JavaScript 'null'.
-func (r *V8Runner) NullValue() *v8.Value { return v8.Null(r.vm.iso) }
+func (r *V8Runner) NullValue() *v8.Value { return v8.Null(r.v8vm.iso) }
 
 //////// CONVERTING JAVASCRIPT VALUES BACK TO GO:
 

@@ -11,44 +11,28 @@ import (
 
 //////// VM POOL
 
-type vmFactory = func(*servicesConfiguration) VM
-
 // A thread-safe ServiceHost for Services and Runners that owns a set of VMs
 // and allocates an available one when a Runner is needed.
 type VMPool struct {
 	maxInUse  int                    // Max number of simultaneously in-use VMs
 	services  *servicesConfiguration // Defines the services (owned VMs also have references)
 	tickets   chan bool              // Each item in this channel represents availability of a VM
-	factory   vmFactory              // Factory function that creates IVMs
+	vmType    *VMType                // Factory function that creates IVMs
 	mutex     sync.Mutex             // Must be locked to access fields below
 	vms_      []VM                   // LIFO cache of idle VMs, recently used at end
 	curInUse_ int                    // Current number of VMs "checked out"
 }
 
-// Creates a `VMPool`, a thread-safe ServiceHost for Services and Runners, using V8.
-// `maxVMs` is the maximum number of V8 instances (VM objects) it will provide; a reasonable value
-// for this is the number of CPU cores.
-func NewV8VMPool(maxVMs int) *VMPool {
-	return newVMPool(v8Factory, maxVMs)
-}
-
-// Initializes a `VMPool`, a thread-safe ServiceHost for Services and Runners
-// `maxVMs` is the maximum number of V8 instances (VM objects) it will provide; a reasonable value
-// for this is the number of CPU cores.
-func (pool *VMPool) InitV8(maxVMs int) {
-	pool.init(v8Factory, maxVMs)
-}
-
-func newVMPool(factory vmFactory, maxVMs int) *VMPool {
+func NewVMPool(typ *VMType, maxVMs int) *VMPool {
 	pool := new(VMPool)
-	pool.init(factory, maxVMs)
+	pool.Init(typ, maxVMs)
 	return pool
 }
 
-func (pool *VMPool) init(factory vmFactory, maxVMs int) {
+func (pool *VMPool) Init(typ *VMType, maxVMs int) {
 	pool.maxInUse = maxVMs
 	pool.services = &servicesConfiguration{}
-	pool.factory = factory
+	pool.vmType = typ
 	pool.vms_ = make([]VM, 0, maxVMs)
 	pool.tickets = make(chan bool, maxVMs)
 	for i := 0; i < maxVMs; i++ {
@@ -57,9 +41,11 @@ func (pool *VMPool) init(factory vmFactory, maxVMs int) {
 	base.InfofCtx(context.Background(), base.KeyJavascript, "js.VMPool: Init, max %d VMs", maxVMs)
 }
 
-// Tears down a VMPool, freeing up its cached V8 VMs.
-// It's a good idea to call this, as the VMs may be holding onto a lot of memory and this will
-// clean up that memory sooner than Go's GC will.
+func (pool *VMPool) Type() *VMType { return pool.vmType }
+
+// Tears down a VMPool, freeing up its cached VMs.
+// It's a good idea to call this when using V8, as the VMs may be holding onto a lot of external
+// memory managed by V8, and this will clean up that memory sooner than Go's GC will.
 func (pool *VMPool) Close() {
 	if inUse := pool.InUseCount(); inUse > 0 {
 		base.WarnfCtx(context.Background(), "A js.VMPool is being closed with %d VMs still in use", inUse)
@@ -72,7 +58,7 @@ func (pool *VMPool) Close() {
 	// This isn't necessary, but it frees up memory sooner.
 	n := pool.closeAll()
 	base.InfofCtx(context.Background(), base.KeyJavascript,
-		"js.VMPool.Close: Closed pool with %d V8 VM(s)", n)
+		"js.VMPool.Close: Closed pool with %d VM(s)", n)
 }
 
 // Returns the number of VMs currently in use.
@@ -82,20 +68,24 @@ func (pool *VMPool) InUseCount() int {
 	return pool.curInUse_
 }
 
-// Closes all idle V8 VMs cached by this pool. It will reallocate them when it needs to.
+// Closes all idle VMs cached by this pool. It will reallocate them when it needs to.
 func (pool *VMPool) PurgeUnusedVMs() {
 	n := pool.closeAll()
 	base.InfofCtx(context.Background(), base.KeyJavascript,
-		"js.VMPool.PurgeUnusedVMs: Closed %d idle V8 VM(s)", n)
+		"js.VMPool.PurgeUnusedVMs: Closed %d idle VM(s)", n)
+}
+
+func (pool *VMPool) FindService(name string) *Service {
+	return pool.services.findServiceNamed(name)
 }
 
 //////// INTERNALS:
 
-func (pool *VMPool) registerService(factory TemplateFactory, name string) serviceID {
+func (pool *VMPool) registerService(service *Service) {
 	if pool.services == nil {
-		panic("You forgot to initialize a VMPool") // failed to call Init or NewV8VMPool
+		panic("You forgot to initialize a VMPool")
 	}
-	return pool.services.addService(factory, name)
+	pool.services.addService(service)
 }
 
 // Produces an idle `VM` that can be used by this goroutine.
@@ -110,7 +100,7 @@ func (pool *VMPool) getVM(service *Service) (VM, error) {
 	vm, inUse := pool.pop(service)
 	if vm == nil {
 		// Nothing in the pool, so create a new VM instance.
-		vm = pool.factory(pool.services)
+		vm = pool.vmType.factory(pool.services)
 		base.InfofCtx(context.Background(), base.KeyJavascript,
 			"js.VMPool.getVM: No VMs free; created a new one")
 	}

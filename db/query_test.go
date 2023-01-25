@@ -455,7 +455,7 @@ func TestAccessQuery(t *testing.T) {
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
-	db.ChannelMapper = channels.NewChannelMapper(&db.V8VMs, `function(doc, oldDoc) {
+	db.ChannelMapper = channels.NewChannelMapper(&db.JS, `function(doc, oldDoc) {
 	access(doc.accessUser, doc.accessChannel)
 }`, 0)
 	// Add docs with access grants assignment
@@ -502,7 +502,7 @@ func TestRoleAccessQuery(t *testing.T) {
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
-	db.ChannelMapper = channels.NewChannelMapper(&db.V8VMs, `function(doc, oldDoc) {
+	db.ChannelMapper = channels.NewChannelMapper(&db.JS, `function(doc, oldDoc) {
 	role(doc.accessUser, "role:" + doc.accessChannel)
 }`, 0)
 	// Add docs with access grants assignment

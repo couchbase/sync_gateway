@@ -31,14 +31,14 @@ type jsConfig struct {
 
 // js.Template implementation; a "subclass" of js.BasicTemplate.
 type functionServiceTemplate struct {
-	*js.BasicTemplate                    // "Superclass"
-	upstreamTemplate  *v8.ObjectTemplate // Template of object holding JS callbacks
-	jsonConfig        *v8.Value          // JSON configuration string
+	*js.V8BasicTemplate                    // "Superclass"
+	upstreamTemplate    *v8.ObjectTemplate // Template of object holding JS callbacks
+	jsonConfig          *v8.Value          // JSON configuration string
 }
 
 // Returns a ServiceFactory function that instantiates a "functions" js.Service
 func makeService(functions *FunctionsConfig, graphql *GraphQLConfig) js.TemplateFactory {
-	return func(base *js.BasicTemplate) (js.Template, error) {
+	return func(base *js.V8BasicTemplate) (js.V8Template, error) {
 		// Initialize the BaseService and compile the JS code:
 		base.SetScript(kJavaScriptCode + "\n SG_Engine.main;")
 
@@ -59,7 +59,7 @@ func makeService(functions *FunctionsConfig, graphql *GraphQLConfig) js.Template
 
 		// Wrap the service in a js.Service implementation:
 		return &functionServiceTemplate{
-			BasicTemplate:    base,
+			V8BasicTemplate:  base,
 			upstreamTemplate: upstream,
 			jsonConfig:       base.NewString(string(jsonConfig)),
 		}, nil

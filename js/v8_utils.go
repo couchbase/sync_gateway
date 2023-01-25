@@ -55,7 +55,7 @@ func ValueToGo(val *v8.Value) (any, error) {
 
 // Converts a float64 to an int or int64 if possible without losing accuracy.
 func intify(f float64) any {
-	if f == math.Floor(f) && f >= float64(kMinFloat64SafeInt) && f < float64(kMaxFloat64SafeInt) {
+	if f == math.Floor(f) && f >= float64(JavascriptMinSafeInt) && f < float64(JavascriptMaxSafeInt) {
 		if i64 := int64(f); i64 >= math.MinInt && i64 <= math.MaxInt {
 			return int(i64) // Return int if possible
 		} else {
@@ -97,11 +97,6 @@ func newJSONString(ctx *v8.Context, val any) (*v8.Value, error) {
 		return ctx.NewValue(string(jsonBytes))
 	}
 }
-
-// Range of integers that can be stored in a float64 (or a JavaScript number) without losing
-// accuracy (https://www.ecma-international.org/ecma-262/5.1/#sec-8.5)
-const kMaxFloat64SafeInt = 1<<53 - 1
-const kMinFloat64SafeInt = -kMaxFloat64SafeInt
 
 //////// ERROR UTILITIES:
 

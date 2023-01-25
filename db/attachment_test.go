@@ -234,7 +234,7 @@ func TestAttachmentForRejectedDocument(t *testing.T) {
 	assert.NoError(t, err, "Couldn't create database 'db'")
 
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
-	db.ChannelMapper = channels.NewChannelMapper(&db.V8VMs, `function(doc, oldDoc) {
+	db.ChannelMapper = channels.NewChannelMapper(&db.JS, `function(doc, oldDoc) {
 		throw({forbidden: "None shall pass!"});
 	}`, 0)
 

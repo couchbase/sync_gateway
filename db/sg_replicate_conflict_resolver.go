@@ -191,7 +191,7 @@ func NewConflictResolverFunc(resolverType ConflictResolverType, customResolverSo
 // javascript conflict resolver specified by source
 func NewCustomConflictResolver(source string, timeout time.Duration, host js.ServiceHost) (ConflictResolverFunc, error) {
 	base.DebugfCtx(context.Background(), base.KeyReplicate, "Creating new ConflictResolverFunction")
-	service := js.NewCustomService(host, "conflict resolver", func(tmpl *js.BasicTemplate) (js.Template, error) {
+	service := js.NewCustomService(host, "conflict resolver", func(tmpl *js.V8BasicTemplate) (js.V8Template, error) {
 		err := tmpl.SetScript(`(` + source + `)`)
 		if err == nil {
 			tmpl.GlobalCallback("defaultPolicy", defaultPolicyCallback)

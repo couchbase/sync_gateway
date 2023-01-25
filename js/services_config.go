@@ -4,41 +4,38 @@ import (
 	"sync"
 )
 
-// A thread-safe registry of service TemplateFactory functions. Each is identified by a `serviceID`.
+// A thread-safe registry of Services. Each is identified by a `serviceID`.
 type servicesConfiguration struct {
 	mutex    sync.Mutex
-	registry []TemplateFactory
-	names    []string
+	registry []*Service
 }
 
-// Returns the TemplateFactory registered with a serviceID, or nil if not found.
-func (config *servicesConfiguration) getService(id serviceID) TemplateFactory {
+// Registers a new Service, assigning its `id` field.
+func (config *servicesConfiguration) addService(service *Service) {
 	config.mutex.Lock()
 	defer config.mutex.Unlock()
-	if int(id) < len(config.registry) {
-		return config.registry[int(id)]
-	} else {
-		return nil
-	}
+
+	config.registry = append(config.registry, service)
+	service.id = serviceID(len(config.registry) - 1)
 }
 
-// Looks up a service by name.
-func (config *servicesConfiguration) findService(name string) (serviceID, bool) {
+// Checks that the registry contains this Service instance.
+func (config *servicesConfiguration) hasService(service *Service) bool {
 	config.mutex.Lock()
 	defer config.mutex.Unlock()
-	for i, str := range config.names {
-		if str == name {
-			return serviceID(i), true
+
+	return int(service.id) < len(config.registry) && service == config.registry[service.id]
+}
+
+// Returns the [first] Service with a given name, or nil if not found.
+func (config *servicesConfiguration) findServiceNamed(name string) *Service {
+	config.mutex.Lock()
+	defer config.mutex.Unlock()
+
+	for _, service := range config.registry {
+		if service.name == name {
+			return service
 		}
 	}
-	return serviceID(0), false
-}
-
-// Registers a new Service, returning its ID.
-func (config *servicesConfiguration) addService(factory TemplateFactory, name string) serviceID {
-	config.mutex.Lock()
-	defer config.mutex.Unlock()
-	config.registry = append(config.registry, factory)
-	config.names = append(config.names, name)
-	return serviceID(len(config.registry) - 1)
+	return nil
 }

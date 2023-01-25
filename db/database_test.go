@@ -800,7 +800,7 @@ func TestAllDocsOnly(t *testing.T) {
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
-	db.ChannelMapper = channels.NewDefaultChannelMapper(&db.V8VMs)
+	db.ChannelMapper = channels.NewDefaultChannelMapper(&db.JS)
 
 	collectionID := collection.GetCollectionID()
 
@@ -915,7 +915,7 @@ func TestUpdatePrincipal(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 
-	db.ChannelMapper = channels.NewDefaultChannelMapper(&db.V8VMs)
+	db.ChannelMapper = channels.NewDefaultChannelMapper(&db.JS)
 
 	// Create a user with access to channel ABC
 	authenticator := db.Authenticator(ctx)
@@ -985,7 +985,7 @@ func TestConflicts(t *testing.T) {
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
-	db.ChannelMapper = channels.NewDefaultChannelMapper(&db.V8VMs)
+	db.ChannelMapper = channels.NewDefaultChannelMapper(&db.JS)
 
 	// Instantiate channel cache for channel 'all'
 	collectionID := collection.GetCollectionID()
@@ -1358,7 +1358,7 @@ func TestSyncFnOnPush(t *testing.T) {
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
-	db.ChannelMapper = channels.NewChannelMapper(&db.V8VMs, `function(doc, oldDoc) {
+	db.ChannelMapper = channels.NewChannelMapper(&db.JS, `function(doc, oldDoc) {
 		log("doc _id = "+doc._id+", _rev = "+doc._rev);
 		if (oldDoc)
 			log("oldDoc _id = "+oldDoc._id+", _rev = "+oldDoc._rev);
@@ -1397,7 +1397,7 @@ func TestInvalidChannel(t *testing.T) {
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
-	db.ChannelMapper = channels.NewDefaultChannelMapper(&db.V8VMs)
+	db.ChannelMapper = channels.NewDefaultChannelMapper(&db.JS)
 
 	body := Body{"channels": []string{"bad,name"}}
 	_, _, err := collection.Put(ctx, "doc", body)
@@ -1411,7 +1411,7 @@ func TestAccessFunctionValidation(t *testing.T) {
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 	var err error
-	db.ChannelMapper = channels.NewChannelMapper(&db.V8VMs, `function(doc){access(doc.users,doc.userChannels);}`, 0)
+	db.ChannelMapper = channels.NewChannelMapper(&db.JS, `function(doc){access(doc.users,doc.userChannels);}`, 0)
 
 	body := Body{"users": []string{"username"}, "userChannels": []string{"BBC1"}}
 	_, _, err = collection.Put(ctx, "doc1", body)
@@ -1447,7 +1447,7 @@ func TestAccessFunctionDb(t *testing.T) {
 	authenticator := db.Authenticator(ctx)
 
 	var err error
-	db.ChannelMapper = channels.NewChannelMapper(&db.V8VMs, `function(doc){access(doc.users,doc.userChannels);}`, 0)
+	db.ChannelMapper = channels.NewChannelMapper(&db.JS, `function(doc){access(doc.users,doc.userChannels);}`, 0)
 
 	user, err := authenticator.NewUser("naomi", "letmein", channels.BaseSetOf(t, "Netflix"))
 	require.NoError(t, err)
@@ -2019,7 +2019,7 @@ func TestSyncFnMutateBody(t *testing.T) {
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
-	db.ChannelMapper = channels.NewChannelMapper(&db.V8VMs, `function(doc, oldDoc) {
+	db.ChannelMapper = channels.NewChannelMapper(&db.JS, `function(doc, oldDoc) {
 		doc.key1 = "mutatedValue"
 		doc.key2.subkey1 = "mutatedSubValue"
 		channel(doc.channels);
@@ -2534,7 +2534,7 @@ func TestGetAllUsers(t *testing.T) {
 	db.Options.QueryPaginationLimit = 100
 	defer db.Close(ctx)
 
-	db.ChannelMapper = channels.NewDefaultChannelMapper(&db.V8VMs)
+	db.ChannelMapper = channels.NewDefaultChannelMapper(&db.JS)
 
 	log.Printf("Creating users...")
 	// Create users
@@ -2571,7 +2571,7 @@ func TestGetRoleIDs(t *testing.T) {
 	defer db.Close(ctx)
 
 	db.Options.QueryPaginationLimit = 100
-	db.ChannelMapper = channels.NewDefaultChannelMapper(&db.V8VMs)
+	db.ChannelMapper = channels.NewDefaultChannelMapper(&db.JS)
 	authenticator := db.Authenticator(ctx)
 
 	rolename1 := uuid.NewString()
@@ -2617,7 +2617,7 @@ func Test_updateAllPrincipalsSequences(t *testing.T) {
 	defer db.Close(ctx)
 
 	db.Options.QueryPaginationLimit = 100
-	db.ChannelMapper = channels.NewDefaultChannelMapper(&db.V8VMs)
+	db.ChannelMapper = channels.NewDefaultChannelMapper(&db.JS)
 
 	auth := db.Authenticator(ctx)
 	roleSequences := [5]uint64{}
@@ -2777,7 +2777,7 @@ func Test_resyncDocument(t *testing.T) {
 
 			db.Options.EnableXattr = testCase.useXattr
 			db.Options.QueryPaginationLimit = 100
-			db.ChannelMapper = channels.NewDefaultChannelMapper(&db.V8VMs)
+			db.ChannelMapper = channels.NewDefaultChannelMapper(&db.JS)
 			collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 			syncFn := `
@@ -2835,7 +2835,7 @@ func Test_getUpdatedDocument(t *testing.T) {
 		defer db.Close(ctx)
 
 		db.Options.QueryPaginationLimit = 100
-		db.ChannelMapper = channels.NewDefaultChannelMapper(&db.V8VMs)
+		db.ChannelMapper = channels.NewDefaultChannelMapper(&db.JS)
 		docID := "testDoc"
 
 		body := `{"val": "nonsyncdoc"}`
@@ -2857,7 +2857,7 @@ func Test_getUpdatedDocument(t *testing.T) {
 		db, ctx := setupTestDB(t)
 		defer db.Close(ctx)
 		db.Options.QueryPaginationLimit = 100
-		db.ChannelMapper = channels.NewDefaultChannelMapper(&db.V8VMs)
+		db.ChannelMapper = channels.NewDefaultChannelMapper(&db.JS)
 		collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 		syncFn := `

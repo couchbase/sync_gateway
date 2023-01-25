@@ -81,7 +81,7 @@ const (
 const BGTCompletionMaxWait = 30 * time.Second
 
 // Max number of V8 instances to create (per database)
-const MaxV8VMs = 4
+const MaxJavaScriptVMs = 4
 
 // Basic description of a database. Shared between all Database objects on the same database.
 // This object is thread-safe so it can be shared between HTTP handlers.
@@ -134,7 +134,7 @@ type DatabaseContext struct {
 	CollectionNames              map[string]map[string]struct{} // Map of scope, collection names
 	UserFunctions                *UserFunctions                 // JS/N1QL functions clients can call
 	GraphQL                      GraphQL                        // GraphQL query interface
-	V8VMs                        js.VMPool                      // A pool of preconfigured V8 instances
+	JS                           js.VMPool                      // A pool of preconfigured V8 instances
 }
 
 type Scope struct {
@@ -386,15 +386,15 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 		CollectionByID: make(map[uint32]*DatabaseCollection),
 	}
 
-	dbContext.V8VMs.InitV8(MaxV8VMs)
+	dbContext.JS.Init(js.V8, MaxJavaScriptVMs)
 
 	if options.ImportOptions.ImportFilterSource != nil {
-		dbContext.Options.ImportOptions.ImportFilter = NewImportFilterFunction(&dbContext.V8VMs, *options.ImportOptions.ImportFilterSource, options.JavascriptTimeout)
+		dbContext.Options.ImportOptions.ImportFilter = NewImportFilterFunction(&dbContext.JS, *options.ImportOptions.ImportFilterSource, options.JavascriptTimeout)
 	}
 
 	cleanupFunctions = append(cleanupFunctions, func() {
 		base.SyncGatewayStats.ClearDBStats(dbName)
-		dbContext.V8VMs.Close()
+		dbContext.JS.Close()
 	})
 
 	if dbContext.AllowConflicts() {
@@ -477,7 +477,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 				}
 
 				if collOpts.ImportFilterSource != nil {
-					dbCollection.importFilterFunction = NewImportFilterFunction(&dbContext.V8VMs, *collOpts.ImportFilterSource, options.JavascriptTimeout)
+					dbCollection.importFilterFunction = NewImportFilterFunction(&dbContext.JS, *collOpts.ImportFilterSource, options.JavascriptTimeout)
 				}
 
 				_, err = dbCollection.UpdateSyncFun(ctx, syncFn)
@@ -501,7 +501,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 			return nil, err
 		}
 		if options.DefaultCollectionImportFilter != nil {
-			dbCollection.importFilterFunction = NewImportFilterFunction(&dbContext.V8VMs, *options.DefaultCollectionImportFilter, options.JavascriptTimeout)
+			dbCollection.importFilterFunction = NewImportFilterFunction(&dbContext.JS, *options.DefaultCollectionImportFilter, options.JavascriptTimeout)
 		}
 
 		dbContext.CollectionByID[base.DefaultCollectionID] = dbCollection
@@ -708,7 +708,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 	dbContext.AttachmentCompactionManager = NewAttachmentCompactionManager(metadataStore)
 
 	if dbContext.Options.FunctionsConfig != nil {
-		dbContext.UserFunctions, dbContext.GraphQL, err = dbContext.Options.FunctionsConfig.Compile(&dbContext.V8VMs)
+		dbContext.UserFunctions, dbContext.GraphQL, err = dbContext.Options.FunctionsConfig.Compile(&dbContext.JS)
 		if err != nil {
 			return nil, err
 		}
@@ -798,7 +798,7 @@ func (context *DatabaseContext) Close(ctx context.Context) {
 
 	base.RemovePerDbStats(context.Name)
 
-	context.V8VMs.Close()
+	context.JS.Close()
 }
 
 // stopBackgroundManagers stops any running BackgroundManager.
@@ -1700,7 +1700,7 @@ func (dbCtx *DatabaseContext) UpdateSyncFun(ctx context.Context, syncFun string)
 	} else if dbCtx.ChannelMapper != nil {
 		err = dbCtx.ChannelMapper.SetFunction(syncFun)
 	} else {
-		dbCtx.ChannelMapper = channels.NewChannelMapper(&dbCtx.V8VMs, syncFun, dbCtx.Options.JavascriptTimeout)
+		dbCtx.ChannelMapper = channels.NewChannelMapper(&dbCtx.JS, syncFun, dbCtx.Options.JavascriptTimeout)
 	}
 	if err != nil {
 		base.WarnfCtx(ctx, "Error setting sync function: %s", err)

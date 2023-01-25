@@ -33,7 +33,7 @@ func emptyMetaMap() MetaMap {
 var noUser = map[string]interface{}{"name": nil, "channels": []string{}}
 
 func newChannelMapperWithVMs(fnSource string, timeout time.Duration) *ChannelMapper {
-	return NewChannelMapper(js.NewV8VM(), fnSource, timeout)
+	return NewChannelMapper(js.NewVM(js.V8), fnSource, timeout)
 }
 
 // verify that our version of Otto treats JSON parsed arrays like real arrays
@@ -48,7 +48,7 @@ func TestJavaScriptWorks(t *testing.T) {
 
 // Verify the sync fn cannot access the internal JS variables used in the wrapper.
 func TestHiddenVariables(t *testing.T) {
-	vm := js.NewV8VM()
+	vm := js.NewVM(js.V8)
 	defer vm.Close()
 	for _, hidden := range []string{"userCtx", "shouldValidate", "result", "eval", "Function"} {
 		mapper := NewChannelMapper(vm, `function(doc) {return `+hidden+`;}`, 0)
@@ -200,7 +200,7 @@ func TestInputParse(t *testing.T) {
 // A more realistic example
 func TestDefaultChannelMapper(t *testing.T) {
 	var vms js.VMPool
-	vms.InitV8(1)
+	vms.Init(js.V8, 1)
 	defer vms.Close()
 
 	mapper := NewDefaultChannelMapper(&vms)

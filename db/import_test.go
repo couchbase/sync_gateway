@@ -442,7 +442,7 @@ func TestEvaluateFunction(t *testing.T) {
 
 	testImport := func(body Body, source string) (bool, error) {
 		var vms js.VMPool
-		vms.InitV8(4)
+		vms.Init(js.V8, 4)
 		defer vms.Close()
 		importFilterFunc := NewImportFilterFunction(&vms, source, 0)
 		return importFilterFunc(base.TestCtx(t), body)

@@ -153,7 +153,7 @@ func TestCustomConflictResolver(t *testing.T) {
 		},
 	}
 
-	host := js.NewV8VMPool(4)
+	host := js.NewVMPool(js.V8, 4)
 	defer host.Close()
 
 	for _, test := range defaultConflictResolverTests {

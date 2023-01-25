@@ -309,7 +309,7 @@ func TestAllPrincipalIDs(t *testing.T) {
 			base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache, base.KeyChanges)
 
 			database.Options.QueryPaginationLimit = 100
-			database.ChannelMapper = channels.NewDefaultChannelMapper(&database.V8VMs)
+			database.ChannelMapper = channels.NewDefaultChannelMapper(&database.JS)
 			authenticator := database.Authenticator(ctx)
 
 			rolename1 := uuid.NewString()
@@ -357,7 +357,7 @@ func TestGetRoleIDs(t *testing.T) {
 		t.Skip("This test is Couchbase Server and UseViews=false only")
 	}
 
-	host := js.NewV8VMPool(4)
+	host := js.NewVMPool(js.V8, 4)
 	defer host.Close()
 
 	testCases := []struct {
