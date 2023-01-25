@@ -24,7 +24,7 @@ licenses/APL2.txt.
 
     <!-- Build Scripts (required on CI servers) -->
     <project name="product-texts" path="product-texts" remote="couchbase"/>
-    <project name="build" path="cbbuild" remote="couchbase" revision="465038ca7ddb1eafadf7d439839d43bed1fb42ad">
+    <project name="build" path="cbbuild" remote="couchbase" revision="844e2484067053d7af88e706a814766265bf03df">
         <annotation name="VERSION" value="3.0.4.1"     keep="true"/>
         <annotation name="BLD_NUM" value="@BLD_NUM@" keep="true"/>
         <annotation name="RELEASE" value="@RELEASE@" keep="true"/>
