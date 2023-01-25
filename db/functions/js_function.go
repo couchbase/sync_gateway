@@ -25,10 +25,9 @@ import (
 // implements UserFunctionInvocation and resolver
 type jsInvocation struct {
 	*functionImpl
-	db              *db.Database
-	ctx             context.Context
-	args            map[string]any
-	mutationAllowed bool
+	db   *db.Database
+	ctx  context.Context
+	args map[string]any
 }
 
 func (fn *jsInvocation) Iterate() (sgbucket.QueryResultIterator, error) {
@@ -40,7 +39,11 @@ func (fn *jsInvocation) Run() (any, error) {
 }
 
 func (fn *jsInvocation) Resolve(params graphql.ResolveParams) (any, error) {
-	return fn.call(db.MakeUserCtx(fn.db.User(), base.DefaultScope, base.DefaultCollection), params.Args, params.Source, resolverInfo(params))
+	return fn.call(
+		params.Source, // parent
+		params.Args,   // args
+		db.MakeUserCtx(fn.db.User(), base.DefaultScope, base.DefaultCollection), // context
+		resolverInfo(params)) // info
 }
 
 func (fn *jsInvocation) ResolveType(params graphql.ResolveTypeParams) (any, error) {
@@ -52,7 +55,6 @@ func (fn *jsInvocation) call(jsArgs ...any) (any, error) {
 	return fn.compiled.WithTask(func(task sgbucket.JSServerTask) (result any, err error) {
 		runner := task.(*jsRunner)
 		return runner.CallWithDB(fn.db,
-			fn.mutationAllowed,
 			fn.ctx,
 			jsArgs...)
 	})

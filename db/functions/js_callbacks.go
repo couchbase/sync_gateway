@@ -11,6 +11,7 @@ licenses/APL2.txt.
 package functions
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -23,9 +24,16 @@ import (
 func (runner *jsRunner) defineNativeCallbacks() {
 	// Implementation of the 'delete(docID)' callback:
 	runner.DefineNativeFunction("_delete", func(call otto.FunctionCall) otto.Value {
-		docID := ottoStringParam(call, 0, "user.delete")
-		doc := ottoObjectParam(call, 1, true, "user.delete")
-		sudo := ottoBoolParam(call, 2)
+		var docID string
+		var doc map[string]any
+		if arg0 := call.Argument(0); arg0.IsString() {
+			docID = arg0.String()
+		} else if arg0.IsObject() {
+			doc = ottoObjectParam(call, 0, false, "user.delete")
+		} else {
+			panic(call.Otto.MakeTypeError("user.delete() arg 1 must be a string or object"))
+		}
+		sudo := ottoBoolParam(call, 1)
 		ok, err := runner.do_delete(docID, doc, sudo)
 		return ottoResult(call, ok, err)
 	})
@@ -56,46 +64,89 @@ func (runner *jsRunner) defineNativeCallbacks() {
 		return ottoJSONResult(call, result, err)
 	})
 
-	// Implementation of the 'save(docID,doc)' callback:
+	// Implementation of the 'save(doc,docID?)' callback:
 	runner.DefineNativeFunction("_save", func(call otto.FunctionCall) otto.Value {
-		docID := ottoOptionalStringParam(call, 0, "user.save")
-		doc := ottoObjectParam(call, 1, false, "user.save")
+		doc := ottoObjectParam(call, 0, false, "user.save")
+		docID := ottoOptionalStringParam(call, 1, "user.save")
 		sudo := ottoBoolParam(call, 2)
-		docID, err := runner.do_save(docID, doc, sudo)
+		docID, err := runner.do_save(doc, docID, sudo)
 		return ottoResult(call, docID, err)
 	})
+
+	// Implementation of the '_requireMutating()' callback:
+	runner.DefineNativeFunction("_requireMutating", func(call otto.FunctionCall) otto.Value {
+		err := runner.checkMutationAllowed("requireMutating")
+		return ottoResult(call, nil, err)
+	})
+}
+
+func (runner *jsRunner) checkMutationAllowed(what string) error {
+	if roFn, ok := runner.ctx.Value(readOnlyKey).(string); ok {
+		name := fmt.Sprintf("%s %q", runner.kind, runner.name)
+		if name == roFn {
+			return base.HTTPErrorf(http.StatusForbidden, "%q called from non-mutating %s", what, roFn)
+		} else {
+			return base.HTTPErrorf(http.StatusForbidden, "%q called by %s %q from non-mutating %s", what, runner.kind, runner.name, roFn)
+		}
+	} else {
+		return nil
+	}
+}
+
+// Enters admin/sudo mode, and returns a function that when called will exit it.
+func (runner *jsRunner) enterSudo() func() {
+	user := runner.currentDB.User()
+	ctx := runner.ctx
+	runner.currentDB.SetUser(nil)
+	runner.ctx = context.WithValue(ctx, readOnlyKey, nil)
+	// Return the 'exitSudo' function that the caller will defer:
+	return func() {
+		runner.currentDB.SetUser(user)
+		runner.ctx = ctx
+	}
 }
 
 //////// DATABASE CALLBACK FUNCTION IMPLEMENTATIONS:
 
-// Implementation of JS `user.delete(docID)` function
+// Implementation of JS `user.delete(doc)` function
+// Parameter can be either a docID or a document body with _id (and optionally _rev)
 func (runner *jsRunner) do_delete(docID string, body map[string]any, sudo bool) (bool, error) {
+	if !sudo {
+		if err := runner.checkMutationAllowed("user.delete"); err != nil {
+			return false, err
+		}
+	}
 	tombstone := map[string]any{"_deleted": true}
 	if body != nil {
+		if _id, ok := body["_id"].(string); ok {
+			docID = _id
+		} else {
+			return false, base.HTTPErrorf(400, "Missing doc._id in delete() call")
+		}
 		if revID, ok := body["_rev"]; ok {
 			tombstone["_rev"] = revID
 		}
 	}
-	id, err := runner.do_save(&docID, tombstone, sudo)
+	tombstone["_id"] = docID
+
+	id, err := runner.do_save(tombstone, &docID, sudo)
 	return (id != nil), err
 }
 
 // Implementation of JS `user.function(name, params)` function
 func (runner *jsRunner) do_func(funcName string, params map[string]any, sudo bool) (any, error) {
 	if sudo {
-		user := runner.currentDB.User()
-		runner.currentDB.SetUser(nil)
-		defer func() { runner.currentDB.SetUser(user) }()
+		exitSudo := runner.enterSudo()
+		defer exitSudo()
 	}
-	return runner.currentDB.CallUserFunction(funcName, params, runner.mutationAllowed, runner.ctx)
+	return runner.currentDB.CallUserFunction(funcName, params, true, runner.ctx)
 }
 
-// Implementation of JS `user.get(docID, docType)` function
+// Implementation of JS `user.get(docID, docType?)` function
 func (runner *jsRunner) do_get(docID string, docType *string, sudo bool) (any, error) {
 	if err := db.CheckTimeout(runner.ctx); err != nil {
 		return nil, err
-	}
-	if sudo {
+	} else if sudo {
 		user := runner.currentDB.User()
 		runner.currentDB.SetUser(nil)
 		defer func() { runner.currentDB.SetUser(user) }()
@@ -128,38 +179,37 @@ func (runner *jsRunner) do_get(docID string, docType *string, sudo bool) (any, e
 // Implementation of JS `user.graphql(query, params)` function
 func (runner *jsRunner) do_graphql(query string, params map[string]any, sudo bool) (any, error) {
 	if sudo {
-		user := runner.currentDB.User()
-		runner.currentDB.SetUser(nil)
-		defer func() { runner.currentDB.SetUser(user) }()
+		exitSudo := runner.enterSudo()
+		defer exitSudo()
 	}
-	return runner.currentDB.UserGraphQLQuery(query, "", params, runner.mutationAllowed, runner.ctx)
+	return runner.currentDB.UserGraphQLQuery(query, "", params, true, runner.ctx)
 }
 
-// Implementation of JS `user.save(docID, body)` function
-func (runner *jsRunner) do_save(docIDPtr *string, body map[string]any, sudo bool) (*string, error) {
+// Implementation of JS `user.save(body, docID?)` function
+func (runner *jsRunner) do_save(body map[string]any, docIDPtr *string, sudo bool) (*string, error) {
 	if err := db.CheckTimeout(runner.ctx); err != nil {
 		return nil, err
-	}
-	if !runner.mutationAllowed {
-		return nil, base.HTTPErrorf(http.StatusForbidden, "a read-only request is not allowed to mutate the database")
-	}
-	if sudo {
-		user := runner.currentDB.User()
-		runner.currentDB.SetUser(nil)
-		defer func() { runner.currentDB.SetUser(user) }()
+	} else if sudo {
+		exitSudo := runner.enterSudo()
+		defer exitSudo()
+	} else if err := runner.checkMutationAllowed("user.put"); err != nil {
+		return nil, err
 	}
 
+	// The optional `docID` parameter takes precedence over a `_id` key in the body.
+	// If neither is present, make up a new random docID.
 	var docID string
-	if docIDPtr == nil {
+	if docIDPtr != nil {
+		docID = *docIDPtr
+	} else if _id, found := body["_id"].(string); found {
+		docID = _id
+	} else {
 		var err error
 		docID, err = base.GenerateRandomID()
 		if err != nil {
 			return nil, err
 		}
-	} else {
-		docID = *docIDPtr
 	}
-
 	delete(body, "_id")
 	collection, err := runner.currentDB.GetDefaultDatabaseCollectionWithUser()
 	if err != nil {

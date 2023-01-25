@@ -63,7 +63,6 @@ type jsRunner struct {
 	kind              string          // "user function", "GraphQL resolver", etc
 	name              string          // Name of this function or resolver
 	currentDB         *db.Database    // db.Database instance (updated before every call)
-	mutationAllowed   bool            // Whether save() is allowed (updated before every call)
 	ctx               context.Context // Context (updated before every call)
 }
 
@@ -119,7 +118,7 @@ type jsRunnerContextKey string
 var ctxJSCallDepthKey = jsRunnerContextKey("call depth")
 
 // Calls a javaScriptRunner's JavaScript function.
-func (runner *jsRunner) CallWithDB(db *db.Database, mutationAllowed bool, ctx context.Context, jsArgs ...any) (result any, err error) {
+func (runner *jsRunner) CallWithDB(db *db.Database, ctx context.Context, jsArgs ...any) (result any, err error) {
 	if ctx == nil {
 		panic("missing context to userJSRunner")
 	}
@@ -144,7 +143,6 @@ func (runner *jsRunner) CallWithDB(db *db.Database, mutationAllowed bool, ctx co
 
 	runner.SetTimeout(timeout)
 	runner.currentDB = db
-	runner.mutationAllowed = mutationAllowed
 	runner.ctx = ctx
 	return runner.Call(jsArgs...)
 }

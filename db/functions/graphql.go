@@ -13,7 +13,6 @@ package functions
 import (
 	"context"
 	"fmt"
-	"net/http"
 	"os"
 
 	gqltools "github.com/bhoriuchi/graphql-go-tools"
@@ -50,7 +49,9 @@ func (gq *graphQLImpl) Query(database *db.Database, query string, operationName 
 		return nil, err
 	}
 	ctx = context.WithValue(ctx, dbKey, database)
-	ctx = context.WithValue(ctx, mutAllowedKey, mutationAllowed)
+	if !mutationAllowed && ctx.Value(readOnlyKey) == nil {
+		ctx = context.WithValue(ctx, readOnlyKey, "a read-only GraphQL API call")
+	}
 	result := graphql.Do(graphql.Params{
 		Schema:         gq.schema,
 		RequestString:  query,
@@ -79,8 +80,8 @@ func (gq *graphQLImpl) N1QLQueryNames() []string {
 
 type gqContextKey string
 
-var dbKey = gqContextKey("db")                 // Context key to access the db.Database instance
-var mutAllowedKey = gqContextKey("mutAllowed") // Context key to access `mutationAllowed`
+var dbKey = gqContextKey("db")             // Context key to access the db.Database instance
+var readOnlyKey = gqContextKey("readOnly") // Context key preventing mutation; val is fn name
 
 //////// GRAPHQL INITIALIZATION:
 
@@ -124,20 +125,23 @@ func (config *GraphQLConfig) compileSchema() (schema graphql.Schema, err error) 
 	// Assemble the resolvers:
 	resolvers := map[string]any{}
 ResolverLoop:
-	for name, resolver := range config.Resolvers {
+	for typeName, resolver := range config.Resolvers {
 		fieldMap := map[string]*gqltools.FieldResolve{}
 		var typeNameResolver graphql.ResolveTypeFn
 		for fieldName, fnConfig := range resolver {
 			if fnConfig.Args != nil {
 				err = fmt.Errorf("'args' is not valid in a GraphQL resolver config")
+			} else if config.MaxCodeSize != nil && len(fnConfig.Code) > *config.MaxCodeSize {
+				err = fmt.Errorf("resolver %s code too large (> %d bytes)", fieldName, *config.MaxCodeSize)
+				multiError = multiError.Append(err)
 			} else if fieldName == "__typename" {
 				// The "__typename" resolver returns the name of the concrete type of an
 				// instance of an interface.
-				typeNameResolver, err = config.compileTypeNameResolver(name, fnConfig)
+				typeNameResolver, err = config.compileTypeNameResolver(typeName, fnConfig)
 				resolverCount += 1
 			} else {
 				var fn graphql.FieldResolveFn
-				fn, err = config.compileFieldResolver(name, fieldName, fnConfig)
+				fn, err = config.compileFieldResolver(typeName, fieldName, fnConfig)
 				fieldMap[fieldName] = &gqltools.FieldResolve{Resolve: fn}
 				resolverCount += 1
 			}
@@ -151,11 +155,11 @@ ResolverLoop:
 			}
 		}
 		if typeNameResolver == nil {
-			resolvers[name] = &gqltools.ObjectResolver{
+			resolvers[typeName] = &gqltools.ObjectResolver{
 				Fields: fieldMap,
 			}
 		} else {
-			resolvers[name] = &gqltools.InterfaceResolver{
+			resolvers[typeName] = &gqltools.InterfaceResolver{
 				Fields:      fieldMap,
 				ResolveType: typeNameResolver,
 			}
@@ -192,7 +196,7 @@ func (config *GraphQLConfig) getSchema() (string, error) {
 		}
 		src, err := os.ReadFile(*config.SchemaFile)
 		if err != nil {
-			return "", fmt.Errorf("GraphQL config: cann't read file %s: %w", *config.SchemaFile, err)
+			return "", fmt.Errorf("GraphQL config: can't read file %s: %w", *config.SchemaFile, err)
 		}
 		return string(src), nil
 	}
@@ -226,15 +230,14 @@ func (config *GraphQLConfig) compileFieldResolver(typeName string, fieldName str
 	if err != nil {
 		return nil, err
 	}
-	userFn.CheckArgs(false)
-	userFn.AllowByDefault(true)
+	userFn.checkArgs = false                                                // graphql-go does this
+	userFn.allowByDefault = (typeName != "Query" && typeName != "Mutation") // not at top level
+	userFn.Mutating = isMutation
 
 	return func(params graphql.ResolveParams) (any, error) {
-		db := params.Context.Value(dbKey).(*db.Database)
-		if isMutation && !params.Context.Value(mutAllowedKey).(bool) {
-			return nil, base.HTTPErrorf(http.StatusForbidden, "a read-only request is not allowed to call a GraphQL mutation")
-		}
-		invocation, err := userFn.Invoke(db, params.Args, isMutation, params.Context)
+		ctx := params.Context
+		db := ctx.Value(dbKey).(*db.Database)
+		invocation, err := userFn.Invoke(db, params.Args, isMutation, ctx)
 		if err != nil {
 			return nil, err
 		}

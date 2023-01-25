@@ -99,6 +99,7 @@ func (bh *blipHandler) handleFunction(rq *blip.Message) error {
 
 	bh.logEndpointEntry(rq.Profile(), fmt.Sprintf("name: %s", name))
 	return WithTimeout(bh.loggingCtx, UserFunctionTimeout, func(ctx context.Context) error {
+		// Call the function:
 		fn, err := bh.db.GetUserFunction(name, requestParams, true, ctx)
 		if err != nil {
 			return err
