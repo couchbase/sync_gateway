@@ -147,6 +147,6 @@
   <project name="protobuf-go" path="godeps/src/google.golang.org/protobuf" remote="couchbasedeps" revision="1ecb1f411c1f2ce65a2db6ea4a8ae927182d342e"/>
 
   <project name="websocket" path="godeps/src/nhooyr.io/websocket" remote="couchbasedeps" revision="8dee580a7f74cf1713400307b4eee514b927870f"/>
-  <project name="compress" path="godeps/src/github.com/klauspost/compress" remote="couchbasedeps" revision="9559b037e79ad673c71f6ef7c732c00949014cd2"/>
+  <project name="compress" path="godeps/src/github.com/klauspost/compress" remote="couchbasedeps" revision="a1a9cfc821f00faf2f5231beaa96244344d50391"/>
 
 </manifest>
