@@ -1519,11 +1519,16 @@ func (db *DatabaseCollectionWithUser) addAttachments(ctx context.Context, newAtt
 	return err
 }
 
+// assignSequence assigns a global sequence number from database.
+func (c *DatabaseCollectionWithUser) assignSequence(ctx context.Context, docSequence uint64, doc *Document, unusedSequences []uint64) ([]uint64, error) {
+	return c.dbCtx.assignSequence(ctx, docSequence, doc, unusedSequences)
+}
+
 // Sequence processing :
 // Assigns provided sequence to the document
 // Update unusedSequences in the event that there is a conflict and we have to provide a new sequence number
 // Update and prune RecentSequences
-func (db *DatabaseCollectionWithUser) assignSequence(ctx context.Context, docSequence uint64, doc *Document, unusedSequences []uint64) ([]uint64, error) {
+func (db *DatabaseContext) assignSequence(ctx context.Context, docSequence uint64, doc *Document, unusedSequences []uint64) ([]uint64, error) {
 	var err error
 
 	// Assign the next sequence number, for _changes feed.
@@ -1539,14 +1544,14 @@ func (db *DatabaseCollectionWithUser) assignSequence(ctx context.Context, docSeq
 		}
 
 		for {
-			if docSequence, err = db.sequences().nextSequence(); err != nil {
+			if docSequence, err = db.sequences.nextSequence(); err != nil {
 				return unusedSequences, err
 			}
 
 			if docSequence > doc.Sequence {
 				break
 			} else {
-				releaseErr := db.sequences().releaseSequence(docSequence)
+				releaseErr := db.sequences.releaseSequence(docSequence)
 				if releaseErr != nil {
 					base.WarnfCtx(ctx, "Error returned when releasing sequence %d. Falling back to skipped sequence handling.  Error:%v", docSequence, err)
 				}
@@ -1571,7 +1576,7 @@ func (db *DatabaseCollectionWithUser) assignSequence(ctx context.Context, docSeq
 		// on the feed is small - sub-second, so we usually shouldn't care about more than
 		// a few recent sequences.  However, the pruning has some overhead (read lock on nextSequence),
 		// so we're allowing more 'recent sequences' on the doc (20) before attempting pruning
-		stableSequence := db.changeCache().GetStableSequence(doc.ID).Seq
+		stableSequence := db.changeCache.GetStableSequence(doc.ID).Seq
 		count := 0
 		for _, seq := range doc.RecentSequences {
 			// Only remove sequences if they are higher than a sequence that's been seen on the
