@@ -14,7 +14,7 @@ import (
 )
 
 func TestValidateJavascriptFunction(t *testing.T) {
-	testWithVMs(t, func(t *testing.T, vm VM) {
+	TestWithVMs(t, func(t *testing.T, vm VM) {
 		assert.NoError(t, ValidateJavascriptFunction(vm, `function(doc) {return doc.x;}`, 1, 1))
 		if vm.Type() == V8 { // Otto does not support new-style function syntax
 			assert.NoError(t, ValidateJavascriptFunction(vm, `(doc,foo) => {return doc.x;}`, 2, 2))
@@ -34,14 +34,13 @@ func TestValidateJavascriptFunction(t *testing.T) {
 
 const kVMPoolTestTimeout = 90 * time.Second
 const kNumTasks = 65536 * 10
-const kNumThreads = 8
 
 func TestPoolsSequentially(t *testing.T) {
 	log.Printf("FYI, GOMAXPROCS = %d", runtime.GOMAXPROCS(0))
 	const kJSCode = `function(n) {return n * n;}`
 
 	ctx := base.TestCtx(t)
-	testWithVMPools(t, 4, func(t *testing.T, pool *VMPool) {
+	TestWithVMPools(t, 4, func(t *testing.T, pool *VMPool) {
 		service := NewService(pool, "testy", kJSCode)
 		runSequentially(ctx, 10, func(ctx context.Context) bool {
 			result, err := service.Run(ctx, 13)
@@ -51,18 +50,16 @@ func TestPoolsSequentially(t *testing.T) {
 }
 
 func TestPoolsConcurrently(t *testing.T) {
-	log.Printf("FYI, GOMAXPROCS = %d", runtime.GOMAXPROCS(0))
+	maxProcs := runtime.GOMAXPROCS(0)
+	log.Printf("FYI, GOMAXPROCS = %d", maxProcs)
 	const kJSCode = `function(n) {return n * n;}`
 
 	ctx := base.TestCtx(t)
-	testWithVMPools(t, 4, func(t *testing.T, pool *VMPool) {
+	TestWithVMPools(t, maxProcs, func(t *testing.T, pool *VMPool) {
 		numTasks := kNumTasks
-		if pool.Type() == Otto {
-			numTasks = numTasks / 20
-		}
 		service := NewService(pool, "testy", kJSCode)
 		t.Run("Function", func(t *testing.T) {
-			testConcurrently(t, ctx, numTasks, kNumThreads, func(ctx context.Context) bool {
+			testConcurrently(t, ctx, numTasks, maxProcs, func(ctx context.Context) bool {
 				result, err := service.Run(ctx, 13)
 				return assert.NoError(t, err) && assert.EqualValues(t, result, 169)
 			})
@@ -168,9 +165,9 @@ func testConcurrently(t *testing.T, ctx context.Context, numTasks int, numThread
 	// prime the pump:
 	runSequentially(ctx, 1, testFunc)
 
-	base.WarnfCtx(context.TODO(), "---- Starting sequential tasks ----")
+	base.WarnfCtx(context.TODO(), "---- Starting %d sequential tasks ----", numTasks)
 	sequentialDuration := runSequentially(ctx, numTasks, testFunc)
-	base.WarnfCtx(context.TODO(), "---- Starting concurrent tasks ----")
+	base.WarnfCtx(context.TODO(), "---- Starting %d concurrent tasks on %d goroutines ----", numTasks, numThreads)
 	concurrentDuration := runConcurrently(ctx, numTasks, numThreads, testFunc)
 	base.WarnfCtx(context.TODO(), "---- End ----")
 

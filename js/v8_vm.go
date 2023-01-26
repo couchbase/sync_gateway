@@ -1,7 +1,6 @@
 package js
 
 import (
-	"context"
 	_ "embed"
 	"fmt"
 	"time"
@@ -61,28 +60,6 @@ func (vm *v8VM) FindService(name string) *Service {
 	return vm.services.findServiceNamed(name)
 }
 
-// Syntax-checks a string containing a JavaScript function definition
-func (vm *v8VM) ValidateJavascriptFunction(jsFunc string, minArgs int, maxArgs int) error {
-	service := vm.FindService("Validate")
-	if service == nil {
-		service = NewService(vm, "Validate", `
-			function(jsFunc, minArgs, maxArgs) {
-				let fn = Function('"use strict"; return ' + jsFunc)()
-				let typ = typeof(fn);
-				if (typ !== 'function') {
-					throw "code is not a function, but a " + typ;
-				} else if (fn.length < minArgs) {
-					throw "function must have at least " + minArgs + " parameters";
-				} else if (fn.length > maxArgs) {
-					throw "function must have no more than " + maxArgs + " parameters";
-				}
-			}
-		`)
-	}
-	_, err := service.Run(context.Background(), jsFunc, minArgs, maxArgs)
-	return err
-}
-
 //////// INTERNALS:
 
 // Must be called when finished using a v8VM belonging to a VMPool!
@@ -92,13 +69,6 @@ func (vm *v8VM) release() {
 		vm.lastReturned = time.Now()
 		vm.returnToPool.returnVM(vm)
 	}
-}
-
-func (vm *v8VM) registerService(service *Service) {
-	if vm.iso == nil {
-		panic("You forgot to initialize a js.VM") // Must call NewVM()
-	}
-	vm.baseVM.registerService(service)
 }
 
 // Returns a Template for the given Service.
@@ -145,7 +115,7 @@ func (vm *v8VM) hasInitializedService(service *Service) bool {
 // returned yet is assumed to be illegal concurrent access; it will trigger a panic.
 func (vm *v8VM) getRunner(service *Service) (Runner, error) {
 	if vm.iso == nil {
-		return nil, fmt.Errorf("the v8VM has been closed")
+		return nil, fmt.Errorf("the js.VM has been closed")
 	}
 	if vm.curRunner != nil {
 		panic("illegal access to v8VM: already has a v8Runner")

@@ -16,7 +16,7 @@ import (
 
 func TestSquare(t *testing.T) {
 	ctx := base.TestCtx(t)
-	testWithVMs(t, func(t *testing.T, vm VM) {
+	TestWithVMs(t, func(t *testing.T, vm VM) {
 		service := NewService(vm, "square", `function(n) {return n * n;}`)
 		assert.Equal(t, "square", service.Name())
 		assert.Equal(t, vm, service.Host())
@@ -111,7 +111,7 @@ func TestCallback(t *testing.T) {
 // Test conversion of numbers into/out of JavaScript.
 func TestNumbers(t *testing.T) {
 	ctx := base.TestCtx(t)
-	testWithVMs(t, func(t *testing.T, vm VM) {
+	TestWithVMs(t, func(t *testing.T, vm VM) {
 		service := NewService(vm, "numbers", `function(n, expectedStr) {
 			if (typeof(n) != 'number' && typeof(n) != 'bigint') throw "Unexpectedly n is a " + typeof(n);
 			var str = n.toString();
@@ -238,7 +238,7 @@ func TestNoModules(t *testing.T) {
 }
 
 func TestTimeout(t *testing.T) {
-	testWithVMs(t, func(t *testing.T, vm VM) {
+	TestWithVMs(t, func(t *testing.T, vm VM) {
 		ctx := base.TestCtx(t)
 		ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 		defer cancel()
@@ -248,31 +248,5 @@ func TestTimeout(t *testing.T) {
 		_, err := service.Run(ctx)
 		assert.Less(t, time.Since(start), 4*time.Second)
 		assert.Equal(t, context.DeadlineExceeded, err)
-	})
-}
-
-func testWithVMs(t *testing.T, fn func(*testing.T, VM)) {
-	t.Run("V8", func(t *testing.T) {
-		vm := NewVM(V8)
-		defer vm.Close()
-		fn(t, vm)
-	})
-	t.Run("Otto", func(t *testing.T) {
-		vm := NewVM(Otto)
-		defer vm.Close()
-		fn(t, vm)
-	})
-}
-
-func testWithVMPools(t *testing.T, maxVMs int, fn func(*testing.T, *VMPool)) {
-	t.Run("V8", func(t *testing.T) {
-		pool := NewVMPool(V8, maxVMs)
-		defer pool.Close()
-		fn(t, pool)
-	})
-	t.Run("Otto", func(t *testing.T) {
-		pool := NewVMPool(Otto, maxVMs)
-		defer pool.Close()
-		fn(t, pool)
 	})
 }

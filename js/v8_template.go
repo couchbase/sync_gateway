@@ -149,7 +149,7 @@ func newV8Template(vm *v8VM, service *Service) (V8Template, error) {
 	}
 
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to initialize JS service %q", service.name)
+		return nil, fmt.Errorf("failed to initialize JS service %q: %+w", service.name, err)
 	} else if tmpl == nil {
 		return nil, fmt.Errorf("js.TemplateFactory %q returned nil", service.name)
 	} else if tmpl.Script() == nil {

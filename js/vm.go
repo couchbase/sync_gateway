@@ -66,15 +66,28 @@ type baseVM struct {
 	services     *servicesConfiguration // Factories for services
 	returnToPool *VMPool                // Pool to return me to, or nil
 	lastReturned time.Time              // Time that v8VM was last returned to its pool
+	closed       bool
 }
 
 func (vm *baseVM) close() {
 	if vm.returnToPool != nil {
 		panic("Don't Close a VM that belongs to a VMPool")
 	}
+	vm.services = nil
+	vm.closed = true
 }
 
-func (vm *baseVM) registerService(service *Service) { vm.services.addService(service) }
-func (vm *baseVM) setReturnToPool(pool *VMPool)     { vm.returnToPool = pool }
-func (vm *baseVM) getReturnToPool() *VMPool         { return vm.returnToPool }
-func (vm *baseVM) getLastReturned() time.Time       { return vm.lastReturned }
+func (vm *baseVM) registerService(service *Service) {
+	if vm.services == nil {
+		if vm.closed {
+			panic("Using an already-closed js.VM")
+		} else {
+			panic("You forgot to initialize a js.VM") // Must call NewVM()
+		}
+	}
+	vm.services.addService(service)
+}
+
+func (vm *baseVM) setReturnToPool(pool *VMPool) { vm.returnToPool = pool }
+func (vm *baseVM) getReturnToPool() *VMPool     { return vm.returnToPool }
+func (vm *baseVM) getLastReturned() time.Time   { return vm.lastReturned }

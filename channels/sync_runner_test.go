@@ -10,7 +10,6 @@ licenses/APL2.txt.
 
 package channels
 
-/*
 import (
 	"net/http"
 	"testing"
@@ -23,82 +22,74 @@ import (
 
 func TestRequireUser(t *testing.T) {
 	const funcSource = `function(doc, oldDoc) { requireUser(oldDoc._names) }`
-	withSyncRunner(t, funcSource, 0, func(runner *syncRunner) {
+	withChannelMapper(t, funcSource, 0, func(mapper *ChannelMapper) {
 		var result interface{}
-		result, _ = runner.call(parse(`{}`), `{"_names": "alpha"}`, emptyMetaMap(), parse(`{"name": "alpha"}`))
+		result, _ = mapper.MapToChannelsAndAccess(parse(`{}`), `{"_names": "alpha"}`, emptyMetaMap(), parse(`{"name": "alpha"}`))
 		assertNotRejected(t, result)
-		result, _ = runner.call(parse(`{}`), `{"_names": ["beta", "gamma"]}`, emptyMetaMap(), parse(`{"name": "beta"}`))
+		result, _ = mapper.MapToChannelsAndAccess(parse(`{}`), `{"_names": ["beta", "gamma"]}`, emptyMetaMap(), parse(`{"name": "beta"}`))
 		assertNotRejected(t, result)
-		result, _ = runner.call(parse(`{}`), `{"_names": ["delta"]}`, emptyMetaMap(), parse(`{"name": "beta"}`))
+		result, _ = mapper.MapToChannelsAndAccess(parse(`{}`), `{"_names": ["delta"]}`, emptyMetaMap(), parse(`{"name": "beta"}`))
 		assertRejected(t, result, base.HTTPErrorf(http.StatusForbidden, base.SyncFnErrorWrongUser))
 	})
 }
 
 func TestRequireRole(t *testing.T) {
 	const funcSource = `function(doc, oldDoc) { requireRole(oldDoc._roles) }`
-	withSyncRunner(t, funcSource, 0, func(runner *syncRunner) {
+	withChannelMapper(t, funcSource, 0, func(mapper *ChannelMapper) {
 		var result interface{}
-		result, _ = runner.call(parse(`{}`), `{"_roles": ["alpha"]}`, emptyMetaMap(), parse(`{"name": "", "roles": {"alpha":""}}`))
+		result, _ = mapper.MapToChannelsAndAccess(parse(`{}`), `{"_roles": ["alpha"]}`, emptyMetaMap(), parse(`{"name": "", "roles": {"alpha":""}}`))
 		assertNotRejected(t, result)
-		result, _ = runner.call(parse(`{}`), `{"_roles": ["beta", "gamma"]}`, emptyMetaMap(), parse(`{"name": "", "roles": {"beta": ""}}`))
+		result, _ = mapper.MapToChannelsAndAccess(parse(`{}`), `{"_roles": ["beta", "gamma"]}`, emptyMetaMap(), parse(`{"name": "", "roles": {"beta": ""}}`))
 		assertNotRejected(t, result)
-		result, _ = runner.call(parse(`{}`), `{"_roles": ["delta"]}`, emptyMetaMap(), parse(`{"name": "", "roles": {"beta":""}}`))
+		result, _ = mapper.MapToChannelsAndAccess(parse(`{}`), `{"_roles": ["delta"]}`, emptyMetaMap(), parse(`{"name": "", "roles": {"beta":""}}`))
 		assertRejected(t, result, base.HTTPErrorf(http.StatusForbidden, base.SyncFnErrorMissingRole))
 	})
 }
 
 func TestRequireAccess(t *testing.T) {
 	const funcSource = `function(doc, oldDoc) { requireAccess(oldDoc._access) }`
-	withSyncRunner(t, funcSource, 0, func(runner *syncRunner) {
+	withChannelMapper(t, funcSource, 0, func(mapper *ChannelMapper) {
 		var result interface{}
-		result, _ = runner.call(parse(`{}`), `{"_access": ["alpha"]}`, emptyMetaMap(), parse(`{"name": "", "channels": ["alpha"]}`))
+		result, _ = mapper.MapToChannelsAndAccess(parse(`{}`), `{"_access": ["alpha"]}`, emptyMetaMap(), parse(`{"name": "", "channels": ["alpha"]}`))
 		assertNotRejected(t, result)
-		result, _ = runner.call(parse(`{}`), `{"_access": ["beta", "gamma"]}`, emptyMetaMap(), parse(`{"name": "", "channels": ["beta"]}`))
+		result, _ = mapper.MapToChannelsAndAccess(parse(`{}`), `{"_access": ["beta", "gamma"]}`, emptyMetaMap(), parse(`{"name": "", "channels": ["beta"]}`))
 		assertNotRejected(t, result)
-		result, _ = runner.call(parse(`{}`), `{"_access": ["delta"]}`, emptyMetaMap(), parse(`{"name": "", "channels": ["beta"]}`))
+		result, _ = mapper.MapToChannelsAndAccess(parse(`{}`), `{"_access": ["delta"]}`, emptyMetaMap(), parse(`{"name": "", "channels": ["beta"]}`))
 		assertRejected(t, result, base.HTTPErrorf(http.StatusForbidden, base.SyncFnErrorMissingChannelAccess))
 	})
 }
 
 func TestRequireAdmin(t *testing.T) {
 	const funcSource = `function(doc, oldDoc) { requireAdmin() }`
-	withSyncRunner(t, funcSource, 0, func(runner *syncRunner) {
+	withChannelMapper(t, funcSource, 0, func(mapper *ChannelMapper) {
 		var result interface{}
-		result, _ = runner.call(parse(`{}`), `{}`, emptyMetaMap(), parse(`{}`))
+		result, _ = mapper.MapToChannelsAndAccess(parse(`{}`), `{}`, emptyMetaMap(), parse(`{}`))
 		assertNotRejected(t, result)
-		result, _ = runner.call(parse(`{}`), `{}`, emptyMetaMap(), parse(`{"name": ""}`))
+		result, _ = mapper.MapToChannelsAndAccess(parse(`{}`), `{}`, emptyMetaMap(), parse(`{"name": ""}`))
 		assertRejected(t, result, base.HTTPErrorf(http.StatusForbidden, base.SyncFnErrorAdminRequired))
-		result, _ = runner.call(parse(`{}`), `{}`, emptyMetaMap(), parse(`{"name": "GUEST"}`))
+		result, _ = mapper.MapToChannelsAndAccess(parse(`{}`), `{}`, emptyMetaMap(), parse(`{"name": "GUEST"}`))
 		assertRejected(t, result, base.HTTPErrorf(http.StatusForbidden, base.SyncFnErrorAdminRequired))
-		result, _ = runner.call(parse(`{}`), `{}`, emptyMetaMap(), parse(`{"name": "beta"}`))
+		result, _ = mapper.MapToChannelsAndAccess(parse(`{}`), `{}`, emptyMetaMap(), parse(`{"name": "beta"}`))
 		assertRejected(t, result, base.HTTPErrorf(http.StatusForbidden, base.SyncFnErrorAdminRequired))
 	})
 }
 
 // Helpers
 
-func withSyncRunner(t *testing.T, syncFn string, timeout time.Duration, fn func(*syncRunner)) {
-	var vms js.VMPool
-	vms.Init(1)
-	defer vms.Close()
-
-	mapper := NewChannelMapper(&vms, syncFn, timeout)
-	_, err := mapper.withSyncRunner(func(runner *syncRunner) (any, error) {
-		fn(runner)
-		return nil, nil
+func withChannelMapper(t *testing.T, syncFn string, timeout time.Duration, fn func(*ChannelMapper)) {
+	js.TestWithVMPools(t, 1, func(t *testing.T, pool *js.VMPool) {
+		mapper := NewChannelMapper(pool, syncFn, timeout)
+		fn(mapper)
 	})
-	assert.NoError(t, err)
+
 }
 
-func assertRejected(t *testing.T, result interface{}, err *base.HTTPError) {
+func assertRejected(t *testing.T, result interface{}, err *base.HTTPError) bool {
 	r, ok := result.(*ChannelMapperOutput)
-	assert.True(t, ok)
-	assert.Equal(t, r.Rejection, err)
+	return assert.True(t, ok) && assert.NotNil(t, r) && assert.Equal(t, r.Rejection, err)
 }
 
-func assertNotRejected(t *testing.T, result interface{}) {
+func assertNotRejected(t *testing.T, result interface{}) bool {
 	r, ok := result.(*ChannelMapperOutput)
-	assert.True(t, ok)
-	assert.NoError(t, r.Rejection)
+	return assert.True(t, ok) && assert.NotNil(t, r) && assert.NoError(t, r.Rejection)
 }
-*/

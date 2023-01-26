@@ -78,21 +78,20 @@ const kChannelMapperServiceName = "channelMapper"
 // The JavaScript code run by the SyncRunner; the sync fn is copied into it.
 // See wrappedFuncSource().
 //
-//go:embed sync_fn_wrapper.js
-var kSyncFnHostScript string
+//go:embed sync_fn_wrapper_otto.js
+var kSyncFnHostScriptOtto string
+
+//go:embed sync_fn_wrapper_v8.js
+var kSyncFnHostScriptV8 string
 
 // Creates a ChannelMapper.
 func NewChannelMapper(owner js.ServiceHost, fnSource string, timeout time.Duration) *ChannelMapper {
-	service := js.NewService(owner, kChannelMapperServiceName, wrappedFuncSource(fnSource))
+	service := js.NewService(owner, kChannelMapperServiceName, wrappedFuncSource(fnSource, owner))
 	return &ChannelMapper{
 		service:  service,
 		timeout:  timeout,
 		fnSource: fnSource,
 	}
-}
-
-func (cm *ChannelMapper) closeVMs() {
-	cm.service.Host().Close()
 }
 
 // Creates a ChannelMapper with the default sync function. (Used by tests)
@@ -107,14 +106,19 @@ func (mapper *ChannelMapper) Function() string {
 // This function is DEPRECATED. It's currently used in some tests that can't easily be changed.
 // Its current implementation is a kludge, and it shouldn't be used in production.
 func (mapper *ChannelMapper) SetFunction(fnSource string) error {
+	host := mapper.service.Host()
 	mapper.fnSource = fnSource
-	mapper.service = js.NewService(mapper.service.Host(), kChannelMapperServiceName, wrappedFuncSource(fnSource))
+	mapper.service = js.NewService(host, kChannelMapperServiceName, wrappedFuncSource(fnSource, host))
 	return nil
 }
 
-func wrappedFuncSource(funcSource string) string {
+func wrappedFuncSource(funcSource string, host js.ServiceHost) string {
+	script := kSyncFnHostScriptOtto
+	if host.Type() == js.V8 {
+		script = kSyncFnHostScriptV8
+	}
 	return fmt.Sprintf(
-		kSyncFnHostScript,
+		script,
 		funcSource,
 		base.SyncFnErrorAdminRequired,
 		base.SyncFnErrorWrongUser,
@@ -146,7 +150,10 @@ func (mapper *ChannelMapper) MapToChannelsAndAccess2(docID string, revID string,
 		runner.SetContext(ctx)
 		return callSyncFn(runner, docID, revID, bodyJSON, oldBodyJSON, metaMap, userCtx)
 	})
-	return result.(*ChannelMapperOutput), err
+	if err != nil {
+		return nil, err
+	}
+	return result.(*ChannelMapperOutput), nil
 }
 
 // Parsed version of the JSON object returned by the sync-fn wrapper.
@@ -170,7 +177,7 @@ func callSyncFn(runner js.Runner,
 	// Call the sync fn:
 	jsResult, err := runner.Run(docID, revID, js.JSONString(bodyJSON), oldBodyJSON, metaMap.Key, string(metaMap.JSONValue), userCtx)
 	if err != nil {
-		return nil, fmt.Errorf("unexpected error calling sync fn: %w", err)
+		return nil, fmt.Errorf("unexpected error calling sync fn: %+w", err)
 	}
 	var result syncFnResult
 	if err := json.Unmarshal([]byte(jsResult.(string)), &result); err != nil {
