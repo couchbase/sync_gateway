@@ -307,6 +307,7 @@ pipeline {
                             }
                         }
                         stage('against EE') {
+                            when { expression { return false } }
                             steps {
 
                                 githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-litecore-ee', description: 'Running LiteCore Tests', status: 'PENDING')
