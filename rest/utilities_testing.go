@@ -24,7 +24,6 @@ import (
 	"github.com/couchbase/sync_gateway/db"
 	goassert "github.com/couchbaselabs/go.assert"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/net/websocket"
 )
 
 // Testing utilities that have been included in the rest package so that they
@@ -806,22 +805,22 @@ func NewBlipTesterFromSpec(tb testing.TB, spec BlipTesterSpec) (*BlipTester, err
 	u.Scheme = "ws"
 
 	// Make BLIP/Websocket connection
-	bt.blipContext = db.NewSGBlipContext(context.Background(), "")
-
-	origin := "http://localhost" // TODO: what should be used here?
-
-	config, err := websocket.NewConfig(u.String(), origin)
+	bt.blipContext, err = db.NewSGBlipContext(context.Background(), "")
 	if err != nil {
 		return nil, err
 	}
 
+	config := blip.DialOptions{
+		URL: u.String(),
+	}
+
 	if len(spec.connectingUsername) > 0 {
-		config.Header = http.Header{
+		config.HTTPHeader = http.Header{
 			"Authorization": {"Basic " + base64.StdEncoding.EncodeToString([]byte(spec.connectingUsername+":"+spec.connectingPassword))},
 		}
 	}
 
-	bt.sender, err = bt.blipContext.DialConfig(config)
+	bt.sender, err = bt.blipContext.DialConfig(&config)
 	if err != nil {
 		return nil, err
 	}
@@ -902,12 +901,12 @@ func (bt *BlipTester) SendRev(docId, docRev string, body []byte, properties blip
 //
 // - Call subChanges (continuous=false) endpoint to get all changes from Sync Gateway
 // - Respond to each "change" request telling the other side to send the revision
-//		- NOTE: this could be made more efficient by only requesting the revision for the docid/revid pair
-//              passed in the parameter.
+//   - NOTE: this could be made more efficient by only requesting the revision for the docid/revid pair
+//     passed in the parameter.
+//
 // - If the rev handler is called back with the desired docid/revid pair, save that into a variable that will be returned
 // - Block until all pending operations are complete
 // - Return the resultDoc or an empty resultDoc
-//
 func (bt *BlipTester) GetDocAtRev(requestedDocID, requestedDocRev string) (resultDoc RestDocument, err error) {
 
 	docs := map[string]RestDocument{}

@@ -15,18 +15,24 @@ const (
 )
 
 // NewSGBlipContext returns a go-blip context with the given ID, initialized for use in Sync Gateway.
-func NewSGBlipContext(ctx context.Context, id string) (bc *blip.Context) {
+func NewSGBlipContext(ctx context.Context, id string) (bc *blip.Context, err error) {
 	if id == "" {
-		bc = blip.NewContext(blipCBMobileReplication)
+		bc, err = blip.NewContext(blipCBMobileReplication)
+		if err != nil {
+			return nil, err
+		}
 	} else {
-		bc = blip.NewContextCustomID(id, blipCBMobileReplication)
+		bc, err = blip.NewContextCustomID(id, blipCBMobileReplication)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	bc.LogMessages = base.LogDebugEnabled(base.KeyWebSocket)
 	bc.LogFrames = base.LogDebugEnabled(base.KeyWebSocketFrame)
 	bc.Logger = defaultBlipLogger(ctx)
 
-	return bc
+	return bc, nil
 }
 
 // defaultBlipLogger returns a function that can be set as the blip.Context.Logger for Sync Gateway integrated go-blip logging.

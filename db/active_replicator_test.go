@@ -55,7 +55,9 @@ func TestBlipSyncErrorUserinfo(t *testing.T) {
 			srvURL.Path = "/db1"
 			t.Logf("srvURL: %v", srvURL.String())
 
-			_, err = blipSync(*srvURL, NewSGBlipContext(context.Background(), t.Name()), false)
+			blipCtx, err := NewSGBlipContext(context.Background(), t.Name())
+			require.NoError(t, err)
+			_, err = blipSync(*srvURL, blipCtx, false)
 			require.Error(t, err)
 			t.Logf("error: %v", err)
 			if targetPassword, hasPassword := srvURL.User.Password(); hasPassword {

@@ -9,7 +9,6 @@ import (
 
 	"github.com/couchbase/go-blip"
 	"github.com/couchbase/sync_gateway/base"
-	"golang.org/x/net/websocket"
 )
 
 // HTTP handler for incoming BLIP sync WebSocket request (/db/_blipsync)
@@ -29,7 +28,10 @@ func (h *handler) handleBLIPSync() error {
 	}
 
 	// Create a BLIP context:
-	blipContext := db.NewSGBlipContext(h.db.Ctx, "")
+	blipContext, err := db.NewSGBlipContext(h.db.Ctx, "")
+	if err != nil {
+		return err
+	}
 
 	// Overwrite the existing logging context with the blip context ID
 	h.db.Ctx = context.WithValue(h.db.Ctx, base.LogContextKey{},
@@ -48,16 +50,17 @@ func (h *handler) handleBLIPSync() error {
 
 	// Create a BLIP WebSocket handler and have it handle the request:
 	server := blipContext.WebSocketServer()
-	defaultHandler := server.Handler
-	server.Handler = func(conn *websocket.Conn) {
-		h.logStatus(http.StatusSwitchingProtocols, fmt.Sprintf("[%s] Upgraded to BLIP+WebSocket protocol%s", blipContext.ID, h.formattedEffectiveUserName()))
-		defer func() {
-			_ = conn.Close() // in case it wasn't closed already
-			base.InfofCtx(h.db.Ctx, base.KeyHTTP, "%s:    --> BLIP+WebSocket connection closed", h.formatSerialNumber())
-		}()
-		defaultHandler(conn)
+
+	middleware := func(next http.Handler) http.Handler {
+		return http.HandlerFunc(
+			func(w http.ResponseWriter, r *http.Request) {
+				h.logStatus(http.StatusSwitchingProtocols, fmt.Sprintf("[%s] Upgraded to WebSocket protocol %s+%s%s", blipContext.ID, blip.WebSocketSubProtocolPrefix, blipContext.ActiveSubprotocol(), h.formattedEffectiveUserName()))
+				defer base.InfofCtx(h.db.Ctx, base.KeyHTTP, "%s:    --> BLIP+WebSocket connection closed", h.formatSerialNumber())
+				next.ServeHTTP(w, r)
+			})
 	}
 
-	server.ServeHTTP(h.response, h.rq)
+	middleware(server).ServeHTTP(h.response, h.rq)
+
 	return nil
 }

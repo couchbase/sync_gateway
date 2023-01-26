@@ -404,7 +404,8 @@ function(doc, oldDoc) {
 
 			numTries++
 			if numTries > maxTries {
-				t.Fatalf("Giving up trying to receive %d changes.  Only received %d", numExpectedChanges, len(changesAccumulated))
+				t.Errorf("Giving up trying to receive %d changes.  Only received %d", numExpectedChanges, len(changesAccumulated))
+				return
 			}
 
 		}
@@ -745,7 +746,7 @@ func TestGuestUser(t *testing.T) {
 	assertStatus(t, response, http.StatusMethodNotAllowed)
 }
 
-//Test that TTL values greater than the default max offset TTL 2592000 seconds are processed correctly
+// Test that TTL values greater than the default max offset TTL 2592000 seconds are processed correctly
 // fixes #974
 func TestSessionTtlGreaterThan30Days(t *testing.T) {
 
@@ -952,7 +953,7 @@ func TestFlush(t *testing.T) {
 	assertStatus(t, rt.SendRequest("GET", "/db/doc2", ""), 404)
 }
 
-//Test a single call to take DB offline
+// Test a single call to take DB offline
 func TestDBOfflineSingle(t *testing.T) {
 
 	rt := NewRestTester(t, nil)
@@ -972,7 +973,7 @@ func TestDBOfflineSingle(t *testing.T) {
 	goassert.True(t, body["state"].(string) == "Offline")
 }
 
-//Make two concurrent calls to take DB offline
+// Make two concurrent calls to take DB offline
 // Ensure both calls succeed and that DB is offline
 // when both calls return
 func TestDBOfflineConcurrent(t *testing.T) {
@@ -1016,7 +1017,7 @@ func TestDBOfflineConcurrent(t *testing.T) {
 
 }
 
-//Test that a DB can be created offline
+// Test that a DB can be created offline
 func TestStartDBOffline(t *testing.T) {
 
 	rt := NewRestTester(t, nil)
@@ -1036,8 +1037,8 @@ func TestStartDBOffline(t *testing.T) {
 	goassert.True(t, body["state"].(string) == "Offline")
 }
 
-//Take DB offline and ensure that normal REST calls
-//fail with status 503
+// Take DB offline and ensure that normal REST calls
+// fail with status 503
 func TestDBOffline503Response(t *testing.T) {
 
 	rt := NewRestTester(t, nil)
@@ -1060,7 +1061,7 @@ func TestDBOffline503Response(t *testing.T) {
 	assertStatus(t, rt.SendRequest("GET", "/db/doc1", ""), 503)
 }
 
-//Take DB offline and ensure can put db config
+// Take DB offline and ensure can put db config
 func TestDBOfflinePutDbConfig(t *testing.T) {
 
 	rt := NewRestTester(t, nil)
@@ -1111,7 +1112,7 @@ func TestDBGetConfigNames(t *testing.T) {
 
 }
 
-//Take DB offline and ensure can post _resync
+// Take DB offline and ensure can post _resync
 func TestDBOfflinePostResync(t *testing.T) {
 
 	if testing.Short() {
@@ -1138,7 +1139,7 @@ func TestDBOfflinePostResync(t *testing.T) {
 	assertStatus(t, rt.SendAdminRequest("POST", "/db/_resync", ""), 200)
 }
 
-//Take DB offline and ensure only one _resync can be in progress
+// Take DB offline and ensure only one _resync can be in progress
 func TestDBOfflineSingleResync(t *testing.T) {
 
 	if testing.Short() {
@@ -1226,9 +1227,9 @@ func TestDBOnlineSingle(t *testing.T) {
 	goassert.True(t, body["state"].(string) == "Online")
 }
 
-//Take DB online concurrently using two goroutines
-//Both should return success and DB should be online
-//once both goroutines return
+// Take DB online concurrently using two goroutines
+// Both should return success and DB should be online
+// once both goroutines return
 func TestDBOnlineConcurrent(t *testing.T) {
 
 	rt := NewRestTester(t, nil)
