@@ -324,7 +324,7 @@ func TestLateSequenceErrorRecovery(t *testing.T) {
 	// Modify the cache's late logs to remove the changes feed's lateFeedHandler sequence from the
 	// cache's lateLogs.  This will trigger an error on the next feed iteration, which should trigger
 	// rollback to resend all changes since low sequence (1)
-	c, err := dbCollection.changeCache().getChannelCache().getSingleChannelCache(channels.NewID("ABC", collectionID))
+	c, err := db.changeCache.getChannelCache().getSingleChannelCache(channels.NewID("ABC", collectionID))
 	require.NoError(t, err)
 	abcCache := c.(*singleChannelCacheImpl)
 	abcCache.lateLogs[0].logEntry.Sequence = 1
