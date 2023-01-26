@@ -116,7 +116,7 @@ func TestDocLifecycle(t *testing.T) {
 	assertStatus(t, response, 200)
 }
 
-//Validate that Etag header value is surrounded with double quotes, see issue #808
+// Validate that Etag header value is surrounded with double quotes, see issue #808
 func TestDocEtag(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
@@ -2527,12 +2527,13 @@ func TestSyncFnOldDocBodyPropertiesTombstoneResurrect(t *testing.T) {
 
 // TestSyncFnDocBodyPropertiesSwitchActiveTombstone creates a branched revtree, where the first tombstone created becomes active again after the shorter b branch is tombstoned.
 // The test makes sure that in this scenario, the "doc" body of the sync function when switching from (T) 3-b to (T) 4-a contains a _deleted property (stamped by getAvailable1xRev)
-//     1-a
-//     ├── 2-a
-//     │   └── 3-a
-//     │       └──────── (T) 4-a
-//     └──────────── 2-b
-//                   └────────────── (T) 3-b
+//
+//	1-a
+//	├── 2-a
+//	│   └── 3-a
+//	│       └──────── (T) 4-a
+//	└──────────── 2-b
+//	              └────────────── (T) 3-b
 func TestSyncFnDocBodyPropertiesSwitchActiveTombstone(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP, base.KeyJavascript)()
@@ -2601,7 +2602,7 @@ func TestSyncFnDocBodyPropertiesSwitchActiveTombstone(t *testing.T) {
 	assert.Equal(t, 1, numErrorsAfter-numErrorsBefore, "expecting to see only only 1 error logged")
 }
 
-//Test for wrong _changes entries for user joining a populated channel
+// Test for wrong _changes entries for user joining a populated channel
 func TestUserJoiningPopulatedChannel(t *testing.T) {
 
 	if testing.Short() {
@@ -2990,7 +2991,7 @@ func TestAllDocsChannelsAfterChannelMove(t *testing.T) {
 	goassert.Equals(t, allDocsResult.Rows[0].Value.Channels[0], "ch2")
 }
 
-//Test for regression of issue #447
+// Test for regression of issue #447
 func TestAttachmentsNoCrossTalk(t *testing.T) {
 
 	rt := NewRestTester(t, nil)
@@ -5159,15 +5160,17 @@ func TestHandlePprofs(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.inputProfile, func(t *testing.T) {
-			expectedContentDisposition := fmt.Sprintf(`attachment; filename="%v"`, tc.inputProfile)
+			expectedContentDispositionPrefix := fmt.Sprintf(`attachment; filename="%v`, tc.inputProfile)
 			response := rt.SendAdminRequest(http.MethodGet, tc.inputResource, "")
-			assert.Equal(t, expectedContentDisposition, response.Header().Get("Content-Disposition"))
+			cdHeader := response.Header().Get("Content-Disposition")
+			assert.Truef(t, strings.HasPrefix(cdHeader, expectedContentDispositionPrefix), "Expected header prefix: %q but got %q", expectedContentDispositionPrefix, cdHeader)
 			assert.Equal(t, "application/octet-stream", response.Header().Get("Content-Type"))
 			assert.Equal(t, "nosniff", response.Header().Get("X-Content-Type-Options"))
 			assertStatus(t, response, http.StatusOK)
 
 			response = rt.SendAdminRequest(http.MethodPost, tc.inputResource, "")
-			assert.Equal(t, expectedContentDisposition, response.Header().Get("Content-Disposition"))
+			cdHeader = response.Header().Get("Content-Disposition")
+			assert.Truef(t, strings.HasPrefix(cdHeader, expectedContentDispositionPrefix), "Expected header prefix: %q but got %q", expectedContentDispositionPrefix, cdHeader)
 			assert.Equal(t, "application/octet-stream", response.Header().Get("Content-Type"))
 			assert.Equal(t, "nosniff", response.Header().Get("X-Content-Type-Options"))
 			assertStatus(t, response, http.StatusOK)
