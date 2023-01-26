@@ -441,29 +441,28 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 					}
 
 				} else {
-					return base.HTTPErrorf(http.StatusBadRequest, "Ambiguous keyspace: %s.%s", base.MD(keyspaceDb), base.MD(base.StringDefault(keyspaceScope, "")))
+					keyspaceScope = base.StringPtr(base.DefaultScope)
 				}
 			}
 			scope, foundScope := dbContext.Scopes[*keyspaceScope]
 			if !foundScope {
-				return base.HTTPErrorf(http.StatusNotFound, "keyspace %s.%s.%s not found", base.MD(keyspaceDb), base.MD(base.StringDefault(keyspaceScope, "")), base.MD(base.StringDefault(keyspaceCollection, "")))
+				return base.HTTPErrorf(http.StatusNotFound, "keyspace %q not found", ks)
 			}
 
 			if keyspaceCollection == nil {
 				if len(scope.Collections) > 1 {
-					// _default doesn't exist for a non-default scope - so make it a required element if it's ambiguous
-					return base.HTTPErrorf(http.StatusBadRequest, "Ambiguous keyspace: %s.%s", base.MD(keyspaceDb), base.MD(base.StringDefault(keyspaceScope, "")))
+					return base.HTTPErrorf(http.StatusNotFound, "keyspace %q not found", ks)
 				}
 				keyspaceCollection = base.StringPtr(base.DefaultCollection)
 			}
 			_, foundCollection := scope.Collections[*keyspaceCollection]
 			if !foundCollection {
-				return base.HTTPErrorf(http.StatusNotFound, "keyspace %s.%s.%s not found", base.MD(keyspaceDb), base.MD(base.StringDefault(keyspaceScope, "")), base.MD(base.StringDefault(keyspaceCollection, "")))
+				return base.HTTPErrorf(http.StatusNotFound, "keyspace %q not found", ks)
 			}
 		} else {
 			if keyspaceScope != nil && *keyspaceScope != base.DefaultScope || keyspaceCollection != nil && *keyspaceCollection != base.DefaultCollection {
 				// request tried specifying a named collection on a non-named collections database
-				return base.HTTPErrorf(http.StatusNotFound, "keyspace %s.%s.%s not found", base.MD(keyspaceDb), base.MD(base.StringDefault(keyspaceScope, "")), base.MD(base.StringDefault(keyspaceCollection, "")))
+				return base.HTTPErrorf(http.StatusNotFound, "keyspace %q not found", ks)
 			}
 			// Set these for handlers that expect a scope/collection to be set, even if not using named collections.
 			keyspaceScope = base.StringPtr(base.DefaultScope)
