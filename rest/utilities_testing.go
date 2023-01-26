@@ -310,7 +310,8 @@ func (rt *RestTester) Bucket() base.Bucket {
 			rt.DatabaseConfig.ImportPartitions = base.Uint16Ptr(1)
 		}
 
-		if rt.leakyBucketConfig != nil {
+		_, isLeaky := base.AsLeakyBucket(rt.TestBucket)
+		if rt.leakyBucketConfig != nil || isLeaky {
 			_, err = rt.RestTesterServerContext.AddDatabaseFromConfigWithBucket(ctx, rt.TB, *rt.DatabaseConfig, testBucket.Bucket)
 		} else {
 			_, err = rt.RestTesterServerContext.AddDatabaseFromConfig(ctx, *rt.DatabaseConfig)
