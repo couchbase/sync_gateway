@@ -432,6 +432,7 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 
 	// Collection keyspace handling
 	if ks != "" {
+		ksNotFound := base.HTTPErrorf(http.StatusNotFound, "keyspace %s not found", ks)
 		if dbContext.Scopes != nil {
 			// If scopes are defined on the database but not in th an empty scope to refer to the one SG is running with, rather than falling back to _default
 			if keyspaceScope == nil {
@@ -446,7 +447,7 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 			}
 			scope, foundScope := dbContext.Scopes[*keyspaceScope]
 			if !foundScope {
-				return base.HTTPErrorf(http.StatusNotFound, "keyspace %q not found", ks)
+				return ksNotFound
 			}
 
 			if keyspaceCollection == nil {
@@ -457,12 +458,12 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 			}
 			_, foundCollection := scope.Collections[*keyspaceCollection]
 			if !foundCollection {
-				return base.HTTPErrorf(http.StatusNotFound, "keyspace %q not found", ks)
+				return ksNotFound
 			}
 		} else {
 			if keyspaceScope != nil && *keyspaceScope != base.DefaultScope || keyspaceCollection != nil && *keyspaceCollection != base.DefaultCollection {
 				// request tried specifying a named collection on a non-named collections database
-				return base.HTTPErrorf(http.StatusNotFound, "keyspace %q not found", ks)
+				return ksNotFound
 			}
 			// Set these for handlers that expect a scope/collection to be set, even if not using named collections.
 			keyspaceScope = base.StringPtr(base.DefaultScope)
