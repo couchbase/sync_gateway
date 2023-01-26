@@ -367,7 +367,7 @@ function(doc, oldDoc) {
 
 	numExpectedChanges := 201
 
-	go func(t *testing.T) {
+	go func() {
 		defer wg.Done()
 
 		since := ""
@@ -404,12 +404,13 @@ function(doc, oldDoc) {
 
 			numTries++
 			if numTries > maxTries {
-				t.Fatalf("Giving up trying to receive %d changes.  Only received %d", numExpectedChanges, len(changesAccumulated))
+				t.Errorf("Giving up trying to receive %d changes.  Only received %d", numExpectedChanges, len(changesAccumulated))
+				return
 			}
 
 		}
 
-	}(t)
+	}()
 
 	// Make bulk docs calls, 100 docs each, all triggering access grants to the list docs.
 	for j := 0; j < 1; j++ {
