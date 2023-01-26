@@ -31,8 +31,7 @@ func TestChannelCacheMaxSize(t *testing.T) {
 	require.NoError(t, err)
 	defer dbCtx.Close(ctx)
 
-	collection := dbCtx.GetSingleDatabaseCollection()
-	cache := collection.changeCache.getChannelCache()
+	cache := dbCtx.changeCache.getChannelCache()
 
 	collectionID := dbCtx.GetSingleDatabaseCollection().GetCollectionID()
 
