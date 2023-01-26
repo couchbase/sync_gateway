@@ -15,7 +15,7 @@ pipeline {
     }
 
     tools {
-        go '1.13.4'
+        go '1.19'
     }
 
     stages {
@@ -62,7 +62,7 @@ pipeline {
                             steps {
                                 withEnv(["GOPATH=${GOTOOLS}"]) {
                                     // unhandled error checker
-                                    sh 'go get -v -u github.com/kisielk/errcheck@v1.6.2'
+                                    sh 'go get -v -u github.com/kisielk/errcheck'
                                     // goveralls is used to send coverprofiles to coveralls.io
                                     sh 'go get -v -u github.com/mattn/goveralls'
                                     // Jenkins coverage reporting tools
