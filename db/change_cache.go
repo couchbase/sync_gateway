@@ -35,8 +35,6 @@ const (
 	QueryTombstoneBatch           = 250              // Max number of tombstones checked per query during Compact
 )
 
-var SkippedSeqCleanViewBatch = 50 // Max number of sequences checked per query during CleanSkippedSequence.  Var to support testing
-
 // Enable keeping a channel-log for the "*" channel (channel.UserStarChannel). The only time this channel is needed is if
 // someone has access to "*" (e.g. admin-party) and tracks its changes feed.
 var EnableStarChannelLog = true
@@ -312,85 +310,12 @@ func (c *changeCache) CleanSkippedSequenceQueue(ctx context.Context) error {
 
 	base.InfofCtx(ctx, base.KeyCache, "Starting CleanSkippedSequenceQueue, found %d skipped sequences older than max wait for database %s", len(oldSkippedSequences), base.MD(c.db.Name))
 
-	var foundEntries []*LogEntry
-	var pendingRemovals []uint64
-
-	if c.db.Options.UnsupportedOptions != nil && c.db.Options.UnsupportedOptions.DisableCleanSkippedQuery {
-		pendingRemovals = append(pendingRemovals, oldSkippedSequences...)
-		oldSkippedSequences = nil
-	}
-
-	for len(oldSkippedSequences) > 0 {
-		var skippedSeqBatch []uint64
-		if len(oldSkippedSequences) >= SkippedSeqCleanViewBatch {
-			skippedSeqBatch = oldSkippedSequences[0:SkippedSeqCleanViewBatch]
-			oldSkippedSequences = oldSkippedSequences[SkippedSeqCleanViewBatch:]
-		} else {
-			skippedSeqBatch = oldSkippedSequences[0:]
-			oldSkippedSequences = nil
-		}
-
-		base.InfofCtx(ctx, base.KeyCache, "Issuing skipped sequence clean query for %d sequences, %d remain pending (db:%s).", len(skippedSeqBatch), len(oldSkippedSequences), base.MD(c.db.Name))
-		// Note: The view query is only going to hit for active revisions - sequences associated with inactive revisions
-		//       aren't indexed by the channel view.  This means we can potentially miss channel removals:
-		//       when an older revision is missed by the TAP feed, and a channel is removed in that revision,
-		//       the doc won't be flagged as removed from that channel in the in-memory channel cache.
-		/*
-			entries, err := c.collection.getChangesForSequences(ctx, skippedSeqBatch)
-			if err != nil {
-				base.WarnfCtx(ctx, "Error retrieving sequences via query during skipped sequence clean - #%d sequences treated as not found: %v", len(skippedSeqBatch), err)
-				continue
-			}
-
-			// Process found entries.  Add to foundEntries for subsequent cache processing, foundMap for pendingRemoval calculation below.
-			foundMap := make(map[uint64]struct{}, len(entries))
-			for _, foundEntry := range entries {
-				foundMap[foundEntry.Sequence] = struct{}{}
-				foundEntries = append(foundEntries, foundEntry)
-			}
-
-			// Add queried sequences not in the resultset to pendingRemovals
-			for _, skippedSeq := range skippedSeqBatch {
-				if _, ok := foundMap[skippedSeq]; !ok {
-					base.WarnfCtx(ctx, "Skipped Sequence %d didn't show up in MaxChannelLogMissingWaitTime, and isn't available from a * channel query.  If it's a valid sequence, it won't be replicated until Sync Gateway is restarted.", skippedSeq)
-					pendingRemovals = append(pendingRemovals, skippedSeq)
-				}
-			}
-		*/
-	}
-
-	// Issue processEntry for found entries.  Standard processEntry handling will remove these sequences from the skipped seq queue.
-	changedChannelsCombined := channels.Set{}
-	for _, entry := range foundEntries {
-		entry.Skipped = true
-		// Need to populate the actual channels for this entry - the entry returned from the * channel
-		// view will only have the * channel
-		collection, exists := c.db.CollectionByID[entry.CollectionID]
-		if !exists {
-			return fmt.Errorf("Could not find collection with kv ID: %d", entry.CollectionID)
-		}
-		doc, err := collection.GetDocument(ctx, entry.DocID, DocUnmarshalNoHistory)
-		if err != nil {
-			base.WarnfCtx(ctx, "Unable to retrieve doc when processing skipped document %q: abandoning sequence %d", base.UD(entry.DocID), entry.Sequence)
-			continue
-		}
-		entry.Channels = doc.Channels
-
-		changedChannels := c.processEntry(entry)
-		changedChannelsCombined = changedChannelsCombined.Update(changedChannels)
-	}
-
-	// Since the calls to processEntry() above may unblock pending sequences, if there were any changed channels we need
-	// to notify any change listeners that are working changes feeds for these channels
-	if c.notifyChange != nil && len(changedChannelsCombined) > 0 {
-		c.notifyChange(changedChannelsCombined)
-	}
-
 	// Purge sequences not found from the skipped sequence queue
-	numRemoved := c.RemoveSkippedSequences(ctx, pendingRemovals)
+	numRemoved := c.RemoveSkippedSequences(ctx, oldSkippedSequences)
 	c.db.DbStats.Cache().AbandonedSeqs.Add(numRemoved)
 
-	base.InfofCtx(ctx, base.KeyCache, "CleanSkippedSequenceQueue complete.  Found:%d, Not Found:%d for database %s.", len(foundEntries), len(pendingRemovals), base.MD(c.db.Name))
+	base.InfofCtx(ctx, base.KeyCache, "CleanSkippedSequenceQueue complete.  Not Found:%d for database %s.", len(oldSkippedSequences), base.MD(c.db.Name))
+	oldSkippedSequences = nil
 	return nil
 }
 

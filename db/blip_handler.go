@@ -824,6 +824,10 @@ func (bsc *BlipSyncContext) sendRevAsDelta(sender *blip.Sender, docID, revID str
 		return err
 	}
 
+	// We'll consider this one doc read for collection stats purposes, since GetDelta doesn't go through the normal getRev codepath.
+	handleChangesResponseCollection.collectionStats.NumDocReads.Add(1)
+	handleChangesResponseCollection.collectionStats.DocReadsBytes.Add(int64(len(revDelta.DeltaBytes)))
+
 	bsc.replicationStats.SendRevDeltaSentCount.Add(1)
 	return nil
 }

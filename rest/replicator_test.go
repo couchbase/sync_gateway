@@ -51,7 +51,7 @@ func TestActiveReplicatorBlipsync(t *testing.T) {
 
 	// Add basic auth creds to target db URL
 	passiveDBURL.User = url.UserPassword("alice", "pass")
-	stats, err := base.SyncGatewayStats.NewDBStats("test", false, false, false)
+	stats, err := base.SyncGatewayStats.NewDBStats("test", false, false, false, nil, nil)
 	require.NoError(t, err)
 	dbstats, err := stats.DBReplicatorStats(t.Name())
 	require.NoError(t, err)

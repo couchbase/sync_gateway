@@ -215,7 +215,7 @@ type UnsupportedOptions struct {
 	OidcTestProvider           *OidcTestProviderOptions `json:"oidc_test_provider,omitempty"`            // Config settings for OIDC Provider
 	APIEndpoints               *APIEndpoints            `json:"api_endpoints,omitempty"`                 // Config settings for API endpoints
 	WarningThresholds          *WarningThresholds       `json:"warning_thresholds,omitempty"`            // Warning thresholds related to _sync size
-	DisableCleanSkippedQuery   bool                     `json:"disable_clean_skipped_query,omitempty"`   // Clean skipped sequence processing bypasses final check
+	DisableCleanSkippedQuery   bool                     `json:"disable_clean_skipped_query,omitempty"`   // Clean skipped sequence processing bypasses final check (deprecated: CBG-2672)
 	OidcTlsSkipVerify          bool                     `json:"oidc_tls_skip_verify,omitempty"`          // Config option to enable self-signed certs for OIDC testing.
 	SgrTlsSkipVerify           bool                     `json:"sgr_tls_skip_verify,omitempty"`           // Config option to enable self-signed certs for SG-Replicate testing.
 	RemoteConfigTlsSkipVerify  bool                     `json:"remote_config_tls_skip_verify,omitempty"` // Config option to enable self signed certificates for external JavaScript load.
@@ -452,7 +452,11 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 				if err != nil {
 					return nil, err
 				}
-				dbCollection, err := newDatabaseCollection(ctx, dbContext, dataStore)
+				stats, err := dbContext.DbStats.CollectionStat(scopeName, collName)
+				if err != nil {
+					return nil, err
+				}
+				dbCollection, err := newDatabaseCollection(ctx, dbContext, dataStore, stats)
 				if err != nil {
 					return nil, err
 				}
@@ -481,7 +485,11 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 		}
 	} else {
 		dataStore := bucket.DefaultDataStore()
-		dbCollection, err := newDatabaseCollection(ctx, dbContext, dataStore)
+		stats, err := dbContext.DbStats.CollectionStat(base.DefaultScope, base.DefaultCollection)
+		if err != nil {
+			return nil, err
+		}
+		dbCollection, err := newDatabaseCollection(ctx, dbContext, dataStore, stats)
 		if err != nil {
 			return nil, err
 		}
@@ -2177,7 +2185,19 @@ func initDatabaseStats(dbName string, autoImport bool, options DatabaseContextOp
 		queryNames = append(queryNames, options.GraphQL.N1QLQueryNames()...)
 	}
 
-	return base.SyncGatewayStats.NewDBStats(dbName, enabledDeltaSync, enabledImport, enabledViews, queryNames...)
+	var collections []string
+	if len(options.Scopes) == 0 {
+		base.DebugfCtx(context.TODO(), base.KeyConfig, "No named collections defined for database %q, using default collection for stats", base.MD(dbName))
+		collections = append(collections, base.DefaultScope+"."+base.DefaultCollection)
+	} else {
+		for scopeName, scope := range options.Scopes {
+			for collectionName := range scope.Collections {
+				collections = append(collections, scopeName+"."+collectionName)
+			}
+		}
+	}
+
+	return base.SyncGatewayStats.NewDBStats(dbName, enabledDeltaSync, enabledImport, enabledViews, queryNames, collections)
 }
 
 func (context *DatabaseContext) AllowConflicts() bool {
@@ -2312,10 +2332,11 @@ func (dbc *DatabaseContext) GetSingleDatabaseCollection() *DatabaseCollection {
 }
 
 // newDatabaseCollection returns a collection which inherits values from the database but is specific to a given DataStore.
-func newDatabaseCollection(ctx context.Context, dbContext *DatabaseContext, dataStore base.DataStore) (*DatabaseCollection, error) {
+func newDatabaseCollection(ctx context.Context, dbContext *DatabaseContext, dataStore base.DataStore, stats *base.CollectionStats) (*DatabaseCollection, error) {
 	dbCollection := &DatabaseCollection{
-		dataStore: dataStore,
-		dbCtx:     dbContext,
+		dataStore:       dataStore,
+		dbCtx:           dbContext,
+		collectionStats: stats,
 	}
 	dbCollection.revisionCache = NewRevisionCache(
 		dbContext.Options.RevisionCacheOptions,

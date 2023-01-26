@@ -13,6 +13,8 @@ package functions
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"os"
 	"strings"
 	"testing"
 
@@ -53,38 +55,42 @@ var kTestGraphQLConfig = GraphQLConfig{
 	Resolvers: map[string]GraphQLResolverConfig{
 		"Query": {
 			"square": {
-				Type: "javascript",
-				Code: `function(context,args) {return args.n * args.n;}`,
+				Type:  "javascript",
+				Code:  `function(parent, args, context, info) {return args.n * args.n;}`,
+				Allow: allowAll,
 			},
 			"infinite": {
-				Type: "javascript",
-				Code: `function(context,args) {return context.user.function("infinite");}`,
+				Type:  "javascript",
+				Code:  `function(parent, args, context, info) {return context.user.function("infinite");}`,
+				Allow: allowAll,
 			},
 			"task": {
 				Type: "javascript",
-				Code: `function(context, args, parent, info) {
+				Code: `function(parent, args, context, info) {
 						if (Object.keys(parent).length != 0) throw "Unexpected parent";
 						if (Object.keys(args).length != 1) throw "Unexpected args";
 						if (Object.keys(info) != "selectedFieldNames") throw "Unexpected info";
 						if (!context.user) throw "Missing context.user";
 						if (!context.admin) throw "Missing context.admin";
 						return context.user.function("getTask", {id: args.id});}`,
+				Allow: allowAll,
 			},
 			"tasks": {
 				Type: "javascript",
-				Code: `function(context, args, parent, info) {
+				Code: `function(parent, args, context, info) {
 						if (Object.keys(parent).length != 0) throw "Unexpected parent";
 						if (Object.keys(args).length != 0) throw "Unexpected args";
 						if (Object.keys(info) != "selectedFieldNames") throw "Unexpected info";
 						if (!context.user) throw "Missing context.user";
 						if (!context.admin) throw "Missing context.admin";
 						return context.user.function("all");}`,
+				Allow: allowAll,
 			},
 			"toDo": {
 				Type: "javascript",
-				Code: `function(context, args, parent, info) {
+				Code: `function(parent, args, context, info) {
 						if (Object.keys(parent).length != 0) throw "Unexpected parent";
-						if (Object.keys(args).length != 1) throw "Unexpected args";
+						if (Object.keys(args).length != 0) throw "Unexpected args";
 						if (Object.keys(info) != "selectedFieldNames") throw "Unexpected info";
 						if (!context.user) throw "Missing context.user";
 						if (!context.admin) throw "Missing context.admin";
@@ -92,36 +98,41 @@ var kTestGraphQLConfig = GraphQLConfig{
 						for (var i = 0; i < all.length; i++)
 							if (!all[i].done) result.push(all[i]);
 						return result;}`,
+				Allow: allowAll,
 			},
 		},
 		"Mutation": {
 			"complete": {
 				Type: "javascript",
-				Code: `function(context, args, parent, info) {
+				Code: `function(parent, args, context, info) {
 							if (Object.keys(parent).length != 0) throw "Unexpected parent";
 							if (Object.keys(args).length != 1) throw "Unexpected args";
 							if (Object.keys(info) != "selectedFieldNames") throw "Unexpected info";
 							if (!context.user) throw "Missing context.user";
 							if (!context.admin) throw "Missing context.admin";
+							context.requireMutating();
 							var task = context.user.function("getTask", {id: args.id});
 							if (!task) return undefined;
 							task.done = true;
 							return task;}`,
+				Allow: allowAll,
 			},
 			"addTag": {
 				Type: "javascript",
-				Code: `function(context, args, parent, info) {
+				Code: `function(parent, args, context, info) {
+							context.requireMutating();
 							var task = context.user.function("getTask", {id: args.id});
 							if (!task) return undefined;
 							if (!task.tags) task.tags = [];
 							task.tags.push(args.tag);
 							return task;}`,
+				Allow: allowAll,
 			},
 		},
 		"Task": {
 			"secretNotes": {
 				Type: "javascript",
-				Code: `function(context, args, parent, info) {
+				Code: `function(parent, args, context, info) {
 								if (!parent.id) throw "Invalid parent";
 								if (Object.keys(args).length != 0) throw "Unexpected args";
 								if (Object.keys(info) != "selectedFieldNames") throw "Unexpected info";
@@ -167,6 +178,35 @@ var kTestGraphQLUserFunctionsConfig = FunctionsConfig{
 	},
 }
 
+var kTestTypenameResolverSchema = `interface Book {
+	id: ID!
+}
+type Textbook implements Book {
+	id: ID!
+	courses: [String!]!
+} 
+type ColoringBook implements Book {
+	id: ID!
+	colors: [String!]!
+}
+type Query {
+	books: [Book!]!
+}`
+
+var kTestTypenameResolverQuery = `
+query {
+	books {
+		id
+		... on Textbook {
+			courses
+		}
+		... on ColoringBook{
+			colors
+		}
+	}
+}
+`
+
 func assertGraphQLResult(t *testing.T, expected string, result *graphql.Result, err error) {
 	if !assert.NoError(t, err) || !assert.NotNil(t, result) {
 		return
@@ -189,10 +229,10 @@ func assertGraphQLError(t *testing.T, expectedErrorText string, result *graphql.
 	if !assert.NoError(t, err) || !assert.NotNil(t, result) {
 		return
 	}
-	if !assert.NotZero(t, len(result.Errors)) {
+	if len(result.Errors) == 0 {
 		data, err := json.Marshal(result.Data)
 		assert.NoError(t, err)
-		t.Logf("Expected GraphQL error but got none; data is %s", string(data))
+		assert.NotZero(t, len(result.Errors), "Expected GraphQL error but got none; data is %s", string(data))
 		return
 	}
 	for _, err := range result.Errors {
@@ -249,8 +289,8 @@ func testUserGraphQLCommon(t *testing.T, ctx context.Context, db *db.Database) {
 	result, err = db.UserGraphQLQuery(`query{ task(foo:69) {id,title,done} }`, "", nil, false, ctx)
 	assertGraphQLError(t, "Unknown argument \"foo\"", result, err)
 
-	// Mutation when no mutations allowed:
-	result, err = db.UserGraphQLQuery(`mutation{ complete(id:"a") {done} }`, "", nil, false, ctx)
+	// Mutation when no mutations allowed (mutationAllowed = false):
+	result, err = db.UserGraphQLQuery(`mutation{ complete(id:"b") {done} }`, "", nil, false, ctx)
 	assertGraphQLError(t, "403", result, err)
 
 	// Infinite regress:
@@ -292,60 +332,67 @@ var kTestGraphQLConfigWithN1QL = GraphQLConfig{
 	Resolvers: map[string]GraphQLResolverConfig{
 		"Query": {
 			"square": {
-				Type: "javascript",
-				Code: `function(context,args) {return args.n * args.n;}`,
+				Type:  "javascript",
+				Code:  `function(parent, args, context, info) {return args.n * args.n;}`,
+				Allow: allowAll,
 			},
 			"infinite": {
 				Type: "javascript",
-				Code: `function(context,args) {
+				Code: `function(parent, args, context, info) {
 						var result = context.user.graphql("query{ infinite }");
 						if (result.errors) throw "GraphQL query failed: " + result.errors[0].message;
 						return -1;}`,
+				Allow: allowAll,
 			},
 			"task": {
 				// This tests the ability of the resolver to return the 1st result row when the
 				// GraphQL return type is not a List.
-				Type: "query",
-				Code: `SELECT db.*, meta().id as id FROM $_keyspace AS db WHERE meta().id = $args.id AND type = "task"`,
+				Type:  "query",
+				Code:  `SELECT db.*, meta().id as id FROM $_keyspace AS db WHERE meta().id = $args.id AND type = "task"`,
+				Allow: allowAll,
 			},
 			"tasks": {
-				Type: "query",
-				Code: `SELECT db.*, meta().id as id FROM $_keyspace AS db WHERE type = "task" ORDER BY title`,
+				Type:  "query",
+				Code:  `SELECT db.*, meta().id as id FROM $_keyspace AS db WHERE type = "task" ORDER BY title`,
+				Allow: allowAll,
 			},
 			"toDo": {
-				Type: "query",
-				Code: `SELECT db.*, meta().id as id FROM $_keyspace AS db WHERE type = "task" AND NOT done ORDER BY title`,
+				Type:  "query",
+				Code:  `SELECT db.*, meta().id as id FROM $_keyspace AS db WHERE type = "task" AND NOT done ORDER BY title`,
+				Allow: allowAll,
 			},
 		},
 		"Mutation": {
 			"complete": {
 				Type: "javascript",
-				Code: `function(context, args, parent, info) {
+				Code: `function(parent, args, context, info) {
 					var task = context.user.defaultCollection.get(args.id);
 					if (!task) return null;
 					task.id = args.id;
 					if (!task.done) {
 					  task.done = true;
-					  context.user.defaultCollection.save(args.id, task);
+					  context.user.defaultCollection.save(task, args.id);
 					}
 					return task;}`,
+				Allow: allowAll,
 			},
 			"addTag": {
 				Type: "javascript",
-				Code: `function(context, args, parent, info) {
+				Code: `function(parent, args, context, info) {
 							var task = context.user.defaultCollection.get(args.id);
 							if (!task) return null;
 							task.id = args.id;
 							if (!task.tags) task.tags = [];
 							task.tags.push(args.tag);
-							context.user.defaultCollection.save(args.id, task);
+							context.user.defaultCollection.save(task, args.id);
 							return task;}`,
+				Allow: allowAll,
 			},
 		},
 		"Task": {
 			"secretNotes": {
 				Type: "javascript",
-				Code: `function(context, args, parent, info) {
+				Code: `function(parent, args, context, info) {
 								if (!parent.id) throw "Invalid parent";
 								if (Object.keys(args).length != 0) throw "Unexpected args";
 								if (Object.keys(info) != "selectedFieldNames") throw "Unexpected info";
@@ -357,8 +404,9 @@ var kTestGraphQLConfigWithN1QL = GraphQLConfig{
 			"description": {
 				// This tests the magic $parent parameter,
 				// and returning the single column of the single row when the result is a scalar.
-				Type: "query",
-				Code: `SELECT $parent.description`,
+				Type:  "query",
+				Code:  `SELECT $parent.description`,
+				Allow: allowAll,
 			},
 		},
 	},
@@ -469,37 +517,240 @@ func TestGraphQLMaxResolverCount(t *testing.T) {
 	assert.ErrorContains(t, err, "too many GraphQL resolvers (> 1)")
 }
 
-//////// UTILITY FUNCTIONS
-
-func setupTestDBWithFunctions(t *testing.T, fnConfig *FunctionsConfig, gqConfig *GraphQLConfig) (*db.Database, context.Context) {
-	cacheOptions := db.DefaultCacheOptions()
-	options := db.DatabaseContextOptions{
-		UseViews:     base.TestsDisableGSI(),
-		EnableXattr:  base.TestUseXattrs(),
-		CacheOptions: &cacheOptions,
+func TestArgsInResolverConfig(t *testing.T) {
+	var config = GraphQLConfig{
+		Schema: base.StringPtr(`type Query{}`),
+		Resolvers: map[string]GraphQLResolverConfig{
+			"Query": {
+				"square": {
+					Type: "javascript",
+					Code: `function(parent, args, context, info) {return args.n * args.n;}`,
+					Args: []string{"n"},
+				},
+			},
+		},
 	}
-	var err error
-	if fnConfig != nil {
-		options.UserFunctions, err = CompileFunctions(*fnConfig)
-		assert.NoError(t, err)
-	}
-	if gqConfig != nil {
-		options.GraphQL, err = CompileGraphQL(gqConfig)
-		assert.NoError(t, err)
-	}
-
-	tBucket := base.GetTestBucket(t)
-	return db.SetupTestDBForDataStoreWithOptions(t, tBucket, options)
+	_, err := CompileGraphQL(&config)
+	assert.ErrorContains(t, err, `'args' is not valid in a GraphQL resolver config`)
 }
 
-// createPrimaryIndex returns true if there was no index created before
-func createPrimaryIndex(t *testing.T, n1qlStore base.N1QLStore) bool {
-	hasPrimary, _, err := base.GetIndexMeta(n1qlStore, base.PrimaryIndexName)
-	require.NoError(t, err)
-	if hasPrimary {
-		return false
+func TestUnresolvedTypesInSchema(t *testing.T) {
+	var config = GraphQLConfig{
+		Schema:    base.StringPtr(`type Query{} type abc{def:kkk}`),
+		Resolvers: nil,
 	}
-	err = n1qlStore.CreatePrimaryIndex(base.PrimaryIndexName, nil)
-	require.NoError(t, err)
-	return true
+	_, err := CompileGraphQL(&config)
+	assert.ErrorContains(t, err, `GraphQL Schema object has no registered TypeMap -- this probably means the schema has unresolved types`)
+}
+
+func TestInvalidMutationType(t *testing.T) {
+	t.Run("Unrecognized type cpp", func(t *testing.T) {
+		var config = GraphQLConfig{
+			Schema: base.StringPtr(`type Query{}`),
+			Resolvers: map[string]GraphQLResolverConfig{
+				"Mutation": {
+					"complete": {
+						Type: "cpp",
+						Code: `{}`,
+					},
+				},
+			},
+		}
+		_, err := CompileGraphQL(&config)
+		assert.ErrorContains(t, err, `unrecognized 'type' "cpp"`)
+	})
+	t.Run("Unrecognized type query", func(t *testing.T) {
+		var config = GraphQLConfig{
+			Schema: base.StringPtr(`type Query{}`),
+			Resolvers: map[string]GraphQLResolverConfig{
+				"Mutation": {
+					"complete": {
+						Type: "query",
+						Code: `SELECT 1;`,
+					},
+				},
+			},
+		}
+		_, err := CompileGraphQL(&config)
+		assert.ErrorContains(t, err, `GraphQL mutations must be implemented in JavaScript`)
+	})
+}
+
+func TestCompilationErrorInResolverCode(t *testing.T) {
+	var config = GraphQLConfig{
+		Schema: base.StringPtr(`type Query{ square(n: Int!): Int! }`),
+		Resolvers: map[string]GraphQLResolverConfig{
+			"Query": {
+				"square": {
+					Type: "javascript",
+					Code: `function(parent, args, context, info, 3) { }`,
+				},
+			},
+		},
+	}
+	_, err := CompileGraphQL(&config)
+	assert.ErrorContains(t, err, `500 Error compiling GraphQL resolver "Query:square"`)
+}
+
+func TestGraphQLMaxCodeSize(t *testing.T) {
+	var schema = `type Query {square(n: Int!) : Int!}`
+	var config = GraphQLConfig{
+		MaxCodeSize: base.IntPtr(2),
+		Schema:      &schema,
+		Resolvers: map[string]GraphQLResolverConfig{
+			"Query": {
+				"square": {
+					Type: "javascript",
+					Code: `function(parent, args, context, info) {return args.n * args.n;}`,
+				},
+			},
+		},
+	}
+	_, err := CompileGraphQL(&config)
+	assert.ErrorContains(t, err, "resolver square code too large (> 2 bytes)")
+}
+
+// Unit Test for Typename resolver for interfaces in GraphQL schema
+func TestTypenameResolver(t *testing.T) {
+	t.Run("Typename Resolver must be a Javascript Function", func(t *testing.T) {
+		var config = GraphQLConfig{
+			Schema: &kTestTypenameResolverSchema,
+			Resolvers: map[string]GraphQLResolverConfig{
+				"Book": {
+					"__typename": {
+						Type: "cpp",
+						Code: `function(context, value) {
+								switch (value.type) {
+								  case "textbook": return "Textbook";
+								  case "coloringBook": return "ColoringBook";
+								  default: return null;
+								}
+							  }`,
+					},
+				},
+			},
+		}
+		_, err := CompileGraphQL(&config)
+		assert.ErrorContains(t, err, "a GraphQL '__typename__' resolver must be JavaScript")
+	})
+	t.Run("Error in compiling typename resolver", func(t *testing.T) {
+		var config = GraphQLConfig{
+			Schema: &kTestTypenameResolverSchema,
+			Resolvers: map[string]GraphQLResolverConfig{
+				"Book": {
+					"__typename": {
+						Type: "javascript",
+						Code: `function(context, value, 3) {
+								switch (value.type) {
+								  default: return null;
+								}
+							  }`,
+					},
+				},
+			},
+		}
+		_, err := CompileGraphQL(&config)
+		assert.ErrorContains(t, err, `Error compiling GraphQL type-name resolver "Book"`)
+	})
+	t.Run("Typename Resolver should not have allow", func(t *testing.T) {
+		var config = GraphQLConfig{
+			Schema: &kTestTypenameResolverSchema,
+			Resolvers: map[string]GraphQLResolverConfig{
+				"Book": {
+					"__typename": {
+						Type: "javascript",
+						Code: `function(context, value) {
+								switch (args.type) {
+								  case "textbook": return "Textbook";
+								  case "coloringBook": return "ColoringBook";
+								  default: return null;
+								}
+							  }`,
+						Allow: allowAll,
+					},
+				},
+			},
+		}
+		_, err := CompileGraphQL(&config)
+		assert.ErrorContains(t, err, "'allow' is not valid in a GraphQL '__typename__' resolver")
+	})
+
+	t.Run("Correct Schema and Query produces the result", func(t *testing.T) {
+		var config = GraphQLConfig{
+			Schema: &kTestTypenameResolverSchema,
+			Resolvers: map[string]GraphQLResolverConfig{
+				"Book": {
+					"__typename": {
+						Type: "javascript",
+						Code: `function(context, value) {
+								switch (value.type) {
+								  case "textbook": return "Textbook";
+								  case "coloringBook": return "ColoringBook";
+								  default:        return null;
+								}
+							  }`,
+					},
+				},
+				"Query": {
+					"books": {
+						Type: "javascript",
+						Code: `function(parent, args, context, info) {return [{"id":"abc", "courses":["science"], "type": "textbook"},{"id":"efg", "colors":["red"], "type": "coloringBook"}] }`,
+					},
+				},
+			},
+		}
+		_, err := CompileGraphQL(&config)
+		assert.NoError(t, err)
+		db, ctx := setupTestDBWithFunctions(t, nil, &config)
+		defer db.Close(ctx)
+		result, err := db.UserGraphQLQuery(kTestTypenameResolverQuery, "", nil, false, ctx)
+		assertGraphQLResult(t, `{"books":[{"courses":["science"],"id":"abc"},{"colors":["red"],"id":"efg"}]}`, result, err)
+	})
+}
+
+// Unit Tests for Invalid Schema/SchemaFile in the getSchema Function
+func TestInvalidSchemaAndSchemaFile(t *testing.T) {
+	t.Run("Both Schema and SchemaFile are provided", func(t *testing.T) {
+		var config = GraphQLConfig{
+			Schema:     base.StringPtr(`type Query{ square(n: Int!): Int! }`),
+			SchemaFile: base.StringPtr("someInvalidPath/someInvalidFileName"),
+			Resolvers:  nil,
+		}
+		_, err := CompileGraphQL(&config)
+		assert.ErrorContains(t, err, "GraphQL config: only one of `schema` and `schemaFile` may be used")
+	})
+
+	t.Run("Neither Schema nor SchemaFile Provided", func(t *testing.T) {
+		var config = GraphQLConfig{
+			Resolvers: nil,
+		}
+		_, err := CompileGraphQL(&config)
+		assert.ErrorContains(t, err, "GraphQL config: either `schema` or `schemaFile` must be defined")
+	})
+
+	t.Run("cannot read SchemaFile", func(t *testing.T) {
+		var config = GraphQLConfig{
+			SchemaFile: base.StringPtr("dummySchemaFile.txt"),
+		}
+		_, err := CompileGraphQL(&config)
+		fmt.Println(err)
+		assert.ErrorContains(t, err, "can't read file")
+	})
+}
+
+// Unit Tests for Valid SchemaFile in the getSchema Function
+func TestValidSchemaFile(t *testing.T) {
+	t.Run("Only SchemaFile is Provided", func(t *testing.T) {
+		validSchema := "type Query {sum(n: Int!) : Int!}"
+		err := os.WriteFile("schema.graphql", []byte(validSchema), 0666)
+		assert.NoError(t, err)
+		var config = GraphQLConfig{
+			SchemaFile: base.StringPtr("schema.graphql"),
+		}
+		_, err = CompileGraphQL(&config)
+		assert.NoError(t, err)
+
+		err = os.Remove("schema.graphql")
+		assert.NoError(t, err)
+	})
 }
