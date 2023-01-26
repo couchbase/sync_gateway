@@ -186,7 +186,10 @@ func (ar *ActiveReplicator) GetStatus() *ReplicationStatus {
 func connect(arc *activeReplicatorCommon, idSuffix string) (blipSender *blip.Sender, bsc *BlipSyncContext, err error) {
 	arc.replicationStats.NumConnectAttempts.Add(1)
 
-	blipContext := NewSGBlipContext(arc.ctx, arc.config.ID+idSuffix)
+	blipContext, err := NewSGBlipContext(arc.ctx, arc.config.ID+idSuffix)
+	if err != nil {
+		return nil, nil, err
+	}
 	blipContext.WebsocketPingInterval = arc.config.WebsocketPingInterval
 	blipContext.OnExitCallback = func() {
 		// fall into a reconnect loop only if the connection is unexpectedly closed.
