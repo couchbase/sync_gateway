@@ -162,13 +162,12 @@ func TestAttachmentCompactionPersistence(t *testing.T) {
 	}
 
 	tb := base.GetTestBucket(t)
-	noCloseTB := tb.NoCloseClone()
-
+	defer tb.Close()
 	rt1 := rest.NewRestTester(t, &rest.RestTesterConfig{
-		CustomTestBucket: noCloseTB,
+		CustomTestBucket: tb.NoCloseClone(),
 	})
 	rt2 := rest.NewRestTester(t, &rest.RestTesterConfig{
-		CustomTestBucket: tb,
+		CustomTestBucket: tb.NoCloseClone(),
 	})
 	defer rt2.Close()
 	defer rt1.Close()

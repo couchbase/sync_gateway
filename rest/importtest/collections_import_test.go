@@ -47,14 +47,14 @@ func TestMultiCollectionImportFilter(t *testing.T) {
 		},
 	}
 
-	rt := rest.NewRestTesterMultipleCollections(t, rtConfig, 2)
+	rt := rest.NewRestTesterMultipleCollections(t, rtConfig, 3)
 	defer rt.Close()
 
 	_ = rt.Bucket() // populates rest tester
-	dataStore1, err := rt.TestBucket.GetNamedDataStore(0)
+	dataStore1, err := testBucket.GetNamedDataStore(0)
 	require.NoError(t, err)
 	keyspace1 := "{{.keyspace1}}"
-	dataStore2, err := rt.TestBucket.GetNamedDataStore(1)
+	dataStore2, err := testBucket.GetNamedDataStore(1)
 	require.NoError(t, err)
 	keyspace2 := "{{.keyspace2}}"
 
@@ -161,15 +161,8 @@ func TestMultiCollectionImportFilter(t *testing.T) {
 		`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "scopes":%s}`,
 		testBucket.GetName(), base.TestUseXattrs(), string(scopesConfigString)))
 	rest.RequireStatus(t, response, http.StatusCreated)
-	rt2 := rest.NewRestTesterMultipleCollections(t, rtConfig, 3)
-	defer rt2.Close()
 
-	_ = rt2.Bucket()
-	dataStore1, err = rt2.TestBucket.GetNamedDataStore(0)
-	require.NoError(t, err)
-	dataStore2, err = rt2.TestBucket.GetNamedDataStore(1)
-	require.NoError(t, err)
-	dataStore3, err := rt2.TestBucket.GetNamedDataStore(2)
+	dataStore3, err := testBucket.GetNamedDataStore(2)
 	require.NoError(t, err)
 
 	// Write private doc
@@ -209,14 +202,10 @@ func TestMultiCollectionImportFilter(t *testing.T) {
 	scopesConfigString, err = json.Marshal(scopesConfig)
 	require.NoError(t, err)
 
-	// remove a collection
 	response = rt.SendAdminRequest("PUT", "/db/_config", fmt.Sprintf(
 		`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "scopes":%s}`,
 		testBucket.GetName(), base.TestUseXattrs(), string(scopesConfigString)))
-
 	rest.RequireStatus(t, response, http.StatusCreated)
-	rt2 = rest.NewRestTesterMultipleCollections(t, rtConfig, 2)
-	defer rt2.Close()
 
 	// Write private doc 2
 	dataStores = []base.DataStore{dataStore1, dataStore2, dataStore3}
@@ -233,7 +222,7 @@ func TestMultiCollectionImportFilter(t *testing.T) {
 	require.NoError(t, err, "Error writing SDK doc")
 
 	for _, keyspace := range []string{defaultKeyspace, keyspace1, keyspace2} {
-		response = rt2.SendAdminRequest(http.MethodGet, fmt.Sprintf("/%s/%s", keyspace, prvKey), "")
+		response = rt.SendAdminRequest(http.MethodGet, fmt.Sprintf("/%s/%s", keyspace, prvKey), "")
 		assert.Equal(t, 404, response.Code)
 		if keyspace == defaultKeyspace {
 			assertDocProperty(t, response, "reason", keyspaceNotFound)

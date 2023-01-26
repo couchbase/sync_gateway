@@ -360,6 +360,7 @@ func TestMultiCollectionChangesCustomSyncFunctions(t *testing.T) {
 	base.RequireNumTestDataStores(t, numCollections)
 
 	testBucket := base.GetTestBucket(t)
+	defer testBucket.Close()
 	scopesConfig := rest.GetCollectionsConfig(t, testBucket, numCollections)
 	dataStoreNames := rest.GetDataStoreNamesFromScopesConfig(scopesConfig)
 
@@ -375,7 +376,7 @@ func TestMultiCollectionChangesCustomSyncFunctions(t *testing.T) {
 	scopesConfig[dataStoreNames[1].ScopeName()].Collections[dataStoreNames[1].CollectionName()] = rest.CollectionConfig{SyncFn: &c2SyncFunction}
 
 	rtConfig := &rest.RestTesterConfig{
-		CustomTestBucket: testBucket,
+		CustomTestBucket: testBucket.NoCloseClone(),
 		DatabaseConfig: &rest.DatabaseConfig{
 			DbConfig: rest.DbConfig{
 				Scopes: scopesConfig,
