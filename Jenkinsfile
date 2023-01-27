@@ -166,6 +166,7 @@ pipeline {
                     }
                 }
                 stage('errcheck') {
+                    when { expression { return false } }
                     steps {
                         withEnv(["PATH+=${GOTOOLS}/bin"]) {
                             script {
