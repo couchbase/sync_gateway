@@ -16,7 +16,7 @@ pipeline {
     }
 
     tools {
-        go '1.16'
+        go '1.19.5'
     }
 
     stages {
@@ -166,7 +166,6 @@ pipeline {
                     }
                 }
                 stage('errcheck') {
-                    when { expression { return false } }
                     steps {
                         withEnv(["PATH+=${GOTOOLS}/bin"]) {
                             script {
