@@ -266,16 +266,16 @@ func IsPowerOfTwo(n uint16) bool {
 
 // This is how Couchbase Server handles document expiration times
 //
-//The actual value sent may either be
-//Unix time (number of seconds since January 1, 1970, as a 32-bit
-//value), or a number of seconds starting from current time. In the
-//latter case, this number of seconds may not exceed 60*60*24*30 (number
-//of seconds in 30 days); if the number sent by a client is larger than
-//that, the server will consider it to be real Unix time value rather
-//than an offset from current time.
+// The actual value sent may either be
+// Unix time (number of seconds since January 1, 1970, as a 32-bit
+// value), or a number of seconds starting from current time. In the
+// latter case, this number of seconds may not exceed 60*60*24*30 (number
+// of seconds in 30 days); if the number sent by a client is larger than
+// that, the server will consider it to be real Unix time value rather
+// than an offset from current time.
 //
-//This function takes a ttl as a Duration and returns an int
-//formatted as required by CBS expiry processing
+// This function takes a ttl as a Duration and returns an int
+// formatted as required by CBS expiry processing
 func DurationToCbsExpiry(ttl time.Duration) uint32 {
 	if ttl <= kMaxDeltaTtlDuration {
 		return uint32(ttl.Seconds())

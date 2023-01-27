@@ -618,7 +618,7 @@ func (dbConfig *DbConfig) Redacted() (*DbConfig, error) {
 		config.Users[i].Password = base.StringPtr("****")
 	}
 
-	for i, _ := range config.Replications {
+	for i := range config.Replications {
 		config.Replications[i] = config.Replications[i].Redacted()
 	}
 

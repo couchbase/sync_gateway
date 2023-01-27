@@ -285,7 +285,7 @@ func viewBucketReadier(ctx context.Context, b base.Bucket, tbp *base.TestBucketP
 		return err
 	}
 
-	for ddocName, _ := range ddocs {
+	for ddocName := range ddocs {
 		tbp.Logf(ctx, "removing existing view: %s", ddocName)
 		if err := b.DeleteDDoc(ddocName); err != nil {
 			return err

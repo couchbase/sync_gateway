@@ -226,7 +226,7 @@ func (l ListenerMap) String() string {
 		return "[]"
 	}
 	keys := make([]string, 0, len(l))
-	for k, _ := range l {
+	for k := range l {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)

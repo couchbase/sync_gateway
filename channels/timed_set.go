@@ -195,7 +195,7 @@ func (set TimedSet) AddAtSequence(other TimedSet, atSequence uint64) bool {
 // Merges the other set into the receiver at a given sequence. */
 func (set TimedSet) AddAtVbSequence(other TimedSet, atVbSequence VbSequence) bool {
 	changed := false
-	for ch, _ := range other {
+	for ch := range other {
 		set[ch] = atVbSequence
 		changed = true
 	}
