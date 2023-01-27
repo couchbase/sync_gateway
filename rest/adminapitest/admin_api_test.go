@@ -1015,6 +1015,7 @@ func TestResyncErrorScenariosUsingDCPStream(t *testing.T) {
 	}`
 
 	testBucket := base.GetTestBucket(t)
+
 	rt := rest.NewRestTester(t,
 		&rest.RestTesterConfig{
 			SyncFn:           syncFn,
