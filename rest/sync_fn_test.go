@@ -952,9 +952,6 @@ func TestResyncStopUsingDCPStream(t *testing.T) {
 
 func TestResyncRegenerateSequences(t *testing.T) {
 
-	// FIXME: PersistentWalrusBucket doesn't support collections yet
-	t.Skip("PersistentWalrusBucket doesn't support collections yet")
-
 	base.LongRunningTest(t)
 	syncFn := `
 	function(doc) {
@@ -1006,10 +1003,10 @@ func TestResyncRegenerateSequences(t *testing.T) {
 		docSeqArr = append(docSeqArr, body["_sync"].(map[string]interface{})["sequence"].(float64))
 	}
 
-	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/_role/role1", GetRolePayload(t, "role1", "", collection, []string{"channel_1"}))
+	response = rt.SendAdminRequest("PUT", "/{{.db}}/_role/role1", GetRolePayload(t, "role1", "", collection, []string{"channel_1"}))
 	RequireStatus(t, response, http.StatusCreated)
 
-	response = rt.SendAdminRequest("PUT", "/db/_user/user1", GetUserPayload(t, "user1", "letmein", "", collection, []string{"channel_1"}, []string{"role1"}))
+	response = rt.SendAdminRequest("PUT", "/{{.db}}/_user/user1", GetUserPayload(t, "user1", "letmein", "", collection, []string{"channel_1"}, []string{"role1"}))
 	RequireStatus(t, response, http.StatusCreated)
 
 	_, err := rt.MetadataStore().Get(base.RolePrefix+"role1", &body)
@@ -1047,11 +1044,10 @@ func TestResyncRegenerateSequences(t *testing.T) {
 	}
 
 	var changesResp ChangesResp
-	request, _ := http.NewRequest("GET", "/{{.keyspace}}/_changes", nil)
-	request.SetBasicAuth("user1", "letmein")
-	response = rt.Send(request)
+	response = rt.SendUserRequest("GET", "/{{.keyspace}}/_changes", "", "user1")
 	RequireStatus(t, response, http.StatusOK)
 	err = json.Unmarshal(response.BodyBytes(), &changesResp)
+	require.NoError(t, err)
 	assert.Len(t, changesResp.Results, 3)
 	assert.True(t, changesRespContains(changesResp, "userdoc"))
 	assert.True(t, changesRespContains(changesResp, "userdoc2"))
@@ -1109,10 +1105,7 @@ func TestResyncRegenerateSequences(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Data is wiped from walrus when brought back online
-	request, err = http.NewRequest("GET", "/{{.keyspace}}/_changes?since="+changesResp.LastSeq, nil)
-	require.NoError(t, err)
-	request.SetBasicAuth("user1", "letmein")
-	response = rt.Send(request)
+	response = rt.SendUserRequest("GET", "/{{.keyspace}}/_changes?since="+changesResp.LastSeq, "", "user1")
 	RequireStatus(t, response, http.StatusOK)
 	err = json.Unmarshal(response.BodyBytes(), &changesResp)
 	assert.Len(t, changesResp.Results, 3)
