@@ -62,6 +62,9 @@ func (vm *ottoVM) getRunner(service *Service) (Runner, error) {
 	if !vm.services.hasService(service) {
 		return nil, fmt.Errorf("unknown js.Service instance passed to VM")
 	}
+	if service.v8Init != nil {
+		return nil, fmt.Errorf("js.Service has custom initialization not supported by Otto")
+	}
 
 	// Use an existing Runner or create a new one:
 	var runner *OttoRunner

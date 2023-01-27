@@ -146,6 +146,7 @@ func (vm *v8VM) getRunner(service *Service) (Runner, error) {
 func (vm *v8VM) withRunner(service *Service, fn func(Runner) (any, error)) (any, error) {
 	runner, err := vm.getRunner(service)
 	if err != nil {
+		vm.release()
 		return nil, err
 	}
 	defer runner.Return()

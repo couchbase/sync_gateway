@@ -440,12 +440,12 @@ func TestEvaluateFunction(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 
-	testImport := func(body Body, source string) (bool, error) {
-		var vms js.VMPool
-		vms.Init(js.V8, 4)
-		defer vms.Close()
-		importFilterFunc := NewImportFilterFunction(&vms, source, 0)
-		return importFilterFunc(base.TestCtx(t), body)
+	testImport := func(body Body, source string) (result bool, err error) {
+		js.TestWithVMPools(t, 4, func(t *testing.T, pool *js.VMPool) {
+			importFilterFunc := NewImportFilterFunction(pool, source, 0)
+			result, err = importFilterFunc(base.TestCtx(t), body)
+		})
+		return
 	}
 
 	// Simulate unexpected error invoking import filter for document

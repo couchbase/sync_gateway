@@ -12,13 +12,13 @@ package db
 
 import (
 	"context"
+	_ "embed"
 	"errors"
 	"fmt"
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/js"
-	"rogchap.com/v8go"
 )
 
 type ConflictResolverType string
@@ -191,13 +191,7 @@ func NewConflictResolverFunc(resolverType ConflictResolverType, customResolverSo
 // javascript conflict resolver specified by source
 func NewCustomConflictResolver(source string, timeout time.Duration, host js.ServiceHost) (ConflictResolverFunc, error) {
 	base.DebugfCtx(context.Background(), base.KeyReplicate, "Creating new ConflictResolverFunction")
-	service := js.NewCustomService(host, "conflict resolver", func(tmpl *js.V8BasicTemplate) (js.V8Template, error) {
-		err := tmpl.SetScript(`(` + source + `)`)
-		if err == nil {
-			tmpl.GlobalCallback("defaultPolicy", defaultPolicyCallback)
-		}
-		return tmpl, err
-	})
+	service := js.NewService(host, "conflict resolver", fmt.Sprintf(kConflictResolverJSCode, source))
 
 	return func(conflict Conflict) (Body, error) {
 		// Here's the ConflictResolverFunc:
@@ -228,6 +222,8 @@ func NewCustomConflictResolver(source string, timeout time.Duration, host js.Ser
 		switch result := result.(type) {
 		case map[string]interface{}:
 			return result, nil
+		case Body:
+			return result, nil
 		case error:
 			base.WarnfCtx(context.Background(), "conflictResolverRunner: "+result.Error())
 			return nil, result
@@ -238,24 +234,5 @@ func NewCustomConflictResolver(source string, timeout time.Duration, host js.Ser
 	}, nil
 }
 
-// Implementation of the JS "defaultPolicy" callback function:
-func defaultPolicyCallback(runner *js.V8Runner, this *v8go.Object, args []*v8go.Value) (any, error) {
-	if len(args) != 1 {
-		return nil, errors.New("defaultPolicy() takes one parameter")
-	}
-	rawConflict, err := js.ValueToGo(args[0])
-	if err != nil {
-		return nil, fmt.Errorf("unable to export conflict parameter for defaultPolicy(): %v Error: %w", args[0], err)
-	}
-	conflictMap, ok := rawConflict.(map[string]any)
-	if !ok {
-		return nil, fmt.Errorf("conflict parameter for defaultPolicy is not a conflict object")
-	}
-	var conflict Conflict
-	conflict.LocalDocument, _ = conflictMap["LocalDocument"].(map[string]any)
-	conflict.RemoteDocument, _ = conflictMap["RemoteDocument"].(map[string]any)
-	if conflict.LocalDocument == nil || conflict.RemoteDocument == nil {
-		return nil, fmt.Errorf("conflict parameter for defaultPolicy is not a conflict object")
-	}
-	return DefaultConflictResolver(conflict)
-}
+//go:embed sg_replicate_conflict_resolver.js
+var kConflictResolverJSCode string
