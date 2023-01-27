@@ -31,6 +31,16 @@ func (rt *RestTester) putDoc(docID string, body string) (response putDocResponse
 	return response
 }
 
+func (rt *RestTester) updateDoc(docID, revID, body string) (response putDocResponse) {
+	resource := fmt.Sprintf("/db/%s?rev=%s", docID, revID)
+	rawResponse := rt.SendAdminRequest(http.MethodPut, resource, body)
+	assertStatus(rt.tb, rawResponse, http.StatusCreated)
+	require.NoError(rt.tb, base.JSONUnmarshal(rawResponse.Body.Bytes(), &response))
+	require.True(rt.tb, response.Ok)
+	require.NotEmpty(rt.tb, response.Rev)
+	return response
+}
+
 func (rt *RestTester) tombstoneDoc(docID string, revID string) {
 	rawResponse := rt.SendAdminRequest("DELETE", "/db/"+docID+"?rev="+revID, "")
 	assertStatus(rt.tb, rawResponse, 200)
