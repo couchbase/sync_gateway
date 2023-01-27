@@ -1113,12 +1113,13 @@ func TestResyncRegenerateSequences(t *testing.T) {
 	assert.True(t, changesRespContains(changesResp, "userdoc2"))
 }
 
+// CBG-2690
 func TestResyncQE(t *testing.T) {
 
 	base.LongRunningTest(t)
 	syncFn := `
 	function(doc) {
-		channel(["channel_1"])
+		channel("channel_1")
 	}`
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
@@ -1168,6 +1169,19 @@ func TestResyncQE(t *testing.T) {
 
 			err := json.Unmarshal(response.BodyBytes(), &body)
 			require.NoError(t, err)
+			// t.Logf("body for doc %s is %+v", docID, body)
+			_sync := body["_sync"].(map[string]interface{})
+			rev := _sync["rev"].(string)
+
+			for k := 0; k < 10; k++ {
+				t.Logf("rev %d id %s", k, rev)
+
+				response = rt.SendUserRequest("PUT", fmt.Sprintf("/%s/%s?rev=%s", rt.GetSingleKeyspace(), docID, rev), `{"prop":true}`, username)
+				err := json.Unmarshal(response.BodyBytes(), &body)
+				require.NoError(t, err)
+				// t.Logf("Updated doc %s with rev %d body %+v", docID, k+1, body)
+				rev = body["rev"].(string)
+			}
 		}
 	}
 
@@ -1175,11 +1189,13 @@ func TestResyncQE(t *testing.T) {
 	response = rt.SendAdminRequest("PUT", "/{{.db}}/_user/"+username, GetUserPayload(t, username, "letmein", "", collection, []string{"channel_x"}, []string{}))
 	RequireStatus(t, response, http.StatusCreated)
 
-	syncFn = `function(doc,oldDoc){
-        if (doc.channels[0] == "channel_1") {
-            channel([doc.channels[0],"channel_x"]);
-		} 
+	syncFn = `
+	function(doc,oldDoc){
+		channel(["channel_1","channel_x"]);
 	}`
+
+	// t.Logf("sleeping...")
+	// time.Sleep(1 * time.Minute)
 
 	changed, err := rt.GetDatabase().UpdateSyncFun(rt.Context(), syncFn)
 	require.NoError(t, err)
@@ -1207,6 +1223,10 @@ func TestResyncQE(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, 500, resyncStatus.DocsChanged)
 	assert.Equal(t, 500, resyncStatus.DocsProcessed)
+
+	// t.Logf("sleeping...")
+	// time.Sleep(2 * time.Minute)
+
 }
 
 // CBG-2150: Tests that resync status is cluster aware

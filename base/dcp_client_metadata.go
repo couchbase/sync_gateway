@@ -236,6 +236,7 @@ func (m *DCPMetadataCS) SetFailoverEntries(vbID uint16, fe []gocbcore.FailoverEn
 func (m *DCPMetadataCS) SetEndSeqNos(endSeqNos map[uint16]uint64) {
 	for i := 0; i < len(m.metadata); i++ {
 		endSeqNo, _ := endSeqNos[uint16(i)]
+		DebugfCtx(context.TODO(), KeyAll, "CBG-2690: Setting EndSeq for metadata %d to %d", i, endSeqNo)
 		m.metadata[i].EndSeqNo = gocbcore.SeqNo(endSeqNo)
 	}
 }

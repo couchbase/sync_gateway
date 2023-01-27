@@ -148,9 +148,9 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]interface
 		return err
 	}
 	if hasAllCollections {
-		base.InfofCtx(ctx, base.KeyAll, "[%s] running resync against all collections", resyncLoggingID)
+		base.InfofCtx(ctx, base.KeyAll, "[%s] running resync against all collections [%+v]", resyncLoggingID, collectionIDs)
 	} else {
-		base.InfofCtx(ctx, base.KeyAll, "[%s] running resync against specified collections", resyncLoggingID)
+		base.InfofCtx(ctx, base.KeyAll, "[%s] running resync against specified collections [%+v]", resyncLoggingID, collectionIDs)
 	}
 
 	clientOptions, err := getReSyncDCPClientOptions(collectionIDs, db.Options.GroupID)
