@@ -64,7 +64,7 @@
 
   <project name="fakehttp" path="godeps/src/github.com/tleyden/fakehttp" remote="tleyden" revision="084795c8f01f195a88c0ca4af0d7228a5ef40c83"/>
 
-  <project name="text" path="godeps/src/golang.org/x/text" remote="couchbasedeps" revision="release-branch.go1.11"/>
+  <project name="text" path="godeps/src/golang.org/x/text" remote="couchbasedeps" revision="refs/tags/v0.3.7"/>
 
   <project name="net" path="godeps/src/golang.org/x/net" remote="couchbasedeps" revision="release-branch.go1.11"/>
 
