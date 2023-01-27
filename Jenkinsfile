@@ -19,10 +19,6 @@ pipeline {
         go '1.19.5'
     }
 
-    tools {
-        go '1.13.4'
-    }
-
     stages {
         stage('SCM') {
             steps {
@@ -387,7 +383,7 @@ pipeline {
             cobertura autoUpdateHealth: false, onlyStable: false, autoUpdateStability: false, coberturaReportFile: 'reports/coverage-*.xml', conditionalCoverageTargets: '70, 0, 0', failNoReports: false, failUnhealthy: false, failUnstable: false, lineCoverageTargets: '80, 0, 0', maxNumberOfBuilds: 0, methodCoverageTargets: '80, 0, 0', sourceEncoding: 'ASCII', zoomCoverageChart: false
 
             // Publish the junit test reports
-            junit allowEmptyResults: true, testResults: 'reports/test-*.xml'
+            junit allowEmptyResults: true, testDataPublishers: [[$class: 'JUnitFlakyTestDataPublisher']], testResults: 'reports/test-*.xml'
 
             // TODO: Might be better to clean the workspace to before a job runs instead
             step([$class: 'WsCleanup'])
