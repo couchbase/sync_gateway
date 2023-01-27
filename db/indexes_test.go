@@ -82,6 +82,10 @@ func TestInitializeIndexesWithPartition(t *testing.T) {
 	if base.TestsDisableGSI() {
 		t.Skip("This test only works with Couchbase Server and UseViews=false")
 	}
+	if !base.IsEnterpriseEdition() {
+		t.Skip("EE-only test")
+	}
+
 	base.LongRunningTest(t)
 
 	tests := []struct {

@@ -265,6 +265,10 @@ func TestIndexPartition(t *testing.T) {
 		t.Skip("This test only works with Couchbase Server and UseViews=false")
 	}
 
+	if !IsEnterpriseEdition() {
+		t.Skip("EE-only test")
+	}
+
 	bucket := GetTestBucket(t)
 	defer bucket.Close()
 	dataStore := bucket.GetSingleDataStore()
