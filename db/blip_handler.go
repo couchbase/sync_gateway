@@ -1276,6 +1276,9 @@ func (bh *blipHandler) sendGetAttachment(sender *blip.Sender, docID string, name
 		return nil, err
 	}
 
+	if resp.Properties[BlipErrorCode] != "" {
+		return nil, fmt.Errorf("error %s from getAttachment: %s", resp.Properties[BlipErrorCode], respBody)
+	}
 	lNum, metaLengthOK := meta["length"]
 	metaLength, ok := base.ToInt64(lNum)
 	if !ok {
@@ -1393,10 +1396,8 @@ func (bsc *BlipSyncContext) addAllowedAttachments(docID string, attMeta []Attach
 		key := allowedAttachmentKey(docID, attachment.digest, activeSubprotocol)
 		att, found := bsc.allowedAttachments[key]
 		if found {
-			if activeSubprotocol == BlipCBMobileReplicationV2 {
-				att.counter++
-				bsc.allowedAttachments[key] = att
-			}
+			att.counter++
+			bsc.allowedAttachments[key] = att
 		} else {
 			bsc.allowedAttachments[key] = AllowedAttachment{
 				version: attachment.version,
@@ -1420,15 +1421,13 @@ func (bsc *BlipSyncContext) removeAllowedAttachments(docID string, attMeta []Att
 	for _, attachment := range attMeta {
 		key := allowedAttachmentKey(docID, attachment.digest, activeSubprotocol)
 		att, found := bsc.allowedAttachments[key]
-		if found && activeSubprotocol == BlipCBMobileReplicationV2 {
+		if found {
 			if n := att.counter; n > 1 {
 				att.counter = n - 1
 				bsc.allowedAttachments[key] = att
 			} else {
 				delete(bsc.allowedAttachments, key)
 			}
-		} else if found && activeSubprotocol == BlipCBMobileReplicationV3 {
-			delete(bsc.allowedAttachments, key)
 		}
 	}
 
