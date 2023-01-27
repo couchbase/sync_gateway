@@ -1015,11 +1015,10 @@ func TestResyncErrorScenariosUsingDCPStream(t *testing.T) {
 	}`
 
 	testBucket := base.GetTestBucket(t)
-	defer testBucket.Close()
 	rt := rest.NewRestTester(t,
 		&rest.RestTesterConfig{
 			SyncFn:           syncFn,
-			CustomTestBucket: testBucket.NoCloseClone(),
+			CustomTestBucket: testBucket,
 		},
 	)
 	defer rt.Close()
