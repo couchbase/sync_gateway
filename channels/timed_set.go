@@ -390,21 +390,3 @@ func TimedSetFromString(encoded string) TimedSet {
 	}
 	return set
 }
-
-// TimedSetByCollectionID is a map of kv collectionIDs to TimedSets
-type TimedSetByCollectionID map[uint32]TimedSet
-
-// AtSequenceByCollection creates a map of collectionID to a map of channel IDs to sequences.
-func AtSequenceByCollection(chans Set, sequence uint64) TimedSetByCollectionID {
-	collectionByTimedSet := TimedSetByCollectionID{}
-	for ch := range chans {
-		val, exists := collectionByTimedSet[ch.CollectionID]
-		if !exists {
-			val = make(TimedSet)
-		}
-		val[ch.Name] = NewVbSimpleSequence(sequence)
-		collectionByTimedSet[ch.CollectionID] = val
-
-	}
-	return collectionByTimedSet
-}
