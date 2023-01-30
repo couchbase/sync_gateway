@@ -47,60 +47,60 @@ func TestSanitizedUrl(t *testing.T) {
 }
 
 func TestCallValidateFunction(t *testing.T) {
-	host := js.NewVMPool(js.V8, 1)
+	js.TestWithVMs(t, func(t *testing.T, host js.VM) {
+		// Boolean return type handling of CallValidateFunction; Mock up a document change event and
+		// filter function which returns a bool value while calling CallValidateFunction.
+		channels := base.SetFromArray([]string{"Netflix"})
+		docId, body, oldBodyJSON := "doc1", Body{BodyId: "doc1", "key1": "value1"}, ""
+		bodyBytes, _ := base.JSONMarshal(body)
+		event := &DocumentChangeEvent{DocID: docId, DocBytes: bodyBytes, OldDoc: oldBodyJSON, Channels: channels}
 
-	// Boolean return type handling of CallValidateFunction; Mock up a document change event and
-	// filter function which returns a bool value while calling CallValidateFunction.
-	channels := base.SetFromArray([]string{"Netflix"})
-	docId, body, oldBodyJSON := "doc1", Body{BodyId: "doc1", "key1": "value1"}, ""
-	bodyBytes, _ := base.JSONMarshal(body)
-	event := &DocumentChangeEvent{DocID: docId, DocBytes: bodyBytes, OldDoc: oldBodyJSON, Channels: channels}
+		// Boolean return type handling of CallValidateFunction; bool true value.
+		source := `function(doc) { if (doc.key1 == "value1") { return true; } else { return false; } }`
+		filterFunc := NewJSEventFunction(host, source)
+		result, err := filterFunc.CallValidateFunction(event)
+		if assert.NoError(t, err, "It should return boolean result") {
+			assert.True(t, result, "It should return true since doc.key1 is value1")
+		}
 
-	// Boolean return type handling of CallValidateFunction; bool true value.
-	source := `function(doc) { if (doc.key1 == "value1") { return true; } else { return false; } }`
-	filterFunc := NewJSEventFunction(host, source)
-	result, err := filterFunc.CallValidateFunction(event)
-	if assert.NoError(t, err, "It should return boolean result") {
-		assert.True(t, result, "It should return true since doc.key1 is value1")
-	}
+		// Boolean return type handling of CallValidateFunction; bool false value.
+		source = `function(doc) { if (doc.key1 == "value2") { return true; } else { return false; } }`
+		filterFunc = NewJSEventFunction(host, source)
+		result, err = filterFunc.CallValidateFunction(event)
+		if assert.NoError(t, err, "It should return boolean result") {
+			assert.False(t, result, "It should return false since doc.key1 is not value2")
+		}
 
-	// Boolean return type handling of CallValidateFunction; bool false value.
-	source = `function(doc) { if (doc.key1 == "value2") { return true; } else { return false; } }`
-	filterFunc = NewJSEventFunction(host, source)
-	result, err = filterFunc.CallValidateFunction(event)
-	if assert.NoError(t, err, "It should return boolean result") {
-		assert.False(t, result, "It should return false since doc.key1 is not value2")
-	}
+		// Parsable boolean string return type handling of CallValidateFunction.
+		source = `function(doc) { if (doc.key1 == "value1") { return "true"; } else { return "false"; } }`
+		filterFunc = NewJSEventFunction(host, source)
+		result, err = filterFunc.CallValidateFunction(event)
+		if assert.NoError(t, err, "It should return parsable boolean result") {
+			assert.True(t, result, "It should return true since doc.key1 is value1")
+		}
 
-	// Parsable boolean string return type handling of CallValidateFunction.
-	source = `function(doc) { if (doc.key1 == "value1") { return "true"; } else { return "false"; } }`
-	filterFunc = NewJSEventFunction(host, source)
-	result, err = filterFunc.CallValidateFunction(event)
-	if assert.NoError(t, err, "It should return parsable boolean result") {
-		assert.True(t, result, "It should return true since doc.key1 is value1")
-	}
+		// Non parsable boolean string return type handling of CallValidateFunction.
+		source = `function(doc) { if (doc.key1 == "value1") { return "TrUe"; } else { return "false"; } }`
+		filterFunc = NewJSEventFunction(host, source)
+		result, err = filterFunc.CallValidateFunction(event)
+		assert.False(t, result, "It should return false since 'TrUe' is non parsable boolean string")
+		assert.Error(t, err, "It should return parsable throw ParseBool error")
+		assert.Contains(t, err.Error(), `invalid syntax`)
 
-	// Non parsable boolean string return type handling of CallValidateFunction.
-	source = `function(doc) { if (doc.key1 == "value1") { return "TrUe"; } else { return "false"; } }`
-	filterFunc = NewJSEventFunction(host, source)
-	result, err = filterFunc.CallValidateFunction(event)
-	assert.False(t, result, "It should return false since 'TrUe' is non parsable boolean string")
-	assert.Error(t, err, "It should return parsable throw ParseBool error")
-	assert.Contains(t, err.Error(), `invalid syntax`)
+		// Not boolean and not parsable boolean string return type handling of CallValidateFunction.
+		source = `function(doc) { if (doc.key1 == "Pi") { return 3.14; } else { return 0.0; } }`
+		filterFunc = NewJSEventFunction(host, source)
+		result, err = filterFunc.CallValidateFunction(event)
+		assert.False(t, result, "It should return not boolean and not parsable boolean string value")
+		assert.Error(t, err, "It should throw Validate function returned non-boolean value error")
+		assert.Contains(t, err.Error(), "validate function returned non-boolean value.")
 
-	// Not boolean and not parsable boolean string return type handling of CallValidateFunction.
-	source = `function(doc) { if (doc.key1 == "Pi") { return 3.14; } else { return 0.0; } }`
-	filterFunc = NewJSEventFunction(host, source)
-	result, err = filterFunc.CallValidateFunction(event)
-	assert.False(t, result, "It should return not boolean and not parsable boolean string value")
-	assert.Error(t, err, "It should throw Validate function returned non-boolean value error")
-	assert.Contains(t, err.Error(), "validate function returned non-boolean value.")
-
-	// Simulate CallFunction failure by making syntax error in filter function.
-	source = `function(doc) { invalidKeyword if (doc.key1 == "value1") { return true; } else { return false; } }`
-	filterFunc = NewJSEventFunction(host, source)
-	result, err = filterFunc.CallValidateFunction(event)
-	assert.False(t, result, "It should return false due to the syntax error in filter function")
-	assert.Error(t, err, "It should throw an error due to syntax error")
-	assert.Contains(t, err.Error(), "Unexpected token")
+		// Simulate CallFunction failure by making syntax error in filter function.
+		source = `function(doc) { invalidKeyword if (doc.key1 == "value1") { return true; } else { return false; } }`
+		filterFunc = NewJSEventFunction(host, source)
+		result, err = filterFunc.CallValidateFunction(event)
+		assert.False(t, result, "It should return false due to the syntax error in filter function")
+		assert.Error(t, err, "It should throw an error due to syntax error")
+		assert.Contains(t, err.Error(), "Unexpected token")
+	})
 }

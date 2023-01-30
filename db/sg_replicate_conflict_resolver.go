@@ -172,7 +172,7 @@ func RemoteWinsConflictResolver(conflict Conflict) (winner Body, err error) {
 
 //////// CUSTOM CONFLICT RESOLVER:
 
-func NewConflictResolverFunc(resolverType ConflictResolverType, customResolverSource string, customResolverTimeout time.Duration, host js.ServiceHost) (ConflictResolverFunc, error) {
+func NewConflictResolverFunc(dbc *DatabaseContext, resolverType ConflictResolverType, customResolverSource string) (ConflictResolverFunc, error) {
 	switch resolverType {
 	case ConflictResolverLocalWins:
 		return LocalWinsConflictResolver, nil
@@ -181,7 +181,7 @@ func NewConflictResolverFunc(resolverType ConflictResolverType, customResolverSo
 	case ConflictResolverDefault:
 		return DefaultConflictResolver, nil
 	case ConflictResolverCustom:
-		return NewCustomConflictResolver(customResolverSource, customResolverTimeout, host)
+		return NewCustomConflictResolver(customResolverSource, dbc.Options.JavascriptTimeout, &dbc.JS)
 	default:
 		return nil, fmt.Errorf("unknown Conflict Resolver type: %s", resolverType)
 	}

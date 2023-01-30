@@ -45,15 +45,16 @@ func TestJavaScriptWorks(t *testing.T) {
 
 // Verify the sync fn cannot access the internal JS variables used in the wrapper.
 func TestHiddenVariables(t *testing.T) {
-	vm := js.NewVM(js.V8)
-	defer vm.Close()
-	for _, hidden := range []string{"userCtx", "shouldValidate", "result", "eval", "Function"} {
-		mapper := NewChannelMapper(vm, `function(doc) {return `+hidden+`;}`, 0)
-		_, err := mapper.MapToChannelsAndAccess(parse(`{}`), `{}`, emptyMetaMap(), noUser)
-		if assert.Error(t, err, "Was able to access %q", hidden) {
-			assert.ErrorContains(t, err, "ReferenceError: "+hidden+" is not defined")
+	js.TestWithVMs(t, func(t *testing.T, vm js.VM) {
+		for _, hidden := range []string{"userCtx", "shouldValidate", "result", "eval", "Function"} {
+			mapper := NewChannelMapper(vm, `function(doc) {return `+hidden+`;}`, 0)
+			_, err := mapper.MapToChannelsAndAccess(parse(`{}`), `{}`, emptyMetaMap(), noUser)
+			if assert.Error(t, err, "Was able to access %q", hidden) {
+				assert.ErrorContains(t, err, "ReferenceError:")
+				assert.ErrorContains(t, err, " is not defined")
+			}
 		}
-	}
+	})
 }
 
 // Just verify that the calls to the channel() fn show up in the output channel list.
@@ -213,11 +214,7 @@ func TestInputParse(t *testing.T) {
 // A more realistic example
 func TestDefaultChannelMapper(t *testing.T) {
 	js.TestWithVMs(t, func(t *testing.T, vm js.VM) {
-		var vms js.VMPool
-		vms.Init(js.V8, 1)
-		defer vms.Close()
-
-		mapper := NewDefaultChannelMapper(&vms)
+		mapper := NewDefaultChannelMapper(vm)
 		res, err := mapper.MapToChannelsAndAccess(parse(`{"channels": ["foo", "bar", "baz"]}`), `{}`, emptyMetaMap(), noUser)
 		assert.NoError(t, err, "MapToChannelsAndAccess failed")
 		assert.Equal(t, BaseSetOf(t, "foo", "bar", "baz"), res.Channels)

@@ -95,8 +95,8 @@ func NewChannelMapper(owner js.ServiceHost, fnSource string, timeout time.Durati
 }
 
 // Creates a ChannelMapper with the default sync function. (Used by tests)
-func NewDefaultChannelMapper(vms *js.VMPool) *ChannelMapper {
-	return NewChannelMapper(vms, DefaultSyncFunction, time.Duration(base.DefaultJavascriptTimeoutSecs)*time.Second)
+func NewDefaultChannelMapper(owner js.ServiceHost) *ChannelMapper {
+	return NewChannelMapper(owner, DefaultSyncFunction, time.Duration(base.DefaultJavascriptTimeoutSecs)*time.Second)
 }
 
 func (mapper *ChannelMapper) Function() string {

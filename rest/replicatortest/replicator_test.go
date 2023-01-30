@@ -29,7 +29,6 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
-	"github.com/couchbase/sync_gateway/js"
 	"github.com/couchbase/sync_gateway/rest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -3688,9 +3687,6 @@ func TestActiveReplicatorPullPurgeOnRemoval(t *testing.T) {
 func TestActiveReplicatorPullConflict(t *testing.T) {
 	base.LongRunningTest(t)
 
-	host := js.NewVMPool(js.V8, 4)
-	defer host.Close()
-
 	// scenarios
 	conflictResolutionTests := []struct {
 		name                    string
@@ -3826,7 +3822,7 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 			rt1revID := rest.RespRevID(t, resp)
 			assert.Equal(t, test.localRevID, rt1revID)
 
-			customConflictResolver, err := db.NewCustomConflictResolver(test.conflictResolver, rt1.GetDatabase().Options.JavascriptTimeout, host)
+			customConflictResolver, err := db.NewCustomConflictResolver(test.conflictResolver, rt1.GetDatabase().Options.JavascriptTimeout, &rt1.GetDatabase().JS)
 			require.NoError(t, err)
 			stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false)
 			replicationStats, err := stats.DBReplicatorStats(t.Name())
@@ -3923,9 +3919,6 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 
 	base.LongRunningTest(t)
-
-	host := js.NewVMPool(js.V8, 4)
-	defer host.Close()
 
 	// scenarios
 	conflictResolutionTests := []struct {
@@ -4072,7 +4065,7 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 			localDoc, err := rt1.GetDatabase().GetSingleDatabaseCollection().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalSync)
 			require.NoError(t, err)
 
-			customConflictResolver, err := db.NewCustomConflictResolver(test.conflictResolver, rt1.GetDatabase().Options.JavascriptTimeout, host)
+			customConflictResolver, err := db.NewCustomConflictResolver(test.conflictResolver, rt1.GetDatabase().Options.JavascriptTimeout, &rt1.GetDatabase().JS)
 			require.NoError(t, err)
 
 			stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false)
@@ -5601,9 +5594,6 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 
 	base.LongRunningTest(t)
 
-	host := js.NewVMPool(js.V8, 4)
-	defer host.Close()
-
 	createRevID := func(generation int, parentRevID string, body db.Body) string {
 		rev, err := db.CreateRevID(generation, parentRevID, body)
 		require.NoError(t, err, "Error creating revision")
@@ -5851,7 +5841,7 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 			rt1revID := rest.RespRevID(t, resp)
 			assert.Equal(t, test.localRevID, rt1revID)
 
-			customConflictResolver, err := db.NewCustomConflictResolver(test.conflictResolver, rt1.GetDatabase().Options.JavascriptTimeout, host)
+			customConflictResolver, err := db.NewCustomConflictResolver(test.conflictResolver, rt1.GetDatabase().Options.JavascriptTimeout, &rt1.GetDatabase().JS)
 			require.NoError(t, err)
 			dbstats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false)
 			require.NoError(t, err)
@@ -6249,9 +6239,6 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 // whilst applying default conflict resolution policy through pushAndPull replication.
 func TestDefaultConflictResolverWithTombstoneLocal(t *testing.T) {
 
-	host := js.NewVMPool(js.V8, 4)
-	defer host.Close()
-
 	base.LongRunningTest(t)
 	base.RequireNumTestBuckets(t, 2)
 	if !base.TestUseXattrs() {
@@ -6333,7 +6320,7 @@ func TestDefaultConflictResolverWithTombstoneLocal(t *testing.T) {
 			ctx1 := rt1.Context()
 
 			defaultConflictResolver, err := db.NewCustomConflictResolver(
-				`function(conflict) { return defaultPolicy(conflict); }`, rt1.GetDatabase().Options.JavascriptTimeout, host)
+				`function(conflict) { return defaultPolicy(conflict); }`, rt1.GetDatabase().Options.JavascriptTimeout, &rt1.GetDatabase().JS)
 			require.NoError(t, err, "Error creating custom conflict resolver")
 			sgwStats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false)
 			require.NoError(t, err)
@@ -6412,9 +6399,6 @@ func TestDefaultConflictResolverWithTombstoneLocal(t *testing.T) {
 // This test ensures that the remote tombstone revision wins over non-tombstone revision
 // whilst applying default conflict resolution policy through pushAndPull replication.
 func TestDefaultConflictResolverWithTombstoneRemote(t *testing.T) {
-
-	host := js.NewVMPool(js.V8, 4)
-	defer host.Close()
 
 	base.LongRunningTest(t)
 	base.RequireNumTestBuckets(t, 2)
@@ -6497,7 +6481,7 @@ func TestDefaultConflictResolverWithTombstoneRemote(t *testing.T) {
 			ctx1 := rt1.Context()
 
 			defaultConflictResolver, err := db.NewCustomConflictResolver(
-				`function(conflict) { return defaultPolicy(conflict); }`, rt1.GetDatabase().Options.JavascriptTimeout, host)
+				`function(conflict) { return defaultPolicy(conflict); }`, rt1.GetDatabase().Options.JavascriptTimeout, &rt1.GetDatabase().JS)
 			require.NoError(t, err, "Error creating custom conflict resolver")
 			sgwStats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false)
 			require.NoError(t, err)
@@ -6980,9 +6964,6 @@ func TestConflictResolveMergeWithMutatedRev(t *testing.T) {
 
 	base.RequireNumTestBuckets(t, 2)
 
-	host := js.NewVMPool(js.V8, 4)
-	defer host.Close()
-
 	// Passive
 	rt2 := rest.NewRestTesterDefaultCollection(t, nil) // CBG-2319: replicator currently requires default collection
 	defer rt2.Close()
@@ -7007,7 +6988,7 @@ func TestConflictResolveMergeWithMutatedRev(t *testing.T) {
 			mutatedLocal["_deleted"] = true;
 			mutatedLocal["_rev"] = "";
 			return mutatedLocal;
-		}`, rt1.GetDatabase().Options.JavascriptTimeout, host)
+		}`, rt1.GetDatabase().Options.JavascriptTimeout, &rt1.GetDatabase().JS)
 	require.NoError(t, err)
 
 	sgwStats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false)

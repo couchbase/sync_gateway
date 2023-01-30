@@ -2386,17 +2386,17 @@ func Test_validateJavascriptFunction(t *testing.T) {
 			wantErr:     assert.NoError,
 		},
 	}
-	vm := js.NewVM(js.V8)
-	defer vm.Close()
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			gotIsEmpty, err := validateJavascriptFunction(vm, test.jsFunc, 0, 0)
-			if !test.wantErr(t, err, fmt.Sprintf("validateJavascriptFunction(%v)", test.jsFunc)) {
-				return
-			}
-			assert.Equalf(t, test.wantIsEmpty, gotIsEmpty, "validateJavascriptFunction(%v)", test.jsFunc)
-		})
-	}
+	js.TestWithVMs(t, func(t *testing.T, vm js.VM) {
+		for _, test := range tests {
+			t.Run(test.name, func(t *testing.T) {
+				gotIsEmpty, err := validateJavascriptFunction(vm, test.jsFunc, 0, 0)
+				if !test.wantErr(t, err, fmt.Sprintf("validateJavascriptFunction(%v)", test.jsFunc)) {
+					return
+				}
+				assert.Equalf(t, test.wantIsEmpty, gotIsEmpty, "validateJavascriptFunction(%v)", test.jsFunc)
+			})
+		}
+	})
 }
 
 func TestBucketCredentialsValidation(t *testing.T) {
