@@ -86,7 +86,7 @@ func (h *handler) handleDbOnline() error {
 	return nil
 }
 
-//Take a DB offline
+// Take a DB offline
 func (h *handler) handleDbOffline() error {
 	h.assertAdminOnly()
 	var err error

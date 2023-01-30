@@ -6,9 +6,9 @@ import (
 
 // RangeSafeCollection is a concurrency-safe collection comprising an AppendOnlyList and a
 // map for key-based retrieval of list elements.  It has the following characteristics
-//  - concurrency-safe
-//  - snapshot-based iteration, Range doesn't block Append
-//  - key-based access to entries
+//   - concurrency-safe
+//   - snapshot-based iteration, Range doesn't block Append
+//   - key-based access to entries
 type RangeSafeCollection struct {
 	valueMap    map[string]*AppendOnlyListElement // map from key to collection elements
 	valueList   AppendOnlyList                    // List of collection elements

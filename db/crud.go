@@ -237,13 +237,13 @@ func (db *Database) Get1xRevBodyWithHistory(docid, revid string, maxHistory int,
 
 // Underlying revision retrieval used by Get1xRevBody, Get1xRevBodyWithHistory, GetRevCopy.
 // Returns the revision of a document using the revision cache.
-// * revid may be "", meaning the current revision.
-// * maxHistory is >0 if the caller wants a revision history; it's the max length of the history.
-// * historyFrom is an optional list of revIDs the client already has. If any of these are found
-//   in the revision's history, it will be trimmed after that revID.
-// * attachmentsSince is nil to return no attachment bodies, otherwise a (possibly empty) list of
-//   revisions for which the client already has attachments and doesn't need bodies. Any attachment
-//   that hasn't changed since one of those revisions will be returned as a stub.
+//   - revid may be "", meaning the current revision.
+//   - maxHistory is >0 if the caller wants a revision history; it's the max length of the history.
+//   - historyFrom is an optional list of revIDs the client already has. If any of these are found
+//     in the revision's history, it will be trimmed after that revID.
+//   - attachmentsSince is nil to return no attachment bodies, otherwise a (possibly empty) list of
+//     revisions for which the client already has attachments and doesn't need bodies. Any attachment
+//     that hasn't changed since one of those revisions will be returned as a stub.
 func (db *Database) getRev(docid, revid string, maxHistory int, historyFrom []string, includeBody bool) (revision DocumentRevision, err error) {
 	if revid != "" {
 		// Get a specific revision body and history from the revision cache
@@ -890,9 +890,9 @@ func (db *Database) PutExistingRev(newDoc *Document, docHistory []string, noConf
 
 // Adds an existing revision to a document along with its history (list of rev IDs.)
 // If this new revision would result in a conflict:
-//     1. If noConflicts == false, the revision will be added to the rev tree as a conflict
-//     2. If noConflicts == true and a conflictResolverFunc is not provided, a 409 conflict error will be returned
-//     3. If noConflicts == true and a conflictResolverFunc is provided, conflicts will be resolved and the result added to the document.
+//  1. If noConflicts == false, the revision will be added to the rev tree as a conflict
+//  2. If noConflicts == true and a conflictResolverFunc is not provided, a 409 conflict error will be returned
+//  3. If noConflicts == true and a conflictResolverFunc is provided, conflicts will be resolved and the result added to the document.
 func (db *Database) PutExistingRevWithConflictResolution(newDoc *Document, docHistory []string, noConflicts bool, conflictResolver *ConflictResolver, forceAllowConflictingTombstone bool) (doc *Document, newRevID string, err error) {
 	newRev := docHistory[0]
 	generation, _ := ParseRevID(newRev)
@@ -1094,6 +1094,7 @@ func (db *Database) resolveConflict(localDoc *Document, remoteDoc *Document, doc
 
 // resolveDocRemoteWins makes the following changes to the document:
 //   - Tombstones the local revision
+//
 // The remote revision is added to the revision tree by the standard update processing.
 func (db *Database) resolveDocRemoteWins(localDoc *Document, conflict Conflict) (resolvedRevID string, err error) {
 
@@ -1112,10 +1113,12 @@ func (db *Database) resolveDocRemoteWins(localDoc *Document, conflict Conflict) 
 //   - Adds the remote revision to the rev tree
 //   - Makes a copy of the local revision as a child of the remote revision
 //   - Tombstones the (original) local revision
+//
 // TODO: This is CBL 2.x handling, and is compatible with the current version of the replicator, but
-//       results in additional replication work for clients that have previously replicated the local
-//       revision.  This will be addressed post-Hydrogen with version vector work, but additional analysis
-//       of options for Hydrogen should be completed.
+//
+//	results in additional replication work for clients that have previously replicated the local
+//	revision.  This will be addressed post-Hydrogen with version vector work, but additional analysis
+//	of options for Hydrogen should be completed.
 func (db *Database) resolveDocLocalWins(localDoc *Document, remoteDoc *Document, conflict Conflict, docHistory []string) (resolvedRevID string, updatedHistory []string, err error) {
 
 	// Clone the local revision as a child of the remote revision
@@ -1667,9 +1670,9 @@ func (db *Database) documentUpdateFunc(docExists bool, doc *Document, allowImpor
 type updateAndReturnDocCallback func(*Document) (resultDoc *Document, resultAttachmentData AttachmentData, updatedExpiry *uint32, resultErr error)
 
 // Calling updateAndReturnDoc directly allows callers to:
-//   1. Receive the updated document body in the response
-//   2. Specify the existing document body/xattr/cas, to avoid initial retrieval of the doc in cases that the current contents are already known (e.g. import).
-//      On cas failure, the document will still be reloaded from the bucket as usual.
+//  1. Receive the updated document body in the response
+//  2. Specify the existing document body/xattr/cas, to avoid initial retrieval of the doc in cases that the current contents are already known (e.g. import).
+//     On cas failure, the document will still be reloaded from the bucket as usual.
 func (db *Database) updateAndReturnDoc(docid string, allowImport bool, expiry uint32, existingDoc *sgbucket.BucketDocument, callback updateAndReturnDocCallback) (doc *Document, newRevID string, err error) {
 
 	key := realDocID(docid)
@@ -2231,7 +2234,7 @@ func (db *Database) RevDiff(docid string, revids []string) (missing, possible []
 	// Convert possibleSet to an array (possible)
 	if len(possibleSet) > 0 {
 		possible = make([]string, 0, len(possibleSet))
-		for revid, _ := range possibleSet {
+		for revid := range possibleSet {
 			possible = append(possible, revid)
 		}
 	}

@@ -258,7 +258,9 @@ type CacheConfig struct {
 }
 
 // ***************************************************************
+//
 //	Kept around for CBG-356 backwards compatability
+//
 // ***************************************************************
 type DeprecatedCacheConfig struct {
 	DeprecatedCachePendingSeqMaxWait *uint32 `json:"max_wait_pending,omitempty"`         // Max wait for pending sequence before skipping
@@ -618,7 +620,7 @@ func (dbConfig *DbConfig) Redacted() (*DbConfig, error) {
 		config.Users[i].Password = base.StringPtr("****")
 	}
 
-	for i, _ := range config.Replications {
+	for i := range config.Replications {
 		config.Replications[i] = config.Replications[i].Redacted()
 	}
 
