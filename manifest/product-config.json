@@ -6,7 +6,7 @@
             "release_name": "Couchbase Sync Gateway",
             "production": true,
             "interval": 30,
-            "go_version": "1.19.5",
+            "go_version": "1.13.4",
             "trigger_blackduck": true,
             "start_build": 1
         },

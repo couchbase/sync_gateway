@@ -64,7 +64,7 @@
 
   <project name="fakehttp" path="godeps/src/github.com/tleyden/fakehttp" remote="tleyden" revision="084795c8f01f195a88c0ca4af0d7228a5ef40c83"/>
 
-  <project name="text" path="godeps/src/golang.org/x/text" remote="couchbasedeps" revision="refs/tags/v0.3.7"/>
+  <project name="text" path="godeps/src/golang.org/x/text" remote="couchbasedeps" revision="release-branch.go1.11"/>
 
   <project name="net" path="godeps/src/golang.org/x/net" remote="couchbasedeps" revision="release-branch.go1.11"/>
 
@@ -147,6 +147,6 @@
   <project name="protobuf-go" path="godeps/src/google.golang.org/protobuf" remote="couchbasedeps" revision="1ecb1f411c1f2ce65a2db6ea4a8ae927182d342e"/>
 
   <project name="websocket" path="godeps/src/nhooyr.io/websocket" remote="couchbasedeps" revision="8dee580a7f74cf1713400307b4eee514b927870f"/>
-  <project name="compress" path="godeps/src/github.com/klauspost/compress" remote="couchbasedeps" revision="b8a3c6140400c11b62877a800d0aa3ee755e89ea"/>
+  <project name="compress" path="godeps/src/github.com/klauspost/compress" remote="couchbasedeps" revision="a1a9cfc821f00faf2f5231beaa96244344d50391"/>
 
 </manifest>
