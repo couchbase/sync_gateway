@@ -1684,7 +1684,7 @@ func TestSetupDbConfigWithSyncFunction(t *testing.T) {
 					RemoteConfigTlsSkipVerify: true,
 				}
 			}
-			err := dbConfig.setup(dbConfig.Name, BootstrapConfig{}, nil, nil, false)
+			err := dbConfig.setup(dbConfig.Name, BootstrapConfig{}, nil)
 			if test.errExpected != nil {
 				requireErrorWithX509UnknownAuthority(t, err, test.errExpected)
 			} else {
@@ -1778,7 +1778,7 @@ func TestSetupDbConfigWithImportFilterFunction(t *testing.T) {
 					RemoteConfigTlsSkipVerify: true,
 				}
 			}
-			err := dbConfig.setup(dbConfig.Name, BootstrapConfig{}, nil, nil, false)
+			err := dbConfig.setup(dbConfig.Name, BootstrapConfig{}, nil)
 			if test.errExpected != nil {
 				requireErrorWithX509UnknownAuthority(t, err, test.errExpected)
 			} else {
@@ -1884,7 +1884,7 @@ func TestSetupDbConfigWithConflictResolutionFunction(t *testing.T) {
 					RemoteConfigTlsSkipVerify: true,
 				}
 			}
-			err := dbConfig.setup(dbConfig.Name, BootstrapConfig{}, nil, nil, false)
+			err := dbConfig.setup(dbConfig.Name, BootstrapConfig{}, nil)
 			if test.errExpected != nil {
 				requireErrorWithX509UnknownAuthority(t, err, test.errExpected)
 			} else {
@@ -1982,9 +1982,7 @@ func TestWebhookFilterFunctionLoad(t *testing.T) {
 					RemoteConfigTlsSkipVerify: true,
 				}
 			}
-			terminator := make(chan bool)
-			defer close(terminator)
-			ctx := &db.DatabaseContext{EventMgr: db.NewEventManager(terminator)}
+			ctx := &db.DatabaseContext{EventMgr: db.NewEventManager()}
 			sc := &ServerContext{}
 			err := sc.initEventHandlers(ctx, &dbConfig)
 			if test.errExpected != nil {
@@ -2231,5 +2229,7 @@ func requireErrorWithX509UnknownAuthority(t testing.TB, actual, expected error) 
 			expectedErrorString = "certificate is not trusted"
 		}
 	}
-	require.ErrorContains(t, actual, expectedErrorString)
+	if !strings.Contains(actual.Error(), expectedErrorString) {
+		t.FailNow()
+	}
 }
