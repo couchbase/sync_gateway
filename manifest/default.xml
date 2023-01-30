@@ -156,4 +156,7 @@ licenses/APL2.txt.
 
   <project name="mergo" path="godeps/src/github.com/imdario/mergo" remote="couchbasedeps" revision="b968a17bce53738e37f30fd352eb2f7f69ed58a7"/>
 
+  <project name="websocket" path="godeps/src/nhooyr.io/websocket" remote="couchbasedeps" revision="8dee580a7f74cf1713400307b4eee514b927870f"/>
+  <project name="compress" path="godeps/src/github.com/klauspost/compress" remote="couchbasedeps" revision="a1a9cfc821f00faf2f5231beaa96244344d50391"/>
+
 </manifest>
