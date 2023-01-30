@@ -280,6 +280,9 @@ func (db *DatabaseCollectionWithUser) getRev(ctx context.Context, docid, revid s
 		return DocumentRevision{}, ErrMissing
 	}
 
+	db.collectionStats.NumDocReads.Add(1)
+	db.collectionStats.DocReadsBytes.Add(int64(len(revision.BodyBytes)))
+
 	// RequestedHistory is the _revisions returned in the body.  Avoids mutating revision.History, in case it's needed
 	// during attachment processing below
 	requestedHistory := revision.History
@@ -1518,11 +1521,16 @@ func (db *DatabaseCollectionWithUser) addAttachments(ctx context.Context, newAtt
 	return err
 }
 
+// assignSequence assigns a global sequence number from database.
+func (c *DatabaseCollectionWithUser) assignSequence(ctx context.Context, docSequence uint64, doc *Document, unusedSequences []uint64) ([]uint64, error) {
+	return c.dbCtx.assignSequence(ctx, docSequence, doc, unusedSequences)
+}
+
 // Sequence processing :
 // Assigns provided sequence to the document
 // Update unusedSequences in the event that there is a conflict and we have to provide a new sequence number
 // Update and prune RecentSequences
-func (db *DatabaseCollectionWithUser) assignSequence(ctx context.Context, docSequence uint64, doc *Document, unusedSequences []uint64) ([]uint64, error) {
+func (db *DatabaseContext) assignSequence(ctx context.Context, docSequence uint64, doc *Document, unusedSequences []uint64) ([]uint64, error) {
 	var err error
 
 	// Assign the next sequence number, for _changes feed.
@@ -1538,14 +1546,14 @@ func (db *DatabaseCollectionWithUser) assignSequence(ctx context.Context, docSeq
 		}
 
 		for {
-			if docSequence, err = db.sequences().nextSequence(); err != nil {
+			if docSequence, err = db.sequences.nextSequence(); err != nil {
 				return unusedSequences, err
 			}
 
 			if docSequence > doc.Sequence {
 				break
 			} else {
-				releaseErr := db.sequences().releaseSequence(docSequence)
+				releaseErr := db.sequences.releaseSequence(docSequence)
 				if releaseErr != nil {
 					base.WarnfCtx(ctx, "Error returned when releasing sequence %d. Falling back to skipped sequence handling.  Error:%v", docSequence, err)
 				}
@@ -1916,6 +1924,8 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 		return nil, "", err
 	}
 
+	db.collectionStats.NumDocWrites.Add(1)
+	db.collectionStats.DocWritesBytes.Add(int64(docBytes))
 	db.dbStats().Database().NumDocWrites.Add(1)
 	db.dbStats().Database().DocWritesBytes.Add(int64(docBytes))
 	db.dbStats().Database().DocWritesXattrBytes.Add(int64(xattrBytes))
@@ -2222,8 +2232,8 @@ func (db *DatabaseCollectionWithUser) getChannelsAndAccess(ctx context.Context, 
 
 	if db.channelMapper() != nil {
 		// Call the ChannelMapper:
-		startTime := time.Now()
 		db.dbStats().Database().SyncFunctionCount.Add(1)
+		db.collectionStats.SyncFunctionCount.Add(1)
 
 		var bodyJson []byte
 		if doc._rawBody != nil && body[BodyDeleted] == nil {
@@ -2251,10 +2261,14 @@ func (db *DatabaseCollectionWithUser) getChannelsAndAccess(ctx context.Context, 
 		revID, _ := body[BodyRev].(string)
 
 		var output *channels.ChannelMapperOutput
+
+		startTime := time.Now()
 		output, err = db.channelMapper().MapToChannelsAndAccess2(docID, revID, string(bodyJson), oldJson, metaMap,
 			MakeUserCtx(db.user, db.ScopeName(), db.Name()))
+		syncFunctionTimeNano := time.Since(startTime).Nanoseconds()
 
-		db.dbStats().Database().SyncFunctionTime.Add(time.Since(startTime).Nanoseconds())
+		db.dbStats().Database().SyncFunctionTime.Add(syncFunctionTimeNano)
+		db.collectionStats.SyncFunctionTime.Add(syncFunctionTimeNano)
 
 		if err == nil {
 			result = output.Channels
@@ -2266,8 +2280,10 @@ func (db *DatabaseCollectionWithUser) getChannelsAndAccess(ctx context.Context, 
 				base.InfofCtx(ctx, base.KeyAll, "Sync fn rejected doc %q / %q --> %s", base.UD(doc.ID), base.UD(doc.NewestRev), err)
 				base.DebugfCtx(ctx, base.KeyAll, "    rejected doc %q / %q : new=%+v  old=%s", base.UD(doc.ID), base.UD(doc.NewestRev), base.UD(body), base.UD(oldJson))
 				db.dbStats().Security().NumDocsRejected.Add(1)
+				db.collectionStats.SyncFunctionRejectCount.Add(1)
 				if isAccessError(err) {
 					db.dbStats().Security().NumAccessErrors.Add(1)
+					db.collectionStats.SyncFunctionRejectAccessCount.Add(1)
 				}
 			} else if !validateAccessMap(access) || !validateRoleAccessMap(roles) {
 				err = base.HTTPErrorf(500, "Error in JS sync function")
@@ -2279,6 +2295,8 @@ func (db *DatabaseCollectionWithUser) getChannelsAndAccess(ctx context.Context, 
 				err = base.HTTPErrorf(500, "JS sync function timed out")
 			} else {
 				err = base.HTTPErrorf(500, "Exception in JS sync function")
+				db.collectionStats.SyncFunctionExceptionCount.Add(1)
+				db.dbStats().Database().SyncFunctionExceptionCount.Add(1)
 			}
 		}
 

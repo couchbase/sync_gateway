@@ -196,7 +196,7 @@ func (db *DatabaseCollectionWithUser) buildRevokedFeed(ctx context.Context, ch c
 	paginationOptions.Since.Seq = revokeFrom
 
 	// Use a bypass channel cache for revocations (CBG-1695)
-	singleChannelCache, err := db.changeCache.getChannelCache().getBypassChannelCache(ch)
+	singleChannelCache, err := db.changeCache().getChannelCache().getBypassChannelCache(ch)
 	if err != nil {
 		base.WarnfCtx(ctx, "Error obtaining channel cache for channel %q: %v", base.UD(singleChannelCache.ChannelID()), err)
 		change := ChangeEntry{
@@ -644,7 +644,7 @@ func (db *DatabaseCollectionWithUser) SimpleMultiChangesFeed(ctx context.Context
 		var deferredBackfill bool                    // Whether there's a backfill identified in the user doc that's deferred while the SG cache catches up
 
 		// Retrieve the current max cached sequence - ensures there isn't a race between the subsequent channel cache queries
-		currentCachedSequence = db.changeCache.getChannelCache().GetHighCacheSequence()
+		currentCachedSequence = db.changeCache().getChannelCache().GetHighCacheSequence()
 		if options.Wait {
 			options.Wait = false
 
@@ -705,7 +705,7 @@ func (db *DatabaseCollectionWithUser) SimpleMultiChangesFeed(ctx context.Context
 
 			// lowSequence is used to send composite keys to clients, so that they can obtain any currently
 			// skipped sequences in a future iteration or request.
-			oldestSkipped := db.changeCache.getOldestSkippedSequence()
+			oldestSkipped := db.changeCache().getOldestSkippedSequence()
 			if oldestSkipped > 0 {
 				lowSequence = oldestSkipped - 1
 				base.InfofCtx(ctx, base.KeyChanges, "%d is the oldest skipped sequence, using stable sequence number of %d for this feed %s", oldestSkipped, lowSequence, base.UD(to))
@@ -737,7 +737,7 @@ func (db *DatabaseCollectionWithUser) SimpleMultiChangesFeed(ctx context.Context
 					chanID := channels.NewID(chanName, collectionID)
 					// Obtain a SingleChannelCache instance to use for both normal and late feeds.  Required to ensure consistency
 					// if cache is evicted during processing
-					singleChannelCache, err := db.changeCache.getChannelCache().getSingleChannelCache(chanID)
+					singleChannelCache, err := db.changeCache().getChannelCache().getSingleChannelCache(chanID)
 					if err != nil {
 						base.WarnfCtx(ctx, "Unable to obtain channel cache for %v, terminating feed", chanID)
 						change := makeErrorEntry("Channel cache unavailable, terminating feed")
@@ -1025,7 +1025,7 @@ func (db *DatabaseCollectionWithUser) SimpleMultiChangesFeed(ctx context.Context
 				}
 			}
 			// Update the current max cached sequence for the next changes iteration
-			currentCachedSequence = db.changeCache.getChannelCache().GetHighCacheSequence()
+			currentCachedSequence = db.changeCache().getChannelCache().GetHighCacheSequence()
 
 			// Check whether user channel access has changed while waiting:
 			var err error
@@ -1077,7 +1077,7 @@ func (db *DatabaseCollectionWithUser) waitForCacheUpdate(ctx context.Context, cu
 		case <-ctx.Done():
 			return true
 		case <-ticker.C:
-			if db.changeCache.getChannelCache().GetHighCacheSequence() != currentCachedSequence {
+			if db.changeCache().getChannelCache().GetHighCacheSequence() != currentCachedSequence {
 				return false
 			}
 		}
@@ -1109,26 +1109,26 @@ func (db *DatabaseCollectionWithUser) GetChanges(ctx context.Context, channels b
 
 // Returns the set of cached log entries for a given channel
 func (db *DatabaseCollection) GetChangeLog(channel channels.ID, afterSeq uint64) (entries []*LogEntry, err error) {
-	return db.changeCache.getChannelCache().GetCachedChanges(channel)
+	return db.changeCache().getChannelCache().GetCachedChanges(channel)
 }
 
 // WaitForSequenceNotSkipped blocks until the given sequence has been received or skipped by the change cache.
 func (dbc *DatabaseCollection) WaitForSequence(ctx context.Context, sequence uint64) (err error) {
 	base.DebugfCtx(ctx, base.KeyChanges, "Waiting for sequence: %d", sequence)
-	return dbc.changeCache.waitForSequence(ctx, sequence, base.DefaultWaitForSequence)
+	return dbc.changeCache().waitForSequence(ctx, sequence, base.DefaultWaitForSequence)
 }
 
 // WaitForSequenceNotSkipped blocks until the given sequence has been received by the change cache without being skipped.
 func (dbc *DatabaseCollection) WaitForSequenceNotSkipped(ctx context.Context, sequence uint64) (err error) {
 	base.DebugfCtx(ctx, base.KeyChanges, "Waiting for sequence: %d", sequence)
-	return dbc.changeCache.waitForSequenceNotSkipped(ctx, sequence, base.DefaultWaitForSequence)
+	return dbc.changeCache().waitForSequenceNotSkipped(ctx, sequence, base.DefaultWaitForSequence)
 }
 
 // WaitForPendingChanges blocks until the change-cache has caught up with the latest writes to the database.
 func (dbc *DatabaseCollection) WaitForPendingChanges(ctx context.Context) (err error) {
 	lastSequence, err := dbc.LastSequence()
 	base.DebugfCtx(ctx, base.KeyChanges, "Waiting for sequence: %d", lastSequence)
-	return dbc.changeCache.waitForSequence(ctx, lastSequence, base.DefaultWaitForSequence)
+	return dbc.changeCache().waitForSequence(ctx, lastSequence, base.DefaultWaitForSequence)
 }
 
 // Late Sequence Feed
@@ -1210,7 +1210,7 @@ func (db *DatabaseCollectionWithUser) getLateFeed(feedHandler *lateSequenceFeed,
 
 // Closes a single late sequence feed.
 func (db *DatabaseCollectionWithUser) closeLateFeed(feedHandler *lateSequenceFeed) {
-	singleChannelCache, err := db.changeCache.getChannelCache().getSingleChannelCache(feedHandler.channel)
+	singleChannelCache, err := db.changeCache().getChannelCache().getSingleChannelCache(feedHandler.channel)
 	if err != nil || !singleChannelCache.SupportsLateFeed() {
 		return
 	}

@@ -310,7 +310,8 @@ func (rt *RestTester) Bucket() base.Bucket {
 			rt.DatabaseConfig.ImportPartitions = base.Uint16Ptr(1)
 		}
 
-		if rt.leakyBucketConfig != nil {
+		_, isLeaky := base.AsLeakyBucket(rt.TestBucket)
+		if rt.leakyBucketConfig != nil || isLeaky {
 			_, err = rt.RestTesterServerContext.AddDatabaseFromConfigWithBucket(ctx, rt.TB, *rt.DatabaseConfig, testBucket.Bucket)
 		} else {
 			_, err = rt.RestTesterServerContext.AddDatabaseFromConfig(ctx, *rt.DatabaseConfig)
@@ -1256,18 +1257,10 @@ func createBlipTesterWithSpec(tb testing.TB, spec BlipTesterSpec, rt *RestTester
 			adminChannels = append(adminChannels, spec.connectingUserChannelGrants...)
 		}
 
-		// serialize admin channels to json array
-		adminChannelsJson, err := base.JSONMarshal(adminChannels)
+		userDocBody, err := getUserBodyDoc(spec.connectingUsername, spec.connectingPassword, bt.restTester.GetSingleTestDatabaseCollection(), adminChannels)
 		if err != nil {
 			return nil, err
 		}
-		adminChannelsStr := string(adminChannelsJson)
-
-		userDocBody := fmt.Sprintf(`{"name":"%s", "password":"%s", "admin_channels":%s}`,
-			spec.connectingUsername,
-			spec.connectingPassword,
-			adminChannelsStr,
-		)
 		log.Printf("Creating user: %v", userDocBody)
 
 		// Create a user.  NOTE: this must come *after* the bt.rt.TestPublicHandler() call, otherwise it will end up getting ignored
@@ -1336,6 +1329,21 @@ func createBlipTesterWithSpec(tb testing.TB, spec BlipTesterSpec, rt *RestTester
 
 	return bt, nil
 
+}
+
+func getUserBodyDoc(username, password string, collection *db.DatabaseCollection, adminChans []string) (string, error) {
+	config := auth.PrincipalConfig{}
+	if username != "" {
+		config.Name = &username
+	}
+	if password != "" {
+		config.Password = &password
+	}
+	marshalledConfig, err := addChannelsToPrincipal(config, collection, adminChans)
+	if err != nil {
+		return "", err
+	}
+	return string(marshalledConfig), nil
 }
 
 func (bt *BlipTester) initializeCollections(collections []string) {
@@ -1851,6 +1859,7 @@ func (bt *BlipTester) PullDocs() (docs map[string]RestDocument) {
 			if bt.blipContext.ActiveSubprotocol() == db.BlipCBMobileReplicationV3 {
 				getAttachmentRequest.Properties[db.GetAttachmentID] = docId
 			}
+			bt.addCollectionProperty(getAttachmentRequest)
 			sent := bt.sender.Send(getAttachmentRequest)
 			if !sent {
 				panic("Unable to get attachment.")

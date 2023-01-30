@@ -100,6 +100,7 @@ type DatabaseContext struct {
 	RevsLimit                   uint32                  // Max depth a document's revision tree can grow to
 	autoImport                  bool                    // Add sync data to new untracked couchbase server docs?  (Xattr mode specific)
 	channelCache                ChannelCache
+	changeCache                 changeCache            // Cache of recently-access channels
 	EventMgr                    *EventManager          // Manages notification events
 	AllowEmptyPassword          bool                   // Allow empty passwords?  Defaults to false
 	Options                     DatabaseContextOptions // Database Context Options
@@ -221,7 +222,7 @@ type UnsupportedOptions struct {
 	OidcTestProvider           *OidcTestProviderOptions `json:"oidc_test_provider,omitempty"`            // Config settings for OIDC Provider
 	APIEndpoints               *APIEndpoints            `json:"api_endpoints,omitempty"`                 // Config settings for API endpoints
 	WarningThresholds          *WarningThresholds       `json:"warning_thresholds,omitempty"`            // Warning thresholds related to _sync size
-	DisableCleanSkippedQuery   bool                     `json:"disable_clean_skipped_query,omitempty"`   // Clean skipped sequence processing bypasses final check
+	DisableCleanSkippedQuery   bool                     `json:"disable_clean_skipped_query,omitempty"`   // Clean skipped sequence processing bypasses final check (deprecated: CBG-2672)
 	OidcTlsSkipVerify          bool                     `json:"oidc_tls_skip_verify,omitempty"`          // Config option to enable self-signed certs for OIDC testing.
 	SgrTlsSkipVerify           bool                     `json:"sgr_tls_skip_verify,omitempty"`           // Config option to enable self-signed certs for SG-Replicate testing.
 	RemoteConfigTlsSkipVerify  bool                     `json:"remote_config_tls_skip_verify,omitempty"` // Config option to enable self signed certificates for external JavaScript load.
@@ -467,7 +468,11 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 				if err != nil {
 					return nil, err
 				}
-				dbCollection, err := newDatabaseCollection(ctx, dbContext, dataStore)
+				stats, err := dbContext.DbStats.CollectionStat(scopeName, collName)
+				if err != nil {
+					return nil, err
+				}
+				dbCollection, err := newDatabaseCollection(ctx, dbContext, dataStore, stats)
 				if err != nil {
 					return nil, err
 				}
@@ -496,7 +501,11 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 		}
 	} else {
 		dataStore := bucket.DefaultDataStore()
-		dbCollection, err := newDatabaseCollection(ctx, dbContext, dataStore)
+		stats, err := dbContext.DbStats.CollectionStat(base.DefaultScope, base.DefaultCollection)
+		if err != nil {
+			return nil, err
+		}
+		dbCollection, err := newDatabaseCollection(ctx, dbContext, dataStore, stats)
 		if err != nil {
 			return nil, err
 		}
@@ -506,6 +515,33 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 
 		dbContext.CollectionByID[base.DefaultCollectionID] = dbCollection
 		dbContext.singleCollection = dbCollection
+	}
+
+	// Callback that is invoked whenever a set of channels is changed in the ChangeCache
+	notifyChange := func(changedChannels channels.Set) {
+		dbContext.mutationListener.Notify(changedChannels)
+	}
+
+	// Initialize the ChangeCache.  Will be locked and unusable until .Start() is called (SG #3558)
+	err = dbContext.changeCache.Init(
+		ctx,
+		dbContext,
+		dbContext.channelCache,
+		notifyChange,
+		dbContext.Options.CacheOptions,
+	)
+	if err != nil {
+		base.DebugfCtx(ctx, base.KeyDCP, "Error initializing the change cache", err)
+		return nil, err
+	}
+	dbContext.mutationListener.OnChangeCallback = dbContext.changeCache.DocChanged
+
+	if base.IsEnterpriseEdition() {
+		cfgSG, ok := dbContext.CfgSG.(*base.CfgSG)
+		if !ok {
+			return nil, fmt.Errorf("Could not cast %V to CfgSG", dbContext.CfgSG)
+		}
+		dbContext.changeCache.cfgEventCallback = cfgSG.FireEvent
 	}
 
 	// Initialize sg-replicate manager
@@ -570,15 +606,13 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 		_ = dbContext.sequences.waitForReleasedSequences(initialSequenceTime)
 	}
 
-	for _, collection := range dbContext.CollectionByID {
-		err = collection.changeCache.Start(initialSequence)
-		if err != nil {
-			return nil, err
-		}
-		cleanupFunctions = append(cleanupFunctions, func() {
-			collection.changeCache.Stop()
-		})
+	err = dbContext.changeCache.Start(initialSequence)
+	if err != nil {
+		return nil, err
 	}
+	cleanupFunctions = append(cleanupFunctions, func() {
+		dbContext.changeCache.Stop()
+	})
 
 	// If this is an xattr import node, start import feed.  Must be started after the caching DCP feed, as import cfg
 	// subscription relies on the caching feed.
@@ -735,11 +769,6 @@ func (context *DatabaseContext) GetOIDCProvider(providerName string) (*auth.OIDC
 	}
 }
 
-// Registers an on change callback.  Each change cache (per collection) will register here
-func (context *DatabaseContext) RegisterOnChangeCallback(collectionID uint32, callback DocChangedFunc) error {
-	return context.mutationListener.RegisterOnChangeCallback(collectionID, callback)
-}
-
 func (dbCtx *DatabaseContext) GetServerUUID(ctx context.Context) string {
 
 	dbCtx.BucketLock.RLock()
@@ -780,7 +809,7 @@ func (context *DatabaseContext) Close(ctx context.Context) {
 	waitForBGTCompletion(ctx, BGTCompletionMaxWait, context.backgroundTasks, context.Name)
 	context.sequences.Stop()
 	context.mutationListener.Stop()
-	context.stopChangeCaches()
+	context.changeCache.Stop()
 	// Stop the channel cache and it's background tasks.
 	context.channelCache.Stop()
 	context.ImportListener.Stop()
@@ -996,7 +1025,7 @@ func (dc *DatabaseContext) TakeDbOffline(ctx context.Context, reason string) err
 		dc.AccessLock.Lock()
 		defer dc.AccessLock.Unlock()
 
-		dc.stopChangeCaches()
+		dc.changeCache.Stop()
 
 		// set DB state to Offline
 		atomic.StoreUint32(&dc.State, DBOffline)
@@ -2173,7 +2202,19 @@ func initDatabaseStats(dbName string, autoImport bool, options DatabaseContextOp
 		queryNames = append(queryNames, options.FunctionsConfig.N1QLQueryNames()...)
 	}
 
-	return base.SyncGatewayStats.NewDBStats(dbName, enabledDeltaSync, enabledImport, enabledViews, queryNames...)
+	var collections []string
+	if len(options.Scopes) == 0 {
+		base.DebugfCtx(context.TODO(), base.KeyConfig, "No named collections defined for database %q, using default collection for stats", base.MD(dbName))
+		collections = append(collections, base.DefaultScope+"."+base.DefaultCollection)
+	} else {
+		for scopeName, scope := range options.Scopes {
+			for collectionName := range scope.Collections {
+				collections = append(collections, scopeName+"."+collectionName)
+			}
+		}
+	}
+
+	return base.SyncGatewayStats.NewDBStats(dbName, enabledDeltaSync, enabledImport, enabledViews, queryNames, collections)
 }
 
 func (context *DatabaseContext) AllowConflicts() bool {
@@ -2308,53 +2349,17 @@ func (dbc *DatabaseContext) GetSingleDatabaseCollection() *DatabaseCollection {
 }
 
 // newDatabaseCollection returns a collection which inherits values from the database but is specific to a given DataStore.
-func newDatabaseCollection(ctx context.Context, dbContext *DatabaseContext, dataStore base.DataStore) (*DatabaseCollection, error) {
+func newDatabaseCollection(ctx context.Context, dbContext *DatabaseContext, dataStore base.DataStore, stats *base.CollectionStats) (*DatabaseCollection, error) {
 	dbCollection := &DatabaseCollection{
-		dataStore:   dataStore,
-		dbCtx:       dbContext,
-		changeCache: &changeCache{},
+		dataStore:       dataStore,
+		dbCtx:           dbContext,
+		collectionStats: stats,
 	}
 	dbCollection.revisionCache = NewRevisionCache(
 		dbContext.Options.RevisionCacheOptions,
 		dbCollection,
 		dbContext.DbStats.Cache(),
 	)
-	// Callback that is invoked whenever a set of channels is changed in the ChangeCache
-	notifyChange := func(changedChannels channels.Set) {
-		dbContext.mutationListener.Notify(changedChannels)
-	}
 
-	// Initialize the ChangeCache.  Will be locked and unusable until .Start() is called (SG #3558)
-	err := dbCollection.changeCache.Init(
-		ctx,
-		dbCollection,
-		dbContext.channelCache,
-		notifyChange,
-		dbContext.Options.CacheOptions,
-	)
-	if err != nil {
-		base.DebugfCtx(ctx, base.KeyDCP, "Error initializing the change cache", err)
-		return nil, err
-	}
-	// Set the DB Context notifyChange callback to call back the changecache DocChanged callback
-	err = dbContext.RegisterOnChangeCallback(dbCollection.GetCollectionID(), dbCollection.changeCache.DocChanged)
-	if err != nil {
-		base.DebugfCtx(ctx, base.KeyDCP, "Error registering the listener callback for collection %s: %v", dbCollection.GetCollectionID(), err)
-		return nil, err
-	}
-
-	if base.IsEnterpriseEdition() {
-		cfgSG, ok := dbContext.CfgSG.(*base.CfgSG)
-		if !ok {
-			return nil, fmt.Errorf("Could not cast %V to CfgSG", dbContext.CfgSG)
-		}
-		dbCollection.changeCache.cfgEventCallback = cfgSG.FireEvent
-	}
 	return dbCollection, nil
-}
-
-func (dbc *DatabaseContext) stopChangeCaches() {
-	for _, collection := range dbc.CollectionByID {
-		collection.changeCache.Stop()
-	}
 }

@@ -264,7 +264,7 @@ func TestsShouldDropIndexes() bool {
 	// First check if the SG_TEST_USE_XATTRS env variable is set
 	dropIndexes := os.Getenv(TestEnvSyncGatewayDropIndexes)
 
-	if strings.ToLower(dropIndexes) == strings.ToLower(TestEnvSyncGatewayTrue) {
+	if strings.EqualFold(dropIndexes, TestEnvSyncGatewayTrue) {
 		return true
 	}
 
@@ -292,7 +292,7 @@ func TestsDisableGSI() bool {
 // Check the whether tests are being run with SG_TEST_BACKING_STORE=Couchbase
 func TestUseCouchbaseServer() bool {
 	backingStore := os.Getenv(TestEnvSyncGatewayBackingStore)
-	return strings.ToLower(backingStore) == strings.ToLower(TestEnvBackingStoreCouchbase)
+	return strings.EqualFold(backingStore, TestEnvBackingStoreCouchbase)
 }
 
 // Check the whether tests are being run with SG_TEST_BACKING_STORE=Couchbase

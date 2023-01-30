@@ -24,15 +24,10 @@ func (db *DatabaseContext) UpdateCalculatedStats() {
 	if !db.hasDefaultCollection() {
 		return
 	}
-	defaultCollection, err := db.GetDefaultDatabaseCollection()
-	if err != nil {
-		return
-	}
-	if defaultCollection.changeCache != nil {
-		defaultCollection.changeCache.updateStats()
-		channelCache := defaultCollection.changeCache.getChannelCache()
-		db.DbStats.Cache().ChannelCacheMaxEntries.Set(int64(channelCache.MaxCacheSize()))
-		db.DbStats.Cache().HighSeqCached.Set(int64(channelCache.GetHighCacheSequence()))
-	}
+
+	db.changeCache.updateStats()
+	channelCache := db.changeCache.getChannelCache()
+	db.DbStats.Cache().ChannelCacheMaxEntries.Set(int64(channelCache.MaxCacheSize()))
+	db.DbStats.Cache().HighSeqCached.Set(int64(channelCache.GetHighCacheSequence()))
 
 }

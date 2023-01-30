@@ -2627,12 +2627,12 @@ func TestAttachmentDeleteOnExpiry(t *testing.T) {
 
 }
 func TestUpdateExistingAttachment(t *testing.T) {
-	rt := NewRestTesterDefaultCollection(t, &RestTesterConfig{ // CBG-2619
+	rt := NewRestTester(t, &RestTesterConfig{
 		GuestEnabled: true,
 	})
 	defer rt.Close()
 
-	btc, err := NewBlipTesterClient(t, rt)
+	btc, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
 	assert.NoError(t, err)
 	defer btc.Close()
 
@@ -2656,7 +2656,6 @@ func TestUpdateExistingAttachment(t *testing.T) {
 
 	err = btc.StartOneshotPull()
 	assert.NoError(t, err)
-
 	_, ok := btc.WaitForRev("doc1", "1-ca9ad22802b66f662ff171f226211d5c")
 	require.True(t, ok)
 	_, ok = btc.WaitForRev("doc2", "1-ca9ad22802b66f662ff171f226211d5c")
@@ -2696,12 +2695,12 @@ func TestUpdateExistingAttachment(t *testing.T) {
 // TestPushUnknownAttachmentAsStub sets revpos to an older generation, for an attachment that doesn't exist on the server.
 // Verifies that getAttachment is triggered, and attachment is properly persisted.
 func TestPushUnknownAttachmentAsStub(t *testing.T) {
-	rt := NewRestTesterDefaultCollection(t, &RestTesterConfig{ // CBG-2619
+	rt := NewRestTester(t, &RestTesterConfig{
 		GuestEnabled: true,
 	})
 	defer rt.Close()
 
-	btc, err := NewBlipTesterClient(t, rt)
+	btc, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
 	assert.NoError(t, err)
 	defer btc.Close()
 
@@ -2719,7 +2718,6 @@ func TestPushUnknownAttachmentAsStub(t *testing.T) {
 
 	err = btc.StartOneshotPull()
 	assert.NoError(t, err)
-
 	rev1ID := "1-ca9ad22802b66f662ff171f226211d5c"
 	_, ok := btc.WaitForRev("doc1", rev1ID)
 	require.True(t, ok)
@@ -2727,9 +2725,9 @@ func TestPushUnknownAttachmentAsStub(t *testing.T) {
 	// force attachment into test client's store to validate it's fetched
 	attachmentAData := base64.StdEncoding.EncodeToString([]byte("attachmentA"))
 	contentType := "text/plain"
+
 	length, digest, err := btc.saveAttachment(contentType, attachmentAData)
 	require.NoError(t, err)
-
 	// Update doc1, include reference to non-existing attachment with recent revpos
 	revIDDoc1, err := btc.PushRev("doc1", rev1ID, []byte(fmt.Sprintf(`{"key": "val", "_attachments":{"attachment":{"digest":"%s","length":%d,"content_type":"%s","stub":true,"revpos":1}}}`, digest, length, contentType)))
 	require.NoError(t, err)
@@ -2963,12 +2961,12 @@ func TestPutInvalidAttachment(t *testing.T) {
 // validates that proveAttachment isn't being invoked when the attachment is already present and the
 // digest doesn't change, regardless of revpos.
 func TestCBLRevposHandling(t *testing.T) {
-	rt := NewRestTesterDefaultCollection(t, &RestTesterConfig{ // CBG-2619
+	rt := NewRestTester(t, &RestTesterConfig{
 		GuestEnabled: true,
 	})
 	defer rt.Close()
 
-	btc, err := NewBlipTesterClient(t, rt)
+	btc, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
 	assert.NoError(t, err)
 	defer btc.Close()
 
@@ -2992,7 +2990,6 @@ func TestCBLRevposHandling(t *testing.T) {
 
 	err = btc.StartOneshotPull()
 	assert.NoError(t, err)
-
 	_, ok := btc.WaitForRev("doc1", "1-ca9ad22802b66f662ff171f226211d5c")
 	require.True(t, ok)
 	_, ok = btc.WaitForRev("doc2", "1-ca9ad22802b66f662ff171f226211d5c")

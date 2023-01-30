@@ -900,6 +900,9 @@ func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConf
 		base.WarnfCtx(ctx, `Deprecation notice: setting database configuration option "allow_conflicts" to true is due to be removed. In the future, conflicts will not be allowed.`)
 	}
 
+	if config.Unsupported.DisableCleanSkippedQuery {
+		base.WarnfCtx(ctx, `Deprecation notice: setting databse configuration option "disable_clean_skipped_query" no longer has any functionality. In the future, this option will be removed.`)
+	}
 	// If basic auth is disabled, it doesn't make sense to send WWW-Authenticate
 	sendWWWAuthenticate := config.SendWWWAuthenticateHeader
 	if base.BoolDefault(config.DisablePasswordAuth, false) {
