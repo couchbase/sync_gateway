@@ -16,7 +16,7 @@ import (
 func TestValidateJavascriptFunction(t *testing.T) {
 	TestWithVMs(t, func(t *testing.T, vm VM) {
 		assert.NoError(t, ValidateJavascriptFunction(vm, `function(doc) {return doc.x;}`, 1, 1))
-		if vm.Type() == V8 { // Otto does not support new-style function syntax
+		if vm.Engine().LanguageVersion() >= ES2015 { // Otto does not support new-style function syntax
 			assert.NoError(t, ValidateJavascriptFunction(vm, `(doc,foo) => {return doc.x;}`, 2, 2))
 		}
 		err := ValidateJavascriptFunction(vm, `function() {return doc.x;}`, 1, 2)

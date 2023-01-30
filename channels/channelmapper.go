@@ -78,11 +78,11 @@ const kChannelMapperServiceName = "channelMapper"
 // The JavaScript code run by the SyncRunner; the sync fn is copied into it.
 // See wrappedFuncSource().
 //
-//go:embed sync_fn_wrapper_otto.js
-var kSyncFnHostScriptOtto string
+//go:embed sync_fn_wrapper_older.js
+var kSyncFnHostScriptOlder string
 
-//go:embed sync_fn_wrapper_v8.js
-var kSyncFnHostScriptV8 string
+//go:embed sync_fn_wrapper_modern.js
+var kSyncFnHostScriptModern string
 
 // Creates a ChannelMapper.
 func NewChannelMapper(owner js.ServiceHost, fnSource string, timeout time.Duration) *ChannelMapper {
@@ -113,9 +113,10 @@ func (mapper *ChannelMapper) SetFunction(fnSource string) error {
 }
 
 func wrappedFuncSource(funcSource string, host js.ServiceHost) string {
-	script := kSyncFnHostScriptOtto
-	if host.Type() == js.V8 {
-		script = kSyncFnHostScriptV8
+	// Use different wrapper scripts for modern vs older JS.
+	script := kSyncFnHostScriptOlder
+	if host.Engine().LanguageVersion() >= js.ES2015 {
+		script = kSyncFnHostScriptModern
 	}
 	return fmt.Sprintf(
 		script,

@@ -21,20 +21,21 @@ type v8VM struct {
 	curRunner   *V8Runner         // Currently active v8Runner, if any
 }
 
+const v8VMName = "V8"
+
 // A VMType for instantiating V8-based VMs and VMPools.
-var V8 = &VMType{
-	name: "V8",
-	factory: func(services *servicesConfiguration) VM {
+var V8 = &Engine{
+	name:            v8VMName,
+	languageVersion: 13, // ES2022. Can't find exact version on the V8 website --Jens 1/2023
+	factory: func(engine *Engine, services *servicesConfiguration) VM {
 		return &v8VM{
-			baseVM:    &baseVM{services: services},
+			baseVM:    &baseVM{engine: engine, services: services},
 			iso:       v8.NewIsolate(), // The V8 v8VM
 			templates: []V8Template{},  // Instantiated Services
 			runners:   []*V8Runner{},   // Cached reusable Runners
 		}
 	},
 }
-
-func (vm *v8VM) Type() *VMType { return V8 }
 
 // Shuts down a v8VM. It's a good idea to call this explicitly when done with it,
 // _unless_ it belongs to a VMPool.

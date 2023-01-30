@@ -9,15 +9,19 @@ function() { var syncFn = %s;
 //  software will be governed by the Apache License, Version 2.0, included in
 //  the file licenses/APL2.txt.
 
-    var requireAdmin, requireUser, requireRole, requireAccess;
-    var channel, access, role, expiry, reject;
-    var log = console.log;
+// IMPORTANT: There are currently two versions of this file, supporting different JS versions.
+// This is the "older" one, for use with Otto. Any changes should be synced with the other.
 
     if (typeof(syncFn) !== 'function') {
         throw new Error('code does not compile to a function');
     } else if (syncFn.length < 1 || syncFn.length > 3) {
         throw new Error('sync function must have 1-3 arguments');
     }
+
+    // Declare functions that will be available to the sync fn:
+    var requireAdmin, requireUser, requireRole, requireAccess;
+    var channel, access, role, expiry, reject;
+    var log = console.log;
 
     {
         /****  Variables used during the call but not visible to the sync fn ****/
@@ -152,7 +156,7 @@ function() { var syncFn = %s;
 
         log = console.log;
 
-        // Prevent scripts from dynamically generating code:
+        // For security reasons, prevent scripts from dynamically compiling code:
         delete eval;
         delete Function;
 

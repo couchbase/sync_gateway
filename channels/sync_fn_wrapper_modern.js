@@ -9,6 +9,9 @@ function() { const syncFn = %s;
 //  software will be governed by the Apache License, Version 2.0, included in
 //  the file licenses/APL2.txt.
 
+// IMPORTANT: There are currently two versions of this file, supporting different JS versions.
+// This is the "modern" one, for use with V8. Any changes should be synced with the other.
+
     if (typeof(syncFn) !== 'function') {
         throw new Error(`code does not compile to a function`);
     } else if (syncFn.length < 1 || syncFn.length > 3) {
@@ -147,7 +150,7 @@ function() { const syncFn = %s;
 
         globalThis.log = console.log;
 
-        // Prevent scripts from dynamically generating code:
+        // For security reasons, prevent scripts from dynamically compiling code:
         delete globalThis.eval;
         delete globalThis.Function;
 

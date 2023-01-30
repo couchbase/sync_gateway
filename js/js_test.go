@@ -42,7 +42,7 @@ func TestSquare(t *testing.T) {
 }
 
 func TestSquareV8Args(t *testing.T) {
-	vm := NewVM(V8)
+	vm := V8.NewVM()
 	defer vm.Close()
 
 	service := NewService(vm, "square", `function(n) {return n * n;}`)
@@ -79,7 +79,7 @@ func TestJSON(t *testing.T) {
 
 func TestCallback(t *testing.T) {
 	ctx := base.TestCtx(t)
-	vm := NewVM(V8)
+	vm := V8.NewVM()
 	defer vm.Close()
 
 	src := `(function() {
@@ -176,7 +176,7 @@ func TestNumbers(t *testing.T) {
 			}
 		})
 
-		if vm.Type() == V8 { // (Otto does not support BigInts)
+		if vm.Engine().languageVersion >= 11 { // (Otto does not support BigInts)
 			t.Run("json_Number_huge_integer", func(t *testing.T) {
 				hugeInt := json.Number("1234567890123456789012345678901234567890")
 				result, err := service.Run(ctx, hugeInt, string(hugeInt))
@@ -201,7 +201,7 @@ func TestNumbers(t *testing.T) {
 // For security purposes, verify that JS APIs to do network or file I/O are not present:
 func TestNoIO(t *testing.T) {
 	ctx := base.TestCtx(t)
-	vm := NewVM(V8) // Otto appears to have no way to refer to the global object...
+	vm := V8.NewVM() // Otto appears to have no way to refer to the global object...
 	defer vm.Close()
 
 	service := NewService(vm, "check", `function() {
@@ -223,7 +223,7 @@ func TestNoIO(t *testing.T) {
 // Verify that ECMAScript modules can't be loaded. (The older `require` is checked in TestNoIO.)
 func TestNoModules(t *testing.T) {
 	ctx := base.TestCtx(t)
-	vm := NewVM(V8) // Otto doesn't support ES modules
+	vm := V8.NewVM() // Otto doesn't support ES modules
 	defer vm.Close()
 
 	src := `import foo from 'foo';

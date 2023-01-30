@@ -11,18 +11,19 @@ type ottoVM struct {
 	curRunner *OttoRunner   // Currently active Runner, if any
 }
 
-// A VMType for instantiating Otto-based VMs and VMPools.
-var Otto = &VMType{
-	name: "Otto",
-	factory: func(services *servicesConfiguration) VM {
+const ottoVMName = "Otto"
+
+// An Engine for instantiating Otto-based VMs and VMPools.
+var Otto = &Engine{
+	name:            ottoVMName,
+	languageVersion: 5, // https://github.com/robertkrimen/otto#caveat-emptor
+	factory: func(engine *Engine, services *servicesConfiguration) VM {
 		return &ottoVM{
-			baseVM:  &baseVM{services: services}, // "superclass"
-			runners: []*OttoRunner{},             // Cached reusable Runners
+			baseVM:  &baseVM{engine: engine, services: services}, // "superclass"
+			runners: []*OttoRunner{},                             // Cached reusable Runners
 		}
 	},
 }
-
-func (vm *ottoVM) Type() *VMType { return Otto }
 
 func (vm *ottoVM) Close() {
 	vm.baseVM.close()

@@ -17,22 +17,22 @@ type VMPool struct {
 	maxInUse  int                    // Max number of simultaneously in-use VMs
 	services  *servicesConfiguration // Defines the services (owned VMs also have references)
 	tickets   chan bool              // Each item in this channel represents availability of a VM
-	vmType    *VMType                // Factory function that creates IVMs
+	engine    *Engine                // Factory function that creates IVMs
 	mutex     sync.Mutex             // Must be locked to access fields below
 	vms_      []VM                   // LIFO cache of idle VMs, recently used at end
 	curInUse_ int                    // Current number of VMs "checked out"
 }
 
-func NewVMPool(typ *VMType, maxVMs int) *VMPool {
+func NewVMPool(typ *Engine, maxVMs int) *VMPool {
 	pool := new(VMPool)
 	pool.Init(typ, maxVMs)
 	return pool
 }
 
-func (pool *VMPool) Init(typ *VMType, maxVMs int) {
+func (pool *VMPool) Init(typ *Engine, maxVMs int) {
 	pool.maxInUse = maxVMs
 	pool.services = &servicesConfiguration{}
-	pool.vmType = typ
+	pool.engine = typ
 	pool.vms_ = make([]VM, 0, maxVMs)
 	pool.tickets = make(chan bool, maxVMs)
 	for i := 0; i < maxVMs; i++ {
@@ -41,7 +41,7 @@ func (pool *VMPool) Init(typ *VMType, maxVMs int) {
 	base.InfofCtx(context.Background(), base.KeyJavascript, "js.VMPool: Init, max %d VMs", maxVMs)
 }
 
-func (pool *VMPool) Type() *VMType { return pool.vmType }
+func (pool *VMPool) Engine() *Engine { return pool.engine }
 
 // Tears down a VMPool, freeing up its cached VMs.
 // It's a good idea to call this when using V8, as the VMs may be holding onto a lot of external
@@ -100,7 +100,7 @@ func (pool *VMPool) getVM(service *Service) (VM, error) {
 	vm, inUse := pool.pop(service)
 	if vm == nil {
 		// Nothing in the pool, so create a new VM instance.
-		vm = pool.vmType.factory(pool.services)
+		vm = pool.engine.newVM(pool.services)
 		base.InfofCtx(context.Background(), base.KeyJavascript,
 			"js.VMPool.getVM: No VMs free; created a new one")
 	}

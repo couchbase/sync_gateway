@@ -5,13 +5,50 @@ import (
 	"time"
 )
 
+//////// ENGINE
+
 // An opaque object identifying a JavaScript engine (V8 or Otto)
-type VMType struct {
-	name    string
-	factory func(*servicesConfiguration) VM
+type Engine struct {
+	name            string
+	languageVersion int
+	factory         func(*Engine, *servicesConfiguration) VM
 }
 
-func (vmType *VMType) String() string { return vmType.name }
+// Returns the Engine with the given name, else nil.
+// Valid names are "V8" and "Otto", which map to the instances `V8` and `Otto`.
+func EngineNamed(name string) *Engine {
+	switch name {
+	case v8VMName:
+		return V8
+	case ottoVMName:
+		return Otto
+	default:
+		return nil
+	}
+}
+
+// The name identifying this engine ("V8" or "Otto")
+func (engine *Engine) String() string { return engine.name }
+
+// The edition number of the ECMAScript spec supported by this Engine.
+// For example a value of 6 is 6th Edition, better known as ES2015, aka "Modern JavaScript".
+// See https://en.wikipedia.org/wiki/ECMAScript_version_history
+func (engine *Engine) LanguageVersion() int { return engine.languageVersion }
+
+// Language version (ECMAScript edition #) of ES2015
+const ES2015 = 6
+
+// Creates a JavaScript virtual machine of the given type.
+// This object should be used only on a single goroutine at a time.
+func (engine *Engine) NewVM() VM {
+	return engine.newVM(&servicesConfiguration{})
+}
+
+func (engine *Engine) newVM(services *servicesConfiguration) VM {
+	return engine.factory(engine, services)
+}
+
+//////// VM
 
 // Represents a single-threaded JavaScript virtual machine.
 // This doesn't do much on its own; it acts as a ServiceHost for Service and Runner objects.
@@ -21,7 +58,7 @@ func (vmType *VMType) String() string { return vmType.name }
 // use will trigger a panic in VM.getRunner.
 // The VMPool takes care of this, by vending VM instances that are known not to be in use.
 type VM interface {
-	Type() *VMType
+	Engine() *Engine
 	Close()
 	FindService(name string) *Service
 
@@ -56,18 +93,18 @@ func ValidateJavascriptFunction(vm VM, jsFunc string, minArgs int, maxArgs int) 
 	return err
 }
 
-// Creates a JavaScript virtual machine of the given type.
-// This object should be used only on a single goroutine at a time.
-func NewVM(typ *VMType) VM {
-	return typ.factory(&servicesConfiguration{})
-}
+//////// BASEVM
 
+// A base "class" containing shared properties and methods for use by VM implementations.
 type baseVM struct {
+	engine       *Engine
 	services     *servicesConfiguration // Factories for services
 	returnToPool *VMPool                // Pool to return me to, or nil
 	lastReturned time.Time              // Time that v8VM was last returned to its pool
 	closed       bool
 }
+
+func (vm *baseVM) Engine() *Engine { return vm.engine }
 
 func (vm *baseVM) close() {
 	if vm.returnToPool != nil {

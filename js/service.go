@@ -19,7 +19,7 @@ type serviceID uint32 // internal ID, used as an array index in VM and VMPool.
 
 // A provider of a JavaScript runtime for Services. VM and VMPool implement this.
 type ServiceHost interface {
-	Type() *VMType
+	Engine() *Engine
 	Close()
 	FindService(name string) *Service
 	registerService(*Service)
