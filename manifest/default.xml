@@ -77,7 +77,7 @@ licenses/APL2.txt.
 
   <project name="fakehttp" path="godeps/src/github.com/tleyden/fakehttp" remote="tleyden" revision="084795c8f01f195a88c0ca4af0d7228a5ef40c83"/>
 
-  <project name="text" path="godeps/src/golang.org/x/text" remote="couchbasedeps" revision="refs/tags/v0.3.4"/>
+  <project name="text" path="godeps/src/golang.org/x/text" remote="couchbasedeps" revision="refs/tags/v0.6.0"/>
 
   <project name="net" path="godeps/src/golang.org/x/net" remote="couchbasedeps" revision="release-branch.go1.11"/>
 
@@ -129,9 +129,9 @@ licenses/APL2.txt.
   <project groups="notdefault,cb_sg_enterprise" name="go-fleecedelta" path="godeps/src/github.com/couchbaselabs/go-fleecedelta" remote="couchbaselabs_private" revision="2ed3f45fde8f1745eece72968cf673da69f0fd24"/>
   <project groups="notdefault,cb_sg_enterprise" name="go-diff" path="godeps/src/github.com/sergi/go-diff" remote="couchbasedeps" revision="da645544ed44df016359bd4c0e3dc60ee3a0da43"/>
 
-  <project groups="notdefault,cb_sg_enterprise" name="json-iterator-go" path="godeps/src/github.com/json-iterator/go" remote="couchbasedeps" revision="819acad769e54806c920726ac93537ba4e2c22ad"/>
+  <project groups="notdefault,cb_sg_enterprise" name="json-iterator-go" path="godeps/src/github.com/json-iterator/go" remote="couchbasedeps" revision="024077e996b048517130b21ea6bf12aa23055d3d"/>
   <project groups="notdefault,cb_sg_enterprise" name="concurrent" path="godeps/src/github.com/modern-go/concurrent" remote="couchbasedeps" revision="bacd9c7ef1dd9b15be4a9909b8ac7a4e313eec94"/>
-  <project groups="notdefault,cb_sg_enterprise" name="reflect2" path="godeps/src/github.com/modern-go/reflect2" remote="couchbasedeps" revision="94122c33edd36123c84d5368cfb2b69df93a0ec8"/>
+  <project groups="notdefault,cb_sg_enterprise" name="reflect2" path="godeps/src/github.com/modern-go/reflect2" remote="couchbasedeps" revision="2b33151c9bbc5231aea69b8861c540102b087070"/>
 
   <!-- gosigar -->
   <project name="gosigar" path="godeps/src/github.com/elastic/gosigar" remote="couchbasedeps" revision="f498c67133bcded80f5966ee63acfe68cff4e6bf"/>
