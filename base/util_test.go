@@ -511,10 +511,10 @@ func TestDeepCopyInefficient(t *testing.T) {
 		"Strings": []string{"A", "B"},
 		"Ints":    map[string]int{"A": 1, "B": 2},
 		"As": map[string]map[string]interface{}{
-			"One": {
+			"One": map[string]interface{}{
 				"String": "2",
 			},
-			"Two": {
+			"Two": map[string]interface{}{
 				"String": "3",
 			},
 		},
@@ -522,15 +522,15 @@ func TestDeepCopyInefficient(t *testing.T) {
 	dst := &A{
 		Strings: []string{"C"},
 		Ints:    map[string]int{"B": 3, "C": 4},
-		As:      map[string]*A{"One": {String: "1", Int: 5}}}
+		As:      map[string]*A{"One": &A{String: "1", Int: 5}}}
 	expected := &A{
 		String:  "Hello World",
 		Int:     5,
 		Strings: []string{"A", "B"},
 		Ints:    map[string]int{"A": 1, "B": 2, "C": 4},
 		As: map[string]*A{
-			"One": {String: "2"},
-			"Two": {String: "3"},
+			"One": &A{String: "2"},
+			"Two": &A{String: "3"},
 		},
 	}
 	err := DeepCopyInefficient(dst, src)

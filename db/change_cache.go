@@ -44,8 +44,8 @@ func init() {
 // Core responsibilities:
 //
 // - Receive DCP changes via callbacks
-//   - Perform sequence buffering to ensure documents are received in sequence order
-//   - Propagating DCP changes down to appropriate channel caches
+//    - Perform sequence buffering to ensure documents are received in sequence order
+//    - Propagating DCP changes down to appropriate channel caches
 type changeCache struct {
 	context            *DatabaseContext
 	logsDisabled       bool                    // If true, ignore incoming tap changes

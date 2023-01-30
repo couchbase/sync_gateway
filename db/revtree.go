@@ -36,7 +36,7 @@ func (rev RevInfo) IsRoot() bool {
 	return rev.Parent == ""
 }
 
-// A revision tree maps each revision ID to its RevInfo.
+//  A revision tree maps each revision ID to its RevInfo.
 type RevTree map[string]*RevInfo
 
 // The form in which a RevTree is stored in JSON. For space-efficiency it's stored as an array of
@@ -209,9 +209,7 @@ func (tree RevTree) RepairCycles() (err error) {
 }
 
 // Detect situations like:
-//
-//	node: &{ID:10-684759c169c75629d02b90fe10b56925 Parent:184-a6b3f72a2bc1f988bfb720fec8db3a1d Deleted:fa...
-//
+//     node: &{ID:10-684759c169c75629d02b90fe10b56925 Parent:184-a6b3f72a2bc1f988bfb720fec8db3a1d Deleted:fa...
 // where the parent generation is *higher* than the node generation, which is never a valid scenario.
 // Likewise, detect situations where the parent generation is equal to the node generation, which is also invalid.
 func (node RevInfo) ParentGenGTENodeGen() bool {
@@ -428,17 +426,15 @@ func (tree RevTree) copy() RevTree {
 // There is one exception to that, which is tombstoned (deleted) branches that have been deemed "too old"
 // to keep around.  The criteria for "too old" is as follows:
 //
-//   - Find the generation of the shortest non-tombstoned branch (eg, 100)
-//   - Calculate the tombstone generation threshold based on this formula:
-//     tombstoneGenerationThreshold = genShortestNonTSBranch - maxDepth
-//     Ex: if maxDepth is 20, and tombstoneGenerationThreshold is 100, then tombstoneGenerationThreshold will be 80
-//   - Check each tombstoned branch, and if the leaf node on that branch has a generation older (less) than
-//     tombstoneGenerationThreshold, then remove all nodes on that branch up to the root of the branch.
-//
+// - Find the generation of the shortest non-tombstoned branch (eg, 100)
+// - Calculate the tombstone generation threshold based on this formula:
+//      tombstoneGenerationThreshold = genShortestNonTSBranch - maxDepth
+//      Ex: if maxDepth is 20, and tombstoneGenerationThreshold is 100, then tombstoneGenerationThreshold will be 80
+// - Check each tombstoned branch, and if the leaf node on that branch has a generation older (less) than
+//   tombstoneGenerationThreshold, then remove all nodes on that branch up to the root of the branch.
 // Returns:
-//
-//	pruned: number of revisions pruned
-//	prunedTombstoneBodyKeys: set of tombstones with external body storage that were pruned, as map[revid]bodyKey
+//  pruned: number of revisions pruned
+//  prunedTombstoneBodyKeys: set of tombstones with external body storage that were pruned, as map[revid]bodyKey
 func (tree RevTree) pruneRevisions(maxDepth uint32, keepRev string) (pruned int, prunedTombstoneBodyKeys map[string]string) {
 
 	if len(tree) <= int(maxDepth) {
@@ -541,9 +537,7 @@ func (tree RevTree) computeDepthsAndFindLeaves() (maxDepth uint32, leaves []stri
 }
 
 // Find the minimum generation that has a non-deleted leaf.  For example in this rev tree:
-//
-//	http://cbmobile-bucket.s3.amazonaws.com/diagrams/example-sync-gateway-revtrees/three_branches.png
-//
+//   http://cbmobile-bucket.s3.amazonaws.com/diagrams/example-sync-gateway-revtrees/three_branches.png
 // The minimim generation that has a non-deleted leaf is "7-non-winning unresolved"
 func (tree RevTree) FindShortestNonTombstonedBranch() (generation int, found bool) {
 	return tree.FindShortestNonTombstonedBranchFromLeaves(tree.GetLeaves())
@@ -571,9 +565,7 @@ func (tree RevTree) FindShortestNonTombstonedBranchFromLeaves(leaves []string) (
 }
 
 // Find the generation of the longest deleted branch.  For example in this rev tree:
-//
-//	http://cbmobile-bucket.s3.amazonaws.com/diagrams/example-sync-gateway-revtrees/four_branches_two_tombstoned.png
-//
+//   http://cbmobile-bucket.s3.amazonaws.com/diagrams/example-sync-gateway-revtrees/four_branches_two_tombstoned.png
 // The longest deleted branch has a generation of 10
 func (tree RevTree) FindLongestTombstonedBranch() (generation int) {
 	return tree.FindLongestTombstonedBranchFromLeaves(tree.GetLeaves())

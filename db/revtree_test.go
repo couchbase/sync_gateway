@@ -30,11 +30,9 @@ var testmap = RevTree{"3-three": {ID: "3-three", Parent: "2-two", Body: []byte("
 	"2-two": {ID: "2-two", Parent: "1-one", Channels: base.SetOf("ABC", "CBS")},
 	"1-one": {ID: "1-one", Channels: base.SetOf("ABC")}}
 
-//	/ 3-three
-//
+//               / 3-three
 // 1-one -- 2-two
-//
-//	\ 3-drei
+//               \ 3-drei
 var branchymap = RevTree{"3-three": {ID: "3-three", Parent: "2-two"},
 	"2-two":  {ID: "2-two", Parent: "1-one"},
 	"1-one":  {ID: "1-one"},
@@ -53,11 +51,9 @@ type BranchSpec struct {
 	Digest                  string
 }
 
-//	/ 3-a -- 4-a -- 5-a ...... etc (winning branch)
-//
+//            / 3-a -- 4-a -- 5-a ...... etc (winning branch)
 // 1-a -- 2-a
-//
-//	\ 3-b -- 4-b ... etc (losing branch)
+//            \ 3-b -- 4-b ... etc (losing branch)
 //
 // NOTE: the 1-a -- 2-a unconflicted branch can be longer, depending on value of unconflictedBranchNumRevs
 func getTwoBranchTestRevtree1(unconflictedBranchNumRevs, winningBranchNumRevs, losingBranchNumRevs int, tombstoneLosingBranch bool) RevTree {
@@ -74,13 +70,11 @@ func getTwoBranchTestRevtree1(unconflictedBranchNumRevs, winningBranchNumRevs, l
 
 }
 
-//	/ 3-a -- 4-a -- 5-a ...... etc (winning branch)
-//
+//            / 3-a -- 4-a -- 5-a ...... etc (winning branch)
 // 1-a -- 2-a
-//
-//	\ 3-b -- 4-b ... etc (losing branch #1)
-//	\ 3-c -- 4-c ... etc (losing branch #2)
-//	\ 3-d -- 4-d ... etc (losing branch #n)
+//            \ 3-b -- 4-b ... etc (losing branch #1)
+//            \ 3-c -- 4-c ... etc (losing branch #2)
+//            \ 3-d -- 4-d ... etc (losing branch #n)
 //
 // NOTE: the 1-a -- 2-a unconflicted branch can be longer, depending on value of unconflictedBranchNumRevs
 func getMultiBranchTestRevtree1(unconflictedBranchNumRevs, winningBranchNumRevs int, losingBranches []BranchSpec) RevTree {

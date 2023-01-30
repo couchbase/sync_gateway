@@ -186,10 +186,9 @@ var QueryResync = SGQuery{
 // QueryAllDocs is using the star channel's index, which is indexed by sequence, then ordering the results by doc id.
 // We currently don't have a performance-tuned use of AllDocs today - if needed, should create a custom index indexed by doc id.
 // Note: QueryAllDocs function may appends additional filter and ordering of the form:
-//
-//	AND META(`bucket`).id >= '%s'
-//	AND META(`bucket`).id <= '%s'
-//	ORDER BY META(`bucket`).id
+//    AND META(`bucket`).id >= '%s'
+//    AND META(`bucket`).id <= '%s'
+//    ORDER BY META(`bucket`).id
 var QueryAllDocs = SGQuery{
 	name: QueryTypeAllDocs,
 	statement: fmt.Sprintf(

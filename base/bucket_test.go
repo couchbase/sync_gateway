@@ -74,7 +74,7 @@ func TestGetStatsVbSeqno(t *testing.T) {
 		{
 			name: "1 node",
 			stats: map[string]map[string]string{
-				"host1:11210": {
+				"host1:11210": map[string]string{
 					"vb_0:uuid":       "90",
 					"vb_0:high_seqno": "990",
 					"vb_1:uuid":       "91",
@@ -101,13 +101,13 @@ func TestGetStatsVbSeqno(t *testing.T) {
 		{
 			name: "2 nodes",
 			stats: map[string]map[string]string{
-				"host1:11210": {
+				"host1:11210": map[string]string{
 					"vb_0:uuid":       "90",
 					"vb_0:high_seqno": "990",
 					"vb_1:uuid":       "91",
 					"vb_1:high_seqno": "991",
 				},
-				"host2:11210": {
+				"host2:11210": map[string]string{
 					"vb_2:uuid":       "92",
 					"vb_2:high_seqno": "992",
 					"vb_3:uuid":       "93",
@@ -130,19 +130,19 @@ func TestGetStatsVbSeqno(t *testing.T) {
 		{
 			name: "4 nodes",
 			stats: map[string]map[string]string{
-				"host1:11210": {
+				"host1:11210": map[string]string{
 					"vb_0:uuid":       "90",
 					"vb_0:high_seqno": "990",
 				},
-				"host2:11210": {
+				"host2:11210": map[string]string{
 					"vb_1:uuid":       "91",
 					"vb_1:high_seqno": "991",
 				},
-				"host3:11210": {
+				"host3:11210": map[string]string{
 					"vb_2:uuid":       "92",
 					"vb_2:high_seqno": "992",
 				},
-				"host4:11210": {
+				"host4:11210": map[string]string{
 					"vb_3:uuid":       "93",
 					"vb_3:high_seqno": "993",
 				},
@@ -163,7 +163,7 @@ func TestGetStatsVbSeqno(t *testing.T) {
 		{
 			name: "2 nodes with replica vbuckets",
 			stats: map[string]map[string]string{
-				"host1:11210": {
+				"host1:11210": map[string]string{
 					// active vbuckets
 					"vb_0:uuid":       "90",
 					"vb_0:high_seqno": "990",
@@ -175,7 +175,7 @@ func TestGetStatsVbSeqno(t *testing.T) {
 					"vb_3:uuid":       "93",
 					"vb_3:high_seqno": "993",
 				},
-				"host2:11210": {
+				"host2:11210": map[string]string{
 					// active vbuckets
 					"vb_2:uuid":       "92",
 					"vb_2:high_seqno": "992",
@@ -204,7 +204,7 @@ func TestGetStatsVbSeqno(t *testing.T) {
 		{
 			name: "2 nodes with lagging replica vbuckets",
 			stats: map[string]map[string]string{
-				"host1:11210": {
+				"host1:11210": map[string]string{
 					// active vbuckets
 					"vb_0:uuid":       "90",
 					"vb_0:high_seqno": "990",
@@ -216,7 +216,7 @@ func TestGetStatsVbSeqno(t *testing.T) {
 					"vb_3:uuid":       "93",
 					"vb_3:high_seqno": "983",
 				},
-				"host2:11210": {
+				"host2:11210": map[string]string{
 					// active vbuckets
 					"vb_2:uuid":       "92",
 					"vb_2:high_seqno": "992",

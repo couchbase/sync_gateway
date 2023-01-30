@@ -387,7 +387,7 @@ func TestRebalanceReplications(t *testing.T) {
 			cluster.RebalanceReplications()
 
 			// Verify post-rebalance distribution
-			for host := range cluster.Nodes {
+			for host, _ := range cluster.Nodes {
 				nodeReplications := cluster.GetReplicationIDsForNode(host)
 				assert.True(t, len(nodeReplications) >= testCase.expectedMinPerNode)
 				assert.True(t, len(nodeReplications) <= testCase.expectedMaxPerNode)

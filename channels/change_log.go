@@ -97,7 +97,7 @@ func (channelMap ChannelMap) ChannelsRemovedAtSequence(seq uint64) (ChannelMap, 
 func (channelMap ChannelMap) KeySet() []string {
 	result := make([]string, len(channelMap))
 	i := 0
-	for key := range channelMap {
+	for key, _ := range channelMap {
 		result[i] = key
 		i++
 	}

@@ -4647,7 +4647,7 @@ func TestDefaultConflictResolverWithTombstoneRemote(t *testing.T) {
 // TestLocalWinsConflictResolution:
 //   - Starts 2 RestTesters, one active, and one passive.
 //   - Validates document metadata (deleted, attachments) are preserved during LocalWins conflict
-//     resolution, when local rev is rewritten as child of remote
+//    resolution, when local rev is rewritten as child of remote
 func TestLocalWinsConflictResolution(t *testing.T) {
 
 	if !base.IsEnterpriseEdition() {

@@ -91,42 +91,34 @@ func (r *RepairBucket) InitFrom(params RepairBucketParams) *RepairBucket {
 }
 
 /*
+
 This is how the view is iterated:
 
 ┌ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─
-
-	┌ ─ ─ ─│─ ─ ─ ─ ─ ─ ─ ─
-
+                ┌ ─ ─ ─│─ ─ ─ ─ ─ ─ ─ ─
 │                               ┌ ─ ─ ─│─ ─ ─ ─ ─ ─ ─ ┐
-
-	│      │                ┌ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ┐
-
+                │      │                ┌ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ┐
 │┌────┐  ┌────┐  ┌────┐  ┌────┐ │┌────┐│ ┌────┐       │
-
-	│doc1│  │doc2│ ││doc3││ │doc4│  │doc5│ ││doc6│               │
-
+ │doc1│  │doc2│ ││doc3││ │doc4│  │doc5│ ││doc6│               │
 │└────┘  └────┘  └────┘  └────┘ │└────┘│ └────┘       │
-
-	│      │                │                     │
-
+                │      │                │                     │
 └ ─ ─ ─ ─ ─ ▲ ─ ─ ─ ─ ─         │      │              │
-
-	        │   └ ─ ─ ─ ─ ─ ▲ ─ ─ ─ ─ ─ │                     │
-	        │               │   └ ─ ─ ─ ─ ─▲─ ─ ─ ─ ─ ┘
-	  StartKey: ""          │           └ ─│─ ─ ─ ─ ─ ─ ─ ─ ─ ┘
-	    Limit: 3            │              │       ▲
-	NumProcessed: 3         │              │       │
-	                StartKey: "doc3"       │       │
-	                    Limit: 3           │       │
-	                NumProcessed: 2        │       └────────┐
-	                                       │                │
-	                               StartKey: "doc5"         │
-	                                   Limit: 3             │
-	                               NumProcessed: 1          │
-	                                                        │
-	                                                StartKey: "doc6"
-	                                                    Limit: 3
-	                                                NumProcessed: 0
+            │   └ ─ ─ ─ ─ ─ ▲ ─ ─ ─ ─ ─ │                     │
+            │               │   └ ─ ─ ─ ─ ─▲─ ─ ─ ─ ─ ┘
+      StartKey: ""          │           └ ─│─ ─ ─ ─ ─ ─ ─ ─ ─ ┘
+        Limit: 3            │              │       ▲
+    NumProcessed: 3         │              │       │
+                    StartKey: "doc3"       │       │
+                        Limit: 3           │       │
+                    NumProcessed: 2        │       └────────┐
+                                           │                │
+                                   StartKey: "doc5"         │
+                                       Limit: 3             │
+                                   NumProcessed: 1          │
+                                                            │
+                                                    StartKey: "doc6"
+                                                        Limit: 3
+                                                    NumProcessed: 0
 
 * It starts with an empty start key
 * For the next page, it uses the last key processed as the new start key

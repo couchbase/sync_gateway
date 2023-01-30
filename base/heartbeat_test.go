@@ -35,7 +35,7 @@ func NewTestHeartbeatNodeStore() *TestHeartbeatNodeStore {
 func (ns *TestHeartbeatNodeStore) GetNodes() []string {
 	nodeSet := make([]string, 0)
 	ns.lock.Lock()
-	for uuid := range ns.nodes {
+	for uuid, _ := range ns.nodes {
 		nodeSet = append(nodeSet, uuid)
 	}
 	ns.lock.Unlock()

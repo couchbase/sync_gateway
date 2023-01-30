@@ -336,12 +336,11 @@ func (h *handler) handleDumpChannel() error {
 // where the boolean ?revs parameter adds a revision history to each doc
 // and the boolean ?attachments parameter includes attachment bodies.
 // The body of the request is JSON and looks like:
-//
-//	{
-//	  "docs": [
-//			{"id": "docid", "rev": "revid", "atts_since": [12,...]}, ...
-//		 ]
-//	}
+// {
+//   "docs": [
+//		{"id": "docid", "rev": "revid", "atts_since": [12,...]}, ...
+// 	 ]
+// }
 func (h *handler) handleBulkGet() error {
 
 	includeAttachments := h.getBoolQuery("attachments")

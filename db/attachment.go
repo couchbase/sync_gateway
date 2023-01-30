@@ -261,7 +261,7 @@ func ProveAttachment(attachmentData, nonce []byte) (proof string) {
 	return proof
 }
 
-// ////// HELPERS:
+//////// HELPERS:
 // Returns _attachments property from body, when found.  Checks for either map[string]interface{} (unmarshalled with body),
 // or AttachmentsMeta (written by body by SG)
 func GetBodyAttachments(body Body) AttachmentsMeta {

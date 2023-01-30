@@ -40,16 +40,13 @@ var _ N1QLBucket = &CouchbaseBucketGoCB{}
 // Query accepts a parameterized statement,  optional list of params, and an optional flag to force adhoc query execution.
 // Params specified using the $param notation in the statement are intended to be used w/ N1QL prepared statements, and will be
 // passed through as params to n1ql.  e.g.:
-//
-//	SELECT _sync.sequence FROM $_bucket WHERE _sync.sequence > $minSeq
-//
+//   SELECT _sync.sequence FROM $_bucket WHERE _sync.sequence > $minSeq
 // https://developer.couchbase.com/documentation/server/current/sdk/go/n1ql-queries-with-sdk.html for additional details.
 // Will additionally replace all instances of BucketQueryToken($_bucket) in the statement
 // with the bucket name.  'bucket' should not be included in params.
 //
 // If adhoc=true, prepared statement handling will be disabled.  Should only be set to true for queries that can't be prepared, e.g.:
-//
-//	SELECT _sync.channels.ABC.seq from $bucket
+//  SELECT _sync.channels.ABC.seq from $bucket
 //
 // Query retries on Indexer Errors, as these are normally transient
 func (bucket *CouchbaseBucketGoCB) Query(statement string, params interface{}, consistency gocb.ConsistencyMode, adhoc bool) (results gocb.QueryResults, err error) {
@@ -105,13 +102,10 @@ func (bucket *CouchbaseBucketGoCB) ExplainQuery(statement string, params interfa
 }
 
 // CreateIndex issues a CREATE INDEX query in the current bucket, using the form:
-//
-//	CREATE INDEX indexName ON bucket.Name(expression) WHERE filterExpression WITH options
-//
+//   CREATE INDEX indexName ON bucket.Name(expression) WHERE filterExpression WITH options
 // Sample usage with resulting statement:
-//
-//	  CreateIndex("myIndex", "field1, field2, nested.field", "field1 > 0", N1qlIndexOptions{numReplica:1})
-//	CREATE INDEX myIndex on myBucket(field1, field2, nested.field) WHERE field1 > 0 WITH {"numReplica":1}
+//     CreateIndex("myIndex", "field1, field2, nested.field", "field1 > 0", N1qlIndexOptions{numReplica:1})
+//   CREATE INDEX myIndex on myBucket(field1, field2, nested.field) WHERE field1 > 0 WITH {"numReplica":1}
 func (bucket *CouchbaseBucketGoCB) CreateIndex(indexName string, expression string, filterExpression string, options *N1qlIndexOptions) error {
 
 	createStatement := fmt.Sprintf("CREATE INDEX `%s` ON `%s`(%s)", indexName, bucket.GetName(), expression)
@@ -132,8 +126,7 @@ func (bucket *CouchbaseBucketGoCB) CreateIndex(indexName string, expression stri
 }
 
 // BuildIndexes executes a BUILD INDEX statement in the current bucket, using the form:
-//
-//	BUILD INDEX ON `bucket.Name`(`index1`, `index2`, ...)
+//   BUILD INDEX ON `bucket.Name`(`index1`, `index2`, ...)
 func (bucket *CouchbaseBucketGoCB) buildIndexes(indexNames []string) error {
 
 	if len(indexNames) == 0 {
@@ -374,9 +367,7 @@ func (bucket *CouchbaseBucketGoCB) DropIndex(indexName string) error {
 }
 
 // Index not found errors (returned by DropIndex) don't have a specific N1QL error code - they are of the form:
-//
-//	[5000] GSI index testIndex_not_found not found.
-//
+//   [5000] GSI index testIndex_not_found not found.
 // Stuck with doing a string compare to differentiate between 'not found' and other errors
 func IsIndexNotFoundError(err error) bool {
 	return strings.Contains(err.Error(), "not found")
@@ -386,8 +377,7 @@ func IsIndexNotFoundError(err error) bool {
 // error:[5000] GSI CreateIndex() - cause: Encountered transient error.  Index creation will be retried in background.  Error: Index testIndex_value will retry building in the background for reason: Bucket test_data_bucket In Recovery.
 // error:[5000] GSI Drop() - cause: Fail to drop index on some indexer nodes.  Error=Encountered error when dropping index: Indexer In Recovery. Drop index will be retried in background.
 // error:[5000] BuildIndexes - cause: Build index fails.  %vIndex testIndexDeferred will retry building in the background for reason: Build Already In Progress. Bucket test_data_bucket.
-//
-//	https://issues.couchbase.com/browse/MB-19358 is filed to request improved indexer error codes for these scenarios (and others)
+//  https://issues.couchbase.com/browse/MB-19358 is filed to request improved indexer error codes for these scenarios (and others)
 func IsIndexerRetryIndexError(err error) bool {
 	if err == nil {
 		return false

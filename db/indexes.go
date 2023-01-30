@@ -393,8 +393,8 @@ func isIndexerError(err error) bool {
 }
 
 // Iterates over the index set, removing obsolete indexes:
-//   - indexes based on the inverse value of xattrs being used by the database
-//   - indexes associated with previous versions of the index, for either xattrs=true or xattrs=false
+//  - indexes based on the inverse value of xattrs being used by the database
+//  - indexes associated with previous versions of the index, for either xattrs=true or xattrs=false
 func removeObsoleteIndexes(bucket base.N1QLBucket, previewOnly bool, useXattrs bool, useViews bool, indexMap map[SGIndexType]SGIndex) (removedIndexes []string, err error) {
 	removedIndexes = make([]string, 0)
 

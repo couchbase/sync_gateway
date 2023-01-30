@@ -937,18 +937,18 @@ func TestLowSequenceHandlingWithAccessGrant(t *testing.T) {
 // Tests channel cache backfill with slow query, validates that a request that is terminated while
 // waiting for the view lock doesn't trigger a view query.  Runs multiple goroutines, using a channel
 // and two waitgroups to ensure expected ordering of events, as follows
-//  1. Define a PostQueryCallback (via leaky bucket) that does two things:
-//     - closes a notification channel (queryBlocked) to indicate that the initial query is blocking
-//     - blocks via a WaitGroup (queryWg)
-//  2. Start a goroutine to issue a changes request
-//     - when view executes, will trigger callback handling above
-//  3. Start a second goroutine to issue another changes request.
-//     - will block waiting for queryLock, which increments StatKeyChannelCachePendingQueries stat
-//  4. Wait until StatKeyChannelCachePendingQueries is incremented
-//  5. Terminate second changes request
-//  6. Unblock the initial view query
-//     - releases the view lock, second changes request is unblocked
-//     - since it's been terminated, should return error before executing a second view query
+//    1. Define a PostQueryCallback (via leaky bucket) that does two things:
+//        - closes a notification channel (queryBlocked) to indicate that the initial query is blocking
+//        - blocks via a WaitGroup (queryWg)
+//    2. Start a goroutine to issue a changes request
+//        - when view executes, will trigger callback handling above
+//    3. Start a second goroutine to issue another changes request.
+//        - will block waiting for queryLock, which increments StatKeyChannelCachePendingQueries stat
+//    4. Wait until StatKeyChannelCachePendingQueries is incremented
+//    5. Terminate second changes request
+//    6. Unblock the initial view query
+//       - releases the view lock, second changes request is unblocked
+//       - since it's been terminated, should return error before executing a second view query
 func TestChannelQueryCancellation(t *testing.T) {
 
 	if !base.UnitTestUrlIsWalrus() {
@@ -1140,22 +1140,19 @@ func TestLowSequenceHandlingNoDuplicates(t *testing.T) {
 // Test race condition causing skipped sequences in changes feed.  Channel feeds are processed sequentially
 // in the main changes.go iteration loop, without a lock on the underlying channel caches.  The following
 // sequence is possible while running a changes feed for channels "A", "B":
-//  1. Sequence 100, Channel A arrives, and triggers changes loop iteration
-//  2. Changes loop calls changes.changesFeed(A) - gets 100
-//  3. Sequence 101, Channel A arrives
-//  4. Sequence 102, Channel B arrives
-//  5. Changes loop calls changes.changesFeed(B) - gets 102
-//  6. Changes sends 100, 102, and sets since=102
-//
+//    1. Sequence 100, Channel A arrives, and triggers changes loop iteration
+//    2. Changes loop calls changes.changesFeed(A) - gets 100
+//    3. Sequence 101, Channel A arrives
+//    4. Sequence 102, Channel B arrives
+//    5. Changes loop calls changes.changesFeed(B) - gets 102
+//    6. Changes sends 100, 102, and sets since=102
 // Here 101 is skipped, and never gets sent.  There are a number of ways a sufficient delay between #2 and #5
 // could be introduced in a real-world scenario
-//   - there are channels C,D,E,F,G with large caches that get processed between A and B
-//
+//     - there are channels C,D,E,F,G with large caches that get processed between A and B
 // To test, uncomment the following
 // lines at the start of changesFeed() in changes.go to simulate slow processing:
-//
-//	base.Infof(base.KeyChanges, "Simulate slow processing time for channel %s - sleeping for 100 ms", channel)
-//	time.Sleep(100 * time.Millisecond)
+//	    base.Infof(base.KeyChanges, "Simulate slow processing time for channel %s - sleeping for 100 ms", channel)
+//	    time.Sleep(100 * time.Millisecond)
 func TestChannelRace(t *testing.T) {
 	// TODO: Test current fails intermittently on concurrent access to var changes.
 	// Disabling for now - should be refactored.

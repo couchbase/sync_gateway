@@ -1095,8 +1095,8 @@ func TestDBGetConfigNames(t *testing.T) {
 
 	rt.DatabaseConfig = &DbConfig{
 		Users: map[string]*db.PrincipalConfig{
-			"alice": {Password: &p},
-			"bob":   {Password: &p},
+			"alice": &db.PrincipalConfig{Password: &p},
+			"bob":   &db.PrincipalConfig{Password: &p},
 		},
 	}
 

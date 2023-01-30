@@ -348,7 +348,7 @@ func TestBlipOneShotChangesSubscription(t *testing.T) {
 	cacheWaiter := bt.DatabaseContext().NewDCPCachingCountWaiter(t)
 	cacheWaiter.Add(len(docIdsReceived))
 	// Add documents
-	for docID := range docIdsReceived {
+	for docID, _ := range docIdsReceived {
 		//// Add a change: Send an unsolicited doc revision in a rev request
 		_, _, revResponse, err := bt.SendRev(
 			docID,
@@ -669,37 +669,37 @@ func TestProposedChangesIncludeConflictingRev(t *testing.T) {
 	}
 
 	proposeChangesCases := []proposeChangesCase{
-		{
+		proposeChangesCase{
 			key:           "conflictingInsert",
 			revID:         "1-abc",
 			parentRevID:   "",
 			expectedValue: map[string]interface{}{"status": float64(db.ProposedRev_Conflict), "rev": conflictingInsertRev},
 		},
-		{
+		proposeChangesCase{
 			key:           "newInsert",
 			revID:         "1-abc",
 			parentRevID:   "",
 			expectedValue: float64(db.ProposedRev_OK),
 		},
-		{
+		proposeChangesCase{
 			key:           "matchingInsert",
 			revID:         matchingInsertRev,
 			parentRevID:   "",
 			expectedValue: float64(db.ProposedRev_Exists),
 		},
-		{
+		proposeChangesCase{
 			key:           "conflictingUpdate",
 			revID:         "2-abc",
 			parentRevID:   conflictingUpdateRev1,
 			expectedValue: map[string]interface{}{"status": float64(db.ProposedRev_Conflict), "rev": conflictingUpdateRev2},
 		},
-		{
+		proposeChangesCase{
 			key:           "newUpdate",
 			revID:         "2-abc",
 			parentRevID:   newUpdateRev1,
 			expectedValue: float64(db.ProposedRev_OK),
 		},
-		{
+		proposeChangesCase{
 			key:           "matchingUpdate",
 			revID:         matchingUpdateRev2,
 			parentRevID:   matchingUpdateRev1,
