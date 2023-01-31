@@ -553,7 +553,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 
 			// base.InfofCtx(ctx, base.KeyAll, "TESTING: n1qlStore %+v, config %+v, sc.Config %v", n1qlStore, config, false, sc.Config)
 
-			err = db.WaitForIndexes(n1qlStore, config.UseXattrs(), false, sc.Config.IsServerless())
+			err = db.WaitForIndexes(n1qlStore, deferrdeferredIndexes, false)
 			if err != nil {
 				base.ErrorfCtx(ctx, "error waiting for indexes for datastore %s error %v", n1qlStore.GetName(), err)
 				buildError = err

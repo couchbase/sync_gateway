@@ -366,7 +366,7 @@ func CreateAndBuildIndex(n1QLStore base.N1QLStore, xattrs bool, failFast bool, i
 	if err != nil {
 		return err
 	}
-	err = WaitForIndexes(n1QLStore, base.TestUseXattrs(), false, isServerless)
+	err = WaitForIndexes(n1QLStore, deferredIndexes, false)
 	if err != nil {
 		return err
 	}
