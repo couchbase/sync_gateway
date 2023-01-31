@@ -51,13 +51,6 @@ func TestCollectionsPutDocInKeyspace(t *testing.T) {
 		keyspace       string
 		expectedStatus int
 	}{
-		// if a single scope and collection is defined, use that implicitly
-		/*{
-			name:           "implicit scope and collection",
-			keyspace:       "db",
-			expectedStatus: http.StatusNotFound,
-		},
-		*/
 		{
 			name:           "fully qualified",
 			keyspace:       rt.GetSingleKeyspace(),
