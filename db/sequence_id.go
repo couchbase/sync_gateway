@@ -39,9 +39,11 @@ var MaxSequenceID = SequenceID{
 }
 
 // Format sequence ID to send to clients.  Sequence IDs can be in one of the following formats:
-//   Seq                    - simple sequence
-//   TriggeredBy:Seq        - when TriggeredBy is non-zero, LowSeq is zero
-//   LowSeq:TriggeredBy:Seq - when LowSeq is non-zero.
+//
+//	Seq                    - simple sequence
+//	TriggeredBy:Seq        - when TriggeredBy is non-zero, LowSeq is zero
+//	LowSeq:TriggeredBy:Seq - when LowSeq is non-zero.
+//
 // When LowSeq is non-zero but TriggeredBy is zero, will appear as LowSeq::Seq.
 // When LowSeq is non-zero but is greater than s.Seq (occurs when sending previously skipped sequences), ignore LowSeq.
 func (s SequenceID) String() string {

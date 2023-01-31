@@ -407,11 +407,13 @@ func SetUpGlobalTestLogging(m *testing.M) (teardownFn func()) {
 // E.g. KeyCache,KeyDCP,KeySync
 //
 // Usage:
-//     teardownFn := SetUpTestLogging(LevelDebug, KeyCache,KeyDCP,KeySync)
-//     defer teardownFn()
+//
+//	teardownFn := SetUpTestLogging(LevelDebug, KeyCache,KeyDCP,KeySync)
+//	defer teardownFn()
 //
 // Shorthand style:
-//     defer SetUpTestLogging(LevelDebug, KeyCache,KeyDCP,KeySync)()
+//
+//	defer SetUpTestLogging(LevelDebug, KeyCache,KeyDCP,KeySync)()
 func SetUpTestLogging(logLevel LogLevel, logKeys ...LogKey) (teardownFn func()) {
 	caller := GetCallersName(1, false)
 	Infof(KeyAll, "%s: Setup logging: level: %v - keys: %v", caller, logLevel, logKeys)

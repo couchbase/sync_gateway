@@ -54,7 +54,7 @@ func (ac *ActiveChannels) UpdateChanged(changedChannels ChangedKeys) {
 // Active channel counts track channels being replicated by an active changes request.
 func (ac *ActiveChannels) IncrChannels(chans TimedSet) {
 	ac.lock.Lock()
-	for channelName, _ := range chans {
+	for channelName := range chans {
 		ac._incr(channelName)
 	}
 	ac.lock.Unlock()
@@ -62,7 +62,7 @@ func (ac *ActiveChannels) IncrChannels(chans TimedSet) {
 
 func (ac *ActiveChannels) DecrChannels(chans TimedSet) {
 	ac.lock.Lock()
-	for channelName, _ := range chans {
+	for channelName := range chans {
 		ac._decr(channelName)
 	}
 	ac.lock.Unlock()

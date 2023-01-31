@@ -1161,7 +1161,7 @@ func TestExpandEnv(t *testing.T) {
 			require.Equal(t, test.expectedConfig, actualConfig)
 
 			// Unset environment variables.
-			for k, _ := range test.varsEnv {
+			for k := range test.varsEnv {
 				err := os.Unsetenv(k)
 				require.NoError(t, err, "Error removing environment variable %q", k)
 				value, ok := os.LookupEnv(k)

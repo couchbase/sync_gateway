@@ -35,7 +35,7 @@ import (
 	"gopkg.in/square/go-jose.v2/jwt"
 )
 
-//  A forceError is being used when you want to force an error of type 'forceErrorType'
+// A forceError is being used when you want to force an error of type 'forceErrorType'
 type forceError struct {
 	errorType            forceErrorType // An error type to be forced
 	expectedErrorCode    int            // Expected HTTP response code

@@ -1006,7 +1006,7 @@ func (doc *Document) IsChannelRemoval(revID string) (bodyBytes []byte, history R
 	activeChannels := make(base.Set)
 	// Add active channels to the channel set if the the revision is available in the revision tree.
 	if revInfo, ok := doc.History[revID]; ok {
-		for channel, _ := range revInfo.Channels {
+		for channel := range revInfo.Channels {
 			activeChannels[channel] = struct{}{}
 		}
 	}

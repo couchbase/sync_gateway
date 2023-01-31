@@ -1,3 +1,4 @@
+//go:build !windows
 // +build !windows
 
 /*
@@ -18,12 +19,12 @@ import "syscall"
 //
 // Background information:
 //
-// - SG docs
-//   http://developer.couchbase.com/documentation/mobile/1.1.0/develop/guides/sync-gateway/os-level-tuning/max-file-descriptors/index.html
-// - Related SG issues
-//   https://github.com/couchbase/sync_gateway/issues/1083
-// - Hard limit vs Soft limit
-//   http://unix.stackexchange.com/questions/29577/ulimit-difference-between-hard-and-soft-limits
+//   - SG docs
+//     http://developer.couchbase.com/documentation/mobile/1.1.0/develop/guides/sync-gateway/os-level-tuning/max-file-descriptors/index.html
+//   - Related SG issues
+//     https://github.com/couchbase/sync_gateway/issues/1083
+//   - Hard limit vs Soft limit
+//     http://unix.stackexchange.com/questions/29577/ulimit-difference-between-hard-and-soft-limits
 func SetMaxFileDescriptors(requestedSoftFDLimit uint64) (uint64, error) {
 
 	var limits syscall.Rlimit
@@ -67,11 +68,11 @@ func SetMaxFileDescriptors(requestedSoftFDLimit uint64) (uint64, error) {
 //
 // Rules:
 //
-// 1. Only return a value that is HIGHER than the existing soft limit, since
-//    it is assumed to be user error to pass a config value that imposes a
-//    a lower limit than the system limit
-// 2. Only return a value that is LESS-THAN-OR-EQUAL to the existing hard limit
-//    since trying to set something higher than the hard limit will fail
+//  1. Only return a value that is HIGHER than the existing soft limit, since
+//     it is assumed to be user error to pass a config value that imposes a
+//     a lower limit than the system limit
+//  2. Only return a value that is LESS-THAN-OR-EQUAL to the existing hard limit
+//     since trying to set something higher than the hard limit will fail
 func getSoftFDLimit(requestedSoftFDLimit uint64, limit syscall.Rlimit) (requiresUpdate bool, recommendedSoftFDLimit uint64) {
 
 	currentSoftFdLimit := limit.Cur

@@ -4733,7 +4733,7 @@ func TestDefaultConflictResolverWithTombstoneRemote(t *testing.T) {
 // TestLocalWinsConflictResolution:
 //   - Starts 2 RestTesters, one active, and one passive.
 //   - Validates document metadata (deleted, attachments) are preserved during LocalWins conflict
-//    resolution, when local rev is rewritten as child of remote
+//     resolution, when local rev is rewritten as child of remote
 func TestLocalWinsConflictResolution(t *testing.T) {
 
 	if !base.IsEnterpriseEdition() {
@@ -5336,11 +5336,11 @@ func TestReplicatorRevocationsMultipleAlternateAccess(t *testing.T) {
 
 	revocationTester.addRole("user", "foo")
 
-	_ = rt2.createDocReturnRev(t, "docA", "", map[string][]string{"channels": []string{"A"}})
-	_ = rt2.createDocReturnRev(t, "docAB", "", map[string][]string{"channels": []string{"A", "B"}})
-	_ = rt2.createDocReturnRev(t, "docB", "", map[string][]string{"channels": []string{"B"}})
-	_ = rt2.createDocReturnRev(t, "docABC", "", map[string][]string{"channels": []string{"A", "B", "C"}})
-	_ = rt2.createDocReturnRev(t, "docC", "", map[string][]string{"channels": []string{"C"}})
+	_ = rt2.createDocReturnRev(t, "docA", "", map[string][]string{"channels": {"A"}})
+	_ = rt2.createDocReturnRev(t, "docAB", "", map[string][]string{"channels": {"A", "B"}})
+	_ = rt2.createDocReturnRev(t, "docB", "", map[string][]string{"channels": {"B"}})
+	_ = rt2.createDocReturnRev(t, "docABC", "", map[string][]string{"channels": {"A", "B", "C"}})
+	_ = rt2.createDocReturnRev(t, "docC", "", map[string][]string{"channels": {"C"}})
 
 	// Wait for docs to turn up on local / rt1
 	changesResults, err := rt1.WaitForChanges(5, "/db/_changes?since=0", "", true)
@@ -5492,11 +5492,11 @@ func TestReplicatorRevocationsWithTombstoneResurrection(t *testing.T) {
 		ReplicationStatsMap: base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false).DBReplicatorStats(t.Name()),
 	})
 
-	docARev := rt2.createDocReturnRev(t, "docA", "", map[string][]string{"channels": []string{"A"}})
-	docA1Rev := rt2.createDocReturnRev(t, "docA1", "", map[string][]string{"channels": []string{"A"}})
-	_ = rt2.createDocReturnRev(t, "docA2", "", map[string][]string{"channels": []string{"A"}})
+	docARev := rt2.createDocReturnRev(t, "docA", "", map[string][]string{"channels": {"A"}})
+	docA1Rev := rt2.createDocReturnRev(t, "docA1", "", map[string][]string{"channels": {"A"}})
+	_ = rt2.createDocReturnRev(t, "docA2", "", map[string][]string{"channels": {"A"}})
 
-	_ = rt2.createDocReturnRev(t, "docB", "", map[string][]string{"channels": []string{"B"}})
+	_ = rt2.createDocReturnRev(t, "docB", "", map[string][]string{"channels": {"B"}})
 
 	require.NoError(t, ar.Start())
 
@@ -5578,9 +5578,9 @@ func TestReplicatorRevocationsFromZero(t *testing.T) {
 
 	ar := db.NewActiveReplicator(activeReplCfg)
 
-	_ = rt2.createDocReturnRev(t, "docA", "", map[string][]string{"channels": []string{"A"}})
-	_ = rt2.createDocReturnRev(t, "docA1", "", map[string][]string{"channels": []string{"A"}})
-	_ = rt2.createDocReturnRev(t, "docA2", "", map[string][]string{"channels": []string{"A"}})
+	_ = rt2.createDocReturnRev(t, "docA", "", map[string][]string{"channels": {"A"}})
+	_ = rt2.createDocReturnRev(t, "docA1", "", map[string][]string{"channels": {"A"}})
+	_ = rt2.createDocReturnRev(t, "docA2", "", map[string][]string{"channels": {"A"}})
 
 	require.NoError(t, ar.Start())
 
@@ -5679,11 +5679,11 @@ func TestReplicatorSwitchPurgeNoReset(t *testing.T) {
 	})
 
 	for i := 0; i < 10; i++ {
-		_ = rt2.createDocReturnRev(t, fmt.Sprintf("docA%d", i), "", map[string][]string{"channels": []string{"A"}})
+		_ = rt2.createDocReturnRev(t, fmt.Sprintf("docA%d", i), "", map[string][]string{"channels": {"A"}})
 	}
 
 	for i := 0; i < 7; i++ {
-		_ = rt2.createDocReturnRev(t, fmt.Sprintf("docB%d", i), "", map[string][]string{"channels": []string{"B"}})
+		_ = rt2.createDocReturnRev(t, fmt.Sprintf("docB%d", i), "", map[string][]string{"channels": {"B"}})
 	}
 
 	err = rt2.WaitForPendingChanges()
@@ -5706,7 +5706,7 @@ func TestReplicatorSwitchPurgeNoReset(t *testing.T) {
 	// Add another few docs to 'bump' rt1's seq no. Otherwise it'll end up revoking next time as the above user PUT is
 	// not processed by the rt1 receiver.
 	for i := 7; i < 15; i++ {
-		_ = rt2.createDocReturnRev(t, fmt.Sprintf("docB%d", i), "", map[string][]string{"channels": []string{"B"}})
+		_ = rt2.createDocReturnRev(t, fmt.Sprintf("docB%d", i), "", map[string][]string{"channels": {"B"}})
 	}
 
 	err = rt2.WaitForPendingChanges()
@@ -5735,7 +5735,7 @@ func TestReplicatorSwitchPurgeNoReset(t *testing.T) {
 	})
 
 	// Send a doc to act as a 'marker' so we know when replication has completed
-	_ = rt2.createDocReturnRev(t, "docMarker", "", map[string][]string{"channels": []string{"B"}})
+	_ = rt2.createDocReturnRev(t, "docMarker", "", map[string][]string{"channels": {"B"}})
 
 	require.NoError(t, ar.Start())
 	rt1.waitForReplicationStatus(ar.ID, db.ReplicationStateRunning)

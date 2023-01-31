@@ -44,12 +44,13 @@ var _ gocb.Logger = GoCBLogger{}
 
 // Log wraps the levelled SG logs for gocb to use.
 // Log levels are mapped as follows:
-//   Error  -> SG Error
-//   Warn   -> SG Warn
-//   Info   -> SG Debug
-//   Debug  -> SG Trace
-//   Trace  -> SG Trace
-//   Others -> no-op
+//
+//	Error  -> SG Error
+//	Warn   -> SG Warn
+//	Info   -> SG Debug
+//	Debug  -> SG Trace
+//	Trace  -> SG Trace
+//	Others -> no-op
 func (GoCBLogger) Log(level gocb.LogLevel, offset int, format string, v ...interface{}) error {
 	switch level {
 	case gocb.LogError:
@@ -84,9 +85,11 @@ func (GoCBCoreV7Logger) Log(level gocbcorev7.LogLevel, offset int, format string
 
 // **************************************************************************
 // Implementation of callback for github.com/couchbase/clog.SetLoggerCallback
-//    Our main library that uses clog is cbgt, so all logging goes to KeyDCP.
-//    Note that although sg-replicate uses clog's log levels, sgreplicateLogFn
-//    bypasses clog logging, and so won't end up in this callback.
+//
+//	Our main library that uses clog is cbgt, so all logging goes to KeyDCP.
+//	Note that although sg-replicate uses clog's log levels, sgreplicateLogFn
+//	bypasses clog logging, and so won't end up in this callback.
+//
 // **************************************************************************
 func ClogCallback(level, format string, v ...interface{}) string {
 	switch level {

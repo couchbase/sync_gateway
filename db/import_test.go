@@ -102,7 +102,6 @@ func TestMigrateMetadata(t *testing.T) {
 //
 // - Same as scenario 1, except that in step 1 it writes a doc with sync metadata, so that it excercises the migration code
 // - Temporarily set expectedGeneration:2, see https://github.com/couchbase/sync_gateway/issues/3804
-//
 func TestImportWithStaleBucketDocCorrectExpiry(t *testing.T) {
 
 	if !base.TestUseXattrs() {

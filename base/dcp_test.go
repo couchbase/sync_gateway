@@ -448,9 +448,10 @@ func TestConcurrentCBGTIndexCreation(t *testing.T) {
 }
 
 // Compare Atoi vs map lookup for partition conversion
-//    BenchmarkPartitionToVbNo/map-16         	100000000	        10.4 ns/op
-//    BenchmarkPartitionToVbNo/atoi-16        	500000000	         3.85 ns/op
-//    BenchmarkPartitionToVbNo/parseUint-16   	300000000	         5.04 ns/op
+//
+//	BenchmarkPartitionToVbNo/map-16         	100000000	        10.4 ns/op
+//	BenchmarkPartitionToVbNo/atoi-16        	500000000	         3.85 ns/op
+//	BenchmarkPartitionToVbNo/parseUint-16   	300000000	         5.04 ns/op
 func BenchmarkPartitionToVbNo(b *testing.B) {
 
 	//Initialize lookup map

@@ -335,10 +335,11 @@ func DeleteXattrs(store SubdocXattrStore, k string, xattrKeys ...string) error {
 //   - DocExists but NoXattr
 //   - XattrExists but NoDoc
 //   - NoDoc and NoXattr
+//
 // In all cases, the end state will be NoDoc and NoXattr.
 // Expected errors:
-//    - Temporary server overloaded errors, in which case the caller should retry
-//    - If the doc is in the the NoDoc and NoXattr state, it will return a KeyNotFound error
+//   - Temporary server overloaded errors, in which case the caller should retry
+//   - If the doc is in the the NoDoc and NoXattr state, it will return a KeyNotFound error
 func DeleteWithXattr(store KvXattrStore, k string, xattrKey string) error {
 	// Delegate to internal method that can take a testing-related callback
 	return deleteWithXattrInternal(store, k, xattrKey, nil)
