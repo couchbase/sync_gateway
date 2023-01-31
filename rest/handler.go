@@ -452,7 +452,7 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 
 			if keyspaceCollection == nil {
 				if len(scope.Collections) > 1 {
-					return base.HTTPErrorf(http.StatusNotFound, "keyspace %q not found", ks)
+					return ksNotFound
 				}
 				keyspaceCollection = base.StringPtr(base.DefaultCollection)
 			}
