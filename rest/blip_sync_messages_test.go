@@ -77,7 +77,7 @@ func TestSubChangesSince(t *testing.T) {
 	rq := blip.NewRequest()
 	rq.Properties["since"] = `"1"`
 
-	subChangesParams, err := db.NewSubChangesParams(context.TODO(), rq, db.SequenceID{}, nil, db.ParseJSONSequenceID())
+	subChangesParams, err := db.NewSubChangesParams(context.TODO(), rq, db.SequenceID{}, db.ParseJSONSequenceID)
 	require.NoError(t, err)
 
 	seqID := subChangesParams.Since()

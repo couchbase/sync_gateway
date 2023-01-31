@@ -181,8 +181,8 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 
 	logCtx := bh.loggingCtx
 
-	defaultSince := CreateZeroSinceValue()
-	subChangesParams, err := NewSubChangesParams(bh.loggingCtx, rq, defaultSince, latestSeq, ParseJSONSequenceID)
+	defaultSince := bh.db.CreateZeroSinceValue()
+	subChangesParams, err := NewSubChangesParams(logCtx, rq, defaultSince, ParseJSONSequenceID)
 	if err != nil {
 		return base.HTTPErrorf(http.StatusBadRequest, "Invalid subChanges parameters")
 	}
