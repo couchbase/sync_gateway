@@ -320,8 +320,8 @@ func (db *DatabaseCollectionWithUser) buildRevokedFeed(ctx context.Context, ch c
 }
 
 // UserHasDocAccess checks whether the user has access to the active revision of the document
-func UserHasDocAccess(ctx context.Context, db *DatabaseCollectionWithUser, docID string) (bool, error) {
-	currentRev, err := db.revisionCache.GetActive(ctx, docID, false)
+func UserHasDocAccess(ctx context.Context, collection *DatabaseCollectionWithUser, docID string) (bool, error) {
+	currentRev, err := collection.revisionCache.GetActive(ctx, docID, false)
 	if err != nil {
 		if base.IsDocNotFoundError(err) {
 			return false, nil
@@ -329,18 +329,18 @@ func UserHasDocAccess(ctx context.Context, db *DatabaseCollectionWithUser, docID
 		return false, err
 	}
 
-	if db.user == nil {
+	if collection.user == nil {
 		return true, nil
 	}
 
-	authErr := db.user.AuthorizeAnyCollectionChannel(db.ScopeName(), db.Name(), currentRev.Channels)
+	authErr := collection.user.AuthorizeAnyCollectionChannel(collection.ScopeName, collection.Name, currentRev.Channels)
 	return authErr == nil, nil
 }
 
 // Checks if a document needs to be revoked. This is used in the case where the since < doc sequence
-func (db *DatabaseCollectionWithUser) wasDocInChannelPriorToRevocation(ctx context.Context, syncData SyncData, docID, chanName string, since uint64) (bool, error) {
+func (col *DatabaseCollectionWithUser) wasDocInChannelPriorToRevocation(ctx context.Context, syncData SyncData, docID, chanName string, since uint64) (bool, error) {
 	// Obtain periods where the channel we're interested in was accessible by the user
-	channelAccessPeriods, err := db.user.CollectionChannelGrantedPeriods(db.ScopeName(), db.Name(), chanName)
+	channelAccessPeriods, err := col.user.CollectionChannelGrantedPeriods(col.ScopeName, col.Name, chanName)
 	if err != nil {
 		return false, err
 	}
@@ -583,14 +583,14 @@ func (col *DatabaseCollectionWithUser) checkForUserUpdates(ctx context.Context, 
 		userChangeCount = newCount
 
 		if col.user != nil {
-			previousChannels = col.user.InheritedCollectionChannels(col.ScopeName(), col.Name())
+			previousChannels = col.user.InheritedCollectionChannels(col.ScopeName, col.Name)
 			previousRoles := col.user.RoleNames()
 			if err := col.ReloadUser(ctx); err != nil {
 				base.WarnfCtx(ctx, "Error reloading user %q: %v", base.UD(col.user.Name()), err)
 				return false, 0, nil, err
 			}
 			// check whether channel set has changed
-			changedChannels = col.user.InheritedCollectionChannels(col.ScopeName(), col.Name()).CompareKeys(previousChannels)
+			changedChannels = col.user.InheritedCollectionChannels(col.ScopeName, col.Name).CompareKeys(previousChannels)
 			if len(changedChannels) > 0 {
 				base.DebugfCtx(ctx, base.KeyChanges, "Modified channel set after user reload: %v", base.UD(changedChannels))
 			}
@@ -663,7 +663,7 @@ func (col *DatabaseCollectionWithUser) SimpleMultiChangesFeed(ctx context.Contex
 		channelsSince := channels.TimedSet{}
 		if col.user != nil {
 			var channelsRemoved []string
-			channelsSince, channelsRemoved = col.user.FilterToAvailableCollectionChannels(col.ScopeName(), col.Name(), chans)
+			channelsSince, channelsRemoved = col.user.FilterToAvailableCollectionChannels(col.ScopeName, col.Name, chans)
 			if len(channelsRemoved) > 0 {
 				base.InfofCtx(ctx, base.KeyChanges, "Channels %s request without access by user %s", base.UD(channelsRemoved), base.UD(col.user.Name()))
 			}
@@ -816,7 +816,7 @@ func (col *DatabaseCollectionWithUser) SimpleMultiChangesFeed(ctx context.Contex
 			}
 
 			if options.Revocations && col.user != nil && !options.ActiveOnly {
-				channelsToRevoke := col.user.RevokedCollectionChannels(col.ScopeName(), col.Name(), options.Since.Seq, options.Since.LowSeq, options.Since.TriggeredBy)
+				channelsToRevoke := col.user.RevokedCollectionChannels(col.ScopeName, col.Name, options.Since.Seq, options.Since.LowSeq, options.Since.TriggeredBy)
 				for channel, revokedSeq := range channelsToRevoke {
 					revocationSinceSeq := options.Since.SafeSequence()
 					revokeFrom := uint64(0)
@@ -1029,7 +1029,7 @@ func (col *DatabaseCollectionWithUser) SimpleMultiChangesFeed(ctx context.Contex
 				return
 			}
 			if userChanged && col.user != nil {
-				newChannelsSince, _ := col.user.FilterToAvailableCollectionChannels(col.ScopeName(), col.Name(), chans)
+				newChannelsSince, _ := col.user.FilterToAvailableCollectionChannels(col.ScopeName, col.Name, chans)
 
 				changedChannels = newChannelsSince.CompareKeys(channelsSince)
 
@@ -1274,14 +1274,14 @@ func createChangesEntry(ctx context.Context, docid string, db *DatabaseCollectio
 	userCanSeeDocChannel := false
 
 	// If admin, or the user has the star channel, include it in the results
-	if db.user == nil || db.user.CollectionChannels(db.ScopeName(), db.Name()).Contains(channels.UserStarChannel) {
+	if db.user == nil || db.user.CollectionChannels(db.ScopeName, db.Name).Contains(channels.UserStarChannel) {
 		userCanSeeDocChannel = true
 	} else if len(populatedDoc.Channels) > 0 {
 		// Iterate over the doc's channels, including in the results:
 		//   - the active revision is in a channel the user can see (removal==nil)
 		//   - the doc has been removed from a user's channel later the requested since value (removal.Seq > options.Since.Seq).  In this case, we need to send removal:true changes entry
 		for channel, removal := range populatedDoc.Channels {
-			if db.user.CanSeeCollectionChannel(db.ScopeName(), db.Name(), channel) && (removal == nil || removal.Seq > options.Since.Seq) {
+			if db.user.CanSeeCollectionChannel(db.ScopeName, db.Name, channel) && (removal == nil || removal.Seq > options.Since.Seq) {
 				userCanSeeDocChannel = true
 				// If removal, update removed channels and deleted flag.
 				if removal != nil {

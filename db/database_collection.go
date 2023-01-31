@@ -26,6 +26,8 @@ type DatabaseCollection struct {
 	dbCtx                *DatabaseContext        // pointer to database context to allow passthrough of functions
 	ChannelMapper        *channels.ChannelMapper // Collection's sync function
 	importFilterFunction *ImportFilterFunction   // collections import options
+	Name                 string
+	ScopeName            string
 }
 
 // DatabaseCollectionWithUser represents CouchDB database. A new instance is created for each request,
@@ -33,6 +35,29 @@ type DatabaseCollection struct {
 type DatabaseCollectionWithUser struct {
 	*DatabaseCollection
 	user auth.User
+}
+
+// newDatabaseCollection returns a collection which inherits values from the database but is specific to a given DataStore.
+func newDatabaseCollection(ctx context.Context, dbContext *DatabaseContext, dataStore base.DataStore, stats *base.CollectionStats) (*DatabaseCollection, error) {
+	dbCollection := &DatabaseCollection{
+		dataStore:       dataStore,
+		dbCtx:           dbContext,
+		collectionStats: stats,
+	}
+	dbCollection.revisionCache = NewRevisionCache(
+		dbContext.Options.RevisionCacheOptions,
+		dbCollection,
+		dbContext.DbStats.Cache(),
+	)
+	if metadataStoreName, ok := base.AsDataStoreName(dataStore); ok {
+		dbCollection.ScopeName = metadataStoreName.ScopeName()
+		dbCollection.Name = metadataStoreName.CollectionName()
+	} else {
+		dbCollection.ScopeName = base.DefaultScope
+		dbCollection.Name = base.DefaultCollection
+	}
+
+	return dbCollection, nil
 }
 
 // AllowConflicts allows different revisions of a single document to be pushed. This is controlled at the database level.
@@ -186,14 +211,6 @@ func (c *DatabaseCollection) mutationListener() *changeListener {
 	return &c.dbCtx.mutationListener
 }
 
-// Name returns the name of the collection. If datastore is not aware of collections, it will return _default.
-func (c *DatabaseCollection) Name() string {
-	if metadataStoreName, ok := base.AsDataStoreName(c.dataStore); ok {
-		return metadataStoreName.CollectionName()
-	}
-	return base.DefaultCollection
-}
-
 // oldRevExpirySeconds is the number of seconds before old revisions are removed from Couchbase server. This is controlled at a database level.
 func (c *DatabaseCollection) oldRevExpirySeconds() uint32 {
 	return c.dbCtx.Options.OldRevExpirySeconds
@@ -218,14 +235,6 @@ func (c *DatabaseCollectionWithUser) ReloadUser(ctx context.Context) error {
 	}
 	c.user = user
 	return nil
-}
-
-// Name returns the name of the scope the collection is in. If datastore is not aware of collections, it will return _default.
-func (c *DatabaseCollection) ScopeName() string {
-	if metadataStoreName, ok := base.AsDataStoreName(c.dataStore); ok {
-		return metadataStoreName.ScopeName()
-	}
-	return base.DefaultScope
 }
 
 // RemoveFromChangeCache removes select documents from all channel caches and returns the number of documents removed.

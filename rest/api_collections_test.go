@@ -515,8 +515,8 @@ func TestCollectionsBasicIndexQuery(t *testing.T) {
 
 	// if the index was created on a collection, the keyspace_id becomes the collection, along with additional fields for bucket and scope.
 	assert.Equal(t, rt.Bucket().GetName(), *indexMetaResult.BucketID)
-	assert.Equal(t, collection.ScopeName(), *indexMetaResult.ScopeID)
-	assert.Equal(t, collection.Name(), *indexMetaResult.KeyspaceID)
+	assert.Equal(t, collection.ScopeName, *indexMetaResult.ScopeID)
+	assert.Equal(t, collection.Name, *indexMetaResult.KeyspaceID)
 
 	// try and query the document that we wrote via SG
 	res, err = n1qlStore.Query("SELECT test FROM "+base.KeyspaceQueryToken+" WHERE test = true", nil, base.RequestPlus, true)

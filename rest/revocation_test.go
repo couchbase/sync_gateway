@@ -1314,8 +1314,8 @@ func TestChannelHistoryPruning(t *testing.T) {
 	revocationTester, rt := InitScenario(t, nil)
 	defer rt.Close()
 	collection := rt.GetSingleTestDatabaseCollection()
-	c := collection.Name()
-	s := collection.ScopeName()
+	c := collection.Name
+	s := collection.ScopeName
 
 	revocationTester.addRole("user", "foo")
 	revocationTester.addRoleChannel("foo", "a")

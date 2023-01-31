@@ -1613,10 +1613,10 @@ func (db *Database) Compact(ctx context.Context, skipRunningStateCheck bool, cal
 	purgeBody := Body{"_purged": true}
 	for _, c := range db.CollectionByID {
 		// shadow ctx, sot that we can't misuse the parent's inside the loop
-		ctx := base.CollectionCtx(ctx, c.Name())
+		ctx := base.CollectionCtx(ctx, c.Name)
 
 		// create admin collection interface
-		collection, err := db.GetDatabaseCollectionWithUser(c.ScopeName(), c.Name())
+		collection, err := db.GetDatabaseCollectionWithUser(c.ScopeName, c.Name)
 		if err != nil {
 			base.WarnfCtx(ctx, "Tombstone compaction could not get collection: %s", err)
 			continue
@@ -2027,23 +2027,23 @@ func (db *DatabaseCollectionWithUser) resyncDocument(ctx context.Context, docid,
 	return updatedHighSeq, unusedSequences, err
 }
 
-func (db *DatabaseCollection) invalUserRoles(ctx context.Context, username string, invalSeq uint64) {
-	authr := db.Authenticator(ctx)
+func (col *DatabaseCollection) invalUserRoles(ctx context.Context, username string, invalSeq uint64) {
+	authr := col.Authenticator(ctx)
 	if err := authr.InvalidateRoles(username, invalSeq); err != nil {
 		base.WarnfCtx(ctx, "Error invalidating roles for user %s: %v", base.UD(username), err)
 	}
 }
 
-func (db *DatabaseCollection) invalUserChannels(ctx context.Context, username string, invalSeq uint64) {
-	authr := db.Authenticator(ctx)
-	if err := authr.InvalidateChannels(username, true, db.ScopeName(), db.Name(), invalSeq); err != nil {
+func (col *DatabaseCollection) invalUserChannels(ctx context.Context, username string, invalSeq uint64) {
+	authr := col.Authenticator(ctx)
+	if err := authr.InvalidateChannels(username, true, col.ScopeName, col.Name, invalSeq); err != nil {
 		base.WarnfCtx(ctx, "Error invalidating channels for user %s: %v", base.UD(username), err)
 	}
 }
 
-func (db *DatabaseCollection) invalRoleChannels(ctx context.Context, rolename string, invalSeq uint64) {
-	authr := db.Authenticator(ctx)
-	if err := authr.InvalidateChannels(rolename, false, db.ScopeName(), db.Name(), invalSeq); err != nil {
+func (col *DatabaseCollection) invalRoleChannels(ctx context.Context, rolename string, invalSeq uint64) {
+	authr := col.Authenticator(ctx)
+	if err := authr.InvalidateChannels(rolename, false, col.ScopeName, col.Name, invalSeq); err != nil {
 		base.WarnfCtx(ctx, "Error invalidating channels for role %s: %v", base.UD(rolename), err)
 	}
 }
@@ -2329,20 +2329,4 @@ func (dbc *Database) GetDefaultDatabaseCollectionWithUser() (*DatabaseCollection
 // GetSingleDatabaseCollection is a temporary function to return a single collection. This should be a temporary function while collection work is ongoing.
 func (dbc *DatabaseContext) GetSingleDatabaseCollection() *DatabaseCollection {
 	return dbc.singleCollection
-}
-
-// newDatabaseCollection returns a collection which inherits values from the database but is specific to a given DataStore.
-func newDatabaseCollection(ctx context.Context, dbContext *DatabaseContext, dataStore base.DataStore, stats *base.CollectionStats) (*DatabaseCollection, error) {
-	dbCollection := &DatabaseCollection{
-		dataStore:       dataStore,
-		dbCtx:           dbContext,
-		collectionStats: stats,
-	}
-	dbCollection.revisionCache = NewRevisionCache(
-		dbContext.Options.RevisionCacheOptions,
-		dbCollection,
-		dbContext.DbStats.Cache(),
-	)
-
-	return dbCollection, nil
 }

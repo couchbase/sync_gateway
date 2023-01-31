@@ -463,8 +463,8 @@ func (rt *RestTester) GetSingleTestDatabaseCollectionWithUser() *db.DatabaseColl
 func (rt *RestTester) GetSingleDataStore() base.DataStore {
 	collection := rt.GetSingleTestDatabaseCollection()
 	ds, err := rt.GetDatabase().Bucket.NamedDataStore(base.ScopeAndCollectionName{
-		Scope:      collection.ScopeName(),
-		Collection: collection.Name(),
+		Scope:      collection.ScopeName,
+		Collection: collection.Name,
 	})
 	require.NoError(rt.TB, err)
 	return ds
@@ -1502,14 +1502,14 @@ func GetRolePayload(t *testing.T, roleName, password string, collection *db.Data
 
 // add channels to principal depending if running with collections or not. then marshal the principal config
 func addChannelsToPrincipal(config auth.PrincipalConfig, collection *db.DatabaseCollection, chans []string) ([]byte, error) {
-	if base.IsDefaultCollection(collection.ScopeName(), collection.Name()) {
+	if base.IsDefaultCollection(collection.ScopeName, collection.Name) {
 		if len(chans) == 0 {
 			config.ExplicitChannels = base.SetOf("[]")
 		} else {
 			config.ExplicitChannels = base.SetFromArray(chans)
 		}
 	} else {
-		config.SetExplicitChannels(collection.ScopeName(), collection.Name(), chans...)
+		config.SetExplicitChannels(collection.ScopeName, collection.Name, chans...)
 	}
 	payload, err := json.Marshal(config)
 	if err != nil {
@@ -2242,13 +2242,13 @@ func (sc *ServerContext) suspendDatabase(t *testing.T, ctx context.Context, dbNa
 
 // getRESTkeyspace returns a keyspace for REST URIs
 func getRESTKeyspace(_ testing.TB, dbName string, collection *db.DatabaseCollection) string {
-	if base.IsDefaultCollection(collection.ScopeName(), collection.Name()) {
+	if base.IsDefaultCollection(collection.ScopeName, collection.Name) {
 		// for backwards compatibility (and user-friendliness),
 		// we can optionally just use `/db/` instead of `/db._default._default/`
 		// Return this format to get coverage of both formats.
 		return dbName
 	}
-	return strings.Join([]string{dbName, collection.ScopeName(), collection.Name()}, base.ScopeCollectionSeparator)
+	return strings.Join([]string{dbName, collection.ScopeName, collection.Name}, base.ScopeCollectionSeparator)
 }
 
 // GetKeyspaces returns the names of all the keyspaces on the rest tester. Currently assumes a single database.
@@ -2282,7 +2282,7 @@ func (rt *RestTester) getCollectionsForBLIP() []string {
 	}
 	for _, collection := range db.CollectionByID {
 		collections = append(collections,
-			strings.Join([]string{collection.ScopeName(), collection.Name()}, base.ScopeCollectionSeparator))
+			strings.Join([]string{collection.ScopeName, collection.Name}, base.ScopeCollectionSeparator))
 	}
 	return collections
 }

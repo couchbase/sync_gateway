@@ -1086,7 +1086,7 @@ func checkGoodAuthResponse(t *testing.T, rt *RestTester, response *http.Response
 	sessionCookie := getCookie(response.Cookies(), auth.DefaultCookieName)
 	require.NotNil(t, sessionCookie, "No session cookie found")
 	require.NoError(t, response.Body.Close(), "error closing response body")
-	if base.IsDefaultCollection(collection.ScopeName(), collection.Name()) {
+	if base.IsDefaultCollection(collection.ScopeName, collection.Name) {
 		responseBodyExpected = map[string]interface{}{
 			"authentication_handlers": []interface{}{
 				"default", "cookie",
