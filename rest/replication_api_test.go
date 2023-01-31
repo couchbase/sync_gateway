@@ -937,8 +937,10 @@ func TestPullOneshotReplicationAPI(t *testing.T) {
 //   - Write documents to rt1 belonging to both channels
 //   - Write documents to rt1, each belonging to one of the channels (verifies replications are still running)
 //   - Validate replications do not report errors, all docs are replicated
+//
 // Note: This test intermittently reproduced CBG-998 under -race when a 1s sleep was added post-callback to
-//   WriteUpdateWithXattr.  Have been unable to reproduce the same with a leaky bucket WriteUpdateCallback.
+//
+//	WriteUpdateWithXattr.  Have been unable to reproduce the same with a leaky bucket WriteUpdateCallback.
 func TestReplicationConcurrentPush(t *testing.T) {
 
 	if base.GTestBucketPool.NumUsableBuckets() < 2 {
@@ -1006,14 +1008,15 @@ func TestReplicationConcurrentPush(t *testing.T) {
 // Helper functions for SGR testing
 
 // setupSGRPeers sets up two rest testers to be used for sg-replicate testing with the following configuration:
-//   activeRT:
-//     - backed by test bucket
-//     - SGReplicationMgr.StartReplications() has been called
-//   passiveRT:
-//     - backed by different test bucket
-//     - user 'alice' created with star channel access
-//     - http server wrapping the public API, remoteDBURLString targets the rt2 database as user alice (e.g. http://alice:pass@host/db)
-//   returned teardown function closes activeRT, passiveRT and the http server, should be invoked with defer
+//
+//	activeRT:
+//	  - backed by test bucket
+//	  - SGReplicationMgr.StartReplications() has been called
+//	passiveRT:
+//	  - backed by different test bucket
+//	  - user 'alice' created with star channel access
+//	  - http server wrapping the public API, remoteDBURLString targets the rt2 database as user alice (e.g. http://alice:pass@host/db)
+//	returned teardown function closes activeRT, passiveRT and the http server, should be invoked with defer
 func setupSGRPeers(t *testing.T) (activeRT *RestTester, passiveRT *RestTester, remoteDBURLString string, teardown func()) {
 	// Set up passive RestTester (rt2)
 	passiveRT = NewRestTester(t, &RestTesterConfig{

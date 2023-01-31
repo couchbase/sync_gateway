@@ -1,3 +1,4 @@
+//go:build cb_sg_enterprise
 // +build cb_sg_enterprise
 
 package base

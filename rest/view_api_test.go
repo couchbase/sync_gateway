@@ -91,7 +91,7 @@ func TestViewQuery(t *testing.T) {
 
 }
 
-//Tests #1109, wh ere design doc contains multiple views
+// Tests #1109, wh ere design doc contains multiple views
 func TestViewQueryMultipleViews(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()

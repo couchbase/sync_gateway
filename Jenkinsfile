@@ -62,15 +62,17 @@ pipeline {
                         stage('Go Tools') {
                             steps {
                                 withEnv(["GOPATH=${GOTOOLS}"]) {
-                                    // unhandled error checker
-                                    sh 'go get -v -u github.com/kisielk/errcheck'
-                                    // goveralls is used to send coverprofiles to coveralls.io
-                                    sh 'go get -v -u github.com/mattn/goveralls'
-                                    // Jenkins coverage reporting tools
-                                    sh 'go get -v -u github.com/axw/gocov/...'
-                                    sh 'go get -v -u github.com/AlekSi/gocov-xml'
-                                    // Jenkins test reporting tools
-                                    sh 'go get -v -u github.com/tebeka/go2xunit'
+                                    sshagent(credentials: ['CB SG Robot Github SSH Key']) {
+                                         // unhandled error checker
+                                         sh 'go get -v -u github.com/kisielk/errcheck'
+                                         // goveralls is used to send coverprofiles to coveralls.io
+                                         sh 'go get -v -u github.com/mattn/goveralls'
+                                         // Jenkins coverage reporting tools
+                                         sh 'go get -v -u github.com/axw/gocov/...'
+                                         sh 'go get -v -u github.com/AlekSi/gocov-xml'
+                                         // Jenkins test reporting tools
+                                         sh 'go get -v -u github.com/tebeka/go2xunit'
+                                    }
                                 }
                             }
                         }

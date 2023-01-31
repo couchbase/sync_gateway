@@ -1,4 +1,6 @@
+//go:build !race
 // +build !race
+
 // The tests in this file are time-sensitive and disabled when running with the -race flag.  See SG #3055
 
 package auth

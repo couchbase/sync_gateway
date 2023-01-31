@@ -827,7 +827,9 @@ func isGoCBTimeoutError(err error) bool {
 }
 
 // If the error is a net/url.Error and the error message is:
-// 		net/http: request canceled while waiting for connection
+//
+//	net/http: request canceled while waiting for connection
+//
 // Then it means that the view request timed out, most likely due to the fact that it's a stale=false query and
 // it's rebuilding the index.  In that case, it's desirable to return a more informative error than the
 // underlying net/url.Error. See https://github.com/couchbase/sync_gateway/issues/2639
@@ -1368,10 +1370,11 @@ func (bucket *CouchbaseBucketGoCB) GetWithXattr(k string, xattrKey string, rv in
 //   - DocExists but NoXattr
 //   - XattrExists but NoDoc
 //   - NoDoc and NoXattr
+//
 // In all cases, the end state will be NoDoc and NoXattr.
 // Expected errors:
-//    - Temporary server overloaded errors, in which case the caller should retry
-//    - If the doc is in the the NoDoc and NoXattr state, it will return a KeyNotFound error
+//   - Temporary server overloaded errors, in which case the caller should retry
+//   - If the doc is in the the NoDoc and NoXattr state, it will return a KeyNotFound error
 func (bucket *CouchbaseBucketGoCB) DeleteWithXattr(k string, xattrKey string) error {
 
 	// Delegate to internal method that can take a testing-related callback
@@ -1971,7 +1974,9 @@ type XattrEnabledDesignDoc struct {
 }
 
 // For the view engine to index tombstones, we need to set an explicit property in the design doc.
-//      see https://issues.couchbase.com/browse/MB-24616
+//
+//	see https://issues.couchbase.com/browse/MB-24616
+//
 // This design doc property isn't exposed via the SDK (it's an internal-only property), so we need to
 // jump through some hoops to created the design doc.  Follows same approach used internally by gocb.
 func (bucket *CouchbaseBucketGoCB) putDDocForTombstones(ddoc *gocb.DesignDocument) error {

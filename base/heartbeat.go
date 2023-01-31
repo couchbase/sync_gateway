@@ -42,17 +42,17 @@ type HeartbeatListener interface {
 //
 // The default timing intervals are defined to balance the following:
 //
-//    Network latency tolerance = heartbeatExpirySeconds - heartbeatSendInterval   (default = 10-1= 9s)
-//       Network latency tolerance is the minimum amount of time before this node may be flagged as offline
-//       by another node. Must be large enough to avoid triggering false positives during network load spikes on this node.
+//	Network latency tolerance = heartbeatExpirySeconds - heartbeatSendInterval   (default = 10-1= 9s)
+//	   Network latency tolerance is the minimum amount of time before this node may be flagged as offline
+//	   by another node. Must be large enough to avoid triggering false positives during network load spikes on this node.
 //
-//    Rebalance latency = heartbeatExpirySeconds + heartbeatPollInterval   (default = 10+2 = 12s)
-//       The maximum amount of time between a node going offline, and rebalance being triggered for that node.
+//	Rebalance latency = heartbeatExpirySeconds + heartbeatPollInterval   (default = 10+2 = 12s)
+//	   The maximum amount of time between a node going offline, and rebalance being triggered for that node.
 //
-//    Heartbeat ops/second/cluster = n/heartbeatSendInterval + (n^2)/heartbeatPollInterval (default = n + (n^2)/2)
-//       Number of heartbeat ops/second for a cluster of n nodes - one heartbeat touch per node per heartbeatSendInterval,
-//       n heartbeat reads per node per heartbeatPollInterval
-//       e.g  Default for a 4 node cluster: 12 ops/second
+//	Heartbeat ops/second/cluster = n/heartbeatSendInterval + (n^2)/heartbeatPollInterval (default = n + (n^2)/2)
+//	   Number of heartbeat ops/second for a cluster of n nodes - one heartbeat touch per node per heartbeatSendInterval,
+//	   n heartbeat reads per node per heartbeatPollInterval
+//	   e.g  Default for a 4 node cluster: 12 ops/second
 type couchbaseHeartBeater struct {
 	bucket                  Bucket
 	nodeUUID                string
@@ -226,7 +226,7 @@ func (l ListenerMap) String() string {
 		return "[]"
 	}
 	keys := make([]string, 0, len(l))
-	for k, _ := range l {
+	for k := range l {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
