@@ -82,25 +82,25 @@ type BlipSyncContext struct {
 	continuous                       bool
 	lock                             sync.Mutex
 	allowedAttachments               map[string]int
-	handlerSerialNumber              uint64                                    // Each handler within a context gets a unique serial number for logging
-	terminatorOnce                   sync.Once                                 // Used to ensure the terminator channel below is only ever closed once.
-	terminator                       chan bool                                 // Closed during BlipSyncContext.close(). Ensures termination of async goroutines.
-	activeSubChanges                 base.AtomicBool                           // Flag for whether there is a subChanges subscription currently active.  Atomic access
-	useDeltas                        bool                                      // Whether deltas can be used for this connection - This should be set via setUseDeltas()
-	sgCanUseDeltas                   bool                                      // Whether deltas can be used by Sync Gateway for this connection
-	userChangeWaiter                 *ChangeWaiter                             // Tracks whether the users/roles associated with the replication have changed
-	userName                         string                                    // Avoid contention on db.user during userChangeWaiter user lookup
+	handlerSerialNumber              uint64                                         // Each handler within a context gets a unique serial number for logging
+	terminatorOnce                   sync.Once                                      // Used to ensure the terminator channel below is only ever closed once.
+	terminator                       chan bool                                      // Closed during BlipSyncContext.close(). Ensures termination of async goroutines.
+	activeSubChanges                 base.AtomicBool                                // Flag for whether there is a subChanges subscription currently active.  Atomic access
+	useDeltas                        bool                                           // Whether deltas can be used for this connection - This should be set via setUseDeltas()
+	sgCanUseDeltas                   bool                                           // Whether deltas can be used by Sync Gateway for this connection
+	userChangeWaiter                 *ChangeWaiter                                  // Tracks whether the users/roles associated with the replication have changed
+	userName                         string                                         // Avoid contention on db.user during userChangeWaiter user lookup
 	sgr2PullAddExpectedSeqsCallback  func(expectedSeqs map[IDAndRev]SequenceID)     // sgr2PullAddExpectedSeqsCallback is called after successfully handling an incoming changes message
 	sgr2PullProcessedSeqCallback     func(remoteSeq *SequenceID, idAndRev IDAndRev) // sgr2PullProcessedSeqCallback is called after successfully handling an incoming rev message
 	sgr2PullAlreadyKnownSeqsCallback func(alreadyKnownSeqs ...SequenceID)           // sgr2PullAlreadyKnownSeqsCallback is called to mark the sequences as being immediately processed
 	sgr2PushAddExpectedSeqsCallback  func(expectedSeqs ...SequenceID)               // sgr2PushAddExpectedSeqsCallback is called after sync gateway has sent a revision, but is still awaiting an acknowledgement
 	sgr2PushProcessedSeqCallback     func(remoteSeq SequenceID)                     // sgr2PushProcessedSeqCallback is called after receiving acknowledgement of a sent revision
 	sgr2PushAlreadyKnownSeqsCallback func(alreadyKnownSeqs ...SequenceID)           // sgr2PushAlreadyKnownSeqsCallback is called to mark the sequence as being immediately processed
-	emptyChangesMessageCallback      func()                                     // emptyChangesMessageCallback is called when an empty changes message is received
-	replicationStats                 *BlipSyncStats                            // Replication stats
-	purgeOnRemoval                   bool                                      // Purges the document when we pull a _removed:true revision.
-	conflictResolver                 *ConflictResolver                         // Conflict resolver for active replications
-	changesPendingResponseCount      int64                                     // Number of changes messages pending changesResponse
+	emptyChangesMessageCallback      func()                                         // emptyChangesMessageCallback is called when an empty changes message is received
+	replicationStats                 *BlipSyncStats                                 // Replication stats
+	purgeOnRemoval                   bool                                           // Purges the document when we pull a _removed:true revision.
+	conflictResolver                 *ConflictResolver                              // Conflict resolver for active replications
+	changesPendingResponseCount      int64                                          // Number of changes messages pending changesResponse
 	// TODO: For review, whether sendRevAllConflicts needs to be per sendChanges invocation
 	sendRevNoConflicts bool                      // Whether to set noconflicts=true when sending revisions
 	clientType         BLIPSyncContextClientType // Can perform client-specific replication behaviour based on this field
