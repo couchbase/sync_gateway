@@ -16,7 +16,7 @@ pipeline {
     }
 
     tools {
-        go '1.16'
+        go '1.19.5'
     }
 
     stages {
@@ -62,15 +62,17 @@ pipeline {
                         stage('Go Tools') {
                             steps {
                                 withEnv(["GOPATH=${GOTOOLS}"]) {
-                                    // unhandled error checker
-                                    sh 'go get -v -u github.com/kisielk/errcheck'
-                                    // goveralls is used to send coverprofiles to coveralls.io
-                                    sh 'go get -v -u github.com/mattn/goveralls'
-                                    // Jenkins coverage reporting tools
-                                    sh 'go get -v -u github.com/axw/gocov/...'
-                                    sh 'go get -v -u github.com/AlekSi/gocov-xml'
-                                    // Jenkins test reporting tools
-                                    sh 'go get -v -u github.com/tebeka/go2xunit'
+                                    sshagent(credentials: ['CB SG Robot Github SSH Key']) {
+                                         // unhandled error checker
+                                         sh 'go get -v -u github.com/kisielk/errcheck'
+                                         // goveralls is used to send coverprofiles to coveralls.io
+                                         sh 'go get -v -u github.com/mattn/goveralls'
+                                         // Jenkins coverage reporting tools
+                                         sh 'go get -v -u github.com/axw/gocov/...'
+                                         sh 'go get -v -u github.com/AlekSi/gocov-xml'
+                                         // Jenkins test reporting tools
+                                         sh 'go get -v -u github.com/tebeka/go2xunit'
+                                    }
                                 }
                             }
                         }
@@ -381,7 +383,7 @@ pipeline {
             cobertura autoUpdateHealth: false, onlyStable: false, autoUpdateStability: false, coberturaReportFile: 'reports/coverage-*.xml', conditionalCoverageTargets: '70, 0, 0', failNoReports: false, failUnhealthy: false, failUnstable: false, lineCoverageTargets: '80, 0, 0', maxNumberOfBuilds: 0, methodCoverageTargets: '80, 0, 0', sourceEncoding: 'ASCII', zoomCoverageChart: false
 
             // Publish the junit test reports
-            junit allowEmptyResults: true, testDataPublishers: [[$class: 'JUnitFlakyTestDataPublisher']], testResults: 'reports/test-*.xml'
+            junit allowEmptyResults: true, testResults: 'reports/test-*.xml'
 
             // TODO: Might be better to clean the workspace to before a job runs instead
             step([$class: 'WsCleanup'])

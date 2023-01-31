@@ -37,9 +37,9 @@ type Level int32
 // DeferredLogFn is an anonymous function that can be executed at a later date to log something.
 type DeferredLogFn func()
 
-//By setting DebugLevel to -1, if LogLevel is not set in the logging config it
-//will default to the zero value for int32 (0) which will disable debug
-//logging, InfoLevel logging will be the default output.
+// By setting DebugLevel to -1, if LogLevel is not set in the logging config it
+// will default to the zero value for int32 (0) which will disable debug
+// logging, InfoLevel logging will be the default output.
 const (
 	// DebugLevel logs are typically voluminous, and are usually disabled in
 	// production.

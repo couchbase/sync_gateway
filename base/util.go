@@ -266,16 +266,16 @@ func IsPowerOfTwo(n uint16) bool {
 
 // This is how Couchbase Server handles document expiration times
 //
-//The actual value sent may either be
-//Unix time (number of seconds since January 1, 1970, as a 32-bit
-//value), or a number of seconds starting from current time. In the
-//latter case, this number of seconds may not exceed 60*60*24*30 (number
-//of seconds in 30 days); if the number sent by a client is larger than
-//that, the server will consider it to be real Unix time value rather
-//than an offset from current time.
+// The actual value sent may either be
+// Unix time (number of seconds since January 1, 1970, as a 32-bit
+// value), or a number of seconds starting from current time. In the
+// latter case, this number of seconds may not exceed 60*60*24*30 (number
+// of seconds in 30 days); if the number sent by a client is larger than
+// that, the server will consider it to be real Unix time value rather
+// than an offset from current time.
 //
-//This function takes a ttl as a Duration and returns an int
-//formatted as required by CBS expiry processing
+// This function takes a ttl as a Duration and returns an int
+// formatted as required by CBS expiry processing
 func DurationToCbsExpiry(ttl time.Duration) uint32 {
 	if ttl <= kMaxDeltaTtlDuration {
 		return uint32(ttl.Seconds())
@@ -284,13 +284,13 @@ func DurationToCbsExpiry(ttl time.Duration) uint32 {
 	}
 }
 
-//This function takes a ttl in seconds and returns an int
-//formatted as required by CBS expiry processing
+// This function takes a ttl in seconds and returns an int
+// formatted as required by CBS expiry processing
 func SecondsToCbsExpiry(ttl int) uint32 {
 	return DurationToCbsExpiry(time.Duration(ttl) * time.Second)
 }
 
-//This function takes a CBS expiry and returns as a time
+// This function takes a CBS expiry and returns as a time
 func CbsExpiryToTime(expiry uint32) time.Time {
 	if expiry <= kMaxDeltaTtl {
 		return time.Now().Add(time.Duration(expiry) * time.Second)
@@ -300,11 +300,11 @@ func CbsExpiryToTime(expiry uint32) time.Time {
 }
 
 // ReflectExpiry attempts to convert expiry from one of the following formats to a Couchbase Server expiry value:
-//   1. Numeric JSON values are converted to uint32 and returned as-is
-//   2. JSON numbers are converted to uint32 and returned as-is
-//   3. String JSON values that are numbers are converted to int32 and returned as-is
-//   4. String JSON values that are ISO-8601 dates are converted to UNIX time and returned
-//   5. Null JSON values return 0
+//  1. Numeric JSON values are converted to uint32 and returned as-is
+//  2. JSON numbers are converted to uint32 and returned as-is
+//  3. String JSON values that are numbers are converted to int32 and returned as-is
+//  4. String JSON values that are ISO-8601 dates are converted to UNIX time and returned
+//  5. Null JSON values return 0
 func ReflectExpiry(rawExpiry interface{}) (*uint32, error) {
 	switch expiry := rawExpiry.(type) {
 	case int64:

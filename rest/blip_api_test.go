@@ -26,6 +26,7 @@ import (
 // - Setup
 //   - Create an httptest server listening on a port that wraps the Sync Gateway Admin Handler
 //   - Make a BLIP/Websocket client connection to Sync Gateway
+//
 // - Test
 //   - Verify Sync Gateway will accept the doc revision that is about to be sent
 //   - Send the doc revision in a rev request
@@ -346,7 +347,7 @@ func TestBlipOneShotChangesSubscription(t *testing.T) {
 	cacheWaiter := bt.DatabaseContext().NewDCPCachingCountWaiter(t)
 	cacheWaiter.Add(len(docIdsReceived))
 	// Add documents
-	for docID, _ := range docIdsReceived {
+	for docID := range docIdsReceived {
 		//// Add a change: Send an unsolicited doc revision in a rev request
 		_, _, revResponse, err := bt.SendRev(
 			docID,
@@ -1026,7 +1027,8 @@ function(doc, oldDoc) {
 }
 
 // Test send and retrieval of a doc.
-//   Validate deleted handling (includes check for https://github.com/couchbase/sync_gateway/issues/3341)
+//
+//	Validate deleted handling (includes check for https://github.com/couchbase/sync_gateway/issues/3341)
 func TestBlipSendAndGetRev(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)()
@@ -1078,7 +1080,8 @@ func TestBlipSendAndGetRev(t *testing.T) {
 }
 
 // Test send and retrieval of a doc with a large numeric value.  Ensure proper large number handling.
-//   Validate deleted handling (includes check for https://github.com/couchbase/sync_gateway/issues/3341)
+//
+//	Validate deleted handling (includes check for https://github.com/couchbase/sync_gateway/issues/3341)
 func TestBlipSendAndGetLargeNumberRev(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)()
@@ -1757,7 +1760,6 @@ func TestPutRevConflictsMode(t *testing.T) {
 //
 // Actual:
 // - Same as Expected (this test is unable to repro SG #3281, but is being left in as a regression test)
-//
 func TestGetRemovedDoc(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)()

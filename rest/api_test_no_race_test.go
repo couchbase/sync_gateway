@@ -10,6 +10,7 @@
 // This file contains tests which depend on the race detector being disabled.  Contains changes tests
 // that have unpredictable timing when running w/ race detector due to longpoll/continuous changes request
 // processing.
+//go:build !race
 // +build !race
 
 package rest

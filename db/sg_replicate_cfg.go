@@ -348,11 +348,12 @@ type sgReplicateManager struct {
 
 // alignState attempts to update the current replicator state to align with the provided targetState, if
 // it's a valid state transition.
-//  Valid:
-//     stopped -> running
-//     stopped -> resetting
-//     resetting -> stopped
-//     running -> stopped
+//
+//	Valid:
+//	   stopped -> running
+//	   stopped -> resetting
+//	   resetting -> stopped
+//	   running -> stopped
 func (ar *ActiveReplicator) alignState(targetState string) error {
 	if ar == nil {
 		return nil
@@ -1318,7 +1319,7 @@ func (m *sgReplicateManager) GetReplicationStatusAll(options ReplicationStatusOp
 		return nil, err
 	}
 
-	for replicationID, _ := range persistedReplications {
+	for replicationID := range persistedReplications {
 		status, err := m.GetReplicationStatus(replicationID, options)
 		if err != nil {
 			base.Warnf("Unable to retrieve replication status for replication %s", replicationID)

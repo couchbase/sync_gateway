@@ -124,7 +124,8 @@ func TestAddRaw(t *testing.T) {
 
 // TestAddRawTimeout attempts to fill up the gocbpipeline by writing large documents concurrently with a small timeout,
 // to verify that timeout errors are returned, and the operation isn't retried (which would return a cas error).
-//   (see CBG-463)
+//
+//	(see CBG-463)
 func TestAddRawTimeoutRetry(t *testing.T) {
 
 	bucket := GetTestBucket(t)
