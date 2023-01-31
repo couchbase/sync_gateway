@@ -77,7 +77,7 @@ licenses/APL2.txt.
 
   <project name="fakehttp" path="godeps/src/github.com/tleyden/fakehttp" remote="tleyden" revision="084795c8f01f195a88c0ca4af0d7228a5ef40c83"/>
 
-  <project name="text" path="godeps/src/golang.org/x/text" remote="couchbasedeps" revision="refs/tags/v0.3.4"/>
+  <project name="text" path="godeps/src/golang.org/x/text" remote="couchbasedeps" revision="refs/tags/v0.6.0"/>
 
   <project name="net" path="godeps/src/golang.org/x/net" remote="couchbasedeps" revision="release-branch.go1.11"/>
 
@@ -105,7 +105,7 @@ licenses/APL2.txt.
 
   <project name="goutils" path="godeps/src/github.com/couchbase/goutils" remote="couchbase" revision="f98adca8eb365032cab838ef4d99453931afa112"/>
 
-  <project name="go-blip" path="godeps/src/github.com/couchbase/go-blip" remote="couchbase" revision="3c4edeb16c47cdb3bcd1eeab3b3c5c87832d4923"/>
+  <project name="go-blip" path="godeps/src/github.com/couchbase/go-blip" remote="couchbase" revision="215cbac22bd7d160b16eebc1fd0d3fbe13e92051"/>
 
   <project name="errors" path="godeps/src/github.com/pkg/errors" remote="couchbasedeps" revision="f15c970de5b76fac0b59abb32d62c17cc7bed265"/>
 
@@ -131,7 +131,7 @@ licenses/APL2.txt.
 
   <project groups="notdefault,cb_sg_enterprise" name="json-iterator-go" path="godeps/src/github.com/json-iterator/go" remote="couchbasedeps" revision="024077e996b048517130b21ea6bf12aa23055d3d"/>
   <project groups="notdefault,cb_sg_enterprise" name="concurrent" path="godeps/src/github.com/modern-go/concurrent" remote="couchbasedeps" revision="bacd9c7ef1dd9b15be4a9909b8ac7a4e313eec94"/>
-  <project groups="notdefault,cb_sg_enterprise" name="reflect2" path="godeps/src/github.com/modern-go/reflect2" remote="couchbasedeps" revision="94122c33edd36123c84d5368cfb2b69df93a0ec8"/>
+  <project groups="notdefault,cb_sg_enterprise" name="reflect2" path="godeps/src/github.com/modern-go/reflect2" remote="couchbasedeps" revision="2b33151c9bbc5231aea69b8861c540102b087070"/>
 
   <!-- gosigar -->
   <project name="gosigar" path="godeps/src/github.com/elastic/gosigar" remote="couchbasedeps" revision="f498c67133bcded80f5966ee63acfe68cff4e6bf"/>
@@ -155,5 +155,8 @@ licenses/APL2.txt.
   <project name="protobuf-go" path="godeps/src/google.golang.org/protobuf" remote="couchbasedeps" revision="f2d1f6cbe10b90d22296ea09a7217081c2798009"/>
 
   <project name="mergo" path="godeps/src/github.com/imdario/mergo" remote="couchbasedeps" revision="b968a17bce53738e37f30fd352eb2f7f69ed58a7"/>
+
+  <project name="websocket" path="godeps/src/nhooyr.io/websocket" remote="couchbasedeps" revision="8dee580a7f74cf1713400307b4eee514b927870f"/>
+  <project name="compress" path="godeps/src/github.com/klauspost/compress" remote="couchbasedeps" revision="b8a3c6140400c11b62877a800d0aa3ee755e89ea"/>
 
 </manifest>
