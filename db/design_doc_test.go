@@ -128,7 +128,7 @@ func TestRemoveDesignDocsUseViewsTrueAndFalse(t *testing.T) {
 	})
 }
 
-//Test remove obsolete design docs returns the same in both preview and non-preview
+// Test remove obsolete design docs returns the same in both preview and non-preview
 func TestRemoveObsoleteDesignDocsErrors(t *testing.T) {
 
 	DesignDocPreviousVersions = []string{"test"}

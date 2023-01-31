@@ -188,7 +188,7 @@ func (h *handler) handleDbOnline() error {
 	return nil
 }
 
-//Take a DB offline
+// Take a DB offline
 func (h *handler) handleDbOffline() error {
 	h.assertAdminOnly()
 	var err error
@@ -461,7 +461,7 @@ func (h *handler) handlePutDbConfig() (err error) {
 		}
 
 		unknownFileKeys := make([]string, 0)
-		for key, _ := range mapDbConfig {
+		for key := range mapDbConfig {
 			if key == "sync" && hasSyncPerm || key == "guest" && hasAuthPerm {
 				continue
 			}

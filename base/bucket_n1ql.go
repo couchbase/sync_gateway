@@ -44,13 +44,16 @@ func (bucket *CouchbaseBucketGoCB) Keyspace() string {
 // Query accepts a parameterized statement,  optional list of params, and an optional flag to force adhoc query execution.
 // Params specified using the $param notation in the statement are intended to be used w/ N1QL prepared statements, and will be
 // passed through as params to n1ql.  e.g.:
-//   SELECT _sync.sequence FROM $_keyspace WHERE _sync.sequence > $minSeq
+//
+//	SELECT _sync.sequence FROM $_keyspace WHERE _sync.sequence > $minSeq
+//
 // https://developer.couchbase.com/documentation/server/current/sdk/go/n1ql-queries-with-sdk.html for additional details.
 // Will additionally replace all instances of KeyspaceQueryToken($_keyspace) in the statement
 // with the bucket name.  'bucket' should not be included in params.
 //
 // If adhoc=true, prepared statement handling will be disabled.  Should only be set to true for queries that can't be prepared, e.g.:
-//  SELECT _sync.channels.ABC.seq from $bucket
+//
+//	SELECT _sync.channels.ABC.seq from $bucket
 //
 // Query retries on Indexer Errors, as these are normally transient
 func (bucket *CouchbaseBucketGoCB) Query(statement string, params map[string]interface{}, consistency ConsistencyMode, adhoc bool) (results sgbucket.QueryResultIterator, err error) {

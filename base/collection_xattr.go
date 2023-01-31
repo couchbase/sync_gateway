@@ -82,7 +82,7 @@ func (c *Collection) UpdateXattr(k string, xattrKey string, exp uint32, cas uint
 // Notes on error handling
 //   - gocb v2 returns subdoc errors at the op level, in the ContentAt response
 //   - 'successful' error codes, like SucDocSuccessDeleted, aren't returned, and instead just set the internal.Deleted property on the
-//   response
+//     response
 func (c *Collection) SubdocGetXattr(k string, xattrKey string, xv interface{}) (casOut uint64, err error) {
 	c.waitForAvailKvOp()
 	defer c.releaseKvOp()

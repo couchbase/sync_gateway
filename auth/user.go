@@ -202,12 +202,14 @@ func (revokedChannels RevokedChannels) add(chanName string, triggeredBy uint64) 
 // RevokedChannels returns a map of revoked channels => most recent sequence at which access to that channel was lost
 // Steps:
 // Get revoked roles and for each:
-// 	- Revoke the current channels if the role is deleted
-//  - Revoke the role revoked channels
+//   - Revoke the current channels if the role is deleted
+//   - Revoke the role revoked channels
+//
 // Get current roles and for each:
-//  - Revoke the role revoked channels
+//   - Revoke the role revoked channels
+//
 // Get user:
-//  - Revoke users revoked channels
+//   - Revoke users revoked channels
 func (user *userImpl) RevokedChannels(since uint64, lowSeq uint64, triggeredBy uint64) RevokedChannels {
 	// checkSeq represents the value that we use to 'diff' against ie. What channels did the user have at checkSeq but
 	// no longer has.

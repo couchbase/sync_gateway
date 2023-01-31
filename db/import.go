@@ -116,11 +116,12 @@ func (db *Database) ImportDoc(docid string, existingDoc *Document, isDelete bool
 }
 
 // Import document
-//   docid  - document key
-//   body - marshalled body of document to be imported
-//   isDelete - whether the document to be imported is a delete
-//   existingDoc - bytes/cas/expiry of the  document to be imported (including xattr when available)
-//   mode - ImportMode - ImportFromFeed or ImportOnDemand
+//
+//	docid  - document key
+//	body - marshalled body of document to be imported
+//	isDelete - whether the document to be imported is a delete
+//	existingDoc - bytes/cas/expiry of the  document to be imported (including xattr when available)
+//	mode - ImportMode - ImportFromFeed or ImportOnDemand
 func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDoc *sgbucket.BucketDocument, mode ImportMode) (docOut *Document, err error) {
 
 	base.Debugf(base.KeyImport, "Attempting to import doc %q...", base.UD(docid))

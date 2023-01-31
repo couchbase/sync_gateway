@@ -24,8 +24,8 @@ const dbRegex = "[^_/][^/]*"
 const docRegex = "[^_/][^/]*"
 
 // Regex that matches a URI containing either:
-//  - A regular doc ID with an escaped "/" character
-//  - A user name with an escaped "/" character
+//   - A regular doc ID with an escaped "/" character
+//   - A user name with an escaped "/" character
 var docWithSlashPathRegex *regexp.Regexp
 
 func init() {

@@ -251,7 +251,7 @@ func (dc *DCPClient) startWorkers() {
 
 	// vbuckets are assigned to workers as vbNo % NumWorkers.  Create set of assigned vbuckets
 	assignedVbs := make(map[int][]uint16)
-	for workerIndex, _ := range dc.workers {
+	for workerIndex := range dc.workers {
 		assignedVbs[workerIndex] = make([]uint16, 0)
 	}
 
@@ -261,7 +261,7 @@ func (dc *DCPClient) startWorkers() {
 	}
 
 	//
-	for index, _ := range dc.workers {
+	for index := range dc.workers {
 		options := &DCPWorkerOptions{
 			metaPersistFrequency: dc.checkpointPersistFrequency,
 		}

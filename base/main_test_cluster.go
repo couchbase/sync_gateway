@@ -218,7 +218,7 @@ func (c *tbpClusterV2) getBucketNames() ([]string, error) {
 	}
 
 	var names []string
-	for name, _ := range bucketSettings {
+	for name := range bucketSettings {
 		names = append(names, name)
 	}
 

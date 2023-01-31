@@ -25,13 +25,13 @@ var RedactUserData = true
 
 // UserData is a type which implements the Redactor interface for logging purposes of user data.
 //
-//  User data is data that is stored into Couchbase by the application user account:
-//  - Key and value pairs in JSON documents, or the key exclusively
-//  - Application/Admin usernames that identify the human person
-//  - Query statements included in the log file collected by support that leak the document fields (Select floor_price from stock).
-//  - Names and email addresses asked during product registration and alerting
-//  - Usernames
-//  - Document xattrs
+//	User data is data that is stored into Couchbase by the application user account:
+//	- Key and value pairs in JSON documents, or the key exclusively
+//	- Application/Admin usernames that identify the human person
+//	- Query statements included in the log file collected by support that leak the document fields (Select floor_price from stock).
+//	- Names and email addresses asked during product registration and alerting
+//	- Usernames
+//	- Document xattrs
 type UserData string
 
 func (ud UserData) String() string {

@@ -75,10 +75,13 @@ func ExplainQuery(store N1QLStore, statement string, params map[string]interface
 }
 
 // CreateIndex issues a CREATE INDEX query in the current bucket, using the form:
-//   CREATE INDEX indexName ON bucket.Name(expression) WHERE filterExpression WITH options
+//
+//	CREATE INDEX indexName ON bucket.Name(expression) WHERE filterExpression WITH options
+//
 // Sample usage with resulting statement:
-//     CreateIndex("myIndex", "field1, field2, nested.field", "field1 > 0", N1qlIndexOptions{numReplica:1})
-//   CREATE INDEX myIndex on myBucket(field1, field2, nested.field) WHERE field1 > 0 WITH {"numReplica":1}
+//
+//	  CreateIndex("myIndex", "field1, field2, nested.field", "field1 > 0", N1qlIndexOptions{numReplica:1})
+//	CREATE INDEX myIndex on myBucket(field1, field2, nested.field) WHERE field1 > 0 WITH {"numReplica":1}
 func CreateIndex(store N1QLStore, indexName string, expression string, filterExpression string, options *N1qlIndexOptions) error {
 	createStatement := fmt.Sprintf("CREATE INDEX `%s` ON `%s`(%s)", indexName, store.Keyspace(), expression)
 
@@ -208,7 +211,8 @@ func BuildDeferredIndexes(s N1QLStore, indexSet []string) error {
 }
 
 // BuildIndexes executes a BUILD INDEX statement in the current bucket, using the form:
-//   BUILD INDEX ON `bucket.Name`(`index1`, `index2`, ...)
+//
+//	BUILD INDEX ON `bucket.Name`(`index1`, `index2`, ...)
 func buildIndexes(s N1QLStore, indexNames []string) error {
 	if len(indexNames) == 0 {
 		return nil
@@ -359,7 +363,9 @@ func AsN1QLStore(bucket Bucket) (N1QLStore, bool) {
 }
 
 // Index not found errors (returned by DropIndex) don't have a specific N1QL error code - they are of the form:
-//   [5000] GSI index testIndex_not_found not found.
+//
+//	[5000] GSI index testIndex_not_found not found.
+//
 // Stuck with doing a string compare to differentiate between 'not found' and other errors
 func IsIndexNotFoundError(err error) bool {
 	return strings.Contains(err.Error(), "not found")
@@ -369,7 +375,8 @@ func IsIndexNotFoundError(err error) bool {
 // error:[5000] GSI CreateIndex() - cause: Encountered transient error.  Index creation will be retried in background.  Error: Index testIndex_value will retry building in the background for reason: Bucket test_data_bucket In Recovery.
 // error:[5000] GSI Drop() - cause: Fail to drop index on some indexer nodes.  Error=Encountered error when dropping index: Indexer In Recovery. Drop index will be retried in background.
 // error:[5000] BuildIndexes - cause: Build index fails.  %vIndex testIndexDeferred will retry building in the background for reason: Build Already In Progress. Bucket test_data_bucket.
-//  https://issues.couchbase.com/browse/MB-19358 is filed to request improved indexer error codes for these scenarios (and others)
+//
+//	https://issues.couchbase.com/browse/MB-19358 is filed to request improved indexer error codes for these scenarios (and others)
 func IsIndexerRetryIndexError(err error) bool {
 	if err == nil {
 		return false

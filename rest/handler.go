@@ -1104,10 +1104,10 @@ func (h *handler) handleRange(contentLength uint64) (status int, start uint64, e
 
 // Given an HTTP "Range:" header value, parses it and returns the approppriate HTTP status code,
 // and the numeric byte range if appropriate:
-// * If the Range header is empty or syntactically invalid, it ignores it and returns status=200.
-// * If the header is valid but exceeds the contentLength, it returns status=416 (Not Satisfiable).
-// * Otherwise it returns status=206 and sets the start and end values in HTTP terms, i.e. with
-//   the first byte numbered 0, and the end value inclusive (so the first 100 bytes are 0-99.)
+//   - If the Range header is empty or syntactically invalid, it ignores it and returns status=200.
+//   - If the header is valid but exceeds the contentLength, it returns status=416 (Not Satisfiable).
+//   - Otherwise it returns status=206 and sets the start and end values in HTTP terms, i.e. with
+//     the first byte numbered 0, and the end value inclusive (so the first 100 bytes are 0-99.)
 func parseHTTPRangeHeader(rangeStr string, contentLength uint64) (status int, start uint64, end uint64) {
 	// http://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html#sec14.35
 	status = http.StatusOK
