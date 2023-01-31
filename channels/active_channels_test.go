@@ -16,7 +16,6 @@ import (
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func TestActiveChannelsConcurrency(t *testing.T) {
@@ -35,15 +34,13 @@ func TestActiveChannelsConcurrency(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			const seqNo uint64 = 0
-			activeChans, err := SetOf(ABCChan, DEFChan, GHIChan, JKLChan, MNOChan)
-			require.NoError(t, err)
-			activeChansTimedSet := AtSequenceByCollection(activeChans, seqNo)
-			ac.IncrChannels(activeChansTimedSet)
-			inactiveChans, err := SetOf(ABCChan, DEFChan)
-			require.NoError(t, err)
-			inactiveChansTimedSet := AtSequenceByCollection(inactiveChans, seqNo)
+			activeChans := base.SetOf(ABCChan.Name, DEFChan.Name, GHIChan.Name, JKLChan.Name, MNOChan.Name)
+			activeChansTimedSet := AtSequence(activeChans, seqNo)
+			ac.IncrChannels(base.DefaultCollectionID, activeChansTimedSet)
+			inactiveChans := base.SetOf(ABCChan.Name, DEFChan.Name)
+			inactiveChansTimedSet := AtSequence(inactiveChans, seqNo)
 
-			ac.DecrChannels(inactiveChansTimedSet)
+			ac.DecrChannels(base.DefaultCollectionID, inactiveChansTimedSet)
 		}()
 	}
 	wg.Wait()
@@ -59,10 +56,10 @@ func TestActiveChannelsConcurrency(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			changedKeys := ChangedChannels{ABCChan: true, DEFChan: true, GHIChan: false, MNOChan: true}
-			ac.UpdateChanged(changedKeys)
-			changedKeys = ChangedChannels{DEFChan: false}
-			ac.UpdateChanged(changedKeys)
+			changedKeys := ChangedKeys{"ABC": true, "DEF": true, "GHI": false, "MNO": true}
+			ac.UpdateChanged(base.DefaultCollectionID, changedKeys)
+			changedKeys = ChangedKeys{"DEF": false}
+			ac.UpdateChanged(base.DefaultCollectionID, changedKeys)
 		}()
 	}
 	wg.Wait()

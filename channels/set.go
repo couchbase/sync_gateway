@@ -120,15 +120,6 @@ func SetOfNoValidate(chans ...ID) Set {
 	return SetFromArrayNoValidate(chans)
 }
 
-// SetOfFromSingleCollection creates a new Set from series of strings
-func SetOfFromSingleCollection(chans []string, collectionID uint32) Set {
-	result := make(Set, len(chans))
-	for _, chanName := range chans {
-		result[NewID(chanName, collectionID)] = present{}
-	}
-	return result
-}
-
 // Update adds all elements from other set and returns the union of the sets.
 func (s Set) Update(other Set) Set {
 	if len(s) == 0 {
