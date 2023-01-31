@@ -1018,6 +1018,13 @@ func (r TestResponse) GetRestDocument() RestDocument {
 	return *restDoc
 }
 
+//func (r TestResponse) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+//	h, ok := r.Req.Response.(http.Hijacker)
+//	if !ok {
+//		return nil, nil, errors.New("hijack not supported")
+//	}
+//	return h.Hijack()
+//}
 func Request(method, resource, body string) *http.Request {
 	request, err := http.NewRequest(method, "http://localhost"+resource, bytes.NewBufferString(body))
 	request.RequestURI = resource // This doesn't get filled in by NewRequest

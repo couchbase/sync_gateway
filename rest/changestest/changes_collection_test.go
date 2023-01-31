@@ -202,7 +202,7 @@ func TestMultiCollectionChangesMultipleChannels(t *testing.T) {
 	// Create user with access to channel PBS in both collections
 	ctx := rt.Context()
 	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
-	bernard, err := a.NewUser("bernard", "letmein", channels.BaseSetOf(t, "PBS"))
+	bernard, err := a.NewUser("bernard", "letmein", channels.BaseSetOf(t, "BRN"))
 	assert.NoError(t, err)
 	assert.NoError(t, a.Save(bernard))
 	charlie, err := a.NewUser("charlie", "letmein", channels.BaseSetOf(t, "ABC"))
@@ -211,18 +211,18 @@ func TestMultiCollectionChangesMultipleChannels(t *testing.T) {
 	dan, err := a.NewUser("dan", "letmein", channels.BaseSetOf(t, "DAN"))
 	assert.NoError(t, err)
 	assert.NoError(t, a.Save(dan))
-	pbsdan, err := a.NewUser("PBSdan", "letmein", channels.BaseSetOf(t, "DAN", "PBS"))
+	pbsdan, err := a.NewUser("PBSdan", "letmein", channels.BaseSetOf(t, "DAN", "BRN"))
 	assert.NoError(t, err)
 	assert.NoError(t, a.Save(pbsdan))
 
 	// Put several documents, will be retrieved via query
-	response := rt.SendAdminRequest("PUT", "/{{.keyspace1}}/pbs1_c1", `{"channels":["PBS"]}`)
+	response := rt.SendAdminRequest("PUT", "/{{.keyspace1}}/pbs1_c1", `{"channels":["BRN"]}`)
 	rest.RequireStatus(t, response, 201)
 	response = rt.SendAdminRequest("PUT", "/{{.keyspace1}}/abc1_c1", `{"channels":["ABC"]}`)
 	rest.RequireStatus(t, response, 201)
 	response = rt.SendAdminRequest("PUT", "/{{.keyspace1}}/dan1_c1", `{"channels":["DAN"]}`)
 	rest.RequireStatus(t, response, 201)
-	response = rt.SendAdminRequest("PUT", "/{{.keyspace2}}/pbs1_c2", `{"channels":["PBS"]}`)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace2}}/pbs1_c2", `{"channels":["BRN"]}`)
 	rest.RequireStatus(t, response, 201)
 	response = rt.SendAdminRequest("PUT", "/{{.keyspace2}}/abc1_c2", `{"channels":["ABC"]}`)
 	rest.RequireStatus(t, response, 201)
@@ -249,11 +249,11 @@ func TestMultiCollectionChangesMultipleChannels(t *testing.T) {
 	logChangesResponse(t, changesResponse.Body.Bytes())
 
 	// Put more documents, should be served via DCP/cache
-	response = rt.SendAdminRequest("PUT", "/{{.keyspace1}}/pbs2_c1", `{"value":1, "channels":["PBS"]}`)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace1}}/pbs2_c1", `{"value":1, "channels":["BRN"]}`)
 	rest.RequireStatus(t, response, 201)
 	response = rt.SendAdminRequest("PUT", "/{{.keyspace1}}/abc2_c1", `{"value":1, "channels":["ABC"]}`)
 	rest.RequireStatus(t, response, 201)
-	response = rt.SendAdminRequest("PUT", "/{{.keyspace1}}/dan2_c2", `{"value":1, "channels":["ABC"]}`)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace1}}/dan2_c2", `{"value":1, "channels":["DAN"]}`)
 	rest.RequireStatus(t, response, 201)
 	_ = rt.WaitForPendingChanges()
 
@@ -263,18 +263,23 @@ func TestMultiCollectionChangesMultipleChannels(t *testing.T) {
 	require.Len(t, changes.Results, 2)
 	logChangesResponse(t, changesResponse.Body.Bytes())
 
-	changesResponse = rt.SendUserRequest("GET", "/{{.keyspace2}}/_changes?since=0", "", "bernard")
+	changesResponse = rt.SendUserRequest("GET", "/{{.keyspace1}}/_changes?since=0", "", "charlie")
 	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
 	assert.NoError(t, err, "Error unmarshalling changes response")
 	require.Len(t, changes.Results, 2)
 	logChangesResponse(t, changesResponse.Body.Bytes())
 
-	changesResponse = rt.SendUserRequest("GET", "/{{.keyspace}}/_changes?feed=continuous&timeout=2000", "", "bernard")
-
+	changesResponse = rt.SendUserRequest("GET", "/{{.keyspace1}}/_changes?feed=continuous&timeout=2000", "", "bernard")
 	contChanges, err := rt.ReadContinuousChanges(changesResponse)
 	assert.NoError(t, err)
+	assert.Len(t, contChanges, 2)
 
-	assert.Len(t, contChanges, 3)
+	log.Println("Before websocket")
+	changesResponse = rt.SendUserRequest("GET", "/{{.keyspace1}}/_changes?feed=websocket&timeout=2000", "", "bernard")
+	log.Println("after websocket")
+
+	assert.NoError(t, err)
+	assert.Len(t, contChanges, 2)
 
 }
 
