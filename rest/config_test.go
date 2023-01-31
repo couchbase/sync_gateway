@@ -23,6 +23,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -1525,9 +1526,11 @@ func TestLoadJavaScript(t *testing.T) {
 			}()
 			js, err := loadJavaScript(inputJavaScriptOrPath, test.insecureSkipVerify)
 			if test.errExpected != nil {
-				require.True(t, errors.As(err, &test.errExpected))
+				requireErrorWithX509UnknownAuthority(t, err, test.errExpected)
+			} else {
+				require.NoError(t, err)
+				assert.Equal(t, test.jsExpected, js)
 			}
-			assert.Equal(t, test.jsExpected, js)
 		})
 	}
 }
@@ -1681,17 +1684,11 @@ func TestSetupDbConfigWithSyncFunction(t *testing.T) {
 					RemoteConfigTlsSkipVerify: true,
 				}
 			}
-			if test.errExpected != nil {
-				test.errExpected = &JavaScriptLoadError{
-					JSLoadType: SyncFunction,
-					Path:       sync,
-					Err:        test.errExpected,
-				}
-			}
 			err := dbConfig.setup(dbConfig.Name, BootstrapConfig{}, nil)
 			if test.errExpected != nil {
-				require.True(t, errors.As(err, &test.errExpected))
+				requireErrorWithX509UnknownAuthority(t, err, test.errExpected)
 			} else {
+				require.NoError(t, err)
 				assert.Equal(t, test.jsSyncFnExpected, *dbConfig.Sync)
 			}
 		})
@@ -1781,17 +1778,11 @@ func TestSetupDbConfigWithImportFilterFunction(t *testing.T) {
 					RemoteConfigTlsSkipVerify: true,
 				}
 			}
-			if test.errExpected != nil {
-				test.errExpected = &JavaScriptLoadError{
-					JSLoadType: ImportFilter,
-					Path:       importFilter,
-					Err:        test.errExpected,
-				}
-			}
 			err := dbConfig.setup(dbConfig.Name, BootstrapConfig{}, nil)
 			if test.errExpected != nil {
-				require.True(t, errors.As(err, &test.errExpected))
+				requireErrorWithX509UnknownAuthority(t, err, test.errExpected)
 			} else {
+				require.NoError(t, err)
 				assert.Equal(t, test.jsImportFilterExpected, *dbConfig.ImportFilter)
 			}
 		})
@@ -1893,17 +1884,11 @@ func TestSetupDbConfigWithConflictResolutionFunction(t *testing.T) {
 					RemoteConfigTlsSkipVerify: true,
 				}
 			}
-			if test.errExpected != nil {
-				test.errExpected = &JavaScriptLoadError{
-					JSLoadType: ConflictResolver,
-					Path:       conflictResolutionFn,
-					Err:        test.errExpected,
-				}
-			}
 			err := dbConfig.setup(dbConfig.Name, BootstrapConfig{}, nil)
 			if test.errExpected != nil {
-				require.True(t, errors.As(err, &test.errExpected))
+				requireErrorWithX509UnknownAuthority(t, err, test.errExpected)
 			} else {
+				require.NoError(t, err)
 				require.NotNil(t, dbConfig.Replications["replication1"])
 				conflictResolutionFnActual := dbConfig.Replications["replication1"].ConflictResolutionFn
 				assert.Equal(t, test.jsConflictResExpected, conflictResolutionFnActual)
@@ -1997,18 +1982,13 @@ func TestWebhookFilterFunctionLoad(t *testing.T) {
 					RemoteConfigTlsSkipVerify: true,
 				}
 			}
-			if test.errExpected != nil {
-				test.errExpected = &JavaScriptLoadError{
-					JSLoadType: WebhookFilter,
-					Path:       webhookFilter,
-					Err:        test.errExpected,
-				}
-			}
 			ctx := &db.DatabaseContext{EventMgr: db.NewEventManager()}
 			sc := &ServerContext{}
 			err := sc.initEventHandlers(ctx, &dbConfig)
 			if test.errExpected != nil {
-				require.True(t, errors.As(err, &test.errExpected))
+				requireErrorWithX509UnknownAuthority(t, err, test.errExpected)
+			} else {
+				require.NoError(t, err)
 			}
 		})
 	}
@@ -2235,5 +2215,24 @@ func TestStartupConfigBcryptCostValidation(t *testing.T) {
 				assert.NotContains(t, err.Error(), errContains)
 			}
 		})
+	}
+}
+
+// This function allows for error checking on both x509.UnknownAuthorityError non-x509.UnknownAuthorityError types as we switch on the expected error type
+// We get OS specific errors on x509.UnknownAuthorityError so we switch the expected error string if on darwin OS
+func requireErrorWithX509UnknownAuthority(t testing.TB, actual, expected error) {
+	expectedErrorString := expected.Error()
+	if strings.Contains(actual.Error(), expectedErrorString) {
+		return
+	}
+
+	// workaround for versions of go affected by https://github.com/golang/go/issues/56891
+	isMacOS := runtime.GOOS == "darwin"
+	_, isX509Error := expected.(x509.UnknownAuthorityError)
+	if isX509Error && isMacOS {
+		expectedErrorString = "certificate is not trusted"
+	}
+	if !strings.Contains(actual.Error(), expectedErrorString) {
+		t.FailNow()
 	}
 }
