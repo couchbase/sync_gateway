@@ -2823,7 +2823,7 @@ func TestPersistentConfigConcurrency(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyDCP)
 
 	serverErr := make(chan error, 0)
 
@@ -3563,7 +3563,7 @@ func TestDbConfigPersistentSGVersions(t *testing.T) {
 	require.NoError(t, err)
 
 	// initialise with db config
-	_, err = sc.BootstrapContext.Connection.InsertConfig(tb.GetName(), t.Name(), dbConfig)
+	_, err = sc.BootstrapContext.InsertConfig(ctx, tb.GetName(), t.Name(), &dbConfig)
 	require.NoError(t, err)
 
 	assertRevsLimit := func(sc *rest.ServerContext, revsLimit uint32) {
@@ -3584,18 +3584,15 @@ func TestDbConfigPersistentSGVersions(t *testing.T) {
 	assertRevsLimit(sc, 123)
 
 	writeRevsLimitConfigWithVersion := func(sc *rest.ServerContext, version string, revsLimit uint32) error {
-		_, err = sc.BootstrapContext.Connection.UpdateConfig(tb.GetName(), t.Name(), func(rawBucketConfig []byte, rawBucketConfigCas uint64) (updatedConfig []byte, err error) {
-			var db rest.DatabaseConfig
-			if err := base.JSONUnmarshal(rawBucketConfig, &db); err != nil {
-				return nil, err
-			}
+		_, err = sc.BootstrapContext.UpdateConfig(base.TestCtx(t), tb.GetName(), "db", t.Name(), func(db *rest.DatabaseConfig) (updatedConfig *rest.DatabaseConfig, err error) {
+
 			db.SGVersion = version
 			db.DbConfig.RevsLimit = base.Uint32Ptr(revsLimit)
 			db.Version, err = rest.GenerateDatabaseConfigVersionID(db.Version, &db.DbConfig)
 			if err != nil {
 				return nil, err
 			}
-			return base.JSONMarshal(db)
+			return db, nil
 		})
 		return err
 	}

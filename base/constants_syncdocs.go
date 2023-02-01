@@ -11,7 +11,6 @@ licenses/APL2.txt.
 package base
 
 import (
-	"errors"
 	"fmt"
 )
 
@@ -36,6 +35,7 @@ const (
 	RepairBackupPrefix               = SyncDocPrefix + "repair:backup:"                // RepairBackupPrefix is the doc prefix used to store a backup of a repaired document
 	RepairDryRunPrefix               = SyncDocPrefix + "repair:dryrun:"                // RepairDryRunPrefix is the doc prefix used to store a repaired document in dry-run mode
 	SGRStatusPrefix                  = SyncDocPrefix + "sgrStatus:"                    // SGRStatusPrefix is the doc prefix used to store ISGR status documents
+	SGRegistryKey                    = SyncDocPrefix + "registry"                      // Registry of all SG databases defined for the bucket (for all group IDs)
 )
 
 // Sync Gateway Metadata documents that should be GroupID scoped and accessed via the "WithGroupID" helper methods below
@@ -90,12 +90,4 @@ func HeartbeaterPrefixWithGroupID(groupID string) string {
 		return HeartbeaterPrefixWithoutGroupID + groupID + ":"
 	}
 	return HeartbeaterPrefixWithoutGroupID
-}
-
-// PersistentConfigKey returns a document key to use to store database configs
-func PersistentConfigKey(groupID string) (string, error) {
-	if groupID == "" {
-		return "", errors.New("PersistentConfigKey requires a group ID, even if it's just `default`.")
-	}
-	return PersistentConfigPrefixWithoutGroupID + groupID, nil
 }

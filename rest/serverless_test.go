@@ -9,7 +9,6 @@
 package rest
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"testing"
@@ -301,7 +300,7 @@ func TestServerlessSuspendDatabase(t *testing.T) {
 
 	assert.False(t, sc.isDatabaseSuspended(t, "db"))
 	assert.NotNil(t, sc.databases_["db"])
-	assert.Equal(t, "db", sc.bucketDbName[tb.GetName()])
+	assert.NotNil(t, sc.dbRegistry["db"])
 	assert.NotNil(t, sc.dbConfigs["db"])
 
 	// Unsuspend db that is not suspended should just return db context
@@ -320,15 +319,13 @@ func TestServerlessSuspendDatabase(t *testing.T) {
 	// Make sure database is suspended
 	assert.True(t, sc.isDatabaseSuspended(t, "db"))
 	assert.Nil(t, sc.databases_["db"])
-	assert.NotEmpty(t, sc.bucketDbName[tb.GetName()])
+	assert.NotNil(t, sc.dbRegistry["db"])
 	assert.NotNil(t, sc.dbConfigs["db"])
 
 	// Update config in bucket to see if unsuspending check for updates
-	cas, err := sc.BootstrapContext.Connection.UpdateConfig(tb.GetName(), sc.Config.Bootstrap.ConfigGroupID,
-		func(rawBucketConfig []byte, rawBucketConfigCas uint64) (updatedConfig []byte, err error) {
-			return json.Marshal(sc.dbConfigs["db"])
-		},
-	)
+	cas, err := sc.BootstrapContext.UpdateConfig(base.TestCtx(t), tb.GetName(), sc.Config.Bootstrap.ConfigGroupID, "db", func(bucketDbConfig *DatabaseConfig) (updatedConfig *DatabaseConfig, err error) {
+		return sc.dbConfigs["db"].ToDatabaseConfig(), nil
+	})
 	require.NoError(t, err)
 	assert.NotEqual(t, cas, sc.dbConfigs["db"].cfgCas)
 
@@ -337,7 +334,7 @@ func TestServerlessSuspendDatabase(t *testing.T) {
 	assert.NotNil(t, dbCtx)
 	assert.False(t, sc.isDatabaseSuspended(t, "db"))
 	assert.NotNil(t, sc.databases_["db"])
-	assert.Equal(t, "db", sc.bucketDbName[tb.GetName()])
+	assert.NotNil(t, sc.dbRegistry["db"])
 	require.NotNil(t, sc.dbConfigs["db"])
 
 	// Make sure updated config is being used
@@ -381,7 +378,7 @@ func TestServerlessUnsuspendFetchFallback(t *testing.T) {
 	err := sc.suspendDatabase(t, rt.Context(), "db")
 	assert.NoError(t, err)
 	delete(sc.dbConfigs, "db")
-	delete(sc.bucketDbName, tb.GetName())
+	delete(sc.dbRegistry, "db")
 	assert.Nil(t, sc.databases_["db"])
 
 	// Unsuspend db and confirm unsuspending worked
@@ -403,6 +400,8 @@ func TestServerlessFetchConfigsLimited(t *testing.T) {
 
 	tb := base.GetTestBucket(t)
 	defer tb.Close()
+
+	ctx := base.TestCtx(t)
 
 	rt := NewRestTester(t, &RestTesterConfig{
 		CustomTestBucket: tb,
@@ -431,11 +430,9 @@ func TestServerlessFetchConfigsLimited(t *testing.T) {
 	require.NoError(t, err)
 
 	// Update database config in the bucket
-	newCas, err := sc.BootstrapContext.Connection.UpdateConfig(tb.GetName(), sc.Config.Bootstrap.ConfigGroupID,
-		func(rawBucketConfig []byte, rawBucketConfigCas uint64) (updatedConfig []byte, err error) {
-			return json.Marshal(sc.dbConfigs["db"])
-		},
-	)
+	newCas, err := sc.BootstrapContext.UpdateConfig(ctx, tb.GetName(), sc.Config.Bootstrap.ConfigGroupID, "db", func(bucketDbConfig *DatabaseConfig) (updatedConfig *DatabaseConfig, err error) {
+		return sc.dbConfigs["db"].ToDatabaseConfig(), nil
+	})
 
 	// Fetch configs again and expect same config to be returned
 	dbConfigsAfter, err := sc.fetchConfigsSince(rt.Context(), sc.Config.Unsupported.Serverless.MinConfigFetchInterval)
@@ -454,11 +451,9 @@ func TestServerlessFetchConfigsLimited(t *testing.T) {
 	sc.Config.Unsupported.Serverless.MinConfigFetchInterval = base.NewConfigDuration(time.Hour)
 
 	// Update database config in the bucket again to test caching disable case
-	newCas, err = sc.BootstrapContext.Connection.UpdateConfig(tb.GetName(), sc.Config.Bootstrap.ConfigGroupID,
-		func(rawBucketConfig []byte, rawBucketConfigCas uint64) (updatedConfig []byte, err error) {
-			return json.Marshal(sc.dbConfigs["db"])
-		},
-	)
+	newCas, err = sc.BootstrapContext.UpdateConfig(ctx, tb.GetName(), sc.Config.Bootstrap.ConfigGroupID, "db", func(bucketDbConfig *DatabaseConfig) (updatedConfig *DatabaseConfig, err error) {
+		return sc.dbConfigs["db"].ToDatabaseConfig(), nil
+	})
 
 	// Disable caching and expect new config
 	sc.Config.Unsupported.Serverless.MinConfigFetchInterval = base.NewConfigDuration(0)
@@ -497,11 +492,9 @@ func TestServerlessUpdateSuspendedDb(t *testing.T) {
 	// Suspend the database
 	assert.NoError(t, sc.suspendDatabase(t, rt.Context(), "db"))
 	// Update database config
-	newCas, err := sc.BootstrapContext.Connection.UpdateConfig(tb.GetName(), sc.Config.Bootstrap.ConfigGroupID,
-		func(rawBucketConfig []byte, rawBucketConfigCas uint64) (updatedConfig []byte, err error) {
-			return json.Marshal(sc.dbConfigs["db"])
-		},
-	)
+	newCas, err := sc.BootstrapContext.UpdateConfig(base.TestCtx(t), tb.GetName(), sc.Config.Bootstrap.ConfigGroupID, "db", func(bucketDbConfig *DatabaseConfig) (updatedConfig *DatabaseConfig, err error) {
+		return sc.dbConfigs["db"].ToDatabaseConfig(), nil
+	})
 	// Confirm dbConfig cas did not update yet in SG, or get unsuspended
 	assert.NotEqual(t, sc.dbConfigs["db"].cfgCas, newCas)
 	assert.True(t, sc.isDatabaseSuspended(t, "db"))

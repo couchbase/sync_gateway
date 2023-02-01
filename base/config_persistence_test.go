@@ -78,11 +78,11 @@ func TestConfigPersistence(t *testing.T) {
 			require.NoError(t, marshalErr)
 
 			// update with incorrect cas
-			_, _, updateErr := cp.replaceRawConfig(c, configKey, updatedRawBody, 1234)
+			_, updateErr := cp.replaceRawConfig(c, configKey, updatedRawBody, 1234)
 			require.Error(t, updateErr)
 
 			// update with correct cas
-			updateCas, _, updateErr := cp.replaceRawConfig(c, configKey, updatedRawBody, gocb.Cas(insertCas))
+			updateCas, updateErr := cp.replaceRawConfig(c, configKey, updatedRawBody, gocb.Cas(insertCas))
 			require.NoError(t, updateErr)
 
 			// retrieve config, validate updated value

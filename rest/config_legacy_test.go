@@ -334,7 +334,7 @@ func TestLegacyGuestUserMigration(t *testing.T) {
 	require.NoError(t, err)
 
 	var dbConfig DbConfig
-	_, err = cluster.GetConfig(tb.GetName(), PersistentConfigDefaultGroupID, &dbConfig)
+	_, err = cluster.GetMetadataDocument(tb.GetName(), PersistentConfigDefaultGroupID, &dbConfig)
 	require.NoError(t, err)
 
 	assert.Equal(t, &expected, dbConfig.Guest)
