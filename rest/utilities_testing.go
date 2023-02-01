@@ -1135,7 +1135,8 @@ type BlipTesterSpec struct {
 	blipProtocols []string
 
 	// If true, do not automatically initialize GetCollections handshake
-	skipCollectionsInitialization bool
+	skipCollectionsInitialization   bool
+	connectingUserChannelGrantsColl map[string][]string
 }
 
 // State associated with a BlipTester
@@ -1251,14 +1252,25 @@ func createBlipTesterWithSpec(tb testing.TB, spec BlipTesterSpec, rt *RestTester
 
 		// By default, the user will be granted access to a single channel equal to their username
 		adminChannels := []string{spec.connectingUsername}
+		var collection *db.DatabaseCollection
 
 		// If the caller specified a list of channels to grant the user access to, then use that instead.
 		if len(spec.connectingUserChannelGrants) > 0 {
 			adminChannels = []string{} // empty it
+			collection = bt.restTester.GetSingleTestDatabaseCollection()
 			adminChannels = append(adminChannels, spec.connectingUserChannelGrants...)
 		}
 
-		userDocBody, err := getUserBodyDoc(spec.connectingUsername, spec.connectingPassword, bt.restTester.GetSingleTestDatabaseCollection(), adminChannels)
+		if len(spec.connectingUserChannelGrantsColl) > 0 {
+			for keyspace, channelList := range spec.connectingUserChannelGrantsColl {
+				adminChannels = []string{} // empty it
+				scopeName, collectionName, err := db.ParseScopeAndCollection(keyspace)
+				collection, err = bt.restTester.GetDatabase().GetDatabaseCollection(*scopeName, *collectionName)
+				require.NoError(tb, err)
+				adminChannels = append(adminChannels, channelList...)
+			}
+		}
+		userDocBody, err := getUserBodyDoc(spec.connectingUsername, spec.connectingPassword, collection, adminChannels)
 		if err != nil {
 			return nil, err
 		}

@@ -17,7 +17,7 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 )
 
-func parseScopeAndCollection(sc string) (scope, collection *string, err error) {
+func ParseScopeAndCollection(sc string) (scope, collection *string, err error) {
 
 	parts := strings.Split(sc, base.ScopeCollectionSeparator)
 	switch len(parts) {
@@ -56,7 +56,7 @@ func (bh *blipHandler) handleGetCollections(rq *blip.Message) error {
 
 	checkpoints := make([]Body, len(requestBody.Collections))
 	for i, scopeAndCollection := range requestBody.Collections {
-		scope, collectionName, err := parseScopeAndCollection(scopeAndCollection)
+		scope, collectionName, err := ParseScopeAndCollection(scopeAndCollection)
 		if err != nil {
 			return base.HTTPErrorf(http.StatusBadRequest, "Invalid specification for collection: %s", err)
 		}

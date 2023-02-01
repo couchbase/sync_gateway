@@ -10,6 +10,8 @@ package rest
 
 import (
 	"fmt"
+	"github.com/stretchr/testify/assert"
+	"log"
 	"net/http"
 	"strconv"
 	"testing"
@@ -254,4 +256,95 @@ func TestCollectionsReplication(t *testing.T) {
 
 	_, ok := btcCollection.WaitForRev("doc1", "1-ca9ad22802b66f662ff171f226211d5c")
 	require.True(t, ok)
+}
+
+func TestMultiCollectionChangesMultipleChannels(t *testing.T) {
+
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+	numCollections := 2
+	base.RequireNumTestDataStores(t, numCollections)
+	rt := NewRestTesterMultipleCollections(t, nil, numCollections)
+	collectionNames := getCollectionsForBLIP(t, rt)
+	print(collectionNames)
+	channelNames := map[string][]string{collectionNames[0]: []string{"BRN"}}
+	btc, err := NewBlipTesterClientOptsWithRT(t, rt, &BlipTesterClientOpts{
+		Username:                      "bernard",
+		CollectionChannels:            channelNames,
+		SkipCollectionsInitialization: true,
+	})
+	require.NoError(t, err)
+	defer btc.Close()
+	defer rt.Close()
+
+	// Put several documents, will be retrieved via query
+	response := rt.SendAdminRequest("PUT", "/{{.keyspace1}}/pbs1_c1", `{"channels":["BRN"]}`)
+	RequireStatus(t, response, 201)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace1}}/abc1_c1", `{"channels":["ABC"]}`)
+	RequireStatus(t, response, 201)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace1}}/dan1_c1", `{"channels":["DAN"]}`)
+	RequireStatus(t, response, 201)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace2}}/pbs1_c2", `{"channels":["BRN"]}`)
+	RequireStatus(t, response, 201)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace2}}/abc1_c2", `{"channels":["ABC"]}`)
+	RequireStatus(t, response, 201)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace2}}/dan1_c2", `{"channels":["DAN"]}`)
+	RequireStatus(t, response, 201)
+	_ = rt.WaitForPendingChanges()
+
+	var changes struct {
+		Results  []db.ChangeEntry
+		Last_Seq db.SequenceID
+	}
+
+	// Issue changes request.  Will initialize cache for channels, and return docs via querys
+	changesResponse := rt.SendUserRequest("GET", "/{{.keyspace1}}/_changes?since=0", "", "bernard")
+	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
+	assert.NoError(t, err, "Error unmarshalling changes response")
+	//require.Len(t, changes.Results, 1)
+	//logChangesResponse(t, changesResponse.Body.Bytes())
+
+	err = btc.StartPull()
+	require.NoError(t, err)
+	rev, bool := btc.WaitForRev("pbs1_c1", "1-72023d8f3306931f38287b06054d6de1")
+	log.Print(rev, bool)
+	require.True(t, bool)
+
+	changesResponse = rt.SendUserRequest("GET", "/{{.keyspace2}}/_changes?since=0", "", "bernard")
+	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
+	assert.NoError(t, err, "Error unmarshalling changes response")
+	require.Len(t, changes.Results, 1)
+	//logChangesResponse(t, changesResponse.Body.Bytes())
+
+	// Put more documents, should be served via DCP/cache
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace1}}/pbs2_c1", `{"value":1, "channels":["BRN"]}`)
+	RequireStatus(t, response, 201)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace1}}/abc2_c1", `{"value":1, "channels":["ABC"]}`)
+	RequireStatus(t, response, 201)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace1}}/dan2_c2", `{"value":1, "channels":["DAN"]}`)
+	RequireStatus(t, response, 201)
+	_ = rt.WaitForPendingChanges()
+
+	changesResponse = rt.SendUserRequest("GET", "/{{.keyspace1}}/_changes?since=0", "", "bernard")
+	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
+	assert.NoError(t, err, "Error unmarshalling changes response")
+	require.Len(t, changes.Results, 2)
+	//logChangesResponse(t, changesResponse.Body.Bytes())
+
+	changesResponse = rt.SendUserRequest("GET", "/{{.keyspace1}}/_changes?since=0", "", "charlie")
+	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
+	assert.NoError(t, err, "Error unmarshalling changes response")
+	require.Len(t, changes.Results, 2)
+	//logChangesResponse(t, changesResponse.Body.Bytes())
+
+	changesResponse = rt.SendUserRequest("GET", "/{{.keyspace1}}/_changes?feed=continuous&timeout=2000", "", "bernard")
+	contChanges, err := rt.ReadContinuousChanges(changesResponse)
+	assert.NoError(t, err)
+	assert.Len(t, contChanges, 2)
+
+	err = btc.StartPull()
+	assert.NoError(t, err)
+
+	assert.NoError(t, err)
+	assert.Len(t, contChanges, 2)
+
 }
