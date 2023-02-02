@@ -35,6 +35,7 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
+	"github.com/couchbase/sync_gateway/db/functions"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -2285,4 +2286,9 @@ func (rt *RestTester) getCollectionsForBLIP() []string {
 			strings.Join([]string{collection.ScopeName(), collection.Name()}, base.ScopeCollectionSeparator))
 	}
 	return collections
+}
+
+func (rt *RestTester) GetFunctionsConfig() *functions.Config {
+	config, _ := rt.GetDatabase().Options.FunctionsConfig.(*functions.Config)
+	return config
 }

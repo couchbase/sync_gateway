@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/couchbase/sync_gateway/db"
 
@@ -100,16 +101,16 @@ func TestJSFunctionAsGuest(t *testing.T) {
 	})
 
 	t.Run("user required", func(t *testing.T) {
-		t.Skip("Does not work with SG_TEST_USE_DEFAULT_COLLECTION=true CBG-2702")
+		//TEMP t.Skip("Does not work with SG_TEST_USE_DEFAULT_COLLECTION=true CBG-2702")
 		response := sendReqFn("POST", "/db/_function/square", `{"numero": 42}`)
 		assert.Equal(t, 401, response.Result().StatusCode)
-		assert.Contains(t, string(response.BodyBytes()), "login required")
+		assert.Contains(t, string(response.BodyBytes()), "Login required")
 	})
 
 	t.Run("admin-only", func(t *testing.T) {
 		response := sendReqFn("GET", "/db/_function/admin_only", "")
 		assert.Equal(t, 401, response.Result().StatusCode)
-		assert.Contains(t, string(response.BodyBytes()), "login required")
+		assert.Contains(t, string(response.BodyBytes()), "Login required")
 	})
 }
 
@@ -244,13 +245,13 @@ func TestN1QLFunctionAsGuest(t *testing.T) {
 		t.Skip("Does not work with SG_TEST_USE_DEFAULT_COLLECTION=true CBG-2702")
 		response := sendReqFn("POST", "/db/_function/square", `{"numero": 16}`)
 		assert.Equal(t, 401, response.Result().StatusCode)
-		assert.Contains(t, string(response.BodyBytes()), "login required")
+		assert.Contains(t, string(response.BodyBytes()), "Login required")
 	})
 
 	t.Run("admin only", func(t *testing.T) {
 		response := sendReqFn("GET", "/db/_function/admin_only", "")
 		assert.Equal(t, 401, response.Result().StatusCode)
-		assert.Contains(t, string(response.BodyBytes()), "login required")
+		assert.Contains(t, string(response.BodyBytes()), "Login required")
 	})
 
 	t.Run("unconfigured query", func(t *testing.T) {
@@ -265,7 +266,7 @@ func testUserQueriesCommon(t *testing.T, rt *rest.RestTester, sendReqFn func(str
 	t.Run("commons/passing a param", func(t *testing.T) {
 		response := sendReqFn("POST", "/db/_function/square", `{"numero": 16}`)
 		assert.Equal(t, 200, response.Result().StatusCode)
-		assert.EqualValues(t, "[{\"square\":256}\n]\n", string(response.BodyBytes()))
+		assert.EqualValues(t, "[{\"square\":256}]", string(response.BodyBytes()))
 	})
 }
 
@@ -276,13 +277,13 @@ func testUserQueriesAsAdmin(t *testing.T, rt *rest.RestTester) {
 	t.Run("select user", func(t *testing.T) {
 		response := rt.SendAdminRequest("GET", "/db/_function/user", "")
 		assert.Equal(t, 200, response.Result().StatusCode)
-		assert.EqualValues(t, "[{\"user\":{}}\n]\n", string(response.BodyBytes()))
+		assert.EqualValues(t, "[{\"user\":{}}]", string(response.BodyBytes()))
 	})
 
 	t.Run("admin only", func(t *testing.T) {
 		response := rt.SendAdminRequest("GET", "/db/_function/admin_only", "")
 		assert.Equal(t, 200, response.Result().StatusCode)
-		assert.EqualValues(t, "[{\"status\":\"ok\"}\n]\n", string(response.BodyBytes()))
+		assert.EqualValues(t, "[{\"status\":\"ok\"}]", string(response.BodyBytes()))
 	})
 
 	//negative cases:
@@ -303,8 +304,7 @@ func testUserQueriesAsUser(t *testing.T, rt *rest.RestTester) {
 	t.Run("select user", func(t *testing.T) {
 		response := sendReqFn("GET", "/db/_function/user", "")
 		assert.Equal(t, 200, response.Result().StatusCode)
-		assert.True(t, strings.HasPrefix(string(response.BodyBytes()), `[{"user":{"channels":["`))
-		assert.True(t, strings.HasSuffix(string(response.BodyBytes()), "\"],\"email\":\"\",\"name\":\"alice\"}}\n]\n"))
+		assert.True(t, strings.HasPrefix(string(response.BodyBytes()), `[{"user":{"channels":["`) && strings.HasSuffix(string(response.BodyBytes()), "\"],\"name\":\"alice\"}}]"), "Unexpected response: %s", response.BodyBytes())
 	})
 
 	//negative cases:
@@ -430,6 +430,11 @@ func TestFunctionMutability(t *testing.T) {
 }
 
 func TestFunctionTimeout(t *testing.T) {
+	const timeout = 5 * time.Second
+	oldTimeout := db.UserFunctionTimeout
+	db.UserFunctionTimeout = timeout
+	defer func() { db.UserFunctionTimeout = oldTimeout }()
+
 	kUserTimeoutFunctionsTestConfig := &functions.FunctionsConfig{
 		Definitions: functions.FunctionsDefs{
 			"sleep": {
@@ -456,14 +461,14 @@ func TestFunctionTimeout(t *testing.T) {
 	defer rt.Close()
 
 	// positive case:
-	reqBody := fmt.Sprintf(`{"ms": %d}`, db.UserFunctionTimeout.Milliseconds()/2)
+	reqBody := fmt.Sprintf(`{"ms": %d}`, timeout.Milliseconds()/2)
 	t.Run("under time limit", func(t *testing.T) {
 		response := rt.SendAdminRequest("POST", "/db/_function/sleep", reqBody)
 		assert.Equal(t, 200, response.Result().StatusCode)
 	})
 
 	// negative case:
-	reqBody = fmt.Sprintf(`{"ms": %d}`, 2*db.UserFunctionTimeout.Milliseconds())
+	reqBody = fmt.Sprintf(`{"ms": %d}`, 2*timeout.Milliseconds())
 	t.Run("over time limit", func(t *testing.T) {
 		response := rt.SendAdminRequest("POST", "/db/_function/sleep", reqBody)
 		assert.Equal(t, 500, response.Result().StatusCode)

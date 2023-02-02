@@ -21,10 +21,25 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const kDummyGraphQLSchema = `
+// Dummy GraphQL schema:
+var kDummyGraphQLSchema = `
     type Query {
         square(n: Int!) : Int!
     }`
+
+// Dummy GraphQL configuration:
+var kDummyGraphQLConfig = functions.GraphQLConfig{
+	Schema: &kDummyGraphQLSchema,
+	Resolvers: map[string]functions.GraphQLResolverConfig{
+		"Query": {
+			"square": {
+				Type:  "javascript",
+				Code:  `function(parent, args, context, info) { return null; }`,
+				Allow: allowAll,
+			},
+		},
+	},
+}
 
 var allowAll = &functions.Allow{Channels: []string{"*"}}
 
@@ -55,9 +70,9 @@ var kTestGraphQLConfig = functions.GraphQLConfig{
 			"getUser": {
 				Type: "javascript",
 				Code: `function(parent, args, context, info) {
-						if (Object.keys(parent).length != 0) throw "Unexpected parent";
+						if (parent !== undefined) throw "Unexpectedly-defined parent";
 						if (Object.keys(args).length != 1) throw "Unexpected args";
-						if (Object.keys(info) != "selectedFieldNames") throw "Unexpected info";
+						if (!info.selectedFieldNames) throw "No info.selectedFieldNames";
 						if (!context.user) throw "Missing context.user";
 						if (!context.admin) throw "Missing context.admin";
 						return context.user.function("getUserWithID", {id: args.id});}`,
@@ -66,9 +81,9 @@ var kTestGraphQLConfig = functions.GraphQLConfig{
 			"getEmails": {
 				Type: "javascript",
 				Code: `function(parent, args, context, info) {
-						if (Object.keys(parent).length != 0) throw "Unexpected parent";
+						if (parent !== undefined) throw "Unexpectedly-defined parent";
 						if (Object.keys(args).length != 1) throw "Unexpected args";
-						if (Object.keys(info) != "selectedFieldNames") throw "Unexpected info";
+						if (!info.selectedFieldNames) throw "No info.selectedFieldNames";
 						if (!context.user) throw "Missing context.user";
 						if (!context.admin) throw "Missing context.admin";
 						return context.user.function("getEmailsWithName", {name: args.name});}`,
@@ -77,9 +92,9 @@ var kTestGraphQLConfig = functions.GraphQLConfig{
 			"getAllUsers": {
 				Type: "javascript",
 				Code: `function(parent, args, context, info) {
-						if (Object.keys(parent).length != 0) throw "Unexpected parent";
+						if (parent !== undefined) throw "Unexpectedly-defined parent";
 						if (Object.keys(args).length != 0) throw "Unexpected args";
-						if (Object.keys(info) != "selectedFieldNames") throw "Unexpected info";
+						if (!info.selectedFieldNames) throw "No info.selectedFieldNames";
 						if (!context.user) throw "Missing context.user";
 						if (!context.admin) throw "Missing context.admin";
 						return context.user.function("all");}`,
@@ -90,12 +105,12 @@ var kTestGraphQLConfig = functions.GraphQLConfig{
 			"updateName": {
 				Type: "javascript",
 				Code: `function(parent, args, context, info){
-						if (Object.keys(parent).length != 0) throw "Unexpected parent";
+						if (parent !== undefined) throw "Unexpectedly-defined parent";
 						if (Object.keys(args).length != 2) throw "Unexpected args";
-						if (Object.keys(info) != "selectedFieldNames") throw "Unexpected info";
+						if (!info.selectedFieldNames) throw "No info.selectedFieldNames";
 						if (!context.user) throw "Missing context.user";
 						if (!context.admin) throw "Missing context.admin";
-						
+
 						var currentUser = context.user.function("getUserWithID", {id: args.id});
 						if (!currentUser) return undefined;
 						currentUser.name = args.name;
@@ -108,7 +123,7 @@ var kTestGraphQLConfig = functions.GraphQLConfig{
 				Code: `function(parent, args, context, info){
 						//if (!parent.id) throw "Invalid parent";
 						if (Object.keys(args).length != 2) throw "Unexpected args";
-						if (Object.keys(info) != "selectedFieldNames") throw "Unexpected info";
+						if (!info.selectedFieldNames) throw "No info.selectedFieldNames";
 						if (!context.user) throw "Missing context.user";
 						if (!context.admin) throw "Missing context.admin";
 						context.requireMutating();
@@ -116,7 +131,7 @@ var kTestGraphQLConfig = functions.GraphQLConfig{
 						if (!currentUser) return undefined;
 
 						//case: args.email already present in the Emails array
-						
+
 						for (var i = 0; i < currentUser.Emails.length; i++) {
 							console.log(currentUser.Emails[i]);
 							if(currentUser.Emails[i]==args.email){
@@ -196,7 +211,9 @@ func runTestFunctionsConfigMVCC(t *testing.T, rt *rest.RestTester, uri string, n
 
 	// Update config, just to change its etag:
 	response = rt.SendAdminRequest("PUT", uri, newValue)
-	assert.Equal(t, 200, response.Result().StatusCode)
+	if !assert.Equal(t, 200, response.Result().StatusCode) {
+		return
+	}
 	newEtag := response.HeaderMap.Get("Etag")
 	assert.Regexp(t, `"[^"]+"`, newEtag)
 	assert.NotEqual(t, etag, newEtag)
@@ -232,21 +249,15 @@ func runTestFunctionsConfigMVCC(t *testing.T, rt *rest.RestTester, uri string, n
 
 // Test use of "Etag" and "If-Match" headers to safely update graphql config.
 func TestFunctionsConfigMVCCGraphQL(t *testing.T) {
-	rt := rest.NewRestTesterForUserQueries(t, rest.DbConfig{
-		GraphQL: &functions.GraphQLConfig{
-			Schema:    base.StringPtr(kDummyGraphQLSchema),
-			Resolvers: nil,
-		},
-	})
+	rt := rest.NewRestTesterForUserQueries(t, rest.DbConfig{GraphQL: &kDummyGraphQLConfig})
 	if rt == nil {
 		return
 	}
 	defer rt.Close()
 
+	configJSON, _ := json.Marshal(kDummyGraphQLConfig)
 	t.Run("GraphQL", func(t *testing.T) {
-		runTestFunctionsConfigMVCC(t, rt, "/db/_config/graphql", `{
-			"schema": "type Query {square(n: Int!) : Int!}", "resolvers":{}
-		}`)
+		runTestFunctionsConfigMVCC(t, rt, "/db/_config/graphql", string(configJSON))
 	})
 }
 
@@ -268,12 +279,7 @@ func TestFunctionsConfigGraphQLGetEmpty(t *testing.T) {
 }
 
 func TestFunctionsConfigGraphQLGet(t *testing.T) {
-	rt := rest.NewRestTesterForUserQueries(t, rest.DbConfig{
-		GraphQL: &functions.GraphQLConfig{
-			Schema:    base.StringPtr(kTestGraphQLSchema),
-			Resolvers: nil,
-		},
-	})
+	rt := rest.NewRestTesterForUserQueries(t, rest.DbConfig{GraphQL: &kTestGraphQLConfig})
 	if rt == nil {
 		return
 	}
@@ -291,12 +297,7 @@ func TestFunctionsConfigGraphQLGet(t *testing.T) {
 	})
 }
 func TestFunctionsConfigGraphQLPut(t *testing.T) {
-	rt := rest.NewRestTesterForUserQueries(t, rest.DbConfig{
-		GraphQL: &functions.GraphQLConfig{
-			Schema:    base.StringPtr(kTestGraphQLSchema),
-			Resolvers: nil,
-		},
-	})
+	rt := rest.NewRestTesterForUserQueries(t, rest.DbConfig{GraphQL: &kTestGraphQLConfig})
 	if rt == nil {
 		return
 	}
@@ -336,7 +337,7 @@ func TestFunctionsConfigGraphQLPut(t *testing.T) {
 		response := rt.SendAdminRequest("DELETE", "/db/_config/graphql", "")
 		assert.Equal(t, 200, response.Result().StatusCode)
 
-		assert.Nil(t, rt.GetDatabase().Options.GraphQL)
+		assert.Nil(t, rt.GetFunctionsConfig().GraphQL)
 
 		response = rt.SendAdminRequest("POST", "/db/_graphql", `{"query": "query{ sum(n:3) }"}`)
 		assert.Equal(t, 503, response.Result().StatusCode)
@@ -345,12 +346,7 @@ func TestFunctionsConfigGraphQLPut(t *testing.T) {
 
 // Test for GraphQL Valid Configuration Schema
 func TestValidGraphQLConfigurationValues(t *testing.T) {
-	rt := rest.NewRestTesterForUserQueries(t, rest.DbConfig{
-		GraphQL: &functions.GraphQLConfig{
-			Schema:    base.StringPtr(kDummyGraphQLSchema),
-			Resolvers: nil,
-		},
-	})
+	rt := rest.NewRestTesterForUserQueries(t, rest.DbConfig{GraphQL: &kDummyGraphQLConfig})
 	if rt == nil {
 		return
 	}
@@ -475,12 +471,7 @@ func TestValidGraphQLConfigurationValues(t *testing.T) {
 // This function checks for failure when invalid GraphQL configuration
 // values are provided.
 func TestInvalidGraphQLConfigurationValues(t *testing.T) {
-	rt := rest.NewRestTesterForUserQueries(t, rest.DbConfig{
-		GraphQL: &functions.GraphQLConfig{
-			Schema:    base.StringPtr(kDummyGraphQLSchema),
-			Resolvers: nil,
-		},
-	})
+	rt := rest.NewRestTesterForUserQueries(t, rest.DbConfig{GraphQL: &kDummyGraphQLConfig})
 	if rt == nil {
 		return
 	}
@@ -638,7 +629,7 @@ func TestInvalidGraphQLConfigurationValues(t *testing.T) {
 		assert.NoError(t, err)
 
 		assert.Equal(t, 400, response.Result().StatusCode)
-		assert.Contains(t, responseMap["reason"], "Syntax Error GraphQL")
+		assert.Contains(t, responseMap["reason"], "Syntax Error")
 		assert.Contains(t, responseMap["reason"], "Unexpected Name")
 		assert.Contains(t, responseMap["error"], "Bad Request")
 

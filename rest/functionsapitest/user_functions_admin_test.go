@@ -48,7 +48,7 @@ func TestFunctionsConfigMVCC(t *testing.T) {
 			Definitions: functions.FunctionsDefs{
 				"xxx": {
 					Type: "javascript",
-					Code: "function(){return 42;}",
+					Code: "function(context,args){return 42;}",
 				},
 				"xxxN1QL": {
 					Type: "query",
@@ -69,7 +69,7 @@ func TestFunctionsConfigMVCC(t *testing.T) {
 	t.Run("Function", func(t *testing.T) {
 		runTestFunctionsConfigMVCC(t, rt, "/db/_config/functions/xxx", `{
 			"type": "javascript",
-			"code": "function(){return 69;}"
+			"code": "function(context,args){return 69;}"
 		}`)
 	})
 
@@ -83,7 +83,7 @@ func TestFunctionsConfigMVCC(t *testing.T) {
 	t.Run("Functions", func(t *testing.T) {
 		runTestFunctionsConfigMVCC(t, rt, "/db/_config/functions", `{
 			"definitions": {
-				"zzz": {"type": "javascript", "code": "function(){return 69;}"} } }`)
+				"zzz": {"type": "javascript", "code": "function(context,args){return 69;}"} } }`)
 	})
 }
 
@@ -183,8 +183,8 @@ func TestFunctionsConfigPut(t *testing.T) {
 						"allow": {"channels": ["*"]}} } }`)
 		assert.Equal(t, 200, response.Result().StatusCode)
 
-		assert.NotNil(t, rt.GetDatabase().Options.UserFunctions.Definitions["sum"])
-		assert.Nil(t, rt.GetDatabase().Options.UserFunctions.Definitions["square"])
+		assert.NotNil(t, rt.GetFunctionsConfig().Functions.Definitions["sum"])
+		assert.Nil(t, rt.GetFunctionsConfig().Functions.Definitions["square"])
 
 		response = rt.SendAdminRequest("GET", "/db/_function/sum?numero=13", "")
 		assert.Equal(t, 200, response.Result().StatusCode)
@@ -197,7 +197,7 @@ func TestFunctionsConfigPut(t *testing.T) {
 		response := rt.SendAdminRequest("DELETE", "/db/_config/functions", "")
 		assert.Equal(t, 200, response.Result().StatusCode)
 
-		assert.Nil(t, rt.GetDatabase().Options.UserFunctions)
+		assert.Nil(t, rt.GetFunctionsConfig().Functions)
 
 		response = rt.SendAdminRequest("GET", "/db/_function/square?numero=13", "")
 		assert.Equal(t, 404, response.Result().StatusCode)
@@ -243,8 +243,8 @@ func TestFunctionsConfigPutOne(t *testing.T) {
 		}`)
 		assert.Equal(t, 200, response.Result().StatusCode)
 
-		assert.NotNil(t, rt.GetDatabase().Options.UserFunctions.Definitions["sum"])
-		assert.NotNil(t, rt.GetDatabase().Options.UserFunctions.Definitions["square"])
+		assert.NotNil(t, rt.GetFunctionsConfig().Functions.Definitions["sum"])
+		assert.NotNil(t, rt.GetFunctionsConfig().Functions.Definitions["square"])
 
 		response = rt.SendAdminRequest("GET", "/db/_function/sum?numero=13", "")
 		assert.Equal(t, "26", string(response.BodyBytes()))
@@ -258,8 +258,8 @@ func TestFunctionsConfigPutOne(t *testing.T) {
 		}`)
 		assert.Equal(t, 200, response.Result().StatusCode)
 
-		assert.NotNil(t, rt.GetDatabase().Options.UserFunctions.Definitions["sum"])
-		assert.NotNil(t, rt.GetDatabase().Options.UserFunctions.Definitions["square"])
+		assert.NotNil(t, rt.GetFunctionsConfig().Functions.Definitions["sum"])
+		assert.NotNil(t, rt.GetFunctionsConfig().Functions.Definitions["square"])
 
 		response = rt.SendAdminRequest("GET", "/db/_function/square?n=13", "")
 		assert.Equal(t, "-169", string(response.BodyBytes()))
@@ -268,8 +268,8 @@ func TestFunctionsConfigPutOne(t *testing.T) {
 		response := rt.SendAdminRequest("DELETE", "/db/_config/functions/square", "")
 		assert.Equal(t, 200, response.Result().StatusCode)
 
-		assert.Nil(t, rt.GetDatabase().Options.UserFunctions.Definitions["square"])
-		assert.Equal(t, 1, len(rt.GetDatabase().Options.UserFunctions.Definitions))
+		assert.Nil(t, rt.GetFunctionsConfig().Functions.Definitions["square"])
+		assert.Equal(t, 1, len(rt.GetFunctionsConfig().Functions.Definitions))
 
 		response = rt.SendAdminRequest("GET", "/db/_function/square?n=13", "")
 		assert.Equal(t, 404, response.Result().StatusCode)
