@@ -161,7 +161,9 @@ func (dc *DCPClient) getCollectionHighSeqNos(collectionID uint32) ([]uint64, err
 		highSeqNoCallback := func(entries []gocbcore.VbSeqNoEntry, err error) {
 			if err == nil {
 				for _, entry := range entries {
-					highSeqNos[entry.VbID] = uint64(entry.SeqNo)
+					if highSeqNos[entry.VbID] < uint64(entry.SeqNo) {
+						highSeqNos[entry.VbID] = uint64(entry.SeqNo)
+					}
 				}
 			}
 			highSeqNoError <- err
