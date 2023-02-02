@@ -264,6 +264,8 @@ func TestMultiCollectionChangesMultipleChannels(t *testing.T) {
 
 	response = rt.SendAdminRequest("PUT", "/{{.keyspace1}}/brn3_c1", `{"value":1, "channels":["BRN"]}`)
 	rest.RequireStatus(t, response, 201)
+	_ = rt.WaitForPendingChanges()
+
 	changesResponse = rt.SendUserRequest("GET", fmt.Sprintf("/{{.keyspace1}}/_changes?since=%s", lastSeqBRN), "", "bernard")
 	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
 	assert.NoError(t, err, "Error unmarshalling changes response")
@@ -281,7 +283,7 @@ func TestMultiCollectionChangesMultipleChannels(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		changesResponse = rt.SendUserRequest("GET", "/{{.keyspace1}}/_changes?feed=continuous&timeout=2000", "", "bernard")
+		changesResponse = rt.SendUserRequest("GET", "/{{.keyspace1}}/_changes?feed=continuous&timeout=5000", "", "bernard")
 		rest.RequireStatus(t, changesResponse, 200)
 		contChanges, err := rt.ReadContinuousChanges(changesResponse)
 		assert.NoError(t, err)
