@@ -9,7 +9,9 @@
 package changestest
 
 import (
+	"fmt"
 	"log"
+	"sync"
 	"testing"
 
 	"github.com/couchbase/sync_gateway/channels"
@@ -205,28 +207,23 @@ func TestMultiCollectionChangesMultipleChannels(t *testing.T) {
 	bernard, err := a.NewUser("bernard", "letmein", channels.BaseSetOf(t, "BRN"))
 	assert.NoError(t, err)
 	assert.NoError(t, a.Save(bernard))
-	charlie, err := a.NewUser("charlie", "letmein", channels.BaseSetOf(t, "ABC"))
+	charlie, err := a.NewUser("charlie", "letmein", channels.BaseSetOf(t, "CHR"))
 	assert.NoError(t, err)
 	assert.NoError(t, a.Save(charlie))
-	dan, err := a.NewUser("dan", "letmein", channels.BaseSetOf(t, "DAN"))
+	brndan, err := a.NewUser("BRNchr", "letmein", channels.BaseSetOf(t, "CHR", "BRN"))
 	assert.NoError(t, err)
-	assert.NoError(t, a.Save(dan))
-	pbsdan, err := a.NewUser("PBSdan", "letmein", channels.BaseSetOf(t, "DAN", "BRN"))
-	assert.NoError(t, err)
-	assert.NoError(t, a.Save(pbsdan))
+	assert.NoError(t, a.Save(brndan))
 
 	// Put several documents, will be retrieved via query
-	response := rt.SendAdminRequest("PUT", "/{{.keyspace1}}/pbs1_c1", `{"channels":["BRN"]}`)
+	response := rt.SendAdminRequest("PUT", "/{{.keyspace1}}/brn1_c1", `{"channels":["BRN"]}`)
 	rest.RequireStatus(t, response, 201)
-	response = rt.SendAdminRequest("PUT", "/{{.keyspace1}}/abc1_c1", `{"channels":["ABC"]}`)
-	rest.RequireStatus(t, response, 201)
-	response = rt.SendAdminRequest("PUT", "/{{.keyspace1}}/dan1_c1", `{"channels":["DAN"]}`)
-	rest.RequireStatus(t, response, 201)
-	response = rt.SendAdminRequest("PUT", "/{{.keyspace2}}/pbs1_c2", `{"channels":["BRN"]}`)
-	rest.RequireStatus(t, response, 201)
-	response = rt.SendAdminRequest("PUT", "/{{.keyspace2}}/abc1_c2", `{"channels":["ABC"]}`)
-	rest.RequireStatus(t, response, 201)
-	response = rt.SendAdminRequest("PUT", "/{{.keyspace2}}/dan1_c2", `{"channels":["DAN"]}`)
+
+	// Keep rev to delete doc later
+	var body db.Body
+	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
+	rev := body["rev"].(string)
+
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace1}}/chr1_c1", `{"channels":["CHR"]}`)
 	rest.RequireStatus(t, response, 201)
 	_ = rt.WaitForPendingChanges()
 
@@ -235,7 +232,7 @@ func TestMultiCollectionChangesMultipleChannels(t *testing.T) {
 		Last_Seq db.SequenceID
 	}
 
-	// Issue changes request.  Will initialize cache for channels, and return docs via querys
+	// Issue changes request.  Will initialize cache for channels, and return docs via queries
 	changesResponse := rt.SendUserRequest("GET", "/{{.keyspace1}}/_changes?since=0", "", "bernard")
 	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
 	assert.NoError(t, err, "Error unmarshalling changes response")
@@ -245,15 +242,16 @@ func TestMultiCollectionChangesMultipleChannels(t *testing.T) {
 	changesResponse = rt.SendUserRequest("GET", "/{{.keyspace2}}/_changes?since=0", "", "bernard")
 	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
 	assert.NoError(t, err, "Error unmarshalling changes response")
-	require.Len(t, changes.Results, 1)
+	require.Len(t, changes.Results, 0)
 	logChangesResponse(t, changesResponse.Body.Bytes())
 
-	// Put more documents, should be served via DCP/cache
-	response = rt.SendAdminRequest("PUT", "/{{.keyspace1}}/pbs2_c1", `{"value":1, "channels":["BRN"]}`)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace1}}/brn2_c1", `{"value":1, "channels":["BRN"]}`)
 	rest.RequireStatus(t, response, 201)
-	response = rt.SendAdminRequest("PUT", "/{{.keyspace1}}/abc2_c1", `{"value":1, "channels":["ABC"]}`)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace1}}/chr2_c1", `{"value":1, "channels":["CHR"]}`)
 	rest.RequireStatus(t, response, 201)
-	response = rt.SendAdminRequest("PUT", "/{{.keyspace1}}/dan2_c2", `{"value":1, "channels":["DAN"]}`)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace2}}/brn2_c2", `{"value":1, "channels":["BRN"]}`)
+	rest.RequireStatus(t, response, 201)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace2}}/chr2_c2", `{"value":1, "channels":["CHR"]}`)
 	rest.RequireStatus(t, response, 201)
 	_ = rt.WaitForPendingChanges()
 
@@ -262,6 +260,15 @@ func TestMultiCollectionChangesMultipleChannels(t *testing.T) {
 	assert.NoError(t, err, "Error unmarshalling changes response")
 	require.Len(t, changes.Results, 2)
 	logChangesResponse(t, changesResponse.Body.Bytes())
+	lastSeqBRN := changes.Last_Seq
+
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace1}}/brn3_c1", `{"value":1, "channels":["BRN"]}`)
+	rest.RequireStatus(t, response, 201)
+	changesResponse = rt.SendUserRequest("GET", fmt.Sprintf("/{{.keyspace1}}/_changes?since=%s", lastSeqBRN), "", "bernard")
+	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
+	assert.NoError(t, err, "Error unmarshalling changes response")
+	require.Len(t, changes.Results, 1)
+	logChangesResponse(t, changesResponse.Body.Bytes())
 
 	changesResponse = rt.SendUserRequest("GET", "/{{.keyspace1}}/_changes?since=0", "", "charlie")
 	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
@@ -269,18 +276,30 @@ func TestMultiCollectionChangesMultipleChannels(t *testing.T) {
 	require.Len(t, changes.Results, 2)
 	logChangesResponse(t, changesResponse.Body.Bytes())
 
-	changesResponse = rt.SendUserRequest("GET", "/{{.keyspace1}}/_changes?feed=continuous&timeout=2000", "", "bernard")
-	contChanges, err := rt.ReadContinuousChanges(changesResponse)
-	assert.NoError(t, err)
-	assert.Len(t, contChanges, 2)
+	// Start a continuous changes feed in its own goroutine
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		changesResponse = rt.SendUserRequest("GET", "/{{.keyspace1}}/_changes?feed=continuous&timeout=2000", "", "bernard")
+		rest.RequireStatus(t, changesResponse, 200)
+		contChanges, err := rt.ReadContinuousChanges(changesResponse)
+		assert.NoError(t, err)
+		assert.Len(t, contChanges, 5)
+	}()
 
-	log.Println("Before websocket")
-	changesResponse = rt.SendUserRequest("GET", "/{{.keyspace1}}/_changes?feed=websocket&timeout=2000", "", "bernard")
-	log.Println("after websocket")
+	// 2 more changes for the continuous changes feed
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace1}}/brn4_c1", `{"value":1, "channels":["BRN"]}`)
+	rest.RequireStatus(t, response, 201)
+	response = rt.SendAdminRequest("DELETE", fmt.Sprintf("/{{.keyspace1}}/brn1_c1?rev=%s", rev), ``)
+	rest.RequireStatus(t, response, 200)
 
-	assert.NoError(t, err)
-	assert.Len(t, contChanges, 2)
-
+	// Changes that shouldn't be caught by the continuous changes feed
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace2}}/brn4_c1", `{"value":1, "channels":["BRN"]}`)
+	rest.RequireStatus(t, response, 201)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace1}}/chr4_c1", `{"value":1, "channels":["CHR"]}`)
+	rest.RequireStatus(t, response, 201)
+	wg.Wait()
 }
 
 // TestMultiCollectionChangesUserDynamicGrant tests a dynamic channel grant when that channel is not already resident
