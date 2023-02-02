@@ -2304,6 +2304,7 @@ func (rt *RestTester) ReadContinuousChanges(response *TestResponse) ([]db.Change
 			return changes, readError
 		}
 		entry = bytes.TrimSpace(entry)
+		fmt.Println("HONK", entry)
 		if len(entry) > 0 {
 			err := base.JSONUnmarshal(entry, &change)
 			if err != nil {
@@ -2315,4 +2316,25 @@ func (rt *RestTester) ReadContinuousChanges(response *TestResponse) ([]db.Change
 
 	}
 	return changes, nil
+}
+
+// GetNextContinousChange reads the next changes entry from the feed.
+func GetNextContinuousChange(reader *bufio.Reader) (*db.ChangeEntry, error) {
+	var change *db.ChangeEntry
+	for {
+		entry, readError := reader.ReadBytes('\n')
+		if readError != nil {
+			return nil, readError
+		}
+		entry = bytes.TrimSpace(entry)
+		if len(entry) > 0 {
+			err := base.JSONUnmarshal(entry, &change)
+			if err != nil {
+				return nil, err
+			}
+			log.Printf("Got change ==> %v", change)
+			return change, nil
+		}
+	}
+	return nil, fmt.Errorf("Did not find body")
 }

@@ -9,9 +9,10 @@
 package changestest
 
 import (
+	"bufio"
 	"fmt"
+	"io"
 	"log"
-	"sync"
 	"testing"
 
 	"github.com/couchbase/sync_gateway/channels"
@@ -279,22 +280,34 @@ func TestMultiCollectionChangesMultipleChannels(t *testing.T) {
 	logChangesResponse(t, changesResponse.Body.Bytes())
 
 	// Start a continuous changes feed in its own goroutine
-	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		changesResponse = rt.SendUserRequest("GET", "/{{.keyspace1}}/_changes?feed=continuous&timeout=5000", "", "bernard")
-		rest.RequireStatus(t, changesResponse, 200)
-		contChanges, err := rt.ReadContinuousChanges(changesResponse)
-		assert.NoError(t, err)
-		assert.Len(t, contChanges, 5)
-	}()
+	continuousResponse := rt.SendUserRequest("GET", "/{{.keyspace1}}/_changes?feed=continuous&timeout=5000", "", "bernard")
+	reader := bufio.NewReader(continuousResponse.Body)
+
+	// change 1
+	change, err := rest.GetNextContinuousChange(reader)
+	require.NoError(t, err)
+	require.Equal(t, uint64(1), change.Seq.Seq)
+	require.Equal(t, "brn1_c1", change.ID)
+
+	change, err = rest.GetNextContinuousChange(reader)
+	require.NoError(t, err)
+	require.Equal(t, uint64(3), change.Seq.Seq)
+	require.Equal(t, "brn2_c1", change.ID)
+
+	change, err = rest.GetNextContinuousChange(reader)
+	require.NoError(t, err)
+	require.Equal(t, uint64(7), change.Seq.Seq)
+	require.Equal(t, "brn3_c1", change.ID)
 
 	// 2 more changes for the continuous changes feed
 	response = rt.SendAdminRequest("PUT", "/{{.keyspace1}}/brn4_c1", `{"value":1, "channels":["BRN"]}`)
 	rest.RequireStatus(t, response, 201)
 	response = rt.SendAdminRequest("DELETE", fmt.Sprintf("/{{.keyspace1}}/brn1_c1?rev=%s", rev), ``)
 	rest.RequireStatus(t, response, 200)
+
+	// why does this change not come? prefer to not wait the 5s to assert it will never come
+	change, err = rest.GetNextContinuousChange(reader)
+	require.Error(t, io.EOF)
 
 	// Changes that shouldn't be caught by the continuous changes feed
 	response = rt.SendAdminRequest("PUT", "/{{.keyspace2}}/brn4_c1", `{"value":1, "channels":["BRN"]}`)
@@ -303,7 +316,6 @@ func TestMultiCollectionChangesMultipleChannels(t *testing.T) {
 	rest.RequireStatus(t, response, 201)
 	_ = rt.WaitForPendingChanges()
 
-	wg.Wait()
 }
 
 // TestMultiCollectionChangesUserDynamicGrant tests a dynamic channel grant when that channel is not already resident
