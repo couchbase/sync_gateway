@@ -283,7 +283,7 @@ func TestMultiCollectionChangesMultipleChannels(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		changesResponse = rt.SendUserRequest("GET", "/{{.keyspace1}}/_changes?feed=continuous&timeout=5000", "", "bernard")
+		changesResponse = rt.SendUserRequest("GET", "/{{.keyspace1}}/_changes?feed=continuous&timeout=2000", "", "bernard")
 		rest.RequireStatus(t, changesResponse, 200)
 		contChanges, err := rt.ReadContinuousChanges(changesResponse)
 		assert.NoError(t, err)
@@ -301,6 +301,8 @@ func TestMultiCollectionChangesMultipleChannels(t *testing.T) {
 	rest.RequireStatus(t, response, 201)
 	response = rt.SendAdminRequest("PUT", "/{{.keyspace1}}/chr4_c1", `{"value":1, "channels":["CHR"]}`)
 	rest.RequireStatus(t, response, 201)
+	_ = rt.WaitForPendingChanges()
+
 	wg.Wait()
 }
 
