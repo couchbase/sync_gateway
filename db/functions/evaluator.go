@@ -122,6 +122,7 @@ func makeEvaluator(service *js.Service, dbc *db.Database, delegate evaluatorDele
 	eval, ok := v8Runner.Client.(*evaluator)
 	if !ok {
 		if eval, err = newEvaluator(v8Runner); err != nil {
+			runner.Return()
 			return nil, err
 		}
 	}

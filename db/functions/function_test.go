@@ -161,6 +161,23 @@ var kTestFunctionsConfig = FunctionsConfig{
 			Args:  []string{"docID", "doc"},
 			Allow: allowAll,
 		},
+
+		// This fn has Mutating but calls one that doesn't
+		"nested_illegal_putDoc": &FunctionConfig{
+			Type:     "javascript",
+			Code:     `function(context, args) {return context.user.function("illegal_putDoc", args);}`,
+			Args:     []string{"docID", "doc"},
+			Allow:    allowAll,
+			Mutating: true,
+		},
+
+		// This fn uses context.admin to call a non-mutating function
+		"admin_illegal_putDoc": &FunctionConfig{
+			Type:  "javascript",
+			Code:  `function(context, args) {return context.admin.function("illegal_putDoc", args);}`,
+			Args:  []string{"docID", "doc"},
+			Allow: allowAll,
+		},
 	},
 }
 
@@ -189,7 +206,6 @@ func addUserAlice(t *testing.T, db *db.Database) auth.User {
 
 // Unit test for JS user functions.
 func TestUserFunctions(t *testing.T) {
-	//base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	db, ctx := setupTestDBWithFunctions(t, &kTestFunctionsConfig, nil)
 	defer db.Close(ctx)
 
@@ -352,89 +368,114 @@ func testUserFunctionsAsUser(t *testing.T, ctx context.Context, db *db.Database)
 
 // Test CRUD operations
 func TestUserFunctionsCRUD(t *testing.T) {
-	//base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	db, ctx := setupTestDBWithFunctions(t, &kTestFunctionsConfig, nil)
 	defer db.Close(ctx)
 
 	body := map[string]any{"key": "value"}
 
-	// Create a doc with random ID:
-	result, err := db.CallUserFunction("putDoc", map[string]any{"docID": nil, "doc": body}, true, ctx)
-	assert.NoError(t, err)
-	assert.IsType(t, "", result)
-	_, err = db.CallUserFunction("getDoc", map[string]any{"docID": result}, true, ctx)
-	assert.NoError(t, err)
+	t.Run("Create a doc with random ID", func(t *testing.T) {
+		result, err := db.CallUserFunction("putDoc", map[string]any{"docID": nil, "doc": body}, true, ctx)
+		assert.NoError(t, err)
+		assert.IsType(t, "", result)
+		_, err = db.CallUserFunction("getDoc", map[string]any{"docID": result}, true, ctx)
+		assert.NoError(t, err)
+	})
 
 	docID := "foo"
 
-	// Missing document:
-	result, err = db.CallUserFunction("getDoc", map[string]any{"docID": docID}, true, ctx)
-	assert.NoError(t, err)
-	assert.EqualValues(t, nil, result)
+	t.Run("Missing document", func(t *testing.T) {
+		result, err := db.CallUserFunction("getDoc", map[string]any{"docID": docID}, true, ctx)
+		assert.NoError(t, err)
+		assert.EqualValues(t, nil, result)
+	})
 
 	docParams := map[string]any{
 		"docID": docID,
 		"doc":   body,
 	}
 
-	// Illegal mutation (passing mutationAllowed = false):
-	_, err = db.CallUserFunction("putDoc", docParams, false, ctx)
-	assertHTTPError(t, err, 403)
+	t.Run("Illegal mutation", func(t *testing.T) {
+		// Illegal mutation (passing mutationAllowed = false):
+		_, err := db.CallUserFunction("putDoc", docParams, false, ctx)
+		assertHTTPError(t, err, 403)
+	})
 
-	// Successful save (as admin):
-	result, err = db.CallUserFunction("putDoc", docParams, true, ctx)
-	assert.NoError(t, err)
-	assert.EqualValues(t, docID, result) // save() returns docID
+	t.Run("Successful save as admin", func(t *testing.T) {
+		result, err := db.CallUserFunction("putDoc", docParams, true, ctx)
+		assert.NoError(t, err)
+		assert.EqualValues(t, docID, result) // save() returns docID
+	})
 
-	// Existing document:
-	result, err = db.CallUserFunction("getDoc", map[string]any{"docID": docID}, true, ctx)
-	assert.NoError(t, err)
-	revID, ok := result.(map[string]any)["_rev"].(string)
-	assert.True(t, ok)
-	assert.NotEmpty(t, revID)
-	assert.True(t, strings.HasPrefix(revID, "1-"))
-	body["_id"] = docID
-	body["_rev"] = revID
-	assert.EqualValues(t, body, result)
+	t.Run("Existing document", func(t *testing.T) {
+		result, err := db.CallUserFunction("getDoc", map[string]any{"docID": docID}, true, ctx)
+		assert.NoError(t, err)
+		revID, ok := result.(map[string]any)["_rev"].(string)
+		assert.True(t, ok)
+		assert.NotEmpty(t, revID)
+		assert.True(t, strings.HasPrefix(revID, "1-"))
+		body["_id"] = docID
+		body["_rev"] = revID
+		assert.EqualValues(t, body, result)
+	})
 
-	// Update document with revID:
-	body["key2"] = 2
-	_, err = db.CallUserFunction("putDoc", docParams, true, ctx)
-	assert.NoError(t, err)
+	t.Run("Update document with revID", func(t *testing.T) {
+		body["key2"] = 2
+		_, err := db.CallUserFunction("putDoc", docParams, true, ctx)
+		assert.NoError(t, err)
+	})
 
-	// Save fails with conflict:
-	body["key3"] = 3
-	body["_rev"] = "9-9999"
-	result, err = db.CallUserFunction("putDoc", docParams, true, ctx)
-	assert.NoError(t, err)
-	assert.Nil(t, result)
+	t.Run("Save fails with conflict", func(t *testing.T) {
+		body["key3"] = 3
+		body["_rev"] = "9-9999"
+		result, err := db.CallUserFunction("putDoc", docParams, true, ctx)
+		assert.NoError(t, err)
+		assert.Nil(t, result)
+	})
 
-	// Update document without revID:
-	body["key3"] = 4
-	delete(body, "_rev")
-	result, err = db.CallUserFunction("putDoc", docParams, true, ctx)
-	assert.NoError(t, err)
-	assert.Equal(t, docID, result)
+	t.Run("Update document without revID", func(t *testing.T) {
+		body["key3"] = 4
+		delete(body, "_rev")
+		result, err := db.CallUserFunction("putDoc", docParams, true, ctx)
+		assert.NoError(t, err)
+		assert.Equal(t, docID, result)
+	})
 
-	// Get doc again to verify revision:
-	result, err = db.CallUserFunction("getDoc", map[string]any{"docID": docID}, true, ctx)
-	assert.NoError(t, err)
-	revID, ok = result.(map[string]any)["_rev"].(string)
-	assert.True(t, ok)
-	assert.NotEmpty(t, revID)
-	assert.True(t, strings.HasPrefix(revID, "3-"))
+	t.Run("Get doc again to verify revision", func(t *testing.T) {
+		result, err := db.CallUserFunction("getDoc", map[string]any{"docID": docID}, true, ctx)
+		assert.NoError(t, err)
+		revID, ok := result.(map[string]any)["_rev"].(string)
+		assert.True(t, ok)
+		assert.NotEmpty(t, revID)
+		assert.True(t, strings.HasPrefix(revID, "3-"))
+	})
 
-	// Illegal mutation (a non-mutating function calling putDoc)
-	_, err = db.CallUserFunction("illegal_putDoc", docParams, true, ctx)
-	assertHTTPError(t, err, 403)
-
-	// Legal mutation (a non-mutating function calling putDoc, but via 'admin')
-	_, err = db.CallUserFunction("legal_putDoc", docParams, true, ctx)
-	assert.NoError(t, err)
-
-	// Delete doc:
-	_, err = db.CallUserFunction("delDoc", map[string]any{"docID": docID}, true, ctx)
-	assert.NoError(t, err)
+	t.Run("illegal_putDoc", func(t *testing.T) {
+		// Illegal mutation (a non-mutating function calling putDoc)
+		_, err := db.CallUserFunction("illegal_putDoc", docParams, true, ctx)
+		assertHTTPError(t, err, 403)
+	})
+	t.Run("nested_illegal_putDoc", func(t *testing.T) {
+		// Illegal mutation (a non-mutating function calling putDoc)
+		_, err := db.CallUserFunction("nested_illegal_putDoc", docParams, true, ctx)
+		assertHTTPError(t, err, 403)
+	})
+	/*  This currently fails; it's ambiguous what should happen. TODO (jens 2-Feb-2023)
+	t.Run("admin_illegal_putDoc", func(t *testing.T) {
+		// Illegal mutation (a non-mutating function calling putDoc)
+		_, err := db.CallUserFunction("admin_illegal_putDoc", docParams, true, ctx)
+		assertHTTPError(t, err, 403)
+	})
+	*/
+	t.Run("legal_putDoc", func(t *testing.T) {
+		// Legal mutation (a non-mutating function calling putDoc, but via 'admin')
+		_, err := db.CallUserFunction("legal_putDoc", docParams, true, ctx)
+		assert.NoError(t, err)
+	})
+	t.Run("delDoc", func(t *testing.T) {
+		// Delete doc:
+		_, err := db.CallUserFunction("delDoc", map[string]any{"docID": docID}, true, ctx)
+		assert.NoError(t, err)
+	})
 }
 
 // Test that JS syntax errors are detected when the db opens.
@@ -542,6 +583,7 @@ func setupTestDBForBucketWithOptions(t testing.TB, tBucket base.Bucket, dbcOptio
 	db, err := db.CreateDatabase(dbCtx)
 	assert.NoError(t, err, "Couldn't create database 'db'")
 	ctx = db.AddDatabaseLogContext(ctx)
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyJavascript) // Enable debug JS logging!
 	return db, ctx
 }
 

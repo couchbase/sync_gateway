@@ -253,7 +253,7 @@ func readSchema(gq *GraphQLConfig) (*GraphQLConfig, error) {
 	} else if gq.SchemaFile != nil {
 		// Read schema file:
 		if gq.Schema != nil {
-			return nil, fmt.Errorf("GraphQL: can't give both `schema` and `schemaFile`")
+			return nil, fmt.Errorf("GraphQL config: only one of `schema` and `schemaFile` may be used`")
 		} else if schema, err := os.ReadFile(*gq.SchemaFile); err != nil {
 			return nil, fmt.Errorf("GraphQL: can't read schema file %s: %w", *gq.SchemaFile, err)
 		} else {
@@ -265,7 +265,7 @@ func readSchema(gq *GraphQLConfig) (*GraphQLConfig, error) {
 	} else if gq.Schema != nil {
 		return gq, nil
 	} else {
-		return nil, fmt.Errorf("GraphQL: either `schema` or `schemaFile` must be given")
+		return nil, fmt.Errorf("GraphQL config: either `schema` or `schemaFile` must be defined")
 	}
 }
 

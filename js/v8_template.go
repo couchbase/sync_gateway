@@ -185,6 +185,7 @@ const kSetupLoggingJS = `
 	console.trace = function(...args) {sg_log(5, ...args);};
 	console.debug = function(...args) {sg_log(4, ...args);};
 	console.log   = function(...args) {sg_log(3, ...args);};
+	console.info  = console.log;
 	console.warn  = function(...args) {sg_log(2, ...args);};
 	console.error = function(...args) {sg_log(1, ...args);};
 `

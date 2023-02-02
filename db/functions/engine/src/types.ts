@@ -111,6 +111,7 @@ export interface Context {
     readonly roles?: string[];
     readonly channels?: string[];
 
+    readonly isGuest : boolean;
     readonly isAdmin : boolean;         // This is an admin user
     readonly isSuperUser : boolean;     // This is the magic "context.admin" user
 

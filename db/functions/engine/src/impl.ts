@@ -99,7 +99,9 @@ class DatabaseImpl implements Database {
                     }
                 });
                 if (this.schema) {
-                    this.configureResolvers(graphql, errors)
+                    this.configureResolvers(graphql, errors);
+                    if (errors.errors.length == 0)
+                        this.verifyResolversExist(errors);
                 }
             }
         }
@@ -118,8 +120,8 @@ class DatabaseImpl implements Database {
         if (!graphql.resolvers)  return;
 
         function canAddResolver(typeName: string, fieldName: string, config: FunctionConfig) {
-            if (--remainingResolvers == 0) {
-                errors.complain(`too many GraphQL resolvers (> ${graphql!.max_resolver_count!})`);
+            if (remainingResolvers-- == 0) {
+                errors.complain(`too many GraphQL resolvers (> ${graphql.max_resolver_count!})`);
                 return false;
             }
             let maxSize = graphql!.max_code_size;
@@ -146,6 +148,7 @@ class DatabaseImpl implements Database {
                             errors.try(`GraphQL resolver ${typeName}.${fieldName}: `,
                                       () => {
                                 CompileResolver(schemaField, typeName, fieldName, fnConfig, this);
+                                console.debug(`Compiled GraphQL resolver ${typeName}.${fieldName}`)
                             });
                         } else {
                             errors.complain(`GraphQL resolver ${typeName}.${fieldName}: no such field in the schema`);
@@ -159,10 +162,11 @@ class DatabaseImpl implements Database {
                     let fnConfig = fields[fieldName];
                     if (canAddResolver(typeName, fieldName, fnConfig)) {
                         if (fieldName == "__typename") {
-                            errors.try(`GraphQL resolver ${typeName}.${fieldName}: `,
+                            errors.try(`GraphQL resolver ${typeName}.__typename: `,
                                        () => {
                                 ifType.resolveType = CompileTypeNameResolver(typeName,
                                                                              fnConfig, this);
+                                console.debug(`Compiled GraphQL resolver ${typeName}.__typename`)
                             });
                         } else {
                             errors.complain(`GraphQL resolver ${typeName}.${fieldName}: abstract types may only have a '__typename' resolver`);
@@ -171,6 +175,27 @@ class DatabaseImpl implements Database {
                 }
             } else {
                 errors.complain(`GraphQL type ${typeName}: not an object or interface, so cannot have resolvers`);
+            }
+        }
+    }
+
+    private verifyResolversExist(errors: ErrorList) {
+        let queryType = this.schema!.getQueryType();
+        let mutationType = this.schema!.getMutationType();
+
+        const typeMap = this.schema!.getTypeMap()
+        for (const typeName of Object.getOwnPropertyNames(typeMap)) {
+            const schemaType = typeMap[typeName];
+            if (schemaType == queryType || schemaType == mutationType) {
+                const fields = schemaType.getFields();
+                for (let fieldName of Object.getOwnPropertyNames(fields)) {
+                    if (!fields[fieldName].resolve)
+                        errors.complain(`GraphQL resolver ${typeName}.${fieldName}: missing function definition`);
+                }
+            } else if (schemaType instanceof gq.GraphQLInterfaceType
+                            || schemaType instanceof gq.GraphQLUnionType) {
+                if (!schemaType.resolveType)
+                    errors.complain(`GraphQL resolver ${typeName}.__typename: missing function definition`);
             }
         }
     }
@@ -209,6 +234,7 @@ class DatabaseImpl implements Database {
                  name: string,
                  args: Args | undefined)
     {
+        console.debug(`>>> FUNCTION ${name}`);
         return this.getFunction(name)(context, args);
     }
 
@@ -220,6 +246,7 @@ class DatabaseImpl implements Database {
           args: Args | undefined)    // note: `args` are top-level N1QL args, not the "args" object
           : JSONObject[]
     {
+        console.debug(`>>> N1QL ${n1ql}`);
         return this.upstream.query(fnName, n1ql, args, context.user);
     }
 
@@ -228,7 +255,7 @@ class DatabaseImpl implements Database {
             query: string,
             variableValues?: Args,
             operationName?: string) : Promise<gq.ExecutionResult> {
-        console.debug(`GRAPHQL ${query}`);
+        console.debug(`>>> GRAPHQL ${query}`);
         if (!this.schema) throw new HTTPError(404, "No GraphQL schema");
         return gq.graphql({
             contextValue: context,
@@ -276,7 +303,7 @@ class ContextImpl implements Context {
     }
 
     requireUser(name: string | string[]) {
-        if (!this.checkUser(name)) throw new HTTPError(403, "Permission denied (user)");
+        if (!this.checkUser(name)) this.permissionDenied("user");
     }
 
     checkAdmin() : boolean {
@@ -284,7 +311,7 @@ class ContextImpl implements Context {
     }
 
     requireAdmin() {
-        if (!this.checkAdmin()) throw new HTTPError(403, "Permission denied (admin only)");
+        if (!this.checkAdmin()) this.permissionDenied("admin only");
     }
 
     checkRole(role: string | string[]) : boolean {
@@ -296,7 +323,7 @@ class ContextImpl implements Context {
     }
 
     requireRole(role: string | string[]) {
-        if (!this.checkRole(role)) throw new HTTPError(403, "Permission denied (role)");
+        if (!this.checkRole(role)) this.permissionDenied("role");
     }
 
     checkAccess(channel: string | string[]) : boolean {
@@ -308,7 +335,7 @@ class ContextImpl implements Context {
     }
 
     requireAccess(channel: string | string[]) {
-        if (!this.checkAccess(channel)) throw new HTTPError(403, "Permission denied (channel)");
+        if (!this.checkAccess(channel)) this.permissionDenied("channel");
     }
 
     checkAllowed(allow: AllowConfig | undefined) : boolean {
@@ -320,7 +347,7 @@ class ContextImpl implements Context {
     }
 
     requireAllowed(allow: AllowConfig | undefined) {
-        if (!this.checkAllowed(allow)) throw new HTTPError(403, "Permission denied");
+        if (!this.checkAllowed(allow)) this.permissionDenied();
     }
 
     checkMutating() : boolean {
@@ -328,7 +355,16 @@ class ContextImpl implements Context {
     }
 
     requireMutating() : void {
-        if (!this.checkMutating()) throw new HTTPError(403, "Permission denied (mutating)");
+        if (!this.checkMutating()) throw new HTTPError(403, "Permission denied (read-only context)");
+    }
+
+    private permissionDenied(message: string = "") : never {
+        if (message) message = ` (${message})`;
+        if (this.user.isGuest) {
+            throw new HTTPError(401, "Login required" + message);
+        } else {
+            throw new HTTPError(403, "Permission denied" + message);
+        }
     }
 
     readOnlyLevel = 0;
@@ -338,12 +374,14 @@ export function BeginReadOnly(context: Context) {
     if (!context.user.isSuperUser) {
         (context as ContextImpl).readOnlyLevel++;
     }
+    console.debug(`++++ BeginReadOnly; now ${(context as ContextImpl).readOnlyLevel}`);
 }
 
 export function EndReadOnly(context: Context) {
     if (!context.user.isSuperUser) {
         (context as ContextImpl).readOnlyLevel--;
     }
+    console.debug(`---- EndReadOnly; now ${(context as ContextImpl).readOnlyLevel}`);
 }
 
 
@@ -411,6 +449,8 @@ class UserImpl implements User {
     readonly name?: string;
     readonly roles?: string[];
     readonly channels?: string[];
+
+    get isGuest() {return this.name === "";}
 
     get isAdmin() {return this.name === undefined;}
 

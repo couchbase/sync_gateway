@@ -148,11 +148,6 @@ func (d *databaseDelegate) delete(docID string, revID string, collectionName str
 }
 
 func (d *databaseDelegate) query(fnName string, n1ql string, args map[string]any, asAdmin bool) (string, error) {
-	collection, err := d.db.GetDefaultDatabaseCollection()
-	if err != nil {
-		return "", err
-	}
-
 	var userArg n1qlUserArgument
 	if asAdmin {
 		defer d.asAdmin()()
@@ -167,13 +162,16 @@ func (d *databaseDelegate) query(fnName string, n1ql string, args map[string]any
 	args["user"] = &userArg
 
 	// Run the N1QL query:
-	rows, err := collection.Query(
+	rows, err := db.N1QLQueryWithStats(
 		d.ctx,
+		d.db.Bucket.DefaultDataStore(),
 		db.QueryTypeUserFunctionPrefix+fnName,
 		n1ql,
 		args,
 		base.RequestPlus,
-		false)
+		false,
+		d.db.DbStats,
+		d.db.Options.SlowQueryWarningThreshold)
 
 	var rowsJSON string
 	if err == nil {

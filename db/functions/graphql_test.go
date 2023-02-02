@@ -182,7 +182,7 @@ var kTestTypenameResolverSchema = `interface Book {
 type Textbook implements Book {
 	id: ID!
 	courses: [String!]!
-} 
+}
 type ColoringBook implements Book {
 	id: ID!
 	colors: [String!]!
@@ -205,7 +205,7 @@ query {
 }
 `
 
-func assertGraphQLResult(t *testing.T, expected string, result *graphql.Result, err error) {
+func assertGraphQLResult(t *testing.T, expected string, result *db.GraphQLResult, err error) {
 	if !assert.NoError(t, err) || !assert.NotNil(t, result) {
 		return
 	}
@@ -238,17 +238,18 @@ func assertGraphQLError(t *testing.T, expectedErrorText string, result *db.Graph
 		assert.NotZero(t, len(result.Errors), "Expected GraphQL error but got none; data is %s", string(data))
 		return
 	}
+	var allErrs []string
 	for _, err := range result.Errors {
 		if strings.Contains(err.Error(), expectedErrorText) {
 			return
 		}
+		allErrs = append(allErrs, err.Error())
 	}
-	assert.FailNowf(t, "GraphQL error did not contain expected string", "Expected to find %q: actually %#v", expectedErrorText, result.Errors)
+	assert.FailNowf(t, "GraphQL error did not contain expected string", "Expected to find %q: actually:\n%s", expectedErrorText, strings.Join(allErrs, "\n"))
 }
 
 // Unit test for GraphQL queries.
 func TestUserGraphQL(t *testing.T) {
-	//base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	db, ctx := setupTestDBWithFunctions(t, &kTestGraphQLUserFunctionsConfig, &kTestGraphQLConfig)
 	defer db.Close(ctx)
 
@@ -415,9 +416,6 @@ type Body = db.Body
 
 // Unit test for GraphQL queries.
 func TestUserGraphQLWithN1QL(t *testing.T) {
-
-	base.DisableTestWithCollections(t)
-
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test is Couchbase Server only (requires N1QL)")
 	}
@@ -592,7 +590,7 @@ func TestUserGraphQLMaxResolverCount(t *testing.T) {
 
 func TestArgsInResolverConfig(t *testing.T) {
 	var config = GraphQLConfig{
-		Schema: base.StringPtr(`type Query{}`),
+		Schema: base.StringPtr(`type Query{square(n: Int!): Int!}`),
 		Resolvers: map[string]GraphQLResolverConfig{
 			"Query": {
 				"square": {
@@ -603,23 +601,23 @@ func TestArgsInResolverConfig(t *testing.T) {
 			},
 		},
 	}
-	_, err := CompileGraphQL(&config)
+	err := ValidateFunctions(context.TODO(), nil, &config)
 	assert.ErrorContains(t, err, `'args' is not valid in a GraphQL resolver config`)
 }
 
 func TestUnresolvedTypesInSchema(t *testing.T) {
 	var config = GraphQLConfig{
-		Schema:    base.StringPtr(`type Query{} type abc{def:kkk}`),
+		Schema:    base.StringPtr(`type Query{foo:Int!}`),
 		Resolvers: nil,
 	}
-	_, err := CompileGraphQL(&config)
-	assert.ErrorContains(t, err, `GraphQL Schema object has no registered TypeMap -- this probably means the schema has unresolved types`)
+	err := ValidateFunctions(context.TODO(), nil, &config)
+	assert.ErrorContains(t, err, `GraphQL resolver Query.foo: missing function definition`)
 }
 
 func TestInvalidMutationType(t *testing.T) {
 	t.Run("Unrecognized type cpp", func(t *testing.T) {
 		var config = GraphQLConfig{
-			Schema: base.StringPtr(`type Query{}`),
+			Schema: base.StringPtr(`type Query{foo:Int!} type Mutation{complete:Int!}`),
 			Resolvers: map[string]GraphQLResolverConfig{
 				"Mutation": {
 					"complete": {
@@ -629,12 +627,12 @@ func TestInvalidMutationType(t *testing.T) {
 				},
 			},
 		}
-		_, err := CompileGraphQL(&config)
+		err := ValidateFunctions(context.TODO(), nil, &config)
 		assert.ErrorContains(t, err, `unrecognized 'type' "cpp"`)
 	})
 	t.Run("Unrecognized type query", func(t *testing.T) {
 		var config = GraphQLConfig{
-			Schema: base.StringPtr(`type Query{}`),
+			Schema: base.StringPtr(`type Query{foo:Int!} type Mutation{complete:Int!}`),
 			Resolvers: map[string]GraphQLResolverConfig{
 				"Mutation": {
 					"complete": {
@@ -644,7 +642,7 @@ func TestInvalidMutationType(t *testing.T) {
 				},
 			},
 		}
-		_, err := CompileGraphQL(&config)
+		err := ValidateFunctions(context.TODO(), nil, &config)
 		assert.ErrorContains(t, err, `GraphQL mutations must be implemented in JavaScript`)
 	})
 }
@@ -661,8 +659,9 @@ func TestCompilationErrorInResolverCode(t *testing.T) {
 			},
 		},
 	}
-	_, err := CompileGraphQL(&config)
-	assert.ErrorContains(t, err, `500 Error compiling GraphQL resolver "Query:square"`)
+	err := ValidateFunctions(context.TODO(), nil, &config)
+	assert.ErrorContains(t, err, `Query.square`)
+	assert.ErrorContains(t, err, `SyntaxError`)
 }
 
 func TestGraphQLMaxCodeSize(t *testing.T) {
@@ -679,8 +678,9 @@ func TestGraphQLMaxCodeSize(t *testing.T) {
 			},
 		},
 	}
-	_, err := CompileGraphQL(&config)
-	assert.ErrorContains(t, err, "resolver square code too large (> 2 bytes)")
+	err := ValidateFunctions(context.TODO(), nil, &config)
+	assert.ErrorContains(t, err, "Query.square")
+	assert.ErrorContains(t, err, "code is too large (> 2 bytes)")
 }
 
 // Unit Test for Typename resolver for interfaces in GraphQL schema
@@ -703,8 +703,8 @@ func TestTypenameResolver(t *testing.T) {
 				},
 			},
 		}
-		_, err := CompileGraphQL(&config)
-		assert.ErrorContains(t, err, "a GraphQL '__typename__' resolver must be JavaScript")
+		err := ValidateFunctions(context.TODO(), nil, &config)
+		assert.ErrorContains(t, err, "a GraphQL '__typename' resolver must be JavaScript")
 	})
 	t.Run("Error in compiling typename resolver", func(t *testing.T) {
 		var config = GraphQLConfig{
@@ -722,8 +722,9 @@ func TestTypenameResolver(t *testing.T) {
 				},
 			},
 		}
-		_, err := CompileGraphQL(&config)
-		assert.ErrorContains(t, err, `Error compiling GraphQL type-name resolver "Book"`)
+		err := ValidateFunctions(context.TODO(), nil, &config)
+		assert.ErrorContains(t, err, `Book.__typename`)
+		assert.ErrorContains(t, err, `SyntaxError`)
 	})
 	t.Run("Typename Resolver should not have allow", func(t *testing.T) {
 		var config = GraphQLConfig{
@@ -744,8 +745,8 @@ func TestTypenameResolver(t *testing.T) {
 				},
 			},
 		}
-		_, err := CompileGraphQL(&config)
-		assert.ErrorContains(t, err, "'allow' is not valid in a GraphQL '__typename__' resolver")
+		err := ValidateFunctions(context.TODO(), nil, &config)
+		assert.ErrorContains(t, err, "'allow' is not valid in a GraphQL '__typename' resolver")
 	})
 
 	t.Run("Correct Schema and Query produces the result", func(t *testing.T) {
@@ -772,7 +773,7 @@ func TestTypenameResolver(t *testing.T) {
 				},
 			},
 		}
-		_, err := CompileGraphQL(&config)
+		err := ValidateFunctions(context.TODO(), nil, &config)
 		assert.NoError(t, err)
 		db, ctx := setupTestDBWithFunctions(t, nil, &config)
 		defer db.Close(ctx)
@@ -789,7 +790,7 @@ func TestInvalidSchemaAndSchemaFile(t *testing.T) {
 			SchemaFile: base.StringPtr("someInvalidPath/someInvalidFileName"),
 			Resolvers:  nil,
 		}
-		_, err := CompileGraphQL(&config)
+		err := ValidateFunctions(context.TODO(), nil, &config)
 		assert.ErrorContains(t, err, "GraphQL config: only one of `schema` and `schemaFile` may be used")
 	})
 
@@ -797,7 +798,7 @@ func TestInvalidSchemaAndSchemaFile(t *testing.T) {
 		var config = GraphQLConfig{
 			Resolvers: nil,
 		}
-		_, err := CompileGraphQL(&config)
+		err := ValidateFunctions(context.TODO(), nil, &config)
 		assert.ErrorContains(t, err, "GraphQL config: either `schema` or `schemaFile` must be defined")
 	})
 
@@ -805,9 +806,10 @@ func TestInvalidSchemaAndSchemaFile(t *testing.T) {
 		var config = GraphQLConfig{
 			SchemaFile: base.StringPtr("dummySchemaFile.txt"),
 		}
-		_, err := CompileGraphQL(&config)
+		err := ValidateFunctions(context.TODO(), nil, &config)
 		fmt.Println(err)
-		assert.ErrorContains(t, err, "can't read file")
+		assert.ErrorContains(t, err, "GraphQL: can't read schema file dummySchemaFile.txt")
+		assert.ErrorContains(t, err, "no such file or directory") //? Might be OS specific
 	})
 }
 
@@ -819,8 +821,16 @@ func TestValidSchemaFile(t *testing.T) {
 		assert.NoError(t, err)
 		var config = GraphQLConfig{
 			SchemaFile: base.StringPtr("schema.graphql"),
+			Resolvers: map[string]GraphQLResolverConfig{
+				"Query": {
+					"sum": {
+						Type: "javascript",
+						Code: `function(parent, args, context, info) {return args.n + args.n;}`,
+					},
+				},
+			},
 		}
-		_, err = CompileGraphQL(&config)
+		err = ValidateFunctions(context.TODO(), nil, &config)
 		assert.NoError(t, err)
 
 		err = os.Remove("schema.graphql")

@@ -106,14 +106,19 @@ export abstract class Allow {
 
     abstract authorize(user: User, args?: Args) : void;
 
-    fail() : never {
-        throw new HTTPError(403, `Access forbidden to function '${this.name}'`);
+    fail(user: User) : never {
+        console.log(`Auth failure calling function '${this.name}' for user ${JSON.stringify(user)}`);
+        if (user.isGuest) {
+            throw new HTTPError(401, `Login required to call function '${this.name}'`);
+        } else {
+            throw new HTTPError(403, `Access forbidden to function '${this.name}'`);
+        }
     }
 }
 
 class AllowAdminOnly extends Allow {
     override authorize(user: User, args?: Args) {
-        if (!user.isAdmin) this.fail();
+        if (!user.isAdmin) this.fail(user);
     }
 }
 
@@ -135,8 +140,8 @@ class AllowByConfig extends Allow {
                 && !(this.users    && Match1(this.users, user.name!, user, args))
                 && !(this.roles    && Match(this.roles, user.roles, user, args))
                 && !(this.channels && Match(this.channels, user.channels, user, args))) {
-            throw new HTTPError(403, `Access forbidden to function '${this.name}' ... user = ${user.name} ... user.channels=${user.channels} ... this.users=${this.users} ... this.channels=${this.channels}`);
-            //this.fail();
+            //throw new HTTPError((user.isGuest ? 401 : 403), `Access forbidden to function '${this.name}' ... user = ${user.name} ... user.channels=${user.channels} ... this.users=${this.users} ... this.channels=${this.channels}`);
+            this.fail(user);
         }
     }
 
@@ -239,11 +244,11 @@ export function CompileFn(fnName: string,
                           fnConfig: FunctionConfig,
                           db: Database) : JSFn
 {
-    let allow = CompileAllow(fnName, fnConfig.allow, false);
-    let checkArgs = CompileParams(fnName, fnConfig.args);
+    const allow = CompileAllow(fnName, fnConfig.allow, false);
+    const checkArgs = CompileParams(fnName, fnConfig.args);
     switch (fnConfig.type) {
     case "query":
-        let n1ql = checkN1QL(fnConfig);
+        const n1ql = checkN1QL(fnConfig);
         return function(context, args) {
             checkArgs(args);
             allow.authorize(context.user, args);
@@ -252,8 +257,8 @@ export function CompileFn(fnName: string,
             return db.query(context, fnName, n1ql, args);
         };
     case "javascript":
-        let mutating = fnConfig.mutating ?? false;
-        let code = compileToJS(fnName, fnConfig, 2) as JSFn;
+        const mutating = fnConfig.mutating ?? false;
+        const code = compileToJS(fnName, fnConfig, 2) as JSFn;
         return function(context, args) {
             console.debug(`FUNC ${fnName}`);
             checkArgs(args);
@@ -268,7 +273,7 @@ export function CompileFn(fnName: string,
             }
         };
     default:
-        throw new HTTPError(500, `unknown or missing 'type'`);
+        throw new HTTPError(500, `unrecognized 'type' "${fnConfig.type}"`);
     }
 }
 
@@ -284,10 +289,11 @@ export function CompileResolver(field: gq.GraphQLField<any,Context>,
     let mutating = (typeName == "Mutation");
     let allow = CompileAllow(fnName, fnConfig.allow, true);
     if (fnConfig.args) {
-        throw new HTTPError(500, `should not have an 'args' declaration`);
+        throw new HTTPError(500, `'args' is not valid in a GraphQL resolver config`);
     }
     switch (fnConfig.type) {
     case "query":
+        if (mutating) throw new HTTPError(500, "GraphQL mutations must be implemented in JavaScript");
         let n1ql = checkN1QL(fnConfig);
         let fieldType = field.type;
         if (gq.isNonNullType(fieldType))
@@ -341,7 +347,7 @@ export function CompileResolver(field: gq.GraphQLField<any,Context>,
         };
         break;
     default:
-        throw new HTTPError(500, `unknown or missing 'type'`);
+        throw new HTTPError(500, `unrecognized 'type' "${fnConfig.type}"`);
     }
 }
 
@@ -353,9 +359,9 @@ export function CompileTypeNameResolver(typeName: string,
 {
     let fnName = `${typeName}.__typename`;
     if (fnConfig.type != "javascript") {
-        throw new HTTPError(500, `type-name resolvers must be implemented in JavaScript`);
+        throw new HTTPError(500, `a GraphQL '__typename' resolver must be JavaScript`);
     } else if (fnConfig.allow !== undefined) {
-        throw new HTTPError(500, `type-name resolver must not have an 'allow' config`);
+        throw new HTTPError(500, `'allow' is not valid in a GraphQL '__typename' resolver`);
     }
     let fn = compileToJS(fnName, fnConfig, 4) as TypeResolverFn;
     return (value, context, info) => {

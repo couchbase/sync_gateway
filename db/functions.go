@@ -26,9 +26,9 @@ import (
 /* This is the interface to the functions and GraphQL APIs implemented in the functions package. */
 
 // Timeout for N1QL, JavaScript and GraphQL queries. (Applies to REST and BLIP requests.)
-const UserFunctionTimeout = 60 * time.Second
+var UserFunctionTimeout = 60 * time.Second
 
-// Abstract interface for user-functions & GraphQL configuration.
+// Abstract interface for user-functions & GraphQL configuration. (Implemented by functions.Config)
 type IFunctionsAndGraphQLConfig interface {
 	// Compiles the configuration into a live UserFunctions intance.
 	Compile(*js.VMPool) (*UserFunctions, GraphQL, error)
@@ -92,12 +92,14 @@ type GraphQL interface {
 	N1QLQueryNames() []string
 }
 
+// Go representation of JSON result of a GraphQL query.
 type GraphQLResult struct {
 	Data       interface{}            `json:"data"`
-	Errors     []FormattedError       `json:"errors,omitempty"`
+	Errors     []*FormattedError      `json:"errors,omitempty"`
 	Extensions map[string]interface{} `json:"extensions,omitempty"`
 }
 
+// Go representation of an error in a GraphQL query result.
 type FormattedError struct {
 	Message    string                 `json:"message"`
 	Locations  []SourceLocation       `json:"locations"`
