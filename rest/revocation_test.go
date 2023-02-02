@@ -1900,7 +1900,6 @@ func TestReplicatorRevocationsWithChannelFilter(t *testing.T) {
 	require.NoError(t, err)
 
 	_ = rt2.CreateDocReturnRev(t, "docA", "", map[string][]string{"channels": []string{"ABC"}})
-	//_ = rt2.CreateDocReturnRev(t, "docAB", "", map[string][]string{"channels": []string{"A", "B"}}) // 2 docs kept erroring at rt1.WaitForChanges but 1 works
 	require.NoError(t, rt2.WaitForPendingChanges())
 
 	ar := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
