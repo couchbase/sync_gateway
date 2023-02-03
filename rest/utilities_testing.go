@@ -2336,5 +2336,4 @@ func GetNextContinuousChange(reader *bufio.Reader) (*db.ChangeEntry, error) {
 			return change, nil
 		}
 	}
-	return nil, fmt.Errorf("Did not find body")
 }
