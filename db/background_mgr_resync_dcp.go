@@ -91,6 +91,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]interface
 	db := options["database"].(*Database)
 	regenerateSequences := options["regenerateSequences"].(bool)
 	resyncCollections := options["collections"].(ResyncCollections)
+	shouldAddStarChannel := options["shouldAddStarChannel"].(bool)
 
 	resyncLoggingID := "Resync: " + r.ResyncID
 
@@ -108,7 +109,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]interface
 		var err error
 		docID := string(event.Key)
 		key := realDocID(docID)
-		base.TracefCtx(ctx, base.KeyAll, "[%s] Received DCP event %d for doc %v", resyncLoggingID, event.Opcode, base.UD(docID))
+		base.DebugfCtx(ctx, base.KeyAll, "[%s] Received DCP event %d for doc %v", resyncLoggingID, event.Opcode, base.UD(docID))
 		// Don't want to process raw binary docs
 		// The binary check should suffice but for additional safety also check for empty bodies
 		if event.DataType == base.MemcachedDataTypeRaw || len(event.Value) == 0 {
@@ -125,7 +126,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]interface
 		databaseCollection := db.CollectionByID[event.CollectionID]
 		_, unusedSequences, err := (&DatabaseCollectionWithUser{
 			DatabaseCollection: databaseCollection,
-		}).resyncDocument(ctx, docID, key, regenerateSequences, []uint64{})
+		}).resyncDocument(ctx, docID, key, regenerateSequences, []uint64{}, shouldAddStarChannel)
 
 		databaseCollection.releaseSequences(ctx, unusedSequences)
 

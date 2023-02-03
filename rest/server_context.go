@@ -156,6 +156,11 @@ func (sc *ServerContext) PostStartup() {
 	close(sc.hasStarted)
 }
 
+// IsAllDocsIndexExistFor returns if AllDocs index exists for given db
+func (sc *ServerContext) IsAllDocsIndexExistFor(dbName string) bool {
+	return sc.databases_[dbName] != nil && sc.databases_[dbName].AllDocsIndexExists
+}
+
 // serverContextStopMaxWait is the maximum amount of time to wait for
 // background goroutines to terminate before the server is stopped.
 const serverContextStopMaxWait = 30 * time.Second
@@ -467,15 +472,16 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		useViews = true
 	}
 
+	isAllDocsIndexCreated := false
 	// initDataStore is a function to initialize Views or GSI indexes for a datastore
-	initDataStore := func(ds base.DataStore) error {
+	initDataStore := func(ds base.DataStore) (bool, error) {
 		if useViews {
-			return db.InitializeViews(ctx, ds)
+			return false, db.InitializeViews(ctx, ds)
 		}
 
 		gsiSupported := bucket.IsSupported(sgbucket.BucketStoreFeatureN1ql)
 		if !gsiSupported {
-			return errors.New("Sync Gateway was unable to connect to a query node on the provided Couchbase Server cluster.  Ensure a query node is accessible, or set 'use_views':true in Sync Gateway's database config.")
+			return false, errors.New("Sync Gateway was unable to connect to a query node on the provided Couchbase Server cluster.  Ensure a query node is accessible, or set 'use_views':true in Sync Gateway's database config.")
 		}
 
 		numReplicas := DefaultNumIndexReplicas
@@ -484,15 +490,15 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		}
 		n1qlStore, ok := base.AsN1QLStore(ds)
 		if !ok {
-			return errors.New("Cannot create indexes on non-Couchbase data store.")
+			return false, errors.New("Cannot create indexes on non-Couchbase data store.")
 
 		}
-		indexErr := db.InitializeIndexes(n1qlStore, config.UseXattrs(), numReplicas, false, sc.Config.IsServerless())
+		isAllDocsIndexCreated, indexErr := db.InitializeIndexes(n1qlStore, config.UseXattrs(), numReplicas, false, sc.Config.IsServerless())
 		if indexErr != nil {
-			return indexErr
+			return false, indexErr
 		}
 
-		return nil
+		return isAllDocsIndexCreated, nil
 	}
 
 	if len(config.Scopes) > 0 {
@@ -515,14 +521,14 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 					return nil, fmt.Errorf("attempting to create/update database with a scope/collection that is not found")
 				}
 
-				if err := initDataStore(dataStore); err != nil {
+				if isAllDocsIndexCreated, err = initDataStore(dataStore); err != nil {
 					return nil, err
 				}
 			}
 		}
 	} else {
 		// no scopes configured - init the default data store
-		if err := initDataStore(bucket.DefaultDataStore()); err != nil {
+		if isAllDocsIndexCreated, err = initDataStore(bucket.DefaultDataStore()); err != nil {
 			return nil, err
 		}
 	}
@@ -624,6 +630,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	dbcontext.BucketSpec = spec
 	dbcontext.ServerContextHasStarted = sc.hasStarted
 	dbcontext.NoX509HTTPClient = sc.NoX509HTTPClient
+	dbcontext.AllDocsIndexExists = isAllDocsIndexCreated
 
 	syncFn := ""
 	if config.Sync != nil {

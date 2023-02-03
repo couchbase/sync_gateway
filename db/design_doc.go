@@ -329,7 +329,7 @@ func filterViewResult(input sgbucket.ViewResult, user auth.User, applyChannelFil
 // Is any item of channels found in visibleChannels?
 func channelsIntersect(visibleChannels ch.TimedSet, channels []interface{}) bool {
 	for _, channel := range channels {
-		if visibleChannels.Contains(channel.(string)) || channel == "*" {
+		if visibleChannels.Contains(channel.(string)) {
 			return true
 		}
 	}
@@ -482,9 +482,13 @@ func installViews(ctx context.Context, viewStore sgbucket.ViewStore) error {
 						if (channels) {
 							for (var name in channels) {
 								removed = channels[name];
-								if (!removed)
+								// if EnableStarChannelLog= true and "*" is added because AllDocs index isn't created
+								// Skip emiting "*" again as above lines has emitted "*" channel
+								if (name == "*" && %v) // EnableStarChannelLog
+									continue
+								if (!removed) {
 									emit([name, sequence], value);
-								else {
+								} else {
 									var flags = removed.del ? %d : %d; // channels.Removed/Deleted
 									emit([name, removed.seq], {rev:removed.rev, flags: flags});
 								}
@@ -492,7 +496,7 @@ func installViews(ctx context.Context, viewStore sgbucket.ViewStore) error {
 						}
 					}`
 
-	channels_map = fmt.Sprintf(channels_map, syncData, base.SyncDocPrefix, ch.Deleted, EnableStarChannelLog,
+	channels_map = fmt.Sprintf(channels_map, syncData, base.SyncDocPrefix, ch.Deleted, EnableStarChannelLog, EnableStarChannelLog,
 		ch.Removed|ch.Deleted, ch.Removed)
 
 	// Channel access view, used by ComputeChannelsForPrincipal()

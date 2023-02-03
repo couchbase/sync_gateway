@@ -27,6 +27,16 @@ import (
 
 // HTTP handler for _all_docs
 func (h *handler) handleAllDocs() error {
+	dbName := h.db.Name
+
+	if h.server.databases_[dbName] == nil {
+		return base.HTTPErrorf(http.StatusInternalServerError, "could not find database context for %s", dbName)
+	}
+
+	if !h.server.IsAllDocsIndexExistFor(dbName) {
+		return base.HTTPErrorf(http.StatusBadRequest, "all_docs endpoint is not available for db %s", dbName)
+	}
+
 	// http://wiki.apache.org/couchdb/HTTP_Bulk_Document_API
 	includeDocs := h.getBoolQuery("include_docs")
 	includeChannels := h.getBoolQuery("channels")

@@ -824,7 +824,10 @@ func TestAllDocsOnly(t *testing.T) {
 		revid, _, err := collection.Put(ctx, ids[i].DocID, body)
 		ids[i].RevID = revid
 		ids[i].Sequence = uint64(i + 1)
-		ids[i].Channels = channels
+		// `*` channels gets added to docs for new creation.
+		// add `*` channel to expected channels
+		ids[i].Channels = append(channels, "*")
+
 		assert.NoError(t, err, "Couldn't create document")
 	}
 
@@ -1389,11 +1392,12 @@ func TestSyncFnOnPush(t *testing.T) {
 	// Check that the doc has the correct channel (test for issue #300)
 	doc, err := collection.GetDocument(ctx, "doc1", DocUnmarshalAll)
 	assert.Equal(t, channels.ChannelMap{
+		"*":      nil,
 		"clibup": nil,
 		"public": &channels.ChannelRemoval{Seq: 2, RevID: "4-four"},
 	}, doc.Channels)
 
-	assert.Equal(t, base.SetOf("clibup"), doc.History["4-four"].Channels)
+	assert.Equal(t, base.SetOf("*", "clibup"), doc.History["4-four"].Channels)
 }
 
 func TestInvalidChannel(t *testing.T) {
@@ -2456,7 +2460,7 @@ func TestResyncUpdateAllDocChannels(t *testing.T) {
 		return state == DBOffline
 	})
 
-	_, err = collection.UpdateAllDocChannels(ctx, false, func(docsProcessed, docsChanged *int) {}, base.NewSafeTerminator())
+	_, err = collection.UpdateAllDocChannels(ctx, false, func(docsProcessed, docsChanged *int) {}, base.NewSafeTerminator(), !db.AllDocsIndexExists)
 	assert.NoError(t, err)
 
 	syncFnCount := int(db.DbStats.Database().SyncFunctionCount.Value())
@@ -2809,7 +2813,7 @@ func Test_resyncDocument(t *testing.T) {
 			_, err = db.UpdateSyncFun(ctx, syncFn)
 			require.NoError(t, err)
 
-			_, _, err = collection.resyncDocument(ctx, docID, realDocID(docID), false, []uint64{10})
+			_, _, err = collection.resyncDocument(ctx, docID, realDocID(docID), false, []uint64{10}, true)
 			require.NoError(t, err)
 			err = collection.WaitForPendingChanges(ctx)
 			require.NoError(t, err)
@@ -2817,8 +2821,8 @@ func Test_resyncDocument(t *testing.T) {
 			syncData, err := collection.GetDocSyncData(ctx, docID)
 			assert.NoError(t, err)
 
-			assert.Len(t, syncData.ChannelSet, 2)
-			assert.Len(t, syncData.Channels, 2)
+			assert.Len(t, syncData.ChannelSet, 3)
+			assert.Len(t, syncData.Channels, 3)
 			found := false
 
 			for _, chSet := range syncData.ChannelSet {
@@ -2854,7 +2858,7 @@ func Test_getUpdatedDocument(t *testing.T) {
 		require.NoError(t, err)
 
 		collection := GetSingleDatabaseCollectionWithUser(t, db)
-		_, _, _, _, _, err = collection.getResyncedDocument(ctx, doc, false, []uint64{})
+		_, _, _, _, _, err = collection.getResyncedDocument(ctx, doc, false, []uint64{}, false)
 		assert.Equal(t, base.ErrUpdateCancel, err)
 	})
 
@@ -2888,14 +2892,14 @@ func Test_getUpdatedDocument(t *testing.T) {
 		_, err = db.UpdateSyncFun(ctx, syncFn)
 		require.NoError(t, err)
 
-		updatedDoc, shouldUpdate, _, highSeq, _, err := collection.getResyncedDocument(ctx, doc, false, []uint64{})
+		updatedDoc, shouldUpdate, _, highSeq, _, err := collection.getResyncedDocument(ctx, doc, false, []uint64{}, false)
 		require.NoError(t, err)
 		assert.True(t, shouldUpdate)
 		assert.Equal(t, doc.Sequence, highSeq)
 		assert.Equal(t, 2, int(db.DbStats.Database().SyncFunctionCount.Value()))
 
 		// Rerunning same resync function should mark doc not to be updated
-		_, shouldUpdate, _, _, _, err = collection.getResyncedDocument(ctx, updatedDoc, false, []uint64{})
+		_, shouldUpdate, _, _, _, err = collection.getResyncedDocument(ctx, updatedDoc, false, []uint64{}, false)
 		require.NoError(t, err)
 		assert.False(t, shouldUpdate)
 		assert.Equal(t, 3, int(db.DbStats.Database().SyncFunctionCount.Value()))

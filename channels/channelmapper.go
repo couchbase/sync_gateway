@@ -53,7 +53,7 @@ func NewDefaultChannelMapper() *ChannelMapper {
 	return NewChannelMapper(DefaultSyncFunction, time.Duration(base.DefaultJavascriptTimeoutSecs)*time.Second)
 }
 
-func (mapper *ChannelMapper) MapToChannelsAndAccess(body map[string]interface{}, oldBodyJSON string, metaMap map[string]interface{}, userCtx map[string]interface{}) (*ChannelMapperOutput, error) {
+func (mapper *ChannelMapper) MapToChannelsAndAccess(body map[string]interface{}, oldBodyJSON string, metaMap map[string]interface{}, userCtx map[string]interface{}, shouldAddStarChannel bool) (*ChannelMapperOutput, error) {
 	numberFixBody := ConvertJSONNumbers(body)
 	numberFixMetaMap := ConvertJSONNumbers(metaMap)
 
@@ -62,6 +62,10 @@ func (mapper *ChannelMapper) MapToChannelsAndAccess(body map[string]interface{},
 		return nil, err
 	}
 	output := result1.(*ChannelMapperOutput)
+
+	if shouldAddStarChannel {
+		output.Channels.Add(UserStarChannel)
+	}
 	return output, nil
 }
 
@@ -122,10 +126,15 @@ func ForChangedUsers(a, b AccessMap, fn func(user string)) {
 	}
 }
 
-func (runner *SyncRunner) MapToChannelsAndAccess(body map[string]interface{}, oldBodyJSON string, userCtx map[string]interface{}) (*ChannelMapperOutput, error) {
+func (runner *SyncRunner) MapToChannelsAndAccess(body map[string]interface{}, oldBodyJSON string, userCtx map[string]interface{}, shouldAddStarChannel bool) (*ChannelMapperOutput, error) {
 	result, err := runner.Call(body, sgbucket.JSONString(oldBodyJSON), userCtx)
 	if err != nil {
 		return nil, err
 	}
-	return result.(*ChannelMapperOutput), nil
+	output := result.(*ChannelMapperOutput)
+
+	if shouldAddStarChannel {
+		output.Channels.Add(UserStarChannel)
+	}
+	return output, nil
 }

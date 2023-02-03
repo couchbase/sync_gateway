@@ -296,6 +296,14 @@ func (h *handler) handlePostResync() error {
 		}
 	}
 
+	shouldAddStarChannel, _ := h.getOptBoolQuery("add_star_channel", false)
+
+	// When AllDocsIndex isn't present for a db, we should add '*' by default when running resync
+	// this will make sure Channels can be fetched via Channel Index.
+	if !h.server.IsAllDocsIndexExistFor(h.db.Name) {
+		shouldAddStarChannel = true
+	}
+
 	if action != "" && action != string(db.BackgroundProcessActionStart) && action != string(db.BackgroundProcessActionStop) {
 		return base.HTTPErrorf(http.StatusBadRequest, "Unknown parameter for 'action'. Must be start or stop")
 	}
@@ -310,9 +318,10 @@ func (h *handler) handlePostResync() error {
 	if action == string(db.BackgroundProcessActionStart) {
 		if atomic.CompareAndSwapUint32(&h.db.State, db.DBOffline, db.DBResyncing) {
 			err := h.db.ResyncManager.Start(h.ctx(), map[string]interface{}{
-				"database":            h.db,
-				"regenerateSequences": regenerateSequences,
-				"collections":         resyncPostReqBody.Scope,
+				"database":             h.db,
+				"regenerateSequences":  regenerateSequences,
+				"collections":          resyncPostReqBody.Scope,
+				"shouldAddStarChannel": shouldAddStarChannel,
 			})
 			if err != nil {
 				return err
