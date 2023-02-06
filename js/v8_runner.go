@@ -13,10 +13,11 @@ import (
 
 type V8Runner struct {
 	baseRunner
-	v8vm   *v8VM
-	ctx    *v8.Context  // V8 object managing this execution context
-	mainFn *v8.Function // The entry-point function (returned by the Service's script)
-	Client any          // You can put whatever you want here, to point back to your state
+	v8vm     *v8VM
+	template V8Template   // The Service template I'm created from
+	ctx      *v8.Context  // V8 object managing this execution context
+	mainFn   *v8.Function // The entry-point function (returned by the Service's script)
+	Client   any          // You can put whatever you want here, to point back to your state
 }
 
 func newV8Runner(vm *v8VM, template V8Template, id serviceID) (*V8Runner, error) {
@@ -40,15 +41,17 @@ func newV8Runner(vm *v8VM, template V8Template, id serviceID) (*V8Runner, error)
 
 	return &V8Runner{
 		baseRunner: baseRunner{
-			template: template,
-			id:       id,
-			vm:       vm,
+			id: id,
+			vm: vm,
 		},
-		v8vm:   vm,
-		ctx:    ctx,
-		mainFn: mainFn,
+		v8vm:     vm,
+		template: template,
+		ctx:      ctx,
+		mainFn:   mainFn,
 	}, nil
 }
+
+func (r *V8Runner) Template() V8Template { return r.template }
 
 // Always call this when finished with a v8Runner acquired from Service.GetRunner.
 func (r *V8Runner) Return() {
