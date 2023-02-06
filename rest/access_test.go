@@ -36,8 +36,8 @@ func TestPublicChanGuestAccess(t *testing.T) {
 		})
 	defer rt.Close()
 	collection := rt.GetSingleTestDatabaseCollection()
-	c := collection.Name()
-	s := collection.ScopeName()
+	c := collection.Name
+	s := collection.ScopeName
 
 	// Create a document on the public channel
 	resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc", `{"channels": ["!"], "foo": "bar"}`)
@@ -394,8 +394,8 @@ func TestForceAPIForbiddenErrors(t *testing.T) {
 				})
 			defer rt.Close()
 			collection := rt.GetSingleTestDatabaseCollection()
-			c := collection.Name()
-			s := collection.ScopeName()
+			c := collection.Name
+			s := collection.ScopeName
 
 			resp := rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/Perms", GetUserPayload(t, "Perms", "password", "", collection, []string{"chan"}, nil))
 			RequireStatus(t, resp, http.StatusOK)
@@ -798,8 +798,8 @@ func TestChannelAccessChanges(t *testing.T) {
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 	collection := rt.GetSingleTestDatabaseCollection()
-	c := collection.Name()
-	s := collection.ScopeName()
+	c := collection.Name
+	s := collection.ScopeName
 
 	ctx := rt.Context()
 	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
@@ -1121,8 +1121,8 @@ func TestRoleChannelGrantInheritance(t *testing.T) {
 	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
 
 	collection := rt.GetDatabase().GetSingleDatabaseCollection()
-	scopeName := collection.ScopeName()
-	collectionName := collection.Name()
+	scopeName := collection.ScopeName
+	collectionName := collection.Name
 
 	user, err := a.GetUser("")
 	assert.NoError(t, err)

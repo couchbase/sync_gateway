@@ -502,11 +502,11 @@ func getCollectionsForBLIP(_ testing.TB, rt *RestTester) []string {
 	db := rt.GetDatabase()
 	var collections []string
 	for _, collection := range db.CollectionByID {
-		if base.IsDefaultCollection(collection.ScopeName(), collection.Name()) {
+		if base.IsDefaultCollection(collection.ScopeName, collection.Name) {
 			continue
 		}
 		collections = append(collections,
-			strings.Join([]string{collection.ScopeName(), collection.Name()}, base.ScopeCollectionSeparator))
+			strings.Join([]string{collection.ScopeName, collection.Name}, base.ScopeCollectionSeparator))
 	}
 	return collections
 }
@@ -599,7 +599,7 @@ func (btc *BlipTesterClient) initCollectionReplication(collection string, collec
 func (btc *BlipTesterClient) waitForReplicationMessage(collection *db.DatabaseCollection, serialNumber blip.MessageNumber) (*blip.Message, bool) {
 	var msg *blip.Message
 	var ok bool
-	if base.IsDefaultCollection(collection.ScopeName(), collection.Name()) {
+	if base.IsDefaultCollection(collection.ScopeName, collection.Name) {
 		msg, ok = btc.pushReplication.WaitForMessage(serialNumber)
 	} else {
 		msg, ok = btc.pushReplication.WaitForMessage(serialNumber + 1)

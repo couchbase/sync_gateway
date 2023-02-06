@@ -433,10 +433,10 @@ func (db *DatabaseCollectionWithUser) GetDelta(ctx context.Context, docID, fromR
 	return nil, nil, nil
 }
 
-func (db *DatabaseCollectionWithUser) authorizeUserForChannels(docID, revID string, channels base.Set, isDeleted bool, history Revisions) (isAuthorized bool, redactedRev DocumentRevision) {
+func (col *DatabaseCollectionWithUser) authorizeUserForChannels(docID, revID string, channels base.Set, isDeleted bool, history Revisions) (isAuthorized bool, redactedRev DocumentRevision) {
 
-	if db.user != nil {
-		if err := db.user.AuthorizeAnyCollectionChannel(db.ScopeName(), db.Name(), channels); err != nil {
+	if col.user != nil {
+		if err := col.user.AuthorizeAnyCollectionChannel(col.ScopeName, col.Name, channels); err != nil {
 			// On access failure, return (only) the doc history and deletion/removal
 			// status instead of returning an error. For justification see the comment in
 			// the getRevFromDoc method, below
@@ -485,8 +485,8 @@ func (db *DatabaseCollectionWithUser) Get1xRevAndChannels(ctx context.Context, d
 }
 
 // Returns an HTTP 403 error if the User is not allowed to access any of this revision's channels.
-func (db *DatabaseCollectionWithUser) authorizeDoc(doc *Document, revid string) error {
-	user := db.user
+func (col *DatabaseCollectionWithUser) authorizeDoc(doc *Document, revid string) error {
+	user := col.user
 	if doc == nil || user == nil {
 		return nil // A nil User means access control is disabled
 	}
@@ -495,7 +495,7 @@ func (db *DatabaseCollectionWithUser) authorizeDoc(doc *Document, revid string) 
 	}
 	if rev := doc.History[revid]; rev != nil {
 		// Authenticate against specific revision:
-		return db.user.AuthorizeAnyCollectionChannel(db.ScopeName(), db.Name(), rev.Channels)
+		return col.user.AuthorizeAnyCollectionChannel(col.ScopeName, col.Name, rev.Channels)
 	} else {
 		// No such revision; let the caller proceed and return a 404
 		return nil
@@ -2207,7 +2207,7 @@ func (db *DatabaseCollectionWithUser) Purge(ctx context.Context, key string) err
 
 // Calls the JS sync function to assign the doc to channels, grant users
 // access to channels, and reject invalid documents.
-func (db *DatabaseCollectionWithUser) getChannelsAndAccess(ctx context.Context, doc *Document, body Body, metaMap map[string]interface{}, revID string) (
+func (col *DatabaseCollectionWithUser) getChannelsAndAccess(ctx context.Context, doc *Document, body Body, metaMap map[string]interface{}, revID string) (
 	result base.Set,
 	access channels.AccessMap,
 	roles channels.AccessMap,
@@ -2217,31 +2217,31 @@ func (db *DatabaseCollectionWithUser) getChannelsAndAccess(ctx context.Context, 
 	base.DebugfCtx(ctx, base.KeyCRUD, "Invoking sync on doc %q rev %s", base.UD(doc.ID), body[BodyRev])
 
 	// Low-level protection against writes for read-only guest.  Handles write pathways that don't fail-fast
-	if db.user != nil && db.user.Name() == "" && db.isGuestReadOnly() {
+	if col.user != nil && col.user.Name() == "" && col.isGuestReadOnly() {
 		return result, access, roles, expiry, oldJson, base.HTTPErrorf(403, auth.GuestUserReadOnly)
 	}
 
 	// Get the parent revision, to pass to the sync function:
 	var oldJsonBytes []byte
-	if oldJsonBytes, err = db.getAncestorJSON(ctx, doc, revID); err != nil {
+	if oldJsonBytes, err = col.getAncestorJSON(ctx, doc, revID); err != nil {
 		return
 	}
 	oldJson = string(oldJsonBytes)
 
-	if db.channelMapper() != nil {
+	if col.channelMapper() != nil {
 		// Call the ChannelMapper:
-		db.dbStats().Database().SyncFunctionCount.Add(1)
-		db.collectionStats.SyncFunctionCount.Add(1)
+		col.dbStats().Database().SyncFunctionCount.Add(1)
+		col.collectionStats.SyncFunctionCount.Add(1)
 
 		var output *channels.ChannelMapperOutput
 
 		startTime := time.Now()
-		output, err = db.channelMapper().MapToChannelsAndAccess(body, oldJson, metaMap,
-			MakeUserCtx(db.user, db.ScopeName(), db.Name()))
+		output, err = col.channelMapper().MapToChannelsAndAccess(body, oldJson, metaMap,
+			MakeUserCtx(col.user, col.ScopeName, col.Name))
 		syncFunctionTimeNano := time.Since(startTime).Nanoseconds()
 
-		db.dbStats().Database().SyncFunctionTime.Add(syncFunctionTimeNano)
-		db.collectionStats.SyncFunctionTime.Add(syncFunctionTimeNano)
+		col.dbStats().Database().SyncFunctionTime.Add(syncFunctionTimeNano)
+		col.collectionStats.SyncFunctionTime.Add(syncFunctionTimeNano)
 
 		if err == nil {
 			result = output.Channels
@@ -2252,11 +2252,11 @@ func (db *DatabaseCollectionWithUser) getChannelsAndAccess(ctx context.Context, 
 			if err != nil {
 				base.InfofCtx(ctx, base.KeyAll, "Sync fn rejected doc %q / %q --> %s", base.UD(doc.ID), base.UD(doc.NewestRev), err)
 				base.DebugfCtx(ctx, base.KeyAll, "    rejected doc %q / %q : new=%+v  old=%s", base.UD(doc.ID), base.UD(doc.NewestRev), base.UD(body), base.UD(oldJson))
-				db.dbStats().Security().NumDocsRejected.Add(1)
-				db.collectionStats.SyncFunctionRejectCount.Add(1)
+				col.dbStats().Security().NumDocsRejected.Add(1)
+				col.collectionStats.SyncFunctionRejectCount.Add(1)
 				if isAccessError(err) {
-					db.dbStats().Security().NumAccessErrors.Add(1)
-					db.collectionStats.SyncFunctionRejectAccessCount.Add(1)
+					col.dbStats().Security().NumAccessErrors.Add(1)
+					col.collectionStats.SyncFunctionRejectAccessCount.Add(1)
 				}
 			} else if !validateAccessMap(access) || !validateRoleAccessMap(roles) {
 				err = base.HTTPErrorf(500, "Error in JS sync function")
@@ -2268,8 +2268,8 @@ func (db *DatabaseCollectionWithUser) getChannelsAndAccess(ctx context.Context, 
 				err = base.HTTPErrorf(500, "JS sync function timed out")
 			} else {
 				err = base.HTTPErrorf(500, "Exception in JS sync function")
-				db.collectionStats.SyncFunctionExceptionCount.Add(1)
-				db.dbStats().Database().SyncFunctionExceptionCount.Add(1)
+				col.collectionStats.SyncFunctionExceptionCount.Add(1)
+				col.dbStats().Database().SyncFunctionExceptionCount.Add(1)
 			}
 		}
 
