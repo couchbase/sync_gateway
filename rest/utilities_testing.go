@@ -294,7 +294,9 @@ func (rt *RestTester) Bucket() base.Bucket {
 		rt.DatabaseConfig.CACertPath = testBucket.BucketSpec.CACertPath
 		rt.DatabaseConfig.CertPath = testBucket.BucketSpec.Certpath
 		rt.DatabaseConfig.KeyPath = testBucket.BucketSpec.Keypath
-		rt.DatabaseConfig.Name = "db"
+		if rt.DatabaseConfig.Name == "" {
+			rt.DatabaseConfig.Name = "db"
+		}
 		rt.DatabaseConfig.Sync = &rt.SyncFn
 		rt.DatabaseConfig.EnableXattrs = &useXattrs
 		if rt.EnableNoConflictsMode {
@@ -325,7 +327,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 		// Update the testBucket Bucket to the one associated with the database context.  The new (dbContext) bucket
 		// will be closed when the rest tester closes the server context. The original bucket will be closed using the
 		// testBucket's closeFn
-		rt.TestBucket.Bucket = rt.RestTesterServerContext.Database(ctx, "db").Bucket
+		rt.TestBucket.Bucket = rt.RestTesterServerContext.Database(ctx, rt.DatabaseConfig.Name).Bucket
 
 		if rt.DatabaseConfig.Guest == nil {
 			if err := rt.SetAdminParty(rt.GuestEnabled); err != nil {
@@ -515,7 +517,7 @@ func (rt *RestTester) WaitForPendingChanges() error {
 
 func (rt *RestTester) SetAdminParty(partyTime bool) error {
 	ctx := rt.Context()
-	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
+	a := rt.ServerContext().Database(ctx, rt.DatabaseConfig.Name).Authenticator(ctx)
 	guest, err := a.GetUser("")
 	if err != nil {
 		return err
@@ -857,7 +859,7 @@ func (rt *RestTester) WaitForViewAvailable(viewURLPath string) (err error) {
 
 func (rt *RestTester) GetDBState() string {
 	var body db.Body
-	resp := rt.SendAdminRequest("GET", "/db/", "")
+	resp := rt.SendAdminRequest("GET", "/{{.db}}/", "")
 	RequireStatus(rt.TB, resp, 200)
 	require.NoError(rt.TB, base.JSONUnmarshal(resp.Body.Bytes(), &body))
 	return body["state"].(string)
@@ -914,7 +916,7 @@ func (rt *RestTester) PutDocumentWithRevID(docID string, newRevID string, parent
 	if err != nil {
 		return nil, err
 	}
-	resp := rt.SendAdminRequest(http.MethodPut, "/db/"+docID+"?new_edits=false", string(requestBytes))
+	resp := rt.SendAdminRequest(http.MethodPut, "/{{.db}}/"+docID+"?new_edits=false", string(requestBytes))
 	return resp, nil
 }
 
@@ -1266,7 +1268,7 @@ func createBlipTesterWithSpec(tb testing.TB, spec BlipTesterSpec, rt *RestTester
 		// Create a user.  NOTE: this must come *after* the bt.rt.TestPublicHandler() call, otherwise it will end up getting ignored
 		_ = bt.restTester.SendAdminRequest(
 			"POST",
-			"/db/_user/",
+			"/{{.db}}/_user/",
 			userDocBody,
 		)
 	}
@@ -1279,7 +1281,7 @@ func createBlipTesterWithSpec(tb testing.TB, spec BlipTesterSpec, rt *RestTester
 	defer srv.Close()
 
 	// Construct URL to connect to blipsync target endpoint
-	destUrl := fmt.Sprintf("%s/db/_blipsync", srv.URL)
+	destUrl := fmt.Sprintf("%s/%s/_blipsync", srv.URL, rt.GetDatabase().Name)
 	u, err := url.Parse(destUrl)
 	if err != nil {
 		return nil, err
