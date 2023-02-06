@@ -942,6 +942,7 @@ func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConf
 		JavascriptTimeout:             javascriptTimeout,
 		Serverless:                    sc.Config.IsServerless(),
 		DefaultCollectionImportFilter: config.ImportFilter,
+		JavaScriptEngine:              config.JavaScriptEngine,
 		// FunctionsConfig:        config.UserFunctions, // behind feature flag (see below)
 		// GraphQLConfig:          config.GraphQL,       // behind feature flag (see below)
 	}

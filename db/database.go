@@ -174,6 +174,7 @@ type DatabaseContextOptions struct {
 	skipRegisterImportPIndex      bool                       // if set, skips the global gocb PIndex registration
 	MetadataStore                 base.DataStore             // If set, use this location/connection for SG metadata storage - if not set, metadata is stored using the same location/connection as the bucket used for data storage.
 	DefaultCollectionImportFilter *string                    // Opt-in filter for document import, for when collections are not supported
+	JavaScriptEngine              *string                    // "Otto" or "V8"; defaults to Otto
 	FunctionsConfig               IFunctionsAndGraphQLConfig // JS/N1QL functions clients can call
 }
 
@@ -385,7 +386,14 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 		CollectionByID: make(map[uint32]*DatabaseCollection),
 	}
 
-	dbContext.JS.Init(js.V8, MaxJavaScriptVMs)
+	engine := js.Otto
+	if options.JavaScriptEngine != nil {
+		engine = js.EngineNamed(*options.JavaScriptEngine)
+		if engine == nil {
+			return nil, fmt.Errorf("JavaScriptEngine %q is not available", *options.JavaScriptEngine)
+		}
+	}
+	dbContext.JS.Init(engine, MaxJavaScriptVMs)
 
 	if options.ImportOptions.ImportFilterSource != nil {
 		dbContext.Options.ImportOptions.ImportFilter = NewImportFilterFunction(&dbContext.JS, *options.ImportOptions.ImportFilterSource, options.JavascriptTimeout)
