@@ -140,7 +140,13 @@ func GetGocbV2BucketFromCluster(cluster *gocb.Cluster, spec BucketSpec, waitUnti
 		clusterCompatMajorVersion: uint64(clusterCompatMajor),
 		clusterCompatMinorVersion: uint64(clusterCompatMinor),
 	}
+	uuid, err := getServerUUID(gocbv2Bucket)
+	if err != nil {
+		_ = cluster.Close(&gocb.ClusterCloseOptions{})
+		return nil, fmt.Errorf("%s", err)
+	}
 
+	gocbv2Bucket.ClusterUUID = uuid
 	// Set limits for concurrent query and kv ops
 	maxConcurrentQueryOps := MaxConcurrentQueryOps
 	if spec.MaxConcurrentQueryOps != nil {
@@ -183,6 +189,7 @@ type GocbV2Bucket struct {
 	queryOps                                             chan struct{} // Manages max concurrent query ops
 	kvOps                                                chan struct{} // Manages max concurrent kv ops
 	clusterCompatMajorVersion, clusterCompatMinorVersion uint64        // E.g: 6 and 0 for 6.0.3
+	ClusterUUID                                          string        // uuid of cluster
 }
 
 var (

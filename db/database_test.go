@@ -3084,6 +3084,20 @@ func TestGetDatabaseCollectionWithUserDefaultCollection(t *testing.T) {
 
 }
 
+func TestClusterUUID(t *testing.T) {
+	bucket := base.GetTestBucket(t)
+	defer bucket.Close()
+
+	db, err := NewDatabaseContext(base.TestCtx(t), "db", bucket, false, DatabaseContextOptions{})
+	require.NoError(t, err)
+
+	if base.TestUseCouchbaseServer() {
+		require.Equal(t, 32, len(db.clusterUUID)) // no dashes in UUID
+	} else {
+		require.Equal(t, "", db.clusterUUID) // no dashes in UUID
+	}
+}
+
 func waitAndAssertConditionWithOptions(t *testing.T, fn func() bool, retryCount, msSleepTime int, failureMsgAndArgs ...interface{}) {
 	for i := 0; i <= retryCount; i++ {
 		if i == retryCount {

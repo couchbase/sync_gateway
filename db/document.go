@@ -91,6 +91,7 @@ type SyncData struct {
 
 	addedRevisionBodies     []string          // revIDs of non-winning revision bodies that have been added (and so require persistence)
 	removedRevisionBodyKeys map[string]string // keys of non-winning revisions that have been removed (and so may require deletion), indexed by revID
+	ClusterUUID             string            `json:"cluster_uuid,omitempty"`
 }
 
 func (sd *SyncData) HashRedact(salt string) SyncData {

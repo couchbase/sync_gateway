@@ -1673,7 +1673,7 @@ func (db *DatabaseCollectionWithUser) IsIllegalConflict(ctx context.Context, doc
 	return true
 }
 
-func (db *DatabaseCollectionWithUser) documentUpdateFunc(ctx context.Context, docExists bool, doc *Document, allowImport bool, previousDocSequenceIn uint64, unusedSequences []uint64, callback updateAndReturnDocCallback, expiry uint32) (retSyncFuncExpiry *uint32, retNewRevID string, retStoredDoc *Document, retOldBodyJSON string, retUnusedSequences []uint64, changedAccessPrincipals []string, changedRoleAccessUsers []string, createNewRevIDSkipped bool, err error) {
+func (col *DatabaseCollectionWithUser) documentUpdateFunc(ctx context.Context, docExists bool, doc *Document, allowImport bool, previousDocSequenceIn uint64, unusedSequences []uint64, callback updateAndReturnDocCallback, expiry uint32) (retSyncFuncExpiry *uint32, retNewRevID string, retStoredDoc *Document, retOldBodyJSON string, retUnusedSequences []uint64, changedAccessPrincipals []string, changedRoleAccessUsers []string, createNewRevIDSkipped bool, err error) {
 
 	err = validateExistingDoc(doc, allowImport, docExists)
 	if err != nil {
@@ -1686,7 +1686,7 @@ func (db *DatabaseCollectionWithUser) documentUpdateFunc(ctx context.Context, do
 		return
 	}
 
-	mutableBody, metaMap, newRevID, err := db.prepareSyncFn(doc, newDoc)
+	mutableBody, metaMap, newRevID, err := col.prepareSyncFn(doc, newDoc)
 	if err != nil {
 		return
 	}
@@ -1694,11 +1694,11 @@ func (db *DatabaseCollectionWithUser) documentUpdateFunc(ctx context.Context, do
 	prevCurrentRev := doc.CurrentRev
 	doc.updateWinningRevAndSetDocFlags()
 	newDocHasAttachments := len(newAttachments) > 0
-	db.storeOldBodyInRevTreeAndUpdateCurrent(ctx, doc, prevCurrentRev, newRevID, newDoc, newDocHasAttachments)
+	col.storeOldBodyInRevTreeAndUpdateCurrent(ctx, doc, prevCurrentRev, newRevID, newDoc, newDocHasAttachments)
 
-	syncExpiry, oldBodyJSON, channelSet, access, roles, err := db.runSyncFn(ctx, doc, mutableBody, metaMap, newRevID)
+	syncExpiry, oldBodyJSON, channelSet, access, roles, err := col.runSyncFn(ctx, doc, mutableBody, metaMap, newRevID)
 	if err != nil {
-		if db.ForceAPIForbiddenErrors() {
+		if col.ForceAPIForbiddenErrors() {
 			base.InfofCtx(ctx, base.KeyCRUD, "Sync function rejected update to %s %s due to %v",
 				base.UD(doc.ID), base.MD(doc.RevID), err)
 			err = ErrForbidden
@@ -1710,14 +1710,14 @@ func (db *DatabaseCollectionWithUser) documentUpdateFunc(ctx context.Context, do
 		doc.History[newRevID].Channels = channelSet
 	}
 
-	err = db.addAttachments(ctx, newAttachments)
+	err = col.addAttachments(ctx, newAttachments)
 	if err != nil {
 		return
 	}
 
-	db.backupAncestorRevs(ctx, doc, newDoc)
+	col.backupAncestorRevs(ctx, doc, newDoc)
 
-	unusedSequences, err = db.assignSequence(ctx, previousDocSequenceIn, doc, unusedSequences)
+	unusedSequences, err = col.assignSequence(ctx, previousDocSequenceIn, doc, unusedSequences)
 	if err != nil {
 		return
 	}
@@ -1728,7 +1728,7 @@ func (db *DatabaseCollectionWithUser) documentUpdateFunc(ctx context.Context, do
 		// need to update the doc's top-level Channels and Access properties to correspond
 		// to the current rev's state.
 		if newRevID != doc.CurrentRev {
-			channelSet, access, roles, syncExpiry, oldBodyJSON, err = db.recalculateSyncFnForActiveRev(ctx, doc, metaMap, newRevID)
+			channelSet, access, roles, syncExpiry, oldBodyJSON, err = col.recalculateSyncFnForActiveRev(ctx, doc, metaMap, newRevID)
 		}
 		_, err = doc.updateChannels(ctx, channelSet)
 		if err != nil {
@@ -1743,16 +1743,17 @@ func (db *DatabaseCollectionWithUser) documentUpdateFunc(ctx context.Context, do
 	}
 
 	// Prune old revision history to limit the number of revisions:
-	if pruned := doc.pruneRevisions(db.revsLimit(), doc.CurrentRev); pruned > 0 {
+	if pruned := doc.pruneRevisions(col.revsLimit(), doc.CurrentRev); pruned > 0 {
 		base.DebugfCtx(ctx, base.KeyCRUD, "updateDoc(%q): Pruned %d old revisions", base.UD(doc.ID), pruned)
 	}
 
 	updatedExpiry = doc.updateExpiry(syncExpiry, updatedExpiry, expiry)
-	err = doc.persistModifiedRevisionBodies(db.dataStore)
+	err = doc.persistModifiedRevisionBodies(col.dataStore)
 	if err != nil {
 		return
 	}
 
+	doc.ClusterUUID = col.clusterUUID()
 	doc.TimeSaved = time.Now()
 	return updatedExpiry, newRevID, newDoc, oldBodyJSON, unusedSequences, changedAccessPrincipals, changedRoleAccessUsers, createNewRevIDSkipped, err
 }
