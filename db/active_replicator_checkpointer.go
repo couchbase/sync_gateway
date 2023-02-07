@@ -266,22 +266,21 @@ func (c *Checkpointer) _updateCheckpointLists() (safeSeq *SequenceID) {
 	c.stats.ProcessedSequenceLen = len(c.processedSeqs)
 
 	maxI := c._calculateSafeExpectedSeqsIdx()
-	if maxI == -1 {
-		// nothing to do
-		return nil
+
+	if maxI > -1 {
+		seq := c.expectedSeqs[maxI]
+
+		// removes to-be checkpointed sequences from processedSeqs list
+		for i := 0; i <= maxI; i++ {
+			removeSeq := c.expectedSeqs[i]
+			delete(c.processedSeqs, removeSeq)
+			base.TracefCtx(c.ctx, base.KeyReplicate, "checkpointer: _updateCheckpointLists removed seq %v from processedSeqs map", removeSeq)
+		}
+
+		// trim expectedSeqs list from beginning up to first unprocessed seq
+		c.expectedSeqs = c.expectedSeqs[maxI+1:]
+		safeSeq = &seq
 	}
-
-	seq := c.expectedSeqs[maxI]
-
-	// removes to-be checkpointed sequences from processedSeqs list
-	for i := 0; i <= maxI; i++ {
-		removeSeq := c.expectedSeqs[i]
-		delete(c.processedSeqs, removeSeq)
-		base.TracefCtx(c.ctx, base.KeyReplicate, "checkpointer: _updateCheckpointLists removed seq %v from processedSeqs map", removeSeq)
-	}
-
-	// trim expectedSeqs list from beginning up to first unprocessed seq
-	c.expectedSeqs = c.expectedSeqs[maxI+1:]
 
 	// if we have many remaining expectedSeqs, see if we can shrink the lists even more
 	// compact contiguous blocks of sequences by keeping only the last processed sequence in both lists
@@ -303,7 +302,7 @@ func (c *Checkpointer) _updateCheckpointLists() (safeSeq *SequenceID) {
 	c.stats.ExpectedSequenceLenPostCleanup = len(c.expectedSeqs)
 	c.stats.ProcessedSequenceLenPostCleanup = len(c.processedSeqs)
 
-	return &seq
+	return safeSeq
 }
 
 // _calculateSafeExpectedSeqsIdx returns an index into expectedSeqs which is safe to checkpoint.
