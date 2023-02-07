@@ -250,7 +250,6 @@ func (c *Checkpointer) Stats() CheckpointerStats {
 // We will also remove all but the last processed sequence as we know we're able to checkpoint safely up to that point without leaving any intermediate sequence numbers around.
 func (c *Checkpointer) _updateCheckpointLists() (safeSeq *SequenceID) {
 	base.TracefCtx(c.ctx, base.KeyReplicate, "checkpointer: _updateCheckpointLists(expectedSeqs: %v, processedSeqs: %v)", c.expectedSeqs, c.processedSeqs)
-	base.TracefCtx(c.ctx, base.KeyReplicate, "Inside update checkpoint lists")
 
 	c.stats.ExpectedSequenceLen = len(c.expectedSeqs)
 	c.stats.ProcessedSequenceLen = len(c.processedSeqs)
