@@ -80,8 +80,11 @@ const (
 // completion of all background tasks and background managers before the server is stopped.
 const BGTCompletionMaxWait = 30 * time.Second
 
-// Max number of V8 instances to create (per database)
-const MaxJavaScriptVMs = 4
+// The default JavaScript engine if not otherwise specified in the DatabaseContextOptions.
+const DefaultJavaScriptEngine = "Otto" // Can be "Otto" or "V8"
+
+// Max number of JavaScript interpreter instances to create (per database)
+const MaxJavaScriptVMs = 8
 
 // Basic description of a database. Shared between all Database objects on the same database.
 // This object is thread-safe so it can be shared between HTTP handlers.
@@ -174,7 +177,7 @@ type DatabaseContextOptions struct {
 	skipRegisterImportPIndex      bool                       // if set, skips the global gocb PIndex registration
 	MetadataStore                 base.DataStore             // If set, use this location/connection for SG metadata storage - if not set, metadata is stored using the same location/connection as the bucket used for data storage.
 	DefaultCollectionImportFilter *string                    // Opt-in filter for document import, for when collections are not supported
-	JavaScriptEngine              *string                    // "Otto" or "V8"; defaults to Otto
+	JavaScriptEngine              *string                    // Name of JS engine to use
 	FunctionsConfig               IFunctionsAndGraphQLConfig // JS/N1QL functions clients can call
 }
 
@@ -386,14 +389,16 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 		CollectionByID: make(map[uint32]*DatabaseCollection),
 	}
 
-	engine := js.Otto
+	// Initialize JavaScript VMPool:
+	jsEngineName := DefaultJavaScriptEngine
 	if options.JavaScriptEngine != nil {
-		engine = js.EngineNamed(*options.JavaScriptEngine)
-		if engine == nil {
-			return nil, fmt.Errorf("JavaScriptEngine %q is not available", *options.JavaScriptEngine)
-		}
+		jsEngineName = *options.JavaScriptEngine
 	}
-	dbContext.JS.Init(engine, MaxJavaScriptVMs)
+	if engine := js.EngineNamed(jsEngineName); engine != nil {
+		dbContext.JS.Init(engine, MaxJavaScriptVMs)
+	} else {
+		return nil, fmt.Errorf("%q is not an available JavaScript engine", jsEngineName)
+	}
 
 	if options.ImportOptions.ImportFilterSource != nil {
 		dbContext.Options.ImportOptions.ImportFilter = NewImportFilterFunction(&dbContext.JS, *options.ImportOptions.ImportFilterSource, options.JavascriptTimeout)

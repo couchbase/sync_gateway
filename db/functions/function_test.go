@@ -20,6 +20,7 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
+	"github.com/couchbase/sync_gateway/js"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	v8 "rogchap.com/v8go"
@@ -478,6 +479,12 @@ func TestUserFunctionsCRUD(t *testing.T) {
 	})
 }
 
+func testValidateFunctions(fnConfig *FunctionsConfig, gqConfig *GraphQLConfig) error {
+	vm := js.V8.NewVM()
+	defer vm.Close()
+	return ValidateFunctions(context.TODO(), vm, fnConfig, gqConfig)
+}
+
 // Test that JS syntax errors are detected when the db opens.
 func TestUserFunctionSyntaxError(t *testing.T) {
 	var functionConfig = FunctionsConfig{
@@ -494,7 +501,7 @@ func TestUserFunctionSyntaxError(t *testing.T) {
 		},
 	}
 
-	err := ValidateFunctions(context.TODO(), &functionConfig, nil)
+	err := testValidateFunctions(&functionConfig, nil)
 	assert.Error(t, err)
 }
 
@@ -515,7 +522,7 @@ func TestUserFunctionsMaxFunctionCount(t *testing.T) {
 			},
 		},
 	}
-	err := ValidateFunctions(context.TODO(), &functionConfig, nil)
+	err := testValidateFunctions(&functionConfig, nil)
 	assert.ErrorContains(t, err, "too many functions (> 1)")
 }
 
@@ -531,7 +538,7 @@ func TestUserFunctionsMaxCodeSize(t *testing.T) {
 			},
 		},
 	}
-	err := ValidateFunctions(context.TODO(), &functionConfig, nil)
+	err := testValidateFunctions(&functionConfig, nil)
 	assert.ErrorContains(t, err, "function square: code is too large (> 20 bytes)")
 }
 
@@ -563,8 +570,9 @@ func assertHTTPError(t *testing.T, err error, status int) bool {
 func setupTestDBWithFunctions(t *testing.T, fnConfig *FunctionsConfig, gqConfig *GraphQLConfig) (*db.Database, context.Context) {
 	cacheOptions := db.DefaultCacheOptions()
 	options := db.DatabaseContextOptions{
-		CacheOptions:    &cacheOptions,
-		FunctionsConfig: &Config{fnConfig, gqConfig},
+		CacheOptions:     &cacheOptions,
+		FunctionsConfig:  &Config{fnConfig, gqConfig},
+		JavaScriptEngine: base.StringPtr("V8"), // Not compatible with Otto, it's too old
 	}
 	return setupTestDBWithOptions(t, options)
 }

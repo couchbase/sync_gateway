@@ -624,7 +624,7 @@ func TestIsCfgChanged(t *testing.T) {
 	require.NoError(t, err)
 
 	dbctx := DatabaseContext{Name: "test"}
-	dbctx.JS.Init(js.V8, 4)
+	dbctx.JS.Init(js.EngineNamed(DefaultJavaScriptEngine), 4)
 	mgr, err := NewSGReplicateManager(base.TestCtx(t), &dbctx, testCfg)
 	require.NoError(t, err)
 	defer mgr.Stop()

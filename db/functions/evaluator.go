@@ -111,6 +111,9 @@ func makeEvaluator(service *js.Service, dbc *db.Database, delegate evaluatorDele
 		return nil, err
 	}
 	v8Runner := runner.(*js.V8Runner)
+	if v8Runner == nil {
+		panic("functions/graphql only supports V8 engine")
+	}
 
 	if dbc.Options.JavascriptTimeout > 0 {
 		var cancelFn context.CancelFunc

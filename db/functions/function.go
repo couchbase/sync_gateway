@@ -107,6 +107,9 @@ func CompileFunctions(fnConfig *FunctionsConfig, gqConfig *GraphQLConfig, vms *j
 	if fnConfig == nil && gqConfig == nil {
 		return
 	}
+	if err = checkEngine(vms); err != nil {
+		return
+	}
 	if gqConfig, err = readSchema(gqConfig); err != nil {
 		return
 	}
@@ -135,39 +138,45 @@ func CompileFunctions(fnConfig *FunctionsConfig, gqConfig *GraphQLConfig, vms *j
 	return
 }
 
+func checkEngine(host js.ServiceHost) error {
+	if host.Engine().LanguageVersion() < js.ES2015 {
+		return fmt.Errorf("user functions and GraphQL are not compatible with JavaScript engine %s", host.Engine())
+	}
+	return nil
+}
+
 // Creates an evaluator using a new VM not belonging to a pool.
 // Remember to close it when finished!
-func newStandaloneEvaluator(ctx context.Context, fnConfig *FunctionsConfig, gqConfig *GraphQLConfig, delegate evaluatorDelegate) (*evaluator, js.VM, error) {
+func newStandaloneEvaluator(ctx context.Context, vm js.ServiceHost, fnConfig *FunctionsConfig, gqConfig *GraphQLConfig, delegate evaluatorDelegate) (*evaluator, error) {
 	if fnConfig == nil && gqConfig == nil {
-		return nil, nil, nil
+		return nil, nil
 	}
-	vm := js.V8.NewVM()
+	if err := checkEngine(vm); err != nil {
+		return nil, err
+	}
 	service := js.NewCustomService(vm, "functions", makeService(fnConfig, gqConfig))
 	if runner, err := service.GetRunner(); err != nil {
-		vm.Close()
-		return nil, nil, err
+		return nil, err
 	} else {
 		runner.SetContext(ctx)
 		eval, err := newEvaluator(runner.(*js.V8Runner))
 		if err != nil {
-			vm.Close()
-			return nil, nil, err
+			return nil, err
 		}
 		eval.setup(delegate, nil)
-		return eval, vm, nil
+		return eval, nil
 	}
 }
 
 // Validates a FunctionsConfig & GraphQLConfig.
-func ValidateFunctions(ctx context.Context, fnConfig *FunctionsConfig, gqConfig *GraphQLConfig) error {
+func ValidateFunctions(ctx context.Context, vm js.ServiceHost, fnConfig *FunctionsConfig, gqConfig *GraphQLConfig) error {
 	gqConfig, err := readSchema(gqConfig)
 	if err != nil {
 		return err
 	}
-	eval, vm, err := newStandaloneEvaluator(ctx, fnConfig, gqConfig, &databaseDelegate{ctx: ctx})
+	eval, err := newStandaloneEvaluator(ctx, vm, fnConfig, gqConfig, &databaseDelegate{ctx: ctx})
 	if err == nil && eval != nil {
 		eval.close()
-		vm.Close()
 	}
 	return err
 }

@@ -2118,7 +2118,7 @@ func TestWebhookFilterFunctionLoad(t *testing.T) {
 			terminator := make(chan bool)
 			defer close(terminator)
 			ctx := &db.DatabaseContext{EventMgr: db.NewEventManager(terminator)}
-			ctx.JS.Init(js.V8, 4)
+			ctx.JS.Init(js.EngineNamed(db.DefaultJavaScriptEngine), 4)
 			sc := &ServerContext{}
 			err := sc.initEventHandlers(base.TestCtx(t), ctx, &dbConfig)
 			if test.errExpected != nil {

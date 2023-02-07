@@ -17,17 +17,20 @@ import (
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/js"
 	"github.com/stretchr/testify/assert"
 )
 
 // A basic bring-up test of the Evaluator and TypeScript engine.
 func TestEvaluator(t *testing.T) {
+	vm := js.V8.NewVM()
+	defer vm.Close()
+
 	delegate := mockEvaluatorDelegate{}
-	eval, vm, err := newStandaloneEvaluator(context.Background(), &kTestFunctionsConfig, &kTestGraphQLConfig, &delegate)
+	eval, err := newStandaloneEvaluator(context.Background(), vm, &kTestFunctionsConfig, &kTestGraphQLConfig, &delegate)
 	if !assert.NoError(t, err) {
 		return
 	}
-	defer vm.Close()
 	defer eval.close()
 
 	result, err := eval.callFunction("square", map[string]any{"numero": 13})

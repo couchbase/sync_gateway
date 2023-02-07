@@ -1,7 +1,6 @@
 package functions
 
 import (
-	"context"
 	"strings"
 	"testing"
 
@@ -64,7 +63,7 @@ func TestGraphQLSubgraph(t *testing.T) {
 
 	// Validate the config:
 	t.Run("ValidateSchema", func(t *testing.T) {
-		assert.NoError(t, ValidateFunctions(context.Background(), nil, &config))
+		assert.NoError(t, testValidateFunctions(nil, &config))
 	})
 
 	db, ctx := setupTestDBWithFunctions(t, nil, &config)
@@ -209,5 +208,5 @@ func TestGraphQLApolloCompatibilitySubgraph(t *testing.T) {
 		},
 	}
 
-	assert.NoError(t, ValidateFunctions(context.Background(), nil, &config))
+	assert.NoError(t, testValidateFunctions(nil, &config))
 }
