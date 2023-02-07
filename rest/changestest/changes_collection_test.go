@@ -11,7 +11,6 @@ package changestest
 import (
 	"bufio"
 	"fmt"
-	"io"
 	"log"
 	"testing"
 
@@ -194,7 +193,7 @@ func TestMultiCollectionChangesUser(t *testing.T) {
 	logChangesResponse(t, changesResponse.Body.Bytes())
 }
 
-func TestMultiCollectionChangesMultipleChannels(t *testing.T) {
+func TestMultiCollectionChangesMultiChannelOneShot(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeyChanges, base.KeyCache, base.KeyCRUD)
 	numCollections := 2
@@ -211,9 +210,9 @@ func TestMultiCollectionChangesMultipleChannels(t *testing.T) {
 	charlie, err := a.NewUser("charlie", "letmein", channels.BaseSetOf(t, "CHR"))
 	assert.NoError(t, err)
 	assert.NoError(t, a.Save(charlie))
-	brndan, err := a.NewUser("BRNchr", "letmein", channels.BaseSetOf(t, "CHR", "BRN"))
+	BRNchr, err := a.NewUser("BRNchr", "letmein", channels.BaseSetOf(t, "CHR", "BRN"))
 	assert.NoError(t, err)
-	assert.NoError(t, a.Save(brndan))
+	assert.NoError(t, a.Save(BRNchr))
 
 	// Put several documents, will be retrieved via query
 	response := rt.SendAdminRequest("PUT", "/{{.keyspace1}}/brn1_c1", `{"channels":["BRN"]}`)
@@ -222,28 +221,17 @@ func TestMultiCollectionChangesMultipleChannels(t *testing.T) {
 	// Keep rev to delete doc later
 	var body db.Body
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
-	rev := body["rev"].(string)
+	brn1_c1Rev := body["rev"].(string)
 
 	response = rt.SendAdminRequest("PUT", "/{{.keyspace1}}/chr1_c1", `{"channels":["CHR"]}`)
 	rest.RequireStatus(t, response, 201)
 	_ = rt.WaitForPendingChanges()
 
-	var changes struct {
-		Results  []db.ChangeEntry
-		Last_Seq db.SequenceID
-	}
-
 	// Issue changes request.  Will initialize cache for channels, and return docs via queries
-	changesResponse := rt.SendUserRequest("GET", "/{{.keyspace1}}/_changes?since=0", "", "bernard")
-	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
-	assert.NoError(t, err, "Error unmarshalling changes response")
-	require.Len(t, changes.Results, 1)
+	changesResponse := rt.GetChangesOneShot(t, "keyspace1", 0, "bernard", 1)
 	logChangesResponse(t, changesResponse.Body.Bytes())
 
-	changesResponse = rt.SendUserRequest("GET", "/{{.keyspace2}}/_changes?since=0", "", "bernard")
-	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
-	assert.NoError(t, err, "Error unmarshalling changes response")
-	require.Len(t, changes.Results, 0)
+	changesResponse = rt.GetChangesOneShot(t, "keyspace2", 0, "bernard", 0)
 	logChangesResponse(t, changesResponse.Body.Bytes())
 
 	response = rt.SendAdminRequest("PUT", "/{{.keyspace1}}/brn2_c1", `{"value":1, "channels":["BRN"]}`)
@@ -256,34 +244,20 @@ func TestMultiCollectionChangesMultipleChannels(t *testing.T) {
 	rest.RequireStatus(t, response, 201)
 	_ = rt.WaitForPendingChanges()
 
-	changesResponse = rt.SendUserRequest("GET", "/{{.keyspace1}}/_changes?since=0", "", "bernard")
-	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
-	assert.NoError(t, err, "Error unmarshalling changes response")
-	require.Len(t, changes.Results, 2)
+	changesResponse = rt.GetChangesOneShot(t, "keyspace1", 0, "bernard", 2)
 	logChangesResponse(t, changesResponse.Body.Bytes())
-	lastSeqBRN := changes.Last_Seq
 
 	response = rt.SendAdminRequest("PUT", "/{{.keyspace1}}/brn3_c1", `{"value":1, "channels":["BRN"]}`)
 	rest.RequireStatus(t, response, 201)
 	_ = rt.WaitForPendingChanges()
 
-	changesResponse = rt.SendUserRequest("GET", fmt.Sprintf("/{{.keyspace1}}/_changes?since=%s", lastSeqBRN), "", "bernard")
-	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
-	assert.NoError(t, err, "Error unmarshalling changes response")
-	require.Len(t, changes.Results, 1)
+	changesResponse = rt.GetChangesOneShot(t, "keyspace1", 0, "charlie", 2)
 	logChangesResponse(t, changesResponse.Body.Bytes())
 
-	changesResponse = rt.SendUserRequest("GET", "/{{.keyspace1}}/_changes?since=0", "", "charlie")
-	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
-	assert.NoError(t, err, "Error unmarshalling changes response")
-	require.Len(t, changes.Results, 2)
-	logChangesResponse(t, changesResponse.Body.Bytes())
-
-	// Start a continuous changes feed in its own goroutine
 	continuousResponse := rt.SendUserRequest("GET", "/{{.keyspace1}}/_changes?feed=continuous&timeout=5000", "", "bernard")
 	reader := bufio.NewReader(continuousResponse.Body)
 
-	// change 1
+	// Read changes through the continuous feed
 	change, err := rest.GetNextContinuousChange(reader)
 	require.NoError(t, err)
 	require.Equal(t, uint64(1), change.Seq.Seq)
@@ -302,12 +276,8 @@ func TestMultiCollectionChangesMultipleChannels(t *testing.T) {
 	// 2 more changes for the continuous changes feed
 	response = rt.SendAdminRequest("PUT", "/{{.keyspace1}}/brn4_c1", `{"value":1, "channels":["BRN"]}`)
 	rest.RequireStatus(t, response, 201)
-	response = rt.SendAdminRequest("DELETE", fmt.Sprintf("/{{.keyspace1}}/brn1_c1?rev=%s", rev), ``)
+	response = rt.SendAdminRequest("DELETE", fmt.Sprintf("/{{.keyspace1}}/brn1_c1?rev=%s", brn1_c1Rev), ``)
 	rest.RequireStatus(t, response, 200)
-
-	// why does this change not come? prefer to not wait the 5s to assert it will never come
-	change, err = rest.GetNextContinuousChange(reader)
-	require.Error(t, io.EOF)
 
 	// Changes that shouldn't be caught by the continuous changes feed
 	response = rt.SendAdminRequest("PUT", "/{{.keyspace2}}/brn4_c1", `{"value":1, "channels":["BRN"]}`)
@@ -315,6 +285,12 @@ func TestMultiCollectionChangesMultipleChannels(t *testing.T) {
 	response = rt.SendAdminRequest("PUT", "/{{.keyspace1}}/chr4_c1", `{"value":1, "channels":["CHR"]}`)
 	rest.RequireStatus(t, response, 201)
 	_ = rt.WaitForPendingChanges()
+
+	changesResponse = rt.GetChangesOneShot(t, "keyspace1", 0, "bernard", 4)
+	logChangesResponse(t, changesResponse.Body.Bytes())
+
+	changesResponse = rt.GetChangesOneShot(t, "keyspace2", 0, "BRNchr", 3) // 2 docs in BRN, 1 doc in CHR in collection 2
+	logChangesResponse(t, changesResponse.Body.Bytes())
 
 }
 

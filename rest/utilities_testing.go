@@ -2304,7 +2304,6 @@ func (rt *RestTester) ReadContinuousChanges(response *TestResponse) ([]db.Change
 			return changes, readError
 		}
 		entry = bytes.TrimSpace(entry)
-		fmt.Println("HONK", entry)
 		if len(entry) > 0 {
 			err := base.JSONUnmarshal(entry, &change)
 			if err != nil {
@@ -2336,4 +2335,16 @@ func GetNextContinuousChange(reader *bufio.Reader) (*db.ChangeEntry, error) {
 			return change, nil
 		}
 	}
+}
+
+func (rt *RestTester) GetChangesOneShot(t testing.TB, keyspace string, since int, username string, changesCount int) *TestResponse {
+	var changes struct {
+		Results []db.ChangeEntry
+		LastSeq db.SequenceID
+	}
+	changesResponse := rt.SendUserRequest("GET", fmt.Sprintf("/{{.%s}}/_changes?since=%s", keyspace, since), "", username)
+	err := base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
+	assert.NoError(t, err, "Error unmarshalling changes response")
+	require.Len(t, changes.Results, changesCount)
+	return changesResponse
 }
