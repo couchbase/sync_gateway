@@ -2633,7 +2633,7 @@ func TestUpdateExistingAttachment(t *testing.T) {
 	defer rt.Close()
 
 	btc, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	defer btc.Close()
 
 	var doc1Body db.Body
