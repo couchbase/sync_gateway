@@ -14,7 +14,6 @@ import (
 	"fmt"
 	"net/http"
 	"regexp"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -359,11 +358,6 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 		metadataStore = bucket.DefaultDataStore()
 	}
 
-	err := validateMetadataStore(ctx, metadataStore)
-	if err != nil {
-		return nil, err
-	}
-
 	// Register the cbgt pindex type for the configGroup
 	RegisterImportPindexImpl(ctx, options.GroupID)
 
@@ -398,6 +392,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 
 	dbContext.EventMgr = NewEventManager(dbContext.terminator)
 
+	var err error
 	dbContext.sequences, err = newSequenceAllocator(metadataStore, dbContext.DbStats.Database())
 	if err != nil {
 		return nil, err
@@ -2334,22 +2329,6 @@ func (dbc *Database) GetDefaultDatabaseCollectionWithUser() (*DatabaseCollection
 // GetSingleDatabaseCollection is a temporary function to return a single collection. This should be a temporary function while collection work is ongoing.
 func (dbc *DatabaseContext) GetSingleDatabaseCollection() *DatabaseCollection {
 	return dbc.singleCollection
-}
-
-func validateMetadataStore(ctx context.Context, metadataStore base.DataStore) error {
-	_, err := metadataStore.Exists("fakedoc") // no need to pass a doc and check if it exists, this op checks if the datastore is real
-	if err == nil {
-		return nil
-	}
-	metadataStoreName, ok := base.AsDataStoreName(metadataStore)
-	if ok {
-		keyspace := strings.Join([]string{metadataStore.GetName(), metadataStoreName.ScopeName(), metadataStoreName.CollectionName()}, base.ScopeCollectionSeparator)
-		if base.IsDefaultCollection(metadataStoreName.ScopeName(), metadataStoreName.CollectionName()) {
-			base.WarnfCtx(ctx, "_default._default has been deleted from the server for bucket %s, there is no recovery except to delete the bucket", metadataStore.GetName())
-		}
-		return fmt.Errorf("metadata store %s does not exist on couchbase server: %w", keyspace, err)
-	}
-	return fmt.Errorf("metadata store %s does not exist on couchbase server: %w", metadataStore.GetName(), err)
 }
 
 // newDatabaseCollection returns a collection which inherits values from the database but is specific to a given DataStore.
