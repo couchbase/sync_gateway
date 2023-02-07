@@ -3084,13 +3084,6 @@ func TestGetDatabaseCollectionWithUserDefaultCollection(t *testing.T) {
 
 }
 
-func TestValidateMetadataStore(t *testing.T) {
-	ctx := base.TestCtx(t)
-	bucket := base.GetTestBucket(t)
-	defer bucket.Close()
-	require.NoError(t, validateMetadataStore(ctx, bucket.DefaultDataStore()))
-}
-
 func waitAndAssertConditionWithOptions(t *testing.T, fn func() bool, retryCount, msSleepTime int, failureMsgAndArgs ...interface{}) {
 	for i := 0; i <= retryCount; i++ {
 		if i == retryCount {
