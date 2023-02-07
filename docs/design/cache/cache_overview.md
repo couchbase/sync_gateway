@@ -16,12 +16,12 @@ For each channel, a separate document stores a counter for the channel.  This is
 
 ##Document Types and Terminology
 
-**Cache block** documents are used to store the sequences associated with a channel.  A **channel cache** consists of one or more blocks. Block numbers start at '0'. 
+**Cache block** documents are used to store the sequences associated with a channel.  A **channel cache** consists of one or more blocks. Block numbers start at '0'.
 
  * Document name: _cache:[channel name]:block[n]
  * Document format: see below
 
-**Sequence document** stores the Document ID, Revision ID, and change flags associated with the sequence. 
+**Sequence document** stores the Document ID, Revision ID, and change flags associated with the sequence.
 
  * Document name: _cache:\_seq:[sequence number]
  * Document format: JSON
@@ -35,13 +35,13 @@ The **channel counter** document stores a single integer counter, which is incre
 
 ###Sequence-indexed Array
 
-Cache block documents are a fixed size byte array.  The value of `byte[n]` is a flag for the presence of sequence `n` in the channel.  
+Cache block documents are a fixed size byte array.  The value of `byte[n]` is a flag for the presence of sequence `n` in the channel.
 
 Currently two bits are used to store each sequence:
  * bit 0 - presence of sequence in the channel
  * bit 1 - whether the sequence is a removal from the channel
 
-The cache block size is currently set at 10000 bytes, so cache block 0 stores sequences 0-9999, cache block 1 stores sequences 10000-19999, etc.  More detailed performance analysis is required to identify the ideal cache block size (to balance document size with multiple retrievals).  
+The cache block size is currently set at 10000 bytes, so cache block 0 stores sequences 0-9999, cache block 1 stores sequences 10000-19999, etc.  More detailed performance analysis is required to identify the ideal cache block size (to balance document size with multiple retrievals).
 
 Note: The POC assigns a full byte for each sequence, but if we don't identify a need for the additional 6 bits, this can be refactored to increase the number of sequences we can store per cache block.
 
@@ -67,7 +67,7 @@ Cache writers add sequences to the cache block using an atomic append.  Cache wr
  1. Fast write operation (atomic append, instead of read/CAS write)
  2. Reduced write contention
 
-**Drawbacks** 
+**Drawbacks**
  1. Writers need to iterate over entire cache block and sort results to perform usual operations (since=n)
  2. More space required per sequence (8 bytes) - results in fewer sequences per block
 

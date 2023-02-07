@@ -1207,7 +1207,7 @@ func TestPublicChannel(t *testing.T) {
            function(doc) {
               if(doc.type == "public") {
                  channel("!")
-              } else { 
+              } else {
                  channel(doc.channel)
               }
            }`}

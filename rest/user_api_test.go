@@ -1382,8 +1382,8 @@ func TestGetUserCollectionAccess(t *testing.T) {
 
 	// Create a user with collection metadata
 	userPayload := `{
-		"email":"alice@couchbase.com", 
-		"password":"letmein", 
+		"email":"alice@couchbase.com",
+		"password":"letmein",
 		"admin_channels":["foo", "bar"],
 		"collection_access": {
 			"scope1": {

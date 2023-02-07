@@ -1,11 +1,11 @@
 ##Single Writer Cache
 
-The single writer cache aims to improve Sync Gateway scalability by avoiding the use of multiple server feeds, and centralizing the feed processing work on a single node that can be scaled up. Under this model there will still be a threshold at which the inflow rate on the feed exceeds the ability for a single Sync Gateway to process it, but this limit should be significantly higher than the existing in-memory model.   
+The single writer cache aims to improve Sync Gateway scalability by avoiding the use of multiple server feeds, and centralizing the feed processing work on a single node that can be scaled up. Under this model there will still be a threshold at which the inflow rate on the feed exceeds the ability for a single Sync Gateway to process it, but this limit should be significantly higher than the existing in-memory model.
 
 ###Overview
 
-- **Single TAP/DCP feed** - Sync Gateway cluster only uses a single TAP/DCP feed, instead of one per Sync Gateway node  
-- **Scale up writer, scale out readers** – Can increase Sync Gateway cluster capacity by scaling up the cache writer node, and scaling out cache reader nodes.  
+- **Single TAP/DCP feed** - Sync Gateway cluster only uses a single TAP/DCP feed, instead of one per Sync Gateway node
+- **Scale up writer, scale out readers** – Can increase Sync Gateway cluster capacity by scaling up the cache writer node, and scaling out cache reader nodes.
 - **Batched cache writer** - Improve processing capacity by batching cache update operations
 
 
@@ -14,14 +14,14 @@ Uses sequence-indexed array, as described in the cache overview documentation.
 
 ###Cache Writer
 
-The cache writer is responsible for writing sequences to the cache, and determining and publishing the **stable sequence** value.  
+The cache writer is responsible for writing sequences to the cache, and determining and publishing the **stable sequence** value.
 
 For each sequence seen on the feed, the cache writer must perform the following operations on the cache:
  1. Insert a new **sequence document** to the cache.
  2. For each channel associated with the revision:
   - Read and update of the **cache block** corresponding to the channel and sequence
   - Increment the **channel counter** document for the channel
- 3. Update the **stable sequence** document (when appropriate) 
+ 3. Update the **stable sequence** document (when appropriate)
 
 For a document with `n` channels, this results in:
  * `n` reads
@@ -40,7 +40,7 @@ Incoming feed entries are placed in a queue for caching. A separate goroutine ru
  3. Loop over channel sets - for each set:
    - Start a goroutine to read and update the **cache block(s)** corresponding to the channel and sequences
  4. Wait for goroutine completion from #2 and #3
- 5. For each channel set: 
+ 5. For each channel set:
    - Start a goroutine to increment the **channel counter** for the channel
  6. Wait for goroutine completiong from #5
  7. Update the **stable sequence** document
@@ -49,8 +49,8 @@ For `m` documents distributed over `n` channels, this results in:
  * `m + n + 1` writes (`m` sequence docs + `n` channel blocks + `1` stable sequence)
  * `n` reads (`n` channel blocks)
  * `n` incrs (`n` channel counters)
- * `(3n + m + 1)/m` total operations per document.  
-    * If `m` is large relative to `n` (many updates in the same channels), this approaches 1 op/sequence 
+ * `(3n + m + 1)/m` total operations per document.
+    * If `m` is large relative to `n` (many updates in the same channels), this approaches 1 op/sequence
     * If `n` approaches `m` (many updates in unrelated channels), this is closer to 4 op/sequence
     * If `n` is large relative to `m` (many updates, each going to several unrelated channels), this approaches (`3n + 1`) ops per sequence
 
@@ -65,15 +65,15 @@ For `m` documents distributed over `n` channels, this results in:
 **Using DCP**
 Restart support is straightforward when using DCP. When the cache writer receives a snapshot start event on the DCP feed, it persists the current DCP vbucket timestamp to the cache database.  On Sync Gateway restart, it just needs to start a new DCP feed from the previous timestamp.
 
-**Using TAP** 
+**Using TAP**
 TAP doesn't support starting a feed from a particular position - only a full backfill from zero, or listening to new revisions.  Reprocessing the entire mutation history from zero on each Sync Gateway restart isn't practical. On Sync Gateway restart, we need a way to  backfill the sequences between the last `stable sequence` (as stored in the cache), and the current `_sync:seq` value (we can assume any new revisions after the _sync:seq value will appear on the new TAP feed).
 
 On Sync Gateway startup, the cache writer should:
  - Start the TAP feed listening for new mutations
  - Start a new process to backfill from the previous `stable sequence` to the current `sync:seq`
 
-We don't currently have a view that supports a simple sequence-based range query (e.g. all sequences across all channels from seq1 to seq2). One approach would be to use the `channels` view to 
-query the `*` channel for a sequence range. This would require that the `*` channel always be enabled.  
+We don't currently have a view that supports a simple sequence-based range query (e.g. all sequences across all channels from seq1 to seq2). One approach would be to use the `channels` view to
+query the `*` channel for a sequence range. This would require that the `*` channel always be enabled.
 
 
 ###Failover
@@ -108,7 +108,7 @@ There shouldn't be any difference to the handling for non-continuous _changes re
 
 The preferred approach would be to treat the remote cache as a full index - all sequences would be present, with no need to backfill from a view query, the way we do today for the in-memory cache.  The potential concern would be the number of documents in the cache bucket - we end up with one **sequence document** for each revision in the base bucket, effectively doubling the total number of documents in the cluster.
 
-One optimization would be to expire the **sequence documents** after a relatively long period (days?), when the total number of documents in the bucket exceeds a specified threshold.  The information in the sequence document is also available from the document in the base bucket - it just requires additional overhead to unmarshal the _sync metadata and retrieve that data. 
+One optimization would be to expire the **sequence documents** after a relatively long period (days?), when the total number of documents in the bucket exceeds a specified threshold.  The information in the sequence document is also available from the document in the base bucket - it just requires additional overhead to unmarshal the _sync metadata and retrieve that data.
 
 A similar optimization could be done to purge **sequence documents** for obsolete revisions.
 

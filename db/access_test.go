@@ -30,7 +30,7 @@ func TestDynamicChannelGrant(t *testing.T) {
 		if(doc.type == "setaccess") {
 			channel(doc.channel);
 			access(doc.owner, doc.channel);
-		} else { 
+		} else {
 			channel(doc.channel)
 		}
 	}`, 0)

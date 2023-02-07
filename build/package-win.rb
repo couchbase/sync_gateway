@@ -10,9 +10,9 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 =end
 
-# 
+#
 #  called by:    build/scripts/jenkins/mobile/build_sync_gateway.bat
-#  with params: 
+#  with params:
 #                PREFIX          e.g.,  opt/couchbase-sync-gateway
 #                PREFIXD                ./opt/couchbase-sync-gateway
 #                PRODUCT_VERSION        1.0-22
@@ -21,7 +21,7 @@ licenses/APL2.txt.
 #                PLATFORM               windows-x86_64
 #                ARCH                   x86_64
 #                PRODUCT_KIND           sync-gateway
-#                
+#
 require 'rubygems'
 require 'fileutils'
 require 'rake'

@@ -28,7 +28,7 @@ LOGS=${LOGS_TEMPLATE_VAR}
 name=${SERVICE_NAME}
 
 get_pid() {
-    cat \"\$PIDFILE\"    
+    cat \"\$PIDFILE\"
 }
 
 is_running() {
@@ -65,12 +65,12 @@ case \"\$1\" in
                 if ! is_running; then
                     break
                 fi
-                
+
                 echo -n "."
                 sleep 1
             done
             echo
-            
+
             if is_running; then
                 echo "Not stopped, may still be shutting down or shutdown may have failed"
                 exit 1

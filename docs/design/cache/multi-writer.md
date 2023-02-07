@@ -9,7 +9,7 @@
 
 **Options**
 1. Multiple DCP feeds, each for a subset of vbucket
-Each cache writer would instantiate a DCP feed, connected to a subset of vbuckets.  This solves the "DDOS" problem - each Sync Gateway node would only be processing a subset of the revisions seen on the bucket.  This doesn't address the server performance degradation as a result of serving multiple DCP feeds. 
+Each cache writer would instantiate a DCP feed, connected to a subset of vbuckets.  This solves the "DDOS" problem - each Sync Gateway node would only be processing a subset of the revisions seen on the bucket.  This doesn't address the server performance degradation as a result of serving multiple DCP feeds.
 
 **Open Issues**
  * Confirm with server team that multiple DCP feeds connecting to partitioned subsets of vbuckets has the same performance overhead/concerns as multiple full DCP feeds.
@@ -33,12 +33,12 @@ Instead of sharding revisions by vbucket, shard them by a mod of the current SG 
  * We have several corner cases where a single revision allocates several sequence values (unused sequences during during CAS conflicts, sequences being deduplicated by DCP).  These sequences will be getting routed to the "wrong" cache writer.
 
 
-###Stable Sequence 
+###Stable Sequence
 
 **Options**
- 1. Cache controller.  Cache writers post status to well-known location in the cache bucket.  Controller process monitors and aggregates status, and updates the stable sequence.  This would support continued use of the existing sequence model.  
+ 1. Cache controller.  Cache writers post status to well-known location in the cache bucket.  Controller process monitors and aggregates status, and updates the stable sequence.  This would support continued use of the existing sequence model.
 
- 2. [DCP timestamp as sequence](timestamp_sequence.md) 
+ 2. [DCP timestamp as sequence](timestamp_sequence.md)
 
 
 ###Node Failure

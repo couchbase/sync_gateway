@@ -184,7 +184,7 @@ var kTestTypenameResolverSchema = `interface Book {
 type Textbook implements Book {
 	id: ID!
 	courses: [String!]!
-} 
+}
 type ColoringBook implements Book {
 	id: ID!
 	colors: [String!]!

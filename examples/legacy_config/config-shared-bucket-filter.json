@@ -7,7 +7,7 @@
       "password": "password",
       "bucket": "default",
       "import_docs": true,
-      "enable_shared_bucket_access":true,  
+      "enable_shared_bucket_access":true,
       "import_filter": `
 		function(doc) {
 		  if (doc.type != "mobile") {

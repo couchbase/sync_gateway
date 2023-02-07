@@ -1370,7 +1370,7 @@ func TestReplicationConfigChange(t *testing.T) {
 	bulkDocs := `
 	{
 	"docs":
-		[ 
+		[
 			{"channels": ["ChannelOne"], "_id": "doc_1"},
 			{"channels": ["ChannelOne"], "_id": "doc_2"},
 			{"channels": ["ChannelOne"], "_id": "doc_3"},

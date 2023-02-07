@@ -1,7 +1,7 @@
 {
   "name": "db",
   "bucket": "default",
-  "sync": 
+  "sync":
   `
     function(doc, oldDoc) {
       if (doc.type == "reject_me") {
@@ -16,9 +16,9 @@
       } else {
         // all other documents just go into all channels listed in the doc["channels"] field
         channel(doc.channels)
-        
+
         // Expire documents based on document "expiry" property
-        expiry(doc.expiry)    
+        expiry(doc.expiry)
       }
     }
   `,

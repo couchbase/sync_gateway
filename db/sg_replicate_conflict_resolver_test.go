@@ -96,7 +96,7 @@ func TestCustomConflictResolver(t *testing.T) {
 		},
 		{
 			name: "merge",
-			resolverSource: `function(conflict) { 
+			resolverSource: `function(conflict) {
 				var mergedDoc = new Object();
 				mergedDoc.prop = conflict.LocalDocument.prop + conflict.RemoteDocument.prop;
 				return mergedDoc;
@@ -107,7 +107,7 @@ func TestCustomConflictResolver(t *testing.T) {
 		},
 		{
 			name: "mergeDelete",
-			resolverSource: `function(conflict) { 
+			resolverSource: `function(conflict) {
 				return null;
 			}`,
 			localDocument:  Body{"_rev": "2-abc", "prop": "foo"},
@@ -116,7 +116,7 @@ func TestCustomConflictResolver(t *testing.T) {
 		},
 		{
 			name: "invokeDefault",
-			resolverSource: `function(conflict) { 
+			resolverSource: `function(conflict) {
 				return defaultPolicy(conflict);
 			}`,
 			localDocument:  Body{"_rev": "2-abc", "prop": "foo"},
@@ -125,7 +125,7 @@ func TestCustomConflictResolver(t *testing.T) {
 		},
 		{
 			name: "invokeDefaultWithInvalidValue",
-			resolverSource: `function(conflict) { 
+			resolverSource: `function(conflict) {
 				return defaultPolicy(conflict.LocalDocument);
 			}`,
 			localDocument:  Body{"_rev": "2-abc", "prop": "foo"},
@@ -134,7 +134,7 @@ func TestCustomConflictResolver(t *testing.T) {
 		},
 		{
 			name: "invokeDefaultWithNoValue",
-			resolverSource: `function(conflict) { 
+			resolverSource: `function(conflict) {
 				return defaultPolicy();
 			}`,
 			localDocument:  Body{"_rev": "2-abc", "prop": "foo"},
@@ -143,7 +143,7 @@ func TestCustomConflictResolver(t *testing.T) {
 		},
 		{
 			name: "invokeDefaultWithNullValue",
-			resolverSource: `function(conflict) { 
+			resolverSource: `function(conflict) {
 				return defaultPolicy(null);
 			}`,
 			localDocument:  Body{"_rev": "2-abc", "prop": "foo"},

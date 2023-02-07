@@ -120,10 +120,10 @@ func TestChangesNotifyChannelFilter(t *testing.T) {
 		Results  []db.ChangeEntry
 		Last_Seq db.SequenceID
 	}
-	changesJSON := `{"style":"all_docs", 
-					 "heartbeat":300000, 
-					 "feed":"longpoll", 
-					 "limit":50, 
+	changesJSON := `{"style":"all_docs",
+					 "heartbeat":300000,
+					 "feed":"longpoll",
+					 "limit":50,
 					 "since":"%s",
 					 "filter":"` + base.ByChannelFilter + `",
 					 "channels":"ABC,PBS"}`

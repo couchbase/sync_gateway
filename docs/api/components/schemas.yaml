@@ -1448,19 +1448,19 @@ Database:
           username_claim:
             description: |-
               Allows a different OpenID Connect field to be specified instead of the Subject (`sub`).
-              
+
               The field name to use can be specified here.
             type: string
           roles_claim:
             description: |-
               If set, the value(s) of the given JSON Web Token claim will be added to the user's roles.
-              
+
               The value of this claim must be either a string or an array of strings, any other type will result in an error.
             type: string
           channels_claim:
             description: |-
               If set, the value(s) of the given JSON Web Token claim will be added to the user's channels.
-              
+
               The value of this claim must be either a string or an array of strings, any other type will result in an error.
             type: string
     oidc:
@@ -1489,7 +1489,7 @@ Database:
               callback_url:
                 description: |-
                   The URL that the OpenID Connect will redirect to after authentication.
-    
+
                   If not provided, a callback URL will be generated.
                 type: string
               disable_session:
@@ -1516,26 +1516,26 @@ Database:
               disable_callback_state:
                 description: |-
                   Controls whether to maintain state between the auth request and callback endpoints (`/_oidc` and `/_oidc_callback`).
-    
+
                   **This is not recommended as it would cause OpenID Connect authentication to be vulnerable to Cross-Site Request Forgery (CSRF, XSRF).**
                 type: boolean
                 default: false
               username_claim:
                 description: |-
                   Allows a different OpenID Connect field to be specified instead of the Subject (`sub`).
-    
+
                   The field name to use can be specified here.
                 type: string
               roles_claim:
                 description: |-
                   If set, the value(s) of the given OpenID Connect authentication token claim will be added to the user's roles.
-    
+
                   The value of this claim must be either a string or an array of strings, any other type will result in an error.
                 type: string
               channels_claim:
                 description: |-
                   If set, the value(s) of the given OpenID Connect authentication token claim will be added to the user's channels.
-    
+
                   The value of this claim must be either a string or an array of strings, any other type will result in an error.
                 type: string
               allow_unsigned_provider_tokens:
@@ -1681,8 +1681,8 @@ Database:
       default: 60
     suspendable:
       description: |-
-        Set to true to allow the database to be suspended. 
-        
+        Set to true to allow the database to be suspended.
+
         Defaults to true when running in serverless mode otherwise defaults to false.
       type: boolean
       default: false
@@ -1766,7 +1766,7 @@ Compact-status:
       description: |-
         **Applicable to attachment compaction only**
 
-        This is the number of references there are to legacy attachments. 
+        This is the number of references there are to legacy attachments.
       type: string
     purged_attachments:
       description: |-
@@ -1811,8 +1811,8 @@ Serverless:
       readOnly: true
     min_config_fetch_interval:
       description: |-
-        How long database configs should be kept for in Sync Gateway before refreshing. Set to 0 to fetch configs everytime. This is used for requested databases that SG does not know about. 
-        
+        How long database configs should be kept for in Sync Gateway before refreshing. Set to 0 to fetch configs everytime. This is used for requested databases that SG does not know about.
+
         This is a duration and therefore can be provided with units "h", "m", "s", "ms", "us", and "ns". For example, 5 hours, 20 minutes, and 30 seconds would be `5h20m30s`.
       type: string
       default: 1s
