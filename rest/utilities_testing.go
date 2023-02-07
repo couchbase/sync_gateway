@@ -2342,7 +2342,7 @@ func (rt *RestTester) GetChangesOneShot(t testing.TB, keyspace string, since int
 		Results []db.ChangeEntry
 		LastSeq db.SequenceID
 	}
-	changesResponse := rt.SendUserRequest("GET", fmt.Sprintf("/{{.%s}}/_changes?since=%s", keyspace, since), "", username)
+	changesResponse := rt.SendUserRequest("GET", fmt.Sprintf("/{{.%s}}/_changes?since=%d", keyspace, since), "", username)
 	err := base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
 	assert.NoError(t, err, "Error unmarshalling changes response")
 	require.Len(t, changes.Results, changesCount)
