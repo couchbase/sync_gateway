@@ -1871,18 +1871,13 @@ func TestReplicatorRevocationsWithTombstoneResurrection(t *testing.T) {
 func TestReplicatorRevocationsWithChannelFilter(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
 
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll) // CBG-1981
-
 	// Passive
 	_, rt2 := InitScenario(t, nil)
 	defer rt2.Close()
-	rt2_collection := rt2.GetSingleTestDatabaseCollection()
+	rt2Collection := rt2.GetSingleTestDatabaseCollection()
 
 	// Active
-	rt1 := NewRestTesterDefaultCollection(t, //  CBG-2319: replicator currently requires default collection
-		&RestTesterConfig{
-			CustomTestBucket: base.GetTestBucket(t),
-		})
+	rt1 := NewRestTesterDefaultCollection(t, nil)
 	defer rt1.Close()
 	ctx1 := rt1.Context()
 
@@ -1892,8 +1887,12 @@ func TestReplicatorRevocationsWithChannelFilter(t *testing.T) {
 
 	passiveDBURL, err := url.Parse(srv.URL + "/db")
 	require.NoError(t, err)
+	const (
+		username = "user"
+		password = "test"
+	)
 
-	passiveDBURL.User = url.UserPassword("user", "test")
+	passiveDBURL.User = url.UserPassword(username, password)
 	sgwStats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, nil, nil)
 	require.NoError(t, err)
 	dbstats, err := sgwStats.DBReplicatorStats(t.Name())
@@ -1915,7 +1914,7 @@ func TestReplicatorRevocationsWithChannelFilter(t *testing.T) {
 		ReplicationStatsMap: dbstats,
 	})
 
-	resp := rt2.SendAdminRequest("PUT", "/db/_user/user", GetUserPayload(t, "user", "test", "", rt2_collection, []string{"ABC"}, nil))
+	resp := rt2.SendAdminRequest("PUT", "/{{.db}}/_user/user", GetUserPayload(t, username, password, "", rt2Collection, []string{"ABC"}, nil))
 	RequireStatus(t, resp, http.StatusOK)
 
 	require.NoError(t, ar.Start(ctx1))
@@ -1930,10 +1929,10 @@ func TestReplicatorRevocationsWithChannelFilter(t *testing.T) {
 	assert.Len(t, changesResults.Results, 1)
 
 	// Revoke A and ensure ABC chanel access and ensure DocA is purged from local
-	resp = rt2.SendAdminRequest("PUT", "/db/_user/user", GetUserPayload(t, "user", "test", "", rt2_collection, []string{}, nil))
+	resp = rt2.SendAdminRequest("PUT", "/{{.db}}/_user/user", GetUserPayload(t, username, password, "", rt2Collection, []string{}, nil))
 	RequireStatus(t, resp, http.StatusOK)
 
-	assert.NoError(t, ar.Stop())
+	require.NoError(t, ar.Stop())
 
 	require.NoError(t, ar.Start(ctx1))
 
