@@ -107,8 +107,9 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]interface
 		docID := string(event.Key)
 		key := realDocID(docID)
 		base.TracefCtx(ctx, base.KeyAll, "[%s] Received DCP event %d for doc %v", resyncLoggingID, event.Opcode, base.UD(docID))
-		// Ignore deletion events
-		if event.Opcode == sgbucket.FeedOpDeletion {
+
+		// Ignore documents without Xattrs
+		if event.DataType&base.MemcachedDataTypeXattr == 0 {
 			return true
 		}
 		// Don't want to process raw binary docs
