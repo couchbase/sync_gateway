@@ -635,7 +635,6 @@ func TestProposedChangesIncludeConflictingRev(t *testing.T) {
 
 	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
 		noConflictsMode: true,
-		guestEnabled:    true,
 	})
 	assert.NoError(t, err, "Error creating BlipTester")
 	defer bt.Close()

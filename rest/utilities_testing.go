@@ -675,9 +675,6 @@ type BlipTesterSpec struct {
 	noConflictsMode bool
 
 	// If an underlying RestTester is created, it will propagate this setting to the underlying RestTester.
-	guestEnabled bool
-
-	// If an underlying RestTester is created, it will propagate this setting to the underlying RestTester.
 	noAdminParty bool
 
 	// The Sync Gateway username and password to connect with.  If set, then you
