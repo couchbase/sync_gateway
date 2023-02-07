@@ -2,6 +2,7 @@ package rest
 
 import (
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -624,6 +625,122 @@ func TestProposedChangesNoConflictsMode(t *testing.T) {
 	// The common case of an empty array response tells the sender to send all of the proposed revisions,
 	// so the changeList returned by Sync Gateway is expected to be empty
 	goassert.Equals(t, len(changeList), 0)
+
+}
+
+// Validate SG sends conflicting rev when requested
+func TestProposedChangesIncludeConflictingRev(t *testing.T) {
+
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)()
+
+	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
+		noConflictsMode: true,
+	})
+	assert.NoError(t, err, "Error creating BlipTester")
+	defer bt.Close()
+
+	// Write existing docs to server directly (not via blip)
+	rt := bt.restTester
+	resp := rt.putDoc("conflictingInsert", `{"version":1}`)
+	conflictingInsertRev := resp.Rev
+
+	resp = rt.putDoc("matchingInsert", `{"version":1}`)
+	matchingInsertRev := resp.Rev
+
+	resp = rt.putDoc("conflictingUpdate", `{"version":1}`)
+	conflictingUpdateRev1 := resp.Rev
+	resp = rt.updateDoc("conflictingUpdate", resp.Rev, `{"version":2}`)
+	conflictingUpdateRev2 := resp.Rev
+
+	resp = rt.putDoc("matchingUpdate", `{"version":1}`)
+	matchingUpdateRev1 := resp.Rev
+	resp = rt.updateDoc("matchingUpdate", resp.Rev, `{"version":2}`)
+	matchingUpdateRev2 := resp.Rev
+
+	resp = rt.putDoc("newUpdate", `{"version":1}`)
+	newUpdateRev1 := resp.Rev
+
+	type proposeChangesCase struct {
+		key           string
+		revID         string
+		parentRevID   string
+		expectedValue interface{}
+	}
+
+	proposeChangesCases := []proposeChangesCase{
+		{
+			key:           "conflictingInsert",
+			revID:         "1-abc",
+			parentRevID:   "",
+			expectedValue: map[string]interface{}{"status": float64(db.ProposedRev_Conflict), "rev": conflictingInsertRev},
+		},
+		{
+			key:           "newInsert",
+			revID:         "1-abc",
+			parentRevID:   "",
+			expectedValue: float64(db.ProposedRev_OK),
+		},
+		{
+			key:           "matchingInsert",
+			revID:         matchingInsertRev,
+			parentRevID:   "",
+			expectedValue: float64(db.ProposedRev_Exists),
+		},
+		{
+			key:           "conflictingUpdate",
+			revID:         "2-abc",
+			parentRevID:   conflictingUpdateRev1,
+			expectedValue: map[string]interface{}{"status": float64(db.ProposedRev_Conflict), "rev": conflictingUpdateRev2},
+		},
+		{
+			key:           "newUpdate",
+			revID:         "2-abc",
+			parentRevID:   newUpdateRev1,
+			expectedValue: float64(db.ProposedRev_OK),
+		},
+		{
+			key:           "matchingUpdate",
+			revID:         matchingUpdateRev2,
+			parentRevID:   matchingUpdateRev1,
+			expectedValue: float64(db.ProposedRev_Exists),
+		},
+	}
+
+	proposeChangesRequest := blip.NewRequest()
+	proposeChangesRequest.SetProfile("proposeChanges")
+	proposeChangesRequest.SetCompressed(true)
+	proposeChangesRequest.Properties[db.ProposeChangesConflictsIncludeRev] = "true"
+
+	// proposedChanges entries are of the form: [docID, revID, parentRevID], where parentRevID is optional
+	proposedChanges := make([][]interface{}, 0)
+	for _, c := range proposeChangesCases {
+		changeEntry := []interface{}{
+			c.key,
+			c.revID,
+		}
+		if c.parentRevID != "" {
+			changeEntry = append(changeEntry, c.parentRevID)
+		}
+		proposedChanges = append(proposedChanges, changeEntry)
+	}
+	proposeChangesBody, marshalErr := json.Marshal(proposedChanges)
+	require.NoError(t, marshalErr)
+
+	proposeChangesRequest.SetBody(proposeChangesBody)
+	sent := bt.sender.Send(proposeChangesRequest)
+	goassert.True(t, sent)
+	proposeChangesResponse := proposeChangesRequest.Response()
+	bodyReader, err := proposeChangesResponse.BodyReader()
+	assert.NoError(t, err, "Error getting changes response body reader")
+
+	var changeList []interface{}
+	decoder := base.JSONDecoder(bodyReader)
+	decodeErr := decoder.Decode(&changeList)
+	require.NoError(t, decodeErr)
+
+	for i, entry := range changeList {
+		assert.Equal(t, proposeChangesCases[i].expectedValue, entry)
+	}
 
 }
 
