@@ -16,6 +16,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"github.com/couchbase/gocb/v2"
 	"log"
 	"net"
 	"net/http"
@@ -2287,4 +2288,19 @@ func (rt *RestTester) getCollectionsForBLIP() []string {
 			strings.Join([]string{collection.ScopeName, collection.Name}, base.ScopeCollectionSeparator))
 	}
 	return collections
+}
+
+// IsServerEnterprise returns true if the connected couchbase server instance is Enterprise edition
+// And false for Community edition
+func (rt *RestTester) IsServerEnterprise(t testing.TB) bool {
+	gocbBucket, err := base.AsGocbV2Bucket(rt.Bucket())
+	require.NoError(t, err)
+
+	metadata, err := gocbBucket.GetCluster().Internal().GetNodesMetadata(&gocb.GetNodesMetadataOptions{})
+	require.NoError(t, err)
+	
+	if strings.Contains("enterprise", metadata[0].Version) {
+		return true
+	}
+	return false
 }

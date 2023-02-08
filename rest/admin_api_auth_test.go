@@ -181,7 +181,7 @@ func TestCheckRoles(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 	SGWorBFArole := RouteRole{MobileSyncGatewayRole.RoleName, true}
-	if !base.IsEnterpriseEdition() {
+	if !rt.IsServerEnterprise(t) {
 		SGWorBFArole = RouteRole{BucketFullAccessRole.RoleName, true}
 	}
 
@@ -845,10 +845,9 @@ func TestAdminAPIAuth(t *testing.T) {
 	}
 
 	SGWorBFArole := MobileSyncGatewayRole.RoleName
-	if !base.IsEnterpriseEdition() {
+	if !rt.IsServerEnterprise(t) {
 		SGWorBFArole = BucketFullAccessRole.RoleName
 	}
-	fmt.Println("IFFFFF", SGWorBFArole)
 	eps, httpClient, err := rt.ServerContext().ObtainManagementEndpointsAndHTTPClient()
 	require.NoError(t, err)
 
@@ -914,10 +913,12 @@ func TestDisablePermissionCheck(t *testing.T) {
 	viewsAdminRole := RouteRole{RoleName: "views_admin", DatabaseScoped: true}
 	statsReadPermission := Permission{".stats!read", true}
 
+	rt := NewRestTester(t, nil)
 	SGWorBFArole := RouteRole{MobileSyncGatewayRole.RoleName, true}
-	if !base.IsEnterpriseEdition() {
+	if !rt.IsServerEnterprise(t) {
 		SGWorBFArole = RouteRole{BucketFullAccessRole.RoleName, true}
 	}
+	rt.Close()
 
 	testCases := []struct {
 		Name               string
@@ -1453,10 +1454,6 @@ func TestCreateDBSpecificBucketPerm(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
 	}
-	SGWorBFArole := RouteRole{MobileSyncGatewayRole.RoleName, true}
-	if !base.IsEnterpriseEdition() {
-		SGWorBFArole = RouteRole{BucketFullAccessRole.RoleName, true}
-	}
 
 	base.RequireNumTestBuckets(t, 2)
 
@@ -1467,6 +1464,11 @@ func TestCreateDBSpecificBucketPerm(t *testing.T) {
 		AdminInterfaceAuthentication: true,
 	})
 	defer rt.Close()
+
+	SGWorBFArole := RouteRole{MobileSyncGatewayRole.RoleName, true}
+	if !rt.IsServerEnterprise(t) {
+		SGWorBFArole = RouteRole{BucketFullAccessRole.RoleName, true}
+	}
 
 	eps, httpClient, err := rt.ServerContext().ObtainManagementEndpointsAndHTTPClient()
 	require.NoError(t, err)
