@@ -2298,7 +2298,7 @@ func (rt *RestTester) IsServerEnterprise(t testing.TB) bool {
 
 	metadata, err := gocbBucket.GetCluster().Internal().GetNodesMetadata(&gocb.GetNodesMetadataOptions{})
 	require.NoError(t, err)
-	
+
 	if strings.Contains("enterprise", metadata[0].Version) {
 		return true
 	}
