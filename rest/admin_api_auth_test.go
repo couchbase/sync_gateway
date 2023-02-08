@@ -860,8 +860,10 @@ func TestAdminAPIAuth(t *testing.T) {
 	MakeUser(t, httpClient, eps[0], "ROAdminUser", "password", []string{ReadOnlyAdminRole.RoleName})
 	defer DeleteUser(t, httpClient, eps[0], "ROAdminUser")
 
-	MakeUser(t, httpClient, eps[0], "ClusterAdminUser", "password", []string{ClusterAdminRole.RoleName})
-	defer DeleteUser(t, httpClient, eps[0], "ClusterAdminUser")
+	if rt.IsServerEnterprise(t) {
+		MakeUser(t, httpClient, eps[0], "ClusterAdminUser", "password", []string{ClusterAdminRole.RoleName})
+		defer DeleteUser(t, httpClient, eps[0], "ClusterAdminUser")
+	}
 
 	for _, endPoint := range endPoints {
 		body := `{}`
@@ -892,9 +894,10 @@ func TestAdminAPIAuth(t *testing.T) {
 						RequireStatus(t, resp, http.StatusForbidden)
 					}
 
-					resp = rt.SendAdminRequestWithAuth(endPoint.Method, endPoint.Endpoint, body, "ClusterAdminUser", "password")
-					assert.True(t, resp.Code != http.StatusUnauthorized && resp.Code != http.StatusForbidden)
-
+					if rt.IsServerEnterprise(t) {
+						resp = rt.SendAdminRequestWithAuth(endPoint.Method, endPoint.Endpoint, body, "ClusterAdminUser", "password")
+						assert.True(t, resp.Code != http.StatusUnauthorized && resp.Code != http.StatusForbidden)
+					}
 				}
 			}
 		})
