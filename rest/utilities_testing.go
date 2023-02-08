@@ -16,7 +16,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"github.com/couchbase/gocb/v2"
 	"log"
 	"net"
 	"net/http"
@@ -29,6 +28,8 @@ import (
 	"testing"
 	"text/template"
 	"time"
+
+	"github.com/couchbase/gocb/v2"
 
 	"github.com/couchbase/go-blip"
 	sgbucket "github.com/couchbase/sg-bucket"
