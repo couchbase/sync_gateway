@@ -392,8 +392,12 @@ func TestMultiCollectionChannelAccess(t *testing.T) {
 	RequireStatus(t, resp, http.StatusCreated)
 
 	// Ensure users can't access docs in a removed collection
-	resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.keyspace3}}/testDocBazA", "", nil, "userB", "letmein")
-	RequireStatus(t, resp, http.StatusBadRequest)
+	//
+	// we can't use the {{.keyspace3}} URI template variable here as the collection no longer exists on the RestTester,
+	// but we still want to try issuing the request to the old keyspace name.
+	keyspace3 := "db." + scope + "." + collection3
+	resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/"+keyspace3+"/testDocBazA", "", nil, "userB", "letmein")
+	RequireStatus(t, resp, http.StatusNotFound)
 }
 
 func TestMultiCollectionDynamicChannelAccess(t *testing.T) {
