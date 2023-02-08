@@ -232,8 +232,6 @@ func (rt *RestTester) Bucket() base.Bucket {
 		rt.MutateStartupConfig(&sc)
 	}
 
-	sc.Unsupported.UserQueries = base.BoolPtr(rt.EnableUserQueries)
-
 	// Allow EE-only config even in CE for testing using group IDs.
 	if err := sc.Validate(true); err != nil {
 		panic("invalid RestTester StartupConfig: " + err.Error())
@@ -309,6 +307,10 @@ func (rt *RestTester) Bucket() base.Bucket {
 		if rt.DatabaseConfig.ImportPartitions == nil && base.TestUseXattrs() && base.IsEnterpriseEdition() && autoImport {
 			// Speed up test setup - most tests don't need more than one partition given we only have one node
 			rt.DatabaseConfig.ImportPartitions = base.Uint16Ptr(1)
+		}
+
+		if rt.EnableUserQueries {
+			rt.DatabaseConfig.JavaScriptEngine = base.StringPtr("V8")
 		}
 
 		_, isLeaky := base.AsLeakyBucket(rt.TestBucket)

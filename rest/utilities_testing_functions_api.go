@@ -43,6 +43,7 @@ func NewRestTesterForUserQueries(t *testing.T, queryConfig DbConfig) *RestTester
 	_ = rt.Bucket() // initializes the bucket as a side effect
 	dbConfig := GetBasicDbCfg(rt.TestBucket)
 
+	dbConfig.JavaScriptEngine = base.StringPtr("V8")
 	dbConfig.UserFunctions = queryConfig.UserFunctions
 	dbConfig.GraphQL = queryConfig.GraphQL
 

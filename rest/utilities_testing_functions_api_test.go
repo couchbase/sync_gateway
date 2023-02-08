@@ -51,6 +51,7 @@ var kGraphQLTestConfig = &DatabaseConfig{DbConfig: DbConfig{
 			},
 		},
 	},
+	JavaScriptEngine: base.StringPtr("V8"),
 }}
 
 func runSequentially(rt *RestTester, testFunc func() bool, numTasks int) time.Duration {

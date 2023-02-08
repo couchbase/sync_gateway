@@ -685,18 +685,34 @@ func (dbConfig *DbConfig) validateVersion(ctx context.Context, isEnterpriseEditi
 		base.WarnfCtx(ctx, `"pool" config option is not supported. The pool will be set to "default". The option should be removed from config file.`)
 	}
 
-	vm := js.V8.NewVM()
-	defer vm.Close()
-	if isEmpty, err := validateJavascriptFunction(vm, dbConfig.Sync, 1, 3); err != nil {
-		multiError = multiError.Append(fmt.Errorf("sync function error: %w", err))
-	} else if isEmpty {
-		dbConfig.Sync = nil
+	// We need a JS VM to validate functions
+	var jsvm js.VM
+	{
+		jsEngineName := db.DefaultJavaScriptEngine
+		if dbConfig.JavaScriptEngine != nil {
+			jsEngineName = *dbConfig.JavaScriptEngine
+		}
+		if jsEngine := js.EngineNamed(jsEngineName); jsEngine == nil {
+			multiError = multiError.Append(fmt.Errorf("Invalid configuration - there is no JavaScript engine %q", jsEngineName))
+			// Keep going with jsvm == nil -- check before using it!
+		} else {
+			jsvm = jsEngine.NewVM()
+			defer jsvm.Close()
+		}
 	}
 
-	if isEmpty, err := validateJavascriptFunction(vm, dbConfig.ImportFilter, 1, 999); err != nil {
-		multiError = multiError.Append(fmt.Errorf("import filter error: %w", err))
-	} else if isEmpty {
-		dbConfig.ImportFilter = nil
+	if jsvm != nil {
+		if isEmpty, err := validateJavascriptFunction(jsvm, dbConfig.Sync, 1, 3); err != nil {
+			multiError = multiError.Append(fmt.Errorf("sync function error: %w", err))
+		} else if isEmpty {
+			dbConfig.Sync = nil
+		}
+
+		if isEmpty, err := validateJavascriptFunction(jsvm, dbConfig.ImportFilter, 1, 999); err != nil {
+			multiError = multiError.Append(fmt.Errorf("import filter error: %w", err))
+		} else if isEmpty {
+			dbConfig.ImportFilter = nil
+		}
 	}
 
 	if err := db.ValidateDatabaseName(dbConfig.Name); err != nil {
@@ -855,24 +871,28 @@ func (dbConfig *DbConfig) validateVersion(ctx context.Context, isEnterpriseEditi
 			}
 
 			// validate each collection's config
-			for collectionName, collectionConfig := range scopeConfig.Collections {
-				if isEmpty, err := validateJavascriptFunction(vm, collectionConfig.SyncFn, 1, 3); err != nil {
-					multiError = multiError.Append(fmt.Errorf("collection %q sync function error: %w", collectionName, err))
-				} else if isEmpty {
-					collectionConfig.SyncFn = nil
-				}
+			if jsvm != nil {
+				for collectionName, collectionConfig := range scopeConfig.Collections {
+					if isEmpty, err := validateJavascriptFunction(jsvm, collectionConfig.SyncFn, 1, 3); err != nil {
+						multiError = multiError.Append(fmt.Errorf("collection %q sync function error: %w", collectionName, err))
+					} else if isEmpty {
+						collectionConfig.SyncFn = nil
+					}
 
-				if isEmpty, err := validateJavascriptFunction(vm, collectionConfig.ImportFilter, 1, 99); err != nil {
-					multiError = multiError.Append(fmt.Errorf("collection %q import filter error: %w", collectionName, err))
-				} else if isEmpty {
-					collectionConfig.ImportFilter = nil
+					if isEmpty, err := validateJavascriptFunction(jsvm, collectionConfig.ImportFilter, 1, 99); err != nil {
+						multiError = multiError.Append(fmt.Errorf("collection %q import filter error: %w", collectionName, err))
+					} else if isEmpty {
+						collectionConfig.ImportFilter = nil
+					}
 				}
 			}
 		}
 	}
 
-	if err := functions.ValidateFunctions(ctx, dbConfig.UserFunctions, dbConfig.GraphQL); err != nil {
-		multiError = multiError.Append(err)
+	if jsvm != nil {
+		if err := functions.ValidateFunctions(ctx, jsvm, dbConfig.UserFunctions, dbConfig.GraphQL); err != nil {
+			multiError = multiError.Append(err)
+		}
 	}
 
 	return multiError.ErrorOrNil()
