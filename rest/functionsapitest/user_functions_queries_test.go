@@ -401,15 +401,16 @@ func TestFunctionMutability(t *testing.T) {
 		assert.Equal(t, http.StatusForbidden, response.Result().StatusCode)
 	})
 
-	//Mutability of the function being called is false. Will fail as once you’ve lost the ability to mutate, you can’t get it back.
+	//Positive Cases
+
+	//Mutability of the function being called is false. Still succeeds because it was called through the 'admin' object.
 	t.Run("context.admin to call a Non-mutating function", func(t *testing.T) {
 		putFuncName = "putDocMutabilityFalse"
 		callerFuncName = "callerOverride"
 		response := rt.SendAdminRequest("POST", fmt.Sprintf("/db/_function/%s", callerFuncName), fmt.Sprintf(body, putFuncName))
-		assert.Equal(t, http.StatusForbidden, response.Result().StatusCode)
+		assert.Equal(t, http.StatusOK, response.Result().StatusCode)
 	})
 
-	//Positive Cases
 	t.Run("Func with mutating True calls another function with a mutating value of True", func(t *testing.T) {
 		putFuncName = "putDocMutabilityTrue"
 		callerFuncName = "callerMutabilityTrue"
