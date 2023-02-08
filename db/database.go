@@ -350,20 +350,20 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 	// in order to pass it to RegisterImportPindexImpl
 	ctx = base.LogContextWith(ctx, &base.DatabaseLogContext{DatabaseName: dbName})
 
+	// options.MetadataStore is always passed via rest._getOrAddDatabase...
+	// but in db package tests this is unlikely to be set. In this case we'll use the existing bucket connection to store metadata.
+	metadataStore := options.MetadataStore
+	if metadataStore == nil {
+		base.DebugfCtx(ctx, base.KeyConfig, "MetadataStore was nil - falling back to use existing bucket connection %q for database %q", bucket.GetName(), dbName)
+		metadataStore = bucket.DefaultDataStore()
+	}
+
 	// Register the cbgt pindex type for the configGroup
 	RegisterImportPindexImpl(ctx, options.GroupID)
 
 	dbStats, statsError := initDatabaseStats(dbName, autoImport, options)
 	if statsError != nil {
 		return nil, statsError
-	}
-
-	// options.MetadataStore is always passed via rest._getOrAddDatabase...
-	// but in db package tests this is unlikely to be set. In this case we'll use the existing bucket connection to store metadata.
-	metadataStore := options.MetadataStore
-	if metadataStore == nil {
-		base.DebugfCtx(context.TODO(), base.KeyConfig, "MetadataStore was nil - falling back to use existing bucket connection %q for database %q", bucket.GetName(), dbName)
-		metadataStore = bucket.DefaultDataStore()
 	}
 
 	dbContext := &DatabaseContext{
