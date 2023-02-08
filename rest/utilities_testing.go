@@ -556,11 +556,11 @@ func (rt *RestTester) Close() {
 }
 
 func (rt *RestTester) SendRequest(method, resource string, body string) *TestResponse {
-	return rt.Send(Request(method, rt.templateResource(resource), body))
+	return rt.Send(Request(method, rt.mustTemplateResource(resource), body))
 }
 
 func (rt *RestTester) SendRequestWithHeaders(method, resource string, body string, headers map[string]string) *TestResponse {
-	req := Request(method, rt.templateResource(resource), body)
+	req := Request(method, rt.mustTemplateResource(resource), body)
 	for k, v := range headers {
 		req.Header.Set(k, v)
 	}
@@ -568,7 +568,7 @@ func (rt *RestTester) SendRequestWithHeaders(method, resource string, body strin
 }
 
 func (rt *RestTester) SendUserRequestWithHeaders(method, resource string, body string, headers map[string]string, username string, password string) *TestResponse {
-	req := Request(method, rt.templateResource(resource), body)
+	req := Request(method, rt.mustTemplateResource(resource), body)
 	req.SetBasicAuth(username, password)
 	for k, v := range headers {
 		req.Header.Set(k, v)
@@ -576,14 +576,15 @@ func (rt *RestTester) SendUserRequestWithHeaders(method, resource string, body s
 	return rt.Send(req)
 }
 
-// templateResource provides some convenience templates for standard values.
-//
-// * If there is a single database: {{.db}} refers to single db
-// * If there is only a single collection: {{.keyspace}} refers to a single collection, named or unamed
-// * If there are multiple collections, defined is {{.keyspace1}},{{.keyspace2}},...
-func (rt *RestTester) templateResource(resource string) string {
-	tmpl, err := template.New("urltemplate").Parse(resource)
-	require.NoError(rt.TB, err)
+// templateResource is a non-fatal version of rt.mustTemplateResource
+func (rt *RestTester) templateResource(resource string) (string, error) {
+	tmpl, err := template.New("urltemplate").
+		Option("missingkey=error").
+		Parse(resource)
+	if err != nil {
+		return "", err
+	}
+
 	data := make(map[string]string)
 	if rt.ServerContext() != nil && len(rt.ServerContext().AllDatabases()) == 1 {
 		data["db"] = rt.GetDatabase().Name
@@ -598,15 +599,31 @@ func (rt *RestTester) templateResource(resource string) string {
 			}
 		}
 	}
+
 	var uri bytes.Buffer
-	err = tmpl.Execute(&uri, data)
-	require.NoError(rt.TB, err)
-	return uri.String()
+	if err := tmpl.Execute(&uri, data); err != nil {
+		return "", err
+	}
+
+	return uri.String(), nil
+}
+
+// mustTemplateResource provides some convenience templates for standard values.
+//
+// * If there is a single database: {{.db}} refers to single db
+// * If there is only a single collection: {{.keyspace}} refers to a single collection, named or unamed
+// * If there are multiple collections, defined is {{.keyspace1}},{{.keyspace2}},...
+//
+// This function causes the test to fail immediately if the given resource cannot be parsed.
+func (rt *RestTester) mustTemplateResource(resource string) string {
+	uri, err := rt.templateResource(resource)
+	require.NoErrorf(rt.TB, err, "URL template error: %v", err)
+	return uri
 }
 
 func (rt *RestTester) SendAdminRequestWithAuth(method, resource string, body string, username string, password string) *TestResponse {
 	input := bytes.NewBufferString(body)
-	request, err := http.NewRequest(method, "http://localhost"+rt.templateResource(resource), input)
+	request, err := http.NewRequest(method, "http://localhost"+rt.mustTemplateResource(resource), input)
 	require.NoError(rt.TB, err)
 
 	request.SetBasicAuth(username, password)
@@ -702,7 +719,7 @@ func (rt *RestTester) WaitForChanges(numChangesExpected int, changesURL, usernam
 	changes ChangesResults,
 	err error) {
 
-	waitForChangesWorker := rt.CreateWaitForChangesRetryWorker(numChangesExpected, rt.templateResource(changesURL), username, useAdminPort)
+	waitForChangesWorker := rt.CreateWaitForChangesRetryWorker(numChangesExpected, rt.mustTemplateResource(changesURL), username, useAdminPort)
 
 	sleeper := base.CreateSleeperFunc(200, 100)
 
@@ -757,7 +774,7 @@ func (rt *RestTester) WaitForConditionShouldRetry(conditionFunc func() (shouldRe
 
 func (rt *RestTester) SendAdminRequest(method, resource string, body string) *TestResponse {
 	input := bytes.NewBufferString(body)
-	request, err := http.NewRequest(method, "http://localhost"+rt.templateResource(resource), input)
+	request, err := http.NewRequest(method, "http://localhost"+rt.mustTemplateResource(resource), input)
 	require.NoError(rt.TB, err)
 
 	response := &TestResponse{ResponseRecorder: httptest.NewRecorder(), Req: request}
@@ -768,7 +785,7 @@ func (rt *RestTester) SendAdminRequest(method, resource string, body string) *Te
 }
 
 func (rt *RestTester) SendUserRequest(method, resource string, body string, username string) *TestResponse {
-	return rt.Send(RequestByUser(method, rt.templateResource(resource), body, username))
+	return rt.Send(RequestByUser(method, rt.mustTemplateResource(resource), body, username))
 }
 
 func (rt *RestTester) WaitForNUserViewResults(numResultsExpected int, viewUrlPath string, user auth.User, password string) (viewResult sgbucket.ViewResult, err error) {
@@ -884,7 +901,7 @@ func (rt *RestTester) waitForDBState(stateWant string) (err error) {
 
 func (rt *RestTester) SendAdminRequestWithHeaders(method, resource string, body string, headers map[string]string) *TestResponse {
 	input := bytes.NewBufferString(body)
-	request, _ := http.NewRequest(method, "http://localhost"+rt.templateResource(resource), input)
+	request, _ := http.NewRequest(method, "http://localhost"+rt.mustTemplateResource(resource), input)
 	for k, v := range headers {
 		request.Header.Set(k, v)
 	}
