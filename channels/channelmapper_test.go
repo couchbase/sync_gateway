@@ -179,14 +179,31 @@ func TestInputParse(t *testing.T) {
 
 // A more realistic example
 func TestDefaultChannelMapper(t *testing.T) {
-	mapper := NewDefaultChannelMapper()
-	res, err := mapper.MapToChannelsAndAccess(parse(`{"channels": ["foo", "bar", "baz"]}`), `{}`, emptyMetaMap(), noUser)
-	assert.NoError(t, err, "MapToChannelsAndAccess failed")
-	assert.Equal(t, BaseSetOf(t, "foo", "bar", "baz"), res.Channels)
+	testCases := []struct {
+		mapper *ChannelMapper
+		name   string
+	}{
+		{
+			mapper: NewChannelMapper(DocChannelsSyncFunction, 0),
+			name:   "explicit_function",
+		},
+		{
+			mapper: NewChannelMapper(GetDefaultSyncFunction(base.DefaultScope, base.DefaultCollection), 0),
+			name:   "explicit_function",
+		},
+	}
 
-	res, err = mapper.MapToChannelsAndAccess(parse(`{"x": "y"}`), `{}`, emptyMetaMap(), noUser)
-	assert.NoError(t, err, "MapToChannelsAndAccess failed")
-	assert.Equal(t, base.Set{}, res.Channels)
+	for _, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+			res, err := test.mapper.MapToChannelsAndAccess(parse(`{"channels": ["foo", "bar", "baz"]}`), `{}`, emptyMetaMap(), noUser)
+			assert.NoError(t, err, "MapToChannelsAndAccess failed")
+			assert.Equal(t, BaseSetOf(t, "foo", "bar", "baz"), res.Channels)
+
+			res, err = test.mapper.MapToChannelsAndAccess(parse(`{"x": "y"}`), `{}`, emptyMetaMap(), noUser)
+			assert.NoError(t, err, "MapToChannelsAndAccess failed")
+			assert.Equal(t, base.Set{}, res.Channels)
+		})
+	}
 }
 
 // Empty/no-op channel mapper fn
@@ -549,4 +566,34 @@ func TestChangedUsers(t *testing.T) {
 		changes[name] = true
 	})
 	assert.Equal(t, map[string]bool{"alice": true, "claire": true, "diana": true}, changes)
+}
+
+func TestCollectionSyncFunction(t *testing.T) {
+	testCases := []struct {
+		docBody string
+		name    string
+	}{
+		{
+			docBody: `{"channels": ["foo", "bar", "baz"]}`,
+			name:    "legacyDocBody",
+		},
+		{
+			docBody: `{"x": "y"}`,
+			name:    "irrelevantData",
+		},
+		{
+			docBody: `{"x": "y"}`,
+			name:    "irrelevantData",
+		},
+	}
+
+	for _, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+			collectionName := "barcollection"
+			mapper := NewChannelMapper(GetDefaultSyncFunction("fooscope", collectionName), 0)
+			res, err := mapper.MapToChannelsAndAccess(parse(test.docBody), `{}`, emptyMetaMap(), noUser)
+			require.NoError(t, err)
+			require.Equal(t, BaseSetOf(t, collectionName), res.Channels)
+		})
+	}
 }

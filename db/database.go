@@ -460,7 +460,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 				if err != nil {
 					return nil, err
 				}
-				syncFn := ""
+				syncFn := channels.GetDefaultSyncFunction(scopeName, collName)
 				if collOpts.Sync != nil {
 					syncFn = *collOpts.Sync
 				}

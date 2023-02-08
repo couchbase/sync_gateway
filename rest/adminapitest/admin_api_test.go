@@ -1825,7 +1825,7 @@ func TestPurgeWithMultipleValidDocs(t *testing.T) {
 // TestPurgeWithChannelCache will make sure thant upon calling _purge, the channel caches are also cleaned
 // This was fixed in #3765, previously channel caches were not cleaned up
 func TestPurgeWithChannelCache(t *testing.T) {
-	rt := rest.NewRestTester(t, nil)
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction})
 	defer rt.Close()
 
 	rest.RequireStatus(t, rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1", `{"foo":"bar", "channels": ["abc", "def"]}`), http.StatusCreated)
@@ -1872,7 +1872,7 @@ func TestPurgeWithSomeInvalidDocs(t *testing.T) {
 }
 
 func TestRawRedaction(t *testing.T) {
-	rt := rest.NewRestTester(t, nil)
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction})
 	defer rt.Close()
 
 	res := rt.SendAdminRequest("PUT", "/{{.keyspace}}/testdoc", `{"foo":"bar", "channels": ["achannel"]}`)
@@ -3314,7 +3314,7 @@ func TestConfigsIncludeDefaults(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Validate a few default values to ensure they are set
-	assert.Equal(t, channels.DefaultSyncFunction, *dbConfig.Sync)
+	assert.Equal(t, channels.DocChannelsSyncFunction, *dbConfig.Sync)
 	assert.Equal(t, db.DefaultChannelCacheMaxNumber, *dbConfig.CacheConfig.ChannelCacheConfig.MaxNumber)
 	assert.Equal(t, base.DefaultOldRevExpirySeconds, *dbConfig.OldRevExpirySeconds)
 	assert.Equal(t, false, *dbConfig.StartOffline)
@@ -3328,7 +3328,7 @@ func TestConfigsIncludeDefaults(t *testing.T) {
 
 	require.Contains(t, runtimeServerConfigResponse.Databases, "db")
 	runtimeServerConfigDatabase := runtimeServerConfigResponse.Databases["db"]
-	assert.Equal(t, channels.DefaultSyncFunction, *runtimeServerConfigDatabase.Sync)
+	assert.Equal(t, channels.DocChannelsSyncFunction, *runtimeServerConfigDatabase.Sync)
 	assert.Equal(t, db.DefaultChannelCacheMaxNumber, *runtimeServerConfigDatabase.CacheConfig.ChannelCacheConfig.MaxNumber)
 	assert.Equal(t, base.DefaultOldRevExpirySeconds, *runtimeServerConfigDatabase.OldRevExpirySeconds)
 	assert.Equal(t, false, *runtimeServerConfigDatabase.StartOffline)

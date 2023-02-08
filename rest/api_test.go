@@ -1672,7 +1672,7 @@ func TestUnsupportedConfig(t *testing.T) {
 }
 
 func TestDocIDFilterResurrection(t *testing.T) {
-	rt := NewRestTester(t, nil)
+	rt := NewRestTester(t, &RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction})
 	defer rt.Close()
 
 	// Create User
@@ -2389,7 +2389,7 @@ func TestUptimeStat(t *testing.T) {
 func TestDocumentChannelHistory(t *testing.T) {
 	defer db.SuspendSequenceBatching()()
 
-	rt := NewRestTester(t, nil)
+	rt := NewRestTester(t, &RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction})
 	defer rt.Close()
 
 	var body db.Body
@@ -2439,7 +2439,7 @@ func TestDocumentChannelHistory(t *testing.T) {
 func TestChannelHistoryLegacyDoc(t *testing.T) {
 	defer db.SuspendSequenceBatching()()
 
-	rt := NewRestTester(t, nil)
+	rt := NewRestTester(t, &RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction})
 	defer rt.Close()
 
 	docData := `
@@ -2591,7 +2591,7 @@ func TestMetricsHandler(t *testing.T) {
 
 func TestDocChannelSetPruning(t *testing.T) {
 	defer db.SuspendSequenceBatching()()
-	rt := NewRestTester(t, nil)
+	rt := NewRestTester(t, &RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction})
 	defer rt.Close()
 
 	revID := rt.CreateDocReturnRev(t, "doc", "", map[string]interface{}{"channels": []string{"a"}})

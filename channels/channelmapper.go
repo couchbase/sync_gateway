@@ -38,8 +38,10 @@ type AccessMap map[string]base.Set
 // Should be larger than sequence_allocator.maxBatchSize, to avoid pool overflow under some load scenarios (CBG-436)
 const kTaskCacheSize = 16
 
-const DefaultSyncFunction = `function(doc){channel(doc.channels);}`
+// DocChannelsSyncFunction is the default sync function used prior to collections.
+const DocChannelsSyncFunction = `function(doc){channel(doc.channels);}`
 
+// NewChannelMapper creates a new channel mapper with a specific javascript function and a timeout. A zero value timeout will never timeout.
 func NewChannelMapper(fnSource string, timeout time.Duration) *ChannelMapper {
 	return &ChannelMapper{
 		JSServer: sgbucket.NewJSServer(fnSource, timeout, kTaskCacheSize,
@@ -49,8 +51,13 @@ func NewChannelMapper(fnSource string, timeout time.Duration) *ChannelMapper {
 	}
 }
 
-func NewDefaultChannelMapper() *ChannelMapper {
-	return NewChannelMapper(DefaultSyncFunction, time.Duration(base.DefaultJavascriptTimeoutSecs)*time.Second)
+// GetDefaultSyncFunction returns a sync function. The case of default collection will return a different sync function than one for collections.
+func GetDefaultSyncFunction(scopeName, collectionName string) string {
+	if base.IsDefaultCollection(scopeName, collectionName) {
+		return DocChannelsSyncFunction
+	}
+	return `function(doc){channel("` + collectionName + `");}`
+
 }
 
 func (mapper *ChannelMapper) MapToChannelsAndAccess(body map[string]interface{}, oldBodyJSON string, metaMap map[string]interface{}, userCtx map[string]interface{}) (*ChannelMapperOutput, error) {

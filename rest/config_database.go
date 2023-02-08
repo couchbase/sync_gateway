@@ -90,7 +90,7 @@ func DefaultDbConfig(sc *StartupConfig) *DbConfig {
 	dbConfig := DbConfig{
 		BucketConfig:       BucketConfig{},
 		Name:               "",
-		Sync:               base.StringPtr(channels.DefaultSyncFunction),
+		Sync:               base.StringPtr(channels.DocChannelsSyncFunction),
 		Users:              nil,
 		Roles:              nil,
 		RevsLimit:          nil, // Set this below struct

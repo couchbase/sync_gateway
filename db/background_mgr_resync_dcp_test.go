@@ -401,10 +401,10 @@ function sync(doc, oldDoc){
 	channel("channel.ABC");
 }
 `
-	_, err := db.UpdateSyncFun(ctx, syncFn)
-	require.NoError(t, err)
-
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
+
+	_, err := collection.UpdateSyncFun(ctx, syncFn)
+	require.NoError(t, err)
 
 	// Create the docs that will be marked and not swept
 	body := map[string]interface{}{"foo": "bar"}
@@ -423,8 +423,7 @@ function sync(doc, oldDoc){
 	channel("channel.ABC123");
 }
 `
-
-		_, err = db.UpdateSyncFun(ctx, syncFn)
+		_, err = collection.UpdateSyncFun(ctx, syncFn)
 		require.NoError(t, err)
 	}
 	return db, ctx

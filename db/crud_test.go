@@ -946,8 +946,6 @@ func TestLargeSequence(t *testing.T) {
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
-	db.ChannelMapper = channels.NewDefaultChannelMapper()
-
 	// Write a doc via SG
 	body := Body{"key1": "largeSeqTest"}
 	_, _, err := collection.PutExistingRevWithBody(ctx, "largeSeqDoc", body, []string{"1-a"}, false)

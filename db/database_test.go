@@ -297,6 +297,8 @@ func TestGetRemovedAsUser(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	_, err := collection.UpdateSyncFun(ctx, channels.DocChannelsSyncFunction)
+	require.NoError(t, err)
 
 	rev1body := Body{
 		"key1":     1234,
@@ -405,6 +407,8 @@ func TestGetRemovalMultiChannel(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	_, err := collection.UpdateSyncFun(ctx, channels.DocChannelsSyncFunction)
+	require.NoError(t, err)
 
 	auth := db.Authenticator(base.TestCtx(t))
 
@@ -575,6 +579,8 @@ func TestDeltaSyncWhenToRevIsChannelRemoval(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	_, err := collection.UpdateSyncFun(ctx, channels.DocChannelsSyncFunction)
+	require.NoError(t, err)
 
 	// Create the first revision of doc1.
 	rev1Body := Body{
@@ -805,12 +811,13 @@ func TestAllDocsOnly(t *testing.T) {
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
-	db.ChannelMapper = channels.NewDefaultChannelMapper()
+	_, err := collection.UpdateSyncFun(ctx, channels.DocChannelsSyncFunction)
+	require.NoError(t, err)
 
 	collectionID := collection.GetCollectionID()
 
 	// Trigger creation of the channel cache for channel "all"
-	_, err := db.changeCache.getChannelCache().getSingleChannelCache(channels.NewID("all", collectionID))
+	_, err = db.changeCache.getChannelCache().getSingleChannelCache(channels.NewID("all", collectionID))
 	require.NoError(t, err)
 
 	ids := make([]AllDocsEntry, 100)
@@ -920,8 +927,6 @@ func TestUpdatePrincipal(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 
-	db.ChannelMapper = channels.NewDefaultChannelMapper()
-
 	// Create a user with access to channel ABC
 	authenticator := db.Authenticator(ctx)
 	user, _ := authenticator.NewUser("naomi", "letmein", channels.BaseSetOf(t, "ABC"))
@@ -990,13 +995,14 @@ func TestConflicts(t *testing.T) {
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
-	db.ChannelMapper = channels.NewDefaultChannelMapper()
+	_, err := collection.UpdateSyncFun(ctx, channels.DocChannelsSyncFunction)
+	require.NoError(t, err)
 
 	// Instantiate channel cache for channel 'all'
 	collectionID := collection.GetCollectionID()
 
 	allChannel := channels.NewID("all", collectionID)
-	_, err := db.changeCache.getChannelCache().getSingleChannelCache(allChannel)
+	_, err = db.changeCache.getChannelCache().getSingleChannelCache(allChannel)
 	require.NoError(t, err)
 
 	cacheWaiter := db.NewDCPCachingCountWaiter(t)
@@ -1363,7 +1369,7 @@ func TestSyncFnOnPush(t *testing.T) {
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
-	db.ChannelMapper = channels.NewChannelMapper(`function(doc, oldDoc) {
+	collection.ChannelMapper = channels.NewChannelMapper(`function(doc, oldDoc) {
 		log("doc _id = "+doc._id+", _rev = "+doc._rev);
 		if (oldDoc)
 			log("oldDoc _id = "+oldDoc._id+", _rev = "+oldDoc._rev);
@@ -1402,10 +1408,11 @@ func TestInvalidChannel(t *testing.T) {
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
-	db.ChannelMapper = channels.NewDefaultChannelMapper()
+	_, err := collection.UpdateSyncFun(ctx, channels.DocChannelsSyncFunction)
+	require.NoError(t, err)
 
 	body := Body{"channels": []string{"bad,name"}}
-	_, _, err := collection.Put(ctx, "doc", body)
+	_, _, err = collection.Put(ctx, "doc", body)
 	assertHTTPError(t, err, 500)
 }
 
@@ -1415,11 +1422,10 @@ func TestAccessFunctionValidation(t *testing.T) {
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
-	var err error
-	db.ChannelMapper = channels.NewChannelMapper(`function(doc){access(doc.users,doc.userChannels);}`, 0)
+	collection.ChannelMapper = channels.NewChannelMapper(`function(doc){access(doc.users,doc.userChannels);}`, 0)
 
 	body := Body{"users": []string{"username"}, "userChannels": []string{"BBC1"}}
-	_, _, err = collection.Put(ctx, "doc1", body)
+	_, _, err := collection.Put(ctx, "doc1", body)
 	assert.NoError(t, err, "")
 
 	body = Body{"users": []string{"role:rolename"}, "userChannels": []string{"BBC1"}}
@@ -1451,8 +1457,7 @@ func TestAccessFunctionDb(t *testing.T) {
 
 	authenticator := db.Authenticator(ctx)
 
-	var err error
-	db.ChannelMapper = channels.NewChannelMapper(`function(doc){access(doc.users,doc.userChannels);}`, 0)
+	collection.ChannelMapper = channels.NewChannelMapper(`function(doc){access(doc.users,doc.userChannels);}`, 0)
 
 	user, err := authenticator.NewUser("naomi", "letmein", channels.BaseSetOf(t, "Netflix"))
 	require.NoError(t, err)
@@ -2024,7 +2029,7 @@ func TestSyncFnMutateBody(t *testing.T) {
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
-	db.ChannelMapper = channels.NewChannelMapper(`function(doc, oldDoc) {
+	collection.ChannelMapper = channels.NewChannelMapper(`function(doc, oldDoc) {
 		doc.key1 = "mutatedValue"
 		doc.key2.subkey1 = "mutatedSubValue"
 		channel(doc.channels);
@@ -2436,8 +2441,8 @@ func TestResyncUpdateAllDocChannels(t *testing.T) {
 	db, ctx := SetupTestDBWithOptions(t, DatabaseContextOptions{QueryPaginationLimit: 5000})
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
-	_, err := db.UpdateSyncFun(ctx, syncFn)
-	assert.NoError(t, err)
+	_, err := collection.UpdateSyncFun(ctx, syncFn)
+	require.NoError(t, err)
 
 	defer db.Close(ctx)
 
@@ -2539,8 +2544,6 @@ func TestGetAllUsers(t *testing.T) {
 	db.Options.QueryPaginationLimit = 100
 	defer db.Close(ctx)
 
-	db.ChannelMapper = channels.NewDefaultChannelMapper()
-
 	log.Printf("Creating users...")
 	// Create users
 	authenticator := db.Authenticator(ctx)
@@ -2576,7 +2579,6 @@ func TestGetRoleIDs(t *testing.T) {
 	defer db.Close(ctx)
 
 	db.Options.QueryPaginationLimit = 100
-	db.ChannelMapper = channels.NewDefaultChannelMapper()
 	authenticator := db.Authenticator(ctx)
 
 	rolename1 := uuid.NewString()
@@ -2622,7 +2624,6 @@ func Test_updateAllPrincipalsSequences(t *testing.T) {
 	defer db.Close(ctx)
 
 	db.Options.QueryPaginationLimit = 100
-	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
 	auth := db.Authenticator(ctx)
 	roleSequences := [5]uint64{}
@@ -2782,7 +2783,6 @@ func Test_resyncDocument(t *testing.T) {
 
 			db.Options.EnableXattr = testCase.useXattr
 			db.Options.QueryPaginationLimit = 100
-			db.ChannelMapper = channels.NewDefaultChannelMapper()
 			collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 			syncFn := `
@@ -2806,7 +2806,7 @@ func Test_resyncDocument(t *testing.T) {
 			channel("channel." + "ABC12332423234");
 		}
 	`
-			_, err = db.UpdateSyncFun(ctx, syncFn)
+			_, err = collection.UpdateSyncFun(ctx, syncFn)
 			require.NoError(t, err)
 
 			_, _, err = collection.resyncDocument(ctx, docID, realDocID(docID), false, []uint64{10})
@@ -2840,7 +2840,6 @@ func Test_getUpdatedDocument(t *testing.T) {
 		defer db.Close(ctx)
 
 		db.Options.QueryPaginationLimit = 100
-		db.ChannelMapper = channels.NewDefaultChannelMapper()
 		docID := "testDoc"
 
 		body := `{"val": "nonsyncdoc"}`
@@ -2862,7 +2861,6 @@ func Test_getUpdatedDocument(t *testing.T) {
 		db, ctx := setupTestDB(t)
 		defer db.Close(ctx)
 		db.Options.QueryPaginationLimit = 100
-		db.ChannelMapper = channels.NewDefaultChannelMapper()
 		collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 		syncFn := `
@@ -2870,7 +2868,7 @@ func Test_getUpdatedDocument(t *testing.T) {
 		channel("channel." + "ABC");
 	}
 `
-		_, err := db.UpdateSyncFun(ctx, syncFn)
+		_, err := collection.UpdateSyncFun(ctx, syncFn)
 		require.NoError(t, err)
 
 		docID := uuid.NewString()
@@ -2885,7 +2883,7 @@ func Test_getUpdatedDocument(t *testing.T) {
 			channel("channel." + "ABC12332423234");
 		}
 	`
-		_, err = db.UpdateSyncFun(ctx, syncFn)
+		_, err = collection.UpdateSyncFun(ctx, syncFn)
 		require.NoError(t, err)
 
 		updatedDoc, shouldUpdate, _, highSeq, _, err := collection.getResyncedDocument(ctx, doc, false, []uint64{})

@@ -56,6 +56,8 @@ func TestFilterToAvailableChannels(t *testing.T) {
 			db, ctx := setupTestDB(t)
 			defer db.Close(ctx)
 			collection := GetSingleDatabaseCollectionWithUser(t, db)
+			_, err := collection.UpdateSyncFun(ctx, channels.DocChannelsSyncFunction)
+			require.NoError(t, err)
 
 			auth := db.Authenticator(base.TestCtx(t))
 			user, err := auth.NewUser("test", "pass", testCase.userChans)
@@ -101,7 +103,8 @@ func TestChangesAfterChannelAdded(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache, base.KeyChanges)
 
-	db.ChannelMapper = channels.NewDefaultChannelMapper()
+	_, err := collection.UpdateSyncFun(ctx, channels.DocChannelsSyncFunction)
+	require.NoError(t, err)
 
 	// Create a user with access to channel ABC
 	authenticator := db.Authenticator(base.TestCtx(t))
@@ -111,7 +114,7 @@ func TestChangesAfterChannelAdded(t *testing.T) {
 	cacheWaiter := db.NewDCPCachingCountWaiter(t)
 
 	// Create a doc on two channels (sequence 1):
-	_, _, err := collection.Put(ctx, "doc1", Body{"channels": []string{"ABC", "PBS"}})
+	_, _, err = collection.Put(ctx, "doc1", Body{"channels": []string{"ABC", "PBS"}})
 	require.NoError(t, err)
 	cacheWaiter.AddAndWait(1)
 
@@ -211,7 +214,8 @@ func TestDocDeletionFromChannelCoalescedRemoved(t *testing.T) {
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
-	db.ChannelMapper = channels.NewDefaultChannelMapper()
+	_, err := collection.UpdateSyncFun(ctx, channels.DocChannelsSyncFunction)
+	require.NoError(t, err)
 
 	// Create a user with access to channel A
 	authenticator := db.Authenticator(base.TestCtx(t))
@@ -227,7 +231,7 @@ func TestDocDeletionFromChannelCoalescedRemoved(t *testing.T) {
 
 	collection.user, _ = authenticator.GetUser("alice")
 	changes, err := collection.GetChanges(ctx, base.SetOf("*"), getChangesOptionsWithZeroSeq())
-	assert.NoError(t, err, "Couldn't GetChanges")
+	require.NoError(t, err, "Couldn't GetChanges")
 	printChanges(changes)
 	assert.Equal(t, 1, len(changes))
 	collectionID := collection.GetCollectionID()
@@ -296,7 +300,8 @@ func TestDocDeletionFromChannelCoalesced(t *testing.T) {
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
-	db.ChannelMapper = channels.NewDefaultChannelMapper()
+	_, err := collection.UpdateSyncFun(ctx, channels.DocChannelsSyncFunction)
+	require.NoError(t, err)
 
 	// Create a user with access to channel A
 	authenticator := db.Authenticator(base.TestCtx(t))
