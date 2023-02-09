@@ -2489,5 +2489,5 @@ func TestClusterUUID(t *testing.T) {
 
 	gocbV2Bucket, err := AsGocbV2Bucket(bucket)
 	require.NoError(t, err)
-	require.Equal(t, 32, len(gocbV2Bucket.ClusterUUID)) // no dashes in UUID
+	require.Len(t, gocbV2Bucket.ClusterUUID, 32) // no dashes in UUID
 }

@@ -130,7 +130,7 @@ func GetGocbV2BucketFromCluster(cluster *gocb.Cluster, spec BucketSpec, waitUnti
 	clusterCompatMajor, clusterCompatMinor, err := getClusterVersion(cluster)
 	if err != nil {
 		_ = cluster.Close(&gocb.ClusterCloseOptions{})
-		return nil, fmt.Errorf("%s", err)
+		return nil, err
 	}
 
 	gocbv2Bucket := &GocbV2Bucket{
@@ -143,7 +143,7 @@ func GetGocbV2BucketFromCluster(cluster *gocb.Cluster, spec BucketSpec, waitUnti
 	uuid, err := getServerUUID(gocbv2Bucket)
 	if err != nil {
 		_ = cluster.Close(&gocb.ClusterCloseOptions{})
-		return nil, fmt.Errorf("%s", err)
+		return nil, err
 	}
 
 	gocbv2Bucket.ClusterUUID = uuid
