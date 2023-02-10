@@ -174,15 +174,18 @@ func newEvaluator(runner *js.V8Runner) (*evaluator, error) {
 }
 
 func (eval *evaluator) setup(delegate evaluatorDelegate, user *userCredentials) {
+	if delegate == nil {
+		panic("nil delegate!")
+	}
 	eval.delegate = delegate
 	eval.user = user
 }
 
 // Call this when finished using an evaluator.
 func (eval *evaluator) close() {
-	eval.runner.Return()
 	eval.delegate = nil
 	eval.user = nil
+	eval.runner.Return() // This must be the last thing the evaluator does
 }
 
 // Configures whether the Evaluator is allowed to mutate the database; if false (the default), calls to `save()` and `delete()` will fail.
