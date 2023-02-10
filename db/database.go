@@ -81,7 +81,7 @@ const (
 const BGTCompletionMaxWait = 30 * time.Second
 
 // The default JavaScript engine if not otherwise specified in the DatabaseContextOptions.
-const DefaultJavaScriptEngine = "Otto" // Can be "Otto" or "V8"
+const DefaultJavaScriptEngine = "V8" // Can be "Otto" or "V8"
 
 // Max number of JavaScript interpreter instances to create (per database)
 const MaxJavaScriptVMs = 8
