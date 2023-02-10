@@ -2337,11 +2337,23 @@ func GetNextContinuousChange(reader *bufio.Reader) (*db.ChangeEntry, error) {
 	}
 }
 
-func (rt *RestTester) GetChangesOneShot(t testing.TB, keyspace string, since int, username string, changesCount int) *TestResponse {
-	var changes struct {
-		Results []db.ChangeEntry
-		LastSeq db.SequenceID
+var changes struct {
+	Results []db.ChangeEntry
+	LastSeq db.SequenceID
+}
+
+// AssertChangesFeedMultiCollection Calls a changes feed on every collection and asserts that the nth expected change is
+// the number of changes for the nth collection.
+func (rt *RestTester) AssertChangesFeedMultiCollection(t testing.TB, username string, feedMode string, numKeyspaces int, expectedChanges []int, timeout int) {
+	for i := 1; i <= numKeyspaces; i++ {
+		resp := rt.SendUserRequest("GET", fmt.Sprintf("/{{.keyspace%d}}/_changes?feed=%s&timeout=%d", i, feedMode, timeout), "", username)
+		changes, err := rt.ReadContinuousChanges(resp)
+		assert.NoError(t, err)
+		require.Len(t, changes, expectedChanges[i-1])
 	}
+}
+
+func (rt *RestTester) GetChangesOneShot(t testing.TB, keyspace string, since int, username string, changesCount int) *TestResponse {
 	changesResponse := rt.SendUserRequest("GET", fmt.Sprintf("/{{.%s}}/_changes?since=%d", keyspace, since), "", username)
 	err := base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
 	assert.NoError(t, err, "Error unmarshalling changes response")

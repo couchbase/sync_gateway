@@ -282,7 +282,7 @@ func TestMultiCollectionChangesMultiChannelOneShot(t *testing.T) {
 	// Changes that shouldn't be caught by the continuous changes feed
 	response = rt.SendAdminRequest("PUT", "/{{.keyspace2}}/brn4_c1", `{"value":1, "channels":["BRN"]}`)
 	rest.RequireStatus(t, response, 201)
-	response = rt.SendAdminRequest("PUT", "/{{.keyspace1}}/chr4_c1", `{"value":1, "channels":["CHR"]}`)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace1}}/chr3_c1", `{"value":1, "channels":["CHR"]}`)
 	rest.RequireStatus(t, response, 201)
 	_ = rt.WaitForPendingChanges()
 
@@ -292,6 +292,9 @@ func TestMultiCollectionChangesMultiChannelOneShot(t *testing.T) {
 	changesResponse = rt.GetChangesOneShot(t, "keyspace2", 0, "BRNchr", 3) // 2 docs in BRN, 1 doc in CHR in collection 2
 	logChangesResponse(t, changesResponse.Body.Bytes())
 
+	rt.AssertChangesFeedMultiCollection(t, "bernard", "continuous", 2, []int{4, 2}, 500) // 2 docs in BRN, 1 doc in CHR in collection 2
+	rt.AssertChangesFeedMultiCollection(t, "charlie", "continuous", 2, []int{3, 1}, 500) // 2 docs in BRN, 1 doc in CHR in collection 2
+	rt.AssertChangesFeedMultiCollection(t, "BRNchr", "continuous", 2, []int{7, 3}, 1000) // 2 docs in BRN, 1 doc in CHR in collection 2
 }
 
 // TestMultiCollectionChangesUserDynamicGrant tests a dynamic channel grant when that channel is not already resident
