@@ -1376,34 +1376,64 @@ func TestUserXattrAvoidRevisionIDGeneration(t *testing.T) {
 }
 
 func TestGetUserCollectionAccess(t *testing.T) {
+	numCollections := 2
+	base.RequireNumTestDataStores(t, numCollections)
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
-	rt := NewRestTester(t, nil)
+	testBucket := base.GetPersistentTestBucket(t)
+	defer testBucket.Close()
+	scopesConfig := GetCollectionsConfig(t, testBucket, 2)
+	dataStoreNames := GetDataStoreNamesFromScopesConfig(scopesConfig)
+
+	scope1Name, collection1Name := dataStoreNames[0].ScopeName(), dataStoreNames[0].CollectionName()
+	collection2Name := dataStoreNames[1].CollectionName()
+	scopesConfig[scope1Name].Collections[collection1Name] = CollectionConfig{}
+
+	rtConfig := &RestTesterConfig{
+		CustomTestBucket: testBucket,
+		SyncFn:           `function(doc) {channel(doc.channel); access(doc.accessUser, doc.accessChannel);}`,
+		DatabaseConfig: &DatabaseConfig{
+			DbConfig: DbConfig{
+				Scopes:           scopesConfig,
+				NumIndexReplicas: base.UintPtr(0),
+				AutoImport:       base.TestUseXattrs(),
+			},
+		},
+	}
+
+	rt := NewRestTesterMultipleCollections(t, rtConfig, 2)
 	defer rt.Close()
-
+	_ = rt.Context()
+	collectionPayload := fmt.Sprintf(`,"%s": {
+					"admin_channels":["foo", "bar1"]
+				}`, collection2Name)
 	// Create a user with collection metadata
 	userPayload := `{
-		"email":"alice@couchbase.com", 
+		"email":"%s@couchbase.com", 
 		"password":"letmein", 
 		"admin_channels":["foo", "bar"],
 		"collection_access": {
-			"scope1": {
-				"collection1": {
+			"%s": {
+				"%s": {
 					"admin_channels":["foo", "bar1"]
 				}
+				%s
 			}
 		}
 	}`
 
-	putResponse := rt.SendAdminRequest("PUT", "/db/_user/alice", userPayload)
+	putResponse := rt.SendAdminRequest("PUT", "/db/_user/alice", fmt.Sprintf(userPayload, "alice", scope1Name, collection1Name, ""))
+	RequireStatus(t, putResponse, 201)
+	putResponse = rt.SendAdminRequest("PUT", "/db/_user/bob", fmt.Sprintf(userPayload, "alice", scope1Name, collection1Name, collectionPayload))
 	RequireStatus(t, putResponse, 201)
 
-	getResponse := rt.SendAdminRequest("GET", "/db/_user/alice", "")
+	getResponse := rt.SendAdminRequest("GET", "/db/_user/bob", "")
 	RequireStatus(t, getResponse, 200)
 	log.Printf("response:%s", getResponse.Body.Bytes())
 	var responseConfig auth.PrincipalConfig
 	err := json.Unmarshal(getResponse.Body.Bytes(), &responseConfig)
 	require.NoError(t, err)
-	collectionAccess, ok := responseConfig.CollectionAccess["scope1"]["collection1"]
+	collectionAccess, ok := responseConfig.CollectionAccess[scope1Name][collection1Name]
 	require.True(t, ok)
 	assert.Equal(t, channels.BaseSetOf(t, "foo", "bar1"), collectionAccess.ExplicitChannels_)
 	// TODO: computed channels requires authenticator populated with collection set, pending CBG-2266
@@ -1411,10 +1441,25 @@ func TestGetUserCollectionAccess(t *testing.T) {
 	assert.Nil(t, collectionAccess.JWTChannels_)
 	assert.Nil(t, collectionAccess.JWTLastUpdated)
 
+	scopesConfig = GetCollectionsConfig(t, testBucket, 1)
+	scopesConfigString, err := json.Marshal(scopesConfig)
+	require.NoError(t, err)
+	log.Printf("SCOPES:%s", scopesConfigString)
+
+	resp := rt.SendAdminRequest("PUT", "/db/_config", fmt.Sprintf(
+		`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "scopes":%s}`,
+		testBucket.GetName(), base.TestUseXattrs(), string(scopesConfigString)))
+	RequireStatus(t, resp, http.StatusCreated)
+
 	// TODO: Additional test cases still required:
 	//  GET _user
 	//  1. Hide entries for collections that are no longer part of the database
-	//
+	putResponse = rt.SendAdminRequest("PUT", "/{{.keyspace}}/DynGrantDoc1", `{"accessUser":"bob", "accessChannel":"ABC"}`)
+	RequireStatus(t, putResponse, 201)
+	userResponse := rt.SendAdminRequest("GET", "/db/_user/bob", "")
+	RequireStatus(t, userResponse, 200)
+	log.Printf("response:%s", userResponse.Body.Bytes())
+	// see if a dynamic grant fixes this
 	//  GET _role
 	//  1. Standard get
 	//  2. Hide entries for collections that are no longer part of the database
