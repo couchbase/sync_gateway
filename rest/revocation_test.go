@@ -1314,8 +1314,8 @@ func TestChannelHistoryPruning(t *testing.T) {
 	revocationTester, rt := InitScenario(t, nil)
 	defer rt.Close()
 	collection := rt.GetSingleTestDatabaseCollection()
-	c := collection.Name()
-	s := collection.ScopeName()
+	c := collection.Name
+	s := collection.ScopeName
 
 	revocationTester.addRole("user", "foo")
 	revocationTester.addRoleChannel("foo", "a")
@@ -1863,6 +1863,81 @@ func TestReplicatorRevocationsWithTombstoneResurrection(t *testing.T) {
 
 	err = rt1.WaitForCondition(func() bool {
 		resp := rt1.SendAdminRequest("GET", "/{{.keyspace}}/docA2", "")
+		return resp.Code == http.StatusNotFound
+	})
+	assert.NoError(t, err)
+}
+
+func TestReplicatorRevocationsWithChannelFilter(t *testing.T) {
+	base.RequireNumTestBuckets(t, 2)
+
+	// Passive
+	_, rt2 := InitScenario(t, nil)
+	defer rt2.Close()
+	rt2Collection := rt2.GetSingleTestDatabaseCollection()
+
+	// Active
+	rt1 := NewRestTesterDefaultCollection(t, nil)
+	defer rt1.Close()
+	ctx1 := rt1.Context()
+
+	// Setup replicator
+	srv := httptest.NewServer(rt2.TestPublicHandler())
+	defer srv.Close()
+
+	passiveDBURL, err := url.Parse(srv.URL + "/db")
+	require.NoError(t, err)
+	const (
+		username = "user"
+		password = "test"
+	)
+
+	passiveDBURL.User = url.UserPassword(username, password)
+	sgwStats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, nil, nil)
+	require.NoError(t, err)
+	dbstats, err := sgwStats.DBReplicatorStats(t.Name())
+	require.NoError(t, err)
+
+	_ = rt2.CreateDocReturnRev(t, "docA", "", map[string][]string{"channels": []string{"ABC"}})
+	require.NoError(t, rt2.WaitForPendingChanges())
+
+	ar := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
+		ID:          t.Name(),
+		Direction:   db.ActiveReplicatorTypePull,
+		RemoteDBURL: passiveDBURL,
+		ActiveDB: &db.Database{
+			DatabaseContext: rt1.GetDatabase(),
+		},
+		Continuous:          false,
+		FilterChannels:      []string{"ABC"},
+		PurgeOnRemoval:      true,
+		ReplicationStatsMap: dbstats,
+	})
+
+	resp := rt2.SendAdminRequest("PUT", "/{{.db}}/_user/user", GetUserPayload(t, username, password, "", rt2Collection, []string{"ABC"}, nil))
+	RequireStatus(t, resp, http.StatusOK)
+
+	require.NoError(t, ar.Start(ctx1))
+
+	defer func() {
+		assert.NoError(t, ar.Stop())
+	}()
+
+	// Wait for docs to turn up on local / rt1
+	changesResults, err := rt1.WaitForChanges(1, "/{{.keyspace}}/_changes?since=0", "", true)
+	require.NoError(t, err)
+	assert.Len(t, changesResults.Results, 1)
+
+	// Revoke A and ensure ABC chanel access and ensure DocA is purged from local
+	resp = rt2.SendAdminRequest("PUT", "/{{.db}}/_user/user", GetUserPayload(t, username, password, "", rt2Collection, []string{}, nil))
+	RequireStatus(t, resp, http.StatusOK)
+
+	require.NoError(t, ar.Stop())
+
+	require.NoError(t, ar.Start(ctx1))
+
+	err = rt1.WaitForCondition(func() bool {
+		resp := rt1.SendAdminRequest("GET", "/{{.keyspace}}/docA", "")
 		return resp.Code == http.StatusNotFound
 	})
 	assert.NoError(t, err)

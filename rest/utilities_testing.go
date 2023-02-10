@@ -293,7 +293,9 @@ func (rt *RestTester) Bucket() base.Bucket {
 		rt.DatabaseConfig.CACertPath = testBucket.BucketSpec.CACertPath
 		rt.DatabaseConfig.CertPath = testBucket.BucketSpec.Certpath
 		rt.DatabaseConfig.KeyPath = testBucket.BucketSpec.Keypath
-		rt.DatabaseConfig.Name = "db"
+		if rt.DatabaseConfig.Name == "" {
+			rt.DatabaseConfig.Name = "db"
+		}
 		rt.DatabaseConfig.Sync = &rt.SyncFn
 		rt.DatabaseConfig.EnableXattrs = &useXattrs
 		if rt.EnableNoConflictsMode {
@@ -328,7 +330,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 		// Update the testBucket Bucket to the one associated with the database context.  The new (dbContext) bucket
 		// will be closed when the rest tester closes the server context. The original bucket will be closed using the
 		// testBucket's closeFn
-		rt.TestBucket.Bucket = rt.RestTesterServerContext.Database(ctx, "db").Bucket
+		rt.TestBucket.Bucket = rt.RestTesterServerContext.Database(ctx, rt.DatabaseConfig.Name).Bucket
 
 		if rt.DatabaseConfig.Guest == nil {
 			if err := rt.SetAdminParty(rt.GuestEnabled); err != nil {
@@ -466,8 +468,8 @@ func (rt *RestTester) GetSingleTestDatabaseCollectionWithUser() *db.DatabaseColl
 func (rt *RestTester) GetSingleDataStore() base.DataStore {
 	collection := rt.GetSingleTestDatabaseCollection()
 	ds, err := rt.GetDatabase().Bucket.NamedDataStore(base.ScopeAndCollectionName{
-		Scope:      collection.ScopeName(),
-		Collection: collection.Name(),
+		Scope:      collection.ScopeName,
+		Collection: collection.Name,
 	})
 	require.NoError(rt.TB, err)
 	return ds
@@ -518,7 +520,7 @@ func (rt *RestTester) WaitForPendingChanges() error {
 
 func (rt *RestTester) SetAdminParty(partyTime bool) error {
 	ctx := rt.Context()
-	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
+	a := rt.ServerContext().Database(ctx, rt.DatabaseConfig.Name).Authenticator(ctx)
 	guest, err := a.GetUser("")
 	if err != nil {
 		return err
@@ -557,11 +559,11 @@ func (rt *RestTester) Close() {
 }
 
 func (rt *RestTester) SendRequest(method, resource string, body string) *TestResponse {
-	return rt.Send(Request(method, rt.templateResource(resource), body))
+	return rt.Send(Request(method, rt.mustTemplateResource(resource), body))
 }
 
 func (rt *RestTester) SendRequestWithHeaders(method, resource string, body string, headers map[string]string) *TestResponse {
-	req := Request(method, rt.templateResource(resource), body)
+	req := Request(method, rt.mustTemplateResource(resource), body)
 	for k, v := range headers {
 		req.Header.Set(k, v)
 	}
@@ -569,7 +571,7 @@ func (rt *RestTester) SendRequestWithHeaders(method, resource string, body strin
 }
 
 func (rt *RestTester) SendUserRequestWithHeaders(method, resource string, body string, headers map[string]string, username string, password string) *TestResponse {
-	req := Request(method, rt.templateResource(resource), body)
+	req := Request(method, rt.mustTemplateResource(resource), body)
 	req.SetBasicAuth(username, password)
 	for k, v := range headers {
 		req.Header.Set(k, v)
@@ -577,14 +579,15 @@ func (rt *RestTester) SendUserRequestWithHeaders(method, resource string, body s
 	return rt.Send(req)
 }
 
-// templateResource provides some convenience templates for standard values.
-//
-// * If there is a single database: {{.db}} refers to single db
-// * If there is only a single collection: {{.keyspace}} refers to a single collection, named or unamed
-// * If there are multiple collections, defined is {{.keyspace1}},{{.keyspace2}},...
-func (rt *RestTester) templateResource(resource string) string {
-	tmpl, err := template.New("urltemplate").Parse(resource)
-	require.NoError(rt.TB, err)
+// templateResource is a non-fatal version of rt.mustTemplateResource
+func (rt *RestTester) templateResource(resource string) (string, error) {
+	tmpl, err := template.New("urltemplate").
+		Option("missingkey=error").
+		Parse(resource)
+	if err != nil {
+		return "", err
+	}
+
 	data := make(map[string]string)
 	if rt.ServerContext() != nil && len(rt.ServerContext().AllDatabases()) == 1 {
 		data["db"] = rt.GetDatabase().Name
@@ -599,15 +602,31 @@ func (rt *RestTester) templateResource(resource string) string {
 			}
 		}
 	}
+
 	var uri bytes.Buffer
-	err = tmpl.Execute(&uri, data)
-	require.NoError(rt.TB, err)
-	return uri.String()
+	if err := tmpl.Execute(&uri, data); err != nil {
+		return "", err
+	}
+
+	return uri.String(), nil
+}
+
+// mustTemplateResource provides some convenience templates for standard values.
+//
+// * If there is a single database: {{.db}} refers to single db
+// * If there is only a single collection: {{.keyspace}} refers to a single collection, named or unamed
+// * If there are multiple collections, defined is {{.keyspace1}},{{.keyspace2}},...
+//
+// This function causes the test to fail immediately if the given resource cannot be parsed.
+func (rt *RestTester) mustTemplateResource(resource string) string {
+	uri, err := rt.templateResource(resource)
+	require.NoErrorf(rt.TB, err, "URL template error: %v", err)
+	return uri
 }
 
 func (rt *RestTester) SendAdminRequestWithAuth(method, resource string, body string, username string, password string) *TestResponse {
 	input := bytes.NewBufferString(body)
-	request, err := http.NewRequest(method, "http://localhost"+rt.templateResource(resource), input)
+	request, err := http.NewRequest(method, "http://localhost"+rt.mustTemplateResource(resource), input)
 	require.NoError(rt.TB, err)
 
 	request.SetBasicAuth(username, password)
@@ -703,7 +722,7 @@ func (rt *RestTester) WaitForChanges(numChangesExpected int, changesURL, usernam
 	changes ChangesResults,
 	err error) {
 
-	waitForChangesWorker := rt.CreateWaitForChangesRetryWorker(numChangesExpected, rt.templateResource(changesURL), username, useAdminPort)
+	waitForChangesWorker := rt.CreateWaitForChangesRetryWorker(numChangesExpected, rt.mustTemplateResource(changesURL), username, useAdminPort)
 
 	sleeper := base.CreateSleeperFunc(200, 100)
 
@@ -758,7 +777,7 @@ func (rt *RestTester) WaitForConditionShouldRetry(conditionFunc func() (shouldRe
 
 func (rt *RestTester) SendAdminRequest(method, resource string, body string) *TestResponse {
 	input := bytes.NewBufferString(body)
-	request, err := http.NewRequest(method, "http://localhost"+rt.templateResource(resource), input)
+	request, err := http.NewRequest(method, "http://localhost"+rt.mustTemplateResource(resource), input)
 	require.NoError(rt.TB, err)
 
 	response := &TestResponse{ResponseRecorder: httptest.NewRecorder(), Req: request}
@@ -769,7 +788,7 @@ func (rt *RestTester) SendAdminRequest(method, resource string, body string) *Te
 }
 
 func (rt *RestTester) SendUserRequest(method, resource string, body string, username string) *TestResponse {
-	return rt.Send(RequestByUser(method, rt.templateResource(resource), body, username))
+	return rt.Send(RequestByUser(method, rt.mustTemplateResource(resource), body, username))
 }
 
 func (rt *RestTester) WaitForNUserViewResults(numResultsExpected int, viewUrlPath string, user auth.User, password string) (viewResult sgbucket.ViewResult, err error) {
@@ -860,7 +879,7 @@ func (rt *RestTester) WaitForViewAvailable(viewURLPath string) (err error) {
 
 func (rt *RestTester) GetDBState() string {
 	var body db.Body
-	resp := rt.SendAdminRequest("GET", "/db/", "")
+	resp := rt.SendAdminRequest("GET", "/{{.db}}/", "")
 	RequireStatus(rt.TB, resp, 200)
 	require.NoError(rt.TB, base.JSONUnmarshal(resp.Body.Bytes(), &body))
 	return body["state"].(string)
@@ -885,7 +904,7 @@ func (rt *RestTester) waitForDBState(stateWant string) (err error) {
 
 func (rt *RestTester) SendAdminRequestWithHeaders(method, resource string, body string, headers map[string]string) *TestResponse {
 	input := bytes.NewBufferString(body)
-	request, _ := http.NewRequest(method, "http://localhost"+rt.templateResource(resource), input)
+	request, _ := http.NewRequest(method, "http://localhost"+rt.mustTemplateResource(resource), input)
 	for k, v := range headers {
 		request.Header.Set(k, v)
 	}
@@ -917,7 +936,7 @@ func (rt *RestTester) PutDocumentWithRevID(docID string, newRevID string, parent
 	if err != nil {
 		return nil, err
 	}
-	resp := rt.SendAdminRequest(http.MethodPut, "/db/"+docID+"?new_edits=false", string(requestBytes))
+	resp := rt.SendAdminRequest(http.MethodPut, "/{{.db}}/"+docID+"?new_edits=false", string(requestBytes))
 	return resp, nil
 }
 
@@ -1269,7 +1288,7 @@ func createBlipTesterWithSpec(tb testing.TB, spec BlipTesterSpec, rt *RestTester
 		// Create a user.  NOTE: this must come *after* the bt.rt.TestPublicHandler() call, otherwise it will end up getting ignored
 		_ = bt.restTester.SendAdminRequest(
 			"POST",
-			"/db/_user/",
+			"/{{.db}}/_user/",
 			userDocBody,
 		)
 	}
@@ -1282,7 +1301,7 @@ func createBlipTesterWithSpec(tb testing.TB, spec BlipTesterSpec, rt *RestTester
 	defer srv.Close()
 
 	// Construct URL to connect to blipsync target endpoint
-	destUrl := fmt.Sprintf("%s/db/_blipsync", srv.URL)
+	destUrl := fmt.Sprintf("%s/%s/_blipsync", srv.URL, rt.GetDatabase().Name)
 	u, err := url.Parse(destUrl)
 	if err != nil {
 		return nil, err
@@ -1505,14 +1524,14 @@ func GetRolePayload(t *testing.T, roleName, password string, collection *db.Data
 
 // add channels to principal depending if running with collections or not. then marshal the principal config
 func addChannelsToPrincipal(config auth.PrincipalConfig, collection *db.DatabaseCollection, chans []string) ([]byte, error) {
-	if base.IsDefaultCollection(collection.ScopeName(), collection.Name()) {
+	if base.IsDefaultCollection(collection.ScopeName, collection.Name) {
 		if len(chans) == 0 {
 			config.ExplicitChannels = base.SetOf("[]")
 		} else {
 			config.ExplicitChannels = base.SetFromArray(chans)
 		}
 	} else {
-		config.SetExplicitChannels(collection.ScopeName(), collection.Name(), chans...)
+		config.SetExplicitChannels(collection.ScopeName, collection.Name, chans...)
 	}
 	payload, err := json.Marshal(config)
 	if err != nil {
@@ -2245,13 +2264,13 @@ func (sc *ServerContext) suspendDatabase(t *testing.T, ctx context.Context, dbNa
 
 // getRESTkeyspace returns a keyspace for REST URIs
 func getRESTKeyspace(_ testing.TB, dbName string, collection *db.DatabaseCollection) string {
-	if base.IsDefaultCollection(collection.ScopeName(), collection.Name()) {
+	if base.IsDefaultCollection(collection.ScopeName, collection.Name) {
 		// for backwards compatibility (and user-friendliness),
 		// we can optionally just use `/db/` instead of `/db._default._default/`
 		// Return this format to get coverage of both formats.
 		return dbName
 	}
-	return strings.Join([]string{dbName, collection.ScopeName(), collection.Name()}, base.ScopeCollectionSeparator)
+	return strings.Join([]string{dbName, collection.ScopeName, collection.Name}, base.ScopeCollectionSeparator)
 }
 
 // GetKeyspaces returns the names of all the keyspaces on the rest tester. Currently assumes a single database.
@@ -2285,7 +2304,7 @@ func (rt *RestTester) getCollectionsForBLIP() []string {
 	}
 	for _, collection := range db.CollectionByID {
 		collections = append(collections,
-			strings.Join([]string{collection.ScopeName(), collection.Name()}, base.ScopeCollectionSeparator))
+			strings.Join([]string{collection.ScopeName, collection.Name}, base.ScopeCollectionSeparator))
 	}
 	return collections
 }

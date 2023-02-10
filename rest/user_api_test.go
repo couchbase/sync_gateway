@@ -269,8 +269,8 @@ func TestUserAPI(t *testing.T) {
 	defer rt.Close()
 	ctx := rt.Context()
 	collection := rt.GetSingleTestDatabaseCollection()
-	c := collection.Name()
-	s := collection.ScopeName()
+	c := collection.Name
+	s := collection.ScopeName
 
 	RequireStatus(t, rt.SendAdminRequest("GET", "/db/_user/snej", ""), 404)
 
@@ -641,8 +641,8 @@ func TestObtainUserChannelsForDeletedRoleCasFail(t *testing.T) {
 				})
 			defer rt.Close()
 			collection := rt.GetSingleTestDatabaseCollection()
-			c := collection.Name()
-			s := collection.ScopeName()
+			c := collection.Name
+			s := collection.ScopeName
 
 			// Create role
 			resp := rt.SendAdminRequest("PUT", "/db/_role/role", GetRolePayload(t, "", "", collection, []string{"channel"}))

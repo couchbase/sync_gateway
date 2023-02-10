@@ -103,7 +103,7 @@ func (bsc *BlipSyncContext) getCollectionIndexForDB(collection *DatabaseCollecti
 		return 0, false
 	}
 	for i, iCollection := range bsc.collectionMapping {
-		if iCollection.ScopeName() == collection.ScopeName() && iCollection.Name() == collection.Name() {
+		if iCollection.ScopeName == collection.ScopeName && iCollection.Name == collection.Name {
 			return i, true
 		}
 	}

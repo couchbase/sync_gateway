@@ -42,13 +42,13 @@ func NewActiveChannels(activeChannelCountStat *base.SgwIntStat) *ActiveChannels 
 
 // Update changed increments/decrements active channel counts based on a set of changed channels.  Triggered
 // when the set of channels being replicated by a given replication changes.
-func (ac *ActiveChannels) UpdateChanged(changedChannels ChangedChannels) {
+func (ac *ActiveChannels) UpdateChanged(collectionID uint32, changedChannels ChangedKeys) {
 	ac.lock.Lock()
-	for channel, isIncrement := range changedChannels {
+	for channelName, isIncrement := range changedChannels {
 		if isIncrement {
-			ac._incr(channel)
+			ac._incr(NewID(channelName, collectionID))
 		} else {
-			ac._decr(channel)
+			ac._decr(NewID(channelName, collectionID))
 		}
 	}
 
@@ -56,23 +56,19 @@ func (ac *ActiveChannels) UpdateChanged(changedChannels ChangedChannels) {
 }
 
 // Active channel counts track channels being replicated by an active changes request.
-func (ac *ActiveChannels) IncrChannels(timedSetByCollection TimedSetByCollectionID) {
+func (ac *ActiveChannels) IncrChannels(collectionID uint32, timedSet TimedSet) {
 	ac.lock.Lock()
 	defer ac.lock.Unlock()
-	for collectionID, timedSetByChannel := range timedSetByCollection {
-		for channelName, _ := range timedSetByChannel {
-			ac._incr(NewID(channelName, collectionID))
-		}
+	for channelName, _ := range timedSet {
+		ac._incr(NewID(channelName, collectionID))
 	}
 }
 
-func (ac *ActiveChannels) DecrChannels(timedSetByCollection TimedSetByCollectionID) {
+func (ac *ActiveChannels) DecrChannels(collectionID uint32, timedSet TimedSet) {
 	ac.lock.Lock()
 	defer ac.lock.Unlock()
-	for collectionID, timedSetByChannel := range timedSetByCollection {
-		for channelName, _ := range timedSetByChannel {
-			ac._decr(NewID(channelName, collectionID))
-		}
+	for channelName, _ := range timedSet {
+		ac._decr(NewID(channelName, collectionID))
 	}
 }
 

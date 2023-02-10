@@ -32,8 +32,10 @@ import (
 func TestActiveReplicatorBlipsync(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyHTTPResp)
 
+	passiveDBName := "passivedb"
 	rt := NewRestTesterDefaultCollection(t, &RestTesterConfig{
 		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
+			Name: passiveDBName,
 			Users: map[string]*auth.PrincipalConfig{
 				"alice": {Password: base.StringPtr("pass")},
 			},
@@ -46,7 +48,7 @@ func TestActiveReplicatorBlipsync(t *testing.T) {
 	srv := httptest.NewServer(rt.TestPublicHandler())
 	defer srv.Close()
 
-	passiveDBURL, err := url.Parse(srv.URL + "/db")
+	passiveDBURL, err := url.Parse(srv.URL + "/" + passiveDBName)
 	require.NoError(t, err)
 
 	// Add basic auth creds to target db URL

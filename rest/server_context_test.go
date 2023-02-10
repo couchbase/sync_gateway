@@ -751,3 +751,10 @@ func TestLogFlush(t *testing.T) {
 	}
 
 }
+
+func TestValidateMetadataStore(t *testing.T) {
+	ctx := base.TestCtx(t)
+	bucket := base.GetTestBucket(t)
+	defer bucket.Close()
+	require.NoError(t, validateMetadataStore(ctx, bucket.DefaultDataStore()))
+}

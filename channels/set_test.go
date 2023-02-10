@@ -110,65 +110,6 @@ func TestSetFromArrayNoValidate(t *testing.T) {
 	}
 }
 
-func TestSetFromSingleCollection(t *testing.T) {
-	testCases := []struct {
-		name         string
-		input        []string
-		collectionID uint32
-		output       Set
-	}{
-		{
-			name:         "singleChannel0",
-			input:        []string{"A"},
-			collectionID: 0,
-			output: Set{
-				NewID("A", 0): present{},
-			},
-		},
-
-		{
-			name:         "singleChannel1",
-			input:        []string{"A"},
-			collectionID: 1,
-			output: Set{
-				NewID("A", 1): present{},
-			},
-		},
-		{
-			name:         "multiChannel0",
-			input:        []string{"A", "B"},
-			collectionID: 0,
-			output: Set{
-				NewID("A", 0): present{},
-				NewID("B", 0): present{},
-			},
-		},
-
-		{
-			name:         "multiChannel1",
-			input:        []string{"A", "B"},
-			collectionID: 1,
-			output: Set{
-				NewID("A", 1): present{},
-				NewID("B", 1): present{},
-			},
-		},
-		{
-			name:         "illegalChannel",
-			input:        []string{","},
-			collectionID: 1,
-			output: Set{
-				NewID(",", 1): present{},
-			},
-		},
-	}
-	for _, test := range testCases {
-		t.Run(test.name, func(t *testing.T) {
-			require.Equal(t, test.output, SetOfFromSingleCollection(test.input, test.collectionID))
-		})
-	}
-}
-
 func TestSetUpdate(t *testing.T) {
 	testCases := []struct {
 		name        string

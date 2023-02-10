@@ -51,13 +51,6 @@ func TestCollectionsPutDocInKeyspace(t *testing.T) {
 		keyspace       string
 		expectedStatus int
 	}{
-		// if a single scope and collection is defined, use that implicitly
-		/*{
-			name:           "implicit scope and collection",
-			keyspace:       "db",
-			expectedStatus: http.StatusNotFound,
-		},
-		*/
 		{
 			name:           "fully qualified",
 			keyspace:       rt.GetSingleKeyspace(),
@@ -399,8 +392,12 @@ func TestMultiCollectionChannelAccess(t *testing.T) {
 	RequireStatus(t, resp, http.StatusCreated)
 
 	// Ensure users can't access docs in a removed collection
-	resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.keyspace3}}/testDocBazA", "", nil, "userB", "letmein")
-	RequireStatus(t, resp, http.StatusBadRequest)
+	//
+	// we can't use the {{.keyspace3}} URI template variable here as the collection no longer exists on the RestTester,
+	// but we still want to try issuing the request to the old keyspace name.
+	keyspace3 := "db." + scope + "." + collection3
+	resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/"+keyspace3+"/testDocBazA", "", nil, "userB", "letmein")
+	RequireStatus(t, resp, http.StatusNotFound)
 }
 
 func TestMultiCollectionDynamicChannelAccess(t *testing.T) {
@@ -522,8 +519,8 @@ func TestCollectionsBasicIndexQuery(t *testing.T) {
 
 	// if the index was created on a collection, the keyspace_id becomes the collection, along with additional fields for bucket and scope.
 	assert.Equal(t, rt.Bucket().GetName(), *indexMetaResult.BucketID)
-	assert.Equal(t, collection.ScopeName(), *indexMetaResult.ScopeID)
-	assert.Equal(t, collection.Name(), *indexMetaResult.KeyspaceID)
+	assert.Equal(t, collection.ScopeName, *indexMetaResult.ScopeID)
+	assert.Equal(t, collection.Name, *indexMetaResult.KeyspaceID)
 
 	// try and query the document that we wrote via SG
 	res, err = n1qlStore.Query("SELECT test FROM "+base.KeyspaceQueryToken+" WHERE test = true", nil, base.RequestPlus, true)

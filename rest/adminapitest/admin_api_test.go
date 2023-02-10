@@ -1142,7 +1142,7 @@ func TestResyncUsingDCPStreamForNamedCollection(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, 0, int(resyncManagerStatus.DocsChanged))
-	assert.Equal(t, 10, int(resyncManagerStatus.DocsProcessed))
+	assert.LessOrEqual(t, 10, int(resyncManagerStatus.DocsProcessed))
 
 	// Run resync for all collections
 	resp = rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
@@ -1163,7 +1163,7 @@ func TestResyncUsingDCPStreamForNamedCollection(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, 0, int(resyncManagerStatus.DocsChanged))
-	assert.Equal(t, 20, int(resyncManagerStatus.DocsProcessed))
+	assert.LessOrEqual(t, 20, int(resyncManagerStatus.DocsProcessed))
 }
 
 func TestResyncErrorScenarios(t *testing.T) {

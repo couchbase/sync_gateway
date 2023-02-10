@@ -307,7 +307,7 @@ func TestOpenIDConnectTestProviderWithRealWorldToken(t *testing.T) {
 						},
 					},
 				}}}
-			restTester := NewRestTesterDefaultCollection(t, // CBG-2618: fix collection channel access
+			restTester := NewRestTester(t,
 				&restTesterConfig)
 			require.NoError(t, restTester.SetAdminParty(false))
 			defer restTester.Close()
@@ -378,7 +378,7 @@ func TestOpenIDConnectTestProviderWithRealWorldToken(t *testing.T) {
 			request.Header.Add("Authorization", BearerToken+" "+authResponseActual.IDToken)
 			response, err = http.DefaultClient.Do(request)
 			require.NoError(t, err, "Error sending request with bearer token")
-			checkGoodAuthResponse(t, response, "foo_noah")
+			checkGoodAuthResponse(t, restTester, response, "foo_noah")
 		})
 	}
 }
@@ -410,7 +410,7 @@ func TestOIDCWithBasicAuthDisabled(t *testing.T) {
 			},
 			DisablePasswordAuth: base.BoolPtr(true),
 		}}}
-	restTester := NewRestTesterDefaultCollection(t, // CBG-2618: fix collection channel access
+	restTester := NewRestTester(t,
 		&restTesterConfig)
 	require.NoError(t, restTester.SetAdminParty(false))
 	defer restTester.Close()
@@ -468,7 +468,7 @@ func TestOIDCWithBasicAuthDisabled(t *testing.T) {
 	request.Header.Add("Authorization", BearerToken+" "+authResponseActual.IDToken)
 	response, err = http.DefaultClient.Do(request)
 	require.NoError(t, err, "Error sending request with bearer token")
-	checkGoodAuthResponse(t, response, "foo_noah")
+	checkGoodAuthResponse(t, restTester, response, "foo_noah")
 
 	// Now verify that we can perform a trivial request
 	request, err = http.NewRequest(http.MethodGet, mockSyncGatewayURL+"/"+restTester.DatabaseConfig.Name, nil)

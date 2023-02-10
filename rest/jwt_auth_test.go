@@ -454,8 +454,8 @@ func TestLocalJWTRolesChannels(t *testing.T) {
 	require.NoError(t, restTester.SetAdminParty(false))
 	defer restTester.Close()
 	collection := restTester.GetSingleTestDatabaseCollection()
-	c := collection.Name()
-	s := collection.ScopeName()
+	c := collection.Name
+	s := collection.ScopeName
 
 	token := auth.CreateTestJWT(t, jose.RS256, testRSAKeypair, auth.JWTHeaders{
 		"alg": jose.RS256,

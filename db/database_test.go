@@ -1470,10 +1470,10 @@ func TestAccessFunctionDb(t *testing.T) {
 	user, err = authenticator.GetUser("naomi")
 	assert.NoError(t, err, "GetUser")
 	expected := channels.AtSequence(channels.BaseSetOf(t, "Hulu", "Netflix", "!"), 1)
-	assert.Equal(t, expected, user.CollectionChannels(collection.ScopeName(), collection.Name()))
+	assert.Equal(t, expected, user.CollectionChannels(collection.ScopeName, collection.Name))
 
 	expected.AddChannel("CrunchyRoll", 2)
-	assert.Equal(t, expected, user.InheritedCollectionChannels(collection.ScopeName(), collection.Name()))
+	assert.Equal(t, expected, user.InheritedCollectionChannels(collection.ScopeName, collection.Name))
 }
 
 func TestDocIDs(t *testing.T) {
@@ -3070,8 +3070,8 @@ func TestGetDatabaseCollectionWithUserDefaultCollection(t *testing.T) {
 			} else {
 				require.NoError(t, err)
 				require.NotNil(t, col)
-				require.Equal(t, col.ScopeName(), testCase.scope)
-				require.Equal(t, col.Name(), testCase.collection)
+				require.Equal(t, col.ScopeName, testCase.scope)
+				require.Equal(t, col.Name, testCase.collection)
 			}
 
 		})

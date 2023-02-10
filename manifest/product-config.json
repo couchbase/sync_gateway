@@ -317,7 +317,7 @@
             "release_name": "Couchbase Sync Gateway 2.8.4",
             "production": true,
             "interval": 120,
-            "go_version": "1.19.5",
+            "go_version": "1.16.15",
             "trigger_blackduck": true,
             "start_build": 1
         },
@@ -385,7 +385,7 @@
             "release_name": "Couchbase Sync Gateway 3.0.5",
             "production": true,
             "interval": 120,
-            "go_version": "1.16.6",
+            "go_version": "1.16.15",
             "trigger_blackduck": true,
             "start_build": 1
         },

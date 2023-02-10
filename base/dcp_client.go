@@ -142,32 +142,52 @@ func (dc *DCPClient) getCollectionHighSeqNos(collectionID uint32) ([]uint64, err
 			CollectionID: collectionID,
 		},
 	}
+	configSnapshot, err := dc.agent.ConfigSnapshot()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get gocbcore connection config: %w", err)
+	}
+
+	numServers, err := configSnapshot.NumServers()
+	if err != nil {
+		return nil, fmt.Errorf("failed to determine the number of servers in the target cluster: %w", err)
+	}
 	highSeqNos := make([]uint64, dc.numVbuckets)
-	highSeqNoError := make(chan error)
-	highSeqNoCallback := func(entries []gocbcore.VbSeqNoEntry, err error) {
-		if err == nil {
-			for _, entry := range entries {
-				highSeqNos[entry.VbID] = uint64(entry.SeqNo)
+	// each server is going to return correct values for the active vbuckets on that node,
+	// so loop over all servers and take the max values
+	// serverIdx start at 1 (-1 in gocbcore), 0 refers to the master node
+	for serverIdx := 1; serverIdx <= numServers; serverIdx++ {
+
+		highSeqNoError := make(chan error)
+		highSeqNoCallback := func(entries []gocbcore.VbSeqNoEntry, err error) {
+			if err == nil {
+				for _, entry := range entries {
+					if highSeqNos[entry.VbID] < uint64(entry.SeqNo) {
+						highSeqNos[entry.VbID] = uint64(entry.SeqNo)
+					}
+				}
 			}
+			highSeqNoError <- err
 		}
-		highSeqNoError <- err
-	}
-	_, seqErr := dc.agent.GetVbucketSeqnos(
-		0,                       // use 0, which is an active server node
-		memd.VbucketStateActive, // active vbuckets only
-		vbucketSeqnoOptions,     // contains collectionID
-		highSeqNoCallback)
+		_, seqErr := dc.agent.GetVbucketSeqnos(
+			serverIdx,
+			memd.VbucketStateActive, // active vbuckets only
+			vbucketSeqnoOptions,     // contains collectionID
+			highSeqNoCallback)
 
-	if seqErr != nil {
-		return nil, seqErr
-	}
+		if seqErr != nil {
+			return nil, seqErr
+		}
 
-	select {
-	case err := <-highSeqNoError:
-		return highSeqNos, err
-	case <-time.After(getVbSeqnoTimeout):
-		return nil, ErrTimeout
+		select {
+		case err := <-highSeqNoError:
+			if err != nil {
+				return nil, err
+			}
+		case <-time.After(getVbSeqnoTimeout):
+			return nil, ErrTimeout
+		}
 	}
+	return highSeqNos, nil
 }
 
 // getHighSeqNos returns the maximum sequence number for every collection configured by the DCP agent.

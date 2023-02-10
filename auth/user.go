@@ -630,19 +630,19 @@ func (user *userImpl) expandCollectionWildCardChannel(scope, collection string, 
 	return channels
 }
 
-func (user *userImpl) filterToAvailableChannels(channels ch.Set) (filtered ch.TimedSet, removed []string) {
-	return user.FilterToAvailableCollectionChannels(base.DefaultScope, base.DefaultCollection, channels)
+func (user *userImpl) filterToAvailableChannels(channelNames base.Set) (filtered ch.TimedSet, removed []string) {
+	return user.FilterToAvailableCollectionChannels(base.DefaultScope, base.DefaultCollection, channelNames)
 }
 
-func (user *userImpl) FilterToAvailableCollectionChannels(scope, collection string, channels ch.Set) (filtered ch.TimedSet, removed []string) {
+func (user *userImpl) FilterToAvailableCollectionChannels(scope, collection string, channelNames base.Set) (filtered ch.TimedSet, removed []string) {
 	filtered = ch.TimedSet{}
-	for channel := range channels {
-		if channel.Name == ch.AllChannelWildcard {
+	for channelName, _ := range channelNames {
+		if channelName == ch.AllChannelWildcard {
 			return user.InheritedCollectionChannels(scope, collection).Copy(), nil
 		}
-		added := filtered.AddChannel(channel.Name, user.canSeeCollectionChannelSince(scope, collection, channel.Name))
+		added := filtered.AddChannel(channelName, user.canSeeCollectionChannelSince(scope, collection, channelName))
 		if !added {
-			removed = append(removed, channel.Name)
+			removed = append(removed, channelName)
 		}
 	}
 	return filtered, removed

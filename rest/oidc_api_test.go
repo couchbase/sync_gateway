@@ -1044,7 +1044,7 @@ func TestOpenIDConnectImplicitFlow(t *testing.T) {
 
 			opts := auth.OIDCOptions{Providers: tc.providers, DefaultProvider: &tc.defaultProvider}
 			restTesterConfig := RestTesterConfig{DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{OIDCConfig: &opts}}}
-			restTester := NewRestTesterDefaultCollection(t, &restTesterConfig) // CBG-2618: fix collection channel access
+			restTester := NewRestTester(t, &restTesterConfig)
 			require.NoError(t, restTester.SetAdminParty(false))
 			defer restTester.Close()
 
@@ -1070,13 +1070,15 @@ func TestOpenIDConnectImplicitFlow(t *testing.T) {
 				assertHttpResponse(t, response, tc.expectedError)
 				return
 			}
-			checkGoodAuthResponse(t, response, "foo_noah")
+			checkGoodAuthResponse(t, restTester, response, "foo_noah")
 		})
 	}
 }
 
 // checkGoodAuthResponse asserts expected session response values against the given response.
-func checkGoodAuthResponse(t *testing.T, response *http.Response, username string) {
+func checkGoodAuthResponse(t *testing.T, rt *RestTester, response *http.Response, username string) {
+	var responseBodyExpected map[string]interface{}
+	collection := rt.GetSingleTestDatabaseCollection()
 	require.Equal(t, http.StatusOK, response.StatusCode)
 	assert.Equal(t, "application/json", response.Header.Get("Content-Type"))
 	var responseBodyActual map[string]interface{}
@@ -1084,15 +1086,28 @@ func checkGoodAuthResponse(t *testing.T, response *http.Response, username strin
 	sessionCookie := getCookie(response.Cookies(), auth.DefaultCookieName)
 	require.NotNil(t, sessionCookie, "No session cookie found")
 	require.NoError(t, response.Body.Close(), "error closing response body")
-	responseBodyExpected := map[string]interface{}{
-		"authentication_handlers": []interface{}{
-			"default", "cookie",
-		},
-		"ok": true,
-		"userCtx": map[string]interface{}{
-			"channels": map[string]interface{}{"!": float64(1)},
-			"name":     username,
-		},
+	if base.IsDefaultCollection(collection.ScopeName, collection.Name) {
+		responseBodyExpected = map[string]interface{}{
+			"authentication_handlers": []interface{}{
+				"default", "cookie",
+			},
+			"ok": true,
+			"userCtx": map[string]interface{}{
+				"channels": map[string]interface{}{"!": float64(1)},
+				"name":     username,
+			},
+		}
+	} else {
+		responseBodyExpected = map[string]interface{}{
+			"authentication_handlers": []interface{}{
+				"default", "cookie",
+			},
+			"ok": true,
+			"userCtx": map[string]interface{}{
+				"channels": interface{}(nil),
+				"name":     username,
+			},
+		}
 	}
 	assert.Equal(t, responseBodyExpected, responseBodyActual, "Session response mismatch")
 }
@@ -1114,7 +1129,7 @@ func TestOpenIDConnectImplicitFlowEdgeCases(t *testing.T) {
 
 	opts := auth.OIDCOptions{Providers: providers, DefaultProvider: &defaultProvider}
 	restTesterConfig := RestTesterConfig{DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{OIDCConfig: &opts}}}
-	restTester := NewRestTesterDefaultCollection(t, &restTesterConfig) // CBG-2618: fix collection channel access
+	restTester := NewRestTester(t, &restTesterConfig)
 	require.NoError(t, restTester.SetAdminParty(false))
 	defer restTester.Close()
 
@@ -1146,7 +1161,7 @@ func TestOpenIDConnectImplicitFlowEdgeCases(t *testing.T) {
 	runGoodAuthTest := func(claimSet claimSet, username string) {
 		response, err := sendAuthRequest(claimSet)
 		require.NoError(t, err, "Error sending request with bearer token")
-		checkGoodAuthResponse(t, response, username)
+		checkGoodAuthResponse(t, restTester, response, username)
 	}
 
 	t.Run("new user authentication with an expired token", func(t *testing.T) {
@@ -2110,7 +2125,7 @@ func TestEventuallyReachableOIDCClient(t *testing.T) {
 
 			opts := auth.OIDCOptions{Providers: tc.providers, DefaultProvider: &tc.defaultProvider}
 			restTesterConfig := RestTesterConfig{DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{OIDCConfig: &opts}}}
-			restTester := NewRestTesterDefaultCollection(t, &restTesterConfig) // CBG-2618: fix collection channel access
+			restTester := NewRestTester(t, &restTesterConfig)
 			require.NoError(t, restTester.SetAdminParty(false))
 			defer restTester.Close()
 
@@ -2139,14 +2154,14 @@ func TestEventuallyReachableOIDCClient(t *testing.T) {
 			request = createOIDCRequest(t, sessionEndpoint, token)
 			response, err = http.DefaultClient.Do(request)
 			require.NoError(t, err, "Error sending request with bearer token")
-			checkGoodAuthResponse(t, response, "foo_noah")
+			checkGoodAuthResponse(t, restTester, response, "foo_noah")
 
 			// Unreachable again after being reachable - still success
 			refreshProviderConfig(restTester.DatabaseConfig.OIDCConfig.Providers, unreachableAddr)
 			request = createOIDCRequest(t, sessionEndpoint, token)
 			response, err = http.DefaultClient.Do(request)
 			require.NoError(t, err, "Error sending request with bearer token")
-			checkGoodAuthResponse(t, response, "foo_noah")
+			checkGoodAuthResponse(t, restTester, response, "foo_noah")
 		})
 	}
 }
