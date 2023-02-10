@@ -2479,15 +2479,3 @@ func TestUpsertOptionPreserveExpiry(t *testing.T) {
 		})
 	}
 }
-
-func TestClusterUUID(t *testing.T) {
-	if !TestUseCouchbaseServer() {
-		t.Skip("Test can only be ran against CBS requiring a gocb connection")
-	}
-	bucket := GetTestBucket(t)
-	defer bucket.Close()
-
-	gocbV2Bucket, err := AsGocbV2Bucket(bucket)
-	require.NoError(t, err)
-	require.Len(t, gocbV2Bucket.ClusterUUID, 32) // no dashes in UUID
-}

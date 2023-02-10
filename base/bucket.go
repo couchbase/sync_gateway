@@ -59,7 +59,6 @@ type CouchbaseBucketStore interface {
 	GetName() string
 	MgmtEps() ([]string, error)
 	MetadataPurgeInterval() (time.Duration, error)
-	ServerUUID() (uuid string, err error)
 	MaxTTL() (int, error)
 	HttpClient() *http.Client
 	GetSpec() BucketSpec
@@ -473,7 +472,7 @@ func getMaxTTL(store CouchbaseBucketStore) (int, error) {
 }
 
 // Get the Server UUID of the bucket, this is also known as the Cluster UUID
-func getServerUUID(store CouchbaseBucketStore) (uuid string, err error) {
+func GetServerUUID(store CouchbaseBucketStore) (uuid string, err error) {
 	resp, err := store.mgmtRequest(http.MethodGet, "/pools", "application/json", nil)
 	if err != nil {
 		return "", err

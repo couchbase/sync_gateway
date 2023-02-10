@@ -3092,9 +3092,9 @@ func TestClusterUUID(t *testing.T) {
 	require.NoError(t, err)
 
 	if base.TestUseCouchbaseServer() {
-		require.Len(t, db.clusterUUID, 32) // no dashes in UUID
+		require.Len(t, db.ClusterUUID, 32) // no dashes in UUID
 	} else {
-		require.Len(t, db.clusterUUID, 0) // no dashes in UUID
+		require.Len(t, db.ClusterUUID, 0) // no dashes in UUID
 	}
 }
 
