@@ -187,14 +187,10 @@ func TestLateSequenceHandling(t *testing.T) {
 }
 
 func TestLateSequenceHandlingWithMultipleListeners(t *testing.T) {
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
 
-	ctx := base.TestCtx(t)
-	b := base.GetTestBucket(t)
-	context, err := NewDatabaseContext(ctx, "db", b, false, DatabaseContextOptions{})
-	require.NoError(t, err)
-	defer context.Close(ctx)
-
-	collection := context.GetSingleDatabaseCollection()
+	collection := db.GetSingleDatabaseCollection()
 	collectionID := collection.GetCollectionID()
 
 	stats, err := base.NewSyncGatewayStats()

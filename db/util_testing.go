@@ -515,6 +515,8 @@ func SetupTestDBForDataStoreWithOptions(t testing.TB, tBucket *base.TestBucket, 
 				},
 			}
 		}
+	} else if dbcOptions.Scopes == nil {
+		dbcOptions.Scopes = GetScopesConfigForDefaultCollection()
 	}
 
 	dbCtx, err := NewDatabaseContext(ctx, "db", tBucket, false, dbcOptions)

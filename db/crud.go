@@ -2274,14 +2274,18 @@ func (col *DatabaseCollectionWithUser) getChannelsAndAccess(ctx context.Context,
 		}
 
 	} else {
-		// No ChannelMapper so by default use the "channels" property:
-		value := body["channels"]
-		if value != nil {
-			array, nonStrings := base.ValueToStringArray(value)
-			if nonStrings != nil {
-				base.WarnfCtx(ctx, "Channel names must be string values only. Ignoring non-string channels: %s", base.UD(nonStrings))
+		if base.IsDefaultCollection(col.ScopeName, col.Name) {
+			// No ChannelMapper so by default use the "channels" property:
+			value := body["channels"]
+			if value != nil {
+				array, nonStrings := base.ValueToStringArray(value)
+				if nonStrings != nil {
+					base.WarnfCtx(ctx, "Channel names must be string values only. Ignoring non-string channels: %s", base.UD(nonStrings))
+				}
+				result, err = channels.SetFromArray(array, channels.KeepStar)
 			}
-			result, err = channels.SetFromArray(array, channels.KeepStar)
+		} else {
+			result = base.SetOf(col.Name)
 		}
 	}
 	return result, access, roles, expiry, oldJson, err

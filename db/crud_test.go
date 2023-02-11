@@ -1194,12 +1194,8 @@ func BenchmarkHandleRevDelta(b *testing.B) {
 }
 
 func TestGetAvailableRevAttachments(t *testing.T) {
-	ctx := base.TestCtx(t)
-	context, err := NewDatabaseContext(ctx, "db", base.GetTestBucket(t), false, DatabaseContextOptions{})
-	assert.NoError(t, err, "Couldn't create context for database 'db'")
-	defer context.Close(ctx)
-	db, err := CreateDatabase(context)
-	require.NoError(t, err, "Couldn't create database 'db'")
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 	// Create the very first revision of the document with attachment; let's call this as rev 1-a
@@ -1236,12 +1232,8 @@ func TestGetAvailableRevAttachments(t *testing.T) {
 }
 
 func TestGet1xRevAndChannels(t *testing.T) {
-	ctx := base.TestCtx(t)
-	context, err := NewDatabaseContext(ctx, "db", base.GetTestBucket(t), false, DatabaseContextOptions{})
-	assert.NoError(t, err, "Couldn't create context for database 'db'")
-	defer context.Close(ctx)
-	db, err := CreateDatabase(context)
-	require.NoError(t, err, "Couldn't create database 'db'")
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 	docId := "dd6d2dcc679d12b9430a9787bab45b33"
@@ -1301,12 +1293,8 @@ func TestGet1xRevAndChannels(t *testing.T) {
 }
 
 func TestGet1xRevFromDoc(t *testing.T) {
-	ctx := base.TestCtx(t)
-	context, err := NewDatabaseContext(ctx, "db", base.GetTestBucket(t), false, DatabaseContextOptions{})
-	assert.NoError(t, err, "Couldn't create context for database 'db'")
-	defer context.Close(ctx)
-	db, err := CreateDatabase(context)
-	require.NoError(t, err, "Couldn't create database 'db'")
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 	// Create the first revision of the document

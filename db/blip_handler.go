@@ -141,7 +141,7 @@ func collectionBlipHandler(next blipHandlerFunc) blipHandlerFunc {
 	return func(bh *blipHandler, bm *blip.Message) error {
 		collectionIndexStr, ok := bm.Properties[BlipCollection]
 		if !ok {
-			if !bh.db.hasDefaultCollection() {
+			if !bh.db.HasDefaultCollection() {
 				return base.HTTPErrorf(http.StatusBadRequest, "Method requires passing a collection property and a prior GetCollections message")
 			}
 			// temp use private method

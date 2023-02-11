@@ -88,7 +88,9 @@ func setupTestDBWithViewsEnabled(t testing.TB) (*Database, context.Context) {
 func setupTestDBWithCustomSyncSeq(t testing.TB, customSeq uint64) (*Database, context.Context) {
 
 	ctx := base.TestCtx(t)
-	dbcOptions := DatabaseContextOptions{}
+	dbcOptions := DatabaseContextOptions{
+		Scopes: GetScopesConfigForDefaultCollection(),
+	}
 	AddOptionsFromEnvironmentVariables(&dbcOptions)
 	tBucket := base.GetTestBucket(t)
 
@@ -114,6 +116,7 @@ func setupTestLeakyDBWithCacheOptions(t *testing.T, options CacheOptions, leakyO
 	ctx := base.TestCtx(t)
 	dbcOptions := DatabaseContextOptions{
 		CacheOptions: &options,
+		Scopes:       GetScopesConfigForDefaultCollection(),
 	}
 	AddOptionsFromEnvironmentVariables(&dbcOptions)
 	testBucket := base.GetTestBucket(t)
@@ -1984,8 +1987,10 @@ func TestNewDatabaseContextWithOIDCProviderOptions(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			options := DatabaseContextOptions{
 				OIDCOptions: tc.inputOptions,
+				Scopes:      GetScopesConfigForDefaultCollection(),
 			}
 			AddOptionsFromEnvironmentVariables(&options)
+
 			ctx := base.TestCtx(t)
 			dbCtx, err := NewDatabaseContext(ctx, "db", base.GetTestBucket(t), false, options)
 			assert.NoError(t, err, "Couldn't create context for database 'db'")
@@ -2790,7 +2795,7 @@ func Test_resyncDocument(t *testing.T) {
 		channel("channel." + "ABC");
 	}
 `
-			_, err := db.UpdateSyncFun(ctx, syncFn)
+			_, err := collection.UpdateSyncFun(ctx, syncFn)
 			require.NoError(t, err)
 
 			docID := uuid.NewString()
@@ -3003,39 +3008,6 @@ func TestGetDatabaseCollectionWithUserDefaultCollection(t *testing.T) {
 		options    DatabaseContextOptions
 	}{
 		{
-			name:       "emptyscopecollection",
-			scope:      "",
-			collection: "",
-			err:        true,
-		},
-		{
-			name:       "foo.bar-notconfigured",
-			scope:      "foo",
-			collection: "bar",
-			err:        true,
-		},
-		{
-			name:       "_default._default-noconfiguration",
-			scope:      base.DefaultScope,
-			collection: base.DefaultCollection,
-			err:        false,
-		},
-		{
-			name:       "_default._default-not-in-config",
-			scope:      base.DefaultScope,
-			collection: base.DefaultCollection,
-			err:        true,
-			options: DatabaseContextOptions{
-				Scopes: map[string]ScopeOptions{
-					dataStoreName.ScopeName(): ScopeOptions{
-						Collections: map[string]CollectionOptions{
-							dataStoreName.CollectionName(): {},
-						},
-					},
-				},
-			},
-		},
-		{
 			name:       "_default._default-inconfig",
 			scope:      base.DefaultScope,
 			collection: base.DefaultCollection,
@@ -3059,6 +3031,7 @@ func TestGetDatabaseCollectionWithUserDefaultCollection(t *testing.T) {
 
 	for _, testCase := range testCases {
 		t.Run(fmt.Sprintf(testCase.name), func(t *testing.T) {
+
 			ctx := base.TestCtx(t)
 			dbCtx, err := NewDatabaseContext(ctx, "db", bucket.NoCloseClone(), false, testCase.options)
 			require.NoError(t, err)
@@ -3102,9 +3075,6 @@ func Test_stopBackgroundManagers(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 
-	dbCtx, err := NewDatabaseContext(ctx, db.Name, db.Bucket, false, DatabaseContextOptions{})
-	require.NoError(t, err)
-
 	testCases := []struct {
 		resyncManager               *BackgroundManager
 		tombstoneCompactionManager  *BackgroundManager
@@ -3142,23 +3112,23 @@ func Test_stopBackgroundManagers(t *testing.T) {
 
 	for i, testCase := range testCases {
 		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
-			dbCtx.ResyncManager = testCase.resyncManager
-			dbCtx.AttachmentCompactionManager = testCase.attachmentCompactionManager
-			dbCtx.TombstoneCompactionManager = testCase.tombstoneCompactionManager
-			if dbCtx.ResyncManager != nil {
-				err := dbCtx.ResyncManager.Start(ctx, emptyOptions)
+			db.ResyncManager = testCase.resyncManager
+			db.AttachmentCompactionManager = testCase.attachmentCompactionManager
+			db.TombstoneCompactionManager = testCase.tombstoneCompactionManager
+			if db.ResyncManager != nil {
+				err := db.ResyncManager.Start(ctx, emptyOptions)
 				assert.NoError(t, err)
 			}
-			if dbCtx.AttachmentCompactionManager != nil {
-				err := dbCtx.AttachmentCompactionManager.Start(ctx, emptyOptions)
+			if db.AttachmentCompactionManager != nil {
+				err := db.AttachmentCompactionManager.Start(ctx, emptyOptions)
 				assert.NoError(t, err)
 			}
-			if dbCtx.TombstoneCompactionManager != nil {
-				err := dbCtx.TombstoneCompactionManager.Start(ctx, emptyOptions)
+			if db.TombstoneCompactionManager != nil {
+				err := db.TombstoneCompactionManager.Start(ctx, emptyOptions)
 				assert.NoError(t, err)
 			}
 
-			bgManagers := dbCtx.stopBackgroundManagers()
+			bgManagers := db.stopBackgroundManagers()
 			assert.Len(t, bgManagers, testCase.expected, "Unexpected Num of BackgroundManagers returned")
 		})
 	}

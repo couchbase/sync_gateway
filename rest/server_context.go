@@ -606,6 +606,23 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 
 			}
 		}
+	} else {
+		// Set up default import filter
+		var importFilter *db.ImportFilterFunction
+		if config.ImportFilter != nil {
+			importFilter = db.NewImportFilterFunction(*config.ImportFilter, javascriptTimeout)
+		}
+
+		contextOptions.Scopes = map[string]db.ScopeOptions{
+			base.DefaultScope: db.ScopeOptions{
+				Collections: map[string]db.CollectionOptions{
+					base.DefaultCollection: {
+						Sync:         config.Sync,
+						ImportFilter: importFilter,
+					},
+				},
+			},
+		}
 	}
 
 	// For now, we'll continue writing metadata into `_default`.`_default`, for a few reasons:
@@ -628,14 +645,6 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	dbcontext.BucketSpec = spec
 	dbcontext.ServerContextHasStarted = sc.hasStarted
 	dbcontext.NoX509HTTPClient = sc.NoX509HTTPClient
-
-	syncFn := ""
-	if config.Sync != nil {
-		syncFn = *config.Sync
-	}
-	if err := sc.applySyncFunction(ctx, dbcontext, syncFn); err != nil {
-		return nil, err
-	}
 
 	if config.RevsLimit != nil {
 		dbcontext.RevsLimit = *config.RevsLimit
@@ -956,11 +965,6 @@ func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConf
 		// GraphQL:                   config.GraphQL,       // behind feature flag (see below)
 	}
 
-	// Set up default import filter
-	if config.ImportFilter != nil {
-		contextOptions.DefaultCollectionImportFilter = db.NewImportFilterFunction(*config.ImportFilter, javascriptTimeout)
-	}
-
 	if sc.Config.Unsupported.UserQueries != nil && *sc.Config.Unsupported.UserQueries {
 		var err error
 		if config.UserFunctions != nil {
@@ -1141,16 +1145,6 @@ func (sc *ServerContext) processEventHandlersForEvent(ctx context.Context, event
 		}
 
 	}
-	return nil
-}
-
-func (sc *ServerContext) applySyncFunction(ctx context.Context, dbcontext *db.DatabaseContext, syncFn string) error {
-	changed, err := dbcontext.UpdateSyncFun(ctx, syncFn)
-	if err != nil || !changed {
-		return err
-	}
-	// Sync function has changed:
-	base.InfofCtx(ctx, base.KeyAll, "**NOTE:** %q's sync function has changed. The new function may assign different channels to documents, or permissions to users. You may want to re-sync the database to update these.", base.MD(dbcontext.Name))
 	return nil
 }
 

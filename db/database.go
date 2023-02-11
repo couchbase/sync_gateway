@@ -168,9 +168,8 @@ type DatabaseContextOptions struct {
 	JavascriptTimeout             time.Duration // Max time the JS functions run for (ie. sync fn, import filter)
 	Serverless                    bool          // If running in serverless mode
 	Scopes                        ScopesOptions
-	skipRegisterImportPIndex      bool                  // if set, skips the global gocb PIndex registration
-	MetadataStore                 base.DataStore        // If set, use this location/connection for SG metadata storage - if not set, metadata is stored using the same location/connection as the bucket used for data storage.
-	DefaultCollectionImportFilter *ImportFilterFunction // Opt-in filter for document import, for when collections are not supported
+	skipRegisterImportPIndex      bool           // if set, skips the global gocb PIndex registration
+	MetadataStore                 base.DataStore // If set, use this location/connection for SG metadata storage - if not set, metadata is stored using the same location/connection as the bucket used for data storage.
 }
 
 type ScopesOptions map[string]ScopeOptions
@@ -438,67 +437,58 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 	// Initialize the tap Listener for notify handling
 	dbContext.mutationListener.Init(bucket.GetName(), options.GroupID)
 
-	if len(options.Scopes) > 0 {
-		dbContext.Scopes = make(map[string]Scope, len(options.Scopes))
-		dbContext.CollectionNames = make(map[string]map[string]struct{}, len(options.Scopes))
-		for scopeName, scope := range options.Scopes {
-			dbContext.Scopes[scopeName] = Scope{
-				Collections: make(map[string]*DatabaseCollection, len(scope.Collections)),
+	if len(options.Scopes) == 0 {
+		return nil, fmt.Errorf("Setting scopes to be zero is invalid")
+	}
+	dbContext.Scopes = make(map[string]Scope, len(options.Scopes))
+	dbContext.CollectionNames = make(map[string]map[string]struct{}, len(options.Scopes))
+	syncFunctionsChanged := false
+	for scopeName, scope := range options.Scopes {
+		dbContext.Scopes[scopeName] = Scope{
+			Collections: make(map[string]*DatabaseCollection, len(scope.Collections)),
+		}
+		collectionNameMap := make(map[string]struct{}, len(scope.Collections))
+		for collName, collOpts := range scope.Collections {
+			ctx := base.CollectionCtx(ctx, collName)
+			dataStore, err := bucket.NamedDataStore(base.ScopeAndCollectionName{Scope: scopeName, Collection: collName})
+			if err != nil {
+				return nil, err
 			}
-			collectionNameMap := make(map[string]struct{}, len(scope.Collections))
-			for collName, collOpts := range scope.Collections {
-				ctx := base.CollectionCtx(ctx, collName)
-				dataStore, err := bucket.NamedDataStore(base.ScopeAndCollectionName{Scope: scopeName, Collection: collName})
-				if err != nil {
-					return nil, err
-				}
-				stats, err := dbContext.DbStats.CollectionStat(scopeName, collName)
-				if err != nil {
-					return nil, err
-				}
-				dbCollection, err := newDatabaseCollection(ctx, dbContext, dataStore, stats)
-				if err != nil {
-					return nil, err
-				}
-				syncFn := channels.GetDefaultSyncFunction(scopeName, collName)
-				if collOpts.Sync != nil {
-					syncFn = *collOpts.Sync
-				}
-
-				if collOpts.ImportFilter != nil {
-					dbCollection.importFilterFunction = collOpts.ImportFilter
-				}
-
-				_, err = dbCollection.UpdateSyncFun(ctx, syncFn)
-				if err != nil {
-					return nil, err
-				}
-
-				dbContext.Scopes[scopeName].Collections[collName] = dbCollection
-
-				collectionID := dbCollection.GetCollectionID()
-				dbContext.CollectionByID[collectionID] = dbCollection
-				dbContext.singleCollection = dbCollection
-				collectionNameMap[collName] = struct{}{}
+			stats, err := dbContext.DbStats.CollectionStat(scopeName, collName)
+			if err != nil {
+				return nil, err
 			}
-			dbContext.CollectionNames[scopeName] = collectionNameMap
-		}
-	} else {
-		dataStore := bucket.DefaultDataStore()
-		stats, err := dbContext.DbStats.CollectionStat(base.DefaultScope, base.DefaultCollection)
-		if err != nil {
-			return nil, err
-		}
-		dbCollection, err := newDatabaseCollection(ctx, dbContext, dataStore, stats)
-		if err != nil {
-			return nil, err
-		}
-		if options.DefaultCollectionImportFilter != nil {
-			dbCollection.importFilterFunction = options.DefaultCollectionImportFilter
-		}
+			dbCollection, err := newDatabaseCollection(ctx, dbContext, dataStore, stats)
+			if err != nil {
+				return nil, err
+			}
+			if collOpts.Sync != nil {
+				fnChanged, err := dbCollection.UpdateSyncFun(ctx, *collOpts.Sync)
+				if err != nil {
+					return nil, err
+				}
+				if !fnChanged {
+					syncFunctionsChanged = true
+				}
 
-		dbContext.CollectionByID[base.DefaultCollectionID] = dbCollection
-		dbContext.singleCollection = dbCollection
+			}
+
+			if collOpts.ImportFilter != nil {
+				dbCollection.importFilterFunction = collOpts.ImportFilter
+			}
+
+			dbContext.Scopes[scopeName].Collections[collName] = dbCollection
+
+			collectionID := dbCollection.GetCollectionID()
+			dbContext.CollectionByID[collectionID] = dbCollection
+			dbContext.singleCollection = dbCollection
+			collectionNameMap[collName] = struct{}{}
+		}
+		dbContext.CollectionNames[scopeName] = collectionNameMap
+	}
+
+	if syncFunctionsChanged {
+		base.InfofCtx(ctx, base.KeyAll, "**NOTE:** %q's sync function has changed. The new function may assign different channels to documents, or permissions to users. You may want to re-sync the database to update these.", base.MD(dbContext.Name))
 	}
 
 	// Callback that is invoked whenever a set of channels is changed in the ChangeCache
@@ -1693,57 +1683,6 @@ func (db *Database) Compact(ctx context.Context, skipRunningStateCheck bool, cal
 	return purgedDocCount, nil
 }
 
-// ////// SYNC FUNCTION:
-
-// Sets the database context's sync function based on the JS code from config.
-// Returns a boolean indicating whether the function is different from the saved one.
-// If multiple gateway instances try to update the function at the same time (to the same new
-// value) only one of them will get a changed=true result.
-func (dbCtx *DatabaseContext) UpdateSyncFun(ctx context.Context, syncFun string) (changed bool, err error) {
-	if syncFun == "" {
-		dbCtx.ChannelMapper = nil
-	} else if dbCtx.ChannelMapper != nil {
-		_, err = dbCtx.ChannelMapper.SetFunction(syncFun)
-	} else {
-		dbCtx.ChannelMapper = channels.NewChannelMapper(syncFun, dbCtx.Options.JavascriptTimeout)
-	}
-	if err != nil {
-		base.WarnfCtx(ctx, "Error setting sync function: %s", err)
-		return
-	}
-
-	var syncData struct { // format of the sync-fn document
-		Sync string
-	}
-
-	syncFunctionDocID := base.SyncFunctionKeyWithGroupID(dbCtx.Options.GroupID)
-	_, err = dbCtx.MetadataStore.Update(syncFunctionDocID, 0, func(currentValue []byte) ([]byte, *uint32, bool, error) {
-		// The first time opening a new db, currentValue will be nil. Don't treat this as a change.
-		if currentValue != nil {
-			parseErr := base.JSONUnmarshal(currentValue, &syncData)
-			if parseErr != nil || syncData.Sync != syncFun {
-				changed = true
-			}
-		}
-		if changed || currentValue == nil {
-			syncData.Sync = syncFun
-			bytes, err := base.JSONMarshal(syncData)
-			return bytes, nil, false, err
-		} else {
-			return nil, nil, false, base.ErrUpdateCancel // value unchanged, no need to save
-		}
-	})
-
-	if err == base.ErrUpdateCancel {
-		err = nil
-	}
-	return
-}
-
-func (db *Database) UpdateSyncFun(ctx context.Context, syncFun string) (changed bool, err error) {
-	return db.DatabaseContext.UpdateSyncFun(ctx, syncFun)
-}
-
 // Re-runs the sync function on every current document in the database (if doCurrentDocs==true)
 // and/or imports docs in the bucket not known to the gateway (if doImportDocs==true).
 // To be used when the JavaScript sync function changes.
@@ -2270,7 +2209,7 @@ func (dbCtx *DatabaseContext) OnlyDefaultCollection() bool {
 }
 
 // hasDefaultCollection is true if the database is configured with default collection
-func (dbCtx *DatabaseContext) hasDefaultCollection() bool {
+func (dbCtx *DatabaseContext) HasDefaultCollection() bool {
 	_, exists := dbCtx.CollectionByID[base.DefaultCollectionID]
 	return exists
 }
@@ -2329,4 +2268,14 @@ func (dbc *Database) GetDefaultDatabaseCollectionWithUser() (*DatabaseCollection
 // GetSingleDatabaseCollection is a temporary function to return a single collection. This should be a temporary function while collection work is ongoing.
 func (dbc *DatabaseContext) GetSingleDatabaseCollection() *DatabaseCollection {
 	return dbc.singleCollection
+}
+
+func GetScopesConfigForDefaultCollection() ScopesOptions {
+	return map[string]ScopeOptions{
+		base.DefaultScope: ScopeOptions{
+			Collections: map[string]CollectionOptions{
+				base.DefaultCollection: {},
+			},
+		},
+	}
 }
