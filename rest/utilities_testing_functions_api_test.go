@@ -11,6 +11,7 @@ package rest
 import (
 	"context"
 	"log"
+	"runtime"
 	"sync"
 	"testing"
 	"time"
@@ -62,14 +63,17 @@ func runSequentially(rt *RestTester, testFunc func() bool, numTasks int) time.Du
 	return time.Since(startTime)
 }
 
-func runConcurrently(rt *RestTester, testFunc func() bool, numTasks int) time.Duration {
+func runConcurrently(rt *RestTester, testFunc func() bool, numTasks int, numThreads int) time.Duration {
+	tasksPerThread := numTasks / numThreads
 	var wg sync.WaitGroup
 	startTime := time.Now()
-	for i := 0; i < numTasks; i++ {
+	for i := 0; i < numThreads; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			testFunc()
+			for i := 0; i < tasksPerThread; i++ {
+				testFunc()
+			}
 		}()
 	}
 	wg.Wait()
@@ -80,7 +84,10 @@ func runConcurrently(rt *RestTester, testFunc func() bool, numTasks int) time.Du
 // than running it 100 times in succession. A low bar indeed, but can detect some serious
 // bottlenecks, or of course deadlocks.
 func testConcurrently(t *testing.T, rt *RestTester, testFunc func() bool) bool {
-	const numTasks = 1000
+	const numTasks = 10000
+	const numThreads = 4
+
+	assert.GreaterOrEqual(t, runtime.GOMAXPROCS(0), 4, "Not enough OS threads available")
 
 	// prime the pump:
 	runSequentially(rt, testFunc, 5)
@@ -88,29 +95,13 @@ func testConcurrently(t *testing.T, rt *RestTester, testFunc func() bool) bool {
 	base.WarnfCtx(context.TODO(), "---- Starting sequential tasks ----")
 	sequentialDuration := runSequentially(rt, testFunc, numTasks)
 	base.WarnfCtx(context.TODO(), "---- Starting concurrent tasks ----")
-	concurrentDuration := runConcurrently(rt, testFunc, numTasks)
+	concurrentDuration := runConcurrently(rt, testFunc, numTasks, numThreads)
 	base.WarnfCtx(context.TODO(), "---- End ----")
 
 	log.Printf("---- %d sequential took %v, concurrent took %v ... speedup is %f",
 		numTasks, sequentialDuration, concurrentDuration,
 		float64(sequentialDuration)/float64(concurrentDuration))
 	return assert.LessOrEqual(t, float64(concurrentDuration), 1.1*float64(sequentialDuration))
-}
-
-func TestFunctions(t *testing.T) {
-	//TODO: Switch back to NewRestTester()
-	rt := NewRestTesterDefaultCollection(t, &RestTesterConfig{GuestEnabled: true, EnableUserQueries: true, DatabaseConfig: kGraphQLTestConfig})
-	defer rt.Close()
-
-	t.Run("GraphQL with variables", func(t *testing.T) {
-		testConcurrently(t, rt, func() bool {
-			response := rt.SendRequest("POST", "/{{.db}}/_graphql",
-				`{"query": "query($number:Int!){ square(n:$number) }",
-				  "variables": {"number": 13}}`)
-			return assert.Equal(t, 200, response.Result().StatusCode) &&
-				assert.Equal(t, "{\"data\":{\"square\":169}}", string(response.BodyBytes()))
-		})
-	})
 }
 
 func TestFunctionsConcurrently(t *testing.T) {
@@ -129,6 +120,16 @@ func TestFunctionsConcurrently(t *testing.T) {
 	t.Run("GraphQL", func(t *testing.T) {
 		testConcurrently(t, rt, func() bool {
 			response := rt.SendRequest("POST", "/{{.db}}/_graphql", `{"query":"query{ square(n:13) }"}`)
+			return assert.Equal(t, 200, response.Result().StatusCode) &&
+				assert.Equal(t, "{\"data\":{\"square\":169}}", string(response.BodyBytes()))
+		})
+	})
+
+	t.Run("GraphQL with variables", func(t *testing.T) {
+		testConcurrently(t, rt, func() bool {
+			response := rt.SendRequest("POST", "/{{.db}}/_graphql",
+				`{"query": "query($number:Int!){ square(n:$number) }",
+				  "variables": {"number": 13}}`)
 			return assert.Equal(t, 200, response.Result().StatusCode) &&
 				assert.Equal(t, "{\"data\":{\"square\":169}}", string(response.BodyBytes()))
 		})
