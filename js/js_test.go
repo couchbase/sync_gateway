@@ -9,9 +9,9 @@ import (
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/snej/v8go"
 	"github.com/stretchr/testify/assert"
 	"golang.org/x/net/context"
-	"rogchap.com/v8go"
 )
 
 func TestSquare(t *testing.T) {

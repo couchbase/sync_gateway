@@ -6,7 +6,7 @@ import (
 	"math"
 
 	"github.com/couchbase/sync_gateway/base"
-	v8 "rogchap.com/v8go"
+	v8 "github.com/snej/v8go"
 )
 
 // CONVERTING V8 VALUES BACK TO GO:

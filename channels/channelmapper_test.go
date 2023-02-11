@@ -17,7 +17,7 @@ import (
 	"github.com/couchbase/sync_gateway/js"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	// Docs: https://pkg.go.dev/rogchap.com/v8go
+	// Docs: https://pkg.go.dev/github.com/snej/v8go
 )
 
 func parse(jsonStr string) map[string]interface{} {

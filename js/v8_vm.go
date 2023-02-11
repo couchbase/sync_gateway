@@ -6,10 +6,10 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
-	v8 "rogchap.com/v8go"
+	v8 "github.com/snej/v8go"
 )
 
-// v8go docs:			https://pkg.go.dev/rogchap.com/v8go
+// v8go docs:			https://pkg.go.dev/github.com/snej/v8go
 // General V8 API docs: https://v8.dev/docs/embed
 
 type v8VM struct {

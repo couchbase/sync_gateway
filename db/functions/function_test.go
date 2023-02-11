@@ -21,9 +21,9 @@ import (
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/js"
+	v8 "github.com/snej/v8go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	v8 "rogchap.com/v8go"
 )
 
 const kUserFunctionMaxCallDepth = 20

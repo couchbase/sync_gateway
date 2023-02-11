@@ -35,7 +35,7 @@ require (
 	golang.org/x/oauth2 v0.0.0-20220718184931-c8730f7fcb92
 	gopkg.in/couchbaselabs/gocbconnstr.v1 v1.0.4
 	gopkg.in/square/go-jose.v2 v2.6.0
-	rogchap.com/v8go v0.7.0
+	github.com/snej/v8go v1.7.2
 )
 
 require (

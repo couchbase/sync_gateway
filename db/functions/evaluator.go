@@ -13,7 +13,7 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/js"
-	v8 "rogchap.com/v8go" // Docs: https://pkg.go.dev/rogchap.com/v8go
+	v8 "github.com/snej/v8go" // Docs: https://pkg.go.dev/github.com/snej/v8go
 )
 
 // The JavaScript code run in a context, that defines the API, embedded in a string constant.

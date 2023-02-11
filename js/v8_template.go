@@ -5,7 +5,7 @@ import (
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/pkg/errors"
-	v8 "rogchap.com/v8go"
+	v8 "github.com/snej/v8go"
 )
 
 // A V8Template manages a Service's initial JS runtime environment -- its script code, main function

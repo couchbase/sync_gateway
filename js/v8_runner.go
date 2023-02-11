@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
-	v8 "rogchap.com/v8go" // Docs: https://pkg.go.dev/rogchap.com/v8go
+	v8 "github.com/snej/v8go" // Docs: https://pkg.go.dev/github.com/snej/v8go
 )
 
 type V8Runner struct {
