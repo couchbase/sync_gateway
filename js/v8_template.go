@@ -90,7 +90,7 @@ type TemplateCallback = func(r *V8Runner, this *v8.Object, args []*v8.Value) (re
 
 // Defines a JS global function that calls calls into the given Go function.
 func (t *V8BasicTemplate) GlobalCallback(name string, cb TemplateCallback) {
-	t.global.Set(name, t.NewCallback(cb), v8.ReadOnly)
+	_ = t.global.Set(name, t.NewCallback(cb), v8.ReadOnly)
 }
 
 // Creates a JS function-template object that calls into the given Go function.
@@ -137,7 +137,9 @@ func newV8Template(vm *v8VM, service *Service) (V8Template, error) {
 		vm:     vm,
 		global: v8.NewObjectTemplate(vm.iso),
 	}
-	basicTmpl.defineSgLog() // Maybe make this optional?
+	if err := basicTmpl.defineSgLog(); err != nil {
+		return nil, err
+	}
 
 	var tmpl V8Template
 	var err error
@@ -160,8 +162,8 @@ func newV8Template(vm *v8VM, service *Service) (V8Template, error) {
 }
 
 // Defines a global `sg_log` function that writes to SG's log.
-func (service *V8BasicTemplate) defineSgLog() {
-	service.global.Set("sg_log", service.NewCallback(func(r *V8Runner, this *v8.Object, args []*v8.Value) (any, error) {
+func (service *V8BasicTemplate) defineSgLog() error {
+	return service.global.Set("sg_log", service.NewCallback(func(r *V8Runner, this *v8.Object, args []*v8.Value) (any, error) {
 		if len(args) >= 2 {
 			level := base.LogLevel(args[0].Integer())
 			msg := args[1].String()

@@ -2244,7 +2244,7 @@ func (col *DatabaseCollectionWithUser) getChannelsAndAccess(ctx context.Context,
 			delete(checkBody, "_rev")
 			jCheck, _ := json.Marshal(checkBody)
 			var raw Body
-			raw.Unmarshal(doc._rawBody)
+			_ = raw.Unmarshal(doc._rawBody)
 			jRaw, _ := json.Marshal(raw)
 			if string(jCheck) != string(jRaw) {
 				base.WarnfCtx(ctx, "$$$$$ getChannelsAndAccess: body doesn't match rawBody:\nbody= %s\nraw=  %s", jCheck, jRaw)

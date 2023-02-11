@@ -40,19 +40,29 @@ type functionServiceTemplate struct {
 func makeService(functions *FunctionsConfig, graphql *GraphQLConfig) js.TemplateFactory {
 	return func(base *js.V8BasicTemplate) (js.V8Template, error) {
 		// Initialize the BaseService and compile the JS code:
-		base.SetScript(kJavaScriptCode + "\n SG_Engine.main;")
+		if err := base.SetScript(kJavaScriptCode + "\n SG_Engine.main;"); err != nil {
+			return nil, err
+		}
 
 		// Create the top-level 'process' namespace that Apollo's libraries expect:
 		process := base.NewObjectTemplate()
-		process.Set("env", base.NewObjectTemplate())
-		mustNoError(base.Global().Set("process", process))
+		if err := process.Set("env", base.NewObjectTemplate()); err != nil {
+			return nil, err
+		} else if err := base.Global().Set("process", process); err != nil {
+			return nil, err
+		}
 
 		// Create the template for the "upstream" object containing the callbacks to Go:
 		upstream := base.NewObjectTemplate()
-		upstream.Set("query", base.NewCallback(doQuery))
-		upstream.Set("get", base.NewCallback(doGet))
-		upstream.Set("save", base.NewCallback(doSave))
-		upstream.Set("delete", base.NewCallback(doDelete))
+		if err := upstream.Set("query", base.NewCallback(doQuery)); err != nil {
+			return nil, err
+		} else if err := upstream.Set("get", base.NewCallback(doGet)); err != nil {
+			return nil, err
+		} else if err := upstream.Set("save", base.NewCallback(doSave)); err != nil {
+			return nil, err
+		} else if err := upstream.Set("delete", base.NewCallback(doDelete)); err != nil {
+			return nil, err
+		}
 
 		// Create a JS string of the configuration JSON:
 		jsonConfig := mustSucceed(json.Marshal(jsConfig{Functions: functions, GraphQL: graphql}))
@@ -158,14 +168,14 @@ func newEvaluator(runner *js.V8Runner) (*evaluator, error) {
 	if errorsVal, err := eval.api.Get("errors"); err != nil {
 		return nil, err
 	} else if errorArray, _ := errorsVal.AsArray(); errorArray != nil {
-		var errors base.MultiError
+		var errors *base.MultiError
 		len := errorArray.Length()
 		for i := uint32(0); i < len; i++ {
 			if errorVal, err := errorArray.GetIdx(i); err == nil {
-				errors.Append(fmt.Errorf(errorVal.String()))
+				errors = errors.Append(fmt.Errorf(errorVal.String()))
 			}
 		}
-		return nil, &errors
+		return nil, errors
 	}
 
 	eval.functionFn = mustGetV8Fn(eval.api, "callFunction")

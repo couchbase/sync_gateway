@@ -39,7 +39,7 @@ func newOttoRunner(vm *ottoVM, service *Service) (*OttoRunner, error) {
 	}
 
 	// Redirect JS logging to the SG console:
-	ottoVM.Set("sg_log", func(call otto.FunctionCall) otto.Value {
+	err = ottoVM.Set("sg_log", func(call otto.FunctionCall) otto.Value {
 		ilevel, _ := call.ArgumentList[0].ToInteger()
 		message, _ := call.ArgumentList[1].ToString()
 		extra := ""
@@ -59,12 +59,18 @@ func newOttoRunner(vm *ottoVM, service *Service) (*OttoRunner, error) {
 		base.LogfTo(r.ContextOrDefault(), level, key, "%s %s", message, base.UD(extra))
 		return otto.UndefinedValue()
 	})
-	ottoVM.Run(`
+	if err != nil {
+		return nil, err
+	}
+	_, err = ottoVM.Run(`
 		console.trace = function(msg,a,b,c,d) {sg_log(5, msg,a,b,c,d);};
 		console.debug = function(msg,a,b,c,d) {sg_log(4, msg,a,b,c,d);};
 		console.log   = function(msg,a,b,c,d) {sg_log(3, msg,a,b,c,d);};
 		console.warn  = function(msg,a,b,c,d) {sg_log(2, msg,a,b,c,d);};
 		console.error = function(msg,a,b,c,d) {sg_log(1, msg,a,b,c,d);};`)
+	if err != nil {
+		return nil, err
+	}
 
 	return r, nil
 }
