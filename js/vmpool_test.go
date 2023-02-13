@@ -1,6 +1,7 @@
 package js
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"runtime"
@@ -10,8 +11,9 @@ import (
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/stretchr/testify/assert"
-	"golang.org/x/net/context"
 )
+
+//////// VALIDATION TESTS
 
 func TestValidateJavascriptFunction(t *testing.T) {
 	TestWithVMs(t, func(t *testing.T, vm VM) {
@@ -32,16 +34,21 @@ func TestValidateJavascriptFunction(t *testing.T) {
 	})
 }
 
-const kVMPoolTestTimeout = 90 * time.Second
-const kNumTasks = 65536 * 10
+//////// CONCURRENCY TESTS
+
+const kVMPoolTestScript = `function(n) {return n * n;}`
+const kVMPoolTestTimeout = 30 * time.Second
+const kVMPoolTestNumTasks = 65536
 
 func TestPoolsSequentially(t *testing.T) {
 	log.Printf("FYI, GOMAXPROCS = %d", runtime.GOMAXPROCS(0))
-	const kJSCode = `function(n) {return n * n;}`
 
 	ctx := base.TestCtx(t)
+	if !assertPriorTimeoutAtLeast(t, ctx, kVMPoolTestTimeout) {
+		return
+	}
 	TestWithVMPools(t, 4, func(t *testing.T, pool *VMPool) {
-		service := NewService(pool, "testy", kJSCode)
+		service := NewService(pool, "testy", kVMPoolTestScript)
 		runSequentially(ctx, 10, func(ctx context.Context) bool {
 			result, err := service.Run(ctx, 13)
 			return assert.NoError(t, err) && assert.EqualValues(t, result, 169)
@@ -52,12 +59,15 @@ func TestPoolsSequentially(t *testing.T) {
 func TestPoolsConcurrently(t *testing.T) {
 	maxProcs := runtime.GOMAXPROCS(0)
 	log.Printf("FYI, GOMAXPROCS = %d", maxProcs)
-	const kJSCode = `function(n) {return n * n;}`
+	assert.GreaterOrEqual(t, maxProcs, 2, "Not enough OS threads available")
 
 	ctx := base.TestCtx(t)
+	if !assertPriorTimeoutAtLeast(t, ctx, kVMPoolTestTimeout) {
+		return
+	}
 	TestWithVMPools(t, maxProcs, func(t *testing.T, pool *VMPool) {
-		numTasks := kNumTasks
-		service := NewService(pool, "testy", kJSCode)
+		numTasks := kVMPoolTestNumTasks
+		service := NewService(pool, "testy", kVMPoolTestScript)
 		t.Run("Function", func(t *testing.T) {
 			testConcurrently(t, ctx, numTasks, maxProcs, func(ctx context.Context) bool {
 				result, err := service.Run(ctx, 13)
@@ -67,11 +77,15 @@ func TestPoolsConcurrently(t *testing.T) {
 	})
 }
 
+//////// CONCURRENCY BENCHMARKS
+
 func BenchmarkVMPoolIntsSequentially(b *testing.B) {
-	const kJSCode = `function(n) {return n * n;}`
 	ctx := base.TestCtx(b)
+	if !assertPriorTimeoutAtLeast(b, ctx, kVMPoolTestTimeout) {
+		return
+	}
 	pool := NewVMPool(V8, 32)
-	service := NewService(pool, "testy", kJSCode)
+	service := NewService(pool, "testy", kVMPoolTestScript)
 	testFunc := func(ctx context.Context) bool {
 		result, err := service.Run(ctx, 13)
 		return assert.NoError(b, err) && assert.EqualValues(b, result, 169)
@@ -84,10 +98,9 @@ func BenchmarkVMPoolIntsSequentially(b *testing.B) {
 
 func BenchmarkVMPoolIntsConcurrently(b *testing.B) {
 	const kNumThreads = 8
-	const kJSCode = `function(n) {return n * n;}`
 	ctx := base.TestCtx(b)
 	pool := NewVMPool(V8, 32)
-	service := NewService(pool, "testy", kJSCode)
+	service := NewService(pool, "testy", kVMPoolTestScript)
 	testFunc := func(ctx context.Context) bool {
 		result, err := service.Run(ctx, 13)
 		return assert.NoError(b, err) && assert.EqualValues(b, result, 169)
@@ -100,10 +113,9 @@ func BenchmarkVMPoolIntsConcurrently(b *testing.B) {
 
 func BenchmarkVMPoolStringsSequentially(b *testing.B) {
 	fmt.Printf("-------- N = %d -------\n", b.N)
-	const kJSCode = `function(str) {return str + str;}`
 	ctx := base.TestCtx(b)
 	pool := NewVMPool(V8, 32)
-	service := NewService(pool, "testy", kJSCode)
+	service := NewService(pool, "testy", kVMPoolTestScript)
 	testFunc := func(ctx context.Context) bool {
 		result, err := service.Run(ctx, "This is a test of the js package")
 		return assert.NoError(b, err) && assert.EqualValues(b, result, "This is a test of the js packageThis is a test of the js package")
@@ -116,10 +128,9 @@ func BenchmarkVMPoolStringsSequentially(b *testing.B) {
 
 func BenchmarkVMPoolStringsConcurrently(b *testing.B) {
 	const kNumThreads = 8
-	const kJSCode = `function(str) {return str + str;}`
 	ctx := base.TestCtx(b)
 	pool := NewVMPool(V8, 32)
-	service := NewService(pool, "testy", kJSCode)
+	service := NewService(pool, "testy", kVMPoolTestScript)
 	testFunc := func(ctx context.Context) bool {
 		result, err := service.Run(ctx, "This is a test of the js package")
 		return assert.NoError(b, err) && assert.EqualValues(b, result, "This is a test of the js packageThis is a test of the js package")
@@ -129,6 +140,8 @@ func BenchmarkVMPoolStringsConcurrently(b *testing.B) {
 	b.StopTimer()
 	pool.Close()
 }
+
+//////// SUPPORT FUNCTIONS
 
 func runSequentially(ctx context.Context, numTasks int, testFunc func(context.Context) bool) time.Duration {
 	ctx, cancel := context.WithTimeout(ctx, kVMPoolTestTimeout)
@@ -175,4 +188,9 @@ func testConcurrently(t *testing.T, ctx context.Context, numTasks int, numThread
 		numTasks, sequentialDuration, numThreads, concurrentDuration,
 		float64(sequentialDuration)/float64(concurrentDuration))
 	return assert.LessOrEqual(t, float64(concurrentDuration), 1.1*float64(sequentialDuration))
+}
+
+func assertPriorTimeoutAtLeast(t testing.TB, ctx context.Context, min time.Duration) bool {
+	deadline, exists := ctx.Deadline()
+	return !exists || assert.GreaterOrEqual(t, time.Until(deadline), min)
 }

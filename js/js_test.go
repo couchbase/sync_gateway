@@ -1,6 +1,7 @@
 package js
 
 import (
+	"context"
 	"encoding/json"
 	"math"
 	"math/big"
@@ -11,7 +12,6 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/snej/v8go"
 	"github.com/stretchr/testify/assert"
-	"golang.org/x/net/context"
 )
 
 func TestSquare(t *testing.T) {

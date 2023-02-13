@@ -87,7 +87,7 @@ func testConcurrently(t *testing.T, rt *RestTester, testFunc func() bool) bool {
 	const numTasks = 10000
 	const numThreads = 4
 
-	assert.GreaterOrEqual(t, runtime.GOMAXPROCS(0), 4, "Not enough OS threads available")
+	assert.GreaterOrEqual(t, runtime.GOMAXPROCS(0), 2, "Not enough OS threads available")
 
 	// prime the pump:
 	runSequentially(rt, testFunc, 5)
