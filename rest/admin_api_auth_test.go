@@ -181,7 +181,7 @@ func TestCheckRoles(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 	SGWorBFArole := RouteRole{MobileSyncGatewayRole.RoleName, true}
-	if !rt.IsServerEnterprise(t) {
+	if base.TestsUseServerCE() {
 		SGWorBFArole = RouteRole{BucketFullAccessRole.RoleName, true}
 	}
 
@@ -845,7 +845,7 @@ func TestAdminAPIAuth(t *testing.T) {
 	}
 
 	SGWorBFArole := MobileSyncGatewayRole.RoleName
-	if !rt.IsServerEnterprise(t) {
+	if base.TestsUseServerCE() {
 		SGWorBFArole = BucketFullAccessRole.RoleName
 	}
 	eps, httpClient, err := rt.ServerContext().ObtainManagementEndpointsAndHTTPClient()
@@ -860,7 +860,7 @@ func TestAdminAPIAuth(t *testing.T) {
 	MakeUser(t, httpClient, eps[0], "ROAdminUser", "password", []string{ReadOnlyAdminRole.RoleName})
 	defer DeleteUser(t, httpClient, eps[0], "ROAdminUser")
 
-	if rt.IsServerEnterprise(t) {
+	if base.TestsUseServerCE() {
 		MakeUser(t, httpClient, eps[0], "ClusterAdminUser", "password", []string{ClusterAdminRole.RoleName})
 		defer DeleteUser(t, httpClient, eps[0], "ClusterAdminUser")
 	}
@@ -894,7 +894,7 @@ func TestAdminAPIAuth(t *testing.T) {
 						RequireStatus(t, resp, http.StatusForbidden)
 					}
 
-					if rt.IsServerEnterprise(t) {
+					if base.TestsUseServerCE() {
 						resp = rt.SendAdminRequestWithAuth(endPoint.Method, endPoint.Endpoint, body, "ClusterAdminUser", "password")
 						assert.True(t, resp.Code != http.StatusUnauthorized && resp.Code != http.StatusForbidden)
 					}
@@ -918,7 +918,7 @@ func TestDisablePermissionCheck(t *testing.T) {
 
 	rt := NewRestTester(t, nil)
 	SGWorBFArole := RouteRole{MobileSyncGatewayRole.RoleName, true}
-	if !rt.IsServerEnterprise(t) {
+	if base.TestsUseServerCE() {
 		SGWorBFArole = RouteRole{BucketFullAccessRole.RoleName, true}
 	}
 	rt.Close()
@@ -1469,7 +1469,7 @@ func TestCreateDBSpecificBucketPerm(t *testing.T) {
 	defer rt.Close()
 
 	SGWorBFArole := RouteRole{MobileSyncGatewayRole.RoleName, true}
-	if !rt.IsServerEnterprise(t) {
+	if base.TestsUseServerCE() {
 		SGWorBFArole = RouteRole{BucketFullAccessRole.RoleName, true}
 	}
 

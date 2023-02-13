@@ -11,7 +11,11 @@ licenses/APL2.txt.
 package rest
 
 import (
+	"fmt"
 	"log"
+	"net/http"
+	"net/url"
+	"strings"
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -98,4 +102,20 @@ func TestAttachmentRoundTrip(t *testing.T) {
 	assert.Equal(t, "", attachments["baz"].Digest)
 	assert.Equal(t, []byte{}, attachments["baz"].Data) // data field is explicitly ignored
 
+}
+
+func TestCECheck(t *testing.T) {
+	if base.TestsUseServerCE() {
+		rt := NewRestTester(t, nil)
+		defer rt.Close()
+		form := url.Values{}
+		form.Add("password", "password")
+		form.Add("roles", "[mobile_sync_Gateway]")
+		eps, _, err := rt.ServerContext().ObtainManagementEndpointsAndHTTPClient()
+		require.NoError(t, err)
+
+		req, err := http.NewRequest("PUT", fmt.Sprintf("%s/settings/rbac/users/local/%s", eps[0], "username"), strings.NewReader(form.Encode()))
+		require.Error(t, err)
+		require.Equal(t, req, http.StatusBadRequest)
+	}
 }
