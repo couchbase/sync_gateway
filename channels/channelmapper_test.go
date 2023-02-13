@@ -9,6 +9,7 @@
 package channels
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -594,6 +595,31 @@ func TestCollectionSyncFunction(t *testing.T) {
 			res, err := mapper.MapToChannelsAndAccess(parse(test.docBody), `{}`, emptyMetaMap(), noUser)
 			require.NoError(t, err)
 			require.Equal(t, BaseSetOf(t, collectionName), res.Channels)
+		})
+	}
+}
+
+func TestGetDefaultSyncFunction(t *testing.T) {
+	testCases := []struct {
+		scopeName      string
+		collectionName string
+		syncFn         string
+	}{
+		{
+			scopeName:      base.DefaultScope,
+			collectionName: base.DefaultCollection,
+			syncFn:         DocChannelsSyncFunction,
+		},
+		{
+			scopeName:      "fooscope",
+			collectionName: "barcollection",
+			syncFn:         `function(doc){channel("barcollection");}`,
+		},
+	}
+
+	for _, test := range testCases {
+		t.Run(fmt.Sprintf("%s.%s", test.scopeName, test.collectionName), func(t *testing.T) {
+			require.Equal(t, test.syncFn, GetDefaultSyncFunction(test.scopeName, test.collectionName))
 		})
 	}
 }
