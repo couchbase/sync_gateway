@@ -109,7 +109,7 @@ type DatabaseContext struct {
 	OIDCProviders               auth.OIDCProviderMap // OIDC clients
 	LocalJWTProviders           auth.LocalJWTProviderMap
 	PurgeInterval               time.Duration // Metadata purge interval
-	serverUUID                  string        // UUID of the server, if available
+	ServerUUID                  string        // UUID of the server, if available
 
 	DbStats      *base.DbStats // stats that correspond to this database context
 	CompactState uint32        // Status of database compaction
@@ -257,6 +257,14 @@ func ValidateDatabaseName(dbName string) error {
 	return nil
 }
 
+// getNewDatabaseSleeperFunc returns a sleeper function during database connection
+func getNewDatabaseSleeperFunc() base.RetrySleeper {
+	return base.CreateDoublingSleeperFunc(
+		13, // MaxNumRetries approx 40 seconds total retry duration
+		5,  // InitialRetrySleepTimeMS
+	)
+}
+
 // connectToBucketErrorHandling takes the given spec and error and returns a formatted error, along with whether it was a fatal error.
 func connectToBucketErrorHandling(ctx context.Context, spec base.BucketSpec, gotErr error) (fatalError bool, err error) {
 	if gotErr != nil {
@@ -304,13 +312,8 @@ func connectToBucket(ctx context.Context, spec base.BucketSpec) (base.Bucket, er
 		return shouldRetry, newErr, bucket
 	}
 
-	sleeper := base.CreateDoublingSleeperFunc(
-		13, // MaxNumRetries approx 40 seconds total retry duration
-		5,  // InitialRetrySleepTimeMS
-	)
-
 	description := fmt.Sprintf("Attempt to connect to bucket : %v", spec.BucketName)
-	err, ibucket := base.RetryLoop(description, worker, sleeper)
+	err, ibucket := base.RetryLoop(description, worker, getNewDatabaseSleeperFunc())
 	if err != nil {
 		return nil, err
 	}
@@ -324,6 +327,22 @@ func GetConnectToBucketFn(failFast bool) OpenBucketFn {
 		return connectToBucketFailFast
 	}
 	return connectToBucket
+}
+
+// Returns Couchbase Server Cluster UUID on a timeout. If running against walrus, do return an empty string.
+func getServerUUID(ctx context.Context, bucket base.Bucket) (string, error) {
+	gocbV2Bucket, err := base.AsGocbV2Bucket(bucket)
+	if err != nil {
+		return "", nil
+	}
+	// start a retry loop to get server ID
+	worker := func() (bool, error, interface{}) {
+		uuid, err := base.GetServerUUID(gocbV2Bucket)
+		return err != nil, err, uuid
+	}
+
+	err, uuid := base.RetryLoopCtx("Getting ServerUUID", worker, getNewDatabaseSleeperFunc(), ctx)
+	return uuid.(string), err
 }
 
 // Function type for something that calls NewDatabaseContext and wants a callback when the DB is detected
@@ -366,6 +385,10 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 		return nil, statsError
 	}
 
+	serverUUID, err := getServerUUID(ctx, bucket)
+	if err != nil {
+		return nil, err
+	}
 	dbContext := &DatabaseContext{
 		Name:           dbName,
 		UUID:           cbgt.NewUUID(),
@@ -376,6 +399,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 		Options:        options,
 		DbStats:        dbStats,
 		CollectionByID: make(map[uint32]*DatabaseCollection),
+		ServerUUID:     serverUUID,
 	}
 
 	cleanupFunctions = append(cleanupFunctions, func() {
@@ -392,7 +416,6 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 
 	dbContext.EventMgr = NewEventManager(dbContext.terminator)
 
-	var err error
 	dbContext.sequences, err = newSequenceAllocator(metadataStore, dbContext.DbStats.Database())
 	if err != nil {
 		return nil, err
@@ -744,32 +767,6 @@ func (context *DatabaseContext) GetOIDCProvider(providerName string) (*auth.OIDC
 	} else {
 		return nil, base.RedactErrorf("No provider found for provider name %q", base.MD(providerName))
 	}
-}
-
-func (dbCtx *DatabaseContext) GetServerUUID(ctx context.Context) string {
-
-	dbCtx.BucketLock.RLock()
-	defer dbCtx.BucketLock.RUnlock()
-
-	// Lazy load the server UUID, if we can get it.
-	if dbCtx.serverUUID == "" {
-		cbs, ok := base.AsCouchbaseBucketStore(dbCtx.Bucket)
-		if !ok {
-			base.WarnfCtx(ctx, "Database %v: Unable to get server UUID. Underlying bucket type was not GoCBBucket.", base.MD(dbCtx.Name))
-			return ""
-		}
-
-		uuid, err := cbs.ServerUUID()
-		if err != nil {
-			base.WarnfCtx(ctx, "Database %v: Unable to get server UUID: %v", base.MD(dbCtx.Name), err)
-			return ""
-		}
-
-		base.DebugfCtx(ctx, base.KeyAll, "Database %v: Got server UUID %v", base.MD(dbCtx.Name), base.MD(uuid))
-		dbCtx.serverUUID = uuid
-	}
-
-	return dbCtx.serverUUID
 }
 
 func (context *DatabaseContext) Close(ctx context.Context) {

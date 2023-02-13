@@ -427,7 +427,7 @@ func (h *handler) handleGetDB() error {
 		PurgeSequenceNumber:           0, // TODO: Should track this value
 		DiskFormatVersion:             0, // Probably meaningless, but add for compatibility
 		State:                         runState,
-		ServerUUID:                    h.db.DatabaseContext.GetServerUUID(h.ctx()),
+		ServerUUID:                    h.db.DatabaseContext.ServerUUID,
 		// TODO: If running with multiple scope/collections
 		// Scopes: map[string]databaseRootScope{
 		// 	"scope1": {
