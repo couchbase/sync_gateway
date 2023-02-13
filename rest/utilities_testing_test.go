@@ -105,6 +105,9 @@ func TestAttachmentRoundTrip(t *testing.T) {
 }
 
 func TestCECheck(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("Only works with CBS")
+	}
 	if base.TestsUseServerCE() {
 		rt := NewRestTester(t, nil)
 		defer rt.Close()
