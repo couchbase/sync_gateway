@@ -1535,3 +1535,66 @@ func TestMergeAttachments(t *testing.T) {
 		})
 	}
 }
+
+func TestGetChannelsAndAccess(t *testing.T) {
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
+	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	require.Nil(t, collection.ChannelMapper)
+
+	doc := &Document{
+		ID: "doc1",
+	}
+
+	testCases := []struct {
+		body                      string
+		defaultCollectionChannels base.Set
+		name                      string
+	}{
+		{
+			body:                      `{}`,
+			defaultCollectionChannels: nil,
+			name:                      "emptyDoc",
+		},
+		{
+			body:                      `{"channels": "ABC"}`,
+			defaultCollectionChannels: base.SetOf("ABC"),
+			name:                      "ChannelsABCString",
+		},
+		{
+			body:                      `{"channels": ["ABC"]}`,
+			defaultCollectionChannels: base.SetOf("ABC"),
+			name:                      "ChannelsABCArray",
+		},
+		{
+			body:                      `{"channels": ["ABC", "DEF"]}`,
+			defaultCollectionChannels: base.SetOf("ABC", "DEF"),
+			name:                      "ChannelsABCDEF",
+		},
+		{
+			body:                      `{"key": "value"}`,
+			defaultCollectionChannels: nil,
+			name:                      "NoChannelsInDoc",
+		},
+	}
+
+	for _, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+			body := Body{}
+			require.NoError(t, body.Unmarshal([]byte(test.body)))
+			result, access, roles, expiry, oldJson, err := collection.getChannelsAndAccess(base.TestCtx(t), doc, body, nil, "")
+			require.NoError(t, err)
+			require.Equal(t, "", oldJson)
+			require.Nil(t, expiry)
+			require.Nil(t, expiry)
+			require.Nil(t, access)
+			require.Nil(t, roles)
+			if collection.IsDefaultCollection() {
+				require.Equal(t, test.defaultCollectionChannels, result)
+			} else {
+				require.Equal(t, base.SetOf(collection.Name), result)
+
+			}
+		})
+	}
+}
