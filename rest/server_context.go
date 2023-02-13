@@ -593,8 +593,8 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 			}
 			for collName, collCfg := range scopeCfg.Collections {
 				contextOptions.Scopes[scopeName].Collections[collName] = db.CollectionOptions{
-					Sync:               collCfg.SyncFn,
-					ImportFilterSource: collCfg.ImportFilter,
+					Sync:         collCfg.SyncFn,
+					ImportFilter: collCfg.ImportFilter,
 				}
 
 			}
@@ -710,9 +710,8 @@ func getJavascriptTimeout(config *DbConfig) time.Duration {
 // newBaseImportOptions returns a prepopulated ImportOptions struct with values that are database wide.
 func newBaseImportOptions(config *DbConfig, serverless bool) *db.ImportOptions {
 	// Identify import options
-	importOptions := db.ImportOptions{
-		ImportFilterSource: config.ImportFilter,
-		BackupOldRev:       base.BoolDefault(config.ImportBackupOldRev, false),
+	importOptions := &db.ImportOptions{
+		BackupOldRev: base.BoolDefault(config.ImportBackupOldRev, false),
 	}
 
 	if config.ImportPartitions == nil {
@@ -720,7 +719,7 @@ func newBaseImportOptions(config *DbConfig, serverless bool) *db.ImportOptions {
 	} else {
 		importOptions.ImportPartitions = *config.ImportPartitions
 	}
-	return &importOptions
+	return importOptions
 
 }
 
@@ -943,12 +942,11 @@ func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConf
 		ClientPartitionWindow:         clientPartitionWindow,
 		BcryptCost:                    bcryptCost,
 		GroupID:                       groupID,
+		JavaScriptEngine:              config.JavaScriptEngine,
 		JavascriptTimeout:             javascriptTimeout,
 		Serverless:                    sc.Config.IsServerless(),
 		DefaultCollectionImportFilter: config.ImportFilter,
-		JavaScriptEngine:              config.JavaScriptEngine,
-		// FunctionsConfig:        config.UserFunctions, // behind feature flag (see below)
-		// GraphQLConfig:          config.GraphQL,       // behind feature flag (see below)
+		// FunctionsConfig:            // behind feature flag (see below)
 	}
 
 	if sc.Config.Unsupported.UserQueries != nil && *sc.Config.Unsupported.UserQueries {

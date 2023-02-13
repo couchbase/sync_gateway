@@ -20,6 +20,22 @@ import (
 	"github.com/couchbase/sync_gateway/js"
 )
 
+/** Result of running a channel-mapper function. */
+type ChannelMapperOutput struct {
+	Channels  base.Set  // channels assigned to the document via channel() callback
+	Roles     AccessMap // roles granted to users via role() callback
+	Access    AccessMap // channels granted to users via access() callback
+	Rejection error     // Error associated with failed validate (require callbacks, etc)
+	Expiry    *uint32   // Expiry value specified by expiry() callback.  Standard CBS expiry format: seconds if less than 30 days, epoch time otherwise
+}
+
+// The object that runs the sync function.
+type ChannelMapper struct {
+	service  *js.Service
+	timeout  time.Duration
+	fnSource string
+}
+
 // Maps user names (or role names prefixed with "role:") to arrays of channel or role names
 type AccessMap map[string]base.Set
 
@@ -55,25 +71,7 @@ func (meta MetaMap) MarshalJSON() ([]byte, error) {
 // Prefix used to identify roles in access grants
 const RoleAccessPrefix = "role:"
 
-/** Result of running a channel-mapper function. */
-type ChannelMapperOutput struct {
-	Channels  base.Set  // channels assigned to the document via channel() callback
-	Roles     AccessMap // roles granted to users via role() callback
-	Access    AccessMap // channels granted to users via access() callback
-	Rejection error     // Error associated with failed validate (require callbacks, etc)
-	Expiry    *uint32   // Expiry value specified by expiry() callback.  Standard CBS expiry format: seconds if less than 30 days, epoch time otherwise
-}
-
-// The object that runs the sync function.
-type ChannelMapper struct {
-	service  *js.Service
-	timeout  time.Duration
-	fnSource string
-}
-
 const DefaultSyncFunction = `function(doc){channel(doc.channels);}`
-
-const kChannelMapperServiceName = "channelMapper"
 
 // The JavaScript code run by the SyncRunner; the sync fn is copied into it.
 // See wrappedFuncSource().
@@ -86,7 +84,7 @@ var kSyncFnHostScriptModern string
 
 // Creates a ChannelMapper.
 func NewChannelMapper(owner js.ServiceHost, fnSource string, timeout time.Duration) *ChannelMapper {
-	service := js.NewService(owner, kChannelMapperServiceName, wrappedFuncSource(fnSource, owner))
+	service := js.NewService(owner, "channelMapper", wrappedFuncSource(fnSource, owner))
 	return &ChannelMapper{
 		service:  service,
 		timeout:  timeout,
@@ -108,7 +106,7 @@ func (mapper *ChannelMapper) Function() string {
 func (mapper *ChannelMapper) SetFunction(fnSource string) error {
 	host := mapper.service.Host()
 	mapper.fnSource = fnSource
-	mapper.service = js.NewService(host, kChannelMapperServiceName, wrappedFuncSource(fnSource, host))
+	mapper.service = js.NewService(host, "channelMapper", wrappedFuncSource(fnSource, host))
 	return nil
 }
 

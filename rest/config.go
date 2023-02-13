@@ -694,25 +694,24 @@ func (dbConfig *DbConfig) validateVersion(ctx context.Context, isEnterpriseEditi
 		}
 		if jsEngine := js.EngineNamed(jsEngineName); jsEngine == nil {
 			multiError = multiError.Append(fmt.Errorf("Invalid configuration - there is no JavaScript engine %q", jsEngineName))
-			// Keep going with jsvm == nil -- check before using it!
+			// Keep going with jsvm == nil. `validateJavascriptFunction` will detect this and
+			// just act as a no-op, rather than panicking or adding more errors.
 		} else {
 			jsvm = jsEngine.NewVM()
 			defer jsvm.Close()
 		}
 	}
 
-	if jsvm != nil {
-		if isEmpty, err := validateJavascriptFunction(jsvm, dbConfig.Sync, 1, 3); err != nil {
-			multiError = multiError.Append(fmt.Errorf("sync function error: %w", err))
-		} else if isEmpty {
-			dbConfig.Sync = nil
-		}
+	if isEmpty, err := validateJavascriptFunction(jsvm, dbConfig.Sync, 1, 3); err != nil {
+		multiError = multiError.Append(fmt.Errorf("sync function error: %w", err))
+	} else if isEmpty {
+		dbConfig.Sync = nil
+	}
 
-		if isEmpty, err := validateJavascriptFunction(jsvm, dbConfig.ImportFilter, 1, 999); err != nil {
-			multiError = multiError.Append(fmt.Errorf("import filter error: %w", err))
-		} else if isEmpty {
-			dbConfig.ImportFilter = nil
-		}
+	if isEmpty, err := validateJavascriptFunction(jsvm, dbConfig.ImportFilter, 1, 999); err != nil {
+		multiError = multiError.Append(fmt.Errorf("import filter error: %w", err))
+	} else if isEmpty {
+		dbConfig.ImportFilter = nil
 	}
 
 	if err := db.ValidateDatabaseName(dbConfig.Name); err != nil {
@@ -871,19 +870,17 @@ func (dbConfig *DbConfig) validateVersion(ctx context.Context, isEnterpriseEditi
 			}
 
 			// validate each collection's config
-			if jsvm != nil {
-				for collectionName, collectionConfig := range scopeConfig.Collections {
-					if isEmpty, err := validateJavascriptFunction(jsvm, collectionConfig.SyncFn, 1, 3); err != nil {
-						multiError = multiError.Append(fmt.Errorf("collection %q sync function error: %w", collectionName, err))
-					} else if isEmpty {
-						collectionConfig.SyncFn = nil
-					}
+			for collectionName, collectionConfig := range scopeConfig.Collections {
+				if isEmpty, err := validateJavascriptFunction(jsvm, collectionConfig.SyncFn, 1, 3); err != nil {
+					multiError = multiError.Append(fmt.Errorf("collection %q sync function error: %w", collectionName, err))
+				} else if isEmpty {
+					collectionConfig.SyncFn = nil
+				}
 
-					if isEmpty, err := validateJavascriptFunction(jsvm, collectionConfig.ImportFilter, 1, 99); err != nil {
-						multiError = multiError.Append(fmt.Errorf("collection %q import filter error: %w", collectionName, err))
-					} else if isEmpty {
-						collectionConfig.ImportFilter = nil
-					}
+				if isEmpty, err := validateJavascriptFunction(jsvm, collectionConfig.ImportFilter, 1, 99); err != nil {
+					multiError = multiError.Append(fmt.Errorf("collection %q import filter error: %w", collectionName, err))
+				} else if isEmpty {
+					collectionConfig.ImportFilter = nil
 				}
 			}
 		}
@@ -978,8 +975,12 @@ func (dbConfig *DbConfig) deprecatedConfigCacheFallback() (warnings []string) {
 }
 
 // validateJavascriptFunction returns an error if the javascript function was invalid, if set.
+// If `vm` is nil, it's assumed that an earlier error has been reported about a bad JS VM config,
+// so it will just silently skip function validation rather than adding to the noise.
 func validateJavascriptFunction(vm js.VM, jsFunc *string, minArgs int, maxArgs int) (isEmpty bool, err error) {
-	if jsFunc != nil && strings.TrimSpace(*jsFunc) != "" {
+	if vm == nil {
+		return true, nil
+	} else if jsFunc != nil && strings.TrimSpace(*jsFunc) != "" {
 		if err := js.ValidateJavascriptFunction(vm, *jsFunc, minArgs, maxArgs); err != nil {
 			return false, fmt.Errorf("invalid javascript syntax: %w", err)
 		}

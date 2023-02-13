@@ -93,13 +93,6 @@ func (dsce *DBStateChangeEvent) EventType() EventType {
 	return DBStateChange
 }
 
-// type ResponseType uint8
-
-// const (
-// 	StringResponse ResponseType = iota
-// 	JSObjectResponse
-// )
-
 //////// JSEventFunction
 
 // A compiled event function.
@@ -133,7 +126,7 @@ func (ef *JSEventFunction) CallFunction(event Event) (interface{}, error) {
 	}
 
 	if err != nil {
-		base.WarnfCtx(context.TODO(), "Error calling function - function processing aborted: %+v", err)
+		base.WarnfCtx(ctx, "Error calling function - function processing aborted: %+v", err)
 		return "", err
 	}
 

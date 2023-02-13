@@ -130,13 +130,13 @@ type DatabaseContext struct {
 	ServeInsecureAttachmentTypes bool                           // Attachment content type will bypass the content-disposition handling, default false
 	NoX509HTTPClient             *http.Client                   // A HTTP Client from gocb to use the management endpoints
 	ServerContextHasStarted      chan struct{}                  // Closed via PostStartup once the server has fully started
+	UserFunctions                *UserFunctions                 // JS/N1QL functions clients can call
+	GraphQL                      GraphQL                        // GraphQL query interface
+	JS                           js.VMPool                      // A pool of preconfigured V8 instances
 	Scopes                       map[string]Scope               // A map keyed by scope name containing a set of scopes/collections. Nil if running with only _default._default
 	singleCollection             *DatabaseCollection            // Temporary collection
 	CollectionByID               map[uint32]*DatabaseCollection // A map keyed by collection ID to Collection
 	CollectionNames              map[string]map[string]struct{} // Map of scope, collection names
-	UserFunctions                *UserFunctions                 // JS/N1QL functions clients can call
-	GraphQL                      GraphQL                        // GraphQL query interface
-	JS                           js.VMPool                      // A pool of preconfigured V8 instances
 }
 
 type Scope struct {
@@ -153,11 +153,12 @@ type DatabaseContextOptions struct {
 	LocalJWTConfig                auth.LocalJWTConfig
 	DBOnlineCallback              DBOnlineCallback // Callback function to take the DB back online
 	ImportOptions                 ImportOptions
-	EnableXattr                   bool             // Use xattr for _sync
-	LocalDocExpirySecs            uint32           // The _local doc expiry time in seconds
-	SecureCookieOverride          bool             // Pass-through DBConfig.SecureCookieOverride
-	SessionCookieName             string           // Pass-through DbConfig.SessionCookieName
-	SessionCookieHttpOnly         bool             // Pass-through DbConfig.SessionCookieHTTPOnly
+	EnableXattr                   bool   // Use xattr for _sync
+	LocalDocExpirySecs            uint32 // The _local doc expiry time in seconds
+	SecureCookieOverride          bool   // Pass-through DBConfig.SecureCookieOverride
+	SessionCookieName             string // Pass-through DbConfig.SessionCookieName
+	SessionCookieHttpOnly         bool   // Pass-through DbConfig.SessionCookieHTTPOnly
+	FunctionsConfig               IFunctionsAndGraphQLConfig
 	AllowConflicts                *bool            // False forbids creating conflicts
 	SendWWWAuthenticateHeader     *bool            // False disables setting of 'WWW-Authenticate' header
 	DisablePasswordAuthentication bool             // True enforces OIDC/guest only
@@ -171,14 +172,13 @@ type DatabaseContextOptions struct {
 	ClientPartitionWindow         time.Duration
 	BcryptCost                    int
 	GroupID                       string
+	JavaScriptEngine              *string       // Name of JS engine to use
 	JavascriptTimeout             time.Duration // Max time the JS functions run for (ie. sync fn, import filter)
 	Serverless                    bool          // If running in serverless mode
 	Scopes                        ScopesOptions
-	skipRegisterImportPIndex      bool                       // if set, skips the global gocb PIndex registration
-	MetadataStore                 base.DataStore             // If set, use this location/connection for SG metadata storage - if not set, metadata is stored using the same location/connection as the bucket used for data storage.
-	DefaultCollectionImportFilter *string                    // Opt-in filter for document import, for when collections are not supported
-	JavaScriptEngine              *string                    // Name of JS engine to use
-	FunctionsConfig               IFunctionsAndGraphQLConfig // JS/N1QL functions clients can call
+	skipRegisterImportPIndex      bool           // if set, skips the global gocb PIndex registration
+	MetadataStore                 base.DataStore // If set, use this location/connection for SG metadata storage - if not set, metadata is stored using the same location/connection as the bucket used for data storage.
+	DefaultCollectionImportFilter *string        // Opt-in filter for document import, for when collections are not supported
 }
 
 type ScopesOptions map[string]ScopeOptions
@@ -188,9 +188,8 @@ type ScopeOptions struct {
 }
 
 type CollectionOptions struct {
-	Sync               *string               // Collection sync function
-	ImportFilterSource *string               // Source code of ImportFilter
-	ImportFilter       *ImportFilterFunction // Opt-in filter for document import
+	Sync         *string // Collection sync function
+	ImportFilter *string // Source code of filter fn for document import
 }
 
 type SGReplicateOptions struct {
@@ -246,10 +245,8 @@ type WarningThresholds struct {
 
 // Options associated with the import of documents not written by Sync Gateway
 type ImportOptions struct {
-	ImportFilterSource *string              // Opt-in filter for document import: JS source code
-	ImportFilter       ImportFilterFunction // Compiled import filter
-	BackupOldRev       bool                 // Create temporary backup of old revision body when available
-	ImportPartitions   uint16               // Number of partitions for import
+	BackupOldRev     bool   // Create temporary backup of old revision body when available
+	ImportPartitions uint16 // Number of partitions for import
 }
 
 // Represents a simulated CouchDB database. A new instance is created for each HTTP request,
@@ -400,10 +397,6 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 		return nil, fmt.Errorf("%q is not an available JavaScript engine", jsEngineName)
 	}
 
-	if options.ImportOptions.ImportFilterSource != nil {
-		dbContext.Options.ImportOptions.ImportFilter = NewImportFilterFunction(&dbContext.JS, *options.ImportOptions.ImportFilterSource, options.JavascriptTimeout)
-	}
-
 	cleanupFunctions = append(cleanupFunctions, func() {
 		base.SyncGatewayStats.ClearDBStats(dbName)
 		dbContext.JS.Close()
@@ -492,8 +485,8 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 					syncFn = *collOpts.Sync
 				}
 
-				if collOpts.ImportFilterSource != nil {
-					dbCollection.importFilterFunction = NewImportFilterFunction(&dbContext.JS, *collOpts.ImportFilterSource, options.JavascriptTimeout)
+				if collOpts.ImportFilter != nil {
+					dbCollection.importFilterFunction = NewImportFilterFunction(&dbContext.JS, *collOpts.ImportFilter, options.JavascriptTimeout)
 				}
 
 				_, err = dbCollection.UpdateSyncFun(ctx, syncFn)
