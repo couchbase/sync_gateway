@@ -441,6 +441,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 	}
 	dbContext.Scopes = make(map[string]Scope, len(options.Scopes))
 	dbContext.CollectionNames = make(map[string]map[string]struct{}, len(options.Scopes))
+	// if any sync functions for any collection, we recommend running a resync
 	syncFunctionsChanged := false
 	for scopeName, scope := range options.Scopes {
 		dbContext.Scopes[scopeName] = Scope{
@@ -466,7 +467,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 				if err != nil {
 					return nil, err
 				}
-				if !fnChanged {
+				if fnChanged {
 					syncFunctionsChanged = true
 				}
 
