@@ -34,6 +34,7 @@ func TestQueryChannelsStatsView(t *testing.T) {
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 	_, err := collection.UpdateSyncFun(ctx, channels.DocChannelsSyncFunction)
+	require.NoError(t, err)
 	// docID -> Sequence
 	docSeqMap := make(map[string]uint64, 3)
 

@@ -52,10 +52,14 @@ func setupTestDBForBucket(t testing.TB, bucket *base.TestBucket) (*Database, con
 func setupTestDBWithOptionsAndImport(t testing.TB, dbcOptions DatabaseContextOptions) (*Database, context.Context) {
 	ctx := base.TestCtx(t)
 	AddOptionsFromEnvironmentVariables(&dbcOptions)
+	tBucket := base.GetTestBucket(t)
+	if dbcOptions.Scopes == nil {
+		dbcOptions.Scopes = GetScopesOptions(t, tBucket, 1)
+	}
 	if dbcOptions.GroupID == "" && base.IsEnterpriseEdition() {
 		dbcOptions.GroupID = t.Name()
 	}
-	dbCtx, err := NewDatabaseContext(ctx, "db", base.GetTestBucket(t), true, dbcOptions)
+	dbCtx, err := NewDatabaseContext(ctx, "db", tBucket, true, dbcOptions)
 	require.NoError(t, err, "Couldn't create context for database 'db'")
 	db, err := CreateDatabase(dbCtx)
 	require.NoError(t, err, "Couldn't create database 'db'")
@@ -88,11 +92,12 @@ func setupTestDBWithViewsEnabled(t testing.TB) (*Database, context.Context) {
 func setupTestDBWithCustomSyncSeq(t testing.TB, customSeq uint64) (*Database, context.Context) {
 
 	ctx := base.TestCtx(t)
-	dbcOptions := DatabaseContextOptions{
-		Scopes: GetScopesConfigForDefaultCollection(),
-	}
-	AddOptionsFromEnvironmentVariables(&dbcOptions)
 	tBucket := base.GetTestBucket(t)
+	dbcOptions := DatabaseContextOptions{
+		Scopes: GetScopesOptions(t, tBucket, 1),
+	}
+
+	AddOptionsFromEnvironmentVariables(&dbcOptions)
 
 	// This may need to change when we move to a non-default metadata collection...
 	metadataStore := tBucket.DefaultDataStore()
@@ -114,12 +119,12 @@ func setupTestDBWithCustomSyncSeq(t testing.TB, customSeq uint64) (*Database, co
 
 func setupTestLeakyDBWithCacheOptions(t *testing.T, options CacheOptions, leakyOptions base.LeakyBucketConfig) (*Database, context.Context) {
 	ctx := base.TestCtx(t)
+	testBucket := base.GetTestBucket(t)
 	dbcOptions := DatabaseContextOptions{
 		CacheOptions: &options,
-		Scopes:       GetScopesConfigForDefaultCollection(),
+		Scopes:       GetScopesOptions(t, testBucket, 1),
 	}
 	AddOptionsFromEnvironmentVariables(&dbcOptions)
-	testBucket := base.GetTestBucket(t)
 	leakyBucket := base.NewLeakyBucket(testBucket, leakyOptions)
 	dbCtx, err := NewDatabaseContext(ctx, "db", leakyBucket, false, dbcOptions)
 	if err != nil {
@@ -1372,12 +1377,13 @@ func TestSyncFnOnPush(t *testing.T) {
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
-	collection.ChannelMapper = channels.NewChannelMapper(`function(doc, oldDoc) {
+	_, err := collection.UpdateSyncFun(ctx, `function(doc, oldDoc) {
 		log("doc _id = "+doc._id+", _rev = "+doc._rev);
 		if (oldDoc)
 			log("oldDoc _id = "+oldDoc._id+", _rev = "+oldDoc._rev);
 		channel(doc.channels);
-	}`, 0)
+	}`)
+	require.NoError(t, err)
 
 	// Create first revision:
 	body := Body{"key1": "value1", "key2": 1234, "channels": []string{"public"}}
@@ -1425,10 +1431,11 @@ func TestAccessFunctionValidation(t *testing.T) {
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
-	collection.ChannelMapper = channels.NewChannelMapper(`function(doc){access(doc.users,doc.userChannels);}`, 0)
+	_, err := collection.UpdateSyncFun(ctx, `function(doc){access(doc.users,doc.userChannels);}`)
+	require.NoError(t, err)
 
 	body := Body{"users": []string{"username"}, "userChannels": []string{"BBC1"}}
-	_, _, err := collection.Put(ctx, "doc1", body)
+	_, _, err = collection.Put(ctx, "doc1", body)
 	assert.NoError(t, err, "")
 
 	body = Body{"users": []string{"role:rolename"}, "userChannels": []string{"BBC1"}}
@@ -1460,7 +1467,8 @@ func TestAccessFunctionDb(t *testing.T) {
 
 	authenticator := db.Authenticator(ctx)
 
-	collection.ChannelMapper = channels.NewChannelMapper(`function(doc){access(doc.users,doc.userChannels);}`, 0)
+	_, err := collection.UpdateSyncFun(ctx, `function(doc){access(doc.users,doc.userChannels);}`)
+	require.NoError(t, err)
 
 	user, err := authenticator.NewUser("naomi", "letmein", channels.BaseSetOf(t, "Netflix"))
 	require.NoError(t, err)
@@ -1985,14 +1993,15 @@ func TestNewDatabaseContextWithOIDCProviderOptions(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			tBucket := base.GetTestBucket(t)
 			options := DatabaseContextOptions{
 				OIDCOptions: tc.inputOptions,
-				Scopes:      GetScopesConfigForDefaultCollection(),
+				Scopes:      GetScopesOptions(t, tBucket, 1),
 			}
 			AddOptionsFromEnvironmentVariables(&options)
 
 			ctx := base.TestCtx(t)
-			dbCtx, err := NewDatabaseContext(ctx, "db", base.GetTestBucket(t), false, options)
+			dbCtx, err := NewDatabaseContext(ctx, "db", tBucket, false, options)
 			assert.NoError(t, err, "Couldn't create context for database 'db'")
 			defer dbCtx.Close(ctx)
 			assert.NotNil(t, dbCtx, "Database context should be created")
@@ -2034,11 +2043,12 @@ func TestSyncFnMutateBody(t *testing.T) {
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
-	collection.ChannelMapper = channels.NewChannelMapper(`function(doc, oldDoc) {
+	_, err := collection.UpdateSyncFun(ctx, `function(doc, oldDoc) {
 		doc.key1 = "mutatedValue"
 		doc.key2.subkey1 = "mutatedSubValue"
 		channel(doc.channels);
-	}`, 0)
+	}`)
+	require.NoError(t, err)
 
 	// Create first revision:
 	body := Body{"key1": "value1", "key2": Body{"subkey1": "subvalue1"}, "channels": []string{"public"}}

@@ -82,19 +82,18 @@ const BGTCompletionMaxWait = 30 * time.Second
 // Basic description of a database. Shared between all Database objects on the same database.
 // This object is thread-safe so it can be shared between HTTP handlers.
 type DatabaseContext struct {
-	Name                        string                  // Database name
-	UUID                        string                  // UUID for this database instance. Used by cbgt and sgr
-	MetadataStore               base.DataStore          // Storage for database metadata (anything that isn't an end-user's/customer's documents)
-	Bucket                      base.Bucket             // Storage
-	BucketSpec                  base.BucketSpec         // The BucketSpec
-	BucketLock                  sync.RWMutex            // Control Access to the underlying bucket object
-	mutationListener            changeListener          // Caching feed listener
-	ImportListener              *importListener         // Import feed listener
-	sequences                   *sequenceAllocator      // Source of new sequence numbers
-	ChannelMapper               *channels.ChannelMapper // Runs JS 'sync' function
-	StartTime                   time.Time               // Timestamp when context was instantiated
-	RevsLimit                   uint32                  // Max depth a document's revision tree can grow to
-	autoImport                  bool                    // Add sync data to new untracked couchbase server docs?  (Xattr mode specific)
+	Name                        string             // Database name
+	UUID                        string             // UUID for this database instance. Used by cbgt and sgr
+	MetadataStore               base.DataStore     // Storage for database metadata (anything that isn't an end-user's/customer's documents)
+	Bucket                      base.Bucket        // Storage
+	BucketSpec                  base.BucketSpec    // The BucketSpec
+	BucketLock                  sync.RWMutex       // Control Access to the underlying bucket object
+	mutationListener            changeListener     // Caching feed listener
+	ImportListener              *importListener    // Import feed listener
+	sequences                   *sequenceAllocator // Source of new sequence numbers
+	StartTime                   time.Time          // Timestamp when context was instantiated
+	RevsLimit                   uint32             // Max depth a document's revision tree can grow to
+	autoImport                  bool               // Add sync data to new untracked couchbase server docs?  (Xattr mode specific)
 	channelCache                ChannelCache
 	changeCache                 changeCache            // Cache of recently-access channels
 	EventMgr                    *EventManager          // Manages notification events
@@ -471,6 +470,9 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 					syncFunctionsChanged = true
 				}
 
+			} else {
+				defaultSyncFunction := channels.GetDefaultSyncFunction(scopeName, collName)
+				base.InfofCtx(ctx, base.KeyAll, "Using default sync function %q for database %s.%s.%s", defaultSyncFunction, base.MD(dbName), base.MD(scopeName), base.MD(collName))
 			}
 
 			if collOpts.ImportFilter != nil {
@@ -2268,14 +2270,4 @@ func (dbc *Database) GetDefaultDatabaseCollectionWithUser() (*DatabaseCollection
 // GetSingleDatabaseCollection is a temporary function to return a single collection. This should be a temporary function while collection work is ongoing.
 func (dbc *DatabaseContext) GetSingleDatabaseCollection() *DatabaseCollection {
 	return dbc.singleCollection
-}
-
-func GetScopesConfigForDefaultCollection() ScopesOptions {
-	return map[string]ScopeOptions{
-		base.DefaultScope: ScopeOptions{
-			Collections: map[string]CollectionOptions{
-				base.DefaultCollection: {},
-			},
-		},
-	}
 }

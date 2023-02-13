@@ -649,16 +649,17 @@ func TestReplicateGroupIDAssignedNodes(t *testing.T) {
 	defer tb.Close()
 	ctx := base.TestCtx(t)
 
+	const numCollections = 1
 	// Set up databases
-	dbDefault, err := NewDatabaseContext(ctx, "default", tb.NoCloseClone(), false, DatabaseContextOptions{GroupID: "", Scopes: GetScopesConfigForDefaultCollection()})
+	dbDefault, err := NewDatabaseContext(ctx, "default", tb.NoCloseClone(), false, DatabaseContextOptions{GroupID: "", Scopes: GetScopesOptions(t, tb, 1)})
 	require.NoError(t, err)
 	defer dbDefault.Close(ctx)
 
-	dbGroupA, err := NewDatabaseContext(ctx, "groupa", tb.NoCloseClone(), false, DatabaseContextOptions{GroupID: "GroupA", Scopes: GetScopesConfigForDefaultCollection()})
+	dbGroupA, err := NewDatabaseContext(ctx, "groupa", tb.NoCloseClone(), false, DatabaseContextOptions{GroupID: "GroupA", Scopes: GetScopesOptions(t, tb, 1)})
 	require.NoError(t, err)
 	defer dbGroupA.Close(ctx)
 
-	dbGroupB, err := NewDatabaseContext(ctx, "groupb", tb.NoCloseClone(), false, DatabaseContextOptions{GroupID: "GroupB", Scopes: GetScopesConfigForDefaultCollection()})
+	dbGroupB, err := NewDatabaseContext(ctx, "groupb", tb.NoCloseClone(), false, DatabaseContextOptions{GroupID: "GroupB", Scopes: GetScopesOptions(t, tb, 1)})
 	require.NoError(t, err)
 	defer dbGroupB.Close(ctx)
 

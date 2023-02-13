@@ -646,7 +646,7 @@ func setupTestDBWithFunctions(t *testing.T, fnConfig *FunctionsConfig, gqConfig 
 	cacheOptions := db.DefaultCacheOptions()
 	options := db.DatabaseContextOptions{
 		CacheOptions: &cacheOptions,
-		Scopes:       db.GetScopesConfigForDefaultCollection(),
+		Scopes:       db.GetScopesOptionsDefaultCollectionOnly(t),
 	}
 	var err error
 	if fnConfig != nil {

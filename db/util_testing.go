@@ -499,24 +499,8 @@ func SetupTestDBWithOptions(t testing.TB, dbcOptions DatabaseContextOptions) (*D
 func SetupTestDBForDataStoreWithOptions(t testing.TB, tBucket *base.TestBucket, dbcOptions DatabaseContextOptions) (*Database, context.Context) {
 	ctx := base.TestCtx(t)
 	AddOptionsFromEnvironmentVariables(&dbcOptions)
-
-	if base.TestsUseNamedCollections() {
-		dataStore := tBucket.GetSingleDataStore()
-		dsn, ok := base.AsDataStoreName(dataStore)
-		if !ok {
-			t.Fatalf("dataStore (%T) did not implement DataStoreName", dataStore)
-		}
-		if dbcOptions.Scopes == nil {
-			dbcOptions.Scopes = map[string]ScopeOptions{
-				dsn.ScopeName(): {
-					Collections: map[string]CollectionOptions{
-						dsn.CollectionName(): {},
-					},
-				},
-			}
-		}
-	} else if dbcOptions.Scopes == nil {
-		dbcOptions.Scopes = GetScopesConfigForDefaultCollection()
+	if dbcOptions.Scopes == nil {
+		dbcOptions.Scopes = GetScopesOptions(t, tBucket, 1)
 	}
 
 	dbCtx, err := NewDatabaseContext(ctx, "db", tBucket, false, dbcOptions)
@@ -527,8 +511,14 @@ func SetupTestDBForDataStoreWithOptions(t testing.TB, tBucket *base.TestBucket, 
 	return db, ctx
 }
 
-// getScopesOptions sets up a ScopesOptions from a TestBucket for use with non default collections to pass in DatabaseContextOptions.
-func getScopesOptions(t testing.TB, testBucket *base.TestBucket, numCollections int) ScopesOptions {
+// GetScopesOptions sets up a ScopesOptions from a TestBucket for use with non default collections to pass in DatabaseContextOptions.
+func GetScopesOptions(t testing.TB, testBucket *base.TestBucket, numCollections int) ScopesOptions {
+	if !base.TestsUseNamedCollections() {
+		if numCollections != 1 {
+			t.Fatal("Setting numCollections on a test that can't use collections is invalid")
+		}
+		return GetScopesOptionsDefaultCollectionOnly(t)
+	}
 	// Get a datastore as provided by the test
 	stores := testBucket.GetNonDefaultDatastoreNames()
 	require.True(t, len(stores) >= numCollections, "Requested more collections %d than found on testBucket %d", numCollections, len(stores))
@@ -551,6 +541,17 @@ func getScopesOptions(t testing.TB, testBucket *base.TestBucket, numCollections 
 
 	}
 	return scopesConfig
+}
+
+// Return Scopes options without any configuration for only the default collection.
+func GetScopesOptionsDefaultCollectionOnly(_ testing.TB) ScopesOptions {
+	return map[string]ScopeOptions{
+		base.DefaultScope: ScopeOptions{
+			Collections: map[string]CollectionOptions{
+				base.DefaultCollection: {},
+			},
+		},
+	}
 }
 
 func GetSingleDatabaseCollectionWithUser(tb testing.TB, database *Database) *DatabaseCollectionWithUser {

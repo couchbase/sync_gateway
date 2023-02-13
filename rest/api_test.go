@@ -2541,7 +2541,8 @@ func TestMetricsHandler(t *testing.T) {
 	// Create and remove a database
 	// This ensures that creation and removal of a DB is possible without a re-registration issue ( the below rest tester will re-register "db")
 	ctx := base.TestCtx(t)
-	context, err := db.NewDatabaseContext(ctx, "db", base.GetTestBucket(t), false, db.DatabaseContextOptions{Scopes: db.GetScopesConfigForDefaultCollection()})
+	tBucket := base.GetTestBucket(t)
+	context, err := db.NewDatabaseContext(ctx, "db", tBucket, false, db.DatabaseContextOptions{Scopes: db.GetScopesOptions(t, tBucket, 1)})
 	require.NoError(t, err)
 	context.Close(context.AddDatabaseLogContext(ctx))
 
@@ -2566,7 +2567,8 @@ func TestMetricsHandler(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Initialize another database to ensure both are registered successfully
-	context, err = db.NewDatabaseContext(ctx, "db2", base.GetTestBucket(t), false, db.DatabaseContextOptions{Scopes: db.GetScopesConfigForDefaultCollection()})
+	tBucket2 := base.GetTestBucket(t)
+	context, err = db.NewDatabaseContext(ctx, "db2", tBucket2, false, db.DatabaseContextOptions{Scopes: db.GetScopesOptions(t, tBucket2, 1)})
 	require.NoError(t, err)
 	defer context.Close(context.AddDatabaseLogContext(ctx))
 

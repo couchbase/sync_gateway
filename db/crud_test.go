@@ -17,7 +17,6 @@ import (
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/couchbase/sync_gateway/channels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -815,8 +814,6 @@ func TestOldRevisionStorageError(t *testing.T) {
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
-	db.ChannelMapper = channels.NewChannelMapper(`function(doc, oldDoc) {channel(doc.channels);}`, 0)
-
 	// Create rev 1-a
 	log.Printf("Create rev 1-a")
 	body := Body{"key1": "value1", "v": "1a"}
@@ -984,7 +981,6 @@ func TestMalformedRevisionStorageRecovery(t *testing.T) {
 	defer db.Close(ctx)
 
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
-	db.ChannelMapper = channels.NewChannelMapper(`function(doc, oldDoc) {channel(doc.channels);}`, 0)
 
 	// Create a document with a malformed revision body (due to https://github.com/couchbase/sync_gateway/issues/3692) in the bucket
 	// Document has the following rev tree, with a malformed body of revision 2-b remaining in the revision tree (same set of operations as

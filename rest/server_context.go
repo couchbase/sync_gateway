@@ -666,10 +666,6 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	dbcontext.AllowEmptyPassword = base.BoolDefault(config.AllowEmptyPassword, false)
 	dbcontext.ServeInsecureAttachmentTypes = base.BoolDefault(config.ServeInsecureAttachmentTypes, false)
 
-	if dbcontext.ChannelMapper == nil {
-		base.InfofCtx(ctx, base.KeyAll, "Using default sync function 'channel(doc.channels)' for database %q", base.MD(dbName))
-	}
-
 	// Create default users & roles:
 	if err := sc.installPrincipals(ctx, dbcontext, config.Roles, "role"); err != nil {
 		return nil, err

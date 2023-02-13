@@ -1026,10 +1026,12 @@ func TestChannelQueryCancellation(t *testing.T) {
 
 	db, ctx := setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), queryCallbackConfig)
 	defer db.Close(ctx)
-
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	_, err := collection.UpdateSyncFun(ctx, channels.DocChannelsSyncFunction)
+	require.NoError(t, err)
+
 	// Write a handful of docs/sequences to the bucket
-	_, _, err := collection.Put(ctx, "key1", Body{"channels": "ABC"})
+	_, _, err = collection.Put(ctx, "key1", Body{"channels": "ABC"})
 	assert.NoError(t, err, "Put failed with error: %v", err)
 	_, _, err = collection.Put(ctx, "key2", Body{"channels": "ABC"})
 	assert.NoError(t, err, "Put failed with error: %v", err)

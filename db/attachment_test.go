@@ -22,7 +22,6 @@ import (
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/couchbase/sync_gateway/channels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -55,13 +54,7 @@ func TestBackupOldRevisionWithAttachments(t *testing.T) {
 			Enabled:          deltasEnabled,
 			RevMaxAgeSeconds: DefaultDeltaSyncRevMaxAge,
 		},
-		Scopes: map[string]ScopeOptions{
-			base.DefaultScope: ScopeOptions{
-				Collections: map[string]CollectionOptions{
-					base.DefaultCollection: {},
-				},
-			},
-		},
+		Scopes: GetScopesOptions(t, bucket, 1),
 	})
 	assert.NoError(t, err, "Couldn't create context for database 'db'")
 	defer dbCtx.Close(ctx)
@@ -230,14 +223,15 @@ func TestAttachmentForRejectedDocument(t *testing.T) {
 	defer db.Close(ctx)
 
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
-	collection.ChannelMapper = channels.NewChannelMapper(`function(doc, oldDoc) {
+	_, err := collection.UpdateSyncFun(ctx, `function(doc, oldDoc) {
 		throw({forbidden: "None shall pass!"});
-	}`, 0)
+	}`)
+	require.NoError(t, err)
 
 	docBody := `{"_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="}}}`
 	var body Body
 	require.NoError(t, base.JSONUnmarshal([]byte(docBody), &body))
-	_, _, err := collection.Put(ctx, "doc1", unjson(docBody))
+	_, _, err = collection.Put(ctx, "doc1", unjson(docBody))
 	require.Error(t, err)
 
 	// Attempt to retrieve the attachment doc
@@ -769,7 +763,7 @@ func TestMigrateBodyAttachments(t *testing.T) {
 		bucket := base.GetTestBucket(t)
 		dbCtx, err := NewDatabaseContext(ctx, "db", bucket, false, DatabaseContextOptions{
 			EnableXattr: base.TestUseXattrs(),
-			Scopes:      GetScopesConfigForDefaultCollection(),
+			Scopes:      GetScopesOptions(t, bucket, 1),
 		})
 
 		assert.NoError(t, err, "The database context should be created for database 'db'")

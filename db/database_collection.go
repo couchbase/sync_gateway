@@ -186,6 +186,11 @@ func (c *DatabaseCollection) IsClosed() bool {
 	return c.dataStore == nil
 }
 
+// IsDefaultCollection returns true if collection is _default._default.
+func (c *DatabaseCollection) IsDefaultCollection() bool {
+	return c.GetCollectionID() == base.DefaultCollectionID
+}
+
 // isGuestReadOnly returns true if the guest user can only perform read operations. This is controlled at the database level.
 func (c *DatabaseCollection) isGuestReadOnly() bool {
 	return c.dbCtx.Options.UnsupportedOptions != nil && c.dbCtx.Options.UnsupportedOptions.GuestReadOnly

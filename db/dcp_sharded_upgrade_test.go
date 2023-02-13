@@ -224,6 +224,7 @@ func TestShardedDCPUpgrade(t *testing.T) {
 		ImportOptions: ImportOptions{
 			ImportPartitions: numPartitions,
 		},
+		Scopes: GetScopesOptionsDefaultCollectionOnly(t),
 	})
 	require.NoError(t, err, "NewDatabaseContext")
 	defer db.Close(ctx)

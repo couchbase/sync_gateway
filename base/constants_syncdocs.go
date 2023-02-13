@@ -56,9 +56,9 @@ func SyncFunctionKeyWithGroupID(groupID string) string {
 	return SyncFunctionKeyWithoutGroupID
 }
 
-// SyncFunctionKeyWithGroupID returns a doc ID to use when storing the sync function
+// CollectionsSyncFunctionKeyWithGroupID returns a doc ID to use when storing the sync function.
 func CollectionSyncFunctionKeyWithGroupID(groupID string, scopeName, collectionName string) string {
-	// use legacy format for _default._default
+	// use legacy format for _default._default for backward compatibility
 	if IsDefaultCollection(scopeName, collectionName) {
 		return SyncFunctionKeyWithGroupID(groupID)
 	}

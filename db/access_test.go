@@ -12,7 +12,6 @@ import (
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/couchbase/sync_gateway/channels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -25,15 +24,16 @@ func TestDynamicChannelGrant(t *testing.T) {
 	defer db.Close(ctx)
 	dbCollection := GetSingleDatabaseCollectionWithUser(t, db)
 
-	dbCollection.ChannelMapper = channels.NewChannelMapper(`
+	_, err := dbCollection.UpdateSyncFun(ctx, `
 	function(doc) {
 		if(doc.type == "setaccess") {
 			channel(doc.channel);
 			access(doc.owner, doc.channel);
-		} else { 
+		} else {
 			channel(doc.channel)
 		}
-	}`, 0)
+	}`)
+	require.NoError(t, err)
 
 	a := dbCollection.Authenticator(ctx)
 	user, err := a.NewUser("user1", "letmein", nil)
