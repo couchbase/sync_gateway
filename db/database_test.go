@@ -3084,7 +3084,7 @@ func TestGetDatabaseCollectionWithUserDefaultCollection(t *testing.T) {
 
 }
 
-func TestClusterUUID(t *testing.T) {
+func TestServerUUID(t *testing.T) {
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close()
 
@@ -3092,9 +3092,9 @@ func TestClusterUUID(t *testing.T) {
 	require.NoError(t, err)
 
 	if base.TestUseCouchbaseServer() {
-		require.Len(t, db.ClusterUUID, 32) // no dashes in UUID
+		require.Len(t, db.ServerUUID, 32) // no dashes in UUID
 	} else {
-		require.Len(t, db.ClusterUUID, 0) // no dashes in UUID
+		require.Len(t, db.ServerUUID, 0) // no dashes in UUID
 	}
 }
 

@@ -1753,7 +1753,7 @@ func (col *DatabaseCollectionWithUser) documentUpdateFunc(ctx context.Context, d
 		return
 	}
 
-	doc.ClusterUUID = col.clusterUUID()
+	doc.ClusterUUID = col.serverUUID()
 	doc.TimeSaved = time.Now()
 	return updatedExpiry, newRevID, newDoc, oldBodyJSON, unusedSequences, changedAccessPrincipals, changedRoleAccessUsers, createNewRevIDSkipped, err
 }

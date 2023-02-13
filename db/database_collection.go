@@ -120,8 +120,8 @@ func (c *DatabaseCollection) channelQueryLimit() int {
 }
 
 // clusterUUID returns a couchbase server UUID. If running with walrus, return an empty string.
-func (c *DatabaseCollection) clusterUUID() string {
-	return c.dbCtx.ClusterUUID
+func (c *DatabaseCollection) serverUUID() string {
+	return c.dbCtx.ServerUUID
 }
 
 // DbStats are stats that correspond to database level collections.

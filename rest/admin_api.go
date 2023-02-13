@@ -1122,7 +1122,7 @@ func (h *handler) handleGetStatus() error {
 		status.Databases[database.Name] = DatabaseStatus{
 			SequenceNumber:    lastSeq,
 			State:             runState,
-			ServerUUID:        database.ClusterUUID,
+			ServerUUID:        database.ServerUUID,
 			ReplicationStatus: replicationsStatus,
 			SGRCluster:        cluster,
 		}

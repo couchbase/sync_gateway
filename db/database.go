@@ -109,7 +109,7 @@ type DatabaseContext struct {
 	OIDCProviders               auth.OIDCProviderMap // OIDC clients
 	LocalJWTProviders           auth.LocalJWTProviderMap
 	PurgeInterval               time.Duration // Metadata purge interval
-	serverUUID                  string        // UUID of the server, if available
+	ServerUUID                  string        // UUID of the server, if available
 
 	DbStats      *base.DbStats // stats that correspond to this database context
 	CompactState uint32        // Status of database compaction
@@ -129,7 +129,6 @@ type DatabaseContext struct {
 	singleCollection             *DatabaseCollection            // Temporary collection
 	CollectionByID               map[uint32]*DatabaseCollection // A map keyed by collection ID to Collection
 	CollectionNames              map[string]map[string]struct{} // Map of scope, collection names
-	ClusterUUID                  string                         // uuid of cluster
 }
 
 type Scope struct {
@@ -330,8 +329,8 @@ func GetConnectToBucketFn(failFast bool) OpenBucketFn {
 	return connectToBucket
 }
 
-// Returns cluster UUID. If running against walrus, do return an empty string.
-func getClusterUUID(ctx context.Context, bucket base.Bucket) (string, error) {
+// Returns Couchbase Server Cluster UUID on a timeout. If running against walrus, do return an empty string.
+func getServerUUID(ctx context.Context, bucket base.Bucket) (string, error) {
 	gocbV2Bucket, err := base.AsGocbV2Bucket(bucket)
 	if err != nil {
 		return "", nil
@@ -342,7 +341,7 @@ func getClusterUUID(ctx context.Context, bucket base.Bucket) (string, error) {
 		return err != nil, err, uuid
 	}
 
-	err, uuid := base.RetryLoopCtx("Getting ClusterUUID", worker, getNewDatabaseSleeperFunc(), ctx)
+	err, uuid := base.RetryLoopCtx("Getting ServerUUID", worker, getNewDatabaseSleeperFunc(), ctx)
 	return uuid.(string), err
 }
 
@@ -386,7 +385,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 		return nil, statsError
 	}
 
-	clusterUUID, err := getClusterUUID(ctx, bucket)
+	serverUUID, err := getServerUUID(ctx, bucket)
 	if err != nil {
 		return nil, err
 	}
@@ -400,7 +399,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 		Options:        options,
 		DbStats:        dbStats,
 		CollectionByID: make(map[uint32]*DatabaseCollection),
-		ClusterUUID:    clusterUUID,
+		ServerUUID:     serverUUID,
 	}
 
 	cleanupFunctions = append(cleanupFunctions, func() {
