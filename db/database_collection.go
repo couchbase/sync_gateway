@@ -104,11 +104,6 @@ func (c *DatabaseCollection) changeCache() *changeCache {
 	return &c.dbCtx.changeCache
 }
 
-// channelMapper runs the javascript sync function.
-func (c *DatabaseCollection) channelMapper() *channels.ChannelMapper {
-	return c.ChannelMapper
-}
-
 // channelQueryLimit returns the pagination for the number of channels returned in a query. This is a database level property.
 func (c *DatabaseCollection) channelQueryLimit() int {
 	return c.dbCtx.Options.CacheOptions.ChannelQueryLimit

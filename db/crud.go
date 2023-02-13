@@ -2228,7 +2228,7 @@ func (col *DatabaseCollectionWithUser) getChannelsAndAccess(ctx context.Context,
 	}
 	oldJson = string(oldJsonBytes)
 
-	if col.channelMapper() != nil {
+	if col.ChannelMapper != nil {
 		// Call the ChannelMapper:
 		col.dbStats().Database().SyncFunctionCount.Add(1)
 		col.collectionStats.SyncFunctionCount.Add(1)
@@ -2236,7 +2236,7 @@ func (col *DatabaseCollectionWithUser) getChannelsAndAccess(ctx context.Context,
 		var output *channels.ChannelMapperOutput
 
 		startTime := time.Now()
-		output, err = col.channelMapper().MapToChannelsAndAccess(body, oldJson, metaMap,
+		output, err = col.ChannelMapper.MapToChannelsAndAccess(body, oldJson, metaMap,
 			MakeUserCtx(col.user, col.ScopeName, col.Name))
 		syncFunctionTimeNano := time.Since(startTime).Nanoseconds()
 
