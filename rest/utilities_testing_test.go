@@ -130,7 +130,7 @@ func TestCECheck(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Only works with CBS")
 	}
-	if base.TestsUseServerCE() {
+	if !base.TestsUseServerCE() {
 		t.Skip("test only runs with CE server")
 	}
 	rt := NewRestTester(t, nil)
