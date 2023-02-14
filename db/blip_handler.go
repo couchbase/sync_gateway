@@ -142,7 +142,7 @@ func collectionBlipHandler(next blipHandlerFunc) blipHandlerFunc {
 		collectionIndexStr, ok := bm.Properties[BlipCollection]
 		if !ok {
 			if !bh.db.hasDefaultCollection() {
-				return base.HTTPErrorf(http.StatusBadRequest, "Method requires passing a collection property and a prior GetCollections message")
+				return base.HTTPErrorf(http.StatusBadRequest, "Collection property not specified and default collection is not configured for this database")
 			}
 			// temp use private method
 			bh.collection = &DatabaseCollectionWithUser{
