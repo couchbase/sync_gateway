@@ -51,13 +51,6 @@ func TestCollectionsPutDocInKeyspace(t *testing.T) {
 		keyspace       string
 		expectedStatus int
 	}{
-		// if a single scope and collection is defined, use that implicitly
-		/*{
-			name:           "implicit scope and collection",
-			keyspace:       "db",
-			expectedStatus: http.StatusNotFound,
-		},
-		*/
 		{
 			name:           "fully qualified",
 			keyspace:       rt.GetSingleKeyspace(),
@@ -399,8 +392,12 @@ func TestMultiCollectionChannelAccess(t *testing.T) {
 	RequireStatus(t, resp, http.StatusCreated)
 
 	// Ensure users can't access docs in a removed collection
-	resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/{{.keyspace3}}/testDocBazA", "", nil, "userB", "letmein")
-	RequireStatus(t, resp, http.StatusBadRequest)
+	//
+	// we can't use the {{.keyspace3}} URI template variable here as the collection no longer exists on the RestTester,
+	// but we still want to try issuing the request to the old keyspace name.
+	keyspace3 := "db." + scope + "." + collection3
+	resp = rt.SendUserRequestWithHeaders(http.MethodGet, "/"+keyspace3+"/testDocBazA", "", nil, "userB", "letmein")
+	RequireStatus(t, resp, http.StatusNotFound)
 }
 
 func TestMultiCollectionDynamicChannelAccess(t *testing.T) {
@@ -522,8 +519,8 @@ func TestCollectionsBasicIndexQuery(t *testing.T) {
 
 	// if the index was created on a collection, the keyspace_id becomes the collection, along with additional fields for bucket and scope.
 	assert.Equal(t, rt.Bucket().GetName(), *indexMetaResult.BucketID)
-	assert.Equal(t, collection.ScopeName(), *indexMetaResult.ScopeID)
-	assert.Equal(t, collection.Name(), *indexMetaResult.KeyspaceID)
+	assert.Equal(t, collection.ScopeName, *indexMetaResult.ScopeID)
+	assert.Equal(t, collection.Name, *indexMetaResult.KeyspaceID)
 
 	// try and query the document that we wrote via SG
 	res, err = n1qlStore.Query("SELECT test FROM "+base.KeyspaceQueryToken+" WHERE test = true", nil, base.RequestPlus, true)
@@ -699,4 +696,137 @@ func TestCollectionsChangeConfigScope(t *testing.T) {
 		assert.Equal(t, http.StatusBadRequest, res.StatusCode, "should not be able to change scope"),
 		assert.Contains(t, res.Body, "cannot change scopes after database creation"),
 	)
+}
+
+// TestCollecitonStats ensures that stats are specific to each collection.
+func TestCollectionStats(t *testing.T) {
+	base.TestRequiresCollections(t)
+
+	tb := base.GetTestBucket(t)
+	defer tb.Close()
+
+	scopesConfig := GetCollectionsConfig(t, tb, 2)
+	dataStoreNames := GetDataStoreNamesFromScopesConfig(scopesConfig)
+	syncFn := `
+		function(doc) {
+			if (doc.throwException) {
+				channel(undefinedvariable);
+			}
+			if (doc.require) {
+				requireAdmin();
+			}
+		}`
+
+	scope1Name, collection1Name := dataStoreNames[0].ScopeName(), dataStoreNames[0].CollectionName()
+	scope2Name, collection2Name := dataStoreNames[1].ScopeName(), dataStoreNames[1].CollectionName()
+	scopesConfig[scope1Name].Collections[collection1Name] = CollectionConfig{SyncFn: &syncFn}
+	scopesConfig[scope2Name].Collections[collection2Name] = CollectionConfig{SyncFn: &syncFn}
+
+	rtConfig := &RestTesterConfig{
+		CustomTestBucket: tb,
+		GuestEnabled:     true,
+		DatabaseConfig: &DatabaseConfig{
+			DbConfig: DbConfig{
+				Scopes:           scopesConfig,
+				NumIndexReplicas: base.UintPtr(0),
+				AutoImport:       base.TestUseXattrs(),
+				EnableXattrs:     base.BoolPtr(base.TestUseXattrs()),
+			},
+		},
+	}
+
+	rt := NewRestTesterMultipleCollections(t, rtConfig, 2)
+	defer rt.Close()
+
+	// Wait for the DB to be ready before attempting to get initial error count
+	require.NoError(t, rt.WaitForDBOnline())
+
+	collection1Stats, err := rt.GetDatabase().DbStats.CollectionStat(scope1Name, collection1Name)
+	require.NoError(t, err)
+	assert.Equal(t, int64(0), collection1Stats.SyncFunctionCount.Value())
+	assert.Equal(t, int64(0), collection1Stats.SyncFunctionTime.Value())
+	assert.Equal(t, int64(0), collection1Stats.SyncFunctionRejectCount.Value())
+	assert.Equal(t, int64(0), collection1Stats.SyncFunctionRejectAccessCount.Value())
+	assert.Equal(t, int64(0), collection1Stats.SyncFunctionExceptionCount.Value())
+	assert.Equal(t, int64(0), collection1Stats.ImportCount.Value())
+	assert.Equal(t, int64(0), collection1Stats.NumDocReads.Value())
+	assert.Equal(t, int64(0), collection1Stats.DocReadsBytes.Value())
+	assert.Equal(t, int64(0), collection1Stats.NumDocWrites.Value())
+	assert.Equal(t, int64(0), collection1Stats.DocWritesBytes.Value())
+
+	collection2Stats, err := rt.GetDatabase().DbStats.CollectionStat(scope2Name, collection2Name)
+	require.NoError(t, err)
+	assert.Equal(t, int64(0), collection2Stats.SyncFunctionCount.Value())
+	assert.Equal(t, int64(0), collection2Stats.SyncFunctionTime.Value())
+	assert.Equal(t, int64(0), collection2Stats.SyncFunctionRejectCount.Value())
+	assert.Equal(t, int64(0), collection2Stats.SyncFunctionRejectAccessCount.Value())
+	assert.Equal(t, int64(0), collection2Stats.SyncFunctionExceptionCount.Value())
+	assert.Equal(t, int64(0), collection2Stats.ImportCount.Value())
+	assert.Equal(t, int64(0), collection2Stats.NumDocReads.Value())
+	assert.Equal(t, int64(0), collection2Stats.DocReadsBytes.Value())
+	assert.Equal(t, int64(0), collection2Stats.NumDocWrites.Value())
+	assert.Equal(t, int64(0), collection2Stats.DocWritesBytes.Value())
+
+	doc1Contents := `{"foobar":true}`
+	response := rt.SendAdminRequest("PUT", "/{{.keyspace1}}/doc1", doc1Contents)
+	assert.Equal(t, http.StatusCreated, response.Code)
+	assert.Equal(t, int64(1), collection1Stats.NumDocWrites.Value())
+	if base.TestUseXattrs() {
+		assert.Equal(t, int64(len(doc1Contents)), collection1Stats.DocWritesBytes.Value()) // xattr writes size should exactly match doc contents
+	} else {
+		assert.Greater(t, collection1Stats.DocWritesBytes.Value(), int64(len(doc1Contents))) // non-xattr writes have sync data size included
+	}
+	assert.Equal(t, int64(1), collection1Stats.SyncFunctionCount.Value())
+	assert.GreaterOrEqual(t, collection1Stats.SyncFunctionTime.Value(), int64(0))
+	assert.Equal(t, int64(0), collection1Stats.NumDocReads.Value())
+	assert.Equal(t, int64(0), collection1Stats.DocReadsBytes.Value())
+
+	response = rt.SendAdminRequest("GET", "/{{.keyspace1}}/doc1", ``)
+	assert.Equal(t, http.StatusOK, response.Code)
+	assert.Equal(t, int64(1), collection1Stats.NumDocReads.Value())
+	assert.Equal(t, int64(len(doc1Contents)), collection1Stats.DocReadsBytes.Value())
+	assert.Equal(t, int64(1), collection1Stats.SyncFunctionCount.Value())
+
+	// runtime error
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace1}}/doc2", `{"throwException":true}`)
+	assert.Equal(t, http.StatusInternalServerError, response.Code)
+	assert.Contains(t, response.Body.String(), "Exception in JS sync function")
+	assert.Equal(t, int64(2), collection1Stats.SyncFunctionCount.Value())
+	assert.Equal(t, int64(1), collection1Stats.SyncFunctionExceptionCount.Value())
+
+	// require methods shouldn't cause a true exception
+	response = rt.SendRequest("PUT", "/{{.keyspace1}}/doc3", `{"require":true}`)
+	assert.Equal(t, http.StatusForbidden, response.Code)
+	assert.Contains(t, response.Body.String(), "sg admin required")
+	assert.Equal(t, int64(3), collection1Stats.SyncFunctionCount.Value())
+	assert.Equal(t, int64(1), collection1Stats.SyncFunctionExceptionCount.Value())
+	assert.Equal(t, int64(1), collection1Stats.SyncFunctionRejectCount.Value())
+
+	// we've not done anything to collection 2 yet, so still expect zero everything
+	assert.Equal(t, int64(0), collection2Stats.SyncFunctionCount.Value())
+	assert.Equal(t, int64(0), collection2Stats.SyncFunctionTime.Value())
+	assert.Equal(t, int64(0), collection2Stats.SyncFunctionRejectCount.Value())
+	assert.Equal(t, int64(0), collection2Stats.SyncFunctionRejectAccessCount.Value())
+	assert.Equal(t, int64(0), collection2Stats.SyncFunctionExceptionCount.Value())
+	assert.Equal(t, int64(0), collection2Stats.ImportCount.Value())
+	assert.Equal(t, int64(0), collection2Stats.NumDocReads.Value())
+	assert.Equal(t, int64(0), collection2Stats.DocReadsBytes.Value())
+	assert.Equal(t, int64(0), collection2Stats.NumDocWrites.Value())
+	assert.Equal(t, int64(0), collection2Stats.DocWritesBytes.Value())
+
+	// but make sure the 2nd collection stats are indeed wired up correctly... we don't need to be too comprehensive here given above coverage.
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace2}}/doc1", doc1Contents)
+	assert.Equal(t, http.StatusCreated, response.Code)
+	assert.Equal(t, int64(1), collection2Stats.NumDocWrites.Value())
+
+	// write a doc to the bucket and have it imported and check stat
+	if base.TestUseXattrs() {
+		dbc, err := rt.GetDatabase().GetDatabaseCollection(scope2Name, collection2Name)
+		require.NoError(t, err)
+		ok, err := dbc.GetCollectionDatastore().AddRaw("importeddoc", 0, []byte(`{"imported":true}`))
+		require.NoError(t, err)
+		assert.True(t, ok)
+		base.WaitForStat(collection2Stats.ImportCount.Value, 1)
+		assert.Equal(t, int64(2), collection2Stats.NumDocWrites.Value())
+	}
 }

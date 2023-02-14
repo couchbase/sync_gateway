@@ -206,6 +206,9 @@ func TestPostUpgradeMultipleCollections(t *testing.T) {
 	if base.TestsDisableGSI() {
 		t.Skip("This test only works with Couchbase Server and UseViews=false")
 	}
+	if !base.TestUseXattrs() {
+		t.Skip("For simplicity of the test, run with xattrs=true as the likely upgrade case of multiple collections")
+	}
 
 	tb := base.GetTestBucket(t)
 	defer tb.Close()

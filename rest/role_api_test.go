@@ -237,8 +237,8 @@ func TestRoleAssignmentBeforeUserExists(t *testing.T) {
 		&rtConfig)
 	defer rt.Close()
 	collection := rt.GetSingleTestDatabaseCollection()
-	c := collection.Name()
-	s := collection.ScopeName()
+	c := collection.Name
+	s := collection.ScopeName
 
 	ctx := rt.Context()
 	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
@@ -289,8 +289,8 @@ func TestRoleAccessChanges(t *testing.T) {
 		&rtConfig)
 	defer rt.Close()
 	collection := rt.GetSingleTestDatabaseCollection()
-	c := collection.Name()
-	s := collection.ScopeName()
+	c := collection.Name
+	s := collection.ScopeName
 
 	ctx := rt.Context()
 	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)

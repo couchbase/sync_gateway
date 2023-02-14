@@ -810,7 +810,7 @@ func TestAllDocsOnly(t *testing.T) {
 	collectionID := collection.GetCollectionID()
 
 	// Trigger creation of the channel cache for channel "all"
-	_, err := collection.changeCache.getChannelCache().getSingleChannelCache(channels.NewID("all", collectionID))
+	_, err := db.changeCache.getChannelCache().getSingleChannelCache(channels.NewID("all", collectionID))
 	require.NoError(t, err)
 
 	ids := make([]AllDocsEntry, 100)
@@ -852,7 +852,7 @@ func TestAllDocsOnly(t *testing.T) {
 
 	// Inspect the channel log to confirm that it's only got the last 50 sequences.
 	// There are 101 sequences overall, so the 1st one it has should be #52.
-	err = collection.changeCache.waitForSequence(ctx, 101, base.DefaultWaitForSequence)
+	err = db.changeCache.waitForSequence(ctx, 101, base.DefaultWaitForSequence)
 	require.NoError(t, err)
 
 	changeLog, err := collection.GetChangeLog(channels.NewID("all", collectionID), 0)
@@ -996,7 +996,7 @@ func TestConflicts(t *testing.T) {
 	collectionID := collection.GetCollectionID()
 
 	allChannel := channels.NewID("all", collectionID)
-	_, err := collection.changeCache.getChannelCache().getSingleChannelCache(allChannel)
+	_, err := db.changeCache.getChannelCache().getSingleChannelCache(allChannel)
 	require.NoError(t, err)
 
 	cacheWaiter := db.NewDCPCachingCountWaiter(t)
@@ -1475,10 +1475,10 @@ func TestAccessFunctionDb(t *testing.T) {
 	user, err = authenticator.GetUser("naomi")
 	assert.NoError(t, err, "GetUser")
 	expected := channels.AtSequence(channels.BaseSetOf(t, "Hulu", "Netflix", "!"), 1)
-	assert.Equal(t, expected, user.CollectionChannels(collection.ScopeName(), collection.Name()))
+	assert.Equal(t, expected, user.CollectionChannels(collection.ScopeName, collection.Name))
 
 	expected.AddChannel("CrunchyRoll", 2)
-	assert.Equal(t, expected, user.InheritedCollectionChannels(collection.ScopeName(), collection.Name()))
+	assert.Equal(t, expected, user.InheritedCollectionChannels(collection.ScopeName, collection.Name))
 }
 
 func TestDocIDs(t *testing.T) {
@@ -1675,7 +1675,7 @@ func TestRecentSequenceHistory(t *testing.T) {
 	// Recent sequence pruning only prunes entries older than what's been seen over DCP
 	// (to ensure it's not pruning something that may still be coalesced).  Because of this, test waits
 	// for caching before attempting to trigger pruning.
-	err = collection.changeCache.waitForSequence(ctx, seqTracker, base.DefaultWaitForSequence)
+	err = db.changeCache.waitForSequence(ctx, seqTracker, base.DefaultWaitForSequence)
 	require.NoError(t, err)
 
 	// Add another sequence to validate pruning when past max (20)
@@ -1701,7 +1701,7 @@ func TestRecentSequenceHistory(t *testing.T) {
 		seqTracker++
 	}
 
-	err = collection.changeCache.waitForSequence(ctx, seqTracker, base.DefaultWaitForSequence) //
+	err = db.changeCache.waitForSequence(ctx, seqTracker, base.DefaultWaitForSequence) //
 	require.NoError(t, err)
 	revid, doc, err = collection.Put(ctx, "doc1", body)
 	body[BodyId] = doc.ID
@@ -3075,13 +3075,27 @@ func TestGetDatabaseCollectionWithUserDefaultCollection(t *testing.T) {
 			} else {
 				require.NoError(t, err)
 				require.NotNil(t, col)
-				require.Equal(t, col.ScopeName(), testCase.scope)
-				require.Equal(t, col.Name(), testCase.collection)
+				require.Equal(t, col.ScopeName, testCase.scope)
+				require.Equal(t, col.Name, testCase.collection)
 			}
 
 		})
 	}
 
+}
+
+func TestServerUUID(t *testing.T) {
+	bucket := base.GetTestBucket(t)
+	defer bucket.Close()
+
+	db, err := NewDatabaseContext(base.TestCtx(t), "db", bucket, false, DatabaseContextOptions{})
+	require.NoError(t, err)
+
+	if base.TestUseCouchbaseServer() {
+		require.Len(t, db.ServerUUID, 32) // no dashes in UUID
+	} else {
+		require.Len(t, db.ServerUUID, 0) // no dashes in UUID
+	}
 }
 
 func waitAndAssertConditionWithOptions(t *testing.T, fn func() bool, retryCount, msSleepTime int, failureMsgAndArgs ...interface{}) {

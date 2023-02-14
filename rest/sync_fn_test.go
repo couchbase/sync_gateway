@@ -327,6 +327,76 @@ func TestSyncFunctionErrorLogging(t *testing.T) {
 	assert.Equal(t, numErrors+1, numErrorsAfter)
 }
 
+func TestSyncFunctionException(t *testing.T) {
+
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyJavascript)
+
+	rtConfig := RestTesterConfig{
+		SyncFn: `
+		function(doc) {
+			if (doc.throwException) {
+				channel(undefinedvariable);
+			}
+			if (doc.throwExplicit) {
+				throw("Explicit exception");
+			}
+			if (doc.throwForbidden) {
+				throw({forbidden: "read only!"})
+			}
+			if (doc.require) {
+				requireAdmin();
+			}
+		}`,
+		GuestEnabled: true,
+	}
+
+	rt := NewRestTester(t, &rtConfig)
+	defer rt.Close()
+
+	// Wait for the DB to be ready before attempting to get initial error count
+	assert.NoError(t, rt.WaitForDBOnline())
+
+	numDBSyncExceptionsStart := rt.GetDatabase().DbStats.Database().SyncFunctionExceptionCount.Value()
+
+	// runtime error
+	response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1", `{"throwException":true}`)
+	assert.Equal(t, http.StatusInternalServerError, response.Code)
+	assert.Contains(t, response.Body.String(), "Exception in JS sync function")
+
+	numDBSyncExceptions := rt.GetDatabase().DbStats.Database().SyncFunctionExceptionCount.Value()
+	assert.Equal(t, numDBSyncExceptionsStart+1, numDBSyncExceptions)
+	numDBSyncExceptionsStart = numDBSyncExceptions
+
+	// explicit throws should cause an exception
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc2", `{"throwExplicit":true}`)
+	assert.Equal(t, http.StatusInternalServerError, response.Code)
+	assert.Contains(t, response.Body.String(), "Exception in JS sync function")
+
+	numDBSyncExceptions = rt.GetDatabase().DbStats.Database().SyncFunctionExceptionCount.Value()
+	assert.Equal(t, numDBSyncExceptionsStart+1, numDBSyncExceptions)
+	numDBSyncExceptionsStart = numDBSyncExceptions
+	numDBSyncRejected := rt.GetDatabase().DbStats.Security().NumDocsRejected.Value()
+	assert.Equal(t, int64(0), numDBSyncRejected)
+
+	// throw with a forbidden property shouldn't cause a true exception
+	response = rt.SendRequest("PUT", "/{{.keyspace}}/doc3", `{"throwForbidden":true}`)
+	assert.Equal(t, http.StatusForbidden, response.Code)
+	assert.Contains(t, response.Body.String(), "read only!")
+	numDBSyncExceptions = rt.GetDatabase().DbStats.Database().SyncFunctionExceptionCount.Value()
+	assert.Equal(t, numDBSyncExceptionsStart, numDBSyncExceptions)
+	numDBSyncRejected = rt.GetDatabase().DbStats.Security().NumDocsRejected.Value()
+	assert.Equal(t, int64(1), numDBSyncRejected)
+
+	// require methods shouldn't cause a true exception
+	response = rt.SendRequest("PUT", "/{{.keyspace}}/doc4", `{"require":true}`)
+	assert.Equal(t, http.StatusForbidden, response.Code)
+	assert.Contains(t, response.Body.String(), "sg admin required")
+	numDBSyncExceptions = rt.GetDatabase().DbStats.Database().SyncFunctionExceptionCount.Value()
+	assert.Equal(t, numDBSyncExceptionsStart, numDBSyncExceptions)
+	numDBSyncRejected = rt.GetDatabase().DbStats.Security().NumDocsRejected.Value()
+	assert.Equal(t, int64(2), numDBSyncRejected)
+}
+
 func TestSyncFnTimeout(t *testing.T) {
 	syncFn := `function(doc) { while(true) {} }`
 
@@ -882,9 +952,6 @@ func TestResyncStopUsingDCPStream(t *testing.T) {
 
 func TestResyncRegenerateSequences(t *testing.T) {
 
-	// FIXME: PersistentWalrusBucket doesn't support collections yet
-	t.Skip("PersistentWalrusBucket doesn't support collections yet")
-
 	base.LongRunningTest(t)
 	syncFn := `
 	function(doc) {
@@ -936,10 +1003,10 @@ func TestResyncRegenerateSequences(t *testing.T) {
 		docSeqArr = append(docSeqArr, body["_sync"].(map[string]interface{})["sequence"].(float64))
 	}
 
-	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/_role/role1", GetRolePayload(t, "role1", "", collection, []string{"channel_1"}))
+	response = rt.SendAdminRequest("PUT", "/{{.db}}/_role/role1", GetRolePayload(t, "role1", "", collection, []string{"channel_1"}))
 	RequireStatus(t, response, http.StatusCreated)
 
-	response = rt.SendAdminRequest("PUT", "/db/_user/user1", GetUserPayload(t, "user1", "letmein", "", collection, []string{"channel_1"}, []string{"role1"}))
+	response = rt.SendAdminRequest("PUT", "/{{.db}}/_user/user1", GetUserPayload(t, "user1", "letmein", "", collection, []string{"channel_1"}, []string{"role1"}))
 	RequireStatus(t, response, http.StatusCreated)
 
 	_, err := rt.MetadataStore().Get(base.RolePrefix+"role1", &body)
@@ -977,11 +1044,10 @@ func TestResyncRegenerateSequences(t *testing.T) {
 	}
 
 	var changesResp ChangesResp
-	request, _ := http.NewRequest("GET", "/{{.keyspace}}/_changes", nil)
-	request.SetBasicAuth("user1", "letmein")
-	response = rt.Send(request)
+	response = rt.SendUserRequest("GET", "/{{.keyspace}}/_changes", "", "user1")
 	RequireStatus(t, response, http.StatusOK)
 	err = json.Unmarshal(response.BodyBytes(), &changesResp)
+	require.NoError(t, err)
 	assert.Len(t, changesResp.Results, 3)
 	assert.True(t, changesRespContains(changesResp, "userdoc"))
 	assert.True(t, changesRespContains(changesResp, "userdoc2"))
@@ -1039,10 +1105,7 @@ func TestResyncRegenerateSequences(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Data is wiped from walrus when brought back online
-	request, err = http.NewRequest("GET", "/{{.keyspace}}/_changes?since="+changesResp.LastSeq, nil)
-	require.NoError(t, err)
-	request.SetBasicAuth("user1", "letmein")
-	response = rt.Send(request)
+	response = rt.SendUserRequest("GET", "/{{.keyspace}}/_changes?since="+changesResp.LastSeq, "", "user1")
 	RequireStatus(t, response, http.StatusOK)
 	err = json.Unmarshal(response.BodyBytes(), &changesResp)
 	assert.Len(t, changesResp.Results, 3)

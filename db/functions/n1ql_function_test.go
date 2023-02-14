@@ -28,7 +28,7 @@ var kUserN1QLFunctionsConfig = FunctionsConfig{
 			Type:  "query",
 			Code:  `SELECT $args.city AS city`,
 			Args:  []string{"city"},
-			Allow: &Allow{Channels: []string{"city-$city", "allcities"}},
+			Allow: &Allow{Channels: []string{"city-${args.city}", "allcities"}},
 		},
 		"square": &FunctionConfig{
 			Type:  "query",
@@ -44,7 +44,7 @@ var kUserN1QLFunctionsConfig = FunctionsConfig{
 		"user_parts": &FunctionConfig{
 			Type:  "query",
 			Code:  "SELECT $user.name AS name, $user.email AS email",
-			Allow: &Allow{Channels: []string{"user-$(user.name)"}},
+			Allow: &Allow{Channels: []string{"user-${context.user.name}"}},
 		},
 		"admin_only": &FunctionConfig{
 			Type:  "query",
@@ -59,7 +59,7 @@ var kUserN1QLFunctionsConfig = FunctionsConfig{
 		},
 		"syntax_error": &FunctionConfig{
 			Type:  "query",
-			Code:  "SELEKT OOK? FR0M OOK!",
+			Code:  "SELECT OOK? FR0M OOK!",
 			Allow: allowAll,
 		},
 	},
@@ -218,4 +218,40 @@ func testUserQueriesAsUser(t *testing.T, ctx context.Context, db *db.Database) {
 	// No such query:
 	_, err = callUserQuery(ctx, db, "xxxx", nil)
 	assertHTTPError(t, err, 403) // not 404 as for an admin
+}
+
+// Unit test to ensure only SELECT queries can run
+func TestUserN1QLQueriesInvalid(t *testing.T) {
+	var kBadN1QLFunctionsConfig = FunctionsConfig{
+		Definitions: FunctionsDefs{
+			"evil_mutant": &FunctionConfig{
+				Type:  "query",
+				Code:  `DROP COLLECTION Students`,
+				Allow: &Allow{Channels: []string{"*"}},
+			},
+		},
+	}
+
+	_, err := CompileFunctions(kBadN1QLFunctionsConfig)
+	assert.ErrorContains(t, err, "only SELECT queries are allowed") // See fn validateN1QLQuery
+
+	var kOKN1QLFunctionsConfig = FunctionsConfig{
+		Definitions: FunctionsDefs{
+			"lowercase": &FunctionConfig{
+				Type:  "query",
+				Code:  `seleCt $args.city AS city`,
+				Args:  []string{"city"},
+				Allow: &Allow{Channels: []string{"*"}},
+			},
+			"parens": &FunctionConfig{
+				Type:  "query",
+				Code:  `  (select $args.city AS city)`,
+				Args:  []string{"city"},
+				Allow: &Allow{Channels: []string{"*"}},
+			},
+		},
+	}
+
+	_, err = CompileFunctions(kOKN1QLFunctionsConfig)
+	assert.NoError(t, err)
 }

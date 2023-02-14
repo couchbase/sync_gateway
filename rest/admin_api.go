@@ -631,9 +631,9 @@ func (h *handler) handleGetCollectionConfigSync() error {
 		etagVersion = dbConfig.Version
 
 		if dbConfig.Scopes != nil {
-			scope, ok := dbConfig.Scopes[h.collection.ScopeName()]
+			scope, ok := dbConfig.Scopes[h.collection.ScopeName]
 			if ok {
-				collectionConfig, ok := scope.Collections[h.collection.Name()]
+				collectionConfig, ok := scope.Collections[h.collection.Name]
 				if ok && collectionConfig.SyncFn != nil {
 					syncFunction = *collectionConfig.SyncFn
 
@@ -672,10 +672,10 @@ func (h *handler) handleDeleteCollectionConfigSync() error {
 				return nil, base.HTTPErrorf(http.StatusPreconditionFailed, "Provided If-Match header does not match current config version")
 			}
 			if bucketDbConfig.Scopes != nil {
-				config := bucketDbConfig.Scopes[h.collection.ScopeName()].Collections[h.collection.Name()]
+				config := bucketDbConfig.Scopes[h.collection.ScopeName].Collections[h.collection.Name]
 				config.SyncFn = nil
-				bucketDbConfig.Scopes[h.collection.ScopeName()].Collections[h.collection.Name()] = config
-			} else if base.IsDefaultCollection(h.collection.ScopeName(), h.collection.Name()) {
+				bucketDbConfig.Scopes[h.collection.ScopeName].Collections[h.collection.Name] = config
+			} else if base.IsDefaultCollection(h.collection.ScopeName, h.collection.Name) {
 				bucketDbConfig.Sync = nil
 			}
 
@@ -740,10 +740,10 @@ func (h *handler) handlePutCollectionConfigSync() error {
 			}
 
 			if bucketDbConfig.Scopes != nil {
-				config := bucketDbConfig.Scopes[h.collection.ScopeName()].Collections[h.collection.Name()]
+				config := bucketDbConfig.Scopes[h.collection.ScopeName].Collections[h.collection.Name]
 				config.SyncFn = &js
-				bucketDbConfig.Scopes[h.collection.ScopeName()].Collections[h.collection.Name()] = config
-			} else if base.IsDefaultCollection(h.collection.ScopeName(), h.collection.Name()) {
+				bucketDbConfig.Scopes[h.collection.ScopeName].Collections[h.collection.Name] = config
+			} else if base.IsDefaultCollection(h.collection.ScopeName, h.collection.Name) {
 				bucketDbConfig.Sync = &js
 			}
 
@@ -802,9 +802,9 @@ func (h *handler) handleGetCollectionConfigImportFilter() error {
 		}
 		etagVersion = dbConfig.Version
 		if dbConfig.Scopes != nil {
-			scope, ok := dbConfig.Scopes[h.collection.ScopeName()]
+			scope, ok := dbConfig.Scopes[h.collection.ScopeName]
 			if ok {
-				collectionConfig, ok := scope.Collections[h.collection.Name()]
+				collectionConfig, ok := scope.Collections[h.collection.Name]
 				if ok && collectionConfig.ImportFilter != nil {
 					importFilterFunction = *collectionConfig.ImportFilter
 
@@ -846,10 +846,10 @@ func (h *handler) handleDeleteCollectionConfigImportFilter() error {
 			}
 
 			if bucketDbConfig.Scopes != nil {
-				config := bucketDbConfig.Scopes[h.collection.ScopeName()].Collections[h.collection.Name()]
+				config := bucketDbConfig.Scopes[h.collection.ScopeName].Collections[h.collection.Name]
 				config.ImportFilter = nil
-				bucketDbConfig.Scopes[h.collection.ScopeName()].Collections[h.collection.Name()] = config
-			} else if base.IsDefaultCollection(h.collection.ScopeName(), h.collection.Name()) {
+				bucketDbConfig.Scopes[h.collection.ScopeName].Collections[h.collection.Name] = config
+			} else if base.IsDefaultCollection(h.collection.ScopeName, h.collection.Name) {
 				bucketDbConfig.ImportFilter = nil
 			}
 
@@ -914,10 +914,10 @@ func (h *handler) handlePutCollectionConfigImportFilter() error {
 			}
 
 			if bucketDbConfig.Scopes != nil {
-				config := bucketDbConfig.Scopes[h.collection.ScopeName()].Collections[h.collection.Name()]
+				config := bucketDbConfig.Scopes[h.collection.ScopeName].Collections[h.collection.Name]
 				config.ImportFilter = &js
-				bucketDbConfig.Scopes[h.collection.ScopeName()].Collections[h.collection.Name()] = config
-			} else if base.IsDefaultCollection(h.collection.ScopeName(), h.collection.Name()) {
+				bucketDbConfig.Scopes[h.collection.ScopeName].Collections[h.collection.Name] = config
+			} else if base.IsDefaultCollection(h.collection.ScopeName, h.collection.Name) {
 				bucketDbConfig.ImportFilter = &js
 			}
 
@@ -1122,7 +1122,7 @@ func (h *handler) handleGetStatus() error {
 		status.Databases[database.Name] = DatabaseStatus{
 			SequenceNumber:    lastSeq,
 			State:             runState,
-			ServerUUID:        database.GetServerUUID(h.ctx()),
+			ServerUUID:        database.ServerUUID,
 			ReplicationStatus: replicationsStatus,
 			SGRCluster:        cluster,
 		}

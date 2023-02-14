@@ -74,12 +74,11 @@ func (r *ResyncManagerDCP) Init(ctx context.Context, options map[string]interfac
 		// process from scratch with a new resync ID. Otherwise, we should resume with the resync ID, stats specified in the doc.
 		if statusDoc.State == BackgroundProcessStateCompleted || err != nil || (reset && ok) {
 			return newRunInit()
-		} else {
-			r.ResyncID = statusDoc.ResyncID
-			r.SetStatus(statusDoc.DocsChanged, statusDoc.DocsProcessed)
-
-			base.InfofCtx(ctx, base.KeyAll, "Resync: Attempting to resume resync with resync ID: %s", r.ResyncID)
 		}
+		r.ResyncID = statusDoc.ResyncID
+		r.SetStatus(statusDoc.DocsChanged, statusDoc.DocsProcessed)
+
+		base.InfofCtx(ctx, base.KeyAll, "Resync: Attempting to resume resync with resync ID: %s", r.ResyncID)
 
 		return nil
 	}
@@ -105,10 +104,14 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]interface
 	defer atomic.CompareAndSwapUint32(&db.State, DBResyncing, DBOffline)
 
 	callback := func(event sgbucket.FeedEvent) bool {
-		var err error
 		docID := string(event.Key)
 		key := realDocID(docID)
 		base.TracefCtx(ctx, base.KeyAll, "[%s] Received DCP event %d for doc %v", resyncLoggingID, event.Opcode, base.UD(docID))
+
+		// Ignore documents without Xattrs
+		if event.DataType&base.MemcachedDataTypeXattr == 0 {
+			return true
+		}
 		// Don't want to process raw binary docs
 		// The binary check should suffice but for additional safety also check for empty bodies
 		if event.DataType == base.MemcachedDataTypeRaw || len(event.Value) == 0 {
@@ -121,7 +124,6 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]interface
 		}
 
 		r.DocsProcessed.Add(1)
-
 		databaseCollection := db.CollectionByID[event.CollectionID]
 		_, unusedSequences, err := (&DatabaseCollectionWithUser{
 			DatabaseCollection: databaseCollection,
@@ -153,10 +155,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]interface
 		base.InfofCtx(ctx, base.KeyAll, "[%s] running resync against specified collections", resyncLoggingID)
 	}
 
-	clientOptions, err := getReSyncDCPClientOptions(collectionIDs, db.Options.GroupID)
-	if err != nil {
-		return err
-	}
+	clientOptions := getReSyncDCPClientOptions(collectionIDs, db.Options.GroupID)
 
 	dcpFeedKey := generateResyncDCPStreamName(r.ResyncID)
 	dcpClient, err := base.NewDCPClient(dcpFeedKey, callback, *clientOptions, bucket)
@@ -312,16 +311,14 @@ type ResyncManagerStatusDocDCP struct {
 }
 
 // getReSyncDCPClientOptions returns the default set of DCPClientOptions suitable for resync
-func getReSyncDCPClientOptions(collectionIDs []uint32, groupID string) (*base.DCPClientOptions, error) {
-	clientOptions := &base.DCPClientOptions{
+func getReSyncDCPClientOptions(collectionIDs []uint32, groupID string) *base.DCPClientOptions {
+	return &base.DCPClientOptions{
 		OneShot:           true,
 		FailOnRollback:    true,
 		MetadataStoreType: base.DCPMetadataStoreCS,
 		GroupID:           groupID,
 		CollectionIDs:     collectionIDs,
 	}
-
-	return clientOptions, nil
 }
 
 func generateResyncDCPStreamName(resyncID string) string {

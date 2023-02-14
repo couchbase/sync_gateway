@@ -71,6 +71,12 @@ func TestsUseNamedCollections() bool {
 	return err == nil && ok
 }
 
+// TestsUseNamedCollections returns true if the tests use named collections.
+func TestsUseServerCE() bool {
+	ok, err := GTestBucketPool.cluster.isServerEnterprise()
+	return err == nil && ok
+}
+
 // canUseNamedCollections returns true if the cluster supports named collections, and they are also requested
 func (tbp *TestBucketPool) canUseNamedCollections() (bool, error) {
 	// walrus supports collections, but we need to query the server's version for capability check

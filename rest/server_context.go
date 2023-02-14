@@ -655,6 +655,10 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	// Once system scope/collection is well-supported, and we have a migration path, we can consider using those.
 	// contextOptions.MetadataStore = bucket.NamedDataStore(base.ScopeAndCollectionName{base.MobileMetadataScope, base.MobileMetadataCollection})
 	contextOptions.MetadataStore = bucket.DefaultDataStore()
+	err = validateMetadataStore(ctx, contextOptions.MetadataStore)
+	if err != nil {
+		return nil, err
+	}
 
 	// Create the DB Context
 	dbcontext, err := db.NewDatabaseContext(ctx, dbName, bucket, autoImport, contextOptions)
@@ -946,6 +950,9 @@ func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConf
 		base.WarnfCtx(ctx, `Deprecation notice: setting database configuration option "allow_conflicts" to true is due to be removed. In the future, conflicts will not be allowed.`)
 	}
 
+	if config.Unsupported.DisableCleanSkippedQuery {
+		base.WarnfCtx(ctx, `Deprecation notice: setting databse configuration option "disable_clean_skipped_query" no longer has any functionality. In the future, this option will be removed.`)
+	}
 	// If basic auth is disabled, it doesn't make sense to send WWW-Authenticate
 	sendWWWAuthenticate := config.SendWWWAuthenticateHeader
 	if base.BoolDefault(config.DisablePasswordAuth, false) {
@@ -1038,6 +1045,24 @@ func (sc *ServerContext) TakeDbOnline(nonContextStruct base.NonCancellableContex
 		base.InfofCtx(nonContextStruct.Ctx, base.KeyCRUD, "Unable to take Database : %v online , database must be in Offline state", base.UD(database.Name))
 	}
 
+}
+
+// validateMetadataStore will
+func validateMetadataStore(ctx context.Context, metadataStore base.DataStore) error {
+	// Check if scope/collection specified exists. Will enter retry loop if connection unsuccessful
+	err := base.WaitUntilDataStoreExists(metadataStore)
+	if err == nil {
+		return nil
+	}
+	metadataStoreName, ok := base.AsDataStoreName(metadataStore)
+	if ok {
+		keyspace := strings.Join([]string{metadataStore.GetName(), metadataStoreName.ScopeName(), metadataStoreName.CollectionName()}, base.ScopeCollectionSeparator)
+		if base.IsDefaultCollection(metadataStoreName.ScopeName(), metadataStoreName.CollectionName()) {
+			base.WarnfCtx(ctx, "_default._default has been deleted from the server for bucket %s, to recover recreate the bucket", metadataStore.GetName())
+		}
+		return fmt.Errorf("metadata store %s does not exist on couchbase server: %w", base.MD(keyspace), err)
+	}
+	return fmt.Errorf("metadata store %s does not exist on couchbase server: %w", base.MD(metadataStore.GetName()), err)
 }
 
 // validateEventConfigOptions returns errors for all invalid event type options.

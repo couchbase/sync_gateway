@@ -29,18 +29,18 @@ import (
 // changes.
 type changeListener struct {
 	bucket                base.Bucket
-	bucketName            string                    // Used for logging
-	tapFeed               base.TapFeed              // Observes changes to bucket
-	tapNotifier           *sync.Cond                // Posts notifications when documents are updated
-	FeedArgs              sgbucket.FeedArguments    // The Tap Args (backfill, etc)
-	counter               uint64                    // Event counter; increments on every doc update
-	terminateCheckCounter uint64                    // Termination Event counter; increments on every notifyCheckForTermination
-	keyCounts             map[string]uint64         // Latest count at which each doc key was updated
-	OnChangeSubscribers   map[uint32]DocChangedFunc // Map of DocChanged functions, keyed by collection ID.
-	subscribeLock         sync.Mutex                // Mutex for addition to the subscriber list
-	terminator            chan bool                 // Signal to cause cbdatasource bucketdatasource.Close() to be called, which removes dcp receiver
-	sgCfgPrefix           string                    // SG config key prefix
-	started               base.AtomicBool           // whether the feed has been started
+	bucketName            string                 // Used for logging
+	tapFeed               base.TapFeed           // Observes changes to bucket
+	tapNotifier           *sync.Cond             // Posts notifications when documents are updated
+	FeedArgs              sgbucket.FeedArguments // The Tap Args (backfill, etc)
+	counter               uint64                 // Event counter; increments on every doc update
+	terminateCheckCounter uint64                 // Termination Event counter; increments on every notifyCheckForTermination
+	keyCounts             map[string]uint64      // Latest count at which each doc key was updated
+	OnChangeCallback      DocChangedFunc
+	subscribeLock         sync.Mutex      // Mutex for addition to the subscriber list
+	terminator            chan bool       // Signal to cause cbdatasource bucketdatasource.Close() to be called, which removes dcp receiver
+	sgCfgPrefix           string          // SG config key prefix
+	started               base.AtomicBool // whether the feed has been started
 }
 
 type DocChangedFunc func(event sgbucket.FeedEvent)
@@ -52,26 +52,11 @@ func (listener *changeListener) Init(name string, groupID string) {
 	listener.keyCounts = map[string]uint64{}
 	listener.tapNotifier = sync.NewCond(&sync.Mutex{})
 	listener.sgCfgPrefix = base.SGCfgPrefixWithGroupID(groupID)
-	listener.OnChangeSubscribers = map[uint32]DocChangedFunc{}
-}
-
-// RegisterOnChangeCallback adds a listener to DocChanged events.  Subscription is only supported prior to
-// feed start, to allow non-locking reads of OnChangeSubscribers map once the feed is running.
-func (listener *changeListener) RegisterOnChangeCallback(collectionID uint32, callback DocChangedFunc) error {
-	if listener.started.IsTrue() {
-		return fmt.Errorf("Attempt to register callback after feed has started for collectionID %d", collectionID)
-	}
-	listener.subscribeLock.Lock()
-	defer listener.subscribeLock.Unlock()
-	listener.OnChangeSubscribers[collectionID] = callback
-	return nil
 }
 
 func (listener *changeListener) OnDocChanged(event sgbucket.FeedEvent) {
 	// TODO: When principal grants are implemented (CBG-2333), perform collection filtering here
-	for _, callback := range listener.OnChangeSubscribers {
-		callback(event)
-	}
+	listener.OnChangeCallback(event)
 }
 
 // Starts a changeListener on a given Bucket.
@@ -419,14 +404,12 @@ func (waiter *ChangeWaiter) RefreshUserCount() bool {
 }
 
 // Updates the set of channel keys in the ChangeWaiter (maintains the existing set of user keys)
-func (waiter *ChangeWaiter) UpdateChannels(timedSetByCollectionID channels.TimedSetByCollectionID) {
+func (waiter *ChangeWaiter) UpdateChannels(collectionID uint32, timedSet channels.TimedSet) {
 	// This capacity is not right can not accomodate channels without iteration.
 	initialCapacity := len(waiter.userKeys)
 	updatedKeys := make([]string, 0, initialCapacity)
-	for collectionID, timedSetByChannel := range timedSetByCollectionID {
-		for channelName, _ := range timedSetByChannel {
-			updatedKeys = append(updatedKeys, channels.NewID(channelName, collectionID).String())
-		}
+	for channelName, _ := range timedSet {
+		updatedKeys = append(updatedKeys, channels.NewID(channelName, collectionID).String())
 	}
 	if len(waiter.userKeys) > 0 {
 		updatedKeys = append(updatedKeys, waiter.userKeys...)

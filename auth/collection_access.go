@@ -88,7 +88,7 @@ type UserCollectionChannelAPI interface {
 	// to for the collection, annotated with the sequence number at which access was granted.
 	// Returns a string array containing any channels filtered out due to the user not having access
 	// to them.
-	FilterToAvailableCollectionChannels(scope, collection string, channels ch.Set) (filtered ch.TimedSet, removed []string)
+	FilterToAvailableCollectionChannels(scope, collection string, channels base.Set) (filtered ch.TimedSet, removed []string)
 
 	// If the input set contains the wildcard "*" channel, returns the user's inheritedChannels for the collection;
 	// else returns the input channel list unaltered.

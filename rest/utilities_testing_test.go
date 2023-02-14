@@ -11,7 +11,11 @@ licenses/APL2.txt.
 package rest
 
 import (
+	"fmt"
 	"log"
+	"net/http"
+	"net/url"
+	"strings"
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -97,5 +101,48 @@ func TestAttachmentRoundTrip(t *testing.T) {
 	assert.Equal(t, "", attachments["baz"].ContentType)
 	assert.Equal(t, "", attachments["baz"].Digest)
 	assert.Equal(t, []byte{}, attachments["baz"].Data) // data field is explicitly ignored
+
+}
+
+// TestRestTesterInvalidPathVariable ensures that invalid path variables return an error instead of silently returning "<no value>" or empty string.
+func TestRestTesterInvalidPathVariable(t *testing.T) {
+	const dbName = "dbname"
+	rt := NewRestTester(t, &RestTesterConfig{
+		DatabaseConfig: &DatabaseConfig{
+			DbConfig: DbConfig{
+				Name: dbName,
+			},
+		},
+	})
+	defer rt.Close()
+
+	uri, err := rt.templateResource("/foo/{{.invalid}}/bar")
+	assert.Errorf(t, err, "Expected error for invalid path variable")
+	assert.Equalf(t, "", uri, "Expected empty URI for invalid path variable")
+	assert.NotContainsf(t, uri, "<no value>", "Expected URI to not contain \"<no value>\" for invalid path variable")
+
+	uri, err = rt.templateResource("/foo/{{.db}}/bar")
+	assert.NoError(t, err)
+	assert.Equalf(t, "/foo/"+dbName+"/bar", uri, "Expected valid URI for valid path variable")
+}
+
+func TestCECheck(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("Only works with CBS")
+	}
+	if !base.TestsUseServerCE() {
+		t.Skip("test only runs with CE server")
+	}
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+	form := url.Values{}
+	form.Add("password", "password")
+	form.Add("roles", "[mobile_sync_Gateway]")
+	eps, _, err := rt.ServerContext().ObtainManagementEndpointsAndHTTPClient()
+	require.NoError(t, err)
+
+	req, err := http.NewRequest("PUT", fmt.Sprintf("%s/settings/rbac/users/local/%s", eps[0], "username"), strings.NewReader(form.Encode()))
+	require.Error(t, err)
+	require.Equal(t, req, http.StatusBadRequest)
 
 }

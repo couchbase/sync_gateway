@@ -432,6 +432,7 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 
 	// Collection keyspace handling
 	if ks != "" {
+		ksNotFound := base.HTTPErrorf(http.StatusNotFound, "keyspace %s not found", ks)
 		if dbContext.Scopes != nil {
 			// If scopes are defined on the database but not in th an empty scope to refer to the one SG is running with, rather than falling back to _default
 			if keyspaceScope == nil {
@@ -441,29 +442,28 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 					}
 
 				} else {
-					return base.HTTPErrorf(http.StatusBadRequest, "Ambiguous keyspace: %s.%s", base.MD(keyspaceDb), base.MD(base.StringDefault(keyspaceScope, "")))
+					keyspaceScope = base.StringPtr(base.DefaultScope)
 				}
 			}
 			scope, foundScope := dbContext.Scopes[*keyspaceScope]
 			if !foundScope {
-				return base.HTTPErrorf(http.StatusNotFound, "keyspace %s.%s.%s not found", base.MD(keyspaceDb), base.MD(base.StringDefault(keyspaceScope, "")), base.MD(base.StringDefault(keyspaceCollection, "")))
+				return ksNotFound
 			}
 
 			if keyspaceCollection == nil {
 				if len(scope.Collections) > 1 {
-					// _default doesn't exist for a non-default scope - so make it a required element if it's ambiguous
-					return base.HTTPErrorf(http.StatusBadRequest, "Ambiguous keyspace: %s.%s", base.MD(keyspaceDb), base.MD(base.StringDefault(keyspaceScope, "")))
+					return ksNotFound
 				}
 				keyspaceCollection = base.StringPtr(base.DefaultCollection)
 			}
 			_, foundCollection := scope.Collections[*keyspaceCollection]
 			if !foundCollection {
-				return base.HTTPErrorf(http.StatusNotFound, "keyspace %s.%s.%s not found", base.MD(keyspaceDb), base.MD(base.StringDefault(keyspaceScope, "")), base.MD(base.StringDefault(keyspaceCollection, "")))
+				return ksNotFound
 			}
 		} else {
 			if keyspaceScope != nil && *keyspaceScope != base.DefaultScope || keyspaceCollection != nil && *keyspaceCollection != base.DefaultCollection {
 				// request tried specifying a named collection on a non-named collections database
-				return base.HTTPErrorf(http.StatusNotFound, "keyspace %s.%s.%s not found", base.MD(keyspaceDb), base.MD(base.StringDefault(keyspaceScope, "")), base.MD(base.StringDefault(keyspaceCollection, "")))
+				return ksNotFound
 			}
 			// Set these for handlers that expect a scope/collection to be set, even if not using named collections.
 			keyspaceScope = base.StringPtr(base.DefaultScope)

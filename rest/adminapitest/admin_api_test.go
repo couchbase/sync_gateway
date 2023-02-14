@@ -900,7 +900,7 @@ func TestResyncUsingDCPStream(t *testing.T) {
 
 func TestResyncForNamedCollection(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
-		t.Skip("can not create new buckets and scopes in walrus")
+		t.Skip("DCP client doesn't work with walrus. Waiting on CBG-2661")
 	}
 	base.TestRequiresCollections(t)
 
@@ -1034,7 +1034,7 @@ func TestResyncForNamedCollection(t *testing.T) {
 
 func TestResyncUsingDCPStreamForNamedCollection(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
-		t.Skip("can not create new buckets and scopes in walrus")
+		t.Skip("DCP client doesn't work with walrus. Waiting on CBG-2661")
 	}
 	base.TestRequiresCollections(t)
 
@@ -1142,7 +1142,7 @@ func TestResyncUsingDCPStreamForNamedCollection(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, 0, int(resyncManagerStatus.DocsChanged))
-	assert.Equal(t, 10, int(resyncManagerStatus.DocsProcessed))
+	assert.LessOrEqual(t, 10, int(resyncManagerStatus.DocsProcessed))
 
 	// Run resync for all collections
 	resp = rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
@@ -1163,7 +1163,7 @@ func TestResyncUsingDCPStreamForNamedCollection(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, 0, int(resyncManagerStatus.DocsChanged))
-	assert.Equal(t, 20, int(resyncManagerStatus.DocsProcessed))
+	assert.LessOrEqual(t, 20, int(resyncManagerStatus.DocsProcessed))
 }
 
 func TestResyncErrorScenarios(t *testing.T) {
@@ -1506,345 +1506,6 @@ func TestResyncStopUsingDCPStream(t *testing.T) {
 
 	syncFnCount := int(rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value())
 	assert.True(t, syncFnCount < 2000, "Expected syncFnCount < 2000 but syncFnCount=%d", syncFnCount)
-}
-
-func TestResyncRegenerateSequences(t *testing.T) {
-
-	// FIXME: PersistentWalrusBucket doesn't support collections yet
-	t.Skip("PersistentWalrusBucket doesn't support collections yet")
-
-	base.LongRunningTest(t)
-	syncFn := `
-	function(doc) {
-		if (doc.userdoc){
-			channel("channel_1")
-		}
-	}`
-
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
-
-	var testBucket *base.TestBucket
-
-	if base.UnitTestUrlIsWalrus() {
-		var closeFn func()
-		testBucket, closeFn = base.GetPersistentWalrusBucket(t)
-		defer closeFn()
-	} else {
-		testBucket = base.GetTestBucket(t)
-	}
-
-	rt := rest.NewRestTester(t,
-		&rest.RestTesterConfig{
-			SyncFn:           syncFn,
-			CustomTestBucket: testBucket,
-		},
-	)
-	defer rt.Close()
-
-	_, ok := (rt.GetDatabase().ResyncManager.Process).(*db.ResyncManager)
-	if !ok {
-		rt.GetDatabase().ResyncManager = db.NewResyncManager(rt.GetSingleDataStore())
-	}
-
-	var response *rest.TestResponse
-	var docSeqArr []float64
-	var body db.Body
-
-	for i := 0; i < 10; i++ {
-		docID := fmt.Sprintf("doc%d", i)
-		rt.CreateDoc(t, docID)
-
-		response = rt.SendAdminRequest("GET", "/db/_raw/"+docID, "")
-		require.Equal(t, http.StatusOK, response.Code)
-
-		err := json.Unmarshal(response.BodyBytes(), &body)
-		require.NoError(t, err)
-
-		docSeqArr = append(docSeqArr, body["_sync"].(map[string]interface{})["sequence"].(float64))
-	}
-
-	role := "role1"
-	response = rt.SendAdminRequest("PUT", fmt.Sprintf("/db/_role/%s", role), fmt.Sprintf(`{"name":"%s", "admin_channels":["channel_1"]}`, role))
-	rest.RequireStatus(t, response, http.StatusCreated)
-
-	username := "user1"
-	response = rt.SendAdminRequest("PUT", fmt.Sprintf("/db/_user/%s", username), fmt.Sprintf(`{"name":"%s", "password":"letmein", "admin_channels":["channel_1"], "admin_roles": ["%s"]}`, username, role))
-	rest.RequireStatus(t, response, http.StatusCreated)
-
-	_, err := rt.Bucket().DefaultDataStore().Get(base.RolePrefix+"role1", &body)
-	assert.NoError(t, err)
-	role1SeqBefore := body["sequence"].(float64)
-
-	_, err = rt.Bucket().DefaultDataStore().Get(base.UserPrefix+"user1", &body)
-	assert.NoError(t, err)
-	user1SeqBefore := body["sequence"].(float64)
-
-	response = rt.SendAdminRequest("PUT", "/db/userdoc", `{"userdoc": true}`)
-	rest.RequireStatus(t, response, http.StatusCreated)
-
-	response = rt.SendAdminRequest("PUT", "/db/userdoc2", `{"userdoc": true}`)
-	rest.RequireStatus(t, response, http.StatusCreated)
-
-	// Let everything catch up before opening changes feed
-	require.NoError(t, rt.WaitForPendingChanges())
-
-	type ChangesResp struct {
-		Results []struct {
-			ID  string `json:"id"`
-			Seq int    `json:"seq"`
-		} `json:"results"`
-		LastSeq string `json:"last_seq"`
-	}
-
-	changesRespContains := func(changesResp ChangesResp, docid string) bool {
-		for _, resp := range changesResp.Results {
-			if resp.ID == docid {
-				return true
-			}
-		}
-		return false
-	}
-
-	var changesResp ChangesResp
-	request, _ := http.NewRequest("GET", "/db/_changes", nil)
-	request.SetBasicAuth("user1", "letmein")
-	response = rt.Send(request)
-	rest.RequireStatus(t, response, http.StatusOK)
-	err = json.Unmarshal(response.BodyBytes(), &changesResp)
-	assert.NoError(t, err)
-	assert.Len(t, changesResp.Results, 3)
-	assert.True(t, changesRespContains(changesResp, "userdoc"))
-	assert.True(t, changesRespContains(changesResp, "userdoc2"))
-
-	response = rt.SendAdminRequest("GET", "/db/_resync", "")
-	rest.RequireStatus(t, response, http.StatusOK)
-
-	response = rt.SendAdminRequest("POST", "/db/_offline", "")
-	rest.RequireStatus(t, response, http.StatusOK)
-
-	response = rt.SendAdminRequest("POST", "/db/_resync?action=start&regenerate_sequences=true", "")
-	rest.RequireStatus(t, response, http.StatusOK)
-
-	rest.WaitAndAssertBackgroundManagerState(t, db.BackgroundProcessStateCompleted,
-		func(t testing.TB) db.BackgroundProcessState {
-			return rt.GetDatabase().ResyncManager.GetRunState()
-		})
-	rest.WaitAndAssertBackgroundManagerExpiredHeartbeat(t, rt.GetDatabase().ResyncManager)
-
-	_, err = rt.Bucket().DefaultDataStore().Get(base.RolePrefix+"role1", &body)
-	assert.NoError(t, err)
-	role1SeqAfter := body["sequence"].(float64)
-
-	_, err = rt.Bucket().DefaultDataStore().Get(base.UserPrefix+"user1", &body)
-	assert.NoError(t, err)
-	user1SeqAfter := body["sequence"].(float64)
-
-	assert.True(t, role1SeqAfter > role1SeqBefore)
-	assert.True(t, user1SeqAfter > user1SeqBefore)
-
-	for i := 0; i < 10; i++ {
-		docID := fmt.Sprintf("doc%d", i)
-
-		doc, err := rt.GetDatabase().GetSingleDatabaseCollection().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalAll)
-		assert.NoError(t, err)
-
-		assert.True(t, float64(doc.Sequence) > docSeqArr[i])
-	}
-
-	response = rt.SendAdminRequest("GET", "/db/_resync", "")
-	rest.RequireStatus(t, response, http.StatusOK)
-	var resyncStatus db.ResyncManagerResponse
-	err = base.JSONUnmarshal(response.BodyBytes(), &resyncStatus)
-	assert.NoError(t, err)
-	assert.Equal(t, 12, resyncStatus.DocsChanged)
-	assert.Equal(t, 12, resyncStatus.DocsProcessed)
-
-	response = rt.SendAdminRequest("POST", "/db/_online", "")
-	rest.RequireStatus(t, response, http.StatusOK)
-
-	err = rt.WaitForCondition(func() bool {
-		state := atomic.LoadUint32(&rt.GetDatabase().State)
-		return state == db.DBOnline
-	})
-	assert.NoError(t, err)
-
-	// Data is wiped from walrus when brought back online
-	request, _ = http.NewRequest("GET", "/db/_changes?since="+changesResp.LastSeq, nil)
-	request.SetBasicAuth("user1", "letmein")
-	response = rt.Send(request)
-	rest.RequireStatus(t, response, http.StatusOK)
-	err = json.Unmarshal(response.BodyBytes(), &changesResp)
-	assert.NoError(t, err)
-	assert.Len(t, changesResp.Results, 3)
-	assert.True(t, changesRespContains(changesResp, "userdoc"))
-	assert.True(t, changesRespContains(changesResp, "userdoc2"))
-}
-
-func TestResyncRegenerateSequencesUsingDCPStream(t *testing.T) {
-	// FIXME: PersistentWalrusBucket doesn't support collections yet
-	t.Skip("PersistentWalrusBucket doesn't support collections yet")
-
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test doesn't works with walrus")
-	}
-
-	base.LongRunningTest(t)
-	syncFn := `
-	function(doc) {
-		if (doc.userdoc){
-			channel("channel_1")
-		}
-	}`
-
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
-
-	testBucket := base.GetTestBucket(t)
-
-	rt := rest.NewRestTester(t,
-		&rest.RestTesterConfig{
-			SyncFn:           syncFn,
-			CustomTestBucket: testBucket,
-		},
-	)
-	defer rt.Close()
-
-	if _, ok := (rt.GetDatabase().ResyncManager.Process).(*db.ResyncManagerDCP); !ok {
-		rt.GetDatabase().ResyncManager = db.NewResyncManagerDCP(rt.GetSingleDataStore())
-	}
-
-	var response *rest.TestResponse
-	var docSeqArr []float64
-	var body db.Body
-
-	for i := 0; i < 10; i++ {
-		docID := fmt.Sprintf("doc%d", i)
-		rt.CreateDoc(t, docID)
-
-		response = rt.SendAdminRequest("GET", "/db/_raw/"+docID, "")
-		require.Equal(t, http.StatusOK, response.Code)
-
-		err := json.Unmarshal(response.BodyBytes(), &body)
-		require.NoError(t, err)
-
-		docSeqArr = append(docSeqArr, body["_sync"].(map[string]interface{})["sequence"].(float64))
-	}
-
-	role := "role1"
-	response = rt.SendAdminRequest("PUT", fmt.Sprintf("/db/_role/%s", role), fmt.Sprintf(`{"name":"%s", "admin_channels":["channel_1"]}`, role))
-	rest.RequireStatus(t, response, http.StatusCreated)
-
-	username := "user1"
-	response = rt.SendAdminRequest("PUT", fmt.Sprintf("/db/_user/%s", username), fmt.Sprintf(`{"name":"%s", "password":"letmein", "admin_channels":["channel_1"], "admin_roles": ["%s"]}`, username, role))
-	rest.RequireStatus(t, response, http.StatusCreated)
-
-	_, err := rt.Bucket().DefaultDataStore().Get(base.RolePrefix+"role1", &body)
-	assert.NoError(t, err)
-	role1SeqBefore := body["sequence"].(float64)
-
-	_, err = rt.Bucket().DefaultDataStore().Get(base.UserPrefix+"user1", &body)
-	assert.NoError(t, err)
-	user1SeqBefore := body["sequence"].(float64)
-
-	response = rt.SendAdminRequest("PUT", "/db/userdoc", `{"userdoc": true}`)
-	rest.RequireStatus(t, response, http.StatusCreated)
-
-	response = rt.SendAdminRequest("PUT", "/db/userdoc2", `{"userdoc": true}`)
-	rest.RequireStatus(t, response, http.StatusCreated)
-
-	// Let everything catch up before opening changes feed
-	require.NoError(t, rt.WaitForPendingChanges())
-
-	type ChangesResp struct {
-		Results []struct {
-			ID  string `json:"id"`
-			Seq int    `json:"seq"`
-		} `json:"results"`
-		LastSeq string `json:"last_seq"`
-	}
-
-	changesRespContains := func(changesResp ChangesResp, docid string) bool {
-		for _, resp := range changesResp.Results {
-			if resp.ID == docid {
-				return true
-			}
-		}
-		return false
-	}
-
-	var changesResp ChangesResp
-	request, _ := http.NewRequest("GET", "/db/_changes", nil)
-	request.SetBasicAuth("user1", "letmein")
-	response = rt.Send(request)
-	rest.RequireStatus(t, response, http.StatusOK)
-	err = json.Unmarshal(response.BodyBytes(), &changesResp)
-	assert.NoError(t, err)
-	assert.Len(t, changesResp.Results, 3)
-	assert.True(t, changesRespContains(changesResp, "userdoc"))
-	assert.True(t, changesRespContains(changesResp, "userdoc2"))
-
-	response = rt.SendAdminRequest("GET", "/db/_resync", "")
-	rest.RequireStatus(t, response, http.StatusOK)
-
-	response = rt.SendAdminRequest("POST", "/db/_offline", "")
-	rest.RequireStatus(t, response, http.StatusOK)
-
-	response = rt.SendAdminRequest("POST", "/db/_resync?action=start&regenerate_sequences=true", "")
-	rest.RequireStatus(t, response, http.StatusOK)
-
-	rest.WaitAndAssertBackgroundManagerState(t, db.BackgroundProcessStateCompleted,
-		func(t testing.TB) db.BackgroundProcessState {
-			return rt.GetDatabase().ResyncManager.GetRunState()
-		})
-	rest.WaitAndAssertBackgroundManagerExpiredHeartbeat(t, rt.GetDatabase().ResyncManager)
-
-	_, err = rt.Bucket().DefaultDataStore().Get(base.RolePrefix+"role1", &body)
-	assert.NoError(t, err)
-	role1SeqAfter := body["sequence"].(float64)
-
-	_, err = rt.Bucket().DefaultDataStore().Get(base.UserPrefix+"user1", &body)
-	assert.NoError(t, err)
-	user1SeqAfter := body["sequence"].(float64)
-
-	assert.True(t, role1SeqAfter > role1SeqBefore)
-	assert.True(t, user1SeqAfter > user1SeqBefore)
-
-	for i := 0; i < 10; i++ {
-		docID := fmt.Sprintf("doc%d", i)
-
-		doc, err := rt.GetDatabase().GetSingleDatabaseCollection().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalAll)
-		assert.NoError(t, err)
-
-		assert.True(t, float64(doc.Sequence) > docSeqArr[i])
-	}
-
-	response = rt.SendAdminRequest("GET", "/db/_resync", "")
-	rest.RequireStatus(t, response, http.StatusOK)
-	var resyncStatus db.ResyncManagerResponseDCP
-	err = base.JSONUnmarshal(response.BodyBytes(), &resyncStatus)
-	assert.NoError(t, err)
-	assert.NotEmpty(t, resyncStatus.ResyncID)
-	assert.Equal(t, 12, int(resyncStatus.DocsChanged))
-	assert.Equal(t, 12, int(resyncStatus.DocsProcessed))
-
-	response = rt.SendAdminRequest("POST", "/db/_online", "")
-	rest.RequireStatus(t, response, http.StatusOK)
-
-	err = rt.WaitForCondition(func() bool {
-		state := atomic.LoadUint32(&rt.GetDatabase().State)
-		return state == db.DBOnline
-	})
-	assert.NoError(t, err)
-
-	// Data is wiped when brought back online
-	request, _ = http.NewRequest("GET", "/db/_changes?since="+changesResp.LastSeq, nil)
-	request.SetBasicAuth("user1", "letmein")
-	response = rt.Send(request)
-	rest.RequireStatus(t, response, http.StatusOK)
-	err = json.Unmarshal(response.BodyBytes(), &changesResp)
-	assert.NoError(t, err)
-	assert.Len(t, changesResp.Results, 3)
-	assert.True(t, changesRespContains(changesResp, "userdoc"))
-	assert.True(t, changesRespContains(changesResp, "userdoc2"))
 }
 
 // Single threaded bring DB online

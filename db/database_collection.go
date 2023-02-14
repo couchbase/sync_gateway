@@ -22,10 +22,12 @@ import (
 type DatabaseCollection struct {
 	dataStore            base.DataStore          // Storage
 	revisionCache        RevisionCache           // Cache of recently-accessed doc revisions
-	changeCache          *changeCache            // Cache of recently-access channels
+	collectionStats      *base.CollectionStats   // pointer to the collection stats (to avoid map lookups when used)
 	dbCtx                *DatabaseContext        // pointer to database context to allow passthrough of functions
 	ChannelMapper        *channels.ChannelMapper // Collection's sync function
 	importFilterFunction *ImportFilterFunction   // collections import options
+	Name                 string
+	ScopeName            string
 }
 
 // DatabaseCollectionWithUser represents CouchDB database. A new instance is created for each request,
@@ -33,6 +35,29 @@ type DatabaseCollection struct {
 type DatabaseCollectionWithUser struct {
 	*DatabaseCollection
 	user auth.User
+}
+
+// newDatabaseCollection returns a collection which inherits values from the database but is specific to a given DataStore.
+func newDatabaseCollection(ctx context.Context, dbContext *DatabaseContext, dataStore base.DataStore, stats *base.CollectionStats) (*DatabaseCollection, error) {
+	dbCollection := &DatabaseCollection{
+		dataStore:       dataStore,
+		dbCtx:           dbContext,
+		collectionStats: stats,
+	}
+	dbCollection.revisionCache = NewRevisionCache(
+		dbContext.Options.RevisionCacheOptions,
+		dbCollection,
+		dbContext.DbStats.Cache(),
+	)
+	if metadataStoreName, ok := base.AsDataStoreName(dataStore); ok {
+		dbCollection.ScopeName = metadataStoreName.ScopeName()
+		dbCollection.Name = metadataStoreName.CollectionName()
+	} else {
+		dbCollection.ScopeName = base.DefaultScope
+		dbCollection.Name = base.DefaultCollection
+	}
+
+	return dbCollection, nil
 }
 
 // AllowConflicts allows different revisions of a single document to be pushed. This is controlled at the database level.
@@ -74,6 +99,11 @@ func (c *DatabaseCollection) bucketName() string {
 
 }
 
+// changeCache returns the change cache for the database.
+func (c *DatabaseCollection) changeCache() *changeCache {
+	return &c.dbCtx.changeCache
+}
+
 // channelMapper runs the javascript sync function. This is currently at the database level.
 func (c *DatabaseCollection) channelMapper() *channels.ChannelMapper {
 	// FIXME: this supports RestTesterConfig.SyncFn being applied to named bucket for single bucket testing.  That should
@@ -87,6 +117,11 @@ func (c *DatabaseCollection) channelMapper() *channels.ChannelMapper {
 // channelQueryLimit returns the pagination for the number of channels returned in a query. This is a database level property.
 func (c *DatabaseCollection) channelQueryLimit() int {
 	return c.dbCtx.Options.CacheOptions.ChannelQueryLimit
+}
+
+// clusterUUID returns a couchbase server UUID. If running with walrus, return an empty string.
+func (c *DatabaseCollection) serverUUID() string {
+	return c.dbCtx.ServerUUID
 }
 
 // DbStats are stats that correspond to database level collections.
@@ -133,7 +168,7 @@ func (c *DatabaseCollection) groupID() string {
 // FlushChannelCache flush support. Currently test-only - added for unit test access from rest package
 func (c *DatabaseCollection) FlushChannelCache(ctx context.Context) error {
 	base.InfofCtx(ctx, base.KeyCache, "Flushing channel cache")
-	return c.changeCache.Clear()
+	return c.dbCtx.changeCache.Clear()
 }
 
 // FlushRevisionCacheForTest creates a new revision cache. This is currently at the database level. Only use this in test code.
@@ -181,14 +216,6 @@ func (c *DatabaseCollection) mutationListener() *changeListener {
 	return &c.dbCtx.mutationListener
 }
 
-// Name returns the name of the collection. If datastore is not aware of collections, it will return _default.
-func (c *DatabaseCollection) Name() string {
-	if metadataStoreName, ok := base.AsDataStoreName(c.dataStore); ok {
-		return metadataStoreName.CollectionName()
-	}
-	return base.DefaultCollection
-}
-
 // oldRevExpirySeconds is the number of seconds before old revisions are removed from Couchbase server. This is controlled at a database level.
 func (c *DatabaseCollection) oldRevExpirySeconds() uint32 {
 	return c.dbCtx.Options.OldRevExpirySeconds
@@ -215,17 +242,9 @@ func (c *DatabaseCollectionWithUser) ReloadUser(ctx context.Context) error {
 	return nil
 }
 
-// Name returns the name of the scope the collection is in. If datastore is not aware of collections, it will return _default.
-func (c *DatabaseCollection) ScopeName() string {
-	if metadataStoreName, ok := base.AsDataStoreName(c.dataStore); ok {
-		return metadataStoreName.ScopeName()
-	}
-	return base.DefaultScope
-}
-
 // RemoveFromChangeCache removes select documents from all channel caches and returns the number of documents removed.
 func (c *DatabaseCollection) RemoveFromChangeCache(docIDs []string, startTime time.Time) int {
-	return c.changeCache.Remove(c.GetCollectionID(), docIDs, startTime)
+	return c.dbCtx.changeCache.Remove(c.GetCollectionID(), docIDs, startTime)
 }
 
 // revsLimit is the max depth a document's revision tree can grow to. This is controlled at a database level.
