@@ -210,7 +210,7 @@ func (a *activeReplicatorCommon) stopSubChanges() {
 		maxWaitTime   = 10 * time.Second
 		retryInterval = 10 * time.Millisecond
 	)
-	ctx, cancel := context.WithDeadline(a.ctx, time.Now().Add(maxWaitTime))
+	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(maxWaitTime))
 	defer cancel()
 	t := time.NewTicker(retryInterval)
 	defer t.Stop()
