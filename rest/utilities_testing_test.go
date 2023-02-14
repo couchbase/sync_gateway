@@ -122,5 +122,5 @@ func TestCECheck(t *testing.T) {
 	req, err := http.NewRequest("PUT", fmt.Sprintf("%s/settings/rbac/users/local/%s", eps[0], "username"), strings.NewReader(form.Encode()))
 	require.Error(t, err)
 	require.Equal(t, req, http.StatusBadRequest)
-	
+
 }
