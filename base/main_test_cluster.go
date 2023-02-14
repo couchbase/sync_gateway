@@ -24,6 +24,7 @@ type tbpCluster interface {
 	removeBucket(name string) error
 	openTestBucket(name tbpBucketName, waitUntilReady time.Duration) (Bucket, error)
 	supportsCollections() (bool, error)
+	isServerEnterprise() (bool, error)
 	close() error
 }
 
@@ -97,6 +98,20 @@ func initV2Cluster(server string) *gocb.Cluster {
 		FatalfCtx(context.TODO(), "Cluster not ready after %ds: %v", int(clusterReadyTimeout.Seconds()), err)
 	}
 	return cluster
+}
+
+// isServerEnterprise returns true if the connected returns true if the connected couchbase server
+// instance is Enterprise edition And false for Community edition
+func (c *tbpClusterV2) isServerEnterprise() (bool, error) {
+	metadata, err := c.cluster.Internal().GetNodesMetadata(&gocb.GetNodesMetadataOptions{})
+	if err != nil {
+		return false, err
+	}
+
+	if strings.Contains("enterprise", metadata[0].Version) {
+		return true, nil
+	}
+	return false, nil
 }
 
 func (c *tbpClusterV2) getBucketNames() ([]string, error) {

@@ -11,7 +11,11 @@ licenses/APL2.txt.
 package rest
 
 import (
+	"fmt"
 	"log"
+	"net/http"
+	"net/url"
+	"strings"
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -120,4 +124,25 @@ func TestRestTesterInvalidPathVariable(t *testing.T) {
 	uri, err = rt.templateResource("/foo/{{.db}}/bar")
 	assert.NoError(t, err)
 	assert.Equalf(t, "/foo/"+dbName+"/bar", uri, "Expected valid URI for valid path variable")
+}
+
+func TestCECheck(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("Only works with CBS")
+	}
+	if base.TestsUseServerCE() {
+		t.Skip("test only runs with CE server")
+	}
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+	form := url.Values{}
+	form.Add("password", "password")
+	form.Add("roles", "[mobile_sync_Gateway]")
+	eps, _, err := rt.ServerContext().ObtainManagementEndpointsAndHTTPClient()
+	require.NoError(t, err)
+
+	req, err := http.NewRequest("PUT", fmt.Sprintf("%s/settings/rbac/users/local/%s", eps[0], "username"), strings.NewReader(form.Encode()))
+	require.Error(t, err)
+	require.Equal(t, req, http.StatusBadRequest)
+
 }
