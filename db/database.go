@@ -1946,16 +1946,11 @@ func (db *DatabaseCollectionWithUser) getResyncedDocument(ctx context.Context, d
 		if err != nil {
 			base.WarnfCtx(ctx, "Error getting rev from doc %s/%s %s", base.UD(docid), rev.ID, err)
 		}
-		var body Body
-		if err := body.Unmarshal(bodyBytes); err != nil {
-			base.WarnfCtx(ctx, "Error unmarshalling body %s/%s for sync function %s", base.UD(docid), rev.ID, err)
-			return
-		}
 		metaMap, err := doc.GetMetaMap(db.userXattrKey())
 		if err != nil {
 			return
 		}
-		channels, access, roles, syncExpiry, _, err := db.getChannelsAndAccess(ctx, doc, body, metaMap, rev.ID)
+		channels, access, roles, syncExpiry, _, err := db.getChannelsAndAccess(ctx, doc, bodyBytes, metaMap, rev.ID, rev.Deleted)
 		if err != nil {
 			// Probably the validator rejected the doc
 			base.WarnfCtx(ctx, "Error calling sync() on doc %q: %v", base.UD(docid), err)

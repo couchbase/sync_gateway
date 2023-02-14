@@ -20,6 +20,17 @@ import (
 	"github.com/couchbase/sync_gateway/js"
 )
 
+/** The data given to the channel-mapper function. */
+type ChannelMapperInput struct {
+	DocID   string
+	RevID   string
+	Body    string
+	OldBody string
+	Deleted bool
+	Meta    MetaMap
+	UserCtx map[string]interface{}
+}
+
 /** Result of running a channel-mapper function. */
 type ChannelMapperOutput struct {
 	Channels  base.Set  // channels assigned to the document via channel() callback
@@ -134,11 +145,19 @@ func (mapper *ChannelMapper) MapToChannelsAndAccess(body map[string]any, oldBody
 	}
 	docID, _ := body["_id"].(string)
 	revID, _ := body["_rev"].(string)
-	return mapper.MapToChannelsAndAccess2(docID, revID, string(bodyJSON), oldBodyJSON, metaMap, userCtx)
+	input := ChannelMapperInput{
+		DocID:   docID,
+		RevID:   revID,
+		Body:    string(bodyJSON),
+		OldBody: oldBodyJSON,
+		Meta:    metaMap,
+		UserCtx: userCtx,
+	}
+	return mapper.MapToChannelsAndAccess2(input)
 }
 
 // Runs the sync function. Thread-safe.
-func (mapper *ChannelMapper) MapToChannelsAndAccess2(docID string, revID string, bodyJSON string, oldBodyJSON string, metaMap MetaMap, userCtx map[string]interface{}) (*ChannelMapperOutput, error) {
+func (mapper *ChannelMapper) MapToChannelsAndAccess2(input ChannelMapperInput) (*ChannelMapperOutput, error) {
 	result, err := mapper.service.WithRunner(func(runner js.Runner) (any, error) {
 		ctx := context.Background()
 		if mapper.timeout > 0 {
@@ -147,7 +166,7 @@ func (mapper *ChannelMapper) MapToChannelsAndAccess2(docID string, revID string,
 			defer cancelFn()
 		}
 		runner.SetContext(ctx)
-		return callSyncFn(runner, docID, revID, bodyJSON, oldBodyJSON, metaMap, userCtx)
+		return callSyncFn(runner, input)
 	})
 	if err != nil {
 		return nil, err
@@ -165,16 +184,9 @@ type syncFnResult = struct {
 	Expiry           any
 }
 
-func callSyncFn(runner js.Runner,
-	docID string,
-	revID string,
-	bodyJSON string,
-	oldBodyJSON string,
-	metaMap MetaMap,
-	userCtx map[string]interface{}) (*ChannelMapperOutput, error) {
-
+func callSyncFn(runner js.Runner, in ChannelMapperInput) (*ChannelMapperOutput, error) {
 	// Call the sync fn:
-	jsResult, err := runner.Run(docID, revID, js.JSONString(bodyJSON), oldBodyJSON, metaMap.Key, string(metaMap.JSONValue), userCtx)
+	jsResult, err := runner.Run(in.DocID, in.RevID, in.Deleted, js.JSONString(in.Body), in.OldBody, in.Meta.Key, string(in.Meta.JSONValue), in.UserCtx)
 	if err != nil {
 		return nil, fmt.Errorf("unexpected error calling sync fn: %+w", err)
 	}

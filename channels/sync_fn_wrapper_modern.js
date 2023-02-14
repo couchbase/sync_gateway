@@ -156,12 +156,15 @@ function() { const syncFn = %s;
 
         /**** The function that runs the sync function ****/
 
-        return function (docID, revID, newDoc, oldDocJSON, metaKey, metaValueJSON, _userCtx) {
+        return function (docID, revID, del, newDoc, oldDocJSON, metaKey, metaValueJSON, _userCtx) {
             if (docID) {
                 newDoc._id = docID;
             }
             if (revID) {
                 newDoc._rev = revID;
+            }
+            if (del) {
+                newDoc._deleted = true;
             }
 
             let oldDoc = undefined;

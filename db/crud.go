@@ -11,7 +11,6 @@ package db
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"math"
 	"net/http"
@@ -912,14 +911,13 @@ func (db *DatabaseCollectionWithUser) Put(ctx context.Context, docid string, bod
 		if conflictErr != nil {
 			if db.ForceAPIForbiddenErrors() {
 				// Make sure the user has permission to modify the document before confirming doc existence
-				mutableBody, metaMap, newRevID, err := db.prepareSyncFn(doc, newDoc)
+				bodyJSON, metaMap, newRevID, err := db.prepareSyncFn(doc, newDoc)
 				if err != nil {
 					base.InfofCtx(ctx, base.KeyCRUD, "Failed to prepare to run sync function: %v", err)
 					return nil, nil, false, nil, ErrForbidden
 				}
 
-				doc._rawBody = nil //TEMP: Hack to fix getChannelsAndAccess
-				_, _, _, _, _, err = db.runSyncFn(ctx, doc, mutableBody, metaMap, newRevID)
+				_, _, _, _, _, err = db.runSyncFn(ctx, doc, bodyJSON, metaMap, newRevID, isDeleted)
 				if err != nil {
 					base.DebugfCtx(ctx, base.KeyCRUD, "Could not modify doc %q due to %s and sync func rejection: %v", base.UD(doc.ID), conflictErr, err)
 					return nil, nil, false, nil, ErrForbidden
@@ -1437,38 +1435,31 @@ func (db *DatabaseCollectionWithUser) storeOldBodyInRevTreeAndUpdateCurrent(ctx 
 	}
 }
 
-func (db *DatabaseCollectionWithUser) prepareSyncFn(doc *Document, newDoc *Document) (mutableBody Body, metaMap channels.MetaMap, newRevID string, err error) {
+func (db *DatabaseCollectionWithUser) prepareSyncFn(doc *Document, newDoc *Document) (revBody []byte, metaMap channels.MetaMap, newRevID string, err error) {
 	// Marshal raw user xattrs for use in Sync Fn. If this fails we can bail out so we should do early as possible.
 	metaMap, err = doc.GetMetaMap(db.userXattrKey())
 	if err != nil {
 		return
 	}
 
-	mutableBody, err = newDoc.GetDeepMutableBody()
+	revBody, err = newDoc.BodyBytes()
 	if err != nil {
 		return
 	}
 
-	err = validateNewBody(mutableBody)
+	err = validateNewBody(newDoc.Body())
 	if err != nil {
 		return
 	}
 
 	newRevID = newDoc.RevID
-
-	mutableBody[BodyId] = doc.ID
-	mutableBody[BodyRev] = newRevID
-	if newDoc.Deleted {
-		mutableBody[BodyDeleted] = true
-	}
-
 	return
 }
 
 // Run the sync function on the given document and body. Need to inject the document ID and rev ID temporarily to run
 // the sync function.
-func (db *DatabaseCollectionWithUser) runSyncFn(ctx context.Context, doc *Document, body Body, metaMap channels.MetaMap, newRevId string) (*uint32, string, base.Set, channels.AccessMap, channels.AccessMap, error) {
-	channelSet, access, roles, syncExpiry, oldBody, err := db.getChannelsAndAccess(ctx, doc, body, metaMap, newRevId)
+func (db *DatabaseCollectionWithUser) runSyncFn(ctx context.Context, doc *Document, body []byte, metaMap channels.MetaMap, newRevId string, deleted bool) (*uint32, string, base.Set, channels.AccessMap, channels.AccessMap, error) {
+	channelSet, access, roles, syncExpiry, oldBody, err := db.getChannelsAndAccess(ctx, doc, body, metaMap, newRevId, deleted)
 	if err != nil {
 		return nil, ``, nil, nil, nil, err
 	}
@@ -1484,16 +1475,10 @@ func (db *DatabaseCollectionWithUser) recalculateSyncFnForActiveRev(ctx context.
 		return
 	}
 
-	var curBody Body
-	err = curBody.Unmarshal(curBodyBytes)
-	if err != nil {
-		return
-	}
-
-	if curBody != nil {
+	if curBodyBytes != nil && string(curBodyBytes) != "null" {
 		base.DebugfCtx(ctx, base.KeyCRUD, "updateDoc(%q): Rev %q causes %q to become current again",
 			base.UD(doc.ID), newRevID, doc.CurrentRev)
-		channelSet, access, roles, syncExpiry, oldBodyJSON, err = db.getChannelsAndAccess(ctx, doc, curBody, metaMap, doc.CurrentRev)
+		channelSet, access, roles, syncExpiry, oldBodyJSON, err = db.getChannelsAndAccess(ctx, doc, curBodyBytes, metaMap, doc.CurrentRev, false /*TODO: Is false correct??*/)
 		if err != nil {
 			return
 		}
@@ -1688,7 +1673,7 @@ func (db *DatabaseCollectionWithUser) documentUpdateFunc(ctx context.Context, do
 		return
 	}
 
-	mutableBody, metaMap, newRevID, err := db.prepareSyncFn(doc, newDoc)
+	revBody, metaMap, newRevID, err := db.prepareSyncFn(doc, newDoc)
 	if err != nil {
 		return
 	}
@@ -1698,7 +1683,7 @@ func (db *DatabaseCollectionWithUser) documentUpdateFunc(ctx context.Context, do
 	newDocHasAttachments := len(newAttachments) > 0
 	db.storeOldBodyInRevTreeAndUpdateCurrent(ctx, doc, prevCurrentRev, newRevID, newDoc, newDocHasAttachments)
 
-	syncExpiry, oldBodyJSON, channelSet, access, roles, err := db.runSyncFn(ctx, doc, mutableBody, metaMap, newRevID)
+	syncExpiry, oldBodyJSON, channelSet, access, roles, err := db.runSyncFn(ctx, doc, revBody, metaMap, newRevID, newDoc.Deleted)
 	if err != nil {
 		if db.ForceAPIForbiddenErrors() {
 			base.InfofCtx(ctx, base.KeyCRUD, "Sync function rejected update to %s %s due to %v",
@@ -2209,14 +2194,14 @@ func (db *DatabaseCollectionWithUser) Purge(ctx context.Context, key string) err
 
 // Calls the JS sync function to assign the doc to channels, grant users
 // access to channels, and reject invalid documents.
-func (col *DatabaseCollectionWithUser) getChannelsAndAccess(ctx context.Context, doc *Document, body Body, metaMap channels.MetaMap, revID string) (
+func (col *DatabaseCollectionWithUser) getChannelsAndAccess(ctx context.Context, doc *Document, body []byte, metaMap channels.MetaMap, revID string, deleted bool) (
 	result base.Set,
 	access channels.AccessMap,
 	roles channels.AccessMap,
 	expiry *uint32,
 	oldJson string,
 	err error) {
-	base.DebugfCtx(ctx, base.KeyCRUD, "Invoking sync on doc %q rev %s", base.UD(doc.ID), body[BodyRev])
+	base.DebugfCtx(ctx, base.KeyCRUD, "Invoking sync on doc %q rev %s", base.UD(doc.ID), revID)
 
 	// Low-level protection against writes for read-only guest.  Handles write pathways that don't fail-fast
 	if col.user != nil && col.user.Name() == "" && col.isGuestReadOnly() {
@@ -2235,36 +2220,20 @@ func (col *DatabaseCollectionWithUser) getChannelsAndAccess(ctx context.Context,
 		col.dbStats().Database().SyncFunctionCount.Add(1)
 		col.collectionStats.SyncFunctionCount.Add(1)
 
-		var bodyJson []byte
-		if doc._rawBody != nil && body[BodyDeleted] == nil {
-			bodyJson = doc._rawBody
-			// TEMP: Verify that body and _rawBody match:
-			checkBody := body.DeepCopy()
-			delete(checkBody, "_id")
-			delete(checkBody, "_rev")
-			jCheck, _ := json.Marshal(checkBody)
-			var raw Body
-			_ = raw.Unmarshal(doc._rawBody)
-			jRaw, _ := json.Marshal(raw)
-			if string(jCheck) != string(jRaw) {
-				base.WarnfCtx(ctx, "$$$$$ getChannelsAndAccess: body doesn't match rawBody:\nbody= %s\nraw=  %s", jCheck, jRaw)
-				bodyJson = nil
-			}
-			// End of verification
+		input := channels.ChannelMapperInput{
+			DocID:   doc.ID,
+			RevID:   revID,
+			Deleted: deleted,
+			Body:    string(body),
+			OldBody: oldJson,
+			Meta:    metaMap,
+			UserCtx: MakeUserCtx(col.user, col.ScopeName, col.Name),
 		}
-		if bodyJson == nil {
-			if bodyJson, err = json.Marshal(body); err != nil {
-				return
-			}
-		}
-		docID, _ := body[BodyId].(string)
-		revID, _ := body[BodyRev].(string)
-
 		var output *channels.ChannelMapperOutput
 
+		base.DebugfCtx(ctx, base.KeyCRUD, "Calling sync fn with _id=%q, _rev=%q, _del=%v, body %s , oldBody %s", doc.ID, revID, doc.Deleted, body, oldJson) //TEMP
 		startTime := time.Now()
-		output, err = col.channelMapper().MapToChannelsAndAccess2(docID, revID, string(bodyJson), oldJson, metaMap,
-			MakeUserCtx(col.user, col.ScopeName, col.Name))
+		output, err = col.channelMapper().MapToChannelsAndAccess2(input)
 		syncFunctionTimeNano := time.Since(startTime).Nanoseconds()
 
 		col.dbStats().Database().SyncFunctionTime.Add(syncFunctionTimeNano)
@@ -2302,7 +2271,9 @@ func (col *DatabaseCollectionWithUser) getChannelsAndAccess(ctx context.Context,
 
 	} else {
 		// No ChannelMapper so by default use the "channels" property:
-		value := body["channels"]
+		var bodyMap map[string]any
+		err = base.JSONUnmarshal(body, &bodyMap)
+		value := bodyMap["channels"]
 		if value != nil {
 			array, nonStrings := base.ValueToStringArray(value)
 			if nonStrings != nil {
