@@ -43,6 +43,7 @@ func NewBlipSyncContext(ctx context.Context, bc *blip.Context, db *Database, con
 		sgCanUseDeltas:          db.DeltaSyncEnabled(),
 		replicationStats:        replicationStats,
 		inFlightChangesThrottle: make(chan struct{}, maxInFlightChangesBatches),
+		collections:             &blipCollections{},
 	}
 	bsc.changesCtx, bsc.changesCtxCancel = context.WithCancel(context.Background()) // TODO: re-eval, using ctx here breaks TestGroupIDReplications
 	if bsc.replicationStats == nil {
@@ -124,14 +125,7 @@ type BlipSyncContext struct {
 	// when readOnly is true, handleRev requests are rejected
 	readOnly bool
 
-	collectionContexts        []*BlipSyncCollectionContext // Indexed by replication collectionIdx to store per-collection information on a replication
-	nonCollectionAwareContext *BlipSyncCollectionContext   // Indexed by replication collectionIdx to store per-collection information on a replication
-}
-
-// BlipSyncCollectionContext stores information about a single collection for a BlipSyncContext
-type BlipSyncCollectionContext struct {
-	dbCollection     *DatabaseCollection
-	activeSubChanges base.AtomicBool // Flag for whether there is a subChanges subscription currently active.  Atomic access
+	collections *blipCollections // all collections handled by blipSyncContext, implicit or via GetCollections
 }
 
 // AllowedAttachment contains the metadata for handling allowed attachments
@@ -243,15 +237,15 @@ func (bsc *BlipSyncContext) copyContextDatabase() *Database {
 	return databaseCopy
 }
 
-func (bsc *BlipSyncContext) copyDatabaseCollectionWithUser(collectionIdx *int) *DatabaseCollectionWithUser {
+func (bsc *BlipSyncContext) copyDatabaseCollectionWithUser(collectionIdx *int) (*DatabaseCollectionWithUser, error) {
 	bsc.dbUserLock.RLock()
 	defer bsc.dbUserLock.RUnlock()
 	user := bsc.blipContextDb.User()
-	if collectionIdx != nil {
-		return &DatabaseCollectionWithUser{DatabaseCollection: bsc.collectionContexts[*collectionIdx].dbCollection, user: user}
+	collectionCtx, err := bsc.collections.get(collectionIdx)
+	if err != nil {
+		return nil, err
 	}
-	c := bsc.blipContextDb.GetSingleDatabaseCollection()
-	return &DatabaseCollectionWithUser{DatabaseCollection: c, user: user}
+	return &DatabaseCollectionWithUser{DatabaseCollection: collectionCtx.dbCollection, user: user}, nil
 }
 
 func (bsc *BlipSyncContext) _copyContextDatabase() *Database {
@@ -584,7 +578,7 @@ func (bsc *BlipSyncContext) sendNoRev(sender *blip.Sender, docID, revID string, 
 // Pushes a revision body to the client
 func (bsc *BlipSyncContext) sendRevision(sender *blip.Sender, docID, revID string, seq SequenceID, knownRevs map[string]bool, maxHistory int, handleChangesResponseCollection *DatabaseCollectionWithUser) error {
 	var collectionIdx *int
-	if coll, ok := bsc.getCollectionIndexForDB(handleChangesResponseCollection); ok {
+	if coll, ok := bsc.collections.getIndexForDB(handleChangesResponseCollection); ok {
 		collectionIdx = &coll
 	}
 

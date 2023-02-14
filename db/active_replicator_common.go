@@ -215,6 +215,7 @@ func (a *activeReplicatorCommon) stopSubChanges() {
 	t := time.NewTicker(retryInterval)
 	defer t.Stop()
 
+	collectionCtxs := a.blipSyncContext.collections.getAll()
 retry:
 	for {
 		select {
@@ -222,15 +223,11 @@ retry:
 			break retry
 		case <-t.C:
 			// wait until all activeSubChanges have stopped
-			for _, collectionCtx := range a.blipSyncContext.collectionContexts {
+			for _, collectionCtx := range collectionCtxs {
 				if collectionCtx.activeSubChanges.IsTrue() {
 					continue retry
 				}
 			}
-			if a.blipSyncContext.nonCollectionAwareContext.activeSubChanges.IsTrue() {
-				continue retry
-			}
-			break retry
 		}
 	}
 }

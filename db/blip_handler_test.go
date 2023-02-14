@@ -34,7 +34,7 @@ func TestCollectionBlipHandler(t *testing.T) {
 		blipMessage        *blip.Message
 		err                *base.HTTPError
 		collection         *DatabaseCollectionWithUser
-		collectionContexts []*BlipSyncCollectionContext
+		collectionContexts []*blipSyncCollectionContext
 	}{
 		{
 			name:        "NoCollections",
@@ -93,7 +93,7 @@ func TestCollectionBlipHandler(t *testing.T) {
 			collection: &DatabaseCollectionWithUser{
 				DatabaseCollection: realCollectionDB0,
 			},
-			collectionContexts: []*BlipSyncCollectionContext{{dbCollection: realCollectionDB0}},
+			collectionContexts: []*blipSyncCollectionContext{{dbCollection: realCollectionDB0}},
 		},
 		{
 			name: "twoPresentCollections",
@@ -106,7 +106,7 @@ func TestCollectionBlipHandler(t *testing.T) {
 			collection: &DatabaseCollectionWithUser{
 				DatabaseCollection: realCollectionDB1,
 			},
-			collectionContexts: []*BlipSyncCollectionContext{{dbCollection: realCollectionDB0}, {dbCollection: realCollectionDB1}},
+			collectionContexts: []*blipSyncCollectionContext{{dbCollection: realCollectionDB0}, {dbCollection: realCollectionDB1}},
 		},
 		{
 			name: "collectionPassedInGetCollectionsButHitErrorInGetCollections",
@@ -117,7 +117,7 @@ func TestCollectionBlipHandler(t *testing.T) {
 			},
 			err:                &base.HTTPError{Status: http.StatusBadRequest},
 			collection:         nil,
-			collectionContexts: []*BlipSyncCollectionContext{{dbCollection: realCollectionDB0}, nil},
+			collectionContexts: []*blipSyncCollectionContext{{dbCollection: realCollectionDB0}, nil},
 		},
 		{
 			name: "outOfRangeCollections",
@@ -128,7 +128,7 @@ func TestCollectionBlipHandler(t *testing.T) {
 			},
 			err:                &base.HTTPError{Status: http.StatusBadRequest},
 			collection:         nil,
-			collectionContexts: []*BlipSyncCollectionContext{{dbCollection: realCollectionDB0}, {dbCollection: realCollectionDB1}},
+			collectionContexts: []*blipSyncCollectionContext{{dbCollection: realCollectionDB0}, {dbCollection: realCollectionDB1}},
 		},
 	}
 	for _, testCase := range testCases {
@@ -137,8 +137,13 @@ func TestCollectionBlipHandler(t *testing.T) {
 			bh := blipHandler{
 				db: allDB,
 				BlipSyncContext: &BlipSyncContext{
-					loggingCtx:         ctx,
-					collectionContexts: testCase.collectionContexts},
+					loggingCtx:  ctx,
+					collections: &blipCollections{},
+				},
+			}
+			bh.collections.set(testCase.collectionContexts)
+			if testCase.collection != nil {
+				bh.collections.setNonCollectionAware(&blipSyncCollectionContext{dbCollection: testCase.collection.DatabaseCollection})
 			}
 
 			passedMiddleware := false
