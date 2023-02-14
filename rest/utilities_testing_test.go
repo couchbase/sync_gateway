@@ -104,6 +104,28 @@ func TestAttachmentRoundTrip(t *testing.T) {
 
 }
 
+// TestRestTesterInvalidPathVariable ensures that invalid path variables return an error instead of silently returning "<no value>" or empty string.
+func TestRestTesterInvalidPathVariable(t *testing.T) {
+	const dbName = "dbname"
+	rt := NewRestTester(t, &RestTesterConfig{
+		DatabaseConfig: &DatabaseConfig{
+			DbConfig: DbConfig{
+				Name: dbName,
+			},
+		},
+	})
+	defer rt.Close()
+
+	uri, err := rt.templateResource("/foo/{{.invalid}}/bar")
+	assert.Errorf(t, err, "Expected error for invalid path variable")
+	assert.Equalf(t, "", uri, "Expected empty URI for invalid path variable")
+	assert.NotContainsf(t, uri, "<no value>", "Expected URI to not contain \"<no value>\" for invalid path variable")
+
+	uri, err = rt.templateResource("/foo/{{.db}}/bar")
+	assert.NoError(t, err)
+	assert.Equalf(t, "/foo/"+dbName+"/bar", uri, "Expected valid URI for valid path variable")
+}
+
 func TestCECheck(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Only works with CBS")
