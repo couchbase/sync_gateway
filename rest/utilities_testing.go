@@ -2317,26 +2317,6 @@ func (rt *RestTester) ReadContinuousChanges(response *TestResponse) ([]db.Change
 	return changes, nil
 }
 
-// GetNextContinousChange reads the next changes entry from the feed.
-func GetNextContinuousChange(reader *bufio.Reader) (*db.ChangeEntry, error) {
-	var change *db.ChangeEntry
-	for {
-		entry, readError := reader.ReadBytes('\n')
-		if readError != nil {
-			return nil, readError
-		}
-		entry = bytes.TrimSpace(entry)
-		if len(entry) > 0 {
-			err := base.JSONUnmarshal(entry, &change)
-			if err != nil {
-				return nil, err
-			}
-			log.Printf("Got change ==> %v", change)
-			return change, nil
-		}
-	}
-}
-
 // RequireContinuousFeedChangesCount Calls a changes feed on every collection and asserts that the nth expected change is
 // the number of changes for the nth collection.
 func (rt *RestTester) RequireContinuousFeedChangesCount(t testing.TB, username string, numKeyspaces int, expectedChanges []int, timeout int) {

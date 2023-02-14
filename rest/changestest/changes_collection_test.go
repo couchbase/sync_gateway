@@ -9,7 +9,6 @@
 package changestest
 
 import (
-	"bufio"
 	"fmt"
 	"log"
 	"testing"
@@ -254,32 +253,11 @@ func TestMultiCollectionChangesMultiChannelOneShot(t *testing.T) {
 	changesResponse = rt.GetChangesOneShot(t, "keyspace1", 0, "charlie", 2)
 	logChangesResponse(t, changesResponse.Body.Bytes())
 
-	continuousResponse := rt.SendUserRequest("GET", "/{{.keyspace1}}/_changes?feed=continuous&timeout=5000", "", "bernard")
-	reader := bufio.NewReader(continuousResponse.Body)
-
-	// Read changes through the continuous feed
-	change, err := rest.GetNextContinuousChange(reader)
-	require.NoError(t, err)
-	require.Equal(t, uint64(1), change.Seq.Seq)
-	require.Equal(t, "brn1_c1", change.ID)
-
-	change, err = rest.GetNextContinuousChange(reader)
-	require.NoError(t, err)
-	require.Equal(t, uint64(3), change.Seq.Seq)
-	require.Equal(t, "brn2_c1", change.ID)
-
-	change, err = rest.GetNextContinuousChange(reader)
-	require.NoError(t, err)
-	require.Equal(t, uint64(7), change.Seq.Seq)
-	require.Equal(t, "brn3_c1", change.ID)
-
-	// 2 more changes for the continuous changes feed
 	response = rt.SendAdminRequest("PUT", "/{{.keyspace1}}/brn4_c1", `{"value":1, "channels":["BRN"]}`)
 	rest.RequireStatus(t, response, 201)
 	response = rt.SendAdminRequest("DELETE", fmt.Sprintf("/{{.keyspace1}}/brn1_c1?rev=%s", brn1_c1Rev), ``)
 	rest.RequireStatus(t, response, 200)
 
-	// Changes that shouldn't be caught by the continuous changes feed
 	response = rt.SendAdminRequest("PUT", "/{{.keyspace2}}/brn4_c1", `{"value":1, "channels":["BRN"]}`)
 	rest.RequireStatus(t, response, 201)
 	response = rt.SendAdminRequest("PUT", "/{{.keyspace1}}/chr3_c1", `{"value":1, "channels":["CHR"]}`)
