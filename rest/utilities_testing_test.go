@@ -109,16 +109,18 @@ func TestCECheck(t *testing.T) {
 		t.Skip("Only works with CBS")
 	}
 	if base.TestsUseServerCE() {
-		rt := NewRestTester(t, nil)
-		defer rt.Close()
-		form := url.Values{}
-		form.Add("password", "password")
-		form.Add("roles", "[mobile_sync_Gateway]")
-		eps, _, err := rt.ServerContext().ObtainManagementEndpointsAndHTTPClient()
-		require.NoError(t, err)
-
-		req, err := http.NewRequest("PUT", fmt.Sprintf("%s/settings/rbac/users/local/%s", eps[0], "username"), strings.NewReader(form.Encode()))
-		require.Error(t, err)
-		require.Equal(t, req, http.StatusBadRequest)
+		t.Skip("test only runs with CE server")
 	}
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+	form := url.Values{}
+	form.Add("password", "password")
+	form.Add("roles", "[mobile_sync_Gateway]")
+	eps, _, err := rt.ServerContext().ObtainManagementEndpointsAndHTTPClient()
+	require.NoError(t, err)
+
+	req, err := http.NewRequest("PUT", fmt.Sprintf("%s/settings/rbac/users/local/%s", eps[0], "username"), strings.NewReader(form.Encode()))
+	require.Error(t, err)
+	require.Equal(t, req, http.StatusBadRequest)
+	
 }
