@@ -85,6 +85,9 @@ type User interface {
 	// Authenticates the user's password.
 	Authenticate(password string) bool
 
+	// GetPasswordHash returns the hashed password.
+	GetPasswordHash() []byte
+
 	// Changes the user's password.
 	SetPassword(password string) error
 

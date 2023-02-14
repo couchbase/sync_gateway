@@ -12,6 +12,7 @@ package auth
 
 import (
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -22,7 +23,7 @@ import (
 )
 
 func TestCreateSession(t *testing.T) {
-	var username string = "Alice"
+	const username = "Alice"
 	const invalidSessionTTLError = "400 Invalid session time-to-live"
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAuth)
 	testBucket := base.GetTestBucket(t)
@@ -30,9 +31,14 @@ func TestCreateSession(t *testing.T) {
 	dataStore := testBucket.GetSingleDataStore()
 	auth := NewAuthenticator(dataStore, nil, DefaultAuthenticatorOptions())
 
+	user, err := auth.NewUser(username, "password", base.Set{})
+	require.NoError(t, err)
+	require.NotNil(t, user)
+	require.NoError(t, auth.Save(user))
+
 	// Create session with a username and valid TTL of 2 hours.
 	session, err := auth.CreateSession(username, 2*time.Hour)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	assert.Equal(t, username, session.Username)
 	assert.Equal(t, 2*time.Hour, session.Ttl)
@@ -64,7 +70,7 @@ func TestCreateSession(t *testing.T) {
 
 func TestDeleteSession(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAuth)
-	var username string = "Alice"
+	const username = "Alice"
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
 	dataStore := testBucket.GetSingleDataStore()
@@ -190,4 +196,59 @@ func TestDeleteSessionForCookie(t *testing.T) {
 	request.AddCookie(cookie)
 	newCookie = auth.DeleteSessionForCookie(request)
 	assert.Nil(t, newCookie)
+}
+
+func TestCreateSessionChangePassword(t *testing.T) {
+	testCases := []struct {
+		name     string
+		password string
+	}{
+		{
+			name:     "emptypassword",
+			password: "",
+		},
+		{
+			name:     "realpassword",
+			password: "password",
+		},
+	}
+	for _, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+
+			testBucket := base.GetTestBucket(t)
+			defer testBucket.Close()
+			dataStore := testBucket.GetSingleDataStore()
+			auth := NewAuthenticator(dataStore, nil, DefaultAuthenticatorOptions())
+
+			const username = "Alice"
+			user, err := auth.NewUser(username, test.password, base.Set{})
+			require.NoError(t, err)
+			require.NotNil(t, user)
+			require.NoError(t, auth.Save(user))
+
+			// Create session with a username and valid TTL of 2 hours.
+			session, err := auth.CreateSession(username, 2*time.Hour)
+			require.NoError(t, err)
+
+			session, err = auth.GetSession(session.ID)
+			require.NoError(t, err)
+
+			request, err := http.NewRequest(http.MethodGet, "", nil)
+			require.NoError(t, err)
+			request.AddCookie(auth.MakeSessionCookie(session, true, true))
+
+			recorder := httptest.NewRecorder()
+			_, err = auth.AuthenticateCookie(request, recorder)
+			require.NoError(t, err)
+
+			require.NoError(t, user.SetPassword("someotherpassword"))
+			require.NoError(t, auth.Save(user))
+
+			recorder = httptest.NewRecorder()
+			_, err = auth.AuthenticateCookie(request, recorder)
+			require.Error(t, err)
+			require.Equal(t, err.(*base.HTTPError).Status, http.StatusUnauthorized)
+		})
+	}
+
 }

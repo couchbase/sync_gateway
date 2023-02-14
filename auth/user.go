@@ -531,6 +531,11 @@ func (user *userImpl) Authenticate(password string) bool {
 	return true
 }
 
+// GetPasswordHash returns the hash of the user's password.
+func (user *userImpl) GetPasswordHash() []byte {
+	return user.PasswordHash_
+}
+
 // Changes a user's password to the given string.
 func (user *userImpl) SetPassword(password string) error {
 	if password == "" {

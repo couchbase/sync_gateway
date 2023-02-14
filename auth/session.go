@@ -9,6 +9,7 @@
 package auth
 
 import (
+	"bytes"
 	"net/http"
 	"time"
 
@@ -19,10 +20,11 @@ const kDefaultSessionTTL = 24 * time.Hour
 
 // A user login session (used with cookie-based auth.)
 type LoginSession struct {
-	ID         string        `json:"id"`
-	Username   string        `json:"username"`
-	Expiration time.Time     `json:"expiration"`
-	Ttl        time.Duration `json:"ttl"`
+	ID            string        `json:"id"`
+	Username      string        `json:"username"`
+	Expiration    time.Time     `json:"expiration"`
+	Ttl           time.Duration `json:"ttl"`
+	PasswordHash_ []byte        `json:"passwordhash_bcrypt"`
 }
 
 const DefaultCookieName = "SyncGatewaySession"
@@ -67,6 +69,13 @@ func (auth *Authenticator) AuthenticateCookie(rq *http.Request, response http.Re
 	user, err := auth.GetUser(session.Username)
 	if user != nil && user.Disabled() {
 		user = nil
+		return user, err
+	}
+	if err != nil {
+		return nil, err
+	}
+	if !bytes.Equal(session.PasswordHash_, user.GetPasswordHash()) {
+		return nil, base.HTTPErrorf(http.StatusUnauthorized, "User has changed since session acquired")
 	}
 	return user, err
 }
@@ -82,11 +91,19 @@ func (auth *Authenticator) CreateSession(username string, ttl time.Duration) (*L
 		return nil, err
 	}
 
+	user, err := auth.GetUser(username)
+	if user != nil && user.Disabled() {
+		return nil, base.HTTPErrorf(400, "User is disabled")
+	} else if err != nil {
+		return nil, err
+	}
+
 	session := &LoginSession{
-		ID:         secret,
-		Username:   username,
-		Expiration: time.Now().Add(ttl),
-		Ttl:        ttl,
+		ID:            secret,
+		Username:      username,
+		Expiration:    time.Now().Add(ttl),
+		Ttl:           ttl,
+		PasswordHash_: user.GetPasswordHash(),
 	}
 	if err := auth.datastore.Set(DocIDForSession(session.ID), base.DurationToCbsExpiry(ttl), nil, session); err != nil {
 		return nil, err

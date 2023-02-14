@@ -8,6 +8,7 @@
 package rest
 
 import (
+	"encoding/base64"
 	"fmt"
 	"log"
 	"net/http"
@@ -360,13 +361,21 @@ func TestSessionExtension(t *testing.T) {
 	id, err := base.GenerateRandomSecret()
 	require.NoError(t, err)
 
+	const username = "Alice"
+
+	authenticator := rt.GetDatabase().Authenticator(base.TestCtx(t))
+	user, err := authenticator.NewUser(username, "Password", channels.BaseSetOf(t, "*"))
+	require.NoError(t, err)
+	require.NoError(t, authenticator.Save(user))
+
 	// Fake session with more than 10% of the 24 hours TTL has elapsed. It should cause a new
 	// cookie to be sent by the server with the same session ID and an extended expiration date.
 	fakeSession := auth.LoginSession{
-		ID:         id,
-		Username:   "Alice",
-		Expiration: time.Now().Add(4 * time.Hour),
-		Ttl:        24 * time.Hour,
+		ID:            id,
+		Username:      username,
+		Expiration:    time.Now().Add(4 * time.Hour),
+		Ttl:           24 * time.Hour,
+		PasswordHash_: user.GetPasswordHash(),
 	}
 
 	assert.NoError(t, rt.MetadataStore().Set(auth.DocIDForSession(fakeSession.ID), 0, nil, fakeSession))
@@ -460,17 +469,6 @@ func TestSessionAPI(t *testing.T) {
 		RequireStatus(t, response, 404)
 	}
 
-	// 5. DELETE sessions when password is changed
-	// Change password for user3
-	response = rt.SendAdminRequest("PUT", "/db/_user/user3", `{"password":"5678"}`)
-	RequireStatus(t, response, 200)
-
-	// Validate that all sessions were deleted
-	for i := 0; i < 5; i++ {
-		response = rt.SendAdminRequest("GET", fmt.Sprintf("/db/_session/%s", user3sessions[i]), "")
-		RequireStatus(t, response, 404)
-	}
-
 	// DELETE the users
 	RequireStatus(t, rt.SendAdminRequest("DELETE", "/db/_user/user1", ""), 200)
 	RequireStatus(t, rt.SendAdminRequest("GET", "/db/_user/user1", ""), 404)
@@ -481,6 +479,81 @@ func TestSessionAPI(t *testing.T) {
 	RequireStatus(t, rt.SendAdminRequest("DELETE", "/db/_user/user3", ""), 200)
 	RequireStatus(t, rt.SendAdminRequest("GET", "/db/_user/user3", ""), 404)
 
+}
+
+func TestSessionPasswordInvalidation(t *testing.T) {
+	testCases := []struct {
+		name     string
+		password string
+	}{
+		{
+			name:     "emptypassword",
+			password: "",
+		},
+		{
+			name:     "realpassword",
+			password: "password",
+		},
+	}
+	for _, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+			rtConfig := &RestTesterConfig{}
+			if test.password == "" {
+				rtConfig.DatabaseConfig = &DatabaseConfig{
+					DbConfig: DbConfig{
+						AllowEmptyPassword: base.BoolPtr(true),
+					},
+				}
+
+			}
+			rt := NewRestTester(t, rtConfig)
+			defer rt.Close()
+
+			const username = "user1"
+			originalPassword := test.password
+
+			// create session test users
+			response := rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_user/", GetUserPayload(t, username, originalPassword, "", rt.GetSingleTestDatabaseCollection(), []string{"*"}, nil))
+			RequireStatus(t, response, http.StatusCreated)
+
+			originalPasswordHeaders := map[string]string{
+				"Authorization": "Basic " + base64.StdEncoding.EncodeToString([]byte(username+":"+originalPassword)),
+			}
+			response = rt.SendRequestWithHeaders(http.MethodPost, "/db/_session", "", originalPasswordHeaders)
+			RequireStatus(t, response, http.StatusOK)
+			cookie := response.Header().Get("Set-Cookie")
+			require.NotEqual(t, "", cookie)
+
+			// Create a doc as the first user, with session auth, channel-restricted to first user
+			cookieHeaders := map[string]string{
+				"Cookie": cookie,
+			}
+			response = rt.SendRequestWithHeaders(http.MethodPut, "/{{.keyspace}}/doc1", `{"hi": "there"}`, cookieHeaders)
+			RequireStatus(t, response, http.StatusCreated)
+			response = rt.SendRequestWithHeaders(http.MethodGet, "/{{.keyspace}}/doc1", "", cookieHeaders)
+			RequireStatus(t, response, http.StatusOK)
+
+			response = rt.SendRequestWithHeaders(http.MethodGet, "/{{.keyspace}}/doc1", "", originalPasswordHeaders)
+			RequireStatus(t, response, http.StatusOK)
+
+			altPassword := "someotherpassword"
+			response = rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/"+username, fmt.Sprintf(`{"password": "%s"}`, altPassword))
+			RequireStatus(t, response, http.StatusOK)
+
+			// make sure session is invalid
+			response = rt.SendRequestWithHeaders(http.MethodGet, "/{{.keyspace}}/doc1", "", cookieHeaders)
+			RequireStatus(t, response, http.StatusUnauthorized)
+
+			// make sure doc is valid for password
+			altPasswordHeaders := map[string]string{
+				"Authorization": "Basic " + base64.StdEncoding.EncodeToString([]byte(username+":"+altPassword)),
+			}
+
+			response = rt.SendRequestWithHeaders("GET", "/{{.keyspace}}/doc1", "", altPasswordHeaders)
+			RequireStatus(t, response, http.StatusOK)
+		},
+		)
+	}
 }
 
 func createSession(t *testing.T, rt *RestTester, username string) string {
