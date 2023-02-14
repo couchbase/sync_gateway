@@ -9,7 +9,7 @@
 get:
   summary: Get server configuration
   description: |-
-    This will return the configuration that the Sync Gateway node is running with.
+    This will return the configuration that the Sync Gateway node was initially started up with, or the currently config if `include_runtime` is set.
 
     Required Sync Gateway RBAC roles:
     * Sync Gateway Dev Ops
@@ -17,7 +17,7 @@ get:
     - $ref: ../../components/parameters.yaml#/deprecated-redact
     - name: include_runtime
       in: query
-      description: 'Whether to include the values set at runtime, default values, and all loaded databases.'
+      description: 'Whether to include the values set after starting (at runtime), default values, and all loaded databases.'
       schema:
         type: boolean
         default: false
