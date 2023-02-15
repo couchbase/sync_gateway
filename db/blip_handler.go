@@ -305,10 +305,6 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 
 		defer func() {
 			bh.changesCtxCancel()
-			collectionCtx, err := bh.collections.get(bh.collectionIdx)
-			if err != nil {
-				base.WarnfCtx(bh.loggingCtx, "Error getting collectionContext on stopping subChanges request: %w", err)
-			}
 			collectionCtx.activeSubChanges.Set(false)
 		}()
 		// sendChanges runs until blip context closes, or fails due to error
