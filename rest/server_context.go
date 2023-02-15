@@ -468,7 +468,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	}
 
 	// initDataStore is a function to initialize Views or GSI indexes for a datastore
-	initDataStore := func(ds base.DataStore) error {
+	initDataStore := func(ds base.DataStore, metadataIndexes db.CollectionIndexesType) error {
 		if useViews {
 			return db.InitializeViews(ctx, ds)
 		}
@@ -487,7 +487,15 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 			return errors.New("Cannot create indexes on non-Couchbase data store.")
 
 		}
-		indexErr := db.InitializeIndexes(n1qlStore, config.UseXattrs(), numReplicas, false, sc.Config.IsServerless())
+		options := db.InitializeIndexOptions{
+			FailFast:        false,
+			NumReplicas:     numReplicas,
+			Serverless:      sc.Config.IsServerless(),
+			MetadataIndexes: metadataIndexes,
+			UseXattrs:       config.UseXattrs(),
+		}
+		ctx := base.CollectionCtx(ctx, ds.GetName())
+		indexErr := db.InitializeIndexes(ctx, n1qlStore, options)
 		if indexErr != nil {
 			return indexErr
 		}
@@ -500,6 +508,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 			return nil, errCollectionsUnsupported
 		}
 
+		hasDefaultCollection := false
 		for scopeName, scopeConfig := range config.Scopes {
 			for collectionName, _ := range scopeConfig.Collections {
 				var dataStore sgbucket.DataStore
@@ -514,15 +523,24 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 				if err := base.WaitUntilDataStoreExists(dataStore); err != nil {
 					return nil, fmt.Errorf("attempting to create/update database with a scope/collection that is not found")
 				}
-
-				if err := initDataStore(dataStore); err != nil {
+				metadataIndexOption := db.IndexesWithoutMetadata
+				if base.IsDefaultCollection(scopeName, collectionName) {
+					hasDefaultCollection = true
+					metadataIndexOption = db.IndexesAll
+				}
+				if err := initDataStore(dataStore, metadataIndexOption); err != nil {
 					return nil, err
 				}
 			}
 		}
+		if !hasDefaultCollection {
+			if err := initDataStore(bucket.DefaultDataStore(), db.IndexesMetadataOnly); err != nil {
+				return nil, err
+			}
+		}
 	} else {
 		// no scopes configured - init the default data store
-		if err := initDataStore(bucket.DefaultDataStore()); err != nil {
+		if err := initDataStore(bucket.DefaultDataStore(), db.IndexesAll); err != nil {
 			return nil, err
 		}
 	}

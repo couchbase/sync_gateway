@@ -96,7 +96,7 @@ type RestTester struct {
 }
 
 // restTesterDefaultUserPassword is usable as a default password for SendUserRequest
-const restTesterDefaultUserPassword = "letmein"
+const RestTesterDefaultUserPassword = "letmein"
 
 // NewRestTester returns a rest tester and corresponding keyspace backed by a single database and a single collection. This collection may be named or default collection based on global test configuration.
 func NewRestTester(tb testing.TB, restConfig *RestTesterConfig) *RestTester {
@@ -1065,7 +1065,7 @@ func Request(method, resource, body string) *http.Request {
 
 func RequestByUser(method, resource, body, username string) *http.Request {
 	r := Request(method, resource, body)
-	r.SetBasicAuth(username, restTesterDefaultUserPassword)
+	r.SetBasicAuth(username, RestTesterDefaultUserPassword)
 	return r
 }
 

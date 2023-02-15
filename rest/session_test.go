@@ -557,7 +557,7 @@ func TestAllSessionDeleteInvalidation(t *testing.T) {
 	const username = "user1"
 
 	// create session test user
-	response := rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_user/", GetUserPayload(t, username, restTesterDefaultUserPassword, "", rt.GetSingleTestDatabaseCollection(), []string{"*"}, nil))
+	response := rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_user/", GetUserPayload(t, username, RestTesterDefaultUserPassword, "", rt.GetSingleTestDatabaseCollection(), []string{"*"}, nil))
 	RequireStatus(t, response, http.StatusCreated)
 
 	const numSessions = 3
@@ -618,7 +618,7 @@ func TestUserWithoutSessionUUID(t *testing.T) {
 	const username = "user1"
 
 	authenticator := rt.GetDatabase().Authenticator(base.TestCtx(t))
-	user, err := authenticator.NewUser(username, restTesterDefaultUserPassword, base.SetOf("*"))
+	user, err := authenticator.NewUser(username, RestTesterDefaultUserPassword, base.SetOf("*"))
 	require.NoError(t, err)
 	require.NotNil(t, user)
 	require.NoError(t, authenticator.Save(user))
