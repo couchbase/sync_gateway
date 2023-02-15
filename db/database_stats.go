@@ -21,10 +21,6 @@ package db
 
 // Update database-specific stats that are more efficiently calculated at stats collection time
 func (db *DatabaseContext) UpdateCalculatedStats() {
-	if !db.hasDefaultCollection() {
-		return
-	}
-
 	db.changeCache.updateStats()
 	channelCache := db.changeCache.getChannelCache()
 	db.DbStats.Cache().ChannelCacheMaxEntries.Set(int64(channelCache.MaxCacheSize()))
