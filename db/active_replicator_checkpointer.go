@@ -301,7 +301,7 @@ func (c *Checkpointer) _updateCheckpointLists() (safeSeq *SequenceID) {
 	c.stats.ProcessedSequenceLenPostCleanup = int64(len(c.processedSeqs))
 
 	c.dbStats.ProcessedSequenceLen.Set(c.stats.ProcessedSequenceLen)
-	c.dbStats.ProcessedSequenceLen.Set(c.stats.ProcessedSequenceLenPostCleanup)
+	c.dbStats.ProcessedSequenceLenPostCleanup.Set(c.stats.ProcessedSequenceLenPostCleanup)
 	c.dbStats.ExpectedSequenceLen.Set(c.stats.ExpectedSequenceLen)
 	c.dbStats.ExpectedSequenceLenPostCleanup.Set(c.stats.ExpectedSequenceLenPostCleanup)
 
