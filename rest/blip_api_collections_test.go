@@ -17,6 +17,7 @@ import (
 	"github.com/couchbase/go-blip"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -254,4 +255,45 @@ func TestCollectionsReplication(t *testing.T) {
 
 	_, ok := btcCollection.WaitForRev("doc1", "1-ca9ad22802b66f662ff171f226211d5c")
 	require.True(t, ok)
+}
+
+func TestBlipReplicationMultipleCollections(t *testing.T) {
+	rt := NewRestTesterMultipleCollections(t, &RestTesterConfig{
+		GuestEnabled: true,
+	}, 2)
+	defer rt.Close()
+
+	btc, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
+	require.NoError(t, err)
+	defer btc.Close()
+
+	docName := "doc1"
+	docRevID := "1-cd809becc169215072fd567eebd8b8de"
+	body := db.Body{}
+	bodyBytes := []byte(`{"foo":"bar"}`)
+	require.NoError(t, body.Unmarshal(bodyBytes))
+	for _, collection := range rt.GetDatabase().CollectionByID {
+		collectionWithAdmin := db.DatabaseCollectionWithUser{DatabaseCollection: collection}
+		revID, _, err := collectionWithAdmin.Put(base.TestCtx(t), docName, body)
+		require.NoError(t, err)
+		require.Equal(t, docRevID, revID)
+
+	}
+
+	// start all the clients first
+	for _, collectionClient := range btc.collectionClients {
+		require.NoError(t, collectionClient.StartPull())
+	}
+
+	for _, collectionClient := range btc.collectionClients {
+		msg, ok := collectionClient.WaitForRev(docName, docRevID)
+		require.True(t, ok)
+		require.Equal(t, bodyBytes, msg)
+	}
+
+	for _, collectionClient := range btc.collectionClients {
+		resp, err := collectionClient.UnsubPullChanges()
+		assert.NoError(t, err, "Error unsubing: %+v", resp)
+	}
+
 }
