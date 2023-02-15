@@ -53,7 +53,6 @@ const (
 	IndexTombstones
 	IndexSyncDocs
 	IndexUser
-	IndexSession
 	IndexRole
 	indexTypeCount // Used for iteration
 )
@@ -83,7 +82,6 @@ var (
 		IndexTombstones: "tombstones",
 		IndexSyncDocs:   "syncDocs",
 		IndexUser:       "users",
-		IndexSession:    "sessions",
 		IndexRole:       "roles",
 	}
 
@@ -96,7 +94,6 @@ var (
 		IndexTombstones: 1,
 		IndexSyncDocs:   1,
 		IndexUser:       1,
-		IndexSession:    1,
 		IndexRole:       1,
 	}
 
@@ -109,7 +106,6 @@ var (
 		IndexTombstones: {},
 		IndexSyncDocs:   {},
 		IndexUser:       {},
-		IndexSession:    {},
 		IndexRole:       {},
 	}
 
@@ -124,7 +120,6 @@ var (
 		IndexTombstones: "$sync.tombstoned_at",
 		IndexSyncDocs:   "META().id",
 		IndexUser:       "META().id, name, email, disabled",
-		IndexSession:    "META().id, username",
 		IndexRole:       "META().id, name, deleted",
 	}
 
@@ -132,7 +127,6 @@ var (
 		IndexAllDocs:  fmt.Sprintf("META().id NOT LIKE '%s'", SyncDocWildcard),
 		IndexSyncDocs: fmt.Sprintf("META().id LIKE '%s'", SyncDocWildcard),
 		IndexUser:     fmt.Sprintf("META().id LIKE '%s'", SyncUserWildcard),
-		IndexSession:  fmt.Sprintf("META().id LIKE '%s'", SyncSessionWildcard),
 		IndexRole:     fmt.Sprintf("META().id LIKE '%s'", SyncRoleWildcard),
 	}
 
@@ -154,7 +148,6 @@ var (
 		IndexTombstones: Always,
 		IndexSyncDocs:   Dedicated,
 		IndexUser:       Serverless,
-		IndexSession:    Serverless,
 		IndexRole:       Serverless,
 	}
 

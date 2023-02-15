@@ -302,36 +302,6 @@ var QueryUsersUsingSyncDocsIdx = SGQuery{
 	adhoc: false,
 }
 
-var QuerySessions = SGQuery{
-	name: QueryTypeSessions,
-	statement: fmt.Sprintf(
-		"SELECT META(%s).id "+
-			"FROM %s AS %s "+
-			"USE INDEX($idx) "+
-			"WHERE META(%s).id LIKE '%s' "+
-			"AND META(%s).id LIKE '%s' "+
-			"AND username = $userName",
-		base.KeyspaceQueryAlias,
-		base.KeyspaceQueryToken, base.KeyspaceQueryAlias,
-		base.KeyspaceQueryAlias, SyncDocWildcard,
-		base.KeyspaceQueryAlias, SyncSessionWildcard),
-	adhoc: false,
-}
-
-var QuerySessionsUsingSessionIdx = SGQuery{
-	name: QueryTypeSessions,
-	statement: fmt.Sprintf(
-		"SELECT META(%s).id "+
-			"FROM %s AS %s "+
-			"USE INDEX($idx) "+
-			"WHERE META(%s).id LIKE '%s' "+
-			"AND username = $userName",
-		base.KeyspaceQueryAlias,
-		base.KeyspaceQueryToken, base.KeyspaceQueryAlias,
-		base.KeyspaceQueryAlias, SyncSessionWildcard),
-	adhoc: false,
-}
-
 var QueryTombstones = SGQuery{
 	name: QueryTypeTombstones,
 	statement: fmt.Sprintf(
