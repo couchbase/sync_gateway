@@ -20,11 +20,11 @@ const kDefaultSessionTTL = 24 * time.Hour
 
 // A user login session (used with cookie-based auth.)
 type LoginSession struct {
-	ID            string        `json:"id"`
-	Username      string        `json:"username"`
-	Expiration    time.Time     `json:"expiration"`
-	Ttl           time.Duration `json:"ttl"`
-	PasswordHash_ []byte        `json:"passwordhash_bcrypt"`
+	ID          string        `json:"id"`
+	Username    string        `json:"username"`
+	Expiration  time.Time     `json:"expiration"`
+	Ttl         time.Duration `json:"ttl"`
+	SessionUUID []byte        `json:"session_uuid"` // marker of when the user object changes, to match with session docs to determine if they are valid
 }
 
 const DefaultCookieName = "SyncGatewaySession"
@@ -74,7 +74,7 @@ func (auth *Authenticator) AuthenticateCookie(rq *http.Request, response http.Re
 	if err != nil {
 		return nil, err
 	}
-	if !bytes.Equal(session.PasswordHash_, user.GetPasswordHash()) {
+	if !bytes.Equal(session.SessionUUID, user.GetSessionUUID()) {
 		return nil, base.HTTPErrorf(http.StatusUnauthorized, "User has changed since session acquired")
 	}
 	return user, err
@@ -99,11 +99,11 @@ func (auth *Authenticator) CreateSession(username string, ttl time.Duration) (*L
 	}
 
 	session := &LoginSession{
-		ID:            secret,
-		Username:      username,
-		Expiration:    time.Now().Add(ttl),
-		Ttl:           ttl,
-		PasswordHash_: user.GetPasswordHash(),
+		ID:          secret,
+		Username:    username,
+		Expiration:  time.Now().Add(ttl),
+		Ttl:         ttl,
+		SessionUUID: user.GetSessionUUID(),
 	}
 	if err := auth.datastore.Set(DocIDForSession(session.ID), base.DurationToCbsExpiry(ttl), nil, session); err != nil {
 		return nil, err

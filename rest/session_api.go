@@ -259,7 +259,16 @@ func (h *handler) deleteUserSession() error {
 func (h *handler) deleteUserSessions() error {
 	h.assertAdminOnly()
 	userName := h.PathVar("name")
-	return h.db.DeleteUserSessions(h.ctx(), userName)
+	auth := h.db.Authenticator(h.ctx())
+	user, err := auth.GetUser(userName)
+	if err != nil {
+		return err
+	}
+	if user == nil {
+		return nil
+	}
+	user.UpdateSessionUUID()
+	return auth.Save(user)
 }
 
 // Delete a session if associated with the user provided

@@ -85,8 +85,11 @@ type User interface {
 	// Authenticates the user's password.
 	Authenticate(password string) bool
 
-	// GetPasswordHash returns the hashed password.
-	GetPasswordHash() []byte
+	// GetSessionUUID returns the UUID that a session to match to be a valid session.
+	GetSessionUUID() []byte
+
+	// UpdateSessionUUID creates a new session UUID
+	UpdateSessionUUID()
 
 	// Changes the user's password.
 	SetPassword(password string) error
