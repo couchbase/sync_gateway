@@ -59,17 +59,19 @@ type Checkpointer struct {
 
 	// closeWg waits for the time-based checkpointer goroutine to finish.
 	closeWg sync.WaitGroup
+	// For logging stats about the length of expected and processed sequence lists
+	dbStats *base.DbReplicatorStats
 }
 
 type statusFunc func(lastSeq string) *ReplicationStatus
 
 type CheckpointerStats struct {
 	ExpectedSequenceCount           int64
-	ExpectedSequenceLen             int
-	ExpectedSequenceLenPostCleanup  int
+	ExpectedSequenceLen             int64
+	ExpectedSequenceLenPostCleanup  int64
 	ProcessedSequenceCount          int64
-	ProcessedSequenceLen            int
-	ProcessedSequenceLenPostCleanup int
+	ProcessedSequenceLen            int64
+	ProcessedSequenceLenPostCleanup int64
 	AlreadyKnownSequenceCount       int64
 	SetCheckpointCount              int64
 	GetCheckpointHitCount           int64
@@ -88,6 +90,7 @@ func NewCheckpointer(ctx context.Context, clientID string, configHash string, bl
 		checkpointInterval:             replicatorConfig.CheckpointInterval,
 		ctx:                            ctx,
 		stats:                          CheckpointerStats{},
+		dbStats:                        replicatorConfig.ReplicationStatsMap,
 		statusCallback:                 statusCallback,
 		expectedSeqCompactionThreshold: defaultExpectedSeqCompactionThreshold,
 	}
@@ -258,9 +261,8 @@ func (c *Checkpointer) _updateCheckpointLists() (safeSeq *SequenceID) {
 	base.TracefCtx(c.ctx, base.KeyReplicate, "checkpointer: _updateCheckpointLists(expectedSeqs: %v, processedSeqs: %v)", c.expectedSeqs, c.processedSeqs)
 	base.TracefCtx(c.ctx, base.KeyReplicate, "Inside update checkpoint lists")
 
-	c.stats.ExpectedSequenceLen = len(c.expectedSeqs)
-	c.stats.ProcessedSequenceLen = len(c.processedSeqs)
-
+	c.stats.ExpectedSequenceLen = int64(len(c.expectedSeqs))
+	c.stats.ProcessedSequenceLen = int64(len(c.processedSeqs))
 	maxI := c._calculateSafeExpectedSeqsIdx()
 
 	if maxI > -1 {
@@ -295,8 +297,13 @@ func (c *Checkpointer) _updateCheckpointLists() (safeSeq *SequenceID) {
 		}
 	}
 
-	c.stats.ExpectedSequenceLenPostCleanup = len(c.expectedSeqs)
-	c.stats.ProcessedSequenceLenPostCleanup = len(c.processedSeqs)
+	c.stats.ExpectedSequenceLenPostCleanup = int64(len(c.expectedSeqs))
+	c.stats.ProcessedSequenceLenPostCleanup = int64(len(c.processedSeqs))
+
+	c.dbStats.ProcessedSequenceLen.Set(c.stats.ProcessedSequenceLen)
+	c.dbStats.ProcessedSequenceLen.Set(c.stats.ProcessedSequenceLenPostCleanup)
+	c.dbStats.ExpectedSequenceLen.Set(c.stats.ExpectedSequenceLen)
+	c.dbStats.ExpectedSequenceLenPostCleanup.Set(c.stats.ExpectedSequenceLenPostCleanup)
 
 	return safeSeq
 }

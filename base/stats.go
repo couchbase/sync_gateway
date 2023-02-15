@@ -647,6 +647,11 @@ type DbReplicatorStats struct {
 
 	// The number of times a handler panicked and didn't know how to recover from it.
 	NumHandlersPanicked *SgwIntStat `json:"-"`
+	// Internal stats for the lengths of expectedSeqs/processedSeqs lists in the ISGR checkpointer.
+	ExpectedSequenceLen             *SgwIntStat `json:"expected_seq_len,omitempty"`
+	ExpectedSequenceLenPostCleanup  *SgwIntStat `json:"expected_seq_len_post_cleanup,omitempty"`
+	ProcessedSequenceLen            *SgwIntStat `json:"processed_seq_len,omitempty"`
+	ProcessedSequenceLenPostCleanup *SgwIntStat `json:"processed_seq_len_post_cleanup,omitempty"`
 }
 
 type SecurityStats struct {
