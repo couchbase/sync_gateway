@@ -59,8 +59,6 @@ type Checkpointer struct {
 
 	// closeWg waits for the time-based checkpointer goroutine to finish.
 	closeWg sync.WaitGroup
-	// For logging stats about the length of expected and processed sequence lists
-	dbStats *base.DbReplicatorStats
 }
 
 type statusFunc func(lastSeq string) *ReplicationStatus
@@ -95,7 +93,6 @@ func NewCheckpointer(ctx context.Context, clientID string, configHash string, bl
 			ExpectedSequenceLen:             replicatorConfig.ReplicationStatsMap.ExpectedSequenceLen,
 			ExpectedSequenceLenPostCleanup:  replicatorConfig.ReplicationStatsMap.ExpectedSequenceLenPostCleanup,
 		},
-		dbStats:                        replicatorConfig.ReplicationStatsMap,
 		statusCallback:                 statusCallback,
 		expectedSeqCompactionThreshold: defaultExpectedSeqCompactionThreshold,
 	}
@@ -266,10 +263,8 @@ func (c *Checkpointer) _updateCheckpointLists() (safeSeq *SequenceID) {
 	base.TracefCtx(c.ctx, base.KeyReplicate, "checkpointer: _updateCheckpointLists(expectedSeqs: %v, processedSeqs: %v)", c.expectedSeqs, c.processedSeqs)
 	base.TracefCtx(c.ctx, base.KeyReplicate, "Inside update checkpoint lists")
 
-	if c.dbStats != nil {
-		c.dbStats.ProcessedSequenceLen.Set(int64(len(c.processedSeqs)))
-		c.dbStats.ExpectedSequenceLen.Set(int64(len(c.expectedSeqs)))
-	}
+	c.stats.ProcessedSequenceLen.Set(int64(len(c.processedSeqs)))
+	c.stats.ExpectedSequenceLen.Set(int64(len(c.expectedSeqs)))
 	maxI := c._calculateSafeExpectedSeqsIdx()
 
 	if maxI > -1 {
@@ -304,10 +299,8 @@ func (c *Checkpointer) _updateCheckpointLists() (safeSeq *SequenceID) {
 		}
 	}
 
-	if c.dbStats != nil {
-		c.dbStats.ExpectedSequenceLenPostCleanup.Set(int64(len(c.processedSeqs)))
-		c.dbStats.ExpectedSequenceLenPostCleanup.Set(int64(len(c.expectedSeqs)))
-	}
+	c.stats.ExpectedSequenceLenPostCleanup.Set(int64(len(c.processedSeqs)))
+	c.stats.ExpectedSequenceLenPostCleanup.Set(int64(len(c.expectedSeqs)))
 	return safeSeq
 }
 
