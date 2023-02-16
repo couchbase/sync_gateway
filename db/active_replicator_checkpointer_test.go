@@ -12,6 +12,8 @@ package db
 
 import (
 	"fmt"
+	"github.com/couchbase/sync_gateway/base"
+	"github.com/stretchr/testify/require"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -43,6 +45,12 @@ func genProcessedForTest(t testing.TB, seqs ...string) map[SequenceID]struct{} {
 
 func TestCheckpointerSafeSeq(t *testing.T) {
 
+	stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, nil, nil)
+	replicationStats, err := stats.DBReplicatorStats(t.Name())
+	require.NoError(t, err)
+	replicatorConfig := &ActiveReplicatorConfig{}
+	replicatorConfig.ReplicationStatsMap = replicationStats
+
 	tests := []struct {
 		name                    string
 		c                       *Checkpointer
@@ -56,6 +64,12 @@ func TestCheckpointerSafeSeq(t *testing.T) {
 			c: &Checkpointer{
 				expectedSeqs:  genExpectedForTest(t),
 				processedSeqs: genProcessedForTest(t),
+				stats: CheckpointerStats{
+					ProcessedSequenceLen:            replicatorConfig.ReplicationStatsMap.ProcessedSequenceLen,
+					ProcessedSequenceLenPostCleanup: replicatorConfig.ReplicationStatsMap.ProcessedSequenceLenPostCleanup,
+					ExpectedSequenceLen:             replicatorConfig.ReplicationStatsMap.ExpectedSequenceLen,
+					ExpectedSequenceLenPostCleanup:  replicatorConfig.ReplicationStatsMap.ExpectedSequenceLenPostCleanup,
+				},
 			},
 			expectedSafeSeq:         nil,
 			expectedExpectedSeqsIdx: -1,
@@ -67,6 +81,12 @@ func TestCheckpointerSafeSeq(t *testing.T) {
 			c: &Checkpointer{
 				expectedSeqs:  genExpectedForTest(t, "1", "2", "3"),
 				processedSeqs: genProcessedForTest(t),
+				stats: CheckpointerStats{
+					ProcessedSequenceLen:            replicatorConfig.ReplicationStatsMap.ProcessedSequenceLen,
+					ProcessedSequenceLenPostCleanup: replicatorConfig.ReplicationStatsMap.ProcessedSequenceLenPostCleanup,
+					ExpectedSequenceLen:             replicatorConfig.ReplicationStatsMap.ExpectedSequenceLen,
+					ExpectedSequenceLenPostCleanup:  replicatorConfig.ReplicationStatsMap.ExpectedSequenceLenPostCleanup,
+				},
 			},
 			expectedSafeSeq:         nil,
 			expectedExpectedSeqsIdx: -1,
@@ -78,6 +98,12 @@ func TestCheckpointerSafeSeq(t *testing.T) {
 			c: &Checkpointer{
 				expectedSeqs:  genExpectedForTest(t, "1", "2", "3"),
 				processedSeqs: genProcessedForTest(t, "1"),
+				stats: CheckpointerStats{
+					ProcessedSequenceLen:            replicatorConfig.ReplicationStatsMap.ProcessedSequenceLen,
+					ProcessedSequenceLenPostCleanup: replicatorConfig.ReplicationStatsMap.ProcessedSequenceLenPostCleanup,
+					ExpectedSequenceLen:             replicatorConfig.ReplicationStatsMap.ExpectedSequenceLen,
+					ExpectedSequenceLenPostCleanup:  replicatorConfig.ReplicationStatsMap.ExpectedSequenceLenPostCleanup,
+				},
 			},
 			expectedSafeSeq:         &SequenceID{Seq: 1},
 			expectedExpectedSeqsIdx: 0,
@@ -89,6 +115,12 @@ func TestCheckpointerSafeSeq(t *testing.T) {
 			c: &Checkpointer{
 				expectedSeqs:  genExpectedForTest(t, "1", "2", "3"),
 				processedSeqs: genProcessedForTest(t, "1", "3"),
+				stats: CheckpointerStats{
+					ProcessedSequenceLen:            replicatorConfig.ReplicationStatsMap.ProcessedSequenceLen,
+					ProcessedSequenceLenPostCleanup: replicatorConfig.ReplicationStatsMap.ProcessedSequenceLenPostCleanup,
+					ExpectedSequenceLen:             replicatorConfig.ReplicationStatsMap.ExpectedSequenceLen,
+					ExpectedSequenceLenPostCleanup:  replicatorConfig.ReplicationStatsMap.ExpectedSequenceLenPostCleanup,
+				},
 			},
 			expectedSafeSeq:         &SequenceID{Seq: 1},
 			expectedExpectedSeqsIdx: 0,
@@ -100,6 +132,12 @@ func TestCheckpointerSafeSeq(t *testing.T) {
 			c: &Checkpointer{
 				expectedSeqs:  genExpectedForTest(t, "1", "2", "3"),
 				processedSeqs: genProcessedForTest(t, "1", "2", "3"),
+				stats: CheckpointerStats{
+					ProcessedSequenceLen:            replicatorConfig.ReplicationStatsMap.ProcessedSequenceLen,
+					ProcessedSequenceLenPostCleanup: replicatorConfig.ReplicationStatsMap.ProcessedSequenceLenPostCleanup,
+					ExpectedSequenceLen:             replicatorConfig.ReplicationStatsMap.ExpectedSequenceLen,
+					ExpectedSequenceLenPostCleanup:  replicatorConfig.ReplicationStatsMap.ExpectedSequenceLenPostCleanup,
+				},
 			},
 			expectedSafeSeq:         &SequenceID{Seq: 3},
 			expectedExpectedSeqsIdx: 2,
@@ -111,6 +149,12 @@ func TestCheckpointerSafeSeq(t *testing.T) {
 			c: &Checkpointer{
 				expectedSeqs:  genExpectedForTest(t, "1", "2", "3"),
 				processedSeqs: genProcessedForTest(t, "1", "2", "3", "4", "5"),
+				stats: CheckpointerStats{
+					ProcessedSequenceLen:            replicatorConfig.ReplicationStatsMap.ProcessedSequenceLen,
+					ProcessedSequenceLenPostCleanup: replicatorConfig.ReplicationStatsMap.ProcessedSequenceLenPostCleanup,
+					ExpectedSequenceLen:             replicatorConfig.ReplicationStatsMap.ExpectedSequenceLen,
+					ExpectedSequenceLenPostCleanup:  replicatorConfig.ReplicationStatsMap.ExpectedSequenceLenPostCleanup,
+				},
 			},
 			expectedSafeSeq:         &SequenceID{Seq: 3},
 			expectedExpectedSeqsIdx: 2,
@@ -122,6 +166,12 @@ func TestCheckpointerSafeSeq(t *testing.T) {
 			c: &Checkpointer{
 				expectedSeqs:  genExpectedForTest(t, "3", "2", "1"),
 				processedSeqs: genProcessedForTest(t, "1", "2", "3"),
+				stats: CheckpointerStats{
+					ProcessedSequenceLen:            replicatorConfig.ReplicationStatsMap.ProcessedSequenceLen,
+					ProcessedSequenceLenPostCleanup: replicatorConfig.ReplicationStatsMap.ProcessedSequenceLenPostCleanup,
+					ExpectedSequenceLen:             replicatorConfig.ReplicationStatsMap.ExpectedSequenceLen,
+					ExpectedSequenceLenPostCleanup:  replicatorConfig.ReplicationStatsMap.ExpectedSequenceLenPostCleanup,
+				},
 			},
 			expectedSafeSeq:         &SequenceID{Seq: 3},
 			expectedExpectedSeqsIdx: 2,
@@ -133,6 +183,12 @@ func TestCheckpointerSafeSeq(t *testing.T) {
 			c: &Checkpointer{
 				expectedSeqs:  genExpectedForTest(t, "1", "1::3"),
 				processedSeqs: genProcessedForTest(t, "1", "1::3"),
+				stats: CheckpointerStats{
+					ProcessedSequenceLen:            replicatorConfig.ReplicationStatsMap.ProcessedSequenceLen,
+					ProcessedSequenceLenPostCleanup: replicatorConfig.ReplicationStatsMap.ProcessedSequenceLenPostCleanup,
+					ExpectedSequenceLen:             replicatorConfig.ReplicationStatsMap.ExpectedSequenceLen,
+					ExpectedSequenceLenPostCleanup:  replicatorConfig.ReplicationStatsMap.ExpectedSequenceLenPostCleanup,
+				},
 			},
 			expectedSafeSeq:         &SequenceID{Seq: 3, LowSeq: 1},
 			expectedExpectedSeqsIdx: 1,
@@ -144,6 +200,12 @@ func TestCheckpointerSafeSeq(t *testing.T) {
 			c: &Checkpointer{
 				expectedSeqs:  genExpectedForTest(t, "1", "1::3", "4:2"),
 				processedSeqs: genProcessedForTest(t, "1", "1::3", "4:2"),
+				stats: CheckpointerStats{
+					ProcessedSequenceLen:            replicatorConfig.ReplicationStatsMap.ProcessedSequenceLen,
+					ProcessedSequenceLenPostCleanup: replicatorConfig.ReplicationStatsMap.ProcessedSequenceLenPostCleanup,
+					ExpectedSequenceLen:             replicatorConfig.ReplicationStatsMap.ExpectedSequenceLen,
+					ExpectedSequenceLenPostCleanup:  replicatorConfig.ReplicationStatsMap.ExpectedSequenceLenPostCleanup,
+				},
 			},
 			expectedSafeSeq:         &SequenceID{Seq: 2, TriggeredBy: 4},
 			expectedExpectedSeqsIdx: 2,
@@ -164,6 +226,12 @@ func TestCheckpointerSafeSeq(t *testing.T) {
 				expectedSeqs:                   genExpectedForTest(t, "1", "2", "3", "4", "5", "6"),
 				processedSeqs:                  genProcessedForTest(t, "1", "3", "4", "5"),
 				expectedSeqCompactionThreshold: 3, // this many expected seqs to trigger compaction
+				stats: CheckpointerStats{
+					ProcessedSequenceLen:            replicatorConfig.ReplicationStatsMap.ProcessedSequenceLen,
+					ProcessedSequenceLenPostCleanup: replicatorConfig.ReplicationStatsMap.ProcessedSequenceLenPostCleanup,
+					ExpectedSequenceLen:             replicatorConfig.ReplicationStatsMap.ExpectedSequenceLen,
+					ExpectedSequenceLenPostCleanup:  replicatorConfig.ReplicationStatsMap.ExpectedSequenceLenPostCleanup,
+				},
 			},
 			expectedSafeSeq:         &SequenceID{Seq: 1},
 			expectedExpectedSeqsIdx: 0,
@@ -184,6 +252,12 @@ func TestCheckpointerSafeSeq(t *testing.T) {
 				expectedSeqs:                   genExpectedForTest(t, "2", "1", "6", "8", "4", "9"),
 				processedSeqs:                  genProcessedForTest(t, "4", "1", "6", "8"),
 				expectedSeqCompactionThreshold: 3, // this many expected seqs to trigger compaction
+				stats: CheckpointerStats{
+					ProcessedSequenceLen:            replicatorConfig.ReplicationStatsMap.ProcessedSequenceLen,
+					ProcessedSequenceLenPostCleanup: replicatorConfig.ReplicationStatsMap.ProcessedSequenceLenPostCleanup,
+					ExpectedSequenceLen:             replicatorConfig.ReplicationStatsMap.ExpectedSequenceLen,
+					ExpectedSequenceLenPostCleanup:  replicatorConfig.ReplicationStatsMap.ExpectedSequenceLenPostCleanup,
+				},
 			},
 			expectedSafeSeq:         &SequenceID{Seq: 1},
 			expectedExpectedSeqsIdx: 0,
@@ -196,6 +270,12 @@ func TestCheckpointerSafeSeq(t *testing.T) {
 				expectedSeqs:                   genExpectedForTest(t, "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20"),
 				processedSeqs:                  genProcessedForTest(t, "1", "2", "4", "5", "7", "8", "9", "11", "12", "13", "15", "16", "17", "19"),
 				expectedSeqCompactionThreshold: 5, // this many expected seqs to trigger compaction
+				stats: CheckpointerStats{
+					ProcessedSequenceLen:            replicatorConfig.ReplicationStatsMap.ProcessedSequenceLen,
+					ProcessedSequenceLenPostCleanup: replicatorConfig.ReplicationStatsMap.ProcessedSequenceLenPostCleanup,
+					ExpectedSequenceLen:             replicatorConfig.ReplicationStatsMap.ExpectedSequenceLen,
+					ExpectedSequenceLenPostCleanup:  replicatorConfig.ReplicationStatsMap.ExpectedSequenceLenPostCleanup,
+				},
 			},
 			expectedSafeSeq:         &SequenceID{Seq: 2},
 			expectedExpectedSeqsIdx: 1,
@@ -230,6 +310,12 @@ func TestCheckpointerSafeSeq(t *testing.T) {
 					"47358513", "47358514", "47358515", "47358516", "47358517", "47358518", "47358519", "47358520", "47358521", "47358522", "47358523", "47358524", "47358525", "47358526",
 					"47358527", "47358528", "47358529", "47358530", "47358531", "47358532"),
 				expectedSeqCompactionThreshold: 5, // this many expected seqs to trigger compaction
+				stats: CheckpointerStats{
+					ProcessedSequenceLen:            replicatorConfig.ReplicationStatsMap.ProcessedSequenceLen,
+					ProcessedSequenceLenPostCleanup: replicatorConfig.ReplicationStatsMap.ProcessedSequenceLenPostCleanup,
+					ExpectedSequenceLen:             replicatorConfig.ReplicationStatsMap.ExpectedSequenceLen,
+					ExpectedSequenceLenPostCleanup:  replicatorConfig.ReplicationStatsMap.ExpectedSequenceLenPostCleanup,
+				},
 			},
 			expectedSafeSeq:         nil,
 			expectedExpectedSeqsIdx: -1,
