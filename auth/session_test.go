@@ -37,7 +37,7 @@ func TestCreateSession(t *testing.T) {
 	require.NoError(t, auth.Save(user))
 
 	// Create session with a username and valid TTL of 2 hours.
-	session, err := auth.CreateSession(username, 2*time.Hour)
+	session, err := auth.CreateSession(user, 2*time.Hour)
 	require.NoError(t, err)
 
 	assert.Equal(t, username, session.Username)
@@ -56,13 +56,13 @@ func TestCreateSession(t *testing.T) {
 	assert.NotEmpty(t, session.Expiration)
 
 	// Session must not be created with zero TTL; it's illegal.
-	session, err = auth.CreateSession(username, time.Duration(0))
+	session, err = auth.CreateSession(user, time.Duration(0))
 	assert.Nil(t, session)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), invalidSessionTTLError)
 
 	// Session must not be created with negative TTL; it's illegal.
-	session, err = auth.CreateSession(username, time.Duration(-1))
+	session, err = auth.CreateSession(user, time.Duration(-1))
 	assert.Nil(t, session)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), invalidSessionTTLError)
@@ -235,7 +235,7 @@ func TestCreateSessionChangePassword(t *testing.T) {
 			require.NoError(t, auth.Save(user))
 
 			// Create session with a username and valid TTL of 2 hours.
-			session, err := auth.CreateSession(test.username, 2*time.Hour)
+			session, err := auth.CreateSession(user, 2*time.Hour)
 			require.NoError(t, err)
 
 			session, err = auth.GetSession(session.ID)
@@ -285,8 +285,12 @@ func TestUserWithoutSessionUUID(t *testing.T) {
 	err = auth.datastore.Set(user.DocID(), 0, nil, rawUser)
 	require.NoError(t, err)
 
+	user, err = auth.GetUser(username)
+	require.NoError(t, err)
+	require.NotNil(t, user)
+
 	// Create session with a username and valid TTL of 2 hours.
-	session, err := auth.CreateSession(username, 2*time.Hour)
+	session, err := auth.CreateSession(user, 2*time.Hour)
 	require.NoError(t, err)
 
 	session, err = auth.GetSession(session.ID)

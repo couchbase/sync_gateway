@@ -76,7 +76,7 @@ func (auth *Authenticator) AuthenticateCookie(rq *http.Request, response http.Re
 	return user, err
 }
 
-func (auth *Authenticator) CreateSession(username string, ttl time.Duration) (*LoginSession, error) {
+func (auth *Authenticator) CreateSession(user User, ttl time.Duration) (*LoginSession, error) {
 	ttlSec := int(ttl.Seconds())
 	if ttlSec <= 0 {
 		return nil, base.HTTPErrorf(400, "Invalid session time-to-live")
@@ -87,7 +87,6 @@ func (auth *Authenticator) CreateSession(username string, ttl time.Duration) (*L
 		return nil, err
 	}
 
-	user, err := auth.GetUser(username)
 	if user != nil && user.Disabled() {
 		return nil, base.HTTPErrorf(400, "User is disabled")
 	} else if err != nil {
@@ -96,7 +95,7 @@ func (auth *Authenticator) CreateSession(username string, ttl time.Duration) (*L
 
 	session := &LoginSession{
 		ID:          secret,
-		Username:    username,
+		Username:    user.Name(),
 		Expiration:  time.Now().Add(ttl),
 		Ttl:         ttl,
 		SessionUUID: user.GetSessionUUID(),
