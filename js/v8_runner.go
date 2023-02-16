@@ -113,6 +113,7 @@ func (r *V8Runner) Call(fn *v8.Function, this v8.Valuer, args ...v8.Valuer) (*v8
 
 // Calls a V8 function; like v8Runner.Call except it does _not_ resolve Promises.
 func (r *V8Runner) JustCall(fn *v8.Function, this v8.Valuer, args ...v8.Valuer) (*v8.Value, error) {
+	timedOut := false
 	if timeout := r.Timeout(); timeout != nil {
 		if *timeout <= 0 {
 			// Already timed out
@@ -130,6 +131,7 @@ func (r *V8Runner) JustCall(fn *v8.Function, this v8.Valuer, args ...v8.Valuer) 
 				case <-completed:
 					return
 				case <-timer.C:
+					timedOut = true
 					iso.TerminateExecution()
 				}
 			}()
@@ -137,7 +139,9 @@ func (r *V8Runner) JustCall(fn *v8.Function, this v8.Valuer, args ...v8.Valuer) 
 	}
 	val, err := fn.Call(this, args...)
 	if jsErr, ok := err.(*v8.JSError); ok && strings.HasPrefix(jsErr.Message, "ExecutionTerminated:") {
-		err = context.DeadlineExceeded
+		if timedOut {
+			err = context.DeadlineExceeded
+		}
 	}
 	return val, err
 }

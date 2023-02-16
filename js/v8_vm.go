@@ -3,6 +3,7 @@ package js
 import (
 	_ "embed"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/pkg/errors"
@@ -21,20 +22,41 @@ type v8VM struct {
 	curRunner   *V8Runner         // Currently active v8Runner, if any
 }
 
+// The initial heap size in bytes of a V8 VM (Isolate).
+// Changing this variable affects subsequently created V8 VMs.
+var V8InitialHeap uint64 = 4 * 1024 * 1024
+
+// The maximum heap size in bytes of a V8 VM; if it exceeds this, the script is terminated.
+// Changing this variable affects subsequently created V8 VMs.
+var V8MaxHeap uint64 = 32 * 1024 * 1024
+
+// The maximum size in bytes of V8's JavaScript call stack.
+// If you change this, do so before creating any V8 VMs, otherwise it'll have no effect.
+// (Warning: When I set this to values >= 800, V8 crashed the process on heap overflow,
+// instead of just terminating the script. This was on macOS; YMMV on other platforms.)
+var V8StackSizeLimit = 400 * 1024
+
 const v8VMName = "V8"
 
 // A VMType for instantiating V8-based VMs and VMPools.
 var V8 = &Engine{
 	name:            v8VMName,
 	languageVersion: 13, // ES2022. Can't find exact version on the V8 website --Jens 1/2023
-	factory: func(engine *Engine, services *servicesConfiguration) VM {
-		return &v8VM{
-			baseVM:    &baseVM{engine: engine, services: services},
-			iso:       v8.NewIsolate(), // The V8 v8VM
-			templates: []V8Template{},  // Instantiated Services
-			runners:   []*V8Runner{},   // Cached reusable Runners
-		}
-	},
+	factory:         v8VMFactory,
+}
+
+var v8Init sync.Once
+
+func v8VMFactory(engine *Engine, services *servicesConfiguration) VM {
+	v8Init.Do(func() {
+		v8.SetFlags(fmt.Sprintf("--stack_size=%d", V8StackSizeLimit/1024))
+	})
+	return &v8VM{
+		baseVM:    &baseVM{engine: engine, services: services},
+		iso:       v8.NewIsolateWith(V8InitialHeap, V8MaxHeap), // The V8 v8VM
+		templates: []V8Template{},                              // Instantiated Services
+		runners:   []*V8Runner{},                               // Cached reusable Runners
+	}
 }
 
 // Shuts down a v8VM. It's a good idea to call this explicitly when done with it,

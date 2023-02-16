@@ -250,3 +250,34 @@ func TestTimeout(t *testing.T) {
 		assert.Equal(t, context.DeadlineExceeded, err)
 	})
 }
+
+func TestOutOfMemory(t *testing.T) {
+	vm := V8.NewVM()
+	defer vm.Close()
+	ctx := base.TestCtx(t)
+
+	service := NewService(vm, "OOM", `
+		function() {
+			let a = ["supercalifragilisticexpialidocious"];
+			while (true) {
+				a = [a, a];
+			}
+		}`)
+	_, err := service.Run(ctx)
+	assert.ErrorContains(t, err, "ExecutionTerminated: script execution has been terminated")
+}
+
+func TestStackOverflow(t *testing.T) {
+	vm := V8.NewVM()
+	defer vm.Close()
+	ctx := base.TestCtx(t)
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyJavascript)
+
+	service := NewService(vm, "Overflow", `
+		function() {
+			function recurse(n) {console.log("level ", n); return recurse(n + 1) * recurse(n + 2);}
+			return recurse(0);
+		}`)
+	_, err := service.Run(ctx)
+	assert.ErrorContains(t, err, "Maximum call stack size exceeded")
+}
