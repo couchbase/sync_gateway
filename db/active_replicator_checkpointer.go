@@ -67,11 +67,11 @@ type statusFunc func(lastSeq string) *ReplicationStatus
 
 type CheckpointerStats struct {
 	ExpectedSequenceCount           int64
-	ExpectedSequenceLen             base.SgwIntStat
-	ExpectedSequenceLenPostCleanup  base.SgwIntStat
+	ExpectedSequenceLen             *base.SgwIntStat
+	ExpectedSequenceLenPostCleanup  *base.SgwIntStat
 	ProcessedSequenceCount          int64
-	ProcessedSequenceLen            base.SgwIntStat
-	ProcessedSequenceLenPostCleanup base.SgwIntStat
+	ProcessedSequenceLen            *base.SgwIntStat
+	ProcessedSequenceLenPostCleanup *base.SgwIntStat
 	AlreadyKnownSequenceCount       int64
 	SetCheckpointCount              int64
 	GetCheckpointHitCount           int64
@@ -90,10 +90,10 @@ func NewCheckpointer(ctx context.Context, clientID string, configHash string, bl
 		checkpointInterval: replicatorConfig.CheckpointInterval,
 		ctx:                ctx,
 		stats: CheckpointerStats{
-			ProcessedSequenceLen:            *replicatorConfig.ReplicationStatsMap.ProcessedSequenceLen,
-			ProcessedSequenceLenPostCleanup: *replicatorConfig.ReplicationStatsMap.ProcessedSequenceLenPostCleanup,
-			ExpectedSequenceLen:             *replicatorConfig.ReplicationStatsMap.ExpectedSequenceLen,
-			ExpectedSequenceLenPostCleanup:  *replicatorConfig.ReplicationStatsMap.ExpectedSequenceLenPostCleanup,
+			ProcessedSequenceLen:            replicatorConfig.ReplicationStatsMap.ProcessedSequenceLen,
+			ProcessedSequenceLenPostCleanup: replicatorConfig.ReplicationStatsMap.ProcessedSequenceLenPostCleanup,
+			ExpectedSequenceLen:             replicatorConfig.ReplicationStatsMap.ExpectedSequenceLen,
+			ExpectedSequenceLenPostCleanup:  replicatorConfig.ReplicationStatsMap.ExpectedSequenceLenPostCleanup,
 		},
 		dbStats:                        replicatorConfig.ReplicationStatsMap,
 		statusCallback:                 statusCallback,
