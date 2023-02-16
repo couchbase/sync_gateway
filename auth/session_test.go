@@ -201,14 +201,23 @@ func TestDeleteSessionForCookie(t *testing.T) {
 func TestCreateSessionChangePassword(t *testing.T) {
 	testCases := []struct {
 		name     string
+		username string
 		password string
 	}{
 		{
+			name:     "guestuser",
+			username: "",
+			password: "",
+		},
+
+		{
 			name:     "emptypassword",
+			username: "Alice",
 			password: "",
 		},
 		{
 			name:     "realpassword",
+			username: "Alice",
 			password: "password",
 		},
 	}
@@ -220,14 +229,13 @@ func TestCreateSessionChangePassword(t *testing.T) {
 			dataStore := testBucket.GetSingleDataStore()
 			auth := NewAuthenticator(dataStore, nil, DefaultAuthenticatorOptions())
 
-			const username = "Alice"
-			user, err := auth.NewUser(username, test.password, base.Set{})
+			user, err := auth.NewUser(test.username, test.password, base.Set{})
 			require.NoError(t, err)
 			require.NotNil(t, user)
 			require.NoError(t, auth.Save(user))
 
 			// Create session with a username and valid TTL of 2 hours.
-			session, err := auth.CreateSession(username, 2*time.Hour)
+			session, err := auth.CreateSession(test.username, 2*time.Hour)
 			require.NoError(t, err)
 
 			session, err = auth.GetSession(session.ID)
@@ -250,5 +258,46 @@ func TestCreateSessionChangePassword(t *testing.T) {
 			require.Equal(t, err.(*base.HTTPError).Status, http.StatusUnauthorized)
 		})
 	}
+
+}
+
+// TestUserWithoutSessionUUID tests users that existed before we stamped SessionUUID into user docs
+func TestUserWithoutSessionUUID(t *testing.T) {
+	testBucket := base.GetTestBucket(t)
+	defer testBucket.Close()
+	dataStore := testBucket.GetSingleDataStore()
+	auth := NewAuthenticator(dataStore, nil, DefaultAuthenticatorOptions())
+	const username = "Alice"
+	user, err := auth.NewUser(username, "password", base.Set{})
+	require.NoError(t, err)
+	require.NotNil(t, user)
+	require.NoError(t, auth.Save(user))
+
+	var rawUser map[string]interface{}
+	_, err = auth.datastore.Get(user.DocID(), &rawUser)
+	require.NoError(t, err)
+
+	sessionUUIDKey := "session_uuid"
+	_, exists := rawUser[sessionUUIDKey]
+	require.True(t, exists)
+	delete(rawUser, sessionUUIDKey)
+
+	err = auth.datastore.Set(user.DocID(), 0, nil, rawUser)
+	require.NoError(t, err)
+
+	// Create session with a username and valid TTL of 2 hours.
+	session, err := auth.CreateSession(username, 2*time.Hour)
+	require.NoError(t, err)
+
+	session, err = auth.GetSession(session.ID)
+	require.NoError(t, err)
+
+	request, err := http.NewRequest(http.MethodGet, "", nil)
+	require.NoError(t, err)
+	request.AddCookie(auth.MakeSessionCookie(session, true, true))
+
+	recorder := httptest.NewRecorder()
+	_, err = auth.AuthenticateCookie(request, recorder)
+	require.NoError(t, err)
 
 }

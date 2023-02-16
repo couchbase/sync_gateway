@@ -86,7 +86,7 @@ type User interface {
 	Authenticate(password string) bool
 
 	// GetSessionUUID returns the UUID that a session to match to be a valid session.
-	GetSessionUUID() []byte
+	GetSessionUUID() string
 
 	// UpdateSessionUUID creates a new session UUID
 	UpdateSessionUUID()

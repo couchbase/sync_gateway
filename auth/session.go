@@ -9,7 +9,6 @@
 package auth
 
 import (
-	"bytes"
 	"net/http"
 	"time"
 
@@ -24,7 +23,7 @@ type LoginSession struct {
 	Username    string        `json:"username"`
 	Expiration  time.Time     `json:"expiration"`
 	Ttl         time.Duration `json:"ttl"`
-	SessionUUID []byte        `json:"session_uuid"` // marker of when the user object changes, to match with session docs to determine if they are valid
+	SessionUUID string        `json:"session_uuid"` // marker of when the user object changes, to match with session docs to determine if they are valid
 }
 
 const DefaultCookieName = "SyncGatewaySession"
@@ -67,15 +66,12 @@ func (auth *Authenticator) AuthenticateCookie(rq *http.Request, response http.Re
 	}
 
 	user, err := auth.GetUser(session.Username)
-	if user != nil && user.Disabled() {
-		user = nil
-		return user, err
-	}
 	if err != nil {
 		return nil, err
 	}
-	if !bytes.Equal(session.SessionUUID, user.GetSessionUUID()) {
-		return nil, base.HTTPErrorf(http.StatusUnauthorized, "User has changed since session acquired")
+
+	if session.SessionUUID != user.GetSessionUUID() {
+		return nil, base.HTTPErrorf(http.StatusUnauthorized, "Session no longer valid for user")
 	}
 	return user, err
 }

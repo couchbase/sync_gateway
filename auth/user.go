@@ -51,7 +51,7 @@ type userImplBody struct {
 	RolesSince_      ch.TimedSet     `json:"rolesSince"`
 	RoleInvalSeq     uint64          `json:"role_inval_seq,omitempty"` // Sequence at which the roles were invalidated. Data remains in RolesSince_ for history calculation.
 	RoleHistory_     TimedSetHistory `json:"role_history,omitempty"`   // Added to when a previously granted role is revoked. Calculated inside of rebuildRoles.
-	SessionUUID_     []byte          `json:"session_uuid"`             // marker of when the user object changes, to match with session docs to determine if they are valid
+	SessionUUID_     string          `json:"session_uuid"`             // marker of when the user object changes, to match with session docs to determine if they are valid
 
 	OldExplicitRoles_ []string `json:"admin_roles,omitempty"` // obsolete; declared for migration
 }
@@ -534,13 +534,13 @@ func (user *userImpl) Authenticate(password string) bool {
 }
 
 // GetSessionUUID returns the UUID that a session to match to be a valid session.
-func (user *userImpl) GetSessionUUID() []byte {
+func (user *userImpl) GetSessionUUID() string {
 	return user.SessionUUID_
 }
 
 // UpdateSessionUUID creates a new UUID for a session.
 func (user *userImpl) UpdateSessionUUID() {
-	user.SessionUUID_ = []byte(uuid.NewString())
+	user.SessionUUID_ = uuid.NewString()
 }
 
 // Changes a user's password to the given string.
