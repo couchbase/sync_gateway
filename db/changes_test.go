@@ -56,8 +56,7 @@ func TestFilterToAvailableChannels(t *testing.T) {
 			db, ctx := setupTestDB(t)
 			defer db.Close(ctx)
 			collection := GetSingleDatabaseCollectionWithUser(t, db)
-			_, err := collection.UpdateSyncFun(ctx, channels.DocChannelsSyncFunction)
-			require.NoError(t, err)
+			collection.ChannelMapper = channels.NewChannelMapper(channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
 
 			auth := db.Authenticator(base.TestCtx(t))
 			user, err := auth.NewUser("test", "pass", testCase.userChans)
@@ -103,8 +102,7 @@ func TestChangesAfterChannelAdded(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache, base.KeyChanges)
 
-	_, err := collection.UpdateSyncFun(ctx, channels.DocChannelsSyncFunction)
-	require.NoError(t, err)
+	collection.ChannelMapper = channels.NewChannelMapper(channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
 
 	// Create a user with access to channel ABC
 	authenticator := db.Authenticator(base.TestCtx(t))
@@ -114,7 +112,7 @@ func TestChangesAfterChannelAdded(t *testing.T) {
 	cacheWaiter := db.NewDCPCachingCountWaiter(t)
 
 	// Create a doc on two channels (sequence 1):
-	_, _, err = collection.Put(ctx, "doc1", Body{"channels": []string{"ABC", "PBS"}})
+	_, _, err := collection.Put(ctx, "doc1", Body{"channels": []string{"ABC", "PBS"}})
 	require.NoError(t, err)
 	cacheWaiter.AddAndWait(1)
 
@@ -214,12 +212,12 @@ func TestDocDeletionFromChannelCoalescedRemoved(t *testing.T) {
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
-	_, err := collection.UpdateSyncFun(ctx, channels.DocChannelsSyncFunction)
-	require.NoError(t, err)
+	collection.ChannelMapper = channels.NewChannelMapper(channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
 
 	// Create a user with access to channel A
 	authenticator := db.Authenticator(base.TestCtx(t))
-	user, _ := authenticator.NewUser("alice", "letmein", channels.BaseSetOf(t, "A"))
+	user, err := authenticator.NewUser("alice", "letmein", channels.BaseSetOf(t, "A"))
+	require.NoError(t, err)
 	require.NoError(t, authenticator.Save(user))
 
 	cacheWaiter := db.NewDCPCachingCountWaiter(t)
@@ -300,12 +298,12 @@ func TestDocDeletionFromChannelCoalesced(t *testing.T) {
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
-	_, err := collection.UpdateSyncFun(ctx, channels.DocChannelsSyncFunction)
-	require.NoError(t, err)
+	collection.ChannelMapper = channels.NewChannelMapper(channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
 
 	// Create a user with access to channel A
 	authenticator := db.Authenticator(base.TestCtx(t))
-	user, _ := authenticator.NewUser("alice", "letmein", channels.BaseSetOf(t, "A"))
+	user, err := authenticator.NewUser("alice", "letmein", channels.BaseSetOf(t, "A"))
+	require.NoError(t, err)
 	require.NoError(t, authenticator.Save(user))
 
 	cacheWaiter := db.NewDCPCachingCountWaiter(t)

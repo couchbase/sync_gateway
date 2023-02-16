@@ -22,6 +22,7 @@ import (
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/channels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -214,15 +215,15 @@ func TestAttachmentForRejectedDocument(t *testing.T) {
 	defer db.Close(ctx)
 
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
-	_, err := collection.UpdateSyncFun(ctx, `function(doc, oldDoc) {
+	collection.ChannelMapper = channels.NewChannelMapper(
+		`function(doc, oldDoc) {
 		throw({forbidden: "None shall pass!"});
-	}`)
-	require.NoError(t, err)
+	}`, db.Options.JavascriptTimeout)
 
 	docBody := `{"_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="}}}`
 	var body Body
 	require.NoError(t, base.JSONUnmarshal([]byte(docBody), &body))
-	_, _, err = collection.Put(ctx, "doc1", unjson(docBody))
+	_, _, err := collection.Put(ctx, "doc1", unjson(docBody))
 	require.Error(t, err)
 
 	// Attempt to retrieve the attachment doc

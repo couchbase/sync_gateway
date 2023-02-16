@@ -305,8 +305,7 @@ func TestGetRemovedAsUser(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
-	_, err := collection.UpdateSyncFun(ctx, channels.DocChannelsSyncFunction)
-	require.NoError(t, err)
+	collection.ChannelMapper = channels.NewChannelMapper(channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
 
 	rev1body := Body{
 		"key1":     1234,
@@ -415,8 +414,7 @@ func TestGetRemovalMultiChannel(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
-	_, err := collection.UpdateSyncFun(ctx, channels.DocChannelsSyncFunction)
-	require.NoError(t, err)
+	collection.ChannelMapper = channels.NewChannelMapper(channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
 
 	auth := db.Authenticator(base.TestCtx(t))
 
@@ -587,8 +585,7 @@ func TestDeltaSyncWhenToRevIsChannelRemoval(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
-	_, err := collection.UpdateSyncFun(ctx, channels.DocChannelsSyncFunction)
-	require.NoError(t, err)
+	collection.ChannelMapper = channels.NewChannelMapper(channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
 
 	// Create the first revision of doc1.
 	rev1Body := Body{
@@ -819,13 +816,12 @@ func TestAllDocsOnly(t *testing.T) {
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
-	_, err := collection.UpdateSyncFun(ctx, channels.DocChannelsSyncFunction)
-	require.NoError(t, err)
+	collection.ChannelMapper = channels.NewChannelMapper(channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
 
 	collectionID := collection.GetCollectionID()
 
 	// Trigger creation of the channel cache for channel "all"
-	_, err = db.changeCache.getChannelCache().getSingleChannelCache(channels.NewID("all", collectionID))
+	_, err := db.changeCache.getChannelCache().getSingleChannelCache(channels.NewID("all", collectionID))
 	require.NoError(t, err)
 
 	ids := make([]AllDocsEntry, 100)
@@ -1003,14 +999,13 @@ func TestConflicts(t *testing.T) {
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
-	_, err := collection.UpdateSyncFun(ctx, channels.DocChannelsSyncFunction)
-	require.NoError(t, err)
+	collection.ChannelMapper = channels.NewChannelMapper(channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
 
 	// Instantiate channel cache for channel 'all'
 	collectionID := collection.GetCollectionID()
 
 	allChannel := channels.NewID("all", collectionID)
-	_, err = db.changeCache.getChannelCache().getSingleChannelCache(allChannel)
+	_, err := db.changeCache.getChannelCache().getSingleChannelCache(allChannel)
 	require.NoError(t, err)
 
 	cacheWaiter := db.NewDCPCachingCountWaiter(t)
@@ -1417,11 +1412,10 @@ func TestInvalidChannel(t *testing.T) {
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
-	_, err := collection.UpdateSyncFun(ctx, channels.DocChannelsSyncFunction)
-	require.NoError(t, err)
+	collection.ChannelMapper = channels.NewChannelMapper(channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
 
 	body := Body{"channels": []string{"bad,name"}}
-	_, _, err = collection.Put(ctx, "doc", body)
+	_, _, err := collection.Put(ctx, "doc", body)
 	assertHTTPError(t, err, 500)
 }
 

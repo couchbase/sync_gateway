@@ -1027,11 +1027,10 @@ func TestChannelQueryCancellation(t *testing.T) {
 	db, ctx := setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), queryCallbackConfig)
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
-	_, err := collection.UpdateSyncFun(ctx, channels.DocChannelsSyncFunction)
-	require.NoError(t, err)
+	collection.ChannelMapper = channels.NewChannelMapper(channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
 
 	// Write a handful of docs/sequences to the bucket
-	_, _, err = collection.Put(ctx, "key1", Body{"channels": "ABC"})
+	_, _, err := collection.Put(ctx, "key1", Body{"channels": "ABC"})
 	assert.NoError(t, err, "Put failed with error: %v", err)
 	_, _, err = collection.Put(ctx, "key2", Body{"channels": "ABC"})
 	assert.NoError(t, err, "Put failed with error: %v", err)
@@ -1668,8 +1667,7 @@ func TestInitializeEmptyCache(t *testing.T) {
 	db, ctx := setupTestDBWithCacheOptions(t, cacheOptions)
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
-	_, err := collection.UpdateSyncFun(ctx, channels.DocChannelsSyncFunction)
-	require.NoError(t, err)
+	collection.ChannelMapper = channels.NewChannelMapper(channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
 
 	cacheWaiter := db.NewDCPCachingCountWaiter(t)
 	docCount := 0
@@ -1721,8 +1719,7 @@ func TestInitializeCacheUnderLoad(t *testing.T) {
 	db, ctx := setupTestDBWithCacheOptions(t, cacheOptions)
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
-	_, err := collection.UpdateSyncFun(ctx, channels.DocChannelsSyncFunction)
-	require.NoError(t, err)
+	collection.ChannelMapper = channels.NewChannelMapper(channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
 
 	// Writes [docCount] documents.  Use wait group (writesDone)to identify when all docs have been written.
 	// Use another waitGroup (writesInProgress) to trigger getChanges midway through writes
@@ -1778,8 +1775,7 @@ func TestNotifyForInactiveChannel(t *testing.T) {
 	defer db.Close(ctx)
 
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
-	_, err := collection.UpdateSyncFun(ctx, channels.DocChannelsSyncFunction)
-	require.NoError(t, err)
+	collection.ChannelMapper = channels.NewChannelMapper(channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
 	collectionID := collection.GetCollectionID()
 
 	// -------- Setup notifyChange callback ----------------
@@ -1794,7 +1790,7 @@ func TestNotifyForInactiveChannel(t *testing.T) {
 
 	// Write a document to channel zero
 	body := Body{"channels": []string{"zero"}}
-	_, _, err = collection.Put(ctx, "inactiveCacheNotify", body)
+	_, _, err := collection.Put(ctx, "inactiveCacheNotify", body)
 	assert.NoError(t, err)
 
 	// Wait for notify to arrive
