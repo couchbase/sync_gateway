@@ -11,11 +11,13 @@ licenses/APL2.txt.
 package rest
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"net/http"
@@ -2304,4 +2306,51 @@ func (rt *RestTester) getCollectionsForBLIP() []string {
 			strings.Join([]string{collection.ScopeName, collection.Name}, base.ScopeCollectionSeparator))
 	}
 	return collections
+}
+
+// Reads continuous changes feed response into slice of ChangeEntry
+func (rt *RestTester) ReadContinuousChanges(response *TestResponse) ([]db.ChangeEntry, error) {
+	var change db.ChangeEntry
+	changes := make([]db.ChangeEntry, 0)
+	reader := bufio.NewReader(response.Body)
+	for {
+		entry, readError := reader.ReadBytes('\n')
+		if readError == io.EOF {
+			// done
+			break
+		}
+		if readError != nil {
+			// unexpected read error
+			return changes, readError
+		}
+		entry = bytes.TrimSpace(entry)
+		if len(entry) > 0 {
+			err := base.JSONUnmarshal(entry, &change)
+			if err != nil {
+				return changes, err
+			}
+			changes = append(changes, change)
+			log.Printf("Got change ==> %v", change)
+		}
+
+	}
+	return changes, nil
+}
+
+// RequireContinuousFeedChangesCount Calls a changes feed on every collection and asserts that the nth expected change is
+// the number of changes for the nth collection.
+func (rt *RestTester) RequireContinuousFeedChangesCount(t testing.TB, username string, keyspace int, expectedChanges int, timeout int) {
+	resp := rt.SendUserRequest("GET", fmt.Sprintf("/{{.keyspace%d}}/_changes?feed=continuous&timeout=%d", keyspace, timeout), "", username)
+	changes, err := rt.ReadContinuousChanges(resp)
+	assert.NoError(t, err)
+	require.Len(t, changes, expectedChanges)
+}
+
+func (rt *RestTester) GetChangesOneShot(t testing.TB, keyspace string, since int, username string, changesCount int) *TestResponse {
+	changesResponse := rt.SendUserRequest("GET", fmt.Sprintf("/{{.%s}}/_changes?since=%d", keyspace, since), "", username)
+	var changes ChangesResults
+	err := base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
+	assert.NoError(t, err, "Error unmarshalling changes response")
+	require.Len(t, changes.Results, changesCount)
+	return changesResponse
 }

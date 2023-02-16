@@ -1553,3 +1553,30 @@ func TestMergeAttachments(t *testing.T) {
 		})
 	}
 }
+
+func TestPutStampClusterUUID(t *testing.T) {
+	if !base.TestUseXattrs() {
+		t.Skip("This test only works with XATTRS enabled")
+	}
+
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
+
+	collection := GetSingleDatabaseCollectionWithUser(t, db)
+
+	key := "doc1"
+
+	body := Body{}
+	err := body.Unmarshal([]byte(`{"field": "value"}`))
+	require.NoError(t, err)
+
+	_, doc, err := collection.Put(ctx, key, body)
+
+	require.NoError(t, err)
+	require.Equal(t, 32, len(doc.ClusterUUID))
+
+	var xattr map[string]string
+	_, err = collection.dataStore.GetWithXattr(key, base.SyncXattrName, "", &body, &xattr, nil)
+	require.NoError(t, err)
+	require.Equal(t, 32, len(xattr["cluster_uuid"]))
+}

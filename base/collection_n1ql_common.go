@@ -57,7 +57,7 @@ type N1QLStore interface {
 	executeStatement(statement string) error
 
 	// getIndexes retrieves all index names, used by test harness
-	getIndexes() (indexes []string, err error)
+	GetIndexes() (indexes []string, err error)
 
 	// waitUntilQueryServiceReady waits until the query service is ready to accept requests
 	waitUntilQueryServiceReady(timeout time.Duration) error

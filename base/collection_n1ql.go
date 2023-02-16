@@ -245,7 +245,7 @@ func (c *Collection) IsErrNoResults(err error) bool {
 	return err == gocb.ErrNoResult
 }
 
-func (c *Collection) getIndexes() (indexes []string, err error) {
+func (c *Collection) GetIndexes() (indexes []string, err error) {
 
 	indexes = []string{}
 	var opts *gocb.GetAllQueryIndexesOptions
