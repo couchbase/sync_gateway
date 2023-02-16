@@ -130,7 +130,7 @@ func GetGocbV2BucketFromCluster(cluster *gocb.Cluster, spec BucketSpec, waitUnti
 	clusterCompatMajor, clusterCompatMinor, err := getClusterVersion(cluster)
 	if err != nil {
 		_ = cluster.Close(&gocb.ClusterCloseOptions{})
-		return nil, fmt.Errorf("%s", err)
+		return nil, err
 	}
 
 	gocbv2Bucket := &GocbV2Bucket{
@@ -443,10 +443,6 @@ func (b *GocbV2Bucket) QueryEpsCount() (int, error) {
 // found, retrieves the cluster-wide value.
 func (b *GocbV2Bucket) MetadataPurgeInterval() (time.Duration, error) {
 	return getMetadataPurgeInterval(b)
-}
-
-func (b *GocbV2Bucket) ServerUUID() (uuid string, err error) {
-	return getServerUUID(b)
 }
 
 func (b *GocbV2Bucket) MaxTTL() (int, error) {

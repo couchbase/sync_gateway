@@ -9,6 +9,7 @@
 package changestest
 
 import (
+	"fmt"
 	"log"
 	"testing"
 
@@ -190,6 +191,93 @@ func TestMultiCollectionChangesUser(t *testing.T) {
 	assert.NoError(t, err, "Error unmarshalling changes response")
 	require.Len(t, changes.Results, 2)
 	logChangesResponse(t, changesResponse.Body.Bytes())
+}
+
+func TestMultiCollectionChangesMultiChannelOneShot(t *testing.T) {
+
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeyChanges, base.KeyCache, base.KeyCRUD)
+	numCollections := 2
+	base.RequireNumTestDataStores(t, numCollections)
+	rt := rest.NewRestTesterMultipleCollections(t, nil, numCollections)
+	defer rt.Close()
+
+	// Create user with access to channel PBS in both collections
+	ctx := rt.Context()
+	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
+	bernard, err := a.NewUser("bernard", "letmein", channels.BaseSetOf(t, "BRN"))
+	assert.NoError(t, err)
+	assert.NoError(t, a.Save(bernard))
+	charlie, err := a.NewUser("charlie", "letmein", channels.BaseSetOf(t, "CHR"))
+	assert.NoError(t, err)
+	assert.NoError(t, a.Save(charlie))
+	BRNchr, err := a.NewUser("BRNchr", "letmein", channels.BaseSetOf(t, "CHR", "BRN"))
+	assert.NoError(t, err)
+	assert.NoError(t, a.Save(BRNchr))
+
+	// Put several documents, will be retrieved via query
+	response := rt.SendAdminRequest("PUT", "/{{.keyspace1}}/brn1_c1", `{"channels":["BRN"]}`)
+	rest.RequireStatus(t, response, 201)
+
+	// Keep rev to delete doc later
+	var body db.Body
+	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
+	brn1_c1Rev := body["rev"].(string)
+
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace1}}/chr1_c1", `{"channels":["CHR"]}`)
+	rest.RequireStatus(t, response, 201)
+	_ = rt.WaitForPendingChanges()
+
+	// Issue changes request.  Will initialize cache for channels, and return docs via queries
+	changesResponse := rt.GetChangesOneShot(t, "keyspace1", 0, "bernard", 1)
+	logChangesResponse(t, changesResponse.Body.Bytes())
+
+	changesResponse = rt.GetChangesOneShot(t, "keyspace2", 0, "bernard", 0)
+	logChangesResponse(t, changesResponse.Body.Bytes())
+
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace1}}/brn2_c1", `{"value":1, "channels":["BRN"]}`)
+	rest.RequireStatus(t, response, 201)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace1}}/chr2_c1", `{"value":1, "channels":["CHR"]}`)
+	rest.RequireStatus(t, response, 201)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace2}}/brn2_c2", `{"value":1, "channels":["BRN"]}`)
+	rest.RequireStatus(t, response, 201)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace2}}/chr2_c2", `{"value":1, "channels":["CHR"]}`)
+	rest.RequireStatus(t, response, 201)
+	_ = rt.WaitForPendingChanges()
+
+	changesResponse = rt.GetChangesOneShot(t, "keyspace1", 0, "bernard", 2)
+	logChangesResponse(t, changesResponse.Body.Bytes())
+
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace1}}/brn3_c1", `{"value":1, "channels":["BRN"]}`)
+	rest.RequireStatus(t, response, 201)
+	_ = rt.WaitForPendingChanges()
+
+	changesResponse = rt.GetChangesOneShot(t, "keyspace1", 0, "charlie", 2)
+	logChangesResponse(t, changesResponse.Body.Bytes())
+
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace1}}/brn4_c1", `{"value":1, "channels":["BRN"]}`)
+	rest.RequireStatus(t, response, 201)
+	response = rt.SendAdminRequest("DELETE", fmt.Sprintf("/{{.keyspace1}}/brn1_c1?rev=%s", brn1_c1Rev), ``)
+	rest.RequireStatus(t, response, 200)
+
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace2}}/brn4_c1", `{"value":1, "channels":["BRN"]}`)
+	rest.RequireStatus(t, response, 201)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace1}}/chr3_c1", `{"value":1, "channels":["CHR"]}`)
+	rest.RequireStatus(t, response, 201)
+	_ = rt.WaitForPendingChanges()
+
+	changesResponse = rt.GetChangesOneShot(t, "keyspace1", 0, "bernard", 4)
+	logChangesResponse(t, changesResponse.Body.Bytes())
+
+	changesResponse = rt.GetChangesOneShot(t, "keyspace2", 0, "BRNchr", 3) // 2 docs in BRN, 1 doc in CHR in collection 2
+	logChangesResponse(t, changesResponse.Body.Bytes())
+
+	rt.RequireContinuousFeedChangesCount(t, "bernard", 1, 4, 500)
+	rt.RequireContinuousFeedChangesCount(t, "bernard", 2, 2, 500)
+
+	rt.RequireContinuousFeedChangesCount(t, "charlie", 1, 3, 500)
+	rt.RequireContinuousFeedChangesCount(t, "charlie", 2, 1, 500)
+	rt.RequireContinuousFeedChangesCount(t, "BRNchr", 1, 7, 1000)
+	rt.RequireContinuousFeedChangesCount(t, "BRNchr", 2, 3, 1000)
 }
 
 // TestMultiCollectionChangesUserDynamicGrant tests a dynamic channel grant when that channel is not already resident

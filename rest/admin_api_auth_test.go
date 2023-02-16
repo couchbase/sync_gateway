@@ -180,6 +180,10 @@ func TestCheckRoles(t *testing.T) {
 
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
+	SGWorBFArole := RouteRole{MobileSyncGatewayRole.RoleName, true}
+	if base.TestsUseServerCE() {
+		SGWorBFArole = RouteRole{BucketFullAccessRole.RoleName, true}
+	}
 
 	testCases := []struct {
 		Name               string
@@ -227,22 +231,22 @@ func TestCheckRoles(t *testing.T) {
 			Username:           "CreatedBucketAdmin",
 			Password:           "password",
 			BucketName:         rt.Bucket().GetName(),
-			RequestRoles:       []RouteRole{MobileSyncGatewayRole},
+			RequestRoles:       []RouteRole{SGWorBFArole},
 			ExpectedStatusCode: http.StatusOK,
 			CreateUser:         "CreatedBucketAdmin",
 			CreatePassword:     "password",
-			CreateRoles:        []string{fmt.Sprintf("mobile_sync_gateway[%s]", rt.Bucket().GetName())},
+			CreateRoles:        []string{fmt.Sprintf("%s[%s]", SGWorBFArole.RoleName, rt.Bucket().GetName())},
 		},
 		{
 			Name:               "CreatedBucketAdminWildcard",
 			Username:           "CreatedBucketAdminWildcard",
 			Password:           "password",
 			BucketName:         rt.Bucket().GetName(),
-			RequestRoles:       []RouteRole{MobileSyncGatewayRole},
+			RequestRoles:       []RouteRole{SGWorBFArole},
 			ExpectedStatusCode: http.StatusOK,
 			CreateUser:         "CreatedBucketAdminWildcard",
 			CreatePassword:     "password",
-			CreateRoles:        []string{"mobile_sync_gateway[*]"},
+			CreateRoles:        []string{fmt.Sprintf("%s[*]", SGWorBFArole.RoleName)},
 		},
 		{
 			Name:               "CreateUserNoRole",
@@ -260,7 +264,7 @@ func TestCheckRoles(t *testing.T) {
 			Username:           "CreateUserInsufficientRole",
 			Password:           "password",
 			BucketName:         "",
-			RequestRoles:       []RouteRole{MobileSyncGatewayRole},
+			RequestRoles:       []RouteRole{SGWorBFArole},
 			ExpectedStatusCode: http.StatusForbidden,
 			CreateUser:         "CreateUserInsufficientRole",
 			CreatePassword:     "password",
@@ -840,20 +844,26 @@ func TestAdminAPIAuth(t *testing.T) {
 		},
 	}
 
+	SGWorBFArole := MobileSyncGatewayRole.RoleName
+	if base.TestsUseServerCE() {
+		SGWorBFArole = BucketFullAccessRole.RoleName
+	}
 	eps, httpClient, err := rt.ServerContext().ObtainManagementEndpointsAndHTTPClient()
 	require.NoError(t, err)
 
 	MakeUser(t, httpClient, eps[0], "noaccess", "password", []string{})
 	defer DeleteUser(t, httpClient, eps[0], "noaccess")
 
-	MakeUser(t, httpClient, eps[0], "MobileSyncGatewayUser", "password", []string{fmt.Sprintf("%s[%s]", MobileSyncGatewayRole.RoleName, rt.Bucket().GetName())})
+	MakeUser(t, httpClient, eps[0], "MobileSyncGatewayUser", "password", []string{fmt.Sprintf("%s[%s]", SGWorBFArole, rt.Bucket().GetName())})
 	defer DeleteUser(t, httpClient, eps[0], "MobileSyncGatewayUser")
 
 	MakeUser(t, httpClient, eps[0], "ROAdminUser", "password", []string{ReadOnlyAdminRole.RoleName})
 	defer DeleteUser(t, httpClient, eps[0], "ROAdminUser")
 
-	MakeUser(t, httpClient, eps[0], "ClusterAdminUser", "password", []string{ClusterAdminRole.RoleName})
-	defer DeleteUser(t, httpClient, eps[0], "ClusterAdminUser")
+	if base.TestsUseServerCE() {
+		MakeUser(t, httpClient, eps[0], "ClusterAdminUser", "password", []string{ClusterAdminRole.RoleName})
+		defer DeleteUser(t, httpClient, eps[0], "ClusterAdminUser")
+	}
 
 	for _, endPoint := range endPoints {
 		body := `{}`
@@ -884,9 +894,10 @@ func TestAdminAPIAuth(t *testing.T) {
 						RequireStatus(t, resp, http.StatusForbidden)
 					}
 
-					resp = rt.SendAdminRequestWithAuth(endPoint.Method, endPoint.Endpoint, body, "ClusterAdminUser", "password")
-					assert.True(t, resp.Code != http.StatusUnauthorized && resp.Code != http.StatusForbidden)
-
+					if base.TestsUseServerCE() {
+						resp = rt.SendAdminRequestWithAuth(endPoint.Method, endPoint.Endpoint, body, "ClusterAdminUser", "password")
+						assert.True(t, resp.Code != http.StatusUnauthorized && resp.Code != http.StatusForbidden)
+					}
 				}
 			}
 		})
@@ -905,6 +916,13 @@ func TestDisablePermissionCheck(t *testing.T) {
 	viewsAdminRole := RouteRole{RoleName: "views_admin", DatabaseScoped: true}
 	statsReadPermission := Permission{".stats!read", true}
 
+	rt := NewRestTester(t, nil)
+	SGWorBFArole := RouteRole{MobileSyncGatewayRole.RoleName, true}
+	if base.TestsUseServerCE() {
+		SGWorBFArole = RouteRole{BucketFullAccessRole.RoleName, true}
+	}
+	rt.Close()
+
 	testCases := []struct {
 		Name               string
 		CreateUser         string
@@ -916,7 +934,7 @@ func TestDisablePermissionCheck(t *testing.T) {
 		{
 			Name:               "AccessViaRole",
 			CreateUser:         "SGWUser",
-			CreateUserRole:     &MobileSyncGatewayRole,
+			CreateUserRole:     &SGWorBFArole,
 			RequirePerms:       []Permission{clusterAdminPermission},
 			DoPermissionCheck:  false,
 			ExpectedStatusCode: http.StatusOK,
@@ -1450,13 +1468,17 @@ func TestCreateDBSpecificBucketPerm(t *testing.T) {
 	})
 	defer rt.Close()
 
+	SGWorBFArole := RouteRole{MobileSyncGatewayRole.RoleName, true}
+	if base.TestsUseServerCE() {
+		SGWorBFArole = RouteRole{BucketFullAccessRole.RoleName, true}
+	}
+
 	eps, httpClient, err := rt.ServerContext().ObtainManagementEndpointsAndHTTPClient()
 	require.NoError(t, err)
 
-	mobileSyncGateway := "mobile_sync_gateway"
-	MakeUser(t, httpClient, eps[0], mobileSyncGateway, "password", []string{fmt.Sprintf("%s[%s]", mobileSyncGateway, tb.GetName())})
-	defer DeleteUser(t, httpClient, eps[0], mobileSyncGateway)
+	MakeUser(t, httpClient, eps[0], SGWorBFArole.RoleName, "password", []string{fmt.Sprintf("%s[%s]", SGWorBFArole.RoleName, tb.GetName())})
+	defer DeleteUser(t, httpClient, eps[0], SGWorBFArole.RoleName)
 
-	resp := rt.SendAdminRequestWithAuth("PUT", "/db2/", `{"bucket": "`+tb.GetName()+`", "username": "`+base.TestClusterUsername()+`", "password": "`+base.TestClusterPassword()+`", "num_index_replicas": 0, "use_views": `+strconv.FormatBool(base.TestsDisableGSI())+`}`, mobileSyncGateway, "password")
+	resp := rt.SendAdminRequestWithAuth("PUT", "/db2/", `{"bucket": "`+tb.GetName()+`", "username": "`+base.TestClusterUsername()+`", "password": "`+base.TestClusterPassword()+`", "num_index_replicas": 0, "use_views": `+strconv.FormatBool(base.TestsDisableGSI())+`}`, SGWorBFArole.RoleName, "password")
 	RequireStatus(t, resp, http.StatusCreated)
 }

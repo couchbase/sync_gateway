@@ -136,22 +136,26 @@ func (bh *blipHandler) refreshUser() error {
 	return nil
 }
 
-// userBlipHandler wraps another blip handler to specify a collection
+// collectionBlipHandler wraps another blip handler to specify a collection
 func collectionBlipHandler(next blipHandlerFunc) blipHandlerFunc {
 	return func(bh *blipHandler, bm *blip.Message) error {
 		collectionIndexStr, ok := bm.Properties[BlipCollection]
 		if !ok {
 			if !bh.db.HasDefaultCollection() {
-				return base.HTTPErrorf(http.StatusBadRequest, "Method requires passing a collection property and a prior GetCollections message")
+				return base.HTTPErrorf(http.StatusBadRequest, "Collection property not specified and default collection is not configured for this database")
+			}
+			if bh.collections.hasNamedCollections() {
+				return base.HTTPErrorf(http.StatusBadRequest, "GetCollections already occurred, subsequent messages need a Collection property")
 			}
 			// temp use private method
 			bh.collection = &DatabaseCollectionWithUser{
 				DatabaseCollection: bh.db.singleCollection,
 				user:               bh.db.user,
 			}
+			bh.collections.setNonCollectionAware(&blipSyncCollectionContext{dbCollection: bh.collection.DatabaseCollection})
 			return next(bh, bm)
 		}
-		if len(bh.collectionMapping) == 0 {
+		if !bh.collections.hasNamedCollections() {
 			return base.HTTPErrorf(http.StatusBadRequest, "Passing collection requires calling %s first", MessageGetCollections)
 		}
 
@@ -160,19 +164,16 @@ func collectionBlipHandler(next blipHandlerFunc) blipHandlerFunc {
 			return base.HTTPErrorf(http.StatusBadRequest, "collection property needs to be an int, was %q", collectionIndexStr)
 		}
 
-		if len(bh.collectionMapping) <= collectionIndex {
-			return base.HTTPErrorf(http.StatusBadRequest, "Collection index %d is outside indexes set by GetCollections", collectionIndex)
-		}
 		bh.collectionIdx = &collectionIndex
-		collection := bh.collectionMapping[collectionIndex]
-		if collection == nil {
-			return base.HTTPErrorf(http.StatusBadRequest, "Collection index %d does not match a valid collection from GetCollections", collectionIndex)
+		collectionCtx, err := bh.collections.get(&collectionIndex)
+		if err != nil {
+			return base.HTTPErrorf(http.StatusBadRequest, fmt.Sprintf("%s", err))
 		}
-		bh.loggingCtx = base.CollectionCtx(bh.BlipSyncContext.loggingCtx, collection.Name)
 		bh.collection = &DatabaseCollectionWithUser{
-			DatabaseCollection: bh.collectionMapping[collectionIndex],
+			DatabaseCollection: collectionCtx.dbCollection,
 			user:               bh.db.user,
 		}
+		bh.loggingCtx = base.CollectionCtx(bh.BlipSyncContext.loggingCtx, bh.collection.Name)
 		// Call down to the underlying handler and return it's value
 		return next(bh, bm)
 	}
@@ -248,12 +249,12 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 	}
 
 	// Ensure that only _one_ subChanges subscription can be open on this blip connection at any given time.  SG #3222.
-	if !bh.activeSubChanges.CASRetry(false, true) {
-		// FIXME CBG-2653: Disabling activeSubChanges check for multi-collection to unblock CBL testing.
-		if bh.collectionIdx == nil {
-			return fmt.Errorf("blipHandler already has an outstanding continuous subChanges.  Cannot open another one")
-		}
-		base.WarnfCtx(bh.loggingCtx, "blipHandler already has an outstanding continuous subChanges. Continuing anyway (CBG-2653)")
+	collectionCtx, err := bh.collections.get(bh.collectionIdx)
+	if err != nil {
+		return base.HTTPErrorf(http.StatusBadRequest, fmt.Sprintf("%s", err))
+	}
+	if !collectionCtx.activeSubChanges.CASRetry(false, true) {
+		return fmt.Errorf("blipHandler for collection %d already has an outstanding subChanges. Cannot open another one", *bh.collectionIdx)
 	}
 
 	// Create ctx if it has been cancelled
@@ -304,7 +305,7 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 
 		defer func() {
 			bh.changesCtxCancel()
-			bh.activeSubChanges.Set(false)
+			collectionCtx.activeSubChanges.Set(false)
 		}()
 		// sendChanges runs until blip context closes, or fails due to error
 		startTime := time.Now()
@@ -404,9 +405,19 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions
 		return nil
 	}
 
+	// If replicator calls sendChanges directly, no prior blipHandlers might be called to initialize bh.collections.
+	if bh.collectionIdx == nil {
+		bh.collections.setNonCollectionAware(&blipSyncCollectionContext{dbCollection: bh.collection.DatabaseCollection})
+	}
+
 	// Create a distinct database instance for changes, to avoid races between reloadUser invocation in changes.go
 	// and BlipSyncContext user access.
-	changesDb := bh.copyDatabaseCollectionWithUser(bh.collectionIdx)
+	changesDb, err := bh.copyDatabaseCollectionWithUser(bh.collectionIdx)
+	if err != nil {
+		base.WarnfCtx(bh.loggingCtx, "[%s] error sending changes: %w", bh.blipContext.ID, err)
+		return false
+
+	}
 	_, forceClose := generateBlipSyncChanges(bh.loggingCtx, changesDb, channelSet, options, opts.docIDs, func(changes []*ChangeEntry) error {
 		base.DebugfCtx(bh.loggingCtx, base.KeySync, "    Sending %d changes", len(changes))
 		for _, change := range changes {
@@ -524,7 +535,10 @@ func (bh *blipHandler) sendBatchOfChanges(sender *blip.Sender, changeArray [][]i
 			return err
 		}
 
-		handleChangesResponseDbCollection := bh.copyDatabaseCollectionWithUser(bh.collectionIdx)
+		handleChangesResponseDbCollection, err := bh.copyDatabaseCollectionWithUser(bh.collectionIdx)
+		if err != nil {
+			return err
+		}
 
 		sendTime := time.Now()
 		if !bh.sendBLIPMessage(sender, outrq) {
@@ -782,7 +796,7 @@ func (bh *blipHandler) handleProposeChanges(rq *blip.Message) error {
 
 func (bsc *BlipSyncContext) sendRevAsDelta(sender *blip.Sender, docID, revID string, deltaSrcRevID string, seq SequenceID, knownRevs map[string]bool, maxHistory int, handleChangesResponseCollection *DatabaseCollectionWithUser) error {
 	var collectionIdx *int
-	if coll, ok := bsc.getCollectionIndexForDB(handleChangesResponseCollection); ok {
+	if coll, ok := bsc.collections.getIndexForDB(handleChangesResponseCollection); ok {
 		collectionIdx = &coll
 	}
 

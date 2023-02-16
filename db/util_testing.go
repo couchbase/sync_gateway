@@ -30,7 +30,7 @@ import (
 func WaitForIndexEmpty(store base.N1QLStore, useXattrs bool) error {
 
 	retryWorker := func() (shouldRetry bool, err error, value interface{}) {
-		empty, err := isIndexEmpty(store, useXattrs)
+		empty, err := isAllDocsIndexEmpty(store, useXattrs)
 		if err != nil {
 			return true, err, nil
 		}
@@ -47,7 +47,28 @@ func WaitForIndexEmpty(store base.N1QLStore, useXattrs bool) error {
 
 }
 
-func isIndexEmpty(store base.N1QLStore, useXattrs bool) (bool, error) {
+// allDocsIndexExists returns if the index is present, or an error from Couchbase Server.
+func allDocsIndexExists(store base.N1QLStore, useXattrs bool) error {
+	allIndexes, err := store.GetIndexes()
+	if err != nil {
+		return err
+	}
+	idx := sgIndexes[IndexAllDocs]
+	allDocsIndexName := (&idx).fullIndexName(useXattrs)
+	for _, indexName := range allIndexes {
+		if indexName == allDocsIndexName {
+			return nil
+		}
+	}
+	return fmt.Errorf("%s does not exist", allDocsIndexName)
+}
+
+// isAllDocsIndexEmpty returns if a given index is empty. If the
+func isAllDocsIndexEmpty(store base.N1QLStore, useXattrs bool) (bool, error) {
+	existsErr := allDocsIndexExists(store, useXattrs)
+	if existsErr != nil {
+		return false, existsErr
+	}
 	// Create the star channel query
 	statement := fmt.Sprintf("%s LIMIT 1", QueryStarChannel.statement) // append LIMIT 1 since we only care if there are any results or not
 	starChannelQueryStatement := replaceActiveOnlyFilter(statement, false)
@@ -326,7 +347,7 @@ var viewsAndGSIBucketInit base.TBPBucketInitFunc = func(ctx context.Context, b b
 			return fmt.Errorf("bucket %T was not a N1QL store", b)
 		}
 
-		if empty, err := isIndexEmpty(n1qlStore, base.TestUseXattrs()); empty && err == nil {
+		if empty, err := isAllDocsIndexEmpty(n1qlStore, base.TestUseXattrs()); empty && err == nil {
 			tbp.Logf(ctx, "indexes already created, and already empty - skipping")
 			return nil
 		} else {

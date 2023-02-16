@@ -3065,6 +3065,20 @@ func TestGetDatabaseCollectionWithUserDefaultCollection(t *testing.T) {
 
 }
 
+func TestServerUUID(t *testing.T) {
+	bucket := base.GetTestBucket(t)
+	defer bucket.Close()
+
+	db, err := NewDatabaseContext(base.TestCtx(t), "db", bucket, false, DatabaseContextOptions{})
+	require.NoError(t, err)
+
+	if base.TestUseCouchbaseServer() {
+		require.Len(t, db.ServerUUID, 32) // no dashes in UUID
+	} else {
+		require.Len(t, db.ServerUUID, 0) // no dashes in UUID
+	}
+}
+
 func waitAndAssertConditionWithOptions(t *testing.T, fn func() bool, retryCount, msSleepTime int, failureMsgAndArgs ...interface{}) {
 	for i := 0; i <= retryCount; i++ {
 		if i == retryCount {
