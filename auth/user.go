@@ -100,7 +100,7 @@ func (auth *Authenticator) NewUser(username string, password string, channels ba
 		return nil, err
 	}
 
-	err := user.setPassword(password)
+	err := user.SetPassword(password)
 	if err != nil {
 		return nil, err
 	}
@@ -126,7 +126,7 @@ func (auth *Authenticator) NewUserNoChannels(username string, password string) (
 		return nil, err
 	}
 
-	err := user.setPassword(password)
+	err := user.SetPassword(password)
 	if err != nil {
 		return nil, err
 	}
@@ -543,14 +543,9 @@ func (user *userImpl) UpdateSessionUUID() {
 	user.SessionUUID_ = uuid.NewString()
 }
 
-// SetPassword changes a user's password to the given string. This needs to be called from external functions, so we invalidate sessions.
+// Changes a user's password to the given string.
 func (user *userImpl) SetPassword(password string) error {
 	user.UpdateSessionUUID()
-	return user.setPassword(password)
-}
-
-// setPassword to the given string. It should only be called from constructors, since it will avoid invalidating existing sessions.
-func (user *userImpl) setPassword(password string) error {
 	if password == "" {
 		user.PasswordHash_ = nil
 	} else {

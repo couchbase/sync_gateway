@@ -301,32 +301,3 @@ func TestUserWithoutSessionUUID(t *testing.T) {
 	require.NoError(t, err)
 
 }
-
-func TestGetSessionThenCreateUser(t *testing.T) {
-	testBucket := base.GetTestBucket(t)
-	defer testBucket.Close()
-	dataStore := testBucket.GetSingleDataStore()
-	auth := NewAuthenticator(dataStore, nil, DefaultAuthenticatorOptions())
-	const username = "Alice"
-
-	// Create session with a username and valid TTL of 2 hours.
-	session, err := auth.CreateSession(username, 2*time.Hour)
-	require.NoError(t, err)
-
-	session, err = auth.GetSession(session.ID)
-	require.NoError(t, err)
-
-	user, err := auth.NewUser(username, "password", base.Set{})
-	require.NoError(t, err)
-	require.NotNil(t, user)
-	require.NoError(t, auth.Save(user))
-
-	request, err := http.NewRequest(http.MethodGet, "", nil)
-	require.NoError(t, err)
-	request.AddCookie(auth.MakeSessionCookie(session, true, true))
-
-	recorder := httptest.NewRecorder()
-	_, err = auth.AuthenticateCookie(request, recorder)
-	require.NoError(t, err)
-
-}

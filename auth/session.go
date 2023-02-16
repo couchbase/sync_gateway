@@ -93,17 +93,13 @@ func (auth *Authenticator) CreateSession(username string, ttl time.Duration) (*L
 	} else if err != nil {
 		return nil, err
 	}
-	sessionUUID := ""
-	if user != nil {
-		sessionUUID = user.GetSessionUUID()
-	}
 
 	session := &LoginSession{
 		ID:          secret,
 		Username:    username,
 		Expiration:  time.Now().Add(ttl),
 		Ttl:         ttl,
-		SessionUUID: sessionUUID,
+		SessionUUID: user.GetSessionUUID(),
 	}
 	if err := auth.datastore.Set(DocIDForSession(session.ID), base.DurationToCbsExpiry(ttl), nil, session); err != nil {
 		return nil, err
