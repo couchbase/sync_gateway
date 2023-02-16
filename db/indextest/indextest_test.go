@@ -308,7 +308,6 @@ func TestAllPrincipalIDs(t *testing.T) {
 			base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache, base.KeyChanges)
 
 			database.Options.QueryPaginationLimit = 100
-			database.ChannelMapper = channels.NewDefaultChannelMapper()
 			authenticator := database.Authenticator(ctx)
 
 			rolename1 := uuid.NewString()
@@ -394,7 +393,6 @@ func TestGetRoleIDs(t *testing.T) {
 			base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache, base.KeyChanges)
 
 			database.Options.QueryPaginationLimit = 100
-			database.ChannelMapper = channels.NewDefaultChannelMapper()
 			authenticator := database.Authenticator(ctx)
 
 			rolename1 := uuid.NewString()

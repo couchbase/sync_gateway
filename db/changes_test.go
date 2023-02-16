@@ -56,6 +56,7 @@ func TestFilterToAvailableChannels(t *testing.T) {
 			db, ctx := setupTestDB(t)
 			defer db.Close(ctx)
 			collection := GetSingleDatabaseCollectionWithUser(t, db)
+			collection.ChannelMapper = channels.NewChannelMapper(channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
 
 			auth := db.Authenticator(base.TestCtx(t))
 			user, err := auth.NewUser("test", "pass", testCase.userChans)
@@ -101,7 +102,7 @@ func TestChangesAfterChannelAdded(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache, base.KeyChanges)
 
-	db.ChannelMapper = channels.NewDefaultChannelMapper()
+	collection.ChannelMapper = channels.NewChannelMapper(channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
 
 	// Create a user with access to channel ABC
 	authenticator := db.Authenticator(base.TestCtx(t))
@@ -211,11 +212,12 @@ func TestDocDeletionFromChannelCoalescedRemoved(t *testing.T) {
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
-	db.ChannelMapper = channels.NewDefaultChannelMapper()
+	collection.ChannelMapper = channels.NewChannelMapper(channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
 
 	// Create a user with access to channel A
 	authenticator := db.Authenticator(base.TestCtx(t))
-	user, _ := authenticator.NewUser("alice", "letmein", channels.BaseSetOf(t, "A"))
+	user, err := authenticator.NewUser("alice", "letmein", channels.BaseSetOf(t, "A"))
+	require.NoError(t, err)
 	require.NoError(t, authenticator.Save(user))
 
 	cacheWaiter := db.NewDCPCachingCountWaiter(t)
@@ -227,7 +229,7 @@ func TestDocDeletionFromChannelCoalescedRemoved(t *testing.T) {
 
 	collection.user, _ = authenticator.GetUser("alice")
 	changes, err := collection.GetChanges(ctx, base.SetOf("*"), getChangesOptionsWithZeroSeq())
-	assert.NoError(t, err, "Couldn't GetChanges")
+	require.NoError(t, err, "Couldn't GetChanges")
 	printChanges(changes)
 	assert.Equal(t, 1, len(changes))
 	collectionID := collection.GetCollectionID()
@@ -296,11 +298,12 @@ func TestDocDeletionFromChannelCoalesced(t *testing.T) {
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
-	db.ChannelMapper = channels.NewDefaultChannelMapper()
+	collection.ChannelMapper = channels.NewChannelMapper(channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
 
 	// Create a user with access to channel A
 	authenticator := db.Authenticator(base.TestCtx(t))
-	user, _ := authenticator.NewUser("alice", "letmein", channels.BaseSetOf(t, "A"))
+	user, err := authenticator.NewUser("alice", "letmein", channels.BaseSetOf(t, "A"))
+	require.NoError(t, err)
 	require.NoError(t, authenticator.Save(user))
 
 	cacheWaiter := db.NewDCPCachingCountWaiter(t)

@@ -649,16 +649,18 @@ func TestReplicateGroupIDAssignedNodes(t *testing.T) {
 	defer tb.Close()
 	ctx := base.TestCtx(t)
 
+	// scopes config will set up from test environment whether backed by default or non default collection
+	scopesConfig := GetScopesOptions(t, tb, 1)
 	// Set up databases
-	dbDefault, err := NewDatabaseContext(ctx, "default", tb.NoCloseClone(), false, DatabaseContextOptions{GroupID: ""})
+	dbDefault, err := NewDatabaseContext(ctx, "default", tb.NoCloseClone(), false, DatabaseContextOptions{GroupID: "", Scopes: scopesConfig})
 	require.NoError(t, err)
 	defer dbDefault.Close(ctx)
 
-	dbGroupA, err := NewDatabaseContext(ctx, "groupa", tb.NoCloseClone(), false, DatabaseContextOptions{GroupID: "GroupA"})
+	dbGroupA, err := NewDatabaseContext(ctx, "groupa", tb.NoCloseClone(), false, DatabaseContextOptions{GroupID: "GroupA", Scopes: scopesConfig})
 	require.NoError(t, err)
 	defer dbGroupA.Close(ctx)
 
-	dbGroupB, err := NewDatabaseContext(ctx, "groupb", tb.NoCloseClone(), false, DatabaseContextOptions{GroupID: "GroupB"})
+	dbGroupB, err := NewDatabaseContext(ctx, "groupb", tb.NoCloseClone(), false, DatabaseContextOptions{GroupID: "GroupB", Scopes: scopesConfig})
 	require.NoError(t, err)
 	defer dbGroupB.Close(ctx)
 

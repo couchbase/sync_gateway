@@ -18,6 +18,7 @@ import (
 
 	"github.com/couchbase/go-blip"
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -76,7 +77,7 @@ func TestBlipDeltaSyncPushAttachment(t *testing.T) {
 	newBody, err := base.InjectJSONPropertiesFromBytes(body, base.KVPairBytes{Key: "update", Val: []byte(`true`)})
 	require.NoError(t, err)
 
-	revID, err = btc.PushRev(docID, revID, newBody)
+	_, err = btc.PushRev(docID, revID, newBody)
 	require.NoError(t, err)
 
 	syncData, err = rt.GetDatabase().GetSingleDatabaseCollection().GetDocSyncData(base.TestCtx(t), docID)
@@ -428,7 +429,16 @@ func TestBlipDeltaSyncPullRemoved(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
 	sgUseDeltas := base.IsEnterpriseEdition()
-	rtConfig := RestTesterConfig{DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{DeltaSync: &DeltaSyncConfig{Enabled: &sgUseDeltas}}}}
+	rtConfig := RestTesterConfig{
+		DatabaseConfig: &DatabaseConfig{
+			DbConfig: DbConfig{
+				DeltaSync: &DeltaSyncConfig{
+					Enabled: &sgUseDeltas,
+				},
+			},
+		},
+		SyncFn: channels.DocChannelsSyncFunction,
+	}
 	rt := NewRestTester(t,
 		&rtConfig)
 	defer rt.Close()
@@ -484,7 +494,16 @@ func TestBlipDeltaSyncPullTombstoned(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
 	sgUseDeltas := base.IsEnterpriseEdition()
-	rtConfig := RestTesterConfig{DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{DeltaSync: &DeltaSyncConfig{Enabled: &sgUseDeltas}}}}
+	rtConfig := RestTesterConfig{
+		DatabaseConfig: &DatabaseConfig{
+			DbConfig: DbConfig{
+				DeltaSync: &DeltaSyncConfig{
+					Enabled: &sgUseDeltas,
+				},
+			},
+		},
+		SyncFn: channels.DocChannelsSyncFunction,
+	}
 	rt := NewRestTester(t,
 		&rtConfig)
 	defer rt.Close()

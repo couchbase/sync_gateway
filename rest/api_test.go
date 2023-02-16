@@ -1672,7 +1672,7 @@ func TestUnsupportedConfig(t *testing.T) {
 }
 
 func TestDocIDFilterResurrection(t *testing.T) {
-	rt := NewRestTester(t, nil)
+	rt := NewRestTester(t, &RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction})
 	defer rt.Close()
 
 	// Create User
@@ -2389,7 +2389,7 @@ func TestUptimeStat(t *testing.T) {
 func TestDocumentChannelHistory(t *testing.T) {
 	defer db.SuspendSequenceBatching()()
 
-	rt := NewRestTester(t, nil)
+	rt := NewRestTester(t, &RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction})
 	defer rt.Close()
 
 	var body db.Body
@@ -2439,7 +2439,7 @@ func TestDocumentChannelHistory(t *testing.T) {
 func TestChannelHistoryLegacyDoc(t *testing.T) {
 	defer db.SuspendSequenceBatching()()
 
-	rt := NewRestTester(t, nil)
+	rt := NewRestTester(t, &RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction})
 	defer rt.Close()
 
 	docData := `
@@ -2541,7 +2541,8 @@ func TestMetricsHandler(t *testing.T) {
 	// Create and remove a database
 	// This ensures that creation and removal of a DB is possible without a re-registration issue ( the below rest tester will re-register "db")
 	ctx := base.TestCtx(t)
-	context, err := db.NewDatabaseContext(ctx, "db", base.GetTestBucket(t), false, db.DatabaseContextOptions{})
+	tBucket := base.GetTestBucket(t)
+	context, err := db.NewDatabaseContext(ctx, "db", tBucket, false, db.DatabaseContextOptions{Scopes: db.GetScopesOptions(t, tBucket, 1)})
 	require.NoError(t, err)
 	context.Close(context.AddDatabaseLogContext(ctx))
 
@@ -2566,7 +2567,8 @@ func TestMetricsHandler(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Initialize another database to ensure both are registered successfully
-	context, err = db.NewDatabaseContext(ctx, "db2", base.GetTestBucket(t), false, db.DatabaseContextOptions{})
+	tBucket2 := base.GetTestBucket(t)
+	context, err = db.NewDatabaseContext(ctx, "db2", tBucket2, false, db.DatabaseContextOptions{Scopes: db.GetScopesOptions(t, tBucket2, 1)})
 	require.NoError(t, err)
 	defer context.Close(context.AddDatabaseLogContext(ctx))
 
@@ -2591,7 +2593,7 @@ func TestMetricsHandler(t *testing.T) {
 
 func TestDocChannelSetPruning(t *testing.T) {
 	defer db.SuspendSequenceBatching()()
-	rt := NewRestTester(t, nil)
+	rt := NewRestTester(t, &RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction})
 	defer rt.Close()
 
 	revID := rt.CreateDocReturnRev(t, "doc", "", map[string]interface{}{"channels": []string{"a"}})

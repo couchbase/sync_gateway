@@ -1096,7 +1096,7 @@ func TestFunkyUsernames(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.Name, func(t *testing.T) {
 			require.Truef(t, auth.IsValidPrincipalName(tc.UserName), "expected '%s' to be accepted", tc.UserName)
-			rt := NewRestTester(t, nil)
+			rt := NewRestTester(t, &RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction})
 			defer rt.Close()
 
 			ctx := rt.Context()

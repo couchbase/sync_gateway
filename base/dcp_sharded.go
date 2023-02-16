@@ -61,7 +61,8 @@ func StartShardedDCPFeed(ctx context.Context, dbName string, configGroup string,
 		return nil, fmt.Errorf("failed to get minimum node version in cluster: %w", err)
 	}
 	if minVersion.Less(firstVersionToSupportCollections) {
-		if scope != "" || len(collections) > 0 {
+		// DefaultScope is allowed by older versions of CBGT as long as no collections are specified.
+		if len(collections) > 0 {
 			return nil, fmt.Errorf("cannot start DCP feed on non-default collection with legacy nodes present in the cluster")
 		}
 	}

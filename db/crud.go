@@ -2229,7 +2229,7 @@ func (col *DatabaseCollectionWithUser) getChannelsAndAccess(ctx context.Context,
 	}
 	oldJson = string(oldJsonBytes)
 
-	if col.channelMapper() != nil {
+	if col.ChannelMapper != nil {
 		// Call the ChannelMapper:
 		col.dbStats().Database().SyncFunctionCount.Add(1)
 		col.collectionStats.SyncFunctionCount.Add(1)
@@ -2237,7 +2237,7 @@ func (col *DatabaseCollectionWithUser) getChannelsAndAccess(ctx context.Context,
 		var output *channels.ChannelMapperOutput
 
 		startTime := time.Now()
-		output, err = col.channelMapper().MapToChannelsAndAccess(body, oldJson, metaMap,
+		output, err = col.ChannelMapper.MapToChannelsAndAccess(body, oldJson, metaMap,
 			MakeUserCtx(col.user, col.ScopeName, col.Name))
 		syncFunctionTimeNano := time.Since(startTime).Nanoseconds()
 
@@ -2275,14 +2275,18 @@ func (col *DatabaseCollectionWithUser) getChannelsAndAccess(ctx context.Context,
 		}
 
 	} else {
-		// No ChannelMapper so by default use the "channels" property:
-		value := body["channels"]
-		if value != nil {
-			array, nonStrings := base.ValueToStringArray(value)
-			if nonStrings != nil {
-				base.WarnfCtx(ctx, "Channel names must be string values only. Ignoring non-string channels: %s", base.UD(nonStrings))
+		if base.IsDefaultCollection(col.ScopeName, col.Name) {
+			// No ChannelMapper so by default use the "channels" property:
+			value := body["channels"]
+			if value != nil {
+				array, nonStrings := base.ValueToStringArray(value)
+				if nonStrings != nil {
+					base.WarnfCtx(ctx, "Channel names must be string values only. Ignoring non-string channels: %s", base.UD(nonStrings))
+				}
+				result, err = channels.SetFromArray(array, channels.KeepStar)
 			}
-			result, err = channels.SetFromArray(array, channels.KeepStar)
+		} else {
+			result = base.SetOf(col.Name)
 		}
 	}
 	return result, access, roles, expiry, oldJson, err
