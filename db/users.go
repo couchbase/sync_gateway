@@ -78,7 +78,11 @@ func (dbc *DatabaseContext) UpdatePrincipal(ctx context.Context, updates *auth.P
 					err = base.HTTPErrorf(http.StatusBadRequest, "Error creating user: %s", reason)
 					return replaced, err
 				}
-				user, err = authenticator.NewUserNoChannels(*updates.Name, "")
+				password := ""
+				if updates.Password != nil {
+					password = *updates.Password
+				}
+				user, err = authenticator.NewUserNoChannels(*updates.Name, password)
 				princ = user
 			} else {
 				princ, err = authenticator.NewRoleNoChannels(*updates.Name)
@@ -131,7 +135,9 @@ func (dbc *DatabaseContext) UpdatePrincipal(ctx context.Context, updates *auth.P
 				}
 				changed = true
 			}
-			if updates.Password != nil {
+
+			// If a newly created user, don't set password explicitly, in order to not invalidate a session that may have been created before the user was created.
+			if updates.Password != nil && replaced {
 				err = user.SetPassword(*updates.Password)
 				if err != nil {
 					return false, err

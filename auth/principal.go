@@ -88,7 +88,7 @@ type User interface {
 	// GetSessionUUID returns the UUID that a session to match to be a valid session.
 	GetSessionUUID() string
 
-	// UpdateSessionUUID creates a new session UUID
+	// UpdateSessionUUID will invalidate all earlier sessions associated with this user.
 	UpdateSessionUUID()
 
 	// Changes the user's password.
