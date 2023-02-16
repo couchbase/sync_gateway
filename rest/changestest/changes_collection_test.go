@@ -270,9 +270,13 @@ func TestMultiCollectionChangesMultiChannelOneShot(t *testing.T) {
 	changesResponse = rt.GetChangesOneShot(t, "keyspace2", 0, "BRNchr", 3) // 2 docs in BRN, 1 doc in CHR in collection 2
 	logChangesResponse(t, changesResponse.Body.Bytes())
 
-	rt.RequireContinuousFeedChangesCount(t, "bernard", 2, []int{4, 2}, 500)
-	rt.RequireContinuousFeedChangesCount(t, "charlie", 2, []int{3, 1}, 500)
-	rt.RequireContinuousFeedChangesCount(t, "BRNchr", 2, []int{7, 3}, 1000)
+	rt.RequireContinuousFeedChangesCount(t, "bernard", 1, 4, 500)
+	rt.RequireContinuousFeedChangesCount(t, "bernard", 2, 2, 500)
+
+	rt.RequireContinuousFeedChangesCount(t, "charlie", 1, 3, 500)
+	rt.RequireContinuousFeedChangesCount(t, "charlie", 2, 1, 500)
+	rt.RequireContinuousFeedChangesCount(t, "BRNchr", 1, 7, 1000)
+	rt.RequireContinuousFeedChangesCount(t, "BRNchr", 2, 3, 1000)
 }
 
 // TestMultiCollectionChangesUserDynamicGrant tests a dynamic channel grant when that channel is not already resident

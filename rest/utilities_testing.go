@@ -2319,13 +2319,11 @@ func (rt *RestTester) ReadContinuousChanges(response *TestResponse) ([]db.Change
 
 // RequireContinuousFeedChangesCount Calls a changes feed on every collection and asserts that the nth expected change is
 // the number of changes for the nth collection.
-func (rt *RestTester) RequireContinuousFeedChangesCount(t testing.TB, username string, numKeyspaces int, expectedChanges []int, timeout int) {
-	for i := 1; i <= numKeyspaces; i++ {
-		resp := rt.SendUserRequest("GET", fmt.Sprintf("/{{.keyspace%d}}/_changes?feed=continuous&timeout=%d", i, timeout), "", username)
-		changes, err := rt.ReadContinuousChanges(resp)
-		assert.NoError(t, err)
-		require.Len(t, changes, expectedChanges[i-1])
-	}
+func (rt *RestTester) RequireContinuousFeedChangesCount(t testing.TB, username string, keyspace int, expectedChanges int, timeout int) {
+	resp := rt.SendUserRequest("GET", fmt.Sprintf("/{{.keyspace%d}}/_changes?feed=continuous&timeout=%d", keyspace, timeout), "", username)
+	changes, err := rt.ReadContinuousChanges(resp)
+	assert.NoError(t, err)
+	require.Len(t, changes, expectedChanges)
 }
 
 func (rt *RestTester) GetChangesOneShot(t testing.TB, keyspace string, since int, username string, changesCount int) *TestResponse {
