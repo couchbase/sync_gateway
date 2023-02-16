@@ -12,9 +12,10 @@ package db
 
 import (
 	"fmt"
+	"testing"
+
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/stretchr/testify/require"
-	"testing"
 
 	"github.com/stretchr/testify/assert"
 )
