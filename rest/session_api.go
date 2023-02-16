@@ -128,7 +128,7 @@ func (h *handler) makeSessionWithTTL(user auth.User, expiry time.Duration) (sess
 	}
 	h.user = user
 	auth := h.db.Authenticator(h.ctx())
-	session, err := auth.CreateSession(user.Name(), expiry)
+	session, err := auth.CreateSession(h.user, expiry)
 	if err != nil {
 		return "", err
 	}
@@ -199,7 +199,10 @@ func (h *handler) createUserSession() error {
 		return err
 	} else if params.Name == "" || params.Name == base.GuestUsername || !auth.IsValidPrincipalName(params.Name) {
 		return base.HTTPErrorf(http.StatusBadRequest, "Invalid or missing user name")
-	} else if user, err := h.db.Authenticator(h.ctx()).GetUser(params.Name); user == nil {
+	}
+	authenticator := h.db.Authenticator(h.ctx())
+	user, err := authenticator.GetUser(params.Name)
+	if user == nil {
 		if err == nil {
 			err = base.HTTPErrorf(http.StatusNotFound, "No such user %q", params.Name)
 		}
@@ -211,8 +214,7 @@ func (h *handler) createUserSession() error {
 		return base.HTTPErrorf(http.StatusBadRequest, "Invalid or missing ttl")
 	}
 
-	authenticator := h.db.Authenticator(h.ctx())
-	session, err := authenticator.CreateSession(params.Name, ttl)
+	session, err := authenticator.CreateSession(user, ttl)
 	if err != nil {
 		return err
 	}
@@ -259,7 +261,16 @@ func (h *handler) deleteUserSession() error {
 func (h *handler) deleteUserSessions() error {
 	h.assertAdminOnly()
 	userName := h.PathVar("name")
-	return h.db.DeleteUserSessions(h.ctx(), userName)
+	auth := h.db.Authenticator(h.ctx())
+	user, err := auth.GetUser(userName)
+	if err != nil {
+		return err
+	}
+	if user == nil {
+		return nil
+	}
+	user.UpdateSessionUUID()
+	return auth.Save(user)
 }
 
 // Delete a session if associated with the user provided

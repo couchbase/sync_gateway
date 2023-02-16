@@ -19,10 +19,11 @@ const kDefaultSessionTTL = 24 * time.Hour
 
 // A user login session (used with cookie-based auth.)
 type LoginSession struct {
-	ID         string        `json:"id"`
-	Username   string        `json:"username"`
-	Expiration time.Time     `json:"expiration"`
-	Ttl        time.Duration `json:"ttl"`
+	ID          string        `json:"id"`
+	Username    string        `json:"username"`
+	Expiration  time.Time     `json:"expiration"`
+	Ttl         time.Duration `json:"ttl"`
+	SessionUUID string        `json:"session_uuid"` // marker of when the user object changes, to match with session docs to determine if they are valid
 }
 
 const DefaultCookieName = "SyncGatewaySession"
@@ -65,13 +66,17 @@ func (auth *Authenticator) AuthenticateCookie(rq *http.Request, response http.Re
 	}
 
 	user, err := auth.GetUser(session.Username)
-	if user != nil && user.Disabled() {
-		user = nil
+	if err != nil {
+		return nil, err
+	}
+
+	if session.SessionUUID != user.GetSessionUUID() {
+		return nil, base.HTTPErrorf(http.StatusUnauthorized, "Session no longer valid for user")
 	}
 	return user, err
 }
 
-func (auth *Authenticator) CreateSession(username string, ttl time.Duration) (*LoginSession, error) {
+func (auth *Authenticator) CreateSession(user User, ttl time.Duration) (*LoginSession, error) {
 	ttlSec := int(ttl.Seconds())
 	if ttlSec <= 0 {
 		return nil, base.HTTPErrorf(400, "Invalid session time-to-live")
@@ -82,11 +87,18 @@ func (auth *Authenticator) CreateSession(username string, ttl time.Duration) (*L
 		return nil, err
 	}
 
+	if user != nil && user.Disabled() {
+		return nil, base.HTTPErrorf(400, "User is disabled")
+	} else if err != nil {
+		return nil, err
+	}
+
 	session := &LoginSession{
-		ID:         secret,
-		Username:   username,
-		Expiration: time.Now().Add(ttl),
-		Ttl:        ttl,
+		ID:          secret,
+		Username:    user.Name(),
+		Expiration:  time.Now().Add(ttl),
+		Ttl:         ttl,
+		SessionUUID: user.GetSessionUUID(),
 	}
 	if err := auth.datastore.Set(DocIDForSession(session.ID), base.DurationToCbsExpiry(ttl), nil, session); err != nil {
 		return nil, err

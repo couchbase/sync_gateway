@@ -302,36 +302,6 @@ var QueryUsersUsingSyncDocsIdx = SGQuery{
 	adhoc: false,
 }
 
-var QuerySessions = SGQuery{
-	name: QueryTypeSessions,
-	statement: fmt.Sprintf(
-		"SELECT META(%s).id "+
-			"FROM %s AS %s "+
-			"USE INDEX($idx) "+
-			"WHERE META(%s).id LIKE '%s' "+
-			"AND META(%s).id LIKE '%s' "+
-			"AND username = $userName",
-		base.KeyspaceQueryAlias,
-		base.KeyspaceQueryToken, base.KeyspaceQueryAlias,
-		base.KeyspaceQueryAlias, SyncDocWildcard,
-		base.KeyspaceQueryAlias, SyncSessionWildcard),
-	adhoc: false,
-}
-
-var QuerySessionsUsingSessionIdx = SGQuery{
-	name: QueryTypeSessions,
-	statement: fmt.Sprintf(
-		"SELECT META(%s).id "+
-			"FROM %s AS %s "+
-			"USE INDEX($idx) "+
-			"WHERE META(%s).id LIKE '%s' "+
-			"AND username = $userName",
-		base.KeyspaceQueryAlias,
-		base.KeyspaceQueryToken, base.KeyspaceQueryAlias,
-		base.KeyspaceQueryAlias, SyncSessionWildcard),
-	adhoc: false,
-}
-
 var QueryTombstones = SGQuery{
 	name: QueryTypeTombstones,
 	statement: fmt.Sprintf(
@@ -706,36 +676,6 @@ func (context *DatabaseContext) QueryAllRoles(ctx context.Context, startKey stri
 
 	// N1QL Query
 	return N1QLQueryWithStats(ctx, context.MetadataStore, QueryRolesExcludeDeleted.name, queryStatement, params, base.RequestPlus, QueryRolesExcludeDeleted.adhoc, context.DbStats, context.Options.SlowQueryWarningThreshold)
-}
-
-// Query to retrieve the set of sessions, using the syncDocs index
-func (context *DatabaseContext) QuerySessions(ctx context.Context, userName string) (sgbucket.QueryResultIterator, error) {
-
-	// View Query
-	if context.Options.UseViews {
-		opts := Body{"stale": false}
-		opts[QueryParamStartKey] = userName
-		opts[QueryParamEndKey] = userName
-		return context.ViewQueryWithStats(ctx, context.MetadataStore, DesignDocSyncHousekeeping(), ViewSessions, opts)
-	}
-
-	queryStatement, params := context.BuildSessionsQuery(userName)
-	return N1QLQueryWithStats(ctx, context.MetadataStore, QueryTypeSessions, queryStatement, params, base.RequestPlus, QuerySessions.adhoc, context.DbStats, context.Options.SlowQueryWarningThreshold)
-}
-
-// BuildSessionsQuery builds the query statement and query parameters for a Sessions N1QL query. Also used by unit tests to validate
-// query is covering.
-func (context *DatabaseContext) BuildSessionsQuery(userName string) (string, map[string]interface{}) {
-	var queryStatement string
-	if context.IsServerless() {
-		queryStatement = replaceIndexTokensQuery(QuerySessionsUsingSessionIdx.statement, sgIndexes[IndexSession], context.UseXattrs())
-	} else {
-		queryStatement = replaceIndexTokensQuery(QuerySessions.statement, sgIndexes[IndexSyncDocs], context.UseXattrs())
-	}
-
-	params := make(map[string]interface{}, 1)
-	params[QueryParamUserName] = userName
-	return queryStatement, params
 }
 
 type AllDocsViewQueryRow struct {

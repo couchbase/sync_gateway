@@ -21,6 +21,7 @@ import (
 
 	"github.com/couchbase/sync_gateway/base"
 	ch "github.com/couchbase/sync_gateway/channels"
+	"github.com/google/uuid"
 )
 
 // Actual implementation of User interface
@@ -50,6 +51,7 @@ type userImplBody struct {
 	RolesSince_      ch.TimedSet     `json:"rolesSince"`
 	RoleInvalSeq     uint64          `json:"role_inval_seq,omitempty"` // Sequence at which the roles were invalidated. Data remains in RolesSince_ for history calculation.
 	RoleHistory_     TimedSetHistory `json:"role_history,omitempty"`   // Added to when a previously granted role is revoked. Calculated inside of rebuildRoles.
+	SessionUUID_     string          `json:"session_uuid"`             // marker of when the user object changes, to match with session docs to determine if they are valid
 
 	OldExplicitRoles_ []string `json:"admin_roles,omitempty"` // obsolete; declared for migration
 }
@@ -531,8 +533,19 @@ func (user *userImpl) Authenticate(password string) bool {
 	return true
 }
 
+// GetSessionUUID returns the UUID that a session to match to be a valid session.
+func (user *userImpl) GetSessionUUID() string {
+	return user.SessionUUID_
+}
+
+// UpdateSessionUUID creates a new UUID for a session.
+func (user *userImpl) UpdateSessionUUID() {
+	user.SessionUUID_ = uuid.NewString()
+}
+
 // Changes a user's password to the given string.
 func (user *userImpl) SetPassword(password string) error {
+	user.UpdateSessionUUID()
 	if password == "" {
 		user.PasswordHash_ = nil
 	} else {

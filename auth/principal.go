@@ -85,6 +85,12 @@ type User interface {
 	// Authenticates the user's password.
 	Authenticate(password string) bool
 
+	// GetSessionUUID returns the UUID that a session to match to be a valid session.
+	GetSessionUUID() string
+
+	// UpdateSessionUUID creates a new session UUID
+	UpdateSessionUUID()
+
 	// Changes the user's password.
 	SetPassword(password string) error
 

@@ -1534,26 +1534,6 @@ func (db *DatabaseContext) GetRoleIDs(ctx context.Context, useViews, includeDele
 	return roles, nil
 }
 
-// ////// HOUSEKEEPING:
-
-// Deletes all session documents for a user
-func (db *DatabaseContext) DeleteUserSessions(ctx context.Context, userName string) error {
-
-	results, err := db.QuerySessions(ctx, userName)
-	if err != nil {
-		return err
-	}
-
-	var sessionsRow QueryIdRow
-	for results.Next(&sessionsRow) {
-		base.InfofCtx(ctx, base.KeyCRUD, "\tDeleting %q", sessionsRow.Id)
-		if err := db.MetadataStore.Delete(sessionsRow.Id); err != nil {
-			base.WarnfCtx(ctx, "Error deleting %q: %v", sessionsRow.Id, err)
-		}
-	}
-	return results.Close()
-}
-
 // Trigger tombstone compaction from view and/or GSI indexes.  Several Sync Gateway indexes server tombstones (deleted documents with an xattr).
 // There currently isn't a mechanism for server to remove these docs from the index when the tombstone is purged by the server during
 // metadata purge, because metadata purge doesn't trigger a DCP event.
