@@ -1377,9 +1377,8 @@ func TestGetUserCollectionAccess(t *testing.T) {
 					"admin_channels":["foo", "bar1"]
 				}`, collection2Name)
 	// Create a user with collection metadata
-	userPayload := `{
-		"email":"%s@couchbase.com", 
-		"password":"letmein", 
+	userRolePayload := `{
+		%s
 		"admin_channels":["foo", "bar"],
 		"collection_access": {
 			"%s": {
@@ -1391,9 +1390,11 @@ func TestGetUserCollectionAccess(t *testing.T) {
 		}
 	}`
 
-	putResponse := rt.SendAdminRequest("PUT", "/db/_user/alice", fmt.Sprintf(userPayload, "alice", scope1Name, collection1Name, ""))
+	putResponse := rt.SendAdminRequest("PUT", "/db/_user/alice", fmt.Sprintf(userRolePayload, `"email":"alice@couchbase.com","password":"letmein",`, scope1Name, collection1Name, ""))
 	RequireStatus(t, putResponse, 201)
-	putResponse = rt.SendAdminRequest("PUT", "/db/_user/bob", fmt.Sprintf(userPayload, "alice", scope1Name, collection1Name, collectionPayload))
+	putResponse = rt.SendAdminRequest("PUT", "/db/_user/bob", fmt.Sprintf(userRolePayload, `"email":"bob@couchbase.com","password":"letmein",`, scope1Name, collection1Name, collectionPayload))
+	RequireStatus(t, putResponse, 201)
+	putResponse = rt.SendAdminRequest("PUT", "/db/_role/role1", fmt.Sprintf(userRolePayload, ``, scope1Name, collection1Name, collectionPayload))
 	RequireStatus(t, putResponse, 201)
 
 	getResponse := rt.SendAdminRequest("GET", "/db/_user/bob", "")
@@ -1404,6 +1405,7 @@ func TestGetUserCollectionAccess(t *testing.T) {
 	require.NoError(t, err)
 	collectionAccess, ok := responseConfig.CollectionAccess[scope1Name][collection1Name]
 	require.True(t, ok)
+
 	assert.Equal(t, channels.BaseSetOf(t, "foo", "bar1"), collectionAccess.ExplicitChannels_)
 	// TODO: computed channels requires authenticator populated with collection set, pending CBG-2266
 	//assert.Equal(t, channels.BaseSetOf(t), collectionAccess.Channels_)
@@ -1428,14 +1430,20 @@ func TestGetUserCollectionAccess(t *testing.T) {
 	userResponse := rt.SendAdminRequest("GET", "/db/_user/bob", "")
 	RequireStatus(t, userResponse, 200)
 	log.Printf("response:%s", userResponse.Body.Bytes())
+	assert.NotContains(t, userResponse.Body.Bytes(), collection2Name)
 	// see if a dynamic grant fixes this
 	//  GET _role
 	//  1. Standard get
 	//  2. Hide entries for collections that are no longer part of the database
-	//
+	userResponse = rt.SendAdminRequest("GET", "/db/_role/role1", "")
+	RequireStatus(t, userResponse, 200)
+	log.Printf("response:%s", userResponse.Body.Bytes())
+	assert.NotContains(t, userResponse.Body.Bytes(), collection2Name)
+
 	//  INSERT _user
 	//  1. Attempt to write read-only properties (error)
 	//  2. Attempt to write collections that aren't defined for the database (error)
+
 	//  INSERT _role
 	//  1. Attempt to write read-only properties (error)
 	//  2. Attempt to write collections that aren't defined for the database (error)
