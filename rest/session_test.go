@@ -610,6 +610,56 @@ func TestAllSessionDeleteInvalidation(t *testing.T) {
 
 }
 
+// TestUserWithoutSessionUUID tests users that existed before we stamped SessionUUID into user docs
+func TestUserWithoutSessionUUID(t *testing.T) {
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	const username = "user1"
+
+	authenticator := rt.GetDatabase().Authenticator(base.TestCtx(t))
+	user, err := authenticator.NewUser(username, restTesterDefaultUserPassword, base.SetOf("*"))
+	require.NoError(t, err)
+	require.NotNil(t, user)
+	require.NoError(t, authenticator.Save(user))
+
+	var rawUser map[string]interface{}
+	_, err = rt.MetadataStore().Get(user.DocID(), &rawUser)
+	require.NoError(t, err)
+
+	sessionUUIDKey := "session_uuid"
+	_, exists := rawUser[sessionUUIDKey]
+	require.True(t, exists)
+	delete(rawUser, sessionUUIDKey)
+
+	err = rt.MetadataStore().Set(user.DocID(), 0, nil, rawUser)
+	require.NoError(t, err)
+
+	response := rt.SendUserRequest(http.MethodPost, "/{{.db}}/_session", "", username)
+	RequireStatus(t, response, http.StatusOK)
+
+	RequireStatus(t, response, http.StatusOK)
+	cookie := response.Header().Get("Set-Cookie")
+	require.NotEqual(t, "", cookie)
+
+	// Create a doc as the first user, with session auth, channel-restricted to first user
+	cookieHeaders := map[string]string{
+		"Cookie": cookie,
+	}
+	response = rt.SendRequestWithHeaders(http.MethodPut, "/{{.keyspace}}/doc1", `{"hi": "there"}`, cookieHeaders)
+	RequireStatus(t, response, http.StatusCreated)
+
+	response = rt.SendRequestWithHeaders(http.MethodGet, "/{{.keyspace}}/doc1", "", cookieHeaders)
+	RequireStatus(t, response, http.StatusOK)
+
+	// delete all user sesssions
+	response = rt.SendAdminRequest("DELETE", "/db/_user/user1/_session", "")
+	RequireStatus(t, response, http.StatusOK)
+
+	response = rt.SendRequestWithHeaders(http.MethodGet, "/{{.keyspace}}/doc1", "", cookieHeaders)
+	RequireStatus(t, response, http.StatusUnauthorized)
+}
+
 func createSession(t *testing.T, rt *RestTester, username string) string {
 
 	response := rt.SendAdminRequest("POST", "/db/_session", fmt.Sprintf(`{"name":%q}`, username))
