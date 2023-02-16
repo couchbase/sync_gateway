@@ -224,6 +224,7 @@ func TestShardedDCPUpgrade(t *testing.T) {
 		ImportOptions: ImportOptions{
 			ImportPartitions: numPartitions,
 		},
+		// Use default collection namespace since this will make sure we are upgrading from 3.0 -> post 3.0
 		Scopes: GetScopesOptionsDefaultCollectionOnly(t),
 	})
 	require.NoError(t, err, "NewDatabaseContext")

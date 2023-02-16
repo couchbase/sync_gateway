@@ -46,20 +46,11 @@ func TestBackupOldRevisionWithAttachments(t *testing.T) {
 	deltasEnabled := base.IsEnterpriseEdition()
 	xattrsEnabled := base.TestUseXattrs()
 
-	ctx := base.TestCtx(t)
-	bucket := base.GetTestBucket(t)
-	dbCtx, err := NewDatabaseContext(ctx, "db", bucket, false, DatabaseContextOptions{
-		EnableXattr: xattrsEnabled,
-		DeltaSyncOptions: DeltaSyncOptions{
-			Enabled:          deltasEnabled,
-			RevMaxAgeSeconds: DefaultDeltaSyncRevMaxAge,
-		},
-		Scopes: GetScopesOptions(t, bucket, 1),
-	})
-	assert.NoError(t, err, "Couldn't create context for database 'db'")
-	defer dbCtx.Close(ctx)
-	db, err := CreateDatabase(dbCtx)
-	assert.NoError(t, err, "Couldn't create database 'db'")
+	db, ctx := SetupTestDBWithOptions(t, DatabaseContextOptions{DeltaSyncOptions: DeltaSyncOptions{
+		Enabled:          deltasEnabled,
+		RevMaxAgeSeconds: DefaultDeltaSyncRevMaxAge,
+	}})
+	defer db.Close(ctx)
 
 	docID := "doc1"
 	var rev1Body Body
@@ -759,23 +750,15 @@ func TestMigrateBodyAttachments(t *testing.T) {
 	const docKey = "TestAttachmentMigrate"
 
 	setupFn := func(t *testing.T) (db *Database) {
-		ctx := base.TestCtx(t)
-		bucket := base.GetTestBucket(t)
-		dbCtx, err := NewDatabaseContext(ctx, "db", bucket, false, DatabaseContextOptions{
-			EnableXattr: base.TestUseXattrs(),
-			Scopes:      GetScopesOptions(t, bucket, 1),
-		})
+		db, ctx := setupTestDB(t)
 
-		assert.NoError(t, err, "The database context should be created for database 'db'")
-		db, err = CreateDatabase(dbCtx)
-		require.NoError(t, err, "The database 'db' should be created")
 		collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 		// Put a document with hello.txt attachment, to write attachment to the bucket
 		rev1input := `{"_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="}}}`
 		var body Body
 		assert.NoError(t, base.JSONUnmarshal([]byte(rev1input), &body))
-		_, _, err = collection.Put(ctx, "doc1", body)
+		_, _, err := collection.Put(ctx, "doc1", body)
 		assert.NoError(t, err, "Couldn't create document")
 
 		gotbody, err := collection.Get1xRevBody(ctx, "doc1", "", false, []string{})

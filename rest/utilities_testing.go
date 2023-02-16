@@ -282,9 +282,9 @@ func (rt *RestTester) Bucket() base.Bucket {
 			// If scopes is already set, assume the caller has a plan
 			if rt.DatabaseConfig.Scopes == nil {
 				// Configure non default collections by default
-				syncFn := base.StringPtr(rt.SyncFn)
-				if rt.SyncFn == "" {
-					syncFn = nil
+				var syncFn *string
+				if rt.SyncFn != "" {
+					syncFn = base.StringPtr(rt.SyncFn)
 				}
 				rt.DatabaseConfig.Scopes = getCollectionsConfigWithSyncFn(rt.TB, testBucket, syncFn, rt.numCollections)
 			}
