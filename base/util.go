@@ -1784,3 +1784,31 @@ func WaitForNoError(callback func() error) error {
 	}, CreateMaxDoublingSleeperFunc(30, 10, 1000))
 	return err
 }
+
+// MapKVHash returns a deterministic hash for the keys and values of a map
+// Performance warning: ~3 map iterations required to get a hash from a sorted set of kv pairs.
+func MapKVHash[M ~map[K]V, K, V comparable](m M) []byte {
+	mapStrings := make([]struct{ k, v string }, 0, len(m))
+
+	for k, v := range m {
+		mapStrings = append(mapStrings, struct{ k, v string }{fmt.Sprintf("%v", k), fmt.Sprintf("%v", v)})
+	}
+
+	// sort by map key - don't worry about stable sort as map keys must be unique anyway
+	sort.Slice(mapStrings, func(i, j int) bool {
+		return mapStrings[i].k < mapStrings[j].k
+	})
+
+	hash := sha1.New()
+
+	for _, kv := range mapStrings {
+		// Split kv pairs with null byte to avoid collisions across map entries
+		hash.Write([]byte{0x00})
+		hash.Write([]byte(kv.k))
+		hash.Write([]byte{0x00})
+		hash.Write([]byte(kv.v))
+		hash.Write([]byte{0x00})
+	}
+
+	return hash.Sum(nil)
+}
