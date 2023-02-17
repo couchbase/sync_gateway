@@ -84,6 +84,8 @@ type SyncData struct {
 	// Only used for performance metrics:
 	TimeSaved time.Time `json:"time_saved,omitempty"` // Timestamp of save.
 
+	ClusterUUID string `json:"cluster_uuid,omitempty"` // Couchbase Server UUID when the document is updated
+
 	// Backward compatibility (the "deleted" field was, um, deleted in commit 4194f81, 2/17/14)
 	Deleted_OLD bool `json:"deleted,omitempty"`
 	// History should be marshalled last to optimize indexing (CBG-2559)

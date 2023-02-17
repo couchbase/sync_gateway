@@ -47,10 +47,14 @@ func setupTestDBForBucket(t testing.TB, bucket *base.TestBucket) (*Database, con
 func setupTestDBWithOptionsAndImport(t testing.TB, dbcOptions DatabaseContextOptions) (*Database, context.Context) {
 	ctx := base.TestCtx(t)
 	AddOptionsFromEnvironmentVariables(&dbcOptions)
+	tBucket := base.GetTestBucket(t)
+	if dbcOptions.Scopes == nil {
+		dbcOptions.Scopes = GetScopesOptions(t, tBucket, 1)
+	}
 	if dbcOptions.GroupID == "" && base.IsEnterpriseEdition() {
 		dbcOptions.GroupID = t.Name()
 	}
-	dbCtx, err := NewDatabaseContext(ctx, "db", base.GetTestBucket(t), true, dbcOptions)
+	dbCtx, err := NewDatabaseContext(ctx, "db", tBucket, true, dbcOptions)
 	require.NoError(t, err, "Couldn't create context for database 'db'")
 	db, err := CreateDatabase(dbCtx)
 	require.NoError(t, err, "Couldn't create database 'db'")
@@ -83,9 +87,12 @@ func setupTestDBWithViewsEnabled(t testing.TB) (*Database, context.Context) {
 func setupTestDBWithCustomSyncSeq(t testing.TB, customSeq uint64) (*Database, context.Context) {
 
 	ctx := base.TestCtx(t)
-	dbcOptions := DatabaseContextOptions{}
-	AddOptionsFromEnvironmentVariables(&dbcOptions)
 	tBucket := base.GetTestBucket(t)
+	dbcOptions := DatabaseContextOptions{
+		Scopes: GetScopesOptions(t, tBucket, 1),
+	}
+
+	AddOptionsFromEnvironmentVariables(&dbcOptions)
 
 	// This may need to change when we move to a non-default metadata collection...
 	metadataStore := tBucket.DefaultDataStore()
@@ -107,11 +114,12 @@ func setupTestDBWithCustomSyncSeq(t testing.TB, customSeq uint64) (*Database, co
 
 func setupTestLeakyDBWithCacheOptions(t *testing.T, options CacheOptions, leakyOptions base.LeakyBucketConfig) (*Database, context.Context) {
 	ctx := base.TestCtx(t)
+	testBucket := base.GetTestBucket(t)
 	dbcOptions := DatabaseContextOptions{
 		CacheOptions: &options,
+		Scopes:       GetScopesOptions(t, testBucket, 1),
 	}
 	AddOptionsFromEnvironmentVariables(&dbcOptions)
-	testBucket := base.GetTestBucket(t)
 	leakyBucket := base.NewLeakyBucket(testBucket, leakyOptions)
 	dbCtx, err := NewDatabaseContext(ctx, "db", leakyBucket, false, dbcOptions)
 	if err != nil {
@@ -292,6 +300,7 @@ func TestGetRemovedAsUser(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	collection.ChannelMapper = channels.NewChannelMapper(&db.JS, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
 
 	rev1body := Body{
 		"key1":     1234,
@@ -400,6 +409,7 @@ func TestGetRemovalMultiChannel(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	collection.ChannelMapper = channels.NewChannelMapper(&db.JS, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
 
 	auth := db.Authenticator(base.TestCtx(t))
 
@@ -570,6 +580,7 @@ func TestDeltaSyncWhenToRevIsChannelRemoval(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	collection.ChannelMapper = channels.NewChannelMapper(&db.JS, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
 
 	// Create the first revision of doc1.
 	rev1Body := Body{
@@ -800,7 +811,7 @@ func TestAllDocsOnly(t *testing.T) {
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
-	db.ChannelMapper = channels.NewDefaultChannelMapper(&db.JS)
+	collection.ChannelMapper = channels.NewChannelMapper(&db.JS, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
 
 	collectionID := collection.GetCollectionID()
 
@@ -915,8 +926,6 @@ func TestUpdatePrincipal(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 
-	db.ChannelMapper = channels.NewDefaultChannelMapper(&db.JS)
-
 	// Create a user with access to channel ABC
 	authenticator := db.Authenticator(ctx)
 	user, _ := authenticator.NewUser("naomi", "letmein", channels.BaseSetOf(t, "ABC"))
@@ -985,7 +994,7 @@ func TestConflicts(t *testing.T) {
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
-	db.ChannelMapper = channels.NewDefaultChannelMapper(&db.JS)
+	collection.ChannelMapper = channels.NewChannelMapper(&db.JS, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
 
 	// Instantiate channel cache for channel 'all'
 	collectionID := collection.GetCollectionID()
@@ -1358,12 +1367,13 @@ func TestSyncFnOnPush(t *testing.T) {
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
-	db.ChannelMapper = channels.NewChannelMapper(&db.JS, `function(doc, oldDoc) {
+	_, err := collection.UpdateSyncFun(ctx, `function(doc, oldDoc) {
 		log("doc _id = "+doc._id+", _rev = "+doc._rev);
 		if (oldDoc)
 			log("oldDoc _id = "+oldDoc._id+", _rev = "+oldDoc._rev);
 		channel(doc.channels);
-	}`, 0)
+	}`)
+	require.NoError(t, err)
 
 	// Create first revision:
 	body := Body{"key1": "value1", "key2": 1234, "channels": []string{"public"}}
@@ -1397,7 +1407,7 @@ func TestInvalidChannel(t *testing.T) {
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
-	db.ChannelMapper = channels.NewDefaultChannelMapper(&db.JS)
+	collection.ChannelMapper = channels.NewChannelMapper(&db.JS, channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
 
 	body := Body{"channels": []string{"bad,name"}}
 	_, _, err := collection.Put(ctx, "doc", body)
@@ -1410,8 +1420,8 @@ func TestAccessFunctionValidation(t *testing.T) {
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
-	var err error
-	db.ChannelMapper = channels.NewChannelMapper(&db.JS, `function(doc){access(doc.users,doc.userChannels);}`, 0)
+	_, err := collection.UpdateSyncFun(ctx, `function(doc){access(doc.users,doc.userChannels);}`)
+	require.NoError(t, err)
 
 	body := Body{"users": []string{"username"}, "userChannels": []string{"BBC1"}}
 	_, _, err = collection.Put(ctx, "doc1", body)
@@ -1446,8 +1456,8 @@ func TestAccessFunctionDb(t *testing.T) {
 
 	authenticator := db.Authenticator(ctx)
 
-	var err error
-	db.ChannelMapper = channels.NewChannelMapper(&db.JS, `function(doc){access(doc.users,doc.userChannels);}`, 0)
+	_, err := collection.UpdateSyncFun(ctx, `function(doc){access(doc.users,doc.userChannels);}`)
+	require.NoError(t, err)
 
 	user, err := authenticator.NewUser("naomi", "letmein", channels.BaseSetOf(t, "Netflix"))
 	require.NoError(t, err)
@@ -1972,12 +1982,15 @@ func TestNewDatabaseContextWithOIDCProviderOptions(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			tBucket := base.GetTestBucket(t)
 			options := DatabaseContextOptions{
 				OIDCOptions: tc.inputOptions,
+				Scopes:      GetScopesOptions(t, tBucket, 1),
 			}
 			AddOptionsFromEnvironmentVariables(&options)
+
 			ctx := base.TestCtx(t)
-			dbCtx, err := NewDatabaseContext(ctx, "db", base.GetTestBucket(t), false, options)
+			dbCtx, err := NewDatabaseContext(ctx, "db", tBucket, false, options)
 			assert.NoError(t, err, "Couldn't create context for database 'db'")
 			defer dbCtx.Close(ctx)
 			assert.NotNil(t, dbCtx, "Database context should be created")
@@ -2019,11 +2032,12 @@ func TestSyncFnMutateBody(t *testing.T) {
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
-	db.ChannelMapper = channels.NewChannelMapper(&db.JS, `function(doc, oldDoc) {
+	_, err := collection.UpdateSyncFun(ctx, `function(doc, oldDoc) {
 		doc.key1 = "mutatedValue"
 		doc.key2.subkey1 = "mutatedSubValue"
 		channel(doc.channels);
-	}`, 0)
+	}`)
+	require.NoError(t, err)
 
 	// Create first revision:
 	body := Body{"key1": "value1", "key2": Body{"subkey1": "subvalue1"}, "channels": []string{"public"}}
@@ -2431,8 +2445,8 @@ func TestResyncUpdateAllDocChannels(t *testing.T) {
 	db, ctx := SetupTestDBWithOptions(t, DatabaseContextOptions{QueryPaginationLimit: 5000})
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
-	_, err := db.UpdateSyncFun(ctx, syncFn)
-	assert.NoError(t, err)
+	_, err := collection.UpdateSyncFun(ctx, syncFn)
+	require.NoError(t, err)
 
 	defer db.Close(ctx)
 
@@ -2534,8 +2548,6 @@ func TestGetAllUsers(t *testing.T) {
 	db.Options.QueryPaginationLimit = 100
 	defer db.Close(ctx)
 
-	db.ChannelMapper = channels.NewDefaultChannelMapper(&db.JS)
-
 	log.Printf("Creating users...")
 	// Create users
 	authenticator := db.Authenticator(ctx)
@@ -2571,7 +2583,6 @@ func TestGetRoleIDs(t *testing.T) {
 	defer db.Close(ctx)
 
 	db.Options.QueryPaginationLimit = 100
-	db.ChannelMapper = channels.NewDefaultChannelMapper(&db.JS)
 	authenticator := db.Authenticator(ctx)
 
 	rolename1 := uuid.NewString()
@@ -2617,7 +2628,6 @@ func Test_updateAllPrincipalsSequences(t *testing.T) {
 	defer db.Close(ctx)
 
 	db.Options.QueryPaginationLimit = 100
-	db.ChannelMapper = channels.NewDefaultChannelMapper(&db.JS)
 
 	auth := db.Authenticator(ctx)
 	roleSequences := [5]uint64{}
@@ -2777,7 +2787,6 @@ func Test_resyncDocument(t *testing.T) {
 
 			db.Options.EnableXattr = testCase.useXattr
 			db.Options.QueryPaginationLimit = 100
-			db.ChannelMapper = channels.NewDefaultChannelMapper(&db.JS)
 			collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 			syncFn := `
@@ -2785,7 +2794,7 @@ func Test_resyncDocument(t *testing.T) {
 		channel("channel." + "ABC");
 	}
 `
-			_, err := db.UpdateSyncFun(ctx, syncFn)
+			_, err := collection.UpdateSyncFun(ctx, syncFn)
 			require.NoError(t, err)
 
 			docID := uuid.NewString()
@@ -2801,7 +2810,7 @@ func Test_resyncDocument(t *testing.T) {
 			channel("channel." + "ABC12332423234");
 		}
 	`
-			_, err = db.UpdateSyncFun(ctx, syncFn)
+			_, err = collection.UpdateSyncFun(ctx, syncFn)
 			require.NoError(t, err)
 
 			_, _, err = collection.resyncDocument(ctx, docID, realDocID(docID), false, []uint64{10})
@@ -2835,7 +2844,6 @@ func Test_getUpdatedDocument(t *testing.T) {
 		defer db.Close(ctx)
 
 		db.Options.QueryPaginationLimit = 100
-		db.ChannelMapper = channels.NewDefaultChannelMapper(&db.JS)
 		docID := "testDoc"
 
 		body := `{"val": "nonsyncdoc"}`
@@ -2857,7 +2865,6 @@ func Test_getUpdatedDocument(t *testing.T) {
 		db, ctx := setupTestDB(t)
 		defer db.Close(ctx)
 		db.Options.QueryPaginationLimit = 100
-		db.ChannelMapper = channels.NewDefaultChannelMapper(&db.JS)
 		collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 		syncFn := `
@@ -2865,7 +2872,7 @@ func Test_getUpdatedDocument(t *testing.T) {
 		channel("channel." + "ABC");
 	}
 `
-		_, err := db.UpdateSyncFun(ctx, syncFn)
+		_, err := collection.UpdateSyncFun(ctx, syncFn)
 		require.NoError(t, err)
 
 		docID := uuid.NewString()
@@ -2880,7 +2887,7 @@ func Test_getUpdatedDocument(t *testing.T) {
 			channel("channel." + "ABC12332423234");
 		}
 	`
-		_, err = db.UpdateSyncFun(ctx, syncFn)
+		_, err = collection.UpdateSyncFun(ctx, syncFn)
 		require.NoError(t, err)
 
 		updatedDoc, shouldUpdate, _, highSeq, _, err := collection.getResyncedDocument(ctx, doc, false, []uint64{})
@@ -3000,39 +3007,6 @@ func TestGetDatabaseCollectionWithUserDefaultCollection(t *testing.T) {
 		options    DatabaseContextOptions
 	}{
 		{
-			name:       "emptyscopecollection",
-			scope:      "",
-			collection: "",
-			err:        true,
-		},
-		{
-			name:       "foo.bar-notconfigured",
-			scope:      "foo",
-			collection: "bar",
-			err:        true,
-		},
-		{
-			name:       "_default._default-noconfiguration",
-			scope:      base.DefaultScope,
-			collection: base.DefaultCollection,
-			err:        false,
-		},
-		{
-			name:       "_default._default-not-in-config",
-			scope:      base.DefaultScope,
-			collection: base.DefaultCollection,
-			err:        true,
-			options: DatabaseContextOptions{
-				Scopes: map[string]ScopeOptions{
-					dataStoreName.ScopeName(): ScopeOptions{
-						Collections: map[string]CollectionOptions{
-							dataStoreName.CollectionName(): {},
-						},
-					},
-				},
-			},
-		},
-		{
 			name:       "_default._default-inconfig",
 			scope:      base.DefaultScope,
 			collection: base.DefaultCollection,
@@ -3056,6 +3030,7 @@ func TestGetDatabaseCollectionWithUserDefaultCollection(t *testing.T) {
 
 	for _, testCase := range testCases {
 		t.Run(fmt.Sprintf(testCase.name), func(t *testing.T) {
+
 			ctx := base.TestCtx(t)
 			dbCtx, err := NewDatabaseContext(ctx, "db", bucket.NoCloseClone(), false, testCase.options)
 			require.NoError(t, err)
@@ -3079,6 +3054,17 @@ func TestGetDatabaseCollectionWithUserDefaultCollection(t *testing.T) {
 
 }
 
+func TestServerUUID(t *testing.T) {
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
+
+	if base.TestUseCouchbaseServer() {
+		require.Len(t, db.ServerUUID, 32) // no dashes in UUID
+	} else {
+		require.Len(t, db.ServerUUID, 0) // no dashes in UUID
+	}
+}
+
 func waitAndAssertConditionWithOptions(t *testing.T, fn func() bool, retryCount, msSleepTime int, failureMsgAndArgs ...interface{}) {
 	for i := 0; i <= retryCount; i++ {
 		if i == retryCount {
@@ -3098,9 +3084,6 @@ func waitAndAssertCondition(t *testing.T, fn func() bool, failureMsgAndArgs ...i
 func Test_stopBackgroundManagers(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
-
-	dbCtx, err := NewDatabaseContext(ctx, db.Name, db.Bucket, false, DatabaseContextOptions{})
-	require.NoError(t, err)
 
 	testCases := []struct {
 		resyncManager               *BackgroundManager
@@ -3139,23 +3122,23 @@ func Test_stopBackgroundManagers(t *testing.T) {
 
 	for i, testCase := range testCases {
 		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
-			dbCtx.ResyncManager = testCase.resyncManager
-			dbCtx.AttachmentCompactionManager = testCase.attachmentCompactionManager
-			dbCtx.TombstoneCompactionManager = testCase.tombstoneCompactionManager
-			if dbCtx.ResyncManager != nil {
-				err := dbCtx.ResyncManager.Start(ctx, emptyOptions)
+			db.ResyncManager = testCase.resyncManager
+			db.AttachmentCompactionManager = testCase.attachmentCompactionManager
+			db.TombstoneCompactionManager = testCase.tombstoneCompactionManager
+			if db.ResyncManager != nil {
+				err := db.ResyncManager.Start(ctx, emptyOptions)
 				assert.NoError(t, err)
 			}
-			if dbCtx.AttachmentCompactionManager != nil {
-				err := dbCtx.AttachmentCompactionManager.Start(ctx, emptyOptions)
+			if db.AttachmentCompactionManager != nil {
+				err := db.AttachmentCompactionManager.Start(ctx, emptyOptions)
 				assert.NoError(t, err)
 			}
-			if dbCtx.TombstoneCompactionManager != nil {
-				err := dbCtx.TombstoneCompactionManager.Start(ctx, emptyOptions)
+			if db.TombstoneCompactionManager != nil {
+				err := db.TombstoneCompactionManager.Start(ctx, emptyOptions)
 				assert.NoError(t, err)
 			}
 
-			bgManagers := dbCtx.stopBackgroundManagers()
+			bgManagers := db.stopBackgroundManagers()
 			assert.Len(t, bgManagers, testCase.expected, "Unexpected Num of BackgroundManagers returned")
 		})
 	}

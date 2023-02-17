@@ -1660,7 +1660,7 @@ func (db *DatabaseCollectionWithUser) IsIllegalConflict(ctx context.Context, doc
 	return true
 }
 
-func (db *DatabaseCollectionWithUser) documentUpdateFunc(ctx context.Context, docExists bool, doc *Document, allowImport bool, previousDocSequenceIn uint64, unusedSequences []uint64, callback updateAndReturnDocCallback, expiry uint32) (retSyncFuncExpiry *uint32, retNewRevID string, retStoredDoc *Document, retOldBodyJSON string, retUnusedSequences []uint64, changedAccessPrincipals []string, changedRoleAccessUsers []string, createNewRevIDSkipped bool, err error) {
+func (col *DatabaseCollectionWithUser) documentUpdateFunc(ctx context.Context, docExists bool, doc *Document, allowImport bool, previousDocSequenceIn uint64, unusedSequences []uint64, callback updateAndReturnDocCallback, expiry uint32) (retSyncFuncExpiry *uint32, retNewRevID string, retStoredDoc *Document, retOldBodyJSON string, retUnusedSequences []uint64, changedAccessPrincipals []string, changedRoleAccessUsers []string, createNewRevIDSkipped bool, err error) {
 
 	err = validateExistingDoc(doc, allowImport, docExists)
 	if err != nil {
@@ -1673,7 +1673,7 @@ func (db *DatabaseCollectionWithUser) documentUpdateFunc(ctx context.Context, do
 		return
 	}
 
-	revBody, metaMap, newRevID, err := db.prepareSyncFn(doc, newDoc)
+	revBody, metaMap, newRevID, err := col.prepareSyncFn(doc, newDoc)
 	if err != nil {
 		return
 	}
@@ -1681,11 +1681,11 @@ func (db *DatabaseCollectionWithUser) documentUpdateFunc(ctx context.Context, do
 	prevCurrentRev := doc.CurrentRev
 	doc.updateWinningRevAndSetDocFlags()
 	newDocHasAttachments := len(newAttachments) > 0
-	db.storeOldBodyInRevTreeAndUpdateCurrent(ctx, doc, prevCurrentRev, newRevID, newDoc, newDocHasAttachments)
+	col.storeOldBodyInRevTreeAndUpdateCurrent(ctx, doc, prevCurrentRev, newRevID, newDoc, newDocHasAttachments)
 
-	syncExpiry, oldBodyJSON, channelSet, access, roles, err := db.runSyncFn(ctx, doc, revBody, metaMap, newRevID, newDoc.Deleted)
+	syncExpiry, oldBodyJSON, channelSet, access, roles, err := col.runSyncFn(ctx, doc, revBody, metaMap, newRevID, newDoc.Deleted)
 	if err != nil {
-		if db.ForceAPIForbiddenErrors() {
+		if col.ForceAPIForbiddenErrors() {
 			base.InfofCtx(ctx, base.KeyCRUD, "Sync function rejected update to %s %s due to %v",
 				base.UD(doc.ID), base.MD(doc.RevID), err)
 			err = ErrForbidden
@@ -1697,14 +1697,14 @@ func (db *DatabaseCollectionWithUser) documentUpdateFunc(ctx context.Context, do
 		doc.History[newRevID].Channels = channelSet
 	}
 
-	err = db.addAttachments(ctx, newAttachments)
+	err = col.addAttachments(ctx, newAttachments)
 	if err != nil {
 		return
 	}
 
-	db.backupAncestorRevs(ctx, doc, newDoc)
+	col.backupAncestorRevs(ctx, doc, newDoc)
 
-	unusedSequences, err = db.assignSequence(ctx, previousDocSequenceIn, doc, unusedSequences)
+	unusedSequences, err = col.assignSequence(ctx, previousDocSequenceIn, doc, unusedSequences)
 	if err != nil {
 		return
 	}
@@ -1715,7 +1715,7 @@ func (db *DatabaseCollectionWithUser) documentUpdateFunc(ctx context.Context, do
 		// need to update the doc's top-level Channels and Access properties to correspond
 		// to the current rev's state.
 		if newRevID != doc.CurrentRev {
-			channelSet, access, roles, syncExpiry, oldBodyJSON, err = db.recalculateSyncFnForActiveRev(ctx, doc, metaMap, newRevID)
+			channelSet, access, roles, syncExpiry, oldBodyJSON, err = col.recalculateSyncFnForActiveRev(ctx, doc, metaMap, newRevID)
 		}
 		_, err = doc.updateChannels(ctx, channelSet)
 		if err != nil {
@@ -1730,16 +1730,17 @@ func (db *DatabaseCollectionWithUser) documentUpdateFunc(ctx context.Context, do
 	}
 
 	// Prune old revision history to limit the number of revisions:
-	if pruned := doc.pruneRevisions(db.revsLimit(), doc.CurrentRev); pruned > 0 {
+	if pruned := doc.pruneRevisions(col.revsLimit(), doc.CurrentRev); pruned > 0 {
 		base.DebugfCtx(ctx, base.KeyCRUD, "updateDoc(%q): Pruned %d old revisions", base.UD(doc.ID), pruned)
 	}
 
 	updatedExpiry = doc.updateExpiry(syncExpiry, updatedExpiry, expiry)
-	err = doc.persistModifiedRevisionBodies(db.dataStore)
+	err = doc.persistModifiedRevisionBodies(col.dataStore)
 	if err != nil {
 		return
 	}
 
+	doc.ClusterUUID = col.serverUUID()
 	doc.TimeSaved = time.Now()
 	return updatedExpiry, newRevID, newDoc, oldBodyJSON, unusedSequences, changedAccessPrincipals, changedRoleAccessUsers, createNewRevIDSkipped, err
 }
@@ -2215,7 +2216,7 @@ func (col *DatabaseCollectionWithUser) getChannelsAndAccess(ctx context.Context,
 	}
 	oldJson = string(oldJsonBytes)
 
-	if col.channelMapper() != nil {
+	if col.ChannelMapper != nil {
 		// Call the ChannelMapper:
 		col.dbStats().Database().SyncFunctionCount.Add(1)
 		col.collectionStats.SyncFunctionCount.Add(1)
@@ -2233,7 +2234,7 @@ func (col *DatabaseCollectionWithUser) getChannelsAndAccess(ctx context.Context,
 
 		base.DebugfCtx(ctx, base.KeyCRUD, "Calling sync fn with _id=%q, _rev=%q, _del=%v, body %s , oldBody %s", doc.ID, revID, doc.Deleted, body, oldJson) //TEMP
 		startTime := time.Now()
-		output, err = col.channelMapper().MapToChannelsAndAccess2(input)
+		output, err = col.ChannelMapper.MapToChannelsAndAccess2(input)
 		syncFunctionTimeNano := time.Since(startTime).Nanoseconds()
 
 		col.dbStats().Database().SyncFunctionTime.Add(syncFunctionTimeNano)
@@ -2270,16 +2271,20 @@ func (col *DatabaseCollectionWithUser) getChannelsAndAccess(ctx context.Context,
 		}
 
 	} else {
-		// No ChannelMapper so by default use the "channels" property:
-		var bodyMap map[string]any
-		err = base.JSONUnmarshal(body, &bodyMap)
-		value := bodyMap["channels"]
-		if value != nil {
-			array, nonStrings := base.ValueToStringArray(value)
-			if nonStrings != nil {
-				base.WarnfCtx(ctx, "Channel names must be string values only. Ignoring non-string channels: %s", base.UD(nonStrings))
+		if base.IsDefaultCollection(col.ScopeName, col.Name) {
+			// No ChannelMapper so by default use the "channels" property:
+			var bodyMap map[string]any
+			err = base.JSONUnmarshal(body, &bodyMap)
+			value := bodyMap["channels"]
+			if value != nil {
+				array, nonStrings := base.ValueToStringArray(value)
+				if nonStrings != nil {
+					base.WarnfCtx(ctx, "Channel names must be string values only. Ignoring non-string channels: %s", base.UD(nonStrings))
+				}
+				result, err = channels.SetFromArray(array, channels.KeepStar)
 			}
-			result, err = channels.SetFromArray(array, channels.KeepStar)
+		} else {
+			result = base.SetOf(col.Name)
 		}
 	}
 	return result, access, roles, expiry, oldJson, err

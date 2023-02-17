@@ -9,11 +9,8 @@
 package rest
 
 import (
-	"bufio"
-	"bytes"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
 	"sort"
@@ -914,7 +911,7 @@ function(doc, oldDoc) {
 			log.Printf("Invoking _changes?feed=continuous&since=%s&timeout=2000", since)
 			changesResponse := rt.SendUserRequest("GET", fmt.Sprintf("/{{.keyspace}}/_changes?feed=continuous&since=%s&timeout=2000", since), "", "bernard")
 
-			changes, err := readContinuousChanges(changesResponse)
+			changes, err := rt.ReadContinuousChanges(changesResponse)
 			assert.NoError(t, err)
 
 			changesAccumulated = append(changesAccumulated, changes...)
@@ -997,7 +994,7 @@ func TestUserDeleteDuringChangesWithAccess(t *testing.T) {
 		} else {
 			// case 2 - ensure no error processing the changes response.  The number of entries may vary, depending
 			// on whether the changes loop performed an additional iteration before catching the deleted user.
-			_, err := readContinuousChanges(changesResponse)
+			_, err := rt.ReadContinuousChanges(changesResponse)
 			assert.NoError(t, err)
 		}
 	}()
@@ -1074,34 +1071,6 @@ func validateUsersNameOnlyFalse(t *testing.T, rt *RestTester) {
 	}
 }
 
-// Reads continuous changes feed response into slice of ChangeEntry
-func readContinuousChanges(response *TestResponse) ([]db.ChangeEntry, error) {
-	var change db.ChangeEntry
-	changes := make([]db.ChangeEntry, 0)
-	reader := bufio.NewReader(response.Body)
-	for {
-		entry, readError := reader.ReadBytes('\n')
-		if readError == io.EOF {
-			// done
-			break
-		}
-		if readError != nil {
-			// unexpected read error
-			return changes, readError
-		}
-		entry = bytes.TrimSpace(entry)
-		if len(entry) > 0 {
-			err := base.JSONUnmarshal(entry, &change)
-			if err != nil {
-				return changes, err
-			}
-			changes = append(changes, change)
-			log.Printf("Got change ==> %v", change)
-		}
-
-	}
-	return changes, nil
-}
 func TestFunkyUsernames(t *testing.T) {
 	cases := []struct {
 		Name     string
@@ -1127,7 +1096,7 @@ func TestFunkyUsernames(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.Name, func(t *testing.T) {
 			require.Truef(t, auth.IsValidPrincipalName(tc.UserName), "expected '%s' to be accepted", tc.UserName)
-			rt := NewRestTester(t, nil)
+			rt := NewRestTester(t, &RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction})
 			defer rt.Close()
 
 			ctx := rt.Context()

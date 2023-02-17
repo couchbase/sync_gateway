@@ -11,11 +11,13 @@ licenses/APL2.txt.
 package rest
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"net/http"
@@ -93,6 +95,9 @@ type RestTester struct {
 	metricsHandlerOnce      sync.Once
 	closed                  bool
 }
+
+// restTesterDefaultUserPassword is usable as a default password for SendUserRequest
+const restTesterDefaultUserPassword = "letmein"
 
 // NewRestTester returns a rest tester and corresponding keyspace backed by a single database and a single collection. This collection may be named or default collection based on global test configuration.
 func NewRestTester(tb testing.TB, restConfig *RestTesterConfig) *RestTester {
@@ -279,7 +284,11 @@ func (rt *RestTester) Bucket() base.Bucket {
 			// If scopes is already set, assume the caller has a plan
 			if rt.DatabaseConfig.Scopes == nil {
 				// Configure non default collections by default
-				rt.DatabaseConfig.Scopes = GetCollectionsConfig(rt.TB, testBucket, rt.numCollections)
+				var syncFn *string
+				if rt.SyncFn != "" {
+					syncFn = base.StringPtr(rt.SyncFn)
+				}
+				rt.DatabaseConfig.Scopes = getCollectionsConfigWithSyncFn(rt.TB, testBucket, syncFn, rt.numCollections)
 			}
 		}
 
@@ -351,10 +360,18 @@ func (rt *RestTester) MetadataStore() base.DataStore {
 
 // GetCollectionsConfig sets up a ScopesConfig from a TestBucket for use with non default collections.
 func GetCollectionsConfig(t testing.TB, testBucket *base.TestBucket, numCollections int) ScopesConfig {
+	return getCollectionsConfigWithSyncFn(t, testBucket, nil, numCollections)
+}
+
+// getCollectionsConfigWithSyncFn sets up a ScopesConfig from a TestBucket for use with non default collections. The sync function will be passed for all collections.
+func getCollectionsConfigWithSyncFn(t testing.TB, testBucket *base.TestBucket, syncFn *string, numCollections int) ScopesConfig {
 	// Get a datastore as provided by the test
 	stores := testBucket.GetNonDefaultDatastoreNames()
 	require.True(t, len(stores) >= numCollections, "Requested more collections %d than found on testBucket %d", numCollections, len(stores))
-
+	defaultCollectionConfig := CollectionConfig{}
+	if syncFn != nil {
+		defaultCollectionConfig.SyncFn = syncFn
+	}
 	scopesConfig := ScopesConfig{}
 	for i := 0; i < numCollections; i++ {
 		dataStoreName := stores[i]
@@ -362,12 +379,12 @@ func GetCollectionsConfig(t testing.TB, testBucket *base.TestBucket, numCollecti
 			if _, ok := scopeConfig.Collections[dataStoreName.CollectionName()]; ok {
 				// already present
 			} else {
-				scopeConfig.Collections[dataStoreName.CollectionName()] = CollectionConfig{}
+				scopeConfig.Collections[dataStoreName.CollectionName()] = defaultCollectionConfig
 			}
 		} else {
 			scopesConfig[dataStoreName.ScopeName()] = ScopeConfig{
 				Collections: map[string]CollectionConfig{
-					dataStoreName.CollectionName(): {},
+					dataStoreName.CollectionName(): defaultCollectionConfig,
 				}}
 		}
 
@@ -1051,7 +1068,7 @@ func Request(method, resource, body string) *http.Request {
 
 func RequestByUser(method, resource, body, username string) *http.Request {
 	r := Request(method, resource, body)
-	r.SetBasicAuth(username, "letmein")
+	r.SetBasicAuth(username, restTesterDefaultUserPassword)
 	return r
 }
 
@@ -1157,6 +1174,9 @@ type BlipTesterSpec struct {
 
 	// If true, do not automatically initialize GetCollections handshake
 	skipCollectionsInitialization bool
+
+	// If set, use custom sync function for all collections.
+	syncFn string
 }
 
 // State associated with a BlipTester
@@ -1214,6 +1234,9 @@ func NewBlipTesterFromSpecWithRT(tb testing.TB, spec *BlipTesterSpec, rt *RestTe
 	if spec == nil {
 		blipTesterSpec = &BlipTesterSpec{}
 	}
+	if blipTesterSpec.syncFn != "" {
+		tb.Errorf("Setting BlipTesterSpec.SyncFn is incompatible with passing a custom RestTester. Use SyncFn on RestTester or DatabaseConfig")
+	}
 	blipTester, err = createBlipTesterWithSpec(tb, *blipTesterSpec, rt)
 	if err != nil {
 		return nil, err
@@ -1234,6 +1257,7 @@ func NewBlipTesterDefaultCollectionFromSpec(tb testing.TB, spec BlipTesterSpec) 
 		EnableNoConflictsMode: spec.noConflictsMode,
 		GuestEnabled:          spec.GuestEnabled,
 		DatabaseConfig:        &DatabaseConfig{},
+		SyncFn:                spec.syncFn,
 	}
 	rt := newRestTester(tb, &rtConfig, useSingleCollectionDefaultOnly, 1)
 	bt, err := createBlipTesterWithSpec(tb, spec, rt)
@@ -1250,6 +1274,7 @@ func NewBlipTesterFromSpec(tb testing.TB, spec BlipTesterSpec) (*BlipTester, err
 	rtConfig := RestTesterConfig{
 		EnableNoConflictsMode: spec.noConflictsMode,
 		GuestEnabled:          spec.GuestEnabled,
+		SyncFn:                spec.syncFn,
 	}
 	rt := NewRestTester(tb, &rtConfig)
 	return createBlipTesterWithSpec(tb, spec, rt)
@@ -2307,6 +2332,53 @@ func (rt *RestTester) getCollectionsForBLIP() []string {
 			strings.Join([]string{collection.ScopeName, collection.Name}, base.ScopeCollectionSeparator))
 	}
 	return collections
+}
+
+// Reads continuous changes feed response into slice of ChangeEntry
+func (rt *RestTester) ReadContinuousChanges(response *TestResponse) ([]db.ChangeEntry, error) {
+	var change db.ChangeEntry
+	changes := make([]db.ChangeEntry, 0)
+	reader := bufio.NewReader(response.Body)
+	for {
+		entry, readError := reader.ReadBytes('\n')
+		if readError == io.EOF {
+			// done
+			break
+		}
+		if readError != nil {
+			// unexpected read error
+			return changes, readError
+		}
+		entry = bytes.TrimSpace(entry)
+		if len(entry) > 0 {
+			err := base.JSONUnmarshal(entry, &change)
+			if err != nil {
+				return changes, err
+			}
+			changes = append(changes, change)
+			log.Printf("Got change ==> %v", change)
+		}
+
+	}
+	return changes, nil
+}
+
+// RequireContinuousFeedChangesCount Calls a changes feed on every collection and asserts that the nth expected change is
+// the number of changes for the nth collection.
+func (rt *RestTester) RequireContinuousFeedChangesCount(t testing.TB, username string, keyspace int, expectedChanges int, timeout int) {
+	resp := rt.SendUserRequest("GET", fmt.Sprintf("/{{.keyspace%d}}/_changes?feed=continuous&timeout=%d", keyspace, timeout), "", username)
+	changes, err := rt.ReadContinuousChanges(resp)
+	assert.NoError(t, err)
+	require.Len(t, changes, expectedChanges)
+}
+
+func (rt *RestTester) GetChangesOneShot(t testing.TB, keyspace string, since int, username string, changesCount int) *TestResponse {
+	changesResponse := rt.SendUserRequest("GET", fmt.Sprintf("/{{.%s}}/_changes?since=%d", keyspace, since), "", username)
+	var changes ChangesResults
+	err := base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
+	assert.NoError(t, err, "Error unmarshalling changes response")
+	require.Len(t, changes.Results, changesCount)
+	return changesResponse
 }
 
 func (rt *RestTester) GetFunctionsConfig() *functions.Config {

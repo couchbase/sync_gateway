@@ -82,7 +82,8 @@ func (meta MetaMap) MarshalJSON() ([]byte, error) {
 // Prefix used to identify roles in access grants
 const RoleAccessPrefix = "role:"
 
-const DefaultSyncFunction = `function(doc){channel(doc.channels);}`
+// DocChannelsSyncFunction is the default sync function used prior to collections.
+const DocChannelsSyncFunction = `function(doc){channel(doc.channels);}`
 
 // The JavaScript code run by the SyncRunner; the sync fn is copied into it.
 // See wrappedFuncSource().
@@ -93,7 +94,7 @@ var kSyncFnHostScriptOlder string
 //go:embed sync_fn_wrapper_modern.js
 var kSyncFnHostScriptModern string
 
-// Creates a ChannelMapper.
+// NewChannelMapper creates a new channel mapper with a specific javascript function and a timeout. A zero value timeout will never timeout.
 func NewChannelMapper(owner js.ServiceHost, fnSource string, timeout time.Duration) *ChannelMapper {
 	service := js.NewService(owner, "channelMapper", wrappedFuncSource(fnSource, owner))
 	return &ChannelMapper{
@@ -103,9 +104,13 @@ func NewChannelMapper(owner js.ServiceHost, fnSource string, timeout time.Durati
 	}
 }
 
-// Creates a ChannelMapper with the default sync function. (Used by tests)
-func NewDefaultChannelMapper(owner js.ServiceHost) *ChannelMapper {
-	return NewChannelMapper(owner, DefaultSyncFunction, time.Duration(base.DefaultJavascriptTimeoutSecs)*time.Second)
+// GetDefaultSyncFunction returns a sync function. The case of default collection will return a different sync function than one for collections.
+func GetDefaultSyncFunction(scopeName, collectionName string) string {
+	if base.IsDefaultCollection(scopeName, collectionName) {
+		return DocChannelsSyncFunction
+	}
+	return `function(doc){channel("` + collectionName + `");}`
+
 }
 
 func (mapper *ChannelMapper) Function() string {

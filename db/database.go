@@ -89,19 +89,18 @@ const MaxJavaScriptVMs = 8
 // Basic description of a database. Shared between all Database objects on the same database.
 // This object is thread-safe so it can be shared between HTTP handlers.
 type DatabaseContext struct {
-	Name                        string                  // Database name
-	UUID                        string                  // UUID for this database instance. Used by cbgt and sgr
-	MetadataStore               base.DataStore          // Storage for database metadata (anything that isn't an end-user's/customer's documents)
-	Bucket                      base.Bucket             // Storage
-	BucketSpec                  base.BucketSpec         // The BucketSpec
-	BucketLock                  sync.RWMutex            // Control Access to the underlying bucket object
-	mutationListener            changeListener          // Caching feed listener
-	ImportListener              *importListener         // Import feed listener
-	sequences                   *sequenceAllocator      // Source of new sequence numbers
-	ChannelMapper               *channels.ChannelMapper // Runs JS 'sync' function
-	StartTime                   time.Time               // Timestamp when context was instantiated
-	RevsLimit                   uint32                  // Max depth a document's revision tree can grow to
-	autoImport                  bool                    // Add sync data to new untracked couchbase server docs?  (Xattr mode specific)
+	Name                        string             // Database name
+	UUID                        string             // UUID for this database instance. Used by cbgt and sgr
+	MetadataStore               base.DataStore     // Storage for database metadata (anything that isn't an end-user's/customer's documents)
+	Bucket                      base.Bucket        // Storage
+	BucketSpec                  base.BucketSpec    // The BucketSpec
+	BucketLock                  sync.RWMutex       // Control Access to the underlying bucket object
+	mutationListener            changeListener     // Caching feed listener
+	ImportListener              *importListener    // Import feed listener
+	sequences                   *sequenceAllocator // Source of new sequence numbers
+	StartTime                   time.Time          // Timestamp when context was instantiated
+	RevsLimit                   uint32             // Max depth a document's revision tree can grow to
+	autoImport                  bool               // Add sync data to new untracked couchbase server docs?  (Xattr mode specific)
 	channelCache                ChannelCache
 	changeCache                 changeCache            // Cache of recently-access channels
 	EventMgr                    *EventManager          // Manages notification events
@@ -116,7 +115,7 @@ type DatabaseContext struct {
 	OIDCProviders               auth.OIDCProviderMap // OIDC clients
 	LocalJWTProviders           auth.LocalJWTProviderMap
 	PurgeInterval               time.Duration // Metadata purge interval
-	serverUUID                  string        // UUID of the server, if available
+	ServerUUID                  string        // UUID of the server, if available
 
 	DbStats      *base.DbStats // stats that correspond to this database context
 	CompactState uint32        // Status of database compaction
@@ -178,7 +177,6 @@ type DatabaseContextOptions struct {
 	Scopes                        ScopesOptions
 	skipRegisterImportPIndex      bool           // if set, skips the global gocb PIndex registration
 	MetadataStore                 base.DataStore // If set, use this location/connection for SG metadata storage - if not set, metadata is stored using the same location/connection as the bucket used for data storage.
-	DefaultCollectionImportFilter *string        // Opt-in filter for document import, for when collections are not supported
 }
 
 type ScopesOptions map[string]ScopeOptions
@@ -265,6 +263,14 @@ func ValidateDatabaseName(dbName string) error {
 	return nil
 }
 
+// getNewDatabaseSleeperFunc returns a sleeper function during database connection
+func getNewDatabaseSleeperFunc() base.RetrySleeper {
+	return base.CreateDoublingSleeperFunc(
+		13, // MaxNumRetries approx 40 seconds total retry duration
+		5,  // InitialRetrySleepTimeMS
+	)
+}
+
 // connectToBucketErrorHandling takes the given spec and error and returns a formatted error, along with whether it was a fatal error.
 func connectToBucketErrorHandling(ctx context.Context, spec base.BucketSpec, gotErr error) (fatalError bool, err error) {
 	if gotErr != nil {
@@ -312,13 +318,8 @@ func connectToBucket(ctx context.Context, spec base.BucketSpec) (base.Bucket, er
 		return shouldRetry, newErr, bucket
 	}
 
-	sleeper := base.CreateDoublingSleeperFunc(
-		13, // MaxNumRetries approx 40 seconds total retry duration
-		5,  // InitialRetrySleepTimeMS
-	)
-
 	description := fmt.Sprintf("Attempt to connect to bucket : %v", spec.BucketName)
-	err, ibucket := base.RetryLoop(description, worker, sleeper)
+	err, ibucket := base.RetryLoop(description, worker, getNewDatabaseSleeperFunc())
 	if err != nil {
 		return nil, err
 	}
@@ -332,6 +333,22 @@ func GetConnectToBucketFn(failFast bool) OpenBucketFn {
 		return connectToBucketFailFast
 	}
 	return connectToBucket
+}
+
+// Returns Couchbase Server Cluster UUID on a timeout. If running against walrus, do return an empty string.
+func getServerUUID(ctx context.Context, bucket base.Bucket) (string, error) {
+	gocbV2Bucket, err := base.AsGocbV2Bucket(bucket)
+	if err != nil {
+		return "", nil
+	}
+	// start a retry loop to get server ID
+	worker := func() (bool, error, interface{}) {
+		uuid, err := base.GetServerUUID(gocbV2Bucket)
+		return err != nil, err, uuid
+	}
+
+	err, uuid := base.RetryLoopCtx("Getting ServerUUID", worker, getNewDatabaseSleeperFunc(), ctx)
+	return uuid.(string), err
 }
 
 // Function type for something that calls NewDatabaseContext and wants a callback when the DB is detected
@@ -374,6 +391,10 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 		return nil, statsError
 	}
 
+	serverUUID, err := getServerUUID(ctx, bucket)
+	if err != nil {
+		return nil, err
+	}
 	dbContext := &DatabaseContext{
 		Name:           dbName,
 		UUID:           cbgt.NewUUID(),
@@ -384,6 +405,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 		Options:        options,
 		DbStats:        dbStats,
 		CollectionByID: make(map[uint32]*DatabaseCollection),
+		ServerUUID:     serverUUID,
 	}
 
 	// Initialize JavaScript VMPool:
@@ -412,7 +434,6 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 
 	dbContext.EventMgr = NewEventManager(dbContext.terminator)
 
-	var err error
 	dbContext.sequences, err = newSequenceAllocator(metadataStore, dbContext.DbStats.Database())
 	if err != nil {
 		return nil, err
@@ -458,67 +479,62 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 	// Initialize the tap Listener for notify handling
 	dbContext.mutationListener.Init(bucket.GetName(), options.GroupID)
 
-	if len(options.Scopes) > 0 {
-		dbContext.Scopes = make(map[string]Scope, len(options.Scopes))
-		dbContext.CollectionNames = make(map[string]map[string]struct{}, len(options.Scopes))
-		for scopeName, scope := range options.Scopes {
-			dbContext.Scopes[scopeName] = Scope{
-				Collections: make(map[string]*DatabaseCollection, len(scope.Collections)),
+	if len(options.Scopes) == 0 {
+		return nil, fmt.Errorf("Setting scopes to be zero is invalid")
+	}
+	dbContext.Scopes = make(map[string]Scope, len(options.Scopes))
+	dbContext.CollectionNames = make(map[string]map[string]struct{}, len(options.Scopes))
+	// if any sync functions for any collection, we recommend running a resync
+	syncFunctionsChanged := false
+	for scopeName, scope := range options.Scopes {
+		dbContext.Scopes[scopeName] = Scope{
+			Collections: make(map[string]*DatabaseCollection, len(scope.Collections)),
+		}
+		collectionNameMap := make(map[string]struct{}, len(scope.Collections))
+		for collName, collOpts := range scope.Collections {
+			ctx := base.CollectionCtx(ctx, collName)
+			dataStore, err := bucket.NamedDataStore(base.ScopeAndCollectionName{Scope: scopeName, Collection: collName})
+			if err != nil {
+				return nil, err
 			}
-			collectionNameMap := make(map[string]struct{}, len(scope.Collections))
-			for collName, collOpts := range scope.Collections {
-				ctx := base.CollectionCtx(ctx, collName)
-				dataStore, err := bucket.NamedDataStore(base.ScopeAndCollectionName{Scope: scopeName, Collection: collName})
-				if err != nil {
-					return nil, err
-				}
-				stats, err := dbContext.DbStats.CollectionStat(scopeName, collName)
-				if err != nil {
-					return nil, err
-				}
-				dbCollection, err := newDatabaseCollection(ctx, dbContext, dataStore, stats)
-				if err != nil {
-					return nil, err
-				}
-				syncFn := ""
-				if collOpts.Sync != nil {
-					syncFn = *collOpts.Sync
-				}
-
-				if collOpts.ImportFilter != nil {
-					dbCollection.importFilterFunction = NewImportFilterFunction(&dbContext.JS, *collOpts.ImportFilter, options.JavascriptTimeout)
-				}
-
-				_, err = dbCollection.UpdateSyncFun(ctx, syncFn)
-				if err != nil {
-					return nil, err
-				}
-
-				dbContext.Scopes[scopeName].Collections[collName] = dbCollection
-
-				collectionID := dbCollection.GetCollectionID()
-				dbContext.CollectionByID[collectionID] = dbCollection
-				dbContext.singleCollection = dbCollection
-				collectionNameMap[collName] = struct{}{}
+			stats, err := dbContext.DbStats.CollectionStat(scopeName, collName)
+			if err != nil {
+				return nil, err
 			}
-			dbContext.CollectionNames[scopeName] = collectionNameMap
-		}
-	} else {
-		dataStore := bucket.DefaultDataStore()
-		stats, err := dbContext.DbStats.CollectionStat(base.DefaultScope, base.DefaultCollection)
-		if err != nil {
-			return nil, err
-		}
-		dbCollection, err := newDatabaseCollection(ctx, dbContext, dataStore, stats)
-		if err != nil {
-			return nil, err
-		}
-		if options.DefaultCollectionImportFilter != nil {
-			dbCollection.importFilterFunction = NewImportFilterFunction(&dbContext.JS, *options.DefaultCollectionImportFilter, options.JavascriptTimeout)
-		}
+			dbCollection, err := newDatabaseCollection(ctx, dbContext, dataStore, stats)
+			if err != nil {
+				return nil, err
+			}
+			if collOpts.Sync != nil {
+				fnChanged, err := dbCollection.UpdateSyncFun(ctx, *collOpts.Sync)
+				if err != nil {
+					return nil, err
+				}
+				if fnChanged {
+					syncFunctionsChanged = true
+				}
 
-		dbContext.CollectionByID[base.DefaultCollectionID] = dbCollection
-		dbContext.singleCollection = dbCollection
+			} else {
+				defaultSyncFunction := channels.GetDefaultSyncFunction(scopeName, collName)
+				base.InfofCtx(ctx, base.KeyAll, "Using default sync function %q for database %s.%s.%s", defaultSyncFunction, base.MD(dbName), base.MD(scopeName), base.MD(collName))
+			}
+
+			if collOpts.ImportFilter != nil {
+				dbCollection.importFilterFunction = NewImportFilterFunction(&dbContext.JS, *collOpts.ImportFilter, options.JavascriptTimeout)
+			}
+
+			dbContext.Scopes[scopeName].Collections[collName] = dbCollection
+
+			collectionID := dbCollection.GetCollectionID()
+			dbContext.CollectionByID[collectionID] = dbCollection
+			dbContext.singleCollection = dbCollection
+			collectionNameMap[collName] = struct{}{}
+		}
+		dbContext.CollectionNames[scopeName] = collectionNameMap
+	}
+
+	if syncFunctionsChanged {
+		base.InfofCtx(ctx, base.KeyAll, "**NOTE:** %q's sync function has changed. The new function may assign different channels to documents, or permissions to users. You may want to re-sync the database to update these.", base.MD(dbContext.Name))
 	}
 
 	// Callback that is invoked whenever a set of channels is changed in the ChangeCache
@@ -771,32 +787,6 @@ func (context *DatabaseContext) GetOIDCProvider(providerName string) (*auth.OIDC
 	} else {
 		return nil, base.RedactErrorf("No provider found for provider name %q", base.MD(providerName))
 	}
-}
-
-func (dbCtx *DatabaseContext) GetServerUUID(ctx context.Context) string {
-
-	dbCtx.BucketLock.RLock()
-	defer dbCtx.BucketLock.RUnlock()
-
-	// Lazy load the server UUID, if we can get it.
-	if dbCtx.serverUUID == "" {
-		cbs, ok := base.AsCouchbaseBucketStore(dbCtx.Bucket)
-		if !ok {
-			base.WarnfCtx(ctx, "Database %v: Unable to get server UUID. Underlying bucket type was not GoCBBucket.", base.MD(dbCtx.Name))
-			return ""
-		}
-
-		uuid, err := cbs.ServerUUID()
-		if err != nil {
-			base.WarnfCtx(ctx, "Database %v: Unable to get server UUID: %v", base.MD(dbCtx.Name), err)
-			return ""
-		}
-
-		base.DebugfCtx(ctx, base.KeyAll, "Database %v: Got server UUID %v", base.MD(dbCtx.Name), base.MD(uuid))
-		dbCtx.serverUUID = uuid
-	}
-
-	return dbCtx.serverUUID
 }
 
 func (context *DatabaseContext) Close(ctx context.Context) {
@@ -1572,26 +1562,6 @@ func (db *DatabaseContext) GetRoleIDs(ctx context.Context, useViews, includeDele
 	return roles, nil
 }
 
-// ////// HOUSEKEEPING:
-
-// Deletes all session documents for a user
-func (db *DatabaseContext) DeleteUserSessions(ctx context.Context, userName string) error {
-
-	results, err := db.QuerySessions(ctx, userName)
-	if err != nil {
-		return err
-	}
-
-	var sessionsRow QueryIdRow
-	for results.Next(&sessionsRow) {
-		base.InfofCtx(ctx, base.KeyCRUD, "\tDeleting %q", sessionsRow.Id)
-		if err := db.MetadataStore.Delete(sessionsRow.Id); err != nil {
-			base.WarnfCtx(ctx, "Error deleting %q: %v", sessionsRow.Id, err)
-		}
-	}
-	return results.Close()
-}
-
 // Trigger tombstone compaction from view and/or GSI indexes.  Several Sync Gateway indexes server tombstones (deleted documents with an xattr).
 // There currently isn't a mechanism for server to remove these docs from the index when the tombstone is purged by the server during
 // metadata purge, because metadata purge doesn't trigger a DCP event.
@@ -1719,57 +1689,6 @@ func (db *Database) Compact(ctx context.Context, skipRunningStateCheck bool, cal
 	base.InfofCtx(ctx, base.KeyAll, "Finished compaction of purged tombstones for %s... Total Tombstones Compacted: %d", base.MD(db.Name), purgedDocCount)
 
 	return purgedDocCount, nil
-}
-
-// ////// SYNC FUNCTION:
-
-// Sets the database context's sync function based on the JS code from config.
-// Returns a boolean indicating whether the function is different from the saved one.
-// If multiple gateway instances try to update the function at the same time (to the same new
-// value) only one of them will get a changed=true result.
-func (dbCtx *DatabaseContext) UpdateSyncFun(ctx context.Context, syncFun string) (changed bool, err error) {
-	if syncFun == "" {
-		dbCtx.ChannelMapper = nil
-	} else if dbCtx.ChannelMapper != nil {
-		err = dbCtx.ChannelMapper.SetFunction(syncFun)
-	} else {
-		dbCtx.ChannelMapper = channels.NewChannelMapper(&dbCtx.JS, syncFun, dbCtx.Options.JavascriptTimeout)
-	}
-	if err != nil {
-		base.WarnfCtx(ctx, "Error setting sync function: %s", err)
-		return
-	}
-
-	var syncData struct { // format of the sync-fn document
-		Sync string
-	}
-
-	syncFunctionDocID := base.SyncFunctionKeyWithGroupID(dbCtx.Options.GroupID)
-	_, err = dbCtx.MetadataStore.Update(syncFunctionDocID, 0, func(currentValue []byte) ([]byte, *uint32, bool, error) {
-		// The first time opening a new db, currentValue will be nil. Don't treat this as a change.
-		if currentValue != nil {
-			parseErr := base.JSONUnmarshal(currentValue, &syncData)
-			if parseErr != nil || syncData.Sync != syncFun {
-				changed = true
-			}
-		}
-		if changed || currentValue == nil {
-			syncData.Sync = syncFun
-			bytes, err := base.JSONMarshal(syncData)
-			return bytes, nil, false, err
-		} else {
-			return nil, nil, false, base.ErrUpdateCancel // value unchanged, no need to save
-		}
-	})
-
-	if err == base.ErrUpdateCancel {
-		err = nil
-	}
-	return
-}
-
-func (db *Database) UpdateSyncFun(ctx context.Context, syncFun string) (changed bool, err error) {
-	return db.DatabaseContext.UpdateSyncFun(ctx, syncFun)
 }
 
 // Re-runs the sync function on every current document in the database (if doCurrentDocs==true)
@@ -2286,7 +2205,7 @@ func (dbCtx *DatabaseContext) OnlyDefaultCollection() bool {
 }
 
 // hasDefaultCollection is true if the database is configured with default collection
-func (dbCtx *DatabaseContext) hasDefaultCollection() bool {
+func (dbCtx *DatabaseContext) HasDefaultCollection() bool {
 	_, exists := dbCtx.CollectionByID[base.DefaultCollectionID]
 	return exists
 }

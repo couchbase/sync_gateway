@@ -43,6 +43,7 @@ func NewBlipSyncContext(ctx context.Context, bc *blip.Context, db *Database, con
 		sgCanUseDeltas:          db.DeltaSyncEnabled(),
 		replicationStats:        replicationStats,
 		inFlightChangesThrottle: make(chan struct{}, maxInFlightChangesBatches),
+		collections:             &blipCollections{},
 	}
 	bsc.changesCtx, bsc.changesCtxCancel = context.WithCancel(context.Background()) // TODO: re-eval, using ctx here breaks TestGroupIDReplications
 	if bsc.replicationStats == nil {
@@ -90,7 +91,6 @@ type BlipSyncContext struct {
 	handlerSerialNumber              uint64                                         // Each handler within a context gets a unique serial number for logging
 	terminatorOnce                   sync.Once                                      // Used to ensure the terminator channel below is only ever closed once.
 	terminator                       chan bool                                      // Closed during BlipSyncContext.close(). Ensures termination of async goroutines.
-	activeSubChanges                 base.AtomicBool                                // Flag for whether there is a subChanges subscription currently active.  Atomic access
 	useDeltas                        bool                                           // Whether deltas can be used for this connection - This should be set via setUseDeltas()
 	sgCanUseDeltas                   bool                                           // Whether deltas can be used by Sync Gateway for this connection
 	userChangeWaiter                 *ChangeWaiter                                  // Tracks whether the users/roles associated with the replication have changed
@@ -125,7 +125,7 @@ type BlipSyncContext struct {
 	// when readOnly is true, handleRev requests are rejected
 	readOnly bool
 
-	collectionMapping []*DatabaseCollection // Mapping of array id to collection mapping
+	collections *blipCollections // all collections handled by blipSyncContext, implicit or via GetCollections
 }
 
 // AllowedAttachment contains the metadata for handling allowed attachments
@@ -237,22 +237,15 @@ func (bsc *BlipSyncContext) copyContextDatabase() *Database {
 	return databaseCopy
 }
 
-func (bsc *BlipSyncContext) copyDatabaseCollectionWithUser(collectionIdx *int) *DatabaseCollectionWithUser {
+func (bsc *BlipSyncContext) copyDatabaseCollectionWithUser(collectionIdx *int) (*DatabaseCollectionWithUser, error) {
 	bsc.dbUserLock.RLock()
 	defer bsc.dbUserLock.RUnlock()
 	user := bsc.blipContextDb.User()
-	if collectionIdx != nil {
-		return &DatabaseCollectionWithUser{DatabaseCollection: bsc.collectionMapping[*collectionIdx], user: user}
-	}
-	/* put into place in CBG-2527
-	// There is a panic handler on the calling function but no way to pass error
-	c, err := bsc.blipContextDb.GetDefaultDatabaseCollection()
+	collectionCtx, err := bsc.collections.get(collectionIdx)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
-	*/
-	c := bsc.blipContextDb.GetSingleDatabaseCollection()
-	return &DatabaseCollectionWithUser{DatabaseCollection: c, user: user}
+	return &DatabaseCollectionWithUser{DatabaseCollection: collectionCtx.dbCollection, user: user}, nil
 }
 
 func (bsc *BlipSyncContext) _copyContextDatabase() *Database {
@@ -585,7 +578,7 @@ func (bsc *BlipSyncContext) sendNoRev(sender *blip.Sender, docID, revID string, 
 // Pushes a revision body to the client
 func (bsc *BlipSyncContext) sendRevision(sender *blip.Sender, docID, revID string, seq SequenceID, knownRevs map[string]bool, maxHistory int, handleChangesResponseCollection *DatabaseCollectionWithUser) error {
 	var collectionIdx *int
-	if coll, ok := bsc.getCollectionIndexForDB(handleChangesResponseCollection); ok {
+	if coll, ok := bsc.collections.getIndexForDB(handleChangesResponseCollection); ok {
 		collectionIdx = &coll
 	}
 

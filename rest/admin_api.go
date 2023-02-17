@@ -1122,7 +1122,7 @@ func (h *handler) handleGetStatus() error {
 		status.Databases[database.Name] = DatabaseStatus{
 			SequenceNumber:    lastSeq,
 			State:             runState,
-			ServerUUID:        database.GetServerUUID(h.ctx()),
+			ServerUUID:        database.ServerUUID,
 			ReplicationStatus: replicationsStatus,
 			SGRCluster:        cluster,
 		}
@@ -1354,13 +1354,6 @@ func (h *handler) updatePrincipal(name string, isUser bool) error {
 	if err != nil {
 		return err
 	} else if replaced {
-		// on update with a new password, remove previous user sessions
-		if newInfo.Password != nil {
-			err = h.db.DeleteUserSessions(h.ctx(), *newInfo.Name)
-			if err != nil {
-				return err
-			}
-		}
 		h.writeStatus(http.StatusOK, "OK")
 	} else {
 		h.writeStatus(http.StatusCreated, "Created")

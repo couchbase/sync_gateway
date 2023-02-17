@@ -56,12 +56,16 @@ func SyncFunctionKeyWithGroupID(groupID string) string {
 	return SyncFunctionKeyWithoutGroupID
 }
 
-// SyncFunctionKeyWithGroupID returns a doc ID to use when storing the sync function
-func CollectionSyncFunctionKeyWithGroupID(groupID string, collectionID uint32) string {
-	if groupID != "" {
-		return fmt.Sprintf("%s:%d:%s", CollectionSyncFunctionKeyWithoutGroupID, collectionID, groupID)
+// CollectionsSyncFunctionKeyWithGroupID returns a doc ID to use when storing the sync function.
+func CollectionSyncFunctionKeyWithGroupID(groupID string, scopeName, collectionName string) string {
+	// use legacy format for _default._default for backward compatibility
+	if IsDefaultCollection(scopeName, collectionName) {
+		return SyncFunctionKeyWithGroupID(groupID)
 	}
-	return fmt.Sprintf("%s:%d", CollectionSyncFunctionKeyWithoutGroupID, collectionID)
+	if groupID != "" {
+		return fmt.Sprintf("%s:%s.%s:%s", CollectionSyncFunctionKeyWithoutGroupID, scopeName, collectionName, groupID)
+	}
+	return fmt.Sprintf("%s:%s.%s", CollectionSyncFunctionKeyWithoutGroupID, scopeName, collectionName)
 }
 
 // DCPCheckpointPrefixWithGroupID returns a doc ID prefix to use for DCP checkpoints

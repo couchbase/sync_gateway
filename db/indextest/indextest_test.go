@@ -131,48 +131,6 @@ func TestBuildRolesQuery(t *testing.T) {
 	}
 }
 
-func TestBuildSessionsQuery(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() || base.TestsDisableGSI() {
-		t.Skip("This test is Couchbase Server and UseViews=false only")
-	}
-
-	testCases := []struct {
-		isServerless bool
-	}{
-		{
-			isServerless: false,
-		},
-		{
-			isServerless: true,
-		},
-	}
-
-	for _, testCase := range testCases {
-		t.Run(fmt.Sprintf("BuildSessionsQuery in Serverless=%t", testCase.isServerless), func(t *testing.T) {
-			dbContextConfig := getDatabaseContextOptions(testCase.isServerless)
-			database, ctx := db.SetupTestDBWithOptions(t, dbContextConfig)
-			defer database.Close(ctx)
-
-			n1QLStores, reset, err := setupN1QLStore(database.Bucket, testCase.isServerless)
-			require.NoError(t, err, "Unable to get n1QLStore for testBucket")
-			defer func(n1QLStore []base.N1QLStore, isServerless bool) {
-				err := reset(n1QLStores, isServerless)
-				require.NoError(t, err, "Reset fn shouldn't return error")
-			}(n1QLStores, testCase.isServerless)
-
-			// Sessions
-			roleStatement, _ := database.BuildSessionsQuery("user1")
-			plan, explainErr := n1QLStores[0].ExplainQuery(roleStatement, nil)
-			require.NoError(t, explainErr, "Error generating explain for roleAccess query")
-
-			covered := db.IsCovered(plan)
-			planJSON, err := base.JSONMarshal(plan)
-			require.NoError(t, err)
-			require.Equal(t, testCase.isServerless, covered, "Session query covered by index; expectedToBeCovered: %t, Plan: %s", testCase.isServerless, planJSON)
-		})
-	}
-}
-
 func TestBuildUsersQuery(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() || base.TestsDisableGSI() {
 		t.Skip("This test is Couchbase Server and UseViews=false only")
@@ -309,7 +267,6 @@ func TestAllPrincipalIDs(t *testing.T) {
 			base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache, base.KeyChanges)
 
 			database.Options.QueryPaginationLimit = 100
-			database.ChannelMapper = channels.NewDefaultChannelMapper(&database.JS)
 			authenticator := database.Authenticator(ctx)
 
 			rolename1 := uuid.NewString()
@@ -395,9 +352,8 @@ func TestGetRoleIDs(t *testing.T) {
 
 				base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache, base.KeyChanges)
 
-				database.Options.QueryPaginationLimit = 100
-				database.ChannelMapper = channels.NewDefaultChannelMapper(host)
-				authenticator := database.Authenticator(ctx)
+			database.Options.QueryPaginationLimit = 100
+			authenticator := database.Authenticator(ctx)
 
 				rolename1 := uuid.NewString()
 				rolename2 := uuid.NewString()

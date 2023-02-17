@@ -571,6 +571,7 @@ func setupTestDBWithFunctions(t *testing.T, fnConfig *FunctionsConfig, gqConfig 
 	cacheOptions := db.DefaultCacheOptions()
 	options := db.DatabaseContextOptions{
 		CacheOptions:     &cacheOptions,
+		Scopes:           db.GetScopesOptionsDefaultCollectionOnly(t),
 		FunctionsConfig:  &Config{fnConfig, gqConfig},
 		JavaScriptEngine: base.StringPtr("V8"), // Not compatible with Otto, it's too old
 	}

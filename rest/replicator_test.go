@@ -309,7 +309,7 @@ func TestGroupIDReplications(t *testing.T) {
 		resp := BootstrapAdminRequestCustomHost(t, http.MethodPut, adminHosts[i], "/db/",
 			fmt.Sprintf(
 				`{"bucket": "%s", "num_index_replicas": 0, "use_views": %t, "import_docs": true, "sync":"%s"}`,
-				activeBucket.GetName(), base.TestsDisableGSI(), channels.DefaultSyncFunction,
+				activeBucket.GetName(), base.TestsDisableGSI(), channels.DocChannelsSyncFunction,
 			),
 		)
 		resp.RequireStatus(http.StatusCreated)

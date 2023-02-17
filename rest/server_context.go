@@ -599,6 +599,23 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 
 			}
 		}
+	} else {
+		// Set up default import filter
+		var importFilter *string
+		if config.ImportFilter != nil {
+			importFilter = config.ImportFilter
+		}
+
+		contextOptions.Scopes = map[string]db.ScopeOptions{
+			base.DefaultScope: db.ScopeOptions{
+				Collections: map[string]db.CollectionOptions{
+					base.DefaultCollection: {
+						Sync:         config.Sync,
+						ImportFilter: importFilter,
+					},
+				},
+			},
+		}
 	}
 
 	// For now, we'll continue writing metadata into `_default`.`_default`, for a few reasons:
@@ -622,14 +639,6 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	dbcontext.ServerContextHasStarted = sc.hasStarted
 	dbcontext.NoX509HTTPClient = sc.NoX509HTTPClient
 
-	syncFn := ""
-	if config.Sync != nil {
-		syncFn = *config.Sync
-	}
-	if err := sc.applySyncFunction(ctx, dbcontext, syncFn); err != nil {
-		return nil, err
-	}
-
 	if config.RevsLimit != nil {
 		dbcontext.RevsLimit = *config.RevsLimit
 		if dbcontext.AllowConflicts() {
@@ -649,10 +658,6 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 
 	dbcontext.AllowEmptyPassword = base.BoolDefault(config.AllowEmptyPassword, false)
 	dbcontext.ServeInsecureAttachmentTypes = base.BoolDefault(config.ServeInsecureAttachmentTypes, false)
-
-	if dbcontext.ChannelMapper == nil {
-		base.InfofCtx(ctx, base.KeyAll, "Using default sync function 'channel(doc.channels)' for database %q", base.MD(dbName))
-	}
 
 	// Create default users & roles:
 	if err := sc.installPrincipals(ctx, dbcontext, config.Roles, "role"); err != nil {
@@ -938,14 +943,13 @@ func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConf
 			Enabled:               sgReplicateEnabled,
 			WebsocketPingInterval: sgReplicateWebsocketPingInterval,
 		},
-		SlowQueryWarningThreshold:     slowQueryWarningThreshold,
-		ClientPartitionWindow:         clientPartitionWindow,
-		BcryptCost:                    bcryptCost,
-		GroupID:                       groupID,
-		JavaScriptEngine:              config.JavaScriptEngine,
-		JavascriptTimeout:             javascriptTimeout,
-		Serverless:                    sc.Config.IsServerless(),
-		DefaultCollectionImportFilter: config.ImportFilter,
+		SlowQueryWarningThreshold: slowQueryWarningThreshold,
+		ClientPartitionWindow:     clientPartitionWindow,
+		BcryptCost:                bcryptCost,
+		GroupID:                   groupID,
+		JavaScriptEngine:          config.JavaScriptEngine,
+		JavascriptTimeout:         javascriptTimeout,
+		Serverless:                sc.Config.IsServerless(),
 		// FunctionsConfig:            // behind feature flag (see below)
 	}
 
@@ -1120,16 +1124,6 @@ func (sc *ServerContext) processEventHandlersForEvent(ctx context.Context, event
 		}
 
 	}
-	return nil
-}
-
-func (sc *ServerContext) applySyncFunction(ctx context.Context, dbcontext *db.DatabaseContext, syncFn string) error {
-	changed, err := dbcontext.UpdateSyncFun(ctx, syncFn)
-	if err != nil || !changed {
-		return err
-	}
-	// Sync function has changed:
-	base.InfofCtx(ctx, base.KeyAll, "**NOTE:** %q's sync function has changed. The new function may assign different channels to documents, or permissions to users. You may want to re-sync the database to update these.", base.MD(dbcontext.Name))
 	return nil
 }
 

@@ -484,3 +484,34 @@ func TestEvaluateFunction(t *testing.T) {
 	assert.Error(t, err, `strconv.ParseBool: parsing "TruE": invalid syntax`)
 	assert.False(t, result, "Import filter function should return true")
 }
+
+func TestImportStampClusterUUID(t *testing.T) {
+	if !base.TestUseXattrs() {
+		t.Skip("This test only works with XATTRS enabled")
+	}
+
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
+
+	collection := GetSingleDatabaseCollectionWithUser(t, db)
+
+	key := "doc1"
+	bodyBytes := rawDocNoMeta()
+
+	_, err := collection.dataStore.Add(key, 0, bodyBytes)
+	require.NoError(t, err)
+
+	body := Body{}
+	err = body.Unmarshal(rawDocNoMeta())
+	require.NoError(t, err)
+	existingDoc := &sgbucket.BucketDocument{Body: bodyBytes}
+
+	importedDoc, err := collection.importDoc(ctx, key, body, nil, false, existingDoc, ImportOnDemand)
+	require.NoError(t, err)
+	require.Equal(t, 32, len(importedDoc.ClusterUUID))
+
+	var xattr map[string]string
+	_, err = collection.dataStore.GetWithXattr(key, base.SyncXattrName, "", &body, &xattr, nil)
+	require.NoError(t, err)
+	require.Equal(t, 32, len(xattr["cluster_uuid"]))
+}

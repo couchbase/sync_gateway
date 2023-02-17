@@ -21,6 +21,7 @@ import (
 	"github.com/couchbase/go-blip"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -890,7 +891,7 @@ func TestEnsureRevocationUsingDocHistory(t *testing.T) {
 func TestRevocationWithAdminChannels(t *testing.T) {
 	defer db.SuspendSequenceBatching()()
 
-	rt := NewRestTester(t, nil)
+	rt := NewRestTester(t, &RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction})
 	defer rt.Close()
 	collection := rt.GetSingleTestDatabaseCollection()
 
@@ -921,7 +922,7 @@ func TestRevocationWithAdminChannels(t *testing.T) {
 func TestRevocationWithAdminRoles(t *testing.T) {
 	defer db.SuspendSequenceBatching()()
 
-	rt := NewRestTester(t, nil)
+	rt := NewRestTester(t, &RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction})
 	defer rt.Close()
 	collection := rt.GetSingleTestDatabaseCollection()
 

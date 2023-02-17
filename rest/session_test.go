@@ -8,6 +8,7 @@
 package rest
 
 import (
+	"encoding/base64"
 	"fmt"
 	"log"
 	"net/http"
@@ -144,7 +145,7 @@ func TestInvalidSession(t *testing.T) {
 // Test for issue 758 - basic auth with stale session cookie
 func TestBasicAuthWithSessionCookie(t *testing.T) {
 
-	rt := NewRestTester(t, nil)
+	rt := NewRestTester(t, &RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction})
 	defer rt.Close()
 	collection := rt.GetSingleTestDatabaseCollection()
 
@@ -360,13 +361,21 @@ func TestSessionExtension(t *testing.T) {
 	id, err := base.GenerateRandomSecret()
 	require.NoError(t, err)
 
+	const username = "Alice"
+
+	authenticator := rt.GetDatabase().Authenticator(base.TestCtx(t))
+	user, err := authenticator.NewUser(username, "Password", channels.BaseSetOf(t, "*"))
+	require.NoError(t, err)
+	require.NoError(t, authenticator.Save(user))
+
 	// Fake session with more than 10% of the 24 hours TTL has elapsed. It should cause a new
 	// cookie to be sent by the server with the same session ID and an extended expiration date.
 	fakeSession := auth.LoginSession{
-		ID:         id,
-		Username:   "Alice",
-		Expiration: time.Now().Add(4 * time.Hour),
-		Ttl:        24 * time.Hour,
+		ID:          id,
+		Username:    username,
+		Expiration:  time.Now().Add(4 * time.Hour),
+		Ttl:         24 * time.Hour,
+		SessionUUID: user.GetSessionUUID(),
 	}
 
 	assert.NoError(t, rt.MetadataStore().Set(auth.DocIDForSession(fakeSession.ID), 0, nil, fakeSession))
@@ -454,23 +463,6 @@ func TestSessionAPI(t *testing.T) {
 	response = rt.SendAdminRequest("DELETE", "/db/_user/user2/_session", "")
 	RequireStatus(t, response, 200)
 
-	// Validate that all sessions were deleted
-	for i := 0; i < 5; i++ {
-		response = rt.SendAdminRequest("GET", fmt.Sprintf("/db/_session/%s", user2sessions[i]), "")
-		RequireStatus(t, response, 404)
-	}
-
-	// 5. DELETE sessions when password is changed
-	// Change password for user3
-	response = rt.SendAdminRequest("PUT", "/db/_user/user3", `{"password":"5678"}`)
-	RequireStatus(t, response, 200)
-
-	// Validate that all sessions were deleted
-	for i := 0; i < 5; i++ {
-		response = rt.SendAdminRequest("GET", fmt.Sprintf("/db/_session/%s", user3sessions[i]), "")
-		RequireStatus(t, response, 404)
-	}
-
 	// DELETE the users
 	RequireStatus(t, rt.SendAdminRequest("DELETE", "/db/_user/user1", ""), 200)
 	RequireStatus(t, rt.SendAdminRequest("GET", "/db/_user/user1", ""), 404)
@@ -481,6 +473,191 @@ func TestSessionAPI(t *testing.T) {
 	RequireStatus(t, rt.SendAdminRequest("DELETE", "/db/_user/user3", ""), 200)
 	RequireStatus(t, rt.SendAdminRequest("GET", "/db/_user/user3", ""), 404)
 
+}
+
+func TestSessionPasswordInvalidation(t *testing.T) {
+	testCases := []struct {
+		name     string
+		password string
+	}{
+		{
+			name:     "emptypassword",
+			password: "",
+		},
+		{
+			name:     "realpassword",
+			password: "password",
+		},
+	}
+	for _, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+			rtConfig := &RestTesterConfig{}
+			if test.password == "" {
+				rtConfig.DatabaseConfig = &DatabaseConfig{
+					DbConfig: DbConfig{
+						AllowEmptyPassword: base.BoolPtr(true),
+					},
+				}
+
+			}
+			rt := NewRestTester(t, rtConfig)
+			defer rt.Close()
+
+			const username = "user1"
+			originalPassword := test.password
+
+			// create session test users
+			response := rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_user/", GetUserPayload(t, username, originalPassword, "", rt.GetSingleTestDatabaseCollection(), []string{"*"}, nil))
+			RequireStatus(t, response, http.StatusCreated)
+
+			originalPasswordHeaders := map[string]string{
+				"Authorization": "Basic " + base64.StdEncoding.EncodeToString([]byte(username+":"+originalPassword)),
+			}
+			response = rt.SendRequestWithHeaders(http.MethodPost, "/db/_session", "", originalPasswordHeaders)
+			RequireStatus(t, response, http.StatusOK)
+			cookie := response.Header().Get("Set-Cookie")
+			require.NotEqual(t, "", cookie)
+
+			// Create a doc as the first user, with session auth, channel-restricted to first user
+			cookieHeaders := map[string]string{
+				"Cookie": cookie,
+			}
+			response = rt.SendRequestWithHeaders(http.MethodPut, "/{{.keyspace}}/doc1", `{"hi": "there"}`, cookieHeaders)
+			RequireStatus(t, response, http.StatusCreated)
+			response = rt.SendRequestWithHeaders(http.MethodGet, "/{{.keyspace}}/doc1", "", cookieHeaders)
+			RequireStatus(t, response, http.StatusOK)
+
+			response = rt.SendRequestWithHeaders(http.MethodGet, "/{{.keyspace}}/doc1", "", originalPasswordHeaders)
+			RequireStatus(t, response, http.StatusOK)
+
+			altPassword := "someotherpassword"
+			response = rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/"+username, fmt.Sprintf(`{"password": "%s"}`, altPassword))
+			RequireStatus(t, response, http.StatusOK)
+
+			// make sure session is invalid
+			response = rt.SendRequestWithHeaders(http.MethodGet, "/{{.keyspace}}/doc1", "", cookieHeaders)
+			RequireStatus(t, response, http.StatusUnauthorized)
+
+			// make sure doc is valid for password
+			altPasswordHeaders := map[string]string{
+				"Authorization": "Basic " + base64.StdEncoding.EncodeToString([]byte(username+":"+altPassword)),
+			}
+
+			response = rt.SendRequestWithHeaders("GET", "/{{.keyspace}}/doc1", "", altPasswordHeaders)
+			RequireStatus(t, response, http.StatusOK)
+		},
+		)
+	}
+}
+
+func TestAllSessionDeleteInvalidation(t *testing.T) {
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	const username = "user1"
+
+	// create session test user
+	response := rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_user/", GetUserPayload(t, username, restTesterDefaultUserPassword, "", rt.GetSingleTestDatabaseCollection(), []string{"*"}, nil))
+	RequireStatus(t, response, http.StatusCreated)
+
+	const numSessions = 3
+	cookies := make([]string, numSessions)
+	for i := 0; i < 3; i++ {
+		response = rt.SendUserRequest(http.MethodPost, "/{{.db}}/_session", "", username)
+		RequireStatus(t, response, http.StatusOK)
+		cookie := response.Header().Get("Set-Cookie")
+		require.NotEqual(t, "", cookie)
+		cookies[i] = cookie
+	}
+	// Create a doc as the first user, with session auth, channel-restricted to first user
+	firstCookieHeaders := map[string]string{
+		"Cookie": cookies[0],
+	}
+	response = rt.SendRequestWithHeaders(http.MethodPut, "/{{.keyspace}}/doc1", `{"hi": "there"}`, firstCookieHeaders)
+	RequireStatus(t, response, http.StatusCreated)
+
+	// make sure all sessions work to GET doc
+	for _, cookie := range cookies {
+		cookieHeaders := map[string]string{
+			"Cookie": cookie,
+		}
+
+		response = rt.SendRequestWithHeaders(http.MethodGet, "/{{.keyspace}}/doc1", "", cookieHeaders)
+		RequireStatus(t, response, http.StatusOK)
+	}
+
+	// make sure password works to GET doc
+	response = rt.SendUserRequest(http.MethodGet, "/{{.keyspace}}/doc1", "", username)
+	RequireStatus(t, response, http.StatusOK)
+
+	// DELETE all sessions for a user
+	response = rt.SendAdminRequest("DELETE", fmt.Sprintf("/{{.db}}/_user/%s/_session", username), "")
+	RequireStatus(t, response, http.StatusOK)
+
+	// make sure all sessions are invalid
+	for _, cookie := range cookies {
+		cookieHeaders := map[string]string{
+			"Cookie": cookie,
+		}
+
+		response = rt.SendRequestWithHeaders(http.MethodGet, "/{{.keyspace}}/doc1", "", cookieHeaders)
+		RequireStatus(t, response, http.StatusUnauthorized)
+	}
+
+	// make sure password still works
+	response = rt.SendUserRequest(http.MethodGet, "/{{.keyspace}}/doc1", "", username)
+	RequireStatus(t, response, http.StatusOK)
+
+}
+
+// TestUserWithoutSessionUUID tests users that existed before we stamped SessionUUID into user docs
+func TestUserWithoutSessionUUID(t *testing.T) {
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	const username = "user1"
+
+	authenticator := rt.GetDatabase().Authenticator(base.TestCtx(t))
+	user, err := authenticator.NewUser(username, restTesterDefaultUserPassword, base.SetOf("*"))
+	require.NoError(t, err)
+	require.NotNil(t, user)
+	require.NoError(t, authenticator.Save(user))
+
+	var rawUser map[string]interface{}
+	_, err = rt.MetadataStore().Get(user.DocID(), &rawUser)
+	require.NoError(t, err)
+
+	sessionUUIDKey := "session_uuid"
+	_, exists := rawUser[sessionUUIDKey]
+	require.True(t, exists)
+	delete(rawUser, sessionUUIDKey)
+
+	err = rt.MetadataStore().Set(user.DocID(), 0, nil, rawUser)
+	require.NoError(t, err)
+
+	response := rt.SendUserRequest(http.MethodPost, "/{{.db}}/_session", "", username)
+	RequireStatus(t, response, http.StatusOK)
+
+	RequireStatus(t, response, http.StatusOK)
+	cookie := response.Header().Get("Set-Cookie")
+	require.NotEqual(t, "", cookie)
+
+	// Create a doc as the first user, with session auth, channel-restricted to first user
+	cookieHeaders := map[string]string{
+		"Cookie": cookie,
+	}
+	response = rt.SendRequestWithHeaders(http.MethodPut, "/{{.keyspace}}/doc1", `{"hi": "there"}`, cookieHeaders)
+	RequireStatus(t, response, http.StatusCreated)
+
+	response = rt.SendRequestWithHeaders(http.MethodGet, "/{{.keyspace}}/doc1", "", cookieHeaders)
+	RequireStatus(t, response, http.StatusOK)
+
+	// delete all user sesssions
+	response = rt.SendAdminRequest("DELETE", "/db/_user/user1/_session", "")
+	RequireStatus(t, response, http.StatusOK)
+
+	response = rt.SendRequestWithHeaders(http.MethodGet, "/{{.keyspace}}/doc1", "", cookieHeaders)
+	RequireStatus(t, response, http.StatusUnauthorized)
 }
 
 func createSession(t *testing.T, rt *RestTester, username string) string {

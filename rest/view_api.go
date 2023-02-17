@@ -30,9 +30,13 @@ func (h *handler) handleGetDesignDoc() error {
 		// we serve this content here so that CouchDB 1.2 has something to
 		// hash into the replication-id, to correspond to our filter.
 		filter := "ok"
-		if h.db.DatabaseContext.ChannelMapper != nil {
+		defaultCollection, err := h.db.GetDefaultDatabaseCollection()
+		if err != nil {
+			return err
+		}
+		if defaultCollection.ChannelMapper != nil {
 			hash := sha1.New()
-			_, _ = io.WriteString(hash, h.db.DatabaseContext.ChannelMapper.Function())
+			_, _ = io.WriteString(hash, defaultCollection.ChannelMapper.Function())
 			filter = fmt.Sprint(hash.Sum(nil))
 		}
 		result = db.Body{"filters": db.Body{"bychannel": filter}}

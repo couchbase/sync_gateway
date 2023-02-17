@@ -30,7 +30,7 @@ import (
 func WaitForIndexEmpty(store base.N1QLStore, useXattrs bool) error {
 
 	retryWorker := func() (shouldRetry bool, err error, value interface{}) {
-		empty, err := isIndexEmpty(store, useXattrs)
+		empty, err := isAllDocsIndexEmpty(store, useXattrs)
 		if err != nil {
 			return true, err, nil
 		}
@@ -47,7 +47,28 @@ func WaitForIndexEmpty(store base.N1QLStore, useXattrs bool) error {
 
 }
 
-func isIndexEmpty(store base.N1QLStore, useXattrs bool) (bool, error) {
+// allDocsIndexExists returns if the index is present, or an error from Couchbase Server.
+func allDocsIndexExists(store base.N1QLStore, useXattrs bool) error {
+	allIndexes, err := store.GetIndexes()
+	if err != nil {
+		return err
+	}
+	idx := sgIndexes[IndexAllDocs]
+	allDocsIndexName := (&idx).fullIndexName(useXattrs)
+	for _, indexName := range allIndexes {
+		if indexName == allDocsIndexName {
+			return nil
+		}
+	}
+	return fmt.Errorf("%s does not exist", allDocsIndexName)
+}
+
+// isAllDocsIndexEmpty returns if a given index is empty. If the
+func isAllDocsIndexEmpty(store base.N1QLStore, useXattrs bool) (bool, error) {
+	existsErr := allDocsIndexExists(store, useXattrs)
+	if existsErr != nil {
+		return false, existsErr
+	}
 	// Create the star channel query
 	statement := fmt.Sprintf("%s LIMIT 1", QueryStarChannel.statement) // append LIMIT 1 since we only care if there are any results or not
 	starChannelQueryStatement := replaceActiveOnlyFilter(statement, false)
@@ -326,7 +347,7 @@ var viewsAndGSIBucketInit base.TBPBucketInitFunc = func(ctx context.Context, b b
 			return fmt.Errorf("bucket %T was not a N1QL store", b)
 		}
 
-		if empty, err := isIndexEmpty(n1qlStore, base.TestUseXattrs()); empty && err == nil {
+		if empty, err := isAllDocsIndexEmpty(n1qlStore, base.TestUseXattrs()); empty && err == nil {
 			tbp.Logf(ctx, "indexes already created, and already empty - skipping")
 			return nil
 		} else {
@@ -499,22 +520,8 @@ func SetupTestDBWithOptions(t testing.TB, dbcOptions DatabaseContextOptions) (*D
 func SetupTestDBForDataStoreWithOptions(t testing.TB, tBucket *base.TestBucket, dbcOptions DatabaseContextOptions) (*Database, context.Context) {
 	ctx := base.TestCtx(t)
 	AddOptionsFromEnvironmentVariables(&dbcOptions)
-
-	if base.TestsUseNamedCollections() {
-		dataStore := tBucket.GetSingleDataStore()
-		dsn, ok := base.AsDataStoreName(dataStore)
-		if !ok {
-			t.Fatalf("dataStore (%T) did not implement DataStoreName", dataStore)
-		}
-		if dbcOptions.Scopes == nil {
-			dbcOptions.Scopes = map[string]ScopeOptions{
-				dsn.ScopeName(): {
-					Collections: map[string]CollectionOptions{
-						dsn.CollectionName(): {},
-					},
-				},
-			}
-		}
+	if dbcOptions.Scopes == nil {
+		dbcOptions.Scopes = GetScopesOptions(t, tBucket, 1)
 	}
 
 	dbCtx, err := NewDatabaseContext(ctx, "db", tBucket, false, dbcOptions)
@@ -525,8 +532,14 @@ func SetupTestDBForDataStoreWithOptions(t testing.TB, tBucket *base.TestBucket, 
 	return db, ctx
 }
 
-// getScopesOptions sets up a ScopesOptions from a TestBucket for use with non default collections to pass in DatabaseContextOptions.
-func getScopesOptions(t testing.TB, testBucket *base.TestBucket, numCollections int) ScopesOptions {
+// GetScopesOptions sets up a ScopesOptions from a TestBucket. This will set up default or non default collections depending on the test harness use of SG_TEST_USE_NAMED_COLLECTIONS and whether the backing store supports collections.
+func GetScopesOptions(t testing.TB, testBucket *base.TestBucket, numCollections int) ScopesOptions {
+	if !base.TestsUseNamedCollections() {
+		if numCollections != 1 {
+			t.Fatal("Setting numCollections on a test that can't use collections is invalid")
+		}
+		return GetScopesOptionsDefaultCollectionOnly(t)
+	}
 	// Get a datastore as provided by the test
 	stores := testBucket.GetNonDefaultDatastoreNames()
 	require.True(t, len(stores) >= numCollections, "Requested more collections %d than found on testBucket %d", numCollections, len(stores))
@@ -549,6 +562,17 @@ func getScopesOptions(t testing.TB, testBucket *base.TestBucket, numCollections 
 
 	}
 	return scopesConfig
+}
+
+// Return Scopes options without any configuration for only the default collection.
+func GetScopesOptionsDefaultCollectionOnly(_ testing.TB) ScopesOptions {
+	return map[string]ScopeOptions{
+		base.DefaultScope: ScopeOptions{
+			Collections: map[string]CollectionOptions{
+				base.DefaultCollection: {},
+			},
+		},
+	}
 }
 
 func GetSingleDatabaseCollectionWithUser(tb testing.TB, database *Database) *DatabaseCollectionWithUser {
