@@ -18,7 +18,6 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
-	"github.com/couchbase/sync_gateway/js"
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
@@ -314,79 +313,77 @@ func TestGetRoleIDs(t *testing.T) {
 		t.Skip("This test is Couchbase Server and UseViews=false only")
 	}
 
-	js.TestWithVMs(t, func(t *testing.T, host js.VM) {
-		testCases := []struct {
-			isServerless   bool
-			includeDeleted bool
-		}{
-			{
-				isServerless:   false,
-				includeDeleted: false,
-			},
-			{
-				isServerless:   false,
-				includeDeleted: true,
-			},
-			{
-				isServerless:   true,
-				includeDeleted: false,
-			},
-			{
-				isServerless:   true,
-				includeDeleted: true,
-			},
-		}
+	testCases := []struct {
+		isServerless   bool
+		includeDeleted bool
+	}{
+		{
+			isServerless:   false,
+			includeDeleted: false,
+		},
+		{
+			isServerless:   false,
+			includeDeleted: true,
+		},
+		{
+			isServerless:   true,
+			includeDeleted: false,
+		},
+		{
+			isServerless:   true,
+			includeDeleted: true,
+		},
+	}
 
-		for _, testCase := range testCases {
-			t.Run(fmt.Sprintf("TestGetRoleIDs {Serverless=%t; includeDelete=%t}", testCase.isServerless, testCase.includeDeleted), func(t *testing.T) {
-				dbContextConfig := getDatabaseContextOptions(testCase.isServerless)
-				database, ctx := db.SetupTestDBWithOptions(t, dbContextConfig)
-				defer database.Close(ctx)
+	for _, testCase := range testCases {
+		t.Run(fmt.Sprintf("TestGetRoleIDs {Serverless=%t; includeDelete=%t}", testCase.isServerless, testCase.includeDeleted), func(t *testing.T) {
+			dbContextConfig := getDatabaseContextOptions(testCase.isServerless)
+			database, ctx := db.SetupTestDBWithOptions(t, dbContextConfig)
+			defer database.Close(ctx)
 
-				n1QLStores, reset, err := setupN1QLStore(database.Bucket, testCase.isServerless)
-				require.NoError(t, err, "Unable to get n1QLStore for testBucket")
-				defer func(n1QLStore []base.N1QLStore, isServerless bool) {
-					err := reset(n1QLStores, isServerless)
-					require.NoError(t, err, "Reset fn shouldn't return error")
-				}(n1QLStores, testCase.isServerless)
+			n1QLStores, reset, err := setupN1QLStore(database.Bucket, testCase.isServerless)
+			require.NoError(t, err, "Unable to get n1QLStore for testBucket")
+			defer func(n1QLStore []base.N1QLStore, isServerless bool) {
+				err := reset(n1QLStores, isServerless)
+				require.NoError(t, err, "Reset fn shouldn't return error")
+			}(n1QLStores, testCase.isServerless)
 
-				base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache, base.KeyChanges)
+			base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache, base.KeyChanges)
 
 			database.Options.QueryPaginationLimit = 100
 			authenticator := database.Authenticator(ctx)
 
-				rolename1 := uuid.NewString()
-				rolename2 := uuid.NewString()
+			rolename1 := uuid.NewString()
+			rolename2 := uuid.NewString()
 
-				role1, err := authenticator.NewRole(rolename1, nil)
-				require.NoError(t, err)
-				require.NoError(t, authenticator.Save(role1))
+			role1, err := authenticator.NewRole(rolename1, nil)
+			require.NoError(t, err)
+			require.NoError(t, authenticator.Save(role1))
 
-				role2, err := authenticator.NewRole(rolename2, nil)
-				require.NoError(t, err)
-				require.NoError(t, authenticator.Save(role2))
+			role2, err := authenticator.NewRole(rolename2, nil)
+			require.NoError(t, err)
+			require.NoError(t, authenticator.Save(role2))
 
-				err = database.DeleteRole(ctx, role2.Name(), false)
-				require.NoError(t, err)
-				roleGet, err := authenticator.GetRoleIncDeleted(role2.Name())
-				require.NoError(t, err)
-				require.True(t, roleGet.IsDeleted())
+			err = database.DeleteRole(ctx, role2.Name(), false)
+			require.NoError(t, err)
+			roleGet, err := authenticator.GetRoleIncDeleted(role2.Name())
+			require.NoError(t, err)
+			require.True(t, roleGet.IsDeleted())
 
-				t.Log("role1:", role1.Name())
-				t.Log("role2:", role2.Name())
+			t.Log("role1:", role1.Name())
+			t.Log("role2:", role2.Name())
 
-				// require roles
-				roles, err := database.GetRoleIDs(ctx, database.UseViews(), testCase.includeDeleted)
-				expectedRoles := []string{role1.Name()}
-				if testCase.includeDeleted {
-					expectedRoles = append(expectedRoles, role2.Name())
-				}
+			// require roles
+			roles, err := database.GetRoleIDs(ctx, database.UseViews(), testCase.includeDeleted)
+			expectedRoles := []string{role1.Name()}
+			if testCase.includeDeleted {
+				expectedRoles = append(expectedRoles, role2.Name())
+			}
 
-				require.NoError(t, err)
-				require.ElementsMatch(t, expectedRoles, roles)
-			})
-		}
-	})
+			require.NoError(t, err)
+			require.ElementsMatch(t, expectedRoles, roles)
+		})
+	}
 }
 
 func getDatabaseContextOptions(isServerless bool) db.DatabaseContextOptions {
