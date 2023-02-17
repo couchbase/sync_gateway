@@ -299,7 +299,7 @@ func (c *Checkpointer) _updateCheckpointLists() (safeSeq *SequenceID) {
 		}
 	}
 
-	c.stats.ExpectedSequenceLenPostCleanup.Set(int64(len(c.processedSeqs)))
+	c.stats.ProcessedSequenceLenPostCleanup.Set(int64(len(c.processedSeqs)))
 	c.stats.ExpectedSequenceLenPostCleanup.Set(int64(len(c.expectedSeqs)))
 	return safeSeq
 }

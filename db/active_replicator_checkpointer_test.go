@@ -15,8 +15,6 @@ import (
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/stretchr/testify/require"
-
 	"github.com/stretchr/testify/assert"
 )
 
@@ -252,15 +250,15 @@ func TestCheckpointerSafeSeq(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, nil, nil)
-			replicationStats, err := stats.DBReplicatorStats(t.Name())
-			require.NoError(t, err)
-			replicatorConfig := &ActiveReplicatorConfig{}
-			replicatorConfig.ReplicationStatsMap = replicationStats
-			tt.c.stats.ProcessedSequenceLen = replicatorConfig.ReplicationStatsMap.ProcessedSequenceLen
-			tt.c.stats.ProcessedSequenceLenPostCleanup = replicatorConfig.ReplicationStatsMap.ProcessedSequenceLenPostCleanup
-			tt.c.stats.ExpectedSequenceLen = replicatorConfig.ReplicationStatsMap.ExpectedSequenceLen
-			tt.c.stats.ExpectedSequenceLenPostCleanup = replicatorConfig.ReplicationStatsMap.ExpectedSequenceLenPostCleanup
+
+			tt.c.stats = CheckpointerStats{
+				ExpectedSequenceLen:             &base.SgwIntStat{},
+				ExpectedSequenceLenPostCleanup:  &base.SgwIntStat{},
+				ProcessedSequenceLen:            &base.SgwIntStat{},
+				ProcessedSequenceLenPostCleanup: &base.SgwIntStat{},
+			}
+			originalExpectedSeqsLen := len(tt.c.expectedSeqs)
+			originalProcessedSeqsLen := len(tt.c.processedSeqs)
 			t.Run("_calculateSafeExpectedSeqsIdx", func(t *testing.T) {
 				actualIdx := tt.c._calculateSafeExpectedSeqsIdx()
 				assert.Equal(t, tt.expectedExpectedSeqsIdx, actualIdx)
@@ -275,6 +273,10 @@ func TestCheckpointerSafeSeq(t *testing.T) {
 				}
 				assert.Equal(t, tt.expectedExpectedSeqs, tt.c.expectedSeqs)
 				assert.Equal(t, tt.expectedProcessedSeqs, tt.c.processedSeqs)
+				assert.Equal(t, int64(originalExpectedSeqsLen), tt.c.stats.ExpectedSequenceLen.Value())
+				assert.Equal(t, int64(len(tt.expectedExpectedSeqs)), tt.c.stats.ExpectedSequenceLenPostCleanup.Value())
+				assert.Equal(t, int64(originalProcessedSeqsLen), tt.c.stats.ProcessedSequenceLen.Value())
+				assert.Equal(t, int64(len(tt.expectedProcessedSeqs)), tt.c.stats.ProcessedSequenceLenPostCleanup.Value())
 
 				// _updateCheckpointLists should be idempotent
 				// we'd expect no safe seq, and no further changes to either list, as long as c.processedSeqs hasn't been added to
@@ -282,6 +284,8 @@ func TestCheckpointerSafeSeq(t *testing.T) {
 				assert.Nil(t, actualSafeSeq2)
 				assert.Equal(t, tt.expectedExpectedSeqs, tt.c.expectedSeqs)
 				assert.Equal(t, tt.expectedProcessedSeqs, tt.c.processedSeqs)
+				assert.Equal(t, tt.c.stats.ExpectedSequenceLenPostCleanup.Value(), tt.c.stats.ExpectedSequenceLen.Value())
+				assert.Equal(t, tt.c.stats.ProcessedSequenceLenPostCleanup.Value(), tt.c.stats.ProcessedSequenceLen.Value())
 			})
 		})
 	}
