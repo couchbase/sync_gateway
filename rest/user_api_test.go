@@ -1376,6 +1376,9 @@ func TestGetUserCollectionAccess(t *testing.T) {
 	collectionPayload := fmt.Sprintf(`,"%s": {
 					"admin_channels":["foo", "bar1"]
 				}`, collection2Name)
+	rdOnlycollectionPayload := fmt.Sprintf(`,"%s": {
+					"all_channels":["foo", "bar1"]
+				}`, collection2Name)
 	// Create a user with collection metadata
 	userRolePayload := `{
 		%s
@@ -1412,43 +1415,42 @@ func TestGetUserCollectionAccess(t *testing.T) {
 	assert.Nil(t, collectionAccess.JWTChannels_)
 	assert.Nil(t, collectionAccess.JWTLastUpdated)
 
+	// Attempt to write read-only properties for PUT /_user and /_role
+	putResponse = rt.SendAdminRequest("PUT", "/db/_user/bob2", fmt.Sprintf(userRolePayload, `"email":"bob@couchbase.com","password":"letmein",`, scope1Name, collection2Name, rdOnlycollectionPayload))
+	RequireStatus(t, putResponse, 400)
+	putResponse = rt.SendAdminRequest("PUT", "/db/_role/role12", fmt.Sprintf(userRolePayload, ``, scope1Name, collection2Name, rdOnlycollectionPayload))
+	RequireStatus(t, putResponse, 400)
+
+	//  1. Hide entries for collections that are no longer part of the database
+	//  GET _user
+	// TODO: Additional test cases still required:
+	//  2. Delete scope
+	//  1. Delete collection admin channels
+	//  0. Upsert of single collection (preserve existing)
+	//  UPDATE _user
+	//  2. Attempt to write collections that aren't defined for the database (error)
+	//  INSERT _role
+	//  2. Attempt to write collections that aren't defined for the database (error)
+
 	scopesConfig = GetCollectionsConfig(t, testBucket, 1)
 	scopesConfigString, err := json.Marshal(scopesConfig)
 	require.NoError(t, err)
-	log.Printf("SCOPES:%s", scopesConfigString)
 
 	resp := rt.SendAdminRequest("PUT", "/db/_config", fmt.Sprintf(
 		`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "scopes":%s}`,
 		testBucket.GetName(), base.TestUseXattrs(), string(scopesConfigString)))
 	RequireStatus(t, resp, http.StatusCreated)
 
-	// TODO: Additional test cases still required:
-	//  GET _user
-	//  1. Hide entries for collections that are no longer part of the database
 	putResponse = rt.SendAdminRequest("PUT", "/{{.keyspace}}/DynGrantDoc1", `{"accessUser":"bob", "accessChannel":"ABC"}`)
 	RequireStatus(t, putResponse, 201)
+
+	//  Hide entries for collections that are no longer part of the database for GET /_user and /_role
 	userResponse := rt.SendAdminRequest("GET", "/db/_user/bob", "")
 	RequireStatus(t, userResponse, 200)
-	log.Printf("response:%s", userResponse.Body.Bytes())
 	assert.NotContains(t, userResponse.Body.Bytes(), collection2Name)
-	// see if a dynamic grant fixes this
-	//  GET _role
-	//  1. Standard get
-	//  2. Hide entries for collections that are no longer part of the database
+
 	userResponse = rt.SendAdminRequest("GET", "/db/_role/role1", "")
 	RequireStatus(t, userResponse, 200)
-	log.Printf("response:%s", userResponse.Body.Bytes())
 	assert.NotContains(t, userResponse.Body.Bytes(), collection2Name)
 
-	//  INSERT _user
-	//  1. Attempt to write read-only properties (error)
-	//  2. Attempt to write collections that aren't defined for the database (error)
-
-	//  INSERT _role
-	//  1. Attempt to write read-only properties (error)
-	//  2. Attempt to write collections that aren't defined for the database (error)
-	//  UPDATE _user
-	//  0. Upsert of single collection (preserve existing)
-	//  1. Delete collection admin channels
-	//  2. Delete scope
 }
