@@ -647,6 +647,11 @@ type DbReplicatorStats struct {
 
 	// The number of times a handler panicked and didn't know how to recover from it.
 	NumHandlersPanicked *SgwIntStat `json:"-"`
+	// Internal stats for the lengths of expectedSeqs/processedSeqs lists in the ISGR checkpointer.
+	ExpectedSequenceLen             *SgwIntStat `json:"expected_seq_len,omitempty"`
+	ExpectedSequenceLenPostCleanup  *SgwIntStat `json:"expected_seq_len_post_cleanup,omitempty"`
+	ProcessedSequenceLen            *SgwIntStat `json:"processed_seq_len,omitempty"`
+	ProcessedSequenceLenPostCleanup *SgwIntStat `json:"processed_seq_len_post_cleanup,omitempty"`
 }
 
 type SecurityStats struct {
@@ -1573,6 +1578,10 @@ func (d *DbStats) unregisterReplicationStats(replicationID string) {
 	prometheus.Unregister(d.DbReplicatorStats[replicationID].NumConnectAttemptsPull)
 	prometheus.Unregister(d.DbReplicatorStats[replicationID].NumReconnectsAbortedPull)
 	prometheus.Unregister(d.DbReplicatorStats[replicationID].NumHandlersPanicked)
+	prometheus.Unregister(d.DbReplicatorStats[replicationID].ExpectedSequenceLen)
+	prometheus.Unregister(d.DbReplicatorStats[replicationID].ExpectedSequenceLenPostCleanup)
+	prometheus.Unregister(d.DbReplicatorStats[replicationID].ProcessedSequenceLen)
+	prometheus.Unregister(d.DbReplicatorStats[replicationID].ProcessedSequenceLenPostCleanup)
 }
 
 func (d *DbStats) unregisterCollectionStats(scopeAndCollectionName string) {
@@ -1781,6 +1790,22 @@ func (d *DbStats) DBReplicatorStats(replicationID string) (*DbReplicatorStats, e
 		if err != nil {
 			return nil, err
 		}
+		resUtil.ExpectedSequenceLen, err = NewIntStat(SubsystemReplication, "expected_sequence_len", labelKeys, labelVals, prometheus.CounterValue, 0)
+		if err != nil {
+			return nil, err
+		}
+		resUtil.ExpectedSequenceLenPostCleanup, err = NewIntStat(SubsystemReplication, "expected_sequence_len_post_cleanup", labelKeys, labelVals, prometheus.CounterValue, 0)
+		if err != nil {
+			return nil, err
+		}
+		resUtil.ProcessedSequenceLen, err = NewIntStat(SubsystemReplication, "processed_sequence_len", labelKeys, labelVals, prometheus.CounterValue, 0)
+		if err != nil {
+			return nil, err
+		}
+		resUtil.ProcessedSequenceLenPostCleanup, err = NewIntStat(SubsystemReplication, "processed_sequence_len_post_cleanup", labelKeys, labelVals, prometheus.CounterValue, 0)
+		if err != nil {
+			return nil, err
+		}
 
 		d.DbReplicatorStats[replicationID] = resUtil
 
@@ -1810,6 +1835,11 @@ func (dbr *DbReplicatorStats) Reset() {
 	dbr.ConflictResolvedLocalCount.Set(0)
 	dbr.ConflictResolvedRemoteCount.Set(0)
 	dbr.ConflictResolvedMergedCount.Set(0)
+	dbr.ExpectedSequenceLen.Set(0)
+	dbr.ExpectedSequenceLenPostCleanup.Set(0)
+	dbr.ProcessedSequenceLen.Set(0)
+	dbr.ProcessedSequenceLenPostCleanup.Set(0)
+
 }
 
 func (d *DbStats) Security() *SecurityStats {
