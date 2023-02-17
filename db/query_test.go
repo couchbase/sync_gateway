@@ -323,7 +323,7 @@ func TestRoleAccessQuery(t *testing.T) {
 
 	collection.ChannelMapper = channels.NewChannelMapper(
 		`function(doc, oldDoc) {
-	ole(doc.accessUser, "role:" + doc.accessChannel)
+	role(doc.accessUser, "role:" + doc.accessChannel)
 }`, db.Options.JavascriptTimeout)
 	// Add docs with access grants assignment
 	for i := 1; i <= 5; i++ {
