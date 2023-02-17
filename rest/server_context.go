@@ -520,11 +520,10 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 				}
 			}
 		}
-	} else {
-		// no scopes configured - init the default data store
-		if err := initDataStore(bucket.DefaultDataStore()); err != nil {
-			return nil, err
-		}
+	}
+	// no scopes configured - init the default data store
+	if err := initDataStore(bucket.DefaultDataStore()); err != nil {
+		return nil, err
 	}
 
 	// Process unsupported config options or store runtime defaults if not set
