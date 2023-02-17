@@ -1785,13 +1785,13 @@ func WaitForNoError(callback func() error) error {
 	return err
 }
 
-// MapKVHash returns a deterministic hash for the keys and values of a map
+// HashStringKVMap returns a deterministic hash for the keys and values of a map.
 // Performance warning: ~3 map iterations required to get a hash from a sorted set of kv pairs.
-func MapKVHash[M ~map[K]V, K, V comparable](m M) []byte {
+func HashStringKVMap(m map[string]string) []byte {
 	mapStrings := make([]struct{ k, v string }, 0, len(m))
 
 	for k, v := range m {
-		mapStrings = append(mapStrings, struct{ k, v string }{fmt.Sprintf("%v", k), fmt.Sprintf("%v", v)})
+		mapStrings = append(mapStrings, struct{ k, v string }{k, v})
 	}
 
 	// sort by map key - don't worry about stable sort as map keys must be unique anyway

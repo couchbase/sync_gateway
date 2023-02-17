@@ -1665,7 +1665,7 @@ func TestReplaceLast(t *testing.T) {
 	}
 }
 
-func TestMapKVHashString(t *testing.T) {
+func TestHashStringKVMap(t *testing.T) {
 	tests := []struct {
 		name  string
 		input map[string]string
@@ -1705,48 +1705,17 @@ func TestMapKVHashString(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			hash := MapKVHash(tt.input)
+			hash := HashStringKVMap(tt.input)
 			hashString := fmt.Sprintf("%x", hash)
 			assert.Equalf(t, tt.want, hashString, "MapKVHash(%v) -> %s", tt.input, hashString)
 		})
 	}
 }
 
-func TestMapKVHashInt(t *testing.T) {
-	tests := []struct {
-		name  string
-		input map[int]string
-		want  string
-	}{
-		{
-			name:  "single-element map",
-			input: map[int]string{3: "bar"},
-			want:  "ac829bb16903bef21be0f516010a469b72c08733",
-		},
-		{
-			name:  "in order map",
-			input: map[int]string{4: "buzz", 7: "bar"},
-			want:  "113604ae70d118d8c17d784ebe9b9bf5982ad630", // same hash as below (same KVs)
-		},
-		{
-			name:  "out of order map",
-			input: map[int]string{7: "bar", 4: "buzz"},
-			want:  "113604ae70d118d8c17d784ebe9b9bf5982ad630", // same hash as above (same KVs)
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			hash := MapKVHash(tt.input)
-			hashString := fmt.Sprintf("%x", hash)
-			assert.Equalf(t, tt.want, hashString, "MapKVHash(%v) -> %s", tt.input, hashString)
-		})
-	}
-}
-
-func BenchmarkMapKVHashString(b *testing.B) {
+func BenchmarkHashStringKVMap(b *testing.B) {
 	b.ReportAllocs()
 	input := map[string]string{"foo": "buzz", "zoo": "bar"}
 	for i := 0; i < b.N; i++ {
-		_ = MapKVHash(input)
+		_ = HashStringKVMap(input)
 	}
 }
