@@ -65,11 +65,11 @@ type statusFunc func(lastSeq string) *ReplicationStatus
 
 type CheckpointerStats struct {
 	ExpectedSequenceCount           int64
-	ExpectedSequenceLen             int
-	ExpectedSequenceLenPostCleanup  int
+	ExpectedSequenceLen             *base.SgwIntStat
+	ExpectedSequenceLenPostCleanup  *base.SgwIntStat
 	ProcessedSequenceCount          int64
-	ProcessedSequenceLen            int
-	ProcessedSequenceLenPostCleanup int
+	ProcessedSequenceLen            *base.SgwIntStat
+	ProcessedSequenceLenPostCleanup *base.SgwIntStat
 	AlreadyKnownSequenceCount       int64
 	SetCheckpointCount              int64
 	GetCheckpointHitCount           int64
@@ -78,16 +78,21 @@ type CheckpointerStats struct {
 
 func NewCheckpointer(ctx context.Context, clientID string, configHash string, blipSender *blip.Sender, replicatorConfig *ActiveReplicatorConfig, statusCallback statusFunc) *Checkpointer {
 	return &Checkpointer{
-		clientID:                       clientID,
-		configHash:                     configHash,
-		blipSender:                     blipSender,
-		activeDB:                       replicatorConfig.ActiveDB,
-		expectedSeqs:                   make([]SequenceID, 0),
-		processedSeqs:                  make(map[SequenceID]struct{}),
-		idAndRevLookup:                 make(map[IDAndRev]SequenceID),
-		checkpointInterval:             replicatorConfig.CheckpointInterval,
-		ctx:                            ctx,
-		stats:                          CheckpointerStats{},
+		clientID:           clientID,
+		configHash:         configHash,
+		blipSender:         blipSender,
+		activeDB:           replicatorConfig.ActiveDB,
+		expectedSeqs:       make([]SequenceID, 0),
+		processedSeqs:      make(map[SequenceID]struct{}),
+		idAndRevLookup:     make(map[IDAndRev]SequenceID),
+		checkpointInterval: replicatorConfig.CheckpointInterval,
+		ctx:                ctx,
+		stats: CheckpointerStats{
+			ProcessedSequenceLen:            replicatorConfig.ReplicationStatsMap.ProcessedSequenceLen,
+			ProcessedSequenceLenPostCleanup: replicatorConfig.ReplicationStatsMap.ProcessedSequenceLenPostCleanup,
+			ExpectedSequenceLen:             replicatorConfig.ReplicationStatsMap.ExpectedSequenceLen,
+			ExpectedSequenceLenPostCleanup:  replicatorConfig.ReplicationStatsMap.ExpectedSequenceLenPostCleanup,
+		},
 		statusCallback:                 statusCallback,
 		expectedSeqCompactionThreshold: defaultExpectedSeqCompactionThreshold,
 	}
@@ -258,9 +263,8 @@ func (c *Checkpointer) _updateCheckpointLists() (safeSeq *SequenceID) {
 	base.TracefCtx(c.ctx, base.KeyReplicate, "checkpointer: _updateCheckpointLists(expectedSeqs: %v, processedSeqs: %v)", c.expectedSeqs, c.processedSeqs)
 	base.TracefCtx(c.ctx, base.KeyReplicate, "Inside update checkpoint lists")
 
-	c.stats.ExpectedSequenceLen = len(c.expectedSeqs)
-	c.stats.ProcessedSequenceLen = len(c.processedSeqs)
-
+	c.stats.ProcessedSequenceLen.Set(int64(len(c.processedSeqs)))
+	c.stats.ExpectedSequenceLen.Set(int64(len(c.expectedSeqs)))
 	maxI := c._calculateSafeExpectedSeqsIdx()
 
 	if maxI > -1 {
@@ -295,9 +299,8 @@ func (c *Checkpointer) _updateCheckpointLists() (safeSeq *SequenceID) {
 		}
 	}
 
-	c.stats.ExpectedSequenceLenPostCleanup = len(c.expectedSeqs)
-	c.stats.ProcessedSequenceLenPostCleanup = len(c.processedSeqs)
-
+	c.stats.ProcessedSequenceLenPostCleanup.Set(int64(len(c.processedSeqs)))
+	c.stats.ExpectedSequenceLenPostCleanup.Set(int64(len(c.expectedSeqs)))
 	return safeSeq
 }
 

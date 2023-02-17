@@ -1959,10 +1959,10 @@ func TestActiveReplicatorPullSkippedSequence(t *testing.T) {
 	assert.Equal(t, int64(0), ar.Pull.Checkpointer.Stats().AlreadyKnownSequenceCount)
 	assert.Equal(t, int64(1), ar.Pull.Checkpointer.Stats().ProcessedSequenceCount)
 
-	assert.Equal(t, 1, ar.Pull.Checkpointer.Stats().ExpectedSequenceLen)
-	assert.Equal(t, 1, ar.Pull.Checkpointer.Stats().ProcessedSequenceLen)
-	assert.Equal(t, 0, ar.Pull.Checkpointer.Stats().ExpectedSequenceLenPostCleanup)
-	assert.Equal(t, 0, ar.Pull.Checkpointer.Stats().ProcessedSequenceLenPostCleanup)
+	assert.Equal(t, int64(1), dbstats.ExpectedSequenceLen.Value())
+	assert.Equal(t, int64(1), dbstats.ProcessedSequenceLen.Value())
+	assert.Equal(t, int64(0), dbstats.ExpectedSequenceLenPostCleanup.Value())
+	assert.Equal(t, int64(0), dbstats.ProcessedSequenceLenPostCleanup.Value())
 
 	docID2 := docIDPrefix + "2"
 	resp = rt2.SendAdminRequest(http.MethodPut, "/db/"+docID2, `{"source":"rt2","channels":["`+username+`"]}`)
@@ -1990,10 +1990,10 @@ func TestActiveReplicatorPullSkippedSequence(t *testing.T) {
 	assert.Equal(t, int64(0), ar.Pull.Checkpointer.Stats().AlreadyKnownSequenceCount)
 	assert.Equal(t, int64(2), ar.Pull.Checkpointer.Stats().ProcessedSequenceCount)
 
-	assert.Equal(t, 2, ar.Pull.Checkpointer.Stats().ExpectedSequenceLen)
-	assert.Equal(t, 2, ar.Pull.Checkpointer.Stats().ProcessedSequenceLen)
-	assert.Equal(t, 0, ar.Pull.Checkpointer.Stats().ExpectedSequenceLenPostCleanup)
-	assert.Equal(t, 0, ar.Pull.Checkpointer.Stats().ProcessedSequenceLenPostCleanup)
+	assert.Equal(t, int64(2), dbstats.ExpectedSequenceLen.Value())
+	assert.Equal(t, int64(2), dbstats.ProcessedSequenceLen.Value())
+	assert.Equal(t, int64(0), dbstats.ExpectedSequenceLenPostCleanup.Value())
+	assert.Equal(t, int64(0), dbstats.ProcessedSequenceLenPostCleanup.Value())
 
 	docID4 := docIDPrefix + "4"
 	resp = rt2.SendAdminRequest(http.MethodPut, "/db/"+docID4, `{"source":"rt2","channels":["`+username+`"]}`)
@@ -2011,10 +2011,10 @@ func TestActiveReplicatorPullSkippedSequence(t *testing.T) {
 	assert.Equal(t, int64(0), ar.Pull.Checkpointer.Stats().AlreadyKnownSequenceCount)
 	assert.Equal(t, int64(1), ar.Pull.Checkpointer.Stats().ProcessedSequenceCount)
 
-	assert.Equal(t, 1, ar.Pull.Checkpointer.Stats().ExpectedSequenceLen)
-	assert.Equal(t, 1, ar.Pull.Checkpointer.Stats().ProcessedSequenceLen)
-	assert.Equal(t, 0, ar.Pull.Checkpointer.Stats().ExpectedSequenceLenPostCleanup)
-	assert.Equal(t, 0, ar.Pull.Checkpointer.Stats().ProcessedSequenceLenPostCleanup)
+	assert.Equal(t, int64(1), dbstats.ExpectedSequenceLen.Value())
+	assert.Equal(t, int64(1), dbstats.ExpectedSequenceLen.Value())
+	assert.Equal(t, int64(0), dbstats.ExpectedSequenceLenPostCleanup.Value())
+	assert.Equal(t, int64(0), dbstats.ProcessedSequenceLenPostCleanup.Value())
 }
 
 // TestActiveReplicatorPullAttachments:
