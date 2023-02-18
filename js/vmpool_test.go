@@ -197,6 +197,11 @@ func testConcurrently(t *testing.T, ctx context.Context, numTasks int, numThread
 	log.Printf("---- %d sequential took %v, concurrent (%d threads) took %v ... speedup is %f",
 		numTasks, sequentialDuration, numThreads, concurrentDuration,
 		float64(sequentialDuration)/float64(concurrentDuration))
+	if numThreads < 4 {
+		// In CI there tend to be few threads available, and the machine is usually heavily
+		// loaded, which makes the timing unpredictable.
+		return true
+	}
 	return assert.LessOrEqual(t, float64(concurrentDuration), 1.1*float64(sequentialDuration))
 }
 
