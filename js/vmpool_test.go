@@ -47,19 +47,17 @@ func TestValidateJavascriptFunction(t *testing.T) {
 //////// CONCURRENCY TESTS
 
 const kVMPoolTestScript = `function(n) {return n * n;}`
-const kVMPoolTestTimeout = 30 * time.Second
+const kVMPoolTestTimeout = 60 * time.Second
 const kVMPoolTestNumTasks = 65536
 
 func TestPoolsSequentially(t *testing.T) {
-	log.Printf("FYI, GOMAXPROCS = %d", runtime.GOMAXPROCS(0))
-
 	ctx := base.TestCtx(t)
 	if !assertPriorTimeoutAtLeast(t, ctx, kVMPoolTestTimeout) {
 		return
 	}
 	TestWithVMPools(t, 4, func(t *testing.T, pool *VMPool) {
 		service := NewService(pool, "testy", kVMPoolTestScript)
-		runSequentially(ctx, 10, func(ctx context.Context) bool {
+		runSequentially(ctx, kVMPoolTestNumTasks, func(ctx context.Context) bool {
 			result, err := service.Run(ctx, 13)
 			return assert.NoError(t, err) && assert.EqualValues(t, result, 169)
 		})
@@ -69,12 +67,15 @@ func TestPoolsSequentially(t *testing.T) {
 func TestPoolsConcurrently(t *testing.T) {
 	maxProcs := runtime.GOMAXPROCS(0)
 	log.Printf("FYI, GOMAXPROCS = %d", maxProcs)
-	assert.GreaterOrEqual(t, maxProcs, 2, "Not enough OS threads available")
+	if !assert.GreaterOrEqual(t, maxProcs, 2, "Not enough OS threads available") {
+		return
+	}
 
 	ctx := base.TestCtx(t)
 	if !assertPriorTimeoutAtLeast(t, ctx, kVMPoolTestTimeout) {
 		return
 	}
+
 	TestWithVMPools(t, maxProcs, func(t *testing.T, pool *VMPool) {
 		numTasks := kVMPoolTestNumTasks
 		service := NewService(pool, "testy", kVMPoolTestScript)
@@ -158,7 +159,9 @@ func runSequentially(ctx context.Context, numTasks int, testFunc func(context.Co
 	defer cancel()
 	startTime := time.Now()
 	for i := 0; i < numTasks; i++ {
-		testFunc(ctx)
+		if !testFunc(ctx) {
+			break
+		}
 	}
 	return time.Since(startTime)
 }
@@ -173,7 +176,9 @@ func runConcurrently(ctx context.Context, numTasks int, numThreads int, testFunc
 			myCtx, cancel := context.WithTimeout(ctx, kVMPoolTestTimeout)
 			defer cancel()
 			for j := 0; j < numTasks/numThreads; j++ {
-				testFunc(myCtx)
+				if !testFunc(myCtx) {
+					break
+				}
 			}
 		}()
 	}

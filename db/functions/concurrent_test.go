@@ -22,10 +22,11 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-const kConcurrentTestTimeout = 30 * time.Second
+const kConcurrentTestNumTasks = 100000
+const kConcurrentTestTimeout = 60 * time.Second
 
 func TestGraphQLConcurrently(t *testing.T) {
-	const numTasks = 100000
+	const kConcurrentTestNumTasks = 100000
 	maxProcs := runtime.GOMAXPROCS(0)
 	log.Printf("FYI, GOMAXPROCS = %d", maxProcs)
 
@@ -52,10 +53,10 @@ func TestGraphQLConcurrently(t *testing.T) {
 		},
 	}
 
-	db, ctx := setupTestDBWithFunctions(t, fnConfig, gqConfig)
+	db, ctx := setupTestDBWithFunctionsAndLogging(t, fnConfig, gqConfig, false)
 	defer db.Close(ctx)
 
-	runConcurrently(ctx, numTasks, maxProcs, func(ctx context.Context) bool {
+	runConcurrently(ctx, kConcurrentTestNumTasks, maxProcs, func(ctx context.Context) bool {
 		_, err := db.UserGraphQLQuery(`{"query":"query{ square(n:13) }"}`, "", nil, false, ctx)
 		return assert.Nil(t, err)
 	})
@@ -81,7 +82,9 @@ func runConcurrently(ctx context.Context, numTasks int, numThreads int, testFunc
 			myCtx, cancel := context.WithTimeout(ctx, kConcurrentTestTimeout)
 			defer cancel()
 			for j := 0; j < numTasks/numThreads; j++ {
-				testFunc(myCtx)
+				if !testFunc(myCtx) {
+					break
+				}
 			}
 		}()
 	}

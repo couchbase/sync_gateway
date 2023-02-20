@@ -568,6 +568,10 @@ func assertHTTPError(t *testing.T, err error, status int) bool {
 //////// SETUP FUNCTIONS
 
 func setupTestDBWithFunctions(t *testing.T, fnConfig *FunctionsConfig, gqConfig *GraphQLConfig) (*db.Database, context.Context) {
+	return setupTestDBWithFunctionsAndLogging(t, fnConfig, gqConfig, true)
+}
+
+func setupTestDBWithFunctionsAndLogging(t *testing.T, fnConfig *FunctionsConfig, gqConfig *GraphQLConfig, jsDebugLogging bool) (*db.Database, context.Context) {
 	cacheOptions := db.DefaultCacheOptions()
 	options := db.DatabaseContextOptions{
 		CacheOptions:     &cacheOptions,
@@ -575,16 +579,16 @@ func setupTestDBWithFunctions(t *testing.T, fnConfig *FunctionsConfig, gqConfig 
 		FunctionsConfig:  &Config{fnConfig, gqConfig},
 		JavaScriptEngine: base.StringPtr("V8"), // Not compatible with Otto, it's too old
 	}
-	return setupTestDBWithOptions(t, options)
+	return setupTestDBWithOptions(t, options, jsDebugLogging)
 }
 
-func setupTestDBWithOptions(t testing.TB, dbcOptions db.DatabaseContextOptions) (*db.Database, context.Context) {
+func setupTestDBWithOptions(t testing.TB, dbcOptions db.DatabaseContextOptions, jsDebugLogging bool) (*db.Database, context.Context) {
 
 	tBucket := base.GetTestBucket(t)
-	return setupTestDBForBucketWithOptions(t, tBucket, dbcOptions)
+	return setupTestDBForBucketWithOptions(t, tBucket, dbcOptions, jsDebugLogging)
 }
 
-func setupTestDBForBucketWithOptions(t testing.TB, tBucket base.Bucket, dbcOptions db.DatabaseContextOptions) (*db.Database, context.Context) {
+func setupTestDBForBucketWithOptions(t testing.TB, tBucket base.Bucket, dbcOptions db.DatabaseContextOptions, jsDebugLogging bool) (*db.Database, context.Context) {
 	ctx := base.TestCtx(t)
 	AddOptionsFromEnvironmentVariables(&dbcOptions)
 	dbCtx, err := db.NewDatabaseContext(ctx, "db", tBucket, false, dbcOptions)
@@ -592,7 +596,9 @@ func setupTestDBForBucketWithOptions(t testing.TB, tBucket base.Bucket, dbcOptio
 	db, err := db.CreateDatabase(dbCtx)
 	assert.NoError(t, err, "Couldn't create database 'db'")
 	ctx = db.AddDatabaseLogContext(ctx)
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyJavascript) // Enable debug JS logging!
+	if jsDebugLogging {
+		base.SetUpTestLogging(t, base.LevelDebug, base.KeyJavascript) // Enable debug JS logging!
+	}
 	return db, ctx
 }
 
