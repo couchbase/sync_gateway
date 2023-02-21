@@ -94,7 +94,7 @@ func (r *GatewayRegistry) getCollectionsByDatabase(ctx context.Context) map[base
 		for dbName, database := range configGroup.Databases {
 			for scopeName, scope := range database.Scopes {
 				for _, collectionName := range scope.Collections {
-					scName := base.ScopeAndCollectionName{scopeName, collectionName}
+					scName := base.ScopeAndCollectionName{Scope: scopeName, Collection: collectionName}
 					// If duplicate found with different db name, log info
 					if existingName, ok := collectionsByDatabase[scName]; ok && existingName != dbName {
 						base.InfofCtx(ctx, base.KeyAll, "Collection %s associated with multiple databases in registry: [%s, %s]", scName, existingName, dbName)
@@ -230,7 +230,7 @@ func (r *GatewayRegistry) getRegistryDatabase(configGroupID, dbName string) (*Re
 // getDbForCollection returns the database associated with the specified scope and collection
 func (r *GatewayRegistry) getDbForCollection(ctx context.Context, scopeName string, collectionName string) (string, bool) {
 	collectionsByDatabase := r.getCollectionsByDatabase(ctx)
-	dbName, ok := collectionsByDatabase[base.ScopeAndCollectionName{scopeName, collectionName}]
+	dbName, ok := collectionsByDatabase[base.ScopeAndCollectionName{Scope: scopeName, Collection: collectionName}]
 	return dbName, ok
 }
 
@@ -308,7 +308,7 @@ func findCollectionConflicts(scopes ScopesConfig, registryScopes map[string]Regi
 			for collectionName, _ := range scope.Collections {
 				for _, registryCollectionName := range registryScope.Collections {
 					if collectionName == registryCollectionName {
-						conflicts = append(conflicts, base.ScopeAndCollectionName{scopeName, collectionName})
+						conflicts = append(conflicts, base.ScopeAndCollectionName{Scope: scopeName, Collection: collectionName})
 					}
 				}
 			}

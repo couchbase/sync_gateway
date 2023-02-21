@@ -108,7 +108,8 @@ func TestRegistryHelpers(t *testing.T) {
 			Name: "defaultDb",
 		},
 	}
-	registry.upsertDatabaseConfig(ctx, "cg1", dbConfig)
+	_, err = registry.upsertDatabaseConfig(ctx, "cg1", dbConfig)
+	require.NoError(t, err)
 	addedDefaultDb, ok := registry.getDbForCollection(ctx, "_default", "_default")
 	require.True(t, ok)
 	assert.Equal(t, "defaultDb", addedDefaultDb)
