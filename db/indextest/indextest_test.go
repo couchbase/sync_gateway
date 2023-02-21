@@ -403,6 +403,7 @@ func setupN1QLStore(bucket base.Bucket, isServerless bool) ([]base.N1QLStore, re
 	if err != nil {
 		return nil, nil, err
 	}
+	indexInitConfig := db.GetDefaultIndexInitConfig()
 
 	outN1QLStores := make([]base.N1QLStore, 0)
 	for _, dataStoreName := range dataStoreNames {
@@ -415,7 +416,7 @@ func setupN1QLStore(bucket base.Bucket, isServerless bool) ([]base.N1QLStore, re
 			return nil, nil, fmt.Errorf("Unable to get n1QLStore for testBucket")
 		}
 
-		if err := db.InitializeIndexes(n1QLStore, base.TestUseXattrs(), 0, false, isServerless); err != nil {
+		if err := db.InitializeIndexes(n1QLStore, indexInitConfig, isServerless); err != nil {
 			return nil, nil, err
 		}
 		outN1QLStores = append(outN1QLStores, n1QLStore)

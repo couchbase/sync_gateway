@@ -120,8 +120,8 @@ func (c *Collection) ExplainQuery(statement string, params map[string]interface{
 	return ExplainQuery(c, statement, params)
 }
 
-func (c *Collection) CreateIndex(indexName string, expression string, filterExpression string, options *N1qlIndexOptions) error {
-	return CreateIndex(c, indexName, expression, filterExpression, options)
+func (c *Collection) CreateIndex(indexName string, expression string, filterExpression string, partitionExpression string, options *N1qlIndexOptions) error {
+	return CreateIndex(c, indexName, expression, filterExpression, partitionExpression, options)
 }
 
 func (c *Collection) CreatePrimaryIndex(indexName string, options *N1qlIndexOptions) error {

@@ -58,18 +58,149 @@ func TestInitializeIndexes(t *testing.T) {
 			n1qlStore, isGoCBBucket := base.AsN1QLStore(collection.dataStore)
 			require.True(t, isGoCBBucket)
 
+			indexInitConfig := GetDefaultIndexInitConfig()
+			indexInitConfig.UseXattrs = test.xattrs
+
 			// Make sure we can drop and reinitialize twice
 			for i := 0; i < 2; i++ {
-				err := dropAndInitializeIndexes(base.TestCtx(t), n1qlStore, test.xattrs, db.IsServerless())
+				err := dropAndInitializeIndexes(ctx, n1qlStore, indexInitConfig, db.IsServerless())
 				require.NoError(t, err, "Error dropping and initialising all indexes on bucket")
 			}
 			// check to see if current indexes match what is expected by the rest of the test
 			// if not we drop and reinitialize these indexes using the overall test environment variables for XATTRS
-			err := validateExpectedIndexes(n1qlStore, base.TestUseXattrs(), db.IsServerless())
+			err := validateExpectedIndexes(n1qlStore, test.xattrs, db.IsServerless())
 			if err != nil {
-				err = dropAndInitializeIndexes(base.TestCtx(t), n1qlStore, base.TestUseXattrs(), db.IsServerless())
+				err = dropAndInitializeIndexes(ctx, n1qlStore, indexInitConfig, db.IsServerless())
 				require.NoError(t, err)
 			}
+		})
+	}
+
+}
+
+func TestInitializeIndexesWithPartition(t *testing.T) {
+	if base.TestsDisableGSI() {
+		t.Skip("This test only works with Couchbase Server and UseViews=false")
+	}
+	if !base.IsEnterpriseEdition() {
+		t.Skip("EE-only test")
+	}
+
+	base.LongRunningTest(t)
+
+	tests := []struct {
+		title           string
+		indexInitConfig IndexInitConfig
+	}{
+		{
+			title: "partition index with default NumPartitions",
+			indexInitConfig: IndexInitConfig{
+				ShouldPartitionIndex: true,
+			},
+		},
+		{
+			title: "partition index with non default NumPartitions",
+			indexInitConfig: IndexInitConfig{
+				ShouldPartitionIndex: true,
+				NumPartitions:        base.UintPtr(10),
+			},
+		},
+		{
+			title: "do not partition index",
+			indexInitConfig: IndexInitConfig{
+				ShouldPartitionIndex: false,
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.title, func(t *testing.T) {
+			var db *Database
+			var ctx context.Context
+
+			db, ctx = setupTestDB(t)
+			defer db.Close(ctx)
+
+			test.indexInitConfig.UseXattrs = base.TestUseXattrs()
+
+			dataStoresName, err := db.Bucket.ListDataStores()
+			require.NoError(t, err)
+
+			// use to eliminate non related data recieved from /indexStatus endpoint
+			dataStoresNameMap := make(map[string]struct{}, len(dataStoresName))
+
+			for _, dataStoreName := range dataStoresName {
+				key := fmt.Sprintf("%s.%s.%s", db.Bucket.GetName(), dataStoreName.ScopeName(), dataStoreName.CollectionName())
+				dataStoresNameMap[key] = struct{}{}
+
+				dataStore, err := db.Bucket.NamedDataStore(dataStoreName)
+				require.NoError(t, err)
+
+				n1qlStore, ok := base.AsN1QLStore(dataStore)
+				require.True(t, ok)
+
+				err = dropAndInitializeIndexes(ctx, n1qlStore, test.indexInitConfig, db.IsServerless())
+				require.NoError(t, err, "Error dropping and initialising all indexes on bucket")
+
+				// check to see if current indexes match what is expected by the rest of the test
+				// if not we drop and reinitialize these indexes using the overall test environment variables for XATTRS
+				err = validateExpectedIndexes(n1qlStore, base.TestUseXattrs(), db.IsServerless())
+				require.NoError(t, err, "Error validating indexes on bucket")
+			}
+
+			partitionedIndexFilter := func(s SGIndex) bool {
+				return s.partitionExpression == ""
+			}
+			partitionedIndexMap := sgIndexNamesAsMap(base.TestUseXattrs(), db.IsServerless(), partitionedIndexFilter)
+
+			expectedNumOfPartitionedIndexPerBucket := 0
+			if test.indexInitConfig.ShouldPartitionIndex {
+				expectedNumOfPartitionedIndexPerBucket = len(dataStoresName) * len(partitionedIndexMap)
+			}
+
+			totalIndexes := len(sgIndexNames(base.TestUseXattrs(), db.IsServerless()))
+
+			totalNumOfPartitionedIndexes := 0
+
+			cbs, ok := base.AsCouchbaseBucketStore(db.Bucket)
+			require.True(t, ok)
+			require.NotNil(t, cbs)
+
+			indexesMeta, err := cbs.IndexMeta()
+			require.NoError(t, err)
+
+			// this is to account any delay between index creation and /indexStatus endpoint
+			waitAndAssertCondition(t, func() bool {
+				indexesMeta, err = cbs.IndexMeta()
+				require.NoError(t, err)
+				// total records return from /indexStatus should be greater or equals to
+				// num of data store * num of indexes per datastore
+				return len(indexesMeta) >= totalIndexes*len(dataStoresName)
+			})
+
+			for _, indexMeta := range indexesMeta {
+				key := fmt.Sprintf("%s.%s.%s", indexMeta.Bucket, indexMeta.Scope, indexMeta.Collection)
+				if _, ok := dataStoresNameMap[key]; !ok {
+					continue
+				}
+
+				if _, ok := partitionedIndexMap[indexMeta.IndexName]; !ok {
+					continue
+				}
+
+				require.Equal(t, test.indexInitConfig.ShouldPartitionIndex, indexMeta.Partitioned)
+				if test.indexInitConfig.ShouldPartitionIndex {
+					totalNumOfPartitionedIndexes++
+
+					if test.indexInitConfig.NumPartitions != nil {
+						assert.Equal(t, *test.indexInitConfig.NumPartitions, indexMeta.NumPartition)
+					} else {
+						assert.Equal(t, uint(8), indexMeta.NumPartition)
+					}
+				}
+			}
+
+			assert.Equal(t, expectedNumOfPartitionedIndexPerBucket, totalNumOfPartitionedIndexes)
 		})
 	}
 
@@ -98,6 +229,29 @@ func sgIndexNames(xattrs, isServerless bool) []string {
 			continue
 		}
 		allSGIndexes = append(allSGIndexes, fullIndexName)
+	}
+	return allSGIndexes
+}
+
+type indexNameFilterFunc func(s SGIndex) bool
+
+func sgIndexNamesAsMap(xattrs, isServerless bool, shouldFilter indexNameFilterFunc) map[string]SGIndex {
+	allSGIndexes := make(map[string]SGIndex, 0)
+
+	for _, sgIndex := range sgIndexes {
+		fullIndexName := sgIndex.fullIndexName(xattrs)
+		if sgIndex.isXattrOnly() && !xattrs {
+			continue
+		}
+		if sgIndex.creationMode == Serverless && !isServerless {
+			continue
+		}
+
+		if shouldFilter(sgIndex) {
+			continue
+		}
+
+		allSGIndexes[fullIndexName] = sgIndex
 	}
 	return allSGIndexes
 }
@@ -135,7 +289,10 @@ func TestPostUpgradeIndexesSimple(t *testing.T) {
 	log.Printf("removedIndexes: %+v", removedIndexes)
 	assert.NoError(t, removeErr, "Unexpected error running removeObsoleteIndexes in setup case")
 
-	err := InitializeIndexes(n1qlStore, db.UseXattrs(), 0, false, db.IsServerless())
+	indexInitConfig := GetDefaultIndexInitConfig()
+	indexInitConfig.UseXattrs = db.UseXattrs()
+
+	err := InitializeIndexes(n1qlStore, indexInitConfig, db.IsServerless())
 	assert.NoError(t, err)
 
 	// Running w/ opposite xattrs flag should preview removal of the indexes associated with this db context
@@ -154,7 +311,7 @@ func TestPostUpgradeIndexesSimple(t *testing.T) {
 	assert.NoError(t, removeErr, "Unexpected error running removeObsoleteIndexes in post-cleanup no-op")
 
 	// Restore indexes after test
-	err = InitializeIndexes(n1qlStore, db.UseXattrs(), 0, false, db.IsServerless())
+	err = InitializeIndexes(n1qlStore, indexInitConfig, db.IsServerless())
 	assert.NoError(t, err)
 }
 
@@ -196,8 +353,11 @@ func TestPostUpgradeIndexesVersionChange(t *testing.T) {
 	assert.Equal(t, 1, len(removedIndexes))
 	assert.NoError(t, removeErr, "Unexpected error running removeObsoleteIndexes with hacked sgIndexes")
 
+	indexInitConfig := GetDefaultIndexInitConfig()
+	indexInitConfig.UseXattrs = db.UseXattrs()
+
 	// Restore indexes after test
-	err := InitializeIndexes(n1qlStore, db.UseXattrs(), 0, false, db.IsServerless())
+	err := InitializeIndexes(n1qlStore, indexInitConfig, db.IsServerless())
 	assert.NoError(t, err)
 
 }
@@ -232,10 +392,13 @@ func TestPostUpgradeMultipleCollections(t *testing.T) {
 	useXattrs := false
 	serverless := false
 
+	indexInitConfig := GetDefaultIndexInitConfig()
+	indexInitConfig.UseXattrs = useXattrs
+
 	for _, dataStore := range db.getDataStores() {
 		n1qlStore, ok := base.AsN1QLStore(dataStore)
 		assert.True(t, ok)
-		err := InitializeIndexes(n1qlStore, useXattrs, 0, false, false)
+		err := InitializeIndexes(n1qlStore, indexInitConfig, false)
 		require.NoError(t, err)
 	}
 
@@ -313,8 +476,11 @@ func TestRemoveIndexesUseViewsTrueAndFalse(t *testing.T) {
 	err = InitializeViews(ctx, collection.dataStore)
 	assert.NoError(t, err)
 
+	indexInitConfig := GetDefaultIndexInitConfig()
+	indexInitConfig.UseXattrs = db.UseXattrs()
+
 	// Restore indexes after test
-	err = InitializeIndexes(n1QLStore, db.UseXattrs(), 0, false, db.IsServerless())
+	err = InitializeIndexes(n1QLStore, indexInitConfig, db.IsServerless())
 	assert.NoError(t, err)
 }
 
@@ -333,11 +499,15 @@ func TestRemoveObsoleteIndexOnError(t *testing.T) {
 
 	leakyDataStore := base.NewLeakyDataStore(leakyBucket, dataStore, &base.LeakyBucketConfig{DropIndexErrorNames: []string{"sg_access_1", "sg_access_x1"}})
 
+	indexInitConfig := GetDefaultIndexInitConfig()
+	indexInitConfig.UseXattrs = db.UseXattrs()
+
 	defer func() {
 		// Restore indexes after test
 		n1qlStore, ok := base.AsN1QLStore(dataStore)
 		assert.True(t, ok)
-		err := InitializeIndexes(n1qlStore, db.UseXattrs(), 0, false, db.IsServerless())
+
+		err := InitializeIndexes(n1qlStore, indexInitConfig, db.IsServerless())
 		assert.NoError(t, err)
 
 	}()
@@ -372,6 +542,10 @@ func TestRemoveObsoleteIndexOnError(t *testing.T) {
 		assert.Contains(t, removedIndex, "sg_channels_1")
 	}
 
+	// Restore indexes after test
+	err := InitializeIndexes(n1qlStore, indexInitConfig, db.IsServerless())
+	assert.NoError(t, err)
+
 }
 
 func TestIsIndexerError(t *testing.T) {
@@ -384,13 +558,13 @@ func TestIsIndexerError(t *testing.T) {
 }
 
 // dropAndInitializeIndexes drops and reinitialize all sync gateway indexes
-func dropAndInitializeIndexes(ctx context.Context, n1qlStore base.N1QLStore, xattrs, isServerless bool) error {
+func dropAndInitializeIndexes(ctx context.Context, n1qlStore base.N1QLStore, indexInitConfig IndexInitConfig, isServerless bool) error {
 	dropErr := base.DropAllIndexes(ctx, n1qlStore)
 	if dropErr != nil {
 		return dropErr
 	}
 
-	initErr := InitializeIndexes(n1qlStore, xattrs, 0, false, isServerless)
+	initErr := InitializeIndexes(n1qlStore, indexInitConfig, isServerless)
 	if initErr != nil {
 		return initErr
 	}

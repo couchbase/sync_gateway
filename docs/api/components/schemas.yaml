@@ -1686,6 +1686,19 @@ Database:
         Defaults to true when running in serverless mode otherwise defaults to false.
       type: boolean
       default: false
+    should_partition_index:
+      description: |-
+        Set to false to disable partitioning Global Secondary Indexes (GSI).
+
+        Defaults to `true` if using enterprise-edition. This is an enterprise-edition only feature.
+      type: boolean
+      default: true
+    num_index_partitions:
+      description: |-
+        This is the number of Global Secondary Indexes (GSI) to use for partitioning indexes.
+
+        This is an enterprise-edition only feature. If not set, Couchbase Server decides default value.
+      type: number
   title: Database-config
 Event-config:
   type: object

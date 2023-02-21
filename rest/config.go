@@ -165,6 +165,8 @@ type DbConfig struct {
 	GraphQL                          *functions.GraphQLConfig         `json:"graphql,omitempty"`                              // GraphQL configuration & resolver fns
 	UserFunctions                    *functions.FunctionsConfig       `json:"functions,omitempty"`                            // Named JS fns for clients to call
 	Suspendable                      *bool                            `json:"suspendable,omitempty"`                          // Allow the database to be suspended
+	NumIndexPartitions               *uint                            `json:"num_index_partitions,omitempty"`                 // Number of partition for Index partitioning
+	ShouldPartitionIndex             *bool                            `json:"should_partition_index,omitempty"`               // Flag to decide if Index should be partitioned or not
 }
 
 type ScopesConfig map[string]ScopeConfig

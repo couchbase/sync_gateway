@@ -360,7 +360,7 @@ var viewsAndGSIBucketInit base.TBPBucketInitFunc = func(ctx context.Context, b b
 			return err
 		}
 		tbp.Logf(ctx, "creating SG bucket indexes")
-		if err := InitializeIndexes(n1qlStore, base.TestUseXattrs(), 0, false, false); err != nil {
+		if err := InitializeIndexes(n1qlStore, GetDefaultIndexInitConfig(), false); err != nil {
 			return err
 		}
 
@@ -589,4 +589,15 @@ func GetSingleDatabaseCollection(tb testing.TB, database *DatabaseContext) *Data
 	}
 	tb.Fatalf("Could not find a collection")
 	return nil
+}
+
+func GetDefaultIndexInitConfig() IndexInitConfig {
+	return IndexInitConfig{
+		UseXattrs:            base.TestUseXattrs(),
+		NumReplicas:          0,
+		NumPartitions:        nil,
+		FailFast:             false,
+		ShouldPartitionIndex: false,
+	}
+
 }
