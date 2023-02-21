@@ -736,7 +736,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 	if dbContext.UseQueryBasedResyncManager() {
 		dbContext.ResyncManager = NewResyncManager(metadataStore)
 	} else {
-		dbContext.ResyncManager = NewResyncManagerDCP(metadataStore)
+		dbContext.ResyncManager = NewResyncManagerDCP(metadataStore, dbContext.UseXattrs())
 	}
 	dbContext.TombstoneCompactionManager = NewTombstoneCompactionManager()
 	dbContext.AttachmentCompactionManager = NewAttachmentCompactionManager(metadataStore)
