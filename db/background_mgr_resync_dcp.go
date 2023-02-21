@@ -29,6 +29,7 @@ type ResyncManagerDCP struct {
 	DocsChanged   base.AtomicInt
 	ResyncID      string
 	VBUUIDs       []uint64
+	useXattrs     bool
 	lock          sync.RWMutex
 }
 
@@ -37,10 +38,10 @@ type ResyncCollections map[string][]string
 
 var _ BackgroundManagerProcessI = &ResyncManagerDCP{}
 
-func NewResyncManagerDCP(metadataStore base.DataStore) *BackgroundManager {
+func NewResyncManagerDCP(metadataStore base.DataStore, useXattrs bool) *BackgroundManager {
 	return &BackgroundManager{
 		name:    "resync",
-		Process: &ResyncManagerDCP{},
+		Process: &ResyncManagerDCP{useXattrs: useXattrs},
 		clusterAwareOptions: &ClusterAwareBackgroundManagerOptions{
 			metadataStore: metadataStore,
 			processSuffix: "resync",
@@ -109,7 +110,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]interface
 		base.TracefCtx(ctx, base.KeyAll, "[%s] Received DCP event %d for doc %v", resyncLoggingID, event.Opcode, base.UD(docID))
 
 		// Ignore documents without Xattrs
-		if event.DataType&base.MemcachedDataTypeXattr == 0 {
+		if !r.useXattrs && event.DataType&base.MemcachedDataTypeXattr == 0 {
 			return true
 		}
 		// Don't want to process raw binary docs

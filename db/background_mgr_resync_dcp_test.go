@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"sync"
 	"testing"
 	"time"
 
@@ -96,7 +97,7 @@ func TestResyncDCPInit(t *testing.T) {
 			db, ctx := setupTestDB(t)
 			defer db.Close(ctx)
 
-			resycMgr := NewResyncManagerDCP(db.MetadataStore)
+			resycMgr := NewResyncManagerDCP(db.MetadataStore, base.TestUseXattrs())
 			require.NotNil(t, resycMgr)
 			db.ResyncManager = resycMgr
 
@@ -152,7 +153,7 @@ func TestResyncManagerDCPStopInMidWay(t *testing.T) {
 	db, ctx := setupTestDBForResyncWithDocs(t, docsToCreate, true)
 	defer db.Close(ctx)
 
-	resycMgr := NewResyncManagerDCP(db.MetadataStore)
+	resycMgr := NewResyncManagerDCP(db.MetadataStore, base.TestUseXattrs())
 	require.NotNil(t, resycMgr)
 	db.ResyncManager = resycMgr
 
@@ -164,7 +165,10 @@ func TestResyncManagerDCPStopInMidWay(t *testing.T) {
 
 	err := resycMgr.Start(ctx, options)
 	require.NoError(t, err)
+	wg := sync.WaitGroup{}
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		err = WaitForConditionWithOptions(func() bool {
 			stats := getResyncStats(resycMgr.Process)
 			if stats.DocsProcessed > 300 {
@@ -191,6 +195,7 @@ func TestResyncManagerDCPStopInMidWay(t *testing.T) {
 
 	assert.Less(t, db.DbStats.Database().SyncFunctionCount.Value(), int64(docsToCreate))
 	assert.Greater(t, db.DbStats.Database().SyncFunctionCount.Value(), int64(300))
+	wg.Wait()
 }
 
 func TestResyncManagerDCPStart(t *testing.T) {
@@ -205,7 +210,7 @@ func TestResyncManagerDCPStart(t *testing.T) {
 		db, ctx := setupTestDBForResyncWithDocs(t, docsToCreate, false)
 		defer db.Close(ctx)
 
-		resyncMgr := NewResyncManagerDCP(db.MetadataStore)
+		resyncMgr := NewResyncManagerDCP(db.MetadataStore, base.TestUseXattrs())
 		require.NotNil(t, resyncMgr)
 		db.ResyncManager = resyncMgr
 
@@ -237,7 +242,7 @@ func TestResyncManagerDCPStart(t *testing.T) {
 		db, ctx := setupTestDBForResyncWithDocs(t, docsToCreate, true)
 		defer db.Close(ctx)
 
-		resyncMgr := NewResyncManagerDCP(db.MetadataStore)
+		resyncMgr := NewResyncManagerDCP(db.MetadataStore, base.TestUseXattrs())
 		require.NotNil(t, resyncMgr)
 
 		initialStats := getResyncStats(resyncMgr.Process)
@@ -281,7 +286,7 @@ func TestResyncManagerDCPRunTwice(t *testing.T) {
 	db, ctx := setupTestDBForResyncWithDocs(t, docsToCreate, false)
 	defer db.Close(ctx)
 
-	resycMgr := NewResyncManagerDCP(db.MetadataStore)
+	resycMgr := NewResyncManagerDCP(db.MetadataStore, base.TestUseXattrs())
 	require.NotNil(t, resycMgr)
 	db.ResyncManager = resycMgr
 
@@ -294,8 +299,11 @@ func TestResyncManagerDCPRunTwice(t *testing.T) {
 	err := resycMgr.Start(ctx, options)
 	require.NoError(t, err)
 
+	wg := sync.WaitGroup{}
+	wg.Add(1)
 	// Attempt to Start running process
 	go func() {
+		defer wg.Done()
 		err := WaitForConditionWithOptions(func() bool {
 			stats := getResyncStats(resycMgr.Process)
 			return stats.DocsProcessed > 100
@@ -319,10 +327,11 @@ func TestResyncManagerDCPRunTwice(t *testing.T) {
 
 	// If there are tombstones from a previous test which have been deleted from the bucket, processed docs will
 	// be greater than DocsChanged
-	assert.LessOrEqual(t, int64(docsToCreate), stats.DocsProcessed)
+	require.LessOrEqual(t, int64(docsToCreate), stats.DocsProcessed)
 	assert.Equal(t, int64(0), stats.DocsChanged)
 
 	assert.Equal(t, db.DbStats.Database().SyncFunctionCount.Value(), int64(docsToCreate))
+	wg.Wait()
 }
 
 func TestResycnManagerDCPResumeStoppedProcess(t *testing.T) {
@@ -335,7 +344,7 @@ func TestResycnManagerDCPResumeStoppedProcess(t *testing.T) {
 	db, ctx := setupTestDBForResyncWithDocs(t, docsToCreate, true)
 	defer db.Close(ctx)
 
-	resycMgr := NewResyncManagerDCP(db.MetadataStore)
+	resycMgr := NewResyncManagerDCP(db.MetadataStore, base.TestUseXattrs())
 	require.NotNil(t, resycMgr)
 	db.ResyncManager = resycMgr
 
@@ -349,7 +358,10 @@ func TestResycnManagerDCPResumeStoppedProcess(t *testing.T) {
 	require.NoError(t, err)
 
 	// Attempt to Stop Process
+	wg := sync.WaitGroup{}
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		for {
 			stats := getResyncStats(resycMgr.Process)
 			if stats.DocsProcessed >= 2000 {
@@ -390,6 +402,7 @@ func TestResycnManagerDCPResumeStoppedProcess(t *testing.T) {
 	assert.Equal(t, int64(docsToCreate), stats.DocsChanged)
 
 	assert.GreaterOrEqual(t, db.DbStats.Database().SyncFunctionCount.Value(), int64(docsToCreate))
+	wg.Wait()
 }
 
 // helper function to insert documents equals to docsToCreate, and update sync function if updateResyncFuncAfterDocsAdded set to true
