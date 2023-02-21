@@ -223,17 +223,17 @@ func TestRegistryConflicts(t *testing.T) {
 		{
 			name:              "Same scope, one conflicting collection",
 			dbConfig:          makeDatabaseConfig("newDb", "scope1", []string{"c1", "c7"}),
-			expectedConflicts: []base.ScopeAndCollectionName{{"scope1", "c1"}},
+			expectedConflicts: []base.ScopeAndCollectionName{{Scope: "scope1", Collection: "c1"}},
 		},
 		{
 			name:              "Same scope, two conflicting collections",
 			dbConfig:          makeDatabaseConfig("newDb", "scope1", []string{"c7", "c1", "c2"}),
-			expectedConflicts: []base.ScopeAndCollectionName{{"scope1", "c1"}, {"scope1", "c2"}},
+			expectedConflicts: []base.ScopeAndCollectionName{{Scope: "scope1", Collection: "c1"}, {Scope: "scope1", Collection: "c2"}},
 		},
 		{
 			name:              "Same scope, two conflicting collections",
 			dbConfig:          makeDatabaseConfig("newDb", "scope1", []string{"c7", "c1", "c2"}),
-			expectedConflicts: []base.ScopeAndCollectionName{{"scope1", "c1"}, {"scope1", "c2"}},
+			expectedConflicts: []base.ScopeAndCollectionName{{Scope: "scope1", Collection: "c1"}, {Scope: "scope1", Collection: "c2"}},
 		},
 		{
 			name:              "Non-conflict with default collection, same dbName",
@@ -248,17 +248,17 @@ func TestRegistryConflicts(t *testing.T) {
 		{
 			name:              "Conflict with legacy default collection",
 			dbConfig:          &DatabaseConfig{DbConfig: DbConfig{Name: "newDb"}},
-			expectedConflicts: []base.ScopeAndCollectionName{{base.DefaultScope, base.DefaultCollection}},
+			expectedConflicts: []base.ScopeAndCollectionName{{Scope: base.DefaultScope, Collection: base.DefaultCollection}},
 		},
 		{
 			name:              "Conflict with explicit default collection",
 			dbConfig:          makeDatabaseConfig("newDb", base.DefaultScope, []string{base.DefaultCollection}),
-			expectedConflicts: []base.ScopeAndCollectionName{{base.DefaultScope, base.DefaultCollection}},
+			expectedConflicts: []base.ScopeAndCollectionName{{Scope: base.DefaultScope, Collection: base.DefaultCollection}},
 		},
 		{
 			name:              "Conflict with explicit default collection among others",
 			dbConfig:          makeDatabaseConfig("newDb", base.DefaultScope, []string{base.DefaultCollection, "c1"}),
-			expectedConflicts: []base.ScopeAndCollectionName{{base.DefaultScope, base.DefaultCollection}},
+			expectedConflicts: []base.ScopeAndCollectionName{{Scope: base.DefaultScope, Collection: base.DefaultCollection}},
 		},
 	}
 
