@@ -41,7 +41,7 @@ jobs:
           go-version: 1.19.5
       - run: go install github.com/google/addlicense@latest
       - uses: actions/checkout@v3
-      - run: addlicense -check -f licenses/addlicense.tmpl .
+      - run: addlicense -check -f licenses/addlicense.tmpl -ignore 'js/underscore*.js' .
 
   golangci:
     name: lint
