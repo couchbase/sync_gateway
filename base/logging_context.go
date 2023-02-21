@@ -30,13 +30,13 @@ type LogContext struct {
 	TestName string
 
 	// TestBucketName is the name of a bucket used during a test
-	TestBucketName string
+	BucketName string
 
 	// TestScopeName is the name of a scope on used during a test
-	TestScopeName string
+	ScopeName string
 
 	// TestCollectionName is the name of the collection used during a test
-	TestCollectionName string
+	CollectionName string
 }
 
 // addContext returns a string format with additional log context if present.
@@ -49,16 +49,19 @@ func (lc *LogContext) addContext(format string) string {
 		format = "c:" + lc.CorrelationID + " " + format
 	}
 
-	if lc.TestBucketName != "" {
-		keyspace := "b:" + lc.TestBucketName
-		if lc.TestScopeName != "" {
-			keyspace += "." + lc.TestScopeName
+	if lc.BucketName != "" {
+		keyspace := "b:" + lc.BucketName
+		if lc.ScopeName != "" {
+			keyspace += "." + lc.ScopeName
 		}
-		if lc.TestCollectionName != "" {
-			keyspace += "." + lc.TestCollectionName
+		if lc.CollectionName != "" {
+			keyspace += "." + lc.CollectionName
 		}
 
 		format = keyspace + " " + format
+	} else if lc.CollectionName != "" {
+		format = "col:" + lc.CollectionName + " " + format
+
 	}
 
 	if lc.TestName != "" {
@@ -96,16 +99,25 @@ func bucketCtx(parent context.Context, b Bucket) context.Context {
 func bucketNameCtx(parent context.Context, bucketName string) context.Context {
 	parentLogCtx, _ := parent.Value(requestContextKey).(LogContext)
 	newCtx := LogContext{
-		TestName:       parentLogCtx.TestName,
-		TestBucketName: bucketName,
+		TestName:   parentLogCtx.TestName,
+		BucketName: bucketName,
+	}
+	return LogContextWith(parent, &newCtx)
+}
+
+// BucketCollectionCtx extends the parent context with a collection name.
+func BucketAndCollectionCtx(parent context.Context, b Bucket, collectionName string) context.Context {
+	newCtx := LogContext{
+		BucketName:     b.GetName(),
+		CollectionName: collectionName,
 	}
 	return LogContextWith(parent, &newCtx)
 }
 
 // CollectionCtx extends the parent context with a collection name.
 func CollectionCtx(parent context.Context, collectionName string) context.Context {
-	newCtx := CollectionLogContext{
-		Collection: collectionName,
+	newCtx := LogContext{
+		CollectionName: collectionName,
 	}
 	return LogContextWith(parent, &newCtx)
 }
@@ -114,10 +126,10 @@ func CollectionCtx(parent context.Context, collectionName string) context.Contex
 func testKeyspaceNameCtx(parent context.Context, bucketName, scopeName, collectionName string) context.Context {
 	parentLogCtx, _ := parent.Value(requestContextKey).(LogContext)
 	newCtx := LogContext{
-		TestName:           parentLogCtx.TestName,
-		TestBucketName:     bucketName,
-		TestScopeName:      scopeName,
-		TestCollectionName: collectionName,
+		TestName:       parentLogCtx.TestName,
+		BucketName:     bucketName,
+		ScopeName:      scopeName,
+		CollectionName: collectionName,
 	}
 	return LogContextWith(parent, &newCtx)
 }
@@ -178,23 +190,6 @@ func (c *DatabaseLogContext) getContextKey() LogContextKey {
 func (c *DatabaseLogContext) addContext(format string) string {
 	if c != nil && c.DatabaseName != "" {
 		format = "db:" + c.DatabaseName + " " + format
-	}
-	return format
-}
-
-// CollectionLogContext provides collection context data for logging
-type CollectionLogContext struct {
-	Collection string
-}
-
-func (c *CollectionLogContext) getContextKey() LogContextKey {
-	return keyspaceLogContextKey
-}
-
-func (c *CollectionLogContext) addContext(format string) string {
-	if c.Collection != "" {
-		format = "col:" + c.Collection + " " + format
-
 	}
 	return format
 }

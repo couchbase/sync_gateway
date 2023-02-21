@@ -313,6 +313,10 @@ func TestRemoveIndexesUseViewsTrueAndFalse(t *testing.T) {
 		Serverless:  db.IsServerless(),
 		UseXattrs:   db.UseXattrs(),
 	}
+	if !base.TestsUseNamedCollections() {
+		options.MetadataIndexes = IndexesAll
+
+	}
 
 	for _, sgIndex := range copiedIndexes {
 		if !sgIndex.shouldCreate(options) {

@@ -261,6 +261,11 @@ func (i *SGIndex) shouldCreate(options InitializeIndexOptions) bool {
 	if i.isMetadataOnly() && options.MetadataIndexes == IndexesWithoutMetadata {
 		return false
 	}
+
+	if !i.isMetadataOnly() && options.MetadataIndexes == IndexesMetadataOnly {
+		return false
+	}
+
 	return true
 }
 
@@ -365,7 +370,7 @@ type InitializeIndexOptions struct {
 // Initializes Sync Gateway indexes for bucket.  Creates required indexes if not found, then waits for index readiness.
 func InitializeIndexes(ctx context.Context, n1QLStore base.N1QLStore, options InitializeIndexOptions) error {
 
-	base.InfofCtx(ctx, base.KeyAll, "Initializing indexes for with numReplicas: %d...", options.NumReplicas)
+	base.InfofCtx(ctx, base.KeyAll, "Initializing indexes with numReplicas: %d...", options.NumReplicas)
 
 	// Create any indexes that aren't present
 	deferredIndexes := make([]string, 0)

@@ -6,7 +6,7 @@
 // software will be governed by the Apache License, Version 2.0, included in
 // the file licenses/APL2.txt.
 
-package integrationtest
+package indextest
 
 import (
 	"encoding/json"
@@ -26,6 +26,7 @@ func requireNoIndexes(t *testing.T, dataStore base.DataStore) {
 	require.Len(t, indexNames, 0)
 
 }
+
 func TestSyncGatewayStartupIndexes(t *testing.T) {
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close()
@@ -36,7 +37,7 @@ func TestSyncGatewayStartupIndexes(t *testing.T) {
 	for _, dsName := range dsNames {
 		dataStore, err := bucket.NamedDataStore(dsName)
 		require.NoError(t, err)
-		if !base.UnitTestUrlIsWalrus() {
+		if !base.TestsDisableGSI() {
 			requireNoIndexes(t, dataStore)
 		}
 	}
@@ -45,6 +46,28 @@ func TestSyncGatewayStartupIndexes(t *testing.T) {
 		CustomTestBucket: bucket.NoCloseClone(),
 	})
 	defer rt.Close()
+
+	_ = rt.Bucket() // initialize RestTester
+
+	if !base.TestsDisableGSI() {
+		// use example indexes to make sure metadata and non metadata are created
+		indexSyncDocs := "sg_syncDocs"
+		indexAccess := "sg_access"
+		if base.TestUseXattrs() {
+			indexSyncDocs += "_x1"
+			indexAccess += "_x1"
+		}
+		metadataCollection, err := base.AsCollection(bucket.DefaultDataStore())
+		require.NoError(t, err)
+		indexNames, err := metadataCollection.GetIndexes()
+		require.NoError(t, err)
+
+		require.Contains(t, indexNames, indexSyncDocs)
+
+		if base.TestsUseNamedCollections() {
+			require.NotContains(t, indexNames, indexAccess)
+		}
+	}
 
 	// tests sg_users index
 	t.Run("testUserQueries", func(t *testing.T) {
