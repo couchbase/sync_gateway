@@ -151,7 +151,8 @@ func TestCBGTIndexCreation(t *testing.T) {
 
 			// Use an in-memory cfg, set up cbgt manager
 			ctx := LogContextWith(TestCtx(t), &DatabaseLogContext{DatabaseName: tc.dbName})
-			cfg := cbgt.NewCfgMem()
+			cfg, err := NewCbgtCfgMem()
+			require.NoError(t, err)
 			context, err := initCBGTManager(ctx, bucket, spec, cfg, "testIndexCreation", tc.dbName)
 			assert.NoError(t, err)
 			defer context.RemoveFeedCredentials(tc.dbName)
@@ -255,7 +256,8 @@ func TestCBGTIndexCreationSafeLegacyName(t *testing.T) {
 
 	// Use an in-memory cfg, set up cbgt manager
 	ctx := TestCtx(t)
-	cfg := cbgt.NewCfgMem()
+	cfg, err := NewCbgtCfgMem()
+	require.NoError(t, err)
 	context, err := initCBGTManager(ctx, bucket, spec, cfg, "testIndexCreation", testDbName)
 	assert.NoError(t, err)
 	defer context.RemoveFeedCredentials(testDbName)
@@ -332,7 +334,8 @@ func TestCBGTIndexCreationUnsafeLegacyName(t *testing.T) {
 
 	// Use an in-memory cfg, set up cbgt manager
 	ctx := TestCtx(t)
-	cfg := cbgt.NewCfgMem()
+	cfg, err := NewCbgtCfgMem()
+	require.NoError(t, err)
 	context, err := initCBGTManager(ctx, bucket, spec, cfg, "testIndexCreation", unsafeTestDBName)
 	assert.NoError(t, err)
 	defer context.RemoveFeedCredentials(unsafeTestDBName)
