@@ -3546,13 +3546,14 @@ func TestDbConfigPersistentSGVersions(t *testing.T) {
 	tb := base.GetTestBucket(t)
 	defer func() { tb.Close() }()
 
+	dbName := "db"
 	dbConfig := rest.DatabaseConfig{
 		SGVersion: "", // leave empty to emulate what 3.0.0 would've written to the bucket
 		DbConfig: rest.DbConfig{
 			BucketConfig: rest.BucketConfig{
 				Bucket: base.StringPtr(tb.GetName()),
 			},
-			Name:             "db",
+			Name:             dbName,
 			EnableXattrs:     base.BoolPtr(base.TestUseXattrs()),
 			UseViews:         base.BoolPtr(base.TestsDisableGSI()),
 			NumIndexReplicas: base.UintPtr(0),
@@ -3568,7 +3569,7 @@ func TestDbConfigPersistentSGVersions(t *testing.T) {
 
 	assertRevsLimit := func(sc *rest.ServerContext, revsLimit uint32) {
 		rest.WaitAndAssertCondition(t, func() bool {
-			dbc, err := sc.GetDatabase(ctx, "db")
+			dbc, err := sc.GetDatabase(ctx, dbName)
 			if err != nil {
 				t.Logf("expected database with RevsLimit=%v but got err=%v", revsLimit, err)
 				return false
@@ -3584,7 +3585,7 @@ func TestDbConfigPersistentSGVersions(t *testing.T) {
 	assertRevsLimit(sc, 123)
 
 	writeRevsLimitConfigWithVersion := func(sc *rest.ServerContext, version string, revsLimit uint32) error {
-		_, err = sc.BootstrapContext.UpdateConfig(base.TestCtx(t), tb.GetName(), t.Name(), "db", func(db *rest.DatabaseConfig) (updatedConfig *rest.DatabaseConfig, err error) {
+		_, err = sc.BootstrapContext.UpdateConfig(base.TestCtx(t), tb.GetName(), t.Name(), dbName, func(db *rest.DatabaseConfig) (updatedConfig *rest.DatabaseConfig, err error) {
 
 			db.SGVersion = version
 			db.DbConfig.RevsLimit = base.Uint32Ptr(revsLimit)
