@@ -845,7 +845,7 @@ func TestResyncUsingDCPStream(t *testing.T) {
 
 			_, ok := (rt.GetDatabase().ResyncManager.Process).(*db.ResyncManagerDCP)
 			if !ok {
-				rt.GetDatabase().ResyncManager = db.NewResyncManagerDCP(rt.GetSingleDataStore())
+				rt.GetDatabase().ResyncManager = db.NewResyncManagerDCP(rt.GetSingleDataStore(), base.TestUseXattrs())
 			}
 
 			for i := 0; i < testCase.docsCreated; i++ {
@@ -1293,7 +1293,7 @@ func TestResyncErrorScenariosUsingDCPStream(t *testing.T) {
 
 	_, ok := (rt.GetDatabase().ResyncManager.Process).(*db.ResyncManagerDCP)
 	if !ok {
-		rt.GetDatabase().ResyncManager = db.NewResyncManagerDCP(rt.GetSingleDataStore())
+		rt.GetDatabase().ResyncManager = db.NewResyncManagerDCP(rt.GetSingleDataStore(), base.TestUseXattrs())
 	}
 
 	numOfDocs := 1000
@@ -1467,7 +1467,7 @@ func TestResyncStopUsingDCPStream(t *testing.T) {
 
 	_, ok := (rt.GetDatabase().ResyncManager.Process).(*db.ResyncManagerDCP)
 	if !ok {
-		rt.GetDatabase().ResyncManager = db.NewResyncManagerDCP(rt.GetSingleDataStore())
+		rt.GetDatabase().ResyncManager = db.NewResyncManagerDCP(rt.GetSingleDataStore(), base.TestUseXattrs())
 	}
 
 	numOfDocs := 1000
