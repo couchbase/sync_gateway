@@ -404,7 +404,7 @@ func TestServerlessFetchConfigsLimited(t *testing.T) {
 	ctx := base.TestCtx(t)
 
 	rt := NewRestTester(t, &RestTesterConfig{
-		CustomTestBucket: tb,
+		CustomTestBucket: tb.NoCloseClone(),
 		PersistentConfig: true,
 		MutateStartupConfig: func(config *StartupConfig) {
 			config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(0)
@@ -429,9 +429,14 @@ func TestServerlessFetchConfigsLimited(t *testing.T) {
 	assert.NotZero(t, timeCached)
 	require.NoError(t, err)
 
-	// Update database config in the bucket
+	require.NoError(t, err)
+	// Update database config in the bucket (increment version)
 	newCas, err := sc.BootstrapContext.UpdateConfig(ctx, tb.GetName(), sc.Config.Bootstrap.ConfigGroupID, "db", func(bucketDbConfig *DatabaseConfig) (updatedConfig *DatabaseConfig, err error) {
-		return sc.dbConfigs["db"].ToDatabaseConfig(), nil
+		bucketDbConfig.Version, err = GenerateDatabaseConfigVersionID(bucketDbConfig.Version, &bucketDbConfig.DbConfig)
+		if err != nil {
+			return nil, err
+		}
+		return bucketDbConfig, nil
 	})
 
 	// Fetch configs again and expect same config to be returned
@@ -447,13 +452,19 @@ func TestServerlessFetchConfigsLimited(t *testing.T) {
 	dbConfigsAfter, err = sc.fetchConfigsSince(rt.Context(), sc.Config.Unsupported.Serverless.MinConfigFetchInterval)
 	require.NotEmpty(t, dbConfigsAfter["db"])
 	assert.Equal(t, newCas, dbConfigsAfter["db"].cfgCas)
+
 	// Change back for next test before next config update (not fully necessary but just to be safe)
 	sc.Config.Unsupported.Serverless.MinConfigFetchInterval = base.NewConfigDuration(time.Hour)
 
 	// Update database config in the bucket again to test caching disable case
 	newCas, err = sc.BootstrapContext.UpdateConfig(ctx, tb.GetName(), sc.Config.Bootstrap.ConfigGroupID, "db", func(bucketDbConfig *DatabaseConfig) (updatedConfig *DatabaseConfig, err error) {
-		return sc.dbConfigs["db"].ToDatabaseConfig(), nil
+		bucketDbConfig.Version, err = GenerateDatabaseConfigVersionID(bucketDbConfig.Version, &bucketDbConfig.DbConfig)
+		if err != nil {
+			return nil, err
+		}
+		return bucketDbConfig, nil
 	})
+	require.NoError(t, err)
 
 	// Disable caching and expect new config
 	sc.Config.Unsupported.Serverless.MinConfigFetchInterval = base.NewConfigDuration(0)
@@ -472,7 +483,7 @@ func TestServerlessUpdateSuspendedDb(t *testing.T) {
 	defer tb.Close()
 
 	rt := NewRestTester(t, &RestTesterConfig{
-		CustomTestBucket: tb,
+		CustomTestBucket: tb.NoCloseClone(),
 		PersistentConfig: true,
 		MutateStartupConfig: func(config *StartupConfig) {
 			config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(0)

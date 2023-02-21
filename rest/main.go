@@ -210,6 +210,9 @@ func automaticConfigUpgrade(configPath string) (sc *StartupConfig, disablePersis
 		return nil, false, nil, nil, err
 	}
 
+	bootstrap := bootstrapContext{
+		Connection: cluster,
+	}
 	// Write database configs to CBS with groupID "default"
 	for _, dbConfig := range dbConfigs {
 		dbc := dbConfig.ToDatabaseConfig()
@@ -234,7 +237,7 @@ func automaticConfigUpgrade(configPath string) (sc *StartupConfig, disablePersis
 			configGroupID = startupConfig.Bootstrap.ConfigGroupID
 		}
 
-		_, err = cluster.InsertMetadataDocument(*dbc.Bucket, configGroupID, dbc)
+		_, err = bootstrap.InsertConfig(context.Background(), *dbc.Bucket, configGroupID, dbc)
 		if err != nil {
 			// If key already exists just continue
 			if errors.Is(err, base.ErrAlreadyExists) {

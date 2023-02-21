@@ -50,6 +50,8 @@ type GatewayRegistry struct {
 
 const GatewayRegistryVersion = "1.0"
 
+const deletedDatabaseVersion = "0-0"
+
 // RegistryConfigGroup stores the set of databases for a given config group
 type RegistryConfigGroup struct {
 	Databases map[string]*RegistryDatabase `json:"databases"`
@@ -121,8 +123,9 @@ func (r *GatewayRegistry) deleteDatabase(configGroupID, dbName string) error {
 		Version: database.Version,
 	}
 	// Scopes are not copied to PreviousVersion, as previous collections for in-flight deletes are not considered conflicts, since
-	// an interrupted delete is still processed as a delete (since we have enough information to identify intent)
-	database.Version = ""
+	// an interrupted delete is still processed as a delete (since we have enough information to identify intent).  Mark the
+	// version to identify this state.
+	database.Version = deletedDatabaseVersion
 	database.Scopes = nil
 	return nil
 }
@@ -170,11 +173,7 @@ func (r *GatewayRegistry) upsertDatabaseConfig(ctx context.Context, configGroupI
 
 	newRegistryDatabase := registryDatabaseFromConfig(config)
 	previousRegistryDatabase, ok := configGroup.Databases[config.Name]
-	// TODO: set previous version on insert as well, to indicate an in-flight operation?  An 'status:inprogress' flag might be cleanest
 	if ok {
-		if previousRegistryDatabase.PreviousVersion != nil {
-			base.WarnfCtx(ctx, "Previous version for config group:%s database:%s - will be ignored", config.Name, configGroupID)
-		}
 		newRegistryDatabase.PreviousVersion = &RegistryDatabaseVersion{
 			Version: previousRegistryDatabase.Version,
 			Scopes:  previousRegistryDatabase.Scopes,

@@ -290,13 +290,16 @@ func (b *bootstrapContext) GetDatabaseConfigs(ctx context.Context, bucketName, g
 		}
 
 		dbConfigs := make([]*DatabaseConfig, 0)
+		reloadRequired := false
+
 		for dbName, registryDb := range configGroup.Databases {
-			// Ignore databases with empty version - represents an in-progress delete
-			if registryDb.Version == "" {
+			// Ignore databases with deleted version - represents an in-progress delete
+			if registryDb.Version == deletedDatabaseVersion {
 				continue
 			}
 			dbConfig, err := b.getDatabaseConfig(ctx, bucketName, groupID, dbName, registryDb.Version, registry)
 			if err == base.ErrConfigRegistryReloadRequired {
+				reloadRequired = true
 				break
 			} else if err != nil {
 				return nil, err
@@ -304,7 +307,7 @@ func (b *bootstrapContext) GetDatabaseConfigs(ctx context.Context, bucketName, g
 			dbConfigs = append(dbConfigs, dbConfig)
 		}
 		// Retry on ErrConfigRegistryReloadRequired until reaching attempts limit
-		if err == base.ErrConfigRegistryReloadRequired {
+		if reloadRequired {
 			continue
 		}
 		return dbConfigs, err

@@ -1626,14 +1626,6 @@ func (sc *ServerContext) _applyConfig(nonContextStruct base.NonCancellableContex
 		}
 	}
 
-	// ensure we're not loading a database from multiple buckets
-	if dbc := sc.databases_[cnf.Name]; dbc != nil {
-		runningBucket := dbc.Bucket.GetName()
-		if runningBucket != *cnf.Bucket {
-			return false, fmt.Errorf("database %q bucket %q cannot be added - already running %q using bucket %q", cnf.Name, *cnf.Bucket, cnf.Name, runningBucket)
-		}
-	}
-
 	// Strip out version as we have no use for this locally and we want to prevent it being stored and being returned
 	// by any output
 	cnf.Version = ""

@@ -3584,7 +3584,7 @@ func TestDbConfigPersistentSGVersions(t *testing.T) {
 	assertRevsLimit(sc, 123)
 
 	writeRevsLimitConfigWithVersion := func(sc *rest.ServerContext, version string, revsLimit uint32) error {
-		_, err = sc.BootstrapContext.UpdateConfig(base.TestCtx(t), tb.GetName(), "db", t.Name(), func(db *rest.DatabaseConfig) (updatedConfig *rest.DatabaseConfig, err error) {
+		_, err = sc.BootstrapContext.UpdateConfig(base.TestCtx(t), tb.GetName(), t.Name(), "db", func(db *rest.DatabaseConfig) (updatedConfig *rest.DatabaseConfig, err error) {
 
 			db.SGVersion = version
 			db.DbConfig.RevsLimit = base.Uint32Ptr(revsLimit)

@@ -66,6 +66,7 @@ func (h *handler) mutateDbConfig(mutator func(*DbConfig) error) error {
 			if err != nil {
 				return nil, err
 			}
+			updatedDbConfig = bucketDbConfig
 			return bucketDbConfig, nil
 		})
 		if err != nil {
