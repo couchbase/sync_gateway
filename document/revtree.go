@@ -6,7 +6,7 @@
 //  software will be governed by the Apache License, Version 2.0, included in
 //  the file licenses/APL2.txt.
 
-package db
+package document
 
 import (
 	"bytes"
@@ -43,7 +43,7 @@ type RevTree map[string]*RevInfo
 // The form in which a RevTree is stored in JSON. For space-efficiency it's stored as an array of
 // rev IDs, with a parallel array of parent indexes. Ordering in the arrays doesn't matter.
 // So the parent of Revs[i] is Revs[Parents[i]] (unless Parents[i] == -1, which denotes a root.)
-type revTreeList struct {
+type RevTreeList struct {
 	Revs           []string          `json:"revs"`                 // The revision IDs
 	Parents        []int             `json:"parents"`              // Index of parent of each revision (-1 if root)
 	Deleted        []int             `json:"deleted,omitempty"`    // Indexes of revisions that are deletions
@@ -56,7 +56,7 @@ type revTreeList struct {
 
 func (tree RevTree) MarshalJSON() ([]byte, error) {
 	n := len(tree)
-	rep := revTreeList{
+	rep := RevTreeList{
 		Revs:     make([]string, n),
 		Parents:  make([]int, n),
 		Channels: make([]base.Set, n),
@@ -120,7 +120,7 @@ func (tree *RevTree) UnmarshalJSON(inputjson []byte) (err error) {
 		// base.Warnf(base.KeyAll, "No RevTree for input %q", inputjson)
 		return nil
 	}
-	var rep revTreeList
+	var rep RevTreeList
 	err = base.JSONUnmarshal(inputjson, &rep)
 	if err != nil {
 		return
@@ -178,7 +178,7 @@ func (tree *RevTree) UnmarshalJSON(inputjson []byte) (err error) {
 func (tree RevTree) ContainsCycles() bool {
 	containsCycles := false
 	for _, leafRevision := range tree.GetLeaves() {
-		_, revHistoryErr := tree.getHistory(leafRevision)
+		_, revHistoryErr := tree.GetHistory(leafRevision)
 		if revHistoryErr != nil {
 			containsCycles = true
 		}
@@ -220,7 +220,7 @@ func (tree RevTree) RepairCycles() (err error) {
 	}
 
 	// Iterate over leaves
-	tree.forEachLeaf(leafProcessor)
+	tree.ForEachLeaf(leafProcessor)
 
 	return nil
 }
@@ -232,17 +232,17 @@ func (tree RevTree) RepairCycles() (err error) {
 // where the parent generation is *higher* than the node generation, which is never a valid scenario.
 // Likewise, detect situations where the parent generation is equal to the node generation, which is also invalid.
 func (node RevInfo) ParentGenGTENodeGen() bool {
-	return genOfRevID(node.Parent) >= genOfRevID(node.ID)
+	return GenOfRevID(node.Parent) >= GenOfRevID(node.ID)
 }
 
 // Returns true if the RevTree has an entry for this revid.
-func (tree RevTree) contains(revid string) bool {
+func (tree RevTree) Contains(revid string) bool {
 	_, exists := tree[revid]
 	return exists
 }
 
 // Returns the RevInfo for a revision ID, or panics if it's not found
-func (tree RevTree) getInfo(revid string) (*RevInfo, error) {
+func (tree RevTree) GetInfo(revid string) (*RevInfo, error) {
 	info, exists := tree[revid]
 	if !exists {
 		return nil, errors.New("getInfo can't find rev: " + revid)
@@ -252,8 +252,8 @@ func (tree RevTree) getInfo(revid string) (*RevInfo, error) {
 
 // Returns the parent ID of a revid. The parent is "" if the revid is a root.
 // Panics if the revid is not in the map at all.
-func (tree RevTree) getParent(revid string) string {
-	info, err := tree.getInfo(revid)
+func (tree RevTree) GetParent(revid string) string {
+	info, err := tree.GetInfo(revid)
 	if err != nil {
 		return ""
 	}
@@ -286,7 +286,7 @@ func (tree RevTree) GetLeavesFiltered(filter func(revId string) bool) []string {
 
 }
 
-func (tree RevTree) forEachLeaf(callback func(*RevInfo)) {
+func (tree RevTree) ForEachLeaf(callback func(*RevInfo)) {
 	isParent := map[string]bool{}
 	for _, info := range tree {
 		isParent[info.Parent] = true
@@ -299,8 +299,8 @@ func (tree RevTree) forEachLeaf(callback func(*RevInfo)) {
 	}
 }
 
-func (tree RevTree) isLeaf(revid string) bool {
-	if !tree.contains(revid) {
+func (tree RevTree) IsLeaf(revid string) bool {
+	if !tree.Contains(revid) {
 		return false
 	}
 	for _, info := range tree {
@@ -313,18 +313,18 @@ func (tree RevTree) isLeaf(revid string) bool {
 
 // Finds the "winning" revision, the one that should be treated as the default.
 // This is the leaf revision whose (!deleted, generation, hash) tuple compares the highest.
-func (tree RevTree) winningRevision() (winner string, branched bool, inConflict bool) {
+func (tree RevTree) WinningRevision() (winner string, branched bool, inConflict bool) {
 	winnerExists := false
 	leafCount := 0
 	activeLeafCount := 0
-	tree.forEachLeaf(func(info *RevInfo) {
+	tree.ForEachLeaf(func(info *RevInfo) {
 		exists := !info.Deleted
 		leafCount++
 		if exists {
 			activeLeafCount++
 		}
 		if (exists && !winnerExists) ||
-			((exists == winnerExists) && compareRevIDs(info.ID, winner) > 0) {
+			((exists == winnerExists) && CompareRevIDs(info.ID, winner) > 0) {
 			winner = info.ID
 			winnerExists = exists
 		}
@@ -336,7 +336,7 @@ func (tree RevTree) winningRevision() (winner string, branched bool, inConflict 
 
 // Given a revision and a set of possible ancestors, finds the one that is the most recent
 // ancestor of the revision; if none are ancestors, returns "".
-func (tree RevTree) findAncestorFromSet(revid string, ancestors []string) string {
+func (tree RevTree) FindAncestorFromSet(revid string, ancestors []string) string {
 	// OPT: This is slow...
 	for revid != "" {
 		for _, a := range ancestors {
@@ -344,7 +344,7 @@ func (tree RevTree) findAncestorFromSet(revid string, ancestors []string) string
 				return a
 			}
 		}
-		info, err := tree.getInfo(revid)
+		info, err := tree.GetInfo(revid)
 		if err != nil {
 			break
 		}
@@ -354,26 +354,26 @@ func (tree RevTree) findAncestorFromSet(revid string, ancestors []string) string
 }
 
 // Records a revision in a RevTree.
-func (tree RevTree) addRevision(docid string, info RevInfo) (err error) {
+func (tree RevTree) AddRevision(docid string, info RevInfo) (err error) {
 	revid := info.ID
 	if revid == "" {
-		err = errors.New(fmt.Sprintf("doc: %v, RevTree addRevision, empty revid is illegal", docid))
+		err = errors.New(fmt.Sprintf("doc: %v, RevTree AddRevision, empty revid is illegal", docid))
 		return
 	}
-	if tree.contains(revid) {
-		err = errors.New(fmt.Sprintf("doc: %v, RevTree addRevision, already contains rev %q", docid, revid))
+	if tree.Contains(revid) {
+		err = errors.New(fmt.Sprintf("doc: %v, RevTree AddRevision, already contains rev %q", docid, revid))
 		return
 	}
 	parent := info.Parent
-	if parent != "" && !tree.contains(parent) {
-		err = errors.New(fmt.Sprintf("doc: %v, RevTree addRevision, parent id %q is missing", docid, parent))
+	if parent != "" && !tree.Contains(parent) {
+		err = errors.New(fmt.Sprintf("doc: %v, RevTree AddRevision, parent id %q is missing", docid, parent))
 		return
 	}
 	tree[revid] = &info
 	return nil
 }
 
-func (tree RevTree) getRevisionBody(revid string, loader RevLoaderFunc) ([]byte, bool) {
+func (tree RevTree) GetRevisionBody(revid string, loader RevLoaderFunc) ([]byte, bool) {
 	if revid == "" {
 		// TODO: CBG-1948
 		panic("Illegal empty revision ID")
@@ -401,13 +401,13 @@ func (tree RevTree) getRevisionBody(revid string, loader RevLoaderFunc) ([]byte,
 	// as if the transient backup had expired. We are not attempting to repair the rev tree, as reclaiming storage
 	// is a much lower priority than avoiding write errors, and want to avoid introducing additional conflict scenarios.
 	// The invalid rev tree bodies will eventually be pruned through normal revision tree pruning.
-	if len(info.Body) > 0 && info.Body[0] == nonJSONPrefix {
+	if len(info.Body) > 0 && info.Body[0] == NonJSONPrefix {
 		return nil, false
 	}
 	return info.Body, true
 }
 
-func (tree RevTree) setRevisionBody(revid string, body []byte, bodyKey string, hasAttachments bool) {
+func (tree RevTree) SetRevisionBody(revid string, body []byte, bodyKey string, hasAttachments bool) {
 	if revid == "" {
 		// TODO: CBG-1948
 		panic("Illegal empty revision ID")
@@ -423,7 +423,7 @@ func (tree RevTree) setRevisionBody(revid string, body []byte, bodyKey string, h
 	info.HasAttachments = hasAttachments
 }
 
-func (tree RevTree) removeRevisionBody(revid string) (deletedBodyKey string) {
+func (tree RevTree) RemoveRevisionBody(revid string) (deletedBodyKey string) {
 	info, found := tree[revid]
 	if !found {
 		base.ErrorfCtx(context.Background(), "RemoveRevisionBody called for revid not in tree: %v", revid)
@@ -461,7 +461,7 @@ func (tree RevTree) copy() RevTree {
 //
 //	pruned: number of revisions pruned
 //	prunedTombstoneBodyKeys: set of tombstones with external body storage that were pruned, as map[revid]bodyKey
-func (tree RevTree) pruneRevisions(maxDepth uint32, keepRev string) (pruned int, prunedTombstoneBodyKeys map[string]string) {
+func (tree RevTree) PruneRevisions(maxDepth uint32, keepRev string) (pruned int, prunedTombstoneBodyKeys map[string]string) {
 
 	if len(tree) <= int(maxDepth) {
 		return
@@ -583,7 +583,7 @@ func (tree RevTree) FindShortestNonTombstonedBranchFromLeaves(leaves []string) (
 			// This is a tombstoned branch, skip it
 			continue
 		}
-		gen := genOfRevID(revid)
+		gen := GenOfRevID(revid)
 		if gen > 0 && gen < genShortestNonTSBranch {
 			genShortestNonTSBranch = gen
 			found = true
@@ -604,7 +604,7 @@ func (tree RevTree) FindLongestTombstonedBranch() (generation int) {
 func (tree RevTree) FindLongestTombstonedBranchFromLeaves(leaves []string) (generation int) {
 	genLongestTSBranch := 0
 	for _, revid := range leaves {
-		gen := genOfRevID(revid)
+		gen := GenOfRevID(revid)
 		if tree[revid].Deleted {
 			if gen > genLongestTSBranch {
 				genLongestTSBranch = gen
@@ -710,7 +710,7 @@ func (tree RevTree) RenderGraphvizDot() string {
 	}
 
 	// Iterate over leaves
-	tree.forEachLeaf(leafProcessor)
+	tree.ForEachLeaf(leafProcessor)
 
 	// Finish graphviz dot file
 	resultBuffer.WriteString("}")
@@ -721,12 +721,12 @@ func (tree RevTree) RenderGraphvizDot() string {
 
 // Returns the history of a revid as an array of revids in reverse chronological order.
 // Returns error if detects cycle(s) in rev tree
-func (tree RevTree) getHistory(revid string) ([]string, error) {
+func (tree RevTree) GetHistory(revid string) ([]string, error) {
 	maxHistory := len(tree)
 
 	history := make([]string, 0, 5)
 	for revid != "" {
-		info, err := tree.getInfo(revid)
+		info, err := tree.GetInfo(revid)
 		if err != nil {
 			break
 		}
@@ -751,7 +751,7 @@ func ParseRevisions(body Body) []string {
 		if !ok {
 			return nil
 		}
-		if genOfRevID(revid) < 1 {
+		if GenOfRevID(revid) < 1 {
 			return nil
 		}
 		oneRev := make([]string, 0, 1)
@@ -787,7 +787,7 @@ func splitRevisionList(revisions Revisions) (int, []string) {
 // Standard CouchDB encoding of a revision list: digests without numeric generation prefixes go in
 // the "ids" property, and the first (largest) generation number in the "start" property.
 // The docID parameter is informational only - and used when logging edge cases.
-func encodeRevisions(docID string, revs []string) Revisions {
+func EncodeRevisions(docID string, revs []string) Revisions {
 	ids := make([]string, len(revs))
 	var start int
 	for i, revid := range revs {
@@ -806,7 +806,7 @@ func encodeRevisions(docID string, revs []string) Revisions {
 // trim the history to stop at the first ancestor revID. If no ancestors are found, trim to
 // length maxUnmatchedLen.
 // TODO: Document/rename what the boolean result return value represents
-func trimEncodedRevisionsToAncestor(revs Revisions, ancestors []string, maxUnmatchedLen int) (result bool, trimmedRevs Revisions) {
+func TrimEncodedRevisionsToAncestor(revs Revisions, ancestors []string, maxUnmatchedLen int) (result bool, trimmedRevs Revisions) {
 
 	trimmedRevs = revs
 

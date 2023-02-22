@@ -20,6 +20,7 @@ import (
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
+	"github.com/couchbase/sync_gateway/document"
 )
 
 const (
@@ -211,7 +212,7 @@ func getAttachmentSyncData(dataType uint8, data []byte) (*AttachmentCompactionDa
 	var documentBody []byte
 
 	if dataType&base.MemcachedDataTypeXattr != 0 {
-		body, xattr, _, err := parseXattrStreamData(base.SyncXattrName, "", data)
+		body, xattr, _, err := document.ParseXattrStreamData(base.SyncXattrName, "", data)
 		if err != nil {
 			if errors.Is(err, base.ErrXattrNotFound) {
 				return nil, nil
@@ -275,7 +276,7 @@ func handleAttachments(attachmentKeyMap map[string]string, docKey string, attach
 	for attName, attachmentMeta := range attachmentsMap {
 		attMetaMap := attachmentMeta
 
-		attVer, ok := GetAttachmentVersion(attMetaMap)
+		attVer, ok := document.GetAttachmentVersion(attMetaMap)
 		if !ok {
 			continue
 		}
@@ -312,7 +313,7 @@ func attachmentCompactSweepPhase(ctx context.Context, dataStore base.DataStore, 
 
 		// If the data contains an xattr then the attachment likely has a compaction ID, need to check this value
 		if event.DataType&base.MemcachedDataTypeXattr != 0 {
-			_, xattr, _, err := parseXattrStreamData(base.AttachmentCompactionXattrName, "", event.Value)
+			_, xattr, _, err := document.ParseXattrStreamData(base.AttachmentCompactionXattrName, "", event.Value)
 			if err != nil && !errors.Is(err, base.ErrXattrNotFound) {
 				base.WarnfCtx(ctx, "[%s] Unexpected error occurred attempting to parse attachment xattr: %v", compactionLoggingID, err)
 				return true
@@ -424,7 +425,7 @@ func attachmentCompactCleanupPhase(ctx context.Context, dataStore base.DataStore
 			return true
 		}
 
-		_, xattr, _, err := parseXattrStreamData(base.AttachmentCompactionXattrName, "", event.Value)
+		_, xattr, _, err := document.ParseXattrStreamData(base.AttachmentCompactionXattrName, "", event.Value)
 		if err != nil && !errors.Is(err, base.ErrXattrNotFound) {
 			base.WarnfCtx(ctx, "[%s] Unexpected error occurred attempting to parse attachment xattr: %v", compactionLoggingID, err)
 			return true

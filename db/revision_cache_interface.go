@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/document"
 )
 
 const (
@@ -184,7 +185,7 @@ func (rev *DocumentRevision) Mutable1xBody(db *DatabaseCollectionWithUser, reque
 		if len(rev.Attachments) > 0 {
 			minRevpos := 1
 			if len(attachmentsSince) > 0 {
-				ancestor := rev.History.findAncestor(attachmentsSince)
+				ancestor := rev.History.FindAncestor(attachmentsSince)
 				if ancestor != "" {
 					minRevpos, _ = ParseRevID(ancestor)
 					minRevpos++
@@ -194,12 +195,12 @@ func (rev *DocumentRevision) Mutable1xBody(db *DatabaseCollectionWithUser, reque
 			if err != nil {
 				return nil, err
 			}
-			DeleteAttachmentVersion(bodyAtts)
+			document.DeleteAttachmentVersion(bodyAtts)
 			b[BodyAttachments] = bodyAtts
 		}
 	} else if rev.Attachments != nil {
 		// Stamp attachment metadata back into the body
-		DeleteAttachmentVersion(rev.Attachments)
+		document.DeleteAttachmentVersion(rev.Attachments)
 		b[BodyAttachments] = rev.Attachments
 	}
 
@@ -239,7 +240,7 @@ func newRevCacheDelta(deltaBytes []byte, fromRevID string, toRevision DocumentRe
 		DeltaBytes:            deltaBytes,
 		AttachmentStorageMeta: toRevAttStorageMeta,
 		ToChannels:            toRevision.Channels,
-		RevisionHistory:       toRevision.History.parseAncestorRevisions(fromRevID),
+		RevisionHistory:       toRevision.History.ParseAncestorRevisions(fromRevID),
 		ToDeleted:             deleted,
 	}
 }
@@ -278,11 +279,11 @@ func revCacheLoaderForDocument(ctx context.Context, backingStore RevisionCacheBa
 	}
 	deleted = doc.History[revid].Deleted
 
-	validatedHistory, getHistoryErr := doc.History.getHistory(revid)
+	validatedHistory, getHistoryErr := doc.History.GetHistory(revid)
 	if getHistoryErr != nil {
 		return bodyBytes, body, history, channels, removed, nil, deleted, nil, getHistoryErr
 	}
-	history = encodeRevisions(doc.ID, validatedHistory)
+	history = document.EncodeRevisions(doc.ID, validatedHistory)
 	channels = doc.History[revid].Channels
 
 	return bodyBytes, body, history, channels, removed, attachments, deleted, doc.Expiry, err

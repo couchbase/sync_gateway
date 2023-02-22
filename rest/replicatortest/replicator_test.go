@@ -29,6 +29,7 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
+	"github.com/couchbase/sync_gateway/document"
 	"github.com/couchbase/sync_gateway/rest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -1370,7 +1371,7 @@ func TestReplicationConfigChange(t *testing.T) {
 	bulkDocs := `
 	{
 	"docs":
-		[ 
+		[
 			{"channels": ["ChannelOne"], "_id": "doc_1"},
 			{"channels": ["ChannelOne"], "_id": "doc_2"},
 			{"channels": ["ChannelOne"], "_id": "doc_3"},
@@ -3751,7 +3752,7 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 					return mergedDoc;
 				}`,
 			expectedLocalBody:      db.Body{"source": "merged"},
-			expectedLocalRevID:     db.CreateRevIDWithBytes(2, "1-b", []byte(`{"source":"merged"}`)), // rev for merged body, with parent 1-b
+			expectedLocalRevID:     document.CreateRevIDWithBytes(2, "1-b", []byte(`{"source":"merged"}`)), // rev for merged body, with parent 1-b
 			expectedResolutionType: db.ConflictResolutionMerge,
 		},
 		{
@@ -3762,7 +3763,7 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 			remoteRevID:            "1-b",
 			conflictResolver:       `function(conflict) {return conflict.LocalDocument;}`,
 			expectedLocalBody:      db.Body{"source": "local"},
-			expectedLocalRevID:     db.CreateRevIDWithBytes(2, "1-b", []byte(`{"source":"local"}`)), // rev for local body, transposed under parent 1-b
+			expectedLocalRevID:     document.CreateRevIDWithBytes(2, "1-b", []byte(`{"source":"local"}`)), // rev for local body, transposed under parent 1-b
 			expectedResolutionType: db.ConflictResolutionLocal,
 		},
 		{
@@ -3981,7 +3982,7 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 							return mergedDoc;
 						}`,
 			expectedBody:  []byte(`{"source": "merged"}`),
-			expectedRevID: db.CreateRevIDWithBytes(2, "1-b", []byte(`{"source":"merged"}`)), // rev for merged body, with parent 1-b
+			expectedRevID: document.CreateRevIDWithBytes(2, "1-b", []byte(`{"source":"merged"}`)), // rev for merged body, with parent 1-b
 		},
 		{
 			name:               "localWins",
@@ -3991,7 +3992,7 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 			remoteRevID:        "1-b",
 			conflictResolver:   `function(conflict) {return conflict.LocalDocument;}`,
 			expectedBody:       []byte(`{"source": "local"}`),
-			expectedRevID:      db.CreateRevIDWithBytes(2, "1-b", []byte(`{"source":"local"}`)), // rev for local body, transposed under parent 1-b
+			expectedRevID:      document.CreateRevIDWithBytes(2, "1-b", []byte(`{"source":"local"}`)), // rev for local body, transposed under parent 1-b
 		},
 		{
 			name:                "localWinsRemoteTombstone",
@@ -4002,7 +4003,7 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 			commonAncestorRevID: "1-a",
 			conflictResolver:    `function(conflict) {return conflict.LocalDocument;}`,
 			expectedBody:        []byte(`{"source": "local"}`),
-			expectedRevID:       db.CreateRevIDWithBytes(3, "2-b", []byte(`{"source":"local"}`)), // rev for local body, transposed under parent 2-b
+			expectedRevID:       document.CreateRevIDWithBytes(3, "2-b", []byte(`{"source":"local"}`)), // rev for local body, transposed under parent 2-b
 		},
 	}
 
@@ -5641,7 +5642,7 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 	base.LongRunningTest(t)
 
 	createRevID := func(generation int, parentRevID string, body db.Body) string {
-		rev, err := db.CreateRevID(generation, parentRevID, body)
+		rev, err := document.CreateRevID(generation, parentRevID, body)
 		require.NoError(t, err, "Error creating revision")
 		return rev
 	}

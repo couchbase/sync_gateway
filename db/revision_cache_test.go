@@ -19,6 +19,7 @@ import (
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/document"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -40,10 +41,10 @@ func (t *testBackingStore) GetDocument(ctx context.Context, docid string, unmars
 		}
 	}
 
-	doc = NewDocument(docid)
-	doc._body = Body{
+	doc = document.NewDocument(docid)
+	doc.PokeBody(Body{
 		"testing": true,
-	}
+	})
 	doc.CurrentRev = "1-abc"
 	doc.History = RevTree{
 		doc.CurrentRev: {

@@ -958,8 +958,8 @@ func TestAttachmentRevposPre25Metadata(t *testing.T) {
 	response = rt.SendAdminRequest("GET", "/{{.keyspace}}/doc1", "")
 	RequireStatus(t, response, 200)
 	var body struct {
-		Test        bool             `json:"test"`
-		Attachments db.AttachmentMap `json:"_attachments"`
+		Test        bool          `json:"test"`
+		Attachments AttachmentMap `json:"_attachments"`
 	}
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.False(t, body.Test)

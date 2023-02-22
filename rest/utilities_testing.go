@@ -37,6 +37,7 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
+	"github.com/couchbase/sync_gateway/document"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -1677,6 +1678,9 @@ func (bt *BlipTester) GetDocAtRev(requestedDocID, requestedDocRev string) (resul
 
 }
 
+// A map of keys -> DocAttachments.
+type AttachmentMap map[string]*document.DocAttachment
+
 type SendRevWithAttachmentInput struct {
 	docId            string
 	revId            string
@@ -1713,7 +1717,7 @@ func (bt *BlipTester) SendRevWithAttachment(input SendRevWithAttachmentInput) (s
 		}
 	}
 
-	doc.SetAttachments(db.AttachmentMap{
+	doc.SetAttachments(AttachmentMap{
 		input.attachmentName: &myAttachment,
 	})
 
@@ -2051,7 +2055,7 @@ func (e ExpectedChange) Equals(change []interface{}) error {
 // - _attachments
 //
 // This struct wraps a map and provides convenience methods for getting at the special
-// fields with the appropriate types (string in the id/rev case, db.AttachmentMap in the attachments case).
+// fields with the appropriate types (string in the id/rev case, AttachmentMap in the attachments case).
 // Currently only used in tests, but if similar functionality needed in primary codebase, could be moved.
 type RestDocument map[string]interface{}
 
@@ -2086,23 +2090,23 @@ func (d RestDocument) SetRevID(revId string) {
 	d[db.BodyRev] = revId
 }
 
-func (d RestDocument) SetAttachments(attachments db.AttachmentMap) {
+func (d RestDocument) SetAttachments(attachments AttachmentMap) {
 	d[db.BodyAttachments] = attachments
 }
 
-func (d RestDocument) GetAttachments() (db.AttachmentMap, error) {
+func (d RestDocument) GetAttachments() (AttachmentMap, error) {
 
 	rawAttachments, hasAttachments := d[db.BodyAttachments]
 
 	// If the map doesn't even have the _attachments key, return an empty attachments map
 	if !hasAttachments {
-		return db.AttachmentMap{}, nil
+		return AttachmentMap{}, nil
 	}
 
 	// Otherwise, create an AttachmentMap from the value in the raw map
-	attachmentMap := db.AttachmentMap{}
+	attachmentMap := AttachmentMap{}
 	switch v := rawAttachments.(type) {
-	case db.AttachmentMap:
+	case AttachmentMap:
 		// If it's already an AttachmentMap (maybe due to previous call to SetAttachments), then return as-is
 		return v, nil
 	default:
@@ -2112,11 +2116,11 @@ func (d RestDocument) GetAttachments() (db.AttachmentMap, error) {
 			// marshal attachmentVal into a byte array, then unmarshal into a DocAttachment
 			attachmentValMarshalled, err := base.JSONMarshal(attachmentVal)
 			if err != nil {
-				return db.AttachmentMap{}, err
+				return AttachmentMap{}, err
 			}
 			docAttachment := db.DocAttachment{}
 			if err := base.JSONUnmarshal(attachmentValMarshalled, &docAttachment); err != nil {
-				return db.AttachmentMap{}, err
+				return AttachmentMap{}, err
 			}
 
 			attachmentMap[attachmentName] = &docAttachment

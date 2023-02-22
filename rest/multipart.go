@@ -24,6 +24,7 @@ import (
 	"strings"
 
 	"github.com/couchbase/sync_gateway/db"
+	"github.com/couchbase/sync_gateway/document"
 	"github.com/pkg/errors"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -126,13 +127,13 @@ func writeJSONPart(writer *multipart.Writer, contentType string, body db.Body, c
 func WriteMultipartDocument(ctx context.Context, cblReplicationPullStats *base.CBLReplicationPullStats, body db.Body, writer *multipart.Writer, compress bool) {
 	// First extract the attachments that should follow:
 	following := []attInfo{}
-	for name, value := range db.GetBodyAttachments(body) {
+	for name, value := range document.GetBodyAttachments(body) {
 		meta := value.(map[string]interface{})
 		if meta["stub"] != true {
 			var err error
 			var info attInfo
 			info.contentType, _ = meta["content_type"].(string)
-			info.data, err = db.DecodeAttachment(meta["data"])
+			info.data, err = document.DecodeAttachment(meta["data"])
 			if info.data == nil {
 				base.WarnfCtx(ctx, "Couldn't decode attachment %q of doc %q: %v", base.UD(name), base.UD(body[db.BodyId]), err)
 				meta["stub"] = true
@@ -167,7 +168,7 @@ func WriteMultipartDocument(ctx context.Context, cblReplicationPullStats *base.C
 }
 
 func hasInlineAttachments(body db.Body) bool {
-	for _, value := range db.GetBodyAttachments(body) {
+	for _, value := range document.GetBodyAttachments(body) {
 		if meta, ok := value.(map[string]interface{}); ok && meta["data"] != nil {
 			return true
 		}
@@ -227,7 +228,7 @@ func ReadMultipartDocument(reader *multipart.Reader) (db.Body, error) {
 
 	// Collect the attachments with a "follows" property, which will appear as MIME parts:
 	followingAttachments := map[string]map[string]interface{}{}
-	for name, value := range db.GetBodyAttachments(body) {
+	for name, value := range document.GetBodyAttachments(body) {
 		if meta := value.(map[string]interface{}); meta["follows"] == true {
 			followingAttachments[name] = meta
 		}

@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/document"
 )
 
 // Enum for the different repair jobs (eg, repairing rev tree cycles)
@@ -337,7 +338,7 @@ func RepairJobRevTreeCycles(docId string, originalCBDoc []byte) (transformedCBDo
 	base.DebugfCtx(context.TODO(), base.KeyCRUD, "RepairJobRevTreeCycles() called with doc id: %v", base.UD(docId))
 	defer base.DebugfCtx(context.TODO(), base.KeyCRUD, "RepairJobRevTreeCycles() finished.  Doc id: %v.  transformed: %v.  err: %v", base.UD(docId), base.UD(transformed), err)
 
-	doc, errUnmarshal := unmarshalDocument(docId, originalCBDoc)
+	doc, errUnmarshal := document.UnmarshalDocument(docId, originalCBDoc)
 	if errUnmarshal != nil {
 		return nil, false, errUnmarshal
 	}

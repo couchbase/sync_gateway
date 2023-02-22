@@ -21,6 +21,7 @@ import (
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
+	"github.com/couchbase/sync_gateway/document"
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 	pkgerrors "github.com/pkg/errors"
@@ -1013,7 +1014,7 @@ func (h *handler) handleGetRawDoc() error {
 	rawBytes := []byte(base.EmptyDocument)
 	if includeDoc {
 		if doc.IsDeleted() {
-			rawBytes = []byte(db.DeletedDocument)
+			rawBytes = []byte(document.DeletedDocument)
 		} else {
 			docRawBodyBytes, err := doc.BodyBytes()
 			if err != nil {

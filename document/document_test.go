@@ -8,7 +8,7 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-package db
+package document
 
 import (
 	"bytes"
@@ -133,7 +133,7 @@ func BenchmarkDocUnmarshal(b *testing.B) {
 	for _, bm := range unmarshalBenchmarks {
 		b.Run(bm.name, func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
-				_, _ = unmarshalDocumentWithXattr("doc_1k", doc1k_body, doc1k_meta, nil, 1, bm.unmarshalLevel)
+				_, _ = UnmarshalDocumentWithXattr("doc_1k", doc1k_body, doc1k_meta, nil, 1, bm.unmarshalLevel)
 			}
 		})
 	}
@@ -205,19 +205,19 @@ func TestParseXattr(t *testing.T) {
 	dcpBody = append(dcpBody, zeroByte)
 	dcpBody = append(dcpBody, body...)
 
-	resultBody, resultXattr, _, err := parseXattrStreamData(base.SyncXattrName, "", dcpBody)
+	resultBody, resultXattr, _, err := ParseXattrStreamData(base.SyncXattrName, "", dcpBody)
 	assert.NoError(t, err, "Unexpected error parsing dcp body")
 	assert.Equal(t, string(body), string(resultBody))
 	assert.Equal(t, string(xattrValue), string(resultXattr))
 
 	// Attempt to retrieve non-existent xattr
-	resultBody, resultXattr, _, err = parseXattrStreamData("nonexistent", "", dcpBody)
+	resultBody, resultXattr, _, err = ParseXattrStreamData("nonexistent", "", dcpBody)
 	assert.NoError(t, err, "Unexpected error parsing dcp body")
 	assert.Equal(t, string(body), string(resultBody))
 	assert.Equal(t, "", string(resultXattr))
 
 	// Attempt to retrieve xattr from empty dcp body
-	emptyBody, emptyXattr, _, emptyErr := parseXattrStreamData(base.SyncXattrName, "", []byte{})
+	emptyBody, emptyXattr, _, emptyErr := ParseXattrStreamData(base.SyncXattrName, "", []byte{})
 	assert.Equal(t, base.ErrEmptyMetadata, emptyErr)
 	assert.True(t, emptyBody == nil, "Nil body expected")
 	assert.True(t, emptyXattr == nil, "Nil xattr expected")

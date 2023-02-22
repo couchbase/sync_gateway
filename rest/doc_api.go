@@ -21,6 +21,7 @@ import (
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
+	"github.com/couchbase/sync_gateway/document"
 )
 
 // HTTP handler for a GET of a document
@@ -204,7 +205,7 @@ func (h *handler) handleGetAttachment() error {
 		return base.HTTPErrorf(http.StatusNotFound, "missing attachment %s", attachmentName)
 	}
 	digest := meta["digest"].(string)
-	version, ok := db.GetAttachmentVersion(meta)
+	version, ok := document.GetAttachmentVersion(meta)
 	if !ok {
 		return db.ErrAttachmentVersion
 	}
@@ -332,7 +333,7 @@ func (h *handler) handlePutAttachment() error {
 	}
 
 	// find attachment (if it existed)
-	attachments := db.GetBodyAttachments(body)
+	attachments := document.GetBodyAttachments(body)
 	if attachments == nil {
 		attachments = make(map[string]interface{})
 	}
@@ -393,7 +394,7 @@ func (h *handler) handleDeleteAttachment() error {
 	}
 
 	// get document attachments and check if attachment exists
-	attachments := db.GetBodyAttachments(body)
+	attachments := document.GetBodyAttachments(body)
 	if _, ok := attachments[attachmentName]; !ok {
 		return base.HTTPErrorf(http.StatusNotFound, "Attachment %s is not found", attachmentName)
 	}
@@ -467,7 +468,7 @@ func (h *handler) handlePutDoc() error {
 		h.setEtag(newRev)
 	} else {
 		// Replicator-style PUT with new_edits=false:
-		revisions := db.ParseRevisions(body)
+		revisions := document.ParseRevisions(body)
 		if revisions == nil {
 			return base.HTTPErrorf(http.StatusBadRequest, "Bad _revisions")
 		}
@@ -521,7 +522,7 @@ func (h *handler) handlePutDocReplicator2(docid string, roundTrip bool) (err err
 	deleted, _ := h.getOptBoolQuery("deleted", false)
 	newDoc.Deleted = deleted
 
-	newDoc.RevID = db.CreateRevIDWithBytes(generation, parentRev, bodyBytes)
+	newDoc.RevID = document.CreateRevIDWithBytes(generation, parentRev, bodyBytes)
 	history := []string{newDoc.RevID}
 
 	if parentRev != "" {
@@ -543,7 +544,7 @@ func (h *handler) handlePutDocReplicator2(docid string, roundTrip bool) (err err
 	if bytes.Contains(bodyBytes, []byte(db.BodyAttachments)) {
 		body := newDoc.Body()
 
-		newDoc.DocAttachments = db.GetBodyAttachments(body)
+		newDoc.DocAttachments = document.GetBodyAttachments(body)
 		delete(body, db.BodyAttachments)
 		newDoc.UpdateBody(body)
 	}

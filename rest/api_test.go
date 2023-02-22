@@ -34,6 +34,7 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
+	"github.com/couchbase/sync_gateway/document"
 	"github.com/couchbaselabs/walrus"
 	"github.com/robertkrimen/otto/underscore"
 	"github.com/stretchr/testify/assert"
@@ -2606,7 +2607,7 @@ func TestDocChannelSetPruning(t *testing.T) {
 	syncData, err := rt.GetDatabase().GetSingleDatabaseCollection().GetDocSyncData(base.TestCtx(t), "doc")
 	assert.NoError(t, err)
 
-	require.Len(t, syncData.ChannelSetHistory, db.DocumentHistoryMaxEntriesPerChannel)
+	require.Len(t, syncData.ChannelSetHistory, document.DocumentHistoryMaxEntriesPerChannel)
 	assert.Equal(t, "a", syncData.ChannelSetHistory[0].Name)
 	assert.Equal(t, uint64(1), syncData.ChannelSetHistory[0].Start)
 	assert.Equal(t, uint64(12), syncData.ChannelSetHistory[0].End)

@@ -10,24 +10,16 @@ package db
 
 import (
 	"context"
-	"crypto/rand"
 	"crypto/sha1"
 	"crypto/sha256"
 	"encoding/base64"
-	"errors"
-	"fmt"
 	"net/http"
 
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/document"
 )
 
-const (
-	// AttVersion1 attachments are persisted to the bucket based on attachment body digest.
-	AttVersion1 int = 1
-
-	// AttVersion2 attachments are persisted to the bucket based on docID and body digest.
-	AttVersion2 int = 2
-)
+const maxAttachmentSizeBytes = 20 * 1024 * 1024
 
 var (
 	// ErrAttachmentVersion is thrown in case of any error in parsing version from the attachment meta.
@@ -36,29 +28,6 @@ var (
 	// ErrAttachmentMeta returned when the document contains invalid _attachments metadata properties.
 	ErrAttachmentMeta = base.HTTPErrorf(http.StatusBadRequest, "Invalid _attachments")
 )
-
-// AttachmentData holds the attachment key and value bytes.
-type AttachmentData map[string][]byte
-
-// A map of keys -> DocAttachments.
-type AttachmentMap map[string]*DocAttachment
-
-// A struct which models an attachment.  Currently only used by test code, however
-// new code or refactoring in the main codebase should try to use where appropriate.
-type DocAttachment struct {
-	ContentType string `json:"content_type,omitempty"`
-	Digest      string `json:"digest,omitempty"`
-	Length      int    `json:"length,omitempty"`
-	Revpos      int    `json:"revpos,omitempty"`
-	Stub        bool   `json:"stub,omitempty"`
-	Version     int    `json:"ver,omitempty"`
-	Data        []byte `json:"-"` // tell json marshal/unmarshal to ignore this field
-}
-
-// ErrAttachmentTooLarge is returned when an attempt to attach an oversize attachment is made.
-var ErrAttachmentTooLarge = errors.New("attachment too large")
-
-const maxAttachmentSizeBytes = 20 * 1024 * 1024
 
 // Given Attachments Meta to be stored in the database, storeAttachments goes through the map, finds attachments with
 // inline bodies, copies the bodies into the Couchbase db, and replaces the bodies with the 'digest' attributes which
@@ -79,19 +48,19 @@ func (db *DatabaseCollectionWithUser) storeAttachments(ctx context.Context, doc 
 		data := meta["data"]
 		if data != nil {
 			// Attachment contains data, so store it in the db:
-			attachment, err := DecodeAttachment(data)
+			attachment, err := document.DecodeAttachment(data)
 			if err != nil {
 				return nil, err
 			}
 			digest := Sha1DigestKey(attachment)
-			key := MakeAttachmentKey(AttVersion2, doc.ID, digest)
+			key := MakeAttachmentKey(document.AttVersion2, doc.ID, digest)
 			newAttachmentData[key] = attachment
 
 			newMeta := map[string]interface{}{
 				"stub":   true,
 				"digest": digest,
 				"revpos": generation,
-				"ver":    AttVersion2,
+				"ver":    document.AttVersion2,
 			}
 			if contentType, ok := meta["content_type"].(string); ok {
 				newMeta["content_type"] = contentType
@@ -146,7 +115,7 @@ func retrieveV2AttachmentKeys(docID string, docAttachments AttachmentsMeta) (att
 		if !ok {
 			return nil, ErrAttachmentMeta
 		}
-		version, _ := GetAttachmentVersion(meta)
+		version, _ := document.GetAttachmentVersion(meta)
 		if version != AttVersion2 {
 			continue
 		}
@@ -167,10 +136,10 @@ func (db *DatabaseCollectionWithUser) retrieveAncestorAttachments(ctx context.Co
 	}
 
 	// No non-pruned ancestor is available
-	if commonAncestor := doc.History.findAncestorFromSet(doc.CurrentRev, docHistory); commonAncestor != "" {
+	if commonAncestor := doc.History.FindAncestorFromSet(doc.CurrentRev, docHistory); commonAncestor != "" {
 		parentAttachments := make(map[string]interface{})
-		commonAncestorGen := int64(genOfRevID(commonAncestor))
-		for name, activeAttachment := range GetBodyAttachments(doc.Body()) {
+		commonAncestorGen := int64(document.GenOfRevID(commonAncestor))
+		for name, activeAttachment := range document.GetBodyAttachments(doc.Body()) {
 			if attachmentMeta, ok := activeAttachment.(map[string]interface{}); ok {
 				activeRevpos, ok := base.ToInt64(attachmentMeta["revpos"])
 				if ok && activeRevpos <= commonAncestorGen {
@@ -204,7 +173,7 @@ func (c *DatabaseCollection) loadAttachmentsData(attachments AttachmentsMeta, mi
 			if !ok {
 				return nil, base.RedactErrorf("Unable to load attachment for doc: %v with name: %v and revpos: %v due to unexpected digest field: %v", base.UD(docid), base.UD(attachmentName), revpos, digest)
 			}
-			version, ok := GetAttachmentVersion(meta)
+			version, ok := document.GetAttachmentVersion(meta)
 			if !ok {
 				return nil, base.RedactErrorf("Unable to load attachment for doc: %v with name: %v, revpos: %v and digest: %v due to unexpected version value: %v", base.UD(docid), base.UD(attachmentName), revpos, digest, version)
 			}
@@ -219,14 +188,6 @@ func (c *DatabaseCollection) loadAttachmentsData(attachments AttachmentsMeta, mi
 	}
 
 	return newAttachments, nil
-}
-
-// DeleteAttachmentVersion removes attachment versions from the AttachmentsMeta map specified.
-func DeleteAttachmentVersion(attachments AttachmentsMeta) {
-	for _, value := range attachments {
-		meta := value.(map[string]interface{})
-		delete(meta, "ver")
-	}
 }
 
 // GetAttachment retrieves an attachment given its key.
@@ -248,7 +209,7 @@ func (db *DatabaseCollectionWithUser) setAttachments(ctx context.Context, attach
 	for key, data := range attachments {
 		attachmentSize := int64(len(data))
 		if attachmentSize > int64(maxAttachmentSizeBytes) {
-			return ErrAttachmentTooLarge
+			return document.ErrAttachmentTooLarge
 		}
 		_, err := db.dataStore.AddRaw(key, 0, data)
 		if err == nil {
@@ -270,7 +231,7 @@ type AttachmentCallback func(name string, digest string, knownData []byte, meta 
 // to its digest. If the attachment isn't known, the callback can return data for it, which will
 // be added to the metadata as a "data" property.
 func (c *DatabaseCollection) ForEachStubAttachment(body Body, minRevpos int, docID string, existingDigests map[string]string, callback AttachmentCallback) error {
-	atts := GetBodyAttachments(body)
+	atts := document.GetBodyAttachments(body)
 	if atts == nil && body[BodyAttachments] != nil {
 		return base.HTTPErrorf(http.StatusBadRequest, "Invalid _attachments")
 	}
@@ -319,110 +280,7 @@ func (c *DatabaseCollection) ForEachStubAttachment(body Body, minRevpos int, doc
 	return nil
 }
 
-func GetAttachmentVersion(meta map[string]interface{}) (int, bool) {
-	ver, ok := meta["ver"]
-	if !ok {
-		return AttVersion1, true
-	}
-	val, ok := base.ToInt64(ver)
-	return int(val), ok
-}
-
-// GenerateProofOfAttachment returns a nonce and proof for an attachment body.
-func GenerateProofOfAttachment(attachmentData []byte) (nonce []byte, proof string, err error) {
-	nonce = make([]byte, 20)
-	if _, err := rand.Read(nonce); err != nil {
-		return nil, "", base.HTTPErrorf(http.StatusInternalServerError, fmt.Sprintf("Failed to generate random data: %s", err))
-	}
-	proof = ProveAttachment(attachmentData, nonce)
-	base.TracefCtx(context.Background(), base.KeyCRUD, "Generated nonce %v and proof %q for attachment: %v", nonce, proof, attachmentData)
-	return nonce, proof, nil
-}
-
-// ProveAttachment returns the proof for an attachment body and nonce pair.
-func ProveAttachment(attachmentData, nonce []byte) (proof string) {
-	d := sha1.New()
-	d.Write([]byte{byte(len(nonce))})
-	d.Write(nonce)
-	d.Write(attachmentData)
-	proof = "sha1-" + base64.StdEncoding.EncodeToString(d.Sum(nil))
-	base.TracefCtx(context.Background(), base.KeyCRUD, "Generated proof %q using nonce %v for attachment: %v", proof, nonce, attachmentData)
-	return proof
-}
-
 // ////// HELPERS:
-// Returns _attachments property from body, when found.  Checks for either map[string]interface{} (unmarshalled with body),
-// or AttachmentsMeta (written by body by SG)
-func GetBodyAttachments(body Body) AttachmentsMeta {
-	switch atts := body[BodyAttachments].(type) {
-	case AttachmentsMeta:
-		return atts
-	case map[string]interface{}:
-		return AttachmentsMeta(atts)
-	default:
-		return nil
-	}
-}
-
-// AttachmentDigests returns a list of attachment digests contained in the given AttachmentsMeta
-func AttachmentDigests(attachments AttachmentsMeta) []string {
-	var digests = make([]string, 0, len(attachments))
-	for _, att := range attachments {
-		if attMap, ok := att.(map[string]interface{}); ok {
-			if digest, ok := attMap["digest"]; ok {
-				if digestString, ok := digest.(string); ok {
-					digests = append(digests, digestString)
-				}
-			}
-		}
-	}
-	return digests
-}
-
-// AttachmentStorageMeta holds the metadata for building
-// the key for attachment storage and retrieval.
-type AttachmentStorageMeta struct {
-	digest  string
-	version int
-}
-
-// ToAttachmentStorageMeta returns a slice of AttachmentStorageMeta, which is contains the
-// necessary metadata properties to build the key for attachment storage and retrieval.
-func ToAttachmentStorageMeta(attachments AttachmentsMeta) []AttachmentStorageMeta {
-	meta := make([]AttachmentStorageMeta, 0, len(attachments))
-	for _, att := range attachments {
-		if attMap, ok := att.(map[string]interface{}); ok {
-			if digest, ok := attMap["digest"]; ok {
-				if digestString, ok := digest.(string); ok {
-					version, _ := GetAttachmentVersion(attMap)
-					m := AttachmentStorageMeta{
-						digest:  digestString,
-						version: version,
-					}
-					meta = append(meta, m)
-				}
-			}
-		}
-	}
-	return meta
-}
-
-func DecodeAttachment(att interface{}) ([]byte, error) {
-	switch att := att.(type) {
-	case []byte:
-		return att, nil
-	case string:
-		return base64.StdEncoding.DecodeString(att)
-	default:
-		return nil, base.HTTPErrorf(400, "invalid attachment data (type %T)", att)
-	}
-}
-
-func Sha1DigestKey(data []byte) string {
-	digester := sha1.New()
-	digester.Write(data)
-	return "sha1-" + base64.StdEncoding.EncodeToString(digester.Sum(nil))
-}
 
 // MakeAttachmentKey returns the unique for attachment storage and retrieval.
 func MakeAttachmentKey(version int, docID, digest string) string {
@@ -430,6 +288,12 @@ func MakeAttachmentKey(version int, docID, digest string) string {
 		return base.Att2Prefix + sha256Digest([]byte(docID)) + ":" + digest
 	}
 	return base.AttPrefix + digest
+}
+
+func Sha1DigestKey(data []byte) string {
+	digester := sha1.New()
+	digester.Write(data)
+	return "sha1-" + base64.StdEncoding.EncodeToString(digester.Sum(nil))
 }
 
 // sha256Digest returns sha256 digest of the input bytes encoded

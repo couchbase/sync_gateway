@@ -23,6 +23,7 @@ import (
 
 	"github.com/couchbase/go-blip"
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/document"
 )
 
 const (
@@ -585,12 +586,12 @@ func (bsc *BlipSyncContext) sendRevision(sender *blip.Sender, docID, revID strin
 	}
 
 	base.TracefCtx(bsc.loggingCtx, base.KeySync, "sendRevision, rev attachments for %s/%s are %v", base.UD(docID), revID, base.UD(rev.Attachments))
-	attachmentStorageMeta := ToAttachmentStorageMeta(rev.Attachments)
+	attachmentStorageMeta := document.ToAttachmentStorageMeta(rev.Attachments)
 	var bodyBytes []byte
 	if base.IsEnterpriseEdition() {
 		// Still need to stamp _attachments into BLIP messages
 		if len(rev.Attachments) > 0 {
-			DeleteAttachmentVersion(rev.Attachments)
+			document.DeleteAttachmentVersion(rev.Attachments)
 			bodyBytes, err = base.InjectJSONProperties(rev.BodyBytes, base.KVPair{Key: BodyAttachments, Val: rev.Attachments})
 			if err != nil {
 				return err
@@ -606,7 +607,7 @@ func (bsc *BlipSyncContext) sendRevision(sender *blip.Sender, docID, revID strin
 
 		// Still need to stamp _attachments into BLIP messages
 		if len(rev.Attachments) > 0 {
-			DeleteAttachmentVersion(rev.Attachments)
+			document.DeleteAttachmentVersion(rev.Attachments)
 			body[BodyAttachments] = rev.Attachments
 		}
 
@@ -628,7 +629,7 @@ func (bsc *BlipSyncContext) sendRevision(sender *blip.Sender, docID, revID strin
 func digests(meta []AttachmentStorageMeta) []string {
 	digests := make([]string, len(meta))
 	for _, m := range meta {
-		digests = append(digests, m.digest)
+		digests = append(digests, m.Digest)
 	}
 	return digests
 }

@@ -28,6 +28,7 @@ import (
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
+	"github.com/couchbase/sync_gateway/document"
 	"github.com/robertkrimen/otto/underscore"
 	"github.com/stretchr/testify/assert"
 )
@@ -2858,7 +2859,7 @@ func Test_getUpdatedDocument(t *testing.T) {
 
 		raw, _, err := db.Bucket.DefaultDataStore().GetRaw(docID)
 		require.NoError(t, err)
-		doc, err := unmarshalDocument(docID, raw)
+		doc, err := document.UnmarshalDocument(docID, raw)
 		require.NoError(t, err)
 
 		collection := GetSingleDatabaseCollectionWithUser(t, db)

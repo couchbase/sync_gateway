@@ -22,6 +22,7 @@ import (
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
+	"github.com/couchbase/sync_gateway/document"
 	"github.com/pkg/errors"
 )
 
@@ -87,7 +88,7 @@ func (c *DatabaseCollection) GetDocumentWithRaw(ctx context.Context, docid strin
 			return nil, nil, getErr
 		}
 
-		doc, err = unmarshalDocument(key, rawDoc)
+		doc, err = document.UnmarshalDocument(key, rawDoc)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -119,7 +120,7 @@ func (c *DatabaseCollection) GetDocWithXattr(key string, unmarshalLevel Document
 	}
 
 	var unmarshalErr error
-	doc, unmarshalErr = unmarshalDocumentWithXattr(key, rawBucketDoc.Body, rawBucketDoc.Xattr, rawBucketDoc.UserXattr, rawBucketDoc.Cas, unmarshalLevel)
+	doc, unmarshalErr = document.UnmarshalDocumentWithXattr(key, rawBucketDoc.Body, rawBucketDoc.Xattr, rawBucketDoc.UserXattr, rawBucketDoc.Cas, unmarshalLevel)
 	if unmarshalErr != nil {
 		return nil, nil, unmarshalErr
 	}
@@ -146,7 +147,7 @@ func (c *DatabaseCollection) GetDocSyncData(ctx context.Context, docid string) (
 		}
 
 		// Unmarshal xattr only
-		doc, unmarshalErr := unmarshalDocumentWithXattr(docid, nil, rawXattr, rawUserXattr, cas, DocUnmarshalSync)
+		doc, unmarshalErr := document.UnmarshalDocumentWithXattr(docid, nil, rawXattr, rawUserXattr, cas, DocUnmarshalSync)
 		if unmarshalErr != nil {
 			return emptySyncData, unmarshalErr
 		}
@@ -175,7 +176,7 @@ func (c *DatabaseCollection) GetDocSyncData(ctx context.Context, docid string) (
 			return emptySyncData, err
 		}
 
-		docRoot := documentRoot{
+		docRoot := document.DocumentRoot{
 			SyncData: &SyncData{History: make(RevTree)},
 		}
 		if err := base.JSONUnmarshal(rawDocBytes, &docRoot); err != nil {
@@ -242,7 +243,7 @@ func (db *DatabaseCollectionWithUser) Get1xRevBodyWithHistory(ctx context.Contex
 		requestedHistory = nil
 	}
 	if requestedHistory != nil {
-		_, requestedHistory = trimEncodedRevisionsToAncestor(requestedHistory, historyFrom, maxHistory)
+		_, requestedHistory = document.TrimEncodedRevisionsToAncestor(requestedHistory, historyFrom, maxHistory)
 	}
 
 	return rev.Mutable1xBody(db, requestedHistory, attachmentsSince, showExp)
@@ -289,7 +290,7 @@ func (db *DatabaseCollectionWithUser) getRev(ctx context.Context, docid, revid s
 		requestedHistory = nil
 	}
 	if requestedHistory != nil {
-		_, requestedHistory = trimEncodedRevisionsToAncestor(requestedHistory, historyFrom, maxHistory)
+		_, requestedHistory = document.TrimEncodedRevisionsToAncestor(requestedHistory, historyFrom, maxHistory)
 	}
 
 	isAuthorized, redactedRev := db.authorizeUserForChannels(docid, revision.RevID, revision.Channels, revision.Deleted, requestedHistory)
@@ -348,7 +349,7 @@ func (db *DatabaseCollectionWithUser) GetDelta(ctx context.Context, docID, fromR
 	if fromRevision.Delta != nil {
 		if fromRevision.Delta.ToRevID == toRevID {
 
-			isAuthorized, redactedBody := db.authorizeUserForChannels(docID, toRevID, fromRevision.Delta.ToChannels, fromRevision.Delta.ToDeleted, encodeRevisions(docID, fromRevision.Delta.RevisionHistory))
+			isAuthorized, redactedBody := db.authorizeUserForChannels(docID, toRevID, fromRevision.Delta.ToChannels, fromRevision.Delta.ToDeleted, document.EncodeRevisions(docID, fromRevision.Delta.RevisionHistory))
 			if !isAuthorized {
 				return nil, &redactedBody, nil
 			}
@@ -407,15 +408,15 @@ func (db *DatabaseCollectionWithUser) GetDelta(ctx context.Context, docID, fromR
 		if fromRevision.Attachments != nil {
 			// the delta library does not handle deltas in non builtin types,
 			// so we need the map[string]interface{} type conversion here
-			DeleteAttachmentVersion(fromRevision.Attachments)
+			document.DeleteAttachmentVersion(fromRevision.Attachments)
 			fromBodyCopy[BodyAttachments] = map[string]interface{}(fromRevision.Attachments)
 		}
 
 		var toRevAttStorageMeta []AttachmentStorageMeta
 		if toRevision.Attachments != nil {
 			// Flatten the AttachmentsMeta into a list of digest version pairs.
-			toRevAttStorageMeta = ToAttachmentStorageMeta(toRevision.Attachments)
-			DeleteAttachmentVersion(toRevision.Attachments)
+			toRevAttStorageMeta = document.ToAttachmentStorageMeta(toRevision.Attachments)
+			document.DeleteAttachmentVersion(toRevision.Attachments)
 			toBodyCopy[BodyAttachments] = map[string]interface{}(toRevision.Attachments)
 		}
 
@@ -451,7 +452,7 @@ func (col *DatabaseCollectionWithUser) authorizeUserForChannels(docID, revID str
 				redactedRev.BodyBytes = []byte(base.EmptyDocument)
 			} else {
 				// ... but removals are still denoted by the _removed property in the body, even for 2.x replication
-				redactedRev.BodyBytes = []byte(RemovedRedactedDocument)
+				redactedRev.BodyBytes = []byte(document.RemovedRedactedDocument)
 			}
 			return false, redactedRev
 		}
@@ -505,11 +506,11 @@ func (col *DatabaseCollectionWithUser) authorizeDoc(doc *Document, revid string)
 // Gets a revision of a document. If it's obsolete it will be loaded from the database if possible.
 // inline "_attachments" properties in the body will be extracted and returned separately if present (pre-2.5 metadata, or backup revisions)
 func (c *DatabaseCollection) getRevision(ctx context.Context, doc *Document, revid string) (bodyBytes []byte, body Body, attachments AttachmentsMeta, err error) {
-	bodyBytes = doc.getRevisionBodyJSON(ctx, revid, c.RevisionBodyLoader)
+	bodyBytes = doc.GetRevisionBodyJSON(ctx, revid, c.RevisionBodyLoader)
 
 	// No inline body, so look for separate doc:
 	if bodyBytes == nil {
-		if !doc.History.contains(revid) {
+		if !doc.History.Contains(revid) {
 			return nil, nil, nil, ErrMissing
 		}
 
@@ -521,7 +522,7 @@ func (c *DatabaseCollection) getRevision(ctx context.Context, doc *Document, rev
 
 	// optimistically grab the doc body and to store as a pre-unmarshalled version, as well as anticipating no inline attachments.
 	if doc.CurrentRev == revid {
-		body = doc._body
+		body = doc.PeekBody()
 		attachments = doc.Attachments
 	}
 
@@ -544,9 +545,9 @@ func mergeAttachments(pre25Attachments, docAttachments AttachmentsMeta) Attachme
 	if len(pre25Attachments)+len(docAttachments) == 0 {
 		return nil // noop
 	} else if len(pre25Attachments) == 0 {
-		return copyMap(docAttachments)
+		return document.CopyMap(docAttachments)
 	} else if len(docAttachments) == 0 {
-		return copyMap(pre25Attachments)
+		return document.CopyMap(pre25Attachments)
 	}
 
 	merged := make(AttachmentsMeta, len(docAttachments))
@@ -624,9 +625,9 @@ func extractInlineAttachments(bodyBytes []byte) (attachments AttachmentsMeta, cl
 // If no ancestor has any JSON, returns nil but no error.
 func (db *DatabaseCollectionWithUser) getAncestorJSON(ctx context.Context, doc *Document, revid string) ([]byte, error) {
 	for {
-		if revid = doc.History.getParent(revid); revid == "" {
+		if revid = doc.History.GetParent(revid); revid == "" {
 			return nil, nil
-		} else if body := doc.getRevisionBodyJSON(ctx, revid, db.RevisionBodyLoader); body != nil {
+		} else if body := doc.GetRevisionBodyJSON(ctx, revid, db.RevisionBodyLoader); body != nil {
 			return body, nil
 		}
 	}
@@ -650,7 +651,7 @@ func (db *DatabaseCollectionWithUser) get1xRevFromDoc(ctx context.Context, doc *
 		if doc.History[revid].Deleted {
 			bodyBytes = []byte(base.EmptyDocument)
 		} else {
-			bodyBytes = []byte(RemovedRedactedDocument)
+			bodyBytes = []byte(document.RemovedRedactedDocument)
 			removed = true
 		}
 	} else {
@@ -679,11 +680,11 @@ func (db *DatabaseCollectionWithUser) get1xRevFromDoc(ctx context.Context, doc *
 	}
 
 	if listRevisions {
-		validatedHistory, getHistoryErr := doc.History.getHistory(revid)
+		validatedHistory, getHistoryErr := doc.History.GetHistory(revid)
 		if getHistoryErr != nil {
 			return nil, removed, getHistoryErr
 		}
-		kvPairs = append(kvPairs, base.KVPair{Key: BodyRevisions, Val: encodeRevisions(doc.ID, validatedHistory)})
+		kvPairs = append(kvPairs, base.KVPair{Key: BodyRevisions, Val: document.EncodeRevisions(doc.ID, validatedHistory)})
 	}
 
 	bodyBytes, err = base.InjectJSONProperties(bodyBytes, kvPairs...)
@@ -755,11 +756,11 @@ func (db *DatabaseCollectionWithUser) backupAncestorRevs(ctx context.Context, do
 	var json []byte
 	ancestorRevId := newDoc.RevID
 	for {
-		if ancestorRevId = doc.History.getParent(ancestorRevId); ancestorRevId == "" {
+		if ancestorRevId = doc.History.GetParent(ancestorRevId); ancestorRevId == "" {
 			// No ancestors with JSON found.  Check if we need to back up current rev for delta sync, then return
 			db.backupRevisionJSON(ctx, doc.ID, newDoc.RevID, "", newBodyBytes, nil, doc.Attachments)
 			return
-		} else if json = doc.getRevisionBodyJSON(ctx, ancestorRevId, db.RevisionBodyLoader); json != nil {
+		} else if json = doc.GetRevisionBodyJSON(ctx, ancestorRevId, db.RevisionBodyLoader); json != nil {
 			break
 		}
 	}
@@ -771,7 +772,7 @@ func (db *DatabaseCollectionWithUser) backupAncestorRevs(ctx context.Context, do
 	if ancestorRevId == doc.CurrentRev {
 		doc.RemoveBody()
 	} else {
-		doc.removeRevisionBody(ancestorRevId)
+		doc.RemoveRevisionBody(ancestorRevId)
 	}
 }
 
@@ -831,7 +832,7 @@ func (db *DatabaseCollectionWithUser) Put(ctx context.Context, docid string, bod
 	}
 
 	// Pull out attachments
-	newDoc.DocAttachments = GetBodyAttachments(body)
+	newDoc.DocAttachments = document.GetBodyAttachments(body)
 	delete(body, BodyAttachments)
 
 	delete(body, BodyRevisions)
@@ -881,12 +882,12 @@ func (db *DatabaseCollectionWithUser) Put(ctx context.Context, docid string, bod
 					generation++
 				}
 			}
-		} else if !doc.History.isLeaf(matchRev) || db.IsIllegalConflict(ctx, doc, matchRev, deleted, false, nil) {
+		} else if !doc.History.IsLeaf(matchRev) || db.IsIllegalConflict(ctx, doc, matchRev, deleted, false, nil) {
 			conflictErr = base.HTTPErrorf(http.StatusConflict, "Document revision conflict")
 		}
 
 		// Make up a new _rev, and add it to the history:
-		bodyWithoutInternalProps, wasStripped := stripInternalProperties(body)
+		bodyWithoutInternalProps, wasStripped := document.StripInternalProperties(body)
 		canonicalBytesForRevID, err := base.JSONMarshalCanonical(bodyWithoutInternalProps)
 		if err != nil {
 			return nil, nil, false, nil, err
@@ -904,7 +905,7 @@ func (db *DatabaseCollectionWithUser) Put(ctx context.Context, docid string, bod
 		// If no special properties were stripped and document wasn't deleted, the canonical bytes represent the current
 		// body.  In this scenario, store canonical bytes as newDoc._rawBody
 		if !wasStripped && !isDeleted {
-			newDoc._rawBody = canonicalBytesForRevID
+			newDoc.PokeRawBody(canonicalBytesForRevID)
 		}
 
 		// Handle telling the user if there is a conflict
@@ -933,9 +934,9 @@ func (db *DatabaseCollectionWithUser) Put(ctx context.Context, docid string, bod
 			return nil, nil, false, nil, err
 		}
 
-		newRev := CreateRevIDWithBytes(generation, matchRev, canonicalBytesForRevID)
+		newRev := document.CreateRevIDWithBytes(generation, matchRev, canonicalBytesForRevID)
 
-		if err := doc.History.addRevision(newDoc.ID, RevInfo{ID: newRev, Parent: matchRev, Deleted: deleted}); err != nil {
+		if err := doc.History.AddRevision(newDoc.ID, RevInfo{ID: newRev, Parent: matchRev, Deleted: deleted}); err != nil {
 			base.InfofCtx(ctx, base.KeyCRUD, "Failed to add revision ID: %s, for doc: %s, error: %v", newRev, base.UD(docid), err)
 			return nil, nil, false, nil, base.ErrRevTreeAddRevFailure
 		}
@@ -993,7 +994,7 @@ func (db *DatabaseCollectionWithUser) PutExistingRevWithConflictResolution(ctx c
 		currentRevIndex := len(docHistory)
 		parent := ""
 		for i, revid := range docHistory {
-			if doc.History.contains(revid) {
+			if doc.History.Contains(revid) {
 				currentRevIndex = i
 				parent = revid
 				break
@@ -1028,7 +1029,7 @@ func (db *DatabaseCollectionWithUser) PutExistingRevWithConflictResolution(ctx c
 				currentRevIndex = len(docHistory)
 				parent = ""
 				for i, revid := range docHistory {
-					if doc.History.contains(revid) {
+					if doc.History.Contains(revid) {
 						currentRevIndex = i
 						parent = revid
 						break
@@ -1039,7 +1040,7 @@ func (db *DatabaseCollectionWithUser) PutExistingRevWithConflictResolution(ctx c
 
 		// Add all the new-to-me revisions to the rev tree:
 		for i := currentRevIndex - 1; i >= 0; i-- {
-			err := doc.History.addRevision(newDoc.ID,
+			err := doc.History.AddRevision(newDoc.ID,
 				RevInfo{
 					ID:      docHistory[i],
 					Parent:  parent,
@@ -1086,7 +1087,7 @@ func (db *DatabaseCollectionWithUser) PutExistingRevWithBody(ctx context.Context
 	delete(body, BodyId)
 	delete(body, BodyRevisions)
 
-	newDoc.DocAttachments = GetBodyAttachments(body)
+	newDoc.DocAttachments = document.GetBodyAttachments(body)
 	delete(body, BodyAttachments)
 
 	newDoc.UpdateBody(body)
@@ -1209,7 +1210,7 @@ func (db *DatabaseCollectionWithUser) resolveDocLocalWins(ctx context.Context, l
 
 	if !localDoc.Deleted {
 		// If the local doc is not a tombstone, we're just rewriting it as a child of the remote
-		newRevID = CreateRevIDWithBytes(remoteGeneration+1, remoteRevID, docBodyBytes)
+		newRevID = document.CreateRevIDWithBytes(remoteGeneration+1, remoteRevID, docBodyBytes)
 	} else {
 		// If the local doc is a tombstone, we're going to end up with both the local and remote branches tombstoned,
 		// and need to ensure the remote branch is the winning branch. To do that, we inject entries into the remote
@@ -1223,10 +1224,10 @@ func (db *DatabaseCollectionWithUser) resolveDocLocalWins(ctx context.Context, l
 		for i := 0; i < requiredAdditionalRevs; i++ {
 			injectedGeneration++
 			remoteLeafRevID := docHistory[0]
-			injectedRevID := CreateRevIDWithBytes(injectedGeneration, remoteLeafRevID, injectedRevBody)
+			injectedRevID := document.CreateRevIDWithBytes(injectedGeneration, remoteLeafRevID, injectedRevBody)
 			docHistory = append([]string{injectedRevID}, docHistory...)
 		}
-		newRevID = CreateRevIDWithBytes(injectedGeneration+1, docHistory[0], docBodyBytes)
+		newRevID = document.CreateRevIDWithBytes(injectedGeneration+1, docHistory[0], docBodyBytes)
 	}
 
 	// Update the history for the incoming doc to prepend the cloned revID
@@ -1243,7 +1244,7 @@ func (db *DatabaseCollectionWithUser) resolveDocLocalWins(ctx context.Context, l
 	// to have their revpos updated when we rewrite the rev as a child of the remote branch.
 	if remoteDoc.DocAttachments != nil {
 		// Identify generation of common ancestor and new rev
-		commonAncestorRevID := localDoc.SyncData.History.findAncestorFromSet(localDoc.CurrentRev, docHistory)
+		commonAncestorRevID := localDoc.SyncData.History.FindAncestorFromSet(localDoc.CurrentRev, docHistory)
 		commonAncestorGen := 0
 		if commonAncestorRevID != "" {
 			commonAncestorGen, _ = ParseRevID(commonAncestorRevID)
@@ -1265,7 +1266,7 @@ func (db *DatabaseCollectionWithUser) resolveDocLocalWins(ctx context.Context, l
 		}
 	}
 
-	remoteDoc._rawBody = docBodyBytes
+	remoteDoc.PokeRawBody(docBodyBytes)
 
 	// Tombstone the local revision
 	localRevID := localDoc.CurrentRev
@@ -1303,7 +1304,7 @@ func (db *DatabaseCollectionWithUser) resolveDocMerge(ctx context.Context, local
 
 	remoteRevID := remoteDoc.RevID
 	remoteGeneration, _ := ParseRevID(remoteRevID)
-	mergedRevID, err := CreateRevID(remoteGeneration+1, remoteRevID, mergedBody)
+	mergedRevID, err := document.CreateRevID(remoteGeneration+1, remoteRevID, mergedBody)
 	if err != nil {
 		return "", nil, err
 	}
@@ -1311,7 +1312,7 @@ func (db *DatabaseCollectionWithUser) resolveDocMerge(ctx context.Context, local
 	// Update the remote document's body to the merge result
 	remoteDoc.RevID = mergedRevID
 	remoteDoc.RemoveBody()
-	remoteDoc._body = mergedBody
+	remoteDoc.PokeBody(mergedBody)
 
 	// Update the history for the remote doc to prepend the merged revID
 	docHistory = append([]string{mergedRevID}, docHistory...)
@@ -1334,9 +1335,9 @@ func (db *DatabaseCollectionWithUser) tombstoneActiveRevision(ctx context.Contex
 	}
 
 	// Create tombstone
-	newGeneration := genOfRevID(revID) + 1
-	newRevID := CreateRevIDWithBytes(newGeneration, revID, []byte(DeletedDocument))
-	err = doc.History.addRevision(doc.ID,
+	newGeneration := document.GenOfRevID(revID) + 1
+	newRevID := document.CreateRevIDWithBytes(newGeneration, revID, []byte(document.DeletedDocument))
+	err = doc.History.AddRevision(doc.ID,
 		RevInfo{
 			ID:      newRevID,
 			Parent:  revID,
@@ -1356,13 +1357,13 @@ func (db *DatabaseCollectionWithUser) tombstoneActiveRevision(ctx context.Contex
 	return newRevID, nil
 }
 
-func (doc *Document) updateWinningRevAndSetDocFlags() {
+func updateWinningRevAndSetDocFlags(doc *Document) {
 	var branched, inConflict bool
-	doc.CurrentRev, branched, inConflict = doc.History.winningRevision()
-	doc.setFlag(channels.Deleted, doc.History[doc.CurrentRev].Deleted)
-	doc.setFlag(channels.Conflict, inConflict)
-	doc.setFlag(channels.Branched, branched)
-	if doc.hasFlag(channels.Deleted) {
+	doc.CurrentRev, branched, inConflict = doc.History.WinningRevision()
+	doc.SetFlag(channels.Deleted, doc.History[doc.CurrentRev].Deleted)
+	doc.SetFlag(channels.Conflict, inConflict)
+	doc.SetFlag(channels.Branched, branched)
+	if doc.HasFlag(channels.Deleted) {
 		doc.SyncData.TombstonedAt = time.Now().Unix()
 	} else {
 		doc.SyncData.TombstonedAt = 0
@@ -1397,7 +1398,7 @@ func (db *DatabaseCollectionWithUser) storeOldBodyInRevTreeAndUpdateCurrent(ctx 
 						bodyAtts[attName] = attMeta
 					}
 
-					version, _ := GetAttachmentVersion(attMetaMap)
+					version, _ := document.GetAttachmentVersion(attMetaMap)
 					if version == AttVersion2 {
 						oldDocHasAttachments = true
 					}
@@ -1417,20 +1418,20 @@ func (db *DatabaseCollectionWithUser) storeOldBodyInRevTreeAndUpdateCurrent(ctx 
 		if marshalErr != nil {
 			base.WarnfCtx(ctx, "Unable to marshal document body properties for storage in rev tree: %v", marshalErr)
 		}
-		doc.setNonWinningRevisionBody(prevCurrentRev, oldBodyJson, db.AllowExternalRevBodyStorage(), oldDocHasAttachments)
+		doc.SetNonWinningRevisionBody(prevCurrentRev, oldBodyJson, db.AllowExternalRevBodyStorage(), oldDocHasAttachments)
 	}
 	// Store the new revision body into the doc:
-	doc.setRevisionBody(newRevID, newDoc, db.AllowExternalRevBodyStorage(), newDocHasAttachments)
+	doc.SetRevisionBody(newRevID, newDoc, db.AllowExternalRevBodyStorage(), newDocHasAttachments)
 	doc.SyncData.Attachments = newDoc.DocAttachments
 
 	if doc.CurrentRev == newRevID {
 		doc.NewestRev = ""
-		doc.setFlag(channels.Hidden, false)
+		doc.SetFlag(channels.Hidden, false)
 	} else {
 		doc.NewestRev = newRevID
-		doc.setFlag(channels.Hidden, true)
+		doc.SetFlag(channels.Hidden, true)
 		if doc.CurrentRev != prevCurrentRev {
-			doc.promoteNonWinningRevisionBody(doc.CurrentRev, db.RevisionBodyLoader)
+			doc.PromoteNonWinningRevisionBody(doc.CurrentRev, db.RevisionBodyLoader)
 		}
 	}
 }
@@ -1510,7 +1511,7 @@ func (db *DatabaseCollectionWithUser) addAttachments(ctx context.Context, newAtt
 	// Need to check and add attachments here to ensure the attachment is within size constraints
 	err := db.setAttachments(ctx, newAttachments)
 	if err != nil {
-		if errors.Is(err, ErrAttachmentTooLarge) || err.Error() == "document value was too large" {
+		if errors.Is(err, document.ErrAttachmentTooLarge) || err.Error() == "document value was too large" {
 			err = base.HTTPErrorf(http.StatusRequestEntityTooLarge, "Attachment too large")
 		} else {
 			err = errors.Wrap(err, "Error adding attachment")
@@ -1606,7 +1607,7 @@ func (db *DatabaseContext) assignSequence(ctx context.Context, docSequence uint6
 	return unusedSequences, nil
 }
 
-func (doc *Document) updateExpiry(syncExpiry, updatedExpiry *uint32, expiry uint32) (finalExp *uint32) {
+func updateExpiry(doc *Document, syncExpiry, updatedExpiry *uint32, expiry uint32) (finalExp *uint32) {
 	if syncExpiry != nil {
 		finalExp = syncExpiry
 	} else if updatedExpiry != nil {
@@ -1692,7 +1693,7 @@ func (col *DatabaseCollectionWithUser) documentUpdateFunc(ctx context.Context, d
 	}
 
 	prevCurrentRev := doc.CurrentRev
-	doc.updateWinningRevAndSetDocFlags()
+	updateWinningRevAndSetDocFlags(doc)
 	newDocHasAttachments := len(newAttachments) > 0
 	col.storeOldBodyInRevTreeAndUpdateCurrent(ctx, doc, prevCurrentRev, newRevID, newDoc, newDocHasAttachments)
 
@@ -1730,12 +1731,12 @@ func (col *DatabaseCollectionWithUser) documentUpdateFunc(ctx context.Context, d
 		if newRevID != doc.CurrentRev {
 			channelSet, access, roles, syncExpiry, oldBodyJSON, err = col.recalculateSyncFnForActiveRev(ctx, doc, metaMap, newRevID)
 		}
-		_, err = doc.updateChannels(ctx, channelSet)
+		_, err = doc.UpdateChannels(ctx, channelSet)
 		if err != nil {
 			return
 		}
-		changedAccessPrincipals = doc.Access.updateAccess(doc, access)
-		changedRoleAccessUsers = doc.RoleAccess.updateAccess(doc, roles)
+		changedAccessPrincipals = doc.Access.UpdateAccess(doc, access)
+		changedRoleAccessUsers = doc.RoleAccess.UpdateAccess(doc, roles)
 	} else {
 
 		base.DebugfCtx(ctx, base.KeyCRUD, "updateDoc(%q): Rev %q leaves %q still current",
@@ -1743,12 +1744,12 @@ func (col *DatabaseCollectionWithUser) documentUpdateFunc(ctx context.Context, d
 	}
 
 	// Prune old revision history to limit the number of revisions:
-	if pruned := doc.pruneRevisions(col.revsLimit(), doc.CurrentRev); pruned > 0 {
+	if pruned := doc.PruneRevisions(col.revsLimit(), doc.CurrentRev); pruned > 0 {
 		base.DebugfCtx(ctx, base.KeyCRUD, "updateDoc(%q): Pruned %d old revisions", base.UD(doc.ID), pruned)
 	}
 
-	updatedExpiry = doc.updateExpiry(syncExpiry, updatedExpiry, expiry)
-	err = doc.persistModifiedRevisionBodies(col.dataStore)
+	updatedExpiry = updateExpiry(doc, syncExpiry, updatedExpiry, expiry)
+	err = doc.PersistModifiedRevisionBodies(col.dataStore)
 	if err != nil {
 		return
 	}
@@ -1792,7 +1793,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 		// Update the document, storing metadata in _sync property
 		_, err = db.dataStore.Update(key, expiry, func(currentValue []byte) (raw []byte, syncFuncExpiry *uint32, isDelete bool, err error) {
 			// Be careful: this block can be invoked multiple times if there are races!
-			if doc, err = unmarshalDocument(docid, currentValue); err != nil {
+			if doc, err = document.UnmarshalDocument(docid, currentValue); err != nil {
 				return
 			}
 			previousAttachments, err = getAttachmentIDsForLeafRevisions(ctx, db, doc, newRevID)
@@ -1808,7 +1809,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 			}
 
 			docSequence = doc.Sequence
-			inConflict = doc.hasFlag(channels.Conflict)
+			inConflict = doc.HasFlag(channels.Conflict)
 			// Return the new raw document value for the bucket to store.
 			raw, err = doc.MarshalBodyAndSync()
 			base.DebugfCtx(ctx, base.KeyCRUD, "Saving doc (seq: #%d, id: %v rev: %v)", doc.Sequence, base.UD(doc.ID), doc.CurrentRev)
@@ -1831,14 +1832,14 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 		// Update the document, storing metadata in extended attribute
 		casOut, err = db.dataStore.WriteUpdateWithXattr(key, base.SyncXattrName, db.userXattrKey(), expiry, opts, existingDoc, func(currentValue []byte, currentXattr []byte, currentUserXattr []byte, cas uint64) (raw []byte, rawXattr []byte, deleteDoc bool, syncFuncExpiry *uint32, err error) {
 			// Be careful: this block can be invoked multiple times if there are races!
-			if doc, err = unmarshalDocumentWithXattr(docid, currentValue, currentXattr, currentUserXattr, cas, DocUnmarshalAll); err != nil {
+			if doc, err = document.UnmarshalDocumentWithXattr(docid, currentValue, currentXattr, currentUserXattr, cas, DocUnmarshalAll); err != nil {
 				return
 			}
 			prevCurrentRev = doc.CurrentRev
 
 			// Check whether Sync Data originated in body
 			if currentXattr == nil && doc.Sequence > 0 {
-				doc.inlineSyncData = true
+				doc.InlineSyncData = true
 			}
 
 			previousAttachments, err = getAttachmentIDsForLeafRevisions(ctx, db, doc, newRevID)
@@ -1853,7 +1854,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 				return
 			}
 			docSequence = doc.Sequence
-			inConflict = doc.hasFlag(channels.Conflict)
+			inConflict = doc.HasFlag(channels.Conflict)
 
 			currentRevFromHistory, ok := doc.History[doc.CurrentRev]
 			if !ok {
@@ -1934,7 +1935,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 
 	if doc.History[newRevID] != nil {
 		// Store the new revision in the cache
-		history, getHistoryErr := doc.History.getHistory(newRevID)
+		history, getHistoryErr := doc.History.GetHistory(newRevID)
 		if getHistoryErr != nil {
 			return nil, "", getHistoryErr
 		}
@@ -1950,7 +1951,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 			DocID:            docid,
 			RevID:            newRevID,
 			BodyBytes:        storedDocBytes,
-			History:          encodeRevisions(docid, history),
+			History:          document.EncodeRevisions(docid, history),
 			Channels:         revChannels,
 			Attachments:      doc.Attachments,
 			Expiry:           doc.Expiry,
@@ -2011,7 +2012,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 	}
 
 	// Remove any obsolete non-winning revision bodies
-	doc.deleteRemovedRevisionBodies(db.dataStore)
+	doc.DeleteRemovedRevisionBodies(db.dataStore)
 
 	// Mark affected users/roles as needing to recompute their channel access:
 	db.MarkPrincipalsChanged(ctx, docid, newRevID, changedAccessPrincipals, changedRoleAccessUsers, doc.Sequence)
@@ -2035,7 +2036,7 @@ func getAttachmentIDsForLeafRevisions(ctx context.Context, db *DatabaseCollectio
 	// Can safely ignore the getInfo error as the only event this should happen in is if there is no entry for the given
 	// rev, however, given we have just got that rev from GetLeavesFiltered we can be sure that rev exists in history
 	documentLeafRevisions := doc.History.GetLeavesFiltered(func(revId string) bool {
-		revInfo, _ := doc.History.getInfo(revId)
+		revInfo, _ := doc.History.GetInfo(revId)
 		return revInfo.HasAttachments && revId != newRevID
 	})
 
@@ -2441,7 +2442,7 @@ func (db *DatabaseCollectionWithUser) RevDiff(ctx context.Context, docid string,
 			missing = revids
 			return
 		}
-		doc, err := unmarshalDocumentWithXattr(docid, nil, xattrValue, nil, cas, DocUnmarshalSync)
+		doc, err := document.UnmarshalDocumentWithXattr(docid, nil, xattrValue, nil, cas, DocUnmarshalSync)
 		if err != nil {
 			base.ErrorfCtx(ctx, "RevDiff(%q) Doc Unmarshal Failed: %T %v", base.UD(docid), err, err)
 		}
@@ -2464,11 +2465,11 @@ func (db *DatabaseCollectionWithUser) RevDiff(ctx context.Context, docid string,
 	revidsSet := base.SetFromArray(revids)
 	possibleSet := make(map[string]bool)
 	for _, revid := range revids {
-		if !revtree.contains(revid) {
+		if !revtree.Contains(revid) {
 			missing = append(missing, revid)
 			// Look at the doc's leaves for a known possible ancestor:
 			if gen, _ := ParseRevID(revid); gen > 1 {
-				revtree.forEachLeaf(func(possible *RevInfo) {
+				revtree.ForEachLeaf(func(possible *RevInfo) {
 					if !revidsSet.Contains(possible.ID) {
 						possibleGen, _ := ParseRevID(possible.ID)
 						if possibleGen < gen && possibleGen >= gen-100 {

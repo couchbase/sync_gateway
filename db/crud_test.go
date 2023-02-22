@@ -17,6 +17,7 @@ import (
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/document"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -26,30 +27,30 @@ type treeDoc struct {
 }
 
 type treeMeta struct {
-	RevTree revTreeList `json:"history"`
+	RevTree document.RevTreeList `json:"history"`
 }
 
-// Retrieve the raw doc from the bucket, and unmarshal sync history as revTreeList, to validate low-level  storage
-func getRevTreeList(dataStore sgbucket.DataStore, key string, useXattrs bool) (revTreeList, error) {
+// Retrieve the raw doc from the bucket, and unmarshal sync history as document.RevTreeList, to validate low-level  storage
+func getRevTreeList(dataStore sgbucket.DataStore, key string, useXattrs bool) (document.RevTreeList, error) {
 	switch useXattrs {
 	case true:
 		var rawDoc, rawXattr []byte
 		_, getErr := dataStore.GetWithXattr(key, base.SyncXattrName, "", &rawDoc, &rawXattr, nil)
 		if getErr != nil {
-			return revTreeList{}, getErr
+			return document.RevTreeList{}, getErr
 		}
 
 		var treeMeta treeMeta
 		err := base.JSONUnmarshal(rawXattr, &treeMeta)
 		if err != nil {
-			return revTreeList{}, err
+			return document.RevTreeList{}, err
 		}
 		return treeMeta.RevTree, nil
 
 	default:
 		rawDoc, _, err := dataStore.GetRaw(key)
 		if err != nil {
-			return revTreeList{}, err
+			return document.RevTreeList{}, err
 		}
 		var doc treeDoc
 		err = base.JSONUnmarshal(rawDoc, &doc)

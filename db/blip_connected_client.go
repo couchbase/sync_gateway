@@ -19,6 +19,7 @@ import (
 
 	"github.com/couchbase/go-blip"
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/document"
 )
 
 //////// GETREV:
@@ -49,7 +50,7 @@ func (bh *blipHandler) handleGetRev(rq *blip.Message) error {
 
 	// Still need to stamp _attachments into BLIP messages
 	if len(rev.Attachments) > 0 {
-		DeleteAttachmentVersion(rev.Attachments)
+		document.DeleteAttachmentVersion(rev.Attachments)
 		body[BodyAttachments] = rev.Attachments
 	}
 

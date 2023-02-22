@@ -15,6 +15,7 @@ import (
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
+	"github.com/couchbase/sync_gateway/document"
 	"github.com/couchbase/sync_gateway/rest"
 	"github.com/couchbaselabs/walrus"
 	"github.com/stretchr/testify/assert"
@@ -102,7 +103,7 @@ func createOrUpdateDoc(t *testing.T, rt *rest.RestTester, docID, revID, bodyValu
 	return rest.RespRevID(t, resp)
 }
 func getTestRevpos(t *testing.T, doc db.Body, attachmentKey string) (revpos int) {
-	attachments := db.GetBodyAttachments(doc)
+	attachments := document.GetBodyAttachments(doc)
 	if attachments == nil {
 		return 0
 	}

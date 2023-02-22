@@ -26,6 +26,7 @@ import (
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
+	"github.com/couchbase/sync_gateway/document"
 )
 
 // handlersByProfile defines the routes for each message profile (verb) of an incoming request to the function that handles it.
@@ -1044,12 +1045,12 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 		// Look at attachments with revpos > the last common ancestor's
 		minRevpos := 1
 		if len(history) > 0 {
-			currentDoc, rawDoc, err := bh.collection.GetDocumentWithRaw(bh.loggingCtx, docID, DocUnmarshalSync)
+			currentDoc, rawDoc, err := bh.collection.GetDocumentWithRaw(bh.loggingCtx, docID, document.DocUnmarshalSync)
 			// If we're able to obtain current doc data then we should use the common ancestor generation++ for min revpos
 			// as we will already have any attachments on the common ancestor so don't need to ask for them.
 			// Otherwise we'll have to go as far back as we can in the doc history and choose the last entry in there.
 			if err == nil {
-				commonAncestor := currentDoc.History.findAncestorFromSet(currentDoc.CurrentRev, history)
+				commonAncestor := currentDoc.History.FindAncestorFromSet(currentDoc.CurrentRev, history)
 				minRevpos, _ = ParseRevID(commonAncestor)
 				minRevpos++
 				rawBucketDoc = rawDoc
@@ -1065,7 +1066,7 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 
 		// Do we have a previous doc? If not don't need to do this check
 		if currentBucketDoc != nil {
-			bodyAtts := GetBodyAttachments(body)
+			bodyAtts := document.GetBodyAttachments(body)
 			currentDigests = make(map[string]string, len(bodyAtts))
 			for name, value := range bodyAtts {
 				// Check if we have this attachment name already, if we do, continue check
@@ -1125,7 +1126,7 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 			return err
 		}
 
-		newDoc.DocAttachments = GetBodyAttachments(body)
+		newDoc.DocAttachments = document.GetBodyAttachments(body)
 		delete(body, BodyAttachments)
 		newDoc.UpdateBody(body)
 	}
@@ -1199,7 +1200,7 @@ func (bh *blipHandler) handleProveAttachment(rq *blip.Message) error {
 		return base.HTTPErrorf(http.StatusInternalServerError, fmt.Sprintf("Error getting client attachment: %v", err))
 	}
 
-	proof := ProveAttachment(attData, nonce)
+	proof := document.ProveAttachment(attData, nonce)
 
 	resp := rq.Response()
 	resp.SetBody([]byte(proof))
@@ -1309,7 +1310,7 @@ func (bh *blipHandler) sendGetAttachment(sender *blip.Sender, docID string, name
 // This is to prevent clients from creating a doc with a digest for an attachment they otherwise can't access, in order to download it.
 func (bh *blipHandler) sendProveAttachment(sender *blip.Sender, docID, name, digest string, knownData []byte) error {
 	base.DebugfCtx(bh.loggingCtx, base.KeySync, "    Verifying attachment %q for doc %s (digest %s)", base.UD(name), base.UD(docID), digest)
-	nonce, proof, err := GenerateProofOfAttachment(knownData)
+	nonce, proof, err := document.GenerateProofOfAttachment(knownData)
 	if err != nil {
 		return err
 	}
@@ -1402,14 +1403,14 @@ func (bsc *BlipSyncContext) addAllowedAttachments(docID string, attMeta []Attach
 		bsc.allowedAttachments = make(map[string]AllowedAttachment, 100)
 	}
 	for _, attachment := range attMeta {
-		key := allowedAttachmentKey(docID, attachment.digest, activeSubprotocol)
+		key := allowedAttachmentKey(docID, attachment.Digest, activeSubprotocol)
 		att, found := bsc.allowedAttachments[key]
 		if found {
 			att.counter++
 			bsc.allowedAttachments[key] = att
 		} else {
 			bsc.allowedAttachments[key] = AllowedAttachment{
-				version: attachment.version,
+				version: attachment.Version,
 				counter: 1,
 				docID:   docID,
 			}
@@ -1428,7 +1429,7 @@ func (bsc *BlipSyncContext) removeAllowedAttachments(docID string, attMeta []Att
 	defer bsc.allowedAttachmentsLock.Unlock()
 
 	for _, attachment := range attMeta {
-		key := allowedAttachmentKey(docID, attachment.digest, activeSubprotocol)
+		key := allowedAttachmentKey(docID, attachment.Digest, activeSubprotocol)
 		att, found := bsc.allowedAttachments[key]
 		if found {
 			if n := att.counter; n > 1 {

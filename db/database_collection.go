@@ -326,3 +326,9 @@ func (c *DatabaseCollection) UpdateSyncFun(ctx context.Context, syncFun string) 
 	}
 	return
 }
+
+// RevisionBodyLoader retrieves a non-winning revision body stored outside the document metadata
+func (c *DatabaseCollection) RevisionBodyLoader(key string) ([]byte, error) {
+	body, _, err := c.dataStore.GetRaw(key)
+	return body, err
+}

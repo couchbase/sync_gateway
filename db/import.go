@@ -20,6 +20,7 @@ import (
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
+	"github.com/couchbase/sync_gateway/document"
 	"github.com/robertkrimen/otto"
 )
 
@@ -71,12 +72,12 @@ func (db *DatabaseCollectionWithUser) ImportDoc(ctx context.Context, docid strin
 	//       but should refactor import processing to support using the already-unmarshalled doc.
 	existingBucketDoc := &sgbucket.BucketDocument{
 		Cas:       existingDoc.Cas,
-		UserXattr: existingDoc.rawUserXattr,
+		UserXattr: existingDoc.RawUserXattr(),
 	}
 
 	// If we marked this as having inline Sync Data ensure that the existingBucketDoc we pass to importDoc has syncData
 	// in the body so we can detect this and perform the migrate
-	if existingDoc.inlineSyncData {
+	if existingDoc.InlineSyncData {
 		existingBucketDoc.Body, err = existingDoc.MarshalJSON()
 		existingBucketDoc.Xattr = nil
 	} else {
@@ -169,7 +170,7 @@ func (db *DatabaseCollectionWithUser) importDoc(ctx context.Context, docid strin
 					updatedExpiry = &expiry
 				}
 
-				if doc.inlineSyncData {
+				if doc.InlineSyncData {
 					existingDoc.Body, err = doc.MarshalBodyAndSync()
 				} else {
 					existingDoc.Body, err = doc.BodyBytes()
@@ -183,7 +184,7 @@ func (db *DatabaseCollectionWithUser) importDoc(ctx context.Context, docid strin
 
 		// If the existing doc is a legacy SG write (_sync in body), check for migrate instead of import.
 		_, ok := body[base.SyncPropertyName]
-		if ok || doc.inlineSyncData {
+		if ok || doc.InlineSyncData {
 			migratedDoc, requiresImport, migrateErr := db.migrateMetadata(ctx, newDoc.ID, body, existingDoc, &mutationOptions)
 			if migrateErr != nil {
 				return nil, nil, false, updatedExpiry, migrateErr
@@ -262,7 +263,7 @@ func (db *DatabaseCollectionWithUser) importDoc(ctx context.Context, docid strin
 			rawBodyForRevID = existingDoc.Body
 		} else {
 			var bodyWithoutInternalProps Body
-			bodyWithoutInternalProps, wasStripped = stripInternalProperties(body)
+			bodyWithoutInternalProps, wasStripped = document.StripInternalProperties(body)
 			rawBodyForRevID, err = base.JSONMarshalCanonical(bodyWithoutInternalProps)
 			if err != nil {
 				return nil, nil, false, nil, err
@@ -278,14 +279,14 @@ func (db *DatabaseCollectionWithUser) importDoc(ctx context.Context, docid strin
 			parentRev := doc.CurrentRev
 			generation, _ := ParseRevID(parentRev)
 			generation++
-			newRev = CreateRevIDWithBytes(generation, parentRev, rawBodyForRevID)
+			newRev = document.CreateRevIDWithBytes(generation, parentRev, rawBodyForRevID)
 			if err != nil {
 				return nil, nil, false, updatedExpiry, err
 			}
 			base.DebugfCtx(ctx, base.KeyImport, "Created new rev ID for doc %q / %q", base.UD(newDoc.ID), newRev)
 			// body[BodyRev] = newRev
 			newDoc.RevID = newRev
-			err := doc.History.addRevision(newDoc.ID, RevInfo{ID: newRev, Parent: parentRev, Deleted: isDelete})
+			err := doc.History.AddRevision(newDoc.ID, RevInfo{ID: newRev, Parent: parentRev, Deleted: isDelete})
 			if err != nil {
 				base.InfofCtx(ctx, base.KeyImport, "Error adding new rev ID for doc %q / %q, Error: %v", base.UD(newDoc.ID), newRev, err)
 			}
@@ -307,7 +308,7 @@ func (db *DatabaseCollectionWithUser) importDoc(ctx context.Context, docid strin
 
 		newDoc.UpdateBody(body)
 		if !wasStripped && !isDelete {
-			newDoc._rawBody = rawBodyForRevID
+			newDoc.PokeRawBody(rawBodyForRevID)
 		}
 
 		// Existing attachments are preserved while importing an updated body - we don't (currently) support changing
@@ -359,7 +360,7 @@ func (db *DatabaseCollectionWithUser) importDoc(ctx context.Context, docid strin
 func (db *DatabaseCollectionWithUser) migrateMetadata(ctx context.Context, docid string, body Body, existingDoc *sgbucket.BucketDocument, opts *sgbucket.MutateInOptions) (docOut *Document, requiresImport bool, err error) {
 
 	// Unmarshal the existing doc in legacy SG format
-	doc, unmarshalErr := unmarshalDocument(docid, existingDoc.Body)
+	doc, unmarshalErr := document.UnmarshalDocument(docid, existingDoc.Body)
 	if unmarshalErr != nil {
 		return nil, false, unmarshalErr
 	}
@@ -372,7 +373,7 @@ func (db *DatabaseCollectionWithUser) migrateMetadata(ctx context.Context, docid
 	}
 
 	// Move any large revision bodies to external storage
-	err = doc.migrateRevisionBodies(db.dataStore)
+	err = doc.MigrateRevisionBodies(db.dataStore)
 	if err != nil {
 		base.InfofCtx(ctx, base.KeyMigrate, "Error migrating revision bodies to external storage, doc %q, (cas=%d), Error: %v", base.UD(docid), doc.Cas, err)
 	}
@@ -384,7 +385,7 @@ func (db *DatabaseCollectionWithUser) migrateMetadata(ctx context.Context, docid
 	}
 
 	// Use WriteWithXattr to handle both normal migration and tombstone migration (xattr creation, body delete)
-	isDelete := doc.hasFlag(channels.Deleted)
+	isDelete := doc.HasFlag(channels.Deleted)
 	deleteBody := isDelete && len(existingDoc.Body) > 0
 	casOut, writeErr := db.dataStore.WriteWithXattr(docid, base.SyncXattrName, existingDoc.Expiry, existingDoc.Cas, opts, value, xattrValue, isDelete, deleteBody)
 	if writeErr == nil {

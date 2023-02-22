@@ -13,6 +13,7 @@ import (
 	"net/http"
 
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/document"
 )
 
 const DocTypeLocal = "local"
@@ -107,7 +108,7 @@ func putSpecial(dataStore base.DataStore, doctype string, docid string, matchRev
 
 func (c *DatabaseCollection) PutSpecial(doctype string, docid string, body Body) (string, error) {
 	matchRev, _ := body[BodyRev].(string)
-	body, _ = stripAllSpecialProperties(body)
+	body, _ = document.StripAllSpecialProperties(body)
 	return c.putSpecial(doctype, docid, matchRev, body)
 }
 

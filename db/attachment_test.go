@@ -11,18 +11,17 @@ package db
 import (
 	"context"
 	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
 	"math/rand"
 	"net/http"
 	"strconv"
-	"strings"
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
+	"github.com/couchbase/sync_gateway/document"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -340,7 +339,7 @@ func TestAttachmentCASRetryAfterNewAttachment(t *testing.T) {
 
 	// 4. Get the document, check attachments
 	finalDoc, err := collection.Get1xBody(ctx, "doc1")
-	attachments := GetBodyAttachments(finalDoc)
+	attachments := document.GetBodyAttachments(finalDoc)
 	assert.True(t, attachments != nil, "_attachments should be present in GET response")
 	attachment, attachmentOk := attachments["hello.txt"].(map[string]interface{})
 	assert.True(t, attachmentOk, "hello.txt attachment should be present in GET response")
@@ -404,7 +403,7 @@ func TestAttachmentCASRetryDuringNewAttachment(t *testing.T) {
 	finalDoc, err := collection.Get1xBody(ctx, "doc1")
 	log.Printf("get doc attachments: %v", finalDoc)
 
-	attachments := GetBodyAttachments(finalDoc)
+	attachments := document.GetBodyAttachments(finalDoc)
 	assert.True(t, attachments != nil, "_attachments should be present in GET response")
 	attachment, attachmentOk := attachments["hello.txt"].(map[string]interface{})
 	assert.True(t, attachmentOk, "hello.txt attachment should be present in GET response")
@@ -495,66 +494,6 @@ func TestForEachStubAttachmentErrors(t *testing.T) {
 	err = collection.ForEachStubAttachment(body, 1, docID, existingDigests, callback)
 	assert.Error(t, err, "It should throw the actual error")
 	assert.Contains(t, err.Error(), "Can't work with this digest value!")
-}
-
-func TestGenerateProofOfAttachment(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
-
-	attData := []byte(`hello world`)
-
-	nonce, proof1, err := GenerateProofOfAttachment(attData)
-	require.NoError(t, err)
-	assert.True(t, len(nonce) >= 20, "nonce should be at least 20 bytes")
-	assert.NotEmpty(t, proof1)
-	assert.True(t, strings.HasPrefix(proof1, "sha1-"))
-
-	proof2 := ProveAttachment(attData, nonce)
-	assert.NotEmpty(t, proof1, "")
-	assert.True(t, strings.HasPrefix(proof1, "sha1-"))
-
-	assert.Equal(t, proof1, proof2, "GenerateProofOfAttachment and ProveAttachment produced different proofs.")
-}
-
-func TestDecodeAttachmentError(t *testing.T) {
-	attr, err := DecodeAttachment(make([]int, 1))
-	assert.Nil(t, attr, "Attachment of data (type []int) should not get decoded.")
-	assert.Error(t, err, "It should throw 400 invalid attachment data (type []int)")
-	assert.Contains(t, err.Error(), strconv.Itoa(http.StatusBadRequest))
-
-	attr, err = DecodeAttachment(make([]float64, 1))
-	assert.Nil(t, attr, "Attachment of data (type []float64) should not get decoded.")
-	assert.Error(t, err, "It should throw 400 invalid attachment data (type []float64)")
-	assert.Contains(t, err.Error(), strconv.Itoa(http.StatusBadRequest))
-
-	attr, err = DecodeAttachment(make([]string, 1))
-	assert.Nil(t, attr, "Attachment of data (type []string) should not get decoded.")
-	assert.Error(t, err, "It should throw 400 invalid attachment data (type []string)")
-	assert.Contains(t, err.Error(), strconv.Itoa(http.StatusBadRequest))
-
-	attr, err = DecodeAttachment(make(map[string]int, 1))
-	assert.Nil(t, attr, "Attachment of data (type map[string]int) should not get decoded.")
-	assert.Error(t, err, "It should throw 400 invalid attachment data (type map[string]int)")
-	assert.Contains(t, err.Error(), strconv.Itoa(http.StatusBadRequest))
-
-	attr, err = DecodeAttachment(make(map[string]float64, 1))
-	assert.Nil(t, attr, "Attachment of data (type map[string]float64) should not get decoded.")
-	assert.Error(t, err, "It should throw 400 invalid attachment data (type map[string]float64)")
-	assert.Contains(t, err.Error(), strconv.Itoa(http.StatusBadRequest))
-
-	attr, err = DecodeAttachment(make(map[string]string, 1))
-	assert.Error(t, err, "should throw 400 invalid attachment data (type map[string]float64)")
-	assert.Error(t, err, "It 400 invalid attachment data (type map[string]string)")
-	assert.Contains(t, err.Error(), strconv.Itoa(http.StatusBadRequest))
-
-	book := struct {
-		author string
-		title  string
-		price  float64
-	}{author: "William Shakespeare", title: "Hamlet", price: 7.99}
-	attr, err = DecodeAttachment(book)
-	assert.Nil(t, attr)
-	assert.Error(t, err, "It should throw 400 invalid attachment data (type struct { author string; title string; price float64 })")
-	assert.Contains(t, err.Error(), strconv.Itoa(http.StatusBadRequest))
 }
 
 func TestSetAttachment(t *testing.T) {
@@ -1373,7 +1312,7 @@ func TestAllowedAttachments(t *testing.T) {
 			docIDForAllowedAttKey = ""
 		}
 		for _, att := range meta {
-			key := allowedAttachmentKey(docIDForAllowedAttKey, att.digest, activeSubprotocol)
+			key := allowedAttachmentKey(docIDForAllowedAttKey, att.Digest, activeSubprotocol)
 			require.True(t, isAllowedAttachment(ctx, key))
 		}
 	}
@@ -1384,7 +1323,7 @@ func TestAllowedAttachments(t *testing.T) {
 			docIDForAllowedAttKey = ""
 		}
 		for _, att := range meta {
-			key := allowedAttachmentKey(docIDForAllowedAttKey, att.digest, activeSubprotocol)
+			key := allowedAttachmentKey(docIDForAllowedAttKey, att.Digest, activeSubprotocol)
 			require.False(t, isAllowedAttachment(ctx, key))
 		}
 	}
@@ -1394,8 +1333,8 @@ func TestAllowedAttachments(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := &BlipSyncContext{}
 			meta := []AttachmentStorageMeta{
-				{digest: "digest1", version: tt.inputAttVersion},
-				{digest: "digest2", version: tt.inputAttVersion},
+				{Digest: "digest1", Version: tt.inputAttVersion},
+				{Digest: "digest2", Version: tt.inputAttVersion},
 			}
 			docID := "doc1"
 
@@ -1412,13 +1351,13 @@ func TestAllowedAttachments(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := &BlipSyncContext{}
 			meta := []AttachmentStorageMeta{
-				{digest: "digest1", version: tt.inputAttVersion},
-				{digest: "digest1", version: tt.inputAttVersion},
+				{Digest: "digest1", Version: tt.inputAttVersion},
+				{Digest: "digest1", Version: tt.inputAttVersion},
 			}
 			docID := "doc1"
 
 			ctx.addAllowedAttachments(docID, meta, tt.inputBlipProtocol)
-			key := allowedAttachmentKey(docID, meta[0].digest, tt.inputBlipProtocol)
+			key := allowedAttachmentKey(docID, meta[0].Digest, tt.inputBlipProtocol)
 			require.True(t, isAllowedAttachment(ctx, key))
 
 			ctx.removeAllowedAttachments(docID, meta, tt.inputBlipProtocol)
@@ -1431,8 +1370,8 @@ func TestAllowedAttachments(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := &BlipSyncContext{}
 			meta := []AttachmentStorageMeta{
-				{digest: "digest1", version: tt.inputAttVersion},
-				{digest: "digest2", version: tt.inputAttVersion},
+				{Digest: "digest1", Version: tt.inputAttVersion},
+				{Digest: "digest2", Version: tt.inputAttVersion},
 			}
 
 			docID1 := "doc1"
@@ -1461,8 +1400,8 @@ func TestAllowedAttachments(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := &BlipSyncContext{}
 			meta := []AttachmentStorageMeta{
-				{digest: "digest1", version: tt.inputAttVersion},
-				{digest: "digest1", version: tt.inputAttVersion},
+				{Digest: "digest1", Version: tt.inputAttVersion},
+				{Digest: "digest1", Version: tt.inputAttVersion},
 			}
 
 			docID1 := "doc1"
@@ -1492,12 +1431,12 @@ func TestAllowedAttachments(t *testing.T) {
 			ctx := &BlipSyncContext{}
 
 			docID1 := "doc1"
-			att1Meta := []AttachmentStorageMeta{{digest: "att1", version: tt.inputAttVersion}}
+			att1Meta := []AttachmentStorageMeta{{Digest: "att1", Version: tt.inputAttVersion}}
 			ctx.addAllowedAttachments(docID1, att1Meta, tt.inputBlipProtocol)
 			requireIsAttachmentAllowedTrue(t, ctx, docID1, att1Meta, tt.inputBlipProtocol)
 
 			docID2 := "doc2"
-			att2Meta := []AttachmentStorageMeta{{digest: "att2", version: tt.inputAttVersion}}
+			att2Meta := []AttachmentStorageMeta{{Digest: "att2", Version: tt.inputAttVersion}}
 			ctx.addAllowedAttachments(docID2, att2Meta, tt.inputBlipProtocol)
 			requireIsAttachmentAllowedTrue(t, ctx, docID2, att2Meta, tt.inputBlipProtocol)
 
@@ -1507,30 +1446,6 @@ func TestAllowedAttachments(t *testing.T) {
 
 			ctx.removeAllowedAttachments(docID2, att2Meta, tt.inputBlipProtocol)
 			requireIsAttachmentAllowedFalse(t, ctx, docID2, att2Meta, tt.inputBlipProtocol)
-		})
-	}
-}
-
-func TestGetAttVersion(t *testing.T) {
-	var tests = []struct {
-		name                    string
-		inputAttVersion         interface{}
-		expectedValidAttVersion bool
-		expectedAttVersion      int
-	}{
-		{"int attachment version", AttVersion2, true, AttVersion2},
-		{"float64 attachment version", float64(AttVersion2), true, AttVersion2},
-		{"invalid json.Number attachment version", json.Number("foo"), false, 0},
-		{"valid json.Number attachment version", json.Number(strconv.Itoa(AttVersion2)), true, AttVersion2},
-		{"invaid string attachment version", strconv.Itoa(AttVersion2), false, 0},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			meta := map[string]interface{}{"ver": tt.inputAttVersion}
-			version, ok := GetAttachmentVersion(meta)
-			assert.Equal(t, tt.expectedValidAttVersion, ok)
-			assert.Equal(t, tt.expectedAttVersion, version)
 		})
 	}
 }

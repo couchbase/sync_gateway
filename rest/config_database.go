@@ -12,6 +12,7 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
+	"github.com/couchbase/sync_gateway/document"
 )
 
 // RuntimeDatabaseConfig is the non-persisted database config that has the persisted DatabaseConfig embedded
@@ -66,7 +67,7 @@ func GenerateDatabaseConfigVersionID(previousRevID string, dbConfig *DbConfig) (
 	previousGen, previousRev := db.ParseRevID(previousRevID)
 	generation := previousGen + 1
 
-	hash := db.CreateRevIDWithBytes(generation, previousRev, encodedBody)
+	hash := document.CreateRevIDWithBytes(generation, previousRev, encodedBody)
 	return hash, nil
 }
 

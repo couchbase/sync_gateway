@@ -18,6 +18,7 @@ import (
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/document"
 	"github.com/robertkrimen/otto"
 )
 
@@ -153,7 +154,7 @@ func DefaultConflictResolver(conflict Conflict) (result Body, err error) {
 
 	localRevID, _ := conflict.LocalDocument[BodyRev].(string)
 	remoteRevID, _ := conflict.RemoteDocument[BodyRev].(string)
-	if compareRevIDs(localRevID, remoteRevID) >= 0 {
+	if document.CompareRevIDs(localRevID, remoteRevID) >= 0 {
 		return conflict.LocalDocument, nil
 	} else {
 		return conflict.RemoteDocument, nil

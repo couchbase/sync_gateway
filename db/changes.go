@@ -152,7 +152,7 @@ func (db *DatabaseCollectionWithUser) AddDocInstanceToChangeEntry(ctx context.Co
 
 	revID := entry.Changes[0]["rev"]
 	if includeConflicts {
-		doc.History.forEachLeaf(func(leaf *RevInfo) {
+		doc.History.ForEachLeaf(func(leaf *RevInfo) {
 			if leaf.ID != revID {
 				if !leaf.Deleted {
 					entry.Deleted = false

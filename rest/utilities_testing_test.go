@@ -69,7 +69,7 @@ func TestDocumentUnmarshal(t *testing.T) {
 func TestAttachmentRoundTrip(t *testing.T) {
 
 	doc := RestDocument{}
-	attachmentMap := db.AttachmentMap{
+	attachmentMap := AttachmentMap{
 		"foo": &db.DocAttachment{
 			ContentType: "application/octet-stream",
 			Digest:      "WHATEVER",
