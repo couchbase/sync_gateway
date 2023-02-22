@@ -1267,8 +1267,7 @@ func (sc *ServerContext) _unsuspendDatabase(ctx context.Context, dbName string) 
 			bucket = *dbConfig.Bucket
 		}
 
-		var config DatabaseConfig
-		cas, err := sc.BootstrapContext.GetConfig(bucket, sc.Config.Bootstrap.ConfigGroupID, dbName, &config)
+		cas, err := sc.BootstrapContext.GetConfig(bucket, sc.Config.Bootstrap.ConfigGroupID, dbName, &dbConfig.DatabaseConfig)
 		if err == base.ErrNotFound {
 			// Database no longer exists, so clean up dbConfigs
 			base.InfofCtx(ctx, base.KeyConfig, "Database %q has been removed while suspended from bucket %q", base.MD(dbName), base.MD(bucket))
@@ -1277,7 +1276,6 @@ func (sc *ServerContext) _unsuspendDatabase(ctx context.Context, dbName string) 
 		} else if err != nil {
 			return nil, fmt.Errorf("unsuspending db %q failed due to an error while trying to retrieve latest config from bucket %q: %w", base.MD(dbName).Redact(), base.MD(bucket).Redact(), err)
 		}
-		dbConfig.DatabaseConfig = config
 		dbConfig.cfgCas = cas
 		dbCtx, err = sc._getOrAddDatabaseFromConfig(ctx, dbConfig.DatabaseConfig, false, db.GetConnectToBucketFn(false))
 		if err != nil {
