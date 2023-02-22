@@ -130,7 +130,7 @@ func (c *Collection) CreatePrimaryIndex(indexName string, options *N1qlIndexOpti
 
 // WaitForIndexesOnline takes set of indexes and watches them till they're online.
 func (c *Collection) WaitForIndexesOnline(indexNames []string, failfast bool) error {
-	ctx := BucketAndCollectionCtx(context.Background(), c.Bucket, c.CollectionName())
+	logCtx := context.TODO()
 	mgr := c.Bucket.cluster.QueryIndexes()
 	maxNumAttempts := 180
 	if failfast {
@@ -157,7 +157,7 @@ func (c *Collection) WaitForIndexesOnline(indexNames []string, failfast bool) er
 		for i := 0; i < len(currIndexes); i++ {
 			if currIndexes[i].State == IndexStateOnline {
 				if !onlineIndexes[currIndexes[i].Name] {
-					InfofCtx(ctx, KeyAll, "Index %s is online", MD(currIndexes[i].Name))
+					InfofCtx(logCtx, KeyAll, "Index %s is online", MD(currIndexes[i].Name))
 					onlineIndexes[currIndexes[i].Name] = true
 				}
 			}
@@ -177,7 +177,7 @@ func (c *Collection) WaitForIndexesOnline(indexNames []string, failfast bool) er
 		if !shouldContinue {
 			return fmt.Errorf("error waiting for indexes for bucket %s....", MD(c.BucketName()))
 		}
-		InfofCtx(ctx, KeyAll, "Indexes not ready - retrying...")
+		InfofCtx(logCtx, KeyAll, "Indexes for bucket %s not ready - retrying...", MD(c.BucketName()))
 		time.Sleep(time.Millisecond * time.Duration(sleepMs))
 	}
 }
