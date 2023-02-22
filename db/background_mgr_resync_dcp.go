@@ -109,8 +109,8 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]interface
 		key := realDocID(docID)
 		base.TracefCtx(ctx, base.KeyAll, "[%s] Received DCP event %d for doc %v", resyncLoggingID, event.Opcode, base.UD(docID))
 
-		// Ignore documents without Xattrs
-		if !r.useXattrs && event.DataType&base.MemcachedDataTypeXattr == 0 {
+		// Ignore documents without xattrs if possible, to avoid processing unnecessary documents
+		if r.useXattrs && event.DataType&base.MemcachedDataTypeXattr == 0 {
 			return true
 		}
 		// Don't want to process raw binary docs
