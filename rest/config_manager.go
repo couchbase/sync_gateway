@@ -591,7 +591,7 @@ func (b *bootstrapContext) getRegistryAndDatabase(ctx context.Context, bucketNam
 			}
 			return registry, nil, err
 		} else {
-			if registryDb.Version != "" {
+			if registryDb.Version != "" && registryDb.Version != deletedDatabaseVersion {
 				// Database exists in registry, go fetch the config
 				config, err = b.getDatabaseConfig(ctx, bucketName, groupID, dbName, registryDb.Version, registry)
 				if err == base.ErrConfigRegistryReloadRequired {

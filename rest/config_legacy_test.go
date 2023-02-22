@@ -333,8 +333,11 @@ func TestLegacyGuestUserMigration(t *testing.T) {
 	cluster, err := CreateCouchbaseClusterFromStartupConfig(sc, base.PerUseClusterConnections)
 	require.NoError(t, err)
 
-	var dbConfig DbConfig
-	_, err = cluster.GetMetadataDocument(tb.GetName(), PersistentConfigDefaultGroupID, &dbConfig)
+	bootstrap := bootstrapContext{
+		Connection: cluster,
+	}
+	var dbConfig DatabaseConfig
+	_, err = bootstrap.GetConfig(tb.GetName(), PersistentConfigDefaultGroupID, "db", &dbConfig)
 	require.NoError(t, err)
 
 	assert.Equal(t, &expected, dbConfig.Guest)
