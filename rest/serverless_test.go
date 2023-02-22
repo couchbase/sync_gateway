@@ -567,7 +567,8 @@ func TestSuspendingFlags(t *testing.T) {
 			tb := base.GetTestBucket(t)
 			defer tb.Close()
 
-			rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb.NoCloseClone(), PersistentConfig: true, serverless: test.serverlessMode})
+			rt := NewRestTester(t,
+				&RestTesterConfig{CustomTestBucket: tb.NoCloseClone(), PersistentConfig: true, serverless: test.serverlessMode})
 			defer rt.Close()
 
 			sc := rt.ServerContext()
