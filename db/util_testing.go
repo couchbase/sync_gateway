@@ -27,10 +27,10 @@ import (
 
 // Workaround SG #3570 by doing a polling loop until the star channel query returns 0 results.
 // Uses the star channel index as a proxy to indicate that _all_ indexes are empty (which might not be true)
-func WaitForIndexEmpty(store base.N1QLStore, useXattrs bool) error {
+func waitForPrimaryIndexEmpty(store base.N1QLStore) error {
 
 	retryWorker := func() (shouldRetry bool, err error, value interface{}) {
-		empty, err := isAllDocsIndexEmpty(store, useXattrs)
+		empty, err := isPrimaryIndexEmpty(store)
 		if err != nil {
 			return true, err, nil
 		}
@@ -47,39 +47,16 @@ func WaitForIndexEmpty(store base.N1QLStore, useXattrs bool) error {
 
 }
 
-// allDocsIndexExists returns if the index is present, or an error from Couchbase Server.
-func allDocsIndexExists(store base.N1QLStore, useXattrs bool) error {
-	allIndexes, err := store.GetIndexes()
-	if err != nil {
-		return err
-	}
-	idx := sgIndexes[IndexAllDocs]
-	allDocsIndexName := (&idx).fullIndexName(useXattrs)
-	for _, indexName := range allIndexes {
-		if indexName == allDocsIndexName {
-			return nil
-		}
-	}
-	return fmt.Errorf("%s does not exist", allDocsIndexName)
-}
-
-// isAllDocsIndexEmpty returns if a given index is empty. If the
-func isAllDocsIndexEmpty(store base.N1QLStore, useXattrs bool) (bool, error) {
-	existsErr := allDocsIndexExists(store, useXattrs)
-	if existsErr != nil {
-		return false, existsErr
-	}
+// isPrimaryIndexEmpty returs true if there are no documents in the primary index
+func isPrimaryIndexEmpty(store base.N1QLStore) (bool, error) {
 	// Create the star channel query
-	statement := fmt.Sprintf("%s LIMIT 1", QueryStarChannel.statement) // append LIMIT 1 since we only care if there are any results or not
-	starChannelQueryStatement := replaceActiveOnlyFilter(statement, false)
-	starChannelQueryStatement = replaceSyncTokensQuery(starChannelQueryStatement, useXattrs)
-	starChannelQueryStatement = replaceIndexTokensQuery(starChannelQueryStatement, sgIndexes[IndexAllDocs], useXattrs)
+	statement := fmt.Sprintf("SELECT * FROM %s LIMIT 1", base.KeyspaceQueryToken)
 	params := map[string]interface{}{}
 	params[QueryParamStartSeq] = 0
 	params[QueryParamEndSeq] = N1QLMaxInt64
 
 	// Execute the query
-	results, err := store.Query(starChannelQueryStatement, params, base.RequestPlus, true)
+	results, err := store.Query(statement, params, base.RequestPlus, true)
 
 	// If there was an error, then retry.  Assume it's an "index rollback" error which happens as
 	// the index processes the bucket flush operation
@@ -88,7 +65,7 @@ func isAllDocsIndexEmpty(store base.N1QLStore, useXattrs bool) (bool, error) {
 	}
 
 	// If it's empty, we're done
-	var queryRow AllDocsIndexQueryRow
+	var queryRow map[string]interface{}
 	found := results.Next(&queryRow)
 	resultsCloseErr := results.Close()
 	if resultsCloseErr != nil {
@@ -165,7 +142,7 @@ func (sw *StatWaiter) Wait() {
 
 	waitTime := 1 * time.Millisecond
 	for i := 0; i < 14; i++ {
-		waitTime = waitTime * 2
+		waitTime *= 2
 		time.Sleep(waitTime)
 		actualCount = sw.stat.Value()
 		if actualCount >= sw.targetCount {
@@ -194,6 +171,21 @@ func WaitForUserWaiterChange(userWaiter *ChangeWaiter) bool {
 		time.Sleep(10 * time.Millisecond)
 	}
 	return isChanged
+}
+
+// emptyPrimaryIndex deletes all docs from primary index
+func emptyPrimaryIndex(dataStore sgbucket.DataStore) error {
+	n1qlStore, ok := base.AsN1QLStore(dataStore)
+	if !ok {
+		return fmt.Errorf("bucket was not a n1ql store")
+	}
+
+	statement := `DELETE FROM ` + base.KeyspaceQueryToken
+	results, err := n1qlStore.Query(statement, nil, base.RequestPlus, true)
+	if err != nil {
+		return err
+	}
+	return results.Close()
 }
 
 // emptyAllDocsIndex ensures the AllDocs index for the given bucket is empty. Works similarly to db.Compact, except on a different index and without a DatabaseContext
@@ -276,18 +268,26 @@ var viewsAndGSIBucketReadier base.TBPBucketReadierFunc = func(ctx context.Contex
 		if err != nil {
 			return err
 		}
+		dsName, ok := base.AsDataStoreName(dataStore)
+		if !ok {
+			err := fmt.Errorf("Could not determine datastore name from datastore: %+v", dataStore)
+			tbp.Logf(ctx, "%s", err)
+			return err
+		}
 		if _, err := emptyAllDocsIndex(ctx, dataStore, tbp); err != nil {
 			return err
 		}
-
+		if err := emptyPrimaryIndex(dataStore); err != nil {
+			return err
+		}
 		n1qlStore, ok := base.AsN1QLStore(dataStore)
 		if !ok {
 			return errors.New("attempting to empty indexes with non-N1QL store")
 		}
-		tbp.Logf(ctx, "waiting for empty bucket indexes")
+		tbp.Logf(ctx, "waiting for empty bucket indexes %s.%s.%s", b.GetName(), dsName.ScopeName(), dsName.CollectionName())
 		// we can't init indexes concurrently, so we'll just wait for them to be empty after emptying instead of recreating.
-		if err := WaitForIndexEmpty(n1qlStore, base.TestUseXattrs()); err != nil {
-			tbp.Logf(ctx, "WaitForIndexEmpty returned an error: %v", err)
+		if err := waitForPrimaryIndexEmpty(n1qlStore); err != nil {
+			tbp.Logf(ctx, "waitForPrimaryIndexEmpty returned an error: %v", err)
 			return err
 		}
 		tbp.Logf(ctx, "bucket indexes empty")
@@ -347,20 +347,29 @@ var viewsAndGSIBucketInit base.TBPBucketInitFunc = func(ctx context.Context, b b
 			return fmt.Errorf("bucket %T was not a N1QL store", b)
 		}
 
-		if empty, err := isAllDocsIndexEmpty(n1qlStore, base.TestUseXattrs()); empty && err == nil {
-			tbp.Logf(ctx, "indexes already created, and already empty - skipping")
-			return nil
-		} else {
-			tbp.Logf(ctx, "indexes not empty (or doesn't exist) - %v %v", empty, err)
-		}
-
 		tbp.Logf(ctx, "dropping existing bucket indexes")
 		if err := base.DropAllIndexes(ctx, n1qlStore); err != nil {
 			tbp.Logf(ctx, "Failed to drop bucket indexes: %v", err)
 			return err
 		}
 		tbp.Logf(ctx, "creating SG bucket indexes")
-		if err := InitializeIndexes(n1qlStore, base.TestUseXattrs(), 0, false, false); err != nil {
+		options := InitializeIndexOptions{
+			UseXattrs:       base.TestUseXattrs(),
+			NumReplicas:     0,
+			FailFast:        false,
+			Serverless:      false,
+			MetadataIndexes: IndexesAll,
+		}
+		dsName, ok := base.AsDataStoreName(dataStore)
+		if !ok {
+			err := fmt.Errorf("Could not determine datastore name from datastore: %+v", dataStore)
+			tbp.Logf(ctx, "%s", err)
+			return err
+		}
+		if base.IsDefaultCollection(dsName.ScopeName(), dsName.CollectionName()) {
+			options.MetadataIndexes = IndexesMetadataOnly
+		}
+		if err := InitializeIndexes(ctx, n1qlStore, options); err != nil {
 			return err
 		}
 

@@ -129,8 +129,11 @@ func getTestBucket(t testing.TB, persistent bool) *TestBucket {
 // GetNamedDataStore returns a named datastore from the TestBucket. Each number (starting from 0, indicates which data store you'll get.
 func (tb *TestBucket) GetNamedDataStore(count int) (DataStore, error) {
 	dataStoreNames := tb.GetNonDefaultDatastoreNames()
+	if len(dataStoreNames) == 0 {
+		tb.t.Fatalf("You are requesting a named datastore on TestBucket that has none.")
+	}
 	if count > len(dataStoreNames) {
-		tb.t.Errorf("You are requesting more datastores %d than are available on this test instance %d", dataStoreNames, count)
+		tb.t.Fatalf("You are requesting more datastores %d than are available on this test instance %d", count, len(dataStoreNames))
 	}
 	return tb.Bucket.NamedDataStore(dataStoreNames[count])
 }
