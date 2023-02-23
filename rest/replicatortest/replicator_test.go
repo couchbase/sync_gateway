@@ -1949,7 +1949,7 @@ func TestActiveReplicatorPullSkippedSequence(t *testing.T) {
 	// Start the replicator (implicit connect)
 	assert.NoError(t, ar.Start(ctx1))
 
-	pullCheckpointer := ar.Pull.Checkpointer
+	pullCheckpointer := ar.Pull.GetSingleCollection(t).Checkpointer
 
 	// wait for the documents originally written to rt2 to arrive at rt1
 	changesResults, err := rt1.WaitForChanges(1, "/db/_changes?since=0", "", true)
@@ -1984,7 +1984,7 @@ func TestActiveReplicatorPullSkippedSequence(t *testing.T) {
 	assert.NoError(t, ar.Start(ctx1))
 
 	// restarted replicator has a new checkpointer
-	pullCheckpointer = ar.Pull.Checkpointer
+	pullCheckpointer = ar.Pull.GetSingleCollection(t).Checkpointer
 
 	changesResults, err = rt1.WaitForChanges(3, "/db/_changes?since=0", "", true)
 	require.NoError(t, err)
@@ -2008,7 +2008,7 @@ func TestActiveReplicatorPullSkippedSequence(t *testing.T) {
 	require.NoError(t, ar.Start(ctx1))
 
 	// restarted replicator has a new checkpointer
-	pullCheckpointer = ar.Pull.Checkpointer
+	pullCheckpointer = ar.Pull.GetSingleCollection(t).Checkpointer
 
 	changesResults, err = rt1.WaitForChanges(4, "/db/_changes?since=0", "", true)
 	require.NoError(t, err)
@@ -2459,7 +2459,7 @@ func TestActiveReplicatorPullFromCheckpoint(t *testing.T) {
 	numChangesRequestedFromZeroTotal := rt2.GetDatabase().DbStats.CBLReplicationPull().NumPullReplSinceZero.Value()
 	assert.Equal(t, startNumChangesRequestedFromZeroTotal+1, numChangesRequestedFromZeroTotal)
 
-	pullCheckpointer := ar.Pull.Checkpointer
+	pullCheckpointer := ar.Pull.GetSingleCollection(t).Checkpointer
 
 	// rev assertions
 	numRevsSentTotal := rt2.GetDatabase().DbStats.CBLReplicationPull().RevSendCount.Value()
@@ -2489,7 +2489,7 @@ func TestActiveReplicatorPullFromCheckpoint(t *testing.T) {
 	assert.NoError(t, ar.Start(ctx1))
 
 	// new replicator - new checkpointer
-	pullCheckpointer = ar.Pull.Checkpointer
+	pullCheckpointer = ar.Pull.GetSingleCollection(t).Checkpointer
 
 	// wait for all of the documents originally written to rt2 to arrive at rt1
 	changesResults, err = rt1.WaitForChanges(numRT2DocsTotal, "/db/_changes?since=0", "", true)
@@ -2617,7 +2617,7 @@ func TestActiveReplicatorPullFromCheckpointIgnored(t *testing.T) {
 
 	assert.NoError(t, ar.Start(ctx1))
 
-	pullCheckpointer := ar.Pull.Checkpointer
+	pullCheckpointer := ar.Pull.GetSingleCollection(t).Checkpointer
 
 	_, ok := base.WaitForStat(func() int64 {
 		return pullCheckpointer.Stats().AlreadyKnownSequenceCount
@@ -2677,7 +2677,7 @@ func TestActiveReplicatorPullFromCheckpointIgnored(t *testing.T) {
 	assert.NoError(t, ar.Start(ctx1))
 
 	// new replicator - new checkpointer
-	pullCheckpointer = ar.Pull.Checkpointer
+	pullCheckpointer = ar.Pull.GetSingleCollection(t).Checkpointer
 
 	_, ok = base.WaitForStat(func() int64 {
 		return pullCheckpointer.Stats().AlreadyKnownSequenceCount
@@ -3125,7 +3125,7 @@ func TestActiveReplicatorPushFromCheckpoint(t *testing.T) {
 	numChangesRequestedFromZeroTotal := rt1.GetDatabase().DbStats.CBLReplicationPull().NumPullReplSinceZero.Value()
 	assert.Equal(t, startNumChangesRequestedFromZeroTotal+1, numChangesRequestedFromZeroTotal)
 
-	pushCheckpointer := ar.Push.Checkpointer
+	pushCheckpointer := ar.Push.GetSingleCollection(t).Checkpointer
 
 	// rev assertions
 	numRevsSentTotal := ar.Push.GetStats().SendRevCount.Value()
@@ -3157,7 +3157,7 @@ func TestActiveReplicatorPushFromCheckpoint(t *testing.T) {
 	defer func() { assert.NoError(t, ar.Stop()) }()
 
 	// new replicator - new checkpointer
-	pushCheckpointer = ar.Push.Checkpointer
+	pushCheckpointer = ar.Push.GetSingleCollection(t).Checkpointer
 
 	// wait for all of the documents originally written to rt1 to arrive at rt2
 	changesResults, err = rt2.WaitForChanges(numRT1DocsTotal, "/db/_changes?since=0", "", true)
@@ -3300,7 +3300,7 @@ func TestActiveReplicatorEdgeCheckpointNameCollisions(t *testing.T) {
 		assert.Equal(t, "rt1", body["source"])
 	}
 
-	edge1PullCheckpointer := edge1Replicator.Pull.Checkpointer
+	edge1PullCheckpointer := edge1Replicator.Pull.GetSingleCollection(t).Checkpointer
 	edge1PullCheckpointer.CheckpointNow()
 
 	// one _changes from seq:0 with initial number of docs sent
@@ -3345,7 +3345,7 @@ func TestActiveReplicatorEdgeCheckpointNameCollisions(t *testing.T) {
 	changesResults, err = edge2.WaitForChanges(numRT1DocsInitial, "/db/_changes?since=0", "", true)
 	require.NoError(t, err)
 
-	edge2PullCheckpointer := edge2Replicator.Pull.Checkpointer
+	edge2PullCheckpointer := edge2Replicator.Pull.GetSingleCollection(t).Checkpointer
 	edge2PullCheckpointer.CheckpointNow()
 
 	// make sure that edge 2 didn't use a checkpoint
@@ -3377,7 +3377,7 @@ func TestActiveReplicatorEdgeCheckpointNameCollisions(t *testing.T) {
 	require.NoErrorf(t, err, "changesResults: %v", changesResults)
 	changesResults.RequireDocIDs(t, []string{fmt.Sprintf("%s%d", docIDPrefix, numRT1DocsInitial)})
 
-	edge1Checkpointer2 := edge1Replicator2.Pull.Checkpointer
+	edge1Checkpointer2 := edge1Replicator2.Pull.GetSingleCollection(t).Checkpointer
 	edge1Checkpointer2.CheckpointNow()
 
 	assert.Equal(t, int64(1), edge1Checkpointer2.Stats().GetCheckpointHitCount)
@@ -4448,7 +4448,7 @@ func TestActiveReplicatorRecoverFromLocalFlush(t *testing.T) {
 	numChangesRequestedFromZeroTotal := rt2.GetDatabase().DbStats.CBLReplicationPull().NumPullReplSinceZero.Value()
 	assert.Equal(t, startNumChangesRequestedFromZeroTotal+1, numChangesRequestedFromZeroTotal)
 
-	pullCheckpointer := ar.Pull.Checkpointer
+	pullCheckpointer := ar.Pull.GetSingleCollection(t).Checkpointer
 
 	// rev assertions
 	numRevsSentTotal := rt2.GetDatabase().DbStats.CBLReplicationPull().RevSendCount.Value()
@@ -4488,7 +4488,7 @@ func TestActiveReplicatorRecoverFromLocalFlush(t *testing.T) {
 	assert.NoError(t, ar.Start(ctx1))
 
 	// new replicator - new checkpointer
-	pullCheckpointer = ar.Pull.Checkpointer
+	pullCheckpointer = ar.Pull.GetSingleCollection(t).Checkpointer
 
 	// we pulled the remote checkpoint, but the local checkpoint wasn't there to match it.
 	assert.Equal(t, int64(0), pullCheckpointer.Stats().GetCheckpointHitCount)
@@ -4602,7 +4602,7 @@ func TestActiveReplicatorRecoverFromRemoteFlush(t *testing.T) {
 
 	assert.NoError(t, ar.Start(ctx1))
 
-	pushCheckpointer := ar.Push.Checkpointer
+	pushCheckpointer := ar.Push.GetSingleCollection(t).Checkpointer
 
 	// wait for document originally written to rt1 to arrive at rt2
 	changesResults, err := rt2.WaitForChanges(1, "/db/_changes?since=0", "", true)
@@ -4674,7 +4674,7 @@ func TestActiveReplicatorRecoverFromRemoteFlush(t *testing.T) {
 
 	assert.NoError(t, ar.Start(ctx1))
 
-	pushCheckpointer = ar.Push.Checkpointer
+	pushCheckpointer = ar.Push.GetSingleCollection(t).Checkpointer
 
 	// we pulled the remote checkpoint, but the local checkpoint wasn't there to match it.
 	assert.Equal(t, int64(0), pushCheckpointer.Stats().GetCheckpointHitCount)
@@ -4787,7 +4787,7 @@ func TestActiveReplicatorRecoverFromRemoteRollback(t *testing.T) {
 
 	assert.NoError(t, ar.Start(ctx1))
 
-	pushCheckpointer := ar.Push.Checkpointer
+	pushCheckpointer := ar.Push.GetSingleCollection(t).Checkpointer
 
 	base.WaitForStat(func() int64 {
 		return ar.Push.GetStats().SendRevCount.Value()
@@ -4861,7 +4861,7 @@ func TestActiveReplicatorRecoverFromRemoteRollback(t *testing.T) {
 
 	assert.NoError(t, ar.Start(ctx1))
 
-	pushCheckpointer = ar.Push.Checkpointer
+	pushCheckpointer = ar.Push.GetSingleCollection(t).Checkpointer
 
 	// wait for new document to arrive at rt2 again
 	changesResults, err = rt2.WaitForChanges(1, "/db/_changes?since="+lastSeq, "", true)
@@ -4981,12 +4981,12 @@ func TestActiveReplicatorRecoverFromMismatchedRev(t *testing.T) {
 	require.Len(t, changesResults.Results, 1)
 	assert.Equal(t, docID, changesResults.Results[0].ID)
 
-	pushCheckpointer := ar.Push.Checkpointer
+	pushCheckpointer := ar.Push.GetSingleCollection(t).Checkpointer
 	assert.Equal(t, int64(0), pushCheckpointer.Stats().SetCheckpointCount)
 	pushCheckpointer.CheckpointNow()
 	assert.Equal(t, int64(1), pushCheckpointer.Stats().SetCheckpointCount)
 
-	pullCheckpointer := ar.Pull.Checkpointer
+	pullCheckpointer := ar.Pull.GetSingleCollection(t).Checkpointer
 	assert.Equal(t, int64(0), pullCheckpointer.Stats().SetCheckpointCount)
 	pullCheckpointer.CheckpointNow()
 	assert.Equal(t, int64(1), pullCheckpointer.Stats().SetCheckpointCount)
@@ -5207,7 +5207,7 @@ func TestActiveReplicatorPullModifiedHash(t *testing.T) {
 	numChangesRequestedFromZeroTotal := rt2.GetDatabase().DbStats.CBLReplicationPull().NumPullReplSinceZero.Value()
 	assert.Equal(t, startNumChangesRequestedFromZeroTotal+1, numChangesRequestedFromZeroTotal)
 
-	pullCheckpointer := ar.Pull.Checkpointer
+	pullCheckpointer := ar.Pull.GetSingleCollection(t).Checkpointer
 
 	// rev assertions
 	numRevsSentTotal := rt2.GetDatabase().DbStats.CBLReplicationPull().RevSendCount.Value()
@@ -5239,7 +5239,7 @@ func TestActiveReplicatorPullModifiedHash(t *testing.T) {
 	assert.NoError(t, ar.Start(ctx1))
 
 	// new replicator - new checkpointer
-	pullCheckpointer = ar.Pull.Checkpointer
+	pullCheckpointer = ar.Pull.GetSingleCollection(t).Checkpointer
 
 	// wait for all of the documents originally written to rt2 to arrive at rt1
 	expectedChan1Docs := numDocsPerChannelInitial

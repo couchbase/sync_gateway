@@ -31,6 +31,8 @@ func NewPullReplicator(config *ActiveReplicatorConfig) *ActivePullReplicator {
 }
 
 func (apr *ActivePullReplicator) Start(ctx context.Context) error {
+	fmt.Printf("pull Start\n")
+
 	apr.lock.Lock()
 	defer apr.lock.Unlock()
 
@@ -69,8 +71,37 @@ func (apr *ActivePullReplicator) _connect() error {
 	}
 	apr.blipSyncContext.purgeOnRemoval = apr.config.PurgeOnRemoval
 
-	// wrap the replicator context with a cancelFunc that can be called to abort the checkpointer from _disconnect
-	apr.checkpointerCtx, apr.checkpointerCtxCancel = context.WithCancel(apr.ctx)
+	if apr.config.CollectionsEnabled {
+		if err := apr._startPullWithCollections(); err != nil {
+			return err
+		}
+	} else {
+		// for backwards compatibility use no collection-specific handling/messages
+		if err := apr._startPullNonCollection(); err != nil {
+			return err
+		}
+	}
+
+	if apr.blipSyncContext.blipContext.ActiveSubprotocol() == BlipCBMobileReplicationV2 && apr.config.PurgeOnRemoval {
+		base.ErrorfCtx(apr.ctx, "Pull replicator ID:%s running with revocations enabled but target does not support revocations. Sync Gateway 3.0 required.", apr.config.ID)
+	}
+
+	apr.setState(ReplicationStateRunning)
+
+	return nil
+}
+
+// _startPullNonCollection starts a pull replication without collection-specific handling
+// for backwards compatibility with SG 3.0 and earlier
+func (apr *ActivePullReplicator) _startPullNonCollection() error {
+	defaultCollection, err := apr.config.ActiveDB.GetDefaultDatabaseCollection()
+	if err != nil {
+		return err
+	}
+	apr.blipSyncContext.collections.setNonCollectionAware(&blipSyncCollectionContext{
+		dbCollection: defaultCollection,
+	})
+
 	if err := apr._initCheckpointer(); err != nil {
 		// clean up anything we've opened so far
 		base.TracefCtx(apr.ctx, base.KeyReplicate, "Error initialising checkpoint in _connect. Closing everything.")
@@ -80,20 +111,9 @@ func (apr *ActivePullReplicator) _connect() error {
 		return err
 	}
 
-	subChangesRequest := SubChangesRequest{
-		Continuous:     apr.config.Continuous,
-		Batch:          apr.config.ChangesBatchSize,
-		Since:          apr.Checkpointer.lastCheckpointSeq.String(),
-		Filter:         apr.config.Filter,
-		FilterChannels: apr.config.FilterChannels,
-		DocIDs:         apr.config.DocIDs,
-		ActiveOnly:     apr.config.ActiveOnly,
-		clientType:     clientTypeSGR2,
-		Revocations:    apr.config.PurgeOnRemoval,
-	}
+	since := apr.defaultCollection.Checkpointer.lastCheckpointSeq.String()
 
-	if err := subChangesRequest.Send(apr.blipSender); err != nil {
-		// clean up anything we've opened so far
+	if err := apr._subChanges(nil, since); err != nil {
 		base.TracefCtx(apr.ctx, base.KeyReplicate, "cancelling the checkpointer context inside _connect where we send blip request")
 		apr.checkpointerCtxCancel()
 		apr.checkpointerCtx = nil
@@ -102,13 +122,23 @@ func (apr *ActivePullReplicator) _connect() error {
 		return err
 	}
 
-	apr.setState(ReplicationStateRunning)
-
-	if apr.blipSyncContext.blipContext.ActiveSubprotocol() == BlipCBMobileReplicationV2 && apr.config.PurgeOnRemoval {
-		base.ErrorfCtx(apr.ctx, "Pull replicator ID:%s running with revocations enabled but target does not support revocations. Sync Gateway 3.0 required.", apr.config.ID)
-	}
-
 	return nil
+}
+
+func (apr *ActivePullReplicator) _subChanges(collectionIdx *int, since string) error {
+	subChangesRequest := SubChangesRequest{
+		Continuous:     apr.config.Continuous,
+		Batch:          apr.config.ChangesBatchSize,
+		Since:          since,
+		Filter:         apr.config.Filter,
+		FilterChannels: apr.config.FilterChannels,
+		DocIDs:         apr.config.DocIDs,
+		ActiveOnly:     apr.config.ActiveOnly,
+		clientType:     clientTypeSGR2,
+		Revocations:    apr.config.PurgeOnRemoval,
+		CollectionIdx:  collectionIdx,
+	}
+	return subChangesRequest.Send(apr.blipSender)
 }
 
 // Complete gracefully shuts down a replication, waiting for all in-flight revisions to be processed
@@ -119,12 +149,14 @@ func (apr *ActivePullReplicator) Complete() {
 		apr.lock.Unlock()
 		return
 	}
-	base.TracefCtx(apr.ctx, base.KeyReplicate, "Before calling waitForExpectedSequences in Complete()")
-	err := apr.Checkpointer.waitForExpectedSequences()
-	if err != nil {
-		base.InfofCtx(apr.ctx, base.KeyReplicate, "Timeout draining replication %s - stopping: %v", apr.config.ID, err)
-	}
-	base.TracefCtx(apr.ctx, base.KeyReplicate, "Before calling waitForExpectedSequences in Complete()")
+	_ = apr.forEachCollection(func(c *activeReplicatorCollection) error {
+		base.TracefCtx(apr.ctx, base.KeyReplicate, "Before calling waitForExpectedSequences in Complete()")
+		if err := c.Checkpointer.waitForExpectedSequences(); err != nil {
+			base.InfofCtx(apr.ctx, base.KeyReplicate, "Couldn't drain replication %s - stopping anyway: %v", apr.config.ID, err)
+		}
+		base.TracefCtx(apr.ctx, base.KeyReplicate, "After calling waitForExpectedSequences in Complete()")
+		return nil
+	})
 
 	apr._stop()
 
@@ -148,23 +180,31 @@ func (apr *ActivePullReplicator) Complete() {
 }
 
 func (apr *ActivePullReplicator) _initCheckpointer() error {
+	// wrap the replicator context with a cancelFunc that can be called to abort the checkpointer from _disconnect
+	apr.checkpointerCtx, apr.checkpointerCtxCancel = context.WithCancel(apr.ctx)
 
 	checkpointHash, hashErr := apr.config.CheckpointHash()
 	if hashErr != nil {
 		return hashErr
 	}
 
-	apr.Checkpointer = NewCheckpointer(apr.checkpointerCtx, apr.CheckpointID, checkpointHash, apr.blipSender, apr.config, apr.getPullStatus)
+	err := apr.forEachCollection(func(c *activeReplicatorCollection) error {
+		c.Checkpointer = NewCheckpointer(apr.checkpointerCtx, c.dataStore, apr.CheckpointID, checkpointHash, apr.blipSender, apr.config, apr.getPullStatus, c.collectionIdx)
 
-	var err error
-	apr.initialStatus, err = apr.Checkpointer.fetchCheckpoints()
-	base.InfofCtx(apr.ctx, base.KeyReplicate, "Initialized pull replication status: %+v", apr.initialStatus)
+		if !apr.config.CollectionsEnabled {
+			err := c.Checkpointer.fetchCheckpoints()
+			if err != nil {
+				return err
+			}
+		}
+
+		apr.registerCheckpointerCallbacks(c)
+		c.Checkpointer.Start()
+		return nil
+	})
 	if err != nil {
 		return err
 	}
-
-	apr.registerCheckpointerCallbacks()
-	apr.Checkpointer.Start()
 
 	return nil
 }
@@ -172,14 +212,23 @@ func (apr *ActivePullReplicator) _initCheckpointer() error {
 // GetStatus is used externally to retrieve pull replication status.  Combines current running stats with
 // initialStatus.
 func (apr *ActivePullReplicator) GetStatus() *ReplicationStatus {
-	var lastSeqPulled string
 	apr.lock.RLock()
 	defer apr.lock.RUnlock()
-	if apr.Checkpointer != nil {
-		lastSeqPulled = apr.Checkpointer.calculateSafeProcessedSeq().String()
+	var highSeq SequenceID
+	_ = apr.forEachCollection(func(c *activeReplicatorCollection) error {
+		if c.Checkpointer != nil {
+			safeSeq := c.Checkpointer.calculateSafeProcessedSeq()
+			if highSeq.Before(safeSeq) {
+				highSeq = safeSeq
+			}
+		}
+		return nil
+	})
+	var highSeqStr string
+	if highSeq.IsNonZero() {
+		highSeqStr = highSeq.String()
 	}
-	status := apr.getPullStatus(lastSeqPulled)
-	return status
+	return apr.getPullStatus(highSeqStr)
 }
 
 // getPullStatus is used internally, and passed as statusCallback to checkpointer
@@ -205,31 +254,52 @@ func (apr *ActivePullReplicator) reset() error {
 	if apr.state != ReplicationStateStopped {
 		return fmt.Errorf("reset invoked for replication %s when the replication was not stopped", apr.config.ID)
 	}
-	// TODO: this needs pointing at all collections the replicator is configured for!
-	collection := apr.config.ActiveDB.GetSingleDatabaseCollection()
-	if err := resetLocalCheckpoint(collection.dataStore, apr.CheckpointID); err != nil {
-		return err
+
+	if apr.config.CollectionsEnabled {
+		for collectionName, _ := range apr.namedCollections {
+			dbCollection, err := apr.config.ActiveDB.GetDatabaseCollection(collectionName.ScopeName(), collectionName.CollectionName())
+			if err != nil {
+				return err
+			}
+			if err := resetLocalCheckpoint(dbCollection.dataStore, apr.CheckpointID); err != nil {
+				return err
+			}
+		}
+	} else {
+		collection, err := apr.config.ActiveDB.GetDefaultDatabaseCollection()
+		if err != nil {
+			return err
+		}
+		if err := resetLocalCheckpoint(collection.dataStore, apr.CheckpointID); err != nil {
+			return err
+		}
 	}
 
 	apr.lock.Lock()
-	apr.Checkpointer = nil
+	_ = apr.forEachCollection(func(c *activeReplicatorCollection) error {
+		c.Checkpointer = nil
+		return nil
+	})
 	apr.lock.Unlock()
 	return nil
 }
 
 // registerCheckpointerCallbacks registers appropriate callback functions for checkpointing.
-func (apr *ActivePullReplicator) registerCheckpointerCallbacks() {
-	apr.blipSyncContext.sgr2PullAlreadyKnownSeqsCallback = apr.Checkpointer.AddAlreadyKnownSeq
+func (apr *ActivePullReplicator) registerCheckpointerCallbacks(c *activeReplicatorCollection) {
+	blipSyncContextCollection, err := apr.blipSyncContext.collections.get(c.collectionIdx)
+	if err != nil {
+		base.WarnfCtx(apr.ctx, "Unable to get blipSyncContextCollection for collection %d: %v", c.collectionIdx, err)
+		panic(err)
+	}
 
-	apr.blipSyncContext.sgr2PullAddExpectedSeqsCallback = apr.Checkpointer.AddExpectedSeqIDAndRevs
-
-	apr.blipSyncContext.sgr2PullProcessedSeqCallback = apr.Checkpointer.AddProcessedSeqIDAndRev
+	blipSyncContextCollection.sgr2PullAlreadyKnownSeqsCallback = c.Checkpointer.AddAlreadyKnownSeq
+	blipSyncContextCollection.sgr2PullAddExpectedSeqsCallback = c.Checkpointer.AddExpectedSeqIDAndRevs
+	blipSyncContextCollection.sgr2PullProcessedSeqCallback = c.Checkpointer.AddProcessedSeqIDAndRev
 
 	// Trigger complete for non-continuous replications when caught up
 	if !apr.config.Continuous {
-		apr.blipSyncContext.emptyChangesMessageCallback = func() {
-			// Complete blocks waiting for pending rev messages, so needs
-			// it's own goroutine
+		blipSyncContextCollection.emptyChangesMessageCallback = func() {
+			// Complete blocks waiting for pending rev messages, so needs its own goroutine
 			base.TracefCtx(apr.ctx, base.KeyReplicate, "calling complete from registerCheckpointerCallbacks, because we have empty callback")
 			go apr.Complete()
 		}

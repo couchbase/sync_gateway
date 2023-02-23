@@ -13,7 +13,9 @@ package db
 import (
 	"context"
 	"expvar"
+	"fmt"
 	"sync"
+	"testing"
 	"time"
 
 	"github.com/couchbase/go-blip"
@@ -32,7 +34,6 @@ type activeReplicatorCommon struct {
 	blipSyncContext       *BlipSyncContext
 	blipSender            *blip.Sender
 	Stats                 expvar.Map
-	Checkpointer          *Checkpointer
 	checkpointerCtx       context.Context
 	checkpointerCtxCancel context.CancelFunc
 	CheckpointID          string // Used for checkpoint retrieval when Checkpointer isn't available
@@ -45,9 +46,31 @@ type activeReplicatorCommon struct {
 	lock                  sync.RWMutex
 	ctx                   context.Context
 	ctxCancel             context.CancelFunc
-	reconnectActive       base.AtomicBool // Tracks whether reconnect goroutine is active
-	replicatorConnectFn   func() error    // the function called inside reconnectLoop.
-	activeSendChanges     base.AtomicBool // Tracks whether sendChanges goroutine is active.
+	reconnectActive       base.AtomicBool                                             // Tracks whether reconnect goroutine is active
+	replicatorConnectFn   func() error                                                // the function called inside reconnectLoop.
+	activeSendChanges     base.AtomicBool                                             // Tracks whether sendChanges goroutine is active.
+	namedCollections      map[base.ScopeAndCollectionName]*activeReplicatorCollection // set only if the replicator is running with collections - access with forEachCollection
+	defaultCollection     *activeReplicatorCollection                                 // set only if the replicator is not running with collections - access with forEachCollection
+}
+
+// GetSingleCollection returns the single collection for the replication.
+func (apr *activeReplicatorCommon) GetSingleCollection(tb testing.TB) *activeReplicatorCollection {
+	if apr.config.CollectionsEnabled {
+		if len(apr.namedCollections) != 1 {
+			tb.Fatalf("Can only use GetSingleCollection with 1 collection, had %d", len(apr.namedCollections))
+		}
+		for _, collection := range apr.namedCollections {
+			return collection
+		}
+	}
+	return apr.defaultCollection
+}
+
+// activeReplicatorCollection stores data about a single collection for the replication.
+type activeReplicatorCollection struct {
+	dataStore     base.DataStore // DataStore for this collection
+	collectionIdx *int           // collectionIdx for this collection for this BLIP replication, passed into Get/SetCheckpoint messages
+	Checkpointer  *Checkpointer  // Checkpointer for this collection
 }
 
 func newActiveReplicatorCommon(config *ActiveReplicatorConfig, direction ActiveReplicatorDirection) *activeReplicatorCommon {
@@ -62,12 +85,26 @@ func newActiveReplicatorCommon(config *ActiveReplicatorConfig, direction ActiveR
 		checkpointID = PullCheckpointID(config.ID)
 	}
 
-	return &activeReplicatorCommon{
+	apr := activeReplicatorCommon{
 		config:           config,
 		state:            ReplicationStateStopped,
 		replicationStats: replicationStats,
 		CheckpointID:     config.checkpointPrefix + checkpointID,
 	}
+
+	if config.CollectionsEnabled {
+		apr.namedCollections = make(map[base.ScopeAndCollectionName]*activeReplicatorCollection)
+	} else {
+		defaultDatabaseCollection, err := config.ActiveDB.GetDefaultDatabaseCollection()
+		if err != nil {
+			panic(err)
+		}
+		apr.defaultCollection = &activeReplicatorCollection{
+			dataStore: defaultDatabaseCollection.dataStore,
+		}
+	}
+
+	return &apr
 }
 
 // reconnectLoop synchronously calls replicatorConnectFn until successful, or times out trying. Retry loop can be stopped by cancelling ctx
@@ -182,8 +219,12 @@ func (a *activeReplicatorCommon) _disconnect() error {
 	if a.checkpointerCtx != nil {
 		base.TracefCtx(a.ctx, base.KeyReplicate, "cancelling checkpointer context inside _disconnect")
 		a.checkpointerCtxCancel()
-		a.Checkpointer.CheckpointNow()
-		a.Checkpointer.closeWg.Wait()
+		_ = a.forEachCollection(func(c *activeReplicatorCollection) error {
+			fmt.Printf("checkpointer calling CheckpointNow(): %v\n", c.Checkpointer)
+			c.Checkpointer.closeWg.Wait()
+			c.Checkpointer.CheckpointNow()
+			return nil
+		})
 	}
 	a.checkpointerCtx = nil
 
@@ -195,6 +236,7 @@ func (a *activeReplicatorCommon) _disconnect() error {
 
 	if a.blipSyncContext != nil {
 		base.TracefCtx(a.ctx, base.KeyReplicate, "closing blip sync context")
+		fmt.Printf("closing blip sync context: %v\n", a.blipSyncContext)
 		a.blipSyncContext.Close()
 		a.blipSyncContext = nil
 	}
@@ -204,6 +246,7 @@ func (a *activeReplicatorCommon) _disconnect() error {
 
 // _stop aborts any replicator processes that run outside of a running replication (e.g: async reconnect handling)
 func (a *activeReplicatorCommon) _stop() {
+	fmt.Printf("arc _stop\n")
 	if a.ctxCancel != nil {
 		base.TracefCtx(a.ctx, base.KeyReplicate, "cancelling context on activeReplicatorCommon in _stop()")
 		a.ctxCancel()
@@ -271,10 +314,5 @@ func (a *activeReplicatorCommon) GetStats() *BlipSyncStats {
 
 func (a *activeReplicatorCommon) _publishStatus() {
 	status, errorMessage := a.getStateWithErrorMessage()
-	if a.Checkpointer != nil {
-		a.Checkpointer.setLocalCheckpointStatus(status, errorMessage)
-	} else {
-		setLocalCheckpointStatus(a.ctx, a.config.ActiveDB, a.CheckpointID, status, errorMessage)
-	}
-
+	setLocalCheckpointStatus(a.ctx, a.config.ActiveDB.MetadataStore, a.CheckpointID, status, errorMessage, int(a.config.ActiveDB.Options.LocalDocExpirySecs))
 }

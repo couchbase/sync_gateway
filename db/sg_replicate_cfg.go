@@ -94,6 +94,8 @@ func NewSGNode(uuid string, host string) *SGNode {
 type ReplicationConfig struct {
 	ID                     string                    `json:"replication_id"`
 	Remote                 string                    `json:"remote"`
+	CollectionsEnabled     bool                      `json:"collections_enabled,omitempty"`
+	KeyspaceMap            map[string]string         `json:"keyspace_map,omitempty"`
 	Username               string                    `json:"username,omitempty"` // Deprecated
 	Password               string                    `json:"password,omitempty"` // Deprecated
 	RemoteUsername         string                    `json:"remote_username,omitempty"`
@@ -136,25 +138,27 @@ type ReplicationCfg struct {
 
 // ReplicationUpsertConfig is used for operations that support upsert of a subset of replication properties.
 type ReplicationUpsertConfig struct {
-	ID                     string      `json:"replication_id"`
-	Remote                 *string     `json:"remote"`
-	Username               *string     `json:"username,omitempty"` // Deprecated
-	Password               *string     `json:"password,omitempty"` // Deprecated
-	RemoteUsername         *string     `json:"remote_username,omitempty"`
-	RemotePassword         *string     `json:"remote_password,omitempty"`
-	Direction              *string     `json:"direction"`
-	ConflictResolutionType *string     `json:"conflict_resolution_type,omitempty"`
-	ConflictResolutionFn   *string     `json:"custom_conflict_resolver,omitempty"`
-	PurgeOnRemoval         *bool       `json:"purge_on_removal,omitempty"`
-	DeltaSyncEnabled       *bool       `json:"enable_delta_sync,omitempty"`
-	MaxBackoff             *int        `json:"max_backoff_time,omitempty"`
-	InitialState           *string     `json:"initial_state,omitempty"`
-	Continuous             *bool       `json:"continuous"`
-	Filter                 *string     `json:"filter,omitempty"`
-	QueryParams            interface{} `json:"query_params,omitempty"`
-	Adhoc                  *bool       `json:"adhoc,omitempty"`
-	BatchSize              *int        `json:"batch_size,omitempty"`
-	RunAs                  *string     `json:"run_as,omitempty"`
+	ID                     string            `json:"replication_id"`
+	Remote                 *string           `json:"remote"`
+	CollectionsEnabled     bool              `json:"collections_enabled,omitempty"`
+	KeyspaceMap            map[string]string `json:"keyspace_map,omitempty"`
+	Username               *string           `json:"username,omitempty"` // Deprecated
+	Password               *string           `json:"password,omitempty"` // Deprecated
+	RemoteUsername         *string           `json:"remote_username,omitempty"`
+	RemotePassword         *string           `json:"remote_password,omitempty"`
+	Direction              *string           `json:"direction"`
+	ConflictResolutionType *string           `json:"conflict_resolution_type,omitempty"`
+	ConflictResolutionFn   *string           `json:"custom_conflict_resolver,omitempty"`
+	PurgeOnRemoval         *bool             `json:"purge_on_removal,omitempty"`
+	DeltaSyncEnabled       *bool             `json:"enable_delta_sync,omitempty"`
+	MaxBackoff             *int              `json:"max_backoff_time,omitempty"`
+	InitialState           *string           `json:"initial_state,omitempty"`
+	Continuous             *bool             `json:"continuous"`
+	Filter                 *string           `json:"filter,omitempty"`
+	QueryParams            interface{}       `json:"query_params,omitempty"`
+	Adhoc                  *bool             `json:"adhoc,omitempty"`
+	BatchSize              *int              `json:"batch_size,omitempty"`
+	RunAs                  *string           `json:"run_as,omitempty"`
 }
 
 func (rc *ReplicationConfig) ValidateReplication(fromConfig bool) (err error) {
@@ -544,6 +548,8 @@ func (m *sgReplicateManager) NewActiveReplicatorConfig(config *ReplicationCfg) (
 		ID:                 config.ID,
 		Continuous:         config.Continuous,
 		ActiveDB:           activeDB,
+		CollectionsEnabled: config.CollectionsEnabled,
+		KeyspaceMap:        config.KeyspaceMap,
 		PurgeOnRemoval:     config.PurgeOnRemoval,
 		DeltasEnabled:      config.DeltaSyncEnabled,
 		InsecureSkipVerify: insecureSkipVerify,

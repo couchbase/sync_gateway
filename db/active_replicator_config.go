@@ -83,6 +83,13 @@ type ActiveReplicatorConfig struct {
 	// TotalReconnectTimeout, if non-zero, is the amount of time to wait before giving up trying to reconnect.
 	TotalReconnectTimeout time.Duration
 
+	// CollectionsEnabled can be set to replicate one or more named collections, rather than just the default collection.
+	CollectionsEnabled bool
+	// KeyspaceMap represents a set of dot-separated scope/collections that will be replicated.
+	// The values of the map can be set to map a collection on the active side to something else on the passive side.
+	// This map can be nil to replicate all scopes/collections for the database when CollectionsEnabled is set to true.
+	KeyspaceMap map[string]string // map of active "scope.collection" to passive "scope.collection"
+
 	// Delta sync enabled
 	DeltasEnabled bool
 
