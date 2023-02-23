@@ -154,6 +154,9 @@ func (r *GatewayRegistry) removeDatabase(configGroupID, dbName string) bool {
 // can wait and retry.
 func (r *GatewayRegistry) upsertDatabaseConfig(ctx context.Context, configGroupID string, config *DatabaseConfig) (previousVersionConflicts []configGroupAndDatabase, err error) {
 
+	if config == nil {
+		return nil, fmt.Errorf("attempted to upsertDatabaseConfig with nil config")
+	}
 	collectionConflicts := r.getCollectionConflicts(ctx, config.Name, config.Scopes)
 	if len(collectionConflicts) > 0 {
 		return nil, base.HTTPErrorf(http.StatusConflict, fmt.Sprintf("Cannot update config for database %s - collections are in use by another database: %v", base.UD(config.Name), collectionConflicts))

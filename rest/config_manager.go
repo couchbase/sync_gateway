@@ -272,7 +272,7 @@ func (b *bootstrapContext) WaitForConflictingUpdates(ctx context.Context, bucket
 	return nil
 }
 
-// GetConfigsForConfigGroup returns all configs for the bucket and config group.
+// GetDatabaseConfigs returns all configs for the bucket and config group.
 func (b *bootstrapContext) GetDatabaseConfigs(ctx context.Context, bucketName, groupID string) ([]*DatabaseConfig, error) {
 
 	attempts := 0
@@ -283,6 +283,19 @@ func (b *bootstrapContext) GetDatabaseConfigs(ctx context.Context, bucketName, g
 		if err != nil {
 			return nil, err
 		}
+
+		// Check for legacy config file
+		var legacyConfig DatabaseConfig
+		var legacyDbName string
+		cas, err := b.Connection.GetMetadataDocument(bucketName, PersistentConfigKey(groupID, ""), &legacyConfig)
+		if err != nil && err != base.ErrNotFound {
+			return nil, fmt.Errorf("Error checking for legacy config for %s, %s: %w", base.MD(bucketName), base.MD(groupID), err)
+		}
+		if err == nil {
+			legacyConfig.cfgCas = cas
+			legacyDbName = legacyConfig.Name
+		}
+
 		configGroup, ok := registry.ConfigGroups[groupID]
 		if !ok {
 			// no configs defined for this config group
@@ -292,6 +305,7 @@ func (b *bootstrapContext) GetDatabaseConfigs(ctx context.Context, bucketName, g
 		dbConfigs := make([]*DatabaseConfig, 0)
 		reloadRequired := false
 
+		legacyFoundInRegistry := false
 		for dbName, registryDb := range configGroup.Databases {
 			// Ignore databases with deleted version - represents an in-progress delete
 			if registryDb.Version == deletedDatabaseVersion {
@@ -305,7 +319,14 @@ func (b *bootstrapContext) GetDatabaseConfigs(ctx context.Context, bucketName, g
 				return nil, err
 			}
 			dbConfigs = append(dbConfigs, dbConfig)
+			if dbConfig.Name == legacyDbName {
+				legacyFoundInRegistry = false
+			}
 		}
+		if legacyDbName != "" && !legacyFoundInRegistry {
+			dbConfigs = append(dbConfigs, &legacyConfig)
+		}
+
 		// Retry on ErrConfigRegistryReloadRequired until reaching attempts limit
 		if reloadRequired {
 			continue

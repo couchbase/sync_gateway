@@ -1355,6 +1355,39 @@ func (sc *ServerContext) _fetchAndLoadDatabase(nonContextStruct base.NonCancella
 	return true, nil
 }
 
+// migrateV30Configs checks for configs stored in the 3.0 location, and migrates them to the db registry
+func (sc *ServerContext) migrateV30Configs(ctx context.Context) error {
+	groupID := sc.Config.Bootstrap.ConfigGroupID
+	buckets, err := sc.BootstrapContext.Connection.GetConfigBuckets()
+	if err != nil {
+		return err
+	}
+
+	for _, bucketName := range buckets {
+		var dbConfig DatabaseConfig
+		legacyCas, getErr := sc.BootstrapContext.Connection.GetMetadataDocument(bucketName, PersistentConfigKey30(groupID), &dbConfig)
+		if getErr == base.ErrNotFound {
+			continue
+		} else if getErr != nil {
+			return fmt.Errorf("Error retrieving 3.0 config for bucket: %s, groupID: %s: %w", bucketName, groupID, err)
+		}
+
+		_, insertErr := sc.BootstrapContext.InsertConfig(ctx, bucketName, groupID, &dbConfig)
+		if insertErr != nil {
+			if insertErr == base.ErrAlreadyExists {
+				base.DebugfCtx(ctx, base.KeyConfig, "Found legacy config for database %s, but already exists in registry.", base.MD(dbConfig.Name))
+				continue
+			}
+			return fmt.Errorf("Error migrating v3.0 config for bucket %s groupID %s: %w", base.MD(bucketName), base.MD(groupID), insertErr)
+		}
+		removeErr := sc.BootstrapContext.Connection.DeleteMetadataDocument(bucketName, PersistentConfigKey30(groupID), legacyCas)
+		if removeErr != nil {
+			base.InfofCtx(ctx, base.KeyConfig, "Failed to remove legacy config for database %s.", base.MD(dbConfig.Name))
+		}
+	}
+	return nil
+}
+
 func (sc *ServerContext) findBucketWithCallback(callback func(bucket string) (exit bool, err error)) (err error) {
 	// rewritten loop from FetchDatabase as part of CBG-2420 PR review
 	var buckets []string
@@ -1794,6 +1827,15 @@ func PersistentConfigKey(groupID string, metadataID string) string {
 	} else {
 		return base.PersistentConfigPrefixWithoutGroupID + metadataID + ":" + groupID
 	}
+}
+
+// Return the persistent config key for a legacy 3.0 persistent config (single database per bucket model)
+func PersistentConfigKey30(groupID string) string {
+	if groupID == "" {
+		base.WarnfCtx(context.TODO(), "Empty group ID specified for PersistentConfigKey - using %v", PersistentConfigDefaultGroupID)
+		groupID = PersistentConfigDefaultGroupID
+	}
+	return base.PersistentConfigPrefixWithoutGroupID + groupID
 }
 
 func HandleSighup() {
