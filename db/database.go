@@ -453,7 +453,11 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 		}
 		dbContext.CfgSG = sgCfg
 	} else {
-		dbContext.CfgSG = cbgt.NewCfgMem()
+		sgCfg, err := base.NewCbgtCfgMem()
+		if err != nil {
+			return nil, err
+		}
+		dbContext.CfgSG = sgCfg
 	}
 
 	// Initialize the tap Listener for notify handling

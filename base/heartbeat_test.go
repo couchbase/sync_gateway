@@ -336,9 +336,12 @@ func TestCBGTManagerHeartbeater(t *testing.T) {
 	options := make(map[string]string)
 	options[cbgt.FeedAllotmentOption] = cbgt.FeedAllotmentOnePerPIndex
 	options["managerLoadDataDir"] = "false"
+	cfg, err := NewCbgtCfgMem()
+	require.NoError(t, err)
+
 	testManager := cbgt.NewManagerEx(
 		SGCbgtMetadataVersion,
-		cbgt.NewCfgMem(),
+		cfg,
 		testUUID,
 		nil,
 		"",
