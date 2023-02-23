@@ -531,6 +531,30 @@ func CreateDoublingSleeperFunc(maxNumAttempts, initialTimeToSleepMs int) RetrySl
 
 }
 
+// Create a RetrySleeper that will double the retry time on every iteration with
+// initial sleep time and a total max wait no longer than maxWait
+func CreateDoublingSleeperDurationFunc(initialTimeToSleepMs int, maxWait time.Duration) RetrySleeper {
+
+	timeToSleepMs := initialTimeToSleepMs
+	startTime := time.Now()
+	sleeper := func(numAttempts int) (bool, int) {
+		totalWait := time.Since(startTime)
+		if totalWait > maxWait {
+			return false, -1
+		}
+		if numAttempts > 1 {
+			timeToSleepMs *= 2
+		}
+		// If next sleep time would take us past maxWait, only sleep for required amount
+		timeRemainingMs := int((maxWait - totalWait).Milliseconds())
+		if timeRemainingMs < timeToSleepMs {
+			return true, timeRemainingMs
+		}
+		return true, timeToSleepMs
+	}
+	return sleeper
+}
+
 // Create a sleeper function that sleeps up to maxNumAttempts, sleeping timeToSleepMs each attempt
 func CreateSleeperFunc(maxNumAttempts, timeToSleepMs int) RetrySleeper {
 

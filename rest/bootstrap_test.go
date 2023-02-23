@@ -138,8 +138,8 @@ func TestBootstrapRESTAPISetup(t *testing.T) {
 	resp.RequireResponse(http.StatusOK, `{"_id":"doc1","_rev":"1-cd809becc169215072fd567eebd8b8de","foo":"bar"}`)
 }
 
-// TestBootstrapDuplicateBucket will attempt to create two databases sharing the same bucket and ensure this isn't allowed.
-func TestBootstrapDuplicateBucket(t *testing.T) {
+// TestBootstrapDuplicateBucket will attempt to create two databases sharing the same collections and ensure this isn't allowed.
+func TestBootstrapDuplicateCollections(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Bootstrap works with Couchbase Server only")
 	}
@@ -175,7 +175,7 @@ func TestBootstrapDuplicateBucket(t *testing.T) {
 	)
 	resp.RequireStatus(http.StatusCreated)
 
-	// Create db2 using the same bucket and expect it to fail
+	// Create db2 using the same collection (on the same bucket) and expect it to fail
 	resp = BootstrapAdminRequest(t, http.MethodPut, "/db2/",
 		fmt.Sprintf(
 			`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "use_views": %t}`,
@@ -183,10 +183,6 @@ func TestBootstrapDuplicateBucket(t *testing.T) {
 		),
 	)
 	resp.RequireStatus(http.StatusConflict)
-
-	// CBG-1785 - Check the error has been changed from the original misleading error to a more informative one.
-	assert.NotContains(t, resp.Body, fmt.Sprintf(`Database \"%s\" already exists`, "db2"))
-	assert.Contains(t, resp.Body, fmt.Sprintf(`Bucket \"%s\" already in use by database \"%s\"`, tb.GetName(), "db1"))
 }
 
 // TestBootstrapDuplicateDatabase will attempt to create a second database and ensure this isn't allowed.
