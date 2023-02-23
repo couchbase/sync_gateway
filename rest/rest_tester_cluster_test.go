@@ -204,7 +204,6 @@ func TestPersistentDbConfigWithInvalidUpsert(t *testing.T) {
 
 	// remove the db config directly from the bucket
 	docID := PersistentConfigKey(*rtc.config.groupID, db)
-	require.NoError(t, err)
 	// metadata store
 	_, err = rtc.testBucket.DefaultDataStore().Remove(docID, 0)
 	require.NoError(t, err)

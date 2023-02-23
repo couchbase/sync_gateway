@@ -58,22 +58,26 @@ func (b *bootstrapContext) GetConfig(bucketName, groupID, dbName string, config 
 func (b *bootstrapContext) InsertConfig(ctx context.Context, bucketName, groupID string, config *DatabaseConfig) (newCAS uint64, err error) {
 	dbName := config.Name
 	attempts := 0
+	ctx = b.addDatabaseLogContext(ctx, dbName)
 	for attempts < configUpdateMaxRetryAttempts {
 		attempts++
+		base.InfofCtx(ctx, base.KeyConfig, "InsertConfig into bucket %s starting (attempt %d/%d)", bucketName, attempts, configUpdateMaxRetryAttempts)
 
 		// Step 1. Fetch registry and databases - enforces registry/config synchronization
 		registry, existingConfig, err := b.getRegistryAndDatabase(ctx, bucketName, groupID, dbName)
 		if err != nil {
+			base.InfofCtx(ctx, base.KeyConfig, "InsertConfig unable to retrieve registry and database: %v", err)
 			return 0, err
 		}
 		if existingConfig != nil {
 			return 0, base.ErrAlreadyExists
 		}
 
-		// Step 1. Update the registry to add the config
+		// Step 2. Update the registry to add the config
 		// Add database to registry
 		previousVersionConflicts, upsertErr := registry.upsertDatabaseConfig(ctx, groupID, config)
 		if upsertErr != nil {
+			base.InfofCtx(ctx, base.KeyConfig, "InsertConfig unable to update registry: %v", upsertErr)
 			return 0, upsertErr
 		}
 
@@ -93,8 +97,10 @@ func (b *bootstrapContext) InsertConfig(ctx context.Context, bucketName, groupID
 		}
 		// retry on cas mismatch, otherwise return error
 		if !base.IsCasMismatch(writeErr) {
+			base.InfofCtx(ctx, base.KeyConfig, "InsertConfig unable to persist registry: %v", writeErr)
 			return 0, writeErr
 		}
+		base.DebugfCtx(ctx, base.KeyConfig, "Registry updated successfully")
 
 		// Check for context cancel before retrying
 		select {
@@ -104,7 +110,13 @@ func (b *bootstrapContext) InsertConfig(ctx context.Context, bucketName, groupID
 		}
 	}
 	// Step 3. Write the database config
-	return b.Connection.InsertMetadataDocument(bucketName, PersistentConfigKey(groupID, dbName), config)
+	cas, configErr := b.Connection.InsertMetadataDocument(bucketName, PersistentConfigKey(groupID, dbName), config)
+	if configErr != nil {
+		base.InfofCtx(ctx, base.KeyConfig, "Insert for database config returned error %v", configErr)
+	} else {
+		base.DebugfCtx(ctx, base.KeyConfig, "Insert for database config was successful")
+	}
+	return cas, configErr
 }
 
 // UpdateConfig updates an existing database config for a given bucket and config group ID. This is a four-step process:
@@ -117,18 +129,23 @@ func (b *bootstrapContext) UpdateConfig(ctx context.Context, bucketName, groupID
 	var registry *GatewayRegistry
 	var previousVersion string
 	attempts := 0
+
+	ctx = b.addDatabaseLogContext(ctx, dbName)
 	for attempts < configUpdateMaxRetryAttempts {
 		attempts++
+		base.InfofCtx(ctx, base.KeyConfig, "UpdateConfig starting (attempt %d/%d)", attempts, configUpdateMaxRetryAttempts)
 		// Step 1. Fetch registry and databases - enforces registry/config synchronization
 		var existingConfig *DatabaseConfig
 		registry, existingConfig, err = b.getRegistryAndDatabase(ctx, bucketName, groupID, dbName)
 		if err != nil {
+			base.InfofCtx(ctx, base.KeyConfig, "UpdateConfig unable to retrieve registry and database: %v", err)
 			return 0, err
 		}
 		if existingConfig == nil {
 			return 0, base.ErrNotFound
 		}
 
+		base.DebugfCtx(ctx, base.KeyConfig, "UpdateConfig fetched registry and database successfully")
 		// Step 2. Update registry to update registry entry, and move previous registry entry to PreviousVersion
 		previousVersion = existingConfig.Version
 		var callbackErr error
@@ -140,6 +157,7 @@ func (b *bootstrapContext) UpdateConfig(ctx context.Context, bucketName, groupID
 		// Update database in registry
 		previousVersionConflicts, err := registry.upsertDatabaseConfig(ctx, groupID, updatedConfig)
 		if err != nil {
+			base.InfofCtx(ctx, base.KeyConfig, "UpdateConfig encountered error while upserting database config for conflicting updates: %v", err)
 			return 0, err
 		}
 
@@ -147,6 +165,7 @@ func (b *bootstrapContext) UpdateConfig(ctx context.Context, bucketName, groupID
 		if len(previousVersionConflicts) > 0 {
 			err := b.WaitForConflictingUpdates(ctx, bucketName, previousVersionConflicts)
 			if err != nil {
+				base.InfofCtx(ctx, base.KeyConfig, "UpdateConfig encountered error while waiting for conflicting updates: %v", err)
 				return 0, err
 			}
 			continue
@@ -159,8 +178,10 @@ func (b *bootstrapContext) UpdateConfig(ctx context.Context, bucketName, groupID
 		}
 		// retry on cas mismatch, otherwise return error
 		if !base.IsCasMismatch(writeErr) {
+			base.InfofCtx(ctx, base.KeyConfig, "UpdateConfig encountered error while persisting updated registry: %v", writeErr)
 			return 0, writeErr
 		}
+		base.DebugfCtx(ctx, base.KeyConfig, "UpdateConfig persisted updated registry successfully")
 
 		// Check for context cancel before retrying
 		select {
@@ -173,8 +194,10 @@ func (b *bootstrapContext) UpdateConfig(ctx context.Context, bucketName, groupID
 	// Step 2. Update the config document
 	casOut, err := b.Connection.WriteMetadataDocument(bucketName, PersistentConfigKey(groupID, dbName), updatedConfig.cfgCas, updatedConfig)
 	if err != nil {
+		base.InfofCtx(ctx, base.KeyConfig, "Write for database config returned error %v", err)
 		return 0, err
 	}
+	base.DebugfCtx(ctx, base.KeyConfig, "Write for database config was successful")
 
 	// Step 3. After config is successfully updated, finalize the update by removing the previous version from the registry
 	err = registry.removePreviousVersion(groupID, dbName, previousVersion)
@@ -198,12 +221,15 @@ func (b *bootstrapContext) DeleteConfig(ctx context.Context, bucketName, groupID
 	var existingCas uint64
 	var registry *GatewayRegistry
 	attempts := 0
+	ctx = b.addDatabaseLogContext(ctx, dbName)
 	for attempts < configUpdateMaxRetryAttempts {
 		attempts++
+		base.InfofCtx(ctx, base.KeyConfig, "DeleteConfig starting (attempt %d/%d)", attempts, configUpdateMaxRetryAttempts)
 		var existingConfig *DatabaseConfig
 		// Step 1. Fetch registry and databases - enforces registry/config synchronization
 		registry, existingConfig, err = b.getRegistryAndDatabase(ctx, bucketName, groupID, dbName)
 		if err != nil {
+			base.InfofCtx(ctx, base.KeyConfig, "DeleteConfig unable to retrieve registry and database: %v", err)
 			return err
 		}
 		if existingConfig == nil {
@@ -214,6 +240,7 @@ func (b *bootstrapContext) DeleteConfig(ctx context.Context, bucketName, groupID
 		// Step 2. Update registry, mark database deleted in registry
 		err = registry.deleteDatabase(groupID, dbName)
 		if err != nil {
+			base.InfofCtx(ctx, base.KeyConfig, "DeleteConfig unable to delete database from registry: %v", err)
 			return err
 		}
 
@@ -224,6 +251,7 @@ func (b *bootstrapContext) DeleteConfig(ctx context.Context, bucketName, groupID
 		}
 		// retry on cas mismatch, otherwise return error
 		if !base.IsCasMismatch(writeErr) {
+			base.InfofCtx(ctx, base.KeyConfig, "DeleteConfig failed to write updated registry: %v", writeErr)
 			return writeErr
 		}
 
@@ -237,12 +265,15 @@ func (b *bootstrapContext) DeleteConfig(ctx context.Context, bucketName, groupID
 
 	err = b.Connection.DeleteMetadataDocument(bucketName, PersistentConfigKey(groupID, dbName), existingCas)
 	if err != nil {
+		base.InfofCtx(ctx, base.KeyConfig, "Delete for database config returned error %v", err)
 		return err
 	}
+	base.DebugfCtx(ctx, base.KeyConfig, "Delete for database config was successful")
+
 	// Step 3. After config is successfully deleted, finalize the delete by removing the previous version from the registry
 	found := registry.removeDatabase(groupID, dbName)
 	if !found {
-		base.InfofCtx(ctx, base.KeyConfig, "Database not found in registry during finalization for config group:%s, database: %s", base.MD(groupID), base.MD(dbName))
+		base.InfofCtx(ctx, base.KeyConfig, "Database not found in registry during finalization")
 	} else {
 		writeErr := b.setGatewayRegistry(bucketName, registry)
 		if writeErr != nil {
@@ -348,7 +379,8 @@ func (b *bootstrapContext) getConfigVersionWithRetry(ctx context.Context, bucket
 
 	retryWorker := func() (shouldRetry bool, err error, value interface{}) {
 		config := &DatabaseConfig{}
-		cas, err := b.Connection.GetMetadataDocument(bucketName, PersistentConfigKey(groupID, dbName), config)
+		metadataKey := PersistentConfigKey(groupID, dbName)
+		cas, err := b.Connection.GetMetadataDocument(bucketName, metadataKey, config)
 		if err == base.ErrNotFound {
 			return true, base.ErrConfigRegistryRollback, nil
 		}
@@ -370,6 +402,7 @@ func (b *bootstrapContext) getConfigVersionWithRetry(ctx context.Context, bucket
 			// requested a stale version.
 			return false, base.ErrConfigVersionMismatch, config
 		} else {
+			base.DebugfCtx(ctx, base.KeyConfig, "getConfigVersionWithRetry for key %s found version mismatch, retrying.  Requested: %s, Found: %s", metadataKey, version, config.Version)
 			return true, base.ErrConfigRegistryRollback, config
 		}
 	}
@@ -401,9 +434,12 @@ func (b *bootstrapContext) getConfigVersionWithRetry(ctx context.Context, bucket
 // version, will retry with backoff (to wait for in-flight updates to complete).  After retry timeout,
 // triggers registry rollback and returns rollback error
 func (b *bootstrapContext) getDatabaseConfig(ctx context.Context, bucketName, groupID, dbName string, version string, registry *GatewayRegistry) (*DatabaseConfig, error) {
+
+	ctx = b.addDatabaseLogContext(ctx, dbName)
 	config, err := b.getConfigVersionWithRetry(ctx, bucketName, groupID, dbName, version)
 	if err != nil {
 		if err == base.ErrConfigRegistryRollback {
+			base.InfofCtx(ctx, base.KeyConfig, "Registry rollback required for bucket: %s, groupID: %s, dbName:%s", bucketName, groupID, dbName)
 			rollbackErr := b.rollbackRegistry(ctx, bucketName, groupID, dbName, config, registry)
 			// On successful registry rollback, caller needs reload registry
 			if rollbackErr == nil {
@@ -411,6 +447,7 @@ func (b *bootstrapContext) getDatabaseConfig(ctx context.Context, bucketName, gr
 			}
 			// On unsuccessful rollback due to CAS failure, caller also needs to reload registry
 			if base.IsCasMismatch(rollbackErr) {
+				base.InfofCtx(ctx, base.KeyConfig, "Unsuccessful rollback for db:%s - CAS mismatch", dbName)
 				return nil, base.ErrConfigRegistryReloadRequired
 			}
 			return nil, rollbackErr
@@ -573,6 +610,7 @@ func (b *bootstrapContext) setGatewayRegistry(bucketName string, registry *Gatew
 // If config rollback is triggered, the process is restarted up to the maximum registry reload count
 func (b *bootstrapContext) getRegistryAndDatabase(ctx context.Context, bucketName, groupID, dbName string) (registry *GatewayRegistry, config *DatabaseConfig, err error) {
 
+	base.DebugfCtx(ctx, base.KeyConfig, "getRegistryAndDatabase for bucket: %s, groupID: %s, db: %s", bucketName, groupID, dbName)
 	registryLoadCount := 0
 	// Registry reloads should only happen in the event of node failure, or due to concurrent registry operations from multiple requests.
 	// Given this, we can abandon the current operation and return error after a small number of retry attempts
@@ -582,7 +620,7 @@ func (b *bootstrapContext) getRegistryAndDatabase(ctx context.Context, bucketNam
 	for registryLoadCount < maxRegistryLoadCount {
 		registryLoadCount++
 		if registryLoadCount > 1 {
-			base.InfofCtx(ctx, base.KeyConfig, "Reloading registry, config retrieval attempt (%d/%d)", registryLoadCount, maxRegistryLoadCount)
+			base.InfofCtx(ctx, base.KeyConfig, "Reloading registry for bucket: %s, groupID: %s, db: %s, attempt (%d/%d)", bucketName, groupID, dbName, registryLoadCount, maxRegistryLoadCount)
 		}
 
 		registry, err = b.getGatewayRegistry(ctx, bucketName)
@@ -636,4 +674,8 @@ func (b *bootstrapContext) getRegistryAndDatabase(ctx context.Context, bucketNam
 
 	return nil, nil, fmt.Errorf("Unable to retrieve config - registry reload limit reached(%v)", maxRegistryLoadCount)
 
+}
+
+func (b *bootstrapContext) addDatabaseLogContext(ctx context.Context, dbName string) context.Context {
+	return base.LogContextWith(ctx, &base.DatabaseLogContext{DatabaseName: dbName})
 }

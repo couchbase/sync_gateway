@@ -1318,10 +1318,6 @@ func (sc *ServerContext) fetchAndLoadConfigs(ctx context.Context, isInitialStart
 		}
 	}
 
-	base.InfofCtx(ctx, base.KeyAll, "calling applyConfigs")
-	defer func() {
-		base.InfofCtx(ctx, base.KeyAll, "finished calling applyConfigs")
-	}()
 	return sc._applyConfigs(ctx, fetchedConfigs, isInitialStartup), nil
 }
 
@@ -1372,6 +1368,7 @@ func (sc *ServerContext) migrateV30Configs(ctx context.Context) error {
 			return fmt.Errorf("Error retrieving 3.0 config for bucket: %s, groupID: %s: %w", bucketName, groupID, err)
 		}
 
+		base.InfofCtx(ctx, base.KeyConfig, "Found legacy persisted config for database %s - migrating to db registry.", base.MD(dbConfig.Name))
 		_, insertErr := sc.BootstrapContext.InsertConfig(ctx, bucketName, groupID, &dbConfig)
 		if insertErr != nil {
 			if insertErr == base.ErrAlreadyExists {

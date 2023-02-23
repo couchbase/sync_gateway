@@ -159,13 +159,13 @@ func (r *GatewayRegistry) upsertDatabaseConfig(ctx context.Context, configGroupI
 	}
 	collectionConflicts := r.getCollectionConflicts(ctx, config.Name, config.Scopes)
 	if len(collectionConflicts) > 0 {
-		return nil, base.HTTPErrorf(http.StatusConflict, fmt.Sprintf("Cannot update config for database %s - collections are in use by another database: %v", base.UD(config.Name), collectionConflicts))
+		return nil, base.HTTPErrorf(http.StatusConflict, "Cannot update config for database %s - collections are in use by another database: %v", base.UD(config.Name), collectionConflicts)
 	}
 
 	// For conflicts with in-flight updates, call getRegistryAndDatabase to block until those updates complete or rollback
 	previousVersionConflicts = r.getPreviousConflicts(ctx, config.Name, config.Scopes)
 	if len(previousVersionConflicts) > 0 {
-		return previousVersionConflicts, base.HTTPErrorf(http.StatusConflict, fmt.Sprintf("Cannot update config, collections are in use by another database with an update in progress"))
+		return previousVersionConflicts, base.HTTPErrorf(http.StatusConflict, "Cannot update config, collections are in use by another database with an update in progress")
 	}
 
 	configGroup, ok := r.ConfigGroups[configGroupID]
