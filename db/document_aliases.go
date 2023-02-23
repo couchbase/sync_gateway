@@ -22,7 +22,9 @@ type Body = document.Body
 type ChannelSetEntry = document.ChannelSetEntry
 type DocAttachment = document.DocAttachment
 type Document = document.Document
+type DocumentRevision = document.DocumentRevision
 type DocumentUnmarshalLevel = document.DocumentUnmarshalLevel
+type IDAndRev = document.IDAndRev
 type Revisions = document.Revisions
 type RevInfo = document.RevInfo
 type RevKey = document.RevKey
@@ -50,6 +52,11 @@ const (
 	DocUnmarshalRev       = document.DocUnmarshalRev
 	DocUnmarshalCAS       = document.DocUnmarshalCAS
 	DocUnmarshalNone      = document.DocUnmarshalNone
+
+	RevCacheIncludeBody  = document.RevCacheIncludeBody
+	RevCacheOmitBody     = document.RevCacheOmitBody
+	RevCacheIncludeDelta = document.RevCacheIncludeDelta
+	RevCacheOmitDelta    = document.RevCacheOmitDelta
 
 	RevisionsStart = document.RevisionsStart
 	RevisionsIds   = document.RevisionsIds

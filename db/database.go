@@ -137,7 +137,7 @@ type Scope struct {
 
 type DatabaseContextOptions struct {
 	CacheOptions                  *CacheOptions
-	RevisionCacheOptions          *RevisionCacheOptions
+	RevisionCacheOptions          *document.RevisionCacheOptions
 	OldRevExpirySeconds           uint32
 	AdminInterface                *string
 	UnsupportedOptions            *UnsupportedOptions

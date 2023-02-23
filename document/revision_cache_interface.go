@@ -8,7 +8,7 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-package db
+package document
 
 import (
 	"context"
@@ -16,7 +16,6 @@ import (
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/couchbase/sync_gateway/document"
 )
 
 const (
@@ -106,7 +105,7 @@ func DefaultRevisionCacheOptions() *RevisionCacheOptions {
 // RevisionCacheBackingStore is the interface required to be passed into a RevisionCache constructor to provide a backing store for loading documents.
 type RevisionCacheBackingStore interface {
 	GetDocument(ctx context.Context, docid string, unmarshalLevel DocumentUnmarshalLevel) (doc *Document, err error)
-	getRevision(ctx context.Context, doc *Document, revid string) ([]byte, Body, AttachmentsMeta, error)
+	GetRevision(ctx context.Context, doc *Document, revid string) ([]byte, Body, AttachmentsMeta, error)
 }
 
 // DocumentRevision stored and returned by the rev cache
@@ -137,6 +136,10 @@ func (rev *DocumentRevision) MutableBody() (b Body, err error) {
 	return b, nil
 }
 
+func (rev *DocumentRevision) SetShallowCopyBody(body Body) {
+	rev._shallowCopyBody = body
+}
+
 // Body returns an unmarshalled body that is kept in the document revision to produce shallow copies.
 // If an unmarshalled copy is not available in the document revision, it makes a copy from the raw body
 // bytes and stores it in document revision itself before returning the body.
@@ -156,9 +159,14 @@ func (rev *DocumentRevision) Body() (b Body, err error) {
 	return b, nil
 }
 
+// Abstract interface for a database
+type DocumentProvider interface {
+	LoadAttachmentsData(meta AttachmentsMeta, minRevPos int, docID string) (AttachmentsMeta, error)
+}
+
 // Mutable1xBody returns a copy of the given document revision as a 1.x style body (with special properties)
 // Callers are free to modify this body without affecting the document revision.
-func (rev *DocumentRevision) Mutable1xBody(db *DatabaseCollectionWithUser, requestedHistory Revisions, attachmentsSince []string, showExp bool) (b Body, err error) {
+func (rev *DocumentRevision) Mutable1xBody(db DocumentProvider, requestedHistory Revisions, attachmentsSince []string, showExp bool) (b Body, err error) {
 	b, err = rev.Body()
 	if err != nil {
 		return nil, err
@@ -191,16 +199,16 @@ func (rev *DocumentRevision) Mutable1xBody(db *DatabaseCollectionWithUser, reque
 					minRevpos++
 				}
 			}
-			bodyAtts, err := db.loadAttachmentsData(rev.Attachments, minRevpos, rev.DocID)
+			bodyAtts, err := db.LoadAttachmentsData(rev.Attachments, minRevpos, rev.DocID)
 			if err != nil {
 				return nil, err
 			}
-			document.DeleteAttachmentVersion(bodyAtts)
+			DeleteAttachmentVersion(bodyAtts)
 			b[BodyAttachments] = bodyAtts
 		}
 	} else if rev.Attachments != nil {
 		// Stamp attachment metadata back into the body
-		document.DeleteAttachmentVersion(rev.Attachments)
+		DeleteAttachmentVersion(rev.Attachments)
 		b[BodyAttachments] = rev.Attachments
 	}
 
@@ -208,7 +216,7 @@ func (rev *DocumentRevision) Mutable1xBody(db *DatabaseCollectionWithUser, reque
 }
 
 // As1xBytes returns a byte slice representing the 1.x style body, containing special properties (i.e. _id, _rev, _attachments, etc.)
-func (rev *DocumentRevision) As1xBytes(db *DatabaseCollectionWithUser, requestedHistory Revisions, attachmentsSince []string, showExp bool) (b []byte, err error) {
+func (rev *DocumentRevision) As1xBytes(db DocumentProvider, requestedHistory Revisions, attachmentsSince []string, showExp bool) (b []byte, err error) {
 	// unmarshal
 	body1x, err := rev.Mutable1xBody(db, requestedHistory, attachmentsSince, showExp)
 	if err != nil {
@@ -234,7 +242,7 @@ type RevisionDelta struct {
 	ToDeleted             bool                    // Flag if ToRevID is a tombstone
 }
 
-func newRevCacheDelta(deltaBytes []byte, fromRevID string, toRevision DocumentRevision, deleted bool, toRevAttStorageMeta []AttachmentStorageMeta) RevisionDelta {
+func NewRevCacheDelta(deltaBytes []byte, fromRevID string, toRevision DocumentRevision, deleted bool, toRevAttStorageMeta []AttachmentStorageMeta) RevisionDelta {
 	return RevisionDelta{
 		ToRevID:               toRevision.RevID,
 		DeltaBytes:            deltaBytes,
@@ -262,7 +270,7 @@ func revCacheLoader(ctx context.Context, backingStore RevisionCacheBackingStore,
 
 // Common revCacheLoader functionality used either during a cache miss (from revCacheLoader), or directly when retrieving current rev from cache
 func revCacheLoaderForDocument(ctx context.Context, backingStore RevisionCacheBackingStore, doc *Document, revid string) (bodyBytes []byte, body Body, history Revisions, channels base.Set, removed bool, attachments AttachmentsMeta, deleted bool, expiry *time.Time, err error) {
-	if bodyBytes, body, attachments, err = backingStore.getRevision(ctx, doc, revid); err != nil {
+	if bodyBytes, body, attachments, err = backingStore.GetRevision(ctx, doc, revid); err != nil {
 		// If we can't find the revision (either as active or conflicted body from the document, or as old revision body backup), check whether
 		// the revision was a channel removal. If so, we want to store as removal in the revision cache
 		removalBodyBytes, removalHistory, activeChannels, isRemoval, isDelete, isRemovalErr := doc.IsChannelRemoval(revid)
@@ -283,7 +291,7 @@ func revCacheLoaderForDocument(ctx context.Context, backingStore RevisionCacheBa
 	if getHistoryErr != nil {
 		return bodyBytes, body, history, channels, removed, nil, deleted, nil, getHistoryErr
 	}
-	history = document.EncodeRevisions(doc.ID, validatedHistory)
+	history = EncodeRevisions(doc.ID, validatedHistory)
 	channels = doc.History[revid].Channels
 
 	return bodyBytes, body, history, channels, removed, attachments, deleted, doc.Expiry, err

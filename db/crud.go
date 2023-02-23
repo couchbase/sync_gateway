@@ -320,7 +320,7 @@ func (db *DatabaseCollectionWithUser) getRev(ctx context.Context, docid, revid s
 
 // GetDelta attempts to return the delta between fromRevId and toRevId.  If the delta can't be generated,
 // returns nil.
-func (db *DatabaseCollectionWithUser) GetDelta(ctx context.Context, docID, fromRevID, toRevID string) (delta *RevisionDelta, redactedRev *DocumentRevision, err error) {
+func (db *DatabaseCollectionWithUser) GetDelta(ctx context.Context, docID, fromRevID, toRevID string) (delta *document.RevisionDelta, redactedRev *DocumentRevision, err error) {
 
 	if docID == "" || fromRevID == "" || toRevID == "" {
 		return nil, nil, nil
@@ -386,7 +386,7 @@ func (db *DatabaseCollectionWithUser) GetDelta(ctx context.Context, docID, fromR
 
 		// If the revision we're generating a delta to is a tombstone, mark it as such and don't bother generating a delta
 		if deleted {
-			revCacheDelta := newRevCacheDelta([]byte(base.EmptyDocument), fromRevID, toRevision, deleted, nil)
+			revCacheDelta := document.NewRevCacheDelta([]byte(base.EmptyDocument), fromRevID, toRevision, deleted, nil)
 			db.revisionCache.UpdateDelta(ctx, docID, fromRevID, revCacheDelta)
 			return &revCacheDelta, nil, nil
 		}
@@ -424,7 +424,7 @@ func (db *DatabaseCollectionWithUser) GetDelta(ctx context.Context, docID, fromR
 		if err != nil {
 			return nil, nil, err
 		}
-		revCacheDelta := newRevCacheDelta(deltaBytes, fromRevID, toRevision, deleted, toRevAttStorageMeta)
+		revCacheDelta := document.NewRevCacheDelta(deltaBytes, fromRevID, toRevision, deleted, toRevAttStorageMeta)
 
 		// Write the newly calculated delta back into the cache before returning
 		db.revisionCache.UpdateDelta(ctx, docID, fromRevID, revCacheDelta)
@@ -505,7 +505,7 @@ func (col *DatabaseCollectionWithUser) authorizeDoc(doc *Document, revid string)
 
 // Gets a revision of a document. If it's obsolete it will be loaded from the database if possible.
 // inline "_attachments" properties in the body will be extracted and returned separately if present (pre-2.5 metadata, or backup revisions)
-func (c *DatabaseCollection) getRevision(ctx context.Context, doc *Document, revid string) (bodyBytes []byte, body Body, attachments AttachmentsMeta, err error) {
+func (c *DatabaseCollection) GetRevision(ctx context.Context, doc *Document, revid string) (bodyBytes []byte, body Body, attachments AttachmentsMeta, err error) {
 	bodyBytes = doc.GetRevisionBodyJSON(ctx, revid, c.RevisionBodyLoader)
 
 	// No inline body, so look for separate doc:
@@ -661,7 +661,7 @@ func (db *DatabaseCollectionWithUser) get1xRevFromDoc(ctx context.Context, doc *
 				return nil, false, ErrDeleted
 			}
 		}
-		if bodyBytes, _, attachments, err = db.getRevision(ctx, doc, revid); err != nil {
+		if bodyBytes, _, attachments, err = db.GetRevision(ctx, doc, revid); err != nil {
 			return nil, false, err
 		}
 	}
@@ -698,7 +698,7 @@ func (db *DatabaseCollectionWithUser) get1xRevFromDoc(ctx context.Context, doc *
 // Returns the body and rev ID of the asked-for revision or the most recent available ancestor.
 func (db *DatabaseCollectionWithUser) getAvailableRev(ctx context.Context, doc *Document, revid string) ([]byte, string, AttachmentsMeta, error) {
 	for ; revid != ""; revid = doc.History[revid].Parent {
-		if bodyBytes, _, attachments, _ := db.getRevision(ctx, doc, revid); bodyBytes != nil {
+		if bodyBytes, _, attachments, _ := db.GetRevision(ctx, doc, revid); bodyBytes != nil {
 			return bodyBytes, revid, attachments, nil
 		}
 	}
@@ -1948,16 +1948,16 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 
 		revChannels := doc.History[newRevID].Channels
 		documentRevision := DocumentRevision{
-			DocID:            docid,
-			RevID:            newRevID,
-			BodyBytes:        storedDocBytes,
-			History:          document.EncodeRevisions(docid, history),
-			Channels:         revChannels,
-			Attachments:      doc.Attachments,
-			Expiry:           doc.Expiry,
-			Deleted:          doc.History[newRevID].Deleted,
-			_shallowCopyBody: storedDoc.Body(),
+			DocID:       docid,
+			RevID:       newRevID,
+			BodyBytes:   storedDocBytes,
+			History:     document.EncodeRevisions(docid, history),
+			Channels:    revChannels,
+			Attachments: doc.Attachments,
+			Expiry:      doc.Expiry,
+			Deleted:     doc.History[newRevID].Deleted,
 		}
+		documentRevision.SetShallowCopyBody(storedDoc.Body())
 
 		if createNewRevIDSkipped {
 			db.revisionCache.Upsert(ctx, documentRevision)
@@ -2041,7 +2041,7 @@ func getAttachmentIDsForLeafRevisions(ctx context.Context, db *DatabaseCollectio
 	})
 
 	for _, leafRevision := range documentLeafRevisions {
-		_, _, attachmentMeta, err := db.getRevision(ctx, doc, leafRevision)
+		_, _, attachmentMeta, err := db.GetRevision(ctx, doc, leafRevision)
 		if err != nil {
 			return nil, err
 		}

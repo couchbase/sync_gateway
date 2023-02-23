@@ -158,7 +158,7 @@ func (db *DatabaseCollectionWithUser) retrieveAncestorAttachments(ctx context.Co
 // marshaller will convert that to base64.
 // If minRevpos is > 0, then only attachments that have been changed in a revision of that
 // generation or later are loaded.
-func (c *DatabaseCollection) loadAttachmentsData(attachments AttachmentsMeta, minRevpos int, docid string) (newAttachments AttachmentsMeta, err error) {
+func (c *DatabaseCollection) LoadAttachmentsData(attachments AttachmentsMeta, minRevpos int, docid string) (newAttachments AttachmentsMeta, err error) {
 	newAttachments = attachments.ShallowCopy()
 
 	for attachmentName, value := range newAttachments {
