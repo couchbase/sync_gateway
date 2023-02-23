@@ -2306,6 +2306,7 @@ func (rt *RestTester) GetKeyspaces() []string {
 	return keyspaces
 }
 
+// GetDbCollections returns a lexicographically sorted list of collections on the database for compatibility with GetKeyspaces and getCollectionsForBLIP
 func (rt *RestTester) GetDbCollections() []*db.DatabaseCollection {
 	var collections []*db.DatabaseCollection
 	for _, collection := range rt.GetDatabase().CollectionByID {
