@@ -1421,17 +1421,6 @@ func TestGetUserCollectionAccess(t *testing.T) {
 	putResponse = rt.SendAdminRequest("PUT", "/db/_role/role12", fmt.Sprintf(userRolePayload, ``, scope1Name, collection2Name, rdOnlycollectionPayload))
 	RequireStatus(t, putResponse, 400)
 
-	//  1. Hide entries for collections that are no longer part of the database
-	//  GET _user
-	// TODO: Additional test cases still required:
-	//  2. Delete scope
-	//  1. Delete collection admin channels
-	//  0. Upsert of single collection (preserve existing)
-	//  UPDATE _user
-	//  2. Attempt to write collections that aren't defined for the database (error)
-	//  INSERT _role
-	//  2. Attempt to write collections that aren't defined for the database (error)
-
 	scopesConfig = GetCollectionsConfig(t, testBucket, 1)
 	scopesConfigString, err := json.Marshal(scopesConfig)
 	require.NoError(t, err)
@@ -1440,9 +1429,6 @@ func TestGetUserCollectionAccess(t *testing.T) {
 		`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "scopes":%s}`,
 		testBucket.GetName(), base.TestUseXattrs(), string(scopesConfigString)))
 	RequireStatus(t, resp, http.StatusCreated)
-
-	putResponse = rt.SendAdminRequest("PUT", "/{{.keyspace}}/DynGrantDoc1", `{"accessUser":"bob", "accessChannel":"ABC"}`)
-	RequireStatus(t, putResponse, 201)
 
 	//  Hide entries for collections that are no longer part of the database for GET /_user and /_role
 	userResponse := rt.SendAdminRequest("GET", "/db/_user/bob", "")
@@ -1453,4 +1439,78 @@ func TestGetUserCollectionAccess(t *testing.T) {
 	RequireStatus(t, userResponse, 200)
 	assert.NotContains(t, userResponse.Body.Bytes(), collection2Name)
 
+	// Attempt to write collections that aren't defined for the database for PUT /_user and /_role
+	putResponse = rt.SendAdminRequest("PUT", "/db/_user/alice", fmt.Sprintf(userRolePayload, `"email":"alice@couchbase.com",`, scope1Name, collection1Name, collectionPayload))
+	RequireStatus(t, putResponse, 400)
+	putResponse = rt.SendAdminRequest("PUT", "/db/_role/role1", fmt.Sprintf(userRolePayload, ``, scope1Name, collection1Name, collectionPayload))
+	RequireStatus(t, putResponse, 400)
+}
+
+func TestPutUserCollectionAccess(t *testing.T) {
+	base.RequireNumTestDataStores(t, 2)
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+	testBucket := base.GetPersistentTestBucket(t)
+	defer testBucket.Close()
+
+	scopesConfig := GetCollectionsConfig(t, testBucket, 2)
+	rtConfig := &RestTesterConfig{
+		CustomTestBucket: testBucket,
+		SyncFn:           `function(doc) {channel(doc.channel); access(doc.accessUser, doc.accessChannel);}`,
+		DatabaseConfig: &DatabaseConfig{
+			DbConfig: DbConfig{
+				Scopes:           scopesConfig,
+				NumIndexReplicas: base.UintPtr(0),
+				AutoImport:       base.TestUseXattrs(),
+			},
+		},
+	}
+	dataStoreNames := GetDataStoreNamesFromScopesConfig(scopesConfig)
+	scopeName, collection1Name := dataStoreNames[0].ScopeName(), dataStoreNames[0].CollectionName()
+	collection2Name := dataStoreNames[1].CollectionName()
+
+	rt := NewRestTesterMultipleCollections(t, rtConfig, 2)
+	defer rt.Close()
+	_ = rt.Context()
+
+	collectionPayload := fmt.Sprintf(`,"%s": {
+					"admin_channels":[!]
+				}`, collection2Name)
+	userPayload := `{
+		%s
+		"admin_channels":["foo", "bar"],
+		"collection_access": {
+			"%s": {
+				"%s": {
+					"admin_channels":[%s]
+				}
+				%s
+			}
+		}
+	}`
+
+	putResponse := rt.SendAdminRequest("PUT", "/db/_user/bob", fmt.Sprintf(userPayload, `"email":"bob@couchbase.com","password":"letmein",`,
+		scopeName, collection1Name, `"foo"`, collectionPayload))
+	RequireStatus(t, putResponse, 201)
+
+	// Upsert one collection and preserve existing
+	putResponse = rt.SendAdminRequest("PUT", "/db/_user/bob", fmt.Sprintf(userPayload, `"email":"bob@couchbase.com",`,
+		scopeName, collection1Name, `"foo", "bar"`, ""))
+	RequireStatus(t, putResponse, 201)
+	assert.Contains(t, putResponse.Body.Bytes(), collection2Name)
+
+	// Delete collection admin channels
+	putResponse = rt.SendAdminRequest("PUT", "/db/_user/bob", fmt.Sprintf(userPayload, `"email":"bob@couchbase.com",`,
+		scopeName, collection1Name, ``, ""))
+	RequireStatus(t, putResponse, 201)
+	assert.Contains(t, putResponse.Body.Bytes(), `"admin_channels":[]`) // get map of response and find admin channels in collection
+
+	resp := rt.SendAdminRequest("PUT", "/db/_config", fmt.Sprintf(
+		`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "scopes":""}`,
+		testBucket.GetName(), base.TestUseXattrs()))
+	RequireStatus(t, resp, http.StatusCreated)
+
+	//  Hide entries for collections that are no longer part of the database for GET /_user and /_role
+	userResponse := rt.SendAdminRequest("GET", "/db/_user/bob", "")
+	RequireStatus(t, userResponse, 200)
+	assert.NotContains(t, userResponse.Body.Bytes(), collection2Name)
 }
