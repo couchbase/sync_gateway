@@ -2306,6 +2306,18 @@ func (rt *RestTester) GetKeyspaces() []string {
 	return keyspaces
 }
 
+func (rt *RestTester) GetDbCollections() []*db.DatabaseCollection {
+	var collections []*db.DatabaseCollection
+	for _, collection := range rt.GetDatabase().CollectionByID {
+		collections = append(collections, collection)
+	}
+	sort.Slice(collections, func(i, j int) bool {
+		return collections[i].ScopeName <= collections[j].ScopeName &&
+			collections[i].Name < collections[j].Name
+	})
+	return collections
+}
+
 // GetSingleKeyspace the name of the keyspace if there is only one test collection on one database.
 func (rt *RestTester) GetSingleKeyspace() string {
 	db := rt.GetDatabase()
