@@ -229,8 +229,8 @@ const nonJSONPrefix = byte(1)
 
 // Looks up the raw JSON data of a revision that's been archived to a separate doc.
 // If the revision isn't found (e.g. has been deleted by compaction) returns 404 error.
-func (db *DatabaseCollection) getOldRevisionJSON(ctx context.Context, docid string, revid string) ([]byte, error) {
-	data, _, err := db.dataStore.GetRaw(oldRevisionKey(docid, revid))
+func (c *DatabaseCollection) getOldRevisionJSON(ctx context.Context, docid string, revid string) ([]byte, error) {
+	data, _, err := c.dataStore.GetRaw(oldRevisionKey(docid, revid))
 	if base.IsDocNotFoundError(err) {
 		base.DebugfCtx(ctx, base.KeyCRUD, "No old revision %q / %q", base.UD(docid), revid)
 		err = ErrMissing
@@ -323,9 +323,9 @@ func (db *DatabaseCollectionWithUser) refreshPreviousRevisionBackup(ctx context.
 }
 
 // Currently only used by unit tests - deletes an archived old revision from the database
-func (db *DatabaseCollection) PurgeOldRevisionJSON(ctx context.Context, docid string, revid string) error {
+func (c *DatabaseCollection) PurgeOldRevisionJSON(ctx context.Context, docid string, revid string) error {
 	base.DebugfCtx(ctx, base.KeyCRUD, "Purging old revision backup %q / %q ", base.UD(docid), revid)
-	return db.dataStore.Delete(oldRevisionKey(docid, revid))
+	return c.dataStore.Delete(oldRevisionKey(docid, revid))
 }
 
 // ////// UTILITY FUNCTIONS:

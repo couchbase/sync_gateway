@@ -81,18 +81,3 @@ func (b *blipCollections) hasNamedCollections() bool {
 	defer b.RUnlock()
 	return len(b.collectionContexts) != 0
 }
-
-// getIndexForDB returns the index of a given named collection by the array specified in initial GetCollections handshake.
-func (b *blipCollections) getIndexForDB(collection *DatabaseCollectionWithUser) (int, bool) {
-	b.RLock()
-	defer b.RUnlock()
-	if b.collectionContexts == nil {
-		return 0, false
-	}
-	for i, collectionCtx := range b.collectionContexts {
-		if collectionCtx.dbCollection.ScopeName == collection.ScopeName && collectionCtx.dbCollection.Name == collection.Name {
-			return i, true
-		}
-	}
-	return 0, false
-}

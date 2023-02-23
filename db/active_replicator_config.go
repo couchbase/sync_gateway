@@ -112,8 +112,8 @@ func (arc *ActiveReplicatorConfig) SetCheckpointPrefix(_ testing.TB, s string) {
 
 type OnCompleteFunc func(replicationID string)
 
-// CheckpointHash returns a deterministic hash of the given config to be used as a checkpoint ID.
-// TODO: Might be a way of caching this value? But need to be sure no config values wil change without clearing the cached hash.
+// CheckpointHash returns a deterministic hash of the given config to be used as part of a checkpoint's validity.
+// TODO: Might be a way of caching this value? But need to be sure no config values will change without clearing the cached hash.
 func (arc ActiveReplicatorConfig) CheckpointHash() (string, error) {
 	hash := sha1.New()
 

@@ -1118,14 +1118,14 @@ type ForEachDocIDOptions struct {
 type ForEachDocIDFunc func(id IDRevAndSequence, channels []string) (bool, error)
 
 // Iterates over all documents in the database, calling the callback function on each
-func (db *DatabaseCollection) ForEachDocID(ctx context.Context, callback ForEachDocIDFunc, resultsOpts ForEachDocIDOptions) error {
+func (c *DatabaseCollection) ForEachDocID(ctx context.Context, callback ForEachDocIDFunc, resultsOpts ForEachDocIDOptions) error {
 
-	results, err := db.QueryAllDocs(ctx, resultsOpts.Startkey, resultsOpts.Endkey)
+	results, err := c.QueryAllDocs(ctx, resultsOpts.Startkey, resultsOpts.Endkey)
 	if err != nil {
 		return err
 	}
 
-	err = db.processForEachDocIDResults(callback, resultsOpts.Limit, results)
+	err = c.processForEachDocIDResults(callback, resultsOpts.Limit, results)
 	if err != nil {
 		return err
 	}
@@ -1133,7 +1133,7 @@ func (db *DatabaseCollection) ForEachDocID(ctx context.Context, callback ForEach
 }
 
 // Iterate over the results of an AllDocs query, performing ForEachDocID handling for each row
-func (db *DatabaseCollection) processForEachDocIDResults(callback ForEachDocIDFunc, limit uint64, results sgbucket.QueryResultIterator) error {
+func (c *DatabaseCollection) processForEachDocIDResults(callback ForEachDocIDFunc, limit uint64, results sgbucket.QueryResultIterator) error {
 
 	count := uint64(0)
 	for {
@@ -1142,7 +1142,7 @@ func (db *DatabaseCollection) processForEachDocIDResults(callback ForEachDocIDFu
 		var docid, revid string
 		var seq uint64
 		var channels []string
-		if db.useViews() {
+		if c.useViews() {
 			var viewRow AllDocsViewQueryRow
 			found = results.Next(&viewRow)
 			if found {
@@ -1758,31 +1758,31 @@ func (db *DatabaseCollectionWithUser) UpdateAllDocChannels(ctx context.Context, 
 }
 
 // invalidate channel cache of all users/roles:
-func (db *DatabaseCollection) invalidateAllPrincipalsCache(ctx context.Context, endSeq uint64) {
+func (c *DatabaseCollection) invalidateAllPrincipalsCache(ctx context.Context, endSeq uint64) {
 	base.InfofCtx(ctx, base.KeyAll, "Invalidating channel caches of users/roles...")
-	users, roles, _ := db.allPrincipalIDs(ctx)
+	users, roles, _ := c.allPrincipalIDs(ctx)
 	for _, name := range users {
-		db.invalUserChannels(ctx, name, endSeq)
+		c.invalUserChannels(ctx, name, endSeq)
 	}
 	for _, name := range roles {
-		db.invalRoleChannels(ctx, name, endSeq)
+		c.invalRoleChannels(ctx, name, endSeq)
 	}
 }
 
-func (db *DatabaseCollection) updateAllPrincipalsSequences(ctx context.Context) error {
-	users, roles, err := db.allPrincipalIDs(ctx)
+func (c *DatabaseCollection) updateAllPrincipalsSequences(ctx context.Context) error {
+	users, roles, err := c.allPrincipalIDs(ctx)
 	if err != nil {
 		return err
 	}
 
-	authr := db.Authenticator(ctx)
+	authr := c.Authenticator(ctx)
 
 	for _, role := range roles {
 		role, err := authr.GetRole(role)
 		if err != nil {
 			return err
 		}
-		err = db.regeneratePrincipalSequences(authr, role)
+		err = c.regeneratePrincipalSequences(authr, role)
 		if err != nil {
 			return err
 		}
@@ -1793,7 +1793,7 @@ func (db *DatabaseCollection) updateAllPrincipalsSequences(ctx context.Context) 
 		if err != nil {
 			return err
 		}
-		err = db.regeneratePrincipalSequences(authr, user)
+		err = c.regeneratePrincipalSequences(authr, user)
 		if err != nil {
 			return err
 		}
@@ -1801,8 +1801,8 @@ func (db *DatabaseCollection) updateAllPrincipalsSequences(ctx context.Context) 
 	return nil
 }
 
-func (db *DatabaseCollection) regeneratePrincipalSequences(authr *auth.Authenticator, princ auth.Principal) error {
-	nextSeq, err := db.sequences().nextSequence()
+func (c *DatabaseCollection) regeneratePrincipalSequences(authr *auth.Authenticator, princ auth.Principal) error {
+	nextSeq, err := c.sequences().nextSequence()
 	if err != nil {
 		return err
 	}
@@ -1815,9 +1815,9 @@ func (db *DatabaseCollection) regeneratePrincipalSequences(authr *auth.Authentic
 	return nil
 }
 
-func (db *DatabaseCollection) releaseSequences(ctx context.Context, sequences []uint64) {
+func (c *DatabaseCollection) releaseSequences(ctx context.Context, sequences []uint64) {
 	for _, sequence := range sequences {
-		err := db.sequences().releaseSequence(sequence)
+		err := c.sequences().releaseSequence(sequence)
 		if err != nil {
 			base.WarnfCtx(ctx, "Error attempting to release sequence %d. Error %v", sequence, err)
 		}
@@ -1950,34 +1950,34 @@ func (db *DatabaseCollectionWithUser) resyncDocument(ctx context.Context, docid,
 	return updatedHighSeq, unusedSequences, err
 }
 
-func (col *DatabaseCollection) invalUserRoles(ctx context.Context, username string, invalSeq uint64) {
-	authr := col.Authenticator(ctx)
+func (c *DatabaseCollection) invalUserRoles(ctx context.Context, username string, invalSeq uint64) {
+	authr := c.Authenticator(ctx)
 	if err := authr.InvalidateRoles(username, invalSeq); err != nil {
 		base.WarnfCtx(ctx, "Error invalidating roles for user %s: %v", base.UD(username), err)
 	}
 }
 
-func (col *DatabaseCollection) invalUserChannels(ctx context.Context, username string, invalSeq uint64) {
-	authr := col.Authenticator(ctx)
-	if err := authr.InvalidateChannels(username, true, col.ScopeName, col.Name, invalSeq); err != nil {
+func (c *DatabaseCollection) invalUserChannels(ctx context.Context, username string, invalSeq uint64) {
+	authr := c.Authenticator(ctx)
+	if err := authr.InvalidateChannels(username, true, c.ScopeName, c.Name, invalSeq); err != nil {
 		base.WarnfCtx(ctx, "Error invalidating channels for user %s: %v", base.UD(username), err)
 	}
 }
 
-func (col *DatabaseCollection) invalRoleChannels(ctx context.Context, rolename string, invalSeq uint64) {
-	authr := col.Authenticator(ctx)
-	if err := authr.InvalidateChannels(rolename, false, col.ScopeName, col.Name, invalSeq); err != nil {
+func (c *DatabaseCollection) invalRoleChannels(ctx context.Context, rolename string, invalSeq uint64) {
+	authr := c.Authenticator(ctx)
+	if err := authr.InvalidateChannels(rolename, false, c.ScopeName, c.Name, invalSeq); err != nil {
 		base.WarnfCtx(ctx, "Error invalidating channels for role %s: %v", base.UD(rolename), err)
 	}
 }
 
-func (db *DatabaseCollection) invalUserOrRoleChannels(ctx context.Context, name string, invalSeq uint64) {
+func (c *DatabaseCollection) invalUserOrRoleChannels(ctx context.Context, name string, invalSeq uint64) {
 
 	principalName, isRole := channels.AccessNameToPrincipalName(name)
 	if isRole {
-		db.invalRoleChannels(ctx, principalName, invalSeq)
+		c.invalRoleChannels(ctx, principalName, invalSeq)
 	} else {
-		db.invalUserChannels(ctx, principalName, invalSeq)
+		c.invalUserChannels(ctx, principalName, invalSeq)
 	}
 }
 
@@ -2039,13 +2039,13 @@ func (context *DatabaseContext) DeltaSyncEnabled() bool {
 	return context.Options.DeltaSyncOptions.Enabled
 }
 
-func (context *DatabaseCollection) AllowExternalRevBodyStorage() bool {
+func (c *DatabaseCollection) AllowExternalRevBodyStorage() bool {
 
 	// Support unit testing w/out xattrs enabled
 	if base.TestExternalRevStorage {
 		return false
 	}
-	return !context.UseXattrs()
+	return !c.UseXattrs()
 }
 
 func (context *DatabaseContext) SetUserViewsEnabled(value bool) {

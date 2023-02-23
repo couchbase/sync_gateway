@@ -107,13 +107,19 @@ func (rt *RestTester) WaitForRev(docID string, revID string) error {
 func (rt *RestTester) WaitForCheckpointLastSequence(expectedName string) (string, error) {
 	var lastSeq string
 	successFunc := func() bool {
-		val, _, err := rt.Bucket().DefaultDataStore().GetRaw(expectedName)
-		require.NoError(rt.TB, err)
+		val, _, err := rt.GetSingleDataStore().GetRaw(expectedName)
+		if err != nil {
+			rt.TB.Logf("Error getting checkpoint: %v - will retry", err)
+			return false
+		}
 		var config struct { // db.replicationCheckpoint
 			LastSeq string `json:"last_sequence"`
 		}
 		err = json.Unmarshal(val, &config)
-		require.NoError(rt.TB, err)
+		if err != nil {
+			rt.TB.Logf("Error unmarshalling checkpoint: %v - will retry", err)
+			return false
+		}
 		lastSeq = config.LastSeq
 		return lastSeq != ""
 	}

@@ -51,6 +51,10 @@ func setOptionalProperty(p blip.Properties, k string, v interface{}) {
 		if val {
 			p[k] = strconv.FormatBool(val)
 		}
+	case *int:
+		if val != nil {
+			p[k] = strconv.Itoa(*val)
+		}
 	case uint64:
 		if val != 0 {
 			p[k] = strconv.FormatUint(val, 10)

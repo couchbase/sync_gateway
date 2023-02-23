@@ -104,12 +104,12 @@ func (dbc *DatabaseContext) getQueryHandlerForCollection(collectionID uint32) (C
 }
 
 // Queries the 'channels' view to get a range of sequences of a single channel as LogEntries.
-func (dbc *DatabaseCollection) getChangesInChannelFromQuery(ctx context.Context, channelName string, startSeq, endSeq uint64, limit int, activeOnly bool) (LogEntries, error) {
-	if dbc.dataStore == nil {
+func (c *DatabaseCollection) getChangesInChannelFromQuery(ctx context.Context, channelName string, startSeq, endSeq uint64, limit int, activeOnly bool) (LogEntries, error) {
+	if c.dataStore == nil {
 		return nil, errors.New("No data store available for channel query")
 	}
 	start := time.Now()
-	usingViews := dbc.useViews()
+	usingViews := c.useViews()
 	entries := make(LogEntries, 0)
 	activeEntryCount := 0
 
@@ -118,11 +118,11 @@ func (dbc *DatabaseCollection) getChangesInChannelFromQuery(ctx context.Context,
 	// Loop for active-only and limit handling.
 	// The set of changes we get back from the query applies the limit, but includes both active and non-active entries.  When retrieving changes w/ activeOnly=true and a limit,
 	// this means we may need multiple view calls to get a total of [limit] active entries.
-	collectionID := dbc.GetCollectionID()
+	collectionID := c.GetCollectionID()
 	for {
 
 		// Query the view or index
-		queryResults, err := dbc.QueryChannels(ctx, channelName, startSeq, endSeq, limit, activeOnly)
+		queryResults, err := c.QueryChannels(ctx, channelName, startSeq, endSeq, limit, activeOnly)
 		if err != nil {
 			return nil, err
 		}
@@ -199,6 +199,6 @@ func (dbc *DatabaseCollection) getChangesInChannelFromQuery(ctx context.Context,
 		base.InfofCtx(ctx, base.KeyAll, "Channel query took %v to return %d rows.  Channel: %s StartSeq: %d EndSeq: %d Limit: %d",
 			elapsed, len(entries), base.UD(channelName), startSeq, endSeq, limit)
 	}
-	dbc.dbStats().Cache().ViewQueries.Add(1)
+	c.dbStats().Cache().ViewQueries.Add(1)
 	return entries, nil
 }

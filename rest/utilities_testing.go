@@ -2306,6 +2306,19 @@ func (rt *RestTester) GetKeyspaces() []string {
 	return keyspaces
 }
 
+// GetDbCollections returns a lexicographically sorted list of collections on the database for compatibility with GetKeyspaces and getCollectionsForBLIP
+func (rt *RestTester) GetDbCollections() []*db.DatabaseCollection {
+	var collections []*db.DatabaseCollection
+	for _, collection := range rt.GetDatabase().CollectionByID {
+		collections = append(collections, collection)
+	}
+	sort.Slice(collections, func(i, j int) bool {
+		return collections[i].ScopeName <= collections[j].ScopeName &&
+			collections[i].Name < collections[j].Name
+	})
+	return collections
+}
+
 // GetSingleKeyspace the name of the keyspace if there is only one test collection on one database.
 func (rt *RestTester) GetSingleKeyspace() string {
 	db := rt.GetDatabase()
@@ -2321,12 +2334,14 @@ func (rt *RestTester) GetSingleKeyspace() string {
 func (rt *RestTester) getCollectionsForBLIP() []string {
 	db := rt.GetDatabase()
 	var collections []string
-	if rt.GetDatabase().OnlyDefaultCollection() {
+	if db.OnlyDefaultCollection() {
 		return collections
 	}
 	for _, collection := range db.CollectionByID {
-		collections = append(collections,
-			strings.Join([]string{collection.ScopeName, collection.Name}, base.ScopeCollectionSeparator))
+		collections = append(collections, base.ScopeAndCollectionName{
+			Scope:      collection.ScopeName,
+			Collection: collection.Name,
+		}.String())
 	}
 	return collections
 }
