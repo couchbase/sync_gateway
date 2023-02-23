@@ -287,11 +287,11 @@ func (b *bootstrapContext) GetDatabaseConfigs(ctx context.Context, bucketName, g
 		// Check for legacy config file
 		var legacyConfig DatabaseConfig
 		var legacyDbName string
-		cas, err := b.Connection.GetMetadataDocument(bucketName, PersistentConfigKey(groupID, ""), &legacyConfig)
-		if err != nil && err != base.ErrNotFound {
-			return nil, fmt.Errorf("Error checking for legacy config for %s, %s: %w", base.MD(bucketName), base.MD(groupID), err)
+		cas, legacyErr := b.Connection.GetMetadataDocument(bucketName, PersistentConfigKey(groupID, ""), &legacyConfig)
+		if legacyErr != nil && legacyErr != base.ErrNotFound {
+			return nil, fmt.Errorf("Error checking for legacy config for %s, %s: %w", base.MD(bucketName), base.MD(groupID), legacyErr)
 		}
-		if err == nil {
+		if legacyErr == nil {
 			legacyConfig.cfgCas = cas
 			legacyDbName = legacyConfig.Name
 		}
