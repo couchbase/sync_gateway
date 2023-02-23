@@ -303,9 +303,8 @@ func (b *bootstrapContext) GetDatabaseConfigs(ctx context.Context, bucketName, g
 		}
 
 		dbConfigs := make([]*DatabaseConfig, 0)
-		reloadRequired := false
-
 		legacyFoundInRegistry := false
+		reloadRequired := false
 		for dbName, registryDb := range configGroup.Databases {
 			// Ignore databases with deleted version - represents an in-progress delete
 			if registryDb.Version == deletedDatabaseVersion {
@@ -323,15 +322,14 @@ func (b *bootstrapContext) GetDatabaseConfigs(ctx context.Context, bucketName, g
 				legacyFoundInRegistry = false
 			}
 		}
-		if legacyDbName != "" && !legacyFoundInRegistry {
-			dbConfigs = append(dbConfigs, &legacyConfig)
-		}
 
-		// Retry on ErrConfigRegistryReloadRequired until reaching attempts limit
-		if reloadRequired {
-			continue
+		// If we don't need to reload, append any legacy config found and return
+		if !reloadRequired {
+			if legacyDbName != "" && !legacyFoundInRegistry {
+				dbConfigs = append(dbConfigs, &legacyConfig)
+			}
+			return dbConfigs, nil
 		}
-		return dbConfigs, err
 	}
 	base.WarnfCtx(ctx, "Unable to successfully retrieve GetDatabaseConfigs for groupID: %s after %d attempts", base.MD(groupID), attempts)
 	return nil, base.ErrConfigRegistryReloadRequired
