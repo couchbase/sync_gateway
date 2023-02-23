@@ -189,7 +189,7 @@ func (db *DatabaseCollectionWithUser) retrieveAncestorAttachments(ctx context.Co
 // marshaller will convert that to base64.
 // If minRevpos is > 0, then only attachments that have been changed in a revision of that
 // generation or later are loaded.
-func (db *DatabaseCollection) loadAttachmentsData(attachments AttachmentsMeta, minRevpos int, docid string) (newAttachments AttachmentsMeta, err error) {
+func (c *DatabaseCollection) loadAttachmentsData(attachments AttachmentsMeta, minRevpos int, docid string) (newAttachments AttachmentsMeta, err error) {
 	newAttachments = attachments.ShallowCopy()
 
 	for attachmentName, value := range newAttachments {
@@ -209,7 +209,7 @@ func (db *DatabaseCollection) loadAttachmentsData(attachments AttachmentsMeta, m
 				return nil, base.RedactErrorf("Unable to load attachment for doc: %v with name: %v, revpos: %v and digest: %v due to unexpected version value: %v", base.UD(docid), base.UD(attachmentName), revpos, digest, version)
 			}
 			attachmentKey := MakeAttachmentKey(version, docid, digestStr)
-			data, err := db.GetAttachment(attachmentKey)
+			data, err := c.GetAttachment(attachmentKey)
 			if err != nil {
 				return nil, err
 			}
@@ -230,8 +230,8 @@ func DeleteAttachmentVersion(attachments AttachmentsMeta) {
 }
 
 // GetAttachment retrieves an attachment given its key.
-func (db *DatabaseCollection) GetAttachment(key string) ([]byte, error) {
-	v, _, err := db.dataStore.GetRaw(key)
+func (c *DatabaseCollection) GetAttachment(key string) ([]byte, error) {
+	v, _, err := c.dataStore.GetRaw(key)
 	return v, err
 }
 
@@ -269,7 +269,7 @@ type AttachmentCallback func(name string, digest string, knownData []byte, meta 
 // The callback is told whether the attachment body is known to the database, according
 // to its digest. If the attachment isn't known, the callback can return data for it, which will
 // be added to the metadata as a "data" property.
-func (db *DatabaseCollection) ForEachStubAttachment(body Body, minRevpos int, docID string, existingDigests map[string]string, callback AttachmentCallback) error {
+func (c *DatabaseCollection) ForEachStubAttachment(body Body, minRevpos int, docID string, existingDigests map[string]string, callback AttachmentCallback) error {
 	atts := GetBodyAttachments(body)
 	if atts == nil && body[BodyAttachments] != nil {
 		return base.HTTPErrorf(http.StatusBadRequest, "Invalid _attachments")
@@ -297,7 +297,7 @@ func (db *DatabaseCollection) ForEachStubAttachment(body Body, minRevpos int, do
 
 			// Assumes the attachment is always AttVersion2 while checking whether it has already been uploaded.
 			attachmentKey := MakeAttachmentKey(AttVersion2, docID, digest)
-			data, err := db.GetAttachment(attachmentKey)
+			data, err := c.GetAttachment(attachmentKey)
 			if err != nil && !base.IsDocNotFoundError(err) {
 				return err
 			}

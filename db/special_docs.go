@@ -17,10 +17,10 @@ import (
 
 const DocTypeLocal = "local"
 
-func (db *DatabaseCollection) GetSpecial(doctype string, docid string) (Body, error) {
+func (c *DatabaseCollection) GetSpecial(doctype string, docid string) (Body, error) {
 
 	body := Body{}
-	bytes, err := db.GetSpecialBytes(doctype, docid)
+	bytes, err := c.GetSpecialBytes(doctype, docid)
 	if err != nil {
 		return nil, err
 	}
@@ -31,8 +31,8 @@ func (db *DatabaseCollection) GetSpecial(doctype string, docid string) (Body, er
 	return body, err
 }
 
-func (db *DatabaseCollection) GetSpecialBytes(doctype string, docid string) ([]byte, error) {
-	return getSpecialBytes(db.dataStore, doctype, docid, int(db.localDocExpirySecs()))
+func (c *DatabaseCollection) GetSpecialBytes(doctype string, docid string) ([]byte, error) {
+	return getSpecialBytes(c.dataStore, doctype, docid, int(c.localDocExpirySecs()))
 }
 
 func getSpecialBytes(dataStore base.DataStore, doctype string, docid string, localDocExpirySecs int) ([]byte, error) {
@@ -56,8 +56,8 @@ func getSpecialBytes(dataStore base.DataStore, doctype string, docid string, loc
 }
 
 // Updates or deletes a special document.
-func (db *DatabaseCollection) putSpecial(doctype string, docid string, matchRev string, body Body) (string, error) {
-	return putSpecial(db.dataStore, doctype, docid, matchRev, body, int(db.localDocExpirySecs()))
+func (c *DatabaseCollection) putSpecial(doctype string, docid string, matchRev string, body Body) (string, error) {
+	return putSpecial(c.dataStore, doctype, docid, matchRev, body, int(c.localDocExpirySecs()))
 }
 
 func putSpecial(dataStore base.DataStore, doctype string, docid string, matchRev string, body Body, localDocExpirySecs int) (string, error) {
@@ -105,14 +105,14 @@ func putSpecial(dataStore base.DataStore, doctype string, docid string, matchRev
 	return revid, err
 }
 
-func (db *DatabaseCollection) PutSpecial(doctype string, docid string, body Body) (string, error) {
+func (c *DatabaseCollection) PutSpecial(doctype string, docid string, body Body) (string, error) {
 	matchRev, _ := body[BodyRev].(string)
 	body, _ = stripAllSpecialProperties(body)
-	return db.putSpecial(doctype, docid, matchRev, body)
+	return c.putSpecial(doctype, docid, matchRev, body)
 }
 
-func (db *DatabaseCollection) DeleteSpecial(doctype string, docid string, revid string) error {
-	_, err := db.putSpecial(doctype, docid, revid, nil)
+func (c *DatabaseCollection) DeleteSpecial(doctype string, docid string, revid string) error {
+	_, err := c.putSpecial(doctype, docid, revid, nil)
 	return err
 }
 

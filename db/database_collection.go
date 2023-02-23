@@ -286,13 +286,13 @@ func (c *DatabaseCollection) useViews() bool {
 // Returns a boolean indicating whether the function is different from the saved one.
 // If multiple gateway instances try to update the function at the same time (to the same new
 // value) only one of them will get a changed=true result.
-func (dc *DatabaseCollection) UpdateSyncFun(ctx context.Context, syncFun string) (changed bool, err error) {
+func (c *DatabaseCollection) UpdateSyncFun(ctx context.Context, syncFun string) (changed bool, err error) {
 	if syncFun == "" {
-		dc.ChannelMapper = nil
-	} else if dc.ChannelMapper != nil {
-		_, err = dc.ChannelMapper.SetFunction(syncFun)
+		c.ChannelMapper = nil
+	} else if c.ChannelMapper != nil {
+		_, err = c.ChannelMapper.SetFunction(syncFun)
 	} else {
-		dc.ChannelMapper = channels.NewChannelMapper(syncFun, dc.dbCtx.Options.JavascriptTimeout)
+		c.ChannelMapper = channels.NewChannelMapper(syncFun, c.dbCtx.Options.JavascriptTimeout)
 	}
 	if err != nil {
 		base.WarnfCtx(ctx, "Error setting sync function: %s", err)
@@ -303,8 +303,8 @@ func (dc *DatabaseCollection) UpdateSyncFun(ctx context.Context, syncFun string)
 		Sync string
 	}
 
-	syncFunctionDocID := base.CollectionSyncFunctionKeyWithGroupID(dc.dbCtx.Options.GroupID, dc.ScopeName, dc.Name)
-	_, err = dc.dbCtx.MetadataStore.Update(syncFunctionDocID, 0, func(currentValue []byte) ([]byte, *uint32, bool, error) {
+	syncFunctionDocID := base.CollectionSyncFunctionKeyWithGroupID(c.dbCtx.Options.GroupID, c.ScopeName, c.Name)
+	_, err = c.dbCtx.MetadataStore.Update(syncFunctionDocID, 0, func(currentValue []byte) ([]byte, *uint32, bool, error) {
 		// The first time opening a new db, currentValue will be nil. Don't treat this as a change.
 		if currentValue != nil {
 			parseErr := base.JSONUnmarshal(currentValue, &syncData)
