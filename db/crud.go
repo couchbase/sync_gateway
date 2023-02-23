@@ -837,7 +837,7 @@ func (db *DatabaseCollectionWithUser) Put(ctx context.Context, docid string, bod
 
 	delete(body, BodyRevisions)
 
-	err = validateAPIDocUpdate(body)
+	err = document.ValidateAPIDocUpdate(body)
 	if err != nil {
 		return "", nil, err
 	}
@@ -1068,7 +1068,7 @@ func (db *DatabaseCollectionWithUser) PutExistingRevWithConflictResolution(ctx c
 }
 
 func (db *DatabaseCollectionWithUser) PutExistingRevWithBody(ctx context.Context, docid string, body Body, docHistory []string, noConflicts bool) (doc *Document, newRev string, err error) {
-	err = validateAPIDocUpdate(body)
+	err = document.ValidateAPIDocUpdate(body)
 	if err != nil {
 		return nil, "", err
 	}
@@ -1448,7 +1448,7 @@ func (db *DatabaseCollectionWithUser) prepareSyncFn(doc *Document, newDoc *Docum
 		return
 	}
 
-	err = validateNewBody(mutableBody)
+	err = document.ValidateNewBody(mutableBody)
 	if err != nil {
 		return
 	}
@@ -1676,7 +1676,7 @@ func (db *DatabaseCollectionWithUser) IsIllegalConflict(ctx context.Context, doc
 
 func (col *DatabaseCollectionWithUser) documentUpdateFunc(ctx context.Context, docExists bool, doc *Document, allowImport bool, previousDocSequenceIn uint64, unusedSequences []uint64, callback updateAndReturnDocCallback, expiry uint32) (retSyncFuncExpiry *uint32, retNewRevID string, retStoredDoc *Document, retOldBodyJSON string, retUnusedSequences []uint64, changedAccessPrincipals []string, changedRoleAccessUsers []string, createNewRevIDSkipped bool, err error) {
 
-	err = validateExistingDoc(doc, allowImport, docExists)
+	err = document.ValidateExistingDoc(doc, allowImport, docExists)
 	if err != nil {
 		return
 	}

@@ -44,7 +44,7 @@ func (db *DatabaseCollectionWithUser) ImportDocRaw(ctx context.Context, docid st
 			return nil, err
 		}
 
-		err = validateImportBody(body)
+		err = document.ValidateImportBody(body)
 		if err != nil {
 			return nil, err
 		}

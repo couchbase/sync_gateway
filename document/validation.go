@@ -6,7 +6,7 @@
 // software will be governed by the Apache License, Version 2.0, included in
 // the file licenses/APL2.txt.
 
-package db
+package document
 
 import (
 	"bytes"
@@ -16,8 +16,8 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 )
 
-// validateNewBody validates any new body being received (i.e. through blip, import, and API)
-func validateNewBody(body Body) error {
+// ValidateNewBody validates any new body being received (i.e. through blip, import, and API)
+func ValidateNewBody(body Body) error {
 	// Reject a body that contains the "_removed" property, this means that the user
 	// is trying to update a document they do not have read access to.
 	if body[BodyRemoved] != nil {
@@ -37,9 +37,9 @@ func validateNewBody(body Body) error {
 	return nil
 }
 
-// validateAPIDocUpdate finds disallowed document properties that are allowed in through blip and/or import but not through
+// ValidateAPIDocUpdate finds disallowed document properties that are allowed in through blip and/or import but not through
 // the REST API
-func validateAPIDocUpdate(body Body) error {
+func ValidateAPIDocUpdate(body Body) error {
 	// VaLidation for disallowed properties for blip and import should be done in validateNewBody
 	// _rev, _attachments, _id are validated before reaching this function (due to endpoint specific behaviour)
 	if _, ok := body[base.SyncPropertyName]; ok {
@@ -48,8 +48,8 @@ func validateAPIDocUpdate(body Body) error {
 	return nil
 }
 
-// validateImportBody validates incoming import bodies
-func validateImportBody(body Body) error {
+// ValidateImportBody validates incoming import bodies
+func ValidateImportBody(body Body) error {
 	if body == nil {
 		return base.ErrEmptyDocument
 	}
@@ -70,9 +70,9 @@ func validateImportBody(body Body) error {
 	return nil
 }
 
-// validateBlipBody validates incoming blip rev bodies
+// ValidateBlipBody validates incoming blip rev bodies
 // Takes a rawBody to avoid an unnecessary call to doc.BodyBytes()
-func validateBlipBody(rawBody []byte, doc *Document) error {
+func ValidateBlipBody(rawBody []byte, doc *Document) error {
 	// Prevent disallowed internal properties from being used
 	disallowed := []string{base.SyncPropertyName, BodyId, BodyRev, BodyDeleted, BodyRevisions}
 	for _, prop := range disallowed {
@@ -86,7 +86,7 @@ func validateBlipBody(rawBody []byte, doc *Document) error {
 	return nil
 }
 
-func validateExistingDoc(doc *Document, importAllowed, docExists bool) error {
+func ValidateExistingDoc(doc *Document, importAllowed, docExists bool) error {
 	if !importAllowed && docExists && !doc.HasValidSyncData() {
 		return base.HTTPErrorf(409, "Not imported")
 	}

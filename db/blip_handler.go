@@ -1000,7 +1000,7 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 		stats.deltaRecvCount.Add(1)
 	}
 
-	err = validateBlipBody(bodyBytes, newDoc)
+	err = document.ValidateBlipBody(bodyBytes, newDoc)
 	if err != nil {
 		return err
 	}
