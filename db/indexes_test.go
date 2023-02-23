@@ -359,12 +359,7 @@ func TestRemoveObsoleteIndexOnError(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 
-	leakyBucket := base.NewLeakyBucket(db.Bucket, base.LeakyBucketConfig{DropIndexErrorNames: []string{"sg_access_1", "sg_access_x1"}})
-
-	// TODO: CBG-2533 Multi-collection removal (iterate over each collection here?)
-	dataStore := db.Bucket.DefaultDataStore()
-
-	leakyDataStore := base.NewLeakyDataStore(leakyBucket, dataStore, &base.LeakyBucketConfig{DropIndexErrorNames: []string{"sg_access_1", "sg_access_x1"}})
+	dataStore := GetSingleDatabaseCollection(t, db.DatabaseContext).dataStore
 
 	defer func() {
 		// Restore indexes after test
@@ -398,7 +393,7 @@ func TestRemoveObsoleteIndexOnError(t *testing.T) {
 	channelIndex.previousVersions = []int{1}
 	testIndexes[IndexChannels] = channelIndex
 
-	n1qlStore, ok := base.AsN1QLStore(leakyDataStore)
+	n1qlStore, ok := base.AsN1QLStore(dataStore)
 	require.True(t, ok)
 
 	removedIndex, removeErr := removeObsoleteIndexes(n1qlStore, false, db.UseXattrs(), db.UseViews(), testIndexes)
