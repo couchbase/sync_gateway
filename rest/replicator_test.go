@@ -143,7 +143,7 @@ func TestReplicatorDeprecatedCredentials(t *testing.T) {
 	adminSrv := httptest.NewServer(passiveRT.TestPublicHandler())
 	defer adminSrv.Close()
 
-	activeRT := NewRestTester(t, nil)
+	activeRT := NewRestTesterDefaultCollection(t, nil) //  CBG-2319: replicator currently requires default collection
 	defer activeRT.Close()
 	activeCtx := activeRT.Context()
 
