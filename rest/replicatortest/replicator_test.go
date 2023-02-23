@@ -1616,6 +1616,33 @@ func TestDBReplicationStatsTeardown(t *testing.T) {
 
 }
 
+func TestTakeDbOfflineOngoingPushReplication(t *testing.T) {
+	t.Skip("Skip until CBG-2731 is fixed")
+	base.LongRunningTest(t)
+
+	base.RequireNumTestBuckets(t, 2)
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)
+
+	rt1, rt2, remoteURLString, teardown := rest.SetupSGRPeers(t)
+	defer teardown()
+
+	// Create doc1 on rt1
+	docID1 := t.Name() + "rt1doc"
+	_ = rt1.PutDoc(docID1, `{"source":"rt1","channels":["alice"]}`)
+
+	// Create push replication, verify running
+	replicationID := t.Name()
+	rt1.CreateReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePush, nil, true, db.ConflictResolverDefault)
+	rt1.WaitForReplicationStatus(replicationID, db.ReplicationStateRunning)
+
+	// wait for document originally written to rt1 to arrive at rt2
+	changesResults := rt2.RequireWaitChanges(1, "0")
+	assert.Equal(t, docID1, changesResults.Results[0].ID)
+
+	resp := rt2.SendAdminRequest("POST", "/{{.db}}/_offline", "")
+	assert.Equal(t, resp.Code, 200)
+}
+
 // TestPushReplicationAPIUpdateDatabase starts a push replication and updates the passive database underneath the replication.
 // Expect to see the connection closed with an error, instead of continuously panicking.
 // This is the ISGR version of TestBlipPusherUpdateDatabase
