@@ -129,6 +129,9 @@ func NewDCPClient(ID string, callback sgbucket.FeedEventCallbackFunc, options DC
 			client.metadata.SetMeta(uint16(vbID), meta)
 		}
 	}
+	if len(client.collectionIDs) == 0 {
+		client.collectionIDs = []uint32{DefaultCollectionID}
+	}
 
 	client.oneShot = options.OneShot
 
@@ -137,10 +140,9 @@ func NewDCPClient(ID string, callback sgbucket.FeedEventCallbackFunc, options DC
 
 // getCollectionHighSeqNo returns the highSeqNo for a given KV collection ID.
 func (dc *DCPClient) getCollectionHighSeqNos(collectionID uint32) ([]uint64, error) {
-	vbucketSeqnoOptions := gocbcore.GetVbucketSeqnoOptions{
-		FilterOptions: &gocbcore.GetVbucketSeqnoFilterOptions{
-			CollectionID: collectionID,
-		},
+	vbucketSeqnoOptions := gocbcore.GetVbucketSeqnoOptions{}
+	if dc.supportsCollections {
+		vbucketSeqnoOptions.FilterOptions = &gocbcore.GetVbucketSeqnoFilterOptions{CollectionID: collectionID}
 	}
 	configSnapshot, err := dc.agent.ConfigSnapshot()
 	if err != nil {
@@ -467,12 +469,7 @@ func (dc *DCPClient) openStreamRequest(vbID uint16) error {
 	options := gocbcore.OpenStreamOptions{}
 	// Always use a collection-aware feed if supported
 	if dc.supportsCollections {
-		// If no collection IDs specified, filter to the default collection
-		collIds := dc.collectionIDs
-		if len(collIds) == 0 {
-			collIds = []uint32{DefaultCollectionID}
-		}
-		options.FilterOptions = &gocbcore.OpenStreamFilterOptions{CollectionIDs: collIds}
+		options.FilterOptions = &gocbcore.OpenStreamFilterOptions{CollectionIDs: dc.collectionIDs}
 	}
 	openStreamError := make(chan error)
 	openStreamCallback := func(f []gocbcore.FailoverEntry, err error) {
