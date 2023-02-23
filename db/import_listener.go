@@ -63,42 +63,14 @@ func (il *importListener) StartImportFeed(ctx context.Context, bucket base.Bucke
 		scopeName = sn
 	}
 
-	if !dbContext.OnlyDefaultCollection() {
-		gocbv2Bucket, err := base.AsGocbV2Bucket(bucket)
-		if err != nil {
-			return err
-		}
-
-		collectionManifest, err := gocbv2Bucket.GetCollectionManifest()
-		if err != nil {
-			return fmt.Errorf("failed to load collection manifest: %w", err)
-		}
-
-		collectionNamesByScope[scopeName] = make([]string, 0, len(dbContext.Scopes[scopeName].Collections))
-		for collName, _ := range dbContext.Scopes[scopeName].Collections {
-			collectionNamesByScope[scopeName] = append(collectionNamesByScope[scopeName], collName)
-
-			collID, ok := base.GetIDForCollection(collectionManifest, scopeName, collName)
-			if !ok {
-				return fmt.Errorf("failed to find ID for collection %s.%s", base.MD(scopeName).Redact(), base.MD(collName).Redact())
-			}
-			dbCollection := dbContext.CollectionByID[collID]
-			if dbCollection == nil {
-				return fmt.Errorf("failed to find collection for  %s.%s", base.MD(scopeName).Redact(), base.MD(collName).Redact())
-
-			}
-			il.collections[collID] = DatabaseCollectionWithUser{
-				DatabaseCollection: dbCollection,
-				user:               nil, // admin
-			}
-		}
-	} else {
-		collectionID := base.DefaultCollectionID
+	for collectionID, collection := range dbContext.CollectionByID {
 		il.collections[collectionID] = DatabaseCollectionWithUser{
-			DatabaseCollection: dbContext.CollectionByID[collectionID],
+			DatabaseCollection: collection,
 			user:               nil, // admin
 		}
-
+		if bucket.IsSupported(sgbucket.BucketStoreFeatureCollections) {
+			collectionNamesByScope[collection.ScopeName] = append(collectionNamesByScope[collection.ScopeName], collection.Name)
+		}
 	}
 
 	feedArgs := sgbucket.FeedArguments{
