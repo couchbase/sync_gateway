@@ -13,7 +13,6 @@ package db
 import (
 	"context"
 	"errors"
-	"fmt"
 	"sort"
 	"strings"
 	"sync"
@@ -396,7 +395,6 @@ func (r *replicationCheckpoint) Copy() *replicationCheckpoint {
 // - Mismatched config hashes, use a zero value for sequence, so the replication can restart.
 // - Mismatched sequences, we'll pick the lower of the two, and attempt to roll back the higher checkpoint to that point.
 func (c *Checkpointer) fetchCheckpoints() error {
-	fmt.Printf("fetchCheckpoints")
 	base.TracefCtx(c.ctx, base.KeyReplicate, "fetchCheckpoints()")
 
 	localCheckpoint, err := c.getLocalCheckpoint()
@@ -561,7 +559,6 @@ func resetLocalCheckpoint(dataStore base.DataStore, checkpointID string) error {
 // getRemoteCheckpoint returns the sequence and rev for the remote checkpoint.
 // if the checkpoint does not exist, returns empty sequence and rev.
 func (c *Checkpointer) getRemoteCheckpoint() (checkpoint *replicationCheckpoint, err error) {
-	fmt.Printf("bbrks - getRemoteCheckpoint\n")
 	base.TracefCtx(c.ctx, base.KeyReplicate, "getRemoteCheckpoint")
 
 	rq := GetSGR2CheckpointRequest{
@@ -587,7 +584,6 @@ func (c *Checkpointer) getRemoteCheckpoint() (checkpoint *replicationCheckpoint,
 }
 
 func (c *Checkpointer) setRemoteCheckpoint(checkpoint *replicationCheckpoint) (newRev string, err error) {
-	fmt.Printf("bbrks1 - setRemoteCheckpoint(%v), clientID: %v, collectionIdx: %v\n", checkpoint, c.clientID, c.collectionIdx)
 
 	base.TracefCtx(c.ctx, base.KeyReplicate, "setRemoteCheckpoint(%v)", checkpoint)
 

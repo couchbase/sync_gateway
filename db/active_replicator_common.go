@@ -13,7 +13,6 @@ package db
 import (
 	"context"
 	"expvar"
-	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -220,7 +219,6 @@ func (a *activeReplicatorCommon) _disconnect() error {
 		base.TracefCtx(a.ctx, base.KeyReplicate, "cancelling checkpointer context inside _disconnect")
 		a.checkpointerCtxCancel()
 		_ = a.forEachCollection(func(c *activeReplicatorCollection) error {
-			fmt.Printf("checkpointer calling CheckpointNow(): %v\n", c.Checkpointer)
 			c.Checkpointer.closeWg.Wait()
 			c.Checkpointer.CheckpointNow()
 			return nil
@@ -236,7 +234,6 @@ func (a *activeReplicatorCommon) _disconnect() error {
 
 	if a.blipSyncContext != nil {
 		base.TracefCtx(a.ctx, base.KeyReplicate, "closing blip sync context")
-		fmt.Printf("closing blip sync context: %v\n", a.blipSyncContext)
 		a.blipSyncContext.Close()
 		a.blipSyncContext = nil
 	}
@@ -246,7 +243,6 @@ func (a *activeReplicatorCommon) _disconnect() error {
 
 // _stop aborts any replicator processes that run outside of a running replication (e.g: async reconnect handling)
 func (a *activeReplicatorCommon) _stop() {
-	fmt.Printf("arc _stop\n")
 	if a.ctxCancel != nil {
 		base.TracefCtx(a.ctx, base.KeyReplicate, "cancelling context on activeReplicatorCommon in _stop()")
 		a.ctxCancel()

@@ -31,7 +31,6 @@ func NewPullReplicator(config *ActiveReplicatorConfig) *ActivePullReplicator {
 }
 
 func (apr *ActivePullReplicator) Start(ctx context.Context) error {
-	fmt.Printf("pull Start\n")
 
 	apr.lock.Lock()
 	defer apr.lock.Unlock()

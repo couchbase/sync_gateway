@@ -36,7 +36,6 @@ func NewPushReplicator(config *ActiveReplicatorConfig) *ActivePushReplicator {
 }
 
 func (apr *ActivePushReplicator) Start(ctx context.Context) error {
-	fmt.Printf("push Start\n")
 
 	apr.lock.Lock()
 	defer apr.lock.Unlock()
@@ -68,26 +67,21 @@ var PreHydrogenTargetAllowConflictsError = errors.New("cannot run replication to
 
 // _connect opens up a connection, and starts replicating.
 func (apr *ActivePushReplicator) _connect() error {
-	fmt.Printf("bbrks push _connect\n")
 	var err error
 	apr.blipSender, apr.blipSyncContext, err = connect(apr.activeReplicatorCommon, "-push")
 	if err != nil {
 		return err
 	}
 
-	fmt.Printf("bbrks push _connect after connect\n")
-
 	// TODO: If this were made a config option, and the default conflict resolver not enforced on
 	// 	the pull side, it would be feasible to run sgr-2 in 'manual conflict resolution' mode
 	apr.blipSyncContext.sendRevNoConflicts = true
 
 	if apr.config.CollectionsEnabled {
-		fmt.Printf("bbrks push _connect with collection\n")
 		if err := apr._startPushWithCollections(); err != nil {
 			return err
 		}
 	} else {
-		fmt.Printf("bbrks push _connect no collection\n")
 		// for backwards compatibility use no collection-specific handling/messages
 		if err := apr._startPushNonCollection(); err != nil {
 			return err
@@ -140,7 +134,6 @@ func (apr *ActivePushReplicator) Complete() {
 }
 
 func (apr *ActivePushReplicator) _initCheckpointer() error {
-	fmt.Printf("push _initCheckpointer\n")
 	// wrap the replicator context with a cancelFunc that can be called to abort the checkpointer from _disconnect
 	apr.checkpointerCtx, apr.checkpointerCtxCancel = context.WithCancel(apr.ctx)
 
