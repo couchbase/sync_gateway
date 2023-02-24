@@ -2787,7 +2787,7 @@ func TestInvalidateRoles(t *testing.T) {
 
 	// Ensure the inval seq was set to 5 (raw get to avoid rebuild)
 	var userOut userImpl
-	_, err = leakyDataStore.Get(docIDForUser("user"), &userOut)
+	_, err = leakyDataStore.Get(auth.DocIDForUser("user"), &userOut)
 	assert.NoError(t, err)
 
 	var expectedValue uint64
@@ -2803,7 +2803,7 @@ func TestInvalidateRoles(t *testing.T) {
 	err = auth.InvalidateRoles("user", 20)
 	assert.NoError(t, err)
 
-	_, err = leakyDataStore.Get(docIDForUser("user"), &userOut)
+	_, err = leakyDataStore.Get(auth.DocIDForUser("user"), &userOut)
 	assert.NoError(t, err)
 	assert.Equal(t, expectedValue, userOut.GetRoleInvalSeq())
 }
@@ -2876,11 +2876,18 @@ func TestInvalidateChannels(t *testing.T) {
 			var princCheck Principal
 			var docID string
 			if testCase.isUser {
-				princCheck = &userImpl{}
-				docID = docIDForUser(testCase.name)
+				docID = auth.DocIDForUser(testCase.name)
+				princCheck = &userImpl{
+					roleImpl: roleImpl{
+						docID: docID,
+					},
+				}
+
 			} else {
-				princCheck = &roleImpl{}
-				docID = docIDForRole(testCase.name)
+				docID = auth.DocIDForRole(testCase.name)
+				princCheck = &roleImpl{
+					docID: docID,
+				}
 			}
 			_, err = leakyDataStore.Get(docID, &princCheck)
 			assert.NoError(t, err)

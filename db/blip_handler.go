@@ -121,7 +121,7 @@ func (bh *blipHandler) refreshUser() error {
 				return err
 			}
 			newUser.InitializeRoles()
-			bc.userChangeWaiter.RefreshUserKeys(newUser)
+			bc.userChangeWaiter.RefreshUserKeys(newUser, bc.blipContextDb.MetadataKeys)
 			bc.blipContextDb.SetUser(newUser)
 			// refresh the handler's database with the new BlipSyncContext database
 			bh.db = bh._copyContextDatabase()

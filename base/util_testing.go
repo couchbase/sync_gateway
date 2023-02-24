@@ -172,6 +172,10 @@ func (b *TestBucket) GetSingleDataStore() sgbucket.DataStore {
 	return b.Bucket.DefaultDataStore()
 }
 
+func (b *TestBucket) GetMetadataStore() sgbucket.DataStore {
+	return b.Bucket.DefaultDataStore()
+}
+
 // GetDefaultDataStore returns the default DataStore. This is likely never actually wanted over GetSingleDataStore, so is left commented until absolutely required.
 // func (b *TestBucket) GetDefaultDataStore() sgbucket.DataStore {
 // 	b.t.Logf("Using default collection - Are you sure you want this instead of GetSingleDataStore() ?")

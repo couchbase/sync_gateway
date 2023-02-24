@@ -97,7 +97,7 @@ func TestResyncDCPInit(t *testing.T) {
 			db, ctx := setupTestDB(t)
 			defer db.Close(ctx)
 
-			resycMgr := NewResyncManagerDCP(db.MetadataStore, base.TestUseXattrs())
+			resycMgr := NewResyncManagerDCP(db.MetadataStore, base.TestUseXattrs(), db.MetadataKeys)
 			require.NotNil(t, resycMgr)
 			db.ResyncManager = resycMgr
 
@@ -153,7 +153,8 @@ func TestResyncManagerDCPStopInMidWay(t *testing.T) {
 	db, ctx := setupTestDBForResyncWithDocs(t, docsToCreate, true)
 	defer db.Close(ctx)
 
-	resycMgr := NewResyncManagerDCP(db.MetadataStore, base.TestUseXattrs())
+	resycMgr := NewResyncManagerDCP(db.MetadataStore, base.TestUseXattrs(), db.MetadataKeys)
+
 	require.NotNil(t, resycMgr)
 	db.ResyncManager = resycMgr
 
@@ -210,7 +211,8 @@ func TestResyncManagerDCPStart(t *testing.T) {
 		db, ctx := setupTestDBForResyncWithDocs(t, docsToCreate, false)
 		defer db.Close(ctx)
 
-		resyncMgr := NewResyncManagerDCP(db.MetadataStore, base.TestUseXattrs())
+		resyncMgr := NewResyncManagerDCP(db.MetadataStore, base.TestUseXattrs(), db.MetadataKeys)
+
 		require.NotNil(t, resyncMgr)
 		db.ResyncManager = resyncMgr
 
@@ -242,7 +244,7 @@ func TestResyncManagerDCPStart(t *testing.T) {
 		db, ctx := setupTestDBForResyncWithDocs(t, docsToCreate, true)
 		defer db.Close(ctx)
 
-		resyncMgr := NewResyncManagerDCP(db.MetadataStore, base.TestUseXattrs())
+		resyncMgr := NewResyncManagerDCP(db.MetadataStore, base.TestUseXattrs(), db.MetadataKeys)
 		require.NotNil(t, resyncMgr)
 
 		initialStats := getResyncStats(resyncMgr.Process)
@@ -286,7 +288,7 @@ func TestResyncManagerDCPRunTwice(t *testing.T) {
 	db, ctx := setupTestDBForResyncWithDocs(t, docsToCreate, false)
 	defer db.Close(ctx)
 
-	resycMgr := NewResyncManagerDCP(db.MetadataStore, base.TestUseXattrs())
+	resycMgr := NewResyncManagerDCP(db.MetadataStore, base.TestUseXattrs(), db.MetadataKeys)
 	require.NotNil(t, resycMgr)
 	db.ResyncManager = resycMgr
 
@@ -344,7 +346,7 @@ func TestResycnManagerDCPResumeStoppedProcess(t *testing.T) {
 	db, ctx := setupTestDBForResyncWithDocs(t, docsToCreate, true)
 	defer db.Close(ctx)
 
-	resycMgr := NewResyncManagerDCP(db.MetadataStore, base.TestUseXattrs())
+	resycMgr := NewResyncManagerDCP(db.MetadataStore, base.TestUseXattrs(), db.MetadataKeys)
 	require.NotNil(t, resycMgr)
 	db.ResyncManager = resycMgr
 

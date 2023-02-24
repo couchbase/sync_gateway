@@ -44,7 +44,7 @@ var ErrCfgCasError = &cbgt.CfgCASError{}
 //
 // urlStr: single URL or multiple URLs delimited by ';'
 // bucket: couchbase bucket name
-func NewCfgSG(datastore sgbucket.DataStore, groupID string) (*CfgSG, error) {
+func NewCfgSG(datastore sgbucket.DataStore, keyPrefix string) (*CfgSG, error) {
 
 	cfgContextID := MD(datastore.GetName()).Redact() + "-cfgSG"
 	loggingCtx := LogContextWith(context.Background(), &LogContext{CorrelationID: cfgContextID})
@@ -53,7 +53,7 @@ func NewCfgSG(datastore sgbucket.DataStore, groupID string) (*CfgSG, error) {
 		datastore:     datastore,
 		loggingCtx:    loggingCtx,
 		subscriptions: make(map[string][]chan<- cbgt.CfgEvent),
-		keyPrefix:     SGCfgPrefixWithGroupID(groupID),
+		keyPrefix:     keyPrefix,
 	}
 
 	return c, nil
