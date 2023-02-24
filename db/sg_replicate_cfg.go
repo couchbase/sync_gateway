@@ -95,7 +95,8 @@ type ReplicationConfig struct {
 	ID                     string                    `json:"replication_id"`
 	Remote                 string                    `json:"remote"`
 	CollectionsEnabled     bool                      `json:"collections_enabled,omitempty"`
-	KeyspaceMap            map[string]string         `json:"keyspace_map,omitempty"`
+	CollectionsLocal       []string                  `json:"collections_local,omitempty"`
+	CollectionsRemote      []string                  `json:"collections_remote,omitempty"`
 	Username               string                    `json:"username,omitempty"` // Deprecated
 	Password               string                    `json:"password,omitempty"` // Deprecated
 	RemoteUsername         string                    `json:"remote_username,omitempty"`
@@ -138,27 +139,28 @@ type ReplicationCfg struct {
 
 // ReplicationUpsertConfig is used for operations that support upsert of a subset of replication properties.
 type ReplicationUpsertConfig struct {
-	ID                     string            `json:"replication_id"`
-	Remote                 *string           `json:"remote"`
-	CollectionsEnabled     bool              `json:"collections_enabled,omitempty"`
-	KeyspaceMap            map[string]string `json:"keyspace_map,omitempty"`
-	Username               *string           `json:"username,omitempty"` // Deprecated
-	Password               *string           `json:"password,omitempty"` // Deprecated
-	RemoteUsername         *string           `json:"remote_username,omitempty"`
-	RemotePassword         *string           `json:"remote_password,omitempty"`
-	Direction              *string           `json:"direction"`
-	ConflictResolutionType *string           `json:"conflict_resolution_type,omitempty"`
-	ConflictResolutionFn   *string           `json:"custom_conflict_resolver,omitempty"`
-	PurgeOnRemoval         *bool             `json:"purge_on_removal,omitempty"`
-	DeltaSyncEnabled       *bool             `json:"enable_delta_sync,omitempty"`
-	MaxBackoff             *int              `json:"max_backoff_time,omitempty"`
-	InitialState           *string           `json:"initial_state,omitempty"`
-	Continuous             *bool             `json:"continuous"`
-	Filter                 *string           `json:"filter,omitempty"`
-	QueryParams            interface{}       `json:"query_params,omitempty"`
-	Adhoc                  *bool             `json:"adhoc,omitempty"`
-	BatchSize              *int              `json:"batch_size,omitempty"`
-	RunAs                  *string           `json:"run_as,omitempty"`
+	ID                     string      `json:"replication_id"`
+	Remote                 *string     `json:"remote"`
+	CollectionsEnabled     *bool       `json:"collections_enabled,omitempty"`
+	CollectionsLocal       []string    `json:"collections_local,omitempty"`
+	CollectionsRemote      []string    `json:"collections_remote,omitempty"`
+	Username               *string     `json:"username,omitempty"` // Deprecated
+	Password               *string     `json:"password,omitempty"` // Deprecated
+	RemoteUsername         *string     `json:"remote_username,omitempty"`
+	RemotePassword         *string     `json:"remote_password,omitempty"`
+	Direction              *string     `json:"direction"`
+	ConflictResolutionType *string     `json:"conflict_resolution_type,omitempty"`
+	ConflictResolutionFn   *string     `json:"custom_conflict_resolver,omitempty"`
+	PurgeOnRemoval         *bool       `json:"purge_on_removal,omitempty"`
+	DeltaSyncEnabled       *bool       `json:"enable_delta_sync,omitempty"`
+	MaxBackoff             *int        `json:"max_backoff_time,omitempty"`
+	InitialState           *string     `json:"initial_state,omitempty"`
+	Continuous             *bool       `json:"continuous"`
+	Filter                 *string     `json:"filter,omitempty"`
+	QueryParams            interface{} `json:"query_params,omitempty"`
+	Adhoc                  *bool       `json:"adhoc,omitempty"`
+	BatchSize              *int        `json:"batch_size,omitempty"`
+	RunAs                  *string     `json:"run_as,omitempty"`
 }
 
 func (rc *ReplicationConfig) ValidateReplication(fromConfig bool) (err error) {
@@ -253,6 +255,18 @@ func (rc *ReplicationConfig) Upsert(c *ReplicationUpsertConfig) {
 
 	if c.Remote != nil {
 		rc.Remote = *c.Remote
+	}
+
+	if c.CollectionsEnabled != nil {
+		rc.CollectionsEnabled = *c.CollectionsEnabled
+	}
+
+	if c.CollectionsLocal != nil && len(c.CollectionsLocal) > 0 {
+		rc.CollectionsLocal = c.CollectionsLocal
+	}
+
+	if c.CollectionsRemote != nil && len(c.CollectionsRemote) > 0 {
+		rc.CollectionsRemote = c.CollectionsRemote
 	}
 
 	if c.Username != nil {
@@ -549,7 +563,8 @@ func (m *sgReplicateManager) NewActiveReplicatorConfig(config *ReplicationCfg) (
 		Continuous:         config.Continuous,
 		ActiveDB:           activeDB,
 		CollectionsEnabled: config.CollectionsEnabled,
-		KeyspaceMap:        config.KeyspaceMap,
+		CollectionsLocal:   config.CollectionsLocal,
+		CollectionsRemote:  config.CollectionsRemote,
 		PurgeOnRemoval:     config.PurgeOnRemoval,
 		DeltasEnabled:      config.DeltaSyncEnabled,
 		InsecureSkipVerify: insecureSkipVerify,

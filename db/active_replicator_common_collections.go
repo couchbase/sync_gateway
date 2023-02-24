@@ -23,9 +23,13 @@ func (arc *activeReplicatorCommon) _initCollections() ([]replicationCheckpoint, 
 		getCollectionsCheckpointIDs []string
 	)
 
-	if arc.config.KeyspaceMap != nil {
-		// TODO: CBG-2319 / CBG-2320 - Implement filtering and mapping
-		return nil, fmt.Errorf("CBG-2319 and CBG-2320 not yet implemented to pass a map of collections to replicate")
+	if len(arc.config.CollectionsLocal) != len(arc.config.CollectionsRemote) {
+		return nil, fmt.Errorf("local and remote collections must be the same length... had %d and %d", len(arc.config.CollectionsLocal), len(arc.config.CollectionsRemote))
+	}
+
+	if arc.config.CollectionsLocal != nil {
+		// TODO: CBG-2319 - Implement filtering
+		return nil, fmt.Errorf("CBG-2319 not yet implemented to pass a list of collections to replicate")
 	} else {
 		// collections to replicate wasn't set - so build a full set based on local database
 		for _, dbCollection := range arc.blipSyncContext.blipContextDb.CollectionByID {

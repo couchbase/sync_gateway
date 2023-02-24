@@ -85,10 +85,12 @@ type ActiveReplicatorConfig struct {
 
 	// CollectionsEnabled can be set to replicate one or more named collections, rather than just the default collection.
 	CollectionsEnabled bool
-	// KeyspaceMap represents a set of dot-separated scope/collections that will be replicated.
-	// The values of the map can be set to map a collection on the active side to something else on the passive side.
-	// This map can be nil to replicate all scopes/collections for the database when CollectionsEnabled is set to true.
-	KeyspaceMap map[string]string // map of active "scope.collection" to passive "scope.collection"
+	// CollectionsLocal represents a list of dot-separated scope/collections that will be replicated.
+	// This slice can be empty to replicate all scopes/collections for the database when CollectionsEnabled is set to true.
+	CollectionsLocal []string // list of local/active "scope.collection"
+	// CollectionsRemote represents an equivalent list of dot-separated scope/collections that the local collections will be remapped to on the remote/passive side.
+	// This slice can be empty to replicate all scopes/collections for the database when CollectionsEnabled is set to true.
+	CollectionsRemote []string // list of remote/passive "scope.collection"
 
 	// Delta sync enabled
 	DeltasEnabled bool
