@@ -1473,7 +1473,7 @@ func TestPutUserCollectionAccess(t *testing.T) {
 	_ = rt.Context()
 
 	collectionPayload := fmt.Sprintf(`,"%s": {
-					"admin_channels":[!]
+					"admin_channels":["a"]
 				}`, collection2Name)
 	userPayload := `{
 		%s
@@ -1495,22 +1495,30 @@ func TestPutUserCollectionAccess(t *testing.T) {
 	// Upsert one collection and preserve existing
 	putResponse = rt.SendAdminRequest("PUT", "/db/_user/bob", fmt.Sprintf(userPayload, `"email":"bob@couchbase.com",`,
 		scopeName, collection1Name, `"foo", "bar"`, ""))
-	RequireStatus(t, putResponse, 201)
-	assert.Contains(t, putResponse.Body.Bytes(), collection2Name)
+	RequireStatus(t, putResponse, 200)
+	getResponse := rt.SendAdminRequest("GET", "/db/_user/bob", "")
+	RequireStatus(t, getResponse, 200)
+	assert.Contains(t, getResponse.ResponseRecorder.Body.String(), collection2Name)
 
 	// Delete collection admin channels
 	putResponse = rt.SendAdminRequest("PUT", "/db/_user/bob", fmt.Sprintf(userPayload, `"email":"bob@couchbase.com",`,
 		scopeName, collection1Name, ``, ""))
-	RequireStatus(t, putResponse, 201)
-	assert.Contains(t, putResponse.Body.Bytes(), `"admin_channels":[]`) // get map of response and find admin channels in collection
+	RequireStatus(t, putResponse, 200)
+
+	getResponse = rt.SendAdminRequest("GET", "/db/_user/bob", "")
+	RequireStatus(t, getResponse, 200)
+	//responseMap := map[string]string{}
+	//json.Unmarshal([]byte(getResponse.Body.Bytes()), &responseMap)
+	//fmt.Println(responseMap["collection_access"])
+	assert.Contains(t, getResponse.ResponseRecorder.Body.String(), `"admin_channels":[]`)
 
 	resp := rt.SendAdminRequest("PUT", "/db/_config", fmt.Sprintf(
-		`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "scopes":""}`,
+		`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "scopes":{}}`,
 		testBucket.GetName(), base.TestUseXattrs()))
 	RequireStatus(t, resp, http.StatusCreated)
 
 	//  Hide entries for collections that are no longer part of the database for GET /_user and /_role
 	userResponse := rt.SendAdminRequest("GET", "/db/_user/bob", "")
 	RequireStatus(t, userResponse, 200)
-	assert.NotContains(t, userResponse.Body.Bytes(), collection2Name)
+	assert.NotContains(t, userResponse.ResponseRecorder.Body.String(), collection2Name)
 }
