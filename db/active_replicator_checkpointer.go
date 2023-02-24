@@ -51,7 +51,7 @@ type Checkpointer struct {
 	lastLocalCheckpointRevID string
 	// lastCheckpointSeq is the last checkpointed sequence
 	lastCheckpointSeq SequenceID
-	// collectionIdx is the replication index of the collection we're checkpointing for
+	// collectionIdx is the GetCollections index of the collection we're checkpointing for
 	collectionIdx *int
 
 	// expectedSeqCompactionThreshold is the number of expected sequences that we'll tolerate before considering compacting away already processed sequences
@@ -388,14 +388,14 @@ func (r *replicationCheckpoint) Copy() *replicationCheckpoint {
 	}
 }
 
-// fetchCheckpoints sets lastCheckpointSeq for the given Checkpointer by requesting various checkpoints on the local and remote.
+// fetchDefaultCollectionCheckpoints sets lastCheckpointSeq for the given Checkpointer by requesting various checkpoints on the local and remote.
 // Various scenarios this function handles:
 // - Matching checkpoints from local and remote. Use that sequence.
 // - Both SGR2 checkpoints are missing, we'll start the replication from zero.
 // - Mismatched config hashes, use a zero value for sequence, so the replication can restart.
 // - Mismatched sequences, we'll pick the lower of the two, and attempt to roll back the higher checkpoint to that point.
-func (c *Checkpointer) fetchCheckpoints() error {
-	base.TracefCtx(c.ctx, base.KeyReplicate, "fetchCheckpoints()")
+func (c *Checkpointer) fetchDefaultCollectionCheckpoints() error {
+	base.TracefCtx(c.ctx, base.KeyReplicate, "fetchDefaultCollectionCheckpoints()")
 
 	localCheckpoint, err := c.getLocalCheckpoint()
 	if err != nil {

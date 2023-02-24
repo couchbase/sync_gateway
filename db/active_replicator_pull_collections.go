@@ -39,10 +39,10 @@ func (apr *ActivePullReplicator) _startPullWithCollections() error {
 			break
 		}
 	}
-
 	if err != nil {
 		// clean up anything we've opened so far
 		base.TracefCtx(apr.ctx, base.KeyReplicate, "cancelling the checkpointer context inside _startPullWithCollections where we send blip request")
+		apr.checkpointerCtx = nil
 		apr.blipSender.Close()
 		apr.blipSyncContext.Close()
 		return err

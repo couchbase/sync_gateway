@@ -308,6 +308,27 @@ func (a *activeReplicatorCommon) GetStats() *BlipSyncStats {
 	return a.replicationStats
 }
 
+// getCheckpointHighSeq returns the highest sequence number that has been processed by the replicator across all collections.
+func (a *activeReplicatorCommon) getCheckpointHighSeq() string {
+	a.lock.RLock()
+	defer a.lock.RUnlock()
+	var highSeq SequenceID
+	_ = a.forEachCollection(func(c *activeReplicatorCollection) error {
+		if c.Checkpointer != nil {
+			safeSeq := c.Checkpointer.calculateSafeProcessedSeq()
+			if highSeq.Before(safeSeq) {
+				highSeq = safeSeq
+			}
+		}
+		return nil
+	})
+	var highSeqStr string
+	if highSeq.IsNonZero() {
+		highSeqStr = highSeq.String()
+	}
+	return highSeqStr
+}
+
 func (a *activeReplicatorCommon) _publishStatus() {
 	status, errorMessage := a.getStateWithErrorMessage()
 	setLocalCheckpointStatus(a.ctx, a.config.ActiveDB.MetadataStore, a.CheckpointID, status, errorMessage, int(a.config.ActiveDB.Options.LocalDocExpirySecs))

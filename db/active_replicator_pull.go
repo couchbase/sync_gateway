@@ -191,13 +191,16 @@ func (apr *ActivePullReplicator) _initCheckpointer() error {
 		c.Checkpointer = NewCheckpointer(apr.checkpointerCtx, c.dataStore, apr.CheckpointID, checkpointHash, apr.blipSender, apr.config, apr.getPullStatus, c.collectionIdx)
 
 		if !apr.config.CollectionsEnabled {
-			err := c.Checkpointer.fetchCheckpoints()
+			err := c.Checkpointer.fetchDefaultCollectionCheckpoints()
 			if err != nil {
 				return err
 			}
 		}
 
-		apr.registerCheckpointerCallbacks(c)
+		if err := apr.registerCheckpointerCallbacks(c); err != nil {
+			return err
+		}
+
 		c.Checkpointer.Start()
 		return nil
 	})
@@ -211,23 +214,7 @@ func (apr *ActivePullReplicator) _initCheckpointer() error {
 // GetStatus is used externally to retrieve pull replication status.  Combines current running stats with
 // initialStatus.
 func (apr *ActivePullReplicator) GetStatus() *ReplicationStatus {
-	apr.lock.RLock()
-	defer apr.lock.RUnlock()
-	var highSeq SequenceID
-	_ = apr.forEachCollection(func(c *activeReplicatorCollection) error {
-		if c.Checkpointer != nil {
-			safeSeq := c.Checkpointer.calculateSafeProcessedSeq()
-			if highSeq.Before(safeSeq) {
-				highSeq = safeSeq
-			}
-		}
-		return nil
-	})
-	var highSeqStr string
-	if highSeq.IsNonZero() {
-		highSeqStr = highSeq.String()
-	}
-	return apr.getPullStatus(highSeqStr)
+	return apr.getPullStatus(apr.getCheckpointHighSeq())
 }
 
 // getPullStatus is used internally, and passed as statusCallback to checkpointer
@@ -275,20 +262,20 @@ func (apr *ActivePullReplicator) reset() error {
 	}
 
 	apr.lock.Lock()
-	_ = apr.forEachCollection(func(c *activeReplicatorCollection) error {
+	defer apr.lock.Unlock()
+
+	return apr.forEachCollection(func(c *activeReplicatorCollection) error {
 		c.Checkpointer = nil
 		return nil
 	})
-	apr.lock.Unlock()
-	return nil
 }
 
 // registerCheckpointerCallbacks registers appropriate callback functions for checkpointing.
-func (apr *ActivePullReplicator) registerCheckpointerCallbacks(c *activeReplicatorCollection) {
+func (apr *ActivePullReplicator) registerCheckpointerCallbacks(c *activeReplicatorCollection) error {
 	blipSyncContextCollection, err := apr.blipSyncContext.collections.get(c.collectionIdx)
 	if err != nil {
 		base.WarnfCtx(apr.ctx, "Unable to get blipSyncContextCollection for collection %d: %v", c.collectionIdx, err)
-		panic(err)
+		return err
 	}
 
 	blipSyncContextCollection.sgr2PullAlreadyKnownSeqsCallback = c.Checkpointer.AddAlreadyKnownSeq
@@ -303,6 +290,8 @@ func (apr *ActivePullReplicator) registerCheckpointerCallbacks(c *activeReplicat
 			go apr.Complete()
 		}
 	}
+
+	return nil
 }
 
 // Stop stops the pull replication and waits for the sub changes goroutine to finish.
