@@ -10,8 +10,10 @@ package base
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -50,5 +52,13 @@ func TestCollectionSyncFunctionKeyWithGroupID(t *testing.T) {
 		t.Run(fmt.Sprintf("%s.%s_GroupID:%s", test.scopeName, test.collectionName, test.groupID), func(t *testing.T) {
 			require.Equal(t, test.key, CollectionSyncFunctionKeyWithGroupID(test.groupID, test.scopeName, test.collectionName))
 		})
+	}
+}
+
+func TestMetaKeyNames(t *testing.T) {
+
+	// Validates that metadata keys aren't prefixed with MetadataIdPrefix
+	for _, metaKeyName := range metadataKeyNames {
+		assert.False(t, strings.HasPrefix(metaKeyName, MetadataIdPrefix))
 	}
 }

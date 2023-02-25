@@ -1971,7 +1971,7 @@ func TestActiveReplicatorPullSkippedSequence(t *testing.T) {
 	rest.RequireStatus(t, resp, http.StatusCreated)
 
 	// allocate a fake sequence to trigger skipped sequence handling - this never arrives at rt1 - we could think about creating the doc afterwards to let the replicator recover, but not necessary for the test.
-	_, err = rt2.MetadataStore().Incr(base.SyncSeqKey, 1, 1, 0)
+	_, err = rt2.MetadataStore().Incr(rt2.GetDatabase().MetadataKeys.SyncSeqKey(), 1, 1, 0)
 	require.NoError(t, err)
 
 	docID3 := docIDPrefix + "3"

@@ -92,7 +92,7 @@ func TestStarAccess(t *testing.T) {
 	rt := NewRestTester(t, &RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction})
 	defer rt.Close()
 
-	a := auth.NewAuthenticator(rt.MetadataStore(), nil, auth.DefaultAuthenticatorOptions())
+	a := auth.NewAuthenticator(rt.MetadataStore(), nil, rt.GetDatabase().AuthenticatorOptions())
 	a.Collections = rt.GetDatabase().CollectionNames
 	var changes struct {
 		Results []db.ChangeEntry
@@ -601,7 +601,7 @@ func TestAllDocsAccessControl(t *testing.T) {
 	}
 
 	// Create some docs:
-	a := auth.NewAuthenticator(rt.MetadataStore(), nil, auth.DefaultAuthenticatorOptions())
+	a := auth.NewAuthenticator(rt.MetadataStore(), nil, rt.GetDatabase().AuthenticatorOptions())
 	a.Collections = rt.GetDatabase().CollectionNames
 	guest, err := a.GetUser("")
 	assert.NoError(t, err)

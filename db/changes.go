@@ -597,7 +597,7 @@ func (col *DatabaseCollectionWithUser) checkForUserUpdates(ctx context.Context, 
 
 			changedRoles := col.user.RoleNames().CompareKeys(previousRoles)
 			if len(changedRoles) > 0 {
-				changeWaiter.RefreshUserKeys(col.User())
+				changeWaiter.RefreshUserKeys(col.User(), col.dbCtx.MetadataKeys)
 			}
 		}
 		return true, newCount, changedChannels, nil

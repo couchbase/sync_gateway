@@ -43,6 +43,8 @@ type AuthenticatorOptions struct {
 	// This can be used to limit (re-)computation of channel access to only those collections relevant to
 	// a given operation. If not specified, is set to _default._default in NewAuthenticator constructor.
 	Collections map[string]map[string]struct{}
+	// MetaKeys generates key formats used to persist auth users, roles and sessions
+	MetaKeys *base.MetadataKeys
 }
 
 // Interface for deriving the set of channels and roles a User/Role has access to.
@@ -79,13 +81,17 @@ const (
 
 var defaultCollectionMap = map[string]map[string]struct{}{base.DefaultScope: {base.DefaultCollection: struct{}{}}}
 
-// Creates a new Authenticator that stores user info in the given Bucket.
-
+// Creates a new Authenticator that stores user info in the given Bucket.  Uses the default metadataKeys format
 func NewAuthenticator(datastore base.DataStore, channelComputer ChannelComputer, options AuthenticatorOptions) *Authenticator {
 
 	if len(options.Collections) == 0 {
 		options.Collections = defaultCollectionMap
 	}
+
+	if options.MetaKeys == nil {
+		options.MetaKeys = base.DefaultMetadataKeys
+	}
+
 	return &Authenticator{
 		datastore:            datastore,
 		channelComputer:      channelComputer,
@@ -102,10 +108,6 @@ func DefaultAuthenticatorOptions() AuthenticatorOptions {
 	}
 }
 
-func docIDForUserEmail(email string) string {
-	return base.UserEmailPrefix + email
-}
-
 func (auth *Authenticator) GetPrincipal(name string, isUser bool) (Principal, error) {
 	if isUser {
 		return auth.GetUser(name)
@@ -118,7 +120,13 @@ func (auth *Authenticator) GetPrincipal(name string, isUser bool) (Principal, er
 // By default the guest User has access to everything, i.e. Admin Party! This can
 // be changed by altering its list of channels and saving the changes via SetUser.
 func (auth *Authenticator) GetUser(name string) (User, error) {
-	princ, err := auth.getPrincipal(docIDForUser(name), func() Principal { return &userImpl{} })
+	princ, err := auth.getPrincipal(auth.DocIDForUser(name), func() Principal {
+		return &userImpl{
+			roleImpl: roleImpl{
+				docID: auth.DocIDForUser(name),
+			},
+		}
+	})
 	if err != nil {
 		return nil, err
 	} else if princ == nil {
@@ -142,7 +150,12 @@ func (auth *Authenticator) GetRole(name string) (Role, error) {
 }
 
 func (auth *Authenticator) GetRoleIncDeleted(name string) (Role, error) {
-	princ, err := auth.getPrincipal(docIDForRole(name), func() Principal { return &roleImpl{} })
+	docID := auth.DocIDForRole(name)
+	princ, err := auth.getPrincipal(docID, func() Principal {
+		return &roleImpl{
+			docID: docID,
+		}
+	})
 	role, _ := princ.(Role)
 	return role, err
 }
@@ -379,7 +392,7 @@ func (auth *Authenticator) rebuildRoles(user User) error {
 // Looks up a User by email address.
 func (auth *Authenticator) GetUserByEmail(email string) (User, error) {
 	var info userByEmailInfo
-	_, err := auth.datastore.Get(docIDForUserEmail(email), &info)
+	_, err := auth.datastore.Get(auth.MetaKeys.UserEmailKey(email), &info)
 	if base.IsDocNotFoundError(err) {
 		return nil, nil
 	} else if err != nil {
@@ -404,7 +417,7 @@ func (auth *Authenticator) Save(p Principal) error {
 	if user, ok := p.(User); ok {
 		if user.Email() != "" {
 			info := userByEmailInfo{user.Name()}
-			if err := auth.datastore.Set(docIDForUserEmail(user.Email()), 0, nil, info); err != nil {
+			if err := auth.datastore.Set(auth.MetaKeys.UserEmailKey(user.Email()), 0, nil, info); err != nil {
 				return err
 			}
 			// FIX: Fail if email address is already registered to another user
@@ -437,11 +450,17 @@ func (auth *Authenticator) InvalidateChannels(name string, isUser bool, scope st
 	var docID string
 
 	if isUser {
-		princ = &userImpl{}
-		docID = docIDForUser(name)
+		docID = auth.DocIDForUser(name)
+		princ = &userImpl{
+			roleImpl: roleImpl{
+				docID: docID,
+			},
+		}
 	} else {
-		princ = &roleImpl{}
-		docID = docIDForRole(name)
+		docID = auth.DocIDForRole(name)
+		princ = &roleImpl{
+			docID: docID,
+		}
 	}
 
 	base.InfofCtx(auth.LogCtx, base.KeyAccess, "Invalidate access of %q", base.UD(name))
@@ -490,8 +509,7 @@ func (auth *Authenticator) InvalidateChannels(name string, isUser bool, scope st
 
 // Invalidates the role list of a user by setting the RoleInvalSeq property to a non-zero value
 func (auth *Authenticator) InvalidateRoles(username string, invalSeq uint64) error {
-	docID := docIDForUser(username)
-
+	docID := auth.DocIDForUser(username)
 	base.InfofCtx(auth.LogCtx, base.KeyAccess, "Invalidate roles of %q", base.UD(username))
 
 	if subdocStore, ok := base.AsSubdocStore(auth.datastore); ok {
@@ -642,7 +660,7 @@ func (auth *Authenticator) casUpdatePrincipal(p Principal, callback casUpdatePri
 
 func (auth *Authenticator) DeleteUser(user User) error {
 	if user.Email() != "" {
-		if err := auth.datastore.Delete(docIDForUserEmail(user.Email())); err != nil {
+		if err := auth.datastore.Delete(auth.MetaKeys.UserEmailKey(user.Email())); err != nil {
 			base.DebugfCtx(auth.LogCtx, base.KeyAuth, "Error deleting document ID for user email %s. Error: %v", base.UD(user.Email()), err)
 		}
 	}
@@ -859,4 +877,20 @@ func (auth *Authenticator) RegisterNewUser(username, email string) (User, error)
 	}
 
 	return user, err
+}
+
+func (a *Authenticator) DocIDForUser(username string) string {
+	return a.MetaKeys.UserKey(username)
+}
+
+func (a *Authenticator) DocIDForRole(name string) string {
+	return a.MetaKeys.RoleKey(name)
+}
+
+func (a *Authenticator) DocIDForUserEmail(email string) string {
+	return a.MetaKeys.UserEmailKey(email)
+}
+
+func (a *Authenticator) DocIDForSession(sessionID string) string {
+	return a.MetaKeys.SessionKey(sessionID)
 }

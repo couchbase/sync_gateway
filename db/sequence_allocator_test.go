@@ -38,6 +38,7 @@ func TestSequenceAllocator(t *testing.T) {
 		dbStats:           testStats,
 		sequenceBatchSize: idleBatchSize,
 		reserveNotify:     make(chan struct{}, 50), // Buffered to allow multiple allocations without releaseSequenceMonitor
+		metaKeys:          base.DefaultMetadataKeys,
 	}
 
 	// Set high incr frequency to force batch size increase
@@ -103,7 +104,7 @@ func TestReleaseSequencesOnStop(t *testing.T) {
 	defer func() { MaxSequenceIncrFrequency = oldFrequency }()
 	MaxSequenceIncrFrequency = 1000 * time.Millisecond
 
-	a, err := newSequenceAllocator(bucket.GetSingleDataStore(), testStats)
+	a, err := newSequenceAllocator(bucket.GetSingleDataStore(), testStats, base.DefaultMetadataKeys)
 	// Reduce sequence wait for Stop testing
 	a.releaseSequenceWait = 10 * time.Millisecond
 	assert.NoError(t, err, "error creating allocator")
@@ -180,7 +181,7 @@ func TestSequenceAllocatorDeadlock(t *testing.T) {
 	defer func() { MaxSequenceIncrFrequency = oldFrequency }()
 	MaxSequenceIncrFrequency = 1000 * time.Millisecond
 
-	a, err = newSequenceAllocator(bucket.DefaultDataStore(), testStats)
+	a, err = newSequenceAllocator(bucket.DefaultDataStore(), testStats, base.DefaultMetadataKeys)
 	// Reduce sequence wait for Stop testing
 	a.releaseSequenceWait = 10 * time.Millisecond
 	assert.NoError(t, err, "error creating allocator")
@@ -208,7 +209,7 @@ func TestReleaseSequenceWait(t *testing.T) {
 	require.NoError(t, err)
 	testStats := dbstats.Database()
 
-	a, err := newSequenceAllocator(bucket.GetSingleDataStore(), testStats)
+	a, err := newSequenceAllocator(bucket.GetSingleDataStore(), testStats, base.DefaultMetadataKeys)
 	require.NoError(t, err)
 	defer a.Stop()
 

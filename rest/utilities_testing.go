@@ -164,11 +164,15 @@ func (rt *RestTester) Bucket() base.Bucket {
 	rt.TestBucket = testBucket
 
 	if rt.InitSyncSeq > 0 {
-		log.Printf("Initializing %s to %d", base.SyncSeqKey, rt.InitSyncSeq)
-		tbDatastore := testBucket.GetSingleDataStore()
-		_, incrErr := tbDatastore.Incr(base.SyncSeqKey, rt.InitSyncSeq, rt.InitSyncSeq, 0)
+		if base.TestsUseNamedCollections() {
+			rt.TB.Fatalf("RestTester InitSyncSeq doesn't support non-default collections")
+		}
+
+		log.Printf("Initializing %s to %d", base.DefaultMetadataKeys.SyncSeqKey(), rt.InitSyncSeq)
+		tbDatastore := testBucket.GetMetadataStore()
+		_, incrErr := tbDatastore.Incr(base.DefaultMetadataKeys.SyncSeqKey(), rt.InitSyncSeq, rt.InitSyncSeq, 0)
 		if incrErr != nil {
-			rt.TB.Fatalf("Error initializing %s in test bucket: %v", base.SyncSeqKey, incrErr)
+			rt.TB.Fatalf("Error initializing %s in test bucket: %v", base.DefaultMetadataKeys.SyncSeqKey(), incrErr)
 		}
 	}
 

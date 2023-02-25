@@ -34,10 +34,15 @@ type ActiveReplicator struct {
 // NewActiveReplicator returns a bidirectional active replicator for the given config.
 func NewActiveReplicator(ctx context.Context, config *ActiveReplicatorConfig) *ActiveReplicator {
 	ar := &ActiveReplicator{
-		ID:        config.ID,
-		config:    config,
-		statusKey: replicationStatusKey(config.ID),
+		ID:     config.ID,
+		config: config,
 	}
+
+	metakeys := base.DefaultMetadataKeys
+	if config.ActiveDB != nil {
+		metakeys = config.ActiveDB.MetadataKeys
+	}
+	ar.statusKey = metakeys.ReplicationStatusKey(config.ID)
 
 	if pushReplication := config.Direction == ActiveReplicatorTypePush || config.Direction == ActiveReplicatorTypePushAndPull; pushReplication {
 		ar.Push = NewPushReplicator(config)
@@ -367,18 +372,6 @@ func LoadReplicationStatus(dbContext *DatabaseContext, replicationID string) (st
 	}
 
 	return status, nil
-}
-
-// replicationStatusKey generates the key used to store status information for the given replicationID.  If replicationID
-// is 40 characters or longer, a SHA-1 hash of the replicationID is used in the status key.
-// If the replicationID is less than 40 characters, the ID can be used directly without worrying about final key length
-// or collision with other sha-1 hashes.
-func replicationStatusKey(replicationID string) string {
-	statusKeyID := replicationID
-	if len(statusKeyID) >= 40 {
-		statusKeyID = base.Sha1HashString(replicationID, "")
-	}
-	return fmt.Sprintf("%s%s", base.SGRStatusPrefix, statusKeyID)
 }
 
 func PushCheckpointID(replicationID string) string {

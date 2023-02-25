@@ -436,7 +436,7 @@ func TestLegacyConfigPrinciplesMigration(t *testing.T) {
 	rt.ServerContext().addLegacyPrincipals(ctx, users, roles)
 
 	// Check that principles all exist on bucket
-	authenticator := auth.NewAuthenticator(bucket.DefaultDataStore(), nil, auth.DefaultAuthenticatorOptions())
+	authenticator := auth.NewAuthenticator(bucket.DefaultDataStore(), nil, rt.GetDatabase().AuthenticatorOptions())
 	for _, name := range expectedUsers {
 		user, err := authenticator.GetUser(name)
 		assert.NoError(t, err)

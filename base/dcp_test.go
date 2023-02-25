@@ -59,19 +59,34 @@ func TestTransformBucketCredentials(t *testing.T) {
 }
 
 func TestDCPKeyFilter(t *testing.T) {
-	assert.True(t, dcpKeyFilter([]byte("doc123")))
-	assert.True(t, dcpKeyFilter([]byte(UserPrefix+"user1")))
-	assert.True(t, dcpKeyFilter([]byte(RolePrefix+"role2")))
-	assert.True(t, dcpKeyFilter([]byte(UnusedSeqPrefix+"1234")))
-	assert.True(t, dcpKeyFilter([]byte(SGCfgPrefixWithGroupID("")+"123")))
-	assert.True(t, dcpKeyFilter([]byte(SGCfgPrefixWithGroupID("group")+"123")))
 
-	assert.False(t, dcpKeyFilter([]byte(SyncSeqKey)))
-	assert.False(t, dcpKeyFilter([]byte(SyncDocPrefix+"unusualSeq")))
-	assert.False(t, dcpKeyFilter([]byte(SyncFunctionKeyWithoutGroupID)))
-	assert.False(t, dcpKeyFilter([]byte(DCPCheckpointPrefixWithoutGroupID+"12")))
-	assert.False(t, dcpKeyFilter([]byte(TxnPrefix+"atrData")))
-	assert.False(t, dcpKeyFilter([]byte(DCPCheckpointPrefixWithGroupID("group")+"12")))
+	testCases := []struct {
+		name     string
+		metaKeys *MetadataKeys
+	}{
+		{"default meta keys", DefaultMetadataKeys},
+		{"default meta keys from empty metaID", NewMetadataKeys("")},
+		{"db specific meta keys", NewMetadataKeys("dbname")},
+	}
+	for _, tc := range testCases {
+		t.Run(fmt.Sprintf("%s", tc.name), func(t *testing.T) {
+
+			assert.True(t, dcpKeyFilter([]byte("doc123"), tc.metaKeys))
+			assert.True(t, dcpKeyFilter([]byte(tc.metaKeys.UnusedSeqKey(1234)), tc.metaKeys))
+			assert.True(t, dcpKeyFilter([]byte(tc.metaKeys.UserKey("user1")), tc.metaKeys))
+			assert.True(t, dcpKeyFilter([]byte(tc.metaKeys.UserKey("role2")), tc.metaKeys))
+			assert.True(t, dcpKeyFilter([]byte(tc.metaKeys.SGCfgPrefix("")+"123"), tc.metaKeys))
+			assert.True(t, dcpKeyFilter([]byte(tc.metaKeys.SGCfgPrefix("group")+"123"), tc.metaKeys))
+
+			assert.False(t, dcpKeyFilter([]byte(SyncDocPrefix+"unusualSeq"), tc.metaKeys))
+			assert.False(t, dcpKeyFilter([]byte(SyncFunctionKeyWithoutGroupID), tc.metaKeys))
+			assert.False(t, dcpKeyFilter([]byte(DCPCheckpointRootPrefix+"12"), tc.metaKeys))
+			assert.False(t, dcpKeyFilter([]byte(TxnPrefix+"atrData"), tc.metaKeys))
+			assert.False(t, dcpKeyFilter([]byte(tc.metaKeys.DCPCheckpointPrefix("")+"12"), tc.metaKeys))
+			assert.False(t, dcpKeyFilter([]byte(tc.metaKeys.DCPCheckpointPrefix("group")+"12"), tc.metaKeys))
+			assert.False(t, dcpKeyFilter([]byte(tc.metaKeys.SyncSeqKey()), tc.metaKeys))
+		})
+	}
 
 }
 

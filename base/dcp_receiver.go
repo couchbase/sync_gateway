@@ -40,10 +40,10 @@ type DCPReceiver struct {
 	*DCPCommon
 }
 
-func NewDCPReceiver(callback sgbucket.FeedEventCallbackFunc, bucket Bucket, maxVbNo uint16, persistCheckpoints bool, dbStats *expvar.Map, feedID string, checkpointPrefix string) (cbdatasource.Receiver, context.Context, error) {
+func NewDCPReceiver(callback sgbucket.FeedEventCallbackFunc, bucket Bucket, maxVbNo uint16, persistCheckpoints bool, dbStats *expvar.Map, feedID string, checkpointPrefix string, metaKeys *MetadataKeys) (cbdatasource.Receiver, context.Context, error) {
 
 	metadataStore := bucket.DefaultDataStore()
-	dcpCommon, err := NewDCPCommon(context.TODO(), callback, bucket, metadataStore, maxVbNo, persistCheckpoints, dbStats, feedID, checkpointPrefix)
+	dcpCommon, err := NewDCPCommon(context.TODO(), callback, bucket, metadataStore, maxVbNo, persistCheckpoints, dbStats, feedID, checkpointPrefix, metaKeys)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -79,7 +79,7 @@ func (r *DCPReceiver) OnError(err error) {
 
 func (r *DCPReceiver) DataUpdate(vbucketId uint16, key []byte, seq uint64,
 	req *gomemcached.MCRequest) error {
-	if !dcpKeyFilter(key) {
+	if !dcpKeyFilter(key, r.metaKeys) {
 		return nil
 	}
 	event := makeFeedEventForMCRequest(req, sgbucket.FeedOpMutation)
@@ -89,7 +89,7 @@ func (r *DCPReceiver) DataUpdate(vbucketId uint16, key []byte, seq uint64,
 
 func (r *DCPReceiver) DataDelete(vbucketId uint16, key []byte, seq uint64,
 	req *gomemcached.MCRequest) error {
-	if !dcpKeyFilter(key) {
+	if !dcpKeyFilter(key, r.metaKeys) {
 		return nil
 	}
 	event := makeFeedEventForMCRequest(req, sgbucket.FeedOpDeletion)
@@ -213,7 +213,7 @@ func (nph NoPasswordAuthHandler) GetCredentials() (username string, password str
 
 // This starts a cbdatasource powered DCP Feed using an entirely separate connection to Couchbase Server than anything the existing
 // bucket is using, and it uses the go-couchbase cbdatasource DCP abstraction layer
-func StartDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map) error {
+func StartDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map, metaKeys *MetadataKeys) error {
 
 	connSpec, err := gocbconnstr.Parse(spec.Server)
 	if err != nil {
@@ -248,7 +248,7 @@ func StartDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArguments, c
 		InfofCtx(context.TODO(), KeyDCP, "DCP feed started without feedID specified - defaulting to %s", DCPCachingFeedID)
 		feedID = DCPCachingFeedID
 	}
-	receiver, loggingCtx, err := NewDCPReceiver(callback, bucket, maxVbno, persistCheckpoints, dbStats, feedID, args.CheckpointPrefix)
+	receiver, loggingCtx, err := NewDCPReceiver(callback, bucket, maxVbno, persistCheckpoints, dbStats, feedID, args.CheckpointPrefix, metaKeys)
 	if err != nil {
 		return err
 	}

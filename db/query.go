@@ -253,6 +253,7 @@ var QueryRolesExcludeDeletedUsingRoleIdx = SGQuery{
 }
 
 type QueryUsersRow struct {
+	ID       string `json:"id"`
 	Name     string `json:"name"`
 	Email    string `json:"email,omitempty"`
 	Disabled bool   `json:"disabled,omitempty"`
@@ -261,7 +262,8 @@ type QueryUsersRow struct {
 var QueryUsers = SGQuery{
 	name: QueryTypeUsers,
 	statement: fmt.Sprintf(
-		"SELECT %s.name, "+
+		"SELECT META(%s).id, "+
+			"%s.name, "+
 			"%s.email, "+
 			"%s.disabled "+
 			"FROM %s as %s "+
@@ -269,6 +271,7 @@ var QueryUsers = SGQuery{
 			"WHERE META(%s).id LIKE '%s' "+
 			"AND META(%s).id >= $%s "+ // Using >= to match QueryPrincipals startKey handling
 			"ORDER BY META(%s).id",
+		base.KeyspaceQueryAlias,
 		base.KeyspaceQueryAlias,
 		base.KeyspaceQueryAlias,
 		base.KeyspaceQueryAlias,
@@ -282,7 +285,8 @@ var QueryUsers = SGQuery{
 var QueryUsersUsingSyncDocsIdx = SGQuery{
 	name: QueryTypeUsers,
 	statement: fmt.Sprintf(
-		"SELECT %s.name, "+
+		"SELECT META(%s).id, "+
+			"%s.name, "+
 			"%s.email, "+
 			"%s.disabled "+
 			"FROM %s as %s "+
@@ -291,6 +295,7 @@ var QueryUsersUsingSyncDocsIdx = SGQuery{
 			"AND META(%s).id LIKE '%s' "+
 			"AND META(%s).id >= $%s "+ // Using >= to match QueryPrincipals startKey handling
 			"ORDER BY META(%s).id",
+		base.KeyspaceQueryAlias,
 		base.KeyspaceQueryAlias,
 		base.KeyspaceQueryAlias,
 		base.KeyspaceQueryAlias,
