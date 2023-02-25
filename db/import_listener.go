@@ -157,10 +157,7 @@ func (il *importListener) ProcessFeedEvent(event sgbucket.FeedEvent) (shouldPers
 	// Ignore internal documents
 	if strings.HasPrefix(key, base.SyncDocPrefix) {
 		// Ignore all DCP checkpoints no matter config group ID
-		if strings.HasPrefix(key, base.DCPCheckpointRootPrefix) {
-			return false
-		}
-		return true
+		return !strings.HasPrefix(key, base.DCPCheckpointRootPrefix)
 	}
 
 	// If this is a delete and there are no xattrs (no existing SG revision), we shouldn't import
