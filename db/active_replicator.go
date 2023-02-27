@@ -343,7 +343,7 @@ func LoadReplicationStatus(dbContext *DatabaseContext, replicationID string) (st
 		ID: replicationID,
 	}
 
-	pullCheckpoint, _ := getLocalCheckpoint(dbContext, PullCheckpointID(replicationID))
+	pullCheckpoint, _ := getLocalCheckpoint(dbContext.MetadataStore, PullCheckpointID(replicationID), int(dbContext.Options.LocalDocExpirySecs))
 	if pullCheckpoint != nil {
 		if pullCheckpoint.Status != nil {
 			status.PullReplicationStatus = pullCheckpoint.Status.PullReplicationStatus
@@ -355,7 +355,7 @@ func LoadReplicationStatus(dbContext *DatabaseContext, replicationID string) (st
 		}
 	}
 
-	pushCheckpoint, _ := getLocalCheckpoint(dbContext, PushCheckpointID(replicationID))
+	pushCheckpoint, _ := getLocalCheckpoint(dbContext.MetadataStore, PushCheckpointID(replicationID), int(dbContext.Options.LocalDocExpirySecs))
 	if pushCheckpoint != nil {
 		if pushCheckpoint.Status != nil {
 			status.PushReplicationStatus = pushCheckpoint.Status.PushReplicationStatus

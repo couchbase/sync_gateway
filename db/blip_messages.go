@@ -80,9 +80,10 @@ func (rq *SubChangesRequest) marshalBLIPRequest() (*blip.Message, error) {
 
 // SetSGR2CheckpointRequest is a strongly typed 'setCheckpoint' request for SG-Replicate 2.
 type SetSGR2CheckpointRequest struct {
-	Client     string  // Client is the unique ID of client checkpoint to retrieve
-	RevID      *string // RevID of the previous checkpoint, if known.
-	Checkpoint Body    // Checkpoint is the actual checkpoint body we're sending.
+	Client        string  // Client is the unique ID of client checkpoint to retrieve
+	RevID         *string // RevID of the previous checkpoint, if known.
+	Checkpoint    Body    // Checkpoint is the actual checkpoint body we're sending.
+	CollectionIdx *int
 
 	msg *blip.Message
 }
@@ -110,6 +111,8 @@ func (rq *SetSGR2CheckpointRequest) marshalBLIPRequest() (*blip.Message, error) 
 
 	setProperty(msg.Properties, SetCheckpointClient, rq.Client)
 	setOptionalProperty(msg.Properties, SetCheckpointRev, rq.RevID)
+
+	setOptionalProperty(msg.Properties, BlipCollection, rq.CollectionIdx)
 
 	if err := msg.SetJSONBody(rq.Checkpoint); err != nil {
 		return nil, err
@@ -150,7 +153,8 @@ func (rq *SetSGR2CheckpointRequest) Response() (*SetSGR2CheckpointResponse, erro
 
 // GetSGR2CheckpointRequest is a strongly typed 'getCheckpoint' request for SG-Replicate 2.
 type GetSGR2CheckpointRequest struct {
-	Client string // Client is the unique ID of client checkpoint to retrieve
+	Client        string // Client is the unique ID of client checkpoint to retrieve
+	CollectionIdx *int   // If set, specifies the collection index of the replicator
 
 	msg *blip.Message
 }
@@ -174,6 +178,7 @@ func (rq *GetSGR2CheckpointRequest) marshalBLIPRequest() *blip.Message {
 	msg.SetProfile(MessageGetCheckpoint)
 
 	setProperty(msg.Properties, GetCheckpointClient, rq.Client)
+	setOptionalProperty(msg.Properties, BlipCollection, rq.CollectionIdx)
 
 	return msg
 }

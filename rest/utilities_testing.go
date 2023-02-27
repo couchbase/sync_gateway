@@ -2176,6 +2176,7 @@ func NewHTTPTestServerOnListener(h http.Handler, l net.Listener) *httptest.Serve
 }
 
 func WaitAndRequireCondition(t *testing.T, fn func() bool, failureMsgAndArgs ...interface{}) {
+	t.Helper()
 	t.Log("starting waitAndRequireCondition")
 	for i := 0; i <= 20; i++ {
 		if i == 20 {
@@ -2189,6 +2190,7 @@ func WaitAndRequireCondition(t *testing.T, fn func() bool, failureMsgAndArgs ...
 }
 
 func WaitAndAssertCondition(t *testing.T, fn func() bool, failureMsgAndArgs ...interface{}) {
+	t.Helper()
 	t.Log("starting WaitAndAssertCondition")
 	for i := 0; i <= 20; i++ {
 		if i == 20 {
@@ -2202,6 +2204,7 @@ func WaitAndAssertCondition(t *testing.T, fn func() bool, failureMsgAndArgs ...i
 }
 
 func WaitAndAssertConditionTimeout(t *testing.T, timeout time.Duration, fn func() bool, failureMsgAndArgs ...interface{}) {
+	t.Helper()
 	start := time.Now()
 	tick := time.NewTicker(timeout / 20)
 	defer tick.Stop()
@@ -2216,6 +2219,7 @@ func WaitAndAssertConditionTimeout(t *testing.T, timeout time.Duration, fn func(
 }
 
 func WaitAndAssertBackgroundManagerState(t testing.TB, expected db.BackgroundProcessState, getStateFunc func(t testing.TB) db.BackgroundProcessState) bool {
+	t.Helper()
 	err, actual := base.RetryLoop(t.Name()+"-WaitAndAssertBackgroundManagerState", func() (shouldRetry bool, err error, value interface{}) {
 		actual := getStateFunc(t)
 		return expected != actual, nil, actual
@@ -2224,6 +2228,7 @@ func WaitAndAssertBackgroundManagerState(t testing.TB, expected db.BackgroundPro
 }
 
 func WaitAndAssertBackgroundManagerExpiredHeartbeat(t testing.TB, bm *db.BackgroundManager) bool {
+	t.Helper()
 	err, b := base.RetryLoop(t.Name()+"-assertNoHeartbeatDoc", func() (shouldRetry bool, err error, value interface{}) {
 		b, err := bm.GetHeartbeatDoc(t)
 		return !base.IsDocNotFoundError(err), err, b

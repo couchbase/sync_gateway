@@ -405,11 +405,6 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions
 		return nil
 	}
 
-	// If replicator calls sendChanges directly, no prior blipHandlers might be called to initialize bh.collections.
-	if bh.collectionIdx == nil {
-		bh.collections.setNonCollectionAware(&blipSyncCollectionContext{dbCollection: bh.collection.DatabaseCollection})
-	}
-
 	// Create a distinct database instance for changes, to avoid races between reloadUser invocation in changes.go
 	// and BlipSyncContext user access.
 	changesDb, err := bh.copyDatabaseCollectionWithUser(bh.collectionIdx)
@@ -600,14 +595,19 @@ func (bh *blipHandler) handleChanges(rq *blip.Message) error {
 		return err
 	}
 
+	collectionCtx, err := bh.collections.get(bh.collectionIdx)
+	if err != nil {
+		return err
+	}
+
 	bh.logEndpointEntry(rq.Profile(), fmt.Sprintf("#Changes:%d", len(changeList)))
 	if len(changeList) == 0 {
 		// An empty changeList is sent when a one-shot replication sends its final changes
 		// message, or a continuous replication catches up *for the first time*.
 		// Note that this doesn't mean that rev messages associated with previous changes
 		// messages have been fully processed
-		if bh.emptyChangesMessageCallback != nil {
-			bh.emptyChangesMessageCallback()
+		if collectionCtx.emptyChangesMessageCallback != nil {
+			collectionCtx.emptyChangesMessageCallback()
 		}
 		return nil
 	}
@@ -669,7 +669,7 @@ func (bh *blipHandler) handleChanges(rq *blip.Message) error {
 		if missing == nil {
 			// already have this rev, tell the peer to skip sending it
 			output.Write([]byte("0"))
-			if bh.sgr2PullAlreadyKnownSeqsCallback != nil {
+			if collectionCtx.sgr2PullAlreadyKnownSeqsCallback != nil {
 				seq, err := ParseJSONSequenceID(seqStr(change[0]))
 				if err != nil {
 					base.WarnfCtx(bh.loggingCtx, "Unable to parse known sequence %q for %q / %q: %v", change[0], base.UD(docID), revID, err)
@@ -691,7 +691,7 @@ func (bh *blipHandler) handleChanges(rq *blip.Message) error {
 			}
 
 			// skip parsing seqno if we're not going to use it (no callback defined)
-			if bh.sgr2PullAddExpectedSeqsCallback != nil {
+			if collectionCtx.sgr2PullAddExpectedSeqsCallback != nil {
 				seq, err := ParseJSONSequenceID(seqStr(change[0]))
 				if err != nil {
 					// We've already asked for the doc/rev for the sequence so assume we're going to receive it... Just log this and carry on
@@ -713,11 +713,11 @@ func (bh *blipHandler) handleChanges(rq *blip.Message) error {
 	response.SetCompressed(true)
 	response.SetBody(output.Bytes())
 
-	if bh.sgr2PullAddExpectedSeqsCallback != nil {
-		bh.sgr2PullAddExpectedSeqsCallback(expectedSeqs)
+	if collectionCtx.sgr2PullAddExpectedSeqsCallback != nil {
+		collectionCtx.sgr2PullAddExpectedSeqsCallback(expectedSeqs)
 	}
-	if bh.sgr2PullAlreadyKnownSeqsCallback != nil {
-		bh.sgr2PullAlreadyKnownSeqsCallback(alreadyKnownSeqs...)
+	if collectionCtx.sgr2PullAlreadyKnownSeqsCallback != nil {
+		collectionCtx.sgr2PullAlreadyKnownSeqsCallback(alreadyKnownSeqs...)
 	}
 
 	return nil
@@ -852,12 +852,17 @@ func (bh *blipHandler) handleNoRev(rq *blip.Message) error {
 	base.InfofCtx(bh.loggingCtx, base.KeySyncMsg, "%s: norev for doc %q / %q seq:%q - error: %q - reason: %q",
 		rq.String(), base.UD(docID), revID, seqStr, rq.Properties[NorevMessageError], rq.Properties[NorevMessageReason])
 
-	if bh.sgr2PullProcessedSeqCallback != nil {
+	collectionCtx, err := bh.collections.get(bh.collectionIdx)
+	if err != nil {
+		return err
+	}
+
+	if collectionCtx.sgr2PullProcessedSeqCallback != nil {
 		seq, err := ParseJSONSequenceID(seqStr)
 		if err != nil {
 			base.WarnfCtx(bh.loggingCtx, "Unable to parse sequence %q from norev message: %w - not tracking for checkpointing", seqStr, err)
 		} else {
-			bh.sgr2PullProcessedSeqCallback(&seq, IDAndRev{DocID: docID, RevID: revID})
+			collectionCtx.sgr2PullProcessedSeqCallback(&seq, IDAndRev{DocID: docID, RevID: revID})
 		}
 	}
 
@@ -928,14 +933,20 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 			if err := bh.collection.Purge(bh.loggingCtx, docID); err != nil {
 				return err
 			}
+
+			collectionCtx, err := bh.collections.get(bh.collectionIdx)
+			if err != nil {
+				return err
+			}
+
 			stats.docsPurgedCount.Add(1)
-			if bh.sgr2PullProcessedSeqCallback != nil {
+			if collectionCtx.sgr2PullProcessedSeqCallback != nil {
 				seqStr := rq.Properties[RevMessageSequence]
 				seq, err := ParseJSONSequenceID(seqStr)
 				if err != nil {
 					base.WarnfCtx(bh.loggingCtx, "Unable to parse sequence %q from rev message: %w - not tracking for checkpointing", seqStr, err)
 				} else {
-					bh.sgr2PullProcessedSeqCallback(&seq, IDAndRev{DocID: docID, RevID: revID})
+					collectionCtx.sgr2PullProcessedSeqCallback(&seq, IDAndRev{DocID: docID, RevID: revID})
 				}
 			}
 			return nil
@@ -1145,13 +1156,18 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 		return err
 	}
 
-	if bh.sgr2PullProcessedSeqCallback != nil {
+	collectionCtx, err := bh.collections.get(bh.collectionIdx)
+	if err != nil {
+		return err
+	}
+
+	if collectionCtx.sgr2PullProcessedSeqCallback != nil {
 		seqProperty := rq.Properties[RevMessageSequence]
 		seq, err := ParseJSONSequenceID(seqProperty)
 		if err != nil {
 			base.WarnfCtx(bh.loggingCtx, "Unable to parse sequence %q from rev message: %w - not tracking for checkpointing", seqProperty, err)
 		} else {
-			bh.sgr2PullProcessedSeqCallback(&seq, IDAndRev{DocID: docID, RevID: revID})
+			collectionCtx.sgr2PullProcessedSeqCallback(&seq, IDAndRev{DocID: docID, RevID: revID})
 		}
 	}
 

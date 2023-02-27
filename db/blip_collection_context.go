@@ -17,8 +17,16 @@ import (
 
 // blipSyncCollectionContext stores information about a single collection for a BlipSyncContext
 type blipSyncCollectionContext struct {
-	dbCollection     *DatabaseCollection
-	activeSubChanges base.AtomicBool // Flag for whether there is a subChanges subscription currently active.  Atomic access
+	dbCollection                     *DatabaseCollection
+	activeSubChanges                 base.AtomicBool                                // Flag for whether there is a subChanges subscription currently active.  Atomic access
+	sgr2PullAddExpectedSeqsCallback  func(expectedSeqs map[IDAndRev]SequenceID)     // sgr2PullAddExpectedSeqsCallback is called after successfully handling an incoming changes message
+	sgr2PullProcessedSeqCallback     func(remoteSeq *SequenceID, idAndRev IDAndRev) // sgr2PullProcessedSeqCallback is called after successfully handling an incoming rev message
+	sgr2PullAlreadyKnownSeqsCallback func(alreadyKnownSeqs ...SequenceID)           // sgr2PullAlreadyKnownSeqsCallback is called to mark the sequences as being immediately processed
+	sgr2PushAddExpectedSeqsCallback  func(expectedSeqs ...SequenceID)               // sgr2PushAddExpectedSeqsCallback is called after sync gateway has sent a revision, but is still awaiting an acknowledgement
+	sgr2PushProcessedSeqCallback     func(remoteSeq SequenceID)                     // sgr2PushProcessedSeqCallback is called after receiving acknowledgement of a sent revision
+	sgr2PushAlreadyKnownSeqsCallback func(alreadyKnownSeqs ...SequenceID)           // sgr2PushAlreadyKnownSeqsCallback is called to mark the sequence as being immediately processed
+	emptyChangesMessageCallback      func()                                         // emptyChangesMessageCallback is called when an empty changes message is received
+
 }
 
 // blipCollections is a container for all collections blip is aware of.
