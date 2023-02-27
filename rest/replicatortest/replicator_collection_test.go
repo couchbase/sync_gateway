@@ -25,9 +25,11 @@ import (
 // TestActiveReplicatorMultiCollection is a test to get as much coverage of collections in ISGR as possible.
 // Other tests can be more targeted if necessary for quicker/easier regression diagnosis.
 // Summary:
-//   - Starts 2 RestTesters, one active, and one passive each with a set of collections.
+//   - Starts 2 RestTesters, one active, and one passive each with a set of 3 collections.
 //   - Creates documents on both sides in all collections with identifying information in the document bodies.
 //   - Uses an ActiveReplicator configured for push and pull to ensure that all documents are replicated both ways as expected.
+//   - The replicator only replicates two of three collections, so we also check that we're filtering as expected.
+//   - A future enhancement to the test can be made to ensure that the replication collections are remapped using collections_remote.
 func TestActiveReplicatorMultiCollection(t *testing.T) {
 
 	base.RequireNumTestBuckets(t, 2)
@@ -37,6 +39,8 @@ func TestActiveReplicatorMultiCollection(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelTrace, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)
 
 	const (
+		rt1DbName            = "rt1_active"
+		rt2DbName            = "rt2_passive"
 		numCollections       = 3
 		numDocsPerCollection = 3
 	)
@@ -45,7 +49,7 @@ func TestActiveReplicatorMultiCollection(t *testing.T) {
 	rt2 := rest.NewRestTesterMultipleCollections(t, &rest.RestTesterConfig{
 		DatabaseConfig: &rest.DatabaseConfig{
 			DbConfig: rest.DbConfig{
-				Name: "rt2_passive",
+				Name: rt2DbName,
 			},
 		}}, numCollections)
 	defer rt2.Close()
@@ -60,7 +64,7 @@ func TestActiveReplicatorMultiCollection(t *testing.T) {
 	rt1 := rest.NewRestTesterMultipleCollections(t, &rest.RestTesterConfig{
 		DatabaseConfig: &rest.DatabaseConfig{
 			DbConfig: rest.DbConfig{
-				Name: "rt1_active",
+				Name: rt1DbName,
 			},
 		}}, numCollections)
 	defer rt1.Close()
@@ -71,13 +75,13 @@ func TestActiveReplicatorMultiCollection(t *testing.T) {
 	activeKeyspace2 := rt1Collections[1].ScopeName + "." + rt1Collections[1].Name
 	activeKeyspace3 := rt1Collections[2].ScopeName + "." + rt1Collections[2].Name
 
-	// TODO CBG-2319 CBG-2320: Force both sets of keyspaces to match (at least until mapping is implemented)
-	assert.Equal(t, activeKeyspace1, passiveKeyspace1)
-	assert.Equal(t, activeKeyspace2, passiveKeyspace2)
-	assert.Equal(t, activeKeyspace3, passiveKeyspace3)
+	// TODO CBG-2320: Force both sets of keyspaces to match (at least until mapping is implemented so we can support different ones)
+	require.Equal(t, activeKeyspace1, passiveKeyspace1)
+	require.Equal(t, activeKeyspace2, passiveKeyspace2)
+	require.Equal(t, activeKeyspace3, passiveKeyspace3)
 
 	var resp *rest.TestResponse
-	// create docs
+	// create docs in all collections
 	for keyspaceNum := 1; keyspaceNum <= numCollections; keyspaceNum++ {
 		for j := 1; j <= numDocsPerCollection; j++ {
 			resp = rt1.SendAdminRequest(http.MethodPut,
@@ -101,13 +105,18 @@ func TestActiveReplicatorMultiCollection(t *testing.T) {
 	srv := httptest.NewServer(rt2.TestAdminHandler())
 	defer srv.Close()
 
-	passiveDBURL, err := url.Parse(srv.URL + "/" + rt2.GetDatabase().Name)
+	passiveDBURL, err := url.Parse(srv.URL + "/" + rt2DbName)
 	require.NoError(t, err)
 
 	stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, nil, nil)
 	require.NoError(t, err)
 	dbstats, err := stats.DBReplicatorStats(t.Name())
 	require.NoError(t, err)
+
+	localCollections := []string{activeKeyspace1, activeKeyspace3}
+	nonReplicatedLocalCollections := []string{activeKeyspace2}
+	remoteCollections := []string{passiveKeyspace2, ""}
+	nonReplicatedRemoteCollections := []string{passiveKeyspace2} // TODO: Change to keyspace one when remapping is implemented
 
 	ctx1 := rt1.Context()
 	ar := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
@@ -121,51 +130,53 @@ func TestActiveReplicatorMultiCollection(t *testing.T) {
 		Continuous:          true,
 		ReplicationStatsMap: dbstats,
 		CollectionsEnabled:  true,
-		// TODO: CBG-2319 - Enable once filtering is implemented
-		// KeyspaceMap: map[string]string{
-		// 	activeKeyspace1: passiveKeyspace2,
-		// 	activeKeyspace2: passiveKeyspace3,
-		// },
+		CollectionsLocal:    localCollections,
+		CollectionsRemote:   remoteCollections,
 	})
 
 	assert.Equal(t, "", ar.GetStatus().LastSeqPull)
 
 	// Start the replicator (implicit connect)
 	require.NoError(t, ar.Start(ctx1))
-	defer func() { assert.NoError(t, ar.Stop()) }()
 
-	// check all docs were pushed and pulled
-	for keyspaceNum := 1; keyspaceNum <= numCollections; keyspaceNum++ {
+	// check all expected docs were pushed and pulled
+	for _, localCollection := range localCollections {
+		// TODO: CBG-2320 remap local to remote
+		// remoteCollection := remoteCollections[i]
+		remoteCollection := localCollection
+
 		// since we replicated a full collection of docs into another, expect double the amount in each now
 		expectedNumDocs := numDocsPerCollection * 2
 
-		changes, err := rt1.WaitForChanges(expectedNumDocs, fmt.Sprintf("/{{.keyspace%d}}/_changes", keyspaceNum), "", true)
+		localKeyspace := rt1DbName + "." + localCollection
+		changes, err := rt1.WaitForChanges(expectedNumDocs, fmt.Sprintf("/%s/_changes", localKeyspace), "", true)
 		require.NoError(t, err)
 		assert.Len(t, changes.Results, expectedNumDocs)
 
-		changes, err = rt2.WaitForChanges(expectedNumDocs, fmt.Sprintf("/{{.keyspace%d}}/_changes", keyspaceNum), "", true)
+		remoteKeyspace := rt2DbName + "." + remoteCollection
+		changes, err = rt2.WaitForChanges(expectedNumDocs, fmt.Sprintf("/%s/_changes", remoteKeyspace), "", true)
 		require.NoError(t, err)
 		assert.Len(t, changes.Results, expectedNumDocs)
 
 		for j := 1; j <= numDocsPerCollection; j++ {
 			// check rt1 for passive docs (pull)
 			resp = rt1.SendAdminRequest(http.MethodGet,
-				fmt.Sprintf("/{{.keyspace%d}}/passive-doc%d", keyspaceNum, j), "")
+				fmt.Sprintf("/%s/passive-doc%d", localKeyspace, j), "")
 			if rest.AssertStatus(t, resp, http.StatusOK) {
 				var docBody db.Body
 				require.NoError(t, docBody.Unmarshal(resp.BodyBytes()))
 				assert.Equal(t, "passive", docBody["source"])
-				assert.Equal(t, rt2Collections[keyspaceNum-1].ScopeName+"."+rt2Collections[keyspaceNum-1].Name, docBody["sourceKeyspace"])
+				assert.Equal(t, remoteCollection, docBody["sourceKeyspace"])
 			}
 
 			// check rt2 for active docs (push)
 			resp = rt2.SendAdminRequest(http.MethodGet,
-				fmt.Sprintf("/{{.keyspace%d}}/active-doc%d", keyspaceNum, j), "")
+				fmt.Sprintf("/%s/active-doc%d", remoteKeyspace, j), "")
 			if rest.AssertStatus(t, resp, http.StatusOK) {
 				var docBody db.Body
 				require.NoError(t, docBody.Unmarshal(resp.BodyBytes()))
 				assert.Equal(t, "active", docBody["source"])
-				assert.Equal(t, rt1Collections[keyspaceNum-1].ScopeName+"."+rt1Collections[keyspaceNum-1].Name, docBody["sourceKeyspace"])
+				assert.Equal(t, localCollection, docBody["sourceKeyspace"])
 			}
 		}
 	}
@@ -205,49 +216,73 @@ func TestActiveReplicatorMultiCollection(t *testing.T) {
 	err = ar.Start(ctx1)
 	require.NoError(t, err)
 
-	// check all docs were pushed and pulled
-	for keyspaceNum := 1; keyspaceNum <= numCollections; keyspaceNum++ {
+	// check all expected docs were pushed and pulled
+	for _, localCollection := range localCollections {
+		// TODO: CBG-2320 remap local to remote
+		// remoteCollection := remoteCollections[i]
+		remoteCollection := localCollection
+
 		// since we replicated a full collection of docs into another, expect double the amount in each now
 		expectedNumDocs := (numDocsPerCollection + 1) * 2
 
-		changes, err := rt1.WaitForChanges(expectedNumDocs, fmt.Sprintf("/{{.keyspace%d}}/_changes", keyspaceNum), "", true)
+		localKeyspace := rt1DbName + "." + localCollection
+		changes, err := rt1.WaitForChanges(expectedNumDocs, fmt.Sprintf("/%s/_changes", localKeyspace), "", true)
 		require.NoError(t, err)
 		assert.Len(t, changes.Results, expectedNumDocs)
 
-		changes, err = rt2.WaitForChanges(expectedNumDocs, fmt.Sprintf("/{{.keyspace%d}}/_changes", keyspaceNum), "", true)
+		remoteKeyspace := rt2DbName + "." + remoteCollection
+		changes, err = rt2.WaitForChanges(expectedNumDocs, fmt.Sprintf("/%s/_changes", remoteKeyspace), "", true)
 		require.NoError(t, err)
 		assert.Len(t, changes.Results, expectedNumDocs)
 
 		// check rt1 for passive docs (pull)
 		resp = rt1.SendAdminRequest(http.MethodGet,
-			fmt.Sprintf("/{{.keyspace%d}}/passive-doc%d", keyspaceNum, numDocsPerCollection+1), "")
+			fmt.Sprintf("/%s/passive-doc%d", localKeyspace, numDocsPerCollection+1), "")
 		if rest.AssertStatus(t, resp, http.StatusOK) {
 			var docBody db.Body
 			require.NoError(t, docBody.Unmarshal(resp.BodyBytes()))
 			assert.Equal(t, "passive", docBody["source"])
-			assert.Equal(t, rt2Collections[keyspaceNum-1].ScopeName+"."+rt2Collections[keyspaceNum-1].Name, docBody["sourceKeyspace"])
+			assert.Equal(t, remoteCollection, docBody["sourceKeyspace"])
 		}
 
 		// check rt2 for active docs (push)
 		resp = rt2.SendAdminRequest(http.MethodGet,
-			fmt.Sprintf("/{{.keyspace%d}}/active-doc%d", keyspaceNum, numDocsPerCollection+1), "")
+			fmt.Sprintf("/%s/active-doc%d", remoteKeyspace, numDocsPerCollection+1), "")
 		if rest.AssertStatus(t, resp, http.StatusOK) {
 			var docBody db.Body
 			require.NoError(t, docBody.Unmarshal(resp.BodyBytes()))
 			assert.Equal(t, "active", docBody["source"])
-			assert.Equal(t, rt1Collections[keyspaceNum-1].ScopeName+"."+rt1Collections[keyspaceNum-1].Name, docBody["sourceKeyspace"])
+			assert.Equal(t, localCollection, docBody["sourceKeyspace"])
 		}
 	}
+
+	// and check we _didn't_ replicate docs in the absent collection
+	for _, localCollection := range nonReplicatedLocalCollections {
+
+		expectedNumDocs := numDocsPerCollection + 1 // we created a set of 3 docs (plus one later), but didn't replicate any in or out of here...
+
+		localKeyspace := rt1DbName + "." + localCollection
+		changes, err := rt1.WaitForChanges(expectedNumDocs, fmt.Sprintf("/%s/_changes", localKeyspace), "", true)
+		require.NoError(t, err)
+		assert.Len(t, changes.Results, expectedNumDocs)
+	}
+	for _, remoteCollection := range nonReplicatedRemoteCollections {
+
+		expectedNumDocs := numDocsPerCollection + 1 // we created a set of 3 docs (plus one later), but didn't replicate any in or out of here...
+
+		remoteKeyspace := rt2DbName + "." + remoteCollection
+		changes, err := rt2.WaitForChanges(expectedNumDocs, fmt.Sprintf("/%s/_changes", remoteKeyspace), "", true)
+		require.NoError(t, err)
+		assert.Len(t, changes.Results, expectedNumDocs)
+	}
+
+	require.NoError(t, ar.Stop())
 
 	checkedPush := ar.GetStatus().DocsCheckedPush
 	checkedPull := ar.GetStatus().DocsCheckedPull
 
 	// each push/pull replication should have pulled the same set of changes from each other (which is twice the number of total docs)
-	assert.Equal(t, int64(numCollections*(numDocsPerCollection+1)*2), checkedPush)
-	assert.Equal(t, int64(numCollections*(numDocsPerCollection+1)*2), checkedPull)
-
-	// time.Sleep(time.Hour)
-
-	// TODO CBG-2319: Ensure that ks3 was not pushed to passive, and only ks2 and ks3 were pulled
-	// TODO CBG-2320: Ensure that KeyspaceMap is working by checking each doc has been replicated to the mapped collection.
+	// TODO: CBG-2737 This stat is slightly flaky - is checkpointer running consistently? Should we switch to manual checkpointing?
+	assert.Equal(t, int64(len(localCollections)*(numDocsPerCollection+1)*2), checkedPush)
+	assert.Equal(t, int64(len(localCollections)*(numDocsPerCollection+1)*2), checkedPull)
 }

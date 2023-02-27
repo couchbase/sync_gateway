@@ -23,13 +23,23 @@ func (arc *activeReplicatorCommon) _initCollections() ([]replicationCheckpoint, 
 		getCollectionsCheckpointIDs []string
 	)
 
-	if len(arc.config.CollectionsLocal) != len(arc.config.CollectionsRemote) {
-		return nil, fmt.Errorf("local and remote collections must be the same length... had %d and %d", len(arc.config.CollectionsLocal), len(arc.config.CollectionsRemote))
+	if remoteLen := len(arc.config.CollectionsRemote); remoteLen > 0 {
+		if localLen := len(arc.config.CollectionsLocal); localLen != remoteLen {
+			return nil, fmt.Errorf("local and remote collections must be the same length... had %d and %d", localLen, remoteLen)
+		}
 	}
 
 	if arc.config.CollectionsLocal != nil {
-		// TODO: CBG-2319 - Implement filtering
-		return nil, fmt.Errorf("CBG-2319 not yet implemented to pass a list of collections to replicate")
+		for _, scopeAndCollectionName := range arc.config.CollectionsLocal {
+			scopeName, collectionName, err := parseScopeAndCollection(scopeAndCollectionName)
+			if err != nil {
+				return nil, err
+			} else if scopeName == nil || collectionName == nil {
+				return nil, fmt.Errorf("scope and collection name must be specified: %q - %v", scopeAndCollectionName, arc.config.CollectionsLocal)
+			}
+			getCollectionsKeyspaces = append(getCollectionsKeyspaces, base.ScopeAndCollectionName{Scope: *scopeName, Collection: *collectionName})
+			getCollectionsCheckpointIDs = append(getCollectionsCheckpointIDs, arc.CheckpointID)
+		}
 	} else {
 		// collections to replicate wasn't set - so build a full set based on local database
 		for _, dbCollection := range arc.blipSyncContext.blipContextDb.CollectionByID {
