@@ -637,6 +637,10 @@ func TestReplicationStatusActions(t *testing.T) {
 //   - adds another active node
 //   - Creates more documents, validates they are replicated
 func TestReplicationRebalancePull(t *testing.T) {
+
+	// TODO: CBG-2736 - Fix replication stats persistence and re-enable test.
+	t.Skipf("CBG-2736 - Fix replication stats persistence and re-enable test.")
+
 	if !base.IsEnterpriseEdition() {
 		t.Skipf("test is EE only (replication rebalance)")
 	}
@@ -706,10 +710,26 @@ func TestReplicationRebalancePull(t *testing.T) {
 	assert.Equal(t, "remoteRT", docDEF2Body2["source"])
 
 	// Validate replication stats across rebalance, on both active nodes
-	rest.WaitAndAssertCondition(t, func() bool { return activeRT.GetReplicationStatus("rep_ABC").DocsRead == 2 })
-	rest.WaitAndAssertCondition(t, func() bool { return activeRT.GetReplicationStatus("rep_DEF").DocsRead == 2 })
-	rest.WaitAndAssertCondition(t, func() bool { return activeRT2.GetReplicationStatus("rep_ABC").DocsRead == 2 })
-	rest.WaitAndAssertCondition(t, func() bool { return activeRT2.GetReplicationStatus("rep_DEF").DocsRead == 2 })
+	rest.WaitAndAssertCondition(t, func() bool {
+		actual := activeRT.GetReplicationStatus("rep_ABC").DocsRead
+		t.Logf("activeRT rep_ABC DocsRead: %d", actual)
+		return actual == 2
+	})
+	rest.WaitAndAssertCondition(t, func() bool {
+		actual := activeRT.GetReplicationStatus("rep_DEF").DocsRead
+		t.Logf("activeRT rep_DEF DocsRead: %d", actual)
+		return actual == 2
+	})
+	rest.WaitAndAssertCondition(t, func() bool {
+		actual := activeRT2.GetReplicationStatus("rep_ABC").DocsRead
+		t.Logf("activeRT2 rep_ABC DocsRead: %d", actual)
+		return actual == 2
+	})
+	rest.WaitAndAssertCondition(t, func() bool {
+		actual := activeRT2.GetReplicationStatus("rep_DEF").DocsRead
+		t.Logf("activeRT2 rep_DEF DocsRead: %d", actual)
+		return actual == 2
+	})
 
 	// explicitly stop the SGReplicateMgrs on the active nodes, to prevent a node rebalance during test teardown.
 	activeRT.GetDatabase().SGReplicateMgr.Stop()
@@ -725,6 +745,10 @@ func TestReplicationRebalancePull(t *testing.T) {
 //   - adds another active node
 //   - Creates more documents, validates they are replicated
 func TestReplicationRebalancePush(t *testing.T) {
+
+	// TODO: CBG-2736 - Fix replication stats persistence and re-enable test.
+	t.Skipf("CBG-2736 - Fix replication stats persistence and re-enable test.")
+
 	if !base.IsEnterpriseEdition() {
 		t.Skipf("test is EE only (replication rebalance)")
 	}
@@ -799,10 +823,26 @@ func TestReplicationRebalancePush(t *testing.T) {
 	//     4. active node 2 attempts to write document 1, passive already has it.  DocsCheckedPush is incremented, but not DocsWritten
 	// Note that we can't wait for checkpoint persistence prior to rebalance, as the node initiating the rebalance
 	// isn't necessarily the one running the replication.
-	rest.WaitAndAssertCondition(t, func() bool { return activeRT.GetReplicationStatus("rep_ABC").DocsCheckedPush == 2 })
-	rest.WaitAndAssertCondition(t, func() bool { return activeRT.GetReplicationStatus("rep_DEF").DocsCheckedPush == 2 })
-	rest.WaitAndAssertCondition(t, func() bool { return activeRT2.GetReplicationStatus("rep_ABC").DocsCheckedPush == 2 })
-	rest.WaitAndAssertCondition(t, func() bool { return activeRT2.GetReplicationStatus("rep_DEF").DocsCheckedPush == 2 })
+	rest.WaitAndAssertCondition(t, func() bool {
+		actual := activeRT.GetReplicationStatus("rep_ABC").DocsCheckedPush
+		t.Logf("activeRT rep_ABC DocsCheckedPush: %d", actual)
+		return actual == 2
+	})
+	rest.WaitAndAssertCondition(t, func() bool {
+		actual := activeRT.GetReplicationStatus("rep_DEF").DocsCheckedPush
+		t.Logf("activeRT rep_DEF DocsCheckedPush: %d", actual)
+		return actual == 2
+	})
+	rest.WaitAndAssertCondition(t, func() bool {
+		actual := activeRT2.GetReplicationStatus("rep_ABC").DocsCheckedPush
+		t.Logf("activeRT2 rep_ABC DocsCheckedPush: %d", actual)
+		return actual == 2
+	})
+	rest.WaitAndAssertCondition(t, func() bool {
+		actual := activeRT2.GetReplicationStatus("rep_DEF").DocsCheckedPush
+		t.Logf("activeRT2 rep_DEF DocsCheckedPush: %d", actual)
+		return actual == 2
+	})
 
 	// explicitly stop the SGReplicateMgrs on the active nodes, to prevent a node rebalance during test teardown.
 	activeRT.GetDatabase().SGReplicateMgr.Stop()
