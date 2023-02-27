@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -277,6 +278,8 @@ func TestMultiCollectionImportDynamicAddCollection(t *testing.T) {
 	scopesConfigJSON, err := json.Marshal(scopesConfig)
 	require.NoError(t, err)
 
+	dbName := "db"
+
 	dbConfig := `{
 		"bucket": "%s",
 		"num_index_replicas": 0,
@@ -284,10 +287,11 @@ func TestMultiCollectionImportDynamicAddCollection(t *testing.T) {
 		"scopes": %s,
 		"import_docs": true
 	}`
-	response := rt.SendAdminRequest(http.MethodPut, "/db/", fmt.Sprintf(dbConfig, testBucket.GetName(), base.TestUseXattrs(), string(scopesConfigJSON)))
+	response := rt.SendAdminRequest(http.MethodPut, "/"+dbName+"/", fmt.Sprintf(dbConfig, testBucket.GetName(), base.TestUseXattrs(), string(scopesConfigJSON)))
 	rest.RequireStatus(t, response, http.StatusCreated)
 
 	require.Equal(t, 1, len(rt.GetDbCollections()))
+	require.Equal(t, strings.ReplaceAll(dataStore1.GetName(), testBucket.GetName(), dbName), rt.GetSingleKeyspace())
 
 	// Wait for auto-import to work
 	_, err = rt.WaitForChanges(docCount, "/{{.keyspace}}/_changes", "", true)
@@ -327,7 +331,7 @@ func TestMultiCollectionImportDynamicAddCollection(t *testing.T) {
 		}
 	}
 
-	require.Equal(t, int64(docCount*len(dataStores)), rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value())
+	require.Equal(t, uint64(docCount), rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value())
 }
 
 func requireSyncData(rt *rest.RestTester, dataStore base.DataStore, docName string, hasSyncData bool) {

@@ -12,8 +12,10 @@ package base
 
 import (
 	"context"
+	"crypto/sha256"
 	"crypto/tls"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -124,7 +126,7 @@ func createCBGTIndex(ctx context.Context, c *CbgtContext, dbName string, configG
 		return err
 	}
 
-	indexParams, err := cbgtIndexParams(ImportDestKey(dbName))
+	indexParams, err := cbgtIndexParams(ImportDestKey(dbName, scope, collections))
 	if err != nil {
 		return err
 	}
@@ -462,8 +464,13 @@ func (c *CbgtContext) RemoveFeedCredentials(dbName string) {
 }
 
 // Format of dest key for retrieval of import dest from cbgtDestFactories
-func ImportDestKey(dbName string) string {
-	return dbName + "_import"
+func ImportDestKey(dbName string, scope string, collections []string) string {
+	sort.Strings(collections)
+	collectionString := ""
+	for _, collection := range collections {
+		collectionString += fmt.Sprintf("%s.%s:", scope, collection)
+	}
+	return fmt.Sprintf("%s_import_%x", dbName, sha256.Sum256([]byte(collectionString)))
 }
 
 func initCfgCB(bucket Bucket, spec BucketSpec) (*cbgt.CfgCB, error) {

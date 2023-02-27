@@ -13,6 +13,7 @@ package db
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 
 	sgbucket "github.com/couchbase/sg-bucket"
@@ -33,6 +34,7 @@ type importListener struct {
 	cbgtContext      *base.CbgtContext // Handle to cbgt manager,cfg
 	checkpointPrefix string            // DCP checkpoint key prefix
 	loggingCtx       context.Context   // ctx for logging on event callbacks
+	importDestKey    string            // cbgt index name
 }
 
 // NewImportListener constructs an object to start an import feed.
@@ -76,6 +78,8 @@ func (il *importListener) StartImportFeed(dbContext *DatabaseContext) (err error
 			collectionNamesByScope[collection.ScopeName] = append(collectionNamesByScope[collection.ScopeName], collection.Name)
 		}
 	}
+	sort.Strings(collectionNamesByScope[scopeName])
+	il.importDestKey = base.ImportDestKey(il.dbName, scopeName, collectionNamesByScope[scopeName])
 
 	feedArgs := sgbucket.FeedArguments{
 		ID:               base.DCPImportFeedID,
@@ -86,12 +90,12 @@ func (il *importListener) StartImportFeed(dbContext *DatabaseContext) (err error
 		Scopes:           collectionNamesByScope,
 	}
 
-	base.InfofCtx(il.loggingCtx, base.KeyDCP, "Attempting to start import DCP feed %v...", base.MD(base.ImportDestKey(il.dbName)))
+	base.InfofCtx(il.loggingCtx, base.KeyDCP, "Attempting to start import DCP feed %v...", base.MD(il.importDestKey))
 
 	importFeedStatsMap := dbContext.DbStats.Database().ImportFeedMapStats
 
 	// Store the listener in global map for dbname-based retrieval by cbgt prior to index registration
-	base.StoreDestFactory(il.loggingCtx, base.ImportDestKey(il.dbName), il.NewImportDest)
+	base.StoreDestFactory(il.loggingCtx, il.importDestKey, il.NewImportDest)
 
 	// Start DCP mutation feed
 	base.InfofCtx(il.loggingCtx, base.KeyDCP, "Starting DCP import feed for bucket: %q ", base.UD(il.bucket.GetName()))
@@ -222,7 +226,7 @@ func (il *importListener) Stop() {
 			il.cbgtContext.RemoveFeedCredentials(il.dbName)
 
 			// Remove entry from global listener directory
-			base.RemoveDestFactory(base.ImportDestKey(il.dbName))
+			base.RemoveDestFactory(il.importDestKey)
 
 			// TODO: Shut down the cfg (when cfg supports)
 		}
