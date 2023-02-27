@@ -16,6 +16,7 @@ import (
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/rest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -336,6 +337,8 @@ func TestMultiCollectionImportDynamicAddCollection(t *testing.T) {
 }
 
 func TestMultiCollectionImportRemoveCollection(t *testing.T) {
+
+	defer db.SuspendSequenceBatching()()
 	base.SkipImportTestsIfNotEnabled(t)
 	numCollections := 2
 	base.RequireNumTestDataStores(t, numCollections)
@@ -399,8 +402,7 @@ func TestMultiCollectionImportRemoveCollection(t *testing.T) {
 		}
 	}
 
-	// _, err = rt.WaitForChanges(docCount*2, "/{{.keyspace}}/_changes", "", true) // this is correct
-	_, err = rt.WaitForChanges(docCount, "/{{.keyspace}}/_changes", "", true)
+	_, err = rt.WaitForChanges(docCount*2, "/{{.keyspace}}/_changes", "", true)
 	require.NoError(t, err)
 	// there should be 10 documents datastore1_{10..19}
 	require.Equal(t, int64(docCount), rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value())
