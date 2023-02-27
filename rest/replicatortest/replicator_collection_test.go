@@ -138,7 +138,6 @@ func TestActiveReplicatorMultiCollection(t *testing.T) {
 
 	// Start the replicator (implicit connect)
 	require.NoError(t, ar.Start(ctx1))
-	defer func() { assert.NoError(t, ar.Stop()) }()
 
 	// check all expected docs were pushed and pulled
 	for _, localCollection := range localCollections {
@@ -276,6 +275,8 @@ func TestActiveReplicatorMultiCollection(t *testing.T) {
 		require.NoError(t, err)
 		assert.Len(t, changes.Results, expectedNumDocs)
 	}
+
+	require.NoError(t, ar.Stop())
 
 	checkedPush := ar.GetStatus().DocsCheckedPush
 	checkedPull := ar.GetStatus().DocsCheckedPull
