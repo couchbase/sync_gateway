@@ -254,7 +254,11 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 		return base.HTTPErrorf(http.StatusBadRequest, fmt.Sprintf("%s", err))
 	}
 	if !collectionCtx.activeSubChanges.CASRetry(false, true) {
-		return fmt.Errorf("blipHandler for collection %d already has an outstanding subChanges. Cannot open another one", *bh.collectionIdx)
+		collectionStr := "default collection"
+		if bh.collectionIdx != nil {
+			collectionStr = fmt.Sprintf("collection %d", *bh.collectionIdx)
+		}
+		return fmt.Errorf("blipHandler for %s already has an outstanding subChanges. Cannot open another one", collectionStr)
 	}
 
 	// Create ctx if it has been cancelled
