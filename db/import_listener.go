@@ -79,8 +79,11 @@ func (il *importListener) StartImportFeed(dbContext *DatabaseContext) (err error
 		}
 	}
 	sort.Strings(collectionNamesByScope[scopeName])
-	il.importDestKey = base.ImportDestKey(il.dbName, scopeName, collectionNamesByScope[scopeName])
-
+	if dbContext.OnlyDefaultCollection() {
+		il.importDestKey = base.ImportDestKey(il.dbName, "", []string{})
+	} else {
+		il.importDestKey = base.ImportDestKey(il.dbName, scopeName, collectionNamesByScope[scopeName])
+	}
 	feedArgs := sgbucket.FeedArguments{
 		ID:               base.DCPImportFeedID,
 		Backfill:         sgbucket.FeedResume,

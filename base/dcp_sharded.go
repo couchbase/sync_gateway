@@ -467,8 +467,16 @@ func (c *CbgtContext) RemoveFeedCredentials(dbName string) {
 func ImportDestKey(dbName string, scope string, collections []string) string {
 	sort.Strings(collections)
 	collectionString := ""
+	onlyDefault := true
 	for _, collection := range collections {
+		if collection != DefaultCollection {
+			onlyDefault = false
+		}
 		collectionString += fmt.Sprintf("%s.%s:", scope, collection)
+	}
+	// format for _default._default
+	if collectionString == "" || (scope == DefaultScope && onlyDefault) {
+		return fmt.Sprintf("%s_import", dbName)
 	}
 	return fmt.Sprintf("%s_import_%x", dbName, sha256.Sum256([]byte(collectionString)))
 }

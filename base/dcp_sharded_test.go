@@ -35,3 +35,73 @@ func TestIndexName(t *testing.T) {
 		})
 	}
 }
+
+func TestImportDestKey(t *testing.T) {
+	tests := []struct {
+		name        string
+		dbName      string
+		scopeName   string
+		collections []string
+		key         string
+	}{
+		{
+			name:   "no scope or collections",
+			dbName: "foo",
+			key:    "foo_import",
+		},
+		{
+			name:      "scope but only not collection",
+			dbName:    "foo",
+			scopeName: DefaultScope,
+			key:       "foo_import",
+		},
+		{
+			name:        "custom collection, default scope",
+			dbName:      "foo",
+			scopeName:   DefaultScope,
+			collections: []string{"bar"},
+			key:         "foo_import_02e3c10f452b5d9d5051ae25270ae5714471774097ca7e00424b52bf63de1f6d",
+		},
+		{
+			name:        "custom collection, custom scope",
+			dbName:      "foo",
+			scopeName:   "baz",
+			collections: []string{"bar"},
+			key:         "foo_import_3a4b66f3c8aa40608000c82c417f201de305a1994f3048b7734a33205be5e410",
+		},
+		{
+			name:        "custom collections, custom scope",
+			dbName:      "foo",
+			scopeName:   "bar",
+			collections: []string{"baz", "bat"},
+			key:         "foo_import_cc2777dc506c83ef70c0630be2f21cbe9380d83d2d50c8aeb428e67691503cfb",
+		},
+		{
+			name:        "custom collection, multiple scopes",
+			dbName:      "foo",
+			scopeName:   "bar",
+			collections: []string{"baz", "bat"},
+			key:         "foo_import_cc2777dc506c83ef70c0630be2f21cbe9380d83d2d50c8aeb428e67691503cfb",
+		},
+		{
+			name:        "default collection, multiple scopes",
+			dbName:      "foo",
+			scopeName:   DefaultScope,
+			collections: []string{"baz", "bat"},
+			key:         "foo_import_98ea225323328e1d6ae54575908419f85dcad91b2ee3acb56b3a6491145d87cf",
+		},
+
+		{
+			name:        "scope but only not collection",
+			dbName:      "foo",
+			scopeName:   DefaultScope,
+			collections: []string{DefaultCollection},
+			key:         "foo_import",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			require.Equal(t, test.key, ImportDestKey(test.dbName, test.scopeName, test.collections))
+		})
+	}
+}
