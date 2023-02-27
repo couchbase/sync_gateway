@@ -331,7 +331,7 @@ func TestMultiCollectionImportDynamicAddCollection(t *testing.T) {
 		}
 	}
 
-	require.Equal(t, uint64(docCount), rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value())
+	require.Equal(t, int64(docCount), rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value())
 }
 
 func requireSyncData(rt *rest.RestTester, dataStore base.DataStore, docName string, hasSyncData bool) {
