@@ -232,3 +232,111 @@ func TestMultiCollectionImportFilter(t *testing.T) {
 		}
 	}
 }
+
+func TestMultiCollectionImportDynamicAddCollection(t *testing.T) {
+
+	base.SkipImportTestsIfNotEnabled(t)
+	base.RequireNumTestDataStores(t, 2)
+
+	testBucket := base.GetPersistentTestBucket(t)
+	defer testBucket.Close()
+
+	rtConfig := &rest.RestTesterConfig{
+		CustomTestBucket: testBucket.NoCloseClone(),
+		PersistentConfig: true,
+	}
+
+	rt := rest.NewRestTester(t, rtConfig)
+	defer rt.Close()
+
+	_ = rt.Bucket() // populates rest tester
+
+	dataStore1, err := testBucket.GetNamedDataStore(0)
+	require.NoError(t, err)
+	dataStore2, err := testBucket.GetNamedDataStore(1)
+	require.NoError(t, err)
+
+	// write datastore 2
+	dataStores := []base.DataStore{dataStore2, dataStore1}
+
+	// Create three docs in each collection:
+	//
+	// * matching importFilter1
+	// * not matching any import filter
+	// * matching importFilter2
+	docBody := make(map[string]interface{})
+	docBody["foo"] = "bar"
+	docCount := 10
+	for i, dataStore := range dataStores {
+		for j := 0; j < docCount; j++ {
+			_, err := dataStore.Add(fmt.Sprintf("datastore%d_%d", i, j), 0, docBody)
+			require.NoError(t, err, "Error writing SDK doc")
+		}
+	}
+	scopesConfig := rest.GetCollectionsConfig(t, testBucket, 1)
+	scopesConfigJSON, err := json.Marshal(scopesConfig)
+	require.NoError(t, err)
+
+	dbConfig := `{
+		"bucket": "%s",
+		"num_index_replicas": 0,
+		"enable_shared_bucket_access": %t,
+		"scopes": %s,
+		"import_docs": true
+	}`
+	response := rt.SendAdminRequest(http.MethodPut, "/db/", fmt.Sprintf(dbConfig, testBucket.GetName(), base.TestUseXattrs(), string(scopesConfigJSON)))
+	rest.RequireStatus(t, response, http.StatusCreated)
+
+	require.Equal(t, 1, len(rt.GetDbCollections()))
+
+	// Wait for auto-import to work
+	_, err = rt.WaitForChanges(docCount, "/{{.keyspace}}/_changes", "", true)
+	require.NoError(t, err)
+
+	for i, dataStore := range dataStores {
+		for j := 0; j < docCount; j++ {
+			docName := fmt.Sprintf("datastore%d_%d", i, j)
+			if dataStore == dataStore1 {
+				requireSyncData(rt, dataStore, docName, true)
+			} else {
+				requireSyncData(rt, dataStore, docName, false)
+			}
+		}
+	}
+
+	require.Equal(t, int64(docCount), rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value())
+
+	// update with 2 scopes
+	twoScopesConfig := rest.GetCollectionsConfig(t, testBucket, 2)
+	twoScopesConfigJSON, err := json.Marshal(twoScopesConfig)
+	require.NoError(t, err)
+
+	response = rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_config", fmt.Sprintf(dbConfig, testBucket.GetName(), base.TestUseXattrs(), string(twoScopesConfigJSON)))
+	rest.RequireStatus(t, response, http.StatusCreated)
+
+	require.Equal(t, 2, len(rt.GetDbCollections()))
+
+	// Wait for auto-import to work
+	_, err = rt.WaitForChanges(docCount, "/{{.keyspace2}}/_changes", "", true)
+	require.NoError(t, err)
+
+	for i, dataStore := range dataStores {
+		for j := 0; j < docCount; j++ {
+			docName := fmt.Sprintf("datastore%d_%d", i, j)
+			requireSyncData(rt, dataStore, docName, true)
+		}
+	}
+
+	require.Equal(t, int64(docCount*len(dataStores)), rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value())
+}
+
+func requireSyncData(rt *rest.RestTester, dataStore base.DataStore, docName string, hasSyncData bool) {
+	var rawDoc, rawXattr, rawUserXattr []byte
+	_, err := dataStore.GetWithXattr(docName, base.SyncXattrName, rt.GetDatabase().Options.UserXattrKey, &rawDoc, &rawXattr, &rawUserXattr)
+	require.NoError(rt.TB, err)
+	if hasSyncData {
+		require.NotEqual(rt.TB, "", string(rawXattr), "Expected data for %s %s", dataStore.GetName(), docName)
+	} else {
+		require.Equal(rt.TB, "", string(rawXattr), "Expected no data for %s %s", dataStore.GetName(), docName)
+	}
+}
