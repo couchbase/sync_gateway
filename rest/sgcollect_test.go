@@ -62,7 +62,7 @@ func TestSgcollectOptionsValidateValid(t *testing.T) {
 		},
 		{
 			name:    "valid keep_zip option",
-			options: &sgCollectOptions{keepZip: true},
+			options: &sgCollectOptions{KeepZip: true},
 		},
 	}
 
@@ -165,7 +165,7 @@ func TestSgcollectOptionsArgs(t *testing.T) {
 			expectedArgs: []string{"--upload-host", defaultSGUploadHost},
 		},
 		{
-			options:      &sgCollectOptions{Upload: true, Ticket: "123456", keepZip: true},
+			options:      &sgCollectOptions{Upload: true, Ticket: "123456", KeepZip: true},
 			expectedArgs: []string{"--upload-host", defaultSGUploadHost, "--ticket", "123456", "--keep-zip"},
 		},
 		{
@@ -191,7 +191,7 @@ func TestSgcollectOptionsArgs(t *testing.T) {
 		},
 		{
 			// Upload false, so don't pass upload host through. same for keep zip
-			options:      &sgCollectOptions{Upload: false, Customer: "alice", UploadHost: "example.org/custom-s3-bucket-url", keepZip: false},
+			options:      &sgCollectOptions{Upload: false, Customer: "alice", UploadHost: "example.org/custom-s3-bucket-url", KeepZip: false},
 			expectedArgs: []string{"--customer", "alice"},
 		},
 		{
