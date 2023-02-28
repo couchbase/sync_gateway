@@ -124,6 +124,8 @@ def create_option_parser():
                       help="specifies proxy for upload")
     parser.add_option("--tmp-dir", dest="tmp_dir", default=None,
                       help="set the temp dir used while processing collected data. Overrides the TMPDIR env variable if set")
+    parser.add_option("--keep-zip", dest="keep_zip", default="",
+                    help="keep sgcollect zip files after uploading them. By default they will be deleted to save disk space")
     return parser
 
 
@@ -649,6 +651,7 @@ def main():
     sg_url = options.sync_gateway_url
     sg_username = options.sync_gateway_username
     sg_password = options.sync_gateway_password
+    keep_zip = options.keep_zip
 
     if not sg_url or "://" not in sg_url:
         if not sg_url:
@@ -795,6 +798,13 @@ def main():
         print("Zipfile built: {0}".format(redact_zip_file))
 
     print("Zipfile built: {0}".format(zip_filename))
+
+    if not keep_zip:
+        os.remove(zip_dir + zip_filename)
+        print("Zipfile deleted: {0}".format(zip_filename))
+        if options.redact_level != "none":
+            os.remove(zip_dir + redact_zip_file)
+            print("Zipfile deleted: {0}".format(redact_zip_file))
 
 
 def ud(value, should_redact=True):

@@ -189,6 +189,7 @@ type sgCollectOptions struct {
 	// We'll set them from the request's basic auth.
 	syncGatewayUsername string
 	syncGatewayPassword string
+	keepZip             bool
 }
 
 // validateOutputDirectory will check that the given path exists, and is a directory.
@@ -291,6 +292,10 @@ func (c *sgCollectOptions) Args() []string {
 
 	if c.syncGatewayPassword != "" {
 		args = append(args, "--sync-gateway-password", c.syncGatewayPassword)
+	}
+
+	if c.keepZip {
+		args = append(args, "--keep-zip")
 	}
 
 	return args
