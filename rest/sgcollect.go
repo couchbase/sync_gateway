@@ -184,12 +184,12 @@ type sgCollectOptions struct {
 	UploadProxy     string `json:"upload_proxy,omitempty"`
 	Customer        string `json:"customer,omitempty"`
 	Ticket          string `json:"ticket,omitempty"`
+	keepZip         bool   `json:"ticket,omitempty"`
 
 	// Unexported - Don't allow these to be set via the JSON body.
 	// We'll set them from the request's basic auth.
 	syncGatewayUsername string
 	syncGatewayPassword string
-	keepZip             bool
 }
 
 // validateOutputDirectory will check that the given path exists, and is a directory.
