@@ -97,7 +97,7 @@ jobs:
         uses: guyarb/golang-test-annotations@v0.6.0
         with:
           test-results: test.json
-  test-tools:
+  test-sgcollect:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
