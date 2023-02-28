@@ -401,7 +401,7 @@ class TestRemovePasswords(unittest.TestCase):
         """
         If a config is not JSON parseable, make sure passwords are not stored in result
         """
-        unparseable_json_with_passwords = """
+        unparseable_json_with_passwords = r"""
         {
           "log": ["*"],
           "databases": {
@@ -477,7 +477,7 @@ class TestConvertToValidJSON(unittest.TestCase):
 
     def basic_test(self):
 
-        invalid_json = """
+        invalid_json = r"""
         {
           "log": ["*"],
           "databases": {
@@ -521,7 +521,7 @@ class TestConvertToValidJSON(unittest.TestCase):
 
     def basic_test_two_sync_functions(self):
 
-        invalid_json = """
+        invalid_json = r"""
             {
               "log": ["*"],
               "databases": {
