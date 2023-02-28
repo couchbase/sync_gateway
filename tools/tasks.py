@@ -1065,7 +1065,7 @@ class CurlKiller:
         self.p = None
 
 
-def do_upload_and_exit(path, url, proxy):
+def do_upload_and_exit(path, url, proxy, keepZip):
 
     f = open(path, 'rb')
 
@@ -1096,6 +1096,8 @@ def do_upload_and_exit(path, url, proxy):
     filedata.close()
     f.close()
 
+    os.remove(path)
+    print("Zipfile deleted: {0}".format(path))
     sys.exit(exit_code)
 
 

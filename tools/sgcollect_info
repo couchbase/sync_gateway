@@ -741,7 +741,7 @@ def main():
 
     # If user asked to just upload, then upload and exit
     if options.just_upload_into is not None:
-        do_upload_and_exit(args[0], options.just_upload_into, options.upload_proxy)
+        do_upload_and_exit(args[0], options.just_upload_into, options.upload_proxy, keep_zip)
 
     # Create a TaskRunner and run all of the OS tasks (collect top, netstat, etc)
     # The output of the tasks will go directly into couchbase.log
@@ -790,9 +790,9 @@ def main():
     # Upload the zip to the URL to S3 if required
     if upload_url:
         if options.redact_level != "none":
-            do_upload_and_exit(redact_zip_file, upload_url, options.upload_proxy)
+            do_upload_and_exit(redact_zip_file, upload_url, options.upload_proxy, keep_zip)
         else:
-            do_upload_and_exit(zip_filename, upload_url, options.upload_proxy)
+            do_upload_and_exit(zip_filename, upload_url, options.upload_proxy, keep_zip)
 
     if options.redact_level != "none":
         print("Zipfile built: {0}".format(redact_zip_file))
@@ -800,10 +800,10 @@ def main():
     print("Zipfile built: {0}".format(zip_filename))
 
     if not keep_zip:
-        os.remove(zip_dir + zip_filename)
+        os.remove(zip_filename)
         print("Zipfile deleted: {0}".format(zip_filename))
         if options.redact_level != "none":
-            os.remove(zip_dir + redact_zip_file)
+            os.remove(redact_zip_file)
             print("Zipfile deleted: {0}".format(redact_zip_file))
 
 
