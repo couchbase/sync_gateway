@@ -336,7 +336,7 @@ class TestStripPasswordsFromUrl(unittest.TestCase):
 class TestRemovePasswords(unittest.TestCase):
 
     def test_basic(self):
-        json_with_passwords = """
+        json_with_passwords = r"""
         {
           "log": ["*"],
           "databases": {
