@@ -15,6 +15,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"sort"
 	"testing"
 
 	sgbucket "github.com/couchbase/sg-bucket"
@@ -115,58 +116,66 @@ func TestPostUpgradeIndexesSimple(t *testing.T) {
 
 	collection := db.GetSingleDatabaseCollection()
 	n1qlStore, ok := base.AsN1QLStore(collection.dataStore)
-	assert.True(t, ok)
-
-	// We have one xattr-only index - adjust expected indexes accordingly
-	expectedIndexes := int(indexTypeCount)
-	if !db.UseXattrs() {
-		expectedIndexes--
-	}
+	require.True(t, ok)
 
 	options := InitializeIndexOptions{
-		FailFast:    false,
-		NumReplicas: 0,
-		Serverless:  db.IsServerless(),
-		UseXattrs:   db.UseXattrs(),
+		FailFast:        false,
+		NumReplicas:     0,
+		Serverless:      db.IsServerless(),
+		UseXattrs:       !db.UseXattrs(),
+		MetadataIndexes: IndexesAll,
 	}
 
-	if !base.TestsUseNamedCollections() {
-		options.MetadataIndexes = IndexesAll
-
-	}
+	var expectedRemovedIndexes []string
 	for _, sgIndex := range sgIndexes {
-		if !sgIndex.shouldCreate(options) {
-			expectedIndexes--
+		if sgIndex.shouldCreate(options) {
+			// when xattrs will be true, this index doesn't exist for removal
+			if sgIndex.simpleName != indexNames[IndexTombstones] {
+				expectedRemovedIndexes = append(expectedRemovedIndexes, sgIndex.fullIndexName(db.UseXattrs()))
+			}
+		} else if sgIndex.simpleName == indexNames[IndexTombstones] {
+			// when xattrs will be false, we don't see this as an index to create, but we do expect to remove it
+			expectedRemovedIndexes = append(expectedRemovedIndexes, sgIndex.fullIndexName(db.UseXattrs()))
 		}
 	}
+	sort.Strings(expectedRemovedIndexes)
 
 	// We don't know the current state of the bucket (may already have xattrs enabled), so run
 	// an initial cleanup to remove existing obsolete indexes
 	removedIndexes, removeErr := removeObsoleteIndexes(n1qlStore, false, db.UseXattrs(), db.UseViews(), sgIndexes)
 	log.Printf("removedIndexes: %+v", removedIndexes)
-	assert.NoError(t, removeErr, "Unexpected error running removeObsoleteIndexes in setup case")
+	require.NoError(t, removeErr, "Unexpected error running removeObsoleteIndexes in setup case")
+
+	options.UseXattrs = db.UseXattrs()
+	if !db.OnlyDefaultCollection() {
+		options.MetadataIndexes = IndexesWithoutMetadata
+	}
+
+	defer func() {
+		// Restore indexes after test
+		assert.NoError(t, InitializeIndexes(ctx, n1qlStore, options))
+	}()
 
 	err := InitializeIndexes(ctx, n1qlStore, options)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// Running w/ opposite xattrs flag should preview removal of the indexes associated with this db context
 	removedIndexes, removeErr = removeObsoleteIndexes(n1qlStore, true, !db.UseXattrs(), db.UseViews(), sgIndexes)
-	assert.Equal(t, int(expectedIndexes), len(removedIndexes))
-	assert.NoError(t, removeErr, "Unexpected error running removeObsoleteIndexes in preview mode")
+	sort.Strings(removedIndexes)
+	require.EqualValues(t, expectedRemovedIndexes, removedIndexes)
+	require.NoError(t, removeErr, "Unexpected error running removeObsoleteIndexes in preview mode")
 
 	// Running again w/ preview=false to perform cleanup
 	removedIndexes, removeErr = removeObsoleteIndexes(n1qlStore, false, !db.UseXattrs(), db.UseViews(), sgIndexes)
-	assert.Equal(t, int(expectedIndexes), len(removedIndexes))
-	assert.NoError(t, removeErr, "Unexpected error running removeObsoleteIndexes in non-preview mode")
+	sort.Strings(removedIndexes)
+	require.Equal(t, expectedRemovedIndexes, removedIndexes)
+	require.NoError(t, removeErr, "Unexpected error running removeObsoleteIndexes in non-preview mode")
 
 	// One more time to make sure they are actually gone
 	removedIndexes, removeErr = removeObsoleteIndexes(n1qlStore, false, !db.UseXattrs(), db.UseViews(), sgIndexes)
-	assert.Equal(t, 0, len(removedIndexes))
-	assert.NoError(t, removeErr, "Unexpected error running removeObsoleteIndexes in post-cleanup no-op")
+	require.Len(t, removedIndexes, 0)
+	require.NoError(t, removeErr, "Unexpected error running removeObsoleteIndexes in post-cleanup no-op")
 
-	// Restore indexes after test
-	err = InitializeIndexes(ctx, n1qlStore, options)
-	assert.NoError(t, err)
 }
 
 func TestPostUpgradeIndexesVersionChange(t *testing.T) {
@@ -181,6 +190,18 @@ func TestPostUpgradeIndexesVersionChange(t *testing.T) {
 	collection := db.GetSingleDatabaseCollection()
 	n1qlStore, ok := base.AsN1QLStore(collection.dataStore)
 	assert.True(t, ok)
+
+	defer func() {
+		// Restore indexes after test
+		options := InitializeIndexOptions{
+			FailFast:    false,
+			NumReplicas: 0,
+			Serverless:  db.IsServerless(),
+			UseXattrs:   db.UseXattrs(),
+		}
+		err := InitializeIndexes(ctx, n1qlStore, options)
+		assert.NoError(t, err)
+	}()
 
 	copiedIndexes := copySGIndexes(sgIndexes)
 
@@ -206,16 +227,6 @@ func TestPostUpgradeIndexesVersionChange(t *testing.T) {
 	log.Printf("removedIndexes: %+v", removedIndexes)
 	assert.Equal(t, 1, len(removedIndexes))
 	assert.NoError(t, removeErr, "Unexpected error running removeObsoleteIndexes with hacked sgIndexes")
-
-	// Restore indexes after test
-	options := InitializeIndexOptions{
-		FailFast:    false,
-		NumReplicas: 0,
-		Serverless:  db.IsServerless(),
-		UseXattrs:   db.UseXattrs(),
-	}
-	err := InitializeIndexes(ctx, n1qlStore, options)
-	assert.NoError(t, err)
 
 }
 
@@ -313,11 +324,19 @@ func TestRemoveIndexesUseViewsTrueAndFalse(t *testing.T) {
 		Serverless:  db.IsServerless(),
 		UseXattrs:   db.UseXattrs(),
 	}
-	if !base.TestsUseNamedCollections() {
+	if db.OnlyDefaultCollection() {
 		options.MetadataIndexes = IndexesAll
 
 	}
+	defer func() {
+		// Restore ddocs after test
+		err = InitializeViews(ctx, collection.dataStore)
+		assert.NoError(t, err)
 
+		// Restore indexes after test
+		err = InitializeIndexes(ctx, n1QLStore, options)
+		assert.NoError(t, err)
+	}()
 	for _, sgIndex := range copiedIndexes {
 		if !sgIndex.shouldCreate(options) {
 			expectedIndexes--
@@ -342,13 +361,6 @@ func TestRemoveIndexesUseViewsTrueAndFalse(t *testing.T) {
 	_, err = removeObsoleteDesignDocs(ctx, viewStore, !db.UseXattrs(), !db.UseViews())
 	assert.NoError(t, err)
 
-	// Restore ddocs after test
-	err = InitializeViews(ctx, collection.dataStore)
-	assert.NoError(t, err)
-
-	// Restore indexes after test
-	err = InitializeIndexes(ctx, n1QLStore, options)
-	assert.NoError(t, err)
 }
 
 func TestRemoveObsoleteIndexOnError(t *testing.T) {
