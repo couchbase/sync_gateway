@@ -296,21 +296,45 @@ func TestRemoveIndexesUseViewsTrueAndFalse(t *testing.T) {
 	require.True(t, db.Bucket.IsSupported(sgbucket.BucketStoreFeatureN1ql))
 	collection := db.GetSingleDatabaseCollection()
 	n1QLStore, ok := base.AsN1QLStore(collection.dataStore)
-	assert.True(t, ok)
+	require.True(t, ok)
 
 	viewStore, ok := collection.dataStore.(sgbucket.ViewStore)
 	require.True(t, ok)
+
+	defer func() {
+		// Cleanup design docs created during test
+		_, err := removeObsoleteDesignDocs(ctx, viewStore, db.UseXattrs(), db.UseViews())
+		assert.NoError(t, err)
+		_, err = removeObsoleteDesignDocs(ctx, viewStore, db.UseXattrs(), !db.UseViews())
+		assert.NoError(t, err)
+		_, err = removeObsoleteDesignDocs(ctx, viewStore, !db.UseXattrs(), db.UseViews())
+		assert.NoError(t, err)
+		_, err = removeObsoleteDesignDocs(ctx, viewStore, !db.UseXattrs(), !db.UseViews())
+		assert.NoError(t, err)
+
+		// Restore ddocs after test
+		err = InitializeViews(ctx, collection.dataStore)
+		assert.NoError(t, err)
+		options := InitializeIndexOptions{
+			FailFast:    false,
+			NumReplicas: 0,
+			Serverless:  db.IsServerless(),
+			UseXattrs:   base.TestUseXattrs(),
+		}
+		if db.OnlyDefaultCollection() {
+			options.MetadataIndexes = IndexesAll
+
+		}
+
+		// Restore indexes after test
+		err = InitializeIndexes(ctx, n1QLStore, options)
+		assert.NoError(t, err)
+	}()
 
 	_, err := removeObsoleteDesignDocs(ctx, viewStore, !db.UseXattrs(), db.UseViews())
 	assert.NoError(t, err)
 	_, err = removeObsoleteDesignDocs(ctx, viewStore, !db.UseXattrs(), !db.UseViews())
 	assert.NoError(t, err)
-
-	expectedIndexes := int(indexTypeCount)
-
-	if !db.UseXattrs() {
-		expectedIndexes--
-	}
 
 	options := InitializeIndexOptions{
 		FailFast:    false,
@@ -320,17 +344,9 @@ func TestRemoveIndexesUseViewsTrueAndFalse(t *testing.T) {
 	}
 	if db.OnlyDefaultCollection() {
 		options.MetadataIndexes = IndexesAll
-
 	}
-	defer func() {
-		// Restore ddocs after test
-		err = InitializeViews(ctx, collection.dataStore)
-		assert.NoError(t, err)
 
-		// Restore indexes after test
-		err = InitializeIndexes(ctx, n1QLStore, options)
-		assert.NoError(t, err)
-	}()
+	expectedIndexes := int(indexTypeCount)
 	for _, sgIndex := range copiedIndexes {
 		if !sgIndex.shouldCreate(options) {
 			expectedIndexes--
@@ -338,22 +354,12 @@ func TestRemoveIndexesUseViewsTrueAndFalse(t *testing.T) {
 	}
 
 	removedIndexes, removeErr := removeObsoleteIndexes(n1QLStore, false, db.UseXattrs(), true, copiedIndexes)
-	assert.Equal(t, expectedIndexes, len(removedIndexes))
-	assert.NoError(t, removeErr)
+	require.NoError(t, removeErr)
+	require.Len(t, removedIndexes, expectedIndexes)
 
 	removedIndexes, removeErr = removeObsoleteIndexes(n1QLStore, false, db.UseXattrs(), false, copiedIndexes)
+	require.NoError(t, removeErr)
 	require.Len(t, removedIndexes, 0)
-	assert.NoError(t, removeErr)
-
-	// Cleanup design docs created during test
-	_, err = removeObsoleteDesignDocs(ctx, viewStore, db.UseXattrs(), db.UseViews())
-	assert.NoError(t, err)
-	_, err = removeObsoleteDesignDocs(ctx, viewStore, db.UseXattrs(), !db.UseViews())
-	assert.NoError(t, err)
-	_, err = removeObsoleteDesignDocs(ctx, viewStore, !db.UseXattrs(), db.UseViews())
-	assert.NoError(t, err)
-	_, err = removeObsoleteDesignDocs(ctx, viewStore, !db.UseXattrs(), !db.UseViews())
-	assert.NoError(t, err)
 
 }
 

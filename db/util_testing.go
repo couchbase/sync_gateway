@@ -367,7 +367,7 @@ var viewsAndGSIBucketInit base.TBPBucketInitFunc = func(ctx context.Context, b b
 			return err
 		}
 		if base.IsDefaultCollection(dsName.ScopeName(), dsName.CollectionName()) {
-			options.MetadataIndexes = IndexesMetadataOnly
+			options.MetadataIndexes = IndexesAll
 		}
 		if err := InitializeIndexes(ctx, n1qlStore, options); err != nil {
 			return err
