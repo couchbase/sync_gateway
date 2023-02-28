@@ -98,6 +98,7 @@ jobs:
         with:
           test-results: test.json
   test-tools:
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
       - name: Set up python
@@ -108,6 +109,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install pytest
+      - name: Run test
         run: |
           pytest
 
