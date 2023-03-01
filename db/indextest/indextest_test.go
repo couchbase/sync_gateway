@@ -21,39 +21,8 @@ import (
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
-
-func requireRoleCount(ctx context.Context, t *testing.T, database *db.Database, expectedRoles int) {
-	// Standard query
-	results, queryErr := database.QueryRoles(ctx, "", 0)
-	require.NoError(t, queryErr, "Query error")
-	defer func() {
-		assert.NoError(t, results.Close())
-	}()
-	var row map[string]interface{}
-	rowCount := 0
-	for results.Next(&row) {
-		rowCount++
-	}
-
-	require.Equal(t, expectedRoles, rowCount)
-
-	// Standard query
-	results, queryErr = database.QueryAllRoles(ctx, "", 0)
-	require.NoError(t, queryErr)
-	defer func() {
-		assert.NoError(t, results.Close())
-	}()
-
-	rowCount = 0
-	for results.Next(&row) {
-		rowCount++
-	}
-	require.Equal(t, expectedRoles, rowCount)
-
-}
 
 func TestRoleQuery(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() || base.TestsDisableGSI() {
@@ -80,8 +49,8 @@ func TestRoleQuery(t *testing.T) {
 
 			n1QLStores, reset, err := setupN1QLStore(ctx, database.Bucket, testCase.isServerless)
 			require.NoError(t, err, "Unable to get n1QLStore for testBucket")
-			defer func(dataStores []base.N1QLStore, isServerless bool) {
-				err := reset(dataStores, isServerless)
+			defer func(n1QLStore []base.N1QLStore, isServerless bool) {
+				err := reset(n1QLStores, isServerless)
 				require.NoError(t, err, "Reset fn shouldn't return error")
 			}(n1QLStores, testCase.isServerless)
 
@@ -95,15 +64,25 @@ func TestRoleQuery(t *testing.T) {
 				require.NoError(t, authenticator.Save(role))
 			}
 
-			requireRoleCount(ctx, t, database, 5)
-
 			// Delete 1 role
 			role1, err := authenticator.NewRole("role1", base.SetOf("ABC"))
 			require.NoError(t, err)
 			err = authenticator.DeleteRole(role1, false, 0)
 			require.NoError(t, err)
 
-			requireRoleCount(ctx, t, database, 4)
+			// Standard query
+			results, queryErr := database.QueryRoles(ctx, "", 0)
+			require.NoError(t, queryErr, "Query error")
+			defer func() {
+				require.NoError(t, results.Close())
+			}()
+			var row map[string]interface{}
+			rowCount := 0
+			for results.Next(&row) {
+				rowCount++
+			}
+
+			require.Equal(t, 4, rowCount)
 		})
 	}
 
@@ -134,8 +113,8 @@ func TestBuildRolesQuery(t *testing.T) {
 
 			n1QLStores, reset, err := setupN1QLStore(ctx, database.Bucket, testCase.isServerless)
 			require.NoError(t, err, "Unable to get n1QLStore for testBucket")
-			defer func(dataStores []base.N1QLStore, isServerless bool) {
-				err := reset(dataStores, isServerless)
+			defer func(n1QLStore []base.N1QLStore, isServerless bool) {
+				err := reset(n1QLStores, isServerless)
 				require.NoError(t, err, "Reset fn shouldn't return error")
 			}(n1QLStores, testCase.isServerless)
 
@@ -179,9 +158,10 @@ func TestBuildUsersQuery(t *testing.T) {
 
 			n1QLStores, reset, err := setupN1QLStore(ctx, database.Bucket, testCase.isServerless)
 			require.NoError(t, err, "Unable to get n1QLStore for testBucket")
-			defer func() {
-				assert.NoError(t, reset(n1QLStores, testCase.isServerless))
-			}()
+			defer func(n1QLStore []base.N1QLStore, isServerless bool) {
+				err := reset(n1QLStores, isServerless)
+				require.NoError(t, err, "Reset fn shouldn't return error")
+			}(n1QLStores, testCase.isServerless)
 
 			// Sessions
 			n1QLStore, ok := base.AsN1QLStore(database.MetadataStore)
@@ -194,6 +174,68 @@ func TestBuildUsersQuery(t *testing.T) {
 			planJSON, err := base.JSONMarshal(plan)
 			require.NoError(t, err)
 			require.Equal(t, testCase.isServerless, covered, "Users query covered by index; expectedToBeCovered: %t, Plan: %s", testCase.isServerless, planJSON)
+		})
+	}
+}
+
+func TestQueryAllRoles(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() || base.TestsDisableGSI() {
+		t.Skip("This test is Couchbase Server and UseViews=false only")
+	}
+
+	testCases := []struct {
+		isServerless bool
+	}{
+		{
+			isServerless: false,
+		},
+		{
+			isServerless: true,
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(fmt.Sprintf("TestQueryAllRoles in Serverless=%t", testCase.isServerless), func(t *testing.T) {
+			dbContextConfig := getDatabaseContextOptions(testCase.isServerless)
+			database, ctx := db.SetupTestDBWithOptions(t, dbContextConfig)
+			defer database.Close(ctx)
+
+			n1QLStores, reset, err := setupN1QLStore(ctx, database.Bucket, testCase.isServerless)
+			require.NoError(t, err, "Unable to get n1QLStore for testBucket")
+			defer func(n1QLStore []base.N1QLStore, isServerless bool) {
+				err := reset(n1QLStores, isServerless)
+				require.NoError(t, err, "Reset fn shouldn't return error")
+			}(n1QLStores, testCase.isServerless)
+
+			authenticator := database.Authenticator(ctx)
+			require.NotNil(t, authenticator, "db.Authenticator(ctx) returned nil")
+
+			// Add roles
+			for i := 1; i <= 5; i++ {
+				role, err := authenticator.NewRole(fmt.Sprintf("role%d", i), base.SetOf("ABC"))
+				require.NoError(t, err, "Error creating new role")
+				require.NoError(t, authenticator.Save(role))
+			}
+
+			// Delete 1 role
+			role1, err := authenticator.NewRole("role1", base.SetOf("ABC"))
+			require.NoError(t, err)
+			err = authenticator.DeleteRole(role1, false, 0)
+			require.NoError(t, err)
+
+			// Standard query
+			results, queryErr := database.QueryAllRoles(ctx, "", 0)
+			require.NoError(t, queryErr, "Query error")
+			defer func() {
+				require.NoError(t, results.Close())
+			}()
+
+			var row map[string]interface{}
+			rowCount := 0
+			for results.Next(&row) {
+				rowCount++
+			}
+			require.Equal(t, 5, rowCount)
 		})
 	}
 }
@@ -222,9 +264,10 @@ func TestAllPrincipalIDs(t *testing.T) {
 
 			n1QLStores, reset, err := setupN1QLStore(ctx, database.Bucket, testCase.isServerless)
 			require.NoError(t, err, "Unable to get n1QLStore for testBucket")
-			defer func() {
-				assert.NoError(t, reset(n1QLStores, testCase.isServerless))
-			}()
+			defer func(n1QLStore []base.N1QLStore, isServerless bool) {
+				err := reset(n1QLStores, isServerless)
+				require.NoError(t, err, "Reset fn shouldn't return error")
+			}(n1QLStores, testCase.isServerless)
 
 			base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache, base.KeyChanges)
 
@@ -306,9 +349,10 @@ func TestGetRoleIDs(t *testing.T) {
 
 			n1QLStores, reset, err := setupN1QLStore(ctx, database.Bucket, testCase.isServerless)
 			require.NoError(t, err, "Unable to get n1QLStore for testBucket")
-			defer func() {
-				assert.NoError(t, reset(n1QLStores, testCase.isServerless))
-			}()
+			defer func(n1QLStore []base.N1QLStore, isServerless bool) {
+				err := reset(n1QLStores, isServerless)
+				require.NoError(t, err, "Reset fn shouldn't return error")
+			}(n1QLStores, testCase.isServerless)
 
 			base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache, base.KeyChanges)
 
