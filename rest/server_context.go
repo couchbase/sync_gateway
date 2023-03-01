@@ -1121,7 +1121,7 @@ func (sc *ServerContext) initEventHandlers(ctx context.Context, dbcontext *db.Da
 			}
 			conf.Filter = filter
 			if conf.Filter == "" {
-				base.WarnfCtx(ctx, "No filter specified in webhook configuration or filter has failed to be retrieved")
+				base.InfofCtx(ctx, base.KeyEvents, "No filter function defined for event handler %s - everything will be processed", eventType.String())
 			}
 		}
 
