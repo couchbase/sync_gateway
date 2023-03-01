@@ -1105,9 +1105,6 @@ func (sc *ServerContext) initEventHandlers(ctx context.Context, dbcontext *db.Da
 			if err := validateEventConfigOptions(eventType, conf); err != nil {
 				return err
 			}
-			if conf.Filter == "" {
-				base.WarnfCtx(ctx, "No filter specified in webhook configuration or filter has failed to be retrieved")
-			}
 
 			// Load external webhook filter function
 			insecureSkipVerify := false
@@ -1123,6 +1120,9 @@ func (sc *ServerContext) initEventHandlers(ctx context.Context, dbcontext *db.Da
 				}
 			}
 			conf.Filter = filter
+			if conf.Filter == "" {
+				base.WarnfCtx(ctx, "No filter specified in webhook configuration or filter has failed to be retrieved")
+			}
 		}
 
 		// Register event handlers
