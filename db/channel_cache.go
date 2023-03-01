@@ -531,10 +531,8 @@ func (c *channelCacheImpl) compactChannelCache() {
 		if remainingToEvict > 0 {
 			if len(nruEvictionCandidates) > remainingToEvict {
 				evictionElements = append(evictionElements, nruEvictionCandidates[0:remainingToEvict]...)
-				remainingToEvict = 0
 			} else {
 				evictionElements = append(evictionElements, nruEvictionCandidates...)
-				remainingToEvict = remainingToEvict - len(nruEvictionCandidates)
 			}
 		}
 

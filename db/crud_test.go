@@ -602,6 +602,7 @@ func TestRevisionStoragePruneTombstone(t *testing.T) {
 	log.Printf("revTree.BodyKeyMap:%v", revTree.BodyKeyMap)
 
 	revTree, err = getRevTreeList(collection.dataStore, "doc1", db.UseXattrs())
+	require.NoError(t, err)
 	log.Printf("revtree before additional revisions: %v", revTree.BodyKeyMap)
 
 	// Add revisions until 3-b is pruned
@@ -624,7 +625,7 @@ func TestRevisionStoragePruneTombstone(t *testing.T) {
 
 	// Verify that 3-b is still present at this point
 	collection.FlushRevisionCacheForTest()
-	rev3bGet, err = collection.Get1xRevBody(ctx, "doc1", "3-b", false, nil)
+	_, err = collection.Get1xRevBody(ctx, "doc1", "3-b", false, nil)
 	assert.NoError(t, err, "Rev 3-b should still exist")
 
 	// Add one more rev that triggers pruning since gen(9-3) > revsLimit
@@ -634,7 +635,7 @@ func TestRevisionStoragePruneTombstone(t *testing.T) {
 	// Verify that 3-b has been pruned
 	log.Printf("Attempt to retrieve 3-b, expect pruned")
 	collection.FlushRevisionCacheForTest()
-	rev3bGet, err = collection.Get1xRevBody(ctx, "doc1", "3-b", false, nil)
+	_, err = collection.Get1xRevBody(ctx, "doc1", "3-b", false, nil)
 	require.Error(t, err)
 	assert.Equal(t, "404 missing", err.Error())
 
@@ -1198,18 +1199,18 @@ func TestGetAvailableRevAttachments(t *testing.T) {
 
 	// Create the very first revision of the document with attachment; let's call this as rev 1-a
 	payload := `{"sku":"6213100","_attachments":{"camera.txt":{"data":"Q2Fub24gRU9TIDVEIE1hcmsgSVY="}}}`
-	doc, rev, err := collection.PutExistingRevWithBody(ctx, "camera", unjson(payload), []string{"1-a"}, false)
+	_, rev, err := collection.PutExistingRevWithBody(ctx, "camera", unjson(payload), []string{"1-a"}, false)
 	assert.NoError(t, err, "Couldn't create document")
 	ancestor := rev // Ancestor revision
 
 	// Create the second revision of the document with attachment reference;
 	payload = `{"sku":"6213101","_attachments":{"camera.txt":{"stub":true,"revpos":1}}}`
-	doc, rev, err = collection.PutExistingRevWithBody(ctx, "camera", unjson(payload), []string{"2-a", "1-a"}, false)
+	_, rev, err = collection.PutExistingRevWithBody(ctx, "camera", unjson(payload), []string{"2-a", "1-a"}, false)
 	parent := rev // Immediate ancestor or parent revision
 	assert.NoError(t, err, "Couldn't create document")
 
 	payload = `{"sku":"6213102","_attachments":{"camera.txt":{"stub":true,"revpos":1}}}`
-	doc, rev, err = collection.PutExistingRevWithBody(ctx, "camera", unjson(payload), []string{"3-a", "2-a"}, false)
+	doc, _, err := collection.PutExistingRevWithBody(ctx, "camera", unjson(payload), []string{"3-a", "2-a"}, false)
 	assert.NoError(t, err, "Couldn't create document")
 
 	// Get available attachments by immediate ancestor revision or parent revision
@@ -1269,6 +1270,7 @@ func TestGet1xRevAndChannels(t *testing.T) {
 
 	// Delete the document, creating tombstone revision rev3
 	rev3, err := collection.DeleteDoc(ctx, docId, rev2)
+	require.NoError(t, err)
 	bodyBytes, removed, err = collection.get1xRevFromDoc(ctx, doc2, rev3, true)
 	assert.False(t, removed)
 	assert.Error(t, err, "It should throw 404 missing error")
@@ -1306,6 +1308,7 @@ func TestGet1xRevFromDoc(t *testing.T) {
 	// Get rev1 using get1xRevFromDoc. Also validate that the BodyRevisions property is present
 	// and correct since listRevisions=true.
 	bodyBytes, removed, err := collection.get1xRevFromDoc(ctx, doc, rev1, true)
+	require.NoError(t, err)
 	assert.NotEmpty(t, bodyBytes, "Document body bytes should be returned")
 	assert.False(t, removed, "This shouldn't be a removed document")
 	var response = Body{}
@@ -1328,6 +1331,7 @@ func TestGet1xRevFromDoc(t *testing.T) {
 	// Get rev2 using get1xRevFromDoc. Also validate that the BodyRevisions property is present
 	// and correct since listRevisions=true.
 	bodyBytes, removed, err = collection.get1xRevFromDoc(ctx, doc, rev2, true)
+	require.NoError(t, err)
 	assert.NotEmpty(t, bodyBytes, "Document body bytes should be returned")
 	assert.False(t, removed, "This shouldn't be a removed document")
 	assert.NoError(t, response.Unmarshal(bodyBytes))

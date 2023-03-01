@@ -121,6 +121,7 @@ func TestLegacyConfigToStartupConfig(t *testing.T) {
 			lc := &test.input
 
 			migratedStartupConfig, _, err := lc.ToStartupConfig()
+			require.NoError(t, err)
 
 			config := test.base
 			err = config.Merge(migratedStartupConfig)

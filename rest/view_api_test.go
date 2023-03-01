@@ -77,10 +77,12 @@ func TestViewQuery(t *testing.T) {
 	assert.Equal(t, &sgbucket.ViewRow{ID: "doc1", Key: 10.0, Value: "ten"}, result.Rows[1])
 
 	result, err = rt.WaitForNAdminViewResults(1, "/db/_design/foo/_view/bar?limit=1")
+	require.NoError(t, err)
 	require.Len(t, result.Rows, 1)
 	assert.Equal(t, &sgbucket.ViewRow{ID: "doc2", Key: 7.0, Value: "seven"}, result.Rows[0])
 
 	result, err = rt.WaitForNAdminViewResults(1, "/db/_design/foo/_view/bar?endkey=9")
+	require.NoError(t, err)
 	require.Len(t, result.Rows, 1)
 	assert.Equal(t, &sgbucket.ViewRow{ID: "doc2", Key: 7.0, Value: "seven"}, result.Rows[0])
 
@@ -88,6 +90,7 @@ func TestViewQuery(t *testing.T) {
 		// include_docs=true only works with walrus as documented here:
 		// https://forums.couchbase.com/t/do-the-viewquery-options-omit-include-docs-on-purpose/12399
 		result, err = rt.WaitForNAdminViewResults(1, "/db/_design/foo/_view/bar?include_docs=true&endkey=9")
+		require.NoError(t, err)
 		require.Len(t, result.Rows, 1)
 		assert.Equal(t, map[string]interface{}{"key": 7.0, "value": "seven"}, *result.Rows[0].Doc)
 	}
@@ -118,11 +121,13 @@ func TestViewQueryMultipleViews(t *testing.T) {
 	assert.Equal(t, &sgbucket.ViewRow{ID: "doc1", Key: 10.0, Value: interface{}(nil)}, result.Rows[1])
 
 	result, err = rt.WaitForNAdminViewResults(2, "/db/_design/foo/_view/by_fname")
+	require.NoError(t, err)
 	require.Len(t, result.Rows, 2)
 	assert.Equal(t, &sgbucket.ViewRow{ID: "doc1", Key: "Alice", Value: interface{}(nil)}, result.Rows[0])
 	assert.Equal(t, &sgbucket.ViewRow{ID: "doc2", Key: "Bob", Value: interface{}(nil)}, result.Rows[1])
 
 	result, err = rt.WaitForNAdminViewResults(2, "/db/_design/foo/_view/by_lname")
+	require.NoError(t, err)
 	require.Len(t, result.Rows, 2)
 	assert.Equal(t, &sgbucket.ViewRow{ID: "doc2", Key: "Seven", Value: interface{}(nil)}, result.Rows[0])
 	assert.Equal(t, &sgbucket.ViewRow{ID: "doc1", Key: "Ten", Value: interface{}(nil)}, result.Rows[1])

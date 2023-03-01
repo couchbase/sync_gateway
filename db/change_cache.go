@@ -318,7 +318,6 @@ func (c *changeCache) CleanSkippedSequenceQueue(ctx context.Context) error {
 	c.db.DbStats.Cache().AbandonedSeqs.Add(numRemoved)
 
 	base.InfofCtx(ctx, base.KeyCache, "CleanSkippedSequenceQueue complete.  Not Found:%d for database %s.", len(oldSkippedSequences), base.MD(c.db.Name))
-	oldSkippedSequences = nil
 	return nil
 }
 

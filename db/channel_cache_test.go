@@ -121,6 +121,7 @@ func TestChannelCacheCompactInactiveChannels(t *testing.T) {
 	stats, err := base.NewSyncGatewayStats()
 	require.NoError(t, err)
 	dbstats, err := stats.NewDBStats("", false, false, false, nil, nil)
+	require.NoError(t, err)
 	testStats := dbstats.Cache()
 	activeChannelStat := &base.SgwIntStat{}
 	activeChannels := channels.NewActiveChannels(activeChannelStat)

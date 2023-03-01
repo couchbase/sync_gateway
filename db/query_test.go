@@ -177,7 +177,7 @@ func TestCoveringQueries(t *testing.T) {
 	covered = IsCovered(plan)
 	planJSON, err = base.JSONMarshal(plan)
 	assert.NoError(t, err)
-	// assert.True(t, covered, "Access query isn't covered by index: %s", planJSON)
+	require.False(t, covered, "Access query isn't covered by index: %s", planJSON)
 
 	// roleAccess
 	roleAccessStatement := db.buildRoleAccessQuery("user1")
@@ -186,7 +186,7 @@ func TestCoveringQueries(t *testing.T) {
 	covered = IsCovered(plan)
 	planJSON, err = base.JSONMarshal(plan)
 	assert.NoError(t, err)
-	// assert.True(t, !covered, "RoleAccess query isn't covered by index: %s", planJSON)
+	require.False(t, covered, "RoleAccess query isn't covered by index: %s", planJSON)
 
 }
 
@@ -404,12 +404,12 @@ func TestQueryChannelsActiveOnlyWithLimit(t *testing.T) {
 	// Create 10 deleted documents
 	for i := 1; i <= 10; i++ {
 		id := "deleted" + strconv.Itoa(i)
-		doc, revId, err := collection.PutExistingRevWithBody(ctx, id, body, []string{"1-a"}, false)
+		_, revId, err := collection.PutExistingRevWithBody(ctx, id, body, []string{"1-a"}, false)
 		require.NoError(t, err, "Couldn't create document")
 		require.Equal(t, "1-a", revId)
 
 		body[BodyDeleted] = true
-		doc, revId, err = collection.PutExistingRevWithBody(ctx, id, body, []string{"2-a", "1-a"}, false)
+		doc, revId, err := collection.PutExistingRevWithBody(ctx, id, body, []string{"2-a", "1-a"}, false)
 		require.NoError(t, err, "Couldn't create document")
 		require.Equal(t, "2-a", revId, "Couldn't create tombstone revision")
 
@@ -421,22 +421,22 @@ func TestQueryChannelsActiveOnlyWithLimit(t *testing.T) {
 	for i := 1; i <= 10; i++ {
 		body["sound"] = "meow"
 		id := "branched" + strconv.Itoa(i)
-		doc, revId, err := collection.PutExistingRevWithBody(ctx, id, body, []string{"1-a"}, false)
+		_, revId, err := collection.PutExistingRevWithBody(ctx, id, body, []string{"1-a"}, false)
 		require.NoError(t, err, "Couldn't create document revision 1-a")
 		require.Equal(t, "1-a", revId)
 
 		body["sound"] = "bark"
-		doc, revId, err = collection.PutExistingRevWithBody(ctx, id, body, []string{"2-b", "1-a"}, false)
+		_, revId, err = collection.PutExistingRevWithBody(ctx, id, body, []string{"2-b", "1-a"}, false)
 		require.NoError(t, err, "Couldn't create revision 2-b")
 		require.Equal(t, "2-b", revId)
 
 		body["sound"] = "bleat"
-		doc, revId, err = collection.PutExistingRevWithBody(ctx, id, body, []string{"2-a", "1-a"}, false)
+		_, revId, err = collection.PutExistingRevWithBody(ctx, id, body, []string{"2-a", "1-a"}, false)
 		require.NoError(t, err, "Couldn't create revision 2-a")
 		require.Equal(t, "2-a", revId)
 
 		body[BodyDeleted] = true
-		doc, revId, err = collection.PutExistingRevWithBody(ctx, id, body, []string{"3-a", "2-a"}, false)
+		doc, revId, err := collection.PutExistingRevWithBody(ctx, id, body, []string{"3-a", "2-a"}, false)
 		require.NoError(t, err, "Couldn't create document")
 		require.Equal(t, "3-a", revId, "Couldn't create tombstone revision")
 
@@ -448,27 +448,27 @@ func TestQueryChannelsActiveOnlyWithLimit(t *testing.T) {
 	for i := 1; i <= 10; i++ {
 		body["sound"] = "meow"
 		id := "branched|deleted" + strconv.Itoa(i)
-		doc, revId, err := collection.PutExistingRevWithBody(ctx, id, body, []string{"1-a"}, false)
+		_, revId, err := collection.PutExistingRevWithBody(ctx, id, body, []string{"1-a"}, false)
 		require.NoError(t, err, "Couldn't create document revision 1-a")
 		require.Equal(t, "1-a", revId)
 
 		body["sound"] = "bark"
-		doc, revId, err = collection.PutExistingRevWithBody(ctx, id, body, []string{"2-b", "1-a"}, false)
+		_, revId, err = collection.PutExistingRevWithBody(ctx, id, body, []string{"2-b", "1-a"}, false)
 		require.NoError(t, err, "Couldn't create revision 2-b")
 		require.Equal(t, "2-b", revId)
 
 		body["sound"] = "bleat"
-		doc, revId, err = collection.PutExistingRevWithBody(ctx, id, body, []string{"2-a", "1-a"}, false)
+		_, revId, err = collection.PutExistingRevWithBody(ctx, id, body, []string{"2-a", "1-a"}, false)
 		require.NoError(t, err, "Couldn't create revision 2-a")
 		require.Equal(t, "2-a", revId)
 
 		body[BodyDeleted] = true
-		doc, revId, err = collection.PutExistingRevWithBody(ctx, id, body, []string{"3-a", "2-a"}, false)
+		_, revId, err = collection.PutExistingRevWithBody(ctx, id, body, []string{"3-a", "2-a"}, false)
 		require.NoError(t, err, "Couldn't create document")
 		require.Equal(t, "3-a", revId, "Couldn't create tombstone revision")
 
 		body[BodyDeleted] = true
-		doc, revId, err = collection.PutExistingRevWithBody(ctx, id, body, []string{"3-b", "2-b"}, false)
+		doc, revId, err := collection.PutExistingRevWithBody(ctx, id, body, []string{"3-b", "2-b"}, false)
 		require.NoError(t, err, "Couldn't create document")
 		require.Equal(t, "3-b", revId, "Couldn't create tombstone revision")
 
@@ -480,17 +480,17 @@ func TestQueryChannelsActiveOnlyWithLimit(t *testing.T) {
 	for i := 1; i <= 10; i++ {
 		body["sound"] = "meow"
 		id := "branched|conflict" + strconv.Itoa(i)
-		doc, revId, err := collection.PutExistingRevWithBody(ctx, id, body, []string{"1-a"}, false)
+		_, revId, err := collection.PutExistingRevWithBody(ctx, id, body, []string{"1-a"}, false)
 		require.NoError(t, err, "Couldn't create document revision 1-a")
 		require.Equal(t, "1-a", revId)
 
 		body["sound"] = "bark"
-		doc, revId, err = collection.PutExistingRevWithBody(ctx, id, body, []string{"2-b", "1-a"}, false)
+		_, revId, err = collection.PutExistingRevWithBody(ctx, id, body, []string{"2-b", "1-a"}, false)
 		require.NoError(t, err, "Couldn't create revision 2-b")
 		require.Equal(t, "2-b", revId)
 
 		body["sound"] = "bleat"
-		doc, revId, err = collection.PutExistingRevWithBody(ctx, id, body, []string{"2-a", "1-a"}, false)
+		doc, revId, err := collection.PutExistingRevWithBody(ctx, id, body, []string{"2-a", "1-a"}, false)
 		require.NoError(t, err, "Couldn't create revision 2-a")
 		require.Equal(t, "2-a", revId)
 

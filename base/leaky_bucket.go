@@ -263,7 +263,6 @@ func (b *LeakyBucket) wrapFeedForDeduplication(args sgbucket.FeedArguments, dbSt
 					// channel closed, goroutine is done
 					// dedupe and send what we currently have
 					dedupeAndForward(deDupeBuffer, channel)
-					deDupeBuffer = []sgbucket.FeedEvent{}
 					return
 				}
 				deDupeBuffer = append(deDupeBuffer, tapEvent)

@@ -1258,7 +1258,7 @@ func (db *DatabaseCollectionWithUser) resolveDocLocalWins(ctx context.Context, l
 				base.WarnfCtx(ctx, "Unable to parse attachment meta during conflict resolution for %s/%s: %v", base.UD(localDoc.ID), localDoc.SyncData.CurrentRev, value)
 				continue
 			}
-			revpos, ok := base.ToInt64(attachmentMeta["revpos"])
+			revpos, _ := base.ToInt64(attachmentMeta["revpos"])
 			if revpos > int64(commonAncestorGen) || commonAncestorGen == 0 {
 				attachmentMeta["revpos"] = newRevIDGen
 			}
@@ -1729,6 +1729,9 @@ func (col *DatabaseCollectionWithUser) documentUpdateFunc(ctx context.Context, d
 		// to the current rev's state.
 		if newRevID != doc.CurrentRev {
 			channelSet, access, roles, syncExpiry, oldBodyJSON, err = col.recalculateSyncFnForActiveRev(ctx, doc, metaMap, newRevID)
+			if err != nil {
+				return
+			}
 		}
 		_, err = doc.updateChannels(ctx, channelSet)
 		if err != nil {

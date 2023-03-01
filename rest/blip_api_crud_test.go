@@ -179,6 +179,7 @@ func TestContinuousChangesSubscription(t *testing.T) {
 	bt.blipContext.HandlerForProfile["changes"] = func(request *blip.Message) {
 
 		body, err := request.Body()
+		require.NoError(t, err)
 		log.Printf("got change with body %s, count %d", body, changeCount)
 		if string(body) != "null" {
 
@@ -297,6 +298,7 @@ func TestBlipOneShotChangesSubscription(t *testing.T) {
 	bt.blipContext.HandlerForProfile["changes"] = func(request *blip.Message) {
 
 		body, err := request.Body()
+		require.NoError(t, err)
 
 		if string(body) != "null" {
 
@@ -461,6 +463,7 @@ func TestBlipSubChangesDocIDFilter(t *testing.T) {
 	bt.blipContext.HandlerForProfile["changes"] = func(request *blip.Message) {
 
 		body, err := request.Body()
+		require.NoError(t, err)
 
 		if string(body) != "null" {
 
@@ -916,6 +919,7 @@ function(doc, oldDoc) {
 	bt.blipContext.HandlerForProfile["changes"] = func(request *blip.Message) {
 
 		body, err := request.Body()
+		require.NoError(t, err)
 		responseVal := [][]interface{}{}
 		if string(body) != "null" {
 
@@ -964,6 +968,7 @@ function(doc, oldDoc) {
 	bt.blipContext.HandlerForProfile["rev"] = func(request *blip.Message) {
 		defer revsFinishedWg.Done()
 		body, err := request.Body()
+		require.NoError(t, err)
 
 		var doc RestDocument
 		err = base.JSONUnmarshal(body, &doc)
@@ -1041,6 +1046,7 @@ function(doc, oldDoc) {
 	bt.blipContext.HandlerForProfile["changes"] = func(request *blip.Message) {
 
 		body, err := request.Body()
+		require.NoError(t, err)
 		responseVal := [][]interface{}{}
 		if string(body) != "null" {
 
@@ -1092,6 +1098,7 @@ function(doc, oldDoc) {
 	bt.blipContext.HandlerForProfile["rev"] = func(request *blip.Message) {
 		defer revsFinishedWg.Done()
 		body, err := request.Body()
+		require.NoError(t, err)
 
 		var doc RestDocument
 		err = base.JSONUnmarshal(body, &doc)
@@ -1277,6 +1284,7 @@ func TestBlipSetCheckpoint(t *testing.T) {
 	RequireStatus(t, response, 200)
 	var responseBody map[string]interface{}
 	err = base.JSONUnmarshal(response.Body.Bytes(), &responseBody)
+	require.NoError(t, err)
 	assert.Equal(t, "1000", responseBody["client_seq"])
 
 	// Attempt to update the checkpoint with previous rev
@@ -2488,6 +2496,7 @@ func TestSendRevAsReadOnlyGuest(t *testing.T) {
 	require.Equal(t, errorCode, "")
 
 	body, err := revResponse.Body()
+	require.NoError(t, err)
 	log.Printf("response body: %s", body)
 
 	// Send rev as guest with read-only=true
@@ -2510,6 +2519,7 @@ func TestSendRevAsReadOnlyGuest(t *testing.T) {
 	assert.Equal(t, "403", errorCode)
 
 	body, err = revResponse.Body()
+	require.NoError(t, err)
 	log.Printf("response body: %s", body)
 
 }

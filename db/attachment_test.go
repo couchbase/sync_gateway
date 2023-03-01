@@ -328,6 +328,7 @@ func TestAttachmentCASRetryAfterNewAttachment(t *testing.T) {
 
 	// 4. Get the document, check attachments
 	finalDoc, err := collection.Get1xBody(ctx, "doc1")
+	require.NoError(t, err)
 	attachments := GetBodyAttachments(finalDoc)
 	assert.True(t, attachments != nil, "_attachments should be present in GET response")
 	attachment, attachmentOk := attachments["hello.txt"].(map[string]interface{})
@@ -390,6 +391,7 @@ func TestAttachmentCASRetryDuringNewAttachment(t *testing.T) {
 
 	// 4. Get the document, check attachments
 	finalDoc, err := collection.Get1xBody(ctx, "doc1")
+	require.NoError(t, err)
 	log.Printf("get doc attachments: %v", finalDoc)
 
 	attachments := GetBodyAttachments(finalDoc)
@@ -530,7 +532,7 @@ func TestDecodeAttachmentError(t *testing.T) {
 	assert.Contains(t, err.Error(), strconv.Itoa(http.StatusBadRequest))
 
 	attr, err = DecodeAttachment(make(map[string]string, 1))
-	assert.Error(t, err, "should throw 400 invalid attachment data (type map[string]float64)")
+	assert.Nil(t, attr, "should throw 400 invalid attachment data (type map[string]float64)")
 	assert.Error(t, err, "It 400 invalid attachment data (type map[string]string)")
 	assert.Contains(t, err.Error(), strconv.Itoa(http.StatusBadRequest))
 

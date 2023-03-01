@@ -3918,6 +3918,7 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 			customConflictResolver, err := db.NewCustomConflictResolver(test.conflictResolver, rt1.GetDatabase().Options.JavascriptTimeout)
 			require.NoError(t, err)
 			stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, nil, nil)
+			require.NoError(t, err)
 			replicationStats, err := stats.DBReplicatorStats(t.Name())
 			require.NoError(t, err)
 

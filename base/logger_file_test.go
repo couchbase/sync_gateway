@@ -133,6 +133,7 @@ func TestRotatedLogDeletion(t *testing.T) {
 	err = runLogDeletion(dir, "info", 5, 7)
 	assert.NoError(t, err)
 	dirContents, err = os.ReadDir(dir)
+	require.NoError(t, err)
 	require.Len(t, dirContents, 3)
 
 	var fileNames = []string{}
@@ -154,6 +155,7 @@ func TestRotatedLogDeletion(t *testing.T) {
 	err = runLogDeletion(dir, "error", 2, 4)
 	assert.NoError(t, err)
 	dirContents, err = os.ReadDir(dir)
+	require.NoError(t, err)
 	require.Len(t, dirContents, 1)
 	assert.NoError(t, os.RemoveAll(dir))
 
@@ -164,6 +166,7 @@ func TestRotatedLogDeletion(t *testing.T) {
 	err = runLogDeletion(dir, "error", 2, 4)
 	assert.NoError(t, err)
 	dirContents, err = os.ReadDir(dir)
+	require.NoError(t, err)
 	assert.Empty(t, dirContents)
 	assert.NoError(t, os.RemoveAll(dir))
 
@@ -174,6 +177,7 @@ func TestRotatedLogDeletion(t *testing.T) {
 	err = runLogDeletion(dir, "error", 2, 4)
 	assert.NoError(t, err)
 	dirContents, err = os.ReadDir(dir)
+	require.NoError(t, err)
 	require.Len(t, dirContents, 1)
 	assert.NoError(t, os.RemoveAll(dir))
 
@@ -191,6 +195,7 @@ func TestRotatedLogDeletion(t *testing.T) {
 	assert.NoError(t, err)
 
 	dirContents, err = os.ReadDir(dir)
+	require.NoError(t, err)
 	require.Len(t, dirContents, 2)
 
 	fileNames = []string{}
@@ -211,6 +216,7 @@ func TestRotatedLogDeletion(t *testing.T) {
 	assert.NoError(t, err)
 
 	dirContents, err = os.ReadDir(dir)
+	require.NoError(t, err)
 	require.Len(t, dirContents, 2)
 
 	fileNames = []string{}

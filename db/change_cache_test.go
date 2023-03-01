@@ -214,7 +214,8 @@ func TestLateSequenceHandlingWithMultipleListeners(t *testing.T) {
 
 	// Add a second client.  Expect the first listener at [0], and the new one at [2]
 	startSequence = cache.RegisterLateSequenceClient()
-	entries, lastSeq2, err := cache.GetLateSequencesSince(startSequence)
+	_, lastSeq2, err := cache.GetLateSequencesSince(startSequence)
+	require.NoError(t, err)
 	assert.Equal(t, uint64(8), startSequence)
 	assert.Equal(t, uint64(8), lastSeq2)
 
@@ -223,7 +224,8 @@ func TestLateSequenceHandlingWithMultipleListeners(t *testing.T) {
 
 	cache.AddLateSequence(testLogEntry(3, "foo3", "1-a"))
 	// First client requests again.  Expect first client at latest (3), second still at (8).
-	entries, lastSeq1, err = cache.GetLateSequencesSince(lastSeq1)
+	_, lastSeq1, err = cache.GetLateSequencesSince(lastSeq1)
+	require.NoError(t, err)
 	assert.Equal(t, uint64(3), lastSeq1)
 	assert.Equal(t, uint64(1), cache.lateLogs[2].getListenerCount())
 	assert.Equal(t, uint64(1), cache.lateLogs[3].getListenerCount())
@@ -659,6 +661,7 @@ func TestChannelCacheBackfill(t *testing.T) {
 	// verify changes has three entries (needs to resend all since previous LowSeq, which
 	// will be the late arriver (3) along with 5, 6)
 	changes, err = collection.GetChanges(ctx, base.SetOf("*"), getChangesOptionsWithSeq(lastSeq))
+	require.NoError(t, err)
 	assert.Equal(t, 3, len(changes))
 	assert.Equal(t, &ChangeEntry{
 		Seq:          SequenceID{Seq: 3, LowSeq: 3},

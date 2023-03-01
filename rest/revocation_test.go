@@ -847,7 +847,7 @@ func TestEnsureRevocationAfterDocMutation(t *testing.T) {
 
 	// Skip to seq 19 and then update doc foo
 	revocationTester.fillToSeq(19)
-	revID = rt.CreateDocReturnRev(t, "doc", revID, map[string]interface{}{"channels": "A"})
+	_ = rt.CreateDocReturnRev(t, "doc", revID, map[string]interface{}{"channels": "A"})
 	err := rt.WaitForPendingChanges()
 	require.NoError(t, err)
 
@@ -881,7 +881,7 @@ func TestEnsureRevocationUsingDocHistory(t *testing.T) {
 
 	// Remove doc from A and re-add
 	revID = rt.CreateDocReturnRev(t, "doc", revID, map[string]interface{}{})
-	revID = rt.CreateDocReturnRev(t, "doc", revID, map[string]interface{}{"channels": "A"})
+	_ = rt.CreateDocReturnRev(t, "doc", revID, map[string]interface{}{"channels": "A"})
 
 	changes = revocationTester.getChanges(5, 1)
 	assert.Equal(t, "8:10", changes.Last_Seq)
@@ -971,8 +971,8 @@ func TestRevocationMutationMovesIntoRevokedChannel(t *testing.T) {
 	assert.Equal(t, "doc2", changes.Results[1].ID)
 
 	revocationTester.removeRole("user", "foo")
-	docRevID = rt.CreateDocReturnRev(t, "doc", docRevID, map[string]interface{}{"channels": []string{"A"}})
-	doc2RevID = rt.CreateDocReturnRev(t, "doc2", doc2RevID, map[string]interface{}{"channels": []string{"A"}, "val": "mutate"})
+	_ = rt.CreateDocReturnRev(t, "doc", docRevID, map[string]interface{}{"channels": []string{"A"}})
+	_ = rt.CreateDocReturnRev(t, "doc2", doc2RevID, map[string]interface{}{"channels": []string{"A"}, "val": "mutate"})
 
 	changes = revocationTester.getChanges(6, 1)
 	assert.Len(t, changes.Results, 1)
@@ -1058,10 +1058,10 @@ func TestRevocationResumeSameRoleAndLowSeqCheck(t *testing.T) {
 	revocationTester.removeRoleChannel("foo", "ch2")
 
 	revocationTester.fillToSeq(39)
-	revIDDoc = rt.CreateDocReturnRev(t, "doc1", revIDDoc, map[string]interface{}{"channels": []string{"ch1"}, "val": "mutate"})
+	_ = rt.CreateDocReturnRev(t, "doc1", revIDDoc, map[string]interface{}{"channels": []string{"ch1"}, "val": "mutate"})
 
 	revocationTester.fillToSeq(49)
-	revIDDoc2 = rt.CreateDocReturnRev(t, "doc2", revIDDoc2, map[string]interface{}{"channels": []string{"ch2"}, "val": "mutate"})
+	_ = rt.CreateDocReturnRev(t, "doc2", revIDDoc2, map[string]interface{}{"channels": []string{"ch2"}, "val": "mutate"})
 
 	changes = revocationTester.getChanges(changes.Last_Seq, 2)
 	assert.Equal(t, "doc1", changes.Results[0].ID)
@@ -1306,7 +1306,7 @@ func TestChannelGrantedPeriods(t *testing.T) {
 
 	revocationTester.removeRoleChannel("foo", "b")
 	revocationTester.removeRole("user", "foo")
-	revId = rt.CreateDocReturnRev(t, "doc", revId, map[string]interface{}{"mutate": "mutate", "channels": []string{"b"}})
+	_ = rt.CreateDocReturnRev(t, "doc", revId, map[string]interface{}{"mutate": "mutate", "channels": []string{"b"}})
 	changes = revocationTester.getChanges(changes.Last_Seq, 1)
 }
 
@@ -1370,6 +1370,7 @@ func TestChannelHistoryPruning(t *testing.T) {
 	// Add another so we have something to wait on
 	revocationTester.addRoleChannel("foo", "random")
 	resp = rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc3", `{"channels": ["random"]}`)
+	RequireStatus(t, resp, http.StatusCreated)
 
 	changes = revocationTester.getChanges(changes.Last_Seq, 1)
 	assert.Len(t, changes.Results, 1)
@@ -1405,7 +1406,7 @@ func TestChannelRevocationWithContiguousSequences(t *testing.T) {
 	assert.False(t, changes.Results[0].Revoked)
 
 	revocationTester.removeUserChannel("user", "a")
-	revID = rt.CreateDocReturnRev(t, "doc", revID, map[string]interface{}{"mutate": "mutate2", "channels": "a"})
+	_ = rt.CreateDocReturnRev(t, "doc", revID, map[string]interface{}{"mutate": "mutate2", "channels": "a"})
 	changes = revocationTester.getChanges(changes.Last_Seq, 1)
 	assert.Len(t, changes.Results, 1)
 	assert.Equal(t, "doc", changes.Results[0].ID)
@@ -2289,7 +2290,7 @@ func TestRevocationNoRev(t *testing.T) {
 	// Remove role from user
 	revocationTester.removeRole("user", "foo")
 
-	revID = rt.CreateDocReturnRev(t, "doc", revID, map[string]interface{}{"channels": "A", "val": "mutate"})
+	_ = rt.CreateDocReturnRev(t, "doc", revID, map[string]interface{}{"channels": "A", "val": "mutate"})
 
 	waitRevID := rt.CreateDocReturnRev(t, "docmarker", "", map[string]interface{}{"channels": "!"})
 	require.NoError(t, rt.WaitForPendingChanges())
@@ -2381,7 +2382,7 @@ func TestRevocationGetSyncDataError(t *testing.T) {
 	// Remove role from user
 	revocationTester.removeRole("user", "foo")
 
-	revID = rt.CreateDocReturnRev(t, "doc", revID, map[string]interface{}{"channels": "A", "val": "mutate"})
+	_ = rt.CreateDocReturnRev(t, "doc", revID, map[string]interface{}{"channels": "A", "val": "mutate"})
 
 	waitRevID := rt.CreateDocReturnRev(t, "docmarker", "", map[string]interface{}{"channels": "!"})
 	require.NoError(t, rt.WaitForPendingChanges())

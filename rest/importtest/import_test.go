@@ -210,7 +210,7 @@ func TestXattrSGTombstone(t *testing.T) {
 	log.Printf("delete response: %s", response.Body.Bytes())
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.Equal(t, true, body["ok"])
-	revId = body["rev"].(string)
+	require.NotEqual(t, "", body["rev"].(string))
 
 	// 3. Attempt to retrieve the doc through the SDK
 	deletedValue := make(map[string]interface{})
@@ -439,7 +439,7 @@ func TestXattrDoubleDelete(t *testing.T) {
 	log.Printf("delete response: %s", response.Body.Bytes())
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.Equal(t, true, body["ok"])
-	revId = body["rev"].(string)
+	require.NotEqual(t, "", body["rev"].(string))
 
 }
 
@@ -505,7 +505,7 @@ func TestViewQueryTombstoneRetrieval(t *testing.T) {
 	log.Printf("delete response: %s", response.Body.Bytes())
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.Equal(t, true, body["ok"])
-	revId = body["rev"].(string)
+	require.NotEqual(t, "", body["rev"].(string))
 
 	log.Printf("TestXattrDeleteDCPMutation done")
 
@@ -2071,6 +2071,7 @@ func TestUnexpectedBodyOnTombstone(t *testing.T) {
 	// Delete the document via the SDK
 	getBody := make(map[string]interface{})
 	cas, err := dataStore.Get(mobileKey, &getBody)
+	require.NoError(t, err)
 
 	// Attempt to get the document via Sync Gateway.  Will trigger on-demand import, tombstone creation
 	response = rt.SendAdminRequest("GET", "/{{.keyspace}}/"+mobileKey, "")

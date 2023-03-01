@@ -353,6 +353,7 @@ func mockCertificatesAndKeys(t *testing.T) (clientCertPath, clientKeyPath, rootC
 	}
 
 	clientKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.NoError(t, err)
 	saveAsKeyFile(t, clientKeyPath, clientKey)
 	certBytes, err = x509.CreateCertificate(rand.Reader, &clientTemplate, &rootTemplate, &clientKey.PublicKey, rootKey)
 	require.NoError(t, err, "Client certificate should be generated")

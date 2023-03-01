@@ -193,10 +193,12 @@ func TestBulkDocsChangeToRoleAccess(t *testing.T) {
 	// Create a role with no channels assigned to it
 	authenticator := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
 	role, err := authenticator.NewRole("role1", nil)
+	require.NoError(t, err)
 	assert.NoError(t, authenticator.Save(role))
 
 	// Create a user with an explicit role grant for role1
 	user, err := authenticator.NewUser("user1", "letmein", nil)
+	require.NoError(t, err)
 	user.SetExplicitRoles(channels.TimedSet{"role1": channels.NewVbSimpleSequence(1)}, 1)
 	err = authenticator.Save(user)
 	assert.NoError(t, err)

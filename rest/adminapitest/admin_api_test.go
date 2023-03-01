@@ -3883,6 +3883,7 @@ func TestDeleteDatabasePointingAtSameBucket(t *testing.T) {
 		"use_views": %t,
 		"num_index_replicas": 0
 	}`, tb.GetName(), base.TestClusterUsername(), base.TestClusterPassword(), base.TestsDisableGSI()))
+	rest.RequireStatus(t, resp, http.StatusCreated)
 }
 
 func TestDeleteDatabasePointingAtSameBucketPersistent(t *testing.T) {
