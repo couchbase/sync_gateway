@@ -273,29 +273,6 @@ func (doc *Document) Body() Body {
 	return doc._body
 }
 
-// Get a deep mutable copy of the body, using _rawBody.  Initializes _rawBody based on _body if not already present.
-func (doc *Document) GetDeepMutableBody() (Body, error) {
-	// If doc._rawBody isn't present, marshal from doc.Body
-	if doc._rawBody == nil {
-		if doc._body == nil {
-			return nil, fmt.Errorf("Unable to get document body due to an empty raw body and body in the document")
-		}
-		var err error
-		doc._rawBody, err = base.JSONMarshal(doc._body)
-		if err != nil {
-			return nil, fmt.Errorf("Unable to marshal document body into raw body : %w", err)
-		}
-	}
-
-	var mutableBody Body
-	err := mutableBody.Unmarshal(doc._rawBody)
-	if err != nil {
-		return nil, fmt.Errorf("Unable to unmarshal document body into raw body : %w", err)
-	}
-
-	return mutableBody, nil
-}
-
 func (doc *Document) RemoveBody() {
 	doc._body = nil
 	doc._rawBody = nil

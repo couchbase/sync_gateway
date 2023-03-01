@@ -1122,20 +1122,14 @@ func (db *DatabaseCollectionWithUser) resolveConflict(ctx context.Context, local
 	// TODO: Make doc expiry (_exp) available over replication.
 	// remoteExpiry := remoteDoc.Expiry
 
-	localDocBody, err := localDoc.GetDeepMutableBody()
-	if err != nil {
-		return "", nil, err
-	}
+	localDocBody := localDoc.Body().ShallowCopy()
 	localDocBody[BodyId] = localDoc.ID
 	localDocBody[BodyRev] = localRevID
 	localDocBody[BodyAttachments] = localAttachments
 	localDocBody[BodyExpiry] = localExpiry
 	localDocBody[BodyDeleted] = localDoc.IsDeleted()
 
-	remoteDocBody, err := remoteDoc.GetDeepMutableBody()
-	if err != nil {
-		return "", nil, err
-	}
+	remoteDocBody := remoteDoc.Body().ShallowCopy()
 	remoteDocBody[BodyId] = remoteDoc.ID
 	remoteDocBody[BodyRev] = remoteRevID
 	remoteDocBody[BodyAttachments] = remoteAttachments
