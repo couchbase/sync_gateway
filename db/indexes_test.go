@@ -111,46 +111,6 @@ func TestPostUpgradeIndexesSimple(t *testing.T) {
 	n1qlStore, ok := base.AsN1QLStore(collection.dataStore)
 	require.True(t, ok)
 
-	// restore index options to the same as the test start
-	defer func() {
-		options := InitializeIndexOptions{
-			FailFast:    false,
-			NumReplicas: 0,
-			Serverless:  db.IsServerless(),
-			UseXattrs:   base.TestUseXattrs(),
-		}
-		if db.OnlyDefaultCollection() {
-			options.MetadataIndexes = IndexesAll
-		}
-		// Restore indexes after test
-		assert.NoError(t, InitializeIndexes(ctx, n1qlStore, options))
-	}()
-
-	// construct test options that have opposite xattrs
-	oppositeXattrsOptions := InitializeIndexOptions{
-		FailFast:    false,
-		NumReplicas: 0,
-		Serverless:  db.IsServerless(),
-		UseXattrs:   !db.UseXattrs(),
-	}
-	if db.OnlyDefaultCollection() {
-		oppositeXattrsOptions.MetadataIndexes = IndexesAll
-	}
-
-	var expectedRemovedIndexes []string
-	for _, sgIndex := range sgIndexes {
-		if sgIndex.shouldCreate(oppositeXattrsOptions) {
-			// when xattrs starts false and turns true, these indexes won't exist for removal
-			if !sgIndex.isXattrOnly() {
-				expectedRemovedIndexes = append(expectedRemovedIndexes, sgIndex.fullIndexName(db.UseXattrs()))
-			}
-		} else if sgIndex.isXattrOnly() {
-			// when xattrs will be false, we don't see this as an index to create, but we do expect to remove it
-			expectedRemovedIndexes = append(expectedRemovedIndexes, sgIndex.fullIndexName(db.UseXattrs()))
-		}
-	}
-	sort.Strings(expectedRemovedIndexes)
-
 	// construct indexes as the test expects
 	options := InitializeIndexOptions{
 		FailFast:    false,
@@ -162,10 +122,19 @@ func TestPostUpgradeIndexesSimple(t *testing.T) {
 		options.MetadataIndexes = IndexesAll
 	}
 
-	options.UseXattrs = db.UseXattrs()
-	if !db.OnlyDefaultCollection() {
-		options.MetadataIndexes = IndexesWithoutMetadata
+	// restore index options to the same as the test start
+	defer func() {
+		// Restore indexes after test
+		assert.NoError(t, InitializeIndexes(ctx, n1qlStore, options))
+	}()
+
+	var expectedRemovedIndexes []string
+	for _, sgIndex := range sgIndexes {
+		if sgIndex.shouldCreate(options) {
+			expectedRemovedIndexes = append(expectedRemovedIndexes, sgIndex.fullIndexName(db.UseXattrs()))
+		}
 	}
+	sort.Strings(expectedRemovedIndexes)
 
 	err := InitializeIndexes(ctx, n1qlStore, options)
 	require.NoError(t, err)
