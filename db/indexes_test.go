@@ -59,7 +59,7 @@ func TestInitializeIndexes(t *testing.T) {
 			n1qlStore, isGoCBBucket := base.AsN1QLStore(collection.dataStore)
 			require.True(t, isGoCBBucket)
 
-			// drop and restore indexes between tests
+			// drop and restore indexes between tests, to the way the bucket pool would
 			defer func() {
 				options := InitializeIndexOptions{
 					FailFast:    false,
@@ -75,19 +75,20 @@ func TestInitializeIndexes(t *testing.T) {
 				assert.NoError(t, err)
 			}()
 
-			options := InitializeIndexOptions{
+			// add and drop indexes that may be different from the way the bucket pool expects, so use specific options here for test
+			xattrSpecificIndexOptions := InitializeIndexOptions{
 				FailFast:    false,
 				NumReplicas: 0,
 				Serverless:  db.IsServerless(),
 				UseXattrs:   test.xattrs,
 			}
 			if db.OnlyDefaultCollection() {
-				options.MetadataIndexes = IndexesAll
+				xattrSpecificIndexOptions.MetadataIndexes = IndexesAll
 			}
 
 			// Make sure we can drop and reinitialize twice
 			for i := 0; i < 2; i++ {
-				err := dropAndInitializeIndexes(base.TestCtx(t), n1qlStore, options)
+				err := dropAndInitializeIndexes(base.TestCtx(t), n1qlStore, xattrSpecificIndexOptions)
 				require.NoError(t, err, "Error dropping and initialising all indexes on bucket")
 			}
 		})
@@ -110,51 +111,67 @@ func TestPostUpgradeIndexesSimple(t *testing.T) {
 	n1qlStore, ok := base.AsN1QLStore(collection.dataStore)
 	require.True(t, ok)
 
-	options := InitializeIndexOptions{
+	// restore index options to the same as the test start
+	defer func() {
+		options := InitializeIndexOptions{
+			FailFast:    false,
+			NumReplicas: 0,
+			Serverless:  db.IsServerless(),
+			UseXattrs:   base.TestUseXattrs(),
+		}
+		if db.OnlyDefaultCollection() {
+			options.MetadataIndexes = IndexesAll
+		}
+		// Restore indexes after test
+		assert.NoError(t, InitializeIndexes(ctx, n1qlStore, options))
+	}()
+
+	// construct test options that have opposite xattrs
+	oppositeXattrsOptions := InitializeIndexOptions{
 		FailFast:    false,
 		NumReplicas: 0,
 		Serverless:  db.IsServerless(),
 		UseXattrs:   !db.UseXattrs(),
 	}
 	if db.OnlyDefaultCollection() {
-		options.MetadataIndexes = IndexesAll
+		oppositeXattrsOptions.MetadataIndexes = IndexesAll
 	}
 
 	var expectedRemovedIndexes []string
 	for _, sgIndex := range sgIndexes {
-		if sgIndex.shouldCreate(options) {
-			// when xattrs will be true, this index doesn't exist for removal
-			if sgIndex.simpleName != indexNames[IndexTombstones] {
+		if sgIndex.shouldCreate(oppositeXattrsOptions) {
+			// when xattrs starts false and turns true, these indexes won't exist for removal
+			if !sgIndex.isXattrOnly() {
 				expectedRemovedIndexes = append(expectedRemovedIndexes, sgIndex.fullIndexName(db.UseXattrs()))
 			}
-		} else if sgIndex.simpleName == indexNames[IndexTombstones] {
+		} else if sgIndex.isXattrOnly() {
 			// when xattrs will be false, we don't see this as an index to create, but we do expect to remove it
 			expectedRemovedIndexes = append(expectedRemovedIndexes, sgIndex.fullIndexName(db.UseXattrs()))
 		}
 	}
 	sort.Strings(expectedRemovedIndexes)
 
-	// We don't know the current state of the bucket (may already have xattrs enabled), so run
-	// an initial cleanup to remove existing obsolete indexes
-	removedIndexes, removeErr := removeObsoleteIndexes(n1qlStore, false, db.UseXattrs(), db.UseViews(), sgIndexes)
-	log.Printf("removedIndexes: %+v", removedIndexes)
-	require.NoError(t, removeErr, "Unexpected error running removeObsoleteIndexes in setup case")
+	// construct indexes as the test expects
+	options := InitializeIndexOptions{
+		FailFast:    false,
+		NumReplicas: 0,
+		Serverless:  db.IsServerless(),
+		UseXattrs:   db.UseXattrs(),
+	}
+	if db.OnlyDefaultCollection() {
+		options.MetadataIndexes = IndexesAll
+	}
 
 	options.UseXattrs = db.UseXattrs()
 	if !db.OnlyDefaultCollection() {
 		options.MetadataIndexes = IndexesWithoutMetadata
 	}
 
-	defer func() {
-		// Restore indexes after test
-		assert.NoError(t, InitializeIndexes(ctx, n1qlStore, options))
-	}()
-
 	err := InitializeIndexes(ctx, n1qlStore, options)
 	require.NoError(t, err)
 
 	// Running w/ opposite xattrs flag should preview removal of the indexes associated with this db context
-	removedIndexes, removeErr = removeObsoleteIndexes(n1qlStore, true, !db.UseXattrs(), db.UseViews(), sgIndexes)
+	removedIndexes, removeErr := removeObsoleteIndexes(n1qlStore, true, !db.UseXattrs(), db.UseViews(), sgIndexes)
 	sort.Strings(removedIndexes)
 	require.EqualValues(t, expectedRemovedIndexes, removedIndexes)
 	require.NoError(t, removeErr, "Unexpected error running removeObsoleteIndexes in preview mode")
