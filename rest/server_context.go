@@ -1120,6 +1120,9 @@ func (sc *ServerContext) initEventHandlers(ctx context.Context, dbcontext *db.Da
 				}
 			}
 			conf.Filter = filter
+			if conf.Filter == "" {
+				base.InfofCtx(ctx, base.KeyEvents, "No filter function defined for event handler %s - everything will be processed", eventType.String())
+			}
 		}
 
 		// Register event handlers
