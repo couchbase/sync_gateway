@@ -297,3 +297,52 @@ func TestBlipReplicationMultipleCollections(t *testing.T) {
 	}
 
 }
+
+func TestBlipReplicationMultipleCollectionsMismatchedDocSizes(t *testing.T) {
+	rt := NewRestTesterMultipleCollections(t, &RestTesterConfig{
+		GuestEnabled: true,
+	}, 2)
+	defer rt.Close()
+
+	btc, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
+	require.NoError(t, err)
+	defer btc.Close()
+
+	docName := "doc1"
+	body := db.Body{}
+	bodyBytes := []byte(`{"foo":"bar"}`)
+	require.NoError(t, body.Unmarshal(bodyBytes))
+	collectionRevIDs := make(map[string][]string)
+	require.Len(t, rt.GetDatabase().CollectionByID, 2)
+	for i, collection := range rt.GetDatabase().CollectionByID {
+		collectionWithAdmin := db.DatabaseCollectionWithUser{DatabaseCollection: collection}
+		docCount := 100000
+		if i == 0 {
+			docCount = 1
+		}
+		blipName := fmt.Sprintf("%s.%s", collection.ScopeName, collection.Name)
+		for j := 0; j < docCount; j++ {
+			revID, _, err := collectionWithAdmin.Put(base.TestCtx(t), fmt.Sprintf("doc%d", j), body)
+			require.NoError(t, err)
+			collectionRevIDs[blipName] = append(collectionRevIDs[blipName], revID)
+		}
+	}
+
+	// start all the clients first
+	for _, collectionClient := range btc.collectionClients {
+		require.NoError(t, collectionClient.StartOneshotPull())
+	}
+
+	for _, collectionClient := range btc.collectionClients {
+		revIDs := collectionRevIDs[collectionClient.collection]
+		msg, ok := collectionClient.WaitForRev(docName, revIDs[len(revIDs)-1])
+		require.True(t, ok)
+		require.Equal(t, bodyBytes, msg)
+	}
+
+	for _, collectionClient := range btc.collectionClients {
+		resp, err := collectionClient.UnsubPullChanges()
+		assert.NoError(t, err, "Error unsubing: %+v", resp)
+	}
+
+}
