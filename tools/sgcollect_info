@@ -73,6 +73,12 @@ USAGE = """usage: %prog [options] output_file.zip
 
 mydir = os.path.dirname(sys.argv[0])
 
+def delete_zip(filename):
+    try:
+     os.remove(filename)
+     print("Zipfile deleted: {0}".format(filename))
+    except Exception as e:
+        print("Zipfile ({0}) deletion failed: {1}".format(filename, e))
 
 def create_option_parser():
     parser = optparse.OptionParser(usage=USAGE, option_class=CbcollectInfoOptions)
@@ -124,7 +130,7 @@ def create_option_parser():
                       help="specifies proxy for upload")
     parser.add_option("--tmp-dir", dest="tmp_dir", default=None,
                       help="set the temp dir used while processing collected data. Overrides the TMPDIR env variable if set")
-    parser.add_option("--keep-zip", dest="keep_zip", default="",
+    parser.add_option("--keep-zip", dest="keep_zip", action="store_true", default="False",
                     help="keep sgcollect zip files after uploading them. By default they will be deleted to save disk space")
     return parser
 
@@ -789,22 +795,20 @@ def main():
 
     # Upload the zip to the URL to S3 if required
     if upload_url:
-        if options.redact_level != "none":
-            do_upload_and_exit(redact_zip_file, upload_url, options.upload_proxy, keep_zip)
-        else:
-            do_upload_and_exit(zip_filename, upload_url, options.upload_proxy, keep_zip)
+        try:
+            if options.redact_level != "none":
+                do_upload_and_exit(redact_zip_file, upload_url, options.upload_proxy, keep_zip)
+            else:
+                do_upload_and_exit(zip_filename, upload_url, options.upload_proxy, keep_zip)
+        finally:
+            delete_zip(zip_filename)
+            delete_zip(redact_zip_file)
 
     if options.redact_level != "none":
         print("Zipfile built: {0}".format(redact_zip_file))
 
     print("Zipfile built: {0}".format(zip_filename))
 
-    if not keep_zip:
-        os.remove(zip_filename)
-        print("Zipfile deleted: {0}".format(zip_filename))
-        if options.redact_level != "none":
-            os.remove(redact_zip_file)
-            print("Zipfile deleted: {0}".format(redact_zip_file))
 
 
 def ud(value, should_redact=True):
