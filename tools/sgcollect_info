@@ -75,8 +75,8 @@ mydir = os.path.dirname(sys.argv[0])
 
 def delete_zip(filename):
     try:
-     os.remove(filename)
-     print("Zipfile deleted: {0}".format(filename))
+        os.remove(filename)
+        print("Zipfile deleted: {0}".format(filename))
     except Exception as e:
         print("Zipfile ({0}) deletion failed: {1}".format(filename, e))
 
@@ -130,7 +130,7 @@ def create_option_parser():
                       help="specifies proxy for upload")
     parser.add_option("--tmp-dir", dest="tmp_dir", default=None,
                       help="set the temp dir used while processing collected data. Overrides the TMPDIR env variable if set")
-    parser.add_option("--keep-zip", dest="keep_zip", action="store_true", default="False",
+    parser.add_option("--keep-zip", dest="keep_zip", action="store_true", default=False,
                     help="keep sgcollect zip files after uploading them. By default they will be deleted to save disk space")
     return parser
 
