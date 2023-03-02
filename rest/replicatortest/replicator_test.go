@@ -593,7 +593,7 @@ func TestReplicationStatusActions(t *testing.T) {
 	assert.Equal(t, "rt2", doc2Body["source"])
 
 	// Stop replication
-	response := rt1.SendAdminRequest("PUT", "/db/_replicationStatus/"+replicationID+"?action=stop", "")
+	response := rt1.SendAdminRequest("PUT", "/{{.db}}/_replicationStatus/"+replicationID+"?action=stop", "")
 	rest.RequireStatus(t, response, http.StatusOK)
 
 	// Wait for stopped.  Non-instant as config change needs to arrive over DCP
@@ -604,7 +604,7 @@ func TestReplicationStatusActions(t *testing.T) {
 	assert.NoError(t, stateError)
 
 	// Reset replication
-	response = rt1.SendAdminRequest("PUT", "/db/_replicationStatus/"+replicationID+"?action=reset", "")
+	response = rt1.SendAdminRequest("PUT", "/{{.db}}/_replicationStatus/"+replicationID+"?action=reset", "")
 	rest.RequireStatus(t, response, http.StatusOK)
 
 	resetErr := rt1.WaitForCondition(func() bool {
@@ -614,7 +614,7 @@ func TestReplicationStatusActions(t *testing.T) {
 	assert.NoError(t, resetErr)
 
 	// Restart the replication
-	response = rt1.SendAdminRequest("PUT", "/db/_replicationStatus/"+replicationID+"?action=start", "")
+	response = rt1.SendAdminRequest("PUT", "/{{.db}}/_replicationStatus/"+replicationID+"?action=start", "")
 	rest.RequireStatus(t, response, http.StatusOK)
 
 	// Verify replication has restarted from zero. Since docs have already been replicated,
@@ -1423,7 +1423,7 @@ func TestReplicationConfigChange(t *testing.T) {
 		]
 	}
 	`
-	resp := rt1.SendAdminRequest("POST", "/db/_bulk_docs", bulkDocs)
+	resp := rt1.SendAdminRequest("POST", "/{{.db}}/_bulk_docs", bulkDocs)
 	rest.RequireStatus(t, resp, http.StatusCreated)
 
 	replicationID := "testRepl"
@@ -1441,16 +1441,16 @@ func TestReplicationConfigChange(t *testing.T) {
 	}`
 
 	// Create replication for first channel
-	resp = rt1.SendAdminRequest("PUT", "/db/_replication/"+replicationID, replConf)
+	resp = rt1.SendAdminRequest("PUT", "/{{.db}}/_replication/"+replicationID, replConf)
 	rest.RequireStatus(t, resp, http.StatusCreated)
 
 	rt1.WaitForReplicationStatus(replicationID, db.ReplicationStateRunning)
 
-	changesResults, err := rt2.WaitForChanges(4, "/db/_changes?since=0", "", true)
+	changesResults, err := rt2.WaitForChanges(4, "/{{.keyspace}}/_changes?since=0", "", true)
 	require.NoError(t, err)
 	require.Len(t, changesResults.Results, 4)
 
-	resp = rt1.SendAdminRequest("PUT", "/db/_replicationStatus/"+replicationID+"?action=stop", "")
+	resp = rt1.SendAdminRequest("PUT", "/{{.db}}/_replicationStatus/"+replicationID+"?action=stop", "")
 	rest.RequireStatus(t, resp, http.StatusOK)
 	rt1.WaitForReplicationStatus(replicationID, db.ReplicationStateStopped)
 
@@ -1463,14 +1463,14 @@ func TestReplicationConfigChange(t *testing.T) {
 		        }
 			}`
 
-	resp = rt1.SendAdminRequest("PUT", "/db/_replication/"+replicationID, replConfUpdate)
+	resp = rt1.SendAdminRequest("PUT", "/{{.db}}/_replication/"+replicationID, replConfUpdate)
 	rest.RequireStatus(t, resp, http.StatusOK)
 
-	resp = rt1.SendAdminRequest("PUT", "/db/_replicationStatus/"+replicationID+"?action=start", "")
+	resp = rt1.SendAdminRequest("PUT", "/{{.db}}/_replicationStatus/"+replicationID+"?action=start", "")
 	rest.RequireStatus(t, resp, http.StatusOK)
 	rt1.WaitForReplicationStatus(replicationID, db.ReplicationStateRunning)
 
-	changesResults, err = rt2.WaitForChanges(8, "/db/_changes?since=0", "", true)
+	changesResults, err = rt2.WaitForChanges(8, "/{{.db}}/_changes?since=0", "", true)
 	require.NoError(t, err)
 	require.Len(t, changesResults.Results, 8)
 }
@@ -3919,6 +3919,7 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 			customConflictResolver, err := db.NewCustomConflictResolver(test.conflictResolver, rt1.GetDatabase().Options.JavascriptTimeout)
 			require.NoError(t, err)
 			stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, nil, nil)
+			require.NoError(t, err)
 			replicationStats, err := stats.DBReplicatorStats(t.Name())
 			require.NoError(t, err)
 
@@ -6806,13 +6807,13 @@ func TestLocalWinsConflictResolution(t *testing.T) {
 			assert.NoError(t, remoteRT.WaitForRev(docID, newRevID))
 
 			// Stop the replication
-			response := activeRT.SendAdminRequest("PUT", "/db/_replicationStatus/"+replicationID+"?action=stop", "")
+			response := activeRT.SendAdminRequest("PUT", "/{{.db}}/_replicationStatus/"+replicationID+"?action=stop", "")
 			rest.RequireStatus(t, response, http.StatusOK)
 			activeRT.WaitForReplicationStatus(replicationID, db.ReplicationStateStopped)
 
-			rawResponse := activeRT.SendAdminRequest("GET", "/db/_raw/"+docID, "")
+			rawResponse := activeRT.SendAdminRequest("GET", "/{{.keyspace}}/_raw/"+docID, "")
 			log.Printf("-- local raw pre-update: %s", rawResponse.Body.Bytes())
-			rawResponse = remoteRT.SendAdminRequest("GET", "/db/_raw/"+docID, "")
+			rawResponse = remoteRT.SendAdminRequest("GET", "/{{.keyspace}}/_raw/"+docID, "")
 			log.Printf("-- remote raw pre-update: %s", rawResponse.Body.Bytes())
 
 			// Update local and remote revisions
@@ -6856,19 +6857,19 @@ func TestLocalWinsConflictResolution(t *testing.T) {
 				remoteParentRevID = newRemoteRevID
 			}
 
-			rawResponse = activeRT.SendAdminRequest("GET", "/db/_raw/"+docID, "")
+			rawResponse = activeRT.SendAdminRequest("GET", "/{{.keyspace}}/_raw/"+docID, "")
 			log.Printf("-- local raw pre-replication: %s", rawResponse.Body.Bytes())
-			rawResponse = remoteRT.SendAdminRequest("GET", "/db/_raw/"+docID, "")
+			rawResponse = remoteRT.SendAdminRequest("GET", "/{{.keyspace}}/_raw/"+docID, "")
 			log.Printf("-- remote raw pre-replication: %s", rawResponse.Body.Bytes())
 
 			// Restart the replication
-			response = activeRT.SendAdminRequest("PUT", "/db/_replicationStatus/"+replicationID+"?action=start", "")
+			response = activeRT.SendAdminRequest("PUT", "/{{.db}}/_replicationStatus/"+replicationID+"?action=start", "")
 			rest.RequireStatus(t, response, http.StatusOK)
 
 			// Wait for expected property value on remote to determine replication complete
 			waitErr := remoteRT.WaitForCondition(func() bool {
 				var remoteDoc db.Body
-				rawResponse := remoteRT.SendAdminRequest("GET", "/db/"+docID, "")
+				rawResponse := remoteRT.SendAdminRequest("GET", "/{{.keyspace}}/"+docID, "")
 				require.NoError(t, base.JSONUnmarshal(rawResponse.Body.Bytes(), &remoteDoc))
 				prop, ok := remoteDoc["prop"].(string)
 				log.Printf("-- Waiting for property: %v, got property: %v", test.expectedResult.propertyValue, prop)
@@ -6890,10 +6891,10 @@ func TestLocalWinsConflictResolution(t *testing.T) {
 			remoteRevpos := getTestRevpos(t, remoteDoc, "hello.txt")
 			assert.Equal(t, test.expectedResult.attachmentRevPos, remoteRevpos) // validate expected revpos
 
-			rawResponse = activeRT.SendAdminRequest("GET", "/db/_raw/"+docID, "")
+			rawResponse = activeRT.SendAdminRequest("GET", "/{{.keyspace}}/_raw/"+docID, "")
 			log.Printf("-- local raw post-replication: %s", rawResponse.Body.Bytes())
 
-			rawResponse = remoteRT.SendAdminRequest("GET", "/db/_raw/"+docID, "")
+			rawResponse = remoteRT.SendAdminRequest("GET", "/{{.keyspace}}/_raw/"+docID, "")
 			log.Printf("-- remote raw post-replication: %s", rawResponse.Body.Bytes())
 		})
 	}
@@ -7021,7 +7022,7 @@ func TestReplicatorConflictAttachment(t *testing.T) {
 
 			assert.NoError(t, remoteRT.WaitForRev(docID, newRevID))
 
-			response := activeRT.SendAdminRequest("PUT", "/db/_replicationStatus/"+replicationID+"?action=stop", "")
+			response := activeRT.SendAdminRequest("PUT", "/{{.db}}/_replicationStatus/"+replicationID+"?action=stop", "")
 			rest.RequireStatus(t, response, http.StatusOK)
 			activeRT.WaitForReplicationStatus(replicationID, db.ReplicationStateStopped)
 
@@ -7050,7 +7051,7 @@ func TestReplicatorConflictAttachment(t *testing.T) {
 			newRemoteRevID = fmt.Sprintf("%d-remote", remoteGen)
 			resp = remoteRT.PutNewEditsFalse(docID, newRemoteRevID, remoteParentRevID, fmt.Sprintf(`{"_attachments": {"attach": {"stub": true, "revpos": %d, "digest":"sha1-gwwPApfQR9bzBKpqoEYwFmKp98A="}}}`, remoteGen-1))
 
-			response = activeRT.SendAdminRequest("PUT", "/db/_replicationStatus/"+replicationID+"?action=start", "")
+			response = activeRT.SendAdminRequest("PUT", "/{{.db}}/_replicationStatus/"+replicationID+"?action=start", "")
 			rest.RequireStatus(t, response, http.StatusOK)
 
 			waitErr := activeRT.WaitForRev(docID, test.expectedFinalRev)
@@ -7068,7 +7069,7 @@ func TestReplicatorConflictAttachment(t *testing.T) {
 			remoteRevpos := getTestRevpos(t, remoteDoc, "attach")
 			assert.Equal(t, test.expectedRevPos, remoteRevpos)
 
-			response = activeRT.SendAdminRequest("GET", "/db/"+docID+"/attach", "")
+			response = activeRT.SendAdminRequest("GET", "/{{.keyspace}}/"+docID+"/attach", "")
 			assert.Equal(t, test.expectedAttachmentContent, string(response.BodyBytes()))
 		})
 	}

@@ -141,7 +141,7 @@ func (rt *RestTester) CreateReplication(replicationID string, remoteURLString st
 	}
 	payload, err := json.Marshal(replicationConfig)
 	require.NoError(rt.TB, err)
-	resp := rt.SendAdminRequest(http.MethodPost, "/db/_replication/", string(payload))
+	resp := rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_replication/", string(payload))
 	RequireStatus(rt.TB, resp, http.StatusCreated)
 }
 
@@ -162,21 +162,21 @@ func (rt *RestTester) WaitForReplicationStatus(replicationID string, targetStatu
 }
 
 func (rt *RestTester) GetReplications() (replications map[string]db.ReplicationCfg) {
-	rawResponse := rt.SendAdminRequest("GET", "/db/_replication/", "")
+	rawResponse := rt.SendAdminRequest("GET", "/{{.db}}/_replication/", "")
 	RequireStatus(rt.TB, rawResponse, 200)
 	require.NoError(rt.TB, base.JSONUnmarshal(rawResponse.Body.Bytes(), &replications))
 	return replications
 }
 
 func (rt *RestTester) GetReplicationStatus(replicationID string) (status db.ReplicationStatus) {
-	rawResponse := rt.SendAdminRequest("GET", "/db/_replicationStatus/"+replicationID, "")
+	rawResponse := rt.SendAdminRequest("GET", "/{{.db}}/_replicationStatus/"+replicationID, "")
 	RequireStatus(rt.TB, rawResponse, 200)
 	require.NoError(rt.TB, base.JSONUnmarshal(rawResponse.Body.Bytes(), &status))
 	return status
 }
 
 func (rt *RestTester) GetReplicationStatuses(queryString string) (statuses []db.ReplicationStatus) {
-	rawResponse := rt.SendAdminRequest("GET", "/db/_replicationStatus/"+queryString, "")
+	rawResponse := rt.SendAdminRequest("GET", "/{{.db}}/_replicationStatus/"+queryString, "")
 	RequireStatus(rt.TB, rawResponse, 200)
 	require.NoError(rt.TB, base.JSONUnmarshal(rawResponse.Body.Bytes(), &statuses))
 	return statuses
@@ -199,6 +199,7 @@ func SetupSGRPeers(t *testing.T) (activeRT *RestTester, passiveRT *RestTester, r
 		&RestTesterConfig{
 			CustomTestBucket: passiveTestBucket.NoCloseClone(),
 			DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
+				Name: "passivedb",
 				Users: map[string]*auth.PrincipalConfig{
 					"alice": {
 						Password:         base.StringPtr("pass"),
@@ -214,14 +215,17 @@ func SetupSGRPeers(t *testing.T) (activeRT *RestTester, passiveRT *RestTester, r
 	srv := httptest.NewServer(passiveRT.TestPublicHandler())
 
 	// Build passiveDBURL with basic auth creds
-	passiveDBURL, _ := url.Parse(srv.URL + "/db")
+	passiveDBURL, _ := url.Parse(srv.URL + "/" + passiveRT.GetDatabase().Name)
 	passiveDBURL.User = url.UserPassword("alice", "pass")
 
 	// Set up active RestTester (rt1)
 	activeTestBucket := base.GetTestBucket(t)
 	activeRT = NewRestTesterDefaultCollection(t, // TODO: CBG-2491: make collection aware
 		&RestTesterConfig{
-			CustomTestBucket:   activeTestBucket.NoCloseClone(),
+			CustomTestBucket: activeTestBucket.NoCloseClone(),
+			DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
+				Name: "activedb",
+			}},
 			SgReplicateEnabled: true,
 		})
 	// Initalize RT and bucket
