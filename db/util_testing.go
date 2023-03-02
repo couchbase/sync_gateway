@@ -358,7 +358,7 @@ var viewsAndGSIBucketInit base.TBPBucketInitFunc = func(ctx context.Context, b b
 			NumReplicas:     0,
 			FailFast:        false,
 			Serverless:      false,
-			MetadataIndexes: IndexesAll,
+			MetadataIndexes: IndexesWithoutMetadata,
 		}
 		dsName, ok := base.AsDataStoreName(dataStore)
 		if !ok {
@@ -367,7 +367,7 @@ var viewsAndGSIBucketInit base.TBPBucketInitFunc = func(ctx context.Context, b b
 			return err
 		}
 		if base.IsDefaultCollection(dsName.ScopeName(), dsName.CollectionName()) {
-			options.MetadataIndexes = IndexesMetadataOnly
+			options.MetadataIndexes = IndexesAll
 		}
 		if err := InitializeIndexes(ctx, n1qlStore, options); err != nil {
 			return err
@@ -393,7 +393,7 @@ func viewBucketReadier(ctx context.Context, dataStore base.DataStore, tbp *base.
 		return err
 	}
 
-	for ddocName, _ := range ddocs {
+	for ddocName := range ddocs {
 		tbp.Logf(ctx, "removing existing view: %s", ddocName)
 		if err := viewStore.DeleteDDoc(ddocName); err != nil {
 			return err
