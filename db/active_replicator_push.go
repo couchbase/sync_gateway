@@ -265,9 +265,7 @@ func (apr *ActivePushReplicator) _startPushNonCollection() error {
 	if err != nil {
 		return err
 	}
-	apr.blipSyncContext.collections.setNonCollectionAware(&blipSyncCollectionContext{
-		dbCollection: dbCollection,
-	})
+	apr.blipSyncContext.collections.setNonCollectionAware(newBlipSyncCollectionContext(dbCollection))
 
 	if err := apr._initCheckpointer(); err != nil {
 		// clean up anything we've opened so far

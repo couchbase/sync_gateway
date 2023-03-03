@@ -152,7 +152,7 @@ func collectionBlipHandler(next blipHandlerFunc) blipHandlerFunc {
 				DatabaseCollection: bh.db.singleCollection,
 				user:               bh.db.user,
 			}
-			bh.collections.setNonCollectionAware(&blipSyncCollectionContext{dbCollection: bh.collection.DatabaseCollection})
+			bh.collections.setNonCollectionAware(newBlipSyncCollectionContext(bh.collection.DatabaseCollection))
 			return next(bh, bm)
 		}
 		if !bh.collections.hasNamedCollections() {
@@ -235,9 +235,6 @@ func (bh *blipHandler) handleSetCheckpoint(rq *blip.Message) error {
 
 // Received a "subChanges" subscription request
 func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
-	bh.changesCtxLock.Lock()
-	defer bh.changesCtxLock.Unlock()
-
 	defaultSince := CreateZeroSinceValue()
 	latestSeq := func() (SequenceID, error) {
 		seq, err := bh.collection.LastSequence()
@@ -250,6 +247,9 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 
 	// Ensure that only _one_ subChanges subscription can be open on this blip connection at any given time.  SG #3222.
 	collectionCtx, err := bh.collections.get(bh.collectionIdx)
+	collectionCtx.changesCtxLock.Lock()
+	defer collectionCtx.changesCtxLock.Unlock()
+
 	if err != nil {
 		return base.HTTPErrorf(http.StatusBadRequest, fmt.Sprintf("%s", err))
 	}
@@ -262,8 +262,8 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 	}
 
 	// Create ctx if it has been cancelled
-	if bh.changesCtx.Err() != nil {
-		bh.changesCtx, bh.changesCtxCancel = context.WithCancel(context.Background())
+	if collectionCtx.changesCtx.Err() != nil {
+		collectionCtx.changesCtx, collectionCtx.changesCtxCancel = context.WithCancel(context.Background())
 	}
 
 	if len(subChangesParams.docIDs()) > 0 && subChangesParams.continuous() {
@@ -308,7 +308,7 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 		}
 
 		defer func() {
-			bh.changesCtxCancel()
+			collectionCtx.changesCtxCancel()
 			collectionCtx.activeSubChanges.Set(false)
 		}()
 		// sendChanges runs until blip context closes, or fails due to error
@@ -331,10 +331,13 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 }
 
 func (bh *blipHandler) handleUnsubChanges(rq *blip.Message) error {
-	bh.changesCtxLock.Lock()
-	defer bh.changesCtxLock.Unlock()
-
-	bh.changesCtxCancel()
+	collectionCtx, err := bh.collections.get(bh.collectionIdx)
+	if err != nil {
+		return err
+	}
+	collectionCtx.changesCtxLock.Lock()
+	defer collectionCtx.changesCtxLock.Unlock()
+	collectionCtx.changesCtxCancel()
 	return nil
 }
 
@@ -380,6 +383,11 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions
 	}()
 
 	base.InfofCtx(bh.loggingCtx, base.KeySync, "Sending changes since %v", opts.since)
+	collectionCtx, err := bh.collections.get(bh.collectionIdx)
+	if err != nil {
+		base.WarnfCtx(bh.loggingCtx, "[%s] Could not get collection in sendChagnes: %s", err)
+		return
+	}
 
 	options := ChangesOptions{
 		Since:       opts.since,
@@ -389,7 +397,7 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions
 		Revocations: opts.revocations,
 		LoggingCtx:  bh.loggingCtx,
 		clientType:  opts.clientType,
-		ChangesCtx:  bh.changesCtx,
+		ChangesCtx:  collectionCtx.changesCtx,
 	}
 
 	channelSet := opts.channels

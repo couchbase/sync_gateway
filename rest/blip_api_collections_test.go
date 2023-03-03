@@ -308,23 +308,26 @@ func TestBlipReplicationMultipleCollectionsMismatchedDocSizes(t *testing.T) {
 	require.NoError(t, err)
 	defer btc.Close()
 
-	docName := "doc1"
 	body := db.Body{}
 	bodyBytes := []byte(`{"foo":"bar"}`)
 	require.NoError(t, body.Unmarshal(bodyBytes))
 	collectionRevIDs := make(map[string][]string)
+	collectionDocIDs := make(map[string][]string)
 	require.Len(t, rt.GetDatabase().CollectionByID, 2)
 	for i, collection := range rt.GetDatabase().CollectionByID {
 		collectionWithAdmin := db.DatabaseCollectionWithUser{DatabaseCollection: collection}
-		docCount := 100000
+		docCount := 10
 		if i == 0 {
 			docCount = 1
 		}
 		blipName := fmt.Sprintf("%s.%s", collection.ScopeName, collection.Name)
 		for j := 0; j < docCount; j++ {
-			revID, _, err := collectionWithAdmin.Put(base.TestCtx(t), fmt.Sprintf("doc%d", j), body)
+			docName := fmt.Sprintf("doc%d", j)
+			fmt.Println("adding doc to ", docName)
+			revID, _, err := collectionWithAdmin.Put(base.TestCtx(t), docName, body)
 			require.NoError(t, err)
 			collectionRevIDs[blipName] = append(collectionRevIDs[blipName], revID)
+			collectionDocIDs[blipName] = append(collectionDocIDs[blipName], docName)
 		}
 	}
 
@@ -335,7 +338,8 @@ func TestBlipReplicationMultipleCollectionsMismatchedDocSizes(t *testing.T) {
 
 	for _, collectionClient := range btc.collectionClients {
 		revIDs := collectionRevIDs[collectionClient.collection]
-		msg, ok := collectionClient.WaitForRev(docName, revIDs[len(revIDs)-1])
+		docIDs := collectionDocIDs[collectionClient.collection]
+		msg, ok := collectionClient.WaitForRev(docIDs[len(docIDs)-1], revIDs[len(revIDs)-1])
 		require.True(t, ok)
 		require.Equal(t, bodyBytes, msg)
 	}

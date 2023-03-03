@@ -97,9 +97,7 @@ func (apr *ActivePullReplicator) _startPullNonCollection() error {
 	if err != nil {
 		return err
 	}
-	apr.blipSyncContext.collections.setNonCollectionAware(&blipSyncCollectionContext{
-		dbCollection: defaultCollection,
-	})
+	apr.blipSyncContext.collections.setNonCollectionAware(newBlipSyncCollectionContext(defaultCollection))
 
 	if err := apr._initCheckpointer(); err != nil {
 		// clean up anything we've opened so far

@@ -102,7 +102,7 @@ func (arc *activeReplicatorCommon) _initCollections() ([]replicationCheckpoint, 
 			return nil, err
 		}
 
-		blipSyncCollectionContexts[i] = &blipSyncCollectionContext{dbCollection: dbCollection}
+		blipSyncCollectionContexts[i] = newBlipSyncCollectionContext(dbCollection)
 		collectionCheckpoints[i] = *checkpoint
 
 		arc.namedCollections[getCollectionsKeyspaces[i]] = &activeReplicatorCollection{collectionIdx: base.IntPtr(i), dataStore: dbCollection.dataStore}
@@ -114,15 +114,15 @@ func (arc *activeReplicatorCommon) _initCollections() ([]replicationCheckpoint, 
 }
 
 // forEachCollection runs the callback function for each collection on the replicator.
-func (a *activeReplicatorCommon) forEachCollection(callback func(*activeReplicatorCollection) error) error {
-	if a.config.CollectionsEnabled {
-		for _, collection := range a.namedCollections {
+func (arc *activeReplicatorCommon) forEachCollection(callback func(*activeReplicatorCollection) error) error {
+	if arc.config.CollectionsEnabled {
+		for _, collection := range arc.namedCollections {
 			if err := callback(collection); err != nil {
 				return err
 			}
 		}
 	} else {
-		if err := callback(a.defaultCollection); err != nil {
+		if err := callback(arc.defaultCollection); err != nil {
 			return err
 		}
 	}

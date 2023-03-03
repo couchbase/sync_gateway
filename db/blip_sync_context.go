@@ -45,7 +45,6 @@ func NewBlipSyncContext(ctx context.Context, bc *blip.Context, db *Database, con
 		inFlightChangesThrottle: make(chan struct{}, maxInFlightChangesBatches),
 		collections:             &blipCollections{},
 	}
-	bsc.changesCtx, bsc.changesCtxCancel = context.WithCancel(context.Background()) // TODO: re-eval, using ctx here breaks TestGroupIDReplications
 	if bsc.replicationStats == nil {
 		bsc.replicationStats = NewBlipSyncStats()
 	}
@@ -98,10 +97,7 @@ type BlipSyncContext struct {
 	replicationStats            *BlipSyncStats    // Replication stats
 	purgeOnRemoval              bool              // Purges the document when we pull a _removed:true revision.
 	conflictResolver            *ConflictResolver // Conflict resolver for active replications
-	changesCtxLock              sync.Mutex
-	changesCtx                  context.Context    // Used for the unsub changes Blip message to check if the subChanges feed should stop
-	changesCtxCancel            context.CancelFunc // Cancel function for changesCtx to cancel subChanges being sent
-	changesPendingResponseCount int64              // Number of changes messages pending changesResponse
+	changesPendingResponseCount int64             // Number of changes messages pending changesResponse
 	// TODO: For review, whether sendRevAllConflicts needs to be per sendChanges invocation
 	sendRevNoConflicts bool                      // Whether to set noconflicts=true when sending revisions
 	clientType         BLIPSyncContextClientType // Can perform client-specific replication behaviour based on this field
@@ -207,11 +203,13 @@ func (bsc *BlipSyncContext) register(profile string, handlerFn func(*blipHandler
 
 func (bsc *BlipSyncContext) Close() {
 	bsc.terminatorOnce.Do(func() {
-		// Lock so that we don't close the changesCtx at the same time as handleSubChanges is creating it
-		bsc.changesCtxLock.Lock()
-		defer bsc.changesCtxLock.Unlock()
+		for _, collection := range bsc.collections.getAll() {
+			// Lock so that we don't close the changesCtx at the same time as handleSubChanges is creating it
+			collection.changesCtxLock.Lock()
+			defer collection.changesCtxLock.Unlock()
 
-		bsc.changesCtxCancel()
+			collection.changesCtxCancel()
+		}
 		close(bsc.terminator)
 	})
 }
