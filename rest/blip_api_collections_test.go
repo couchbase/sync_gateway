@@ -316,6 +316,7 @@ func TestBlipReplicationMultipleCollectionsMismatchedDocSizes(t *testing.T) {
 	require.Len(t, rt.GetDatabase().CollectionByID, 2)
 	for i, collection := range rt.GetDatabase().CollectionByID {
 		collectionWithAdmin := db.DatabaseCollectionWithUser{DatabaseCollection: collection}
+		// intentionally create collections with different size replications to ensure one collection finishing won't cancel another one
 		docCount := 10
 		if i == 0 {
 			docCount = 1
@@ -323,13 +324,13 @@ func TestBlipReplicationMultipleCollectionsMismatchedDocSizes(t *testing.T) {
 		blipName := fmt.Sprintf("%s.%s", collection.ScopeName, collection.Name)
 		for j := 0; j < docCount; j++ {
 			docName := fmt.Sprintf("doc%d", j)
-			fmt.Println("adding doc to ", docName)
 			revID, _, err := collectionWithAdmin.Put(base.TestCtx(t), docName, body)
 			require.NoError(t, err)
 			collectionRevIDs[blipName] = append(collectionRevIDs[blipName], revID)
 			collectionDocIDs[blipName] = append(collectionDocIDs[blipName], docName)
 		}
 	}
+	require.NoError(t, rt.WaitForPendingChanges())
 
 	// start all the clients first
 	for _, collectionClient := range btc.collectionClients {

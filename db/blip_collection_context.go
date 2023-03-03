@@ -41,6 +41,7 @@ type blipCollections struct {
 	sync.RWMutex
 }
 
+// newBlipSyncCollection constructs a context to hold all blip data for a given collection.
 func newBlipSyncCollectionContext(dbCollection *DatabaseCollection) *blipSyncCollectionContext {
 	c := &blipSyncCollectionContext{
 		dbCollection: dbCollection,

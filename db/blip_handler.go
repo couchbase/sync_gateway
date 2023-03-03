@@ -385,7 +385,7 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions
 	base.InfofCtx(bh.loggingCtx, base.KeySync, "Sending changes since %v", opts.since)
 	collectionCtx, err := bh.collections.get(bh.collectionIdx)
 	if err != nil {
-		base.WarnfCtx(bh.loggingCtx, "[%s] Could not get collection in sendChagnes: %s", err)
+		base.WarnfCtx(bh.loggingCtx, "[%s] Could not get collection in sendChanges: %s", err)
 		return
 	}
 
