@@ -128,6 +128,10 @@ func (rt *RestTester) WaitForCheckpointLastSequence(expectedName string) (string
 
 // createReplication creates a replication via the REST API with the specified ID, remoteURL, direction and channel filter
 func (rt *RestTester) CreateReplication(replicationID string, remoteURLString string, direction db.ActiveReplicatorDirection, channels []string, continuous bool, conflictResolver db.ConflictResolverType) {
+	rt.CreateReplicationForDB("{{.db}}", replicationID, remoteURLString, direction, channels, continuous, conflictResolver)
+}
+
+func (rt *RestTester) CreateReplicationForDB(dbName string, replicationID string, remoteURLString string, direction db.ActiveReplicatorDirection, channels []string, continuous bool, conflictResolver db.ConflictResolverType) {
 	replicationConfig := &db.ReplicationConfig{
 		ID:                     replicationID,
 		Direction:              direction,
@@ -141,7 +145,7 @@ func (rt *RestTester) CreateReplication(replicationID string, remoteURLString st
 	}
 	payload, err := json.Marshal(replicationConfig)
 	require.NoError(rt.TB, err)
-	resp := rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_replication/", string(payload))
+	resp := rt.SendAdminRequest(http.MethodPost, "/"+dbName+"/_replication/", string(payload))
 	RequireStatus(rt.TB, resp, http.StatusCreated)
 }
 
@@ -153,12 +157,16 @@ func (rt *RestTester) WaitForAssignedReplications(count int) {
 	require.NoError(rt.TB, rt.WaitForCondition(successFunc))
 }
 
-func (rt *RestTester) WaitForReplicationStatus(replicationID string, targetStatus string) {
+func (rt *RestTester) WaitForReplicationStatusForDB(dbName string, replicationID string, targetStatus string) {
 	successFunc := func() bool {
-		status := rt.GetReplicationStatus(replicationID)
+		status := rt.GetReplicationStatusForDB(dbName, replicationID)
 		return status.Status == targetStatus
 	}
 	require.NoError(rt.TB, rt.WaitForCondition(successFunc))
+}
+
+func (rt *RestTester) WaitForReplicationStatus(replicationID string, targetStatus string) {
+	rt.WaitForReplicationStatusForDB("{{.db}}", replicationID, targetStatus)
 }
 
 func (rt *RestTester) GetReplications() (replications map[string]db.ReplicationCfg) {
@@ -169,7 +177,11 @@ func (rt *RestTester) GetReplications() (replications map[string]db.ReplicationC
 }
 
 func (rt *RestTester) GetReplicationStatus(replicationID string) (status db.ReplicationStatus) {
-	rawResponse := rt.SendAdminRequest("GET", "/{{.db}}/_replicationStatus/"+replicationID, "")
+	return rt.GetReplicationStatusForDB("{{.db}}", replicationID)
+}
+
+func (rt *RestTester) GetReplicationStatusForDB(dbName string, replicationID string) (status db.ReplicationStatus) {
+	rawResponse := rt.SendAdminRequest("GET", "/"+dbName+"/_replicationStatus/"+replicationID, "")
 	RequireStatus(rt.TB, rawResponse, 200)
 	require.NoError(rt.TB, base.JSONUnmarshal(rawResponse.Body.Bytes(), &status))
 	return status

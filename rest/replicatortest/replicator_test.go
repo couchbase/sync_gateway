@@ -1589,6 +1589,7 @@ func TestDBReplicationStatsTeardown(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
 	}
+
 	base.RequireNumTestBuckets(t, 2)
 	// Test tests Prometheus stat registration
 	base.SkipPrometheusStatsRegistration = false
@@ -1626,8 +1627,8 @@ func TestDBReplicationStatsTeardown(t *testing.T) {
 	}`, tb2.GetName(), base.TestsDisableGSI()))
 	rest.RequireStatus(t, resp, http.StatusCreated)
 
-	rt.CreateReplication("repl1", db2Url.String(), db.ActiveReplicatorTypePush, nil, true, db.ConflictResolverDefault)
-	rt.WaitForReplicationStatus("repl1", db.ReplicationStateRunning)
+	rt.CreateReplicationForDB("{{.db1}}", "repl1", db2Url.String(), db.ActiveReplicatorTypePush, nil, true, db.ConflictResolverDefault)
+	rt.WaitForReplicationStatusForDB("{{.db1}}", "repl1", db.ReplicationStateRunning)
 
 	// Wait for document to replicate from db to db2 to confirm replication start
 	rt.CreateDoc(t, "marker1")
