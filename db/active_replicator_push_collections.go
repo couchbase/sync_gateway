@@ -79,7 +79,6 @@ func (apr *ActivePushReplicator) _startPushWithCollections() error {
 			}
 			// No special handling for error
 		}
-
 		apr.activeSendChanges.Set(true)
 		go func(s *blip.Sender) {
 			defer apr.activeSendChanges.Set(false)
@@ -93,6 +92,7 @@ func (apr *ActivePushReplicator) _startPushWithCollections() error {
 				channels:          channels,
 				clientType:        clientTypeSGR2,
 				ignoreNoConflicts: true, // force the passive side to accept a "changes" message, even in no conflicts mode.
+				changesCtx:        c.changesCtx,
 			})
 			// On a normal completion, call complete for the replication
 			if isComplete {
