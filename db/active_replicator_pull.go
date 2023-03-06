@@ -22,9 +22,9 @@ type ActivePullReplicator struct {
 	*activeReplicatorCommon
 }
 
-func NewPullReplicator(config *ActiveReplicatorConfig) *ActivePullReplicator {
+func NewPullReplicator(ctx context.Context, config *ActiveReplicatorConfig) *ActivePullReplicator {
 	apr := ActivePullReplicator{
-		activeReplicatorCommon: newActiveReplicatorCommon(config, ActiveReplicatorTypePull),
+		activeReplicatorCommon: newActiveReplicatorCommon(ctx, config, ActiveReplicatorTypePull),
 	}
 	apr.replicatorConnectFn = apr._connect
 	return &apr

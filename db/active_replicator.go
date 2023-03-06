@@ -45,14 +45,14 @@ func NewActiveReplicator(ctx context.Context, config *ActiveReplicatorConfig) *A
 	ar.statusKey = metakeys.ReplicationStatusKey(config.ID)
 
 	if pushReplication := config.Direction == ActiveReplicatorTypePush || config.Direction == ActiveReplicatorTypePushAndPull; pushReplication {
-		ar.Push = NewPushReplicator(config)
+		ar.Push = NewPushReplicator(ctx, config)
 		if ar.config.onComplete != nil {
 			ar.Push.onReplicatorComplete = ar._onReplicationComplete
 		}
 	}
 
 	if pullReplication := config.Direction == ActiveReplicatorTypePull || config.Direction == ActiveReplicatorTypePushAndPull; pullReplication {
-		ar.Pull = NewPullReplicator(config)
+		ar.Pull = NewPullReplicator(ctx, config)
 		if ar.config.onComplete != nil {
 			ar.Pull.onReplicatorComplete = ar._onReplicationComplete
 		}
