@@ -151,7 +151,11 @@ func (rt *RestTester) Bucket() base.Bucket {
 	// If we have a TestBucket defined on the RestTesterConfig, use that instead of requesting a new one.
 	testBucket := rt.RestTesterConfig.CustomTestBucket
 	if testBucket == nil {
-		testBucket = base.GetTestBucket(rt.TB)
+		if rt.PersistentConfig {
+			testBucket = base.GetPersistentTestBucket(rt.TB)
+		} else {
+			testBucket = base.GetTestBucket(rt.TB)
+		}
 		if rt.leakyBucketConfig != nil {
 			leakyConfig := *rt.leakyBucketConfig
 			// Ignore closures to avoid double closing panics
@@ -627,8 +631,13 @@ func (rt *RestTester) templateResource(resource string) (string, error) {
 			if len(database.CollectionByID) == 1 {
 				data["keyspace"] = rt.GetSingleKeyspace()
 			} else {
-				for i, keyspace := range getKeyspaces(rt.TB, database) {
-					data[fmt.Sprintf("keyspace%d", i+1)] = keyspace
+				multipleKeyspaces := len(getKeyspaces(rt.TB, database)) > 1
+				for j, keyspace := range getKeyspaces(rt.TB, database) {
+					if multipleKeyspaces {
+						data[fmt.Sprintf("db%dkeyspace%d", i+1, j+1)] = keyspace
+					} else {
+						data[fmt.Sprintf("keyspace%d", i+1)] = keyspace
+					}
 				}
 			}
 		}
