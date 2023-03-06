@@ -247,12 +247,11 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 
 	// Ensure that only _one_ subChanges subscription can be open on this blip connection at any given time.  SG #3222.
 	collectionCtx, err := bh.collections.get(bh.collectionIdx)
-	collectionCtx.changesCtxLock.Lock()
-	defer collectionCtx.changesCtxLock.Unlock()
-
 	if err != nil {
 		return base.HTTPErrorf(http.StatusBadRequest, fmt.Sprintf("%s", err))
 	}
+	collectionCtx.changesCtxLock.Lock()
+	defer collectionCtx.changesCtxLock.Unlock()
 	if !collectionCtx.activeSubChanges.CASRetry(false, true) {
 		collectionStr := "default collection"
 		if bh.collectionIdx != nil {
@@ -323,6 +322,7 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 			revocations:       subChangesParams.revocations(),
 			clientType:        clientType,
 			ignoreNoConflicts: clientType == clientTypeSGR2, // force this side to accept a "changes" message, even in no conflicts mode for SGR2.
+			changesCtx:        collectionCtx.changesCtx,
 		})
 		base.DebugfCtx(bh.loggingCtx, base.KeySyncMsg, "#%d: Type:%s   --> Time:%v", bh.serialNumber, rq.Profile(), time.Since(startTime))
 	}()
@@ -358,6 +358,7 @@ type sendChangesOptions struct {
 	clientType        clientType
 	revocations       bool
 	ignoreNoConflicts bool
+	changesCtx        context.Context
 }
 
 type changesDeletedFlag uint
@@ -383,11 +384,6 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions
 	}()
 
 	base.InfofCtx(bh.loggingCtx, base.KeySync, "Sending changes since %v", opts.since)
-	collectionCtx, err := bh.collections.get(bh.collectionIdx)
-	if err != nil {
-		base.WarnfCtx(bh.loggingCtx, "[%s] Could not get collection in sendChanges: %s", err)
-		return
-	}
 
 	options := ChangesOptions{
 		Since:       opts.since,
@@ -397,7 +393,7 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions
 		Revocations: opts.revocations,
 		LoggingCtx:  bh.loggingCtx,
 		clientType:  opts.clientType,
-		ChangesCtx:  collectionCtx.changesCtx,
+		ChangesCtx:  opts.changesCtx,
 	}
 
 	channelSet := opts.channels

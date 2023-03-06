@@ -309,6 +309,11 @@ func (apr *ActivePushReplicator) _startPushNonCollection() error {
 		// No special handling for error
 	}
 
+	collectionCtx, err := bh.collections.get(nil)
+	if err != nil {
+		return err
+	}
+
 	apr.activeSendChanges.Set(true)
 	go func(s *blip.Sender) {
 		defer apr.activeSendChanges.Set(false)
@@ -322,6 +327,7 @@ func (apr *ActivePushReplicator) _startPushNonCollection() error {
 			channels:          channels,
 			clientType:        clientTypeSGR2,
 			ignoreNoConflicts: true, // force the passive side to accept a "changes" message, even in no conflicts mode.
+			changesCtx:        collectionCtx.changesCtx,
 		})
 		// On a normal completion, call complete for the replication
 		if isComplete {
