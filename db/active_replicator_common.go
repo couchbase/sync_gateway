@@ -84,11 +84,18 @@ func newActiveReplicatorCommon(config *ActiveReplicatorConfig, direction ActiveR
 		checkpointID = PullCheckpointID(config.ID)
 	}
 
+	initialStatus, err := LoadReplicationStatus(config.ActiveDB.DatabaseContext, config.ID)
+	if err != nil {
+		// Not finding an initialStatus isn't fatal, but we should at least log that we'll reset stats when we do...
+		base.InfofCtx(context.TODO(), base.KeyReplicate, "Couldn't load initial replication status: %v - stats will reset", err)
+	}
+
 	apr := activeReplicatorCommon{
 		config:           config,
 		state:            ReplicationStateStopped,
 		replicationStats: replicationStats,
 		CheckpointID:     config.checkpointPrefix + checkpointID,
+		initialStatus:    initialStatus,
 	}
 
 	if config.CollectionsEnabled {
