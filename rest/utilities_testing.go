@@ -619,10 +619,11 @@ func (rt *RestTester) templateResource(resource string) (string, error) {
 			dbNames = append(dbNames, dbName)
 		}
 		sort.Strings(dbNames)
+		multipleDatabases := len(dbNames) > 1
 		for i, dbName := range dbNames {
 			database := databases[dbName]
 			dbPrefix := ""
-			if len(dbNames) == 1 {
+			if !multipleDatabases {
 				data["db"] = database.Name
 			} else {
 				dbPrefix = fmt.Sprintf("db%d", i+1)
@@ -631,18 +632,16 @@ func (rt *RestTester) templateResource(resource string) (string, error) {
 			if len(database.CollectionByID) == 1 {
 				data["keyspace"] = rt.GetSingleKeyspace()
 			} else {
-				multipleKeyspaces := len(getKeyspaces(rt.TB, database)) > 1
 				for j, keyspace := range getKeyspaces(rt.TB, database) {
-					if multipleKeyspaces {
-						data[fmt.Sprintf("db%dkeyspace%d", i+1, j+1)] = keyspace
+					if !multipleDatabases {
+						data[fmt.Sprintf("keyspace%d", j+1)] = keyspace
 					} else {
-						data[fmt.Sprintf("keyspace%d", i+1)] = keyspace
+						data[fmt.Sprintf("db%dkeyspace%d", i+1, j+1)] = keyspace
 					}
 				}
 			}
 		}
 	}
-
 	var uri bytes.Buffer
 	if err := tmpl.Execute(&uri, data); err != nil {
 		return "", err
