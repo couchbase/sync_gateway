@@ -87,7 +87,7 @@ func newActiveReplicatorCommon(ctx context.Context, config *ActiveReplicatorConf
 	initialStatus, err := LoadReplicationStatus(config.ActiveDB.DatabaseContext, config.ID)
 	if err != nil {
 		// Not finding an initialStatus isn't fatal, but we should at least log that we'll reset stats when we do...
-		base.InfofCtx(ctx, base.KeyReplicate, "Couldn't load initial replication status for %q: %v - stats will be reset", config.ID, err)
+		base.InfofCtx(ctx, base.KeyReplicate, "Couldn't load initial replication status for %q: %w - stats will be reset", config.ID, err)
 	}
 
 	apr := activeReplicatorCommon{
