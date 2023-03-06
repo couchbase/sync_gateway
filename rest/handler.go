@@ -309,8 +309,12 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 			// any other call
 			dbContext.AccessLock.RLock()
 
-			// defer releasing the dbContext until after the handler method returns
-			defer dbContext.AccessLock.RUnlock()
+			// defer releasing the dbContext until after the handler method returns, unless it's a blipsync request
+			if h.pathTemplateContains("_blipsync") {
+				dbContext.AccessLock.RUnlock()
+			} else {
+				defer dbContext.AccessLock.RUnlock()
+			}
 
 			dbState := atomic.LoadUint32(&dbContext.State)
 
