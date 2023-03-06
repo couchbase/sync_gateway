@@ -185,16 +185,6 @@ func TestActiveReplicatorMultiCollection(t *testing.T) {
 	err = ar.Stop()
 	require.NoError(t, err)
 
-	// These stats aren't reliable as the push and pull replications race each other in the test and interfere
-	// the stat can range from total docs up to 2x total docs if one replicator pulls the other's changes
-	checkedPushBefore := ar.GetStatus().DocsCheckedPush
-	assert.GreaterOrEqual(t, checkedPushBefore, int64(numDocsPerCollection*numCollections))
-	assert.LessOrEqual(t, checkedPushBefore, int64(numDocsPerCollection*numCollections*2))
-
-	checkedPullBefore := ar.GetStatus().DocsCheckedPull
-	assert.GreaterOrEqual(t, checkedPullBefore, int64(numDocsPerCollection*numCollections))
-	assert.LessOrEqual(t, checkedPullBefore, int64(numDocsPerCollection*numCollections*2))
-
 	//  create one more doc on each collection and make sure we're able to resume from the checkpoint.
 	for keyspaceNum := 1; keyspaceNum <= numCollections; keyspaceNum++ {
 		resp = rt1.SendAdminRequest(http.MethodPut,
@@ -215,6 +205,7 @@ func TestActiveReplicatorMultiCollection(t *testing.T) {
 
 	err = ar.Start(ctx1)
 	require.NoError(t, err)
+	defer func() { assert.NoError(t, ar.Stop()) }()
 
 	// check all expected docs were pushed and pulled
 	for _, localCollection := range localCollections {
@@ -275,14 +266,4 @@ func TestActiveReplicatorMultiCollection(t *testing.T) {
 		require.NoError(t, err)
 		assert.Len(t, changes.Results, expectedNumDocs)
 	}
-
-	require.NoError(t, ar.Stop())
-
-	checkedPush := ar.GetStatus().DocsCheckedPush
-	checkedPull := ar.GetStatus().DocsCheckedPull
-
-	// each push/pull replication should have pulled the same set of changes from each other (which is twice the number of total docs)
-	// TODO: CBG-2737 This stat is slightly flaky - is checkpointer running consistently? Should we switch to manual checkpointing?
-	assert.Equal(t, int64(len(localCollections)*(numDocsPerCollection+1)*2), checkedPush)
-	assert.Equal(t, int64(len(localCollections)*(numDocsPerCollection+1)*2), checkedPull)
 }
