@@ -639,9 +639,6 @@ func TestReplicationStatusActions(t *testing.T) {
 //   - Creates more documents, validates they are replicated
 func TestReplicationRebalancePull(t *testing.T) {
 
-	// TODO: CBG-2736 - Fix replication stats persistence and re-enable test.
-	t.Skipf("CBG-2736 - Fix replication stats persistence and re-enable test.")
-
 	if !base.IsEnterpriseEdition() {
 		t.Skipf("test is EE only (replication rebalance)")
 	}
@@ -746,9 +743,6 @@ func TestReplicationRebalancePull(t *testing.T) {
 //   - adds another active node
 //   - Creates more documents, validates they are replicated
 func TestReplicationRebalancePush(t *testing.T) {
-
-	// TODO: CBG-2736 - Fix replication stats persistence and re-enable test.
-	t.Skipf("CBG-2736 - Fix replication stats persistence and re-enable test.")
 
 	if !base.IsEnterpriseEdition() {
 		t.Skipf("test is EE only (replication rebalance)")

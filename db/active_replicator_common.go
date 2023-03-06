@@ -72,7 +72,7 @@ type activeReplicatorCollection struct {
 	Checkpointer  *Checkpointer  // Checkpointer for this collection
 }
 
-func newActiveReplicatorCommon(config *ActiveReplicatorConfig, direction ActiveReplicatorDirection) *activeReplicatorCommon {
+func newActiveReplicatorCommon(ctx context.Context, config *ActiveReplicatorConfig, direction ActiveReplicatorDirection) *activeReplicatorCommon {
 
 	var replicationStats *BlipSyncStats
 	var checkpointID string
@@ -84,11 +84,18 @@ func newActiveReplicatorCommon(config *ActiveReplicatorConfig, direction ActiveR
 		checkpointID = PullCheckpointID(config.ID)
 	}
 
+	initialStatus, err := LoadReplicationStatus(config.ActiveDB.DatabaseContext, config.ID)
+	if err != nil {
+		// Not finding an initialStatus isn't fatal, but we should at least log that we'll reset stats when we do...
+		base.InfofCtx(ctx, base.KeyReplicate, "Couldn't load initial replication status for %q: %w - stats will be reset", config.ID, err)
+	}
+
 	apr := activeReplicatorCommon{
 		config:           config,
 		state:            ReplicationStateStopped,
 		replicationStats: replicationStats,
 		CheckpointID:     config.checkpointPrefix + checkpointID,
+		initialStatus:    initialStatus,
 	}
 
 	if config.CollectionsEnabled {
