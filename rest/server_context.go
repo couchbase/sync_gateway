@@ -1802,7 +1802,7 @@ func (sc *ServerContext) initializeCouchbaseServerConnections(ctx context.Contex
 		// Check for v3.0 persisted configs, migrate to registry format if found
 		err = sc.migrateV30Configs(ctx)
 		if err != nil {
-			base.InfofCtx(ctx, base.KeyConfig, "Unable to migrate v3.0 config to registry - will not be migrated: %w", err)
+			base.InfofCtx(ctx, base.KeyConfig, "Unable to migrate v3.0 config to registry - will not be migrated: %v", err)
 		}
 
 		count, err := sc.fetchAndLoadConfigs(ctx, true)
