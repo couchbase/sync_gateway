@@ -151,7 +151,11 @@ func (rt *RestTester) Bucket() base.Bucket {
 	// If we have a TestBucket defined on the RestTesterConfig, use that instead of requesting a new one.
 	testBucket := rt.RestTesterConfig.CustomTestBucket
 	if testBucket == nil {
-		testBucket = base.GetTestBucket(rt.TB)
+		if rt.PersistentConfig {
+			testBucket = base.GetPersistentTestBucket(rt.TB)
+		} else {
+			testBucket = base.GetTestBucket(rt.TB)
+		}
 		if rt.leakyBucketConfig != nil {
 			leakyConfig := *rt.leakyBucketConfig
 			// Ignore closures to avoid double closing panics
@@ -607,20 +611,37 @@ func (rt *RestTester) templateResource(resource string) (string, error) {
 	}
 
 	data := make(map[string]string)
-	if rt.ServerContext() != nil && len(rt.ServerContext().AllDatabases()) == 1 {
-		data["db"] = rt.GetDatabase().Name
-	}
-	database := rt.GetDatabase()
-	if database != nil {
-		if len(database.CollectionByID) == 1 {
-			data["keyspace"] = rt.GetSingleKeyspace()
-		} else {
-			for i, keyspace := range rt.GetKeyspaces() {
-				data[fmt.Sprintf("keyspace%d", i+1)] = keyspace
+	require.NotNil(rt.TB, rt.ServerContext())
+	if rt.ServerContext() != nil {
+		databases := rt.ServerContext().AllDatabases()
+		var dbNames []string
+		for dbName := range databases {
+			dbNames = append(dbNames, dbName)
+		}
+		sort.Strings(dbNames)
+		multipleDatabases := len(dbNames) > 1
+		for i, dbName := range dbNames {
+			database := databases[dbName]
+			dbPrefix := ""
+			if !multipleDatabases {
+				data["db"] = database.Name
+			} else {
+				dbPrefix = fmt.Sprintf("db%d", i+1)
+				data[dbPrefix] = database.Name
+			}
+			if len(database.CollectionByID) == 1 {
+				data["keyspace"] = rt.GetSingleKeyspace()
+			} else {
+				for j, keyspace := range getKeyspaces(rt.TB, database) {
+					if !multipleDatabases {
+						data[fmt.Sprintf("keyspace%d", j+1)] = keyspace
+					} else {
+						data[fmt.Sprintf("db%dkeyspace%d", i+1, j+1)] = keyspace
+					}
+				}
 			}
 		}
 	}
-
 	var uri bytes.Buffer
 	if err := tmpl.Execute(&uri, data); err != nil {
 		return "", err
@@ -2302,6 +2323,16 @@ func getRESTKeyspace(_ testing.TB, dbName string, collection *db.DatabaseCollect
 		return dbName
 	}
 	return strings.Join([]string{dbName, collection.ScopeName, collection.Name}, base.ScopeCollectionSeparator)
+}
+
+// getKeyspaces returns the names of all the keyspaces on the rest tester. Currently assumes a single database.
+func getKeyspaces(t testing.TB, database *db.DatabaseContext) []string {
+	var keyspaces []string
+	for _, collection := range database.CollectionByID {
+		keyspaces = append(keyspaces, getRESTKeyspace(t, database.Name, collection))
+	}
+	sort.Strings(keyspaces)
+	return keyspaces
 }
 
 // GetKeyspaces returns the names of all the keyspaces on the rest tester. Currently assumes a single database.

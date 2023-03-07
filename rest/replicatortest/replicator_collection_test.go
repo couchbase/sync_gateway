@@ -82,6 +82,7 @@ func TestActiveReplicatorMultiCollection(t *testing.T) {
 
 	var resp *rest.TestResponse
 	// create docs in all collections
+
 	for keyspaceNum := 1; keyspaceNum <= numCollections; keyspaceNum++ {
 		for j := 1; j <= numDocsPerCollection; j++ {
 			resp = rt1.SendAdminRequest(http.MethodPut,
