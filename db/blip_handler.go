@@ -417,7 +417,7 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions
 	// and BlipSyncContext user access.
 	changesDb, err := bh.copyDatabaseCollectionWithUser(bh.collectionIdx)
 	if err != nil {
-		base.WarnfCtx(bh.loggingCtx, "[%s] error sending changes: %w", bh.blipContext.ID, err)
+		base.WarnfCtx(bh.loggingCtx, "[%s] error sending changes: %v", bh.blipContext.ID, err)
 		return false
 
 	}
@@ -868,7 +868,7 @@ func (bh *blipHandler) handleNoRev(rq *blip.Message) error {
 	if collectionCtx.sgr2PullProcessedSeqCallback != nil {
 		seq, err := ParseJSONSequenceID(seqStr)
 		if err != nil {
-			base.WarnfCtx(bh.loggingCtx, "Unable to parse sequence %q from norev message: %w - not tracking for checkpointing", seqStr, err)
+			base.WarnfCtx(bh.loggingCtx, "Unable to parse sequence %q from norev message: %v - not tracking for checkpointing", seqStr, err)
 		} else {
 			collectionCtx.sgr2PullProcessedSeqCallback(&seq, IDAndRev{DocID: docID, RevID: revID})
 		}
@@ -952,7 +952,7 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 				seqStr := rq.Properties[RevMessageSequence]
 				seq, err := ParseJSONSequenceID(seqStr)
 				if err != nil {
-					base.WarnfCtx(bh.loggingCtx, "Unable to parse sequence %q from rev message: %w - not tracking for checkpointing", seqStr, err)
+					base.WarnfCtx(bh.loggingCtx, "Unable to parse sequence %q from rev message: %v - not tracking for checkpointing", seqStr, err)
 				} else {
 					collectionCtx.sgr2PullProcessedSeqCallback(&seq, IDAndRev{DocID: docID, RevID: revID})
 				}
@@ -1173,7 +1173,7 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 		seqProperty := rq.Properties[RevMessageSequence]
 		seq, err := ParseJSONSequenceID(seqProperty)
 		if err != nil {
-			base.WarnfCtx(bh.loggingCtx, "Unable to parse sequence %q from rev message: %w - not tracking for checkpointing", seqProperty, err)
+			base.WarnfCtx(bh.loggingCtx, "Unable to parse sequence %q from rev message: %v - not tracking for checkpointing", seqProperty, err)
 		} else {
 			collectionCtx.sgr2PullProcessedSeqCallback(&seq, IDAndRev{DocID: docID, RevID: revID})
 		}
