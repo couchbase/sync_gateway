@@ -1428,9 +1428,9 @@ func TestGetUserCollectionAccess(t *testing.T) {
 	RequireStatus(t, userResponse, 200)
 	assert.NotContains(t, userResponse.Body.Bytes(), collection2Name)
 
-	//userResponse = rt.SendAdminRequest("GET", "/db/_role/role1", "")
-	//RequireStatus(t, userResponse, 200)  DISABLED UNTIL CBG-2748 is merged
-	//assert.NotContains(t, userResponse.Body.Bytes(), collection2Name)
+	userResponse = rt.SendAdminRequest("GET", "/db/_role/role1", "")
+	RequireStatus(t, userResponse, 200)
+	assert.NotContains(t, userResponse.Body.Bytes(), collection2Name)
 
 	// Attempt to write collections that aren't defined for the database for PUT /_user and /_role, disabled until CBG-2762 is fixed
 	//putResponse = rt.SendAdminRequest("PUT", "/db/_user/alice2", fmt.Sprintf(userRolePayload, `"email":"alice@couchbase.com","password":"@232dfdg",`, scope1Name, collection1Name, `,"rgergeggrenhnnh": {
@@ -1498,13 +1498,18 @@ func TestPutUserCollectionAccess(t *testing.T) {
 	RequireStatus(t, getResponse, 200)
 	assert.Contains(t, getResponse.ResponseRecorder.Body.String(), `"all_channels":["!"]`)
 
-	resp := rt.SendAdminRequest("PUT", "/db/_config", fmt.Sprintf(
-		`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "scopes":{}}`,
-		testBucket.GetName(), base.TestUseXattrs()))
+	dbConfig := DbConfig{
+		Scopes: getCollectionsConfigWithSyncFn(rt.TB, rt.TestBucket, nil, 1),
+		BucketConfig: BucketConfig{
+			Bucket: base.StringPtr(rt.TestBucket.GetName()),
+		},
+	}
+	resp, err := rt.ReplaceDbConfig(rt.GetDatabase().Name, dbConfig)
+	require.NoError(t, err)
 	RequireStatus(t, resp, http.StatusCreated)
 
 	//  Hide entries for collections that are no longer part of the database for GET /_user and /_role
-	//userResponse := rt.SendAdminRequest("GET", "/db/_user/bob", "") DISABLED UNTIL CBG-2748 is merged
-	//RequireStatus(t, userResponse, 200)
-	//assert.NotContains(t, userResponse.ResponseRecorder.Body.String(), collection2Name)
+	userResponse := rt.SendAdminRequest("GET", "/db/_user/bob", "")
+	RequireStatus(t, userResponse, http.StatusOK)
+	assert.NotContains(t, userResponse.ResponseRecorder.Body.String(), collection2Name)
 }
