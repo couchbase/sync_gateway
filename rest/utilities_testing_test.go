@@ -197,6 +197,9 @@ func TestRestTesterTemplateMultipleDatabases(t *testing.T) {
 	base.RequireNumTestDataStores(t, numCollections)
 	dbConfig := DbConfig{
 		Scopes: getCollectionsConfigWithSyncFn(rt.TB, rt.TestBucket, nil, numCollections),
+		BucketConfig: BucketConfig{
+			Bucket: base.StringPtr(rt.TestBucket.GetName()),
+		},
 	}
 	dbOne := "dbone"
 	bucket1Datastore1, err := rt.TestBucket.GetNamedDataStore(0)
@@ -254,6 +257,9 @@ func TestRestTesterTemplateMultipleDatabases(t *testing.T) {
 	defer bucket2.Close()
 	dbConfig = DbConfig{
 		Scopes: getCollectionsConfigWithSyncFn(rt.TB, bucket2, nil, numCollections),
+		BucketConfig: BucketConfig{
+			Bucket: base.StringPtr(bucket2.GetName()),
+		},
 	}
 	dbTwo := "dbtwo"
 	bucket2Datastore1, err := rt.TestBucket.GetNamedDataStore(0)
