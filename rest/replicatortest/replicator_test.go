@@ -6176,7 +6176,10 @@ func TestDefaultConflictResolverWithTombstoneLocal(t *testing.T) {
 	for _, test := range defaultConflictResolverWithTombstoneTests {
 		t.Run(test.name, func(tt *testing.T) {
 			// Passive
-			rt2 := rest.NewRestTester(t, nil)
+			rt2 := rest.NewRestTester(t, &rest.RestTesterConfig{
+				SyncFn: channels.DocChannelsSyncFunction,
+			})
+
 			defer rt2.Close()
 
 			username := "alice"
@@ -6327,7 +6330,10 @@ func TestDefaultConflictResolverWithTombstoneRemote(t *testing.T) {
 	for _, test := range defaultConflictResolverWithTombstoneTests {
 		t.Run(test.name, func(t *testing.T) {
 			// Passive
-			rt2 := rest.NewRestTester(t, nil)
+			rt2 := rest.NewRestTester(t,
+				&rest.RestTesterConfig{
+					SyncFn: channels.DocChannelsSyncFunction,
+				})
 			defer rt2.Close()
 
 			username := "alice"

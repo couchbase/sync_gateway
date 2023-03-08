@@ -100,9 +100,9 @@ func waitForTombstone(t *testing.T, rt *rest.RestTester, docID string) {
 // specified document id, revision id and body value in a channel named "alice".
 func createOrUpdateDoc(t *testing.T, rt *rest.RestTester, docID, revID, bodyValue string) string {
 	body := fmt.Sprintf(`{"key":%q,"channels":["alice"]}`, bodyValue)
-	dbURL := "/db/" + docID
+	dbURL := "/{{.keyspace}}/" + docID
 	if revID != "" {
-		dbURL = "/db/" + docID + "?rev=" + revID
+		dbURL = "/{{.keyspace}}/" + docID + "?rev=" + revID
 	}
 	resp := rt.SendAdminRequest(http.MethodPut, dbURL, body)
 	rest.RequireStatus(t, resp, http.StatusCreated)
