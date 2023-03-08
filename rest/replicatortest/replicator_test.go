@@ -5909,7 +5909,8 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 
 			// Passive
 			passiveBucket := base.GetTestBucket(t)
-			remotePassiveRT := rest.NewRestTester(t,
+			// CBG-2319: replicator not yet working with non default collection
+			remotePassiveRT := rest.NewRestTesterDefaultCollection(t,
 				&rest.RestTesterConfig{
 					CustomTestBucket: passiveBucket,
 				})
@@ -5920,7 +5921,8 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 
 			// Active
 			activeBucket := base.GetTestBucket(t)
-			localActiveRT := rest.NewRestTester(t,
+			// CBG-2319: replicator not yet working with non default collection
+			localActiveRT := rest.NewRestTesterDefaultCollection(t,
 				&rest.RestTesterConfig{
 					CustomTestBucket:   activeBucket,
 					SgReplicateEnabled: true,
