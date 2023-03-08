@@ -19,7 +19,8 @@ import (
 func (arc *activeReplicatorCommon) _initCollections() ([]replicationCheckpoint, error) {
 
 	var (
-		getCollectionsKeyspaces     base.ScopeAndCollectionNames
+		remoteCollectionsKeyspaces  base.ScopeAndCollectionNames
+		localCollectionsKeyspaces   base.ScopeAndCollectionNames
 		getCollectionsCheckpointIDs []string
 	)
 
@@ -30,26 +31,43 @@ func (arc *activeReplicatorCommon) _initCollections() ([]replicationCheckpoint, 
 	}
 
 	if arc.config.CollectionsLocal != nil {
-		for _, scopeAndCollectionName := range arc.config.CollectionsLocal {
-			scopeName, collectionName, err := parseScopeAndCollection(scopeAndCollectionName)
+		for i, localScopeAndCollection := range arc.config.CollectionsLocal {
+			localScopeName, localCollectionName, err := parseScopeAndCollection(localScopeAndCollection)
 			if err != nil {
 				return nil, err
-			} else if scopeName == nil || collectionName == nil {
-				return nil, fmt.Errorf("scope and collection name must be specified: %q - %v", scopeAndCollectionName, arc.config.CollectionsLocal)
+			} else if localScopeName == nil || localCollectionName == nil {
+				return nil, fmt.Errorf("scope and collection name must be specified: %q - %v", localScopeAndCollection, arc.config.CollectionsLocal)
 			}
-			getCollectionsKeyspaces = append(getCollectionsKeyspaces, base.ScopeAndCollectionName{Scope: *scopeName, Collection: *collectionName})
+			localCollectionsKeyspaces = append(localCollectionsKeyspaces, base.ScopeAndCollectionName{Scope: *localScopeName, Collection: *localCollectionName})
+
+			// remap collection name to remote if set
+			if remoteScopeAndCollection := arc.config.CollectionsRemote[i]; remoteScopeAndCollection != "" {
+				base.DebugfCtx(arc.ctx, base.KeyReplicate, "Mapping local %q to remote %q", localScopeAndCollection, remoteScopeAndCollection)
+				localScopeAndCollection = remoteScopeAndCollection
+
+				remoteScopeName, remoteCollectionName, err := parseScopeAndCollection(remoteScopeAndCollection)
+				if err != nil {
+					return nil, err
+				} else if remoteScopeName == nil || remoteCollectionName == nil {
+					return nil, fmt.Errorf("scope and collection name must be specified: %q - %v", remoteScopeAndCollection, arc.config.CollectionsLocal)
+				}
+				remoteCollectionsKeyspaces = append(remoteCollectionsKeyspaces, base.ScopeAndCollectionName{Scope: *remoteScopeName, Collection: *remoteCollectionName})
+			} else {
+				remoteCollectionsKeyspaces = append(remoteCollectionsKeyspaces, base.ScopeAndCollectionName{Scope: *localScopeName, Collection: *localCollectionName})
+			}
 			getCollectionsCheckpointIDs = append(getCollectionsCheckpointIDs, arc.CheckpointID)
 		}
 	} else {
 		// collections to replicate wasn't set - so build a full set based on local database
 		for _, dbCollection := range arc.blipSyncContext.blipContextDb.CollectionByID {
-			getCollectionsKeyspaces = append(getCollectionsKeyspaces, base.ScopeAndCollectionName{Scope: dbCollection.ScopeName, Collection: dbCollection.Name})
+			localCollectionsKeyspaces = append(localCollectionsKeyspaces, base.ScopeAndCollectionName{Scope: dbCollection.ScopeName, Collection: dbCollection.Name})
+			remoteCollectionsKeyspaces = append(remoteCollectionsKeyspaces, base.ScopeAndCollectionName{Scope: dbCollection.ScopeName, Collection: dbCollection.Name})
 			getCollectionsCheckpointIDs = append(getCollectionsCheckpointIDs, arc.CheckpointID)
 		}
 	}
 
 	msg, err := NewGetCollectionsMessage(GetCollectionsRequestBody{
-		Collections:   getCollectionsKeyspaces.ScopeAndCollectionNames(),
+		Collections:   remoteCollectionsKeyspaces.ScopeAndCollectionNames(),
 		CheckpointIDs: getCollectionsCheckpointIDs,
 	})
 	if err != nil {
@@ -91,21 +109,23 @@ func (arc *activeReplicatorCommon) _initCollections() ([]replicationCheckpoint, 
 		}
 
 		if checkpoint == nil {
-			return nil, fmt.Errorf("peer does not have collection %q", getCollectionsKeyspaces[i])
+			return nil, fmt.Errorf("peer does not have collection %q", remoteCollectionsKeyspaces[i])
 		} else if checkpoint.LastSeq == "" {
 			// collection valid but no checkpoint - start from sequence zero
 			checkpoint.LastSeq = CreateZeroSinceValue().String()
 		}
 
-		dbCollection, err := arc.blipSyncContext.blipContextDb.GetDatabaseCollection(getCollectionsKeyspaces[i].ScopeName(), getCollectionsKeyspaces[i].CollectionName())
+		// remap back to local collection name for the active side of the replication
+		dbCollection, err := arc.blipSyncContext.blipContextDb.GetDatabaseCollection(localCollectionsKeyspaces[i].ScopeName(), localCollectionsKeyspaces[i].CollectionName())
 		if err != nil {
 			return nil, err
 		}
 
-		blipSyncCollectionContexts[i] = newBlipSyncCollectionContext(dbCollection)
+		collectionContext := newBlipSyncCollectionContext(dbCollection)
+		blipSyncCollectionContexts[i] = collectionContext
 		collectionCheckpoints[i] = *checkpoint
 
-		arc.namedCollections[getCollectionsKeyspaces[i]] = &activeReplicatorCollection{collectionIdx: base.IntPtr(i), dataStore: dbCollection.dataStore}
+		arc.namedCollections[localCollectionsKeyspaces[i]] = &activeReplicatorCollection{collectionIdx: base.IntPtr(i), dataStore: dbCollection.dataStore}
 	}
 
 	arc.blipSyncContext.collections.set(blipSyncCollectionContexts)
