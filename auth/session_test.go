@@ -12,6 +12,7 @@ package auth
 
 import (
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -22,7 +23,7 @@ import (
 )
 
 func TestCreateSession(t *testing.T) {
-	var username string = "Alice"
+	const username = "Alice"
 	const invalidSessionTTLError = "400 Invalid session time-to-live"
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAuth)
 	testBucket := base.GetTestBucket(t)
@@ -30,9 +31,14 @@ func TestCreateSession(t *testing.T) {
 	dataStore := testBucket.GetSingleDataStore()
 	auth := NewAuthenticator(dataStore, nil, DefaultAuthenticatorOptions())
 
+	user, err := auth.NewUser(username, "password", base.Set{})
+	require.NoError(t, err)
+	require.NotNil(t, user)
+	require.NoError(t, auth.Save(user))
+
 	// Create session with a username and valid TTL of 2 hours.
-	session, err := auth.CreateSession(username, 2*time.Hour)
-	assert.NoError(t, err)
+	session, err := auth.CreateSession(user, 2*time.Hour)
+	require.NoError(t, err)
 
 	assert.Equal(t, username, session.Username)
 	assert.Equal(t, 2*time.Hour, session.Ttl)
@@ -50,13 +56,13 @@ func TestCreateSession(t *testing.T) {
 	assert.NotEmpty(t, session.Expiration)
 
 	// Session must not be created with zero TTL; it's illegal.
-	session, err = auth.CreateSession(username, time.Duration(0))
+	session, err = auth.CreateSession(user, time.Duration(0))
 	assert.Nil(t, session)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), invalidSessionTTLError)
 
 	// Session must not be created with negative TTL; it's illegal.
-	session, err = auth.CreateSession(username, time.Duration(-1))
+	session, err = auth.CreateSession(user, time.Duration(-1))
 	assert.Nil(t, session)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), invalidSessionTTLError)
@@ -64,7 +70,7 @@ func TestCreateSession(t *testing.T) {
 
 func TestDeleteSession(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAuth)
-	var username string = "Alice"
+	const username = "Alice"
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
 	dataStore := testBucket.GetSingleDataStore()
@@ -80,7 +86,7 @@ func TestDeleteSession(t *testing.T) {
 		Ttl:        24 * time.Hour,
 	}
 	const noSessionExpiry = 0
-	assert.NoError(t, dataStore.Set(DocIDForSession(mockSession.ID), noSessionExpiry, nil, mockSession))
+	assert.NoError(t, dataStore.Set(auth.DocIDForSession(mockSession.ID), noSessionExpiry, nil, mockSession))
 	assert.NoError(t, auth.DeleteSession(mockSession.ID))
 
 	// Just to verify the session has been deleted gracefully.
@@ -190,4 +196,112 @@ func TestDeleteSessionForCookie(t *testing.T) {
 	request.AddCookie(cookie)
 	newCookie = auth.DeleteSessionForCookie(request)
 	assert.Nil(t, newCookie)
+}
+
+func TestCreateSessionChangePassword(t *testing.T) {
+	testCases := []struct {
+		name     string
+		username string
+		password string
+	}{
+		{
+			name:     "guestuser",
+			username: "",
+			password: "",
+		},
+
+		{
+			name:     "emptypassword",
+			username: "Alice",
+			password: "",
+		},
+		{
+			name:     "realpassword",
+			username: "Alice",
+			password: "password",
+		},
+	}
+	for _, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+
+			testBucket := base.GetTestBucket(t)
+			defer testBucket.Close()
+			dataStore := testBucket.GetSingleDataStore()
+			auth := NewAuthenticator(dataStore, nil, DefaultAuthenticatorOptions())
+
+			user, err := auth.NewUser(test.username, test.password, base.Set{})
+			require.NoError(t, err)
+			require.NotNil(t, user)
+			require.NoError(t, auth.Save(user))
+
+			// Create session with a username and valid TTL of 2 hours.
+			session, err := auth.CreateSession(user, 2*time.Hour)
+			require.NoError(t, err)
+
+			session, err = auth.GetSession(session.ID)
+			require.NoError(t, err)
+
+			request, err := http.NewRequest(http.MethodGet, "", nil)
+			require.NoError(t, err)
+			request.AddCookie(auth.MakeSessionCookie(session, true, true))
+
+			recorder := httptest.NewRecorder()
+			_, err = auth.AuthenticateCookie(request, recorder)
+			require.NoError(t, err)
+
+			require.NoError(t, user.SetPassword("someotherpassword"))
+			require.NoError(t, auth.Save(user))
+
+			recorder = httptest.NewRecorder()
+			_, err = auth.AuthenticateCookie(request, recorder)
+			require.Error(t, err)
+			require.Equal(t, err.(*base.HTTPError).Status, http.StatusUnauthorized)
+		})
+	}
+
+}
+
+// TestUserWithoutSessionUUID tests users that existed before we stamped SessionUUID into user docs
+func TestUserWithoutSessionUUID(t *testing.T) {
+	testBucket := base.GetTestBucket(t)
+	defer testBucket.Close()
+	dataStore := testBucket.GetSingleDataStore()
+	auth := NewAuthenticator(dataStore, nil, DefaultAuthenticatorOptions())
+	const username = "Alice"
+	user, err := auth.NewUser(username, "password", base.Set{})
+	require.NoError(t, err)
+	require.NotNil(t, user)
+	require.NoError(t, auth.Save(user))
+
+	var rawUser map[string]interface{}
+	_, err = auth.datastore.Get(user.DocID(), &rawUser)
+	require.NoError(t, err)
+
+	sessionUUIDKey := "session_uuid"
+	_, exists := rawUser[sessionUUIDKey]
+	require.True(t, exists)
+	delete(rawUser, sessionUUIDKey)
+
+	err = auth.datastore.Set(user.DocID(), 0, nil, rawUser)
+	require.NoError(t, err)
+
+	user, err = auth.GetUser(username)
+	require.NoError(t, err)
+	require.NotNil(t, user)
+
+	// Create session with a username and valid TTL of 2 hours.
+	session, err := auth.CreateSession(user, 2*time.Hour)
+	require.NoError(t, err)
+
+	session, err = auth.GetSession(session.ID)
+	require.NoError(t, err)
+
+	request, err := http.NewRequest(http.MethodGet, "", nil)
+	require.NoError(t, err)
+	request.AddCookie(auth.MakeSessionCookie(session, true, true))
+
+	recorder := httptest.NewRecorder()
+	_, err = auth.AuthenticateCookie(request, recorder)
+	require.NoError(t, err)
+
 }

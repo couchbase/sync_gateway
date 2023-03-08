@@ -64,8 +64,9 @@ func TestOneShotDCP(t *testing.T) {
 	}
 
 	clientOptions := DCPClientOptions{
-		OneShot:       true,
-		CollectionIDs: collectionIDs,
+		OneShot:          true,
+		CollectionIDs:    collectionIDs,
+		CheckpointPrefix: DefaultMetadataKeys.DCPCheckpointPrefix(t.Name()),
 	}
 
 	gocbv2Bucket, err := AsGocbV2Bucket(bucket.Bucket)
@@ -131,7 +132,10 @@ func TestTerminateDCPFeed(t *testing.T) {
 
 	gocbv2Bucket, err := AsGocbV2Bucket(bucket.Bucket)
 	require.NoError(t, err)
-	dcpClient, err := NewDCPClient(feedID, counterCallback, DCPClientOptions{}, gocbv2Bucket)
+	options := DCPClientOptions{
+		CheckpointPrefix: DefaultMetadataKeys.DCPCheckpointPrefix(t.Name()),
+	}
+	dcpClient, err := NewDCPClient(feedID, counterCallback, options, gocbv2Bucket)
 	require.NoError(t, err)
 
 	// Add documents in a separate goroutine
@@ -197,7 +201,7 @@ func TestDCPClientMultiFeedConsistency(t *testing.T) {
 		},
 	}
 	for _, test := range testCases {
-		t.Run(fmt.Sprintf("metadata mismatch %+v", test), func(t *testing.T) {
+		t.Run(fmt.Sprintf("metadata mismatch start at %d", test.startSeqNo), func(t *testing.T) {
 
 			bucket := GetTestBucket(t)
 			defer bucket.Close()
@@ -235,9 +239,10 @@ func TestDCPClientMultiFeedConsistency(t *testing.T) {
 
 			// Perform first one-shot DCP feed - normal one-shot
 			dcpClientOpts := DCPClientOptions{
-				OneShot:        true,
-				FailOnRollback: true,
-				CollectionIDs:  collectionIDs,
+				OneShot:          true,
+				FailOnRollback:   true,
+				CollectionIDs:    collectionIDs,
+				CheckpointPrefix: DefaultMetadataKeys.DCPCheckpointPrefix(t.Name()),
 			}
 
 			gocbv2Bucket, err := AsGocbV2Bucket(bucket.Bucket)
@@ -268,10 +273,11 @@ func TestDCPClientMultiFeedConsistency(t *testing.T) {
 			uuidMismatchMetadata[0].StartSeqNo = test.startSeqNo
 
 			dcpClientOpts = DCPClientOptions{
-				InitialMetadata: uuidMismatchMetadata,
-				FailOnRollback:  true,
-				OneShot:         true,
-				CollectionIDs:   collectionIDs,
+				InitialMetadata:  uuidMismatchMetadata,
+				FailOnRollback:   true,
+				OneShot:          true,
+				CollectionIDs:    collectionIDs,
+				CheckpointPrefix: DefaultMetadataKeys.DCPCheckpointPrefix(t.Name()),
 			}
 			dcpClient2, err := NewDCPClient(feedID, counterCallback, dcpClientOpts, gocbv2Bucket)
 			require.NoError(t, err)
@@ -285,10 +291,11 @@ func TestDCPClientMultiFeedConsistency(t *testing.T) {
 			// Perform a third DCP feed - mismatched VbUUID, failOnRollback=false
 			atomic.StoreUint64(&mutationCount, 0)
 			dcpClientOpts = DCPClientOptions{
-				InitialMetadata: uuidMismatchMetadata,
-				FailOnRollback:  false,
-				OneShot:         true,
-				CollectionIDs:   collectionIDs,
+				InitialMetadata:  uuidMismatchMetadata,
+				FailOnRollback:   false,
+				OneShot:          true,
+				CollectionIDs:    collectionIDs,
+				CheckpointPrefix: DefaultMetadataKeys.DCPCheckpointPrefix(t.Name()),
 			}
 
 			dcpClient3, err := NewDCPClient(feedID, counterCallback, dcpClientOpts, gocbv2Bucket)
@@ -366,6 +373,7 @@ func TestResumeStoppedFeed(t *testing.T) {
 		FailOnRollback:             false,
 		CheckpointPersistFrequency: &highFrequency,
 		CollectionIDs:              collectionIDs,
+		CheckpointPrefix:           DefaultMetadataKeys.DCPCheckpointPrefix(t.Name()),
 	}
 
 	gocbv2Bucket, err := AsGocbV2Bucket(bucket.Bucket)
@@ -399,9 +407,10 @@ func TestResumeStoppedFeed(t *testing.T) {
 
 	// Perform second one-shot DCP feed with the same ID, verify it resumes and completes
 	dcpClientOpts = DCPClientOptions{
-		FailOnRollback: false,
-		OneShot:        true,
-		CollectionIDs:  collectionIDs,
+		FailOnRollback:   false,
+		OneShot:          true,
+		CollectionIDs:    collectionIDs,
+		CheckpointPrefix: DefaultMetadataKeys.DCPCheckpointPrefix(t.Name()),
 	}
 
 	dcpClient2, err := NewDCPClient(feedID, secondCallback, dcpClientOpts, gocbv2Bucket)

@@ -760,7 +760,7 @@ func TestResync(t *testing.T) {
 
 			_, ok := (rt.GetDatabase().ResyncManager.Process).(*db.ResyncManager)
 			if !ok {
-				rt.GetDatabase().ResyncManager = db.NewResyncManager(rt.GetSingleDataStore())
+				rt.GetDatabase().ResyncManager = db.NewResyncManager(rt.GetSingleDataStore(), rt.GetDatabase().MetadataKeys)
 			}
 
 			for i := 0; i < testCase.docsCreated; i++ {
@@ -845,7 +845,7 @@ func TestResyncUsingDCPStream(t *testing.T) {
 
 			_, ok := (rt.GetDatabase().ResyncManager.Process).(*db.ResyncManagerDCP)
 			if !ok {
-				rt.GetDatabase().ResyncManager = db.NewResyncManagerDCP(rt.GetSingleDataStore())
+				rt.GetDatabase().ResyncManager = db.NewResyncManagerDCP(rt.GetSingleDataStore(), base.TestUseXattrs(), rt.GetDatabase().MetadataKeys)
 			}
 
 			for i := 0; i < testCase.docsCreated; i++ {
@@ -1190,7 +1190,7 @@ func TestResyncErrorScenarios(t *testing.T) {
 
 	_, ok := (rt.GetDatabase().ResyncManager.Process).(*db.ResyncManager)
 	if !ok {
-		rt.GetDatabase().ResyncManager = db.NewResyncManager(rt.GetSingleDataStore())
+		rt.GetDatabase().ResyncManager = db.NewResyncManager(rt.GetSingleDataStore(), rt.GetDatabase().MetadataKeys)
 	}
 
 	leakyDataStore, ok := base.AsLeakyDataStore(rt.TestBucket.GetSingleDataStore())
@@ -1293,7 +1293,7 @@ func TestResyncErrorScenariosUsingDCPStream(t *testing.T) {
 
 	_, ok := (rt.GetDatabase().ResyncManager.Process).(*db.ResyncManagerDCP)
 	if !ok {
-		rt.GetDatabase().ResyncManager = db.NewResyncManagerDCP(rt.GetSingleDataStore())
+		rt.GetDatabase().ResyncManager = db.NewResyncManagerDCP(rt.GetSingleDataStore(), base.TestUseXattrs(), rt.GetDatabase().MetadataKeys)
 	}
 
 	numOfDocs := 1000
@@ -1380,7 +1380,7 @@ func TestResyncStop(t *testing.T) {
 
 	_, ok := (rt.GetDatabase().ResyncManager.Process).(*db.ResyncManager)
 	if !ok {
-		rt.GetDatabase().ResyncManager = db.NewResyncManager(rt.GetSingleDataStore())
+		rt.GetDatabase().ResyncManager = db.NewResyncManager(rt.GetSingleDataStore(), rt.GetDatabase().MetadataKeys)
 	}
 
 	leakyDataStore, ok := base.AsLeakyDataStore(rt.TestBucket.GetSingleDataStore())
@@ -1467,7 +1467,7 @@ func TestResyncStopUsingDCPStream(t *testing.T) {
 
 	_, ok := (rt.GetDatabase().ResyncManager.Process).(*db.ResyncManagerDCP)
 	if !ok {
-		rt.GetDatabase().ResyncManager = db.NewResyncManagerDCP(rt.GetSingleDataStore())
+		rt.GetDatabase().ResyncManager = db.NewResyncManagerDCP(rt.GetSingleDataStore(), base.TestUseXattrs(), rt.GetDatabase().MetadataKeys)
 	}
 
 	numOfDocs := 1000
@@ -1825,7 +1825,7 @@ func TestPurgeWithMultipleValidDocs(t *testing.T) {
 // TestPurgeWithChannelCache will make sure thant upon calling _purge, the channel caches are also cleaned
 // This was fixed in #3765, previously channel caches were not cleaned up
 func TestPurgeWithChannelCache(t *testing.T) {
-	rt := rest.NewRestTester(t, nil)
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction})
 	defer rt.Close()
 
 	rest.RequireStatus(t, rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1", `{"foo":"bar", "channels": ["abc", "def"]}`), http.StatusCreated)
@@ -1872,7 +1872,7 @@ func TestPurgeWithSomeInvalidDocs(t *testing.T) {
 }
 
 func TestRawRedaction(t *testing.T) {
-	rt := rest.NewRestTester(t, nil)
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction})
 	defer rt.Close()
 
 	res := rt.SendAdminRequest("PUT", "/{{.keyspace}}/testdoc", `{"foo":"bar", "channels": ["achannel"]}`)
@@ -2823,7 +2823,7 @@ func TestPersistentConfigConcurrency(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyDCP)
 
 	serverErr := make(chan error, 0)
 
@@ -3314,7 +3314,7 @@ func TestConfigsIncludeDefaults(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Validate a few default values to ensure they are set
-	assert.Equal(t, channels.DefaultSyncFunction, *dbConfig.Sync)
+	assert.Equal(t, channels.DocChannelsSyncFunction, *dbConfig.Sync)
 	assert.Equal(t, db.DefaultChannelCacheMaxNumber, *dbConfig.CacheConfig.ChannelCacheConfig.MaxNumber)
 	assert.Equal(t, base.DefaultOldRevExpirySeconds, *dbConfig.OldRevExpirySeconds)
 	assert.Equal(t, false, *dbConfig.StartOffline)
@@ -3328,7 +3328,7 @@ func TestConfigsIncludeDefaults(t *testing.T) {
 
 	require.Contains(t, runtimeServerConfigResponse.Databases, "db")
 	runtimeServerConfigDatabase := runtimeServerConfigResponse.Databases["db"]
-	assert.Equal(t, channels.DefaultSyncFunction, *runtimeServerConfigDatabase.Sync)
+	assert.Equal(t, channels.DocChannelsSyncFunction, *runtimeServerConfigDatabase.Sync)
 	assert.Equal(t, db.DefaultChannelCacheMaxNumber, *runtimeServerConfigDatabase.CacheConfig.ChannelCacheConfig.MaxNumber)
 	assert.Equal(t, base.DefaultOldRevExpirySeconds, *runtimeServerConfigDatabase.OldRevExpirySeconds)
 	assert.Equal(t, false, *runtimeServerConfigDatabase.StartOffline)
@@ -3546,13 +3546,14 @@ func TestDbConfigPersistentSGVersions(t *testing.T) {
 	tb := base.GetTestBucket(t)
 	defer func() { tb.Close() }()
 
+	dbName := "db"
 	dbConfig := rest.DatabaseConfig{
 		SGVersion: "", // leave empty to emulate what 3.0.0 would've written to the bucket
 		DbConfig: rest.DbConfig{
 			BucketConfig: rest.BucketConfig{
 				Bucket: base.StringPtr(tb.GetName()),
 			},
-			Name:             "db",
+			Name:             dbName,
 			EnableXattrs:     base.BoolPtr(base.TestUseXattrs()),
 			UseViews:         base.BoolPtr(base.TestsDisableGSI()),
 			NumIndexReplicas: base.UintPtr(0),
@@ -3563,12 +3564,12 @@ func TestDbConfigPersistentSGVersions(t *testing.T) {
 	require.NoError(t, err)
 
 	// initialise with db config
-	_, err = sc.BootstrapContext.Connection.InsertConfig(tb.GetName(), t.Name(), dbConfig)
+	_, err = sc.BootstrapContext.InsertConfig(ctx, tb.GetName(), t.Name(), &dbConfig)
 	require.NoError(t, err)
 
 	assertRevsLimit := func(sc *rest.ServerContext, revsLimit uint32) {
 		rest.WaitAndAssertCondition(t, func() bool {
-			dbc, err := sc.GetDatabase(ctx, "db")
+			dbc, err := sc.GetDatabase(ctx, dbName)
 			if err != nil {
 				t.Logf("expected database with RevsLimit=%v but got err=%v", revsLimit, err)
 				return false
@@ -3584,18 +3585,15 @@ func TestDbConfigPersistentSGVersions(t *testing.T) {
 	assertRevsLimit(sc, 123)
 
 	writeRevsLimitConfigWithVersion := func(sc *rest.ServerContext, version string, revsLimit uint32) error {
-		_, err = sc.BootstrapContext.Connection.UpdateConfig(tb.GetName(), t.Name(), func(rawBucketConfig []byte, rawBucketConfigCas uint64) (updatedConfig []byte, err error) {
-			var db rest.DatabaseConfig
-			if err := base.JSONUnmarshal(rawBucketConfig, &db); err != nil {
-				return nil, err
-			}
+		_, err = sc.BootstrapContext.UpdateConfig(base.TestCtx(t), tb.GetName(), t.Name(), dbName, func(db *rest.DatabaseConfig) (updatedConfig *rest.DatabaseConfig, err error) {
+
 			db.SGVersion = version
 			db.DbConfig.RevsLimit = base.Uint32Ptr(revsLimit)
 			db.Version, err = rest.GenerateDatabaseConfigVersionID(db.Version, &db.DbConfig)
 			if err != nil {
 				return nil, err
 			}
-			return base.JSONMarshal(db)
+			return db, nil
 		})
 		return err
 	}
@@ -3931,10 +3929,12 @@ func TestDeleteDatabasePointingAtSameBucketPersistent(t *testing.T) {
 	resp = rest.BootstrapAdminRequest(t, http.MethodPut, "/db2/", fmt.Sprintf(dbConfig, "db2"))
 	resp.RequireStatus(http.StatusCreated)
 
+	scopeName := ""
+	collectionNames := []string{}
 	// Validate that deleted database is no longer in dest factory set
-	_, fetchDb1DestErr := base.FetchDestFactory(base.ImportDestKey("db1"))
+	_, fetchDb1DestErr := base.FetchDestFactory(base.ImportDestKey("db1", scopeName, collectionNames))
 	assert.Equal(t, base.ErrNotFound, fetchDb1DestErr)
-	_, fetchDb2DestErr := base.FetchDestFactory(base.ImportDestKey("db2"))
+	_, fetchDb2DestErr := base.FetchDestFactory(base.ImportDestKey("db2", scopeName, collectionNames))
 	assert.NoError(t, fetchDb2DestErr)
 }
 

@@ -12,8 +12,10 @@ package base
 
 import (
 	"context"
+	"crypto/sha256"
 	"crypto/tls"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -61,7 +63,8 @@ func StartShardedDCPFeed(ctx context.Context, dbName string, configGroup string,
 		return nil, fmt.Errorf("failed to get minimum node version in cluster: %w", err)
 	}
 	if minVersion.Less(firstVersionToSupportCollections) {
-		if scope != "" || len(collections) > 0 {
+		// DefaultScope is allowed by older versions of CBGT as long as no collections are specified.
+		if len(collections) > 0 {
 			return nil, fmt.Errorf("cannot start DCP feed on non-default collection with legacy nodes present in the cluster")
 		}
 	}
@@ -123,7 +126,7 @@ func createCBGTIndex(ctx context.Context, c *CbgtContext, dbName string, configG
 		return err
 	}
 
-	indexParams, err := cbgtIndexParams(ImportDestKey(dbName))
+	indexParams, err := cbgtIndexParams(ImportDestKey(dbName, scope, collections))
 	if err != nil {
 		return err
 	}
@@ -461,8 +464,21 @@ func (c *CbgtContext) RemoveFeedCredentials(dbName string) {
 }
 
 // Format of dest key for retrieval of import dest from cbgtDestFactories
-func ImportDestKey(dbName string) string {
-	return dbName + "_import"
+func ImportDestKey(dbName string, scope string, collections []string) string {
+	sort.Strings(collections)
+	collectionString := ""
+	onlyDefault := true
+	for _, collection := range collections {
+		if collection != DefaultCollection {
+			onlyDefault = false
+		}
+		collectionString += fmt.Sprintf("%s.%s:", scope, collection)
+	}
+	// format for _default._default
+	if collectionString == "" || (scope == DefaultScope && onlyDefault) {
+		return fmt.Sprintf("%s_import", dbName)
+	}
+	return fmt.Sprintf("%s_import_%x", dbName, sha256.Sum256([]byte(collectionString)))
 }
 
 func initCfgCB(bucket Bucket, spec BucketSpec) (*cbgt.CfgCB, error) {

@@ -26,6 +26,7 @@ import (
 	"github.com/couchbase/go-blip"
 	"github.com/couchbase/gocb/v2"
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -760,6 +761,7 @@ func TestPublicPortAuthentication(t *testing.T) {
 		BlipTesterSpec{
 			connectingUsername: "user1",
 			connectingPassword: "1234",
+			syncFn:             channels.DocChannelsSyncFunction,
 		})
 	require.NoError(t, err)
 	defer btUser1.Close()
@@ -1423,9 +1425,10 @@ func TestAccessGrantViaAdminApi(t *testing.T) {
 	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
 		connectingUsername: "user1",
 		connectingPassword: "1234",
+		syncFn:             channels.DocChannelsSyncFunction,
 	})
-	defer bt.Close()
 	require.NoError(t, err)
+	defer bt.Close()
 	collection := bt.restTester.GetSingleTestDatabaseCollection()
 
 	// Add a doc in the PBS channel
@@ -1681,7 +1684,7 @@ func TestGetRemovedDoc(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)
 
-	rt := NewRestTester(t, nil)
+	rt := NewRestTester(t, &RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction})
 	defer rt.Close()
 	btSpec := BlipTesterSpec{
 		connectingUsername: "user1",
@@ -1954,7 +1957,7 @@ func TestRemovedMessageWithAlternateAccess(t *testing.T) {
 	defer db.SuspendSequenceBatching()()
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
-	rt := NewRestTester(t, nil)
+	rt := NewRestTester(t, &RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction})
 	defer rt.Close()
 	collection := rt.GetSingleTestDatabaseCollection()
 
@@ -2058,7 +2061,7 @@ func TestRemovedMessageWithAlternateAccessAndChannelFilteredReplication(t *testi
 	defer db.SuspendSequenceBatching()()
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
-	rt := NewRestTester(t, nil)
+	rt := NewRestTester(t, &RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction})
 	defer rt.Close()
 	collection := rt.GetSingleTestDatabaseCollection()
 

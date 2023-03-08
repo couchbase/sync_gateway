@@ -34,6 +34,8 @@ func TestQueryChannelsStatsView(t *testing.T) {
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
+	collection.ChannelMapper = channels.NewChannelMapper(channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
+
 	// docID -> Sequence
 	docSeqMap := make(map[string]uint64, 3)
 
@@ -88,6 +90,8 @@ func TestQueryChannelsStatsN1ql(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
+
+	collection.ChannelMapper = channels.NewChannelMapper(channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
 
 	// docID -> Sequence
 	docSeqMap := make(map[string]uint64, 3)
@@ -268,9 +272,11 @@ func TestAccessQuery(t *testing.T) {
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
-	db.ChannelMapper = channels.NewChannelMapper(`function(doc, oldDoc) {
+	collection.ChannelMapper = channels.NewChannelMapper(
+		`function(doc, oldDoc) {
 	access(doc.accessUser, doc.accessChannel)
-}`, 0)
+}`,
+		db.Options.JavascriptTimeout)
 	// Add docs with access grants assignment
 	for i := 1; i <= 5; i++ {
 		_, _, err := collection.Put(ctx, fmt.Sprintf("accessTest%d", i), Body{"accessUser": "user1", "accessChannel": fmt.Sprintf("channel%d", i)})
@@ -315,9 +321,10 @@ func TestRoleAccessQuery(t *testing.T) {
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
-	db.ChannelMapper = channels.NewChannelMapper(`function(doc, oldDoc) {
+	collection.ChannelMapper = channels.NewChannelMapper(
+		`function(doc, oldDoc) {
 	role(doc.accessUser, "role:" + doc.accessChannel)
-}`, 0)
+}`, db.Options.JavascriptTimeout)
 	// Add docs with access grants assignment
 	for i := 1; i <= 5; i++ {
 		_, _, err := collection.Put(ctx, fmt.Sprintf("accessTest%d", i), Body{"accessUser": "user1", "accessChannel": fmt.Sprintf("channel%d", i)})
@@ -370,7 +377,7 @@ func TestQueryChannelsActiveOnlyWithLimit(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
-
+	collection.ChannelMapper = channels.NewChannelMapper(channels.DocChannelsSyncFunction, db.Options.JavascriptTimeout)
 	docIdFlagMap := make(map[string]uint8)
 	var startSeq, endSeq uint64
 	body := Body{"channels": []string{"ABC"}}

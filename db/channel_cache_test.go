@@ -24,19 +24,15 @@ import (
 )
 
 func TestChannelCacheMaxSize(t *testing.T) {
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
 
-	bucket := base.GetTestBucket(t)
-	ctx := base.TestCtx(t)
-	dbCtx, err := NewDatabaseContext(ctx, "db", bucket, false, DatabaseContextOptions{})
-	require.NoError(t, err)
-	defer dbCtx.Close(ctx)
+	cache := db.changeCache.getChannelCache()
 
-	cache := dbCtx.changeCache.getChannelCache()
-
-	collectionID := dbCtx.GetSingleDatabaseCollection().GetCollectionID()
+	collectionID := db.GetSingleDatabaseCollection().GetCollectionID()
 
 	// Make channels active
-	_, err = cache.GetChanges(channels.NewID("TestA", collectionID), getChangesOptionsWithCtxOnly())
+	_, err := cache.GetChanges(channels.NewID("TestA", collectionID), getChangesOptionsWithCtxOnly())
 	require.NoError(t, err)
 	_, err = cache.GetChanges(channels.NewID("TestB", collectionID), getChangesOptionsWithCtxOnly())
 	require.NoError(t, err)
@@ -51,9 +47,9 @@ func TestChannelCacheMaxSize(t *testing.T) {
 	cache.AddToCache(logEntry(3, "doc3", "1-a", []string{"TestB", "TestC", "TestD"}, collectionID))
 	cache.AddToCache(logEntry(4, "doc4", "1-a", []string{"TestC"}, collectionID))
 
-	dbCtx.UpdateCalculatedStats()
+	db.UpdateCalculatedStats()
 
-	maxEntries := dbCtx.DbStats.Cache().ChannelCacheMaxEntries.Value()
+	maxEntries := db.DbStats.Cache().ChannelCacheMaxEntries.Value()
 	assert.Equal(t, 4, int(maxEntries))
 }
 

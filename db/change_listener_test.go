@@ -120,7 +120,7 @@ func TestUserWaiterForRoleChange(t *testing.T) {
 	require.True(t, WaitForUserWaiterChange(userWaiter))
 
 	// Update the waiter with the current user (adds role to waiter.UserKeys)
-	userWaiter.RefreshUserKeys(userRefresh)
+	userWaiter.RefreshUserKeys(userRefresh, db.MetadataKeys)
 
 	// Update the role to grant a new channel
 	updatedRole := auth.PrincipalConfig{

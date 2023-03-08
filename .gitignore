@@ -17,3 +17,4 @@ verbose*.out*
 verbose*.xml
 sync_gateway
 *.pb.gz
+__pycache__

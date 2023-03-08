@@ -485,7 +485,7 @@ func TestUserFunctionAllow(t *testing.T) {
 	db, ctx := setupTestDBWithFunctions(t, &kUserFunctionConfig, nil)
 	defer db.Close(ctx)
 
-	authenticator := auth.NewAuthenticator(db.MetadataStore, db, auth.DefaultAuthenticatorOptions())
+	authenticator := auth.NewAuthenticator(db.MetadataStore, db, db.AuthenticatorOptions())
 	user, err := authenticator.NewUser("maurice", "pass", base.SetOf("city-Paris"))
 	assert.NoError(t, err)
 
@@ -646,6 +646,7 @@ func setupTestDBWithFunctions(t *testing.T, fnConfig *FunctionsConfig, gqConfig 
 	cacheOptions := db.DefaultCacheOptions()
 	options := db.DatabaseContextOptions{
 		CacheOptions: &cacheOptions,
+		Scopes:       db.GetScopesOptionsDefaultCollectionOnly(t),
 	}
 	var err error
 	if fnConfig != nil {

@@ -37,21 +37,23 @@ type changeListener struct {
 	terminateCheckCounter uint64                 // Termination Event counter; increments on every notifyCheckForTermination
 	keyCounts             map[string]uint64      // Latest count at which each doc key was updated
 	OnChangeCallback      DocChangedFunc
-	subscribeLock         sync.Mutex      // Mutex for addition to the subscriber list
-	terminator            chan bool       // Signal to cause cbdatasource bucketdatasource.Close() to be called, which removes dcp receiver
-	sgCfgPrefix           string          // SG config key prefix
-	started               base.AtomicBool // whether the feed has been started
+	subscribeLock         sync.Mutex         // Mutex for addition to the subscriber list
+	terminator            chan bool          // Signal to cause cbdatasource bucketdatasource.Close() to be called, which removes dcp receiver
+	sgCfgPrefix           string             // SG config key prefix
+	started               base.AtomicBool    // whether the feed has been started
+	metaKeys              *base.MetadataKeys // Metadata key formatter
 }
 
 type DocChangedFunc func(event sgbucket.FeedEvent)
 
-func (listener *changeListener) Init(name string, groupID string) {
+func (listener *changeListener) Init(name string, groupID string, metaKeys *base.MetadataKeys) {
 	listener.bucketName = name
 	listener.counter = 1
 	listener.terminateCheckCounter = 0
 	listener.keyCounts = map[string]uint64{}
 	listener.tapNotifier = sync.NewCond(&sync.Mutex{})
-	listener.sgCfgPrefix = base.SGCfgPrefixWithGroupID(groupID)
+	listener.sgCfgPrefix = metaKeys.SGCfgPrefix(groupID)
+	listener.metaKeys = metaKeys
 }
 
 func (listener *changeListener) OnDocChanged(event sgbucket.FeedEvent) {
@@ -157,17 +159,17 @@ func (listener *changeListener) ProcessFeedEvent(event sgbucket.FeedEvent) bool 
 		if !strings.HasPrefix(key, base.SyncDocPrefix) { // Anything other than internal SG docs can go straight to OnDocChanged
 			listener.OnDocChanged(event)
 
-		} else if strings.HasPrefix(key, base.UserPrefix) ||
-			strings.HasPrefix(key, base.RolePrefix) { // SG users and roles
+		} else if strings.HasPrefix(key, listener.metaKeys.UserKeyPrefix()) ||
+			strings.HasPrefix(key, listener.metaKeys.RoleKeyPrefix()) { // SG users and roles
 			if event.Opcode == sgbucket.FeedOpMutation {
 				listener.OnDocChanged(event)
 			}
 			listener.notifyKey(key)
-		} else if strings.HasPrefix(key, base.UnusedSeqPrefix) || strings.HasPrefix(key, base.UnusedSeqRangePrefix) { // SG unused sequence marker docs
+		} else if strings.HasPrefix(key, listener.metaKeys.UnusedSeqPrefix()) || strings.HasPrefix(key, listener.metaKeys.UnusedSeqRangePrefix()) { // SG unused sequence marker docs
 			if event.Opcode == sgbucket.FeedOpMutation {
 				listener.OnDocChanged(event)
 			}
-		} else if strings.HasPrefix(key, base.DCPCheckpointPrefixWithoutGroupID) { // SG DCP checkpoint docs (including other config group IDs)
+		} else if strings.HasPrefix(key, base.DCPCheckpointRootPrefix) { // SG DCP checkpoint docs (including other config group IDs)
 			// Do not require checkpoint persistence when DCP checkpoint docs come back over DCP - otherwise
 			// we'll end up in a feedback loop for their vbucket if persistence is enabled
 			// NOTE: checkpoint persistence is disabled altogether for the caching feed.  Leaving this check in place
@@ -353,9 +355,9 @@ func (listener *changeListener) NewWaiterWithChannels(chans channels.Set, user a
 	}
 	var userKeys []string
 	if user != nil {
-		userKeys = []string{base.UserPrefix + user.Name()}
+		userKeys = []string{listener.metaKeys.UserKey(user.Name())}
 		for role := range user.RoleNames() {
-			userKeys = append(userKeys, base.RolePrefix+role)
+			userKeys = append(userKeys, listener.metaKeys.RoleKey(role))
 		}
 		waitKeys = append(waitKeys, userKeys...)
 	}
@@ -422,17 +424,16 @@ func (waiter *ChangeWaiter) UpdateChannels(collectionID uint32, timedSet channel
 // when the user associated with a waiter has roles, and the user doc is updated.
 // Does NOT add the keys to waiter.keys - UpdateChannels must be invoked if
 // that's required.
-func (waiter *ChangeWaiter) RefreshUserKeys(user auth.User) {
+func (waiter *ChangeWaiter) RefreshUserKeys(user auth.User, metaKeys *base.MetadataKeys) {
 	if user != nil {
 		// waiter.userKeys only need to be updated if roles have changed - skip if
 		// the previous user didn't have roles, and the new user doesn't have roles.
 		if len(waiter.userKeys) == 1 && len(user.RoleNames()) == 0 {
 			return
 		}
-		waiter.userKeys = []string{base.UserPrefix + user.Name()}
+		waiter.userKeys = []string{metaKeys.UserKey(user.Name())}
 		for role := range user.RoleNames() {
-			waiter.userKeys = append(waiter.userKeys,
-				base.RolePrefix+role)
+			waiter.userKeys = append(waiter.userKeys, metaKeys.RoleKey(role))
 		}
 		waiter.lastUserCount = waiter.listener.CurrentCount(waiter.userKeys)
 

@@ -94,6 +94,9 @@ func NewSGNode(uuid string, host string) *SGNode {
 type ReplicationConfig struct {
 	ID                     string                    `json:"replication_id"`
 	Remote                 string                    `json:"remote"`
+	CollectionsEnabled     bool                      `json:"collections_enabled,omitempty"`
+	CollectionsLocal       []string                  `json:"collections_local,omitempty"`
+	CollectionsRemote      []string                  `json:"collections_remote,omitempty"`
 	Username               string                    `json:"username,omitempty"` // Deprecated
 	Password               string                    `json:"password,omitempty"` // Deprecated
 	RemoteUsername         string                    `json:"remote_username,omitempty"`
@@ -138,6 +141,9 @@ type ReplicationCfg struct {
 type ReplicationUpsertConfig struct {
 	ID                     string      `json:"replication_id"`
 	Remote                 *string     `json:"remote"`
+	CollectionsEnabled     *bool       `json:"collections_enabled,omitempty"`
+	CollectionsLocal       []string    `json:"collections_local,omitempty"`
+	CollectionsRemote      []string    `json:"collections_remote,omitempty"`
 	Username               *string     `json:"username,omitempty"` // Deprecated
 	Password               *string     `json:"password,omitempty"` // Deprecated
 	RemoteUsername         *string     `json:"remote_username,omitempty"`
@@ -249,6 +255,18 @@ func (rc *ReplicationConfig) Upsert(c *ReplicationUpsertConfig) {
 
 	if c.Remote != nil {
 		rc.Remote = *c.Remote
+	}
+
+	if c.CollectionsEnabled != nil {
+		rc.CollectionsEnabled = *c.CollectionsEnabled
+	}
+
+	if c.CollectionsLocal != nil && len(c.CollectionsLocal) > 0 {
+		rc.CollectionsLocal = c.CollectionsLocal
+	}
+
+	if c.CollectionsRemote != nil && len(c.CollectionsRemote) > 0 {
+		rc.CollectionsRemote = c.CollectionsRemote
 	}
 
 	if c.Username != nil {
@@ -544,6 +562,9 @@ func (m *sgReplicateManager) NewActiveReplicatorConfig(config *ReplicationCfg) (
 		ID:                 config.ID,
 		Continuous:         config.Continuous,
 		ActiveDB:           activeDB,
+		CollectionsEnabled: config.CollectionsEnabled,
+		CollectionsLocal:   config.CollectionsLocal,
+		CollectionsRemote:  config.CollectionsRemote,
 		PurgeOnRemoval:     config.PurgeOnRemoval,
 		DeltasEnabled:      config.DeltaSyncEnabled,
 		InsecureSkipVerify: insecureSkipVerify,

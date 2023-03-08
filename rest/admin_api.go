@@ -114,11 +114,15 @@ func (h *handler) handleCreateDB() error {
 		}
 
 		// now we've started the db successfully, we can persist it to the cluster
-		cas, err := h.server.BootstrapContext.Connection.InsertConfig(bucket, h.server.Config.Bootstrap.ConfigGroupID, persistedConfig)
+		cas, err := h.server.BootstrapContext.InsertConfig(contextNoCancel.Ctx, bucket, h.server.Config.Bootstrap.ConfigGroupID, &persistedConfig)
 		if err != nil {
 			// unload the requested database config to prevent the cluster being in an inconsistent state
 			h.server._removeDatabase(contextNoCancel.Ctx, dbName)
-			if errors.Is(err, base.ErrAuthError) {
+			var httpError *base.HTTPError
+			if errors.As(err, &httpError) {
+				// Collection conflict returned as http error with conflict details
+				return err
+			} else if errors.Is(err, base.ErrAuthError) {
 				return base.HTTPErrorf(http.StatusForbidden, "auth failure accessing provided bucket using bootstrap credentials: %s", bucket)
 			} else if errors.Is(err, base.ErrAlreadyExists) {
 				// on-demand config load if someone else beat us to db creation
@@ -530,68 +534,56 @@ func (h *handler) handlePutDbConfig() (err error) {
 	}
 
 	var updatedDbConfig *DatabaseConfig
-	cas, err := h.server.BootstrapContext.Connection.UpdateConfig(
-		bucket, h.server.Config.Bootstrap.ConfigGroupID,
-		func(rawBucketConfig []byte, rawBucketConfigCas uint64) (newConfig []byte, err error) {
-			var bucketDbConfig DatabaseConfig
-			if err := base.JSONUnmarshal(rawBucketConfig, &bucketDbConfig); err != nil {
+	cas, err := h.server.BootstrapContext.UpdateConfig(h.ctx(), bucket, h.server.Config.Bootstrap.ConfigGroupID, dbConfig.Name, func(bucketDbConfig *DatabaseConfig) (updatedConfig *DatabaseConfig, err error) {
+		if h.headerDoesNotMatchEtag(bucketDbConfig.Version) {
+			return nil, base.HTTPErrorf(http.StatusPreconditionFailed, "Provided If-Match header does not match current config version")
+		}
+		oldBucketDbConfig := bucketDbConfig.DbConfig
+
+		if h.rq.Method == http.MethodPost {
+			base.TracefCtx(h.ctx(), base.KeyConfig, "merging upserted config into bucket config")
+			if err := base.ConfigMerge(&bucketDbConfig.DbConfig, dbConfig); err != nil {
 				return nil, err
 			}
+		} else {
+			base.TracefCtx(h.ctx(), base.KeyConfig, "using config as-is without merge")
+			bucketDbConfig.DbConfig = *dbConfig
+		}
 
-			if h.headerDoesNotMatchEtag(bucketDbConfig.Version) {
-				return nil, base.HTTPErrorf(http.StatusPreconditionFailed, "Provided If-Match header does not match current config version")
-			}
+		if err := dbConfig.validatePersistentDbConfig(); err != nil {
+			return nil, base.HTTPErrorf(http.StatusBadRequest, err.Error())
+		}
+		if err := bucketDbConfig.validateConfigUpdate(h.ctx(), oldBucketDbConfig, validateOIDC); err != nil {
+			return nil, base.HTTPErrorf(http.StatusBadRequest, err.Error())
+		}
 
-			bucketDbConfig.cfgCas = rawBucketConfigCas
+		bucketDbConfig.Version, err = GenerateDatabaseConfigVersionID(bucketDbConfig.Version, &bucketDbConfig.DbConfig)
+		if err != nil {
+			return nil, err
+		}
 
-			oldBucketDbConfig := bucketDbConfig.DbConfig
+		bucketDbConfig.SGVersion = base.ProductVersion.String()
+		updatedDbConfig = bucketDbConfig
 
-			if h.rq.Method == http.MethodPost {
-				base.TracefCtx(h.ctx(), base.KeyConfig, "merging upserted config into bucket config")
-				if err := base.ConfigMerge(&bucketDbConfig.DbConfig, dbConfig); err != nil {
-					return nil, err
-				}
-			} else {
-				base.TracefCtx(h.ctx(), base.KeyConfig, "using config as-is without merge")
-				bucketDbConfig.DbConfig = *dbConfig
-			}
+		// take a copy to stamp credentials and load before we persist
+		var tmpConfig DatabaseConfig
+		if err = base.DeepCopyInefficient(&tmpConfig, bucketDbConfig); err != nil {
+			return nil, err
+		}
+		tmpConfig.cfgCas = bucketDbConfig.cfgCas
+		dbCreds, _ := h.server.Config.DatabaseCredentials[dbName]
+		bucketCreds, _ := h.server.Config.BucketCredentials[bucket]
+		if err := tmpConfig.setup(dbName, h.server.Config.Bootstrap, dbCreds, bucketCreds, h.server.Config.IsServerless()); err != nil {
+			return nil, err
+		}
 
-			if err := dbConfig.validatePersistentDbConfig(); err != nil {
-				return nil, base.HTTPErrorf(http.StatusBadRequest, err.Error())
-			}
-			if err := bucketDbConfig.validateConfigUpdate(h.ctx(), oldBucketDbConfig, validateOIDC); err != nil {
-				return nil, base.HTTPErrorf(http.StatusBadRequest, err.Error())
-			}
-
-			bucketDbConfig.Version, err = GenerateDatabaseConfigVersionID(bucketDbConfig.Version, &bucketDbConfig.DbConfig)
-			if err != nil {
-				return nil, err
-			}
-
-			bucketDbConfig.SGVersion = base.ProductVersion.String()
-
-			updatedDbConfig = &bucketDbConfig
-
-			// take a copy to stamp credentials and load before we persist
-			var tmpConfig DatabaseConfig
-			if err = base.DeepCopyInefficient(&tmpConfig, bucketDbConfig); err != nil {
-				return nil, err
-			}
-			tmpConfig.cfgCas = rawBucketConfigCas
-			dbCreds, _ := h.server.Config.DatabaseCredentials[dbName]
-			bucketCreds, _ := h.server.Config.BucketCredentials[bucket]
-			if err := tmpConfig.setup(dbName, h.server.Config.Bootstrap, dbCreds, bucketCreds, h.server.Config.IsServerless()); err != nil {
-				return nil, err
-			}
-
-			// Load the new dbConfig before we persist the update.
-			err = h.server.ReloadDatabaseWithConfig(contextNoCancel, tmpConfig)
-			if err != nil {
-				return nil, err
-			}
-
-			return base.JSONMarshal(bucketDbConfig)
-		})
+		// Load the new dbConfig before we persist the update.
+		err = h.server.ReloadDatabaseWithConfig(contextNoCancel, tmpConfig)
+		if err != nil {
+			return nil, err
+		}
+		return bucketDbConfig, nil
+	})
 	if err != nil {
 		base.WarnfCtx(h.ctx(), "Couldn't update config for database - rolling back: %v", err)
 		// failed to start the new database config - rollback and return the original error for the user
@@ -658,37 +650,29 @@ func (h *handler) handleDeleteCollectionConfigSync() error {
 	}
 
 	bucket := h.db.Bucket.GetName()
-
 	var updatedDbConfig *DatabaseConfig
-	cas, err := h.server.BootstrapContext.Connection.UpdateConfig(
-		bucket, h.server.Config.Bootstrap.ConfigGroupID,
-		func(rawBucketConfig []byte, rawBucketConfigCas uint64) (newConfig []byte, err error) {
-			var bucketDbConfig DatabaseConfig
-			if err := base.JSONUnmarshal(rawBucketConfig, &bucketDbConfig); err != nil {
-				return nil, err
-			}
+	cas, err := h.server.BootstrapContext.UpdateConfig(h.ctx(), bucket, h.server.Config.Bootstrap.ConfigGroupID, h.db.Name, func(bucketDbConfig *DatabaseConfig) (updatedConfig *DatabaseConfig, err error) {
+		if h.headerDoesNotMatchEtag(bucketDbConfig.Version) {
+			return nil, base.HTTPErrorf(http.StatusPreconditionFailed, "Provided If-Match header does not match current config version")
+		}
+		if bucketDbConfig.Scopes != nil {
+			config := bucketDbConfig.Scopes[h.collection.ScopeName].Collections[h.collection.Name]
+			config.SyncFn = nil
+			bucketDbConfig.Scopes[h.collection.ScopeName].Collections[h.collection.Name] = config
+		} else if base.IsDefaultCollection(h.collection.ScopeName, h.collection.Name) {
+			bucketDbConfig.Sync = nil
+		}
 
-			if h.headerDoesNotMatchEtag(bucketDbConfig.Version) {
-				return nil, base.HTTPErrorf(http.StatusPreconditionFailed, "Provided If-Match header does not match current config version")
-			}
-			if bucketDbConfig.Scopes != nil {
-				config := bucketDbConfig.Scopes[h.collection.ScopeName].Collections[h.collection.Name]
-				config.SyncFn = nil
-				bucketDbConfig.Scopes[h.collection.ScopeName].Collections[h.collection.Name] = config
-			} else if base.IsDefaultCollection(h.collection.ScopeName, h.collection.Name) {
-				bucketDbConfig.Sync = nil
-			}
+		bucketDbConfig.Version, err = GenerateDatabaseConfigVersionID(bucketDbConfig.Version, &bucketDbConfig.DbConfig)
+		if err != nil {
+			return nil, err
+		}
 
-			bucketDbConfig.Version, err = GenerateDatabaseConfigVersionID(bucketDbConfig.Version, &bucketDbConfig.DbConfig)
-			if err != nil {
-				return nil, err
-			}
+		bucketDbConfig.SGVersion = base.ProductVersion.String()
+		updatedDbConfig = bucketDbConfig
 
-			bucketDbConfig.SGVersion = base.ProductVersion.String()
-
-			updatedDbConfig = &bucketDbConfig
-			return base.JSONMarshal(bucketDbConfig)
-		})
+		return bucketDbConfig, nil
+	})
 	if err != nil {
 		return err
 	}
@@ -725,48 +709,40 @@ func (h *handler) handlePutCollectionConfigSync() error {
 	}
 
 	bucket := h.db.Bucket.GetName()
+	dbName := h.db.Name
 
 	var updatedDbConfig *DatabaseConfig
-	cas, err := h.server.BootstrapContext.Connection.UpdateConfig(
-		bucket, h.server.Config.Bootstrap.ConfigGroupID,
-		func(rawBucketConfig []byte, rawBucketConfigCas uint64) (newConfig []byte, err error) {
-			var bucketDbConfig DatabaseConfig
-			if err := base.JSONUnmarshal(rawBucketConfig, &bucketDbConfig); err != nil {
-				return nil, err
-			}
+	cas, err := h.server.BootstrapContext.UpdateConfig(h.ctx(), bucket, h.server.Config.Bootstrap.ConfigGroupID, dbName, func(bucketDbConfig *DatabaseConfig) (updatedConfig *DatabaseConfig, err error) {
+		if h.headerDoesNotMatchEtag(bucketDbConfig.Version) {
+			return nil, base.HTTPErrorf(http.StatusPreconditionFailed, "Provided If-Match header does not match current config version")
+		}
 
-			if h.headerDoesNotMatchEtag(bucketDbConfig.Version) {
-				return nil, base.HTTPErrorf(http.StatusPreconditionFailed, "Provided If-Match header does not match current config version")
-			}
+		if bucketDbConfig.Scopes != nil {
+			config := bucketDbConfig.Scopes[h.collection.ScopeName].Collections[h.collection.Name]
+			config.SyncFn = &js
+			bucketDbConfig.Scopes[h.collection.ScopeName].Collections[h.collection.Name] = config
+		} else if base.IsDefaultCollection(h.collection.ScopeName, h.collection.Name) {
+			bucketDbConfig.Sync = &js
+		}
 
-			if bucketDbConfig.Scopes != nil {
-				config := bucketDbConfig.Scopes[h.collection.ScopeName].Collections[h.collection.Name]
-				config.SyncFn = &js
-				bucketDbConfig.Scopes[h.collection.ScopeName].Collections[h.collection.Name] = config
-			} else if base.IsDefaultCollection(h.collection.ScopeName, h.collection.Name) {
-				bucketDbConfig.Sync = &js
-			}
+		if err := bucketDbConfig.validate(h.ctx(), !h.getBoolQuery(paramDisableOIDCValidation)); err != nil {
+			return nil, base.HTTPErrorf(http.StatusBadRequest, err.Error())
+		}
 
-			if err := bucketDbConfig.validate(h.ctx(), !h.getBoolQuery(paramDisableOIDCValidation)); err != nil {
-				return nil, base.HTTPErrorf(http.StatusBadRequest, err.Error())
-			}
+		bucketDbConfig.Version, err = GenerateDatabaseConfigVersionID(bucketDbConfig.Version, &bucketDbConfig.DbConfig)
+		if err != nil {
+			return nil, err
+		}
 
-			bucketDbConfig.Version, err = GenerateDatabaseConfigVersionID(bucketDbConfig.Version, &bucketDbConfig.DbConfig)
-			if err != nil {
-				return nil, err
-			}
-
-			bucketDbConfig.SGVersion = base.ProductVersion.String()
-
-			updatedDbConfig = &bucketDbConfig
-			return base.JSONMarshal(bucketDbConfig)
-		})
+		bucketDbConfig.SGVersion = base.ProductVersion.String()
+		updatedDbConfig = bucketDbConfig
+		return bucketDbConfig, nil
+	})
 	if err != nil {
 		return err
 	}
 	updatedDbConfig.cfgCas = cas
 
-	dbName := h.db.Name
 	dbCreds, _ := h.server.Config.DatabaseCredentials[dbName]
 	bucketCreds, _ := h.server.Config.BucketCredentials[bucket]
 	if err := updatedDbConfig.setup(dbName, h.server.Config.Bootstrap, dbCreds, bucketCreds, h.server.Config.IsServerless()); err != nil {
@@ -831,44 +807,37 @@ func (h *handler) handleDeleteCollectionConfigImportFilter() error {
 	}
 
 	bucket := h.db.Bucket.GetName()
+	dbName := h.db.Name
 
 	var updatedDbConfig *DatabaseConfig
-	cas, err := h.server.BootstrapContext.Connection.UpdateConfig(
-		bucket, h.server.Config.Bootstrap.ConfigGroupID,
-		func(rawBucketConfig []byte, rawBucketConfigCas uint64) (newConfig []byte, err error) {
-			var bucketDbConfig DatabaseConfig
-			if err := base.JSONUnmarshal(rawBucketConfig, &bucketDbConfig); err != nil {
-				return nil, err
-			}
+	cas, err := h.server.BootstrapContext.UpdateConfig(h.ctx(), bucket, h.server.Config.Bootstrap.ConfigGroupID, dbName, func(bucketDbConfig *DatabaseConfig) (updatedConfig *DatabaseConfig, err error) {
 
-			if h.headerDoesNotMatchEtag(bucketDbConfig.Version) {
-				return nil, base.HTTPErrorf(http.StatusPreconditionFailed, "Provided If-Match header does not match current config version")
-			}
+		if h.headerDoesNotMatchEtag(bucketDbConfig.Version) {
+			return nil, base.HTTPErrorf(http.StatusPreconditionFailed, "Provided If-Match header does not match current config version")
+		}
 
-			if bucketDbConfig.Scopes != nil {
-				config := bucketDbConfig.Scopes[h.collection.ScopeName].Collections[h.collection.Name]
-				config.ImportFilter = nil
-				bucketDbConfig.Scopes[h.collection.ScopeName].Collections[h.collection.Name] = config
-			} else if base.IsDefaultCollection(h.collection.ScopeName, h.collection.Name) {
-				bucketDbConfig.ImportFilter = nil
-			}
+		if bucketDbConfig.Scopes != nil {
+			config := bucketDbConfig.Scopes[h.collection.ScopeName].Collections[h.collection.Name]
+			config.ImportFilter = nil
+			bucketDbConfig.Scopes[h.collection.ScopeName].Collections[h.collection.Name] = config
+		} else if base.IsDefaultCollection(h.collection.ScopeName, h.collection.Name) {
+			bucketDbConfig.ImportFilter = nil
+		}
 
-			bucketDbConfig.Version, err = GenerateDatabaseConfigVersionID(bucketDbConfig.Version, &bucketDbConfig.DbConfig)
-			if err != nil {
-				return nil, err
-			}
+		bucketDbConfig.Version, err = GenerateDatabaseConfigVersionID(bucketDbConfig.Version, &bucketDbConfig.DbConfig)
+		if err != nil {
+			return nil, err
+		}
 
-			bucketDbConfig.SGVersion = base.ProductVersion.String()
-
-			updatedDbConfig = &bucketDbConfig
-			return base.JSONMarshal(bucketDbConfig)
-		})
+		bucketDbConfig.SGVersion = base.ProductVersion.String()
+		updatedDbConfig = bucketDbConfig
+		return bucketDbConfig, nil
+	})
 	if err != nil {
 		return err
 	}
 	updatedDbConfig.cfgCas = cas
 
-	dbName := h.db.Name
 	dbCreds, _ := h.server.Config.DatabaseCredentials[dbName]
 	bucketCreds, _ := h.server.Config.BucketCredentials[bucket]
 	if err := updatedDbConfig.setup(dbName, h.server.Config.Bootstrap, dbCreds, bucketCreds, h.server.Config.IsServerless()); err != nil {
@@ -899,48 +868,41 @@ func (h *handler) handlePutCollectionConfigImportFilter() error {
 		return err
 	}
 	bucket := h.db.Bucket.GetName()
+	dbName := h.db.Name
 
 	var updatedDbConfig *DatabaseConfig
-	cas, err := h.server.BootstrapContext.Connection.UpdateConfig(
-		bucket, h.server.Config.Bootstrap.ConfigGroupID,
-		func(rawBucketConfig []byte, rawBucketConfigCas uint64) (newConfig []byte, err error) {
-			var bucketDbConfig DatabaseConfig
-			if err := base.JSONUnmarshal(rawBucketConfig, &bucketDbConfig); err != nil {
-				return nil, err
-			}
+	cas, err := h.server.BootstrapContext.UpdateConfig(h.ctx(), bucket, h.server.Config.Bootstrap.ConfigGroupID, dbName, func(bucketDbConfig *DatabaseConfig) (updatedConfig *DatabaseConfig, err error) {
 
-			if h.headerDoesNotMatchEtag(bucketDbConfig.Version) {
-				return nil, base.HTTPErrorf(http.StatusPreconditionFailed, "Provided If-Match header does not match current config version")
-			}
+		if h.headerDoesNotMatchEtag(bucketDbConfig.Version) {
+			return nil, base.HTTPErrorf(http.StatusPreconditionFailed, "Provided If-Match header does not match current config version")
+		}
 
-			if bucketDbConfig.Scopes != nil {
-				config := bucketDbConfig.Scopes[h.collection.ScopeName].Collections[h.collection.Name]
-				config.ImportFilter = &js
-				bucketDbConfig.Scopes[h.collection.ScopeName].Collections[h.collection.Name] = config
-			} else if base.IsDefaultCollection(h.collection.ScopeName, h.collection.Name) {
-				bucketDbConfig.ImportFilter = &js
-			}
+		if bucketDbConfig.Scopes != nil {
+			config := bucketDbConfig.Scopes[h.collection.ScopeName].Collections[h.collection.Name]
+			config.ImportFilter = &js
+			bucketDbConfig.Scopes[h.collection.ScopeName].Collections[h.collection.Name] = config
+		} else if base.IsDefaultCollection(h.collection.ScopeName, h.collection.Name) {
+			bucketDbConfig.ImportFilter = &js
+		}
 
-			if err := bucketDbConfig.validate(h.ctx(), !h.getBoolQuery(paramDisableOIDCValidation)); err != nil {
-				return nil, base.HTTPErrorf(http.StatusBadRequest, err.Error())
-			}
+		if err := bucketDbConfig.validate(h.ctx(), !h.getBoolQuery(paramDisableOIDCValidation)); err != nil {
+			return nil, base.HTTPErrorf(http.StatusBadRequest, err.Error())
+		}
 
-			bucketDbConfig.Version, err = GenerateDatabaseConfigVersionID(bucketDbConfig.Version, &bucketDbConfig.DbConfig)
-			if err != nil {
-				return nil, err
-			}
+		bucketDbConfig.Version, err = GenerateDatabaseConfigVersionID(bucketDbConfig.Version, &bucketDbConfig.DbConfig)
+		if err != nil {
+			return nil, err
+		}
 
-			bucketDbConfig.SGVersion = base.ProductVersion.String()
-
-			updatedDbConfig = &bucketDbConfig
-			return base.JSONMarshal(bucketDbConfig)
-		})
+		bucketDbConfig.SGVersion = base.ProductVersion.String()
+		updatedDbConfig = bucketDbConfig
+		return bucketDbConfig, nil
+	})
 	if err != nil {
 		return err
 	}
 	updatedDbConfig.cfgCas = cas
 
-	dbName := h.db.Name
 	dbCreds, _ := h.server.Config.DatabaseCredentials[dbName]
 	bucketCreds, _ := h.server.Config.BucketCredentials[bucket]
 	if err := updatedDbConfig.setup(dbName, h.server.Config.Bootstrap, dbCreds, bucketCreds, h.server.Config.IsServerless()); err != nil {
@@ -968,9 +930,7 @@ func (h *handler) handleDeleteDB() error {
 
 	if h.server.persistentConfig {
 		bucket, _ = h.server.bucketNameFromDbName(dbName)
-		_, err := h.server.BootstrapContext.Connection.UpdateConfig(bucket, h.server.Config.Bootstrap.ConfigGroupID, func(rawBucketConfig []byte, rawBucketConfigCas uint64) (updatedConfig []byte, err error) {
-			return nil, nil
-		})
+		err := h.server.BootstrapContext.DeleteConfig(h.ctx(), bucket, h.server.Config.Bootstrap.ConfigGroupID, dbName)
 		if err != nil {
 			return base.HTTPErrorf(http.StatusInternalServerError, "couldn't remove database %q from bucket %q: %s", base.MD(dbName), base.MD(bucket), err.Error())
 		}
@@ -1354,13 +1314,6 @@ func (h *handler) updatePrincipal(name string, isUser bool) error {
 	if err != nil {
 		return err
 	} else if replaced {
-		// on update with a new password, remove previous user sessions
-		if newInfo.Password != nil {
-			err = h.db.DeleteUserSessions(h.ctx(), *newInfo.Name)
-			if err != nil {
-				return err
-			}
-		}
 		h.writeStatus(http.StatusOK, "OK")
 	} else {
 		h.writeStatus(http.StatusCreated, "Created")

@@ -47,19 +47,11 @@ func TestBackupOldRevisionWithAttachments(t *testing.T) {
 	deltasEnabled := base.IsEnterpriseEdition()
 	xattrsEnabled := base.TestUseXattrs()
 
-	ctx := base.TestCtx(t)
-	bucket := base.GetTestBucket(t)
-	dbCtx, err := NewDatabaseContext(ctx, "db", bucket, false, DatabaseContextOptions{
-		EnableXattr: xattrsEnabled,
-		DeltaSyncOptions: DeltaSyncOptions{
-			Enabled:          deltasEnabled,
-			RevMaxAgeSeconds: DefaultDeltaSyncRevMaxAge,
-		},
-	})
-	assert.NoError(t, err, "Couldn't create context for database 'db'")
-	defer dbCtx.Close(ctx)
-	db, err := CreateDatabase(dbCtx)
-	assert.NoError(t, err, "Couldn't create database 'db'")
+	db, ctx := SetupTestDBWithOptions(t, DatabaseContextOptions{DeltaSyncOptions: DeltaSyncOptions{
+		Enabled:          deltasEnabled,
+		RevMaxAgeSeconds: DefaultDeltaSyncRevMaxAge,
+	}})
+	defer db.Close(ctx)
 
 	docID := "doc1"
 	var rev1Body Body
@@ -109,13 +101,8 @@ func TestBackupOldRevisionWithAttachments(t *testing.T) {
 
 func TestAttachments(t *testing.T) {
 
-	ctx := base.TestCtx(t)
-	bucket := base.GetTestBucket(t)
-	context, err := NewDatabaseContext(ctx, "db", bucket, false, DatabaseContextOptions{})
-	assert.NoError(t, err, "Couldn't create context for database 'db'")
-	defer context.Close(ctx)
-	db, err := CreateDatabase(context)
-	assert.NoError(t, err, "Couldn't create database 'db'")
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
 
 	// Test creating & updating a document:
 	log.Printf("Create rev 1...")
@@ -224,24 +211,19 @@ func TestAttachments(t *testing.T) {
 }
 
 func TestAttachmentForRejectedDocument(t *testing.T) {
-
-	ctx := base.TestCtx(t)
-	bucket := base.GetTestBucket(t)
-	context, err := NewDatabaseContext(ctx, "db", bucket, false, DatabaseContextOptions{})
-	assert.NoError(t, err, "Couldn't create context for database 'db'")
-	defer context.Close(ctx)
-	db, err := CreateDatabase(context)
-	assert.NoError(t, err, "Couldn't create database 'db'")
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
 
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
-	db.ChannelMapper = channels.NewChannelMapper(`function(doc, oldDoc) {
+	collection.ChannelMapper = channels.NewChannelMapper(
+		`function(doc, oldDoc) {
 		throw({forbidden: "None shall pass!"});
-	}`, 0)
+	}`, db.Options.JavascriptTimeout)
 
 	docBody := `{"_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="}}}`
 	var body Body
 	require.NoError(t, base.JSONUnmarshal([]byte(docBody), &body))
-	_, _, err = collection.Put(ctx, "doc1", unjson(docBody))
+	_, _, err := collection.Put(ctx, "doc1", unjson(docBody))
 	require.Error(t, err)
 
 	// Attempt to retrieve the attachment doc
@@ -250,64 +232,47 @@ func TestAttachmentForRejectedDocument(t *testing.T) {
 }
 
 func TestAttachmentRetrievalUsingRevCache(t *testing.T) {
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
 
-	ctx := base.TestCtx(t)
-	bucket := base.GetTestBucket(t)
-	context, err := NewDatabaseContext(ctx, "db", bucket, false, DatabaseContextOptions{})
-	assert.NoError(t, err, "Couldn't create context for database 'db'")
-	defer context.Close(ctx)
-	db, err := CreateDatabase(context)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
-	assert.NoError(t, err, "Couldn't create database 'db'")
 
 	// Test creating & updating a document:
 	rev1input := `{"_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="},
                                     "bye.txt": {"data":"Z29vZGJ5ZSBjcnVlbCB3b3JsZA=="}}}`
-	_, _, err = collection.Put(ctx, "doc1", unjson(rev1input))
-	assert.NoError(t, err, "Couldn't create document")
+	_, _, err := collection.Put(ctx, "doc1", unjson(rev1input))
+	require.NoError(t, err, "Couldn't create document")
 
 	initCount, countErr := base.GetExpvarAsInt("syncGateway_db", "document_gets")
-	assert.NoError(t, countErr, "Couldn't retrieve document_gets expvar")
+	require.NoError(t, countErr, "Couldn't retrieve document_gets expvar")
 	gotbody, err := collection.Get1xRevBody(ctx, "doc1", "1-ca9ad22802b66f662ff171f226211d5c", false, []string{})
-	assert.NoError(t, err, "Couldn't get document")
+	require.NoError(t, err, "Couldn't get document")
 	atts := gotbody[BodyAttachments].(AttachmentsMeta)
 
-	hello := atts["hello.txt"].(map[string]interface{})
-	assert.Equal(t, "hello world", string(hello["data"].([]byte)))
-	assert.Equal(t, "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=", hello["digest"])
-	assert.Equal(t, 11, hello["length"])
-	assert.Equal(t, 1, hello["revpos"])
+	assertAttachments := func(atts AttachmentsMeta) {
+		hello := atts["hello.txt"].(map[string]interface{})
+		assert.Equal(t, "hello world", string(hello["data"].([]byte)))
+		assert.Equal(t, "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=", hello["digest"])
+		assert.Equal(t, 11, hello["length"])
+		assert.Equal(t, 1, hello["revpos"])
 
-	bye := atts["bye.txt"].(map[string]interface{})
-	assert.Equal(t, "goodbye cruel world", string(bye["data"].([]byte)))
-	assert.Equal(t, "sha1-l+N7VpXGnoxMm8xfvtWPbz2YvDc=", bye["digest"])
-	assert.Equal(t, 19, bye["length"])
-	assert.Equal(t, 1, bye["revpos"])
-
-	getCount, countErr := base.GetExpvarAsInt("syncGateway_db", "document_gets")
-	assert.NoError(t, countErr, "Couldn't retrieve document_gets expvar")
-	assert.Equal(t, initCount, getCount)
+		bye := atts["bye.txt"].(map[string]interface{})
+		assert.Equal(t, "goodbye cruel world", string(bye["data"].([]byte)))
+		assert.Equal(t, "sha1-l+N7VpXGnoxMm8xfvtWPbz2YvDc=", bye["digest"])
+		assert.Equal(t, 19, bye["length"])
+		assert.Equal(t, 1, bye["revpos"])
+		getCount, countErr := base.GetExpvarAsInt("syncGateway_db", "document_gets")
+		require.NoError(t, countErr, "Couldn't retrieve document_gets expvar")
+		require.Equal(t, initCount, getCount)
+	}
+	assertAttachments(atts)
 
 	// Repeat, validate no additional get operations
 	gotbody, err = collection.Get1xRevBody(ctx, "doc1", "1-ca9ad22802b66f662ff171f226211d5c", false, []string{})
-	assert.NoError(t, err, "Couldn't get document")
+	require.NoError(t, err, "Couldn't get document")
 	atts = gotbody[BodyAttachments].(AttachmentsMeta)
 
-	hello = atts["hello.txt"].(map[string]interface{})
-	assert.Equal(t, "hello world", string(hello["data"].([]byte)))
-	assert.Equal(t, "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=", hello["digest"])
-	assert.Equal(t, 11, hello["length"])
-	assert.Equal(t, 1, hello["revpos"])
-
-	bye = atts["bye.txt"].(map[string]interface{})
-	assert.Equal(t, "goodbye cruel world", string(bye["data"].([]byte)))
-	assert.Equal(t, "sha1-l+N7VpXGnoxMm8xfvtWPbz2YvDc=", bye["digest"])
-	assert.Equal(t, 19, bye["length"])
-	assert.Equal(t, 1, bye["revpos"])
-
-	getCount, countErr = base.GetExpvarAsInt("syncGateway_db", "document_gets")
-	assert.NoError(t, countErr, "Couldn't retrieve document_gets expvar")
-	assert.Equal(t, initCount, getCount)
+	assertAttachments(atts)
 }
 
 func TestAttachmentCASRetryAfterNewAttachment(t *testing.T) {
@@ -437,13 +402,8 @@ func TestAttachmentCASRetryDuringNewAttachment(t *testing.T) {
 }
 
 func TestForEachStubAttachmentErrors(t *testing.T) {
-	ctx := base.TestCtx(t)
-	bucket := base.GetTestBucket(t)
-	context, err := NewDatabaseContext(ctx, "db", bucket, false, DatabaseContextOptions{})
-	assert.NoError(t, err, "Couldn't create context for database 'db'")
-	defer context.Close(ctx)
-	db, err := CreateDatabase(context)
-	assert.NoError(t, err, "Couldn't create database 'db'")
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 	var body Body
@@ -458,7 +418,7 @@ func TestForEachStubAttachmentErrors(t *testing.T) {
 	docID := "foo"
 	existingDigests := make(map[string]string)
 	assert.NoError(t, base.JSONUnmarshal([]byte(doc), &body))
-	err = collection.ForEachStubAttachment(body, 1, docID, existingDigests, callback)
+	err := collection.ForEachStubAttachment(body, 1, docID, existingDigests, callback)
 	assert.Error(t, err, "It should throw 400 Invalid _attachments")
 	assert.Contains(t, err.Error(), strconv.Itoa(http.StatusBadRequest))
 
@@ -586,19 +546,14 @@ func TestDecodeAttachmentError(t *testing.T) {
 }
 
 func TestSetAttachment(t *testing.T) {
-	ctx := base.TestCtx(t)
-	bucket := base.GetTestBucket(t)
-	context, err := NewDatabaseContext(ctx, "db", bucket, false, DatabaseContextOptions{})
-	assert.NoError(t, err, "The database context should be created for database 'db'")
-	defer context.Close(ctx)
-	db, err := CreateDatabase(context)
-	assert.NoError(t, err, "The database 'db' should be created")
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 	// Set attachment with a valid attachment
 	att := `{"att1.txt": {"data": "YXR0MS50eHQ="}}}`
 	key := Sha1DigestKey([]byte(att))
-	err = collection.setAttachment(ctx, key, []byte(att))
+	err := collection.setAttachment(ctx, key, []byte(att))
 	assert.NoError(t, err, "Attachment should be saved in db and key should be returned")
 	attBytes, err := collection.GetAttachment(key)
 	assert.NoError(t, err, "Attachment should be retrieved from the database")
@@ -606,13 +561,8 @@ func TestSetAttachment(t *testing.T) {
 }
 
 func TestRetrieveAncestorAttachments(t *testing.T) {
-	ctx := base.TestCtx(t)
-	bucket := base.GetTestBucket(t)
-	context, err := NewDatabaseContext(ctx, "db", bucket, false, DatabaseContextOptions{})
-	assert.NoError(t, err, "The database context should be created for database 'db'")
-	defer context.Close(ctx)
-	db, err := CreateDatabase(context)
-	require.NoError(t, err, "The database 'db' should be created")
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 	var body Body
@@ -677,16 +627,11 @@ func TestRetrieveAncestorAttachments(t *testing.T) {
 }
 
 func TestStoreAttachments(t *testing.T) {
-	ctx := base.TestCtx(t)
-	bucket := base.GetTestBucket(t)
-	context, err := NewDatabaseContext(ctx, "db", bucket, false, DatabaseContextOptions{})
-	assert.NoError(t, err, "The database context should be created for database 'db'")
-	defer context.Close(ctx)
-	db, err := CreateDatabase(context)
-	require.NoError(t, err, "The database 'db' should be created")
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
-	var revBody Body
 
+	var revBody Body
 	// Simulate Invalid _attachments scenario; try to put a document with bad
 	// attachment metadata. It should throw "Invalid _attachments" error.
 	revText := `{"key1": "value1", "_attachments": {"att1.txt": "YXR0MS50eHQ="}}`
@@ -794,22 +739,15 @@ func TestMigrateBodyAttachments(t *testing.T) {
 	const docKey = "TestAttachmentMigrate"
 
 	setupFn := func(t *testing.T) (db *Database) {
-		ctx := base.TestCtx(t)
-		bucket := base.GetTestBucket(t)
-		dbCtx, err := NewDatabaseContext(ctx, "db", bucket, false, DatabaseContextOptions{
-			EnableXattr: base.TestUseXattrs(),
-		})
+		db, ctx := setupTestDB(t)
 
-		assert.NoError(t, err, "The database context should be created for database 'db'")
-		db, err = CreateDatabase(dbCtx)
-		require.NoError(t, err, "The database 'db' should be created")
 		collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 		// Put a document with hello.txt attachment, to write attachment to the bucket
 		rev1input := `{"_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="}}}`
 		var body Body
 		assert.NoError(t, base.JSONUnmarshal([]byte(rev1input), &body))
-		_, _, err = collection.Put(ctx, "doc1", body)
+		_, _, err := collection.Put(ctx, "doc1", body)
 		assert.NoError(t, err, "Couldn't create document")
 
 		gotbody, err := collection.Get1xRevBody(ctx, "doc1", "", false, []string{})
@@ -1081,23 +1019,15 @@ func TestMigrateBodyAttachmentsMerge(t *testing.T) {
 
 	const docKey = "TestAttachmentMigrate"
 
-	ctx := base.TestCtx(t)
-	bucket := base.GetTestBucket(t)
-	dbCtx, err := NewDatabaseContext(ctx, "db", bucket, false, DatabaseContextOptions{
-		EnableXattr: base.TestUseXattrs(),
-	})
-	require.NoError(t, err, "The database context should be created for database 'db'")
-	defer dbCtx.Close(ctx)
-
-	db, err := CreateDatabase(dbCtx)
-	require.NoError(t, err, "The database 'db' should be created")
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 	// Put a document 2 attachments, to write attachment to the bucket
 	rev1input := `{"_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="},"bye.txt": {"data":"Z29vZGJ5ZSBjcnVlbCB3b3JsZA=="}}}`
 	var body Body
 	assert.NoError(t, base.JSONUnmarshal([]byte(rev1input), &body))
-	_, _, err = collection.Put(ctx, "doc1", body)
+	_, _, err := collection.Put(ctx, "doc1", body)
 	assert.NoError(t, err, "Couldn't create document")
 
 	gotbody, err := collection.Get1xRevBody(ctx, "doc1", "", false, []string{})
@@ -1246,23 +1176,15 @@ func TestMigrateBodyAttachmentsMergeConflicting(t *testing.T) {
 
 	const docKey = "TestAttachmentMigrate"
 
-	ctx := base.TestCtx(t)
-	bucket := base.GetTestBucket(t)
-	context, err := NewDatabaseContext(ctx, "db", bucket, false, DatabaseContextOptions{
-		EnableXattr: base.TestUseXattrs(),
-	})
-	require.NoError(t, err, "The database context should be created for database 'db'")
-	defer context.Close(ctx)
-
-	db, err := CreateDatabase(context)
-	require.NoError(t, err, "The database 'db' should be created")
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 	// Put a document with 3 attachments, to write attachments to the bucket
 	rev1input := `{"_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="},"bye.txt": {"data":"Z29vZGJ5ZSBjcnVlbCB3b3JsZA=="},"new.txt": {"data":"bmV3IGRhdGE="}}}`
 	var body Body
 	assert.NoError(t, base.JSONUnmarshal([]byte(rev1input), &body))
-	_, _, err = collection.Put(ctx, "doc1", body)
+	_, _, err := collection.Put(ctx, "doc1", body)
 	assert.NoError(t, err, "Couldn't create document")
 
 	gotbody, err := collection.Get1xRevBody(ctx, "doc1", "", false, []string{})
@@ -1602,12 +1524,8 @@ func TestGetAttVersion(t *testing.T) {
 }
 
 func TestLargeAttachments(t *testing.T) {
-	ctx := base.TestCtx(t)
-	context, err := NewDatabaseContext(ctx, "db", base.GetTestBucket(t), false, DatabaseContextOptions{})
-	assert.NoError(t, err, "Couldn't create context for database 'db'")
-	defer context.Close(ctx)
-	db, err := CreateDatabase(context)
-	require.NoError(t, err, "Couldn't create database 'db'")
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 	normalAttachment := make([]byte, 15*1024*1024)   // permissible size
@@ -1617,7 +1535,7 @@ func TestLargeAttachments(t *testing.T) {
 	_, _ = rand.Read(oversizeAttachment)
 	_, _ = rand.Read(hugeAttachment)
 
-	_, _, err = collection.Put(ctx, "testdoc", Body{
+	_, _, err := collection.Put(ctx, "testdoc", Body{
 		"_attachments": AttachmentsMeta{
 			"foo.bin": map[string]interface{}{
 				"data": base64.StdEncoding.EncodeToString(normalAttachment),

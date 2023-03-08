@@ -121,7 +121,7 @@ func (bh *blipHandler) refreshUser() error {
 				return err
 			}
 			newUser.InitializeRoles()
-			bc.userChangeWaiter.RefreshUserKeys(newUser)
+			bc.userChangeWaiter.RefreshUserKeys(newUser, bc.blipContextDb.MetadataKeys)
 			bc.blipContextDb.SetUser(newUser)
 			// refresh the handler's database with the new BlipSyncContext database
 			bh.db = bh._copyContextDatabase()
@@ -141,7 +141,7 @@ func collectionBlipHandler(next blipHandlerFunc) blipHandlerFunc {
 	return func(bh *blipHandler, bm *blip.Message) error {
 		collectionIndexStr, ok := bm.Properties[BlipCollection]
 		if !ok {
-			if !bh.db.hasDefaultCollection() {
+			if !bh.db.HasDefaultCollection() {
 				return base.HTTPErrorf(http.StatusBadRequest, "Collection property not specified and default collection is not configured for this database")
 			}
 			if bh.collections.hasNamedCollections() {
@@ -152,7 +152,7 @@ func collectionBlipHandler(next blipHandlerFunc) blipHandlerFunc {
 				DatabaseCollection: bh.db.singleCollection,
 				user:               bh.db.user,
 			}
-			bh.collections.setNonCollectionAware(&blipSyncCollectionContext{dbCollection: bh.collection.DatabaseCollection})
+			bh.collections.setNonCollectionAware(newBlipSyncCollectionContext(bh.collection.DatabaseCollection))
 			return next(bh, bm)
 		}
 		if !bh.collections.hasNamedCollections() {
@@ -235,9 +235,6 @@ func (bh *blipHandler) handleSetCheckpoint(rq *blip.Message) error {
 
 // Received a "subChanges" subscription request
 func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
-	bh.changesCtxLock.Lock()
-	defer bh.changesCtxLock.Unlock()
-
 	defaultSince := CreateZeroSinceValue()
 	latestSeq := func() (SequenceID, error) {
 		seq, err := bh.collection.LastSequence()
@@ -253,13 +250,19 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 	if err != nil {
 		return base.HTTPErrorf(http.StatusBadRequest, fmt.Sprintf("%s", err))
 	}
+	collectionCtx.changesCtxLock.Lock()
+	defer collectionCtx.changesCtxLock.Unlock()
 	if !collectionCtx.activeSubChanges.CASRetry(false, true) {
-		return fmt.Errorf("blipHandler for collection %d already has an outstanding subChanges. Cannot open another one", *bh.collectionIdx)
+		collectionStr := "default collection"
+		if bh.collectionIdx != nil {
+			collectionStr = fmt.Sprintf("collection %d", *bh.collectionIdx)
+		}
+		return fmt.Errorf("blipHandler for %s already has an outstanding subChanges. Cannot open another one", collectionStr)
 	}
 
 	// Create ctx if it has been cancelled
-	if bh.changesCtx.Err() != nil {
-		bh.changesCtx, bh.changesCtxCancel = context.WithCancel(context.Background())
+	if collectionCtx.changesCtx.Err() != nil {
+		collectionCtx.changesCtx, collectionCtx.changesCtxCancel = context.WithCancel(context.Background())
 	}
 
 	if len(subChangesParams.docIDs()) > 0 && subChangesParams.continuous() {
@@ -304,7 +307,7 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 		}
 
 		defer func() {
-			bh.changesCtxCancel()
+			collectionCtx.changesCtxCancel()
 			collectionCtx.activeSubChanges.Set(false)
 		}()
 		// sendChanges runs until blip context closes, or fails due to error
@@ -319,6 +322,7 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 			revocations:       subChangesParams.revocations(),
 			clientType:        clientType,
 			ignoreNoConflicts: clientType == clientTypeSGR2, // force this side to accept a "changes" message, even in no conflicts mode for SGR2.
+			changesCtx:        collectionCtx.changesCtx,
 		})
 		base.DebugfCtx(bh.loggingCtx, base.KeySyncMsg, "#%d: Type:%s   --> Time:%v", bh.serialNumber, rq.Profile(), time.Since(startTime))
 	}()
@@ -327,10 +331,13 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 }
 
 func (bh *blipHandler) handleUnsubChanges(rq *blip.Message) error {
-	bh.changesCtxLock.Lock()
-	defer bh.changesCtxLock.Unlock()
-
-	bh.changesCtxCancel()
+	collectionCtx, err := bh.collections.get(bh.collectionIdx)
+	if err != nil {
+		return err
+	}
+	collectionCtx.changesCtxLock.Lock()
+	defer collectionCtx.changesCtxLock.Unlock()
+	collectionCtx.changesCtxCancel()
 	return nil
 }
 
@@ -351,6 +358,7 @@ type sendChangesOptions struct {
 	clientType        clientType
 	revocations       bool
 	ignoreNoConflicts bool
+	changesCtx        context.Context
 }
 
 type changesDeletedFlag uint
@@ -385,7 +393,7 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions
 		Revocations: opts.revocations,
 		LoggingCtx:  bh.loggingCtx,
 		clientType:  opts.clientType,
-		ChangesCtx:  bh.changesCtx,
+		ChangesCtx:  opts.changesCtx,
 	}
 
 	channelSet := opts.channels
@@ -405,16 +413,11 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions
 		return nil
 	}
 
-	// If replicator calls sendChanges directly, no prior blipHandlers might be called to initialize bh.collections.
-	if bh.collectionIdx == nil {
-		bh.collections.setNonCollectionAware(&blipSyncCollectionContext{dbCollection: bh.collection.DatabaseCollection})
-	}
-
 	// Create a distinct database instance for changes, to avoid races between reloadUser invocation in changes.go
 	// and BlipSyncContext user access.
 	changesDb, err := bh.copyDatabaseCollectionWithUser(bh.collectionIdx)
 	if err != nil {
-		base.WarnfCtx(bh.loggingCtx, "[%s] error sending changes: %w", bh.blipContext.ID, err)
+		base.WarnfCtx(bh.loggingCtx, "[%s] error sending changes: %v", bh.blipContext.ID, err)
 		return false
 
 	}
@@ -551,7 +554,7 @@ func (bh *blipHandler) sendBatchOfChanges(sender *blip.Sender, changeArray [][]i
 		bh.replicationStats.SendChangesCount.Add(int64(len(changeArray)))
 		// Spawn a goroutine to await the client's response:
 		go func(bh *blipHandler, sender *blip.Sender, response *blip.Message, changeArray [][]interface{}, sendTime time.Time, dbCollection *DatabaseCollectionWithUser) {
-			if err := bh.handleChangesResponse(sender, response, changeArray, sendTime, dbCollection); err != nil {
+			if err := bh.handleChangesResponse(sender, response, changeArray, sendTime, dbCollection, bh.collectionIdx); err != nil {
 				base.WarnfCtx(bh.loggingCtx, "Error from bh.handleChangesResponse: %v", err)
 				if bh.fatalErrorCallback != nil {
 					bh.fatalErrorCallback(err)
@@ -600,14 +603,19 @@ func (bh *blipHandler) handleChanges(rq *blip.Message) error {
 		return err
 	}
 
+	collectionCtx, err := bh.collections.get(bh.collectionIdx)
+	if err != nil {
+		return err
+	}
+
 	bh.logEndpointEntry(rq.Profile(), fmt.Sprintf("#Changes:%d", len(changeList)))
 	if len(changeList) == 0 {
 		// An empty changeList is sent when a one-shot replication sends its final changes
 		// message, or a continuous replication catches up *for the first time*.
 		// Note that this doesn't mean that rev messages associated with previous changes
 		// messages have been fully processed
-		if bh.emptyChangesMessageCallback != nil {
-			bh.emptyChangesMessageCallback()
+		if collectionCtx.emptyChangesMessageCallback != nil {
+			collectionCtx.emptyChangesMessageCallback()
 		}
 		return nil
 	}
@@ -669,7 +677,7 @@ func (bh *blipHandler) handleChanges(rq *blip.Message) error {
 		if missing == nil {
 			// already have this rev, tell the peer to skip sending it
 			output.Write([]byte("0"))
-			if bh.sgr2PullAlreadyKnownSeqsCallback != nil {
+			if collectionCtx.sgr2PullAlreadyKnownSeqsCallback != nil {
 				seq, err := ParseJSONSequenceID(seqStr(change[0]))
 				if err != nil {
 					base.WarnfCtx(bh.loggingCtx, "Unable to parse known sequence %q for %q / %q: %v", change[0], base.UD(docID), revID, err)
@@ -691,7 +699,7 @@ func (bh *blipHandler) handleChanges(rq *blip.Message) error {
 			}
 
 			// skip parsing seqno if we're not going to use it (no callback defined)
-			if bh.sgr2PullAddExpectedSeqsCallback != nil {
+			if collectionCtx.sgr2PullAddExpectedSeqsCallback != nil {
 				seq, err := ParseJSONSequenceID(seqStr(change[0]))
 				if err != nil {
 					// We've already asked for the doc/rev for the sequence so assume we're going to receive it... Just log this and carry on
@@ -713,11 +721,11 @@ func (bh *blipHandler) handleChanges(rq *blip.Message) error {
 	response.SetCompressed(true)
 	response.SetBody(output.Bytes())
 
-	if bh.sgr2PullAddExpectedSeqsCallback != nil {
-		bh.sgr2PullAddExpectedSeqsCallback(expectedSeqs)
+	if collectionCtx.sgr2PullAddExpectedSeqsCallback != nil {
+		collectionCtx.sgr2PullAddExpectedSeqsCallback(expectedSeqs)
 	}
-	if bh.sgr2PullAlreadyKnownSeqsCallback != nil {
-		bh.sgr2PullAlreadyKnownSeqsCallback(alreadyKnownSeqs...)
+	if collectionCtx.sgr2PullAlreadyKnownSeqsCallback != nil {
+		collectionCtx.sgr2PullAlreadyKnownSeqsCallback(alreadyKnownSeqs...)
 	}
 
 	return nil
@@ -794,12 +802,7 @@ func (bh *blipHandler) handleProposeChanges(rq *blip.Message) error {
 
 // ////// DOCUMENTS:
 
-func (bsc *BlipSyncContext) sendRevAsDelta(sender *blip.Sender, docID, revID string, deltaSrcRevID string, seq SequenceID, knownRevs map[string]bool, maxHistory int, handleChangesResponseCollection *DatabaseCollectionWithUser) error {
-	var collectionIdx *int
-	if coll, ok := bsc.collections.getIndexForDB(handleChangesResponseCollection); ok {
-		collectionIdx = &coll
-	}
-
+func (bsc *BlipSyncContext) sendRevAsDelta(sender *blip.Sender, docID, revID string, deltaSrcRevID string, seq SequenceID, knownRevs map[string]bool, maxHistory int, handleChangesResponseCollection *DatabaseCollectionWithUser, collectionIdx *int) error {
 	bsc.replicationStats.SendRevDeltaRequestedCount.Add(1)
 
 	revDelta, redactedRev, err := handleChangesResponseCollection.GetDelta(bsc.loggingCtx, docID, deltaSrcRevID, revID)
@@ -808,13 +811,13 @@ func (bsc *BlipSyncContext) sendRevAsDelta(sender *blip.Sender, docID, revID str
 	} else if base.IsFleeceDeltaError(err) {
 		// Something went wrong in the diffing library. We want to know about this!
 		base.WarnfCtx(bsc.loggingCtx, "Falling back to full body replication. Error generating delta from %s to %s for key %s - err: %v", deltaSrcRevID, revID, base.UD(docID), err)
-		return bsc.sendRevision(sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseCollection)
+		return bsc.sendRevision(sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseCollection, collectionIdx)
 	} else if err == base.ErrDeltaSourceIsTombstone {
 		base.TracefCtx(bsc.loggingCtx, base.KeySync, "Falling back to full body replication. Delta source %s is tombstone. Unable to generate delta to %s for key %s", deltaSrcRevID, revID, base.UD(docID))
-		return bsc.sendRevision(sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseCollection)
+		return bsc.sendRevision(sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseCollection, collectionIdx)
 	} else if err != nil {
 		base.DebugfCtx(bsc.loggingCtx, base.KeySync, "Falling back to full body replication. Couldn't get delta from %s to %s for key %s - err: %v", deltaSrcRevID, revID, base.UD(docID), err)
-		return bsc.sendRevision(sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseCollection)
+		return bsc.sendRevision(sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseCollection, collectionIdx)
 	}
 
 	if redactedRev != nil {
@@ -825,12 +828,12 @@ func (bsc *BlipSyncContext) sendRevAsDelta(sender *blip.Sender, docID, revID str
 
 	if revDelta == nil {
 		base.DebugfCtx(bsc.loggingCtx, base.KeySync, "Falling back to full body replication. Couldn't get delta from %s to %s for key %s", deltaSrcRevID, revID, base.UD(docID))
-		return bsc.sendRevision(sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseCollection)
+		return bsc.sendRevision(sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseCollection, collectionIdx)
 	}
 
 	resendFullRevisionFunc := func() error {
 		base.InfofCtx(bsc.loggingCtx, base.KeySync, "Resending revision as full body. Peer couldn't process delta %s from %s to %s for key %s", base.UD(revDelta.DeltaBytes), deltaSrcRevID, revID, base.UD(docID))
-		return bsc.sendRevision(sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseCollection)
+		return bsc.sendRevision(sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseCollection, collectionIdx)
 	}
 
 	base.TracefCtx(bsc.loggingCtx, base.KeySync, "docID: %s - delta: %v", base.UD(docID), base.UD(string(revDelta.DeltaBytes)))
@@ -857,12 +860,17 @@ func (bh *blipHandler) handleNoRev(rq *blip.Message) error {
 	base.InfofCtx(bh.loggingCtx, base.KeySyncMsg, "%s: norev for doc %q / %q seq:%q - error: %q - reason: %q",
 		rq.String(), base.UD(docID), revID, seqStr, rq.Properties[NorevMessageError], rq.Properties[NorevMessageReason])
 
-	if bh.sgr2PullProcessedSeqCallback != nil {
+	collectionCtx, err := bh.collections.get(bh.collectionIdx)
+	if err != nil {
+		return err
+	}
+
+	if collectionCtx.sgr2PullProcessedSeqCallback != nil {
 		seq, err := ParseJSONSequenceID(seqStr)
 		if err != nil {
-			base.WarnfCtx(bh.loggingCtx, "Unable to parse sequence %q from norev message: %w - not tracking for checkpointing", seqStr, err)
+			base.WarnfCtx(bh.loggingCtx, "Unable to parse sequence %q from norev message: %v - not tracking for checkpointing", seqStr, err)
 		} else {
-			bh.sgr2PullProcessedSeqCallback(&seq, IDAndRev{DocID: docID, RevID: revID})
+			collectionCtx.sgr2PullProcessedSeqCallback(&seq, IDAndRev{DocID: docID, RevID: revID})
 		}
 	}
 
@@ -933,14 +941,20 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 			if err := bh.collection.Purge(bh.loggingCtx, docID); err != nil {
 				return err
 			}
+
+			collectionCtx, err := bh.collections.get(bh.collectionIdx)
+			if err != nil {
+				return err
+			}
+
 			stats.docsPurgedCount.Add(1)
-			if bh.sgr2PullProcessedSeqCallback != nil {
+			if collectionCtx.sgr2PullProcessedSeqCallback != nil {
 				seqStr := rq.Properties[RevMessageSequence]
 				seq, err := ParseJSONSequenceID(seqStr)
 				if err != nil {
-					base.WarnfCtx(bh.loggingCtx, "Unable to parse sequence %q from rev message: %w - not tracking for checkpointing", seqStr, err)
+					base.WarnfCtx(bh.loggingCtx, "Unable to parse sequence %q from rev message: %v - not tracking for checkpointing", seqStr, err)
 				} else {
-					bh.sgr2PullProcessedSeqCallback(&seq, IDAndRev{DocID: docID, RevID: revID})
+					collectionCtx.sgr2PullProcessedSeqCallback(&seq, IDAndRev{DocID: docID, RevID: revID})
 				}
 			}
 			return nil
@@ -1150,13 +1164,18 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 		return err
 	}
 
-	if bh.sgr2PullProcessedSeqCallback != nil {
+	collectionCtx, err := bh.collections.get(bh.collectionIdx)
+	if err != nil {
+		return err
+	}
+
+	if collectionCtx.sgr2PullProcessedSeqCallback != nil {
 		seqProperty := rq.Properties[RevMessageSequence]
 		seq, err := ParseJSONSequenceID(seqProperty)
 		if err != nil {
-			base.WarnfCtx(bh.loggingCtx, "Unable to parse sequence %q from rev message: %w - not tracking for checkpointing", seqProperty, err)
+			base.WarnfCtx(bh.loggingCtx, "Unable to parse sequence %q from rev message: %v - not tracking for checkpointing", seqProperty, err)
 		} else {
-			bh.sgr2PullProcessedSeqCallback(&seq, IDAndRev{DocID: docID, RevID: revID})
+			collectionCtx.sgr2PullProcessedSeqCallback(&seq, IDAndRev{DocID: docID, RevID: revID})
 		}
 	}
 

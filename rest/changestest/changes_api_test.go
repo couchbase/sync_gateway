@@ -37,7 +37,7 @@ func TestReproduce2383(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
-	rt := rest.NewRestTester(t, nil)
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction})
 	defer rt.Close()
 
 	ctx := rt.Context()
@@ -3619,11 +3619,15 @@ func TestChangesIncludeConflicts(t *testing.T) {
 func TestChangesLargeSequences(t *testing.T) {
 
 	if base.UnitTestUrlIsWalrus() {
-		t.Skip("TestChangesLargeSequences doesn't support walrus - needs to customize " + base.SyncSeqKey + " prior to db creation")
+		t.Skip("TestChangesLargeSequences doesn't support walrus - needs to customize " + base.DefaultMetadataKeys.SyncSeqKey() + " prior to db creation")
 	}
 	if !base.TestsDisableGSI() {
 		t.Skip("Requires N1QL due to CBG-361")
 
+	}
+
+	if base.TestsUseNamedCollections() {
+		t.Skip("Requires default collection to set " + base.DefaultMetadataKeys.SyncSeqKey())
 	}
 	initialSeq := uint64(9223372036854775807)
 	rtConfig := rest.RestTesterConfig{SyncFn: `function(doc,oldDoc) {
@@ -3728,7 +3732,7 @@ func TestChangesAdminChannelGrantLongpollNotify(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyChanges, base.KeyHTTP)
 
-	rt := rest.NewRestTester(t, nil)
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction})
 	defer rt.Close()
 	collection := rt.GetSingleTestDatabaseCollection()
 

@@ -27,15 +27,16 @@ type blipMessageSender interface {
 
 // SubChangesRequest is a strongly typed 'subChanges' request.
 type SubChangesRequest struct {
-	Continuous     bool     // Continuous can be set to true if the requester wants change notifications to be sent indefinitely (optional)
-	Batch          uint16   // Batch controls the maximum number of changes to send in a single change message (optional)
-	Since          string   // Since represents the latest sequence ID already known to the requester (optional)
-	Filter         string   // Filter is the name of a filter function known to the recipient (optional)
-	FilterChannels []string // FilterChannels are a set of channels used with a 'sync_gateway/bychannel' filter (optional)
-	DocIDs         []string // DocIDs specifies which doc IDs the recipient should send changes for (optional)
-	ActiveOnly     bool     // ActiveOnly is set to `true` if the requester doesn't want to be sent tombstones. (optional)
-	Revocations    bool     // Revocations is set to `true` if the requester wants to be send revocation messages (optional)
-	clientType     clientType
+	Continuous     bool       // Continuous can be set to true if the requester wants change notifications to be sent indefinitely (optional)
+	Batch          uint16     // Batch controls the maximum number of changes to send in a single change message (optional)
+	Since          string     // Since represents the latest sequence ID already known to the requester (optional)
+	Filter         string     // Filter is the name of a filter function known to the recipient (optional)
+	FilterChannels []string   // FilterChannels are a set of channels used with a 'sync_gateway/bychannel' filter (optional)
+	DocIDs         []string   // DocIDs specifies which doc IDs the recipient should send changes for (optional)
+	ActiveOnly     bool       // ActiveOnly is set to `true` if the requester doesn't want to be sent tombstones. (optional)
+	Revocations    bool       // Revocations is set to `true` if the requester wants to be send revocation messages (optional)
+	clientType     clientType // Can be set to SGR2 to apply ISGR-specific behaviour
+	CollectionIdx  *int       // If set, specifies the collection index of the replicator for this message
 }
 
 var _ blipMessageSender = &SubChangesRequest{}
@@ -63,6 +64,7 @@ func (rq *SubChangesRequest) marshalBLIPRequest() (*blip.Message, error) {
 	setOptionalProperty(msg.Properties, SubChangesFilter, rq.Filter)
 	setOptionalProperty(msg.Properties, SubChangesChannels, strings.Join(rq.FilterChannels, ","))
 	setOptionalProperty(msg.Properties, SubChangesRevocations, rq.Revocations)
+	setOptionalProperty(msg.Properties, BlipCollection, rq.CollectionIdx)
 
 	if len(rq.DocIDs) > 0 {
 		if err := msg.SetJSONBody(map[string]interface{}{
@@ -78,9 +80,10 @@ func (rq *SubChangesRequest) marshalBLIPRequest() (*blip.Message, error) {
 
 // SetSGR2CheckpointRequest is a strongly typed 'setCheckpoint' request for SG-Replicate 2.
 type SetSGR2CheckpointRequest struct {
-	Client     string  // Client is the unique ID of client checkpoint to retrieve
-	RevID      *string // RevID of the previous checkpoint, if known.
-	Checkpoint Body    // Checkpoint is the actual checkpoint body we're sending.
+	Client        string  // Client is the unique ID of client checkpoint to retrieve
+	RevID         *string // RevID of the previous checkpoint, if known.
+	Checkpoint    Body    // Checkpoint is the actual checkpoint body we're sending.
+	CollectionIdx *int
 
 	msg *blip.Message
 }
@@ -108,6 +111,8 @@ func (rq *SetSGR2CheckpointRequest) marshalBLIPRequest() (*blip.Message, error) 
 
 	setProperty(msg.Properties, SetCheckpointClient, rq.Client)
 	setOptionalProperty(msg.Properties, SetCheckpointRev, rq.RevID)
+
+	setOptionalProperty(msg.Properties, BlipCollection, rq.CollectionIdx)
 
 	if err := msg.SetJSONBody(rq.Checkpoint); err != nil {
 		return nil, err
@@ -148,7 +153,8 @@ func (rq *SetSGR2CheckpointRequest) Response() (*SetSGR2CheckpointResponse, erro
 
 // GetSGR2CheckpointRequest is a strongly typed 'getCheckpoint' request for SG-Replicate 2.
 type GetSGR2CheckpointRequest struct {
-	Client string // Client is the unique ID of client checkpoint to retrieve
+	Client        string // Client is the unique ID of client checkpoint to retrieve
+	CollectionIdx *int   // If set, specifies the collection index of the replicator
 
 	msg *blip.Message
 }
@@ -172,6 +178,7 @@ func (rq *GetSGR2CheckpointRequest) marshalBLIPRequest() *blip.Message {
 	msg.SetProfile(MessageGetCheckpoint)
 
 	setProperty(msg.Properties, GetCheckpointClient, rq.Client)
+	setOptionalProperty(msg.Properties, BlipCollection, rq.CollectionIdx)
 
 	return msg
 }

@@ -33,12 +33,13 @@ type AttachmentCompactionManager struct {
 
 var _ BackgroundManagerProcessI = &AttachmentCompactionManager{}
 
-func NewAttachmentCompactionManager(metadataStore base.DataStore) *BackgroundManager {
+func NewAttachmentCompactionManager(metadataStore base.DataStore, metaKeys *base.MetadataKeys) *BackgroundManager {
 	return &BackgroundManager{
 		name:    "attachment_compaction",
 		Process: &AttachmentCompactionManager{},
 		clusterAwareOptions: &ClusterAwareBackgroundManagerOptions{
 			metadataStore: metadataStore,
+			metaKeys:      metaKeys,
 			processSuffix: "compact",
 		},
 		terminator: base.NewSafeTerminator(),

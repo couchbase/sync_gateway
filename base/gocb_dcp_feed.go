@@ -95,6 +95,7 @@ func StartGocbDCPFeed(bucket *GocbV2Bucket, bucketName string, args sgbucket.Fee
 			DbStats:           dbStats,
 			CollectionIDs:     collectionIDs,
 			AgentPriority:     gocbcore.DcpAgentPriorityMed,
+			CheckpointPrefix:  args.CheckpointPrefix,
 		},
 		bucket)
 	if err != nil {

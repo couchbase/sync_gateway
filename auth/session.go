@@ -19,10 +19,11 @@ const kDefaultSessionTTL = 24 * time.Hour
 
 // A user login session (used with cookie-based auth.)
 type LoginSession struct {
-	ID         string        `json:"id"`
-	Username   string        `json:"username"`
-	Expiration time.Time     `json:"expiration"`
-	Ttl        time.Duration `json:"ttl"`
+	ID          string        `json:"id"`
+	Username    string        `json:"username"`
+	Expiration  time.Time     `json:"expiration"`
+	Ttl         time.Duration `json:"ttl"`
+	SessionUUID string        `json:"session_uuid"` // marker of when the user object changes, to match with session docs to determine if they are valid
 }
 
 const DefaultCookieName = "SyncGatewaySession"
@@ -35,7 +36,7 @@ func (auth *Authenticator) AuthenticateCookie(rq *http.Request, response http.Re
 	}
 
 	var session LoginSession
-	_, err := auth.datastore.Get(DocIDForSession(cookie.Value), &session)
+	_, err := auth.datastore.Get(auth.DocIDForSession(cookie.Value), &session)
 	if err != nil {
 		if base.IsDocNotFoundError(err) {
 			return nil, base.HTTPErrorf(http.StatusUnauthorized, "Session Invalid")
@@ -56,7 +57,7 @@ func (auth *Authenticator) AuthenticateCookie(rq *http.Request, response http.Re
 	tenPercentOfTtl := int(duration.Nanoseconds()) / 10
 	if sessionTimeElapsed > tenPercentOfTtl {
 		session.Expiration = time.Now().Add(duration)
-		if err = auth.datastore.Set(DocIDForSession(session.ID), base.DurationToCbsExpiry(duration), nil, session); err != nil {
+		if err = auth.datastore.Set(auth.DocIDForSession(session.ID), base.DurationToCbsExpiry(duration), nil, session); err != nil {
 			return nil, err
 		}
 		base.AddDbPathToCookie(rq, cookie)
@@ -65,13 +66,17 @@ func (auth *Authenticator) AuthenticateCookie(rq *http.Request, response http.Re
 	}
 
 	user, err := auth.GetUser(session.Username)
-	if user != nil && user.Disabled() {
-		user = nil
+	if err != nil {
+		return nil, err
+	}
+
+	if session.SessionUUID != user.GetSessionUUID() {
+		return nil, base.HTTPErrorf(http.StatusUnauthorized, "Session no longer valid for user")
 	}
 	return user, err
 }
 
-func (auth *Authenticator) CreateSession(username string, ttl time.Duration) (*LoginSession, error) {
+func (auth *Authenticator) CreateSession(user User, ttl time.Duration) (*LoginSession, error) {
 	ttlSec := int(ttl.Seconds())
 	if ttlSec <= 0 {
 		return nil, base.HTTPErrorf(400, "Invalid session time-to-live")
@@ -82,13 +87,20 @@ func (auth *Authenticator) CreateSession(username string, ttl time.Duration) (*L
 		return nil, err
 	}
 
-	session := &LoginSession{
-		ID:         secret,
-		Username:   username,
-		Expiration: time.Now().Add(ttl),
-		Ttl:        ttl,
+	if user != nil && user.Disabled() {
+		return nil, base.HTTPErrorf(400, "User is disabled")
+	} else if err != nil {
+		return nil, err
 	}
-	if err := auth.datastore.Set(DocIDForSession(session.ID), base.DurationToCbsExpiry(ttl), nil, session); err != nil {
+
+	session := &LoginSession{
+		ID:          secret,
+		Username:    user.Name(),
+		Expiration:  time.Now().Add(ttl),
+		Ttl:         ttl,
+		SessionUUID: user.GetSessionUUID(),
+	}
+	if err := auth.datastore.Set(auth.DocIDForSession(session.ID), base.DurationToCbsExpiry(ttl), nil, session); err != nil {
 		return nil, err
 	}
 	return session, nil
@@ -96,7 +108,7 @@ func (auth *Authenticator) CreateSession(username string, ttl time.Duration) (*L
 
 func (auth *Authenticator) GetSession(sessionID string) (*LoginSession, error) {
 	var session LoginSession
-	_, err := auth.datastore.Get(DocIDForSession(sessionID), &session)
+	_, err := auth.datastore.Get(auth.DocIDForSession(sessionID), &session)
 	if err != nil {
 		if base.IsDocNotFoundError(err) {
 			err = nil
@@ -125,7 +137,7 @@ func (auth Authenticator) DeleteSessionForCookie(rq *http.Request) *http.Cookie 
 		return nil
 	}
 
-	if err := auth.datastore.Delete(DocIDForSession(cookie.Value)); err != nil {
+	if err := auth.datastore.Delete(auth.DocIDForSession(cookie.Value)); err != nil {
 		base.DebugfCtx(auth.LogCtx, base.KeyAuth, "Error while deleting session for cookie %s, Error: %v", base.UD(cookie.Value), err)
 	}
 
@@ -136,9 +148,5 @@ func (auth Authenticator) DeleteSessionForCookie(rq *http.Request) *http.Cookie 
 }
 
 func (auth Authenticator) DeleteSession(sessionID string) error {
-	return auth.datastore.Delete(DocIDForSession(sessionID))
-}
-
-func DocIDForSession(sessionID string) string {
-	return base.SessionPrefix + sessionID
+	return auth.datastore.Delete(auth.DocIDForSession(sessionID))
 }

@@ -83,6 +83,15 @@ type ActiveReplicatorConfig struct {
 	// TotalReconnectTimeout, if non-zero, is the amount of time to wait before giving up trying to reconnect.
 	TotalReconnectTimeout time.Duration
 
+	// CollectionsEnabled can be set to replicate one or more named collections, rather than just the default collection.
+	CollectionsEnabled bool
+	// CollectionsLocal represents a list of dot-separated scope/collections that will be replicated.
+	// This slice can be empty to replicate all scopes/collections for the database when CollectionsEnabled is set to true.
+	CollectionsLocal []string // list of local/active "scope.collection"
+	// CollectionsRemote represents an equivalent list of dot-separated scope/collections that the local collections will be remapped to on the remote/passive side.
+	// This slice can be empty to replicate all scopes/collections for the database when CollectionsEnabled is set to true.
+	CollectionsRemote []string // list of remote/passive "scope.collection"
+
 	// Delta sync enabled
 	DeltasEnabled bool
 
@@ -112,8 +121,8 @@ func (arc *ActiveReplicatorConfig) SetCheckpointPrefix(_ testing.TB, s string) {
 
 type OnCompleteFunc func(replicationID string)
 
-// CheckpointHash returns a deterministic hash of the given config to be used as a checkpoint ID.
-// TODO: Might be a way of caching this value? But need to be sure no config values wil change without clearing the cached hash.
+// CheckpointHash returns a deterministic hash of the given config to be used as part of a checkpoint's validity.
+// TODO: Might be a way of caching this value? But need to be sure no config values will change without clearing the cached hash.
 func (arc ActiveReplicatorConfig) CheckpointHash() (string, error) {
 	hash := sha1.New()
 

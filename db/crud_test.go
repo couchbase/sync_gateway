@@ -17,7 +17,6 @@ import (
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/couchbase/sync_gateway/channels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -815,8 +814,6 @@ func TestOldRevisionStorageError(t *testing.T) {
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
-	db.ChannelMapper = channels.NewChannelMapper(`function(doc, oldDoc) {channel(doc.channels);}`, 0)
-
 	// Create rev 1-a
 	log.Printf("Create rev 1-a")
 	body := Body{"key1": "value1", "v": "1a"}
@@ -940,13 +937,13 @@ func TestOldRevisionStorageError(t *testing.T) {
 // Validate JSON number handling for large sequence values
 func TestLargeSequence(t *testing.T) {
 
+	// Test depends on setting _sync:seq in the default collection location
+	base.DisableTestWithCollections(t)
 	base.LongRunningTest(t)
 
 	db, ctx := setupTestDBWithCustomSyncSeq(t, 9223372036854775807)
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
-
-	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
 	// Write a doc via SG
 	body := Body{"key1": "largeSeqTest"}
@@ -986,7 +983,6 @@ func TestMalformedRevisionStorageRecovery(t *testing.T) {
 	defer db.Close(ctx)
 
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
-	db.ChannelMapper = channels.NewChannelMapper(`function(doc, oldDoc) {channel(doc.channels);}`, 0)
 
 	// Create a document with a malformed revision body (due to https://github.com/couchbase/sync_gateway/issues/3692) in the bucket
 	// Document has the following rev tree, with a malformed body of revision 2-b remaining in the revision tree (same set of operations as
@@ -1008,7 +1004,7 @@ func TestMalformedRevisionStorageRecovery(t *testing.T) {
 	assert.NoError(t, addErr, "Error writing raw document")
 
 	// Increment _sync:seq to match sequences allocated by raw doc
-	_, incrErr := collection.dataStore.Incr(base.SyncSeqKey, 5, 0, 0)
+	_, incrErr := collection.dataStore.Incr(db.MetadataKeys.SyncSeqKey(), 5, 0, 0)
 	assert.NoError(t, incrErr, "Error incrementing sync:seq")
 
 	// Add child to non-winning revision w/ malformed inline body.
@@ -1196,12 +1192,8 @@ func BenchmarkHandleRevDelta(b *testing.B) {
 }
 
 func TestGetAvailableRevAttachments(t *testing.T) {
-	ctx := base.TestCtx(t)
-	context, err := NewDatabaseContext(ctx, "db", base.GetTestBucket(t), false, DatabaseContextOptions{})
-	assert.NoError(t, err, "Couldn't create context for database 'db'")
-	defer context.Close(ctx)
-	db, err := CreateDatabase(context)
-	require.NoError(t, err, "Couldn't create database 'db'")
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 	// Create the very first revision of the document with attachment; let's call this as rev 1-a
@@ -1238,12 +1230,8 @@ func TestGetAvailableRevAttachments(t *testing.T) {
 }
 
 func TestGet1xRevAndChannels(t *testing.T) {
-	ctx := base.TestCtx(t)
-	context, err := NewDatabaseContext(ctx, "db", base.GetTestBucket(t), false, DatabaseContextOptions{})
-	assert.NoError(t, err, "Couldn't create context for database 'db'")
-	defer context.Close(ctx)
-	db, err := CreateDatabase(context)
-	require.NoError(t, err, "Couldn't create database 'db'")
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 	docId := "dd6d2dcc679d12b9430a9787bab45b33"
@@ -1303,12 +1291,8 @@ func TestGet1xRevAndChannels(t *testing.T) {
 }
 
 func TestGet1xRevFromDoc(t *testing.T) {
-	ctx := base.TestCtx(t)
-	context, err := NewDatabaseContext(ctx, "db", base.GetTestBucket(t), false, DatabaseContextOptions{})
-	assert.NoError(t, err, "Couldn't create context for database 'db'")
-	defer context.Close(ctx)
-	db, err := CreateDatabase(context)
-	require.NoError(t, err, "Couldn't create database 'db'")
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 	// Create the first revision of the document
@@ -1550,6 +1534,69 @@ func TestMergeAttachments(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			merged := mergeAttachments(tt.pre25Attachments, tt.docAttachments)
 			assert.Equal(t, tt.wantMerged, merged)
+		})
+	}
+}
+
+func TestGetChannelsAndAccess(t *testing.T) {
+	db, ctx := setupTestDB(t)
+	defer db.Close(ctx)
+	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	require.Nil(t, collection.ChannelMapper)
+
+	doc := &Document{
+		ID: "doc1",
+	}
+
+	testCases := []struct {
+		body                      string
+		defaultCollectionChannels base.Set
+		name                      string
+	}{
+		{
+			body:                      `{}`,
+			defaultCollectionChannels: nil,
+			name:                      "emptyDoc",
+		},
+		{
+			body:                      `{"channels": "ABC"}`,
+			defaultCollectionChannels: base.SetOf("ABC"),
+			name:                      "ChannelsABCString",
+		},
+		{
+			body:                      `{"channels": ["ABC"]}`,
+			defaultCollectionChannels: base.SetOf("ABC"),
+			name:                      "ChannelsABCArray",
+		},
+		{
+			body:                      `{"channels": ["ABC", "DEF"]}`,
+			defaultCollectionChannels: base.SetOf("ABC", "DEF"),
+			name:                      "ChannelsABCDEF",
+		},
+		{
+			body:                      `{"key": "value"}`,
+			defaultCollectionChannels: nil,
+			name:                      "NoChannelsInDoc",
+		},
+	}
+
+	for _, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+			body := Body{}
+			require.NoError(t, body.Unmarshal([]byte(test.body)))
+			result, access, roles, expiry, oldJson, err := collection.getChannelsAndAccess(base.TestCtx(t), doc, body, nil, "")
+			require.NoError(t, err)
+			require.Equal(t, "", oldJson)
+			require.Nil(t, expiry)
+			require.Nil(t, expiry)
+			require.Nil(t, access)
+			require.Nil(t, roles)
+			if collection.IsDefaultCollection() {
+				require.Equal(t, test.defaultCollectionChannels, result)
+			} else {
+				require.Equal(t, base.SetOf(collection.Name), result)
+
+			}
 		})
 	}
 }

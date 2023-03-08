@@ -24,15 +24,23 @@ import (
 )
 
 // BootstrapConnection is the interface that can be used to bootstrap Sync Gateway against a Couchbase Server cluster.
+// Manages retrieval of set of buckets, and generic interaction with bootstrap metadata documents from those buckets.
 type BootstrapConnection interface {
-	// GetConfigBuckets returns a list of bucket names where a database config could belong. In the future we'll need to fetch collections (and possibly scopes).
+	// GetConfigBuckets returns a list of bucket names where a bootstrap metadata documents could reside.
 	GetConfigBuckets() ([]string, error)
-	// GetConfig fetches a database config for a given bucket and config group ID, along with the CAS of the config document.
-	GetConfig(bucket, groupID string, valuePtr interface{}) (cas uint64, err error)
-	// InsertConfig saves a new database config for a given bucket and config group ID.
-	InsertConfig(bucket, groupID string, value interface{}) (newCAS uint64, err error)
-	// UpdateConfig updates an existing database config for a given bucket and config group ID. updateCallback can return nil to remove the config.
-	UpdateConfig(bucket, groupID string, updateCallback func(rawBucketConfig []byte, rawBucketConfigCas uint64) (updatedConfig []byte, err error)) (newCAS uint64, err error)
+	// GetMetadataDocument fetches a bootstrap metadata document for a given bucket and key, along with the CAS of the config document.
+	GetMetadataDocument(bucket, key string, valuePtr interface{}) (cas uint64, err error)
+	// InsertMetadataDocument saves a new bootstrap metadata document for a given bucket and key.
+	InsertMetadataDocument(bucket, key string, value interface{}) (newCAS uint64, err error)
+	// DeleteMetadataDocument deletes an existing bootstrap metadata document for a given bucket and key.
+	DeleteMetadataDocument(bucket, key string, cas uint64) (err error)
+	// UpdateMetadataDocument updates an existing bootstrap metadata document for a given bucket and key. updateCallback can return nil to remove the config.  Retries on CAS failure.
+	UpdateMetadataDocument(bucket, key string, updateCallback func(rawBucketConfig []byte, rawBucketConfigCas uint64) (updatedConfig []byte, err error)) (newCAS uint64, err error)
+	// WriteMetadataDocument writes a bootstrap metadata document for a given bucket and key.  Does not retry on CAS failure.
+	WriteMetadataDocument(bucket, key string, cas uint64, valuePtr interface{}) (casOut uint64, err error)
+	// TouchMetadataDocument sets the specified property in a bootstrap metadata document for a given bucket and key.  Used to
+	// trigger CAS update on the document, to block any racing updates. Does not retry on CAS failure.
+	TouchMetadataDocument(bucket, key string, property string, value string, cas uint64) (casOut uint64, err error)
 	// Close releases any long-lived connections
 	Close()
 }
@@ -236,7 +244,7 @@ func (cc *CouchbaseCluster) GetConfigBuckets() ([]string, error) {
 	return bucketList, nil
 }
 
-func (cc *CouchbaseCluster) GetConfig(location, groupID string, valuePtr interface{}) (cas uint64, err error) {
+func (cc *CouchbaseCluster) GetMetadataDocument(location, docID string, valuePtr interface{}) (cas uint64, err error) {
 	if cc == nil {
 		return 0, errors.New("nil CouchbaseCluster")
 	}
@@ -249,14 +257,10 @@ func (cc *CouchbaseCluster) GetConfig(location, groupID string, valuePtr interfa
 
 	defer teardown()
 
-	docID, err := PersistentConfigKey(groupID)
-	if err != nil {
-		return 0, err
-	}
 	return cc.configPersistence.loadConfig(b.DefaultCollection(), docID, valuePtr)
 }
 
-func (cc *CouchbaseCluster) InsertConfig(location, groupID string, value interface{}) (newCAS uint64, err error) {
+func (cc *CouchbaseCluster) InsertMetadataDocument(location, key string, value interface{}) (newCAS uint64, err error) {
 	if cc == nil {
 		return 0, errors.New("nil CouchbaseCluster")
 	}
@@ -267,15 +271,64 @@ func (cc *CouchbaseCluster) InsertConfig(location, groupID string, value interfa
 	}
 	defer teardown()
 
-	docID, err := PersistentConfigKey(groupID)
+	return cc.configPersistence.insertConfig(b.DefaultCollection(), key, value)
+}
+
+// WriteMetadataDocument writes a metadata document, and fails on CAS mismatch
+func (cc *CouchbaseCluster) WriteMetadataDocument(location, docID string, cas uint64, value interface{}) (newCAS uint64, err error) {
+	if cc == nil {
+		return 0, errors.New("nil CouchbaseCluster")
+	}
+
+	b, teardown, err := cc.getBucket(location)
+	if err != nil {
+		return 0, err
+	}
+	defer teardown()
+
+	rawDocument, err := JSONMarshal(value)
 	if err != nil {
 		return 0, err
 	}
 
-	return cc.configPersistence.insertConfig(b.DefaultCollection(), docID, value)
+	casOut, err := cc.configPersistence.replaceRawConfig(b.DefaultCollection(), docID, rawDocument, gocb.Cas(cas))
+	return uint64(casOut), err
 }
 
-func (cc *CouchbaseCluster) UpdateConfig(location, groupID string, updateCallback func(bucketConfig []byte, rawBucketConfigCas uint64) (newConfig []byte, err error)) (newCAS uint64, err error) {
+func (cc *CouchbaseCluster) TouchMetadataDocument(location, docID string, property, value string, cas uint64) (newCAS uint64, err error) {
+
+	if cc == nil {
+		return 0, errors.New("nil CouchbaseCluster")
+	}
+
+	b, teardown, err := cc.getBucket(location)
+	if err != nil {
+		return 0, err
+	}
+	defer teardown()
+
+	casOut, err := cc.configPersistence.touchConfigRollback(b.DefaultCollection(), docID, property, value, gocb.Cas(cas))
+	return uint64(casOut), err
+
+}
+
+func (cc *CouchbaseCluster) DeleteMetadataDocument(location, key string, cas uint64) (err error) {
+	if cc == nil {
+		return errors.New("nil CouchbaseCluster")
+	}
+
+	b, teardown, err := cc.getBucket(location)
+	if err != nil {
+		return err
+	}
+	defer teardown()
+
+	_, removeErr := cc.configPersistence.removeRawConfig(b.DefaultCollection(), key, gocb.Cas(cas))
+	return removeErr
+}
+
+// UpdateMetadataDocument retries on CAS mismatch
+func (cc *CouchbaseCluster) UpdateMetadataDocument(location, docID string, updateCallback func(bucketConfig []byte, rawBucketConfigCas uint64) (newConfig []byte, err error)) (newCAS uint64, err error) {
 	if cc == nil {
 		return 0, errors.New("nil CouchbaseCluster")
 	}
@@ -288,12 +341,7 @@ func (cc *CouchbaseCluster) UpdateConfig(location, groupID string, updateCallbac
 
 	collection := b.DefaultCollection()
 
-	docID, err := PersistentConfigKey(groupID)
-	if err != nil {
-		return 0, err
-	}
 	for {
-
 		bucketValue, cas, err := cc.configPersistence.loadRawConfig(collection, docID)
 		if err != nil {
 			return 0, err
@@ -316,7 +364,7 @@ func (cc *CouchbaseCluster) UpdateConfig(location, groupID string, updateCallbac
 			return uint64(removeCasOut), nil
 		}
 
-		_, replaceCfgCasOut, err := cc.configPersistence.replaceRawConfig(collection, docID, newConfig, cas)
+		replaceCfgCasOut, err := cc.configPersistence.replaceRawConfig(collection, docID, newConfig, cas)
 		if err != nil {
 			if errors.Is(err, gocb.ErrCasMismatch) {
 				// retry on cas failure
@@ -325,7 +373,7 @@ func (cc *CouchbaseCluster) UpdateConfig(location, groupID string, updateCallbac
 			return 0, err
 		}
 
-		return replaceCfgCasOut, nil
+		return uint64(replaceCfgCasOut), nil
 	}
 
 }

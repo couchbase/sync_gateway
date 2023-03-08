@@ -95,6 +95,9 @@ type RestTester struct {
 	closed                  bool
 }
 
+// restTesterDefaultUserPassword is usable as a default password for SendUserRequest
+const RestTesterDefaultUserPassword = "letmein"
+
 // NewRestTester returns a rest tester and corresponding keyspace backed by a single database and a single collection. This collection may be named or default collection based on global test configuration.
 func NewRestTester(tb testing.TB, restConfig *RestTesterConfig) *RestTester {
 	return newRestTester(tb, restConfig, useSingleCollection, 1)
@@ -148,7 +151,11 @@ func (rt *RestTester) Bucket() base.Bucket {
 	// If we have a TestBucket defined on the RestTesterConfig, use that instead of requesting a new one.
 	testBucket := rt.RestTesterConfig.CustomTestBucket
 	if testBucket == nil {
-		testBucket = base.GetTestBucket(rt.TB)
+		if rt.PersistentConfig {
+			testBucket = base.GetPersistentTestBucket(rt.TB)
+		} else {
+			testBucket = base.GetTestBucket(rt.TB)
+		}
 		if rt.leakyBucketConfig != nil {
 			leakyConfig := *rt.leakyBucketConfig
 			// Ignore closures to avoid double closing panics
@@ -161,11 +168,15 @@ func (rt *RestTester) Bucket() base.Bucket {
 	rt.TestBucket = testBucket
 
 	if rt.InitSyncSeq > 0 {
-		log.Printf("Initializing %s to %d", base.SyncSeqKey, rt.InitSyncSeq)
-		tbDatastore := testBucket.GetSingleDataStore()
-		_, incrErr := tbDatastore.Incr(base.SyncSeqKey, rt.InitSyncSeq, rt.InitSyncSeq, 0)
+		if base.TestsUseNamedCollections() {
+			rt.TB.Fatalf("RestTester InitSyncSeq doesn't support non-default collections")
+		}
+
+		log.Printf("Initializing %s to %d", base.DefaultMetadataKeys.SyncSeqKey(), rt.InitSyncSeq)
+		tbDatastore := testBucket.GetMetadataStore()
+		_, incrErr := tbDatastore.Incr(base.DefaultMetadataKeys.SyncSeqKey(), rt.InitSyncSeq, rt.InitSyncSeq, 0)
 		if incrErr != nil {
-			rt.TB.Fatalf("Error initializing %s in test bucket: %v", base.SyncSeqKey, incrErr)
+			rt.TB.Fatalf("Error initializing %s in test bucket: %v", base.DefaultMetadataKeys.SyncSeqKey(), incrErr)
 		}
 	}
 
@@ -282,7 +293,11 @@ func (rt *RestTester) Bucket() base.Bucket {
 			// If scopes is already set, assume the caller has a plan
 			if rt.DatabaseConfig.Scopes == nil {
 				// Configure non default collections by default
-				rt.DatabaseConfig.Scopes = GetCollectionsConfig(rt.TB, testBucket, rt.numCollections)
+				var syncFn *string
+				if rt.SyncFn != "" {
+					syncFn = base.StringPtr(rt.SyncFn)
+				}
+				rt.DatabaseConfig.Scopes = getCollectionsConfigWithSyncFn(rt.TB, testBucket, syncFn, rt.numCollections)
 			}
 		}
 
@@ -350,10 +365,18 @@ func (rt *RestTester) MetadataStore() base.DataStore {
 
 // GetCollectionsConfig sets up a ScopesConfig from a TestBucket for use with non default collections.
 func GetCollectionsConfig(t testing.TB, testBucket *base.TestBucket, numCollections int) ScopesConfig {
+	return getCollectionsConfigWithSyncFn(t, testBucket, nil, numCollections)
+}
+
+// getCollectionsConfigWithSyncFn sets up a ScopesConfig from a TestBucket for use with non default collections. The sync function will be passed for all collections.
+func getCollectionsConfigWithSyncFn(t testing.TB, testBucket *base.TestBucket, syncFn *string, numCollections int) ScopesConfig {
 	// Get a datastore as provided by the test
 	stores := testBucket.GetNonDefaultDatastoreNames()
 	require.True(t, len(stores) >= numCollections, "Requested more collections %d than found on testBucket %d", numCollections, len(stores))
-
+	defaultCollectionConfig := CollectionConfig{}
+	if syncFn != nil {
+		defaultCollectionConfig.SyncFn = syncFn
+	}
 	scopesConfig := ScopesConfig{}
 	for i := 0; i < numCollections; i++ {
 		dataStoreName := stores[i]
@@ -361,12 +384,12 @@ func GetCollectionsConfig(t testing.TB, testBucket *base.TestBucket, numCollecti
 			if _, ok := scopeConfig.Collections[dataStoreName.CollectionName()]; ok {
 				// already present
 			} else {
-				scopeConfig.Collections[dataStoreName.CollectionName()] = CollectionConfig{}
+				scopeConfig.Collections[dataStoreName.CollectionName()] = defaultCollectionConfig
 			}
 		} else {
 			scopesConfig[dataStoreName.ScopeName()] = ScopeConfig{
 				Collections: map[string]CollectionConfig{
-					dataStoreName.CollectionName(): {},
+					dataStoreName.CollectionName(): defaultCollectionConfig,
 				}}
 		}
 
@@ -588,20 +611,37 @@ func (rt *RestTester) templateResource(resource string) (string, error) {
 	}
 
 	data := make(map[string]string)
-	if rt.ServerContext() != nil && len(rt.ServerContext().AllDatabases()) == 1 {
-		data["db"] = rt.GetDatabase().Name
-	}
-	database := rt.GetDatabase()
-	if database != nil {
-		if len(database.CollectionByID) == 1 {
-			data["keyspace"] = rt.GetSingleKeyspace()
-		} else {
-			for i, keyspace := range rt.GetKeyspaces() {
-				data[fmt.Sprintf("keyspace%d", i+1)] = keyspace
+	require.NotNil(rt.TB, rt.ServerContext())
+	if rt.ServerContext() != nil {
+		databases := rt.ServerContext().AllDatabases()
+		var dbNames []string
+		for dbName := range databases {
+			dbNames = append(dbNames, dbName)
+		}
+		sort.Strings(dbNames)
+		multipleDatabases := len(dbNames) > 1
+		for i, dbName := range dbNames {
+			database := databases[dbName]
+			dbPrefix := ""
+			if !multipleDatabases {
+				data["db"] = database.Name
+			} else {
+				dbPrefix = fmt.Sprintf("db%d", i+1)
+				data[dbPrefix] = database.Name
+			}
+			if len(database.CollectionByID) == 1 {
+				data["keyspace"] = rt.GetSingleKeyspace()
+			} else {
+				for j, keyspace := range getKeyspaces(rt.TB, database) {
+					if !multipleDatabases {
+						data[fmt.Sprintf("keyspace%d", j+1)] = keyspace
+					} else {
+						data[fmt.Sprintf("db%dkeyspace%d", i+1, j+1)] = keyspace
+					}
+				}
 			}
 		}
 	}
-
 	var uri bytes.Buffer
 	if err := tmpl.Execute(&uri, data); err != nil {
 		return "", err
@@ -1050,7 +1090,7 @@ func Request(method, resource, body string) *http.Request {
 
 func RequestByUser(method, resource, body, username string) *http.Request {
 	r := Request(method, resource, body)
-	r.SetBasicAuth(username, "letmein")
+	r.SetBasicAuth(username, RestTesterDefaultUserPassword)
 	return r
 }
 
@@ -1156,6 +1196,9 @@ type BlipTesterSpec struct {
 
 	// If true, do not automatically initialize GetCollections handshake
 	skipCollectionsInitialization bool
+
+	// If set, use custom sync function for all collections.
+	syncFn string
 }
 
 // State associated with a BlipTester
@@ -1213,6 +1256,9 @@ func NewBlipTesterFromSpecWithRT(tb testing.TB, spec *BlipTesterSpec, rt *RestTe
 	if spec == nil {
 		blipTesterSpec = &BlipTesterSpec{}
 	}
+	if blipTesterSpec.syncFn != "" {
+		tb.Errorf("Setting BlipTesterSpec.SyncFn is incompatible with passing a custom RestTester. Use SyncFn on RestTester or DatabaseConfig")
+	}
 	blipTester, err = createBlipTesterWithSpec(tb, *blipTesterSpec, rt)
 	if err != nil {
 		return nil, err
@@ -1233,6 +1279,7 @@ func NewBlipTesterDefaultCollectionFromSpec(tb testing.TB, spec BlipTesterSpec) 
 		EnableNoConflictsMode: spec.noConflictsMode,
 		GuestEnabled:          spec.GuestEnabled,
 		DatabaseConfig:        &DatabaseConfig{},
+		SyncFn:                spec.syncFn,
 	}
 	rt := newRestTester(tb, &rtConfig, useSingleCollectionDefaultOnly, 1)
 	bt, err := createBlipTesterWithSpec(tb, spec, rt)
@@ -1249,6 +1296,7 @@ func NewBlipTesterFromSpec(tb testing.TB, spec BlipTesterSpec) (*BlipTester, err
 	rtConfig := RestTesterConfig{
 		EnableNoConflictsMode: spec.noConflictsMode,
 		GuestEnabled:          spec.GuestEnabled,
+		SyncFn:                spec.syncFn,
 	}
 	rt := NewRestTester(tb, &rtConfig)
 	return createBlipTesterWithSpec(tb, spec, rt)
@@ -2149,6 +2197,7 @@ func NewHTTPTestServerOnListener(h http.Handler, l net.Listener) *httptest.Serve
 }
 
 func WaitAndRequireCondition(t *testing.T, fn func() bool, failureMsgAndArgs ...interface{}) {
+	t.Helper()
 	t.Log("starting waitAndRequireCondition")
 	for i := 0; i <= 20; i++ {
 		if i == 20 {
@@ -2162,6 +2211,7 @@ func WaitAndRequireCondition(t *testing.T, fn func() bool, failureMsgAndArgs ...
 }
 
 func WaitAndAssertCondition(t *testing.T, fn func() bool, failureMsgAndArgs ...interface{}) {
+	t.Helper()
 	t.Log("starting WaitAndAssertCondition")
 	for i := 0; i <= 20; i++ {
 		if i == 20 {
@@ -2175,6 +2225,7 @@ func WaitAndAssertCondition(t *testing.T, fn func() bool, failureMsgAndArgs ...i
 }
 
 func WaitAndAssertConditionTimeout(t *testing.T, timeout time.Duration, fn func() bool, failureMsgAndArgs ...interface{}) {
+	t.Helper()
 	start := time.Now()
 	tick := time.NewTicker(timeout / 20)
 	defer tick.Stop()
@@ -2189,6 +2240,7 @@ func WaitAndAssertConditionTimeout(t *testing.T, timeout time.Duration, fn func(
 }
 
 func WaitAndAssertBackgroundManagerState(t testing.TB, expected db.BackgroundProcessState, getStateFunc func(t testing.TB) db.BackgroundProcessState) bool {
+	t.Helper()
 	err, actual := base.RetryLoop(t.Name()+"-WaitAndAssertBackgroundManagerState", func() (shouldRetry bool, err error, value interface{}) {
 		actual := getStateFunc(t)
 		return expected != actual, nil, actual
@@ -2197,6 +2249,7 @@ func WaitAndAssertBackgroundManagerState(t testing.TB, expected db.BackgroundPro
 }
 
 func WaitAndAssertBackgroundManagerExpiredHeartbeat(t testing.TB, bm *db.BackgroundManager) bool {
+	t.Helper()
 	err, b := base.RetryLoop(t.Name()+"-assertNoHeartbeatDoc", func() (shouldRetry bool, err error, value interface{}) {
 		b, err := bm.GetHeartbeatDoc(t)
 		return !base.IsDocNotFoundError(err), err, b
@@ -2272,6 +2325,16 @@ func getRESTKeyspace(_ testing.TB, dbName string, collection *db.DatabaseCollect
 	return strings.Join([]string{dbName, collection.ScopeName, collection.Name}, base.ScopeCollectionSeparator)
 }
 
+// getKeyspaces returns the names of all the keyspaces on the rest tester. Currently assumes a single database.
+func getKeyspaces(t testing.TB, database *db.DatabaseContext) []string {
+	var keyspaces []string
+	for _, collection := range database.CollectionByID {
+		keyspaces = append(keyspaces, getRESTKeyspace(t, database.Name, collection))
+	}
+	sort.Strings(keyspaces)
+	return keyspaces
+}
+
 // GetKeyspaces returns the names of all the keyspaces on the rest tester. Currently assumes a single database.
 func (rt *RestTester) GetKeyspaces() []string {
 	db := rt.GetDatabase()
@@ -2281,6 +2344,19 @@ func (rt *RestTester) GetKeyspaces() []string {
 	}
 	sort.Strings(keyspaces)
 	return keyspaces
+}
+
+// GetDbCollections returns a lexicographically sorted list of collections on the database for compatibility with GetKeyspaces and getCollectionsForBLIP
+func (rt *RestTester) GetDbCollections() []*db.DatabaseCollection {
+	var collections []*db.DatabaseCollection
+	for _, collection := range rt.GetDatabase().CollectionByID {
+		collections = append(collections, collection)
+	}
+	sort.Slice(collections, func(i, j int) bool {
+		return collections[i].ScopeName <= collections[j].ScopeName &&
+			collections[i].Name < collections[j].Name
+	})
+	return collections
 }
 
 // GetSingleKeyspace the name of the keyspace if there is only one test collection on one database.
@@ -2298,12 +2374,14 @@ func (rt *RestTester) GetSingleKeyspace() string {
 func (rt *RestTester) getCollectionsForBLIP() []string {
 	db := rt.GetDatabase()
 	var collections []string
-	if rt.GetDatabase().OnlyDefaultCollection() {
+	if db.OnlyDefaultCollection() {
 		return collections
 	}
 	for _, collection := range db.CollectionByID {
-		collections = append(collections,
-			strings.Join([]string{collection.ScopeName, collection.Name}, base.ScopeCollectionSeparator))
+		collections = append(collections, base.ScopeAndCollectionName{
+			Scope:      collection.ScopeName,
+			Collection: collection.Name,
+		}.String())
 	}
 	return collections
 }

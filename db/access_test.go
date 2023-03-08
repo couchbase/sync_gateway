@@ -25,15 +25,16 @@ func TestDynamicChannelGrant(t *testing.T) {
 	defer db.Close(ctx)
 	dbCollection := GetSingleDatabaseCollectionWithUser(t, db)
 
-	db.ChannelMapper = channels.NewChannelMapper(`
+	syncFn := `
 	function(doc) {
 		if(doc.type == "setaccess") {
 			channel(doc.channel);
 			access(doc.owner, doc.channel);
-		} else { 
+		} else {
 			channel(doc.channel)
 		}
-	}`, 0)
+	}`
+	dbCollection.ChannelMapper = channels.NewChannelMapper(syncFn, db.Options.JavascriptTimeout)
 
 	a := dbCollection.Authenticator(ctx)
 	user, err := a.NewUser("user1", "letmein", nil)

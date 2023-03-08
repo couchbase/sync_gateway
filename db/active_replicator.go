@@ -34,20 +34,25 @@ type ActiveReplicator struct {
 // NewActiveReplicator returns a bidirectional active replicator for the given config.
 func NewActiveReplicator(ctx context.Context, config *ActiveReplicatorConfig) *ActiveReplicator {
 	ar := &ActiveReplicator{
-		ID:        config.ID,
-		config:    config,
-		statusKey: replicationStatusKey(config.ID),
+		ID:     config.ID,
+		config: config,
 	}
 
+	metakeys := base.DefaultMetadataKeys
+	if config.ActiveDB != nil {
+		metakeys = config.ActiveDB.MetadataKeys
+	}
+	ar.statusKey = metakeys.ReplicationStatusKey(config.ID)
+
 	if pushReplication := config.Direction == ActiveReplicatorTypePush || config.Direction == ActiveReplicatorTypePushAndPull; pushReplication {
-		ar.Push = NewPushReplicator(config)
+		ar.Push = NewPushReplicator(ctx, config)
 		if ar.config.onComplete != nil {
 			ar.Push.onReplicatorComplete = ar._onReplicationComplete
 		}
 	}
 
 	if pullReplication := config.Direction == ActiveReplicatorTypePull || config.Direction == ActiveReplicatorTypePushAndPull; pullReplication {
-		ar.Pull = NewPullReplicator(config)
+		ar.Pull = NewPullReplicator(ctx, config)
 		if ar.config.onComplete != nil {
 			ar.Pull.onReplicatorComplete = ar._onReplicationComplete
 		}
@@ -338,7 +343,7 @@ func LoadReplicationStatus(dbContext *DatabaseContext, replicationID string) (st
 		ID: replicationID,
 	}
 
-	pullCheckpoint, _ := getLocalCheckpoint(dbContext, PullCheckpointID(replicationID))
+	pullCheckpoint, _ := getLocalCheckpoint(dbContext.MetadataStore, PullCheckpointID(replicationID), int(dbContext.Options.LocalDocExpirySecs))
 	if pullCheckpoint != nil {
 		if pullCheckpoint.Status != nil {
 			status.PullReplicationStatus = pullCheckpoint.Status.PullReplicationStatus
@@ -350,7 +355,7 @@ func LoadReplicationStatus(dbContext *DatabaseContext, replicationID string) (st
 		}
 	}
 
-	pushCheckpoint, _ := getLocalCheckpoint(dbContext, PushCheckpointID(replicationID))
+	pushCheckpoint, _ := getLocalCheckpoint(dbContext.MetadataStore, PushCheckpointID(replicationID), int(dbContext.Options.LocalDocExpirySecs))
 	if pushCheckpoint != nil {
 		if pushCheckpoint.Status != nil {
 			status.PushReplicationStatus = pushCheckpoint.Status.PushReplicationStatus
@@ -367,18 +372,6 @@ func LoadReplicationStatus(dbContext *DatabaseContext, replicationID string) (st
 	}
 
 	return status, nil
-}
-
-// replicationStatusKey generates the key used to store status information for the given replicationID.  If replicationID
-// is 40 characters or longer, a SHA-1 hash of the replicationID is used in the status key.
-// If the replicationID is less than 40 characters, the ID can be used directly without worrying about final key length
-// or collision with other sha-1 hashes.
-func replicationStatusKey(replicationID string) string {
-	statusKeyID := replicationID
-	if len(statusKeyID) >= 40 {
-		statusKeyID = base.Sha1HashString(replicationID, "")
-	}
-	return fmt.Sprintf("%s%s", base.SGRStatusPrefix, statusKeyID)
 }
 
 func PushCheckpointID(replicationID string) string {

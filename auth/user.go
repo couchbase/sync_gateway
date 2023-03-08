@@ -21,6 +21,7 @@ import (
 
 	"github.com/couchbase/sync_gateway/base"
 	ch "github.com/couchbase/sync_gateway/channels"
+	"github.com/google/uuid"
 )
 
 // Actual implementation of User interface
@@ -50,6 +51,7 @@ type userImplBody struct {
 	RolesSince_      ch.TimedSet     `json:"rolesSince"`
 	RoleInvalSeq     uint64          `json:"role_inval_seq,omitempty"` // Sequence at which the roles were invalidated. Data remains in RolesSince_ for history calculation.
 	RoleHistory_     TimedSetHistory `json:"role_history,omitempty"`   // Added to when a previously granted role is revoked. Calculated inside of rebuildRoles.
+	SessionUUID_     string          `json:"session_uuid"`             // marker of when the user object changes, to match with session docs to determine if they are valid
 
 	OldExplicitRoles_ []string `json:"admin_roles,omitempty"` // obsolete; declared for migration
 }
@@ -67,6 +69,7 @@ func IsValidEmail(email string) bool {
 func (auth *Authenticator) defaultGuestUser() User {
 	user := &userImpl{
 		roleImpl: roleImpl{
+			docID:             auth.DocIDForUser(""),
 			ExplicitChannels_: ch.AtSequence(make(base.Set, 0), 1),
 		},
 		userImplBody: userImplBody{
@@ -85,6 +88,9 @@ func (auth *Authenticator) NewUser(username string, password string, channels ba
 	user := &userImpl{
 		auth:         auth,
 		userImplBody: userImplBody{RolesSince_: ch.TimedSet{}},
+		roleImpl: roleImpl{
+			docID: auth.DocIDForUser(username),
+		},
 	}
 	if err := user.initRole(username, channels, auth.Collections); err != nil {
 		return nil, err
@@ -112,6 +118,9 @@ func (auth *Authenticator) NewUserNoChannels(username string, password string) (
 	user := &userImpl{
 		auth:         auth,
 		userImplBody: userImplBody{RolesSince_: ch.TimedSet{}},
+		roleImpl: roleImpl{
+			docID: auth.DocIDForUser(username),
+		},
 	}
 	if err := user.initRole(username, nil, nil); err != nil {
 		return nil, err
@@ -147,14 +156,6 @@ func (user *userImpl) validate() error {
 		}
 	}
 	return nil
-}
-
-func docIDForUser(username string) string {
-	return base.UserPrefix + username
-}
-
-func (user *userImpl) DocID() string {
-	return docIDForUser(user.Name_)
 }
 
 // Key used in 'access' view (not same meaning as doc ID)
@@ -531,8 +532,19 @@ func (user *userImpl) Authenticate(password string) bool {
 	return true
 }
 
+// GetSessionUUID returns the UUID that a session to match to be a valid session.
+func (user *userImpl) GetSessionUUID() string {
+	return user.SessionUUID_
+}
+
+// UpdateSessionUUID creates a new UUID for a session.
+func (user *userImpl) UpdateSessionUUID() {
+	user.SessionUUID_ = uuid.NewString()
+}
+
 // Changes a user's password to the given string.
 func (user *userImpl) SetPassword(password string) error {
+	user.UpdateSessionUUID()
 	if password == "" {
 		user.PasswordHash_ = nil
 	} else {

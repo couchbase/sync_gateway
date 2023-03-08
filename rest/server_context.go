@@ -53,7 +53,8 @@ type ServerContext struct {
 	Config                 *StartupConfig // The current runtime configuration of the node
 	initialStartupConfig   *StartupConfig // The configuration at startup of the node. Built from config file + flags
 	persistentConfig       bool
-	bucketDbName           map[string]string                 // bucketDbName is a map of bucket to database name
+	dbRegistry             map[string]struct{}               // registry of dbNames, used to ensure uniqueness even when db isn't active
+	collectionRegistry     map[string]string                 // map of fully qualified collection name to db name, used for local uniqueness checks
 	dbConfigs              map[string]*RuntimeDatabaseConfig // dbConfigs is a map of db name to the RuntimeDatabaseConfig
 	databases_             map[string]*db.DatabaseContext    // databases_ is a map of dbname to db.DatabaseContext
 	lock                   sync.RWMutex
@@ -70,10 +71,15 @@ type ServerContext struct {
 	fetchConfigsLastUpdate time.Time       // The last time fetchConfigsWithTTL() updated dbConfigs
 }
 
+// defaultConfigRetryTimeout is the total retry time when waiting for in-flight config updates.  Set as a multiple of kv op timeout,
+// based on the maximum of 3 kv ops for a successful config update
+const defaultConfigRetryTimeout = 3 * base.DefaultGocbV2OperationTimeout
+
 type bootstrapContext struct {
-	Connection base.BootstrapConnection
-	terminator chan struct{} // Used to stop the goroutine handling the stats logging
-	doneChan   chan struct{} // doneChan is closed when the stats logger goroutine finishes.
+	Connection         base.BootstrapConnection
+	configRetryTimeout time.Duration // configRetryTimeout defines the total amount of time to retry on a registry/config mismatch
+	terminator         chan struct{} // Used to stop the goroutine handling the stats logging
+	doneChan           chan struct{} // doneChan is closed when the stats logger goroutine finishes.
 }
 
 func (sc *ServerContext) CreateLocalDatabase(ctx context.Context, dbs DbConfigMap) error {
@@ -104,15 +110,16 @@ func (sc *ServerContext) CloseCpuPprofFile(ctx context.Context) {
 
 func NewServerContext(ctx context.Context, config *StartupConfig, persistentConfig bool) *ServerContext {
 	sc := &ServerContext{
-		Config:           config,
-		persistentConfig: persistentConfig,
-		bucketDbName:     map[string]string{},
-		dbConfigs:        map[string]*RuntimeDatabaseConfig{},
-		databases_:       map[string]*db.DatabaseContext{},
-		HTTPClient:       http.DefaultClient,
-		statsContext:     &statsContext{},
-		BootstrapContext: &bootstrapContext{},
-		hasStarted:       make(chan struct{}),
+		Config:             config,
+		persistentConfig:   persistentConfig,
+		dbRegistry:         map[string]struct{}{},
+		collectionRegistry: map[string]string{},
+		dbConfigs:          map[string]*RuntimeDatabaseConfig{},
+		databases_:         map[string]*db.DatabaseContext{},
+		HTTPClient:         http.DefaultClient,
+		statsContext:       &statsContext{},
+		BootstrapContext:   &bootstrapContext{},
+		hasStarted:         make(chan struct{}),
 	}
 
 	if base.ServerIsWalrus(sc.Config.Bootstrap.Server) {
@@ -468,7 +475,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	}
 
 	// initDataStore is a function to initialize Views or GSI indexes for a datastore
-	initDataStore := func(ds base.DataStore) error {
+	initDataStore := func(ds base.DataStore, metadataIndexes db.CollectionIndexesType) error {
 		if useViews {
 			return db.InitializeViews(ctx, ds)
 		}
@@ -487,7 +494,15 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 			return errors.New("Cannot create indexes on non-Couchbase data store.")
 
 		}
-		indexErr := db.InitializeIndexes(n1qlStore, config.UseXattrs(), numReplicas, false, sc.Config.IsServerless())
+		options := db.InitializeIndexOptions{
+			FailFast:        false,
+			NumReplicas:     numReplicas,
+			Serverless:      sc.Config.IsServerless(),
+			MetadataIndexes: metadataIndexes,
+			UseXattrs:       config.UseXattrs(),
+		}
+		ctx := base.CollectionCtx(ctx, ds.GetName())
+		indexErr := db.InitializeIndexes(ctx, n1qlStore, options)
 		if indexErr != nil {
 			return indexErr
 		}
@@ -500,6 +515,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 			return nil, errCollectionsUnsupported
 		}
 
+		hasDefaultCollection := false
 		for scopeName, scopeConfig := range config.Scopes {
 			for collectionName, _ := range scopeConfig.Collections {
 				var dataStore sgbucket.DataStore
@@ -514,15 +530,24 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 				if err := base.WaitUntilDataStoreExists(dataStore); err != nil {
 					return nil, fmt.Errorf("attempting to create/update database with a scope/collection that is not found")
 				}
-
-				if err := initDataStore(dataStore); err != nil {
+				metadataIndexOption := db.IndexesWithoutMetadata
+				if base.IsDefaultCollection(scopeName, collectionName) {
+					hasDefaultCollection = true
+					metadataIndexOption = db.IndexesAll
+				}
+				if err := initDataStore(dataStore, metadataIndexOption); err != nil {
 					return nil, err
 				}
 			}
 		}
+		if !hasDefaultCollection {
+			if err := initDataStore(bucket.DefaultDataStore(), db.IndexesMetadataOnly); err != nil {
+				return nil, err
+			}
+		}
 	} else {
 		// no scopes configured - init the default data store
-		if err := initDataStore(bucket.DefaultDataStore()); err != nil {
+		if err := initDataStore(bucket.DefaultDataStore(), db.IndexesAll); err != nil {
 			return nil, err
 		}
 	}
@@ -587,6 +612,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 
 	javascriptTimeout := getJavascriptTimeout(&config.DbConfig)
 
+	fqCollections := make([]string, 0)
 	if len(config.Scopes) > 0 {
 		contextOptions.Scopes = make(db.ScopesOptions, len(config.Scopes))
 		for scopeName, scopeCfg := range config.Scopes {
@@ -603,8 +629,25 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 					Sync:         collCfg.SyncFn,
 					ImportFilter: importFilter,
 				}
-
+				fqCollections = append(fqCollections, base.FullyQualifiedCollectionName(spec.BucketName, scopeName, collName))
 			}
+		}
+	} else {
+		// Set up default import filter
+		var importFilter *db.ImportFilterFunction
+		if config.ImportFilter != nil {
+			importFilter = db.NewImportFilterFunction(*config.ImportFilter, javascriptTimeout)
+		}
+
+		contextOptions.Scopes = map[string]db.ScopeOptions{
+			base.DefaultScope: db.ScopeOptions{
+				Collections: map[string]db.CollectionOptions{
+					base.DefaultCollection: {
+						Sync:         config.Sync,
+						ImportFilter: importFilter,
+					},
+				},
+			},
 		}
 	}
 
@@ -629,14 +672,6 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	dbcontext.ServerContextHasStarted = sc.hasStarted
 	dbcontext.NoX509HTTPClient = sc.NoX509HTTPClient
 
-	syncFn := ""
-	if config.Sync != nil {
-		syncFn = *config.Sync
-	}
-	if err := sc.applySyncFunction(ctx, dbcontext, syncFn); err != nil {
-		return nil, err
-	}
-
 	if config.RevsLimit != nil {
 		dbcontext.RevsLimit = *config.RevsLimit
 		if dbcontext.AllowConflicts() {
@@ -656,10 +691,6 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 
 	dbcontext.AllowEmptyPassword = base.BoolDefault(config.AllowEmptyPassword, false)
 	dbcontext.ServeInsecureAttachmentTypes = base.BoolDefault(config.ServeInsecureAttachmentTypes, false)
-
-	if dbcontext.ChannelMapper == nil {
-		base.InfofCtx(ctx, base.KeyAll, "Using default sync function 'channel(doc.channels)' for database %q", base.MD(dbName))
-	}
 
 	// Create default users & roles:
 	if err := sc.installPrincipals(ctx, dbcontext, config.Roles, "role"); err != nil {
@@ -690,7 +721,10 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	// Register it so HTTP handlers can find it:
 	sc.databases_[dbcontext.Name] = dbcontext
 	sc.dbConfigs[dbcontext.Name] = &RuntimeDatabaseConfig{DatabaseConfig: config}
-	sc.bucketDbName[spec.BucketName] = dbName
+	sc.dbRegistry[dbName] = struct{}{}
+	for _, name := range fqCollections {
+		sc.collectionRegistry[name] = dbName
+	}
 
 	if base.BoolDefault(config.StartOffline, false) {
 		atomic.StoreUint32(&dbcontext.State, db.DBOffline)
@@ -956,11 +990,6 @@ func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConf
 		// GraphQL:                   config.GraphQL,       // behind feature flag (see below)
 	}
 
-	// Set up default import filter
-	if config.ImportFilter != nil {
-		contextOptions.DefaultCollectionImportFilter = db.NewImportFilterFunction(*config.ImportFilter, javascriptTimeout)
-	}
-
 	if sc.Config.Unsupported.UserQueries != nil && *sc.Config.Unsupported.UserQueries {
 		var err error
 		if config.UserFunctions != nil {
@@ -1091,6 +1120,9 @@ func (sc *ServerContext) initEventHandlers(ctx context.Context, dbcontext *db.Da
 				}
 			}
 			conf.Filter = filter
+			if conf.Filter == "" {
+				base.InfofCtx(ctx, base.KeyEvents, "No filter function defined for event handler %s - everything will be processed", eventType.String())
+			}
 		}
 
 		// Register event handlers
@@ -1144,16 +1176,6 @@ func (sc *ServerContext) processEventHandlersForEvent(ctx context.Context, event
 	return nil
 }
 
-func (sc *ServerContext) applySyncFunction(ctx context.Context, dbcontext *db.DatabaseContext, syncFn string) error {
-	changed, err := dbcontext.UpdateSyncFun(ctx, syncFn)
-	if err != nil || !changed {
-		return err
-	}
-	// Sync function has changed:
-	base.InfofCtx(ctx, base.KeyAll, "**NOTE:** %q's sync function has changed. The new function may assign different channels to documents, or permissions to users. You may want to re-sync the database to update these.", base.MD(dbcontext.Name))
-	return nil
-}
-
 func (sc *ServerContext) RemoveDatabase(ctx context.Context, dbName string) bool {
 	sc.lock.Lock()
 	defer sc.lock.Unlock()
@@ -1179,12 +1201,16 @@ func (sc *ServerContext) _removeDatabase(ctx context.Context, dbName string) boo
 	if dbCtx == nil {
 		return false
 	}
-	bucket := dbCtx.Bucket.GetName()
 	if ok := sc._unloadDatabase(ctx, dbName); !ok {
 		return ok
 	}
 	delete(sc.dbConfigs, dbName)
-	delete(sc.bucketDbName, bucket)
+	delete(sc.dbRegistry, dbName)
+	for fqCollection, registryDbName := range sc.collectionRegistry {
+		if dbName == registryDbName {
+			delete(sc.collectionRegistry, fqCollection)
+		}
+	}
 	return true
 }
 
@@ -1243,7 +1269,8 @@ func (sc *ServerContext) _unsuspendDatabase(ctx context.Context, dbName string) 
 		if dbConfig.Bucket != nil {
 			bucket = *dbConfig.Bucket
 		}
-		cas, err := sc.BootstrapContext.Connection.GetConfig(bucket, sc.Config.Bootstrap.ConfigGroupID, dbConfig)
+
+		cas, err := sc.BootstrapContext.GetConfig(bucket, sc.Config.Bootstrap.ConfigGroupID, dbName, &dbConfig.DatabaseConfig)
 		if err == base.ErrNotFound {
 			// Database no longer exists, so clean up dbConfigs
 			base.InfofCtx(ctx, base.KeyConfig, "Database %q has been removed while suspended from bucket %q", base.MD(dbName), base.MD(bucket))
@@ -1741,6 +1768,10 @@ func (sc *ServerContext) Database(ctx context.Context, name string) *db.Database
 }
 
 func (sc *ServerContext) initializeCouchbaseServerConnections(ctx context.Context) error {
+	base.InfofCtx(ctx, base.KeyAll, "initializing server connections")
+	defer func() {
+		base.InfofCtx(ctx, base.KeyAll, "finished initializing server connections")
+	}()
 	goCBAgent, err := sc.initializeGoCBAgent(ctx)
 	if err != nil {
 		return err
@@ -1767,6 +1798,12 @@ func (sc *ServerContext) initializeCouchbaseServerConnections(ctx context.Contex
 		}
 
 		sc.BootstrapContext.Connection = couchbaseCluster
+
+		// Check for v3.0 persisted configs, migrate to registry format if found
+		err = sc.migrateV30Configs(ctx)
+		if err != nil {
+			base.InfofCtx(ctx, base.KeyConfig, "Unable to migrate v3.0 config to registry - will not be migrated: %v", err)
+		}
 
 		count, err := sc.fetchAndLoadConfigs(ctx, true)
 		if err != nil {

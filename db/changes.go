@@ -597,7 +597,7 @@ func (col *DatabaseCollectionWithUser) checkForUserUpdates(ctx context.Context, 
 
 			changedRoles := col.user.RoleNames().CompareKeys(previousRoles)
 			if len(changedRoles) > 0 {
-				changeWaiter.RefreshUserKeys(col.User())
+				changeWaiter.RefreshUserKeys(col.User(), col.dbCtx.MetadataKeys)
 			}
 		}
 		return true, newCount, changedChannels, nil
@@ -1095,27 +1095,27 @@ func (db *DatabaseCollectionWithUser) GetChanges(ctx context.Context, channels b
 }
 
 // Returns the set of cached log entries for a given channel
-func (db *DatabaseCollection) GetChangeLog(channel channels.ID, afterSeq uint64) (entries []*LogEntry, err error) {
-	return db.changeCache().getChannelCache().GetCachedChanges(channel)
+func (c *DatabaseCollection) GetChangeLog(channel channels.ID, afterSeq uint64) (entries []*LogEntry, err error) {
+	return c.changeCache().getChannelCache().GetCachedChanges(channel)
 }
 
 // WaitForSequenceNotSkipped blocks until the given sequence has been received or skipped by the change cache.
-func (dbc *DatabaseCollection) WaitForSequence(ctx context.Context, sequence uint64) (err error) {
+func (c *DatabaseCollection) WaitForSequence(ctx context.Context, sequence uint64) (err error) {
 	base.DebugfCtx(ctx, base.KeyChanges, "Waiting for sequence: %d", sequence)
-	return dbc.changeCache().waitForSequence(ctx, sequence, base.DefaultWaitForSequence)
+	return c.changeCache().waitForSequence(ctx, sequence, base.DefaultWaitForSequence)
 }
 
 // WaitForSequenceNotSkipped blocks until the given sequence has been received by the change cache without being skipped.
-func (dbc *DatabaseCollection) WaitForSequenceNotSkipped(ctx context.Context, sequence uint64) (err error) {
+func (c *DatabaseCollection) WaitForSequenceNotSkipped(ctx context.Context, sequence uint64) (err error) {
 	base.DebugfCtx(ctx, base.KeyChanges, "Waiting for sequence: %d", sequence)
-	return dbc.changeCache().waitForSequenceNotSkipped(ctx, sequence, base.DefaultWaitForSequence)
+	return c.changeCache().waitForSequenceNotSkipped(ctx, sequence, base.DefaultWaitForSequence)
 }
 
 // WaitForPendingChanges blocks until the change-cache has caught up with the latest writes to the database.
-func (dbc *DatabaseCollection) WaitForPendingChanges(ctx context.Context) (err error) {
-	lastSequence, err := dbc.LastSequence()
+func (c *DatabaseCollection) WaitForPendingChanges(ctx context.Context) (err error) {
+	lastSequence, err := c.LastSequence()
 	base.DebugfCtx(ctx, base.KeyChanges, "Waiting for sequence: %d", lastSequence)
-	return dbc.changeCache().waitForSequence(ctx, lastSequence, base.DefaultWaitForSequence)
+	return c.changeCache().waitForSequence(ctx, lastSequence, base.DefaultWaitForSequence)
 }
 
 // Late Sequence Feed

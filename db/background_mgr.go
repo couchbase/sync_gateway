@@ -64,17 +64,18 @@ const (
 
 type ClusterAwareBackgroundManagerOptions struct {
 	metadataStore base.DataStore
+	metaKeys      *base.MetadataKeys
 	processSuffix string
 
 	lastSuccessfulHeartbeatUnix base.AtomicInt
 }
 
 func (b *ClusterAwareBackgroundManagerOptions) HeartbeatDocID() string {
-	return base.BackgroundProcessHeartbeatPrefix + b.processSuffix
+	return b.metaKeys.BackgroundProcessHeartbeatPrefix(b.processSuffix)
 }
 
 func (b *ClusterAwareBackgroundManagerOptions) StatusDocID() string {
-	return base.BackgroundProcessStatusPrefix + b.processSuffix
+	return b.metaKeys.BackgroundProcessStatusPrefix(b.processSuffix)
 }
 
 // BackgroundManagerStatus simply stores data used in BackgroundManager. This data can also be exposed to users over

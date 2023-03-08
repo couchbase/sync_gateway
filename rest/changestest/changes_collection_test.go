@@ -137,7 +137,8 @@ func TestMultiCollectionChangesUser(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeyChanges, base.KeyCache, base.KeyCRUD)
 	numCollections := 2
 	base.RequireNumTestDataStores(t, numCollections)
-	rt := rest.NewRestTesterMultipleCollections(t, nil, numCollections)
+	rtConfig := &rest.RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction}
+	rt := rest.NewRestTesterMultipleCollections(t, rtConfig, numCollections)
 	defer rt.Close()
 
 	// Create user with access to channel PBS in both collections
@@ -197,7 +198,7 @@ func TestMultiCollectionChangesMultiChannelOneShot(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeyChanges, base.KeyCache, base.KeyCRUD)
 	numCollections := 2
 	base.RequireNumTestDataStores(t, numCollections)
-	rt := rest.NewRestTesterMultipleCollections(t, nil, numCollections)
+	rt := rest.NewRestTesterMultipleCollections(t, &rest.RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction}, numCollections)
 	defer rt.Close()
 
 	// Create user with access to channel PBS in both collections
@@ -286,7 +287,8 @@ func TestMultiCollectionChangesUserDynamicGrant(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeyChanges, base.KeyCache, base.KeyCRUD)
 	numCollections := 2
 	base.RequireNumTestDataStores(t, numCollections)
-	rt := rest.NewRestTesterMultipleCollections(t, nil, numCollections)
+	rtConfig := &rest.RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction}
+	rt := rest.NewRestTesterMultipleCollections(t, rtConfig, numCollections)
 	defer rt.Close()
 
 	// Create user with access to channel PBS in both collections
@@ -352,7 +354,8 @@ func TestMultiCollectionChangesUserDynamicGrantDCP(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyHTTP, base.KeyChanges, base.KeyCache, base.KeyCRUD)
 	numCollections := 2
 	base.RequireNumTestDataStores(t, numCollections)
-	rt := rest.NewRestTesterMultipleCollections(t, nil, numCollections)
+	rtConfig := &rest.RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction}
+	rt := rest.NewRestTesterMultipleCollections(t, rtConfig, numCollections)
 	defer rt.Close()
 
 	// Create user with access to channel PBS in both collections

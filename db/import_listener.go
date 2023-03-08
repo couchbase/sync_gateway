@@ -13,6 +13,7 @@ package db
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 
 	sgbucket "github.com/couchbase/sg-bucket"
@@ -29,29 +30,34 @@ type importListener struct {
 	collections      map[uint32]DatabaseCollectionWithUser // Admin databases used for import, keyed by collection ID (CB-server-side)
 	dbStats          *base.DatabaseStats                   // Database stats group
 	importStats      *base.SharedBucketImportStats         // import stats group
-	cbgtContext      *base.CbgtContext                     // Handle to cbgt manager,cfg
-	checkpointPrefix string                                // DCP checkpoint key prefix
-	loggingCtx       context.Context                       // ctx for logging on event callbacks
+	metadataKeys     *base.MetadataKeys
+	cbgtContext      *base.CbgtContext // Handle to cbgt manager,cfg
+	checkpointPrefix string            // DCP checkpoint key prefix
+	loggingCtx       context.Context   // ctx for logging on event callbacks
+	importDestKey    string            // cbgt index name
 }
 
-func NewImportListener(groupID string) *importListener {
+// NewImportListener constructs an object to start an import feed.
+func NewImportListener(ctx context.Context, checkpointPrefix string, dbContext *DatabaseContext) *importListener {
 	importListener := &importListener{
+		bucket:           dbContext.Bucket,
+		bucketName:       dbContext.Bucket.GetName(),
+		dbName:           dbContext.Name,
+		dbStats:          dbContext.DbStats.Database(),
+		checkpointPrefix: checkpointPrefix,
+		collections:      make(map[uint32]DatabaseCollectionWithUser),
+		importStats:      dbContext.DbStats.SharedBucketImport(),
+		loggingCtx:       ctx,
+		metadataKeys:     dbContext.MetadataKeys,
 		terminator:       make(chan bool),
-		checkpointPrefix: base.DCPCheckpointPrefixWithGroupID(groupID),
 	}
+
 	return importListener
 }
 
 // StartImportFeed starts an import DCP feed.  Always starts the feed based on previous checkpoints (Backfill:FeedResume).
 // Writes DCP stats into the StatKeyImportDcpStats map
-func (il *importListener) StartImportFeed(ctx context.Context, bucket base.Bucket, dbStats *base.DbStats, dbContext *DatabaseContext) (err error) {
-	il.bucketName = bucket.GetName()
-	il.dbName = dbContext.Name
-	il.loggingCtx = ctx
-	il.bucket = bucket
-	il.collections = make(map[uint32]DatabaseCollectionWithUser)
-	il.dbStats = dbStats.Database()
-	il.importStats = dbStats.SharedBucketImport()
+func (il *importListener) StartImportFeed(dbContext *DatabaseContext) (err error) {
 
 	collectionNamesByScope := make(map[string][]string)
 	var scopeName string
@@ -63,44 +69,21 @@ func (il *importListener) StartImportFeed(ctx context.Context, bucket base.Bucke
 		scopeName = sn
 	}
 
-	if !dbContext.OnlyDefaultCollection() {
-		gocbv2Bucket, err := base.AsGocbV2Bucket(bucket)
-		if err != nil {
-			return err
-		}
-
-		collectionManifest, err := gocbv2Bucket.GetCollectionManifest()
-		if err != nil {
-			return fmt.Errorf("failed to load collection manifest: %w", err)
-		}
-
-		collectionNamesByScope[scopeName] = make([]string, 0, len(dbContext.Scopes[scopeName].Collections))
-		for collName, _ := range dbContext.Scopes[scopeName].Collections {
-			collectionNamesByScope[scopeName] = append(collectionNamesByScope[scopeName], collName)
-
-			collID, ok := base.GetIDForCollection(collectionManifest, scopeName, collName)
-			if !ok {
-				return fmt.Errorf("failed to find ID for collection %s.%s", base.MD(scopeName).Redact(), base.MD(collName).Redact())
-			}
-			dbCollection := dbContext.CollectionByID[collID]
-			if dbCollection == nil {
-				return fmt.Errorf("failed to find collection for  %s.%s", base.MD(scopeName).Redact(), base.MD(collName).Redact())
-
-			}
-			il.collections[collID] = DatabaseCollectionWithUser{
-				DatabaseCollection: dbCollection,
-				user:               nil, // admin
-			}
-		}
-	} else {
-		collectionID := base.DefaultCollectionID
+	for collectionID, collection := range dbContext.CollectionByID {
 		il.collections[collectionID] = DatabaseCollectionWithUser{
-			DatabaseCollection: dbContext.CollectionByID[collectionID],
+			DatabaseCollection: collection,
 			user:               nil, // admin
 		}
-
+		if il.bucket.IsSupported(sgbucket.BucketStoreFeatureCollections) && !dbContext.OnlyDefaultCollection() {
+			collectionNamesByScope[collection.ScopeName] = append(collectionNamesByScope[collection.ScopeName], collection.Name)
+		}
 	}
-
+	sort.Strings(collectionNamesByScope[scopeName])
+	if dbContext.OnlyDefaultCollection() {
+		il.importDestKey = base.ImportDestKey(il.dbName, "", []string{})
+	} else {
+		il.importDestKey = base.ImportDestKey(il.dbName, scopeName, collectionNamesByScope[scopeName])
+	}
 	feedArgs := sgbucket.FeedArguments{
 		ID:               base.DCPImportFeedID,
 		Backfill:         sgbucket.FeedResume,
@@ -110,34 +93,34 @@ func (il *importListener) StartImportFeed(ctx context.Context, bucket base.Bucke
 		Scopes:           collectionNamesByScope,
 	}
 
-	base.InfofCtx(ctx, base.KeyDCP, "Attempting to start import DCP feed %v...", base.MD(base.ImportDestKey(il.dbName)))
+	base.InfofCtx(il.loggingCtx, base.KeyDCP, "Attempting to start import DCP feed %v...", base.MD(il.importDestKey))
 
 	importFeedStatsMap := dbContext.DbStats.Database().ImportFeedMapStats
 
 	// Store the listener in global map for dbname-based retrieval by cbgt prior to index registration
-	base.StoreDestFactory(ctx, base.ImportDestKey(il.dbName), il.NewImportDest)
+	base.StoreDestFactory(il.loggingCtx, il.importDestKey, il.NewImportDest)
 
 	// Start DCP mutation feed
-	base.InfofCtx(ctx, base.KeyDCP, "Starting DCP import feed for bucket: %q ", base.UD(bucket.GetName()))
+	base.InfofCtx(il.loggingCtx, base.KeyDCP, "Starting DCP import feed for bucket: %q ", base.UD(il.bucket.GetName()))
 
 	// TODO: need to clean up StartDCPFeed to push bucket dependencies down
-	cbStore, ok := base.AsCouchbaseBucketStore(bucket)
+	cbStore, ok := base.AsCouchbaseBucketStore(il.bucket)
 	if !ok {
 		// walrus is not a couchbasestore
-		return bucket.StartDCPFeed(feedArgs, il.ProcessFeedEvent, importFeedStatsMap.Map)
+		return il.bucket.StartDCPFeed(feedArgs, il.ProcessFeedEvent, importFeedStatsMap.Map)
 	}
 
 	if !base.IsEnterpriseEdition() {
 		groupID := ""
-		gocbv2Bucket, err := base.AsGocbV2Bucket(bucket)
+		gocbv2Bucket, err := base.AsGocbV2Bucket(il.bucket)
 		if err != nil {
 			return err
 		}
-		return base.StartGocbDCPFeed(gocbv2Bucket, bucket.GetName(), feedArgs, il.ProcessFeedEvent, importFeedStatsMap.Map, base.DCPMetadataStoreCS, groupID)
+		return base.StartGocbDCPFeed(gocbv2Bucket, il.bucket.GetName(), feedArgs, il.ProcessFeedEvent, importFeedStatsMap.Map, base.DCPMetadataStoreCS, groupID)
 	}
 
-	il.cbgtContext, err = base.StartShardedDCPFeed(ctx, dbContext.Name, dbContext.Options.GroupID, dbContext.UUID, dbContext.Heartbeater,
-		bucket, cbStore.GetSpec(), scopeName, collectionNamesByScope[scopeName], dbContext.Options.ImportOptions.ImportPartitions, dbContext.CfgSG)
+	il.cbgtContext, err = base.StartShardedDCPFeed(il.loggingCtx, dbContext.Name, dbContext.Options.GroupID, dbContext.UUID, dbContext.Heartbeater,
+		il.bucket, cbStore.GetSpec(), scopeName, collectionNamesByScope[scopeName], dbContext.Options.ImportOptions.ImportPartitions, dbContext.CfgSG)
 	return err
 }
 
@@ -155,10 +138,7 @@ func (il *importListener) ProcessFeedEvent(event sgbucket.FeedEvent) (shouldPers
 	// Ignore internal documents
 	if strings.HasPrefix(key, base.SyncDocPrefix) {
 		// Ignore all DCP checkpoints no matter config group ID
-		if strings.HasPrefix(key, base.DCPCheckpointPrefixWithoutGroupID) {
-			return false
-		}
-		return true
+		return !strings.HasPrefix(key, base.DCPCheckpointRootPrefix)
 	}
 
 	// If this is a delete and there are no xattrs (no existing SG revision), we shouldn't import
@@ -249,7 +229,7 @@ func (il *importListener) Stop() {
 			il.cbgtContext.RemoveFeedCredentials(il.dbName)
 
 			// Remove entry from global listener directory
-			base.RemoveDestFactory(base.ImportDestKey(il.dbName))
+			base.RemoveDestFactory(il.importDestKey)
 
 			// TODO: Shut down the cfg (when cfg supports)
 		}

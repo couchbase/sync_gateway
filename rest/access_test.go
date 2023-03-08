@@ -28,6 +28,7 @@ import (
 func TestPublicChanGuestAccess(t *testing.T) {
 	rt := NewRestTester(t,
 		&RestTesterConfig{
+			SyncFn: channels.DocChannelsSyncFunction,
 			DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 				Guest: &auth.PrincipalConfig{
 					Disabled: base.BoolPtr(false),
@@ -88,10 +89,10 @@ func TestStarAccess(t *testing.T) {
 	}
 
 	// Create some docs:
-	rt := NewRestTester(t, nil)
+	rt := NewRestTester(t, &RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction})
 	defer rt.Close()
 
-	a := auth.NewAuthenticator(rt.MetadataStore(), nil, auth.DefaultAuthenticatorOptions())
+	a := auth.NewAuthenticator(rt.MetadataStore(), nil, rt.GetDatabase().AuthenticatorOptions())
 	a.Collections = rt.GetDatabase().CollectionNames
 	var changes struct {
 		Results []db.ChangeEntry
@@ -579,7 +580,7 @@ func TestBulkDocsChangeToAccess(t *testing.T) {
 
 // Test _all_docs API call under different security scenarios
 func TestAllDocsAccessControl(t *testing.T) {
-	rt := NewRestTester(t, nil)
+	rt := NewRestTester(t, &RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction})
 	defer rt.Close()
 
 	type allDocsRow struct {
@@ -600,7 +601,7 @@ func TestAllDocsAccessControl(t *testing.T) {
 	}
 
 	// Create some docs:
-	a := auth.NewAuthenticator(rt.MetadataStore(), nil, auth.DefaultAuthenticatorOptions())
+	a := auth.NewAuthenticator(rt.MetadataStore(), nil, rt.GetDatabase().AuthenticatorOptions())
 	a.Collections = rt.GetDatabase().CollectionNames
 	guest, err := a.GetUser("")
 	assert.NoError(t, err)
@@ -793,7 +794,6 @@ func TestAllDocsAccessControl(t *testing.T) {
 func TestChannelAccessChanges(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache, base.KeyChanges, base.KeyCRUD)
-
 	rtConfig := RestTesterConfig{SyncFn: `function(doc) {access(doc.owner, doc._id);channel(doc.channel)}`}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
@@ -954,7 +954,7 @@ func TestChannelAccessChanges(t *testing.T) {
 
 	collectionWithUser := db.GetSingleDatabaseCollectionWithUser(t, database)
 
-	changed, err := database.UpdateSyncFun(ctx, `function(doc) {access("alice", "beta");channel("beta");}`)
+	changed, err := collection.UpdateSyncFun(ctx, `function(doc) {access("alice", "beta");channel("beta");}`)
 	assert.NoError(t, err)
 	assert.True(t, changed)
 	changeCount, err := collectionWithUser.UpdateAllDocChannels(ctx, false, func(docsProcessed, docsChanged *int) {}, base.NewSafeTerminator())
