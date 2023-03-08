@@ -1352,11 +1352,6 @@ func TestGetUserCollectionAccess(t *testing.T) {
 	testBucket := base.GetPersistentTestBucket(t)
 	defer testBucket.Close()
 	scopesConfig := GetCollectionsConfig(t, testBucket, 2)
-	dataStoreNames := GetDataStoreNamesFromScopesConfig(scopesConfig)
-
-	scope1Name, collection1Name := dataStoreNames[0].ScopeName(), dataStoreNames[0].CollectionName()
-	collection2Name := dataStoreNames[1].CollectionName()
-	scopesConfig[scope1Name].Collections[collection1Name] = CollectionConfig{}
 
 	rtConfig := &RestTesterConfig{
 		CustomTestBucket: testBucket,
@@ -1366,7 +1361,11 @@ func TestGetUserCollectionAccess(t *testing.T) {
 	rt := NewRestTesterMultipleCollections(t, rtConfig, 2)
 	defer rt.Close()
 
+	scope1Name := rt.GetDbCollections()[0].ScopeName
+	collection1Name := rt.GetDbCollections()[0].Name
+	collection2Name := rt.GetDbCollections()[1].Name
 	scopesConfig[scope1Name].Collections[collection1Name] = CollectionConfig{}
+
 	collectionPayload := fmt.Sprintf(`,"%s": {
 					"admin_channels":["foo", "bar1"]
 				}`, collection2Name)
@@ -1453,12 +1452,14 @@ func TestPutUserCollectionAccess(t *testing.T) {
 		CustomTestBucket: testBucket,
 		SyncFn:           `function(doc) {channel(doc.channel); access(doc.accessUser, doc.accessChannel);}`,
 	}
-	dataStoreNames := GetDataStoreNamesFromScopesConfig(scopesConfig)
-	scopeName, collection1Name := dataStoreNames[0].ScopeName(), dataStoreNames[0].CollectionName()
-	collection2Name := dataStoreNames[1].CollectionName()
 
 	rt := NewRestTesterMultipleCollections(t, rtConfig, 2)
 	defer rt.Close()
+
+	scopeName := rt.GetDbCollections()[0].ScopeName
+	collection1Name := rt.GetDbCollections()[0].Name
+	collection2Name := rt.GetDbCollections()[1].Name
+	scopesConfig[scopeName].Collections[collection1Name] = CollectionConfig{}
 
 	collectionPayload := fmt.Sprintf(`,"%s": {
 					"admin_channels":["a"]
