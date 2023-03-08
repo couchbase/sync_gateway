@@ -1361,18 +1361,12 @@ func TestGetUserCollectionAccess(t *testing.T) {
 	rtConfig := &RestTesterConfig{
 		CustomTestBucket: testBucket,
 		SyncFn:           `function(doc) {channel(doc.channel); access(doc.accessUser, doc.accessChannel);}`,
-		DatabaseConfig: &DatabaseConfig{
-			DbConfig: DbConfig{
-				Scopes:           scopesConfig,
-				NumIndexReplicas: base.UintPtr(0),
-				AutoImport:       base.TestUseXattrs(),
-			},
-		},
 	}
 
 	rt := NewRestTesterMultipleCollections(t, rtConfig, 2)
 	defer rt.Close()
-	_ = rt.Context()
+
+	scopesConfig[scope1Name].Collections[collection1Name] = CollectionConfig{}
 	collectionPayload := fmt.Sprintf(`,"%s": {
 					"admin_channels":["foo", "bar1"]
 				}`, collection2Name)
@@ -1458,13 +1452,6 @@ func TestPutUserCollectionAccess(t *testing.T) {
 	rtConfig := &RestTesterConfig{
 		CustomTestBucket: testBucket,
 		SyncFn:           `function(doc) {channel(doc.channel); access(doc.accessUser, doc.accessChannel);}`,
-		DatabaseConfig: &DatabaseConfig{
-			DbConfig: DbConfig{
-				Scopes:           scopesConfig,
-				NumIndexReplicas: base.UintPtr(0),
-				AutoImport:       base.TestUseXattrs(),
-			},
-		},
 	}
 	dataStoreNames := GetDataStoreNamesFromScopesConfig(scopesConfig)
 	scopeName, collection1Name := dataStoreNames[0].ScopeName(), dataStoreNames[0].CollectionName()
@@ -1472,7 +1459,6 @@ func TestPutUserCollectionAccess(t *testing.T) {
 
 	rt := NewRestTesterMultipleCollections(t, rtConfig, 2)
 	defer rt.Close()
-	_ = rt.Context()
 
 	collectionPayload := fmt.Sprintf(`,"%s": {
 					"admin_channels":["a"]
@@ -1509,9 +1495,6 @@ func TestPutUserCollectionAccess(t *testing.T) {
 
 	getResponse = rt.SendAdminRequest("GET", "/db/_user/bob", "")
 	RequireStatus(t, getResponse, 200)
-	//responseMap := map[string]string{}
-	//json.Unmarshal([]byte(getResponse.Body.Bytes()), &responseMap)
-	//fmt.Println(responseMap["collection_access"])
 	assert.Contains(t, getResponse.ResponseRecorder.Body.String(), `"all_channels":["!"]`)
 
 	resp := rt.SendAdminRequest("PUT", "/db/_config", fmt.Sprintf(
