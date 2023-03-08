@@ -1216,7 +1216,8 @@ func externalUserName(name string) string {
 	return name
 }
 
-func marshalPrincipal(princ auth.Principal, includeDynamicGrantInfo bool) auth.PrincipalConfig {
+// marshalPrincipal outputs a PrincipalConfig in a format for REST API endpoints.
+func marshalPrincipal(database *db.Database, princ auth.Principal, includeDynamicGrantInfo bool) auth.PrincipalConfig {
 	name := externalUserName(princ.Name())
 	info := auth.PrincipalConfig{
 		Name:             &name,
@@ -1224,11 +1225,16 @@ func marshalPrincipal(princ auth.Principal, includeDynamicGrantInfo bool) auth.P
 	}
 
 	collectionAccess := princ.GetCollectionsAccess()
-	if collectionAccess != nil {
+	if collectionAccess != nil && !database.OnlyDefaultCollection() {
 		info.CollectionAccess = make(map[string]map[string]*auth.CollectionAccessConfig)
 		for scopeName, scope := range collectionAccess {
 			scopeAccessConfig := make(map[string]*auth.CollectionAccessConfig)
 			for collectionName, collection := range scope {
+				_, err := database.GetDatabaseCollection(scopeName, collectionName)
+				// collection doesn't exist anymore, but did at some point
+				if err != nil {
+					continue
+				}
 				collectionAccessConfig := &auth.CollectionAccessConfig{
 					ExplicitChannels_: collection.ExplicitChannels().AsSet(),
 				}
@@ -1371,7 +1377,7 @@ func (h *handler) getUserInfo() error {
 	}
 	// If not specified will default to false
 	includeDynamicGrantInfo := h.permissionsResults[PermReadPrincipalAppData.PermissionName]
-	info := marshalPrincipal(user, includeDynamicGrantInfo)
+	info := marshalPrincipal(h.db, user, includeDynamicGrantInfo)
 	// If the user's OIDC issuer is no longer valid, remove the OIDC information to avoid confusing users
 	// (it'll get removed permanently the next time the user signs in)
 	if info.JWTIssuer != nil {
@@ -1405,7 +1411,7 @@ func (h *handler) getRoleInfo() error {
 	}
 	// If not specified will default to false
 	includeDynamicGrantInfo := h.permissionsResults[PermReadPrincipalAppData.PermissionName]
-	info := marshalPrincipal(role, includeDynamicGrantInfo)
+	info := marshalPrincipal(h.db, role, includeDynamicGrantInfo)
 	bytes, err := base.JSONMarshal(info)
 	_, _ = h.response.Write(bytes)
 	return err
