@@ -7608,7 +7608,7 @@ func TestGroupIDReplications(t *testing.T) {
 			InitialState:           db.ReplicationStateRunning,
 			ConflictResolutionType: db.ConflictResolverDefault,
 		}
-		resp := rest.BootstrapAdminRequestCustomHost(t, http.MethodPost, adminHosts[i], "/{{.db}}_replication/", rest.MarshalConfig(t, replicationConfig))
+		resp := rest.BootstrapAdminRequestCustomHost(t, http.MethodPost, adminHosts[i], "/db/_replication/", rest.MarshalConfig(t, replicationConfig))
 		resp.RequireStatus(http.StatusCreated)
 	}
 
