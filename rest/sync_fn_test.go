@@ -1009,11 +1009,11 @@ func TestResyncRegenerateSequences(t *testing.T) {
 	response = rt.SendAdminRequest("PUT", "/{{.db}}/_user/user1", GetUserPayload(t, "user1", "letmein", "", collection, []string{"channel_1"}, []string{"role1"}))
 	RequireStatus(t, response, http.StatusCreated)
 
-	_, err := rt.MetadataStore().Get(base.RolePrefix+"role1", &body)
+	_, err := rt.MetadataStore().Get(rt.GetDatabase().MetadataKeys.RoleKey("role1"), &body)
 	assert.NoError(t, err)
 	role1SeqBefore := body["sequence"].(float64)
 
-	_, err = rt.MetadataStore().Get(base.UserPrefix+"user1", &body)
+	_, err = rt.MetadataStore().Get(rt.GetDatabase().MetadataKeys.UserKey("user1"), &body)
 	assert.NoError(t, err)
 	user1SeqBefore := body["sequence"].(float64)
 
@@ -1067,11 +1067,11 @@ func TestResyncRegenerateSequences(t *testing.T) {
 		})
 	WaitAndAssertBackgroundManagerExpiredHeartbeat(t, rt.GetDatabase().ResyncManager)
 
-	_, err = rt.MetadataStore().Get(base.RolePrefix+"role1", &body)
+	_, err = rt.MetadataStore().Get(rt.GetDatabase().MetadataKeys.RoleKey("role1"), &body)
 	assert.NoError(t, err)
 	role1SeqAfter := body["sequence"].(float64)
 
-	_, err = rt.MetadataStore().Get(base.UserPrefix+"user1", &body)
+	_, err = rt.MetadataStore().Get(rt.GetDatabase().MetadataKeys.UserKey("user1"), &body)
 	assert.NoError(t, err)
 	user1SeqAfter := body["sequence"].(float64)
 

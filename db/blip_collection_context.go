@@ -9,6 +9,7 @@
 package db
 
 import (
+	"context"
 	"fmt"
 	"sync"
 
@@ -19,6 +20,18 @@ import (
 type blipSyncCollectionContext struct {
 	dbCollection     *DatabaseCollection
 	activeSubChanges base.AtomicBool // Flag for whether there is a subChanges subscription currently active.  Atomic access
+	changesCtxLock   sync.Mutex
+	changesCtx       context.Context    // Used for the unsub changes Blip message to check if the subChanges feed should stop
+	changesCtxCancel context.CancelFunc // Cancel function for changesCtx to cancel subChanges being sent
+
+	sgr2PullAddExpectedSeqsCallback  func(expectedSeqs map[IDAndRev]SequenceID)     // sgr2PullAddExpectedSeqsCallback is called after successfully handling an incoming changes message
+	sgr2PullProcessedSeqCallback     func(remoteSeq *SequenceID, idAndRev IDAndRev) // sgr2PullProcessedSeqCallback is called after successfully handling an incoming rev message
+	sgr2PullAlreadyKnownSeqsCallback func(alreadyKnownSeqs ...SequenceID)           // sgr2PullAlreadyKnownSeqsCallback is called to mark the sequences as being immediately processed
+	sgr2PushAddExpectedSeqsCallback  func(expectedSeqs ...SequenceID)               // sgr2PushAddExpectedSeqsCallback is called after sync gateway has sent a revision, but is still awaiting an acknowledgement
+	sgr2PushProcessedSeqCallback     func(remoteSeq SequenceID)                     // sgr2PushProcessedSeqCallback is called after receiving acknowledgement of a sent revision
+	sgr2PushAlreadyKnownSeqsCallback func(alreadyKnownSeqs ...SequenceID)           // sgr2PushAlreadyKnownSeqsCallback is called to mark the sequence as being immediately processed
+	emptyChangesMessageCallback      func()                                         // emptyChangesMessageCallback is called when an empty changes message is received
+
 }
 
 // blipCollections is a container for all collections blip is aware of.
@@ -26,6 +39,15 @@ type blipCollections struct {
 	nonCollectionAwareContext *blipSyncCollectionContext   // A collection represented by no Collection property message or prior GetCollections message.
 	collectionContexts        []*blipSyncCollectionContext // Indexed by replication collectionIdx to store per-collection information on a replication
 	sync.RWMutex
+}
+
+// newBlipSyncCollection constructs a context to hold all blip data for a given collection.
+func newBlipSyncCollectionContext(dbCollection *DatabaseCollection) *blipSyncCollectionContext {
+	c := &blipSyncCollectionContext{
+		dbCollection: dbCollection,
+	}
+	c.changesCtx, c.changesCtxCancel = context.WithCancel(context.Background())
+	return c
 }
 
 // setNonCollectionAware adds a single collection matching _default._default collection, to be refered to if no Collection property is set on a blip message.

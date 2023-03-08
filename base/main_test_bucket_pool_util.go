@@ -57,7 +57,7 @@ func RequireNumTestDataStores(t testing.TB, numRequired int) {
 	TestRequiresCollections(t)
 	available := tbpNumCollectionsPerBucket()
 	if available < numRequired {
-		t.Skipf("Only had %d usable test buckets available (test requires %d)", available, numRequired)
+		t.Skipf("Only had %d usable test data stores available (test requires %d)", available, numRequired)
 	}
 }
 

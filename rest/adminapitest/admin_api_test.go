@@ -760,7 +760,7 @@ func TestResync(t *testing.T) {
 
 			_, ok := (rt.GetDatabase().ResyncManager.Process).(*db.ResyncManager)
 			if !ok {
-				rt.GetDatabase().ResyncManager = db.NewResyncManager(rt.GetSingleDataStore())
+				rt.GetDatabase().ResyncManager = db.NewResyncManager(rt.GetSingleDataStore(), rt.GetDatabase().MetadataKeys)
 			}
 
 			for i := 0; i < testCase.docsCreated; i++ {
@@ -845,7 +845,7 @@ func TestResyncUsingDCPStream(t *testing.T) {
 
 			_, ok := (rt.GetDatabase().ResyncManager.Process).(*db.ResyncManagerDCP)
 			if !ok {
-				rt.GetDatabase().ResyncManager = db.NewResyncManagerDCP(rt.GetSingleDataStore(), base.TestUseXattrs())
+				rt.GetDatabase().ResyncManager = db.NewResyncManagerDCP(rt.GetSingleDataStore(), base.TestUseXattrs(), rt.GetDatabase().MetadataKeys)
 			}
 
 			for i := 0; i < testCase.docsCreated; i++ {
@@ -1190,7 +1190,7 @@ func TestResyncErrorScenarios(t *testing.T) {
 
 	_, ok := (rt.GetDatabase().ResyncManager.Process).(*db.ResyncManager)
 	if !ok {
-		rt.GetDatabase().ResyncManager = db.NewResyncManager(rt.GetSingleDataStore())
+		rt.GetDatabase().ResyncManager = db.NewResyncManager(rt.GetSingleDataStore(), rt.GetDatabase().MetadataKeys)
 	}
 
 	leakyDataStore, ok := base.AsLeakyDataStore(rt.TestBucket.GetSingleDataStore())
@@ -1293,7 +1293,7 @@ func TestResyncErrorScenariosUsingDCPStream(t *testing.T) {
 
 	_, ok := (rt.GetDatabase().ResyncManager.Process).(*db.ResyncManagerDCP)
 	if !ok {
-		rt.GetDatabase().ResyncManager = db.NewResyncManagerDCP(rt.GetSingleDataStore(), base.TestUseXattrs())
+		rt.GetDatabase().ResyncManager = db.NewResyncManagerDCP(rt.GetSingleDataStore(), base.TestUseXattrs(), rt.GetDatabase().MetadataKeys)
 	}
 
 	numOfDocs := 1000
@@ -1380,7 +1380,7 @@ func TestResyncStop(t *testing.T) {
 
 	_, ok := (rt.GetDatabase().ResyncManager.Process).(*db.ResyncManager)
 	if !ok {
-		rt.GetDatabase().ResyncManager = db.NewResyncManager(rt.GetSingleDataStore())
+		rt.GetDatabase().ResyncManager = db.NewResyncManager(rt.GetSingleDataStore(), rt.GetDatabase().MetadataKeys)
 	}
 
 	leakyDataStore, ok := base.AsLeakyDataStore(rt.TestBucket.GetSingleDataStore())
@@ -1467,7 +1467,7 @@ func TestResyncStopUsingDCPStream(t *testing.T) {
 
 	_, ok := (rt.GetDatabase().ResyncManager.Process).(*db.ResyncManagerDCP)
 	if !ok {
-		rt.GetDatabase().ResyncManager = db.NewResyncManagerDCP(rt.GetSingleDataStore(), base.TestUseXattrs())
+		rt.GetDatabase().ResyncManager = db.NewResyncManagerDCP(rt.GetSingleDataStore(), base.TestUseXattrs(), rt.GetDatabase().MetadataKeys)
 	}
 
 	numOfDocs := 1000
@@ -3929,10 +3929,12 @@ func TestDeleteDatabasePointingAtSameBucketPersistent(t *testing.T) {
 	resp = rest.BootstrapAdminRequest(t, http.MethodPut, "/db2/", fmt.Sprintf(dbConfig, "db2"))
 	resp.RequireStatus(http.StatusCreated)
 
+	scopeName := ""
+	collectionNames := []string{}
 	// Validate that deleted database is no longer in dest factory set
-	_, fetchDb1DestErr := base.FetchDestFactory(base.ImportDestKey("db1"))
+	_, fetchDb1DestErr := base.FetchDestFactory(base.ImportDestKey("db1", scopeName, collectionNames))
 	assert.Equal(t, base.ErrNotFound, fetchDb1DestErr)
-	_, fetchDb2DestErr := base.FetchDestFactory(base.ImportDestKey("db2"))
+	_, fetchDb2DestErr := base.FetchDestFactory(base.ImportDestKey("db2", scopeName, collectionNames))
 	assert.NoError(t, fetchDb2DestErr)
 }
 

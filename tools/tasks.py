@@ -669,7 +669,7 @@ def make_os_tasks(processes):
         WindowsTask("Network Adapter", "wmic nicconfig"),
         WindowsTask("Active network connection", "wmic netuse"),
         WindowsTask("Protocols", "wmic netprotocol"),
-        WindowsTask("Hosts file", "type %SystemRoot%\system32\drivers\etc\hosts"),
+        WindowsTask("Hosts file", r"type %SystemRoot%\system32\drivers\etc\hosts"),
         WindowsTask("Cache memory", "wmic memcache"),
         WindowsTask("Physical memory", "wmic memphysical"),
         WindowsTask("Physical memory chip info", "wmic memorychip"),
@@ -1130,7 +1130,7 @@ def generate_upload_url(parser, options, zip_filename):
 
 
 def check_ticket(option, opt, value):
-    if re.match('^\d{1,7}$', value):
+    if re.match(r'^\d{1,7}$', value):
         return int(value)
     else:
         raise optparse.OptionValueError(

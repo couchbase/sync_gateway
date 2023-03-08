@@ -58,6 +58,7 @@ const (
 
 // Principals view result row
 type principalsViewRow struct {
+	ID    string
 	Key   string // principal name
 	Value bool   // 'isUser' flag
 }
@@ -429,7 +430,7 @@ func installViews(ctx context.Context, viewStore sgbucket.ViewStore) error {
                      	var prefix = meta.id.substring(0,%d);
                      	if (prefix == %q)
                      		emit(doc.username, meta.id);}`
-	sessions_map = fmt.Sprintf(sessions_map, len(base.SessionPrefix), base.SessionPrefix)
+	sessions_map = fmt.Sprintf(sessions_map, len(base.SessionPrefixRoot), base.SessionPrefixRoot)
 
 	// Tombstones view - used for view tombstone compaction
 	// Key is purge time; value is docid
@@ -446,8 +447,8 @@ func installViews(ctx context.Context, viewStore sgbucket.ViewStore) error {
 							 var isUser = (prefix == %q);
 							 if (isUser || prefix == %q)
 			                     emit(meta.id.substring(%d), isUser); }`
-	principals_map = fmt.Sprintf(principals_map, base.UserPrefix, base.RolePrefix,
-		len(base.UserPrefix))
+	principals_map = fmt.Sprintf(principals_map, base.UserPrefixRoot, base.RolePrefixRoot,
+		len(base.UserPrefixRoot))
 
 	// All-roles view, excluding deleted
 	// Key is role name; value is not used
@@ -457,8 +458,8 @@ func installViews(ctx context.Context, viewStore sgbucket.ViewStore) error {
 			if (prefix == %q && doc.deleted !== true)
 				emit(meta.id.substring(%d), null); 
 		}`
-	rolePrefixLen := len(base.UserPrefix)
-	roles_excludeDeleted_map = fmt.Sprintf(roles_excludeDeleted_map, rolePrefixLen, base.RolePrefix, rolePrefixLen)
+	rolePrefixLen := len(base.RolePrefixRoot)
+	roles_excludeDeleted_map = fmt.Sprintf(roles_excludeDeleted_map, rolePrefixLen, base.RolePrefixRoot, rolePrefixLen)
 
 	// By-channels view.
 	// Key is [channelname, sequence]; value is [docid, revid, flag?]

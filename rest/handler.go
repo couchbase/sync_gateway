@@ -435,6 +435,9 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 		ksNotFound := base.HTTPErrorf(http.StatusNotFound, "keyspace %s not found", ks)
 		if dbContext.Scopes != nil {
 			// If scopes are defined on the database but not in th an empty scope to refer to the one SG is running with, rather than falling back to _default
+			if keyspaceScope == nil && keyspaceCollection == nil {
+				ksNotFound = base.HTTPErrorf(http.StatusNotFound, "keyspace %s.%s.%s not found", ks, base.DefaultScope, base.DefaultCollection)
+			}
 			if keyspaceScope == nil {
 				if len(dbContext.Scopes) == 1 {
 					for scopeName, _ := range dbContext.Scopes {

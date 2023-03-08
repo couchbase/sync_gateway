@@ -69,6 +69,7 @@ func IsValidEmail(email string) bool {
 func (auth *Authenticator) defaultGuestUser() User {
 	user := &userImpl{
 		roleImpl: roleImpl{
+			docID:             auth.DocIDForUser(""),
 			ExplicitChannels_: ch.AtSequence(make(base.Set, 0), 1),
 		},
 		userImplBody: userImplBody{
@@ -87,6 +88,9 @@ func (auth *Authenticator) NewUser(username string, password string, channels ba
 	user := &userImpl{
 		auth:         auth,
 		userImplBody: userImplBody{RolesSince_: ch.TimedSet{}},
+		roleImpl: roleImpl{
+			docID: auth.DocIDForUser(username),
+		},
 	}
 	if err := user.initRole(username, channels, auth.Collections); err != nil {
 		return nil, err
@@ -114,6 +118,9 @@ func (auth *Authenticator) NewUserNoChannels(username string, password string) (
 	user := &userImpl{
 		auth:         auth,
 		userImplBody: userImplBody{RolesSince_: ch.TimedSet{}},
+		roleImpl: roleImpl{
+			docID: auth.DocIDForUser(username),
+		},
 	}
 	if err := user.initRole(username, nil, nil); err != nil {
 		return nil, err
@@ -149,14 +156,6 @@ func (user *userImpl) validate() error {
 		}
 	}
 	return nil
-}
-
-func docIDForUser(username string) string {
-	return base.UserPrefix + username
-}
-
-func (user *userImpl) DocID() string {
-	return docIDForUser(user.Name_)
 }
 
 // Key used in 'access' view (not same meaning as doc ID)

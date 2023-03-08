@@ -151,7 +151,11 @@ func (rt *RestTester) Bucket() base.Bucket {
 	// If we have a TestBucket defined on the RestTesterConfig, use that instead of requesting a new one.
 	testBucket := rt.RestTesterConfig.CustomTestBucket
 	if testBucket == nil {
-		testBucket = base.GetTestBucket(rt.TB)
+		if rt.PersistentConfig {
+			testBucket = base.GetPersistentTestBucket(rt.TB)
+		} else {
+			testBucket = base.GetTestBucket(rt.TB)
+		}
 		if rt.leakyBucketConfig != nil {
 			leakyConfig := *rt.leakyBucketConfig
 			// Ignore closures to avoid double closing panics
@@ -164,11 +168,15 @@ func (rt *RestTester) Bucket() base.Bucket {
 	rt.TestBucket = testBucket
 
 	if rt.InitSyncSeq > 0 {
-		log.Printf("Initializing %s to %d", base.SyncSeqKey, rt.InitSyncSeq)
-		tbDatastore := testBucket.GetSingleDataStore()
-		_, incrErr := tbDatastore.Incr(base.SyncSeqKey, rt.InitSyncSeq, rt.InitSyncSeq, 0)
+		if base.TestsUseNamedCollections() {
+			rt.TB.Fatalf("RestTester InitSyncSeq doesn't support non-default collections")
+		}
+
+		log.Printf("Initializing %s to %d", base.DefaultMetadataKeys.SyncSeqKey(), rt.InitSyncSeq)
+		tbDatastore := testBucket.GetMetadataStore()
+		_, incrErr := tbDatastore.Incr(base.DefaultMetadataKeys.SyncSeqKey(), rt.InitSyncSeq, rt.InitSyncSeq, 0)
 		if incrErr != nil {
-			rt.TB.Fatalf("Error initializing %s in test bucket: %v", base.SyncSeqKey, incrErr)
+			rt.TB.Fatalf("Error initializing %s in test bucket: %v", base.DefaultMetadataKeys.SyncSeqKey(), incrErr)
 		}
 	}
 
@@ -603,20 +611,37 @@ func (rt *RestTester) templateResource(resource string) (string, error) {
 	}
 
 	data := make(map[string]string)
-	if rt.ServerContext() != nil && len(rt.ServerContext().AllDatabases()) == 1 {
-		data["db"] = rt.GetDatabase().Name
-	}
-	database := rt.GetDatabase()
-	if database != nil {
-		if len(database.CollectionByID) == 1 {
-			data["keyspace"] = rt.GetSingleKeyspace()
-		} else {
-			for i, keyspace := range rt.GetKeyspaces() {
-				data[fmt.Sprintf("keyspace%d", i+1)] = keyspace
+	require.NotNil(rt.TB, rt.ServerContext())
+	if rt.ServerContext() != nil {
+		databases := rt.ServerContext().AllDatabases()
+		var dbNames []string
+		for dbName := range databases {
+			dbNames = append(dbNames, dbName)
+		}
+		sort.Strings(dbNames)
+		multipleDatabases := len(dbNames) > 1
+		for i, dbName := range dbNames {
+			database := databases[dbName]
+			dbPrefix := ""
+			if !multipleDatabases {
+				data["db"] = database.Name
+			} else {
+				dbPrefix = fmt.Sprintf("db%d", i+1)
+				data[dbPrefix] = database.Name
+			}
+			if len(database.CollectionByID) == 1 {
+				data["keyspace"] = rt.GetSingleKeyspace()
+			} else {
+				for j, keyspace := range getKeyspaces(rt.TB, database) {
+					if !multipleDatabases {
+						data[fmt.Sprintf("keyspace%d", j+1)] = keyspace
+					} else {
+						data[fmt.Sprintf("db%dkeyspace%d", i+1, j+1)] = keyspace
+					}
+				}
 			}
 		}
 	}
-
 	var uri bytes.Buffer
 	if err := tmpl.Execute(&uri, data); err != nil {
 		return "", err
@@ -2172,6 +2197,7 @@ func NewHTTPTestServerOnListener(h http.Handler, l net.Listener) *httptest.Serve
 }
 
 func WaitAndRequireCondition(t *testing.T, fn func() bool, failureMsgAndArgs ...interface{}) {
+	t.Helper()
 	t.Log("starting waitAndRequireCondition")
 	for i := 0; i <= 20; i++ {
 		if i == 20 {
@@ -2185,6 +2211,7 @@ func WaitAndRequireCondition(t *testing.T, fn func() bool, failureMsgAndArgs ...
 }
 
 func WaitAndAssertCondition(t *testing.T, fn func() bool, failureMsgAndArgs ...interface{}) {
+	t.Helper()
 	t.Log("starting WaitAndAssertCondition")
 	for i := 0; i <= 20; i++ {
 		if i == 20 {
@@ -2198,6 +2225,7 @@ func WaitAndAssertCondition(t *testing.T, fn func() bool, failureMsgAndArgs ...i
 }
 
 func WaitAndAssertConditionTimeout(t *testing.T, timeout time.Duration, fn func() bool, failureMsgAndArgs ...interface{}) {
+	t.Helper()
 	start := time.Now()
 	tick := time.NewTicker(timeout / 20)
 	defer tick.Stop()
@@ -2212,6 +2240,7 @@ func WaitAndAssertConditionTimeout(t *testing.T, timeout time.Duration, fn func(
 }
 
 func WaitAndAssertBackgroundManagerState(t testing.TB, expected db.BackgroundProcessState, getStateFunc func(t testing.TB) db.BackgroundProcessState) bool {
+	t.Helper()
 	err, actual := base.RetryLoop(t.Name()+"-WaitAndAssertBackgroundManagerState", func() (shouldRetry bool, err error, value interface{}) {
 		actual := getStateFunc(t)
 		return expected != actual, nil, actual
@@ -2220,6 +2249,7 @@ func WaitAndAssertBackgroundManagerState(t testing.TB, expected db.BackgroundPro
 }
 
 func WaitAndAssertBackgroundManagerExpiredHeartbeat(t testing.TB, bm *db.BackgroundManager) bool {
+	t.Helper()
 	err, b := base.RetryLoop(t.Name()+"-assertNoHeartbeatDoc", func() (shouldRetry bool, err error, value interface{}) {
 		b, err := bm.GetHeartbeatDoc(t)
 		return !base.IsDocNotFoundError(err), err, b
@@ -2293,6 +2323,16 @@ func getRESTKeyspace(_ testing.TB, dbName string, collection *db.DatabaseCollect
 		return dbName
 	}
 	return strings.Join([]string{dbName, collection.ScopeName, collection.Name}, base.ScopeCollectionSeparator)
+}
+
+// getKeyspaces returns the names of all the keyspaces on the rest tester. Currently assumes a single database.
+func getKeyspaces(t testing.TB, database *db.DatabaseContext) []string {
+	var keyspaces []string
+	for _, collection := range database.CollectionByID {
+		keyspaces = append(keyspaces, getRESTKeyspace(t, database.Name, collection))
+	}
+	sort.Strings(keyspaces)
+	return keyspaces
 }
 
 // GetKeyspaces returns the names of all the keyspaces on the rest tester. Currently assumes a single database.

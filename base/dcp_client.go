@@ -74,6 +74,7 @@ type DCPClientOptions struct {
 	DbStats                    *expvar.Map               // Optional stats
 	AgentPriority              gocbcore.DcpAgentPriority // agentPriority specifies the priority level for a dcp stream
 	CollectionIDs              []uint32                  // CollectionIDs used by gocbcore, if empty, uses default collections
+	CheckpointPrefix           string
 }
 
 func NewDCPClient(ID string, callback sgbucket.FeedEventCallbackFunc, options DCPClientOptions, bucket *GocbV2Bucket) (*DCPClient, error) {
@@ -91,6 +92,12 @@ func NewDCPClient(ID string, callback sgbucket.FeedEventCallbackFunc, options DC
 	if options.AgentPriority == gocbcore.DcpAgentPriorityHigh {
 		return nil, fmt.Errorf("sync gateway should not set high priority for DCP feeds")
 	}
+
+	if options.CheckpointPrefix == "" {
+		if options.MetadataStoreType == DCPMetadataStoreCS {
+			return nil, fmt.Errorf("callers must specify a checkpoint prefix when persisting metadata")
+		}
+	}
 	client := &DCPClient{
 		workers:             make([]*DCPWorker, numWorkers),
 		numVbuckets:         numVbuckets,
@@ -101,7 +108,7 @@ func NewDCPClient(ID string, callback sgbucket.FeedEventCallbackFunc, options DC
 		terminator:          make(chan bool),
 		doneChannel:         make(chan error, 1),
 		failOnRollback:      options.FailOnRollback,
-		checkpointPrefix:    DCPCheckpointPrefixWithGroupID(options.GroupID),
+		checkpointPrefix:    options.CheckpointPrefix,
 		dbStats:             options.DbStats,
 		agentPriority:       options.AgentPriority,
 		collectionIDs:       options.CollectionIDs,
