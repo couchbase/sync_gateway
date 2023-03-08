@@ -45,6 +45,10 @@ func TestActiveReplicatorMultiCollection(t *testing.T) {
 		numDocsPerCollection = 3
 	)
 
+	base.RequireNumTestBuckets(t, 2)
+	base.RequireNumTestDataStores(t, numCollections)
+	base.TestRequiresCollections(t)
+
 	// rt2 passive
 	rt2 := rest.NewRestTesterMultipleCollections(t, &rest.RestTesterConfig{
 		DatabaseConfig: &rest.DatabaseConfig{

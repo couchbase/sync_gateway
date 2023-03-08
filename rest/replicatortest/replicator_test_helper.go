@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/rest"
 	"github.com/couchbaselabs/walrus"
@@ -33,13 +34,20 @@ func reduceTestCheckpointInterval(interval time.Duration) func() {
 }
 
 // AddActiveRT returns a new RestTester backed by a no-close clone of TestBucket
-func addActiveRT(t *testing.T, testBucket *base.TestBucket) (activeRT *rest.RestTester) {
+func addActiveRT(t *testing.T, dbName string, testBucket *base.TestBucket) (activeRT *rest.RestTester) {
 
+	// CBG-2766 adding a new RestTester on the same database will cause stats to be broken, when fixing change to `NewRestTester`
 	// Create a new rest tester, using a NoCloseClone of testBucket, which disables the TestBucketPool teardown
-	activeRT = rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+	activeRT = rest.NewRestTesterDefaultCollection(t,
 		&rest.RestTesterConfig{
 			CustomTestBucket:   testBucket.NoCloseClone(),
 			SgReplicateEnabled: true,
+			SyncFn:             channels.DocChannelsSyncFunction,
+			DatabaseConfig: &rest.DatabaseConfig{
+				DbConfig: rest.DbConfig{
+					Name: dbName,
+				},
+			},
 		})
 
 	// If this is a walrus bucket, we need to jump through some hoops to ensure the shared in-memory walrus bucket isn't
