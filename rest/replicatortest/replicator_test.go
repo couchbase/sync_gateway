@@ -7705,21 +7705,9 @@ function (doc) {
 }`
 			rtConfig := &rest.RestTesterConfig{
 				SyncFn: syncFunc,
-				DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
-					Users: map[string]*auth.PrincipalConfig{
-						"alice": {
-							Password:         base.StringPtr("pass"),
-							ExplicitChannels: base.SetOf("chanAlpha", "chanBeta", "chanCharlie", "chanHotel", "chanIndia"),
-						},
-						"bob": {
-							Password:         base.StringPtr("pass"),
-							ExplicitChannels: base.SetOf("chanDelta", "chanEcho"),
-						},
-					},
-				}},
 			}
 			// Set up buckets, rest testers, and set up servers
-			passiveRT := rest.NewRestTesterDefaultCollection(t, rtConfig) //  CBG-2319: replicator currently requires default collection
+			passiveRT := rest.NewRestTesterDefaultCollection(t, rtConfig) //  CBG-2772: replicator currently requires default collection
 
 			defer passiveRT.Close()
 
@@ -7729,9 +7717,14 @@ function (doc) {
 			adminSrv := httptest.NewServer(passiveRT.TestAdminHandler())
 			defer adminSrv.Close()
 
-			activeRT := rest.NewRestTesterDefaultCollection(t, rtConfig)
+			activeRT := rest.NewRestTesterDefaultCollection(t, rtConfig) //  CBG-2772: replicator currently requires default collection
 			defer activeRT.Close()
 
+			for _, rt := range []*rest.RestTester{passiveRT, activeRT} {
+				rt.CreateUser("alice", []string{"chanAlpha", "chanBeta", "chanCharlie", "chanHotel", "chanIndia"})
+				rt.CreateUser("bob", []string{"chanDelta", "chanEcho"})
+
+			}
 			// Change RT depending on direction
 			var senderRT *rest.RestTester   // RT that has the initial docs that get replicated to the other bucket
 			var receiverRT *rest.RestTester // RT that gets the docs replicated to it
@@ -7776,7 +7769,8 @@ function (doc) {
 					"batch": 200,
 					"run_as": "alice",
 					"remote_username": "alice",
-					"remote_password": "pass"
+					"remote_password": "letmein",
+					"collections_enabled": ` + strconv.FormatBool(!activeRT.GetDatabase().OnlyDefaultCollection()) + `
 				}`
 
 			resp = activeRT.SendAdminRequest("PUT", "/{{.db}}/_replication/"+replName, replConf)
@@ -7790,7 +7784,7 @@ function (doc) {
 			value, _ := base.WaitForStat(receiverRT.GetDatabase().DbStats.Database().NumDocWrites.Value, 6)
 			assert.EqualValues(t, 6, value)
 
-			changesResults, err := receiverRT.WaitForChanges(6, "/db/_changes?since=0&include_docs=true", "", true)
+			changesResults, err := receiverRT.WaitForChanges(6, "/{{.keyspace}}/_changes?since=0&include_docs=true", "", true)
 			assert.NoError(t, err)
 			assert.Len(t, changesResults.Results, 6)
 			// Check the docs are alices docs
