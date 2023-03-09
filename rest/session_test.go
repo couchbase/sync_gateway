@@ -18,7 +18,6 @@ import (
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
-	"github.com/couchbase/sync_gateway/db"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -82,7 +81,7 @@ func TestCORSLogoutOriginOnSessionDelete(t *testing.T) {
 	response := rt.SendRequestWithHeaders("DELETE", "/db/_session", "", reqHeaders)
 	RequireStatus(t, response, 404)
 
-	var body db.Body
+	var body Body
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.Equal(t, "no session", body["reason"])
 }
@@ -102,7 +101,7 @@ func TestCORSLogoutOriginOnSessionDeleteNoCORSConfig(t *testing.T) {
 	response := rt.SendRequestWithHeaders("DELETE", "/db/_session", "", reqHeaders)
 	RequireStatus(t, response, 400)
 
-	var body db.Body
+	var body Body
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.Equal(t, "No CORS", body["reason"])
 }
@@ -118,7 +117,7 @@ func TestNoCORSOriginOnSessionDelete(t *testing.T) {
 	response := rt.SendRequestWithHeaders("DELETE", "/db/_session", "", reqHeaders)
 	RequireStatus(t, response, 400)
 
-	var body db.Body
+	var body Body
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.Equal(t, "No CORS", body["reason"])
 }
@@ -135,7 +134,7 @@ func TestInvalidSession(t *testing.T) {
 	response = rt.SendRequestWithHeaders("GET", "/{{.keyspace}}/testdoc", "", headers)
 	RequireStatus(t, response, 401)
 
-	var body db.Body
+	var body Body
 	err := base.JSONUnmarshal(response.Body.Bytes(), &body)
 
 	assert.NoError(t, err)
@@ -328,7 +327,7 @@ func TestSessionTtlGreaterThan30Days(t *testing.T) {
 
 	layout := "2006-01-02T15:04:05"
 
-	var body db.Body
+	var body Body
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 
 	log.Printf("expires %s", body["expires"].(string))
@@ -665,7 +664,7 @@ func createSession(t *testing.T, rt *RestTester, username string) string {
 	response := rt.SendAdminRequest("POST", "/db/_session", fmt.Sprintf(`{"name":%q}`, username))
 	RequireStatus(t, response, 200)
 
-	var body db.Body
+	var body Body
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	sessionId := body["session_id"].(string)
 
@@ -681,7 +680,7 @@ func TestSessionExpirationDateTimeFormat(t *testing.T) {
 	assert.NoError(t, err, "Couldn't create new user")
 	assert.NoError(t, authenticator.Save(user), "Couldn't save new user")
 
-	var body db.Body
+	var body Body
 	response := rt.SendAdminRequest(http.MethodPost, "/db/_session", `{"name":"alice"}`)
 	RequireStatus(t, response, http.StatusOK)
 

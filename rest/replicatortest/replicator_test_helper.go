@@ -110,7 +110,7 @@ func createOrUpdateDoc(t *testing.T, rt *rest.RestTester, docID, revID, bodyValu
 	require.NoError(t, rt.WaitForPendingChanges())
 	return rest.RespRevID(t, resp)
 }
-func getTestRevpos(t *testing.T, doc db.Body, attachmentKey string) (revpos int) {
+func getTestRevpos(t *testing.T, doc rest.Body, attachmentKey string) (revpos int) {
 	attachments := document.GetBodyAttachments(doc)
 	if attachments == nil {
 		return 0

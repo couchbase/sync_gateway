@@ -357,7 +357,7 @@ func TestDBOfflineSingle(t *testing.T) {
 
 	log.Printf("Taking DB offline")
 	response := rt.SendAdminRequest("GET", "/db/", "")
-	var body db.Body
+	var body rest.Body
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.True(t, body["state"].(string) == "Online")
 
@@ -379,7 +379,7 @@ func TestDBOfflineConcurrent(t *testing.T) {
 
 	log.Printf("Taking DB offline")
 	response := rt.SendAdminRequest("GET", "/db/", "")
-	var body db.Body
+	var body rest.Body
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.True(t, body["state"].(string) == "Online")
 
@@ -421,7 +421,7 @@ func TestStartDBOffline(t *testing.T) {
 
 	log.Printf("Taking DB offline")
 	response := rt.SendAdminRequest("GET", "/db/", "")
-	var body db.Body
+	var body rest.Body
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.True(t, body["state"].(string) == "Online")
 
@@ -444,7 +444,7 @@ func TestDBOffline503Response(t *testing.T) {
 	rest.RequireStatus(t, response, http.StatusCreated)
 	log.Printf("Taking DB offline")
 	response = rt.SendAdminRequest("GET", "/{{.db}}/", "")
-	var body db.Body
+	var body rest.Body
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.True(t, body["state"].(string) == "Online")
 
@@ -467,7 +467,7 @@ func TestDBOfflinePutDbConfig(t *testing.T) {
 
 	log.Printf("Taking DB offline")
 	response := rt.SendAdminRequest("GET", "/db/", "")
-	var body db.Body
+	var body rest.Body
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.True(t, body["state"].(string) == "Online")
 
@@ -526,7 +526,7 @@ func TestDBOfflinePostResync(t *testing.T) {
 
 	log.Printf("Taking DB offline")
 	response := rt.SendAdminRequest("GET", "/db/", "")
-	var body db.Body
+	var body rest.Body
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.True(t, body["state"].(string) == "Online")
 
@@ -568,7 +568,7 @@ func TestDBOfflinePostResyncUsingDCPStream(t *testing.T) {
 
 	log.Printf("Taking DB offline")
 	response := rt.SendAdminRequest("GET", "/db/", "")
-	var body db.Body
+	var body rest.Body
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.True(t, body["state"].(string) == "Online")
 
@@ -617,7 +617,7 @@ func TestDBOfflineSingleResync(t *testing.T) {
 
 	log.Printf("Taking DB offline")
 	response := rt.SendAdminRequest("GET", "/db/", "")
-	var body db.Body
+	var body rest.Body
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.True(t, body["state"].(string) == "Online")
 
@@ -674,7 +674,7 @@ func TestDBOfflineSingleResyncUsingDCPStream(t *testing.T) {
 	assert.Equal(t, int64(1000), rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value())
 
 	response := rt.SendAdminRequest("GET", "/db/", "")
-	var body db.Body
+	var body rest.Body
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.True(t, body["state"].(string) == "Online")
 
@@ -1516,7 +1516,7 @@ func TestDBOnlineSingle(t *testing.T) {
 
 	log.Printf("Taking DB offline")
 	response := rt.SendAdminRequest("GET", "/db/", "")
-	var body db.Body
+	var body rest.Body
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.True(t, body["state"].(string) == "Online")
 
@@ -1549,7 +1549,7 @@ func TestDBOnlineConcurrent(t *testing.T) {
 
 	log.Printf("Taking DB offline")
 	response := rt.SendAdminRequest("GET", "/db/", "")
-	var body db.Body
+	var body rest.Body
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.True(t, body["state"].(string) == "Online")
 
@@ -1598,7 +1598,7 @@ func TestSingleDBOnlineWithDelay(t *testing.T) {
 
 	log.Printf("Taking DB offline")
 	response := rt.SendAdminRequest("GET", "/db/", "")
-	var body db.Body
+	var body rest.Body
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.True(t, body["state"].(string) == "Online")
 
@@ -1686,7 +1686,7 @@ func TestDBOnlineWithTwoDelays(t *testing.T) {
 	defer rt.Close()
 
 	response := rt.SendAdminRequest("GET", "/db/", "")
-	var body db.Body
+	var body rest.Body
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.True(t, body["state"].(string) == "Online")
 
@@ -1956,7 +1956,7 @@ func TestHandleCreateDB(t *testing.T) {
 
 	bucketConfig := rest.BucketConfig{Server: &server, Bucket: &bucket, KvTLSPort: kvTLSPort}
 	dbConfig := &rest.DbConfig{BucketConfig: bucketConfig, SGReplicateEnabled: base.BoolPtr(false)}
-	var respBody db.Body
+	var respBody rest.Body
 
 	reqBody, err := base.JSONMarshal(dbConfig)
 	assert.NoError(t, err, "Error unmarshalling changes response")
@@ -2064,7 +2064,7 @@ func TestHandlePutDbConfigWithBackticks(t *testing.T) {
 	// Get database config after putting config.
 	resp = rt.SendAdminRequest(http.MethodGet, "/backticks/_config?include_runtime=true", "")
 	rest.RequireStatus(t, resp, http.StatusOK)
-	var respBody db.Body
+	var respBody rest.Body
 	require.NoError(t, respBody.Unmarshal([]byte(resp.Body.String())))
 	assert.Equal(t, "walrus:", respBody["server"].(string))
 	assert.Equal(t, syncFunc, respBody["sync"].(string))
@@ -2088,7 +2088,7 @@ func TestHandlePutDbConfigWithBackticksCollections(t *testing.T) {
 		"scopes": {
 			"scope1": {
 			  "collections" : {
-				"collection1":{   
+				"collection1":{
         			"sync": ` + "`" + syncFunc + "`" + `
  				}
    			  }
@@ -2120,7 +2120,7 @@ func TestHandleDBConfig(t *testing.T) {
 	// Get database config before putting any config.
 	resp := rt.SendAdminRequest(http.MethodGet, resource, "")
 	rest.RequireStatus(t, resp, http.StatusOK)
-	var respBody db.Body
+	var respBody rest.Body
 	assert.NoError(t, respBody.Unmarshal(resp.Body.Bytes()))
 	assert.Nil(t, respBody["bucket"])
 	assert.Equal(t, dbname, respBody["db_name"].(string))
@@ -2239,8 +2239,8 @@ func TestHandleGetRevTree(t *testing.T) {
 
 	// Create three revisions of the user foo with different status and updated_at values;
 	reqBodyJson := `{"new_edits": false, "docs": [
-    	{"_id": "foo", "type": "user", "updated_at": "2016-06-24T17:37:49.715Z", "status": "online", "_rev": "1-123"}, 
-    	{"_id": "foo", "type": "user", "updated_at": "2016-06-26T17:37:49.715Z", "status": "offline", "_rev": "1-456"}, 
+    	{"_id": "foo", "type": "user", "updated_at": "2016-06-24T17:37:49.715Z", "status": "online", "_rev": "1-123"},
+    	{"_id": "foo", "type": "user", "updated_at": "2016-06-26T17:37:49.715Z", "status": "offline", "_rev": "1-456"},
     	{"_id": "foo", "type": "user", "updated_at": "2016-06-25T17:37:49.715Z", "status": "offline", "_rev": "1-789"}]}`
 
 	resp := rt.SendAdminRequest(http.MethodPost, "/{{.keyspace}}/_bulk_docs", reqBodyJson)

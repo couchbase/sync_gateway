@@ -219,7 +219,7 @@ func TestMultiCollectionChangesMultiChannelOneShot(t *testing.T) {
 	rest.RequireStatus(t, response, 201)
 
 	// Keep rev to delete doc later
-	var body db.Body
+	var body rest.Body
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	brn1_c1Rev := body["rev"].(string)
 

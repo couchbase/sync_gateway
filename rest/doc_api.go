@@ -127,7 +127,7 @@ func (h *handler) handleGetDoc() error {
 				for _, revid := range revids {
 					revBody, err := h.collection.Get1xRevBodyWithHistory(h.ctx(), docid, revid, revsLimit, revsFrom, attachmentsSince, showExp)
 					if err != nil {
-						revBody = db.Body{"missing": revid} // TODO: More specific error
+						revBody = Body{"missing": revid} // TODO: More specific error
 					}
 					_ = WriteRevisionAsPart(h.ctx(), h.db.DatabaseContext.DbStats.CBLReplicationPull(), revBody, err != nil, false, writer)
 					h.db.DbStats.Database().NumDocReadsRest.Add(1)
@@ -143,9 +143,9 @@ func (h *handler) handleGetDoc() error {
 			for _, revid := range revids {
 				revBody, err := h.collection.Get1xRevBodyWithHistory(h.ctx(), docid, revid, revsLimit, revsFrom, attachmentsSince, showExp)
 				if err != nil {
-					revBody = db.Body{"missing": revid} // TODO: More specific error
+					revBody = Body{"missing": revid} // TODO: More specific error
 				} else {
-					revBody = db.Body{"ok": revBody}
+					revBody = Body{"ok": revBody}
 				}
 				_, _ = h.response.Write(separator)
 				separator = []byte(",")
@@ -320,7 +320,7 @@ func (h *handler) handlePutAttachment() error {
 		if base.IsDocNotFoundError(err) {
 			// couchdb creates empty body on attachment PUT
 			// for non-existent doc id
-			body = db.Body{db.BodyRev: revid}
+			body = Body{db.BodyRev: revid}
 		} else if err != nil {
 			return err
 		}

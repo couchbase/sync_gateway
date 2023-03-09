@@ -42,7 +42,7 @@ func TestDocEtag(t *testing.T) {
 
 	response := rt.SendRequest("PUT", "/{{.keyspace}}/doc", `{"prop":true}`)
 	RequireStatus(t, response, 201)
-	var body db.Body
+	var body Body
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.Equal(t, true, body["ok"])
 	revid := body["rev"].(string)
@@ -112,7 +112,7 @@ func TestDocAttachment(t *testing.T) {
 
 	response := rt.SendRequest("PUT", "/{{.keyspace}}/doc", `{"prop":true}`)
 	RequireStatus(t, response, 201)
-	var body db.Body
+	var body Body
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	revid := body["rev"].(string)
 
@@ -173,7 +173,7 @@ func TestDocAttachmentMetaOption(t *testing.T) {
 
 	response := rt.SendRequest(http.MethodPut, "/{{.keyspace}}/doc", `{"prop":true}`)
 	RequireStatus(t, response, http.StatusCreated)
-	var body db.Body
+	var body Body
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	revid := body["rev"].(string)
 
@@ -261,7 +261,7 @@ func TestDocAttachmentOnRemovedRev(t *testing.T) {
 
 	response := rt.SendUserRequest("PUT", "/{{.keyspace}}/doc", `{"prop":true, "channels":["foo"]}`, "user1")
 	RequireStatus(t, response, 201)
-	var body db.Body
+	var body Body
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	revid := body["rev"].(string)
 
@@ -294,7 +294,7 @@ func TestFunkyDocAndAttachmentIDs(t *testing.T) {
 
 	// requireRevID asserts that the response body contains the revision ID.
 	requireRevID := func(response *TestResponse) (revID string) {
-		var body db.Body
+		var body Body
 		require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 		require.True(t, body["ok"].(bool))
 		revID = body["rev"].(string)
@@ -417,7 +417,7 @@ func TestManualAttachment(t *testing.T) {
 	// attach to existing document with correct rev (should succeed)
 	response = rt.SendRequestWithHeaders("PUT", "/{{.keyspace}}/doc1/attach1?rev="+doc1revId, attachmentBody, reqHeaders)
 	RequireStatus(t, response, 201)
-	var body db.Body
+	var body Body
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.Equal(t, true, body["ok"])
 	revIdAfterAttachment := body["rev"].(string)
@@ -445,7 +445,7 @@ func TestManualAttachment(t *testing.T) {
 	attachmentBody = "updated content"
 	response = rt.SendRequestWithHeaders("PUT", "/{{.keyspace}}/doc1/attach1?rev="+revIdAfterAttachment, attachmentBody, reqHeaders)
 	RequireStatus(t, response, 201)
-	body = db.Body{}
+	body = Body{}
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.Equal(t, true, body["ok"])
 	revIdAfterUpdateAttachment := body["rev"].(string)
@@ -459,7 +459,7 @@ func TestManualAttachment(t *testing.T) {
 	reqHeaders["If-Match"] = `"` + revIdAfterUpdateAttachment + `"`
 	response = rt.SendRequestWithHeaders("PUT", "/{{.keyspace}}/doc1/attach1", attachmentBody, reqHeaders)
 	RequireStatus(t, response, 201)
-	body = db.Body{}
+	body = Body{}
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.Equal(t, true, body["ok"])
 	revIdAfterUpdateAttachmentAgain := body["rev"].(string)
@@ -481,7 +481,7 @@ func TestManualAttachment(t *testing.T) {
 	attachmentBody = "separate content"
 	response = rt.SendRequest("PUT", "/{{.keyspace}}/doc1/attach2?rev="+revIdAfterUpdateAttachmentAgain, attachmentBody)
 	RequireStatus(t, response, 201)
-	body = db.Body{}
+	body = Body{}
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.Equal(t, true, body["ok"])
 	revIdAfterSecondAttachment := body["rev"].(string)
@@ -499,7 +499,7 @@ func TestManualAttachment(t *testing.T) {
 	// now check the attachments index on the document
 	response = rt.SendRequest("GET", "/{{.keyspace}}/doc1", "")
 	RequireStatus(t, response, 200)
-	body = db.Body{}
+	body = Body{}
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	bodyAttachments, ok := body["_attachments"].(map[string]interface{})
 	if !ok {
@@ -537,7 +537,7 @@ func TestManualAttachmentNewDoc(t *testing.T) {
 	// attach to new document without any rev (should succeed)
 	response = rt.SendAdminRequestWithHeaders("PUT", "/{{.keyspace}}/notexistyet/attach1", attachmentBody, reqHeaders)
 	RequireStatus(t, response, 201)
-	var body db.Body
+	var body Body
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.Equal(t, true, body["ok"])
 	revIdAfterAttachment := body["rev"].(string)
@@ -552,7 +552,7 @@ func TestManualAttachmentNewDoc(t *testing.T) {
 	assert.True(t, response.Header().Get("Content-Type") == attachmentContentType)
 
 	// now check the document
-	body = db.Body{}
+	body = Body{}
 	response = rt.SendAdminRequest("GET", "/{{.keyspace}}/notexistyet", "")
 	RequireStatus(t, response, 200)
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
@@ -577,7 +577,7 @@ func TestAttachmentsNoCrossTalk(t *testing.T) {
 	// attach to existing document with correct rev (should succeed)
 	response := rt.SendAdminRequestWithHeaders("PUT", "/{{.keyspace}}/doc1/attach1?rev="+doc1revId, attachmentBody, reqHeaders)
 	RequireStatus(t, response, 201)
-	var body db.Body
+	var body Body
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.Equal(t, true, body["ok"])
 	revIdAfterAttachment := body["rev"].(string)
@@ -682,7 +682,7 @@ func TestBulkGetBadAttachmentReproIssue2528(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
-	var body db.Body
+	var body Body
 
 	docIdDoc1 := "doc"
 	attachmentName := "attach1"
@@ -715,7 +715,7 @@ func TestBulkGetBadAttachmentReproIssue2528(t *testing.T) {
 	RequireStatus(t, response, 201)
 
 	// Get the couchbase doc
-	couchbaseDoc := db.Body{}
+	couchbaseDoc := Body{}
 	_, err := rt.GetSingleDataStore().Get(docIdDoc1, &couchbaseDoc)
 	assert.NoError(t, err, "Error getting couchbaseDoc")
 	log.Printf("couchbase doc: %+v", couchbaseDoc)
@@ -891,7 +891,7 @@ func TestConflictWithInvalidAttachment(t *testing.T) {
 	attachmentBody := "aGVsbG8gd29ybGQ=" // hello.txt
 	response := rt.SendAdminRequestWithHeaders("PUT", "/{{.keyspace}}/doc1/attach1?rev="+docrevId, attachmentBody, reqHeaders)
 	RequireStatus(t, response, http.StatusCreated)
-	var body db.Body
+	var body Body
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	docrevId2 := body["rev"].(string)
 
@@ -979,7 +979,7 @@ func TestConflictingBranchAttachments(t *testing.T) {
 	docRevDigest := strings.Split(docRevId, "-")[1]
 
 	// //Create diverging tree
-	var body db.Body
+	var body Body
 
 	reqBodyRev2 := `{"_rev": "2-two", "_revisions": {"ids": ["two", "` + docRevDigest + `"], "start": 2}}`
 	response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1?new_edits=false", reqBodyRev2)
@@ -1034,8 +1034,8 @@ func TestConflictingBranchAttachments(t *testing.T) {
 	response1 := rt.SendAdminRequest("GET", "/{{.keyspace}}/doc1?atts_since=[\""+docRevId+"\"]&rev="+docRevId4, "")
 	response2 := rt.SendAdminRequest("GET", "/{{.keyspace}}/doc1?rev="+docRevId4a, "")
 
-	var body1 db.Body
-	var body2 db.Body
+	var body1 Body
+	var body2 Body
 
 	require.NoError(t, base.JSONUnmarshal(response1.Body.Bytes(), &body1))
 	require.NoError(t, base.JSONUnmarshal(response2.Body.Bytes(), &body2))
@@ -1059,7 +1059,7 @@ func TestAttachmentsWithTombstonedConflict(t *testing.T) {
 	}
 
 	// Add an attachment at rev 2
-	var body db.Body
+	var body Body
 	rev2Attachment := `aGVsbG8gd29ybGQ=` // hello.txt
 	response := rt.SendAdminRequestWithHeaders("PUT", "/{{.keyspace}}/doc1/attach1?rev="+docRevId, rev2Attachment, reqHeaders)
 	RequireStatus(t, response, http.StatusCreated)
@@ -1118,7 +1118,7 @@ func TestAttachmentsWithTombstonedConflict(t *testing.T) {
 	docRevId2a := body["rev"].(string)
 	assert.Equal(t, "6-a", docRevId2a)
 
-	var rev6Response db.Body
+	var rev6Response Body
 	response = rt.SendAdminRequest("GET", "/{{.keyspace}}/doc1?atts_since=[\""+docRevId+"\"]", "")
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &rev6Response))
 	_, attachmentsPresent = rev6Response["_attachments"]
@@ -1129,7 +1129,7 @@ func TestAttachmentsWithTombstonedConflict(t *testing.T) {
 	RequireStatus(t, response, http.StatusOK)
 
 	// Retrieve current winning rev with attachments
-	var rev7Response db.Body
+	var rev7Response Body
 	response = rt.SendAdminRequest("GET", "/{{.keyspace}}/doc1?atts_since=[\""+docRevId+"\"]", "")
 	log.Printf("Rev6 GET: %s", response.Body.Bytes())
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &rev7Response))
@@ -1141,7 +1141,7 @@ func TestAttachmentGetReplicator2(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
-	var body db.Body
+	var body Body
 
 	// Put document as usual with attachment
 	response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1", `{"foo": "bar", "_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="}}}`)
@@ -1171,7 +1171,7 @@ func TestWebhookPropsWithAttachments(t *testing.T) {
 		require.NoError(t, err, "Error reading request body")
 		require.NoError(t, r.Body.Close(), "Error closing request body")
 
-		var body db.Body
+		var body Body
 		require.NoError(t, base.JSONUnmarshal(bodyBytes, &body), "Error parsing document body")
 		assert.Equal(t, "doc1", body[db.BodyId])
 		assert.Equal(t, "bar", body["foo"])
@@ -1212,7 +1212,7 @@ func TestWebhookPropsWithAttachments(t *testing.T) {
 	wg.Add(1)
 	response := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/doc1", `{"foo": "bar"}`)
 	RequireStatus(t, response, http.StatusCreated)
-	var body db.Body
+	var body Body
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	require.True(t, body["ok"].(bool))
 	doc1revId := body["rev"].(string)
@@ -1325,7 +1325,7 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		resource := fmt.Sprintf("/{{.keyspace}}/%s/%s?rev=%s", doc, attName, rev)
 		response := rt.SendRequestWithHeaders(http.MethodPut, resource, attBody, reqHeaders)
 		RequireStatus(t, response, http.StatusCreated)
-		var body db.Body
+		var body Body
 		require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 		require.True(t, body["ok"].(bool))
 		return body["rev"].(string)
@@ -2565,7 +2565,7 @@ func TestAttachmentDeleteOnPurge(t *testing.T) {
 	resp = rt.SendAdminRequest("GET", "/{{.keyspace}}/"+t.Name()+"/hello?meta=true", "")
 	RequireStatus(t, resp, http.StatusOK)
 
-	var body db.Body
+	var body Body
 	err = base.JSONUnmarshal(resp.BodyBytes(), &body)
 	require.NoError(t, err)
 
@@ -2636,8 +2636,8 @@ func TestUpdateExistingAttachment(t *testing.T) {
 	require.NoError(t, err)
 	defer btc.Close()
 
-	var doc1Body db.Body
-	var doc2Body db.Body
+	var doc1Body Body
+	var doc2Body Body
 
 	// Add doc1 and doc2
 	req := rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1", `{}`)
@@ -2704,7 +2704,7 @@ func TestPushUnknownAttachmentAsStub(t *testing.T) {
 	assert.NoError(t, err)
 	defer btc.Close()
 
-	var doc1Body db.Body
+	var doc1Body Body
 
 	// Add doc1 and doc2
 	req := rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1", `{}`)
@@ -2970,8 +2970,8 @@ func TestCBLRevposHandling(t *testing.T) {
 	assert.NoError(t, err)
 	defer btc.Close()
 
-	var doc1Body db.Body
-	var doc2Body db.Body
+	var doc1Body Body
+	var doc2Body Body
 
 	// Add doc1 and doc2
 	req := rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1", `{}`)
@@ -3049,7 +3049,7 @@ func CreateDocWithLegacyAttachment(t *testing.T, rt *RestTester, docID string, r
 	_, err := dataStore.Add(attKey, 0, attBody)
 	require.NoError(t, err)
 
-	body := db.Body{}
+	body := Body{}
 	err = body.Unmarshal(rawDoc)
 	require.NoError(t, err, "Error unmarshalling body")
 

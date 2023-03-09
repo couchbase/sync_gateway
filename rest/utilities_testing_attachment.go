@@ -45,7 +45,7 @@ func CreateLegacyAttachmentDoc(t *testing.T, ctx context.Context, collection *db
 	_, err := dataStore.AddRaw(attDocID, 0, attBody)
 	require.NoError(t, err)
 
-	var unmarshalledBody db.Body
+	var unmarshalledBody Body
 	err = base.JSONUnmarshal(body, &unmarshalledBody)
 	require.NoError(t, err)
 

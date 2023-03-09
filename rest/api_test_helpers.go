@@ -15,7 +15,6 @@ import (
 	"net/http"
 
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/couchbase/sync_gateway/db"
 	"github.com/stretchr/testify/require"
 )
 
@@ -42,7 +41,7 @@ func (rt *RestTester) PurgeDoc(docID string) {
 // If parentRevID is not specified, treated as insert
 func (rt *RestTester) PutNewEditsFalse(docID string, newRevID string, parentRevID string, bodyString string) (response PutDocResponse) {
 
-	var body db.Body
+	var body Body
 	marshalErr := base.JSONUnmarshal([]byte(bodyString), &body)
 	require.NoError(rt.TB, marshalErr)
 

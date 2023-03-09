@@ -323,7 +323,7 @@ func TestUserAPI(t *testing.T) {
 	RequireStatus(t, response, 201)
 	response = rt.SendAdminRequest("GET", "/db/_user/snej", "")
 	RequireStatus(t, response, 200)
-	var body db.Body
+	var body Body
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.Equal(t, "snej", body["name"])
 
@@ -390,7 +390,7 @@ func TestGuestUser(t *testing.T) {
 
 	response := rt.SendAdminRequest(http.MethodGet, guestUserEndpoint, "")
 	RequireStatus(t, response, http.StatusOK)
-	var body db.Body
+	var body Body
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.Equal(t, base.GuestUsername, body["name"])
 	// This ain't no admin-party, this ain't no nightclub, this ain't no fooling around:
@@ -425,7 +425,7 @@ func TestUserAndRoleResponseContentType(t *testing.T) {
 	collection := rt.GetSingleTestDatabaseCollection()
 
 	// Create a user 'christopher' through PUT request with empty request body.
-	var responseBody db.Body
+	var responseBody Body
 	response := rt.SendAdminRequest(http.MethodPut, "/db/_user/christopher", "")
 	assert.Equal(t, http.StatusBadRequest, response.Code)
 	assert.Equal(t, "application/json", response.Header().Get("Content-Type"))

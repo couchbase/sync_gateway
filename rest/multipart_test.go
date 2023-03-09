@@ -24,7 +24,6 @@ import (
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/couchbase/sync_gateway/db"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -56,7 +55,7 @@ func TestReadJSONFromMIME(t *testing.T) {
 	header.Add("MIME-Version", "1.0")
 	header.Add("Content-Type", "multipart/related; boundary=0123456789")
 	input := io.NopCloser(strings.NewReader(`{"key":"foo","value":"bar"}`))
-	var body db.Body
+	var body Body
 	err := ReadJSONFromMIME(header, input, &body)
 	assert.Error(t, err, "Can't read JSON from MIME by specifying non-JSON content type")
 	assert.Contains(t, err.Error(), strconv.Itoa(http.StatusUnsupportedMediaType))
@@ -130,7 +129,7 @@ func TestReadMultipartDocument(t *testing.T) {
 Content-Type: application/json
 
 {"key":"foo","value":"bar","_attachments":{"att.txt": {"type": "text/plain", "length": 35, "follows": true, "digest":"sha1-6RU4WkyC+YYARHkO052YJ/dw1Zk="}}}
---123  
+--123
 Content-Type: application/json
 Content-Disposition: attachment; filename=att.txt
 
@@ -143,7 +142,7 @@ Content-Disposition: attachment; filename=att.txt
 	response = rt.SendAdminRequestWithHeaders(http.MethodGet, "/{{.keyspace}}/doc1", "", reqHeaders)
 	RequireStatus(t, response, http.StatusOK)
 
-	var body db.Body
+	var body Body
 	assert.NoError(t, base.JSONUnmarshal(response.BodyBytes(), &body))
 	log.Printf("body: %v", body)
 	assert.Equal(t, "doc1", body["_id"])
@@ -161,11 +160,11 @@ Content-Disposition: attachment; filename=att.txt
 func TestWriteJSONPart(t *testing.T) {
 	// writeJSONPart toggles compression to false if the incoming body is less than 300 bytes, so creating
 	// a body larger than 300 bytes to test writeJSONPart with compression=true and compression=false
-	mockFakeBody := func() db.Body {
+	mockFakeBody := func() Body {
 		bytes := make([]byte, 139)
 		rand.Read(bytes)
 		value := fmt.Sprintf("%x", bytes)
-		return db.Body{"key": "foo", "value": value}
+		return Body{"key": "foo", "value": value}
 	}
 
 	body := mockFakeBody()

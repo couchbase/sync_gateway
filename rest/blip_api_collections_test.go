@@ -40,7 +40,7 @@ func TestBlipGetCollections(t *testing.T) {
 	defer btc.Close()
 
 	checkpointID1 := "checkpoint1"
-	checkpoint1Body := db.Body{"seq": "123"}
+	checkpoint1Body := Body{"seq": "123"}
 	collection := rt.GetSingleTestDatabaseCollection()
 	scopeAndCollection := fmt.Sprintf("%s.%s", collection.ScopeName, collection.Name)
 	revID, err := collection.PutSpecial(db.DocTypeLocal, db.CheckpointDocIDPrefix+checkpointID1, checkpoint1Body)
@@ -50,7 +50,7 @@ func TestBlipGetCollections(t *testing.T) {
 	testCases := []struct {
 		name        string
 		requestBody db.GetCollectionsRequestBody
-		resultBody  []db.Body
+		resultBody  []Body
 		errorCode   string
 	}{
 		{
@@ -59,7 +59,7 @@ func TestBlipGetCollections(t *testing.T) {
 				CheckpointIDs: []string{"id"},
 				Collections:   []string{defaultScopeAndCollection},
 			},
-			resultBody: []db.Body{nil},
+			resultBody: []Body{nil},
 			errorCode:  "",
 		},
 		{
@@ -68,7 +68,7 @@ func TestBlipGetCollections(t *testing.T) {
 				CheckpointIDs: []string{"id", "id2"},
 				Collections:   []string{defaultScopeAndCollection},
 			},
-			resultBody: []db.Body{nil},
+			resultBody: []Body{nil},
 			errorCode:  fmt.Sprintf("%d", http.StatusBadRequest),
 		},
 		{
@@ -77,7 +77,7 @@ func TestBlipGetCollections(t *testing.T) {
 				CheckpointIDs: []string{checkpointID1},
 				Collections:   []string{defaultScopeAndCollection},
 			},
-			resultBody: []db.Body{nil},
+			resultBody: []Body{nil},
 			errorCode:  "",
 		},
 		{
@@ -87,7 +87,7 @@ func TestBlipGetCollections(t *testing.T) {
 				CheckpointIDs: []string{checkpointID1},
 				Collections:   []string{""},
 			},
-			resultBody: []db.Body{nil},
+			resultBody: []Body{nil},
 			errorCode:  fmt.Sprintf("%d", http.StatusBadRequest),
 		},
 		{
@@ -96,7 +96,7 @@ func TestBlipGetCollections(t *testing.T) {
 				CheckpointIDs: []string{checkpointID1},
 				Collections:   []string{scopeAndCollection},
 			},
-			resultBody: []db.Body{checkpoint1Body},
+			resultBody: []Body{checkpoint1Body},
 			errorCode:  "",
 		},
 		{
@@ -105,7 +105,7 @@ func TestBlipGetCollections(t *testing.T) {
 				CheckpointIDs: []string{"id"},
 				Collections:   []string{scopeAndCollection},
 			},
-			resultBody: []db.Body{db.Body{}},
+			resultBody: []Body{Body{}},
 			errorCode:  "",
 		},
 		// {
@@ -114,7 +114,7 @@ func TestBlipGetCollections(t *testing.T) {
 		//		CheckpointIDs: []string{checkpointIDWithError},
 		//		Collections:   []string{scopeAndCollection},
 		//	},
-		//	resultBody: []db.Body{nil},
+		//	resultBody: []Body{nil},
 		//	errorCode:  "",
 		// },
 	}
@@ -135,7 +135,7 @@ func TestBlipGetCollections(t *testing.T) {
 			if testCase.errorCode != "" {
 				return
 			}
-			var checkpoints []db.Body
+			var checkpoints []Body
 			err = resp.ReadJSONBody(&checkpoints)
 			require.NoErrorf(t, err, "Actual error %+v", checkpoints)
 
@@ -157,7 +157,7 @@ func TestBlipReplicationNoDefaultCollection(t *testing.T) {
 	defer btc.Close()
 
 	checkpointID1 := "checkpoint1"
-	checkpoint1Body := db.Body{"seq": "123"}
+	checkpoint1Body := Body{"seq": "123"}
 	collection := rt.GetSingleTestDatabaseCollection()
 	revID, err := collection.PutSpecial(db.DocTypeLocal, db.CheckpointDocIDPrefix+checkpointID1, checkpoint1Body)
 	require.NoError(t, err)
@@ -185,7 +185,7 @@ func TestBlipGetCollectionsAndSetCheckpoint(t *testing.T) {
 	defer btc.Close()
 
 	checkpointID1 := "checkpoint1"
-	checkpoint1Body := db.Body{"seq": "123"}
+	checkpoint1Body := Body{"seq": "123"}
 	collection := rt.GetSingleTestDatabaseCollection()
 	revID, err := collection.PutSpecial(db.DocTypeLocal, db.CheckpointDocIDPrefix+checkpointID1, checkpoint1Body)
 	require.NoError(t, err)
@@ -206,10 +206,10 @@ func TestBlipGetCollectionsAndSetCheckpoint(t *testing.T) {
 	errorCode, hasErrorCode := resp.Properties[db.BlipErrorCode]
 	require.False(t, hasErrorCode)
 	require.Equal(t, errorCode, "")
-	var checkpoints []db.Body
+	var checkpoints []Body
 	err = resp.ReadJSONBody(&checkpoints)
 	require.NoErrorf(t, err, "Actual error %+v", checkpoints)
-	require.Equal(t, []db.Body{checkpoint1Body}, checkpoints)
+	require.Equal(t, []Body{checkpoint1Body}, checkpoints)
 
 	// make sure other functions get called
 
@@ -223,11 +223,11 @@ func TestBlipGetCollectionsAndSetCheckpoint(t *testing.T) {
 	errorCode, hasErrorCode = resp.Properties[db.BlipErrorCode]
 	require.Equal(t, errorCode, "")
 	require.False(t, hasErrorCode)
-	var checkpoint db.Body
+	var checkpoint Body
 	err = resp.ReadJSONBody(&checkpoint)
 	require.NoErrorf(t, err, "Actual error %+v", checkpoint)
 
-	require.Equal(t, db.Body{"seq": "123"}, checkpoint)
+	require.Equal(t, Body{"seq": "123"}, checkpoint)
 
 }
 
@@ -269,7 +269,7 @@ func TestBlipReplicationMultipleCollections(t *testing.T) {
 
 	docName := "doc1"
 	docRevID := "1-cd809becc169215072fd567eebd8b8de"
-	body := db.Body{}
+	body := Body{}
 	bodyBytes := []byte(`{"foo":"bar"}`)
 	require.NoError(t, body.Unmarshal(bodyBytes))
 	for _, collection := range rt.GetDatabase().CollectionByID {
@@ -308,7 +308,7 @@ func TestBlipReplicationMultipleCollectionsMismatchedDocSizes(t *testing.T) {
 	require.NoError(t, err)
 	defer btc.Close()
 
-	body := db.Body{}
+	body := Body{}
 	bodyBytes := []byte(`{"foo":"bar"}`)
 	require.NoError(t, body.Unmarshal(bodyBytes))
 	collectionRevIDs := make(map[string][]string)

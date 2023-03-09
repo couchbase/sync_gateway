@@ -124,7 +124,7 @@ func (tester *ChannelRevocationTester) fillToSeq(seq uint64) {
 		resp := tester.restTester.SendAdminRequest("PUT", requestURL, "{}")
 		require.Equal(tester.test, http.StatusCreated, resp.Code)
 
-		var body db.Body
+		var body Body
 		err = json.Unmarshal(resp.BodyBytes(), &body)
 		require.NoError(tester.test, err)
 
@@ -159,22 +159,22 @@ func InitScenario(t *testing.T, rtConfig *RestTesterConfig) (ChannelRevocationTe
 
 	defaultSyncFn := `
 			function (doc, oldDoc){
-				if (doc._id === 'userRoles'){				
+				if (doc._id === 'userRoles'){
 					for (var key in doc.roles){
 						role(key, doc.roles[key]);
 					}
 				}
-				if (doc._id === 'roleChannels'){				
+				if (doc._id === 'roleChannels'){
 					for (var key in doc.channels){
 						access(key, doc.channels[key]);
 					}
 				}
-				if (doc._id === 'userChannels'){				
+				if (doc._id === 'userChannels'){
 					for (var key in doc.channels){
 						access(key, doc.channels[key]);
 					}
 				}
-				if (doc._id.indexOf("doc") >= 0){				
+				if (doc._id.indexOf("doc") >= 0){
 					channel(doc.channels);
 				}
 			}`
@@ -1443,7 +1443,7 @@ func TestRevocationWithUserXattrs(t *testing.T) {
 						access(key, meta.xattrs.channelInfo.userChannels[key]);
 					}
 				}
-				if (doc._id.indexOf("doc") >= 0){				
+				if (doc._id.indexOf("doc") >= 0){
 					channel(doc.channels);
 				}
 			}`,

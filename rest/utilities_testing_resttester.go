@@ -29,7 +29,7 @@ type PutDocResponse struct {
 	Rev string
 }
 
-func (rt *RestTester) GetDoc(docID string) (body db.Body) {
+func (rt *RestTester) GetDoc(docID string) (body Body) {
 	rawResponse := rt.SendAdminRequest("GET", "/{{.keyspace}}/"+docID, "")
 	RequireStatus(rt.TB, rawResponse, 200)
 	require.NoError(rt.TB, base.JSONUnmarshal(rawResponse.Body.Bytes(), &body))
@@ -39,7 +39,7 @@ func (rt *RestTester) GetDoc(docID string) (body db.Body) {
 func (rt *RestTester) CreateDoc(t *testing.T, docid string) string {
 	response := rt.SendAdminRequest("PUT", fmt.Sprintf("/%s/%s", rt.GetSingleKeyspace(), docid), `{"prop":true}`)
 	RequireStatus(t, response, 201)
-	var body db.Body
+	var body Body
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.Equal(t, true, body["ok"])
 	revid := body["rev"].(string)
@@ -74,7 +74,7 @@ func (rt *RestTester) upsertDoc(docID string, body string) (response PutDocRespo
 	if getResponse.Code == 404 {
 		return rt.PutDoc(docID, body)
 	}
-	var getBody db.Body
+	var getBody Body
 	require.NoError(rt.TB, base.JSONUnmarshal(getResponse.Body.Bytes(), &getBody))
 	revID, ok := getBody["revID"].(string)
 	require.True(rt.TB, ok)
@@ -98,7 +98,7 @@ func (rt *RestTester) WaitForRev(docID string, revID string) error {
 		if rawResponse.Code != 200 && rawResponse.Code != 201 {
 			return false
 		}
-		var body db.Body
+		var body Body
 		require.NoError(rt.TB, base.JSONUnmarshal(rawResponse.Body.Bytes(), &body))
 		return body.ExtractRev() == revID
 	})

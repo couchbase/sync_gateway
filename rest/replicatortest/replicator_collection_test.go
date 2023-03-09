@@ -166,7 +166,7 @@ func TestActiveReplicatorMultiCollection(t *testing.T) {
 			resp = rt1.SendAdminRequest(http.MethodGet,
 				fmt.Sprintf("/%s/passive-doc%d", localKeyspace, j), "")
 			if rest.AssertStatus(t, resp, http.StatusOK) {
-				var docBody db.Body
+				var docBody rest.Body
 				require.NoError(t, docBody.Unmarshal(resp.BodyBytes()))
 				assert.Equal(t, "passive", docBody["source"])
 				assert.Equal(t, remoteCollection, docBody["sourceKeyspace"])
@@ -176,7 +176,7 @@ func TestActiveReplicatorMultiCollection(t *testing.T) {
 			resp = rt2.SendAdminRequest(http.MethodGet,
 				fmt.Sprintf("/%s/active-doc%d", remoteKeyspace, j), "")
 			if rest.AssertStatus(t, resp, http.StatusOK) {
-				var docBody db.Body
+				var docBody rest.Body
 				require.NoError(t, docBody.Unmarshal(resp.BodyBytes()))
 				assert.Equal(t, "active", docBody["source"])
 				assert.Equal(t, localCollection, docBody["sourceKeyspace"])
@@ -233,7 +233,7 @@ func TestActiveReplicatorMultiCollection(t *testing.T) {
 		resp = rt1.SendAdminRequest(http.MethodGet,
 			fmt.Sprintf("/%s/passive-doc%d", localKeyspace, numDocsPerCollection+1), "")
 		if rest.AssertStatus(t, resp, http.StatusOK) {
-			var docBody db.Body
+			var docBody rest.Body
 			require.NoError(t, docBody.Unmarshal(resp.BodyBytes()))
 			assert.Equal(t, "passive", docBody["source"])
 			assert.Equal(t, remoteCollection, docBody["sourceKeyspace"])
@@ -243,7 +243,7 @@ func TestActiveReplicatorMultiCollection(t *testing.T) {
 		resp = rt2.SendAdminRequest(http.MethodGet,
 			fmt.Sprintf("/%s/active-doc%d", remoteKeyspace, numDocsPerCollection+1), "")
 		if rest.AssertStatus(t, resp, http.StatusOK) {
-			var docBody db.Body
+			var docBody rest.Body
 			require.NoError(t, docBody.Unmarshal(resp.BodyBytes()))
 			assert.Equal(t, "active", docBody["source"])
 			assert.Equal(t, localCollection, docBody["sourceKeyspace"])

@@ -172,9 +172,9 @@ func TestDocDeletionFromChannel(t *testing.T) {
 	response = rt.SendUserRequest("GET", "/{{.keyspace}}/alpha?rev="+rev2, "", "alice")
 	assert.Equal(t, 200, response.Code)
 	log.Printf("Deletion looks like: %s", response.Body.Bytes())
-	var docBody db.Body
+	var docBody rest.Body
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &docBody))
-	assert.Equal(t, db.Body{db.BodyId: "alpha", db.BodyRev: rev2, db.BodyDeleted: true}, docBody)
+	assert.Equal(t, rest.Body{db.BodyId: "alpha", db.BodyRev: rev2, db.BodyDeleted: true}, docBody)
 
 	// Access without deletion revID shouldn't be allowed (since doc is not in Alice's channels):
 	response = rt.SendUserRequest("GET", "/{{.keyspace}}/alpha", "", "alice")
@@ -1473,7 +1473,7 @@ func _testConcurrentDelete(t *testing.T) {
 	// Create doc
 	response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1", `{"channel":"PBS"}`)
 	rest.RequireStatus(t, response, 201)
-	var body db.Body
+	var body rest.Body
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.Equal(t, true, body["ok"])
 	revId := body["rev"].(string)
@@ -1512,7 +1512,7 @@ func _testConcurrentPutAsDelete(t *testing.T) {
 	// Create doc
 	response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1", `{"channel":"PBS"}`)
 	rest.RequireStatus(t, response, 201)
-	var body db.Body
+	var body rest.Body
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.Equal(t, true, body["ok"])
 	revId := body["rev"].(string)
@@ -1550,7 +1550,7 @@ func _testConcurrentUpdate(t *testing.T) {
 	// Create doc
 	response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1", `{"channel":"PBS"}`)
 	rest.RequireStatus(t, response, 201)
-	var body db.Body
+	var body rest.Body
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.Equal(t, true, body["ok"])
 	revId := body["rev"].(string)
@@ -1588,7 +1588,7 @@ func _testConcurrentNewEditsFalseDelete(t *testing.T) {
 	// Create doc
 	response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1", `{"channel":"PBS"}`)
 	rest.RequireStatus(t, response, 201)
-	var body db.Body
+	var body rest.Body
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.Equal(t, true, body["ok"])
 	revId := body["rev"].(string)
@@ -1631,7 +1631,7 @@ func TestChangesActiveOnlyInteger(t *testing.T) {
 	assert.NoError(t, a.Save(bernard))
 
 	// Put several documents
-	var body db.Body
+	var body rest.Body
 	response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/deletedDoc", `{"channel":["PBS"]}`)
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	deletedRev := body["rev"].(string)
@@ -1880,7 +1880,7 @@ func TestOneShotChangesWithExplicitDocIds(t *testing.T) {
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &changes))
 	require.Len(t, changes.Results, 4)
 	assert.Equal(t, "docD", changes.Results[3].ID)
-	var docBody db.Body
+	var docBody rest.Body
 	assert.NoError(t, base.JSONUnmarshal(changes.Results[3].Doc, &docBody))
 	assert.Equal(t, "docD", docBody[db.BodyId])
 
@@ -1909,7 +1909,7 @@ func updateTestDoc(rt *rest.RestTester, docid string, revid string, body string)
 		return "", fmt.Errorf("createDoc got unexpected response code : %d", response.Code)
 	}
 
-	var responseBody db.Body
+	var responseBody rest.Body
 	_ = base.JSONUnmarshal(response.Body.Bytes(), &responseBody)
 	return responseBody["rev"].(string), nil
 }
@@ -2045,11 +2045,11 @@ func TestChangesIncludeDocs(t *testing.T) {
 
 		if expectedChange.Doc != nil {
 			// result.Doc is json.RawMessage, and properties may not be in the same order for a direct comparison
-			var expectedBody db.Body
-			var resultBody db.Body
+			var expectedBody rest.Body
+			var resultBody rest.Body
 			assert.NoError(t, expectedBody.Unmarshal(expectedChange.Doc))
 			assert.NoError(t, resultBody.Unmarshal(result.Doc))
-			db.AssertEqualBodies(t, expectedBody, resultBody)
+			rest.AssertEqualBodies(t, expectedBody, resultBody)
 		} else {
 			assert.Equal(t, expectedChange.Doc, result.Doc)
 		}
@@ -2080,11 +2080,11 @@ func TestChangesIncludeDocs(t *testing.T) {
 
 		if expectedChange.Doc != nil {
 			// result.Doc is json.RawMessage, and properties may not be in the same order for a direct comparison
-			var expectedBody db.Body
-			var resultBody db.Body
+			var expectedBody rest.Body
+			var resultBody rest.Body
 			assert.NoError(t, expectedBody.Unmarshal(expectedChange.Doc))
 			assert.NoError(t, resultBody.Unmarshal(result.Doc))
-			db.AssertEqualBodies(t, expectedBody, resultBody)
+			rest.AssertEqualBodies(t, expectedBody, resultBody)
 		} else {
 			assert.Equal(t, expectedChange.Doc, result.Doc)
 		}
@@ -2136,11 +2136,11 @@ func TestChangesIncludeDocs(t *testing.T) {
 
 		if expectedChange.Doc != nil {
 			// result.Doc is json.RawMessage, and properties may not be in the same order for a direct comparison
-			var expectedBody db.Body
-			var resultBody db.Body
+			var expectedBody rest.Body
+			var resultBody rest.Body
 			assert.NoError(t, expectedBody.Unmarshal(expectedChange.Doc))
 			assert.NoError(t, resultBody.Unmarshal(result.Doc))
-			db.AssertEqualBodies(t, expectedBody, resultBody)
+			rest.AssertEqualBodies(t, expectedBody, resultBody)
 		} else {
 			assert.Equal(t, expectedChange.Doc, result.Doc)
 		}
@@ -2960,7 +2960,7 @@ func TestChangesViewBackfillSlowQuery(t *testing.T) {
 	// Put rev1 of document
 	response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1", `{"channels":["PBS"]}`)
 	rest.RequireStatus(t, response, 201)
-	var body db.Body
+	var body rest.Body
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.Equal(t, true, body["ok"])
 	revId := body["rev"].(string)
@@ -3063,7 +3063,7 @@ func TestChangesActiveOnlyWithLimit(t *testing.T) {
 	cacheWaiter := testDb.NewDCPCachingCountWaiter(t)
 
 	// Put several documents
-	var body db.Body
+	var body rest.Body
 	response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/deletedDoc", `{"channel":["PBS"]}`)
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	deletedRev := body["rev"].(string)
@@ -3244,7 +3244,7 @@ func TestChangesActiveOnlyWithLimitAndViewBackfill(t *testing.T) {
 
 	cacheWaiter := rt.ServerContext().Database(ctx, "db").NewDCPCachingCountWaiter(t)
 	// Put several documents
-	var body db.Body
+	var body rest.Body
 	response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/deletedDoc", `{"channel":["PBS"]}`)
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	deletedRev := body["rev"].(string)
@@ -3447,7 +3447,7 @@ func TestChangesActiveOnlyWithLimitLowRevCache(t *testing.T) {
 	assert.NoError(t, a.Save(bernard))
 
 	// Put several documents
-	var body db.Body
+	var body rest.Body
 	response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/deletedDoc", `{"channel":["PBS"]}`)
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	deletedRev := body["rev"].(string)
@@ -3894,7 +3894,7 @@ func TestTombstoneCompaction(t *testing.T) {
 			for _, keyspace := range rt.GetKeyspaces() {
 				response := rt.SendAdminRequest("POST", fmt.Sprintf("/%s/", keyspace), `{"foo":"bar"}`)
 				assert.Equal(t, 200, response.Code)
-				var body db.Body
+				var body rest.Body
 				err := base.JSONUnmarshal(response.Body.Bytes(), &body)
 				assert.NoError(t, err)
 				revId := body["rev"].(string)
@@ -3982,7 +3982,7 @@ func WriteDirectWithKey(key string, channelArray []string, sequence uint64, coll
 	// syncData := fmt.Sprintf(`{"rev":"%s", "sequence":%d, "channels":%s, "TimeSaved":"%s"}`, rev, sequence, chanMap, time.Now())
 
 	dataStore := collection.GetCollectionDatastore()
-	_, err := dataStore.Add(key, 0, db.Body{base.SyncPropertyName: syncData, "key": key})
+	_, err := dataStore.Add(key, 0, rest.Body{base.SyncPropertyName: syncData, "key": key})
 	if err != nil {
 		base.PanicfCtx(context.TODO(), "Error while add ket to bucket: %v", err)
 	}

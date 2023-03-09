@@ -259,7 +259,7 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 
 		// bodyJSON is unmarshalled into when required (e.g. Delta patching, or attachment processing)
 		// Before being marshalled back into bytes for storage in the test client
-		var bodyJSON db.Body
+		var bodyJSON Body
 
 		// If deltas are enabled, and we see a deltaSrc property, we'll need to patch it before storing
 		if btc.ClientDeltas && deltaSrc != "" {
@@ -273,12 +273,12 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 			}
 
 			// unmarshal body to extract deltaSrc
-			var delta db.Body
+			var delta Body
 			if err := delta.Unmarshal(body); err != nil {
 				panic(err)
 			}
 
-			var old db.Body
+			var old Body
 			btcr.docsLock.RLock()
 			oldBytes := btcr.docs[docID][deltaSrc].body
 			btcr.docsLock.RUnlock()
@@ -804,7 +804,7 @@ func (btc *BlipTesterCollectionClient) PushRevWithHistory(docID, parentRev strin
 	btc.addCollectionProperty(revRequest)
 	if btc.parent.ClientDeltas && proposeChangesResponse.Properties[db.ProposeChangesResponseDeltas] == "true" {
 		base.DebugfCtx(context.TODO(), base.KeySync, "Sending deltas from test client")
-		var parentDocJSON, newDocJSON db.Body
+		var parentDocJSON, newDocJSON Body
 		err := parentDocJSON.Unmarshal(parentDocBody)
 		if err != nil {
 			return "", err

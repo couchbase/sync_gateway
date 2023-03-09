@@ -897,14 +897,14 @@ func (h *handler) readBody() ([]byte, error) {
 }
 
 // Parses a JSON request body, returning it as a Body map.
-func (h *handler) readJSON() (db.Body, error) {
-	var body db.Body
+func (h *handler) readJSON() (Body, error) {
+	var body Body
 	return body, h.readJSONInto(&body)
 }
 
 // Parses a JSON request body, returning it as a Body map, leaving numbers as float64.
-func (h *handler) readJSONWithoutNumber() (db.Body, error) {
-	var body db.Body
+func (h *handler) readJSONWithoutNumber() (Body, error) {
+	var body Body
 	input, err := processContentEncoding(h.rq.Header, h.requestBody, "application/json")
 	if err != nil {
 		return body, err
@@ -991,7 +991,7 @@ func (h *handler) readSanitizeDbConfigJSON() (*DbConfig, error) {
 }
 
 // Reads & parses the request body, handling either JSON or multipart.
-func (h *handler) readDocument() (db.Body, error) {
+func (h *handler) readDocument() (Body, error) {
 	contentType, attrs, _ := mime.ParseMediaType(h.rq.Header.Get("Content-Type"))
 	switch contentType {
 	case "", "application/json":

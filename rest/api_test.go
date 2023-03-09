@@ -55,7 +55,7 @@ func TestRoot(t *testing.T) {
 
 	response := rt.SendRequest("GET", "/", "")
 	RequireStatus(t, response, 200)
-	var body db.Body
+	var body Body
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.Equal(t, "Welcome", body["couchdb"])
 
@@ -75,7 +75,7 @@ func TestDBRoot(t *testing.T) {
 
 	response := rt.SendRequest("GET", "/db/", "")
 	RequireStatus(t, response, 200)
-	var body db.Body
+	var body Body
 	err := base.JSONUnmarshal(response.Body.Bytes(), &body)
 	assert.NoError(t, err)
 
@@ -160,7 +160,7 @@ func TestDocumentUpdateWithNullBody(t *testing.T) {
 	// Create document
 	response := rt.SendUserRequest("PUT", "/{{.keyspace}}/doc", `{"prop":true, "channels":["foo"]}`, "user1")
 	RequireStatus(t, response, 201)
-	var body db.Body
+	var body Body
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	revid := body["rev"].(string)
 
@@ -278,7 +278,7 @@ func TestBulkDocs(t *testing.T) {
 
 	response = rt.SendAdminRequest("GET", "/{{.keyspace}}/bulk1", "")
 	RequireStatus(t, response, 200)
-	var respBody db.Body
+	var respBody Body
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &respBody))
 	assert.Equal(t, "bulk1", respBody[db.BodyId])
 	assert.Equal(t, "1-50133ddd8e49efad34ad9ecae4cb9907", respBody[db.BodyRev])
@@ -873,7 +873,7 @@ func TestBulkGetPerDocRevsLimit(t *testing.T) {
 
 	// Add each doc with a few revisions
 	for k := range docs {
-		var body db.Body
+		var body Body
 
 		response := rt.SendAdminRequest("PUT", fmt.Sprintf("/{{.keyspace}}/%v", k), fmt.Sprintf(`{"val":"1-%s"}`, k))
 		RequireStatus(t, response, 201)
@@ -987,7 +987,7 @@ func TestLocalDocs(t *testing.T) {
 	RequireStatus(t, response, 201)
 	response = rt.SendAdminRequest("GET", "/{{.keyspace}}/_local/loc1", "")
 	RequireStatus(t, response, 200)
-	var respBody db.Body
+	var respBody Body
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &respBody))
 	assert.Equal(t, "_local/loc1", respBody[db.BodyId])
 	assert.Equal(t, "0-1", respBody[db.BodyRev])
@@ -1089,7 +1089,7 @@ func TestResponseEncoding(t *testing.T) {
 	unzip, err := gzip.NewReader(response.Body)
 	assert.NoError(t, err)
 	unjson := base.JSONDecoder(unzip)
-	var body db.Body
+	var body Body
 	assert.Equal(t, nil, unjson.Decode(&body))
 	assert.Equal(t, str, body["long"])
 }
@@ -1104,8 +1104,8 @@ func TestAllDocsChannelsAfterChannelMove(t *testing.T) {
 			Channels []string            `json:"channels,omitempty"`
 			Access   map[string]base.Set `json:"access,omitempty"` // for admins only
 		} `json:"value"`
-		Doc   db.Body `json:"doc,omitempty"`
-		Error string  `json:"error"`
+		Doc   Body   `json:"doc,omitempty"`
+		Error string `json:"error"`
 	}
 	var allDocsResult struct {
 		TotalRows int          `json:"total_rows"`
@@ -1128,7 +1128,7 @@ func TestAllDocsChannelsAfterChannelMove(t *testing.T) {
 	// Create a doc
 	response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1", `{"foo":"bar", "channels":["ch1"]}`)
 	RequireStatus(t, response, 201)
-	var body db.Body
+	var body Body
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.Equal(t, true, body["ok"])
 	doc1RevID := body["rev"].(string)
@@ -1235,7 +1235,7 @@ func TestOldDocHandling(t *testing.T) {
 	// Create a doc:
 	response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/testOldDocId", `{"foo":"bar"}`)
 	RequireStatus(t, response, 201)
-	var body db.Body
+	var body Body
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.Equal(t, true, body["ok"])
 	alphaRevID := body["rev"].(string)
@@ -1326,7 +1326,7 @@ func TestBulkGetRevPruning(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
-	var body db.Body
+	var body Body
 
 	// The number of goroutines that are reading the doc via the _bulk_get endpoint
 	// which causes the pruning on the map -- all goroutines end up modifying the
@@ -1386,7 +1386,7 @@ func TestDocExpiry(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
-	var body db.Body
+	var body Body
 	response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/expNumericTTL", `{"_exp":100}`)
 	RequireStatus(t, response, 201)
 
@@ -1470,7 +1470,7 @@ func TestDocSyncFunctionExpiry(t *testing.T) {
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
-	var body db.Body
+	var body Body
 	response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/expNumericTTL", `{"expiry":100}`)
 	RequireStatus(t, response, 201)
 
@@ -1686,7 +1686,7 @@ func TestDocIDFilterResurrection(t *testing.T) {
 	// Create Doc
 	response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1", `{"channels": ["A"]}`)
 	assert.Equal(t, http.StatusCreated, response.Code)
-	var body db.Body
+	var body Body
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	docRevID := body["rev"].(string)
 
@@ -1769,7 +1769,7 @@ func TestWebhookProperties(t *testing.T) {
 		err = r.Body.Close()
 		assert.NoError(t, err)
 
-		var body db.Body
+		var body Body
 		err = base.JSONUnmarshal(out, &body)
 		assert.NoError(t, err)
 		assert.Contains(t, string(out), db.BodyId)
@@ -1818,7 +1818,7 @@ func TestWebhookSpecialProperties(t *testing.T) {
 	handler := func(w http.ResponseWriter, r *http.Request) {
 		wg.Done()
 
-		var body db.Body
+		var body Body
 		d := base.JSONDecoder(r.Body)
 		require.NoError(t, d.Decode(&body))
 		require.Contains(t, body, db.BodyId)
@@ -2230,7 +2230,7 @@ func TestDeleteEmptyBodyDoc(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
-	var body db.Body
+	var body Body
 	response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1", "{}")
 	RequireStatus(t, response, http.StatusCreated)
 	assert.NoError(t, json.Unmarshal(response.BodyBytes(), &body))
@@ -2393,7 +2393,7 @@ func TestDocumentChannelHistory(t *testing.T) {
 	rt := NewRestTester(t, &RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction})
 	defer rt.Close()
 
-	var body db.Body
+	var body Body
 
 	// Create doc in channel test and ensure a single channel history entry with only a start sequence
 	// and no old channel history entries
@@ -2480,7 +2480,7 @@ func TestChannelHistoryLegacyDoc(t *testing.T) {
 	err := rt.GetSingleDataStore().Set("doc1", 0, nil, []byte(docData))
 	assert.NoError(t, err)
 
-	var body db.Body
+	var body Body
 
 	// Get doc and ensure its available
 	resp := rt.SendAdminRequest("GET", "/{{.keyspace}}/doc1", "")
@@ -2519,7 +2519,7 @@ func (rt *RestTester) CreateDocReturnRev(t *testing.T, docID string, revID strin
 	resp := rt.SendAdminRequest("PUT", url, string(bodyJSON))
 	RequireStatus(t, resp, http.StatusCreated)
 
-	var body db.Body
+	var body Body
 	require.NoError(t, base.JSONUnmarshal(resp.BodyBytes(), &body))
 	assert.Equal(t, true, body["ok"])
 	revID = body["rev"].(string)

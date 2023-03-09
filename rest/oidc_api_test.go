@@ -2383,7 +2383,7 @@ func TestOpenIDConnectProviderRemoval(t *testing.T) {
 	// Check that the user is present in the admin API
 	res = BootstrapAdminRequest(t, http.MethodGet, fmt.Sprintf("/db/_user/%s", subject), "")
 	require.Equal(t, http.StatusOK, res.StatusCode)
-	var adminResult db.Body
+	var adminResult Body
 	require.NoError(t, base.JSONUnmarshal([]byte(res.Body), &adminResult))
 	base.DebugfCtx(base.TestCtx(t), base.KeyAll, "User data from admin API: %v", adminResult)
 
@@ -2414,7 +2414,7 @@ func TestOpenIDConnectProviderRemoval(t *testing.T) {
 	// Check that the user is still present, but with no OIDC info
 	res = BootstrapAdminRequest(t, http.MethodGet, fmt.Sprintf("/db/_user/%s", subject), "")
 	require.Equal(t, http.StatusOK, res.StatusCode)
-	adminResult = db.Body{}
+	adminResult = Body{}
 	require.NoError(t, base.JSONUnmarshal([]byte(res.Body), &adminResult))
 	base.DebugfCtx(base.TestCtx(t), base.KeyAll, "User data from admin API: %v", adminResult)
 
@@ -2440,7 +2440,7 @@ func TestOpenIDConnectProviderRemoval(t *testing.T) {
 	assert.Equal(t, http.StatusOK, httpRes.StatusCode)
 
 	var sessionResponse struct {
-		UserCtx db.Body `json:"userCtx"`
+		UserCtx Body `json:"userCtx"`
 	}
 	require.NoError(t, json.NewDecoder(httpRes.Body).Decode(&sessionResponse))
 	require.NotContains(t, sessionResponse.UserCtx["channels"], testChannelName)

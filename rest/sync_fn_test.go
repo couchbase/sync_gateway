@@ -101,7 +101,7 @@ func TestSyncFnBodyPropertiesTombstone(t *testing.T) {
 
 	response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/"+testDocID, `{"`+testdataKey+`":true}`)
 	RequireStatus(t, response, 201)
-	var body db.Body
+	var body Body
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.Equal(t, true, body["ok"])
 	revID := body["rev"].(string)
@@ -149,7 +149,7 @@ func TestSyncFnOldDocBodyProperties(t *testing.T) {
 
 	response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/"+testDocID, `{"`+testdataKey+`":true}`)
 	RequireStatus(t, response, 201)
-	var body db.Body
+	var body Body
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.Equal(t, true, body["ok"])
 	revID := body["rev"].(string)
@@ -198,7 +198,7 @@ func TestSyncFnOldDocBodyPropertiesTombstoneResurrect(t *testing.T) {
 
 	response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/"+testDocID, `{"`+testdataKey+`":true}`)
 	RequireStatus(t, response, 201)
-	var body db.Body
+	var body Body
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.Equal(t, true, body["ok"])
 	revID := body["rev"].(string)
@@ -428,7 +428,7 @@ func TestDBOfflinePostResync(t *testing.T) {
 
 	log.Printf("Taking DB offline")
 	response := rt.SendAdminRequest("GET", "/db/", "")
-	var body db.Body
+	var body Body
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.True(t, body["state"].(string) == "Online")
 
@@ -478,7 +478,7 @@ func TestDBOfflineSingleResync(t *testing.T) {
 
 	log.Printf("Taking DB offline")
 	response := rt.SendAdminRequest("GET", "/db/", "")
-	var body db.Body
+	var body Body
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.True(t, body["state"].(string) == "Online")
 
@@ -988,7 +988,7 @@ func TestResyncRegenerateSequences(t *testing.T) {
 
 	var response *TestResponse
 	var docSeqArr []float64
-	var body db.Body
+	var body Body
 
 	for i := 0; i < 10; i++ {
 		docID := fmt.Sprintf("doc%d", i)

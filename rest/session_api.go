@@ -15,7 +15,6 @@ import (
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
-	"github.com/couchbase/sync_gateway/db"
 )
 
 const kDefaultSessionTTL = 24 * time.Hour
@@ -317,7 +316,7 @@ func (h *handler) respondWithSessionInfoForSession(session *auth.LoginSession) e
 }
 
 // Formats session response similar to what is returned by CouchDB
-func (h *handler) formatSessionResponse(user auth.User) db.Body {
+func (h *handler) formatSessionResponse(user auth.User) Body {
 
 	var name *string
 	allChannels := channels.TimedSet{}
@@ -331,9 +330,9 @@ func (h *handler) formatSessionResponse(user auth.User) db.Body {
 	}
 
 	// Return a JSON struct similar to what CouchDB returns:
-	userCtx := db.Body{"name": name, "channels": allChannels}
+	userCtx := Body{"name": name, "channels": allChannels}
 	handlers := []string{"default", "cookie"}
-	response := db.Body{"ok": true, "userCtx": userCtx, "authentication_handlers": handlers}
+	response := Body{"ok": true, "userCtx": userCtx, "authentication_handlers": handlers}
 	return response
 
 }

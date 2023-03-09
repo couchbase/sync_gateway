@@ -924,7 +924,7 @@ func (rt *RestTester) WaitForViewAvailable(viewURLPath string) (err error) {
 }
 
 func (rt *RestTester) GetDBState() string {
-	var body db.Body
+	var body Body
 	resp := rt.SendAdminRequest("GET", "/{{.db}}/", "")
 	RequireStatus(rt.TB, resp, 200)
 	require.NoError(rt.TB, base.JSONUnmarshal(resp.Body.Bytes(), &body))
@@ -963,7 +963,7 @@ func (rt *RestTester) SendAdminRequestWithHeaders(method, resource string, body 
 
 // PutDocumentWithRevID builds a new_edits=false style put to create a revision with the specified revID.
 // If parentRevID is not specified, treated as insert
-func (rt *RestTester) PutDocumentWithRevID(docID string, newRevID string, parentRevID string, body db.Body) (response *TestResponse, err error) {
+func (rt *RestTester) PutDocumentWithRevID(docID string, newRevID string, parentRevID string, body Body) (response *TestResponse, err error) {
 
 	requestBody := body.ShallowCopy()
 	newRevGeneration, newRevDigest := db.ParseRevID(newRevID)
@@ -2441,4 +2441,12 @@ func (rt *RestTester) GetChangesOneShot(t testing.TB, keyspace string, since int
 	assert.NoError(t, err, "Error unmarshalling changes response")
 	require.Len(t, changes.Results, changesCount)
 	return changesResponse
+}
+
+func AssertEqualBodies(t *testing.T, expected, actual Body) {
+	expectedCanonical, err := base.JSONMarshalCanonical(expected)
+	assert.NoError(t, err)
+	actualCanonical, err := base.JSONMarshalCanonical(actual)
+	assert.NoError(t, err)
+	assert.Equal(t, string(expectedCanonical), string(actualCanonical))
 }

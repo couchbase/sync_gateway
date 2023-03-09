@@ -253,7 +253,7 @@ func TestRoleAssignmentBeforeUserExists(t *testing.T) {
 	RequireStatus(t, response, 201)
 	response = rt.SendAdminRequest("GET", "/db/_role/role1", "")
 	RequireStatus(t, response, 200)
-	var body db.Body
+	var body Body
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.Equal(t, "role1", body["name"])
 
@@ -325,7 +325,7 @@ func TestRoleAccessChanges(t *testing.T) {
 	cacheWaiter.Add(1)
 	response = rt.SendRequest("PUT", "/{{.keyspace}}/fashion", `{"user":"alice","role":["role:hipster","role:bogus"]}`)
 	RequireStatus(t, response, 201)
-	var body db.Body
+	var body Body
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.Equal(t, true, body["ok"])
 	fashionRevID := body["rev"].(string)

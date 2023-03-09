@@ -144,7 +144,7 @@ func TestBlipDeltaSyncPushPullNewAttachment(t *testing.T) {
 
 	resp := rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/"+docID+"?rev="+revId, "")
 	assert.Equal(t, http.StatusOK, resp.Code)
-	var respBody db.Body
+	var respBody Body
 	assert.NoError(t, base.JSONUnmarshal(resp.Body.Bytes(), &respBody))
 
 	assert.Equal(t, docID, respBody[db.BodyId])
@@ -253,7 +253,7 @@ func TestBlipDeltaSyncNewAttachmentPull(t *testing.T) {
 
 	resp = rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/doc1?rev=2-10000d5ec533b29b117e60274b1e3653", "")
 	assert.Equal(t, http.StatusOK, resp.Code)
-	var respBody db.Body
+	var respBody Body
 	assert.NoError(t, base.JSONUnmarshal(resp.Body.Bytes(), &respBody))
 	assert.Equal(t, "doc1", respBody[db.BodyId])
 	assert.Equal(t, "2-10000d5ec533b29b117e60274b1e3653", respBody[db.BodyRev])
@@ -887,7 +887,7 @@ func TestBlipDeltaSyncPush(t *testing.T) {
 
 	resp = rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/doc1?rev="+newRev, "")
 	assert.Equal(t, http.StatusOK, resp.Code)
-	var respBody db.Body
+	var respBody Body
 	assert.NoError(t, base.JSONUnmarshal(resp.Body.Bytes(), &respBody))
 	assert.Equal(t, "doc1", respBody[db.BodyId])
 	assert.Equal(t, "2-abc", respBody[db.BodyRev])
