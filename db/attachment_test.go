@@ -240,50 +240,38 @@ func TestAttachmentRetrievalUsingRevCache(t *testing.T) {
 	rev1input := `{"_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="},
                                     "bye.txt": {"data":"Z29vZGJ5ZSBjcnVlbCB3b3JsZA=="}}}`
 	_, _, err := collection.Put(ctx, "doc1", unjson(rev1input))
-	assert.NoError(t, err, "Couldn't create document")
+	require.NoError(t, err, "Couldn't create document")
 
 	initCount, countErr := base.GetExpvarAsInt("syncGateway_db", "document_gets")
-	assert.NoError(t, countErr, "Couldn't retrieve document_gets expvar")
+	require.NoError(t, countErr, "Couldn't retrieve document_gets expvar")
 	gotbody, err := collection.Get1xRevBody(ctx, "doc1", "1-ca9ad22802b66f662ff171f226211d5c", false, []string{})
-	assert.NoError(t, err, "Couldn't get document")
+	require.NoError(t, err, "Couldn't get document")
 	atts := gotbody[BodyAttachments].(AttachmentsMeta)
 
-	hello := atts["hello.txt"].(map[string]interface{})
-	assert.Equal(t, "hello world", string(hello["data"].([]byte)))
-	assert.Equal(t, "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=", hello["digest"])
-	assert.Equal(t, 11, hello["length"])
-	assert.Equal(t, 1, hello["revpos"])
+	assertAttachments := func(atts AttachmentsMeta) {
+		hello := atts["hello.txt"].(map[string]interface{})
+		assert.Equal(t, "hello world", string(hello["data"].([]byte)))
+		assert.Equal(t, "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=", hello["digest"])
+		assert.Equal(t, 11, hello["length"])
+		assert.Equal(t, 1, hello["revpos"])
 
-	bye := atts["bye.txt"].(map[string]interface{})
-	assert.Equal(t, "goodbye cruel world", string(bye["data"].([]byte)))
-	assert.Equal(t, "sha1-l+N7VpXGnoxMm8xfvtWPbz2YvDc=", bye["digest"])
-	assert.Equal(t, 19, bye["length"])
-	assert.Equal(t, 1, bye["revpos"])
-
-	getCount, countErr := base.GetExpvarAsInt("syncGateway_db", "document_gets")
-	assert.NoError(t, countErr, "Couldn't retrieve document_gets expvar")
-	assert.Equal(t, initCount, getCount)
+		bye := atts["bye.txt"].(map[string]interface{})
+		assert.Equal(t, "goodbye cruel world", string(bye["data"].([]byte)))
+		assert.Equal(t, "sha1-l+N7VpXGnoxMm8xfvtWPbz2YvDc=", bye["digest"])
+		assert.Equal(t, 19, bye["length"])
+		assert.Equal(t, 1, bye["revpos"])
+		getCount, countErr := base.GetExpvarAsInt("syncGateway_db", "document_gets")
+		require.NoError(t, countErr, "Couldn't retrieve document_gets expvar")
+		require.Equal(t, initCount, getCount)
+	}
+	assertAttachments(atts)
 
 	// Repeat, validate no additional get operations
 	gotbody, err = collection.Get1xRevBody(ctx, "doc1", "1-ca9ad22802b66f662ff171f226211d5c", false, []string{})
-	assert.NoError(t, err, "Couldn't get document")
+	require.NoError(t, err, "Couldn't get document")
 	atts = gotbody[BodyAttachments].(AttachmentsMeta)
 
-	hello = atts["hello.txt"].(map[string]interface{})
-	assert.Equal(t, "hello world", string(hello["data"].([]byte)))
-	assert.Equal(t, "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=", hello["digest"])
-	assert.Equal(t, 11, hello["length"])
-	assert.Equal(t, 1, hello["revpos"])
-
-	bye = atts["bye.txt"].(map[string]interface{})
-	assert.Equal(t, "goodbye cruel world", string(bye["data"].([]byte)))
-	assert.Equal(t, "sha1-l+N7VpXGnoxMm8xfvtWPbz2YvDc=", bye["digest"])
-	assert.Equal(t, 19, bye["length"])
-	assert.Equal(t, 1, bye["revpos"])
-
-	getCount, countErr = base.GetExpvarAsInt("syncGateway_db", "document_gets")
-	assert.NoError(t, countErr, "Couldn't retrieve document_gets expvar")
-	assert.Equal(t, initCount, getCount)
+	assertAttachments(atts)
 }
 
 func TestAttachmentCASRetryAfterNewAttachment(t *testing.T) {

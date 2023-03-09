@@ -333,8 +333,11 @@ func TestLegacyGuestUserMigration(t *testing.T) {
 	cluster, err := CreateCouchbaseClusterFromStartupConfig(sc, base.PerUseClusterConnections)
 	require.NoError(t, err)
 
-	var dbConfig DbConfig
-	_, err = cluster.GetConfig(tb.GetName(), PersistentConfigDefaultGroupID, &dbConfig)
+	bootstrap := bootstrapContext{
+		Connection: cluster,
+	}
+	var dbConfig DatabaseConfig
+	_, err = bootstrap.GetConfig(tb.GetName(), PersistentConfigDefaultGroupID, "db", &dbConfig)
 	require.NoError(t, err)
 
 	assert.Equal(t, &expected, dbConfig.Guest)
@@ -433,7 +436,7 @@ func TestLegacyConfigPrinciplesMigration(t *testing.T) {
 	rt.ServerContext().addLegacyPrincipals(ctx, users, roles)
 
 	// Check that principles all exist on bucket
-	authenticator := auth.NewAuthenticator(bucket.DefaultDataStore(), nil, auth.DefaultAuthenticatorOptions())
+	authenticator := auth.NewAuthenticator(bucket.DefaultDataStore(), nil, rt.GetDatabase().AuthenticatorOptions())
 	for _, name := range expectedUsers {
 		user, err := authenticator.GetUser(name)
 		assert.NoError(t, err)

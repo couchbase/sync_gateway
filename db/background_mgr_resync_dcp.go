@@ -38,12 +38,13 @@ type ResyncCollections map[string][]string
 
 var _ BackgroundManagerProcessI = &ResyncManagerDCP{}
 
-func NewResyncManagerDCP(metadataStore base.DataStore, useXattrs bool) *BackgroundManager {
+func NewResyncManagerDCP(metadataStore base.DataStore, useXattrs bool, metaKeys *base.MetadataKeys) *BackgroundManager {
 	return &BackgroundManager{
 		name:    "resync",
 		Process: &ResyncManagerDCP{useXattrs: useXattrs},
 		clusterAwareOptions: &ClusterAwareBackgroundManagerOptions{
 			metadataStore: metadataStore,
+			metaKeys:      metaKeys,
 			processSuffix: "resync",
 		},
 		terminator: base.NewSafeTerminator(),
@@ -156,7 +157,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]interface
 		base.InfofCtx(ctx, base.KeyAll, "[%s] running resync against specified collections", resyncLoggingID)
 	}
 
-	clientOptions := getReSyncDCPClientOptions(collectionIDs, db.Options.GroupID)
+	clientOptions := getReSyncDCPClientOptions(collectionIDs, db.Options.GroupID, db.MetadataKeys.DCPCheckpointPrefix(db.Options.GroupID))
 
 	dcpFeedKey := generateResyncDCPStreamName(r.ResyncID)
 	dcpClient, err := base.NewDCPClient(dcpFeedKey, callback, *clientOptions, bucket)
@@ -312,13 +313,14 @@ type ResyncManagerStatusDocDCP struct {
 }
 
 // getReSyncDCPClientOptions returns the default set of DCPClientOptions suitable for resync
-func getReSyncDCPClientOptions(collectionIDs []uint32, groupID string) *base.DCPClientOptions {
+func getReSyncDCPClientOptions(collectionIDs []uint32, groupID string, prefix string) *base.DCPClientOptions {
 	return &base.DCPClientOptions{
 		OneShot:           true,
 		FailOnRollback:    true,
 		MetadataStoreType: base.DCPMetadataStoreCS,
 		GroupID:           groupID,
 		CollectionIDs:     collectionIDs,
+		CheckpointPrefix:  prefix,
 	}
 }
 

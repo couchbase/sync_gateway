@@ -28,12 +28,13 @@ type ResyncManager struct {
 
 var _ BackgroundManagerProcessI = &ResyncManager{}
 
-func NewResyncManager(metadataStore base.DataStore) *BackgroundManager {
+func NewResyncManager(metadataStore base.DataStore, metaKeys *base.MetadataKeys) *BackgroundManager {
 	return &BackgroundManager{
 		name:    "resync",
 		Process: &ResyncManager{},
 		clusterAwareOptions: &ClusterAwareBackgroundManagerOptions{
 			metadataStore: metadataStore,
+			metaKeys:      metaKeys,
 			processSuffix: "resync",
 		},
 		terminator: base.NewSafeTerminator(),

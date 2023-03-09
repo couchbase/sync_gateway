@@ -48,3 +48,7 @@ func (s ScopeAndCollectionNames) ScopeAndCollectionNames() []string {
 	}
 	return scopes
 }
+
+func FullyQualifiedCollectionName(bucketName, scopeName, collectionName string) string {
+	return bucketName + "." + scopeName + "." + collectionName
+}

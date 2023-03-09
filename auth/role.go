@@ -35,6 +35,7 @@ type roleImpl struct {
 	CollectionsAccess map[string]map[string]*CollectionAccess `json:"collection_access,omitempty"` // Nested maps of CollectionAccess, indexed by scope and collection name
 	vbNo              *uint16
 	cas               uint64
+	docID             string // key used to store the roleImpl
 }
 
 type TimedSetHistory map[string]GrantHistory
@@ -206,7 +207,9 @@ func ValidatePrincipalName(name string) error {
 
 // Creates a new Role object.
 func (auth *Authenticator) NewRole(name string, channels base.Set) (Role, error) {
-	role := &roleImpl{}
+	role := &roleImpl{
+		docID: auth.DocIDForRole(name),
+	}
 	existingRole, err := auth.GetRoleIncDeleted(name)
 	if err != nil {
 		return nil, err
@@ -216,7 +219,6 @@ func (auth *Authenticator) NewRole(name string, channels base.Set) (Role, error)
 		role.SetCas(existingRole.Cas())
 		role.SetChannelHistory(existingRole.ChannelHistory())
 	}
-
 	if err := role.initRole(name, channels, auth.Collections); err != nil {
 		return nil, err
 	}
@@ -228,7 +230,9 @@ func (auth *Authenticator) NewRole(name string, channels base.Set) (Role, error)
 
 // Creates a new Role object.
 func (auth *Authenticator) NewRoleNoChannels(name string) (Role, error) {
-	role := &roleImpl{}
+	role := &roleImpl{
+		docID: auth.DocIDForRole(name),
+	}
 	existingRole, err := auth.GetRoleIncDeleted(name)
 	if err != nil {
 		return nil, err
@@ -248,12 +252,8 @@ func (auth *Authenticator) NewRoleNoChannels(name string) (Role, error) {
 	return role, nil
 }
 
-func docIDForRole(name string) string {
-	return base.RolePrefix + name
-}
-
 func (role *roleImpl) DocID() string {
-	return docIDForRole(role.Name_)
+	return role.docID
 }
 
 // Key used in 'access' view (not same meaning as doc ID)

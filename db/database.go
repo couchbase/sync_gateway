@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"net/http"
 	"regexp"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -129,6 +130,7 @@ type DatabaseContext struct {
 	singleCollection             *DatabaseCollection            // Temporary collection
 	CollectionByID               map[uint32]*DatabaseCollection // A map keyed by collection ID to Collection
 	CollectionNames              map[string]map[string]struct{} // Map of scope, collection names
+	MetadataKeys                 *base.MetadataKeys             // Factory to generate metadata document keys
 }
 
 type Scope struct {
@@ -181,6 +183,22 @@ type ScopeOptions struct {
 type CollectionOptions struct {
 	Sync         *string               // Collection sync function
 	ImportFilter *ImportFilterFunction // Opt-in filter for document import
+}
+
+// Check whether the specified ScopesOptions only defines the default collection
+func (so ScopesOptions) onlyDefaultCollection() bool {
+	if so == nil || len(so) == 0 {
+		return true
+	}
+	if len(so) > 1 {
+		return false
+	}
+	defaultScope, ok := so[base.DefaultScope]
+	if !ok || len(defaultScope.Collections) > 1 {
+		return false
+	}
+	_, ok = defaultScope.Collections[base.DefaultCollection]
+	return ok
 }
 
 type SGReplicateOptions struct {
@@ -401,6 +419,15 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 		ServerUUID:     serverUUID,
 	}
 
+	// Initialize metadata ID and keys
+	// TODO: apply length limit to MetadataPrefix
+	metadataID := dbName
+	if options.Scopes.onlyDefaultCollection() {
+		metadataID = ""
+	}
+	metaKeys := base.NewMetadataKeys(metadataID)
+	dbContext.MetadataKeys = metaKeys
+
 	cleanupFunctions = append(cleanupFunctions, func() {
 		base.SyncGatewayStats.ClearDBStats(dbName)
 	})
@@ -415,7 +442,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 
 	dbContext.EventMgr = NewEventManager(dbContext.terminator)
 
-	dbContext.sequences, err = newSequenceAllocator(metadataStore, dbContext.DbStats.Database())
+	dbContext.sequences, err = newSequenceAllocator(metadataStore, dbContext.DbStats.Database(), metaKeys)
 	if err != nil {
 		return nil, err
 	}
@@ -448,7 +475,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 	// Initialize sg cluster config.  Required even if import and sgreplicate are disabled
 	// on this node, to support replication REST API calls
 	if base.IsEnterpriseEdition() {
-		sgCfg, err := base.NewCfgSG(metadataStore, dbContext.Options.GroupID)
+		sgCfg, err := base.NewCfgSG(metadataStore, metaKeys.SGCfgPrefix(dbContext.Options.GroupID))
 		if err != nil {
 			return nil, err
 		}
@@ -462,7 +489,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 	}
 
 	// Initialize the tap Listener for notify handling
-	dbContext.mutationListener.Init(bucket.GetName(), options.GroupID)
+	dbContext.mutationListener.Init(bucket.GetName(), options.GroupID, dbContext.MetadataKeys)
 
 	if len(options.Scopes) == 0 {
 		return nil, fmt.Errorf("Setting scopes to be zero is invalid")
@@ -534,6 +561,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 		dbContext.channelCache,
 		notifyChange,
 		dbContext.Options.CacheOptions,
+		metaKeys,
 	)
 	if err != nil {
 		base.DebugfCtx(ctx, base.KeyDCP, "Error initializing the change cache", err)
@@ -562,7 +590,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 	// sending heartbeats before registering itself to the cfg, to avoid triggering immediate removal by other active nodes.
 	if base.IsEnterpriseEdition() && (importEnabled || sgReplicateEnabled) {
 		// Create heartbeater
-		heartbeaterPrefix := base.HeartbeaterPrefixWithGroupID(dbContext.Options.GroupID)
+		heartbeaterPrefix := metaKeys.HeartbeaterPrefix(dbContext.Options.GroupID)
 		heartbeater, err := base.NewCouchbaseHeartbeater(dbContext.MetadataStore, heartbeaterPrefix, dbContext.UUID)
 		if err != nil {
 			return nil, pkgerrors.Wrapf(err, "Error starting heartbeater for bucket %s", base.MD(bucket.GetName()).Redact())
@@ -622,8 +650,8 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 	// If this is an xattr import node, start import feed.  Must be started after the caching DCP feed, as import cfg
 	// subscription relies on the caching feed.
 	if importEnabled {
-		dbContext.ImportListener = NewImportListener(dbContext.Options.GroupID)
-		if importFeedErr := dbContext.ImportListener.StartImportFeed(ctx, bucket, dbContext.DbStats, dbContext); importFeedErr != nil {
+		dbContext.ImportListener = NewImportListener(ctx, metaKeys.DCPCheckpointPrefix(dbContext.Options.GroupID), dbContext)
+		if importFeedErr := dbContext.ImportListener.StartImportFeed(dbContext); importFeedErr != nil {
 			return nil, importFeedErr
 		}
 
@@ -739,12 +767,12 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 	}
 
 	if dbContext.UseQueryBasedResyncManager() {
-		dbContext.ResyncManager = NewResyncManager(metadataStore)
+		dbContext.ResyncManager = NewResyncManager(metadataStore, metaKeys)
 	} else {
-		dbContext.ResyncManager = NewResyncManagerDCP(metadataStore, dbContext.UseXattrs())
+		dbContext.ResyncManager = NewResyncManagerDCP(metadataStore, dbContext.UseXattrs(), metaKeys)
 	}
 	dbContext.TombstoneCompactionManager = NewTombstoneCompactionManager()
-	dbContext.AttachmentCompactionManager = NewAttachmentCompactionManager(metadataStore)
+	dbContext.AttachmentCompactionManager = NewAttachmentCompactionManager(metadataStore, metaKeys)
 
 	return dbContext, nil
 }
@@ -905,7 +933,7 @@ func (context *DatabaseContext) RestartListener() error {
 	context.mutationListener.Stop()
 	// Delay needed to properly stop
 	time.Sleep(2 * time.Second)
-	context.mutationListener.Init(context.Bucket.GetName(), context.Options.GroupID)
+	context.mutationListener.Init(context.Bucket.GetName(), context.Options.GroupID, context.MetadataKeys)
 	cacheFeedStatsMap := context.DbStats.Database().CacheFeedMapStats
 	if err := context.mutationListener.Start(context.Bucket, cacheFeedStatsMap.Map, context.Scopes, context.MetadataStore); err != nil {
 		return err
@@ -983,7 +1011,7 @@ func (dbCtx *DatabaseContext) RemoveObsoleteIndexes(ctx context.Context, preview
 //
 //	to remove
 func (context *DatabaseContext) NotifyTerminatedChanges(username string) {
-	context.mutationListener.NotifyCheckForTermination(base.SetOf(base.UserPrefix + username))
+	context.mutationListener.NotifyCheckForTermination(base.SetOf(base.UserPrefixRoot + username))
 }
 
 func (dc *DatabaseContext) TakeDbOffline(ctx context.Context, reason string) error {
@@ -1049,6 +1077,7 @@ func (context *DatabaseContext) Authenticator(ctx context.Context) *auth.Authent
 		BcryptCost:               context.Options.BcryptCost,
 		LogCtx:                   ctx,
 		Collections:              context.CollectionNames,
+		MetaKeys:                 context.MetadataKeys,
 	})
 
 	return authenticator
@@ -1247,7 +1276,8 @@ func (db *DatabaseContext) getRoleIDsInBackground(ctx context.Context) <-chan da
 
 // Returns the Names of all users
 func (db *DatabaseContext) GetUserNames(ctx context.Context) (users []string, err error) {
-	startKey := base.UserPrefix
+	dbUserPrefix := db.MetadataKeys.UserKeyPrefix()
+	startKey := dbUserPrefix
 	limit := db.Options.QueryPaginationLimit
 
 	users = []string{}
@@ -1266,7 +1296,7 @@ outerLoop:
 		for {
 			// startKey is inclusive for views, so need to skip first result if using non-empty startKey, as this results in an overlapping result
 			var skipAddition bool
-			if resultCount == 0 && startKey != base.UserPrefix {
+			if resultCount == 0 && startKey != dbUserPrefix {
 				skipAddition = true
 			}
 
@@ -1275,8 +1305,13 @@ outerLoop:
 			if !found {
 				break
 			}
+
+			if !strings.HasPrefix(queryRow.ID, dbUserPrefix) {
+				break
+			}
+
 			principalName = queryRow.Name
-			startKey = base.UserPrefix + queryRow.Name
+			startKey = queryRow.ID
 
 			resultCount++
 
@@ -1305,6 +1340,11 @@ func (db *DatabaseContext) getAllPrincipalIDsSyncDocs(ctx context.Context) (user
 	startKey := ""
 	limit := db.Options.QueryPaginationLimit
 
+	dbUserPrefix := db.MetadataKeys.UserKeyPrefix()
+	dbRolePrefix := db.MetadataKeys.RoleKeyPrefix()
+	lenDbUserPrefix := len(dbUserPrefix)
+	lenDbRolePrefix := len(dbRolePrefix)
+
 	users = []string{}
 	roles = []string{}
 
@@ -1315,9 +1355,8 @@ outerLoop:
 			return nil, nil, err
 		}
 
-		var isUser bool
+		var isDbUser, isDbRole bool
 		var principalName string
-		lenUserKeyPrefix := len(base.UserPrefix)
 
 		resultCount := 0
 
@@ -1328,32 +1367,44 @@ outerLoop:
 				skipAddition = true
 			}
 
+			var rowID string
 			if db.Options.UseViews {
 				var viewRow principalsViewRow
 				found := results.Next(&viewRow)
 				if !found {
 					break
 				}
-				isUser = viewRow.Value
-				principalName = viewRow.Key
-				startKey = principalName
+				rowID = viewRow.ID
+				//isUser = viewRow.Value
+				//principalName = viewRow.Key
+				startKey = viewRow.Key
 			} else {
 				var queryRow QueryIdRow
 				found := results.Next(&queryRow)
 				if !found {
 					break
 				}
-				if len(queryRow.Id) < lenUserKeyPrefix {
-					continue
-				}
-				isUser = queryRow.Id[0:lenUserKeyPrefix] == base.UserPrefix
-				principalName = queryRow.Id[lenUserKeyPrefix:]
+				rowID = queryRow.Id
 				startKey = queryRow.Id
+			}
+			if len(rowID) < lenDbUserPrefix && len(rowID) < lenDbRolePrefix {
+				continue
+			}
+
+			isDbUser = strings.HasPrefix(rowID, dbUserPrefix)
+			isDbRole = strings.HasPrefix(rowID, dbRolePrefix)
+			if !isDbUser && !isDbRole {
+				continue
+			}
+			if isDbUser {
+				principalName = rowID[lenDbUserPrefix:]
+			} else {
+				principalName = rowID[lenDbRolePrefix:]
 			}
 			resultCount++
 
 			if principalName != "" && !skipAddition {
-				if isUser {
+				if isDbUser {
 					users = append(users, principalName)
 				} else {
 					roles = append(roles, principalName)
@@ -1386,7 +1437,8 @@ func (db *DatabaseContext) GetUsers(ctx context.Context, limit int) (users []aut
 	// limit handling and startKey (non-user _sync: prefixed documents being included in the query limit evaluation).
 	// This doesn't happen for AllPrincipalIDs, I believe because the role check forces query to not assume
 	// a contiguous set of results
-	startKey := base.UserPrefix
+	dbUserKeyPrefix := db.MetadataKeys.UserKeyPrefix()
+	startKey := dbUserKeyPrefix
 	paginationLimit := db.Options.QueryPaginationLimit
 	if paginationLimit == 0 {
 		paginationLimit = DefaultQueryPaginationLimit
@@ -1412,7 +1464,7 @@ outerLoop:
 		for {
 			// startKey is inclusive, so need to skip first result if using non-empty startKey, as this results in an overlapping result
 			var skipAddition bool
-			if resultCount == 0 && startKey != base.UserPrefix {
+			if resultCount == 0 && startKey != dbUserKeyPrefix {
 				skipAddition = true
 			}
 
@@ -1421,7 +1473,11 @@ outerLoop:
 			if !found {
 				break
 			}
-			startKey = base.UserPrefix + queryRow.Name
+			if !strings.HasPrefix(queryRow.ID, dbUserKeyPrefix) {
+				break
+			}
+
+			startKey = queryRow.ID
 			resultCount++
 			if queryRow.Name != "" && !skipAddition {
 				principal := auth.PrincipalConfig{
@@ -1457,7 +1513,8 @@ outerLoop:
 
 func (db *DatabaseContext) getRoleIDsUsingIndex(ctx context.Context, includeDeleted bool) (roles []string, err error) {
 
-	startKey := ""
+	dbRoleIDPrefix := db.MetadataKeys.RoleKeyPrefix()
+	startKey := dbRoleIDPrefix
 	limit := db.Options.QueryPaginationLimit
 
 	roles = []string{}
@@ -1476,14 +1533,14 @@ outerLoop:
 		}
 
 		var roleName string
-		lenRoleKeyPrefix := len(base.RolePrefix)
+		lenRoleKeyPrefix := len(dbRoleIDPrefix)
 
 		resultCount := 0
 
 		for {
 			// startKey is inclusive for views, so need to skip first result if using non-empty startKey, as this results in an overlapping result
 			var skipAddition bool
-			if resultCount == 0 && startKey != "" {
+			if resultCount == 0 && startKey != dbRoleIDPrefix {
 				skipAddition = true
 			}
 
@@ -1494,6 +1551,9 @@ outerLoop:
 			}
 			if len(queryRow.Id) < lenRoleKeyPrefix {
 				continue
+			}
+			if !strings.HasPrefix(queryRow.Id, dbRoleIDPrefix) {
+				break
 			}
 			roleName = queryRow.Id[lenRoleKeyPrefix:]
 			startKey = queryRow.Id
@@ -2253,4 +2313,10 @@ func (dbc *Database) GetDefaultDatabaseCollectionWithUser() (*DatabaseCollection
 // GetSingleDatabaseCollection is a temporary function to return a single collection. This should be a temporary function while collection work is ongoing.
 func (dbc *DatabaseContext) GetSingleDatabaseCollection() *DatabaseCollection {
 	return dbc.singleCollection
+}
+
+func (dbc *DatabaseContext) AuthenticatorOptions() auth.AuthenticatorOptions {
+	defaultOptions := auth.DefaultAuthenticatorOptions()
+	defaultOptions.MetaKeys = dbc.MetadataKeys
+	return defaultOptions
 }

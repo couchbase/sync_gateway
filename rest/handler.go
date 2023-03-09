@@ -307,10 +307,12 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 			// get a read lock on the dbContext
 			// When the lock is returned we know that the db state will not be changed by
 			// any other call
-			dbContext.AccessLock.RLock()
 
-			// defer releasing the dbContext until after the handler method returns
-			defer dbContext.AccessLock.RUnlock()
+			// defer releasing the dbContext until after the handler method returns, unless it's a blipsync request
+			if !h.pathTemplateContains("_blipsync") {
+				dbContext.AccessLock.RLock()
+				defer dbContext.AccessLock.RUnlock()
+			}
 
 			dbState := atomic.LoadUint32(&dbContext.State)
 
@@ -435,6 +437,9 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 		ksNotFound := base.HTTPErrorf(http.StatusNotFound, "keyspace %s not found", ks)
 		if dbContext.Scopes != nil {
 			// If scopes are defined on the database but not in th an empty scope to refer to the one SG is running with, rather than falling back to _default
+			if keyspaceScope == nil && keyspaceCollection == nil {
+				ksNotFound = base.HTTPErrorf(http.StatusNotFound, "keyspace %s.%s.%s not found", ks, base.DefaultScope, base.DefaultCollection)
+			}
 			if keyspaceScope == nil {
 				if len(dbContext.Scopes) == 1 {
 					for scopeName, _ := range dbContext.Scopes {

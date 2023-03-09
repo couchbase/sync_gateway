@@ -26,12 +26,16 @@ type ConfigPersistence interface {
 	// cfgCas represent the cas value associated with the last mutation, and may not match document CAS
 	loadRawConfig(c *gocb.Collection, key string) ([]byte, gocb.Cas, error)
 	removeRawConfig(c *gocb.Collection, key string, cas gocb.Cas) (gocb.Cas, error)
-	replaceRawConfig(c *gocb.Collection, key string, value []byte, cas gocb.Cas) (casOut gocb.Cas, cfgCas uint64, err error)
+	replaceRawConfig(c *gocb.Collection, key string, value []byte, cas gocb.Cas) (casOut gocb.Cas, err error)
 
 	// Operations for interacting with marshalled config. cfgCas represents the cas value
 	// associated with the last config mutation, and may not match document CAS
 	loadConfig(c *gocb.Collection, key string, valuePtr interface{}) (cfgCas uint64, err error)
 	insertConfig(c *gocb.Collection, key string, value interface{}) (cfgCas uint64, err error)
+
+	// touchConfigRollback sets the specific property to the specified string value via a subdoc operation.
+	// Used to change to the cas value during rollback, to guard against races with slow updates
+	touchConfigRollback(c *gocb.Collection, key string, property string, value string, cas gocb.Cas) (casOut gocb.Cas, err error)
 }
 
 // System xattr persistence
@@ -62,6 +66,22 @@ func (xbp *XattrBootstrapPersistence) insertConfig(c *gocb.Collection, key strin
 	}
 	return uint64(result.Cas()), nil
 
+}
+
+func (xbp *XattrBootstrapPersistence) touchConfigRollback(c *gocb.Collection, key, property, value string, cas gocb.Cas) (casOut gocb.Cas, err error) {
+	xattrProperty := cfgXattrKey + "." + property
+	mutateOps := []gocb.MutateInSpec{
+		gocb.UpsertSpec(xattrProperty, value, UpsertSpecXattr),
+	}
+	options := &gocb.MutateInOptions{
+		StoreSemantic: gocb.StoreSemanticsReplace,
+		Cas:           cas,
+	}
+	result, mutateErr := c.MutateIn(key, mutateOps, options)
+	if mutateErr != nil {
+		return 0, mutateErr
+	}
+	return result.Cas(), nil
 }
 
 // loadRawConfig returns the config and document cas (not cfgCas).  Does not restore deleted documents,
@@ -122,7 +142,7 @@ func (xbp *XattrBootstrapPersistence) removeRawConfig(c *gocb.Collection, key st
 
 }
 
-func (xbp *XattrBootstrapPersistence) replaceRawConfig(c *gocb.Collection, key string, value []byte, cas gocb.Cas) (gocb.Cas, uint64, error) {
+func (xbp *XattrBootstrapPersistence) replaceRawConfig(c *gocb.Collection, key string, value []byte, cas gocb.Cas) (gocb.Cas, error) {
 	mutateOps := []gocb.MutateInSpec{
 		gocb.UpsertSpec(cfgXattrConfigPath, bytesToRawMessage(value), UpsertSpecXattr),
 		gocb.UpsertSpec(cfgXattrCasPath, gocb.MutationMacroCAS, UpsertSpecXattr),
@@ -133,9 +153,9 @@ func (xbp *XattrBootstrapPersistence) replaceRawConfig(c *gocb.Collection, key s
 	}
 	result, mutateErr := c.MutateIn(key, mutateOps, options)
 	if mutateErr != nil {
-		return 0, 0, mutateErr
+		return 0, mutateErr
 	}
-	return result.Cas(), uint64(result.Cas()), nil
+	return result.Cas(), nil
 }
 
 // loadConfig returns the cas associated with the last cfg change (xattr._sync.cas).  If a deleted document body is
@@ -238,14 +258,14 @@ func (dbp *DocumentBootstrapPersistence) removeRawConfig(c *gocb.Collection, key
 	return deleteRes.Cas(), err
 }
 
-func (dbp *DocumentBootstrapPersistence) replaceRawConfig(c *gocb.Collection, key string, value []byte, cas gocb.Cas) (gocb.Cas, uint64, error) {
+func (dbp *DocumentBootstrapPersistence) replaceRawConfig(c *gocb.Collection, key string, value []byte, cas gocb.Cas) (gocb.Cas, error) {
 	replaceRes, err := c.Replace(key, value, &gocb.ReplaceOptions{Transcoder: gocb.NewRawJSONTranscoder(), Cas: cas})
 	if err != nil {
-		return 0, 0, err
+		return 0, err
 	}
 
 	// For DocumentBootstrapPersistence, cfgCas always equals doc.cas
-	return replaceRes.Cas(), uint64(replaceRes.Cas()), nil
+	return replaceRes.Cas(), nil
 }
 
 func (dbp *DocumentBootstrapPersistence) loadConfig(c *gocb.Collection, key string, valuePtr interface{}) (cas uint64, err error) {
@@ -278,4 +298,19 @@ func (dbp *DocumentBootstrapPersistence) insertConfig(c *gocb.Collection, key st
 	}
 
 	return uint64(res.Cas()), nil
+}
+
+func (dbp *DocumentBootstrapPersistence) touchConfigRollback(c *gocb.Collection, key, property, value string, cas gocb.Cas) (casOut gocb.Cas, err error) {
+	mutateOps := []gocb.MutateInSpec{
+		gocb.UpsertSpec(property, value, UpsertSpecXattr),
+	}
+	options := &gocb.MutateInOptions{
+		StoreSemantic: gocb.StoreSemanticsReplace,
+		Cas:           cas,
+	}
+	result, mutateErr := c.MutateIn(key, mutateOps, options)
+	if mutateErr != nil {
+		return 0, mutateErr
+	}
+	return result.Cas(), nil
 }

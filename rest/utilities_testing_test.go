@@ -146,3 +146,190 @@ func TestCECheck(t *testing.T) {
 	require.Equal(t, req, http.StatusBadRequest)
 
 }
+
+func TestRestTesterTemplateMultipleDatabases(t *testing.T) {
+	rt := NewRestTester(t, &RestTesterConfig{
+		PersistentConfig: true,
+	})
+	defer rt.Close()
+	testCases := []struct {
+		input     string
+		output    string
+		errString string
+	}{
+		{
+			input:     "/{{.db}}/",
+			output:    "",
+			errString: `map has no entry for key "db"`,
+		},
+		{
+			input:     "/{{.db1}}/",
+			output:    "",
+			errString: `map has no entry for key "db1"`,
+		},
+		{
+			input:     "/{{.keyspace}}/",
+			output:    "",
+			errString: `map has no entry for key "keyspace"`,
+		},
+		{
+			input:     "/{{.keyspace1}}/",
+			output:    "",
+			errString: `map has no entry for key "keyspace1"`,
+		},
+		{
+			input:  "/passthrough/",
+			output: "/passthrough/",
+		},
+	}
+	for _, test := range testCases {
+		t.Run(test.input, func(t *testing.T) {
+			output, err := rt.templateResource(test.input)
+			if test.errString == "" {
+				require.NoError(t, err)
+			} else {
+				require.Contains(t, fmt.Sprintf("%s", err), test.errString)
+			}
+			require.Equal(t, test.output, output)
+		})
+	}
+	numCollections := 2
+	base.RequireNumTestDataStores(t, numCollections)
+	dbConfig := DbConfig{
+		Scopes: getCollectionsConfigWithSyncFn(rt.TB, rt.TestBucket, nil, numCollections),
+		BucketConfig: BucketConfig{
+			Bucket: base.StringPtr(rt.TestBucket.GetName()),
+		},
+	}
+	dbOne := "dbone"
+	bucket1Datastore1, err := rt.TestBucket.GetNamedDataStore(0)
+	require.NoError(t, err)
+	bucket1Datastore1Name, ok := base.AsDataStoreName(bucket1Datastore1)
+	require.True(t, ok)
+	bucket1Datastore2, err := rt.TestBucket.GetNamedDataStore(1)
+	require.NoError(t, err)
+	bucket1Datastore2Name, ok := base.AsDataStoreName(bucket1Datastore2)
+	require.True(t, ok)
+	resp, err := rt.CreateDatabase(dbOne, dbConfig)
+	require.NoError(t, err)
+	RequireStatus(t, resp, http.StatusCreated)
+	testCases = []struct {
+		input     string
+		output    string
+		errString string
+	}{
+		{
+			input:  "/{{.db}}/",
+			output: fmt.Sprintf("/%s/", dbOne),
+		},
+		{
+			input:     "/{{.db1}}/",
+			output:    "",
+			errString: `map has no entry for key "db1"`,
+		},
+		{
+			input:     "/{{.keyspace}}/",
+			output:    "",
+			errString: `map has no entry for key "keyspace"`,
+		},
+		{
+			input:  "/{{.keyspace1}}/",
+			output: fmt.Sprintf("/%s.%s.%s/", dbOne, bucket1Datastore1Name.ScopeName(), bucket1Datastore1Name.CollectionName()),
+		},
+		{
+			input:  "/{{.keyspace2}}/",
+			output: fmt.Sprintf("/%s.%s.%s/", dbOne, bucket1Datastore2Name.ScopeName(), bucket1Datastore2Name.CollectionName()),
+		},
+	}
+	for _, test := range testCases {
+		t.Run("dbone_"+test.input, func(t *testing.T) {
+			output, err := rt.templateResource(test.input)
+			if test.errString == "" {
+				require.NoError(t, err)
+			} else {
+				require.Contains(t, fmt.Sprintf("%s", err), test.errString)
+			}
+			require.Equal(t, test.output, output)
+		})
+	}
+	base.RequireNumTestBuckets(t, 2)
+	bucket2 := base.GetPersistentTestBucket(t)
+	defer bucket2.Close()
+	dbConfig = DbConfig{
+		Scopes: getCollectionsConfigWithSyncFn(rt.TB, bucket2, nil, numCollections),
+		BucketConfig: BucketConfig{
+			Bucket: base.StringPtr(bucket2.GetName()),
+		},
+	}
+	dbTwo := "dbtwo"
+	bucket2Datastore1, err := rt.TestBucket.GetNamedDataStore(0)
+	require.NoError(t, err)
+	bucket2Datastore1Name, ok := base.AsDataStoreName(bucket2Datastore1)
+	require.True(t, ok)
+	bucket2Datastore2, err := rt.TestBucket.GetNamedDataStore(1)
+	require.NoError(t, err)
+	bucket2Datastore2Name, ok := base.AsDataStoreName(bucket2Datastore2)
+	require.True(t, ok)
+	resp, err = rt.CreateDatabase(dbTwo, dbConfig)
+	require.NoError(t, err)
+	RequireStatus(t, resp, http.StatusCreated)
+	testCases = []struct {
+		input     string
+		output    string
+		errString string
+	}{
+		{
+			input:     "/{{.db}}/",
+			errString: `map has no entry for key "db"`,
+		},
+		{
+			input:  "/{{.db1}}/",
+			output: fmt.Sprintf("/%s/", dbOne),
+		},
+		{
+			input:  "/{{.db2}}/",
+			output: fmt.Sprintf("/%s/", dbTwo),
+		},
+		{
+			input:     "/{{.keyspace}}/",
+			errString: `map has no entry for key "keyspace"`,
+		},
+		{
+			input:     "/{{.keyspace1}}/",
+			errString: `map has no entry for key "keyspace1"`,
+		},
+		{
+			input:     "/{{.keyspace2}}/",
+			errString: `map has no entry for key "keyspace2"`,
+		},
+		{
+			input:  "/{{.db1keyspace1}}/",
+			output: fmt.Sprintf("/%s.%s.%s/", dbOne, bucket1Datastore1Name.ScopeName(), bucket2Datastore1Name.CollectionName()),
+		},
+		{
+			input:  "/{{.db1keyspace2}}/",
+			output: fmt.Sprintf("/%s.%s.%s/", dbOne, bucket1Datastore2Name.ScopeName(), bucket2Datastore2Name.CollectionName()),
+		},
+
+		{
+			input:  "/{{.db2keyspace1}}/",
+			output: fmt.Sprintf("/%s.%s.%s/", dbTwo, bucket2Datastore1Name.ScopeName(), bucket2Datastore1Name.CollectionName()),
+		},
+		{
+			input:  "/{{.db2keyspace2}}/",
+			output: fmt.Sprintf("/%s.%s.%s/", dbTwo, bucket2Datastore2Name.ScopeName(), bucket2Datastore2Name.CollectionName()),
+		},
+	}
+	for _, test := range testCases {
+		t.Run("twodb_"+test.input, func(t *testing.T) {
+			output, err := rt.templateResource(test.input)
+			if test.errString == "" {
+				require.NoError(t, err)
+			} else {
+				require.Contains(t, fmt.Sprintf("%s", err), test.errString)
+			}
+			require.Equal(t, test.output, output)
+		})
+	}
+
+}

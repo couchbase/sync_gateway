@@ -101,11 +101,11 @@ func setupTestDBWithCustomSyncSeq(t testing.TB, customSeq uint64) (*Database, co
 	AddOptionsFromEnvironmentVariables(&dbcOptions)
 
 	// This may need to change when we move to a non-default metadata collection...
-	metadataStore := tBucket.DefaultDataStore()
+	metadataStore := tBucket.GetMetadataStore()
 
-	log.Printf("Initializing test %s to %d", base.SyncSeqKey, customSeq)
-	_, incrErr := metadataStore.Incr(base.SyncSeqKey, customSeq, customSeq, 0)
-	assert.NoError(t, incrErr, fmt.Sprintf("Couldn't increment %s by %d", base.SyncSeqKey, customSeq))
+	log.Printf("Initializing test %s to %d", base.DefaultMetadataKeys.SyncSeqKey(), customSeq)
+	_, incrErr := metadataStore.Incr(base.DefaultMetadataKeys.SyncSeqKey(), customSeq, customSeq, 0)
+	assert.NoError(t, incrErr, fmt.Sprintf("Couldn't increment %s by %d", base.DefaultMetadataKeys.SyncSeqKey(), customSeq))
 
 	dbCtx, err := NewDatabaseContext(ctx, "db", tBucket, false, dbcOptions)
 	assert.NoError(t, err, "Couldn't create context for database 'db'")
@@ -290,7 +290,7 @@ func TestGetDeleted(t *testing.T) {
 	assert.Equal(t, rev2id, doc.SyncData.CurrentRev)
 
 	// Try again but with a user who doesn't have access to this revision (see #179)
-	authenticator := auth.NewAuthenticator(db.MetadataStore, db, auth.DefaultAuthenticatorOptions())
+	authenticator := auth.NewAuthenticator(db.MetadataStore, db, db.AuthenticatorOptions())
 	collection.user, err = authenticator.GetUser("")
 	assert.NoError(t, err, "GetUser")
 	collection.user.SetExplicitChannels(nil, 1)
@@ -357,7 +357,7 @@ func TestGetRemovedAsUser(t *testing.T) {
 	assert.NoError(t, err, "Purge old revision JSON")
 
 	// Try again with a user who doesn't have access to this revision
-	authenticator := auth.NewAuthenticator(db.MetadataStore, db, auth.DefaultAuthenticatorOptions())
+	authenticator := auth.NewAuthenticator(db.MetadataStore, db, db.AuthenticatorOptions())
 	collection.user, err = authenticator.GetUser("")
 	assert.NoError(t, err, "GetUser")
 
@@ -1556,7 +1556,7 @@ func TestUpdateDesignDoc(t *testing.T) {
 	assert.True(t, strings.Contains(retrievedView.Map, "emit()"))
 	assert.NotEqual(t, mapFunction, retrievedView.Map) // SG should wrap the map function, so they shouldn't be equal
 
-	authenticator := auth.NewAuthenticator(db.MetadataStore, db, auth.DefaultAuthenticatorOptions())
+	authenticator := auth.NewAuthenticator(db.MetadataStore, db, db.AuthenticatorOptions())
 	db.user, _ = authenticator.NewUser("naomi", "letmein", channels.BaseSetOf(t, "Netflix"))
 	err = db.PutDesignDoc("_design/pwn3d", sgbucket.DesignDoc{})
 	assertHTTPError(t, err, 403)
@@ -2678,7 +2678,7 @@ func Test_invalidateAllPrincipalsCache(t *testing.T) {
 	defer db.Close(ctx)
 	db.Options.QueryPaginationLimit = 100
 
-	sequenceAllocator, err := newSequenceAllocator(db.MetadataStore, db.DbStats.DatabaseStats)
+	sequenceAllocator, err := newSequenceAllocator(db.MetadataStore, db.DbStats.DatabaseStats, db.MetadataKeys)
 	assert.NoError(t, err)
 
 	db.sequences = sequenceAllocator
@@ -2734,14 +2734,14 @@ func Test_invalidateAllPrincipalsCache(t *testing.T) {
 
 		var invalPrinc invalPric
 		for i := 0; i < 1; i++ {
-			raw, _, err := db.MetadataStore.GetRaw(fmt.Sprintf("_sync:role:role%d", i))
+			raw, _, err := db.MetadataStore.GetRaw(db.MetadataKeys.RoleKey(fmt.Sprintf("role%d", i)))
 			assert.NoError(t, err)
 			err = json.Unmarshal(raw, &invalPrinc)
 			assert.NoError(t, err)
 			assert.Equal(t, endSeq, invalPrinc.CollectionAccess[scopeName][collectionName].ChannelInvalSeq)
 			assert.Equal(t, fmt.Sprintf("role%d", i), invalPrinc.Name)
 
-			raw, _, err = db.MetadataStore.GetRaw(fmt.Sprintf("_sync:user:user%d", i))
+			raw, _, err = db.MetadataStore.GetRaw(db.MetadataKeys.UserKey(fmt.Sprintf("user%d", i)))
 			assert.NoError(t, err)
 			err = json.Unmarshal(raw, &invalPrinc)
 			assert.NoError(t, err)
@@ -2758,14 +2758,14 @@ func Test_invalidateAllPrincipalsCache(t *testing.T) {
 
 		var invalPrinc invalPric
 		for i := 0; i < 1; i++ {
-			raw, _, err := db.MetadataStore.GetRaw(fmt.Sprintf("_sync:role:role%d", i))
+			raw, _, err := db.MetadataStore.GetRaw(db.MetadataKeys.RoleKey(fmt.Sprintf("role%d", i)))
 			assert.NoError(t, err)
 			err = json.Unmarshal(raw, &invalPrinc)
 			assert.NoError(t, err)
 			assert.Equal(t, endSeq, invalPrinc.ChannelInvalSeq)
 			assert.Equal(t, fmt.Sprintf("role%d", i), invalPrinc.Name)
 
-			raw, _, err = db.MetadataStore.GetRaw(fmt.Sprintf("_sync:user:user%d", i))
+			raw, _, err = db.MetadataStore.GetRaw(db.MetadataKeys.UserKey(fmt.Sprintf("user%d", i)))
 			assert.NoError(t, err)
 			err = json.Unmarshal(raw, &invalPrinc)
 			assert.NoError(t, err)
@@ -3151,6 +3151,7 @@ func Test_stopBackgroundManagers(t *testing.T) {
 }
 
 func Test_waitForBackgroundManagersToStop(t *testing.T) {
+	base.LongRunningTest(t)
 	t.Run("single unstoppable process", func(t *testing.T) {
 		bgMngr := &BackgroundManager{
 			name:    "test_unstoppable_runner",

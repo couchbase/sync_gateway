@@ -2415,7 +2415,7 @@ func TestBlipInternalPropertiesHandling(t *testing.T) {
 func TestProcessRevIncrementsStat(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
 
-	activeRT, remoteRT, remoteURLString, teardown := SetupSGRPeers(t)
+	activeRT, remoteRT, remoteURLString, teardown := SetupSGRPeers(t, true)
 	defer teardown()
 	activeCtx := activeRT.Context()
 
@@ -2433,6 +2433,7 @@ func TestProcessRevIncrementsStat(t *testing.T) {
 		RemoteDBURL:         remoteURL,
 		Continuous:          true,
 		ReplicationStatsMap: dbstats,
+		CollectionsEnabled:  !activeRT.GetDatabase().OnlyDefaultCollection(),
 	})
 	// Confirm all stats starting on 0
 	require.NotNil(t, ar.Pull)

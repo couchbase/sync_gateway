@@ -9,7 +9,6 @@
 package rest
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"testing"
@@ -31,7 +30,7 @@ func TestServerlessPollBuckets(t *testing.T) {
 	defer tb1.Close()
 
 	rt := NewRestTester(t, &RestTesterConfig{
-		CustomTestBucket: tb1,
+		CustomTestBucket: tb1.NoCloseClone(),
 		serverless:       true,
 		PersistentConfig: true,
 		MutateStartupConfig: func(config *StartupConfig) {
@@ -52,7 +51,7 @@ func TestServerlessPollBuckets(t *testing.T) {
 	assert.Empty(t, configs)
 
 	// Create a database
-	rt2 := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb1, PersistentConfig: true, groupID: &sc.Config.Bootstrap.ConfigGroupID})
+	rt2 := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb1.NoCloseClone(), PersistentConfig: true, groupID: &sc.Config.Bootstrap.ConfigGroupID})
 	defer rt2.Close()
 	// Create a new db on the RT to confirm fetch won't retrieve it (due to bucket not being in BucketCredentials)
 	resp := rt2.SendAdminRequest(http.MethodPut, "/db/", fmt.Sprintf(`{
@@ -124,7 +123,7 @@ func TestServerlessDBSetupForceCreds(t *testing.T) {
 	}
 	for _, test := range testCases {
 		t.Run(test.name, func(t *testing.T) {
-			rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb1, serverless: true, PersistentConfig: true})
+			rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb1.NoCloseClone(), serverless: true, PersistentConfig: true})
 			defer rt.Close()
 
 			if test.perBucketCreds != nil {
@@ -150,7 +149,7 @@ func TestServerlessBucketCredentialsFetchDatabases(t *testing.T) {
 
 	tb1 := base.GetTestBucket(t)
 	defer tb1.Close()
-	rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb1, PersistentConfig: true, serverless: true,
+	rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb1.NoCloseClone(), PersistentConfig: true, serverless: true,
 		MutateStartupConfig: func(config *StartupConfig) {
 			config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(0)
 		},
@@ -212,7 +211,7 @@ func TestServerlessGoCBConnectionString(t *testing.T) {
 				tb.BucketSpec.KvPoolSize = 3
 			}
 
-			rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb, PersistentConfig: true, serverless: true})
+			rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb.NoCloseClone(), PersistentConfig: true, serverless: true})
 			defer rt.Close()
 			sc := rt.ServerContext()
 			require.True(t, sc.Config.IsServerless())
@@ -256,7 +255,7 @@ func TestServerlessUnsupportedOptions(t *testing.T) {
 			bucketServer := tb.BucketSpec.Server
 			test.expectedConnStr = bucketServer + test.expectedConnStr
 
-			rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb, PersistentConfig: true, serverless: true})
+			rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb.NoCloseClone(), PersistentConfig: true, serverless: true})
 			defer rt.Close()
 			sc := rt.ServerContext()
 			require.True(t, sc.Config.IsServerless())
@@ -286,7 +285,7 @@ func TestServerlessSuspendDatabase(t *testing.T) {
 	tb := base.GetTestBucket(t)
 	defer tb.Close()
 
-	rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb, PersistentConfig: true, serverless: true})
+	rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb.NoCloseClone(), PersistentConfig: true, serverless: true})
 	defer rt.Close()
 
 	sc := rt.ServerContext()
@@ -301,7 +300,7 @@ func TestServerlessSuspendDatabase(t *testing.T) {
 
 	assert.False(t, sc.isDatabaseSuspended(t, "db"))
 	assert.NotNil(t, sc.databases_["db"])
-	assert.Equal(t, "db", sc.bucketDbName[tb.GetName()])
+	assert.NotNil(t, sc.dbRegistry["db"])
 	assert.NotNil(t, sc.dbConfigs["db"])
 
 	// Unsuspend db that is not suspended should just return db context
@@ -320,15 +319,13 @@ func TestServerlessSuspendDatabase(t *testing.T) {
 	// Make sure database is suspended
 	assert.True(t, sc.isDatabaseSuspended(t, "db"))
 	assert.Nil(t, sc.databases_["db"])
-	assert.NotEmpty(t, sc.bucketDbName[tb.GetName()])
+	assert.NotNil(t, sc.dbRegistry["db"])
 	assert.NotNil(t, sc.dbConfigs["db"])
 
 	// Update config in bucket to see if unsuspending check for updates
-	cas, err := sc.BootstrapContext.Connection.UpdateConfig(tb.GetName(), sc.Config.Bootstrap.ConfigGroupID,
-		func(rawBucketConfig []byte, rawBucketConfigCas uint64) (updatedConfig []byte, err error) {
-			return json.Marshal(sc.dbConfigs["db"])
-		},
-	)
+	cas, err := sc.BootstrapContext.UpdateConfig(base.TestCtx(t), tb.GetName(), sc.Config.Bootstrap.ConfigGroupID, "db", func(bucketDbConfig *DatabaseConfig) (updatedConfig *DatabaseConfig, err error) {
+		return sc.dbConfigs["db"].ToDatabaseConfig(), nil
+	})
 	require.NoError(t, err)
 	assert.NotEqual(t, cas, sc.dbConfigs["db"].cfgCas)
 
@@ -337,7 +334,7 @@ func TestServerlessSuspendDatabase(t *testing.T) {
 	assert.NotNil(t, dbCtx)
 	assert.False(t, sc.isDatabaseSuspended(t, "db"))
 	assert.NotNil(t, sc.databases_["db"])
-	assert.Equal(t, "db", sc.bucketDbName[tb.GetName()])
+	assert.NotNil(t, sc.dbRegistry["db"])
 	require.NotNil(t, sc.dbConfigs["db"])
 
 	// Make sure updated config is being used
@@ -359,7 +356,7 @@ func TestServerlessUnsuspendFetchFallback(t *testing.T) {
 	defer tb.Close()
 
 	rt := NewRestTester(t, &RestTesterConfig{
-		CustomTestBucket: tb,
+		CustomTestBucket: tb.NoCloseClone(),
 		serverless:       true,
 		PersistentConfig: true,
 		MutateStartupConfig: func(config *StartupConfig) {
@@ -381,7 +378,7 @@ func TestServerlessUnsuspendFetchFallback(t *testing.T) {
 	err := sc.suspendDatabase(t, rt.Context(), "db")
 	assert.NoError(t, err)
 	delete(sc.dbConfigs, "db")
-	delete(sc.bucketDbName, tb.GetName())
+	delete(sc.dbRegistry, "db")
 	assert.Nil(t, sc.databases_["db"])
 
 	// Unsuspend db and confirm unsuspending worked
@@ -404,8 +401,10 @@ func TestServerlessFetchConfigsLimited(t *testing.T) {
 	tb := base.GetTestBucket(t)
 	defer tb.Close()
 
+	ctx := base.TestCtx(t)
+
 	rt := NewRestTester(t, &RestTesterConfig{
-		CustomTestBucket: tb,
+		CustomTestBucket: tb.NoCloseClone(),
 		PersistentConfig: true,
 		MutateStartupConfig: func(config *StartupConfig) {
 			config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(0)
@@ -430,12 +429,15 @@ func TestServerlessFetchConfigsLimited(t *testing.T) {
 	assert.NotZero(t, timeCached)
 	require.NoError(t, err)
 
-	// Update database config in the bucket
-	newCas, err := sc.BootstrapContext.Connection.UpdateConfig(tb.GetName(), sc.Config.Bootstrap.ConfigGroupID,
-		func(rawBucketConfig []byte, rawBucketConfigCas uint64) (updatedConfig []byte, err error) {
-			return json.Marshal(sc.dbConfigs["db"])
-		},
-	)
+	require.NoError(t, err)
+	// Update database config in the bucket (increment version)
+	newCas, err := sc.BootstrapContext.UpdateConfig(ctx, tb.GetName(), sc.Config.Bootstrap.ConfigGroupID, "db", func(bucketDbConfig *DatabaseConfig) (updatedConfig *DatabaseConfig, err error) {
+		bucketDbConfig.Version, err = GenerateDatabaseConfigVersionID(bucketDbConfig.Version, &bucketDbConfig.DbConfig)
+		if err != nil {
+			return nil, err
+		}
+		return bucketDbConfig, nil
+	})
 
 	// Fetch configs again and expect same config to be returned
 	dbConfigsAfter, err := sc.fetchConfigsSince(rt.Context(), sc.Config.Unsupported.Serverless.MinConfigFetchInterval)
@@ -450,15 +452,19 @@ func TestServerlessFetchConfigsLimited(t *testing.T) {
 	dbConfigsAfter, err = sc.fetchConfigsSince(rt.Context(), sc.Config.Unsupported.Serverless.MinConfigFetchInterval)
 	require.NotEmpty(t, dbConfigsAfter["db"])
 	assert.Equal(t, newCas, dbConfigsAfter["db"].cfgCas)
+
 	// Change back for next test before next config update (not fully necessary but just to be safe)
 	sc.Config.Unsupported.Serverless.MinConfigFetchInterval = base.NewConfigDuration(time.Hour)
 
 	// Update database config in the bucket again to test caching disable case
-	newCas, err = sc.BootstrapContext.Connection.UpdateConfig(tb.GetName(), sc.Config.Bootstrap.ConfigGroupID,
-		func(rawBucketConfig []byte, rawBucketConfigCas uint64) (updatedConfig []byte, err error) {
-			return json.Marshal(sc.dbConfigs["db"])
-		},
-	)
+	newCas, err = sc.BootstrapContext.UpdateConfig(ctx, tb.GetName(), sc.Config.Bootstrap.ConfigGroupID, "db", func(bucketDbConfig *DatabaseConfig) (updatedConfig *DatabaseConfig, err error) {
+		bucketDbConfig.Version, err = GenerateDatabaseConfigVersionID(bucketDbConfig.Version, &bucketDbConfig.DbConfig)
+		if err != nil {
+			return nil, err
+		}
+		return bucketDbConfig, nil
+	})
+	require.NoError(t, err)
 
 	// Disable caching and expect new config
 	sc.Config.Unsupported.Serverless.MinConfigFetchInterval = base.NewConfigDuration(0)
@@ -477,7 +483,7 @@ func TestServerlessUpdateSuspendedDb(t *testing.T) {
 	defer tb.Close()
 
 	rt := NewRestTester(t, &RestTesterConfig{
-		CustomTestBucket: tb,
+		CustomTestBucket: tb.NoCloseClone(),
 		PersistentConfig: true,
 		MutateStartupConfig: func(config *StartupConfig) {
 			config.Bootstrap.ConfigUpdateFrequency = base.NewConfigDuration(0)
@@ -497,11 +503,9 @@ func TestServerlessUpdateSuspendedDb(t *testing.T) {
 	// Suspend the database
 	assert.NoError(t, sc.suspendDatabase(t, rt.Context(), "db"))
 	// Update database config
-	newCas, err := sc.BootstrapContext.Connection.UpdateConfig(tb.GetName(), sc.Config.Bootstrap.ConfigGroupID,
-		func(rawBucketConfig []byte, rawBucketConfigCas uint64) (updatedConfig []byte, err error) {
-			return json.Marshal(sc.dbConfigs["db"])
-		},
-	)
+	newCas, err := sc.BootstrapContext.UpdateConfig(base.TestCtx(t), tb.GetName(), sc.Config.Bootstrap.ConfigGroupID, "db", func(bucketDbConfig *DatabaseConfig) (updatedConfig *DatabaseConfig, err error) {
+		return sc.dbConfigs["db"].ToDatabaseConfig(), nil
+	})
 	// Confirm dbConfig cas did not update yet in SG, or get unsuspended
 	assert.NotEqual(t, sc.dbConfigs["db"].cfgCas, newCas)
 	assert.True(t, sc.isDatabaseSuspended(t, "db"))
@@ -563,7 +567,8 @@ func TestSuspendingFlags(t *testing.T) {
 			tb := base.GetTestBucket(t)
 			defer tb.Close()
 
-			rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb, PersistentConfig: true, serverless: test.serverlessMode})
+			rt := NewRestTester(t,
+				&RestTesterConfig{CustomTestBucket: tb.NoCloseClone(), PersistentConfig: true, serverless: test.serverlessMode})
 			defer rt.Close()
 
 			sc := rt.ServerContext()
@@ -606,7 +611,7 @@ func TestServerlessUnsuspendAPI(t *testing.T) {
 	tb := base.GetTestBucket(t)
 	defer tb.Close()
 
-	rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb, PersistentConfig: true, serverless: true})
+	rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb.NoCloseClone(), PersistentConfig: true, serverless: true})
 	defer rt.Close()
 
 	sc := rt.ServerContext()
@@ -643,7 +648,7 @@ func TestServerlessUnsuspendAdminAuth(t *testing.T) {
 	tb := base.GetTestBucket(t)
 	defer tb.Close()
 
-	rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb, PersistentConfig: true, serverless: true, AdminInterfaceAuthentication: true})
+	rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb.NoCloseClone(), PersistentConfig: true, serverless: true, AdminInterfaceAuthentication: true})
 	defer rt.Close()
 
 	sc := rt.ServerContext()
@@ -717,7 +722,7 @@ func TestImportPartitionsServerless(t *testing.T) {
 
 			tb := base.GetTestBucket(t)
 			defer tb.Close()
-			rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb, PersistentConfig: true, serverless: test.serverless})
+			rt := NewRestTester(t, &RestTesterConfig{CustomTestBucket: tb.NoCloseClone(), PersistentConfig: true, serverless: test.serverless})
 			defer rt.Close()
 			sc := rt.ServerContext()
 

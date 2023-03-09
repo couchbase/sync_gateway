@@ -221,7 +221,7 @@ func TestLogin(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
-	a := auth.NewAuthenticator(rt.MetadataStore(), nil, auth.DefaultAuthenticatorOptions())
+	a := auth.NewAuthenticator(rt.MetadataStore(), nil, rt.GetDatabase().AuthenticatorOptions())
 	user, err := a.GetUser("")
 	assert.NoError(t, err)
 	user.SetDisabled(true)
@@ -263,7 +263,7 @@ func TestCustomCookieName(t *testing.T) {
 	defer rt.Close()
 
 	// Disable guest user
-	a := auth.NewAuthenticator(rt.MetadataStore(), nil, auth.DefaultAuthenticatorOptions())
+	a := auth.NewAuthenticator(rt.MetadataStore(), nil, rt.GetDatabase().AuthenticatorOptions())
 	user, err := a.GetUser("")
 	assert.NoError(t, err)
 	user.SetDisabled(true)
@@ -305,7 +305,7 @@ func TestSessionTtlGreaterThan30Days(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
-	a := auth.NewAuthenticator(rt.MetadataStore(), nil, auth.DefaultAuthenticatorOptions())
+	a := auth.NewAuthenticator(rt.MetadataStore(), nil, rt.GetDatabase().AuthenticatorOptions())
 	user, err := a.GetUser("")
 	assert.NoError(t, err)
 	user.SetDisabled(true)
@@ -378,7 +378,7 @@ func TestSessionExtension(t *testing.T) {
 		SessionUUID: user.GetSessionUUID(),
 	}
 
-	assert.NoError(t, rt.MetadataStore().Set(auth.DocIDForSession(fakeSession.ID), 0, nil, fakeSession))
+	assert.NoError(t, rt.MetadataStore().Set(authenticator.DocIDForSession(fakeSession.ID), 0, nil, fakeSession))
 	reqHeaders := map[string]string{
 		"Cookie": auth.DefaultCookieName + "=" + fakeSession.ID,
 	}
@@ -397,7 +397,7 @@ func TestSessionExtension(t *testing.T) {
 	// scenario for expired session. In reality, Sync Gateway rely on Couchbase
 	// Server to nuke the expired document based on TTL. Couchbase Server periodically
 	// removes all items with expiration times that have passed.
-	assert.NoError(t, rt.MetadataStore().Delete(auth.DocIDForSession(fakeSession.ID)))
+	assert.NoError(t, rt.MetadataStore().Delete(authenticator.DocIDForSession(fakeSession.ID)))
 
 	response = rt.SendRequestWithHeaders("GET", "/{{.keyspace}}/doc1", "", reqHeaders)
 	log.Printf("GET Request: Set-Cookie: %v", response.Header().Get("Set-Cookie"))
@@ -624,7 +624,7 @@ func TestUserWithoutSessionUUID(t *testing.T) {
 	require.NoError(t, authenticator.Save(user))
 
 	var rawUser map[string]interface{}
-	_, err = rt.MetadataStore().Get(user.DocID(), &rawUser)
+	_, err = rt.MetadataStore().Get(authenticator.DocIDForUser(user.Name()), &rawUser)
 	require.NoError(t, err)
 
 	sessionUUIDKey := "session_uuid"
@@ -632,7 +632,7 @@ func TestUserWithoutSessionUUID(t *testing.T) {
 	require.True(t, exists)
 	delete(rawUser, sessionUUIDKey)
 
-	err = rt.MetadataStore().Set(user.DocID(), 0, nil, rawUser)
+	err = rt.MetadataStore().Set(authenticator.DocIDForUser(user.Name()), 0, nil, rawUser)
 	require.NoError(t, err)
 
 	response := rt.SendUserRequest(http.MethodPost, "/{{.db}}/_session", "", username)
@@ -676,7 +676,7 @@ func TestSessionExpirationDateTimeFormat(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
-	authenticator := auth.NewAuthenticator(rt.MetadataStore(), nil, auth.DefaultAuthenticatorOptions())
+	authenticator := auth.NewAuthenticator(rt.MetadataStore(), nil, rt.GetDatabase().AuthenticatorOptions())
 	user, err := authenticator.NewUser("alice", "letMe!n", channels.BaseSetOf(t, "*"))
 	assert.NoError(t, err, "Couldn't create new user")
 	assert.NoError(t, authenticator.Save(user), "Couldn't save new user")
