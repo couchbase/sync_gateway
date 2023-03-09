@@ -16,8 +16,8 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -70,7 +70,7 @@ func (rt *RestTester) UpdateDoc(docID, revID, body string) (response PutDocRespo
 
 func (rt *RestTester) upsertDoc(docID string, body string) (response PutDocResponse) {
 
-	getResponse := rt.SendAdminRequest("GET", "/db/"+docID, "")
+	getResponse := rt.SendAdminRequest("GET", "/{{.db}}/"+docID, "")
 	if getResponse.Code == 404 {
 		return rt.PutDoc(docID, body)
 	}
@@ -79,7 +79,7 @@ func (rt *RestTester) upsertDoc(docID string, body string) (response PutDocRespo
 	revID, ok := getBody["revID"].(string)
 	require.True(rt.TB, ok)
 
-	rawResponse := rt.SendAdminRequest("PUT", "/db/"+docID+"?rev="+revID, body)
+	rawResponse := rt.SendAdminRequest("PUT", "/{{.db}}/"+docID+"?rev="+revID, body)
 	RequireStatus(rt.TB, rawResponse, 200)
 	require.NoError(rt.TB, base.JSONUnmarshal(rawResponse.Body.Bytes(), &response))
 	require.True(rt.TB, response.Ok)
@@ -139,6 +139,10 @@ func (rt *RestTester) CreateReplicationForDB(dbName string, replicationID string
 		Continuous:             continuous,
 		ConflictResolutionType: conflictResolver,
 	}
+	if !rt.GetDatabase().OnlyDefaultCollection() {
+		replicationConfig.CollectionsEnabled = true
+	}
+
 	if len(channels) > 0 {
 		replicationConfig.Filter = base.ByChannelFilter
 		replicationConfig.QueryParams = map[string]interface{}{"channels": channels}
@@ -204,42 +208,48 @@ func (rt *RestTester) GetReplicationStatuses(queryString string) (statuses []db.
 //	  - user 'alice' created with star channel access
 //	  - http server wrapping the public API, remoteDBURLString targets the rt2 database as user alice (e.g. http://alice:pass@host/db)
 //	returned teardown function closes activeRT, passiveRT and the http server, should be invoked with defer
-func SetupSGRPeers(t *testing.T) (activeRT *RestTester, passiveRT *RestTester, remoteDBURLString string, teardown func()) {
+func SetupSGRPeers(t *testing.T, useMultipleCollections bool) (activeRT *RestTester, passiveRT *RestTester, remoteDBURLString string, teardown func()) {
 	// Set up passive RestTester (rt2)
 	passiveTestBucket := base.GetTestBucket(t)
-	passiveRT = NewRestTesterDefaultCollection(t, // TODO: CBG-2491: make collection aware
-		&RestTesterConfig{
-			CustomTestBucket: passiveTestBucket.NoCloseClone(),
-			DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
-				Name: "passivedb",
-				Users: map[string]*auth.PrincipalConfig{
-					"alice": {
-						Password:         base.StringPtr("pass"),
-						ExplicitChannels: base.SetOf("*"),
-					},
-				},
-			}},
-		})
-	// Initalize RT and bucket
-	_ = passiveRT.Bucket()
+
+	passiveRTConfig := &RestTesterConfig{
+		CustomTestBucket: passiveTestBucket.NoCloseClone(),
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
+			Name: "passivedb",
+		}},
+		SyncFn: channels.DocChannelsSyncFunction,
+	}
+	if useMultipleCollections {
+		passiveRT = NewRestTester(t, passiveRTConfig)
+	} else {
+		passiveRT = NewRestTesterDefaultCollection(t, passiveRTConfig)
+	}
+	response := passiveRT.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/alice", GetUserPayload(t, "", RestTesterDefaultUserPassword, "", passiveRT.GetSingleTestDatabaseCollection(), []string{"*"}, nil))
+	RequireStatus(t, response, http.StatusCreated)
 
 	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1
 	srv := httptest.NewServer(passiveRT.TestPublicHandler())
 
 	// Build passiveDBURL with basic auth creds
 	passiveDBURL, _ := url.Parse(srv.URL + "/" + passiveRT.GetDatabase().Name)
-	passiveDBURL.User = url.UserPassword("alice", "pass")
+	passiveDBURL.User = url.UserPassword("alice", RestTesterDefaultUserPassword)
 
 	// Set up active RestTester (rt1)
 	activeTestBucket := base.GetTestBucket(t)
-	activeRT = NewRestTesterDefaultCollection(t, // TODO: CBG-2491: make collection aware
-		&RestTesterConfig{
-			CustomTestBucket: activeTestBucket.NoCloseClone(),
-			DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
-				Name: "activedb",
-			}},
-			SgReplicateEnabled: true,
-		})
+	activeRTConfig := &RestTesterConfig{
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
+			Name: "activedb",
+		}},
+		CustomTestBucket:   activeTestBucket.NoCloseClone(),
+		SgReplicateEnabled: true,
+		SyncFn:             channels.DocChannelsSyncFunction,
+	}
+	if useMultipleCollections {
+		activeRT = NewRestTester(t, activeRTConfig)
+	} else {
+		activeRT = NewRestTesterDefaultCollection(t, activeRTConfig)
+
+	}
 	// Initalize RT and bucket
 	_ = activeRT.Bucket()
 

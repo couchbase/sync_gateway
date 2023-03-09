@@ -474,6 +474,12 @@ func (rt *RestTester) GetDatabase() *db.DatabaseContext {
 	return nil
 }
 
+// CreateUser creates a user with the default password and channels scoped to a single test collection.
+func (rt *RestTester) CreateUser(username string, channels []string) {
+	response := rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/"+username, GetUserPayload(rt.TB, "", RestTesterDefaultUserPassword, "", rt.GetSingleTestDatabaseCollection(), channels, nil))
+	RequireStatus(rt.TB, response, http.StatusCreated)
+}
+
 // GetSingleTestDatabaseCollection will return a DatabaseCollection if there is only one. Depending on test environment configuration, it may or may not be the default collection.
 func (rt *RestTester) GetSingleTestDatabaseCollection() *db.DatabaseCollection {
 	return db.GetSingleDatabaseCollection(rt.TB, rt.GetDatabase())
@@ -975,7 +981,7 @@ func (rt *RestTester) PutDocumentWithRevID(docID string, newRevID string, parent
 	if err != nil {
 		return nil, err
 	}
-	resp := rt.SendAdminRequest(http.MethodPut, "/{{.db}}/"+docID+"?new_edits=false", string(requestBytes))
+	resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID+"?new_edits=false", string(requestBytes))
 	return resp, nil
 }
 
@@ -1536,7 +1542,7 @@ func (bt *BlipTester) SendRev(docId, docRev string, body []byte, properties blip
 }
 
 // GetUserPayload will take username, password, email, channels and roles you want to assign a user and create the appropriate payload for the _user endpoint
-func GetUserPayload(t *testing.T, username, password, email string, collection *db.DatabaseCollection, chans, roles []string) string {
+func GetUserPayload(t testing.TB, username, password, email string, collection *db.DatabaseCollection, chans, roles []string) string {
 	config := auth.PrincipalConfig{}
 	if username != "" {
 		config.Name = &username
