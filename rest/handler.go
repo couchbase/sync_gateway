@@ -179,13 +179,13 @@ func (h *handler) ctx() context.Context {
 
 func (h *handler) addDatabaseLogContext(dbName string) {
 	if dbName != "" {
-		h.rqCtx = base.LogContextWith(h.ctx(), &base.DatabaseLogContext{DatabaseName: dbName})
+		h.rqCtx = base.DatabaseLogCtx(h.ctx(), dbName)
 	}
 }
 
 func (h *handler) addCollectionLogContext(collectionName string) {
 	if collectionName != "" {
-		h.rqCtx = base.LogContextWith(h.ctx(), &base.CollectionLogContext{Collection: collectionName})
+		h.rqCtx = base.CollectionLogCtx(h.ctx(), collectionName)
 	}
 }
 

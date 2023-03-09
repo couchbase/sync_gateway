@@ -441,7 +441,7 @@ func (tbp *TestBucketPool) createCollections(ctx context.Context, bucket Bucket)
 	for i := 0; i < tbpNumCollectionsPerBucket(); i++ {
 		scopeName := tbp.testScopeName()
 		collectionName := fmt.Sprintf("%s%d", tbpCollectionPrefix, i)
-		ctx := testKeyspaceNameCtx(ctx, bucket.GetName(), scopeName, collectionName)
+		ctx := KeyspaceLogCtx(ctx, bucket.GetName(), scopeName, collectionName)
 
 		tbp.Logf(ctx, "Creating new collection: %s.%s", scopeName, collectionName)
 		dataStoreName := ScopeAndCollectionName{Scope: scopeName, Collection: collectionName}
@@ -514,7 +514,7 @@ func (tbp *TestBucketPool) createTestBuckets(numBuckets, bucketQuotaMB int, buck
 		itemName := "bucket"
 		if err, _ := RetryLoop(b.GetName()+"bucketInitRetry", func() (bool, error, interface{}) {
 			tbp.Logf(ctx, "Running %s through init function", itemName)
-			ctx = testKeyspaceNameCtx(ctx, b.GetName(), "", "")
+			ctx = KeyspaceLogCtx(ctx, b.GetName(), "", "")
 			err := bucketInitFunc(ctx, b, tbp)
 			if err != nil {
 				tbp.Logf(ctx, "Couldn't init %s, got error: %v - Retrying", itemName, err)
@@ -557,7 +557,7 @@ loop:
 
 				start := time.Now()
 				b, err := tbp.cluster.openTestBucket(testBucketName, waitForReadyBucketTimeout)
-				ctx = testKeyspaceNameCtx(ctx, b.GetName(), "", "")
+				ctx = KeyspaceLogCtx(ctx, b.GetName(), "", "")
 				if err != nil {
 					tbp.Logf(ctx, "Couldn't open bucket to get ready, got error: %v", err)
 					return

@@ -26,17 +26,20 @@ type LogContext struct {
 	// E.g: Either blip context ID or HTTP Serial number.
 	CorrelationID string
 
+	// Database is the name of the sync gateway database
+	Database string
+
+	// Bucket is the name of the backing bucket
+	Bucket string
+
+	// Scope is the name of a scope
+	Scope string
+
+	// Collection is the name of the collection
+	Collection string
+
 	// TestName can be a unit test name (from t.Name())
 	TestName string
-
-	// TestBucketName is the name of a bucket used during a test
-	TestBucketName string
-
-	// TestScopeName is the name of a scope on used during a test
-	TestScopeName string
-
-	// TestCollectionName is the name of the collection used during a test
-	TestCollectionName string
 }
 
 // addContext returns a string format with additional log context if present.
@@ -49,13 +52,19 @@ func (lc *LogContext) addContext(format string) string {
 		format = "c:" + lc.CorrelationID + " " + format
 	}
 
-	if lc.TestBucketName != "" {
-		keyspace := "b:" + lc.TestBucketName
-		if lc.TestScopeName != "" {
-			keyspace += "." + lc.TestScopeName
+	if lc.Database != "" {
+		if lc.Collection != "" {
+			format = "col:" + lc.Collection + " " + format
 		}
-		if lc.TestCollectionName != "" {
-			keyspace += "." + lc.TestCollectionName
+		format = "db:" + lc.Database + " " + format
+
+	} else if lc.Bucket != "" {
+		keyspace := "b:" + lc.Bucket
+		if lc.Scope != "" {
+			keyspace += "." + lc.Scope
+		}
+		if lc.Collection != "" {
+			keyspace += "." + lc.Collection
 		}
 
 		format = keyspace + " " + format
@@ -70,6 +79,17 @@ func (lc *LogContext) addContext(format string) string {
 
 func (lc *LogContext) getContextKey() LogContextKey {
 	return requestContextKey
+}
+
+func (lc *LogContext) getCopy() LogContext {
+	return LogContext{
+		CorrelationID: lc.CorrelationID,
+		Database:      lc.Database,
+		Bucket:        lc.Bucket,
+		Scope:         lc.Scope,
+		Collection:    lc.Collection,
+		TestName:      lc.TestName,
+	}
 }
 
 func FormatBlipContextID(contextID string) string {
@@ -92,33 +112,42 @@ func bucketCtx(parent context.Context, b Bucket) context.Context {
 	return bucketNameCtx(parent, b.GetName())
 }
 
+// getLogContext returns a log context possibly extending from previous context.
+func getLogCtx(ctx context.Context) LogContext {
+	parentLogCtx, ok := ctx.Value(requestContextKey).(*LogContext)
+	if !ok {
+		return LogContext{}
+	}
+	return parentLogCtx.getCopy()
+}
+
 // bucketNameCtx extends the parent context with a bucket name.
 func bucketNameCtx(parent context.Context, bucketName string) context.Context {
-	parentLogCtx, _ := parent.Value(requestContextKey).(LogContext)
-	newCtx := LogContext{
-		TestName:       parentLogCtx.TestName,
-		TestBucketName: bucketName,
-	}
+	newCtx := getLogCtx(parent)
+	newCtx.Bucket = bucketName
 	return LogContextWith(parent, &newCtx)
 }
 
 // CollectionCtx extends the parent context with a collection name.
-func CollectionCtx(parent context.Context, collectionName string) context.Context {
-	newCtx := CollectionLogContext{
-		Collection: collectionName,
-	}
+func CollectionLogCtx(parent context.Context, collectionName string) context.Context {
+	newCtx := getLogCtx(parent)
+	newCtx.Collection = collectionName
 	return LogContextWith(parent, &newCtx)
 }
 
-// testKeyspaceNameCtx extends the parent context with a bucket name.
-func testKeyspaceNameCtx(parent context.Context, bucketName, scopeName, collectionName string) context.Context {
-	parentLogCtx, _ := parent.Value(requestContextKey).(LogContext)
-	newCtx := LogContext{
-		TestName:           parentLogCtx.TestName,
-		TestBucketName:     bucketName,
-		TestScopeName:      scopeName,
-		TestCollectionName: collectionName,
-	}
+// DatabaseLogCtx extends the parent context with a database.
+func DatabaseLogCtx(parent context.Context, databaseName string) context.Context {
+	newCtx := getLogCtx(parent)
+	newCtx.Database = databaseName
+	return LogContextWith(parent, &newCtx)
+}
+
+// KeyspaceLogCtx extends the parent context with a bucket name.
+func KeyspaceLogCtx(parent context.Context, bucketName, scopeName, collectionName string) context.Context {
+	newCtx := getLogCtx(parent)
+	newCtx.Bucket = bucketName
+	newCtx.Collection = collectionName
+	newCtx.Scope = scopeName
 	return LogContextWith(parent, &newCtx)
 }
 
@@ -128,8 +157,6 @@ type LogContextKey int
 const (
 	requestContextKey LogContextKey = iota
 	serverLogContextKey
-	databaseLogContextKey
-	keyspaceLogContextKey
 )
 
 // ContextAdder interface should be implemented by all custom contexts.
@@ -142,7 +169,7 @@ type ContextAdder interface {
 
 // allLogContextKeys contains the keys of all custom contexts,
 // and is used when writing log prefixes (addPrefixes)
-var allLogContextKeys = [...]LogContextKey{requestContextKey, serverLogContextKey, databaseLogContextKey, keyspaceLogContextKey}
+var allLogContextKeys = [...]LogContextKey{requestContextKey, serverLogContextKey}
 
 // LogContextWith is called to add custom context to the go context.
 // All custom contexts should implement ContextAdder interface
@@ -162,39 +189,6 @@ func (c *ServerLogContext) getContextKey() LogContextKey {
 func (c *ServerLogContext) addContext(format string) string {
 	if c != nil && c.LogContextID != "" {
 		format = "sc:" + c.LogContextID + " " + format
-	}
-	return format
-}
-
-// DatabaseLogContext provides database context data for logging
-type DatabaseLogContext struct {
-	DatabaseName string
-}
-
-func (c *DatabaseLogContext) getContextKey() LogContextKey {
-	return databaseLogContextKey
-}
-
-func (c *DatabaseLogContext) addContext(format string) string {
-	if c != nil && c.DatabaseName != "" {
-		format = "db:" + c.DatabaseName + " " + format
-	}
-	return format
-}
-
-// CollectionLogContext provides collection context data for logging
-type CollectionLogContext struct {
-	Collection string
-}
-
-func (c *CollectionLogContext) getContextKey() LogContextKey {
-	return keyspaceLogContextKey
-}
-
-func (c *CollectionLogContext) addContext(format string) string {
-	if c.Collection != "" {
-		format = "col:" + c.Collection + " " + format
-
 	}
 	return format
 }

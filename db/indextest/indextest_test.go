@@ -412,7 +412,7 @@ func setupN1QLStore(ctx context.Context, bucket base.Bucket, isServerless bool) 
 
 	outN1QLStores := make([]base.N1QLStore, 0)
 	for _, dataStoreName := range dataStoreNames {
-		ctx = base.CollectionCtx(ctx, dataStoreName.CollectionName())
+		ctx = base.CollectionLogCtx(ctx, dataStoreName.CollectionName())
 		dataStore, err := bucket.NamedDataStore(dataStoreName)
 		if err != nil {
 			return nil, nil, err
