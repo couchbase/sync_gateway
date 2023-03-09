@@ -1403,8 +1403,7 @@ func TestGetUserCollectionAccess(t *testing.T) {
 	require.True(t, ok)
 
 	assert.Equal(t, channels.BaseSetOf(t, "foo", "bar1"), collectionAccess.ExplicitChannels_)
-	// TODO: computed channels requires authenticator populated with collection set, pending CBG-2266
-	//assert.Equal(t, channels.BaseSetOf(t), collectionAccess.Channels_)
+	assert.Equal(t, channels.BaseSetOf(t, "foo", "bar1", "!"), collectionAccess.Channels_)
 	assert.Nil(t, collectionAccess.JWTChannels_)
 	assert.Nil(t, collectionAccess.JWTLastUpdated)
 
