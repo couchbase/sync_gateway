@@ -171,6 +171,7 @@ type DatabaseContextOptions struct {
 	Scopes                        ScopesOptions
 	skipRegisterImportPIndex      bool           // if set, skips the global gocb PIndex registration
 	MetadataStore                 base.DataStore // If set, use this location/connection for SG metadata storage - if not set, metadata is stored using the same location/connection as the bucket used for data storage.
+	MetadataID                    string         // MetadataID used for metadata storage
 }
 
 type ScopesOptions map[string]ScopeOptions
@@ -419,10 +420,10 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 	}
 
 	// Initialize metadata ID and keys
-	// TODO: apply length limit to MetadataPrefix
+	// TODO: apply length limit to metadataID
 	metadataID := dbName
-	if options.Scopes.onlyDefaultCollection() {
-		metadataID = ""
+	if options.MetadataID != "" {
+		metadataID = options.MetadataID
 	}
 	metaKeys := base.NewMetadataKeys(metadataID)
 	dbContext.MetadataKeys = metaKeys

@@ -82,6 +82,7 @@ const (
 const (
 	DCPCheckpointRootPrefix              = SyncDocPrefix + DCPCheckpointPrefix // used to filter checkpoints across groupIDs, databases
 	SGRegistryKey                        = SyncDocPrefix + "registry"          // Registry of all SG databases defined for the bucket (for all group IDs)
+	SGSyncInfo                           = SyncDocPrefix + "syncInfo"          // SG info for a collection, stored with the collection
 	PersistentConfigPrefixWithoutGroupID = SyncDocPrefix + "dbconfig:"         // PersistentConfigPrefixWithoutGroupID stores a database config
 
 	// Sync function naming is collection-scoped, and collections cannot be associated with multiple databases

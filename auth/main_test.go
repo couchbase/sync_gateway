@@ -17,6 +17,6 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	memWatermarkThresholdMB := uint64(2048)
-	base.TestBucketPoolNoIndexes(m, memWatermarkThresholdMB)
+	tbpOptions := base.TestBucketPoolOptions{MemWatermarkThresholdMB: 2048}
+	base.TestBucketPoolNoIndexes(m, tbpOptions)
 }
