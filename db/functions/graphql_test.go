@@ -184,7 +184,7 @@ var kTestTypenameResolverSchema = `interface Book {
 type Textbook implements Book {
 	id: ID!
 	courses: [String!]!
-} 
+}
 type ColoringBook implements Book {
 	id: ID!
 	colors: [String!]!
@@ -753,4 +753,27 @@ func TestValidSchemaFile(t *testing.T) {
 		err = os.Remove("schema.graphql")
 		assert.NoError(t, err)
 	})
+}
+
+func TestFixOfCVE_2022_37315(t *testing.T) {
+	// Tests fix of CVE 2022-37315, reported as https://github.com/graphql-go/graphql/issues/637
+	// Without the fix, this test panics:
+	// 		runtime: goroutine stack exceeds 1000000000-byte limit
+	// 		runtime: sp=0xc0209c03c8 stack=[0xc0209c0000, 0xc0409c0000]
+	// 		fatal error: stack overflow
+
+	var schema = `String r`
+	var config = GraphQLConfig{
+		Schema: &schema,
+		Resolvers: map[string]GraphQLResolverConfig{
+			"Query": {
+				"square": {
+					Type: "javascript",
+					Code: `function(parent, args, context, info) {return args.n * args.n;}`,
+				},
+			},
+		},
+	}
+	_, err := CompileGraphQL(&config)
+	assert.ErrorContains(t, err, `Syntax Error GraphQL (1:1) Unexpected Name "String"`)
 }
