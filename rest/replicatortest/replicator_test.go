@@ -7522,14 +7522,11 @@ func TestGroupIDReplications(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
 	// Create test buckets to replicate between
-	passiveBucket := base.GetTestBucket(t)
-	defer passiveBucket.Close()
-
 	activeBucket := base.GetTestBucket(t)
 	defer activeBucket.Close()
 
 	// Set up passive bucket RT
-	rt := rest.NewRestTesterDefaultCollection(t, &rest.RestTesterConfig{CustomTestBucket: passiveBucket}) //  CBG-2319: replicator currently requires default collection
+	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 
 	// Make rt listen on an actual HTTP port, so it can receive replications
@@ -7570,13 +7567,21 @@ func TestGroupIDReplications(t *testing.T) {
 		}()
 		require.NoError(t, sc.WaitForRESTAPIs())
 
-		// Set up db config
-		resp := rest.BootstrapAdminRequestCustomHost(t, http.MethodPut, adminHosts[i], "/db/",
-			fmt.Sprintf(
-				`{"bucket": "%s", "num_index_replicas": 0, "use_views": %t, "import_docs": true, "sync":"%s"}`,
-				activeBucket.GetName(), base.TestsDisableGSI(), channels.DocChannelsSyncFunction,
-			),
-		)
+		dbConfig := rest.DbConfig{
+			AutoImport: true,
+			BucketConfig: rest.BucketConfig{
+				Bucket: base.StringPtr(activeBucket.GetName()),
+			},
+		}
+		if rt.GetDatabase().OnlyDefaultCollection() {
+			dbConfig.Sync = base.StringPtr(channels.DocChannelsSyncFunction)
+		} else {
+			dbConfig.Scopes = rest.GetCollectionsConfigWithSyncFn(rt.TB, rt.TestBucket, base.StringPtr(channels.DocChannelsSyncFunction), 1)
+		}
+		dbcJSON, err := base.JSONMarshal(dbConfig)
+		require.NoError(t, err)
+
+		resp := rest.BootstrapAdminRequestCustomHost(t, http.MethodPut, adminHosts[i], "/db/", string(dbcJSON))
 		resp.RequireStatus(http.StatusCreated)
 	}
 
@@ -7592,23 +7597,32 @@ func TestGroupIDReplications(t *testing.T) {
 			Continuous:             true,
 			InitialState:           db.ReplicationStateRunning,
 			ConflictResolutionType: db.ConflictResolverDefault,
+			CollectionsEnabled:     !rt.GetDatabase().OnlyDefaultCollection(),
 		}
 		resp := rest.BootstrapAdminRequestCustomHost(t, http.MethodPost, adminHosts[i], "/db/_replication/", rest.MarshalConfig(t, replicationConfig))
 		resp.RequireStatus(http.StatusCreated)
 	}
 
+	dataStore := activeBucket.DefaultDataStore()
+	keyspace := "/db/"
+	if !rt.GetDatabase().OnlyDefaultCollection() {
+		dataStore, err = activeBucket.GetNamedDataStore(0)
+		require.NoError(t, err)
+		dsName, ok := base.AsDataStoreName(dataStore)
+		require.True(t, ok)
+		keyspace = fmt.Sprintf("/db.%s.%s/", dsName.ScopeName(), dsName.CollectionName())
+	}
 	for groupNum, group := range groupIDs {
 		channel := "chan" + group
 		key := "doc" + group
 		body := fmt.Sprintf(`{"channels":["%s"]}`, channel)
-		// default data store - we're not using a named scope/collection in this test
-		added, err := activeBucket.DefaultDataStore().Add(key, 0, []byte(body))
+		added, err := dataStore.Add(key, 0, []byte(body))
 		require.NoError(t, err)
 		require.True(t, added)
 
 		// Force on-demand import and cache
 		for _, host := range adminHosts {
-			resp := rest.BootstrapAdminRequestCustomHost(t, http.MethodGet, host, "/db/"+key, "")
+			resp := rest.BootstrapAdminRequestCustomHost(t, http.MethodGet, host, keyspace+key, "")
 			resp.RequireStatus(http.StatusOK)
 		}
 
@@ -7633,6 +7647,7 @@ func TestGroupIDReplications(t *testing.T) {
 // Reproduces panic seen in CBG-1053
 func TestAdhocReplicationStatus(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll, base.KeyReplicate)
+	// CBG-2770 does not work with non default collections
 	rt := rest.NewRestTesterDefaultCollection(t, &rest.RestTesterConfig{SgReplicateEnabled: true})
 	defer rt.Close()
 
