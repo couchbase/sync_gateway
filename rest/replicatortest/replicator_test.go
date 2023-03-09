@@ -1653,7 +1653,6 @@ func TestDBReplicationStatsTeardown(t *testing.T) {
 }
 
 func TestTakeDbOfflineOngoingPushReplication(t *testing.T) {
-	t.Skip("Skip until CBG-2731 is fixed")
 	base.LongRunningTest(t)
 
 	base.RequireNumTestBuckets(t, 2)
