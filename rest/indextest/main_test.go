@@ -17,7 +17,7 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	memWatermarkThresholdMB := uint64(2048)
+	tbpOptions := base.TestBucketPoolOptions{MemWatermarkThresholdMB: 2048}
 	// Do not create indexes for this test, so they are built by server_context.go
-	base.TestBucketPoolNoIndexes(m, memWatermarkThresholdMB)
+	base.TestBucketPoolNoIndexes(m, tbpOptions)
 }

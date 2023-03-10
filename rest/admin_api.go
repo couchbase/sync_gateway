@@ -74,6 +74,12 @@ func (h *handler) handleCreateDB() error {
 			bucket = *config.Bucket
 		}
 
+		metadataID, metadataIDError := h.server.BootstrapContext.ComputeMetadataIDForDbConfig(h.ctx(), config)
+		if metadataIDError != nil {
+			base.WarnfCtx(h.ctx(), "Unable to compute metadata ID - using standard metadataID.  Error: %v", metadataIDError)
+			metadataID = h.server.BootstrapContext.standardMetadataID(config.Name)
+		}
+
 		// copy config before setup to persist the raw config the user supplied
 		var persistedDbConfig DbConfig
 		if err := base.DeepCopyInefficient(&persistedDbConfig, config); err != nil {
@@ -86,9 +92,17 @@ func (h *handler) handleCreateDB() error {
 			return err
 		}
 
-		loadedConfig := DatabaseConfig{Version: version, DbConfig: *config}
+		loadedConfig := DatabaseConfig{
+			Version:    version,
+			MetadataID: metadataID,
+			DbConfig:   *config}
 
-		persistedConfig := DatabaseConfig{Version: version, DbConfig: persistedDbConfig, SGVersion: base.ProductVersion.String()}
+		persistedConfig := DatabaseConfig{
+			Version:    version,
+			MetadataID: metadataID,
+			DbConfig:   persistedDbConfig,
+			SGVersion:  base.ProductVersion.String(),
+		}
 
 		h.server.lock.Lock()
 		defer h.server.lock.Unlock()

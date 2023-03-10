@@ -13,10 +13,11 @@ package functionsapitest
 import (
 	"testing"
 
+	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 )
 
 func TestMain(m *testing.M) {
-	memWatermarkThresholdMB := uint64(18192)
-	db.TestBucketPoolWithIndexes(m, memWatermarkThresholdMB)
+	tbpOptions := base.TestBucketPoolOptions{MemWatermarkThresholdMB: 18192}
+	db.TestBucketPoolWithIndexes(m, tbpOptions)
 }

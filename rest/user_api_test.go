@@ -1444,7 +1444,6 @@ func TestPutUserCollectionAccess(t *testing.T) {
 	base.RequireNumTestDataStores(t, 2)
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	testBucket := base.GetPersistentTestBucket(t)
-	defer testBucket.Close()
 
 	scopesConfig := GetCollectionsConfig(t, testBucket, 2)
 	rtConfig := &RestTesterConfig{

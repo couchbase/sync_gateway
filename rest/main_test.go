@@ -20,8 +20,8 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	memWatermarkThresholdMB := uint64(8192)
-	db.TestBucketPoolWithIndexes(m, memWatermarkThresholdMB)
+	tbpOptions := base.TestBucketPoolOptions{MemWatermarkThresholdMB: 8192}
+	db.TestBucketPoolWithIndexes(m, tbpOptions)
 }
 
 func TestConfigOverwritesLegacyFlags(t *testing.T) {

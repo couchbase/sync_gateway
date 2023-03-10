@@ -36,10 +36,17 @@ type ConfigPersistence interface {
 	// touchConfigRollback sets the specific property to the specified string value via a subdoc operation.
 	// Used to change to the cas value during rollback, to guard against races with slow updates
 	touchConfigRollback(c *gocb.Collection, key string, property string, value string, cas gocb.Cas) (casOut gocb.Cas, err error)
+
+	// keyExists checks whether the specified key exists in the collection
+	keyExists(c *gocb.Collection, key string) (found bool, err error)
 }
+
+var _ ConfigPersistence = &XattrBootstrapPersistence{}
+var _ ConfigPersistence = &DocumentBootstrapPersistence{}
 
 // System xattr persistence
 type XattrBootstrapPersistence struct {
+	CommonBootstrapPersistence
 }
 
 const cfgXattrKey = "_sync"
@@ -231,6 +238,7 @@ func (xbp *XattrBootstrapPersistence) restoreDocumentBody(c *gocb.Collection, ke
 // Document Body persistence stores config in the document body.
 // cfgCas is just document cas
 type DocumentBootstrapPersistence struct {
+	CommonBootstrapPersistence
 }
 
 func (dbp *DocumentBootstrapPersistence) loadRawConfig(c *gocb.Collection, key string) ([]byte, gocb.Cas, error) {
@@ -313,4 +321,17 @@ func (dbp *DocumentBootstrapPersistence) touchConfigRollback(c *gocb.Collection,
 		return 0, mutateErr
 	}
 	return result.Cas(), nil
+}
+
+// Common operations that don't depend on storage format
+type CommonBootstrapPersistence struct {
+}
+
+// Check whether the specified key exists.  Ignores format of stored data
+func (cbp *CommonBootstrapPersistence) keyExists(c *gocb.Collection, key string) (bool, error) {
+	res, err := c.Exists(key, nil)
+	if err != nil {
+		return false, err
+	}
+	return res.Exists(), nil
 }
