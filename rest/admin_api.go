@@ -76,7 +76,8 @@ func (h *handler) handleCreateDB() error {
 
 		metadataID, metadataIDError := h.server.BootstrapContext.ComputeMetadataIDForDbConfig(h.ctx(), config)
 		if metadataIDError != nil {
-			return metadataIDError
+			base.WarnfCtx(h.ctx(), "Unable to compute metadata ID - using standard metadataID.  Error: %v", metadataIDError)
+			metadataID = h.server.BootstrapContext.standardMetadataID(config.Name)
 		}
 
 		// copy config before setup to persist the raw config the user supplied

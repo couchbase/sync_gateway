@@ -14,7 +14,6 @@ import (
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
-
 	"github.com/couchbase/sync_gateway/db"
 )
 

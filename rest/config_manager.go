@@ -10,6 +10,8 @@ package rest
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/base64"
 	"fmt"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -709,7 +711,7 @@ func (b *bootstrapContext) ComputeMetadataIDForDbConfig(ctx context.Context, con
 //  4. The _default._default collection has legacy data (_sync:seq is present)
 func (b *bootstrapContext) computeMetadataID(ctx context.Context, registry *GatewayRegistry, config *DbConfig) string {
 
-	standardMetadataID := config.Name
+	standardMetadataID := b.standardMetadataID(config.Name)
 
 	// If the default metadata ID is already in use in the registry, use standard ID
 	for _, cg := range registry.ConfigGroups {
@@ -739,7 +741,7 @@ func (b *bootstrapContext) computeMetadataID(ctx context.Context, registry *Gate
 	bucketName := *config.Bucket
 	exists, err := b.Connection.KeyExists(bucketName, base.SGSyncInfo)
 	if err != nil {
-		base.WarnfCtx(ctx, "Error checking whether metadataID is already defined for default collection - using standard metadataID.  Error: %w", err)
+		base.WarnfCtx(ctx, "Error checking whether metadataID is already defined for default collection - using standard metadataID.  Error: %v", err)
 		return standardMetadataID
 	}
 	if exists {
@@ -753,4 +755,15 @@ func (b *bootstrapContext) computeMetadataID(ctx context.Context, registry *Gate
 	}
 	return defaultMetadataID
 
+}
+
+// standardMetadataID returns either the dbName or a base64 encoded SHA256 hash of the dbName, whichever is shorter.
+func (b *bootstrapContext) standardMetadataID(dbName string) string {
+	if len(dbName) >= 44 {
+		digester := sha256.New()
+		digester.Write([]byte(dbName))
+		return base64.StdEncoding.EncodeToString(digester.Sum(nil))
+	} else {
+		return dbName
+	}
 }

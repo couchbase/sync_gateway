@@ -39,14 +39,9 @@ func TestDefaultMetadataIDNamedToDefault(t *testing.T) {
 	// Create a database with named collections
 	// Update config to remove named collections
 	scopesConfig := rest.GetCollectionsConfig(t, rt.TestBucket, 2)
-	dbConfig := rest.DbConfig{
-		Scopes: scopesConfig,
-		BucketConfig: rest.BucketConfig{
-			Bucket: base.StringPtr(rt.TestBucket.GetName()),
-		},
-		EnableXattrs:     base.BoolPtr(base.TestUseXattrs()),
-		NumIndexReplicas: base.UintPtr(0),
-	}
+
+	dbConfig := rest.GetBasicDbCfg(rt.TestBucket)
+	dbConfig.Scopes = scopesConfig
 
 	resp, err := rt.CreateDatabase(dbName, dbConfig)
 	require.NoError(t, err)
@@ -89,14 +84,8 @@ func TestDefaultMetadataIDDefaultToNamed(t *testing.T) {
 	// Update config to remove named collections
 
 	scopesConfig := rest.GetCollectionsConfig(t, rt.TestBucket, 2)
-	dbConfig := rest.DbConfig{
-		Scopes: rest.DefaultOnlyScopesConfig,
-		BucketConfig: rest.BucketConfig{
-			Bucket: base.StringPtr(rt.TestBucket.GetName()),
-		},
-		EnableXattrs:     base.BoolPtr(base.TestUseXattrs()),
-		NumIndexReplicas: base.UintPtr(0),
-	}
+	dbConfig := rest.GetBasicDbCfg(rt.TestBucket)
+	dbConfig.Scopes = rest.DefaultOnlyScopesConfig
 
 	resp, err := rt.CreateDatabase(dbName, dbConfig)
 	require.NoError(t, err)

@@ -326,10 +326,8 @@ func findCollectionConflicts(scopes ScopesConfig, registryScopes map[string]Regi
 	return conflicts
 }
 
-// getCollectionConflicts returns a map of registry collections that are in conflict with the provided scopesConfig.  Map values
-// are the dbName for the conflicting collection.  Matching collections for the same dbname is not a conflicts (even across config groups).
+// hasMetadataIDConflict checks whether the specified metadataID is already in use by a different db in the registry
 func (r *GatewayRegistry) hasMetadataIDConflict(dbName string, metadataID string) bool {
-
 	for _, configGroup := range r.ConfigGroups {
 		for registryDbName, database := range configGroup.Databases {
 			if registryDbName != dbName && database.MetadataID == metadataID {
