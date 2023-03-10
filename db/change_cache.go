@@ -560,17 +560,18 @@ func (c *changeCache) releaseUnusedSequence(sequence uint64, timeReceived time.T
 // Process unused sequence notification.  Extracts sequence from docID and sends to cache for buffering
 func (c *changeCache) processUnusedSequenceRange(docID string) {
 	// _sync:unusedSequences:fromSeq:toSeq
-	sequences := strings.Split(docID, ":")
-	if len(sequences) != 4 {
+	sequencesStr := strings.TrimPrefix(docID, c.metaKeys.UnusedSeqRangePrefix())
+	sequences := strings.Split(sequencesStr, ":")
+	if len(sequences) != 2 {
 		return
 	}
 
-	fromSequence, err := strconv.ParseUint(sequences[2], 10, 64)
+	fromSequence, err := strconv.ParseUint(sequences[0], 10, 64)
 	if err != nil {
 		base.WarnfCtx(c.logCtx, "Unable to identify from sequence number for unused sequences notification with key: %s, error:", base.UD(docID), err)
 		return
 	}
-	toSequence, err := strconv.ParseUint(sequences[3], 10, 64)
+	toSequence, err := strconv.ParseUint(sequences[1], 10, 64)
 	if err != nil {
 		base.WarnfCtx(c.logCtx, "Unable to identify to sequence number for unused sequence notification with key: %s, error:", base.UD(docID), err)
 		return
