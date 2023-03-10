@@ -39,6 +39,8 @@ require (
 	gopkg.in/square/go-jose.v2 v2.6.0
 )
 
+replace github.com/graphql-go/graphql v0.8.0 => github.com/couchbasedeps/graphql-go v0.8.1
+
 require (
 	github.com/aws/aws-sdk-go v1.44.77 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
