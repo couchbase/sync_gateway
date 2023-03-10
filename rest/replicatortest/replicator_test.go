@@ -4796,7 +4796,7 @@ func TestActiveReplicatorRecoverFromMismatchedRev(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyBucket, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)
 
 	// Passive
-	rt2 := rest.NewRestTester(t, nil)
+	rt2 := rest.NewRestTesterDefaultCollection(t, nil) // CBG-2775 doesn't work yet with default collection
 	defer rt2.Close()
 
 	username := "alice"
@@ -4812,7 +4812,7 @@ func TestActiveReplicatorRecoverFromMismatchedRev(t *testing.T) {
 	passiveDBURL.User = url.UserPassword(username, rest.RestTesterDefaultUserPassword)
 
 	// Active
-	rt1 := rest.NewRestTester(t, nil)
+	rt1 := rest.NewRestTesterDefaultCollection(t, nil) // CBG-2775 doesn't work yet with default collection
 	defer rt1.Close()
 	ctx1 := rt1.Context()
 	stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, nil, nil)
@@ -4837,6 +4837,10 @@ func TestActiveReplicatorRecoverFromMismatchedRev(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.NoError(t, ar.Start(ctx1))
+
+	defer func() {
+		assert.NoError(t, ar.Stop())
+	}()
 
 	pushCheckpointID := ar.Push.CheckpointID
 	pushCheckpointDocID := base.SyncDocPrefix + "local:checkpoint/" + pushCheckpointID
@@ -4867,7 +4871,6 @@ func TestActiveReplicatorRecoverFromMismatchedRev(t *testing.T) {
 	rest.RequireStatus(t, resp, http.StatusCreated)
 	assert.NoError(t, rt2.WaitForPendingChanges())
 
-	t.Skip("uses namedspace checkpoint IDS")
 	// wait for document originally written to rt2 to arrive at rt1
 	changesResults, err = rt1.WaitForChanges(1, "/{{.keyspace}}/_changes?since=1", "", true)
 	require.NoError(t, err)
@@ -4884,7 +4887,6 @@ func TestActiveReplicatorRecoverFromMismatchedRev(t *testing.T) {
 	pullCheckpointer.CheckpointNow()
 	assert.Equal(t, int64(1), pullCheckpointer.Stats().SetCheckpointCount)
 
-	assert.NoError(t, ar.Stop())
 }
 
 // TestActiveReplicatorIgnoreNoConflicts ensures the IgnoreNoConflicts flag allows Hydrogen<-->Hydrogen replication with no_conflicts set.
