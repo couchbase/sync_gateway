@@ -15,6 +15,16 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 )
 
+func getScopeAndCollectionName(scopeAndCollectionStr string) (base.ScopeAndCollectionName, error) {
+	scopeName, collectionName, err := parseScopeAndCollection(scopeAndCollectionStr)
+	if err != nil {
+		return base.ScopeAndCollectionName{}, err
+	} else if scopeName == nil || collectionName == nil {
+		return base.ScopeAndCollectionName{}, fmt.Errorf("scope and collection name must be specified: %q", scopeAndCollectionStr)
+	}
+	return base.ScopeAndCollectionName{Scope: *scopeName, Collection: *collectionName}, nil
+}
+
 // _initCollections will negotiate the set of collections with the peer using GetCollections and returns the set of checkpoints for each of them.
 func (arc *activeReplicatorCommon) _initCollections() ([]replicationCheckpoint, error) {
 
@@ -32,28 +42,22 @@ func (arc *activeReplicatorCommon) _initCollections() ([]replicationCheckpoint, 
 
 	if arc.config.CollectionsLocal != nil {
 		for i, localScopeAndCollection := range arc.config.CollectionsLocal {
-			localScopeName, localCollectionName, err := parseScopeAndCollection(localScopeAndCollection)
+			localScopeAndCollectionName, err := getScopeAndCollectionName(localScopeAndCollection)
 			if err != nil {
 				return nil, err
-			} else if localScopeName == nil || localCollectionName == nil {
-				return nil, fmt.Errorf("scope and collection name must be specified: %q - %v", localScopeAndCollection, arc.config.CollectionsLocal)
 			}
-			localCollectionsKeyspaces = append(localCollectionsKeyspaces, base.ScopeAndCollectionName{Scope: *localScopeName, Collection: *localCollectionName})
+			localCollectionsKeyspaces = append(localCollectionsKeyspaces, localScopeAndCollectionName)
 
 			// remap collection name to remote if set
 			if remoteScopeAndCollection := arc.config.CollectionsRemote[i]; remoteScopeAndCollection != "" {
 				base.DebugfCtx(arc.ctx, base.KeyReplicate, "Mapping local %q to remote %q", localScopeAndCollection, remoteScopeAndCollection)
-				localScopeAndCollection = remoteScopeAndCollection
-
-				remoteScopeName, remoteCollectionName, err := parseScopeAndCollection(remoteScopeAndCollection)
+				remoteScopeAndCollectionName, err := getScopeAndCollectionName(remoteScopeAndCollection)
 				if err != nil {
 					return nil, err
-				} else if remoteScopeName == nil || remoteCollectionName == nil {
-					return nil, fmt.Errorf("scope and collection name must be specified: %q - %v", remoteScopeAndCollection, arc.config.CollectionsLocal)
 				}
-				remoteCollectionsKeyspaces = append(remoteCollectionsKeyspaces, base.ScopeAndCollectionName{Scope: *remoteScopeName, Collection: *remoteCollectionName})
+				remoteCollectionsKeyspaces = append(remoteCollectionsKeyspaces, remoteScopeAndCollectionName)
 			} else {
-				remoteCollectionsKeyspaces = append(remoteCollectionsKeyspaces, base.ScopeAndCollectionName{Scope: *localScopeName, Collection: *localCollectionName})
+				remoteCollectionsKeyspaces = append(remoteCollectionsKeyspaces, localScopeAndCollectionName)
 			}
 			getCollectionsCheckpointIDs = append(getCollectionsCheckpointIDs, arc.CheckpointID)
 		}
