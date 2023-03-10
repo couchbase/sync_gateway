@@ -1499,7 +1499,7 @@ func TestPutUserCollectionAccess(t *testing.T) {
 	assert.Contains(t, getResponse.ResponseRecorder.Body.String(), `"all_channels":["!"]`)
 
 	dbConfig := DbConfig{
-		Scopes: getCollectionsConfigWithSyncFn(rt.TB, rt.TestBucket, nil, 1),
+		Scopes: GetCollectionsConfigWithSyncFn(rt.TB, rt.TestBucket, nil, 1),
 		BucketConfig: BucketConfig{
 			Bucket: base.StringPtr(rt.TestBucket.GetName()),
 		},

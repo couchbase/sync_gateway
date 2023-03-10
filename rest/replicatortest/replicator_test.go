@@ -4295,7 +4295,7 @@ func TestActiveReplicatorRecoverFromLocalFlush(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)
 
 	// Passive
-	rt2 := rest.NewRestTester(t,
+	rt2 := rest.NewRestTesterDefaultCollection(t, // CBG-2379 test requires default collection
 		&rest.RestTesterConfig{
 			SyncFn: channels.DocChannelsSyncFunction,
 		})
@@ -4321,7 +4321,7 @@ func TestActiveReplicatorRecoverFromLocalFlush(t *testing.T) {
 	passiveDBURL.User = url.UserPassword(username, rest.RestTesterDefaultUserPassword)
 
 	// Active
-	rt1 := rest.NewRestTester(t, nil)
+	rt1 := rest.NewRestTesterDefaultCollection(t, nil) // CBG-2379 test requires default collection
 	ctx1 := rt1.Context()
 	stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, nil, nil)
 	require.NoError(t, err)
@@ -4390,7 +4390,7 @@ func TestActiveReplicatorRecoverFromLocalFlush(t *testing.T) {
 	rt1.Close()
 
 	// recreate rt1 with a new bucket
-	rt1 = rest.NewRestTester(t, nil)
+	rt1 = rest.NewRestTesterDefaultCollection(t, nil) // CBG-2379 test requires default collection
 	defer rt1.Close()
 	ctx1 = rt1.Context()
 
@@ -4412,14 +4412,13 @@ func TestActiveReplicatorRecoverFromLocalFlush(t *testing.T) {
 	if rt1.GetDatabase().OnlyDefaultCollection() {
 		assert.Equal(t, int64(0), pullCheckpointer.Stats().GetCheckpointHitCount)
 	}
-	t.Skip("here")
 	// wait for document originally written to rt2 to arrive at rt1
 	changesResults, err = rt1.WaitForChanges(1, "/{{.keyspace}}/_changes?since=0", "", true)
 	require.NoError(t, err)
 	require.Len(t, changesResults.Results, 1)
 	assert.Equal(t, docID, changesResults.Results[0].ID)
 
-	doc, err = rt1.GetDatabase().GetSingleDatabaseCollection().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalAll)
+	doc, err = rt1.GetSingleTestDatabaseCollectionWithUser().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalAll)
 	require.NoError(t, err)
 
 	body, err = doc.GetDeepMutableBody()
@@ -5857,7 +5856,6 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 	// requireTombstone validates tombstoned revision.
 	requireTombstone := func(t *testing.T, dataStore base.DataStore, docID string) {
 		var rawBody db.Body
-		// TODO: Could move to GetSingleDataStore when RestTester database is being initialised with a named collection instead of just default
 		_, err := dataStore.Get(docID, &rawBody)
 		if base.TestUseXattrs() {
 			require.True(t, base.IsDocNotFoundError(err))
@@ -5891,8 +5889,6 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 	for _, test := range tombstoneTests {
 
 		t.Run(test.name, func(t *testing.T) {
-			base.SetUpTestLogging(t, base.LevelDebug, base.KeyImport, base.KeyHTTP, base.KeySync, base.KeyChanges, base.KeyCRUD, base.KeyBucket, base.KeyReplicate)
-
 			if test.sdkResurrect && !base.TestUseXattrs() {
 				t.Skip("SDK resurrect test cases require xattrs to be enabled")
 			}
@@ -5906,24 +5902,15 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 				return body["rev"].(string)
 			}
 
-			// Passive
-			passiveBucket := base.GetTestBucket(t)
-			// CBG-2319: replicator not yet working with non default collection
-			remotePassiveRT := rest.NewRestTesterDefaultCollection(t,
-				&rest.RestTesterConfig{
-					CustomTestBucket: passiveBucket,
-				})
+			remotePassiveRT := rest.NewRestTester(t, nil)
 			defer remotePassiveRT.Close()
 
 			srv := httptest.NewServer(remotePassiveRT.TestAdminHandler())
 			defer srv.Close()
 
 			// Active
-			activeBucket := base.GetTestBucket(t)
-			// CBG-2319: replicator not yet working with non default collection
-			localActiveRT := rest.NewRestTesterDefaultCollection(t,
+			localActiveRT := rest.NewRestTester(t,
 				&rest.RestTesterConfig{
-					CustomTestBucket:   activeBucket,
 					SgReplicateEnabled: true,
 				})
 			defer localActiveRT.Close()
@@ -5950,7 +5937,7 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 
 			// Wait for document to arrive on the doc is was put on
 			err := localActiveRT.WaitForConditionShouldRetry(func() (shouldRetry bool, err error, value interface{}) {
-				doc, _ := localActiveRT.GetDatabase().GetSingleDatabaseCollection().GetDocument(base.TestCtx(t), "docid2", db.DocUnmarshalSync)
+				doc, _ := localActiveRT.GetSingleTestDatabaseCollection().GetDocument(base.TestCtx(t), "docid2", db.DocUnmarshalSync)
 				if doc != nil {
 					return compareDocRev(doc.SyncData.CurrentRev, "3-abc")
 				}
@@ -5960,7 +5947,7 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 
 			// Wait for document to be replicated
 			err = remotePassiveRT.WaitForConditionShouldRetry(func() (shouldRetry bool, err error, value interface{}) {
-				doc, _ := remotePassiveRT.GetDatabase().GetSingleDatabaseCollection().GetDocument(base.TestCtx(t), "docid2", db.DocUnmarshalSync)
+				doc, _ := remotePassiveRT.GetSingleTestDatabaseCollection().GetDocument(base.TestCtx(t), "docid2", db.DocUnmarshalSync)
 				if doc != nil {
 					return compareDocRev(doc.SyncData.CurrentRev, "3-abc")
 				}
@@ -5980,7 +5967,7 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 
 				// Validate document revision created to prevent race conditions
 				err = remotePassiveRT.WaitForConditionShouldRetry(func() (shouldRetry bool, err error, value interface{}) {
-					doc, docErr := remotePassiveRT.GetDatabase().GetSingleDatabaseCollection().GetDocument(base.TestCtx(t), "docid2", db.DocUnmarshalSync)
+					doc, docErr := remotePassiveRT.GetSingleTestDatabaseCollection().GetDocument(base.TestCtx(t), "docid2", db.DocUnmarshalSync)
 					if assert.NoError(t, docErr) {
 						if shouldRetry, err, value = compareDocRev(doc.SyncData.CurrentRev, "4-cc0337d9d38c8e5fc930ae3deda62bf8"); value != nil {
 							requireTombstone(t, remotePassiveRT.GetSingleDataStore(), "docid2")
@@ -6006,7 +5993,7 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 
 				// Validate document revision created to prevent race conditions
 				err = localActiveRT.WaitForConditionShouldRetry(func() (shouldRetry bool, err error, value interface{}) {
-					doc, docErr := localActiveRT.GetDatabase().GetSingleDatabaseCollection().GetDocument(base.TestCtx(t), "docid2", db.DocUnmarshalSync)
+					doc, docErr := localActiveRT.GetSingleTestDatabaseCollection().GetDocument(base.TestCtx(t), "docid2", db.DocUnmarshalSync)
 					if assert.NoError(t, docErr) {
 						if shouldRetry, err, value = compareDocRev(doc.SyncData.CurrentRev, "4-cc0337d9d38c8e5fc930ae3deda62bf8"); value != nil {
 							requireTombstone(t, localActiveRT.GetSingleDataStore(), "docid2")
@@ -6032,7 +6019,7 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 
 			// Wait for the recently longest branch to show up on both sides
 			err = localActiveRT.WaitForConditionShouldRetry(func() (shouldRetry bool, err error, value interface{}) {
-				doc, docErr := localActiveRT.GetDatabase().GetSingleDatabaseCollection().GetDocument(base.TestCtx(t), "docid2", db.DocUnmarshalSync)
+				doc, docErr := localActiveRT.GetSingleTestDatabaseCollection().GetDocument(base.TestCtx(t), "docid2", db.DocUnmarshalSync)
 				if assert.NoError(t, docErr) {
 					if shouldRetry, err, value = compareDocRev(doc.SyncData.CurrentRev, "5-4a5f5a35196c37c117737afd5be1fc9b"); value != nil {
 						// Validate local is CBS tombstone, expect not found error
@@ -6046,7 +6033,7 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 			assert.NoError(t, err)
 
 			err = remotePassiveRT.WaitForConditionShouldRetry(func() (shouldRetry bool, err error, value interface{}) {
-				doc, docErr := remotePassiveRT.GetDatabase().GetSingleDatabaseCollection().GetDocument(base.TestCtx(t), "docid2", db.DocUnmarshalSync)
+				doc, docErr := remotePassiveRT.GetSingleTestDatabaseCollection().GetDocument(base.TestCtx(t), "docid2", db.DocUnmarshalSync)
 				if assert.NoError(t, docErr) {
 					if shouldRetry, err, value = compareDocRev(doc.SyncData.CurrentRev, "5-4a5f5a35196c37c117737afd5be1fc9b"); value != nil {
 						// Validate remote is CBS tombstone
@@ -6069,11 +6056,10 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 			if test.resurrectLocal {
 				if test.sdkResurrect {
 					// resurrect doc via SDK on local
-					// TODO: Could move to GetSingleDataStore when RestTester database is being initialised with a named collection instead of just default
-					err = activeBucket.DefaultDataStore().Set("docid2", 0, nil, updatedBody)
+					err = localActiveRT.GetSingleDataStore().Set("docid2", 0, nil, updatedBody)
 					assert.NoError(t, err, "Unable to resurrect doc docid2")
 					// force on-demand import
-					_, getErr := localActiveRT.GetDatabase().GetSingleDatabaseCollection().GetDocument(base.TestCtx(t), "docid2", db.DocUnmarshalSync)
+					_, getErr := localActiveRT.GetSingleTestDatabaseCollection().GetDocument(base.TestCtx(t), "docid2", db.DocUnmarshalSync)
 					assert.NoError(t, getErr, "Unable to retrieve resurrected doc docid2")
 				} else {
 					resp = localActiveRT.SendAdminRequest("PUT", "/{{.keyspace}}/docid2", `{"resurrection": true}`)
@@ -6082,11 +6068,10 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 			} else {
 				if test.sdkResurrect {
 					// resurrect doc via SDK on remote
-					// TODO: Could move to GetSingleDataStore when RestTester database is being initialised with a named collection instead of just default
-					err = passiveBucket.DefaultDataStore().Set("docid2", 0, nil, updatedBody)
+					err = remotePassiveRT.GetSingleDataStore().Set("docid2", 0, nil, updatedBody)
 					assert.NoError(t, err, "Unable to resurrect doc docid2")
 					// force on-demand import
-					_, getErr := remotePassiveRT.GetDatabase().GetSingleDatabaseCollection().GetDocument(base.TestCtx(t), "docid2", db.DocUnmarshalSync)
+					_, getErr := remotePassiveRT.GetSingleTestDatabaseCollection().GetDocument(base.TestCtx(t), "docid2", db.DocUnmarshalSync)
 					assert.NoError(t, getErr, "Unable to retrieve resurrected doc docid2")
 				} else {
 					resp = remotePassiveRT.SendAdminRequest("PUT", "/{{.keyspace}}/docid2", `{"resurrection": true}`)
@@ -7536,14 +7521,11 @@ func TestGroupIDReplications(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
 	// Create test buckets to replicate between
-	passiveBucket := base.GetTestBucket(t)
-	defer passiveBucket.Close()
-
 	activeBucket := base.GetTestBucket(t)
 	defer activeBucket.Close()
 
 	// Set up passive bucket RT
-	rt := rest.NewRestTesterDefaultCollection(t, &rest.RestTesterConfig{CustomTestBucket: passiveBucket}) //  CBG-2319: replicator currently requires default collection
+	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 
 	// Make rt listen on an actual HTTP port, so it can receive replications
@@ -7584,13 +7566,21 @@ func TestGroupIDReplications(t *testing.T) {
 		}()
 		require.NoError(t, sc.WaitForRESTAPIs())
 
-		// Set up db config
-		resp := rest.BootstrapAdminRequestCustomHost(t, http.MethodPut, adminHosts[i], "/db/",
-			fmt.Sprintf(
-				`{"bucket": "%s", "num_index_replicas": 0, "use_views": %t, "import_docs": true, "sync":"%s"}`,
-				activeBucket.GetName(), base.TestsDisableGSI(), channels.DocChannelsSyncFunction,
-			),
-		)
+		dbConfig := rest.DbConfig{
+			AutoImport: true,
+			BucketConfig: rest.BucketConfig{
+				Bucket: base.StringPtr(activeBucket.GetName()),
+			},
+		}
+		if rt.GetDatabase().OnlyDefaultCollection() {
+			dbConfig.Sync = base.StringPtr(channels.DocChannelsSyncFunction)
+		} else {
+			dbConfig.Scopes = rest.GetCollectionsConfigWithSyncFn(rt.TB, rt.TestBucket, base.StringPtr(channels.DocChannelsSyncFunction), 1)
+		}
+		dbcJSON, err := base.JSONMarshal(dbConfig)
+		require.NoError(t, err)
+
+		resp := rest.BootstrapAdminRequestCustomHost(t, http.MethodPut, adminHosts[i], "/db/", string(dbcJSON))
 		resp.RequireStatus(http.StatusCreated)
 	}
 
@@ -7606,23 +7596,32 @@ func TestGroupIDReplications(t *testing.T) {
 			Continuous:             true,
 			InitialState:           db.ReplicationStateRunning,
 			ConflictResolutionType: db.ConflictResolverDefault,
+			CollectionsEnabled:     !rt.GetDatabase().OnlyDefaultCollection(),
 		}
 		resp := rest.BootstrapAdminRequestCustomHost(t, http.MethodPost, adminHosts[i], "/db/_replication/", rest.MarshalConfig(t, replicationConfig))
 		resp.RequireStatus(http.StatusCreated)
 	}
 
+	dataStore := activeBucket.DefaultDataStore()
+	keyspace := "/db/"
+	if !rt.GetDatabase().OnlyDefaultCollection() {
+		dataStore, err = activeBucket.GetNamedDataStore(0)
+		require.NoError(t, err)
+		dsName, ok := base.AsDataStoreName(dataStore)
+		require.True(t, ok)
+		keyspace = fmt.Sprintf("/db.%s.%s/", dsName.ScopeName(), dsName.CollectionName())
+	}
 	for groupNum, group := range groupIDs {
 		channel := "chan" + group
 		key := "doc" + group
 		body := fmt.Sprintf(`{"channels":["%s"]}`, channel)
-		// default data store - we're not using a named scope/collection in this test
-		added, err := activeBucket.DefaultDataStore().Add(key, 0, []byte(body))
+		added, err := dataStore.Add(key, 0, []byte(body))
 		require.NoError(t, err)
 		require.True(t, added)
 
 		// Force on-demand import and cache
 		for _, host := range adminHosts {
-			resp := rest.BootstrapAdminRequestCustomHost(t, http.MethodGet, host, "/db/"+key, "")
+			resp := rest.BootstrapAdminRequestCustomHost(t, http.MethodGet, host, keyspace+key, "")
 			resp.RequireStatus(http.StatusOK)
 		}
 
@@ -7647,6 +7646,7 @@ func TestGroupIDReplications(t *testing.T) {
 // Reproduces panic seen in CBG-1053
 func TestAdhocReplicationStatus(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll, base.KeyReplicate)
+	// CBG-2770 does not work with non default collections
 	rt := rest.NewRestTesterDefaultCollection(t, &rest.RestTesterConfig{SgReplicateEnabled: true})
 	defer rt.Close()
 
@@ -7704,21 +7704,9 @@ function (doc) {
 }`
 			rtConfig := &rest.RestTesterConfig{
 				SyncFn: syncFunc,
-				DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
-					Users: map[string]*auth.PrincipalConfig{
-						"alice": {
-							Password:         base.StringPtr("pass"),
-							ExplicitChannels: base.SetOf("chanAlpha", "chanBeta", "chanCharlie", "chanHotel", "chanIndia"),
-						},
-						"bob": {
-							Password:         base.StringPtr("pass"),
-							ExplicitChannels: base.SetOf("chanDelta", "chanEcho"),
-						},
-					},
-				}},
 			}
 			// Set up buckets, rest testers, and set up servers
-			passiveRT := rest.NewRestTesterDefaultCollection(t, rtConfig) //  CBG-2319: replicator currently requires default collection
+			passiveRT := rest.NewRestTesterDefaultCollection(t, rtConfig) //  CBG-2772: replicator currently requires default collection
 
 			defer passiveRT.Close()
 
@@ -7728,9 +7716,14 @@ function (doc) {
 			adminSrv := httptest.NewServer(passiveRT.TestAdminHandler())
 			defer adminSrv.Close()
 
-			activeRT := rest.NewRestTesterDefaultCollection(t, rtConfig)
+			activeRT := rest.NewRestTesterDefaultCollection(t, rtConfig) //  CBG-2772: replicator currently requires default collection
 			defer activeRT.Close()
 
+			for _, rt := range []*rest.RestTester{passiveRT, activeRT} {
+				rt.CreateUser("alice", []string{"chanAlpha", "chanBeta", "chanCharlie", "chanHotel", "chanIndia"})
+				rt.CreateUser("bob", []string{"chanDelta", "chanEcho"})
+
+			}
 			// Change RT depending on direction
 			var senderRT *rest.RestTester   // RT that has the initial docs that get replicated to the other bucket
 			var receiverRT *rest.RestTester // RT that gets the docs replicated to it
@@ -7775,7 +7768,8 @@ function (doc) {
 					"batch": 200,
 					"run_as": "alice",
 					"remote_username": "alice",
-					"remote_password": "pass"
+					"remote_password": "letmein",
+					"collections_enabled": ` + strconv.FormatBool(!activeRT.GetDatabase().OnlyDefaultCollection()) + `
 				}`
 
 			resp = activeRT.SendAdminRequest("PUT", "/{{.db}}/_replication/"+replName, replConf)
@@ -7789,7 +7783,7 @@ function (doc) {
 			value, _ := base.WaitForStat(receiverRT.GetDatabase().DbStats.Database().NumDocWrites.Value, 6)
 			assert.EqualValues(t, 6, value)
 
-			changesResults, err := receiverRT.WaitForChanges(6, "/db/_changes?since=0&include_docs=true", "", true)
+			changesResults, err := receiverRT.WaitForChanges(6, "/{{.keyspace}}/_changes?since=0&include_docs=true", "", true)
 			assert.NoError(t, err)
 			assert.Len(t, changesResults.Results, 6)
 			// Check the docs are alices docs
