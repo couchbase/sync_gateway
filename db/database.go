@@ -126,7 +126,6 @@ type DatabaseContext struct {
 	userFunctions                *UserFunctions                 // client-callable JavaScript functions
 	graphQL                      *GraphQL                       // GraphQL query evaluator
 	Scopes                       map[string]Scope               // A map keyed by scope name containing a set of scopes/collections. Nil if running with only _default._default
-	singleCollection             *DatabaseCollection            // Temporary collection
 	CollectionByID               map[uint32]*DatabaseCollection // A map keyed by collection ID to Collection
 	CollectionNames              map[string]map[string]struct{} // Map of scope, collection names
 	MetadataKeys                 *base.MetadataKeys             // Factory to generate metadata document keys
@@ -539,7 +538,6 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 
 			collectionID := dbCollection.GetCollectionID()
 			dbContext.CollectionByID[collectionID] = dbCollection
-			dbContext.singleCollection = dbCollection
 			collectionNameMap[collName] = struct{}{}
 		}
 		dbContext.CollectionNames[scopeName] = collectionNameMap
@@ -2308,11 +2306,6 @@ func (dbc *Database) GetDefaultDatabaseCollectionWithUser() (*DatabaseCollection
 		DatabaseCollection: col,
 		user:               dbc.user,
 	}, nil
-}
-
-// GetSingleDatabaseCollection is a temporary function to return a single collection. This should be a temporary function while collection work is ongoing.
-func (dbc *DatabaseContext) GetSingleDatabaseCollection() *DatabaseCollection {
-	return dbc.singleCollection
 }
 
 func (dbc *DatabaseContext) AuthenticatorOptions() auth.AuthenticatorOptions {

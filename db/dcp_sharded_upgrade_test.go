@@ -230,7 +230,7 @@ func TestShardedDCPUpgrade(t *testing.T) {
 	require.NoError(t, err, "NewDatabaseContext")
 	defer db.Close(ctx)
 	ctx = db.AddDatabaseLogContext(ctx)
-	collection := db.GetSingleDatabaseCollection()
+	collection := GetSingleDatabaseCollection(t, db)
 
 	err, _ = base.RetryLoop("wait for non-existent node to be removed", func() (shouldRetry bool, err error, value interface{}) {
 		nodes, _, err := cbgt.CfgGetNodeDefs(db.CfgSG, cbgt.NODE_DEFS_KNOWN)

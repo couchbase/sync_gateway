@@ -31,7 +31,7 @@ func TestDuplicateDocID(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 
-	collectionID := db.GetSingleDatabaseCollection().GetCollectionID()
+	collection := GetSingleDatabaseCollection(t, db.DatabaseContext)
 
 	stats, err := base.NewSyncGatewayStats()
 	require.NoError(t, err)
@@ -39,7 +39,7 @@ func TestDuplicateDocID(t *testing.T) {
 	dbstats, err := stats.NewDBStats("", false, false, false, nil, nil)
 	require.NoError(t, err)
 
-	cache := newSingleChannelCache(db.GetSingleDatabaseCollection(), channels.NewID("Test1", collectionID), 0, dbstats.Cache())
+	cache := newSingleChannelCache(collection, channels.NewID("Test1", collection.GetCollectionID()), 0, dbstats.Cache())
 	assert.NotNil(t, cache)
 
 	// Add some entries to cache
@@ -92,9 +92,9 @@ func TestLateArrivingSequence(t *testing.T) {
 	dbstats, err := stats.NewDBStats("", false, false, false, nil, nil)
 	require.NoError(t, err)
 
-	collectionID := db.GetSingleDatabaseCollection().GetCollectionID()
+	collection := GetSingleDatabaseCollection(t, db.DatabaseContext)
 
-	cache := newSingleChannelCache(db.GetSingleDatabaseCollection(), channels.NewID("Test1", collectionID), 0, dbstats.Cache())
+	cache := newSingleChannelCache(collection, channels.NewID("Test1", collection.GetCollectionID()), 0, dbstats.Cache())
 	assert.NotNil(t, cache)
 
 	// Add some entries to cache
@@ -133,9 +133,9 @@ func TestLateSequenceAsFirst(t *testing.T) {
 	dbstats, err := stats.NewDBStats("", false, false, false, nil, nil)
 	require.NoError(t, err)
 
-	collectionID := db.GetSingleDatabaseCollection().GetCollectionID()
+	collection := GetSingleDatabaseCollection(t, db.DatabaseContext)
 
-	cache := newSingleChannelCache(db.GetSingleDatabaseCollection(), channels.NewID("Test1", collectionID), 0, dbstats.Cache())
+	cache := newSingleChannelCache(collection, channels.NewID("Test1", collection.GetCollectionID()), 0, dbstats.Cache())
 	assert.NotNil(t, cache)
 
 	// Add some entries to cache
@@ -174,9 +174,9 @@ func TestDuplicateLateArrivingSequence(t *testing.T) {
 	dbstats, err := stats.NewDBStats("", false, false, false, nil, nil)
 	require.NoError(t, err)
 
-	collectionID := db.GetSingleDatabaseCollection().GetCollectionID()
+	collection := GetSingleDatabaseCollection(t, db.DatabaseContext)
 
-	cache := newSingleChannelCache(db.GetSingleDatabaseCollection(), channels.NewID("Test1", collectionID), 0, dbstats.Cache())
+	cache := newSingleChannelCache(collection, channels.NewID("Test1", collection.GetCollectionID()), 0, dbstats.Cache())
 	assert.NotNil(t, cache)
 
 	// Add some entries to cache
@@ -257,9 +257,9 @@ func TestPrependChanges(t *testing.T) {
 	dbstats, err := stats.NewDBStats("", false, false, false, nil, nil)
 	require.NoError(t, err)
 
-	collectionID := db.GetSingleDatabaseCollection().GetCollectionID()
+	collection := GetSingleDatabaseCollection(t, db.DatabaseContext)
 
-	cache := newSingleChannelCache(db.GetSingleDatabaseCollection(), channels.NewID("PrependEmptyCache", collectionID), 0, dbstats.Cache())
+	cache := newSingleChannelCache(collection, channels.NewID("PrependEmptyCache", collection.GetCollectionID()), 0, dbstats.Cache())
 	assert.NotNil(t, cache)
 
 	changesToPrepend := LogEntries{
@@ -281,7 +281,7 @@ func TestPrependChanges(t *testing.T) {
 	require.NoError(t, err)
 	dbstats, err = stats.NewDBStats("", false, false, false, nil, nil)
 	require.NoError(t, err)
-	cache = newSingleChannelCache(db.GetSingleDatabaseCollection(), channels.NewID("PrependPopulatedCache", collectionID), 0, dbstats.Cache())
+	cache = newSingleChannelCache(collection, channels.NewID("PrependPopulatedCache", collection.GetCollectionID()), 0, dbstats.Cache())
 	cache.validFrom = 13
 	cache.addToCache(testLogEntry(14, "doc1", "2-a"), false)
 	cache.addToCache(testLogEntry(20, "doc2", "3-a"), false)
@@ -339,7 +339,7 @@ func TestPrependChanges(t *testing.T) {
 	require.NoError(t, err)
 	dbstats, err = stats.NewDBStats("", false, false, false, nil, nil)
 	require.NoError(t, err)
-	cache = newSingleChannelCache(db.GetSingleDatabaseCollection(), channels.NewID("PrependToFillCache", collectionID), 0, dbstats.Cache())
+	cache = newSingleChannelCache(collection, channels.NewID("PrependToFillCache", collection.GetCollectionID()), 0, dbstats.Cache())
 	cache.options.ChannelCacheMaxLength = 5
 	cache.validFrom = 13
 	cache.addToCache(testLogEntry(14, "doc1", "2-a"), false)
@@ -380,7 +380,7 @@ func TestPrependChanges(t *testing.T) {
 	require.NoError(t, err)
 	dbstats, err = stats.NewDBStats("", false, false, false, nil, nil)
 	require.NoError(t, err)
-	cache = newSingleChannelCache(db.GetSingleDatabaseCollection(), channels.NewID("PrependDuplicatesOnly", collectionID), 0, dbstats.Cache())
+	cache = newSingleChannelCache(collection, channels.NewID("PrependDuplicatesOnly", collection.GetCollectionID()), 0, dbstats.Cache())
 	cache.validFrom = 13
 	cache.addToCache(testLogEntry(14, "doc1", "2-a"), false)
 	cache.addToCache(testLogEntry(20, "doc2", "3-a"), false)
@@ -414,7 +414,7 @@ func TestPrependChanges(t *testing.T) {
 	require.NoError(t, err)
 	dbstats, err = stats.NewDBStats("", false, false, false, nil, nil)
 	require.NoError(t, err)
-	cache = newSingleChannelCache(db.GetSingleDatabaseCollection(), channels.NewID("PrependFullCache", collectionID), 0, dbstats.Cache())
+	cache = newSingleChannelCache(collection, channels.NewID("PrependFullCache", collection.GetCollectionID()), 0, dbstats.Cache())
 	cache.options.ChannelCacheMaxLength = 5
 	cache.validFrom = 13
 	cache.addToCache(testLogEntry(14, "doc1", "2-a"), false)
@@ -465,9 +465,10 @@ func TestChannelCacheRemove(t *testing.T) {
 	dbstats, err := stats.NewDBStats("", false, false, false, nil, nil)
 	require.NoError(t, err)
 
-	collectionID := db.GetSingleDatabaseCollection().GetCollectionID()
+	collection := GetSingleDatabaseCollection(t, db.DatabaseContext)
+	collectionID := collection.GetCollectionID()
 
-	cache := newSingleChannelCache(db.GetSingleDatabaseCollection(), channels.NewID("Test1", collectionID), 0, dbstats.Cache())
+	cache := newSingleChannelCache(collection, channels.NewID("Test1", collectionID), 0, dbstats.Cache())
 
 	// Add some entries to cache
 	cache.addToCache(testLogEntry(1, "doc1", "1-a"), false)
@@ -512,10 +513,11 @@ func TestChannelCacheStats(t *testing.T) {
 	dbstats, err := stats.NewDBStats("", false, false, false, nil, nil)
 	require.NoError(t, err)
 
-	collectionID := db.GetSingleDatabaseCollection().GetCollectionID()
+	collection := GetSingleDatabaseCollection(t, db.DatabaseContext)
+	collectionID := collection.GetCollectionID()
 
 	testStats := dbstats.Cache()
-	cache := newSingleChannelCache(db.GetSingleDatabaseCollection(), channels.NewID("Test1", collectionID), 0, testStats)
+	cache := newSingleChannelCache(collection, channels.NewID("Test1", collectionID), 0, testStats)
 
 	// Add some entries to cache
 	cache.addToCache(testLogEntry(1, "doc1", "1-a"), false)
@@ -590,10 +592,11 @@ func TestChannelCacheStatsOnPrune(t *testing.T) {
 	dbstats, err := stats.NewDBStats("", false, false, false, nil, nil)
 	require.NoError(t, err)
 
-	collectionID := db.GetSingleDatabaseCollection().GetCollectionID()
+	collection := GetSingleDatabaseCollection(t, db.DatabaseContext)
+	collectionID := collection.GetCollectionID()
 
 	testStats := dbstats.Cache()
-	cache := newSingleChannelCache(db.GetSingleDatabaseCollection(), channels.NewID("Test1", collectionID), 0, testStats)
+	cache := newSingleChannelCache(collection, channels.NewID("Test1", collectionID), 0, testStats)
 	cache.options.ChannelCacheMaxLength = 5
 
 	// Add more than ChannelCacheMaxLength entries to cache
@@ -628,10 +631,11 @@ func TestChannelCacheStatsOnPrepend(t *testing.T) {
 	dbstats, err := stats.NewDBStats("", false, false, false, nil, nil)
 	require.NoError(t, err)
 
-	collectionID := db.GetSingleDatabaseCollection().GetCollectionID()
+	collection := GetSingleDatabaseCollection(t, db.DatabaseContext)
+	collectionID := collection.GetCollectionID()
 
 	testStats := dbstats.Cache()
-	cache := newSingleChannelCache(db.GetSingleDatabaseCollection(), channels.NewID("Test1", collectionID), 99, testStats)
+	cache := newSingleChannelCache(collection, channels.NewID("Test1", collectionID), 99, testStats)
 	cache.options.ChannelCacheMaxLength = 15
 
 	// Add 9 entries to cache, 3 of each type
@@ -725,9 +729,9 @@ func BenchmarkChannelCacheUniqueDocs_Ordered(b *testing.B) {
 	dbstats, err := stats.NewDBStats("", false, false, false, nil, nil)
 	require.NoError(b, err)
 
-	collectionID := db.GetSingleDatabaseCollection().GetCollectionID()
+	collection := GetSingleDatabaseCollection(b, db.DatabaseContext)
 
-	cache := newSingleChannelCache(db.GetSingleDatabaseCollection(), channels.NewID("Benchmark", collectionID), 0, dbstats.Cache())
+	cache := newSingleChannelCache(collection, channels.NewID("Benchmark", collection.GetCollectionID()), 0, dbstats.Cache())
 	// generate doc IDs
 	docIDs := make([]string, b.N)
 	for i := 0; i < b.N; i++ {
@@ -752,9 +756,9 @@ func BenchmarkChannelCacheRepeatedDocs5(b *testing.B) {
 	dbstats, err := stats.NewDBStats("", false, false, false, nil, nil)
 	require.NoError(b, err)
 
-	collectionID := db.GetSingleDatabaseCollection().GetCollectionID()
+	collection := GetSingleDatabaseCollection(b, db.DatabaseContext)
 
-	cache := newSingleChannelCache(db.GetSingleDatabaseCollection(), channels.NewID("Benchmark", collectionID), 0, dbstats.Cache())
+	cache := newSingleChannelCache(collection, channels.NewID("Benchmark", collection.GetCollectionID()), 0, dbstats.Cache())
 	// generate doc IDs
 
 	docIDs, revStrings := generateDocs(5.0, b.N)
@@ -776,9 +780,9 @@ func BenchmarkChannelCacheRepeatedDocs20(b *testing.B) {
 	dbstats, err := stats.NewDBStats("", false, false, false, nil, nil)
 	require.NoError(b, err)
 
-	collectionID := db.GetSingleDatabaseCollection().GetCollectionID()
+	collection := GetSingleDatabaseCollection(b, db.DatabaseContext)
 
-	cache := newSingleChannelCache(db.GetSingleDatabaseCollection(), channels.NewID("Benchmark", collectionID), 0, dbstats.Cache())
+	cache := newSingleChannelCache(collection, channels.NewID("Benchmark", collection.GetCollectionID()), 0, dbstats.Cache())
 	// generate doc IDs
 
 	docIDs, revStrings := generateDocs(20.0, b.N)
@@ -800,9 +804,9 @@ func BenchmarkChannelCacheRepeatedDocs50(b *testing.B) {
 	dbstats, err := stats.NewDBStats("", false, false, false, nil, nil)
 	require.NoError(b, err)
 
-	collectionID := db.GetSingleDatabaseCollection().GetCollectionID()
+	collection := GetSingleDatabaseCollection(b, db.DatabaseContext)
 
-	cache := newSingleChannelCache(db.GetSingleDatabaseCollection(), channels.NewID("Benchmark", collectionID), 0, dbstats.Cache())
+	cache := newSingleChannelCache(collection, channels.NewID("Benchmark", collection.GetCollectionID()), 0, dbstats.Cache())
 	// generate doc IDs
 
 	docIDs, revStrings := generateDocs(50.0, b.N)
@@ -824,9 +828,9 @@ func BenchmarkChannelCacheRepeatedDocs80(b *testing.B) {
 	dbstats, err := stats.NewDBStats("", false, false, false, nil, nil)
 	require.NoError(b, err)
 
-	collectionID := db.GetSingleDatabaseCollection().GetCollectionID()
+	collection := GetSingleDatabaseCollection(b, db.DatabaseContext)
 
-	cache := newSingleChannelCache(db.GetSingleDatabaseCollection(), channels.NewID("Benchmark", collectionID), 0, dbstats.Cache())
+	cache := newSingleChannelCache(collection, channels.NewID("Benchmark", collection.GetCollectionID()), 0, dbstats.Cache())
 	// generate doc IDs
 
 	docIDs, revStrings := generateDocs(80.0, b.N)
@@ -848,9 +852,9 @@ func BenchmarkChannelCacheRepeatedDocs95(b *testing.B) {
 	dbstats, err := stats.NewDBStats("", false, false, false, nil, nil)
 	require.NoError(b, err)
 
-	collectionID := db.GetSingleDatabaseCollection().GetCollectionID()
+	collection := GetSingleDatabaseCollection(b, db.DatabaseContext)
 
-	cache := newSingleChannelCache(db.GetSingleDatabaseCollection(), channels.NewID("Benchmark", collectionID), 0, dbstats.Cache())
+	cache := newSingleChannelCache(collection, channels.NewID("Benchmark", collection.GetCollectionID()), 0, dbstats.Cache())
 	// generate doc IDs
 
 	docIDs, revStrings := generateDocs(95.0, b.N)
@@ -872,9 +876,9 @@ func BenchmarkChannelCacheUniqueDocs_Unordered(b *testing.B) {
 	dbstats, err := stats.NewDBStats("", false, false, false, nil, nil)
 	require.NoError(b, err)
 
-	collectionID := db.GetSingleDatabaseCollection().GetCollectionID()
+	collection := GetSingleDatabaseCollection(b, db.DatabaseContext)
 
-	cache := newSingleChannelCache(db.GetSingleDatabaseCollection(), channels.NewID("Benchmark", collectionID), 0, dbstats.Cache())
+	cache := newSingleChannelCache(collection, channels.NewID("Benchmark", collection.GetCollectionID()), 0, dbstats.Cache())
 	// generate docs
 	docs := make([]*LogEntry, b.N)
 	r := rand.New(rand.NewSource(99))

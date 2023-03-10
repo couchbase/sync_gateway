@@ -83,6 +83,7 @@ func setupTestDBWithViewsEnabled(t testing.TB) (*Database, context.Context) {
 	}
 	dbcOptions := DatabaseContextOptions{
 		UseViews: true,
+		Scopes:   GetScopesOptionsDefaultCollectionOnly(t),
 	}
 	return SetupTestDBWithOptions(t, dbcOptions)
 }
@@ -1726,9 +1727,10 @@ func TestRecentSequenceHistory(t *testing.T) {
 
 func TestChannelView(t *testing.T) {
 
-	db, ctx := setupTestDB(t)
+	db, ctx := setupTestDBWithViewsEnabled(t)
 	defer db.Close(ctx)
-	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	collection, err := db.GetDefaultDatabaseCollectionWithUser()
+	require.NoError(t, err)
 	collectionID := collection.GetCollectionID()
 
 	// Create doc
@@ -2638,7 +2640,7 @@ func Test_updateAllPrincipalsSequences(t *testing.T) {
 	roleSequences := [5]uint64{}
 	userSequences := [5]uint64{}
 
-	collection := db.GetSingleDatabaseCollection()
+	collection := GetSingleDatabaseCollection(t, db.DatabaseContext)
 
 	for i := 0; i < 5; i++ {
 		role, err := auth.NewRole(fmt.Sprintf("role%d", i), base.SetOf("ABC"))
@@ -2683,7 +2685,7 @@ func Test_invalidateAllPrincipalsCache(t *testing.T) {
 	db.sequences = sequenceAllocator
 
 	auth := db.Authenticator(ctx)
-	collection := db.GetSingleDatabaseCollection()
+	collection := GetSingleDatabaseCollection(t, db.DatabaseContext)
 
 	for i := 0; i < 5; i++ {
 		role, err := auth.NewRole(fmt.Sprintf("role%d", i), base.SetOf("ABC"))

@@ -2400,7 +2400,7 @@ func TestDocumentChannelHistory(t *testing.T) {
 	RequireStatus(t, resp, http.StatusCreated)
 	err := json.Unmarshal(resp.BodyBytes(), &body)
 	assert.NoError(t, err)
-	syncData, err := rt.GetDatabase().GetSingleDatabaseCollection().GetDocSyncData(base.TestCtx(t), "doc")
+	syncData, err := rt.GetSingleTestDatabaseCollection().GetDocSyncData(base.TestCtx(t), "doc")
 	assert.NoError(t, err)
 
 	require.Len(t, syncData.ChannelSet, 1)
@@ -2413,7 +2413,7 @@ func TestDocumentChannelHistory(t *testing.T) {
 	RequireStatus(t, resp, http.StatusCreated)
 	err = json.Unmarshal(resp.BodyBytes(), &body)
 	assert.NoError(t, err)
-	syncData, err = rt.GetDatabase().GetSingleDatabaseCollection().GetDocSyncData(base.TestCtx(t), "doc")
+	syncData, err = rt.GetSingleTestDatabaseCollection().GetDocSyncData(base.TestCtx(t), "doc")
 	assert.NoError(t, err)
 
 	require.Len(t, syncData.ChannelSet, 1)
@@ -2426,7 +2426,7 @@ func TestDocumentChannelHistory(t *testing.T) {
 	RequireStatus(t, resp, http.StatusCreated)
 	err = json.Unmarshal(resp.BodyBytes(), &body)
 	assert.NoError(t, err)
-	syncData, err = rt.GetDatabase().GetSingleDatabaseCollection().GetDocSyncData(base.TestCtx(t), "doc")
+	syncData, err = rt.GetSingleTestDatabaseCollection().GetDocSyncData(base.TestCtx(t), "doc")
 	assert.NoError(t, err)
 
 	require.Len(t, syncData.ChannelSet, 2)
@@ -2491,7 +2491,7 @@ func TestChannelHistoryLegacyDoc(t *testing.T) {
 	RequireStatus(t, resp, http.StatusCreated)
 	err = json.Unmarshal(resp.BodyBytes(), &body)
 	assert.NoError(t, err)
-	syncData, err := rt.GetDatabase().GetSingleDatabaseCollection().GetDocSyncData(base.TestCtx(t), "doc1")
+	syncData, err := rt.GetSingleTestDatabaseCollection().GetDocSyncData(base.TestCtx(t), "doc1")
 	assert.NoError(t, err)
 	require.Len(t, syncData.ChannelSet, 1)
 	assert.Contains(t, syncData.ChannelSet, db.ChannelSetEntry{
@@ -2603,7 +2603,7 @@ func TestDocChannelSetPruning(t *testing.T) {
 		revID = rt.CreateDocReturnRev(t, "doc", revID, map[string]interface{}{"channels": []string{"a"}})
 	}
 
-	syncData, err := rt.GetDatabase().GetSingleDatabaseCollection().GetDocSyncData(base.TestCtx(t), "doc")
+	syncData, err := rt.GetSingleTestDatabaseCollection().GetDocSyncData(base.TestCtx(t), "doc")
 	assert.NoError(t, err)
 
 	require.Len(t, syncData.ChannelSetHistory, db.DocumentHistoryMaxEntriesPerChannel)

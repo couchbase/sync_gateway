@@ -144,7 +144,7 @@ func TestCoveringQueries(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 
-	collection := db.GetSingleDatabaseCollection()
+	collection := GetSingleDatabaseCollection(t, db.DatabaseContext)
 	n1QLStore, ok := base.AsN1QLStore(collection.dataStore)
 	if !ok {
 		t.Errorf("Unable to get n1QLStore for testBucket")
@@ -180,7 +180,7 @@ func TestCoveringQueries(t *testing.T) {
 	// assert.True(t, covered, "Access query isn't covered by index: %s", planJSON)
 
 	// roleAccess
-	roleAccessStatement := db.buildRoleAccessQuery("user1")
+	roleAccessStatement := collection.buildRoleAccessQuery("user1")
 	plan, explainErr = n1QLStore.ExplainQuery(roleAccessStatement, nil)
 	assert.NoError(t, explainErr, "Error generating explain for roleAccess query")
 	covered = IsCovered(plan)

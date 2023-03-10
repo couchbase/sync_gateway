@@ -89,7 +89,10 @@ func nextChannelQueryEntry(results sgbucket.QueryResultIterator, collectionID ui
 
 // Queries the 'channels' view to get a range of sequences of a single channel as LogEntries.
 func (dbc *DatabaseContext) getChangesInChannelFromQuery(ctx context.Context, channel channels.ID, startSeq, endSeq uint64, limit int, activeOnly bool) (LogEntries, error) {
-	collection := dbc.GetSingleDatabaseCollection()
+	collection, err := dbc.GetDefaultDatabaseCollection()
+	if err != nil {
+		return nil, nil
+	}
 	return collection.getChangesInChannelFromQuery(ctx, channel.Name, startSeq, endSeq, limit, activeOnly)
 
 }

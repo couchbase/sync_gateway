@@ -60,7 +60,7 @@ func TestSyncFnBodyProperties(t *testing.T) {
 	response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/"+testDocID, `{"`+testdataKey+`":true}`)
 	RequireStatus(t, response, 201)
 
-	syncData, err := rt.GetDatabase().GetSingleDatabaseCollection().GetDocSyncData(base.TestCtx(t), testDocID)
+	syncData, err := rt.GetSingleTestDatabaseCollection().GetDocSyncData(base.TestCtx(t), testDocID)
 	assert.NoError(t, err)
 
 	actualProperties := syncData.Channels.KeySet()
@@ -109,7 +109,7 @@ func TestSyncFnBodyPropertiesTombstone(t *testing.T) {
 	response = rt.SendAdminRequest("DELETE", fmt.Sprintf("/{{.keyspace}}/%s?rev=%s", testDocID, revID), `{}`)
 	RequireStatus(t, response, 200)
 
-	syncData, err := rt.GetDatabase().GetSingleDatabaseCollection().GetDocSyncData(base.TestCtx(t), testDocID)
+	syncData, err := rt.GetSingleTestDatabaseCollection().GetDocSyncData(base.TestCtx(t), testDocID)
 	assert.NoError(t, err)
 
 	actualProperties := syncData.Channels.KeySet()
@@ -157,7 +157,7 @@ func TestSyncFnOldDocBodyProperties(t *testing.T) {
 	response = rt.SendAdminRequest("PUT", fmt.Sprintf("/{{.keyspace}}/%s?rev=%s", testDocID, revID), `{"`+testdataKey+`":true,"update":2}`)
 	RequireStatus(t, response, 201)
 
-	syncData, err := rt.GetDatabase().GetSingleDatabaseCollection().GetDocSyncData(base.TestCtx(t), testDocID)
+	syncData, err := rt.GetSingleTestDatabaseCollection().GetDocSyncData(base.TestCtx(t), testDocID)
 	assert.NoError(t, err)
 
 	actualProperties := syncData.Channels.KeySet()
@@ -213,7 +213,7 @@ func TestSyncFnOldDocBodyPropertiesTombstoneResurrect(t *testing.T) {
 	response = rt.SendAdminRequest("PUT", fmt.Sprintf("/{{.keyspace}}/%s?rev=%s", testDocID, revID), `{"`+testdataKey+`":true}`)
 	RequireStatus(t, response, 201)
 
-	syncData, err := rt.GetDatabase().GetSingleDatabaseCollection().GetDocSyncData(base.TestCtx(t), testDocID)
+	syncData, err := rt.GetSingleTestDatabaseCollection().GetDocSyncData(base.TestCtx(t), testDocID)
 	assert.NoError(t, err)
 
 	actualProperties := syncData.Channels.KeySet()
@@ -1081,7 +1081,7 @@ func TestResyncRegenerateSequences(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		docID := fmt.Sprintf("doc%d", i)
 
-		doc, err := rt.GetDatabase().GetSingleDatabaseCollection().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalAll)
+		doc, err := rt.GetSingleTestDatabaseCollection().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalAll)
 		assert.NoError(t, err)
 
 		assert.True(t, float64(doc.Sequence) > docSeqArr[i])

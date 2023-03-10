@@ -436,9 +436,13 @@ func SuspendSequenceBatching() func() {
 
 // Public channel view call - for unit test support
 func (dbc *DatabaseContext) ChannelViewForTest(tb testing.TB, channelName string, startSeq, endSeq uint64) (LogEntries, error) {
+	collection, err := dbc.GetDefaultDatabaseCollection()
+	if err != nil {
+		return nil, nil
+	}
 	channel := channels.ID{
 		Name:         channelName,
-		CollectionID: dbc.GetSingleDatabaseCollection().GetCollectionID(),
+		CollectionID: collection.GetCollectionID(),
 	}
 	return dbc.getChangesInChannelFromQuery(base.TestCtx(tb), channel, startSeq, endSeq, 0, false)
 }
@@ -592,7 +596,7 @@ func GetSingleDatabaseCollectionWithUser(tb testing.TB, database *Database) *Dat
 }
 
 func GetSingleDatabaseCollection(tb testing.TB, database *DatabaseContext) *DatabaseCollection {
-	require.Equal(tb, 1, len(database.CollectionByID), "Database must only have a single collection configured")
+	require.Equal(tb, 1, len(database.CollectionByID), fmt.Sprintf("Database must only have a single collection configured has %d", len(database.CollectionByID)))
 	for _, collection := range database.CollectionByID {
 		return collection
 	}
