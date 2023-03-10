@@ -511,7 +511,7 @@ func (h *handler) handleBulkDocs() error {
 				docid, revid, _, err = h.collection.Post(h.ctx(), doc)
 			}
 		} else {
-			revisions := document.ParseRevisions(doc)
+			revisions := ParseRevisions(doc)
 			if revisions == nil {
 				err = base.HTTPErrorf(http.StatusBadRequest, "Bad _revisions")
 			} else {

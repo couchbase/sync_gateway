@@ -468,7 +468,7 @@ func (h *handler) handlePutDoc() error {
 		h.setEtag(newRev)
 	} else {
 		// Replicator-style PUT with new_edits=false:
-		revisions := document.ParseRevisions(body)
+		revisions := ParseRevisions(body)
 		if revisions == nil {
 			return base.HTTPErrorf(http.StatusBadRequest, "Bad _revisions")
 		}

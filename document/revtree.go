@@ -741,38 +741,6 @@ func (tree RevTree) GetHistory(revid string) ([]string, error) {
 
 // ////// ENCODED REVISION LISTS (_revisions):
 
-// Parses a CouchDB _rev or _revisions property into a list of revision IDs
-func ParseRevisions(body Body) []string {
-	// http://wiki.apache.org/couchdb/HTTP_Document_API#GET
-
-	revisionsProperty, ok := body[BodyRevisions]
-	if !ok {
-		revid, ok := body[BodyRev].(string)
-		if !ok {
-			return nil
-		}
-		if GenOfRevID(revid) < 1 {
-			return nil
-		}
-		oneRev := make([]string, 0, 1)
-		oneRev = append(oneRev, revid)
-		return oneRev
-	}
-
-	// Revisions may be stored in a Body as Revisions or map[string]interface{}, depending on the source of the Body
-	var revisions Revisions
-	switch revs := revisionsProperty.(type) {
-	case Revisions:
-		revisions = revs
-	case map[string]interface{}:
-		revisions = Revisions(revs)
-	default:
-		return nil
-	}
-
-	return revisions.ParseRevisions()
-}
-
 // Splits out the "start" and "ids" properties from encoded revision list
 func splitRevisionList(revisions Revisions) (int, []string) {
 	start, ok := base.ToInt64(revisions[RevisionsStart])
