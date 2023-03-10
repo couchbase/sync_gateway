@@ -4295,7 +4295,7 @@ func TestActiveReplicatorRecoverFromLocalFlush(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)
 
 	// Passive
-	rt2 := rest.NewRestTester(t,
+	rt2 := rest.NewRestTesterDefaultCollection(t, // CBG-2379 test requires default collection
 		&rest.RestTesterConfig{
 			SyncFn: channels.DocChannelsSyncFunction,
 		})
@@ -4321,7 +4321,7 @@ func TestActiveReplicatorRecoverFromLocalFlush(t *testing.T) {
 	passiveDBURL.User = url.UserPassword(username, rest.RestTesterDefaultUserPassword)
 
 	// Active
-	rt1 := rest.NewRestTester(t, nil)
+	rt1 := rest.NewRestTesterDefaultCollection(t, nil) // CBG-2379 test requires default collection
 	ctx1 := rt1.Context()
 	stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, nil, nil)
 	require.NoError(t, err)
@@ -4390,7 +4390,7 @@ func TestActiveReplicatorRecoverFromLocalFlush(t *testing.T) {
 	rt1.Close()
 
 	// recreate rt1 with a new bucket
-	rt1 = rest.NewRestTester(t, nil)
+	rt1 = rest.NewRestTesterDefaultCollection(t, nil) // CBG-2379 test requires default collection
 	defer rt1.Close()
 	ctx1 = rt1.Context()
 
@@ -4412,14 +4412,13 @@ func TestActiveReplicatorRecoverFromLocalFlush(t *testing.T) {
 	if rt1.GetDatabase().OnlyDefaultCollection() {
 		assert.Equal(t, int64(0), pullCheckpointer.Stats().GetCheckpointHitCount)
 	}
-	t.Skip("here")
 	// wait for document originally written to rt2 to arrive at rt1
 	changesResults, err = rt1.WaitForChanges(1, "/{{.keyspace}}/_changes?since=0", "", true)
 	require.NoError(t, err)
 	require.Len(t, changesResults.Results, 1)
 	assert.Equal(t, docID, changesResults.Results[0].ID)
 
-	doc, err = rt1.GetDatabase().GetSingleDatabaseCollection().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalAll)
+	doc, err = rt1.GetSingleTestDatabaseCollectionWithUser().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalAll)
 	require.NoError(t, err)
 
 	body, err = doc.GetDeepMutableBody()
