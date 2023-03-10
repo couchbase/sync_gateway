@@ -220,7 +220,7 @@ func (db *DatabaseCollectionWithUser) Get1xBody(ctx context.Context, docid strin
 }
 
 // Get Rev with all-or-none history based on specified 'history' flag
-func (db *DatabaseCollectionWithUser) Get1xRevBody(ctx context.Context, docid, revid string, history bool, attachmentsSince []string) (Body, error) {
+func (db *DatabaseCollectionWithUser) Get1xRevBody(ctx context.Context, docid, revid string, history bool, attachmentsSince []string) (map[string]any, error) {
 	maxHistory := 0
 	if history {
 		maxHistory = math.MaxInt32
@@ -230,7 +230,7 @@ func (db *DatabaseCollectionWithUser) Get1xRevBody(ctx context.Context, docid, r
 }
 
 // Retrieves rev with request history specified as collection of revids (historyFrom)
-func (db *DatabaseCollectionWithUser) Get1xRevBodyWithHistory(ctx context.Context, docid, revid string, maxHistory int, historyFrom []string, attachmentsSince []string, showExp bool) (Body, error) {
+func (db *DatabaseCollectionWithUser) Get1xRevBodyWithHistory(ctx context.Context, docid, revid string, maxHistory int, historyFrom []string, attachmentsSince []string, showExp bool) (map[string]any, error) {
 	rev, err := db.getRev(ctx, docid, revid, maxHistory, historyFrom, RevCacheIncludeBody)
 	if err != nil {
 		return nil, err

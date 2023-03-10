@@ -94,7 +94,7 @@ func (h *handler) handleGetDoc() error {
 		if h.requestAccepts("multipart/") && (hasBodies || !h.requestAccepts("application/json")) {
 			canCompress := strings.Contains(h.rq.Header.Get("X-Accept-Part-Encoding"), "gzip")
 			return h.writeMultipart("related", func(writer *multipart.Writer) error {
-				WriteMultipartDocument(h.ctx(), h.db.DatabaseContext.DbStats.CBLReplicationPull(), value, writer, canCompress)
+				WriteMultipartDocument(h.ctx(), h.db.DatabaseContext.DbStats.CBLReplicationPull(), Body(value), writer, canCompress)
 				return nil
 			})
 		} else {
@@ -127,7 +127,7 @@ func (h *handler) handleGetDoc() error {
 				for _, revid := range revids {
 					revBody, err := h.collection.Get1xRevBodyWithHistory(h.ctx(), docid, revid, revsLimit, revsFrom, attachmentsSince, showExp)
 					if err != nil {
-						revBody = Body{"missing": revid} // TODO: More specific error
+						revBody = db.Body{"missing": revid} // TODO: More specific error
 					}
 					_ = WriteRevisionAsPart(h.ctx(), h.db.DatabaseContext.DbStats.CBLReplicationPull(), revBody, err != nil, false, writer)
 					h.db.DbStats.Database().NumDocReadsRest.Add(1)
@@ -461,7 +461,7 @@ func (h *handler) handlePutDoc() error {
 			return base.HTTPErrorf(http.StatusBadRequest, "Revision IDs provided do not match")
 		}
 
-		newRev, doc, err = h.collection.Put(h.ctx(), docid, body)
+		newRev, doc, err = h.collection.Put(h.ctx(), docid, db.Body(body))
 		if err != nil {
 			return err
 		}
@@ -472,7 +472,7 @@ func (h *handler) handlePutDoc() error {
 		if revisions == nil {
 			return base.HTTPErrorf(http.StatusBadRequest, "Bad _revisions")
 		}
-		doc, newRev, err = h.collection.PutExistingRevWithBody(h.ctx(), docid, body, revisions, false)
+		doc, newRev, err = h.collection.PutExistingRevWithBody(h.ctx(), docid, db.Body(body), revisions, false)
 		if err != nil {
 			return err
 		}
@@ -577,7 +577,7 @@ func (h *handler) handlePostDoc() error {
 		return err
 	}
 
-	docid, newRev, doc, err := h.collection.Post(h.ctx(), body)
+	docid, newRev, doc, err := h.collection.Post(h.ctx(), db.Body(body))
 	if err != nil {
 		return err
 	}
@@ -636,7 +636,7 @@ func (h *handler) handlePutLocalDoc() error {
 	body, err := h.readJSON()
 	if err == nil {
 		var revid string
-		revid, err = h.collection.PutSpecial(db.DocTypeLocal, docid, body)
+		revid, err = h.collection.PutSpecial(db.DocTypeLocal, docid, db.Body(body))
 		if err == nil {
 			h.writeRawJSONStatus(http.StatusCreated, []byte(`{"id":`+base.ConvertToJSONString("_local/"+docid)+`,"ok":true,"rev":"`+revid+`"}`))
 		}

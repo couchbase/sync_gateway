@@ -5497,7 +5497,7 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 	base.LongRunningTest(t)
 
 	createRevID := func(generation int, parentRevID string, body rest.Body) string {
-		rev, err := document.CreateRevID(generation, parentRevID, body)
+		rev, err := document.CreateRevID(generation, parentRevID, db.Body(body))
 		require.NoError(t, err, "Error creating revision")
 		return rev
 	}
@@ -7491,7 +7491,7 @@ func TestReplicatorCheckpointOnStop(t *testing.T) {
 	err := activeRT.GetDatabase().SGReplicateMgr.StartReplications(activeCtx)
 	require.NoError(t, err)
 
-	rev, doc, err := activeRT.GetSingleTestDatabaseCollectionWithUser().Put(activeCtx, "test", rest.Body{})
+	rev, doc, err := activeRT.GetSingleTestDatabaseCollectionWithUser().Put(activeCtx, "test", db.Body{})
 	require.NoError(t, err)
 	seq := strconv.FormatUint(doc.Sequence, 10)
 

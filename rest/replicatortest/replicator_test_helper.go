@@ -111,7 +111,7 @@ func createOrUpdateDoc(t *testing.T, rt *rest.RestTester, docID, revID, bodyValu
 	return rest.RespRevID(t, resp)
 }
 func getTestRevpos(t *testing.T, doc rest.Body, attachmentKey string) (revpos int) {
-	attachments := document.GetBodyAttachments(doc)
+	attachments := document.GetBodyAttachments(db.Body(doc))
 	if attachments == nil {
 		return 0
 	}

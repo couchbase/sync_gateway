@@ -43,7 +43,7 @@ func TestBlipGetCollections(t *testing.T) {
 	checkpoint1Body := Body{"seq": "123"}
 	collection := rt.GetSingleTestDatabaseCollection()
 	scopeAndCollection := fmt.Sprintf("%s.%s", collection.ScopeName, collection.Name)
-	revID, err := collection.PutSpecial(db.DocTypeLocal, db.CheckpointDocIDPrefix+checkpointID1, checkpoint1Body)
+	revID, err := collection.PutSpecial(db.DocTypeLocal, db.CheckpointDocIDPrefix+checkpointID1, db.Body(checkpoint1Body))
 	require.NoError(t, err)
 	checkpoint1RevID := "0-1"
 	require.Equal(t, checkpoint1RevID, revID)
@@ -159,7 +159,7 @@ func TestBlipReplicationNoDefaultCollection(t *testing.T) {
 	checkpointID1 := "checkpoint1"
 	checkpoint1Body := Body{"seq": "123"}
 	collection := rt.GetSingleTestDatabaseCollection()
-	revID, err := collection.PutSpecial(db.DocTypeLocal, db.CheckpointDocIDPrefix+checkpointID1, checkpoint1Body)
+	revID, err := collection.PutSpecial(db.DocTypeLocal, db.CheckpointDocIDPrefix+checkpointID1, db.Body(checkpoint1Body))
 	require.NoError(t, err)
 	checkpoint1RevID := "0-1"
 	require.Equal(t, checkpoint1RevID, revID)
@@ -187,7 +187,7 @@ func TestBlipGetCollectionsAndSetCheckpoint(t *testing.T) {
 	checkpointID1 := "checkpoint1"
 	checkpoint1Body := Body{"seq": "123"}
 	collection := rt.GetSingleTestDatabaseCollection()
-	revID, err := collection.PutSpecial(db.DocTypeLocal, db.CheckpointDocIDPrefix+checkpointID1, checkpoint1Body)
+	revID, err := collection.PutSpecial(db.DocTypeLocal, db.CheckpointDocIDPrefix+checkpointID1, db.Body(checkpoint1Body))
 	require.NoError(t, err)
 	checkpoint1RevID := "0-1"
 	require.Equal(t, checkpoint1RevID, revID)
@@ -274,7 +274,7 @@ func TestBlipReplicationMultipleCollections(t *testing.T) {
 	require.NoError(t, body.Unmarshal(bodyBytes))
 	for _, collection := range rt.GetDatabase().CollectionByID {
 		collectionWithAdmin := db.DatabaseCollectionWithUser{DatabaseCollection: collection}
-		revID, _, err := collectionWithAdmin.Put(base.TestCtx(t), docName, body)
+		revID, _, err := collectionWithAdmin.Put(base.TestCtx(t), docName, db.Body(body))
 		require.NoError(t, err)
 		require.Equal(t, docRevID, revID)
 
@@ -324,7 +324,7 @@ func TestBlipReplicationMultipleCollectionsMismatchedDocSizes(t *testing.T) {
 		blipName := fmt.Sprintf("%s.%s", collection.ScopeName, collection.Name)
 		for j := 0; j < docCount; j++ {
 			docName := fmt.Sprintf("doc%d", j)
-			revID, _, err := collectionWithAdmin.Put(base.TestCtx(t), docName, body)
+			revID, _, err := collectionWithAdmin.Put(base.TestCtx(t), docName, db.Body(body))
 			require.NoError(t, err)
 			collectionRevIDs[blipName] = append(collectionRevIDs[blipName], revID)
 			collectionDocIDs[blipName] = append(collectionDocIDs[blipName], docName)
