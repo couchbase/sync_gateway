@@ -288,7 +288,7 @@ func TestActiveReplicatorMultiCollectionMismatchedLocalRemote(t *testing.T) {
 	localCollections := []string{"ks1", "ks3"}
 	remoteCollections := []string{"ks2"}
 
-	activeRT, _, remoteDbURLString, teardown := rest.SetupSGRPeers(t)
+	activeRT, _, remoteDbURLString, teardown := rest.SetupSGRPeers(t, true)
 	defer teardown()
 
 	stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, nil, nil)
@@ -314,7 +314,8 @@ func TestActiveReplicatorMultiCollectionMismatchedLocalRemote(t *testing.T) {
 	})
 
 	err = ar.Start(ctx1)
-	require.ErrorContains(t, err, "local and remote collections must be the same length")
+	assert.ErrorContains(t, err, "local and remote collections must be the same length")
+	defer func() { assert.NoError(t, ar.Stop()) }()
 }
 
 // TestActiveReplicatorMultiCollectionMissingRemote attempts to map to a missing remote collection.
@@ -322,7 +323,7 @@ func TestActiveReplicatorMultiCollectionMissingRemote(t *testing.T) {
 
 	base.TestRequiresCollections(t)
 
-	activeRT, _, remoteDbURLString, teardown := rest.SetupSGRPeers(t)
+	activeRT, _, remoteDbURLString, teardown := rest.SetupSGRPeers(t, true)
 	defer teardown()
 
 	localCollection := activeRT.GetSingleTestDatabaseCollection().ScopeName + "." + activeRT.GetSingleTestDatabaseCollection().Name
@@ -352,7 +353,8 @@ func TestActiveReplicatorMultiCollectionMissingRemote(t *testing.T) {
 	})
 
 	err = ar.Start(ctx1)
-	require.ErrorContains(t, err, "peer does not have collection")
+	assert.ErrorContains(t, err, "peer does not have collection")
+	defer func() { assert.NoError(t, ar.Stop()) }()
 }
 
 // TestActiveReplicatorMultiCollectionMissingLocal attempts to use a missing local collection.
@@ -360,7 +362,7 @@ func TestActiveReplicatorMultiCollectionMissingLocal(t *testing.T) {
 
 	base.TestRequiresCollections(t)
 
-	activeRT, passiveRT, remoteDbURLString, teardown := rest.SetupSGRPeers(t)
+	activeRT, passiveRT, remoteDbURLString, teardown := rest.SetupSGRPeers(t, true)
 	defer teardown()
 
 	localCollection := activeRT.GetSingleTestDatabaseCollection().ScopeName + ".invalid"
@@ -391,5 +393,6 @@ func TestActiveReplicatorMultiCollectionMissingLocal(t *testing.T) {
 	})
 
 	err = ar.Start(ctx1)
-	require.ErrorContains(t, err, "does not exist on this database")
+	assert.ErrorContains(t, err, "does not exist on this database")
+	defer func() { assert.NoError(t, ar.Stop()) }()
 }
