@@ -5281,6 +5281,7 @@ func TestActiveReplicatorReconnectOnStart(t *testing.T) {
 
 					err = ar.Start(ctx1)
 					assert.Error(t, err, "expecting ar.Start() to return error, but it didn't")
+					defer func() { assert.NoError(t, ar.Stop()) }()
 
 					if test.expectedErrorIsConnectionRefused {
 						assert.True(t, base.IsConnectionRefusedError(err))
@@ -5290,20 +5291,18 @@ func TestActiveReplicatorReconnectOnStart(t *testing.T) {
 						assert.True(t, strings.Contains(err.Error(), test.expectedErrorContains))
 					}
 
-					// wait for an arbitrary number of reconnect attempts
-					rest.WaitAndRequireCondition(t, func() bool {
-						return ar.Push.GetStats().NumConnectAttempts.Value() > 2
-					}, "Expecting NumConnectAttempts > 2")
-
 					if timeoutVal > 0 {
+						// wait for an arbitrary number of reconnect attempts
+						rest.WaitAndRequireCondition(t, func() bool {
+							return ar.Push.GetStats().NumConnectAttempts.Value() > 2
+						}, "Expecting NumConnectAttempts > 2")
+
 						time.Sleep(timeoutVal + time.Millisecond*250)
 						// wait for the retry loop to hit the TotalReconnectTimeout and give up retrying
 						rest.WaitAndRequireCondition(t, func() bool {
 							return ar.Push.GetStats().NumReconnectsAborted.Value() > 0
 						}, "Expecting NumReconnectsAborted > 0")
 					}
-
-					assert.NoError(t, ar.Stop())
 				})
 			}
 		})
@@ -5356,6 +5355,7 @@ func TestActiveReplicatorReconnectOnStartEventualSuccess(t *testing.T) {
 		// aggressive reconnect intervals for testing purposes
 		InitialReconnectInterval: time.Millisecond,
 		MaxReconnectInterval:     time.Millisecond * 50,
+		TotalReconnectTimeout:    time.Second * 30,
 		ReplicationStatsMap:      dbstats,
 		CollectionsEnabled:       !rt1.GetDatabase().OnlyDefaultCollection(),
 	}

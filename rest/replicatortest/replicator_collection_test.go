@@ -315,7 +315,7 @@ func TestActiveReplicatorMultiCollectionMismatchedLocalRemote(t *testing.T) {
 
 	err = ar.Start(ctx1)
 	assert.ErrorContains(t, err, "local and remote collections must be the same length")
-	defer func() { assert.NoError(t, ar.Stop()) }()
+	assert.NoError(t, ar.Stop())
 }
 
 // TestActiveReplicatorMultiCollectionMissingRemote attempts to map to a missing remote collection.
@@ -354,7 +354,7 @@ func TestActiveReplicatorMultiCollectionMissingRemote(t *testing.T) {
 
 	err = ar.Start(ctx1)
 	assert.ErrorContains(t, err, "peer does not have collection")
-	defer func() { assert.NoError(t, ar.Stop()) }()
+	assert.NoError(t, ar.Stop())
 }
 
 // TestActiveReplicatorMultiCollectionMissingLocal attempts to use a missing local collection.
@@ -394,5 +394,5 @@ func TestActiveReplicatorMultiCollectionMissingLocal(t *testing.T) {
 
 	err = ar.Start(ctx1)
 	assert.ErrorContains(t, err, "does not exist on this database")
-	defer func() { assert.NoError(t, ar.Stop()) }()
+	assert.NoError(t, ar.Stop())
 }
