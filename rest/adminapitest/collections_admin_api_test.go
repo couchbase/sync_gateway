@@ -248,7 +248,7 @@ func TestRequireResync(t *testing.T) {
 	// The online call is async, but subsequent get to status should remain offline
 	onlineResponse := rt.SendAdminRequest("POST", "/"+db2Name+"/_online", "")
 	rest.RequireStatus(t, onlineResponse, http.StatusOK)
-	require.NoError(t, rt.WaitForDatabaseState(db2Name, db.DBOnline))
+	require.NoError(t, rt.WaitForDatabaseState(db2Name, db.DBOffline))
 
 	resp = rt.SendAdminRequest("GET", "/"+db2Name+"/", "")
 	rest.RequireStatus(t, resp, http.StatusOK)
