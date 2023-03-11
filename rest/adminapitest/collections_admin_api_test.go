@@ -195,7 +195,6 @@ func TestRequireResync(t *testing.T) {
 	collection1 := dataStoreNames[0].CollectionName()
 	collection2 := dataStoreNames[1].CollectionName()
 	scopeAndCollection1Name := base.ScopeAndCollectionName{Scope: scope, Collection: collection1}
-	//scopeAndCollection2Name := base.ScopeAndCollectionName{Scope: scope, Collection: collection2}
 
 	scopesConfigC1Only := rest.GetCollectionsConfig(t, rt.TestBucket, 2)
 	delete(scopesConfigC1Only[scope].Collections, collection2)
@@ -242,20 +241,20 @@ func TestRequireResync(t *testing.T) {
 	rest.RequireStatus(t, resp, http.StatusOK)
 	dbRootResponse := rest.DatabaseRoot{}
 	require.NoError(t, base.JSONUnmarshal(resp.Body.Bytes(), &dbRootResponse))
-	assert.Equal(t, db.RunStateString[db.DBOffline], dbRootResponse.State)
-	assert.Equal(t, []string{scopeAndCollection1Name.String()}, dbRootResponse.RequireResync)
+	require.Equal(t, db.RunStateString[db.DBOffline], dbRootResponse.State)
+	require.Equal(t, []string{scopeAndCollection1Name.String()}, dbRootResponse.RequireResync)
 
 	// Call _online, verify it doesn't override offline when resync is still required.
 	// The online call is async, but subsequent get to status should remain offline
 	onlineResponse := rt.SendAdminRequest("POST", "/"+db2Name+"/_online", "")
 	rest.RequireStatus(t, onlineResponse, http.StatusOK)
-	rt.WaitForDatabaseState(db2Name, db.DBOnline)
+	require.NoError(t, rt.WaitForDatabaseState(db2Name, db.DBOnline))
 
 	resp = rt.SendAdminRequest("GET", "/"+db2Name+"/", "")
 	rest.RequireStatus(t, resp, http.StatusOK)
 	dbRootResponse = rest.DatabaseRoot{}
 	require.NoError(t, base.JSONUnmarshal(resp.Body.Bytes(), &dbRootResponse))
-	assert.Equal(t, db.RunStateString[db.DBOffline], dbRootResponse.State)
+	require.Equal(t, db.RunStateString[db.DBOffline], dbRootResponse.State)
 
 	// Run resync for collection
 	resyncCollections := make(db.ResyncCollections, 0)
@@ -279,10 +278,10 @@ func TestRequireResync(t *testing.T) {
 	}, 200, 200)
 	require.NoError(t, err)
 
-	// Attempt online again, should succeed
+	// Attempt online again, should now succeed
 	onlineResponse = rt.SendAdminRequest("POST", "/"+db2Name+"/_online", "")
 	rest.RequireStatus(t, onlineResponse, http.StatusOK)
-	rt.WaitForDatabaseState(db2Name, db.DBOnline)
+	require.NoError(t, rt.WaitForDatabaseState(db2Name, db.DBOnline))
 
 	resp = rt.SendAdminRequest("GET", "/"+db2Name+"/", "")
 	rest.RequireStatus(t, resp, http.StatusOK)

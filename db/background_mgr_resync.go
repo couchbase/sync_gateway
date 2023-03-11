@@ -83,7 +83,10 @@ func (r *ResyncManager) Run(ctx context.Context, options map[string]interface{},
 			return err
 		}
 		if regenerateSequences {
-			base.SetSyncInfo(dbc.dataStore, dbc.dbCtx.Options.MetadataID)
+			err := base.SetSyncInfo(dbc.dataStore, dbc.dbCtx.Options.MetadataID)
+			if err != nil {
+				base.InfofCtx(ctx, base.KeyAll, "Failed to updateSyncInfo after resync: %v", err)
+			}
 		}
 	}
 
