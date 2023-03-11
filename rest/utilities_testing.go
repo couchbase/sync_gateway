@@ -960,7 +960,7 @@ func (rt *RestTester) WaitForDatabaseState(dbName string, targetState uint32) er
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
-	return fmt.Errorf("given up waiting for DB state, want: %s, current: %s, attempts: %d", targetState, stateCurr, maxTries)
+	return fmt.Errorf("given up waiting for DB state, want: %s, current: %s, attempts: %d", db.RunStateString[targetState], stateCurr, maxTries)
 }
 
 func (rt *RestTester) SendAdminRequestWithHeaders(method, resource string, body string, headers map[string]string) *TestResponse {
