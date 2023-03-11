@@ -75,11 +75,15 @@ func (r *ResyncManager) Run(ctx context.Context, options map[string]interface{},
 	}
 
 	for _, collectionID := range collectionIDs {
-		_, err := (&DatabaseCollectionWithUser{
+		dbc := &DatabaseCollectionWithUser{
 			DatabaseCollection: database.CollectionByID[collectionID],
-		}).UpdateAllDocChannels(ctx, regenerateSequences, callback, terminator)
+		}
+		_, err := dbc.UpdateAllDocChannels(ctx, regenerateSequences, callback, terminator)
 		if err != nil {
 			return err
+		}
+		if regenerateSequences {
+			base.SetSyncInfo(dbc.dataStore, dbc.dbCtx.Options.MetadataID)
 		}
 	}
 

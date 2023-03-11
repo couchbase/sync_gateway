@@ -14,7 +14,9 @@ import (
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/rest"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -161,4 +163,133 @@ func TestCollectionsSyncImportFunctions(t *testing.T) {
 	rest.RequireStatus(t, resp, http.StatusOK)
 	require.Equal(t, importFilter2, resp.Body.String())
 
+}
+
+// TestRequireResync tests behaviour when a collection moves between databases.  New database should start offline until
+// resync with regenerateSequences=true has been run for the collection
+func TestRequireResync(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server, until creating a db through the REST API allows the views/walrus/collections combination")
+	}
+	base.TestRequiresCollections(t)
+	base.RequireNumTestDataStores(t, 2)
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
+	rtConfig := &rest.RestTesterConfig{
+		CustomTestBucket: base.GetPersistentTestBucket(t),
+		PersistentConfig: true,
+	}
+
+	rt := rest.NewRestTesterMultipleCollections(t, rtConfig, 2)
+	defer rt.Close()
+
+	_ = rt.Bucket()
+
+	db1Name := "db1"
+	db2Name := "db2"
+
+	// Set up scopes configs
+	scopesConfig := rest.GetCollectionsConfig(t, rt.TestBucket, 2)
+
+	dataStoreNames := rest.GetDataStoreNamesFromScopesConfig(scopesConfig)
+	scope := dataStoreNames[0].ScopeName()
+	collection1 := dataStoreNames[0].CollectionName()
+	collection2 := dataStoreNames[1].CollectionName()
+	scopeAndCollection1Name := base.ScopeAndCollectionName{Scope: scope, Collection: collection1}
+	//scopeAndCollection2Name := base.ScopeAndCollectionName{Scope: scope, Collection: collection2}
+
+	scopesConfigC1Only := rest.GetCollectionsConfig(t, rt.TestBucket, 2)
+	delete(scopesConfigC1Only[scope].Collections, collection2)
+
+	scopesConfigC2Only := rest.GetCollectionsConfig(t, rt.TestBucket, 2)
+	delete(scopesConfigC2Only[scope].Collections, collection1)
+
+	// Create a db1 with two collections
+	dbConfig := rest.GetBasicDbCfg(rt.TestBucket)
+	dbConfig.Scopes = scopesConfig
+
+	resp, err := rt.CreateDatabase(db1Name, dbConfig)
+	require.NoError(t, err)
+	rest.RequireStatus(t, resp, http.StatusCreated)
+
+	// Write documents to collection 1 and 2
+	ks_db1_c1 := db1Name + "." + scope + "." + collection1
+	ks_db1_c2 := db1Name + "." + scope + "." + collection2
+	ks_db2_c1 := db2Name + "." + scope + "." + collection1
+
+	resp = rt.SendAdminRequest("PUT", "/"+ks_db1_c1+"/testDoc1", `{"foo":"bar"}`)
+	resp = rt.SendAdminRequest("PUT", "/"+ks_db1_c2+"/testDoc2", `{"foo":"bar"}`)
+
+	// Update db1 to remove collection1
+	dbConfig.Scopes = scopesConfigC2Only
+	resp, err = rt.ReplaceDbConfig(db1Name, dbConfig)
+	require.NoError(t, err)
+	rest.RequireStatus(t, resp, http.StatusCreated)
+
+	// Validate that doc can still be retrieved from collection 2
+	resp = rt.SendAdminRequest("GET", "/"+ks_db1_c2+"/testDoc2", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+
+	// Create db2 targeting collection 1
+	db2Config := rest.GetBasicDbCfg(rt.TestBucket)
+	db2Config.Scopes = scopesConfigC1Only
+
+	resp, err = rt.CreateDatabase(db2Name, db2Config)
+	require.NoError(t, err)
+	rest.RequireStatus(t, resp, http.StatusCreated)
+
+	// Get status, verify offline
+	resp = rt.SendAdminRequest("GET", "/"+db2Name+"/", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+	dbRootResponse := rest.DatabaseRoot{}
+	require.NoError(t, base.JSONUnmarshal(resp.Body.Bytes(), &dbRootResponse))
+	assert.Equal(t, db.RunStateString[db.DBOffline], dbRootResponse.State)
+	assert.Equal(t, []string{scopeAndCollection1Name.String()}, dbRootResponse.RequireResync)
+
+	// Call _online, verify it doesn't override offline when resync is still required.
+	// The online call is async, but subsequent get to status should remain offline
+	onlineResponse := rt.SendAdminRequest("POST", "/"+db2Name+"/_online", "")
+	rest.RequireStatus(t, onlineResponse, http.StatusOK)
+	rt.WaitForDatabaseState(db2Name, db.DBOnline)
+
+	resp = rt.SendAdminRequest("GET", "/"+db2Name+"/", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+	dbRootResponse = rest.DatabaseRoot{}
+	require.NoError(t, base.JSONUnmarshal(resp.Body.Bytes(), &dbRootResponse))
+	assert.Equal(t, db.RunStateString[db.DBOffline], dbRootResponse.State)
+
+	// Run resync for collection
+	resyncCollections := make(db.ResyncCollections, 0)
+	resyncCollections[scope] = []string{collection1}
+	resyncPayload, marshalErr := base.JSONMarshal(resyncCollections)
+	require.NoError(t, marshalErr)
+
+	resp = rt.SendAdminRequest("POST", "/"+db2Name+"/_resync?action=start&regenerate_sequences=true", string(resyncPayload))
+	rest.RequireStatus(t, resp, http.StatusOK)
+
+	err = rt.WaitForConditionWithOptions(func() bool {
+		resyncStatus := db.BackgroundManagerStatus{}
+		response := rt.SendAdminRequest("GET", "/"+db2Name+"/_resync", "")
+		err := base.JSONUnmarshal(response.BodyBytes(), &resyncStatus)
+		assert.NoError(t, err)
+		if resyncStatus.State == db.BackgroundProcessStateCompleted {
+			return true
+		} else {
+			return false
+		}
+	}, 200, 200)
+	require.NoError(t, err)
+
+	// Attempt online again, should succeed
+	onlineResponse = rt.SendAdminRequest("POST", "/"+db2Name+"/_online", "")
+	rest.RequireStatus(t, onlineResponse, http.StatusOK)
+	rt.WaitForDatabaseState(db2Name, db.DBOnline)
+
+	resp = rt.SendAdminRequest("GET", "/"+db2Name+"/", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+	dbRootResponse = rest.DatabaseRoot{}
+	require.NoError(t, base.JSONUnmarshal(resp.Body.Bytes(), &dbRootResponse))
+	assert.Nil(t, dbRootResponse.RequireResync)
+
+	resp = rt.SendAdminRequest("GET", "/"+ks_db2_c1+"/testDoc1", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
 }

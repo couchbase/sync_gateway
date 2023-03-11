@@ -475,14 +475,27 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	}
 
 	// initDataStore is a function to initialize Views or GSI indexes for a datastore
-	initDataStore := func(ds base.DataStore, metadataIndexes db.CollectionIndexesType) error {
+	initDataStore := func(ds base.DataStore, metadataIndexes db.CollectionIndexesType, verifySyncInfo bool) (resyncRequired bool, err error) {
+
+		// If this collection uses syncInfo, verify the collection isn't associated with a different database's metadataID
+		if verifySyncInfo {
+			resyncRequired, err = base.InitSyncInfo(ds, config.MetadataID)
+			if err != nil {
+				return true, err
+			}
+		}
+
 		if useViews {
-			return db.InitializeViews(ctx, ds)
+			viewErr := db.InitializeViews(ctx, ds)
+			if viewErr != nil {
+				return false, viewErr
+			}
+			return resyncRequired, nil
 		}
 
 		gsiSupported := bucket.IsSupported(sgbucket.BucketStoreFeatureN1ql)
 		if !gsiSupported {
-			return errors.New("Sync Gateway was unable to connect to a query node on the provided Couchbase Server cluster.  Ensure a query node is accessible, or set 'use_views':true in Sync Gateway's database config.")
+			return false, errors.New("Sync Gateway was unable to connect to a query node on the provided Couchbase Server cluster.  Ensure a query node is accessible, or set 'use_views':true in Sync Gateway's database config.")
 		}
 
 		numReplicas := DefaultNumIndexReplicas
@@ -491,7 +504,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		}
 		n1qlStore, ok := base.AsN1QLStore(ds)
 		if !ok {
-			return errors.New("Cannot create indexes on non-Couchbase data store.")
+			return false, errors.New("Cannot create indexes on non-Couchbase data store.")
 
 		}
 		options := db.InitializeIndexOptions{
@@ -504,12 +517,13 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		ctx := base.CollectionCtx(ctx, ds.GetName())
 		indexErr := db.InitializeIndexes(ctx, n1qlStore, options)
 		if indexErr != nil {
-			return indexErr
+			return false, indexErr
 		}
 
-		return nil
+		return resyncRequired, nil
 	}
 
+	collectionsRequiringResync := make([]base.ScopeAndCollectionName, 0)
 	if len(config.Scopes) > 0 {
 		if !bucket.IsSupported(sgbucket.BucketStoreFeatureCollections) {
 			return nil, errCollectionsUnsupported
@@ -535,20 +549,28 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 					hasDefaultCollection = true
 					metadataIndexOption = db.IndexesAll
 				}
-				if err := initDataStore(dataStore, metadataIndexOption); err != nil {
+				requiresResync, err := initDataStore(dataStore, metadataIndexOption, true)
+				if err != nil {
 					return nil, err
+				}
+				if requiresResync {
+					collectionsRequiringResync = append(collectionsRequiringResync, base.ScopeAndCollectionName{Scope: scopeName, Collection: collectionName})
 				}
 			}
 		}
 		if !hasDefaultCollection {
-			if err := initDataStore(bucket.DefaultDataStore(), db.IndexesMetadataOnly); err != nil {
+			if _, err := initDataStore(bucket.DefaultDataStore(), db.IndexesMetadataOnly, false); err != nil {
 				return nil, err
 			}
 		}
 	} else {
 		// no scopes configured - init the default data store
-		if err := initDataStore(bucket.DefaultDataStore(), db.IndexesAll); err != nil {
+		requiresResync, err := initDataStore(bucket.DefaultDataStore(), db.IndexesAll, true)
+		if err != nil {
 			return nil, err
+		}
+		if requiresResync {
+			collectionsRequiringResync = append(collectionsRequiringResync, base.ScopeAndCollectionName{Scope: base.DefaultScope, Collection: base.DefaultCollection})
 		}
 	}
 
@@ -673,6 +695,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	dbcontext.BucketSpec = spec
 	dbcontext.ServerContextHasStarted = sc.hasStarted
 	dbcontext.NoX509HTTPClient = sc.NoX509HTTPClient
+	dbcontext.RequireResync = collectionsRequiringResync
 
 	if config.RevsLimit != nil {
 		dbcontext.RevsLimit = *config.RevsLimit
@@ -731,6 +754,9 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	if base.BoolDefault(config.StartOffline, false) {
 		atomic.StoreUint32(&dbcontext.State, db.DBOffline)
 		_ = dbcontext.EventMgr.RaiseDBStateChangeEvent(dbName, "offline", "DB loaded from config", &sc.Config.API.AdminInterface)
+	} else if len(dbcontext.RequireResync) > 0 {
+		atomic.StoreUint32(&dbcontext.State, db.DBOffline)
+		_ = dbcontext.EventMgr.RaiseDBStateChangeEvent(dbName, "offline", "Resync required for collections", &sc.Config.API.AdminInterface)
 	} else {
 		atomic.StoreUint32(&dbcontext.State, db.DBOnline)
 		_ = dbcontext.EventMgr.RaiseDBStateChangeEvent(dbName, "online", "DB loaded from config", &sc.Config.API.AdminInterface)
@@ -1028,6 +1054,10 @@ func (sc *ServerContext) TakeDbOnline(nonContextStruct base.NonCancellableContex
 			return
 		}
 
+		if len(reloadedDb.RequireResync) > 0 {
+			base.ErrorfCtx(nonContextStruct.Ctx, "Database has collections that require resync before it can go online: %v", reloadedDb.RequireResync)
+			return
+		}
 		// Reloaded DB should already be online in most cases, but force state to online to handle cases
 		// where config specifies offline startup
 		atomic.StoreUint32(&reloadedDb.State, db.DBOnline)

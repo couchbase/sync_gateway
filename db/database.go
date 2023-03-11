@@ -130,6 +130,7 @@ type DatabaseContext struct {
 	CollectionByID               map[uint32]*DatabaseCollection // A map keyed by collection ID to Collection
 	CollectionNames              map[string]map[string]struct{} // Map of scope, collection names
 	MetadataKeys                 *base.MetadataKeys             // Factory to generate metadata document keys
+	RequireResync                base.ScopeAndCollectionNames   // Collections requiring resync before database can go online
 }
 
 type Scope struct {
