@@ -91,7 +91,7 @@ func nextChannelQueryEntry(results sgbucket.QueryResultIterator, collectionID ui
 func (dbc *DatabaseContext) getChangesInChannelFromQuery(ctx context.Context, channel channels.ID, startSeq, endSeq uint64, limit int, activeOnly bool) (LogEntries, error) {
 	collection, err := dbc.GetDefaultDatabaseCollection()
 	if err != nil {
-		return nil, nil
+		return nil, err
 	}
 	return collection.getChangesInChannelFromQuery(ctx, channel.Name, startSeq, endSeq, limit, activeOnly)
 
