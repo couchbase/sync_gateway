@@ -20,8 +20,7 @@ func NewRestTesterForUserQueries(t *testing.T, queryConfig DbConfig) *RestTester
 	if base.TestsDisableGSI() {
 		t.Skip("graphql implies GSI")
 	}
-	rt := NewRestTester(t, &RestTesterConfig{
-		groupID:           base.StringPtr(t.Name()), // Avoids race conditions between tests
+	rt := NewRestTesterDefaultCollection(t, &RestTesterConfig{
 		EnableUserQueries: true,
 		PersistentConfig:  true,
 	})
