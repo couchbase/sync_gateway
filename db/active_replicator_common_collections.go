@@ -99,7 +99,7 @@ func (arc *activeReplicatorCommon) _initCollections() ([]replicationCheckpoint, 
 	}
 	err = base.JSONUnmarshal(rBody, &resp)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("couldn't unmarshal response body: %q: %w", rBody, err)
 	}
 
 	blipSyncCollectionContexts := make([]*blipSyncCollectionContext, len(resp))
@@ -109,7 +109,7 @@ func (arc *activeReplicatorCommon) _initCollections() ([]replicationCheckpoint, 
 		var checkpoint *replicationCheckpoint
 		err = base.JSONUnmarshal(checkpointBody, &checkpoint)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("couldn't unmarshal checkpoint body: %q: %w", checkpointBody, err)
 		}
 
 		if checkpoint == nil {
