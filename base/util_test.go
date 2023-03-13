@@ -10,6 +10,7 @@ package base
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -1663,4 +1664,133 @@ func TestReplaceLast(t *testing.T) {
 			assert.Equal(t, tc.expected, replaceLast(tc.s, tc.search, tc.replacement))
 		})
 	}
+}
+
+func TestJSONExtractUnderscored(t *testing.T) {
+	if !IsEnterpriseEdition() {
+		t.Skipf("This tests an EE-only feature")
+	}
+
+	type attachment struct {
+		Digest string
+		Type   string
+		Length uint64
+	}
+	type values struct {
+		id          string
+		rev         string
+		attachments map[string]attachment
+		deleted     bool
+	}
+	var theValues values
+	theShape := map[string]any{
+		"_id":          &theValues.id,
+		"_rev":         &theValues.rev,
+		"_attachments": &theValues.attachments,
+		"_deleted":     &theValues.deleted,
+	}
+
+	cases := []struct {
+		name, input, output string
+		shape               map[string]any
+		extracted           map[string]any
+		values              values
+		error               string
+	}{
+		{
+			name:   "Empty",
+			input:  "{ }",
+			output: "{}",
+		},
+		{
+			name:   "One regular",
+			input:  `{"foo": 1234}`,
+			output: `{"foo": 1234}`,
+		},
+		{
+			name:   "Two regular",
+			input:  `{"foo": 1234, "bar": {"a": 1, "z": 26}}`,
+			output: `{"foo": 1234,"bar": {"a": 1, "z": 26}}`, // (Commas removed before top keys)
+		},
+		{
+			name:      "One underscored",
+			input:     `{"_id": "Hey"}`,
+			output:    `{}`,
+			extracted: map[string]any{"_id": "Hey"},
+		},
+		{
+			name:      "Two underscored",
+			input:     `{"_id": "Hey", "_attachments": {"a": 1, "z": 26}}`,
+			output:    `{}`,
+			extracted: map[string]any{"_id": "Hey", "_attachments": map[string]any{"a": json.Number("1"), "z": json.Number("26")}},
+		},
+		{
+			name:      "Regular and underscored",
+			input:     `{"_id": "Hey", "foo": 1234, "bar": {"a": 1, "z": 26}, "_rev": "1-abcd"}`,
+			output:    `{"foo": 1234,"bar": {"a": 1, "z": 26}}`,
+			extracted: map[string]any{"_id": "Hey", "_rev": "1-abcd"},
+		},
+
+		// Using 'shape':
+		{
+			name:   "Shape with one underscored",
+			input:  `{"_id": "Hey"}`,
+			output: `{}`,
+			shape:  theShape,
+			values: values{id: "Hey"},
+		},
+		{
+			name:   "Shape with all",
+			input:  `{"_id": "Hey", "_rev": "1-abcd", "_deleted":true, "_attachments":{"a.txt":{"digest":"123"}}}`,
+			output: `{}`,
+			shape:  theShape,
+			values: values{id: "Hey", rev: "1-abcd", deleted: true, attachments: map[string]attachment{"a.txt": {Digest: "123"}}},
+		},
+
+		// Errors:
+		{
+			name:  "Not an object",
+			input: "[]",
+			error: "expect { or n, but found [",
+		},
+		{
+			name:  "Duplicate key",
+			input: `{"_id": 1234,"_id":"hi"}`,
+			error: "Duplicate key",
+		},
+		{
+			name:  "Illegal key",
+			input: `{"_id": "foo", "_whoa":"hi"}`,
+			shape: theShape,
+			error: `Top-level key "_whoa" is a reserved internal property`,
+		},
+		{
+			name:  "Wrong type",
+			input: `{"_id": "foo", "_rev":false}`,
+			shape: theShape,
+			error: `Invalid value type for special key "_rev"`,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			theValues = values{}
+			output, extracted, err := JSONExtractUnderscored([]byte(tc.input), tc.shape)
+			if tc.error != "" {
+				assert.ErrorContains(t, err, tc.error)
+				log.Printf("--> %s", err)
+				return
+			} else if !assert.NoError(t, err) {
+				return
+			}
+			assert.Equal(t, tc.output, string(output))
+			if tc.shape == nil {
+				log.Printf("--> %+v", extracted)
+				assert.Equal(t, tc.extracted, extracted)
+			} else {
+				log.Printf("--> %#v", theValues)
+				assert.Equal(t, tc.values, theValues)
+			}
+		})
+	}
+
 }

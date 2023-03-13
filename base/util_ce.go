@@ -62,3 +62,8 @@ func JSONEncoder(w io.Writer) JSONEncoderI {
 func JSONEncoderCanonical(w io.Writer) JSONEncoderI {
 	return json.NewEncoder(w)
 }
+
+func JSONExtractUnderscored(input []byte, shape map[string]any) (output []byte, extracted map[string]any, err error) {
+	err = fmt.Errorf("JSONExtractUnderscored not supported in CE")
+	return
+}

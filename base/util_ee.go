@@ -15,7 +15,9 @@ package base
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
+	"strings"
 	"time"
 
 	"github.com/couchbaselabs/go-fleecedelta"
@@ -107,4 +109,75 @@ func JSONEncoderCanonical(w io.Writer) JSONEncoderI {
 	} else {
 		return json.NewEncoder(w)
 	}
+}
+
+var extractConfig jsoniter.API = jsoniter.Config{
+	EscapeHTML:             true,
+	SortMapKeys:            true,
+	ValidateJsonRawMessage: true,
+	UseNumber:              true,
+}.Froze()
+
+// Incrementally parses JSON, finding "_"-prefixed top-level properties and returning them as a map.
+// Also returns a copy of the JSON with those properties removed.
+//
+// For more control you can give a `shape`, a map from strings to pointers.
+// (a) Properties not contained in that map are illegal and will cause an error.
+// (b) When a property is matched, the value is unmarshaled to the pointed-to value, updating
+//
+//	what the shape points to.
+//
+// For examples, see TestJSONExtractUnderscored() in util_test.go.
+func JSONExtractUnderscored(input []byte, shape map[string]any) (output []byte, extracted map[string]any, err error) {
+	iter := extractConfig.BorrowIterator(input)
+	defer extractConfig.ReturnIterator(iter)
+
+	out := jsoniter.NewStream(jsoniter.ConfigDefault, nil, len(input))
+	out.WriteObjectStart()
+	first := true
+
+	iter.ReadObjectCB(func(iter *jsoniter.Iterator, key string) bool {
+		if strings.HasPrefix(key, "_") {
+			// Underscored key: add it and its value to `extracted`:
+			if extracted == nil {
+				extracted = map[string]any{}
+			} else if extracted[key] != nil {
+				iter.ReportError("Validation", fmt.Sprintf("Duplicate key %q", key))
+				return false
+			}
+			if shape != nil {
+				if value, found := shape[key]; !found {
+					iter.ReportError("Validation", fmt.Sprintf("Top-level key %q is a reserved internal property", key))
+					return false
+				} else {
+					iter.ReadVal(value)
+					if iter.Error != nil {
+						iter.Error = nil
+						iter.ReportError("Validation", fmt.Sprintf("Invalid value type for special key %q", key))
+						return false
+					}
+					extracted[key] = value
+				}
+			} else {
+				extracted[key] = iter.Read()
+			}
+		} else {
+			// Non-underscored key: Write key and raw JSON value to stream
+			if !first {
+				out.WriteMore() // writes a ","
+			}
+			first = false
+			out.WriteObjectField(key)
+			out.SetBuffer(iter.SkipAndAppendBytes(out.Buffer()))
+		}
+		return true
+	})
+
+	if iter.Error != nil {
+		return nil, nil, iter.Error
+	}
+
+	out.WriteObjectEnd()
+	output = out.Buffer()
+	return
 }
