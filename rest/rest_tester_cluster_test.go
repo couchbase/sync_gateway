@@ -161,14 +161,12 @@ func TestPersistentDbConfigWithInvalidUpsert(t *testing.T) {
 	dbConfig := dbConfigForTestBucket(rtc.testBucket)
 
 	// Create database on a random node.
-	resp, err := rtc.RoundRobin().CreateDatabase(db, dbConfig)
-	require.NoError(t, err)
+	resp := rtc.RoundRobin().CreateDatabase(db, dbConfig)
 	RequireStatus(t, resp, http.StatusCreated)
 
 	// A duplicate create shouldn't work, even if this were a node that doesn't have the database loaded yet.
 	// But this _will_ trigger an on-demand load on this node. So now we have 2 nodes running the database.
-	resp, err = rtc.RoundRobin().CreateDatabase(db, dbConfig)
-	require.NoError(t, err)
+	resp = rtc.RoundRobin().CreateDatabase(db, dbConfig)
 	// CouchDB returns this status and body in this scenario
 	RequireStatus(t, resp, http.StatusPreconditionFailed)
 	assert.Contains(t, string(resp.BodyBytes()), "Duplicate database name")
@@ -189,8 +187,7 @@ func TestPersistentDbConfigWithInvalidUpsert(t *testing.T) {
 	rtNode := rtc.RoundRobin()
 
 	// upsert with an invalid config option
-	resp, err = rtNode.UpsertDbConfig(db, DbConfig{RevsLimit: base.Uint32Ptr(0)})
-	require.NoError(t, err)
+	resp = rtNode.UpsertDbConfig(db, DbConfig{RevsLimit: base.Uint32Ptr(0)})
 	RequireStatus(t, resp, http.StatusBadRequest)
 
 	// On the same node, make sure the database is still running.

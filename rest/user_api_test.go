@@ -1502,8 +1502,7 @@ func TestPutUserCollectionAccess(t *testing.T) {
 			Bucket: base.StringPtr(rt.TestBucket.GetName()),
 		},
 	}
-	resp, err := rt.ReplaceDbConfig(rt.GetDatabase().Name, dbConfig)
-	require.NoError(t, err)
+	resp := rt.ReplaceDbConfig(rt.GetDatabase().Name, dbConfig)
 	RequireStatus(t, resp, http.StatusCreated)
 
 	//  Hide entries for collections that are no longer part of the database for GET /_user and /_role

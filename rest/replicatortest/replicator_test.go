@@ -1754,8 +1754,7 @@ func TestPushReplicationAPIUpdateDatabase(t *testing.T) {
 	// just change the sync function to cause the database to reload
 	dbConfig := *rt2.ServerContext().GetDbConfig("db")
 	dbConfig.Sync = base.StringPtr(`function(doc){channel(doc.channels);}`)
-	resp, err := rt2.ReplaceDbConfig("db", dbConfig)
-	require.NoError(t, err)
+	resp := rt2.ReplaceDbConfig("db", dbConfig)
 	rest.RequireStatus(t, resp, http.StatusCreated)
 
 	shouldCreateDocs.Set(false)

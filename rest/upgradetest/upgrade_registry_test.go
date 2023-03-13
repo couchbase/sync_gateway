@@ -16,7 +16,6 @@ import (
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/rest"
-	"github.com/stretchr/testify/require"
 )
 
 // TestDefaultMetadataID creates an database using the named collections on the default scope, then modifies that database to use
@@ -44,11 +43,10 @@ func TestDefaultMetadataIDNamedToDefault(t *testing.T) {
 	// Update config to remove named collections
 	scopesConfig := rest.GetCollectionsConfig(t, rt.TestBucket, 2)
 
-	dbConfig := rest.GetBasicDbCfg(rt.TestBucket)
+	dbConfig := rt.NewDbConfig()
 	dbConfig.Scopes = scopesConfig
 
-	resp, err := rt.CreateDatabase(dbName, dbConfig)
-	require.NoError(t, err)
+	resp := rt.CreateDatabase(dbName, dbConfig)
 	rest.RequireStatus(t, resp, http.StatusCreated)
 
 	userPayload := `{"password":"letmein",
@@ -59,8 +57,7 @@ func TestDefaultMetadataIDNamedToDefault(t *testing.T) {
 
 	// Update database to only target default collection
 	dbConfig.Scopes = rest.DefaultOnlyScopesConfig
-	resp, err = rt.ReplaceDbConfig(dbName, dbConfig)
-	require.NoError(t, err)
+	resp = rt.ReplaceDbConfig(dbName, dbConfig)
 	rest.RequireStatus(t, resp, http.StatusCreated)
 
 	//  Validate that the user can still be retrieved
@@ -92,11 +89,10 @@ func TestDefaultMetadataIDDefaultToNamed(t *testing.T) {
 	// Update config to remove named collections
 
 	scopesConfig := rest.GetCollectionsConfig(t, rt.TestBucket, 2)
-	dbConfig := rest.GetBasicDbCfg(rt.TestBucket)
+	dbConfig := rt.NewDbConfig()
 	dbConfig.Scopes = rest.DefaultOnlyScopesConfig
 
-	resp, err := rt.CreateDatabase(dbName, dbConfig)
-	require.NoError(t, err)
+	resp := rt.CreateDatabase(dbName, dbConfig)
 	rest.RequireStatus(t, resp, http.StatusCreated)
 
 	userPayload := `{"password":"letmein",
@@ -107,8 +103,7 @@ func TestDefaultMetadataIDDefaultToNamed(t *testing.T) {
 
 	// Update database to only target default collection
 	dbConfig.Scopes = scopesConfig
-	resp, err = rt.ReplaceDbConfig(dbName, dbConfig)
-	require.NoError(t, err)
+	resp = rt.ReplaceDbConfig(dbName, dbConfig)
 	rest.RequireStatus(t, resp, http.StatusCreated)
 
 	//  Validate that the user can still be retrieved

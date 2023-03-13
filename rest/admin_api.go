@@ -532,7 +532,13 @@ func (h *handler) handlePutDbConfig() (err error) {
 
 	if !h.server.persistentConfig {
 		updatedDbConfig := &DatabaseConfig{DbConfig: *dbConfig}
-		err = updatedDbConfig.validate(h.ctx(), validateOIDC)
+		err := updatedDbConfig.validate(h.ctx(), validateOIDC)
+		if err != nil {
+			return base.HTTPErrorf(http.StatusBadRequest, err.Error())
+		}
+		oldDBConfig := h.server.GetDatabaseConfig(h.db.Name).DatabaseConfig.DbConfig
+		err = updatedDbConfig.validateConfigUpdate(h.ctx(), oldDBConfig,
+			validateOIDC)
 		if err != nil {
 			return base.HTTPErrorf(http.StatusBadRequest, err.Error())
 		}
