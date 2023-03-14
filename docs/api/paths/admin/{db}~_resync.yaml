@@ -14,6 +14,7 @@ get:
     This will retrieve the status of last resync operation (whether it is running or not) in the Sync Gateway cluster.
 
     Required Sync Gateway RBAC roles:
+
     * Sync Gateway Architect
   responses:
     '200':
@@ -25,7 +26,6 @@ get:
     '404':
       $ref: ../../components/responses.yaml#/Not-found
   tags:
-    - Admin only endpoints
     - Database Management
 post:
   summary: Start or stop Resync
@@ -44,6 +44,7 @@ post:
     - **action=stop** - This will stop the currently running resync operation.
 
     Required Sync Gateway RBAC roles:
+
     * Sync Gateway Architect
   parameters:
     - name: action
@@ -88,5 +89,4 @@ post:
           schema:
             $ref: ../../components/schemas.yaml#/HTTP-Error
   tags:
-    - Admin only endpoints
     - Database Management

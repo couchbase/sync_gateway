@@ -16,6 +16,7 @@ get:
     Response will be blank if there has been no sync function set.
 
     Required Sync Gateway RBAC roles:
+
     * Sync Gateway Architect
   responses:
     '200':
@@ -36,7 +37,6 @@ get:
     '404':
       $ref: ../../components/responses.yaml#/Not-found
   tags:
-    - Admin only endpoints
     - Database Configuration
 put:
   summary: Set database sync function
@@ -44,6 +44,7 @@ put:
     This will allow you to update the sync function.
 
     Required Sync Gateway RBAC roles:
+
     * Sync Gateway Architect
   parameters:
     - $ref: ../../components/parameters.yaml#/DB-config-If-Match
@@ -68,7 +69,7 @@ put:
     '412':
       $ref: ../../components/responses.yaml#/DB-config-precondition-failed
   tags:
-    - Admin only endpoints
+    - Database Configuration
 delete:
   summary: Remove custom sync function
   description: |-
@@ -82,6 +83,7 @@ delete:
     ```
 
     Required Sync Gateway RBAC roles:
+
     * Sync Gateway Architect
   parameters:
     - $ref: ../../components/parameters.yaml#/If-Match
@@ -93,5 +95,4 @@ delete:
     '412':
       $ref: ../../components/responses.yaml#/DB-config-precondition-failed
   tags:
-    - Admin only endpoints
     - Database Configuration

@@ -24,6 +24,7 @@ post:
     * Stops webhook event handlers.
 
     Required Sync Gateway RBAC roles:
+
     * Sync Gateway Architect
   responses:
     '200':
@@ -37,5 +38,4 @@ post:
           schema:
             $ref: ../../components/schemas.yaml#/HTTP-Error
   tags:
-    - Admin only endpoints
     - Database Management

@@ -18,6 +18,7 @@ get:
     Query a view on a design document.
 
     Required Sync Gateway RBAC roles:
+
     * Sync Gateway Application
     * Sync Gateway Application Read Only
   parameters:

@@ -17,6 +17,7 @@ get:
     This queries the view and outputs it as HTML.
 
     Required Sync Gateway RBAC roles:
+
     * Sync Gateway Application
     * Sync Gateway Application Read Only
   responses:
@@ -35,5 +36,4 @@ get:
           schema:
             $ref: ../../components/schemas.yaml#/HTTP-Error
   tags:
-    - Admin only endpoints
     - Unsupported

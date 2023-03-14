@@ -42,7 +42,7 @@ get:
     '404':
       $ref: ../../components/responses.yaml#/Not-found
   tags:
-    - OpenID Connect
+    - Authentication
 post:
   summary: OpenID Connect mock login page handler
   description: 'Used to handle the login page displayed for the `GET /{db}/_oidc_testing/authorize` endpoint.'
@@ -59,4 +59,4 @@ post:
     '404':
       $ref: ../../components/responses.yaml#/Not-found
   tags:
-    - OpenID Connect
+    - Authentication

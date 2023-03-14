@@ -14,6 +14,7 @@ get:
     This handles incoming BLIP Sync requests from either Couchbase Lite or another Sync Gateway node. The connection has to be upgradable to a websocket connection or else the request will fail.
 
     Required Sync Gateway RBAC roles:
+
     * Sync Gateway Application
   parameters:
     - name: client

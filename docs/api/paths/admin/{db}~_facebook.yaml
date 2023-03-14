@@ -67,4 +67,4 @@ post:
                 type: string
   deprecated: true
   tags:
-    - OpenID Connect
+    - Authentication

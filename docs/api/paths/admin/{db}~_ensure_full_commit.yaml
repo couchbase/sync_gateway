@@ -14,6 +14,7 @@ post:
     This endpoint is non-functional but is present for CouchDB compatibility.
 
     Required Sync Gateway RBAC roles:
+
     * Sync Gateway Application
     * Sync Gateway Application Read Only
   responses:

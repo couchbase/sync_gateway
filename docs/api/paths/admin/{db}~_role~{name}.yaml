@@ -15,6 +15,7 @@ get:
     Retrieve a single roles properties.
 
     Required Sync Gateway RBAC roles:
+
     * Sync Gateway Architect
     * Sync Gateway Application
     * Sync Gateway Application Read Only
@@ -24,7 +25,6 @@ get:
     '404':
       $ref: ../../components/responses.yaml#/Not-found
   tags:
-    - Admin only endpoints
     - Database Security
 put:
   summary: Upsert a role
@@ -32,6 +32,7 @@ put:
     If the role does not exist, create a new role otherwise update the existing role.
 
     Required Sync Gateway RBAC roles:
+
     * Sync Gateway Architect
     * Sync Gateway Application
   requestBody:
@@ -44,7 +45,6 @@ put:
     '404':
       $ref: ../../components/responses.yaml#/Not-found
   tags:
-    - Admin only endpoints
     - Database Security
 delete:
   summary: Delete a role
@@ -52,6 +52,7 @@ delete:
     Delete a role from the database.
 
     Required Sync Gateway RBAC roles:
+
     * Sync Gateway Architect
     * Sync Gateway Application
   responses:
@@ -60,7 +61,6 @@ delete:
     '404':
       $ref: ../../components/responses.yaml#/Not-found
   tags:
-    - Admin only endpoints
     - Database Security
 head:
   responses:
@@ -69,12 +69,12 @@ head:
     '404':
       $ref: ../../components/responses.yaml#/Not-found
   tags:
-    - Admin only endpoints
     - Database Security
   description: |-
     Check if the role exists by checking the status code.
 
     Required Sync Gateway RBAC roles:
+
     * Sync Gateway Architect
     * Sync Gateway Application
     * Sync Gateway Application Read Only

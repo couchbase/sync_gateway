@@ -17,6 +17,7 @@ get:
     Query a design document.
 
     Required Sync Gateway RBAC roles:
+
     * Sync Gateway Application
     * Sync Gateway Application Read Only
   responses:
@@ -40,6 +41,7 @@ put:
     Update the views of a design document.
 
     Required Sync Gateway RBAC roles:
+
     * Sync Gateway Application
   requestBody:
     content:
@@ -63,6 +65,7 @@ delete:
     Delete a design document.
 
     Required Sync Gateway RBAC roles:
+
     * Sync Gateway Application
   responses:
     '200':
@@ -89,6 +92,7 @@ head:
     Check if a design document can be queried.
 
     Required Sync Gateway RBAC roles:
+
     * Sync Gateway Application
     * Sync Gateway Application Read Only
   summary: Check if view of design document exists | Unsupported

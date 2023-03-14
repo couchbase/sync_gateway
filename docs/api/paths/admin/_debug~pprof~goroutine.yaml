@@ -12,6 +12,7 @@ get:
     Stack traces of all current goroutines.
 
     Required Sync Gateway RBAC roles:
+
     * Sync Gateway Dev Ops
   parameters:
     - $ref: ../../components/parameters.yaml#/pprof-seconds
@@ -19,7 +20,6 @@ get:
     '200':
       $ref: ../../components/responses.yaml#/pprof-binary
   tags:
-    - Admin only endpoints
     - Profiling
 post:
   summary: Get goroutine profile
@@ -27,6 +27,7 @@ post:
     Stack traces of all current goroutines.
 
     Required Sync Gateway RBAC roles:
+
     * Sync Gateway Dev Ops
   parameters:
     - $ref: ../../components/parameters.yaml#/pprof-seconds
@@ -34,5 +35,4 @@ post:
     '200':
       $ref: ../../components/responses.yaml#/pprof-binary
   tags:
-    - Admin only endpoints
     - Profiling

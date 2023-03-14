@@ -29,4 +29,4 @@ get:
     '500':
       $ref: ../../components/responses.yaml#/OIDC-connection
   tags:
-    - OpenID Connect
+    - Authentication

@@ -20,6 +20,7 @@ post:
     Both types can each have a maximum of 1 compact operation running at any one point. This means that an attachment compaction can be running at the same time as a tombstone compaction but not 2 tombstone compactions.
 
     Required Sync Gateway RBAC roles:
+
     * Sync Gateway Architect
   parameters:
     - $ref: ../../components/parameters.yaml#/compact-type
@@ -62,7 +63,6 @@ post:
           schema:
             $ref: ../../components/schemas.yaml#/HTTP-Error
   tags:
-    - Admin only endpoints
     - Database Management
 get:
   summary: Get the status of the most recent compact operation
@@ -70,6 +70,7 @@ get:
     This will retrieve the current status of the most recent compact operation.
 
     Required Sync Gateway RBAC roles:
+
     * Sync Gateway Architect
   parameters:
     - $ref: ../../components/parameters.yaml#/compact-type
@@ -85,5 +86,4 @@ get:
     '404':
       $ref: ../../components/responses.yaml#/Not-found
   tags:
-    - Admin only endpoints
     - Database Management

@@ -13,6 +13,7 @@ get:
     This will return a map of the log keys being used for the console logging.
 
     Required Sync Gateway RBAC roles:
+
     * Sync Gateway Dev Ops
   responses:
     '200':
@@ -23,7 +24,6 @@ get:
             $ref: ../../components/schemas.yaml#/DeprecatedLogKeyMap
   deprecated: true
   tags:
-    - Admin only endpoints
     - Server
 put:
   summary: Set console logging settings
@@ -32,6 +32,7 @@ put:
     Enable or disable console log keys and optionally change the console log level.
 
     Required Sync Gateway RBAC roles:
+
     * Sync Gateway Dev Ops
   parameters:
     - $ref: ../../components/parameters.yaml#/log-level
@@ -49,7 +50,6 @@ put:
       $ref: ../../components/responses.yaml#/request-problem
   deprecated: true
   tags:
-    - Admin only endpoints
     - Server
 post:
   summary: Update console logging settings
@@ -58,6 +58,7 @@ post:
     This is for enabling the log keys provided and optionally changing the console log level.
 
     Required Sync Gateway RBAC roles:
+
     * Sync Gateway Dev Ops
   parameters:
     - $ref: ../../components/parameters.yaml#/log-level
@@ -75,5 +76,4 @@ post:
       $ref: ../../components/responses.yaml#/request-problem
   deprecated: true
   tags:
-    - Admin only endpoints
     - Server

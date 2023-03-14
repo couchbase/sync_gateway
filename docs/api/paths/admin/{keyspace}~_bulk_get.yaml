@@ -20,6 +20,7 @@ post:
     A body for a document that has attachments will be written as a nested `multipart/related` body.
 
     Required Sync Gateway RBAC roles:
+
     * Sync Gateway Application
     * Sync Gateway Application Read Only
   parameters:

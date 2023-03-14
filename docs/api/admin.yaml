@@ -176,9 +176,10 @@ paths:
     $ref: './paths/admin/{db}~_oidc_testing~authenticate.yaml'
   '/{db}/_blipsync':
     $ref: './paths/admin/{db}~_blipsync.yaml'
+
 tags:
-  - name: Admin only endpoints
-    description: Endpoints that are unique to the Admin API (port 4985)
+  - name: Authentication
+    description: Manage authentication
   - name: Server
     description: Manage server activities
   - name: Database Management

@@ -16,6 +16,7 @@ delete:
     Invalidates the session only if it belongs to the user.
 
     Required Sync Gateway RBAC roles:
+
     * Sync Gateway Architect
     * Sync Gateway Application
   responses:
@@ -24,5 +25,4 @@ delete:
     '404':
       $ref: ../../components/responses.yaml#/Not-found
   tags:
-    - Admin only endpoints
     - Session

@@ -15,6 +15,7 @@ get:
     Retrieve the status of a replication.
 
     Required Sync Gateway RBAC roles:
+
     * Sync Gateway Replicator
   parameters:
     - $ref: ../../components/parameters.yaml#/replication-active-only
@@ -37,7 +38,6 @@ get:
           schema:
             $ref: ../../components/schemas.yaml#/HTTP-Error
   tags:
-    - Admin only endpoints
     - Replication
 put:
   summary: Control a replication state
@@ -50,6 +50,7 @@ put:
     * `reset` - resets the replication checkpoint to 0. For bidirectional replication, both push and pull checkpoints are reset to 0. The replication must be stopped to use this.
 
     Required Sync Gateway RBAC roles:
+
     * Sync Gateway Replicator
   parameters:
     - name: action
@@ -74,7 +75,6 @@ put:
     '404':
       $ref: ../../components/responses.yaml#/Not-found
   tags:
-    - Admin only endpoints
     - Replication
 head:
   responses:
@@ -85,7 +85,6 @@ head:
     '404':
       $ref: ../../components/responses.yaml#/Not-found
   tags:
-    - Admin only endpoints
     - Replication
   summary: Check if replication exists
   parameters:
@@ -97,4 +96,5 @@ head:
     Check if a replication exists.
 
     Required Sync Gateway RBAC roles:
+
     * Sync Gateway Replicator

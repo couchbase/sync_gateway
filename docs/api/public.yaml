@@ -93,10 +93,12 @@ tags:
     description: Create and manage Sync Gateway databases
   - name: Session
     description: Manage user sessions
-  - name: OpenID Connect
-    description: Manage OpenID Connect
+  - name: Authentication
+    description: Manage OpenID Connect Authentication
   - name: Document
-    description: Create and manage documents and attachments
+    description: Create and manage documents
+  - name: Document Attachment
+    description: Create and manage document attachments
   - name: Replication
     description: Create and manage inter-Sync Gateway replications
   - name: Unsupported

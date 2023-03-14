@@ -14,6 +14,7 @@ get:
     Retrieves all the roles that are in the database.
 
     Required Sync Gateway RBAC roles:
+
     * Sync Gateway Architect
     * Sync Gateway Application
     * Sync Gateway Application Read Only
@@ -45,7 +46,6 @@ get:
     '404':
       $ref: ../../components/responses.yaml#/Not-found
   tags:
-    - Admin only endpoints
     - Database Security
 post:
   summary: Create a new role
@@ -53,6 +53,7 @@ post:
     Create a new role using the request body to specify the properties on the role.
 
     Required Sync Gateway RBAC roles:
+
     * Sync Gateway Architect
     * Sync Gateway Application
   requestBody:
@@ -65,7 +66,6 @@ post:
     '409':
       $ref: ../../components/responses.yaml#/Conflict
   tags:
-    - Admin only endpoints
     - Database Security
 head:
   summary: /{db}/_role/
@@ -75,10 +75,10 @@ head:
     '404':
       $ref: ../../components/responses.yaml#/Not-found
   tags:
-    - Admin only endpoints
     - Database Security
   description: |-
     Required Sync Gateway RBAC roles:
+
     * Sync Gateway Architect
     * Sync Gateway Application
     * Sync Gateway Application Read Only

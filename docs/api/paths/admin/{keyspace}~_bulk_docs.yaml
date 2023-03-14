@@ -20,6 +20,7 @@ post:
     To delete an existing document, provide the document ID (`_id`), revision ID (`_rev`), and set the deletion flag (`_deleted`) to true.
 
     Required Sync Gateway RBAC roles:
+
     * Sync Gateway Application
   requestBody:
     content:

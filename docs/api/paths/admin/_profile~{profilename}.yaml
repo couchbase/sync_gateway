@@ -25,6 +25,7 @@ post:
     This endpoint allows you to create a pprof snapshot of the given type.
 
     Required Sync Gateway RBAC roles:
+
     * Sync Gateway Dev Ops
   requestBody:
     $ref: ../../components/requestBodies.yaml#/Profile
@@ -36,5 +37,4 @@ post:
     '404':
       $ref: ../../components/responses.yaml#/Not-found
   tags:
-    - Admin only endpoints
     - Profiling

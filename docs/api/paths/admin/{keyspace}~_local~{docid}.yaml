@@ -22,6 +22,7 @@ get:
     Local document IDs begin with `_local/`. Local documents are not replicated or indexed, don't support attachments, and don't save revision histories. In practice they are almost only used by Couchbase Lite's replicator, as a place to store replication checkpoint data.
 
     Required Sync Gateway RBAC roles:
+
     * Sync Gateway Application
     * Sync Gateway Application Read Only
   responses:
@@ -41,6 +42,7 @@ put:
     Local document IDs are given a `_local/` prefix. Local documents are not replicated or indexed, don't support attachments, and don't save revision histories. In practice they are almost only used by the client's replicator, as a place to store replication checkpoint data.
 
     Required Sync Gateway RBAC roles:
+
     * Sync Gateway Application
   requestBody:
     description: The body of the document
@@ -76,6 +78,7 @@ delete:
     Local document IDs begin with `_local/`. Local documents are not replicated or indexed, don't support attachments, and don't save revision histories. In practice they are almost only used by Couchbase Lite's replicator, as a place to store replication checkpoint data.
 
     Required Sync Gateway RBAC roles:
+
     * Sync Gateway Application
   parameters:
     - name: rev
@@ -112,5 +115,6 @@ head:
     Local document IDs begin with `_local/`. Local documents are not replicated or indexed, don't support attachments, and don't save revision histories. In practice they are almost only used by Couchbase Lite's replicator, as a place to store replication checkpoint data.
 
     Required Sync Gateway RBAC roles:
+
     * Sync Gateway Application
     * Sync Gateway Application Read Only

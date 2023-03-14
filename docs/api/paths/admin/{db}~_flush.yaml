@@ -18,6 +18,7 @@ post:
     The bucket will only be flushed if the unsupported database configuration option `enable_couchbase_bucket_flush` is set.
 
     Required Sync Gateway RBAC roles:
+
     * Sync Gateway Dev Ops
   responses:
     '200':
@@ -31,5 +32,4 @@ post:
           schema:
             $ref: ../../components/schemas.yaml#/HTTP-Error
   tags:
-    - Admin only endpoints
     - Unsupported

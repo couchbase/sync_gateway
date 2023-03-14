@@ -10,6 +10,7 @@ get:
   summary: Get the heap pprof debug file
   description: |-
     Required Sync Gateway RBAC roles:
+
     * Sync Gateway Dev Ops
   parameters:
     - $ref: ../../components/parameters.yaml#/pprof-seconds
@@ -17,12 +18,12 @@ get:
     '200':
       $ref: ../../components/responses.yaml#/pprof-binary
   tags:
-    - Admin only endpoints
     - Profiling
 post:
   summary: Get the heap pprof debug file
   description: |-
     Required Sync Gateway RBAC roles:
+
     * Sync Gateway Dev Ops
   parameters:
     - $ref: ../../components/parameters.yaml#/pprof-seconds
@@ -30,5 +31,4 @@ post:
     '200':
       $ref: ../../components/responses.yaml#/pprof-binary
   tags:
-    - Admin only endpoints
     - Profiling

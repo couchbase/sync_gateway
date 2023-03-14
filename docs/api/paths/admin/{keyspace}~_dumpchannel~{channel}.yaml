@@ -22,6 +22,7 @@ get:
     This queries a channel and displays all the document IDs and revisions that are in that channel.
 
     Required Sync Gateway RBAC roles:
+
     * Sync Gateway Application
     * Sync Gateway Application Read Only
   parameters:
@@ -40,5 +41,4 @@ get:
     '404':
       $ref: ../../components/responses.yaml#/Not-found
   tags:
-    - Admin only endpoints
     - Unsupported

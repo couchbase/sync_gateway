@@ -12,6 +12,7 @@ get:
     This will return the configuration that the Sync Gateway node was initially started up with, or the currently config if `include_runtime` is set.
 
     Required Sync Gateway RBAC roles:
+
     * Sync Gateway Dev Ops
   parameters:
     - $ref: ../../components/parameters.yaml#/deprecated-redact
@@ -31,7 +32,6 @@ get:
     '400':
       $ref: ../../components/responses.yaml#/request-problem
   tags:
-    - Admin only endpoints
     - Server
 put:
   summary: Set runtime configuration
@@ -43,6 +43,7 @@ put:
     The endpoint only accepts a limited number of options that can be changed at runtime. See request body schema for allowable options.
 
     Required Sync Gateway RBAC roles:
+
     * Sync Gateway Dev Ops
   requestBody:
     content:
@@ -55,5 +56,4 @@ put:
     '400':
       $ref: ../../components/responses.yaml#/request-problem
   tags:
-    - Admin only endpoints
     - Server

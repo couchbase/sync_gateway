@@ -62,7 +62,7 @@ get:
     '416':
       description: Requested range exceeds content length
   tags:
-    - Document
+    - Document Attachment
 put:
   summary: Create or update an attachment on a document
   description: |-
@@ -112,7 +112,7 @@ put:
     '409':
       $ref: ../../components/responses.yaml#/Conflict
   tags:
-    - Document
+    - Document Attachment
 head:
   responses:
     '200':
@@ -129,7 +129,7 @@ head:
     '404':
       $ref: ../../components/responses.yaml#/Not-found
   tags:
-    - Document
+    - Document Attachment
   summary: Check if attachment exists
   description: This request check if the attachment exists on the specified document.
   parameters:
@@ -168,4 +168,4 @@ delete:
     '409':
       $ref: ../../components/responses.yaml#/Conflict
   tags:
-    - Document
+    - Document Attachment

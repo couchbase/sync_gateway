@@ -14,6 +14,7 @@ get:
     Retrieve information about the database.
 
     Required Sync Gateway RBAC roles:
+
     * Sync Gateway Dev Ops
   responses:
     '200':
@@ -102,6 +103,7 @@ delete:
     **Note:** If running in legacy mode, this will only delete the database from the current node.
 
     Required Sync Gateway RBAC roles:
+
     * Sync Gateway Architect
   responses:
     '200':
@@ -120,7 +122,6 @@ delete:
           schema:
             $ref: ../../components/schemas.yaml#/HTTP-Error
   tags:
-    - Admin only endpoints
     - Database Management
 head:
   summary: Check if database exists
@@ -128,6 +129,7 @@ head:
     Check if a database exists by using the response status code.
 
     Required Sync Gateway RBAC roles:
+
     * Sync Gateway Dev Ops
   responses:
     '200':
@@ -148,6 +150,7 @@ put:
     By default, the new database will be brought online immediately. This can be avoided by including `"offline": true` in the configuration in the request body.
 
     Required Sync Gateway RBAC roles:
+
     * Sync Gateway Architect
   parameters:
     - $ref: ../../components/parameters.yaml#/disable_oidc_validation
@@ -187,5 +190,4 @@ put:
           schema:
             $ref: ../../components/schemas.yaml#/HTTP-Error
   tags:
-    - Admin only endpoints
     - Database Management

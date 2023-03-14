@@ -16,6 +16,7 @@ get:
     Response will be blank if there has been no import filter set.
 
     Required Sync Gateway RBAC roles:
+
     * Sync Gateway Architect
   responses:
     '200':
@@ -32,7 +33,6 @@ get:
     '404':
       $ref: ../../components/responses.yaml#/Not-found
   tags:
-    - Admin only endpoints
     - Database Configuration
 put:
   summary: Set database import filter
@@ -40,6 +40,7 @@ put:
     This will allow you to update the database's import filter.
 
     Required Sync Gateway RBAC roles:
+
     * Sync Gateway Architect
   parameters:
     - $ref: ../../components/parameters.yaml#/DB-config-If-Match
@@ -60,7 +61,6 @@ put:
     '412':
       $ref: ../../components/responses.yaml#/DB-config-precondition-failed
   tags:
-    - Admin only endpoints
     - Database Configuration
 delete:
   summary: Delete import filter
@@ -68,6 +68,7 @@ delete:
     This will remove the custom import filter function from the database configuration so that Sync Gateway will not filter any documents during import.
 
     Required Sync Gateway RBAC roles:
+
     * Sync Gateway Architect
   parameters:
     - $ref: ../../components/parameters.yaml#/DB-config-If-Match
@@ -79,5 +80,4 @@ delete:
     '412':
       $ref: ../../components/responses.yaml#/DB-config-precondition-failed
   tags:
-    - Admin only endpoints
     - Database Configuration

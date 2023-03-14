@@ -10,6 +10,7 @@ get:
   summary: Get symbol pprof debug information
   description: |-
     Required Sync Gateway RBAC roles:
+
     * Sync Gateway Dev Ops
   responses:
     '200':
@@ -19,12 +20,12 @@ get:
           schema:
             type: string
   tags:
-    - Admin only endpoints
     - Profiling
 post:
   summary: Get symbol pprof debug information
   description: |-
     Required Sync Gateway RBAC roles:
+
     * Sync Gateway Dev Ops
   responses:
     '200':
@@ -34,5 +35,4 @@ post:
           schema:
             type: string
   tags:
-    - Admin only endpoints
     - Profiling

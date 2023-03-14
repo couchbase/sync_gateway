@@ -17,6 +17,7 @@ get:
     Query a view on the default Sync Gateway design document.
 
     Required Sync Gateway RBAC roles:
+
     * Sync Gateway Application
     * Sync Gateway Application Read Only
   parameters:

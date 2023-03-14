@@ -12,6 +12,7 @@ post:
     The post upgrade process involves removing obsolete design documents and indexes when they are no longer needed.
 
     Required Sync Gateway RBAC roles:
+
     * Sync Gateway Dev Ops
   parameters:
     - name: preview
@@ -54,5 +55,4 @@ post:
             required:
               - post_upgrade_results
   tags:
-    - Admin only endpoints
     - Server

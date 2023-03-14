@@ -14,6 +14,7 @@ get:
     Retrieve all the replication statuses in the Sync Gateway node.
 
     Required Sync Gateway RBAC roles:
+
     * Sync Gateway Replicator
   parameters:
     - $ref: ../../components/parameters.yaml#/replication-active-only
@@ -32,7 +33,6 @@ get:
     '400':
       $ref: ../../components/responses.yaml#/request-problem
   tags:
-    - Admin only endpoints
     - Replication
 head:
   summary: /{db}/_replicationStatus/
@@ -42,8 +42,8 @@ head:
     '400':
       description: Bad Request
   tags:
-    - Admin only endpoints
     - Replication
   description: |-
     Required Sync Gateway RBAC roles:
+
     * Sync Gateway Replicator

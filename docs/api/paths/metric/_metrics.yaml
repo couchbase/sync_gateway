@@ -12,6 +12,7 @@ get:
     Returns Sync Gateway statistics and other runtime variables in Prometheus Exposition format.
 
     Required Sync Gateway RBAC roles:
+
     * Sync Gateway Architect
     * Sync Gateway Dev Ops
     * External Stats Reader

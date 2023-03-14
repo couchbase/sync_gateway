@@ -12,6 +12,7 @@ get:
     Returns stack traces of holders of contended mutexes.
 
     Required Sync Gateway RBAC roles:
+
     * Sync Gateway Dev Ops
   parameters:
     - $ref: ../../components/parameters.yaml#/debug-profile-seconds
@@ -28,7 +29,6 @@ get:
             error: forbidden
             reason: Can only run one mutex profile at a time
   tags:
-    - Admin only endpoints
     - Profiling
 post:
   summary: Get mutex profile
@@ -36,6 +36,7 @@ post:
     Returns stack traces of holders of contended mutexes.
 
     Required Sync Gateway RBAC roles:
+
     * Sync Gateway Dev Ops
   parameters:
     - $ref: ../../components/parameters.yaml#/debug-profile-seconds
@@ -52,5 +53,4 @@ post:
             error: forbidden
             reason: Can only run one mutex profile at a time
   tags:
-    - Admin only endpoints
     - Profiling

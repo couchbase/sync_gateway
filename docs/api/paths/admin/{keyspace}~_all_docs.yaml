@@ -14,6 +14,7 @@ get:
     Returns all documents in the databased based on the specified parameters.
 
     Required Sync Gateway RBAC roles:
+
     * Sync Gateway Application
     * Sync Gateway Application Read Only
   parameters:
@@ -41,6 +42,7 @@ post:
     Get a built-in view of all the documents in the database.
 
     Required Sync Gateway RBAC roles:
+
     * Sync Gateway Application
     * Sync Gateway Application Read Only
   parameters:
@@ -97,5 +99,6 @@ head:
     - $ref: ../../components/parameters.yaml#/limit-result-rows
   description: |-
     Required Sync Gateway RBAC roles:
+
     * Sync Gateway Application
     * Sync Gateway Application Read Only

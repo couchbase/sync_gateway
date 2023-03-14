@@ -29,4 +29,4 @@ get:
     '500':
       description: Unable to connect and validate with the OpenID Connect provider requested
   tags:
-    - OpenID Connect
+    - Authentication

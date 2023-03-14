@@ -12,6 +12,7 @@ get:
     Retrieve the full configuration for the database specified.
 
     Required Sync Gateway RBAC roles:
+
     * Sync Gateway Architect
   parameters:
     - $ref: ../../components/parameters.yaml#/deprecated-redact
@@ -43,7 +44,6 @@ get:
     '404':
       $ref: ../../components/responses.yaml#/Not-found
   tags:
-    - Admin only endpoints
     - Database Configuration
 put:
   summary: Replace database configuration
@@ -53,6 +53,7 @@ put:
     The bucket and database name cannot be changed. If these need to be changed, the database will need to be deleted then recreated with the new settings.
 
     Required Sync Gateway RBAC roles:
+
     * Sync Gateway Architect
     * Sync Gateway Application
   parameters:
@@ -74,7 +75,6 @@ put:
     '412':
       $ref: ../../components/responses.yaml#/DB-config-precondition-failed
   tags:
-    - Admin only endpoints
     - Database Configuration
 post:
   summary: Update database configuration
@@ -84,6 +84,7 @@ post:
     The bucket and database name cannot be changed. If these need to be changed, the database will need to be deleted then recreated with the new settings.
 
     Required Sync Gateway RBAC roles:
+
     * Sync Gateway Architect
     * Sync Gateway Application
   parameters:
@@ -104,7 +105,6 @@ post:
     '412':
       $ref: ../../components/responses.yaml#/DB-config-precondition-failed
   tags:
-    - Admin only endpoints
     - Database Configuration
 parameters:
   - $ref: ../../components/parameters.yaml#/db

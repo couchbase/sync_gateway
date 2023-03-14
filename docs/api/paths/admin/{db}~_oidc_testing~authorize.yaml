@@ -25,7 +25,7 @@ get:
     '500':
       $ref: ../../components/responses.yaml#/OIDC-testing-internal-error
   tags:
-    - OpenID Connect
+    - Authentication
 post:
   summary: OpenID Connect mock login page
   description: Show a mock OpenID Connect login page for the client to log in to.
@@ -43,4 +43,4 @@ post:
     '500':
       $ref: ../../components/responses.yaml#/OIDC-testing-internal-error
   tags:
-    - OpenID Connect
+    - Authentication

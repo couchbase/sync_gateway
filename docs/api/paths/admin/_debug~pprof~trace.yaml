@@ -12,6 +12,7 @@ get:
     Responds with the execution trace in binary form.
 
     Required Sync Gateway RBAC roles:
+
     * Sync Gateway Dev Ops
   parameters:
     - name: seconds
@@ -23,7 +24,6 @@ get:
     '200':
       $ref: ../../components/responses.yaml#/pprof-binary
   tags:
-    - Admin only endpoints
     - Profiling
 post:
   summary: Get trace profile
@@ -31,6 +31,7 @@ post:
     Responds with the execution trace in binary form.
 
     Required Sync Gateway RBAC roles:
+
     * Sync Gateway Dev Ops
   parameters:
     - name: seconds
@@ -42,5 +43,4 @@ post:
     '200':
       $ref: ../../components/responses.yaml#/pprof-binary
   tags:
-    - Admin only endpoints
     - Profiling

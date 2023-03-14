@@ -16,6 +16,7 @@ post:
     To stop profiling, call this endpoint but don't supply the `file` in the body.
 
     Required Sync Gateway RBAC roles:
+
     * Sync Gateway Dev Ops
   requestBody:
     $ref: ../../components/requestBodies.yaml#/Profile
@@ -25,5 +26,4 @@ post:
     '400':
       $ref: ../../components/responses.yaml#/request-problem
   tags:
-    - Admin only endpoints
     - Profiling

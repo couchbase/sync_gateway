@@ -20,6 +20,7 @@ get:
     3. Render the PNG by calling `dot -Tpng revtree.dot > revtree.png`.
 
     Required Sync Gateway RBAC roles:
+
     * Sync Gateway Application
     * Sync Gateway Application Read Only
 
@@ -35,5 +36,4 @@ get:
     '404':
       $ref: ../../components/responses.yaml#/Not-found
   tags:
-    - Admin only endpoints
     - Unsupported

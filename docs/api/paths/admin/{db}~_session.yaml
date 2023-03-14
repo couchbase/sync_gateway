@@ -26,6 +26,7 @@ post:
     A session cannot be generated for an non-existent user or the `GUEST` user.
 
     Required Sync Gateway RBAC roles:
+
     * Sync Gateway Architect
     * Sync Gateway Application
   requestBody:

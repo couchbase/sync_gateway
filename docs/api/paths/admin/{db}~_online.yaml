@@ -23,6 +23,7 @@ post:
     * Make the databases on several Sync Gateway instances available at the same time.
 
     Required Sync Gateway RBAC roles:
+
     * Sync Gateway Architect
   requestBody:
     description: Add an optional delay to wait before bringing the database online
@@ -47,5 +48,4 @@ post:
           schema:
             $ref: ../../components/schemas.yaml#/HTTP-Error
   tags:
-    - Admin only endpoints
     - Database Management

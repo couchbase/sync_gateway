@@ -58,4 +58,4 @@ post:
       description: Unable to send request to the Google token verifier
   deprecated: true
   tags:
-    - OpenID Connect
+    - Authentication

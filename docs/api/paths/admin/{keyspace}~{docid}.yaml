@@ -15,6 +15,7 @@ get:
     Retrieve a document from the database by its doc ID.
 
     Required Sync Gateway RBAC roles:
+
     * Sync Gateway Application
     * Sync Gateway Application Read Only
   parameters:
@@ -76,6 +77,7 @@ put:
     The maximum size for a document is 20MB.
 
     Required Sync Gateway RBAC roles:
+
     * Sync Gateway Application
   parameters:
     - $ref: ../../components/parameters.yaml#/roundtrip
@@ -118,6 +120,7 @@ delete:
     A revision ID either in the header or on the query parameters is required.
 
     Required Sync Gateway RBAC roles:
+
     * Sync Gateway Application
   parameters:
     - $ref: ../../components/parameters.yaml#/rev
@@ -155,5 +158,6 @@ head:
     Return a status code based on if the document exists or not.
 
     Required Sync Gateway RBAC roles:
+
     * Sync Gateway Application
     * Sync Gateway Application Read Only

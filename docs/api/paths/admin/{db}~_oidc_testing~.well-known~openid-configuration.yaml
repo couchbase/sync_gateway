@@ -51,4 +51,4 @@ get:
     '404':
       $ref: ../../components/responses.yaml#/Not-found
   tags:
-    - OpenID Connect
+    - Authentication

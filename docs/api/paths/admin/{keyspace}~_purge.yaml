@@ -16,6 +16,7 @@ post:
     When `enable_shared_bucket_access` is enabled, this endpoint removes the document and its associated extended attributes.
 
     Required Sync Gateway RBAC roles:
+
     * Sync Gateway Application
   requestBody:
     description: Purge request body
@@ -91,5 +92,4 @@ post:
     '404':
       $ref: ../../components/responses.yaml#/Not-found
   tags:
-    - Admin only endpoints
     - Document

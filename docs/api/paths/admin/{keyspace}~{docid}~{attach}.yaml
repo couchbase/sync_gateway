@@ -25,6 +25,7 @@ get:
     If the `meta` query parameter is set then the response will be in JSON with the additional metadata tags.
 
     Required Sync Gateway RBAC roles:
+
     * Sync Gateway Application
     * Sync Gateway Application Read Only
   parameters:
@@ -77,6 +78,7 @@ put:
     The maximum content size of an attachment is 20MB. The `Content-Type` header of the request specifies the content type of the attachment.
 
     Required Sync Gateway RBAC roles:
+
     * Sync Gateway Application
   parameters:
     - name: Content-Type
@@ -142,6 +144,7 @@ head:
     This request check if the attachment exists on the specified document.
 
     Required Sync Gateway RBAC roles:
+
     * Sync Gateway Application
     * Sync Gateway Application Read Only
   parameters:
