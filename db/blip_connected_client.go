@@ -40,24 +40,12 @@ func (bh *blipHandler) handleGetRev(rq *blip.Message) error {
 	if rev.Deleted {
 		return base.HTTPErrorf(http.StatusNotFound, "Deleted")
 	}
-
-	body, err := rev.Body()
+	bodyBytes, err := rev.BodyBytesWith(document.BodyAttachments)
 	if err != nil {
 		return base.HTTPErrorf(http.StatusInternalServerError, "Couldn't read document body: %s", err)
 	}
 
 	bh.logEndpointEntry(rq.Profile(), fmt.Sprintf("doc: %s, ifNotRev: %s", docID, ifNotRev))
-
-	// Still need to stamp _attachments into BLIP messages
-	if len(rev.Attachments) > 0 {
-		document.DeleteAttachmentVersion(rev.Attachments)
-		body[BodyAttachments] = rev.Attachments
-	}
-
-	bodyBytes, err := base.JSONMarshalCanonical(body)
-	if err != nil {
-		return base.HTTPErrorf(http.StatusInternalServerError, "Couldn't encode document: %s", err)
-	}
 
 	response := rq.Response()
 	response.SetCompressed(true)

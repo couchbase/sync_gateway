@@ -2051,7 +2051,7 @@ func TestSyncFnMutateBody(t *testing.T) {
 	assert.NoError(t, err, "Couldn't create document")
 
 	rev, err := collection.GetRev(ctx, "doc1", rev1id, false, nil)
-	revBody, err := rev.Body()
+	revBody, err := rev.UnmarshalBody()
 	require.NoError(t, err, "Couldn't get mutable body")
 	assert.Equal(t, "value1", revBody["key1"])
 	assert.Equal(t, map[string]interface{}{"subkey1": "subvalue1"}, revBody["key2"])
@@ -2277,14 +2277,14 @@ func TestConcurrentPushDifferentUpdateNonWinningRevision(t *testing.T) {
 
 	rev, err := collection.GetRev(ctx, "doc1", "3-b1", false, nil)
 	assert.NoError(t, err, "Retrieve revision 3-b1")
-	revBody, err := rev.Body()
+	revBody, err := rev.UnmarshalBody()
 	assert.NoError(t, err, "Retrieve body of revision 3-b1")
 	assert.Equal(t, "Joshua", revBody["name"])
 	assert.Equal(t, json.Number("11"), revBody["age"])
 
 	rev, err = collection.GetRev(ctx, "doc1", "3-b2", false, nil)
 	assert.NoError(t, err, "Retrieve revision 3-b2")
-	revBody, err = rev.Body()
+	revBody, err = rev.UnmarshalBody()
 	assert.NoError(t, err, "Retrieve body of revision 3-b2")
 	assert.Equal(t, "Liam", revBody["name"])
 	assert.Equal(t, json.Number("12"), revBody["age"])

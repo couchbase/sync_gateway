@@ -994,7 +994,7 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 			return base.HTTPErrorf(http.StatusUnprocessableEntity, "Can't use delta. Found tombstone for doc %s deltaSrc=%s", base.UD(docID), deltaSrcRevID)
 		}
 
-		deltaSrcBody, err := deltaSrcRev.MutableBody()
+		deltaSrcBody, err := deltaSrcRev.UnmarshalBody()
 		if err != nil {
 			return base.HTTPErrorf(http.StatusUnprocessableEntity, "Unable to unmarshal mutable body for doc %s deltaSrc=%s %v", base.UD(docID), deltaSrcRevID, err)
 		}

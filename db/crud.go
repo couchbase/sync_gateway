@@ -1950,7 +1950,6 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 			Expiry:      doc.Expiry,
 			Deleted:     doc.History[newRevID].Deleted,
 		}.WithBodyBytes(storedDocBytes)
-		documentRevision.SetShallowCopyBody(storedDoc.Body())
 
 		if createNewRevIDSkipped {
 			db.revisionCache.Upsert(ctx, documentRevision)

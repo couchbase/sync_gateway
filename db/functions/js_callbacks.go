@@ -164,7 +164,7 @@ func (runner *jsRunner) do_get(docID string, docType *string, sudo bool) (any, e
 		}
 		return nil, err
 	}
-	body, err := rev.Body()
+	body, err := rev.UnmarshalBody() // This call will go away with V8
 	if err != nil {
 		return nil, err
 	}

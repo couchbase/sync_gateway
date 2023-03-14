@@ -335,12 +335,6 @@ func (value *revCacheValue) load(ctx context.Context, backingStore RevisionCache
 		value.lock.RUnlock()
 
 		docRev, err = value.asDocumentRevision(docRevBody, delta)
-
-		// On cache hit, if body is requested and not present in revCacheValue, generate from bytes and update revCacheValue
-		if includeBody && docRev._shallowCopyBody == nil && err == nil {
-			err = value.updateBody(ctx)
-			docRev._shallowCopyBody = value.body.ShallowCopy()
-		}
 		return docRev, true, err
 	}
 	value.lock.RUnlock()
@@ -405,9 +399,6 @@ func (value *revCacheValue) asDocumentRevision(body Body, delta *RevisionDelta) 
 		Removed:     value.removed,
 		Invalid:     value.invalid,
 	}
-	if body != nil {
-		docRev._shallowCopyBody = body.ShallowCopy()
-	}
 	docRev.Delta = delta
 
 	return docRev, value.err
@@ -425,17 +416,6 @@ func (value *revCacheValue) loadForDoc(ctx context.Context, backingStore Revisio
 		}
 		value.lock.RUnlock()
 		docRev, err = value.asDocumentRevision(docRevBody, nil)
-		// If the body is requested and not yet populated on revCacheValue, populate it from the doc
-		if includeBody && docRev._shallowCopyBody == nil {
-			body := doc.Body()
-			value.lock.Lock()
-			if value.body == nil {
-				value.body = body
-			}
-			value.lock.Unlock()
-			docRev._shallowCopyBody = body.ShallowCopy()
-		}
-
 		return docRev, true, err
 	}
 	value.lock.RUnlock()
@@ -474,7 +454,6 @@ func (value *revCacheValue) store(docRev DocumentRevision) {
 		value.attachments = docRev.Attachments.ShallowCopy() // Don't store attachments the caller might later mutate
 		value.deleted = docRev.Deleted
 		value.err = nil
-		value.body = docRev._shallowCopyBody.ShallowCopy()
 	}
 	value.lock.Unlock()
 }

@@ -21,10 +21,9 @@ type DocumentRevision struct {
 	Delta       *RevisionDelta
 	Deleted     bool
 	Removed     bool // True if the revision is a removal.
-	Invalid     bool // Used by RevisionCache
+	Invalid     bool // Used by RevisionCache.
 
-	_bodyBytes       []byte // _bodyBytes contains the raw document, with no special properties.
-	_shallowCopyBody Body   // an unmarshalled body that can produce shallow copies
+	_bodyBytes []byte // the raw document, with no special properties.
 }
 
 // Parses and validates a JSON document, creating a DocumentRevision.
@@ -116,6 +115,16 @@ func (rev *DocumentRevision) BodyBytesWith(specialProperties ...string) ([]byte,
 	return base.InjectJSONProperties(body, specialKV...)
 }
 
+// Unmarshals a DocumentRevision's body. No special properties are included.
+// The resulting map can be mutated freely.
+//
+// This function is expensive and should be used RARELY, primarily for tests.
+func (rev *DocumentRevision) UnmarshalBody() (map[string]any, error) {
+	var body map[string]any
+	err := json.Unmarshal(rev.BodyBytes(), &body)
+	return body, err
+}
+
 // Subroutine used by ParseDocumentRevision() and JSONData().
 // Given a JSON special property key, returns the address of the corrresponding struct member.
 // If `always` is false, returns nil if the property has no value.
@@ -131,6 +140,7 @@ func (rev *DocumentRevision) propertyPtr(key string, always bool) (value any, er
 		}
 	case BodyAttachments:
 		if always || len(rev.Attachments) > 0 {
+			DeleteAttachmentVersion(rev.Attachments)
 			value = &rev.Attachments
 		}
 	case BodyExpiry:
@@ -152,41 +162,6 @@ func (rev *DocumentRevision) propertyPtr(key string, always bool) (value any, er
 	return
 }
 
-//------- OLD STUFF TO BE REFACTORED AWAY
-
-// MutableBody returns a deep copy of the given document revision as a plain body (without any special properties)
-// Callers are free to modify any of this body without affecting the document revision.
-func (rev *DocumentRevision) MutableBody() (b Body, err error) {
-	if err := b.Unmarshal(rev._bodyBytes); err != nil {
-		return nil, err
-	}
-
-	return b, nil
-}
-
-func (rev *DocumentRevision) SetShallowCopyBody(body Body) {
-	rev._shallowCopyBody = body
-}
-
-// Body returns an unmarshalled body that is kept in the document revision to produce shallow copies.
-// If an unmarshalled copy is not available in the document revision, it makes a copy from the raw body
-// bytes and stores it in document revision itself before returning the body.
-func (rev *DocumentRevision) Body() (b Body, err error) {
-	// if we already have an unmarshalled body, take a copy and return it
-	if rev._shallowCopyBody != nil {
-		return rev._shallowCopyBody, nil
-	}
-
-	if err := b.Unmarshal(rev._bodyBytes); err != nil {
-		return nil, err
-	}
-
-	// store a copy of the unmarshalled body for next time we need it
-	rev._shallowCopyBody = b
-
-	return b, nil
-}
-
 //------- SHOULD BE MOVED BACK TO db OR EVEN rest
 
 // Abstract interface for a database
@@ -197,7 +172,7 @@ type DocumentProvider interface {
 // Mutable1xBody returns a copy of the given document revision as a 1.x style body (with special properties)
 // Callers are free to modify this body without affecting the document revision.
 func (rev *DocumentRevision) Mutable1xBody(db DocumentProvider, requestedHistory Revisions, attachmentsSince []string, showExp bool) (b Body, err error) {
-	b, err = rev.Body()
+	b, err = rev.UnmarshalBody()
 	if err != nil {
 		return nil, err
 	}
