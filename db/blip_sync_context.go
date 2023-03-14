@@ -597,12 +597,12 @@ func (bsc *BlipSyncContext) sendRevision(sender *blip.Sender, docID, revID strin
 		// Still need to stamp _attachments into BLIP messages
 		if len(rev.Attachments) > 0 {
 			document.DeleteAttachmentVersion(rev.Attachments)
-			bodyBytes, err = base.InjectJSONProperties(rev.BodyBytes, base.KVPair{Key: BodyAttachments, Val: rev.Attachments})
+			bodyBytes, err = base.InjectJSONProperties(rev.BodyBytes(), base.KVPair{Key: BodyAttachments, Val: rev.Attachments})
 			if err != nil {
 				return err
 			}
 		} else {
-			bodyBytes = rev.BodyBytes
+			bodyBytes = rev.BodyBytes()
 		}
 	} else {
 		body, err := rev.Body()

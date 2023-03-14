@@ -303,29 +303,29 @@ func TestParseDocumentRevision(t *testing.T) {
 			name:  "Empty",
 			input: "{ }",
 			expectedRev: &DocumentRevision{
-				BodyBytes: []byte(`{}`),
+				_bodyBytes: []byte(`{}`),
 			},
 		},
 		{
 			name:  "One regular",
 			input: `{"foo":1234}`,
 			expectedRev: &DocumentRevision{
-				BodyBytes: []byte(`{"foo":1234}`),
+				_bodyBytes: []byte(`{"foo":1234}`),
 			},
 		},
 		{
 			name:  "Two regular",
 			input: `{"foo":1234,"bar":{"a": 1, "z": 26}}`,
 			expectedRev: &DocumentRevision{
-				BodyBytes: []byte(`{"foo":1234,"bar":{"a": 1, "z": 26}}`),
+				_bodyBytes: []byte(`{"foo":1234,"bar":{"a": 1, "z": 26}}`),
 			},
 		},
 		{
 			name:  "One underscored",
 			input: `{"_id":"Hey"}`,
 			expectedRev: &DocumentRevision{
-				DocID:     "Hey",
-				BodyBytes: []byte(`{}`),
+				DocID:      "Hey",
+				_bodyBytes: []byte(`{}`),
 			},
 		},
 		{
@@ -334,16 +334,16 @@ func TestParseDocumentRevision(t *testing.T) {
 			expectedRev: &DocumentRevision{
 				DocID:       "Hey",
 				Attachments: map[string]any{"a": map[string]any{"length": json.Number("1")}},
-				BodyBytes:   []byte(`{}`),
+				_bodyBytes:  []byte(`{}`),
 			},
 		},
 		{
 			name:  "Regular and underscored",
 			input: `{"_id":"Hey","foo":1234,"bar":{"a": 1, "z": 26}, "_rev": "1-abcd"}`,
 			expectedRev: &DocumentRevision{
-				DocID:     "Hey",
-				RevID:     "1-abcd",
-				BodyBytes: []byte(`{"foo":1234,"bar":{"a": 1, "z": 26}}`),
+				DocID:      "Hey",
+				RevID:      "1-abcd",
+				_bodyBytes: []byte(`{"foo":1234,"bar":{"a": 1, "z": 26}}`),
 			},
 		},
 
@@ -351,9 +351,9 @@ func TestParseDocumentRevision(t *testing.T) {
 			name:  "Expiry",
 			input: `{"_id": "Hey", "_exp": 12345678}`,
 			expectedRev: &DocumentRevision{
-				DocID:     "Hey",
-				Expiry:    &expectedExpiry,
-				BodyBytes: []byte(`{}`),
+				DocID:      "Hey",
+				Expiry:     &expectedExpiry,
+				_bodyBytes: []byte(`{}`),
 			},
 		},
 
@@ -401,28 +401,25 @@ func TestParseDocumentRevision(t *testing.T) {
 	}
 }
 
-func TestDocumentRevisionJSONData(t *testing.T) {
+func TestDocumentRevisionBodyBytes(t *testing.T) {
 	expiry := base.CbsExpiryToTime(0x7FFFFFFF)
 	rev := DocumentRevision{
-		DocID:     "wassup",
-		RevID:     "5-6789",
-		Expiry:    &expiry,
-		Deleted:   true,
-		BodyBytes: []byte(`{"foo":false}`),
+		DocID:      "wassup",
+		RevID:      "5-6789",
+		Expiry:     &expiry,
+		Deleted:    true,
+		_bodyBytes: []byte(`{"foo":false}`),
 	}
 
-	j, err := rev.JSONData()
-	if assert.NoError(t, err) {
-		assert.Equal(t, `{"foo":false}`, string(j))
-	}
+	assert.Equal(t, `{"foo":false}`, string(rev.BodyBytes()))
 
-	j, err = rev.JSONData(BodyId, BodyDeleted, BodyRev, BodyExpiry, BodyRemoved)
+	j, err := rev.BodyBytesWith(BodyId, BodyDeleted, BodyRev, BodyExpiry, BodyRemoved)
 	if assert.NoError(t, err) {
 		assert.Equal(t, `{"foo":false,"_id":"wassup","_deleted":true,"_rev":"5-6789","_exp":"2038-01-18T19:14:07-08:00"}`, string(j))
 	}
 
 	rev.Expiry = nil
-	j, err = rev.JSONData(BodyExpiry)
+	j, err = rev.BodyBytesWith(BodyExpiry)
 	if assert.NoError(t, err) {
 		assert.Equal(t, `{"foo":false}`, string(j))
 	}

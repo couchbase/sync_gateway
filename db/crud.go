@@ -281,7 +281,7 @@ func (db *DatabaseCollectionWithUser) getRev(ctx context.Context, docid, revid s
 	}
 
 	db.collectionStats.NumDocReads.Add(1)
-	db.collectionStats.DocReadsBytes.Add(int64(len(revision.BodyBytes)))
+	db.collectionStats.DocReadsBytes.Add(int64(len(revision.BodyBytes())))
 
 	// RequestedHistory is the _revisions returned in the body.  Avoids mutating revision.History, in case it's needed
 	// during attachment processing below
@@ -393,13 +393,13 @@ func (db *DatabaseCollectionWithUser) GetDelta(ctx context.Context, docID, fromR
 
 		// We didn't unmarshal fromBody earlier (in case we could get by with just the delta), so need do it now
 		var fromBodyCopy Body
-		if err := fromBodyCopy.Unmarshal(fromRevision.BodyBytes); err != nil {
+		if err := fromBodyCopy.Unmarshal(fromRevision.BodyBytes()); err != nil {
 			return nil, nil, err
 		}
 
 		// We didn't unmarshal toBody earlier (in case we could get by with just the delta), so need do it now
 		var toBodyCopy Body
-		if err := toBodyCopy.Unmarshal(toRevision.BodyBytes); err != nil {
+		if err := toBodyCopy.Unmarshal(toRevision.BodyBytes()); err != nil {
 			return nil, nil, err
 		}
 
@@ -446,13 +446,7 @@ func (col *DatabaseCollectionWithUser) authorizeUserForChannels(docID, revID str
 				RevID:   revID,
 				History: history,
 				Deleted: isDeleted,
-			}
-			if isDeleted {
-				// Deletions are denoted by the deleted message property during 2.x replication
-				redactedRev.BodyBytes = []byte(base.EmptyDocument)
-			} else {
-				// ... but removals are still denoted by the _removed property in the body, even for 2.x replication
-				redactedRev.BodyBytes = []byte(document.RemovedRedactedDocument)
+				Removed: !isDeleted,
 			}
 			return false, redactedRev
 		}
@@ -1950,13 +1944,12 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 		documentRevision := DocumentRevision{
 			DocID:       docid,
 			RevID:       newRevID,
-			BodyBytes:   storedDocBytes,
 			History:     document.EncodeRevisions(docid, history),
 			Channels:    revChannels,
 			Attachments: doc.Attachments,
 			Expiry:      doc.Expiry,
 			Deleted:     doc.History[newRevID].Deleted,
-		}
+		}.WithBodyBytes(storedDocBytes)
 		documentRevision.SetShallowCopyBody(storedDoc.Body())
 
 		if createNewRevIDSkipped {

@@ -172,12 +172,9 @@ func (h *handler) handleGetDocReplicator2(docid, revid string) error {
 	}
 
 	// Stamp _attachments into message to match BLIP sendRevision behaviour
-	bodyBytes := rev.BodyBytes
-	if len(rev.Attachments) > 0 {
-		bodyBytes, err = base.InjectJSONProperties(bodyBytes, base.KVPair{Key: db.BodyAttachments, Val: rev.Attachments})
-		if err != nil {
-			return err
-		}
+	bodyBytes, err := rev.BodyBytesWith(document.BodyAttachments)
+	if err != nil {
+		return err
 	}
 
 	h.setHeader("Content-Type", "application/json")

@@ -632,7 +632,7 @@ func TestDeltaSyncWhenToRevIsChannelRemoval(t *testing.T) {
 	delta, redactedRev, err := collection.GetDelta(ctx, "doc1", rev1ID, rev2ID)
 	require.NoError(t, err)
 	assert.Nil(t, delta)
-	assert.Equal(t, `{"_removed":true}`, string(redactedRev.BodyBytes))
+	assert.True(t, redactedRev.Removed)
 
 	// Request delta between rev1ID and rev2ID (toRevision "rev2ID" is channel removal)
 	// as a user who has access to the removed revision via another channel.

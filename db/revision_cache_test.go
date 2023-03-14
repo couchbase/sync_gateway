@@ -87,7 +87,7 @@ func TestLRURevisionCacheEviction(t *testing.T) {
 	// Fill up the rev cache with the first 10 docs
 	for docID := 0; docID < 10; docID++ {
 		id := strconv.Itoa(docID)
-		cache.Put(ctx, DocumentRevision{BodyBytes: []byte(`{}`), DocID: id, RevID: "1-abc", History: Revisions{"start": 1}})
+		cache.Put(ctx, DocumentRevision{DocID: id, RevID: "1-abc", History: Revisions{"start": 1}})
 	}
 
 	// Get them back out
@@ -104,7 +104,7 @@ func TestLRURevisionCacheEviction(t *testing.T) {
 	// Add 3 more docs to the now full revcache
 	for i := 10; i < 13; i++ {
 		docID := strconv.Itoa(i)
-		cache.Put(ctx, DocumentRevision{BodyBytes: []byte(`{}`), DocID: docID, RevID: "1-abc", History: Revisions{"start": 1}})
+		cache.Put(ctx, DocumentRevision{DocID: docID, RevID: "1-abc", History: Revisions{"start": 1}})
 	}
 
 	// Check that the first 3 docs were evicted
@@ -266,7 +266,7 @@ func TestBypassRevisionCache(t *testing.T) {
 	doc, err = rc.Get(base.TestCtx(t), key, rev1, RevCacheOmitBody, RevCacheOmitDelta)
 	assert.NoError(t, err)
 	require.NotNil(t, doc)
-	assert.Equal(t, `{"value":1234}`, string(doc.BodyBytes))
+	assert.Equal(t, `{"value":1234}`, string(doc.BodyBytes()))
 
 	// Check peek is still returning false for "Get"
 	_, ok = rc.Peek(base.TestCtx(t), key, rev1)
@@ -282,7 +282,7 @@ func TestBypassRevisionCache(t *testing.T) {
 	// Get active revision
 	doc, err = rc.GetActive(base.TestCtx(t), key, false)
 	assert.NoError(t, err)
-	assert.Equal(t, `{"value":5678}`, string(doc.BodyBytes))
+	assert.Equal(t, `{"value":5678}`, string(doc.BodyBytes()))
 
 }
 
@@ -417,7 +417,7 @@ func TestSingleLoad(t *testing.T) {
 	cacheHitCounter, cacheMissCounter, getDocumentCounter, getRevisionCounter := base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}
 	cache := document.NewLRURevisionCache(10, &testBackingStore{nil, &getDocumentCounter, &getRevisionCounter}, &cacheHitCounter, &cacheMissCounter)
 
-	cache.Put(base.TestCtx(t), DocumentRevision{BodyBytes: []byte(`{"test":"1234"}`), DocID: "doc123", RevID: "1-abc", History: Revisions{"start": 1}})
+	cache.Put(base.TestCtx(t), DocumentRevision{DocID: "doc123", RevID: "1-abc", History: Revisions{"start": 1}}.WithBodyBytes([]byte(`{"test":"1234"}`)))
 	_, err := cache.Get(base.TestCtx(t), "doc123", "1-abc", true, false)
 	assert.NoError(t, err)
 }
@@ -427,7 +427,7 @@ func TestConcurrentLoad(t *testing.T) {
 	cacheHitCounter, cacheMissCounter, getDocumentCounter, getRevisionCounter := base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}
 	cache := document.NewLRURevisionCache(10, &testBackingStore{nil, &getDocumentCounter, &getRevisionCounter}, &cacheHitCounter, &cacheMissCounter)
 
-	cache.Put(base.TestCtx(t), DocumentRevision{BodyBytes: []byte(`{"test":"1234"}`), DocID: "doc1", RevID: "1-abc", History: Revisions{"start": 1}})
+	cache.Put(base.TestCtx(t), DocumentRevision{DocID: "doc1", RevID: "1-abc", History: Revisions{"start": 1}}.WithBodyBytes([]byte(`{"test":"1234"}`)))
 
 	// Trigger load into cache
 	var wg sync.WaitGroup

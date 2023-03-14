@@ -90,7 +90,7 @@ func TestRevisionCacheLoad(t *testing.T) {
 	assert.Equal(t, "1-a", docRev.RevID)
 
 	// Validate that mutations to the body don't affect the revcache value
-	_, err = base.InjectJSONProperties(docRev.BodyBytes, base.KVPair{Key: "modified", Val: "property"})
+	_, err = base.InjectJSONProperties(docRev.BodyBytes(), base.KVPair{Key: "modified", Val: "property"})
 	assert.NoError(t, err)
 
 	docRevAgain, err := collection.GetRev(ctx, "doc1", "1-a", false, nil)

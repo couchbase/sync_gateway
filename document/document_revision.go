@@ -23,7 +23,7 @@ type DocumentRevision struct {
 	Removed     bool // True if the revision is a removal.
 	Invalid     bool // Used by RevisionCache
 
-	BodyBytes        []byte // BodyBytes contains the raw document, with no special properties.
+	_bodyBytes       []byte // _bodyBytes contains the raw document, with no special properties.
 	_shallowCopyBody Body   // an unmarshalled body that can produce shallow copies
 }
 
@@ -36,7 +36,7 @@ func ParseDocumentRevision(json []byte, specialProperties ...string) (*DocumentR
 	rev := &DocumentRevision{}
 	var expiry any
 	var err error
-	rev.BodyBytes, err = base.JSONExtract(json, func(key string) (valp any, err error) {
+	rev._bodyBytes, err = base.JSONExtract(json, func(key string) (valp any, err error) {
 		// JSONExtract callback: process one key:
 		if IsReservedKey(key) {
 			for _, specialKey := range specialProperties {
@@ -69,12 +69,37 @@ func ParseDocumentRevision(json []byte, specialProperties ...string) (*DocumentR
 	return rev, nil
 }
 
+// Initializes a DocumentRevision's JSON body bytes.
+func (rev *DocumentRevision) InitBodyBytes(body []byte) {
+	if rev._bodyBytes != nil {
+		panic("DocumentRevision body already initialized")
+	}
+	rev._bodyBytes = body
+}
+
+// Returns a copy of a DocumentRevision with a different JSON body.
+// (Useful when initializing a DocumentRevision from a struct literal.)
+func (rev DocumentRevision) WithBodyBytes(body []byte) DocumentRevision {
+	rev._bodyBytes = []byte(body)
+	return rev
+}
+
+// The JSON data of the body; just application properties, no specials.
+func (rev *DocumentRevision) BodyBytes() []byte {
+	if rev._bodyBytes != nil {
+		return rev._bodyBytes
+	} else {
+		return []byte(base.EmptyDocument)
+	}
+}
+
 // The JSON data of the body. By default this is just the application properties.
 // If any special property names (`BodyId`, `BodyRev`...) are given as arguments, those properties
 // are added to the JSON if they have non-default/empty values in the struct.
-func (rev *DocumentRevision) JSONData(specialProperties ...string) ([]byte, error) {
+func (rev *DocumentRevision) BodyBytesWith(specialProperties ...string) ([]byte, error) {
+	body := rev.BodyBytes()
 	if len(specialProperties) == 0 {
-		return rev.BodyBytes, nil
+		return body, nil
 	}
 	specialKV := make([]base.KVPair, 0, 8)
 	for _, key := range specialProperties {
@@ -88,7 +113,7 @@ func (rev *DocumentRevision) JSONData(specialProperties ...string) ([]byte, erro
 		}
 	}
 
-	return base.InjectJSONProperties(rev.BodyBytes, specialKV...)
+	return base.InjectJSONProperties(body, specialKV...)
 }
 
 // Subroutine used by ParseDocumentRevision() and JSONData().
@@ -105,7 +130,7 @@ func (rev *DocumentRevision) propertyPtr(key string, always bool) (value any, er
 			value = &rev.RevID
 		}
 	case BodyAttachments:
-		if always || rev.Attachments != nil {
+		if always || len(rev.Attachments) > 0 {
 			value = &rev.Attachments
 		}
 	case BodyExpiry:
@@ -132,7 +157,7 @@ func (rev *DocumentRevision) propertyPtr(key string, always bool) (value any, er
 // MutableBody returns a deep copy of the given document revision as a plain body (without any special properties)
 // Callers are free to modify any of this body without affecting the document revision.
 func (rev *DocumentRevision) MutableBody() (b Body, err error) {
-	if err := b.Unmarshal(rev.BodyBytes); err != nil {
+	if err := b.Unmarshal(rev._bodyBytes); err != nil {
 		return nil, err
 	}
 
@@ -152,7 +177,7 @@ func (rev *DocumentRevision) Body() (b Body, err error) {
 		return rev._shallowCopyBody, nil
 	}
 
-	if err := b.Unmarshal(rev.BodyBytes); err != nil {
+	if err := b.Unmarshal(rev._bodyBytes); err != nil {
 		return nil, err
 	}
 

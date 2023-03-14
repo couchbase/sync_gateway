@@ -421,17 +421,8 @@ func (db *DatabaseCollectionWithUser) backupPreImportRevision(ctx context.Contex
 		return nil
 	}
 
-	var kvPairs []base.KVPair
-	if len(previousRev.Attachments) > 0 {
-		kvPairs = append(kvPairs, base.KVPair{Key: BodyAttachments, Val: previousRev.Attachments})
-	}
-
-	if previousRev.Deleted {
-		kvPairs = append(kvPairs, base.KVPair{Key: BodyDeleted, Val: true})
-	}
-
 	// Stamp _attachments and _deleted into backup
-	oldRevJSON, err := base.InjectJSONProperties(previousRev.BodyBytes, kvPairs...)
+	oldRevJSON, err := previousRev.BodyBytesWith(BodyAttachments, BodyDeleted)
 	if err != nil {
 		return err
 	}

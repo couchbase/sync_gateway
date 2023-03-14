@@ -7090,8 +7090,8 @@ func TestUnprocessableDeltas(t *testing.T) {
 	require.NoError(t, err)
 	// Making body invalid to trigger log "Unable to unmarshal mutable body for doc" in handleRev
 	// Which should give a HTTP 422
-	rev.BodyBytes = []byte("{invalid}")
-	passiveRT.GetDatabase().GetSingleDatabaseCollection().GetRevisionCacheForTest().Upsert(base.TestCtx(t), rev)
+	invalidRev := rev.WithBodyBytes([]byte("{invalid}"))
+	passiveRT.GetDatabase().GetSingleDatabaseCollection().GetRevisionCacheForTest().Upsert(base.TestCtx(t), invalidRev)
 
 	assert.NoError(t, ar.Start(activeCtx))
 	// Check if it replicated

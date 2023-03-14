@@ -396,7 +396,7 @@ func (value *revCacheValue) asDocumentRevision(body Body, delta *RevisionDelta) 
 	docRev := DocumentRevision{
 		DocID:       value.key.DocID,
 		RevID:       value.key.RevID,
-		BodyBytes:   value.bodyBytes,
+		_bodyBytes:  value.bodyBytes,
 		History:     value.history,
 		Channels:    value.channels,
 		Expiry:      value.expiry,
@@ -467,7 +467,7 @@ func (value *revCacheValue) store(docRev DocumentRevision) {
 	value.lock.Lock()
 	if value.bodyBytes == nil {
 		// value already has doc id/rev id in key
-		value.bodyBytes = docRev.BodyBytes
+		value.bodyBytes = docRev._bodyBytes
 		value.history = docRev.History
 		value.channels = docRev.Channels
 		value.expiry = docRev.Expiry
