@@ -802,7 +802,8 @@ def main():
                 do_upload_and_exit(zip_filename, upload_url, options.upload_proxy, keep_zip)
         finally:
             delete_zip(zip_filename)
-            delete_zip(redact_zip_file)
+            if options.redact_level != "none":
+                delete_zip(redact_zip_file)
 
     if options.redact_level != "none":
         print("Zipfile built: {0}".format(redact_zip_file))

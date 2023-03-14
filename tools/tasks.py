@@ -1096,8 +1096,6 @@ def do_upload_and_exit(path, url, proxy, keepZip):
     filedata.close()
     f.close()
 
-    os.remove(path)
-    print("Zipfile deleted: {0}".format(path))
     sys.exit(exit_code)
 
 
