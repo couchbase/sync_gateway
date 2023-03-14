@@ -21,14 +21,9 @@ import (
 // TestDefaultMetadataID creates an database using the named collections on the default scope, then modifies that database to use
 // only the default collection. Verifies that metadata documents are still accessible.
 func TestDefaultMetadataIDNamedToDefault(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server, until creating a db through the REST API allows the views/walrus/collections combination")
-	}
 	base.TestRequiresCollections(t)
 	base.RequireNumTestDataStores(t, 2)
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 	rtConfig := &rest.RestTesterConfig{
-		CustomTestBucket: base.GetPersistentTestBucket(t),
 		PersistentConfig: true,
 	}
 
@@ -68,14 +63,9 @@ func TestDefaultMetadataIDNamedToDefault(t *testing.T) {
 // TestDefaultMetadataID creates an upgraded database using the defaultMetadataID, then modifies that database to use
 // named collections in the default scope. Verifies that metadata documents are still accessible.
 func TestDefaultMetadataIDDefaultToNamed(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server, until creating a db through the REST API allows the views/walrus/collections combination")
-	}
 	base.TestRequiresCollections(t)
 	base.RequireNumTestDataStores(t, 2)
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 	rtConfig := &rest.RestTesterConfig{
-		CustomTestBucket: base.GetPersistentTestBucket(t),
 		PersistentConfig: true,
 	}
 
