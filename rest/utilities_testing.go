@@ -941,6 +941,22 @@ func (rt *RestTester) waitForDBState(stateWant string) (err error) {
 	return fmt.Errorf("given up waiting for DB state, want: %s, current: %s, attempts: %d", stateWant, stateCurr, maxTries)
 }
 
+func (rt *RestTester) WaitForDatabaseState(dbName string, targetState uint32) error {
+	var stateCurr string
+	maxTries := 50
+	for i := 0; i < maxTries; i++ {
+		dbRootResponse := DatabaseRoot{}
+		resp := rt.SendAdminRequest("GET", "/"+dbName+"/", "")
+		RequireStatus(rt.TB, resp, 200)
+		require.NoError(rt.TB, base.JSONUnmarshal(resp.Body.Bytes(), &dbRootResponse))
+		if dbRootResponse.State == db.RunStateString[targetState] {
+			return nil
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	return fmt.Errorf("given up waiting for DB state, want: %s, current: %s, attempts: %d", db.RunStateString[targetState], stateCurr, maxTries)
+}
+
 func (rt *RestTester) SendAdminRequestWithHeaders(method, resource string, body string, headers map[string]string) *TestResponse {
 	input := bytes.NewBufferString(body)
 	request, _ := http.NewRequest(method, "http://localhost"+rt.mustTemplateResource(resource), input)

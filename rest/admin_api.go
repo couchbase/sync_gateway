@@ -1055,6 +1055,7 @@ type DatabaseStatus struct {
 	SequenceNumber    uint64                  `json:"seq"`
 	ServerUUID        string                  `json:"server_uuid"`
 	State             string                  `json:"state"`
+	RequireResync     []string                `json:"require_resync"`
 	ReplicationStatus []*db.ReplicationStatus `json:"replication_status"`
 	SGRCluster        *db.SGRCluster          `json:"cluster"`
 }
@@ -1105,6 +1106,7 @@ func (h *handler) handleGetStatus() error {
 			ServerUUID:        database.ServerUUID,
 			ReplicationStatus: replicationsStatus,
 			SGRCluster:        cluster,
+			RequireResync:     database.RequireResync.ScopeAndCollectionNames(),
 		}
 	}
 
