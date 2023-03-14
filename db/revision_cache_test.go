@@ -54,7 +54,7 @@ func (t *testBackingStore) GetDocument(ctx context.Context, docid string, unmars
 	return doc, nil
 }
 
-func (t *testBackingStore) GetRevision(ctx context.Context, doc *Document, revid string) ([]byte, Body, AttachmentsMeta, error) {
+func (t *testBackingStore) GetRevision(ctx context.Context, doc *Document, revid string) ([]byte, AttachmentsMeta, error) {
 	t.getRevisionCounter.Add(1)
 
 	b := Body{
@@ -64,7 +64,7 @@ func (t *testBackingStore) GetRevision(ctx context.Context, doc *Document, revid
 		BodyRevisions: Revisions{RevisionsStart: 1},
 	}
 	bodyBytes, err := base.JSONMarshal(b)
-	return bodyBytes, b, nil, err
+	return bodyBytes, nil, err
 }
 
 type noopBackingStore struct{}
@@ -73,8 +73,8 @@ func (*noopBackingStore) GetDocument(ctx context.Context, docid string, unmarsha
 	return nil, nil
 }
 
-func (*noopBackingStore) GetRevision(ctx context.Context, doc *Document, revid string) ([]byte, Body, AttachmentsMeta, error) {
-	return nil, nil, nil, nil
+func (*noopBackingStore) GetRevision(ctx context.Context, doc *Document, revid string) ([]byte, AttachmentsMeta, error) {
+	return nil, nil, nil
 }
 
 // Tests the eviction from the LRURevisionCache
