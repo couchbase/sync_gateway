@@ -472,7 +472,7 @@ func TestGetRemovalMultiChannel(t *testing.T) {
 		BodyId:  "doc1",
 		BodyRev: rev2ID,
 	}
-	require.Equal(t, bodyExpected, body)
+	require.Equal(t, bodyExpected, Body(body))
 
 	// Get rev2 of the doc as a user who doesn't have access to this revision.
 	collection.user = userBob

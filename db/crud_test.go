@@ -378,7 +378,7 @@ func TestRevisionStorageConflictAndTombstones(t *testing.T) {
 	collection.FlushRevisionCacheForTest()
 	rev2aGet, err := collection.Get1xRevBody(ctx, "doc1", "2-a", false, nil)
 	assert.NoError(t, err, "Couldn't get rev 2-a")
-	assert.Equal(t, rev2a_body, rev2aGet)
+	assert.Equal(t, rev2a_body, Body(rev2aGet))
 
 	// Tombstone 2-b (with rev 3-b, minimal tombstone)
 	//    1-a
@@ -399,7 +399,7 @@ func TestRevisionStorageConflictAndTombstones(t *testing.T) {
 	// Retrieve tombstone
 	rev3bGet, err := collection.Get1xRevBody(ctx, "doc1", "3-b", false, nil)
 	assert.NoError(t, err, "Couldn't get rev 3-b")
-	assert.Equal(t, rev3b_body, rev3bGet)
+	assert.Equal(t, rev3b_body, Body(rev3bGet))
 
 	// Retrieve the document, validate that we get 2-a
 	log.Printf("Retrieve doc, expect 2-a")
@@ -466,7 +466,7 @@ func TestRevisionStorageConflictAndTombstones(t *testing.T) {
 	collection.FlushRevisionCacheForTest()
 	rev3cGet, err := collection.Get1xRevBody(ctx, "doc1", "3-c", false, nil)
 	assert.NoError(t, err, "Couldn't get rev 3-c")
-	assert.Equal(t, rev3c_body, rev3cGet)
+	assert.Equal(t, rev3c_body, Body(rev3cGet))
 
 	log.Printf("Retrieve doc, verify active rev is 2-a")
 	gotbody, err = collection.Get1xBody(ctx, "doc1")
@@ -562,7 +562,7 @@ func TestRevisionStoragePruneTombstone(t *testing.T) {
 	collection.FlushRevisionCacheForTest()
 	rev2aGet, err := collection.Get1xRevBody(ctx, "doc1", "2-a", false, nil)
 	assert.NoError(t, err, "Couldn't get rev 2-a")
-	assert.Equal(t, rev2a_body, rev2aGet)
+	assert.Equal(t, rev2a_body, Body(rev2aGet))
 
 	// Tombstone 2-b (with rev 3-b, large tombstone)
 	//    1-a
@@ -586,7 +586,7 @@ func TestRevisionStoragePruneTombstone(t *testing.T) {
 	collection.FlushRevisionCacheForTest()
 	rev3bGet, err := collection.Get1xRevBody(ctx, "doc1", "3-b", false, nil)
 	assert.NoError(t, err, "Couldn't get rev 3-b")
-	assert.Equal(t, rev3b_body, rev3bGet)
+	assert.Equal(t, rev3b_body, Body(rev3bGet))
 
 	// Retrieve the document, validate that we get 2-a
 	log.Printf("Retrieve doc, expect 2-a")
