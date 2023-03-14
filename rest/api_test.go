@@ -140,52 +140,6 @@ func TestDocLifecycle(t *testing.T) {
 	RequireStatus(t, response, 200)
 }
 
-func TestGreg(t *testing.T) {
-	//base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
-	rt := NewRestTester(t, &RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction})
-	defer rt.Close()
-
-	sync := channels.DocChannelsSyncFunction
-	var resp *TestResponse
-	testBucket := base.GetPersistentTestBucket(t)
-	defer testBucket.Close()
-	fmt.Println(rt.GetSingleTestDatabaseCollection().Name)
-
-	resp = rt.SendAdminRequest(http.MethodPost, "/db/_config", fmt.Sprintf(`{"bucket": "%s", "num_index_replicas": 0, "scopes": {"%s": { "collections": {"%s": {"sync":"%s"}}}}}`,
-		testBucket.GetName(), rt.GetSingleTestDatabaseCollection().ScopeName, rt.GetSingleTestDatabaseCollection().Name, sync))
-	RequireStatus(t, resp, http.StatusCreated)
-
-	resp = rt.SendAdminRequest("POST", "/db/_user/", GetUserPayload(t, "greg", "letmein", "", rt.GetSingleTestDatabaseCollection(), []string{"chan"}, []string{}))
-	RequireStatus(t, resp, http.StatusCreated)
-
-	fmt.Println(GetUserPayload(t, "greg", "letmein", "", rt.GetSingleTestDatabaseCollection(), []string{"chan"}, []string{}))
-
-	resp = rt.SendUserRequest("PUT", "/{{.keyspace}}/doc1", `{"channels": ["chan"]}`, "greg")
-	fmt.Println(resp.Code, resp.Body)
-
-	revid := rt.CreateDocReturnRev(t, "doc3", "", map[string]interface{}{"channels": "A"})
-
-	resp = rt.SendUserRequest("GET", "/{{.keyspace}}/_all_docs?include_docs=true", "", "greg")
-	fmt.Println(resp.Code, resp.Body)
-
-	resp = rt.SendUserRequest("GET", "/{{.keyspace}}/doc1", "", "greg")
-	fmt.Println(resp.Code, resp.Body)
-
-	fmt.Println(revid)
-	resp = rt.SendUserRequest("GET", "/{{.keyspace}}/doc3?rev="+revid, "", "greg")
-	fmt.Println(resp.Code, resp.Body)
-
-	resp = rt.SendAdminRequest("GET", "/{{.keyspace}}/doc3?rev="+revid, "")
-	fmt.Println(resp.Code, resp.Body)
-
-	resp = rt.SendUserRequest("GET", "/{{.keyspace}}/doc3", "", "greg")
-	fmt.Println(resp.Code, resp.Body)
-
-	resp = rt.SendAdminRequest("GET", "/{{.keyspace}}/_all_docs", "")
-	fmt.Println(resp.Code, resp.Body)
-
-}
-
 func TestLol(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyDCP, base.KeyCRUD, base.KeyChanges, base.KeyQuery, base.KeyHTTP)
 	rt := NewRestTester(t, &RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction,
