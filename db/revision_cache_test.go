@@ -95,7 +95,7 @@ func TestLRURevisionCacheEviction(t *testing.T) {
 		docID := strconv.Itoa(i)
 		docRev, err := cache.Get(ctx, docID, "1-abc", RevCacheOmitDelta)
 		assert.NoError(t, err)
-		assert.NotNil(t, docRev.BodyBytes, "nil body for %s", docID)
+		assert.NotNil(t, docRev.BodyBytes(), "nil body for %s", docID)
 		assert.Equal(t, docID, docRev.DocID)
 		assert.Equal(t, int64(0), cacheMissCounter.Value())
 		assert.Equal(t, int64(i+1), cacheHitCounter.Value())
@@ -113,7 +113,7 @@ func TestLRURevisionCacheEviction(t *testing.T) {
 		docID := strconv.Itoa(i)
 		docRev, ok := cache.Peek(ctx, docID, "1-abc")
 		assert.False(t, ok)
-		assert.Nil(t, docRev.BodyBytes)
+		assert.Nil(t, docRev.BodyBytes())
 		assert.Equal(t, int64(0), cacheMissCounter.Value()) // peek incurs no cache miss if not found
 		assert.Equal(t, int64(prevCacheHitCount), cacheHitCounter.Value())
 	}
@@ -123,7 +123,7 @@ func TestLRURevisionCacheEviction(t *testing.T) {
 		id := strconv.Itoa(i + 3)
 		docRev, err := cache.Get(ctx, id, "1-abc", RevCacheOmitDelta)
 		assert.NoError(t, err)
-		assert.NotNil(t, docRev.BodyBytes, "nil body for %s", id)
+		assert.NotNil(t, docRev.BodyBytes(), "nil body for %s", id)
 		assert.Equal(t, id, docRev.DocID)
 		assert.Equal(t, int64(0), cacheMissCounter.Value())
 		assert.Equal(t, prevCacheHitCount+int64(i)+1, cacheHitCounter.Value())
@@ -149,7 +149,7 @@ func TestBackingStore(t *testing.T) {
 	// Doc doesn't exist, so miss the cache, and fail when getting the doc
 	docRev, err = cache.Get(base.TestCtx(t), "Peter", "1-abc", RevCacheOmitDelta)
 	assertHTTPError(t, err, 404)
-	assert.Nil(t, docRev.BodyBytes)
+	assert.Nil(t, docRev.BodyBytes())
 	assert.Equal(t, int64(0), cacheHitCounter.Value())
 	assert.Equal(t, int64(2), cacheMissCounter.Value())
 	assert.Equal(t, int64(2), getDocumentCounter.Value())
@@ -169,7 +169,7 @@ func TestBackingStore(t *testing.T) {
 	// Rev still doesn't exist, make sure it wasn't cached
 	docRev, err = cache.Get(base.TestCtx(t), "Peter", "1-abc", RevCacheOmitDelta)
 	assertHTTPError(t, err, 404)
-	assert.Nil(t, docRev.BodyBytes)
+	assert.Nil(t, docRev.BodyBytes())
 	assert.Equal(t, int64(1), cacheHitCounter.Value())
 	assert.Equal(t, int64(3), cacheMissCounter.Value())
 	assert.Equal(t, int64(3), getDocumentCounter.Value())
@@ -313,7 +313,7 @@ func TestPutRevisionCacheAttachmentProperty(t *testing.T) {
 	// Get the raw document directly from the revcache, validate _attachments property isn't found
 	docRevision, ok := collection.revisionCache.Peek(base.TestCtx(t), rev1key, rev1id)
 	assert.True(t, ok)
-	assert.NotContains(t, docRevision.BodyBytes, BodyAttachments, "_attachments property still present in document body retrieved from rev cache: %#v", bucketBody)
+	assert.NotContains(t, docRevision.BodyBytes(), BodyAttachments, "_attachments property still present in document body retrieved from rev cache: %#v", bucketBody)
 	_, ok = docRevision.Attachments["myatt"]
 	assert.True(t, ok, "'myatt' not found in revcache attachments metadata")
 
@@ -362,7 +362,7 @@ func TestPutExistingRevRevisionCacheAttachmentProperty(t *testing.T) {
 	// Get the raw document directly from the revcache, validate _attachments property isn't found
 	docRevision, err := collection.revisionCache.Get(base.TestCtx(t), docKey, rev2id, RevCacheOmitDelta)
 	assert.NoError(t, err, "Unexpected error calling collection.revisionCache.Get")
-	assert.NotContains(t, docRevision.BodyBytes, BodyAttachments, "_attachments property still present in document body retrieved from rev cache: %#v", bucketBody)
+	assert.NotContains(t, docRevision.BodyBytes(), BodyAttachments, "_attachments property still present in document body retrieved from rev cache: %#v", bucketBody)
 	_, ok = docRevision.Attachments["myatt"]
 	assert.True(t, ok, "'myatt' not found in revcache attachments metadata")
 

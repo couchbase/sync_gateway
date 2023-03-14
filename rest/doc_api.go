@@ -193,7 +193,7 @@ func (h *handler) handleGetAttachment() error {
 	if err != nil {
 		return err
 	}
-	if rev.BodyBytes == nil {
+	if rev.BodyBytes() == nil {
 		return kNotFoundError
 	}
 

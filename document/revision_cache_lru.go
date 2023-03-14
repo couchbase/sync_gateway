@@ -128,7 +128,7 @@ func (rc *LRURevisionCache) Peek(ctx context.Context, docID, revID string) (docR
 	if err != nil {
 		return DocumentRevision{}, false
 	}
-	return docRev, docRev.BodyBytes != nil
+	return docRev, docRev.BodyBytes() != nil
 }
 
 // Attempt to update the delta on a revision cache entry.  If the entry is no longer resident in the cache,

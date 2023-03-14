@@ -272,7 +272,7 @@ func (db *DatabaseCollectionWithUser) getRev(ctx context.Context, docid, revid s
 		return DocumentRevision{}, err
 	}
 
-	if revision.BodyBytes == nil {
+	if revision.BodyBytes() == nil {
 		if db.ForceAPIForbiddenErrors() {
 			base.InfofCtx(ctx, base.KeyCRUD, "Doc: %s %s is missing", base.UD(docid), base.MD(revid))
 			return DocumentRevision{}, ErrForbidden
@@ -341,7 +341,7 @@ func (db *DatabaseCollectionWithUser) GetDelta(ctx context.Context, docID, fromR
 	}
 
 	// If both body and delta are not available for fromRevId, the delta can't be generated
-	if fromRevision.BodyBytes == nil && fromRevision.Delta == nil {
+	if fromRevision.BodyBytes() == nil && fromRevision.Delta == nil {
 		return nil, nil, err
 	}
 
@@ -365,7 +365,7 @@ func (db *DatabaseCollectionWithUser) GetDelta(ctx context.Context, docID, fromR
 	}
 
 	// Delta is unavailable, but the body is available.
-	if fromRevision.BodyBytes != nil {
+	if fromRevision.BodyBytes() != nil {
 
 		// db.DbStats.StatsDeltaSync().Add(base.StatKeyDeltaCacheMisses, 1)
 		db.dbStats().DeltaSync().DeltaCacheMiss.Add(1)

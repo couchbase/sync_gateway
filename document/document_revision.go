@@ -84,21 +84,21 @@ func (rev DocumentRevision) WithBodyBytes(body []byte) DocumentRevision {
 }
 
 // The JSON data of the body; just application properties, no specials.
+// May be nil if this is an older revision whose body has expired.
 func (rev *DocumentRevision) BodyBytes() []byte {
-	if rev._bodyBytes != nil {
-		return rev._bodyBytes
-	} else {
-		return []byte(base.EmptyDocument)
-	}
+	return rev._bodyBytes
 }
 
 // The JSON data of the body. By default this is just the application properties.
 // If any special property names (`BodyId`, `BodyRev`...) are given as arguments, those properties
 // are added to the JSON if they have non-default/empty values in the struct.
 func (rev *DocumentRevision) BodyBytesWith(specialProperties ...string) ([]byte, error) {
-	body := rev.BodyBytes()
+	bodyBytes := rev._bodyBytes
+	if bodyBytes == nil {
+		return nil, base.HTTPErrorf(404, "Revision body is missing") //??? Is this the right error?
+	}
 	if len(specialProperties) == 0 {
-		return body, nil
+		return bodyBytes, nil
 	}
 	specialKV := make([]base.KVPair, 0, 8)
 	for _, key := range specialProperties {
@@ -112,7 +112,7 @@ func (rev *DocumentRevision) BodyBytesWith(specialProperties ...string) ([]byte,
 		}
 	}
 
-	return base.InjectJSONProperties(body, specialKV...)
+	return base.InjectJSONProperties(bodyBytes, specialKV...)
 }
 
 // Unmarshals a DocumentRevision's body. No special properties are included.
@@ -121,7 +121,7 @@ func (rev *DocumentRevision) BodyBytesWith(specialProperties ...string) ([]byte,
 // This function is expensive and should be used RARELY, primarily for tests.
 func (rev *DocumentRevision) UnmarshalBody() (map[string]any, error) {
 	var body map[string]any
-	err := json.Unmarshal(rev.BodyBytes(), &body)
+	err := json.Unmarshal(rev._bodyBytes, &body)
 	return body, err
 }
 

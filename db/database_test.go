@@ -2055,7 +2055,7 @@ func TestSyncFnMutateBody(t *testing.T) {
 	require.NoError(t, err, "Couldn't get mutable body")
 	assert.Equal(t, "value1", revBody["key1"])
 	assert.Equal(t, map[string]interface{}{"subkey1": "subvalue1"}, revBody["key2"])
-	log.Printf("rev: %s", rev.BodyBytes)
+	log.Printf("rev: %s", rev.BodyBytes())
 
 }
 
