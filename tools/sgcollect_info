@@ -793,6 +793,11 @@ def main():
     # Build the actual zip file
     runner.zip(zip_filename, 'sgcollect_info', platform.node())
 
+    if options.redact_level != "none":
+        print("Zipfile built: {0}".format(redact_zip_file))
+
+    print("Zipfile built: {0}".format(zip_filename))
+    
     # Upload the zip to the URL to S3 if required
     if upload_url:
         try:
@@ -806,10 +811,6 @@ def main():
                 if options.redact_level != "none":
                     delete_zip(redact_zip_file)
 
-    if options.redact_level != "none":
-        print("Zipfile built: {0}".format(redact_zip_file))
-
-    print("Zipfile built: {0}".format(zip_filename))
 
 
 
