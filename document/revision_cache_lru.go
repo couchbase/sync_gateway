@@ -45,8 +45,8 @@ func (sc *ShardedLRURevisionCache) getShard(docID string) *LRURevisionCache {
 	return sc.caches[sgbucket.VBHash(docID, sc.numShards)]
 }
 
-func (sc *ShardedLRURevisionCache) Get(ctx context.Context, docID, revID string, includeBody bool, includeDelta bool) (docRev DocumentRevision, err error) {
-	return sc.getShard(docID).Get(ctx, docID, revID, includeBody, includeDelta)
+func (sc *ShardedLRURevisionCache) Get(ctx context.Context, docID, revID string, includeDelta bool) (docRev DocumentRevision, err error) {
+	return sc.getShard(docID).Get(ctx, docID, revID, includeDelta)
 }
 
 func (sc *ShardedLRURevisionCache) Peek(ctx context.Context, docID, revID string) (docRev DocumentRevision, found bool) {
@@ -57,8 +57,8 @@ func (sc *ShardedLRURevisionCache) UpdateDelta(ctx context.Context, docID, revID
 	sc.getShard(docID).UpdateDelta(ctx, docID, revID, toDelta)
 }
 
-func (sc *ShardedLRURevisionCache) GetActive(ctx context.Context, docID string, includeBody bool) (docRev DocumentRevision, err error) {
-	return sc.getShard(docID).GetActive(ctx, docID, includeBody)
+func (sc *ShardedLRURevisionCache) GetActive(ctx context.Context, docID string) (docRev DocumentRevision, err error) {
+	return sc.getShard(docID).GetActive(ctx, docID)
 }
 
 func (sc *ShardedLRURevisionCache) Put(ctx context.Context, docRev DocumentRevision) {
@@ -117,14 +117,14 @@ func NewLRURevisionCache(capacity uint32, backingStore RevisionCacheBackingStore
 // Returns the body of the revision, its history, and the set of channels it's in.
 // If the cache has a loaderFunction, it will be called if the revision isn't in the cache;
 // any error returned by the loaderFunction will be returned from Get.
-func (rc *LRURevisionCache) Get(ctx context.Context, docID, revID string, includeBody bool, includeDelta bool) (DocumentRevision, error) {
-	return rc.getFromCache(ctx, docID, revID, true, includeBody, includeDelta)
+func (rc *LRURevisionCache) Get(ctx context.Context, docID, revID string, includeDelta bool) (DocumentRevision, error) {
+	return rc.getFromCache(ctx, docID, revID, true, includeDelta)
 }
 
 // Looks up a revision from the cache only.  Will not fall back to loader function if not
 // present in the cache.
 func (rc *LRURevisionCache) Peek(ctx context.Context, docID, revID string) (docRev DocumentRevision, found bool) {
-	docRev, err := rc.getFromCache(ctx, docID, revID, false, RevCacheOmitBody, RevCacheOmitDelta)
+	docRev, err := rc.getFromCache(ctx, docID, revID, false, RevCacheOmitDelta)
 	if err != nil {
 		return DocumentRevision{}, false
 	}
@@ -140,17 +140,17 @@ func (rc *LRURevisionCache) UpdateDelta(ctx context.Context, docID, revID string
 	}
 }
 
-func (rc *LRURevisionCache) getFromCache(ctx context.Context, docID, revID string, loadOnCacheMiss bool, includeBody bool, includeDelta bool) (DocumentRevision, error) {
+func (rc *LRURevisionCache) getFromCache(ctx context.Context, docID, revID string, loadOnCacheMiss bool, includeDelta bool) (DocumentRevision, error) {
 	value := rc.getValue(docID, revID, loadOnCacheMiss)
 	if value == nil {
 		return DocumentRevision{}, nil
 	}
 
 	if value.invalid {
-		return rc.LoadInvalidRevFromBackingStore(ctx, value.key, nil, includeBody, includeDelta)
+		return rc.LoadInvalidRevFromBackingStore(ctx, value.key, nil, includeDelta)
 	}
 
-	docRev, statEvent, err := value.load(ctx, rc.backingStore, includeBody, includeDelta)
+	docRev, statEvent, err := value.load(ctx, rc.backingStore, includeDelta)
 	rc.statsRecorderFunc(statEvent)
 
 	if err != nil {
@@ -161,7 +161,7 @@ func (rc *LRURevisionCache) getFromCache(ctx context.Context, docID, revID strin
 
 // In the event that a revision in invalid it needs to be replaced later and the revision cache value should not be
 // used. This function grabs the value directly from the bucket.
-func (rc *LRURevisionCache) LoadInvalidRevFromBackingStore(ctx context.Context, key IDAndRev, doc *Document, includeBody bool, includeDelta bool) (DocumentRevision, error) {
+func (rc *LRURevisionCache) LoadInvalidRevFromBackingStore(ctx context.Context, key IDAndRev, doc *Document, includeDelta bool) (DocumentRevision, error) {
 	var delta *RevisionDelta
 
 	value := revCacheValue{
@@ -174,7 +174,7 @@ func (rc *LRURevisionCache) LoadInvalidRevFromBackingStore(ctx context.Context, 
 	if doc != nil {
 		value.bodyBytes, value.history, value.channels, value.removed, value.attachments, value.deleted, value.expiry, value.err = revCacheLoaderForDocument(ctx, rc.backingStore, doc, key.RevID)
 	} else {
-		value.bodyBytes, value.history, value.channels, value.removed, value.attachments, value.deleted, value.expiry, value.err = revCacheLoader(ctx, rc.backingStore, key, includeBody)
+		value.bodyBytes, value.history, value.channels, value.removed, value.attachments, value.deleted, value.expiry, value.err = revCacheLoader(ctx, rc.backingStore, key)
 	}
 
 	if includeDelta {
@@ -195,10 +195,9 @@ func (rc *LRURevisionCache) LoadInvalidRevFromBackingStore(ctx context.Context, 
 // of the retrieved document to get the current rev from _sync metadata.  If active rev is already in the
 // rev cache, will use it.  Otherwise will add to the rev cache using the raw document obtained in the
 // initial retrieval.
-func (rc *LRURevisionCache) GetActive(ctx context.Context, docID string, includeBody bool) (DocumentRevision, error) {
+func (rc *LRURevisionCache) GetActive(ctx context.Context, docID string) (DocumentRevision, error) {
 
-	// Look up active rev for doc.  Note - can't rely on DocUnmarshalAll here when includeBody=true, because for a
-	// cache hit we don't want to do that work (yet).
+	// Look up active rev for doc.
 	bucketDoc, getErr := rc.backingStore.GetDocument(ctx, docID, DocUnmarshalSync)
 	if getErr != nil {
 		return DocumentRevision{}, getErr
@@ -211,10 +210,10 @@ func (rc *LRURevisionCache) GetActive(ctx context.Context, docID string, include
 	value := rc.getValue(docID, bucketDoc.CurrentRev, true)
 
 	if value.invalid {
-		return rc.LoadInvalidRevFromBackingStore(ctx, value.key, bucketDoc, includeBody, false)
+		return rc.LoadInvalidRevFromBackingStore(ctx, value.key, bucketDoc, false)
 	}
 
-	docRev, statEvent, err := value.loadForDoc(ctx, rc.backingStore, bucketDoc, includeBody)
+	docRev, statEvent, err := value.loadForDoc(ctx, rc.backingStore, bucketDoc)
 	rc.statsRecorderFunc(statEvent)
 
 	if err != nil {
@@ -310,7 +309,7 @@ func (rc *LRURevisionCache) purgeOldest_() {
 // Gets the body etc. out of a revCacheValue. If they aren't present already, the loader func
 // will be called. This is synchronized so that the loader will only be called once even if
 // multiple goroutines try to load at the same time.
-func (value *revCacheValue) load(ctx context.Context, backingStore RevisionCacheBackingStore, includeBody bool, includeDelta bool) (docRev DocumentRevision, cacheHit bool, err error) {
+func (value *revCacheValue) load(ctx context.Context, backingStore RevisionCacheBackingStore, includeDelta bool) (docRev DocumentRevision, cacheHit bool, err error) {
 
 	// Reading the delta from the revCacheValue requires holding the read lock, so it's managed outside asDocumentRevision,
 	// to reduce locking when includeDelta=false
@@ -335,7 +334,7 @@ func (value *revCacheValue) load(ctx context.Context, backingStore RevisionCache
 		cacheHit = true
 	} else {
 		cacheHit = false
-		value.bodyBytes, value.history, value.channels, value.removed, value.attachments, value.deleted, value.expiry, value.err = revCacheLoader(ctx, backingStore, value.key, includeBody)
+		value.bodyBytes, value.history, value.channels, value.removed, value.attachments, value.deleted, value.expiry, value.err = revCacheLoader(ctx, backingStore, value.key)
 	}
 
 	if includeDelta {
@@ -369,7 +368,7 @@ func (value *revCacheValue) asDocumentRevision(delta *RevisionDelta) (DocumentRe
 
 // Retrieves the body etc. out of a revCacheValue.  If they aren't already present, loads into the cache value using
 // the provided document.
-func (value *revCacheValue) loadForDoc(ctx context.Context, backingStore RevisionCacheBackingStore, doc *Document, includeBody bool) (docRev DocumentRevision, cacheHit bool, err error) {
+func (value *revCacheValue) loadForDoc(ctx context.Context, backingStore RevisionCacheBackingStore, doc *Document) (docRev DocumentRevision, cacheHit bool, err error) {
 
 	value.lock.RLock()
 	if value.bodyBytes != nil || value.err != nil {

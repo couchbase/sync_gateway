@@ -28,13 +28,11 @@ const (
 // RevisionCache is an interface that can be used to fetch a DocumentRevision for a Doc ID and Rev ID pair.
 type RevisionCache interface {
 	// Get returns the given revision, and stores if not already cached.
-	// When includeBody=true, the returned DocumentRevision will include a mutable shallow copy of the marshaled body.
 	// When includeDelta=true, the returned DocumentRevision will include delta - requires additional locking during retrieval.
-	Get(ctx context.Context, docID, revID string, includeBody bool, includeDelta bool) (DocumentRevision, error)
+	Get(ctx context.Context, docID, revID string, includeDelta bool) (DocumentRevision, error)
 
 	// GetActive returns the current revision for the given doc ID, and stores if not already cached.
-	// When includeBody=true, the returned DocumentRevision will include a mutable shallow copy of the marshaled body.
-	GetActive(ctx context.Context, docID string, includeBody bool) (docRev DocumentRevision, err error)
+	GetActive(ctx context.Context, docID string) (docRev DocumentRevision, err error)
 
 	// Peek returns the given revision if present in the cache
 	Peek(ctx context.Context, docID, revID string) (docRev DocumentRevision, found bool)
@@ -55,8 +53,6 @@ type RevisionCache interface {
 }
 
 const (
-	RevCacheIncludeBody  = true
-	RevCacheOmitBody     = false
 	RevCacheIncludeDelta = true
 	RevCacheOmitDelta    = false
 )
@@ -134,13 +130,9 @@ func NewRevCacheDelta(deltaBytes []byte, fromRevID string, toRevision DocumentRe
 
 // This is the RevisionCacheLoaderFunc callback for the context's RevisionCache.
 // Its job is to load a revision from the bucket when there's a cache miss.
-func revCacheLoader(ctx context.Context, backingStore RevisionCacheBackingStore, id IDAndRev, unmarshalBody bool) (bodyBytes []byte, history Revisions, channels base.Set, removed bool, attachments AttachmentsMeta, deleted bool, expiry *time.Time, err error) {
+func revCacheLoader(ctx context.Context, backingStore RevisionCacheBackingStore, id IDAndRev) (bodyBytes []byte, history Revisions, channels base.Set, removed bool, attachments AttachmentsMeta, deleted bool, expiry *time.Time, err error) {
 	var doc *Document
-	unmarshalLevel := DocUnmarshalSync
-	if unmarshalBody {
-		unmarshalLevel = DocUnmarshalAll
-	}
-	if doc, err = backingStore.GetDocument(ctx, id.DocID, unmarshalLevel); doc == nil {
+	if doc, err = backingStore.GetDocument(ctx, id.DocID, DocUnmarshalSync); doc == nil {
 		return bodyBytes, history, channels, removed, attachments, deleted, expiry, err
 	}
 

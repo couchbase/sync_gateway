@@ -53,8 +53,6 @@ const (
 	DocUnmarshalCAS       = document.DocUnmarshalCAS
 	DocUnmarshalNone      = document.DocUnmarshalNone
 
-	RevCacheIncludeBody  = document.RevCacheIncludeBody
-	RevCacheOmitBody     = document.RevCacheOmitBody
 	RevCacheIncludeDelta = document.RevCacheIncludeDelta
 	RevCacheOmitDelta    = document.RevCacheOmitDelta
 

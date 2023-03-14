@@ -211,7 +211,7 @@ func (db *DatabaseCollectionWithUser) GetRev(ctx context.Context, docID, revID s
 	if history {
 		maxHistory = math.MaxInt32
 	}
-	return db.getRev(ctx, docID, revID, maxHistory, nil, RevCacheOmitBody)
+	return db.getRev(ctx, docID, revID, maxHistory, nil)
 }
 
 // Returns the body of the current revision of a document
@@ -231,7 +231,7 @@ func (db *DatabaseCollectionWithUser) Get1xRevBody(ctx context.Context, docid, r
 
 // Retrieves rev with request history specified as collection of revids (historyFrom)
 func (db *DatabaseCollectionWithUser) Get1xRevBodyWithHistory(ctx context.Context, docid, revid string, maxHistory int, historyFrom []string, attachmentsSince []string, showExp bool) (map[string]any, error) {
-	rev, err := db.getRev(ctx, docid, revid, maxHistory, historyFrom, RevCacheIncludeBody)
+	rev, err := db.getRev(ctx, docid, revid, maxHistory, historyFrom)
 	if err != nil {
 		return nil, err
 	}
@@ -258,14 +258,14 @@ func (db *DatabaseCollectionWithUser) Get1xRevBodyWithHistory(ctx context.Contex
 //   - attachmentsSince is nil to return no attachment bodies, otherwise a (possibly empty) list of
 //     revisions for which the client already has attachments and doesn't need bodies. Any attachment
 //     that hasn't changed since one of those revisions will be returned as a stub.
-func (db *DatabaseCollectionWithUser) getRev(ctx context.Context, docid, revid string, maxHistory int, historyFrom []string, includeBody bool) (revision DocumentRevision, err error) {
+func (db *DatabaseCollectionWithUser) getRev(ctx context.Context, docid, revid string, maxHistory int, historyFrom []string) (revision DocumentRevision, err error) {
 	if revid != "" {
 		// Get a specific revision body and history from the revision cache
 		// (which will load them if necessary, by calling revCacheLoader, above)
-		revision, err = db.revisionCache.Get(ctx, docid, revid, includeBody, RevCacheOmitDelta)
+		revision, err = db.revisionCache.Get(ctx, docid, revid, RevCacheOmitDelta)
 	} else {
 		// No rev ID given, so load active revision
-		revision, err = db.revisionCache.GetActive(ctx, docid, includeBody)
+		revision, err = db.revisionCache.GetActive(ctx, docid)
 	}
 
 	if err != nil {
@@ -326,7 +326,7 @@ func (db *DatabaseCollectionWithUser) GetDelta(ctx context.Context, docID, fromR
 		return nil, nil, nil
 	}
 
-	fromRevision, err := db.revisionCache.Get(ctx, docID, fromRevID, RevCacheOmitBody, RevCacheIncludeDelta)
+	fromRevision, err := db.revisionCache.Get(ctx, docID, fromRevID, RevCacheIncludeDelta)
 
 	// If the fromRevision is a removal cache entry (no body), but the user has access to that removal, then just
 	// return 404 missing to indicate that the body of the revision is no longer available.
@@ -369,7 +369,7 @@ func (db *DatabaseCollectionWithUser) GetDelta(ctx context.Context, docID, fromR
 
 		// db.DbStats.StatsDeltaSync().Add(base.StatKeyDeltaCacheMisses, 1)
 		db.dbStats().DeltaSync().DeltaCacheMiss.Add(1)
-		toRevision, err := db.revisionCache.Get(ctx, docID, toRevID, RevCacheOmitBody, RevCacheIncludeDelta)
+		toRevision, err := db.revisionCache.Get(ctx, docID, toRevID, RevCacheIncludeDelta)
 		if err != nil {
 			return nil, nil, err
 		}
