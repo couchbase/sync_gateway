@@ -20,7 +20,6 @@ import (
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/couchbase/sync_gateway/channels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -438,13 +437,9 @@ func SuspendSequenceBatching() func() {
 func (dbc *DatabaseContext) ChannelViewForTest(tb testing.TB, channelName string, startSeq, endSeq uint64) (LogEntries, error) {
 	collection, err := dbc.GetDefaultDatabaseCollection()
 	if err != nil {
-		return nil, nil
+		return nil, err
 	}
-	channel := channels.ID{
-		Name:         channelName,
-		CollectionID: collection.GetCollectionID(),
-	}
-	return dbc.getChangesInChannelFromQuery(base.TestCtx(tb), channel, startSeq, endSeq, 0, false)
+	return collection.getChangesInChannelFromQuery(base.TestCtx(tb), channelName, startSeq, endSeq, 0, false)
 }
 
 // Test-only version of GetPrincipal that doesn't trigger channel/role recalculation

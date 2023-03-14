@@ -1731,7 +1731,6 @@ func TestChannelView(t *testing.T) {
 	defer db.Close(ctx)
 	collection, err := db.GetDefaultDatabaseCollectionWithUser()
 	require.NoError(t, err)
-	collectionID := collection.GetCollectionID()
 
 	// Create doc
 	log.Printf("Create doc 1...")
@@ -1744,7 +1743,7 @@ func TestChannelView(t *testing.T) {
 	// Query view (retry loop to wait for indexing)
 	for i := 0; i < 10; i++ {
 		var err error
-		entries, err = db.getChangesInChannelFromQuery(ctx, channels.ID{Name: "*", CollectionID: collectionID}, 0, 100, 0, false)
+		entries, err = collection.getChangesInChannelFromQuery(ctx, "*", 0, 100, 0, false)
 
 		assert.NoError(t, err, "Couldn't create document")
 		if len(entries) >= 1 {
