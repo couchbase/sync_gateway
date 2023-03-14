@@ -1,5 +1,5 @@
 /*
-Copyright 2020-Present Couchbase, Inc.
+Copyright 2023-Present Couchbase, Inc.
 
 Use of this software is governed by the Business Source License included in
 the file licenses/BSL-Couchbase.txt.  As of the Change Date specified in that
@@ -8,7 +8,7 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-package functions
+package upgradetest
 
 import (
 	"testing"
@@ -18,6 +18,9 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	tbpOptions := base.TestBucketPoolOptions{MemWatermarkThresholdMB: 2048}
+	tbpOptions := base.TestBucketPoolOptions{
+		MemWatermarkThresholdMB: 8192,
+		UseDefaultScope:         true,
+	}
 	db.TestBucketPoolWithIndexes(m, tbpOptions)
 }

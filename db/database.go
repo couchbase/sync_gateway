@@ -131,6 +131,7 @@ type DatabaseContext struct {
 	CollectionByID               map[uint32]*DatabaseCollection // A map keyed by collection ID to Collection
 	CollectionNames              map[string]map[string]struct{} // Map of scope, collection names
 	MetadataKeys                 *base.MetadataKeys             // Factory to generate metadata document keys
+	RequireResync                base.ScopeAndCollectionNames   // Collections requiring resync before database can go online
 }
 
 type Scope struct {
@@ -172,6 +173,7 @@ type DatabaseContextOptions struct {
 	Scopes                        ScopesOptions
 	skipRegisterImportPIndex      bool           // if set, skips the global gocb PIndex registration
 	MetadataStore                 base.DataStore // If set, use this location/connection for SG metadata storage - if not set, metadata is stored using the same location/connection as the bucket used for data storage.
+	MetadataID                    string         // MetadataID used for metadata storage
 }
 
 type ScopesOptions map[string]ScopeOptions
@@ -420,10 +422,10 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 	}
 
 	// Initialize metadata ID and keys
-	// TODO: apply length limit to MetadataPrefix
+	// TODO: apply length limit to metadataID
 	metadataID := dbName
-	if options.Scopes.onlyDefaultCollection() {
-		metadataID = ""
+	if options.MetadataID != "" {
+		metadataID = options.MetadataID
 	}
 	metaKeys := base.NewMetadataKeys(metadataID)
 	dbContext.MetadataKeys = metaKeys

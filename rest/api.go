@@ -392,6 +392,7 @@ type DatabaseRoot struct {
 	DiskFormatVersion             uint64                       `json:"disk_format_version"`
 	State                         string                       `json:"state"`
 	ServerUUID                    string                       `json:"server_uuid,omitempty"`
+	RequireResync                 []string                     `json:"require_resync,omitempty"`
 	Scopes                        map[string]databaseRootScope `json:"scopes,omitempty"` // stats for each scope/collection
 }
 
@@ -428,6 +429,8 @@ func (h *handler) handleGetDB() error {
 		DiskFormatVersion:             0, // Probably meaningless, but add for compatibility
 		State:                         runState,
 		ServerUUID:                    h.db.DatabaseContext.ServerUUID,
+		RequireResync:                 h.db.RequireResync.ScopeAndCollectionNames(),
+
 		// TODO: If running with multiple scope/collections
 		// Scopes: map[string]databaseRootScope{
 		// 	"scope1": {

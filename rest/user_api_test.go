@@ -1403,8 +1403,7 @@ func TestGetUserCollectionAccess(t *testing.T) {
 	require.True(t, ok)
 
 	assert.Equal(t, channels.BaseSetOf(t, "foo", "bar1"), collectionAccess.ExplicitChannels_)
-	// TODO: computed channels requires authenticator populated with collection set, pending CBG-2266
-	//assert.Equal(t, channels.BaseSetOf(t), collectionAccess.Channels_)
+	assert.Equal(t, channels.BaseSetOf(t, "foo", "bar1", "!"), collectionAccess.Channels_)
 	assert.Nil(t, collectionAccess.JWTChannels_)
 	assert.Nil(t, collectionAccess.JWTLastUpdated)
 
@@ -1445,7 +1444,6 @@ func TestPutUserCollectionAccess(t *testing.T) {
 	base.RequireNumTestDataStores(t, 2)
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	testBucket := base.GetPersistentTestBucket(t)
-	defer testBucket.Close()
 
 	scopesConfig := GetCollectionsConfig(t, testBucket, 2)
 	rtConfig := &RestTesterConfig{
@@ -1499,7 +1497,7 @@ func TestPutUserCollectionAccess(t *testing.T) {
 	assert.Contains(t, getResponse.ResponseRecorder.Body.String(), `"all_channels":["!"]`)
 
 	dbConfig := DbConfig{
-		Scopes: getCollectionsConfigWithSyncFn(rt.TB, rt.TestBucket, nil, 1),
+		Scopes: GetCollectionsConfigWithSyncFn(rt.TB, rt.TestBucket, nil, 1),
 		BucketConfig: BucketConfig{
 			Bucket: base.StringPtr(rt.TestBucket.GetName()),
 		},

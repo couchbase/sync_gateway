@@ -82,6 +82,7 @@ const (
 const (
 	DCPCheckpointRootPrefix              = SyncDocPrefix + DCPCheckpointPrefix // used to filter checkpoints across groupIDs, databases
 	SGRegistryKey                        = SyncDocPrefix + "registry"          // Registry of all SG databases defined for the bucket (for all group IDs)
+	SGSyncInfo                           = SyncDocPrefix + "syncInfo"          // SG info for a collection, stored with the collection
 	PersistentConfigPrefixWithoutGroupID = SyncDocPrefix + "dbconfig:"         // PersistentConfigPrefixWithoutGroupID stores a database config
 
 	// Sync function naming is collection-scoped, and collections cannot be associated with multiple databases
@@ -352,4 +353,46 @@ func CollectionSyncFunctionKeyWithGroupID(groupID string, scopeName, collectionN
 		return fmt.Sprintf("%s:%s.%s:%s", CollectionSyncFunctionKeyWithoutGroupID, scopeName, collectionName, groupID)
 	}
 	return fmt.Sprintf("%s:%s.%s", CollectionSyncFunctionKeyWithoutGroupID, scopeName, collectionName)
+}
+
+// SyncInfo documents are stored in collections to identify the metadataID associated with sync metadata in that collection
+type SyncInfo struct {
+	MetadataID string `json:"metadataID"`
+}
+
+// initSyncInfo attempts to initialize syncInfo for a datastore
+//  1. If syncInfo doesn't exist, it is created for the specified metadataID
+//  2. If syncInfo exists with a matching metadataID, returns requiresResync=false
+//  3. If syncInfo exists with a non-matching metadataID, returns requiresResync=true
+func InitSyncInfo(ds DataStore, metadataID string) (requiresResync bool, err error) {
+
+	var syncInfo SyncInfo
+	_, fetchErr := ds.Get(SGSyncInfo, &syncInfo)
+	if IsKeyNotFoundError(ds, fetchErr) {
+		newSyncInfo := &SyncInfo{MetadataID: metadataID}
+		_, addErr := ds.Add(SGSyncInfo, 0, newSyncInfo)
+		if IsCasMismatch(addErr) {
+			// attempt new fetch
+			_, fetchErr = ds.Get(SGSyncInfo, &syncInfo)
+			if fetchErr != nil {
+				return true, fmt.Errorf("Error retrieving syncInfo (after failed add): %v", fetchErr)
+			}
+		} else if addErr != nil {
+			return true, fmt.Errorf("Error adding syncInfo: %v", addErr)
+		}
+		// successfully added
+		return false, nil
+	} else if fetchErr != nil {
+		return true, fmt.Errorf("Error retrieving syncInfo: %v", fetchErr)
+	}
+
+	return syncInfo.MetadataID != metadataID, nil
+}
+
+// SetSyncInfo sets syncInfo in a DataStore to the specified metadataID
+func SetSyncInfo(ds DataStore, metadataID string) error {
+	syncInfo := &SyncInfo{
+		MetadataID: metadataID,
+	}
+	return ds.Set(SGSyncInfo, 0, nil, syncInfo)
 }

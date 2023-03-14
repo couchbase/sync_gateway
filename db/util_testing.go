@@ -472,8 +472,8 @@ func (dbc *DatabaseContext) GetPrincipalForTest(tb testing.TB, name string, isUs
 }
 
 // TestBucketPoolWithIndexes runs a TestMain for packages that require creation of indexes
-func TestBucketPoolWithIndexes(m *testing.M, memWatermarkThresholdMB uint64) {
-	base.TestBucketPoolMain(m, viewsAndGSIBucketReadier, viewsAndGSIBucketInit, memWatermarkThresholdMB)
+func TestBucketPoolWithIndexes(m *testing.M, tbpOptions base.TestBucketPoolOptions) {
+	base.TestBucketPoolMain(m, viewsAndGSIBucketReadier, viewsAndGSIBucketInit, tbpOptions)
 }
 
 // Parse the plan looking for use of the fetch operation (appears as the key/value pair "#operator":"Fetch")

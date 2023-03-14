@@ -298,7 +298,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 				if rt.SyncFn != "" {
 					syncFn = base.StringPtr(rt.SyncFn)
 				}
-				rt.DatabaseConfig.Scopes = getCollectionsConfigWithSyncFn(rt.TB, testBucket, syncFn, rt.numCollections)
+				rt.DatabaseConfig.Scopes = GetCollectionsConfigWithSyncFn(rt.TB, testBucket, syncFn, rt.numCollections)
 			}
 		}
 
@@ -366,11 +366,11 @@ func (rt *RestTester) MetadataStore() base.DataStore {
 
 // GetCollectionsConfig sets up a ScopesConfig from a TestBucket for use with non default collections.
 func GetCollectionsConfig(t testing.TB, testBucket *base.TestBucket, numCollections int) ScopesConfig {
-	return getCollectionsConfigWithSyncFn(t, testBucket, nil, numCollections)
+	return GetCollectionsConfigWithSyncFn(t, testBucket, nil, numCollections)
 }
 
-// getCollectionsConfigWithSyncFn sets up a ScopesConfig from a TestBucket for use with non default collections. The sync function will be passed for all collections.
-func getCollectionsConfigWithSyncFn(t testing.TB, testBucket *base.TestBucket, syncFn *string, numCollections int) ScopesConfig {
+// GetCollectionsConfigWithSyncFn sets up a ScopesConfig from a TestBucket for use with non default collections. The sync function will be passed for all collections.
+func GetCollectionsConfigWithSyncFn(t testing.TB, testBucket *base.TestBucket, syncFn *string, numCollections int) ScopesConfig {
 	// Get a datastore as provided by the test
 	stores := testBucket.GetNonDefaultDatastoreNames()
 	require.True(t, len(stores) >= numCollections, "Requested more collections %d than found on testBucket %d", numCollections, len(stores))
@@ -946,6 +946,22 @@ func (rt *RestTester) waitForDBState(stateWant string) (err error) {
 		time.Sleep(500 * time.Millisecond)
 	}
 	return fmt.Errorf("given up waiting for DB state, want: %s, current: %s, attempts: %d", stateWant, stateCurr, maxTries)
+}
+
+func (rt *RestTester) WaitForDatabaseState(dbName string, targetState uint32) error {
+	var stateCurr string
+	maxTries := 50
+	for i := 0; i < maxTries; i++ {
+		dbRootResponse := DatabaseRoot{}
+		resp := rt.SendAdminRequest("GET", "/"+dbName+"/", "")
+		RequireStatus(rt.TB, resp, 200)
+		require.NoError(rt.TB, base.JSONUnmarshal(resp.Body.Bytes(), &dbRootResponse))
+		if dbRootResponse.State == db.RunStateString[targetState] {
+			return nil
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	return fmt.Errorf("given up waiting for DB state, want: %s, current: %s, attempts: %d", db.RunStateString[targetState], stateCurr, maxTries)
 }
 
 func (rt *RestTester) SendAdminRequestWithHeaders(method, resource string, body string, headers map[string]string) *TestResponse {
