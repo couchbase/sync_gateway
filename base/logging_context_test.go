@@ -13,6 +13,7 @@ import (
 	"context"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -23,28 +24,29 @@ const standardMessage = "foobar"
 func requireLogIs(t testing.TB, s string, f func()) {
 	b := bytes.Buffer{}
 
-	const timestampLength = 30
+	timestampLength := len(time.Now().Format(ISO8601Format) + " ")
 
 	// Temporarily override logger output for the given function call
 	consoleLogger.logger.SetOutput(&b)
 	f()
 	var log string
+	var originalLog string
 	// Allow time for logs to be printed
 	retry := func() (shouldRetry bool, err error, value interface{}) {
-		log = b.String()
-		if len(log) < timestampLength {
+		originalLog = b.String()
+		if len(originalLog) < timestampLength {
 			return false, nil, nil
 		}
-		log = b.String()[timestampLength:]
+		log = originalLog[timestampLength:]
 		if log == s {
 			return false, nil, nil
 		}
 		return true, nil, nil
 	}
-	err, _ := RetryLoop("wait for logs", retry, CreateSleeperFunc(10, 1000))
+	err, _ := RetryLoop("wait for logs", retry, CreateSleeperFunc(10, 100))
 	consoleLogger.logger.SetOutput(os.Stderr)
 
-	require.NoError(t, err, "Console logs did not contain %q, got %q", s, log)
+	require.NoError(t, err, "Console logs did not contain %q, got %q", s, originalLog)
 }
 
 func RequireLogMessage(t testing.TB, ctx context.Context, expectedMessage string, logString string) {
