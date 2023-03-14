@@ -128,41 +128,32 @@ var extractConfig jsoniter.API = jsoniter.Config{
 //	what the shape points to.
 //
 // For examples, see TestJSONExtractUnderscored() in util_test.go.
-func JSONExtractUnderscored(input []byte, shape map[string]any) (output []byte, extracted map[string]any, err error) {
-	iter := extractConfig.BorrowIterator(input)
-	defer extractConfig.ReturnIterator(iter)
-
+func JSONExtract(input []byte, callback func(string) (any, error)) (output []byte, err error) {
 	out := jsoniter.NewStream(jsoniter.ConfigDefault, nil, len(input))
 	out.WriteObjectStart()
 	first := true
+	keys := Set{}
 
+	iter := extractConfig.BorrowIterator(input)
+	defer extractConfig.ReturnIterator(iter)
 	iter.ReadObjectCB(func(iter *jsoniter.Iterator, key string) bool {
-		if strings.HasPrefix(key, "_") {
-			// Underscored key: add it and its value to `extracted`:
-			if extracted == nil {
-				extracted = map[string]any{}
-			} else if extracted[key] != nil {
-				iter.ReportError("Validation", fmt.Sprintf("Duplicate key %q", key))
+		if keys.Contains(key) {
+			iter.ReportError("json", fmt.Sprintf("duplicate key %q", key))
+			return false
+		}
+		keys.Add(key)
+		if dst, err := callback(key); err != nil {
+			iter.ReportError("json", err.Error())
+			return false
+		} else if dst != nil {
+			iter.ReadVal(dst)
+			if iter.Error != nil {
+				iter.Error = nil
+				iter.ReportError("json", fmt.Sprintf("invalid value type for special key %q", key))
 				return false
 			}
-			if shape != nil {
-				if value, found := shape[key]; !found {
-					iter.ReportError("Validation", fmt.Sprintf("Top-level key %q is a reserved internal property", key))
-					return false
-				} else {
-					iter.ReadVal(value)
-					if iter.Error != nil {
-						iter.Error = nil
-						iter.ReportError("Validation", fmt.Sprintf("Invalid value type for special key %q", key))
-						return false
-					}
-					extracted[key] = value
-				}
-			} else {
-				extracted[key] = iter.Read()
-			}
 		} else {
-			// Non-underscored key: Write key and raw JSON value to stream
+			// Non-special key: Write key and raw JSON value to stream
 			if !first {
 				out.WriteMore() // writes a ","
 			}
@@ -173,8 +164,11 @@ func JSONExtractUnderscored(input []byte, shape map[string]any) (output []byte, 
 		return true
 	})
 
-	if iter.Error != nil {
-		return nil, nil, iter.Error
+	if err = iter.Error; err != nil {
+		if strings.Contains(err.Error(), "expect { or n, but found") {
+			err = fmt.Errorf("json: expected an object") // clearer, and compatible with CE
+		}
+		return nil, err
 	}
 
 	out.WriteObjectEnd()

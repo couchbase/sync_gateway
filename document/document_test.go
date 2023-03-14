@@ -13,6 +13,7 @@ package document
 import (
 	"bytes"
 	"encoding/binary"
+	"encoding/json"
 	"log"
 	"testing"
 
@@ -287,5 +288,142 @@ func TestGetDeepMutableBody(t *testing.T) {
 			assert.Nil(t, err)
 			assert.Equal(t, *test.expected, body)
 		})
+	}
+}
+
+func TestParseDocumentRevision(t *testing.T) {
+	expectedExpiry := base.CbsExpiryToTime(12345678)
+
+	cases := []struct {
+		name, input string
+		expectedRev *DocumentRevision
+		error       string
+	}{
+		{
+			name:  "Empty",
+			input: "{ }",
+			expectedRev: &DocumentRevision{
+				BodyBytes: []byte(`{}`),
+			},
+		},
+		{
+			name:  "One regular",
+			input: `{"foo":1234}`,
+			expectedRev: &DocumentRevision{
+				BodyBytes: []byte(`{"foo":1234}`),
+			},
+		},
+		{
+			name:  "Two regular",
+			input: `{"foo":1234,"bar":{"a": 1, "z": 26}}`,
+			expectedRev: &DocumentRevision{
+				BodyBytes: []byte(`{"foo":1234,"bar":{"a": 1, "z": 26}}`),
+			},
+		},
+		{
+			name:  "One underscored",
+			input: `{"_id":"Hey"}`,
+			expectedRev: &DocumentRevision{
+				DocID:     "Hey",
+				BodyBytes: []byte(`{}`),
+			},
+		},
+		{
+			name:  "Two underscored",
+			input: `{"_id":"Hey","_attachments":{"a": {"length":1}}}`,
+			expectedRev: &DocumentRevision{
+				DocID:       "Hey",
+				Attachments: map[string]any{"a": map[string]any{"length": json.Number("1")}},
+				BodyBytes:   []byte(`{}`),
+			},
+		},
+		{
+			name:  "Regular and underscored",
+			input: `{"_id":"Hey","foo":1234,"bar":{"a": 1, "z": 26}, "_rev": "1-abcd"}`,
+			expectedRev: &DocumentRevision{
+				DocID:     "Hey",
+				RevID:     "1-abcd",
+				BodyBytes: []byte(`{"foo":1234,"bar":{"a": 1, "z": 26}}`),
+			},
+		},
+
+		{
+			name:  "Expiry",
+			input: `{"_id": "Hey", "_exp": 12345678}`,
+			expectedRev: &DocumentRevision{
+				DocID:     "Hey",
+				Expiry:    &expectedExpiry,
+				BodyBytes: []byte(`{}`),
+			},
+		},
+
+		// Errors:
+		{
+			name:  "Not an object",
+			input: "[]",
+			error: "expected an object",
+		},
+		{
+			name:  "Duplicate key",
+			input: `{"_id": "doc1","_id":"fake"}`,
+			error: "duplicate key",
+		},
+		{
+			name:  "Illegal key",
+			input: `{"_id": "foo", "_purged":"hi"}`,
+			error: `'_purged' is a reserved internal property`,
+		},
+		{
+			name:  "Illegal key prefix",
+			input: `{"_id": "foo", "_sync_whoa":"hi"}`,
+			error: `properties that start with '_sync_' are not allowed`,
+		},
+		{
+			name:  "Wrong type",
+			input: `{"_id": "foo", "_rev":false}`,
+			error: `invalid value type for special key "_rev"`,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			rev, err := ParseDocumentRevision([]byte(tc.input), BodyId, BodyRev, BodyExpiry, BodyAttachments)
+
+			if tc.error != "" {
+				assert.ErrorContains(t, err, tc.error)
+				log.Printf("--> %s", err)
+				return
+			} else if !assert.NoError(t, err) {
+				return
+			}
+			log.Printf("--> %#v", rev)
+			assert.Equal(t, tc.expectedRev, rev)
+		})
+	}
+}
+
+func TestDocumentRevisionJSONData(t *testing.T) {
+	expiry := base.CbsExpiryToTime(0x7FFFFFFF)
+	rev := DocumentRevision{
+		DocID:     "wassup",
+		RevID:     "5-6789",
+		Expiry:    &expiry,
+		Deleted:   true,
+		BodyBytes: []byte(`{"foo":false}`),
+	}
+
+	j, err := rev.JSONData()
+	if assert.NoError(t, err) {
+		assert.Equal(t, `{"foo":false}`, string(j))
+	}
+
+	j, err = rev.JSONData(BodyId, BodyDeleted, BodyRev, BodyExpiry, BodyRemoved)
+	if assert.NoError(t, err) {
+		assert.Equal(t, `{"foo":false,"_id":"wassup","_deleted":true,"_rev":"5-6789","_exp":"2038-01-18T19:14:07-08:00"}`, string(j))
+	}
+
+	rev.Expiry = nil
+	j, err = rev.JSONData(BodyExpiry)
+	if assert.NoError(t, err) {
+		assert.Equal(t, `{"foo":false}`, string(j))
 	}
 }

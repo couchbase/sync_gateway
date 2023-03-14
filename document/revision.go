@@ -36,6 +36,9 @@ const (
 	BodyInternalPrefix = "_sync_" // New internal properties prefix (CBG-1995)
 )
 
+// Read-only set of reserved document body keys
+var BodyReservedKeys = base.SetOf(BodyDeleted, BodyRev, BodyId, BodyRevisions, BodyAttachments, BodyPurged, BodyExpiry, BodyRemoved, base.SyncPropertyName) // per spec
+
 // A revisions property found within a Body.  Expected to be of the form:
 //
 //	Revisions["start"]: int64, starting generation number

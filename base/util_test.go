@@ -10,7 +10,6 @@ package base
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -1666,11 +1665,7 @@ func TestReplaceLast(t *testing.T) {
 	}
 }
 
-func TestJSONExtractUnderscored(t *testing.T) {
-	if !IsEnterpriseEdition() {
-		t.Skipf("This tests an EE-only feature")
-	}
-
+func TestJSONExtract(t *testing.T) {
 	type attachment struct {
 		Digest string
 		Type   string
@@ -1682,18 +1677,9 @@ func TestJSONExtractUnderscored(t *testing.T) {
 		attachments map[string]attachment
 		deleted     bool
 	}
-	var theValues values
-	theShape := map[string]any{
-		"_id":          &theValues.id,
-		"_rev":         &theValues.rev,
-		"_attachments": &theValues.attachments,
-		"_deleted":     &theValues.deleted,
-	}
 
 	cases := []struct {
 		name, input, output string
-		shape               map[string]any
-		extracted           map[string]any
 		values              values
 		error               string
 	}{
@@ -1709,41 +1695,38 @@ func TestJSONExtractUnderscored(t *testing.T) {
 		},
 		{
 			name:   "Two regular",
-			input:  `{"foo": 1234, "bar": {"a": 1, "z": 26}}`,
-			output: `{"foo": 1234,"bar": {"a": 1, "z": 26}}`, // (Commas removed before top keys)
+			input:  `{"foo":1234,"bar":{"a": 1, "z": 26}}`,
+			output: `{"foo":1234,"bar":{"a": 1, "z": 26}}`, // (Commas removed before top keys)
 		},
 		{
-			name:      "One underscored",
-			input:     `{"_id": "Hey"}`,
-			output:    `{}`,
-			extracted: map[string]any{"_id": "Hey"},
+			name:   "One underscored",
+			input:  `{"_id": "Hey"}`,
+			output: `{}`,
+			values: values{id: "Hey"},
 		},
 		{
-			name:      "Two underscored",
-			input:     `{"_id": "Hey", "_attachments": {"a": 1, "z": 26}}`,
-			output:    `{}`,
-			extracted: map[string]any{"_id": "Hey", "_attachments": map[string]any{"a": json.Number("1"), "z": json.Number("26")}},
+			name:   "Two underscored",
+			input:  `{"_id": "Hey", "_attachments": {"a": {"length":1}}}`,
+			output: `{}`,
+			values: values{id: "Hey", attachments: map[string]attachment{"a": {Length: 1}}},
 		},
 		{
-			name:      "Regular and underscored",
-			input:     `{"_id": "Hey", "foo": 1234, "bar": {"a": 1, "z": 26}, "_rev": "1-abcd"}`,
-			output:    `{"foo": 1234,"bar": {"a": 1, "z": 26}}`,
-			extracted: map[string]any{"_id": "Hey", "_rev": "1-abcd"},
+			name:   "Regular and underscored",
+			input:  `{"_id":"Hey","foo":1234,"bar":{"a": 1, "z": 26},"_rev":"1-abcd"}`,
+			output: `{"foo":1234,"bar":{"a": 1, "z": 26}}`,
+			values: values{id: "Hey", rev: "1-abcd"},
 		},
 
-		// Using 'shape':
 		{
 			name:   "Shape with one underscored",
 			input:  `{"_id": "Hey"}`,
 			output: `{}`,
-			shape:  theShape,
 			values: values{id: "Hey"},
 		},
 		{
 			name:   "Shape with all",
-			input:  `{"_id": "Hey", "_rev": "1-abcd", "_deleted":true, "_attachments":{"a.txt":{"digest":"123"}}}`,
+			input:  `{"_id":"Hey","_rev":"1-abcd","_deleted":true,"_attachments":{"a.txt":{"digest":"123"}}}`,
 			output: `{}`,
-			shape:  theShape,
 			values: values{id: "Hey", rev: "1-abcd", deleted: true, attachments: map[string]attachment{"a.txt": {Digest: "123"}}},
 		},
 
@@ -1751,30 +1734,46 @@ func TestJSONExtractUnderscored(t *testing.T) {
 		{
 			name:  "Not an object",
 			input: "[]",
-			error: "expect { or n, but found [",
+			error: "expected an object",
 		},
 		{
 			name:  "Duplicate key",
-			input: `{"_id": 1234,"_id":"hi"}`,
-			error: "Duplicate key",
+			input: `{"_id": "doc1","_id":"fake"}`,
+			error: "duplicate key",
 		},
 		{
 			name:  "Illegal key",
-			input: `{"_id": "foo", "_whoa":"hi"}`,
-			shape: theShape,
-			error: `Top-level key "_whoa" is a reserved internal property`,
+			input: `{"_id": "foo", "_sync_whoa":"hi"}`,
+			error: `key "_sync_whoa" is reserved`,
 		},
 		{
 			name:  "Wrong type",
 			input: `{"_id": "foo", "_rev":false}`,
-			shape: theShape,
-			error: `Invalid value type for special key "_rev"`,
+			error: `invalid value type for special key "_rev"`,
 		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			theValues = values{}
-			output, extracted, err := JSONExtractUnderscored([]byte(tc.input), tc.shape)
+			theValues := values{}
+			output, err := JSONExtract([]byte(tc.input), func(key string) (any, error) {
+				switch key {
+				case "_id":
+					return &theValues.id, nil
+				case "_rev":
+					return &theValues.rev, nil
+				case "_attachments":
+					return &theValues.attachments, nil
+				case "_deleted":
+					return &theValues.deleted, nil
+				default:
+					if strings.HasPrefix(key, "_sync_") {
+						return nil, fmt.Errorf("key %q is reserved", key)
+					} else {
+						return nil, nil
+					}
+				}
+			})
+
 			if tc.error != "" {
 				assert.ErrorContains(t, err, tc.error)
 				log.Printf("--> %s", err)
@@ -1783,13 +1782,8 @@ func TestJSONExtractUnderscored(t *testing.T) {
 				return
 			}
 			assert.Equal(t, tc.output, string(output))
-			if tc.shape == nil {
-				log.Printf("--> %+v", extracted)
-				assert.Equal(t, tc.extracted, extracted)
-			} else {
-				log.Printf("--> %#v", theValues)
-				assert.Equal(t, tc.values, theValues)
-			}
+			log.Printf("--> %#v", theValues)
+			assert.Equal(t, tc.values, theValues)
 		})
 	}
 

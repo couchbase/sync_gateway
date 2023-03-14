@@ -14,6 +14,7 @@ licenses/APL2.txt.
 package base
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -63,7 +64,81 @@ func JSONEncoderCanonical(w io.Writer) JSONEncoderI {
 	return json.NewEncoder(w)
 }
 
-func JSONExtractUnderscored(input []byte, shape map[string]any) (output []byte, extracted map[string]any, err error) {
-	err = fmt.Errorf("JSONExtractUnderscored not supported in CE")
-	return
+func JSONExtract(input []byte, callback func(string) (any, error)) (output []byte, err error) {
+	out := bytes.NewBufferString("{")
+	var copyFrom int64 = -1
+	keys := Set{}
+
+	reader := bytes.NewReader(input)
+	iter := json.NewDecoder(reader)
+	iter.UseNumber()
+	// Read the opening of the object:
+	if tok, err := iter.Token(); err != nil {
+		return nil, err
+	} else if tok != json.Delim('{') {
+		return nil, fmt.Errorf("json: expected an object")
+	}
+
+	for iter.More() {
+		// Read key, then colon:
+		var key string
+		var ok bool
+		keyOff := iter.InputOffset()
+
+		if keyTok, err := iter.Token(); err != nil {
+			return nil, err
+		} else if key, ok = keyTok.(string); !ok {
+			return nil, fmt.Errorf("JSON syntax error (expected key)")
+		}
+
+		if keys.Contains(key) {
+			return nil, fmt.Errorf("duplicate key %q", key)
+		}
+		keys.Add(key)
+
+		if valuep, err := callback(key); err != nil {
+			// Callback reported an error:
+			return nil, err
+
+		} else if valuep == nil {
+			// Non-special property: Remember to copy the key & value:
+			if copyFrom < 0 {
+				copyFrom = keyOff
+			}
+			// Skip the value by decoding to a dummy `any` //OPT: Faster to skip tokens
+			var dummy any
+			if err = iter.Decode(&dummy); err != nil {
+				return nil, err
+			}
+
+		} else {
+			// Special property: First copy any preceding chars to `out`:
+			if copyFrom >= 0 {
+				if input[copyFrom] == ',' && out.Len() == 1 {
+					copyFrom++
+				}
+				if copyFrom < keyOff {
+					out.Write(input[copyFrom:keyOff])
+				}
+				copyFrom = -1
+			}
+			// Then parse value into `valuep`
+			if err = iter.Decode(valuep); err != nil {
+				if _, ok := err.(*json.UnmarshalTypeError); ok {
+					err = fmt.Errorf("invalid value type for special key %q", key)
+				}
+				return nil, err
+			}
+			copyFrom = iter.InputOffset()
+		}
+	}
+
+	if copyFrom >= 0 {
+		if input[copyFrom] == ',' && out.Len() == 1 {
+			copyFrom++
+		}
+		out.Write(input[copyFrom:iter.InputOffset()])
+	}
+	out.WriteByte('}')
+	return out.Bytes(), nil
 }
