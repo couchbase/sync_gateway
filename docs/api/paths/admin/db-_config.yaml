@@ -1,0 +1,110 @@
+# Copyright 2022-Present Couchbase, Inc.
+#
+# Use of this software is governed by the Business Source License included
+# in the file licenses/BSL-Couchbase.txt.  As of the Change Date specified
+# in that file, in accordance with the Business Source License, use of this
+# software will be governed by the Apache License, Version 2.0, included in
+# the file licenses/APL2.txt.
+
+get:
+  summary: Get database configuration
+  description: |-
+    Retrieve the full configuration for the database specified.
+
+    Required Sync Gateway RBAC roles:
+
+    * Sync Gateway Architect
+  parameters:
+    - $ref: ../../components/parameters.yaml#/deprecated-redact
+    - name: include_javascript
+      in: query
+      description: 'Include the fields that have Javascript functions in the response. E.g. sync function, import filter, and event handlers.'
+      schema:
+        type: boolean
+        default: true
+    - $ref: ../../components/parameters.yaml#/include_runtime
+    - name: refresh_config
+      in: query
+      description: Forces the configuration to be reloaded on the Sync Gateway node.
+      schema:
+        type: boolean
+        default: false
+  responses:
+    '200':
+      description: Successfully retrieved database configuration
+      headers:
+        Etag:
+          schema:
+            type: string
+          description: The database configuration version. Use with If-Match for optimistic concurrency control.
+      content:
+        application/json:
+          schema:
+            $ref: ../../components/schemas.yaml#/Database
+    '404':
+      $ref: ../../components/responses.yaml#/Not-found
+  tags:
+    - Database Configuration
+put:
+  summary: Replace database configuration
+  description: |-
+    Replaces the database configuration with the one sent in the request.
+
+    The bucket and database name cannot be changed. If these need to be changed, the database will need to be deleted then recreated with the new settings.
+
+    Required Sync Gateway RBAC roles:
+
+    * Sync Gateway Architect
+    * Sync Gateway Application
+  parameters:
+    - $ref: ../../components/parameters.yaml#/DB-config-If-Match
+    - $ref: ../../components/parameters.yaml#/disable_oidc_validation
+  requestBody:
+    description: The new database configuration to use
+    content:
+      application/json:
+        schema:
+          $ref: ../../components/schemas.yaml#/Database
+  responses:
+    '201':
+      $ref: ../../components/responses.yaml#/DB-config-updated
+    '400':
+      $ref: ../../components/responses.yaml#/request-problem
+    '404':
+      $ref: ../../components/responses.yaml#/Not-found
+    '412':
+      $ref: ../../components/responses.yaml#/DB-config-precondition-failed
+  tags:
+    - Database Configuration
+post:
+  summary: Update database configuration
+  description: |-
+    This is used to update the database configuration fields specified. Only the fields specified in the request will have their values replaced.
+
+    The bucket and database name cannot be changed. If these need to be changed, the database will need to be deleted then recreated with the new settings.
+
+    Required Sync Gateway RBAC roles:
+
+    * Sync Gateway Architect
+    * Sync Gateway Application
+  parameters:
+    - $ref: ../../components/parameters.yaml#/DB-config-If-Match
+  requestBody:
+    description: The database configuration fields to update
+    content:
+      application/json:
+        schema:
+          $ref: ../../components/schemas.yaml#/Database
+  responses:
+    '201':
+      $ref: ../../components/responses.yaml#/DB-config-updated
+    '400':
+      $ref: ../../components/responses.yaml#/request-problem
+    '404':
+      description: Not Found
+    '412':
+      $ref: ../../components/responses.yaml#/DB-config-precondition-failed
+  tags:
+    - Database Configuration
+parameters:
+  - $ref: ../../components/parameters.yaml#/db

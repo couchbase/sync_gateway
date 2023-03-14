@@ -1,0 +1,39 @@
+# Copyright 2022-Present Couchbase, Inc.
+#
+# Use of this software is governed by the Business Source License included
+# in the file licenses/BSL-Couchbase.txt.  As of the Change Date specified
+# in that file, in accordance with the Business Source License, use of this
+# software will be governed by the Apache License, Version 2.0, included in
+# the file licenses/APL2.txt.
+
+parameters:
+  - $ref: ../../components/parameters.yaml#/db
+  - $ref: ../../components/parameters.yaml#/view
+get:
+  summary: Dump a view | Unsupported
+  description: |-
+    **This is unsupported**
+
+    This queries the view and outputs it as HTML.
+
+    Required Sync Gateway RBAC roles:
+
+    * Sync Gateway Application
+    * Sync Gateway Application Read Only
+  responses:
+    '200':
+      description: Retrieved view successfully
+      content:
+        text/html:
+          schema:
+            type: string
+    '404':
+      $ref: ../../components/responses.yaml#/Not-found
+    '500':
+      description: Internal Server Error
+      content:
+        application/json:
+          schema:
+            $ref: ../../components/schemas.yaml#/HTTP-Error
+  tags:
+    - Unsupported
