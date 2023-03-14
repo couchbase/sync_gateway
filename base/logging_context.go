@@ -135,6 +135,13 @@ func CollectionLogCtx(parent context.Context, collectionName string) context.Con
 	return LogContextWith(parent, &newCtx)
 }
 
+// CorrelationIDCtx extends the parent context with a collection name.
+func CorrelationIDLogCtx(parent context.Context, correlationID string) context.Context {
+	newCtx := getLogCtx(parent)
+	newCtx.CorrelationID = correlationID
+	return LogContextWith(parent, &newCtx)
+}
+
 // DatabaseLogCtx extends the parent context with a database.
 func DatabaseLogCtx(parent context.Context, databaseName string) context.Context {
 	newCtx := getLogCtx(parent)

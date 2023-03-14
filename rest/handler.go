@@ -172,7 +172,7 @@ func newHandler(server *ServerContext, privs handlerPrivs, r http.ResponseWriter
 // ctx returns the request-scoped context for logging/cancellation.
 func (h *handler) ctx() context.Context {
 	if h.rqCtx == nil {
-		h.rqCtx = base.LogContextWith(h.rq.Context(), &base.LogContext{CorrelationID: h.formatSerialNumber()})
+		h.rqCtx = base.CorrelationIDLogCtx(h.rq.Context(), h.formatSerialNumber())
 	}
 	return h.rqCtx
 }

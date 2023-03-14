@@ -1888,6 +1888,7 @@ func (sc *ServerContext) initializeCouchbaseServerConnections(ctx context.Contex
 }
 
 func (sc *ServerContext) AddServerLogContext(parent context.Context) context.Context {
+	// ServerLogContext is separate from standard LogContext, so this does not reset the log context
 	if sc != nil && sc.LogContextID != "" {
 		return base.LogContextWith(parent, &base.ServerLogContext{LogContextID: sc.LogContextID})
 	}
@@ -1897,6 +1898,7 @@ func (sc *ServerContext) AddServerLogContext(parent context.Context) context.Con
 func (sc *ServerContext) SetContextLogID(parent context.Context, id string) context.Context {
 	if sc != nil {
 		sc.LogContextID = id
+		// ServerLogContext is separate from standard LogContext, so this does not reset the log context
 		return base.LogContextWith(parent, &base.ServerLogContext{LogContextID: sc.LogContextID})
 	}
 	return parent

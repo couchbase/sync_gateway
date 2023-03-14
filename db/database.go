@@ -467,7 +467,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 		defaultOpts := DefaultCacheOptions()
 		cacheOptions = &defaultOpts
 	}
-	channelCache, err := NewChannelCacheForContext(cacheOptions.ChannelCacheOptions, dbContext)
+	channelCache, err := NewChannelCacheForContext(ctx, cacheOptions.ChannelCacheOptions, dbContext)
 	if err != nil {
 		return nil, err
 	}
@@ -725,7 +725,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 					<-dbContext.terminator
 					bgtTerminator.Close()
 				}()
-				bgt, err := NewBackgroundTask("Compact", dbContext.Name, func(ctx context.Context) error {
+				bgt, err := NewBackgroundTask(ctx, "Compact", func(ctx context.Context) error {
 					_, err := db.Compact(ctx, false, func(purgedDocCount *int) {}, bgtTerminator)
 					if err != nil {
 						base.WarnfCtx(ctx, "Error trying to compact tombstoned documents for %q with error: %v", dbContext.Name, err)

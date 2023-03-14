@@ -33,7 +33,7 @@ func requireLogIs(t testing.TB, s string, f func()) {
 		}
 		return true, nil, nil
 	}
-	err, _ := RetryLoop("wait for logs", retry, CreateSleeperFunc(10, 100))
+	err, _ := RetryLoop("wait for logs", retry, CreateSleeperFunc(10, 1000))
 	consoleLogger.logger.SetOutput(os.Stderr)
 
 	require.NoError(t, err, "Console logs did not contain %q, got %q", s, log)

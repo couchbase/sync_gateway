@@ -478,7 +478,7 @@ func NewSGReplicateManager(ctx context.Context, dbContext *DatabaseContext, cfg 
 
 	return &sgReplicateManager{
 		cfg:                        cfg,
-		loggingCtx:                 base.LogContextWith(ctx, &base.LogContext{CorrelationID: sgrClusterMgrContextID + dbContext.Name}),
+		loggingCtx:                 base.CorrelationIDLogCtx(ctx, sgrClusterMgrContextID),
 		clusterUpdateTerminator:    make(chan struct{}),
 		clusterSubscribeTerminator: make(chan struct{}),
 		dbContext:                  dbContext,
