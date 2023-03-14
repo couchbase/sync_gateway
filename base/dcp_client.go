@@ -460,6 +460,7 @@ func (dc *DCPClient) openStream(vbID uint16, maxRetries uint32) (err error) {
 }
 
 func (dc *DCPClient) rollback(vbID uint16) (err error) {
+	InfofCtx(context.TODO(), KeyDCP, "calling rollback on dcp client for vbId:", vbID)
 	if dc.dbStats != nil {
 		dc.dbStats.Add("dcp_rollback_count", 1)
 	}
@@ -524,6 +525,7 @@ func (dc *DCPClient) openStreamRequest(vbID uint16) error {
 func (dc *DCPClient) verifyFailoverLog(vbID uint16, f []gocbcore.FailoverEntry) error {
 
 	if dc.failOnRollback {
+		InfofCtx(context.TODO(), KeyDCP, "Inside verify failover logs vbid:", vbID)
 		previousMeta := dc.metadata.GetMeta(vbID)
 		// Cases where VbUUID and StartSeqNo aren't set aren't considered rollback
 		if previousMeta.VbUUID == 0 && previousMeta.StartSeqNo == 0 {
@@ -557,7 +559,8 @@ func (dc *DCPClient) onStreamEnd(e endStreamEvent) {
 	logCtx := context.TODO()
 
 	if e.err == nil {
-		DebugfCtx(logCtx, KeyDCP, "Stream (vb:%d) closed, all items streamed", e.vbID)
+		DebugfCtx(logCtx, KeyDCP, "Stream (vb:%d) "+
+			"closed, all items streamed", e.vbID)
 		dc.deactivateVbucket(e.vbID)
 		return
 	}

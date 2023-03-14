@@ -140,6 +140,112 @@ func TestDocLifecycle(t *testing.T) {
 	RequireStatus(t, response, 200)
 }
 
+func TestGreg(t *testing.T) {
+	//base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+	rt := NewRestTester(t, &RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction})
+	defer rt.Close()
+
+	sync := channels.DocChannelsSyncFunction
+	var resp *TestResponse
+	testBucket := base.GetPersistentTestBucket(t)
+	defer testBucket.Close()
+	fmt.Println(rt.GetSingleTestDatabaseCollection().Name)
+
+	resp = rt.SendAdminRequest(http.MethodPost, "/db/_config", fmt.Sprintf(`{"bucket": "%s", "num_index_replicas": 0, "scopes": {"%s": { "collections": {"%s": {"sync":"%s"}}}}}`,
+		testBucket.GetName(), rt.GetSingleTestDatabaseCollection().ScopeName, rt.GetSingleTestDatabaseCollection().Name, sync))
+	RequireStatus(t, resp, http.StatusCreated)
+
+	resp = rt.SendAdminRequest("POST", "/db/_user/", GetUserPayload(t, "greg", "letmein", "", rt.GetSingleTestDatabaseCollection(), []string{"chan"}, []string{}))
+	RequireStatus(t, resp, http.StatusCreated)
+
+	fmt.Println(GetUserPayload(t, "greg", "letmein", "", rt.GetSingleTestDatabaseCollection(), []string{"chan"}, []string{}))
+
+	resp = rt.SendUserRequest("PUT", "/{{.keyspace}}/doc1", `{"channels": ["chan"]}`, "greg")
+	fmt.Println(resp.Code, resp.Body)
+
+	revid := rt.CreateDocReturnRev(t, "doc3", "", map[string]interface{}{"channels": "A"})
+
+	resp = rt.SendUserRequest("GET", "/{{.keyspace}}/_all_docs?include_docs=true", "", "greg")
+	fmt.Println(resp.Code, resp.Body)
+
+	resp = rt.SendUserRequest("GET", "/{{.keyspace}}/doc1", "", "greg")
+	fmt.Println(resp.Code, resp.Body)
+
+	fmt.Println(revid)
+	resp = rt.SendUserRequest("GET", "/{{.keyspace}}/doc3?rev="+revid, "", "greg")
+	fmt.Println(resp.Code, resp.Body)
+
+	resp = rt.SendAdminRequest("GET", "/{{.keyspace}}/doc3?rev="+revid, "")
+	fmt.Println(resp.Code, resp.Body)
+
+	resp = rt.SendUserRequest("GET", "/{{.keyspace}}/doc3", "", "greg")
+	fmt.Println(resp.Code, resp.Body)
+
+	resp = rt.SendAdminRequest("GET", "/{{.keyspace}}/_all_docs", "")
+	fmt.Println(resp.Code, resp.Body)
+
+}
+
+func TestLol(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyDCP, base.KeyCRUD, base.KeyChanges, base.KeyQuery, base.KeyHTTP)
+	rt := NewRestTester(t, &RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction,
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{AutoImport: true}}})
+	defer rt.Close()
+
+	var changes struct {
+		Results  []db.ChangeEntry
+		Last_Seq db.SequenceID
+	}
+
+	sync := channels.DocChannelsSyncFunction
+	var resp *TestResponse
+	testBucket := base.GetPersistentTestBucket(t)
+	defer testBucket.Close()
+	fmt.Println(rt.GetSingleTestDatabaseCollection().Name)
+
+	resp = rt.SendAdminRequest(http.MethodPut, "/db/_config", fmt.Sprintf(`{"bucket": "%s", "num_index_replicas": 0, "scopes": {"%s": { "collections": {"%s": {"sync":"%s"}}}}}`,
+		testBucket.GetName(), rt.GetSingleTestDatabaseCollection().ScopeName, rt.GetSingleTestDatabaseCollection().Name, sync))
+	RequireStatus(t, resp, http.StatusCreated)
+
+	fmt.Println("failover + rebalance out now now")
+	time.Sleep(50 * time.Second)
+
+	err := rt.GetDatabase().RestartListener()
+	require.NoError(t, err)
+
+	for i := 0; i < 10; i++ {
+		resp = rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+fmt.Sprint(i), `{"greg": "lol"}`)
+		if resp.Code != http.StatusCreated {
+			i--
+		}
+		time.Sleep(4 * time.Second)
+	}
+
+	changesResponse := rt.SendAdminRequest("GET", "/{{.keyspace}}/_changes?since=0", "")
+	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
+	assert.NoError(t, err, "Error unmarshalling changes response")
+	assert.Len(t, changes.Results, 10)
+
+	fmt.Println("add server back")
+	time.Sleep(10 * time.Second)
+	fmt.Println("rebalance it in")
+	time.Sleep(50 * time.Second)
+
+	for i := 10; i < 110; i++ {
+		resp = rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+fmt.Sprint(i), `{"greg": "lol"}`)
+		if resp.Code != http.StatusCreated {
+			i--
+		}
+	}
+
+	time.Sleep(10 * time.Second)
+	changesResponse = rt.SendAdminRequest("GET", "/{{.keyspace}}/_changes?since=0", "")
+	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
+	assert.NoError(t, err, "Error unmarshalling changes response")
+	assert.Len(t, changes.Results, 110)
+
+}
+
 func TestDocumentUpdateWithNullBody(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()

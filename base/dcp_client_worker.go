@@ -111,6 +111,7 @@ func (w *DCPWorker) Start(wg *sync.WaitGroup) {
 				vbID := event.VbID()
 				switch e := event.(type) {
 				case streamOpenEvent:
+					InfofCtx(context.TODO(), KeyDCP, "Setting failover entries on worker for vbID: %v", e.vbID)
 					w.metadata.SetFailoverEntries(e.vbID, e.failoverLogs)
 				case snapshotEvent:
 					// Set pending snapshot - don't persist to meta until we receive first sequence in the snapshot,

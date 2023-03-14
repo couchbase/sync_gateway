@@ -113,8 +113,15 @@ func (m *DCPMetadataMem) UpdateSeq(vbID uint16, seq uint64) {
 }
 
 func (m *DCPMetadataMem) SetFailoverEntries(vbID uint16, fe []gocbcore.FailoverEntry) {
+	fmt.Println("inside metaMEM", vbID%2)
 	m.metadata[vbID].FailoverEntries = fe
-	m.metadata[vbID].VbUUID = getVbUUID(fe, m.metadata[vbID].StartSeqNo)
+	if vbID%2 == 0 {
+		m.metadata[vbID].VbUUID = 1234
+	} else {
+		m.metadata[vbID].VbUUID = getVbUUID(fe, m.metadata[vbID].StartSeqNo)
+	}
+	//m.metadata[vbID].VbUUID = getVbUUID(fe, m.metadata[vbID].StartSeqNo)
+	InfofCtx(context.TODO(), KeyDCP, "failover entires for vb: %v %v", vbID, m.metadata[vbID].FailoverEntries)
 }
 
 // SetEndSeqNos will update the metadata endSeqNos to the values provided.  Vbuckets not
