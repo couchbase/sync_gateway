@@ -37,7 +37,12 @@ const (
 )
 
 // Read-only set of reserved document body keys
-var BodyReservedKeys = base.SetOf(BodyDeleted, BodyRev, BodyId, BodyRevisions, BodyAttachments, BodyPurged, BodyExpiry, BodyRemoved, base.SyncPropertyName) // per spec
+var bodyReservedKeys = base.SetOf(BodyDeleted, BodyRev, BodyId, BodyRevisions, BodyAttachments, BodyPurged, BodyExpiry, BodyRemoved, base.SyncPropertyName) // per spec
+
+// True if this is a reserved document body key
+func IsReservedKey(key string) bool {
+	return bodyReservedKeys.Contains(key) || strings.HasPrefix(key, BodyInternalPrefix)
+}
 
 // A revisions property found within a Body.  Expected to be of the form:
 //

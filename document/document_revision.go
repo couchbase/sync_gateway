@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -39,7 +38,7 @@ func ParseDocumentRevision(json []byte, specialProperties ...string) (*DocumentR
 	var err error
 	rev.BodyBytes, err = base.JSONExtract(json, func(key string) (valp any, err error) {
 		// JSONExtract callback: process one key:
-		if BodyReservedKeys.Contains(key) {
+		if IsReservedKey(key) {
 			for _, specialKey := range specialProperties {
 				if key == specialKey {
 					if key == BodyExpiry {
@@ -50,8 +49,6 @@ func ParseDocumentRevision(json []byte, specialProperties ...string) (*DocumentR
 				}
 			}
 			return nil, base.HTTPErrorf(http.StatusBadRequest, "top-level property '"+key+"' is a reserved internal property")
-		} else if strings.HasPrefix(key, BodyInternalPrefix) {
-			return nil, base.HTTPErrorf(http.StatusBadRequest, "user defined top-level properties that start with '_sync_' are not allowed in document body")
 		} else {
 			return nil, nil
 		}

@@ -1711,9 +1711,15 @@ func TestJSONExtract(t *testing.T) {
 			values: values{id: "Hey", attachments: map[string]attachment{"a": {Length: 1}}},
 		},
 		{
+			name:   "Underscored and regular",
+			input:  `{"_id":"Hey","foo":1234,"bar":{"a": 1, "z": 26},"_rev":"1-abcd","baz":true}`,
+			output: `{"foo":1234,"bar":{"a": 1, "z": 26},"baz":true}`,
+			values: values{id: "Hey", rev: "1-abcd"},
+		},
+		{
 			name:   "Regular and underscored",
-			input:  `{"_id":"Hey","foo":1234,"bar":{"a": 1, "z": 26},"_rev":"1-abcd"}`,
-			output: `{"foo":1234,"bar":{"a": 1, "z": 26}}`,
+			input:  `{"foo":1234,"_id":"Hey","_rev":"1-abcd","bar":{"a": 1, "z": 26},"baz":true}`,
+			output: `{"foo":1234,"bar":{"a": 1, "z": 26},"baz":true}`,
 			values: values{id: "Hey", rev: "1-abcd"},
 		},
 

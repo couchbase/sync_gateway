@@ -376,7 +376,7 @@ func TestParseDocumentRevision(t *testing.T) {
 		{
 			name:  "Illegal key prefix",
 			input: `{"_id": "foo", "_sync_whoa":"hi"}`,
-			error: `properties that start with '_sync_' are not allowed`,
+			error: `'_sync_whoa' is a reserved internal property`,
 		},
 		{
 			name:  "Wrong type",
