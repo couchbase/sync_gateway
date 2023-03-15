@@ -13,12 +13,10 @@ package db
 import (
 	"context"
 	"fmt"
-	"net/http"
-	"strings"
-
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	ch "github.com/couchbase/sync_gateway/channels"
+	"net/http"
 )
 
 func (db *DatabaseContext) DeleteRole(ctx context.Context, name string, purge bool) error {
@@ -121,10 +119,10 @@ func (dbc *DatabaseContext) UpdatePrincipal(ctx context.Context, updates *auth.P
 		if collectionAccessChanged {
 			changed = true
 		}
+		//if updates.CollectionAccess
 		for scopeName, collections := range updates.CollectionAccess {
 			for collectionName, _ := range collections {
-				collectionNameSplit := strings.Split(collectionName, ".")
-				_, err = dbc.GetDatabaseCollection(scopeName, collectionNameSplit[1])
+				_, err = dbc.GetDatabaseCollection(scopeName, collectionName)
 				if err != nil {
 					return false, base.HTTPErrorf(http.StatusNotFound, "keyspace specified in collection_access (%s) not found", fmt.Sprintf("%s.%s.%s", dbc.Name, scopeName, collectionName))
 				}
