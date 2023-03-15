@@ -1065,7 +1065,7 @@ class CurlKiller:
         self.p = None
 
 
-def do_upload_and_exit(path, url, proxy, keepZip):
+def do_upload_and_exit(path, url, proxy):
 
     f = open(path, 'rb')
 

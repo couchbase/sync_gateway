@@ -747,7 +747,7 @@ def main():
 
     # If user asked to just upload, then upload and exit
     if options.just_upload_into is not None:
-        do_upload_and_exit(args[0], options.just_upload_into, options.upload_proxy, keep_zip)
+        do_upload_and_exit(args[0], options.just_upload_into, options.upload_proxy)
 
     # Create a TaskRunner and run all of the OS tasks (collect top, netstat, etc)
     # The output of the tasks will go directly into couchbase.log
