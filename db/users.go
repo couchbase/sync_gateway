@@ -116,18 +116,8 @@ func (dbc *DatabaseContext) UpdatePrincipal(ctx context.Context, updates *auth.P
 			changed = true
 		}
 
-		collectionAccessChanged := dbc.RequiresCollectionAccessUpdate(ctx, princ, updates.CollectionAccess)
-		if collectionAccessChanged {
-			changed = true
-		}
-
-		for scopeName, collections := range updates.CollectionAccess {
-			for collectionName, _ := range collections {
-				_, err = dbc.GetDatabaseCollection(scopeName, collectionName)
-				if err != nil {
-					return false, base.HTTPErrorf(http.StatusNotFound, "keyspace specified in collection_access (%s) not found", fmt.Sprintf("%s.%s.%s", dbc.Name, scopeName, collectionName))
-				}
-			}
+		if changed, err = dbc.RequiresCollectionAccessUpdate(ctx, princ, updates.CollectionAccess); err != nil {
+			return false, err
 		}
 
 		var updatedExplicitRoles, updatedJWTRoles, updatedJWTChannels ch.TimedSet
@@ -205,7 +195,7 @@ func (dbc *DatabaseContext) UpdatePrincipal(ctx context.Context, updates *auth.P
 			princ.SetExplicitChannels(updatedExplicitChannels, nextSeq)
 		}
 
-		if collectionAccessChanged {
+		if changed {
 			dbc.UpdateCollectionExplicitChannels(ctx, princ, updates.CollectionAccess, nextSeq)
 		}
 
@@ -268,22 +258,27 @@ func (dbc *DatabaseContext) UpdateCollectionExplicitChannels(ctx context.Context
 }
 
 // RequiresCollectionAccessUpdate returns true if the provided map of CollectionAccessConfig requires an update to the principal
-func (dbc *DatabaseContext) RequiresCollectionAccessUpdate(ctx context.Context, princ auth.Principal, updates map[string]map[string]*auth.CollectionAccessConfig) (requiresUpdate bool) {
+func (dbc *DatabaseContext) RequiresCollectionAccessUpdate(ctx context.Context, princ auth.Principal, updates map[string]map[string]*auth.CollectionAccessConfig) (requiresUpdate bool, err error) {
 
 	for scopeName, scope := range updates {
 		if scope != nil {
 			for collectionName, updatedCollectionAccess := range scope {
+				_, err = dbc.GetDatabaseCollection(scopeName, collectionName)
+				if err != nil {
+					return false, base.HTTPErrorf(http.StatusNotFound, "keyspace specified in collection_access (%s) not found", fmt.Sprintf("%s.%s.%s", dbc.Name, scopeName, collectionName))
+				}
 				if updatedCollectionAccess == nil {
 					if princ.CollectionExplicitChannels(scopeName, collectionName) != nil {
-						return true
+						return true, nil
 					}
 				} else {
 					if !princ.CollectionExplicitChannels(scopeName, collectionName).Equals(updatedCollectionAccess.ExplicitChannels_) {
-						return true
+						return true, nil
 					}
 				}
 			}
 		}
 	}
-	return false
+
+	return false, nil
 }
