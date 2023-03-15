@@ -810,10 +810,9 @@ def main():
         else:
             exit_code = do_upload(zip_filename, upload_url, options.upload_proxy)
     finally:
-        if options.keep_zip:
-            return
-        delete_zip(zip_filename)
-        delete_zip(redact_zip_file)
+        if not options.keep_zip:
+            delete_zip(zip_filename)
+            delete_zip(redact_zip_file)
     sys.exit(exit_code)
 
 

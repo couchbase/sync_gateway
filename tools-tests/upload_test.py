@@ -124,3 +124,45 @@ def test_main_redacted_zip_deleted_on_upload_failure():
             assert exc.value.code == 1
     assert not pathlib.Path(ZIP_NAME).exists()
     assert not pathlib.Path(REDACTED_ZIP_NAME).exists()
+
+@pytest.mark.usefixtures("main_norun")
+@pytest.mark.parametrize("args", [[], ["--log-redaction-level", "none"]])
+def test_main_keep_zip_on_upload_success(args):
+    with unittest.mock.patch("tasks.urllib.request.build_opener", FakeSuccessUrlOpener):
+        with unittest.mock.patch("sys.argv", ["sg_collect", *args, "--upload-host", "https://nohost.com", "--customer", "fakeCustomer","--keep-zip",  ZIP_NAME]):
+            with pytest.raises(SystemExit) as exc:
+                sgcollect_info.main()
+            assert exc.value.code == 0
+    assert pathlib.Path(ZIP_NAME).exists()
+    assert not pathlib.Path(REDACTED_ZIP_NAME).exists()
+
+@pytest.mark.usefixtures("main_norun")
+@pytest.mark.parametrize("args", [[], ["--log-redaction-level", "none"]])
+def test_main_keep_zip_on_upload_failure(args):
+    with unittest.mock.patch("tasks.urllib.request.build_opener", FakeFailureUrlOpener):
+        with unittest.mock.patch("sys.argv", ["sg_collect", *args, "--upload-host", "https://nohost.com", "--customer", "fakeCustomer", "--keep-zip", ZIP_NAME]):
+            with pytest.raises(SystemExit) as exc:
+                sgcollect_info.main()
+            assert exc.value.code == 1
+    assert pathlib.Path(ZIP_NAME).exists()
+    assert not pathlib.Path(REDACTED_ZIP_NAME).exists()
+
+@pytest.mark.usefixtures("main_norun_redacted_zip")
+def test_main_keep_zip_deleted_on_upload_success():
+    with unittest.mock.patch("tasks.urllib.request.build_opener", FakeSuccessUrlOpener):
+        with unittest.mock.patch("sys.argv", ["sg_collect", "--log-redaction-level", "partial", "--upload-host", "https://nohost.com", "--customer", "fakeCustomer","--keep-zip",  ZIP_NAME]):
+            with pytest.raises(SystemExit) as exc:
+                sgcollect_info.main()
+            assert exc.value.code == 0
+    assert pathlib.Path(ZIP_NAME).exists()
+    assert pathlib.Path(REDACTED_ZIP_NAME).exists()
+
+@pytest.mark.usefixtures("main_norun_redacted_zip")
+def test_main_keep_zip_deleted_on_upload_failure():
+    with unittest.mock.patch("tasks.urllib.request.build_opener", FakeFailureUrlOpener):
+        with unittest.mock.patch("sys.argv", ["sg_collect","--log-redaction-level", "partial", "--upload-host", "https://nohost.com", "--customer", "fakeCustomer", "--keep-zip", ZIP_NAME]):
+            with pytest.raises(SystemExit) as exc:
+                sgcollect_info.main()
+            assert exc.value.code == 1
+    assert pathlib.Path(ZIP_NAME).exists()
+    assert pathlib.Path(REDACTED_ZIP_NAME).exists()
