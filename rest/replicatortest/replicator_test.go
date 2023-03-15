@@ -4085,7 +4085,7 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 			doc, err := rt1.GetDatabase().GetSingleDatabaseCollection().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalAll)
 			require.NoError(t, err)
 			assert.Equal(t, test.expectedRevID, doc.SyncData.CurrentRev)
-			assert.Equal(t, expectedLocalBody, doc.Body())
+			assert.Equal(t, db.Body(expectedLocalBody), doc.Body())
 			log.Printf("Doc %s is %+v", docID, doc)
 			log.Printf("Doc %s attachments are %+v", docID, doc.Attachments)
 			for revID, revInfo := range doc.SyncData.History {
@@ -4125,7 +4125,7 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 			doc, err = rt2.GetDatabase().GetSingleDatabaseCollection().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalAll)
 			require.NoError(t, err)
 			assert.Equal(t, test.expectedRevID, doc.SyncData.CurrentRev)
-			assert.Equal(t, expectedLocalBody, doc.Body())
+			assert.Equal(t, db.Body(expectedLocalBody), doc.Body())
 			log.Printf("Remote Doc %s is %+v", docID, doc)
 			log.Printf("Remote Doc %s attachments are %+v", docID, doc.Attachments)
 			for revID, revInfo := range doc.SyncData.History {
@@ -5769,7 +5769,7 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 			require.NoError(t, err)
 			assert.Equal(t, test.expectedLocalRevID, doc.SyncData.CurrentRev)
 			log.Printf("doc.Body(): %v", doc.Body())
-			assert.Equal(t, test.expectedLocalBody, doc.Body())
+			assert.Equal(t, db.Body(test.expectedLocalBody), doc.Body())
 			log.Printf("Doc %s is %+v", docID, doc)
 			for revID, revInfo := range doc.SyncData.History {
 				log.Printf("doc revision [%s]: %+v", revID, revInfo)

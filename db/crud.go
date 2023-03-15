@@ -447,7 +447,7 @@ func (col *DatabaseCollectionWithUser) authorizeUserForChannels(docID, revID str
 				History: history,
 				Deleted: isDeleted,
 				Removed: !isDeleted,
-			}
+			}.WithBodyBytes([]byte(base.EmptyDocument))
 			return false, redactedRev
 		}
 	}

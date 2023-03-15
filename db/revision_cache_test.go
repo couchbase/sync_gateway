@@ -87,7 +87,7 @@ func TestLRURevisionCacheEviction(t *testing.T) {
 	// Fill up the rev cache with the first 10 docs
 	for docID := 0; docID < 10; docID++ {
 		id := strconv.Itoa(docID)
-		cache.Put(ctx, DocumentRevision{DocID: id, RevID: "1-abc", History: Revisions{"start": 1}})
+		cache.Put(ctx, DocumentRevision{DocID: id, RevID: "1-abc", History: Revisions{"start": 1}}.WithBodyBytes([]byte(base.EmptyDocument)))
 	}
 
 	// Get them back out
@@ -104,7 +104,7 @@ func TestLRURevisionCacheEviction(t *testing.T) {
 	// Add 3 more docs to the now full revcache
 	for i := 10; i < 13; i++ {
 		docID := strconv.Itoa(i)
-		cache.Put(ctx, DocumentRevision{DocID: docID, RevID: "1-abc", History: Revisions{"start": 1}})
+		cache.Put(ctx, DocumentRevision{DocID: docID, RevID: "1-abc", History: Revisions{"start": 1}}.WithBodyBytes([]byte(base.EmptyDocument)))
 	}
 
 	// Check that the first 3 docs were evicted

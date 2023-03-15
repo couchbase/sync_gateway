@@ -376,7 +376,7 @@ func TestGetRemovedAsUser(t *testing.T) {
 			RevisionsStart: 2,
 			RevisionsIds:   []string{rev2digest, rev1digest}},
 	}
-	assert.Equal(t, expectedResult, body)
+	assert.Equal(t, expectedResult, Body(body))
 
 	// Ensure revision is unavailable for a non-leaf revision that isn't available via the rev cache, and wasn't a channel removal
 	err = collection.PurgeOldRevisionJSON(ctx, "doc1", rev1id)
@@ -430,7 +430,7 @@ func TestGetRemovalMultiChannel(t *testing.T) {
 	// Create the first revision of doc1.
 	rev1Body := Body{
 		"k1":       "v1",
-		"channels": append([]string{"ABC", "NBC"}),
+		"channels": []any{"ABC", "NBC"},
 	}
 	rev1ID, _, err := collection.Put(ctx, "doc1", rev1Body)
 	require.NoError(t, err, "Error creating doc")
@@ -438,7 +438,7 @@ func TestGetRemovalMultiChannel(t *testing.T) {
 	// Create the second revision of doc1 on channel ABC as removal from channel NBC.
 	rev2Body := Body{
 		"k2":       "v2",
-		"channels": []string{"ABC"},
+		"channels": []any{"ABC"},
 		BodyRev:    rev1ID,
 	}
 	rev2ID, _, err := collection.Put(ctx, "doc1", rev2Body)
@@ -447,7 +447,7 @@ func TestGetRemovalMultiChannel(t *testing.T) {
 	// Create the third revision of doc1 on channel ABC.
 	rev3Body := Body{
 		"k3":       "v3",
-		"channels": []string{"ABC"},
+		"channels": []any{"ABC"},
 		BodyRev:    rev2ID,
 	}
 	rev3ID, _, err := collection.Put(ctx, "doc1", rev3Body)
@@ -462,9 +462,9 @@ func TestGetRemovalMultiChannel(t *testing.T) {
 	_, rev1Digest := ParseRevID(rev1ID)
 	_, rev2Digest := ParseRevID(rev2ID)
 
-	bodyExpected := Body{
+	bodyExpected := map[string]any{
 		"k2":       "v2",
-		"channels": []string{"ABC"},
+		"channels": []any{"ABC"},
 		BodyRevisions: Revisions{
 			RevisionsStart: 2,
 			RevisionsIds:   []string{rev2Digest, rev1Digest},
@@ -472,13 +472,13 @@ func TestGetRemovalMultiChannel(t *testing.T) {
 		BodyId:  "doc1",
 		BodyRev: rev2ID,
 	}
-	require.Equal(t, bodyExpected, Body(body))
+	require.Equal(t, bodyExpected, body)
 
 	// Get rev2 of the doc as a user who doesn't have access to this revision.
 	collection.user = userBob
 	body, err = collection.Get1xRevBody(ctx, "doc1", rev2ID, true, nil)
 	require.NoError(t, err, "Error getting 1x rev body")
-	bodyExpected = Body{
+	bodyExpected = map[string]any{
 		BodyRemoved: true,
 		BodyRevisions: Revisions{
 			RevisionsStart: 2,
@@ -503,7 +503,7 @@ func TestGetRemovalMultiChannel(t *testing.T) {
 	collection.user = userBob
 	body, err = collection.Get1xRevBody(ctx, "doc1", rev2ID, true, nil)
 	require.NoError(t, err, "Error getting 1x rev body")
-	bodyExpected = Body{
+	bodyExpected = map[string]any{
 		BodyRemoved: true,
 		BodyRevisions: Revisions{
 			RevisionsStart: 2,

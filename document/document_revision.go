@@ -192,6 +192,9 @@ func (rev *DocumentRevision) Mutable1xBody(db DocumentProvider, requestedHistory
 	if rev.Deleted {
 		b[BodyDeleted] = true
 	}
+	if rev.Removed {
+		b[BodyRemoved] = true
+	}
 
 	// Add attachment data if requested:
 	if attachmentsSince != nil {
