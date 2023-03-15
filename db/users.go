@@ -120,7 +120,7 @@ func (dbc *DatabaseContext) UpdatePrincipal(ctx context.Context, updates *auth.P
 		if collectionAccessChanged {
 			changed = true
 		}
-		//if updates.CollectionAccess
+
 		for scopeName, collections := range updates.CollectionAccess {
 			for collectionName, _ := range collections {
 				_, err = dbc.GetDatabaseCollection(scopeName, collectionName)
