@@ -118,6 +118,14 @@ func (dbc *DatabaseContext) UpdatePrincipal(ctx context.Context, updates *auth.P
 
 		collectionAccessChanged := dbc.RequiresCollectionAccessUpdate(ctx, princ, updates.CollectionAccess)
 		if collectionAccessChanged {
+			for scopeName, collections := range updates.CollectionAccess {
+				for collectionName, _ := range collections {
+					_, err = dbc.GetDatabaseCollection(scopeName, collectionName)
+					if err != nil {
+						return false, err
+					}
+				}
+			}
 			changed = true
 		}
 
