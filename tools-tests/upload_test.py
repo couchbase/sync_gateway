@@ -30,6 +30,12 @@ def main_norun(tmpdir):
     finally:
         os.chdir(workdir)
 
+@pytest.fixture
+def main_norun_redacted_zip(main_norun):
+    with open(REDACTED_ZIP_NAME, "w"):
+            yield
+
+
 class FakeResponse:
     def __init__(self, status_code):
         self.status_code = status_code
@@ -70,7 +76,7 @@ def test_main_output_exists(args):
     assert pathlib.Path(ZIP_NAME).exists()
     assert not pathlib.Path(REDACTED_ZIP_NAME).exists()
 
-@pytest.mark.usefixtures("main_norun")
+@pytest.mark.usefixtures("main_norun_redacted_zip")
 def test_main_output_exists_with_redacted():
     with unittest.mock.patch("sys.argv", ["sg_collect", "--log-redaction-level", "partial", ZIP_NAME]):
             sgcollect_info.main()
@@ -93,6 +99,26 @@ def test_main_zip_deleted_on_upload_success(args):
 def test_main_zip_deleted_on_upload_failure(args):
     with unittest.mock.patch("tasks.urllib.request.build_opener", FakeFailureUrlOpener):
         with unittest.mock.patch("sys.argv", ["sg_collect", *args, "--upload-host", "https://nohost.com", "--customer", "fakeCustomer",  ZIP_NAME]):
+            with pytest.raises(SystemExit) as exc:
+                sgcollect_info.main()
+            assert exc.value.code == 1
+    assert not pathlib.Path(ZIP_NAME).exists()
+    assert not pathlib.Path(REDACTED_ZIP_NAME).exists()
+
+@pytest.mark.usefixtures("main_norun_redacted_zip")
+def test_main_redacted_zip_deleted_on_upload_success():
+    with unittest.mock.patch("tasks.urllib.request.build_opener", FakeSuccessUrlOpener):
+        with unittest.mock.patch("sys.argv", ["sg_collect", "--log-redaction-level", "partial", "--upload-host", "https://nohost.com", "--customer", "fakeCustomer",  ZIP_NAME]):
+            with pytest.raises(SystemExit) as exc:
+                sgcollect_info.main()
+            assert exc.value.code == 0
+    assert not pathlib.Path(ZIP_NAME).exists()
+    assert not pathlib.Path(REDACTED_ZIP_NAME).exists()
+
+@pytest.mark.usefixtures("main_norun_redacted_zip")
+def test_main_redacted_zip_deleted_on_upload_failure():
+    with unittest.mock.patch("tasks.urllib.request.build_opener", FakeFailureUrlOpener):
+        with unittest.mock.patch("sys.argv", ["sg_collect","--log-redaction-level", "partial", "--upload-host", "https://nohost.com", "--customer", "fakeCustomer",  ZIP_NAME]):
             with pytest.raises(SystemExit) as exc:
                 sgcollect_info.main()
             assert exc.value.code == 1
