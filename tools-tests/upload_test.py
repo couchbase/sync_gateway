@@ -25,7 +25,8 @@ def main_norun(tmpdir):
     try:
         os.chdir(tmpdir)
         with unittest.mock.patch("tasks.TaskRunner.run"):
-                yield
+            with open(ZIP_NAME, "w"):
+                    yield
     finally:
         os.chdir(workdir)
 
