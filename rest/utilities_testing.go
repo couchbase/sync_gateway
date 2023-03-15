@@ -436,33 +436,27 @@ func (rt *RestTester) ServerContext() *ServerContext {
 }
 
 // CreateDatabase is a utility function to create a database through the REST API
-func (rt *RestTester) CreateDatabase(dbName string, config DbConfig) (*TestResponse, error) {
+func (rt *RestTester) CreateDatabase(dbName string, config DbConfig) *TestResponse {
 	dbcJSON, err := base.JSONMarshal(config)
-	if err != nil {
-		return nil, err
-	}
+	require.NoError(rt.TB, err)
 	resp := rt.SendAdminRequest(http.MethodPut, fmt.Sprintf("/%s/", dbName), string(dbcJSON))
-	return resp, nil
+	return resp
 }
 
 // ReplaceDbConfig is a utility function to replace a database config through the REST API
-func (rt *RestTester) ReplaceDbConfig(dbName string, config DbConfig) (*TestResponse, error) {
+func (rt *RestTester) ReplaceDbConfig(dbName string, config DbConfig) *TestResponse {
 	dbcJSON, err := base.JSONMarshal(config)
-	if err != nil {
-		return nil, err
-	}
+	require.NoError(rt.TB, err)
 	resp := rt.SendAdminRequest(http.MethodPut, fmt.Sprintf("/%s/_config", dbName), string(dbcJSON))
-	return resp, nil
+	return resp
 }
 
 // UpsertDbConfig is a utility function to upsert a database through the REST API
-func (rt *RestTester) UpsertDbConfig(dbName string, config DbConfig) (*TestResponse, error) {
+func (rt *RestTester) UpsertDbConfig(dbName string, config DbConfig) *TestResponse {
 	dbcJSON, err := base.JSONMarshal(config)
-	if err != nil {
-		return nil, err
-	}
+	require.NoError(rt.TB, err)
 	resp := rt.SendAdminRequest(http.MethodPost, fmt.Sprintf("/%s/_config", dbName), string(dbcJSON))
-	return resp, nil
+	return resp
 }
 
 // GetDatabase Returns first database found for server context.
@@ -2453,4 +2447,28 @@ func (rt *RestTester) GetChangesOneShot(t testing.TB, keyspace string, since int
 	assert.NoError(t, err, "Error unmarshalling changes response")
 	require.Len(t, changes.Results, changesCount)
 	return changesResponse
+}
+
+func (rt *RestTester) NewDbConfig() DbConfig {
+	config := DbConfig{
+		BucketConfig: BucketConfig{
+			Bucket: base.StringPtr(rt.Bucket().GetName()),
+		},
+		NumIndexReplicas: base.UintPtr(0),
+		EnableXattrs:     base.BoolPtr(base.TestUseXattrs()),
+	}
+	// Walrus is peculiar in that it needs to run with views, but can run most GSI tests, including collections
+	if !base.UnitTestUrlIsWalrus() {
+		config.UseViews = base.BoolPtr(base.TestsDisableGSI())
+	}
+	// Setup scopes.
+	if base.TestsUseNamedCollections() && rt.collectionConfig != useSingleCollectionDefaultOnly && (base.UnitTestUrlIsWalrus() || (config.UseViews != nil && !*config.UseViews)) {
+		var syncFn *string
+		if rt.SyncFn != "" {
+			syncFn = base.StringPtr(rt.SyncFn)
+		}
+		config.Scopes = GetCollectionsConfigWithSyncFn(rt.TB, rt.TestBucket, syncFn, rt.numCollections)
+	}
+
+	return config
 }

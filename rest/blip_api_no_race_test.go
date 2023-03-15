@@ -81,8 +81,7 @@ func TestBlipPusherUpdateDatabase(t *testing.T) {
 	// just change the sync function to cause the database to reload
 	dbConfig := *rt.ServerContext().GetDbConfig("db")
 	dbConfig.Sync = base.StringPtr(`function(doc){console.log("update");}`)
-	resp, err := rt.ReplaceDbConfig("db", dbConfig)
-	require.NoError(t, err)
+	resp := rt.ReplaceDbConfig("db", dbConfig)
 	RequireStatus(t, resp, http.StatusCreated)
 
 	// Did we tell the client to close the connection (via HTTP/503)?

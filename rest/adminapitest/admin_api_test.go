@@ -2114,7 +2114,7 @@ func TestHandleDBConfig(t *testing.T) {
 	defer rt.Close()
 
 	bucket := tb.GetName()
-	dbname := "db"
+	dbname := rt.GetDatabase().Name
 	resource := fmt.Sprintf("/%s/", dbname)
 
 	// Get database config before putting any config.
@@ -2130,21 +2130,14 @@ func TestHandleDBConfig(t *testing.T) {
 	resource = resource + "_config"
 
 	// change cache size so we can see the update being reflected in the API response
-	dbConfig := &rest.DbConfig{
-		BucketConfig: rest.BucketConfig{Bucket: &bucket},
-		CacheConfig: &rest.CacheConfig{
-			RevCacheConfig: &rest.RevCacheConfig{
-				Size: base.Uint32Ptr(1337), ShardCount: base.Uint16Ptr(7),
-			},
+	dbConfig := rt.NewDbConfig()
+	dbConfig.CacheConfig = &rest.CacheConfig{
+		RevCacheConfig: &rest.RevCacheConfig{
+			Size: base.Uint32Ptr(1337), ShardCount: base.Uint16Ptr(7),
 		},
-		NumIndexReplicas:   base.UintPtr(0),
-		EnableXattrs:       base.BoolPtr(base.TestUseXattrs()),
-		UseViews:           base.BoolPtr(base.TestsDisableGSI()),
-		SGReplicateEnabled: base.BoolPtr(false),
 	}
-	reqBody, err := base.JSONMarshal(dbConfig)
-	assert.NoError(t, err, "Error unmarshalling changes response")
-	resp = rt.SendAdminRequest(http.MethodPut, resource, string(reqBody))
+
+	resp = rt.ReplaceDbConfig(rt.GetDatabase().Name, dbConfig)
 	rest.RequireStatus(t, resp, http.StatusCreated)
 	assert.Empty(t, resp.Body.String())
 
@@ -3410,22 +3403,13 @@ func TestLegacyCredentialInheritance(t *testing.T) {
 
 func TestDbOfflineConfigLegacy(t *testing.T) {
 	rt := rest.NewRestTester(t, nil)
-	bucket := rt.Bucket()
 	defer rt.Close()
 
-	dbConfig := `{
-	"bucket": "` + bucket.GetName() + `",
-	"name": "db",
-	"sync": "function(doc){ channel(doc.channels); }",
-	"import_filter": "function(doc) { return true }",
-	"import_docs": false,
-	"offline": false,
-	"enable_shared_bucket_access": ` + strconv.FormatBool(base.TestUseXattrs()) + `,
-	"use_views": ` + strconv.FormatBool(base.TestsDisableGSI()) + `,
-	"num_index_replicas": 0 }`
+	dbConfig := rt.NewDbConfig()
+	dbConfig.StartOffline = base.BoolPtr(true)
 
 	// Persist config
-	resp := rt.SendAdminRequest("PUT", "/db/_config", dbConfig)
+	resp := rt.UpsertDbConfig(rt.GetDatabase().Name, dbConfig)
 	require.Equal(t, http.StatusCreated, resp.Code)
 
 	// Get config values before taking db offline
@@ -3852,14 +3836,21 @@ func TestEmptyStringJavascriptFunctions(t *testing.T) {
 
 // Regression test for CBG-2119 - ensure that the disable_password_auth bool field is handled correctly both when set as true and as false
 func TestDisablePasswordAuthThroughAdminAPI(t *testing.T) {
-	rt := rest.NewRestTester(t, &rest.RestTesterConfig{})
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{PersistentConfig: true})
 	defer rt.Close()
 
-	res := rt.SendAdminRequest(http.MethodPost, "/db/_config", `{"bucket":"`+rt.Bucket().GetName()+`","num_index_replicas":0,"disable_password_auth": true}`)
+	// Create a database
+	config := rt.NewDbConfig()
+	dbName := "db"
+	res := rt.CreateDatabase(dbName, config)
+
+	config.DisablePasswordAuth = base.BoolPtr(true)
+	res = rt.UpsertDbConfig(dbName, config)
 	rest.RequireStatus(t, res, http.StatusCreated)
 	assert.True(t, rt.GetDatabase().Options.DisablePasswordAuthentication)
 
-	res = rt.SendAdminRequest(http.MethodPost, "/db/_config", `{"bucket":"`+rt.Bucket().GetName()+`","num_index_replicas":0,"disable_password_auth": false}`)
+	config.DisablePasswordAuth = base.BoolPtr(false)
+	res = rt.UpsertDbConfig(dbName, config)
 	rest.RequireStatus(t, res, http.StatusCreated)
 	assert.False(t, rt.GetDatabase().Options.DisablePasswordAuthentication)
 }

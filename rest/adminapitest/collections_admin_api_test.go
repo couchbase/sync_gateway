@@ -203,11 +203,10 @@ func TestRequireResync(t *testing.T) {
 	delete(scopesConfigC2Only[scope].Collections, collection1)
 
 	// Create a db1 with two collections
-	dbConfig := rest.GetBasicDbCfg(rt.TestBucket)
+	dbConfig := rt.NewDbConfig()
 	dbConfig.Scopes = scopesConfig
 
-	resp, err := rt.CreateDatabase(db1Name, dbConfig)
-	require.NoError(t, err)
+	resp := rt.CreateDatabase(db1Name, dbConfig)
 	rest.RequireStatus(t, resp, http.StatusCreated)
 
 	// Write documents to collection 1 and 2
@@ -220,8 +219,7 @@ func TestRequireResync(t *testing.T) {
 
 	// Update db1 to remove collection1
 	dbConfig.Scopes = scopesConfigC2Only
-	resp, err = rt.ReplaceDbConfig(db1Name, dbConfig)
-	require.NoError(t, err)
+	resp = rt.ReplaceDbConfig(db1Name, dbConfig)
 	rest.RequireStatus(t, resp, http.StatusCreated)
 
 	// Validate that doc can still be retrieved from collection 2
@@ -229,11 +227,10 @@ func TestRequireResync(t *testing.T) {
 	rest.RequireStatus(t, resp, http.StatusOK)
 
 	// Create db2 targeting collection 1
-	db2Config := rest.GetBasicDbCfg(rt.TestBucket)
+	db2Config := rt.NewDbConfig()
 	db2Config.Scopes = scopesConfigC1Only
 
-	resp, err = rt.CreateDatabase(db2Name, db2Config)
-	require.NoError(t, err)
+	resp = rt.CreateDatabase(db2Name, db2Config)
 	rest.RequireStatus(t, resp, http.StatusCreated)
 
 	// Get status, verify offline
@@ -265,7 +262,7 @@ func TestRequireResync(t *testing.T) {
 	resp = rt.SendAdminRequest("POST", "/"+db2Name+"/_resync?action=start&regenerate_sequences=true", string(resyncPayload))
 	rest.RequireStatus(t, resp, http.StatusOK)
 
-	err = rt.WaitForConditionWithOptions(func() bool {
+	err := rt.WaitForConditionWithOptions(func() bool {
 		resyncStatus := db.BackgroundManagerStatus{}
 		response := rt.SendAdminRequest("GET", "/"+db2Name+"/_resync", "")
 		err := base.JSONUnmarshal(response.BodyBytes(), &resyncStatus)
