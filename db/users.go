@@ -13,10 +13,11 @@ package db
 import (
 	"context"
 	"fmt"
+	"net/http"
+
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	ch "github.com/couchbase/sync_gateway/channels"
-	"net/http"
 )
 
 func (db *DatabaseContext) DeleteRole(ctx context.Context, name string, purge bool) error {
