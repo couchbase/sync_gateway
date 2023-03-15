@@ -13,7 +13,6 @@ package document
 import (
 	"bytes"
 	"encoding/binary"
-	"encoding/json"
 	"log"
 	"testing"
 
@@ -333,7 +332,7 @@ func TestParseDocumentRevision(t *testing.T) {
 			input: `{"_id":"Hey","_attachments":{"a": {"length":1}}}`,
 			expectedRev: &DocumentRevision{
 				DocID:       "Hey",
-				Attachments: map[string]any{"a": map[string]any{"length": json.Number("1")}},
+				Attachments: map[string]any{"a": map[string]any{"length": 1.0}},
 				_bodyBytes:  []byte(`{}`),
 			},
 		},
@@ -396,7 +395,7 @@ func TestParseDocumentRevision(t *testing.T) {
 				return
 			}
 			log.Printf("--> %#v", rev)
-			assert.Equal(t, tc.expectedRev, rev)
+			assert.Equal(t, *tc.expectedRev, rev)
 		})
 	}
 }

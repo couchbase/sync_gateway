@@ -71,7 +71,6 @@ func JSONExtract(input []byte, callback func(string) (any, error)) (output []byt
 
 	reader := bytes.NewReader(input)
 	iter := json.NewDecoder(reader)
-	iter.UseNumber()
 	// Read the opening of the object:
 	if tok, err := iter.Token(); err != nil {
 		return nil, err

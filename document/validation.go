@@ -9,7 +9,6 @@
 package document
 
 import (
-	"bytes"
 	"net/http"
 	"strings"
 
@@ -67,22 +66,6 @@ func ValidateImportBody(body Body) error {
 	}
 	// TODO: Validate attachment data to ensure user is not setting invalid attachments
 
-	return nil
-}
-
-// ValidateBlipBody validates incoming blip rev bodies
-// Takes a rawBody to avoid an unnecessary call to doc.BodyBytes()
-func ValidateBlipBody(rawBody []byte, doc *Document) error {
-	// Prevent disallowed internal properties from being used
-	disallowed := []string{base.SyncPropertyName, BodyId, BodyRev, BodyDeleted, BodyRevisions}
-	for _, prop := range disallowed {
-		// Only unmarshal if raw body contains the disallowed property
-		if bytes.Contains(rawBody, []byte(`"`+prop+`"`)) {
-			if _, ok := doc.Body()[prop]; ok {
-				return base.HTTPErrorf(http.StatusBadRequest, "top-level property '"+prop+"' is a reserved internal property")
-			}
-		}
-	}
 	return nil
 }
 

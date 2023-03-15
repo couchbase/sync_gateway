@@ -127,6 +127,10 @@ func (sd *SyncData) HashRedact(salt string) SyncData {
 	return redactedSyncData
 }
 
+type DocumentRoot struct {
+	SyncData *SyncData `json:"_sync"`
+}
+
 // Unmarshals just a document's sync metadata from JSON data.
 // (This is somewhat faster, if all you need is the sync data without the doc body.)
 func UnmarshalDocumentSyncData(data []byte, needHistory bool) (*SyncData, error) {

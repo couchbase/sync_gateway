@@ -115,7 +115,7 @@ var extractConfig jsoniter.API = jsoniter.Config{
 	EscapeHTML:             true,
 	SortMapKeys:            true,
 	ValidateJsonRawMessage: true,
-	UseNumber:              true,
+	UseNumber:              false,
 }.Froze()
 
 // Incrementally parses JSON, finding "_"-prefixed top-level properties and returning them as a map.

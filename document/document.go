@@ -842,33 +842,29 @@ func (accessMap *UserAccessMap) UpdateAccess(doc *Document, newAccess channels.A
 
 // ////// MARSHALING ////////
 
-type DocumentRoot struct {
-	SyncData *SyncData `json:"_sync"`
-}
-
 func (doc *Document) UnmarshalJSON(data []byte) error {
 	if doc.ID == "" {
 		// TODO: CBG-1948
 		panic("Doc was unmarshaled without ID set")
 	}
 
-	// Unmarshal only sync data (into a typed struct)
-	syncData := DocumentRoot{SyncData: &SyncData{History: make(RevTree)}}
-	err := base.JSONUnmarshal(data, &syncData)
+	syncData := &SyncData{History: make(RevTree)}
+
+	var err error
+	doc._rawBody, err = base.JSONExtract(data, func(key string) (any, error) {
+		if key == base.SyncPropertyName {
+			return &syncData, nil
+		} else {
+			return nil, nil
+		}
+	})
 	if err != nil {
 		return pkgerrors.WithStack(base.RedactErrorf("Failed to UnmarshalJSON() doc with id: %s.  Error: %v", base.UD(doc.ID), err))
 	}
-	if syncData.SyncData != nil {
-		doc.SyncData = *syncData.SyncData
-	}
 
-	// Unmarshal the rest of the doc body as map[string]interface{}
-	if err := doc._body.Unmarshal(data); err != nil {
-		return pkgerrors.WithStack(base.RedactErrorf("Failed to UnmarshalJSON() doc with id: %s.  Error: %v", base.UD(doc.ID), err))
+	if syncData != nil {
+		doc.SyncData = *syncData
 	}
-	// Remove _sync from body
-	delete(doc._body, base.SyncPropertyName)
-
 	return nil
 }
 
