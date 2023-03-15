@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
+	"golang.org/x/exp/slices"
 )
 
 // The body of a revision: special properties like _id, plus an arbitrary JSON object.
@@ -38,7 +39,7 @@ func ParseDocumentRevision(json []byte, specialProperties ...string) (DocumentRe
 	rev._bodyBytes, err = base.JSONExtract(json, func(key string) (valp any, err error) {
 		// JSONExtract callback: process one key:
 		if IsReservedKey(key) {
-			if containsString(specialProperties, key) {
+			if slices.Contains(specialProperties, key) {
 				if key == BodyExpiry {
 					return &expiry, nil // store "_exp" value in temporary var
 				} else {
@@ -64,7 +65,7 @@ func DocumentRevisionFromBody(body Body, specialProperties ...string) (rev Docum
 	appProperties := Body{}
 	for key, val := range body {
 		if IsReservedKey(key) {
-			if containsString(specialProperties, key) {
+			if slices.Contains(specialProperties, key) {
 				err = rev.setProperty(key, val)
 			} else {
 				err = base.HTTPErrorf(http.StatusBadRequest, "top-level property '"+key+"' is a reserved internal property")
@@ -231,13 +232,4 @@ func (rev *DocumentRevision) setProperty(key string, val any) error {
 	}
 	// TODO: Add other properties as needed
 	return nil
-}
-
-func containsString(strings []string, str string) bool {
-	for _, s := range strings {
-		if s == str {
-			return true
-		}
-	}
-	return false
 }

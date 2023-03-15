@@ -592,18 +592,9 @@ func (bsc *BlipSyncContext) sendRevision(sender *blip.Sender, docID, revID strin
 
 	base.TracefCtx(bsc.loggingCtx, base.KeySync, "sendRevision, rev attachments for %s/%s are %v", base.UD(docID), revID, base.UD(rev.Attachments))
 	attachmentStorageMeta := document.ToAttachmentStorageMeta(rev.Attachments)
-	var bodyBytes []byte
-	if base.IsEnterpriseEdition() {
-		// Still need to stamp _attachments into BLIP messages
-		bodyBytes, err = rev.BodyBytesWith(BodyAttachments, BodyRemoved)
-		if err != nil {
-			return err
-		}
-	} else {
-		bodyBytes, err = rev.BodyBytesWith(BodyAttachments, BodyRemoved)
-		if err != nil {
-			return bsc.sendNoRev(sender, docID, revID, collectionIdx, seq, err)
-		}
+	bodyBytes, err := rev.BodyBytesWith(BodyAttachments, BodyRemoved)
+	if err != nil {
+		return bsc.sendNoRev(sender, docID, revID, collectionIdx, seq, err)
 	}
 
 	history := toHistory(rev.History, knownRevs, maxHistory)
