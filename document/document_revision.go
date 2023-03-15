@@ -1,6 +1,7 @@
 package document
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"time"
@@ -37,34 +38,58 @@ func ParseDocumentRevision(json []byte, specialProperties ...string) (DocumentRe
 	rev._bodyBytes, err = base.JSONExtract(json, func(key string) (valp any, err error) {
 		// JSONExtract callback: process one key:
 		if IsReservedKey(key) {
-			for _, specialKey := range specialProperties {
-				if key == specialKey {
-					if key == BodyExpiry {
-						return &expiry, nil // store "_exp" value in temporary var
-					} else {
-						return rev.propertyPtr(key, true)
-					}
+			if containsString(specialProperties, key) {
+				if key == BodyExpiry {
+					return &expiry, nil // store "_exp" value in temporary var
+				} else {
+					return rev.propertyPtr(key, true)
 				}
+			} else {
+				return nil, base.HTTPErrorf(http.StatusBadRequest, "top-level property '"+key+"' is a reserved internal property")
 			}
-			return nil, base.HTTPErrorf(http.StatusBadRequest, "top-level property '"+key+"' is a reserved internal property")
 		} else {
 			return nil, nil
 		}
 	})
-	if err != nil {
-		return rev, err
-	}
 
-	if expiry != nil {
+	if err == nil && expiry != nil {
 		// Translate "_exp" property to Time value:
-		if expNum, err := base.ReflectExpiry(expiry); err != nil {
-			return rev, err
-		} else if expNum != nil || *expNum != 0 {
-			expTime := base.CbsExpiryToTime(*expNum)
-			rev.Expiry = &expTime
+		err = rev.SetExpiry(expiry)
+	}
+	return rev, err
+}
+
+// Creates a DocumentRevision from already-parsed JSON (a `Body` map.)
+func DocumentRevisionFromBody(body Body, specialProperties ...string) (rev DocumentRevision, err error) {
+	appProperties := Body{}
+	for key, val := range body {
+		if IsReservedKey(key) {
+			if containsString(specialProperties, key) {
+				err = rev.setProperty(key, val)
+			} else {
+				err = base.HTTPErrorf(http.StatusBadRequest, "top-level property '"+key+"' is a reserved internal property")
+			}
+			if err != nil {
+				return
+			}
+		} else {
+			appProperties[key] = val
 		}
 	}
-	return rev, nil
+	rev._bodyBytes, err = json.Marshal(appProperties)
+	return
+}
+
+// Creates a Document struct populated from a DocumentRevision.
+func (rev *DocumentRevision) AsDocument() *Document {
+	return &Document{
+		ID:             rev.DocID,
+		RevID:          rev.RevID,
+		DocAttachments: rev.Attachments,
+		DocExpiry:      base.TimeToCbsExpiry(rev.Expiry),
+		Deleted:        rev.Deleted,
+		_rawBody:       rev._bodyBytes,
+	}
 }
 
 // Initializes a DocumentRevision's JSON body bytes.
@@ -124,24 +149,25 @@ func (rev *DocumentRevision) UnmarshalBody() (map[string]any, error) {
 	return body, err
 }
 
+// Sets the expiry from any supported JSON type -- int64, float64, json.Number, string.
+func (rev *DocumentRevision) SetExpiry(expiry any) error {
+	if expNum, err := base.ReflectExpiry(expiry); err != nil {
+		return err
+	} else if expNum != nil || *expNum != 0 {
+		expTime := base.CbsExpiryToTime(*expNum)
+		rev.Expiry = &expTime
+	} else {
+		rev.Expiry = nil
+	}
+	return nil
+}
+
 // Trims rev.History to at most `maxHistory` revisions starting from the given ancestors.
 func (rev *DocumentRevision) TrimHistory(maxHistory int, historyFrom []string) {
 	if maxHistory == 0 {
 		rev.History = nil
 	} else if rev.History != nil {
 		_, rev.History = TrimEncodedRevisionsToAncestor(rev.History, historyFrom, maxHistory)
-	}
-}
-
-// Creates a Document struct populated from a DocumentRevision.
-func (rev *DocumentRevision) AsDocument() *Document {
-	return &Document{
-		ID:             rev.DocID,
-		RevID:          rev.RevID,
-		DocAttachments: rev.Attachments,
-		DocExpiry:      base.TimeToCbsExpiry(rev.Expiry),
-		Deleted:        rev.Deleted,
-		_rawBody:       rev._bodyBytes,
 	}
 }
 
@@ -186,4 +212,32 @@ func (rev *DocumentRevision) propertyPtr(key string, always bool) (value any, er
 		err = fmt.Errorf("internal error: DocumentRevision doesn't recognize property %q", key)
 	}
 	return
+}
+
+func (rev *DocumentRevision) setProperty(key string, val any) error {
+	switch key {
+	case BodyAttachments:
+		if atts, found := val.(AttachmentsMeta); found {
+			rev.Attachments = atts
+		} else if atts, found := val.(map[string]any); found {
+			rev.Attachments = AttachmentsMeta(atts)
+		} else {
+			return fmt.Errorf("invalid value for '_attachments' property")
+		}
+	case BodyExpiry:
+		return rev.SetExpiry(val)
+	default:
+		return fmt.Errorf("internal error: DocumentRevision doesn't recognize property %q", key)
+	}
+	// TODO: Add other properties as needed
+	return nil
+}
+
+func containsString(strings []string, str string) bool {
+	for _, s := range strings {
+		if s == str {
+			return true
+		}
+	}
+	return false
 }

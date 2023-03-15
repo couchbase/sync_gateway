@@ -966,6 +966,8 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 		}
 	}
 
+	var newRev document.DocumentRevision
+
 	if deltaSrcRevID, isDelta := revMessage.DeltaSrc(); isDelta {
 		if !bh.sgCanUseDeltas {
 			return base.HTTPErrorf(http.StatusBadRequest, "Deltas are disabled for this peer")
@@ -1018,17 +1020,18 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 		base.TracefCtx(bh.loggingCtx, base.KeySync, "docID: %s - body after patching: %v", base.UD(docID), base.UD(deltaSrcMap))
 		stats.deltaRecvCount.Add(1)
 
-		// Marshal the patched body back to JSON, even though the call to ParseDocumentRevision
-		// below is going to parse through it again ... this could be optimized if we had a way to
-		// create a DocumentRevision from a parsed map.
-		if bodyBytes, err = json.Marshal(deltaSrcMap); err != nil {
-			return base.HTTPErrorf(http.StatusUnprocessableEntity, "Error marshaling patched delta: %s", err)
+		// Create a DocumentRevision from the merged body:
+		newRev, err = document.DocumentRevisionFromBody(deltaSrcMap, BodyAttachments, BodyExpiry)
+		if err != nil {
+			return err
 		}
-	}
 
-	newRev, err := document.ParseDocumentRevision(bodyBytes, BodyAttachments, BodyExpiry)
-	if err != nil {
-		return err
+	} else {
+		// Non-delta case:
+		newRev, err = document.ParseDocumentRevision(bodyBytes, BodyAttachments, BodyExpiry)
+		if err != nil {
+			return err
+		}
 	}
 	newRev.DocID = docID
 	newRev.RevID = revID
