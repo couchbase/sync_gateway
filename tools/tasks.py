@@ -1065,7 +1065,10 @@ class CurlKiller:
         self.p = None
 
 
-def do_upload_and_exit(path, url, proxy):
+def do_upload(path, url, proxy):
+    """
+    Uploads file path to a URL and returns exit code for the program.
+    """
 
     f = open(path, 'rb')
 
@@ -1091,12 +1094,11 @@ def do_upload_and_exit(path, url, proxy):
             raise Exception('Error uploading, expected status code 200, got status code: {0}'.format(url.getcode()))
     except Exception as e:
         log(traceback.format_exc())
-        exit_code = 1
+        return 1
 
     filedata.close()
     f.close()
-
-    sys.exit(exit_code)
+    return 0
 
 
 def parse_host(host):
