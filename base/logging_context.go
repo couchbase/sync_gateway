@@ -48,16 +48,8 @@ func (lc *LogContext) addContext(format string) string {
 		return ""
 	}
 
-	if lc.CorrelationID != "" {
-		format = "c:" + lc.CorrelationID + " " + format
-	}
-
-	if lc.Database != "" {
-		if lc.Collection != "" {
-			format = "col:" + lc.Collection + " " + format
-		}
-		format = "db:" + lc.Database + " " + format
-
+	if lc.Collection != "" && (lc.Database != "" || lc.Bucket == "") {
+		format = "col:" + lc.Collection + " " + format
 	} else if lc.Bucket != "" {
 		keyspace := "b:" + lc.Bucket
 		if lc.Scope != "" {
@@ -68,6 +60,12 @@ func (lc *LogContext) addContext(format string) string {
 		}
 
 		format = keyspace + " " + format
+	}
+	if lc.Database != "" {
+		format = "db:" + lc.Database + " " + format
+	}
+	if lc.CorrelationID != "" {
+		format = "c:" + lc.CorrelationID + " " + format
 	}
 
 	if lc.TestName != "" {

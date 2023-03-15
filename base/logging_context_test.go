@@ -136,7 +136,6 @@ func TestLogFormat(t *testing.T) {
 			}),
 			output: "[INF] db:dbName col:testCollection foobar\n",
 		},
-
 		{
 			name: "database, scope, collection, and bucket",
 			ctx: LogContextWith(context.Background(), &LogContext{
@@ -145,7 +144,45 @@ func TestLogFormat(t *testing.T) {
 				Database:   "dbName",
 				Scope:      "ScopeName",
 			}),
+			// only show collection because bucket and scope are implied by db
 			output: "[INF] db:dbName col:testCollection foobar\n",
+		},
+		{
+			name: "test, database, scope, collection, and bucket",
+			ctx: LogContextWith(context.Background(), &LogContext{
+				TestName:   "aTest",
+				Bucket:     "testBucket",
+				Collection: "testCollection",
+				Database:   "dbName",
+				Scope:      "ScopeName",
+			}),
+			// only show collection because bucket and scope are implied by db
+			output: "[INF] t:aTest db:dbName col:testCollection foobar\n",
+		},
+		{
+			name: "test, database, scope, collection, and bucket",
+			ctx: LogContextWith(context.Background(), &LogContext{
+				TestName:   "aTest",
+				Bucket:     "testBucket",
+				Collection: "testCollection",
+				Database:   "dbName",
+				Scope:      "ScopeName",
+			}),
+			// only show collection because bucket and scope are implied by db
+			output: "[INF] t:aTest db:dbName col:testCollection foobar\n",
+		},
+		{
+			name: "test, database, scope, collection, bucket, correlation",
+			ctx: LogContextWith(context.Background(), &LogContext{
+				TestName:      "aTest",
+				Bucket:        "testBucket",
+				Collection:    "testCollection",
+				Database:      "dbName",
+				Scope:         "ScopeName",
+				CorrelationID: "correlated",
+			}),
+			// only show collection because bucket and scope are implied by db
+			output: "[INF] t:aTest c:correlated db:dbName col:testCollection foobar\n",
 		},
 	}
 	for _, test := range testCases {
@@ -155,4 +192,47 @@ func TestLogFormat(t *testing.T) {
 		})
 	}
 	RequireLogMessage(t, context.Background(), "[INF] foobar\n", standardMessage)
+}
+
+func TestTestCtx(t *testing.T) {
+	RequireLogMessage(t, TestCtx(t), "[INF] t:TestTestCtx foobar\n", standardMessage)
+}
+
+func TestBucketNameCtx(t *testing.T) {
+	RequireLogMessage(t, bucketNameCtx(TestCtx(t), "fooBucket"), "[INF] t:TestBucketNameCtx b:fooBucket foobar\n", standardMessage)
+}
+
+// Tests the typical request workflow for a database request. Makes sure each level of context does not modify earlier levels.
+func TestCollectionLogCtx(t *testing.T) {
+	ctx := TestCtx(t)
+	collectionCtx := CollectionLogCtx(ctx, "fooCollection")
+	RequireLogMessage(t, collectionCtx, "[INF] t:TestCollectionLogCtx col:fooCollection foobar\n", standardMessage)
+}
+
+func TestCtxWorkflow(t *testing.T) {
+	ctx := TestCtx(t)
+	RequireLogMessage(t, ctx, "[INF] t:TestCtxWorkflow foobar\n", standardMessage)
+
+	correlationCtx := CorrelationIDLogCtx(ctx, "correlationID")
+	RequireLogMessage(t, correlationCtx, "[INF] t:TestCtxWorkflow c:correlationID foobar\n", standardMessage)
+	RequireLogMessage(t, ctx, "[INF] t:TestCtxWorkflow foobar\n", standardMessage)
+
+	bucketCtx := bucketNameCtx(correlationCtx, "fooBucket")
+	RequireLogMessage(t, bucketCtx, "[INF] t:TestCtxWorkflow c:correlationID b:fooBucket foobar\n", standardMessage)
+	RequireLogMessage(t, correlationCtx, "[INF] t:TestCtxWorkflow c:correlationID foobar\n", standardMessage)
+	RequireLogMessage(t, ctx, "[INF] t:TestCtxWorkflow foobar\n", standardMessage)
+
+	keyspaceCtx := KeyspaceLogCtx(bucketCtx, "fooBucket", "fooScope", "fooCollection")
+	RequireLogMessage(t, keyspaceCtx, "[INF] t:TestCtxWorkflow c:correlationID b:fooBucket.fooScope.fooCollection foobar\n", standardMessage)
+	RequireLogMessage(t, bucketCtx, "[INF] t:TestCtxWorkflow c:correlationID b:fooBucket foobar\n", standardMessage)
+	RequireLogMessage(t, correlationCtx, "[INF] t:TestCtxWorkflow c:correlationID foobar\n", standardMessage)
+	RequireLogMessage(t, ctx, "[INF] t:TestCtxWorkflow foobar\n", standardMessage)
+
+	databaseCtx := DatabaseLogCtx(keyspaceCtx, "fooDB")
+	RequireLogMessage(t, databaseCtx, "[INF] t:TestCtxWorkflow c:correlationID db:fooDB col:fooCollection foobar\n", standardMessage)
+	RequireLogMessage(t, keyspaceCtx, "[INF] t:TestCtxWorkflow c:correlationID b:fooBucket.fooScope.fooCollection foobar\n", standardMessage)
+	RequireLogMessage(t, bucketCtx, "[INF] t:TestCtxWorkflow c:correlationID b:fooBucket foobar\n", standardMessage)
+	RequireLogMessage(t, correlationCtx, "[INF] t:TestCtxWorkflow c:correlationID foobar\n", standardMessage)
+	RequireLogMessage(t, ctx, "[INF] t:TestCtxWorkflow foobar\n", standardMessage)
+
 }
