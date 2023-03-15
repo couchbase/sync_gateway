@@ -1,13 +1,12 @@
 package rest
 
 import (
-	"bytes"
-	"errors"
-
-	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/document"
 )
 
+type Body = document.Body
+
+/*
 // A decoded JSON document/object.
 type Body map[string]interface{}
 
@@ -42,6 +41,7 @@ func (body Body) ExtractRev() string {
 	delete(body, document.BodyRev)
 	return revid
 }
+*/
 
 // Parses a CouchDB _rev or _revisions property into a list of revision IDs
 func ParseRevisions(body Body) []string {
