@@ -48,19 +48,26 @@ func (lc *LogContext) addContext(format string) string {
 		return ""
 	}
 
-	if lc.Collection != "" && (lc.Database != "" || lc.Bucket == "") {
-		format = "col:" + lc.Collection + " " + format
-	} else if lc.Bucket != "" {
-		keyspace := "b:" + lc.Bucket
-		if lc.Scope != "" {
-			keyspace += "." + lc.Scope
-		}
-		if lc.Collection != "" {
-			keyspace += "." + lc.Collection
-		}
+	if lc.Bucket != "" {
+		if lc.Database != "" {
+			if lc.Collection != "" {
+				format = "col:" + lc.Collection + " " + format
+			}
 
-		format = keyspace + " " + format
+		} else {
+			keyspace := "b:" + lc.Bucket
+			if lc.Scope != "" {
+				keyspace += "." + lc.Scope
+			}
+			if lc.Collection != "" {
+				keyspace += "." + lc.Collection
+			}
+			format = keyspace + " " + format
+		}
+	} else if lc.Collection != "" {
+		format = "col:" + lc.Collection + " " + format
 	}
+
 	if lc.Database != "" {
 		format = "db:" + lc.Database + " " + format
 	}
