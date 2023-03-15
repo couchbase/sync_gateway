@@ -14,6 +14,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
@@ -122,7 +123,8 @@ func (dbc *DatabaseContext) UpdatePrincipal(ctx context.Context, updates *auth.P
 		}
 		for scopeName, collections := range updates.CollectionAccess {
 			for collectionName, _ := range collections {
-				_, err = dbc.GetDatabaseCollection(scopeName, collectionName)
+				collectionNameSplit := strings.Split(collectionName, ".")
+				_, err = dbc.GetDatabaseCollection(scopeName, collectionNameSplit[1])
 				if err != nil {
 					return false, base.HTTPErrorf(http.StatusNotFound, "keyspace specified in collection_access (%s) not found", fmt.Sprintf("%s.%s.%s", dbc.Name, scopeName, collectionName))
 				}
