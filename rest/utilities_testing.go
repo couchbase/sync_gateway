@@ -511,11 +511,7 @@ func (rt *RestTester) WaitForDoc(docid string) (err error) {
 }
 
 func (rt *RestTester) SequenceForDoc(docid string) (seq uint64, err error) {
-	database := rt.GetDatabase()
-	if database == nil {
-		return 0, fmt.Errorf("No database found")
-	}
-	collection := database.GetSingleDatabaseCollection()
+	collection := rt.GetSingleTestDatabaseCollection()
 	doc, err := collection.GetDocument(base.TestCtx(rt.TB), docid, db.DocUnmarshalAll)
 	if err != nil {
 		return 0, err
@@ -525,19 +521,17 @@ func (rt *RestTester) SequenceForDoc(docid string) (seq uint64, err error) {
 
 // Wait for sequence to be buffered by the channel cache
 func (rt *RestTester) WaitForSequence(seq uint64) error {
-	database := rt.GetDatabase()
-	if database == nil {
-		return fmt.Errorf("No database found")
-	}
-	return database.GetSingleDatabaseCollection().WaitForSequence(base.TestCtx(rt.TB), seq)
+	return rt.GetSingleTestDatabaseCollection().WaitForSequence(base.TestCtx(rt.TB), seq)
 }
 
 func (rt *RestTester) WaitForPendingChanges() error {
-	database := rt.GetDatabase()
-	if database == nil {
-		return fmt.Errorf("No database found")
+	for _, collection := range rt.GetDbCollections() {
+		err := collection.WaitForPendingChanges(base.TestCtx(rt.TB))
+		if err != nil {
+			return err
+		}
 	}
-	return database.GetSingleDatabaseCollection().WaitForPendingChanges(base.TestCtx(rt.TB))
+	return nil
 }
 
 func (rt *RestTester) SetAdminParty(partyTime bool) error {

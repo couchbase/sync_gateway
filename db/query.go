@@ -470,11 +470,6 @@ func (c *DatabaseCollection) QueryRoleAccess(ctx context.Context, username strin
 	return N1QLQueryWithStats(ctx, c.dataStore, QueryTypeRoleAccess, accessQueryStatement, params, base.RequestPlus, QueryRoleAccess.adhoc, c.dbStats(), c.slowQueryWarningThreshold())
 }
 
-// TODO: Remove
-func (context *DatabaseContext) buildRoleAccessQuery(username string) string {
-	return context.GetSingleDatabaseCollection().buildRoleAccessQuery(username)
-}
-
 // Builds the query statement for a roleAccess N1QL query.
 func (c *DatabaseCollection) buildRoleAccessQuery(username string) string {
 	statement := replaceSyncTokensQuery(QueryRoleAccess.statement, c.UseXattrs())

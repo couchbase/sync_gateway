@@ -774,7 +774,7 @@ func TestBulkGetBadAttachmentReproIssue2528(t *testing.T) {
 	// rather than loading it from the (stale) rev cache.  The rev cache will be stale since the test
 	// short-circuits Sync Gateway and directly updates the bucket.
 	// Reset at the end of the test, to avoid bleed into other tests
-	rt.GetDatabase().GetSingleDatabaseCollection().FlushRevisionCacheForTest()
+	rt.GetSingleTestDatabaseCollection().FlushRevisionCacheForTest()
 
 	// Get latest rev id
 	response = rt.SendAdminRequest("GET", resource, "")
@@ -2519,7 +2519,7 @@ func TestAttachmentsMissing(t *testing.T) {
 	resp = rt.SendAdminRequest("PUT", "/{{.keyspace}}/"+t.Name()+"?new_edits=false", `{"_rev": "2-b", "_revisions": {"ids": ["b", "ca9ad22802b66f662ff171f226211d5c"], "start": 2}, "Winning Rev": true}`)
 	RequireStatus(t, resp, http.StatusCreated)
 
-	rt.GetDatabase().GetSingleDatabaseCollection().FlushRevisionCacheForTest()
+	rt.GetSingleTestDatabaseCollection().FlushRevisionCacheForTest()
 
 	resp = rt.SendAdminRequest("GET", "/{{.keyspace}}/"+t.Name()+"?rev="+rev2ID, ``)
 	RequireStatus(t, resp, http.StatusOK)
@@ -2544,7 +2544,7 @@ func TestAttachmentsMissingNoBody(t *testing.T) {
 	resp = rt.SendAdminRequest("PUT", "/{{.keyspace}}/"+t.Name()+"?new_edits=false", `{"_rev": "2-b", "_revisions": {"ids": ["b", "ca9ad22802b66f662ff171f226211d5c"], "start": 2}}`)
 	RequireStatus(t, resp, http.StatusCreated)
 
-	rt.GetDatabase().GetSingleDatabaseCollection().FlushRevisionCacheForTest()
+	rt.GetSingleTestDatabaseCollection().FlushRevisionCacheForTest()
 
 	resp = rt.SendAdminRequest("GET", "/{{.keyspace}}/"+t.Name()+"?rev="+rev2ID, ``)
 	RequireStatus(t, resp, http.StatusOK)
@@ -3008,8 +3008,8 @@ func TestCBLRevposHandling(t *testing.T) {
 	err = rt.WaitForRev("doc2", revIDDoc2)
 	assert.NoError(t, err)
 
-	_, err = rt.GetDatabase().GetSingleDatabaseCollection().GetDocument(base.TestCtx(t), "doc1", db.DocUnmarshalAll)
-	_, err = rt.GetDatabase().GetSingleDatabaseCollection().GetDocument(base.TestCtx(t), "doc2", db.DocUnmarshalAll)
+	_, err = rt.GetSingleTestDatabaseCollection().GetDocument(base.TestCtx(t), "doc1", db.DocUnmarshalAll)
+	_, err = rt.GetSingleTestDatabaseCollection().GetDocument(base.TestCtx(t), "doc2", db.DocUnmarshalAll)
 
 	// Update doc1, don't change attachment, use correct revpos
 	revIDDoc1, err = btc.PushRev("doc1", revIDDoc1, []byte(`{"key": "val", "_attachments":{"attachment":{"digest":"sha1-wzp8ZyykdEuZ9GuqmxQ7XDrY7Co=","length":11,"content_type":"","stub":true,"revpos":2}}}`))

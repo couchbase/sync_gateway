@@ -29,7 +29,7 @@ func TestChannelCacheMaxSize(t *testing.T) {
 
 	cache := db.changeCache.getChannelCache()
 
-	collectionID := db.GetSingleDatabaseCollection().GetCollectionID()
+	collectionID := GetSingleDatabaseCollection(t, db.DatabaseContext).GetCollectionID()
 
 	// Make channels active
 	_, err := cache.GetChanges(channels.NewID("TestA", collectionID), getChangesOptionsWithCtxOnly())

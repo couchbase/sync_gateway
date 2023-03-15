@@ -20,7 +20,6 @@ import (
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/couchbase/sync_gateway/channels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -436,11 +435,11 @@ func SuspendSequenceBatching() func() {
 
 // Public channel view call - for unit test support
 func (dbc *DatabaseContext) ChannelViewForTest(tb testing.TB, channelName string, startSeq, endSeq uint64) (LogEntries, error) {
-	channel := channels.ID{
-		Name:         channelName,
-		CollectionID: dbc.GetSingleDatabaseCollection().GetCollectionID(),
+	collection, err := dbc.GetDefaultDatabaseCollection()
+	if err != nil {
+		return nil, err
 	}
-	return dbc.getChangesInChannelFromQuery(base.TestCtx(tb), channel, startSeq, endSeq, 0, false)
+	return collection.getChangesInChannelFromQuery(base.TestCtx(tb), channelName, startSeq, endSeq, 0, false)
 }
 
 // Test-only version of GetPrincipal that doesn't trigger channel/role recalculation
@@ -592,7 +591,7 @@ func GetSingleDatabaseCollectionWithUser(tb testing.TB, database *Database) *Dat
 }
 
 func GetSingleDatabaseCollection(tb testing.TB, database *DatabaseContext) *DatabaseCollection {
-	require.Equal(tb, 1, len(database.CollectionByID), "Database must only have a single collection configured")
+	require.Equal(tb, 1, len(database.CollectionByID), fmt.Sprintf("Database must only have a single collection configured has %d", len(database.CollectionByID)))
 	for _, collection := range database.CollectionByID {
 		return collection
 	}
