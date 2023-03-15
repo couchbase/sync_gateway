@@ -315,6 +315,16 @@ func DurationToCbsExpiry(ttl time.Duration) uint32 {
 	}
 }
 
+// TimeToCbsExpiry takes a Time (or nil) and returns an int
+// formatted as required by CBS expiry processing
+func TimeToCbsExpiry(t *time.Time) uint32 {
+	if t != nil {
+		return uint32(t.Unix())
+	} else {
+		return 0
+	}
+}
+
 // SecondsToCbsExpiry takes a ttl in seconds and returns an int
 // formatted as required by CBS expiry processing
 func SecondsToCbsExpiry(ttl int) uint32 {

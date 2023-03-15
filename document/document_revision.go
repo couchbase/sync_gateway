@@ -30,8 +30,8 @@ type DocumentRevision struct {
 // These are removed from the JSON and set as struct fields.
 // Only properties corresponding to fields of `DocumentRevision` are allowed.
 // Underscored properties in the JSON that were _not_ given as arguments trigger errors.
-func ParseDocumentRevision(json []byte, specialProperties ...string) (*DocumentRevision, error) {
-	rev := &DocumentRevision{}
+func ParseDocumentRevision(json []byte, specialProperties ...string) (DocumentRevision, error) {
+	var rev DocumentRevision
 	var expiry any
 	var err error
 	rev._bodyBytes, err = base.JSONExtract(json, func(key string) (valp any, err error) {
@@ -52,13 +52,13 @@ func ParseDocumentRevision(json []byte, specialProperties ...string) (*DocumentR
 		}
 	})
 	if err != nil {
-		return nil, err
+		return rev, err
 	}
 
 	if expiry != nil {
 		// Translate "_exp" property to Time value:
 		if expNum, err := base.ReflectExpiry(expiry); err != nil {
-			return nil, err
+			return rev, err
 		} else if expNum != nil || *expNum != 0 {
 			expTime := base.CbsExpiryToTime(*expNum)
 			rev.Expiry = &expTime
@@ -130,6 +130,18 @@ func (rev *DocumentRevision) TrimHistory(maxHistory int, historyFrom []string) {
 		rev.History = nil
 	} else if rev.History != nil {
 		_, rev.History = TrimEncodedRevisionsToAncestor(rev.History, historyFrom, maxHistory)
+	}
+}
+
+// Creates a Document struct populated from a DocumentRevision.
+func (rev *DocumentRevision) AsDocument() *Document {
+	return &Document{
+		ID:             rev.DocID,
+		RevID:          rev.RevID,
+		DocAttachments: rev.Attachments,
+		DocExpiry:      base.TimeToCbsExpiry(rev.Expiry),
+		Deleted:        rev.Deleted,
+		_rawBody:       rev._bodyBytes,
 	}
 }
 
