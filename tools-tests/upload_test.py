@@ -26,15 +26,16 @@ def main_norun(tmpdir):
         os.chdir(tmpdir)
         with unittest.mock.patch("tasks.TaskRunner.run"):
             with open(ZIP_NAME, "w"):
-                    yield
+                pass
+            yield
     finally:
         os.chdir(workdir)
 
 @pytest.fixture
 def main_norun_redacted_zip(main_norun):
     with open(REDACTED_ZIP_NAME, "w"):
-            yield
-
+        pass
+    yield
 
 class FakeResponse:
     def __init__(self, status_code):
