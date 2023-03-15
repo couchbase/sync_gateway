@@ -431,7 +431,7 @@ func (h *handler) handleBulkGet() error {
 			}
 
 			if err == nil {
-				body, err = h.collection.Get1xRevBodyWithHistory(h.ctx(), docid, revid, docRevsLimit, revsFrom, attsSince, showExp)
+				body, err = get1xRevBodyWithHistory(h, docid, revid, docRevsLimit, revsFrom, attsSince, showExp)
 			}
 
 			if err != nil {

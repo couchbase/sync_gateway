@@ -211,42 +211,7 @@ func (db *DatabaseCollectionWithUser) GetRev(ctx context.Context, docID, revID s
 	if history {
 		maxHistory = math.MaxInt32
 	}
-	return db.getRev(ctx, docID, revID, maxHistory, nil)
-}
-
-// Returns the body of the current revision of a document
-func (db *DatabaseCollectionWithUser) Get1xBody(ctx context.Context, docid string) (Body, error) {
-	return db.Get1xRevBody(ctx, docid, "", false, nil)
-}
-
-// Get Rev with all-or-none history based on specified 'history' flag
-func (db *DatabaseCollectionWithUser) Get1xRevBody(ctx context.Context, docid, revid string, history bool, attachmentsSince []string) (map[string]any, error) {
-	maxHistory := 0
-	if history {
-		maxHistory = math.MaxInt32
-	}
-
-	return db.Get1xRevBodyWithHistory(ctx, docid, revid, maxHistory, nil, attachmentsSince, false)
-}
-
-// Retrieves rev with request history specified as collection of revids (historyFrom)
-func (db *DatabaseCollectionWithUser) Get1xRevBodyWithHistory(ctx context.Context, docid, revid string, maxHistory int, historyFrom []string, attachmentsSince []string, showExp bool) (map[string]any, error) {
-	rev, err := db.getRev(ctx, docid, revid, maxHistory, historyFrom)
-	if err != nil {
-		return nil, err
-	}
-
-	// RequestedHistory is the _revisions returned in the body.  Avoids mutating revision.History, in case it's needed
-	// during attachment processing below
-	requestedHistory := rev.History
-	if maxHistory == 0 {
-		requestedHistory = nil
-	}
-	if requestedHistory != nil {
-		_, requestedHistory = document.TrimEncodedRevisionsToAncestor(requestedHistory, historyFrom, maxHistory)
-	}
-
-	return rev.Mutable1xBody(db, requestedHistory, attachmentsSince, showExp)
+	return db.getRev(ctx, docID, revID, maxHistory, nil, attachmentsSince)
 }
 
 // Underlying revision retrieval used by Get1xRevBody, Get1xRevBodyWithHistory, GetRevCopy.
@@ -258,7 +223,7 @@ func (db *DatabaseCollectionWithUser) Get1xRevBodyWithHistory(ctx context.Contex
 //   - attachmentsSince is nil to return no attachment bodies, otherwise a (possibly empty) list of
 //     revisions for which the client already has attachments and doesn't need bodies. Any attachment
 //     that hasn't changed since one of those revisions will be returned as a stub.
-func (db *DatabaseCollectionWithUser) getRev(ctx context.Context, docid, revid string, maxHistory int, historyFrom []string) (revision DocumentRevision, err error) {
+func (db *DatabaseCollectionWithUser) getRev(ctx context.Context, docid, revid string, maxHistory int, historyFrom []string, attachmentsSince []string) (revision DocumentRevision, err error) {
 	if revid != "" {
 		// Get a specific revision body and history from the revision cache
 		// (which will load them if necessary, by calling revCacheLoader, above)
@@ -283,17 +248,26 @@ func (db *DatabaseCollectionWithUser) getRev(ctx context.Context, docid, revid s
 	db.collectionStats.NumDocReads.Add(1)
 	db.collectionStats.DocReadsBytes.Add(int64(len(revision.BodyBytes())))
 
-	// RequestedHistory is the _revisions returned in the body.  Avoids mutating revision.History, in case it's needed
-	// during attachment processing below
-	requestedHistory := revision.History
-	if maxHistory == 0 {
-		requestedHistory = nil
-	}
-	if requestedHistory != nil {
-		_, requestedHistory = document.TrimEncodedRevisionsToAncestor(requestedHistory, historyFrom, maxHistory)
+	// Load and/or trim attachments:
+	if attachmentsSince != nil && len(revision.Attachments) > 0 {
+		minRevpos := 1
+		if len(attachmentsSince) > 0 {
+			if ancestor := revision.History.FindAncestor(attachmentsSince); ancestor != "" {
+				minRevpos, _ = ParseRevID(ancestor)
+				minRevpos++
+			}
+		}
+		revision.Attachments, err = db.LoadAttachmentsData(revision.Attachments, minRevpos, docid)
+		if err != nil {
+			return DocumentRevision{}, err
+		}
 	}
 
-	isAuthorized, redactedRev := db.authorizeUserForChannels(docid, revision.RevID, revision.Channels, revision.Deleted, requestedHistory)
+	// Trim history:
+	revision.TrimHistory(maxHistory, historyFrom)
+
+	// Authorize:
+	isAuthorized, redactedRev := db.authorizeUserForChannels(docid, revision.RevID, revision.Channels, revision.Deleted, revision.History)
 	if !isAuthorized {
 		if revid == "" {
 			return DocumentRevision{}, ErrForbidden

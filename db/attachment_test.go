@@ -117,7 +117,7 @@ func TestAttachments(t *testing.T) {
 	assert.NoError(t, err, "Couldn't create document")
 
 	log.Printf("Retrieve doc...")
-	gotbody, err := collection.Get1xRevBody(ctx, "doc1", "", false, []string{})
+	gotbody, err := collection.get1xRevBody(ctx, "doc1", "", false, []string{})
 	assert.NoError(t, err, "Couldn't get document")
 	atts := gotbody[BodyAttachments].(AttachmentsMeta)
 
@@ -143,7 +143,7 @@ func TestAttachments(t *testing.T) {
 	assert.Equal(t, "2-5d3308aae9930225ed7f6614cf115366", revid)
 
 	log.Printf("Retrieve doc...")
-	gotbody, err = collection.Get1xRevBody(ctx, "doc1", "", false, []string{})
+	gotbody, err = collection.get1xRevBody(ctx, "doc1", "", false, []string{})
 	assert.NoError(t, err, "Couldn't get document")
 	atts = gotbody[BodyAttachments].(AttachmentsMeta)
 
@@ -160,7 +160,7 @@ func TestAttachments(t *testing.T) {
 	assert.Equal(t, 2, bye["revpos"])
 
 	log.Printf("Retrieve doc with atts_since...")
-	gotbody, err = collection.Get1xRevBody(ctx, "doc1", "", false, []string{"1-ca9ad22802b66f662ff171f226211d5c", "1-foo", "993-bar"})
+	gotbody, err = collection.get1xRevBody(ctx, "doc1", "", false, []string{"1-ca9ad22802b66f662ff171f226211d5c", "1-foo", "993-bar"})
 	assert.NoError(t, err, "Couldn't get document")
 	atts = gotbody[BodyAttachments].(AttachmentsMeta)
 
@@ -187,7 +187,7 @@ func TestAttachments(t *testing.T) {
 	assert.Equal(t, "3-aa3ff4ca3aad12e1479b65cb1e602676", revid)
 
 	log.Printf("Retrieve doc...")
-	gotbody, err = collection.Get1xRevBody(ctx, "doc1", "", false, []string{})
+	gotbody, err = collection.get1xRevBody(ctx, "doc1", "", false, []string{})
 	assert.NoError(t, err, "Couldn't get document")
 	atts = gotbody[BodyAttachments].(AttachmentsMeta)
 
@@ -244,7 +244,7 @@ func TestAttachmentRetrievalUsingRevCache(t *testing.T) {
 
 	initCount, countErr := base.GetExpvarAsInt("syncGateway_db", "document_gets")
 	require.NoError(t, countErr, "Couldn't retrieve document_gets expvar")
-	gotbody, err := collection.Get1xRevBody(ctx, "doc1", "1-ca9ad22802b66f662ff171f226211d5c", false, []string{})
+	gotbody, err := collection.get1xRevBody(ctx, "doc1", "1-ca9ad22802b66f662ff171f226211d5c", false, []string{})
 	require.NoError(t, err, "Couldn't get document")
 	atts := gotbody[BodyAttachments].(AttachmentsMeta)
 
@@ -267,7 +267,7 @@ func TestAttachmentRetrievalUsingRevCache(t *testing.T) {
 	assertAttachments(atts)
 
 	// Repeat, validate no additional get operations
-	gotbody, err = collection.Get1xRevBody(ctx, "doc1", "1-ca9ad22802b66f662ff171f226211d5c", false, []string{})
+	gotbody, err = collection.get1xRevBody(ctx, "doc1", "1-ca9ad22802b66f662ff171f226211d5c", false, []string{})
 	require.NoError(t, err, "Couldn't get document")
 	atts = gotbody[BodyAttachments].(AttachmentsMeta)
 
@@ -326,7 +326,7 @@ func TestAttachmentCASRetryAfterNewAttachment(t *testing.T) {
 	log.Printf("rev 3 done")
 
 	// 4. Get the document, check attachments
-	finalDoc, err := collection.Get1xBody(ctx, "doc1")
+	finalDoc, err := collection.get1xBody(ctx, "doc1")
 	attachments := document.GetBodyAttachments(finalDoc)
 	assert.True(t, attachments != nil, "_attachments should be present in GET response")
 	attachment, attachmentOk := attachments["hello.txt"].(map[string]interface{})
@@ -388,7 +388,7 @@ func TestAttachmentCASRetryDuringNewAttachment(t *testing.T) {
 	log.Printf("rev 3 done")
 
 	// 4. Get the document, check attachments
-	finalDoc, err := collection.Get1xBody(ctx, "doc1")
+	finalDoc, err := collection.get1xBody(ctx, "doc1")
 	log.Printf("get doc attachments: %v", finalDoc)
 
 	attachments := document.GetBodyAttachments(finalDoc)
@@ -689,7 +689,7 @@ func TestMigrateBodyAttachments(t *testing.T) {
 		_, _, err := collection.Put(ctx, "doc1", body)
 		assert.NoError(t, err, "Couldn't create document")
 
-		gotbody, err := collection.Get1xRevBody(ctx, "doc1", "", false, []string{})
+		gotbody, err := collection.get1xRevBody(ctx, "doc1", "", false, []string{})
 		assert.NoError(t, err, "Couldn't get document")
 		atts, ok := gotbody[BodyAttachments].(AttachmentsMeta)
 		assert.True(t, ok)
@@ -969,7 +969,7 @@ func TestMigrateBodyAttachmentsMerge(t *testing.T) {
 	_, _, err := collection.Put(ctx, "doc1", body)
 	assert.NoError(t, err, "Couldn't create document")
 
-	gotbody, err := collection.Get1xRevBody(ctx, "doc1", "", false, []string{})
+	gotbody, err := collection.get1xRevBody(ctx, "doc1", "", false, []string{})
 	assert.NoError(t, err, "Couldn't get document")
 	atts, ok := gotbody[BodyAttachments].(AttachmentsMeta)
 	assert.True(t, ok)
@@ -1126,7 +1126,7 @@ func TestMigrateBodyAttachmentsMergeConflicting(t *testing.T) {
 	_, _, err := collection.Put(ctx, "doc1", body)
 	assert.NoError(t, err, "Couldn't create document")
 
-	gotbody, err := collection.Get1xRevBody(ctx, "doc1", "", false, []string{})
+	gotbody, err := collection.get1xRevBody(ctx, "doc1", "", false, []string{})
 	assert.NoError(t, err, "Couldn't get document")
 	atts, ok := gotbody[BodyAttachments].(AttachmentsMeta)
 	assert.True(t, ok)

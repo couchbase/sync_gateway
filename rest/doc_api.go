@@ -24,6 +24,32 @@ import (
 	"github.com/couchbase/sync_gateway/document"
 )
 
+// Retrieves rev with request history specified as collection of revids (historyFrom)
+func get1xRevBodyWithHistory(h *handler, docid, revid string, maxHistory int, historyFrom []string, attachmentsSince []string, showExp bool) (map[string]any, error) {
+	rev, err := h.collection.GetRev(h.ctx(), docid, revid, maxHistory > 0, attachmentsSince)
+	if err != nil {
+		return nil, err
+	}
+	rev.TrimHistory(maxHistory, historyFrom)
+	if !showExp {
+		rev.Expiry = nil
+	}
+	bytes, err := rev.BodyBytesWith(document.BodyId, document.BodyRev, document.BodyAttachments, document.BodyDeleted, document.BodyRemoved, document.BodyExpiry, document.BodyRevisions)
+	var body Body
+	if err == nil {
+		err = body.Unmarshal(bytes)
+	}
+	return body, err
+}
+
+func get1xRevBody(h *handler, docid, revid string, history bool, attachmentsSince []string) (map[string]any, error) {
+	maxHistory := 0
+	if history {
+		maxHistory = math.MaxInt32
+	}
+	return get1xRevBodyWithHistory(h, docid, revid, maxHistory, nil, attachmentsSince, false)
+}
+
 // HTTP handler for a GET of a document
 func (h *handler) handleGetDoc() error {
 	docid := h.PathVar("docid")
@@ -68,7 +94,7 @@ func (h *handler) handleGetDoc() error {
 
 	if openRevs == "" {
 		// Single-revision GET:
-		value, err := h.collection.Get1xRevBodyWithHistory(h.ctx(), docid, revid, revsLimit, revsFrom, attachmentsSince, showExp)
+		value, err := get1xRevBodyWithHistory(h, docid, revid, revsLimit, revsFrom, attachmentsSince, showExp)
 		if err != nil {
 			if err == base.ErrImportCancelledPurged {
 				base.DebugfCtx(h.ctx(), base.KeyImport, fmt.Sprintf("Import cancelled as document %v is purged", base.UD(docid)))
@@ -125,7 +151,7 @@ func (h *handler) handleGetDoc() error {
 		if h.requestAccepts("multipart/") {
 			err := h.writeMultipart("mixed", func(writer *multipart.Writer) error {
 				for _, revid := range revids {
-					revBody, err := h.collection.Get1xRevBodyWithHistory(h.ctx(), docid, revid, revsLimit, revsFrom, attachmentsSince, showExp)
+					revBody, err := get1xRevBodyWithHistory(h, docid, revid, revsLimit, revsFrom, attachmentsSince, showExp)
 					if err != nil {
 						revBody = db.Body{"missing": revid} // TODO: More specific error
 					}
@@ -141,7 +167,7 @@ func (h *handler) handleGetDoc() error {
 			_, _ = h.response.Write([]byte(`[` + "\n"))
 			separator := []byte(``)
 			for _, revid := range revids {
-				revBody, err := h.collection.Get1xRevBodyWithHistory(h.ctx(), docid, revid, revsLimit, revsFrom, attachmentsSince, showExp)
+				revBody, err := get1xRevBodyWithHistory(h, docid, revid, revsLimit, revsFrom, attachmentsSince, showExp)
 				if err != nil {
 					revBody = Body{"missing": revid} // TODO: More specific error
 				} else {
@@ -312,7 +338,7 @@ func (h *handler) handlePutAttachment() error {
 		return err
 	}
 
-	body, err := h.collection.Get1xRevBody(h.ctx(), docid, revid, false, nil)
+	body, err := get1xRevBody(h, docid, revid, false, nil)
 	if err != nil {
 		if base.IsDocNotFoundError(err) {
 			// couchdb creates empty body on attachment PUT
@@ -370,7 +396,7 @@ func (h *handler) handleDeleteAttachment() error {
 		}
 	}
 
-	body, err := h.collection.Get1xRevBody(h.ctx(), docid, revid, false, nil)
+	body, err := get1xRevBody(h, docid, revid, false, nil)
 	if err != nil {
 		if base.IsDocNotFoundError(err) {
 			// Check here if error is relating to incorrect revid, if so return 409 code else return 404 code

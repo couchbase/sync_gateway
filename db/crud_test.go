@@ -82,7 +82,7 @@ func TestRevisionCacheLoad(t *testing.T) {
 
 	// Retrieve the document:
 	log.Printf("Retrieve doc 1-a...")
-	_, err = collection.Get1xRevBody(ctx, "doc1", "1-a", false, nil)
+	_, err = collection.get1xRevBody(ctx, "doc1", "1-a", false, nil)
 	assert.NoError(t, err, "Couldn't get document")
 
 	docRev, err := collection.GetRev(ctx, "doc1", "1-a", false, nil)
@@ -269,7 +269,7 @@ func TestHasAttachmentsFlagForLegacyAttachments(t *testing.T) {
 
 	// Retrieve the document:
 	log.Printf("Retrieve doc 2-a...")
-	gotbody, err := collection.Get1xBody(ctx, "doc1")
+	gotbody, err := collection.get1xBody(ctx, "doc1")
 	assert.NoError(t, err, "Couldn't get document")
 	assert.Equal(t, Body{"_id": "doc1", "_rev": "1-a", "key1": "value1", "version": "1a"}, gotbody)
 
@@ -289,7 +289,7 @@ func TestHasAttachmentsFlagForLegacyAttachments(t *testing.T) {
 
 	// Retrieve the document:
 	log.Printf("Retrieve doc, verify rev 2-b")
-	gotbody, err = collection.Get1xBody(ctx, "doc1")
+	gotbody, err = collection.get1xBody(ctx, "doc1")
 	assert.NoError(t, err, "Couldn't get document")
 	assert.Equal(t, rev2b_body, gotbody)
 
@@ -335,7 +335,7 @@ func TestRevisionStorageConflictAndTombstones(t *testing.T) {
 
 	// Retrieve the document:
 	log.Printf("Retrieve doc 2-a...")
-	gotbody, err := collection.Get1xBody(ctx, "doc1")
+	gotbody, err := collection.get1xBody(ctx, "doc1")
 	assert.NoError(t, err, "Couldn't get document")
 	assert.Equal(t, rev2a_body, gotbody)
 
@@ -354,7 +354,7 @@ func TestRevisionStorageConflictAndTombstones(t *testing.T) {
 
 	// Retrieve the document:
 	log.Printf("Retrieve doc, verify rev 2-b")
-	gotbody, err = collection.Get1xBody(ctx, "doc1")
+	gotbody, err = collection.get1xBody(ctx, "doc1")
 	assert.NoError(t, err, "Couldn't get document")
 	assert.Equal(t, rev2b_body, gotbody)
 
@@ -376,7 +376,7 @@ func TestRevisionStorageConflictAndTombstones(t *testing.T) {
 
 	// Retrieve the non-inline revision
 	collection.FlushRevisionCacheForTest()
-	rev2aGet, err := collection.Get1xRevBody(ctx, "doc1", "2-a", false, nil)
+	rev2aGet, err := collection.get1xRevBody(ctx, "doc1", "2-a", false, nil)
 	assert.NoError(t, err, "Couldn't get rev 2-a")
 	assert.Equal(t, rev2a_body, Body(rev2aGet))
 
@@ -397,13 +397,13 @@ func TestRevisionStorageConflictAndTombstones(t *testing.T) {
 	assert.NoError(t, err, "add 3-b (tombstone)")
 
 	// Retrieve tombstone
-	rev3bGet, err := collection.Get1xRevBody(ctx, "doc1", "3-b", false, nil)
+	rev3bGet, err := collection.get1xRevBody(ctx, "doc1", "3-b", false, nil)
 	assert.NoError(t, err, "Couldn't get rev 3-b")
 	assert.Equal(t, rev3b_body, Body(rev3bGet))
 
 	// Retrieve the document, validate that we get 2-a
 	log.Printf("Retrieve doc, expect 2-a")
-	gotbody, err = collection.Get1xBody(ctx, "doc1")
+	gotbody, err = collection.get1xBody(ctx, "doc1")
 	assert.NoError(t, err, "Couldn't get document")
 	assert.Equal(t, rev2a_body, gotbody)
 
@@ -434,7 +434,7 @@ func TestRevisionStorageConflictAndTombstones(t *testing.T) {
 
 	// Retrieve the document:
 	log.Printf("Retrieve doc, verify rev 2-c")
-	gotbody, err = collection.Get1xBody(ctx, "doc1")
+	gotbody, err = collection.get1xBody(ctx, "doc1")
 	assert.NoError(t, err, "Couldn't get document")
 	assert.Equal(t, rev2c_body, gotbody)
 
@@ -464,12 +464,12 @@ func TestRevisionStorageConflictAndTombstones(t *testing.T) {
 
 	// Retrieve the non-inline tombstone revision
 	collection.FlushRevisionCacheForTest()
-	rev3cGet, err := collection.Get1xRevBody(ctx, "doc1", "3-c", false, nil)
+	rev3cGet, err := collection.get1xRevBody(ctx, "doc1", "3-c", false, nil)
 	assert.NoError(t, err, "Couldn't get rev 3-c")
 	assert.Equal(t, rev3c_body, Body(rev3cGet))
 
 	log.Printf("Retrieve doc, verify active rev is 2-a")
-	gotbody, err = collection.Get1xBody(ctx, "doc1")
+	gotbody, err = collection.get1xBody(ctx, "doc1")
 	assert.NoError(t, err, "Couldn't get document")
 	assert.Equal(t, rev2a_body, gotbody)
 
@@ -519,7 +519,7 @@ func TestRevisionStoragePruneTombstone(t *testing.T) {
 
 	// Retrieve the document:
 	log.Printf("Retrieve doc 2-a...")
-	gotbody, err := collection.Get1xBody(ctx, "doc1")
+	gotbody, err := collection.get1xBody(ctx, "doc1")
 	assert.NoError(t, err, "Couldn't get document")
 	assert.Equal(t, rev2a_body, gotbody)
 
@@ -538,7 +538,7 @@ func TestRevisionStoragePruneTombstone(t *testing.T) {
 
 	// Retrieve the document:
 	log.Printf("Retrieve doc, verify rev 2-b")
-	gotbody, err = collection.Get1xBody(ctx, "doc1")
+	gotbody, err = collection.get1xBody(ctx, "doc1")
 	assert.NoError(t, err, "Couldn't get document")
 	assert.Equal(t, rev2b_body, gotbody)
 
@@ -560,7 +560,7 @@ func TestRevisionStoragePruneTombstone(t *testing.T) {
 
 	// Retrieve the non-inline revision
 	collection.FlushRevisionCacheForTest()
-	rev2aGet, err := collection.Get1xRevBody(ctx, "doc1", "2-a", false, nil)
+	rev2aGet, err := collection.get1xRevBody(ctx, "doc1", "2-a", false, nil)
 	assert.NoError(t, err, "Couldn't get rev 2-a")
 	assert.Equal(t, rev2a_body, Body(rev2aGet))
 
@@ -584,13 +584,13 @@ func TestRevisionStoragePruneTombstone(t *testing.T) {
 
 	// Retrieve tombstone
 	collection.FlushRevisionCacheForTest()
-	rev3bGet, err := collection.Get1xRevBody(ctx, "doc1", "3-b", false, nil)
+	rev3bGet, err := collection.get1xRevBody(ctx, "doc1", "3-b", false, nil)
 	assert.NoError(t, err, "Couldn't get rev 3-b")
 	assert.Equal(t, rev3b_body, Body(rev3bGet))
 
 	// Retrieve the document, validate that we get 2-a
 	log.Printf("Retrieve doc, expect 2-a")
-	gotbody, err = collection.Get1xBody(ctx, "doc1")
+	gotbody, err = collection.get1xBody(ctx, "doc1")
 	assert.NoError(t, err, "Couldn't get document")
 	assert.Equal(t, rev2a_body, gotbody)
 
@@ -625,7 +625,7 @@ func TestRevisionStoragePruneTombstone(t *testing.T) {
 
 	// Verify that 3-b is still present at this point
 	collection.FlushRevisionCacheForTest()
-	rev3bGet, err = collection.Get1xRevBody(ctx, "doc1", "3-b", false, nil)
+	rev3bGet, err = collection.get1xRevBody(ctx, "doc1", "3-b", false, nil)
 	assert.NoError(t, err, "Rev 3-b should still exist")
 
 	// Add one more rev that triggers pruning since gen(9-3) > revsLimit
@@ -635,7 +635,7 @@ func TestRevisionStoragePruneTombstone(t *testing.T) {
 	// Verify that 3-b has been pruned
 	log.Printf("Attempt to retrieve 3-b, expect pruned")
 	collection.FlushRevisionCacheForTest()
-	rev3bGet, err = collection.Get1xRevBody(ctx, "doc1", "3-b", false, nil)
+	rev3bGet, err = collection.get1xRevBody(ctx, "doc1", "3-b", false, nil)
 	require.Error(t, err)
 	assert.Equal(t, "404 missing", err.Error())
 
@@ -674,7 +674,7 @@ func TestOldRevisionStorage(t *testing.T) {
 
 	// Retrieve the document:
 	log.Printf("Retrieve doc 2-a...")
-	gotbody, err := collection.Get1xBody(ctx, "doc1")
+	gotbody, err := collection.get1xBody(ctx, "doc1")
 	require.NoError(t, err, "Couldn't get document")
 	assert.Equal(t, rev2a_body, gotbody)
 
@@ -694,7 +694,7 @@ func TestOldRevisionStorage(t *testing.T) {
 
 	// Retrieve the document:
 	log.Printf("Retrieve doc 3-a...")
-	gotbody, err = collection.Get1xBody(ctx, "doc1")
+	gotbody, err = collection.get1xBody(ctx, "doc1")
 	require.NoError(t, err, "Couldn't get document")
 	assert.Equal(t, rev3a_body, gotbody)
 
@@ -711,7 +711,7 @@ func TestOldRevisionStorage(t *testing.T) {
 
 	// Retrieve the document:
 	log.Printf("Retrieve doc, verify still rev 3-a")
-	gotbody, err = collection.Get1xBody(ctx, "doc1")
+	gotbody, err = collection.get1xBody(ctx, "doc1")
 	require.NoError(t, err, "Couldn't get document")
 	assert.Equal(t, rev3a_body, gotbody)
 
@@ -736,7 +736,7 @@ func TestOldRevisionStorage(t *testing.T) {
 
 	// Retrieve the document:
 	log.Printf("Retrieve doc 6-a...")
-	gotbody, err = collection.Get1xBody(ctx, "doc1")
+	gotbody, err = collection.get1xBody(ctx, "doc1")
 	require.NoError(t, err, "Couldn't get document")
 	assert.Equal(t, rev6a_body, gotbody)
 
@@ -834,7 +834,7 @@ func TestOldRevisionStorageError(t *testing.T) {
 
 	// Retrieve the document:
 	log.Printf("Retrieve doc 2-a...")
-	gotbody, err := collection.Get1xBody(ctx, "doc1")
+	gotbody, err := collection.get1xBody(ctx, "doc1")
 	assert.NoError(t, err, "Couldn't get document")
 	assert.Equal(t, rev2a_body, gotbody)
 
@@ -866,7 +866,7 @@ func TestOldRevisionStorageError(t *testing.T) {
 
 	// Retrieve the document:
 	log.Printf("Retrieve doc, verify still rev 3-a")
-	gotbody, err = collection.Get1xBody(ctx, "doc1")
+	gotbody, err = collection.get1xBody(ctx, "doc1")
 	assert.NoError(t, err, "Couldn't get document")
 	assert.Equal(t, rev3a_body, gotbody)
 
@@ -891,7 +891,7 @@ func TestOldRevisionStorageError(t *testing.T) {
 
 	// Retrieve the document:
 	log.Printf("Retrieve doc 6-a...")
-	gotbody, err = collection.Get1xBody(ctx, "doc1")
+	gotbody, err = collection.get1xBody(ctx, "doc1")
 	assert.NoError(t, err, "Couldn't get document")
 	assert.Equal(t, rev6a_body, gotbody)
 
@@ -1048,17 +1048,17 @@ func BenchmarkDatabaseGet1xRev(b *testing.B) {
 
 	b.Run("ShortLatest", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
-			_, _ = collection.Get1xRevBody(ctx, "doc1", "", false, nil)
+			_, _ = collection.get1xRevBody(ctx, "doc1", "", false, nil)
 		}
 	})
 	b.Run("LongLatest", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
-			_, _ = collection.Get1xRevBody(ctx, "doc2", "", false, nil)
+			_, _ = collection.get1xRevBody(ctx, "doc2", "", false, nil)
 		}
 	})
 	b.Run("ShortWithAttachmentsLatest", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
-			_, _ = collection.Get1xRevBody(ctx, "doc3", "", false, nil)
+			_, _ = collection.get1xRevBody(ctx, "doc3", "", false, nil)
 		}
 	})
 
@@ -1069,17 +1069,17 @@ func BenchmarkDatabaseGet1xRev(b *testing.B) {
 
 	b.Run("ShortOld", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
-			_, _ = collection.Get1xRevBody(ctx, "doc1", "1-a", false, nil)
+			_, _ = collection.get1xRevBody(ctx, "doc1", "1-a", false, nil)
 		}
 	})
 	b.Run("LongOld", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
-			_, _ = collection.Get1xRevBody(ctx, "doc2", "1-a", false, nil)
+			_, _ = collection.get1xRevBody(ctx, "doc2", "1-a", false, nil)
 		}
 	})
 	b.Run("ShortWithAttachmentsOld", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
-			_, _ = collection.Get1xRevBody(ctx, "doc3", "1-a", false, nil)
+			_, _ = collection.get1xRevBody(ctx, "doc3", "1-a", false, nil)
 		}
 	})
 }

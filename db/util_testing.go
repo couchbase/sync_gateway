@@ -599,3 +599,36 @@ func GetSingleDatabaseCollection(tb testing.TB, database *DatabaseContext) *Data
 	tb.Fatalf("Could not find a collection")
 	return nil
 }
+
+// Returns the body of the current revision of a document
+// FOR TESTS ONLY
+func (db *DatabaseCollectionWithUser) get1xBody(ctx context.Context, docid string) (Body, error) {
+	return db.get1xRevBody(ctx, docid, "", false, nil)
+}
+
+// Returns the body of a document revision
+// FOR TESTS ONLY
+func (db *DatabaseCollectionWithUser) get1xRevBody(ctx context.Context, docid, revid string, history bool, attachmentsSince []string) (map[string]any, error) {
+	rev, err := db.GetRev(ctx, docid, revid, history, attachmentsSince)
+	if err != nil {
+		return nil, err
+	}
+	bytes, err := rev.BodyBytesWith(BodyId, BodyRev, BodyAttachments, BodyDeleted, BodyRemoved, BodyRevisions)
+	if err != nil {
+		return nil, err
+	}
+	var body Body
+	if err = body.Unmarshal(bytes); err != nil {
+		return nil, err
+	}
+	// Many tests assume that values inside _attachments and _revisions are not generic unmarshaled
+	// types -- for example that attachment data is []byte rather than base64-encoded string,
+	// or that _revisions is a Revisions, not a plain map.
+	if body[BodyAttachments] != nil {
+		body[BodyAttachments] = rev.Attachments
+	}
+	if body[BodyRevisions] != nil {
+		body[BodyRevisions] = rev.History
+	}
+	return body, err
+}

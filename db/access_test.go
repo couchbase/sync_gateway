@@ -48,7 +48,7 @@ func TestDynamicChannelGrant(t *testing.T) {
 	require.NoError(t, err)
 
 	// Verify user cannot access document
-	existingBody, err := dbCollection.Get1xBody(ctx, "doc1")
+	existingBody, err := dbCollection.get1xBody(ctx, "doc1")
 	require.Error(t, err)
 
 	// Write access granting document
@@ -58,7 +58,7 @@ func TestDynamicChannelGrant(t *testing.T) {
 
 	// Verify reloaded user can access document
 	require.NoError(t, dbCollection.ReloadUser(ctx))
-	existingBody, err = dbCollection.Get1xBody(ctx, "doc1")
+	existingBody, err = dbCollection.get1xBody(ctx, "doc1")
 	require.NoError(t, err)
 	require.NotNil(t, existingBody)
 	assert.Equal(t, "hello", existingBody["greeting"])
@@ -75,8 +75,8 @@ func TestDynamicChannelGrant(t *testing.T) {
 
 	// Verify user can now access both documents
 	require.NoError(t, dbCollection.ReloadUser(ctx))
-	existingBody, err = dbCollection.Get1xBody(ctx, "doc1")
+	existingBody, err = dbCollection.get1xBody(ctx, "doc1")
 	require.NoError(t, err)
-	existingBody, err = dbCollection.Get1xBody(ctx, "doc2")
+	existingBody, err = dbCollection.get1xBody(ctx, "doc2")
 	require.NoError(t, err)
 }

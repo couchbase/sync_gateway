@@ -1,7 +1,6 @@
 package document
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"time"
@@ -23,7 +22,7 @@ type DocumentRevision struct {
 	Removed     bool // True if the revision is a removal.
 	Invalid     bool // Used by RevisionCache.
 
-	_bodyBytes []byte // the raw document, with no special properties.
+	_bodyBytes []byte // the raw document JSON, with no special properties.
 }
 
 // Parses and validates a JSON document, creating a DocumentRevision.
@@ -125,6 +124,17 @@ func (rev *DocumentRevision) UnmarshalBody() (map[string]any, error) {
 	return body, err
 }
 
+// Trims rev.History to at most `maxHistory` revisions starting from the given ancestors.
+func (rev *DocumentRevision) TrimHistory(maxHistory int, historyFrom []string) {
+	if maxHistory == 0 {
+		rev.History = nil
+	} else if rev.History != nil {
+		_, rev.History = TrimEncodedRevisionsToAncestor(rev.History, historyFrom, maxHistory)
+	}
+}
+
+//-------- INTERNALS
+
 // Subroutine used by ParseDocumentRevision() and JSONData().
 // Given a JSON special property key, returns the address of the corrresponding struct member.
 // If `always` is false, returns nil if the property has no value.
@@ -144,8 +154,12 @@ func (rev *DocumentRevision) propertyPtr(key string, always bool) (value any, er
 			value = &rev.Attachments
 		}
 	case BodyExpiry:
-		if always || rev.Expiry != nil {
+		if always || rev.Expiry != nil && !rev.Expiry.IsZero() {
 			value = &rev.Expiry
+		}
+	case BodyRevisions:
+		if always || len(rev.History) > 0 {
+			value = &rev.History
 		}
 	case BodyDeleted:
 		if always || rev.Deleted {
@@ -160,77 +174,4 @@ func (rev *DocumentRevision) propertyPtr(key string, always bool) (value any, er
 		err = fmt.Errorf("internal error: DocumentRevision doesn't recognize property %q", key)
 	}
 	return
-}
-
-//------- SHOULD BE MOVED BACK TO db OR EVEN rest
-
-// Abstract interface for a database
-type DocumentProvider interface {
-	LoadAttachmentsData(meta AttachmentsMeta, minRevPos int, docID string) (AttachmentsMeta, error)
-}
-
-// Mutable1xBody returns a copy of the given document revision as a 1.x style body (with special properties)
-// Callers are free to modify this body without affecting the document revision.
-func (rev *DocumentRevision) Mutable1xBody(db DocumentProvider, requestedHistory Revisions, attachmentsSince []string, showExp bool) (b Body, err error) {
-	b, err = rev.UnmarshalBody()
-	if err != nil {
-		return nil, err
-	}
-
-	b[BodyId] = rev.DocID
-	b[BodyRev] = rev.RevID
-
-	// Add revision metadata:
-	if requestedHistory != nil {
-		b[BodyRevisions] = requestedHistory
-	}
-
-	if showExp && rev.Expiry != nil && !rev.Expiry.IsZero() {
-		b[BodyExpiry] = rev.Expiry.Format(time.RFC3339)
-	}
-
-	if rev.Deleted {
-		b[BodyDeleted] = true
-	}
-	if rev.Removed {
-		b[BodyRemoved] = true
-	}
-
-	// Add attachment data if requested:
-	if attachmentsSince != nil {
-		if len(rev.Attachments) > 0 {
-			minRevpos := 1
-			if len(attachmentsSince) > 0 {
-				ancestor := rev.History.FindAncestor(attachmentsSince)
-				if ancestor != "" {
-					minRevpos, _ = ParseRevID(ancestor)
-					minRevpos++
-				}
-			}
-			bodyAtts, err := db.LoadAttachmentsData(rev.Attachments, minRevpos, rev.DocID)
-			if err != nil {
-				return nil, err
-			}
-			DeleteAttachmentVersion(bodyAtts)
-			b[BodyAttachments] = bodyAtts
-		}
-	} else if rev.Attachments != nil {
-		// Stamp attachment metadata back into the body
-		DeleteAttachmentVersion(rev.Attachments)
-		b[BodyAttachments] = rev.Attachments
-	}
-
-	return b, nil
-}
-
-// As1xBytes returns a byte slice representing the 1.x style body, containing special properties (i.e. _id, _rev, _attachments, etc.)
-func (rev *DocumentRevision) As1xBytes(db DocumentProvider, requestedHistory Revisions, attachmentsSince []string, showExp bool) (b []byte, err error) {
-	// unmarshal
-	body1x, err := rev.Mutable1xBody(db, requestedHistory, attachmentsSince, showExp)
-	if err != nil {
-		return nil, err
-	}
-
-	// TODO: We could avoid the unmarshal -> marshal work here by injecting properties into the original body bytes directly.
-	return json.Marshal(body1x)
 }

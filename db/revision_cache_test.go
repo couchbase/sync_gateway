@@ -201,7 +201,7 @@ func TestRevisionCacheInternalProperties(t *testing.T) {
 	}
 
 	// Get the doc while still resident in the rev cache w/ history=false, validate _revisions property isn't found
-	body, err := collection.Get1xRevBody(ctx, "doc1", rev1id, false, nil)
+	body, err := collection.get1xRevBody(ctx, "doc1", rev1id, false, nil)
 	assert.NoError(t, err, "Get1xRevBody")
 	badRevisions, ok := body[BodyRevisions]
 	if ok {
@@ -210,7 +210,7 @@ func TestRevisionCacheInternalProperties(t *testing.T) {
 
 	// Get the doc while still resident in the rev cache w/ history=true, validate _revisions property is returned with expected
 	// properties ("start", "ids")
-	bodyWithHistory, err := collection.Get1xRevBody(ctx, "doc1", rev1id, true, nil)
+	bodyWithHistory, err := collection.get1xRevBody(ctx, "doc1", rev1id, true, nil)
 	assert.NoError(t, err, "Get1xRevBody")
 	validRevisions, ok := bodyWithHistory[BodyRevisions]
 	if !ok {
@@ -318,7 +318,7 @@ func TestPutRevisionCacheAttachmentProperty(t *testing.T) {
 	assert.True(t, ok, "'myatt' not found in revcache attachments metadata")
 
 	// db.getRev stamps _attachments back in from revcache Attachment metadata
-	body, err := collection.Get1xRevBody(ctx, rev1key, rev1id, false, nil)
+	body, err := collection.get1xRevBody(ctx, rev1key, rev1id, false, nil)
 	assert.NoError(t, err, "Unexpected error calling collection.Get1xRevBody")
 	atts, ok := body[BodyAttachments]
 	assert.True(t, ok, "_attachments property was not stamped back in body during collection.Get1xRevBody: %#v", body)
@@ -367,7 +367,7 @@ func TestPutExistingRevRevisionCacheAttachmentProperty(t *testing.T) {
 	assert.True(t, ok, "'myatt' not found in revcache attachments metadata")
 
 	// db.getRev stamps _attachments back in from revcache Attachment metadata
-	body, err := collection.Get1xRevBody(ctx, docKey, rev2id, false, nil)
+	body, err := collection.get1xRevBody(ctx, docKey, rev2id, false, nil)
 	assert.NoError(t, err, "Unexpected error calling collection.Get1xRevBody")
 	atts, ok := body[BodyAttachments]
 	assert.True(t, ok, "_attachments property was not stamped back in body during collection.Get1xRevBody: %#v", body)
