@@ -88,7 +88,7 @@ def test_main_output_exists_with_redacted():
 @pytest.mark.parametrize("args", [[], ["--log-redaction-level", "none"]])
 def test_main_zip_deleted_on_upload_success(args):
     with unittest.mock.patch("tasks.urllib.request.build_opener", FakeSuccessUrlOpener):
-        with unittest.mock.patch("sys.argv", ["sg_collect", *args, "--upload-host", "https://nohost.com", "--customer", "fakeCustomer",  ZIP_NAME]):
+        with unittest.mock.patch("sys.argv", ["sg_collect", *args, "--upload-host", "https://example.com", "--customer", "fakeCustomer",  ZIP_NAME]):
             with pytest.raises(SystemExit) as exc:
                 sgcollect_info.main()
             assert exc.value.code == 0
@@ -99,7 +99,7 @@ def test_main_zip_deleted_on_upload_success(args):
 @pytest.mark.parametrize("args", [[], ["--log-redaction-level", "none"]])
 def test_main_zip_deleted_on_upload_failure(args):
     with unittest.mock.patch("tasks.urllib.request.build_opener", FakeFailureUrlOpener):
-        with unittest.mock.patch("sys.argv", ["sg_collect", *args, "--upload-host", "https://nohost.com", "--customer", "fakeCustomer",  ZIP_NAME]):
+        with unittest.mock.patch("sys.argv", ["sg_collect", *args, "--upload-host", "https://example.com", "--customer", "fakeCustomer",  ZIP_NAME]):
             with pytest.raises(SystemExit) as exc:
                 sgcollect_info.main()
             assert exc.value.code == 1
@@ -109,7 +109,7 @@ def test_main_zip_deleted_on_upload_failure(args):
 @pytest.mark.usefixtures("main_norun_redacted_zip")
 def test_main_redacted_zip_deleted_on_upload_success():
     with unittest.mock.patch("tasks.urllib.request.build_opener", FakeSuccessUrlOpener):
-        with unittest.mock.patch("sys.argv", ["sg_collect", "--log-redaction-level", "partial", "--upload-host", "https://nohost.com", "--customer", "fakeCustomer",  ZIP_NAME]):
+        with unittest.mock.patch("sys.argv", ["sg_collect", "--log-redaction-level", "partial", "--upload-host", "https://example.com", "--customer", "fakeCustomer",  ZIP_NAME]):
             with pytest.raises(SystemExit) as exc:
                 sgcollect_info.main()
             assert exc.value.code == 0
@@ -119,7 +119,7 @@ def test_main_redacted_zip_deleted_on_upload_success():
 @pytest.mark.usefixtures("main_norun_redacted_zip")
 def test_main_redacted_zip_deleted_on_upload_failure():
     with unittest.mock.patch("tasks.urllib.request.build_opener", FakeFailureUrlOpener):
-        with unittest.mock.patch("sys.argv", ["sg_collect","--log-redaction-level", "partial", "--upload-host", "https://nohost.com", "--customer", "fakeCustomer",  ZIP_NAME]):
+        with unittest.mock.patch("sys.argv", ["sg_collect","--log-redaction-level", "partial", "--upload-host", "https://example.com", "--customer", "fakeCustomer",  ZIP_NAME]):
             with pytest.raises(SystemExit) as exc:
                 sgcollect_info.main()
             assert exc.value.code == 1
@@ -130,7 +130,7 @@ def test_main_redacted_zip_deleted_on_upload_failure():
 @pytest.mark.parametrize("args", [[], ["--log-redaction-level", "none"]])
 def test_main_keep_zip_on_upload_success(args):
     with unittest.mock.patch("tasks.urllib.request.build_opener", FakeSuccessUrlOpener):
-        with unittest.mock.patch("sys.argv", ["sg_collect", *args, "--upload-host", "https://nohost.com", "--customer", "fakeCustomer","--keep-zip",  ZIP_NAME]):
+        with unittest.mock.patch("sys.argv", ["sg_collect", *args, "--upload-host", "https://example.com", "--customer", "fakeCustomer","--keep-zip",  ZIP_NAME]):
             with pytest.raises(SystemExit) as exc:
                 sgcollect_info.main()
             assert exc.value.code == 0
@@ -141,7 +141,7 @@ def test_main_keep_zip_on_upload_success(args):
 @pytest.mark.parametrize("args", [[], ["--log-redaction-level", "none"]])
 def test_main_keep_zip_on_upload_failure(args):
     with unittest.mock.patch("tasks.urllib.request.build_opener", FakeFailureUrlOpener):
-        with unittest.mock.patch("sys.argv", ["sg_collect", *args, "--upload-host", "https://nohost.com", "--customer", "fakeCustomer", "--keep-zip", ZIP_NAME]):
+        with unittest.mock.patch("sys.argv", ["sg_collect", *args, "--upload-host", "https://example.com", "--customer", "fakeCustomer", "--keep-zip", ZIP_NAME]):
             with pytest.raises(SystemExit) as exc:
                 sgcollect_info.main()
             assert exc.value.code == 1
@@ -151,7 +151,7 @@ def test_main_keep_zip_on_upload_failure(args):
 @pytest.mark.usefixtures("main_norun_redacted_zip")
 def test_main_keep_zip_deleted_on_upload_success():
     with unittest.mock.patch("tasks.urllib.request.build_opener", FakeSuccessUrlOpener):
-        with unittest.mock.patch("sys.argv", ["sg_collect", "--log-redaction-level", "partial", "--upload-host", "https://nohost.com", "--customer", "fakeCustomer","--keep-zip",  ZIP_NAME]):
+        with unittest.mock.patch("sys.argv", ["sg_collect", "--log-redaction-level", "partial", "--upload-host", "https://example.com", "--customer", "fakeCustomer","--keep-zip",  ZIP_NAME]):
             with pytest.raises(SystemExit) as exc:
                 sgcollect_info.main()
             assert exc.value.code == 0
@@ -161,7 +161,7 @@ def test_main_keep_zip_deleted_on_upload_success():
 @pytest.mark.usefixtures("main_norun_redacted_zip")
 def test_main_keep_zip_deleted_on_upload_failure():
     with unittest.mock.patch("tasks.urllib.request.build_opener", FakeFailureUrlOpener):
-        with unittest.mock.patch("sys.argv", ["sg_collect","--log-redaction-level", "partial", "--upload-host", "https://nohost.com", "--customer", "fakeCustomer", "--keep-zip", ZIP_NAME]):
+        with unittest.mock.patch("sys.argv", ["sg_collect","--log-redaction-level", "partial", "--upload-host", "https://example.com", "--customer", "fakeCustomer", "--keep-zip", ZIP_NAME]):
             with pytest.raises(SystemExit) as exc:
                 sgcollect_info.main()
             assert exc.value.code == 1
