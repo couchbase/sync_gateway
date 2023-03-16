@@ -33,7 +33,7 @@ from tasks import CbcollectInfoOptions
 from tasks import TaskRunner
 from tasks import add_file_task
 from tasks import add_gzip_file_task
-from tasks import do_upload_and_exit
+from tasks import do_upload
 from tasks import dump_utilities
 from tasks import flatten
 from tasks import generate_upload_url
@@ -74,9 +74,14 @@ USAGE = """usage: %prog [options] output_file.zip
 mydir = os.path.dirname(sys.argv[0])
 
 def delete_zip(filename):
+    """
+    Deletes file if exists. Does not raise an exception in any circumstance.
+    """
     try:
         os.remove(filename)
         print("Zipfile deleted: {0}".format(filename))
+    except FileNotFoundError:
+        pass
     except Exception as e:
         print("Zipfile ({0}) deletion failed: {1}".format(filename, e))
 
@@ -657,7 +662,6 @@ def main():
     sg_url = options.sync_gateway_url
     sg_username = options.sync_gateway_username
     sg_password = options.sync_gateway_password
-    keep_zip = options.keep_zip
 
     if not sg_url or "://" not in sg_url:
         if not sg_url:
@@ -701,13 +705,12 @@ def main():
     if options.redact_level != "none" and options.redact_level != "partial":
         parser.error("Invalid redaction level. Only 'none' and 'partial' are supported.")
 
-    upload_url = ""
     should_redact = False
+    redact_zip_file = zip_filename[:-4] + "-redacted" + zip_filename[-4:]
     if options.redact_level != "none":
         should_redact = True
 
         # Generate the s3 URL where zip files will be updated
-        redact_zip_file = zip_filename[:-4] + "-redacted" + zip_filename[-4:]
         upload_url = generate_upload_url(parser, options, redact_zip_file)
     else:
         upload_url = generate_upload_url(parser, options, zip_filename)
@@ -747,7 +750,7 @@ def main():
 
     # If user asked to just upload, then upload and exit
     if options.just_upload_into is not None:
-        do_upload_and_exit(args[0], options.just_upload_into, options.upload_proxy)
+        do_upload(args[0], options.just_upload_into, options.upload_proxy)
 
     # Create a TaskRunner and run all of the OS tasks (collect top, netstat, etc)
     # The output of the tasks will go directly into couchbase.log
@@ -786,7 +789,7 @@ def main():
     runner.close_all_files()
 
     # Build redacted zip file
-    if options.redact_level != "none":
+    if should_redact:
         log("Redacting log files to level: %s" % options.redact_level)
         runner.redact_and_zip(redact_zip_file, 'sgcollect_info', options.salt_value, platform.node())
 
@@ -797,21 +800,20 @@ def main():
         print("Zipfile built: {0}".format(redact_zip_file))
 
     print("Zipfile built: {0}".format(zip_filename))
-    
+
+    if not upload_url:
+        return
     # Upload the zip to the URL to S3 if required
-    if upload_url:
-        try:
-            if options.redact_level != "none":
-                do_upload_and_exit(redact_zip_file, upload_url, options.upload_proxy, keep_zip)
-            else:
-                do_upload_and_exit(zip_filename, upload_url, options.upload_proxy, keep_zip)
-        finally:
-            if not keep_zip:
-                delete_zip(zip_filename)
-                if options.redact_level != "none":
-                    delete_zip(redact_zip_file)
-
-
+    try:
+        if should_redact:
+            exit_code = do_upload(redact_zip_file, upload_url, options.upload_proxy)
+        else:
+            exit_code = do_upload(zip_filename, upload_url, options.upload_proxy)
+    finally:
+        if not options.keep_zip:
+            delete_zip(zip_filename)
+            delete_zip(redact_zip_file)
+    sys.exit(exit_code)
 
 
 def ud(value, should_redact=True):
