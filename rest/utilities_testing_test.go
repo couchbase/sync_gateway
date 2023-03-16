@@ -210,8 +210,7 @@ func TestRestTesterTemplateMultipleDatabases(t *testing.T) {
 	require.NoError(t, err)
 	bucket1Datastore2Name, ok := base.AsDataStoreName(bucket1Datastore2)
 	require.True(t, ok)
-	resp, err := rt.CreateDatabase(dbOne, dbConfig)
-	require.NoError(t, err)
+	resp := rt.CreateDatabase(dbOne, dbConfig)
 	RequireStatus(t, resp, http.StatusCreated)
 	testCases = []struct {
 		input     string
@@ -270,8 +269,7 @@ func TestRestTesterTemplateMultipleDatabases(t *testing.T) {
 	require.NoError(t, err)
 	bucket2Datastore2Name, ok := base.AsDataStoreName(bucket2Datastore2)
 	require.True(t, ok)
-	resp, err = rt.CreateDatabase(dbTwo, dbConfig)
-	require.NoError(t, err)
+	resp = rt.CreateDatabase(dbTwo, dbConfig)
 	RequireStatus(t, resp, http.StatusCreated)
 	testCases = []struct {
 		input     string

@@ -29,61 +29,61 @@ servers:
         default: localhost
 paths:
   '/{db}/_session':
-    $ref: './paths/public/{db}~_session.yaml'
+    $ref: './paths/public/db-_session.yaml'
   '/{targetdb}/':
-    $ref: './paths/public/{targetdb}~.yaml'
+    $ref: './paths/public/targetdb-.yaml'
   '/{db}/':
-    $ref: './paths/public/{db}~.yaml'
+    $ref: './paths/public/db-.yaml'
   /:
-    $ref: ./paths/public/~.yaml
+    $ref: ./paths/public/-.yaml
   '/{keyspace}/':
-    $ref: './paths/admin/{keyspace}~.yaml'
+    $ref: './paths/admin/keyspace-.yaml'
   '/{keyspace}/_all_docs':
-    $ref: './paths/public/{keyspace}~_all_docs.yaml'
+    $ref: './paths/public/keyspace-_all_docs.yaml'
   '/{keyspace}/_bulk_docs':
-    $ref: './paths/public/{keyspace}~_bulk_docs.yaml'
+    $ref: './paths/public/keyspace-_bulk_docs.yaml'
   '/{keyspace}/_bulk_get':
-    $ref: './paths/public/{keyspace}~_bulk_get.yaml'
+    $ref: './paths/public/keyspace-_bulk_get.yaml'
   '/{keyspace}/_changes':
-    $ref: './paths/public/{keyspace}~_changes.yaml'
+    $ref: './paths/public/keyspace-_changes.yaml'
   '/{db}/_design/{ddoc}':
-    $ref: './paths/public/{db}~_design~{ddoc}.yaml'
+    $ref: './paths/public/db-_design-ddoc.yaml'
   '/{db}/_design/{ddoc}/_view/{view}':
-    $ref: './paths/public/{db}~_design~{ddoc}~_view~{view}.yaml'
+    $ref: './paths/public/db-_design-ddoc-_view-view.yaml'
   '/{db}/_ensure_full_commit':
-    $ref: './paths/public/{db}~_ensure_full_commit.yaml'
+    $ref: './paths/public/db-_ensure_full_commit.yaml'
   '/{keyspace}/_revs_diff':
-    $ref: './paths/public/{keyspace}~_revs_diff.yaml'
+    $ref: './paths/public/keyspace-_revs_diff.yaml'
   '/{keyspace}/_local/{docid}':
-    $ref: './paths/public/{keyspace}~_local~{docid}.yaml'
+    $ref: './paths/public/keyspace-_local-docid.yaml'
   '/{keyspace}/{docid}':
-    $ref: './paths/public/{keyspace}~{docid}.yaml'
+    $ref: './paths/public/keyspace-docid.yaml'
   '/{keyspace}/{docid}/{attach}':
-    $ref: './paths/public/{keyspace}~{docid}~{attach}.yaml'
+    $ref: './paths/public/keyspace-docid-attach.yaml'
   '/{db}/_facebook':
-    $ref: './paths/public/{db}~_facebook.yaml'
+    $ref: './paths/public/db-_facebook.yaml'
   '/{db}/_google':
-    $ref: './paths/public/{db}~_google.yaml'
+    $ref: './paths/public/db-_google.yaml'
   '/{db}/_oidc':
-    $ref: './paths/public/{db}~_oidc.yaml'
+    $ref: './paths/public/db-_oidc.yaml'
   '/{db}/_oidc_challenge':
-    $ref: './paths/public/{db}~_oidc_challenge.yaml'
+    $ref: './paths/public/db-_oidc_challenge.yaml'
   '/{db}/_oidc_callback':
-    $ref: './paths/public/{db}~_oidc_callback.yaml'
+    $ref: './paths/public/db-_oidc_callback.yaml'
   '/{db}/_oidc_refresh':
-    $ref: './paths/public/{db}~_oidc_refresh.yaml'
+    $ref: './paths/public/db-_oidc_refresh.yaml'
   '/{db}/_oidc_testing/.well-known/openid-configuration':
-    $ref: './paths/public/{db}~_oidc_testing~.well-known~openid-configuration.yaml'
+    $ref: './paths/public/db-_oidc_testing-.well-known-openid-configuration.yaml'
   '/{db}/_oidc_testing/authorize':
-    $ref: './paths/public/{db}~_oidc_testing~authorize.yaml'
+    $ref: './paths/public/db-_oidc_testing-authorize.yaml'
   '/{db}/_oidc_testing/token':
-    $ref: './paths/public/{db}~_oidc_testing~token.yaml'
+    $ref: './paths/public/db-_oidc_testing-token.yaml'
   '/{db}/_oidc_testing/certs':
-    $ref: './paths/public/{db}~_oidc_testing~certs.yaml'
+    $ref: './paths/public/db-_oidc_testing-certs.yaml'
   '/{db}/_oidc_testing/authenticate':
-    $ref: './paths/public/{db}~_oidc_testing~authenticate.yaml'
+    $ref: './paths/public/db-_oidc_testing-authenticate.yaml'
   '/{db}/_blipsync':
-    $ref: './paths/public/{db}~_blipsync.yaml'
+    $ref: './paths/public/db-_blipsync.yaml'
 tags:
   - name: Public only endpoints
     description: Endpoints that are unique to the Public API (port 4984)
@@ -93,10 +93,12 @@ tags:
     description: Create and manage Sync Gateway databases
   - name: Session
     description: Manage user sessions
-  - name: OpenID Connect
-    description: Manage OpenID Connect
+  - name: Authentication
+    description: Manage OpenID Connect Authentication
   - name: Document
-    description: Create and manage documents and attachments
+    description: Create and manage documents
+  - name: Document Attachment
+    description: Create and manage document attachments
   - name: Replication
     description: Create and manage inter-Sync Gateway replications
   - name: Unsupported

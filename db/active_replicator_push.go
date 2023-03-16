@@ -49,15 +49,19 @@ func (apr *ActivePushReplicator) Start(ctx context.Context) error {
 	}
 
 	apr.setState(ReplicationStateStarting)
+	// intentionally reset the context from having db information on it?
 	logCtx := base.LogContextWith(ctx, &base.LogContext{CorrelationID: apr.config.ID + "-" + string(ActiveReplicatorTypePush)})
 	apr.ctx, apr.ctxCancel = context.WithCancel(logCtx)
 
 	err := apr._connect()
 	if err != nil {
 		_ = apr.setError(err)
-		base.WarnfCtx(apr.ctx, "Couldn't connect. Attempting to reconnect in background: %v", err)
-		apr.reconnectActive.Set(true)
-		go apr.reconnectLoop()
+		base.WarnfCtx(apr.ctx, "Couldn't connect: %v", err)
+		if apr.config.TotalReconnectTimeout != 0 {
+			base.InfofCtx(apr.ctx, base.KeyReplicate, "Attempting to reconnect in background: %v", err)
+			apr.reconnectActive.Set(true)
+			go apr.reconnectLoop()
+		}
 	}
 	apr._publishStatus()
 	return err

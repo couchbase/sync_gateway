@@ -1722,7 +1722,7 @@ func TestGetRemovedDoc(t *testing.T) {
 	require.NoError(t, err)                        // no error
 	assert.Empty(t, resp.Properties["Error-Code"]) // no error
 
-	require.NoError(t, rt.GetDatabase().GetSingleDatabaseCollection().WaitForPendingChanges(base.TestCtx(t)))
+	require.NoError(t, rt.WaitForPendingChanges())
 
 	// Try to get rev 2 via BLIP API and assert that _removed == false
 	resultDoc, err := bt.GetDocAtRev("foo", "2-bcd")
@@ -1743,10 +1743,10 @@ func TestGetRemovedDoc(t *testing.T) {
 	assert.NoError(t, err)                         // no error
 	assert.Empty(t, resp.Properties["Error-Code"]) // no error
 
-	require.NoError(t, rt.GetDatabase().GetSingleDatabaseCollection().WaitForPendingChanges(base.TestCtx(t)))
+	require.NoError(t, rt.WaitForPendingChanges())
 
 	// Flush rev cache in case this prevents the bug from showing up (didn't make a difference)
-	rt.GetDatabase().GetSingleDatabaseCollection().FlushRevisionCacheForTest()
+	rt.GetSingleTestDatabaseCollection().FlushRevisionCacheForTest()
 
 	// Delete any temp revisions in case this prevents the bug from showing up (didn't make a difference)
 	tempRevisionDocID := base.RevPrefix + "foo:5:3-cde"
@@ -1797,12 +1797,6 @@ func TestMissingNoRev(t *testing.T) {
 		require.NoError(t, err, "resp is %s", resp)
 	}
 
-	// Get a reference to the database
-	targetDbContext, err := rt.ServerContext().GetDatabase(ctx, "db")
-	assert.NoError(t, err, "failed")
-	targetDb, err := db.GetDatabase(targetDbContext, nil)
-	assert.NoError(t, err, "failed")
-
 	// Pull docs, expect to pull 5 docs since none of them has purged yet.
 	docs, ok := bt.WaitForNumDocsViaChanges(5)
 	require.True(t, ok)
@@ -1814,7 +1808,7 @@ func TestMissingNoRev(t *testing.T) {
 	assert.NoError(t, err, "failed")
 
 	// Flush rev cache
-	targetDb.GetSingleDatabaseCollection().FlushRevisionCacheForTest()
+	rt.GetSingleTestDatabaseCollection().FlushRevisionCacheForTest()
 
 	// Pull docs, expect to pull 4 since one was purged.  (also expect to NOT get stuck)
 	docs, ok = bt.WaitForNumDocsViaChanges(4)
@@ -2569,7 +2563,7 @@ func TestSendRevisionNoRevHandling(t *testing.T) {
 			})
 
 			// Flush cache so document has to be retrieved from the leaky bucket
-			rt.GetDatabase().GetSingleDatabaseCollection().FlushRevisionCacheForTest()
+			rt.GetSingleTestDatabaseCollection().FlushRevisionCacheForTest()
 
 			err = btc.StartPull()
 			require.NoError(t, err)

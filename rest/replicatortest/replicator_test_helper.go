@@ -76,7 +76,7 @@ func addActiveRT(t *testing.T, dbName string, testBucket *base.TestBucket) (acti
 // requireRevID asserts that the specified document revision is written to the
 // underlying bucket backed by the given RestTester instance.
 func requireRevID(t *testing.T, rt *rest.RestTester, docID, revID string) {
-	doc, err := rt.GetDatabase().GetSingleDatabaseCollection().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalAll)
+	doc, err := rt.GetSingleTestDatabaseCollection().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalAll)
 	require.NoError(t, err, "Error reading document from bucket")
 	require.Equal(t, revID, doc.SyncData.CurrentRev)
 }
@@ -92,7 +92,7 @@ func requireErrorKeyNotFound(t *testing.T, rt *rest.RestTester, docID string) {
 func waitForTombstone(t *testing.T, rt *rest.RestTester, docID string) {
 	require.NoError(t, rt.WaitForPendingChanges())
 	require.NoError(t, rt.WaitForCondition(func() bool {
-		doc, _ := rt.GetDatabase().GetSingleDatabaseCollection().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalAll)
+		doc, _ := rt.GetSingleTestDatabaseCollection().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalAll)
 		return doc.IsDeleted() && !doc.HasBody()
 	}))
 }

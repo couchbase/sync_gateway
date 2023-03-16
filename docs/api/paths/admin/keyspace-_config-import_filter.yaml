@@ -1,0 +1,83 @@
+# Copyright 2022-Present Couchbase, Inc.
+#
+# Use of this software is governed by the Business Source License included
+# in the file licenses/BSL-Couchbase.txt.  As of the Change Date specified
+# in that file, in accordance with the Business Source License, use of this
+# software will be governed by the Apache License, Version 2.0, included in
+# the file licenses/APL2.txt.
+
+parameters:
+  - $ref: ../../components/parameters.yaml#/keyspace
+get:
+  summary: Get database import filter
+  description: |-
+    This returns the database's import filter that documents are ran through when importing.
+
+    Response will be blank if there has been no import filter set.
+
+    Required Sync Gateway RBAC roles:
+
+    * Sync Gateway Architect
+  responses:
+    '200':
+      description: Successfully retrieved the import filter
+      headers:
+        Etag:
+          schema:
+            type: string
+          description: The database configuration revision.
+      content:
+        application/javascript:
+          schema:
+            type: string
+    '404':
+      $ref: ../../components/responses.yaml#/Not-found
+  tags:
+    - Database Configuration
+put:
+  summary: Set database import filter
+  description: |-
+    This will allow you to update the database's import filter.
+
+    Required Sync Gateway RBAC roles:
+
+    * Sync Gateway Architect
+  parameters:
+    - $ref: ../../components/parameters.yaml#/DB-config-If-Match
+    - $ref: ../../components/parameters.yaml#/disable_oidc_validation
+  requestBody:
+    description: The import filter to use
+    content:
+      application/javascript:
+        schema:
+          type: string
+  responses:
+    '200':
+      description: Updated import filter successfully
+    '400':
+      $ref: ../../components/responses.yaml#/request-problem
+    '404':
+      $ref: ../../components/responses.yaml#/Not-found
+    '412':
+      $ref: ../../components/responses.yaml#/DB-config-precondition-failed
+  tags:
+    - Database Configuration
+delete:
+  summary: Delete import filter
+  description: |-
+    This will remove the custom import filter function from the database configuration so that Sync Gateway will not filter any documents during import.
+
+    Required Sync Gateway RBAC roles:
+
+    * Sync Gateway Architect
+  parameters:
+    - $ref: ../../components/parameters.yaml#/DB-config-If-Match
+  responses:
+    '200':
+      description: Successfully deleted the import filter
+    '404':
+      $ref: ../../components/responses.yaml#/Not-found
+    '412':
+      $ref: ../../components/responses.yaml#/DB-config-precondition-failed
+  tags:
+    - Database Configuration

@@ -1,0 +1,49 @@
+# Copyright 2022-Present Couchbase, Inc.
+#
+# Use of this software is governed by the Business Source License included
+# in the file licenses/BSL-Couchbase.txt.  As of the Change Date specified
+# in that file, in accordance with the Business Source License, use of this
+# software will be governed by the Apache License, Version 2.0, included in
+# the file licenses/APL2.txt.
+
+parameters:
+  - $ref: ../../components/parameters.yaml#/db
+get:
+  summary: Get all replication statuses
+  description: |-
+    Retrieve all the replication statuses in the Sync Gateway node.
+
+    Required Sync Gateway RBAC roles:
+
+    * Sync Gateway Replicator
+  parameters:
+    - $ref: ../../components/parameters.yaml#/replication-active-only
+    - $ref: ../../components/parameters.yaml#/replication-local-only
+    - $ref: ../../components/parameters.yaml#/replication-include-error
+    - $ref: ../../components/parameters.yaml#/replication-include-config
+  responses:
+    '200':
+      description: Successfully retrieved all replication statuses.
+      content:
+        application/json:
+          schema:
+            type: array
+            items:
+              $ref: ../../components/schemas.yaml#/Replication-status
+    '400':
+      $ref: ../../components/responses.yaml#/request-problem
+  tags:
+    - Replication
+head:
+  summary: /{db}/_replicationStatus/
+  responses:
+    '200':
+      description: OK
+    '400':
+      description: Bad Request
+  tags:
+    - Replication
+  description: |-
+    Required Sync Gateway RBAC roles:
+
+    * Sync Gateway Replicator

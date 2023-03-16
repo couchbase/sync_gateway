@@ -115,9 +115,10 @@ func (dbc *DatabaseContext) UpdatePrincipal(ctx context.Context, updates *auth.P
 		if updates.ExplicitChannels != nil && !updatedExplicitChannels.Equals(updates.ExplicitChannels) {
 			changed = true
 		}
-
-		collectionAccessChanged := dbc.RequiresCollectionAccessUpdate(ctx, princ, updates.CollectionAccess)
-		if collectionAccessChanged {
+		collectionAccessChanged, err := dbc.RequiresCollectionAccessUpdate(ctx, princ, updates.CollectionAccess)
+		if err != nil {
+			return false, err
+		} else if collectionAccessChanged {
 			changed = true
 		}
 
@@ -184,7 +185,7 @@ func (dbc *DatabaseContext) UpdatePrincipal(ctx context.Context, updates *auth.P
 
 		// Update the persistent sequence number of this principal (only allocate a sequence when needed - issue #673):
 		nextSeq := uint64(0)
-		var err error
+
 		nextSeq, err = dbc.sequences.nextSequence()
 		if err != nil {
 			return replaced, err
@@ -259,22 +260,27 @@ func (dbc *DatabaseContext) UpdateCollectionExplicitChannels(ctx context.Context
 }
 
 // RequiresCollectionAccessUpdate returns true if the provided map of CollectionAccessConfig requires an update to the principal
-func (dbc *DatabaseContext) RequiresCollectionAccessUpdate(ctx context.Context, princ auth.Principal, updates map[string]map[string]*auth.CollectionAccessConfig) (requiresUpdate bool) {
-
+func (dbc *DatabaseContext) RequiresCollectionAccessUpdate(ctx context.Context, princ auth.Principal, updates map[string]map[string]*auth.CollectionAccessConfig) (bool, error) {
+	requiresUpdate := false
 	for scopeName, scope := range updates {
 		if scope != nil {
 			for collectionName, updatedCollectionAccess := range scope {
+				_, err := dbc.GetDatabaseCollection(scopeName, collectionName)
+				if err != nil {
+					return false, base.HTTPErrorf(http.StatusNotFound, "keyspace specified in collection_access (%s) not found", fmt.Sprintf("%s.%s.%s", dbc.Name, scopeName, collectionName))
+				}
 				if updatedCollectionAccess == nil {
 					if princ.CollectionExplicitChannels(scopeName, collectionName) != nil {
-						return true
+						requiresUpdate = true
 					}
 				} else {
 					if !princ.CollectionExplicitChannels(scopeName, collectionName).Equals(updatedCollectionAccess.ExplicitChannels_) {
-						return true
+						requiresUpdate = true
 					}
 				}
 			}
 		}
 	}
-	return false
+
+	return requiresUpdate, nil
 }

@@ -60,7 +60,7 @@ func TestBlipDeltaSyncPushAttachment(t *testing.T) {
 	revID, err = btc.PushRev(docID, revID, []byte(`{"key":"val","_attachments":{"myAttachment":{"data":"`+attData+`"}}}`))
 	require.NoError(t, err)
 
-	syncData, err := rt.GetDatabase().GetSingleDatabaseCollection().GetDocSyncData(base.TestCtx(t), docID)
+	syncData, err := rt.GetSingleTestDatabaseCollection().GetDocSyncData(base.TestCtx(t), docID)
 	require.NoError(t, err)
 
 	assert.Len(t, syncData.Attachments, 1)
@@ -80,7 +80,7 @@ func TestBlipDeltaSyncPushAttachment(t *testing.T) {
 	_, err = btc.PushRev(docID, revID, newBody)
 	require.NoError(t, err)
 
-	syncData, err = rt.GetDatabase().GetSingleDatabaseCollection().GetDocSyncData(base.TestCtx(t), docID)
+	syncData, err = rt.GetSingleTestDatabaseCollection().GetDocSyncData(base.TestCtx(t), docID)
 	require.NoError(t, err)
 
 	assert.Len(t, syncData.Attachments, 1)
@@ -872,7 +872,7 @@ func TestBlipDeltaSyncPush(t *testing.T) {
 		assert.Equal(t, `{"greetings":{"2-":[{"howdy":"bob"}]}}`, string(msgBody))
 
 		// Validate that generation of a delta didn't mutate the revision body in the revision cache
-		docRev, cacheErr := rt.GetDatabase().GetSingleDatabaseCollection().GetRevisionCacheForTest().Get(base.TestCtx(t), "doc1", "1-0335a345b6ffed05707ccc4cbc1b67f4", db.RevCacheOmitDelta)
+		docRev, cacheErr := rt.GetSingleTestDatabaseCollection().GetRevisionCacheForTest().Get(base.TestCtx(t), "doc1", "1-0335a345b6ffed05707ccc4cbc1b67f4", db.RevCacheOmitDelta)
 		assert.NoError(t, cacheErr)
 		assert.NotContains(t, docRev.BodyBytes(), "bob")
 	} else {

@@ -54,7 +54,7 @@ func TestInitializeIndexes(t *testing.T) {
 				db, ctx = setupTestDefaultCollectionDBWithOptions(t, DatabaseContextOptions{EnableXattr: test.xattrs})
 			}
 			defer db.Close(ctx)
-			collection := db.GetSingleDatabaseCollection()
+			collection := GetSingleDatabaseCollection(t, db.DatabaseContext)
 
 			n1qlStore, isGoCBBucket := base.AsN1QLStore(collection.dataStore)
 			require.True(t, isGoCBBucket)
@@ -107,7 +107,7 @@ func TestPostUpgradeIndexesSimple(t *testing.T) {
 
 	require.True(t, db.Bucket.IsSupported(sgbucket.BucketStoreFeatureN1ql))
 
-	collection := db.GetSingleDatabaseCollection()
+	collection := GetSingleDatabaseCollection(t, db.DatabaseContext)
 	n1qlStore, ok := base.AsN1QLStore(collection.dataStore)
 	require.True(t, ok)
 
@@ -167,7 +167,7 @@ func TestPostUpgradeIndexesVersionChange(t *testing.T) {
 	defer db.Close(ctx)
 
 	require.True(t, db.Bucket.IsSupported(sgbucket.BucketStoreFeatureN1ql))
-	collection := db.GetSingleDatabaseCollection()
+	collection := GetSingleDatabaseCollection(t, db.DatabaseContext)
 	n1qlStore, ok := base.AsN1QLStore(collection.dataStore)
 	assert.True(t, ok)
 
@@ -280,7 +280,7 @@ func TestRemoveIndexesUseViewsTrueAndFalse(t *testing.T) {
 	copiedIndexes := copySGIndexes(sgIndexes)
 
 	require.True(t, db.Bucket.IsSupported(sgbucket.BucketStoreFeatureN1ql))
-	collection := db.GetSingleDatabaseCollection()
+	collection := GetSingleDatabaseCollection(t, db.DatabaseContext)
 	n1QLStore, ok := base.AsN1QLStore(collection.dataStore)
 	require.True(t, ok)
 

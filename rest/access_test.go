@@ -1120,7 +1120,7 @@ func TestRoleChannelGrantInheritance(t *testing.T) {
 	ctx := rt.Context()
 	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
 
-	collection := rt.GetDatabase().GetSingleDatabaseCollection()
+	collection := rt.GetSingleTestDatabaseCollection()
 	scopeName := collection.ScopeName
 	collectionName := collection.Name
 

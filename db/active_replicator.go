@@ -213,13 +213,13 @@ func connect(arc *activeReplicatorCommon, idSuffix string) (blipSender *blip.Sen
 	blipContext.WebsocketPingInterval = arc.config.WebsocketPingInterval
 	blipContext.OnExitCallback = func() {
 		// fall into a reconnect loop only if the connection is unexpectedly closed.
-		if arc.ctx.Err() == nil {
+		if arc.ctx.Err() == nil && arc.config.TotalReconnectTimeout != 0 {
 			go arc.reconnectLoop()
 		}
 	}
 
 	bsc = NewBlipSyncContext(arc.ctx, blipContext, arc.config.ActiveDB, blipContext.ID, arc.replicationStats)
-	bsc.loggingCtx = base.LogContextWith(context.Background(), &base.LogContext{CorrelationID: arc.config.ID + idSuffix})
+	bsc.loggingCtx = base.CorrelationIDLogCtx(context.Background(), arc.config.ID+idSuffix)
 
 	// NewBlipSyncContext has already set deltas as disabled/enabled based on config.ActiveDB.
 	// If deltas have been disabled in the replication config, override this value

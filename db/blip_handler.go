@@ -148,10 +148,10 @@ func collectionBlipHandler(next blipHandlerFunc) blipHandlerFunc {
 			if bh.collections.hasNamedCollections() {
 				return base.HTTPErrorf(http.StatusBadRequest, "GetCollections already occurred, subsequent messages need a Collection property")
 			}
-			// temp use private method
-			bh.collection = &DatabaseCollectionWithUser{
-				DatabaseCollection: bh.db.singleCollection,
-				user:               bh.db.user,
+			var err error
+			bh.collection, err = bh.db.GetDefaultDatabaseCollectionWithUser()
+			if err != nil {
+				return err
 			}
 			bh.collections.setNonCollectionAware(newBlipSyncCollectionContext(bh.collection.DatabaseCollection))
 			return next(bh, bm)
@@ -174,7 +174,7 @@ func collectionBlipHandler(next blipHandlerFunc) blipHandlerFunc {
 			DatabaseCollection: collectionCtx.dbCollection,
 			user:               bh.db.user,
 		}
-		bh.loggingCtx = base.CollectionCtx(bh.BlipSyncContext.loggingCtx, bh.collection.Name)
+		bh.loggingCtx = base.CollectionLogCtx(bh.BlipSyncContext.loggingCtx, bh.collection.Name)
 		// Call down to the underlying handler and return it's value
 		return next(bh, bm)
 	}

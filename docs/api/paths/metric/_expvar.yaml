@@ -1,3 +1,4 @@
+#
 # Copyright 2022-Present Couchbase, Inc.
 #
 # Use of this software is governed by the Business Source License included
@@ -14,6 +15,7 @@ get:
     This includes per database stats, replication stats, and server stats.
 
     Required Sync Gateway RBAC roles:
+
     * Sync Gateway Architect
     * Sync Gateway Dev Ops
     * External Stats Reader

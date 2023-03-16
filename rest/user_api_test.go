@@ -1299,7 +1299,7 @@ func TestUserXattrAvoidRevisionIDGeneration(t *testing.T) {
 	_, err := subdocXattrStore.SubdocGetXattr(docKey, base.SyncXattrName, &syncData)
 	assert.NoError(t, err)
 
-	docRev, err := rt.GetDatabase().GetSingleDatabaseCollection().GetRevisionCacheForTest().Get(base.TestCtx(t), docKey, syncData.CurrentRev, false)
+	docRev, err := rt.GetSingleTestDatabaseCollection().GetRevisionCacheForTest().Get(base.TestCtx(t), docKey, syncData.CurrentRev, false)
 	assert.NoError(t, err)
 	assert.Equal(t, 0, len(docRev.Channels.ToArray()))
 	assert.Equal(t, syncData.CurrentRev, docRev.RevID)
@@ -1319,7 +1319,7 @@ func TestUserXattrAvoidRevisionIDGeneration(t *testing.T) {
 	_, err = subdocXattrStore.SubdocGetXattr(docKey, base.SyncXattrName, &syncData2)
 	assert.NoError(t, err)
 
-	docRev2, err := rt.GetDatabase().GetSingleDatabaseCollection().GetRevisionCacheForTest().Get(base.TestCtx(t), docKey, syncData.CurrentRev, false)
+	docRev2, err := rt.GetSingleTestDatabaseCollection().GetRevisionCacheForTest().Get(base.TestCtx(t), docKey, syncData.CurrentRev, false)
 	assert.NoError(t, err)
 	assert.Equal(t, syncData2.CurrentRev, docRev2.RevID)
 
@@ -1431,13 +1431,13 @@ func TestGetUserCollectionAccess(t *testing.T) {
 	RequireStatus(t, userResponse, 200)
 	assert.NotContains(t, userResponse.Body.Bytes(), collection2Name)
 
-	// Attempt to write collections that aren't defined for the database for PUT /_user and /_role, disabled until CBG-2762 is fixed
-	//putResponse = rt.SendAdminRequest("PUT", "/db/_user/alice2", fmt.Sprintf(userRolePayload, `"email":"alice@couchbase.com","password":"@232dfdg",`, scope1Name, collection1Name, `,"rgergeggrenhnnh": {
-	//				"admin_channels":["foo", "bar1"]
-	//			}`))
-	//RequireStatus(t, putResponse, 400)
-	//putResponse = rt.SendAdminRequest("PUT", "/db/_role/role1", fmt.Sprintf(userRolePayload, ``, scope1Name, collection1Name, collectionPayload))
-	//RequireStatus(t, putResponse, 400)
+	// Attempt to write collections that aren't defined for the database for PUT /_user and /_role
+	putResponse = rt.SendAdminRequest("PUT", "/db/_user/alice2", fmt.Sprintf(userRolePayload, `"email":"alice@couchbase.com","password":"@232dfdg",`, scope1Name, collection1Name, `,"rgergeggrenhnnh": {
+					"admin_channels":["foo", "bar1"]
+				}`))
+	RequireStatus(t, putResponse, 404)
+	putResponse = rt.SendAdminRequest("PUT", "/db/_role/role1", fmt.Sprintf(userRolePayload, ``, scope1Name, collection1Name, collectionPayload))
+	RequireStatus(t, putResponse, 404)
 }
 
 func TestPutUserCollectionAccess(t *testing.T) {
@@ -1502,8 +1502,7 @@ func TestPutUserCollectionAccess(t *testing.T) {
 			Bucket: base.StringPtr(rt.TestBucket.GetName()),
 		},
 	}
-	resp, err := rt.ReplaceDbConfig(rt.GetDatabase().Name, dbConfig)
-	require.NoError(t, err)
+	resp := rt.ReplaceDbConfig(rt.GetDatabase().Name, dbConfig)
 	RequireStatus(t, resp, http.StatusCreated)
 
 	//  Hide entries for collections that are no longer part of the database for GET /_user and /_role
