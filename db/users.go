@@ -260,27 +260,27 @@ func (dbc *DatabaseContext) UpdateCollectionExplicitChannels(ctx context.Context
 }
 
 // RequiresCollectionAccessUpdate returns true if the provided map of CollectionAccessConfig requires an update to the principal
-func (dbc *DatabaseContext) RequiresCollectionAccessUpdate(ctx context.Context, princ auth.Principal, updates map[string]map[string]*auth.CollectionAccessConfig) (requiresUpdate bool, err error) {
-
+func (dbc *DatabaseContext) RequiresCollectionAccessUpdate(ctx context.Context, princ auth.Principal, updates map[string]map[string]*auth.CollectionAccessConfig) (bool, error) {
+	requiresUpdate := false
 	for scopeName, scope := range updates {
 		if scope != nil {
 			for collectionName, updatedCollectionAccess := range scope {
-				_, err = dbc.GetDatabaseCollection(scopeName, collectionName)
+				_, err := dbc.GetDatabaseCollection(scopeName, collectionName)
 				if err != nil {
 					return false, base.HTTPErrorf(http.StatusNotFound, "keyspace specified in collection_access (%s) not found", fmt.Sprintf("%s.%s.%s", dbc.Name, scopeName, collectionName))
 				}
 				if updatedCollectionAccess == nil {
 					if princ.CollectionExplicitChannels(scopeName, collectionName) != nil {
-						return true, nil
+						requiresUpdate = true
 					}
 				} else {
 					if !princ.CollectionExplicitChannels(scopeName, collectionName).Equals(updatedCollectionAccess.ExplicitChannels_) {
-						return true, nil
+						requiresUpdate = true
 					}
 				}
 			}
 		}
 	}
 
-	return false, nil
+	return requiresUpdate, nil
 }
