@@ -36,7 +36,10 @@ type DCPMetadata struct {
 
 type DCPMetadataStore interface {
 	// Rollback resets vbucket metadata, but preserves endSeqNo
-	Rollback(vbID uint16)
+	OneshotRollback(vbID uint16)
+
+	// Rollback resets vBucket metadata, but sets endSeqNo to maxSeqno for it to run continuous
+	ContinuousRollback(vbID uint16)
 
 	// SetMeta updates the DCPMetadata for a vbucket
 	SetMeta(vbID uint16, meta DCPMetadata)
@@ -84,11 +87,23 @@ func NewDCPMetadataMem(numVbuckets uint16) *DCPMetadataMem {
 }
 
 // Rollback resets the metadata, preserving EndSeqNo if set
-func (m *DCPMetadataMem) Rollback(vbID uint16) {
+func (m *DCPMetadataMem) OneshotRollback(vbID uint16) {
 	m.metadata[vbID] = DCPMetadata{
 		VbUUID:          0,
 		StartSeqNo:      0,
 		EndSeqNo:        m.endSeqNos[vbID],
+		SnapStartSeqNo:  0,
+		SnapEndSeqNo:    0,
+		FailoverEntries: make([]gocbcore.FailoverEntry, 0),
+	}
+}
+
+func (m *DCPMetadataMem) ContinuousRollback(vbID uint16) {
+	var maxEndSeqno = gocbcore.SeqNo(0xffffffffffffffff)
+	m.metadata[vbID] = DCPMetadata{
+		VbUUID:          0,
+		StartSeqNo:      0,
+		EndSeqNo:        maxEndSeqno,
 		SnapStartSeqNo:  0,
 		SnapEndSeqNo:    0,
 		FailoverEntries: make([]gocbcore.FailoverEntry, 0),
@@ -203,13 +218,26 @@ func NewDCPMetadataCS(store DataStore, numVbuckets uint16, numWorkers int, keyPr
 	return m
 }
 
-func (m *DCPMetadataCS) Rollback(vbID uint16) {
+func (m *DCPMetadataCS) OneshotRollback(vbID uint16) {
 	// Preserve endSeqNo on rollback
 	endSeqNo := m.metadata[vbID].EndSeqNo
 	m.metadata[vbID] = DCPMetadata{
 		VbUUID:          0,
 		StartSeqNo:      0,
 		EndSeqNo:        endSeqNo,
+		SnapStartSeqNo:  0,
+		SnapEndSeqNo:    0,
+		FailoverEntries: make([]gocbcore.FailoverEntry, 0),
+	}
+}
+
+func (m *DCPMetadataCS) ContinuousRollback(vbID uint16) {
+	//endSeqNo := m.metadata[vbID].EndSeqNo
+	var maxEndSeqno = gocbcore.SeqNo(0xffffffffffffffff)
+	m.metadata[vbID] = DCPMetadata{
+		VbUUID:          0,
+		StartSeqNo:      0,
+		EndSeqNo:        maxEndSeqno,
 		SnapStartSeqNo:  0,
 		SnapEndSeqNo:    0,
 		FailoverEntries: make([]gocbcore.FailoverEntry, 0),

@@ -464,7 +464,11 @@ func (dc *DCPClient) rollback(vbID uint16) (err error) {
 	if dc.dbStats != nil {
 		dc.dbStats.Add("dcp_rollback_count", 1)
 	}
-	dc.metadata.Rollback(vbID)
+	if dc.oneShot {
+		dc.metadata.OneshotRollback(vbID)
+	} else {
+		dc.metadata.ContinuousRollback(vbID)
+	}
 	return nil
 }
 
