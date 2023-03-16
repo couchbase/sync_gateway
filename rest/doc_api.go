@@ -23,32 +23,6 @@ import (
 	"github.com/couchbase/sync_gateway/document"
 )
 
-// Retrieves rev with request history specified as collection of revids (historyFrom)
-func get1xRevBodyWithHistory(h *handler, docid, revid string, maxHistory int, historyFrom []string, attachmentsSince []string, showExp bool) (map[string]any, error) {
-	rev, err := h.collection.GetRev(h.ctx(), docid, revid, maxHistory > 0, attachmentsSince)
-	if err != nil {
-		return nil, err
-	}
-	rev.TrimHistory(maxHistory, historyFrom)
-	if !showExp {
-		rev.Expiry = nil
-	}
-	bytes, err := rev.BodyBytesWith(document.BodyId, document.BodyRev, document.BodyAttachments, document.BodyDeleted, document.BodyRemoved, document.BodyExpiry, document.BodyRevisions)
-	var body db.Body
-	if err == nil {
-		err = body.Unmarshal(bytes)
-	}
-	return body, err
-}
-
-func get1xRevBody(h *handler, docid, revid string, history bool, attachmentsSince []string) (map[string]any, error) {
-	maxHistory := 0
-	if history {
-		maxHistory = math.MaxInt32
-	}
-	return get1xRevBodyWithHistory(h, docid, revid, maxHistory, nil, attachmentsSince, false)
-}
-
 // HTTP handler for a GET of a document
 func (h *handler) handleGetDoc() error {
 	docid := h.PathVar("docid")
@@ -490,7 +464,7 @@ func (h *handler) handlePutDoc() error {
 		h.setEtag(newRev)
 	} else {
 		// Replicator-style PUT with new_edits=false:
-		revisions := ParseRevisions(body)
+		revisions := parseRevisions(body)
 		if revisions == nil {
 			return base.HTTPErrorf(http.StatusBadRequest, "Bad _revisions")
 		}

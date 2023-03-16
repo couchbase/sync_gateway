@@ -171,7 +171,7 @@ func BenchmarkUnmarshalBody(b *testing.B) {
 				} else {
 					err = base.JSONUnmarshal(doc1k_body, &body)
 					if bm.fixJSONNumbers {
-						doc.UnmarshalBody().FixJSONNumbers()
+						doc.UnmarshalBody().fixJSONNumbers()
 					}
 				}
 				b.StopTimer()
@@ -185,6 +185,13 @@ func BenchmarkUnmarshalBody(b *testing.B) {
 
 			}
 		})
+	}
+}
+
+// Version of fixJSONNumbers (see base/util.go) that operates on a Body
+func (body Body) fixJSONNumbers() {
+	for k, v := range body {
+		body[k] = base.FixJSONNumbers(v)
 	}
 }
 

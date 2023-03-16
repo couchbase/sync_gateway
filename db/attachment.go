@@ -19,6 +19,9 @@ import (
 	"github.com/couchbase/sync_gateway/document"
 )
 
+// AttachmentData holds the attachment key and value bytes.
+type AttachmentData map[string][]byte
+
 const maxAttachmentSizeBytes = 20 * 1024 * 1024
 
 var (

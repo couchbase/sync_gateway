@@ -18,8 +18,6 @@ import (
 // Maps what users have access to what channels or roles, and when they got that access.
 type UserAccessMap map[string]channels.TimedSet
 
-type AttachmentsMeta map[string]interface{} // AttachmentsMeta metadata as included in sync metadata
-
 type ChannelSetEntry struct {
 	Name  string `json:"name"`
 	Start uint64 `json:"start"`

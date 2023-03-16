@@ -16,7 +16,6 @@ import "github.com/couchbase/sync_gateway/document"
 // to reduce the amount of code touched throughout the project:
 
 type AttachmentsMeta = document.AttachmentsMeta
-type AttachmentData = document.AttachmentData
 type AttachmentStorageMeta = document.AttachmentStorageMeta
 type Body = document.Body
 type ChannelSetEntry = document.ChannelSetEntry

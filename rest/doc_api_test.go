@@ -200,7 +200,7 @@ func TestParseRevisions(t *testing.T) {
 		var body db.Body
 		unmarshalErr := body.Unmarshal([]byte(c.json))
 		assert.NoError(t, unmarshalErr, "base JSON in test case")
-		ids := ParseRevisions(body)
+		ids := parseRevisions(body)
 		assert.Equal(t, c.ids, ids)
 	}
 }

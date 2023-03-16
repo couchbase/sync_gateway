@@ -39,9 +39,16 @@ const (
 // Read-only set of reserved document body keys
 var bodyReservedKeys = base.SetOf(BodyDeleted, BodyRev, BodyId, BodyRevisions, BodyAttachments, BodyPurged, BodyExpiry, BodyRemoved, base.SyncPropertyName) // per spec
 
+var bodyInternalKeys = base.SetOf(BodyRev, BodyId, BodyRevisions, BodyPurged, BodyExpiry, BodyRemoved, base.SyncPropertyName)
+
 // True if this is a reserved document body key
 func IsReservedKey(key string) bool {
 	return bodyReservedKeys.Contains(key) || strings.HasPrefix(key, BodyInternalPrefix)
+}
+
+// True if this is a reserved document body key, except for _deleted and _attachments
+func isInternalReservedKey(key string) bool {
+	return bodyInternalKeys.Contains(key) || strings.HasPrefix(key, BodyInternalPrefix)
 }
 
 func (b *Body) Unmarshal(data []byte) error {
@@ -68,13 +75,6 @@ func (body Body) ShallowCopy() Body {
 		copied[key] = value
 	}
 	return copied
-}
-
-func (attachments AttachmentsMeta) ShallowCopy() AttachmentsMeta {
-	if attachments == nil {
-		return attachments
-	}
-	return CopyMap(attachments)
 }
 
 func CopyMap(sourceMap map[string]interface{}) map[string]interface{} {
@@ -286,13 +286,6 @@ func CompareRevIDs(id1, id2 string) int {
 
 //-------- UTILITY FUNCTIONS:
 
-// Version of FixJSONNumbers (see base/util.go) that operates on a Body
-func (body Body) FixJSONNumbers() {
-	for k, v := range body {
-		body[k] = base.FixJSONNumbers(v)
-	}
-}
-
 // StripInternalProperties returns a copy of the given body with all internal underscore-prefixed keys removed, except _attachments and _deleted.
 func StripInternalProperties(b Body) (Body, bool) {
 	return stripSpecialProperties(b, true)
@@ -306,31 +299,22 @@ func StripAllSpecialProperties(b Body) (Body, bool) {
 // stripSpecialPropertiesExcept returns a copy of the given body with underscore-prefixed keys removed.
 // Set internalOnly to only strip internal properties except _deleted and _attachments
 func stripSpecialProperties(b Body, internalOnly bool) (sb Body, foundSpecialProps bool) {
-	// Assume no properties removed for the initial capacity to reduce allocs on large docs.
-	stripped := make(Body, len(b))
-	for k, v := range b {
+	// Assume that most of the time no properties will be stripped
+	var stripped Body
+	for k := range b {
 		// Property is not stripped if:
 		// - It is blank
 		// - Does not start with an underscore ('_')
 		// - Is not an internal special property (this check is excluded when internalOnly = false)
-		if k == "" || k[0] != '_' || (internalOnly && (!strings.HasPrefix(k, BodyInternalPrefix) &&
-			!base.StringSliceContains([]string{
-				base.SyncPropertyName,
-				BodyId,
-				BodyRev,
-				BodyRevisions,
-				BodyExpiry,
-				BodyPurged,
-				BodyRemoved,
-			}, k))) {
-			// property is allowed
-			stripped[k] = v
-		} else {
-			foundSpecialProps = true
+		if k != "" && k[0] == '_' && (!internalOnly || isInternalReservedKey(k)) {
+			if stripped == nil {
+				stripped = b.ShallowCopy()
+			}
+			delete(stripped, k)
 		}
 	}
 
-	if foundSpecialProps {
+	if stripped != nil {
 		return stripped, true
 	} else {
 		// Return original body if nothing was removed

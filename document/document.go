@@ -34,7 +34,7 @@ const DocumentHistoryMaxEntriesPerChannel = 5
 type DocumentUnmarshalLevel uint8
 
 const (
-	DocUnmarshalAll       = DocumentUnmarshalLevel(iota) // Unmarshals sync metadata and body
+	DocUnmarshalAll       = DocumentUnmarshalLevel(iota) // (Same as DocUnmarshalSync)
 	DocUnmarshalSync                                     // Unmarshals all sync metadata
 	DocUnmarshalNoHistory                                // Unmarshals sync metadata excluding history
 	DocUnmarshalRev                                      // Unmarshals rev + CAS only
@@ -77,7 +77,7 @@ type casOnlySyncData struct {
 }
 
 type attachmentsOnlyBody struct {
-	Attachments AttachmentsMeta `json:"_attachments"`
+	Attachments AttachmentsMeta `json:"_attachments,omitempty"`
 }
 
 func (doc *Document) UpdateBodyBytes(bodyBytes []byte) {

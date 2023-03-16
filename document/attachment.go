@@ -28,9 +28,6 @@ const (
 	AttVersion2 int = 2
 )
 
-// AttachmentData holds the attachment key and value bytes.
-type AttachmentData map[string][]byte
-
 // A struct which models an attachment.  Currently only used by test code, however
 // new code or refactoring in the main codebase should try to use where appropriate.
 type DocAttachment struct {
@@ -42,6 +39,8 @@ type DocAttachment struct {
 	Version     int    `json:"ver,omitempty"`
 	Data        []byte `json:"-"` // tell json marshal/unmarshal to ignore this field
 }
+
+type AttachmentsMeta map[string]interface{} // AttachmentsMeta metadata as included in sync metadata
 
 // ErrAttachmentTooLarge is returned when an attempt to attach an oversize attachment is made.
 var ErrAttachmentTooLarge = errors.New("attachment too large")
@@ -86,6 +85,13 @@ func ProveAttachment(attachmentData, nonce []byte) (proof string) {
 }
 
 //////// HELPERS:
+
+func (attachments AttachmentsMeta) ShallowCopy() AttachmentsMeta {
+	if attachments == nil {
+		return attachments
+	}
+	return CopyMap(attachments)
+}
 
 // Returns _attachments property from body, when found.  Checks for either map[string]interface{} (unmarshalled with body),
 // or AttachmentsMeta (written by body by SG)
