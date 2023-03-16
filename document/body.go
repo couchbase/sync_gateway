@@ -44,28 +44,6 @@ func IsReservedKey(key string) bool {
 	return bodyReservedKeys.Contains(key) || strings.HasPrefix(key, BodyInternalPrefix)
 }
 
-// A revisions property found within a Body.  Expected to be of the form:
-//
-//	Revisions["start"]: int64, starting generation number
-//	Revisions["ids"]: []string, list of digests
-//
-// Used as map[string]interface{} instead of Revisions struct because it's unmarshalled
-// along with Body, and we don't need the overhead of allocating a new object
-type Revisions map[string]interface{}
-
-const (
-	RevisionsStart = "start"
-	RevisionsIds   = "ids"
-)
-
-type BodyCopyType int
-
-const (
-	BodyDeepCopy    BodyCopyType = iota // Performs a deep copy (json marshal/unmarshal)
-	BodyShallowCopy                     // Performs a shallow copy (copies top level properties, doesn't iterate into nested properties)
-	BodyNoCopy                          // Doesn't copy - callers must not mutate the response
-)
-
 func (b *Body) Unmarshal(data []byte) error {
 
 	if len(data) == 0 {
@@ -81,20 +59,6 @@ func (b *Body) Unmarshal(data []byte) error {
 	return nil
 }
 
-func (body Body) Copy(copyType BodyCopyType) Body {
-	switch copyType {
-	case BodyShallowCopy:
-		return body.ShallowCopy()
-	case BodyDeepCopy:
-		return body.DeepCopy()
-	case BodyNoCopy:
-		return body
-	default:
-		base.InfofCtx(context.Background(), base.KeyCRUD, "Unexpected copy type specified in body.Copy - defaulting to shallow copy.  copyType: %d", copyType)
-		return body.ShallowCopy()
-	}
-}
-
 func (body Body) ShallowCopy() Body {
 	if body == nil {
 		return body
@@ -104,75 +68,6 @@ func (body Body) ShallowCopy() Body {
 		copied[key] = value
 	}
 	return copied
-}
-
-func (body Body) DeepCopy() Body {
-	var copiedBody Body
-	err := base.DeepCopyInefficient(&copiedBody, body)
-	if err != nil {
-		base.InfofCtx(context.Background(), base.KeyCRUD, "Error copying body: %v", err)
-	}
-	return copiedBody
-}
-
-func (revisions Revisions) ShallowCopy() Revisions {
-	copied := make(Revisions, len(revisions))
-	for key, value := range revisions {
-		copied[key] = value
-	}
-	return copied
-}
-
-// Version of doc.History.findAncestorFromSet that works against formatted Revisions.
-// Returns the most recent ancestor found in revisions
-func (revisions Revisions) FindAncestor(ancestors []string) (revId string) {
-
-	start, ids := splitRevisionList(revisions)
-	for _, id := range ids {
-		revid := fmt.Sprintf("%d-%s", start, id)
-		for _, a := range ancestors {
-			if a == revid {
-				return a
-			}
-		}
-		start--
-	}
-	return ""
-}
-
-// ParseRevisions returns revisions as a slice of revids.
-func (revisions Revisions) ParseRevisions() []string {
-	start, ids := splitRevisionList(revisions)
-	if ids == nil {
-		return nil
-	}
-	result := make([]string, 0, len(ids))
-	for _, id := range ids {
-		result = append(result, fmt.Sprintf("%d-%s", start, id))
-		start--
-	}
-	return result
-}
-
-// Returns revisions as a slice of ancestor revids, from the parent to the target ancestor.
-func (revisions Revisions) ParseAncestorRevisions(toAncestorRevID string) []string {
-	start, ids := splitRevisionList(revisions)
-	if ids == nil || len(ids) < 2 {
-		return nil
-	}
-	result := make([]string, 0)
-
-	// Start at the parent, end at toAncestorRevID
-	start = start - 1
-	for i := 1; i < len(ids); i++ {
-		revID := fmt.Sprintf("%d-%s", start, ids[i])
-		result = append(result, revID)
-		if revID == toAncestorRevID {
-			break
-		}
-		start--
-	}
-	return result
 }
 
 func (attachments AttachmentsMeta) ShallowCopy() AttachmentsMeta {
@@ -235,17 +130,86 @@ func (body Body) getExpiry() (uint32, bool, error) {
 // NonJSONPrefix is used to ensure old revision bodies aren't hidden from N1QL/Views.
 const NonJSONPrefix = byte(1)
 
-// ////// UTILITY FUNCTIONS:
+//-------- REVISIONS
 
-// Version of FixJSONNumbers (see base/util.go) that operates on a Body
-func (body Body) FixJSONNumbers() {
-	for k, v := range body {
-		body[k] = base.FixJSONNumbers(v)
+// A revisions property found within a Body.  Expected to be of the form:
+//
+//	Revisions["start"]: int64, starting generation number
+//	Revisions["ids"]: []string, list of digests
+//
+// Used as map[string]interface{} instead of Revisions struct because it's unmarshalled
+// along with Body, and we don't need the overhead of allocating a new object
+type Revisions map[string]interface{}
+
+const (
+	RevisionsStart = "start"
+	RevisionsIds   = "ids"
+)
+
+func (revisions Revisions) ShallowCopy() Revisions {
+	copied := make(Revisions, len(revisions))
+	for key, value := range revisions {
+		copied[key] = value
 	}
+	return copied
 }
 
+// Version of doc.History.findAncestorFromSet that works against formatted Revisions.
+// Returns the most recent ancestor found in revisions
+func (revisions Revisions) FindAncestor(ancestors []string) (revId string) {
+
+	start, ids := splitRevisionList(revisions)
+	for _, id := range ids {
+		revid := fmt.Sprintf("%d-%s", start, id)
+		for _, a := range ancestors {
+			if a == revid {
+				return a
+			}
+		}
+		start--
+	}
+	return ""
+}
+
+// ParseRevisions returns revisions as a slice of revids.
+func (revisions Revisions) ParseRevisions() []string {
+	start, ids := splitRevisionList(revisions)
+	if ids == nil {
+		return nil
+	}
+	result := make([]string, 0, len(ids))
+	for _, id := range ids {
+		result = append(result, fmt.Sprintf("%d-%s", start, id))
+		start--
+	}
+	return result
+}
+
+// Returns revisions as a slice of ancestor revids, from the parent to the target ancestor.
+func (revisions Revisions) ParseAncestorRevisions(toAncestorRevID string) []string {
+	start, ids := splitRevisionList(revisions)
+	if ids == nil || len(ids) < 2 {
+		return nil
+	}
+	result := make([]string, 0)
+
+	// Start at the parent, end at toAncestorRevID
+	start = start - 1
+	for i := 1; i < len(ids); i++ {
+		revID := fmt.Sprintf("%d-%s", start, ids[i])
+		result = append(result, revID)
+		if revID == toAncestorRevID {
+			break
+		}
+		start--
+	}
+	return result
+}
+
+//-------- REVISION IDS:
+
 func CreateRevID(generation int, parentRevID string, body Body) (string, error) {
-	// This should produce the same results as TouchDB.
+	// This should produce the same results as Couchbase Lite.
 	strippedBody, _ := StripInternalProperties(body)
 	encoding, err := base.JSONMarshalCanonical(strippedBody)
 	if err != nil {
@@ -318,6 +282,15 @@ func CompareRevIDs(id1, id2 string) int {
 		return -1
 	}
 	return 0
+}
+
+//-------- UTILITY FUNCTIONS:
+
+// Version of FixJSONNumbers (see base/util.go) that operates on a Body
+func (body Body) FixJSONNumbers() {
+	for k, v := range body {
+		body[k] = base.FixJSONNumbers(v)
+	}
 }
 
 // StripInternalProperties returns a copy of the given body with all internal underscore-prefixed keys removed, except _attachments and _deleted.

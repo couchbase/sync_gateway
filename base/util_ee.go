@@ -118,14 +118,13 @@ var extractConfig jsoniter.API = jsoniter.Config{
 	UseNumber:              false,
 }.Froze()
 
-// Incrementally parses JSON, finding "_"-prefixed top-level properties and returning them as a map.
-// Also returns a copy of the JSON with those properties removed.
+// Incrementally parses JSON, passing each top-level object key to a callback.
+// The callback can choose to unmarshal the value by returning a pointer to a destination value
+// (just like the pointer passed to `json.Unmarshal()`), it can return `nil` to skip it, or it
+// can return an error to abort the parse.
 //
-// For more control you can give a `shape`, a map from strings to pointers.
-// (a) Properties not contained in that map are illegal and will cause an error.
-// (b) When a property is matched, the value is unmarshaled to the pointed-to value, updating
-//
-//	what the shape points to.
+// The function returns a copy of the JSON with all of the unmarshaled key/value pairs removed,
+// i.e. containing only the skipped ones.
 //
 // For examples, see TestJSONExtractUnderscored() in util_test.go.
 func JSONExtract(input []byte, callback func(string) (any, error)) (output []byte, err error) {

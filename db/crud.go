@@ -421,7 +421,8 @@ func (col *DatabaseCollectionWithUser) authorizeUserForChannels(docID, revID str
 				History: history,
 				Deleted: isDeleted,
 				Removed: !isDeleted,
-			}.WithBodyBytes([]byte(base.EmptyDocument))
+			}
+			redactedRev.SetEmptyBody()
 			return false, redactedRev
 		}
 	}
@@ -1914,7 +1915,8 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 			Attachments: doc.Attachments,
 			Expiry:      doc.Expiry,
 			Deleted:     doc.History[newRevID].Deleted,
-		}.WithBodyBytes(storedDocBytes)
+		}
+		documentRevision.SetBodyBytes(storedDocBytes)
 
 		if createNewRevIDSkipped {
 			db.revisionCache.Upsert(ctx, documentRevision)

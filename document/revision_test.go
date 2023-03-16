@@ -158,7 +158,7 @@ func BenchmarkSpecialProperties(b *testing.B) {
 		"six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10,
 	}
 
-	specialBody := noSpecialBody.Copy(BodyShallowCopy)
+	specialBody := noSpecialBody.ShallowCopy()
 	specialBody[BodyId] = "abc123"
 	specialBody[BodyRev] = "1-abc"
 

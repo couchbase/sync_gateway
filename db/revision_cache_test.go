@@ -87,7 +87,9 @@ func TestLRURevisionCacheEviction(t *testing.T) {
 	// Fill up the rev cache with the first 10 docs
 	for docID := 0; docID < 10; docID++ {
 		id := strconv.Itoa(docID)
-		cache.Put(ctx, DocumentRevision{DocID: id, RevID: "1-abc", History: Revisions{"start": 1}}.WithBodyBytes([]byte(base.EmptyDocument)))
+		rev := DocumentRevision{DocID: id, RevID: "1-abc", History: Revisions{"start": 1}}
+		rev.SetEmptyBody()
+		cache.Put(ctx, rev)
 	}
 
 	// Get them back out
@@ -104,7 +106,9 @@ func TestLRURevisionCacheEviction(t *testing.T) {
 	// Add 3 more docs to the now full revcache
 	for i := 10; i < 13; i++ {
 		docID := strconv.Itoa(i)
-		cache.Put(ctx, DocumentRevision{DocID: docID, RevID: "1-abc", History: Revisions{"start": 1}}.WithBodyBytes([]byte(base.EmptyDocument)))
+		rev := DocumentRevision{DocID: docID, RevID: "1-abc", History: Revisions{"start": 1}}
+		rev.SetEmptyBody()
+		cache.Put(ctx, rev)
 	}
 
 	// Check that the first 3 docs were evicted
@@ -416,8 +420,9 @@ func TestRevisionImmutableDelta(t *testing.T) {
 func TestSingleLoad(t *testing.T) {
 	cacheHitCounter, cacheMissCounter, getDocumentCounter, getRevisionCounter := base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}
 	cache := document.NewLRURevisionCache(10, &testBackingStore{nil, &getDocumentCounter, &getRevisionCounter}, &cacheHitCounter, &cacheMissCounter)
-
-	cache.Put(base.TestCtx(t), DocumentRevision{DocID: "doc123", RevID: "1-abc", History: Revisions{"start": 1}}.WithBodyBytes([]byte(`{"test":"1234"}`)))
+	rev := DocumentRevision{DocID: "doc123", RevID: "1-abc", History: Revisions{"start": 1}}
+	rev.SetBodyBytes([]byte(`{"test":"1234"}`))
+	cache.Put(base.TestCtx(t), rev)
 	_, err := cache.Get(base.TestCtx(t), "doc123", "1-abc", false)
 	assert.NoError(t, err)
 }
@@ -427,7 +432,9 @@ func TestConcurrentLoad(t *testing.T) {
 	cacheHitCounter, cacheMissCounter, getDocumentCounter, getRevisionCounter := base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}
 	cache := document.NewLRURevisionCache(10, &testBackingStore{nil, &getDocumentCounter, &getRevisionCounter}, &cacheHitCounter, &cacheMissCounter)
 
-	cache.Put(base.TestCtx(t), DocumentRevision{DocID: "doc1", RevID: "1-abc", History: Revisions{"start": 1}}.WithBodyBytes([]byte(`{"test":"1234"}`)))
+	rev := DocumentRevision{DocID: "doc1", RevID: "1-abc", History: Revisions{"start": 1}}
+	rev.SetBodyBytes([]byte(`{"test":"1234"}`))
+	cache.Put(base.TestCtx(t), rev)
 
 	// Trigger load into cache
 	var wg sync.WaitGroup

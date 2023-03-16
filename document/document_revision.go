@@ -11,7 +11,7 @@ import (
 )
 
 // The body of a revision: special properties like _id, plus an arbitrary JSON object.
-// DocumentRevision is stored and returned by the rev cache
+// DocumentRevision is stored and returned by the rev cache.
 type DocumentRevision struct {
 	DocID       string
 	RevID       string
@@ -28,10 +28,14 @@ type DocumentRevision struct {
 }
 
 // Parses and validates a JSON document, creating a DocumentRevision.
-// The arguments after the JSON are special property keys like `BodyId`, `BodyRev`.
+// The arguments after the JSON are reserved property keys like `BodyId`, `BodyRev`.
 // These are removed from the JSON and set as struct fields.
-// Only properties corresponding to fields of `DocumentRevision` are allowed.
-// Underscored properties in the JSON that were _not_ given as arguments trigger errors.
+//
+// The allowed properties are:
+//
+//	BodyId, BodyRev, BodyAttachments, BodyExpiry, BodyRevisions, BodyDeleted, BodyRemoved.
+//
+// Reserved properties in the JSON that were _not_ given as arguments trigger errors.
 func ParseDocumentRevision(json []byte, specialProperties ...string) (DocumentRevision, error) {
 	var rev DocumentRevision
 	var expiry any
@@ -93,19 +97,14 @@ func (rev *DocumentRevision) AsDocument() *Document {
 	}
 }
 
-// Initializes a DocumentRevision's JSON body bytes.
-func (rev *DocumentRevision) InitBodyBytes(body []byte) {
-	if rev._bodyBytes != nil {
-		panic("DocumentRevision body already initialized")
-	}
+// Sets the JSON body.
+func (rev *DocumentRevision) SetBodyBytes(body []byte) {
 	rev._bodyBytes = body
 }
 
-// Returns a copy of a DocumentRevision with a different JSON body.
-// (Useful when initializing a DocumentRevision from a struct literal.)
-func (rev DocumentRevision) WithBodyBytes(body []byte) DocumentRevision {
-	rev._bodyBytes = []byte(body)
-	return rev
+// Sets the JSON body to `{}`.
+func (rev *DocumentRevision) SetEmptyBody() {
+	rev._bodyBytes = []byte(base.EmptyDocument)
 }
 
 // The JSON data of the body; just application properties, no specials.
@@ -114,9 +113,8 @@ func (rev *DocumentRevision) BodyBytes() []byte {
 	return rev._bodyBytes
 }
 
-// The JSON data of the body. By default this is just the application properties.
-// If any special property names (`BodyId`, `BodyRev`...) are given as arguments, those properties
-// are added to the JSON if they have non-default/empty values in the struct.
+// The JSON data of the body, with the given special properties added
+// if they have non-default/empty values in the struct.
 func (rev *DocumentRevision) BodyBytesWith(specialProperties ...string) ([]byte, error) {
 	bodyBytes := rev._bodyBytes
 	if bodyBytes == nil {
@@ -141,7 +139,7 @@ func (rev *DocumentRevision) BodyBytesWith(specialProperties ...string) ([]byte,
 }
 
 // Unmarshals a DocumentRevision's body. No special properties are included.
-// The resulting map can be mutated freely.
+// The resulting map is not shared and can be mutated freely.
 //
 // This function is expensive and should be used RARELY, primarily for tests.
 func (rev *DocumentRevision) UnmarshalBody() (map[string]any, error) {
@@ -176,7 +174,7 @@ func (rev *DocumentRevision) TrimHistory(maxHistory int, historyFrom []string) {
 
 // Subroutine used by ParseDocumentRevision() and JSONData().
 // Given a JSON special property key, returns the address of the corrresponding struct member.
-// If `always` is false, returns nil if the property has no value.
+// If `always` is false, returns nil if the property is not set.
 func (rev *DocumentRevision) propertyPtr(key string, always bool) (value any, err error) {
 	switch key {
 	case BodyId:
@@ -215,6 +213,7 @@ func (rev *DocumentRevision) propertyPtr(key string, always bool) (value any, er
 	return
 }
 
+// Subroutine used by DocumentRevisionFromBody. Sets a struct field given a JSON property key.
 func (rev *DocumentRevision) setProperty(key string, val any) error {
 	switch key {
 	case BodyAttachments:
@@ -228,8 +227,8 @@ func (rev *DocumentRevision) setProperty(key string, val any) error {
 	case BodyExpiry:
 		return rev.SetExpiry(val)
 	default:
-		return fmt.Errorf("internal error: DocumentRevision doesn't recognize property %q", key)
+		// TODO: Add other properties as needed
+		return fmt.Errorf("internal error: DocumentRevision.setProperty doesn't recognize property %q", key)
 	}
-	// TODO: Add other properties as needed
 	return nil
 }
