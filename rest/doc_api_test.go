@@ -197,7 +197,7 @@ func TestParseRevisions(t *testing.T) {
 		{`{"_Xrevisions": {"start": "", "ids": ["huey", "dewey", "louie"]}}`, nil},
 	}
 	for _, c := range cases {
-		var body Body
+		var body db.Body
 		unmarshalErr := body.Unmarshal([]byte(c.json))
 		assert.NoError(t, unmarshalErr, "base JSON in test case")
 		ids := ParseRevisions(body)

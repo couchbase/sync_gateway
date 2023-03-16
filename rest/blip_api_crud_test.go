@@ -1492,7 +1492,7 @@ func TestCheckpoint(t *testing.T) {
 	requestSetCheckpoint.SetCompressed(true)
 	requestSetCheckpoint.SetProfile("setCheckpoint")
 	requestSetCheckpoint.Properties["client"] = client
-	checkpointBody := Body{"Key": "Value"}
+	checkpointBody := db.Body{"Key": "Value"}
 	assert.NoError(t, requestSetCheckpoint.SetJSONBody(checkpointBody))
 	// requestSetCheckpoint.Properties["rev"] = "rev1"
 	sent = bt.sender.Send(requestSetCheckpoint)

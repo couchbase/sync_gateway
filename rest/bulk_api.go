@@ -232,7 +232,7 @@ func (h *handler) handleAllDocs() error {
 func (h *handler) handleDump() error {
 	viewName := h.PathVar("view")
 	base.InfofCtx(h.ctx(), base.KeyHTTP, "Dump view %q", base.MD(viewName))
-	opts := Body{"stale": false, "reduce": false}
+	opts := db.Body{"stale": false, "reduce": false}
 	vs, ok := h.db.Bucket.(sgbucket.ViewStore)
 	if !ok {
 		return base.HTTPErrorf(http.StatusInternalServerError, "bucket does not support views")
@@ -385,7 +385,7 @@ func (h *handler) handleBulkGet() error {
 
 	return h.writeMultipart("mixed", func(writer *multipart.Writer) error {
 		for _, item := range docs {
-			var body Body
+			var body db.Body
 			var revsFrom, attsSince []string
 			var docRevsLimit int
 			var err error
@@ -438,7 +438,7 @@ func (h *handler) handleBulkGet() error {
 				// Report error in the response for this doc:
 				status, reason := base.ErrorAsHTTPStatus(err)
 				errStr := base.CouchHTTPErrorName(status)
-				body = Body{"id": docid, "error": errStr, "reason": reason, "status": status}
+				body = db.Body{"id": docid, "error": errStr, "reason": reason, "status": status}
 				if revid != "" {
 					body["rev"] = revid
 				}
@@ -498,7 +498,7 @@ func (h *handler) handleBulkDocs() error {
 		}
 	}
 
-	result := make([]Body, 0, len(docs))
+	result := make([]db.Body, 0, len(docs))
 	for _, item := range docs {
 		doc := item.(map[string]interface{})
 		docid, _ := doc[db.BodyId].(string)
@@ -520,7 +520,7 @@ func (h *handler) handleBulkDocs() error {
 			}
 		}
 
-		status := Body{}
+		status := db.Body{}
 		if docid != "" {
 			status["id"] = docid
 		}
@@ -548,7 +548,7 @@ func (h *handler) handleBulkDocs() error {
 		docid, _ := doc[db.BodyId].(string)
 		idslug := docid[offset:]
 		revid, err = h.collection.PutSpecial(db.DocTypeLocal, idslug, doc)
-		status := Body{}
+		status := db.Body{}
 		status["id"] = docid
 		if err != nil {
 			code, msg := base.ErrorAsHTTPStatus(err)

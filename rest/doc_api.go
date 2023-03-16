@@ -34,7 +34,7 @@ func get1xRevBodyWithHistory(h *handler, docid, revid string, maxHistory int, hi
 		rev.Expiry = nil
 	}
 	bytes, err := rev.BodyBytesWith(document.BodyId, document.BodyRev, document.BodyAttachments, document.BodyDeleted, document.BodyRemoved, document.BodyExpiry, document.BodyRevisions)
-	var body Body
+	var body db.Body
 	if err == nil {
 		err = body.Unmarshal(bytes)
 	}
@@ -119,7 +119,7 @@ func (h *handler) handleGetDoc() error {
 		if h.requestAccepts("multipart/") && (hasBodies || !h.requestAccepts("application/json")) {
 			canCompress := strings.Contains(h.rq.Header.Get("X-Accept-Part-Encoding"), "gzip")
 			return h.writeMultipart("related", func(writer *multipart.Writer) error {
-				WriteMultipartDocument(h.ctx(), h.db.DatabaseContext.DbStats.CBLReplicationPull(), Body(value), writer, canCompress)
+				WriteMultipartDocument(h.ctx(), h.db.DatabaseContext.DbStats.CBLReplicationPull(), db.Body(value), writer, canCompress)
 				return nil
 			})
 		} else {
@@ -168,9 +168,9 @@ func (h *handler) handleGetDoc() error {
 			for _, revid := range revids {
 				revBody, err := get1xRevBodyWithHistory(h, docid, revid, revsLimit, revsFrom, attachmentsSince, showExp)
 				if err != nil {
-					revBody = Body{"missing": revid} // TODO: More specific error
+					revBody = db.Body{"missing": revid} // TODO: More specific error
 				} else {
-					revBody = Body{"ok": revBody}
+					revBody = db.Body{"ok": revBody}
 				}
 				_, _ = h.response.Write(separator)
 				separator = []byte(",")
@@ -342,7 +342,7 @@ func (h *handler) handlePutAttachment() error {
 		if base.IsDocNotFoundError(err) {
 			// couchdb creates empty body on attachment PUT
 			// for non-existent doc id
-			body = Body{db.BodyRev: revid}
+			body = db.Body{db.BodyRev: revid}
 		} else if err != nil {
 			return err
 		}

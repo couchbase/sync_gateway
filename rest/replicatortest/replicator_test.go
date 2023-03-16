@@ -3687,12 +3687,12 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 	// scenarios
 	conflictResolutionTests := []struct {
 		name                    string
-		localRevisionBody       rest.Body
+		localRevisionBody       db.Body
 		localRevID              string
-		remoteRevisionBody      rest.Body
+		remoteRevisionBody      db.Body
 		remoteRevID             string
 		conflictResolver        string
-		expectedLocalBody       rest.Body
+		expectedLocalBody       db.Body
 		expectedLocalRevID      string
 		expectedTombstonedRevID string
 		expectedResolutionType  db.ConflictResolutionType
@@ -3701,61 +3701,61 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 	}{
 		{
 			name:                   "remoteWins",
-			localRevisionBody:      rest.Body{"source": "local"},
+			localRevisionBody:      db.Body{"source": "local"},
 			localRevID:             "1-a",
-			remoteRevisionBody:     rest.Body{"source": "remote"},
+			remoteRevisionBody:     db.Body{"source": "remote"},
 			remoteRevID:            "1-b",
 			conflictResolver:       `function(conflict) {return conflict.RemoteDocument;}`,
-			expectedLocalBody:      rest.Body{"source": "remote"},
+			expectedLocalBody:      db.Body{"source": "remote"},
 			expectedLocalRevID:     "1-b",
 			expectedResolutionType: db.ConflictResolutionRemote,
 		},
 		{
 			name:               "merge",
-			localRevisionBody:  rest.Body{"source": "local"},
+			localRevisionBody:  db.Body{"source": "local"},
 			localRevID:         "1-a",
-			remoteRevisionBody: rest.Body{"source": "remote"},
+			remoteRevisionBody: db.Body{"source": "remote"},
 			remoteRevID:        "1-b",
 			conflictResolver: `function(conflict) {
 					var mergedDoc = new Object();
 					mergedDoc.source = "merged";
 					return mergedDoc;
 				}`,
-			expectedLocalBody:      rest.Body{"source": "merged"},
+			expectedLocalBody:      db.Body{"source": "merged"},
 			expectedLocalRevID:     document.CreateRevIDWithBytes(2, "1-b", []byte(`{"source":"merged"}`)), // rev for merged body, with parent 1-b
 			expectedResolutionType: db.ConflictResolutionMerge,
 		},
 		{
 			name:                   "localWins",
-			localRevisionBody:      rest.Body{"source": "local"},
+			localRevisionBody:      db.Body{"source": "local"},
 			localRevID:             "1-a",
-			remoteRevisionBody:     rest.Body{"source": "remote"},
+			remoteRevisionBody:     db.Body{"source": "remote"},
 			remoteRevID:            "1-b",
 			conflictResolver:       `function(conflict) {return conflict.LocalDocument;}`,
-			expectedLocalBody:      rest.Body{"source": "local"},
+			expectedLocalBody:      db.Body{"source": "local"},
 			expectedLocalRevID:     document.CreateRevIDWithBytes(2, "1-b", []byte(`{"source":"local"}`)), // rev for local body, transposed under parent 1-b
 			expectedResolutionType: db.ConflictResolutionLocal,
 		},
 		{
 			name:                    "twoTombstonesRemoteWin",
-			localRevisionBody:       rest.Body{"_deleted": true, "source": "local"},
+			localRevisionBody:       db.Body{"_deleted": true, "source": "local"},
 			localRevID:              "1-a",
-			remoteRevisionBody:      rest.Body{"_deleted": true, "source": "remote"},
+			remoteRevisionBody:      db.Body{"_deleted": true, "source": "remote"},
 			remoteRevID:             "1-b",
 			conflictResolver:        `function(conflict){}`,
-			expectedLocalBody:       rest.Body{"source": "remote"},
+			expectedLocalBody:       db.Body{"source": "remote"},
 			expectedLocalRevID:      "1-b",
 			skipActiveLeafAssertion: true,
 			skipBodyAssertion:       base.TestUseXattrs(),
 		},
 		{
 			name:                    "twoTombstonesLocalWin",
-			localRevisionBody:       rest.Body{"_deleted": true, "source": "local"},
+			localRevisionBody:       db.Body{"_deleted": true, "source": "local"},
 			localRevID:              "1-b",
-			remoteRevisionBody:      rest.Body{"_deleted": true, "source": "remote"},
+			remoteRevisionBody:      db.Body{"_deleted": true, "source": "remote"},
 			remoteRevID:             "1-a",
 			conflictResolver:        `function(conflict){}`,
-			expectedLocalBody:       rest.Body{"source": "local"},
+			expectedLocalBody:       db.Body{"source": "local"},
 			expectedLocalRevID:      "1-b",
 			skipActiveLeafAssertion: true,
 			skipBodyAssertion:       base.TestUseXattrs(),
@@ -3974,13 +3974,13 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 			username := "alice"
 			rt2.CreateUser(username, []string{"*"})
 
-			var localRevisionBody rest.Body
+			var localRevisionBody db.Body
 			assert.NoError(t, json.Unmarshal(test.localRevisionBody, &localRevisionBody))
 
-			var remoteRevisionBody rest.Body
+			var remoteRevisionBody db.Body
 			assert.NoError(t, json.Unmarshal(test.remoteRevisionBody, &remoteRevisionBody))
 
-			var expectedLocalBody rest.Body
+			var expectedLocalBody db.Body
 			assert.NoError(t, json.Unmarshal(test.expectedBody, &expectedLocalBody))
 
 			// Create revision on rt2 (remote)
@@ -5495,7 +5495,7 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 
 	base.LongRunningTest(t)
 
-	createRevID := func(generation int, parentRevID string, body rest.Body) string {
+	createRevID := func(generation int, parentRevID string, body db.Body) string {
 		rev, err := document.CreateRevID(generation, parentRevID, db.Body(body))
 		require.NoError(t, err, "Error creating revision")
 		return rev
@@ -5506,21 +5506,21 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 	conflictResolutionTests := []struct {
 		name                string
 		commonAncestorRevID string
-		localRevisionBody   rest.Body
+		localRevisionBody   db.Body
 		localRevID          string
-		remoteRevisionBody  rest.Body
+		remoteRevisionBody  db.Body
 		remoteRevID         string
 		conflictResolver    string
-		expectedLocalBody   rest.Body
+		expectedLocalBody   db.Body
 		expectedLocalRevID  string
 	}{
 		{
 			name: "mergeReadWriteIntlProps",
-			localRevisionBody: rest.Body{
+			localRevisionBody: db.Body{
 				"source": "local",
 			},
 			localRevID: "1-a",
-			remoteRevisionBody: rest.Body{
+			remoteRevisionBody: db.Body{
 				"source": "remote",
 			},
 			remoteRevID: "1-b",
@@ -5536,7 +5536,7 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 				mergedDoc._exp = 100;
 				return mergedDoc;
 			}`,
-			expectedLocalBody: rest.Body{
+			expectedLocalBody: db.Body{
 				db.BodyId:     "foo",
 				db.BodyRev:    "2-c",
 				db.BodyExpiry: json.Number("100"),
@@ -5546,7 +5546,7 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 				"remoteRevId": "1-b",
 				"source":      "merged",
 			},
-			expectedLocalRevID: createRevID(2, "1-b", rest.Body{
+			expectedLocalRevID: createRevID(2, "1-b", db.Body{
 				db.BodyId:     "foo",
 				db.BodyRev:    "2-c",
 				db.BodyExpiry: json.Number("100"),
@@ -5594,18 +5594,18 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 			expectedLocalBody: map[string]interface{}{
 				"source": "merged",
 			},
-			expectedLocalRevID: createRevID(2, "1-b", rest.Body{
+			expectedLocalRevID: createRevID(2, "1-b", db.Body{
 				"source": "merged",
 			}),
 		},
 		{
 			name: "mergeReadIntlPropsLocalExpiry",
-			localRevisionBody: rest.Body{
+			localRevisionBody: db.Body{
 				"source":      "local",
 				db.BodyExpiry: docExpiry,
 			},
 			localRevID:         "1-a",
-			remoteRevisionBody: rest.Body{"source": "remote"},
+			remoteRevisionBody: db.Body{"source": "remote"},
 			remoteRevID:        "1-b",
 			conflictResolver: `function(conflict) {
 				var mergedDoc = new Object();
@@ -5613,23 +5613,23 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 				mergedDoc.localDocExp = conflict.LocalDocument._exp;
 				return mergedDoc;
 			}`,
-			expectedLocalBody: rest.Body{
+			expectedLocalBody: db.Body{
 				"localDocExp": docExpiry,
 				"source":      "merged",
 			},
-			expectedLocalRevID: createRevID(2, "1-b", rest.Body{
+			expectedLocalRevID: createRevID(2, "1-b", db.Body{
 				"localDocExp": docExpiry,
 				"source":      "merged",
 			}),
 		},
 		{
 			name: "mergeWriteIntlPropsExpiry",
-			localRevisionBody: rest.Body{
+			localRevisionBody: db.Body{
 				"source":      "local",
 				db.BodyExpiry: docExpiry,
 			},
 			localRevID: "1-a",
-			remoteRevisionBody: rest.Body{
+			remoteRevisionBody: db.Body{
 				"source": "remote",
 			},
 			remoteRevID: "1-b",
@@ -5639,24 +5639,24 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 				mergedDoc._exp = %q;
 				return mergedDoc;
 			}`, docExpiry),
-			expectedLocalBody: rest.Body{
+			expectedLocalBody: db.Body{
 				db.BodyExpiry: docExpiry,
 				"source":      "merged",
 			},
-			expectedLocalRevID: createRevID(2, "1-b", rest.Body{
+			expectedLocalRevID: createRevID(2, "1-b", db.Body{
 				db.BodyExpiry: docExpiry,
 				"source":      "merged",
 			}),
 		},
 		{
 			name: "mergeReadIntlPropsDeletedWithLocalTombstone",
-			localRevisionBody: rest.Body{
+			localRevisionBody: db.Body{
 				"source":       "local",
 				db.BodyDeleted: true,
 			},
 			commonAncestorRevID: "1-a",
 			localRevID:          "2-a",
-			remoteRevisionBody: rest.Body{
+			remoteRevisionBody: db.Body{
 				"source": "remote",
 			},
 			remoteRevID: "2-b",
@@ -5666,11 +5666,11 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 				mergedDoc.localDeleted = conflict.LocalDocument._deleted;
 				return mergedDoc;
 			}`,
-			expectedLocalBody: rest.Body{
+			expectedLocalBody: db.Body{
 				"localDeleted": true,
 				"source":       "merged",
 			},
-			expectedLocalRevID: createRevID(3, "2-b", rest.Body{
+			expectedLocalRevID: createRevID(3, "2-b", db.Body{
 				"localDeleted": true,
 				"source":       "merged",
 			}),
@@ -5856,7 +5856,7 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 
 	// requireTombstone validates tombstoned revision.
 	requireTombstone := func(t *testing.T, dataStore base.DataStore, docID string) {
-		var rawBody rest.Body
+		var rawBody db.Body
 		_, err := dataStore.Get(docID, &rawBody)
 		if base.TestUseXattrs() {
 			require.True(t, base.IsDocNotFoundError(err))
@@ -5895,7 +5895,7 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 			}
 
 			makeDoc := func(rt *rest.RestTester, docid string, rev string, value string) string {
-				var body rest.Body
+				var body db.Body
 				resp := rt.SendAdminRequest("PUT", "/{{.keyspace}}/"+docid+"?rev="+rev, value)
 				rest.RequireStatus(t, resp, http.StatusCreated)
 				err := json.Unmarshal(resp.BodyBytes(), &body)
@@ -6614,7 +6614,7 @@ func TestLocalWinsConflictResolution(t *testing.T) {
 
 			// Wait for expected property value on remote to determine replication complete
 			waitErr := remoteRT.WaitForCondition(func() bool {
-				var remoteDoc rest.Body
+				var remoteDoc db.Body
 				rawResponse := remoteRT.SendAdminRequest("GET", "/{{.keyspace}}/"+docID, "")
 				require.NoError(t, base.JSONUnmarshal(rawResponse.Body.Bytes(), &remoteDoc))
 				prop, ok := remoteDoc["prop"].(string)
@@ -7833,7 +7833,7 @@ func TestBasicGetReplicator2(t *testing.T) {
 	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 
-	var body rest.Body
+	var body db.Body
 
 	// Put document as usual
 	response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1", `{"foo": "bar"}`)
@@ -7870,7 +7870,7 @@ func TestBasicPutReplicator2(t *testing.T) {
 	defer rt.Close()
 
 	var (
-		body  rest.Body
+		body  db.Body
 		revID string
 		err   error
 	)
@@ -7915,7 +7915,7 @@ func TestDeletedPutReplicator2(t *testing.T) {
 	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 
-	var body rest.Body
+	var body db.Body
 
 	response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1", "{}")
 	rest.RequireStatus(t, response, http.StatusCreated)

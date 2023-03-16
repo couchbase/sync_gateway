@@ -199,7 +199,7 @@ func TestXattrSGTombstone(t *testing.T) {
 	response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/"+key, `{"channels":"ABC"}`)
 	assert.Equal(t, 201, response.Code)
 	log.Printf("insert response: %s", response.Body.Bytes())
-	var body rest.Body
+	var body db.Body
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.Equal(t, true, body["ok"])
 	revId := body["rev"].(string)
@@ -244,7 +244,7 @@ func TestXattrImportOnCasFailure(t *testing.T) {
 	response := rt.SendAdminRequest("PUT", "/db/TestCasFailureImport", `{"test":"TestCasFailureImport", "write_type":"SG_1"}`)
 	assert.Equal(t, 201, response.Code)
 	log.Printf("insert response: %s", response.Body.Bytes())
-	var body rest.Body
+	var body db.Body
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.Equal(t, "1-111c27be37c17f18ae8fe9faa3bb4e0e", body["rev"])
 	revId := body["rev"].(string)
@@ -308,7 +308,7 @@ func TestXattrResurrectViaSG(t *testing.T) {
 	response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/"+key, `{"channels":"ABC"}`)
 	assert.Equal(t, 201, response.Code)
 	log.Printf("insert response: %s", response.Body.Bytes())
-	var body rest.Body
+	var body db.Body
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.Equal(t, true, body["ok"])
 	revId := body["rev"].(string)
@@ -420,7 +420,7 @@ func TestXattrDoubleDelete(t *testing.T) {
 	response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/"+key, `{"channels":"ABC"}`)
 	assert.Equal(t, 201, response.Code)
 	log.Printf("insert response: %s", response.Body.Bytes())
-	var body rest.Body
+	var body db.Body
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.Equal(t, true, body["ok"])
 	revId := body["rev"].(string)
@@ -473,7 +473,7 @@ func TestViewQueryTombstoneRetrieval(t *testing.T) {
 	response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/"+key, `{"channels":"ABC"}`)
 	assert.Equal(t, 201, response.Code)
 	log.Printf("insert response: %s", response.Body.Bytes())
-	var body rest.Body
+	var body db.Body
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.Equal(t, true, body["ok"])
 	revId := body["rev"].(string)
@@ -641,7 +641,7 @@ func TestXattrImportMultipleActorOnDemandGet(t *testing.T) {
 	response := rt.SendAdminRequest("GET", "/{{.keyspace}}/"+mobileKey, "")
 	assert.Equal(t, 200, response.Code)
 	// Extract rev from response for comparison with second GET below
-	var body rest.Body
+	var body db.Body
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	revId, ok := body[db.BodyRev].(string)
 	assert.True(t, ok, "No rev included in response")
@@ -697,7 +697,7 @@ func TestXattrImportMultipleActorOnDemandPut(t *testing.T) {
 	response := rt.SendAdminRequest("GET", "/{{.keyspace}}/"+mobileKey, "")
 	assert.Equal(t, 200, response.Code)
 	// Extract rev from response for comparison with second GET below
-	var body rest.Body
+	var body db.Body
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	revId, ok := body[db.BodyRev].(string)
 	assert.True(t, ok, "No rev included in response")
@@ -756,7 +756,7 @@ func TestXattrImportMultipleActorOnDemandFeed(t *testing.T) {
 	response := rt.SendAdminRequest("GET", "/{{.keyspace}}/"+mobileKey, "")
 	assert.Equal(t, 200, response.Code)
 	// Extract rev from response for comparison with second GET below
-	var body rest.Body
+	var body db.Body
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	revId, ok := body[db.BodyRev].(string)
 	assert.True(t, ok, "No rev included in response")
@@ -2063,7 +2063,7 @@ func TestUnexpectedBodyOnTombstone(t *testing.T) {
 	response := rt.SendAdminRequest("GET", "/{{.keyspace}}/"+mobileKey, "")
 	assert.Equal(t, 200, response.Code)
 	// Extract rev from response for comparison with second GET below
-	var body rest.Body
+	var body db.Body
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	revId, ok := body[db.BodyRev].(string)
 	assert.True(t, ok, "No rev included in response")
@@ -2153,7 +2153,7 @@ func TestDeletedEmptyDocumentImport(t *testing.T) {
 	response := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docId, `{}`)
 	assert.Equal(t, http.StatusCreated, response.Code)
 
-	var body rest.Body
+	var body db.Body
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.Equal(t, "1-ca9ad22802b66f662ff171f226211d5c", body["rev"])
 
@@ -2196,7 +2196,7 @@ func TestDeletedDocumentImportWithImportFilter(t *testing.T) {
 
 	// Create document via SDK
 	key := "doc1"
-	docBody := rest.Body{"key": key, "channels": "ABC"}
+	docBody := db.Body{"key": key, "channels": "ABC"}
 	expiry := time.Now().Add(time.Second * 30)
 	_, err := dataStore.Add(key, uint32(expiry.Unix()), docBody)
 	assert.NoErrorf(t, err, "Unable to insert doc %s", key)
@@ -2205,7 +2205,7 @@ func TestDeletedDocumentImportWithImportFilter(t *testing.T) {
 	endpoint := fmt.Sprintf("/{{.keyspace}}/_raw/%s?redact=false", key)
 	response := rt.SendAdminRequest(http.MethodGet, endpoint, "")
 	assert.Equal(t, http.StatusOK, response.Code)
-	var respBody rest.Body
+	var respBody db.Body
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &respBody))
 	syncMeta := respBody[base.SyncPropertyName].(map[string]interface{})
 	assert.NotEmpty(t, syncMeta["rev"].(string))
@@ -2345,7 +2345,7 @@ func TestImportInternalPropertiesHandling(t *testing.T) {
 			} else {
 				rest.RequireStatus(rt.TB, resp, 200)
 			}
-			var body rest.Body
+			var body db.Body
 			require.NoError(rt.TB, base.JSONUnmarshal(resp.Body.Bytes(), &body))
 
 			for key, val := range body {

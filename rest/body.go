@@ -1,50 +1,12 @@
 package rest
 
 import (
+	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/document"
 )
 
-type Body = document.Body
-
-/*
-// A decoded JSON document/object.
-type Body map[string]interface{}
-
-func (b *Body) Unmarshal(data []byte) error {
-
-	if len(data) == 0 {
-		return errors.New("Unexpected empty JSON input to body.Unmarshal")
-	}
-
-	// Use decoder for unmarshalling to preserve large numbers
-	decoder := base.JSONDecoder(bytes.NewReader(data))
-	decoder.UseNumber()
-	if err := decoder.Decode(b); err != nil {
-		return err
-	}
-	return nil
-}
-
-func (body Body) ShallowCopy() Body {
-	if body == nil {
-		return body
-	}
-	copied := make(Body, len(body))
-	for key, value := range body {
-		copied[key] = value
-	}
-	return copied
-}
-
-func (body Body) ExtractRev() string {
-	revid, _ := body[document.BodyRev].(string)
-	delete(body, document.BodyRev)
-	return revid
-}
-*/
-
 // Parses a CouchDB _rev or _revisions property into a list of revision IDs
-func ParseRevisions(body Body) []string {
+func ParseRevisions(body db.Body) []string {
 	// http://wiki.apache.org/couchdb/HTTP_Document_API#GET
 
 	revisionsProperty, ok := body[document.BodyRevisions]

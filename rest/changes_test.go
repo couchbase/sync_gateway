@@ -196,7 +196,7 @@ func TestWebhookWinningRevChangedEvent(t *testing.T) {
 	var DocumentChangedCount uint32
 
 	handler := func(w http.ResponseWriter, r *http.Request) {
-		var body Body
+		var body db.Body
 		d := base.JSONDecoder(r.Body)
 		require.NoError(t, d.Decode(&body))
 		require.Contains(t, body, db.BodyId)

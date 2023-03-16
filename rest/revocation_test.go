@@ -124,7 +124,7 @@ func (tester *ChannelRevocationTester) fillToSeq(seq uint64) {
 		resp := tester.restTester.SendAdminRequest("PUT", requestURL, "{}")
 		require.Equal(tester.test, http.StatusCreated, resp.Code)
 
-		var body Body
+		var body db.Body
 		err = json.Unmarshal(resp.BodyBytes(), &body)
 		require.NoError(tester.test, err)
 

@@ -94,7 +94,7 @@ type attInfo struct {
 	data        []byte
 }
 
-func writeJSONPart(writer *multipart.Writer, contentType string, body Body, compressed bool) (err error) {
+func writeJSONPart(writer *multipart.Writer, contentType string, body db.Body, compressed bool) (err error) {
 	bytes, err := base.JSONMarshalCanonical(body)
 	if err != nil {
 		return err
@@ -124,7 +124,7 @@ func writeJSONPart(writer *multipart.Writer, contentType string, body Body, comp
 }
 
 // Writes a revision to a MIME multipart writer, encoding large attachments as separate parts.
-func WriteMultipartDocument(ctx context.Context, cblReplicationPullStats *base.CBLReplicationPullStats, body Body, writer *multipart.Writer, compress bool) {
+func WriteMultipartDocument(ctx context.Context, cblReplicationPullStats *base.CBLReplicationPullStats, body db.Body, writer *multipart.Writer, compress bool) {
 	// First extract the attachments that should follow:
 	following := []attInfo{}
 	for name, value := range document.GetBodyAttachments(db.Body(body)) {
@@ -167,7 +167,7 @@ func WriteMultipartDocument(ctx context.Context, cblReplicationPullStats *base.C
 	}
 }
 
-func hasInlineAttachments(body Body) bool {
+func hasInlineAttachments(body db.Body) bool {
 	for _, value := range document.GetBodyAttachments(db.Body(body)) {
 		if meta, ok := value.(map[string]interface{}); ok && meta["data"] != nil {
 			return true
@@ -178,7 +178,7 @@ func hasInlineAttachments(body Body) bool {
 
 // Adds a new part to the given multipart writer, containing the given revision.
 // The revision will be written as a nested multipart body if it has attachments.
-func WriteRevisionAsPart(ctx context.Context, cblReplicationPullStats *base.CBLReplicationPullStats, revBody Body, isError bool, compressPart bool, writer *multipart.Writer) error {
+func WriteRevisionAsPart(ctx context.Context, cblReplicationPullStats *base.CBLReplicationPullStats, revBody db.Body, isError bool, compressPart bool, writer *multipart.Writer) error {
 	partHeaders := textproto.MIMEHeader{}
 	docID, _ := revBody[db.BodyId].(string)
 	revID, _ := revBody[db.BodyRev].(string)
@@ -214,13 +214,13 @@ func WriteRevisionAsPart(ctx context.Context, cblReplicationPullStats *base.CBLR
 	}
 }
 
-func ReadMultipartDocument(reader *multipart.Reader) (Body, error) {
+func ReadMultipartDocument(reader *multipart.Reader) (db.Body, error) {
 	// First read the main JSON document body:
 	mainPart, err := reader.NextPart()
 	if err != nil {
 		return nil, err
 	}
-	var body Body
+	var body db.Body
 	err = ReadJSONFromMIME(http.Header(mainPart.Header), mainPart, &body)
 	if err != nil {
 		return nil, err

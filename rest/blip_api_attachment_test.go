@@ -80,7 +80,7 @@ func TestBlipPushPullV2AttachmentV2Client(t *testing.T) {
 
 	resp := rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/"+docID+"?rev="+revId, "")
 	assert.Equal(t, http.StatusOK, resp.Code)
-	var respBody Body
+	var respBody db.Body
 	assert.NoError(t, base.JSONUnmarshal(resp.Body.Bytes(), &respBody))
 
 	assert.Equal(t, docID, respBody[db.BodyId])
@@ -156,7 +156,7 @@ func TestBlipPushPullV2AttachmentV3Client(t *testing.T) {
 
 	resp := rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/"+docID+"?rev="+revId, "")
 	assert.Equal(t, http.StatusOK, resp.Code)
-	var respBody Body
+	var respBody db.Body
 	assert.NoError(t, base.JSONUnmarshal(resp.Body.Bytes(), &respBody))
 
 	assert.Equal(t, docID, respBody[db.BodyId])
@@ -225,7 +225,7 @@ func TestBlipPushPullNewAttachmentCommonAncestor(t *testing.T) {
 	resp = rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/"+docID+"?rev="+revId, "")
 	assert.Equal(t, http.StatusOK, resp.Code)
 
-	var respBody Body
+	var respBody db.Body
 	assert.NoError(t, base.JSONUnmarshal(resp.Body.Bytes(), &respBody))
 
 	assert.Equal(t, docID, respBody[db.BodyId])
@@ -284,7 +284,7 @@ func TestBlipPushPullNewAttachmentNoCommonAncestor(t *testing.T) {
 	resp := rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/"+docID+"?rev="+revId, "")
 	assert.Equal(t, http.StatusOK, resp.Code)
 
-	var respBody Body
+	var respBody db.Body
 	assert.NoError(t, base.JSONUnmarshal(resp.Body.Bytes(), &respBody))
 
 	assert.Equal(t, docID, respBody[db.BodyId])

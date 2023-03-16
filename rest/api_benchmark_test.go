@@ -75,7 +75,7 @@ func BenchmarkReadOps_Get(b *testing.B) {
 
 	doc1k_putDoc := fmt.Sprintf(doc_1k_format, "")
 	response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc1k", doc1k_putDoc)
-	var body Body
+	var body db.Body
 	require.NoError(b, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	revid := body["rev"].(string)
 
@@ -136,7 +136,7 @@ func BenchmarkReadOps_GetRevCacheMisses(b *testing.B) {
 		response := rt.SendAdminRequest("PUT", fmt.Sprintf("/{{.keyspace}}/doc1k_%d", i), doc1k_putDoc)
 		// revid will be the same for all docs
 		if i == 0 {
-			var body Body
+			var body db.Body
 			require.NoError(b, base.JSONUnmarshal(response.Body.Bytes(), &body))
 			revid = body["rev"].(string)
 		}
@@ -205,7 +205,7 @@ func BenchmarkReadOps_Changes(b *testing.B) {
 		log.Printf("Unexpected create response: %d  %s", response.Code, response.Body.Bytes())
 	}
 
-	var body Body
+	var body db.Body
 	require.NoError(b, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	revid := body["rev"].(string)
 	_, rev1_digest := db.ParseRevID(revid)

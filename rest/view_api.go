@@ -39,7 +39,7 @@ func (h *handler) handleGetDesignDoc() error {
 			_, _ = io.WriteString(hash, defaultCollection.ChannelMapper.Function())
 			filter = fmt.Sprint(hash.Sum(nil))
 		}
-		result = Body{"filters": Body{"bychannel": filter}}
+		result = db.Body{"filters": db.Body{"bychannel": filter}}
 	} else {
 		var getErr error
 		result, getErr = h.db.GetDesignDoc(ddocID)
@@ -81,7 +81,7 @@ func (h *handler) handleView() error {
 	if ddocName == "" {
 		ddocName = db.DesignDocSyncGateway()
 	}
-	opts := Body{}
+	opts := db.Body{}
 
 	// Boolean options:
 	for _, name := range []string{"inclusive_end", "descending", "include_docs", "reduce", "group"} {

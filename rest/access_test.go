@@ -79,8 +79,8 @@ func TestStarAccess(t *testing.T) {
 			Channels []string            `json:"channels,omitempty"`
 			Access   map[string]base.Set `json:"access,omitempty"` // for admins only
 		} `json:"value"`
-		Doc   Body   `json:"doc,omitempty"`
-		Error string `json:"error"`
+		Doc   db.Body `json:"doc,omitempty"`
+		Error string  `json:"error"`
 	}
 	var allDocsResult struct {
 		TotalRows int          `json:"total_rows"`
@@ -591,8 +591,8 @@ func TestAllDocsAccessControl(t *testing.T) {
 			Channels []string            `json:"channels,omitempty"`
 			Access   map[string]base.Set `json:"access,omitempty"` // for admins only
 		} `json:"value"`
-		Doc   Body   `json:"doc,omitempty"`
-		Error string `json:"error"`
+		Doc   db.Body `json:"doc,omitempty"`
+		Error string  `json:"error"`
 	}
 	type allDocsResponse struct {
 		TotalRows int          `json:"total_rows"`
@@ -818,7 +818,7 @@ func TestChannelAccessChanges(t *testing.T) {
 	// Create some docs that give users access:
 	response := rt.SendRequest(http.MethodPut, "/{{.keyspace}}/alpha", `{"owner":"alice"}`)
 	RequireStatus(t, response, 201)
-	var body Body
+	var body db.Body
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.Equal(t, true, body["ok"])
 	alphaRevID := body["rev"].(string)
@@ -1007,7 +1007,7 @@ func TestAccessOnTombstone(t *testing.T) {
 	// Create doc that gives user access to its channel
 	response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/alpha", `{"owner":"bernard", "channel":"PBS"}`)
 	RequireStatus(t, response, 201)
-	var body Body
+	var body db.Body
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.Equal(t, true, body["ok"])
 	revId := body["rev"].(string)
@@ -1089,7 +1089,7 @@ func TestDynamicChannelGrant(t *testing.T) {
 	response = rt.SendUserRequest("GET", "/{{.keyspace}}/doc1", "", "user1")
 	RequireStatus(t, response, 200)
 
-	var body Body
+	var body db.Body
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.Equal(t, "hello", body["greeting"])
 
@@ -1169,7 +1169,7 @@ func TestRoleChannelGrantInheritance(t *testing.T) {
 	response = rt.SendUserRequest("GET", "/{{.keyspace}}/doc2", "", "user1")
 	RequireStatus(t, response, 200)
 
-	var body Body
+	var body db.Body
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.Equal(t, "hello", body["greeting"])
 
