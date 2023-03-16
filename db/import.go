@@ -92,7 +92,7 @@ func (db *DatabaseCollectionWithUser) ImportDoc(ctx context.Context, docid strin
 		return nil, err
 	}
 
-	return db.importDoc(ctx, docid, existingDoc.Body(), expiry, isDelete, existingBucketDoc, mode)
+	return db.importDoc(ctx, docid, existingDoc.UnmarshalBody(), expiry, isDelete, existingBucketDoc, mode)
 }
 
 // Import document
@@ -151,7 +151,7 @@ func (db *DatabaseCollectionWithUser) importDoc(ctx context.Context, docid strin
 
 			// If this is an on-demand import, we want to continue to import the current version of the doc.  Re-initialize existing doc based on the latest doc
 			if mode == ImportOnDemand {
-				body = doc.Body()
+				body = doc.UnmarshalBody()
 				if body == nil {
 					return nil, nil, false, nil, base.ErrEmptyDocument
 				}
@@ -197,7 +197,7 @@ func (db *DatabaseCollectionWithUser) importDoc(ctx context.Context, docid strin
 
 			// If document still requires import post-migration attempt, continue with import processing based on the body returned by migrate
 			doc = migratedDoc
-			body = migratedDoc.Body()
+			body = migratedDoc.UnmarshalBody()
 			base.InfofCtx(ctx, base.KeyMigrate, "Falling back to import with cas: %v", doc.Cas)
 		}
 

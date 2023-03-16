@@ -159,6 +159,7 @@ func BenchmarkUnmarshalBody(b *testing.B) {
 				doc := NewDocument("testDocID")
 				docReader := bytes.NewReader(doc1k_body)
 				b.StartTimer()
+				var body Body
 				var err error
 				if bm.useDecode {
 					// decoder := base.JSONDecoder(bytes.NewReader(doc1k_body))
@@ -166,11 +167,11 @@ func BenchmarkUnmarshalBody(b *testing.B) {
 					if bm.fixJSONNumbers {
 						decoder.UseNumber()
 					}
-					err = decoder.Decode(&doc._body)
+					err = decoder.Decode(&body)
 				} else {
-					err = base.JSONUnmarshal(doc1k_body, &doc._body)
+					err = base.JSONUnmarshal(doc1k_body, &body)
 					if bm.fixJSONNumbers {
-						doc.Body().FixJSONNumbers()
+						doc.UnmarshalBody().FixJSONNumbers()
 					}
 				}
 				b.StopTimer()
@@ -178,7 +179,7 @@ func BenchmarkUnmarshalBody(b *testing.B) {
 					log.Printf("Unmarshal error: %s", err)
 				}
 
-				if len(doc.Body()) == 0 {
+				if body == nil {
 					log.Printf("Empty body")
 				}
 
@@ -256,24 +257,6 @@ func TestGetDeepMutableBody(t *testing.T) {
 			inputDoc:    &Document{_rawBody: []byte(`{test: true}`)},
 			expectError: true,
 			expected:    nil,
-		},
-		{
-			name:        "Body, no raw body",
-			inputDoc:    &Document{_body: Body{"test": true}},
-			expectError: false,
-			expected:    &Body{"test": true},
-		},
-		{
-			name:        "Inline function in body, no raw body",
-			inputDoc:    &Document{_body: Body{"test": func() bool { return true }}},
-			expectError: true,
-			expected:    nil,
-		},
-		{
-			name:        "Body and raw body",
-			inputDoc:    &Document{_rawBody: []byte(`{"test": true}`), _body: Body{"notTest": false}},
-			expectError: false,
-			expected:    &Body{"test": true},
 		},
 	}
 	for _, test := range testCases {

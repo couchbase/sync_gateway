@@ -42,7 +42,7 @@ func (t *testBackingStore) GetDocument(ctx context.Context, docid string, unmars
 	}
 
 	doc = document.NewDocument(docid)
-	doc.PokeBody(Body{
+	doc.UpdateBody(Body{
 		"testing": true,
 	})
 	doc.CurrentRev = "1-abc"

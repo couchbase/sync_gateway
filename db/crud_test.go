@@ -1163,7 +1163,7 @@ func BenchmarkHandleRevDelta(b *testing.B) {
 		}
 
 		deltaSrcMap := map[string]interface{}(deltaSrcBody)
-		_ = base.Patch(&deltaSrcMap, newDoc.Body())
+		_ = base.Patch(&deltaSrcMap, newDoc.UnmarshalBody())
 	}
 
 	b.Run("SmallDiff", func(b *testing.B) {

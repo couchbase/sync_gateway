@@ -55,8 +55,7 @@ const (
 // Document doesn't do any locking - document instances aren't intended to be shared across multiple goroutines.
 type Document struct {
 	SyncData            // Sync metadata
-	_body        Body   // Marshalled document body.  Unmarshalled lazily - should be accessed using Body()
-	_rawBody     []byte // Raw document body, as retrieved from the bucket.  Marshaled lazily - should be accessed using BodyBytes()
+	_rawBody     []byte // Raw document body, as retrieved from the bucket
 	ID           string `json:"-"` // Doc id.  (We're already using a custom MarshalJSON for *document that's based on body, so the json:"-" probably isn't needed here)
 	Cas          uint64 // Document cas
 	rawUserXattr []byte // Raw user xattr as retrieved from the bucket
@@ -77,14 +76,20 @@ type casOnlySyncData struct {
 	Cas string `json:"cas"`
 }
 
+type attachmentsOnlyBody struct {
+	Attachments AttachmentsMeta `json:"_attachments"`
+}
+
 func (doc *Document) UpdateBodyBytes(bodyBytes []byte) {
 	doc._rawBody = bodyBytes
-	doc._body = nil
 }
 
 func (doc *Document) UpdateBody(body Body) {
-	doc._body = body
-	doc._rawBody = nil
+	raw, err := base.JSONMarshal(body)
+	if err != nil {
+		base.WarnfCtx(context.Background(), "Unable to marshal document body from Body : %s", err)
+	}
+	doc._rawBody = raw
 }
 
 // Marshals both the body and sync data for a given document. If there is no rawbody already available then we will
@@ -134,46 +139,16 @@ func NewDocument(docid string) *Document {
 	return &Document{ID: docid, SyncData: SyncData{History: make(RevTree)}}
 }
 
-// Accessors for document properties.  To support lazy unmarshalling of document contents, all access should be done through accessors
-func (doc *Document) Body() Body {
-	var caller string
-	if base.ConsoleLogLevel().Enabled(base.LevelTrace) {
-		caller = base.GetCallersName(1, true)
-	}
-
-	if doc._body != nil {
-		base.TracefCtx(context.Background(), base.KeyAll, "Already had doc body %s/%s from %s", base.UD(doc.ID), base.UD(doc.RevID), caller)
-		return doc._body
-	}
-
-	if doc._rawBody == nil {
-		base.WarnfCtx(context.Background(), "Null doc body/rawBody %s/%s from %s", base.UD(doc.ID), base.UD(doc.RevID), caller)
-		return nil
-	}
-
-	base.TracefCtx(context.Background(), base.KeyAll, "        UNMARSHAL doc body %s/%s from %s", base.UD(doc.ID), base.UD(doc.RevID), caller)
-	err := doc._body.Unmarshal(doc._rawBody)
-	if err != nil {
-		base.WarnfCtx(context.Background(), "Unable to unmarshal document body from raw body : %s", err)
-		return nil
-	}
-	return doc._body
+// Unmarshals the document body, without special properties.
+// This is expensive and should be FOR TESTS ONLY.
+func (doc *Document) UnmarshalBody() Body {
+	body, _ := doc.GetDeepMutableBody()
+	return body
 }
 
-// Get a deep mutable copy of the body, using _rawBody.  Initializes _rawBody based on _body if not already present.
+// Unmarshals the document body, without special properties.
+// DEPRECATED -- Once V8 is merged there should be no more need for this method.
 func (doc *Document) GetDeepMutableBody() (Body, error) {
-	// If doc._rawBody isn't present, marshal from doc.Body
-	if doc._rawBody == nil {
-		if doc._body == nil {
-			return nil, fmt.Errorf("Unable to get document body due to an empty raw body and body in the document")
-		}
-		var err error
-		doc._rawBody, err = base.JSONMarshal(doc._body)
-		if err != nil {
-			return nil, fmt.Errorf("Unable to marshal document body into raw body : %w", err)
-		}
-	}
-
 	var mutableBody Body
 	err := mutableBody.Unmarshal(doc._rawBody)
 	if err != nil {
@@ -184,48 +159,29 @@ func (doc *Document) GetDeepMutableBody() (Body, error) {
 }
 
 func (doc *Document) RemoveBody() {
-	doc._body = nil
 	doc._rawBody = nil
 }
 
 // HasBody returns true if the given document has either an unmarshalled body, or raw bytes available.
 func (doc *Document) HasBody() bool {
-	return doc._body != nil || doc._rawBody != nil
+	return doc._rawBody != nil
 }
 
 func (doc *Document) BodyBytes() ([]byte, error) {
-	var caller string
-	if base.ConsoleLogLevel().Enabled(base.LevelTrace) {
-		caller = base.GetCallersName(1, true)
-	}
-
-	if doc._rawBody != nil {
-		return doc._rawBody, nil
-	}
-
-	if doc._body == nil {
+	if doc._rawBody == nil {
+		var caller string
+		if base.ConsoleLogLevel().Enabled(base.LevelTrace) {
+			caller = base.GetCallersName(1, true)
+		}
 		base.WarnfCtx(context.Background(), "Null doc body/rawBody %s/%s from %s", base.UD(doc.ID), base.UD(doc.RevID), caller)
-		return nil, nil
 	}
-
-	bodyBytes, err := base.JSONMarshal(doc._body)
-	if err != nil {
-		return nil, pkgerrors.Wrapf(err, "Error marshalling document body")
-	}
-	doc._rawBody = bodyBytes
 	return doc._rawBody, nil
-}
-
-type attachmentsOnly struct {
-	Attachments AttachmentsMeta `json:"_attachments"`
 }
 
 // Returns the "_attachments" property of the document body, if it exists.
 func (doc *Document) InlineAttachments() (AttachmentsMeta, error) {
-	if doc._body != nil {
-		return GetBodyAttachments(doc._body), nil
-	} else if bytes.Contains(doc._rawBody, []byte(BodyAttachments)) {
-		var attachmentBody attachmentsOnly
+	if bytes.Contains(doc._rawBody, []byte(BodyAttachments)) {
+		var attachmentBody attachmentsOnlyBody
 		err := base.JSONUnmarshal(doc._rawBody, &attachmentBody)
 		return attachmentBody.Attachments, err
 	} else {
@@ -522,7 +478,6 @@ func (doc *Document) PruneRevisions(maxDepth uint32, keepRev string) int {
 // Adds a revision body (as Body) to a document.  Removes special properties first.
 func (doc *Document) SetRevisionBody(revid string, newDoc *Document, storeInline, hasAttachments bool) {
 	if revid == doc.CurrentRev {
-		doc._body = newDoc._body
 		doc._rawBody = newDoc._rawBody
 	} else {
 		bodyBytes, _ := newDoc.BodyBytes()
@@ -875,13 +830,8 @@ func (doc *Document) MarshalJSON() (data []byte, err error) {
 			Val: doc.SyncData,
 		})
 	} else {
-		body := doc._body
-		if body == nil {
-			body = Body{}
-		}
-		body[base.SyncPropertyName] = &doc.SyncData
+		body := Body{base.SyncPropertyName: &doc.SyncData}
 		data, err = base.JSONMarshal(body)
-		delete(body, base.SyncPropertyName)
 		if err != nil {
 			err = pkgerrors.WithStack(base.RedactErrorf("Failed to MarshalJSON() doc with id: %s.  Error: %v", base.UD(doc.ID), err))
 		}
@@ -908,10 +858,6 @@ func (doc *Document) UnmarshalWithXattr(data []byte, xdata []byte, unmarshalLeve
 			return pkgerrors.WithStack(base.RedactErrorf("Failed to UnmarshalWithXattr() doc with id: %s (DocUnmarshalAll/Sync).  Error: %v", base.UD(doc.ID), unmarshalErr))
 		}
 		doc._rawBody = data
-		// Unmarshal body if requested and present
-		if unmarshalLevel == DocUnmarshalAll && len(data) > 0 {
-			return doc._body.Unmarshal(data)
-		}
 
 	case DocUnmarshalNoHistory:
 		// Unmarshal sync metadata only, excluding history
@@ -948,7 +894,6 @@ func (doc *Document) UnmarshalWithXattr(data []byte, xdata []byte, unmarshalLeve
 
 	// If there's no body, but there is an xattr, set deleted flag and initialize an empty body
 	if len(data) == 0 && len(xdata) > 0 {
-		doc._body = Body{}
 		doc._rawBody = []byte(base.EmptyDocument)
 		doc.Deleted = true
 	}
@@ -957,25 +902,8 @@ func (doc *Document) UnmarshalWithXattr(data []byte, xdata []byte, unmarshalLeve
 
 func (doc *Document) MarshalWithXattr() (data []byte, xdata []byte, err error) {
 	// Grab the rawBody if it's already marshalled, otherwise unmarshal the body
-	if doc._rawBody != nil {
-		if !doc.IsDeleted() {
-			data = doc._rawBody
-		}
-	} else {
-		body := doc._body
-		// If body is non-empty and non-deleted, unmarshal and return
-		if body != nil {
-			// TODO: Could we check doc.Deleted?
-			//       apparently we can't... doing this causes invalid argument errors from Couchbase Server
-			//       when running 'TestGetRemovedAndDeleted' and 'TestNoConflictsMode' for some reason...
-			deleted, _ := body[BodyDeleted].(bool)
-			if !deleted {
-				data, err = base.JSONMarshal(body)
-				if err != nil {
-					return nil, nil, pkgerrors.WithStack(base.RedactErrorf("Failed to MarshalWithXattr() doc body with id: %s.  Error: %v", base.UD(doc.ID), err))
-				}
-			}
-		}
+	if doc._rawBody != nil && !doc.IsDeleted() {
+		data = doc._rawBody
 	}
 
 	xdata, err = base.JSONMarshal(doc.SyncData)
@@ -996,7 +924,5 @@ func (doc *Document) RawUserXattr() []byte {
 // These methods keep that code working, but the real fix is to change it to not grope these
 // fields (but also without losing performance...) --Jens Feb 2023
 
-func (doc *Document) PeekBody() Body       { return doc._body }
 func (doc *Document) PeekRawBody() []byte  { return doc._rawBody }
-func (doc *Document) PokeBody(b Body)      { doc._body = b }
 func (doc *Document) PokeRawBody(b []byte) { doc._rawBody = b }

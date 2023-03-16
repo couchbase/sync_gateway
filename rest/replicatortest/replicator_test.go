@@ -2383,9 +2383,9 @@ func TestActiveReplicatorPullMergeConflictingAttachments(t *testing.T) {
 			revGen, _ := db.ParseRevID(doc.SyncData.CurrentRev)
 
 			assert.Equal(t, 3, revGen)
-			assert.Equal(t, "merged", doc.Body()["source"].(string))
+			assert.Equal(t, "merged", doc.UnmarshalBody()["source"].(string))
 
-			assert.Nil(t, doc.Body()[db.BodyAttachments], "_attachments property should not be in resolved doc body")
+			assert.Nil(t, doc.UnmarshalBody()[db.BodyAttachments], "_attachments property should not be in resolved doc body")
 
 			assert.Len(t, doc.SyncData.Attachments, test.expectedAttachments, "mismatch in expected number of attachments in sync data of resolved doc")
 			for attName, att := range doc.SyncData.Attachments {
@@ -3864,7 +3864,7 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 			// This is skipped for tombstone tests running with xattr as xattr tombstones don't have a body to assert
 			// against
 			if !test.skipBodyAssertion {
-				assert.Equal(t, test.expectedLocalBody, doc.Body())
+				assert.Equal(t, test.expectedLocalBody, doc.UnmarshalBody())
 			}
 
 			log.Printf("Doc %s is %+v", docID, doc)
@@ -4085,7 +4085,7 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 			doc, err := rt1.GetDatabase().GetSingleDatabaseCollection().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalAll)
 			require.NoError(t, err)
 			assert.Equal(t, test.expectedRevID, doc.SyncData.CurrentRev)
-			assert.Equal(t, db.Body(expectedLocalBody), doc.Body())
+			assert.Equal(t, db.Body(expectedLocalBody), doc.UnmarshalBody())
 			log.Printf("Doc %s is %+v", docID, doc)
 			log.Printf("Doc %s attachments are %+v", docID, doc.Attachments)
 			for revID, revInfo := range doc.SyncData.History {
@@ -4125,7 +4125,7 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 			doc, err = rt2.GetDatabase().GetSingleDatabaseCollection().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalAll)
 			require.NoError(t, err)
 			assert.Equal(t, test.expectedRevID, doc.SyncData.CurrentRev)
-			assert.Equal(t, db.Body(expectedLocalBody), doc.Body())
+			assert.Equal(t, db.Body(expectedLocalBody), doc.UnmarshalBody())
 			log.Printf("Remote Doc %s is %+v", docID, doc)
 			log.Printf("Remote Doc %s attachments are %+v", docID, doc.Attachments)
 			for revID, revInfo := range doc.SyncData.History {
@@ -5768,8 +5768,8 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 			doc, err := rt1.GetDatabase().GetSingleDatabaseCollection().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalAll)
 			require.NoError(t, err)
 			assert.Equal(t, test.expectedLocalRevID, doc.SyncData.CurrentRev)
-			log.Printf("doc.Body(): %v", doc.Body())
-			assert.Equal(t, db.Body(test.expectedLocalBody), doc.Body())
+			log.Printf("doc.Body(): %v", doc.UnmarshalBody())
+			assert.Equal(t, db.Body(test.expectedLocalBody), doc.UnmarshalBody())
 			log.Printf("Doc %s is %+v", docID, doc)
 			for revID, revInfo := range doc.SyncData.History {
 				log.Printf("doc revision [%s]: %+v", revID, revInfo)
@@ -6222,7 +6222,7 @@ func TestDefaultConflictResolverWithTombstoneLocal(t *testing.T) {
 			rt2RevIDCreated := rt1RevIDCreated
 			require.NoError(t, rt2.WaitForCondition(func() bool {
 				doc, _ := rt2.GetDatabase().GetSingleDatabaseCollection().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalAll)
-				return doc != nil && len(doc.Body()) > 0
+				return doc != nil && len(doc.UnmarshalBody()) > 0
 			}))
 			requireRevID(t, rt2, docID, rt2RevIDCreated)
 
@@ -6376,7 +6376,7 @@ func TestDefaultConflictResolverWithTombstoneRemote(t *testing.T) {
 			rt1RevIDCreated := rt2RevIDCreated
 			require.NoError(t, rt1.WaitForCondition(func() bool {
 				doc, _ := rt1.GetDatabase().GetSingleDatabaseCollection().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalAll)
-				return doc != nil && len(doc.Body()) > 0
+				return doc != nil && len(doc.UnmarshalBody()) > 0
 			}))
 			requireRevID(t, rt1, docID, rt1RevIDCreated)
 

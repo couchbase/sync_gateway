@@ -1644,7 +1644,7 @@ func TestPostWithUserSpecialProperty(t *testing.T) {
 	doc, err = collection.GetDocument(ctx, docid, DocUnmarshalAll)
 	require.NotNil(t, doc)
 	assert.Equal(t, rev2id, doc.CurrentRev)
-	assert.Equal(t, "value", doc.Body()["_special"])
+	assert.Equal(t, "value", doc.UnmarshalBody()["_special"])
 	assert.NoError(t, err, "Unable to retrieve doc using generated uuid")
 }
 
@@ -2098,8 +2098,8 @@ func TestConcurrentPushSameNewRevision(t *testing.T) {
 	doc, err := collection.GetDocument(ctx, "doc1", DocUnmarshalAll)
 	assert.Equal(t, revId, doc.RevID)
 	assert.NoError(t, err, "Couldn't retrieve document")
-	assert.Equal(t, "Bob", doc.Body()["name"])
-	assert.Equal(t, json.Number("52"), doc.Body()["age"])
+	assert.Equal(t, "Bob", doc.UnmarshalBody()["name"])
+	assert.Equal(t, json.Number("52"), doc.UnmarshalBody()["age"])
 }
 
 // Multiple clients are attempting to push the same new, non-winning revision concurrently; non-winning is an

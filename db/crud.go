@@ -1271,8 +1271,7 @@ func (db *DatabaseCollectionWithUser) resolveDocMerge(ctx context.Context, local
 
 	// Update the remote document's body to the merge result
 	remoteDoc.RevID = mergedRevID
-	remoteDoc.RemoveBody()
-	remoteDoc.PokeBody(mergedBody)
+	remoteDoc.UpdateBody(mergedBody)
 
 	// Update the history for the remote doc to prepend the merged revID
 	docHistory = append([]string{mergedRevID}, docHistory...)
