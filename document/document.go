@@ -216,6 +216,23 @@ func (doc *Document) BodyBytes() ([]byte, error) {
 	return doc._rawBody, nil
 }
 
+type attachmentsOnly struct {
+	Attachments AttachmentsMeta `json:"_attachments"`
+}
+
+// Returns the "_attachments" property of the document body, if it exists.
+func (doc *Document) InlineAttachments() (AttachmentsMeta, error) {
+	if doc._body != nil {
+		return GetBodyAttachments(doc._body), nil
+	} else if bytes.Contains(doc._rawBody, []byte(BodyAttachments)) {
+		var attachmentBody attachmentsOnly
+		err := base.JSONUnmarshal(doc._rawBody, &attachmentBody)
+		return attachmentBody.Attachments, err
+	} else {
+		return nil, nil
+	}
+}
+
 // Builds the Meta Map for use in the Sync Function. This meta map currently only includes the user xattr, however, this
 // can be expanded upon in the future.
 // NOTE: emptyMetaMap() is used within tests in channelmapper_test.go and therefore this should be expanded if the below is
@@ -448,31 +465,14 @@ func (doc *Document) newestRevID() string {
 // RevLoaderFunc and RevWriterFunc manage persistence of non-winning revision bodies that are stored outside the document.
 type RevLoaderFunc func(key string) ([]byte, error)
 
-// Fetches the body of a revision as a map, or nil if it's not available.
-func (doc *Document) GetRevisionBody(revid string, loader RevLoaderFunc) Body {
-	var body Body
-	if revid == doc.CurrentRev {
-		body = doc.Body()
-	} else {
-		body = doc.getNonWinningRevisionBody(revid, loader)
-	}
-	return body
-}
-
 // Retrieves a non-winning revision body.  If not already loaded in the document (either because inline,
 // or was previously requested), loader function is used to retrieve from the bucket.
-func (doc *Document) getNonWinningRevisionBody(revid string, loader RevLoaderFunc) Body {
-	var body Body
+func (doc *Document) getNonWinningRevisionBody(revid string, loader RevLoaderFunc) []byte {
 	bodyBytes, found := doc.History.GetRevisionBody(revid, loader)
-	if !found || len(bodyBytes) == 0 {
-		return nil
+	if !found {
+		bodyBytes = nil
 	}
-
-	if err := body.Unmarshal(bodyBytes); err != nil {
-		base.WarnfCtx(context.TODO(), "Unexpected error parsing body of rev %q: %v", revid, err)
-		return nil
-	}
-	return body
+	return bodyBytes
 }
 
 // Fetches the body of a revision as JSON, or nil if it's not available.
@@ -504,7 +504,7 @@ func (doc *Document) RemoveRevisionBody(revID string) {
 func (doc *Document) PromoteNonWinningRevisionBody(revid string, loader RevLoaderFunc) {
 	// If the new revision is not current, transfer the current revision's
 	// body to the top level doc._body:
-	doc.UpdateBody(doc.getNonWinningRevisionBody(revid, loader))
+	doc.UpdateBodyBytes(doc.getNonWinningRevisionBody(revid, loader))
 	doc.RemoveRevisionBody(revid)
 }
 

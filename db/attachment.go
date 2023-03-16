@@ -139,7 +139,9 @@ func (db *DatabaseCollectionWithUser) retrieveAncestorAttachments(ctx context.Co
 	if commonAncestor := doc.History.FindAncestorFromSet(doc.CurrentRev, docHistory); commonAncestor != "" {
 		parentAttachments := make(map[string]interface{})
 		commonAncestorGen := int64(document.GenOfRevID(commonAncestor))
-		for name, activeAttachment := range document.GetBodyAttachments(doc.Body()) {
+
+		inlineAttachments, _ := doc.InlineAttachments()
+		for name, activeAttachment := range inlineAttachments {
 			if attachmentMeta, ok := activeAttachment.(map[string]interface{}); ok {
 				activeRevpos, ok := base.ToInt64(attachmentMeta["revpos"])
 				if ok && activeRevpos <= commonAncestorGen {

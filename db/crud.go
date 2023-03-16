@@ -746,12 +746,7 @@ func (db *DatabaseCollectionWithUser) backupAncestorRevs(ctx context.Context, do
 func (db *DatabaseCollectionWithUser) OnDemandImportForWrite(ctx context.Context, docid string, doc *Document, deleted bool) error {
 
 	// Check whether the doc requiring import is an SDK delete
-	isDelete := false
-	if doc.Body() == nil {
-		isDelete = true
-	} else {
-		isDelete = deleted
-	}
+	isDelete := deleted || !doc.HasBody()
 	// Use an admin-scoped database for import
 	importDb := DatabaseCollectionWithUser{DatabaseCollection: db.DatabaseCollection, user: nil}
 
