@@ -518,7 +518,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		if !ok {
 			return false, fmt.Errorf("Could not get datastore name from %s", base.MD(ds.GetName()))
 		}
-		ctx := base.KeyspaceLogCtx(ctx, bucket.GetName(), dsName.ScopeName(), ds.GetName())
+		ctx := base.KeyspaceLogCtx(ctx, bucket.GetName(), dsName.ScopeName(), ds.CollectionName())
 		indexErr := db.InitializeIndexes(ctx, n1qlStore, options)
 		if indexErr != nil {
 			return false, indexErr
