@@ -115,9 +115,11 @@ func (dbc *DatabaseContext) UpdatePrincipal(ctx context.Context, updates *auth.P
 		if updates.ExplicitChannels != nil && !updatedExplicitChannels.Equals(updates.ExplicitChannels) {
 			changed = true
 		}
-
-		if changed, err = dbc.RequiresCollectionAccessUpdate(ctx, princ, updates.CollectionAccess); err != nil {
+		collectionAccessChanged, err := dbc.RequiresCollectionAccessUpdate(ctx, princ, updates.CollectionAccess)
+		if err != nil {
 			return false, err
+		} else if collectionAccessChanged {
+			changed = true
 		}
 
 		var updatedExplicitRoles, updatedJWTRoles, updatedJWTChannels ch.TimedSet
@@ -183,7 +185,7 @@ func (dbc *DatabaseContext) UpdatePrincipal(ctx context.Context, updates *auth.P
 
 		// Update the persistent sequence number of this principal (only allocate a sequence when needed - issue #673):
 		nextSeq := uint64(0)
-		var err error
+
 		nextSeq, err = dbc.sequences.nextSequence()
 		if err != nil {
 			return replaced, err
@@ -195,7 +197,7 @@ func (dbc *DatabaseContext) UpdatePrincipal(ctx context.Context, updates *auth.P
 			princ.SetExplicitChannels(updatedExplicitChannels, nextSeq)
 		}
 
-		if changed {
+		if collectionAccessChanged {
 			dbc.UpdateCollectionExplicitChannels(ctx, princ, updates.CollectionAccess, nextSeq)
 		}
 
