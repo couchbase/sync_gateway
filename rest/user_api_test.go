@@ -1431,13 +1431,13 @@ func TestGetUserCollectionAccess(t *testing.T) {
 	RequireStatus(t, userResponse, 200)
 	assert.NotContains(t, userResponse.Body.Bytes(), collection2Name)
 
-	// Attempt to write collections that aren't defined for the database for PUT /_user and /_role, disabled until CBG-2762 is fixed
-	//putResponse = rt.SendAdminRequest("PUT", "/db/_user/alice2", fmt.Sprintf(userRolePayload, `"email":"alice@couchbase.com","password":"@232dfdg",`, scope1Name, collection1Name, `,"rgergeggrenhnnh": {
-	//				"admin_channels":["foo", "bar1"]
-	//			}`))
-	//RequireStatus(t, putResponse, 400)
-	//putResponse = rt.SendAdminRequest("PUT", "/db/_role/role1", fmt.Sprintf(userRolePayload, ``, scope1Name, collection1Name, collectionPayload))
-	//RequireStatus(t, putResponse, 400)
+	// Attempt to write collections that aren't defined for the database for PUT /_user and /_role
+	putResponse = rt.SendAdminRequest("PUT", "/db/_user/alice2", fmt.Sprintf(userRolePayload, `"email":"alice@couchbase.com","password":"@232dfdg",`, scope1Name, collection1Name, `,"rgergeggrenhnnh": {
+					"admin_channels":["foo", "bar1"]
+				}`))
+	RequireStatus(t, putResponse, 404)
+	putResponse = rt.SendAdminRequest("PUT", "/db/_role/role1", fmt.Sprintf(userRolePayload, ``, scope1Name, collection1Name, collectionPayload))
+	RequireStatus(t, putResponse, 404)
 }
 
 func TestPutUserCollectionAccess(t *testing.T) {
