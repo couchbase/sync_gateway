@@ -514,7 +514,11 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 			MetadataIndexes: metadataIndexes,
 			UseXattrs:       config.UseXattrs(),
 		}
-		ctx := base.CollectionCtx(ctx, ds.GetName())
+		dsName, ok := base.AsDataStoreName(ds)
+		if !ok {
+			return false, fmt.Errorf("Could not get datastore name from %s", base.MD(ds.GetName()))
+		}
+		ctx := base.KeyspaceLogCtx(ctx, bucket.GetName(), dsName.ScopeName(), dsName.CollectionName())
 		indexErr := db.InitializeIndexes(ctx, n1qlStore, options)
 		if indexErr != nil {
 			return false, indexErr
@@ -1884,6 +1888,7 @@ func (sc *ServerContext) initializeCouchbaseServerConnections(ctx context.Contex
 }
 
 func (sc *ServerContext) AddServerLogContext(parent context.Context) context.Context {
+	// ServerLogContext is separate from standard LogContext, so this does not reset the log context
 	if sc != nil && sc.LogContextID != "" {
 		return base.LogContextWith(parent, &base.ServerLogContext{LogContextID: sc.LogContextID})
 	}
@@ -1893,6 +1898,7 @@ func (sc *ServerContext) AddServerLogContext(parent context.Context) context.Con
 func (sc *ServerContext) SetContextLogID(parent context.Context, id string) context.Context {
 	if sc != nil {
 		sc.LogContextID = id
+		// ServerLogContext is separate from standard LogContext, so this does not reset the log context
 		return base.LogContextWith(parent, &base.ServerLogContext{LogContextID: sc.LogContextID})
 	}
 	return parent

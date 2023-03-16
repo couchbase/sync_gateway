@@ -399,7 +399,7 @@ func TestRebalanceReplications(t *testing.T) {
 		t.Run(fmt.Sprintf("%s", testCase.name), func(t *testing.T) {
 
 			cluster := NewSGRCluster()
-			cluster.loggingCtx = base.LogContextWith(base.TestCtx(t), &base.LogContext{CorrelationID: sgrClusterMgrContextID + "test"})
+			cluster.loggingCtx = base.CorrelationIDLogCtx(base.TestCtx(t), sgrClusterMgrContextID+"test")
 			cluster.Nodes = testCase.nodes
 			cluster.Replications = testCase.replications
 			cluster.RebalanceReplications()

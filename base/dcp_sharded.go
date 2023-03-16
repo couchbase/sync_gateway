@@ -75,7 +75,7 @@ func StartShardedDCPFeed(ctx context.Context, dbName string, configGroup string,
 	}
 
 	// Add logging info before passing ctx down
-	ctx = cbgtContext.AddLogContext(ctx, spec.BucketName)
+	ctx = CorrelationIDLogCtx(ctx, DCPImportFeedID)
 
 	// Start Manager.  Registers this node in the cfg
 	err = cbgtContext.StartManager(ctx, dbName, configGroup, bucket, spec, scope, collections, numPartitions)
@@ -377,13 +377,6 @@ func initCBGTManager(ctx context.Context, bucket Bucket, spec BucketSpec, cfgSG 
 	}
 
 	return cbgtContext, nil
-}
-
-func (c *CbgtContext) AddLogContext(parent context.Context, bucketName string) context.Context {
-	if c != nil && bucketName != "" {
-		return LogContextWith(parent, &LogContext{CorrelationID: MD(bucketName).Redact() + "-" + DCPImportFeedID})
-	}
-	return parent
 }
 
 // StartManager registers this node with cbgt, and the janitor will start feeds on this node.
