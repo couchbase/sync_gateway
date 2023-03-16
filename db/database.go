@@ -2276,15 +2276,15 @@ func (dbc *DatabaseContext) GetDatabaseCollection(scopeName, collectionName stri
 		return dbc.GetDefaultDatabaseCollection()
 	}
 	if dbc.Scopes == nil {
-		return nil, fmt.Errorf("scope %s does not exist on this database", base.UD(scopeName))
+		return nil, fmt.Errorf("scope %q does not exist on this database", base.UD(scopeName))
 	}
 	collections, exists := dbc.Scopes[scopeName]
 	if !exists {
-		return nil, fmt.Errorf("scope %s does not exist on this database", base.UD(scopeName))
+		return nil, fmt.Errorf("scope %q does not exist on this database", base.UD(scopeName))
 	}
 	collection, exists := collections.Collections[collectionName]
 	if !exists {
-		return nil, fmt.Errorf("collection %s.%s is not configured on this database", base.UD(scopeName), base.UD(collectionName))
+		return nil, fmt.Errorf("collection \"%s.%s\" does not exist on this database", base.UD(scopeName), base.UD(collectionName))
 	}
 	return collection, nil
 }

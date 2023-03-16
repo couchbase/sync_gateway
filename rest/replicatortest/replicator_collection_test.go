@@ -20,6 +20,7 @@ import (
 	"github.com/couchbase/sync_gateway/rest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/exp/slices"
 )
 
 // TestActiveReplicatorMultiCollection is a test to get as much coverage of collections in ISGR as possible.
@@ -29,14 +30,13 @@ import (
 //   - Creates documents on both sides in all collections with identifying information in the document bodies.
 //   - Uses an ActiveReplicator configured for push and pull to ensure that all documents are replicated both ways as expected.
 //   - The replicator only replicates two of three collections, so we also check that we're filtering as expected.
-//   - A future enhancement to the test can be made to ensure that the replication collections are remapped using collections_remote.
+//   - The replicator also remaps local collections to different ones on the remote.
 func TestActiveReplicatorMultiCollection(t *testing.T) {
 
 	base.RequireNumTestBuckets(t, 2)
 	base.TestRequiresCollections(t)
 
-	// TODO (bbrks): Remove logging
-	base.SetUpTestLogging(t, base.LevelTrace, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg, base.KeyReplicate)
 
 	const (
 		rt1DbName            = "rt1_active"
@@ -77,14 +77,9 @@ func TestActiveReplicatorMultiCollection(t *testing.T) {
 	activeKeyspace2 := rt1Collections[1].ScopeName + "." + rt1Collections[1].Name
 	activeKeyspace3 := rt1Collections[2].ScopeName + "." + rt1Collections[2].Name
 
-	// TODO CBG-2320: Force both sets of keyspaces to match (at least until mapping is implemented so we can support different ones)
-	require.Equal(t, activeKeyspace1, passiveKeyspace1)
-	require.Equal(t, activeKeyspace2, passiveKeyspace2)
-	require.Equal(t, activeKeyspace3, passiveKeyspace3)
-
 	var resp *rest.TestResponse
-	// create docs in all collections
 
+	// create docs in all collections
 	for keyspaceNum := 1; keyspaceNum <= numCollections; keyspaceNum++ {
 		for j := 1; j <= numDocsPerCollection; j++ {
 			resp = rt1.SendAdminRequest(http.MethodPut,
@@ -116,10 +111,17 @@ func TestActiveReplicatorMultiCollection(t *testing.T) {
 	dbstats, err := stats.DBReplicatorStats(t.Name())
 	require.NoError(t, err)
 
+	t.Logf("remapping active %q to passive %q", activeKeyspace1, passiveKeyspace2)
+	t.Logf("not remapping active %q", activeKeyspace3)
 	localCollections := []string{activeKeyspace1, activeKeyspace3}
-	nonReplicatedLocalCollections := []string{activeKeyspace2}
 	remoteCollections := []string{passiveKeyspace2, ""}
-	nonReplicatedRemoteCollections := []string{passiveKeyspace2} // TODO: Change to keyspace one when remapping is implemented
+	t.Logf("not replicating active %q", activeKeyspace2)
+	nonReplicatedLocalCollections := []string{activeKeyspace2}
+	t.Logf("not replicating passive %q", passiveKeyspace1)
+	nonReplicatedRemoteCollections := []string{passiveKeyspace1}
+
+	// The mapping of `""` for activeKeyspace3 requires that these two collections are the same name.
+	assert.Equal(t, activeKeyspace3, passiveKeyspace3)
 
 	ctx1 := rt1.Context()
 	ar := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
@@ -143,13 +145,19 @@ func TestActiveReplicatorMultiCollection(t *testing.T) {
 	require.NoError(t, ar.Start(ctx1))
 
 	// check all expected docs were pushed and pulled
-	for _, localCollection := range localCollections {
-		// TODO: CBG-2320 remap local to remote
-		// remoteCollection := remoteCollections[i]
-		remoteCollection := localCollection
+	for i, localCollection := range localCollections {
+		remoteCollection := remoteCollections[i]
+		if remoteCollection == "" {
+			remoteCollection = localCollection
+		}
 
-		// since we replicated a full collection of docs into another, expect double the amount in each now
+		// we replicated a full collection of docs into another, expect double numDocsPerCollection
 		expectedNumDocs := numDocsPerCollection * 2
+		if slices.Contains(nonReplicatedLocalCollections, localCollection) ||
+			slices.Contains(nonReplicatedRemoteCollections, remoteCollection) {
+			// only one set of docs for non-replicated collections
+			expectedNumDocs = numDocsPerCollection
+		}
 
 		localKeyspace := rt1DbName + "." + localCollection
 		changes, err := rt1.WaitForChanges(expectedNumDocs, fmt.Sprintf("/%s/_changes", localKeyspace), "", true)
@@ -211,10 +219,11 @@ func TestActiveReplicatorMultiCollection(t *testing.T) {
 	defer func() { assert.NoError(t, ar.Stop()) }()
 
 	// check all expected docs were pushed and pulled
-	for _, localCollection := range localCollections {
-		// TODO: CBG-2320 remap local to remote
-		// remoteCollection := remoteCollections[i]
-		remoteCollection := localCollection
+	for i, localCollection := range localCollections {
+		remoteCollection := remoteCollections[i]
+		if remoteCollection == "" {
+			remoteCollection = localCollection
+		}
 
 		// since we replicated a full collection of docs into another, expect double the amount in each now
 		expectedNumDocs := (numDocsPerCollection + 1) * 2
@@ -269,4 +278,121 @@ func TestActiveReplicatorMultiCollection(t *testing.T) {
 		require.NoError(t, err)
 		assert.Len(t, changes.Results, expectedNumDocs)
 	}
+}
+
+// TestActiveReplicatorMultiCollectionMismatchedLocalRemote ensures that local and remote lists must be the same length.
+func TestActiveReplicatorMultiCollectionMismatchedLocalRemote(t *testing.T) {
+
+	base.TestRequiresCollections(t)
+
+	localCollections := []string{"ks1", "ks3"}
+	remoteCollections := []string{"ks2"}
+
+	activeRT, _, remoteDbURLString, teardown := rest.SetupSGRPeers(t, true)
+	defer teardown()
+
+	stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, nil, nil)
+	require.NoError(t, err)
+	dbstats, err := stats.DBReplicatorStats(t.Name())
+	require.NoError(t, err)
+
+	passiveDBURL, err := url.Parse(remoteDbURLString)
+	require.NoError(t, err)
+
+	ctx1 := activeRT.Context()
+	ar := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
+		ID:          t.Name(),
+		Direction:   db.ActiveReplicatorTypePushAndPull,
+		RemoteDBURL: passiveDBURL,
+		ActiveDB: &db.Database{
+			DatabaseContext: activeRT.GetDatabase(),
+		},
+		ReplicationStatsMap: dbstats,
+		CollectionsEnabled:  true,
+		CollectionsLocal:    localCollections,
+		CollectionsRemote:   remoteCollections,
+	})
+
+	err = ar.Start(ctx1)
+	assert.ErrorContains(t, err, "local and remote collections must be the same length")
+	assert.NoError(t, ar.Stop())
+}
+
+// TestActiveReplicatorMultiCollectionMissingRemote attempts to map to a missing remote collection.
+func TestActiveReplicatorMultiCollectionMissingRemote(t *testing.T) {
+
+	base.TestRequiresCollections(t)
+
+	activeRT, _, remoteDbURLString, teardown := rest.SetupSGRPeers(t, true)
+	defer teardown()
+
+	localCollection := activeRT.GetSingleTestDatabaseCollection().ScopeName + "." + activeRT.GetSingleTestDatabaseCollection().Name
+	localCollections := []string{localCollection}
+	remoteCollections := []string{"missing.collection"}
+
+	stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, nil, nil)
+	require.NoError(t, err)
+	dbstats, err := stats.DBReplicatorStats(t.Name())
+	require.NoError(t, err)
+
+	passiveDBURL, err := url.Parse(remoteDbURLString)
+	require.NoError(t, err)
+
+	ctx1 := activeRT.Context()
+	ar := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
+		ID:          t.Name(),
+		Direction:   db.ActiveReplicatorTypePushAndPull,
+		RemoteDBURL: passiveDBURL,
+		ActiveDB: &db.Database{
+			DatabaseContext: activeRT.GetDatabase(),
+		},
+		ReplicationStatsMap: dbstats,
+		CollectionsEnabled:  true,
+		CollectionsLocal:    localCollections,
+		CollectionsRemote:   remoteCollections,
+	})
+
+	err = ar.Start(ctx1)
+	assert.ErrorContains(t, err, "peer does not have collection")
+	assert.NoError(t, ar.Stop())
+}
+
+// TestActiveReplicatorMultiCollectionMissingLocal attempts to use a missing local collection.
+func TestActiveReplicatorMultiCollectionMissingLocal(t *testing.T) {
+
+	base.TestRequiresCollections(t)
+
+	activeRT, passiveRT, remoteDbURLString, teardown := rest.SetupSGRPeers(t, true)
+	defer teardown()
+
+	localCollection := activeRT.GetSingleTestDatabaseCollection().ScopeName + ".invalid"
+	localCollections := []string{localCollection}
+	remoteCollection := passiveRT.GetSingleTestDatabaseCollection().ScopeName + "." + passiveRT.GetSingleTestDatabaseCollection().Name
+	remoteCollections := []string{remoteCollection}
+
+	stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, nil, nil)
+	require.NoError(t, err)
+	dbstats, err := stats.DBReplicatorStats(t.Name())
+	require.NoError(t, err)
+
+	passiveDBURL, err := url.Parse(remoteDbURLString)
+	require.NoError(t, err)
+
+	ctx1 := activeRT.Context()
+	ar := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
+		ID:          t.Name(),
+		Direction:   db.ActiveReplicatorTypePushAndPull,
+		RemoteDBURL: passiveDBURL,
+		ActiveDB: &db.Database{
+			DatabaseContext: activeRT.GetDatabase(),
+		},
+		ReplicationStatsMap: dbstats,
+		CollectionsEnabled:  true,
+		CollectionsLocal:    localCollections,
+		CollectionsRemote:   remoteCollections,
+	})
+
+	err = ar.Start(ctx1)
+	assert.ErrorContains(t, err, "does not exist on this database")
+	assert.NoError(t, ar.Stop())
 }

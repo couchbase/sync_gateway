@@ -134,9 +134,7 @@ func (a *activeReplicatorCommon) reconnectLoop() {
 
 	// if a reconnect timeout is set, we'll wrap the existing so both can stop the retry loop
 	var deadlineCancel context.CancelFunc
-	if a.config.TotalReconnectTimeout != 0 {
-		ctx, deadlineCancel = context.WithDeadline(ctx, time.Now().Add(a.config.TotalReconnectTimeout))
-	}
+	ctx, deadlineCancel = context.WithDeadline(ctx, time.Now().Add(a.config.TotalReconnectTimeout))
 
 	sleeperFunc := base.SleeperFuncCtx(
 		base.CreateIndefiniteMaxDoublingSleeperFunc(
