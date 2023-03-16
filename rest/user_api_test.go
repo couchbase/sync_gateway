@@ -1369,9 +1369,10 @@ func TestGetUserCollectionAccess(t *testing.T) {
 	collectionPayload := fmt.Sprintf(`,"%s": {
 					"admin_channels":["foo", "bar1"]
 				}`, collection2Name)
-	//rdOnlycollectionPayload := fmt.Sprintf(`,"%s": {
-	//				"jwt_channels":["foo", "bar1"]
-	//			}`, collection2Name)
+	rdOnlycollectionPayload := fmt.Sprintf(`,"%s": {
+					"jwt_channels":["foo", "bar1"]
+				}`, collection2Name)
+
 	// Create a user with collection metadata
 	userRolePayload := `{
 		%s
@@ -1407,11 +1408,11 @@ func TestGetUserCollectionAccess(t *testing.T) {
 	assert.Nil(t, collectionAccess.JWTChannels_)
 	assert.Nil(t, collectionAccess.JWTLastUpdated)
 
-	// Attempt to write read-only properties for PUT /_user and /_role, disabled until CBG-2761 is fixed
-	//putResponse = rt.SendAdminRequest("PUT", "/db/_user/bob2", fmt.Sprintf(userRolePayload, `"email":"bob@couchbase.com","password":"letmein",`, scope1Name, collection2Name, rdOnlycollectionPayload))
-	//RequireStatus(t, putResponse, 400)
-	//putResponse = rt.SendAdminRequest("PUT", "/db/_role/role12", fmt.Sprintf(userRolePayload, ``, scope1Name, collection2Name, rdOnlycollectionPayload))
-	//RequireStatus(t, putResponse, 400)
+	// Attempt to write read-only properties for PUT /_user and /_role
+	putResponse = rt.SendAdminRequest("PUT", "/db/_user/bob2", fmt.Sprintf(userRolePayload, `"email":"bob@couchbase.com","password":"letmein",`, scope1Name, collection2Name, rdOnlycollectionPayload))
+	RequireStatus(t, putResponse, 400)
+	putResponse = rt.SendAdminRequest("PUT", "/db/_role/role12", fmt.Sprintf(userRolePayload, ``, scope1Name, collection2Name, rdOnlycollectionPayload))
+	RequireStatus(t, putResponse, 400)
 
 	scopesConfig = GetCollectionsConfig(t, testBucket, 1)
 	scopesConfigString, err := json.Marshal(scopesConfig)
