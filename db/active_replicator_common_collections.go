@@ -106,15 +106,23 @@ func (arc *activeReplicatorCommon) _initCollections() ([]replicationCheckpoint, 
 	collectionCheckpoints := make([]replicationCheckpoint, len(resp))
 
 	for i, checkpointBody := range resp {
+		// json-iterator handling for nil json.RawMessage (cannot unmarshal nil)
+		if checkpointBody == nil {
+			return nil, fmt.Errorf("peer does not have collection %q", remoteCollectionsKeyspaces[i])
+		}
+
 		var checkpoint *replicationCheckpoint
 		err = base.JSONUnmarshal(checkpointBody, &checkpoint)
 		if err != nil {
 			return nil, fmt.Errorf("couldn't unmarshal checkpoint body: %q: %w", checkpointBody, err)
 		}
 
+		// stdlib json handling for explicit "null" json.RawMessage
 		if checkpoint == nil {
 			return nil, fmt.Errorf("peer does not have collection %q", remoteCollectionsKeyspaces[i])
-		} else if checkpoint.LastSeq == "" {
+		}
+
+		if checkpoint.LastSeq == "" {
 			// collection valid but no checkpoint - start from sequence zero
 			checkpoint.LastSeq = CreateZeroSinceValue().String()
 		}
