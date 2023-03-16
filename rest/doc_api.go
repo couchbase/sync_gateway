@@ -9,7 +9,6 @@
 package rest
 
 import (
-	"bytes"
 	"fmt"
 	"math"
 	"mime/multipart"
@@ -527,10 +526,11 @@ func (h *handler) handlePutDocReplicator2(docid string, roundTrip bool) (err err
 		return base.ErrEmptyDocument
 	}
 
-	newDoc := &db.Document{
-		ID: docid,
+	newRev, err := document.ParseDocumentRevision(bodyBytes, document.BodyAttachments, document.BodyExpiry)
+	if err != nil {
+		return err
 	}
-	newDoc.UpdateBodyBytes(bodyBytes)
+	newRev.DocID = docid
 
 	var parentRev string
 	if oldRev := h.getQuery("rev"); oldRev != "" {
@@ -543,36 +543,16 @@ func (h *handler) handlePutDocReplicator2(docid string, roundTrip bool) (err err
 	generation++
 
 	deleted, _ := h.getOptBoolQuery("deleted", false)
-	newDoc.Deleted = deleted
+	newRev.Deleted = deleted
 
-	newDoc.RevID = document.CreateRevIDWithBytes(generation, parentRev, bodyBytes)
-	history := []string{newDoc.RevID}
+	newRev.RevID = document.CreateRevIDWithBytes(generation, parentRev, bodyBytes)
+	history := []string{newRev.RevID}
 
 	if parentRev != "" {
 		history = append(history, parentRev)
 	}
 
-	// Handle and pull out expiry
-	if bytes.Contains(bodyBytes, []byte(db.BodyExpiry)) {
-		body := newDoc.Body()
-		expiry, err := body.ExtractExpiry()
-		if err != nil {
-			return base.HTTPErrorf(http.StatusBadRequest, "Invalid expiry: %v", err)
-		}
-		newDoc.DocExpiry = expiry
-		newDoc.UpdateBody(body)
-	}
-
-	// Pull out attachments
-	if bytes.Contains(bodyBytes, []byte(db.BodyAttachments)) {
-		body := newDoc.Body()
-
-		newDoc.DocAttachments = document.GetBodyAttachments(body)
-		delete(body, db.BodyAttachments)
-		newDoc.UpdateBody(body)
-	}
-
-	doc, rev, err := h.collection.PutExistingRev(h.ctx(), newDoc, history, true, false, nil)
+	doc, rev, err := h.collection.PutExistingRev(h.ctx(), newRev.AsDocument(), history, true, false, nil)
 
 	if err != nil {
 		return err
