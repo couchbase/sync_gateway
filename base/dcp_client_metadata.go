@@ -36,7 +36,10 @@ type DCPMetadata struct {
 
 type DCPMetadataStore interface {
 	// Rollback resets vbucket metadata, but preserves endSeqNo
-	Rollback(vbID uint16)
+	OneshotRollback(vbID uint16)
+
+	// Rollback resets vBucket metadata, but in this case sets endSeqno to maxSeqno for it to run continuous
+	ContinuousRollback(vbID uint16)
 
 	// SetMeta updates the DCPMetadata for a vbucket
 	SetMeta(vbID uint16, meta DCPMetadata)
@@ -83,16 +86,35 @@ func NewDCPMetadataMem(numVbuckets uint16) *DCPMetadataMem {
 	return m
 }
 
-// Rollback resets the metadata, preserving EndSeqNo if set
-func (m *DCPMetadataMem) Rollback(vbID uint16) {
+// OneshotRollback resets the metadata, preserving EndSeqNo if set, should be used if you want stream to end
+// after rollback is complete
+func (m *DCPMetadataMem) OneshotRollback(vbID uint16) {
+	rollbackStartSeqno := findRollbackStartSeqno(m.metadata[vbID].FailoverEntries)
 	m.metadata[vbID] = DCPMetadata{
 		VbUUID:          0,
-		StartSeqNo:      0,
+		StartSeqNo:      rollbackStartSeqno,
 		EndSeqNo:        m.endSeqNos[vbID],
 		SnapStartSeqNo:  0,
 		SnapEndSeqNo:    0,
 		FailoverEntries: make([]gocbcore.FailoverEntry, 0),
 	}
+	TracefCtx(context.TODO(), KeyDCP, "rolling back vb:%d with metadata set to %v", vbID, m.metadata[vbID])
+}
+
+// ContinuousRollback should be used when you want rollback to occur but the stream to remain open after its finished
+func (m *DCPMetadataMem) ContinuousRollback(vbID uint16) {
+	// use max seqno for end seqno in continuous clients
+	var maxEndSeqno = gocbcore.SeqNo(0xffffffffffffffff)
+	rollbackStartSeqno := findRollbackStartSeqno(m.metadata[vbID].FailoverEntries)
+	m.metadata[vbID] = DCPMetadata{
+		VbUUID:          0,
+		StartSeqNo:      rollbackStartSeqno,
+		EndSeqNo:        maxEndSeqno,
+		SnapStartSeqNo:  0,
+		SnapEndSeqNo:    0,
+		FailoverEntries: make([]gocbcore.FailoverEntry, 0),
+	}
+	TracefCtx(context.TODO(), KeyDCP, "rolling back vb:%d with metadata set to %v", vbID, m.metadata[vbID])
 }
 
 func (m *DCPMetadataMem) SetMeta(vbID uint16, meta DCPMetadata) {
@@ -196,17 +218,37 @@ func NewDCPMetadataCS(store DataStore, numVbuckets uint16, numWorkers int, keyPr
 	return m
 }
 
-func (m *DCPMetadataCS) Rollback(vbID uint16) {
+// OneshotRollback resets the metadata, preserving EndSeqNo if set, should be used if you want stream to end
+// after rollback is complete
+func (m *DCPMetadataCS) OneshotRollback(vbID uint16) {
 	// Preserve endSeqNo on rollback
 	endSeqNo := m.metadata[vbID].EndSeqNo
+	rollbackStartSeqno := findRollbackStartSeqno(m.metadata[vbID].FailoverEntries)
 	m.metadata[vbID] = DCPMetadata{
 		VbUUID:          0,
-		StartSeqNo:      0,
+		StartSeqNo:      rollbackStartSeqno,
 		EndSeqNo:        endSeqNo,
 		SnapStartSeqNo:  0,
 		SnapEndSeqNo:    0,
 		FailoverEntries: make([]gocbcore.FailoverEntry, 0),
 	}
+	TracefCtx(context.TODO(), KeyDCP, "rolling back vb:%d with metadata set to %v", vbID, m.metadata[vbID])
+}
+
+// ContinuousRollback should be used when you want rollback to occur but the stream to remain open after its finished
+func (m *DCPMetadataCS) ContinuousRollback(vbID uint16) {
+	// use max seqno for end seqno in continuous clients
+	var maxEndSeqno = gocbcore.SeqNo(0xffffffffffffffff)
+	rollbackStartSeqno := findRollbackStartSeqno(m.metadata[vbID].FailoverEntries)
+	m.metadata[vbID] = DCPMetadata{
+		VbUUID:          0,
+		StartSeqNo:      rollbackStartSeqno,
+		EndSeqNo:        maxEndSeqno,
+		SnapStartSeqNo:  0,
+		SnapEndSeqNo:    0,
+		FailoverEntries: make([]gocbcore.FailoverEntry, 0),
+	}
+	TracefCtx(context.TODO(), KeyDCP, "rolling back vb:%d with metadata set to %v", vbID, m.metadata[vbID])
 }
 
 func (m *DCPMetadataCS) SetMeta(vbNo uint16, metadata DCPMetadata) {
@@ -293,4 +335,18 @@ func (m *DCPMetadataCS) getMetadataKey(workerID int) string {
 
 type WorkerMetadata struct {
 	DCPMeta map[uint16]DCPMetadata
+}
+
+// findRollbackStartSeqno finds the highest seqno available in the failover log and will use that as start seqno for the rollback.
+// This reduces the work needed on a rollback.
+func findRollbackStartSeqno(failoverLog []gocbcore.FailoverEntry) gocbcore.SeqNo {
+	var rollBackSeqno gocbcore.SeqNo = 0
+	if len(failoverLog) > 0 {
+		for i := 0; i < len(failoverLog); i++ {
+			if rollBackSeqno < failoverLog[i].SeqNo {
+				rollBackSeqno = failoverLog[i].SeqNo
+			}
+		}
+	}
+	return rollBackSeqno
 }

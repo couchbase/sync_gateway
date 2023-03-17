@@ -311,10 +311,111 @@ func TestDCPClientMultiFeedConsistency(t *testing.T) {
 				// only vbucket 0 should have rolled back, expect mutation count to be only vbucketZero
 				mutationCount := atomic.LoadUint64(&mutationCount)
 				require.Equal(t, int(vbucketZeroExpected), int(mutationCount))
+				// check the rolled back vBucket has in fact closed the stream after its finished
+				numVBuckets := len(dcpClient.activeVbuckets)
+				require.Equal(t, uint16(0), uint16(numVBuckets))
 			case <-feed3Timeout:
 				t.Errorf("timeout waiting for first one-shot feed to complete")
 			}
 		})
+	}
+}
+
+func TestContinuousDCPRollback(t *testing.T) {
+
+	if UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server")
+	}
+
+	var vbUUID gocbcore.VbUUID = 1234
+
+	bucket := GetTestBucket(t)
+	defer bucket.Close()
+	dataStore := bucket.GetSingleDataStore()
+
+	// create callback
+	mutationCount := uint64(0)
+	vbucketZeroCount := uint64(0)
+	counterCallback := func(event sgbucket.FeedEvent) bool {
+		if bytes.HasPrefix(event.Key, []byte(t.Name())) {
+			atomic.AddUint64(&mutationCount, 1)
+			if event.VbNo == 0 {
+				atomic.AddUint64(&vbucketZeroCount, 1)
+			}
+		}
+		return false
+	}
+
+	feedID := t.Name()
+	gocbv2Bucket, err := AsGocbV2Bucket(bucket.Bucket)
+	require.NoError(t, err)
+
+	collection, ok := dataStore.(*Collection)
+	require.True(t, ok)
+	var collectionIDs []uint32
+	if collection.IsSupported(sgbucket.BucketStoreFeatureCollections) {
+		collectionIDs = append(collectionIDs, collection.GetCollectionID())
+	}
+
+	dcpClientOpts := DCPClientOptions{
+		FailOnRollback:   false,
+		OneShot:          false,
+		CollectionIDs:    collectionIDs,
+		CheckpointPrefix: DefaultMetadataKeys.DCPCheckpointPrefix(t.Name()),
+	}
+
+	// timeout for feed to complete
+	timeout := time.After(20 * time.Second)
+
+	dcpClient, err := NewDCPClient(feedID, counterCallback, dcpClientOpts, gocbv2Bucket)
+	require.NoError(t, err)
+
+	// function to force the rollback of some vBuckets
+	dcpClient.forceRollbackvBucket(vbUUID)
+
+	doneChan, startErr := dcpClient.Start()
+	require.NoError(t, startErr)
+
+	// Add documents
+	updatedBody := map[string]interface{}{"foo": "bar"}
+	for i := 0; i < 10000; i++ {
+		key := fmt.Sprintf("%s_%d", t.Name(), i)
+		err := dataStore.Set(key, 0, nil, updatedBody)
+		require.NoError(t, err)
+	}
+
+	// wait for a timeout to ensure client streams lal mutations over continuous feed
+	select {
+	case <-doneChan:
+		t.Fatalf("continuous client closed early")
+	case <-timeout:
+		mutationCount := atomic.LoadUint64(&mutationCount)
+		fmt.Println(int(mutationCount))
+		require.Equal(t, uint64(10000), mutationCount)
+	}
+
+	// Assert that the number of vBuckets active are the same as the total number of vBuckets on the client.
+	// In continuous rollback the streams should not close after they're finished.
+	numVBuckets := len(dcpClient.activeVbuckets)
+	require.Equal(t, dcpClient.numVbuckets, uint16(numVBuckets))
+
+	require.NoError(t, dcpClient.Close())
+
+}
+
+// forceRollbackvBucket forces the rollback of vBucket IDs that are even
+// Test helper function. This should not be used elsewhere.
+func (dc *DCPClient) forceRollbackvBucket(uuid gocbcore.VbUUID) {
+	metadata := make([]DCPMetadata, dc.numVbuckets)
+	for i := uint16(0); i < dc.numVbuckets; i++ {
+		if i%2 == 0 {
+			metadata[i] = dc.metadata.GetMeta(i)
+			metadata[i].VbUUID = uuid
+			metadata[i].StartSeqNo = 6
+		} else {
+			metadata[i] = dc.metadata.GetMeta(i)
+		}
+		dc.metadata.SetMeta(i, metadata[i])
 	}
 }
 
