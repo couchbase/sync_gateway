@@ -1502,7 +1502,7 @@ func TestPutUserCollectionAccess(t *testing.T) {
 	RequireStatus(t, userResponse, http.StatusOK)
 	assert.NotContains(t, userResponse.ResponseRecorder.Body.String(), collection2Name)
 
-	// Attempt to write collections that aren't defined for the database for PUT /_user and /_role
+	// Attempt to write read-only properties for PUT /_user and /_role
 	readOnlyProperties := []string{"all_channels", "jwt_channels", "jwt_last_updated"}
 	for _, property := range readOnlyProperties {
 		rdOnlyValue := `["ABC"]`
@@ -1512,7 +1512,6 @@ func TestPutUserCollectionAccess(t *testing.T) {
 		readOnlyCollectionPayload := fmt.Sprintf(`,"%s": {
 					"%s":%s
 				}`, collection2Name, property, rdOnlyValue)
-		// Attempt to write read-only properties for PUT /_user and /_role
 		putResponse = rt.SendAdminRequest("PUT", "/db/_user/bob2", fmt.Sprintf(userPayload, `"email":"bob@couchbase.com","password":"letmein",`, scopeName, collection2Name, `["ABC"]`, readOnlyCollectionPayload))
 		RequireStatus(t, putResponse, 400)
 		putResponse = rt.SendAdminRequest("PUT", "/db/_role/role12", fmt.Sprintf(userPayload, ``, scopeName, collection2Name, `["ABC"]`, readOnlyCollectionPayload))
