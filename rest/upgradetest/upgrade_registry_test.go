@@ -19,11 +19,18 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func requireBootstrapConnection(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("bootstrap connection requires CBS")
+	}
+}
+
 // TestDefaultMetadataID creates an database using the named collections on the default scope, then modifies that database to use
 // only the default collection. Verifies that metadata documents are still accessible.
 func TestDefaultMetadataIDNamedToDefault(t *testing.T) {
 	base.TestRequiresCollections(t)
 	base.RequireNumTestDataStores(t, 2)
+	requireBootstrapConnection(t)
 	rtConfig := &rest.RestTesterConfig{
 		PersistentConfig: true,
 	}
@@ -70,6 +77,7 @@ func TestDefaultMetadataIDNamedToDefault(t *testing.T) {
 func TestDefaultMetadataIDDefaultToNamed(t *testing.T) {
 	base.TestRequiresCollections(t)
 	base.RequireNumTestDataStores(t, 2)
+	requireBootstrapConnection(t)
 	rtConfig := &rest.RestTesterConfig{
 		PersistentConfig: true,
 	}
@@ -115,6 +123,7 @@ func TestDefaultMetadataIDDefaultToNamed(t *testing.T) {
 func TestUpgradeDatabasePreHelium(t *testing.T) {
 	base.TestRequiresCollections(t)
 	base.RequireNumTestDataStores(t, 2)
+	requireBootstrapConnection(t)
 
 	rtConfig := &rest.RestTesterConfig{
 		PersistentConfig: true,
