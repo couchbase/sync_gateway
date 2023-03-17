@@ -1007,16 +1007,17 @@ func (rt *RestTester) SetAdminChannels(username string, keyspace string, channel
 
 	currentConfig.SetExplicitChannels(*scopeName, *collectionName, channels...)
 	// Remove read only properties returned from the user api
-	writableConfig := auth.PrincipalConfig{
-		Name:              currentConfig.Name,
-		ExplicitChannels:  currentConfig.ExplicitChannels,
-		CollectionAccess:  currentConfig.CollectionAccess,
-		Email:             currentConfig.Email,
-		Disabled:          currentConfig.Disabled,
-		Password:          currentConfig.Password,
-		ExplicitRoleNames: currentConfig.ExplicitRoleNames,
+	for _, scope := range currentConfig.CollectionAccess {
+		if scope != nil {
+			for _, collectionAccess := range scope {
+				collectionAccess.Channels_ = nil
+				collectionAccess.JWTChannels_ = nil
+				collectionAccess.JWTLastUpdated = nil
+			}
+		}
 	}
-	newConfigBytes, _ := base.JSONMarshal(writableConfig)
+
+	newConfigBytes, _ := base.JSONMarshal(currentConfig)
 
 	userResponse = rt.SendAdminRequest("PUT", "/"+dbName+"/_user/"+username, string(newConfigBytes))
 	if userResponse.Code != 200 {

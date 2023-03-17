@@ -269,7 +269,7 @@ func (dbc *DatabaseContext) RequiresCollectionAccessUpdate(ctx context.Context, 
 				if err != nil {
 					return false, base.HTTPErrorf(http.StatusNotFound, "keyspace specified in collection_access (%s) not found", fmt.Sprintf("%s.%s.%s", dbc.Name, scopeName, collectionName))
 				}
-				if len(updatedCollectionAccess.Channels_) > 0 {
+				if updatedCollectionAccess.Channels_ != nil {
 					return false, base.HTTPErrorf(http.StatusBadRequest, "collection_access.all_channels is read-only")
 				}
 				if updatedCollectionAccess.JWTChannels_ != nil {
