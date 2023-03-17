@@ -16,6 +16,7 @@ import (
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/rest"
+	"github.com/stretchr/testify/require"
 )
 
 // TestDefaultMetadataID creates an database using the named collections on the default scope, then modifies that database to use
@@ -49,6 +50,8 @@ func TestDefaultMetadataIDNamedToDefault(t *testing.T) {
 
 	putResponse := rt.SendAdminRequest("PUT", "/"+dbName+"/_user/bob", userPayload)
 	rest.RequireStatus(t, putResponse, 201)
+	bobDocName := "_sync:user:db:bob"
+	requireBobUserLocation(rt, bobDocName)
 
 	// Update database to only target default collection
 	dbConfig.Scopes = rest.DefaultOnlyScopesConfig
@@ -58,6 +61,8 @@ func TestDefaultMetadataIDNamedToDefault(t *testing.T) {
 	//  Validate that the user can still be retrieved
 	userResponse := rt.SendAdminRequest("GET", "/"+dbName+"/_user/bob", "")
 	rest.RequireStatus(t, userResponse, http.StatusOK)
+
+	requireBobUserLocation(rt, bobDocName)
 }
 
 // TestDefaultMetadataID creates an upgraded database using the defaultMetadataID, then modifies that database to use
@@ -90,6 +95,8 @@ func TestDefaultMetadataIDDefaultToNamed(t *testing.T) {
 
 	putResponse := rt.SendAdminRequest("PUT", "/"+dbName+"/_user/bob", userPayload)
 	rest.RequireStatus(t, putResponse, 201)
+	bobDocName := "_sync:user:db:bob"
+	requireBobUserLocation(rt, bobDocName)
 
 	// Update database to only target default collection
 	dbConfig.Scopes = scopesConfig
@@ -99,4 +106,55 @@ func TestDefaultMetadataIDDefaultToNamed(t *testing.T) {
 	//  Validate that the user can still be retrieved
 	userResponse := rt.SendAdminRequest("GET", "/"+dbName+"/_user/bob", "")
 	rest.RequireStatus(t, userResponse, http.StatusOK)
+
+	requireBobUserLocation(rt, bobDocName)
+}
+
+// TestDefaultMetadataID creates an upgraded database using the defaultMetadataID, then modifies that database to use
+// named collections in the default scope. Verifies that metadata documents are still accessible.
+func TestUpgradeDatabasePreHelium(t *testing.T) {
+	base.TestRequiresCollections(t)
+	base.RequireNumTestDataStores(t, 2)
+
+	rtConfig := &rest.RestTesterConfig{
+		PersistentConfig: true,
+	}
+
+	rt := rest.NewRestTesterMultipleCollections(t, rtConfig, 2)
+	defer rt.Close()
+
+	dbName := "db"
+
+	// set legacy docs
+	metadataStore := rt.Bucket().DefaultDataStore()
+	err := metadataStore.Set(base.DefaultMetadataKeys.SyncSeqKey(), 0, nil, 0)
+	require.NoError(t, err)
+
+	dbConfig := rt.NewDbConfig()
+	dbConfig.Scopes = rest.DefaultOnlyScopesConfig
+
+	resp := rt.CreateDatabase(dbName, dbConfig)
+	rest.RequireStatus(t, resp, http.StatusCreated)
+
+	rt.CreateUser("bob", []string{"foo"})
+	bobDocName := "_sync:user:bob"
+	requireBobUserLocation(rt, bobDocName)
+
+	dbConfigWithScopes := rt.NewDbConfig()
+	resp = rt.ReplaceDbConfig(dbName, dbConfigWithScopes)
+	//  Validate that the user can still be retrieved
+	userResponse := rt.SendAdminRequest("GET", "/"+dbName+"/_user/bob", "")
+	rest.RequireStatus(t, userResponse, http.StatusOK)
+
+	rest.RequireStatus(t, resp, http.StatusCreated)
+	requireBobUserLocation(rt, bobDocName)
+
+}
+
+func requireBobUserLocation(rt *rest.RestTester, docName string) {
+	metadataStore := rt.GetDatabase().Bucket.DefaultDataStore()
+
+	_, _, err := metadataStore.GetRaw(docName)
+	require.NoError(rt.TB, err)
+
 }

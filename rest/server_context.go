@@ -689,7 +689,10 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		return nil, err
 	}
 
-	contextOptions.MetadataID = config.MetadataID
+	// If identified as default database, use metadataID of "" so legacy non namespaced docs are used
+	if config.MetadataID != defaultMetadataID {
+		contextOptions.MetadataID = config.MetadataID
+	}
 
 	// Create the DB Context
 	dbcontext, err := db.NewDatabaseContext(ctx, dbName, bucket, autoImport, contextOptions)
@@ -1822,7 +1825,6 @@ func (sc *ServerContext) initializeCouchbaseServerConnections(ctx context.Contex
 	// Fetch database configs from bucket and start polling for new buckets and config updates.
 	if sc.persistentConfig {
 		couchbaseCluster, err := CreateCouchbaseClusterFromStartupConfig(sc.Config, base.CachedClusterConnections)
-		// couchbaseCluster, err := CreateCouchbaseClusterFromStartupConfig(sc.Config, base.PerUseClusterConnections)
 		if err != nil {
 			return err
 		}
