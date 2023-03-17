@@ -322,7 +322,7 @@ func TestParseDocumentRevision(t *testing.T) {
 			input: `{"_id":"Hey","_attachments":{"a": {"length":1}}}`,
 			expectedRev: &DocumentRevision{
 				DocID:       "Hey",
-				Attachments: map[string]any{"a": map[string]any{"length": 1.0}},
+				Attachments: AttachmentsMeta{"a": &DocAttachment{Length: 1}},
 				_bodyBytes:  []byte(`{}`),
 			},
 		},

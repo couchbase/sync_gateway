@@ -127,7 +127,7 @@ func writeJSONPart(writer *multipart.Writer, contentType string, body db.Body, c
 func WriteMultipartDocument(ctx context.Context, cblReplicationPullStats *base.CBLReplicationPullStats, body db.Body, writer *multipart.Writer, compress bool) {
 	// First extract the attachments that should follow:
 	following := []attInfo{}
-	for name, value := range document.GetBodyAttachments(db.Body(body)) {
+	for name, value := range body.GetRawAttachments() {
 		meta := value.(map[string]interface{})
 		if meta["stub"] != true {
 			var err error
@@ -168,7 +168,7 @@ func WriteMultipartDocument(ctx context.Context, cblReplicationPullStats *base.C
 }
 
 func hasInlineAttachments(body db.Body) bool {
-	for _, value := range document.GetBodyAttachments(db.Body(body)) {
+	for _, value := range body.GetRawAttachments() {
 		if meta, ok := value.(map[string]interface{}); ok && meta["data"] != nil {
 			return true
 		}
@@ -228,7 +228,7 @@ func ReadMultipartDocument(reader *multipart.Reader) (db.Body, error) {
 
 	// Collect the attachments with a "follows" property, which will appear as MIME parts:
 	followingAttachments := map[string]map[string]interface{}{}
-	for name, value := range document.GetBodyAttachments(db.Body(body)) {
+	for name, value := range body.GetRawAttachments() {
 		if meta := value.(map[string]interface{}); meta["follows"] == true {
 			followingAttachments[name] = meta
 		}

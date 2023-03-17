@@ -13,6 +13,7 @@ package document
 import (
 	"container/list"
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
@@ -156,6 +157,7 @@ func (rc *LRURevisionCache) getFromCache(ctx context.Context, docID, revID strin
 	if err != nil {
 		rc.removeValue(value) // don't keep failed loads in the cache
 	}
+	rc.validateRevision(docRev)
 	return docRev, err
 }
 
@@ -186,6 +188,7 @@ func (rc *LRURevisionCache) LoadInvalidRevFromBackingStore(ctx context.Context, 
 	// Classify operation as a cache miss
 	rc.statsRecorderFunc(false)
 
+	rc.validateRevision(docRev)
 	return docRev, err
 
 }
@@ -231,18 +234,32 @@ func (rc *LRURevisionCache) statsRecorderFunc(cacheHit bool) {
 	}
 }
 
+func (rc *LRURevisionCache) validateRevision(docRev DocumentRevision) {
+	// if docRev.History == nil {
+	// 	// TODO: CBG-1948
+	// 	panic("Missing history for RevisionCache.Put")
+	// }
+	for name, att := range docRev.Attachments {
+		if att.Revpos <= 0 || len(att.Data) > 0 {
+			panic(fmt.Sprintf("RevisionCache: Invalid attachment %q: %+v", name, *att))
+		}
+	}
+}
+
 // Adds a revision to the cache.
 func (rc *LRURevisionCache) Put(ctx context.Context, docRev DocumentRevision) {
 	if docRev.History == nil {
 		// TODO: CBG-1948
 		panic("Missing history for RevisionCache.Put")
 	}
+	rc.validateRevision(docRev)
 	value := rc.getValue(docRev.DocID, docRev.RevID, true)
 	value.store(docRev)
 }
 
 // Upsert a revision in the cache.
 func (rc *LRURevisionCache) Upsert(ctx context.Context, docRev DocumentRevision) {
+	rc.validateRevision(docRev)
 	key := IDAndRev{DocID: docRev.DocID, RevID: docRev.RevID}
 
 	rc.lock.Lock()
@@ -356,7 +373,7 @@ func (value *revCacheValue) asDocumentRevision(delta *RevisionDelta) (DocumentRe
 		History:     value.history,
 		Channels:    value.channels,
 		Expiry:      value.expiry,
-		Attachments: value.attachments.ShallowCopy(), // Avoid caller mutating the stored attachments
+		Attachments: value.attachments.DeepCopy(), // Avoid caller mutating the stored attachments
 		Deleted:     value.deleted,
 		Removed:     value.removed,
 		Invalid:     value.invalid,
@@ -394,6 +411,11 @@ func (value *revCacheValue) loadForDoc(ctx context.Context, backingStore Revisio
 
 // Stores a body etc. into a revCacheValue if there isn't one already.
 func (value *revCacheValue) store(docRev DocumentRevision) {
+	for name, att := range docRev.Attachments {
+		if att.Revpos <= 0 || att.Data != nil {
+			panic(fmt.Sprintf("revCacheValue.store: Invalid attachment %q: %#v", name, *att))
+		}
+	}
 	value.lock.Lock()
 	if value.bodyBytes == nil {
 		// value already has doc id/rev id in key
@@ -401,7 +423,7 @@ func (value *revCacheValue) store(docRev DocumentRevision) {
 		value.history = docRev.History
 		value.channels = docRev.Channels
 		value.expiry = docRev.Expiry
-		value.attachments = docRev.Attachments.ShallowCopy() // Don't store attachments the caller might later mutate
+		value.attachments = docRev.Attachments.DeepCopy() // Don't store attachments the caller might later mutate
 		value.deleted = docRev.Deleted
 		value.err = nil
 	}

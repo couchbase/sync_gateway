@@ -17,6 +17,7 @@ import (
 	"math/rand"
 	"net/http"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -119,7 +120,7 @@ func TestAttachments(t *testing.T) {
 	log.Printf("Retrieve doc...")
 	gotbody, err := collection.get1xRevBody(ctx, "doc1", "", false, []string{})
 	assert.NoError(t, err, "Couldn't get document")
-	atts := gotbody[BodyAttachments].(AttachmentsMeta)
+	atts := gotbody[BodyAttachments].(map[string]any)
 
 	hello := atts["hello.txt"].(map[string]interface{})
 	assert.Equal(t, "hello world", string(hello["data"].([]byte)))
@@ -145,13 +146,13 @@ func TestAttachments(t *testing.T) {
 	log.Printf("Retrieve doc...")
 	gotbody, err = collection.get1xRevBody(ctx, "doc1", "", false, []string{})
 	assert.NoError(t, err, "Couldn't get document")
-	atts = gotbody[BodyAttachments].(AttachmentsMeta)
+	atts = gotbody[BodyAttachments].(map[string]any)
 
 	hello = atts["hello.txt"].(map[string]interface{})
 	assert.Equal(t, "hello world", string(hello["data"].([]byte)))
 	assert.Equal(t, "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=", hello["digest"])
-	assert.Equal(t, float64(11), hello["length"])
-	assert.Equal(t, float64(1), hello["revpos"])
+	assert.Equal(t, 11, hello["length"])
+	assert.Equal(t, 1, hello["revpos"])
 
 	bye = atts["bye.txt"].(map[string]interface{})
 	assert.Equal(t, "bye-ya", string(bye["data"].([]byte)))
@@ -162,7 +163,7 @@ func TestAttachments(t *testing.T) {
 	log.Printf("Retrieve doc with atts_since...")
 	gotbody, err = collection.get1xRevBody(ctx, "doc1", "", false, []string{"1-ca9ad22802b66f662ff171f226211d5c", "1-foo", "993-bar"})
 	assert.NoError(t, err, "Couldn't get document")
-	atts = gotbody[BodyAttachments].(AttachmentsMeta)
+	atts = gotbody[BodyAttachments].(map[string]any)
 
 	hello = atts["hello.txt"].(map[string]interface{})
 	assert.Nil(t, hello["data"])
@@ -189,15 +190,15 @@ func TestAttachments(t *testing.T) {
 	log.Printf("Retrieve doc...")
 	gotbody, err = collection.get1xRevBody(ctx, "doc1", "", false, []string{})
 	assert.NoError(t, err, "Couldn't get document")
-	atts = gotbody[BodyAttachments].(AttachmentsMeta)
+	atts = gotbody[BodyAttachments].(map[string]any)
 
 	assert.Nil(t, atts["hello.txt"])
 
 	bye = atts["bye.txt"].(map[string]interface{})
 	assert.Equal(t, "bye-ya", string(bye["data"].([]byte)))
 	assert.Equal(t, "sha1-gwwPApfQR9bzBKpqoEYwFmKp98A=", bye["digest"])
-	assert.Equal(t, float64(6), bye["length"])
-	assert.Equal(t, float64(2), bye["revpos"])
+	assert.Equal(t, 6, bye["length"])
+	assert.Equal(t, 2, bye["revpos"])
 
 	log.Printf("Expire body of rev 1, then add a child...") // test fix of #498
 	err = collection.dataStore.Delete(oldRevisionKey("doc1", rev1id))
@@ -246,9 +247,9 @@ func TestAttachmentRetrievalUsingRevCache(t *testing.T) {
 	require.NoError(t, countErr, "Couldn't retrieve document_gets expvar")
 	gotbody, err := collection.get1xRevBody(ctx, "doc1", "1-ca9ad22802b66f662ff171f226211d5c", false, []string{})
 	require.NoError(t, err, "Couldn't get document")
-	atts := gotbody[BodyAttachments].(AttachmentsMeta)
+	atts := gotbody[BodyAttachments].(map[string]any)
 
-	assertAttachments := func(atts AttachmentsMeta) {
+	assertAttachments := func(atts map[string]any) {
 		hello := atts["hello.txt"].(map[string]interface{})
 		assert.Equal(t, "hello world", string(hello["data"].([]byte)))
 		assert.Equal(t, "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=", hello["digest"])
@@ -269,7 +270,7 @@ func TestAttachmentRetrievalUsingRevCache(t *testing.T) {
 	// Repeat, validate no additional get operations
 	gotbody, err = collection.get1xRevBody(ctx, "doc1", "1-ca9ad22802b66f662ff171f226211d5c", false, []string{})
 	require.NoError(t, err, "Couldn't get document")
-	atts = gotbody[BodyAttachments].(AttachmentsMeta)
+	atts = gotbody[BodyAttachments].(map[string]any)
 
 	assertAttachments(atts)
 }
@@ -327,7 +328,7 @@ func TestAttachmentCASRetryAfterNewAttachment(t *testing.T) {
 
 	// 4. Get the document, check attachments
 	finalDoc, err := collection.get1xBody(ctx, "doc1")
-	attachments := document.GetBodyAttachments(finalDoc)
+	attachments := finalDoc.GetRawAttachments()
 	assert.True(t, attachments != nil, "_attachments should be present in GET response")
 	attachment, attachmentOk := attachments["hello.txt"].(map[string]interface{})
 	assert.True(t, attachmentOk, "hello.txt attachment should be present in GET response")
@@ -391,7 +392,7 @@ func TestAttachmentCASRetryDuringNewAttachment(t *testing.T) {
 	finalDoc, err := collection.get1xBody(ctx, "doc1")
 	log.Printf("get doc attachments: %v", finalDoc)
 
-	attachments := document.GetBodyAttachments(finalDoc)
+	attachments := finalDoc.GetRawAttachments()
 	assert.True(t, attachments != nil, "_attachments should be present in GET response")
 	attachment, attachmentOk := attachments["hello.txt"].(map[string]interface{})
 	assert.True(t, attachmentOk, "hello.txt attachment should be present in GET response")
@@ -407,7 +408,7 @@ func TestForEachStubAttachmentErrors(t *testing.T) {
 
 	var body Body
 	callbackCount := 0
-	callback := func(name string, digest string, knownData []byte, meta map[string]interface{}) ([]byte, error) {
+	callback := func(name string, digest string, knownData []byte, meta *document.DocAttachment) ([]byte, error) {
 		callbackCount++
 		return []byte("data"), nil
 	}
@@ -476,7 +477,7 @@ func TestForEachStubAttachmentErrors(t *testing.T) {
 	// Simulate an error from the callback function; it should return the same error from ForEachStubAttachment.
 	doc = `{"_attachments": {"image.jpg": {"stub":true, "revpos":1, "digest":"9304cdd066efa64f78387e9cc9240a70527271bc"}}}`
 	assert.NoError(t, base.JSONUnmarshal([]byte(doc), &body))
-	callback = func(name string, digest string, knownData []byte, meta map[string]interface{}) ([]byte, error) {
+	callback = func(name string, digest string, knownData []byte, meta *document.DocAttachment) ([]byte, error) {
 		return nil, errors.New("Can't work with this digest value!")
 	}
 	err = collection.ForEachStubAttachment(body, 1, docID, existingDigests, callback)
@@ -599,14 +600,14 @@ func TestStoreAttachments(t *testing.T) {
 	assert.NotEmpty(t, revId, "Document revision id should be generated")
 	require.NotNil(t, doc)
 	assert.NotEmpty(t, doc.Attachments, "Attachment metadata should be populated")
-	attachment := doc.Attachments["att1.txt"].(map[string]interface{})
-	assert.Equal(t, "text/plain", attachment["content_type"])
-	assert.Equal(t, "sha1-crv3IVNxp3JXbP6bizTHt3GB3O0=", attachment["digest"])
-	assert.Equal(t, 8, attachment["encoded_length"])
-	assert.Equal(t, "utf-8", attachment["encoding"])
-	assert.Equal(t, float64(12), attachment["length"])
-	assert.NotEmpty(t, attachment["revpos"])
-	assert.True(t, attachment["stub"].(bool))
+	attachment := doc.Attachments["att1.txt"]
+	assert.Equal(t, "text/plain", attachment.ContentType)
+	assert.Equal(t, "sha1-crv3IVNxp3JXbP6bizTHt3GB3O0=", attachment.Digest)
+	assert.Equal(t, 8, attachment.EncodedLength)
+	assert.Equal(t, "utf-8", attachment.Encoding)
+	assert.Equal(t, 12, attachment.Length)
+	assert.NotZero(t, attachment.Revpos)
+	assert.True(t, attachment.Stub)
 
 	// Simulate a valid scenario; attachment contains data, so store it in the database.
 	// Include content type, encoding in attachment metadata but no attachment length.
@@ -617,14 +618,14 @@ func TestStoreAttachments(t *testing.T) {
 	assert.NotEmpty(t, revId, "Document revision id should be generated")
 	require.NotNil(t, doc)
 	assert.NotEmpty(t, doc.Attachments, "Attachment metadata should be populated")
-	attachment = doc.Attachments["att1.txt"].(map[string]interface{})
-	assert.Equal(t, "text/plain", attachment["content_type"])
-	assert.Equal(t, "sha1-crv3IVNxp3JXbP6bizTHt3GB3O0=", attachment["digest"])
-	assert.Equal(t, 8, attachment["encoded_length"])
-	assert.Equal(t, "utf-8", attachment["encoding"])
-	assert.Empty(t, attachment["length"], "Attachment length should be empty")
-	assert.NotEmpty(t, attachment["revpos"])
-	assert.True(t, attachment["stub"].(bool))
+	attachment = doc.Attachments["att1.txt"]
+	assert.Equal(t, "text/plain", attachment.ContentType)
+	assert.Equal(t, "sha1-crv3IVNxp3JXbP6bizTHt3GB3O0=", attachment.Digest)
+	assert.Equal(t, 8, attachment.EncodedLength)
+	assert.Equal(t, "utf-8", attachment.Encoding)
+	assert.Empty(t, attachment.Length, "Attachment length should be empty")
+	assert.NotZero(t, attachment.Revpos)
+	assert.True(t, attachment.Stub)
 
 	// Simulate a valid scenario; attachment contains data, so store it in the database.
 	// Include only content type in attachment metadata but no encoding and attachment length.
@@ -636,14 +637,14 @@ func TestStoreAttachments(t *testing.T) {
 	assert.NotEmpty(t, revId, "Document revision id should be generated")
 	require.NotNil(t, doc)
 	assert.NotEmpty(t, doc.Attachments, "Attachment metadata should be populated")
-	attachment = doc.Attachments["att1.txt"].(map[string]interface{})
-	assert.Equal(t, "text/plain", attachment["content_type"])
-	assert.Equal(t, "sha1-crv3IVNxp3JXbP6bizTHt3GB3O0=", attachment["digest"])
-	assert.Empty(t, attachment["encoded_length"])
-	assert.Equal(t, int(8), attachment["length"])
-	assert.Empty(t, attachment["encoding"])
-	assert.NotEmpty(t, attachment["revpos"])
-	assert.True(t, attachment["stub"].(bool))
+	attachment = doc.Attachments["att1.txt"]
+	assert.Equal(t, "text/plain", attachment.ContentType)
+	assert.Equal(t, "sha1-crv3IVNxp3JXbP6bizTHt3GB3O0=", attachment.Digest)
+	assert.Empty(t, attachment.EncodedLength)
+	assert.Equal(t, int(8), attachment.Length)
+	assert.Empty(t, attachment.Encoding)
+	assert.NotZero(t, attachment.Revpos)
+	assert.True(t, attachment.Stub)
 
 	// Simulate error scenario for attachment without data; stub is not provided; If the data is
 	// empty in attachment, the attachment must be a stub that repeats a parent attachment.
@@ -691,7 +692,7 @@ func TestMigrateBodyAttachments(t *testing.T) {
 
 		gotbody, err := collection.get1xRevBody(ctx, "doc1", "", false, []string{})
 		assert.NoError(t, err, "Couldn't get document")
-		atts, ok := gotbody[BodyAttachments].(AttachmentsMeta)
+		atts, ok := gotbody[BodyAttachments].(map[string]any)
 		assert.True(t, ok)
 
 		hello, ok := atts["hello.txt"].(map[string]interface{})
@@ -907,10 +908,10 @@ func TestMigrateBodyAttachments(t *testing.T) {
 		require.NoError(t, err)
 
 		newAtts := rev.Attachments.ShallowCopy()
-		newAtts["bye.txt"] = map[string]interface{}{
-			"content_type": "text/plain",
-			"stub":         false,
-			"data":         byeTxtData,
+		newAtts["bye.txt"] = &document.DocAttachment{
+			ContentType: "text/plain",
+			Stub:        false,
+			Data:        byeTxtData,
 		}
 
 		// update the doc with a copy of the previous doc body
@@ -971,7 +972,7 @@ func TestMigrateBodyAttachmentsMerge(t *testing.T) {
 
 	gotbody, err := collection.get1xRevBody(ctx, "doc1", "", false, []string{})
 	assert.NoError(t, err, "Couldn't get document")
-	atts, ok := gotbody[BodyAttachments].(AttachmentsMeta)
+	atts, ok := gotbody[BodyAttachments].(map[string]any)
 	assert.True(t, ok)
 
 	hello, ok := atts["hello.txt"].(map[string]interface{})
@@ -1128,7 +1129,7 @@ func TestMigrateBodyAttachmentsMergeConflicting(t *testing.T) {
 
 	gotbody, err := collection.get1xRevBody(ctx, "doc1", "", false, []string{})
 	assert.NoError(t, err, "Couldn't get document")
-	atts, ok := gotbody[BodyAttachments].(AttachmentsMeta)
+	atts, ok := gotbody[BodyAttachments].(map[string]any)
 	assert.True(t, ok)
 
 	hello, ok := atts["hello.txt"].(map[string]interface{})
@@ -1256,17 +1257,13 @@ func TestMigrateBodyAttachmentsMergeConflicting(t *testing.T) {
 	assert.Len(t, rev.Attachments, 2)
 
 	// see if we got new.txt's meta for both attachments (because of the higher revpos)
-	helloAtt, ok := rev.Attachments["hello.txt"]
+	helloAttMeta, ok := rev.Attachments["hello.txt"]
 	assert.True(t, ok)
-	helloAttMeta, ok := helloAtt.(map[string]interface{})
-	assert.True(t, ok)
-	assert.Equal(t, "sha1-AZffsEGpPp0Zn4jv1xFA8ydfxp0=", helloAttMeta["digest"])
+	assert.Equal(t, "sha1-AZffsEGpPp0Zn4jv1xFA8ydfxp0=", helloAttMeta.Digest)
 
-	byeAtt, ok := rev.Attachments["bye.txt"]
+	byeAttMeta, ok := rev.Attachments["bye.txt"]
 	assert.True(t, ok)
-	byeAttMeta, ok := byeAtt.(map[string]interface{})
-	assert.True(t, ok)
-	assert.Equal(t, "sha1-AZffsEGpPp0Zn4jv1xFA8ydfxp0=", byeAttMeta["digest"])
+	assert.Equal(t, "sha1-AZffsEGpPp0Zn4jv1xFA8ydfxp0=", byeAttMeta.Digest)
 
 	// _attachments shouldn't be present in the body at this point.
 	// It will be stamped in for 1.x clients that require it further up the stack.
@@ -1451,7 +1448,7 @@ func TestLargeAttachments(t *testing.T) {
 	_, _ = rand.Read(hugeAttachment)
 
 	_, _, err := collection.Put(ctx, "testdoc", Body{
-		"_attachments": AttachmentsMeta{
+		"_attachments": map[string]any{
 			"foo.bin": map[string]interface{}{
 				"data": base64.StdEncoding.EncodeToString(normalAttachment),
 			},
@@ -1460,7 +1457,7 @@ func TestLargeAttachments(t *testing.T) {
 	require.NoError(t, err, "Couldn't create appropriately sized attachment")
 
 	_, _, err = collection.Put(ctx, "bigdoc", Body{
-		"_attachments": AttachmentsMeta{
+		"_attachments": map[string]any{
 			"foo.bin": map[string]interface{}{
 				"data": base64.StdEncoding.EncodeToString(oversizeAttachment),
 			},
@@ -1471,7 +1468,7 @@ func TestLargeAttachments(t *testing.T) {
 	require.Equal(t, http.StatusRequestEntityTooLarge, httpErr.Status)
 
 	_, _, err = collection.Put(ctx, "hugedoc", Body{
-		"_attachments": AttachmentsMeta{
+		"_attachments": map[string]any{
 			"foo.bin": map[string]interface{}{
 				"data": base64.StdEncoding.EncodeToString(hugeAttachment),
 			},
@@ -1479,4 +1476,22 @@ func TestLargeAttachments(t *testing.T) {
 	})
 	require.ErrorAs(t, err, &httpErr, "Created doc with huge attachment")
 	require.Equal(t, http.StatusRequestEntityTooLarge, httpErr.Status)
+}
+
+func TestGenerateProofOfAttachment(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+
+	attData := []byte(`hello world`)
+
+	nonce, proof1, err := GenerateProofOfAttachment(attData)
+	require.NoError(t, err)
+	assert.True(t, len(nonce) >= 20, "nonce should be at least 20 bytes")
+	assert.NotEmpty(t, proof1)
+	assert.True(t, strings.HasPrefix(proof1, "sha1-"))
+
+	proof2 := ProveAttachment(attData, nonce)
+	assert.NotEmpty(t, proof1, "")
+	assert.True(t, strings.HasPrefix(proof1, "sha1-"))
+
+	assert.Equal(t, proof1, proof2, "GenerateProofOfAttachment and ProveAttachment produced different proofs.")
 }

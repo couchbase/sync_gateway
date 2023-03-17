@@ -12,31 +12,10 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
-	"strings"
 	"testing"
 
-	"github.com/couchbase/sync_gateway/base"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
-
-func TestGenerateProofOfAttachment(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
-
-	attData := []byte(`hello world`)
-
-	nonce, proof1, err := GenerateProofOfAttachment(attData)
-	require.NoError(t, err)
-	assert.True(t, len(nonce) >= 20, "nonce should be at least 20 bytes")
-	assert.NotEmpty(t, proof1)
-	assert.True(t, strings.HasPrefix(proof1, "sha1-"))
-
-	proof2 := ProveAttachment(attData, nonce)
-	assert.NotEmpty(t, proof1, "")
-	assert.True(t, strings.HasPrefix(proof1, "sha1-"))
-
-	assert.Equal(t, proof1, proof2, "GenerateProofOfAttachment and ProveAttachment produced different proofs.")
-}
 
 func TestDecodeAttachmentError(t *testing.T) {
 	attr, err := DecodeAttachment(make([]int, 1))

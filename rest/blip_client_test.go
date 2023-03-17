@@ -25,7 +25,6 @@ import (
 	"github.com/couchbase/go-blip"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
-	"github.com/couchbase/sync_gateway/document"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
@@ -122,7 +121,7 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 			panic(fmt.Sprintf("error getting client attachment: %v", err))
 		}
 
-		proof := document.ProveAttachment(attData, nonce)
+		proof := db.ProveAttachment(attData, nonce)
 
 		resp := msg.Response()
 		resp.SetBody([]byte(proof))

@@ -187,7 +187,7 @@ func (rev *DocumentRevision) propertyPtr(key string, always bool) (value any, er
 		}
 	case BodyAttachments:
 		if always || len(rev.Attachments) > 0 {
-			DeleteAttachmentVersion(rev.Attachments)
+			rev.Attachments.DeleteAttachmentVersions()
 			value = &rev.Attachments
 		}
 	case BodyExpiry:
@@ -214,21 +214,15 @@ func (rev *DocumentRevision) propertyPtr(key string, always bool) (value any, er
 }
 
 // Subroutine used by DocumentRevisionFromBody. Sets a struct field given a JSON property key.
-func (rev *DocumentRevision) setProperty(key string, val any) error {
+func (rev *DocumentRevision) setProperty(key string, val any) (err error) {
 	switch key {
 	case BodyAttachments:
-		if atts, found := val.(AttachmentsMeta); found {
-			rev.Attachments = atts
-		} else if atts, found := val.(map[string]any); found {
-			rev.Attachments = AttachmentsMeta(atts)
-		} else {
-			return fmt.Errorf("invalid value for '_attachments' property")
-		}
+		rev.Attachments, err = AttachmentsMetaFromAny(val)
 	case BodyExpiry:
-		return rev.SetExpiry(val)
+		err = rev.SetExpiry(val)
 	default:
 		// TODO: Add other properties as needed
-		return fmt.Errorf("internal error: DocumentRevision.setProperty doesn't recognize property %q", key)
+		err = fmt.Errorf("internal error: DocumentRevision.setProperty doesn't recognize property %q", key)
 	}
-	return nil
+	return err
 }

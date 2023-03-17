@@ -90,6 +90,25 @@ func CopyMap(sourceMap map[string]interface{}) map[string]interface{} {
 	return copy
 }
 
+// Returns _attachments property from body, when found.  Checks for either map[string]interface{} (unmarshalled with body),
+// or AttachmentsMeta (written by body by SG)
+func (body Body) GetAttachments() (AttachmentsMeta, error) {
+	return AttachmentsMetaFromAny(body[BodyAttachments])
+}
+
+// Returns _attachments property as a raw map-of-maps with no structs.
+func (body Body) GetRawAttachments() AttachmentsMetaJSON {
+	switch atts := body[BodyAttachments].(type) {
+	case AttachmentsMeta:
+		return atts.AsMap()
+	case AttachmentsMetaJSON:
+	case map[string]any:
+		return atts
+	default:
+	}
+	return nil
+}
+
 // Returns the expiry as uint32 (using getExpiry), and removes the _exp property from the body
 func (body Body) ExtractExpiry() (uint32, error) {
 

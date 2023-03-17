@@ -273,6 +273,7 @@ func checkForInlineAttachments(body []byte) (*AttachmentsMetaMap, error) {
 // Doesn't require an error return as if we fail at any point in here the attachment is either not a v1 attachment, or
 // is unreadable which is likely unrecoverable.
 func handleAttachments(attachmentKeyMap map[string]string, docKey string, attachmentsMap map[string]AttachmentsMeta) {
+	/* TEMP
 	for attName, attachmentMeta := range attachmentsMap {
 		attMetaMap := attachmentMeta
 
@@ -293,6 +294,7 @@ func handleAttachments(attachmentKeyMap map[string]string, docKey string, attach
 		attKey := MakeAttachmentKey(AttVersion1, docKey, digest.(string))
 		attachmentKeyMap[attName] = attKey
 	}
+	*/
 }
 
 func attachmentCompactSweepPhase(ctx context.Context, dataStore base.DataStore, collectionID uint32, db *Database, compactionID string, vbUUIDs []uint64, dryRun bool, terminator *base.SafeTerminator, purgedAttachmentCount *base.AtomicInt) (int64, error) {

@@ -136,13 +136,13 @@ func TestHasAttachmentsFlag(t *testing.T) {
 	gotDoc, err := collection.GetDocument(ctx, "doc1", DocUnmarshalSync)
 	assert.NoError(t, err)
 	require.Contains(t, gotDoc.Attachments, "hello.txt")
-	attachmentData, ok := gotDoc.Attachments["hello.txt"].(map[string]interface{})
+	attachmentData, ok := gotDoc.Attachments["hello.txt"]
 	require.True(t, ok)
-	assert.Equal(t, "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=", attachmentData["digest"])
-	assert.Equal(t, float64(11), attachmentData["length"])
-	assert.Equal(t, float64(2), attachmentData["revpos"])
-	assert.True(t, attachmentData["stub"].(bool))
-	assert.Equal(t, float64(2), attachmentData["ver"])
+	assert.Equal(t, "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=", attachmentData.Digest)
+	assert.Equal(t, 11, attachmentData.Length)
+	assert.Equal(t, 2, attachmentData.Revpos)
+	assert.True(t, attachmentData.Stub)
+	assert.Equal(t, 2, attachmentData.Version)
 
 	// Create rev 2-b
 	//    1-a
@@ -162,13 +162,13 @@ func TestHasAttachmentsFlag(t *testing.T) {
 	gotDoc, err = collection.GetDocument(ctx, "doc1", DocUnmarshalSync)
 	assert.NoError(t, err)
 	require.Contains(t, gotDoc.Attachments, "hello.txt")
-	attachmentData, ok = gotDoc.Attachments["hello.txt"].(map[string]interface{})
+	attachmentData, ok = gotDoc.Attachments["hello.txt"]
 	require.True(t, ok)
-	assert.Equal(t, "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=", attachmentData["digest"])
-	assert.Equal(t, float64(11), attachmentData["length"])
-	assert.Equal(t, float64(2), attachmentData["revpos"])
-	assert.True(t, attachmentData["stub"].(bool))
-	assert.Equal(t, float64(2), attachmentData["ver"])
+	assert.Equal(t, "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=", attachmentData.Digest)
+	assert.Equal(t, 11, attachmentData.Length)
+	assert.Equal(t, 2, attachmentData.Revpos)
+	assert.True(t, attachmentData.Stub)
+	assert.Equal(t, 2, attachmentData.Version)
 
 	// Retrieve the raw document, and verify 2-a isn't stored inline
 	log.Printf("Retrieve doc, verify rev 2-a not inline")
@@ -1159,7 +1159,7 @@ func BenchmarkHandleRevDelta(b *testing.B) {
 
 		// Stamp attachments so we can patch them
 		if len(deltaSrcRev.Attachments) > 0 {
-			deltaSrcBody[BodyAttachments] = map[string]interface{}(deltaSrcRev.Attachments)
+			deltaSrcBody[BodyAttachments] = deltaSrcRev.Attachments
 		}
 
 		deltaSrcMap := map[string]interface{}(deltaSrcBody)
@@ -1215,18 +1215,18 @@ func TestGetAvailableRevAttachments(t *testing.T) {
 
 	// Get available attachments by immediate ancestor revision or parent revision
 	meta, found := collection.getAvailableRevAttachments(ctx, doc, parent)
-	attachment := meta["camera.txt"].(map[string]interface{})
-	assert.Equal(t, "sha1-VoSNiNQGHE1HirIS5HMxj6CrlHI=", attachment["digest"])
-	assert.Equal(t, json.Number("20"), attachment["length"])
-	assert.Equal(t, json.Number("1"), attachment["revpos"])
+	attachment := meta["camera.txt"]
+	assert.Equal(t, "sha1-VoSNiNQGHE1HirIS5HMxj6CrlHI=", attachment.Digest)
+	assert.Equal(t, 20, attachment.Length)
+	assert.Equal(t, 1, attachment.Revpos)
 	assert.True(t, found, "Ancestor should exists")
 
 	// Get available attachments by immediate ancestor revision
 	meta, found = collection.getAvailableRevAttachments(ctx, doc, ancestor)
-	attachment = meta["camera.txt"].(map[string]interface{})
-	assert.Equal(t, "sha1-VoSNiNQGHE1HirIS5HMxj6CrlHI=", attachment["digest"])
-	assert.Equal(t, json.Number("20"), attachment["length"])
-	assert.Equal(t, json.Number("1"), attachment["revpos"])
+	attachment = meta["camera.txt"]
+	assert.Equal(t, "sha1-VoSNiNQGHE1HirIS5HMxj6CrlHI=", attachment.Digest)
+	assert.Equal(t, 20, attachment.Length)
+	assert.Equal(t, 1, attachment.Revpos)
 	assert.True(t, found, "Ancestor should exists")
 }
 
@@ -1396,18 +1396,18 @@ func TestMergeAttachments(t *testing.T) {
 		{
 			"pre25Atts only",
 			AttachmentsMeta{
-				"att1": map[string]interface{}{
-					"digest": "abc",
-					"revpos": json.Number("4"),
-					"stub":   true,
+				"att1": &DocAttachment{
+					Digest: "abc",
+					Revpos: 4,
+					Stub:   true,
 				},
 			},
 			nil,
 			AttachmentsMeta{
-				"att1": map[string]interface{}{
-					"digest": "abc",
-					"revpos": json.Number("4"),
-					"stub":   true,
+				"att1": &DocAttachment{
+					Digest: "abc",
+					Revpos: 4,
+					Stub:   true,
 				},
 			},
 		},
@@ -1415,121 +1415,123 @@ func TestMergeAttachments(t *testing.T) {
 			"docAtts only",
 			nil,
 			AttachmentsMeta{
-				"att1": map[string]interface{}{
-					"digest": "abc",
-					"revpos": json.Number("4"),
-					"stub":   true,
+				"att1": &DocAttachment{
+					Digest: "abc",
+					Revpos: 4,
+					Stub:   true,
 				},
 			},
 			AttachmentsMeta{
-				"att1": map[string]interface{}{
-					"digest": "abc",
-					"revpos": json.Number("4"),
-					"stub":   true,
+				"att1": &DocAttachment{
+					Digest: "abc",
+					Revpos: 4,
+					Stub:   true,
 				},
 			},
 		},
 		{
 			"disjoint set",
 			AttachmentsMeta{
-				"att1": map[string]interface{}{
-					"digest": "abc",
-					"revpos": json.Number("4"),
-					"stub":   true,
+				"att1": &DocAttachment{
+					Digest: "abc",
+					Revpos: 4,
+					Stub:   true,
 				},
 			},
 			AttachmentsMeta{
-				"att2": map[string]interface{}{
-					"digest": "def",
-					"revpos": json.Number("6"),
-					"stub":   true,
+				"att2": &DocAttachment{
+					Digest: "def",
+					Revpos: 6,
+					Stub:   true,
 				},
 			},
 			AttachmentsMeta{
-				"att1": map[string]interface{}{
-					"digest": "abc",
-					"revpos": json.Number("4"),
-					"stub":   true,
+				"att1": &DocAttachment{
+					Digest: "abc",
+					Revpos: 4,
+					Stub:   true,
 				},
-				"att2": map[string]interface{}{
-					"digest": "def",
-					"revpos": json.Number("6"),
-					"stub":   true,
+				"att2": &DocAttachment{
+					Digest: "def",
+					Revpos: 6,
+					Stub:   true,
 				},
 			},
 		},
 		{
 			"25Atts wins",
 			AttachmentsMeta{
-				"att1": map[string]interface{}{
-					"digest": "def",
-					"revpos": json.Number("6"),
-					"stub":   true,
+				"att1": &DocAttachment{
+					Digest: "def",
+					Revpos: 6,
+					Stub:   true,
 				},
 			},
 			AttachmentsMeta{
-				"att1": map[string]interface{}{
-					"digest": "abc",
-					"revpos": json.Number("4"),
-					"stub":   true,
+				"att1": &DocAttachment{
+					Digest: "abc",
+					Revpos: 4,
+					Stub:   true,
 				},
 			},
 			AttachmentsMeta{
-				"att1": map[string]interface{}{
-					"digest": "def",
-					"revpos": json.Number("6"),
-					"stub":   true,
+				"att1": &DocAttachment{
+					Digest: "def",
+					Revpos: 6,
+					Stub:   true,
 				},
 			},
 		},
 		{
 			"docAtts wins",
 			AttachmentsMeta{
-				"att1": map[string]interface{}{
-					"digest": "abc",
-					"revpos": json.Number("4"),
-					"stub":   true,
+				"att1": &DocAttachment{
+					Digest: "abc",
+					Revpos: 4,
+					Stub:   true,
 				},
 			},
 			AttachmentsMeta{
-				"att1": map[string]interface{}{
-					"digest": "def",
-					"revpos": json.Number("6"),
-					"stub":   true,
+				"att1": &DocAttachment{
+					Digest: "def",
+					Revpos: 6,
+					Stub:   true,
 				},
 			},
 			AttachmentsMeta{
-				"att1": map[string]interface{}{
-					"digest": "def",
-					"revpos": json.Number("6"),
-					"stub":   true,
+				"att1": &DocAttachment{
+					Digest: "def",
+					Revpos: 6,
+					Stub:   true,
 				},
 			},
 		},
-		{
-			"invalid pre25 revpos",
-			AttachmentsMeta{
-				"att1": map[string]interface{}{
-					"digest": "def",
-					"revpos": "6",
-					"stub":   true,
+		/*
+			{
+				"invalid pre25 revpos",
+				AttachmentsMeta{
+					"att1": &DocAttachment{
+						Digest: "def",
+						"revpos": "6",
+						Stub:   true,
+					},
+				},
+				AttachmentsMeta{
+					"att1": &DocAttachment{
+						Digest: "abc",
+						Revpos:4,
+						Stub:   true,
+					},
+				},
+				AttachmentsMeta{
+					"att1": &DocAttachment{
+						Digest: "abc",
+						Revpos:4,
+						Stub:   true,
+					},
 				},
 			},
-			AttachmentsMeta{
-				"att1": map[string]interface{}{
-					"digest": "abc",
-					"revpos": json.Number("4"),
-					"stub":   true,
-				},
-			},
-			AttachmentsMeta{
-				"att1": map[string]interface{}{
-					"digest": "abc",
-					"revpos": json.Number("4"),
-					"stub":   true,
-				},
-			},
-		},
+		*/
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -20,6 +20,7 @@ import (
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/document"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -623,8 +624,23 @@ func (db *DatabaseCollectionWithUser) get1xRevBody(ctx context.Context, docid, r
 	// Many tests assume that values inside _attachments and _revisions are not generic unmarshaled
 	// types -- for example that attachment data is []byte rather than base64-encoded string,
 	// or that _revisions is a Revisions, not a plain map.
-	if body[BodyAttachments] != nil {
-		body[BodyAttachments] = rev.Attachments
+	if atts, ok := body[BodyAttachments].(map[string]any); ok {
+		for _, val := range atts {
+			att := val.(map[string]any)
+			if data, ok := att["data"]; ok {
+				data, err = document.DecodeAttachment(data)
+				if err != nil {
+					return nil, err
+				}
+				att["data"] = data
+			}
+			if revpos := att["revpos"]; revpos != nil {
+				att["revpos"], _ = base.ToInt(revpos)
+			}
+			if length := att["length"]; length != nil {
+				att["length"], _ = base.ToInt(length)
+			}
+		}
 	}
 	if body[BodyRevisions] != nil {
 		body[BodyRevisions] = rev.History

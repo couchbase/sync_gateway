@@ -98,15 +98,15 @@ func blipRevMessageProperties(revisionHistory []string, deleted bool, seq Sequen
 }
 
 // Returns true if this attachment is worth trying to compress.
-func isCompressible(filename string, meta map[string]interface{}) bool {
-	if meta["encoding"] != nil {
+func isCompressible(filename string, meta *DocAttachment) bool {
+	if meta.Encoding != "" {
 		return false
 	} else if badFilenames.MatchString(filename) {
 		return false
-	} else if mimeType, ok := meta["content_type"].(string); ok && mimeType != "" {
-		return !compressedTypes.MatchString(mimeType) &&
-			(goodTypes.MatchString(mimeType) ||
-				!badTypes.MatchString(mimeType))
+	} else if meta.ContentType != "" {
+		return !compressedTypes.MatchString(meta.ContentType) &&
+			(goodTypes.MatchString(meta.ContentType) ||
+				!badTypes.MatchString(meta.ContentType))
 	}
 	return true // be optimistic by default
 }

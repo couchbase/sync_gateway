@@ -382,16 +382,16 @@ func (db *DatabaseCollectionWithUser) GetDelta(ctx context.Context, docID, fromR
 		if fromRevision.Attachments != nil {
 			// the delta library does not handle deltas in non builtin types,
 			// so we need the map[string]interface{} type conversion here
-			document.DeleteAttachmentVersion(fromRevision.Attachments)
-			fromBodyCopy[BodyAttachments] = map[string]interface{}(fromRevision.Attachments)
+			fromRevision.Attachments.DeleteAttachmentVersions()
+			fromBodyCopy[BodyAttachments] = fromRevision.Attachments.AsMap()
 		}
 
 		var toRevAttStorageMeta []AttachmentStorageMeta
 		if toRevision.Attachments != nil {
 			// Flatten the AttachmentsMeta into a list of digest version pairs.
 			toRevAttStorageMeta = document.ToAttachmentStorageMeta(toRevision.Attachments)
-			document.DeleteAttachmentVersion(toRevision.Attachments)
-			toBodyCopy[BodyAttachments] = map[string]interface{}(toRevision.Attachments)
+			toRevision.Attachments.DeleteAttachmentVersions()
+			toBodyCopy[BodyAttachments] = toRevision.Attachments.AsMap()
 		}
 
 		deltaBytes, err := base.Diff(fromBodyCopy, toBodyCopy)
@@ -494,7 +494,7 @@ func (c *DatabaseCollection) GetRevision(ctx context.Context, doc *Document, rev
 	}
 
 	// handle backup revision inline attachments, or pre-2.5 meta
-	if inlineAtts, cleanBodyBytes, _, err := extractInlineAttachments(bodyBytes); err != nil {
+	if inlineAtts, cleanBodyBytes, err := extractInlineAttachments(bodyBytes); err != nil {
 		return nil, nil, err
 	} else if len(inlineAtts) > 0 {
 		// we found some inline attachments, so merge them with attachments, and update the bodies
@@ -511,9 +511,9 @@ func mergeAttachments(pre25Attachments, docAttachments AttachmentsMeta) Attachme
 	if len(pre25Attachments)+len(docAttachments) == 0 {
 		return nil // noop
 	} else if len(pre25Attachments) == 0 {
-		return document.CopyMap(docAttachments)
+		return docAttachments.ShallowCopy()
 	} else if len(docAttachments) == 0 {
-		return document.CopyMap(pre25Attachments)
+		return pre25Attachments.ShallowCopy()
 	}
 
 	merged := make(AttachmentsMeta, len(docAttachments))
@@ -529,21 +529,7 @@ func mergeAttachments(pre25Attachments, docAttachments AttachmentsMeta) Attachme
 		} else {
 			// we had the same attachment name in docAttachments and in pre25Attachments.
 			// Use whichever has the highest revpos.
-			var pre25AttRevpos, docAttRevpos int64
-			if pre25AttMeta, ok := pre25Att.(map[string]interface{}); ok {
-				pre25AttRevpos, ok = base.ToInt64(pre25AttMeta["revpos"])
-				if !ok {
-					// pre25 revpos wasn't a number, docAttachment should win.
-					continue
-				}
-			}
-			if docAttMeta, ok := docAtt.(map[string]interface{}); ok {
-				// if docAttRevpos can't be converted into an int64, pre25 revpos wins, so fall through with docAttRevpos=0
-				docAttRevpos, _ = base.ToInt64(docAttMeta["revpos"])
-			}
-
-			// pre-2.5 meta has larger revpos
-			if pre25AttRevpos > docAttRevpos {
+			if pre25Att.Revpos > docAtt.Revpos {
 				merged[attName] = pre25Att
 			}
 		}
@@ -553,38 +539,27 @@ func mergeAttachments(pre25Attachments, docAttachments AttachmentsMeta) Attachme
 }
 
 // extractInlineAttachments moves any inline attachments, from backup revision bodies, or pre-2.5 "_attachments", along with a "cleaned" version of bodyBytes and body.
-func extractInlineAttachments(bodyBytes []byte) (attachments AttachmentsMeta, cleanBodyBytes []byte, cleanBody Body, err error) {
+func extractInlineAttachments(bodyBytes []byte) (attachments AttachmentsMeta, cleanBodyBytes []byte, err error) {
 	if !bytes.Contains(bodyBytes, []byte(`"`+BodyAttachments+`"`)) {
 		// we can safely say this doesn't contain any inline attachments.
-		return nil, bodyBytes, nil, nil
+		return nil, bodyBytes, nil
 	}
-
-	var body Body
-	if err = body.Unmarshal(bodyBytes); err != nil {
-		return nil, nil, nil, err
-	}
-
-	bodyAtts, ok := body[BodyAttachments]
-	if !ok {
-		// no _attachments found (in a top-level property)
-		// probably a false-positive on the byte scan above
-		return nil, bodyBytes, body, nil
-	}
-
-	attsMap, ok := bodyAtts.(map[string]interface{})
-	if !ok {
-		// "_attachments" in body was not valid attachment metadata
-		return nil, bodyBytes, body, nil
-	}
-
-	// remove _attachments from body and marshal for clean bodyBytes.
-	delete(body, BodyAttachments)
-	bodyBytes, err = base.JSONMarshal(body)
+	rev, err := document.ParseDocumentRevision(bodyBytes, BodyAttachments, BodyDeleted)
 	if err != nil {
-		return nil, nil, nil, err
+		return
 	}
-
-	return attsMap, bodyBytes, body, nil
+	attachments = rev.Attachments
+	if attachments == nil {
+		return nil, bodyBytes, nil
+	}
+	for _, att := range attachments {
+		att.Data = nil
+		if att.Version == 0 {
+			att.Version = 1
+		}
+	}
+	cleanBodyBytes, err = rev.BodyBytesWith(BodyDeleted)
+	return
 }
 
 // Gets the body of a revision's nearest ancestor, as raw JSON (without _id or _rev.)
@@ -793,7 +768,10 @@ func (db *DatabaseCollectionWithUser) Put(ctx context.Context, docid string, bod
 	}
 
 	// Pull out attachments
-	newDoc.DocAttachments = document.GetBodyAttachments(body)
+	newDoc.DocAttachments, err = body.GetAttachments()
+	if err != nil {
+		return "", nil, err
+	}
 	delete(body, BodyAttachments)
 
 	delete(body, BodyRevisions)
@@ -1048,7 +1026,10 @@ func (db *DatabaseCollectionWithUser) PutExistingRevWithBody(ctx context.Context
 	delete(body, BodyId)
 	delete(body, BodyRevisions)
 
-	newDoc.DocAttachments = document.GetBodyAttachments(body)
+	newDoc.DocAttachments, err = body.GetAttachments()
+	if err != nil {
+		return nil, "", err
+	}
 	delete(body, BodyAttachments)
 
 	newDoc.UpdateBody(body)
@@ -1214,15 +1195,9 @@ func (db *DatabaseCollectionWithUser) resolveDocLocalWins(ctx context.Context, l
 
 		// If attachment revpos is older than common ancestor, or common ancestor doesn't exist, set attachment's
 		// revpos to the generation of newRevID (i.e. treat as previously unknown to this revtree branch)
-		for _, value := range remoteDoc.DocAttachments {
-			attachmentMeta, ok := value.(map[string]interface{})
-			if !ok {
-				base.WarnfCtx(ctx, "Unable to parse attachment meta during conflict resolution for %s/%s: %v", base.UD(localDoc.ID), localDoc.SyncData.CurrentRev, value)
-				continue
-			}
-			revpos, ok := base.ToInt64(attachmentMeta["revpos"])
-			if revpos > int64(commonAncestorGen) || commonAncestorGen == 0 {
-				attachmentMeta["revpos"] = newRevIDGen
+		for _, attachmentMeta := range remoteDoc.DocAttachments {
+			if attachmentMeta.Revpos > commonAncestorGen || commonAncestorGen == 0 {
+				attachmentMeta.Revpos = newRevIDGen
 			}
 		}
 	}
@@ -1251,7 +1226,10 @@ func (db *DatabaseCollectionWithUser) resolveDocMerge(ctx context.Context, local
 	if ok {
 		attsMap, ok := bodyAtts.(map[string]interface{})
 		if ok {
-			remoteDoc.DocAttachments = attsMap
+			remoteDoc.DocAttachments, err = document.AttachmentsMetaFromJSON(attsMap)
+			if err != nil {
+				return "", nil, err
+			}
 			delete(mergedBody, BodyAttachments)
 		}
 	}
@@ -1347,21 +1325,11 @@ func (db *DatabaseCollectionWithUser) storeOldBodyInRevTreeAndUpdateCurrent(ctx 
 			prevCurrentRevGen, _ := ParseRevID(prevCurrentRev)
 			bodyAtts := make(AttachmentsMeta)
 			for attName, attMeta := range doc.SyncData.Attachments {
-				if attMetaMap, ok := attMeta.(map[string]interface{}); ok {
-					var attRevposInt int
-					if attRevpos, ok := attMetaMap["revpos"].(int); ok {
-						attRevposInt = attRevpos
-					} else if attRevPos, ok := attMetaMap["revpos"].(float64); ok {
-						attRevposInt = int(attRevPos)
-					}
-					if attRevposInt <= prevCurrentRevGen {
-						bodyAtts[attName] = attMeta
-					}
-
-					version, _ := document.GetAttachmentVersion(attMetaMap)
-					if version == AttVersion2 {
-						oldDocHasAttachments = true
-					}
+				if attMeta.Revpos <= prevCurrentRevGen {
+					bodyAtts[attName] = attMeta
+				}
+				if attMeta.Version == AttVersion2 {
+					oldDocHasAttachments = true
 				}
 			}
 			if len(bodyAtts) > 0 {
@@ -1471,7 +1439,7 @@ func (db *DatabaseCollectionWithUser) addAttachments(ctx context.Context, newAtt
 	// Need to check and add attachments here to ensure the attachment is within size constraints
 	err := db.setAttachments(ctx, newAttachments)
 	if err != nil {
-		if errors.Is(err, document.ErrAttachmentTooLarge) || err.Error() == "document value was too large" {
+		if errors.Is(err, ErrAttachmentTooLarge) || err.Error() == "document value was too large" {
 			err = base.HTTPErrorf(http.StatusRequestEntityTooLarge, "Attachment too large")
 		} else {
 			err = errors.Wrap(err, "Error adding attachment")

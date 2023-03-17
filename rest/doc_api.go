@@ -196,15 +196,12 @@ func (h *handler) handleGetAttachment() error {
 		return kNotFoundError
 	}
 
-	meta, ok := rev.Attachments[attachmentName].(map[string]interface{})
+	meta, ok := rev.Attachments[attachmentName]
 	if !ok {
 		return base.HTTPErrorf(http.StatusNotFound, "missing attachment %s", attachmentName)
 	}
-	digest := meta["digest"].(string)
-	version, ok := document.GetAttachmentVersion(meta)
-	if !ok {
-		return db.ErrAttachmentVersion
-	}
+	digest := meta.Digest
+	version := meta.Version
 	attachmentKey := db.MakeAttachmentKey(version, docid, digest)
 	data, err := h.collection.GetAttachment(attachmentKey)
 	if err != nil {
@@ -213,8 +210,9 @@ func (h *handler) handleGetAttachment() error {
 
 	metaOption := h.getBoolQuery("meta")
 	if metaOption {
-		meta["key"] = attachmentKey
-		h.writeJSONStatus(http.StatusOK, meta)
+		result := meta.AsMap()
+		result["key"] = attachmentKey
+		h.writeJSONStatus(http.StatusOK, result)
 		return nil
 	}
 
@@ -235,7 +233,8 @@ func (h *handler) handleGetAttachment() error {
 	// attachment has a content type which is vulnerable to a phishing attack. If this is the case we will return with
 	// the Content Disposition header so that browsers will download the attachment rather than attempt to render it
 	// unless overridden by config option. CBG-1004
-	contentType, contentTypeSet := meta["content_type"].(string)
+	contentType := meta.ContentType
+	contentTypeSet := (contentType != "")
 	if contentTypeSet {
 		h.setHeader("Content-Type", contentType)
 	}
@@ -260,16 +259,16 @@ func (h *handler) handleGetAttachment() error {
 		}
 	}
 
-	if encoding, ok := meta["encoding"].(string); ok {
+	if meta.Encoding != "" {
 		if result, _ := h.getOptBoolQuery("content_encoding", true); result {
-			h.setHeader("Content-Encoding", encoding)
+			h.setHeader("Content-Encoding", meta.Encoding)
 		} else {
 			// Couchbase Lite wants to download the encoded form directly and store it that way,
 			// but some HTTP client libraries like NSURLConnection will automatically decompress
 			// the HTTP response if it has a Content-Encoding header. As a workaround, allow the
 			// client to add ?content_encoding=false to the request URL to disable setting this
 			// header.
-			h.setHeader("X-Content-Encoding", encoding)
+			h.setHeader("X-Content-Encoding", meta.Encoding)
 			h.setHeader("Content-Type", "application/gzip")
 		}
 	}
@@ -329,18 +328,18 @@ func (h *handler) handlePutAttachment() error {
 	}
 
 	// find attachment (if it existed)
-	attachments := document.GetBodyAttachments(body)
-	if attachments == nil {
-		attachments = make(map[string]interface{})
+	attachments, err := db.Body(body).GetAttachments()
+	if err != nil {
+		return err
+	} else if attachments == nil {
+		attachments = make(document.AttachmentsMeta)
 	}
 
 	// create new attachment
-	attachment := make(map[string]interface{})
-	attachment["data"] = attachmentData
-	attachment["content_type"] = attachmentContentType
-
-	// attach it
-	attachments[attachmentName] = attachment
+	attachments[attachmentName] = &document.DocAttachment{
+		Data:        attachmentData,
+		ContentType: attachmentContentType,
+	}
 	body[db.BodyAttachments] = attachments
 
 	newRev, _, err := h.collection.Put(h.ctx(), docid, body)
@@ -390,8 +389,10 @@ func (h *handler) handleDeleteAttachment() error {
 	}
 
 	// get document attachments and check if attachment exists
-	attachments := document.GetBodyAttachments(body)
-	if _, ok := attachments[attachmentName]; !ok {
+	attachments, err := db.Body(body).GetAttachments()
+	if err != nil {
+		return err
+	} else if _, ok := attachments[attachmentName]; !ok {
 		return base.HTTPErrorf(http.StatusNotFound, "Attachment %s is not found", attachmentName)
 	}
 	// delete specified attachment from the map

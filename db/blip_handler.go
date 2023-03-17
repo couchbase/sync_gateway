@@ -1000,7 +1000,7 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 
 		// Stamp attachments so we can patch them
 		if len(deltaSrcRev.Attachments) > 0 {
-			deltaSrcBody[BodyAttachments] = map[string]interface{}(deltaSrcRev.Attachments)
+			deltaSrcBody[BodyAttachments] = deltaSrcRev.Attachments.AsMap()
 		}
 
 		var newDocBody Body
@@ -1085,53 +1085,32 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 		if currentBucketDoc != nil {
 			bodyAtts := newRev.Attachments
 			currentDigests = make(map[string]string, len(bodyAtts))
-			for name, value := range bodyAtts {
+			for name, incomingAttachmentMeta := range bodyAtts {
 				// Check if we have this attachment name already, if we do, continue check
-				currentAttachment, ok := currentBucketDoc.Attachments[name]
+				currentAttachmentMeta, ok := currentBucketDoc.Attachments[name]
 				if !ok {
 					// If we don't have this attachment already, ensure incoming revpos is greater than minRevPos, otherwise
 					// update to ensure it's fetched and uploaded
-					bodyAtts[name].(map[string]interface{})["revpos"], _ = ParseRevID(revID)
+					bodyAtts[name].Revpos, _ = ParseRevID(revID)
 					continue
 				}
 
-				currentAttachmentMeta, ok := currentAttachment.(map[string]interface{})
-				if !ok {
+				if currentAttachmentMeta.Digest == "" {
 					return base.HTTPErrorf(http.StatusInternalServerError, "Current attachment data is invalid")
 				}
-
-				currentAttachmentDigest, ok := currentAttachmentMeta["digest"].(string)
-				if !ok {
-					return base.HTTPErrorf(http.StatusInternalServerError, "Current attachment data is invalid")
-				}
-				currentDigests[name] = currentAttachmentDigest
-
-				incomingAttachmentMeta, ok := value.(map[string]interface{})
-				if !ok {
-					return base.HTTPErrorf(http.StatusBadRequest, "Invalid attachment")
-				}
+				currentDigests[name] = currentAttachmentMeta.Digest
 
 				// If this attachment has data then we're fine, this isn't a stub attachment and therefore doesn't
 				// need the check.
-				if incomingAttachmentMeta["data"] != nil {
+				if incomingAttachmentMeta.Data != nil {
 					continue
-				}
-
-				incomingAttachmentDigest, ok := incomingAttachmentMeta["digest"].(string)
-				if !ok {
-					return base.HTTPErrorf(http.StatusBadRequest, "Invalid attachment")
-				}
-
-				incomingAttachmentRevpos, ok := base.ToInt64(incomingAttachmentMeta["revpos"])
-				if !ok {
-					return base.HTTPErrorf(http.StatusBadRequest, "Invalid attachment")
 				}
 
 				// Compare the revpos and attachment digest. If incoming revpos is less than or equal to minRevPos and
 				// digest is different we need to override the revpos and set it to the current revision to ensure
 				// the attachment is requested and stored
-				if int(incomingAttachmentRevpos) <= minRevpos && currentAttachmentDigest != incomingAttachmentDigest {
-					bodyAtts[name].(map[string]interface{})["revpos"], _ = ParseRevID(revID)
+				if int(incomingAttachmentMeta.Revpos) <= minRevpos && currentAttachmentMeta.Digest != incomingAttachmentMeta.Digest {
+					incomingAttachmentMeta.Revpos, _ = ParseRevID(revID)
 				}
 			}
 		}
@@ -1218,7 +1197,7 @@ func (bh *blipHandler) handleProveAttachment(rq *blip.Message) error {
 		return base.HTTPErrorf(http.StatusInternalServerError, fmt.Sprintf("Error getting client attachment: %v", err))
 	}
 
-	proof := document.ProveAttachment(attData, nonce)
+	proof := ProveAttachment(attData, nonce)
 
 	resp := rq.Response()
 	resp.SetBody([]byte(proof))
@@ -1277,7 +1256,7 @@ func (bh *blipHandler) handleGetAttachment(rq *blip.Message) error {
 var errNoBlipHandler = fmt.Errorf("404 - No handler for BLIP request")
 
 // sendGetAttachment requests the full attachment from the peer.
-func (bh *blipHandler) sendGetAttachment(sender *blip.Sender, docID string, name string, digest string, meta map[string]interface{}) ([]byte, error) {
+func (bh *blipHandler) sendGetAttachment(sender *blip.Sender, docID string, name string, digest string, meta *DocAttachment) ([]byte, error) {
 	base.DebugfCtx(bh.loggingCtx, base.KeySync, "    Asking for attachment %q for doc %s (digest %s)", base.UD(name), base.UD(docID), digest)
 	outrq := blip.NewRequest()
 	outrq.SetProfile(MessageGetAttachment)
@@ -1307,19 +1286,14 @@ func (bh *blipHandler) sendGetAttachment(sender *blip.Sender, docID string, name
 	if resp.Properties[BlipErrorCode] != "" {
 		return nil, fmt.Errorf("error %s from getAttachment: %s", resp.Properties[BlipErrorCode], respBody)
 	}
-	lNum, metaLengthOK := meta["length"]
-	metaLength, ok := base.ToInt64(lNum)
-	if !ok {
-		return nil, fmt.Errorf("invalid attachment length found in meta")
-	}
 
 	// Verify that the attachment we received matches the metadata stored in the document
-	if !metaLengthOK || len(respBody) != int(metaLength) || Sha1DigestKey(respBody) != digest {
+	if meta.Length == 0 || len(respBody) != meta.Length || Sha1DigestKey(respBody) != digest {
 		return nil, base.HTTPErrorf(http.StatusBadRequest, "Incorrect data sent for attachment with digest: %s", digest)
 	}
 
 	bh.replicationStats.GetAttachment.Add(1)
-	bh.replicationStats.GetAttachmentBytes.Add(metaLength)
+	bh.replicationStats.GetAttachmentBytes.Add(int64(meta.Length))
 
 	return respBody, nil
 }
@@ -1328,7 +1302,7 @@ func (bh *blipHandler) sendGetAttachment(sender *blip.Sender, docID string, name
 // This is to prevent clients from creating a doc with a digest for an attachment they otherwise can't access, in order to download it.
 func (bh *blipHandler) sendProveAttachment(sender *blip.Sender, docID, name, digest string, knownData []byte) error {
 	base.DebugfCtx(bh.loggingCtx, base.KeySync, "    Verifying attachment %q for doc %s (digest %s)", base.UD(name), base.UD(docID), digest)
-	nonce, proof, err := document.GenerateProofOfAttachment(knownData)
+	nonce, proof, err := GenerateProofOfAttachment(knownData)
 	if err != nil {
 		return err
 	}
@@ -1378,7 +1352,7 @@ func (bh *blipHandler) sendProveAttachment(sender *blip.Sender, docID, name, dig
 // upload it if necessary. This method blocks until all the attachments have been processed.
 func (bh *blipHandler) downloadOrVerifyAttachments(sender *blip.Sender, body Body, minRevpos int, docID string, currentDigests map[string]string) error {
 	return bh.collection.ForEachStubAttachment(body, minRevpos, docID, currentDigests,
-		func(name string, digest string, knownData []byte, meta map[string]interface{}) ([]byte, error) {
+		func(name string, digest string, knownData []byte, meta *DocAttachment) ([]byte, error) {
 			// Request attachment if we don't have it
 			if knownData == nil {
 				return bh.sendGetAttachment(sender, docID, name, digest, meta)

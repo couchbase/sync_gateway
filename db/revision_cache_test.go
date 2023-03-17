@@ -327,7 +327,7 @@ func TestPutRevisionCacheAttachmentProperty(t *testing.T) {
 	atts, ok := body[BodyAttachments]
 	assert.True(t, ok, "_attachments property was not stamped back in body during collection.Get1xRevBody: %#v", body)
 
-	attsMap, ok := atts.(AttachmentsMeta)
+	attsMap, ok := atts.(map[string]any)
 	_, ok = attsMap["myatt"]
 	assert.True(t, ok, "'myatt' not found in attachment map")
 }
@@ -376,7 +376,7 @@ func TestPutExistingRevRevisionCacheAttachmentProperty(t *testing.T) {
 	atts, ok := body[BodyAttachments]
 	assert.True(t, ok, "_attachments property was not stamped back in body during collection.Get1xRevBody: %#v", body)
 
-	attsMap, ok := atts.(AttachmentsMeta)
+	attsMap, ok := atts.(map[string]any)
 	_, ok = attsMap["myatt"]
 	assert.True(t, ok, "'myatt' not found in attachment map")
 }
