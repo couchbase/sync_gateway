@@ -1007,6 +1007,10 @@ func (rt *RestTester) SetAdminChannels(username string, keyspace string, channel
 	}
 
 	currentConfig.SetExplicitChannels(*scopeName, *collectionName, channels...)
+	currentConfig.JWTChannels = nil
+	currentConfig.JWTLastUpdated = nil
+	currentConfig.Channels = nil
+
 	newConfigBytes, _ := base.JSONMarshal(currentConfig)
 
 	userResponse = rt.SendAdminRequest("PUT", "/"+dbName+"/_user/"+username, string(newConfigBytes))
