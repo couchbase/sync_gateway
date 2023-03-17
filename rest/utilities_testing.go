@@ -990,7 +990,6 @@ func (rt *RestTester) PutDocumentWithRevID(docID string, newRevID string, parent
 }
 
 func (rt *RestTester) SetAdminChannels(username string, keyspace string, channels ...string) error {
-
 	dbName, scopeName, collectionName, err := ParseKeyspace(keyspace)
 	if err != nil {
 		return err
@@ -1007,6 +1006,17 @@ func (rt *RestTester) SetAdminChannels(username string, keyspace string, channel
 	}
 
 	currentConfig.SetExplicitChannels(*scopeName, *collectionName, channels...)
+	// Remove read only properties returned from the user api
+	for _, scope := range currentConfig.CollectionAccess {
+		if scope != nil {
+			for _, collectionAccess := range scope {
+				collectionAccess.Channels_ = nil
+				collectionAccess.JWTChannels_ = nil
+				collectionAccess.JWTLastUpdated = nil
+			}
+		}
+	}
+
 	newConfigBytes, _ := base.JSONMarshal(currentConfig)
 
 	userResponse = rt.SendAdminRequest("PUT", "/"+dbName+"/_user/"+username, string(newConfigBytes))
