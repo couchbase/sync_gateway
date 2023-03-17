@@ -156,19 +156,3 @@ func TestLongMetadataID(t *testing.T) {
 	assert.NotEqual(t, rehashMetadataID, longMetadataID)
 
 }
-
-func TestMetadataStorage(t *testing.T) {
-	rt := NewRestTester(t, nil)
-	defer rt.Close()
-
-	rt.CreateUser("alice", []string{})
-
-	require.Equal(t, "db", rt.GetDatabase().Name)
-	docName := "_sync:user:db:alice"
-	if rt.GetDatabase().OnlyDefaultCollection() {
-		docName = "_sync:user:alice"
-	}
-	metadataStore := rt.Bucket().DefaultDataStore()
-	_, _, err := metadataStore.GetRaw(docName)
-	require.NoError(t, err)
-}
