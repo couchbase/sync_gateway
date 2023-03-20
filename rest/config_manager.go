@@ -140,6 +140,7 @@ func (b *bootstrapContext) UpdateConfig(ctx context.Context, bucketName, groupID
 	attempts := 0
 
 	ctx = b.addDatabaseLogContext(ctx, dbName)
+outer:
 	for attempts < configUpdateMaxRetryAttempts {
 		attempts++
 		base.InfofCtx(ctx, base.KeyConfig, "UpdateConfig starting (attempt %d/%d)", attempts, configUpdateMaxRetryAttempts)
@@ -195,7 +196,7 @@ func (b *bootstrapContext) UpdateConfig(ctx context.Context, bucketName, groupID
 		// Check for context cancel before retrying
 		select {
 		case <-ctx.Done():
-			break
+			break outer
 		default:
 		}
 	}
@@ -231,6 +232,7 @@ func (b *bootstrapContext) DeleteConfig(ctx context.Context, bucketName, groupID
 	var registry *GatewayRegistry
 	attempts := 0
 	ctx = b.addDatabaseLogContext(ctx, dbName)
+outer:
 	for attempts < configUpdateMaxRetryAttempts {
 		attempts++
 		base.InfofCtx(ctx, base.KeyConfig, "DeleteConfig starting (attempt %d/%d)", attempts, configUpdateMaxRetryAttempts)
@@ -267,7 +269,7 @@ func (b *bootstrapContext) DeleteConfig(ctx context.Context, bucketName, groupID
 		// Check for context cancel before retrying
 		select {
 		case <-ctx.Done():
-			break
+			break outer
 		default:
 		}
 	}
@@ -568,7 +570,7 @@ func (b *bootstrapContext) rollbackRegistry(ctx context.Context, bucketName, gro
 }
 
 // getGatewayRegistry returns the database registry document for the bucket
-func (b *bootstrapContext) getGatewayRegistry(ctx context.Context, bucketName string) (result *GatewayRegistry, err error) {
+func (b *bootstrapContext) getGatewayRegistry(_ context.Context, bucketName string) (result *GatewayRegistry, err error) {
 
 	registry := &GatewayRegistry{}
 	cas, getErr := b.Connection.GetMetadataDocument(bucketName, base.SGRegistryKey, registry)
@@ -726,7 +728,7 @@ func (b *bootstrapContext) computeMetadataID(ctx context.Context, registry *Gate
 	if config.Scopes != nil {
 		defaultFound := false
 		for scopeName, scope := range config.Scopes {
-			for collectionName, _ := range scope.Collections {
+			for collectionName := range scope.Collections {
 				if base.IsDefaultCollection(scopeName, collectionName) {
 					defaultFound = true
 				}
@@ -749,7 +751,7 @@ func (b *bootstrapContext) computeMetadataID(ctx context.Context, registry *Gate
 	}
 
 	// If legacy _sync:seq doesn't exist, use the standard ID
-	legacySyncSeqExists, err := b.Connection.KeyExists(bucketName, base.DefaultMetadataKeys.SyncSeqKey())
+	legacySyncSeqExists, _ := b.Connection.KeyExists(bucketName, base.DefaultMetadataKeys.SyncSeqKey())
 	if !legacySyncSeqExists {
 		return standardMetadataID
 	}
