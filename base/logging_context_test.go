@@ -30,7 +30,13 @@ func requireLogIs(t testing.TB, s string, f func()) {
 	originalColor := consoleLogger.ColorEnabled
 	consoleLogger.ColorEnabled = false
 	consoleLogger.logger.SetOutput(&b)
+	defer func() {
+		consoleLogger.ColorEnabled = originalColor
+		consoleLogger.logger.SetOutput(os.Stderr)
+	}()
+
 	f()
+
 	var log string
 	var originalLog string
 	// Allow time for logs to be printed
@@ -46,8 +52,6 @@ func requireLogIs(t testing.TB, s string, f func()) {
 		return true, nil, nil
 	}
 	err, _ := RetryLoop("wait for logs", retry, CreateSleeperFunc(10, 100))
-	consoleLogger.ColorEnabled = originalColor
-	consoleLogger.logger.SetOutput(os.Stderr)
 
 	require.NoError(t, err, "Console logs did not contain %q, got %q", s, originalLog)
 }
