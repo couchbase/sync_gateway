@@ -1593,7 +1593,6 @@ func TestReplicationHeartbeatRemoval(t *testing.T) {
 }
 
 // Repros CBG-2416
-/*
 func TestDBReplicationStatsTeardown(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
@@ -1666,8 +1665,6 @@ func TestDBReplicationStatsTeardown(t *testing.T) {
 	require.NoError(t, err)
 
 }
-
-*/
 
 func TestTakeDbOfflineOngoingPushReplication(t *testing.T) {
 	base.LongRunningTest(t)
