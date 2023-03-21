@@ -167,6 +167,7 @@ func (arc ActiveReplicatorConfig) CheckpointHash() (string, error) {
 	return fmt.Sprintf("%x", hash.Sum(nil)), nil
 }
 
+// Equals returns true if the given config is equal to the receiver. Used to detect when a replication config has changed via isCfgChanged
 func (arc *ActiveReplicatorConfig) Equals(other *ActiveReplicatorConfig) bool {
 
 	if arc.ID != other.ID {
@@ -238,6 +239,18 @@ func (arc *ActiveReplicatorConfig) Equals(other *ActiveReplicatorConfig) bool {
 	}
 
 	if arc.DeltasEnabled != other.DeltasEnabled {
+		return false
+	}
+
+	if arc.CollectionsEnabled != other.CollectionsEnabled {
+		return false
+	}
+
+	if !reflect.DeepEqual(arc.CollectionsLocal, other.CollectionsLocal) {
+		return false
+	}
+
+	if !reflect.DeepEqual(arc.CollectionsRemote, other.CollectionsRemote) {
 		return false
 	}
 
