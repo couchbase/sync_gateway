@@ -1389,7 +1389,14 @@ outerLoop:
 			if !isDbUser && !isDbRole {
 				continue
 			}
-			principalName = startKey
+			if !db.Options.UseViews {
+				principalName = startKey
+			} else if isDbUser {
+				principalName = rowID[lenDbUserPrefix:]
+			} else {
+				principalName = rowID[lenDbRolePrefix:]
+
+			}
 			resultCount++
 
 			if principalName != "" && !skipAddition {
@@ -1544,7 +1551,12 @@ outerLoop:
 			if !strings.HasPrefix(queryRow.Id, dbRoleIDPrefix) {
 				break
 			}
-			roleName = queryRow.Name
+			if !db.UseViews() {
+				roleName = queryRow.Name
+			} else {
+				roleName = queryRow.Id[lenRoleKeyPrefix:]
+
+			}
 			startKey = queryRow.Id
 
 			resultCount++
