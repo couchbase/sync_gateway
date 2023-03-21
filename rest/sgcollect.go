@@ -184,6 +184,7 @@ type sgCollectOptions struct {
 	UploadProxy     string `json:"upload_proxy,omitempty"`
 	Customer        string `json:"customer,omitempty"`
 	Ticket          string `json:"ticket,omitempty"`
+	KeepZip         bool   `json:"keep_zip,omitempty"`
 
 	// Unexported - Don't allow these to be set via the JSON body.
 	// We'll set them from the request's basic auth.
@@ -291,6 +292,10 @@ func (c *sgCollectOptions) Args() []string {
 
 	if c.syncGatewayPassword != "" {
 		args = append(args, "--sync-gateway-password", c.syncGatewayPassword)
+	}
+
+	if c.KeepZip {
+		args = append(args, "--keep-zip")
 	}
 
 	return args
