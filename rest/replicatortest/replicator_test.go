@@ -1444,7 +1444,7 @@ func TestReplicationMultiCollectionChannelFilter(t *testing.T) {
 		"continuous": true,
 		"filter":"sync_gateway/bychannel",
 		"query_params": {
-			"collection_channels": {
+			"collections_channels": {
 				"` + rt1Keyspace + `": ["ChannelOne"]
 			}
 		},
@@ -1471,7 +1471,7 @@ func TestReplicationMultiCollectionChannelFilter(t *testing.T) {
 	{
 		"replication_id": "` + replicationID + `",
 		"query_params": {
-			"collection_channels": {
+			"collections_channels": {
 				"` + rt1Keyspace + `": ["ChannelTwo"]
 			}
 		}

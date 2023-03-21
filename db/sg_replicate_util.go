@@ -30,7 +30,7 @@ import (
 // 3. As a JSON object with a property for each collection, with the value being an array of channels:
 //
 //	{
-//	  "collection_channels": {
+//	  "collections_channels": {
 //	    "collection1": ["scope1.channel1"],
 //	    "collection2": ["scope1.channel1", "scope1.channel2"]
 //	  }
@@ -43,7 +43,7 @@ func CollectionChannelsFromQueryParams(namedCollections []string, queryParams in
 			return nil, allCollectionsChannels, err
 		}
 
-		if collectionChannels, ok := val["collection_channels"].(map[string]interface{}); ok {
+		if collectionChannels, ok := val["collections_channels"].(map[string]interface{}); ok {
 			perCollectionChannels = make([][]string, len(namedCollections))
 			for i, collection := range namedCollections {
 				collectionQueryParams := collectionChannels[collection]
