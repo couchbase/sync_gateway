@@ -12,36 +12,81 @@ package db
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 
 	"github.com/couchbase/sync_gateway/base"
 )
 
-// QueryParams retrieves the channels associated with the byChannels a replication filter
-// from the generic queryParams interface{}.
-// The Channels may be passed as a JSON array of strings directly,
-// or embedded in a JSON object with the "channels" property and array value
+// ChannelsFromQueryParams returns the channels associated with the byChannel replication filter from the generic queryParams.
+// The channels may be passed in one of two ways:
+//
+//  1. As a JSON array of strings directly:
+//     ["channel1", "channel2"]
+//
+//  2. As a JSON array of strings embedded in a JSON object with the "channels" property:
+//     {"channels": ["channel1", "channel2"] }
 func ChannelsFromQueryParams(queryParams interface{}) (channels []string, err error) {
-
 	var chanarray []interface{}
-	if paramsmap, ok := queryParams.(map[string]interface{}); ok {
-		if chanarray, ok = paramsmap["channels"].([]interface{}); !ok {
+
+	switch val := queryParams.(type) {
+	case map[string]interface{}:
+		var ok bool
+		chanarray, ok = val["channels"].([]interface{})
+		if !ok {
 			return nil, errors.New("Replication specifies sync_gateway/bychannel filter, but query_params is missing channels property")
 		}
-	} else if chanarray, ok = queryParams.([]interface{}); ok {
-		// query params is an array and chanarray has been set, now drop out of if-then-else for processing
-	} else {
+	case []interface{}:
+		chanarray = val
+	default:
 		return nil, base.HTTPErrorf(http.StatusBadRequest, ConfigErrorBadChannelsArray)
 	}
-	if len(chanarray) > 0 {
-		channels = make([]string, len(chanarray))
-		for i := range chanarray {
-			if channel, ok := chanarray[i].(string); ok {
-				channels[i] = channel
-			} else {
-				return nil, errors.New("Bad channel name in query_params for sync_gateway/bychannel filter")
-			}
-		}
+
+	return interfaceValsToStringVals(chanarray)
+}
+
+// CollectionChannelsFromQueryParams returns the channels for each collection associated with the byChannel replication filter from the generic queryParams.
+// An object for each collection containing a string array of channel names is set inside a "collection_channels" property of a JSON object.
+//
+// Example:
+//
+//	{
+//	  "collection_channels": {
+//	    "collection1": ["scope1.channel1"],
+//	    "collection2": ["scope1.channel1", "scope1.channel2"]
+//	  }
+//	}
+func CollectionChannelsFromQueryParams(collections []string, queryParams interface{}) (collectionChannels [][]string, err error) {
+	channelsByCollection, ok := queryParams.(map[string]interface{})
+	if !ok {
+		return nil, errors.New("query_params must be a map of collection name to channels")
 	}
-	return channels, nil
+
+	collectionChannels = make([][]string, len(collections))
+	for i, collection := range collections {
+		collectionQueryParams := channelsByCollection[collection]
+		collectionQueryParamsArray, ok := collectionQueryParams.([]interface{})
+		if !ok {
+			return nil, errors.New("query_params must be a map of collection name to channels")
+		}
+		channels, err := interfaceValsToStringVals(collectionQueryParamsArray)
+		if err != nil {
+			return nil, err
+		}
+		collectionChannels[i] = channels
+	}
+	return collectionChannels, nil
+}
+
+// interfaceValsToStringVals takes a []interface{} and returns a []string
+func interfaceValsToStringVals(interfaceVals []interface{}) ([]string, error) {
+	stringVals := make([]string, len(interfaceVals))
+	for i := range interfaceVals {
+		str, ok := interfaceVals[i].(string)
+		if !ok {
+			return nil, fmt.Errorf("Bad channel name %v (%T) in query_params for sync_gateway/bychannel filter - expecting strings", interfaceVals[i], interfaceVals[i])
+		}
+		stringVals[i] = str
+	}
+	return stringVals, nil
 }

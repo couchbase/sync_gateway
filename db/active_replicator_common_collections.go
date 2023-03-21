@@ -34,9 +34,17 @@ func (arc *activeReplicatorCommon) _initCollections() ([]replicationCheckpoint, 
 		getCollectionsCheckpointIDs []string
 	)
 
+	// ensure remote collection set is the same length as local collection set
 	if remoteLen := len(arc.config.CollectionsRemote); remoteLen > 0 {
 		if localLen := len(arc.config.CollectionsLocal); localLen != remoteLen {
 			return nil, fmt.Errorf("local and remote collections must be the same length... had %d and %d", localLen, remoteLen)
+		}
+	}
+
+	// ensure channel filter set is the same length as local collection set
+	if channelFilterLen := len(arc.config.CollectionsChannelFilter); channelFilterLen > 0 {
+		if localLen := len(arc.config.CollectionsLocal); localLen != channelFilterLen {
+			return nil, fmt.Errorf("local collections and channel filter set must be the same length... had %d and %d", localLen, channelFilterLen)
 		}
 	}
 
@@ -156,6 +164,21 @@ func (arc *activeReplicatorCommon) forEachCollection(callback func(*activeReplic
 	} else {
 		if err := callback(arc.defaultCollection); err != nil {
 			return err
+		}
+	}
+	return nil
+}
+
+// getFilteredChannels returns the filtered channels.
+// collectionIdx can be nil if replicating without collections enabled.
+func (config ActiveReplicatorConfig) getFilteredChannels(collectionIdx *int) []string {
+	if collectionIdx != nil {
+		if len(config.CollectionsChannelFilter) > 0 {
+			return config.CollectionsChannelFilter[*collectionIdx]
+		}
+	} else {
+		if config.FilterChannels != nil {
+			return config.FilterChannels
 		}
 	}
 	return nil

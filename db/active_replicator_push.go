@@ -141,12 +141,12 @@ func (apr *ActivePushReplicator) _initCheckpointer() error {
 	// wrap the replicator context with a cancelFunc that can be called to abort the checkpointer from _disconnect
 	apr.checkpointerCtx, apr.checkpointerCtxCancel = context.WithCancel(apr.ctx)
 
-	checkpointHash, hashErr := apr.config.CheckpointHash()
-	if hashErr != nil {
-		return hashErr
-	}
-
 	err := apr.forEachCollection(func(c *activeReplicatorCollection) error {
+		checkpointHash, hashErr := apr.config.CheckpointHash(c.collectionIdx)
+		if hashErr != nil {
+			return hashErr
+		}
+
 		c.Checkpointer = NewCheckpointer(apr.checkpointerCtx, c.dataStore, apr.CheckpointID, checkpointHash, apr.blipSender, apr.config, apr.getPushStatus, c.collectionIdx)
 
 		if !apr.config.CollectionsEnabled {
@@ -292,10 +292,10 @@ func (apr *ActivePushReplicator) _startPushNonCollection() error {
 	}
 
 	var channels base.Set
-	if apr.config.FilterChannels != nil {
-		channels = base.SetFromArray(apr.config.FilterChannels)
+	if filteredChannels := apr.config.getFilteredChannels(nil); len(filteredChannels) > 0 {
+		channels = base.SetFromArray(filteredChannels)
 	}
-
+	
 	apr.blipSyncContext.fatalErrorCallback = func(err error) {
 		if strings.Contains(err.Error(), ErrUseProposeChanges.Message) {
 			err = ErrUseProposeChanges

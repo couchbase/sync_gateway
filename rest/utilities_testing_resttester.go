@@ -145,7 +145,15 @@ func (rt *RestTester) CreateReplicationForDB(dbName string, replicationID string
 
 	if len(channels) > 0 {
 		replicationConfig.Filter = base.ByChannelFilter
-		replicationConfig.QueryParams = map[string]interface{}{"channels": channels}
+		if replicationConfig.CollectionsEnabled {
+			collectionChannels := make(map[string][]string)
+			for _, collectionName := range rt.getCollectionsForBLIP() {
+				collectionChannels[collectionName] = channels
+			}
+			replicationConfig.QueryParams = collectionChannels
+		} else {
+			replicationConfig.QueryParams = map[string]interface{}{"channels": channels}
+		}
 	}
 	payload, err := json.Marshal(replicationConfig)
 	require.NoError(rt.TB, err)
