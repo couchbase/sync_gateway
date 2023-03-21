@@ -295,7 +295,7 @@ func (apr *ActivePushReplicator) _startPushNonCollection() error {
 	if filteredChannels := apr.config.getFilteredChannels(nil); len(filteredChannels) > 0 {
 		channels = base.SetFromArray(filteredChannels)
 	}
-	
+
 	apr.blipSyncContext.fatalErrorCallback = func(err error) {
 		if strings.Contains(err.Error(), ErrUseProposeChanges.Message) {
 			err = ErrUseProposeChanges

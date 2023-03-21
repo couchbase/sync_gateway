@@ -57,9 +57,9 @@ func (arc *activeReplicatorCommon) _initCollections() ([]replicationCheckpoint, 
 			localCollectionsKeyspaces = append(localCollectionsKeyspaces, localScopeAndCollectionName)
 
 			// remap collection name to remote if set
-			if remoteScopeAndCollection := arc.config.CollectionsRemote[i]; remoteScopeAndCollection != "" {
-				base.DebugfCtx(arc.ctx, base.KeyReplicate, "Mapping local %q to remote %q", localScopeAndCollection, remoteScopeAndCollection)
-				remoteScopeAndCollectionName, err := getScopeAndCollectionName(remoteScopeAndCollection)
+			if len(arc.config.CollectionsRemote) > 0 && arc.config.CollectionsRemote[i] != "" {
+				base.DebugfCtx(arc.ctx, base.KeyReplicate, "Mapping local %q to remote %q", localScopeAndCollection, arc.config.CollectionsRemote[i])
+				remoteScopeAndCollectionName, err := getScopeAndCollectionName(arc.config.CollectionsRemote[i])
 				if err != nil {
 					return nil, err
 				}
@@ -173,13 +173,9 @@ func (arc *activeReplicatorCommon) forEachCollection(callback func(*activeReplic
 // collectionIdx can be nil if replicating without collections enabled.
 func (config ActiveReplicatorConfig) getFilteredChannels(collectionIdx *int) []string {
 	if collectionIdx != nil {
-		if len(config.CollectionsChannelFilter) > 0 {
+		if len(config.CollectionsChannelFilter)-1 >= *collectionIdx {
 			return config.CollectionsChannelFilter[*collectionIdx]
 		}
-	} else {
-		if config.FilterChannels != nil {
-			return config.FilterChannels
-		}
 	}
-	return nil
+	return config.FilterChannels
 }

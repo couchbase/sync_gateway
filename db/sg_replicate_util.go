@@ -18,7 +18,7 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 )
 
-// ChannelsFromQueryParams returns the channels associated with the byChannel replication filter from the generic queryParams.
+// CollectionChannelsFromQueryParams returns the channels associated with the byChannel replication filter from the generic queryParams.
 // The channels may be passed in one of two ways:
 //
 //  1. As a JSON array of strings directly:
@@ -26,29 +26,8 @@ import (
 //
 //  2. As a JSON array of strings embedded in a JSON object with the "channels" property:
 //     {"channels": ["channel1", "channel2"] }
-func ChannelsFromQueryParams(queryParams interface{}) (channels []string, err error) {
-	var chanarray []interface{}
-
-	switch val := queryParams.(type) {
-	case map[string]interface{}:
-		var ok bool
-		chanarray, ok = val["channels"].([]interface{})
-		if !ok {
-			return nil, errors.New("Replication specifies sync_gateway/bychannel filter, but query_params is missing channels property")
-		}
-	case []interface{}:
-		chanarray = val
-	default:
-		return nil, base.HTTPErrorf(http.StatusBadRequest, ConfigErrorBadChannelsArray)
-	}
-
-	return interfaceValsToStringVals(chanarray)
-}
-
-// CollectionChannelsFromQueryParams returns the channels for each collection associated with the byChannel replication filter from the generic queryParams.
-// An object for each collection containing a string array of channel names is set inside a "collection_channels" property of a JSON object.
 //
-// Example:
+// 3. As a JSON object with a property for each collection, with the value being an array of channels:
 //
 //	{
 //	  "collection_channels": {
@@ -56,26 +35,36 @@ func ChannelsFromQueryParams(queryParams interface{}) (channels []string, err er
 //	    "collection2": ["scope1.channel1", "scope1.channel2"]
 //	  }
 //	}
-func CollectionChannelsFromQueryParams(collections []string, queryParams interface{}) (collectionChannels [][]string, err error) {
-	channelsByCollection, ok := queryParams.(map[string]interface{})
-	if !ok {
-		return nil, errors.New("query_params must be a map of collection name to channels")
-	}
+func CollectionChannelsFromQueryParams(namedCollections []string, queryParams interface{}) (perCollectionChannels [][]string, allCollectionsChannels []string, err error) {
+	switch val := queryParams.(type) {
+	case map[string]interface{}:
+		if chanarray, ok := val["channels"].([]interface{}); ok {
+			allCollectionsChannels, err = interfaceValsToStringVals(chanarray)
+			return nil, allCollectionsChannels, err
+		}
 
-	collectionChannels = make([][]string, len(collections))
-	for i, collection := range collections {
-		collectionQueryParams := channelsByCollection[collection]
-		collectionQueryParamsArray, ok := collectionQueryParams.([]interface{})
-		if !ok {
-			return nil, errors.New("query_params must be a map of collection name to channels")
+		if collectionChannels, ok := val["collection_channels"].(map[string]interface{}); ok {
+			perCollectionChannels = make([][]string, len(namedCollections))
+			for i, collection := range namedCollections {
+				collectionQueryParams := collectionChannels[collection]
+				collectionQueryParamsArray, ok := collectionQueryParams.([]interface{})
+				if !ok {
+					return nil, nil, errors.New("query_params must be a map of collection name to array of channels")
+				}
+				channels, err := interfaceValsToStringVals(collectionQueryParamsArray)
+				if err != nil {
+					return nil, nil, err
+				}
+				perCollectionChannels[i] = channels
+			}
 		}
-		channels, err := interfaceValsToStringVals(collectionQueryParamsArray)
-		if err != nil {
-			return nil, err
-		}
-		collectionChannels[i] = channels
+		return perCollectionChannels, nil, nil
+	case []interface{}:
+		allCollectionsChannels, err = interfaceValsToStringVals(val)
+		return nil, allCollectionsChannels, err
+	default:
+		return nil, nil, base.HTTPErrorf(http.StatusBadRequest, ConfigErrorBadChannelsArray)
 	}
-	return collectionChannels, nil
 }
 
 // interfaceValsToStringVals takes a []interface{} and returns a []string

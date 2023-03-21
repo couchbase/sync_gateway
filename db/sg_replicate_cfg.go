@@ -250,12 +250,7 @@ func (rc *ReplicationConfig) ValidateReplication(fromConfig bool) (err error) {
 }
 
 func (rc *ReplicationConfig) validateFilteredChannels() error {
-	if rc.CollectionsEnabled {
-		_, err := CollectionChannelsFromQueryParams(rc.CollectionsLocal, rc.QueryParams)
-		return err
-	}
-
-	_, err := ChannelsFromQueryParams(rc.QueryParams)
+	_, _, err := CollectionChannelsFromQueryParams(rc.CollectionsLocal, rc.QueryParams)
 	return err
 }
 
@@ -655,12 +650,7 @@ func (m *sgReplicateManager) NewActiveReplicatorConfig(config *ReplicationCfg) (
 }
 
 func (rc *ActiveReplicatorConfig) setFilterChannels(config *ReplicationCfg) (err error) {
-	if rc.CollectionsEnabled {
-		rc.CollectionsChannelFilter, err = CollectionChannelsFromQueryParams(config.CollectionsLocal, config.QueryParams)
-		return err
-	}
-
-	rc.FilterChannels, err = ChannelsFromQueryParams(config.QueryParams)
+	rc.CollectionsChannelFilter, rc.FilterChannels, err = CollectionChannelsFromQueryParams(config.CollectionsLocal, config.QueryParams)
 	return err
 }
 
