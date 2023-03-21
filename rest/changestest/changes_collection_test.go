@@ -307,7 +307,7 @@ func TestMultiCollectionChangesUserDynamicGrant(t *testing.T) {
 	rest.RequireStatus(t, response, 201)
 	response = rt.SendAdminRequest("PUT", "/{{.keyspace2}}/abc1_c2", `{"value":1, "channels":["ABC"]}`)
 	rest.RequireStatus(t, response, 201)
-	_ = rt.WaitForPendingChanges()
+	assert.NoError(t, rt.WaitForPendingChanges())
 
 	var changes struct {
 		Results  []db.ChangeEntry
@@ -331,6 +331,7 @@ func TestMultiCollectionChangesUserDynamicGrant(t *testing.T) {
 	// Grant user access to channel ABC in collection 1
 	err = rt.SetAdminChannels("bernard", rt.GetKeyspaces()[0], "ABC", "PBS")
 	require.NoError(t, err)
+	assert.NoError(t, rt.WaitForPendingChanges())
 
 	// confirm that change from c1 is sent, along with user doc
 	changesResponse = rt.SendUserRequest("GET", "/{{.keyspace1}}/_changes?since="+lastSeq.String(), "", "bernard")
