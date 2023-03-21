@@ -388,14 +388,59 @@ func (r *replicationCheckpoint) Copy() *replicationCheckpoint {
 	}
 }
 
-// fetchCollectionCheckpoints sets lastCheckpointSeq for the given Checkpointer by requesting various checkpoints on the local and remote.
+// fetchNamedCollectionCheckpoints will:
+// - fetch the remote and local checkpoints off the checkpointer object
+// - increments miss count if the remote and local checkpoints are not the same
+// - increment hit count if successfully parse sequence ID
+// - increment miss count if error during parse sequence ID or if checkpoint sequence miss
+func (c *Checkpointer) fetchNamedCollectionCheckpoints() error {
+	localCheckpoint, err := c.getLocalCheckpoint()
+	if err != nil {
+		return err
+	}
+
+	base.DebugfCtx(c.ctx, base.KeyReplicate, "got local checkpoint: %v", localCheckpoint)
+	c.lastLocalCheckpointRevID = localCheckpoint.Rev
+
+	remoteCheckpoint, err := c.getRemoteCheckpoint()
+	if err != nil {
+		return err
+	}
+	base.DebugfCtx(c.ctx, base.KeyReplicate, "got remote checkpoint: %v", remoteCheckpoint)
+	c.lastRemoteCheckpointRevID = remoteCheckpoint.Rev
+
+	localSeq := localCheckpoint.LastSeq
+	remoteSeq := remoteCheckpoint.LastSeq
+
+	if localSeq != remoteSeq {
+		c.stats.GetCheckpointMissCount++
+		return nil
+	}
+
+	checkpointSeq := localSeq
+
+	if checkpointSeq != "" {
+		_, err = ParsePlainSequenceID(checkpointSeq)
+		if err == nil {
+			c.stats.GetCheckpointHitCount++
+		} else {
+			base.WarnfCtx(c.ctx, "couldn't parse checkpoint sequence %q, unable to use previous checkpoint: %v", checkpointSeq, err)
+			c.stats.GetCheckpointMissCount++
+		}
+	} else {
+		c.stats.GetCheckpointMissCount++
+	}
+	return nil
+}
+
+// fetchDefaultCollectionCheckpoints sets lastCheckpointSeq for the given Checkpointer by requesting various checkpoints on the local and remote.
 // Various scenarios this function handles:
 // - Matching checkpoints from local and remote. Use that sequence.
 // - Both SGR2 checkpoints are missing, we'll start the replication from zero.
 // - Mismatched config hashes, use a zero value for sequence, so the replication can restart.
 // - Mismatched sequences, we'll pick the lower of the two, and attempt to roll back the higher checkpoint to that point.
-func (c *Checkpointer) fetchCollectionCheckpoints() error {
-	base.TracefCtx(c.ctx, base.KeyReplicate, "fetchCollectionCheckpoints()")
+func (c *Checkpointer) fetchDefaultCollectionCheckpoints() error {
+	base.TracefCtx(c.ctx, base.KeyReplicate, "fetchDefaultCollectionCheckpoints()")
 
 	localCheckpoint, err := c.getLocalCheckpoint()
 	if err != nil {

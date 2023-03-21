@@ -192,9 +192,16 @@ func (apr *ActivePullReplicator) _initCheckpointer() error {
 	err := apr.forEachCollection(func(c *activeReplicatorCollection) error {
 		c.Checkpointer = NewCheckpointer(apr.checkpointerCtx, c.dataStore, apr.CheckpointID, checkpointHash, apr.blipSender, apr.config, apr.getPullStatus, c.collectionIdx)
 
-		err := c.Checkpointer.fetchCollectionCheckpoints()
-		if err != nil {
-			return err
+		if !apr.config.CollectionsEnabled {
+			err := c.Checkpointer.fetchDefaultCollectionCheckpoints()
+			if err != nil {
+				return err
+			}
+		} else {
+			err := c.Checkpointer.fetchNamedCollectionCheckpoints()
+			if err != nil {
+				return err
+			}
 		}
 
 		if err := apr.registerCheckpointerCallbacks(c); err != nil {
