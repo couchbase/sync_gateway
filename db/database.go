@@ -1324,7 +1324,6 @@ outerLoop:
 		}
 
 	}
-
 	return users, nil
 }
 
@@ -1373,13 +1372,13 @@ outerLoop:
 				//principalName = viewRow.Key
 				startKey = viewRow.Key
 			} else {
-				var queryRow QueryIdRow
+				var queryRow principalRow
 				found := results.Next(&queryRow)
 				if !found {
 					break
 				}
 				rowID = queryRow.Id
-				startKey = queryRow.Id
+				startKey = queryRow.Name
 			}
 			if len(rowID) < lenDbUserPrefix && len(rowID) < lenDbRolePrefix {
 				continue
@@ -1390,10 +1389,13 @@ outerLoop:
 			if !isDbUser && !isDbRole {
 				continue
 			}
-			if isDbUser {
+			if !db.Options.UseViews {
+				principalName = startKey
+			} else if isDbUser {
 				principalName = rowID[lenDbUserPrefix:]
 			} else {
 				principalName = rowID[lenDbRolePrefix:]
+
 			}
 			resultCount++
 
@@ -1538,7 +1540,7 @@ outerLoop:
 				skipAddition = true
 			}
 
-			var queryRow QueryIdRow
+			var queryRow principalRow
 			found := results.Next(&queryRow)
 			if !found {
 				break
@@ -1549,7 +1551,12 @@ outerLoop:
 			if !strings.HasPrefix(queryRow.Id, dbRoleIDPrefix) {
 				break
 			}
-			roleName = queryRow.Id[lenRoleKeyPrefix:]
+			if !db.UseViews() {
+				roleName = queryRow.Name
+			} else {
+				roleName = queryRow.Id[lenRoleKeyPrefix:]
+
+			}
 			startKey = queryRow.Id
 
 			resultCount++

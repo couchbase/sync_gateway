@@ -11,7 +11,9 @@ licenses/APL2.txt.
 package auth
 
 import (
+	"fmt"
 	"log"
+	"strings"
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -393,4 +395,70 @@ func TestUserAuthenticateWithNoHashAndBadPassword(t *testing.T) {
 
 	user.(*userImpl).OldPasswordHash_ = nil
 	assert.False(t, user.Authenticate("hunter3"))
+}
+
+func TestUserKeysHash(t *testing.T) {
+	for _, metadataDefault := range []bool{false, true} {
+		t.Run(fmt.Sprintf("metadataDefault=%t", metadataDefault), func(t *testing.T) {
+			testBucket := base.GetTestBucket(t)
+			defer testBucket.Close()
+			dataStore := testBucket.GetSingleDataStore()
+
+			auth := NewAuthenticator(dataStore, nil, DefaultAuthenticatorOptions())
+			if !metadataDefault {
+				namedMetadataOptions := DefaultAuthenticatorOptions()
+				namedMetadataOptions.MetaKeys = base.NewMetadataKeys("foo")
+
+				auth = NewAuthenticator(testBucket.GetSingleDataStore(), nil, namedMetadataOptions)
+
+			}
+			bobUsername := "bob"
+			bobEmail := "bob@example.com"
+			password := "hunter2"
+			bob, err := auth.NewUserNoChannels(bobUsername, password)
+			require.NoError(t, err)
+			require.NoError(t, bob.SetEmail(bobEmail))
+			require.NoError(t, auth.Save(bob))
+			require.Equal(t, bobUsername, bob.Name())
+			if metadataDefault {
+				require.Equal(t, "_sync:user:bob", auth.DocIDForUser(bobUsername))
+				docExists(t, dataStore, "_sync:user:bob")
+				docExists(t, dataStore, "_sync:useremail:bob@example.com")
+			} else {
+				require.Equal(t, "_sync:user:foo:bob", auth.DocIDForUser(bobUsername))
+				docExists(t, dataStore, "_sync:user:foo:bob")
+				docExists(t, dataStore, "_sync:useremail:foo:bob@example.com")
+			}
+			require.Equal(t, bobEmail, bob.Email())
+			bobUserByEmail, err := auth.GetUserByEmail(bobEmail)
+			require.NoError(t, err)
+			require.Equal(t, bobUsername, bobUserByEmail.Name())
+			require.Equal(t, bobEmail, bobUserByEmail.Email())
+
+			aliceUsername := "alice"
+			aliceEmail := strings.Repeat("alice", 8) + "@example.com"
+			alice, err := auth.NewUserNoChannels(aliceUsername, password)
+			require.NoError(t, err)
+			require.NoError(t, alice.SetEmail(aliceEmail))
+			require.NoError(t, auth.Save(alice))
+			require.Equal(t, aliceUsername, alice.Name())
+
+			aliceUserByEmail, err := auth.GetUserByEmail(aliceEmail)
+			require.NoError(t, err)
+			require.Equal(t, aliceUsername, aliceUserByEmail.Name())
+			require.Equal(t, aliceEmail, aliceUserByEmail.Email())
+			if metadataDefault {
+				docExists(t, dataStore, "_sync:user:alice")
+				docExists(t, dataStore, "_sync:useremail:"+aliceEmail)
+			} else {
+				docExists(t, dataStore, "_sync:user:foo:alice")
+				docExists(t, dataStore, "_sync:useremail:foo:e0b6d4d16a0bb754b56dd931d508f8cd42bae3bb")
+			}
+		})
+	}
+}
+
+func docExists(t *testing.T, dataStore base.DataStore, key string) {
+	_, _, err := dataStore.GetRaw(key)
+	require.Nil(t, err, "doc %s should exist in datastore", key)
 }

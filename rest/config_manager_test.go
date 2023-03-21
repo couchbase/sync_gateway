@@ -144,12 +144,12 @@ func TestLongMetadataID(t *testing.T) {
 	shortMetadataID := bootstrapContext.standardMetadataID("dbName")
 	assert.Equal(t, "dbName", shortMetadataID)
 
-	maxLengthNonHashedDbName := "longDbName012345678901234567890123456789012"
+	maxLengthNonHashedDbName := "longDbName01234567890123456789012345678"
 	nonHashedMetadataID := bootstrapContext.standardMetadataID(maxLengthNonHashedDbName)
 	assert.Equal(t, maxLengthNonHashedDbName, nonHashedMetadataID)
 
-	longMetadataID := bootstrapContext.standardMetadataID("longDbName0123456789012345678901234567890123")
-	assert.Equal(t, "6g2n4W2aWmQLvZIH7JXbv4V0klGFAEvZJ68gTVrgW7A=", longMetadataID)
+	longMetadataID := bootstrapContext.standardMetadataID("longDbName012345678901234567890123456789")
+	assert.Equal(t, "da551b63fcdb3c725007b0909d48c2255ad1f934", longMetadataID)
 
 	// Ensure no collision on hashed IDs (i.e. attempting to set a db name to a base64 hash will trigger rehashing)
 	rehashMetadataID := bootstrapContext.standardMetadataID(longMetadataID)
