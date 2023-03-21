@@ -1000,7 +1000,7 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 
 		// Stamp attachments so we can patch them
 		if len(deltaSrcRev.Attachments) > 0 {
-			deltaSrcBody[BodyAttachments] = deltaSrcRev.Attachments.AsMap()
+			deltaSrcBody[BodyAttachments] = map[string]any(deltaSrcRev.Attachments.AsMap())
 		}
 
 		var newDocBody Body

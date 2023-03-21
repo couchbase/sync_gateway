@@ -128,6 +128,7 @@ func DocAttachmentFromMap(att DocAttachmentJSON) (*DocAttachment, error) {
 func DocAttachmentFromAny(x any) (*DocAttachment, error) {
 	switch att := x.(type) {
 	case DocAttachmentJSON:
+		return DocAttachmentFromMap(att)
 	case map[string]any:
 		return DocAttachmentFromMap(att)
 	case *DocAttachment:
@@ -140,9 +141,9 @@ func DocAttachmentFromAny(x any) (*DocAttachment, error) {
 }
 
 // Creates a plain map version of the attachment, with keys "digest", etc.
-func (att *DocAttachment) AsMap() AttachmentsMetaJSON {
+func (att *DocAttachment) AsMap() DocAttachmentJSON {
 	data, _ := json.Marshal(att)
-	var result AttachmentsMetaJSON
+	var result DocAttachmentJSON
 	_ = base.JSONUnmarshal(data, &result)
 	return result
 }
@@ -170,6 +171,7 @@ func AttachmentsMetaFromAny(x any) (AttachmentsMeta, error) {
 	case AttachmentsMeta:
 		return atts, nil
 	case AttachmentsMetaJSON:
+		return AttachmentsMetaFromJSON(atts)
 	case map[string]any:
 		return AttachmentsMetaFromJSON(atts)
 	case nil:
