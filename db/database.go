@@ -421,12 +421,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 	}
 
 	// Initialize metadata ID and keys
-	// TODO: apply length limit to metadataID
-	metadataID := dbName
-	if options.MetadataID != "" {
-		metadataID = options.MetadataID
-	}
-	metaKeys := base.NewMetadataKeys(metadataID)
+	metaKeys := base.NewMetadataKeys(options.MetadataID)
 	dbContext.MetadataKeys = metaKeys
 
 	cleanupFunctions = append(cleanupFunctions, func() {

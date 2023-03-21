@@ -1369,9 +1369,7 @@ func TestGetUserCollectionAccess(t *testing.T) {
 	collectionPayload := fmt.Sprintf(`,"%s": {
 					"admin_channels":["foo", "bar1"]
 				}`, collection2Name)
-	//rdOnlycollectionPayload := fmt.Sprintf(`,"%s": {
-	//				"jwt_channels":["foo", "bar1"]
-	//			}`, collection2Name)
+
 	// Create a user with collection metadata
 	userRolePayload := `{
 		%s
@@ -1406,12 +1404,6 @@ func TestGetUserCollectionAccess(t *testing.T) {
 	assert.Equal(t, channels.BaseSetOf(t, "foo", "bar1", "!"), collectionAccess.Channels_)
 	assert.Nil(t, collectionAccess.JWTChannels_)
 	assert.Nil(t, collectionAccess.JWTLastUpdated)
-
-	// Attempt to write read-only properties for PUT /_user and /_role, disabled until CBG-2761 is fixed
-	//putResponse = rt.SendAdminRequest("PUT", "/db/_user/bob2", fmt.Sprintf(userRolePayload, `"email":"bob@couchbase.com","password":"letmein",`, scope1Name, collection2Name, rdOnlycollectionPayload))
-	//RequireStatus(t, putResponse, 400)
-	//putResponse = rt.SendAdminRequest("PUT", "/db/_role/role12", fmt.Sprintf(userRolePayload, ``, scope1Name, collection2Name, rdOnlycollectionPayload))
-	//RequireStatus(t, putResponse, 400)
 
 	scopesConfig = GetCollectionsConfig(t, testBucket, 1)
 	scopesConfigString, err := json.Marshal(scopesConfig)
@@ -1509,4 +1501,20 @@ func TestPutUserCollectionAccess(t *testing.T) {
 	userResponse := rt.SendAdminRequest("GET", "/db/_user/bob", "")
 	RequireStatus(t, userResponse, http.StatusOK)
 	assert.NotContains(t, userResponse.ResponseRecorder.Body.String(), collection2Name)
+
+	// Attempt to write read-only properties for PUT /_user and /_role
+	readOnlyProperties := []string{"all_channels", "jwt_channels", "jwt_last_updated"}
+	for _, property := range readOnlyProperties {
+		rdOnlyValue := `["ABC"]`
+		if property == "jwt_last_updated" {
+			rdOnlyValue = "22:55:44"
+		}
+		readOnlyCollectionPayload := fmt.Sprintf(`,"%s": {
+					"%s":%s
+				}`, collection2Name, property, rdOnlyValue)
+		putResponse = rt.SendAdminRequest("PUT", "/db/_user/bob2", fmt.Sprintf(userPayload, `"email":"bob@couchbase.com","password":"letmein",`, scopeName, collection2Name, `["ABC"]`, readOnlyCollectionPayload))
+		RequireStatus(t, putResponse, 400)
+		putResponse = rt.SendAdminRequest("PUT", "/db/_role/role12", fmt.Sprintf(userPayload, ``, scopeName, collection2Name, `["ABC"]`, readOnlyCollectionPayload))
+		RequireStatus(t, putResponse, 400)
+	}
 }

@@ -269,6 +269,15 @@ func (dbc *DatabaseContext) RequiresCollectionAccessUpdate(ctx context.Context, 
 				if err != nil {
 					return false, base.HTTPErrorf(http.StatusNotFound, "keyspace specified in collection_access (%s) not found", fmt.Sprintf("%s.%s.%s", dbc.Name, scopeName, collectionName))
 				}
+				if updatedCollectionAccess.Channels_ != nil {
+					return false, base.HTTPErrorf(http.StatusBadRequest, "collection_access.all_channels is read-only")
+				}
+				if updatedCollectionAccess.JWTChannels_ != nil {
+					return false, base.HTTPErrorf(http.StatusBadRequest, "collection_access.jwt_channels is read-only")
+				}
+				if updatedCollectionAccess.JWTLastUpdated != nil {
+					return false, base.HTTPErrorf(http.StatusBadRequest, "collection_access.jwt_last_updated is read-only")
+				}
 				if updatedCollectionAccess == nil {
 					if princ.CollectionExplicitChannels(scopeName, collectionName) != nil {
 						requiresUpdate = true
