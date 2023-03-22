@@ -1448,7 +1448,7 @@ func TestReplicationMultiCollectionChannelFilter(t *testing.T) {
 				"` + rt1Keyspace + `": ["ChannelOne"]
 			}
 		},
-		"collections_enabled": ` + strconv.FormatBool(!rt1.GetDatabase().OnlyDefaultCollection()) + `,
+		"collections_enabled": true,
 		"collections_local": ["` + rt1Keyspace + `"]
 	}`
 
