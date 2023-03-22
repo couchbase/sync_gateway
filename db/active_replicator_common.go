@@ -12,6 +12,7 @@ package db
 
 import (
 	"context"
+	"errors"
 	"expvar"
 	"sync"
 	"testing"
@@ -25,6 +26,8 @@ const (
 	defaultInitialReconnectInterval = time.Second
 	defaultMaxReconnectInterval     = time.Minute * 5
 )
+
+var fatalReplicatorConnectError = errors.New("Fatal replication connection")
 
 // replicatorCommon defines the struct contents shared by ActivePushReplicator
 // and ActivePullReplicator

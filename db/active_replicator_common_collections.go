@@ -141,7 +141,6 @@ func (arc *activeReplicatorCommon) _initCollections() ([]replicationCheckpoint, 
 	}
 
 	arc.blipSyncContext.collections.set(blipSyncCollectionContexts)
-
 	return collectionCheckpoints, nil
 }
 

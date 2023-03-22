@@ -9,6 +9,7 @@
 package db
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/couchbase/go-blip"
@@ -21,7 +22,8 @@ import (
 func (apr *ActivePushReplicator) _startPushWithCollections() error {
 	collectionCheckpoints, err := apr._initCollections()
 	if err != nil {
-		return err
+		return fmt.Errorf("%w: %s", fatalReplicatorConnectError, err)
+
 	}
 
 	if err := apr._initCheckpointer(); err != nil {

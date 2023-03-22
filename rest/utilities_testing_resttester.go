@@ -162,11 +162,12 @@ func (rt *RestTester) WaitForAssignedReplications(count int) {
 }
 
 func (rt *RestTester) WaitForReplicationStatusForDB(dbName string, replicationID string, targetStatus string) {
+	var status db.ReplicationStatus
 	successFunc := func() bool {
-		status := rt.GetReplicationStatusForDB(dbName, replicationID)
+		status = rt.GetReplicationStatusForDB(dbName, replicationID)
 		return status.Status == targetStatus
 	}
-	require.NoError(rt.TB, rt.WaitForCondition(successFunc))
+	require.NoError(rt.TB, rt.WaitForCondition(successFunc), "Expected status: %s, actual status: %s", targetStatus, status.Status)
 }
 
 func (rt *RestTester) WaitForReplicationStatus(replicationID string, targetStatus string) {

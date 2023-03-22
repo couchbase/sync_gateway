@@ -40,7 +40,6 @@ func NewPushReplicator(ctx context.Context, config *ActiveReplicatorConfig) (*Ac
 }
 
 func (apr *ActivePushReplicator) Start(ctx context.Context) error {
-
 	apr.lock.Lock()
 	defer apr.lock.Unlock()
 
@@ -60,8 +59,10 @@ func (apr *ActivePushReplicator) Start(ctx context.Context) error {
 	err := apr._connect()
 	if err != nil {
 		_ = apr.setError(err)
-		base.WarnfCtx(apr.ctx, "Couldn't connect: %v", err)
-		if apr.config.TotalReconnectTimeout != 0 {
+		base.WarnfCtx(apr.ctx, "Couldn't connect: %s", err)
+		if errors.Is(err, fatalReplicatorConnectError) {
+			base.WarnfCtx(apr.ctx, "Stopping replication connection attempt")
+		} else if apr.config.TotalReconnectTimeout != 0 {
 			base.InfofCtx(apr.ctx, base.KeyReplicate, "Attempting to reconnect in background: %v", err)
 			apr.reconnectActive.Set(true)
 			go apr.reconnectLoop()
@@ -97,7 +98,6 @@ func (apr *ActivePushReplicator) _connect() error {
 	}
 
 	apr.setState(ReplicationStateRunning)
-
 	return nil
 }
 
