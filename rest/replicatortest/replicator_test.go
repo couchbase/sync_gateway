@@ -2503,12 +2503,9 @@ func TestActiveReplicatorPullFromCheckpoint(t *testing.T) {
 	assert.Equal(t, int64(numRT2DocsInitial), pullCheckpointer.Stats().ExpectedSequenceCount)
 
 	// checkpoint assertions
+	assert.Equal(t, int64(0), pullCheckpointer.Stats().GetCheckpointHitCount)
+	assert.Equal(t, int64(1), pullCheckpointer.Stats().GetCheckpointMissCount)
 
-	// CBG-2767 skip assertions for GetCheckpoint stats
-	if rt2.GetDatabase().OnlyDefaultCollection() {
-		assert.Equal(t, int64(0), pullCheckpointer.Stats().GetCheckpointHitCount)
-		assert.Equal(t, int64(1), pullCheckpointer.Stats().GetCheckpointMissCount)
-	}
 	// Since we bumped the checkpointer interval, we're only setting checkpoints on replicator close.
 	assert.Equal(t, int64(0), pullCheckpointer.Stats().SetCheckpointCount)
 	pullCheckpointer.CheckpointNow()
@@ -2562,13 +2559,10 @@ func TestActiveReplicatorPullFromCheckpoint(t *testing.T) {
 	assert.Equal(t, int64(numRT2DocsTotal-numRT2DocsInitial), pullCheckpointer.Stats().ProcessedSequenceCount)
 	assert.Equal(t, int64(numRT2DocsTotal-numRT2DocsInitial), pullCheckpointer.Stats().ExpectedSequenceCount)
 
-	// CBG-2767 skip assertions for GetCheckpoint stats
-	if rt2.GetDatabase().OnlyDefaultCollection() {
-		// assert the second active replicator stats
+	// assert the second active replicator stats
+	assert.Equal(t, int64(1), pullCheckpointer.Stats().GetCheckpointHitCount)
+	assert.Equal(t, int64(0), pullCheckpointer.Stats().GetCheckpointMissCount)
 
-		assert.Equal(t, int64(1), pullCheckpointer.Stats().GetCheckpointHitCount)
-		assert.Equal(t, int64(0), pullCheckpointer.Stats().GetCheckpointMissCount)
-	}
 	assert.Equal(t, int64(0), pullCheckpointer.Stats().SetCheckpointCount)
 	pullCheckpointer.CheckpointNow()
 	assert.Equal(t, int64(1), pullCheckpointer.Stats().SetCheckpointCount)
@@ -2686,10 +2680,8 @@ func TestActiveReplicatorPullFromCheckpointIgnored(t *testing.T) {
 
 	// checkpoint assertions
 	assert.Equal(t, int64(0), pullCheckpointer.Stats().GetCheckpointHitCount)
-	// CBG-2767 skip assertions for GetCheckpoint stats
-	if rt2.GetDatabase().OnlyDefaultCollection() {
-		assert.Equal(t, int64(1), pullCheckpointer.Stats().GetCheckpointMissCount)
-	}
+	assert.Equal(t, int64(1), pullCheckpointer.Stats().GetCheckpointMissCount)
+
 	// Since we bumped the checkpointer interval, we're only setting checkpoints on replicator close.
 	assert.Equal(t, int64(0), pullCheckpointer.Stats().SetCheckpointCount)
 	pullCheckpointer.CheckpointNow()
@@ -2731,14 +2723,10 @@ func TestActiveReplicatorPullFromCheckpointIgnored(t *testing.T) {
 	assert.Equal(t, int64(0), pullCheckpointer.Stats().ProcessedSequenceCount)
 	assert.Equal(t, int64(0), pullCheckpointer.Stats().ExpectedSequenceCount)
 
-	// CBG-2767 skip assertions for GetCheckpoint stats
-	if rt2.GetDatabase().OnlyDefaultCollection() {
-		// assert the second active replicator stats
+	// assert the second active replicator stats
+	assert.Equal(t, int64(1), pullCheckpointer.Stats().GetCheckpointHitCount)
+	assert.Equal(t, int64(0), pullCheckpointer.Stats().GetCheckpointMissCount)
 
-		assert.Equal(t, int64(1), pullCheckpointer.Stats().GetCheckpointMissCount)
-		assert.Equal(t, int64(1), pullCheckpointer.Stats().GetCheckpointHitCount)
-		assert.Equal(t, int64(0), pullCheckpointer.Stats().GetCheckpointMissCount)
-	}
 	assert.Equal(t, int64(0), pullCheckpointer.Stats().SetCheckpointCount)
 	pullCheckpointer.CheckpointNow()
 	assert.Equal(t, int64(1), pullCheckpointer.Stats().SetCheckpointCount)
@@ -3124,12 +3112,9 @@ func TestActiveReplicatorPushFromCheckpoint(t *testing.T) {
 	assert.Equal(t, int64(numRT1DocsInitial), pushCheckpointer.Stats().ExpectedSequenceCount)
 
 	// checkpoint assertions
-	// CBG-2767 skip assertions for GetCheckpoint stats
-	if rt2.GetDatabase().OnlyDefaultCollection() {
+	assert.Equal(t, int64(0), pushCheckpointer.Stats().GetCheckpointHitCount)
+	assert.Equal(t, int64(1), pushCheckpointer.Stats().GetCheckpointMissCount)
 
-		assert.Equal(t, int64(0), pushCheckpointer.Stats().GetCheckpointHitCount)
-		assert.Equal(t, int64(1), pushCheckpointer.Stats().GetCheckpointMissCount)
-	}
 	assert.Equal(t, int64(0), pushCheckpointer.Stats().SetCheckpointCount)
 	require.NoError(t, ar.Stop())
 
@@ -3185,12 +3170,9 @@ func TestActiveReplicatorPushFromCheckpoint(t *testing.T) {
 	assert.Equal(t, int64(numRT1DocsTotal-numRT1DocsInitial), pushCheckpointer.Stats().ExpectedSequenceCount)
 
 	// assert the second active replicator stats
-	// CBG-2767 skip assertions for GetCheckpoint stats
-	if rt2.GetDatabase().OnlyDefaultCollection() {
+	assert.Equal(t, int64(1), pushCheckpointer.Stats().GetCheckpointHitCount)
+	assert.Equal(t, int64(0), pushCheckpointer.Stats().GetCheckpointMissCount)
 
-		assert.Equal(t, int64(1), pushCheckpointer.Stats().GetCheckpointHitCount)
-		assert.Equal(t, int64(0), pushCheckpointer.Stats().GetCheckpointMissCount)
-	}
 	assert.Equal(t, int64(0), pushCheckpointer.Stats().SetCheckpointCount)
 	pushCheckpointer.CheckpointNow()
 	assert.Equal(t, int64(1), pushCheckpointer.Stats().SetCheckpointCount)
@@ -3305,12 +3287,9 @@ func TestActiveReplicatorEdgeCheckpointNameCollisions(t *testing.T) {
 	assert.Equal(t, int64(numRT1DocsInitial), edge1PullCheckpointer.Stats().ExpectedSequenceCount)
 
 	// checkpoint assertions
-	// CBG-2767 skip assertions for GetCheckpoint stats
-	if rt1.GetDatabase().OnlyDefaultCollection() {
+	assert.Equal(t, int64(0), edge1PullCheckpointer.Stats().GetCheckpointHitCount)
+	assert.Equal(t, int64(1), edge1PullCheckpointer.Stats().GetCheckpointMissCount)
 
-		assert.Equal(t, int64(0), edge1PullCheckpointer.Stats().GetCheckpointHitCount)
-		assert.Equal(t, int64(1), edge1PullCheckpointer.Stats().GetCheckpointMissCount)
-	}
 	assert.Equal(t, int64(1), edge1PullCheckpointer.Stats().SetCheckpointCount)
 
 	assert.NoError(t, edge1Replicator.Stop())
@@ -3344,12 +3323,9 @@ func TestActiveReplicatorEdgeCheckpointNameCollisions(t *testing.T) {
 	edge2PullCheckpointer.CheckpointNow()
 
 	// make sure that edge 2 didn't use a checkpoint
-	// CBG-2767 skip assertions for GetCheckpoint stats
-	if edge2.GetDatabase().OnlyDefaultCollection() {
+	assert.Equal(t, int64(0), edge2PullCheckpointer.Stats().GetCheckpointHitCount)
+	assert.Equal(t, int64(1), edge2PullCheckpointer.Stats().GetCheckpointMissCount)
 
-		assert.Equal(t, int64(0), edge2PullCheckpointer.Stats().GetCheckpointHitCount)
-		assert.Equal(t, int64(1), edge2PullCheckpointer.Stats().GetCheckpointMissCount)
-	}
 	assert.Equal(t, int64(1), edge2PullCheckpointer.Stats().SetCheckpointCount)
 
 	assert.NoError(t, edge2Replicator.Stop())
@@ -3378,12 +3354,11 @@ func TestActiveReplicatorEdgeCheckpointNameCollisions(t *testing.T) {
 
 	edge1Checkpointer2 := edge1Replicator2.Pull.GetSingleCollection(t).Checkpointer
 	edge1Checkpointer2.CheckpointNow()
-	// CBG-2767 skip assertions for GetCheckpoint stats
-	if edge1.GetDatabase().OnlyDefaultCollection() {
-
+	if rt1.GetDatabase().OnlyDefaultCollection() {
 		assert.Equal(t, int64(1), edge1Checkpointer2.Stats().GetCheckpointHitCount)
 		assert.Equal(t, int64(0), edge1Checkpointer2.Stats().GetCheckpointMissCount)
 	}
+
 	assert.Equal(t, int64(1), edge1Checkpointer2.Stats().SetCheckpointCount)
 
 	require.NoError(t, edge1Replicator2.Stop())
@@ -4374,11 +4349,9 @@ func TestActiveReplicatorRecoverFromLocalFlush(t *testing.T) {
 	assert.Equal(t, int64(1), pullCheckpointer.Stats().ExpectedSequenceCount)
 
 	// checkpoint assertions
-	// CBG-2767 skip assertions for GetCheckpoint stats
-	if rt2.GetDatabase().OnlyDefaultCollection() {
-		assert.Equal(t, int64(0), pullCheckpointer.Stats().GetCheckpointHitCount)
-		assert.Equal(t, int64(1), pullCheckpointer.Stats().GetCheckpointMissCount)
-	}
+	assert.Equal(t, int64(0), pullCheckpointer.Stats().GetCheckpointHitCount)
+	assert.Equal(t, int64(1), pullCheckpointer.Stats().GetCheckpointMissCount)
+
 	// Since we bumped the checkpointer interval, we're only setting checkpoints on replicator close.
 	assert.Equal(t, int64(0), pullCheckpointer.Stats().SetCheckpointCount)
 	pullCheckpointer.CheckpointNow()
@@ -4407,10 +4380,8 @@ func TestActiveReplicatorRecoverFromLocalFlush(t *testing.T) {
 	pullCheckpointer = ar.Pull.GetSingleCollection(t).Checkpointer
 
 	// we pulled the remote checkpoint, but the local checkpoint wasn't there to match it.
-	// CBG-2767 skip assertions for GetCheckpoint stats
-	if rt1.GetDatabase().OnlyDefaultCollection() {
-		assert.Equal(t, int64(0), pullCheckpointer.Stats().GetCheckpointHitCount)
-	}
+	assert.Equal(t, int64(0), pullCheckpointer.Stats().GetCheckpointHitCount)
+
 	// wait for document originally written to rt2 to arrive at rt1
 	changesResults, err = rt1.WaitForChanges(1, "/{{.keyspace}}/_changes?since=0", "", true)
 	require.NoError(t, err)
@@ -4539,12 +4510,9 @@ func TestActiveReplicatorRecoverFromRemoteFlush(t *testing.T) {
 	assert.Equal(t, int64(1), pushCheckpointer.Stats().ExpectedSequenceCount)
 
 	// checkpoint assertions
-	// CBG-2767 skip assertions for GetCheckpoint stats
-	if rt1.GetDatabase().OnlyDefaultCollection() {
+	assert.Equal(t, int64(0), pushCheckpointer.Stats().GetCheckpointHitCount)
+	assert.Equal(t, int64(1), pushCheckpointer.Stats().GetCheckpointMissCount)
 
-		assert.Equal(t, int64(0), pushCheckpointer.Stats().GetCheckpointHitCount)
-		assert.Equal(t, int64(1), pushCheckpointer.Stats().GetCheckpointMissCount)
-	}
 	// Since we bumped the checkpointer interval, we're only setting checkpoints on replicator close.
 	assert.Equal(t, int64(0), pushCheckpointer.Stats().SetCheckpointCount)
 	pushCheckpointer.CheckpointNow()
@@ -4609,11 +4577,8 @@ func TestActiveReplicatorRecoverFromRemoteFlush(t *testing.T) {
 	assert.Equal(t, int64(1), pushCheckpointer.Stats().ExpectedSequenceCount)
 
 	// assert the second active replicator stats
-	// CBG-2767 skip assertions for GetCheckpoint stats
-	if rt1.GetDatabase().OnlyDefaultCollection() {
+	assert.Equal(t, int64(1), pushCheckpointer.Stats().GetCheckpointMissCount)
 
-		assert.Equal(t, int64(1), pushCheckpointer.Stats().GetCheckpointMissCount)
-	}
 	assert.Equal(t, int64(0), pushCheckpointer.Stats().SetCheckpointCount)
 	pushCheckpointer.CheckpointNow()
 	assert.Equal(t, int64(1), pushCheckpointer.Stats().SetCheckpointCount)
@@ -5100,12 +5065,9 @@ func TestActiveReplicatorPullModifiedHash(t *testing.T) {
 	assert.Equal(t, int64(numDocsPerChannelInitial), pullCheckpointer.Stats().ExpectedSequenceCount)
 
 	// checkpoint assertions
-	// CBG-2767 skip assertions for GetCheckpoint stats
-	if rt1.GetDatabase().OnlyDefaultCollection() {
+	assert.Equal(t, int64(0), pullCheckpointer.Stats().GetCheckpointHitCount)
+	assert.Equal(t, int64(1), pullCheckpointer.Stats().GetCheckpointMissCount)
 
-		assert.Equal(t, int64(0), pullCheckpointer.Stats().GetCheckpointHitCount)
-		assert.Equal(t, int64(1), pullCheckpointer.Stats().GetCheckpointMissCount)
-	}
 	// Since we bumped the checkpointer interval, we're only setting checkpoints on replicator close.
 	assert.Equal(t, int64(0), pullCheckpointer.Stats().SetCheckpointCount)
 	pullCheckpointer.CheckpointNow()
