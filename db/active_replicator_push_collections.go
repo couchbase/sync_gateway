@@ -44,6 +44,7 @@ func (apr *ActivePushReplicator) _startPushWithCollections() error {
 		if err != nil {
 			return err
 		}
+		apr.incrementHitandMissStatsCollections(collectionIdx, sinceSeq)
 
 		dbCollectionWithUser := &DatabaseCollectionWithUser{
 			DatabaseCollection: c.dbCollection,

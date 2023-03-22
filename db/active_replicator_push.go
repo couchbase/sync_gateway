@@ -154,11 +154,6 @@ func (apr *ActivePushReplicator) _initCheckpointer() error {
 			if err != nil {
 				return err
 			}
-		} else {
-			err := c.Checkpointer.fetchNamedCollectionCheckpoints()
-			if err != nil {
-				return err
-			}
 		}
 
 		if err := apr.registerCheckpointerCallbacks(c); err != nil {
@@ -345,4 +340,16 @@ func (apr *ActivePushReplicator) _startPushNonCollection() error {
 	}(apr.blipSender)
 
 	return nil
+}
+
+func (apr *ActivePushReplicator) incrementHitandMissStatsCollections(collectionID *int, since SequenceID) {
+	for _, v := range apr.namedCollections {
+		if v.collectionIdx == collectionID {
+			if !since.IsNonZero() {
+				v.Checkpointer.stats.GetCheckpointMissCount++
+			} else {
+				v.Checkpointer.stats.GetCheckpointHitCount++
+			}
+		}
+	}
 }

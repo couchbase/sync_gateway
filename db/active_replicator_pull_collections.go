@@ -34,6 +34,7 @@ func (apr *ActivePullReplicator) _startPullWithCollections() error {
 
 	for i, checkpoint := range collectionCheckpoints {
 		since := checkpoint.LastSeq
+		apr.incrementHitandMissStatsCollections(base.IntPtr(i), since)
 		err = apr._subChanges(base.IntPtr(i), since)
 		if err != nil {
 			break
