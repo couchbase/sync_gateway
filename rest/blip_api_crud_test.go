@@ -2420,7 +2420,7 @@ func TestProcessRevIncrementsStat(t *testing.T) {
 	dbstats, err := stats.DBReplicatorStats(t.Name())
 	require.NoError(t, err)
 
-	ar := db.NewActiveReplicator(activeCtx, &db.ActiveReplicatorConfig{
+	ar, err := db.NewActiveReplicator(activeCtx, &db.ActiveReplicatorConfig{
 		ID:                  t.Name(),
 		Direction:           db.ActiveReplicatorTypePull,
 		ActiveDB:            &db.Database{DatabaseContext: activeRT.GetDatabase()},
@@ -2429,6 +2429,8 @@ func TestProcessRevIncrementsStat(t *testing.T) {
 		ReplicationStatsMap: dbstats,
 		CollectionsEnabled:  !activeRT.GetDatabase().OnlyDefaultCollection(),
 	})
+	require.NoError(t, err)
+
 	// Confirm all stats starting on 0
 	require.NotNil(t, ar.Pull)
 	pullStats := ar.Pull.GetStats()
