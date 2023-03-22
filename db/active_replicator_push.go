@@ -341,15 +341,3 @@ func (apr *ActivePushReplicator) _startPushNonCollection() error {
 
 	return nil
 }
-
-func (apr *ActivePushReplicator) incrementHitandMissStatsCollections(collectionID *int, since SequenceID) {
-	for _, v := range apr.namedCollections {
-		if v.collectionIdx == collectionID {
-			if !since.IsNonZero() {
-				v.Checkpointer.stats.GetCheckpointMissCount++
-			} else {
-				v.Checkpointer.stats.GetCheckpointHitCount++
-			}
-		}
-	}
-}

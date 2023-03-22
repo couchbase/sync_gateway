@@ -304,15 +304,3 @@ func (apr *ActivePullReplicator) Stop() error {
 	}
 	return nil
 }
-
-func (apr *ActivePullReplicator) incrementHitandMissStatsCollections(collectionID *int, since string) {
-	for _, v := range apr.namedCollections {
-		if v.collectionIdx == collectionID {
-			if since == "" {
-				v.Checkpointer.stats.GetCheckpointMissCount++
-			} else {
-				v.Checkpointer.stats.GetCheckpointHitCount++
-			}
-		}
-	}
-}
