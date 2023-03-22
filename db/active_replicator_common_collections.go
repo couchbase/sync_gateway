@@ -42,9 +42,12 @@ func (arc *activeReplicatorCommon) _initCollections() ([]replicationCheckpoint, 
 	}
 
 	// ensure channel filter set is the same length as local collection set
-	if channelFilterLen := len(arc.config.CollectionsChannelFilter); channelFilterLen > 0 {
-		if localLen := len(arc.config.CollectionsLocal); localLen != channelFilterLen {
-			return nil, fmt.Errorf("local collections and channel filter set must be the same length... had %d and %d", localLen, channelFilterLen)
+	if collectionsChannelFilterLen := len(arc.config.CollectionsChannelFilter); collectionsChannelFilterLen > 0 {
+		if localLen := len(arc.config.CollectionsLocal); localLen != collectionsChannelFilterLen {
+			return nil, fmt.Errorf("local collections and channel filter set must be the same length... had %d and %d", localLen, collectionsChannelFilterLen)
+		}
+		if channelFilterLen := len(arc.config.FilterChannels); channelFilterLen > 0 {
+			return nil, fmt.Errorf("channel filter and collection channel filter set cannot both be set")
 		}
 	}
 

@@ -182,15 +182,17 @@ func TestActiveReplicatorMultiCollection(t *testing.T) {
 		assert.Len(t, changes.Results, expectedNumDocs)
 
 		for j := 1; j <= numDocsPerCollection; j++ {
+			expectedStatus := http.StatusOK
 			if !slices.Contains(collectionsFilter[i], channels[j%len(channels)]) {
 				// doc doesn't match channel filter
-				continue
+				expectedStatus = http.StatusNotFound
 			}
 
 			// check rt1 for passive docs (pull)
 			resp = rt1.SendAdminRequest(http.MethodGet,
 				fmt.Sprintf("/%s/passive-doc%d", localKeyspace, j), "")
-			if rest.AssertStatus(t, resp, http.StatusOK) {
+			rest.AssertStatus(t, resp, expectedStatus)
+			if resp.Code == http.StatusOK {
 				var docBody db.Body
 				require.NoError(t, docBody.Unmarshal(resp.BodyBytes()))
 				assert.Equal(t, "passive", docBody["source"])
@@ -200,7 +202,8 @@ func TestActiveReplicatorMultiCollection(t *testing.T) {
 			// check rt2 for active docs (push)
 			resp = rt2.SendAdminRequest(http.MethodGet,
 				fmt.Sprintf("/%s/active-doc%d", remoteKeyspace, j), "")
-			if rest.AssertStatus(t, resp, http.StatusOK) {
+			rest.AssertStatus(t, resp, expectedStatus)
+			if resp.Code == http.StatusOK {
 				var docBody db.Body
 				require.NoError(t, docBody.Unmarshal(resp.BodyBytes()))
 				assert.Equal(t, "active", docBody["source"])

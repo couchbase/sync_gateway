@@ -596,8 +596,7 @@ func (m *sgReplicateManager) NewActiveReplicatorConfig(config *ReplicationCfg) (
 	// Channel filter processing
 	if config.Filter == base.ByChannelFilter {
 		rc.Filter = base.ByChannelFilter
-		err = rc.setFilterChannels(config)
-		if err != nil {
+		if err := rc.setFilterChannels(config); err != nil {
 			return nil, err
 		}
 	}
