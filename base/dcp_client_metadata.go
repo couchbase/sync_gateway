@@ -35,7 +35,7 @@ type DCPMetadata struct {
 }
 
 type DCPMetadataStore interface {
-	// Rollback resets vBucket metadata, preserving endSeqno and startSeqno
+	// Rollback resets vBucket metadata, preserving endSeqno
 	Rollback(ctx context.Context, vbID uint16)
 
 	// SetMeta updates the DCPMetadata for a vbucket
@@ -83,7 +83,7 @@ func NewDCPMetadataMem(numVbuckets uint16) *DCPMetadataMem {
 	return m
 }
 
-// Rollback resets the metadata, preserving EndSeqNo and startSeqno
+// Rollback resets the metadata, preserving EndSeqNo
 func (m *DCPMetadataMem) Rollback(logCtx context.Context, vbID uint16) {
 	m.metadata[vbID] = DCPMetadata{
 		VbUUID:          0,
