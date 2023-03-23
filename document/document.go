@@ -140,7 +140,7 @@ func NewDocument(docid string) *Document {
 }
 
 // Unmarshals the document body, without special properties.
-// This is expensive and should be FOR TESTS ONLY.
+// DEPRECATED -- This ignores any unmarshaling error; it's only preserved because tests call it
 func (doc *Document) UnmarshalBody() Body {
 	body, _ := doc.GetDeepMutableBody()
 	return body
@@ -149,6 +149,10 @@ func (doc *Document) UnmarshalBody() Body {
 // Unmarshals the document body, without special properties.
 // DEPRECATED -- Once V8 is merged there should be no more need for this method.
 func (doc *Document) GetDeepMutableBody() (Body, error) {
+	if doc._rawBody == nil {
+		base.WarnfCtx(context.Background(), "Null doc body/rawBody %s/%s from %s", base.UD(doc.ID), base.UD(doc.RevID), base.GetCallersName(1, true))
+		return nil, nil
+	}
 	var mutableBody Body
 	err := mutableBody.Unmarshal(doc._rawBody)
 	if err != nil {
@@ -356,7 +360,7 @@ func ParseXattrStreamData(xattrName string, userXattrName string, data []byte) (
 func (doc *Document) IsSGWrite(ctx context.Context, rawBody []byte) (isSGWrite bool, crc32Match bool, bodyChanged bool) {
 
 	// If the raw body is available, use SyncData.IsSGWrite
-	if rawBody != nil && len(rawBody) > 0 {
+	if len(rawBody) > 0 {
 
 		isSgWriteFeed, crc32MatchFeed, bodyChangedFeed := doc.SyncData.IsSGWrite(doc.Cas, rawBody, doc.rawUserXattr)
 		if !isSgWriteFeed {
@@ -387,7 +391,7 @@ func (doc *Document) IsSGWrite(ctx context.Context, rawBody []byte) (isSGWrite b
 
 	// If the current body crc32c matches the one in doc.SyncData, this was an SG write (i.e. has already been imported)
 	if currentBodyCrc32c != doc.SyncData.Crc32c {
-		base.DebugfCtx(ctx, base.KeyCRUD, "Doc %s is not an SG write, based on cas and body hash. cas:%x syncCas:%q", base.UD(doc.ID), doc.Cas, doc.SyncData.Cas)
+		base.DebugfCtx(ctx, base.KeyCRUD, "Doc %s is not an SG write, based on body CRC32. current:%q SyncData:%q", base.UD(doc.ID), currentBodyCrc32c, doc.SyncData.Crc32c)
 		return false, false, true
 	}
 

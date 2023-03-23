@@ -92,7 +92,12 @@ func (db *DatabaseCollectionWithUser) ImportDoc(ctx context.Context, docid strin
 		return nil, err
 	}
 
-	return db.importDoc(ctx, docid, existingDoc.UnmarshalBody(), expiry, isDelete, existingBucketDoc, mode)
+	body, err := existingDoc.GetDeepMutableBody()
+	if err != nil {
+		base.InfofCtx(ctx, base.KeyImport, "Unmarshal error during importDoc %v", err)
+		return nil, err
+	}
+	return db.importDoc(ctx, docid, body, expiry, isDelete, existingBucketDoc, mode)
 }
 
 // Import document
@@ -151,9 +156,12 @@ func (db *DatabaseCollectionWithUser) importDoc(ctx context.Context, docid strin
 
 			// If this is an on-demand import, we want to continue to import the current version of the doc.  Re-initialize existing doc based on the latest doc
 			if mode == ImportOnDemand {
-				body = doc.UnmarshalBody()
+				body, err = doc.GetDeepMutableBody()
 				if body == nil {
-					return nil, nil, false, nil, base.ErrEmptyDocument
+					if err == nil {
+						err = base.ErrEmptyDocument
+					}
+					return nil, nil, false, nil, err
 				}
 
 				existingDoc = &sgbucket.BucketDocument{
@@ -197,7 +205,7 @@ func (db *DatabaseCollectionWithUser) importDoc(ctx context.Context, docid strin
 
 			// If document still requires import post-migration attempt, continue with import processing based on the body returned by migrate
 			doc = migratedDoc
-			body = migratedDoc.UnmarshalBody()
+			body, _ = migratedDoc.GetDeepMutableBody()
 			base.InfofCtx(ctx, base.KeyMigrate, "Falling back to import with cas: %v", doc.Cas)
 		}
 
