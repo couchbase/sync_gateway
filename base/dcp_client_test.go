@@ -350,8 +350,9 @@ func TestContinuousDCPRollback(t *testing.T) {
 	gocbv2Bucket, err := AsGocbV2Bucket(bucket.Bucket)
 	require.NoError(t, err)
 
-	collection, ok := dataStore.(*Collection)
-	require.True(t, ok)
+	collection, err := AsCollection(dataStore)
+	require.NoError(t, err)
+
 	var collectionIDs []uint32
 	if collection.IsSupported(sgbucket.BucketStoreFeatureCollections) {
 		collectionIDs = append(collectionIDs, collection.GetCollectionID())
@@ -377,20 +378,20 @@ func TestContinuousDCPRollback(t *testing.T) {
 	require.NoError(t, startErr)
 
 	// Add documents
+	const numDocs = 10000
 	updatedBody := map[string]interface{}{"foo": "bar"}
-	for i := 0; i < 10000; i++ {
+	for i := 0; i < numDocs; i++ {
 		key := fmt.Sprintf("%s_%d", t.Name(), i)
 		err := dataStore.Set(key, 0, nil, updatedBody)
 		require.NoError(t, err)
 	}
 
-	// wait for a timeout to ensure client streams lal mutations over continuous feed
+	// wait for a timeout to ensure client streams all mutations over continuous feed
 	select {
 	case <-doneChan:
 		t.Fatalf("continuous client closed early")
 	case <-timeout:
 		mutationCount := atomic.LoadUint64(&mutationCount)
-		fmt.Println(int(mutationCount))
 		require.Equal(t, uint64(10000), mutationCount)
 	}
 

@@ -237,6 +237,17 @@ func (dc *DCPClient) configureOneShot() error {
 	return nil
 }
 
+func (dc *DCPClient) configureContinuous() {
+	var i uint16
+	maxSeqno := gocbcore.SeqNo(0xffffffffffffffff)
+	endSeqNos := make(map[uint16]uint64, dc.numVbuckets)
+
+	for i = 0; i < dc.numVbuckets; i++ {
+		endSeqNos[i] = uint64(maxSeqno)
+	}
+	dc.metadata.SetEndSeqNos(endSeqNos)
+}
+
 // Start returns an error and a channel to indicate when the DCPClient is done. If Start returns an error, DCPClient.Close() needs to be called.
 func (dc *DCPClient) Start() (doneChan chan error, err error) {
 	err = dc.initAgent(dc.spec)
@@ -248,6 +259,8 @@ func (dc *DCPClient) Start() (doneChan chan error, err error) {
 		if err != nil {
 			return dc.doneChannel, err
 		}
+	} else {
+		dc.configureContinuous()
 	}
 	dc.startWorkers()
 
@@ -435,9 +448,9 @@ func (dc *DCPClient) openStream(vbID uint16, maxRetries uint32) (err error) {
 				return fmt.Errorf("%s, failOnRollback requested", openStreamErr)
 			}
 			InfofCtx(logCtx, KeyDCP, "Open stream for vbID %d failed due to rollback or range error, will roll back metadata and retry: %v", vbID, openStreamErr)
-			err := dc.rollback(vbID)
+			err := dc.rollback(logCtx, vbID)
 			if err != nil {
-				DebugfCtx(logCtx, KeyDCP, "failed to rollback metadata for vb %d: error: %v", vbID, err)
+				WarnfCtx(logCtx, "failed to rollback metadata for vb %d: error: %v", vbID, err)
 				return fmt.Errorf("metadata rollback failed for vb %d: %v", vbID, err)
 			}
 		case errors.Is(openStreamErr, gocbcore.ErrShutdown):
@@ -460,18 +473,11 @@ func (dc *DCPClient) openStream(vbID uint16, maxRetries uint32) (err error) {
 	return fmt.Errorf("openStream failed to complete after %d attempts, last error: %w", openRetryCount, openStreamErr)
 }
 
-func (dc *DCPClient) rollback(vbID uint16) (err error) {
-	logCtx := context.TODO()
+func (dc *DCPClient) rollback(logCtx context.Context, vbID uint16) (err error) {
 	if dc.dbStats != nil {
 		dc.dbStats.Add("dcp_rollback_count", 1)
 	}
-	if dc.oneShot {
-		DebugfCtx(logCtx, KeyDCP, "initiating a oneshot rollback for vb: %d", vbID)
-		dc.metadata.OneshotRollback(vbID)
-	} else {
-		DebugfCtx(logCtx, KeyDCP, "initiating a continuous rollback for vb: %d", vbID)
-		dc.metadata.ContinuousRollback(vbID)
-	}
+	dc.metadata.Rollback(logCtx, vbID)
 	return nil
 }
 
