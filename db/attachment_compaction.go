@@ -191,14 +191,14 @@ func attachmentCompactMarkPhase(ctx context.Context, dataStore base.DataStore, c
 
 // AttachmentsMetaMap struct is a very minimal struct to unmarshal into when getting attachments from bodies
 type AttachmentsMetaMap struct {
-	Attachments map[string]AttachmentsMeta `json:"_attachments"`
+	Attachments AttachmentsMeta `json:"_attachments"`
 }
 
 // AttachmentCompactionData struct to unmarshal a document sync data into in order to process attachments during mark
 // phase. Contains only what is necessary
 type AttachmentCompactionData struct {
-	Attachments map[string]AttachmentsMeta `json:"attachments"`
-	Flags       uint8                      `json:"flags"`
+	Attachments AttachmentsMeta `json:"attachments"`
+	Flags       uint8           `json:"flags"`
 	History     struct {
 		BodyMap    map[string]string `json:"bodymap"`
 		BodyKeyMap map[string]string `json:"BodyKeyMap"`
@@ -272,29 +272,13 @@ func checkForInlineAttachments(body []byte) (*AttachmentsMetaMap, error) {
 // handleAttachments will iterate over the provided attachments and add any attachment doc IDs to the provided map
 // Doesn't require an error return as if we fail at any point in here the attachment is either not a v1 attachment, or
 // is unreadable which is likely unrecoverable.
-func handleAttachments(attachmentKeyMap map[string]string, docKey string, attachmentsMap map[string]AttachmentsMeta) {
-	/* TEMP
-	for attName, attachmentMeta := range attachmentsMap {
-		attMetaMap := attachmentMeta
-
-		attVer, ok := document.GetAttachmentVersion(attMetaMap)
-		if !ok {
-			continue
+func handleAttachments(attachmentKeyMap map[string]string, docKey string, attachmentsMap AttachmentsMeta) {
+	for attName, attachment := range attachmentsMap {
+		if attachment.Version <= AttVersion1 && attachment.Digest != "" {
+			attKey := MakeAttachmentKey(AttVersion1, docKey, attachment.Digest)
+			attachmentKeyMap[attName] = attKey
 		}
-
-		if attVer != AttVersion1 {
-			continue
-		}
-
-		digest, ok := attMetaMap["digest"]
-		if !ok {
-			continue
-		}
-
-		attKey := MakeAttachmentKey(AttVersion1, docKey, digest.(string))
-		attachmentKeyMap[attName] = attKey
 	}
-	*/
 }
 
 func attachmentCompactSweepPhase(ctx context.Context, dataStore base.DataStore, collectionID uint32, db *Database, compactionID string, vbUUIDs []uint64, dryRun bool, terminator *base.SafeTerminator, purgedAttachmentCount *base.AtomicInt) (int64, error) {
