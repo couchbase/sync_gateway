@@ -322,6 +322,7 @@ func TestDCPClientMultiFeedConsistency(t *testing.T) {
 }
 
 func TestContinuousDCPRollback(t *testing.T) {
+	SetUpTestLogging(t, LevelDebug, KeyDCP)
 
 	if UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
@@ -359,10 +360,11 @@ func TestContinuousDCPRollback(t *testing.T) {
 	}
 
 	dcpClientOpts := DCPClientOptions{
-		FailOnRollback:   false,
-		OneShot:          false,
-		CollectionIDs:    collectionIDs,
-		CheckpointPrefix: DefaultMetadataKeys.DCPCheckpointPrefix(t.Name()),
+		FailOnRollback:    false,
+		OneShot:           false,
+		CollectionIDs:     collectionIDs,
+		CheckpointPrefix:  DefaultMetadataKeys.DCPCheckpointPrefix(t.Name()),
+		MetadataStoreType: DCPMetadataStoreInMemory,
 	}
 
 	// timeout for feed to complete
@@ -412,7 +414,7 @@ func (dc *DCPClient) forceRollbackvBucket(uuid gocbcore.VbUUID) {
 		if i%2 == 0 {
 			metadata[i] = dc.metadata.GetMeta(i)
 			metadata[i].VbUUID = uuid
-			metadata[i].StartSeqNo = 6
+			metadata[i].StartSeqNo = 4
 		} else {
 			metadata[i] = dc.metadata.GetMeta(i)
 		}
