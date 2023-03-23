@@ -198,14 +198,10 @@ func (arc *activeReplicatorCommon) forEachCollection(callback func(*activeReplic
 // getFilteredChannels returns the filtered channels.
 // collectionIdx can be nil if replicating without collections enabled.
 func (config ActiveReplicatorConfig) getFilteredChannels(collectionIdx *int) []string {
-	if collectionIdx == nil {
-		return config.FilterChannels
+	if collectionIdx != nil {
+		if len(config.CollectionsChannelFilter)-1 >= *collectionIdx {
+			return config.CollectionsChannelFilter[*collectionIdx]
+		}
 	}
-
-	if len(config.CollectionsChannelFilter)-1 >= *collectionIdx {
-		return config.CollectionsChannelFilter[*collectionIdx]
-	}
-
-	// filter not present for collections, show all channels
-	return nil
+	return config.FilterChannels
 }
