@@ -22,12 +22,16 @@ type ActivePullReplicator struct {
 	*activeReplicatorCommon
 }
 
-func NewPullReplicator(ctx context.Context, config *ActiveReplicatorConfig) *ActivePullReplicator {
+func NewPullReplicator(ctx context.Context, config *ActiveReplicatorConfig) (*ActivePullReplicator, error) {
+	replicator, err := newActiveReplicatorCommon(ctx, config, ActiveReplicatorTypePull)
+	if err != nil {
+		return nil, err
+	}
 	apr := ActivePullReplicator{
-		activeReplicatorCommon: newActiveReplicatorCommon(ctx, config, ActiveReplicatorTypePull),
+		activeReplicatorCommon: replicator,
 	}
 	apr.replicatorConnectFn = apr._connect
-	return &apr
+	return &apr, nil
 }
 
 func (apr *ActivePullReplicator) Start(ctx context.Context) error {

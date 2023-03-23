@@ -27,12 +27,16 @@ type ActivePushReplicator struct {
 	*activeReplicatorCommon
 }
 
-func NewPushReplicator(ctx context.Context, config *ActiveReplicatorConfig) *ActivePushReplicator {
+func NewPushReplicator(ctx context.Context, config *ActiveReplicatorConfig) (*ActivePushReplicator, error) {
+	replicator, err := newActiveReplicatorCommon(ctx, config, ActiveReplicatorTypePush)
+	if err != nil {
+		return nil, err
+	}
 	apr := ActivePushReplicator{
-		activeReplicatorCommon: newActiveReplicatorCommon(ctx, config, ActiveReplicatorTypePush),
+		activeReplicatorCommon: replicator,
 	}
 	apr.replicatorConnectFn = apr._connect
-	return &apr
+	return &apr, nil
 }
 
 func (apr *ActivePushReplicator) Start(ctx context.Context) error {

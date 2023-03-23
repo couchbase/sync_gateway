@@ -124,7 +124,7 @@ func TestActiveReplicatorMultiCollection(t *testing.T) {
 	assert.Equal(t, activeKeyspace3, passiveKeyspace3)
 
 	ctx1 := rt1.Context()
-	ar := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
+	ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 		ID:          t.Name(),
 		Direction:   db.ActiveReplicatorTypePushAndPull,
 		RemoteDBURL: passiveDBURL,
@@ -138,6 +138,7 @@ func TestActiveReplicatorMultiCollection(t *testing.T) {
 		CollectionsLocal:    localCollections,
 		CollectionsRemote:   remoteCollections,
 	})
+	require.NoError(t, err)
 
 	assert.Equal(t, "", ar.GetStatus().LastSeqPull)
 
@@ -300,7 +301,7 @@ func TestActiveReplicatorMultiCollectionMismatchedLocalRemote(t *testing.T) {
 	require.NoError(t, err)
 
 	ctx1 := activeRT.Context()
-	ar := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
+	ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 		ID:          t.Name(),
 		Direction:   db.ActiveReplicatorTypePushAndPull,
 		RemoteDBURL: passiveDBURL,
@@ -312,6 +313,7 @@ func TestActiveReplicatorMultiCollectionMismatchedLocalRemote(t *testing.T) {
 		CollectionsLocal:    localCollections,
 		CollectionsRemote:   remoteCollections,
 	})
+	require.NoError(t, err)
 
 	err = ar.Start(ctx1)
 	assert.ErrorContains(t, err, "local and remote collections must be the same length")
@@ -339,7 +341,7 @@ func TestActiveReplicatorMultiCollectionMissingRemote(t *testing.T) {
 	require.NoError(t, err)
 
 	ctx1 := activeRT.Context()
-	ar := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
+	ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 		ID:          t.Name(),
 		Direction:   db.ActiveReplicatorTypePushAndPull,
 		RemoteDBURL: passiveDBURL,
@@ -351,6 +353,7 @@ func TestActiveReplicatorMultiCollectionMissingRemote(t *testing.T) {
 		CollectionsLocal:    localCollections,
 		CollectionsRemote:   remoteCollections,
 	})
+	require.NoError(t, err)
 
 	err = ar.Start(ctx1)
 	assert.ErrorContains(t, err, "peer does not have collection")
@@ -379,7 +382,7 @@ func TestActiveReplicatorMultiCollectionMissingLocal(t *testing.T) {
 	require.NoError(t, err)
 
 	ctx1 := activeRT.Context()
-	ar := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
+	ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 		ID:          t.Name(),
 		Direction:   db.ActiveReplicatorTypePushAndPull,
 		RemoteDBURL: passiveDBURL,
@@ -391,6 +394,7 @@ func TestActiveReplicatorMultiCollectionMissingLocal(t *testing.T) {
 		CollectionsLocal:    localCollections,
 		CollectionsRemote:   remoteCollections,
 	})
+	require.NoError(t, err)
 
 	err = ar.Start(ctx1)
 	assert.ErrorContains(t, err, "does not exist on this database")

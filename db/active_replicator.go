@@ -32,7 +32,7 @@ type ActiveReplicator struct {
 }
 
 // NewActiveReplicator returns a bidirectional active replicator for the given config.
-func NewActiveReplicator(ctx context.Context, config *ActiveReplicatorConfig) *ActiveReplicator {
+func NewActiveReplicator(ctx context.Context, config *ActiveReplicatorConfig) (*ActiveReplicator, error) {
 	ar := &ActiveReplicator{
 		ID:     config.ID,
 		config: config,
@@ -45,21 +45,29 @@ func NewActiveReplicator(ctx context.Context, config *ActiveReplicatorConfig) *A
 	ar.statusKey = metakeys.ReplicationStatusKey(config.ID)
 
 	if pushReplication := config.Direction == ActiveReplicatorTypePush || config.Direction == ActiveReplicatorTypePushAndPull; pushReplication {
-		ar.Push = NewPushReplicator(ctx, config)
+		var err error
+		ar.Push, err = NewPushReplicator(ctx, config)
+		if err != nil {
+			return nil, err
+		}
 		if ar.config.onComplete != nil {
 			ar.Push.onReplicatorComplete = ar._onReplicationComplete
 		}
 	}
 
 	if pullReplication := config.Direction == ActiveReplicatorTypePull || config.Direction == ActiveReplicatorTypePushAndPull; pullReplication {
-		ar.Pull = NewPullReplicator(ctx, config)
+		var err error
+		ar.Pull, err = NewPullReplicator(ctx, config)
+		if err != nil {
+			return nil, err
+		}
 		if ar.config.onComplete != nil {
 			ar.Pull.onReplicatorComplete = ar._onReplicationComplete
 		}
 	}
 
 	base.InfofCtx(ctx, base.KeyReplicate, "Created active replicator ID:%s statusKey: %s", config.ID, ar.statusKey)
-	return ar
+	return ar, nil
 }
 
 func (ar *ActiveReplicator) Start(ctx context.Context) error {
