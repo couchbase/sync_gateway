@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/couchbase/go-blip"
 	"github.com/couchbase/sync_gateway/base"
 )
 
@@ -25,37 +26,48 @@ func getScopeAndCollectionName(scopeAndCollectionStr string) (base.ScopeAndColle
 	return base.ScopeAndCollectionName{Scope: *scopeName, Collection: *collectionName}, nil
 }
 
-// _initCollections will negotiate the set of collections with the peer using GetCollections and returns the set of checkpoints for each of them.
-func (arc *activeReplicatorCommon) _initCollections() ([]replicationCheckpoint, error) {
-
-	var (
-		remoteCollectionsKeyspaces  base.ScopeAndCollectionNames
-		localCollectionsKeyspaces   base.ScopeAndCollectionNames
-		getCollectionsCheckpointIDs []string
-	)
-
+// validateCollectionsConfig validates the collections config for the active replicator.
+func (arc *activeReplicatorCommon) validateCollectionsConfig() error {
 	// ensure remote collection set is the same length as local collection set
 	if remoteLen := len(arc.config.CollectionsRemote); remoteLen > 0 {
 		if localLen := len(arc.config.CollectionsLocal); localLen != remoteLen {
-			return nil, fmt.Errorf("local and remote collections must be the same length... had %d and %d", localLen, remoteLen)
+			return fmt.Errorf("local and remote collections must be the same length... had %d and %d", localLen, remoteLen)
 		}
 	}
 
 	// ensure channel filter set is the same length as local collection set
 	if collectionsChannelFilterLen := len(arc.config.CollectionsChannelFilter); collectionsChannelFilterLen > 0 {
 		if localLen := len(arc.config.CollectionsLocal); localLen != collectionsChannelFilterLen {
-			return nil, fmt.Errorf("local collections and channel filter set must be the same length... had %d and %d", localLen, collectionsChannelFilterLen)
+			return fmt.Errorf("local collections and channel filter set must be the same length... had %d and %d", localLen, collectionsChannelFilterLen)
 		}
 		if channelFilterLen := len(arc.config.FilterChannels); channelFilterLen > 0 {
-			return nil, fmt.Errorf("channel filter and collection channel filter set cannot both be set")
+			return fmt.Errorf("channel filter and collection channel filter set cannot both be set")
 		}
 	}
 
+	return nil
+}
+
+// buildGetCollectionsMessage returns a GetCollections BLIP message for the given collection names.
+func (arc *activeReplicatorCommon) buildGetCollectionsMessage(remoteCollectionsKeyspaces base.ScopeAndCollectionNames) (*blip.Message, error) {
+	getCollectionsCheckpointIDs := make([]string, 0, len(remoteCollectionsKeyspaces))
+	for i := 0; i < len(remoteCollectionsKeyspaces); i++ {
+		getCollectionsCheckpointIDs = append(getCollectionsCheckpointIDs, arc.CheckpointID)
+	}
+
+	return NewGetCollectionsMessage(GetCollectionsRequestBody{
+		Collections:   remoteCollectionsKeyspaces.ScopeAndCollectionNames(),
+		CheckpointIDs: getCollectionsCheckpointIDs,
+	})
+}
+
+// buildCollectionsSetWithExplicitMappings returns a list of local collection names, and remote collection names according to any explicit mappings set.
+func (arc *activeReplicatorCommon) buildCollectionsSetWithExplicitMappings() (localCollectionsKeyspaces, remoteCollectionsKeyspaces base.ScopeAndCollectionNames, err error) {
 	if arc.config.CollectionsLocal != nil {
 		for i, localScopeAndCollection := range arc.config.CollectionsLocal {
 			localScopeAndCollectionName, err := getScopeAndCollectionName(localScopeAndCollection)
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 			localCollectionsKeyspaces = append(localCollectionsKeyspaces, localScopeAndCollectionName)
 
@@ -64,27 +76,38 @@ func (arc *activeReplicatorCommon) _initCollections() ([]replicationCheckpoint, 
 				base.DebugfCtx(arc.ctx, base.KeyReplicate, "Mapping local %q to remote %q", localScopeAndCollection, arc.config.CollectionsRemote[i])
 				remoteScopeAndCollectionName, err := getScopeAndCollectionName(arc.config.CollectionsRemote[i])
 				if err != nil {
-					return nil, err
+					return nil, nil, err
 				}
 				remoteCollectionsKeyspaces = append(remoteCollectionsKeyspaces, remoteScopeAndCollectionName)
 			} else {
+				// no mapping set - use local collection name
 				remoteCollectionsKeyspaces = append(remoteCollectionsKeyspaces, localScopeAndCollectionName)
 			}
-			getCollectionsCheckpointIDs = append(getCollectionsCheckpointIDs, arc.CheckpointID)
 		}
 	} else {
 		// collections to replicate wasn't set - so build a full set based on local database
 		for _, dbCollection := range arc.blipSyncContext.blipContextDb.CollectionByID {
 			localCollectionsKeyspaces = append(localCollectionsKeyspaces, base.ScopeAndCollectionName{Scope: dbCollection.ScopeName, Collection: dbCollection.Name})
 			remoteCollectionsKeyspaces = append(remoteCollectionsKeyspaces, base.ScopeAndCollectionName{Scope: dbCollection.ScopeName, Collection: dbCollection.Name})
-			getCollectionsCheckpointIDs = append(getCollectionsCheckpointIDs, arc.CheckpointID)
 		}
 	}
 
-	msg, err := NewGetCollectionsMessage(GetCollectionsRequestBody{
-		Collections:   remoteCollectionsKeyspaces.ScopeAndCollectionNames(),
-		CheckpointIDs: getCollectionsCheckpointIDs,
-	})
+	return localCollectionsKeyspaces, remoteCollectionsKeyspaces, nil
+}
+
+// _initCollections will negotiate the set of collections with the peer using GetCollections and returns the set of checkpoints for each of them.
+func (arc *activeReplicatorCommon) _initCollections() ([]replicationCheckpoint, error) {
+
+	if err := arc.validateCollectionsConfig(); err != nil {
+		return nil, err
+	}
+
+	localCollectionsKeyspaces, remoteCollectionsKeyspaces, err := arc.buildCollectionsSetWithExplicitMappings()
+	if err != nil {
+		return nil, err
+	}
+
+	msg, err := arc.buildGetCollectionsMessage(remoteCollectionsKeyspaces)
 	if err != nil {
 		return nil, err
 	}
