@@ -64,6 +64,20 @@ func JSONEncoderCanonical(w io.Writer) JSONEncoderI {
 	return json.NewEncoder(w)
 }
 
+// Incrementally parses a JSON object, passing each top-level key to a callback.
+// The callback can choose to unmarshal the value by returning a pointer to a destination value
+// (just like the pointer passed to `json.Unmarshal()`), it can return `nil` to skip it, or it
+// can return an error to abort the parse.
+//
+// The function returns a copy of the JSON with all of the unmarshaled key/value pairs removed,
+// i.e. containing only the skipped ones.
+//
+// For compatibility with json.Unmarshal, the input JSON `null` is allowed, and treated as an
+// empty object. The output JSON will be nil.
+//
+// For examples, see TestJSONExtract() in util_test.go.
+//
+// Note: CE and EE have different implementations of this.
 func JSONExtract(input []byte, callback func(string) (any, error)) (output []byte, err error) {
 	out := bytes.NewBufferString("{")
 	var copyFrom int64 = -1
@@ -74,8 +88,18 @@ func JSONExtract(input []byte, callback func(string) (any, error)) (output []byt
 	// Read the opening of the object:
 	if tok, err := iter.Token(); err != nil {
 		return nil, err
+	} else if tok == nil {
+		// For compatibility with json.Unmarshal, allow input `null`, treating it like an empty
+		// object but returning `nil`. But EOF must follow:
+		if _, err := iter.Token(); err == io.EOF {
+			return nil, nil
+		} else if err != nil {
+			return nil, err
+		} else {
+			return nil, fmt.Errorf("unexpected data after end")
+		}
 	} else if tok != json.Delim('{') {
-		return nil, fmt.Errorf("json: expected an object")
+		return nil, fmt.Errorf("expected an object")
 	}
 
 	for iter.More() {
@@ -139,5 +163,19 @@ func JSONExtract(input []byte, callback func(string) (any, error)) (output []byt
 		out.Write(input[copyFrom:iter.InputOffset()])
 	}
 	out.WriteByte('}')
+
+	// Read the closing brace:
+	if tok, err := iter.Token(); err != nil {
+		return nil, err
+	} else if tok != json.Delim('}') {
+		return nil, fmt.Errorf("unexpected data at end of object: %v", tok)
+	}
+
+	// Make sure there's nothing more:
+	if tok, err := iter.Token(); err == nil {
+		return nil, fmt.Errorf("unexpected data after end of object: %v", tok)
+	} else if err != io.EOF {
+		return nil, err
+	}
 	return out.Bytes(), nil
 }

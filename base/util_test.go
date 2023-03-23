@@ -1689,6 +1689,11 @@ func TestJSONExtract(t *testing.T) {
 			output: "{}",
 		},
 		{
+			name:   "Null",
+			input:  "null",
+			output: "",
+		},
+		{
 			name:   "One regular",
 			input:  `{"foo": 1234}`,
 			output: `{"foo": 1234}`,
@@ -1738,9 +1743,29 @@ func TestJSONExtract(t *testing.T) {
 
 		// Errors:
 		{
-			name:  "Not an object",
+			name:  "Array not object",
 			input: "[]",
 			error: "expected an object",
+		},
+		{
+			name:  "Null plus garbage",
+			input: "null 17",
+			error: "unexpected data after end",
+		},
+		{
+			name:  "Unclosed object",
+			input: `{"_id":"foo",`,
+			error: "EOF",
+		},
+		{
+			name:  "Bad token in object",
+			input: `{"_id":"foo", ,}`,
+			error: "ANY",
+		},
+		{
+			name:  "Object plus garbage",
+			input: `{"_id":"foo"} "but it keeps going"`,
+			error: "unexpected data after end",
 		},
 		{
 			name:  "Duplicate key",
@@ -1780,16 +1805,17 @@ func TestJSONExtract(t *testing.T) {
 				}
 			})
 
-			if tc.error != "" {
+			if tc.error == "ANY" {
+				assert.Error(t, err)
+				log.Printf("--> %s", err)
+			} else if tc.error != "" {
 				assert.ErrorContains(t, err, tc.error)
 				log.Printf("--> %s", err)
-				return
-			} else if !assert.NoError(t, err) {
-				return
+			} else if assert.NoError(t, err) {
+				assert.Equal(t, tc.output, string(output))
+				log.Printf("--> %#v", theValues)
+				assert.Equal(t, tc.values, theValues)
 			}
-			assert.Equal(t, tc.output, string(output))
-			log.Printf("--> %#v", theValues)
-			assert.Equal(t, tc.values, theValues)
 		})
 	}
 
