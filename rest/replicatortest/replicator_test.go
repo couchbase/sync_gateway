@@ -1800,7 +1800,7 @@ func TestActiveReplicatorHeartbeats(t *testing.T) {
 	dbstats, err := stats.DBReplicatorStats(t.Name())
 	require.NoError(t, err)
 
-	ar := db.NewActiveReplicator(ctx, &db.ActiveReplicatorConfig{
+	ar, err := db.NewActiveReplicator(ctx, &db.ActiveReplicatorConfig{
 		ID:                    t.Name(),
 		Direction:             db.ActiveReplicatorTypePush,
 		ActiveDB:              &db.Database{DatabaseContext: rt.GetDatabase()},
@@ -1810,6 +1810,7 @@ func TestActiveReplicatorHeartbeats(t *testing.T) {
 		ReplicationStatsMap:   dbstats,
 		CollectionsEnabled:    !rt.GetDatabase().OnlyDefaultCollection(),
 	})
+	require.NoError(t, err)
 
 	pingCountStart := base.ExpvarVar2Int(expvar.Get("goblip").(*expvar.Map).Get("sender_ping_count"))
 	pingGoroutinesStart := base.ExpvarVar2Int(expvar.Get("goblip").(*expvar.Map).Get("goroutines_sender_ping"))
@@ -1887,7 +1888,7 @@ func TestActiveReplicatorPullBasic(t *testing.T) {
 	dbstats, err := stats.DBReplicatorStats(t.Name())
 	require.NoError(t, err)
 
-	ar := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
+	ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 		ID:          t.Name(),
 		Direction:   db.ActiveReplicatorTypePull,
 		RemoteDBURL: passiveDBURL,
@@ -1899,6 +1900,7 @@ func TestActiveReplicatorPullBasic(t *testing.T) {
 		ReplicationStatsMap: dbstats,
 		CollectionsEnabled:  !rt1.GetDatabase().OnlyDefaultCollection(),
 	})
+	require.NoError(t, err)
 	defer func() { assert.NoError(t, ar.Stop()) }()
 
 	assert.Equal(t, "", ar.GetStatus().LastSeqPull)
@@ -1983,7 +1985,7 @@ func TestActiveReplicatorPullSkippedSequence(t *testing.T) {
 	dbstats, err := stats.DBReplicatorStats(t.Name())
 	require.NoError(t, err)
 
-	ar := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
+	ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 		ID:          t.Name(),
 		Direction:   db.ActiveReplicatorTypePull,
 		RemoteDBURL: passiveDBURL,
@@ -1995,6 +1997,7 @@ func TestActiveReplicatorPullSkippedSequence(t *testing.T) {
 		ReplicationStatsMap: dbstats,
 		CollectionsEnabled:  !rt1.GetDatabase().OnlyDefaultCollection(),
 	})
+	require.NoError(t, err)
 	defer func() { assert.NoError(t, ar.Stop()) }()
 
 	docIDPrefix := t.Name() + "rt2doc"
@@ -2135,7 +2138,7 @@ func TestActiveReplicatorPullAttachments(t *testing.T) {
 	dbstats, err := stats.DBReplicatorStats(t.Name())
 	require.NoError(t, err)
 
-	ar := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
+	ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 		ID:          t.Name(),
 		Direction:   db.ActiveReplicatorTypePull,
 		RemoteDBURL: passiveDBURL,
@@ -2147,6 +2150,7 @@ func TestActiveReplicatorPullAttachments(t *testing.T) {
 		ReplicationStatsMap: dbstats,
 		CollectionsEnabled:  !rt1.GetDatabase().OnlyDefaultCollection(),
 	})
+	require.NoError(t, err)
 	defer func() { assert.NoError(t, ar.Stop()) }()
 
 	assert.Equal(t, int64(0), ar.Pull.GetStats().GetAttachment.Value())
@@ -2463,7 +2467,8 @@ func TestActiveReplicatorPullFromCheckpoint(t *testing.T) {
 	}
 
 	// Create the first active replicator to pull from seq:0
-	ar := db.NewActiveReplicator(ctx1, &arConfig)
+	ar, err := db.NewActiveReplicator(ctx1, &arConfig)
+	require.NoError(t, err)
 
 	startNumChangesRequestedFromZeroTotal := rt2.GetDatabase().DbStats.CBLReplicationPull().NumPullReplSinceZero.Value()
 	startNumRevsSentTotal := rt2.GetDatabase().DbStats.CBLReplicationPull().RevSendCount.Value()
@@ -2503,12 +2508,9 @@ func TestActiveReplicatorPullFromCheckpoint(t *testing.T) {
 	assert.Equal(t, int64(numRT2DocsInitial), pullCheckpointer.Stats().ExpectedSequenceCount)
 
 	// checkpoint assertions
+	assert.Equal(t, int64(0), pullCheckpointer.Stats().GetCheckpointHitCount)
+	assert.Equal(t, int64(1), pullCheckpointer.Stats().GetCheckpointMissCount)
 
-	// CBG-2767 skip assertions for GetCheckpoint stats
-	if rt2.GetDatabase().OnlyDefaultCollection() {
-		assert.Equal(t, int64(0), pullCheckpointer.Stats().GetCheckpointHitCount)
-		assert.Equal(t, int64(1), pullCheckpointer.Stats().GetCheckpointMissCount)
-	}
 	// Since we bumped the checkpointer interval, we're only setting checkpoints on replicator close.
 	assert.Equal(t, int64(0), pullCheckpointer.Stats().SetCheckpointCount)
 	pullCheckpointer.CheckpointNow()
@@ -2523,7 +2525,8 @@ func TestActiveReplicatorPullFromCheckpoint(t *testing.T) {
 	}
 
 	// Create a new replicator using the same config, which should use the checkpoint set from the first.
-	ar = db.NewActiveReplicator(ctx1, &arConfig)
+	ar, err = db.NewActiveReplicator(ctx1, &arConfig)
+	require.NoError(t, err)
 	defer func() { assert.NoError(t, ar.Stop()) }()
 	assert.NoError(t, ar.Start(ctx1))
 
@@ -2562,13 +2565,10 @@ func TestActiveReplicatorPullFromCheckpoint(t *testing.T) {
 	assert.Equal(t, int64(numRT2DocsTotal-numRT2DocsInitial), pullCheckpointer.Stats().ProcessedSequenceCount)
 	assert.Equal(t, int64(numRT2DocsTotal-numRT2DocsInitial), pullCheckpointer.Stats().ExpectedSequenceCount)
 
-	// CBG-2767 skip assertions for GetCheckpoint stats
-	if rt2.GetDatabase().OnlyDefaultCollection() {
-		// assert the second active replicator stats
+	// assert the second active replicator stats
+	assert.Equal(t, int64(1), pullCheckpointer.Stats().GetCheckpointHitCount)
+	assert.Equal(t, int64(0), pullCheckpointer.Stats().GetCheckpointMissCount)
 
-		assert.Equal(t, int64(1), pullCheckpointer.Stats().GetCheckpointHitCount)
-		assert.Equal(t, int64(0), pullCheckpointer.Stats().GetCheckpointMissCount)
-	}
 	assert.Equal(t, int64(0), pullCheckpointer.Stats().SetCheckpointCount)
 	pullCheckpointer.CheckpointNow()
 	assert.Equal(t, int64(1), pullCheckpointer.Stats().SetCheckpointCount)
@@ -2645,7 +2645,8 @@ func TestActiveReplicatorPullFromCheckpointIgnored(t *testing.T) {
 	}
 
 	// Create the first active replicator to pull from seq:0
-	ar := db.NewActiveReplicator(ctx1, &arConfig)
+	ar, err := db.NewActiveReplicator(ctx1, &arConfig)
+	require.NoError(t, err)
 
 	startNumChangesRequestedFromZeroTotal := rt2.GetDatabase().DbStats.CBLReplicationPull().NumPullReplSinceZero.Value()
 
@@ -2686,10 +2687,8 @@ func TestActiveReplicatorPullFromCheckpointIgnored(t *testing.T) {
 
 	// checkpoint assertions
 	assert.Equal(t, int64(0), pullCheckpointer.Stats().GetCheckpointHitCount)
-	// CBG-2767 skip assertions for GetCheckpoint stats
-	if rt2.GetDatabase().OnlyDefaultCollection() {
-		assert.Equal(t, int64(1), pullCheckpointer.Stats().GetCheckpointMissCount)
-	}
+	assert.Equal(t, int64(1), pullCheckpointer.Stats().GetCheckpointMissCount)
+
 	// Since we bumped the checkpointer interval, we're only setting checkpoints on replicator close.
 	assert.Equal(t, int64(0), pullCheckpointer.Stats().SetCheckpointCount)
 	pullCheckpointer.CheckpointNow()
@@ -2709,7 +2708,8 @@ func TestActiveReplicatorPullFromCheckpointIgnored(t *testing.T) {
 	}
 
 	// Create a new replicator using the same config, which should use the checkpoint set from the first.
-	ar = db.NewActiveReplicator(ctx1, &arConfig)
+	ar, err = db.NewActiveReplicator(ctx1, &arConfig)
+	require.NoError(t, err)
 	defer func() { assert.NoError(t, ar.Stop()) }()
 	assert.NoError(t, ar.Start(ctx1))
 
@@ -2731,14 +2731,10 @@ func TestActiveReplicatorPullFromCheckpointIgnored(t *testing.T) {
 	assert.Equal(t, int64(0), pullCheckpointer.Stats().ProcessedSequenceCount)
 	assert.Equal(t, int64(0), pullCheckpointer.Stats().ExpectedSequenceCount)
 
-	// CBG-2767 skip assertions for GetCheckpoint stats
-	if rt2.GetDatabase().OnlyDefaultCollection() {
-		// assert the second active replicator stats
+	// assert the second active replicator stats
+	assert.Equal(t, int64(1), pullCheckpointer.Stats().GetCheckpointHitCount)
+	assert.Equal(t, int64(0), pullCheckpointer.Stats().GetCheckpointMissCount)
 
-		assert.Equal(t, int64(1), pullCheckpointer.Stats().GetCheckpointMissCount)
-		assert.Equal(t, int64(1), pullCheckpointer.Stats().GetCheckpointHitCount)
-		assert.Equal(t, int64(0), pullCheckpointer.Stats().GetCheckpointMissCount)
-	}
 	assert.Equal(t, int64(0), pullCheckpointer.Stats().SetCheckpointCount)
 	pullCheckpointer.CheckpointNow()
 	assert.Equal(t, int64(1), pullCheckpointer.Stats().SetCheckpointCount)
@@ -2790,7 +2786,7 @@ func TestActiveReplicatorPullOneshot(t *testing.T) {
 	dbstats, err := stats.DBReplicatorStats(t.Name())
 	require.NoError(t, err)
 
-	ar := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
+	ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 		ID:          t.Name(),
 		Direction:   db.ActiveReplicatorTypePull,
 		RemoteDBURL: passiveDBURL,
@@ -2801,6 +2797,7 @@ func TestActiveReplicatorPullOneshot(t *testing.T) {
 		ReplicationStatsMap: dbstats,
 		CollectionsEnabled:  !rt1.GetDatabase().OnlyDefaultCollection(),
 	})
+	require.NoError(t, err)
 	defer func() { assert.NoError(t, ar.Stop()) }()
 
 	assert.Equal(t, "", ar.GetStatus().LastSeqPull)
@@ -2876,7 +2873,7 @@ func TestActiveReplicatorPushBasic(t *testing.T) {
 	dbstats, err := stats.DBReplicatorStats(t.Name())
 	require.NoError(t, err)
 
-	ar := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
+	ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 		ID:          t.Name(),
 		Direction:   db.ActiveReplicatorTypePush,
 		RemoteDBURL: passiveDBURL,
@@ -2887,6 +2884,7 @@ func TestActiveReplicatorPushBasic(t *testing.T) {
 		ReplicationStatsMap: dbstats,
 		CollectionsEnabled:  !rt1.GetDatabase().OnlyDefaultCollection(),
 	})
+	require.NoError(t, err)
 	defer func() { assert.NoError(t, ar.Stop()) }()
 
 	assert.Equal(t, "", ar.GetStatus().LastSeqPush)
@@ -2957,7 +2955,7 @@ func TestActiveReplicatorPushAttachments(t *testing.T) {
 	dbstats, err := stats.DBReplicatorStats(t.Name())
 	require.NoError(t, err)
 
-	ar := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
+	ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 		ID:          t.Name(),
 		Direction:   db.ActiveReplicatorTypePush,
 		RemoteDBURL: passiveDBURL,
@@ -2969,6 +2967,7 @@ func TestActiveReplicatorPushAttachments(t *testing.T) {
 		ReplicationStatsMap: dbstats,
 		CollectionsEnabled:  !rt1.GetDatabase().OnlyDefaultCollection(),
 	})
+	require.NoError(t, err)
 	defer func() { assert.NoError(t, ar.Stop()) }()
 
 	assert.Equal(t, int64(0), ar.Push.GetStats().HandleGetAttachment.Value())
@@ -3084,7 +3083,8 @@ func TestActiveReplicatorPushFromCheckpoint(t *testing.T) {
 	dbstats, err := stats.DBReplicatorStats(t.Name())
 	require.NoError(t, err)
 	arConfig.ReplicationStatsMap = dbstats
-	ar := db.NewActiveReplicator(ctx1, &arConfig)
+	ar, err := db.NewActiveReplicator(ctx1, &arConfig)
+	require.NoError(t, err)
 
 	startNumChangesRequestedFromZeroTotal := rt1.GetDatabase().DbStats.CBLReplicationPull().NumPullReplSinceZero.Value()
 	startNumRevsSentTotal := ar.Push.GetStats().SendRevCount.Value()
@@ -3124,12 +3124,9 @@ func TestActiveReplicatorPushFromCheckpoint(t *testing.T) {
 	assert.Equal(t, int64(numRT1DocsInitial), pushCheckpointer.Stats().ExpectedSequenceCount)
 
 	// checkpoint assertions
-	// CBG-2767 skip assertions for GetCheckpoint stats
-	if rt2.GetDatabase().OnlyDefaultCollection() {
+	assert.Equal(t, int64(0), pushCheckpointer.Stats().GetCheckpointHitCount)
+	assert.Equal(t, int64(1), pushCheckpointer.Stats().GetCheckpointMissCount)
 
-		assert.Equal(t, int64(0), pushCheckpointer.Stats().GetCheckpointHitCount)
-		assert.Equal(t, int64(1), pushCheckpointer.Stats().GetCheckpointMissCount)
-	}
 	assert.Equal(t, int64(0), pushCheckpointer.Stats().SetCheckpointCount)
 	require.NoError(t, ar.Stop())
 
@@ -3145,7 +3142,8 @@ func TestActiveReplicatorPushFromCheckpoint(t *testing.T) {
 	dbstats, err = stats.DBReplicatorStats(t.Name())
 	require.NoError(t, err)
 	arConfig.ReplicationStatsMap = dbstats
-	ar = db.NewActiveReplicator(ctx1, &arConfig)
+	ar, err = db.NewActiveReplicator(ctx1, &arConfig)
+	require.NoError(t, err)
 	require.NoError(t, ar.Start(ctx1))
 	defer func() { assert.NoError(t, ar.Stop()) }()
 
@@ -3185,12 +3183,9 @@ func TestActiveReplicatorPushFromCheckpoint(t *testing.T) {
 	assert.Equal(t, int64(numRT1DocsTotal-numRT1DocsInitial), pushCheckpointer.Stats().ExpectedSequenceCount)
 
 	// assert the second active replicator stats
-	// CBG-2767 skip assertions for GetCheckpoint stats
-	if rt2.GetDatabase().OnlyDefaultCollection() {
+	assert.Equal(t, int64(1), pushCheckpointer.Stats().GetCheckpointHitCount)
+	assert.Equal(t, int64(0), pushCheckpointer.Stats().GetCheckpointMissCount)
 
-		assert.Equal(t, int64(1), pushCheckpointer.Stats().GetCheckpointHitCount)
-		assert.Equal(t, int64(0), pushCheckpointer.Stats().GetCheckpointMissCount)
-	}
 	assert.Equal(t, int64(0), pushCheckpointer.Stats().SetCheckpointCount)
 	pushCheckpointer.CheckpointNow()
 	assert.Equal(t, int64(1), pushCheckpointer.Stats().SetCheckpointCount)
@@ -3263,7 +3258,8 @@ func TestActiveReplicatorEdgeCheckpointNameCollisions(t *testing.T) {
 	dbstats, err := stats.DBReplicatorStats(t.Name())
 	require.NoError(t, err)
 	arConfig.ReplicationStatsMap = dbstats
-	edge1Replicator := db.NewActiveReplicator(ctx1, &arConfig)
+	edge1Replicator, err := db.NewActiveReplicator(ctx1, &arConfig)
+	require.NoError(t, err)
 
 	startNumChangesRequestedFromZeroTotal := rt1.GetDatabase().DbStats.CBLReplicationPull().NumPullReplSinceZero.Value()
 	startNumRevsHandledTotal := edge1Replicator.Pull.GetStats().HandleRevCount.Value()
@@ -3305,12 +3301,9 @@ func TestActiveReplicatorEdgeCheckpointNameCollisions(t *testing.T) {
 	assert.Equal(t, int64(numRT1DocsInitial), edge1PullCheckpointer.Stats().ExpectedSequenceCount)
 
 	// checkpoint assertions
-	// CBG-2767 skip assertions for GetCheckpoint stats
-	if rt1.GetDatabase().OnlyDefaultCollection() {
+	assert.Equal(t, int64(0), edge1PullCheckpointer.Stats().GetCheckpointHitCount)
+	assert.Equal(t, int64(1), edge1PullCheckpointer.Stats().GetCheckpointMissCount)
 
-		assert.Equal(t, int64(0), edge1PullCheckpointer.Stats().GetCheckpointHitCount)
-		assert.Equal(t, int64(1), edge1PullCheckpointer.Stats().GetCheckpointMissCount)
-	}
 	assert.Equal(t, int64(1), edge1PullCheckpointer.Stats().SetCheckpointCount)
 
 	assert.NoError(t, edge1Replicator.Stop())
@@ -3334,7 +3327,8 @@ func TestActiveReplicatorEdgeCheckpointNameCollisions(t *testing.T) {
 		DatabaseContext: edge2.GetDatabase(),
 	}
 	arConfig.SetCheckpointPrefix(t, "cluster2:")
-	edge2Replicator := db.NewActiveReplicator(ctx2, &arConfig)
+	edge2Replicator, err := db.NewActiveReplicator(ctx2, &arConfig)
+	require.NoError(t, err)
 	assert.NoError(t, edge2Replicator.Start(ctx2))
 
 	changesResults, err = edge2.WaitForChanges(numRT1DocsInitial, "/{{.keyspace}}/_changes?since=0", "", true)
@@ -3344,12 +3338,9 @@ func TestActiveReplicatorEdgeCheckpointNameCollisions(t *testing.T) {
 	edge2PullCheckpointer.CheckpointNow()
 
 	// make sure that edge 2 didn't use a checkpoint
-	// CBG-2767 skip assertions for GetCheckpoint stats
-	if edge2.GetDatabase().OnlyDefaultCollection() {
+	assert.Equal(t, int64(0), edge2PullCheckpointer.Stats().GetCheckpointHitCount)
+	assert.Equal(t, int64(1), edge2PullCheckpointer.Stats().GetCheckpointMissCount)
 
-		assert.Equal(t, int64(0), edge2PullCheckpointer.Stats().GetCheckpointHitCount)
-		assert.Equal(t, int64(1), edge2PullCheckpointer.Stats().GetCheckpointMissCount)
-	}
 	assert.Equal(t, int64(1), edge2PullCheckpointer.Stats().SetCheckpointCount)
 
 	assert.NoError(t, edge2Replicator.Stop())
@@ -3369,7 +3360,8 @@ func TestActiveReplicatorEdgeCheckpointNameCollisions(t *testing.T) {
 	}
 	arConfig.SetCheckpointPrefix(t, "cluster1:")
 
-	edge1Replicator2 := db.NewActiveReplicator(ctx1, &arConfig)
+	edge1Replicator2, err := db.NewActiveReplicator(ctx1, &arConfig)
+	require.NoError(t, err)
 	require.NoError(t, edge1Replicator2.Start(ctx1))
 
 	changesResults, err = edge1.WaitForChanges(1, fmt.Sprintf("/{{.keyspace}}/_changes?since=%v", edge1LastSeq), "", true)
@@ -3378,12 +3370,11 @@ func TestActiveReplicatorEdgeCheckpointNameCollisions(t *testing.T) {
 
 	edge1Checkpointer2 := edge1Replicator2.Pull.GetSingleCollection(t).Checkpointer
 	edge1Checkpointer2.CheckpointNow()
-	// CBG-2767 skip assertions for GetCheckpoint stats
-	if edge1.GetDatabase().OnlyDefaultCollection() {
-
+	if rt1.GetDatabase().OnlyDefaultCollection() {
 		assert.Equal(t, int64(1), edge1Checkpointer2.Stats().GetCheckpointHitCount)
 		assert.Equal(t, int64(0), edge1Checkpointer2.Stats().GetCheckpointMissCount)
 	}
+
 	assert.Equal(t, int64(1), edge1Checkpointer2.Stats().SetCheckpointCount)
 
 	require.NoError(t, edge1Replicator2.Stop())
@@ -3435,7 +3426,7 @@ func TestActiveReplicatorPushOneshot(t *testing.T) {
 	dbstats, err := stats.DBReplicatorStats(t.Name())
 	require.NoError(t, err)
 
-	ar := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
+	ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 		ID:          t.Name(),
 		Direction:   db.ActiveReplicatorTypePush,
 		RemoteDBURL: passiveDBURL,
@@ -3446,6 +3437,7 @@ func TestActiveReplicatorPushOneshot(t *testing.T) {
 		ReplicationStatsMap: dbstats,
 		CollectionsEnabled:  !rt1.GetDatabase().OnlyDefaultCollection(),
 	})
+	require.NoError(t, err)
 	defer func() { assert.NoError(t, ar.Stop()) }()
 
 	assert.Equal(t, "", ar.GetStatus().LastSeqPush)
@@ -3528,7 +3520,7 @@ func TestActiveReplicatorPullTombstone(t *testing.T) {
 	dbstats, err := stats.DBReplicatorStats(t.Name())
 	require.NoError(t, err)
 
-	ar := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
+	ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 		ID:          t.Name(),
 		Direction:   db.ActiveReplicatorTypePull,
 		RemoteDBURL: passiveDBURL,
@@ -3540,6 +3532,7 @@ func TestActiveReplicatorPullTombstone(t *testing.T) {
 		ReplicationStatsMap: dbstats,
 		CollectionsEnabled:  !rt1.GetDatabase().OnlyDefaultCollection(),
 	})
+	require.NoError(t, err)
 	defer func() { assert.NoError(t, ar.Stop()) }()
 
 	// Start the replicator (implicit connect)
@@ -3627,7 +3620,7 @@ func TestActiveReplicatorPullPurgeOnRemoval(t *testing.T) {
 	dbstats, err := stats.DBReplicatorStats(t.Name())
 	require.NoError(t, err)
 
-	ar := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
+	ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 		ID:          t.Name(),
 		Direction:   db.ActiveReplicatorTypePull,
 		RemoteDBURL: passiveDBURL,
@@ -3640,6 +3633,7 @@ func TestActiveReplicatorPullPurgeOnRemoval(t *testing.T) {
 		ReplicationStatsMap: dbstats,
 		CollectionsEnabled:  !rt1.GetDatabase().OnlyDefaultCollection(),
 	})
+	require.NoError(t, err)
 	defer func() { assert.NoError(t, ar.Stop()) }()
 
 	// Start the replicator (implicit connect)
@@ -3809,7 +3803,7 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 			replicationStats, err := stats.DBReplicatorStats(t.Name())
 			require.NoError(t, err)
 
-			ar := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
+			ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 				ID:          t.Name(),
 				Direction:   db.ActiveReplicatorTypePull,
 				RemoteDBURL: passiveDBURL,
@@ -3822,6 +3816,7 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 				ReplicationStatsMap:  replicationStats,
 				CollectionsEnabled:   !rt1.GetDatabase().OnlyDefaultCollection(),
 			})
+			require.NoError(t, err)
 			defer func() { assert.NoError(t, ar.Stop()) }()
 
 			// Start the replicator (implicit connect)
@@ -4043,7 +4038,7 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 			dbstats, err := stats.DBReplicatorStats(t.Name())
 			require.NoError(t, err)
 
-			ar := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
+			ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 				ID:          t.Name(),
 				Direction:   db.ActiveReplicatorTypePushAndPull,
 				RemoteDBURL: passiveDBURL,
@@ -4056,6 +4051,7 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 				ReplicationStatsMap:  dbstats,
 				CollectionsEnabled:   !rt1.GetDatabase().OnlyDefaultCollection(),
 			})
+			require.NoError(t, err)
 			defer func() { assert.NoError(t, ar.Stop()) }()
 
 			// Start the replicator (implicit connect)
@@ -4189,7 +4185,7 @@ func TestActiveReplicatorPushBasicWithInsecureSkipVerifyEnabled(t *testing.T) {
 	dbstats, err := stats.DBReplicatorStats(t.Name())
 	require.NoError(t, err)
 
-	ar := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
+	ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 		ID:          t.Name(),
 		Direction:   db.ActiveReplicatorTypePush,
 		RemoteDBURL: passiveDBURL,
@@ -4262,7 +4258,7 @@ func TestActiveReplicatorPushBasicWithInsecureSkipVerifyDisabled(t *testing.T) {
 	dbstats, err := stats.DBReplicatorStats(t.Name())
 	require.NoError(t, err)
 
-	ar := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
+	ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 		ID:          t.Name(),
 		Direction:   db.ActiveReplicatorTypePush,
 		RemoteDBURL: passiveDBURL,
@@ -4340,7 +4336,7 @@ func TestActiveReplicatorRecoverFromLocalFlush(t *testing.T) {
 	}
 
 	// Create the first active replicator to pull from seq:0
-	ar := db.NewActiveReplicator(ctx1, &arConfig)
+	ar, err := db.NewActiveReplicator(ctx1, &arConfig)
 	require.NoError(t, err)
 
 	startNumChangesRequestedFromZeroTotal := rt2.GetDatabase().DbStats.CBLReplicationPull().NumPullReplSinceZero.Value()
@@ -4374,11 +4370,9 @@ func TestActiveReplicatorRecoverFromLocalFlush(t *testing.T) {
 	assert.Equal(t, int64(1), pullCheckpointer.Stats().ExpectedSequenceCount)
 
 	// checkpoint assertions
-	// CBG-2767 skip assertions for GetCheckpoint stats
-	if rt2.GetDatabase().OnlyDefaultCollection() {
-		assert.Equal(t, int64(0), pullCheckpointer.Stats().GetCheckpointHitCount)
-		assert.Equal(t, int64(1), pullCheckpointer.Stats().GetCheckpointMissCount)
-	}
+	assert.Equal(t, int64(0), pullCheckpointer.Stats().GetCheckpointHitCount)
+	assert.Equal(t, int64(1), pullCheckpointer.Stats().GetCheckpointMissCount)
+
 	// Since we bumped the checkpointer interval, we're only setting checkpoints on replicator close.
 	assert.Equal(t, int64(0), pullCheckpointer.Stats().SetCheckpointCount)
 	pullCheckpointer.CheckpointNow()
@@ -4398,7 +4392,7 @@ func TestActiveReplicatorRecoverFromLocalFlush(t *testing.T) {
 	arConfig.ActiveDB = &db.Database{
 		DatabaseContext: rt1.GetDatabase(),
 	}
-	ar = db.NewActiveReplicator(ctx1, &arConfig)
+	ar, err = db.NewActiveReplicator(ctx1, &arConfig)
 	require.NoError(t, err)
 
 	assert.NoError(t, ar.Start(ctx1))
@@ -4407,10 +4401,8 @@ func TestActiveReplicatorRecoverFromLocalFlush(t *testing.T) {
 	pullCheckpointer = ar.Pull.GetSingleCollection(t).Checkpointer
 
 	// we pulled the remote checkpoint, but the local checkpoint wasn't there to match it.
-	// CBG-2767 skip assertions for GetCheckpoint stats
-	if rt1.GetDatabase().OnlyDefaultCollection() {
-		assert.Equal(t, int64(0), pullCheckpointer.Stats().GetCheckpointHitCount)
-	}
+	assert.Equal(t, int64(0), pullCheckpointer.Stats().GetCheckpointHitCount)
+
 	// wait for document originally written to rt2 to arrive at rt1
 	changesResults, err = rt1.WaitForChanges(1, "/{{.keyspace}}/_changes?since=0", "", true)
 	require.NoError(t, err)
@@ -4502,7 +4494,7 @@ func TestActiveReplicatorRecoverFromRemoteFlush(t *testing.T) {
 	dbstats, err := stats.DBReplicatorStats(t.Name())
 	require.NoError(t, err)
 	arConfig.ReplicationStatsMap = dbstats
-	ar := db.NewActiveReplicator(ctx1, &arConfig)
+	ar, err := db.NewActiveReplicator(ctx1, &arConfig)
 	require.NoError(t, err)
 
 	startNumChangesRequestedFromZeroTotal := rt1.GetDatabase().DbStats.CBLReplicationPull().NumPullReplSinceZero.Value()
@@ -4539,12 +4531,9 @@ func TestActiveReplicatorRecoverFromRemoteFlush(t *testing.T) {
 	assert.Equal(t, int64(1), pushCheckpointer.Stats().ExpectedSequenceCount)
 
 	// checkpoint assertions
-	// CBG-2767 skip assertions for GetCheckpoint stats
-	if rt1.GetDatabase().OnlyDefaultCollection() {
+	assert.Equal(t, int64(0), pushCheckpointer.Stats().GetCheckpointHitCount)
+	assert.Equal(t, int64(1), pushCheckpointer.Stats().GetCheckpointMissCount)
 
-		assert.Equal(t, int64(0), pushCheckpointer.Stats().GetCheckpointHitCount)
-		assert.Equal(t, int64(1), pushCheckpointer.Stats().GetCheckpointMissCount)
-	}
 	// Since we bumped the checkpointer interval, we're only setting checkpoints on replicator close.
 	assert.Equal(t, int64(0), pushCheckpointer.Stats().SetCheckpointCount)
 	pushCheckpointer.CheckpointNow()
@@ -4573,7 +4562,7 @@ func TestActiveReplicatorRecoverFromRemoteFlush(t *testing.T) {
 	require.NoError(t, err)
 	arConfig.ReplicationStatsMap = dbstats
 
-	ar = db.NewActiveReplicator(ctx1, &arConfig)
+	ar, err = db.NewActiveReplicator(ctx1, &arConfig)
 	require.NoError(t, err)
 
 	assert.NoError(t, ar.Start(ctx1))
@@ -4609,11 +4598,8 @@ func TestActiveReplicatorRecoverFromRemoteFlush(t *testing.T) {
 	assert.Equal(t, int64(1), pushCheckpointer.Stats().ExpectedSequenceCount)
 
 	// assert the second active replicator stats
-	// CBG-2767 skip assertions for GetCheckpoint stats
-	if rt1.GetDatabase().OnlyDefaultCollection() {
+	assert.Equal(t, int64(1), pushCheckpointer.Stats().GetCheckpointMissCount)
 
-		assert.Equal(t, int64(1), pushCheckpointer.Stats().GetCheckpointMissCount)
-	}
 	assert.Equal(t, int64(0), pushCheckpointer.Stats().SetCheckpointCount)
 	pushCheckpointer.CheckpointNow()
 	assert.Equal(t, int64(1), pushCheckpointer.Stats().SetCheckpointCount)
@@ -4684,7 +4670,7 @@ func TestActiveReplicatorRecoverFromRemoteRollback(t *testing.T) {
 	}
 
 	// Create the first active replicator to pull from seq:0
-	ar := db.NewActiveReplicator(ctx1, &arConfig)
+	ar, err := db.NewActiveReplicator(ctx1, &arConfig)
 	require.NoError(t, err)
 
 	assert.NoError(t, ar.Start(ctx1))
@@ -4831,7 +4817,7 @@ func TestActiveReplicatorRecoverFromMismatchedRev(t *testing.T) {
 	}
 
 	// Create the first active replicator to pull from seq:0
-	ar := db.NewActiveReplicator(ctx1, &arConfig)
+	ar, err := db.NewActiveReplicator(ctx1, &arConfig)
 	require.NoError(t, err)
 
 	assert.NoError(t, ar.Start(ctx1))
@@ -4937,7 +4923,7 @@ func TestActiveReplicatorIgnoreNoConflicts(t *testing.T) {
 	dbstats, err := stats.DBReplicatorStats(t.Name())
 	require.NoError(t, err)
 
-	ar := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
+	ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 		ID:          t.Name(),
 		Direction:   db.ActiveReplicatorTypePushAndPull,
 		RemoteDBURL: passiveDBURL,
@@ -4949,6 +4935,7 @@ func TestActiveReplicatorIgnoreNoConflicts(t *testing.T) {
 		ReplicationStatsMap: dbstats,
 		CollectionsEnabled:  !rt1.GetDatabase().OnlyDefaultCollection(),
 	})
+	require.NoError(t, err)
 	defer func() { assert.NoError(t, ar.Stop()) }()
 
 	assert.Equal(t, "", ar.GetStatus().LastSeqPush)
@@ -5065,7 +5052,8 @@ func TestActiveReplicatorPullModifiedHash(t *testing.T) {
 	}
 
 	// Create the first active replicator to pull chan1 from seq:0
-	ar := db.NewActiveReplicator(ctx1, &arConfig)
+	ar, err := db.NewActiveReplicator(ctx1, &arConfig)
+	require.NoError(t, err)
 
 	startNumChangesRequestedFromZeroTotal := rt2.GetDatabase().DbStats.CBLReplicationPull().NumPullReplSinceZero.Value()
 	startNumRevsSentTotal := rt2.GetDatabase().DbStats.CBLReplicationPull().RevSendCount.Value()
@@ -5100,12 +5088,9 @@ func TestActiveReplicatorPullModifiedHash(t *testing.T) {
 	assert.Equal(t, int64(numDocsPerChannelInitial), pullCheckpointer.Stats().ExpectedSequenceCount)
 
 	// checkpoint assertions
-	// CBG-2767 skip assertions for GetCheckpoint stats
-	if rt1.GetDatabase().OnlyDefaultCollection() {
+	assert.Equal(t, int64(0), pullCheckpointer.Stats().GetCheckpointHitCount)
+	assert.Equal(t, int64(1), pullCheckpointer.Stats().GetCheckpointMissCount)
 
-		assert.Equal(t, int64(0), pullCheckpointer.Stats().GetCheckpointHitCount)
-		assert.Equal(t, int64(1), pullCheckpointer.Stats().GetCheckpointMissCount)
-	}
 	// Since we bumped the checkpointer interval, we're only setting checkpoints on replicator close.
 	assert.Equal(t, int64(0), pullCheckpointer.Stats().SetCheckpointCount)
 	pullCheckpointer.CheckpointNow()
@@ -5121,7 +5106,8 @@ func TestActiveReplicatorPullModifiedHash(t *testing.T) {
 
 	// Create a new replicator using the same replicationID but different channel filter, which should reset the checkpoint
 	arConfig.FilterChannels = []string{"chan2"}
-	ar = db.NewActiveReplicator(ctx1, &arConfig)
+	ar, err = db.NewActiveReplicator(ctx1, &arConfig)
+	require.NoError(t, err)
 	defer func() { assert.NoError(t, ar.Stop()) }()
 	assert.NoError(t, ar.Start(ctx1))
 
@@ -5274,7 +5260,7 @@ func TestActiveReplicatorReconnectOnStart(t *testing.T) {
 					}
 
 					// Create the first active replicator to pull from seq:0
-					ar := db.NewActiveReplicator(ctx1, &arConfig)
+					ar, err := db.NewActiveReplicator(ctx1, &arConfig)
 					require.NoError(t, err)
 
 					assert.Equal(t, int64(0), ar.Push.GetStats().NumConnectAttempts.Value())
@@ -5361,7 +5347,7 @@ func TestActiveReplicatorReconnectOnStartEventualSuccess(t *testing.T) {
 	}
 
 	// Create the first active replicator to pull from seq:0
-	ar := db.NewActiveReplicator(ctx1, &arConfig)
+	ar, err := db.NewActiveReplicator(ctx1, &arConfig)
 	require.NoError(t, err)
 
 	assert.Equal(t, int64(0), ar.Push.GetStats().NumConnectAttempts.Value())
@@ -5444,7 +5430,7 @@ func TestActiveReplicatorReconnectSendActions(t *testing.T) {
 	}
 
 	// Create the first active replicator to pull from seq:0
-	ar := db.NewActiveReplicator(ctx1, &arConfig)
+	ar, err := db.NewActiveReplicator(ctx1, &arConfig)
 	require.NoError(t, err)
 
 	assert.Equal(t, int64(0), ar.Pull.GetStats().NumConnectAttempts.Value())
@@ -5733,7 +5719,7 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 			replicationStats, err := dbstats.DBReplicatorStats(t.Name())
 			require.NoError(t, err)
 
-			ar := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
+			ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 				ID:          t.Name(),
 				Direction:   db.ActiveReplicatorTypePull,
 				RemoteDBURL: passiveDBURL,
@@ -5746,6 +5732,7 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 				ReplicationStatsMap:  replicationStats,
 				CollectionsEnabled:   !rt1.GetDatabase().OnlyDefaultCollection(),
 			})
+			require.NoError(t, err)
 			defer func() { assert.NoError(t, ar.Stop()) }()
 
 			// Start the replicator (implicit connect)
@@ -6211,7 +6198,8 @@ func TestDefaultConflictResolverWithTombstoneLocal(t *testing.T) {
 			rt1RevIDCreated := createOrUpdateDoc(t, rt1, docID, "", "foo")
 
 			// Create active replicator and start replication.
-			ar := db.NewActiveReplicator(ctx1, &config)
+			ar, err := db.NewActiveReplicator(ctx1, &config)
+			require.NoError(t, err)
 			require.NoError(t, ar.Start(ctx1), "Error starting replication")
 			defer func() { require.NoError(t, ar.Stop(), "Error stopping replication") }()
 
@@ -6365,7 +6353,8 @@ func TestDefaultConflictResolverWithTombstoneRemote(t *testing.T) {
 			rt2RevIDCreated := createOrUpdateDoc(t, rt2, docID, "", "foo")
 
 			// Create active replicator and start replication.
-			ar := db.NewActiveReplicator(ctx1, &config)
+			ar, err := db.NewActiveReplicator(ctx1, &config)
+			require.NoError(t, err)
 			require.NoError(t, ar.Start(ctx1), "Error starting replication")
 			defer func() { require.NoError(t, ar.Stop(), "Error stopping replication") }()
 
@@ -6681,7 +6670,7 @@ func TestSendChangesToNoConflictPreHydrogenTarget(t *testing.T) {
 	dbstats, err := sgwStats.DBReplicatorStats(t.Name())
 	require.NoError(t, err)
 
-	ar := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
+	ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 		ID:          "test",
 		Direction:   db.ActiveReplicatorTypePush,
 		RemoteDBURL: passiveDBURL,
@@ -6693,6 +6682,7 @@ func TestSendChangesToNoConflictPreHydrogenTarget(t *testing.T) {
 		ReplicationStatsMap: dbstats,
 		CollectionsEnabled:  !rt1.GetDatabase().OnlyDefaultCollection(),
 	})
+	require.NoError(t, err)
 
 	defer func() {
 		require.NoError(t, ar.Stop())
@@ -6849,7 +6839,7 @@ func TestConflictResolveMergeWithMutatedRev(t *testing.T) {
 	dbstats, err := sgwStats.DBReplicatorStats(t.Name())
 	require.NoError(t, err)
 
-	ar := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
+	ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 		ID:          t.Name(),
 		Direction:   db.ActiveReplicatorTypePull,
 		RemoteDBURL: passiveDBURL,
@@ -6862,6 +6852,7 @@ func TestConflictResolveMergeWithMutatedRev(t *testing.T) {
 		ConflictResolverFunc:   customConflictResolver,
 		CollectionsEnabled:     !rt1.GetDatabase().OnlyDefaultCollection(),
 	})
+	require.NoError(t, err)
 
 	resp := rt2.SendAdminRequest("PUT", "/{{.keyspace}}/doc", "{}")
 	rest.RequireStatus(t, resp, http.StatusCreated)
@@ -6945,7 +6936,7 @@ func TestReplicatorDoNotSendDeltaWhenSrcIsTombstone(t *testing.T) {
 	dbstats, err := sgwStats.DBReplicatorStats(t.Name())
 	require.NoError(t, err)
 
-	ar := db.NewActiveReplicator(activeCtx, &db.ActiveReplicatorConfig{
+	ar, err := db.NewActiveReplicator(activeCtx, &db.ActiveReplicatorConfig{
 		ID:          t.Name(),
 		Direction:   db.ActiveReplicatorTypePush,
 		RemoteDBURL: passiveDBURL,
@@ -6958,6 +6949,7 @@ func TestReplicatorDoNotSendDeltaWhenSrcIsTombstone(t *testing.T) {
 		ReplicationStatsMap: dbstats,
 		CollectionsEnabled:  !activeRT.GetDatabase().OnlyDefaultCollection(),
 	})
+	require.NoError(t, err)
 	assert.Equal(t, "", ar.GetStatus().LastSeqPush)
 	assert.NoError(t, ar.Start(activeCtx))
 
@@ -7054,7 +7046,7 @@ func TestUnprocessableDeltas(t *testing.T) {
 	dbstats, err := sgwStats.DBReplicatorStats(t.Name())
 	require.NoError(t, err)
 
-	ar := db.NewActiveReplicator(activeCtx, &db.ActiveReplicatorConfig{
+	ar, err := db.NewActiveReplicator(activeCtx, &db.ActiveReplicatorConfig{
 		ID:          t.Name(),
 		Direction:   db.ActiveReplicatorTypePush,
 		RemoteDBURL: passiveDBURL,
@@ -7067,6 +7059,7 @@ func TestUnprocessableDeltas(t *testing.T) {
 		ReplicationStatsMap: dbstats,
 		CollectionsEnabled:  !activeRT.GetDatabase().OnlyDefaultCollection(),
 	})
+	require.NoError(t, err)
 	assert.Equal(t, "", ar.GetStatus().LastSeqPush)
 
 	assert.NoError(t, ar.Start(activeCtx))
@@ -7162,7 +7155,7 @@ func TestReplicatorIgnoreRemovalBodies(t *testing.T) {
 	dbstats, err := sgwStats.DBReplicatorStats(t.Name())
 	require.NoError(t, err)
 
-	ar := db.NewActiveReplicator(activeCtx, &db.ActiveReplicatorConfig{
+	ar, err := db.NewActiveReplicator(activeCtx, &db.ActiveReplicatorConfig{
 		ID:          t.Name(),
 		Direction:   db.ActiveReplicatorTypePush,
 		RemoteDBURL: passiveDBURL,
@@ -7177,6 +7170,7 @@ func TestReplicatorIgnoreRemovalBodies(t *testing.T) {
 		FilterChannels:      []string{"rev1chan"},
 		CollectionsEnabled:  !activeRT.GetDatabase().OnlyDefaultCollection(),
 	})
+	require.NoError(t, err)
 	docWriteFailuresBefore := ar.GetStatus().DocWriteFailures
 
 	assert.NoError(t, ar.Start(activeCtx))
@@ -7216,7 +7210,7 @@ func TestUnderscorePrefixSupport(t *testing.T) {
 	dbstats, err := sgwStats.DBReplicatorStats(t.Name())
 	require.NoError(t, err)
 
-	ar := db.NewActiveReplicator(activeCtx, &db.ActiveReplicatorConfig{
+	ar, err := db.NewActiveReplicator(activeCtx, &db.ActiveReplicatorConfig{
 		ID:          t.Name(),
 		Direction:   db.ActiveReplicatorTypePush,
 		RemoteDBURL: passiveDBURL,
@@ -7229,6 +7223,7 @@ func TestUnderscorePrefixSupport(t *testing.T) {
 		PurgeOnRemoval:      false,
 		CollectionsEnabled:  !activeRT.GetDatabase().OnlyDefaultCollection(),
 	})
+	require.NoError(t, err)
 	defer func() { require.NoError(t, ar.Stop()) }()
 
 	require.NoError(t, ar.Start(activeCtx))
@@ -7321,7 +7316,7 @@ func TestActiveReplicatorBlipsync(t *testing.T) {
 	dbstats, err := stats.DBReplicatorStats(t.Name())
 	require.NoError(t, err)
 
-	ar := db.NewActiveReplicator(ctx, &db.ActiveReplicatorConfig{
+	ar, err := db.NewActiveReplicator(ctx, &db.ActiveReplicatorConfig{
 		ID:                  t.Name(),
 		Direction:           db.ActiveReplicatorTypePushAndPull,
 		ActiveDB:            &db.Database{DatabaseContext: rt.GetDatabase()},
@@ -7330,6 +7325,7 @@ func TestActiveReplicatorBlipsync(t *testing.T) {
 		ReplicationStatsMap: dbstats,
 		CollectionsEnabled:  !rt.GetDatabase().OnlyDefaultCollection(),
 	})
+	require.NoError(t, err)
 
 	startNumReplicationsTotal := rt.GetDatabase().DbStats.Database().NumReplicationsTotal.Value()
 	startNumReplicationsActive := rt.GetDatabase().DbStats.Database().NumReplicationsActive.Value()
@@ -7954,4 +7950,34 @@ func TestDeletedPutReplicator2(t *testing.T) {
 	} else {
 		rest.RequireStatus(t, response, http.StatusNotImplemented)
 	}
+}
+
+// TestReplicatorWithCollectionsFailWithoutCollectionsEnabled makes sure not enabling collections causes an error.
+func TestReplicatorWithCollectionsFailWithoutCollectionsEnabled(t *testing.T) {
+	base.TestRequiresCollections(t)
+
+	rt := rest.NewRestTester(t, nil)
+	defer rt.Close()
+
+	stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, nil, nil)
+	require.NoError(t, err)
+	dbstats, err := stats.DBReplicatorStats(t.Name())
+	require.NoError(t, err)
+
+	url, err := url.Parse("http://example.com")
+	require.NoError(t, err)
+
+	for _, direction := range []db.ActiveReplicatorDirection{db.ActiveReplicatorTypePush, db.ActiveReplicatorTypePull} {
+		ar, err := db.NewActiveReplicator(base.TestCtx(t), &db.ActiveReplicatorConfig{
+			ID:                  t.Name(),
+			Direction:           direction,
+			ActiveDB:            &db.Database{DatabaseContext: rt.GetDatabase()},
+			RemoteDBURL:         url,
+			ReplicationStatsMap: dbstats,
+		})
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "default collection is not configured")
+		require.Nil(t, ar)
+	}
+
 }

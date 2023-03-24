@@ -1508,7 +1508,7 @@ func TestReplicatorRevocations(t *testing.T) {
 	dbstats, err := sgwStats.DBReplicatorStats(t.Name())
 	require.NoError(t, err)
 
-	ar := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
+	ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 		ID:          t.Name(),
 		Direction:   db.ActiveReplicatorTypePull,
 		RemoteDBURL: passiveDBURL,
@@ -1519,6 +1519,7 @@ func TestReplicatorRevocations(t *testing.T) {
 		PurgeOnRemoval:      true,
 		ReplicationStatsMap: dbstats,
 	})
+	require.NoError(t, err)
 
 	require.NoError(t, ar.Start(ctx1))
 	rt1.WaitForReplicationStatus(t.Name(), db.ReplicationStateStopped)
@@ -1567,7 +1568,7 @@ func TestReplicatorRevocationsNoRev(t *testing.T) {
 	dbstats, err := sgwStats.DBReplicatorStats(t.Name())
 	require.NoError(t, err)
 
-	ar := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
+	ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 		ID:          t.Name(),
 		Direction:   db.ActiveReplicatorTypePull,
 		RemoteDBURL: passiveDBURL,
@@ -1578,6 +1579,7 @@ func TestReplicatorRevocationsNoRev(t *testing.T) {
 		PurgeOnRemoval:      true,
 		ReplicationStatsMap: dbstats,
 	})
+	require.NoError(t, err)
 
 	require.NoError(t, ar.Start(ctx1))
 	rt1.WaitForReplicationStatus(t.Name(), db.ReplicationStateStopped)
@@ -1634,7 +1636,7 @@ func TestReplicatorRevocationsNoRevButAlternateAccess(t *testing.T) {
 	dbstats, err := sgwStats.DBReplicatorStats(t.Name())
 	require.NoError(t, err)
 
-	ar := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
+	ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 		ID:          t.Name(),
 		Direction:   db.ActiveReplicatorTypePull,
 		RemoteDBURL: passiveDBURL,
@@ -1645,6 +1647,7 @@ func TestReplicatorRevocationsNoRevButAlternateAccess(t *testing.T) {
 		PurgeOnRemoval:      true,
 		ReplicationStatsMap: dbstats,
 	})
+	require.NoError(t, err)
 
 	require.NoError(t, ar.Start(ctx1))
 	rt1.WaitForReplicationStatus(t.Name(), db.ReplicationStateStopped)
@@ -1694,7 +1697,7 @@ func TestReplicatorRevocationsMultipleAlternateAccess(t *testing.T) {
 	dbstats, err := sgwStats.DBReplicatorStats(t.Name())
 	require.NoError(t, err)
 
-	ar := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
+	ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 		ID:          t.Name(),
 		Direction:   db.ActiveReplicatorTypePull,
 		RemoteDBURL: passiveDBURL,
@@ -1705,6 +1708,7 @@ func TestReplicatorRevocationsMultipleAlternateAccess(t *testing.T) {
 		PurgeOnRemoval:      true,
 		ReplicationStatsMap: dbstats,
 	})
+	require.NoError(t, err)
 	require.NoError(t, ar.Start(ctx1))
 
 	defer func() {
@@ -1808,7 +1812,7 @@ func TestReplicatorRevocationsWithTombstoneResurrection(t *testing.T) {
 	dbstats, err := sgwStats.DBReplicatorStats(t.Name())
 	require.NoError(t, err)
 
-	ar := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
+	ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 		ID:          t.Name(),
 		Direction:   db.ActiveReplicatorTypePull,
 		RemoteDBURL: passiveDBURL,
@@ -1819,6 +1823,7 @@ func TestReplicatorRevocationsWithTombstoneResurrection(t *testing.T) {
 		PurgeOnRemoval:      true,
 		ReplicationStatsMap: dbstats,
 	})
+	require.NoError(t, err)
 
 	docARev := rt2.CreateDocReturnRev(t, "docA", "", map[string][]string{"channels": []string{"A"}})
 	docA1Rev := rt2.CreateDocReturnRev(t, "docA1", "", map[string][]string{"channels": []string{"A"}})
@@ -1902,7 +1907,7 @@ func TestReplicatorRevocationsWithChannelFilter(t *testing.T) {
 	_ = rt2.CreateDocReturnRev(t, "docA", "", map[string][]string{"channels": []string{"ABC"}})
 	require.NoError(t, rt2.WaitForPendingChanges())
 
-	ar := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
+	ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 		ID:          t.Name(),
 		Direction:   db.ActiveReplicatorTypePull,
 		RemoteDBURL: passiveDBURL,
@@ -1914,6 +1919,7 @@ func TestReplicatorRevocationsWithChannelFilter(t *testing.T) {
 		PurgeOnRemoval:      true,
 		ReplicationStatsMap: dbstats,
 	})
+	require.NoError(t, err)
 
 	resp := rt2.SendAdminRequest("PUT", "/{{.db}}/_user/user", GetUserPayload(t, username, password, "", rt2Collection, []string{"ABC"}, nil))
 	RequireStatus(t, resp, http.StatusOK)
@@ -1982,7 +1988,7 @@ func TestReplicatorRevocationsWithStarChannel(t *testing.T) {
 	_ = rt2.CreateDocReturnRev(t, "docC", "", map[string][]string{"channels": []string{"C"}})
 	require.NoError(t, rt2.WaitForPendingChanges())
 
-	ar := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
+	ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 		ID:          t.Name(),
 		Direction:   db.ActiveReplicatorTypePull,
 		RemoteDBURL: passiveDBURL,
@@ -1993,6 +1999,7 @@ func TestReplicatorRevocationsWithStarChannel(t *testing.T) {
 		PurgeOnRemoval:      true,
 		ReplicationStatsMap: dbstats,
 	})
+	require.NoError(t, err)
 
 	resp := rt2.SendAdminRequest("PUT", "/db/_user/user", GetUserPayload(t, "user", "test", "", rt2_collection, []string{"*"}, nil))
 	RequireStatus(t, resp, http.StatusOK)
@@ -2081,7 +2088,8 @@ func TestReplicatorRevocationsFromZero(t *testing.T) {
 		ReplicationStatsMap: dbstats,
 	}
 
-	ar := db.NewActiveReplicator(ctx1, activeReplCfg)
+	ar, err := db.NewActiveReplicator(ctx1, activeReplCfg)
+	require.NoError(t, err)
 
 	_ = rt2.CreateDocReturnRev(t, "docA", "", map[string][]string{"channels": []string{"A"}})
 	_ = rt2.CreateDocReturnRev(t, "docA1", "", map[string][]string{"channels": []string{"A"}})
@@ -2470,7 +2478,7 @@ func TestReplicatorSwitchPurgeNoReset(t *testing.T) {
 	dbstats, err := sgwStats.DBReplicatorStats(t.Name())
 	require.NoError(t, err)
 
-	ar := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
+	ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 		ID:          t.Name(),
 		Direction:   db.ActiveReplicatorTypePull,
 		RemoteDBURL: passiveDBURL,
@@ -2480,6 +2488,7 @@ func TestReplicatorSwitchPurgeNoReset(t *testing.T) {
 		Continuous:          true,
 		ReplicationStatsMap: dbstats,
 	})
+	require.NoError(t, err)
 
 	for i := 0; i < 10; i++ {
 		_ = rt2.CreateDocReturnRev(t, fmt.Sprintf("docA%d", i), "", map[string][]string{"channels": []string{"A"}})
@@ -2529,7 +2538,7 @@ func TestReplicatorSwitchPurgeNoReset(t *testing.T) {
 	dbstats, err = sgwStats.DBReplicatorStats(t.Name())
 	require.NoError(t, err)
 
-	ar = db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
+	ar, err = db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 		ID:          t.Name(),
 		Direction:   db.ActiveReplicatorTypePull,
 		RemoteDBURL: passiveDBURL,
@@ -2540,6 +2549,7 @@ func TestReplicatorSwitchPurgeNoReset(t *testing.T) {
 		PurgeOnRemoval:      true,
 		ReplicationStatsMap: dbstats,
 	})
+	require.NoError(t, err)
 
 	// Send a doc to act as a 'marker' so we know when replication has completed
 	_ = rt2.CreateDocReturnRev(t, "docMarker", "", map[string][]string{"channels": []string{"B"}})

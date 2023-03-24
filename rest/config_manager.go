@@ -10,8 +10,6 @@ package rest
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/base64"
 	"fmt"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -761,11 +759,5 @@ func (b *bootstrapContext) computeMetadataID(ctx context.Context, registry *Gate
 
 // standardMetadataID returns either the dbName or a base64 encoded SHA256 hash of the dbName, whichever is shorter.
 func (b *bootstrapContext) standardMetadataID(dbName string) string {
-	if len(dbName) >= 44 {
-		digester := sha256.New()
-		digester.Write([]byte(dbName))
-		return base64.StdEncoding.EncodeToString(digester.Sum(nil))
-	} else {
-		return dbName
-	}
+	return base.SerializeIfLonger(dbName, 40)
 }

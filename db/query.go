@@ -27,6 +27,12 @@ type QueryIdRow struct {
 	Id string
 }
 
+// Used for queries that only return doc id
+type principalRow struct {
+	Id   string
+	Name string
+}
+
 const (
 	N1QLMaxInt64 = 9223372036854775000 // Use this for compatibly with all server versions, see MB-54930 for discussion
 )
@@ -158,7 +164,7 @@ type QueryChannelsRow struct {
 var QueryPrincipals = SGQuery{
 	name: QueryTypePrincipals,
 	statement: fmt.Sprintf(
-		"SELECT META(%s).id "+
+		"SELECT name, META(%s).id "+
 			"FROM %s AS %s "+
 			"USE INDEX($idx) "+
 			"WHERE META(%s).id LIKE '%s' "+
@@ -179,7 +185,7 @@ var QueryPrincipals = SGQuery{
 var QueryAllRolesUsingRoleIdx = SGQuery{
 	name: QueryTypeRoles,
 	statement: fmt.Sprintf(
-		"SELECT META(%s).id "+
+		"SELECT name, META(%s).id "+
 			"FROM %s AS %s "+
 			"USE INDEX($idx) "+
 			"WHERE META(%s).id LIKE '%s' "+
@@ -196,7 +202,7 @@ var QueryAllRolesUsingRoleIdx = SGQuery{
 var QueryAllRolesUsingSyncDocsIdx = SGQuery{
 	name: QueryTypeRoles,
 	statement: fmt.Sprintf(
-		"SELECT META(%s).id "+
+		"SELECT name, META(%s).id "+
 			"FROM %s AS %s "+
 			"USE INDEX($idx) "+
 			"WHERE META(%s).id LIKE '%s' "+
@@ -215,7 +221,7 @@ var QueryAllRolesUsingSyncDocsIdx = SGQuery{
 var QueryRolesExcludeDeleted = SGQuery{
 	name: QueryTypeRolesExcludeDeleted,
 	statement: fmt.Sprintf(
-		"SELECT META(%s).id "+
+		"SELECT name, META(%s).id "+
 			"FROM %s AS %s "+
 			"USE INDEX($idx) "+
 			"WHERE META(%s).id LIKE '%s' "+
@@ -236,7 +242,7 @@ var QueryRolesExcludeDeleted = SGQuery{
 var QueryRolesExcludeDeletedUsingRoleIdx = SGQuery{
 	name: QueryTypeRolesExcludeDeleted,
 	statement: fmt.Sprintf(
-		"SELECT META(%s).id "+
+		"SELECT name, META(%s).id "+
 			"FROM %s AS %s "+
 			"USE INDEX($idx) "+
 			"WHERE META(%s).id LIKE '%s' "+

@@ -72,7 +72,7 @@ type activeReplicatorCollection struct {
 	Checkpointer  *Checkpointer  // Checkpointer for this collection
 }
 
-func newActiveReplicatorCommon(ctx context.Context, config *ActiveReplicatorConfig, direction ActiveReplicatorDirection) *activeReplicatorCommon {
+func newActiveReplicatorCommon(ctx context.Context, config *ActiveReplicatorConfig, direction ActiveReplicatorDirection) (*activeReplicatorCommon, error) {
 
 	var replicationStats *BlipSyncStats
 	var checkpointID string
@@ -103,14 +103,14 @@ func newActiveReplicatorCommon(ctx context.Context, config *ActiveReplicatorConf
 	} else {
 		defaultDatabaseCollection, err := config.ActiveDB.GetDefaultDatabaseCollection()
 		if err != nil {
-			panic(err)
+			return nil, err
 		}
 		apr.defaultCollection = &activeReplicatorCollection{
 			dataStore: defaultDatabaseCollection.dataStore,
 		}
 	}
 
-	return &apr
+	return &apr, nil
 }
 
 // reconnectLoop synchronously calls replicatorConnectFn until successful, or times out trying. Retry loop can be stopped by cancelling ctx
@@ -337,4 +337,16 @@ func (a *activeReplicatorCommon) getCheckpointHighSeq() string {
 func (a *activeReplicatorCommon) _publishStatus() {
 	status, errorMessage := a.getStateWithErrorMessage()
 	setLocalCheckpointStatus(a.ctx, a.config.ActiveDB.MetadataStore, a.CheckpointID, status, errorMessage, int(a.config.ActiveDB.Options.LocalDocExpirySecs))
+}
+
+func (a *activeReplicatorCommon) incrementHitandMissStatsCollections(collectionID *int, since SequenceID) {
+	for _, v := range a.namedCollections {
+		if *v.collectionIdx == *collectionID {
+			if !since.IsNonZero() {
+				v.Checkpointer.stats.GetCheckpointMissCount++
+			} else {
+				v.Checkpointer.stats.GetCheckpointHitCount++
+			}
+		}
+	}
 }

@@ -160,7 +160,7 @@ func (s Set) Contains(ch ID) bool {
 
 // Convert to String(), necessary for logging.
 func (s Set) String() string {
-	keys := make([]string, len(s))
+	keys := make([]string, 0, len(s))
 	for ch := range s {
 		keys = append(keys, ch.String())
 	}

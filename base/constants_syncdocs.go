@@ -112,6 +112,9 @@ type MetadataKeys struct {
 	sessionPrefix             string
 }
 
+// sha1HashLength is the number of characters in a sha1
+const sha1HashLength = 40
+
 // DefaultMetadataKeys defines the legacy metadata keys and prefixes.  These are used when the metadata collection is the only
 // defined collection, including upgrade scenarios.
 var DefaultMetadataKeys = &MetadataKeys{
@@ -158,6 +161,13 @@ func NewMetadataKeys(metadataID string) *MetadataKeys {
 	}
 }
 
+func (m *MetadataKeys) serializeIfLonger(key string) string {
+	if m == DefaultMetadataKeys {
+		return key
+	}
+	return SerializeIfLonger(key, sha1HashLength)
+}
+
 // SyncSeqKey returns the key for the sequence counter document for a database
 //
 //	format: _sync:{m_$}:seq
@@ -188,11 +198,7 @@ func (m *MetadataKeys) UnusedSeqPrefix() string {
 //
 //	format: _sync:{m_$}:sgrStatus:[replicationID]
 func (m *MetadataKeys) ReplicationStatusKey(replicationID string) string {
-	statusKeyID := replicationID
-	if len(statusKeyID) >= 40 {
-		statusKeyID = Sha1HashString(replicationID, "")
-	}
-	return m.sgrStatusPrefix + statusKeyID
+	return m.sgrStatusPrefix + m.serializeIfLonger(replicationID)
 }
 
 // HeartbeaterPrefix returns a document prefix to use for heartbeat documents
@@ -266,7 +272,7 @@ func (m *MetadataKeys) DCPBackfillKey() string {
 //
 //	format: _sync:user:{m_$}:{username}
 func (m *MetadataKeys) UserKey(username string) string {
-	return m.userPrefix + username
+	return m.userPrefix + m.serializeIfLonger(username)
 }
 
 // UserKeyPrefix returns the prefix used to store a user document
@@ -280,7 +286,7 @@ func (m *MetadataKeys) UserKeyPrefix() string {
 //
 //	format: _sync:role:{m_$}:{rolename}
 func (m *MetadataKeys) RoleKey(name string) string {
-	return m.rolePrefix + name
+	return m.rolePrefix + m.serializeIfLonger(name)
 }
 
 // RoleKeyPrefix returns the prefix used to store a role document
@@ -294,7 +300,7 @@ func (m *MetadataKeys) RoleKeyPrefix() string {
 //
 //	format: _sync:useremail:{m_$}:{username}
 func (m *MetadataKeys) UserEmailKey(username string) string {
-	return m.userEmailPrefix + username
+	return m.userEmailPrefix + m.serializeIfLonger(username)
 }
 
 // SessionKey returns the key used to store a session document
@@ -395,4 +401,12 @@ func SetSyncInfo(ds DataStore, metadataID string) error {
 		MetadataID: metadataID,
 	}
 	return ds.Set(SGSyncInfo, 0, nil, syncInfo)
+}
+
+// SerializeIfLonger returns name as a sha1 string if the length of the name is greater or equal to the length specificed. Otherwise, returns the original string.
+func SerializeIfLonger(name string, length int) string {
+	if len(name) < length {
+		return name
+	}
+	return Sha1HashString(name, "")
 }

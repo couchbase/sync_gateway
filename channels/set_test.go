@@ -325,3 +325,47 @@ func TestSetContains(t *testing.T) {
 		})
 	}
 }
+
+func TestSetString(t *testing.T) {
+	testCases := []struct {
+		name   string
+		input  Set
+		output string
+	}{
+		{
+			name:   "empty,emptyID",
+			input:  Set{},
+			output: "{}",
+		},
+		{
+			name: "two collections",
+			input: Set{
+				NewID("A", 1): present{},
+				NewID("B", 2): present{},
+				NewID("C", 1): present{},
+			},
+			output: "{1.A, 1.C, 2.B}",
+		},
+		{
+			name: "two collections, collection2",
+			input: Set{
+				NewID("A", 2): present{},
+				NewID("B", 2): present{},
+				NewID("C", 1): present{},
+			},
+			output: "{1.C, 2.A, 2.B}",
+		},
+		{
+			name: "one collection",
+			input: Set{
+				NewID("A", 1): present{},
+			},
+			output: "{1.A}",
+		},
+	}
+	for _, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+			require.Equal(t, test.output, test.input.String())
+		})
+	}
+}
