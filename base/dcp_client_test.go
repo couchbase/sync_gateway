@@ -393,7 +393,7 @@ func TestContinuousDCPRollback(t *testing.T) {
 		mutationCount := atomic.LoadUint64(&mutationCount)
 		require.Equal(t, uint64(1000), mutationCount)
 	case <-timeout:
-		t.Fatalf("continuous client closed early")
+		t.Fatalf("timeout on client reached")
 	}
 
 	// Assert that the number of vBuckets active are the same as the total number of vBuckets on the client.
