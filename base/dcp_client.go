@@ -435,8 +435,9 @@ func (dc *DCPClient) openStream(vbID uint16, maxRetries uint32) (err error) {
 				return fmt.Errorf("%s, failOnRollback requested", openStreamErr)
 			}
 			InfofCtx(logCtx, KeyDCP, "Open stream for vbID %d failed due to rollback or range error, will roll back metadata and retry: %v", vbID, openStreamErr)
-			err := dc.rollback(vbID)
+			err := dc.rollback(logCtx, vbID)
 			if err != nil {
+				WarnfCtx(logCtx, "failed to rollback metadata for vb %d: error: %v", vbID, err)
 				return fmt.Errorf("metadata rollback failed for vb %d: %v", vbID, err)
 			}
 		case errors.Is(openStreamErr, gocbcore.ErrShutdown):
@@ -459,11 +460,11 @@ func (dc *DCPClient) openStream(vbID uint16, maxRetries uint32) (err error) {
 	return fmt.Errorf("openStream failed to complete after %d attempts, last error: %w", openRetryCount, openStreamErr)
 }
 
-func (dc *DCPClient) rollback(vbID uint16) (err error) {
+func (dc *DCPClient) rollback(ctx context.Context, vbID uint16) (err error) {
 	if dc.dbStats != nil {
 		dc.dbStats.Add("dcp_rollback_count", 1)
 	}
-	dc.metadata.Rollback(vbID)
+	dc.metadata.Rollback(ctx, vbID)
 	return nil
 }
 
