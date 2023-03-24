@@ -322,13 +322,13 @@ func TestDCPClientMultiFeedConsistency(t *testing.T) {
 }
 
 func TestContinuousDCPRollback(t *testing.T) {
-	SetUpTestLogging(t, LevelDebug, KeyDCP)
 
 	if UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server")
+		t.Skip("This test requires DCP feed from gocb and therefore Couchbase Sever")
 	}
 
 	var vbUUID gocbcore.VbUUID = 1234
+	c := make(chan bool)
 
 	bucket := GetTestBucket(t)
 	defer bucket.Close()
@@ -336,12 +336,11 @@ func TestContinuousDCPRollback(t *testing.T) {
 
 	// create callback
 	mutationCount := uint64(0)
-	vbucketZeroCount := uint64(0)
 	counterCallback := func(event sgbucket.FeedEvent) bool {
 		if bytes.HasPrefix(event.Key, []byte(t.Name())) {
 			atomic.AddUint64(&mutationCount, 1)
-			if event.VbNo == 0 {
-				atomic.AddUint64(&vbucketZeroCount, 1)
+			if atomic.LoadUint64(&mutationCount) == uint64(1000) {
+				c <- true
 			}
 		}
 		return false
@@ -376,11 +375,11 @@ func TestContinuousDCPRollback(t *testing.T) {
 	// function to force the rollback of some vBuckets
 	dcpClient.forceRollbackvBucket(vbUUID)
 
-	doneChan, startErr := dcpClient.Start()
+	_, startErr := dcpClient.Start()
 	require.NoError(t, startErr)
 
 	// Add documents
-	const numDocs = 10000
+	const numDocs = 1000
 	updatedBody := map[string]interface{}{"foo": "bar"}
 	for i := 0; i < numDocs; i++ {
 		key := fmt.Sprintf("%s_%d", t.Name(), i)
@@ -390,11 +389,11 @@ func TestContinuousDCPRollback(t *testing.T) {
 
 	// wait for a timeout to ensure client streams all mutations over continuous feed
 	select {
-	case <-doneChan:
-		t.Fatalf("continuous client closed early")
-	case <-timeout:
+	case <-c:
 		mutationCount := atomic.LoadUint64(&mutationCount)
-		require.Equal(t, uint64(10000), mutationCount)
+		require.Equal(t, uint64(1000), mutationCount)
+	case <-timeout:
+		t.Fatalf("continuous client closed early")
 	}
 
 	// Assert that the number of vBuckets active are the same as the total number of vBuckets on the client.

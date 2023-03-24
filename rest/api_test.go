@@ -129,6 +129,66 @@ func TestDisablePublicBasicAuth(t *testing.T) {
 	RequireStatus(t, response, http.StatusOK)
 }
 
+func TestLol(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyDCP, base.KeyCRUD, base.KeyChanges, base.KeyQuery, base.KeyHTTP)
+	rt := NewRestTester(t, &RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction,
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{AutoImport: true}}})
+	defer rt.Close()
+
+	var changes struct {
+		Results  []db.ChangeEntry
+		Last_Seq db.SequenceID
+	}
+
+	sync := channels.DocChannelsSyncFunction
+	var resp *TestResponse
+	testBucket := base.GetPersistentTestBucket(t)
+	defer testBucket.Close()
+	fmt.Println(rt.GetSingleTestDatabaseCollection().Name)
+
+	resp = rt.SendAdminRequest(http.MethodPut, "/db/_config", fmt.Sprintf(`{"bucket": "%s", "num_index_replicas": 0, "scopes": {"%s": { "collections": {"%s": {"sync":"%s"}}}}}`,
+		testBucket.GetName(), rt.GetSingleTestDatabaseCollection().ScopeName, rt.GetSingleTestDatabaseCollection().Name, sync))
+	RequireStatus(t, resp, http.StatusCreated)
+
+	fmt.Println("failover + rebalance out now now")
+	time.Sleep(50 * time.Second)
+
+	err := rt.GetDatabase().RestartListener()
+	require.NoError(t, err)
+
+	for i := 0; i < 10; i++ {
+		resp = rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+fmt.Sprint(i), `{"greg": "lol"}`)
+		if resp.Code != http.StatusCreated {
+			i--
+		}
+		time.Sleep(4 * time.Second)
+	}
+
+	changesResponse := rt.SendAdminRequest("GET", "/{{.keyspace}}/_changes?since=0", "")
+	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
+	assert.NoError(t, err, "Error unmarshalling changes response")
+	assert.Len(t, changes.Results, 10)
+
+	fmt.Println("add server back")
+	time.Sleep(10 * time.Second)
+	fmt.Println("rebalance it in")
+	time.Sleep(50 * time.Second)
+
+	for i := 10; i < 110; i++ {
+		resp = rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+fmt.Sprint(i), `{"greg": "lol"}`)
+		if resp.Code != http.StatusCreated {
+			i--
+		}
+	}
+
+	time.Sleep(10 * time.Second)
+	changesResponse = rt.SendAdminRequest("GET", "/{{.keyspace}}/_changes?since=0", "")
+	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
+	assert.NoError(t, err, "Error unmarshalling changes response")
+	assert.Len(t, changes.Results, 110)
+
+}
+
 func TestDocLifecycle(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()

@@ -473,11 +473,11 @@ func (dc *DCPClient) openStream(vbID uint16, maxRetries uint32) (err error) {
 	return fmt.Errorf("openStream failed to complete after %d attempts, last error: %w", openRetryCount, openStreamErr)
 }
 
-func (dc *DCPClient) rollback(logCtx context.Context, vbID uint16) (err error) {
+func (dc *DCPClient) rollback(ctx context.Context, vbID uint16) (err error) {
 	if dc.dbStats != nil {
 		dc.dbStats.Add("dcp_rollback_count", 1)
 	}
-	dc.metadata.Rollback(logCtx, vbID)
+	dc.metadata.Rollback(ctx, vbID)
 	return nil
 }
 

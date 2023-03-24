@@ -65,14 +65,12 @@ type DCPMetadataStore interface {
 }
 
 type DCPMetadataMem struct {
-	metadata  []DCPMetadata
-	endSeqNos []gocbcore.SeqNo
+	metadata []DCPMetadata
 }
 
 func NewDCPMetadataMem(numVbuckets uint16) *DCPMetadataMem {
 	m := &DCPMetadataMem{
-		metadata:  make([]DCPMetadata, numVbuckets),
-		endSeqNos: make([]gocbcore.SeqNo, numVbuckets),
+		metadata: make([]DCPMetadata, numVbuckets),
 	}
 	for vbNo := uint16(0); vbNo < numVbuckets; vbNo++ {
 		m.metadata[vbNo] = DCPMetadata{
@@ -84,16 +82,17 @@ func NewDCPMetadataMem(numVbuckets uint16) *DCPMetadataMem {
 }
 
 // Rollback resets the metadata, preserving EndSeqNo
-func (m *DCPMetadataMem) Rollback(logCtx context.Context, vbID uint16) {
+func (m *DCPMetadataMem) Rollback(ctx context.Context, vbID uint16) {
+	endSeqNo := m.metadata[vbID].EndSeqNo
 	m.metadata[vbID] = DCPMetadata{
 		VbUUID:          0,
 		StartSeqNo:      0,
-		EndSeqNo:        m.endSeqNos[vbID],
+		EndSeqNo:        endSeqNo,
 		SnapStartSeqNo:  0,
 		SnapEndSeqNo:    0,
 		FailoverEntries: make([]gocbcore.FailoverEntry, 0),
 	}
-	TracefCtx(logCtx, KeyDCP, "rolling back vb:%d with metadata set to %v", vbID, m.metadata[vbID])
+	TracefCtx(ctx, KeyDCP, "rolling back vb:%d with metadata set to %v", vbID, m.metadata[vbID])
 }
 
 func (m *DCPMetadataMem) SetMeta(vbID uint16, meta DCPMetadata) {
@@ -124,7 +123,6 @@ func (m *DCPMetadataMem) SetEndSeqNos(endSeqNos map[uint16]uint64) {
 	for i := 0; i < len(m.metadata); i++ {
 		endSeqNo, _ := endSeqNos[uint16(i)]
 		m.metadata[i].EndSeqNo = gocbcore.SeqNo(endSeqNo)
-		m.endSeqNos[i] = gocbcore.SeqNo(endSeqNo)
 	}
 }
 
@@ -171,7 +169,6 @@ type DCPMetadataCS struct {
 	dataStore DataStore
 	keyPrefix string
 	metadata  []DCPMetadata
-	endSeqNos []gocbcore.SeqNo
 }
 
 func NewDCPMetadataCS(store DataStore, numVbuckets uint16, numWorkers int, keyPrefix string) *DCPMetadataCS {
@@ -180,7 +177,6 @@ func NewDCPMetadataCS(store DataStore, numVbuckets uint16, numWorkers int, keyPr
 		dataStore: store,
 		keyPrefix: keyPrefix,
 		metadata:  make([]DCPMetadata, numVbuckets),
-		endSeqNos: make([]gocbcore.SeqNo, numVbuckets),
 	}
 	for vbNo := uint16(0); vbNo < numVbuckets; vbNo++ {
 		m.metadata[vbNo] = DCPMetadata{
@@ -197,7 +193,7 @@ func NewDCPMetadataCS(store DataStore, numVbuckets uint16, numWorkers int, keyPr
 	return m
 }
 
-func (m *DCPMetadataCS) Rollback(logCtx context.Context, vbID uint16) {
+func (m *DCPMetadataCS) Rollback(ctx context.Context, vbID uint16) {
 	endSeqNo := m.metadata[vbID].EndSeqNo
 	m.metadata[vbID] = DCPMetadata{
 		VbUUID:          0,
@@ -207,7 +203,7 @@ func (m *DCPMetadataCS) Rollback(logCtx context.Context, vbID uint16) {
 		SnapEndSeqNo:    0,
 		FailoverEntries: make([]gocbcore.FailoverEntry, 0),
 	}
-	TracefCtx(logCtx, KeyDCP, "rolling back vb:%d with metadata set to %v", vbID, m.metadata[vbID])
+	TracefCtx(ctx, KeyDCP, "rolling back vb:%d with metadata set to %v", vbID, m.metadata[vbID])
 }
 
 func (m *DCPMetadataCS) SetMeta(vbNo uint16, metadata DCPMetadata) {
