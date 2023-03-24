@@ -11,6 +11,8 @@ licenses/APL2.txt.
 package db
 
 import (
+	"fmt"
+
 	"github.com/couchbase/sync_gateway/base"
 )
 
@@ -20,7 +22,7 @@ import (
 func (apr *ActivePullReplicator) _startPullWithCollections() error {
 	collectionCheckpoints, err := apr._initCollections()
 	if err != nil {
-		return err
+		return fmt.Errorf("%w: %s", fatalReplicatorConnectError, err)
 	}
 
 	if err := apr._initCheckpointer(); err != nil {

@@ -12,6 +12,7 @@ package db
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -35,7 +36,6 @@ func NewPullReplicator(ctx context.Context, config *ActiveReplicatorConfig) (*Ac
 }
 
 func (apr *ActivePullReplicator) Start(ctx context.Context) error {
-
 	apr.lock.Lock()
 	defer apr.lock.Unlock()
 
@@ -56,7 +56,9 @@ func (apr *ActivePullReplicator) Start(ctx context.Context) error {
 	if err != nil {
 		_ = apr.setError(err)
 		base.WarnfCtx(apr.ctx, "Couldn't connect: %v", err)
-		if apr.config.TotalReconnectTimeout != 0 {
+		if errors.Is(err, fatalReplicatorConnectError) {
+			base.WarnfCtx(apr.ctx, "Stopping replication connection attempt")
+		} else if apr.config.TotalReconnectTimeout != 0 {
 			base.InfofCtx(apr.ctx, base.KeyReplicate, "Attempting to reconnect in background: %v", err)
 			apr.reconnectActive.Set(true)
 			go apr.reconnectLoop()

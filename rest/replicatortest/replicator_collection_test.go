@@ -13,6 +13,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -426,4 +428,79 @@ func TestActiveReplicatorMultiCollectionMissingLocal(t *testing.T) {
 	err = ar.Start(ctx1)
 	assert.ErrorContains(t, err, "does not exist on this database")
 	assert.NoError(t, ar.Stop())
+}
+
+func TestReplicatorMissingCollections(t *testing.T) {
+	const numCollections = 2
+	base.RequireNumTestDataStores(t, numCollections)
+	base.RequireNumTestBuckets(t, 2)
+	testCases := []struct {
+		name       string
+		direction  db.ActiveReplicatorDirection
+		maxBackoff int
+	}{
+		{
+			name:       "push replication,maxbackoff 0",
+			direction:  db.ActiveReplicatorTypePush,
+			maxBackoff: 0,
+		},
+		{
+			name:       "pull replication, max backoff 0",
+			direction:  db.ActiveReplicatorTypePull,
+			maxBackoff: 0,
+		},
+		{
+			name:       "push replication,maxbackoff 100",
+			direction:  db.ActiveReplicatorTypePush,
+			maxBackoff: 100,
+		},
+		{
+			name:       "pull replication, max backoff 100",
+			direction:  db.ActiveReplicatorTypePull,
+			maxBackoff: 100,
+		},
+	}
+	for _, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+			const username = "alice"
+			passiveRT := rest.NewRestTester(t, &rest.RestTesterConfig{SgReplicateEnabled: true})
+			defer passiveRT.Close()
+			passiveRT.CreateUser(username, []string{"sg_test_0.sg_test_0", "sg_test_0.sg_test_1"})
+
+			// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1
+			srv := httptest.NewServer(passiveRT.TestPublicHandler())
+
+			// Build passiveDBURL with basic auth creds
+			passiveDBURL, _ := url.Parse(srv.URL + "/" + passiveRT.GetDatabase().Name)
+			passiveDBURL.User = url.UserPassword(username, rest.RestTesterDefaultUserPassword)
+
+			activeRT := rest.NewRestTesterMultipleCollections(t, &rest.RestTesterConfig{SgReplicateEnabled: true}, numCollections)
+			defer activeRT.Close()
+
+			const numDocs = 1
+			for i := 1; i <= numDocs; i++ {
+				for _, keyspace := range []string{"{{.keyspace1}}", "{{.keyspace2}}"} {
+					resp := activeRT.SendAdminRequest(http.MethodPut, fmt.Sprintf("/%s/active_doc_%d", keyspace, i), `{"foo": "bar"}`)
+					rest.RequireStatus(t, resp, http.StatusCreated)
+				}
+				resp := passiveRT.SendAdminRequest(http.MethodPut, fmt.Sprintf("/{{.keyspace}}/passive_doc_%d", i), `{"foo": "bar"}`)
+				rest.RequireStatus(t, resp, http.StatusCreated)
+
+			}
+			require.NoError(t, activeRT.WaitForPendingChanges())
+			// use string since omitempty will occur for max_backoff_time, rendering test useless
+			replicationID := strings.ReplaceAll(t.Name(), "/", "_")
+			replicationConfig := `{
+				"replication_id": "` + replicationID + `",
+				"remote": "` + passiveDBURL.String() + `",
+				"direction": "` + string(test.direction) + `",
+				"collections_enabled": true,
+				"max_backoff_time": ` + strconv.Itoa(test.maxBackoff) + `
+			}`
+			resp := activeRT.SendAdminRequest(http.MethodPost, "/{{.db}}/_replication/", replicationConfig)
+			rest.RequireStatus(t, resp, http.StatusCreated)
+
+			activeRT.WaitForReplicationStatus(replicationID, db.ReplicationStateError)
+		})
+	}
 }

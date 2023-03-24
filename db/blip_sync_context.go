@@ -204,6 +204,10 @@ func (bsc *BlipSyncContext) register(profile string, handlerFn func(*blipHandler
 func (bsc *BlipSyncContext) Close() {
 	bsc.terminatorOnce.Do(func() {
 		for _, collection := range bsc.collections.getAll() {
+			// if initial GetCollections returned an invalid collections, this will be nil
+			if collection == nil {
+				continue
+			}
 			// Lock so that we don't close the changesCtx at the same time as handleSubChanges is creating it
 			collection.changesCtxLock.Lock()
 			defer collection.changesCtxLock.Unlock()
