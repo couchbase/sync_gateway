@@ -60,8 +60,8 @@ func (apr *ActivePushReplicator) _startPushWithCollections() error {
 		}
 
 		var channels base.Set
-		if apr.config.FilterChannels != nil {
-			channels = base.SetFromArray(apr.config.FilterChannels)
+		if filteredChannels := apr.config.getFilteredChannels(collectionIdx); len(filteredChannels) > 0 {
+			channels = base.SetFromArray(filteredChannels)
 		}
 
 		apr.blipSyncContext.fatalErrorCallback = func(err error) {

@@ -1405,6 +1405,90 @@ func TestRequireReplicatorStoppedBeforeUpsert(t *testing.T) {
 
 }
 
+func TestReplicationMultiCollectionChannelFilter(t *testing.T) {
+	base.RequireNumTestBuckets(t, 2)
+
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
+
+	rt1, rt2, remoteURLString, teardown := rest.SetupSGRPeers(t, true)
+	defer teardown()
+
+	// Add docs to two channels
+	bulkDocs := `
+	{
+	"docs":
+		[
+			{"channels": ["ChannelOne"], "_id": "doc_1"},
+			{"channels": ["ChannelOne"], "_id": "doc_2"},
+			{"channels": ["ChannelOne"], "_id": "doc_3"},
+			{"channels": ["ChannelOne"], "_id": "doc_4"},
+			{"channels": ["ChannelTwo"], "_id": "doc_5"},
+			{"channels": ["ChannelTwo"], "_id": "doc_6"},
+			{"channels": ["ChannelTwo"], "_id": "doc_7"},
+			{"channels": ["ChannelTwo"], "_id": "doc_8"}
+		]
+	}
+	`
+	resp := rt1.SendAdminRequest("POST", "/{{.keyspace}}/_bulk_docs", bulkDocs)
+	rest.RequireStatus(t, resp, http.StatusCreated)
+
+	rt1Keyspace := rt1.GetSingleTestDatabaseCollection().ScopeName + "." + rt1.GetSingleTestDatabaseCollection().Name
+
+	replicationID := "testRepl"
+
+	replConf := `
+	{
+		"replication_id": "` + replicationID + `",
+		"remote": "` + remoteURLString + `",
+		"direction": "push",
+		"continuous": true,
+		"filter":"sync_gateway/bychannel",
+		"query_params": {
+			"collections_channels": {
+				"` + rt1Keyspace + `": ["ChannelOne"]
+			}
+		},
+		"collections_enabled": true,
+		"collections_local": ["` + rt1Keyspace + `"]
+	}`
+
+	// Create replication for first channel
+	resp = rt1.SendAdminRequest("PUT", "/{{.db}}/_replication/"+replicationID, replConf)
+	rest.RequireStatus(t, resp, http.StatusCreated)
+
+	rt1.WaitForReplicationStatus(replicationID, db.ReplicationStateRunning)
+
+	changesResults, err := rt2.WaitForChanges(4, "/{{.keyspace}}/_changes?since=0", "", true)
+	require.NoError(t, err)
+	require.Len(t, changesResults.Results, 4)
+
+	resp = rt1.SendAdminRequest("PUT", "/{{.db}}/_replicationStatus/"+replicationID+"?action=stop", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+	rt1.WaitForReplicationStatus(replicationID, db.ReplicationStateStopped)
+
+	// Upsert replication to use second channel
+	replConfUpdate := `
+	{
+		"replication_id": "` + replicationID + `",
+		"query_params": {
+			"collections_channels": {
+				"` + rt1Keyspace + `": ["ChannelTwo"]
+			}
+		}
+	}`
+
+	resp = rt1.SendAdminRequest("PUT", "/{{.db}}/_replication/"+replicationID, replConfUpdate)
+	rest.RequireStatus(t, resp, http.StatusOK)
+
+	resp = rt1.SendAdminRequest("PUT", "/{{.db}}/_replicationStatus/"+replicationID+"?action=start", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+	rt1.WaitForReplicationStatus(replicationID, db.ReplicationStateRunning)
+
+	changesResults, err = rt2.WaitForChanges(8, "/{{.keyspace}}/_changes?since=0", "", true)
+	require.NoError(t, err)
+	require.Len(t, changesResults.Results, 8)
+}
+
 func TestReplicationConfigChange(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
 

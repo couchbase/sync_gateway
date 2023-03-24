@@ -741,7 +741,8 @@ func (rt *RestTester) CreateWaitForChangesRetryWorker(numChangesExpected int, ch
 		}
 		if len(changes.Results) < numChangesExpected {
 			// not enough results, retry
-			return true, nil, nil
+			rt.TB.Logf("Waiting for changes, expected %d, got %d: %v", numChangesExpected, len(changes.Results), changes)
+			return true, fmt.Errorf("expecting %d changes, got %d", numChangesExpected, len(changes.Results)), nil
 		}
 		// If it made it this far, there is no errors and it got enough changes
 		return false, nil, changes

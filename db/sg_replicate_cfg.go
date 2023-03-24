@@ -238,7 +238,7 @@ func (rc *ReplicationConfig) ValidateReplication(fromConfig bool) (err error) {
 			return base.HTTPErrorf(http.StatusBadRequest, ConfigErrorMissingQueryParams)
 		}
 
-		_, invalidChannelsErr := ChannelsFromQueryParams(rc.QueryParams)
+		invalidChannelsErr := rc.validateFilteredChannels()
 		if invalidChannelsErr != nil {
 			return invalidChannelsErr
 		}
@@ -247,6 +247,11 @@ func (rc *ReplicationConfig) ValidateReplication(fromConfig bool) (err error) {
 		return base.HTTPErrorf(http.StatusBadRequest, ConfigErrorUnknownFilter)
 	}
 	return nil
+}
+
+func (rc *ReplicationConfig) validateFilteredChannels() error {
+	_, _, err := CollectionChannelsFromQueryParams(rc.CollectionsLocal, rc.QueryParams)
+	return err
 }
 
 // Upsert updates ReplicationConfig with any non-empty properties specified in the incoming replication config.
@@ -591,8 +596,7 @@ func (m *sgReplicateManager) NewActiveReplicatorConfig(config *ReplicationCfg) (
 	// Channel filter processing
 	if config.Filter == base.ByChannelFilter {
 		rc.Filter = base.ByChannelFilter
-		rc.FilterChannels, err = ChannelsFromQueryParams(config.QueryParams)
-		if err != nil {
+		if err := rc.setFilterChannels(config); err != nil {
 			return nil, err
 		}
 	}
@@ -642,6 +646,11 @@ func (m *sgReplicateManager) NewActiveReplicatorConfig(config *ReplicationCfg) (
 	rc.onComplete = m.replicationComplete
 
 	return rc, nil
+}
+
+func (rc *ActiveReplicatorConfig) setFilterChannels(config *ReplicationCfg) (err error) {
+	rc.CollectionsChannelFilter, rc.FilterChannels, err = CollectionChannelsFromQueryParams(config.CollectionsLocal, config.QueryParams)
+	return err
 }
 
 func (m *sgReplicateManager) isCfgChanged(newCfg *ReplicationCfg, activeCfg *ActiveReplicatorConfig) (bool, error) {
