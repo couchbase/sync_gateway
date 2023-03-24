@@ -33,14 +33,13 @@ const (
 
 // Imports a document that was written by someone other than sync gateway, given the existing state of the doc in raw bytes
 func (db *DatabaseCollectionWithUser) ImportDocRaw(ctx context.Context, docid string, value []byte, xattrValue []byte, userXattrValue []byte, isDelete bool, cas uint64, expiry *uint32, mode ImportMode) (docOut *Document, err error) {
-
 	var body Body
 	if isDelete {
 		body = Body{}
 	} else {
 		err := body.Unmarshal(value)
 		if err != nil {
-			base.InfofCtx(ctx, base.KeyImport, "Unmarshal error during importDoc %v", err)
+			base.InfofCtx(ctx, base.KeyImport, "Unmarshal error during ImportDocRaw %v", err)
 			return nil, err
 		}
 
@@ -94,7 +93,7 @@ func (db *DatabaseCollectionWithUser) ImportDoc(ctx context.Context, docid strin
 
 	body, err := existingDoc.GetDeepMutableBody()
 	if err != nil {
-		base.InfofCtx(ctx, base.KeyImport, "Unmarshal error during importDoc %v", err)
+		base.InfofCtx(ctx, base.KeyImport, "Unmarshal error during ImportDoc %v", err)
 		return nil, err
 	}
 	return db.importDoc(ctx, docid, body, expiry, isDelete, existingBucketDoc, mode)
@@ -109,7 +108,7 @@ func (db *DatabaseCollectionWithUser) ImportDoc(ctx context.Context, docid strin
 //	mode - ImportMode - ImportFromFeed or ImportOnDemand
 func (db *DatabaseCollectionWithUser) importDoc(ctx context.Context, docid string, body Body, expiry *uint32, isDelete bool, existingDoc *sgbucket.BucketDocument, mode ImportMode) (docOut *Document, err error) {
 
-	base.DebugfCtx(ctx, base.KeyImport, "Attempting to import doc %q...", base.UD(docid))
+	base.DebugfCtx(ctx, base.KeyImport, "Attempting to import doc %q; isDelete=%v...", base.UD(docid), isDelete)
 	importStartTime := time.Now()
 
 	if existingDoc == nil {

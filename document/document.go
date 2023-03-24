@@ -17,6 +17,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"regexp"
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
@@ -150,7 +151,7 @@ func (doc *Document) UnmarshalBody() Body {
 // DEPRECATED -- Once V8 is merged there should be no more need for this method.
 func (doc *Document) GetDeepMutableBody() (Body, error) {
 	if doc._rawBody == nil {
-		base.WarnfCtx(context.Background(), "Null doc body/rawBody %s/%s from %s", base.UD(doc.ID), base.UD(doc.RevID), base.GetCallersName(1, true))
+		base.WarnfCtx(context.Background(), "Null doc body %s/%s from %s", base.UD(doc.ID), base.UD(doc.RevID), base.GetCallersName(1, true))
 		return nil, nil
 	}
 	var mutableBody Body
@@ -166,9 +167,18 @@ func (doc *Document) RemoveBody() {
 	doc._rawBody = nil
 }
 
-// HasBody returns true if the given document has either an unmarshalled body, or raw bytes available.
+// HasBody returns true if the given document has a non-nil JSON body.
+// It will return true for an empty body `{}`, while HasNonEmptyBody won't.
 func (doc *Document) HasBody() bool {
 	return doc._rawBody != nil
+}
+
+var kEmptyBodyRegexp = regexp.MustCompile(`\s*\{\s*\}\s*`)
+
+// HasNonEmptyBody returns true if the document's body is a *non-empty* JSON object,
+// i.e. has at least one property.
+func (doc *Document) HasNonEmptyBody() bool {
+	return len(doc._rawBody) > 2 && !kEmptyBodyRegexp.Match(doc._rawBody)
 }
 
 func (doc *Document) BodyBytes() ([]byte, error) {
@@ -177,7 +187,7 @@ func (doc *Document) BodyBytes() ([]byte, error) {
 		if base.ConsoleLogLevel().Enabled(base.LevelTrace) {
 			caller = base.GetCallersName(1, true)
 		}
-		base.WarnfCtx(context.Background(), "Null doc body/rawBody %s/%s from %s", base.UD(doc.ID), base.UD(doc.RevID), caller)
+		base.WarnfCtx(context.Background(), "Null doc body %s/%s from %s", base.UD(doc.ID), base.UD(doc.RevID), caller)
 	}
 	return doc._rawBody, nil
 }
@@ -905,7 +915,6 @@ func (doc *Document) UnmarshalWithXattr(data []byte, xdata []byte, unmarshalLeve
 }
 
 func (doc *Document) MarshalWithXattr() (data []byte, xdata []byte, err error) {
-	// Grab the rawBody if it's already marshalled, otherwise unmarshal the body
 	if doc._rawBody != nil && !doc.IsDeleted() {
 		data = doc._rawBody
 	}
@@ -928,5 +937,4 @@ func (doc *Document) RawUserXattr() []byte {
 // These methods keep that code working, but the real fix is to change it to not grope these
 // fields (but also without losing performance...) --Jens Feb 2023
 
-func (doc *Document) PeekRawBody() []byte  { return doc._rawBody }
 func (doc *Document) PokeRawBody(b []byte) { doc._rawBody = b }

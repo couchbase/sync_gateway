@@ -245,25 +245,24 @@ func TestGetDeepMutableBody(t *testing.T) {
 		name        string
 		inputDoc    *Document
 		expectError bool
-		expected    *Body
+		expected    Body
 	}{
 		{
 			name:        "Empty doc",
 			inputDoc:    &Document{},
-			expectError: true,
+			expectError: false,
 			expected:    nil,
 		},
 		{
 			name:        "Raw body",
 			inputDoc:    &Document{_rawBody: []byte(`{"test": true}`)},
 			expectError: false,
-			expected:    &Body{"test": true},
+			expected:    Body{"test": true},
 		},
 		{
 			name:        "Malformed raw body",
 			inputDoc:    &Document{_rawBody: []byte(`{test: true}`)},
 			expectError: true,
-			expected:    nil,
 		},
 	}
 	for _, test := range testCases {
@@ -272,10 +271,11 @@ func TestGetDeepMutableBody(t *testing.T) {
 			if test.expectError {
 				assert.Error(t, err)
 				assert.Nil(t, body)
-				return
+			} else {
+				if assert.Nil(t, err) {
+					assert.Equal(t, test.expected, body)
+				}
 			}
-			assert.Nil(t, err)
-			assert.Equal(t, *test.expected, body)
 		})
 	}
 }
@@ -412,4 +412,30 @@ func TestDocumentRevisionBodyBytes(t *testing.T) {
 	if assert.NoError(t, err) {
 		assert.Equal(t, `{"foo":false}`, string(j))
 	}
+}
+
+func TestDocumentHasNonEmptyBody(t *testing.T) {
+	nilDoc := Document{_rawBody: nil}
+	assert.False(t, nilDoc.HasBody())
+	assert.False(t, nilDoc.HasNonEmptyBody())
+
+	emptyDoc := Document{_rawBody: []byte{}}
+	assert.True(t, emptyDoc.HasBody())
+	assert.False(t, emptyDoc.HasNonEmptyBody())
+
+	emptyObjDoc := Document{_rawBody: []byte(`{}`)}
+	assert.True(t, emptyObjDoc.HasBody())
+	assert.False(t, emptyObjDoc.HasNonEmptyBody())
+
+	emptyObjDoc = Document{_rawBody: []byte(`{ }`)}
+	assert.True(t, emptyObjDoc.HasBody())
+	assert.False(t, emptyObjDoc.HasNonEmptyBody())
+
+	emptyObjDoc = Document{_rawBody: []byte("\t\t{\n } ")}
+	assert.True(t, emptyObjDoc.HasBody())
+	assert.False(t, emptyObjDoc.HasNonEmptyBody())
+
+	nonEmptyDoc := Document{_rawBody: []byte(`{"x":0}`)}
+	assert.True(t, nonEmptyDoc.HasBody())
+	assert.True(t, nonEmptyDoc.HasNonEmptyBody())
 }

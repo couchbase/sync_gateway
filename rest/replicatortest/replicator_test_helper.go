@@ -92,7 +92,7 @@ func waitForTombstone(t *testing.T, rt *rest.RestTester, docID string) {
 	require.NoError(t, rt.WaitForPendingChanges())
 	require.NoError(t, rt.WaitForCondition(func() bool {
 		doc, _ := rt.GetSingleTestDatabaseCollection().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalAll)
-		return doc.IsDeleted() && !doc.HasBody()
+		return doc.IsDeleted() && !doc.HasNonEmptyBody()
 	}))
 }
 
