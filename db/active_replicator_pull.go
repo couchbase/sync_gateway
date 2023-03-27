@@ -109,7 +109,7 @@ func (apr *ActivePullReplicator) _startPullNonCollection() error {
 	}
 	apr.blipSyncContext.collections.setNonCollectionAware(newBlipSyncCollectionContext(defaultCollection))
 
-	if err := apr._initCheckpointer(); err != nil {
+	if err := apr._initCheckpointer(nil); err != nil {
 		// clean up anything we've opened so far
 		base.TracefCtx(apr.ctx, base.KeyReplicate, "Error initialising checkpoint in _connect. Closing everything.")
 		apr.checkpointerCtx = nil
@@ -186,7 +186,7 @@ func (apr *ActivePullReplicator) Complete() {
 	}
 }
 
-func (apr *ActivePullReplicator) _initCheckpointer() error {
+func (apr *ActivePullReplicator) _initCheckpointer(remoteCheckpoints []replicationCheckpoint) error {
 	// wrap the replicator context with a cancelFunc that can be called to abort the checkpointer from _disconnect
 	apr.checkpointerCtx, apr.checkpointerCtxCancel = context.WithCancel(apr.ctx)
 
@@ -198,7 +198,12 @@ func (apr *ActivePullReplicator) _initCheckpointer() error {
 
 		c.Checkpointer = NewCheckpointer(apr.checkpointerCtx, c.dataStore, apr.CheckpointID, checkpointHash, apr.blipSender, apr.config, apr.getPullStatus, c.collectionIdx)
 
-		if !apr.config.CollectionsEnabled {
+		if apr.config.CollectionsEnabled {
+			err := c.Checkpointer.setLastCheckpointSeq(&remoteCheckpoints[*c.collectionIdx])
+			if err != nil {
+				return err
+			}
+		} else {
 			err := c.Checkpointer.fetchDefaultCollectionCheckpoints()
 			if err != nil {
 				return err
