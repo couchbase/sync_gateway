@@ -43,13 +43,17 @@ type DocAttachment struct {
 }
 
 // A pseudonym for the generic map that a single attachment parses to by default
-type DocAttachmentJSON map[string]any
+// (This is defined with `=` so it is a pure pseudonym, not a new type; otherwise delta
+// processing would get confused by it.)
+type DocAttachmentJSON = map[string]any
 
 // A document's `_attachments` map parsed into a map of DocAttachment structs.
 type AttachmentsMeta map[string]*DocAttachment
 
 // A pseudonym for the generic map that `_attachments` parses to by default
-type AttachmentsMetaJSON map[string]any
+// (This is defined with `=` so it is a pure pseudonym, not a new type; otherwise delta
+// processing would get confused by it.)
+type AttachmentsMetaJSON = map[string]any
 
 var (
 	// ErrAttachmentVersion is thrown in case of any error in parsing version from the attachment meta.
@@ -127,9 +131,7 @@ func DocAttachmentFromMap(att DocAttachmentJSON) (*DocAttachment, error) {
 // Recognizes `*DocAttachment` and `map[string]any`.
 func DocAttachmentFromAny(x any) (*DocAttachment, error) {
 	switch att := x.(type) {
-	case DocAttachmentJSON:
-		return DocAttachmentFromMap(att)
-	case map[string]any:
+	case map[string]any /*, DocAttachmentJSON*/ :
 		return DocAttachmentFromMap(att)
 	case *DocAttachment:
 		return att, nil
@@ -170,9 +172,7 @@ func AttachmentsMetaFromAny(x any) (AttachmentsMeta, error) {
 	switch atts := x.(type) {
 	case AttachmentsMeta:
 		return atts, nil
-	case AttachmentsMetaJSON:
-		return AttachmentsMetaFromJSON(atts)
-	case map[string]any:
+	case map[string]any /*, AttachmentsMetaJSON*/ :
 		return AttachmentsMetaFromJSON(atts)
 	case nil:
 		return nil, nil

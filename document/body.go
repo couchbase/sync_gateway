@@ -101,8 +101,7 @@ func (body Body) GetRawAttachments() AttachmentsMetaJSON {
 	switch atts := body[BodyAttachments].(type) {
 	case AttachmentsMeta:
 		return atts.AsMap()
-	case AttachmentsMetaJSON:
-	case map[string]any:
+	case map[string]any /*, AttachmentsMetaJSON*/ :
 		return atts
 	default:
 	}
