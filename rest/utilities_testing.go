@@ -213,6 +213,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 	sc.Bootstrap.UseTLSServer = &rt.RestTesterConfig.useTLSServer
 	sc.Bootstrap.ServerTLSSkipVerify = base.BoolPtr(base.TestTLSSkipVerify())
 	sc.Unsupported.Serverless.Enabled = &rt.serverless
+	sc.Unsupported.AllowScopesInPersistentConfig = base.BoolPtr(true)
 	if rt.serverless {
 		if !rt.PersistentConfig {
 			rt.TB.Fatalf("Persistent config must be used when running in serverless mode")
@@ -271,7 +272,6 @@ func (rt *RestTester) Bucket() base.Bucket {
 			panic("Couldn't initialize Couchbase Server connection: " + err.Error())
 		}
 	}
-
 	// Copy this startup config at this point into initial startup config
 	err := base.DeepCopyInefficient(&rt.RestTesterServerContext.initialStartupConfig, &sc)
 	if err != nil {

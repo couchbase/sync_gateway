@@ -640,6 +640,9 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 
 	fqCollections := make([]string, 0)
 	if len(config.Scopes) > 0 {
+		if !sc.persistentConfig && !base.BoolDefault(sc.Config.Unsupported.AllowScopesInPersistentConfig, false) {
+			return nil, base.HTTPErrorf(http.StatusBadRequest, "scopes are not allowed with legacy config")
+		}
 		contextOptions.Scopes = make(db.ScopesOptions, len(config.Scopes))
 		for scopeName, scopeCfg := range config.Scopes {
 			contextOptions.Scopes[scopeName] = db.ScopeOptions{
