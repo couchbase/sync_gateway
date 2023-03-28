@@ -388,13 +388,24 @@ func (r *replicationCheckpoint) Copy() *replicationCheckpoint {
 	}
 }
 
-// fetchDefaultCollectionCheckpoints sets lastCheckpointSeq for the given Checkpointer by requesting various checkpoints on the local and remote.
+// fetchDefaultCollectionCheckpoints gets remote checkpoint for the default collection and determines the lastCheckpointSeq.
+func (c *Checkpointer) fetchDefaultCollectionCheckpoints() error {
+	base.TracefCtx(c.ctx, base.KeyReplicate, "fetchDefaultCollectionCheckpoints()")
+	remoteCheckpoint, err := c.getRemoteCheckpoint()
+	if err != nil {
+		return err
+	}
+	base.DebugfCtx(c.ctx, base.KeyReplicate, "got remote checkpoint: %v", remoteCheckpoint)
+	return c.setLastCheckpointSeq(remoteCheckpoint)
+}
+
+// setLastCheckpointCheckpoints sets lastCheckpointSeq for the given Checkpointer by comparing local and remote checkpoints.
 // Various scenarios this function handles:
 // - Matching checkpoints from local and remote. Use that sequence.
 // - Both SGR2 checkpoints are missing, we'll start the replication from zero.
 // - Mismatched config hashes, use a zero value for sequence, so the replication can restart.
 // - Mismatched sequences, we'll pick the lower of the two, and attempt to roll back the higher checkpoint to that point.
-func (c *Checkpointer) fetchDefaultCollectionCheckpoints() error {
+func (c *Checkpointer) setLastCheckpointSeq(remoteCheckpoint *replicationCheckpoint) error {
 	base.TracefCtx(c.ctx, base.KeyReplicate, "fetchDefaultCollectionCheckpoints()")
 
 	localCheckpoint, err := c.getLocalCheckpoint()
@@ -405,11 +416,6 @@ func (c *Checkpointer) fetchDefaultCollectionCheckpoints() error {
 	base.DebugfCtx(c.ctx, base.KeyReplicate, "got local checkpoint: %v", localCheckpoint)
 	c.lastLocalCheckpointRevID = localCheckpoint.Rev
 
-	remoteCheckpoint, err := c.getRemoteCheckpoint()
-	if err != nil {
-		return err
-	}
-	base.DebugfCtx(c.ctx, base.KeyReplicate, "got remote checkpoint: %v", remoteCheckpoint)
 	c.lastRemoteCheckpointRevID = remoteCheckpoint.Rev
 
 	localSeq := localCheckpoint.LastSeq

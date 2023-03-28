@@ -341,15 +341,3 @@ func (a *activeReplicatorCommon) _publishStatus() {
 	status, errorMessage := a.getStateWithErrorMessage()
 	setLocalCheckpointStatus(a.ctx, a.config.ActiveDB.MetadataStore, a.CheckpointID, status, errorMessage, int(a.config.ActiveDB.Options.LocalDocExpirySecs))
 }
-
-func (a *activeReplicatorCommon) incrementHitandMissStatsCollections(collectionID *int, since SequenceID) {
-	for _, v := range a.namedCollections {
-		if *v.collectionIdx == *collectionID {
-			if !since.IsNonZero() {
-				v.Checkpointer.stats.GetCheckpointMissCount++
-			} else {
-				v.Checkpointer.stats.GetCheckpointHitCount++
-			}
-		}
-	}
-}

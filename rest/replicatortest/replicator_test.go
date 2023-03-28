@@ -4374,7 +4374,7 @@ func TestActiveReplicatorRecoverFromLocalFlush(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)
 
 	// Passive
-	rt2 := rest.NewRestTesterDefaultCollection(t, // CBG-2379 test requires default collection
+	rt2 := rest.NewRestTester(t, // CBG-2379 test requires default collection
 		&rest.RestTesterConfig{
 			SyncFn: channels.DocChannelsSyncFunction,
 		})
@@ -4400,7 +4400,7 @@ func TestActiveReplicatorRecoverFromLocalFlush(t *testing.T) {
 	passiveDBURL.User = url.UserPassword(username, rest.RestTesterDefaultUserPassword)
 
 	// Active
-	rt1 := rest.NewRestTesterDefaultCollection(t, nil) // CBG-2379 test requires default collection
+	rt1 := rest.NewRestTester(t, nil) // CBG-2379 test requires default collection
 	ctx1 := rt1.Context()
 	stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, nil, nil)
 	require.NoError(t, err)
@@ -4426,7 +4426,7 @@ func TestActiveReplicatorRecoverFromLocalFlush(t *testing.T) {
 	startNumChangesRequestedFromZeroTotal := rt2.GetDatabase().DbStats.CBLReplicationPull().NumPullReplSinceZero.Value()
 	startNumRevsSentTotal := rt2.GetDatabase().DbStats.CBLReplicationPull().RevSendCount.Value()
 
-	assert.NoError(t, ar.Start(ctx1))
+	require.NoError(t, ar.Start(ctx1))
 
 	// wait for document originally written to rt2 to arrive at rt1
 	changesResults, err := rt1.WaitForChanges(1, "/{{.keyspace}}/_changes?since=0", "", true)
@@ -4467,7 +4467,7 @@ func TestActiveReplicatorRecoverFromLocalFlush(t *testing.T) {
 	rt1.Close()
 
 	// recreate rt1 with a new bucket
-	rt1 = rest.NewRestTesterDefaultCollection(t, nil) // CBG-2379 test requires default collection
+	rt1 = rest.NewRestTester(t, nil)
 	defer rt1.Close()
 	ctx1 = rt1.Context()
 
@@ -4864,7 +4864,11 @@ func TestActiveReplicatorRecoverFromMismatchedRev(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyBucket, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)
 
 	// Passive
-	rt2 := rest.NewRestTesterDefaultCollection(t, nil) // CBG-2775 doesn't work yet with default collection
+	rt2 := rest.NewRestTester(t, &rest.RestTesterConfig{
+		SgReplicateEnabled: true,
+		SyncFn:             channels.DocChannelsSyncFunction,
+	})
+
 	defer rt2.Close()
 
 	username := "alice"
@@ -4880,7 +4884,10 @@ func TestActiveReplicatorRecoverFromMismatchedRev(t *testing.T) {
 	passiveDBURL.User = url.UserPassword(username, rest.RestTesterDefaultUserPassword)
 
 	// Active
-	rt1 := rest.NewRestTesterDefaultCollection(t, nil) // CBG-2775 doesn't work yet with default collection
+	rt1 := rest.NewRestTester(t, &rest.RestTesterConfig{
+		SgReplicateEnabled: true,
+		SyncFn:             channels.DocChannelsSyncFunction,
+	})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
 	stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, nil, nil)
@@ -4904,7 +4911,7 @@ func TestActiveReplicatorRecoverFromMismatchedRev(t *testing.T) {
 	ar, err := db.NewActiveReplicator(ctx1, &arConfig)
 	require.NoError(t, err)
 
-	assert.NoError(t, ar.Start(ctx1))
+	require.NoError(t, ar.Start(ctx1))
 
 	defer func() {
 		assert.NoError(t, ar.Stop())
