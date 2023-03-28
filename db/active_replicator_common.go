@@ -14,7 +14,6 @@ import (
 	"context"
 	"errors"
 	"expvar"
-	"sync"
 	"testing"
 	"time"
 
@@ -42,10 +41,11 @@ type activeReplicatorCommon struct {
 	initialStatus         *ReplicationStatus
 	state                 string
 	lastError             error
-	stateErrorLock        sync.RWMutex // state and lastError share their own mutex to support retrieval while holding the main lock
+	stateErrorLock        base.LoggingRWMutex // state and lastError share their own mutex to support retrieval while holding the main lock
 	replicationStats      *BlipSyncStats
+	_getStatusCallback    func() *ReplicationStatus
 	onReplicatorComplete  ReplicatorCompleteFunc
-	lock                  sync.RWMutex
+	lock                  base.LoggingRWMutex
 	ctx                   context.Context
 	ctxCancel             context.CancelFunc
 	reconnectActive       base.AtomicBool                                             // Tracks whether reconnect goroutine is active
@@ -100,6 +100,8 @@ func newActiveReplicatorCommon(ctx context.Context, config *ActiveReplicatorConf
 		replicationStats: replicationStats,
 		CheckpointID:     config.checkpointPrefix + checkpointID,
 		initialStatus:    initialStatus,
+		lock:             base.NewLoggingRWMutex(ctx, "lock"),
+		stateErrorLock:   base.NewLoggingRWMutex(ctx, "stateErrorLock"),
 	}
 
 	if config.CollectionsEnabled {
@@ -302,14 +304,17 @@ func (a *activeReplicatorCommon) getLastError() error {
 	return a.lastError
 }
 
+func (a *activeReplicatorCommon) _getStateWithErrorMessage() (state string, lastErrorMessage string) {
+	if a.lastError == nil {
+		return a.state, ""
+	}
+	return a.state, a.lastError.Error()
+}
+
 func (a *activeReplicatorCommon) getStateWithErrorMessage() (state string, lastErrorMessage string) {
 	a.stateErrorLock.RLock()
 	defer a.stateErrorLock.RUnlock()
-	if a.lastError == nil {
-		return a.state, ""
-	} else {
-		return a.state, a.lastError.Error()
-	}
+	return a._getStateWithErrorMessage()
 }
 
 func (a *activeReplicatorCommon) GetStats() *BlipSyncStats {
@@ -320,29 +325,121 @@ func (a *activeReplicatorCommon) GetStats() *BlipSyncStats {
 
 // getCheckpointHighSeq returns the highest sequence number that has been processed by the replicator across all collections.
 func (a *activeReplicatorCommon) getCheckpointHighSeq() string {
-	a.lock.RLock()
-	defer a.lock.RUnlock()
 	var highSeq SequenceID
-	_ = a.forEachCollection(func(c *activeReplicatorCollection) error {
+	err := a.forEachCollection(func(c *activeReplicatorCollection) error {
 		if c.Checkpointer != nil {
-			safeSeq := c.Checkpointer.calculateSafeProcessedSeq()
-			if highSeq.Before(safeSeq) {
-				highSeq = safeSeq
+			seq := c.Checkpointer.calculateSafeProcessedSeq()
+			if highSeq.Before(seq) {
+				highSeq = seq
 			}
 		}
 		return nil
 	})
+	if err != nil {
+		base.WarnfCtx(a.ctx, "Error calculating high sequence: %v", err)
+		return ""
+	}
+
 	var highSeqStr string
 	if highSeq.IsNonZero() {
 		highSeqStr = highSeq.String()
 	}
+
 	return highSeqStr
 }
 
 func (a *activeReplicatorCommon) _publishStatus() {
-	status, errorMessage := a.getStateWithErrorMessage()
-	_, err := setLocalStatus(a.ctx, a.config.ActiveDB.MetadataStore, a.CheckpointID, status, errorMessage, nil, nil, int(a.config.ActiveDB.Options.LocalDocExpirySecs))
+	status := a._getStatusCallback()
+	_, err := setLocalStatus(a.ctx, a.config.ActiveDB.MetadataStore, a.CheckpointID, status, int(a.config.ActiveDB.Options.LocalDocExpirySecs))
 	if err != nil {
-		base.WarnfCtx(a.ctx, "Error setting local status: %v", err)
+		base.WarnfCtx(a.ctx, "Couldn't set status for replication: %v", err)
 	}
+}
+
+func (arc *activeReplicatorCommon) startStatusReporter() error {
+	interval := arc.config.CheckpointInterval
+	if interval == 0 {
+		interval = DefaultCheckpointInterval
+	}
+	go func(ctx context.Context) {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				base.TracefCtx(arc.ctx, base.KeyReplicate, "writing status. context is not cancelled here")
+				func() {
+					arc.lock.RLock()
+					defer arc.lock.RUnlock()
+					arc._publishStatus()
+				}()
+			case <-ctx.Done():
+				base.DebugfCtx(ctx, base.KeyReplicate, "stats reporter goroutine stopped")
+				return
+			}
+		}
+	}(arc.ctx)
+	return nil
+}
+
+// getLocalStatus retrieves replication status for a given client ID from the given metadataStore
+func getLocalStatus(ctx context.Context, metadataStore base.DataStore, clientID string) (*ReplicationStatusDoc, error) {
+	base.TracefCtx(ctx, base.KeyReplicate, "getLocalStatus for %q", clientID)
+
+	statusDocBytes, err := getSpecialBytes(metadataStore, DocTypeLocal, ReplicationStatusDocIDPrefix+clientID, 0)
+	if err != nil {
+		if !base.IsKeyNotFoundError(metadataStore, err) {
+			return nil, err
+		}
+		base.DebugfCtx(ctx, base.KeyReplicate, "couldn't find existing local checkpoint for ID %q", clientID)
+		return nil, nil
+	}
+	var statusDoc *ReplicationStatusDoc
+	err = base.JSONUnmarshal(statusDocBytes, &statusDoc)
+	return statusDoc, err
+}
+
+// setLocalStatus updates replication status. Increments existing rev.
+func setLocalStatus(ctx context.Context, metadataStore base.DataStore, clientID string, status *ReplicationStatus, localDocExpirySecs int) (newRevID string, err error) {
+	base.TracefCtx(ctx, base.KeyReplicate, "setLocalStatus for %q (%v)", clientID, status)
+
+	// getLocalStatus to obtain the current rev
+	currentStatus, err := getLocalStatus(ctx, metadataStore, clientID)
+	if err != nil {
+		base.WarnfCtx(ctx, "Unable to retrieve local status doc for %s, status not updated", clientID)
+		return "", nil
+	}
+
+	var revID string
+	if currentStatus != nil {
+		revID = currentStatus.Rev
+	}
+
+	newStatus := &ReplicationStatusDoc{
+		Status: status,
+	}
+
+	return putSpecial(metadataStore, DocTypeLocal, ReplicationStatusDocIDPrefix+clientID, revID, newStatus.AsBody(), localDocExpirySecs)
+}
+
+// removeLocalStatus removes a replication status from the given metadataStore. This is done when a replication is reset.
+func removeLocalStatus(ctx context.Context, metadataStore base.DataStore, clientID string) (err error) {
+	base.TracefCtx(ctx, base.KeyReplicate, "removeLocalStatus() for %q", clientID)
+
+	// getLocalStatus to obtain the current rev
+	currentStatus, err := getLocalStatus(ctx, metadataStore, clientID)
+	if err != nil {
+		base.WarnfCtx(ctx, "Unable to retrieve local status doc for %s, status not updated", clientID)
+		return nil
+	}
+	if currentStatus == nil {
+		currentStatus = &ReplicationStatusDoc{
+			Status: &ReplicationStatus{
+				ID: clientID,
+			},
+		}
+	}
+
+	_, err = putSpecial(metadataStore, DocTypeLocal, ReplicationStatusDocIDPrefix+clientID, currentStatus.Rev, nil, 0)
+	return err
 }

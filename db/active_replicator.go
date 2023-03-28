@@ -351,27 +351,27 @@ func LoadReplicationStatus(ctx context.Context, dbContext *DatabaseContext, repl
 		ID: replicationID,
 	}
 
-	pullCheckpoint, _ := getLocalStatus(ctx, dbContext.MetadataStore, PullCheckpointID(replicationID), int(dbContext.Options.LocalDocExpirySecs))
-	if pullCheckpoint != nil {
-		if pullCheckpoint.Status != nil {
-			status.PullReplicationStatus = pullCheckpoint.Status.PullReplicationStatus
-			status.Status = pullCheckpoint.Status.Status
-			status.ErrorMessage = pullCheckpoint.Status.ErrorMessage
-			status.LastSeqPull = pullCheckpoint.Status.LastSeqPull
+	pullStatusDoc, _ := getLocalStatus(ctx, dbContext.MetadataStore, PullCheckpointID(replicationID))
+	if pullStatusDoc != nil {
+		if pullStatusDoc.Status != nil {
+			status.PullReplicationStatus = pullStatusDoc.Status.PullReplicationStatus
+			status.Status = pullStatusDoc.Status.Status
+			status.ErrorMessage = pullStatusDoc.Status.ErrorMessage
+			status.LastSeqPull = pullStatusDoc.Status.LastSeqPull
 		}
 	}
 
-	pushCheckpoint, _ := getLocalStatus(ctx, dbContext.MetadataStore, PushCheckpointID(replicationID), int(dbContext.Options.LocalDocExpirySecs))
-	if pushCheckpoint != nil {
-		if pushCheckpoint.Status != nil {
-			status.PushReplicationStatus = pushCheckpoint.Status.PushReplicationStatus
-			status.Status = pushCheckpoint.Status.Status
-			status.ErrorMessage = pushCheckpoint.Status.ErrorMessage
-			status.LastSeqPush = pushCheckpoint.Status.LastSeqPush
+	pushStatusDoc, _ := getLocalStatus(ctx, dbContext.MetadataStore, PushCheckpointID(replicationID))
+	if pushStatusDoc != nil {
+		if pushStatusDoc.Status != nil {
+			status.PushReplicationStatus = pushStatusDoc.Status.PushReplicationStatus
+			status.Status = pushStatusDoc.Status.Status
+			status.ErrorMessage = pushStatusDoc.Status.ErrorMessage
+			status.LastSeqPush = pushStatusDoc.Status.LastSeqPush
 		}
 	}
 
-	if (pullCheckpoint == nil || pullCheckpoint.Status == nil) && (pushCheckpoint == nil || pushCheckpoint.Status == nil) {
+	if (pullStatusDoc == nil || pullStatusDoc.Status == nil) && (pushStatusDoc == nil || pushStatusDoc.Status == nil) {
 		return nil, errors.New("Replication status not found")
 	}
 
