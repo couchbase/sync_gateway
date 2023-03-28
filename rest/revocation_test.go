@@ -187,7 +187,7 @@ func InitScenario(t *testing.T, rtConfig *RestTesterConfig) (ChannelRevocationTe
 		rtConfig.SyncFn = defaultSyncFn
 	}
 
-	rt := NewRestTester(t, rtConfig) //  CBG-2319: replicator currently requires default collection
+	rt := NewRestTester(t, rtConfig)
 
 	revocationTester := ChannelRevocationTester{
 		test:       t,

@@ -517,7 +517,7 @@ func (c *Checkpointer) _setCheckpoints(seq *SequenceID) (err error) {
 	return nil
 }
 
-// getLocalStatus returns the sequence and rev for the local checkpoint.
+// getLocalCheckpoint returns the sequence and rev for the local checkpoint.
 // if the checkpoint does not exist, returns empty sequence and rev.
 func (c *Checkpointer) getLocalCheckpoint() (checkpoint *replicationCheckpoint, err error) {
 	base.TracefCtx(c.ctx, base.KeyReplicate, "getLocalCheckpoint")
@@ -695,7 +695,7 @@ func (c *Checkpointer) setRetry(checkpoint *replicationCheckpoint, setFn setChec
 // setLocalStatus updates status in a replication checkpoint without a checkpointer.
 // Increments existing rev, preserves stats fields if none set.
 func (c *Checkpointer) setLocalStatus(status, errorMessage string, pushStats *PushReplicationStatus, pullStats *PullReplicationStatus) {
-	base.TracefCtx(c.ctx, base.KeyReplicate, "setLocalStatus(%v, %v)", status)
+	base.TracefCtx(c.ctx, base.KeyReplicate, "setLocalStatus(%v)", status)
 
 	newRev, err := setLocalStatus(c.ctx, c.metadataStore, c.clientID, status, errorMessage, pushStats, pullStats, c.localDocExpirySecs)
 	if err != nil {
