@@ -171,7 +171,11 @@ func (arc *activeReplicatorCommon) _initCollections() ([]replicationCheckpoint, 
 		blipSyncCollectionContexts[i] = collectionContext
 		collectionCheckpoints[i] = *checkpoint
 
-		arc.namedCollections[localCollectionsKeyspaces[i]] = &activeReplicatorCollection{collectionIdx: base.IntPtr(i), dataStore: dbCollection.dataStore}
+		arc.namedCollections[localCollectionsKeyspaces[i]] = &activeReplicatorCollection{
+			collectionIdx:       base.IntPtr(i),
+			metadataStore:       arc.config.ActiveDB.MetadataStore,
+			collectionDataStore: dbCollection.dataStore,
+		}
 	}
 
 	arc.blipSyncContext.collections.set(blipSyncCollectionContexts)

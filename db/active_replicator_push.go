@@ -152,7 +152,7 @@ func (apr *ActivePushReplicator) _initCheckpointer(remoteCheckpoints []replicati
 			return hashErr
 		}
 
-		c.Checkpointer = NewCheckpointer(apr.checkpointerCtx, c.dataStore, apr.CheckpointID, checkpointHash, apr.blipSender, apr.config, apr.getPushStatus, c.collectionIdx)
+		c.Checkpointer = NewCheckpointer(apr.checkpointerCtx, c.metadataStore, c.collectionDataStore, apr.CheckpointID, checkpointHash, apr.blipSender, apr.config, apr.getPushStatus, c.collectionIdx)
 
 		if apr.config.CollectionsEnabled {
 			err := c.Checkpointer.setLastCheckpointSeq(&remoteCheckpoints[*c.collectionIdx])
@@ -211,20 +211,20 @@ func (apr *ActivePushReplicator) reset() error {
 		return fmt.Errorf("reset invoked for replication %s when the replication was not stopped", apr.config.ID)
 	}
 
-	err := apr.forEachCollection(func(c *activeReplicatorCollection) error {
-		return resetLocalCheckpoint(c.dataStore, apr.CheckpointID)
-	})
-	if err != nil {
-		return err
-	}
-
 	apr.lock.Lock()
 	defer apr.lock.Unlock()
 
-	return apr.forEachCollection(func(c *activeReplicatorCollection) error {
+	if err := apr.forEachCollection(func(c *activeReplicatorCollection) error {
+		if err := resetLocalCheckpoint(c.collectionDataStore, apr.CheckpointID); err != nil {
+			return err
+		}
 		c.Checkpointer = nil
 		return nil
-	})
+	}); err != nil {
+		return err
+	}
+
+	return removeLocalStatus(apr.ctx, apr.config.ActiveDB.MetadataStore, apr.CheckpointID)
 }
 
 // registerCheckpointerCallbacks registers appropriate callback functions for checkpointing.

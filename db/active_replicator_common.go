@@ -70,9 +70,10 @@ func (apr *activeReplicatorCommon) GetSingleCollection(tb testing.TB) *activeRep
 
 // activeReplicatorCollection stores data about a single collection for the replication.
 type activeReplicatorCollection struct {
-	dataStore     base.DataStore // DataStore for this collection
-	collectionIdx *int           // collectionIdx for this collection for this BLIP replication, passed into Get/SetCheckpoint messages
-	Checkpointer  *Checkpointer  // Checkpointer for this collection
+	metadataStore       base.DataStore // DataStore for metadata outside the collection.
+	collectionDataStore base.DataStore // DataStore for this collection
+	collectionIdx       *int           // collectionIdx for this collection for this BLIP replication, passed into Get/SetCheckpoint messages
+	Checkpointer        *Checkpointer  // Checkpointer for this collection
 }
 
 func newActiveReplicatorCommon(ctx context.Context, config *ActiveReplicatorConfig, direction ActiveReplicatorDirection) (*activeReplicatorCommon, error) {
@@ -87,7 +88,7 @@ func newActiveReplicatorCommon(ctx context.Context, config *ActiveReplicatorConf
 		checkpointID = PullCheckpointID(config.ID)
 	}
 
-	initialStatus, err := LoadReplicationStatus(config.ActiveDB.DatabaseContext, config.ID)
+	initialStatus, err := LoadReplicationStatus(ctx, config.ActiveDB.DatabaseContext, config.ID)
 	if err != nil {
 		// Not finding an initialStatus isn't fatal, but we should at least log that we'll reset stats when we do...
 		base.InfofCtx(ctx, base.KeyReplicate, "Couldn't load initial replication status for %q: %v - stats will be reset", config.ID, err)
@@ -109,7 +110,8 @@ func newActiveReplicatorCommon(ctx context.Context, config *ActiveReplicatorConf
 			return nil, err
 		}
 		apr.defaultCollection = &activeReplicatorCollection{
-			dataStore: defaultDatabaseCollection.dataStore,
+			metadataStore:       config.ActiveDB.MetadataStore,
+			collectionDataStore: defaultDatabaseCollection.dataStore,
 		}
 	}
 
@@ -339,5 +341,8 @@ func (a *activeReplicatorCommon) getCheckpointHighSeq() string {
 
 func (a *activeReplicatorCommon) _publishStatus() {
 	status, errorMessage := a.getStateWithErrorMessage()
-	setLocalCheckpointStatus(a.ctx, a.config.ActiveDB.MetadataStore, a.CheckpointID, status, errorMessage, int(a.config.ActiveDB.Options.LocalDocExpirySecs))
+	_, err := setLocalStatus(a.ctx, a.config.ActiveDB.MetadataStore, a.CheckpointID, status, errorMessage, nil, nil, int(a.config.ActiveDB.Options.LocalDocExpirySecs))
+	if err != nil {
+		base.WarnfCtx(a.ctx, "Error setting local status: %v", err)
+	}
 }

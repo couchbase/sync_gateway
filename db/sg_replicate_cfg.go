@@ -1309,6 +1309,25 @@ type PushReplicationStatus struct {
 	DeltasSent       int64  `json:"deltas_sent,omitempty"`
 }
 
+// ReplicationStatusDoc is used to store the replication status in a local document
+type ReplicationStatusDoc struct {
+	Rev    string             `json:"_rev"`
+	Status *ReplicationStatus `json:"status,omitempty"`
+}
+
+const (
+	replicationStatusBodyRev    = "_rev"
+	replicationStatusBodyStatus = "status"
+)
+
+// AsBody returns a Body representation of ReplicationStatusDoc for use with putSpecial
+func (r *ReplicationStatusDoc) AsBody() Body {
+	return Body{
+		replicationStatusBodyRev:    r.Rev,
+		replicationStatusBodyStatus: r.Status,
+	}
+}
+
 // Add adds the value of all counter stats in other to ReplicationStatus
 func (rs *PullReplicationStatus) Add(other PullReplicationStatus) {
 	if rs == nil {
@@ -1369,7 +1388,7 @@ func (m *sgReplicateManager) GetReplicationStatus(replicationID string, options 
 	} else {
 		// Attempt to retrieve persisted status
 		var loadErr error
-		status, loadErr = LoadReplicationStatus(m.dbContext, replicationID)
+		status, loadErr = LoadReplicationStatus(m.loggingCtx, m.dbContext, replicationID)
 		if loadErr != nil {
 			// Unable to load persisted status.  Create status stub based on config
 			var err error

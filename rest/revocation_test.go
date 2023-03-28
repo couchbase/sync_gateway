@@ -183,13 +183,11 @@ func InitScenario(t *testing.T, rtConfig *RestTesterConfig) (ChannelRevocationTe
 		rtConfig = &RestTesterConfig{
 			SyncFn: defaultSyncFn,
 		}
-	} else {
-		if rtConfig.SyncFn == "" {
-			rtConfig.SyncFn = defaultSyncFn
-		}
+	} else if rtConfig.SyncFn == "" {
+		rtConfig.SyncFn = defaultSyncFn
 	}
 
-	rt := NewRestTesterDefaultCollection(t, rtConfig) //  CBG-2319: replicator currently requires default collection
+	rt := NewRestTester(t, rtConfig)
 
 	revocationTester := ChannelRevocationTester{
 		test:       t,
@@ -1483,9 +1481,10 @@ func TestReplicatorRevocations(t *testing.T) {
 	defer rt2.Close()
 
 	// Active
-	rt1 := NewRestTesterDefaultCollection(t, //  CBG-2319: replicator currently requires default collection
+	rt1 := NewRestTester(t,
 		&RestTesterConfig{
 			CustomTestBucket: base.GetTestBucket(t),
+			SyncFn:           channels.DocChannelsSyncFunction,
 		})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
@@ -1518,6 +1517,7 @@ func TestReplicatorRevocations(t *testing.T) {
 		Continuous:          false,
 		PurgeOnRemoval:      true,
 		ReplicationStatsMap: dbstats,
+		CollectionsEnabled:  base.TestsUseNamedCollections(),
 	})
 	require.NoError(t, err)
 
@@ -1544,9 +1544,10 @@ func TestReplicatorRevocationsNoRev(t *testing.T) {
 	defer rt2.Close()
 
 	// Active
-	rt1 := NewRestTesterDefaultCollection(t, //  CBG-2319: replicator currently requires default collection
+	rt1 := NewRestTester(t,
 		&RestTesterConfig{
 			CustomTestBucket: base.GetTestBucket(t),
+			SyncFn:           channels.DocChannelsSyncFunction,
 		})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
@@ -1578,13 +1579,14 @@ func TestReplicatorRevocationsNoRev(t *testing.T) {
 		Continuous:          false,
 		PurgeOnRemoval:      true,
 		ReplicationStatsMap: dbstats,
+		CollectionsEnabled:  base.TestsUseNamedCollections(),
 	})
 	require.NoError(t, err)
 
 	require.NoError(t, ar.Start(ctx1))
 	rt1.WaitForReplicationStatus(t.Name(), db.ReplicationStateStopped)
 
-	resp := rt1.SendAdminRequest("GET", "/db/doc1", "")
+	resp := rt1.SendAdminRequest("GET", "/{{.keyspace}}/doc1", "")
 	RequireStatus(t, resp, http.StatusOK)
 
 	revocationTester.removeRole("user", "foo")
@@ -1594,7 +1596,7 @@ func TestReplicatorRevocationsNoRev(t *testing.T) {
 	require.NoError(t, ar.Start(ctx1))
 	rt1.WaitForReplicationStatus(t.Name(), db.ReplicationStateStopped)
 
-	resp = rt1.SendAdminRequest("GET", "/db/doc1", "")
+	resp = rt1.SendAdminRequest("GET", "/{{.keyspace}}/doc1", "")
 	RequireStatus(t, resp, http.StatusNotFound)
 }
 
@@ -1606,9 +1608,10 @@ func TestReplicatorRevocationsNoRevButAlternateAccess(t *testing.T) {
 	defer rt2.Close()
 
 	// Active
-	rt1 := NewRestTesterDefaultCollection(t, //  CBG-2319: replicator currently requires default collection
+	rt1 := NewRestTester(t,
 		&RestTesterConfig{
 			CustomTestBucket: base.GetTestBucket(t),
+			SyncFn:           channels.DocChannelsSyncFunction,
 		})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
@@ -1646,13 +1649,14 @@ func TestReplicatorRevocationsNoRevButAlternateAccess(t *testing.T) {
 		Continuous:          false,
 		PurgeOnRemoval:      true,
 		ReplicationStatsMap: dbstats,
+		CollectionsEnabled:  base.TestsUseNamedCollections(),
 	})
 	require.NoError(t, err)
 
 	require.NoError(t, ar.Start(ctx1))
 	rt1.WaitForReplicationStatus(t.Name(), db.ReplicationStateStopped)
 
-	resp = rt1.SendAdminRequest("GET", "/db/doc1", "")
+	resp = rt1.SendAdminRequest("GET", "/{{.keyspace}}/doc1", "")
 	RequireStatus(t, resp, http.StatusOK)
 
 	revocationTester.removeRole("user", "foo")
@@ -1662,7 +1666,7 @@ func TestReplicatorRevocationsNoRevButAlternateAccess(t *testing.T) {
 	require.NoError(t, ar.Start(ctx1))
 	rt1.WaitForReplicationStatus(t.Name(), db.ReplicationStateStopped)
 
-	resp = rt1.SendAdminRequest("GET", "/db/doc1", "")
+	resp = rt1.SendAdminRequest("GET", "/{{.keyspace}}/doc1", "")
 	RequireStatus(t, resp, http.StatusOK)
 }
 
@@ -1677,9 +1681,10 @@ func TestReplicatorRevocationsMultipleAlternateAccess(t *testing.T) {
 	rt2_collection := rt2.GetSingleTestDatabaseCollection()
 
 	// Active
-	rt1 := NewRestTesterDefaultCollection(t, //  CBG-2319: replicator currently requires default collection
+	rt1 := NewRestTester(t,
 		&RestTesterConfig{
 			CustomTestBucket: base.GetTestBucket(t),
+			SyncFn:           channels.DocChannelsSyncFunction,
 		})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
@@ -1707,6 +1712,7 @@ func TestReplicatorRevocationsMultipleAlternateAccess(t *testing.T) {
 		Continuous:          true,
 		PurgeOnRemoval:      true,
 		ReplicationStatsMap: dbstats,
+		CollectionsEnabled:  base.TestsUseNamedCollections(),
 	})
 	require.NoError(t, err)
 	require.NoError(t, ar.Start(ctx1))
@@ -1789,9 +1795,10 @@ func TestReplicatorRevocationsWithTombstoneResurrection(t *testing.T) {
 	rt2_collection := rt2.GetSingleTestDatabaseCollection()
 
 	// Active
-	rt1 := NewRestTesterDefaultCollection(t, //  CBG-2319: replicator currently requires default collection
+	rt1 := NewRestTester(t,
 		&RestTesterConfig{
 			CustomTestBucket: base.GetTestBucket(t),
+			SyncFn:           channels.DocChannelsSyncFunction,
 		})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
@@ -1822,6 +1829,7 @@ func TestReplicatorRevocationsWithTombstoneResurrection(t *testing.T) {
 		Continuous:          true,
 		PurgeOnRemoval:      true,
 		ReplicationStatsMap: dbstats,
+		CollectionsEnabled:  base.TestsUseNamedCollections(),
 	})
 	require.NoError(t, err)
 
@@ -1883,7 +1891,9 @@ func TestReplicatorRevocationsWithChannelFilter(t *testing.T) {
 	rt2Collection := rt2.GetSingleTestDatabaseCollection()
 
 	// Active
-	rt1 := NewRestTesterDefaultCollection(t, nil)
+	rt1 := NewRestTester(t, &RestTesterConfig{
+		SyncFn: channels.DocChannelsSyncFunction,
+	})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
 
@@ -1918,6 +1928,7 @@ func TestReplicatorRevocationsWithChannelFilter(t *testing.T) {
 		FilterChannels:      []string{"ABC"},
 		PurgeOnRemoval:      true,
 		ReplicationStatsMap: dbstats,
+		CollectionsEnabled:  base.TestsUseNamedCollections(),
 	})
 	require.NoError(t, err)
 
@@ -1961,9 +1972,10 @@ func TestReplicatorRevocationsWithStarChannel(t *testing.T) {
 	rt2_collection := rt2.GetSingleTestDatabaseCollection()
 
 	// Active
-	rt1 := NewRestTesterDefaultCollection(t, //  CBG-2319: replicator currently requires default collection
+	rt1 := NewRestTester(t,
 		&RestTesterConfig{
 			CustomTestBucket: base.GetTestBucket(t),
+			SyncFn:           channels.DocChannelsSyncFunction,
 		})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
@@ -1998,6 +2010,7 @@ func TestReplicatorRevocationsWithStarChannel(t *testing.T) {
 		Continuous:          false,
 		PurgeOnRemoval:      true,
 		ReplicationStatsMap: dbstats,
+		CollectionsEnabled:  base.TestsUseNamedCollections(),
 	})
 	require.NoError(t, err)
 
@@ -2053,9 +2066,10 @@ func TestReplicatorRevocationsFromZero(t *testing.T) {
 	rt2_collection := rt2.GetSingleTestDatabaseCollection()
 
 	// Active
-	rt1 := NewRestTesterDefaultCollection(t, //  CBG-2319: replicator currently requires default collection
+	rt1 := NewRestTester(t,
 		&RestTesterConfig{
 			CustomTestBucket: base.GetTestBucket(t),
+			SyncFn:           channels.DocChannelsSyncFunction,
 		})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
@@ -2086,6 +2100,7 @@ func TestReplicatorRevocationsFromZero(t *testing.T) {
 		Continuous:          false,
 		PurgeOnRemoval:      true,
 		ReplicationStatsMap: dbstats,
+		CollectionsEnabled:  base.TestsUseNamedCollections(),
 	}
 
 	ar, err := db.NewActiveReplicator(ctx1, activeReplCfg)
@@ -2455,9 +2470,10 @@ func TestReplicatorSwitchPurgeNoReset(t *testing.T) {
 	rt2_collection := rt2.GetSingleTestDatabaseCollection()
 
 	// Active
-	rt1 := NewRestTesterDefaultCollection(t, //  CBG-2319: replicator currently requires default collection
+	rt1 := NewRestTester(t,
 		&RestTesterConfig{
 			CustomTestBucket: base.GetTestBucket(t),
+			SyncFn:           channels.DocChannelsSyncFunction,
 		})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
@@ -2487,6 +2503,7 @@ func TestReplicatorSwitchPurgeNoReset(t *testing.T) {
 		},
 		Continuous:          true,
 		ReplicationStatsMap: dbstats,
+		CollectionsEnabled:  base.TestsUseNamedCollections(),
 	})
 	require.NoError(t, err)
 
@@ -2548,6 +2565,7 @@ func TestReplicatorSwitchPurgeNoReset(t *testing.T) {
 		Continuous:          true,
 		PurgeOnRemoval:      true,
 		ReplicationStatsMap: dbstats,
+		CollectionsEnabled:  base.TestsUseNamedCollections(),
 	})
 	require.NoError(t, err)
 
