@@ -469,7 +469,7 @@ func TestPushReplicationAPI(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)
 
-	rt1, rt2, remoteURLString, teardown := rest.SetupSGRPeers(t, true)
+	rt1, rt2, remoteURLString, teardown := rest.SetupSGRPeers(t)
 	defer teardown()
 
 	// Create doc1 on rt1
@@ -512,7 +512,7 @@ func TestPullReplicationAPI(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)
 
-	rt1, rt2, remoteURLString, teardown := rest.SetupSGRPeers(t, true)
+	rt1, rt2, remoteURLString, teardown := rest.SetupSGRPeers(t)
 	defer teardown()
 
 	// Create doc1 on rt2
@@ -554,8 +554,10 @@ func TestReplicationStatusActions(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)
 
-	// CBG-2766 blocks using non default collection
-	rt1, rt2, remoteURLString, teardown := rest.SetupSGRPeers(t, false)
+	// Increase checkpoint persistence frequency for cross-node status verification
+	defer reduceTestCheckpointInterval(50 * time.Millisecond)()
+
+	rt1, rt2, remoteURLString, teardown := rest.SetupSGRPeers(t)
 	defer teardown()
 
 	// Create doc1 on rt2
@@ -608,11 +610,7 @@ func TestReplicationStatusActions(t *testing.T) {
 	rest.RequireStatus(t, response, http.StatusOK)
 
 	// Wait for stopped.  Non-instant as config change needs to arrive over DCP
-	stateError := rt1.WaitForCondition(func() bool {
-		status := rt1.GetReplicationStatus(replicationID)
-		return status.Status == db.ReplicationStateStopped
-	})
-	assert.NoError(t, stateError)
+	rt1.WaitForReplicationStatus(replicationID, db.ReplicationStateStopped)
 
 	// Reset replication
 	response = rt1.SendAdminRequest("PUT", "/{{.db}}/_replicationStatus/"+replicationID+"?action=reset", "")
@@ -622,7 +620,7 @@ func TestReplicationStatusActions(t *testing.T) {
 		status := rt1.GetReplicationStatus(replicationID)
 		return status.Status == db.ReplicationStateStopped && status.LastSeqPull == ""
 	})
-	assert.NoError(t, resetErr)
+	require.NoError(t, resetErr)
 
 	// Restart the replication
 	response = rt1.SendAdminRequest("PUT", "/{{.db}}/_replicationStatus/"+replicationID+"?action=start", "")
@@ -635,6 +633,7 @@ func TestReplicationStatusActions(t *testing.T) {
 		return status.DocsCheckedPull == 2 && status.DocsRead == 0
 	})
 	assert.NoError(t, statError)
+
 	// Terminate status goroutine
 	close(doneChan)
 	statusWg.Wait()
@@ -660,8 +659,7 @@ func TestReplicationRebalancePull(t *testing.T) {
 	// Disable sequence batching for multi-RT tests (pending CBG-1000)
 	defer db.SuspendSequenceBatching()()
 
-	// CBG-2766 blocks using non default collection
-	activeRT, remoteRT, remoteURLString, teardown := rest.SetupSGRPeers(t, false)
+	activeRT, remoteRT, remoteURLString, teardown := rest.SetupSGRPeers(t)
 	defer teardown()
 
 	// Create docs on remote
@@ -766,8 +764,7 @@ func TestReplicationRebalancePush(t *testing.T) {
 	// Disable sequence batching for multi-RT tests (pending CBG-1000)
 	defer db.SuspendSequenceBatching()()
 
-	// CBG-2766 blocks using non default collection
-	activeRT, remoteRT, remoteURLString, teardown := rest.SetupSGRPeers(t, false)
+	activeRT, remoteRT, remoteURLString, teardown := rest.SetupSGRPeers(t)
 	defer teardown()
 
 	// Create docs on active
@@ -869,8 +866,7 @@ func TestPullOneshotReplicationAPI(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)
 
-	// CBG-2766 blocks using non default collection, since stats are not propogated across rebalance
-	activeRT, remoteRT, remoteURLString, teardown := rest.SetupSGRPeers(t, false)
+	activeRT, remoteRT, remoteURLString, teardown := rest.SetupSGRPeers(t)
 	defer teardown()
 
 	// Create 20 docs on rt2
@@ -937,7 +933,7 @@ func TestReplicationConcurrentPush(t *testing.T) {
 	// Increase checkpoint persistence frequency for cross-node status verification
 	defer reduceTestCheckpointInterval(50 * time.Millisecond)()
 
-	activeRT, remoteRT, remoteURLString, teardown := rest.SetupSGRPeers(t, true)
+	activeRT, remoteRT, remoteURLString, teardown := rest.SetupSGRPeers(t)
 	defer teardown()
 	// Create push replications, verify running
 	activeRT.CreateReplication("rep_ABC", remoteURLString, db.ActiveReplicatorTypePush, []string{"ABC"}, true, db.ConflictResolverDefault)
@@ -1410,7 +1406,7 @@ func TestReplicationMultiCollectionChannelFilter(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
-	rt1, rt2, remoteURLString, teardown := rest.SetupSGRPeers(t, true)
+	rt1, rt2, remoteURLString, teardown := rest.SetupSGRPeers(t)
 	defer teardown()
 
 	// Add docs to two channels
@@ -1494,7 +1490,7 @@ func TestReplicationConfigChange(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
-	rt1, rt2, remoteURLString, teardown := rest.SetupSGRPeers(t, true)
+	rt1, rt2, remoteURLString, teardown := rest.SetupSGRPeers(t)
 	defer teardown()
 
 	// Add docs to two channels
@@ -1588,8 +1584,7 @@ func TestReplicationHeartbeatRemoval(t *testing.T) {
 	// Disable sequence batching for multi-RT tests (pending CBG-1000)
 	defer db.SuspendSequenceBatching()()
 
-	// CBG-2766 blocks using non default collection
-	activeRT, remoteRT, remoteURLString, teardown := rest.SetupSGRPeers(t, false)
+	activeRT, remoteRT, remoteURLString, teardown := rest.SetupSGRPeers(t)
 	defer teardown()
 
 	// Create docs on remote
@@ -1756,7 +1751,7 @@ func TestTakeDbOfflineOngoingPushReplication(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)
 
-	rt1, rt2, remoteURLString, teardown := rest.SetupSGRPeers(t, true)
+	rt1, rt2, remoteURLString, teardown := rest.SetupSGRPeers(t)
 	defer teardown()
 
 	// Create doc1 on rt1
@@ -1793,7 +1788,7 @@ func TestPushReplicationAPIUpdateDatabase(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)
 
-	rt1, rt2, remoteURLString, teardown := rest.SetupSGRPeers(t, true)
+	rt1, rt2, remoteURLString, teardown := rest.SetupSGRPeers(t)
 	defer teardown()
 
 	// Create initial doc on rt1
@@ -6609,7 +6604,7 @@ func TestLocalWinsConflictResolution(t *testing.T) {
 			base.RequireNumTestBuckets(t, 2)
 			base.SetUpTestLogging(t, base.LevelTrace, base.KeyAll)
 
-			activeRT, remoteRT, remoteURLString, teardown := rest.SetupSGRPeers(t, true)
+			activeRT, remoteRT, remoteURLString, teardown := rest.SetupSGRPeers(t)
 			defer teardown()
 
 			// Create initial revision(s) on local
@@ -6825,7 +6820,7 @@ func TestReplicatorConflictAttachment(t *testing.T) {
 
 	for _, test := range testCases {
 		t.Run(test.name, func(t *testing.T) {
-			activeRT, remoteRT, remoteURLString, teardown := rest.SetupSGRPeers(t, true)
+			activeRT, remoteRT, remoteURLString, teardown := rest.SetupSGRPeers(t)
 			defer teardown()
 
 			docID := test.name
@@ -7733,8 +7728,7 @@ func TestGroupIDReplications(t *testing.T) {
 // Reproduces panic seen in CBG-1053
 func TestAdhocReplicationStatus(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll, base.KeyReplicate)
-	// CBG-2770 does not work with non default collections
-	rt := rest.NewRestTesterDefaultCollection(t, &rest.RestTesterConfig{SgReplicateEnabled: true})
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{SgReplicateEnabled: true})
 	defer rt.Close()
 
 	srv := httptest.NewServer(rt.TestAdminHandler())
@@ -7793,7 +7787,7 @@ function (doc) {
 				SyncFn: syncFunc,
 			}
 			// Set up buckets, rest testers, and set up servers
-			passiveRT := rest.NewRestTesterDefaultCollection(t, rtConfig) //  CBG-2772: replicator currently requires default collection
+			passiveRT := rest.NewRestTester(t, rtConfig)
 
 			defer passiveRT.Close()
 
@@ -7803,7 +7797,7 @@ function (doc) {
 			adminSrv := httptest.NewServer(passiveRT.TestAdminHandler())
 			defer adminSrv.Close()
 
-			activeRT := rest.NewRestTesterDefaultCollection(t, rtConfig) //  CBG-2772: replicator currently requires default collection
+			activeRT := rest.NewRestTester(t, rtConfig)
 			defer activeRT.Close()
 
 			for _, rt := range []*rest.RestTester{passiveRT, activeRT} {

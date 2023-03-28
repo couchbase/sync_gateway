@@ -345,33 +345,29 @@ func (ar *ActiveReplicator) purgeCheckpoints() {
 }
 
 // LoadReplicationStatus attempts to load both push and pull replication checkpoints, and constructs the combined status
-func LoadReplicationStatus(dbContext *DatabaseContext, replicationID string) (status *ReplicationStatus, err error) {
+func LoadReplicationStatus(ctx context.Context, dbContext *DatabaseContext, replicationID string) (status *ReplicationStatus, err error) {
 
 	status = &ReplicationStatus{
 		ID: replicationID,
 	}
 
-	pullCheckpoint, _ := getLocalCheckpoint(dbContext.MetadataStore, PullCheckpointID(replicationID), int(dbContext.Options.LocalDocExpirySecs))
+	pullCheckpoint, _ := getLocalStatus(ctx, dbContext.MetadataStore, PullCheckpointID(replicationID), int(dbContext.Options.LocalDocExpirySecs))
 	if pullCheckpoint != nil {
 		if pullCheckpoint.Status != nil {
 			status.PullReplicationStatus = pullCheckpoint.Status.PullReplicationStatus
 			status.Status = pullCheckpoint.Status.Status
 			status.ErrorMessage = pullCheckpoint.Status.ErrorMessage
 			status.LastSeqPull = pullCheckpoint.Status.LastSeqPull
-		} else {
-			status.LastSeqPull = pullCheckpoint.LastSeq
 		}
 	}
 
-	pushCheckpoint, _ := getLocalCheckpoint(dbContext.MetadataStore, PushCheckpointID(replicationID), int(dbContext.Options.LocalDocExpirySecs))
+	pushCheckpoint, _ := getLocalStatus(ctx, dbContext.MetadataStore, PushCheckpointID(replicationID), int(dbContext.Options.LocalDocExpirySecs))
 	if pushCheckpoint != nil {
 		if pushCheckpoint.Status != nil {
 			status.PushReplicationStatus = pushCheckpoint.Status.PushReplicationStatus
 			status.Status = pushCheckpoint.Status.Status
 			status.ErrorMessage = pushCheckpoint.Status.ErrorMessage
 			status.LastSeqPush = pushCheckpoint.Status.LastSeqPush
-		} else {
-			status.LastSeqPush = pushCheckpoint.LastSeq
 		}
 	}
 

@@ -34,7 +34,7 @@ import (
 //	    "collection2": ["scope1.channel1", "scope1.channel2"]
 //	  }
 //	}
-func CollectionChannelsFromQueryParams(namedCollections []string, queryParams interface{}) (perCollectionChannels [][]string, allCollectionsChannels []string, err error) {
+func CollectionChannelsFromQueryParams(localCollections []string, queryParams interface{}) (perCollectionChannels [][]string, allCollectionsChannels []string, err error) {
 	switch val := queryParams.(type) {
 	case map[string]interface{}:
 		_, hasChannels := val["channels"]
@@ -53,9 +53,12 @@ func CollectionChannelsFromQueryParams(namedCollections []string, queryParams in
 		}
 
 		if hasCollectionsChannels {
+			if localCollections == nil {
+				return nil, nil, errors.New("channel filters using 'collections_channels' also requires 'collections_local' to be specified")
+			}
 			if collectionChannels, ok := val["collections_channels"].(map[string]interface{}); ok {
-				perCollectionChannels = make([][]string, len(namedCollections))
-				for i, collection := range namedCollections {
+				perCollectionChannels = make([][]string, len(localCollections))
+				for i, collection := range localCollections {
 					collectionQueryParams := collectionChannels[collection]
 					collectionQueryParamsArray, ok := collectionQueryParams.([]interface{})
 					if !ok {

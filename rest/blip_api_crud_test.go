@@ -2409,7 +2409,7 @@ func TestBlipInternalPropertiesHandling(t *testing.T) {
 func TestProcessRevIncrementsStat(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
 
-	activeRT, remoteRT, remoteURLString, teardown := SetupSGRPeers(t, true)
+	activeRT, remoteRT, remoteURLString, teardown := SetupSGRPeers(t)
 	defer teardown()
 	activeCtx := activeRT.Context()
 
