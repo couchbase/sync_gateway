@@ -14,7 +14,6 @@ import (
 	"context"
 	"errors"
 	"expvar"
-	"fmt"
 	"sync"
 	"testing"
 	"time"
