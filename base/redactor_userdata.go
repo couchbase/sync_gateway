@@ -56,9 +56,9 @@ func UD(i interface{}) RedactorFunc {
 		return func() Redactor {
 			return UserData(v)
 		}
-	case Set:
+	case RedactorBuilder:
 		return func() Redactor {
-			return v.buildRedactorSet(UD)
+			return v.BuildRedactor(UD)
 		}
 	case fmt.Stringer:
 		return func() Redactor {

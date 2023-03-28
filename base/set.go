@@ -155,3 +155,10 @@ func (setPtr *Set) UnmarshalJSON(data []byte) error {
 	*setPtr = set
 	return nil
 }
+
+func (set Set) BuildRedactor(function func(interface{}) RedactorFunc) Redactor {
+	return RedactorSet{
+		set:          set,
+		redactorFunc: function,
+	}
+}

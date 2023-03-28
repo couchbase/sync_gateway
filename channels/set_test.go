@@ -11,6 +11,7 @@ package channels
 import (
 	"testing"
 
+	"github.com/couchbase/sync_gateway/base"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -328,14 +329,16 @@ func TestSetContains(t *testing.T) {
 
 func TestSetString(t *testing.T) {
 	testCases := []struct {
-		name   string
-		input  Set
-		output string
+		name           string
+		input          Set
+		output         string
+		redactedOutput string
 	}{
 		{
-			name:   "empty,emptyID",
-			input:  Set{},
-			output: "{}",
+			name:           "empty,emptyID",
+			input:          Set{},
+			output:         "{}",
+			redactedOutput: "{}",
 		},
 		{
 			name: "two collections",
@@ -344,7 +347,8 @@ func TestSetString(t *testing.T) {
 				NewID("B", 2): present{},
 				NewID("C", 1): present{},
 			},
-			output: "{1.A, 1.C, 2.B}",
+			output:         "{1.A, 1.C, 2.B}",
+			redactedOutput: "{1.<ud>A</ud>, 1.<ud>C</ud>, 2.<ud>B</ud>}",
 		},
 		{
 			name: "two collections, collection2",
@@ -353,19 +357,22 @@ func TestSetString(t *testing.T) {
 				NewID("B", 2): present{},
 				NewID("C", 1): present{},
 			},
-			output: "{1.C, 2.A, 2.B}",
+			output:         "{1.C, 2.A, 2.B}",
+			redactedOutput: "{1.<ud>C</ud>, 2.<ud>A</ud>, 2.<ud>B</ud>}",
 		},
 		{
 			name: "one collection",
 			input: Set{
 				NewID("A", 1): present{},
 			},
-			output: "{1.A}",
+			output:         "{1.A}",
+			redactedOutput: "{1.<ud>A</ud>}",
 		},
 	}
 	for _, test := range testCases {
 		t.Run(test.name, func(t *testing.T) {
 			require.Equal(t, test.output, test.input.String())
+			require.Equal(t, test.redactedOutput, base.UD(test.input).Redact())
 		})
 	}
 }

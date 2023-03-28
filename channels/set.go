@@ -167,3 +167,35 @@ func (s Set) String() string {
 	sort.Strings(keys)
 	return fmt.Sprintf("{%s}", strings.Join(keys, ", "))
 }
+
+func (s Set) BuildRedactor(function func(interface{}) base.RedactorFunc) base.Redactor {
+	return RedactorSet{
+		set:          s,
+		redactorFunc: function,
+	}
+}
+
+type RedactorSet struct {
+	set          Set
+	redactorFunc func(interface{}) base.RedactorFunc
+}
+
+func (redactorSet RedactorSet) Redact() string {
+	return redactorSet.GetRedactionString(true)
+}
+
+func (redactorSet RedactorSet) String() string {
+	return redactorSet.GetRedactionString(false)
+}
+
+func (redactorSet RedactorSet) GetRedactionString(shouldRedact bool) string {
+	if !shouldRedact {
+		return redactorSet.set.String()
+	}
+	keys := make([]string, 0, len(redactorSet.set))
+	for channelID := range redactorSet.set {
+		keys = append(keys, fmt.Sprintf("%d.%s", channelID.CollectionID, redactorSet.redactorFunc(channelID.Name).Redact()))
+	}
+	sort.Strings(keys)
+	return fmt.Sprintf("{%s}", strings.Join(keys, ", "))
+}

@@ -55,9 +55,9 @@ func SD(i interface{}) RedactorFunc {
 		return func() Redactor {
 			return SystemData(v)
 		}
-	case Set:
+	case RedactorBuilder:
 		return func() Redactor {
-			return v.buildRedactorSet(SD)
+			return v.BuildRedactor(SD)
 		}
 	case fmt.Stringer:
 		return func() Redactor {

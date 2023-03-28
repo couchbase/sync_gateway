@@ -27,6 +27,11 @@ type Redactor interface {
 	String() string
 }
 
+// RedactorBuilder provides a struct a way to implement its own redaction.
+type RedactorBuilder interface {
+	BuildRedactor(redactor func(interface{}) RedactorFunc) Redactor
+}
+
 // This allows for lazy evaluation for a Redactor. Means that we don't have to process redaction unless we are
 // definitely performing a redaction
 type RedactorFunc func() Redactor
@@ -74,13 +79,6 @@ func (redactorSlice RedactorSlice) String() string {
 		tmp = append(tmp, ' ')
 	}
 	return "[ " + string(tmp) + "]"
-}
-
-func (set Set) buildRedactorSet(function func(interface{}) RedactorFunc) RedactorSet {
-	return RedactorSet{
-		set:          set,
-		redactorFunc: function,
-	}
 }
 
 type RedactorSet struct {
