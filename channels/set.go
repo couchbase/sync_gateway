@@ -46,7 +46,7 @@ func NewID(channelName string, collectionID uint32) ID {
 	return ID{
 		Name:          channelName,
 		CollectionID:  collectionID,
-		serialization: strconv.FormatUint(uint64(collectionID), 10) + "." + channelName,
+		serialization: strconv.FormatUint(uint64(collectionID), 10) + "." + base.UserDataPrefix + channelName + base.UserDataSuffix,
 	}
 }
 
@@ -189,13 +189,15 @@ func (redactorSet RedactorSet) String() string {
 }
 
 func (redactorSet RedactorSet) GetRedactionString(shouldRedact bool) string {
-	if !shouldRedact {
-		return redactorSet.set.String()
+	tmp := []byte("{")
+	iterationCount := 0
+	for setItem, _ := range redactorSet.set {
+		tmp = append(tmp, redactorSet.redactorFunc(setItem).String()...)
+		iterationCount++
+		if iterationCount != len(redactorSet.set) {
+			tmp = append(tmp, ", "...)
+		}
 	}
-	keys := make([]string, 0, len(redactorSet.set))
-	for channelID := range redactorSet.set {
-		keys = append(keys, fmt.Sprintf("%d.%s", channelID.CollectionID, redactorSet.redactorFunc(channelID.Name).Redact()))
-	}
-	sort.Strings(keys)
-	return fmt.Sprintf("{%s}", strings.Join(keys, ", "))
+
+	return string(append(tmp, "}"...))
 }
