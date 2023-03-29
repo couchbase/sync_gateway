@@ -132,8 +132,7 @@ func registerConfigFlags(config *StartupConfig, fs *flag.FlagSet) map[string]con
 		"unsupported.serverless.min_config_fetch_interval": {&config.Unsupported.Serverless.MinConfigFetchInterval, fs.String("unsupported.serverless.min_config_fetch_interval", "", "How long to cache configs fetched from the buckets for. This cache is used for requested databases that SG does not know about.")},
 		"unsupported.use_xattr_config":                     {&config.Unsupported.UseXattrConfig, fs.Bool("unsupported.use_xattr_config", false, "Store database configurations in system xattrs")},
 
-		"unsupported.user_queries":                      {&config.Unsupported.UserQueries, fs.Bool("unsupported.user_queries", false, "Whether user-query APIs are enabled")},
-		"unsupported.allow_scopes_in_persistent_config": {&config.Unsupported.AllowScopesInPersistentConfig, fs.Bool("unsupported.allow_scopes_in_persistent_config", false, "Allows scopes in persistent config, the behavior is undefined if there are multiple databases with different collections targeting the same bucket.")},
+		"unsupported.user_queries": {&config.Unsupported.UserQueries, fs.Bool("unsupported.user_queries", false, "Whether user-query APIs are enabled")},
 
 		"database_credentials": {&config.DatabaseCredentials, fs.String("database_credentials", "null", "JSON-encoded per-database credentials, that can be used instead of the bootstrap ones. This will override bucket_credentials that target the bucket that the database is in.")},
 		"bucket_credentials":   {&config.BucketCredentials, fs.String("bucket_credentials", "null", "JSON-encoded per-bucket credentials, that can be used instead of the bootstrap ones.")},

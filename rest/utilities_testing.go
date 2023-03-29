@@ -213,7 +213,6 @@ func (rt *RestTester) Bucket() base.Bucket {
 	sc.Bootstrap.UseTLSServer = &rt.RestTesterConfig.useTLSServer
 	sc.Bootstrap.ServerTLSSkipVerify = base.BoolPtr(base.TestTLSSkipVerify())
 	sc.Unsupported.Serverless.Enabled = &rt.serverless
-	sc.Unsupported.AllowScopesInPersistentConfig = base.BoolPtr(true)
 	if rt.serverless {
 		if !rt.PersistentConfig {
 			rt.TB.Fatalf("Persistent config must be used when running in serverless mode")
@@ -256,6 +255,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 	sc.Auth.BcryptCost = bcrypt.MinCost
 
 	rt.RestTesterServerContext = NewServerContext(base.TestCtx(rt.TB), &sc, rt.RestTesterConfig.PersistentConfig)
+	rt.RestTesterServerContext.allowScopesInPersistentConfig = true
 	ctx := rt.Context()
 
 	if !base.ServerIsWalrus(sc.Bootstrap.Server) {
