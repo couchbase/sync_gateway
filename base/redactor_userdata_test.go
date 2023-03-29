@@ -23,7 +23,7 @@ func TestUserDataRedact(t *testing.T) {
 	userdata := UserData(username)
 
 	RedactUserData = true
-	assert.Equal(t, userDataPrefix+username+userDataSuffix, userdata.Redact())
+	assert.Equal(t, UserDataPrefix+username+UserDataSuffix, userdata.Redact())
 
 	RedactUserData = false
 	assert.Equal(t, username, userdata.Redact())
@@ -35,25 +35,25 @@ func TestUD(t *testing.T) {
 
 	// Straight-forward string test.
 	ud := UD("hello world")
-	assert.Equal(t, userDataPrefix+"hello world"+userDataSuffix, ud.Redact())
+	assert.Equal(t, UserDataPrefix+"hello world"+UserDataSuffix, ud.Redact())
 
 	// big.Int fulfils the Stringer interface, so we should get sensible values.
 	ud = UD(big.NewInt(1234))
-	assert.Equal(t, userDataPrefix+"1234"+userDataSuffix, ud.Redact())
+	assert.Equal(t, UserDataPrefix+"1234"+UserDataSuffix, ud.Redact())
 
 	// Even plain structs could be redactable.
 	ud = UD(struct{}{})
-	assert.Equal(t, userDataPrefix+"{}"+userDataSuffix, ud.Redact())
+	assert.Equal(t, UserDataPrefix+"{}"+UserDataSuffix, ud.Redact())
 
 	// String slice test.
 	ud = UD([]string{"hello", "world", "o/"})
-	assert.Equal(t, "[ "+userDataPrefix+"hello"+userDataSuffix+" "+userDataPrefix+"world"+userDataSuffix+" "+userDataPrefix+"o/"+userDataSuffix+" ]", ud.Redact())
+	assert.Equal(t, "[ "+UserDataPrefix+"hello"+UserDataSuffix+" "+UserDataPrefix+"world"+UserDataSuffix+" "+UserDataPrefix+"o/"+UserDataSuffix+" ]", ud.Redact())
 
 	// Set
 	ud = UD(SetOf("hello", "world"))
 	// As a set comes from a map we can't be sure which order it'll end up with so should check both permutations
-	redactedPerm1 := "{" + userDataPrefix + "hello" + userDataSuffix + ", " + userDataPrefix + "world" + userDataSuffix + "}"
-	redactedPerm2 := "{" + userDataPrefix + "world" + userDataSuffix + ", " + userDataPrefix + "hello" + userDataSuffix + "}"
+	redactedPerm1 := "{" + UserDataPrefix + "hello" + UserDataSuffix + ", " + UserDataPrefix + "world" + UserDataSuffix + "}"
+	redactedPerm2 := "{" + UserDataPrefix + "world" + UserDataSuffix + ", " + UserDataPrefix + "hello" + UserDataSuffix + "}"
 	redactedSet := ud.Redact()
 	redactedCorrectly := redactedPerm1 == redactedSet || redactedPerm2 == redactedSet
 	assert.True(t, redactedCorrectly, "Unexpected redact got %v", redactedSet)
