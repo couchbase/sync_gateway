@@ -255,6 +255,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 	sc.Auth.BcryptCost = bcrypt.MinCost
 
 	rt.RestTesterServerContext = NewServerContext(base.TestCtx(rt.TB), &sc, rt.RestTesterConfig.PersistentConfig)
+	rt.RestTesterServerContext.allowScopesInPersistentConfig = true
 	ctx := rt.Context()
 
 	if !base.ServerIsWalrus(sc.Bootstrap.Server) {
@@ -271,7 +272,6 @@ func (rt *RestTester) Bucket() base.Bucket {
 			panic("Couldn't initialize Couchbase Server connection: " + err.Error())
 		}
 	}
-
 	// Copy this startup config at this point into initial startup config
 	err := base.DeepCopyInefficient(&rt.RestTesterServerContext.initialStartupConfig, &sc)
 	if err != nil {

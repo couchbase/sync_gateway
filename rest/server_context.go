@@ -50,25 +50,26 @@ var ErrSuspendingDisallowed = errors.New("database does not allow suspending")
 // This struct is accessed from HTTP handlers running on multiple goroutines, so it needs to
 // be thread-safe.
 type ServerContext struct {
-	Config                 *StartupConfig // The current runtime configuration of the node
-	initialStartupConfig   *StartupConfig // The configuration at startup of the node. Built from config file + flags
-	persistentConfig       bool
-	dbRegistry             map[string]struct{}               // registry of dbNames, used to ensure uniqueness even when db isn't active
-	collectionRegistry     map[string]string                 // map of fully qualified collection name to db name, used for local uniqueness checks
-	dbConfigs              map[string]*RuntimeDatabaseConfig // dbConfigs is a map of db name to the RuntimeDatabaseConfig
-	databases_             map[string]*db.DatabaseContext    // databases_ is a map of dbname to db.DatabaseContext
-	lock                   sync.RWMutex
-	statsContext           *statsContext
-	BootstrapContext       *bootstrapContext
-	HTTPClient             *http.Client
-	cpuPprofFileMutex      sync.Mutex      // Protect cpuPprofFile from concurrent Start and Stop CPU profiling requests
-	cpuPprofFile           *os.File        // An open file descriptor holds the reference during CPU profiling
-	_httpServers           []*http.Server  // A list of HTTP servers running under the ServerContext
-	GoCBAgent              *gocbcore.Agent // GoCB Agent to use when obtaining management endpoints
-	NoX509HTTPClient       *http.Client    // httpClient for the cluster that doesn't include x509 credentials, even if they are configured for the cluster
-	hasStarted             chan struct{}   // A channel that is closed via PostStartup once the ServerContext has fully started
-	LogContextID           string          // ID to differentiate log messages from different server context
-	fetchConfigsLastUpdate time.Time       // The last time fetchConfigsWithTTL() updated dbConfigs
+	Config                        *StartupConfig // The current runtime configuration of the node
+	initialStartupConfig          *StartupConfig // The configuration at startup of the node. Built from config file + flags
+	persistentConfig              bool
+	dbRegistry                    map[string]struct{}               // registry of dbNames, used to ensure uniqueness even when db isn't active
+	collectionRegistry            map[string]string                 // map of fully qualified collection name to db name, used for local uniqueness checks
+	dbConfigs                     map[string]*RuntimeDatabaseConfig // dbConfigs is a map of db name to the RuntimeDatabaseConfig
+	databases_                    map[string]*db.DatabaseContext    // databases_ is a map of dbname to db.DatabaseContext
+	lock                          sync.RWMutex
+	statsContext                  *statsContext
+	BootstrapContext              *bootstrapContext
+	HTTPClient                    *http.Client
+	cpuPprofFileMutex             sync.Mutex      // Protect cpuPprofFile from concurrent Start and Stop CPU profiling requests
+	cpuPprofFile                  *os.File        // An open file descriptor holds the reference during CPU profiling
+	_httpServers                  []*http.Server  // A list of HTTP servers running under the ServerContext
+	GoCBAgent                     *gocbcore.Agent // GoCB Agent to use when obtaining management endpoints
+	NoX509HTTPClient              *http.Client    // httpClient for the cluster that doesn't include x509 credentials, even if they are configured for the cluster
+	hasStarted                    chan struct{}   // A channel that is closed via PostStartup once the ServerContext has fully started
+	LogContextID                  string          // ID to differentiate log messages from different server context
+	fetchConfigsLastUpdate        time.Time       // The last time fetchConfigsWithTTL() updated dbConfigs
+	allowScopesInPersistentConfig bool            // Test only backdoor to allow scopes in persistent config, not supported for multiple databases with different collections targeting the same bucket
 }
 
 // defaultConfigRetryTimeout is the total retry time when waiting for in-flight config updates.  Set as a multiple of kv op timeout,
@@ -640,6 +641,9 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 
 	fqCollections := make([]string, 0)
 	if len(config.Scopes) > 0 {
+		if !sc.persistentConfig && !sc.allowScopesInPersistentConfig {
+			return nil, base.HTTPErrorf(http.StatusBadRequest, "scopes are not allowed with legacy config")
+		}
 		contextOptions.Scopes = make(db.ScopesOptions, len(config.Scopes))
 		for scopeName, scopeCfg := range config.Scopes {
 			contextOptions.Scopes[scopeName] = db.ScopeOptions{
