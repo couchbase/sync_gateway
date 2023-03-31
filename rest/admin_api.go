@@ -174,7 +174,7 @@ func getAuthScopeHandleCreateDB(bodyJSON []byte) (string, error) {
 	var body struct {
 		Bucket string `json:"bucket"`
 	}
-	err := base.JSONUnmarshal(bodyJSON, &body)
+	err := base.JSONUnmarshal(base.ConvertBackQuotedStrings(bodyJSON), &body)
 	if err != nil {
 		return "", err
 	}

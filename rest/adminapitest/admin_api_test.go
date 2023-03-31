@@ -3776,6 +3776,56 @@ func TestSetFunctionsWhileDbOffline(t *testing.T) {
 	resp.RequireResponse(http.StatusOK, syncFunc)
 }
 
+func TestCollectionSyncFnWithBackticks(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
+
+	// Start SG with bootstrap credentials filled
+	ctx := base.TestCtx(t)
+	config := rest.BootstrapStartupConfigForTest(t)
+	sc, err := rest.SetupServerContext(ctx, &config, true)
+	require.NoError(t, err)
+	serverErr := make(chan error, 0)
+	go func() {
+		serverErr <- rest.StartServer(ctx, &config, sc)
+	}()
+	require.NoError(t, sc.WaitForRESTAPIs())
+	defer func() {
+		sc.Close(ctx)
+		require.NoError(t, <-serverErr)
+	}()
+
+	// Get a test bucket, and use it to create the database.
+	tb := base.GetTestBucket(t)
+	defer tb.Close()
+
+	// Initial DB config
+	dbConfig := `{
+    "num_index_replicas": 0,
+    "bucket": "todo",
+    "scopes": {
+      "_default": {
+         "collections": {
+            "lists": {
+               "sync":` + "`" +
+		`function(doc, oldDoc, meta) {
+					var owner = doc._deleted ? oldDoc.owner : doc.owner;
+					requireUser(owner);
+					var listChannel = 'lists.' + doc._id;
+					var contributorRole = 'role:' + listChannel + '.contributor';
+					role(owner, contributorRole);
+					access(contributorRole, listChannel);
+					channel(listChannel);
+				}` + "`" + `
+         	}
+      	}
+	  }
+ 	}`
+
+	// Create initial database
+	resp := rest.BootstrapAdminRequest(t, http.MethodPut, "/db/", dbConfig)
+	resp.RequireStatus(http.StatusCreated)
+}
+
 func TestEmptyStringJavascriptFunctions(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
