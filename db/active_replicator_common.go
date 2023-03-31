@@ -352,7 +352,7 @@ func (a *activeReplicatorCommon) getCheckpointHighSeq() string {
 
 func (a *activeReplicatorCommon) _publishStatus() {
 	status := a._getStatusCallback()
-	_, err := setLocalStatus(a.ctx, a.config.ActiveDB.MetadataStore, a.CheckpointID, status, int(a.config.ActiveDB.Options.LocalDocExpirySecs))
+	err := setLocalStatus(a.ctx, a.config.ActiveDB.MetadataStore, a.CheckpointID, status, int(a.config.ActiveDB.Options.LocalDocExpirySecs))
 	if err != nil {
 		base.WarnfCtx(a.ctx, "Couldn't set status for replication: %v", err)
 	}
@@ -379,10 +379,8 @@ func (arc *activeReplicatorCommon) startStatusReporter() error {
 	return nil
 }
 
-// getLocalStatus retrieves replication status for a given client ID from the given metadataStore
-func getLocalStatus(ctx context.Context, metadataStore base.DataStore, clientID string) (*ReplicationStatusDoc, error) {
-	base.TracefCtx(ctx, base.KeyReplicate, "getLocalStatus for %q", clientID)
-
+// getLocalStatusDoc retrieves replication status document for a given client ID from the given metadataStore
+func getLocalStatusDoc(ctx context.Context, metadataStore base.DataStore, clientID string) (*ReplicationStatusDoc, error) {
 	statusDocBytes, err := getSpecialBytes(metadataStore, DocTypeLocal, ReplicationStatusDocIDPrefix+clientID, 0)
 	if err != nil {
 		if !base.IsKeyNotFoundError(metadataStore, err) {
@@ -396,15 +394,27 @@ func getLocalStatus(ctx context.Context, metadataStore base.DataStore, clientID 
 	return statusDoc, err
 }
 
-// setLocalStatus updates replication status. Increments existing rev.
-func setLocalStatus(ctx context.Context, metadataStore base.DataStore, clientID string, status *ReplicationStatus, localDocExpirySecs int) (newRevID string, err error) {
+// getLocalStatus retrieves replication status for a given client ID from the given metadataStore
+func getLocalStatus(ctx context.Context, metadataStore base.DataStore, clientID string) (*ReplicationStatus, error) {
+	localStatusDoc, err := getLocalStatusDoc(ctx, metadataStore, clientID)
+	if err != nil {
+		return nil, err
+	}
+	if localStatusDoc != nil {
+		return localStatusDoc.Status, nil
+	}
+	return nil, nil
+}
+
+// setLocalStatus updates replication status.
+func setLocalStatus(ctx context.Context, metadataStore base.DataStore, clientID string, status *ReplicationStatus, localDocExpirySecs int) (err error) {
 	base.TracefCtx(ctx, base.KeyReplicate, "setLocalStatus for %q (%v)", clientID, status)
 
-	// getLocalStatus to obtain the current rev
-	currentStatus, err := getLocalStatus(ctx, metadataStore, clientID)
+	// obtain current rev
+	currentStatus, err := getLocalStatusDoc(ctx, metadataStore, clientID)
 	if err != nil {
 		base.WarnfCtx(ctx, "Unable to retrieve local status doc for %s, status not updated", clientID)
-		return "", nil
+		return nil
 	}
 
 	var revID string
@@ -416,25 +426,23 @@ func setLocalStatus(ctx context.Context, metadataStore base.DataStore, clientID 
 		Status: status,
 	}
 
-	return putSpecial(metadataStore, DocTypeLocal, ReplicationStatusDocIDPrefix+clientID, revID, newStatus.AsBody(), localDocExpirySecs)
+	_, err = putSpecial(metadataStore, DocTypeLocal, ReplicationStatusDocIDPrefix+clientID, revID, newStatus.AsBody(), localDocExpirySecs)
+	return err
 }
 
 // removeLocalStatus removes a replication status from the given metadataStore. This is done when a replication is reset.
 func removeLocalStatus(ctx context.Context, metadataStore base.DataStore, clientID string) (err error) {
 	base.TracefCtx(ctx, base.KeyReplicate, "removeLocalStatus() for %q", clientID)
 
-	// getLocalStatus to obtain the current rev
-	currentStatus, err := getLocalStatus(ctx, metadataStore, clientID)
+	// obtain current rev
+	currentStatus, err := getLocalStatusDoc(ctx, metadataStore, clientID)
 	if err != nil {
-		base.WarnfCtx(ctx, "Unable to retrieve local status doc for %s, status not updated", clientID)
+		base.WarnfCtx(ctx, "Unable to retrieve local status doc for %s, status not removed", clientID)
 		return nil
 	}
 	if currentStatus == nil {
-		currentStatus = &ReplicationStatusDoc{
-			Status: &ReplicationStatus{
-				ID: clientID,
-			},
-		}
+		// nothing to do - status already doesn't exist
+		return nil
 	}
 
 	_, err = putSpecial(metadataStore, DocTypeLocal, ReplicationStatusDocIDPrefix+clientID, currentStatus.Rev, nil, 0)

@@ -351,27 +351,23 @@ func LoadReplicationStatus(ctx context.Context, dbContext *DatabaseContext, repl
 		ID: replicationID,
 	}
 
-	pullStatusDoc, _ := getLocalStatus(ctx, dbContext.MetadataStore, PullCheckpointID(replicationID))
-	if pullStatusDoc != nil {
-		if pullStatusDoc.Status != nil {
-			status.PullReplicationStatus = pullStatusDoc.Status.PullReplicationStatus
-			status.Status = pullStatusDoc.Status.Status
-			status.ErrorMessage = pullStatusDoc.Status.ErrorMessage
-			status.LastSeqPull = pullStatusDoc.Status.LastSeqPull
-		}
+	pullStatus, _ := getLocalStatus(ctx, dbContext.MetadataStore, PullCheckpointID(replicationID))
+	if pullStatus != nil {
+		status.PullReplicationStatus = pullStatus.PullReplicationStatus
+		status.Status = pullStatus.Status
+		status.ErrorMessage = pullStatus.ErrorMessage
+		status.LastSeqPull = pullStatus.LastSeqPull
 	}
 
-	pushStatusDoc, _ := getLocalStatus(ctx, dbContext.MetadataStore, PushCheckpointID(replicationID))
-	if pushStatusDoc != nil {
-		if pushStatusDoc.Status != nil {
-			status.PushReplicationStatus = pushStatusDoc.Status.PushReplicationStatus
-			status.Status = pushStatusDoc.Status.Status
-			status.ErrorMessage = pushStatusDoc.Status.ErrorMessage
-			status.LastSeqPush = pushStatusDoc.Status.LastSeqPush
-		}
+	pushStatus, _ := getLocalStatus(ctx, dbContext.MetadataStore, PushCheckpointID(replicationID))
+	if pushStatus != nil {
+		status.PushReplicationStatus = pushStatus.PushReplicationStatus
+		status.Status = pushStatus.Status
+		status.ErrorMessage = pushStatus.ErrorMessage
+		status.LastSeqPush = pushStatus.LastSeqPush
 	}
 
-	if (pullStatusDoc == nil || pullStatusDoc.Status == nil) && (pushStatusDoc == nil || pushStatusDoc.Status == nil) {
+	if pullStatus == nil && pushStatus == nil {
 		return nil, errors.New("Replication status not found")
 	}
 
