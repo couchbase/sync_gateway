@@ -944,7 +944,7 @@ func (h *handler) handlePutCollectionConfigImportFilter() error {
 // In non-persistent mode, the endpoint just removes the database from the node.
 func (h *handler) handleDeleteDB() error {
 	h.assertAdminOnly()
-	dbName := h.PathVar("olddb")
+	dbName := h.PathVar("db")
 
 	var bucket string
 
