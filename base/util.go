@@ -1136,7 +1136,6 @@ func ConvertBackQuotedStrings(data []byte) []byte {
 		b = bytes.Replace(b, []byte("\n"), []byte(`\n`), -1)
 		b = bytes.Replace(b, []byte("\t"), []byte(`\t`), -1)
 		b = bytes.Replace(b, []byte(`"`), []byte(`\"`), -1)
-		b = bytes.Replace(b, []byte("`"), []byte("\""), -1)
 
 		// Replace the backquotes with double-quotes
 		b[0] = '"'

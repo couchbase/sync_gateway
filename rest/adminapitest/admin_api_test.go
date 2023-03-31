@@ -3777,22 +3777,11 @@ func TestSetFunctionsWhileDbOffline(t *testing.T) {
 }
 
 func TestCollectionSyncFnWithBackticks(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
+	if base.TestsDisableGSI() {
+		t.Skip("This test only works with Collections")
+	}
 
-	// Start SG with bootstrap credentials filled
-	ctx := base.TestCtx(t)
-	config := rest.BootstrapStartupConfigForTest(t)
-	sc, err := rest.SetupServerContext(ctx, &config, true)
-	require.NoError(t, err)
-	serverErr := make(chan error, 0)
-	go func() {
-		serverErr <- rest.StartServer(ctx, &config, sc)
-	}()
-	require.NoError(t, sc.WaitForRESTAPIs())
-	defer func() {
-		sc.Close(ctx)
-		require.NoError(t, <-serverErr)
-	}()
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
 
 	// Get a test bucket, and use it to create the database.
 	tb := base.GetTestBucket(t)
