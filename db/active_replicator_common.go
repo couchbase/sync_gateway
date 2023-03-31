@@ -88,6 +88,10 @@ func newActiveReplicatorCommon(ctx context.Context, config *ActiveReplicatorConf
 		checkpointID = PullCheckpointID(config.ID)
 	}
 
+	if config.CheckpointInterval == 0 {
+		config.CheckpointInterval = DefaultCheckpointInterval
+	}
+
 	initialStatus, err := LoadReplicationStatus(ctx, config.ActiveDB.DatabaseContext, config.ID)
 	if err != nil {
 		// Not finding an initialStatus isn't fatal, but we should at least log that we'll reset stats when we do...
@@ -355,17 +359,12 @@ func (a *activeReplicatorCommon) _publishStatus() {
 }
 
 func (arc *activeReplicatorCommon) startStatusReporter() error {
-	interval := arc.config.CheckpointInterval
-	if interval == 0 {
-		interval = DefaultCheckpointInterval
-	}
 	go func(ctx context.Context) {
-		ticker := time.NewTicker(interval)
+		ticker := time.NewTicker(arc.config.CheckpointInterval)
 		defer ticker.Stop()
 		for {
 			select {
 			case <-ticker.C:
-				base.TracefCtx(arc.ctx, base.KeyReplicate, "writing status. context is not cancelled here")
 				func() {
 					arc.lock.RLock()
 					defer arc.lock.RUnlock()
