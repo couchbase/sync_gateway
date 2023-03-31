@@ -257,6 +257,9 @@ func CreateAdminRouter(sc *ServerContext) *mux.Router {
 	r.Handle("/_config",
 		makeHandler(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handlePutConfig)).Methods("PUT")
 
+	r.Handle("/_cluster_info",
+		makeHandler(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handleGetClusterInfo)).Methods("GET")
+
 	r.Handle("/_status",
 		makeHandler(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handleGetStatus)).Methods("GET")
 

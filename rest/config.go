@@ -1518,9 +1518,8 @@ func (sc *ServerContext) fetchConfigsSince(ctx context.Context, refreshInterval 
 	return sc.dbConfigs, nil
 }
 
-// FetchConfigs retrieves all database configs from the ServerContext's bootstrapConnection.
-func (sc *ServerContext) FetchConfigs(ctx context.Context, isInitialStartup bool) (dbNameConfigs map[string]DatabaseConfig, err error) {
-	var buckets []string
+// GetBucketNames returns a slice of the bucket names associated with the server context
+func (sc *ServerContext) GetBucketNames() (buckets []string, err error) {
 	if sc.Config.IsServerless() {
 		buckets = make([]string, len(sc.Config.BucketCredentials))
 		for bucket, _ := range sc.Config.BucketCredentials {
@@ -1541,6 +1540,16 @@ func (sc *ServerContext) FetchConfigs(ctx context.Context, isInitialStartup bool
 		if err != nil {
 			return nil, fmt.Errorf("couldn't get buckets from cluster: %w", err)
 		}
+	}
+	return buckets, nil
+}
+
+// FetchConfigs retrieves all database configs from the ServerContext's bootstrapConnection.
+func (sc *ServerContext) FetchConfigs(ctx context.Context, isInitialStartup bool) (dbNameConfigs map[string]DatabaseConfig, err error) {
+
+	buckets, err := sc.GetBucketNames()
+	if err != nil {
+		return nil, err
 	}
 
 	fetchedConfigs := make(map[string]DatabaseConfig, len(buckets))
