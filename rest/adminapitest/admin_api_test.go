@@ -3798,15 +3798,21 @@ func TestCollectionSyncFnWithBackticks(t *testing.T) {
 	tb := base.GetTestBucket(t)
 	defer tb.Close()
 
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{PersistentConfig: true})
+	defer rt.Close()
+
+	scopesConfig := rest.GetCollectionsConfig(t, tb, 1)
+	dataStoreNames := rest.GetDataStoreNamesFromScopesConfig(scopesConfig)
+	scopeName, collectionName := dataStoreNames[0].ScopeName(), dataStoreNames[0].CollectionName()
 	// Initial DB config
-	dbConfig := `{
+	dbConfig := fmt.Sprintf(`{
     "num_index_replicas": 0,
-    "bucket": "todo",
+    "bucket": "%s",
     "scopes": {
-      "_default": {
+      "%s": {
          "collections": {
-            "lists": {
-               "sync":` + "`" +
+            "%s": {
+               "sync":`, tb.GetName(), scopeName, collectionName) + "`" +
 		`function(doc, oldDoc, meta) {
 					var owner = doc._deleted ? oldDoc.owner : doc.owner;
 					requireUser(owner);
@@ -3817,13 +3823,14 @@ func TestCollectionSyncFnWithBackticks(t *testing.T) {
 					channel(listChannel);
 				}` + "`" + `
          	}
+}
       	}
 	  }
  	}`
 
 	// Create initial database
-	resp := rest.BootstrapAdminRequest(t, http.MethodPut, "/db/", dbConfig)
-	resp.RequireStatus(http.StatusCreated)
+	resp := rt.SendAdminRequest(http.MethodPut, "/db/", dbConfig)
+	assert.Equal(t, resp.Code, http.StatusCreated)
 }
 
 func TestEmptyStringJavascriptFunctions(t *testing.T) {
