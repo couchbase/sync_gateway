@@ -100,8 +100,6 @@ func newActiveReplicatorCommon(ctx context.Context, config *ActiveReplicatorConf
 		replicationStats: replicationStats,
 		CheckpointID:     config.checkpointPrefix + checkpointID,
 		initialStatus:    initialStatus,
-		lock:             base.NewLoggingRWMutex(ctx, "lock"),
-		stateErrorLock:   base.NewLoggingRWMutex(ctx, "stateErrorLock"),
 	}
 
 	if config.CollectionsEnabled {

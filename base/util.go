@@ -32,7 +32,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -1808,66 +1807,4 @@ func WaitForNoError(callback func() error) error {
 		return callbackErr != nil, callbackErr, nil
 	}, CreateMaxDoublingSleeperFunc(30, 10, 1000))
 	return err
-}
-
-// LoggingMutex is a normal sync.Mutex that logs before and after each operation.
-type LoggingMutex struct {
-	ctx  context.Context
-	name string
-	sync.Mutex
-}
-
-var _ sync.Locker = &LoggingMutex{}
-
-func NewLoggingMutex(ctx context.Context, name string) LoggingMutex {
-	return LoggingMutex{ctx: ctx, name: name}
-}
-
-func (m *LoggingMutex) Lock() {
-	TracefCtx(m.ctx, KeyAll, "Before %s.Lock() %s", m.name, GetCallersName(1, true))
-	m.Mutex.Lock()
-	TracefCtx(m.ctx, KeyAll, "After %s.Lock() %s", m.name, GetCallersName(1, true))
-}
-
-func (m *LoggingMutex) Unlock() {
-	TracefCtx(m.ctx, KeyAll, "Before %s.Unlock() %s", m.name, GetCallersName(1, true))
-	m.Mutex.Unlock()
-	TracefCtx(m.ctx, KeyAll, "After %s.Unlock() %s", m.name, GetCallersName(1, true))
-}
-
-// LoggingMutex is a normal sync.RWMutex that logs before and after each operation.
-type LoggingRWMutex struct {
-	ctx  context.Context
-	name string
-	sync.RWMutex
-}
-
-var _ sync.Locker = &LoggingRWMutex{}
-
-func NewLoggingRWMutex(ctx context.Context, name string) LoggingRWMutex {
-	return LoggingRWMutex{ctx: ctx, name: name}
-}
-
-func (m *LoggingRWMutex) Lock() {
-	TracefCtx(m.ctx, KeyAll, "Before %s.Lock() %s", m.name, GetCallersName(1, true))
-	m.RWMutex.Lock()
-	TracefCtx(m.ctx, KeyAll, "After %s.Lock() %s", m.name, GetCallersName(1, true))
-}
-
-func (m *LoggingRWMutex) Unlock() {
-	TracefCtx(m.ctx, KeyAll, "Before %s.Unlock() %s", m.name, GetCallersName(1, true))
-	m.RWMutex.Unlock()
-	TracefCtx(m.ctx, KeyAll, "After %s.Unlock() %s", m.name, GetCallersName(1, true))
-}
-
-func (m *LoggingRWMutex) RLock() {
-	TracefCtx(m.ctx, KeyAll, "Before %s.RLock() %s", m.name, GetCallersName(1, true))
-	m.RWMutex.RLock()
-	TracefCtx(m.ctx, KeyAll, "After %s.RLock() %s", m.name, GetCallersName(1, true))
-}
-
-func (m *LoggingRWMutex) RUnlock() {
-	TracefCtx(m.ctx, KeyAll, "Before %s.RUnlock() %s", m.name, GetCallersName(1, true))
-	m.RWMutex.RUnlock()
-	TracefCtx(m.ctx, KeyAll, "After %s.RUnlock() %s", m.name, GetCallersName(1, true))
 }
