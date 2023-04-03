@@ -3777,48 +3777,47 @@ func TestSetFunctionsWhileDbOffline(t *testing.T) {
 }
 
 func TestCollectionSyncFnWithBackticks(t *testing.T) {
-	if base.TestsDisableGSI() {
-		t.Skip("This test only works with Collections")
-	}
+	base.TestRequiresCollections(t)
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
 
-	// Get a test bucket, and use it to create the database.
-	tb := base.GetTestBucket(t)
-	defer tb.Close()
-
 	rt := rest.NewRestTester(t, &rest.RestTesterConfig{PersistentConfig: true})
+	_ = rt.Bucket()
 	defer rt.Close()
 
-	scopesConfig := rest.GetCollectionsConfig(t, tb, 1)
+	scopesConfig := rest.GetCollectionsConfig(t, rt.TestBucket, 1)
 	dataStoreNames := rest.GetDataStoreNamesFromScopesConfig(scopesConfig)
 	scopeName, collectionName := dataStoreNames[0].ScopeName(), dataStoreNames[0].CollectionName()
 	// Initial DB config
 	dbConfig := fmt.Sprintf(`{
     "num_index_replicas": 0,
-    "bucket": "%s",
-    "scopes": {
-      "%s": {
-         "collections": {
-            "%s": {
-               "sync":`, tb.GetName(), scopeName, collectionName) + "`" +
+    	"bucket": "%s",
+    		"scopes": {
+			  	"%s": {
+					"collections": {
+            			"%s": {
+				   		"sync":`, rt.Bucket().GetName(), scopeName, collectionName) + "`" +
 		`function(doc, oldDoc, meta) {
-					var owner = doc._deleted ? oldDoc.owner : doc.owner;
-					requireUser(owner);
-					var listChannel = 'lists.' + doc._id;
-					var contributorRole = 'role:' + listChannel + '.contributor';
-					role(owner, contributorRole);
-					access(contributorRole, listChannel);
-					channel(listChannel);
-				}` + "`" + `
-         	}
-}
-      	}
-	  }
+							var owner = doc._deleted ? oldDoc.owner : doc.owner;
+							requireUser(owner);
+							var listChannel = 'lists.' + doc._id;
+							var contributorRole = 'role:' + listChannel + '.contributor';
+							role(owner, contributorRole);
+							access(contributorRole, listChannel);
+							channel(listChannel);
+						}` + "`" + `
+         			}
+				}
+      		}
+		}
  	}`
 
 	// Create initial database
 	resp := rt.SendAdminRequest(http.MethodPut, "/db/", dbConfig)
+	assert.Equal(t, resp.Code, http.StatusCreated)
+
+	// Update database config
+	resp = rt.SendAdminRequest(http.MethodPut, "/db/_config", dbConfig)
 	assert.Equal(t, resp.Code, http.StatusCreated)
 }
 
