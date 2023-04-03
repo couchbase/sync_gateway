@@ -43,6 +43,7 @@ const (
 	ReplicationStateResetting    = "resetting"
 	ReplicationStateError        = "error"
 	ReplicationStateStarting     = "starting"
+	ReplicationStateUnassigned   = "unassigned"
 )
 
 // Replication config validation error messages
@@ -996,7 +997,7 @@ func (m *sgReplicateManager) GetReplication(replicationID string) (*ReplicationC
 
 	// TODO: remove the local/non-local handling below when CBG-909 is completed
 	if replication.AssignedNode == "" {
-		replication.AssignedNode = ""
+		return replication, nil
 	} else if replication.AssignedNode == m.localNodeUUID {
 		replication.AssignedNode = replication.AssignedNode + " (local)"
 	} else {
@@ -1219,10 +1220,8 @@ func (c *SGRCluster) RebalanceReplications() {
 
 	// If there aren't any nodes available, there's nothing more to be done
 	if len(c.Nodes) == 0 {
-		if len(unassignedReplications) > 0 {
-			for _, v := range unassignedReplications {
-				base.WarnfCtx(c.loggingCtx, "Replication %s does not have an assigned node.", v.ID)
-			}
+		for _, v := range unassignedReplications {
+			base.WarnfCtx(c.loggingCtx, "Replication %s does not have an assigned node.", v.ID)
 		}
 		return
 	}
@@ -1406,7 +1405,7 @@ func (m *sgReplicateManager) GetReplicationStatus(replicationID string, options 
 			if remoteCfg.AssignedNode == "" {
 				status = &ReplicationStatus{
 					ID:     replicationID,
-					Status: ReplicationStateError,
+					Status: ReplicationStateUnassigned,
 				}
 			} else {
 				status = &ReplicationStatus{

@@ -657,7 +657,7 @@ func TestStatusAfterReplicationRebalanceFail(t *testing.T) {
 	remoteRT.WaitForAssignedReplications(0)
 
 	// assert that the replication state is error after the replication is failed to be assigned a node
-	remoteRT.WaitForReplicationStatus(t.Name(), db.ReplicationStateError)
+	remoteRT.WaitForReplicationStatus(t.Name(), db.ReplicationStateUnassigned)
 
 }
 
@@ -1328,8 +1328,8 @@ func TestGetStatusWithReplication(t *testing.T) {
 	})
 	assert.Equal(t, config1.ID, database.ReplicationStatus[0].ID)
 	assert.Equal(t, config2.ID, database.ReplicationStatus[1].ID)
-	assert.Equal(t, "running", database.ReplicationStatus[0].Status)
-	assert.Equal(t, "running", database.ReplicationStatus[1].Status)
+	assert.Equal(t, "unassigned", database.ReplicationStatus[0].Status)
+	assert.Equal(t, "unassigned", database.ReplicationStatus[1].Status)
 
 	assert.Equal(t, 2, len(database.SGRCluster.Replications), "Replication count mismatch")
 	assert.Equal(t, 0, len(database.SGRCluster.Nodes), "Replication node count mismatch")
@@ -1376,20 +1376,25 @@ func TestGetStatusWithReplication(t *testing.T) {
 func TestRequireReplicatorStoppedBeforeUpsert(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyHTTPResp)
 
-	rt := rest.NewRestTester(t, nil)
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{SgReplicateEnabled: true})
 	defer rt.Close()
+
+	resp := rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/alice", rest.GetUserPayload(t, "alice", "letmein", "", rt.GetSingleTestDatabaseCollection(), []string{}, []string{}))
+	rest.RequireStatus(t, resp, http.StatusCreated)
 
 	// Make rt listen on an actual HTTP port, so it can receive the blipsync request.
 	srv := httptest.NewServer(rt.TestPublicHandler())
 	defer srv.Close()
+	DBURL, _ := url.Parse(srv.URL + "/" + rt.GetDatabase().Name)
+	DBURL.User = url.UserPassword("alice", rest.RestTesterDefaultUserPassword)
 
-	replicationConfig := `{
+	replicationConfig := fmt.Sprintf(`{
 		"replication_id": "replication1",
-		"remote": "http://remote:4985/db",
-		"direction":"` + db.ActiveReplicatorTypePushAndPull + `",
+		"remote": "%s",
+		"direction": "pushAndPull",
 		"conflict_resolution_type":"default",
 		"max_backoff":100
-	}`
+	}`, DBURL.String())
 
 	response := rt.SendAdminRequest("PUT", "/{{.db}}/_replication/replication1", string(replicationConfig))
 	rest.RequireStatus(t, response, http.StatusCreated)
@@ -1403,19 +1408,21 @@ func TestRequireReplicatorStoppedBeforeUpsert(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, "running", body[0]["status"])
 
-	replicationConfigUpdate := `{
+	replicationConfigUpdate := fmt.Sprintf(`{
 		"replication_id": "replication1",
-		"remote": "http://remote:4985/db",
-		"direction":"` + db.ActiveReplicatorTypePush + `",
+		"remote": "%s",
+		"direction": "push",
 		"conflict_resolution_type":"default",
 		"max_backoff":100
-	}`
+	}`, DBURL.String())
 
 	response = rt.SendAdminRequest("PUT", "/{{.db}}/_replication/replication1", string(replicationConfigUpdate))
 	rest.RequireStatus(t, response, http.StatusBadRequest)
 
 	response = rt.SendAdminRequest("PUT", "/{{.db}}/_replicationStatus/replication1?action=stop", "")
 	rest.RequireStatus(t, response, http.StatusOK)
+
+	rt.WaitForReplicationStatus("replication1", db.ReplicationStateStopped)
 
 	response = rt.SendAdminRequest("PUT", "/{{.db}}/_replication/replication1", string(replicationConfigUpdate))
 	rest.RequireStatus(t, response, http.StatusOK)
