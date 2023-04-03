@@ -640,6 +640,27 @@ func TestReplicationStatusActions(t *testing.T) {
 
 }
 
+func TestStatusAfterReplicationRebalanceFail(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+	activeRT, remoteRT, _, teardown := rest.SetupSGRPeers(t)
+	defer teardown()
+
+	// Build connection string for active RT
+	srv := httptest.NewServer(activeRT.TestPublicHandler())
+	activeDBURL, _ := url.Parse(srv.URL + "/" + activeRT.GetDatabase().Name)
+	activeDBURL.User = url.UserPassword("alice", rest.RestTesterDefaultUserPassword)
+	defer srv.Close()
+
+	// Put replication on remote RT where sg replicate is off, so will not get assigned a node
+	remoteRT.CreateReplication(t.Name(), activeDBURL.String(), db.ActiveReplicatorTypePush, nil, false, db.ConflictResolverDefault)
+
+	remoteRT.WaitForAssignedReplications(0)
+
+	// assert that the replication state is error after the replication is failed to be assigned a node
+	remoteRT.WaitForReplicationStatus(t.Name(), db.ReplicationStateError)
+
+}
+
 // TestReplicationRebalancePull
 //   - Starts 2 RestTesters, one active, and one passive.
 //   - Creates documents on rt1 in two channels
@@ -851,6 +872,73 @@ func TestReplicationRebalancePush(t *testing.T) {
 	activeRT.GetDatabase().SGReplicateMgr = nil
 	activeRT2.GetDatabase().SGReplicateMgr.Stop()
 	activeRT2.GetDatabase().SGReplicateMgr = nil
+}
+
+func TestQEIssue(t *testing.T) {
+
+	base.RequireNumTestBuckets(t, 3)
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)
+
+	activeRT, remoteRT, remoteURLString, teardown := rest.SetupSGRPeers(t)
+	defer teardown()
+	var resp *rest.TestResponse
+	tb := base.GetPersistentTestBucket(t)
+	defer tb.Close()
+
+	rt3 := addActiveRT(t, "ab100", tb)
+	defer rt3.Close()
+	srv := httptest.NewServer(rt3.TestPublicHandler())
+	// Build passiveDBURL with basic auth creds
+	rt3DBURL, _ := url.Parse(srv.URL + "/" + rt3.GetDatabase().Name)
+	rt3DBURL.User = url.UserPassword("alice", rest.RestTesterDefaultUserPassword)
+
+	resp = rt3.SendAdminRequest(http.MethodGet, "/{{.db}}/_config", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+	fmt.Println(resp.Code, resp.Body.String())
+
+	//docCount := 20
+	docIDs := make([]string, 20)
+	for i := 0; i < 20; i++ {
+		docID := fmt.Sprintf("%s%s%d", t.Name(), "rt1doc", i)
+		resp = activeRT.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID, `{"source":"rt1"}`)
+		rest.RequireStatus(t, resp, http.StatusCreated)
+		docIDs[i] = docID
+	}
+	require.NoError(t, activeRT.WaitForPendingChanges())
+
+	resp = activeRT.SendAdminRequest(http.MethodGet, "/activedb.sg_test_0.sg_test_0/TestQEIssuert1doc19", "")
+	fmt.Println(resp.Code, resp.Body.String())
+
+	replicationID := t.Name() + "push"
+	activeRT.CreateReplication(replicationID, rt3DBURL.String(), db.ActiveReplicatorTypePush, nil, false, db.ConflictResolverDefault)
+	activeRT.WaitForReplicationStatus(replicationID, db.ReplicationStateRunning)
+
+	//_ = rt3.RequireWaitChanges(docCount, "0")
+
+	activeRT.WaitForReplicationStatus(replicationID, db.ReplicationStateStopped)
+
+	//docCount = 40
+	docIDs = make([]string, 20)
+	for i := 0; i < 20; i++ {
+		docID := fmt.Sprintf("%s%s%d", t.Name(), "rt2doc", i)
+		resp = remoteRT.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID, `{"source":"rt2"}`)
+		rest.RequireStatus(t, resp, http.StatusCreated)
+		docIDs[i] = docID
+	}
+	require.NoError(t, remoteRT.WaitForPendingChanges())
+
+	replicationID = t.Name() + "pull"
+	rt3.CreateReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePull, nil, false, db.ConflictResolverDefault)
+	rt3.WaitForReplicationStatus(replicationID, db.ReplicationStateRunning)
+
+	//_ = rt3.RequireWaitChanges(docCount, "0")
+
+	rt3.WaitForReplicationStatus(replicationID, db.ReplicationStateStopped)
+
+	resp = rt3.SendAdminRequest(http.MethodGet, "/ab100.sg_test_0.sg_test_0/_all_docs", "")
+	fmt.Println(resp.Code, resp.Body.String())
+	//resp = rt3.SendAdminRequest(http.MethodGet, "/{{.keyspace1}}/_all_docs", "")
+	//fmt.Println(resp.Code, resp.Body.String())
 }
 
 // TestPullReplicationAPI
