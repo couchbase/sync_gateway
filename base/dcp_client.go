@@ -465,6 +465,7 @@ func (dc *DCPClient) rollback(ctx context.Context, vbID uint16) error {
 	if dc.dbStats != nil {
 		dc.dbStats.Add("dcp_rollback_count", 1)
 	}
+	// CBG-2823 for rollback, use value from open stream request when gocb supports it
 	failoverLogs, err := dc.getFailoverLogs(ctx, vbID)
 	if err != nil {
 		return err

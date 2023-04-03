@@ -137,7 +137,7 @@ func (c *tbpClusterV2) insertBucket(name string, quotaMB int) error {
 			RAMQuotaMB:   uint64(quotaMB),
 			BucketType:   gocb.CouchbaseBucketType,
 			FlushEnabled: true,
-			NumReplicas:  0,
+			NumReplicas:  2,
 		},
 	}
 
