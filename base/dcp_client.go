@@ -437,7 +437,7 @@ func (dc *DCPClient) openStream(vbID uint16, maxRetries uint32) (err error) {
 			InfofCtx(logCtx, KeyDCP, "Open stream for vbID %d failed due to rollback or range error, will roll back metadata and retry: %v", vbID, openStreamErr)
 			err := dc.rollback(logCtx, vbID)
 			if err != nil {
-				WarnfCtx(logCtx, "failed to rollback metadata for vb %d: error: %v", vbID, err)
+				PanicfCtx(logCtx, "failed to rollback metadata for vb %d: error: %v", vbID, err)
 				return fmt.Errorf("metadata rollback failed for vb %d: %v", vbID, err)
 			}
 		case errors.Is(openStreamErr, gocbcore.ErrShutdown):
@@ -460,12 +460,57 @@ func (dc *DCPClient) openStream(vbID uint16, maxRetries uint32) (err error) {
 	return fmt.Errorf("openStream failed to complete after %d attempts, last error: %w", openRetryCount, openStreamErr)
 }
 
-func (dc *DCPClient) rollback(ctx context.Context, vbID uint16) (err error) {
+// rollback changes the metadata of the client for the specified vbucket to mark the new startSeqNo and vBucket UUID.
+func (dc *DCPClient) rollback(ctx context.Context, vbID uint16) error {
 	if dc.dbStats != nil {
 		dc.dbStats.Add("dcp_rollback_count", 1)
 	}
-	dc.metadata.Rollback(ctx, vbID)
+	failoverLogs, err := dc.getFailoverLogs(ctx, vbID)
+	if err != nil {
+		return err
+	}
+	latestSeqNo := dc.metadata.GetMeta(vbID).StartSeqNo
+
+	vbUUID, seqNo, err := findRollbackVBUUIDSequence(ctx, vbID, latestSeqNo, failoverLogs)
+	if err != nil {
+		return err
+	}
+	dc.metadata.Rollback(ctx, vbID, vbUUID, seqNo)
 	return nil
+}
+
+// findRollbackSequence returns the vbuuid and seqno to rollback to for the given vbID
+func findRollbackVBUUIDSequence(ctx context.Context, vbID uint16, existingHighSeqNo gocbcore.SeqNo, entries []gocbcore.FailoverEntry) (gocbcore.VbUUID, gocbcore.SeqNo, error) {
+	if len(entries) == 0 {
+		return 0, 0, fmt.Errorf("no failover logs found for vb %d", vbID)
+	}
+	for _, entry := range entries {
+		if existingHighSeqNo >= entry.SeqNo {
+			return entry.VbUUID, existingHighSeqNo, nil
+		}
+	}
+	return 0, 0, fmt.Errorf("Could not find a rollback sequence for vb %d from failover logs: %v", vbID, entries)
+}
+
+// getFailoverLogs querys for the current failover logs for a given vBucket ID.
+func (dc *DCPClient) getFailoverLogs(ctx context.Context, vbID uint16) ([]gocbcore.FailoverEntry, error) {
+	getFailoverErr := make(chan error)
+	var failoverLogs []gocbcore.FailoverEntry
+	getFailoverLogsCallback := func(f []gocbcore.FailoverEntry, err error) {
+		failoverLogs = f
+		getFailoverErr <- err
+	}
+
+	_, err := dc.agent.GetFailoverLog(vbID, getFailoverLogsCallback)
+	if err != nil {
+		return nil, err
+	}
+	select {
+	case err := <-getFailoverErr:
+		return failoverLogs, err
+	case <-time.After(openStreamTimeout):
+		return nil, ErrTimeout
+	}
 }
 
 // openStreamRequest issues the OpenStream request, but doesn't perform any error handling.  Callers

@@ -56,16 +56,9 @@ func TestOneShotDCP(t *testing.T) {
 	// start one shot feed
 	feedID := t.Name()
 
-	collection, err := AsCollection(dataStore)
-	require.NoError(t, err)
-	var collectionIDs []uint32
-	if collection.IsSupported(sgbucket.BucketStoreFeatureCollections) {
-		collectionIDs = append(collectionIDs, collection.GetCollectionID())
-	}
-
 	clientOptions := DCPClientOptions{
 		OneShot:          true,
-		CollectionIDs:    collectionIDs,
+		CollectionIDs:    getCollectionIDs(t, bucket),
 		CheckpointPrefix: DefaultMetadataKeys.DCPCheckpointPrefix(t.Name()),
 	}
 
@@ -230,18 +223,12 @@ func TestDCPClientMultiFeedConsistency(t *testing.T) {
 				err := dataStore.Set(key, 0, nil, updatedBody)
 				require.NoError(t, err)
 			}
-			collection, ok := dataStore.(*Collection)
-			require.True(t, ok)
-			var collectionIDs []uint32
-			if collection.IsSupported(sgbucket.BucketStoreFeatureCollections) {
-				collectionIDs = append(collectionIDs, collection.GetCollectionID())
-			}
 
 			// Perform first one-shot DCP feed - normal one-shot
 			dcpClientOpts := DCPClientOptions{
 				OneShot:          true,
 				FailOnRollback:   true,
-				CollectionIDs:    collectionIDs,
+				CollectionIDs:    getCollectionIDs(t, bucket),
 				CheckpointPrefix: DefaultMetadataKeys.DCPCheckpointPrefix(t.Name()),
 			}
 
@@ -276,7 +263,7 @@ func TestDCPClientMultiFeedConsistency(t *testing.T) {
 				InitialMetadata:  uuidMismatchMetadata,
 				FailOnRollback:   true,
 				OneShot:          true,
-				CollectionIDs:    collectionIDs,
+				CollectionIDs:    getCollectionIDs(t, bucket),
 				CheckpointPrefix: DefaultMetadataKeys.DCPCheckpointPrefix(t.Name()),
 			}
 			dcpClient2, err := NewDCPClient(feedID, counterCallback, dcpClientOpts, gocbv2Bucket)
@@ -294,7 +281,7 @@ func TestDCPClientMultiFeedConsistency(t *testing.T) {
 				InitialMetadata:  uuidMismatchMetadata,
 				FailOnRollback:   false,
 				OneShot:          true,
-				CollectionIDs:    collectionIDs,
+				CollectionIDs:    getCollectionIDs(t, bucket),
 				CheckpointPrefix: DefaultMetadataKeys.DCPCheckpointPrefix(t.Name()),
 			}
 
@@ -350,18 +337,10 @@ func TestContinuousDCPRollback(t *testing.T) {
 	gocbv2Bucket, err := AsGocbV2Bucket(bucket.Bucket)
 	require.NoError(t, err)
 
-	collection, err := AsCollection(dataStore)
-	require.NoError(t, err)
-
-	var collectionIDs []uint32
-	if collection.IsSupported(sgbucket.BucketStoreFeatureCollections) {
-		collectionIDs = append(collectionIDs, collection.GetCollectionID())
-	}
-
 	dcpClientOpts := DCPClientOptions{
 		FailOnRollback:    false,
 		OneShot:           false,
-		CollectionIDs:     collectionIDs,
+		CollectionIDs:     getCollectionIDs(t, bucket),
 		CheckpointPrefix:  DefaultMetadataKeys.DCPCheckpointPrefix(t.Name()),
 		MetadataStoreType: DCPMetadataStoreInMemory,
 	}
@@ -413,7 +392,6 @@ func (dc *DCPClient) forceRollbackvBucket(uuid gocbcore.VbUUID) {
 		if i%2 == 0 {
 			metadata[i] = dc.metadata.GetMeta(i)
 			metadata[i].VbUUID = uuid
-			metadata[i].StartSeqNo = 4
 		} else {
 			metadata[i] = dc.metadata.GetMeta(i)
 		}
@@ -464,18 +442,11 @@ func TestResumeStoppedFeed(t *testing.T) {
 	// Set metadata persistence frequency to zero to force persistence on every mutation
 	highFrequency := 0 * time.Second
 
-	collection, ok := dataStore.(*Collection)
-	require.True(t, ok)
-	var collectionIDs []uint32
-	if collection.IsSupported(sgbucket.BucketStoreFeatureCollections) {
-		collectionIDs = append(collectionIDs, collection.GetCollectionID())
-	}
-
 	dcpClientOpts := DCPClientOptions{
 		OneShot:                    true,
 		FailOnRollback:             false,
 		CheckpointPersistFrequency: &highFrequency,
-		CollectionIDs:              collectionIDs,
+		CollectionIDs:              getCollectionIDs(t, bucket),
 		CheckpointPrefix:           DefaultMetadataKeys.DCPCheckpointPrefix(t.Name()),
 	}
 
@@ -512,7 +483,7 @@ func TestResumeStoppedFeed(t *testing.T) {
 	dcpClientOpts = DCPClientOptions{
 		FailOnRollback:   false,
 		OneShot:          true,
-		CollectionIDs:    collectionIDs,
+		CollectionIDs:    getCollectionIDs(t, bucket),
 		CheckpointPrefix: DefaultMetadataKeys.DCPCheckpointPrefix(t.Name()),
 	}
 
@@ -562,4 +533,133 @@ func TestBadAgentPriority(t *testing.T) {
 	dcpClient, err := NewDCPClient(feedID, panicCallback, dcpClientOpts, gocbv2Bucket)
 	require.Error(t, err)
 	require.Nil(t, dcpClient)
+}
+
+// getFailoverLogs querys for the current failover logs for a given vBucket ID.
+func TestGetFailoverLogs(t *testing.T) {
+	if UnitTestUrlIsWalrus() {
+		t.Skip("This test requires DCP feed from gocb and therefore Couchbase Sever")
+	}
+
+	bucket := GetTestBucket(t)
+	defer bucket.Close()
+
+	clientOptions := DCPClientOptions{
+		CollectionIDs:    getCollectionIDs(t, bucket),
+		CheckpointPrefix: DefaultMetadataKeys.DCPCheckpointPrefix(t.Name()),
+	}
+
+	gocbv2Bucket, err := AsGocbV2Bucket(bucket)
+	require.NoError(t, err)
+	dcpClient, err := NewDCPClient(t.Name(), nil, clientOptions, gocbv2Bucket)
+	require.NoError(t, err)
+
+	_, startErr := dcpClient.Start()
+	require.NoError(t, startErr)
+
+	numVBuckets, err := bucket.GetMaxVbno()
+	require.NoError(t, err)
+
+	for i := uint16(0); i < numVBuckets; i++ {
+		entries, err := dcpClient.getFailoverLogs(TestCtx(t), i)
+		require.NoError(t, err)
+		require.GreaterOrEqual(t, len(entries), 1)
+	}
+}
+
+func TestFindRollbackVBUUIDSequence(t *testing.T) {
+	testCases := []struct {
+		name              string
+		entries           []gocbcore.FailoverEntry
+		existingHighSeqNo gocbcore.SeqNo
+		errorExpected     bool
+		vbUUID            gocbcore.VbUUID
+		rollbackSeq       gocbcore.SeqNo
+	}{
+		{
+			name:              "no entries, some seqno",
+			existingHighSeqNo: 2,
+			errorExpected:     true,
+		},
+		{
+			name:              "no entries, some seqno",
+			existingHighSeqNo: 0,
+			errorExpected:     true,
+		},
+		{
+			name:              "start 0, one failover",
+			existingHighSeqNo: 0,
+			entries: []gocbcore.FailoverEntry{
+				{VbUUID: 1, SeqNo: 0},
+			},
+			errorExpected: false,
+			vbUUID:        1,
+		},
+		{
+			name:              "start 5, one failover",
+			existingHighSeqNo: 5,
+			entries: []gocbcore.FailoverEntry{
+				{VbUUID: 1, SeqNo: 0},
+			},
+			errorExpected: false,
+			vbUUID:        1,
+			rollbackSeq:   5,
+		},
+		{
+			name:              "start 0, two failover",
+			existingHighSeqNo: 0,
+			entries: []gocbcore.FailoverEntry{
+				{VbUUID: 1, SeqNo: 0},
+				{VbUUID: 2, SeqNo: 1},
+			},
+			errorExpected: false,
+			vbUUID:        1,
+		},
+		{
+			name:              "start 5, two failover",
+			existingHighSeqNo: 5,
+			entries: []gocbcore.FailoverEntry{
+				{VbUUID: 1, SeqNo: 0},
+				{VbUUID: 2, SeqNo: 1},
+			},
+			errorExpected: false,
+			vbUUID:        1,
+			rollbackSeq:   5,
+		},
+		{
+			name:              "read ahead, one failover",
+			existingHighSeqNo: 0,
+			entries: []gocbcore.FailoverEntry{
+				{VbUUID: 1, SeqNo: 5},
+			},
+			errorExpected: true,
+			vbUUID:        0,
+			rollbackSeq:   0,
+		},
+	}
+	for _, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+
+			vbuuid, rollbackSeq, err := findRollbackVBUUIDSequence(TestCtx(t), 1, test.existingHighSeqNo, test.entries)
+			if test.errorExpected {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+			require.Equal(t, test.vbUUID, vbuuid)
+			require.Equal(t, test.rollbackSeq, rollbackSeq)
+		})
+	}
+}
+
+func getCollectionIDs(t *testing.T, bucket *TestBucket) []uint32 {
+	dataStore := bucket.GetSingleDataStore()
+	collection, err := AsCollection(dataStore)
+	require.NoError(t, err)
+
+	var collectionIDs []uint32
+	if collection.IsSupported(sgbucket.BucketStoreFeatureCollections) {
+		collectionIDs = append(collectionIDs, collection.GetCollectionID())
+	}
+	return collectionIDs
 }

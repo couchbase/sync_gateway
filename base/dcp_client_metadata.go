@@ -36,7 +36,7 @@ type DCPMetadata struct {
 
 type DCPMetadataStore interface {
 	// Rollback resets vBucket metadata, preserving endSeqno
-	Rollback(ctx context.Context, vbID uint16)
+	Rollback(ctx context.Context, vbID uint16, vbUUID gocbcore.VbUUID, startSeqNo gocbcore.SeqNo)
 
 	// SetMeta updates the DCPMetadata for a vbucket
 	SetMeta(vbID uint16, meta DCPMetadata)
@@ -82,17 +82,16 @@ func NewDCPMetadataMem(numVbuckets uint16) *DCPMetadataMem {
 }
 
 // Rollback resets the metadata, preserving EndSeqNo
-func (m *DCPMetadataMem) Rollback(ctx context.Context, vbID uint16) {
-	endSeqNo := m.metadata[vbID].EndSeqNo
+func (m *DCPMetadataMem) Rollback(ctx context.Context, vbID uint16, vbUUID gocbcore.VbUUID, startSeqNo gocbcore.SeqNo) {
 	m.metadata[vbID] = DCPMetadata{
-		VbUUID:          0,
-		StartSeqNo:      0,
-		EndSeqNo:        endSeqNo,
-		SnapStartSeqNo:  0,
-		SnapEndSeqNo:    0,
+		VbUUID:          vbUUID,
+		StartSeqNo:      startSeqNo,
+		EndSeqNo:        m.metadata[vbID].EndSeqNo,
+		SnapStartSeqNo:  startSeqNo,
+		SnapEndSeqNo:    startSeqNo,
 		FailoverEntries: make([]gocbcore.FailoverEntry, 0),
 	}
-	TracefCtx(ctx, KeyDCP, "rolling back vb:%d with metadata set to %v", vbID, m.metadata[vbID])
+	InfofCtx(ctx, KeyDCP, "rolling back vb:%d with metadata set to %v", vbID, m.metadata[vbID])
 }
 
 func (m *DCPMetadataMem) SetMeta(vbID uint16, meta DCPMetadata) {
@@ -193,14 +192,13 @@ func NewDCPMetadataCS(store DataStore, numVbuckets uint16, numWorkers int, keyPr
 	return m
 }
 
-func (m *DCPMetadataCS) Rollback(ctx context.Context, vbID uint16) {
-	endSeqNo := m.metadata[vbID].EndSeqNo
+func (m *DCPMetadataCS) Rollback(ctx context.Context, vbID uint16, vbUUID gocbcore.VbUUID, startSeqNo gocbcore.SeqNo) {
 	m.metadata[vbID] = DCPMetadata{
-		VbUUID:          0,
-		StartSeqNo:      0,
-		EndSeqNo:        endSeqNo,
-		SnapStartSeqNo:  0,
-		SnapEndSeqNo:    0,
+		VbUUID:          vbUUID,
+		StartSeqNo:      startSeqNo,
+		EndSeqNo:        m.metadata[vbID].EndSeqNo,
+		SnapStartSeqNo:  startSeqNo,
+		SnapEndSeqNo:    startSeqNo,
 		FailoverEntries: make([]gocbcore.FailoverEntry, 0),
 	}
 	TracefCtx(ctx, KeyDCP, "rolling back vb:%d with metadata set to %v", vbID, m.metadata[vbID])
