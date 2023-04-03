@@ -390,7 +390,7 @@ func (arc *activeReplicatorCommon) startStatusReporter() error {
 
 // getLocalStatusDoc retrieves replication status document for a given client ID from the given metadataStore
 func getLocalStatusDoc(ctx context.Context, metadataStore base.DataStore, statusKey string) (*ReplicationStatusDoc, error) {
-	statusDocBytes, err := getSpecialBytes(metadataStore, DocTypeLocal, ReplicationStatusDocIDPrefix+statusKey, 0)
+	statusDocBytes, err := getWithTouch(metadataStore, statusKey, 0)
 	if err != nil {
 		if !base.IsKeyNotFoundError(metadataStore, err) {
 			return nil, err
@@ -435,7 +435,7 @@ func setLocalStatus(ctx context.Context, metadataStore base.DataStore, statusKey
 		Status: status,
 	}
 
-	_, err = putSpecial(metadataStore, DocTypeLocal, ReplicationStatusDocIDPrefix+statusKey, revID, newStatus.AsBody(), localDocExpirySecs)
+	_, err = putDocWithRevision(metadataStore, statusKey, revID, newStatus.AsBody(), localDocExpirySecs)
 	return err
 }
 
@@ -454,6 +454,6 @@ func removeLocalStatus(ctx context.Context, metadataStore base.DataStore, status
 		return nil
 	}
 
-	_, err = putSpecial(metadataStore, DocTypeLocal, ReplicationStatusDocIDPrefix+statusKey, currentStatus.Rev, nil, 0)
+	_, err = putDocWithRevision(metadataStore, statusKey, currentStatus.Rev, nil, 0)
 	return err
 }
