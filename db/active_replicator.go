@@ -24,11 +24,10 @@ import (
 
 // ActiveReplicator is a wrapper to encapsulate separate push and pull active replicators.
 type ActiveReplicator struct {
-	ID        string
-	Push      *ActivePushReplicator
-	Pull      *ActivePullReplicator
-	config    *ActiveReplicatorConfig
-	statusKey string // key used when persisting replication status
+	ID     string
+	Push   *ActivePushReplicator
+	Pull   *ActivePullReplicator
+	config *ActiveReplicatorConfig
 }
 
 // NewActiveReplicator returns a bidirectional active replicator for the given config.
@@ -37,12 +36,6 @@ func NewActiveReplicator(ctx context.Context, config *ActiveReplicatorConfig) (*
 		ID:     config.ID,
 		config: config,
 	}
-
-	metakeys := base.DefaultMetadataKeys
-	if config.ActiveDB != nil {
-		metakeys = config.ActiveDB.MetadataKeys
-	}
-	ar.statusKey = metakeys.ReplicationStatusKey(config.ID)
 
 	if pushReplication := config.Direction == ActiveReplicatorTypePush || config.Direction == ActiveReplicatorTypePushAndPull; pushReplication {
 		var err error
@@ -66,7 +59,7 @@ func NewActiveReplicator(ctx context.Context, config *ActiveReplicatorConfig) (*
 		}
 	}
 
-	base.InfofCtx(ctx, base.KeyReplicate, "Created active replicator ID:%s statusKey: %s", config.ID, ar.statusKey)
+	base.InfofCtx(ctx, base.KeyReplicate, "Created active replicator ID:%s", config.ID)
 	return ar, nil
 }
 
@@ -351,7 +344,8 @@ func LoadReplicationStatus(ctx context.Context, dbContext *DatabaseContext, repl
 		ID: replicationID,
 	}
 
-	pullStatus, _ := getLocalStatus(ctx, dbContext.MetadataStore, PullCheckpointID(replicationID))
+	pullStatusKey := dbContext.MetadataKeys.ReplicationStatusKey(PullCheckpointID(replicationID))
+	pullStatus, _ := getLocalStatus(ctx, dbContext.MetadataStore, pullStatusKey)
 	if pullStatus != nil {
 		status.PullReplicationStatus = pullStatus.PullReplicationStatus
 		status.Status = pullStatus.Status
@@ -359,7 +353,8 @@ func LoadReplicationStatus(ctx context.Context, dbContext *DatabaseContext, repl
 		status.LastSeqPull = pullStatus.LastSeqPull
 	}
 
-	pushStatus, _ := getLocalStatus(ctx, dbContext.MetadataStore, PushCheckpointID(replicationID))
+	pushStatusKey := dbContext.MetadataKeys.ReplicationStatusKey(PushCheckpointID(replicationID))
+	pushStatus, _ := getLocalStatus(ctx, dbContext.MetadataStore, pushStatusKey)
 	if pushStatus != nil {
 		status.PushReplicationStatus = pushStatus.PushReplicationStatus
 		status.Status = pushStatus.Status

@@ -277,7 +277,7 @@ func (apr *ActivePullReplicator) reset() error {
 		return err
 	}
 
-	return removeLocalStatus(apr.ctx, apr.config.ActiveDB.MetadataStore, apr.CheckpointID)
+	return removeLocalStatus(apr.ctx, apr.config.ActiveDB.MetadataStore, apr.statusKey)
 }
 
 // registerCheckpointerCallbacks registers appropriate callback functions for checkpointing.
