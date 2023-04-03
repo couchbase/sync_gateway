@@ -185,49 +185,6 @@ func TestReplicateManagerConcurrentNodeOperations(t *testing.T) {
 	require.Equal(t, 0, len(nodes))
 }
 
-/*
-func TestReplicatorFailRebalance(t *testing.T) {
-	testBucket := base.GetTestBucket(t)
-	defer testBucket.Close()
-
-	ctx := base.TestCtx(t)
-	testCfg, err := base.NewCfgSG(testBucket.GetSingleDataStore(), "")
-	require.NoError(t, err)
-
-	manager, err := NewSGReplicateManager(ctx, &DatabaseContext{Name: "test"}, testCfg)
-	require.NoError(t, err)
-	defer manager.Stop()
-
-	err = manager.AddReplication(testReplicationCfg(t.Name(), ""))
-	require.NoError(t, err)
-
-	replications, err := manager.GetReplications()
-	require.NoError(t, err)
-	require.Equal(t, 1, len(replications))
-	fmt.Println(replications[t.Name()])
-
-	sgrCluster, err := manager.GetSGRCluster()
-	require.NoError(t, err)
-
-	sgrCluster.RebalanceReplications()
-
-	//status, err := manager.GetReplicationStatus(t.Name(), DefaultReplicationStatusOptions())
-	rep, err := manager.GetReplication(t.Name())
-	require.NoError(t, err)
-	fmt.Println(rep.ReplicationConfig)
-
-	nodes, err := manager.getNodes()
-	require.NoError(t, err)
-	//assert.Equal(t, 1, len(nodes))
-
-	for _, v := range nodes {
-		fmt.Println("lol", v)
-	}
-
-}
-
-*/
-
 // Test concurrent replication operations on SGReplicateManager
 func TestReplicateManagerConcurrentReplicationOperations(t *testing.T) {
 
@@ -445,7 +402,7 @@ func TestRebalanceReplications(t *testing.T) {
 			cluster.loggingCtx = base.CorrelationIDLogCtx(base.TestCtx(t), sgrClusterMgrContextID+"test")
 			cluster.Nodes = testCase.nodes
 			cluster.Replications = testCase.replications
-			_ = cluster.RebalanceReplications()
+			cluster.RebalanceReplications()
 
 			// Verify post-rebalance distribution
 			for host, _ := range cluster.Nodes {
