@@ -548,6 +548,9 @@ func (bh *blipHandler) sendBatchOfChanges(sender *blip.Sender, changeArray [][]i
 	}
 
 	if len(changeArray) > 0 {
+		// Wait before sending, if client has not caught up:
+		bh.inFlightChangesThrottle <- struct{}{}
+
 		// Check for user updates before creating the db copy for handleChangesResponse
 		if err := bh.refreshUser(); err != nil {
 			return err
@@ -563,18 +566,18 @@ func (bh *blipHandler) sendBatchOfChanges(sender *blip.Sender, changeArray [][]i
 			return ErrClosedBLIPSender
 		}
 
-		bh.inFlightChangesThrottle <- struct{}{}
 		atomic.AddInt64(&bh.changesPendingResponseCount, 1)
-
 		bh.replicationStats.SendChangesCount.Add(int64(len(changeArray)))
-		// Spawn a goroutine to await the client's response:
-		go func(bh *blipHandler, sender *blip.Sender, response *blip.Message, changeArray [][]interface{}, sendTime time.Time, dbCollection *DatabaseCollectionWithUser) {
-			if err := bh.handleChangesResponse(sender, response, changeArray, sendTime, dbCollection, bh.collectionIdx); err != nil {
+
+		// await the client's response:
+		outrq.OnResponse(func(response *blip.Message) {
+			if err := bh.handleChangesResponse(sender, response, changeArray, sendTime, handleChangesResponseDbCollection, bh.collectionIdx); err != nil {
 				base.WarnfCtx(bh.loggingCtx, "Error from bh.handleChangesResponse: %v", err)
 				if bh.fatalErrorCallback != nil {
 					bh.fatalErrorCallback(err)
 				}
 			}
+			base.InfofCtx(bh.loggingCtx, base.KeySync, "...sent requested revs, from %s", changeArray[0][0].(SequenceID).String())
 
 			// Sent all of the revs for this changes batch, allow another changes batch to be sent.
 			select {
@@ -583,7 +586,7 @@ func (bh *blipHandler) sendBatchOfChanges(sender *blip.Sender, changeArray [][]i
 			}
 
 			atomic.AddInt64(&bh.changesPendingResponseCount, -1)
-		}(bh, sender, outrq.Response(), changeArray, sendTime, handleChangesResponseDbCollection)
+		})
 	} else {
 		outrq.SetNoReply(true)
 		if !bh.sendBLIPMessage(sender, outrq) {
@@ -761,6 +764,7 @@ func (bh *blipHandler) handleProposeChanges(rq *blip.Message) error {
 	output := bytes.NewBuffer(make([]byte, 0, 5*len(changeList)))
 	output.Write([]byte("["))
 	nWritten := 0
+	nRequested := 0
 
 	// proposeChanges stats
 	startTime := time.Now()
@@ -780,7 +784,10 @@ func (bh *blipHandler) handleProposeChanges(rq *blip.Message) error {
 		if status == ProposedRev_OK_IsNew {
 			// Remember that the doc doesn't exist locally, in order to optimize the upcoming Put:
 			bh.collectionCtx.notePendingInsertion(docID)
-		} else if status != ProposedRev_OK {
+			nRequested++
+		} else if status == ProposedRev_OK {
+			nRequested++
+		} else {
 			// Reject the proposed change.
 			// Skip writing trailing zeroes; but if we write a number afterwards we have to catch up
 			if nWritten > 0 {
@@ -805,6 +812,12 @@ func (bh *blipHandler) handleProposeChanges(rq *blip.Message) error {
 		}
 	}
 	output.Write([]byte("]"))
+
+	if nRequested > 0 {
+		// Notify the sequenceAllocator it's going to be asked for nRequested sequences soon:
+		bh.db.sequences.reserveRequest(uint64(nRequested))
+	}
+
 	response := rq.Response()
 	if bh.sgCanUseDeltas {
 		base.DebugfCtx(bh.loggingCtx, base.KeyAll, "Setting deltas=true property on proposeChanges response")
