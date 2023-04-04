@@ -34,7 +34,6 @@ type Checkpointer struct {
 	collectionDataStore base.DataStore // collectionDataStore is where the checkpoints are stored for the collection
 	localDocExpirySecs  int
 	checkpointInterval  time.Duration
-	statusCallback      statusFunc // callback to retrieve status for associated replication
 	// lock guards the expectedSeqs slice, and processedSeqs map
 	lock sync.Mutex
 	// expectedSeqs is an ordered list of sequence IDs we expect to process revs for
@@ -65,8 +64,6 @@ type Checkpointer struct {
 	closeWg sync.WaitGroup
 }
 
-type statusFunc func(lastSeq string) *ReplicationStatus
-
 type CheckpointerStats struct {
 	ExpectedSequenceCount           int64
 	ExpectedSequenceLen             *base.SgwIntStat
@@ -80,7 +77,7 @@ type CheckpointerStats struct {
 	GetCheckpointMissCount          int64
 }
 
-func NewCheckpointer(ctx context.Context, metadataStore, collectionDataStore base.DataStore, clientID string, configHash string, blipSender *blip.Sender, replicatorConfig *ActiveReplicatorConfig, statusCallback statusFunc, collectionIdx *int) *Checkpointer {
+func NewCheckpointer(ctx context.Context, metadataStore, collectionDataStore base.DataStore, clientID string, configHash string, blipSender *blip.Sender, replicatorConfig *ActiveReplicatorConfig, collectionIdx *int) *Checkpointer {
 	return &Checkpointer{
 		clientID:            clientID,
 		configHash:          configHash,
@@ -99,7 +96,6 @@ func NewCheckpointer(ctx context.Context, metadataStore, collectionDataStore bas
 			ExpectedSequenceLen:             replicatorConfig.ReplicationStatsMap.ExpectedSequenceLen,
 			ExpectedSequenceLenPostCleanup:  replicatorConfig.ReplicationStatsMap.ExpectedSequenceLenPostCleanup,
 		},
-		statusCallback:                 statusCallback,
 		expectedSeqCompactionThreshold: defaultExpectedSeqCompactionThreshold,
 		collectionIdx:                  collectionIdx,
 	}
@@ -238,10 +234,6 @@ func (c *Checkpointer) CheckpointNow() {
 
 	c.lock.Lock()
 	defer c.lock.Unlock()
-
-	// Retrieve status after obtaining the lock to ensure
-	status := c.statusCallback(c._calculateSafeProcessedSeq().String())
-	c.setLocalStatus(status.Status, status.ErrorMessage, &status.PushReplicationStatus, &status.PullReplicationStatus)
 
 	base.TracefCtx(c.ctx, base.KeyReplicate, "checkpointer: running")
 
@@ -690,85 +682,4 @@ func (c *Checkpointer) setRetry(checkpoint *replicationCheckpoint, setFn setChec
 		return newRevID, nil
 	}
 	return "", errors.New("failed to write checkpoint after 10 attempts")
-}
-
-// setLocalStatus updates status in a replication checkpoint without a checkpointer.
-// Increments existing rev, preserves stats fields if none set.
-func (c *Checkpointer) setLocalStatus(status, errorMessage string, pushStats *PushReplicationStatus, pullStats *PullReplicationStatus) {
-	base.TracefCtx(c.ctx, base.KeyReplicate, "setLocalStatus(%v)", status)
-
-	newRev, err := setLocalStatus(c.ctx, c.metadataStore, c.clientID, status, errorMessage, pushStats, pullStats, c.localDocExpirySecs)
-	if err != nil {
-		base.WarnfCtx(c.ctx, "Unable to persist status in local doc for %s, status not updated: %v", c.clientID, err)
-	} else {
-		base.TracefCtx(c.ctx, base.KeyReplicate, "setLocalStatus successful for %s, newRev: %s: %v", c.clientID, newRev, status)
-	}
-}
-
-func getLocalStatus(ctx context.Context, dataStore base.DataStore, clientID string, localDocExpirySecs int) (*ReplicationStatusDoc, error) {
-	base.TracefCtx(ctx, base.KeyReplicate, "getLocalStatus for %s", clientID)
-
-	statusDocBytes, err := getSpecialBytes(dataStore, DocTypeLocal, ReplicationStatusDocIDPrefix+clientID, localDocExpirySecs)
-	if err != nil {
-		if !base.IsKeyNotFoundError(dataStore, err) {
-			return nil, err
-		}
-		base.DebugfCtx(ctx, base.KeyReplicate, "couldn't find existing local checkpoint for ID %q", clientID)
-		return nil, nil
-	}
-	var statusDoc *ReplicationStatusDoc
-	err = base.JSONUnmarshal(statusDocBytes, &statusDoc)
-	return statusDoc, err
-}
-
-// setLocalStatus updates replication status without a checkpointer.  Increments existing rev.
-func setLocalStatus(ctx context.Context, dataStore base.DataStore, clientID string, status, errorMessage string, pushStats *PushReplicationStatus, PullStats *PullReplicationStatus, localDocExpirySecs int) (newRevID string, err error) {
-	base.TracefCtx(ctx, base.KeyReplicate, "setLocalStatus(%v, %v)", status, errorMessage)
-
-	// getLocalStatus to obtain the current rev
-	currentStatus, err := getLocalStatus(ctx, dataStore, clientID, localDocExpirySecs)
-	if err != nil {
-		base.WarnfCtx(ctx, "Unable to retrieve local status doc for %s, status not updated", clientID)
-		return "", nil
-	}
-	if currentStatus == nil {
-		currentStatus = &ReplicationStatusDoc{
-			Status: &ReplicationStatus{
-				ID: clientID,
-			},
-		}
-	}
-
-	currentStatus.Status.Status = status
-	currentStatus.Status.ErrorMessage = errorMessage
-	if pushStats != nil {
-		currentStatus.Status.PushReplicationStatus = *pushStats
-	}
-	if PullStats != nil {
-		currentStatus.Status.PullReplicationStatus = *PullStats
-	}
-
-	return putSpecial(dataStore, DocTypeLocal, ReplicationStatusDocIDPrefix+clientID, currentStatus.Rev, currentStatus.AsBody(), localDocExpirySecs)
-}
-
-// removeLocalStatus removes a replication status.
-func removeLocalStatus(ctx context.Context, dataStore base.DataStore, clientID string) (err error) {
-	base.TracefCtx(ctx, base.KeyReplicate, "removeLocalStatus()")
-
-	// getLocalStatus to obtain the current rev
-	currentStatus, err := getLocalStatus(ctx, dataStore, clientID, 0)
-	if err != nil {
-		base.WarnfCtx(ctx, "Unable to retrieve local status doc for %s, status not updated", clientID)
-		return nil
-	}
-	if currentStatus == nil {
-		currentStatus = &ReplicationStatusDoc{
-			Status: &ReplicationStatus{
-				ID: clientID,
-			},
-		}
-	}
-
-	_, err = putSpecial(dataStore, DocTypeLocal, ReplicationStatusDocIDPrefix+clientID, currentStatus.Rev, nil, 0)
-	return err
 }

@@ -132,7 +132,6 @@ const (
 )
 
 const CheckpointDocIDPrefix = "checkpoint/"
-const ReplicationStatusDocIDPrefix = "replicationStatus/"
 
 const falseProperty = "false"
 const trueProperty = "true"
