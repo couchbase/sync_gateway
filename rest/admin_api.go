@@ -174,11 +174,11 @@ func getAuthScopeHandleCreateDB(bodyJSON []byte) (string, error) {
 	var body struct {
 		Bucket string `json:"bucket"`
 	}
-	err := base.JSONUnmarshal(bodyJSON, &body)
+	reader := bytes.NewReader(bodyJSON)
+	err := DecodeAndSanitiseConfig(reader, &body, false)
 	if err != nil {
 		return "", err
 	}
-
 	if body.Bucket == "" {
 		return "", nil
 	}

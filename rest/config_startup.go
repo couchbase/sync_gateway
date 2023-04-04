@@ -212,7 +212,7 @@ func LoadStartupConfigFromPath(path string) (*StartupConfig, error) {
 	defer func() { _ = rc.Close() }()
 
 	var sc StartupConfig
-	err = DecodeAndSanitiseConfig(rc, &sc)
+	err = DecodeAndSanitiseConfig(rc, &sc, true)
 	return &sc, err
 }
 

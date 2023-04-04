@@ -1024,7 +1024,7 @@ func (config *DbConfig) redactInPlace() error {
 }
 
 // DecodeAndSanitiseConfig will sanitise a config from an io.Reader and unmarshal it into the given config parameter.
-func DecodeAndSanitiseConfig(r io.Reader, config interface{}) (err error) {
+func DecodeAndSanitiseConfig(r io.Reader, config interface{}, disallowUnknownFields bool) (err error) {
 	b, err := io.ReadAll(r)
 	if err != nil {
 		return err
@@ -1038,7 +1038,9 @@ func DecodeAndSanitiseConfig(r io.Reader, config interface{}) (err error) {
 	b = base.ConvertBackQuotedStrings(b)
 
 	d := base.JSONDecoder(bytes.NewBuffer(b))
-	d.DisallowUnknownFields()
+	if disallowUnknownFields {
+		d.DisallowUnknownFields()
+	}
 	err = d.Decode(config)
 	return base.WrapJSONUnknownFieldErr(err)
 }

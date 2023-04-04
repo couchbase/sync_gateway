@@ -3776,6 +3776,51 @@ func TestSetFunctionsWhileDbOffline(t *testing.T) {
 	resp.RequireResponse(http.StatusOK, syncFunc)
 }
 
+func TestCollectionSyncFnWithBackticks(t *testing.T) {
+	base.TestRequiresCollections(t)
+
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
+
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{PersistentConfig: true})
+	_ = rt.Bucket()
+	defer rt.Close()
+
+	scopesConfig := rest.GetCollectionsConfig(t, rt.TestBucket, 1)
+	dataStoreNames := rest.GetDataStoreNamesFromScopesConfig(scopesConfig)
+	scopeName, collectionName := dataStoreNames[0].ScopeName(), dataStoreNames[0].CollectionName()
+	// Initial DB config
+	dbConfig := fmt.Sprintf(`{
+    "num_index_replicas": 0,
+    	"bucket": "%s",
+    		"scopes": {
+			  	"%s": {
+					"collections": {
+            			"%s": {
+				   		"sync":`, rt.Bucket().GetName(), scopeName, collectionName) + "`" +
+		`function(doc, oldDoc, meta) {
+							var owner = doc._deleted ? oldDoc.owner : doc.owner;
+							requireUser(owner);
+							var listChannel = 'lists.' + doc._id;
+							var contributorRole = 'role:' + listChannel + '.contributor';
+							role(owner, contributorRole);
+							access(contributorRole, listChannel);
+							channel(listChannel);
+						}` + "`" + `
+         			}
+				}
+      		}
+		}
+ 	}`
+
+	// Create initial database
+	resp := rt.SendAdminRequest(http.MethodPut, "/db/", dbConfig)
+	assert.Equal(t, resp.Code, http.StatusCreated)
+
+	// Update database config
+	resp = rt.SendAdminRequest(http.MethodPut, "/db/_config", dbConfig)
+	assert.Equal(t, resp.Code, http.StatusCreated)
+}
+
 func TestEmptyStringJavascriptFunctions(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
