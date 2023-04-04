@@ -186,6 +186,7 @@ func (apr *ActivePushReplicator) _initCheckpointer(remoteCheckpoints []replicati
 	return nil
 }
 
+// requires apr.lock
 func (apr *ActivePushReplicator) _getStatus() *ReplicationStatus {
 	status := &ReplicationStatus{}
 	status.Status, status.ErrorMessage = apr._getStateWithErrorMessage()

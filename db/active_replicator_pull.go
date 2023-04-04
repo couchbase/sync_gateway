@@ -230,6 +230,7 @@ func (apr *ActivePullReplicator) _initCheckpointer(remoteCheckpoints []replicati
 	return nil
 }
 
+// requires apr.lock
 func (apr *ActivePullReplicator) _getStatus() *ReplicationStatus {
 	status := &ReplicationStatus{
 		ID: apr.CheckpointID,

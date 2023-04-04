@@ -316,6 +316,7 @@ func (a *activeReplicatorCommon) getLastError() error {
 	return a.lastError
 }
 
+// requires a.stateErrorLock
 func (a *activeReplicatorCommon) _getStateWithErrorMessage() (state string, lastErrorMessage string) {
 	if a.lastError == nil {
 		return a.state, ""
