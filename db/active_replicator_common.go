@@ -14,6 +14,7 @@ import (
 	"context"
 	"errors"
 	"expvar"
+	"sync"
 	"testing"
 	"time"
 
@@ -42,11 +43,11 @@ type activeReplicatorCommon struct {
 	statusKey             string // key used when persisting replication status
 	state                 string
 	lastError             error
-	stateErrorLock        base.LoggingRWMutex // state and lastError share their own mutex to support retrieval while holding the main lock
+	stateErrorLock        sync.RWMutex // state and lastError share their own mutex to support retrieval while holding the main lock
 	replicationStats      *BlipSyncStats
 	_getStatusCallback    func() *ReplicationStatus
 	onReplicatorComplete  ReplicatorCompleteFunc
-	lock                  base.LoggingRWMutex
+	lock                  sync.RWMutex
 	ctx                   context.Context
 	ctxCancel             context.CancelFunc
 	reconnectActive       base.AtomicBool                                             // Tracks whether reconnect goroutine is active
@@ -339,9 +340,9 @@ func (a *activeReplicatorCommon) getCheckpointHighSeq() string {
 	var highSeq SequenceID
 	err := a.forEachCollection(func(c *activeReplicatorCollection) error {
 		if c.Checkpointer != nil {
-			seq := c.Checkpointer.calculateSafeProcessedSeq()
-			if highSeq.Before(seq) {
-				highSeq = seq
+			safeSeq := c.Checkpointer.calculateSafeProcessedSeq()
+			if highSeq.Before(safeSeq) {
+				highSeq = safeSeq
 			}
 		}
 		return nil
@@ -355,7 +356,6 @@ func (a *activeReplicatorCommon) getCheckpointHighSeq() string {
 	if highSeq.IsNonZero() {
 		highSeqStr = highSeq.String()
 	}
-
 	return highSeqStr
 }
 
