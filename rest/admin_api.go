@@ -175,7 +175,6 @@ func getAuthScopeHandleCreateDB(bodyJSON []byte) (string, error) {
 		Bucket string `json:"bucket"`
 	}
 	reader := bytes.NewReader(bodyJSON)
-	var dbConfig DbConfig
 	err := DecodeAndSanitiseConfig(reader, &body, false)
 	if err != nil {
 		return "", err
@@ -184,7 +183,7 @@ func getAuthScopeHandleCreateDB(bodyJSON []byte) (string, error) {
 		return "", nil
 	}
 
-	return *dbConfig.Bucket, nil
+	return body.Bucket, nil
 }
 
 // Take a DB online, first reload the DB config
