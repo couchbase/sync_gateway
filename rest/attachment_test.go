@@ -2840,17 +2840,17 @@ func TestProveAttachmentNotFound(t *testing.T) {
 	attachmentData := []byte("attachmentA")
 	attachmentDataEncoded := base64.StdEncoding.EncodeToString(attachmentData)
 
-	bt.blipContext.HandlerForProfile[db.MessageProveAttachment] = func(msg *blip.Message) {
+	bt.dispatcher.SetHandler(db.MessageProveAttachment, blip.AsAsyncHandler(func(msg *blip.Message) {
 		status, errMsg := base.ErrorAsHTTPStatus(db.ErrAttachmentNotFound)
 		msg.Response().SetError("HTTP", status, errMsg)
-	}
+	}))
 
 	// Handler for when full attachment is requested
-	bt.blipContext.HandlerForProfile[db.MessageGetAttachment] = func(msg *blip.Message) {
+	bt.dispatcher.SetHandler(db.MessageGetAttachment, blip.AsAsyncHandler(func(msg *blip.Message) {
 		resp := msg.Response()
 		resp.SetBody(attachmentData)
 		resp.SetCompressed(msg.Properties[db.BlipCompress] == "true")
-	}
+	}))
 
 	// Initial set up
 	sent, _, _, err := bt.SendRev("doc1", "1-abc", []byte(`{"key": "val", "_attachments": {"attachment": {"data": "`+attachmentDataEncoded+`"}}}`), blip.Properties{})

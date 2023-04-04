@@ -1243,6 +1243,8 @@ type BlipTester struct {
 	// with this websocket connection
 	blipContext *blip.Context
 
+	dispatcher blip.ByProfileDispatcher
+
 	// The blip sender that can be used for sending messages over the websocket connection
 	sender *blip.Sender
 
@@ -1391,6 +1393,7 @@ func createBlipTesterWithSpec(tb testing.TB, spec BlipTesterSpec, rt *RestTester
 	}
 
 	// Ensure that errors get correctly surfaced in tests
+	bt.blipContext.RequestHandler = bt.dispatcher.Dispatch
 	bt.blipContext.FatalErrorHandler = func(err error) {
 		tb.Fatalf("BLIP fatal error: %v", err)
 	}
@@ -1558,6 +1561,17 @@ func (bt *BlipTester) SendRev(docId, docRev string, body []byte, properties blip
 
 }
 
+// Registers a function as a handler for "changes" messages. Ensures that the messages are
+// handled one at a time to avoid race conditions: some of the code assumes that each call sees
+// sequences higher than the last, and some of them need the "null" caught-up to come last.
+func (bt *BlipTester) RegisterChangesHandler(changesHandler blip.SynchronousHandler) {
+	throttle := blip.ThrottlingDispatcher{
+		MaxConcurrency: 1,
+		Handler:        blip.AsAsyncHandler(changesHandler),
+	}
+	bt.dispatcher.SetHandler("changes", throttle.Dispatch)
+}
+
 // GetUserPayload will take username, password, email, channels and roles you want to assign a user and create the appropriate payload for the _user endpoint
 func GetUserPayload(t testing.TB, username, password, email string, collection *db.DatabaseCollection, chans, roles []string) string {
 	config := auth.PrincipalConfig{}
@@ -1674,16 +1688,16 @@ func (bt *BlipTester) GetDocAtRev(requestedDocID, requestedDocRev string) (resul
 
 	defer func() {
 		// Clean up all profile handlers that are registered as part of this test
-		delete(bt.blipContext.HandlerForProfile, "changes")
-		delete(bt.blipContext.HandlerForProfile, "rev")
+		bt.dispatcher.SetHandler("changes", nil)
+		bt.dispatcher.SetHandler("rev", nil)
 	}()
 
 	// -------- Changes handler callback --------
-	bt.blipContext.HandlerForProfile["changes"] = getChangesHandler(&changesFinishedWg, &revsFinishedWg)
+	bt.RegisterChangesHandler(getChangesHandler(&changesFinishedWg, &revsFinishedWg))
 
 	// -------- Rev handler callback --------
-	bt.blipContext.HandlerForProfile["rev"] = func(request *blip.Message) {
-
+	bt.dispatcher.SetHandler("rev", func(request *blip.Message, onComplete func()) {
+		defer onComplete()
 		defer revsFinishedWg.Done()
 		body, err := request.Body()
 		if err != nil {
@@ -1703,8 +1717,7 @@ func (bt *BlipTester) GetDocAtRev(requestedDocID, requestedDocRev string) (resul
 		if docId == requestedDocID && docRev == requestedDocRev {
 			resultDoc = doc
 		}
-
-	}
+	})
 
 	// Send subChanges to subscribe to changes, which will cause the "changes" profile handler above to be called back
 	changesFinishedWg.Add(1)
@@ -1741,7 +1754,7 @@ func (bt *BlipTester) SendRevWithAttachment(input SendRevWithAttachmentInput) (s
 
 	defer func() {
 		// Clean up all profile handlers that are registered as part of this test
-		delete(bt.blipContext.HandlerForProfile, "getAttachment")
+		bt.dispatcher.SetHandler("getAttachment", nil)
 	}()
 
 	// Create a doc with an attachment
@@ -1772,14 +1785,14 @@ func (bt *BlipTester) SendRevWithAttachment(input SendRevWithAttachmentInput) (s
 
 	getAttachmentWg := sync.WaitGroup{}
 
-	bt.blipContext.HandlerForProfile["getAttachment"] = func(request *blip.Message) {
+	bt.dispatcher.SetHandler("getAttachment", blip.AsAsyncHandler(func(request *blip.Message) {
 		defer getAttachmentWg.Done()
 		if request.Properties["digest"] != myAttachment.Digest {
 			panic(fmt.Sprintf("Unexpected digest.  Got: %v, expected: %v", request.Properties["digest"], myAttachment.Digest))
 		}
 		response := request.Response()
 		response.SetBody([]byte(input.attachmentBody))
-	}
+	}))
 
 	// Push a rev with an attachment.
 	getAttachmentWg.Add(1)
@@ -1827,7 +1840,7 @@ func (bt *BlipTester) GetChanges() (changes [][]interface{}) {
 
 	defer func() {
 		// Clean up all profile handlers that are registered as part of this test
-		delete(bt.blipContext.HandlerForProfile, "changes") // a handler for this profile is registered in SubscribeToChanges
+		bt.dispatcher.SetHandler("changes", nil) // a handler for this profile is registered in SubscribeToChanges
 	}()
 
 	collectedChanges := [][]interface{}{}
@@ -1897,7 +1910,6 @@ func (bt *BlipTester) WaitForNumDocsViaChanges(numDocsExpected int) (docs map[st
 // It is basically a pull replication without the checkpointing
 // Warning: this can only be called from a single goroutine, given the fact it registers profile handlers.
 func (bt *BlipTester) PullDocs() (docs map[string]RestDocument) {
-
 	docs = map[string]RestDocument{}
 
 	// Mutex to avoid write contention on docs while PullDocs is running (as rev messages may be processed concurrently)
@@ -1907,17 +1919,16 @@ func (bt *BlipTester) PullDocs() (docs map[string]RestDocument) {
 
 	defer func() {
 		// Clean up all profile handlers that are registered as part of this test
-		delete(bt.blipContext.HandlerForProfile, "changes")
-		delete(bt.blipContext.HandlerForProfile, "rev")
+		bt.dispatcher.SetHandler("changes", nil)
+		bt.dispatcher.SetHandler("rev", nil)
 	}()
 
 	// -------- Changes handler callback --------
 	// When this test sends subChanges, Sync Gateway will send a changes request that must be handled
-	bt.blipContext.HandlerForProfile["changes"] = getChangesHandler(&changesFinishedWg, &revsFinishedWg)
+	bt.RegisterChangesHandler(getChangesHandler(&changesFinishedWg, &revsFinishedWg))
 
 	// -------- Rev handler callback --------
-	bt.blipContext.HandlerForProfile["rev"] = func(request *blip.Message) {
-
+	bt.dispatcher.SetHandler("rev", blip.AsAsyncHandler(func(request *blip.Message) {
 		defer revsFinishedWg.Done()
 		body, err := request.Body()
 		if err != nil {
@@ -1971,15 +1982,15 @@ func (bt *BlipTester) PullDocs() (docs map[string]RestDocument) {
 			response.SetBody([]byte{}) // Empty response to indicate success
 		}
 
-	}
+	}))
 
 	// -------- Norev handler callback --------
-	bt.blipContext.HandlerForProfile["norev"] = func(request *blip.Message) {
+	bt.dispatcher.SetHandler("norev", blip.AsAsyncHandler(func(request *blip.Message) {
 		// If a norev is received, then don't bother waiting for one of the expected revisions, since it will never come.
 		// The norev could be added to the returned docs map, but so far there is no need for that.  The ability
 		// to assert on the number of actually received revisions (which norevs won't affect) meets current test requirements.
 		defer revsFinishedWg.Done()
-	}
+	}))
 
 	// Send subChanges to subscribe to changes, which will cause the "changes" profile handler above to be called back
 	changesFinishedWg.Add(1)
@@ -2004,7 +2015,7 @@ func (bt *BlipTester) PullDocs() (docs map[string]RestDocument) {
 func (bt *BlipTester) SubscribeToChanges(continuous bool, changes chan<- *blip.Message) {
 
 	// When this test sends subChanges, Sync Gateway will send a changes request that must be handled
-	bt.blipContext.HandlerForProfile["changes"] = func(request *blip.Message) {
+	bt.RegisterChangesHandler(func(request *blip.Message) {
 
 		changes <- request
 
@@ -2019,7 +2030,7 @@ func (bt *BlipTester) SubscribeToChanges(continuous bool, changes chan<- *blip.M
 			response.SetBody(emptyResponseValBytes)
 		}
 
-	}
+	})
 
 	// Send subChanges to subscribe to changes, which will cause the "changes" profile handler above to be called back
 	subChangesRequest := blip.NewRequest()

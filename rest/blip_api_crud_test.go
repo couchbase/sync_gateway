@@ -104,7 +104,7 @@ func TestBlipPushRevisionInspectChanges(t *testing.T) {
 	receivedChangesRequestWg := sync.WaitGroup{}
 
 	// When this test sends subChanges, Sync Gateway will send a changes request that must be handled
-	bt.blipContext.HandlerForProfile["changes"] = func(request *blip.Message) {
+	bt.RegisterChangesHandler(func(request *blip.Message) {
 
 		log.Printf("got changes message: %+v", request)
 		body, err := request.Body()
@@ -136,7 +136,7 @@ func TestBlipPushRevisionInspectChanges(t *testing.T) {
 
 		receivedChangesRequestWg.Done()
 
-	}
+	})
 
 	// Send subChanges to subscribe to changes, which will cause the "changes" profile handler above to be called back
 	subChangesRequest := bt.newRequest()
@@ -176,11 +176,11 @@ func TestContinuousChangesSubscription(t *testing.T) {
 	var numbatchesReceived int32
 	nonIntegerSequenceReceived := false
 	changeCount := 0
-	bt.blipContext.HandlerForProfile["changes"] = func(request *blip.Message) {
+	bt.RegisterChangesHandler(func(request *blip.Message) {
 
 		body, err := request.Body()
 		require.NoError(t, err)
-		log.Printf("got change with body %s, count %d", body, changeCount)
+		log.Printf("got change msg #%d with body %s, count %d", request.SerialNumber(), body, changeCount)
 		if string(body) != "null" {
 
 			atomic.AddInt32(&numbatchesReceived, 1)
@@ -199,7 +199,7 @@ func TestContinuousChangesSubscription(t *testing.T) {
 				// Make sure sequence numbers are monotonically increasing
 				receivedSeq, ok := change[0].(float64)
 				if ok {
-					assert.True(t, receivedSeq > lastReceivedSeq)
+					assert.Greater(t, receivedSeq, lastReceivedSeq, "Sequences out of order")
 					lastReceivedSeq = receivedSeq
 				} else {
 					nonIntegerSequenceReceived = true
@@ -228,7 +228,7 @@ func TestContinuousChangesSubscription(t *testing.T) {
 			response.SetBody(emptyResponseValBytes)
 		}
 
-	}
+	})
 
 	// Send subChanges to subscribe to changes, which will cause the "changes" profile handler above to be called back
 	subChangesRequest := bt.newRequest()
@@ -295,8 +295,8 @@ func TestBlipOneShotChangesSubscription(t *testing.T) {
 	lastReceivedSeq := float64(0)
 	var numbatchesReceived int32
 	nonIntegerSequenceReceived := false
-	bt.blipContext.HandlerForProfile["changes"] = func(request *blip.Message) {
 
+	changesHandler := func(request *blip.Message) {
 		body, err := request.Body()
 		require.NoError(t, err)
 
@@ -318,7 +318,7 @@ func TestBlipOneShotChangesSubscription(t *testing.T) {
 				// Make sure sequence numbers are monotonically increasing
 				receivedSeq, ok := change[0].(float64)
 				if ok {
-					assert.True(t, receivedSeq > lastReceivedSeq)
+					assert.Greater(t, receivedSeq, lastReceivedSeq)
 					lastReceivedSeq = receivedSeq
 				} else {
 					nonIntegerSequenceReceived = true
@@ -347,8 +347,13 @@ func TestBlipOneShotChangesSubscription(t *testing.T) {
 			assert.NoError(t, err, "Error marshalling response")
 			response.SetBody(emptyResponseValBytes)
 		}
-
 	}
+
+	dispatcher := blip.ThrottlingDispatcher{
+		MaxConcurrency: 1,
+		Handler:        blip.AsAsyncHandler(changesHandler),
+	}
+	bt.blipContext.RequestHandler = dispatcher.Dispatch
 
 	// Increment waitgroup to account for the expected 'caught up' nil changes entry.
 	receivedChangesWg.Add(1)
@@ -456,14 +461,18 @@ func TestBlipSubChangesDocIDFilter(t *testing.T) {
 	}
 
 	// When this test sends subChanges, Sync Gateway will send a changes request that must be handled
+	var changesMutex sync.Mutex
 	lastReceivedSeq := float64(0)
 	var numbatchesReceived int32
 	nonIntegerSequenceReceived := false
 
-	bt.blipContext.HandlerForProfile["changes"] = func(request *blip.Message) {
+	bt.RegisterChangesHandler(func(request *blip.Message) {
+		changesMutex.Lock()
+		defer changesMutex.Unlock()
 
 		body, err := request.Body()
 		require.NoError(t, err)
+		log.Printf("Received changes: %s", body) //TEMP
 
 		if string(body) != "null" {
 
@@ -483,7 +492,7 @@ func TestBlipSubChangesDocIDFilter(t *testing.T) {
 				// Make sure sequence numbers are monotonically increasing
 				receivedSeq, ok := change[0].(float64)
 				if ok {
-					assert.True(t, receivedSeq > lastReceivedSeq)
+					assert.Greater(t, receivedSeq, lastReceivedSeq)
 					lastReceivedSeq = receivedSeq
 				} else {
 					nonIntegerSequenceReceived = true
@@ -523,7 +532,7 @@ func TestBlipSubChangesDocIDFilter(t *testing.T) {
 			response.SetBody(emptyResponseValBytes)
 		}
 
-	}
+	})
 
 	// Increment waitgroup to account for the expected 'caught up' nil changes entry.
 	receivedChangesWg.Add(1)
@@ -885,7 +894,7 @@ function(doc, oldDoc) {
 // Write a doc that grants access to itself for the active replication's user
 func TestContinuousChangesDynamicGrant(t *testing.T) {
 
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg, base.KeyChanges, base.KeyCache)
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg, base.KeyWebSocket, base.KeyChanges, base.KeyCache)
 	// Initialize restTester here, so that we can use custom sync function, and later modify user
 	syncFunction := `
 function(doc, oldDoc) {
@@ -916,7 +925,7 @@ function(doc, oldDoc) {
 	var numbatchesReceived int32
 	nonIntegerSequenceReceived := false
 	changeCount := 0
-	bt.blipContext.HandlerForProfile["changes"] = func(request *blip.Message) {
+	bt.RegisterChangesHandler(func(request *blip.Message) {
 
 		body, err := request.Body()
 		require.NoError(t, err)
@@ -928,7 +937,7 @@ function(doc, oldDoc) {
 			// Expected changes body: [[1,"foo","1-abc"]]
 			changeListReceived := [][]interface{}{}
 			err = base.JSONUnmarshal(body, &changeListReceived)
-			assert.NoError(t, err, "Error unmarshalling changes received")
+			assert.NoError(t, err, "Error unmarshalling changes received: %s", body)
 
 			for _, change := range changeListReceived {
 
@@ -962,10 +971,10 @@ function(doc, oldDoc) {
 			response.SetBody(responseValBytes)
 		}
 
-	}
+	})
 
 	// -------- Rev handler callback --------
-	bt.blipContext.HandlerForProfile["rev"] = func(request *blip.Message) {
+	bt.dispatcher.SetHandler("rev", blip.AsAsyncHandler(func(request *blip.Message) {
 		defer revsFinishedWg.Done()
 		body, err := request.Body()
 		require.NoError(t, err)
@@ -979,7 +988,7 @@ function(doc, oldDoc) {
 		_, isRemoved := doc[db.BodyRemoved]
 		assert.False(t, isRemoved)
 
-	}
+	}))
 
 	// Send subChanges to subscribe to changes, which will cause the "changes" profile handler above to be called back
 	subChangesRequest := bt.newRequest()
@@ -1043,7 +1052,7 @@ function(doc, oldDoc) {
 	var numbatchesReceived int32
 	nonIntegerSequenceReceived := false
 	changeCount := 0
-	bt.blipContext.HandlerForProfile["changes"] = func(request *blip.Message) {
+	bt.RegisterChangesHandler(func(request *blip.Message) {
 
 		body, err := request.Body()
 		require.NoError(t, err)
@@ -1092,10 +1101,10 @@ function(doc, oldDoc) {
 			response.SetBody(responseValBytes)
 		}
 
-	}
+	})
 
 	// -------- Rev handler callback --------
-	bt.blipContext.HandlerForProfile["rev"] = func(request *blip.Message) {
+	bt.dispatcher.SetHandler("rev", blip.AsAsyncHandler(func(request *blip.Message) {
 		defer revsFinishedWg.Done()
 		body, err := request.Body()
 		require.NoError(t, err)
@@ -1108,7 +1117,7 @@ function(doc, oldDoc) {
 		_, isRemoved := doc[db.BodyRemoved]
 		require.False(t, isRemoved, fmt.Sprintf("Document %v shouldn't be removed", request.Properties[db.RevMessageID]))
 
-	}
+	}))
 
 	// Send subChanges to subscribe to changes, which will cause the "changes" profile handler above to be called back
 	subChangesRequest := bt.newRequest()
@@ -1790,6 +1799,8 @@ func TestMissingNoRev(t *testing.T) {
 	defer rt.Close()
 	ctx := rt.Context()
 
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyCRUD, base.KeySync, base.KeySyncMsg, base.KeyWebSocket)
+
 	bt, err := NewBlipTesterFromSpecWithRT(t, nil, rt)
 	require.NoError(t, err, "Unexpected error creating BlipTester")
 	defer bt.Close()
@@ -2163,7 +2174,7 @@ func TestMultipleOutstandingChangesSubscriptions(t *testing.T) {
 	bt := NewBlipTesterDefaultCollection(t)
 	defer bt.Close()
 
-	bt.blipContext.HandlerForProfile["changes"] = func(request *blip.Message) {
+	bt.RegisterChangesHandler(func(request *blip.Message) {
 		if !request.NoReply() {
 			// Send an empty response to avoid the Sync: Invalid response to 'changes' message
 			response := request.Response()
@@ -2172,7 +2183,7 @@ func TestMultipleOutstandingChangesSubscriptions(t *testing.T) {
 			assert.NoError(t, err, "Error marshalling response")
 			response.SetBody(emptyResponseValBytes)
 		}
-	}
+	})
 
 	pullStats := bt.restTester.GetDatabase().DbStats.CBLReplicationPull()
 	require.EqualValues(t, 0, pullStats.NumPullReplTotalContinuous.Value())
@@ -2561,10 +2572,10 @@ func TestSendRevisionNoRevHandling(t *testing.T) {
 
 			// Change noRev handler so it's known when a noRev is received
 			recievedNoRevs := make(chan *blip.Message)
-			btc.pullReplication.bt.blipContext.HandlerForProfile[db.MessageNoRev] = func(msg *blip.Message) {
+			btc.pullReplication.bt.dispatcher.SetHandler(db.MessageNoRev, blip.AsAsyncHandler(func(msg *blip.Message) {
 				fmt.Println("Received noRev", msg.Properties)
 				recievedNoRevs <- msg
-			}
+			}))
 
 			resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docName, `{"foo":"bar"}`)
 			RequireStatus(t, resp, http.StatusCreated)

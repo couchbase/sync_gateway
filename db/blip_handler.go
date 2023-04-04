@@ -51,6 +51,23 @@ var kConnectedClientHandlersByProfile = map[string]blipHandlerFunc{
 	MessageGraphQL:  userBlipHandler((*blipHandler).handleGraphQL),
 }
 
+// max number of concurrent handlers for each message type. Default is 0 meaning 'unlimited'.
+var handlerConcurrencyByProfile = map[string]int{
+	MessageChanges:        1,
+	MessageProposeChanges: 1,
+	MessageRev:            16,
+	MessageGetAttachment:  10,
+	MessageGetRev:         10,
+	MessagePutRev:         10,
+}
+
+// Handlers that run immediately, i.e. before the message has completely arrived.
+// This guarantees they are called in message order.
+var handlerImmediacyByProfile = map[string]bool{
+	MessageChanges:        true,
+	MessageProposeChanges: true,
+}
+
 // maxInFlightChangesBatches is the maximum number of in-flight changes batches a client is allowed to send without being throttled.
 const maxInFlightChangesBatches = 4
 
@@ -557,37 +574,35 @@ func (bh *blipHandler) sendBatchOfChanges(sender *blip.Sender, changeArray [][]i
 			return err
 		}
 
-		handleChangesResponseDbCollection, err := bh.copyDatabaseCollectionWithUser(bh.collectionIdx)
-		if err != nil {
-			return err
-		}
-
 		sendTime := time.Now()
-		if !bh.sendBLIPMessage(sender, outrq) {
-			return ErrClosedBLIPSender
-		}
-
 		atomic.AddInt64(&bh.changesPendingResponseCount, 1)
 		bh.replicationStats.SendChangesCount.Add(int64(len(changeArray)))
 
 		// await the client's response:
 		outrq.OnResponse(func(response *blip.Message) {
-			if err := bh.handleChangesResponse(sender, response, changeArray, sendTime, handleChangesResponseDbCollection, bh.collectionIdx); err != nil {
-				base.WarnfCtx(bh.loggingCtx, "Error from bh.handleChangesResponse: %v", err)
-				if bh.fatalErrorCallback != nil {
-					bh.fatalErrorCallback(err)
+			bh.threadPool.Go(func() {
+				if err := bh.handleChangesResponse(sender, response, changeArray, sendTime, bh.collectionIdx); err != nil {
+					base.WarnfCtx(bh.loggingCtx, "Error from bh.handleChangesResponse: %v", err)
+					if bh.fatalErrorCallback != nil {
+						bh.fatalErrorCallback(err)
+					}
 				}
-			}
-			base.InfofCtx(bh.loggingCtx, base.KeySync, "...sent requested revs, from %s", changeArray[0][0].(SequenceID).String())
+				base.InfofCtx(bh.loggingCtx, base.KeySync, "...sent requested revs, from %s", changeArray[0][0].(SequenceID).String())
 
-			// Sent all of the revs for this changes batch, allow another changes batch to be sent.
-			select {
-			case <-bh.inFlightChangesThrottle:
-			case <-bh.terminator:
-			}
+				// Sent all of the revs for this changes batch, allow another changes batch to be sent.
+				select {
+				case <-bh.inFlightChangesThrottle:
+				case <-bh.terminator:
+				}
 
-			atomic.AddInt64(&bh.changesPendingResponseCount, -1)
+				atomic.AddInt64(&bh.changesPendingResponseCount, -1)
+			})
 		})
+
+		if !bh.sendBLIPMessage(sender, outrq) {
+			return ErrClosedBLIPSender
+		}
+
 	} else {
 		outrq.SetNoReply(true)
 		if !bh.sendBLIPMessage(sender, outrq) {
@@ -1326,7 +1341,7 @@ func (bh *blipHandler) sendGetAttachment(sender *blip.Sender, docID string, name
 		return nil, ErrClosedBLIPSender
 	}
 
-	resp := outrq.Response()
+	resp := outrq.Response() // TODO: Don't block the handler!
 
 	respBody, err := resp.Body()
 	if err != nil {
@@ -1372,7 +1387,7 @@ func (bh *blipHandler) sendProveAttachment(sender *blip.Sender, docID, name, dig
 		return ErrClosedBLIPSender
 	}
 
-	resp := outrq.Response()
+	resp := outrq.Response() // TODO: Don't block the handler!
 
 	body, err := resp.Body()
 	if err != nil {

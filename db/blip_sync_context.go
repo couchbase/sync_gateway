@@ -27,9 +27,17 @@ import (
 )
 
 const (
-	// Blip default vals
+	// Number of revisions to include in a 'changes' message
 	BlipDefaultBatchSize = uint64(200)
 	BlipMinimumBatchSize = uint64(10) // Not in the replication spec - is this required?
+
+	// Number of goroutines handling incoming BLIP requests (and other tasks)
+	BlipThreadPoolSize = 5
+
+	// Maximum total size of incoming BLIP requests that are currently being dispatched and handled.
+	// Above this amount, the BLIP engine stops reading from the WebSocket, applying back-pressure
+	// to the client and keeping memory usage down.
+	BlipMaxIncomingBytesBeingDispatched = 100000 // bytes
 )
 
 var ErrClosedBLIPSender = errors.New("use of closed BLIP sender")
@@ -45,6 +53,7 @@ func NewBlipSyncContext(ctx context.Context, bc *blip.Context, db *Database, con
 		replicationStats:        replicationStats,
 		inFlightChangesThrottle: make(chan struct{}, maxInFlightChangesBatches),
 		collections:             &blipCollections{},
+		threadPool:              blip.ThreadPool{Concurrency: BlipThreadPoolSize},
 	}
 	if bsc.replicationStats == nil {
 		bsc.replicationStats = NewBlipSyncStats()
@@ -60,22 +69,26 @@ func NewBlipSyncContext(ctx context.Context, bc *blip.Context, db *Database, con
 	}
 
 	// Register default handlers
-	bc.DefaultHandler = bsc.NotFoundHandler
 	bc.FatalErrorHandler = func(err error) {
 		base.InfofCtx(ctx, base.KeyHTTP, "%s:     --> BLIP+WebSocket connection error: %v", contextID, err)
 	}
 
+	dispatcher := &blip.ByProfileDispatcher{}
+	dispatcher.SetDefaultHandler(bsc.NotFoundHandler)
+
 	// Register 2.x replicator handlers
 	for profile, handlerFn := range handlersByProfile {
-		bsc.register(profile, handlerFn)
+		bsc.register(dispatcher, profile, handlerFn)
 	}
-
 	if db.Options.UnsupportedOptions.ConnectedClient {
 		// Register Connected Client handlers
 		for profile, handlerFn := range kConnectedClientHandlersByProfile {
-			bsc.register(profile, handlerFn)
+			bsc.register(dispatcher, profile, handlerFn)
 		}
 	}
+	bsc.blipContext.RequestHandler = dispatcher.Dispatch
+	bsc.threadPool.Start()
+
 	return bsc
 }
 
@@ -83,6 +96,7 @@ func NewBlipSyncContext(ctx context.Context, bc *blip.Context, db *Database, con
 // This connection remains open until the client closes it, and can receive any number of requests.
 type BlipSyncContext struct {
 	blipContext                 *blip.Context
+	threadPool                  blip.ThreadPool
 	blipContextDb               *Database       // 'master' database instance for the replication, used as source when creating handler-specific databases
 	loggingCtx                  context.Context // logging context for connection
 	dbUserLock                  sync.RWMutex    // Must be held when refreshing the db user
@@ -142,10 +156,11 @@ func (bsc *BlipSyncContext) SetClientType(clientType BLIPSyncContextClientType) 
 
 // Registers a BLIP handler including the outer-level work of logging & error handling.
 // Includes the outer handler as a nested function.
-func (bsc *BlipSyncContext) register(profile string, handlerFn func(*blipHandler, *blip.Message) error) {
+func (bsc *BlipSyncContext) register(dispatcher *blip.ByProfileDispatcher, profile string, handlerFn func(*blipHandler, *blip.Message) error) {
 
 	// Wrap the handler function with a function that adds handling needed by all handlers
-	handlerFnWrapper := func(rq *blip.Message) {
+	handler := func(rq *blip.Message, onComplete func()) {
+		defer onComplete()
 
 		// Recover to log panic from handlers and repanic for go-blip response handling
 		defer func() {
@@ -210,8 +225,19 @@ func (bsc *BlipSyncContext) register(profile string, handlerFn func(*blipHandler
 		bsc.reportStats(false)
 	}
 
-	bsc.blipContext.HandlerForProfile[profile] = handlerFnWrapper
+	// Handlers run on the thread pool
+	handler = bsc.threadPool.WrapAsyncHandler(handler)
 
+	if concurrency := handlerConcurrencyByProfile[profile]; concurrency > 0 {
+		// Limit number of concurrently running handlers for some profiles:
+		throttle := blip.ThrottlingDispatcher{
+			Handler:        handler,
+			MaxConcurrency: concurrency,
+		}
+		handler = throttle.Dispatch
+	}
+
+	dispatcher.SetHandler(profile, handler)
 }
 
 func (bsc *BlipSyncContext) Close() {
@@ -228,15 +254,16 @@ func (bsc *BlipSyncContext) Close() {
 			collection.changesCtxCancel()
 		}
 		bsc.reportStats(true)
+		bsc.threadPool.Stop()
 		close(bsc.terminator)
 	})
 }
 
 // NotFoundHandler is used for unknown requests
-func (bsc *BlipSyncContext) NotFoundHandler(rq *blip.Message) {
+func (bsc *BlipSyncContext) NotFoundHandler(rq *blip.Message, onComplete func()) {
 	base.InfofCtx(bsc.loggingCtx, base.KeySync, "%s Type:%q", rq, rq.Profile())
 	base.InfofCtx(bsc.loggingCtx, base.KeySync, "%s    --> 404 Unknown profile", rq)
-	blip.Unhandled(rq)
+	blip.UnhandledAsync(rq, onComplete)
 }
 
 func (bsc *BlipSyncContext) copyContextDatabase() *Database {
@@ -439,61 +466,61 @@ func (bsc *BlipSyncContext) sendRevisionWithProperties(sender *blip.Sender, docI
 	}
 
 	if awaitResponse {
-		go func(activeSubprotocol string) {
-			defer func() {
-				if panicked := recover(); panicked != nil {
-					bsc.replicationStats.NumHandlersPanicked.Add(1)
-					base.WarnfCtx(bsc.loggingCtx, "PANIC handling 'sendRevision' response: %v\n%s", panicked, debug.Stack())
-					bsc.Close()
+		outrq.OnResponse(func(resp *blip.Message) {
+			bsc.threadPool.Go(func() {
+				defer func() {
+					if panicked := recover(); panicked != nil {
+						bsc.replicationStats.NumHandlersPanicked.Add(1)
+						base.WarnfCtx(bsc.loggingCtx, "PANIC handling 'sendRevision' response: %v\n%s", panicked, debug.Stack())
+						bsc.Close()
+					}
+				}()
+
+				respBody, err := resp.Body()
+				if err != nil {
+					base.WarnfCtx(bsc.loggingCtx, "couldn't get response body for rev: %v", err)
 				}
-			}()
 
-			resp := outrq.Response() // blocks till reply is received
+				base.TracefCtx(bsc.loggingCtx, base.KeySync, "Received response for sendRevisionWithProperties rev message %s/%s", base.UD(docID), revID)
 
-			respBody, err := resp.Body()
-			if err != nil {
-				base.WarnfCtx(bsc.loggingCtx, "couldn't get response body for rev: %v", err)
-			}
+				if resp.Type() == blip.ErrorType {
+					bsc.replicationStats.SendRevErrorTotal.Add(1)
+					base.InfofCtx(bsc.loggingCtx, base.KeySync, "error %s in response to rev: %s", resp.Properties["Error-Code"], respBody)
 
-			base.TracefCtx(bsc.loggingCtx, base.KeySync, "Received response for sendRevisionWithProperties rev message %s/%s", base.UD(docID), revID)
-
-			if resp.Type() == blip.ErrorType {
-				bsc.replicationStats.SendRevErrorTotal.Add(1)
-				base.InfofCtx(bsc.loggingCtx, base.KeySync, "error %s in response to rev: %s", resp.Properties["Error-Code"], respBody)
-
-				if errorDomainIsHTTP(resp) {
-					switch resp.Properties["Error-Code"] {
-					case "409":
-						bsc.replicationStats.SendRevErrorConflictCount.Add(1)
-					case "403":
-						bsc.replicationStats.SendRevErrorRejectedCount.Add(1)
-					case "422", "404":
-						// unprocessable entity, CBL has not been able to use the delta we sent, so we should re-send the revision in full
-						if resendFullRevisionFunc != nil {
-							base.DebugfCtx(bsc.loggingCtx, base.KeySync, "sending full body replication for doc %s/%s due to unprocessable entity", base.UD(docID), revID)
-							if err := resendFullRevisionFunc(); err != nil {
-								base.WarnfCtx(bsc.loggingCtx, "unable to resend revision: %v", err)
+					if errorDomainIsHTTP(resp) {
+						switch resp.Properties["Error-Code"] {
+						case "409":
+							bsc.replicationStats.SendRevErrorConflictCount.Add(1)
+						case "403":
+							bsc.replicationStats.SendRevErrorRejectedCount.Add(1)
+						case "422", "404":
+							// unprocessable entity, CBL has not been able to use the delta we sent, so we should re-send the revision in full
+							if resendFullRevisionFunc != nil {
+								base.DebugfCtx(bsc.loggingCtx, base.KeySync, "sending full body replication for doc %s/%s due to unprocessable entity", base.UD(docID), revID)
+								if err := resendFullRevisionFunc(); err != nil {
+									base.WarnfCtx(bsc.loggingCtx, "unable to resend revision: %v", err)
+								}
+							}
+						case "500":
+							// runtime exceptions return 500 status codes, but we have no other way to determine if this 500 error was caused by the sync-function than matching on the error message.
+							if bytes.Contains(respBody, []byte("JS sync function")) {
+								bsc.replicationStats.SendRevErrorRejectedCount.Add(1)
+							} else {
+								bsc.replicationStats.SendRevErrorOtherCount.Add(1)
 							}
 						}
-					case "500":
-						// runtime exceptions return 500 status codes, but we have no other way to determine if this 500 error was caused by the sync-function than matching on the error message.
-						if bytes.Contains(respBody, []byte("JS sync function")) {
-							bsc.replicationStats.SendRevErrorRejectedCount.Add(1)
-						} else {
-							bsc.replicationStats.SendRevErrorOtherCount.Add(1)
-						}
 					}
+				} else {
+					bsc.replicationStats.SendRevCount.Add(1)
 				}
-			} else {
-				bsc.replicationStats.SendRevCount.Add(1)
-			}
 
-			bsc.removeAllowedAttachments(docID, attMeta, activeSubprotocol)
+				bsc.removeAllowedAttachments(docID, attMeta, activeSubprotocol)
 
-			if collectionCtx.sgr2PushProcessedSeqCallback != nil {
-				collectionCtx.sgr2PushProcessedSeqCallback(seq)
-			}
-		}(activeSubprotocol)
+				if collectionCtx.sgr2PushProcessedSeqCallback != nil {
+					collectionCtx.sgr2PushProcessedSeqCallback(seq)
+				}
+			})
+		})
 	}
 
 	return nil
