@@ -52,7 +52,7 @@ var kConnectedClientHandlersByProfile = map[string]blipHandlerFunc{
 }
 
 // maxInFlightChangesBatches is the maximum number of in-flight changes batches a client is allowed to send without being throttled.
-const maxInFlightChangesBatches = 2
+const maxInFlightChangesBatches = 4
 
 type blipHandler struct {
 	*BlipSyncContext
@@ -535,6 +535,7 @@ func (bh *blipHandler) buildChangesRow(change *ChangeEntry, revID string) []inte
 
 func (bh *blipHandler) sendBatchOfChanges(sender *blip.Sender, changeArray [][]interface{}, ignoreNoConflicts bool) error {
 	outrq := blip.NewRequest()
+	outrq.SetUrgent(true)
 	outrq.SetProfile("changes")
 	if ignoreNoConflicts {
 		outrq.Properties[ChangesMessageIgnoreNoConflicts] = trueProperty
