@@ -11,6 +11,7 @@ package base
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
@@ -120,6 +121,7 @@ func (w *DCPWorker) Start(wg *sync.WaitGroup) {
 					if w.mutationCallback != nil {
 						w.mutationCallback(e.asFeedEvent())
 					}
+					fmt.Printf("HONK doc from vbID %d, seq=%d, docID=%s\n", vbID, e.seq, e.key)
 					w.updateSeq(e.key, vbID, e.seq)
 				case deletionEvent:
 					if w.mutationCallback != nil && !w.ignoreDeletes {

@@ -201,7 +201,7 @@ func (m *DCPMetadataCS) Rollback(ctx context.Context, vbID uint16, vbUUID gocbco
 		SnapEndSeqNo:    startSeqNo,
 		FailoverEntries: make([]gocbcore.FailoverEntry, 0),
 	}
-	TracefCtx(ctx, KeyDCP, "rolling back vb:%d with metadata set to %v", vbID, m.metadata[vbID])
+	TracefCtx(ctx, KeyDCP, "rolling back vb:%d with metadata set to %+v", vbID, m.metadata[vbID])
 }
 
 func (m *DCPMetadataCS) SetMeta(vbNo uint16, metadata DCPMetadata) {

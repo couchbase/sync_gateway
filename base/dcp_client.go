@@ -434,10 +434,9 @@ func (dc *DCPClient) openStream(vbID uint16, maxRetries uint32) (err error) {
 				InfofCtx(logCtx, KeyDCP, "Open stream for vbID %d failed due to rollback or range error, closing client based on failOnRollback=true", vbID)
 				return fmt.Errorf("%s, failOnRollback requested", openStreamErr)
 			}
-			InfofCtx(logCtx, KeyDCP, "Open stream for vbID %d failed due to rollback or range error, will roll back metadata and retry: %v", vbID, openStreamErr)
+			InfofCtx(logCtx, KeyDCP, "Open stream for vbID %d failed due to rollback or range error, will roll back metadata and retry: %v %+v", vbID, openStreamErr, dc.metadata.GetMeta(vbID))
 			err := dc.rollback(logCtx, vbID)
 			if err != nil {
-				PanicfCtx(logCtx, "failed to rollback metadata for vb %d: error: %v", vbID, err)
 				return fmt.Errorf("metadata rollback failed for vb %d: %v", vbID, err)
 			}
 		case errors.Is(openStreamErr, gocbcore.ErrShutdown):
@@ -471,7 +470,7 @@ func (dc *DCPClient) rollback(ctx context.Context, vbID uint16) error {
 		return err
 	}
 	latestSeqNo := dc.metadata.GetMeta(vbID).StartSeqNo
-
+	fmt.Printf("HONK failOverLogs for vbID: %d are: %+v HighSeqNo %d\n", vbID, failoverLogs, latestSeqNo)
 	vbUUID, seqNo, err := findRollbackVBUUIDSequence(ctx, vbID, latestSeqNo, failoverLogs)
 	if err != nil {
 		return err
@@ -485,12 +484,17 @@ func findRollbackVBUUIDSequence(ctx context.Context, vbID uint16, existingHighSe
 	if len(entries) == 0 {
 		return 0, 0, fmt.Errorf("no failover logs found for vb %d", vbID)
 	}
+	fmt.Println("HIGH SEQ NO=", existingHighSeqNo)
+	var vbUUID gocbcore.VbUUID
+	var seqNo gocbcore.SeqNo
 	for _, entry := range entries {
 		if existingHighSeqNo >= entry.SeqNo {
-			return entry.VbUUID, existingHighSeqNo, nil
+			vbUUID = entry.VbUUID
+			seqNo = entry.SeqNo
+			return vbUUID, seqNo, nil
 		}
 	}
-	return 0, 0, fmt.Errorf("Could not find a rollback sequence for vb %d from failover logs: %v", vbID, entries)
+	return 0, 0, fmt.Errorf("Could not find a rollback sequence for vb %d from failover logs: %+v", vbID, entries)
 }
 
 // getFailoverLogs querys for the current failover logs for a given vBucket ID.
