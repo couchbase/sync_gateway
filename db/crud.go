@@ -2430,47 +2430,23 @@ func (db *DatabaseCollectionWithUser) RevDiff(ctx context.Context, docid string,
 		return // Users can't upload design docs, so ignore them
 	}
 
-	var history RevTree
-
-	if db.UseXattrs() {
-		var xattrValue []byte
-		cas, err := db.dataStore.GetXattr(docid, base.SyncXattrName, &xattrValue)
-
-		if err != nil {
-			if !base.IsDocNotFoundError(err) {
-				base.WarnfCtx(ctx, "RevDiff(%q) --> %T %v", base.UD(docid), err, err)
-			}
-			missing = revids
-			return
+	doc, err := db.GetDocSyncData(ctx, docid)
+	if err != nil {
+		if !base.IsDocNotFoundError(err) {
+			base.WarnfCtx(ctx, "RevDiff(%q) --> %T %v", base.UD(docid), err, err)
 		}
-		doc, err := unmarshalDocumentWithXattr(docid, nil, xattrValue, nil, cas, DocUnmarshalSync)
-		if err != nil {
-			base.ErrorfCtx(ctx, "RevDiff(%q) Doc Unmarshal Failed: %T %v", base.UD(docid), err, err)
-		}
-		history = doc.History
-	} else {
-		doc, err := db.GetDocument(ctx, docid, DocUnmarshalSync)
-		if err != nil {
-			if !base.IsDocNotFoundError(err) {
-				base.WarnfCtx(ctx, "RevDiff(%q) --> %T %v", base.UD(docid), err, err)
-				// If something goes wrong getting the doc, treat it as though it's nonexistent.
-			}
-			missing = revids
-			return
-		}
-		history = doc.History
+		missing = revids
+		return
 	}
-
 	// Check each revid to see if it's in the doc's rev tree:
-	revtree := history
 	revidsSet := base.SetFromArray(revids)
 	possibleSet := make(map[string]bool)
 	for _, revid := range revids {
-		if !revtree.contains(revid) {
+		if !doc.History.contains(revid) {
 			missing = append(missing, revid)
 			// Look at the doc's leaves for a known possible ancestor:
 			if gen, _ := ParseRevID(revid); gen > 1 {
-				revtree.forEachLeaf(func(possible *RevInfo) {
+				doc.History.forEachLeaf(func(possible *RevInfo) {
 					if !revidsSet.Contains(possible.ID) {
 						possibleGen, _ := ParseRevID(possible.ID)
 						if possibleGen < gen && possibleGen >= gen-100 {
@@ -2498,6 +2474,7 @@ func (db *DatabaseCollectionWithUser) RevDiff(ctx context.Context, docid string,
 type ProposedRevStatus int
 
 const (
+	ProposedRev_OK_IsNew ProposedRevStatus = 201 // Rev can be added, doc does not exist locally
 	ProposedRev_OK       ProposedRevStatus = 0   // Rev can be added without conflict
 	ProposedRev_Exists   ProposedRevStatus = 304 // Rev already exists locally
 	ProposedRev_Conflict ProposedRevStatus = 409 // Rev would cause conflict
@@ -2506,15 +2483,19 @@ const (
 
 // Given a docID/revID to be pushed by a client, check whether it can be added _without conflict_.
 // This is used by the BLIP replication code in "allow_conflicts=false" mode.
-func (c *DatabaseCollection) CheckProposedRev(ctx context.Context, docid string, revid string, parentRevID string) (status ProposedRevStatus, currentRev string) {
-	doc, err := c.GetDocument(ctx, docid, DocUnmarshalAll)
+func (db *DatabaseCollectionWithUser) CheckProposedRev(ctx context.Context, docid string, revid string, parentRevID string) (status ProposedRevStatus, currentRev string) {
+	if strings.HasPrefix(docid, "_design/") && db.user != nil {
+		return // Users can't upload design docs, so ignore them
+	}
+
+	doc, err := db.GetDocSyncData(ctx, docid)
 	if err != nil {
 		if !base.IsDocNotFoundError(err) {
 			base.WarnfCtx(ctx, "CheckProposedRev(%q) --> %T %v", base.UD(docid), err, err)
 			return ProposedRev_Error, ""
 		}
 		// Doc doesn't exist locally; adding it is OK (even if it has a history)
-		return ProposedRev_OK, ""
+		return ProposedRev_OK_IsNew, ""
 	} else if doc.CurrentRev == revid {
 		// Proposed rev already exists here:
 		return ProposedRev_Exists, ""

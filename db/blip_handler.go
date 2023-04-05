@@ -766,7 +766,11 @@ func (bh *blipHandler) handleProposeChanges(rq *blip.Message) error {
 			parentRevID = change[2].(string)
 		}
 		status, currentRev := bh.collection.CheckProposedRev(bh.loggingCtx, docID, revID, parentRevID)
-		if status != 0 {
+		if status == ProposedRev_OK_IsNew {
+			// Remember that the doc doesn't exist locally, in order to optimize the upcoming Put:
+			bh.notePendingInsertion(docID)
+		} else if status != ProposedRev_OK {
+			// Reject the proposed change.
 			// Skip writing trailing zeroes; but if we write a number afterwards we have to catch up
 			if nWritten > 0 {
 				output.Write([]byte(","))
@@ -1147,6 +1151,14 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 		newDoc.DocAttachments = GetBodyAttachments(body)
 		delete(body, BodyAttachments)
 		newDoc.UpdateBody(body)
+	}
+
+	if rawBucketDoc == nil && bh.checkPendingInsertion(docID) {
+		// At the time we handled the `propseChanges` request, there was no doc with this docID
+		// in the bucket. As an optimization, tell PutExistingRev to assume the doc still doesn't
+		// exist and bypass getting it from the bucket during the save. If we're wrong, the save
+		// will fail with a CAS mismatch and the retry will fetch the existing doc.
+		rawBucketDoc = &sgbucket.BucketDocument{} // empty struct with zero CAS
 	}
 
 	// Finally, save the revision (with the new attachments inline)

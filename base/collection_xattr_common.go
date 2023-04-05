@@ -182,8 +182,14 @@ func UpdateTombstoneXattr(store SubdocXattrStore, k string, xattrKey string, exp
 	return cas, err
 }
 
-// WriteUpdateWithXattr retrieves the existing doc from the bucket, invokes the callback to update the document, then writes the new document to the bucket.  Will repeat this process on cas
-// failure.  If previousValue/xattr/cas are provided, will use those on the first iteration instead of retrieving from the bucket.
+// WriteUpdateWithXattr retrieves the existing doc from the bucket, invokes the callback to update
+// the document, then writes the new document to the bucket.  Will repeat this process on cas
+// failure.
+//
+// If previous document is provided, will use it on 1st iteration instead of retrieving from bucket.
+// A zero CAS in `previous` is interpreted as no document existing; this can be used to short-
+// circuit the initial Get when the document is unlikely to already exist.
+
 func WriteUpdateWithXattr(store SubdocXattrStore, k string, xattrKey string, userXattrKey string, exp uint32, opts *sgbucket.MutateInOptions, previous *sgbucket.BucketDocument, callback sgbucket.WriteUpdateWithXattrFunc) (casOut uint64, err error) {
 
 	var value []byte
@@ -192,19 +198,23 @@ func WriteUpdateWithXattr(store SubdocXattrStore, k string, xattrKey string, use
 	var cas uint64
 	emptyCas := uint64(0)
 
-	// If an existing value has been provided, use that as the initial value
-	if previous != nil && previous.Cas > 0 {
-		value = previous.Body
-		xattrValue = previous.Xattr
-		cas = previous.Cas
-		userXattrValue = previous.UserXattr
-	}
-
 	for {
 		var err error
-		// If no existing value has been provided, retrieve the current value from the bucket
-		if cas == 0 {
-			// Load the existing value.
+		if previous != nil {
+			// If an existing value has been provided, use that as the initial value.
+			// A zero CAS is interpreted as no document existing.
+			if previous.Cas != 0 {
+				value = previous.Body
+				xattrValue = previous.Xattr
+				cas = previous.Cas
+				userXattrValue = previous.UserXattr
+			} else if previous.Body != nil || previous.Xattr != nil {
+				panic("WriteUpdateWithXattr: previous doc has zero Cas but is not empty")
+			}
+			previous = nil // a retry will get value from bucket, as below
+		} else {
+			// If no existing value has been provided, or on a retry,
+			// retrieve the current value from the bucket
 			cas, err = store.SubdocGetBodyAndXattr(k, xattrKey, userXattrKey, &value, &xattrValue, &userXattrValue)
 
 			if err != nil {
@@ -224,7 +234,6 @@ func WriteUpdateWithXattr(store SubdocXattrStore, k string, xattrKey string, use
 
 		// If it's an ErrCasFailureShouldRetry, then retry by going back through the for loop
 		if err == ErrCasFailureShouldRetry {
-			cas = 0 // force the call to SubdocGetBodyAndXattr() to refresh
 			continue
 		}
 
@@ -258,7 +267,6 @@ func WriteUpdateWithXattr(store SubdocXattrStore, k string, xattrKey string, use
 		value = nil
 		xattrValue = nil
 		cas = 0
-
 	}
 }
 
