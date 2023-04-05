@@ -413,7 +413,6 @@ func (dc *DCPClient) forceRollbackvBucket(uuid gocbcore.VbUUID) {
 		if i%2 == 0 {
 			metadata[i] = dc.metadata.GetMeta(i)
 			metadata[i].VbUUID = uuid
-			metadata[i].StartSeqNo = 4
 		} else {
 			metadata[i] = dc.metadata.GetMeta(i)
 		}
@@ -562,4 +561,82 @@ func TestBadAgentPriority(t *testing.T) {
 	dcpClient, err := NewDCPClient(feedID, panicCallback, dcpClientOpts, gocbv2Bucket)
 	require.Error(t, err)
 	require.Nil(t, dcpClient)
+}
+
+func TestDCPOutOfRangeSequence(t *testing.T) {
+
+	if UnitTestUrlIsWalrus() {
+		t.Skip("This test requires DCP feed from gocb and therefore Couchbase Sever")
+	}
+
+	bucket := GetTestBucket(t)
+	defer bucket.Close()
+
+	// create callback
+	callback := func(event sgbucket.FeedEvent) bool {
+		t.Fatalf("Unexpected callback: %+v", event)
+		return false
+	}
+
+	feedID := t.Name()
+	dcpClientOpts := DCPClientOptions{
+		FailOnRollback:    false,
+		OneShot:           true,
+		CollectionIDs:     getCollectionIDs(t, bucket),
+		CheckpointPrefix:  DefaultMetadataKeys.DCPCheckpointPrefix(t.Name()),
+		MetadataStoreType: DCPMetadataStoreInMemory,
+	}
+
+	// timeout for feed to complete
+	timeout := time.After(20 * time.Second)
+
+	gocbv2Bucket, err := AsGocbV2Bucket(bucket)
+	require.NoError(t, err)
+
+	dcpClient, err := NewDCPClient(feedID, callback, dcpClientOpts, gocbv2Bucket)
+	require.NoError(t, err)
+
+	doneChan, startErr := dcpClient.Start()
+	require.NoError(t, startErr)
+	defer func() {
+		assert.NoError(t, dcpClient.Close())
+	}()
+
+	select {
+	case <-doneChan:
+		break
+	case <-timeout:
+		t.Fatalf("timeout on client reached")
+	}
+
+	metadata := dcpClient.GetMetadata()
+	metadata[1].StartSeqNo = 1000 // out of range
+	dcpClientOpts = DCPClientOptions{
+		FailOnRollback:    false,
+		OneShot:           true,
+		CollectionIDs:     getCollectionIDs(t, bucket),
+		CheckpointPrefix:  DefaultMetadataKeys.DCPCheckpointPrefix(t.Name()),
+		MetadataStoreType: DCPMetadataStoreInMemory,
+		InitialMetadata:   metadata,
+	}
+
+	dcpClient, err = NewDCPClient(feedID, callback, dcpClientOpts, gocbv2Bucket)
+	require.NoError(t, err)
+
+	_, startErr = dcpClient.Start()
+	require.Error(t, startErr)
+	require.Contains(t, startErr.Error(), "out of range")
+
+}
+
+func getCollectionIDs(t *testing.T, bucket *TestBucket) []uint32 {
+	collection, err := AsCollection(bucket.GetSingleDataStore())
+	require.NoError(t, err)
+
+	var collectionIDs []uint32
+	if collection.IsSupported(sgbucket.BucketStoreFeatureCollections) {
+		collectionIDs = append(collectionIDs, collection.GetCollectionID())
+	}
+	return collectionIDs
+
 }
