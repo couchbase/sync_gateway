@@ -102,10 +102,15 @@ func (m *dcpMetadataBase) Rollback(ctx context.Context, vbID uint16, startSeqNo 
 			break
 		}
 	}
+	// use the lower value of the start sequence number that we last saved, or the value that was provided from KV as the rollback point
+	newStartSeqNo := m.metadata[vbID].StartSeqNo
+	if startSeqNo < m.metadata[vbID].StartSeqNo {
+		newStartSeqNo = startSeqNo
+	}
 	m.metadata[vbID].VbUUID = rollbackVbuuid
-	m.metadata[vbID].StartSeqNo = startSeqNo
-	m.metadata[vbID].SnapStartSeqNo = startSeqNo
-	m.metadata[vbID].SnapEndSeqNo = startSeqNo
+	m.metadata[vbID].StartSeqNo = newStartSeqNo
+	m.metadata[vbID].SnapStartSeqNo = newStartSeqNo
+	m.metadata[vbID].SnapEndSeqNo = newStartSeqNo
 	TracefCtx(ctx, KeyDCP, "rolling back vb:%d with metadata set to %+v", vbID, m.metadata[vbID])
 }
 
