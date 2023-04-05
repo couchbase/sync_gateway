@@ -127,8 +127,9 @@ func (rt *RestTester) WaitForCheckpointLastSequence(expectedName string) (string
 }
 
 func (rt *RestTester) WaitForActiveReplicatorInitialization(count int) {
-	ar := rt.GetDatabase().SGReplicateMgr.GetActiveReplicators()
 	successFunc := func() bool {
+		ar := rt.GetDatabase().SGReplicateMgr.GetActiveReplicators()
+		fmt.Println(len(ar))
 		return len(ar) == count
 	}
 	require.NoError(rt.TB, rt.WaitForCondition(successFunc), "mismatch on number of active replicators")

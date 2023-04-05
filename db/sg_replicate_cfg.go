@@ -802,6 +802,7 @@ func (m *sgReplicateManager) RefreshReplicationCfg(ctx context.Context) error {
 
 	// Check for replications newly assigned to this node
 	for replicationID, replicationCfg := range configReplications {
+		fmt.Println("newly assigned code", replicationID)
 		if replicationCfg.AssignedNode == m.localNodeUUID {
 			replicator, exists := m.activeReplicators[replicationID]
 			if !exists {

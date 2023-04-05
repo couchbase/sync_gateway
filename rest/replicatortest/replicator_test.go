@@ -956,13 +956,14 @@ func TestReplicationConcurrentPush(t *testing.T) {
 
 	activeRT, remoteRT, remoteURLString, teardown := rest.SetupSGRPeers(t)
 	defer teardown()
-	// Create push replications, wait for active replicator to be initialized on sgReplicateManager, verify running
+	// Create push replication, wait for assigned replication (this gives time for the first replication to be created and start initializing),
+	// verify running, then create second replication, verify running and verify both replicators are initialized on sgReplicateManager
 	activeRT.CreateReplication("rep_ABC", remoteURLString, db.ActiveReplicatorTypePush, []string{"ABC"}, true, db.ConflictResolverDefault)
-	activeRT.WaitForActiveReplicatorInitialization(1)
 	activeRT.WaitForReplicationStatus("rep_ABC", db.ReplicationStateRunning)
+	activeRT.WaitForAssignedReplications(1)
 	activeRT.CreateReplication("rep_DEF", remoteURLString, db.ActiveReplicatorTypePush, []string{"DEF"}, true, db.ConflictResolverDefault)
-	activeRT.WaitForActiveReplicatorInitialization(2)
 	activeRT.WaitForReplicationStatus("rep_DEF", db.ReplicationStateRunning)
+	activeRT.WaitForActiveReplicatorInitialization(2)
 
 	// Create docs on active
 	docAllChannels1 := t.Name() + "All1"
