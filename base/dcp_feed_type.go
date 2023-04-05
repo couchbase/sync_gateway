@@ -121,8 +121,9 @@ func init() {
 	// NB: we use the same feed type *name* as Lithium nodes, but run it using gocbcore rather than cbdatasource. If only
 	// streaming the default collection, there is no functional difference.
 	cbgt.RegisterFeedType(SOURCE_DCP_SG, &cbgt.FeedType{
-		Start:      SGGoCBFeedStartDCPFeed,
-		Partitions: SGGoCBFeedPartitions,
+		Start:            SGGoCBFeedStartDCPFeed,
+		Partitions:       SGGoCBFeedPartitions,
+		SourceUUIDLookUp: SGGocbSourceUUIDLookup,
 		// PartitionSeqs is only necessary if we use the CBGT REST API or StopAfter in our FeedParams, which we don't
 		// Stats is only used by the CBGT REST API.
 		Public: false, // Won't be listed in /api/managerMeta output.
@@ -207,6 +208,11 @@ func SGGoCBFeedPartitions(sourceType, sourceName, sourceUUID, sourceParams,
 	sourceParamsWithAuth := addCbgtAuthToDCPParams(sourceParams)
 	return cbgt.CBPartitions(sourceType, sourceName, sourceUUID, sourceParamsWithAuth,
 		serverIn, options)
+}
+
+func SGGocbSourceUUIDLookup(sourceName, sourceParams, serverIn string,
+	options map[string]string) (string, error) {
+	return cbgt.CBSourceUUIDLookUp(sourceName, sourceParams, serverIn, options)
 }
 
 // addCbgtAuthToDCPParams gets the dbName from the incoming dcpParams, and checks for credentials
