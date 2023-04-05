@@ -271,6 +271,8 @@ func TestDCPClientMultiFeedConsistency(t *testing.T) {
 			// Retrieve metadata from first DCP feed, and modify VbUUID to simulate rollback on server
 			uuidMismatchMetadata[0].VbUUID = test.vbUUID
 			uuidMismatchMetadata[0].StartSeqNo = test.startSeqNo
+			uuidMismatchMetadata[0].SnapStartSeqNo = test.startSeqNo
+			uuidMismatchMetadata[0].SnapEndSeqNo = test.startSeqNo
 
 			dcpClientOpts = DCPClientOptions{
 				InitialMetadata:  uuidMismatchMetadata,
