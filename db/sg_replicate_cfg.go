@@ -1194,8 +1194,10 @@ func (c *SGRCluster) GetReplicationIDsForNode(nodeUUID string) (replicationIDs [
 	return replicationIDs
 }
 
-func (m *sgReplicateManager) GetActiveReplicators() map[string]*ActiveReplicator {
-	return m.activeReplicators
+func (m *sgReplicateManager) GetNumberActiveReplicators() int {
+	m.activeReplicatorsLock.Lock()
+	defer m.activeReplicatorsLock.Unlock()
+	return len(m.activeReplicators)
 }
 
 // RebalanceReplications distributes the set of defined replications across the set of available nodes
