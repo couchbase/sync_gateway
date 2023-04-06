@@ -3888,6 +3888,7 @@ func TestDisablePasswordAuthThroughAdminAPI(t *testing.T) {
 	config := rt.NewDbConfig()
 	dbName := "db"
 	res := rt.CreateDatabase(dbName, config)
+	rest.RequireStatus(t, res, http.StatusCreated)
 
 	config.DisablePasswordAuth = base.BoolPtr(true)
 	res = rt.UpsertDbConfig(dbName, config)
