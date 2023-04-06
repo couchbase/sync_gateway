@@ -41,6 +41,8 @@ type BootstrapConnection interface {
 	// TouchMetadataDocument sets the specified property in a bootstrap metadata document for a given bucket and key.  Used to
 	// trigger CAS update on the document, to block any racing updates. Does not retry on CAS failure.
 	TouchMetadataDocument(bucket, key string, property string, value string, cas uint64) (casOut uint64, err error)
+	// KeyExists checks whether the specified key exists
+	KeyExists(bucket, key string) (exists bool, err error)
 	// Close releases any long-lived connections
 	Close()
 }
@@ -376,6 +378,22 @@ func (cc *CouchbaseCluster) UpdateMetadataDocument(location, docID string, updat
 		return uint64(replaceCfgCasOut), nil
 	}
 
+}
+
+func (cc *CouchbaseCluster) KeyExists(location, docID string) (exists bool, err error) {
+	if cc == nil {
+		return false, errors.New("nil CouchbaseCluster")
+	}
+
+	b, teardown, err := cc.getBucket(location)
+
+	if err != nil {
+		return false, err
+	}
+
+	defer teardown()
+
+	return cc.configPersistence.keyExists(b.DefaultCollection(), docID)
 }
 
 // Close calls teardown for any cached buckets and removes from cachedBucketConnections

@@ -39,6 +39,8 @@ var _ ConfigManager = &bootstrapContext{}
 const configUpdateMaxRetryAttempts = 5 // Maximum number of retries due to conflicting updates or rollback
 const configFetchMaxRetryAttempts = 5  // Maximum number of retries due to registry rollback
 
+const defaultMetadataID = "_default"
+
 // GetConfig fetches a database name for a given bucket and config group ID.
 func (b *bootstrapContext) GetConfigName(bucketName, groupID, dbName string, configName *dbConfigNameOnly) (cas uint64, err error) {
 	return b.Connection.GetMetadataDocument(bucketName, PersistentConfigKey(groupID, dbName), configName)
@@ -71,6 +73,11 @@ func (b *bootstrapContext) InsertConfig(ctx context.Context, bucketName, groupID
 		}
 		if existingConfig != nil {
 			return 0, base.ErrAlreadyExists
+		}
+
+		// If metadataID is not set on the config, compute
+		if config.MetadataID == "" {
+			config.MetadataID = b.computeMetadataID(ctx, registry, &config.DbConfig)
 		}
 
 		// Step 2. Update the registry to add the config
@@ -131,6 +138,7 @@ func (b *bootstrapContext) UpdateConfig(ctx context.Context, bucketName, groupID
 	attempts := 0
 
 	ctx = b.addDatabaseLogContext(ctx, dbName)
+outer:
 	for attempts < configUpdateMaxRetryAttempts {
 		attempts++
 		base.InfofCtx(ctx, base.KeyConfig, "UpdateConfig starting (attempt %d/%d)", attempts, configUpdateMaxRetryAttempts)
@@ -186,7 +194,7 @@ func (b *bootstrapContext) UpdateConfig(ctx context.Context, bucketName, groupID
 		// Check for context cancel before retrying
 		select {
 		case <-ctx.Done():
-			break
+			break outer
 		default:
 		}
 	}
@@ -222,6 +230,7 @@ func (b *bootstrapContext) DeleteConfig(ctx context.Context, bucketName, groupID
 	var registry *GatewayRegistry
 	attempts := 0
 	ctx = b.addDatabaseLogContext(ctx, dbName)
+outer:
 	for attempts < configUpdateMaxRetryAttempts {
 		attempts++
 		base.InfofCtx(ctx, base.KeyConfig, "DeleteConfig starting (attempt %d/%d)", attempts, configUpdateMaxRetryAttempts)
@@ -258,7 +267,7 @@ func (b *bootstrapContext) DeleteConfig(ctx context.Context, bucketName, groupID
 		// Check for context cancel before retrying
 		select {
 		case <-ctx.Done():
-			break
+			break outer
 		default:
 		}
 	}
@@ -559,7 +568,7 @@ func (b *bootstrapContext) rollbackRegistry(ctx context.Context, bucketName, gro
 }
 
 // getGatewayRegistry returns the database registry document for the bucket
-func (b *bootstrapContext) getGatewayRegistry(ctx context.Context, bucketName string) (result *GatewayRegistry, err error) {
+func (b *bootstrapContext) getGatewayRegistry(_ context.Context, bucketName string) (result *GatewayRegistry, err error) {
 
 	registry := &GatewayRegistry{}
 	cas, getErr := b.Connection.GetMetadataDocument(bucketName, base.SGRegistryKey, registry)
@@ -677,5 +686,78 @@ func (b *bootstrapContext) getRegistryAndDatabase(ctx context.Context, bucketNam
 }
 
 func (b *bootstrapContext) addDatabaseLogContext(ctx context.Context, dbName string) context.Context {
-	return base.LogContextWith(ctx, &base.DatabaseLogContext{DatabaseName: dbName})
+	return base.DatabaseLogCtx(ctx, dbName)
+}
+
+func (b *bootstrapContext) ComputeMetadataIDForDbConfig(ctx context.Context, config *DbConfig) (string, error) {
+	bucketName := config.Bucket
+	if bucketName == nil {
+		return "", fmt.Errorf("No bucket defined in dbConfig, cannot compute metadataID")
+	}
+	registry, err := b.getGatewayRegistry(ctx, *bucketName)
+	if err != nil {
+		return "", err
+	}
+	metadataID := b.computeMetadataID(ctx, registry, config)
+	return metadataID, nil
+}
+
+// computeMetadataID determines whether the database should use the default metadata storage location (to support configurations upgrading with
+// existing sync metadata in the default collection).  The default metadataID is only used when all of the following
+// conditions are met:
+//  1. The default metadataID isn't already in use by another database
+//  2. The database includes _default._default
+//  3. The _default._default collection isn't already associated with a different metadata ID (_sync:syncInfo is not present)
+//  4. The _default._default collection has legacy data (_sync:seq is present)
+func (b *bootstrapContext) computeMetadataID(ctx context.Context, registry *GatewayRegistry, config *DbConfig) string {
+
+	standardMetadataID := b.standardMetadataID(config.Name)
+
+	// If the default metadata ID is already in use in the registry, use standard ID
+	for _, cg := range registry.ConfigGroups {
+		for _, db := range cg.Databases {
+			if db.MetadataID == defaultMetadataID {
+				return standardMetadataID
+			}
+		}
+	}
+
+	// If the database config doesn't include _default._default, use standard ID
+	if config.Scopes != nil {
+		defaultFound := false
+		for scopeName, scope := range config.Scopes {
+			for collectionName := range scope.Collections {
+				if base.IsDefaultCollection(scopeName, collectionName) {
+					defaultFound = true
+				}
+			}
+		}
+		if !defaultFound {
+			return standardMetadataID
+		}
+	}
+
+	// If _default._default is already associated with a metadataID, return standard metadata ID
+	bucketName := *config.Bucket
+	exists, err := b.Connection.KeyExists(bucketName, base.SGSyncInfo)
+	if err != nil {
+		base.WarnfCtx(ctx, "Error checking whether metadataID is already defined for default collection - using standard metadataID.  Error: %v", err)
+		return standardMetadataID
+	}
+	if exists {
+		return standardMetadataID
+	}
+
+	// If legacy _sync:seq doesn't exist, use the standard ID
+	legacySyncSeqExists, _ := b.Connection.KeyExists(bucketName, base.DefaultMetadataKeys.SyncSeqKey())
+	if !legacySyncSeqExists {
+		return standardMetadataID
+	}
+	return defaultMetadataID
+
+}
+
+// standardMetadataID returns either the dbName or a base64 encoded SHA256 hash of the dbName, whichever is shorter.
+func (b *bootstrapContext) standardMetadataID(dbName string) string {
+	return base.SerializeIfLonger(dbName, 40)
 }

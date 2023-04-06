@@ -16,8 +16,8 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -70,7 +70,7 @@ func (rt *RestTester) UpdateDoc(docID, revID, body string) (response PutDocRespo
 
 func (rt *RestTester) upsertDoc(docID string, body string) (response PutDocResponse) {
 
-	getResponse := rt.SendAdminRequest("GET", "/db/"+docID, "")
+	getResponse := rt.SendAdminRequest("GET", "/{{.db}}/"+docID, "")
 	if getResponse.Code == 404 {
 		return rt.PutDoc(docID, body)
 	}
@@ -79,7 +79,7 @@ func (rt *RestTester) upsertDoc(docID string, body string) (response PutDocRespo
 	revID, ok := getBody["revID"].(string)
 	require.True(rt.TB, ok)
 
-	rawResponse := rt.SendAdminRequest("PUT", "/db/"+docID+"?rev="+revID, body)
+	rawResponse := rt.SendAdminRequest("PUT", "/{{.db}}/"+docID+"?rev="+revID, body)
 	RequireStatus(rt.TB, rawResponse, 200)
 	require.NoError(rt.TB, base.JSONUnmarshal(rawResponse.Body.Bytes(), &response))
 	require.True(rt.TB, response.Ok)
@@ -128,20 +128,26 @@ func (rt *RestTester) WaitForCheckpointLastSequence(expectedName string) (string
 
 // createReplication creates a replication via the REST API with the specified ID, remoteURL, direction and channel filter
 func (rt *RestTester) CreateReplication(replicationID string, remoteURLString string, direction db.ActiveReplicatorDirection, channels []string, continuous bool, conflictResolver db.ConflictResolverType) {
+	rt.CreateReplicationForDB("{{.db}}", replicationID, remoteURLString, direction, channels, continuous, conflictResolver)
+}
+
+func (rt *RestTester) CreateReplicationForDB(dbName string, replicationID string, remoteURLString string, direction db.ActiveReplicatorDirection, channels []string, continuous bool, conflictResolver db.ConflictResolverType) {
 	replicationConfig := &db.ReplicationConfig{
 		ID:                     replicationID,
 		Direction:              direction,
 		Remote:                 remoteURLString,
 		Continuous:             continuous,
 		ConflictResolutionType: conflictResolver,
+		CollectionsEnabled:     base.TestsUseNamedCollections(),
 	}
+
 	if len(channels) > 0 {
 		replicationConfig.Filter = base.ByChannelFilter
 		replicationConfig.QueryParams = map[string]interface{}{"channels": channels}
 	}
 	payload, err := json.Marshal(replicationConfig)
 	require.NoError(rt.TB, err)
-	resp := rt.SendAdminRequest(http.MethodPost, "/db/_replication/", string(payload))
+	resp := rt.SendAdminRequest(http.MethodPost, "/"+dbName+"/_replication/", string(payload))
 	RequireStatus(rt.TB, resp, http.StatusCreated)
 }
 
@@ -153,30 +159,39 @@ func (rt *RestTester) WaitForAssignedReplications(count int) {
 	require.NoError(rt.TB, rt.WaitForCondition(successFunc))
 }
 
-func (rt *RestTester) WaitForReplicationStatus(replicationID string, targetStatus string) {
+func (rt *RestTester) WaitForReplicationStatusForDB(dbName string, replicationID string, targetStatus string) {
+	var status db.ReplicationStatus
 	successFunc := func() bool {
-		status := rt.GetReplicationStatus(replicationID)
+		status = rt.GetReplicationStatusForDB(dbName, replicationID)
 		return status.Status == targetStatus
 	}
-	require.NoError(rt.TB, rt.WaitForCondition(successFunc))
+	require.NoError(rt.TB, rt.WaitForCondition(successFunc), "Expected status: %s, actual status: %s", targetStatus, status.Status)
+}
+
+func (rt *RestTester) WaitForReplicationStatus(replicationID string, targetStatus string) {
+	rt.WaitForReplicationStatusForDB("{{.db}}", replicationID, targetStatus)
 }
 
 func (rt *RestTester) GetReplications() (replications map[string]db.ReplicationCfg) {
-	rawResponse := rt.SendAdminRequest("GET", "/db/_replication/", "")
+	rawResponse := rt.SendAdminRequest("GET", "/{{.db}}/_replication/", "")
 	RequireStatus(rt.TB, rawResponse, 200)
 	require.NoError(rt.TB, base.JSONUnmarshal(rawResponse.Body.Bytes(), &replications))
 	return replications
 }
 
 func (rt *RestTester) GetReplicationStatus(replicationID string) (status db.ReplicationStatus) {
-	rawResponse := rt.SendAdminRequest("GET", "/db/_replicationStatus/"+replicationID, "")
+	return rt.GetReplicationStatusForDB("{{.db}}", replicationID)
+}
+
+func (rt *RestTester) GetReplicationStatusForDB(dbName string, replicationID string) (status db.ReplicationStatus) {
+	rawResponse := rt.SendAdminRequest("GET", "/"+dbName+"/_replicationStatus/"+replicationID, "")
 	RequireStatus(rt.TB, rawResponse, 200)
 	require.NoError(rt.TB, base.JSONUnmarshal(rawResponse.Body.Bytes(), &status))
 	return status
 }
 
 func (rt *RestTester) GetReplicationStatuses(queryString string) (statuses []db.ReplicationStatus) {
-	rawResponse := rt.SendAdminRequest("GET", "/db/_replicationStatus/"+queryString, "")
+	rawResponse := rt.SendAdminRequest("GET", "/{{.db}}/_replicationStatus/"+queryString, "")
 	RequireStatus(rt.TB, rawResponse, 200)
 	require.NoError(rt.TB, base.JSONUnmarshal(rawResponse.Body.Bytes(), &statuses))
 	return statuses
@@ -195,35 +210,36 @@ func (rt *RestTester) GetReplicationStatuses(queryString string) (statuses []db.
 func SetupSGRPeers(t *testing.T) (activeRT *RestTester, passiveRT *RestTester, remoteDBURLString string, teardown func()) {
 	// Set up passive RestTester (rt2)
 	passiveTestBucket := base.GetTestBucket(t)
-	passiveRT = NewRestTesterDefaultCollection(t, // TODO: CBG-2491: make collection aware
-		&RestTesterConfig{
-			CustomTestBucket: passiveTestBucket.NoCloseClone(),
-			DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
-				Users: map[string]*auth.PrincipalConfig{
-					"alice": {
-						Password:         base.StringPtr("pass"),
-						ExplicitChannels: base.SetOf("*"),
-					},
-				},
-			}},
-		})
-	// Initalize RT and bucket
-	_ = passiveRT.Bucket()
+
+	passiveRTConfig := &RestTesterConfig{
+		CustomTestBucket: passiveTestBucket.NoCloseClone(),
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
+			Name: "passivedb",
+		}},
+		SyncFn: channels.DocChannelsSyncFunction,
+	}
+	passiveRT = NewRestTester(t, passiveRTConfig)
+	response := passiveRT.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/alice", GetUserPayload(t, "", RestTesterDefaultUserPassword, "", passiveRT.GetSingleTestDatabaseCollection(), []string{"*"}, nil))
+	RequireStatus(t, response, http.StatusCreated)
 
 	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1
 	srv := httptest.NewServer(passiveRT.TestPublicHandler())
 
 	// Build passiveDBURL with basic auth creds
-	passiveDBURL, _ := url.Parse(srv.URL + "/db")
-	passiveDBURL.User = url.UserPassword("alice", "pass")
+	passiveDBURL, _ := url.Parse(srv.URL + "/" + passiveRT.GetDatabase().Name)
+	passiveDBURL.User = url.UserPassword("alice", RestTesterDefaultUserPassword)
 
 	// Set up active RestTester (rt1)
 	activeTestBucket := base.GetTestBucket(t)
-	activeRT = NewRestTesterDefaultCollection(t, // TODO: CBG-2491: make collection aware
-		&RestTesterConfig{
-			CustomTestBucket:   activeTestBucket.NoCloseClone(),
-			SgReplicateEnabled: true,
-		})
+	activeRTConfig := &RestTesterConfig{
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
+			Name: "activedb",
+		}},
+		CustomTestBucket:   activeTestBucket.NoCloseClone(),
+		SgReplicateEnabled: true,
+		SyncFn:             channels.DocChannelsSyncFunction,
+	}
+	activeRT = NewRestTester(t, activeRTConfig)
 	// Initalize RT and bucket
 	_ = activeRT.Bucket()
 

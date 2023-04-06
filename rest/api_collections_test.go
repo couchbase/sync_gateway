@@ -457,11 +457,11 @@ func TestMultiCollectionDynamicChannelAccess(t *testing.T) {
       }
    }`
 	// Create a few users without any channel access
-	resp := rt.SendAdminRequest("PUT", "/db/_user/alice", fmt.Sprintf(userPayload, dataStoreNames[0].ScopeName(), dataStoreNames[0], `[]`))
+	resp := rt.SendAdminRequest("PUT", "/db/_user/alice", fmt.Sprintf(userPayload, dataStoreNames[0].ScopeName(), dataStoreNames[0].CollectionName(), `[]`))
 	RequireStatus(t, resp, http.StatusCreated)
-	resp = rt.SendAdminRequest("PUT", "/db/_user/bob", fmt.Sprintf(userPayload, dataStoreNames[0].ScopeName(), dataStoreNames[0], `[]`))
+	resp = rt.SendAdminRequest("PUT", "/db/_user/bob", fmt.Sprintf(userPayload, dataStoreNames[0].ScopeName(), dataStoreNames[0].CollectionName(), `[]`))
 	RequireStatus(t, resp, http.StatusCreated)
-	resp = rt.SendAdminRequest("PUT", "/db/_user/abby", fmt.Sprintf(userPayload, dataStoreNames[0].ScopeName(), dataStoreNames[0], `[]`))
+	resp = rt.SendAdminRequest("PUT", "/db/_user/abby", fmt.Sprintf(userPayload, dataStoreNames[0].ScopeName(), dataStoreNames[0].CollectionName(), `[]`))
 	RequireStatus(t, resp, http.StatusCreated)
 
 	// Write docs in each collection that runs the per-collection sync functions that grant users access to various channels

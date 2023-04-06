@@ -46,7 +46,7 @@ func NewID(channelName string, collectionID uint32) ID {
 	return ID{
 		Name:          channelName,
 		CollectionID:  collectionID,
-		serialization: strconv.FormatUint(uint64(collectionID), 10) + "." + channelName,
+		serialization: strconv.FormatUint(uint64(collectionID), 10) + "." + base.UserDataPrefix + channelName + base.UserDataSuffix,
 	}
 }
 
@@ -160,10 +160,44 @@ func (s Set) Contains(ch ID) bool {
 
 // Convert to String(), necessary for logging.
 func (s Set) String() string {
-	keys := make([]string, len(s))
+	keys := make([]string, 0, len(s))
 	for ch := range s {
 		keys = append(keys, ch.String())
 	}
 	sort.Strings(keys)
 	return fmt.Sprintf("{%s}", strings.Join(keys, ", "))
+}
+
+func (s Set) BuildRedactor(function func(interface{}) base.RedactorFunc) base.Redactor {
+	return RedactorSet{
+		set:          s,
+		redactorFunc: function,
+	}
+}
+
+type RedactorSet struct {
+	set          Set
+	redactorFunc func(interface{}) base.RedactorFunc
+}
+
+func (redactorSet RedactorSet) Redact() string {
+	return redactorSet.GetRedactionString(true)
+}
+
+func (redactorSet RedactorSet) String() string {
+	return redactorSet.GetRedactionString(false)
+}
+
+func (redactorSet RedactorSet) GetRedactionString(shouldRedact bool) string {
+	tmp := []byte("{")
+	iterationCount := 0
+	for setItem, _ := range redactorSet.set {
+		tmp = append(tmp, redactorSet.redactorFunc(setItem).String()...)
+		iterationCount++
+		if iterationCount != len(redactorSet.set) {
+			tmp = append(tmp, ", "...)
+		}
+	}
+
+	return string(append(tmp, "}"...))
 }

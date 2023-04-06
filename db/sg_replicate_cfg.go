@@ -43,6 +43,7 @@ const (
 	ReplicationStateResetting    = "resetting"
 	ReplicationStateError        = "error"
 	ReplicationStateStarting     = "starting"
+	ReplicationStateUnassigned   = "unassigned"
 )
 
 // Replication config validation error messages
@@ -238,7 +239,7 @@ func (rc *ReplicationConfig) ValidateReplication(fromConfig bool) (err error) {
 			return base.HTTPErrorf(http.StatusBadRequest, ConfigErrorMissingQueryParams)
 		}
 
-		_, invalidChannelsErr := ChannelsFromQueryParams(rc.QueryParams)
+		invalidChannelsErr := rc.validateFilteredChannels()
 		if invalidChannelsErr != nil {
 			return invalidChannelsErr
 		}
@@ -247,6 +248,11 @@ func (rc *ReplicationConfig) ValidateReplication(fromConfig bool) (err error) {
 		return base.HTTPErrorf(http.StatusBadRequest, ConfigErrorUnknownFilter)
 	}
 	return nil
+}
+
+func (rc *ReplicationConfig) validateFilteredChannels() error {
+	_, _, err := CollectionChannelsFromQueryParams(rc.CollectionsLocal, rc.QueryParams)
+	return err
 }
 
 // Upsert updates ReplicationConfig with any non-empty properties specified in the incoming replication config.
@@ -478,7 +484,7 @@ func NewSGReplicateManager(ctx context.Context, dbContext *DatabaseContext, cfg 
 
 	return &sgReplicateManager{
 		cfg:                        cfg,
-		loggingCtx:                 base.LogContextWith(ctx, &base.LogContext{CorrelationID: sgrClusterMgrContextID + dbContext.Name}),
+		loggingCtx:                 base.CorrelationIDLogCtx(ctx, sgrClusterMgrContextID),
 		clusterUpdateTerminator:    make(chan struct{}),
 		clusterSubscribeTerminator: make(chan struct{}),
 		dbContext:                  dbContext,
@@ -591,8 +597,7 @@ func (m *sgReplicateManager) NewActiveReplicatorConfig(config *ReplicationCfg) (
 	// Channel filter processing
 	if config.Filter == base.ByChannelFilter {
 		rc.Filter = base.ByChannelFilter
-		rc.FilterChannels, err = ChannelsFromQueryParams(config.QueryParams)
-		if err != nil {
+		if err := rc.setFilterChannels(config); err != nil {
 			return nil, err
 		}
 	}
@@ -644,6 +649,11 @@ func (m *sgReplicateManager) NewActiveReplicatorConfig(config *ReplicationCfg) (
 	return rc, nil
 }
 
+func (rc *ActiveReplicatorConfig) setFilterChannels(config *ReplicationCfg) (err error) {
+	rc.CollectionsChannelFilter, rc.FilterChannels, err = CollectionChannelsFromQueryParams(config.CollectionsLocal, config.QueryParams)
+	return err
+}
+
 func (m *sgReplicateManager) isCfgChanged(newCfg *ReplicationCfg, activeCfg *ActiveReplicatorConfig) (bool, error) {
 	newConfig, err := m.NewActiveReplicatorConfig(newCfg)
 	if err != nil {
@@ -689,9 +699,7 @@ func (m *sgReplicateManager) InitializeReplication(config *ReplicationCfg) (repl
 	// disable recovered panic reporting (test only)
 	rc.reportHandlerPanicsOnStop = base.BoolPtr(false)
 
-	replicator = NewActiveReplicator(m.loggingCtx, rc)
-
-	return replicator, nil
+	return NewActiveReplicator(m.loggingCtx, rc)
 }
 
 // replicationComplete updates the replication status.
@@ -988,7 +996,9 @@ func (m *sgReplicateManager) GetReplication(replicationID string) (*ReplicationC
 	}
 
 	// TODO: remove the local/non-local handling below when CBG-909 is completed
-	if replication.AssignedNode == m.localNodeUUID {
+	if replication.AssignedNode == "" {
+		return replication, nil
+	} else if replication.AssignedNode == m.localNodeUUID {
 		replication.AssignedNode = replication.AssignedNode + " (local)"
 	} else {
 		replication.AssignedNode = replication.AssignedNode + " (non-local)"
@@ -1210,6 +1220,9 @@ func (c *SGRCluster) RebalanceReplications() {
 
 	// If there aren't any nodes available, there's nothing more to be done
 	if len(c.Nodes) == 0 {
+		for _, v := range unassignedReplications {
+			base.WarnfCtx(c.loggingCtx, "Replication %s does not have an assigned node.", v.ID)
+		}
 		return
 	}
 
@@ -1302,6 +1315,25 @@ type PushReplicationStatus struct {
 	DeltasSent       int64  `json:"deltas_sent,omitempty"`
 }
 
+// ReplicationStatusDoc is used to store the replication status in a local document
+type ReplicationStatusDoc struct {
+	Rev    string             `json:"_rev"`
+	Status *ReplicationStatus `json:"status,omitempty"`
+}
+
+const (
+	replicationStatusBodyRev    = "_rev"
+	replicationStatusBodyStatus = "status"
+)
+
+// AsBody returns a Body representation of ReplicationStatusDoc for use with putSpecial
+func (r *ReplicationStatusDoc) AsBody() Body {
+	return Body{
+		replicationStatusBodyRev:    r.Rev,
+		replicationStatusBodyStatus: r.Status,
+	}
+}
+
 // Add adds the value of all counter stats in other to ReplicationStatus
 func (rs *PullReplicationStatus) Add(other PullReplicationStatus) {
 	if rs == nil {
@@ -1362,7 +1394,7 @@ func (m *sgReplicateManager) GetReplicationStatus(replicationID string, options 
 	} else {
 		// Attempt to retrieve persisted status
 		var loadErr error
-		status, loadErr = LoadReplicationStatus(m.dbContext, replicationID)
+		status, loadErr = LoadReplicationStatus(m.loggingCtx, m.dbContext, replicationID)
 		if loadErr != nil {
 			// Unable to load persisted status.  Create status stub based on config
 			var err error
@@ -1370,9 +1402,16 @@ func (m *sgReplicateManager) GetReplicationStatus(replicationID string, options 
 			if err != nil {
 				return nil, err
 			}
-			status = &ReplicationStatus{
-				ID:     replicationID,
-				Status: remoteCfg.TargetState,
+			if remoteCfg.AssignedNode == "" {
+				status = &ReplicationStatus{
+					ID:     replicationID,
+					Status: ReplicationStateUnassigned,
+				}
+			} else {
+				status = &ReplicationStatus{
+					ID:     replicationID,
+					Status: remoteCfg.TargetState,
+				}
 			}
 		}
 	}

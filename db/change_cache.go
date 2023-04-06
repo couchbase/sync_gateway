@@ -184,13 +184,13 @@ func (c *changeCache) Init(logCtx context.Context, dbContext *DatabaseContext, c
 	heap.Init(&c.pendingLogs)
 
 	// background tasks that perform housekeeping duties on the cache
-	bgt, err := NewBackgroundTask("InsertPendingEntries", c.db.Name, c.InsertPendingEntries, c.options.CachePendingSeqMaxWait/2, c.terminator)
+	bgt, err := NewBackgroundTask(c.logCtx, "InsertPendingEntries", c.InsertPendingEntries, c.options.CachePendingSeqMaxWait/2, c.terminator)
 	if err != nil {
 		return err
 	}
 	c.backgroundTasks = append(c.backgroundTasks, bgt)
 
-	bgt, err = NewBackgroundTask("CleanSkippedSequenceQueue", c.db.Name, c.CleanSkippedSequenceQueue, c.options.CacheSkippedSeqMaxWait/2, c.terminator)
+	bgt, err = NewBackgroundTask(c.logCtx, "CleanSkippedSequenceQueue", c.CleanSkippedSequenceQueue, c.options.CacheSkippedSeqMaxWait/2, c.terminator)
 	if err != nil {
 		return err
 	}
@@ -559,17 +559,18 @@ func (c *changeCache) releaseUnusedSequence(sequence uint64, timeReceived time.T
 // Process unused sequence notification.  Extracts sequence from docID and sends to cache for buffering
 func (c *changeCache) processUnusedSequenceRange(docID string) {
 	// _sync:unusedSequences:fromSeq:toSeq
-	sequences := strings.Split(docID, ":")
-	if len(sequences) != 4 {
+	sequencesStr := strings.TrimPrefix(docID, c.metaKeys.UnusedSeqRangePrefix())
+	sequences := strings.Split(sequencesStr, ":")
+	if len(sequences) != 2 {
 		return
 	}
 
-	fromSequence, err := strconv.ParseUint(sequences[2], 10, 64)
+	fromSequence, err := strconv.ParseUint(sequences[0], 10, 64)
 	if err != nil {
 		base.WarnfCtx(c.logCtx, "Unable to identify from sequence number for unused sequences notification with key: %s, error:", base.UD(docID), err)
 		return
 	}
-	toSequence, err := strconv.ParseUint(sequences[3], 10, 64)
+	toSequence, err := strconv.ParseUint(sequences[1], 10, 64)
 	if err != nil {
 		base.WarnfCtx(c.logCtx, "Unable to identify to sequence number for unused sequence notification with key: %s, error:", base.UD(docID), err)
 		return

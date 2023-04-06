@@ -74,6 +74,12 @@ func (h *handler) handleCreateDB() error {
 			bucket = *config.Bucket
 		}
 
+		metadataID, metadataIDError := h.server.BootstrapContext.ComputeMetadataIDForDbConfig(h.ctx(), config)
+		if metadataIDError != nil {
+			base.WarnfCtx(h.ctx(), "Unable to compute metadata ID - using standard metadataID.  Error: %v", metadataIDError)
+			metadataID = h.server.BootstrapContext.standardMetadataID(config.Name)
+		}
+
 		// copy config before setup to persist the raw config the user supplied
 		var persistedDbConfig DbConfig
 		if err := base.DeepCopyInefficient(&persistedDbConfig, config); err != nil {
@@ -86,9 +92,17 @@ func (h *handler) handleCreateDB() error {
 			return err
 		}
 
-		loadedConfig := DatabaseConfig{Version: version, DbConfig: *config}
+		loadedConfig := DatabaseConfig{
+			Version:    version,
+			MetadataID: metadataID,
+			DbConfig:   *config}
 
-		persistedConfig := DatabaseConfig{Version: version, DbConfig: persistedDbConfig, SGVersion: base.ProductVersion.String()}
+		persistedConfig := DatabaseConfig{
+			Version:    version,
+			MetadataID: metadataID,
+			DbConfig:   persistedDbConfig,
+			SGVersion:  base.ProductVersion.String(),
+		}
 
 		h.server.lock.Lock()
 		defer h.server.lock.Unlock()
@@ -160,11 +174,11 @@ func getAuthScopeHandleCreateDB(bodyJSON []byte) (string, error) {
 	var body struct {
 		Bucket string `json:"bucket"`
 	}
-	err := base.JSONUnmarshal(bodyJSON, &body)
+	reader := bytes.NewReader(bodyJSON)
+	err := DecodeAndSanitiseConfig(reader, &body, false)
 	if err != nil {
 		return "", err
 	}
-
 	if body.Bucket == "" {
 		return "", nil
 	}
@@ -518,7 +532,13 @@ func (h *handler) handlePutDbConfig() (err error) {
 
 	if !h.server.persistentConfig {
 		updatedDbConfig := &DatabaseConfig{DbConfig: *dbConfig}
-		err = updatedDbConfig.validate(h.ctx(), validateOIDC)
+		err := updatedDbConfig.validate(h.ctx(), validateOIDC)
+		if err != nil {
+			return base.HTTPErrorf(http.StatusBadRequest, err.Error())
+		}
+		oldDBConfig := h.server.GetDatabaseConfig(h.db.Name).DatabaseConfig.DbConfig
+		err = updatedDbConfig.validateConfigUpdate(h.ctx(), oldDBConfig,
+			validateOIDC)
 		if err != nil {
 			return base.HTTPErrorf(http.StatusBadRequest, err.Error())
 		}
@@ -924,7 +944,7 @@ func (h *handler) handlePutCollectionConfigImportFilter() error {
 // In non-persistent mode, the endpoint just removes the database from the node.
 func (h *handler) handleDeleteDB() error {
 	h.assertAdminOnly()
-	dbName := h.PathVar("olddb")
+	dbName := h.PathVar("db")
 
 	var bucket string
 
@@ -1035,6 +1055,7 @@ type DatabaseStatus struct {
 	SequenceNumber    uint64                  `json:"seq"`
 	ServerUUID        string                  `json:"server_uuid"`
 	State             string                  `json:"state"`
+	RequireResync     []string                `json:"require_resync"`
 	ReplicationStatus []*db.ReplicationStatus `json:"replication_status"`
 	SGRCluster        *db.SGRCluster          `json:"cluster"`
 }
@@ -1085,6 +1106,7 @@ func (h *handler) handleGetStatus() error {
 			ServerUUID:        database.ServerUUID,
 			ReplicationStatus: replicationsStatus,
 			SGRCluster:        cluster,
+			RequireResync:     database.RequireResync.ScopeAndCollectionNames(),
 		}
 	}
 
@@ -1216,7 +1238,8 @@ func externalUserName(name string) string {
 	return name
 }
 
-func marshalPrincipal(princ auth.Principal, includeDynamicGrantInfo bool) auth.PrincipalConfig {
+// marshalPrincipal outputs a PrincipalConfig in a format for REST API endpoints.
+func marshalPrincipal(database *db.Database, princ auth.Principal, includeDynamicGrantInfo bool) auth.PrincipalConfig {
 	name := externalUserName(princ.Name())
 	info := auth.PrincipalConfig{
 		Name:             &name,
@@ -1224,11 +1247,16 @@ func marshalPrincipal(princ auth.Principal, includeDynamicGrantInfo bool) auth.P
 	}
 
 	collectionAccess := princ.GetCollectionsAccess()
-	if collectionAccess != nil {
+	if collectionAccess != nil && !database.OnlyDefaultCollection() {
 		info.CollectionAccess = make(map[string]map[string]*auth.CollectionAccessConfig)
 		for scopeName, scope := range collectionAccess {
 			scopeAccessConfig := make(map[string]*auth.CollectionAccessConfig)
 			for collectionName, collection := range scope {
+				_, err := database.GetDatabaseCollection(scopeName, collectionName)
+				// collection doesn't exist anymore, but did at some point
+				if err != nil {
+					continue
+				}
 				collectionAccessConfig := &auth.CollectionAccessConfig{
 					ExplicitChannels_: collection.ExplicitChannels().AsSet(),
 				}
@@ -1371,7 +1399,7 @@ func (h *handler) getUserInfo() error {
 	}
 	// If not specified will default to false
 	includeDynamicGrantInfo := h.permissionsResults[PermReadPrincipalAppData.PermissionName]
-	info := marshalPrincipal(user, includeDynamicGrantInfo)
+	info := marshalPrincipal(h.db, user, includeDynamicGrantInfo)
 	// If the user's OIDC issuer is no longer valid, remove the OIDC information to avoid confusing users
 	// (it'll get removed permanently the next time the user signs in)
 	if info.JWTIssuer != nil {
@@ -1405,7 +1433,7 @@ func (h *handler) getRoleInfo() error {
 	}
 	// If not specified will default to false
 	includeDynamicGrantInfo := h.permissionsResults[PermReadPrincipalAppData.PermissionName]
-	info := marshalPrincipal(role, includeDynamicGrantInfo)
+	info := marshalPrincipal(h.db, role, includeDynamicGrantInfo)
 	bytes, err := base.JSONMarshal(info)
 	_, _ = h.response.Write(bytes)
 	return err
@@ -1656,5 +1684,53 @@ func (h *handler) putReplicationStatus() error {
 		return err
 	}
 	h.writeJSON(updatedStatus)
+	return nil
+}
+
+// Cluster information, returned by _cluster_info API request
+type ClusterInfo struct {
+	LegacyConfig bool                  `json:"legacy_config,omitempty"`
+	Buckets      map[string]BucketInfo `json:"buckets,omitempty"`
+}
+
+type BucketInfo struct {
+	Registry GatewayRegistry `json:"registry,omitempty"`
+}
+
+// Get SG cluster information.  Iterates over all buckets associated with the server, and returns cluster
+// information (registry) for each
+func (h *handler) handleGetClusterInfo() error {
+
+	// If not using persistent config, returns legacy_config:true
+	if h.server.persistentConfig == false {
+		clusterInfo := ClusterInfo{
+			LegacyConfig: true,
+		}
+		h.writeJSON(clusterInfo)
+		return nil
+	}
+
+	clusterInfo := ClusterInfo{
+		Buckets: make(map[string]BucketInfo),
+	}
+
+	bucketNames, err := h.server.GetBucketNames()
+	if err != nil {
+		return err
+	}
+
+	for _, bucketName := range bucketNames {
+		registry, err := h.server.BootstrapContext.getGatewayRegistry(h.ctx(), bucketName)
+		if err != nil {
+			base.InfofCtx(h.ctx(), base.KeyAll, "Unable to retrieve registry for bucket %s during getClusterInfo: %v", base.MD(bucketName), err)
+			continue
+		}
+
+		bucketInfo := BucketInfo{
+			Registry: *registry,
+		}
+		clusterInfo.Buckets[bucketName] = bucketInfo
+	}
+	h.writeJSON(clusterInfo)
 	return nil
 }

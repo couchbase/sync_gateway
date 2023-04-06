@@ -512,3 +512,15 @@ func TestBucketSpecIsWalrusBucket(t *testing.T) {
 	}
 
 }
+
+func TestKeyNotFound(t *testing.T) {
+	bucket := GetTestBucket(t)
+	defer bucket.Close()
+	ds := bucket.GetSingleDataStore()
+	var body []byte
+	_, getErr := ds.Get("nonexistentKey", &body)
+	require.True(t, IsKeyNotFoundError(ds, getErr))
+
+	_, _, getRawErr := ds.GetRaw("nonexistentKey")
+	require.True(t, IsKeyNotFoundError(ds, getRawErr))
+}

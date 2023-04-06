@@ -47,6 +47,7 @@ var ErrCfgCasError = &cbgt.CfgCASError{}
 func NewCfgSG(datastore sgbucket.DataStore, keyPrefix string) (*CfgSG, error) {
 
 	cfgContextID := MD(datastore.GetName()).Redact() + "-cfgSG"
+	// should this inherit DB context?
 	loggingCtx := LogContextWith(context.Background(), &LogContext{CorrelationID: cfgContextID})
 
 	c := &CfgSG{

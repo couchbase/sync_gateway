@@ -20,7 +20,6 @@ import (
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/couchbase/sync_gateway/channels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -358,7 +357,7 @@ var viewsAndGSIBucketInit base.TBPBucketInitFunc = func(ctx context.Context, b b
 			NumReplicas:     0,
 			FailFast:        false,
 			Serverless:      false,
-			MetadataIndexes: IndexesAll,
+			MetadataIndexes: IndexesWithoutMetadata,
 		}
 		dsName, ok := base.AsDataStoreName(dataStore)
 		if !ok {
@@ -367,7 +366,7 @@ var viewsAndGSIBucketInit base.TBPBucketInitFunc = func(ctx context.Context, b b
 			return err
 		}
 		if base.IsDefaultCollection(dsName.ScopeName(), dsName.CollectionName()) {
-			options.MetadataIndexes = IndexesMetadataOnly
+			options.MetadataIndexes = IndexesAll
 		}
 		if err := InitializeIndexes(ctx, n1qlStore, options); err != nil {
 			return err
@@ -393,7 +392,7 @@ func viewBucketReadier(ctx context.Context, dataStore base.DataStore, tbp *base.
 		return err
 	}
 
-	for ddocName, _ := range ddocs {
+	for ddocName := range ddocs {
 		tbp.Logf(ctx, "removing existing view: %s", ddocName)
 		if err := viewStore.DeleteDDoc(ddocName); err != nil {
 			return err
@@ -436,11 +435,11 @@ func SuspendSequenceBatching() func() {
 
 // Public channel view call - for unit test support
 func (dbc *DatabaseContext) ChannelViewForTest(tb testing.TB, channelName string, startSeq, endSeq uint64) (LogEntries, error) {
-	channel := channels.ID{
-		Name:         channelName,
-		CollectionID: dbc.GetSingleDatabaseCollection().GetCollectionID(),
+	collection, err := dbc.GetDefaultDatabaseCollection()
+	if err != nil {
+		return nil, err
 	}
-	return dbc.getChangesInChannelFromQuery(base.TestCtx(tb), channel, startSeq, endSeq, 0, false)
+	return collection.getChangesInChannelFromQuery(base.TestCtx(tb), channelName, startSeq, endSeq, 0, false)
 }
 
 // Test-only version of GetPrincipal that doesn't trigger channel/role recalculation
@@ -472,8 +471,8 @@ func (dbc *DatabaseContext) GetPrincipalForTest(tb testing.TB, name string, isUs
 }
 
 // TestBucketPoolWithIndexes runs a TestMain for packages that require creation of indexes
-func TestBucketPoolWithIndexes(m *testing.M, memWatermarkThresholdMB uint64) {
-	base.TestBucketPoolMain(m, viewsAndGSIBucketReadier, viewsAndGSIBucketInit, memWatermarkThresholdMB)
+func TestBucketPoolWithIndexes(m *testing.M, tbpOptions base.TestBucketPoolOptions) {
+	base.TestBucketPoolMain(m, viewsAndGSIBucketReadier, viewsAndGSIBucketInit, tbpOptions)
 }
 
 // Parse the plan looking for use of the fetch operation (appears as the key/value pair "#operator":"Fetch")
@@ -592,7 +591,7 @@ func GetSingleDatabaseCollectionWithUser(tb testing.TB, database *Database) *Dat
 }
 
 func GetSingleDatabaseCollection(tb testing.TB, database *DatabaseContext) *DatabaseCollection {
-	require.Equal(tb, 1, len(database.CollectionByID), "Database must only have a single collection configured")
+	require.Equal(tb, 1, len(database.CollectionByID), fmt.Sprintf("Database must only have a single collection configured has %d", len(database.CollectionByID)))
 	for _, collection := range database.CollectionByID {
 		return collection
 	}

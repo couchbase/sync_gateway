@@ -62,3 +62,29 @@ func TestMetaKeyNames(t *testing.T) {
 		assert.False(t, strings.HasPrefix(metaKeyName, MetadataIdPrefix))
 	}
 }
+
+func TestMetadataKeyHash(t *testing.T) {
+	defaultMetadataKeys := NewMetadataKeys("")
+	customMetadataKeys := NewMetadataKeys("foo")
+
+	// normal user name
+	bob := "bob"
+	require.Equal(t, "_sync:user:bob", defaultMetadataKeys.UserKey(bob))
+	require.Equal(t, "_sync:user:foo:bob", customMetadataKeys.UserKey(bob))
+
+	// username one less than hash length
+	user39 := strings.Repeat("b", 39)
+	require.Equal(t, "_sync:user:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", defaultMetadataKeys.UserKey(user39))
+	require.Equal(t, "_sync:user:foo:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", customMetadataKeys.UserKey(user39))
+
+	// username equal to hash length
+	user40 := strings.Repeat("b", 40)
+	require.Equal(t, "_sync:user:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", defaultMetadataKeys.UserKey(user40))
+	require.Equal(t, "_sync:user:foo:56e892b750b146f39a486af8c31d555e9c771b3e", customMetadataKeys.UserKey(user40))
+
+	// make sure hashed user won't get rehashed
+	hashedUser := "56e892b750b146f39a486af8c31d555e9c771b3e"
+	require.Equal(t, "_sync:user:56e892b750b146f39a486af8c31d555e9c771b3e", defaultMetadataKeys.UserKey(hashedUser))
+	require.Equal(t, "_sync:user:foo:afbf3a596bfe3e6687240e011bfccafd51611052", customMetadataKeys.UserKey(hashedUser))
+
+}

@@ -1,0 +1,98 @@
+# Copyright 2022-Present Couchbase, Inc.
+#
+# Use of this software is governed by the Business Source License included
+# in the file licenses/BSL-Couchbase.txt.  As of the Change Date specified
+# in that file, in accordance with the Business Source License, use of this
+# software will be governed by the Apache License, Version 2.0, included in
+# the file licenses/APL2.txt.
+
+parameters:
+  - $ref: ../../components/parameters.yaml#/keyspace
+get:
+  summary: Get database sync function
+  description: |-
+    This returns the database's sync function.
+
+    Response will be blank if there has been no sync function set.
+
+    Required Sync Gateway RBAC roles:
+
+    * Sync Gateway Architect
+  responses:
+    '200':
+      description: Successfully retrieved the sync function
+      headers:
+        Etag:
+          schema:
+            type: string
+          description: The database configuration revision.
+      content:
+        application/javascript:
+          schema:
+            type: string
+          example: |-
+            function (doc, oldDoc) {
+              channel(doc.channels);
+            }
+    '404':
+      $ref: ../../components/responses.yaml#/Not-found
+  tags:
+    - Database Configuration
+put:
+  summary: Set database sync function
+  description: |-
+    This will allow you to update the sync function.
+
+    Required Sync Gateway RBAC roles:
+
+    * Sync Gateway Architect
+  parameters:
+    - $ref: ../../components/parameters.yaml#/DB-config-If-Match
+    - $ref: ../../components/parameters.yaml#/disable_oidc_validation
+  requestBody:
+    description: The new sync function to use
+    content:
+      application/javascript:
+        schema:
+          type: string
+        example: |-
+          function (doc, oldDoc) {
+            channel(doc.channels);
+          }
+  responses:
+    '200':
+      description: Updated sync function successfully
+    '400':
+      $ref: ../../components/responses.yaml#/request-problem
+    '404':
+      $ref: ../../components/responses.yaml#/Not-found
+    '412':
+      $ref: ../../components/responses.yaml#/DB-config-precondition-failed
+  tags:
+    - Database Configuration
+delete:
+  summary: Remove custom sync function
+  description: |-
+    This will remove the custom sync function from the database configuration.
+
+    The default sync function is equivalent to:
+    ```javascript
+    function (doc) {
+      channel(doc.channels);
+    }
+    ```
+
+    Required Sync Gateway RBAC roles:
+
+    * Sync Gateway Architect
+  parameters:
+    - $ref: ../../components/parameters.yaml#/If-Match
+  responses:
+    '200':
+      description: Successfully reset the sync function
+    '404':
+      $ref: ../../components/responses.yaml#/Not-found
+    '412':
+      $ref: ../../components/responses.yaml#/DB-config-precondition-failed
+  tags:
+    - Database Configuration

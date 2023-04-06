@@ -183,13 +183,11 @@ func InitScenario(t *testing.T, rtConfig *RestTesterConfig) (ChannelRevocationTe
 		rtConfig = &RestTesterConfig{
 			SyncFn: defaultSyncFn,
 		}
-	} else {
-		if rtConfig.SyncFn == "" {
-			rtConfig.SyncFn = defaultSyncFn
-		}
+	} else if rtConfig.SyncFn == "" {
+		rtConfig.SyncFn = defaultSyncFn
 	}
 
-	rt := NewRestTesterDefaultCollection(t, rtConfig) //  CBG-2319: replicator currently requires default collection
+	rt := NewRestTester(t, rtConfig)
 
 	revocationTester := ChannelRevocationTester{
 		test:       t,
@@ -1484,9 +1482,10 @@ func TestReplicatorRevocations(t *testing.T) {
 	defer rt2.Close()
 
 	// Active
-	rt1 := NewRestTesterDefaultCollection(t, //  CBG-2319: replicator currently requires default collection
+	rt1 := NewRestTester(t,
 		&RestTesterConfig{
 			CustomTestBucket: base.GetTestBucket(t),
+			SyncFn:           channels.DocChannelsSyncFunction,
 		})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
@@ -1509,7 +1508,7 @@ func TestReplicatorRevocations(t *testing.T) {
 	dbstats, err := sgwStats.DBReplicatorStats(t.Name())
 	require.NoError(t, err)
 
-	ar := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
+	ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 		ID:          t.Name(),
 		Direction:   db.ActiveReplicatorTypePull,
 		RemoteDBURL: passiveDBURL,
@@ -1519,7 +1518,9 @@ func TestReplicatorRevocations(t *testing.T) {
 		Continuous:          false,
 		PurgeOnRemoval:      true,
 		ReplicationStatsMap: dbstats,
+		CollectionsEnabled:  base.TestsUseNamedCollections(),
 	})
+	require.NoError(t, err)
 
 	require.NoError(t, ar.Start(ctx1))
 	rt1.WaitForReplicationStatus(t.Name(), db.ReplicationStateStopped)
@@ -1544,9 +1545,10 @@ func TestReplicatorRevocationsNoRev(t *testing.T) {
 	defer rt2.Close()
 
 	// Active
-	rt1 := NewRestTesterDefaultCollection(t, //  CBG-2319: replicator currently requires default collection
+	rt1 := NewRestTester(t,
 		&RestTesterConfig{
 			CustomTestBucket: base.GetTestBucket(t),
+			SyncFn:           channels.DocChannelsSyncFunction,
 		})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
@@ -1568,7 +1570,7 @@ func TestReplicatorRevocationsNoRev(t *testing.T) {
 	dbstats, err := sgwStats.DBReplicatorStats(t.Name())
 	require.NoError(t, err)
 
-	ar := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
+	ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 		ID:          t.Name(),
 		Direction:   db.ActiveReplicatorTypePull,
 		RemoteDBURL: passiveDBURL,
@@ -1578,12 +1580,14 @@ func TestReplicatorRevocationsNoRev(t *testing.T) {
 		Continuous:          false,
 		PurgeOnRemoval:      true,
 		ReplicationStatsMap: dbstats,
+		CollectionsEnabled:  base.TestsUseNamedCollections(),
 	})
+	require.NoError(t, err)
 
 	require.NoError(t, ar.Start(ctx1))
 	rt1.WaitForReplicationStatus(t.Name(), db.ReplicationStateStopped)
 
-	resp := rt1.SendAdminRequest("GET", "/db/doc1", "")
+	resp := rt1.SendAdminRequest("GET", "/{{.keyspace}}/doc1", "")
 	RequireStatus(t, resp, http.StatusOK)
 
 	revocationTester.removeRole("user", "foo")
@@ -1593,7 +1597,7 @@ func TestReplicatorRevocationsNoRev(t *testing.T) {
 	require.NoError(t, ar.Start(ctx1))
 	rt1.WaitForReplicationStatus(t.Name(), db.ReplicationStateStopped)
 
-	resp = rt1.SendAdminRequest("GET", "/db/doc1", "")
+	resp = rt1.SendAdminRequest("GET", "/{{.keyspace}}/doc1", "")
 	RequireStatus(t, resp, http.StatusNotFound)
 }
 
@@ -1605,9 +1609,10 @@ func TestReplicatorRevocationsNoRevButAlternateAccess(t *testing.T) {
 	defer rt2.Close()
 
 	// Active
-	rt1 := NewRestTesterDefaultCollection(t, //  CBG-2319: replicator currently requires default collection
+	rt1 := NewRestTester(t,
 		&RestTesterConfig{
 			CustomTestBucket: base.GetTestBucket(t),
+			SyncFn:           channels.DocChannelsSyncFunction,
 		})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
@@ -1635,7 +1640,7 @@ func TestReplicatorRevocationsNoRevButAlternateAccess(t *testing.T) {
 	dbstats, err := sgwStats.DBReplicatorStats(t.Name())
 	require.NoError(t, err)
 
-	ar := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
+	ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 		ID:          t.Name(),
 		Direction:   db.ActiveReplicatorTypePull,
 		RemoteDBURL: passiveDBURL,
@@ -1645,12 +1650,14 @@ func TestReplicatorRevocationsNoRevButAlternateAccess(t *testing.T) {
 		Continuous:          false,
 		PurgeOnRemoval:      true,
 		ReplicationStatsMap: dbstats,
+		CollectionsEnabled:  base.TestsUseNamedCollections(),
 	})
+	require.NoError(t, err)
 
 	require.NoError(t, ar.Start(ctx1))
 	rt1.WaitForReplicationStatus(t.Name(), db.ReplicationStateStopped)
 
-	resp = rt1.SendAdminRequest("GET", "/db/doc1", "")
+	resp = rt1.SendAdminRequest("GET", "/{{.keyspace}}/doc1", "")
 	RequireStatus(t, resp, http.StatusOK)
 
 	revocationTester.removeRole("user", "foo")
@@ -1660,7 +1667,7 @@ func TestReplicatorRevocationsNoRevButAlternateAccess(t *testing.T) {
 	require.NoError(t, ar.Start(ctx1))
 	rt1.WaitForReplicationStatus(t.Name(), db.ReplicationStateStopped)
 
-	resp = rt1.SendAdminRequest("GET", "/db/doc1", "")
+	resp = rt1.SendAdminRequest("GET", "/{{.keyspace}}/doc1", "")
 	RequireStatus(t, resp, http.StatusOK)
 }
 
@@ -1675,9 +1682,10 @@ func TestReplicatorRevocationsMultipleAlternateAccess(t *testing.T) {
 	rt2_collection := rt2.GetSingleTestDatabaseCollection()
 
 	// Active
-	rt1 := NewRestTesterDefaultCollection(t, //  CBG-2319: replicator currently requires default collection
+	rt1 := NewRestTester(t,
 		&RestTesterConfig{
 			CustomTestBucket: base.GetTestBucket(t),
+			SyncFn:           channels.DocChannelsSyncFunction,
 		})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
@@ -1695,7 +1703,7 @@ func TestReplicatorRevocationsMultipleAlternateAccess(t *testing.T) {
 	dbstats, err := sgwStats.DBReplicatorStats(t.Name())
 	require.NoError(t, err)
 
-	ar := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
+	ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 		ID:          t.Name(),
 		Direction:   db.ActiveReplicatorTypePull,
 		RemoteDBURL: passiveDBURL,
@@ -1705,7 +1713,9 @@ func TestReplicatorRevocationsMultipleAlternateAccess(t *testing.T) {
 		Continuous:          true,
 		PurgeOnRemoval:      true,
 		ReplicationStatsMap: dbstats,
+		CollectionsEnabled:  base.TestsUseNamedCollections(),
 	})
+	require.NoError(t, err)
 	require.NoError(t, ar.Start(ctx1))
 
 	defer func() {
@@ -1786,9 +1796,10 @@ func TestReplicatorRevocationsWithTombstoneResurrection(t *testing.T) {
 	rt2_collection := rt2.GetSingleTestDatabaseCollection()
 
 	// Active
-	rt1 := NewRestTesterDefaultCollection(t, //  CBG-2319: replicator currently requires default collection
+	rt1 := NewRestTester(t,
 		&RestTesterConfig{
 			CustomTestBucket: base.GetTestBucket(t),
+			SyncFn:           channels.DocChannelsSyncFunction,
 		})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
@@ -1809,7 +1820,7 @@ func TestReplicatorRevocationsWithTombstoneResurrection(t *testing.T) {
 	dbstats, err := sgwStats.DBReplicatorStats(t.Name())
 	require.NoError(t, err)
 
-	ar := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
+	ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 		ID:          t.Name(),
 		Direction:   db.ActiveReplicatorTypePull,
 		RemoteDBURL: passiveDBURL,
@@ -1819,7 +1830,9 @@ func TestReplicatorRevocationsWithTombstoneResurrection(t *testing.T) {
 		Continuous:          true,
 		PurgeOnRemoval:      true,
 		ReplicationStatsMap: dbstats,
+		CollectionsEnabled:  base.TestsUseNamedCollections(),
 	})
+	require.NoError(t, err)
 
 	docARev := rt2.CreateDocReturnRev(t, "docA", "", map[string][]string{"channels": []string{"A"}})
 	docA1Rev := rt2.CreateDocReturnRev(t, "docA1", "", map[string][]string{"channels": []string{"A"}})
@@ -1879,7 +1892,9 @@ func TestReplicatorRevocationsWithChannelFilter(t *testing.T) {
 	rt2Collection := rt2.GetSingleTestDatabaseCollection()
 
 	// Active
-	rt1 := NewRestTesterDefaultCollection(t, nil)
+	rt1 := NewRestTester(t, &RestTesterConfig{
+		SyncFn: channels.DocChannelsSyncFunction,
+	})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
 
@@ -1903,7 +1918,7 @@ func TestReplicatorRevocationsWithChannelFilter(t *testing.T) {
 	_ = rt2.CreateDocReturnRev(t, "docA", "", map[string][]string{"channels": []string{"ABC"}})
 	require.NoError(t, rt2.WaitForPendingChanges())
 
-	ar := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
+	ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 		ID:          t.Name(),
 		Direction:   db.ActiveReplicatorTypePull,
 		RemoteDBURL: passiveDBURL,
@@ -1914,7 +1929,9 @@ func TestReplicatorRevocationsWithChannelFilter(t *testing.T) {
 		FilterChannels:      []string{"ABC"},
 		PurgeOnRemoval:      true,
 		ReplicationStatsMap: dbstats,
+		CollectionsEnabled:  base.TestsUseNamedCollections(),
 	})
+	require.NoError(t, err)
 
 	resp := rt2.SendAdminRequest("PUT", "/{{.db}}/_user/user", GetUserPayload(t, username, password, "", rt2Collection, []string{"ABC"}, nil))
 	RequireStatus(t, resp, http.StatusOK)
@@ -1956,9 +1973,10 @@ func TestReplicatorRevocationsWithStarChannel(t *testing.T) {
 	rt2_collection := rt2.GetSingleTestDatabaseCollection()
 
 	// Active
-	rt1 := NewRestTesterDefaultCollection(t, //  CBG-2319: replicator currently requires default collection
+	rt1 := NewRestTester(t,
 		&RestTesterConfig{
 			CustomTestBucket: base.GetTestBucket(t),
+			SyncFn:           channels.DocChannelsSyncFunction,
 		})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
@@ -1983,7 +2001,7 @@ func TestReplicatorRevocationsWithStarChannel(t *testing.T) {
 	_ = rt2.CreateDocReturnRev(t, "docC", "", map[string][]string{"channels": []string{"C"}})
 	require.NoError(t, rt2.WaitForPendingChanges())
 
-	ar := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
+	ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 		ID:          t.Name(),
 		Direction:   db.ActiveReplicatorTypePull,
 		RemoteDBURL: passiveDBURL,
@@ -1993,7 +2011,9 @@ func TestReplicatorRevocationsWithStarChannel(t *testing.T) {
 		Continuous:          false,
 		PurgeOnRemoval:      true,
 		ReplicationStatsMap: dbstats,
+		CollectionsEnabled:  base.TestsUseNamedCollections(),
 	})
+	require.NoError(t, err)
 
 	resp := rt2.SendAdminRequest("PUT", "/db/_user/user", GetUserPayload(t, "user", "test", "", rt2_collection, []string{"*"}, nil))
 	RequireStatus(t, resp, http.StatusOK)
@@ -2047,9 +2067,10 @@ func TestReplicatorRevocationsFromZero(t *testing.T) {
 	rt2_collection := rt2.GetSingleTestDatabaseCollection()
 
 	// Active
-	rt1 := NewRestTesterDefaultCollection(t, //  CBG-2319: replicator currently requires default collection
+	rt1 := NewRestTester(t,
 		&RestTesterConfig{
 			CustomTestBucket: base.GetTestBucket(t),
+			SyncFn:           channels.DocChannelsSyncFunction,
 		})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
@@ -2080,9 +2101,11 @@ func TestReplicatorRevocationsFromZero(t *testing.T) {
 		Continuous:          false,
 		PurgeOnRemoval:      true,
 		ReplicationStatsMap: dbstats,
+		CollectionsEnabled:  base.TestsUseNamedCollections(),
 	}
 
-	ar := db.NewActiveReplicator(ctx1, activeReplCfg)
+	ar, err := db.NewActiveReplicator(ctx1, activeReplCfg)
+	require.NoError(t, err)
 
 	_ = rt2.CreateDocReturnRev(t, "docA", "", map[string][]string{"channels": []string{"A"}})
 	_ = rt2.CreateDocReturnRev(t, "docA1", "", map[string][]string{"channels": []string{"A"}})
@@ -2448,9 +2471,10 @@ func TestReplicatorSwitchPurgeNoReset(t *testing.T) {
 	rt2_collection := rt2.GetSingleTestDatabaseCollection()
 
 	// Active
-	rt1 := NewRestTesterDefaultCollection(t, //  CBG-2319: replicator currently requires default collection
+	rt1 := NewRestTester(t,
 		&RestTesterConfig{
 			CustomTestBucket: base.GetTestBucket(t),
+			SyncFn:           channels.DocChannelsSyncFunction,
 		})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
@@ -2471,7 +2495,7 @@ func TestReplicatorSwitchPurgeNoReset(t *testing.T) {
 	dbstats, err := sgwStats.DBReplicatorStats(t.Name())
 	require.NoError(t, err)
 
-	ar := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
+	ar, err := db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 		ID:          t.Name(),
 		Direction:   db.ActiveReplicatorTypePull,
 		RemoteDBURL: passiveDBURL,
@@ -2480,7 +2504,9 @@ func TestReplicatorSwitchPurgeNoReset(t *testing.T) {
 		},
 		Continuous:          true,
 		ReplicationStatsMap: dbstats,
+		CollectionsEnabled:  base.TestsUseNamedCollections(),
 	})
+	require.NoError(t, err)
 
 	for i := 0; i < 10; i++ {
 		_ = rt2.CreateDocReturnRev(t, fmt.Sprintf("docA%d", i), "", map[string][]string{"channels": []string{"A"}})
@@ -2530,7 +2556,7 @@ func TestReplicatorSwitchPurgeNoReset(t *testing.T) {
 	dbstats, err = sgwStats.DBReplicatorStats(t.Name())
 	require.NoError(t, err)
 
-	ar = db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
+	ar, err = db.NewActiveReplicator(ctx1, &db.ActiveReplicatorConfig{
 		ID:          t.Name(),
 		Direction:   db.ActiveReplicatorTypePull,
 		RemoteDBURL: passiveDBURL,
@@ -2540,7 +2566,9 @@ func TestReplicatorSwitchPurgeNoReset(t *testing.T) {
 		Continuous:          true,
 		PurgeOnRemoval:      true,
 		ReplicationStatsMap: dbstats,
+		CollectionsEnabled:  base.TestsUseNamedCollections(),
 	})
+	require.NoError(t, err)
 
 	// Send a doc to act as a 'marker' so we know when replication has completed
 	_ = rt2.CreateDocReturnRev(t, "docMarker", "", map[string][]string{"channels": []string{"B"}})

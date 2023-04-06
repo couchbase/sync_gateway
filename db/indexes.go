@@ -472,7 +472,6 @@ func removeObsoleteIndexes(bucket base.N1QLStore, previewOnly bool, useXattrs bo
 
 // Removes an obsolete index from the database.  In preview mode, checks for existence of the index only.
 func removeObsoleteIndex(bucket base.N1QLStore, indexName string, previewOnly bool) (removed bool, err error) {
-
 	if previewOnly {
 		// Check for index existence
 		exists, _, getMetaErr := bucket.GetIndexMeta(indexName)

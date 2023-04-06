@@ -67,3 +67,7 @@ issues:
     - path: (_test\.go|utilities_testing\.go)
       linters:
         - goconst
+    - path: (_test\.go|utilities_testing\.go)
+      linters:
+        - govet
+      text: fieldalignment

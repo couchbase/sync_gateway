@@ -165,7 +165,7 @@ func TestCBGTIndexCreation(t *testing.T) {
 			spec := bucket.BucketSpec
 
 			// Use an in-memory cfg, set up cbgt manager
-			ctx := LogContextWith(TestCtx(t), &DatabaseLogContext{DatabaseName: tc.dbName})
+			ctx := DatabaseLogCtx(TestCtx(t), tc.dbName)
 			cfg, err := NewCbgtCfgMem()
 			require.NoError(t, err)
 			context, err := initCBGTManager(ctx, bucket, spec, cfg, "testIndexCreation", tc.dbName)

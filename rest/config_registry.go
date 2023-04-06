@@ -60,6 +60,7 @@ type RegistryConfigGroup struct {
 // RegistryDatabase stores the version and set of RegistryScopes for a database
 type RegistryDatabase struct {
 	RegistryDatabaseVersion        // current version
+	MetadataID              string `json:"metadata_id"`    // Metadata ID
 	UUID                    string `json:"uuid,omitempty"` // Database UUID
 	// PreviousVersion stores the previous database version while an update is in progress, in case update of the config
 	// fails and rollback is required.  Required to avoid cross-database collection conflicts during rollback.
@@ -80,7 +81,7 @@ type RegistryScope struct {
 }
 
 var defaultOnlyRegistryScopes = map[string]RegistryScope{base.DefaultScope: {Collections: []string{base.DefaultCollection}}}
-var defaultOnlyScopesConfig = ScopesConfig{base.DefaultScope: {Collections: map[string]CollectionConfig{base.DefaultCollection: {}}}}
+var DefaultOnlyScopesConfig = ScopesConfig{base.DefaultScope: {Collections: map[string]CollectionConfig{base.DefaultCollection: {}}}}
 
 func NewGatewayRegistry() *GatewayRegistry {
 	return &GatewayRegistry{
@@ -160,6 +161,12 @@ func (r *GatewayRegistry) upsertDatabaseConfig(ctx context.Context, configGroupI
 	collectionConflicts := r.getCollectionConflicts(ctx, config.Name, config.Scopes)
 	if len(collectionConflicts) > 0 {
 		return nil, base.HTTPErrorf(http.StatusConflict, "Cannot update config for database %s - collections are in use by another database: %v", base.UD(config.Name), collectionConflicts)
+	}
+
+	// This is just a defensive check - any potential races should have already collided on collections first
+	if r.hasMetadataIDConflict(config.Name, config.MetadataID) {
+		base.WarnfCtx(ctx, "Unexpected conflict on metadataID while upserting databaseConfig in registry for metadataID %s", base.UD(config.MetadataID))
+		return nil, base.HTTPErrorf(http.StatusConflict, "Cannot update config for database %s - metadataID is in use by another database: %v", base.UD(config.Name), collectionConflicts)
 	}
 
 	// For conflicts with in-flight updates, call getRegistryAndDatabase to block until those updates complete or rollback
@@ -247,7 +254,7 @@ type configGroupAndDatabase struct {
 func (r *GatewayRegistry) getCollectionConflicts(ctx context.Context, dbName string, scopes ScopesConfig) (activeConflicts map[base.ScopeAndCollectionName]string) {
 
 	if len(scopes) == 0 {
-		return r.getCollectionConflicts(ctx, dbName, defaultOnlyScopesConfig)
+		return r.getCollectionConflicts(ctx, dbName, DefaultOnlyScopesConfig)
 	}
 	// activeConflicts is a map from conflicting collection names to db name
 	activeConflicts = make(map[base.ScopeAndCollectionName]string, 0)
@@ -274,7 +281,7 @@ func (r *GatewayRegistry) getCollectionConflicts(ctx context.Context, dbName str
 func (r *GatewayRegistry) getPreviousConflicts(ctx context.Context, dbName string, scopes ScopesConfig) (previousConflicts []configGroupAndDatabase) {
 
 	if len(scopes) == 0 {
-		return r.getPreviousConflicts(ctx, dbName, defaultOnlyScopesConfig)
+		return r.getPreviousConflicts(ctx, dbName, DefaultOnlyScopesConfig)
 	}
 	conflictingDbs := make(map[configGroupAndDatabase]struct{}, 0)
 	for cgName, configGroup := range r.ConfigGroups {
@@ -319,10 +326,23 @@ func findCollectionConflicts(scopes ScopesConfig, registryScopes map[string]Regi
 	return conflicts
 }
 
+// hasMetadataIDConflict checks whether the specified metadataID is already in use by a different db in the registry
+func (r *GatewayRegistry) hasMetadataIDConflict(dbName string, metadataID string) bool {
+	for _, configGroup := range r.ConfigGroups {
+		for registryDbName, database := range configGroup.Databases {
+			if registryDbName != dbName && database.MetadataID == metadataID {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // registryDatabaseFromConfig creates a RegistryDatabase based on the specified config
 func registryDatabaseFromConfig(config *DatabaseConfig) *RegistryDatabase {
 	rdb := &RegistryDatabase{}
 	rdb.Version = config.Version
+	rdb.MetadataID = config.MetadataID
 	if len(config.Scopes) == 0 {
 		rdb.Scopes = defaultOnlyRegistryScopes
 		return rdb

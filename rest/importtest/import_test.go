@@ -1848,7 +1848,7 @@ func TestImportRevisionCopy(t *testing.T) {
 
 	// 5. Flush the rev cache (simulates attempted retrieval by a different SG node, since testing framework isn't great
 	//    at simulating multiple SG instances)
-	rt.GetDatabase().GetSingleDatabaseCollection().FlushRevisionCacheForTest()
+	rt.GetSingleTestDatabaseCollection().FlushRevisionCacheForTest()
 
 	// 6. Attempt to retrieve previous revision body
 	response = rt.SendAdminRequest("GET", fmt.Sprintf("/{{.keyspace}}/%s?rev=%s", key, rev1id), "")
@@ -1896,7 +1896,7 @@ func TestImportRevisionCopyUnavailable(t *testing.T) {
 
 	// 3. Flush the rev cache (simulates attempted retrieval by a different SG node, since testing framework isn't great
 	//    at simulating multiple SG instances)
-	rt.GetDatabase().GetSingleDatabaseCollection().FlushRevisionCacheForTest()
+	rt.GetSingleTestDatabaseCollection().FlushRevisionCacheForTest()
 
 	// 4. Update via SDK
 	updatedBody := make(map[string]interface{})
@@ -1970,7 +1970,7 @@ func TestImportRevisionCopyDisabled(t *testing.T) {
 
 	// 5. Flush the rev cache (simulates attempted retrieval by a different SG node, since testing framework isn't great
 	//    at simulating multiple SG instances)
-	rt.GetDatabase().GetSingleDatabaseCollection().FlushRevisionCacheForTest()
+	rt.GetSingleTestDatabaseCollection().FlushRevisionCacheForTest()
 
 	// 6. Attempt to retrieve previous revision body.  Should fail, as backup wasn't persisted
 	response = rt.SendAdminRequest("GET", fmt.Sprintf("/{{.keyspace}}/%s?rev=%s", key, rev1id), "")

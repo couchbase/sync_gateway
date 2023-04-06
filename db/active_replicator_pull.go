@@ -12,6 +12,7 @@ package db
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -22,16 +23,20 @@ type ActivePullReplicator struct {
 	*activeReplicatorCommon
 }
 
-func NewPullReplicator(config *ActiveReplicatorConfig) *ActivePullReplicator {
-	apr := ActivePullReplicator{
-		activeReplicatorCommon: newActiveReplicatorCommon(config, ActiveReplicatorTypePull),
+func NewPullReplicator(ctx context.Context, config *ActiveReplicatorConfig) (*ActivePullReplicator, error) {
+	replicator, err := newActiveReplicatorCommon(ctx, config, ActiveReplicatorTypePull)
+	if err != nil {
+		return nil, err
 	}
+	apr := ActivePullReplicator{
+		activeReplicatorCommon: replicator,
+	}
+	replicator._getStatusCallback = apr._getStatus
 	apr.replicatorConnectFn = apr._connect
-	return &apr
+	return &apr, nil
 }
 
 func (apr *ActivePullReplicator) Start(ctx context.Context) error {
-
 	apr.lock.Lock()
 	defer apr.lock.Unlock()
 
@@ -44,15 +49,21 @@ func (apr *ActivePullReplicator) Start(ctx context.Context) error {
 	}
 
 	apr.setState(ReplicationStateStarting)
+	// intentionally reset the context from having db information on it?
 	logCtx := base.LogContextWith(ctx, &base.LogContext{CorrelationID: apr.config.ID + "-" + string(ActiveReplicatorTypePull)})
 	apr.ctx, apr.ctxCancel = context.WithCancel(logCtx)
 
 	err := apr._connect()
 	if err != nil {
 		_ = apr.setError(err)
-		base.WarnfCtx(apr.ctx, "Couldn't connect. Attempting to reconnect in background: %v", err)
-		apr.reconnectActive.Set(true)
-		go apr.reconnectLoop()
+		base.WarnfCtx(apr.ctx, "Couldn't connect: %v", err)
+		if errors.Is(err, fatalReplicatorConnectError) {
+			base.WarnfCtx(apr.ctx, "Stopping replication connection attempt")
+		} else if apr.config.TotalReconnectTimeout != 0 {
+			base.InfofCtx(apr.ctx, base.KeyReplicate, "Attempting to reconnect in background: %v", err)
+			apr.reconnectActive.Set(true)
+			go apr.reconnectLoop()
+		}
 	}
 	apr._publishStatus()
 	return err
@@ -85,6 +96,10 @@ func (apr *ActivePullReplicator) _connect() error {
 		base.ErrorfCtx(apr.ctx, "Pull replicator ID:%s running with revocations enabled but target does not support revocations. Sync Gateway 3.0 required.", apr.config.ID)
 	}
 
+	if err := apr.startStatusReporter(); err != nil {
+		return err
+	}
+
 	apr.setState(ReplicationStateRunning)
 
 	return nil
@@ -97,11 +112,9 @@ func (apr *ActivePullReplicator) _startPullNonCollection() error {
 	if err != nil {
 		return err
 	}
-	apr.blipSyncContext.collections.setNonCollectionAware(&blipSyncCollectionContext{
-		dbCollection: defaultCollection,
-	})
+	apr.blipSyncContext.collections.setNonCollectionAware(newBlipSyncCollectionContext(defaultCollection))
 
-	if err := apr._initCheckpointer(); err != nil {
+	if err := apr._initCheckpointer(nil); err != nil {
 		// clean up anything we've opened so far
 		base.TracefCtx(apr.ctx, base.KeyReplicate, "Error initialising checkpoint in _connect. Closing everything.")
 		apr.checkpointerCtx = nil
@@ -130,7 +143,7 @@ func (apr *ActivePullReplicator) _subChanges(collectionIdx *int, since string) e
 		Batch:          apr.config.ChangesBatchSize,
 		Since:          since,
 		Filter:         apr.config.Filter,
-		FilterChannels: apr.config.FilterChannels,
+		FilterChannels: apr.config.getFilteredChannels(collectionIdx),
 		DocIDs:         apr.config.DocIDs,
 		ActiveOnly:     apr.config.ActiveOnly,
 		clientType:     clientTypeSGR2,
@@ -143,6 +156,7 @@ func (apr *ActivePullReplicator) _subChanges(collectionIdx *int, since string) e
 // Complete gracefully shuts down a replication, waiting for all in-flight revisions to be processed
 // before stopping the replication
 func (apr *ActivePullReplicator) Complete() {
+	base.TracefCtx(apr.ctx, base.KeyReplicate, "ActivePullReplicator.Complete()")
 	apr.lock.Lock()
 	if apr == nil {
 		apr.lock.Unlock()
@@ -178,19 +192,24 @@ func (apr *ActivePullReplicator) Complete() {
 	}
 }
 
-func (apr *ActivePullReplicator) _initCheckpointer() error {
+func (apr *ActivePullReplicator) _initCheckpointer(remoteCheckpoints []replicationCheckpoint) error {
 	// wrap the replicator context with a cancelFunc that can be called to abort the checkpointer from _disconnect
 	apr.checkpointerCtx, apr.checkpointerCtxCancel = context.WithCancel(apr.ctx)
 
-	checkpointHash, hashErr := apr.config.CheckpointHash()
-	if hashErr != nil {
-		return hashErr
-	}
-
 	err := apr.forEachCollection(func(c *activeReplicatorCollection) error {
-		c.Checkpointer = NewCheckpointer(apr.checkpointerCtx, c.dataStore, apr.CheckpointID, checkpointHash, apr.blipSender, apr.config, apr.getPullStatus, c.collectionIdx)
+		checkpointHash, hashErr := apr.config.CheckpointHash(c.collectionIdx)
+		if hashErr != nil {
+			return hashErr
+		}
 
-		if !apr.config.CollectionsEnabled {
+		c.Checkpointer = NewCheckpointer(apr.checkpointerCtx, c.metadataStore, c.collectionDataStore, apr.CheckpointID, checkpointHash, apr.blipSender, apr.config, c.collectionIdx)
+
+		if apr.config.CollectionsEnabled {
+			err := c.Checkpointer.setLastCheckpointSeq(&remoteCheckpoints[*c.collectionIdx])
+			if err != nil {
+				return err
+			}
+		} else {
 			err := c.Checkpointer.fetchDefaultCollectionCheckpoints()
 			if err != nil {
 				return err
@@ -211,16 +230,13 @@ func (apr *ActivePullReplicator) _initCheckpointer() error {
 	return nil
 }
 
-// GetStatus is used externally to retrieve pull replication status.  Combines current running stats with
-// initialStatus.
-func (apr *ActivePullReplicator) GetStatus() *ReplicationStatus {
-	return apr.getPullStatus(apr.getCheckpointHighSeq())
-}
+// requires apr.lock
+func (apr *ActivePullReplicator) _getStatus() *ReplicationStatus {
+	status := &ReplicationStatus{
+		ID: apr.CheckpointID,
+	}
 
-// getPullStatus is used internally, and passed as statusCallback to checkpointer
-func (apr *ActivePullReplicator) getPullStatus(lastSeqPulled string) *ReplicationStatus {
-	status := &ReplicationStatus{}
-	status.Status, status.ErrorMessage = apr.getStateWithErrorMessage()
+	status.Status, status.ErrorMessage = apr._getStateWithErrorMessage()
 
 	pullStats := apr.replicationStats
 	status.DocsRead = pullStats.HandleRevCount.Value()
@@ -229,11 +245,19 @@ func (apr *ActivePullReplicator) getPullStatus(lastSeqPulled string) *Replicatio
 	status.RejectedLocal = pullStats.HandleRevErrorCount.Value()
 	status.DeltasRecv = pullStats.HandleRevDeltaRecvCount.Value()
 	status.DeltasRequested = pullStats.HandleChangesDeltaRequestedCount.Value()
-	status.LastSeqPull = lastSeqPulled
+	status.LastSeqPull = apr.getCheckpointHighSeq()
 	if apr.initialStatus != nil {
 		status.PullReplicationStatus.Add(apr.initialStatus.PullReplicationStatus)
 	}
 	return status
+}
+
+// GetStatus is used externally to retrieve pull replication status.  Combines current running stats with
+// initialStatus.
+func (apr *ActivePullReplicator) GetStatus() *ReplicationStatus {
+	apr.lock.RLock()
+	defer apr.lock.RUnlock()
+	return apr._getStatus()
 }
 
 func (apr *ActivePullReplicator) reset() error {
@@ -241,33 +265,20 @@ func (apr *ActivePullReplicator) reset() error {
 		return fmt.Errorf("reset invoked for replication %s when the replication was not stopped", apr.config.ID)
 	}
 
-	if apr.config.CollectionsEnabled {
-		for collectionName, _ := range apr.namedCollections {
-			dbCollection, err := apr.config.ActiveDB.GetDatabaseCollection(collectionName.ScopeName(), collectionName.CollectionName())
-			if err != nil {
-				return err
-			}
-			if err := resetLocalCheckpoint(dbCollection.dataStore, apr.CheckpointID); err != nil {
-				return err
-			}
-		}
-	} else {
-		collection, err := apr.config.ActiveDB.GetDefaultDatabaseCollection()
-		if err != nil {
-			return err
-		}
-		if err := resetLocalCheckpoint(collection.dataStore, apr.CheckpointID); err != nil {
-			return err
-		}
-	}
-
 	apr.lock.Lock()
 	defer apr.lock.Unlock()
 
-	return apr.forEachCollection(func(c *activeReplicatorCollection) error {
+	if err := apr.forEachCollection(func(c *activeReplicatorCollection) error {
+		if err := resetLocalCheckpoint(c.collectionDataStore, apr.CheckpointID); err != nil {
+			return err
+		}
 		c.Checkpointer = nil
 		return nil
-	})
+	}); err != nil {
+		return err
+	}
+
+	return removeLocalStatus(apr.ctx, apr.config.ActiveDB.MetadataStore, apr.statusKey)
 }
 
 // registerCheckpointerCallbacks registers appropriate callback functions for checkpointing.

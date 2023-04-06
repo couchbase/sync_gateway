@@ -9,6 +9,7 @@
 package db
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/couchbase/go-blip"
@@ -21,10 +22,11 @@ import (
 func (apr *ActivePushReplicator) _startPushWithCollections() error {
 	collectionCheckpoints, err := apr._initCollections()
 	if err != nil {
-		return err
+		return fmt.Errorf("%w: %s", fatalReplicatorConnectError, err)
+
 	}
 
-	if err := apr._initCheckpointer(); err != nil {
+	if err := apr._initCheckpointer(collectionCheckpoints); err != nil {
 		// clean up anything we've opened so far
 		base.TracefCtx(apr.ctx, base.KeyReplicate, "Error initialising checkpoint in _connect. Closing everything.")
 		apr.checkpointerCtx = nil
@@ -33,14 +35,9 @@ func (apr *ActivePushReplicator) _startPushWithCollections() error {
 		return err
 	}
 
-	for i, checkpoint := range collectionCheckpoints {
-		sinceSeq, err := ParsePlainSequenceID(checkpoint.LastSeq)
-		if err != nil {
-			return err
-		}
-
-		collectionIdx := base.IntPtr(i)
-		c, err := apr.blipSyncContext.collections.get(collectionIdx)
+	return apr.forEachCollection(func(replicationCollection *activeReplicatorCollection) error {
+		collectionIdx := replicationCollection.collectionIdx
+		c, err := apr.blipSyncContext.collections.get(replicationCollection.collectionIdx)
 		if err != nil {
 			return err
 		}
@@ -59,8 +56,8 @@ func (apr *ActivePushReplicator) _startPushWithCollections() error {
 		}
 
 		var channels base.Set
-		if apr.config.FilterChannels != nil {
-			channels = base.SetFromArray(apr.config.FilterChannels)
+		if filteredChannels := apr.config.getFilteredChannels(collectionIdx); len(filteredChannels) > 0 {
+			channels = base.SetFromArray(filteredChannels)
 		}
 
 		apr.blipSyncContext.fatalErrorCallback = func(err error) {
@@ -79,13 +76,12 @@ func (apr *ActivePushReplicator) _startPushWithCollections() error {
 			}
 			// No special handling for error
 		}
-
 		apr.activeSendChanges.Set(true)
 		go func(s *blip.Sender) {
 			defer apr.activeSendChanges.Set(false)
 			isComplete := bh.sendChanges(s, &sendChangesOptions{
 				docIDs:            apr.config.DocIDs,
-				since:             sinceSeq,
+				since:             replicationCollection.Checkpointer.lastCheckpointSeq,
 				continuous:        apr.config.Continuous,
 				activeOnly:        apr.config.ActiveOnly,
 				batchSize:         int(apr.config.ChangesBatchSize),
@@ -93,13 +89,13 @@ func (apr *ActivePushReplicator) _startPushWithCollections() error {
 				channels:          channels,
 				clientType:        clientTypeSGR2,
 				ignoreNoConflicts: true, // force the passive side to accept a "changes" message, even in no conflicts mode.
+				changesCtx:        c.changesCtx,
 			})
 			// On a normal completion, call complete for the replication
 			if isComplete {
 				apr.Complete()
 			}
 		}(apr.blipSender)
-	}
-
-	return nil
+		return nil
+	})
 }

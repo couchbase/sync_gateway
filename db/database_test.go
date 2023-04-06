@@ -83,6 +83,7 @@ func setupTestDBWithViewsEnabled(t testing.TB) (*Database, context.Context) {
 	}
 	dbcOptions := DatabaseContextOptions{
 		UseViews: true,
+		Scopes:   GetScopesOptionsDefaultCollectionOnly(t),
 	}
 	return SetupTestDBWithOptions(t, dbcOptions)
 }
@@ -1746,10 +1747,10 @@ func TestRecentSequenceHistory(t *testing.T) {
 
 func TestChannelView(t *testing.T) {
 
-	db, ctx := setupTestDB(t)
+	db, ctx := setupTestDBWithViewsEnabled(t)
 	defer db.Close(ctx)
-	collection := GetSingleDatabaseCollectionWithUser(t, db)
-	collectionID := collection.GetCollectionID()
+	collection, err := db.GetDefaultDatabaseCollectionWithUser()
+	require.NoError(t, err)
 
 	// Create doc
 	log.Printf("Create doc 1...")
@@ -1762,7 +1763,7 @@ func TestChannelView(t *testing.T) {
 	// Query view (retry loop to wait for indexing)
 	for i := 0; i < 10; i++ {
 		var err error
-		entries, err = db.getChangesInChannelFromQuery(ctx, channels.ID{Name: "*", CollectionID: collectionID}, 0, 100, 0, false)
+		entries, err = collection.getChangesInChannelFromQuery(ctx, "*", 0, 100, 0, false)
 
 		assert.NoError(t, err, "Couldn't create document")
 		if len(entries) >= 1 {
@@ -2662,7 +2663,7 @@ func Test_updateAllPrincipalsSequences(t *testing.T) {
 	roleSequences := [5]uint64{}
 	userSequences := [5]uint64{}
 
-	collection := db.GetSingleDatabaseCollection()
+	collection := GetSingleDatabaseCollection(t, db.DatabaseContext)
 
 	for i := 0; i < 5; i++ {
 		role, err := auth.NewRole(fmt.Sprintf("role%d", i), base.SetOf("ABC"))
@@ -2707,7 +2708,7 @@ func Test_invalidateAllPrincipalsCache(t *testing.T) {
 	db.sequences = sequenceAllocator
 
 	auth := db.Authenticator(ctx)
-	collection := db.GetSingleDatabaseCollection()
+	collection := GetSingleDatabaseCollection(t, db.DatabaseContext)
 
 	for i := 0; i < 5; i++ {
 		role, err := auth.NewRole(fmt.Sprintf("role%d", i), base.SetOf("ABC"))

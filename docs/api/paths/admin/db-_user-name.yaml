@@ -1,0 +1,81 @@
+# Copyright 2022-Present Couchbase, Inc.
+#
+# Use of this software is governed by the Business Source License included
+# in the file licenses/BSL-Couchbase.txt.  As of the Change Date specified
+# in that file, in accordance with the Business Source License, use of this
+# software will be governed by the Apache License, Version 2.0, included in
+# the file licenses/APL2.txt.
+
+parameters:
+  - $ref: ../../components/parameters.yaml#/db
+  - $ref: ../../components/parameters.yaml#/user-name
+get:
+  summary: Get a user
+  description: |-
+    Retrieve a single users information.
+
+    Required Sync Gateway RBAC roles:
+
+    * Sync Gateway Architect
+    * Sync Gateway Application
+    * Sync Gateway Application Read Only
+  responses:
+    '200':
+      $ref: ../../components/responses.yaml#/User
+    '404':
+      $ref: ../../components/responses.yaml#/Not-found
+  tags:
+    - Database Security
+put:
+  summary: Upsert a user
+  description: |-
+    If the user does not exist, create a new user otherwise update the existing user.
+
+    Required Sync Gateway RBAC roles:
+
+    * Sync Gateway Architect
+    * Sync Gateway Application
+  requestBody:
+    $ref: ../../components/requestBodies.yaml#/User
+  responses:
+    '200':
+      description: Existing user modified successfully
+    '201':
+      description: New user created
+    '404':
+      $ref: ../../components/responses.yaml#/Not-found
+  tags:
+    - Database Security
+delete:
+  summary: Delete a user
+  description: |-
+    Delete a user from the database.
+
+    Required Sync Gateway RBAC roles:
+
+    * Sync Gateway Architect
+    * Sync Gateway Application
+  responses:
+    '200':
+      description: User deleted successfully
+    '404':
+      $ref: ../../components/responses.yaml#/Not-found
+  tags:
+    - Database Security
+head:
+  responses:
+    '200':
+      description: User exists
+    '404':
+      description: Not Found
+  tags:
+    - Database Security
+  summary: Check if user exists
+  description: |-
+    Check if the user exists by checking the status code.
+
+    Required Sync Gateway RBAC roles:
+
+    * Sync Gateway Architect
+    * Sync Gateway Application
+    * Sync Gateway Application Read Only

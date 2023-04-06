@@ -32,7 +32,8 @@ func TestRegistryHelpers(t *testing.T) {
 	               			"_default": {
 								"collections": ["c1", "c2"]
 							}
-						}
+						},
+						"metadataID": "db1"
 					},
 	       			"db2": {
 						"version": "1-abc",
@@ -40,7 +41,8 @@ func TestRegistryHelpers(t *testing.T) {
 	               			"_default": {
 								"collections": ["c3", "c4"]
 							}
-						}
+						},
+						"metadataID": "db2"
 					}
 				}
 			},
@@ -52,7 +54,8 @@ func TestRegistryHelpers(t *testing.T) {
 	               			"_default": {
 								"collections": ["c2"]
 							}
-						}
+						},
+						"metadataID": "db1"
 					},
 					"db3": {
 						"version": "1-def",
@@ -60,7 +63,8 @@ func TestRegistryHelpers(t *testing.T) {
 	               			"s1": {
 								"collections": ["c1", "c2"]
 							}
-						}
+						},
+						"metadataID": "db3"
 					}
 				}
 			}
@@ -107,6 +111,7 @@ func TestRegistryHelpers(t *testing.T) {
 		DbConfig: DbConfig{
 			Name: "defaultDb",
 		},
+		MetadataID: "defaultDb",
 	}
 	_, err = registry.upsertDatabaseConfig(ctx, "cg1", dbConfig)
 	require.NoError(t, err)
@@ -298,5 +303,6 @@ func makeDatabaseConfig(dbName string, scopeName string, collectionNames []strin
 			Name:   dbName,
 			Scopes: scopesConfig,
 		},
+		MetadataID: dbName,
 	}
 }

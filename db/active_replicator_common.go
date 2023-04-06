@@ -12,6 +12,7 @@ package db
 
 import (
 	"context"
+	"errors"
 	"expvar"
 	"sync"
 	"testing"
@@ -26,6 +27,8 @@ const (
 	defaultMaxReconnectInterval     = time.Minute * 5
 )
 
+var fatalReplicatorConnectError = errors.New("Fatal replication connection")
+
 // replicatorCommon defines the struct contents shared by ActivePushReplicator
 // and ActivePullReplicator
 type activeReplicatorCommon struct {
@@ -37,10 +40,12 @@ type activeReplicatorCommon struct {
 	checkpointerCtxCancel context.CancelFunc
 	CheckpointID          string // Used for checkpoint retrieval when Checkpointer isn't available
 	initialStatus         *ReplicationStatus
+	statusKey             string // key used when persisting replication status
 	state                 string
 	lastError             error
 	stateErrorLock        sync.RWMutex // state and lastError share their own mutex to support retrieval while holding the main lock
 	replicationStats      *BlipSyncStats
+	_getStatusCallback    func() *ReplicationStatus
 	onReplicatorComplete  ReplicatorCompleteFunc
 	lock                  sync.RWMutex
 	ctx                   context.Context
@@ -67,12 +72,13 @@ func (apr *activeReplicatorCommon) GetSingleCollection(tb testing.TB) *activeRep
 
 // activeReplicatorCollection stores data about a single collection for the replication.
 type activeReplicatorCollection struct {
-	dataStore     base.DataStore // DataStore for this collection
-	collectionIdx *int           // collectionIdx for this collection for this BLIP replication, passed into Get/SetCheckpoint messages
-	Checkpointer  *Checkpointer  // Checkpointer for this collection
+	metadataStore       base.DataStore // DataStore for metadata outside the collection.
+	collectionDataStore base.DataStore // DataStore for this collection
+	collectionIdx       *int           // collectionIdx for this collection for this BLIP replication, passed into Get/SetCheckpoint messages
+	Checkpointer        *Checkpointer  // Checkpointer for this collection
 }
 
-func newActiveReplicatorCommon(config *ActiveReplicatorConfig, direction ActiveReplicatorDirection) *activeReplicatorCommon {
+func newActiveReplicatorCommon(ctx context.Context, config *ActiveReplicatorConfig, direction ActiveReplicatorDirection) (*activeReplicatorCommon, error) {
 
 	var replicationStats *BlipSyncStats
 	var checkpointID string
@@ -84,11 +90,30 @@ func newActiveReplicatorCommon(config *ActiveReplicatorConfig, direction ActiveR
 		checkpointID = PullCheckpointID(config.ID)
 	}
 
+	if config.CheckpointInterval == 0 {
+		config.CheckpointInterval = DefaultCheckpointInterval
+	}
+
+	initialStatus, err := LoadReplicationStatus(ctx, config.ActiveDB.DatabaseContext, config.ID)
+	if err != nil {
+		// Not finding an initialStatus isn't fatal, but we should at least log that we'll reset stats when we do...
+		base.InfofCtx(ctx, base.KeyReplicate, "Couldn't load initial replication status for %q: %v - stats will be reset", config.ID, err)
+	}
+
+	checkpointID = config.checkpointPrefix + checkpointID
+
+	metakeys := base.DefaultMetadataKeys
+	if config.ActiveDB != nil {
+		metakeys = config.ActiveDB.MetadataKeys
+	}
+
 	apr := activeReplicatorCommon{
 		config:           config,
 		state:            ReplicationStateStopped,
 		replicationStats: replicationStats,
-		CheckpointID:     config.checkpointPrefix + checkpointID,
+		CheckpointID:     checkpointID,
+		initialStatus:    initialStatus,
+		statusKey:        metakeys.ReplicationStatusKey(checkpointID),
 	}
 
 	if config.CollectionsEnabled {
@@ -96,14 +121,15 @@ func newActiveReplicatorCommon(config *ActiveReplicatorConfig, direction ActiveR
 	} else {
 		defaultDatabaseCollection, err := config.ActiveDB.GetDefaultDatabaseCollection()
 		if err != nil {
-			panic(err)
+			return nil, err
 		}
 		apr.defaultCollection = &activeReplicatorCollection{
-			dataStore: defaultDatabaseCollection.dataStore,
+			metadataStore:       config.ActiveDB.MetadataStore,
+			collectionDataStore: defaultDatabaseCollection.dataStore,
 		}
 	}
 
-	return &apr
+	return &apr, nil
 }
 
 // reconnectLoop synchronously calls replicatorConnectFn until successful, or times out trying. Retry loop can be stopped by cancelling ctx
@@ -127,9 +153,7 @@ func (a *activeReplicatorCommon) reconnectLoop() {
 
 	// if a reconnect timeout is set, we'll wrap the existing so both can stop the retry loop
 	var deadlineCancel context.CancelFunc
-	if a.config.TotalReconnectTimeout != 0 {
-		ctx, deadlineCancel = context.WithDeadline(ctx, time.Now().Add(a.config.TotalReconnectTimeout))
-	}
+	ctx, deadlineCancel = context.WithDeadline(ctx, time.Now().Add(a.config.TotalReconnectTimeout))
 
 	sleeperFunc := base.SleeperFuncCtx(
 		base.CreateIndefiniteMaxDoublingSleeperFunc(
@@ -292,14 +316,18 @@ func (a *activeReplicatorCommon) getLastError() error {
 	return a.lastError
 }
 
+// requires a.stateErrorLock
+func (a *activeReplicatorCommon) _getStateWithErrorMessage() (state string, lastErrorMessage string) {
+	if a.lastError == nil {
+		return a.state, ""
+	}
+	return a.state, a.lastError.Error()
+}
+
 func (a *activeReplicatorCommon) getStateWithErrorMessage() (state string, lastErrorMessage string) {
 	a.stateErrorLock.RLock()
 	defer a.stateErrorLock.RUnlock()
-	if a.lastError == nil {
-		return a.state, ""
-	} else {
-		return a.state, a.lastError.Error()
-	}
+	return a._getStateWithErrorMessage()
 }
 
 func (a *activeReplicatorCommon) GetStats() *BlipSyncStats {
@@ -310,10 +338,8 @@ func (a *activeReplicatorCommon) GetStats() *BlipSyncStats {
 
 // getCheckpointHighSeq returns the highest sequence number that has been processed by the replicator across all collections.
 func (a *activeReplicatorCommon) getCheckpointHighSeq() string {
-	a.lock.RLock()
-	defer a.lock.RUnlock()
 	var highSeq SequenceID
-	_ = a.forEachCollection(func(c *activeReplicatorCollection) error {
+	err := a.forEachCollection(func(c *activeReplicatorCollection) error {
 		if c.Checkpointer != nil {
 			safeSeq := c.Checkpointer.calculateSafeProcessedSeq()
 			if highSeq.Before(safeSeq) {
@@ -322,6 +348,11 @@ func (a *activeReplicatorCommon) getCheckpointHighSeq() string {
 		}
 		return nil
 	})
+	if err != nil {
+		base.WarnfCtx(a.ctx, "Error calculating high sequence: %v", err)
+		return ""
+	}
+
 	var highSeqStr string
 	if highSeq.IsNonZero() {
 		highSeqStr = highSeq.String()
@@ -330,6 +361,100 @@ func (a *activeReplicatorCommon) getCheckpointHighSeq() string {
 }
 
 func (a *activeReplicatorCommon) _publishStatus() {
-	status, errorMessage := a.getStateWithErrorMessage()
-	setLocalCheckpointStatus(a.ctx, a.config.ActiveDB.MetadataStore, a.CheckpointID, status, errorMessage, int(a.config.ActiveDB.Options.LocalDocExpirySecs))
+	status := a._getStatusCallback()
+	err := setLocalStatus(a.ctx, a.config.ActiveDB.MetadataStore, a.statusKey, status, int(a.config.ActiveDB.Options.LocalDocExpirySecs))
+	if err != nil {
+		base.WarnfCtx(a.ctx, "Couldn't set status for replication: %v", err)
+	}
+}
+
+func (arc *activeReplicatorCommon) startStatusReporter() error {
+	go func(ctx context.Context) {
+		ticker := time.NewTicker(arc.config.CheckpointInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				func() {
+					arc.lock.RLock()
+					defer arc.lock.RUnlock()
+					arc._publishStatus()
+				}()
+			case <-ctx.Done():
+				base.DebugfCtx(ctx, base.KeyReplicate, "stats reporter goroutine stopped")
+				return
+			}
+		}
+	}(arc.ctx)
+	return nil
+}
+
+// getLocalStatusDoc retrieves replication status document for a given client ID from the given metadataStore
+func getLocalStatusDoc(ctx context.Context, metadataStore base.DataStore, statusKey string) (*ReplicationStatusDoc, error) {
+	statusDocBytes, err := getWithTouch(metadataStore, statusKey, 0)
+	if err != nil {
+		if !base.IsKeyNotFoundError(metadataStore, err) {
+			return nil, err
+		}
+		base.DebugfCtx(ctx, base.KeyReplicate, "couldn't find existing local checkpoint for ID %q", statusKey)
+		return nil, nil
+	}
+	var statusDoc *ReplicationStatusDoc
+	err = base.JSONUnmarshal(statusDocBytes, &statusDoc)
+	return statusDoc, err
+}
+
+// getLocalStatus retrieves replication status for a given client ID from the given metadataStore
+func getLocalStatus(ctx context.Context, metadataStore base.DataStore, statusKey string) (*ReplicationStatus, error) {
+	localStatusDoc, err := getLocalStatusDoc(ctx, metadataStore, statusKey)
+	if err != nil {
+		return nil, err
+	}
+	if localStatusDoc != nil {
+		return localStatusDoc.Status, nil
+	}
+	return nil, nil
+}
+
+// setLocalStatus updates replication status.
+func setLocalStatus(ctx context.Context, metadataStore base.DataStore, statusKey string, status *ReplicationStatus, localDocExpirySecs int) (err error) {
+	base.TracefCtx(ctx, base.KeyReplicate, "setLocalStatus for %q (%v)", statusKey, status)
+
+	// obtain current rev
+	currentStatus, err := getLocalStatusDoc(ctx, metadataStore, statusKey)
+	if err != nil {
+		base.WarnfCtx(ctx, "Unable to retrieve local status doc for %s, status not updated", statusKey)
+		return nil
+	}
+
+	var revID string
+	if currentStatus != nil {
+		revID = currentStatus.Rev
+	}
+
+	newStatus := &ReplicationStatusDoc{
+		Status: status,
+	}
+
+	_, err = putDocWithRevision(metadataStore, statusKey, revID, newStatus.AsBody(), localDocExpirySecs)
+	return err
+}
+
+// removeLocalStatus removes a replication status from the given metadataStore. This is done when a replication is reset.
+func removeLocalStatus(ctx context.Context, metadataStore base.DataStore, statusKey string) (err error) {
+	base.TracefCtx(ctx, base.KeyReplicate, "removeLocalStatus() for %q", statusKey)
+
+	// obtain current rev
+	currentStatus, err := getLocalStatusDoc(ctx, metadataStore, statusKey)
+	if err != nil {
+		base.WarnfCtx(ctx, "Unable to retrieve local status doc for %s, status not removed", statusKey)
+		return nil
+	}
+	if currentStatus == nil {
+		// nothing to do - status already doesn't exist
+		return nil
+	}
+
+	_, err = putDocWithRevision(metadataStore, statusKey, currentStatus.Rev, nil, 0)
+	return err
 }

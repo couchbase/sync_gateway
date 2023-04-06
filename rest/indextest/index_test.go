@@ -56,6 +56,9 @@ func TestSyncGatewayStartupIndexes(t *testing.T) {
 		if base.TestUseXattrs() {
 			indexSyncDocs += "_x1"
 			indexAccess += "_x1"
+		} else {
+			indexSyncDocs += "_1"
+			indexAccess += "_1"
 		}
 		metadataCollection, err := base.AsCollection(bucket.DefaultDataStore())
 		require.NoError(t, err)

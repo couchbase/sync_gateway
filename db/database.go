@@ -126,10 +126,10 @@ type DatabaseContext struct {
 	userFunctions                *UserFunctions                 // client-callable JavaScript functions
 	graphQL                      *GraphQL                       // GraphQL query evaluator
 	Scopes                       map[string]Scope               // A map keyed by scope name containing a set of scopes/collections. Nil if running with only _default._default
-	singleCollection             *DatabaseCollection            // Temporary collection
 	CollectionByID               map[uint32]*DatabaseCollection // A map keyed by collection ID to Collection
 	CollectionNames              map[string]map[string]struct{} // Map of scope, collection names
 	MetadataKeys                 *base.MetadataKeys             // Factory to generate metadata document keys
+	RequireResync                base.ScopeAndCollectionNames   // Collections requiring resync before database can go online
 }
 
 type Scope struct {
@@ -171,6 +171,7 @@ type DatabaseContextOptions struct {
 	Scopes                        ScopesOptions
 	skipRegisterImportPIndex      bool           // if set, skips the global gocb PIndex registration
 	MetadataStore                 base.DataStore // If set, use this location/connection for SG metadata storage - if not set, metadata is stored using the same location/connection as the bucket used for data storage.
+	MetadataID                    string         // MetadataID used for metadata storage
 }
 
 type ScopesOptions map[string]ScopeOptions
@@ -383,7 +384,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 
 	// add db info to ctx before having a DatabaseContext (cannot call AddDatabaseLogContext),
 	// in order to pass it to RegisterImportPindexImpl
-	ctx = base.LogContextWith(ctx, &base.DatabaseLogContext{DatabaseName: dbName})
+	ctx = base.DatabaseLogCtx(ctx, dbName)
 
 	// options.MetadataStore is always passed via rest._getOrAddDatabase...
 	// but in db package tests this is unlikely to be set. In this case we'll use the existing bucket connection to store metadata.
@@ -419,12 +420,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 	}
 
 	// Initialize metadata ID and keys
-	// TODO: apply length limit to MetadataPrefix
-	metadataID := dbName
-	if options.Scopes.onlyDefaultCollection() {
-		metadataID = ""
-	}
-	metaKeys := base.NewMetadataKeys(metadataID)
+	metaKeys := base.NewMetadataKeys(options.MetadataID)
 	dbContext.MetadataKeys = metaKeys
 
 	cleanupFunctions = append(cleanupFunctions, func() {
@@ -465,7 +461,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 		defaultOpts := DefaultCacheOptions()
 		cacheOptions = &defaultOpts
 	}
-	channelCache, err := NewChannelCacheForContext(cacheOptions.ChannelCacheOptions, dbContext)
+	channelCache, err := NewChannelCacheForContext(ctx, cacheOptions.ChannelCacheOptions, dbContext)
 	if err != nil {
 		return nil, err
 	}
@@ -503,7 +499,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 		}
 		collectionNameMap := make(map[string]struct{}, len(scope.Collections))
 		for collName, collOpts := range scope.Collections {
-			ctx := base.CollectionCtx(ctx, collName)
+			ctx := base.CollectionLogCtx(ctx, collName)
 			dataStore, err := bucket.NamedDataStore(base.ScopeAndCollectionName{Scope: scopeName, Collection: collName})
 			if err != nil {
 				return nil, err
@@ -538,7 +534,6 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 
 			collectionID := dbCollection.GetCollectionID()
 			dbContext.CollectionByID[collectionID] = dbCollection
-			dbContext.singleCollection = dbCollection
 			collectionNameMap[collName] = struct{}{}
 		}
 		dbContext.CollectionNames[scopeName] = collectionNameMap
@@ -723,7 +718,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 					<-dbContext.terminator
 					bgtTerminator.Close()
 				}()
-				bgt, err := NewBackgroundTask("Compact", dbContext.Name, func(ctx context.Context) error {
+				bgt, err := NewBackgroundTask(ctx, "Compact", func(ctx context.Context) error {
 					_, err := db.Compact(ctx, false, func(purgedDocCount *int) {}, bgtTerminator)
 					if err != nil {
 						base.WarnfCtx(ctx, "Error trying to compact tombstoned documents for %q with error: %v", dbContext.Name, err)
@@ -1329,7 +1324,6 @@ outerLoop:
 		}
 
 	}
-
 	return users, nil
 }
 
@@ -1378,13 +1372,13 @@ outerLoop:
 				//principalName = viewRow.Key
 				startKey = viewRow.Key
 			} else {
-				var queryRow QueryIdRow
+				var queryRow principalRow
 				found := results.Next(&queryRow)
 				if !found {
 					break
 				}
 				rowID = queryRow.Id
-				startKey = queryRow.Id
+				startKey = queryRow.Name
 			}
 			if len(rowID) < lenDbUserPrefix && len(rowID) < lenDbRolePrefix {
 				continue
@@ -1395,10 +1389,13 @@ outerLoop:
 			if !isDbUser && !isDbRole {
 				continue
 			}
-			if isDbUser {
+			if !db.Options.UseViews {
+				principalName = startKey
+			} else if isDbUser {
 				principalName = rowID[lenDbUserPrefix:]
 			} else {
 				principalName = rowID[lenDbRolePrefix:]
+
 			}
 			resultCount++
 
@@ -1543,7 +1540,7 @@ outerLoop:
 				skipAddition = true
 			}
 
-			var queryRow QueryIdRow
+			var queryRow principalRow
 			found := results.Next(&queryRow)
 			if !found {
 				break
@@ -1554,7 +1551,12 @@ outerLoop:
 			if !strings.HasPrefix(queryRow.Id, dbRoleIDPrefix) {
 				break
 			}
-			roleName = queryRow.Id[lenRoleKeyPrefix:]
+			if !db.UseViews() {
+				roleName = queryRow.Name
+			} else {
+				roleName = queryRow.Id[lenRoleKeyPrefix:]
+
+			}
 			startKey = queryRow.Id
 
 			resultCount++
@@ -1647,7 +1649,7 @@ func (db *Database) Compact(ctx context.Context, skipRunningStateCheck bool, cal
 	purgeBody := Body{"_purged": true}
 	for _, c := range db.CollectionByID {
 		// shadow ctx, sot that we can't misuse the parent's inside the loop
-		ctx := base.CollectionCtx(ctx, c.Name)
+		ctx := base.CollectionLogCtx(ctx, c.Name)
 
 		// create admin collection interface
 		collection, err := db.GetDatabaseCollectionWithUser(c.ScopeName, c.Name)
@@ -2238,7 +2240,7 @@ func CheckTimeout(ctx context.Context) error {
 // AddDatabaseLogContext adds database name to the parent context for logging
 func (dbCtx *DatabaseContext) AddDatabaseLogContext(ctx context.Context) context.Context {
 	if dbCtx != nil && dbCtx.Name != "" {
-		return base.LogContextWith(ctx, &base.DatabaseLogContext{DatabaseName: dbCtx.Name})
+		return base.DatabaseLogCtx(ctx, dbCtx.Name)
 	}
 	return ctx
 }
@@ -2276,15 +2278,15 @@ func (dbc *DatabaseContext) GetDatabaseCollection(scopeName, collectionName stri
 		return dbc.GetDefaultDatabaseCollection()
 	}
 	if dbc.Scopes == nil {
-		return nil, fmt.Errorf("scope %s does not exist on this database", base.UD(scopeName))
+		return nil, fmt.Errorf("scope %q does not exist on this database", base.UD(scopeName))
 	}
 	collections, exists := dbc.Scopes[scopeName]
 	if !exists {
-		return nil, fmt.Errorf("scope %s does not exist on this database", base.UD(scopeName))
+		return nil, fmt.Errorf("scope %q does not exist on this database", base.UD(scopeName))
 	}
 	collection, exists := collections.Collections[collectionName]
 	if !exists {
-		return nil, fmt.Errorf("collection %s.%s is not configured on this database", base.UD(scopeName), base.UD(collectionName))
+		return nil, fmt.Errorf("collection \"%s.%s\" does not exist on this database", base.UD(scopeName), base.UD(collectionName))
 	}
 	return collection, nil
 }
@@ -2307,11 +2309,6 @@ func (dbc *Database) GetDefaultDatabaseCollectionWithUser() (*DatabaseCollection
 		DatabaseCollection: col,
 		user:               dbc.user,
 	}, nil
-}
-
-// GetSingleDatabaseCollection is a temporary function to return a single collection. This should be a temporary function while collection work is ongoing.
-func (dbc *DatabaseContext) GetSingleDatabaseCollection() *DatabaseCollection {
-	return dbc.singleCollection
 }
 
 func (dbc *DatabaseContext) AuthenticatorOptions() auth.AuthenticatorOptions {

@@ -669,7 +669,7 @@ def make_os_tasks(processes):
         WindowsTask("Network Adapter", "wmic nicconfig"),
         WindowsTask("Active network connection", "wmic netuse"),
         WindowsTask("Protocols", "wmic netprotocol"),
-        WindowsTask("Hosts file", "type %SystemRoot%\system32\drivers\etc\hosts"),
+        WindowsTask("Hosts file", r"type %SystemRoot%\system32\drivers\etc\hosts"),
         WindowsTask("Cache memory", "wmic memcache"),
         WindowsTask("Physical memory", "wmic memphysical"),
         WindowsTask("Physical memory chip info", "wmic memorychip"),
@@ -1065,38 +1065,38 @@ class CurlKiller:
         self.p = None
 
 
-def do_upload_and_exit(path, url, proxy):
+def do_upload(path, url, proxy):
+    """
+    Uploads file path to a URL and returns exit code for the program.
+    """
 
-    f = open(path, 'rb')
+    with open(path, 'rb') as f:
 
-    # mmap the file to reduce the amount of memory required (see bit.ly/2aNENXC)
-    filedata = mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ)
+        # mmap the file to reduce the amount of memory required (see bit.ly/2aNENXC)
+        with mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ) as filedata:
 
-    # Get proxies from environment/system
-    proxy_handler = urllib.request.ProxyHandler(urllib.request.getproxies())
-    if proxy != "":
-        # unless a proxy is explicitly passed, then use that instead
-        proxy_handler = urllib.request.ProxyHandler({'https': proxy, 'http': proxy})
+            # Get proxies from environment/system
+            proxy_handler = urllib.request.ProxyHandler(urllib.request.getproxies())
+            if proxy != "":
+                # unless a proxy is explicitly passed, then use that instead
+                proxy_handler = urllib.request.ProxyHandler({'https': proxy, 'http': proxy})
 
-    opener = urllib.request.build_opener(proxy_handler)
-    request = urllib.request.Request(url, data=filedata.read(), method='PUT')
-    request.add_header(str('Content-Type'), str('application/zip'))
+            opener = urllib.request.build_opener(proxy_handler)
+            request = urllib.request.Request(url, data=filedata.read(), method='PUT')
+            request.add_header(str('Content-Type'), str('application/zip'))
 
-    exit_code = 0
-    try:
-        url = opener.open(request)
-        if url.getcode() == 200:
-            log('Done uploading')
-        else:
-            raise Exception('Error uploading, expected status code 200, got status code: {0}'.format(url.getcode()))
-    except Exception as e:
-        log(traceback.format_exc())
-        exit_code = 1
+            exit_code = 0
+            try:
+                url = opener.open(request)
+                if url.getcode() == 200:
+                    log('Done uploading')
+                else:
+                    raise Exception('Error uploading, expected status code 200, got status code: {0}'.format(url.getcode()))
+            except Exception as e:
+                log(traceback.format_exc())
+                return 1
 
-    filedata.close()
-    f.close()
-
-    sys.exit(exit_code)
+    return 0
 
 
 def parse_host(host):
@@ -1128,7 +1128,7 @@ def generate_upload_url(parser, options, zip_filename):
 
 
 def check_ticket(option, opt, value):
-    if re.match('^\d{1,7}$', value):
+    if re.match(r'^\d{1,7}$', value):
         return int(value)
     else:
         raise optparse.OptionValueError(

@@ -1177,7 +1177,7 @@ func TestMigratev30PersistentConfigCollision(t *testing.T) {
 
 	// Set up a new database targeting the default collection
 	newDefaultDbName := "newDefaultDb"
-	newDefaultDbConfig := getTestDatabaseConfig(bucketName, newDefaultDbName, defaultOnlyScopesConfig, "1-a")
+	newDefaultDbConfig := getTestDatabaseConfig(bucketName, newDefaultDbName, DefaultOnlyScopesConfig, "1-a")
 	_, err = sc.BootstrapContext.InsertConfig(ctx, bucketName, groupID, newDefaultDbConfig)
 	require.NoError(t, err)
 

@@ -33,6 +33,9 @@ type DatabaseConfig struct {
 	// SGVersion is a base.ComparableVersion of the Sync Gateway node that wrote the config.
 	SGVersion string `json:"sg_version,omitempty"`
 
+	// MetadataID is the prefix used to store database metadata
+	MetadataID string `json:"metadata_id"`
+
 	// DbConfig embeds database config properties
 	DbConfig
 }

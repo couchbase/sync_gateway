@@ -12,9 +12,11 @@ package db
 
 import (
 	"testing"
+
+	"github.com/couchbase/sync_gateway/base"
 )
 
 func TestMain(m *testing.M) {
-	memWatermarkThresholdMB := uint64(2048)
-	TestBucketPoolWithIndexes(m, memWatermarkThresholdMB)
+	tbpOptions := base.TestBucketPoolOptions{MemWatermarkThresholdMB: 2048}
+	TestBucketPoolWithIndexes(m, tbpOptions)
 }

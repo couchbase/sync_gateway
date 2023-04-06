@@ -994,8 +994,7 @@ func TestChangesLoopingWhenLowSequence(t *testing.T) {
 	defer rt.Close()
 
 	ctx := rt.Context()
-	testDb := rt.ServerContext().Database(ctx, "db")
-	collection := testDb.GetSingleDatabaseCollection()
+	collection := rt.GetSingleTestDatabaseCollection()
 
 	// Create user:
 	rest.RequireStatus(t, rt.SendAdminRequest("GET", "/db/_user/bernard", ""), 404)
@@ -1006,7 +1005,7 @@ func TestChangesLoopingWhenLowSequence(t *testing.T) {
 	WriteDirect([]string{"PBS"}, 2, collection)
 	WriteDirect([]string{"PBS"}, 5, collection)
 	WriteDirect([]string{"PBS"}, 6, collection)
-	require.NoError(t, testDb.GetSingleDatabaseCollection().WaitForSequenceNotSkipped(ctx, 6))
+	require.NoError(t, collection.WaitForSequenceNotSkipped(ctx, 6))
 
 	// Check the _changes feed:
 	var changes struct {
@@ -1045,7 +1044,7 @@ func TestChangesLoopingWhenLowSequence(t *testing.T) {
 
 	// Send a later doc - low sequence still 3, high sequence goes to 7
 	WriteDirect([]string{"PBS"}, 7, collection)
-	require.NoError(t, testDb.GetSingleDatabaseCollection().WaitForSequenceNotSkipped(ctx, 7))
+	require.NoError(t, collection.WaitForSequenceNotSkipped(ctx, 7))
 
 	// Send another changes request with the same since ("2::6") to ensure we see data once there are changes
 	changesJSON = fmt.Sprintf(`{"since":"%s"}`, changes.Last_Seq)
@@ -1087,8 +1086,7 @@ func TestChangesLoopingWhenLowSequenceOneShotUser(t *testing.T) {
 	defer rt.Close()
 
 	ctx := rt.Context()
-	testDb := rt.ServerContext().Database(ctx, "db")
-	collection := testDb.GetSingleDatabaseCollection()
+	collection := rt.GetSingleTestDatabaseCollection()
 
 	// Create user:
 	rest.RequireStatus(t, rt.SendAdminRequest("GET", "/db/_user/bernard", ""), 404)
@@ -1100,7 +1098,7 @@ func TestChangesLoopingWhenLowSequenceOneShotUser(t *testing.T) {
 	WriteDirect([]string{"PBS"}, 3, collection)
 	WriteDirect([]string{"PBS"}, 4, collection)
 	WriteDirect([]string{"PBS"}, 5, collection)
-	require.NoError(t, testDb.GetSingleDatabaseCollection().WaitForSequenceNotSkipped(ctx, 5))
+	require.NoError(t, collection.WaitForSequenceNotSkipped(ctx, 5))
 
 	// Check the _changes feed:
 	var changes struct {
@@ -1120,7 +1118,7 @@ func TestChangesLoopingWhenLowSequenceOneShotUser(t *testing.T) {
 	WriteDirect([]string{"PBS"}, 8, collection)
 	WriteDirect([]string{"PBS"}, 9, collection)
 	WriteDirect([]string{"PBS"}, 10, collection)
-	require.NoError(t, testDb.GetSingleDatabaseCollection().WaitForSequenceNotSkipped(ctx, 10))
+	require.NoError(t, collection.WaitForSequenceNotSkipped(ctx, 10))
 
 	// Send another changes request with the last_seq received from the last changes ("5")
 	changesJSON := fmt.Sprintf(`{"since":"%s"}`, changes.Last_Seq)
@@ -1134,7 +1132,7 @@ func TestChangesLoopingWhenLowSequenceOneShotUser(t *testing.T) {
 	// Write a few more docs
 	WriteDirect([]string{"PBS"}, 11, collection)
 	WriteDirect([]string{"PBS"}, 12, collection)
-	require.NoError(t, testDb.GetSingleDatabaseCollection().WaitForSequenceNotSkipped(ctx, 12))
+	require.NoError(t, collection.WaitForSequenceNotSkipped(ctx, 12))
 
 	// Send another changes request with the last_seq received from the last changes ("5")
 	changesJSON = fmt.Sprintf(`{"since":"%s"}`, changes.Last_Seq)
@@ -1224,7 +1222,6 @@ func TestChangesLoopingWhenLowSequenceOneShotAdmin(t *testing.T) {
 	collection := rt.GetSingleTestDatabaseCollection()
 
 	ctx := rt.Context()
-	testDb := rt.ServerContext().Database(ctx, "db")
 
 	// Simulate 5 non-skipped writes (seq 1,2,3,4,5)
 	WriteDirect([]string{"PBS"}, 1, collection)
@@ -1232,7 +1229,7 @@ func TestChangesLoopingWhenLowSequenceOneShotAdmin(t *testing.T) {
 	WriteDirect([]string{"PBS"}, 3, collection)
 	WriteDirect([]string{"PBS"}, 4, collection)
 	WriteDirect([]string{"PBS"}, 5, collection)
-	require.NoError(t, testDb.GetSingleDatabaseCollection().WaitForSequenceNotSkipped(ctx, 5))
+	require.NoError(t, collection.WaitForSequenceNotSkipped(ctx, 5))
 	// Check the _changes feed:
 	var changes struct {
 		Results  []db.ChangeEntry
@@ -1251,7 +1248,7 @@ func TestChangesLoopingWhenLowSequenceOneShotAdmin(t *testing.T) {
 	WriteDirect([]string{"PBS"}, 8, collection)
 	WriteDirect([]string{"PBS"}, 9, collection)
 	WriteDirect([]string{"PBS"}, 10, collection)
-	require.NoError(t, testDb.GetSingleDatabaseCollection().WaitForSequenceNotSkipped(ctx, 10))
+	require.NoError(t, collection.WaitForSequenceNotSkipped(ctx, 10))
 
 	// Send another changes request with the last_seq received from the last changes ("5")
 	changesJSON := fmt.Sprintf(`{"since":"%s"}`, changes.Last_Seq)
@@ -1265,7 +1262,7 @@ func TestChangesLoopingWhenLowSequenceOneShotAdmin(t *testing.T) {
 	// Write a few more docs
 	WriteDirect([]string{"PBS"}, 11, collection)
 	WriteDirect([]string{"PBS"}, 12, collection)
-	require.NoError(t, testDb.GetSingleDatabaseCollection().WaitForSequenceNotSkipped(ctx, 12))
+	require.NoError(t, collection.WaitForSequenceNotSkipped(ctx, 12))
 
 	// Send another changes request with the last_seq received from the last changes ("5")
 	changesJSON = fmt.Sprintf(`{"since":"%s"}`, changes.Last_Seq)
@@ -1355,8 +1352,7 @@ func TestChangesLoopingWhenLowSequenceLongpollUser(t *testing.T) {
 	defer rt.Close()
 
 	ctx := rt.Context()
-	testDb := rt.ServerContext().Database(ctx, "db")
-	collection := testDb.GetSingleDatabaseCollection()
+	collection := rt.GetSingleTestDatabaseCollection()
 
 	// Create user:
 	rest.RequireStatus(t, rt.SendAdminRequest("GET", "/db/_user/bernard", ""), 404)
@@ -1368,7 +1364,7 @@ func TestChangesLoopingWhenLowSequenceLongpollUser(t *testing.T) {
 	WriteDirect([]string{"PBS"}, 3, collection)
 	WriteDirect([]string{"PBS"}, 4, collection)
 	WriteDirect([]string{"PBS"}, 5, collection)
-	require.NoError(t, testDb.GetSingleDatabaseCollection().WaitForSequenceNotSkipped(ctx, 5))
+	require.NoError(t, collection.WaitForSequenceNotSkipped(ctx, 5))
 
 	// Check the _changes feed:
 	var changes struct {
@@ -1388,7 +1384,7 @@ func TestChangesLoopingWhenLowSequenceLongpollUser(t *testing.T) {
 	WriteDirect([]string{"PBS"}, 8, collection)
 	WriteDirect([]string{"PBS"}, 9, collection)
 	WriteDirect([]string{"PBS"}, 10, collection)
-	require.NoError(t, testDb.GetSingleDatabaseCollection().WaitForSequenceNotSkipped(ctx, 10))
+	require.NoError(t, collection.WaitForSequenceNotSkipped(ctx, 10))
 
 	// Send another changes request with the last_seq received from the last changes ("5")
 	changesJSON := fmt.Sprintf(`{"since":"%s"}`, changes.Last_Seq)
@@ -1402,7 +1398,7 @@ func TestChangesLoopingWhenLowSequenceLongpollUser(t *testing.T) {
 	// Write a few more docs
 	WriteDirect([]string{"PBS"}, 11, collection)
 	WriteDirect([]string{"PBS"}, 12, collection)
-	require.NoError(t, testDb.GetSingleDatabaseCollection().WaitForSequenceNotSkipped(ctx, 12))
+	require.NoError(t, collection.WaitForSequenceNotSkipped(ctx, 12))
 
 	// Send another changes request with the last_seq received from the last changes ("5")
 	changesJSON = fmt.Sprintf(`{"since":"%s"}`, changes.Last_Seq)
@@ -1927,7 +1923,7 @@ func TestChangesIncludeDocs(t *testing.T) {
 	testDB := rt.GetDatabase()
 	testDB.RevsLimit = 3
 	defer rt.Close()
-	collection := testDB.GetSingleDatabaseCollection()
+	collection := rt.GetSingleTestDatabaseCollection()
 
 	// Create user1
 	response := rt.SendAdminRequest("PUT", "/db/_user/user1", rest.GetUserPayload(t, "", "letmein", "user1@couchbase.com", collection, []string{"alpha", "beta"}, nil))
@@ -2057,7 +2053,7 @@ func TestChangesIncludeDocs(t *testing.T) {
 	}
 
 	// Flush the rev cache, and issue changes again to ensure successful handling for rev cache misses
-	testDB.GetSingleDatabaseCollection().FlushRevisionCacheForTest()
+	rt.GetSingleTestDatabaseCollection().FlushRevisionCacheForTest()
 	// Also nuke temporary revision backup of doc_pruned.  Validates that the body for the pruned revision is generated correctly when no longer resident in the rev cache
 	data := collection.GetCollectionDatastore()
 	assert.NoError(t, data.Delete(base.RevPrefix+"doc_pruned:34:2-5afcb73bd3eb50615470e3ba54b80f00"))
@@ -2183,7 +2179,7 @@ func TestChangesViewBackfillFromQueryOnly(t *testing.T) {
 	cacheWaiter.Wait()
 
 	// Flush the channel cache
-	assert.NoError(t, testDb.GetSingleDatabaseCollection().FlushChannelCache(ctx))
+	assert.NoError(t, rt.GetSingleTestDatabaseCollection().FlushChannelCache(ctx))
 
 	var changes struct {
 		Results  []db.ChangeEntry
@@ -2257,7 +2253,7 @@ func TestChangesViewBackfillNonContiguousQueryResults(t *testing.T) {
 	cacheWaiter.Wait()
 
 	// Flush the channel cache
-	assert.NoError(t, testDb.GetSingleDatabaseCollection().FlushChannelCache(ctx))
+	assert.NoError(t, rt.GetSingleTestDatabaseCollection().FlushChannelCache(ctx))
 
 	// Issue a since=0 changes request, with limit less than the number of PBS documents
 	var changes struct {
@@ -2358,7 +2354,7 @@ func TestChangesViewBackfillFromPartialQueryOnly(t *testing.T) {
 	cacheWaiter.Wait()
 
 	// Flush the channel cache
-	assert.NoError(t, testDb.GetSingleDatabaseCollection().FlushChannelCache(ctx))
+	assert.NoError(t, rt.GetSingleTestDatabaseCollection().FlushChannelCache(ctx))
 
 	// Issue a since=n changes request, where n > 0 and is a non-PBS sequence.  Validate that there's a view-based backfill
 	var changes struct {
@@ -2443,7 +2439,7 @@ func TestChangesViewBackfillNoOverlap(t *testing.T) {
 	cacheWaiter.Wait()
 
 	// Flush the channel cache
-	assert.NoError(t, testDb.GetSingleDatabaseCollection().FlushChannelCache(ctx))
+	assert.NoError(t, rt.GetSingleTestDatabaseCollection().FlushChannelCache(ctx))
 
 	// Write some more docs to the bucket, with a gap before the first PBS sequence
 	response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/abc11", `{"channels":["ABC"]}`)
@@ -2524,7 +2520,7 @@ func TestChangesViewBackfill(t *testing.T) {
 	cacheWaiter.AddAndWait(3)
 
 	// Flush the channel cache
-	assert.NoError(t, testDb.GetSingleDatabaseCollection().FlushChannelCache(ctx))
+	assert.NoError(t, rt.GetSingleTestDatabaseCollection().FlushChannelCache(ctx))
 
 	// Add a few more docs (to increment the channel cache's validFrom)
 	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc4", `{"channels":["PBS"]}`)
@@ -2596,7 +2592,7 @@ func TestChangesViewBackfillStarChannel(t *testing.T) {
 	cacheWaiter.Wait()
 
 	// Flush the channel cache
-	assert.NoError(t, testDb.GetSingleDatabaseCollection().FlushChannelCache(ctx))
+	assert.NoError(t, rt.GetSingleTestDatabaseCollection().FlushChannelCache(ctx))
 
 	// Add a few more docs (to increment the channel cache's validFrom)
 	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc2", `{"channels":["PBS"]}`)
@@ -2784,7 +2780,7 @@ func TestChangesQueryBackfillWithLimit(t *testing.T) {
 			cacheWaiter.AddAndWait(test.totalDocuments * 2)
 
 			// Flush the channel cache
-			assert.NoError(t, testDb.GetSingleDatabaseCollection().FlushChannelCache(ctx))
+			assert.NoError(t, rt.GetSingleTestDatabaseCollection().FlushChannelCache(ctx))
 			startQueryCount := testDb.GetChannelQueryCount()
 
 			// Issue a since=0 changes request.
@@ -2848,7 +2844,7 @@ func TestMultichannelChangesQueryBackfillWithLimit(t *testing.T) {
 	cacheWaiter.AddAndWait(50)
 
 	// Flush the channel cache
-	assert.NoError(t, testDb.GetSingleDatabaseCollection().FlushChannelCache(ctx))
+	assert.NoError(t, rt.GetSingleTestDatabaseCollection().FlushChannelCache(ctx))
 
 	// 1. Issue a since=0 changes request, validate results
 	var changes struct {
@@ -2868,7 +2864,7 @@ func TestMultichannelChangesQueryBackfillWithLimit(t *testing.T) {
 	}
 
 	// 2. Same again, but with limit on the changes request
-	assert.NoError(t, testDb.GetSingleDatabaseCollection().FlushChannelCache(ctx))
+	assert.NoError(t, rt.GetSingleTestDatabaseCollection().FlushChannelCache(ctx))
 	changes.Results = nil
 	changesJSON = fmt.Sprintf(`{"since":0, "limit":25}`)
 	changes.Results = nil
@@ -2915,7 +2911,7 @@ func TestChangesQueryStarChannelBackfillLimit(t *testing.T) {
 	cacheWaiter.AddAndWait(10)
 
 	// Flush the channel cache
-	assert.NoError(t, testDb.GetSingleDatabaseCollection().FlushChannelCache(ctx))
+	assert.NoError(t, rt.GetSingleTestDatabaseCollection().FlushChannelCache(ctx))
 	startQueryCount := testDb.DbStats.Cache().ViewQueries.Value()
 
 	// Issue a since=0 changes request.  Validate that there's a view-based backfill
@@ -2969,7 +2965,7 @@ func TestChangesViewBackfillSlowQuery(t *testing.T) {
 	cacheWaiter.Wait()
 
 	// Flush the channel cache
-	assert.NoError(t, testDb.GetSingleDatabaseCollection().FlushChannelCache(ctx))
+	assert.NoError(t, rt.GetSingleTestDatabaseCollection().FlushChannelCache(ctx))
 
 	// Write another doc, to initialize the cache (and guarantee overlap)
 	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/doc2", `{"channels":["PBS"]}`)
@@ -3331,8 +3327,7 @@ func TestChangesActiveOnlyWithLimitAndViewBackfill(t *testing.T) {
 	}
 
 	// Active only NO Limit, POST
-	testDb := rt.ServerContext().Database(ctx, "db")
-	assert.NoError(t, testDb.GetSingleDatabaseCollection().FlushChannelCache(ctx))
+	assert.NoError(t, rt.GetSingleTestDatabaseCollection().FlushChannelCache(ctx))
 
 	changesJSON = `{"style":"all_docs", "active_only":true}`
 	changes.Results = nil
@@ -3349,7 +3344,7 @@ func TestChangesActiveOnlyWithLimitAndViewBackfill(t *testing.T) {
 	}
 
 	// Active only with Limit, POST
-	assert.NoError(t, testDb.GetSingleDatabaseCollection().FlushChannelCache(ctx))
+	assert.NoError(t, rt.GetSingleTestDatabaseCollection().FlushChannelCache(ctx))
 	changesJSON = `{"style":"all_docs", "active_only":true, "limit":5}`
 	changes.Results = nil
 	changesResponse = rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", changesJSON, "bernard")
@@ -3365,7 +3360,7 @@ func TestChangesActiveOnlyWithLimitAndViewBackfill(t *testing.T) {
 	}
 
 	// Active only with Limit, GET
-	assert.NoError(t, testDb.GetSingleDatabaseCollection().FlushChannelCache(ctx))
+	assert.NoError(t, rt.GetSingleTestDatabaseCollection().FlushChannelCache(ctx))
 	changes.Results = nil
 	changesResponse = rt.SendUserRequest("GET", "/{{.keyspace}}/_changes?style=all_docs&active_only=true&limit=5", "", "bernard")
 	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
@@ -3379,7 +3374,7 @@ func TestChangesActiveOnlyWithLimitAndViewBackfill(t *testing.T) {
 	}
 
 	// Active only with Limit set higher than number of revisions, POST
-	assert.NoError(t, testDb.GetSingleDatabaseCollection().FlushChannelCache(ctx))
+	assert.NoError(t, rt.GetSingleTestDatabaseCollection().FlushChannelCache(ctx))
 	changesJSON = `{"style":"all_docs", "active_only":true, "limit":15}`
 	changes.Results = nil
 	changesResponse = rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", changesJSON, "bernard")
@@ -3395,7 +3390,7 @@ func TestChangesActiveOnlyWithLimitAndViewBackfill(t *testing.T) {
 	}
 
 	// No limit active only, GET, followed by normal (https://github.com/couchbase/sync_gateway/issues/2955)
-	assert.NoError(t, testDb.GetSingleDatabaseCollection().FlushChannelCache(ctx))
+	assert.NoError(t, rt.GetSingleTestDatabaseCollection().FlushChannelCache(ctx))
 	changes.Results = nil
 	changesResponse = rt.SendUserRequest("GET", "/{{.keyspace}}/_changes?style=all_docs&active_only=true", "", "bernard")
 	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
@@ -3682,7 +3677,7 @@ func TestIncludeDocsWithPrincipals(t *testing.T) {
 
 	ctx := rt.Context()
 	testDb := rt.ServerContext().Database(ctx, "db")
-	collection := testDb.GetSingleDatabaseCollection()
+	collection := rt.GetSingleTestDatabaseCollection()
 
 	cacheWaiter := testDb.NewDCPCachingCountWaiter(t)
 

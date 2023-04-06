@@ -11,6 +11,7 @@ licenses/APL2.txt.
 package auth
 
 import (
+	"fmt"
 	"math/rand"
 	"strings"
 	"testing"
@@ -18,6 +19,7 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestInitRole(t *testing.T) {
@@ -54,6 +56,49 @@ func TestAuthorizeChannelsRole(t *testing.T) {
 	assert.Error(t, role.authorizeAllChannels(channels.BaseSetOf(t, "unknown")))
 	assert.NoError(t, role.authorizeAnyChannel(channels.BaseSetOf(t, "superuser", "unknown")))
 	assert.Error(t, role.authorizeAllChannels(channels.BaseSetOf(t, "unknown1", "unknown2")))
+}
+
+func TestRoleKeysHash(t *testing.T) {
+	for _, metadataDefault := range []bool{false, true} {
+		t.Run(fmt.Sprintf("metadataDefault=%t", metadataDefault), func(t *testing.T) {
+			testBucket := base.GetTestBucket(t)
+			defer testBucket.Close()
+			dataStore := testBucket.DefaultDataStore()
+
+			auth := NewAuthenticator(dataStore, nil, DefaultAuthenticatorOptions())
+			if !metadataDefault {
+				namedMetadataOptions := DefaultAuthenticatorOptions()
+				namedMetadataOptions.MetaKeys = base.NewMetadataKeys("foo")
+
+				auth = NewAuthenticator(dataStore, nil, namedMetadataOptions)
+
+			}
+			shortRoleName := "shortRole"
+			shortRole, err := auth.NewRoleNoChannels(shortRoleName)
+			require.NoError(t, err)
+			require.NoError(t, auth.Save(shortRole))
+			require.Equal(t, shortRoleName, shortRole.Name())
+			if metadataDefault {
+				require.Equal(t, "_sync:role:shortRole", auth.DocIDForRole(shortRoleName))
+				docExists(t, dataStore, "_sync:role:shortRole")
+			} else {
+				require.Equal(t, "_sync:role:foo:shortRole", auth.DocIDForRole(shortRoleName))
+				docExists(t, dataStore, "_sync:role:foo:shortRole")
+			}
+
+			longRoleName := "longRoleName" + strings.Repeat("A", 40)
+			longRole, err := auth.NewRoleNoChannels(longRoleName)
+			require.NoError(t, err)
+			require.NoError(t, auth.Save(longRole))
+			require.Equal(t, longRoleName, longRole.Name())
+
+			if metadataDefault {
+				docExists(t, dataStore, "_sync:role:longRoleNameAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+			} else {
+				docExists(t, dataStore, "_sync:role:foo:420fe9ed57be3ed79a275d9598e8e3fb30101b3d")
+			}
+		})
+	}
 }
 
 func BenchmarkIsValidPrincipalName(b *testing.B) {

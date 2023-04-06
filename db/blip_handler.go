@@ -147,12 +147,12 @@ func collectionBlipHandler(next blipHandlerFunc) blipHandlerFunc {
 			if bh.collections.hasNamedCollections() {
 				return base.HTTPErrorf(http.StatusBadRequest, "GetCollections already occurred, subsequent messages need a Collection property")
 			}
-			// temp use private method
-			bh.collection = &DatabaseCollectionWithUser{
-				DatabaseCollection: bh.db.singleCollection,
-				user:               bh.db.user,
+			var err error
+			bh.collection, err = bh.db.GetDefaultDatabaseCollectionWithUser()
+			if err != nil {
+				return err
 			}
-			bh.collections.setNonCollectionAware(&blipSyncCollectionContext{dbCollection: bh.collection.DatabaseCollection})
+			bh.collections.setNonCollectionAware(newBlipSyncCollectionContext(bh.collection.DatabaseCollection))
 			return next(bh, bm)
 		}
 		if !bh.collections.hasNamedCollections() {
@@ -173,7 +173,7 @@ func collectionBlipHandler(next blipHandlerFunc) blipHandlerFunc {
 			DatabaseCollection: collectionCtx.dbCollection,
 			user:               bh.db.user,
 		}
-		bh.loggingCtx = base.CollectionCtx(bh.BlipSyncContext.loggingCtx, bh.collection.Name)
+		bh.loggingCtx = base.CollectionLogCtx(bh.BlipSyncContext.loggingCtx, bh.collection.Name)
 		// Call down to the underlying handler and return it's value
 		return next(bh, bm)
 	}
@@ -235,9 +235,6 @@ func (bh *blipHandler) handleSetCheckpoint(rq *blip.Message) error {
 
 // Received a "subChanges" subscription request
 func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
-	bh.changesCtxLock.Lock()
-	defer bh.changesCtxLock.Unlock()
-
 	defaultSince := CreateZeroSinceValue()
 	latestSeq := func() (SequenceID, error) {
 		seq, err := bh.collection.LastSequence()
@@ -253,6 +250,8 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 	if err != nil {
 		return base.HTTPErrorf(http.StatusBadRequest, fmt.Sprintf("%s", err))
 	}
+	collectionCtx.changesCtxLock.Lock()
+	defer collectionCtx.changesCtxLock.Unlock()
 	if !collectionCtx.activeSubChanges.CASRetry(false, true) {
 		collectionStr := "default collection"
 		if bh.collectionIdx != nil {
@@ -262,8 +261,8 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 	}
 
 	// Create ctx if it has been cancelled
-	if bh.changesCtx.Err() != nil {
-		bh.changesCtx, bh.changesCtxCancel = context.WithCancel(context.Background())
+	if collectionCtx.changesCtx.Err() != nil {
+		collectionCtx.changesCtx, collectionCtx.changesCtxCancel = context.WithCancel(context.Background())
 	}
 
 	if len(subChangesParams.docIDs()) > 0 && subChangesParams.continuous() {
@@ -308,7 +307,7 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 		}
 
 		defer func() {
-			bh.changesCtxCancel()
+			collectionCtx.changesCtxCancel()
 			collectionCtx.activeSubChanges.Set(false)
 		}()
 		// sendChanges runs until blip context closes, or fails due to error
@@ -323,6 +322,7 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 			revocations:       subChangesParams.revocations(),
 			clientType:        clientType,
 			ignoreNoConflicts: clientType == clientTypeSGR2, // force this side to accept a "changes" message, even in no conflicts mode for SGR2.
+			changesCtx:        collectionCtx.changesCtx,
 		})
 		base.DebugfCtx(bh.loggingCtx, base.KeySyncMsg, "#%d: Type:%s   --> Time:%v", bh.serialNumber, rq.Profile(), time.Since(startTime))
 	}()
@@ -331,10 +331,13 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 }
 
 func (bh *blipHandler) handleUnsubChanges(rq *blip.Message) error {
-	bh.changesCtxLock.Lock()
-	defer bh.changesCtxLock.Unlock()
-
-	bh.changesCtxCancel()
+	collectionCtx, err := bh.collections.get(bh.collectionIdx)
+	if err != nil {
+		return err
+	}
+	collectionCtx.changesCtxLock.Lock()
+	defer collectionCtx.changesCtxLock.Unlock()
+	collectionCtx.changesCtxCancel()
 	return nil
 }
 
@@ -355,6 +358,7 @@ type sendChangesOptions struct {
 	clientType        clientType
 	revocations       bool
 	ignoreNoConflicts bool
+	changesCtx        context.Context
 }
 
 type changesDeletedFlag uint
@@ -389,7 +393,7 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions
 		Revocations: opts.revocations,
 		LoggingCtx:  bh.loggingCtx,
 		clientType:  opts.clientType,
-		ChangesCtx:  bh.changesCtx,
+		ChangesCtx:  opts.changesCtx,
 	}
 
 	channelSet := opts.channels
@@ -413,7 +417,7 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions
 	// and BlipSyncContext user access.
 	changesDb, err := bh.copyDatabaseCollectionWithUser(bh.collectionIdx)
 	if err != nil {
-		base.WarnfCtx(bh.loggingCtx, "[%s] error sending changes: %w", bh.blipContext.ID, err)
+		base.WarnfCtx(bh.loggingCtx, "[%s] error sending changes: %v", bh.blipContext.ID, err)
 		return false
 
 	}
@@ -864,7 +868,7 @@ func (bh *blipHandler) handleNoRev(rq *blip.Message) error {
 	if collectionCtx.sgr2PullProcessedSeqCallback != nil {
 		seq, err := ParseJSONSequenceID(seqStr)
 		if err != nil {
-			base.WarnfCtx(bh.loggingCtx, "Unable to parse sequence %q from norev message: %w - not tracking for checkpointing", seqStr, err)
+			base.WarnfCtx(bh.loggingCtx, "Unable to parse sequence %q from norev message: %v - not tracking for checkpointing", seqStr, err)
 		} else {
 			collectionCtx.sgr2PullProcessedSeqCallback(&seq, IDAndRev{DocID: docID, RevID: revID})
 		}
@@ -948,7 +952,7 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 				seqStr := rq.Properties[RevMessageSequence]
 				seq, err := ParseJSONSequenceID(seqStr)
 				if err != nil {
-					base.WarnfCtx(bh.loggingCtx, "Unable to parse sequence %q from rev message: %w - not tracking for checkpointing", seqStr, err)
+					base.WarnfCtx(bh.loggingCtx, "Unable to parse sequence %q from rev message: %v - not tracking for checkpointing", seqStr, err)
 				} else {
 					collectionCtx.sgr2PullProcessedSeqCallback(&seq, IDAndRev{DocID: docID, RevID: revID})
 				}
@@ -1169,7 +1173,7 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 		seqProperty := rq.Properties[RevMessageSequence]
 		seq, err := ParseJSONSequenceID(seqProperty)
 		if err != nil {
-			base.WarnfCtx(bh.loggingCtx, "Unable to parse sequence %q from rev message: %w - not tracking for checkpointing", seqProperty, err)
+			base.WarnfCtx(bh.loggingCtx, "Unable to parse sequence %q from rev message: %v - not tracking for checkpointing", seqProperty, err)
 		} else {
 			collectionCtx.sgr2PullProcessedSeqCallback(&seq, IDAndRev{DocID: docID, RevID: revID})
 		}

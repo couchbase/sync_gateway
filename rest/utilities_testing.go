@@ -151,7 +151,11 @@ func (rt *RestTester) Bucket() base.Bucket {
 	// If we have a TestBucket defined on the RestTesterConfig, use that instead of requesting a new one.
 	testBucket := rt.RestTesterConfig.CustomTestBucket
 	if testBucket == nil {
-		testBucket = base.GetTestBucket(rt.TB)
+		if rt.PersistentConfig {
+			testBucket = base.GetPersistentTestBucket(rt.TB)
+		} else {
+			testBucket = base.GetTestBucket(rt.TB)
+		}
 		if rt.leakyBucketConfig != nil {
 			leakyConfig := *rt.leakyBucketConfig
 			// Ignore closures to avoid double closing panics
@@ -251,6 +255,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 	sc.Auth.BcryptCost = bcrypt.MinCost
 
 	rt.RestTesterServerContext = NewServerContext(base.TestCtx(rt.TB), &sc, rt.RestTesterConfig.PersistentConfig)
+	rt.RestTesterServerContext.allowScopesInPersistentConfig = true
 	ctx := rt.Context()
 
 	if !base.ServerIsWalrus(sc.Bootstrap.Server) {
@@ -267,7 +272,6 @@ func (rt *RestTester) Bucket() base.Bucket {
 			panic("Couldn't initialize Couchbase Server connection: " + err.Error())
 		}
 	}
-
 	// Copy this startup config at this point into initial startup config
 	err := base.DeepCopyInefficient(&rt.RestTesterServerContext.initialStartupConfig, &sc)
 	if err != nil {
@@ -293,7 +297,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 				if rt.SyncFn != "" {
 					syncFn = base.StringPtr(rt.SyncFn)
 				}
-				rt.DatabaseConfig.Scopes = getCollectionsConfigWithSyncFn(rt.TB, testBucket, syncFn, rt.numCollections)
+				rt.DatabaseConfig.Scopes = GetCollectionsConfigWithSyncFn(rt.TB, testBucket, syncFn, rt.numCollections)
 			}
 		}
 
@@ -361,11 +365,11 @@ func (rt *RestTester) MetadataStore() base.DataStore {
 
 // GetCollectionsConfig sets up a ScopesConfig from a TestBucket for use with non default collections.
 func GetCollectionsConfig(t testing.TB, testBucket *base.TestBucket, numCollections int) ScopesConfig {
-	return getCollectionsConfigWithSyncFn(t, testBucket, nil, numCollections)
+	return GetCollectionsConfigWithSyncFn(t, testBucket, nil, numCollections)
 }
 
-// getCollectionsConfigWithSyncFn sets up a ScopesConfig from a TestBucket for use with non default collections. The sync function will be passed for all collections.
-func getCollectionsConfigWithSyncFn(t testing.TB, testBucket *base.TestBucket, syncFn *string, numCollections int) ScopesConfig {
+// GetCollectionsConfigWithSyncFn sets up a ScopesConfig from a TestBucket for use with non default collections. The sync function will be passed for all collections.
+func GetCollectionsConfigWithSyncFn(t testing.TB, testBucket *base.TestBucket, syncFn *string, numCollections int) ScopesConfig {
 	// Get a datastore as provided by the test
 	stores := testBucket.GetNonDefaultDatastoreNames()
 	require.True(t, len(stores) >= numCollections, "Requested more collections %d than found on testBucket %d", numCollections, len(stores))
@@ -432,33 +436,27 @@ func (rt *RestTester) ServerContext() *ServerContext {
 }
 
 // CreateDatabase is a utility function to create a database through the REST API
-func (rt *RestTester) CreateDatabase(dbName string, config DbConfig) (*TestResponse, error) {
+func (rt *RestTester) CreateDatabase(dbName string, config DbConfig) *TestResponse {
 	dbcJSON, err := base.JSONMarshal(config)
-	if err != nil {
-		return nil, err
-	}
+	require.NoError(rt.TB, err)
 	resp := rt.SendAdminRequest(http.MethodPut, fmt.Sprintf("/%s/", dbName), string(dbcJSON))
-	return resp, nil
+	return resp
 }
 
 // ReplaceDbConfig is a utility function to replace a database config through the REST API
-func (rt *RestTester) ReplaceDbConfig(dbName string, config DbConfig) (*TestResponse, error) {
+func (rt *RestTester) ReplaceDbConfig(dbName string, config DbConfig) *TestResponse {
 	dbcJSON, err := base.JSONMarshal(config)
-	if err != nil {
-		return nil, err
-	}
+	require.NoError(rt.TB, err)
 	resp := rt.SendAdminRequest(http.MethodPut, fmt.Sprintf("/%s/_config", dbName), string(dbcJSON))
-	return resp, nil
+	return resp
 }
 
 // UpsertDbConfig is a utility function to upsert a database through the REST API
-func (rt *RestTester) UpsertDbConfig(dbName string, config DbConfig) (*TestResponse, error) {
+func (rt *RestTester) UpsertDbConfig(dbName string, config DbConfig) *TestResponse {
 	dbcJSON, err := base.JSONMarshal(config)
-	if err != nil {
-		return nil, err
-	}
+	require.NoError(rt.TB, err)
 	resp := rt.SendAdminRequest(http.MethodPost, fmt.Sprintf("/%s/_config", dbName), string(dbcJSON))
-	return resp, nil
+	return resp
 }
 
 // GetDatabase Returns first database found for server context.
@@ -468,6 +466,12 @@ func (rt *RestTester) GetDatabase() *db.DatabaseContext {
 		return database
 	}
 	return nil
+}
+
+// CreateUser creates a user with the default password and channels scoped to a single test collection.
+func (rt *RestTester) CreateUser(username string, channels []string) {
+	response := rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/"+username, GetUserPayload(rt.TB, "", RestTesterDefaultUserPassword, "", rt.GetSingleTestDatabaseCollection(), channels, nil))
+	RequireStatus(rt.TB, response, http.StatusCreated)
 }
 
 // GetSingleTestDatabaseCollection will return a DatabaseCollection if there is only one. Depending on test environment configuration, it may or may not be the default collection.
@@ -507,11 +511,7 @@ func (rt *RestTester) WaitForDoc(docid string) (err error) {
 }
 
 func (rt *RestTester) SequenceForDoc(docid string) (seq uint64, err error) {
-	database := rt.GetDatabase()
-	if database == nil {
-		return 0, fmt.Errorf("No database found")
-	}
-	collection := database.GetSingleDatabaseCollection()
+	collection := rt.GetSingleTestDatabaseCollection()
 	doc, err := collection.GetDocument(base.TestCtx(rt.TB), docid, db.DocUnmarshalAll)
 	if err != nil {
 		return 0, err
@@ -521,19 +521,17 @@ func (rt *RestTester) SequenceForDoc(docid string) (seq uint64, err error) {
 
 // Wait for sequence to be buffered by the channel cache
 func (rt *RestTester) WaitForSequence(seq uint64) error {
-	database := rt.GetDatabase()
-	if database == nil {
-		return fmt.Errorf("No database found")
-	}
-	return database.GetSingleDatabaseCollection().WaitForSequence(base.TestCtx(rt.TB), seq)
+	return rt.GetSingleTestDatabaseCollection().WaitForSequence(base.TestCtx(rt.TB), seq)
 }
 
 func (rt *RestTester) WaitForPendingChanges() error {
-	database := rt.GetDatabase()
-	if database == nil {
-		return fmt.Errorf("No database found")
+	for _, collection := range rt.GetDbCollections() {
+		err := collection.WaitForPendingChanges(base.TestCtx(rt.TB))
+		if err != nil {
+			return err
+		}
 	}
-	return database.GetSingleDatabaseCollection().WaitForPendingChanges(base.TestCtx(rt.TB))
+	return nil
 }
 
 func (rt *RestTester) SetAdminParty(partyTime bool) error {
@@ -607,20 +605,37 @@ func (rt *RestTester) templateResource(resource string) (string, error) {
 	}
 
 	data := make(map[string]string)
-	if rt.ServerContext() != nil && len(rt.ServerContext().AllDatabases()) == 1 {
-		data["db"] = rt.GetDatabase().Name
-	}
-	database := rt.GetDatabase()
-	if database != nil {
-		if len(database.CollectionByID) == 1 {
-			data["keyspace"] = rt.GetSingleKeyspace()
-		} else {
-			for i, keyspace := range rt.GetKeyspaces() {
-				data[fmt.Sprintf("keyspace%d", i+1)] = keyspace
+	require.NotNil(rt.TB, rt.ServerContext())
+	if rt.ServerContext() != nil {
+		databases := rt.ServerContext().AllDatabases()
+		var dbNames []string
+		for dbName := range databases {
+			dbNames = append(dbNames, dbName)
+		}
+		sort.Strings(dbNames)
+		multipleDatabases := len(dbNames) > 1
+		for i, dbName := range dbNames {
+			database := databases[dbName]
+			dbPrefix := ""
+			if !multipleDatabases {
+				data["db"] = database.Name
+			} else {
+				dbPrefix = fmt.Sprintf("db%d", i+1)
+				data[dbPrefix] = database.Name
+			}
+			if len(database.CollectionByID) == 1 {
+				data["keyspace"] = rt.GetSingleKeyspace()
+			} else {
+				for j, keyspace := range getKeyspaces(rt.TB, database) {
+					if !multipleDatabases {
+						data[fmt.Sprintf("keyspace%d", j+1)] = keyspace
+					} else {
+						data[fmt.Sprintf("db%dkeyspace%d", i+1, j+1)] = keyspace
+					}
+				}
 			}
 		}
 	}
-
 	var uri bytes.Buffer
 	if err := tmpl.Execute(&uri, data); err != nil {
 		return "", err
@@ -726,7 +741,8 @@ func (rt *RestTester) CreateWaitForChangesRetryWorker(numChangesExpected int, ch
 		}
 		if len(changes.Results) < numChangesExpected {
 			// not enough results, retry
-			return true, nil, nil
+			rt.TB.Logf("Waiting for changes, expected %d, got %d: %v", numChangesExpected, len(changes.Results), changes)
+			return true, fmt.Errorf("expecting %d changes, got %d", numChangesExpected, len(changes.Results)), nil
 		}
 		// If it made it this far, there is no errors and it got enough changes
 		return false, nil, changes
@@ -920,6 +936,22 @@ func (rt *RestTester) waitForDBState(stateWant string) (err error) {
 	return fmt.Errorf("given up waiting for DB state, want: %s, current: %s, attempts: %d", stateWant, stateCurr, maxTries)
 }
 
+func (rt *RestTester) WaitForDatabaseState(dbName string, targetState uint32) error {
+	var stateCurr string
+	maxTries := 50
+	for i := 0; i < maxTries; i++ {
+		dbRootResponse := DatabaseRoot{}
+		resp := rt.SendAdminRequest("GET", "/"+dbName+"/", "")
+		RequireStatus(rt.TB, resp, 200)
+		require.NoError(rt.TB, base.JSONUnmarshal(resp.Body.Bytes(), &dbRootResponse))
+		if dbRootResponse.State == db.RunStateString[targetState] {
+			return nil
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	return fmt.Errorf("given up waiting for DB state, want: %s, current: %s, attempts: %d", db.RunStateString[targetState], stateCurr, maxTries)
+}
+
 func (rt *RestTester) SendAdminRequestWithHeaders(method, resource string, body string, headers map[string]string) *TestResponse {
 	input := bytes.NewBufferString(body)
 	request, _ := http.NewRequest(method, "http://localhost"+rt.mustTemplateResource(resource), input)
@@ -954,12 +986,11 @@ func (rt *RestTester) PutDocumentWithRevID(docID string, newRevID string, parent
 	if err != nil {
 		return nil, err
 	}
-	resp := rt.SendAdminRequest(http.MethodPut, "/{{.db}}/"+docID+"?new_edits=false", string(requestBytes))
+	resp := rt.SendAdminRequest(http.MethodPut, "/{{.keyspace}}/"+docID+"?new_edits=false", string(requestBytes))
 	return resp, nil
 }
 
 func (rt *RestTester) SetAdminChannels(username string, keyspace string, channels ...string) error {
-
 	dbName, scopeName, collectionName, err := ParseKeyspace(keyspace)
 	if err != nil {
 		return err
@@ -976,6 +1007,17 @@ func (rt *RestTester) SetAdminChannels(username string, keyspace string, channel
 	}
 
 	currentConfig.SetExplicitChannels(*scopeName, *collectionName, channels...)
+	// Remove read only properties returned from the user api
+	for _, scope := range currentConfig.CollectionAccess {
+		if scope != nil {
+			for _, collectionAccess := range scope {
+				collectionAccess.Channels_ = nil
+				collectionAccess.JWTChannels_ = nil
+				collectionAccess.JWTLastUpdated = nil
+			}
+		}
+	}
+
 	newConfigBytes, _ := base.JSONMarshal(currentConfig)
 
 	userResponse = rt.SendAdminRequest("PUT", "/"+dbName+"/_user/"+username, string(newConfigBytes))
@@ -1515,7 +1557,7 @@ func (bt *BlipTester) SendRev(docId, docRev string, body []byte, properties blip
 }
 
 // GetUserPayload will take username, password, email, channels and roles you want to assign a user and create the appropriate payload for the _user endpoint
-func GetUserPayload(t *testing.T, username, password, email string, collection *db.DatabaseCollection, chans, roles []string) string {
+func GetUserPayload(t testing.TB, username, password, email string, collection *db.DatabaseCollection, chans, roles []string) string {
 	config := auth.PrincipalConfig{}
 	if username != "" {
 		config.Name = &username
@@ -2304,6 +2346,16 @@ func getRESTKeyspace(_ testing.TB, dbName string, collection *db.DatabaseCollect
 	return strings.Join([]string{dbName, collection.ScopeName, collection.Name}, base.ScopeCollectionSeparator)
 }
 
+// getKeyspaces returns the names of all the keyspaces on the rest tester. Currently assumes a single database.
+func getKeyspaces(t testing.TB, database *db.DatabaseContext) []string {
+	var keyspaces []string
+	for _, collection := range database.CollectionByID {
+		keyspaces = append(keyspaces, getRESTKeyspace(t, database.Name, collection))
+	}
+	sort.Strings(keyspaces)
+	return keyspaces
+}
+
 // GetKeyspaces returns the names of all the keyspaces on the rest tester. Currently assumes a single database.
 func (rt *RestTester) GetKeyspaces() []string {
 	db := rt.GetDatabase()
@@ -2400,4 +2452,28 @@ func (rt *RestTester) GetChangesOneShot(t testing.TB, keyspace string, since int
 	assert.NoError(t, err, "Error unmarshalling changes response")
 	require.Len(t, changes.Results, changesCount)
 	return changesResponse
+}
+
+func (rt *RestTester) NewDbConfig() DbConfig {
+	config := DbConfig{
+		BucketConfig: BucketConfig{
+			Bucket: base.StringPtr(rt.Bucket().GetName()),
+		},
+		NumIndexReplicas: base.UintPtr(0),
+		EnableXattrs:     base.BoolPtr(base.TestUseXattrs()),
+	}
+	// Walrus is peculiar in that it needs to run with views, but can run most GSI tests, including collections
+	if !base.UnitTestUrlIsWalrus() {
+		config.UseViews = base.BoolPtr(base.TestsDisableGSI())
+	}
+	// Setup scopes.
+	if base.TestsUseNamedCollections() && rt.collectionConfig != useSingleCollectionDefaultOnly && (base.UnitTestUrlIsWalrus() || (config.UseViews != nil && !*config.UseViews)) {
+		var syncFn *string
+		if rt.SyncFn != "" {
+			syncFn = base.StringPtr(rt.SyncFn)
+		}
+		config.Scopes = GetCollectionsConfigWithSyncFn(rt.TB, rt.TestBucket, syncFn, rt.numCollections)
+	}
+
+	return config
 }

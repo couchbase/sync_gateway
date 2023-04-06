@@ -113,8 +113,7 @@ func NewDCPCommon(ctx context.Context, callback sgbucket.FeedEventCallbackFunc, 
 		checkpointPrefix:       checkpointPrefix,
 	}
 
-	dcpContextID := fmt.Sprintf("%s-%s", MD(couchbaseStore.GetName()).Redact(), feedID)
-	c.loggingCtx = LogContextWith(ctx, &LogContext{CorrelationID: dcpContextID})
+	c.loggingCtx = CorrelationIDLogCtx(ctx, feedID)
 
 	return c, nil
 }

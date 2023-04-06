@@ -12,6 +12,7 @@ get:
     This will retrieve the status of each database and the overall server status.
 
     Required Sync Gateway RBAC roles:
+
     * Sync Gateway Dev Ops
   responses:
     '200':
@@ -23,5 +24,4 @@ get:
     '400':
       $ref: ../../components/responses.yaml#/request-problem
   tags:
-    - Admin only endpoints
     - Server
