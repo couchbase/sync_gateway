@@ -12,7 +12,7 @@ licenses/APL2.txt.
 
 <manifest>
 
-  <remote fetch="https://github.com/couchbase/" name="couchbase"/>
+  <remote fetch="https://github.com/couchbase/" name="couchbase" revision="release/3.1.0"/>
   <default remote="couchbase" revision="master"/>
 
   <!-- Build Scripts (required on CI servers) -->
