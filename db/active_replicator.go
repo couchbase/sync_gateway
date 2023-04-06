@@ -269,7 +269,11 @@ func blipSync(target url.URL, blipContext *blip.Context, insecureSkipVerify bool
 	var basicAuthCreds *url.Userinfo
 	if target.User != nil {
 		// take a copy
-		basicAuthCreds = &*target.User
+		if password, hasPassword := target.User.Password(); hasPassword {
+			basicAuthCreds = url.UserPassword(target.User.Username(), password)
+		} else {
+			basicAuthCreds = url.User(target.User.Username())
+		}
 		target.User = nil
 	}
 
