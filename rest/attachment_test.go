@@ -61,7 +61,6 @@ func TestDocEtag(t *testing.T) {
 
 	// Validate Etag returned when updating doc
 	response = rt.SendRequest("PUT", "/{{.keyspace}}/doc?rev="+revid, `{"prop":false}`)
-	revid = body["rev"].(string)
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.Equal(t, true, body["ok"])
 	revid = body["rev"].(string)
@@ -257,6 +256,7 @@ func TestDocAttachmentOnRemovedRev(t *testing.T) {
 
 	// Create a test user
 	user, err = a.NewUser("user1", "letmein", channels.BaseSetOf(t, "foo"))
+	require.NoError(t, err)
 	assert.NoError(t, a.Save(user))
 
 	response := rt.SendUserRequest("PUT", "/{{.keyspace}}/doc", `{"prop":true, "channels":["foo"]}`, "user1")
@@ -2193,6 +2193,7 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		require.Len(t, attachments, 1)
 		meta, ok = attachments[att2Name].(map[string]interface{})
 		require.False(t, ok)
+		require.Nil(t, meta)
 		meta, ok = attachments[att1Name].(map[string]interface{})
 		require.True(t, ok)
 		assert.True(t, meta["stub"].(bool))
@@ -2675,7 +2676,9 @@ func TestUpdateExistingAttachment(t *testing.T) {
 	assert.NoError(t, err)
 
 	_, err = rt.GetSingleTestDatabaseCollection().GetDocument(base.TestCtx(t), "doc1", db.DocUnmarshalAll)
+	require.NoError(t, err)
 	_, err = rt.GetSingleTestDatabaseCollection().GetDocument(base.TestCtx(t), "doc2", db.DocUnmarshalAll)
+	require.NoError(t, err)
 
 	revIDDoc1, err = btc.PushRev("doc1", revIDDoc1, []byte(`{"key": "val", "_attachments":{"attachment":{"digest":"sha1-SKk0IV40XSHW37d3H0xpv2+z9Ck=","length":11,"content_type":"","stub":true,"revpos":3}}}`))
 	require.NoError(t, err)
@@ -3009,7 +3012,9 @@ func TestCBLRevposHandling(t *testing.T) {
 	assert.NoError(t, err)
 
 	_, err = rt.GetSingleTestDatabaseCollection().GetDocument(base.TestCtx(t), "doc1", db.DocUnmarshalAll)
+	require.NoError(t, err)
 	_, err = rt.GetSingleTestDatabaseCollection().GetDocument(base.TestCtx(t), "doc2", db.DocUnmarshalAll)
+	require.NoError(t, err)
 
 	// Update doc1, don't change attachment, use correct revpos
 	revIDDoc1, err = btc.PushRev("doc1", revIDDoc1, []byte(`{"key": "val", "_attachments":{"attachment":{"digest":"sha1-wzp8ZyykdEuZ9GuqmxQ7XDrY7Co=","length":11,"content_type":"","stub":true,"revpos":2}}}`))

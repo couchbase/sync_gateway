@@ -183,6 +183,7 @@ func TestUnmarshalBrokenConfig(t *testing.T) {
 			tb.GetName(), base.TestUseXattrs(), base.TestsDisableGSI(),
 		),
 	)
+	RequireStatus(t, resp, http.StatusCreated)
 
 	// Use underlying connection to unmarshal to untyped config
 	cnf := make(map[string]interface{}, 1)
@@ -954,6 +955,7 @@ func TestPersistentConfigRegistryRollbackAfterDeleteFailure(t *testing.T) {
 		bucketDbConfig.Version = "2-a"
 		return bucketDbConfig, nil
 	})
+	require.NoError(t, err)
 
 	simulateDeleteFailure(t, collection2db2Config)
 	// Version 2-a is deleted, attempt to recreate as version 1-b.  Expect resolution of in-flight delete and then

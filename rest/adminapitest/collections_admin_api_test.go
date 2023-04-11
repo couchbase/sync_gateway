@@ -215,7 +215,9 @@ func TestRequireResync(t *testing.T) {
 	ks_db2_c1 := db2Name + "." + scope + "." + collection1
 
 	resp = rt.SendAdminRequest("PUT", "/"+ks_db1_c1+"/testDoc1", `{"foo":"bar"}`)
+	rest.RequireStatus(t, resp, http.StatusCreated)
 	resp = rt.SendAdminRequest("PUT", "/"+ks_db1_c2+"/testDoc2", `{"foo":"bar"}`)
+	rest.RequireStatus(t, resp, http.StatusCreated)
 
 	// Update db1 to remove collection1
 	dbConfig.Scopes = scopesConfigC2Only

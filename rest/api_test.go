@@ -154,6 +154,7 @@ func TestDocumentUpdateWithNullBody(t *testing.T) {
 
 	// Create a test user
 	user, err = a.NewUser("user1", "letmein", channels.BaseSetOf(t, "foo"))
+	require.NoError(t, err)
 	assert.NoError(t, a.Save(user))
 
 	// Create document
@@ -1229,6 +1230,7 @@ func TestOldDocHandling(t *testing.T) {
 
 	// Create user:
 	frank, err := a.NewUser("charles", "1234", nil)
+	require.NoError(t, err)
 	assert.NoError(t, a.Save(frank))
 
 	// Create a doc:
@@ -1596,6 +1598,7 @@ func TestLongpollWithWildcard(t *testing.T) {
 	// Send a doc that will properly close the longpoll response
 	time.Sleep(1 * time.Second)
 	response = rt.Send(Request("PUT", "/{{.keyspace}}/sherlock", `{"channel":["PBS"]}`))
+	RequireStatus(t, response, http.StatusOK)
 	wg.Wait()
 }
 

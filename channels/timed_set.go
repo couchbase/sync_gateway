@@ -373,6 +373,10 @@ func TimedSetFromString(encoded string) TimedSet {
 					return nil
 				}
 				vbNo, err := strconv.ParseUint(seqComponents[0], 10, 16)
+				if err != nil {
+					return nil
+				}
+
 				vbSeq, err := strconv.ParseUint(seqComponents[1], 10, 64)
 				if err != nil {
 					return nil

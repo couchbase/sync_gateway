@@ -217,6 +217,7 @@ func TestRevisionCacheInternalProperties(t *testing.T) {
 	}
 
 	validRevisionsMap, ok := validRevisions.(Revisions)
+	require.True(t, ok)
 	_, startOk := validRevisionsMap[RevisionsStart]
 	assert.True(t, startOk)
 	_, idsOk := validRevisionsMap[RevisionsIds]
@@ -254,15 +255,15 @@ func TestBypassRevisionCache(t *testing.T) {
 	assert.False(t, ok)
 
 	// Get non-existing doc
-	doc, err := rc.Get(base.TestCtx(t), "invalid", rev1, RevCacheOmitBody, RevCacheOmitDelta)
+	_, err = rc.Get(base.TestCtx(t), "invalid", rev1, RevCacheOmitBody, RevCacheOmitDelta)
 	assert.True(t, base.IsDocNotFoundError(err))
 
 	// Get non-existing revision
-	doc, err = rc.Get(base.TestCtx(t), key, "3-abc", RevCacheOmitBody, RevCacheOmitDelta)
+	_, err = rc.Get(base.TestCtx(t), key, "3-abc", RevCacheOmitBody, RevCacheOmitDelta)
 	assertHTTPError(t, err, 404)
 
 	// Get specific revision
-	doc, err = rc.Get(base.TestCtx(t), key, rev1, RevCacheOmitBody, RevCacheOmitDelta)
+	doc, err := rc.Get(base.TestCtx(t), key, rev1, RevCacheOmitBody, RevCacheOmitDelta)
 	assert.NoError(t, err)
 	require.NotNil(t, doc)
 	assert.Equal(t, `{"value":1234}`, string(doc.BodyBytes))
@@ -323,6 +324,7 @@ func TestPutRevisionCacheAttachmentProperty(t *testing.T) {
 	assert.True(t, ok, "_attachments property was not stamped back in body during collection.Get1xRevBody: %#v", body)
 
 	attsMap, ok := atts.(AttachmentsMeta)
+	require.True(t, ok)
 	_, ok = attsMap["myatt"]
 	assert.True(t, ok, "'myatt' not found in attachment map")
 }
@@ -372,6 +374,7 @@ func TestPutExistingRevRevisionCacheAttachmentProperty(t *testing.T) {
 	assert.True(t, ok, "_attachments property was not stamped back in body during collection.Get1xRevBody: %#v", body)
 
 	attsMap, ok := atts.(AttachmentsMeta)
+	require.True(t, ok)
 	_, ok = attsMap["myatt"]
 	assert.True(t, ok, "'myatt' not found in attachment map")
 }

@@ -67,7 +67,7 @@ func (lc *LRUCache) Put(key string, value interface{}) {
 	// If already present, move to front
 	if elem := lc.cache[key]; elem != nil {
 		lc.lruList.MoveToFront(elem)
-		value = elem.Value.(*lruCacheValue) // "return" the value in the cache by updating the value param
+		value = elem.Value.(*lruCacheValue) // nolint: ineffassign // "return" the value in the cache by updating the value param
 		return
 	}
 

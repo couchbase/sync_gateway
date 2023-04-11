@@ -1108,6 +1108,7 @@ func TestResyncRegenerateSequences(t *testing.T) {
 	response = rt.SendUserRequest("GET", "/{{.keyspace}}/_changes?since="+changesResp.LastSeq, "", "user1")
 	RequireStatus(t, response, http.StatusOK)
 	err = json.Unmarshal(response.BodyBytes(), &changesResp)
+	require.NoError(t, err)
 	assert.Len(t, changesResp.Results, 3)
 	assert.True(t, changesRespContains(changesResp, "userdoc"))
 	assert.True(t, changesRespContains(changesResp, "userdoc2"))

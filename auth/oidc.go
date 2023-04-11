@@ -325,12 +325,12 @@ func (op *OIDCProvider) initOIDCClient(ctx context.Context) error {
 		return err
 	}
 
-	metadata, verifier, err := op.DiscoverConfig(ctx)
+	metadata, _, err := op.DiscoverConfig(ctx)
 	if err != nil {
 		return pkgerrors.Wrap(err, ErrMsgUnableToDiscoverConfig)
 	}
 
-	verifier = op.generateVerifier(&metadata, GetOIDCClientContext(op.InsecureSkipVerify))
+	verifier := op.generateVerifier(&metadata, GetOIDCClientContext(op.InsecureSkipVerify))
 	if verifier == nil {
 		return pkgerrors.Wrap(err, ErrMsgUnableToGenerateVerifier)
 	}

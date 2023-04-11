@@ -16,6 +16,7 @@ import (
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestParseSequenceID(t *testing.T) {
@@ -40,17 +41,23 @@ func TestParseSequenceID(t *testing.T) {
 	assert.Equal(t, SequenceID{Seq: 789, TriggeredBy: 0, LowSeq: 123}, s)
 
 	s, err = parseIntegerSequenceID("foo")
-	assert.True(t, err != nil)
+	require.Error(t, err)
+	require.Equal(t, SequenceID{}, s)
 	s, err = parseIntegerSequenceID(":")
-	assert.True(t, err != nil)
+	require.Error(t, err)
+	require.Equal(t, SequenceID{}, s)
 	s, err = parseIntegerSequenceID(":1")
-	assert.True(t, err != nil)
+	require.Error(t, err)
+	require.Equal(t, SequenceID{}, s)
 	s, err = parseIntegerSequenceID("::1")
-	assert.True(t, err != nil)
+	require.Error(t, err)
+	require.Equal(t, SequenceID{}, s)
 	s, err = parseIntegerSequenceID("10:11:12:13")
-	assert.True(t, err != nil)
+	require.Error(t, err)
+	require.Equal(t, SequenceID{}, s)
 	s, err = parseIntegerSequenceID("123:ggg")
-	assert.True(t, err != nil)
+	require.Error(t, err)
+	require.Equal(t, SequenceID{}, s)
 }
 
 func BenchmarkParseSequenceID(b *testing.B) {

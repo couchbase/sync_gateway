@@ -242,10 +242,10 @@ func (sc *ServerContext) GetInactiveDatabase(ctx context.Context, name string) (
 	if sc.BootstrapContext.Connection != nil {
 		var found bool
 		if sc.Config.IsServerless() {
-			found, err = sc.fetchAndLoadDatabaseSince(ctx, name, sc.Config.Unsupported.Serverless.MinConfigFetchInterval)
+			found, _ = sc.fetchAndLoadDatabaseSince(ctx, name, sc.Config.Unsupported.Serverless.MinConfigFetchInterval)
 
 		} else {
-			found, err = sc.fetchAndLoadDatabase(base.NewNonCancelCtx(), name)
+			found, _ = sc.fetchAndLoadDatabase(base.NewNonCancelCtx(), name)
 		}
 		if found {
 			sc.lock.RLock()

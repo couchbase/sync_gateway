@@ -36,6 +36,7 @@ func TestReplicateManagerReplications(t *testing.T) {
 
 	replication1_id := "replication1"
 	err = manager.AddReplication(testReplicationCfg(replication1_id, ""))
+	require.NoError(t, err)
 
 	r, err := manager.GetReplication(replication1_id)
 	require.NoError(t, err)

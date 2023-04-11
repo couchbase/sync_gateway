@@ -398,7 +398,6 @@ func TestMultiCollectionChannelAccess(t *testing.T) {
 
 	// Remove collection and update the db config
 	scopesConfig = GetCollectionsConfig(t, tb, 2)
-	dataStoreNames = GetDataStoreNamesFromScopesConfig(scopesConfig)
 
 	//collection3 := dataStoreNames[2].CollectionName()
 	scopesConfig[scope].Collections[collection1] = CollectionConfig{SyncFn: &c1SyncFunction}

@@ -3888,6 +3888,7 @@ func TestDisablePasswordAuthThroughAdminAPI(t *testing.T) {
 	config := rt.NewDbConfig()
 	dbName := "db"
 	res := rt.CreateDatabase(dbName, config)
+	rest.RequireStatus(t, res, http.StatusCreated)
 
 	config.DisablePasswordAuth = base.BoolPtr(true)
 	res = rt.UpsertDbConfig(dbName, config)
@@ -3919,6 +3920,7 @@ func TestDeleteDatabasePointingAtSameBucket(t *testing.T) {
 		"use_views": %t,
 		"num_index_replicas": 0
 	}`, tb.GetName(), base.TestClusterUsername(), base.TestClusterPassword(), base.TestsDisableGSI()))
+	rest.RequireStatus(t, resp, http.StatusCreated)
 }
 
 func TestDeleteDatabasePointingAtSameBucketPersistent(t *testing.T) {

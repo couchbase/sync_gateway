@@ -1781,7 +1781,7 @@ func (bt *BlipTester) SendRevWithAttachment(input SendRevWithAttachmentInput) (s
 
 	// Push a rev with an attachment.
 	getAttachmentWg.Add(1)
-	sent, req, res, err = bt.SendRevWithHistory(
+	sent, req, res, _ = bt.SendRevWithHistory(
 		input.docId,
 		input.revId,
 		input.history,
