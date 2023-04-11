@@ -614,8 +614,8 @@ func TestResync(t *testing.T) {
 				assert.Equal(t, testCase.expectedQueryCount, int(rt.GetDatabase().DbStats.Query(queryName).QueryCount.Value()))
 				assert.Equal(t, testCase.docsCreated, resyncManagerStatus.DocsProcessed)
 			} else {
-				assert.GreaterOrEqual(t, testCase.expectedSyncFnRuns, int(rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value()))
-				assert.GreaterOrEqual(t, testCase.docsCreated, resyncManagerStatus.DocsProcessed)
+				assert.GreaterOrEqual(t, int(rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value()), testCase.expectedSyncFnRuns)
+				assert.GreaterOrEqual(t, resyncManagerStatus.DocsProcessed, testCase.docsCreated)
 			}
 
 			assert.Equal(t, 0, resyncManagerStatus.DocsChanged)
