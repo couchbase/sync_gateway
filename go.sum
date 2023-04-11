@@ -75,7 +75,10 @@ github.com/couchbase/go-couchbase v0.1.1 h1:ClFXELcKj/ojyoTYbsY34QUrrYCBi/1G749s
 github.com/couchbase/go-couchbase v0.1.1/go.mod h1:+/bddYDxXsf9qt0xpDUtRR47A2GjaXmGGAqQ/k3GJ8A=
 github.com/couchbase/gocb/v2 v2.5.3-0.20220803131303-46b466983d0f h1:jmBienCCOszw7zN7eFsQD49YMW8YStuQDFWNqKZvyjE=
 github.com/couchbase/gocb/v2 v2.5.3-0.20220803131303-46b466983d0f/go.mod h1:YCaQ4Kat6SjUQxbfprfiAiU7mi6N6yXzeF3kiYNR4ZA=
+github.com/couchbase/gocb/v2 v2.6.2 h1:sZg0+3GiYW7OT53ENEGnkkQMXhVuJ1qOJplvZDlM5Xk=
+github.com/couchbase/gocb/v2 v2.6.2/go.mod h1:baRw5pIpzHil7q39M2zm+bon+ZgjgNAilkKI813zPiE=
 github.com/couchbase/gocbcore/v10 v10.1.4/go.mod h1:qkPnOBziCs0guMEEvd0cRFo+AjOW0yEL99cU3I4n3Ao=
+github.com/couchbase/gocbcore/v10 v10.2.2/go.mod h1:lYQIIk+tzoMcwtwU5GzPbDdqEkwkH3isI2rkSpfL0oM=
 github.com/couchbase/gocbcore/v10 v10.2.3-0.20230404070112-cab6da1895ae h1:16BDUoyAqRzv4UGmUJarXOtmup2FdTzFHAk6rrhIfFE=
 github.com/couchbase/gocbcore/v10 v10.2.3-0.20230404070112-cab6da1895ae/go.mod h1:lYQIIk+tzoMcwtwU5GzPbDdqEkwkH3isI2rkSpfL0oM=
 github.com/couchbase/gomemcached v0.1.4 h1:5n5wmr4dBu+X7XteP8QHP5S9inK9MBjNpN9b7WSQfuA=
