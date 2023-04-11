@@ -1488,14 +1488,8 @@ func TestPutUserCollectionAccess(t *testing.T) {
 	RequireStatus(t, getResponse, 200)
 	assert.Contains(t, getResponse.ResponseRecorder.Body.String(), `"all_channels":["!"]`)
 
-	dbConfig := DbConfig{
-		Scopes: GetCollectionsConfigWithSyncFn(rt.TB, rt.TestBucket, nil, 1),
-		BucketConfig: BucketConfig{
-			Bucket: base.StringPtr(rt.TestBucket.GetName()),
-		},
-		EnableXattrs: base.BoolPtr(base.TestUseXattrs()),
-		UseViews:     base.BoolPtr(base.TestsDisableGSI()),
-	}
+	dbConfig := rt.NewDbConfig()
+	dbConfig.Scopes = GetCollectionsConfigWithSyncFn(rt.TB, rt.TestBucket, nil, 1)
 	resp := rt.ReplaceDbConfig(rt.GetDatabase().Name, dbConfig)
 	RequireStatus(t, resp, http.StatusCreated)
 
