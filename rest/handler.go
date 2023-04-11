@@ -223,7 +223,6 @@ func ParseKeyspace(ks string) (db string, scope, collection *string, err error) 
 
 // Top-level handler call. It's passed a pointer to the specific method to run.
 func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, responsePermissions []Permission) error {
-	var err error
 	if h.server.Config.API.CompressResponses == nil || *h.server.Config.API.CompressResponses {
 		if encoded := NewEncodedResponseWriter(h.response, h.rq); encoded != nil {
 			h.response = encoded
@@ -231,12 +230,37 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 		}
 	}
 
+	err := h._validateAndWriteHeaders(method, accessPermissions, responsePermissions)
+	if err != nil {
+		return err
+	}
+	return method(h) // Call the actual handler code
+}
+
+// _validateAndWriteHeaders sets up handler.db and validates the permission of the user and returns an error if there is not permission.
+func (h *handler) _validateAndWriteHeaders(method handlerMethod, accessPermissions []Permission, responsePermissions []Permission) error {
 	var isRequestLogged bool
 	defer func() {
 		if !isRequestLogged {
 			h.logRequestLine()
 		}
 	}()
+
+	var dbContext *db.DatabaseContext
+	defer func() {
+		// Now that we know the DB, add CORS headers to the response:
+		if h.privs != adminPrivs {
+			cors := h.server.Config.API.CORS
+			if dbContext != nil {
+				cors = dbContext.CORS
+			}
+			if cors != nil {
+				cors.AddResponseHeaders(h.rq, h.response)
+			}
+		}
+	}()
+
+	var err error
 
 	switch h.rq.Header.Get("Content-Encoding") {
 	case "":
@@ -276,7 +300,6 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 	}
 
 	// look up the database context:
-	var dbContext *db.DatabaseContext
 	if keyspaceDb != "" {
 		h.addDatabaseLogContext(keyspaceDb)
 		if dbContext, err = h.server.GetActiveDatabase(keyspaceDb); err != nil {
@@ -501,6 +524,7 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 	// Now set the request's Database (i.e. context + user)
 	if dbContext != nil {
 		h.db, err = db.GetDatabase(dbContext, h.user)
+
 		if err != nil {
 			return err
 		}
@@ -511,8 +535,7 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 			}
 		}
 	}
-
-	return method(h) // Call the actual handler code
+	return nil
 }
 
 func (h *handler) logRequestLine() {

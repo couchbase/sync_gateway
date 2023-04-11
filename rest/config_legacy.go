@@ -230,7 +230,7 @@ func (lc *LegacyServerConfig) ToStartupConfig() (*StartupConfig, DbConfigMap, er
 	}
 
 	if lc.CORS != nil {
-		sc.API.CORS = &CORSConfig{
+		sc.API.CORS = &auth.CORSConfig{
 			Origin:      lc.CORS.Origin,
 			LoginOrigin: lc.CORS.LoginOrigin,
 			Headers:     lc.CORS.Headers,

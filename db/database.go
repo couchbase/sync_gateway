@@ -130,6 +130,7 @@ type DatabaseContext struct {
 	CollectionNames              map[string]map[string]struct{} // Map of scope, collection names
 	MetadataKeys                 *base.MetadataKeys             // Factory to generate metadata document keys
 	RequireResync                base.ScopeAndCollectionNames   // Collections requiring resync before database can go online
+	CORS                         *auth.CORSConfig               // CORS configuration
 }
 
 type Scope struct {
