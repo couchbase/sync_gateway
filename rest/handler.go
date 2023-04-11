@@ -40,6 +40,8 @@ const (
 	minCompressibleJSONSize = 1000
 )
 
+var errLoginRequired = base.HTTPErrorf(http.StatusUnauthorized, "Login required")
+
 // If set to true, JSON output will be pretty-printed.
 var PrettyPrint bool = false
 
@@ -277,6 +279,7 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 		h.addDatabaseLogContext(keyspaceDb)
 		if dbContext, err = h.server.GetActiveDatabase(keyspaceDb); err != nil {
 			if err == base.ErrNotFound {
+
 				if shouldCheckAdminAuth {
 					// Check if authenticated before attempting to get inactive database
 					authorized, err := h.checkAdminAuthenticationOnly()
@@ -284,13 +287,13 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 						return err
 					}
 					if !authorized {
-						return base.HTTPErrorf(http.StatusUnauthorized, "")
+						return errLoginRequired
 					}
 				}
 				dbContext, err = h.server.GetInactiveDatabase(h.ctx(), keyspaceDb)
 				if err != nil {
-					if httpError, ok := err.(*base.HTTPError); shouldCheckAdminAuth && ok && httpError.Status == http.StatusNotFound {
-						return base.HTTPErrorf(http.StatusForbidden, "")
+					if httpError, ok := err.(*base.HTTPError); h.privs == regularPrivs && ok && httpError.Status == http.StatusNotFound {
+						return errLoginRequired
 					}
 					base.InfofCtx(h.ctx(), base.KeyHTTP, "Error trying to get db %s: %v", base.MD(keyspaceDb), err)
 					return err
@@ -373,7 +376,7 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 			if dbContext == nil || dbContext.Options.SendWWWAuthenticateHeader == nil || *dbContext.Options.SendWWWAuthenticateHeader {
 				h.response.Header().Set("WWW-Authenticate", wwwAuthenticateHeader)
 			}
-			return base.HTTPErrorf(http.StatusUnauthorized, "Login required")
+			return errLoginRequired
 		}
 
 		var managementEndpoints []string
@@ -648,7 +651,7 @@ func (h *handler) checkAuth(dbCtx *db.DatabaseContext) (err error) {
 		if dbCtx.Options.SendWWWAuthenticateHeader == nil || *dbCtx.Options.SendWWWAuthenticateHeader {
 			h.response.Header().Set("WWW-Authenticate", wwwAuthenticateHeader)
 		}
-		return base.HTTPErrorf(http.StatusUnauthorized, "Login required")
+		return errLoginRequired
 	}
 
 	return nil
@@ -688,6 +691,11 @@ func checkJWTIssuerStillValid(ctx context.Context, dbCtx *db.DatabaseContext, us
 // checkAdminAuthenticationOnly simply checks whether a username / password combination is authenticated pulling the
 // credentials from the handler
 func (h *handler) checkAdminAuthenticationOnly() (bool, error) {
+	if h.privs == adminPrivs && !*h.server.Config.API.AdminInterfaceAuthentication {
+		return true, nil
+	} else if h.privs == metricsPrivs && !*h.server.Config.API.MetricsInterfaceAuthentication {
+		return true, nil
+	}
 	managementEndpoints, httpClient, err := h.server.ObtainManagementEndpointsAndHTTPClient()
 	if err != nil {
 		return false, base.HTTPErrorf(http.StatusInternalServerError, "Error getting management endpoints: %v", err)
@@ -697,7 +705,7 @@ func (h *handler) checkAdminAuthenticationOnly() (bool, error) {
 	if username == "" {
 		h.response.Header().Set("WWW-Authenticate", wwwAuthenticateHeader)
 
-		return false, base.HTTPErrorf(http.StatusUnauthorized, "Login required")
+		return false, errLoginRequired
 	}
 
 	statusCode, _, err := doHTTPAuthRequest(httpClient, username, password, "POST", "/pools/default/checkPermissions", managementEndpoints, nil)
