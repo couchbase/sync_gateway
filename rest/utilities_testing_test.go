@@ -200,6 +200,8 @@ func TestRestTesterTemplateMultipleDatabases(t *testing.T) {
 		BucketConfig: BucketConfig{
 			Bucket: base.StringPtr(rt.TestBucket.GetName()),
 		},
+		EnableXattrs: base.BoolPtr(base.TestUseXattrs()),
+		UseViews:     base.BoolPtr(base.TestsDisableGSI()),
 	}
 	dbOne := "dbone"
 	bucket1Datastore1, err := rt.TestBucket.GetNamedDataStore(0)
@@ -259,6 +261,8 @@ func TestRestTesterTemplateMultipleDatabases(t *testing.T) {
 		BucketConfig: BucketConfig{
 			Bucket: base.StringPtr(bucket2.GetName()),
 		},
+		EnableXattrs: base.BoolPtr(base.TestUseXattrs()),
+		UseViews:     base.BoolPtr(base.TestsDisableGSI()),
 	}
 	dbTwo := "dbtwo"
 	bucket2Datastore1, err := rt.TestBucket.GetNamedDataStore(0)

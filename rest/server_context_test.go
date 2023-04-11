@@ -780,6 +780,8 @@ func TestDisableScopesInLegacyConfig(t *testing.T) {
 						Username: base.TestClusterUsername(),
 						Password: base.TestClusterPassword(),
 					},
+					EnableXattrs: base.BoolPtr(base.TestUseXattrs()),
+					UseViews:     base.BoolPtr(base.TestsDisableGSI()),
 				}
 				if scopes {
 					if !base.TestsUseNamedCollections() {

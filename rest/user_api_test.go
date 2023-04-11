@@ -1493,6 +1493,8 @@ func TestPutUserCollectionAccess(t *testing.T) {
 		BucketConfig: BucketConfig{
 			Bucket: base.StringPtr(rt.TestBucket.GetName()),
 		},
+		EnableXattrs: base.BoolPtr(base.TestUseXattrs()),
+		UseViews:     base.BoolPtr(base.TestsDisableGSI()),
 	}
 	resp := rt.ReplaceDbConfig(rt.GetDatabase().Name, dbConfig)
 	RequireStatus(t, resp, http.StatusCreated)
