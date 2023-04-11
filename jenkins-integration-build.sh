@@ -62,6 +62,13 @@ else
     go install -v github.com/AlekSi/gocov-xml@latest
 fi
 
+if [[ -n "${JENKINS_URL}" ]]; then
+    # last 1.x version, when updating aws linux 2 docker, docker-compose becomes docker compose
+    sudo yum install -y jq
+    sudo curl -L "https://github.com/docker/compose/releases/download/1.29.2/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+    sudo chmod +x /usr/local/bin/docker-compose
+fi
+
 if [ "${SG_TEST_X509:-}" == "true" -a "${COUCHBASE_SERVER_PROTOCOL}" != "couchbases" ]; then
     echo "Setting SG_TEST_X509 requires using couchbases:// protocol, aborting integration tests"
     exit 1
@@ -112,33 +119,14 @@ if [ "${RUN_WALRUS}" == "true" ]; then
     go test -coverprofile=coverage_walrus_ce.out -coverpkg=github.com/couchbase/sync_gateway/... $GO_TEST_FLAGS github.com/couchbase/sync_gateway/${TARGET_PACKAGE} > verbose_unit_ce.out.raw 2>&1 | true
 fi
 
-WORKSPACE_ROOT="$(pwd)"
-DOCKER_CBS_ROOT_DIR="$(pwd)"
-if [ "${CBS_ROOT_DIR:-}" != "" ]; then
-    DOCKER_CBS_ROOT_DIR="${CBS_ROOT_DIR}"
+# Run CBS
+if [[ -z ${MULTI_NODE:-} ]]; then
+    # Run CBS
+    ./integration-test/start_server.sh "${COUCHBASE_SERVER_VERSION}"
+else
+    ./integration-test/start_server.sh -m "${COUCHBASE_SERVER_VERSION}"
+    export SG_TEST_BUCKET_NUM_REPLICAS=1
 fi
-
-export SG_TEST_COUCHBASE_SERVER_DOCKER_NAME=couchbase
-# Start CBS
-docker stop ${SG_TEST_COUCHBASE_SERVER_DOCKER_NAME} || true
-docker rm ${SG_TEST_COUCHBASE_SERVER_DOCKER_NAME} || true
-# --volume: Makes and mounts a CBS folder for storing a CBCollect if needed
-docker run -d --name ${SG_TEST_COUCHBASE_SERVER_DOCKER_NAME} --volume ${DOCKER_CBS_ROOT_DIR}/cbs:/root --volume ${WORKSPACE_ROOT}:/workspace --net=host couchbase/server:${COUCHBASE_SERVER_VERSION}
-
-# Test to see if Couchbase Server is up
-# Each retry min wait 5s, max 10s. Retry 20 times with exponential backoff (delay 0), fail at 120s
-curl --retry-all-errors --connect-timeout 5 --max-time 10 --retry 20 --retry-delay 0 --retry-max-time 120 'http://127.0.0.1:8091'
-
-# Set up CBS
-curl -u Administrator:password -v -X POST http://127.0.0.1:8091/nodes/self/controller/settings -d 'path=%2Fopt%2Fcouchbase%2Fvar%2Flib%2Fcouchbase%2Fdata&' -d 'index_path=%2Fopt%2Fcouchbase%2Fvar%2Flib%2Fcouchbase%2Fdata&' -d 'cbas_path=%2Fopt%2Fcouchbase%2Fvar%2Flib%2Fcouchbase%2Fdata&' -d 'eventing_path=%2Fopt%2Fcouchbase%2Fvar%2Flib%2Fcouchbase%2Fdata&'
-curl -u Administrator:password -v -X POST http://127.0.0.1:8091/node/controller/rename -d 'hostname=127.0.0.1'
-curl -u Administrator:password -v -X POST http://127.0.0.1:8091/node/controller/setupServices -d 'services=kv%2Cn1ql%2Cindex'
-curl -u Administrator:password -v -X POST http://127.0.0.1:8091/pools/default -d 'memoryQuota=3072' -d 'indexMemoryQuota=3072' -d 'ftsMemoryQuota=256'
-curl -u Administrator:password -v -X POST http://127.0.0.1:8091/settings/web -d 'password=password&username=Administrator&port=SAME'
-curl -u Administrator:password -v -X POST http://localhost:8091/settings/indexes -d indexerThreads=4 -d logLevel=verbose -d maxRollbackPoints=10 \
-    -d storageMode=plasma -d memorySnapshotInterval=150 -d stableSnapshotInterval=40000
-
-sleep 10
 
 # Set up test environment variables for CBS runs
 export SG_TEST_USE_XATTRS=${XATTRS}
@@ -153,7 +141,7 @@ if [ "${SG_EDITION}" == "EE" ]; then
     GO_TEST_FLAGS="${GO_TEST_FLAGS} -tags cb_sg_enterprise"
 fi
 
-go test ${GO_TEST_FLAGS} -coverprofile=coverage_int.out -coverpkg=github.com/couchbase/sync_gateway/... github.com/couchbase/sync_gateway/${TARGET_PACKAGE} 2>&1 | stdbuf -oL tee "${INT_LOG_FILE_NAME}.out.raw" | stdbuf -oL grep -a -E '(--- (FAIL|PASS|SKIP):|github.com/couchbase/sync_gateway(/.+)?\t|TEST: |panic: )'
+go test ${GO_TEST_FLAGS} -coverprofile=coverage_int.out -coverpkg=github.com/couchbase/sync_gateway/... github.com/couchbase/sync_gateway/${TARGET_PACKAGE} 2>&1 | stdbuf -oL tee "${INT_LOG_FILE_NAME}.out.raw" | stdbuf -oL grep -a -P '(--- (FAIL|PASS|SKIP):|github.com/couchbase/sync_gateway(/.+)?\t|TEST: |panic: )'
 if [ "${PIPESTATUS[0]}" -ne "0" ]; then # If test exit code is not 0 (failed)
     echo "Go test failed! Parsing logs to find cause..."
     TEST_FAILED=true
