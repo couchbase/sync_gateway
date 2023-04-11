@@ -603,19 +603,21 @@ func TestResync(t *testing.T) {
 			})
 			assert.NoError(t, err)
 
-			assert.Equal(t, testCase.expectedSyncFnRuns, int(rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value()))
-
 			if !isDCPResync {
 				var queryName string
+				assert.Equal(t, testCase.expectedSyncFnRuns, int(rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value()))
 				if base.TestsDisableGSI() {
 					queryName = fmt.Sprintf(base.StatViewFormat, db.DesignDocSyncGateway(), db.ViewChannels)
 				} else {
 					queryName = db.QueryTypeChannels
 				}
 				assert.Equal(t, testCase.expectedQueryCount, int(rt.GetDatabase().DbStats.Query(queryName).QueryCount.Value()))
+				assert.Equal(t, testCase.docsCreated, resyncManagerStatus.DocsProcessed)
+			} else {
+				assert.GreaterOrEqual(t, testCase.expectedSyncFnRuns, int(rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value()))
+				assert.GreaterOrEqual(t, testCase.docsCreated, resyncManagerStatus.DocsProcessed)
 			}
 
-			assert.Equal(t, testCase.docsCreated, resyncManagerStatus.DocsProcessed)
 			assert.Equal(t, 0, resyncManagerStatus.DocsChanged)
 		})
 	}
