@@ -5,7 +5,6 @@
 # in that file, in accordance with the Business Source License, use of this
 # software will be governed by the Apache License, Version 2.0, included in
 # the file licenses/APL2.txt.
-
 get:
   summary: Get console logging settings
   description: |-
@@ -25,6 +24,7 @@ get:
   deprecated: true
   tags:
     - Server
+  operationId: get__logging
 put:
   summary: Set console logging settings
   description: |-
@@ -51,6 +51,7 @@ put:
   deprecated: true
   tags:
     - Server
+  operationId: put__logging
 post:
   summary: Update console logging settings
   description: |-
@@ -77,3 +78,4 @@ post:
   deprecated: true
   tags:
     - Server
+  operationId: post__logging
