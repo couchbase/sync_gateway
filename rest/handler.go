@@ -695,11 +695,6 @@ func checkJWTIssuerStillValid(ctx context.Context, dbCtx *db.DatabaseContext, us
 // checkAdminAuthenticationOnly simply checks whether a username / password combination is authenticated pulling the
 // credentials from the handler
 func (h *handler) checkAdminAuthenticationOnly() (bool, error) {
-	if h.privs == adminPrivs && !*h.server.Config.API.AdminInterfaceAuthentication {
-		return true, nil
-	} else if h.privs == metricsPrivs && !*h.server.Config.API.MetricsInterfaceAuthentication {
-		return true, nil
-	}
 	managementEndpoints, httpClient, err := h.server.ObtainManagementEndpointsAndHTTPClient()
 	if err != nil {
 		return false, base.HTTPErrorf(http.StatusInternalServerError, "Error getting management endpoints: %v", err)
