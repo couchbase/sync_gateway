@@ -568,7 +568,7 @@ func TestOpenIDConnectAuthCodeFlow(t *testing.T) {
 			forceAuthError: forceError{
 				errorType:            noAutoRegistrationErr,
 				expectedErrorCode:    http.StatusUnauthorized,
-				expectedErrorMessage: "Invalid login",
+				expectedErrorMessage: errLoginRequired.Message,
 			},
 		}, {
 			// Successful new user authentication against single provider with auto
@@ -602,7 +602,7 @@ func TestOpenIDConnectAuthCodeFlow(t *testing.T) {
 			forceAuthError: forceError{
 				errorType:            noAutoRegistrationErr,
 				expectedErrorCode:    http.StatusUnauthorized,
-				expectedErrorMessage: "Invalid login",
+				expectedErrorMessage: errLoginRequired.Message,
 			},
 		}, {
 			// Successful new user authentication against multiple providers with auto
@@ -1022,7 +1022,7 @@ func TestOpenIDConnectImplicitFlow(t *testing.T) {
 			defaultProvider: "foo",
 			expectedError: forceError{
 				expectedErrorCode:    http.StatusUnauthorized,
-				expectedErrorMessage: "Invalid login",
+				expectedErrorMessage: errLoginRequired.Message,
 			},
 		}, {
 			name: "successful registered user authentication against single provider",
@@ -1153,7 +1153,7 @@ func TestOpenIDConnectImplicitFlowEdgeCases(t *testing.T) {
 		require.NoError(t, err, "Error sending request with bearer token")
 		expectedAuthError := forceError{
 			expectedErrorCode:    http.StatusUnauthorized,
-			expectedErrorMessage: "Invalid login",
+			expectedErrorMessage: errLoginRequired.Message,
 		}
 		assertHttpResponse(t, response, expectedAuthError)
 	}
@@ -1954,7 +1954,7 @@ func TestOpenIDConnectAuthCodeFlowWithUsernameClaim(t *testing.T) {
 			registeredUsername:    "foo_noah",
 			authErrorExpected: forceError{
 				expectedErrorCode:    http.StatusUnauthorized,
-				expectedErrorMessage: "Invalid login",
+				expectedErrorMessage: errLoginRequired.Message,
 			},
 		}, {
 			name: "unsuccessful new user auth when username_claim is set but claim is of illegal type in token",

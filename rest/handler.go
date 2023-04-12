@@ -586,7 +586,7 @@ func (h *handler) checkAuth(dbCtx *db.DatabaseContext) (err error) {
 			var updates auth.PrincipalConfig
 			h.user, updates, err = dbCtx.Authenticator(h.ctx()).AuthenticateUntrustedJWT(token, dbCtx.OIDCProviders, dbCtx.LocalJWTProviders, h.getOIDCCallbackURL)
 			if h.user == nil || err != nil {
-				return base.HTTPErrorf(http.StatusUnauthorized, "Invalid login")
+				return errLoginRequired
 			}
 			if changes := checkJWTIssuerStillValid(h.ctx(), dbCtx, h.user); changes != nil {
 				updates = updates.Merge(*changes)
@@ -633,7 +633,7 @@ func (h *handler) checkAuth(dbCtx *db.DatabaseContext) (err error) {
 				if dbCtx.Options.SendWWWAuthenticateHeader == nil || *dbCtx.Options.SendWWWAuthenticateHeader {
 					h.response.Header().Set("WWW-Authenticate", wwwAuthenticateHeader)
 				}
-				return base.HTTPErrorf(http.StatusUnauthorized, "Invalid login")
+				return errLoginRequired
 			}
 			return nil
 		}

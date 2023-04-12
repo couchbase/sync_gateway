@@ -269,7 +269,7 @@ func (h *handler) createSessionForTrustedIdToken(rawIDToken string, provider *au
 		return "", "", err
 	}
 	if user == nil {
-		return "", "", base.HTTPErrorf(http.StatusUnauthorized, "Invalid login")
+		return "", "", errLoginRequired
 	}
 
 	_, err = h.db.UpdatePrincipal(h.ctx(), &updates, true, true)
