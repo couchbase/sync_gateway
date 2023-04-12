@@ -135,6 +135,7 @@ func TestDocDeletionFromChannel(t *testing.T) {
 
 	// Create a doc Alice can see:
 	response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/alpha", `{"channel":"zero"}`)
+	rest.RequireStatus(t, response, http.StatusCreated)
 
 	// Check the _changes feed:
 	require.NoError(t, rt.WaitForPendingChanges())

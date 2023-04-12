@@ -13,6 +13,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -27,10 +29,11 @@ import (
 // Other tests can be more targeted if necessary for quicker/easier regression diagnosis.
 // Summary:
 //   - Starts 2 RestTesters, one active, and one passive each with a set of 3 collections.
-//   - Creates documents on both sides in all collections with identifying information in the document bodies.
+//   - Creates documents on both sides in all collections, with a range of channels, with some identifying information in the document bodies.
 //   - Uses an ActiveReplicator configured for push and pull to ensure that all documents are replicated both ways as expected.
 //   - The replicator only replicates two of three collections, so we also check that we're filtering as expected.
 //   - The replicator also remaps local collections to different ones on the remote.
+//   - The replicator also filters to a subset of channels for each of the replicated collections.
 func TestActiveReplicatorMultiCollection(t *testing.T) {
 
 	base.RequireNumTestBuckets(t, 2)
@@ -42,13 +45,15 @@ func TestActiveReplicatorMultiCollection(t *testing.T) {
 		rt1DbName            = "rt1_active"
 		rt2DbName            = "rt2_passive"
 		numCollections       = 3
-		numDocsPerCollection = 3
+		numDocsPerCollection = 9 // 3 in each channel (a, b, c)
 	)
+	channels := []string{"a", "b", "c"}
 
 	base.RequireNumTestDataStores(t, numCollections)
 
 	// rt2 passive
 	rt2 := rest.NewRestTesterMultipleCollections(t, &rest.RestTesterConfig{
+		SyncFn: `function(doc) { channel(doc.chan) }`,
 		DatabaseConfig: &rest.DatabaseConfig{
 			DbConfig: rest.DbConfig{
 				Name: rt2DbName,
@@ -64,6 +69,7 @@ func TestActiveReplicatorMultiCollection(t *testing.T) {
 
 	// rt1 active
 	rt1 := rest.NewRestTesterMultipleCollections(t, &rest.RestTesterConfig{
+		SyncFn: `function(doc) { channel(doc.chan) }`,
 		DatabaseConfig: &rest.DatabaseConfig{
 			DbConfig: rest.DbConfig{
 				Name: rt1DbName,
@@ -77,21 +83,34 @@ func TestActiveReplicatorMultiCollection(t *testing.T) {
 	activeKeyspace2 := rt1Collections[1].ScopeName + "." + rt1Collections[1].Name
 	activeKeyspace3 := rt1Collections[2].ScopeName + "." + rt1Collections[2].Name
 
+	t.Logf("remapping active %q to passive %q", activeKeyspace1, passiveKeyspace2)
+	t.Logf("not remapping active %q", activeKeyspace3)
+	localCollections := []string{activeKeyspace1, activeKeyspace3}
+	remoteCollections := []string{passiveKeyspace2, ""}
+	t.Logf("not replicating active %q", activeKeyspace2)
+	nonReplicatedLocalCollections := []string{activeKeyspace2}
+	t.Logf("not replicating passive %q", passiveKeyspace1)
+	nonReplicatedRemoteCollections := []string{passiveKeyspace1}
+
+	collectionsFilter := [][]string{{"b"}, {"a", "c"}}
+	t.Logf("filtering to channels: %q", collectionsFilter)
+
 	var resp *rest.TestResponse
 
 	// create docs in all collections
 	for keyspaceNum := 1; keyspaceNum <= numCollections; keyspaceNum++ {
 		for j := 1; j <= numDocsPerCollection; j++ {
+			chanName := channels[j%len(channels)]
 			resp = rt1.SendAdminRequest(http.MethodPut,
 				fmt.Sprintf("/{{.keyspace%d}}/active-doc%d", keyspaceNum, j),
-				fmt.Sprintf(`{"source":"active", "sourceKeyspace":"%s"}`,
-					rt1Collections[keyspaceNum-1].ScopeName+"."+rt1Collections[keyspaceNum-1].Name))
+				fmt.Sprintf(`{"source":"active", "sourceKeyspace":"%s", "chan":"%s"}`,
+					rt1Collections[keyspaceNum-1].ScopeName+"."+rt1Collections[keyspaceNum-1].Name, chanName))
 			rest.RequireStatus(t, resp, http.StatusCreated)
 
 			resp = rt2.SendAdminRequest(http.MethodPut,
 				fmt.Sprintf("/{{.keyspace%d}}/passive-doc%d", keyspaceNum, j),
-				fmt.Sprintf(`{"source":"passive", "sourceKeyspace":"%s"}`,
-					rt2Collections[keyspaceNum-1].ScopeName+"."+rt2Collections[keyspaceNum-1].Name))
+				fmt.Sprintf(`{"source":"passive", "sourceKeyspace":"%s", "chan":"%s"}`,
+					rt2Collections[keyspaceNum-1].ScopeName+"."+rt2Collections[keyspaceNum-1].Name, chanName))
 			rest.RequireStatus(t, resp, http.StatusCreated)
 		}
 	}
@@ -111,15 +130,6 @@ func TestActiveReplicatorMultiCollection(t *testing.T) {
 	dbstats, err := stats.DBReplicatorStats(t.Name())
 	require.NoError(t, err)
 
-	t.Logf("remapping active %q to passive %q", activeKeyspace1, passiveKeyspace2)
-	t.Logf("not remapping active %q", activeKeyspace3)
-	localCollections := []string{activeKeyspace1, activeKeyspace3}
-	remoteCollections := []string{passiveKeyspace2, ""}
-	t.Logf("not replicating active %q", activeKeyspace2)
-	nonReplicatedLocalCollections := []string{activeKeyspace2}
-	t.Logf("not replicating passive %q", passiveKeyspace1)
-	nonReplicatedRemoteCollections := []string{passiveKeyspace1}
-
 	// The mapping of `""` for activeKeyspace3 requires that these two collections are the same name.
 	assert.Equal(t, activeKeyspace3, passiveKeyspace3)
 
@@ -131,12 +141,14 @@ func TestActiveReplicatorMultiCollection(t *testing.T) {
 		ActiveDB: &db.Database{
 			DatabaseContext: rt1.GetDatabase(),
 		},
-		ChangesBatchSize:    200,
-		Continuous:          true,
-		ReplicationStatsMap: dbstats,
-		CollectionsEnabled:  true,
-		CollectionsLocal:    localCollections,
-		CollectionsRemote:   remoteCollections,
+		ChangesBatchSize:         200,
+		Continuous:               true,
+		ReplicationStatsMap:      dbstats,
+		CollectionsEnabled:       true,
+		CollectionsLocal:         localCollections,
+		CollectionsRemote:        remoteCollections,
+		Filter:                   base.ByChannelFilter,
+		CollectionsChannelFilter: collectionsFilter,
 	})
 	require.NoError(t, err)
 
@@ -152,12 +164,14 @@ func TestActiveReplicatorMultiCollection(t *testing.T) {
 			remoteCollection = localCollection
 		}
 
-		// we replicated a full collection of docs into another, expect double numDocsPerCollection
-		expectedNumDocs := numDocsPerCollection * 2
+		// local set
+		expectedNumDocs := numDocsPerCollection
 		if slices.Contains(nonReplicatedLocalCollections, localCollection) ||
 			slices.Contains(nonReplicatedRemoteCollections, remoteCollection) {
 			// only one set of docs for non-replicated collections
-			expectedNumDocs = numDocsPerCollection
+		} else {
+			// plus docs for filtered channels
+			expectedNumDocs += (numDocsPerCollection / len(channels)) * len(collectionsFilter[i])
 		}
 
 		localKeyspace := rt1DbName + "." + localCollection
@@ -171,10 +185,17 @@ func TestActiveReplicatorMultiCollection(t *testing.T) {
 		assert.Len(t, changes.Results, expectedNumDocs)
 
 		for j := 1; j <= numDocsPerCollection; j++ {
+			expectedStatus := http.StatusOK
+			if !slices.Contains(collectionsFilter[i], channels[j%len(channels)]) {
+				// doc doesn't match channel filter
+				expectedStatus = http.StatusNotFound
+			}
+
 			// check rt1 for passive docs (pull)
 			resp = rt1.SendAdminRequest(http.MethodGet,
 				fmt.Sprintf("/%s/passive-doc%d", localKeyspace, j), "")
-			if rest.AssertStatus(t, resp, http.StatusOK) {
+			rest.AssertStatus(t, resp, expectedStatus)
+			if resp.Code == http.StatusOK {
 				var docBody db.Body
 				require.NoError(t, docBody.Unmarshal(resp.BodyBytes()))
 				assert.Equal(t, "passive", docBody["source"])
@@ -184,7 +205,8 @@ func TestActiveReplicatorMultiCollection(t *testing.T) {
 			// check rt2 for active docs (push)
 			resp = rt2.SendAdminRequest(http.MethodGet,
 				fmt.Sprintf("/%s/active-doc%d", remoteKeyspace, j), "")
-			if rest.AssertStatus(t, resp, http.StatusOK) {
+			rest.AssertStatus(t, resp, expectedStatus)
+			if resp.Code == http.StatusOK {
 				var docBody db.Body
 				require.NoError(t, docBody.Unmarshal(resp.BodyBytes()))
 				assert.Equal(t, "active", docBody["source"])
@@ -201,13 +223,13 @@ func TestActiveReplicatorMultiCollection(t *testing.T) {
 	for keyspaceNum := 1; keyspaceNum <= numCollections; keyspaceNum++ {
 		resp = rt1.SendAdminRequest(http.MethodPut,
 			fmt.Sprintf("/{{.keyspace%d}}/active-doc%d", keyspaceNum, numDocsPerCollection+1),
-			fmt.Sprintf(`{"source":"active", "sourceKeyspace":"%s"}`,
+			fmt.Sprintf(`{"source":"active", "sourceKeyspace":"%s", "chan":["a","b","c"]}`,
 				rt1Collections[keyspaceNum-1].ScopeName+"."+rt1Collections[keyspaceNum-1].Name))
 		rest.RequireStatus(t, resp, http.StatusCreated)
 
 		resp = rt2.SendAdminRequest(http.MethodPut,
 			fmt.Sprintf("/{{.keyspace%d}}/passive-doc%d", keyspaceNum, numDocsPerCollection+1),
-			fmt.Sprintf(`{"source":"passive", "sourceKeyspace":"%s"}`,
+			fmt.Sprintf(`{"source":"passive", "sourceKeyspace":"%s", "chan":["a","b","c"]}`,
 				rt2Collections[keyspaceNum-1].ScopeName+"."+rt2Collections[keyspaceNum-1].Name))
 		rest.RequireStatus(t, resp, http.StatusCreated)
 	}
@@ -226,8 +248,15 @@ func TestActiveReplicatorMultiCollection(t *testing.T) {
 			remoteCollection = localCollection
 		}
 
-		// since we replicated a full collection of docs into another, expect double the amount in each now
-		expectedNumDocs := (numDocsPerCollection + 1) * 2
+		// local set
+		expectedNumDocs := numDocsPerCollection + 1
+		if slices.Contains(nonReplicatedLocalCollections, localCollection) ||
+			slices.Contains(nonReplicatedRemoteCollections, remoteCollection) {
+			// only one set of docs for non-replicated collections
+		} else {
+			// plus docs for filtered channels
+			expectedNumDocs += 1 + (numDocsPerCollection/len(channels))*len(collectionsFilter[i])
+		}
 
 		localKeyspace := rt1DbName + "." + localCollection
 		changes, err := rt1.WaitForChanges(expectedNumDocs, fmt.Sprintf("/%s/_changes", localKeyspace), "", true)
@@ -289,7 +318,7 @@ func TestActiveReplicatorMultiCollectionMismatchedLocalRemote(t *testing.T) {
 	localCollections := []string{"ks1", "ks3"}
 	remoteCollections := []string{"ks2"}
 
-	activeRT, _, remoteDbURLString, teardown := rest.SetupSGRPeers(t, true)
+	activeRT, _, remoteDbURLString, teardown := rest.SetupSGRPeers(t)
 	defer teardown()
 
 	stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, nil, nil)
@@ -325,7 +354,7 @@ func TestActiveReplicatorMultiCollectionMissingRemote(t *testing.T) {
 
 	base.TestRequiresCollections(t)
 
-	activeRT, _, remoteDbURLString, teardown := rest.SetupSGRPeers(t, true)
+	activeRT, _, remoteDbURLString, teardown := rest.SetupSGRPeers(t)
 	defer teardown()
 
 	localCollection := activeRT.GetSingleTestDatabaseCollection().ScopeName + "." + activeRT.GetSingleTestDatabaseCollection().Name
@@ -365,7 +394,7 @@ func TestActiveReplicatorMultiCollectionMissingLocal(t *testing.T) {
 
 	base.TestRequiresCollections(t)
 
-	activeRT, passiveRT, remoteDbURLString, teardown := rest.SetupSGRPeers(t, true)
+	activeRT, passiveRT, remoteDbURLString, teardown := rest.SetupSGRPeers(t)
 	defer teardown()
 
 	localCollection := activeRT.GetSingleTestDatabaseCollection().ScopeName + ".invalid"
@@ -399,4 +428,80 @@ func TestActiveReplicatorMultiCollectionMissingLocal(t *testing.T) {
 	err = ar.Start(ctx1)
 	assert.ErrorContains(t, err, "does not exist on this database")
 	assert.NoError(t, ar.Stop())
+}
+
+func TestReplicatorMissingCollections(t *testing.T) {
+	const numCollections = 2
+	base.RequireNumTestDataStores(t, numCollections)
+	base.RequireNumTestBuckets(t, 2)
+	testCases := []struct {
+		name       string
+		direction  db.ActiveReplicatorDirection
+		maxBackoff int
+	}{
+		{
+			name:       "push replication,maxbackoff 0",
+			direction:  db.ActiveReplicatorTypePush,
+			maxBackoff: 0,
+		},
+		{
+			name:       "pull replication, max backoff 0",
+			direction:  db.ActiveReplicatorTypePull,
+			maxBackoff: 0,
+		},
+		{
+			name:       "push replication,maxbackoff 100",
+			direction:  db.ActiveReplicatorTypePush,
+			maxBackoff: 100,
+		},
+		{
+			name:       "pull replication, max backoff 100",
+			direction:  db.ActiveReplicatorTypePull,
+			maxBackoff: 100,
+		},
+	}
+	for _, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+			const username = "alice"
+			passiveRT := rest.NewRestTester(t, &rest.RestTesterConfig{SgReplicateEnabled: true})
+			defer passiveRT.Close()
+			passiveRT.CreateUser(username, []string{"sg_test_0.sg_test_0", "sg_test_0.sg_test_1"})
+
+			// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1
+			srv := httptest.NewServer(passiveRT.TestPublicHandler())
+			defer srv.Close()
+
+			// Build passiveDBURL with basic auth creds
+			passiveDBURL, _ := url.Parse(srv.URL + "/" + passiveRT.GetDatabase().Name)
+			passiveDBURL.User = url.UserPassword(username, rest.RestTesterDefaultUserPassword)
+
+			activeRT := rest.NewRestTesterMultipleCollections(t, &rest.RestTesterConfig{SgReplicateEnabled: true}, numCollections)
+			defer activeRT.Close()
+
+			const numDocs = 1
+			for i := 1; i <= numDocs; i++ {
+				for _, keyspace := range []string{"{{.keyspace1}}", "{{.keyspace2}}"} {
+					resp := activeRT.SendAdminRequest(http.MethodPut, fmt.Sprintf("/%s/active_doc_%d", keyspace, i), `{"foo": "bar"}`)
+					rest.RequireStatus(t, resp, http.StatusCreated)
+				}
+				resp := passiveRT.SendAdminRequest(http.MethodPut, fmt.Sprintf("/{{.keyspace}}/passive_doc_%d", i), `{"foo": "bar"}`)
+				rest.RequireStatus(t, resp, http.StatusCreated)
+
+			}
+			require.NoError(t, activeRT.WaitForPendingChanges())
+			// use string since omitempty will occur for max_backoff_time, rendering test useless
+			replicationID := strings.ReplaceAll(t.Name(), "/", "_")
+			replicationConfig := `{
+				"replication_id": "` + replicationID + `",
+				"remote": "` + passiveDBURL.String() + `",
+				"direction": "` + string(test.direction) + `",
+				"collections_enabled": true,
+				"max_backoff_time": ` + strconv.Itoa(test.maxBackoff) + `
+			}`
+			resp := activeRT.SendAdminRequest(http.MethodPost, "/{{.db}}/_replication/", replicationConfig)
+			rest.RequireStatus(t, resp, http.StatusCreated)
+
+			activeRT.WaitForReplicationStatus(replicationID, db.ReplicationStateError)
+		})
+	}
 }

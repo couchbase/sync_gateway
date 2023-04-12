@@ -80,6 +80,7 @@ func TestComputeMetadataID(t *testing.T) {
 	bucketName := tb.GetName()
 
 	registry, err := bootstrapContext.getGatewayRegistry(ctx, bucketName)
+	require.NoError(t, err)
 
 	dbName := "dbName"
 	standardMetadataID := dbName
@@ -131,6 +132,7 @@ func TestComputeMetadataID(t *testing.T) {
 	// Write syncInfo to default collection, indicating that default collection is already associated with a different database
 	docBody := []byte(`{"foo":"bar"}`)
 	err = defaultStore.Set(base.SGSyncInfo, 0, nil, docBody)
+	require.NoError(t, err)
 	defaultDbConfig.Scopes = nil
 	metadataID = bootstrapContext.computeMetadataID(ctx, registry, &defaultDbConfig)
 	assert.Equal(t, standardMetadataID, metadataID)

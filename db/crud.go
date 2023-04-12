@@ -1658,6 +1658,9 @@ func (col *DatabaseCollectionWithUser) documentUpdateFunc(ctx context.Context, d
 		// to the current rev's state.
 		if newRevID != doc.CurrentRev {
 			channelSet, access, roles, syncExpiry, oldBodyJSON, err = col.recalculateSyncFnForActiveRev(ctx, doc, metaMap, newRevID)
+			if err != nil {
+				return
+			}
 		}
 		_, err = doc.UpdateChannels(ctx, channelSet)
 		if err != nil {

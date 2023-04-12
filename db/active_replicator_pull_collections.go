@@ -11,6 +11,8 @@ licenses/APL2.txt.
 package db
 
 import (
+	"fmt"
+
 	"github.com/couchbase/sync_gateway/base"
 )
 
@@ -20,10 +22,10 @@ import (
 func (apr *ActivePullReplicator) _startPullWithCollections() error {
 	collectionCheckpoints, err := apr._initCollections()
 	if err != nil {
-		return err
+		return fmt.Errorf("%w: %s", fatalReplicatorConnectError, err)
 	}
 
-	if err := apr._initCheckpointer(); err != nil {
+	if err := apr._initCheckpointer(collectionCheckpoints); err != nil {
 		// clean up anything we've opened so far
 		base.TracefCtx(apr.ctx, base.KeyReplicate, "Error initialising checkpoint in _connect. Closing everything.")
 		apr.checkpointerCtx = nil
@@ -32,18 +34,12 @@ func (apr *ActivePullReplicator) _startPullWithCollections() error {
 		return err
 	}
 
-	for i, checkpoint := range collectionCheckpoints {
-		since := checkpoint.LastSeq
-		sinceSeq, err := ParsePlainSequenceID(checkpoint.LastSeq)
-		if err != nil {
-			return err
-		}
-		apr.incrementHitandMissStatsCollections(base.IntPtr(i), sinceSeq)
-		err = apr._subChanges(base.IntPtr(i), since)
-		if err != nil {
-			break
-		}
-	}
+	err = apr.forEachCollection(func(c *activeReplicatorCollection) error {
+		since := c.Checkpointer.lastCheckpointSeq.String()
+		err = apr._subChanges(base.IntPtr(*c.collectionIdx), since)
+		return err
+	})
+
 	if err != nil {
 		// clean up anything we've opened so far
 		base.TracefCtx(apr.ctx, base.KeyReplicate, "cancelling the checkpointer context inside _startPullWithCollections where we send blip request")

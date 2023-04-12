@@ -470,7 +470,7 @@ func TestPushReplicationAPI(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)
 
-	rt1, rt2, remoteURLString, teardown := rest.SetupSGRPeers(t, true)
+	rt1, rt2, remoteURLString, teardown := rest.SetupSGRPeers(t)
 	defer teardown()
 
 	// Create doc1 on rt1
@@ -513,7 +513,7 @@ func TestPullReplicationAPI(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)
 
-	rt1, rt2, remoteURLString, teardown := rest.SetupSGRPeers(t, true)
+	rt1, rt2, remoteURLString, teardown := rest.SetupSGRPeers(t)
 	defer teardown()
 
 	// Create doc1 on rt2
@@ -555,8 +555,10 @@ func TestReplicationStatusActions(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)
 
-	// CBG-2766 blocks using non default collection
-	rt1, rt2, remoteURLString, teardown := rest.SetupSGRPeers(t, false)
+	// Increase checkpoint persistence frequency for cross-node status verification
+	defer reduceTestCheckpointInterval(50 * time.Millisecond)()
+
+	rt1, rt2, remoteURLString, teardown := rest.SetupSGRPeers(t)
 	defer teardown()
 
 	// Create doc1 on rt2
@@ -609,11 +611,7 @@ func TestReplicationStatusActions(t *testing.T) {
 	rest.RequireStatus(t, response, http.StatusOK)
 
 	// Wait for stopped.  Non-instant as config change needs to arrive over DCP
-	stateError := rt1.WaitForCondition(func() bool {
-		status := rt1.GetReplicationStatus(replicationID)
-		return status.Status == db.ReplicationStateStopped
-	})
-	assert.NoError(t, stateError)
+	rt1.WaitForReplicationStatus(replicationID, db.ReplicationStateStopped)
 
 	// Reset replication
 	response = rt1.SendAdminRequest("PUT", "/{{.db}}/_replicationStatus/"+replicationID+"?action=reset", "")
@@ -623,7 +621,7 @@ func TestReplicationStatusActions(t *testing.T) {
 		status := rt1.GetReplicationStatus(replicationID)
 		return status.Status == db.ReplicationStateStopped && status.LastSeqPull == ""
 	})
-	assert.NoError(t, resetErr)
+	require.NoError(t, resetErr)
 
 	// Restart the replication
 	response = rt1.SendAdminRequest("PUT", "/{{.db}}/_replicationStatus/"+replicationID+"?action=start", "")
@@ -636,9 +634,31 @@ func TestReplicationStatusActions(t *testing.T) {
 		return status.DocsCheckedPull == 2 && status.DocsRead == 0
 	})
 	assert.NoError(t, statError)
+
 	// Terminate status goroutine
 	close(doneChan)
 	statusWg.Wait()
+
+}
+
+func TestStatusAfterReplicationRebalanceFail(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+	activeRT, remoteRT, _, teardown := rest.SetupSGRPeers(t)
+	defer teardown()
+
+	// Build connection string for active RT
+	srv := httptest.NewServer(activeRT.TestPublicHandler())
+	activeDBURL, _ := url.Parse(srv.URL + "/" + activeRT.GetDatabase().Name)
+	activeDBURL.User = url.UserPassword("alice", rest.RestTesterDefaultUserPassword)
+	defer srv.Close()
+
+	// Put replication on remote RT where sg replicate is off, so will not get assigned a node
+	remoteRT.CreateReplication(t.Name(), activeDBURL.String(), db.ActiveReplicatorTypePush, nil, false, db.ConflictResolverDefault)
+
+	remoteRT.WaitForAssignedReplications(0)
+
+	// assert that the replication state is error after the replication is failed to be assigned a node
+	remoteRT.WaitForReplicationStatus(t.Name(), db.ReplicationStateUnassigned)
 
 }
 
@@ -661,8 +681,7 @@ func TestReplicationRebalancePull(t *testing.T) {
 	// Disable sequence batching for multi-RT tests (pending CBG-1000)
 	defer db.SuspendSequenceBatching()()
 
-	// CBG-2766 blocks using non default collection
-	activeRT, remoteRT, remoteURLString, teardown := rest.SetupSGRPeers(t, false)
+	activeRT, remoteRT, remoteURLString, teardown := rest.SetupSGRPeers(t)
 	defer teardown()
 
 	// Create docs on remote
@@ -767,8 +786,7 @@ func TestReplicationRebalancePush(t *testing.T) {
 	// Disable sequence batching for multi-RT tests (pending CBG-1000)
 	defer db.SuspendSequenceBatching()()
 
-	// CBG-2766 blocks using non default collection
-	activeRT, remoteRT, remoteURLString, teardown := rest.SetupSGRPeers(t, false)
+	activeRT, remoteRT, remoteURLString, teardown := rest.SetupSGRPeers(t)
 	defer teardown()
 
 	// Create docs on active
@@ -870,8 +888,7 @@ func TestPullOneshotReplicationAPI(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)
 
-	// CBG-2766 blocks using non default collection, since stats are not propogated across rebalance
-	activeRT, remoteRT, remoteURLString, teardown := rest.SetupSGRPeers(t, false)
+	activeRT, remoteRT, remoteURLString, teardown := rest.SetupSGRPeers(t)
 	defer teardown()
 
 	// Create 20 docs on rt2
@@ -938,7 +955,7 @@ func TestReplicationConcurrentPush(t *testing.T) {
 	// Increase checkpoint persistence frequency for cross-node status verification
 	defer reduceTestCheckpointInterval(50 * time.Millisecond)()
 
-	activeRT, remoteRT, remoteURLString, teardown := rest.SetupSGRPeers(t, true)
+	activeRT, remoteRT, remoteURLString, teardown := rest.SetupSGRPeers(t)
 	defer teardown()
 	// Create push replications, verify running
 	activeRT.CreateReplication("rep_ABC", remoteURLString, db.ActiveReplicatorTypePush, []string{"ABC"}, true, db.ConflictResolverDefault)
@@ -1312,8 +1329,8 @@ func TestGetStatusWithReplication(t *testing.T) {
 	})
 	assert.Equal(t, config1.ID, database.ReplicationStatus[0].ID)
 	assert.Equal(t, config2.ID, database.ReplicationStatus[1].ID)
-	assert.Equal(t, "running", database.ReplicationStatus[0].Status)
-	assert.Equal(t, "running", database.ReplicationStatus[1].Status)
+	assert.Equal(t, "unassigned", database.ReplicationStatus[0].Status)
+	assert.Equal(t, "unassigned", database.ReplicationStatus[1].Status)
 
 	assert.Equal(t, 2, len(database.SGRCluster.Replications), "Replication count mismatch")
 	assert.Equal(t, 0, len(database.SGRCluster.Nodes), "Replication node count mismatch")
@@ -1360,20 +1377,25 @@ func TestGetStatusWithReplication(t *testing.T) {
 func TestRequireReplicatorStoppedBeforeUpsert(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyHTTPResp)
 
-	rt := rest.NewRestTester(t, nil)
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{SgReplicateEnabled: true})
 	defer rt.Close()
+
+	resp := rt.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/alice", rest.GetUserPayload(t, "alice", "letmein", "", rt.GetSingleTestDatabaseCollection(), []string{}, []string{}))
+	rest.RequireStatus(t, resp, http.StatusCreated)
 
 	// Make rt listen on an actual HTTP port, so it can receive the blipsync request.
 	srv := httptest.NewServer(rt.TestPublicHandler())
 	defer srv.Close()
+	DBURL, _ := url.Parse(srv.URL + "/" + rt.GetDatabase().Name)
+	DBURL.User = url.UserPassword("alice", rest.RestTesterDefaultUserPassword)
 
-	replicationConfig := `{
+	replicationConfig := fmt.Sprintf(`{
 		"replication_id": "replication1",
-		"remote": "http://remote:4985/db",
-		"direction":"` + db.ActiveReplicatorTypePushAndPull + `",
+		"remote": "%s",
+		"direction": "pushAndPull",
 		"conflict_resolution_type":"default",
 		"max_backoff":100
-	}`
+	}`, DBURL.String())
 
 	response := rt.SendAdminRequest("PUT", "/{{.db}}/_replication/replication1", string(replicationConfig))
 	rest.RequireStatus(t, response, http.StatusCreated)
@@ -1387,13 +1409,13 @@ func TestRequireReplicatorStoppedBeforeUpsert(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, "running", body[0]["status"])
 
-	replicationConfigUpdate := `{
+	replicationConfigUpdate := fmt.Sprintf(`{
 		"replication_id": "replication1",
-		"remote": "http://remote:4985/db",
-		"direction":"` + db.ActiveReplicatorTypePush + `",
+		"remote": "%s",
+		"direction": "push",
 		"conflict_resolution_type":"default",
 		"max_backoff":100
-	}`
+	}`, DBURL.String())
 
 	response = rt.SendAdminRequest("PUT", "/{{.db}}/_replication/replication1", string(replicationConfigUpdate))
 	rest.RequireStatus(t, response, http.StatusBadRequest)
@@ -1401,9 +1423,95 @@ func TestRequireReplicatorStoppedBeforeUpsert(t *testing.T) {
 	response = rt.SendAdminRequest("PUT", "/{{.db}}/_replicationStatus/replication1?action=stop", "")
 	rest.RequireStatus(t, response, http.StatusOK)
 
+	rt.WaitForReplicationStatus("replication1", db.ReplicationStateStopped)
+
 	response = rt.SendAdminRequest("PUT", "/{{.db}}/_replication/replication1", string(replicationConfigUpdate))
 	rest.RequireStatus(t, response, http.StatusOK)
 
+}
+
+func TestReplicationMultiCollectionChannelFilter(t *testing.T) {
+	base.RequireNumTestBuckets(t, 2)
+
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
+
+	rt1, rt2, remoteURLString, teardown := rest.SetupSGRPeers(t)
+	defer teardown()
+
+	// Add docs to two channels
+	bulkDocs := `
+	{
+	"docs":
+		[
+			{"channels": ["ChannelOne"], "_id": "doc_1"},
+			{"channels": ["ChannelOne"], "_id": "doc_2"},
+			{"channels": ["ChannelOne"], "_id": "doc_3"},
+			{"channels": ["ChannelOne"], "_id": "doc_4"},
+			{"channels": ["ChannelTwo"], "_id": "doc_5"},
+			{"channels": ["ChannelTwo"], "_id": "doc_6"},
+			{"channels": ["ChannelTwo"], "_id": "doc_7"},
+			{"channels": ["ChannelTwo"], "_id": "doc_8"}
+		]
+	}
+	`
+	resp := rt1.SendAdminRequest("POST", "/{{.keyspace}}/_bulk_docs", bulkDocs)
+	rest.RequireStatus(t, resp, http.StatusCreated)
+
+	rt1Keyspace := rt1.GetSingleTestDatabaseCollection().ScopeName + "." + rt1.GetSingleTestDatabaseCollection().Name
+
+	replicationID := "testRepl"
+
+	replConf := `
+	{
+		"replication_id": "` + replicationID + `",
+		"remote": "` + remoteURLString + `",
+		"direction": "push",
+		"continuous": true,
+		"filter":"sync_gateway/bychannel",
+		"query_params": {
+			"collections_channels": {
+				"` + rt1Keyspace + `": ["ChannelOne"]
+			}
+		},
+		"collections_enabled": true,
+		"collections_local": ["` + rt1Keyspace + `"]
+	}`
+
+	// Create replication for first channel
+	resp = rt1.SendAdminRequest("PUT", "/{{.db}}/_replication/"+replicationID, replConf)
+	rest.RequireStatus(t, resp, http.StatusCreated)
+
+	rt1.WaitForReplicationStatus(replicationID, db.ReplicationStateRunning)
+
+	changesResults, err := rt2.WaitForChanges(4, "/{{.keyspace}}/_changes?since=0", "", true)
+	require.NoError(t, err)
+	require.Len(t, changesResults.Results, 4)
+
+	resp = rt1.SendAdminRequest("PUT", "/{{.db}}/_replicationStatus/"+replicationID+"?action=stop", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+	rt1.WaitForReplicationStatus(replicationID, db.ReplicationStateStopped)
+
+	// Upsert replication to use second channel
+	replConfUpdate := `
+	{
+		"replication_id": "` + replicationID + `",
+		"query_params": {
+			"collections_channels": {
+				"` + rt1Keyspace + `": ["ChannelTwo"]
+			}
+		}
+	}`
+
+	resp = rt1.SendAdminRequest("PUT", "/{{.db}}/_replication/"+replicationID, replConfUpdate)
+	rest.RequireStatus(t, resp, http.StatusOK)
+
+	resp = rt1.SendAdminRequest("PUT", "/{{.db}}/_replicationStatus/"+replicationID+"?action=start", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+	rt1.WaitForReplicationStatus(replicationID, db.ReplicationStateRunning)
+
+	changesResults, err = rt2.WaitForChanges(8, "/{{.keyspace}}/_changes?since=0", "", true)
+	require.NoError(t, err)
+	require.Len(t, changesResults.Results, 8)
 }
 
 func TestReplicationConfigChange(t *testing.T) {
@@ -1411,7 +1519,7 @@ func TestReplicationConfigChange(t *testing.T) {
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
-	rt1, rt2, remoteURLString, teardown := rest.SetupSGRPeers(t, true)
+	rt1, rt2, remoteURLString, teardown := rest.SetupSGRPeers(t)
 	defer teardown()
 
 	// Add docs to two channels
@@ -1505,8 +1613,7 @@ func TestReplicationHeartbeatRemoval(t *testing.T) {
 	// Disable sequence batching for multi-RT tests (pending CBG-1000)
 	defer db.SuspendSequenceBatching()()
 
-	// CBG-2766 blocks using non default collection
-	activeRT, remoteRT, remoteURLString, teardown := rest.SetupSGRPeers(t, false)
+	activeRT, remoteRT, remoteURLString, teardown := rest.SetupSGRPeers(t)
 	defer teardown()
 
 	// Create docs on remote
@@ -1673,7 +1780,7 @@ func TestTakeDbOfflineOngoingPushReplication(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)
 
-	rt1, rt2, remoteURLString, teardown := rest.SetupSGRPeers(t, true)
+	rt1, rt2, remoteURLString, teardown := rest.SetupSGRPeers(t)
 	defer teardown()
 
 	// Create doc1 on rt1
@@ -1710,7 +1817,7 @@ func TestPushReplicationAPIUpdateDatabase(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)
 
-	rt1, rt2, remoteURLString, teardown := rest.SetupSGRPeers(t, true)
+	rt1, rt2, remoteURLString, teardown := rest.SetupSGRPeers(t)
 	defer teardown()
 
 	// Create initial doc on rt1
@@ -4290,7 +4397,7 @@ func TestActiveReplicatorRecoverFromLocalFlush(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)
 
 	// Passive
-	rt2 := rest.NewRestTesterDefaultCollection(t, // CBG-2379 test requires default collection
+	rt2 := rest.NewRestTester(t, // CBG-2379 test requires default collection
 		&rest.RestTesterConfig{
 			SyncFn: channels.DocChannelsSyncFunction,
 		})
@@ -4316,7 +4423,7 @@ func TestActiveReplicatorRecoverFromLocalFlush(t *testing.T) {
 	passiveDBURL.User = url.UserPassword(username, rest.RestTesterDefaultUserPassword)
 
 	// Active
-	rt1 := rest.NewRestTesterDefaultCollection(t, nil) // CBG-2379 test requires default collection
+	rt1 := rest.NewRestTester(t, nil) // CBG-2379 test requires default collection
 	ctx1 := rt1.Context()
 	stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, nil, nil)
 	require.NoError(t, err)
@@ -4342,7 +4449,7 @@ func TestActiveReplicatorRecoverFromLocalFlush(t *testing.T) {
 	startNumChangesRequestedFromZeroTotal := rt2.GetDatabase().DbStats.CBLReplicationPull().NumPullReplSinceZero.Value()
 	startNumRevsSentTotal := rt2.GetDatabase().DbStats.CBLReplicationPull().RevSendCount.Value()
 
-	assert.NoError(t, ar.Start(ctx1))
+	require.NoError(t, ar.Start(ctx1))
 
 	// wait for document originally written to rt2 to arrive at rt1
 	changesResults, err := rt1.WaitForChanges(1, "/{{.keyspace}}/_changes?since=0", "", true)
@@ -4383,7 +4490,7 @@ func TestActiveReplicatorRecoverFromLocalFlush(t *testing.T) {
 	rt1.Close()
 
 	// recreate rt1 with a new bucket
-	rt1 = rest.NewRestTesterDefaultCollection(t, nil) // CBG-2379 test requires default collection
+	rt1 = rest.NewRestTester(t, nil)
 	defer rt1.Close()
 	ctx1 = rt1.Context()
 
@@ -4780,7 +4887,11 @@ func TestActiveReplicatorRecoverFromMismatchedRev(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyBucket, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)
 
 	// Passive
-	rt2 := rest.NewRestTesterDefaultCollection(t, nil) // CBG-2775 doesn't work yet with default collection
+	rt2 := rest.NewRestTester(t, &rest.RestTesterConfig{
+		SgReplicateEnabled: true,
+		SyncFn:             channels.DocChannelsSyncFunction,
+	})
+
 	defer rt2.Close()
 
 	username := "alice"
@@ -4796,7 +4907,10 @@ func TestActiveReplicatorRecoverFromMismatchedRev(t *testing.T) {
 	passiveDBURL.User = url.UserPassword(username, rest.RestTesterDefaultUserPassword)
 
 	// Active
-	rt1 := rest.NewRestTesterDefaultCollection(t, nil) // CBG-2775 doesn't work yet with default collection
+	rt1 := rest.NewRestTester(t, &rest.RestTesterConfig{
+		SgReplicateEnabled: true,
+		SyncFn:             channels.DocChannelsSyncFunction,
+	})
 	defer rt1.Close()
 	ctx1 := rt1.Context()
 	stats, err := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false, nil, nil)
@@ -4820,7 +4934,7 @@ func TestActiveReplicatorRecoverFromMismatchedRev(t *testing.T) {
 	ar, err := db.NewActiveReplicator(ctx1, &arConfig)
 	require.NoError(t, err)
 
-	assert.NoError(t, ar.Start(ctx1))
+	require.NoError(t, ar.Start(ctx1))
 
 	defer func() {
 		assert.NoError(t, ar.Stop())
@@ -6518,7 +6632,7 @@ func TestLocalWinsConflictResolution(t *testing.T) {
 			base.RequireNumTestBuckets(t, 2)
 			base.SetUpTestLogging(t, base.LevelTrace, base.KeyAll)
 
-			activeRT, remoteRT, remoteURLString, teardown := rest.SetupSGRPeers(t, true)
+			activeRT, remoteRT, remoteURLString, teardown := rest.SetupSGRPeers(t)
 			defer teardown()
 
 			// Create initial revision(s) on local
@@ -6734,7 +6848,7 @@ func TestReplicatorConflictAttachment(t *testing.T) {
 
 	for _, test := range testCases {
 		t.Run(test.name, func(t *testing.T) {
-			activeRT, remoteRT, remoteURLString, teardown := rest.SetupSGRPeers(t, true)
+			activeRT, remoteRT, remoteURLString, teardown := rest.SetupSGRPeers(t)
 			defer teardown()
 
 			docID := test.name
@@ -6805,6 +6919,7 @@ func TestReplicatorConflictAttachment(t *testing.T) {
 		})
 	}
 }
+
 func TestConflictResolveMergeWithMutatedRev(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
@@ -7456,45 +7571,27 @@ func TestReplicatorDeprecatedCredentials(t *testing.T) {
 func TestReplicatorCheckpointOnStop(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
 
-	passiveRT := rest.NewRestTester(t, nil)
-	defer passiveRT.Close()
-
-	adminSrv := httptest.NewServer(passiveRT.TestAdminHandler())
-	defer adminSrv.Close()
-
-	activeRT := rest.NewRestTester(t, nil)
-	defer activeRT.Close()
+	activeRT, passiveRT, remoteURL, teardown := rest.SetupSGRPeers(t)
+	defer teardown()
 	activeCtx := activeRT.Context()
 
 	// Disable checkpointing at an interval
 	activeRT.GetDatabase().SGReplicateMgr.CheckpointInterval = 0
-	err := activeRT.GetDatabase().SGReplicateMgr.StartReplications(activeCtx)
-	require.NoError(t, err)
 
 	rev, doc, err := activeRT.GetSingleTestDatabaseCollectionWithUser().Put(activeCtx, "test", db.Body{})
 	require.NoError(t, err)
 	seq := strconv.FormatUint(doc.Sequence, 10)
 
-	replConfig := `
-{
-	"replication_id": "` + t.Name() + `",
-	"remote": "` + adminSrv.URL + `/db",
-	"direction": "push",
-	"continuous": true,
-	"collections_enabled": ` + strconv.FormatBool(!activeRT.GetDatabase().OnlyDefaultCollection()) + `
-}
-`
-	resp := activeRT.SendAdminRequest("POST", "/{{.db}}/_replication/", replConfig)
-	rest.RequireStatus(t, resp, 201)
-
+	activeRT.CreateReplication(t.Name(), remoteURL, db.ActiveReplicatorTypePush, nil, true, db.ConflictResolverDefault)
 	activeRT.WaitForReplicationStatus(t.Name(), db.ReplicationStateRunning)
 
 	err = passiveRT.WaitForRev("test", rev)
 	require.NoError(t, err)
 
-	_, err = activeRT.GetDatabase().SGReplicateMgr.PutReplicationStatus(t.Name(), "stop")
-	require.NoError(t, err)
-	activeRT.WaitForReplicationStatus(t.Name(), db.ReplicationStateStopped)
+	// stop active replicator explicitly
+	ar, ok := activeRT.GetDatabase().SGReplicateMgr.GetLocalActiveReplicatorForTest(t, t.Name())
+	assert.True(t, ok)
+	require.NoError(t, ar.Stop())
 
 	// Check checkpoint document was wrote to bucket with correct status
 	// _sync:local:checkpoint/sgr2cp:push:TestReplicatorCheckpointOnStop
@@ -7642,8 +7739,7 @@ func TestGroupIDReplications(t *testing.T) {
 // Reproduces panic seen in CBG-1053
 func TestAdhocReplicationStatus(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll, base.KeyReplicate)
-	// CBG-2770 does not work with non default collections
-	rt := rest.NewRestTesterDefaultCollection(t, &rest.RestTesterConfig{SgReplicateEnabled: true})
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{SgReplicateEnabled: true})
 	defer rt.Close()
 
 	srv := httptest.NewServer(rt.TestAdminHandler())
@@ -7702,7 +7798,7 @@ function (doc) {
 				SyncFn: syncFunc,
 			}
 			// Set up buckets, rest testers, and set up servers
-			passiveRT := rest.NewRestTesterDefaultCollection(t, rtConfig) //  CBG-2772: replicator currently requires default collection
+			passiveRT := rest.NewRestTester(t, rtConfig)
 
 			defer passiveRT.Close()
 
@@ -7712,7 +7808,7 @@ function (doc) {
 			adminSrv := httptest.NewServer(passiveRT.TestAdminHandler())
 			defer adminSrv.Close()
 
-			activeRT := rest.NewRestTesterDefaultCollection(t, rtConfig) //  CBG-2772: replicator currently requires default collection
+			activeRT := rest.NewRestTester(t, rtConfig)
 			defer activeRT.Close()
 
 			for _, rt := range []*rest.RestTester{passiveRT, activeRT} {

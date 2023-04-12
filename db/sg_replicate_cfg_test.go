@@ -36,6 +36,7 @@ func TestReplicateManagerReplications(t *testing.T) {
 
 	replication1_id := "replication1"
 	err = manager.AddReplication(testReplicationCfg(replication1_id, ""))
+	require.NoError(t, err)
 
 	r, err := manager.GetReplication(replication1_id)
 	require.NoError(t, err)
@@ -561,6 +562,7 @@ func TestIsCfgChanged(t *testing.T) {
 				QueryParams:            []interface{}{"ABC"},
 				Username:               "alice",
 				Password:               "password",
+				CollectionsLocal:       []string{"foo.bar"},
 			},
 		}
 	}
@@ -607,10 +609,32 @@ func TestIsCfgChanged(t *testing.T) {
 			expectedChanged: true,
 		},
 		{
+			name: "collections enabled",
+			updatedConfig: &ReplicationUpsertConfig{
+				CollectionsEnabled: base.BoolPtr(true),
+			},
+			expectedChanged: true,
+		},
+		{
+			name: "collections local",
+			updatedConfig: &ReplicationUpsertConfig{
+				CollectionsLocal: []string{"foo.bar", "bar.buzz"},
+			},
+			expectedChanged: true,
+		},
+		{
+			name: "collections local",
+			updatedConfig: &ReplicationUpsertConfig{
+				CollectionsLocal: []string{"foo.bar", "bar.buzz"},
+			},
+			expectedChanged: true,
+		},
+		{
 			name: "unchanged",
 			updatedConfig: &ReplicationUpsertConfig{
 				Remote:               base.StringPtr("a"),
 				ConflictResolutionFn: base.StringPtr("a"),
+				CollectionsLocal:     []string{"foo.bar"},
 			},
 			expectedChanged: false,
 		},

@@ -108,12 +108,12 @@ func TestConfigPersistence(t *testing.T) {
 
 			// attempt to retrieve config, validate not found
 			var deletedConfig map[string]interface{}
-			loadCas, loadErr = cp.loadConfig(c, configKey, &deletedConfig)
+			_, loadErr = cp.loadConfig(c, configKey, &deletedConfig)
 			assert.Equal(t, ErrNotFound, loadErr)
 
 			// attempt to retrieve raw config, validate updated value
-			rawConfig, rawCas, rawErr = cp.loadRawConfig(c, configKey)
-			assert.Equal(t, ErrNotFound, loadErr)
+			_, _, rawErr = cp.loadRawConfig(c, configKey)
+			require.Error(t, rawErr)
 		})
 	}
 

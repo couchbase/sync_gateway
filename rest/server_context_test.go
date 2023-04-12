@@ -758,3 +758,48 @@ func TestValidateMetadataStore(t *testing.T) {
 	defer bucket.Close()
 	require.NoError(t, validateMetadataStore(ctx, bucket.DefaultDataStore()))
 }
+
+func TestDisableScopesInLegacyConfig(t *testing.T) {
+	bucket := base.GetTestBucket(t)
+	defer bucket.Close()
+
+	for _, persistentConfig := range []bool{false, true} {
+		for _, scopes := range []bool{false, true} {
+			t.Run(fmt.Sprintf("persistent_config=%t", persistentConfig), func(t *testing.T) {
+
+				ctx := base.TestCtx(t)
+				serverConfig := &StartupConfig{}
+				serverContext := NewServerContext(ctx, serverConfig, persistentConfig)
+				defer serverContext.Close(ctx)
+
+				dbConfig := DbConfig{
+					Name: "db",
+					BucketConfig: BucketConfig{
+						Server:   base.StringPtr(base.UnitTestUrl()),
+						Bucket:   base.StringPtr(bucket.GetName()),
+						Username: base.TestClusterUsername(),
+						Password: base.TestClusterPassword(),
+					},
+					EnableXattrs: base.BoolPtr(base.TestUseXattrs()),
+					UseViews:     base.BoolPtr(base.TestsDisableGSI()),
+				}
+				if scopes {
+					if !base.TestsUseNamedCollections() {
+						t.Skip("can not run collections tests in non collections configuration")
+					}
+					dbConfig.Scopes = GetCollectionsConfigWithSyncFn(t, bucket, nil, 1)
+				}
+				dbContext, err := serverContext._getOrAddDatabaseFromConfig(ctx, DatabaseConfig{DbConfig: dbConfig}, false, db.GetConnectToBucketFn(false))
+				if persistentConfig || scopes == false {
+					require.NoError(t, err)
+					require.NotNil(t, dbContext)
+					return
+				}
+				require.Nil(t, dbContext)
+				require.Error(t, err)
+				require.Contains(t, err.Error(), strconv.Itoa(http.StatusBadRequest))
+				require.Contains(t, err.Error(), "legacy config")
+			})
+		}
+	}
+}

@@ -867,6 +867,7 @@ func TestRevisionPruningLoop(t *testing.T) {
 	// Add tombstone children of 3-foo and 4-foo
 
 	err = addAndGet(t, revTree, "4-bar", "3-foo", nonTombstone)
+	require.NoError(t, err)
 	err = addAndGet(t, revTree, "5-bar", "4-bar", tombstone)
 	assert.NoError(t, err, "Error adding tombstone 4-bar to tree")
 

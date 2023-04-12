@@ -580,7 +580,6 @@ func (col *DatabaseCollectionWithUser) checkForUserUpdates(ctx context.Context, 
 	if newCount > userChangeCount || !isContinuous {
 		var previousChannels channels.TimedSet
 		base.DebugfCtx(ctx, base.KeyChanges, "MultiChangesFeed reloading user %+v", base.UD(col.user))
-		userChangeCount = newCount
 
 		if col.user != nil {
 			previousChannels = col.user.InheritedCollectionChannels(col.ScopeName, col.Name)
@@ -660,7 +659,7 @@ func (col *DatabaseCollectionWithUser) SimpleMultiChangesFeed(ctx context.Contex
 
 		// Restrict to available channels, expand wild-card, and find since when these channels
 		// have been available to the user:
-		channelsSince := channels.TimedSet{}
+		var channelsSince channels.TimedSet
 		if col.user != nil {
 			var channelsRemoved []string
 			channelsSince, channelsRemoved = col.user.FilterToAvailableCollectionChannels(col.ScopeName, col.Name, chans)
@@ -1112,8 +1111,11 @@ func (c *DatabaseCollection) WaitForSequenceNotSkipped(ctx context.Context, sequ
 }
 
 // WaitForPendingChanges blocks until the change-cache has caught up with the latest writes to the database.
-func (c *DatabaseCollection) WaitForPendingChanges(ctx context.Context) (err error) {
+func (c *DatabaseCollection) WaitForPendingChanges(ctx context.Context) error {
 	lastSequence, err := c.LastSequence()
+	if err != nil {
+		return err
+	}
 	base.DebugfCtx(ctx, base.KeyChanges, "Waiting for sequence: %d", lastSequence)
 	return c.changeCache().waitForSequence(ctx, lastSequence, base.DefaultWaitForSequence)
 }

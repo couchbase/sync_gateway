@@ -256,6 +256,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 	sc.Auth.BcryptCost = bcrypt.MinCost
 
 	rt.RestTesterServerContext = NewServerContext(base.TestCtx(rt.TB), &sc, rt.RestTesterConfig.PersistentConfig)
+	rt.RestTesterServerContext.allowScopesInPersistentConfig = true
 	ctx := rt.Context()
 
 	if !base.ServerIsWalrus(sc.Bootstrap.Server) {
@@ -272,7 +273,6 @@ func (rt *RestTester) Bucket() base.Bucket {
 			panic("Couldn't initialize Couchbase Server connection: " + err.Error())
 		}
 	}
-
 	// Copy this startup config at this point into initial startup config
 	err := base.DeepCopyInefficient(&rt.RestTesterServerContext.initialStartupConfig, &sc)
 	if err != nil {
@@ -742,7 +742,8 @@ func (rt *RestTester) CreateWaitForChangesRetryWorker(numChangesExpected int, ch
 		}
 		if len(changes.Results) < numChangesExpected {
 			// not enough results, retry
-			return true, nil, nil
+			rt.TB.Logf("Waiting for changes, expected %d, got %d: %v", numChangesExpected, len(changes.Results), changes)
+			return true, fmt.Errorf("expecting %d changes, got %d", numChangesExpected, len(changes.Results)), nil
 		}
 		// If it made it this far, there is no errors and it got enough changes
 		return false, nil, changes
@@ -1784,7 +1785,7 @@ func (bt *BlipTester) SendRevWithAttachment(input SendRevWithAttachmentInput) (s
 
 	// Push a rev with an attachment.
 	getAttachmentWg.Add(1)
-	sent, req, res, err = bt.SendRevWithHistory(
+	sent, req, res, _ = bt.SendRevWithHistory(
 		input.docId,
 		input.revId,
 		input.history,

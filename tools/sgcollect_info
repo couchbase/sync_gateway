@@ -490,7 +490,18 @@ def make_config_tasks(zip_dir, sg_config_path, sg_url, sg_username, sg_password,
                                  log_file="sync_gateway.log",
                                  content_postprocessors=db_config_postprocessors)
         collect_config_tasks.append(db_config_task)
-    
+
+    # Get cluster information
+    cluster_info_url = "{0}/_cluster_info".format(sg_url)
+    cluster_info_task = make_curl_task(name="Collect SG cluster info",
+                                 user=sg_username,
+                                 password=sg_password,
+                                 url=cluster_info_url,
+                                 log_file="sync_gateway.log",
+                                 content_postprocessors=server_config_postprocessors)
+    collect_config_tasks.append(cluster_info_task)
+
+
     return collect_config_tasks
 
 

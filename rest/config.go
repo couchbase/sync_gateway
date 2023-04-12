@@ -1025,7 +1025,7 @@ func (config *DbConfig) redactInPlace() error {
 }
 
 // DecodeAndSanitiseConfig will sanitise a config from an io.Reader and unmarshal it into the given config parameter.
-func DecodeAndSanitiseConfig(r io.Reader, config interface{}) (err error) {
+func DecodeAndSanitiseConfig(r io.Reader, config interface{}, disallowUnknownFields bool) (err error) {
 	b, err := io.ReadAll(r)
 	if err != nil {
 		return err
@@ -1039,7 +1039,9 @@ func DecodeAndSanitiseConfig(r io.Reader, config interface{}) (err error) {
 	b = base.ConvertBackQuotedStrings(b)
 
 	d := base.JSONDecoder(bytes.NewBuffer(b))
-	d.DisallowUnknownFields()
+	if disallowUnknownFields {
+		d.DisallowUnknownFields()
+	}
 	err = d.Decode(config)
 	return base.WrapJSONUnknownFieldErr(err)
 }
@@ -1519,9 +1521,8 @@ func (sc *ServerContext) fetchConfigsSince(ctx context.Context, refreshInterval 
 	return sc.dbConfigs, nil
 }
 
-// FetchConfigs retrieves all database configs from the ServerContext's bootstrapConnection.
-func (sc *ServerContext) FetchConfigs(ctx context.Context, isInitialStartup bool) (dbNameConfigs map[string]DatabaseConfig, err error) {
-	var buckets []string
+// GetBucketNames returns a slice of the bucket names associated with the server context
+func (sc *ServerContext) GetBucketNames() (buckets []string, err error) {
 	if sc.Config.IsServerless() {
 		buckets = make([]string, len(sc.Config.BucketCredentials))
 		for bucket, _ := range sc.Config.BucketCredentials {
@@ -1542,6 +1543,16 @@ func (sc *ServerContext) FetchConfigs(ctx context.Context, isInitialStartup bool
 		if err != nil {
 			return nil, fmt.Errorf("couldn't get buckets from cluster: %w", err)
 		}
+	}
+	return buckets, nil
+}
+
+// FetchConfigs retrieves all database configs from the ServerContext's bootstrapConnection.
+func (sc *ServerContext) FetchConfigs(ctx context.Context, isInitialStartup bool) (dbNameConfigs map[string]DatabaseConfig, err error) {
+
+	buckets, err := sc.GetBucketNames()
+	if err != nil {
+		return nil, err
 	}
 
 	fetchedConfigs := make(map[string]DatabaseConfig, len(buckets))

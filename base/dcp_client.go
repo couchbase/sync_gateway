@@ -418,6 +418,7 @@ func (dc *DCPClient) openStream(vbID uint16, maxRetries uint32) (err error) {
 	for {
 		// Cancel open for stopped client
 		select {
+
 		case <-dc.terminator:
 			return nil
 		default:
@@ -428,17 +429,20 @@ func (dc *DCPClient) openStream(vbID uint16, maxRetries uint32) (err error) {
 			return nil
 		}
 
+		var rollbackErr gocbcore.DCPRollbackError
 		switch {
-		case (errors.Is(openStreamErr, gocbcore.ErrMemdRollback) || errors.Is(openStreamErr, gocbcore.ErrMemdRangeError)):
+		case errors.As(openStreamErr, &rollbackErr):
 			if dc.failOnRollback {
 				InfofCtx(logCtx, KeyDCP, "Open stream for vbID %d failed due to rollback or range error, closing client based on failOnRollback=true", vbID)
 				return fmt.Errorf("%s, failOnRollback requested", openStreamErr)
 			}
 			InfofCtx(logCtx, KeyDCP, "Open stream for vbID %d failed due to rollback or range error, will roll back metadata and retry: %v", vbID, openStreamErr)
-			err := dc.rollback(vbID)
-			if err != nil {
-				return fmt.Errorf("metadata rollback failed for vb %d: %v", vbID, err)
-			}
+
+			dc.rollback(logCtx, vbID, rollbackErr.SeqNo)
+		case errors.Is(openStreamErr, gocbcore.ErrMemdRangeError):
+			err := fmt.Errorf("Invalid metadata out of range for vbID %d, err: %v metadata %+v, shutting down agent", vbID, openStreamErr, dc.metadata.GetMeta(vbID))
+			WarnfCtx(logCtx, "%s", err)
+			return err
 		case errors.Is(openStreamErr, gocbcore.ErrShutdown):
 			WarnfCtx(logCtx, "Closing stream for vbID %d, agent has been shut down", vbID)
 			return openStreamErr
@@ -459,12 +463,11 @@ func (dc *DCPClient) openStream(vbID uint16, maxRetries uint32) (err error) {
 	return fmt.Errorf("openStream failed to complete after %d attempts, last error: %w", openRetryCount, openStreamErr)
 }
 
-func (dc *DCPClient) rollback(vbID uint16) (err error) {
+func (dc *DCPClient) rollback(ctx context.Context, vbID uint16, seqNo gocbcore.SeqNo) {
 	if dc.dbStats != nil {
 		dc.dbStats.Add("dcp_rollback_count", 1)
 	}
-	dc.metadata.Rollback(vbID)
-	return nil
+	dc.metadata.Rollback(ctx, vbID, seqNo)
 }
 
 // openStreamRequest issues the OpenStream request, but doesn't perform any error handling.  Callers

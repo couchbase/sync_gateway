@@ -276,6 +276,7 @@ func TestUserAPI(t *testing.T) {
 
 	user, err := rt.ServerContext().Database(ctx, "db").Authenticator(ctx).GetUser("snej")
 	require.NoError(t, err)
+	require.NotNil(t, user)
 	// GET the user and make sure the result is OK
 	response = rt.SendAdminRequest("GET", "/db/_user/snej", "")
 	RequireStatus(t, response, 200)
@@ -587,6 +588,7 @@ func TestUserXattrsRawGet(t *testing.T) {
 	err = rt.WaitForCondition(func() bool {
 		return rt.GetDatabase().DbStats.SharedBucketImportStats.ImportCount.Value() == 1
 	})
+	require.NoError(t, err)
 
 	resp = rt.SendAdminRequest("GET", "/{{.keyspace}}/_raw/"+docKey, "")
 	RequireStatus(t, resp, http.StatusOK)
@@ -598,6 +600,7 @@ func TestUserXattrsRawGet(t *testing.T) {
 	}
 
 	err = json.Unmarshal(resp.BodyBytes(), &RawReturn)
+	require.NoError(t, err)
 
 	assert.Equal(t, "val", RawReturn.Meta.Xattrs[xattrKey])
 }
@@ -883,6 +886,7 @@ function(doc, oldDoc) {
 	}
 	input = input + `]}`
 	response = rt.SendAdminRequest("POST", "/{{.keyspace}}/_bulk_docs", input)
+	RequireStatus(t, response, http.StatusCreated)
 
 	// Start changes feed
 	var wg sync.WaitGroup
@@ -955,6 +959,7 @@ function(doc, oldDoc) {
 
 		log.Printf("Sending 2nd round of _bulk_docs")
 		response = rt.SendUserRequest("POST", "/{{.keyspace}}/_bulk_docs", input, "bernard")
+		RequireStatus(t, response, http.StatusCreated)
 		log.Printf("Sent 2nd round of _bulk_docs")
 
 	}
@@ -1010,6 +1015,7 @@ func TestUserDeleteDuringChangesWithAccess(t *testing.T) {
 	for i := 0; i <= 5; i++ {
 		docId := fmt.Sprintf("/{{.keyspace}}/bernard_doc%d", i+3)
 		response = rt.SendAdminRequest("PUT", docId, `{"type":"setaccess", "owner":"bernard", "channel":"foo"}`)
+		RequireStatus(t, response, http.StatusCreated)
 	}
 
 	wg.Wait()
@@ -1488,12 +1494,8 @@ func TestPutUserCollectionAccess(t *testing.T) {
 	RequireStatus(t, getResponse, 200)
 	assert.Contains(t, getResponse.ResponseRecorder.Body.String(), `"all_channels":["!"]`)
 
-	dbConfig := DbConfig{
-		Scopes: GetCollectionsConfigWithSyncFn(rt.TB, rt.TestBucket, nil, 1),
-		BucketConfig: BucketConfig{
-			Bucket: base.StringPtr(rt.TestBucket.GetName()),
-		},
-	}
+	dbConfig := rt.NewDbConfig()
+	dbConfig.Scopes = GetCollectionsConfigWithSyncFn(rt.TB, rt.TestBucket, nil, 1)
 	resp := rt.ReplaceDbConfig(rt.GetDatabase().Name, dbConfig)
 	RequireStatus(t, resp, http.StatusCreated)
 

@@ -138,9 +138,7 @@ func (rt *RestTester) CreateReplicationForDB(dbName string, replicationID string
 		Remote:                 remoteURLString,
 		Continuous:             continuous,
 		ConflictResolutionType: conflictResolver,
-	}
-	if !rt.GetDatabase().OnlyDefaultCollection() {
-		replicationConfig.CollectionsEnabled = true
+		CollectionsEnabled:     base.TestsUseNamedCollections(),
 	}
 
 	if len(channels) > 0 {
@@ -162,11 +160,12 @@ func (rt *RestTester) WaitForAssignedReplications(count int) {
 }
 
 func (rt *RestTester) WaitForReplicationStatusForDB(dbName string, replicationID string, targetStatus string) {
+	var status db.ReplicationStatus
 	successFunc := func() bool {
-		status := rt.GetReplicationStatusForDB(dbName, replicationID)
+		status = rt.GetReplicationStatusForDB(dbName, replicationID)
 		return status.Status == targetStatus
 	}
-	require.NoError(rt.TB, rt.WaitForCondition(successFunc))
+	require.NoError(rt.TB, rt.WaitForCondition(successFunc), "Expected status: %s, actual status: %s", targetStatus, status.Status)
 }
 
 func (rt *RestTester) WaitForReplicationStatus(replicationID string, targetStatus string) {
@@ -208,7 +207,7 @@ func (rt *RestTester) GetReplicationStatuses(queryString string) (statuses []db.
 //	  - user 'alice' created with star channel access
 //	  - http server wrapping the public API, remoteDBURLString targets the rt2 database as user alice (e.g. http://alice:pass@host/db)
 //	returned teardown function closes activeRT, passiveRT and the http server, should be invoked with defer
-func SetupSGRPeers(t *testing.T, useMultipleCollections bool) (activeRT *RestTester, passiveRT *RestTester, remoteDBURLString string, teardown func()) {
+func SetupSGRPeers(t *testing.T) (activeRT *RestTester, passiveRT *RestTester, remoteDBURLString string, teardown func()) {
 	// Set up passive RestTester (rt2)
 	passiveTestBucket := base.GetTestBucket(t)
 
@@ -219,11 +218,7 @@ func SetupSGRPeers(t *testing.T, useMultipleCollections bool) (activeRT *RestTes
 		}},
 		SyncFn: channels.DocChannelsSyncFunction,
 	}
-	if useMultipleCollections {
-		passiveRT = NewRestTester(t, passiveRTConfig)
-	} else {
-		passiveRT = NewRestTesterDefaultCollection(t, passiveRTConfig)
-	}
+	passiveRT = NewRestTester(t, passiveRTConfig)
 	response := passiveRT.SendAdminRequest(http.MethodPut, "/{{.db}}/_user/alice", GetUserPayload(t, "", RestTesterDefaultUserPassword, "", passiveRT.GetSingleTestDatabaseCollection(), []string{"*"}, nil))
 	RequireStatus(t, response, http.StatusCreated)
 
@@ -244,12 +239,7 @@ func SetupSGRPeers(t *testing.T, useMultipleCollections bool) (activeRT *RestTes
 		SgReplicateEnabled: true,
 		SyncFn:             channels.DocChannelsSyncFunction,
 	}
-	if useMultipleCollections {
-		activeRT = NewRestTester(t, activeRTConfig)
-	} else {
-		activeRT = NewRestTesterDefaultCollection(t, activeRTConfig)
-
-	}
+	activeRT = NewRestTester(t, activeRTConfig)
 	// Initalize RT and bucket
 	_ = activeRT.Bucket()
 

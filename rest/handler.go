@@ -354,6 +354,9 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 			}
 			// TODO: could avoid this extra fetch if UpdatePrincipal returned the new principal
 			h.user, err = dbContext.Authenticator(h.ctx()).GetUser(*updates.Name)
+			if err != nil {
+				return err
+			}
 		}
 	}
 

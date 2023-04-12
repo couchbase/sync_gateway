@@ -349,6 +349,9 @@ func GetBucket(spec BucketSpec) (bucket Bucket, err error) {
 		sgbucket.SetLogging(ConsoleLogKey().Enabled(KeyBucket))
 		bucket, err = walrus.GetCollectionBucket(spec.Server, spec.BucketName)
 		// If feed type is not specified (defaults to DCP) or isn't TAP, wrap with pseudo-vbucket handling for walrus
+		if err != nil {
+			return nil, err
+		}
 		if spec.FeedType != TapFeedType {
 			bucket = &LeakyBucket{bucket: bucket, config: &LeakyBucketConfig{TapFeedVbuckets: true}}
 		}

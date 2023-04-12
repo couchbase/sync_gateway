@@ -24,11 +24,10 @@ import (
 
 // ActiveReplicator is a wrapper to encapsulate separate push and pull active replicators.
 type ActiveReplicator struct {
-	ID        string
-	Push      *ActivePushReplicator
-	Pull      *ActivePullReplicator
-	config    *ActiveReplicatorConfig
-	statusKey string // key used when persisting replication status
+	ID     string
+	Push   *ActivePushReplicator
+	Pull   *ActivePullReplicator
+	config *ActiveReplicatorConfig
 }
 
 // NewActiveReplicator returns a bidirectional active replicator for the given config.
@@ -37,12 +36,6 @@ func NewActiveReplicator(ctx context.Context, config *ActiveReplicatorConfig) (*
 		ID:     config.ID,
 		config: config,
 	}
-
-	metakeys := base.DefaultMetadataKeys
-	if config.ActiveDB != nil {
-		metakeys = config.ActiveDB.MetadataKeys
-	}
-	ar.statusKey = metakeys.ReplicationStatusKey(config.ID)
 
 	if pushReplication := config.Direction == ActiveReplicatorTypePush || config.Direction == ActiveReplicatorTypePushAndPull; pushReplication {
 		var err error
@@ -66,7 +59,7 @@ func NewActiveReplicator(ctx context.Context, config *ActiveReplicatorConfig) (*
 		}
 	}
 
-	base.InfofCtx(ctx, base.KeyReplicate, "Created active replicator ID:%s statusKey: %s", config.ID, ar.statusKey)
+	base.InfofCtx(ctx, base.KeyReplicate, "Created active replicator ID:%s", config.ID)
 	return ar, nil
 }
 
@@ -276,7 +269,11 @@ func blipSync(target url.URL, blipContext *blip.Context, insecureSkipVerify bool
 	var basicAuthCreds *url.Userinfo
 	if target.User != nil {
 		// take a copy
-		basicAuthCreds = &*target.User
+		if password, hasPassword := target.User.Password(); hasPassword {
+			basicAuthCreds = url.UserPassword(target.User.Username(), password)
+		} else {
+			basicAuthCreds = url.User(target.User.Username())
+		}
 		target.User = nil
 	}
 
@@ -345,37 +342,31 @@ func (ar *ActiveReplicator) purgeCheckpoints() {
 }
 
 // LoadReplicationStatus attempts to load both push and pull replication checkpoints, and constructs the combined status
-func LoadReplicationStatus(dbContext *DatabaseContext, replicationID string) (status *ReplicationStatus, err error) {
+func LoadReplicationStatus(ctx context.Context, dbContext *DatabaseContext, replicationID string) (status *ReplicationStatus, err error) {
 
 	status = &ReplicationStatus{
 		ID: replicationID,
 	}
 
-	pullCheckpoint, _ := getLocalCheckpoint(dbContext.MetadataStore, PullCheckpointID(replicationID), int(dbContext.Options.LocalDocExpirySecs))
-	if pullCheckpoint != nil {
-		if pullCheckpoint.Status != nil {
-			status.PullReplicationStatus = pullCheckpoint.Status.PullReplicationStatus
-			status.Status = pullCheckpoint.Status.Status
-			status.ErrorMessage = pullCheckpoint.Status.ErrorMessage
-			status.LastSeqPull = pullCheckpoint.Status.LastSeqPull
-		} else {
-			status.LastSeqPull = pullCheckpoint.LastSeq
-		}
+	pullStatusKey := dbContext.MetadataKeys.ReplicationStatusKey(PullCheckpointID(replicationID))
+	pullStatus, _ := getLocalStatus(ctx, dbContext.MetadataStore, pullStatusKey)
+	if pullStatus != nil {
+		status.PullReplicationStatus = pullStatus.PullReplicationStatus
+		status.Status = pullStatus.Status
+		status.ErrorMessage = pullStatus.ErrorMessage
+		status.LastSeqPull = pullStatus.LastSeqPull
 	}
 
-	pushCheckpoint, _ := getLocalCheckpoint(dbContext.MetadataStore, PushCheckpointID(replicationID), int(dbContext.Options.LocalDocExpirySecs))
-	if pushCheckpoint != nil {
-		if pushCheckpoint.Status != nil {
-			status.PushReplicationStatus = pushCheckpoint.Status.PushReplicationStatus
-			status.Status = pushCheckpoint.Status.Status
-			status.ErrorMessage = pushCheckpoint.Status.ErrorMessage
-			status.LastSeqPush = pushCheckpoint.Status.LastSeqPush
-		} else {
-			status.LastSeqPush = pushCheckpoint.LastSeq
-		}
+	pushStatusKey := dbContext.MetadataKeys.ReplicationStatusKey(PushCheckpointID(replicationID))
+	pushStatus, _ := getLocalStatus(ctx, dbContext.MetadataStore, pushStatusKey)
+	if pushStatus != nil {
+		status.PushReplicationStatus = pushStatus.PushReplicationStatus
+		status.Status = pushStatus.Status
+		status.ErrorMessage = pushStatus.ErrorMessage
+		status.LastSeqPush = pushStatus.LastSeqPush
 	}
 
-	if (pullCheckpoint == nil || pullCheckpoint.Status == nil) && (pushCheckpoint == nil || pushCheckpoint.Status == nil) {
+	if pullStatus == nil && pushStatus == nil {
 		return nil, errors.New("Replication status not found")
 	}
 

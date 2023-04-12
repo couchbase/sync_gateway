@@ -257,6 +257,9 @@ func CreateAdminRouter(sc *ServerContext) *mux.Router {
 	r.Handle("/_config",
 		makeHandler(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handlePutConfig)).Methods("PUT")
 
+	r.Handle("/_cluster_info",
+		makeHandler(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handleGetClusterInfo)).Methods("GET")
+
 	r.Handle("/_status",
 		makeHandler(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handleGetStatus)).Methods("GET")
 
@@ -323,7 +326,7 @@ func CreateAdminRouter(sc *ServerContext) *mux.Router {
 	// so the handlers are moved to the admin port.
 	r.Handle("/{newdb:"+dbRegex+"}/",
 		makeHandlerSpecificAuthScope(sc, adminPrivs, []Permission{PermCreateDb}, nil, (*handler).handleCreateDB, getAuthScopeHandleCreateDB)).Methods("PUT")
-	r.Handle("/{olddb:"+dbRegex+"}/",
+	r.Handle("/{db:"+dbRegex+"}/",
 		makeOfflineHandler(sc, adminPrivs, []Permission{PermDeleteDb}, nil, (*handler).handleDeleteDB)).Methods("DELETE")
 
 	r.Handle("/_all_dbs",

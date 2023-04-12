@@ -44,7 +44,7 @@ func TestDecodeAttachmentError(t *testing.T) {
 	assert.Contains(t, err.Error(), strconv.Itoa(http.StatusBadRequest))
 
 	attr, err = DecodeAttachment(make(map[string]string, 1))
-	assert.Error(t, err, "should throw 400 invalid attachment data (type map[string]float64)")
+	assert.Nil(t, attr, "should throw 400 invalid attachment data (type map[string]float64)")
 	assert.Error(t, err, "It 400 invalid attachment data (type map[string]string)")
 	assert.Contains(t, err.Error(), strconv.Itoa(http.StatusBadRequest))
 

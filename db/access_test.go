@@ -50,6 +50,7 @@ func TestDynamicChannelGrant(t *testing.T) {
 	// Verify user cannot access document
 	existingBody, err := dbCollection.get1xBody(ctx, "doc1")
 	require.Error(t, err)
+	require.Nil(t, existingBody)
 
 	// Write access granting document
 	grantingBody := Body{"type": "setaccess", "owner": "user1", "channel": "chan1"}
@@ -77,6 +78,8 @@ func TestDynamicChannelGrant(t *testing.T) {
 	require.NoError(t, dbCollection.ReloadUser(ctx))
 	existingBody, err = dbCollection.get1xBody(ctx, "doc1")
 	require.NoError(t, err)
+	require.NotNil(t, existingBody)
 	existingBody, err = dbCollection.get1xBody(ctx, "doc2")
 	require.NoError(t, err)
+	require.NotNil(t, existingBody)
 }

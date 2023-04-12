@@ -328,6 +328,7 @@ func TestAttachmentCASRetryAfterNewAttachment(t *testing.T) {
 
 	// 4. Get the document, check attachments
 	finalDoc, err := collection.get1xBody(ctx, "doc1")
+	require.NoError(t, err)
 	attachments := finalDoc.GetRawAttachments()
 	assert.True(t, attachments != nil, "_attachments should be present in GET response")
 	attachment, attachmentOk := attachments["hello.txt"].(map[string]interface{})
@@ -390,6 +391,7 @@ func TestAttachmentCASRetryDuringNewAttachment(t *testing.T) {
 
 	// 4. Get the document, check attachments
 	finalDoc, err := collection.get1xBody(ctx, "doc1")
+	require.NoError(t, err)
 	log.Printf("get doc attachments: %v", finalDoc)
 
 	attachments := finalDoc.GetRawAttachments()
@@ -483,6 +485,24 @@ func TestForEachStubAttachmentErrors(t *testing.T) {
 	err = collection.ForEachStubAttachment(body, 1, docID, existingDigests, callback)
 	assert.Error(t, err, "It should throw the actual error")
 	assert.Contains(t, err.Error(), "Can't work with this digest value!")
+}
+
+func TestGenerateProofOfAttachment(t *testing.T) {
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+
+	attData := []byte(`hello world`)
+
+	nonce, proof1, err := GenerateProofOfAttachment(attData)
+	require.NoError(t, err)
+	assert.True(t, len(nonce) >= 20, "nonce should be at least 20 bytes")
+	assert.NotEmpty(t, proof1)
+	assert.True(t, strings.HasPrefix(proof1, "sha1-"))
+
+	proof2 := ProveAttachment(attData, nonce)
+	assert.NotEmpty(t, proof1, "")
+	assert.True(t, strings.HasPrefix(proof1, "sha1-"))
+
+	assert.Equal(t, proof1, proof2, "GenerateProofOfAttachment and ProveAttachment produced different proofs.")
 }
 
 func TestSetAttachment(t *testing.T) {
@@ -1476,22 +1496,4 @@ func TestLargeAttachments(t *testing.T) {
 	})
 	require.ErrorAs(t, err, &httpErr, "Created doc with huge attachment")
 	require.Equal(t, http.StatusRequestEntityTooLarge, httpErr.Status)
-}
-
-func TestGenerateProofOfAttachment(t *testing.T) {
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
-
-	attData := []byte(`hello world`)
-
-	nonce, proof1, err := GenerateProofOfAttachment(attData)
-	require.NoError(t, err)
-	assert.True(t, len(nonce) >= 20, "nonce should be at least 20 bytes")
-	assert.NotEmpty(t, proof1)
-	assert.True(t, strings.HasPrefix(proof1, "sha1-"))
-
-	proof2 := ProveAttachment(attData, nonce)
-	assert.NotEmpty(t, proof1, "")
-	assert.True(t, strings.HasPrefix(proof1, "sha1-"))
-
-	assert.Equal(t, proof1, proof2, "GenerateProofOfAttachment and ProveAttachment produced different proofs.")
 }

@@ -36,9 +36,8 @@ func reduceTestCheckpointInterval(interval time.Duration) func() {
 // AddActiveRT returns a new RestTester backed by a no-close clone of TestBucket
 func addActiveRT(t *testing.T, dbName string, testBucket *base.TestBucket) (activeRT *rest.RestTester) {
 
-	// CBG-2766 adding a new RestTester on the same database will cause stats to be broken, when fixing change to `NewRestTester`
 	// Create a new rest tester, using a NoCloseClone of testBucket, which disables the TestBucketPool teardown
-	activeRT = rest.NewRestTesterDefaultCollection(t,
+	activeRT = rest.NewRestTester(t,
 		&rest.RestTesterConfig{
 			CustomTestBucket:   testBucket.NoCloseClone(),
 			SgReplicateEnabled: true,

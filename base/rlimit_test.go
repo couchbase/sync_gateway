@@ -32,7 +32,7 @@ func TestGetSoftFDLimitWithCurrent(t *testing.T) {
 		Max: currentHardFdLimit,
 	}
 
-	requiresUpdate, softFDLimit := getSoftFDLimit(
+	requiresUpdate, _ := getSoftFDLimit(
 		requestedSoftFDLimit,
 		limit,
 	)
@@ -40,7 +40,7 @@ func TestGetSoftFDLimitWithCurrent(t *testing.T) {
 
 	limit.Cur = uint64(512)
 
-	requiresUpdate, softFDLimit = getSoftFDLimit(
+	requiresUpdate, softFDLimit := getSoftFDLimit(
 		requestedSoftFDLimit,
 		limit,
 	)

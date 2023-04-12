@@ -331,6 +331,7 @@ func TestServerlessSuspendDatabase(t *testing.T) {
 
 	// Unsuspend db
 	dbCtx, err = sc.unsuspendDatabase(rt.Context(), "db")
+	require.NoError(t, err)
 	assert.NotNil(t, dbCtx)
 	assert.False(t, sc.isDatabaseSuspended(t, "db"))
 	assert.NotNil(t, sc.databases_["db"])
@@ -342,6 +343,7 @@ func TestServerlessSuspendDatabase(t *testing.T) {
 
 	// Attempt unsuspend of invalid db
 	dbCtx, err = sc.unsuspendDatabase(rt.Context(), "invalid")
+	require.Error(t, err)
 	assert.Nil(t, dbCtx)
 	assert.Nil(t, sc.databases_["invalid"])
 	assert.Nil(t, sc.dbConfigs["invalid"])
@@ -424,10 +426,11 @@ func TestServerlessFetchConfigsLimited(t *testing.T) {
 	// Purposely make configs get caches
 	sc.Config.Unsupported.Serverless.MinConfigFetchInterval = base.NewConfigDuration(time.Hour)
 	dbConfigsBefore, err := sc.fetchConfigsSince(rt.Context(), sc.Config.Unsupported.Serverless.MinConfigFetchInterval)
+	require.NoError(t, err)
 	require.NotEmpty(t, dbConfigsBefore["db"])
 	timeCached := sc.fetchConfigsLastUpdate
-	assert.NotZero(t, timeCached)
 	require.NoError(t, err)
+	assert.NotZero(t, timeCached)
 
 	require.NoError(t, err)
 	// Update database config in the bucket (increment version)
@@ -438,9 +441,11 @@ func TestServerlessFetchConfigsLimited(t *testing.T) {
 		}
 		return bucketDbConfig, nil
 	})
+	require.NoError(t, err)
 
 	// Fetch configs again and expect same config to be returned
 	dbConfigsAfter, err := sc.fetchConfigsSince(rt.Context(), sc.Config.Unsupported.Serverless.MinConfigFetchInterval)
+	require.NoError(t, err)
 	require.NotEmpty(t, dbConfigsAfter["db"])
 	assert.Equal(t, dbConfigsBefore["db"].cfgCas, dbConfigsAfter["db"].cfgCas)
 	assert.Equal(t, timeCached, sc.fetchConfigsLastUpdate)
@@ -450,6 +455,7 @@ func TestServerlessFetchConfigsLimited(t *testing.T) {
 	// Sleep to make sure enough time passes
 	time.Sleep(time.Millisecond * 500)
 	dbConfigsAfter, err = sc.fetchConfigsSince(rt.Context(), sc.Config.Unsupported.Serverless.MinConfigFetchInterval)
+	require.NoError(t, err)
 	require.NotEmpty(t, dbConfigsAfter["db"])
 	assert.Equal(t, newCas, dbConfigsAfter["db"].cfgCas)
 
@@ -469,6 +475,7 @@ func TestServerlessFetchConfigsLimited(t *testing.T) {
 	// Disable caching and expect new config
 	sc.Config.Unsupported.Serverless.MinConfigFetchInterval = base.NewConfigDuration(0)
 	dbConfigsAfter, err = sc.fetchConfigsSince(rt.Context(), sc.Config.Unsupported.Serverless.MinConfigFetchInterval)
+	require.NoError(t, err)
 	require.NotEmpty(t, dbConfigsAfter["db"])
 	assert.Equal(t, newCas, dbConfigsAfter["db"].cfgCas)
 }
@@ -506,6 +513,7 @@ func TestServerlessUpdateSuspendedDb(t *testing.T) {
 	newCas, err := sc.BootstrapContext.UpdateConfig(base.TestCtx(t), tb.GetName(), sc.Config.Bootstrap.ConfigGroupID, "db", func(bucketDbConfig *DatabaseConfig) (updatedConfig *DatabaseConfig, err error) {
 		return sc.dbConfigs["db"].ToDatabaseConfig(), nil
 	})
+	require.NoError(t, err)
 	// Confirm dbConfig cas did not update yet in SG, or get unsuspended
 	assert.NotEqual(t, sc.dbConfigs["db"].cfgCas, newCas)
 	assert.True(t, sc.isDatabaseSuspended(t, "db"))

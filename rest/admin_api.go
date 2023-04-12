@@ -175,11 +175,11 @@ func getAuthScopeHandleCreateDB(bodyJSON []byte) (string, error) {
 	var body struct {
 		Bucket string `json:"bucket"`
 	}
-	err := base.JSONUnmarshal(bodyJSON, &body)
+	reader := bytes.NewReader(bodyJSON)
+	err := DecodeAndSanitiseConfig(reader, &body, false)
 	if err != nil {
 		return "", err
 	}
-
 	if body.Bucket == "" {
 		return "", nil
 	}
@@ -945,7 +945,7 @@ func (h *handler) handlePutCollectionConfigImportFilter() error {
 // In non-persistent mode, the endpoint just removes the database from the node.
 func (h *handler) handleDeleteDB() error {
 	h.assertAdminOnly()
-	dbName := h.PathVar("olddb")
+	dbName := h.PathVar("db")
 
 	var bucket string
 
@@ -1685,5 +1685,53 @@ func (h *handler) putReplicationStatus() error {
 		return err
 	}
 	h.writeJSON(updatedStatus)
+	return nil
+}
+
+// Cluster information, returned by _cluster_info API request
+type ClusterInfo struct {
+	LegacyConfig bool                  `json:"legacy_config,omitempty"`
+	Buckets      map[string]BucketInfo `json:"buckets,omitempty"`
+}
+
+type BucketInfo struct {
+	Registry GatewayRegistry `json:"registry,omitempty"`
+}
+
+// Get SG cluster information.  Iterates over all buckets associated with the server, and returns cluster
+// information (registry) for each
+func (h *handler) handleGetClusterInfo() error {
+
+	// If not using persistent config, returns legacy_config:true
+	if h.server.persistentConfig == false {
+		clusterInfo := ClusterInfo{
+			LegacyConfig: true,
+		}
+		h.writeJSON(clusterInfo)
+		return nil
+	}
+
+	clusterInfo := ClusterInfo{
+		Buckets: make(map[string]BucketInfo),
+	}
+
+	bucketNames, err := h.server.GetBucketNames()
+	if err != nil {
+		return err
+	}
+
+	for _, bucketName := range bucketNames {
+		registry, err := h.server.BootstrapContext.getGatewayRegistry(h.ctx(), bucketName)
+		if err != nil {
+			base.InfofCtx(h.ctx(), base.KeyAll, "Unable to retrieve registry for bucket %s during getClusterInfo: %v", base.MD(bucketName), err)
+			continue
+		}
+
+		bucketInfo := BucketInfo{
+			Registry: *registry,
+		}
+		clusterInfo.Buckets[bucketName] = bucketInfo
+	}
+	h.writeJSON(clusterInfo)
 	return nil
 }

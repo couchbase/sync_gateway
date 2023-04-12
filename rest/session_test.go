@@ -236,6 +236,7 @@ func TestLogin(t *testing.T) {
 	RequireStatus(t, response, 401)
 
 	user, err = a.NewUser("pupshaw", "letmein", channels.BaseSetOf(t, "*"))
+	require.NoError(t, err)
 	assert.NoError(t, a.Save(user))
 
 	RequireStatus(t, rt.SendRequest("GET", "/db/_session", ""), 200)
@@ -320,6 +321,7 @@ func TestSessionTtlGreaterThan30Days(t *testing.T) {
 	RequireStatus(t, response, 401)
 
 	user, err = a.NewUser("pupshaw", "letmein", channels.BaseSetOf(t, "*"))
+	require.NoError(t, err)
 	assert.NoError(t, a.Save(user))
 
 	// create a session with the maximum offset ttl value (30days) 2592000 seconds
