@@ -5409,6 +5409,8 @@ func TestActiveReplicatorReconnectOnStart(t *testing.T) {
 	}
 }
 
+// HERE ONWARDS
+
 // TestActiveReplicatorReconnectOnStartEventualSuccess ensures an active replicator with invalid creds retries,
 // but succeeds once the user is created on the remote.
 func TestActiveReplicatorReconnectOnStartEventualSuccess(t *testing.T) {
@@ -6919,6 +6921,8 @@ func TestReplicatorConflictAttachment(t *testing.T) {
 		})
 	}
 }
+
+// maybe
 func TestConflictResolveMergeWithMutatedRev(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
@@ -7594,7 +7598,7 @@ func TestReplicatorCheckpointOnStop(t *testing.T) {
 	"replication_id": "` + t.Name() + `",
 	"remote": "` + adminSrv.URL + `/db",
 	"direction": "push",
-	"continuous": true,
+	"continuous": false,
 	"collections_enabled": ` + strconv.FormatBool(!activeRT.GetDatabase().OnlyDefaultCollection()) + `
 }
 `
@@ -7606,8 +7610,8 @@ func TestReplicatorCheckpointOnStop(t *testing.T) {
 	err = passiveRT.WaitForRev("test", rev)
 	require.NoError(t, err)
 
-	_, err = activeRT.GetDatabase().SGReplicateMgr.PutReplicationStatus(t.Name(), "stop")
-	require.NoError(t, err)
+	resp = activeRT.SendAdminRequest("PUT", "/{{.db}}/_replicationStatus/"+t.Name()+"?action=stop", "")
+	rest.RequireStatus(t, resp, 200)
 	activeRT.WaitForReplicationStatus(t.Name(), db.ReplicationStateStopped)
 
 	// Check checkpoint document was wrote to bucket with correct status
