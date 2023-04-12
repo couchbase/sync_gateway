@@ -7588,6 +7588,11 @@ func TestReplicatorCheckpointOnStop(t *testing.T) {
 	err = passiveRT.WaitForRev("test", rev)
 	require.NoError(t, err)
 
+	// stop active replicator explicitly
+	ar, ok := activeRT.GetDatabase().SGReplicateMgr.GetLocalActiveReplicatorForTest(t, t.Name())
+	assert.True(t, ok)
+	require.NoError(t, ar.Stop())
+
 	// Check checkpoint document was wrote to bucket with correct status
 	// _sync:local:checkpoint/sgr2cp:push:TestReplicatorCheckpointOnStop
 	expectedCheckpointName := base.SyncDocPrefix + "local:checkpoint/" + db.PushCheckpointID(t.Name())
