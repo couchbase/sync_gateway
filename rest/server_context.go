@@ -1672,7 +1672,7 @@ func CheckPermissions(httpClient *http.Client, managementEndpoints []string, buc
 
 	if statusCode != http.StatusOK {
 		if statusCode == http.StatusUnauthorized {
-			return errInvalidLogin, nil, nil
+			return http.StatusUnauthorized, nil, nil
 		}
 
 		// If we don't provide permissions we get a BadRequest but know we have successfully authenticated
