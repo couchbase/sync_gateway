@@ -512,7 +512,10 @@ func TestDBOfflineSingleResync(t *testing.T) {
 	assert.Equal(t, int64(2000), rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value())
 }
 
-func TestResync(t *testing.T) {
+func TestResyncOverDCP(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test doesn't works with walrus")
+	}
 	base.LongRunningTest(t)
 
 	testCases := []struct {
@@ -562,11 +565,6 @@ func TestResync(t *testing.T) {
 			)
 			defer rt.Close()
 
-			_, isDCPResync := (rt.GetDatabase().ResyncManager.Process).(*db.ResyncManagerDCP)
-			if isDCPResync && base.UnitTestUrlIsWalrus() {
-				t.Skip("This test doesn't work with Walrus when ResyncManagerDCP is used")
-			}
-
 			for i := 0; i < testCase.docsCreated; i++ {
 				rt.CreateDoc(t, fmt.Sprintf("doc%d", i))
 			}
@@ -603,21 +601,8 @@ func TestResync(t *testing.T) {
 			})
 			assert.NoError(t, err)
 
-			if !isDCPResync {
-				var queryName string
-				assert.Equal(t, testCase.expectedSyncFnRuns, int(rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value()))
-				if base.TestsDisableGSI() {
-					queryName = fmt.Sprintf(base.StatViewFormat, db.DesignDocSyncGateway(), db.ViewChannels)
-				} else {
-					queryName = db.QueryTypeChannels
-				}
-				assert.Equal(t, testCase.expectedQueryCount, int(rt.GetDatabase().DbStats.Query(queryName).QueryCount.Value()))
-				assert.Equal(t, testCase.docsCreated, resyncManagerStatus.DocsProcessed)
-			} else {
-				assert.GreaterOrEqual(t, int(rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value()), testCase.expectedSyncFnRuns)
-				assert.GreaterOrEqual(t, resyncManagerStatus.DocsProcessed, testCase.docsCreated)
-			}
-
+			assert.GreaterOrEqual(t, int(rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value()), testCase.expectedSyncFnRuns)
+			assert.GreaterOrEqual(t, resyncManagerStatus.DocsProcessed, testCase.docsCreated)
 			assert.Equal(t, 0, resyncManagerStatus.DocsChanged)
 		})
 	}
