@@ -269,7 +269,7 @@ func (h *handler) createSessionForTrustedIdToken(rawIDToken string, provider *au
 		return "", "", err
 	}
 	if user == nil {
-		return "", "", errLoginRequired
+		return "", "", errInvalidLogin
 	}
 
 	_, err = h.db.UpdatePrincipal(h.ctx(), &updates, true, true)
