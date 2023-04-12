@@ -111,7 +111,6 @@ delete:
     '404':
       $ref: ../../components/responses.yaml#/Not-found
   tags:
-    - Public only endpoints
     - Session
 head:
   summary: /{db}/_session

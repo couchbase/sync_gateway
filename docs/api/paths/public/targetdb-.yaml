@@ -22,5 +22,4 @@ put:
     '412':
       description: Database exists
   tags:
-    - Public only endpoints
     - Database Management
