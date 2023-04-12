@@ -292,8 +292,12 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 				}
 				dbContext, err = h.server.GetInactiveDatabase(h.ctx(), keyspaceDb)
 				if err != nil {
-					if httpError, ok := err.(*base.HTTPError); h.privs == regularPrivs && ok && httpError.Status == http.StatusNotFound {
-						return errLoginRequired
+					if httpError, ok := err.(*base.HTTPError); ok && httpError.Status == http.StatusNotFound {
+						if shouldCheckAdminAuth {
+							return base.HTTPErrorf(http.StatusForbidden, "")
+						} else if h.privs == regularPrivs {
+							return errLoginRequired
+						}
 					}
 					base.InfofCtx(h.ctx(), base.KeyHTTP, "Error trying to get db %s: %v", base.MD(keyspaceDb), err)
 					return err
