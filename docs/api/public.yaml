@@ -85,8 +85,6 @@ paths:
   '/{db}/_blipsync':
     $ref: './paths/public/db-_blipsync.yaml'
 tags:
-  - name: Public only endpoints
-    description: Endpoints that are unique to the Public API (port 4984)
   - name: Server
     description: Manage server activities
   - name: Database Management

@@ -5,7 +5,6 @@
 # in that file, in accordance with the Business Source License, use of this
 # software will be governed by the Apache License, Version 2.0, included in
 # the file licenses/APL2.txt.
-
 parameters:
   - $ref: ../../components/parameters.yaml#/db
 get:
@@ -27,6 +26,7 @@ get:
       $ref: ../../components/responses.yaml#/Not-found
   tags:
     - Database Management
+  operationId: get_db-_resync
 post:
   summary: Start or stop Resync
   description: |
@@ -90,3 +90,4 @@ post:
             $ref: ../../components/schemas.yaml#/HTTP-Error
   tags:
     - Database Management
+  operationId: post_db-_resync
