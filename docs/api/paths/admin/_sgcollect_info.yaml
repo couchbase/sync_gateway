@@ -5,7 +5,6 @@
 # in that file, in accordance with the Business Source License, use of this
 # software will be governed by the Apache License, Version 2.0, included in
 # the file licenses/APL2.txt.
-
 get:
   summary: Get the status of the Sync Gateway Collect Info
   description: |-
@@ -32,6 +31,7 @@ get:
               - status
   tags:
     - Server
+  operationId: get__sgcollect_info
 post:
   summary: Start Sync Gateway Collect Info
   description: |-
@@ -107,6 +107,7 @@ post:
             $ref: ../../components/schemas.yaml#/HTTP-Error
   tags:
     - Server
+  operationId: post__sgcollect_info
 delete:
   summary: Cancel the Sync Gateway Collect Info job
   description: |-
@@ -131,3 +132,4 @@ delete:
       $ref: ../../components/responses.yaml#/request-problem
   tags:
     - Server
+  operationId: delete__sgcollect_info

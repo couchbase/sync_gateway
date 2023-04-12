@@ -5,7 +5,6 @@
 # in that file, in accordance with the Business Source License, use of this
 # software will be governed by the Apache License, Version 2.0, included in
 # the file licenses/APL2.txt.
-
 parameters:
   - $ref: ../../components/parameters.yaml#/db
   - $ref: ../../components/parameters.yaml#/ddoc
@@ -28,6 +27,7 @@ get:
       $ref: ../../components/responses.yaml#/Not-found
   tags:
     - Unsupported
+  operationId: get_db-_design-ddoc
 put:
   summary: Update views of a design document | Unsupported
   description: |-
@@ -48,6 +48,7 @@ put:
       $ref: ../../components/responses.yaml#/Not-found
   tags:
     - Unsupported
+  operationId: put_db-_design-ddoc
 delete:
   summary: Delete a design document | Unsupported
   description: |-
@@ -63,6 +64,7 @@ delete:
       $ref: ../../components/responses.yaml#/Not-found
   tags:
     - Unsupported
+  operationId: delete_db-_design-ddoc
 head:
   responses:
     '200':
@@ -78,3 +80,4 @@ head:
 
     Check if a design document can be queried.
   summary: Check if view of design document exists | Unsupported
+  operationId: head_db-_design-ddoc

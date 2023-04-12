@@ -5,7 +5,6 @@
 # in that file, in accordance with the Business Source License, use of this
 # software will be governed by the Apache License, Version 2.0, included in
 # the file licenses/APL2.txt.
-
 parameters:
   - $ref: ../../components/parameters.yaml#/keyspace
 get:
@@ -101,6 +100,7 @@ get:
       $ref: ../../components/responses.yaml#/Not-found
   tags:
     - Database Management
+  operationId: get_keyspace-_changes
 post:
   summary: Get changes list
   description: |-
@@ -155,6 +155,7 @@ post:
       $ref: ../../components/responses.yaml#/Not-found
   tags:
     - Database Management
+  operationId: post_keyspace-_changes
 head:
   summary: /{db}/_changes
   responses:
@@ -167,3 +168,4 @@ head:
   tags:
     - Database Management
   description: ''
+  operationId: head_keyspace-_changes
