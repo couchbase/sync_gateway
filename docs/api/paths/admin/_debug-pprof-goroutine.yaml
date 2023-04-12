@@ -5,7 +5,6 @@
 # in that file, in accordance with the Business Source License, use of this
 # software will be governed by the Apache License, Version 2.0, included in
 # the file licenses/APL2.txt.
-
 get:
   summary: Get goroutine profile
   description: |-
@@ -21,6 +20,7 @@ get:
       $ref: ../../components/responses.yaml#/pprof-binary
   tags:
     - Profiling
+  operationId: get__debug-pprof-goroutine
 post:
   summary: Get goroutine profile
   description: |-
@@ -36,3 +36,4 @@ post:
       $ref: ../../components/responses.yaml#/pprof-binary
   tags:
     - Profiling
+  operationId: post__debug-pprof-goroutine

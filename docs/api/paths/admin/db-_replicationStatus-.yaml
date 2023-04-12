@@ -5,7 +5,6 @@
 # in that file, in accordance with the Business Source License, use of this
 # software will be governed by the Apache License, Version 2.0, included in
 # the file licenses/APL2.txt.
-
 parameters:
   - $ref: ../../components/parameters.yaml#/db
 get:
@@ -34,6 +33,7 @@ get:
       $ref: ../../components/responses.yaml#/request-problem
   tags:
     - Replication
+  operationId: get_db-_replicationStatus-
 head:
   summary: /{db}/_replicationStatus/
   responses:
@@ -47,3 +47,4 @@ head:
     Required Sync Gateway RBAC roles:
 
     * Sync Gateway Replicator
+  operationId: head_db-_replicationStatus-

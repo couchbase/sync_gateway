@@ -5,7 +5,6 @@
 # in that file, in accordance with the Business Source License, use of this
 # software will be governed by the Apache License, Version 2.0, included in
 # the file licenses/APL2.txt.
-
 parameters:
   - $ref: ../../components/parameters.yaml#/keyspace
 get:
@@ -36,6 +35,7 @@ get:
       $ref: ../../components/responses.yaml#/Not-found
   tags:
     - Document
+  operationId: get_keyspace-_all_docs
 post:
   summary: Get all the documents in the database using a built-in view
   description: |-
@@ -76,6 +76,7 @@ post:
       $ref: ../../components/responses.yaml#/Not-found
   tags:
     - Document
+  operationId: post_keyspace-_all_docs
 head:
   summary: /{db}/_all_docs
   responses:
@@ -102,3 +103,4 @@ head:
 
     * Sync Gateway Application
     * Sync Gateway Application Read Only
+  operationId: head_keyspace-_all_docs

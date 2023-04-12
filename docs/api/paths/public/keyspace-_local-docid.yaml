@@ -5,7 +5,6 @@
 # in that file, in accordance with the Business Source License, use of this
 # software will be governed by the Apache License, Version 2.0, included in
 # the file licenses/APL2.txt.
-
 parameters:
   - $ref: ../../components/parameters.yaml#/keyspace
   - name: docid
@@ -29,6 +28,7 @@ get:
       $ref: ../../components/responses.yaml#/Not-found
   tags:
     - Document
+  operationId: get_keyspace-_local-docid
 put:
   summary: Upsert a local document
   description: |-
@@ -60,6 +60,7 @@ put:
       description: A revision ID conflict would result from updating this document revision.
   tags:
     - Document
+  operationId: put_keyspace-_local-docid
 delete:
   summary: Delete a local document
   description: |-
@@ -84,6 +85,7 @@ delete:
       description: A revision ID conflict would result from deleting this document revision.
   tags:
     - Document
+  operationId: delete_keyspace-_local-docid
 head:
   responses:
     '200':
@@ -99,3 +101,4 @@ head:
     This request checks if a local document exists.
 
     Local document IDs begin with `_local/`. Local documents are not replicated or indexed, don't support attachments, and don't save revision histories. In practice they are almost only used by Couchbase Lite's replicator, as a place to store replication checkpoint data.
+  operationId: head_keyspace-_local-docid
