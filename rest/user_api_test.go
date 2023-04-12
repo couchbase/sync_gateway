@@ -1532,7 +1532,7 @@ func TestUnauthorizedAccessForDB(t *testing.T) {
 	dbName := "realdb"
 	rt.CreateDatabase("realdb", dbConfig)
 
-	response := rt.SendRequest(http.MethodGet, "/"+dbName+"/", "")
+	response := rt.SendRequest(http.MethodGet, "/{{.db}}/", "")
 	RequireStatus(t, response, http.StatusUnauthorized)
 
 	response = rt.SendRequest(http.MethodGet, "/notadb/", "")
