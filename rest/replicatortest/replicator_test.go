@@ -5409,8 +5409,6 @@ func TestActiveReplicatorReconnectOnStart(t *testing.T) {
 	}
 }
 
-// HERE ONWARDS
-
 // TestActiveReplicatorReconnectOnStartEventualSuccess ensures an active replicator with invalid creds retries,
 // but succeeds once the user is created on the remote.
 func TestActiveReplicatorReconnectOnStartEventualSuccess(t *testing.T) {
@@ -6922,7 +6920,6 @@ func TestReplicatorConflictAttachment(t *testing.T) {
 	}
 }
 
-// maybe
 func TestConflictResolveMergeWithMutatedRev(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
