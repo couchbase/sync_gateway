@@ -104,9 +104,8 @@ func TestDisablePublicBasicAuth(t *testing.T) {
 
 	response := rt.SendRequest(http.MethodGet, "/{{.db}}/", "")
 	RequireStatus(t, response, http.StatusUnauthorized)
-	require.Contains(t, response.Body.String(), ErrLoginRequired.Message)
+	require.Contains(t, response.Body.String(), errPasswordAuthenticationDisabled.Message)
 	assert.NotContains(t, response.Header(), "WWW-Authenticate", "expected to not receive a WWW-Auth header when password auth is disabled")
-
 	// Double-check that even if we provide valid credentials we still won't be let in
 	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
 	user, err := a.NewUser("user1", "letmein", channels.BaseSetOf(t, "foo"))
@@ -115,13 +114,13 @@ func TestDisablePublicBasicAuth(t *testing.T) {
 
 	response = rt.SendUserRequest(http.MethodGet, "/{{.db}}/", "", "user1")
 	RequireStatus(t, response, http.StatusUnauthorized)
-	require.Contains(t, response.Body.String(), ErrInvalidLogin.Message)
+	require.Contains(t, response.Body.String(), errPasswordAuthenticationDisabled.Message)
 	assert.NotContains(t, response.Header(), "WWW-Authenticate", "expected to not receive a WWW-Auth header when password auth is disabled")
 
 	// Also check that we can't create a session through POST /db/_session
 	response = rt.SendRequest(http.MethodPost, "/{{.db}}/_session", `{"name":"user1","password":"letmein"}`)
 	RequireStatus(t, response, http.StatusUnauthorized)
-	require.Contains(t, response.Body.String(), ErrInvalidLogin.Message)
+	require.Contains(t, response.Body.String(), errPasswordAuthenticationDisabled.Message)
 
 	// As a sanity check, ensure it does work when the setting is disabled
 	rt.ServerContext().Database(ctx, "db").Options.DisablePasswordAuthentication = false

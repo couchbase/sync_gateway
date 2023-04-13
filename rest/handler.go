@@ -42,6 +42,7 @@ const (
 
 var ErrInvalidLogin = base.HTTPErrorf(http.StatusUnauthorized, "Invalid login")
 var ErrLoginRequired = base.HTTPErrorf(http.StatusUnauthorized, "Login required")
+var errPasswordAuthenticationDisabled = base.HTTPErrorf(http.StatusUnauthorized, "Password authentication is disabled")
 
 // If set to true, JSON output will be pretty-printed.
 var PrettyPrint bool = false
@@ -662,6 +663,9 @@ func (h *handler) checkAuth(dbCtx *db.DatabaseContext) (err error) {
 	if h.privs == regularPrivs && h.user.Disabled() {
 		if dbCtx.Options.SendWWWAuthenticateHeader == nil || *dbCtx.Options.SendWWWAuthenticateHeader {
 			h.response.Header().Set("WWW-Authenticate", wwwAuthenticateHeader)
+		}
+		if dbCtx.Options.DisablePasswordAuthentication {
+			return errPasswordAuthenticationDisabled
 		}
 		return ErrLoginRequired
 	}
