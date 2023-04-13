@@ -1534,9 +1534,11 @@ func TestUnauthorizedAccessForDB(t *testing.T) {
 
 	response := rt.SendRequest(http.MethodGet, "/"+dbName+"/", "")
 	RequireStatus(t, response, http.StatusUnauthorized)
+	require.Contains(t, response.Body.String(), ErrLoginRequired.Message)
 
 	response = rt.SendRequest(http.MethodGet, "/notadb/", "")
 	RequireStatus(t, response, http.StatusUnauthorized)
+	require.Contains(t, response.Body.String(), ErrLoginRequired.Message)
 
 	// create sessions before users
 	const alice = "alice"
@@ -1565,11 +1567,14 @@ func TestUnauthorizedAccessForDB(t *testing.T) {
 
 	response = rt.SendUserRequest(http.MethodGet, "/notadb/", "", alice)
 	RequireStatus(t, response, http.StatusUnauthorized)
+	require.Contains(t, response.Body.String(), ErrInvalidLogin.Message)
 
 	response = rt.SendRequestWithHeaders(http.MethodGet, "/notadb/", "", aliceSessionHeaders)
 	RequireStatus(t, response, http.StatusUnauthorized)
+	require.Contains(t, response.Body.String(), ErrInvalidLogin.Message)
 
 	response = rt.SendUserRequest(http.MethodGet, "/"+dbName+"/", "", bob)
 	RequireStatus(t, response, http.StatusUnauthorized)
+	require.Contains(t, response.Body.String(), ErrInvalidLogin.Message)
 
 }

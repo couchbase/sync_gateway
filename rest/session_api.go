@@ -124,7 +124,7 @@ func (h *handler) makeSession(user auth.User) error {
 // Creates a session with TTL and adds to the response.  Does NOT return the session info response.
 func (h *handler) makeSessionWithTTL(user auth.User, expiry time.Duration) (sessionID string, err error) {
 	if user == nil {
-		return "", errInvalidLogin
+		return "", ErrInvalidLogin
 	}
 	h.user = user
 	auth := h.db.Authenticator(h.ctx())

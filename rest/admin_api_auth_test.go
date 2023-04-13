@@ -473,6 +473,7 @@ func TestAdminAuthWithX509(t *testing.T) {
 	_, statusCode, err = checkAdminAuth("", "invalidUser", "invalidPassword", "", httpClient, managementEndpoints, true, []Permission{{"!admin", false}}, nil)
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusUnauthorized, statusCode)
+	require.Contains(t, err.Error(), ErrInvalidLogin.Message)
 }
 
 func TestAdminAPIAuth(t *testing.T) {
@@ -874,6 +875,7 @@ func TestAdminAPIAuth(t *testing.T) {
 		t.Run(endPoint.Method+endPoint.Endpoint, func(t *testing.T) {
 			resp := rt.SendAdminRequest(endPoint.Method, endPoint.Endpoint, body)
 			RequireStatus(t, resp, http.StatusUnauthorized)
+			require.Contains(t, resp.Body.String(), ErrLoginRequired.Message)
 
 			resp = rt.SendAdminRequestWithAuth(endPoint.Method, endPoint.Endpoint, body, "noaccess", "password")
 			RequireStatus(t, resp, http.StatusForbidden)
@@ -1481,4 +1483,24 @@ func TestCreateDBSpecificBucketPerm(t *testing.T) {
 
 	resp := rt.SendAdminRequestWithAuth("PUT", "/db2/", `{"bucket": "`+tb.GetName()+`", "username": "`+base.TestClusterUsername()+`", "password": "`+base.TestClusterPassword()+`", "num_index_replicas": 0, "use_views": `+strconv.FormatBool(base.TestsDisableGSI())+`}`, SGWorBFArole.RoleName, "password")
 	RequireStatus(t, resp, http.StatusCreated)
+}
+
+// Tests to make sure login required is returned when admin auth is enabled
+func TestLoginRequiredForAdmin(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("Hits CBS rest endpoint for permission check")
+	}
+
+	rt := NewRestTester(t, &RestTesterConfig{
+		AdminInterfaceAuthentication: true,
+	})
+	defer rt.Close()
+	response := rt.SendAdminRequestWithAuth(http.MethodGet, "/{{.db}}/", "", "", "")
+	RequireStatus(t, response, http.StatusUnauthorized)
+	require.Contains(t, response.Body.String(), ErrLoginRequired.Message)
+
+	response = rt.SendAdminRequestWithAuth(http.MethodGet, "/notadb/", "", "", "")
+	RequireStatus(t, response, http.StatusUnauthorized)
+	require.Contains(t, response.Body.String(), ErrLoginRequired.Message)
+
 }
