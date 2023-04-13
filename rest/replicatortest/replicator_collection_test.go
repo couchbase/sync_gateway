@@ -469,6 +469,7 @@ func TestReplicatorMissingCollections(t *testing.T) {
 
 			// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1
 			srv := httptest.NewServer(passiveRT.TestPublicHandler())
+			defer srv.Close()
 
 			// Build passiveDBURL with basic auth creds
 			passiveDBURL, _ := url.Parse(srv.URL + "/" + passiveRT.GetDatabase().Name)

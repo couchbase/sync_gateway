@@ -6919,6 +6919,7 @@ func TestReplicatorConflictAttachment(t *testing.T) {
 		})
 	}
 }
+
 func TestConflictResolveMergeWithMutatedRev(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
@@ -7570,45 +7571,27 @@ func TestReplicatorDeprecatedCredentials(t *testing.T) {
 func TestReplicatorCheckpointOnStop(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
 
-	passiveRT := rest.NewRestTester(t, nil)
-	defer passiveRT.Close()
-
-	adminSrv := httptest.NewServer(passiveRT.TestAdminHandler())
-	defer adminSrv.Close()
-
-	activeRT := rest.NewRestTester(t, nil)
-	defer activeRT.Close()
+	activeRT, passiveRT, remoteURL, teardown := rest.SetupSGRPeers(t)
+	defer teardown()
 	activeCtx := activeRT.Context()
 
 	// Disable checkpointing at an interval
 	activeRT.GetDatabase().SGReplicateMgr.CheckpointInterval = 0
-	err := activeRT.GetDatabase().SGReplicateMgr.StartReplications(activeCtx)
-	require.NoError(t, err)
 
 	rev, doc, err := activeRT.GetSingleTestDatabaseCollectionWithUser().Put(activeCtx, "test", db.Body{})
 	require.NoError(t, err)
 	seq := strconv.FormatUint(doc.Sequence, 10)
 
-	replConfig := `
-{
-	"replication_id": "` + t.Name() + `",
-	"remote": "` + adminSrv.URL + `/db",
-	"direction": "push",
-	"continuous": true,
-	"collections_enabled": ` + strconv.FormatBool(!activeRT.GetDatabase().OnlyDefaultCollection()) + `
-}
-`
-	resp := activeRT.SendAdminRequest("POST", "/{{.db}}/_replication/", replConfig)
-	rest.RequireStatus(t, resp, 201)
-
+	activeRT.CreateReplication(t.Name(), remoteURL, db.ActiveReplicatorTypePush, nil, true, db.ConflictResolverDefault)
 	activeRT.WaitForReplicationStatus(t.Name(), db.ReplicationStateRunning)
 
 	err = passiveRT.WaitForRev("test", rev)
 	require.NoError(t, err)
 
-	_, err = activeRT.GetDatabase().SGReplicateMgr.PutReplicationStatus(t.Name(), "stop")
-	require.NoError(t, err)
-	activeRT.WaitForReplicationStatus(t.Name(), db.ReplicationStateStopped)
+	// stop active replicator explicitly
+	ar, ok := activeRT.GetDatabase().SGReplicateMgr.GetLocalActiveReplicatorForTest(t, t.Name())
+	assert.True(t, ok)
+	require.NoError(t, ar.Stop())
 
 	// Check checkpoint document was wrote to bucket with correct status
 	// _sync:local:checkpoint/sgr2cp:push:TestReplicatorCheckpointOnStop
