@@ -187,6 +187,31 @@ func (c *DatabaseCollection) GetDocSyncData(ctx context.Context, docid string) (
 
 }
 
+// This gets *just* the Sync Metadata (_sync field) rather than the entire doc, for efficiency
+// reasons. Unlike GetDocSyncData it does not check for on-demand import; this means it does not
+// need to read the doc body from the bucket.
+func (db *DatabaseCollection) GetDocSyncDataNoImport(ctx context.Context, docid string, level DocumentUnmarshalLevel) (SyncData, error) {
+	if db.UseXattrs() {
+		var err error
+		if key := realDocID(docid); key == "" {
+			err = base.HTTPErrorf(400, "Invalid doc ID")
+		} else {
+			var cas uint64
+			var xattrValue []byte
+			if cas, err = db.dataStore.GetXattr(key, base.SyncXattrName, &xattrValue); err == nil {
+				var doc *Document
+				doc, err = unmarshalDocumentWithXattr(key, nil, xattrValue, nil, cas, level)
+				if err == nil {
+					return doc.SyncData, nil
+				}
+			}
+		}
+		return SyncData{}, err
+	} else {
+		return db.GetDocSyncData(ctx, docid)
+	}
+}
+
 // OnDemandImportForGet.  Attempts to import the doc based on the provided id, contents and cas.  ImportDocRaw does cas retry handling
 // if the document gets updated after the initial retrieval attempt that triggered this.
 func (c *DatabaseCollection) OnDemandImportForGet(ctx context.Context, docid string, rawDoc []byte, rawXattr []byte, rawUserXattr []byte, cas uint64) (docOut *Document, err error) {
@@ -2430,7 +2455,7 @@ func (db *DatabaseCollectionWithUser) RevDiff(ctx context.Context, docid string,
 		return // Users can't upload design docs, so ignore them
 	}
 
-	doc, err := db.GetDocSyncData(ctx, docid)
+	doc, err := db.GetDocSyncDataNoImport(ctx, docid, DocUnmarshalHistory)
 	if err != nil {
 		if !base.IsDocNotFoundError(err) {
 			base.WarnfCtx(ctx, "RevDiff(%q) --> %T %v", base.UD(docid), err, err)
@@ -2485,10 +2510,14 @@ const (
 // This is used by the BLIP replication code in "allow_conflicts=false" mode.
 func (db *DatabaseCollectionWithUser) CheckProposedRev(ctx context.Context, docid string, revid string, parentRevID string) (status ProposedRevStatus, currentRev string) {
 	if strings.HasPrefix(docid, "_design/") && db.user != nil {
-		return // Users can't upload design docs, so ignore them
+		return ProposedRev_OK, "" // Users can't upload design docs, so ignore them
 	}
 
-	doc, err := db.GetDocSyncData(ctx, docid)
+	level := DocUnmarshalRev
+	if parentRevID == "" {
+		level = DocUnmarshalHistory // doc.History only needed in this case (see below)
+	}
+	doc, err := db.GetDocSyncDataNoImport(ctx, docid, level)
 	if err != nil {
 		if !base.IsDocNotFoundError(err) {
 			base.WarnfCtx(ctx, "CheckProposedRev(%q) --> %T %v", base.UD(docid), err, err)
