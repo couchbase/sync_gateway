@@ -22,7 +22,7 @@ import (
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
-	"github.com/couchbase/sync_gateway/document"
+	"github.com/couchbase/sync_gateway/documents"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -410,7 +410,7 @@ func TestForEachStubAttachmentErrors(t *testing.T) {
 
 	var body Body
 	callbackCount := 0
-	callback := func(name string, digest string, knownData []byte, meta *document.DocAttachment) ([]byte, error) {
+	callback := func(name string, digest string, knownData []byte, meta *documents.DocAttachment) ([]byte, error) {
 		callbackCount++
 		return []byte("data"), nil
 	}
@@ -479,7 +479,7 @@ func TestForEachStubAttachmentErrors(t *testing.T) {
 	// Simulate an error from the callback function; it should return the same error from ForEachStubAttachment.
 	doc = `{"_attachments": {"image.jpg": {"stub":true, "revpos":1, "digest":"9304cdd066efa64f78387e9cc9240a70527271bc"}}}`
 	assert.NoError(t, base.JSONUnmarshal([]byte(doc), &body))
-	callback = func(name string, digest string, knownData []byte, meta *document.DocAttachment) ([]byte, error) {
+	callback = func(name string, digest string, knownData []byte, meta *documents.DocAttachment) ([]byte, error) {
 		return nil, errors.New("Can't work with this digest value!")
 	}
 	err = collection.ForEachStubAttachment(body, 1, docID, existingDigests, callback)
@@ -928,7 +928,7 @@ func TestMigrateBodyAttachments(t *testing.T) {
 		require.NoError(t, err)
 
 		newAtts := rev.Attachments.ShallowCopy()
-		newAtts["bye.txt"] = &document.DocAttachment{
+		newAtts["bye.txt"] = &documents.DocAttachment{
 			ContentType: "text/plain",
 			Stub:        false,
 			Data:        byeTxtData,

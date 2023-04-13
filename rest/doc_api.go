@@ -20,7 +20,7 @@ import (
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
-	"github.com/couchbase/sync_gateway/document"
+	"github.com/couchbase/sync_gateway/documents"
 )
 
 // HTTP handler for a GET of a document
@@ -171,7 +171,7 @@ func (h *handler) handleGetDocReplicator2(docid, revid string) error {
 	}
 
 	// Stamp _attachments into message to match BLIP sendRevision behaviour
-	bodyBytes, err := rev.BodyBytesWith(document.BodyAttachments)
+	bodyBytes, err := rev.BodyBytesWith(documents.BodyAttachments)
 	if err != nil {
 		return err
 	}
@@ -332,11 +332,11 @@ func (h *handler) handlePutAttachment() error {
 	if err != nil {
 		return err
 	} else if attachments == nil {
-		attachments = make(document.AttachmentsMeta)
+		attachments = make(documents.AttachmentsMeta)
 	}
 
 	// create new attachment
-	attachments[attachmentName] = &document.DocAttachment{
+	attachments[attachmentName] = &documents.DocAttachment{
 		Data:        attachmentData,
 		ContentType: attachmentContentType,
 	}
@@ -501,7 +501,7 @@ func (h *handler) handlePutDocReplicator2(docid string, roundTrip bool) (err err
 		return base.ErrEmptyDocument
 	}
 
-	newRev, err := document.ParseDocumentRevision(bodyBytes, document.BodyAttachments, document.BodyExpiry)
+	newRev, err := documents.ParseDocumentRevision(bodyBytes, documents.BodyAttachments, documents.BodyExpiry)
 	if err != nil {
 		return err
 	}
@@ -520,7 +520,7 @@ func (h *handler) handlePutDocReplicator2(docid string, roundTrip bool) (err err
 	deleted, _ := h.getOptBoolQuery("deleted", false)
 	newRev.Deleted = deleted
 
-	newRev.RevID = document.CreateRevIDWithBytes(generation, parentRev, bodyBytes)
+	newRev.RevID = documents.CreateRevIDWithBytes(generation, parentRev, bodyBytes)
 	history := []string{newRev.RevID}
 
 	if parentRev != "" {

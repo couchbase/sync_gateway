@@ -28,7 +28,7 @@ import (
 
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/db/functions"
-	"github.com/couchbase/sync_gateway/document"
+	"github.com/couchbase/sync_gateway/documents"
 
 	"github.com/couchbase/gocbcore/v10"
 	sgbucket "github.com/couchbase/sg-bucket"
@@ -819,7 +819,7 @@ func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConf
 	}
 	// Set cache properties, if present
 	cacheOptions := db.DefaultCacheOptions()
-	revCacheOptions := document.DefaultRevisionCacheOptions()
+	revCacheOptions := documents.DefaultRevisionCacheOptions()
 	if config.CacheConfig != nil {
 		if config.CacheConfig.ChannelCacheConfig != nil {
 			if config.CacheConfig.ChannelCacheConfig.MaxNumPending != nil {

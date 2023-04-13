@@ -23,7 +23,7 @@ import (
 
 	"github.com/couchbase/go-blip"
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/couchbase/sync_gateway/document"
+	"github.com/couchbase/sync_gateway/documents"
 )
 
 const (
@@ -529,7 +529,7 @@ func (bsc *BlipSyncContext) setUseDeltas(clientCanUseDeltas bool) {
 	}
 }
 
-func (bsc *BlipSyncContext) sendDelta(sender *blip.Sender, docID string, collectionIdx *int, deltaSrcRevID string, revDelta *document.RevisionDelta, seq SequenceID, resendFullRevisionFunc func() error) error {
+func (bsc *BlipSyncContext) sendDelta(sender *blip.Sender, docID string, collectionIdx *int, deltaSrcRevID string, revDelta *documents.RevisionDelta, seq SequenceID, resendFullRevisionFunc func() error) error {
 
 	properties := blipRevMessageProperties(revDelta.RevisionHistory, revDelta.ToDeleted, seq)
 	properties[RevMessageDeltaSrc] = deltaSrcRevID
@@ -595,7 +595,7 @@ func (bsc *BlipSyncContext) sendRevision(sender *blip.Sender, docID, revID strin
 	}
 
 	base.TracefCtx(bsc.loggingCtx, base.KeySync, "sendRevision, rev attachments for %s/%s are %v", base.UD(docID), revID, base.UD(rev.Attachments))
-	attachmentStorageMeta := document.ToAttachmentStorageMeta(rev.Attachments)
+	attachmentStorageMeta := documents.ToAttachmentStorageMeta(rev.Attachments)
 	bodyBytes, err := rev.BodyBytesWith(BodyAttachments, BodyRemoved)
 	if err != nil {
 		return bsc.sendNoRev(sender, docID, revID, collectionIdx, seq, err)

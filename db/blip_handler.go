@@ -26,7 +26,7 @@ import (
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
-	"github.com/couchbase/sync_gateway/document"
+	"github.com/couchbase/sync_gateway/documents"
 )
 
 // handlersByProfile defines the routes for each message profile (verb) of an incoming request to the function that handles it.
@@ -966,7 +966,7 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 		}
 	}
 
-	var newRev document.DocumentRevision
+	var newRev documents.DocumentRevision
 
 	if deltaSrcRevID, isDelta := revMessage.DeltaSrc(); isDelta {
 		if !bh.sgCanUseDeltas {
@@ -1021,14 +1021,14 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 		stats.deltaRecvCount.Add(1)
 
 		// Create a DocumentRevision from the merged body:
-		newRev, err = document.DocumentRevisionFromBody(deltaSrcMap, BodyAttachments, BodyExpiry)
+		newRev, err = documents.DocumentRevisionFromBody(deltaSrcMap, BodyAttachments, BodyExpiry)
 		if err != nil {
 			return err
 		}
 
 	} else {
 		// Non-delta case:
-		newRev, err = document.ParseDocumentRevision(bodyBytes, BodyAttachments, BodyExpiry)
+		newRev, err = documents.ParseDocumentRevision(bodyBytes, BodyAttachments, BodyExpiry)
 		if err != nil {
 			return err
 		}
@@ -1062,7 +1062,7 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 		// Look at attachments with revpos > the last common ancestor's
 		minRevpos := 1
 		if len(history) > 0 {
-			currentDoc, rawDoc, err := bh.collection.GetDocumentWithRaw(bh.loggingCtx, docID, document.DocUnmarshalSync)
+			currentDoc, rawDoc, err := bh.collection.GetDocumentWithRaw(bh.loggingCtx, docID, documents.DocUnmarshalSync)
 			// If we're able to obtain current doc data then we should use the common ancestor generation++ for min revpos
 			// as we will already have any attachments on the common ancestor so don't need to ask for them.
 			// Otherwise we'll have to go as far back as we can in the doc history and choose the last entry in there.

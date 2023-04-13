@@ -13,7 +13,7 @@ import (
 	"fmt"
 
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/couchbase/sync_gateway/document"
+	"github.com/couchbase/sync_gateway/documents"
 )
 
 // Looks up the raw JSON data of a revision that's been archived to a separate doc.
@@ -26,7 +26,7 @@ func (c *DatabaseCollection) getOldRevisionJSON(ctx context.Context, docid strin
 	}
 	if data != nil {
 		// Strip out the non-JSON prefix
-		if len(data) > 0 && data[0] == document.NonJSONPrefix {
+		if len(data) > 0 && data[0] == documents.NonJSONPrefix {
 			data = data[1:]
 		}
 		base.DebugfCtx(ctx, base.KeyCRUD, "Got old revision %q / %q --> %d bytes", base.UD(docid), revid, len(data))
@@ -89,7 +89,7 @@ func (db *DatabaseCollectionWithUser) setOldRevisionJSON(ctx context.Context, do
 	// To ensure it's not available via N1QL, need to prefix the raw bytes with non-JSON data.
 	// Copying byte slice to make sure we don't modify the version stored in the revcache.
 	nonJSONBytes := make([]byte, 1, len(body)+1)
-	nonJSONBytes[0] = document.NonJSONPrefix
+	nonJSONBytes[0] = documents.NonJSONPrefix
 	nonJSONBytes = append(nonJSONBytes, body...)
 	err := db.dataStore.SetRaw(oldRevisionKey(docid, revid), expiry, nil, nonJSONBytes)
 	if err == nil {

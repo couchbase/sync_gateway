@@ -28,7 +28,7 @@ import (
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
-	"github.com/couchbase/sync_gateway/document"
+	"github.com/couchbase/sync_gateway/documents"
 	"github.com/robertkrimen/otto/underscore"
 	"github.com/stretchr/testify/assert"
 )
@@ -355,7 +355,7 @@ func TestGetRemovedAsUser(t *testing.T) {
 	// Manually flush the rev cache
 	// After expiry from the rev cache and removal of doc backup, try again
 	cacheHitCounter, cacheMissCounter := db.DatabaseContext.DbStats.Cache().RevisionCacheHits, db.DatabaseContext.DbStats.Cache().RevisionCacheMisses
-	collection.revisionCache = document.NewShardedLRURevisionCache(document.DefaultRevisionCacheShardCount, document.DefaultRevisionCacheSize, collection, cacheHitCounter, cacheMissCounter)
+	collection.revisionCache = documents.NewShardedLRURevisionCache(documents.DefaultRevisionCacheShardCount, documents.DefaultRevisionCacheSize, collection, cacheHitCounter, cacheMissCounter)
 	err = collection.PurgeOldRevisionJSON(ctx, "doc1", rev2id)
 	assert.NoError(t, err, "Purge old revision JSON")
 
@@ -703,7 +703,7 @@ func TestGetRemoved(t *testing.T) {
 	// Manually flush the rev cache
 	// After expiry from the rev cache and removal of doc backup, try again
 	cacheHitCounter, cacheMissCounter := db.DatabaseContext.DbStats.Cache().RevisionCacheHits, db.DatabaseContext.DbStats.Cache().RevisionCacheMisses
-	collection.revisionCache = document.NewShardedLRURevisionCache(document.DefaultRevisionCacheShardCount, document.DefaultRevisionCacheSize, collection, cacheHitCounter, cacheMissCounter)
+	collection.revisionCache = documents.NewShardedLRURevisionCache(documents.DefaultRevisionCacheShardCount, documents.DefaultRevisionCacheSize, collection, cacheHitCounter, cacheMissCounter)
 	err = collection.PurgeOldRevisionJSON(ctx, "doc1", rev2id)
 	assert.NoError(t, err, "Purge old revision JSON")
 
@@ -771,7 +771,7 @@ func TestGetRemovedAndDeleted(t *testing.T) {
 	// Manually flush the rev cache
 	// After expiry from the rev cache and removal of doc backup, try again
 	cacheHitCounter, cacheMissCounter := db.DatabaseContext.DbStats.Cache().RevisionCacheHits, db.DatabaseContext.DbStats.Cache().RevisionCacheMisses
-	collection.revisionCache = document.NewShardedLRURevisionCache(document.DefaultRevisionCacheShardCount, document.DefaultRevisionCacheSize, collection, cacheHitCounter, cacheMissCounter)
+	collection.revisionCache = documents.NewShardedLRURevisionCache(documents.DefaultRevisionCacheShardCount, documents.DefaultRevisionCacheSize, collection, cacheHitCounter, cacheMissCounter)
 	err = collection.PurgeOldRevisionJSON(ctx, "doc1", rev2id)
 	assert.NoError(t, err, "Purge old revision JSON")
 
@@ -2884,7 +2884,7 @@ func Test_getUpdatedDocument(t *testing.T) {
 
 		raw, _, err := db.Bucket.DefaultDataStore().GetRaw(docID)
 		require.NoError(t, err)
-		doc, err := document.UnmarshalDocument(docID, raw)
+		doc, err := documents.UnmarshalDocument(docID, raw)
 		require.NoError(t, err)
 
 		collection := GetSingleDatabaseCollectionWithUser(t, db)

@@ -19,7 +19,7 @@ import (
 
 	"github.com/couchbase/go-blip"
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/couchbase/sync_gateway/document"
+	"github.com/couchbase/sync_gateway/documents"
 )
 
 //////// GETREV:
@@ -40,7 +40,7 @@ func (bh *blipHandler) handleGetRev(rq *blip.Message) error {
 	if rev.Deleted {
 		return base.HTTPErrorf(http.StatusNotFound, "Deleted")
 	}
-	bodyBytes, err := rev.BodyBytesWith(document.BodyAttachments)
+	bodyBytes, err := rev.BodyBytesWith(documents.BodyAttachments)
 	if err != nil {
 		return base.HTTPErrorf(http.StatusInternalServerError, "Couldn't read document body: %s", err)
 	}

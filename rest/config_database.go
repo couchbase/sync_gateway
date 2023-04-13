@@ -12,7 +12,7 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
-	"github.com/couchbase/sync_gateway/document"
+	"github.com/couchbase/sync_gateway/documents"
 )
 
 // RuntimeDatabaseConfig is the non-persisted database config that has the persisted DatabaseConfig embedded
@@ -70,7 +70,7 @@ func GenerateDatabaseConfigVersionID(previousRevID string, dbConfig *DbConfig) (
 	previousGen, previousRev := db.ParseRevID(previousRevID)
 	generation := previousGen + 1
 
-	hash := document.CreateRevIDWithBytes(generation, previousRev, encodedBody)
+	hash := documents.CreateRevIDWithBytes(generation, previousRev, encodedBody)
 	return hash, nil
 }
 
@@ -107,8 +107,8 @@ func DefaultDbConfig(sc *StartupConfig) *DbConfig {
 		AllowEmptyPassword: base.BoolPtr(false),
 		CacheConfig: &CacheConfig{
 			RevCacheConfig: &RevCacheConfig{
-				Size:       base.Uint32Ptr(document.DefaultRevisionCacheSize),
-				ShardCount: base.Uint16Ptr(document.DefaultRevisionCacheShardCount),
+				Size:       base.Uint32Ptr(documents.DefaultRevisionCacheSize),
+				ShardCount: base.Uint16Ptr(documents.DefaultRevisionCacheShardCount),
 			},
 			ChannelCacheConfig: &ChannelCacheConfig{
 				MaxNumber:            base.IntPtr(db.DefaultChannelCacheMaxNumber),

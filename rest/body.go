@@ -12,7 +12,7 @@ import (
 	"math"
 
 	"github.com/couchbase/sync_gateway/db"
-	"github.com/couchbase/sync_gateway/document"
+	"github.com/couchbase/sync_gateway/documents"
 )
 
 // Retrieves rev with request history specified as collection of revids (historyFrom)
@@ -25,7 +25,7 @@ func get1xRevBodyWithHistory(h *handler, docid, revid string, maxHistory int, hi
 	if !showExp {
 		rev.Expiry = nil
 	}
-	bytes, err := rev.BodyBytesWith(document.BodyId, document.BodyRev, document.BodyAttachments, document.BodyDeleted, document.BodyRemoved, document.BodyExpiry, document.BodyRevisions)
+	bytes, err := rev.BodyBytesWith(documents.BodyId, documents.BodyRev, documents.BodyAttachments, documents.BodyDeleted, documents.BodyRemoved, documents.BodyExpiry, documents.BodyRevisions)
 	var body db.Body
 	if err == nil {
 		err = body.Unmarshal(bytes)
@@ -45,13 +45,13 @@ func get1xRevBody(h *handler, docid, revid string, history bool, attachmentsSinc
 func parseRevisions(body db.Body) []string {
 	// http://wiki.apache.org/couchdb/HTTP_Document_API#GET
 
-	revisionsProperty, ok := body[document.BodyRevisions]
+	revisionsProperty, ok := body[documents.BodyRevisions]
 	if !ok {
-		revid, ok := body[document.BodyRev].(string)
+		revid, ok := body[documents.BodyRev].(string)
 		if !ok {
 			return nil
 		}
-		if document.GenOfRevID(revid) < 1 {
+		if documents.GenOfRevID(revid) < 1 {
 			return nil
 		}
 		oneRev := make([]string, 0, 1)
@@ -60,12 +60,12 @@ func parseRevisions(body db.Body) []string {
 	}
 
 	// Revisions may be stored in a Body as Revisions or map[string]interface{}, depending on the source of the Body
-	var revisions document.Revisions
+	var revisions documents.Revisions
 	switch revs := revisionsProperty.(type) {
-	case document.Revisions:
+	case documents.Revisions:
 		revisions = revs
 	case map[string]interface{}:
-		revisions = document.Revisions(revs)
+		revisions = documents.Revisions(revs)
 	default:
 		return nil
 	}

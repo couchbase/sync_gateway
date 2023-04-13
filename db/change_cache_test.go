@@ -22,7 +22,7 @@ import (
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
-	"github.com/couchbase/sync_gateway/document"
+	"github.com/couchbase/sync_gateway/documents"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -2076,7 +2076,7 @@ func TestMakeFeedBytes(t *testing.T) {
 
 	rawBytes := makeFeedBytes(base.SyncPropertyName, `{"rev":"foo"}`, `{"k":"val"}`)
 
-	body, xattr, _, err := document.ParseXattrStreamData(base.SyncXattrName, "", rawBytes)
+	body, xattr, _, err := documents.ParseXattrStreamData(base.SyncXattrName, "", rawBytes)
 	assert.NoError(t, err)
 	require.Len(t, body, 11)
 	require.Len(t, xattr, 13)

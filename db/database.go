@@ -24,7 +24,7 @@ import (
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
-	"github.com/couchbase/sync_gateway/document"
+	"github.com/couchbase/sync_gateway/documents"
 	pkgerrors "github.com/pkg/errors"
 )
 
@@ -139,7 +139,7 @@ type Scope struct {
 
 type DatabaseContextOptions struct {
 	CacheOptions                  *CacheOptions
-	RevisionCacheOptions          *document.RevisionCacheOptions
+	RevisionCacheOptions          *documents.RevisionCacheOptions
 	OldRevExpirySeconds           uint32
 	AdminInterface                *string
 	UnsupportedOptions            *UnsupportedOptions
@@ -1961,7 +1961,7 @@ func (db *DatabaseCollectionWithUser) resyncDocument(ctx context.Context, docid,
 			if currentValue == nil || len(currentValue) == 0 {
 				return nil, nil, deleteDoc, nil, base.ErrUpdateCancel
 			}
-			doc, err := document.UnmarshalDocumentWithXattr(docid, currentValue, currentXattr, currentUserXattr, cas, DocUnmarshalAll)
+			doc, err := documents.UnmarshalDocumentWithXattr(docid, currentValue, currentXattr, currentUserXattr, cas, DocUnmarshalAll)
 			if err != nil {
 				return nil, nil, deleteDoc, nil, err
 			}
@@ -1989,7 +1989,7 @@ func (db *DatabaseCollectionWithUser) resyncDocument(ctx context.Context, docid,
 			if currentValue == nil {
 				return nil, nil, false, base.ErrUpdateCancel // someone deleted it?!
 			}
-			doc, err := document.UnmarshalDocument(docid, currentValue)
+			doc, err := documents.UnmarshalDocument(docid, currentValue)
 			if err != nil {
 				return nil, nil, false, err
 			}

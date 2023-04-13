@@ -37,7 +37,7 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
-	"github.com/couchbase/sync_gateway/document"
+	"github.com/couchbase/sync_gateway/documents"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -1725,7 +1725,7 @@ func (bt *BlipTester) GetDocAtRev(requestedDocID, requestedDocRev string) (resul
 }
 
 // A map of keys -> DocAttachments.
-type AttachmentMap map[string]*document.DocAttachment
+type AttachmentMap map[string]*documents.DocAttachment
 
 type SendRevWithAttachmentInput struct {
 	docId            string

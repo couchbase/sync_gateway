@@ -19,7 +19,7 @@ import (
 	"net/http"
 
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/couchbase/sync_gateway/document"
+	"github.com/couchbase/sync_gateway/documents"
 )
 
 // AttachmentData holds the attachment key and value bytes.
@@ -47,12 +47,12 @@ func (db *DatabaseCollectionWithUser) storeAttachments(ctx context.Context, doc 
 		data := meta.Data
 		if data != nil {
 			// Attachment contains data, so store it in the db:
-			attachment, err := document.DecodeAttachment(data)
+			attachment, err := documents.DecodeAttachment(data)
 			if err != nil {
 				return nil, err
 			}
 			digest := Sha1DigestKey(attachment)
-			key := MakeAttachmentKey(document.AttVersion2, doc.ID, digest)
+			key := MakeAttachmentKey(documents.AttVersion2, doc.ID, digest)
 			newAttachmentData[key] = attachment
 
 			newMeta := *meta
@@ -60,7 +60,7 @@ func (db *DatabaseCollectionWithUser) storeAttachments(ctx context.Context, doc 
 			newMeta.Stub = true
 			newMeta.Digest = digest
 			newMeta.Revpos = generation
-			newMeta.Version = document.AttVersion2
+			newMeta.Version = documents.AttVersion2
 
 			if meta.Encoding != "" {
 				newMeta.EncodedLength = len(attachment)
@@ -102,7 +102,7 @@ func retrieveV2AttachmentKeys(docID string, docAttachments AttachmentsMeta) (att
 	attachments = make(map[string]struct{})
 	for _, meta := range docAttachments {
 		if meta.Digest == "" {
-			return nil, document.ErrAttachmentMeta
+			return nil, documents.ErrAttachmentMeta
 		}
 		if meta.Version == AttVersion2 {
 			key := MakeAttachmentKey(meta.Version, docID, meta.Digest)
@@ -125,7 +125,7 @@ func (db *DatabaseCollectionWithUser) retrieveAncestorAttachments(ctx context.Co
 	// No non-pruned ancestor is available
 	if commonAncestor := doc.History.FindAncestorFromSet(doc.CurrentRev, docHistory); commonAncestor != "" {
 		parentAttachments := make(AttachmentsMeta)
-		commonAncestorGen := document.GenOfRevID(commonAncestor)
+		commonAncestorGen := documents.GenOfRevID(commonAncestor)
 
 		inlineAttachments, _ := doc.InlineAttachments()
 		for name, attachmentMeta := range inlineAttachments {

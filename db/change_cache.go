@@ -26,7 +26,7 @@ import (
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
-	"github.com/couchbase/sync_gateway/document"
+	"github.com/couchbase/sync_gateway/documents"
 )
 
 const (
@@ -378,7 +378,7 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 	}
 
 	// First unmarshal the doc (just its metadata, to save time/memory):
-	syncData, rawBody, _, rawUserXattr, err := document.UnmarshalDocumentSyncDataFromFeed(docJSON, event.DataType, collection.userXattrKey(), false)
+	syncData, rawBody, _, rawUserXattr, err := documents.UnmarshalDocumentSyncDataFromFeed(docJSON, event.DataType, collection.userXattrKey(), false)
 	if err != nil {
 		// Avoid log noise related to failed unmarshaling of binary documents.
 		if event.DataType != base.MemcachedDataTypeRaw {
@@ -404,7 +404,7 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 	// If not using xattrs and no sync metadata found, check whether we're mid-upgrade and attempting to read a doc w/ metadata stored in xattr
 	// before ignoring the mutation.
 	if !collection.UseXattrs() && !syncData.HasValidSyncData() {
-		migratedDoc, _ := collection.checkForUpgrade(docID, document.DocUnmarshalNoHistory)
+		migratedDoc, _ := collection.checkForUpgrade(docID, documents.DocUnmarshalNoHistory)
 		if migratedDoc != nil && migratedDoc.Cas == event.Cas {
 			base.InfofCtx(c.logCtx, base.KeyCache, "Found mobile xattr on doc %q without %s property - caching, assuming upgrade in progress.", base.UD(docID), base.SyncPropertyName)
 			syncData = &migratedDoc.SyncData

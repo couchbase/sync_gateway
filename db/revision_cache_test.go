@@ -19,7 +19,7 @@ import (
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/couchbase/sync_gateway/document"
+	"github.com/couchbase/sync_gateway/documents"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -41,7 +41,7 @@ func (t *testBackingStore) GetDocument(ctx context.Context, docid string, unmars
 		}
 	}
 
-	doc = document.NewDocument(docid)
+	doc = documents.NewDocument(docid)
 	doc.UpdateBody(Body{
 		"testing": true,
 	})
@@ -80,7 +80,7 @@ func (*noopBackingStore) GetRevision(ctx context.Context, doc *Document, revid s
 // Tests the eviction from the LRURevisionCache
 func TestLRURevisionCacheEviction(t *testing.T) {
 	cacheHitCounter, cacheMissCounter := base.SgwIntStat{}, base.SgwIntStat{}
-	cache := document.NewLRURevisionCache(10, &noopBackingStore{}, &cacheHitCounter, &cacheMissCounter)
+	cache := documents.NewLRURevisionCache(10, &noopBackingStore{}, &cacheHitCounter, &cacheMissCounter)
 
 	ctx := base.TestCtx(t)
 
@@ -137,7 +137,7 @@ func TestLRURevisionCacheEviction(t *testing.T) {
 func TestBackingStore(t *testing.T) {
 
 	cacheHitCounter, cacheMissCounter, getDocumentCounter, getRevisionCounter := base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}
-	cache := document.NewLRURevisionCache(10, &testBackingStore{[]string{"Peter"}, &getDocumentCounter, &getRevisionCounter}, &cacheHitCounter, &cacheMissCounter)
+	cache := documents.NewLRURevisionCache(10, &testBackingStore{[]string{"Peter"}, &getDocumentCounter, &getRevisionCounter}, &cacheHitCounter, &cacheMissCounter)
 
 	// Get Rev for the first time - miss cache, but fetch the doc and revision to store
 	docRev, err := cache.Get(base.TestCtx(t), "Jens", "1-abc", RevCacheOmitDelta)
@@ -251,7 +251,7 @@ func TestBypassRevisionCache(t *testing.T) {
 	assert.NoError(t, err)
 
 	bypassStat := base.SgwIntStat{}
-	rc := document.NewBypassRevisionCache(collection, &bypassStat)
+	rc := documents.NewBypassRevisionCache(collection, &bypassStat)
 
 	// Peek always returns false for BypassRevisionCache
 	_, ok := rc.Peek(base.TestCtx(t), key, rev1)
@@ -387,7 +387,7 @@ func TestPutExistingRevRevisionCacheAttachmentProperty(t *testing.T) {
 // Ensure subsequent updates to delta don't mutate previously retrieved deltas
 func TestRevisionImmutableDelta(t *testing.T) {
 	cacheHitCounter, cacheMissCounter, getDocumentCounter, getRevisionCounter := base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}
-	cache := document.NewLRURevisionCache(10, &testBackingStore{nil, &getDocumentCounter, &getRevisionCounter}, &cacheHitCounter, &cacheMissCounter)
+	cache := documents.NewLRURevisionCache(10, &testBackingStore{nil, &getDocumentCounter, &getRevisionCounter}, &cacheHitCounter, &cacheMissCounter)
 
 	firstDelta := []byte("delta")
 	secondDelta := []byte("modified delta")
@@ -395,7 +395,7 @@ func TestRevisionImmutableDelta(t *testing.T) {
 	// Trigger load into cache
 	_, err := cache.Get(base.TestCtx(t), "doc1", "1-abc", RevCacheIncludeDelta)
 	assert.NoError(t, err, "Error adding to cache")
-	cache.UpdateDelta(base.TestCtx(t), "doc1", "1-abc", document.RevisionDelta{ToRevID: "rev2", DeltaBytes: firstDelta})
+	cache.UpdateDelta(base.TestCtx(t), "doc1", "1-abc", documents.RevisionDelta{ToRevID: "rev2", DeltaBytes: firstDelta})
 
 	// Retrieve from cache
 	retrievedRev, err := cache.Get(base.TestCtx(t), "doc1", "1-abc", RevCacheIncludeDelta)
@@ -404,7 +404,7 @@ func TestRevisionImmutableDelta(t *testing.T) {
 	assert.Equal(t, firstDelta, retrievedRev.Delta.DeltaBytes)
 
 	// Update delta again, validate data in retrievedRev isn't mutated
-	cache.UpdateDelta(base.TestCtx(t), "doc1", "1-abc", document.RevisionDelta{ToRevID: "rev3", DeltaBytes: secondDelta})
+	cache.UpdateDelta(base.TestCtx(t), "doc1", "1-abc", documents.RevisionDelta{ToRevID: "rev3", DeltaBytes: secondDelta})
 	assert.Equal(t, "rev2", retrievedRev.Delta.ToRevID)
 	assert.Equal(t, firstDelta, retrievedRev.Delta.DeltaBytes)
 
@@ -422,7 +422,7 @@ func TestRevisionImmutableDelta(t *testing.T) {
 // Ensure subsequent updates to delta don't mutate previously retrieved deltas
 func TestSingleLoad(t *testing.T) {
 	cacheHitCounter, cacheMissCounter, getDocumentCounter, getRevisionCounter := base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}
-	cache := document.NewLRURevisionCache(10, &testBackingStore{nil, &getDocumentCounter, &getRevisionCounter}, &cacheHitCounter, &cacheMissCounter)
+	cache := documents.NewLRURevisionCache(10, &testBackingStore{nil, &getDocumentCounter, &getRevisionCounter}, &cacheHitCounter, &cacheMissCounter)
 	rev := DocumentRevision{DocID: "doc123", RevID: "1-abc", History: Revisions{"start": 1}}
 	rev.SetBodyBytes([]byte(`{"test":"1234"}`))
 	cache.Put(base.TestCtx(t), rev)
@@ -433,7 +433,7 @@ func TestSingleLoad(t *testing.T) {
 // Ensure subsequent updates to delta don't mutate previously retrieved deltas
 func TestConcurrentLoad(t *testing.T) {
 	cacheHitCounter, cacheMissCounter, getDocumentCounter, getRevisionCounter := base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}
-	cache := document.NewLRURevisionCache(10, &testBackingStore{nil, &getDocumentCounter, &getRevisionCounter}, &cacheHitCounter, &cacheMissCounter)
+	cache := documents.NewLRURevisionCache(10, &testBackingStore{nil, &getDocumentCounter, &getRevisionCounter}, &cacheHitCounter, &cacheMissCounter)
 
 	rev := DocumentRevision{DocID: "doc1", RevID: "1-abc", History: Revisions{"start": 1}}
 	rev.SetBodyBytes([]byte(`{"test":"1234"}`))
@@ -499,7 +499,7 @@ func BenchmarkRevisionCacheRead(b *testing.B) {
 	base.SetUpBenchmarkLogging(b, base.LevelDebug, base.KeyAll)
 
 	cacheHitCounter, cacheMissCounter, getDocumentCounter, getRevisionCounter := base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}
-	cache := document.NewLRURevisionCache(5000, &testBackingStore{nil, &getDocumentCounter, &getRevisionCounter}, &cacheHitCounter, &cacheMissCounter)
+	cache := documents.NewLRURevisionCache(5000, &testBackingStore{nil, &getDocumentCounter, &getRevisionCounter}, &cacheHitCounter, &cacheMissCounter)
 
 	ctx := base.TestCtx(b)
 

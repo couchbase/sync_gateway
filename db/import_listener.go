@@ -18,7 +18,7 @@ import (
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/couchbase/sync_gateway/document"
+	"github.com/couchbase/sync_gateway/documents"
 )
 
 // ImportListener manages the import DCP feed.  ProcessFeedEvent is triggered for each feed events,
@@ -165,7 +165,7 @@ func (il *importListener) ImportFeedEvent(event sgbucket.FeedEvent) {
 		return
 	}
 
-	syncData, rawBody, rawXattr, rawUserXattr, err := document.UnmarshalDocumentSyncDataFromFeed(event.Value, event.DataType, collectionCtx.userXattrKey(), false)
+	syncData, rawBody, rawXattr, rawUserXattr, err := documents.UnmarshalDocumentSyncDataFromFeed(event.Value, event.DataType, collectionCtx.userXattrKey(), false)
 	if err != nil {
 		base.DebugfCtx(il.loggingCtx, base.KeyImport, "Found sync metadata, but unable to unmarshal for feed document %q.  Will not be imported.  Error: %v", base.UD(event.Key), err)
 		if err == base.ErrEmptyMetadata {

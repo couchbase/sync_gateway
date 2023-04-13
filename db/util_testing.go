@@ -20,7 +20,7 @@ import (
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/couchbase/sync_gateway/document"
+	"github.com/couchbase/sync_gateway/documents"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -628,7 +628,7 @@ func (db *DatabaseCollectionWithUser) get1xRevBody(ctx context.Context, docid, r
 		for _, val := range atts {
 			att := val.(map[string]any)
 			if data, ok := att["data"]; ok {
-				data, err = document.DecodeAttachment(data)
+				data, err = documents.DecodeAttachment(data)
 				if err != nil {
 					return nil, err
 				}

@@ -20,7 +20,7 @@ import (
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
-	"github.com/couchbase/sync_gateway/document"
+	"github.com/couchbase/sync_gateway/documents"
 	"github.com/robertkrimen/otto"
 )
 
@@ -43,7 +43,7 @@ func (db *DatabaseCollectionWithUser) ImportDocRaw(ctx context.Context, docid st
 			return nil, err
 		}
 
-		err = document.ValidateImportBody(body)
+		err = documents.ValidateImportBody(body)
 		if err != nil {
 			return nil, err
 		}
@@ -270,7 +270,7 @@ func (db *DatabaseCollectionWithUser) importDoc(ctx context.Context, docid strin
 			rawBodyForRevID = existingDoc.Body
 		} else {
 			var bodyWithoutInternalProps Body
-			bodyWithoutInternalProps, wasStripped = document.StripInternalProperties(body)
+			bodyWithoutInternalProps, wasStripped = documents.StripInternalProperties(body)
 			rawBodyForRevID, err = base.JSONMarshalCanonical(bodyWithoutInternalProps)
 			if err != nil {
 				return nil, nil, false, nil, err
@@ -286,7 +286,7 @@ func (db *DatabaseCollectionWithUser) importDoc(ctx context.Context, docid strin
 			parentRev := doc.CurrentRev
 			generation, _ := ParseRevID(parentRev)
 			generation++
-			newRev = document.CreateRevIDWithBytes(generation, parentRev, rawBodyForRevID)
+			newRev = documents.CreateRevIDWithBytes(generation, parentRev, rawBodyForRevID)
 			if err != nil {
 				return nil, nil, false, updatedExpiry, err
 			}
@@ -367,7 +367,7 @@ func (db *DatabaseCollectionWithUser) importDoc(ctx context.Context, docid strin
 func (db *DatabaseCollectionWithUser) migrateMetadata(ctx context.Context, docid string, body Body, existingDoc *sgbucket.BucketDocument, opts *sgbucket.MutateInOptions) (docOut *Document, requiresImport bool, err error) {
 
 	// Unmarshal the existing doc in legacy SG format
-	doc, unmarshalErr := document.UnmarshalDocument(docid, existingDoc.Body)
+	doc, unmarshalErr := documents.UnmarshalDocument(docid, existingDoc.Body)
 	if unmarshalErr != nil {
 		return nil, false, unmarshalErr
 	}
