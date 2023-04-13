@@ -230,15 +230,15 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 		}
 	}
 
-	err := h._validateAndWriteHeaders(method, accessPermissions, responsePermissions)
+	err := h.validateAndWriteHeaders(method, accessPermissions, responsePermissions)
 	if err != nil {
 		return err
 	}
 	return method(h) // Call the actual handler code
 }
 
-// _validateAndWriteHeaders sets up handler.db and validates the permission of the user and returns an error if there is not permission.
-func (h *handler) _validateAndWriteHeaders(method handlerMethod, accessPermissions []Permission, responsePermissions []Permission) error {
+// validateAndWriteHeaders sets up handler.db and validates the permission of the user and returns an error if there is not permission.
+func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermissions []Permission, responsePermissions []Permission) error {
 	var isRequestLogged bool
 	defer func() {
 		if !isRequestLogged {
