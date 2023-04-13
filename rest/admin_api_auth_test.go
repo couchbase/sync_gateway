@@ -1495,12 +1495,16 @@ func TestLoginRequiredForAdmin(t *testing.T) {
 		AdminInterfaceAuthentication: true,
 	})
 	defer rt.Close()
-	response := rt.SendAdminRequestWithAuth(http.MethodGet, "/{{.db}}/", "", "", "")
-	RequireStatus(t, response, http.StatusUnauthorized)
-	require.Contains(t, response.Body.String(), ErrLoginRequired.Message)
 
-	response = rt.SendAdminRequestWithAuth(http.MethodGet, "/notadb/", "", "", "")
-	RequireStatus(t, response, http.StatusUnauthorized)
-	require.Contains(t, response.Body.String(), ErrLoginRequired.Message)
+	username := "nonexistent"
+	password := "nope"
 
+	response := rt.SendAdminRequestWithAuth(http.MethodGet, "/{{.db}}/", "", username, password)
+
+	RequireStatus(t, response, http.StatusUnauthorized)
+	require.Contains(t, response.Body.String(), ErrInvalidLogin.Message)
+
+	response = rt.SendAdminRequestWithAuth(http.MethodGet, "/notadb/", "", username, password)
+	RequireStatus(t, response, http.StatusUnauthorized)
+	require.Contains(t, response.Body.String(), ErrInvalidLogin.Message)
 }

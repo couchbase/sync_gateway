@@ -297,7 +297,7 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 					if httpError, ok := err.(*base.HTTPError); ok && httpError.Status == http.StatusNotFound {
 						if shouldCheckAdminAuth {
 							return base.HTTPErrorf(http.StatusForbidden, "")
-						} else if h.privs == regularPrivs {
+						} else if h.privs == regularPrivs || h.privs == publicPrivs {
 							if !h.providedAuthCredentionals() {
 
 								return ErrLoginRequired
@@ -664,8 +664,8 @@ func (h *handler) checkAuth(dbCtx *db.DatabaseContext) (err error) {
 		if dbCtx.Options.SendWWWAuthenticateHeader == nil || *dbCtx.Options.SendWWWAuthenticateHeader {
 			h.response.Header().Set("WWW-Authenticate", wwwAuthenticateHeader)
 		}
-		if dbCtx.Options.DisablePasswordAuthentication {
-			return errPasswordAuthenticationDisabled
+		if h.providedAuthCredentionals() {
+			return ErrInvalidLogin
 		}
 		return ErrLoginRequired
 	}
