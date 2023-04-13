@@ -402,7 +402,7 @@ func TestSessionExtension(t *testing.T) {
 	response = rt.SendRequestWithHeaders("GET", "/{{.keyspace}}/doc1", "", reqHeaders)
 	log.Printf("GET Request: Set-Cookie: %v", response.Header().Get("Set-Cookie"))
 	RequireStatus(t, response, http.StatusUnauthorized)
-
+	require.Contains(t, response.Body.String(), "Session Invalid")
 }
 
 func TestSessionAPI(t *testing.T) {
@@ -537,6 +537,7 @@ func TestSessionPasswordInvalidation(t *testing.T) {
 			// make sure session is invalid
 			response = rt.SendRequestWithHeaders(http.MethodGet, "/{{.keyspace}}/doc1", "", cookieHeaders)
 			RequireStatus(t, response, http.StatusUnauthorized)
+			require.Contains(t, response.Body.String(), "Session no longer valid")
 
 			// make sure doc is valid for password
 			altPasswordHeaders := map[string]string{
@@ -602,6 +603,7 @@ func TestAllSessionDeleteInvalidation(t *testing.T) {
 
 		response = rt.SendRequestWithHeaders(http.MethodGet, "/{{.keyspace}}/doc1", "", cookieHeaders)
 		RequireStatus(t, response, http.StatusUnauthorized)
+		require.Contains(t, response.Body.String(), "Session no longer valid")
 	}
 
 	// make sure password still works
@@ -658,6 +660,7 @@ func TestUserWithoutSessionUUID(t *testing.T) {
 
 	response = rt.SendRequestWithHeaders(http.MethodGet, "/{{.keyspace}}/doc1", "", cookieHeaders)
 	RequireStatus(t, response, http.StatusUnauthorized)
+	require.Contains(t, response.Body.String(), "Session no longer valid")
 }
 
 func createSession(t *testing.T, rt *RestTester, username string) string {

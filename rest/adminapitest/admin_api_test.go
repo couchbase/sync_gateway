@@ -3257,6 +3257,7 @@ func TestNotExistentDBRequest(t *testing.T) {
 	// Request to non-existent db with invalid credentials
 	resp = rt.SendAdminRequestWithAuth("PUT", "/dbx/_config", "", "random", "passwordx")
 	rest.RequireStatus(t, resp, http.StatusUnauthorized)
+	require.Contains(t, resp.Body.String(), rest.ErrInvalidLogin.Message)
 }
 
 func TestConfigsIncludeDefaults(t *testing.T) {
