@@ -146,7 +146,7 @@ func (doc *Document) BodyWithSpecialProperties() ([]byte, error) {
 
 // Returns a new empty document.
 func NewDocument(docid string) *Document {
-	return &Document{ID: docid, SyncData: SyncData{History: make(RevTree)}}
+	return &Document{ID: docid, SyncData: SyncData{}}
 }
 
 // Unmarshals the document body as a map, without special properties.
@@ -770,7 +770,7 @@ func (doc *Document) IsChannelRemoval(revID string) (bodyBytes []byte, history R
 
 	activeChannels := make(base.Set)
 	// Add active channels to the channel set if the the revision is available in the revision tree.
-	if revInfo, ok := doc.History[revID]; ok {
+	if revInfo := doc.History.Get(revID); revInfo != nil {
 		for channel, _ := range revInfo.Channels {
 			activeChannels[channel] = struct{}{}
 		}
@@ -831,7 +831,7 @@ func (doc *Document) UnmarshalJSON(data []byte) error {
 		panic("Doc was unmarshaled without ID set")
 	}
 
-	syncData := &SyncData{History: make(RevTree)}
+	syncData := &SyncData{}
 
 	var err error
 	doc._rawBody, err = base.JSONExtract(data, func(key string) (any, error) {
@@ -879,7 +879,7 @@ func (doc *Document) UnmarshalWithXattr(data []byte, xdata []byte, unmarshalLeve
 	switch unmarshalLevel {
 	case DocUnmarshalAll, DocUnmarshalSync:
 		// Unmarshal all sync metadata (we don't unmarshal the body anymore)
-		doc.SyncData = SyncData{History: make(RevTree)}
+		doc.SyncData = SyncData{}
 		unmarshalErr := base.JSONUnmarshal(xdata, &doc.SyncData)
 		if unmarshalErr != nil {
 			return pkgerrors.WithStack(base.RedactErrorf("Failed to UnmarshalWithXattr() doc with id: %s (DocUnmarshalAll/Sync).  Error: %v", base.UD(doc.ID), unmarshalErr))
@@ -895,7 +895,7 @@ func (doc *Document) UnmarshalWithXattr(data []byte, xdata []byte, unmarshalLeve
 		}
 		doc._rawBody = data
 	case DocUnmarshalHistory:
-		historyOnlyMeta := historyOnlySyncData{History: make(RevTree)}
+		historyOnlyMeta := historyOnlySyncData{}
 		unmarshalErr := base.JSONUnmarshal(xdata, &historyOnlyMeta)
 		if unmarshalErr != nil {
 			return pkgerrors.WithStack(base.RedactErrorf("Failed to UnmarshalWithXattr() doc with id: %s (DocUnmarshalHistory).  Error: %v", base.UD(doc.ID), unmarshalErr))

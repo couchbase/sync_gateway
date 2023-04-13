@@ -177,7 +177,7 @@ func (c *DatabaseCollection) GetDocSyncData(ctx context.Context, docid string) (
 		}
 
 		docRoot := documents.DocumentRoot{
-			SyncData: &SyncData{History: make(RevTree)},
+			SyncData: &SyncData{},
 		}
 		if err := base.JSONUnmarshal(rawDocBytes, &docRoot); err != nil {
 			return emptySyncData, err
@@ -203,9 +203,6 @@ func (db *DatabaseCollection) GetDocSyncDataNoImport(ctx context.Context, docid 
 			}
 		}
 	} else {
-		if level == DocUnmarshalAll || level == DocUnmarshalSync || level == documents.DocUnmarshalHistory {
-			syncData.History = make(RevTree)
-		}
 		docRoot := documents.DocumentRoot{
 			SyncData: &syncData,
 		}
@@ -504,7 +501,7 @@ func (col *DatabaseCollectionWithUser) authorizeDoc(doc *Document, revid string)
 	if revid == "" {
 		revid = doc.CurrentRev
 	}
-	if rev := doc.History[revid]; rev != nil {
+	if rev := doc.History.Get(revid); rev != nil {
 		// Authenticate against specific revision:
 		return col.user.AuthorizeAnyCollectionChannel(col.ScopeName, col.Name, rev.Channels)
 	} else {
@@ -627,10 +624,10 @@ func (db *DatabaseCollectionWithUser) get1xRevFromDoc(ctx context.Context, doc *
 		// Update: this applies to non-deletions too, since the client may have lost access to
 		// the channel and gotten a "removed" entry in the _changes feed. It then needs to
 		// incorporate that tombstone and for that it needs to see the _revisions property.
-		if revid == "" || doc.History[revid] == nil {
+		if revid == "" || doc.History.Get(revid) == nil {
 			return nil, false, err
 		}
-		if doc.History[revid].Deleted {
+		if doc.History.Get(revid).Deleted {
 			bodyBytes = []byte(base.EmptyDocument)
 		} else {
 			bodyBytes = []byte(documents.RemovedRedactedDocument)
@@ -639,7 +636,7 @@ func (db *DatabaseCollectionWithUser) get1xRevFromDoc(ctx context.Context, doc *
 	} else {
 		if revid == "" {
 			revid = doc.CurrentRev
-			if doc.History[revid].Deleted == true {
+			if doc.History.Get(revid).Deleted == true {
 				return nil, false, ErrDeleted
 			}
 		}
@@ -657,7 +654,7 @@ func (db *DatabaseCollectionWithUser) get1xRevFromDoc(ctx context.Context, doc *
 		kvPairs = append(kvPairs, base.KVPair{Key: BodyAttachments, Val: attachments})
 	}
 
-	if doc.History[revid].Deleted {
+	if doc.History.Get(revid).Deleted {
 		kvPairs = append(kvPairs, base.KVPair{Key: BodyDeleted, Val: true})
 	}
 
@@ -679,7 +676,7 @@ func (db *DatabaseCollectionWithUser) get1xRevFromDoc(ctx context.Context, doc *
 
 // Returns the body and rev ID of the asked-for revision or the most recent available ancestor.
 func (db *DatabaseCollectionWithUser) getAvailableRev(ctx context.Context, doc *Document, revid string) ([]byte, string, AttachmentsMeta, error) {
-	for ; revid != ""; revid = doc.History[revid].Parent {
+	for ; revid != ""; revid = doc.History.Get(revid).Parent {
 		if bodyBytes, attachments, _ := db.GetRevision(ctx, doc, revid); bodyBytes != nil {
 			return bodyBytes, revid, attachments, nil
 		}
@@ -699,7 +696,7 @@ func (db *DatabaseCollectionWithUser) getAvailable1xRev(ctx context.Context, doc
 		{Key: BodyRev, Val: ancestorRevID},
 	}
 
-	if ancestorRev, ok := doc.History[ancestorRevID]; ok && ancestorRev != nil && ancestorRev.Deleted {
+	if ancestorRev := doc.History.Get(ancestorRevID); ancestorRev != nil && ancestorRev.Deleted {
 		kvPairs = append(kvPairs, base.KVPair{Key: BodyDeleted, Val: true})
 	}
 
@@ -771,7 +768,7 @@ func (db *DatabaseCollectionWithUser) OnDemandImportForWrite(ctx context.Context
 
 	if importErr == base.ErrImportCancelledFilter {
 		// Document exists, but existing doc wasn't imported based on import filter.  Treat write as insert
-		doc.SyncData = SyncData{History: make(RevTree)}
+		doc.SyncData = SyncData{}
 	} else if importErr != nil {
 		return importErr
 	} else {
@@ -855,7 +852,7 @@ func (db *DatabaseCollectionWithUser) Put(ctx context.Context, docid string, bod
 			if matchRev != "" {
 				// PUT with no parent rev given, but there is an existing current revision.
 				// This is OK as long as the current one is deleted.
-				if !doc.History[matchRev].Deleted {
+				if !doc.History.Get(matchRev).Deleted {
 					conflictErr = base.HTTPErrorf(http.StatusConflict, "Document exists")
 				} else {
 					generation, _ = ParseRevID(matchRev)
@@ -1033,7 +1030,7 @@ func (db *DatabaseCollectionWithUser) PutExistingRevWithConflictResolution(ctx c
 		}
 
 		// Process the attachments, replacing bodies with digests.
-		parentRevID := doc.History[newRev].Parent
+		parentRevID := doc.History.Get(newRev).Parent
 		newAttachments, err := db.storeAttachments(ctx, doc, newDoc.DocAttachments, generation, parentRevID, docHistory)
 		if err != nil {
 			return nil, nil, false, nil, err
@@ -1339,7 +1336,7 @@ func (db *DatabaseCollectionWithUser) tombstoneActiveRevision(ctx context.Contex
 func updateWinningRevAndSetDocFlags(doc *Document) {
 	var branched, inConflict bool
 	doc.CurrentRev, branched, inConflict = doc.History.WinningRevision()
-	doc.SetFlag(channels.Deleted, doc.History[doc.CurrentRev].Deleted)
+	doc.SetFlag(channels.Deleted, doc.History.Get(doc.CurrentRev).Deleted)
 	doc.SetFlag(channels.Conflict, inConflict)
 	doc.SetFlag(channels.Branched, branched)
 	if doc.HasFlag(channels.Deleted) {
@@ -1378,7 +1375,7 @@ func (db *DatabaseCollectionWithUser) storeOldBodyInRevTreeAndUpdateCurrent(ctx 
 			}
 		}
 
-		if ancestorRev, ok := doc.History[prevCurrentRev]; ok && ancestorRev != nil && ancestorRev.Deleted {
+		if ancestorRev := doc.History.Get(prevCurrentRev); ancestorRev != nil && ancestorRev.Deleted {
 			kvPairs = append(kvPairs, base.KVPair{Key: BodyDeleted, Val: true})
 		}
 
@@ -1617,7 +1614,7 @@ func (db *DatabaseCollectionWithUser) IsIllegalConflict(ctx context.Context, doc
 	// case b: If it's a tombstone, it's allowed if it's tombstoning an existing non-tombstoned leaf
 	if deleted {
 		for _, leafRevId := range doc.History.GetLeaves() {
-			if leafRevId == parentRevID && doc.History[leafRevId].Deleted == false {
+			if leafRevId == parentRevID && doc.History.Get(leafRevId).Deleted == false {
 				return false
 			}
 		}
@@ -1628,8 +1625,7 @@ func (db *DatabaseCollectionWithUser) IsIllegalConflict(ctx context.Context, doc
 	// case c: If current doc is a tombstone, disconnected branch resurrections are allowed
 	if doc.IsDeleted() {
 		for _, ancestorRevID := range docHistory {
-			_, ok := doc.History[ancestorRevID]
-			if ok {
+			if doc.History.Get(ancestorRevID) != nil {
 				base.DebugfCtx(ctx, base.KeyCRUD, "Conflict - document is deleted, but update would branch from existing revision.")
 				return true
 			}
@@ -1676,7 +1672,7 @@ func (col *DatabaseCollectionWithUser) documentUpdateFunc(ctx context.Context, d
 	}
 
 	if len(channelSet) > 0 {
-		doc.History[newRevID].Channels = channelSet
+		doc.History.Get(newRevID).Channels = channelSet
 	}
 
 	err = col.addAttachments(ctx, newAttachments)
@@ -1827,8 +1823,8 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 			docSequence = doc.Sequence
 			inConflict = doc.HasFlag(channels.Conflict)
 
-			currentRevFromHistory, ok := doc.History[doc.CurrentRev]
-			if !ok {
+			currentRevFromHistory := doc.History.Get(doc.CurrentRev)
+			if currentRevFromHistory == nil {
 				err = base.RedactErrorf("WriteUpdateWithXattr() not able to find revision (%v) in history of doc: %+v.  Cannot update doc.", doc.CurrentRev, base.UD(doc))
 				return
 			}
@@ -1904,7 +1900,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 		db.dbStats().Database().ConflictWriteCount.Add(1)
 	}
 
-	if doc.History[newRevID] != nil {
+	if doc.History.Get(newRevID) != nil {
 		// Store the new revision in the cache
 		history, getHistoryErr := doc.History.GetHistory(newRevID)
 		if getHistoryErr != nil {
@@ -1917,7 +1913,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 			return nil, "", err
 		}
 
-		revChannels := doc.History[newRevID].Channels
+		revChannels := doc.History.Get(newRevID).Channels
 		documentRevision := DocumentRevision{
 			DocID:       docid,
 			RevID:       newRevID,
@@ -1925,7 +1921,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 			Channels:    revChannels,
 			Attachments: doc.Attachments,
 			Expiry:      doc.Expiry,
-			Deleted:     doc.History[newRevID].Deleted,
+			Deleted:     doc.History.Get(newRevID).Deleted,
 		}
 		documentRevision.SetBodyBytes(storedDocBytes)
 
@@ -2475,7 +2471,7 @@ func (db *DatabaseCollectionWithUser) CheckProposedRev(ctx context.Context, doci
 	} else if doc.CurrentRev == parentRevID {
 		// Proposed rev's parent is my current revision; OK to add:
 		return ProposedRev_OK, ""
-	} else if parentRevID == "" && doc.History[doc.CurrentRev].Deleted {
+	} else if parentRevID == "" && doc.History.Get(doc.CurrentRev).Deleted {
 		// Proposed rev has no parent and doc is currently deleted; OK to add:
 		return ProposedRev_OK, ""
 	} else {

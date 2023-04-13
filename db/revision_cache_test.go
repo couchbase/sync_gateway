@@ -46,11 +46,11 @@ func (t *testBackingStore) GetDocument(ctx context.Context, docid string, unmars
 		"testing": true,
 	})
 	doc.CurrentRev = "1-abc"
-	doc.History = RevTree{
+	doc.History = documents.MakeRevTree(map[string]*RevInfo{
 		doc.CurrentRev: {
 			Channels: base.SetOf("*"),
 		},
-	}
+	})
 	return doc, nil
 }
 

@@ -156,14 +156,14 @@ func revCacheLoaderForDocument(ctx context.Context, backingStore RevisionCacheBa
 			return bodyBytes, history, channels, removed, nil, isDelete, nil, err
 		}
 	}
-	deleted = doc.History[revid].Deleted
+	deleted = doc.History.Get(revid).Deleted
 
 	validatedHistory, getHistoryErr := doc.History.GetHistory(revid)
 	if getHistoryErr != nil {
 		return bodyBytes, history, channels, removed, nil, deleted, nil, getHistoryErr
 	}
 	history = EncodeRevisions(doc.ID, validatedHistory)
-	channels = doc.History[revid].Channels
+	channels = doc.History.Get(revid).Channels
 
 	return bodyBytes, history, channels, removed, attachments, deleted, doc.Expiry, err
 }

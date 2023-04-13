@@ -23,26 +23,26 @@ import (
 )
 
 // 1-one -- 2-two -- 3-three
-var testmap = RevTree{"3-three": {ID: "3-three", Parent: "2-two", Body: []byte("{}")},
+var testmap = MakeRevTree(map[string]*RevInfo{"3-three": {ID: "3-three", Parent: "2-two", Body: []byte("{}")},
 	"2-two": {ID: "2-two", Parent: "1-one", Channels: base.SetOf("ABC", "CBS")},
-	"1-one": {ID: "1-one", Channels: base.SetOf("ABC")}}
+	"1-one": {ID: "1-one", Channels: base.SetOf("ABC")}})
 
 //	/ 3-three
 //
 // 1-one -- 2-two
 //
 //	\ 3-drei
-var branchymap = RevTree{"3-three": {ID: "3-three", Parent: "2-two"},
+var branchymap = MakeRevTree(map[string]*RevInfo{"3-three": {ID: "3-three", Parent: "2-two"},
 	"2-two":  {ID: "2-two", Parent: "1-one"},
 	"1-one":  {ID: "1-one"},
-	"3-drei": {ID: "3-drei", Parent: "2-two"}}
+	"3-drei": {ID: "3-drei", Parent: "2-two"}})
 
-var multiroot = RevTree{"3-a": {ID: "3-a", Parent: "2-a"},
+var multiroot = MakeRevTree(map[string]*RevInfo{"3-a": {ID: "3-a", Parent: "2-a"},
 	"2-a": {ID: "2-a", Parent: "1-a"},
 	"1-a": {ID: "1-a"},
 	"7-b": {ID: "7-b", Parent: "6-b"},
 	"6-b": {ID: "6-b"},
-}
+})
 
 type BranchSpec struct {
 	NumRevs                 int
@@ -338,24 +338,24 @@ func TestPruneRevisions(t *testing.T) {
 
 	tempmap := testmap.copy()
 	tempmap.computeDepthsAndFindLeaves()
-	assert.Equal(t, uint32(1), tempmap["3-three"].depth)
-	assert.Equal(t, uint32(2), tempmap["2-two"].depth)
-	assert.Equal(t, uint32(3), tempmap["1-one"].depth)
+	assert.Equal(t, uint32(1), tempmap.Get("3-three").depth)
+	assert.Equal(t, uint32(2), tempmap.Get("2-two").depth)
+	assert.Equal(t, uint32(3), tempmap.Get("1-one").depth)
 
 	tempmap = branchymap.copy()
 	tempmap.computeDepthsAndFindLeaves()
-	assert.Equal(t, uint32(1), tempmap["3-three"].depth)
-	assert.Equal(t, uint32(1), tempmap["3-drei"].depth)
-	assert.Equal(t, uint32(2), tempmap["2-two"].depth)
-	assert.Equal(t, uint32(3), tempmap["1-one"].depth)
+	assert.Equal(t, uint32(1), tempmap.Get("3-three").depth)
+	assert.Equal(t, uint32(1), tempmap.Get("3-drei").depth)
+	assert.Equal(t, uint32(2), tempmap.Get("2-two").depth)
+	assert.Equal(t, uint32(3), tempmap.Get("1-one").depth)
 
-	tempmap["4-vier"] = &RevInfo{ID: "4-vier", Parent: "3-drei"}
+	tempmap.add("4-vier", &RevInfo{ID: "4-vier", Parent: "3-drei"})
 	tempmap.computeDepthsAndFindLeaves()
-	assert.Equal(t, uint32(1), tempmap["4-vier"].depth)
-	assert.Equal(t, uint32(2), tempmap["3-drei"].depth)
-	assert.Equal(t, uint32(1), tempmap["3-three"].depth)
-	assert.Equal(t, uint32(2), tempmap["2-two"].depth)
-	assert.Equal(t, uint32(3), tempmap["1-one"].depth)
+	assert.Equal(t, uint32(1), tempmap.Get("4-vier").depth)
+	assert.Equal(t, uint32(2), tempmap.Get("3-drei").depth)
+	assert.Equal(t, uint32(1), tempmap.Get("3-three").depth)
+	assert.Equal(t, uint32(2), tempmap.Get("2-two").depth)
+	assert.Equal(t, uint32(3), tempmap.Get("1-one").depth)
 
 	// Prune:
 	pruned, _ := tempmap.PruneRevisions(1000, "")
@@ -364,18 +364,18 @@ func TestPruneRevisions(t *testing.T) {
 	assert.Equal(t, 0, pruned)
 	pruned, _ = tempmap.PruneRevisions(2, "")
 	assert.Equal(t, 1, pruned)
-	assert.Equal(t, 4, len(tempmap))
-	assert.Equal(t, (*RevInfo)(nil), tempmap["1-one"])
-	assert.Equal(t, "", tempmap["2-two"].Parent)
+	assert.Equal(t, 4, len(tempmap.Revs()))
+	assert.Equal(t, (*RevInfo)(nil), tempmap.Get("1-one"))
+	assert.Equal(t, "", tempmap.Get("2-two").Parent)
 
 	// Make sure leaves are never pruned:
 	pruned, _ = tempmap.PruneRevisions(1, "")
 	assert.Equal(t, 2, pruned)
-	assert.Equal(t, 2, len(tempmap))
-	assert.True(t, tempmap["3-three"] != nil)
-	assert.Equal(t, "", tempmap["3-three"].Parent)
-	assert.True(t, tempmap["4-vier"] != nil)
-	assert.Equal(t, "", tempmap["4-vier"].Parent)
+	assert.Equal(t, 2, len(tempmap.Revs()))
+	assert.True(t, tempmap.Get("3-three") != nil)
+	assert.Equal(t, "", tempmap.Get("3-three").Parent)
+	assert.True(t, tempmap.Get("4-vier") != nil)
+	assert.Equal(t, "", tempmap.Get("4-vier").Parent)
 
 }
 
@@ -925,13 +925,13 @@ func addAndGet(t *testing.T, revTree RevTree, revID string, parentRevID string, 
 	})
 	require.NoError(t, err)
 	history, err := revTree.GetHistory(revID)
-	log.Printf("addAndGet.  Tree length: %d.  History for new rev: %v", len(revTree), history)
+	log.Printf("addAndGet.  Tree length: %d.  History for new rev: %v", len(revTree.Revs()), history)
 	return err
 }
 
 // TestPruneRevisionsWithDisconnectedTombstones ensures that disconnected tombstoned branches are correctly pruned away. Reproduces CBG-1076.
 func TestPruneRevisionsWithDisconnected(t *testing.T) {
-	revTree := RevTree{
+	revTree := MakeRevTree(map[string]*RevInfo{
 		"100-abc": {ID: "100-abc"},
 		"101-def": {ID: "101-def", Parent: "100-abc", Deleted: true},
 		"101-abc": {ID: "101-abc", Parent: "100-abc"},
@@ -953,13 +953,13 @@ func TestPruneRevisionsWithDisconnected(t *testing.T) {
 		"71-abc": {ID: "71-abc", Parent: "70-abc"},
 		"72-abc": {ID: "72-abc", Parent: "71-abc"},
 		"73-abc": {ID: "73-abc", Parent: "72-abc", Deleted: true},
-	}
+	})
 
 	prunedCount, _ := revTree.PruneRevisions(4, "")
 	assert.Equal(t, 10, prunedCount)
 
-	remainingKeys := make([]string, 0, len(revTree))
-	for key := range revTree {
+	remainingKeys := make([]string, 0, len(revTree.Revs()))
+	for key := range revTree.Revs() {
 		remainingKeys = append(remainingKeys, key)
 	}
 	sort.Strings(remainingKeys)
@@ -978,7 +978,7 @@ func addPruneAndGet(revTree RevTree, revID string, parentRevID string, revBody [
 
 	// Get history for new rev (checks for loops)
 	history, err := revTree.GetHistory(revID)
-	log.Printf("addPruneAndGet.  Tree length: %d.  Num pruned: %d.  History for new rev: %v", len(revTree), numPruned, history)
+	log.Printf("addPruneAndGet.  Tree length: %d.  Num pruned: %d.  History for new rev: %v", len(revTree.Revs()), numPruned, history)
 	return numPruned, err
 
 }
@@ -1104,7 +1104,7 @@ func addRevs(revTree RevTree, startingParentRevId string, numRevs int, revDigest
 
 func (tree RevTree) GetTombstonedLeaves() []string {
 	onlyTombstonedLeavesFilter := func(revId string) bool {
-		revInfo := tree[revId]
+		revInfo := tree.Get(revId)
 		return revInfo.Deleted
 	}
 	return tree.GetLeavesFiltered(onlyTombstonedLeavesFilter)
@@ -1137,7 +1137,7 @@ func (tree RevTree) LongestBranch() int {
 			}
 
 			// Walk up the branch to the parent node
-			node = tree[node.Parent]
+			node = tree.Get(node.Parent)
 
 		}
 	}

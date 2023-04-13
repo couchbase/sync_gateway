@@ -38,7 +38,34 @@ func (rev RevInfo) IsRoot() bool {
 }
 
 // A revision tree maps each revision ID to its RevInfo.
-type RevTree map[string]*RevInfo
+type RevTree struct {
+	revs map[string]*RevInfo
+}
+
+// only for tests
+func MakeRevTree(revs map[string]*RevInfo) RevTree {
+	return RevTree{revs: revs}
+}
+
+func (tree *RevTree) initMap() {
+	if tree.revs == nil {
+		tree.revs = make(map[string]*RevInfo)
+	}
+}
+
+func (tree *RevTree) Get(revid string) *RevInfo {
+	return tree.revs[revid]
+}
+
+func (tree *RevTree) Revs() map[string]*RevInfo {
+	return tree.revs
+}
+
+// only for tests
+func (tree *RevTree) add(revid string, rev *RevInfo) {
+	tree.initMap()
+	tree.revs[revid] = rev
+}
 
 // The form in which a RevTree is stored in JSON. For space-efficiency it's stored as an array of
 // rev IDs, with a parallel array of parent indexes. Ordering in the arrays doesn't matter.
@@ -54,8 +81,8 @@ type RevTreeList struct {
 	HasAttachments []int             `json:"hasAttachments,omitempty"` // Indexes of revisions that has attachments
 }
 
-func (tree RevTree) MarshalJSON() ([]byte, error) {
-	n := len(tree)
+func (tree *RevTree) MarshalJSON() ([]byte, error) {
+	n := len(tree.revs)
 	rep := RevTreeList{
 		Revs:     make([]string, n),
 		Parents:  make([]int, n),
@@ -64,7 +91,7 @@ func (tree RevTree) MarshalJSON() ([]byte, error) {
 	revIndexes := map[string]int{"": -1}
 
 	i := 0
-	for _, info := range tree {
+	for _, info := range tree.revs {
 		revIndexes[info.ID] = i
 		rep.Revs[i] = info.ID
 		if info.Body != nil || info.BodyKey != "" {
@@ -98,7 +125,7 @@ func (tree RevTree) MarshalJSON() ([]byte, error) {
 	}
 
 	for i, revid := range rep.Revs {
-		parentRevId := tree[revid].Parent
+		parentRevId := tree.revs[revid].Parent
 		parentRevIndex, ok := revIndexes[parentRevId]
 		if ok {
 			rep.Parents[i] = parentRevIndex
@@ -131,7 +158,7 @@ func (tree *RevTree) UnmarshalJSON(inputjson []byte) (err error) {
 		return errors.New("revtreelist data is invalid, revs/parents/channels counts are inconsistent")
 	}
 
-	*tree = make(RevTree, len(rep.Revs))
+	tree.revs = make(map[string]*RevInfo, len(rep.Revs))
 
 	for i, revid := range rep.Revs {
 		info := RevInfo{ID: revid}
@@ -156,26 +183,26 @@ func (tree *RevTree) UnmarshalJSON(inputjson []byte) (err error) {
 		if parentIndex >= 0 {
 			info.Parent = rep.Revs[parentIndex]
 		}
-		(*tree)[revid] = &info
+		tree.revs[revid] = &info
 	}
 	if rep.Deleted != nil {
 		for _, i := range rep.Deleted {
-			info := (*tree)[rep.Revs[i]]
-			info.Deleted = true // because tree[rep.Revs[i]].Deleted=true is a compile error
-			(*tree)[rep.Revs[i]] = info
+			info := tree.revs[rep.Revs[i]]
+			info.Deleted = true // because tree.revs[rep.Revs[i]].Deleted=true is a compile error
+			tree.revs[rep.Revs[i]] = info
 		}
 	}
 	if rep.HasAttachments != nil {
 		for _, i := range rep.HasAttachments {
-			info := (*tree)[rep.Revs[i]]
+			info := tree.revs[rep.Revs[i]]
 			info.HasAttachments = true
-			(*tree)[rep.Revs[i]] = info
+			tree.revs[rep.Revs[i]] = info
 		}
 	}
 	return
 }
 
-func (tree RevTree) ContainsCycles() bool {
+func (tree *RevTree) ContainsCycles() bool {
 	containsCycles := false
 	for _, leafRevision := range tree.GetLeaves() {
 		_, revHistoryErr := tree.GetHistory(leafRevision)
@@ -187,7 +214,7 @@ func (tree RevTree) ContainsCycles() bool {
 }
 
 // Repair rev trees that have cycles introduced by SG Issue #2847
-func (tree RevTree) RepairCycles() (err error) {
+func (tree *RevTree) RepairCycles() (err error) {
 
 	// This function will be called back for every leaf node in tree
 	leafProcessor := func(leaf *RevInfo) {
@@ -206,7 +233,7 @@ func (tree RevTree) RepairCycles() (err error) {
 				break
 			}
 
-			node = tree[node.Parent]
+			node = tree.revs[node.Parent]
 
 			// Reached a root, we're done -- there's no need
 			// to call appendNodeToResult() on the root, since
@@ -236,14 +263,14 @@ func (node RevInfo) ParentGenGTENodeGen() bool {
 }
 
 // Returns true if the RevTree has an entry for this revid.
-func (tree RevTree) Contains(revid string) bool {
-	_, exists := tree[revid]
+func (tree *RevTree) Contains(revid string) bool {
+	_, exists := tree.revs[revid]
 	return exists
 }
 
 // Returns the RevInfo for a revision ID, or panics if it's not found
-func (tree RevTree) GetInfo(revid string) (*RevInfo, error) {
-	info, exists := tree[revid]
+func (tree *RevTree) GetInfo(revid string) (*RevInfo, error) {
+	info, exists := tree.revs[revid]
 	if !exists {
 		return nil, errors.New("getInfo can't find rev: " + revid)
 	}
@@ -252,7 +279,7 @@ func (tree RevTree) GetInfo(revid string) (*RevInfo, error) {
 
 // Returns the parent ID of a revid. The parent is "" if the revid is a root.
 // Panics if the revid is not in the map at all.
-func (tree RevTree) GetParent(revid string) string {
+func (tree *RevTree) GetParent(revid string) string {
 	info, err := tree.GetInfo(revid)
 	if err != nil {
 		return ""
@@ -261,21 +288,21 @@ func (tree RevTree) GetParent(revid string) string {
 }
 
 // Returns the leaf revision IDs (those that have no children.)
-func (tree RevTree) GetLeaves() []string {
+func (tree *RevTree) GetLeaves() []string {
 	acceptAllLeavesFilter := func(revId string) bool {
 		return true
 	}
 	return tree.GetLeavesFiltered(acceptAllLeavesFilter)
 }
 
-func (tree RevTree) GetLeavesFiltered(filter func(revId string) bool) []string {
+func (tree *RevTree) GetLeavesFiltered(filter func(revId string) bool) []string {
 
 	isParent := map[string]bool{}
-	for _, info := range tree {
+	for _, info := range tree.revs {
 		isParent[info.Parent] = true
 	}
-	leaves := make([]string, 0, len(tree)-len(isParent)+1)
-	for revid := range tree {
+	leaves := make([]string, 0, len(tree.revs)-len(isParent)+1)
+	for revid := range tree.revs {
 		if !isParent[revid] {
 			if filter(revid) {
 				leaves = append(leaves, revid)
@@ -286,12 +313,12 @@ func (tree RevTree) GetLeavesFiltered(filter func(revId string) bool) []string {
 
 }
 
-func (tree RevTree) ForEachLeaf(callback func(*RevInfo)) {
+func (tree *RevTree) ForEachLeaf(callback func(*RevInfo)) {
 	isParent := map[string]bool{}
-	for _, info := range tree {
+	for _, info := range tree.revs {
 		isParent[info.Parent] = true
 	}
-	for revid, info := range tree {
+	for revid, info := range tree.revs {
 		if !isParent[revid] {
 			callback(info)
 
@@ -299,11 +326,11 @@ func (tree RevTree) ForEachLeaf(callback func(*RevInfo)) {
 	}
 }
 
-func (tree RevTree) IsLeaf(revid string) bool {
+func (tree *RevTree) IsLeaf(revid string) bool {
 	if !tree.Contains(revid) {
 		return false
 	}
-	for _, info := range tree {
+	for _, info := range tree.revs {
 		if info.Parent == revid {
 			return false
 		}
@@ -313,7 +340,7 @@ func (tree RevTree) IsLeaf(revid string) bool {
 
 // Finds the "winning" revision, the one that should be treated as the default.
 // This is the leaf revision whose (!deleted, generation, hash) tuple compares the highest.
-func (tree RevTree) WinningRevision() (winner string, branched bool, inConflict bool) {
+func (tree *RevTree) WinningRevision() (winner string, branched bool, inConflict bool) {
 	winnerExists := false
 	leafCount := 0
 	activeLeafCount := 0
@@ -336,7 +363,7 @@ func (tree RevTree) WinningRevision() (winner string, branched bool, inConflict 
 
 // Given a revision and a set of possible ancestors, finds the one that is the most recent
 // ancestor of the revision; if none are ancestors, returns "".
-func (tree RevTree) FindAncestorFromSet(revid string, ancestors []string) string {
+func (tree *RevTree) FindAncestorFromSet(revid string, ancestors []string) string {
 	// OPT: This is slow...
 	for revid != "" {
 		for _, a := range ancestors {
@@ -354,7 +381,7 @@ func (tree RevTree) FindAncestorFromSet(revid string, ancestors []string) string
 }
 
 // Records a revision in a RevTree.
-func (tree RevTree) AddRevision(docid string, info RevInfo) (err error) {
+func (tree *RevTree) AddRevision(docid string, info RevInfo) (err error) {
 	revid := info.ID
 	if revid == "" {
 		err = errors.New(fmt.Sprintf("doc: %v, RevTree AddRevision, empty revid is illegal", docid))
@@ -369,16 +396,17 @@ func (tree RevTree) AddRevision(docid string, info RevInfo) (err error) {
 		err = errors.New(fmt.Sprintf("doc: %v, RevTree AddRevision, parent id %q is missing", docid, parent))
 		return
 	}
-	tree[revid] = &info
+	tree.initMap()
+	tree.revs[revid] = &info
 	return nil
 }
 
-func (tree RevTree) GetRevisionBody(revid string, loader RevLoaderFunc) ([]byte, bool) {
+func (tree *RevTree) GetRevisionBody(revid string, loader RevLoaderFunc) ([]byte, bool) {
 	if revid == "" {
 		// TODO: CBG-1948
 		panic("Illegal empty revision ID")
 	}
-	info, found := tree[revid]
+	info, found := tree.revs[revid]
 	if !found {
 		return nil, false
 	}
@@ -407,12 +435,12 @@ func (tree RevTree) GetRevisionBody(revid string, loader RevLoaderFunc) ([]byte,
 	return info.Body, true
 }
 
-func (tree RevTree) SetRevisionBody(revid string, body []byte, bodyKey string, hasAttachments bool) {
+func (tree *RevTree) SetRevisionBody(revid string, body []byte, bodyKey string, hasAttachments bool) {
 	if revid == "" {
 		// TODO: CBG-1948
 		panic("Illegal empty revision ID")
 	}
-	info, found := tree[revid]
+	info, found := tree.revs[revid]
 	if !found {
 		// TODO: CBG-1948
 		panic(fmt.Sprintf("rev id %q not found", revid))
@@ -423,8 +451,8 @@ func (tree RevTree) SetRevisionBody(revid string, body []byte, bodyKey string, h
 	info.HasAttachments = hasAttachments
 }
 
-func (tree RevTree) RemoveRevisionBody(revid string) (deletedBodyKey string) {
-	info, found := tree[revid]
+func (tree *RevTree) RemoveRevisionBody(revid string) (deletedBodyKey string) {
+	info, found := tree.revs[revid]
 	if !found {
 		base.ErrorfCtx(context.Background(), "RemoveRevisionBody called for revid not in tree: %v", revid)
 		return ""
@@ -437,11 +465,11 @@ func (tree RevTree) RemoveRevisionBody(revid string) (deletedBodyKey string) {
 }
 
 // Deep-copies a RevTree.
-func (tree RevTree) copy() RevTree {
-	result := RevTree{}
-	for rev, info := range tree {
+func (tree *RevTree) copy() RevTree {
+	result := RevTree{revs: map[string]*RevInfo{}}
+	for rev, info := range tree.revs {
 		copiedInfo := *info
-		result[rev] = &copiedInfo
+		result.revs[rev] = &copiedInfo
 	}
 	return result
 }
@@ -461,18 +489,18 @@ func (tree RevTree) copy() RevTree {
 //
 //	pruned: number of revisions pruned
 //	prunedTombstoneBodyKeys: set of tombstones with external body storage that were pruned, as map[revid]bodyKey
-func (tree RevTree) PruneRevisions(maxDepth uint32, keepRev string) (pruned int, prunedTombstoneBodyKeys map[string]string) {
+func (tree *RevTree) PruneRevisions(maxDepth uint32, keepRev string) (pruned int, prunedTombstoneBodyKeys map[string]string) {
 
-	if len(tree) <= int(maxDepth) {
+	if len(tree.revs) <= int(maxDepth) {
 		return
 	}
 
 	computedMaxDepth, leaves := tree.computeDepthsAndFindLeaves()
 	if computedMaxDepth > maxDepth {
 		// Delete nodes whose depth is greater than maxDepth:
-		for revid, node := range tree {
+		for revid, node := range tree.revs {
 			if node.depth > maxDepth {
-				delete(tree, revid)
+				delete(tree.revs, revid)
 				pruned++
 			}
 		}
@@ -489,7 +517,7 @@ func (tree RevTree) PruneRevisions(maxDepth uint32, keepRev string) (pruned int,
 	// If we have a valid tombstoneGenerationThreshold, delete any tombstoned branches that are too old
 	if tombstoneGenerationThreshold != -1 {
 		for _, leafRevId := range leaves {
-			leaf := tree[leafRevId]
+			leaf := tree.revs[leafRevId]
 			if !leaf.Deleted { // Ignore non-tombstoned leaves
 				continue
 			}
@@ -508,9 +536,9 @@ func (tree RevTree) PruneRevisions(maxDepth uint32, keepRev string) (pruned int,
 
 	// Snip dangling Parent links:
 	if pruned > 0 {
-		for _, node := range tree {
+		for _, node := range tree.revs {
 			if node.Parent != "" {
-				if _, found := tree[node.Parent]; !found {
+				if _, found := tree.revs[node.Parent]; !found {
 					node.Parent = ""
 				}
 			}
@@ -521,12 +549,12 @@ func (tree RevTree) PruneRevisions(maxDepth uint32, keepRev string) (pruned int,
 
 }
 
-func (tree RevTree) DeleteBranch(node *RevInfo) (pruned int) {
+func (tree *RevTree) DeleteBranch(node *RevInfo) (pruned int) {
 
 	revId := node.ID
 
-	for node := tree[revId]; node != nil; node = tree[node.Parent] {
-		delete(tree, node.ID)
+	for node := tree.revs[revId]; node != nil; node = tree.revs[node.Parent] {
+		delete(tree.revs, node.ID)
 		pruned++
 	}
 
@@ -534,10 +562,10 @@ func (tree RevTree) DeleteBranch(node *RevInfo) (pruned int) {
 
 }
 
-func (tree RevTree) computeDepthsAndFindLeaves() (maxDepth uint32, leaves []string) {
+func (tree *RevTree) computeDepthsAndFindLeaves() (maxDepth uint32, leaves []string) {
 
 	// Performance is somewhere between O(n) and O(n^2), depending on the branchiness of the tree.
-	for _, info := range tree {
+	for _, info := range tree.revs {
 		info.depth = math.MaxUint32
 	}
 
@@ -547,7 +575,7 @@ func (tree RevTree) computeDepthsAndFindLeaves() (maxDepth uint32, leaves []stri
 	for _, revid := range leaves {
 
 		var depth uint32 = 1
-		for node := tree[revid]; node != nil; node = tree[node.Parent] {
+		for node := tree.revs[revid]; node != nil; node = tree.revs[node.Parent] {
 			if node.depth <= depth {
 				break // This hierarchy already has a shorter path to another leaf
 			}
@@ -567,18 +595,18 @@ func (tree RevTree) computeDepthsAndFindLeaves() (maxDepth uint32, leaves []stri
 //	http://cbmobile-bucket.s3.amazonaws.com/diagrams/example-sync-gateway-revtrees/three_branches.png
 //
 // The minimim generation that has a non-deleted leaf is "7-non-winning unresolved"
-func (tree RevTree) FindShortestNonTombstonedBranch() (generation int, found bool) {
+func (tree *RevTree) FindShortestNonTombstonedBranch() (generation int, found bool) {
 	return tree.FindShortestNonTombstonedBranchFromLeaves(tree.GetLeaves())
 }
 
-func (tree RevTree) FindShortestNonTombstonedBranchFromLeaves(leaves []string) (generation int, found bool) {
+func (tree *RevTree) FindShortestNonTombstonedBranchFromLeaves(leaves []string) (generation int, found bool) {
 
 	found = false
 	genShortestNonTSBranch := math.MaxInt32
 
 	for _, revid := range leaves {
 
-		revInfo := tree[revid]
+		revInfo := tree.revs[revid]
 		if revInfo.Deleted {
 			// This is a tombstoned branch, skip it
 			continue
@@ -597,15 +625,15 @@ func (tree RevTree) FindShortestNonTombstonedBranchFromLeaves(leaves []string) (
 //	http://cbmobile-bucket.s3.amazonaws.com/diagrams/example-sync-gateway-revtrees/four_branches_two_tombstoned.png
 //
 // The longest deleted branch has a generation of 10
-func (tree RevTree) FindLongestTombstonedBranch() (generation int) {
+func (tree *RevTree) FindLongestTombstonedBranch() (generation int) {
 	return tree.FindLongestTombstonedBranchFromLeaves(tree.GetLeaves())
 }
 
-func (tree RevTree) FindLongestTombstonedBranchFromLeaves(leaves []string) (generation int) {
+func (tree *RevTree) FindLongestTombstonedBranchFromLeaves(leaves []string) (generation int) {
 	genLongestTSBranch := 0
 	for _, revid := range leaves {
 		gen := GenOfRevID(revid)
-		if tree[revid].Deleted {
+		if tree.revs[revid].Deleted {
 			if gen > genLongestTSBranch {
 				genLongestTSBranch = gen
 			}
@@ -617,7 +645,7 @@ func (tree RevTree) FindLongestTombstonedBranchFromLeaves(leaves []string) (gene
 // Render the RevTree in Graphviz Dot format, which can then be used to generate a PNG diagram
 // like http://cbmobile-bucket.s3.amazonaws.com/diagrams/example-sync-gateway-revtrees/three_branches.png
 // using the command: dot -Tpng revtree.dot > revtree.png or an online tool such as webgraphviz.com
-func (tree RevTree) RenderGraphvizDot() string {
+func (tree *RevTree) RenderGraphvizDot() string {
 
 	resultBuffer := bytes.Buffer{}
 
@@ -685,7 +713,7 @@ func (tree RevTree) RenderGraphvizDot() string {
 
 		for {
 			// Mark nodes with dangling parent references
-			if tree[node.Parent] == nil {
+			if tree.revs[node.Parent] == nil {
 				missingParentNode := &RevInfo{
 					ID:      node.ID,
 					Parent:  fmt.Sprintf("%s - MISSING", node.Parent),
@@ -695,7 +723,7 @@ func (tree RevTree) RenderGraphvizDot() string {
 				break
 			}
 
-			node = tree[node.Parent]
+			node = tree.revs[node.Parent]
 
 			// Reached a root, we're done -- there's no need
 			// to call appendNodeToResult() on the root, since
@@ -721,8 +749,8 @@ func (tree RevTree) RenderGraphvizDot() string {
 
 // Returns the history of a revid as an array of revids in reverse chronological order.
 // Returns error if detects cycle(s) in rev tree
-func (tree RevTree) GetHistory(revid string) ([]string, error) {
-	maxHistory := len(tree)
+func (tree *RevTree) GetHistory(revid string) ([]string, error) {
+	maxHistory := len(tree.revs)
 
 	history := make([]string, 0, 5)
 	for revid != "" {
@@ -799,4 +827,20 @@ func TrimEncodedRevisionsToAncestor(revs Revisions, ancestors []string, maxUnmat
 	}
 	return true, trimmedRevs
 
+}
+
+// Returns a redacted copy of this RevTree.
+func (tree *RevTree) Redacted(salt string) RevTree {
+	redactedTree := RevTree{revs: make(map[string]*RevInfo, len(tree.revs))}
+	for k, revInfo := range tree.revs {
+		if revInfo.Channels != nil {
+			redactedChannels := base.Set{}
+			for existingChanKey := range revInfo.Channels {
+				redactedChannels.Add(base.Sha1HashString(existingChanKey, salt))
+			}
+			revInfo.Channels = redactedChannels
+		}
+		redactedTree.revs[k] = revInfo
+	}
+	return redactedTree
 }

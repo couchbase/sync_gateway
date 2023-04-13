@@ -69,7 +69,6 @@ func (sd *SyncData) HashRedact(salt string) SyncData {
 		Sequence:        sd.Sequence,
 		UnusedSequences: sd.UnusedSequences,
 		RecentSequences: sd.RecentSequences,
-		History:         RevTree{},
 		Channels:        channels.ChannelMap{},
 		Access:          UserAccessMap{},
 		RoleAccess:      UserAccessMap{},
@@ -86,18 +85,7 @@ func (sd *SyncData) HashRedact(salt string) SyncData {
 	}
 
 	// Populate and redact history. This is done as it also includes channel names
-	for k, revInfo := range sd.History {
-
-		if revInfo.Channels != nil {
-			redactedChannels := base.Set{}
-			for existingChanKey := range revInfo.Channels {
-				redactedChannels.Add(base.Sha1HashString(existingChanKey, salt))
-			}
-			revInfo.Channels = redactedChannels
-		}
-
-		redactedSyncData.History[k] = revInfo
-	}
+	redactedSyncData.History = sd.History.Redacted(salt)
 
 	// Populate and redact user access
 	for k, v := range sd.Access {
@@ -134,7 +122,7 @@ type DocumentRoot struct {
 func UnmarshalDocumentSyncData(data []byte, needHistory bool) (*SyncData, error) {
 	var root DocumentRoot
 	if needHistory {
-		root.SyncData = &SyncData{History: make(RevTree)}
+		root.SyncData = &SyncData{}
 	}
 	if err := base.JSONUnmarshal(data, &root); err != nil {
 		return nil, err
@@ -168,9 +156,6 @@ func UnmarshalDocumentSyncDataFromFeed(data []byte, dataType uint8, userXattrKey
 		// If the sync xattr is present, use that to build SyncData
 		if syncXattr != nil && len(syncXattr) > 0 {
 			result = &SyncData{}
-			if needHistory {
-				result.History = make(RevTree)
-			}
 			err = base.JSONUnmarshal(syncXattr, result)
 			if err != nil {
 				return nil, nil, nil, nil, err

@@ -4109,7 +4109,7 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 			}
 
 			log.Printf("Doc %s is %+v", docID, doc)
-			for revID, revInfo := range doc.SyncData.History {
+			for revID, revInfo := range doc.SyncData.History.Revs() {
 				log.Printf("doc revision [%s]: %+v", revID, revInfo)
 			}
 
@@ -4118,14 +4118,14 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 				// of leaves have empty bodies
 				activeCount := 0
 				for _, revID := range doc.SyncData.History.GetLeaves() {
-					revInfo, ok := doc.SyncData.History[revID]
-					require.True(t, ok)
+					revInfo := doc.SyncData.History.Get(revID)
+					require.NotNil(t, revInfo)
 					if !revInfo.Deleted {
 						activeCount++
 					}
 					if revInfo.Parent != "" {
-						parentRevInfo, ok := doc.SyncData.History[revInfo.Parent]
-						require.True(t, ok)
+						parentRevInfo := doc.SyncData.History.Get(revInfo.Parent)
+						require.NotNil(t, parentRevInfo)
 						assert.True(t, parentRevInfo.Body == nil)
 					}
 				}
@@ -4330,7 +4330,7 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 			assert.Equal(t, db.Body(expectedLocalBody), doc.UnmarshalBody())
 			log.Printf("Doc %s is %+v", docID, doc)
 			log.Printf("Doc %s attachments are %+v", docID, doc.Attachments)
-			for revID, revInfo := range doc.SyncData.History {
+			for revID, revInfo := range doc.SyncData.History.Revs() {
 				log.Printf("doc revision [%s]: %+v", revID, revInfo)
 			}
 
@@ -4338,14 +4338,14 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 			// of leaves have empty bodies
 			activeCount := 0
 			for _, revID := range doc.SyncData.History.GetLeaves() {
-				revInfo, ok := doc.SyncData.History[revID]
-				require.True(t, ok)
+				revInfo := doc.SyncData.History.Get(revID)
+				require.NotNil(t, revInfo)
 				if !revInfo.Deleted {
 					activeCount++
 				}
 				if revInfo.Parent != "" {
-					parentRevInfo, ok := doc.SyncData.History[revInfo.Parent]
-					require.True(t, ok)
+					parentRevInfo := doc.SyncData.History.Get(revInfo.Parent)
+					require.NotNil(t, parentRevInfo)
 					assert.True(t, parentRevInfo.Body == nil)
 				}
 			}
@@ -4370,7 +4370,7 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 			assert.Equal(t, db.Body(expectedLocalBody), doc.UnmarshalBody())
 			log.Printf("Remote Doc %s is %+v", docID, doc)
 			log.Printf("Remote Doc %s attachments are %+v", docID, doc.Attachments)
-			for revID, revInfo := range doc.SyncData.History {
+			for revID, revInfo := range doc.SyncData.History.Revs() {
 				log.Printf("doc revision [%s]: %+v", revID, revInfo)
 			}
 
@@ -4378,14 +4378,14 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 			// of leaves have empty bodies
 			activeCount = 0
 			for _, revID := range doc.SyncData.History.GetLeaves() {
-				revInfo, ok := doc.SyncData.History[revID]
-				require.True(t, ok)
+				revInfo := doc.SyncData.History.Get(revID)
+				require.NotNil(t, revInfo)
 				if !revInfo.Deleted {
 					activeCount++
 				}
 				if revInfo.Parent != "" {
-					parentRevInfo, ok := doc.SyncData.History[revInfo.Parent]
-					require.True(t, ok)
+					parentRevInfo := doc.SyncData.History.Get(revInfo.Parent)
+					require.NotNil(t, parentRevInfo)
 					assert.True(t, parentRevInfo.Body == nil)
 				}
 			}
@@ -6010,7 +6010,7 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 			log.Printf("doc.Body(): %v", doc.UnmarshalBody())
 			assert.Equal(t, db.Body(test.expectedLocalBody), doc.UnmarshalBody())
 			log.Printf("Doc %s is %+v", docID, doc)
-			for revID, revInfo := range doc.SyncData.History {
+			for revID, revInfo := range doc.SyncData.History.Revs() {
 				log.Printf("doc revision [%s]: %+v", revID, revInfo)
 			}
 
@@ -6018,14 +6018,14 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 			// of leaves have empty bodies
 			activeCount := 0
 			for _, revID := range doc.SyncData.History.GetLeaves() {
-				revInfo, ok := doc.SyncData.History[revID]
-				require.True(t, ok)
+				revInfo := doc.SyncData.History.Get(revID)
+				require.NotNil(t, revInfo)
 				if !revInfo.Deleted {
 					activeCount++
 				}
 				if revInfo.Parent != "" {
-					parentRevInfo, ok := doc.SyncData.History[revInfo.Parent]
-					require.True(t, ok)
+					parentRevInfo := doc.SyncData.History.Get(revInfo.Parent)
+					require.NotNil(t, parentRevInfo)
 					assert.True(t, parentRevInfo.Body == nil)
 				}
 			}
