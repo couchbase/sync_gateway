@@ -81,10 +81,13 @@ type attachmentsOnlyBody struct {
 	Attachments AttachmentsMeta `json:"_attachments,omitempty"`
 }
 
+// Replaces the body of the document with the given JSON data.
 func (doc *Document) UpdateBodyBytes(bodyBytes []byte) {
 	doc._rawBody = bodyBytes
 }
 
+// Replaces the body of the document with the given parsed map.
+// (This immediately marshals the map.)
 func (doc *Document) UpdateBody(body Body) {
 	raw, err := base.JSONMarshal(body)
 	if err != nil {
@@ -93,9 +96,7 @@ func (doc *Document) UpdateBody(body Body) {
 	doc._rawBody = raw
 }
 
-// Marshals both the body and sync data for a given document. If there is no rawbody already available then we will
-// marshall it all in one go. Otherwise we will reduce marshalling as much as possible by only marshalling the sync data
-// and injecting it into the existing raw body.
+// Returns the document marshaled to JSON, as the body with the metadata in a `_sync` property.
 func (doc *Document) MarshalBodyAndSync() (retBytes []byte, err error) {
 	if doc._rawBody != nil {
 		return base.InjectJSONProperties(doc._rawBody, base.KVPair{Key: base.SyncPropertyName, Val: doc.SyncData})
@@ -104,10 +105,12 @@ func (doc *Document) MarshalBodyAndSync() (retBytes []byte, err error) {
 	}
 }
 
+// True if the document is deleted.
 func (doc *Document) IsDeleted() bool {
 	return doc.HasFlag(channels.Deleted)
 }
 
+// Returns the body as JSON, with the `_id`, `_rev`, `_deleted`, `_attachments` properties added.
 func (doc *Document) BodyWithSpecialProperties() ([]byte, error) {
 	bodyBytes, err := doc.BodyBytes()
 	if err != nil {
@@ -140,7 +143,7 @@ func NewDocument(docid string) *Document {
 	return &Document{ID: docid, SyncData: SyncData{History: make(RevTree)}}
 }
 
-// Unmarshals the document body, without special properties.
+// Unmarshals the document body as a map, without special properties.
 // DEPRECATED -- This ignores any unmarshaling error; it's only preserved because tests call it
 func (doc *Document) UnmarshalBody() Body {
 	body, _ := doc.GetDeepMutableBody()
@@ -148,7 +151,8 @@ func (doc *Document) UnmarshalBody() Body {
 }
 
 // Unmarshals the document body, without special properties.
-// DEPRECATED -- Once V8 is merged there should be no more need for this method.
+// Unmarshaling document bodies is expensive. Avoid it!
+// Once V8 is merged there should be little need for this method.
 func (doc *Document) GetDeepMutableBody() (Body, error) {
 	if doc._rawBody == nil {
 		base.WarnfCtx(context.Background(), "Null doc body %s/%s from %s", base.UD(doc.ID), base.UD(doc.RevID), base.GetCallersName(1, true))
@@ -163,6 +167,7 @@ func (doc *Document) GetDeepMutableBody() (Body, error) {
 	return mutableBody, nil
 }
 
+// Clears the document's body (sets it to nil.)
 func (doc *Document) RemoveBody() {
 	doc._rawBody = nil
 }
@@ -181,6 +186,7 @@ func (doc *Document) HasNonEmptyBody() bool {
 	return len(doc._rawBody) > 2 && !kEmptyBodyRegexp.Match(doc._rawBody)
 }
 
+// Returns the body JSON, with no special properties.
 func (doc *Document) BodyBytes() ([]byte, error) {
 	if doc._rawBody == nil {
 		var caller string
@@ -413,10 +419,12 @@ func (doc *Document) IsSGWrite(ctx context.Context, rawBody []byte) (isSGWrite b
 	return true, true, false
 }
 
+// True if the document has the given flag.
 func (doc *Document) HasFlag(flag uint8) bool {
 	return doc.Flags&flag != 0
 }
 
+// Sets or clears a document flag.
 func (doc *Document) SetFlag(flag uint8, state bool) {
 	if state {
 		doc.Flags |= flag
@@ -590,7 +598,7 @@ func generateRevDigest(docid, revid string) string {
 	return base64.StdEncoding.EncodeToString(digester.Sum(nil))
 }
 
-// Updates the expiry for a document
+// Sets the expiry timestamp for a document. Setting 0 clears it.
 func (doc *Document) UpdateExpiry(expiry uint32) {
 
 	if expiry == 0 {
@@ -853,10 +861,9 @@ func (doc *Document) MarshalJSON() (data []byte, err error) {
 	return data, err
 }
 
-// UnmarshalWithXattr unmarshals the provided raw document and xattr bytes.  The provided DocumentUnmarshalLevel
-// (unmarshalLevel) specifies how much of the provided document/xattr needs to be initially unmarshalled.  If
-// unmarshalLevel is anything less than the full document + metadata, the raw data is retained for subsequent
-// lazy unmarshalling as needed.
+// UnmarshalWithXattr unmarshals the provided raw document and xattr bytes.
+// The provided DocumentUnmarshalLevel (unmarshalLevel) specifies how much of the metadata
+// (`xdata`) needs to be initially unmarshalled. The body (`data`) itself is not unmarshaled.
 func (doc *Document) UnmarshalWithXattr(data []byte, xdata []byte, unmarshalLevel DocumentUnmarshalLevel) error {
 	if doc.ID == "" {
 		base.WarnfCtx(context.Background(), "Attempted to unmarshal document without ID set")
@@ -865,7 +872,7 @@ func (doc *Document) UnmarshalWithXattr(data []byte, xdata []byte, unmarshalLeve
 
 	switch unmarshalLevel {
 	case DocUnmarshalAll, DocUnmarshalSync:
-		// Unmarshal full document and/or sync metadata
+		// Unmarshal all sync metadata (we don't unmarshal the body anymore)
 		doc.SyncData = SyncData{History: make(RevTree)}
 		unmarshalErr := base.JSONUnmarshal(xdata, &doc.SyncData)
 		if unmarshalErr != nil {
@@ -931,10 +938,3 @@ func (doc *Document) MarshalWithXattr() (data []byte, xdata []byte, err error) {
 func (doc *Document) RawUserXattr() []byte {
 	return doc.rawUserXattr
 }
-
-// The methods below should be removed -- they exist only because when Document was in the db
-// package, some code directly read/wrote the internal `_body` and `_rawBody` fields.
-// These methods keep that code working, but the real fix is to change it to not grope these
-// fields (but also without losing performance...) --Jens Feb 2023
-
-func (doc *Document) PokeRawBody(b []byte) { doc._rawBody = b }

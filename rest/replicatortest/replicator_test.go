@@ -1872,7 +1872,7 @@ func TestPushReplicationAPIUpdateDatabase(t *testing.T) {
 
 	// wait for the last document written to rt1 to arrive at rt2
 	rest.WaitAndAssertCondition(t, func() bool {
-		_, err := rt2.GetSingleTestDatabaseCollection().GetDocument(base.TestCtx(t), lastDocIDString, db.DocUnmarshalNone)
+		_, err := rt2.GetSingleTestDatabaseCollection().GetDocument(base.TestCtx(t), lastDocIDString, documents.DocUnmarshalNone)
 		return err == nil
 	})
 }

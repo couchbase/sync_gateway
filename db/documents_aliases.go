@@ -12,7 +12,7 @@ package db
 
 import "github.com/couchbase/sync_gateway/documents"
 
-// Declare aliases for various types & constants that were moved to document,
+// Declare aliases for some common types & constants that were moved to the `documents` package,
 // to reduce the amount of code touched throughout the project:
 
 type AttachmentsMeta = documents.AttachmentsMeta
@@ -35,22 +35,16 @@ const (
 	AttVersion1 = documents.AttVersion1
 	AttVersion2 = documents.AttVersion2
 
-	BodyDeleted        = documents.BodyDeleted
-	BodyRev            = documents.BodyRev
-	BodyId             = documents.BodyId
-	BodyRevisions      = documents.BodyRevisions
-	BodyAttachments    = documents.BodyAttachments
-	BodyPurged         = documents.BodyPurged
-	BodyExpiry         = documents.BodyExpiry
-	BodyRemoved        = documents.BodyRemoved
-	BodyInternalPrefix = documents.BodyInternalPrefix
+	BodyDeleted     = documents.BodyDeleted
+	BodyRev         = documents.BodyRev
+	BodyId          = documents.BodyId
+	BodyRevisions   = documents.BodyRevisions
+	BodyAttachments = documents.BodyAttachments
+	BodyExpiry      = documents.BodyExpiry
+	BodyRemoved     = documents.BodyRemoved
 
-	DocUnmarshalAll       = documents.DocUnmarshalAll
-	DocUnmarshalSync      = documents.DocUnmarshalSync
-	DocUnmarshalNoHistory = documents.DocUnmarshalNoHistory
-	DocUnmarshalRev       = documents.DocUnmarshalRev
-	DocUnmarshalCAS       = documents.DocUnmarshalCAS
-	DocUnmarshalNone      = documents.DocUnmarshalNone
+	DocUnmarshalAll  = documents.DocUnmarshalAll
+	DocUnmarshalSync = documents.DocUnmarshalSync
 
 	RevCacheIncludeDelta = documents.RevCacheIncludeDelta
 	RevCacheOmitDelta    = documents.RevCacheOmitDelta

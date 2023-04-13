@@ -21,19 +21,19 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 )
 
-// The body of a CouchDB document/revision as decoded from JSON.
-type Body map[string]interface{}
+//-------- SPECIAL KEYS
 
+// Special top-level document keys
 const (
-	BodyDeleted        = "_deleted"
-	BodyRev            = "_rev"
-	BodyId             = "_id"
-	BodyRevisions      = "_revisions"
-	BodyAttachments    = "_attachments"
-	BodyPurged         = "_purged"
-	BodyExpiry         = "_exp"
-	BodyRemoved        = "_removed"
-	BodyInternalPrefix = "_sync_" // New internal properties prefix (CBG-1995)
+	BodyDeleted        = "_deleted"     // True means document is deleted (tombstone)
+	BodyRev            = "_rev"         // Revision ID (usually only seen in REST API)
+	BodyId             = "_id"          // Document ID (usually only seen in REST API)
+	BodyRevisions      = "_revisions"   // List of revision IDs or history; see `Revisions` type
+	BodyAttachments    = "_attachments" // Map of attachment names to metadata
+	BodyPurged         = "_purged"      // True means document has been purged
+	BodyExpiry         = "_exp"         // Expiration timestamp
+	BodyRemoved        = "_removed"     // True means document was removed from user's channels
+	BodyInternalPrefix = "_sync_"       // Prefix of new internal properties prefix (CBG-1995)
 )
 
 // Read-only set of reserved document body keys
@@ -51,6 +51,12 @@ func isInternalReservedKey(key string) bool {
 	return bodyInternalKeys.Contains(key) || strings.HasPrefix(key, BodyInternalPrefix)
 }
 
+//-------- BODY
+
+// The body of a document/revision as decoded from JSON.
+type Body map[string]interface{}
+
+// Unmarshals JSON into a nil Body.
 func (b *Body) Unmarshal(data []byte) error {
 
 	if len(data) == 0 {
@@ -66,6 +72,7 @@ func (b *Body) Unmarshal(data []byte) error {
 	return nil
 }
 
+// Returns a new Body whose top-level map is a copy of the original.
 func (body Body) ShallowCopy() Body {
 	if body == nil {
 		return body
@@ -77,6 +84,7 @@ func (body Body) ShallowCopy() Body {
 	return copied
 }
 
+// Returns a deep copy of a generic map.
 func CopyMap(sourceMap map[string]interface{}) map[string]interface{} {
 	copy := make(map[string]interface{}, len(sourceMap))
 	for k, v := range sourceMap {
@@ -90,13 +98,15 @@ func CopyMap(sourceMap map[string]interface{}) map[string]interface{} {
 	return copy
 }
 
-// Returns _attachments property from body, when found.  Checks for either map[string]interface{} (unmarshalled with body),
-// or AttachmentsMeta (written by body by SG)
+// Returns `_attachments“ property from body, when found.
+// Checks for either map[string]interface{} (as unmarshalled with body),
+// or AttachmentsMeta (written to body by SG)
 func (body Body) GetAttachments() (AttachmentsMeta, error) {
 	return AttachmentsMetaFromAny(body[BodyAttachments])
 }
 
-// Returns _attachments property as a raw map-of-maps with no structs.
+// Returns `_attachments“ property as a raw map-of-maps with no structs.
+// (Mostly only useful for tests and the REST API.)
 func (body Body) GetRawAttachments() AttachmentsMetaJSON {
 	switch atts := body[BodyAttachments].(type) {
 	case AttachmentsMeta:
@@ -108,9 +118,8 @@ func (body Body) GetRawAttachments() AttachmentsMetaJSON {
 	return nil
 }
 
-// Returns the expiry as uint32 (using getExpiry), and removes the _exp property from the body
+// Returns the expiry as a Couchbase Server timestamp, and removes the `_exp` property from the map.
 func (body Body) ExtractExpiry() (uint32, error) {
-
 	exp, present, err := body.getExpiry()
 	if !present || err != nil {
 		return exp, err
@@ -120,19 +129,21 @@ func (body Body) ExtractExpiry() (uint32, error) {
 	return exp, nil
 }
 
+// Returns true if the `_deleted` property is true, and removes that property from the map.
 func (body Body) ExtractDeleted() bool {
 	deleted, _ := body[BodyDeleted].(bool)
 	delete(body, BodyDeleted)
 	return deleted
 }
 
+// Returns the value of the `_rev` property, and removes that property from the map.
 func (body Body) ExtractRev() string {
 	revid, _ := body[BodyRev].(string)
 	delete(body, BodyRev)
 	return revid
 }
 
-// Looks up the _exp property in the document, and turns it into a Couchbase Server expiry value, as:
+// Returns the expiry as a Couchbase Server timestamp.
 func (body Body) getExpiry() (uint32, bool, error) {
 	rawExpiry, ok := body["_exp"]
 	if !ok {
@@ -145,7 +156,7 @@ func (body Body) getExpiry() (uint32, bool, error) {
 	return *expiry, true, err
 }
 
-// NonJSONPrefix is used to ensure old revision bodies aren't hidden from N1QL/Views.
+// NonJSONPrefix is used to ensure old revision bodies are hidden from N1QL/Views.
 const NonJSONPrefix = byte(1)
 
 //-------- REVISIONS

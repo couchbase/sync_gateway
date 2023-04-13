@@ -47,7 +47,7 @@ func (db *DatabaseCollectionWithUser) ImportDocRaw(ctx context.Context, docid st
 		if err != nil {
 			return nil, err
 		}
-		delete(body, BodyPurged)
+		delete(body, documents.BodyPurged)
 	}
 
 	existingBucketDoc := &sgbucket.BucketDocument{
@@ -315,7 +315,7 @@ func (db *DatabaseCollectionWithUser) importDoc(ctx context.Context, docid strin
 
 		newDoc.UpdateBody(body)
 		if !wasStripped && !isDelete {
-			newDoc.PokeRawBody(rawBodyForRevID)
+			newDoc.UpdateBodyBytes(rawBodyForRevID)
 		}
 
 		// Existing attachments are preserved while importing an updated body - we don't (currently) support changing

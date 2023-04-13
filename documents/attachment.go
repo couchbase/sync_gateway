@@ -27,8 +27,7 @@ const (
 	AttVersion2 int = 2
 )
 
-// A struct which models an attachment.  Currently only used by test code, however
-// new code or refactoring in the main codebase should try to use where appropriate.
+// A single document attachment. Found in an AttachmentsMeta map.
 type DocAttachment struct {
 	ContentType   string `json:"content_type,omitempty"`   // MIME type
 	Digest        string `json:"digest,omitempty"`         // Base64 SHA-1 digest
@@ -42,13 +41,13 @@ type DocAttachment struct {
 	Data          []byte `json:"data,omitempty"`           // Actual data
 }
 
+// A document's `_attachments` map parsed into a map of DocAttachment structs.
+type AttachmentsMeta map[string]*DocAttachment
+
 // A pseudonym for the generic map that a single attachment parses to by default
 // (This is defined with `=` so it is a pure pseudonym, not a new type; otherwise delta
 // processing would get confused by it.)
 type DocAttachmentJSON = map[string]any
-
-// A document's `_attachments` map parsed into a map of DocAttachment structs.
-type AttachmentsMeta map[string]*DocAttachment
 
 // A pseudonym for the generic map that `_attachments` parses to by default
 // (This is defined with `=` so it is a pure pseudonym, not a new type; otherwise delta
@@ -152,7 +151,8 @@ func (att *DocAttachment) AsMap() DocAttachmentJSON {
 
 //-------- ATTACHMENTS_META:
 
-// Converts a `map[string]any` to `AttachmentsMeta` (map of `DocAttachment`)
+// Converts a `map[string]any` to `AttachmentsMeta` (map of `DocAttachment`.)
+// nil is returned as nil, with no error.
 func AttachmentsMetaFromJSON(atts AttachmentsMetaJSON) (AttachmentsMeta, error) {
 	if atts == nil {
 		return nil, nil
@@ -168,6 +168,11 @@ func AttachmentsMetaFromJSON(atts AttachmentsMetaJSON) (AttachmentsMeta, error) 
 	return meta, nil
 }
 
+// Tries to convert anything to `AttachmentsMeta`.
+// - An `AttachmentsMeta` is returned as-is.
+// - A `map[string]any` is converted via `AttachmentsMetaFromJSON`.
+// - nil just returns nil, with no error.
+// - Otherwise returns nil and ErrAttachmentMeta.
 func AttachmentsMetaFromAny(x any) (AttachmentsMeta, error) {
 	switch atts := x.(type) {
 	case AttachmentsMeta:
@@ -208,12 +213,13 @@ func (attachments AttachmentsMeta) DeepCopy() AttachmentsMeta {
 	}
 	result := make(AttachmentsMeta, len(attachments))
 	for key, att := range attachments {
-		copiedAtt := *att
+		var copiedAtt DocAttachment = *att
 		result[key] = &copiedAtt
 	}
 	return result
 }
 
+// Returns a string describing an AttachmentsMeta, for logging/debugging.
 func (attachments AttachmentsMeta) String() string {
 	strs := []string{}
 	for key, att := range attachments {
@@ -222,7 +228,7 @@ func (attachments AttachmentsMeta) String() string {
 	return "AttachmentsMeta{" + strings.Join(strs, ", ") + "}"
 }
 
-// DeleteAttachmentVersion removes attachment versions from the AttachmentsMeta map specified.
+// DeleteAttachmentVersion clears the Version of each attachment in the map.
 func (attachments AttachmentsMeta) DeleteAttachmentVersions() {
 	for _, value := range attachments {
 		value.Version = 0

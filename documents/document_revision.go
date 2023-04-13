@@ -73,6 +73,7 @@ func ParseDocumentRevision(json []byte, specialProperties ...string) (DocumentRe
 }
 
 // Creates a DocumentRevision from already-parsed JSON (a `Body` map.)
+// The `specialProperties` act as described for `ParseDocumentRevision`.
 func DocumentRevisionFromBody(body Body, specialProperties ...string) (rev DocumentRevision, err error) {
 	appProperties := Body{}
 	for key, val := range body {
@@ -94,6 +95,7 @@ func DocumentRevisionFromBody(body Body, specialProperties ...string) (rev Docum
 }
 
 // Creates a Document struct populated from a DocumentRevision.
+// This is useful for passing a DocumentRevision to db methods like `PutExistingRev`.
 func (rev *DocumentRevision) AsDocument() *Document {
 	return &Document{
 		ID:             rev.DocID,
@@ -121,7 +123,7 @@ func (rev *DocumentRevision) BodyBytes() []byte {
 	return rev._bodyBytes
 }
 
-// The JSON data of the body, with the given special properties added
+// The JSON data of the body, with the given special properties inserted
 // if they have non-default/empty values in the struct.
 func (rev *DocumentRevision) BodyBytesWith(specialProperties ...string) ([]byte, error) {
 	bodyBytes := rev._bodyBytes

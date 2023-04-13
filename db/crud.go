@@ -844,7 +844,7 @@ func (db *DatabaseCollectionWithUser) Put(ctx context.Context, docid string, bod
 		// If no special properties were stripped and document wasn't deleted, the canonical bytes represent the current
 		// body.  In this scenario, store canonical bytes as newDoc._rawBody
 		if !wasStripped && !isDeleted {
-			newDoc.PokeRawBody(canonicalBytesForRevID)
+			newDoc.UpdateBodyBytes(canonicalBytesForRevID)
 		}
 
 		// Handle telling the user if there is a conflict
@@ -1202,7 +1202,7 @@ func (db *DatabaseCollectionWithUser) resolveDocLocalWins(ctx context.Context, l
 		}
 	}
 
-	remoteDoc.PokeRawBody(docBodyBytes)
+	remoteDoc.UpdateBodyBytes(docBodyBytes)
 
 	// Tombstone the local revision
 	localRevID := localDoc.CurrentRev
