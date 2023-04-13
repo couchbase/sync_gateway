@@ -61,7 +61,7 @@ func TestCORSDynamicSet(t *testing.T) {
 	RequireStatus(t, response, http.StatusBadRequest)
 	require.Contains(t, response.Body.String(), invalidDatabaseName)
 
-	// successful request
+	// successful request - mismatched headers
 	response = rt.SendUserRequestWithHeaders("GET", "/{{.keyspace}}/_all_docs", "", reqHeaders, username, RestTesterDefaultUserPassword)
 	require.Equal(t, "", response.Header().Get("Access-Control-Allow-Origin"))
 	RequireStatus(t, response, http.StatusOK)
@@ -73,6 +73,23 @@ func TestCORSDynamicSet(t *testing.T) {
 
 	response = rt.SendUserRequestWithHeaders("GET", "/{{.db}}/", "", reqHeaders, username, RestTesterDefaultUserPassword)
 	require.Equal(t, "", response.Header().Get("Access-Control-Allow-Origin"))
+	RequireStatus(t, response, http.StatusOK)
+
+	// successful request - matched headers
+	reqHeaders = map[string]string{
+		"Origin": "http://example.org",
+	}
+	response = rt.SendUserRequestWithHeaders("GET", "/{{.keyspace}}/_all_docs", "", reqHeaders, username, RestTesterDefaultUserPassword)
+	require.Equal(t, "http://example.org", response.Header().Get("Access-Control-Allow-Origin"))
+	RequireStatus(t, response, http.StatusOK)
+
+	response = rt.SendRequestWithHeaders("GET", "/{{.db}}/", "", reqHeaders)
+	require.Equal(t, "http://example.org", response.Header().Get("Access-Control-Allow-Origin"))
+	RequireStatus(t, response, http.StatusUnauthorized)
+	require.Contains(t, response.Body.String(), ErrLoginRequired.Message)
+
+	response = rt.SendUserRequestWithHeaders("GET", "/{{.db}}/", "", reqHeaders, username, RestTesterDefaultUserPassword)
+	require.Equal(t, "http://example.org", response.Header().Get("Access-Control-Allow-Origin"))
 	RequireStatus(t, response, http.StatusOK)
 
 }

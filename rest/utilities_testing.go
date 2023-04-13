@@ -80,6 +80,8 @@ const (
 	useMultipleCollection
 )
 
+var defaultTestingCORSOrigin = []string{"http://example.com", "*", "http://staging.example.com"}
+
 // RestTester provides a fake server for testing endpoints
 type RestTester struct {
 	*RestTesterConfig
@@ -181,7 +183,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 	}
 
 	corsConfig := &auth.CORSConfig{
-		Origin:      []string{"http://example.com", "*", "http://staging.example.com"},
+		Origin:      defaultTestingCORSOrigin,
 		LoginOrigin: []string{"http://example.com"},
 		Headers:     []string{},
 		MaxAge:      1728000,
