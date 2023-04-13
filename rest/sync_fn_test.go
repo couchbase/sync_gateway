@@ -514,7 +514,7 @@ func TestDBOfflineSingleResync(t *testing.T) {
 
 func TestResyncOverDCP(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test doesn't works with walrus")
+		t.Skip("DCP requires gocb and CBS")
 	}
 	base.LongRunningTest(t)
 
@@ -599,7 +599,7 @@ func TestResyncOverDCP(t *testing.T) {
 					return false
 				}
 			})
-			assert.NoError(t, err)
+			require.NoError(t, err)
 
 			assert.GreaterOrEqual(t, int(rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value()), testCase.expectedSyncFnRuns)
 			assert.GreaterOrEqual(t, resyncManagerStatus.DocsProcessed, testCase.docsCreated)

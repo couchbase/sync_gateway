@@ -307,7 +307,7 @@ func (b *BackgroundManager) getStatusFromCluster() ([]byte, error) {
 		_, _, err = b.clusterAwareOptions.metadataStore.GetRaw(b.clusterAwareOptions.HeartbeatDocID())
 		if err != nil {
 			if base.IsDocNotFoundError(err) {
-				if clusterStatus["status"] != BackgroundProcessStateCompleted {
+				if clusterState != string(BackgroundProcessStateCompleted) {
 					clusterStatus["status"] = BackgroundProcessStateStopped
 					status, err = base.JSONMarshal(clusterStatus)
 					if err != nil {
