@@ -3,6 +3,7 @@ package rest
 import (
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -401,5 +402,58 @@ func TestUserAPI(t *testing.T) {
 
 	// DELETE the user, double escape username, will succeed
 	assertStatus(t, rt.SendAdminRequest("DELETE", "/db/_user/0%257C%4059", ""), 200)
+
+}
+
+func TestUnauthorizedAccessForDB(t *testing.T) {
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	dbName := "db"
+
+	response := rt.SendRequest(http.MethodGet, "/"+dbName+"/", "")
+	assertStatus(t, response, http.StatusUnauthorized)
+	require.Contains(t, response.Body.String(), ErrLoginRequired.Message)
+
+	response = rt.SendRequest(http.MethodGet, "/notadb/", "")
+	assertStatus(t, response, http.StatusUnauthorized)
+	require.Contains(t, response.Body.String(), ErrLoginRequired.Message)
+
+	// create sessions before users
+	const alice = "alice"
+	const bob = "bob"
+	response = rt.SendAdminRequest(http.MethodPut,
+		"/"+dbName+"/_user/"+alice,
+		`{"name": "`+alice+`", "password": "letmein"}`)
+	assertStatus(t, response, http.StatusCreated)
+
+	response = rt.SendRequest(http.MethodPost,
+		"/"+dbName+"/_session",
+		`{"name": "`+alice+`", "password": "letmein"}`)
+	assertStatus(t, response, http.StatusOK)
+
+	cookie := response.Header().Get("Set-Cookie")
+	aliceSessionHeaders := map[string]string{
+		"Cookie": cookie,
+	}
+
+	// alice user can see realdb
+	response = rt.SendUserRequestWithHeaders(http.MethodGet, "/"+dbName+"/", "", nil, alice, "letmein")
+	assertStatus(t, response, http.StatusOK)
+
+	response = rt.SendRequestWithHeaders(http.MethodGet, "/"+dbName+"/", "", aliceSessionHeaders)
+	assertStatus(t, response, http.StatusOK)
+
+	response = rt.SendUserRequestWithHeaders(http.MethodGet, "/notadb/", "", nil, alice, "letmein")
+	assertStatus(t, response, http.StatusUnauthorized)
+	require.Contains(t, response.Body.String(), ErrInvalidLogin.Message)
+
+	response = rt.SendRequestWithHeaders(http.MethodGet, "/notadb/", "", aliceSessionHeaders)
+	assertStatus(t, response, http.StatusUnauthorized)
+	require.Contains(t, response.Body.String(), ErrInvalidLogin.Message)
+
+	response = rt.SendUserRequestWithHeaders(http.MethodGet, "/"+dbName+"/", "", nil, bob, "letmein")
+	assertStatus(t, response, http.StatusUnauthorized)
+	require.Contains(t, response.Body.String(), ErrInvalidLogin.Message)
 
 }
