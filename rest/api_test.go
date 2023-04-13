@@ -678,7 +678,6 @@ func TestFunkyDocAndAttachmentIDs(t *testing.T) {
 }
 
 func TestCORSOrigin(t *testing.T) {
-	// FIXME ADD ASSERTS FROM UPSTREAM
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
