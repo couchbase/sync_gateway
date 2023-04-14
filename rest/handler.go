@@ -321,7 +321,7 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 						if shouldCheckAdminAuth {
 							return base.HTTPErrorf(http.StatusForbidden, "")
 						} else if h.privs == regularPrivs || h.privs == publicPrivs {
-							if !h.providedAuthCredentionals() {
+							if !h.providedAuthCredentials() {
 
 								return ErrLoginRequired
 							}
@@ -687,7 +687,7 @@ func (h *handler) checkAuth(dbCtx *db.DatabaseContext) (err error) {
 		if dbCtx.Options.SendWWWAuthenticateHeader == nil || *dbCtx.Options.SendWWWAuthenticateHeader {
 			h.response.Header().Set("WWW-Authenticate", wwwAuthenticateHeader)
 		}
-		if h.providedAuthCredentionals() {
+		if h.providedAuthCredentials() {
 			return ErrInvalidLogin
 		}
 		return ErrLoginRequired
@@ -1091,9 +1091,13 @@ func (h *handler) getBearerToken() string {
 }
 
 // providedAuthCredentials returns true if basic auth or session auth is enabled
-func (h *handler) providedAuthCredentionals() bool {
+func (h *handler) providedAuthCredentials() bool {
 	username, _ := h.getBasicAuth()
 	if username != "" {
+		return true
+	}
+	token := h.getBearerToken()
+	if token != "" {
 		return true
 	}
 	cookieName := auth.DefaultCookieName

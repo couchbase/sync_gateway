@@ -1529,7 +1529,6 @@ func (c *DatabaseCollectionWithUser) assignSequence(ctx context.Context, docSequ
 // Update unusedSequences in the event that there is a conflict and we have to provide a new sequence number
 // Update and prune RecentSequences
 func (db *DatabaseContext) assignSequence(ctx context.Context, docSequence uint64, doc *Document, unusedSequences []uint64) ([]uint64, error) {
-	var err error
 
 	// Assign the next sequence number, for _changes feed.
 	// Be careful not to request a second sequence # on a retry if we don't need one.
@@ -1544,6 +1543,7 @@ func (db *DatabaseContext) assignSequence(ctx context.Context, docSequence uint6
 		}
 
 		for {
+			var err error
 			if docSequence, err = db.sequences.nextSequence(); err != nil {
 				return unusedSequences, err
 			}
@@ -1551,8 +1551,7 @@ func (db *DatabaseContext) assignSequence(ctx context.Context, docSequence uint6
 			if docSequence > doc.Sequence {
 				break
 			} else {
-				releaseErr := db.sequences.releaseSequence(docSequence)
-				if releaseErr != nil {
+				if err := db.sequences.releaseSequence(docSequence); err != nil {
 					base.WarnfCtx(ctx, "Error returned when releasing sequence %d. Falling back to skipped sequence handling.  Error:%v", docSequence, err)
 				}
 			}
