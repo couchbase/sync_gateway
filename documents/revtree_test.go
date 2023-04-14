@@ -1051,9 +1051,47 @@ func getHistoryWithTimeout(rawDoc *Document, revId string, timeout time.Duration
 
 }
 
+func TestRevtreeUnmarshalLargeTree(t *testing.T) {
+	doc := Document{
+		ID: "docid",
+	}
+	err := base.JSONUnmarshal([]byte(largeRevTree), &doc)
+	assert.NoError(t, err)
+	assert.NoError(t, doc.History.Validate())
+	assert.Equal(t, 2103, doc.History.RevCount())
+
+	oldJson, err := base.JSONMarshal(doc.History)
+	assert.NoError(t, err)
+
+	doc.History.jsonForm = nil
+	newJson, err := base.JSONMarshal(doc.History)
+	assert.NoError(t, err)
+
+	t.Logf("Old size = %d; new size = %d", len(oldJson), len(newJson))
+	t.Logf("NEW JSON: %s", newJson)
+	assert.NotEqual(t, newJson, oldJson)
+	assert.LessOrEqual(t, len(newJson), len(oldJson))
+
+	oldTree := &RevTree{}
+	err = base.JSONUnmarshal(oldJson, &oldTree)
+	assert.NoError(t, err)
+	err = oldTree.Validate()
+	assert.NoError(t, err)
+	assert.Equal(t, 2103, oldTree.RevCount())
+
+	newTree := &RevTree{}
+	err = base.JSONUnmarshal(newJson, &newTree)
+	assert.NoError(t, err)
+	err = newTree.Validate()
+	assert.NoError(t, err)
+	assert.Equal(t, 2103, newTree.RevCount())
+
+	assert.Equal(t, oldTree.Revs(), newTree.Revs())
+}
+
 // ////// BENCHMARK:
 
-func BenchmarkRevTreePruning(b *testing.B) {
+func BenchmarkRevTreePruning(t *testing.B) {
 
 	// Try large rev tree with multiple branches
 	branchSpecs := []BranchSpec{
@@ -1069,40 +1107,66 @@ func BenchmarkRevTreePruning(b *testing.B) {
 		},
 	}
 
-	b.ResetTimer()
+	t.ResetTimer()
 
-	for i := 0; i < b.N; i++ {
+	for i := 0; i < t.N; i++ {
 
-		b.StopTimer()
-		revTree := getMultiBranchTestRevtree1(b, 50, 100, branchSpecs)
-		b.StartTimer()
+		t.StopTimer()
+		revTree := getMultiBranchTestRevtree1(t, 50, 100, branchSpecs)
+		t.StartTimer()
 
 		revTree.PruneRevisions(50, "")
 	}
 
 }
 
-func BenchmarkRevtreeUnmarshal(b *testing.B) {
+func BenchmarkRevtreeUnmarshal(t *testing.B) {
 	doc := Document{
 		ID: "docid",
 	}
 	err := base.JSONUnmarshal([]byte(largeRevTree), &doc)
-	assert.NoError(b, err)
+	assert.NoError(t, err)
 	treeJson, err := base.JSONMarshal(doc.History)
-	assert.NoError(b, err)
+	assert.NoError(t, err)
 
-	b.ResetTimer()
-	b.Run("Marshal into revTree", func(b *testing.B) {
-		revTree := &RevTree{}
+	revTree := &RevTree{}
+	_ = base.JSONUnmarshal(treeJson, &revTree)
+	revTree.jsonForm = nil
+	newJson, _ := base.JSONMarshal(revTree)
+
+	t.Logf("Old size = %d; new size = %d", len(treeJson), len(newJson))
+
+	t.ResetTimer()
+
+	t.Run("Unmarshal old format", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
+			revTree := RevTreeList{}
 			_ = base.JSONUnmarshal(treeJson, &revTree)
 		}
 	})
 
-	b.Run("Marshal into revTreeList", func(b *testing.B) {
-		revTree := RevTreeList{}
+	t.Run("Unmarshal old format into RevTree (lazy)", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
+			revTree := &RevTree{}
 			_ = base.JSONUnmarshal(treeJson, &revTree)
+		}
+	})
+
+	t.Run("Unmarshal old format into revTree", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			revTree := &RevTree{}
+			_ = base.JSONUnmarshal(treeJson, &revTree)
+			_ = revTree.Validate()
+		}
+	})
+
+	t.Run("Unmarshal new format into revTree", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			revTree := &RevTree{}
+			err := base.JSONUnmarshal(newJson, &revTree)
+			assert.NoError(b, err)
+			err = revTree.Validate()
+			assert.NoError(b, err)
 		}
 	})
 }

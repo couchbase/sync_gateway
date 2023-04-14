@@ -77,6 +77,11 @@ func (tree *RevTree) initMutable() {
 	tree.jsonForm = nil
 }
 
+func (tree *RevTree) Validate() error {
+	tree.init()
+	return tree.parseErr
+}
+
 // The map from revIDs to RevInfos.
 func (tree *RevTree) Revs() RevMap {
 	tree.initMutable()
@@ -113,153 +118,6 @@ func (tree *RevTree) GetInfo(revid string) (info *RevInfo, err error) {
 // only for tests
 func (tree *RevTree) insert(revid string, rev *RevInfo) {
 	tree.Revs()[revid] = rev
-}
-
-// The form in which a RevTree is stored in JSON. For space-efficiency it's stored as an array of
-// rev IDs, with a parallel array of parent indexes. Ordering in the arrays doesn't matter.
-// So the parent of Revs[i] is Revs[Parents[i]] (unless Parents[i] == -1, which denotes a root.)
-type RevTreeList struct {
-	Revs           []string          `json:"revs"`                 // The revision IDs
-	Parents        []int             `json:"parents"`              // Index of parent of each revision (-1 if root)
-	Deleted        []int             `json:"deleted,omitempty"`    // Indexes of revisions that are deletions
-	Bodies_Old     []string          `json:"bodies,omitempty"`     // JSON of each revision (legacy)
-	BodyMap        map[string]string `json:"bodymap,omitempty"`    // JSON of each revision
-	BodyKeyMap     map[string]string `json:"bodyKeyMap,omitempty"` // Keys of revision bodies stored in external documents
-	Channels       []base.Set        `json:"channels"`
-	HasAttachments []int             `json:"hasAttachments,omitempty"` // Indexes of revisions that has attachments
-}
-
-func (tree RevTree) MarshalJSON() ([]byte, error) {
-	if tree.jsonForm != nil {
-		// If I haven't been accessed yet, just return the JSON that was read
-		return tree.jsonForm, nil
-	}
-
-	n := tree.RevCount()
-	rep := RevTreeList{
-		Revs:     make([]string, n),
-		Parents:  make([]int, n),
-		Channels: make([]base.Set, n),
-	}
-	revIndexes := map[string]int{"": -1}
-
-	i := 0
-	for _, info := range tree.revs {
-		revIndexes[info.ID] = i
-		rep.Revs[i] = info.ID
-		if info.Body != nil || info.BodyKey != "" {
-			// Marshal either the BodyKey or the Body, depending on whether a BodyKey is specified
-			if info.BodyKey == "" {
-				if rep.BodyMap == nil {
-					rep.BodyMap = make(map[string]string, 1)
-				}
-				rep.BodyMap[strconv.FormatInt(int64(i), 10)] = string(info.Body)
-			} else {
-				if rep.BodyKeyMap == nil {
-					rep.BodyKeyMap = make(map[string]string)
-				}
-				rep.BodyKeyMap[strconv.FormatInt(int64(i), 10)] = info.BodyKey
-			}
-		}
-		rep.Channels[i] = info.Channels
-		if info.Deleted {
-			if rep.Deleted == nil {
-				rep.Deleted = make([]int, 0, 1)
-			}
-			rep.Deleted = append(rep.Deleted, i)
-		}
-		if info.HasAttachments {
-			if rep.HasAttachments == nil {
-				rep.HasAttachments = make([]int, 0, 1)
-			}
-			rep.HasAttachments = append(rep.HasAttachments, i)
-		}
-		i++
-	}
-
-	for i, revid := range rep.Revs {
-		parentRevId := tree.revs[revid].Parent
-		parentRevIndex, ok := revIndexes[parentRevId]
-		if ok {
-			rep.Parents[i] = parentRevIndex
-		} else {
-			// If the parent revision does not exist in the revtree due to being a dangling parent, then
-			// consider this a root node and set the parent index to -1
-			// See SG Issue #2847 for more details.
-			rep.Parents[i] = -1
-		}
-
-	}
-
-	return base.JSONMarshal(rep)
-}
-
-func (tree *RevTree) UnmarshalJSON(inputjson []byte) (err error) {
-	// Be lazy: just save the JSON until the first time I'm accessed (see lazyLoadJSON)
-	tree.jsonForm = inputjson
-	tree.revs = nil
-	return nil
-}
-
-func (tree *RevTree) lazyLoadJSON() (err error) {
-	var rep RevTreeList
-	err = base.JSONUnmarshal(tree.jsonForm, &rep)
-	if err != nil {
-		return
-	}
-
-	// validate revTreeList revs, parents and channels lists are of equal length
-	if !(len(rep.Revs) == len(rep.Parents) && len(rep.Revs) == len(rep.Channels)) {
-		return errors.New("revtreelist data is invalid, revs/parents/channels counts are inconsistent")
-	}
-
-	tree.revs = make(RevMap, len(rep.Revs))
-
-	for i, revid := range rep.Revs {
-		info := RevInfo{ID: revid}
-		stringIndex := strconv.FormatInt(int64(i), 10)
-		if rep.BodyMap != nil {
-			if body := rep.BodyMap[stringIndex]; body != "" {
-				info.Body = []byte(body)
-			}
-		} else if rep.Bodies_Old != nil && len(rep.Bodies_Old[i]) > 0 {
-			info.Body = []byte(rep.Bodies_Old[i])
-		}
-		if rep.BodyKeyMap != nil {
-			bodyKey, ok := rep.BodyKeyMap[stringIndex]
-			if ok {
-				info.BodyKey = bodyKey
-			}
-		}
-		if rep.Channels != nil {
-			info.Channels = rep.Channels[i]
-		}
-		parentIndex := rep.Parents[i]
-		if parentIndex >= 0 {
-			info.Parent = rep.Revs[parentIndex]
-		}
-		tree.revs[revid] = &info
-	}
-	if rep.Deleted != nil {
-		for _, i := range rep.Deleted {
-			info := tree.revs[rep.Revs[i]]
-			info.Deleted = true // because tree.revs[rep.Revs[i]].Deleted=true is a compile error
-			tree.revs[rep.Revs[i]] = info
-		}
-	}
-	if rep.HasAttachments != nil {
-		for _, i := range rep.HasAttachments {
-			info := tree.revs[rep.Revs[i]]
-			info.HasAttachments = true
-			tree.revs[rep.Revs[i]] = info
-		}
-	}
-	return
-}
-
-func (tree *RevTree) Validate() error {
-	tree.init()
-	return tree.parseErr
 }
 
 func (tree *RevTree) ContainsCycles() bool {
@@ -558,8 +416,7 @@ func (tree *RevTree) redact(salt string) {
 //	pruned: number of revisions pruned
 //	prunedTombstoneBodyKeys: set of tombstones with external body storage that were pruned, as map[revid]bodyKey
 func (tree *RevTree) PruneRevisions(maxDepth uint32, keepRev string) (pruned int, prunedTombstoneBodyKeys map[string]string) {
-	tree.init()
-	if len(tree.revs) <= int(maxDepth) {
+	if tree.RevCount() <= int(maxDepth) {
 		return
 	}
 
@@ -800,8 +657,7 @@ func (tree *RevTree) RenderGraphvizDot() string {
 // Returns the history of a revid as an array of revids in reverse chronological order.
 // Returns error if detects cycle(s) in rev tree
 func (tree *RevTree) GetHistory(revid string) ([]string, error) {
-	tree.init()
-	maxHistory := len(tree.revs)
+	maxHistory := tree.RevCount()
 
 	history := make([]string, 0, 5)
 	for revid != "" {
@@ -816,4 +672,227 @@ func (tree *RevTree) GetHistory(revid string) ([]string, error) {
 		revid = info.Parent
 	}
 	return history, nil
+}
+
+//////// MARSHAL / UNMARSHAL:
+
+// used for JSON marshaling of RevInfo
+type extRevInfo struct {
+	ID          string   `json:"i"`
+	ParentIndex uint32   `json:"p,omitempty"`
+	BodyKey     string   `json:"k,omitempty"`
+	Body        string   `json:"b,omitempty"`
+	Flags       int      `json:"f,omitempty"`
+	Channels    []uint32 `json:"c,omitempty"`
+	rev         *RevInfo
+}
+
+type extRevTree struct {
+	Revs     []extRevInfo `json:"_revs"`
+	Channels []string     `json:"_channels"`
+}
+
+func (tree RevTree) MarshalJSON() ([]byte, error) {
+	if tree.jsonForm != nil {
+		// If I haven't been accessed yet, just return the JSON that was read
+		return tree.jsonForm, nil
+	}
+
+	// ---- variables and subroutines
+
+	n := tree.RevCount()
+	ext := extRevTree{
+		Revs:     make([]extRevInfo, 0, n),
+		Channels: nil,
+	}
+	indexOf := make(map[string]uint32, n)     // maps revID to index in ext.Revs array
+	indexOfChannel := make(map[string]uint32) // Maps channel to index in ext.Channels array
+
+	mkFlags := func(rev *RevInfo) int {
+		// converts Deleted and HasAttachment into a single flag int
+		if rev.Deleted {
+			return 1
+		} else if rev.HasAttachments {
+			return 2
+		} else {
+			return 0
+		}
+	}
+
+	encodeChannels := func(channels base.Set) []uint32 {
+		// converts Channels set into an array of indices in extRevTree.Channels[]
+		if len(channels) == 0 {
+			return nil
+		}
+		result := make([]uint32, 0, len(channels))
+		for ch := range channels {
+			i, found := indexOfChannel[ch]
+			if !found {
+				i = uint32(len(ext.Channels))
+				ext.Channels = append(ext.Channels, ch)
+				indexOfChannel[ch] = i
+			}
+			result = append(result, i)
+		}
+		return result
+	}
+
+	addRev := func(rev *RevInfo) uint32 {
+		// converts a RevInfo into an extRevInfo and appends it to extRevTree.Revs[]
+		index := uint32(len(ext.Revs))
+		ext.Revs = append(ext.Revs, extRevInfo{
+			ID:       rev.ID,
+			BodyKey:  rev.BodyKey,
+			Channels: encodeChannels(rev.Channels),
+			Flags:    mkFlags(rev),
+			rev:      rev,
+		})
+		if rev.Body != nil {
+			ext.Revs[index].Body = string(rev.Body)
+		}
+		indexOf[rev.ID] = index
+		return index
+	}
+
+	// ---- Now the code:
+
+	// First, add the leaf revs:
+	tree.ForEachLeaf(func(rev *RevInfo) { addRev(rev) })
+
+	// Now walk through the Revs array and add each revision's parent to it, breadth-first:
+	for i := 0; i < n; i++ {
+		if parentID := ext.Revs[i].rev.Parent; parentID != "" {
+			par, found := indexOf[parentID]
+			if !found {
+				par = addRev(tree.revs[parentID])
+			}
+			ext.Revs[i].ParentIndex = par
+		}
+	}
+
+	// Finally return the JSON encoding of the extRevTree:
+	return base.JSONMarshal(ext)
+}
+
+func (tree *RevTree) UnmarshalJSON(inputjson []byte) (err error) {
+	// Be lazy: just save the JSON until the first time I'm accessed (see lazyLoadJSON)
+	tree.jsonForm = inputjson
+	tree.revs = nil
+	tree.parseErr = nil
+	return nil
+}
+
+// Actually unmarshals the JSON saved in `jsonForm`
+func (tree *RevTree) lazyLoadJSON() (err error) {
+	// New format begins with either `{"_revs":` or  `{"_channels":`
+	if tree.jsonForm[2] != '_' {
+		return tree.oldUnmarshalJSON(tree.jsonForm)
+	}
+
+	var ext extRevTree
+	if err := base.JSONUnmarshal(tree.jsonForm, &ext); err != nil {
+		return err
+	}
+	tree.revs = make(RevMap, len(ext.Revs))
+
+	decodeChannels := func(indexes []uint32) base.Set {
+		// converts an array of channel indices back into a Set
+		if len(indexes) == 0 {
+			return nil
+		}
+		channels := make(base.Set, len(indexes))
+		for _, i := range indexes {
+			channels.Add(ext.Channels[i])
+		}
+		return channels
+	}
+
+	for _, extRev := range ext.Revs {
+		rev := &RevInfo{
+			ID:             extRev.ID,
+			BodyKey:        extRev.BodyKey,
+			Channels:       decodeChannels(extRev.Channels),
+			Deleted:        (extRev.Flags & 1) != 0,
+			HasAttachments: (extRev.Flags & 2) != 0,
+		}
+		if extRev.Body != "" {
+			rev.Body = []byte(extRev.Body)
+		}
+		if extRev.ParentIndex > 0 {
+			rev.Parent = ext.Revs[extRev.ParentIndex].ID
+		}
+		tree.revs[extRev.ID] = rev
+	}
+	return nil
+}
+
+//////// UNMARSHALING OLDER FORMAT:
+
+// The old form in which a RevTree was stored in JSON.
+type RevTreeList struct {
+	Revs           []string          `json:"revs"`                 // The revision IDs
+	Parents        []int             `json:"parents"`              // Index of parent of each revision (-1 if root)
+	Deleted        []int             `json:"deleted,omitempty"`    // Indexes of revisions that are deletions
+	Bodies_Old     []string          `json:"bodies,omitempty"`     // JSON of each revision (legacy)
+	BodyMap        map[string]string `json:"bodymap,omitempty"`    // JSON of each revision
+	BodyKeyMap     map[string]string `json:"bodyKeyMap,omitempty"` // Keys of revision bodies stored in external documents
+	Channels       []base.Set        `json:"channels"`
+	HasAttachments []int             `json:"hasAttachments,omitempty"` // Indexes of revisions that has attachments
+}
+
+func (tree *RevTree) oldUnmarshalJSON(inputjson []byte) (err error) {
+	var rep RevTreeList
+	err = base.JSONUnmarshal(inputjson, &rep)
+	if err != nil {
+		return
+	}
+
+	// validate revTreeList revs, parents and channels lists are of equal length
+	if !(len(rep.Revs) == len(rep.Parents) && len(rep.Revs) == len(rep.Channels)) {
+		return errors.New("revtreelist data is invalid, revs/parents/channels counts are inconsistent")
+	}
+
+	tree.revs = make(RevMap, len(rep.Revs))
+
+	for i, revid := range rep.Revs {
+		info := RevInfo{ID: revid}
+		stringIndex := strconv.FormatInt(int64(i), 10)
+		if rep.BodyMap != nil {
+			if body := rep.BodyMap[stringIndex]; body != "" {
+				info.Body = []byte(body)
+			}
+		} else if rep.Bodies_Old != nil && len(rep.Bodies_Old[i]) > 0 {
+			info.Body = []byte(rep.Bodies_Old[i])
+		}
+		if rep.BodyKeyMap != nil {
+			bodyKey, ok := rep.BodyKeyMap[stringIndex]
+			if ok {
+				info.BodyKey = bodyKey
+			}
+		}
+		if rep.Channels != nil {
+			info.Channels = rep.Channels[i]
+		}
+		parentIndex := rep.Parents[i]
+		if parentIndex >= 0 {
+			info.Parent = rep.Revs[parentIndex]
+		}
+		tree.revs[revid] = &info
+	}
+	if rep.Deleted != nil {
+		for _, i := range rep.Deleted {
+			info := tree.revs[rep.Revs[i]]
+			info.Deleted = true // because tree.revs[rep.Revs[i]].Deleted=true is a compile error
+			tree.revs[rep.Revs[i]] = info
+		}
+	}
+	if rep.HasAttachments != nil {
+		for _, i := range rep.HasAttachments {
+			info := tree.revs[rep.Revs[i]]
+			info.HasAttachments = true
+			tree.revs[rep.Revs[i]] = info
+		}
+
+	}
+	return
 }

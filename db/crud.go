@@ -624,7 +624,7 @@ func (db *DatabaseCollectionWithUser) get1xRevFromDoc(ctx context.Context, doc *
 		// Update: this applies to non-deletions too, since the client may have lost access to
 		// the channel and gotten a "removed" entry in the _changes feed. It then needs to
 		// incorporate that tombstone and for that it needs to see the _revisions property.
-		if revid == "" || doc.History.Get(revid) == nil {
+		if revid == "" || !doc.History.Contains(revid) {
 			return nil, false, err
 		}
 		if doc.History.Get(revid).Deleted {
@@ -1625,7 +1625,7 @@ func (db *DatabaseCollectionWithUser) IsIllegalConflict(ctx context.Context, doc
 	// case c: If current doc is a tombstone, disconnected branch resurrections are allowed
 	if doc.IsDeleted() {
 		for _, ancestorRevID := range docHistory {
-			if doc.History.Get(ancestorRevID) != nil {
+			if doc.History.Contains(ancestorRevID) {
 				base.DebugfCtx(ctx, base.KeyCRUD, "Conflict - document is deleted, but update would branch from existing revision.")
 				return true
 			}
@@ -1900,7 +1900,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 		db.dbStats().Database().ConflictWriteCount.Add(1)
 	}
 
-	if doc.History.Get(newRevID) != nil {
+	if doc.History.Contains(newRevID) {
 		// Store the new revision in the cache
 		history, getHistoryErr := doc.History.GetHistory(newRevID)
 		if getHistoryErr != nil {
