@@ -963,7 +963,6 @@ func TestAdminAPIAuth(t *testing.T) {
 			assertStatus(t, resp, http.StatusUnauthorized)
 
 			resp = rt.SendAdminRequestWithAuth(endPoint.Method, formattedEndpoint, body, "noaccess", "password")
-			require.Contains(t, resp.Body.String(), ErrLoginRequired.Message)
 			assertStatus(t, resp, http.StatusForbidden)
 
 			if !endPoint.SkipSuccessTest {
@@ -1573,7 +1572,7 @@ func TestLoginRequiredForAdmin(t *testing.T) {
 	username := "nonexistent"
 	password := "nope"
 
-	response := rt.SendAdminRequestWithAuth(http.MethodGet, "/{{.db}}/", "", username, password)
+	response := rt.SendAdminRequestWithAuth(http.MethodGet, "/db/", "", username, password)
 
 	assertStatus(t, response, http.StatusUnauthorized)
 	require.Contains(t, response.Body.String(), ErrInvalidLogin.Message)

@@ -3635,11 +3635,13 @@ func TestNotExistentDBRequest(t *testing.T) {
 
 	// Request to non-existent db with valid credentials
 	resp := rt.SendAdminRequestWithAuth("PUT", "/dbx/_config", "", "random", "password")
-	assertStatus(t, resp, http.StatusForbidden)
+	assertStatus(t, resp, http.StatusUnauthorized)
+	require.Contains(t, resp.Body.String(), ErrInvalidLogin.Message)
 
 	// Request to non-existent db with invalid credentials
 	resp = rt.SendAdminRequestWithAuth("PUT", "/dbx/_config", "", "random", "passwordx")
 	assertStatus(t, resp, http.StatusUnauthorized)
+	require.Contains(t, resp.Body.String(), ErrInvalidLogin.Message)
 }
 
 func TestConfigsIncludeDefaults(t *testing.T) {
