@@ -235,6 +235,66 @@ func (revisions Revisions) ParseAncestorRevisions(toAncestorRevID string) []stri
 	return result
 }
 
+// Splits out the "start" and "ids" properties from encoded revision list
+func splitRevisionList(revisions Revisions) (int, []string) {
+	start, ok := base.ToInt64(revisions[RevisionsStart])
+	digests, _ := GetStringArrayProperty(revisions, RevisionsIds)
+	if ok && len(digests) > 0 && int(start) >= len(digests) {
+		return int(start), digests
+	} else {
+		return 0, nil
+	}
+}
+
+// Standard CouchDB encoding of a revision list: digests without numeric generation prefixes go in
+// the "ids" property, and the first (largest) generation number in the "start" property.
+// The docID parameter is informational only - and used when logging edge cases.
+func EncodeRevisions(docID string, revs []string) Revisions {
+	ids := make([]string, len(revs))
+	var start int
+	for i, revid := range revs {
+		gen, id := ParseRevID(revid)
+		ids[i] = id
+		if i == 0 {
+			start = gen
+		} else if gen != start-i {
+			base.WarnfCtx(context.TODO(), "Found gap in revision list for doc %q. Expecting gen %v but got %v in %v", base.UD(docID), start-i, gen, revs)
+		}
+	}
+	return Revisions{RevisionsStart: start, RevisionsIds: ids}
+}
+
+// Given a revision history encoded by encodeRevisions() and a list of possible ancestor revIDs,
+// trim the history to stop at the first ancestor revID. If no ancestors are found, trim to
+// length maxUnmatchedLen.
+// TODO: Document/rename what the boolean result return value represents
+func TrimEncodedRevisionsToAncestor(revs Revisions, ancestors []string, maxUnmatchedLen int) (result bool, trimmedRevs Revisions) {
+
+	trimmedRevs = revs
+
+	start, digests := splitRevisionList(revs)
+	if digests == nil {
+		return false, trimmedRevs
+	}
+	matchIndex := len(digests)
+	for _, revID := range ancestors {
+		gen, digest := ParseRevID(revID)
+		if index := start - gen; index >= 0 && index < matchIndex && digest == digests[index] {
+			matchIndex = index
+			maxUnmatchedLen = matchIndex + 1
+		}
+	}
+	if maxUnmatchedLen < len(digests) {
+		// Make a shallow copy here in order to avoid data races where multiple goroutines are
+		// modifying the same underlying map returned from the revision cache.
+		// See https://github.com/couchbase/sync_gateway/issues/2427
+		trimmedRevs = revs.ShallowCopy()
+		trimmedRevs[RevisionsIds] = digests[0:maxUnmatchedLen]
+	}
+	return true, trimmedRevs
+
+}
+
 //-------- REVISION IDS:
 
 func CreateRevID(generation int, parentRevID string, body Body) (string, error) {

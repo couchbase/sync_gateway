@@ -23,26 +23,32 @@ import (
 )
 
 // 1-one -- 2-two -- 3-three
-var testmap = MakeRevTree(map[string]*RevInfo{"3-three": {ID: "3-three", Parent: "2-two", Body: []byte("{}")},
-	"2-two": {ID: "2-two", Parent: "1-one", Channels: base.SetOf("ABC", "CBS")},
-	"1-one": {ID: "1-one", Channels: base.SetOf("ABC")}})
+func mktestmap() RevTree {
+	return MakeRevTree(RevMap{"3-three": {ID: "3-three", Parent: "2-two", Body: []byte("{}")},
+		"2-two": {ID: "2-two", Parent: "1-one", Channels: base.SetOf("ABC", "CBS")},
+		"1-one": {ID: "1-one", Channels: base.SetOf("ABC")}})
+}
 
 //	/ 3-three
 //
 // 1-one -- 2-two
 //
 //	\ 3-drei
-var branchymap = MakeRevTree(map[string]*RevInfo{"3-three": {ID: "3-three", Parent: "2-two"},
-	"2-two":  {ID: "2-two", Parent: "1-one"},
-	"1-one":  {ID: "1-one"},
-	"3-drei": {ID: "3-drei", Parent: "2-two"}})
+func mkbranchymap() RevTree {
+	return MakeRevTree(RevMap{"3-three": {ID: "3-three", Parent: "2-two"},
+		"2-two":  {ID: "2-two", Parent: "1-one"},
+		"1-one":  {ID: "1-one"},
+		"3-drei": {ID: "3-drei", Parent: "2-two"}})
+}
 
-var multiroot = MakeRevTree(map[string]*RevInfo{"3-a": {ID: "3-a", Parent: "2-a"},
-	"2-a": {ID: "2-a", Parent: "1-a"},
-	"1-a": {ID: "1-a"},
-	"7-b": {ID: "7-b", Parent: "6-b"},
-	"6-b": {ID: "6-b"},
-})
+func mkmultiroot() RevTree {
+	return MakeRevTree(RevMap{"3-a": {ID: "3-a", Parent: "2-a"},
+		"2-a": {ID: "2-a", Parent: "1-a"},
+		"1-a": {ID: "1-a"},
+		"7-b": {ID: "7-b", Parent: "6-b"},
+		"6-b": {ID: "6-b"},
+	})
+}
 
 type BranchSpec struct {
 	NumRevs                 int
@@ -187,6 +193,7 @@ func getMultiBranchTestRevtree1(t testing.TB, unconflictedBranchNumRevs, winning
 }
 
 func testUnmarshal(t *testing.T, jsonString string) RevTree {
+	testmap := mktestmap()
 	gotmap := RevTree{}
 	assert.NoError(t, base.JSONUnmarshal([]byte(jsonString), &gotmap), "Couldn't parse RevTree from JSON")
 	assert.NoError(t, gotmap.Validate())
@@ -243,6 +250,7 @@ func TestRevTreeUnmarshalRevChannelCountMismatch(t *testing.T) {
 }
 
 func TestRevTreeMarshal(t *testing.T) {
+	testmap := mktestmap()
 	bytes, err := base.JSONMarshal(testmap)
 	assert.NoError(t, err, "Couldn't write RevTree to JSON")
 	fmt.Printf("Marshaled RevTree as %s\n", string(bytes))
@@ -250,12 +258,14 @@ func TestRevTreeMarshal(t *testing.T) {
 }
 
 func TestRevTreeAccess(t *testing.T) {
+	testmap := mktestmap()
 	assert.True(t, testmap.Contains("3-three"), "contains 3 failed")
 	assert.True(t, testmap.Contains("1-one"), "contains 1 failed")
 	assert.False(t, testmap.Contains("foo"), "contains false positive")
 }
 
 func TestRevTreeParentAccess(t *testing.T) {
+	testmap := mktestmap()
 	parent := testmap.GetParent("3-three")
 	assert.Equal(t, "2-two", parent)
 	parent = testmap.GetParent("1-one")
@@ -263,20 +273,24 @@ func TestRevTreeParentAccess(t *testing.T) {
 }
 
 func TestRevTreeGetHistory(t *testing.T) {
+	testmap := mktestmap()
 	history, err := testmap.GetHistory("3-three")
 	assert.True(t, err == nil)
 	assert.Equal(t, []string{"3-three", "2-two", "1-one"}, history)
 }
 
 func TestRevTreeGetLeaves(t *testing.T) {
+	testmap := mktestmap()
 	leaves := testmap.GetLeaves()
 	assert.Equal(t, []string{"3-three"}, leaves)
+	branchymap := mkbranchymap()
 	leaves = branchymap.GetLeaves()
 	sort.Strings(leaves)
 	assert.Equal(t, []string{"3-drei", "3-three"}, leaves)
 }
 
 func TestRevTreeForEachLeaf(t *testing.T) {
+	branchymap := mkbranchymap()
 	var leaves []string
 	branchymap.ForEachLeaf(func(rev *RevInfo) {
 		leaves = append(leaves, rev.ID)
@@ -286,8 +300,7 @@ func TestRevTreeForEachLeaf(t *testing.T) {
 }
 
 func TestRevTreeAddRevision(t *testing.T) {
-	tempmap := testmap.copy()
-	assert.Equal(t, testmap, tempmap)
+	tempmap := mktestmap()
 
 	err := tempmap.AddRevision("testdoc", RevInfo{ID: "4-four", Parent: "3-three"})
 	require.NoError(t, err)
@@ -295,27 +308,24 @@ func TestRevTreeAddRevision(t *testing.T) {
 }
 
 func TestRevTreeAddRevisionWithEmptyID(t *testing.T) {
-	tempmap := testmap.copy()
-	assert.Equal(t, testmap, tempmap)
+	tempmap := mktestmap()
 
 	err := tempmap.AddRevision("testdoc", RevInfo{Parent: "3-three"})
 	assert.Equal(t, fmt.Sprintf("doc: %v, RevTree AddRevision, empty revid is illegal", "testdoc"), err.Error())
 }
 
 func TestRevTreeAddDuplicateRevID(t *testing.T) {
-	tempmap := testmap.copy()
-	assert.Equal(t, testmap, tempmap)
+	tempmap := mktestmap()
 
 	err := tempmap.AddRevision("testdoc", RevInfo{ID: "2-two", Parent: "1-one"})
 	assert.Equal(t, fmt.Sprintf("doc: %v, RevTree AddRevision, already contains rev %q", "testdoc", "2-two"), err.Error())
 }
 
 func TestRevTreeAddRevisionWithMissingParent(t *testing.T) {
-	tempmap := testmap.copy()
-	assert.Equal(t, testmap, tempmap)
+	tempmap := mktestmap()
 
 	err := tempmap.AddRevision("testdoc", RevInfo{ID: "5-five", Parent: "4-four"})
-	assert.Equal(t, fmt.Sprintf("doc: %v, RevTree AddRevision, parent id %q is missing", "testdoc", "4-four"), err.Error())
+	assert.ErrorContains(t, err, fmt.Sprintf("doc: %v, RevTree AddRevision, parent id %q is missing", "testdoc", "4-four"))
 }
 
 func TestRevTreeCompareRevIDs(t *testing.T) {
@@ -327,6 +337,7 @@ func TestRevTreeCompareRevIDs(t *testing.T) {
 }
 
 func TestRevTreeIsLeaf(t *testing.T) {
+	branchymap := mkbranchymap()
 	assert.True(t, branchymap.IsLeaf("3-three"), "isLeaf failed on 3-three")
 	assert.True(t, branchymap.IsLeaf("3-drei"), "isLeaf failed on 3-drei")
 	assert.False(t, branchymap.IsLeaf("2-two"), "isLeaf failed on 2-two")
@@ -335,7 +346,7 @@ func TestRevTreeIsLeaf(t *testing.T) {
 }
 
 func TestRevTreeWinningRev(t *testing.T) {
-	tempmap := branchymap.copy()
+	tempmap := mkbranchymap()
 	winner, branched, conflict := tempmap.WinningRevision()
 	assert.Equal(t, "3-three", winner)
 	assert.True(t, branched)
@@ -356,20 +367,20 @@ func TestRevTreeWinningRev(t *testing.T) {
 
 func TestPruneRevisions(t *testing.T) {
 
-	tempmap := testmap.copy()
+	tempmap := mktestmap()
 	tempmap.computeDepthsAndFindLeaves()
 	assert.Equal(t, uint32(1), tempmap.Get("3-three").depth)
 	assert.Equal(t, uint32(2), tempmap.Get("2-two").depth)
 	assert.Equal(t, uint32(3), tempmap.Get("1-one").depth)
 
-	tempmap = branchymap.copy()
+	tempmap = mkbranchymap()
 	tempmap.computeDepthsAndFindLeaves()
 	assert.Equal(t, uint32(1), tempmap.Get("3-three").depth)
 	assert.Equal(t, uint32(1), tempmap.Get("3-drei").depth)
 	assert.Equal(t, uint32(2), tempmap.Get("2-two").depth)
 	assert.Equal(t, uint32(3), tempmap.Get("1-one").depth)
 
-	tempmap.add("4-vier", &RevInfo{ID: "4-vier", Parent: "3-drei"})
+	tempmap.insert("4-vier", &RevInfo{ID: "4-vier", Parent: "3-drei"})
 	tempmap.computeDepthsAndFindLeaves()
 	assert.Equal(t, uint32(1), tempmap.Get("4-vier").depth)
 	assert.Equal(t, uint32(2), tempmap.Get("3-drei").depth)
@@ -658,7 +669,7 @@ func TestLongestBranch1(t *testing.T) {
 }
 
 func TestLongestBranch2(t *testing.T) {
-
+	multiroot := mkmultiroot()
 	assert.True(t, multiroot.LongestBranch() == 3)
 
 }
@@ -963,7 +974,7 @@ func addAndGet(t *testing.T, revTree *RevTree, revID string, parentRevID string,
 
 // TestPruneRevisionsWithDisconnectedTombstones ensures that disconnected tombstoned branches are correctly pruned away. Reproduces CBG-1076.
 func TestPruneRevisionsWithDisconnected(t *testing.T) {
-	revTree := MakeRevTree(map[string]*RevInfo{
+	revTree := MakeRevTree(RevMap{
 		"100-abc": {ID: "100-abc"},
 		"101-def": {ID: "101-def", Parent: "100-abc", Deleted: true},
 		"101-abc": {ID: "101-abc", Parent: "100-abc"},
