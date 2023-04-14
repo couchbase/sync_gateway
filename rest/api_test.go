@@ -310,20 +310,20 @@ func TestCORSOriginPerDatabase(t *testing.T) {
 	reqHeaders := map[string]string{
 		"Origin": "http://couchbase.com",
 	}
-	response := rt.SendRequestWithHeaders("GET", "/db/", "", reqHeaders)
+	response := rt.SendRequestWithHeaders("GET", "/{{.db}}/", "", reqHeaders)
 	assert.Equal(t, "http://couchbase.com", response.Header().Get("Access-Control-Allow-Origin"))
 
 	// now test non-listed origins
 	reqHeaders = map[string]string{
 		"Origin": "http://example.com",
 	}
-	response = rt.SendRequestWithHeaders("GET", "/db/", "", reqHeaders)
+	response = rt.SendRequestWithHeaders("GET", "/{{.db}}/", "", reqHeaders)
 	assert.Equal(t, "", response.Header().Get("Access-Control-Allow-Origin"))
 
 	reqHeaders = map[string]string{
 		"Origin": "http://hack0r.com",
 	}
-	response = rt.SendRequestWithHeaders("GET", "/db/", "", reqHeaders)
+	response = rt.SendRequestWithHeaders("GET", "/{{.db}}/", "", reqHeaders)
 	assert.Equal(t, "", response.Header().Get("Access-Control-Allow-Origin"))
 
 	// The root URL should still be using the default example.com CORS:

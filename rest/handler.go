@@ -251,7 +251,7 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 		// Now that we know the DB, add CORS headers to the response:
 		if h.privs != adminPrivs {
 			cors := h.server.Config.API.CORS
-			if dbContext != nil {
+			if dbContext != nil && h.user != nil && !h.user.Disabled() {
 				cors = dbContext.CORS
 			}
 			if cors != nil {
@@ -259,7 +259,6 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 			}
 		}
 	}()
-
 	var err error
 
 	switch h.rq.Header.Get("Content-Encoding") {
