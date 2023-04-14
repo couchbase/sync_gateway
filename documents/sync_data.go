@@ -77,6 +77,7 @@ func (sd *SyncData) HashRedact(salt string) SyncData {
 		Crc32c:          sd.Crc32c,
 		TombstonedAt:    sd.TombstonedAt,
 		Attachments:     AttachmentsMeta{},
+		History:         sd.History.copy(),
 	}
 
 	// Populate and redact channels
@@ -84,8 +85,8 @@ func (sd *SyncData) HashRedact(salt string) SyncData {
 		redactedSyncData.Channels[base.Sha1HashString(k, salt)] = v
 	}
 
-	// Populate and redact history. This is done as it also includes channel names
-	redactedSyncData.History = sd.History.Redacted(salt)
+	// Redact history. This is done as it also includes channel names
+	redactedSyncData.History.redact(salt)
 
 	// Populate and redact user access
 	for k, v := range sd.Access {

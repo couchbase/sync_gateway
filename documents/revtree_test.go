@@ -55,7 +55,7 @@ type BranchSpec struct {
 //	\ 3-b -- 4-b ... etc (losing branch)
 //
 // NOTE: the 1-a -- 2-a unconflicted branch can be longer, depending on value of unconflictedBranchNumRevs
-func getTwoBranchTestRevtree1(unconflictedBranchNumRevs, winningBranchNumRevs, losingBranchNumRevs int, tombstoneLosingBranch bool) RevTree {
+func getTwoBranchTestRevtree1(t *testing.T, unconflictedBranchNumRevs, winningBranchNumRevs, losingBranchNumRevs int, tombstoneLosingBranch bool) *RevTree {
 
 	branchSpecs := []BranchSpec{
 		{
@@ -65,7 +65,7 @@ func getTwoBranchTestRevtree1(unconflictedBranchNumRevs, winningBranchNumRevs, l
 		},
 	}
 
-	return getMultiBranchTestRevtree1(unconflictedBranchNumRevs, winningBranchNumRevs, branchSpecs)
+	return getMultiBranchTestRevtree1(t, unconflictedBranchNumRevs, winningBranchNumRevs, branchSpecs)
 
 }
 
@@ -76,7 +76,7 @@ func getTwoBranchTestRevtree1(unconflictedBranchNumRevs, winningBranchNumRevs, l
 //	           \ 3-d -- 4-d ... etc (losing branch #n)
 //
 // NOTE: the 1-a -- 2-a unconflicted branch can be longer, depending on value of unconflictedBranchNumRevs
-func getMultiBranchTestRevtree1(unconflictedBranchNumRevs, winningBranchNumRevs int, losingBranches []BranchSpec) RevTree {
+func getMultiBranchTestRevtree1(t testing.TB, unconflictedBranchNumRevs, winningBranchNumRevs int, losingBranches []BranchSpec) *RevTree {
 
 	if unconflictedBranchNumRevs < 1 {
 		panic(fmt.Sprintf("Must have at least 1 unconflictedBranchNumRevs"))
@@ -96,19 +96,26 @@ func getMultiBranchTestRevtree1(unconflictedBranchNumRevs, winningBranchNumRevs 
 		   ]
 		}`
 
-	revTree := RevTree{}
-	if err := base.JSONUnmarshal([]byte(testJSON), &revTree); err != nil {
-		panic(fmt.Sprintf("Error: %v", err))
+	revTree := &RevTree{}
+	err := base.JSONUnmarshal([]byte(testJSON), &revTree)
+	if err == nil {
+		err = revTree.Validate()
+	}
+	if !assert.NoError(t, err) {
+		return nil
 	}
 
 	if unconflictedBranchNumRevs > 1 {
 		// Add revs to unconflicted branch
-		addRevs(
+		if !addRevs(
+			t,
 			revTree,
 			"1-winning",
 			unconflictedBranchNumRevs-1,
 			winningBranchDigest,
-		)
+		) {
+			return nil
+		}
 	}
 
 	if winningBranchNumRevs > 0 {
@@ -120,12 +127,15 @@ func getMultiBranchTestRevtree1(unconflictedBranchNumRevs, winningBranchNumRevs 
 		winningBranchStartRev := fmt.Sprintf("%d-%s", generation, winningBranchDigest)
 
 		// Add revs to winning branch
-		addRevs(
+		if !addRevs(
+			t,
 			revTree,
 			winningBranchStartRev,
 			winningBranchNumRevs,
 			winningBranchDigest,
-		)
+		) {
+			return nil
+		}
 
 	}
 
@@ -139,12 +149,15 @@ func getMultiBranchTestRevtree1(unconflictedBranchNumRevs, winningBranchNumRevs 
 			losingBranchStartRev := fmt.Sprintf("%d-%s", generation, winningBranchDigest) // Start on last revision of the non-conflicting branch
 
 			// Add revs to losing branch
-			addRevs(
+			if !addRevs(
+				t,
 				revTree,
 				losingBranchStartRev,
 				losingBranchSpec.NumRevs, // Subtract 1 since we already added initial
 				losingBranchSpec.Digest,
-			)
+			) {
+				return nil
+			}
 
 			generation += losingBranchSpec.NumRevs
 
@@ -159,8 +172,8 @@ func getMultiBranchTestRevtree1(unconflictedBranchNumRevs, winningBranchNumRevs 
 					Deleted: true,
 				}
 				err := revTree.AddRevision("testdoc", revInfo)
-				if err != nil {
-					panic(fmt.Sprintf("Error: %v", err))
+				if !assert.NoError(t, err) {
+					return nil
 				}
 
 			}
@@ -176,7 +189,8 @@ func getMultiBranchTestRevtree1(unconflictedBranchNumRevs, winningBranchNumRevs 
 func testUnmarshal(t *testing.T, jsonString string) RevTree {
 	gotmap := RevTree{}
 	assert.NoError(t, base.JSONUnmarshal([]byte(jsonString), &gotmap), "Couldn't parse RevTree from JSON")
-	assert.Equal(t, testmap, gotmap)
+	assert.NoError(t, gotmap.Validate())
+	assert.Equal(t, testmap.Revs(), gotmap.Revs())
 	return gotmap
 }
 
@@ -196,7 +210,10 @@ func TestGetMultiBranchTestRevtree(t *testing.T) {
 			LastRevisionIsTombstone: true,
 		},
 	}
-	revTree := getMultiBranchTestRevtree1(50, 100, branchSpecs)
+	revTree := getMultiBranchTestRevtree1(t, 50, 100, branchSpecs)
+	if revTree == nil {
+		return
+	}
 	leaves := revTree.GetLeaves()
 	sort.Strings(leaves)
 	assert.Equal(t, []string{"110-left", "150-winning", "76-right"}, leaves)
@@ -206,19 +223,22 @@ func TestGetMultiBranchTestRevtree(t *testing.T) {
 func TestRevTreeUnmarshalOldFormat(t *testing.T) {
 	const testJSON = `{"revs": ["3-three", "2-two", "1-one"], "parents": [1, 2, -1], "bodies": ["{}", "", ""], "channels": [null, ["ABC", "CBS"], ["ABC"]]}`
 	gotmap := testUnmarshal(t, testJSON)
-	fmt.Printf("Unmarshaled to %v\n", gotmap)
+	fmt.Printf("Unmarshaled to %v\n", gotmap.Revs())
 }
 
 func TestRevTreeUnmarshal(t *testing.T) {
 	const testJSON = `{"revs": ["3-three", "2-two", "1-one"], "parents": [1, 2, -1], "bodymap": {"0":"{}"}, "channels": [null, ["ABC", "CBS"], ["ABC"]]}`
 	gotmap := testUnmarshal(t, testJSON)
-	fmt.Printf("Unmarshaled to %v\n", gotmap)
+	fmt.Printf("Unmarshaled to %v\n", gotmap.Revs())
 }
 
 func TestRevTreeUnmarshalRevChannelCountMismatch(t *testing.T) {
 	const testJSON = `{"revs": ["3-three", "2-two", "1-one"], "parents": [1, 2, -1], "bodymap": {"0":"{}"}, "channels": [null, ["ABC", "CBS"]]}`
-	gotmap := RevTree{}
+	gotmap := &RevTree{}
 	err := base.JSONUnmarshal([]byte(testJSON), &gotmap)
+	if err == nil {
+		err = gotmap.Validate()
+	}
 	assert.Errorf(t, err, "revtreelist data is invalid, revs/parents/channels counts are inconsistent")
 }
 
@@ -383,7 +403,7 @@ func TestPruneRevsSingleBranch(t *testing.T) {
 
 	numRevs := 100
 
-	revTree := getMultiBranchTestRevtree1(numRevs, 0, []BranchSpec{})
+	revTree := getMultiBranchTestRevtree1(t, numRevs, 0, []BranchSpec{})
 
 	maxDepth := uint32(20)
 	expectedNumPruned := numRevs - int(maxDepth)
@@ -406,7 +426,10 @@ func TestPruneRevsOneWinningOneNonwinningBranch(t *testing.T) {
 	unconflictedBranchNumRevs := 2
 	winningBranchNumRevs := 4
 
-	revTree := getMultiBranchTestRevtree1(unconflictedBranchNumRevs, winningBranchNumRevs, branchSpecs)
+	revTree := getMultiBranchTestRevtree1(t, unconflictedBranchNumRevs, winningBranchNumRevs, branchSpecs)
+	if revTree == nil {
+		return
+	}
 
 	maxDepth := uint32(2)
 
@@ -429,7 +452,7 @@ func TestPruneRevsOneWinningOneOldTombstonedBranch(t *testing.T) {
 	unconflictedBranchNumRevs := 1
 	winningBranchNumRevs := 5
 
-	revTree := getMultiBranchTestRevtree1(unconflictedBranchNumRevs, winningBranchNumRevs, branchSpecs)
+	revTree := getMultiBranchTestRevtree1(t, unconflictedBranchNumRevs, winningBranchNumRevs, branchSpecs)
 
 	maxDepth := uint32(2)
 
@@ -461,7 +484,7 @@ func TestPruneRevsOneWinningOneOldAndOneRecentTombstonedBranch(t *testing.T) {
 	unconflictedBranchNumRevs := 1
 	winningBranchNumRevs := 5
 
-	revTree := getMultiBranchTestRevtree1(unconflictedBranchNumRevs, winningBranchNumRevs, branchSpecs)
+	revTree := getMultiBranchTestRevtree1(t, unconflictedBranchNumRevs, winningBranchNumRevs, branchSpecs)
 
 	maxDepth := uint32(2)
 
@@ -504,7 +527,7 @@ func TestGenerationShortestNonTombstonedBranch(t *testing.T) {
 		},
 	}
 
-	revTree := getMultiBranchTestRevtree1(3, 7, branchSpecs)
+	revTree := getMultiBranchTestRevtree1(t, 3, 7, branchSpecs)
 
 	generationShortestNonTombstonedBranch, _ := revTree.FindShortestNonTombstonedBranch()
 
@@ -540,7 +563,7 @@ func TestGenerationLongestTombstonedBranch(t *testing.T) {
 		},
 	}
 
-	revTree := getMultiBranchTestRevtree1(3, 7, branchSpecs)
+	revTree := getMultiBranchTestRevtree1(t, 3, 7, branchSpecs)
 	generationLongestTombstonedBranch := revTree.FindLongestTombstonedBranch()
 
 	// The generation of the longest deleted branch is:
@@ -571,7 +594,7 @@ func TestPruneRevisionsPostIssue2651ThreeBranches(t *testing.T) {
 			LastRevisionIsTombstone: true,
 		},
 	}
-	revTree := getMultiBranchTestRevtree1(50, 100, branchSpecs)
+	revTree := getMultiBranchTestRevtree1(t, 50, 100, branchSpecs)
 
 	maxDepth := uint32(50)
 	numPruned, _ := revTree.PruneRevisions(maxDepth, "")
@@ -594,7 +617,7 @@ func TestPruneRevsSingleTombstonedBranch(t *testing.T) {
 		},
 	}
 
-	revTree := getMultiBranchTestRevtree1(1, 0, branchSpecs)
+	revTree := getMultiBranchTestRevtree1(t, 1, 0, branchSpecs)
 
 	log.Printf("RevTreeAfter before: %v", revTree.RenderGraphvizDot())
 
@@ -625,7 +648,10 @@ func TestLongestBranch1(t *testing.T) {
 			LastRevisionIsTombstone: true,
 		},
 	}
-	revTree := getMultiBranchTestRevtree1(50, 100, branchSpecs)
+	revTree := getMultiBranchTestRevtree1(t, 50, 100, branchSpecs)
+	if revTree == nil {
+		return
+	}
 
 	assert.True(t, revTree.LongestBranch() == 150)
 
@@ -652,7 +678,10 @@ func TestPruneDisconnectedRevTreeWithLongWinningBranch(t *testing.T) {
 			LastRevisionIsTombstone: false,
 		},
 	}
-	revTree := getMultiBranchTestRevtree1(1, 15, branchSpecs)
+	revTree := getMultiBranchTestRevtree1(t, 1, 15, branchSpecs)
+	if revTree == nil {
+		return
+	}
 
 	if dumpRevTreeDotFiles {
 		err := os.WriteFile("/tmp/TestPruneDisconnectedRevTreeWithLongWinningBranch_initial.dot", []byte(revTree.RenderGraphvizDot()), 0666)
@@ -671,12 +700,15 @@ func TestPruneDisconnectedRevTreeWithLongWinningBranch(t *testing.T) {
 	winningBranchStartRev := fmt.Sprintf("%d-%s", 16, "winning")
 
 	// Add revs to winning branch
-	addRevs(
+	if !addRevs(
+		t,
 		revTree,
 		winningBranchStartRev,
 		10,
 		"winning",
-	)
+	) {
+		return
+	}
 
 	if dumpRevTreeDotFiles {
 		err := os.WriteFile("/tmp/TestPruneDisconnectedRevTreeWithLongWinningBranch_add_winning_revs.dot", []byte(revTree.RenderGraphvizDot()), 0666)
@@ -852,7 +884,7 @@ func TestRevisionPruningLoop(t *testing.T) {
 	tombstone := true
 
 	// create rev tree with a root entry
-	revTree := RevTree{}
+	revTree := &RevTree{}
 	err := addAndGet(t, revTree, "1-foo", "", nonTombstone)
 	assert.NoError(t, err, "Error adding revision 1-foo to tree")
 
@@ -907,14 +939,14 @@ func TestRevisionPruningLoop(t *testing.T) {
 		log.Printf("Tree pre-marshal: [[%s]]", revTree.RenderGraphvizDot())
 		treeBytes, marshalErr := revTree.MarshalJSON()
 		assert.NoError(t, marshalErr, fmt.Sprintf("Error marshalling tree: %v", marshalErr))
-		revTree = RevTree{}
+		revTree = &RevTree{}
 		unmarshalErr := revTree.UnmarshalJSON(treeBytes)
 		assert.NoError(t, unmarshalErr, fmt.Sprintf("Error unmarshalling tree: %v", unmarshalErr))
 	}
 
 }
 
-func addAndGet(t *testing.T, revTree RevTree, revID string, parentRevID string, isTombstone bool) error {
+func addAndGet(t *testing.T, revTree *RevTree, revID string, parentRevID string, isTombstone bool) error {
 
 	revBody := []byte(`{"foo":"bar"}`)
 	err := revTree.AddRevision("foobar", RevInfo{
@@ -967,7 +999,7 @@ func TestPruneRevisionsWithDisconnected(t *testing.T) {
 	assert.Equal(t, []string{"101-abc", "102-abc", "103-abc", "103-def", "104-abc", "105-abc", "106-abc", "106-def", "107-abc"}, remainingKeys)
 }
 
-func addPruneAndGet(revTree RevTree, revID string, parentRevID string, revBody []byte, revsLimit uint32, tombstone bool) (numPruned int, err error) {
+func addPruneAndGet(revTree *RevTree, revID string, parentRevID string, revBody []byte, revsLimit uint32, tombstone bool) (numPruned int, err error) {
 	_ = revTree.AddRevision("doc", RevInfo{
 		ID:      revID,
 		Parent:  parentRevID,
@@ -1031,7 +1063,7 @@ func BenchmarkRevTreePruning(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 
 		b.StopTimer()
-		revTree := getMultiBranchTestRevtree1(50, 100, branchSpecs)
+		revTree := getMultiBranchTestRevtree1(b, 50, 100, branchSpecs)
 		b.StartTimer()
 
 		revTree.PruneRevisions(50, "")
@@ -1050,7 +1082,7 @@ func BenchmarkRevtreeUnmarshal(b *testing.B) {
 
 	b.ResetTimer()
 	b.Run("Marshal into revTree", func(b *testing.B) {
-		revTree := RevTree{}
+		revTree := &RevTree{}
 		for i := 0; i < b.N; i++ {
 			_ = base.JSONUnmarshal(treeJson, &revTree)
 		}
@@ -1064,13 +1096,13 @@ func BenchmarkRevtreeUnmarshal(b *testing.B) {
 	})
 }
 
-func addRevs(revTree RevTree, startingParentRevId string, numRevs int, revDigest string) {
+func addRevs(t testing.TB, revTree *RevTree, startingParentRevId string, numRevs int, revDigest string) bool {
 
 	docSizeBytes := 1024 * 5
 	body := createBodyContentAsMapWithSize(docSizeBytes)
 	bodyBytes, err := base.JSONMarshal(body)
-	if err != nil {
-		panic(fmt.Sprintf("Error: %v", err))
+	if !assert.NoError(t, err) {
+		return false
 	}
 
 	channels := base.SetOf("ABC", "CBS")
@@ -1094,15 +1126,18 @@ func addRevs(revTree RevTree, startingParentRevId string, numRevs int, revDigest
 			Deleted:  false,
 			Channels: channels,
 		}
-		_ = revTree.AddRevision("testdoc", revInfo)
+		err = revTree.AddRevision("testdoc", revInfo)
+		if !assert.NoError(t, err) {
+			return false
+		}
 
 		generation += 1
 
 	}
-
+	return true
 }
 
-func (tree RevTree) GetTombstonedLeaves() []string {
+func (tree *RevTree) GetTombstonedLeaves() []string {
 	onlyTombstonedLeavesFilter := func(revId string) bool {
 		revInfo := tree.Get(revId)
 		return revInfo.Deleted
@@ -1112,7 +1147,7 @@ func (tree RevTree) GetTombstonedLeaves() []string {
 }
 
 // Find the length of the longest branch
-func (tree RevTree) LongestBranch() int {
+func (tree *RevTree) LongestBranch() int {
 
 	longestBranch := 0
 
