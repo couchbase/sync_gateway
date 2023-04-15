@@ -24,7 +24,7 @@ import (
 
 // 1-one -- 2-two -- 3-three
 func mktestmap() RevTree {
-	return MakeRevTree(RevMap{"3-three": {ID: "3-three", Parent: "2-two", Body: []byte("{}")},
+	return MakeRevTree(RevSpecMap{"3-three": {ID: "3-three", Parent: "2-two", Body: []byte("{}")},
 		"2-two": {ID: "2-two", Parent: "1-one", Channels: base.SetOf("ABC", "CBS")},
 		"1-one": {ID: "1-one", Channels: base.SetOf("ABC")}})
 }
@@ -35,14 +35,14 @@ func mktestmap() RevTree {
 //
 //	\ 3-drei
 func mkbranchymap() RevTree {
-	return MakeRevTree(RevMap{"3-three": {ID: "3-three", Parent: "2-two"},
+	return MakeRevTree(RevSpecMap{"3-three": {ID: "3-three", Parent: "2-two"},
 		"2-two":  {ID: "2-two", Parent: "1-one"},
 		"1-one":  {ID: "1-one"},
 		"3-drei": {ID: "3-drei", Parent: "2-two"}})
 }
 
 func mkmultiroot() RevTree {
-	return MakeRevTree(RevMap{"3-a": {ID: "3-a", Parent: "2-a"},
+	return MakeRevTree(RevSpecMap{"3-a": {ID: "3-a", Parent: "2-a"},
 		"2-a": {ID: "2-a", Parent: "1-a"},
 		"1-a": {ID: "1-a"},
 		"7-b": {ID: "7-b", Parent: "6-b"},
@@ -174,10 +174,9 @@ func getMultiBranchTestRevtree1(t testing.TB, unconflictedBranchNumRevs, winning
 
 				revInfo := RevInfo{
 					ID:      newRevId,
-					Parent:  parentRevId,
 					Deleted: true,
 				}
-				err := revTree.AddRevision("testdoc", revInfo)
+				err := revTree.AddRevision("testdoc", parentRevId, revInfo)
 				if !assert.NoError(t, err) {
 					return nil
 				}
@@ -302,7 +301,7 @@ func TestRevTreeForEachLeaf(t *testing.T) {
 func TestRevTreeAddRevision(t *testing.T) {
 	tempmap := mktestmap()
 
-	err := tempmap.AddRevision("testdoc", RevInfo{ID: "4-four", Parent: "3-three"})
+	err := tempmap.AddRevision("testdoc", "3-three", RevInfo{ID: "4-four"})
 	require.NoError(t, err)
 	assert.Equal(t, "3-three", tempmap.GetParent("4-four"))
 }
@@ -310,21 +309,21 @@ func TestRevTreeAddRevision(t *testing.T) {
 func TestRevTreeAddRevisionWithEmptyID(t *testing.T) {
 	tempmap := mktestmap()
 
-	err := tempmap.AddRevision("testdoc", RevInfo{Parent: "3-three"})
+	err := tempmap.AddRevision("testdoc", "3-three", RevInfo{})
 	assert.Equal(t, fmt.Sprintf("doc: %v, RevTree AddRevision, empty revid is illegal", "testdoc"), err.Error())
 }
 
 func TestRevTreeAddDuplicateRevID(t *testing.T) {
 	tempmap := mktestmap()
 
-	err := tempmap.AddRevision("testdoc", RevInfo{ID: "2-two", Parent: "1-one"})
+	err := tempmap.AddRevision("testdoc", "1-one", RevInfo{ID: "2-two"})
 	assert.Equal(t, fmt.Sprintf("doc: %v, RevTree AddRevision, already contains rev %q", "testdoc", "2-two"), err.Error())
 }
 
 func TestRevTreeAddRevisionWithMissingParent(t *testing.T) {
 	tempmap := mktestmap()
 
-	err := tempmap.AddRevision("testdoc", RevInfo{ID: "5-five", Parent: "4-four"})
+	err := tempmap.AddRevision("testdoc", "4-four", RevInfo{ID: "5-five"})
 	assert.ErrorContains(t, err, fmt.Sprintf("doc: %v, RevTree AddRevision, parent id %q is missing", "testdoc", "4-four"))
 }
 
@@ -351,13 +350,13 @@ func TestRevTreeWinningRev(t *testing.T) {
 	assert.Equal(t, "3-three", winner)
 	assert.True(t, branched)
 	assert.True(t, conflict)
-	err := tempmap.AddRevision("testdoc", RevInfo{ID: "4-four", Parent: "3-three"})
+	err := tempmap.AddRevision("testdoc", "3-three", RevInfo{ID: "4-four"})
 	require.NoError(t, err)
 	winner, branched, conflict = tempmap.WinningRevision()
 	assert.Equal(t, "4-four", winner)
 	assert.True(t, branched)
 	assert.True(t, conflict)
-	err = tempmap.AddRevision("testdoc", RevInfo{ID: "5-five", Parent: "4-four", Deleted: true})
+	err = tempmap.AddRevision("testdoc", "4-four", RevInfo{ID: "5-five", Deleted: true})
 	require.NoError(t, err)
 	winner, branched, conflict = tempmap.WinningRevision()
 	assert.Equal(t, "3-drei", winner)
@@ -380,7 +379,7 @@ func TestPruneRevisions(t *testing.T) {
 	assert.Equal(t, uint32(2), tempmap.Get("2-two").depth)
 	assert.Equal(t, uint32(3), tempmap.Get("1-one").depth)
 
-	tempmap.insert("4-vier", &RevInfo{ID: "4-vier", Parent: "3-drei"})
+	tempmap.insert(RevSpec{ID: "4-vier", Parent: "3-drei"})
 	tempmap.computeDepthsAndFindLeaves()
 	assert.Equal(t, uint32(1), tempmap.Get("4-vier").depth)
 	assert.Equal(t, uint32(2), tempmap.Get("3-drei").depth)
@@ -397,16 +396,16 @@ func TestPruneRevisions(t *testing.T) {
 	assert.Equal(t, 1, pruned)
 	assert.Equal(t, 4, len(tempmap.Revs()))
 	assert.Equal(t, (*RevInfo)(nil), tempmap.Get("1-one"))
-	assert.Equal(t, "", tempmap.Get("2-two").Parent)
+	assert.Equal(t, "", tempmap.Get("2-two").ParentID())
 
 	// Make sure leaves are never pruned:
 	pruned, _ = tempmap.PruneRevisions(1, "")
 	assert.Equal(t, 2, pruned)
 	assert.Equal(t, 2, len(tempmap.Revs()))
 	assert.True(t, tempmap.Get("3-three") != nil)
-	assert.Equal(t, "", tempmap.Get("3-three").Parent)
+	assert.Equal(t, "", tempmap.Get("3-three").ParentID())
 	assert.True(t, tempmap.Get("4-vier") != nil)
-	assert.Equal(t, "", tempmap.Get("4-vier").Parent)
+	assert.Equal(t, "", tempmap.Get("4-vier").ParentID())
 
 }
 
@@ -960,9 +959,8 @@ func TestRevisionPruningLoop(t *testing.T) {
 func addAndGet(t *testing.T, revTree *RevTree, revID string, parentRevID string, isTombstone bool) error {
 
 	revBody := []byte(`{"foo":"bar"}`)
-	err := revTree.AddRevision("foobar", RevInfo{
+	err := revTree.AddRevision("foobar", parentRevID, RevInfo{
 		ID:      revID,
-		Parent:  parentRevID,
 		Body:    revBody,
 		Deleted: isTombstone,
 	})
@@ -974,7 +972,7 @@ func addAndGet(t *testing.T, revTree *RevTree, revID string, parentRevID string,
 
 // TestPruneRevisionsWithDisconnectedTombstones ensures that disconnected tombstoned branches are correctly pruned away. Reproduces CBG-1076.
 func TestPruneRevisionsWithDisconnected(t *testing.T) {
-	revTree := MakeRevTree(RevMap{
+	revTree := MakeRevTree(RevSpecMap{
 		"100-abc": {ID: "100-abc"},
 		"101-def": {ID: "101-def", Parent: "100-abc", Deleted: true},
 		"101-abc": {ID: "101-abc", Parent: "100-abc"},
@@ -1011,9 +1009,8 @@ func TestPruneRevisionsWithDisconnected(t *testing.T) {
 }
 
 func addPruneAndGet(revTree *RevTree, revID string, parentRevID string, revBody []byte, revsLimit uint32, tombstone bool) (numPruned int, err error) {
-	_ = revTree.AddRevision("doc", RevInfo{
+	_ = revTree.AddRevision("doc", parentRevID, RevInfo{
 		ID:      revID,
-		Parent:  parentRevID,
 		Body:    revBody,
 		Deleted: tombstone,
 	})
@@ -1194,12 +1191,11 @@ func addRevs(t testing.TB, revTree *RevTree, startingParentRevId string, numRevs
 
 		revInfo := RevInfo{
 			ID:       newRevId,
-			Parent:   parentRevId,
 			Body:     bodyBytes,
 			Deleted:  false,
 			Channels: channels,
 		}
-		err = revTree.AddRevision("testdoc", revInfo)
+		err = revTree.AddRevision("testdoc", parentRevId, revInfo)
 		if !assert.NoError(t, err) {
 			return false
 		}
@@ -1245,7 +1241,7 @@ func (tree *RevTree) LongestBranch() int {
 			}
 
 			// Walk up the branch to the parent node
-			node = tree.Get(node.Parent)
+			node = node.Parent
 
 		}
 	}

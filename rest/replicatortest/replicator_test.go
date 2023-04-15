@@ -4123,10 +4123,8 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 					if !revInfo.Deleted {
 						activeCount++
 					}
-					if revInfo.Parent != "" {
-						parentRevInfo := doc.SyncData.History.Get(revInfo.Parent)
-						require.NotNil(t, parentRevInfo)
-						assert.True(t, parentRevInfo.Body == nil)
+					if revInfo.Parent != nil {
+						assert.True(t, revInfo.Parent.Body == nil)
 					}
 				}
 				assert.Equal(t, 1, activeCount)
@@ -4343,10 +4341,8 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 				if !revInfo.Deleted {
 					activeCount++
 				}
-				if revInfo.Parent != "" {
-					parentRevInfo := doc.SyncData.History.Get(revInfo.Parent)
-					require.NotNil(t, parentRevInfo)
-					assert.True(t, parentRevInfo.Body == nil)
+				if revInfo.Parent != nil {
+					assert.True(t, revInfo.Parent.Body == nil)
 				}
 			}
 			assert.Equal(t, 1, activeCount)
@@ -4383,10 +4379,8 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 				if !revInfo.Deleted {
 					activeCount++
 				}
-				if revInfo.Parent != "" {
-					parentRevInfo := doc.SyncData.History.Get(revInfo.Parent)
-					require.NotNil(t, parentRevInfo)
-					assert.True(t, parentRevInfo.Body == nil)
+				if revInfo.Parent != nil {
+					assert.True(t, revInfo.Parent.Body == nil)
 				}
 			}
 			assert.Equal(t, 1, activeCount)
@@ -6023,10 +6017,8 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 				if !revInfo.Deleted {
 					activeCount++
 				}
-				if revInfo.Parent != "" {
-					parentRevInfo := doc.SyncData.History.Get(revInfo.Parent)
-					require.NotNil(t, parentRevInfo)
-					assert.True(t, parentRevInfo.Body == nil)
+				if revInfo.Parent != nil {
+					assert.True(t, revInfo.Parent.Body == nil)
 				}
 			}
 			assert.Equal(t, 1, activeCount)

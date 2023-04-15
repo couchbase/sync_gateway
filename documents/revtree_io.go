@@ -132,12 +132,12 @@ func (tree RevTree) MarshalJSON() ([]byte, error) {
 
 	// Now walk through the Revs array and add each revision's parent to it:
 	for i := 0; i < n; i++ {
-		if parentID := infos[i].Parent; parentID != "" {
-			par, found := indexOf[parentID]
+		if parent := infos[i].Parent; parent != nil {
+			parentIndex, found := indexOf[parent.ID]
 			if !found {
-				par = addRev(tree.revs[parentID])
+				parentIndex = addRev(parent)
 			}
-			ext.Parents[i] = par - i
+			ext.Parents[i] = parentIndex - i
 		}
 	}
 	ext.Revs = revIDs.String()
@@ -205,7 +205,7 @@ func (tree *RevTree) lazyLoadJSON() (err error) {
 
 		if parentOffset := ext.Parents[i]; parentOffset != 0 {
 			if parent := i + parentOffset; parent >= 0 && parent < n {
-				rev.Parent = revIDs[i+parentOffset]
+				rev.Parent = &revArray[i+parentOffset]
 			} else {
 				return fmt.Errorf("encoded RevTree has invalid parent offset")
 			}
@@ -261,14 +261,17 @@ func (tree *RevTree) oldUnmarshalJSON(inputjson []byte) (err error) {
 	}
 
 	// validate revTreeList revs, parents and channels lists are of equal length
-	if !(len(rep.Revs) == len(rep.Parents) && len(rep.Revs) == len(rep.Channels)) {
+	n := len(rep.Revs)
+	if !(n == len(rep.Parents) && n == len(rep.Channels)) {
 		return errors.New("revtreelist data is invalid, revs/parents/channels counts are inconsistent")
 	}
 
-	tree.revs = make(RevMap, len(rep.Revs))
+	revArray := make([]RevInfo, n) // For efficiency, allocate all the RevInfos in one array
+	tree.revs = make(RevMap, n)
 
 	for i, revid := range rep.Revs {
-		info := RevInfo{ID: revid}
+		info := &revArray[i]
+		info.ID = revid
 		stringIndex := strconv.FormatInt(int64(i), 10)
 		if rep.BodyMap != nil {
 			if body := rep.BodyMap[stringIndex]; body != "" {
@@ -288,9 +291,9 @@ func (tree *RevTree) oldUnmarshalJSON(inputjson []byte) (err error) {
 		}
 		parentIndex := rep.Parents[i]
 		if parentIndex >= 0 {
-			info.Parent = rep.Revs[parentIndex]
+			info.Parent = &revArray[parentIndex]
 		}
-		tree.revs[revid] = &info
+		tree.revs[revid] = info
 	}
 	if rep.Deleted != nil {
 		for _, i := range rep.Deleted {

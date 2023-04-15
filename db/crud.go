@@ -676,9 +676,9 @@ func (db *DatabaseCollectionWithUser) get1xRevFromDoc(ctx context.Context, doc *
 
 // Returns the body and rev ID of the asked-for revision or the most recent available ancestor.
 func (db *DatabaseCollectionWithUser) getAvailableRev(ctx context.Context, doc *Document, revid string) ([]byte, string, AttachmentsMeta, error) {
-	for ; revid != ""; revid = doc.History.Get(revid).Parent {
-		if bodyBytes, attachments, _ := db.GetRevision(ctx, doc, revid); bodyBytes != nil {
-			return bodyBytes, revid, attachments, nil
+	for rev := doc.History.Get(revid); rev != nil; rev = rev.Parent {
+		if bodyBytes, attachments, _ := db.GetRevision(ctx, doc, rev.ID); bodyBytes != nil {
+			return bodyBytes, rev.ID, attachments, nil
 		}
 	}
 	return nil, "", nil, ErrMissing
@@ -913,7 +913,7 @@ func (db *DatabaseCollectionWithUser) Put(ctx context.Context, docid string, bod
 
 		newRev := documents.CreateRevIDWithBytes(generation, matchRev, canonicalBytesForRevID)
 
-		if err := doc.History.AddRevision(newDoc.ID, RevInfo{ID: newRev, Parent: matchRev, Deleted: deleted}); err != nil {
+		if err := doc.History.AddRevision(newDoc.ID, matchRev, RevInfo{ID: newRev, Deleted: deleted}); err != nil {
 			base.InfofCtx(ctx, base.KeyCRUD, "Failed to add revision ID: %s, for doc: %s, error: %v", newRev, base.UD(docid), err)
 			return nil, nil, false, nil, base.ErrRevTreeAddRevFailure
 		}
@@ -1017,10 +1017,9 @@ func (db *DatabaseCollectionWithUser) PutExistingRevWithConflictResolution(ctx c
 
 		// Add all the new-to-me revisions to the rev tree:
 		for i := currentRevIndex - 1; i >= 0; i-- {
-			err := doc.History.AddRevision(newDoc.ID,
+			err := doc.History.AddRevision(newDoc.ID, parent,
 				RevInfo{
 					ID:      docHistory[i],
-					Parent:  parent,
 					Deleted: i == 0 && newDoc.Deleted})
 
 			if err != nil {
@@ -1030,7 +1029,7 @@ func (db *DatabaseCollectionWithUser) PutExistingRevWithConflictResolution(ctx c
 		}
 
 		// Process the attachments, replacing bodies with digests.
-		parentRevID := doc.History.Get(newRev).Parent
+		parentRevID := doc.History.ParentOf(newRev)
 		newAttachments, err := db.storeAttachments(ctx, doc, newDoc.DocAttachments, generation, parentRevID, docHistory)
 		if err != nil {
 			return nil, nil, false, nil, err
@@ -1313,10 +1312,9 @@ func (db *DatabaseCollectionWithUser) tombstoneActiveRevision(ctx context.Contex
 	// Create tombstone
 	newGeneration := documents.GenOfRevID(revID) + 1
 	newRevID := documents.CreateRevIDWithBytes(newGeneration, revID, []byte(documents.DeletedDocument))
-	err = doc.History.AddRevision(doc.ID,
+	err = doc.History.AddRevision(doc.ID, revID,
 		RevInfo{
 			ID:      newRevID,
-			Parent:  revID,
 			Deleted: true,
 		})
 	if err != nil {
@@ -2416,8 +2414,8 @@ func (db *DatabaseCollectionWithUser) RevDiff(ctx context.Context, docid string,
 						possibleGen, _ := ParseRevID(possible.ID)
 						if possibleGen < gen && possibleGen >= gen-100 {
 							possibleSet[possible.ID] = true
-						} else if possibleGen == gen && possible.Parent != "" {
-							possibleSet[possible.Parent] = true // since parent is < gen
+						} else if possibleGen == gen && possible.Parent != nil {
+							possibleSet[possible.ParentID()] = true // since parent is < gen
 						}
 					}
 				})

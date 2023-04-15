@@ -46,7 +46,7 @@ func (t *testBackingStore) GetDocument(ctx context.Context, docid string, unmars
 		"testing": true,
 	})
 	doc.CurrentRev = "1-abc"
-	doc.History = documents.MakeRevTree(documents.RevMap{
+	doc.History = documents.MakeRevTree(documents.RevSpecMap{
 		doc.CurrentRev: {
 			Channels: base.SetOf("*"),
 		},
