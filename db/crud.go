@@ -1999,9 +1999,8 @@ func getAttachmentIDsForLeafRevisions(ctx context.Context, db *DatabaseCollectio
 	// Currently handled rev won't have information set properly on it yet so we handle this above
 	// Can safely ignore the getInfo error as the only event this should happen in is if there is no entry for the given
 	// rev, however, given we have just got that rev from GetLeavesFiltered we can be sure that rev exists in history
-	documentLeafRevisions := doc.History.GetLeavesFiltered(func(revId string) bool {
-		revInfo, _ := doc.History.GetInfo(revId)
-		return revInfo.HasAttachments && revId != newRevID
+	documentLeafRevisions := doc.History.GetLeavesFiltered(func(revInfo *RevInfo) bool {
+		return revInfo.HasAttachments && revInfo.ID != newRevID
 	})
 
 	for _, leafRevision := range documentLeafRevisions {

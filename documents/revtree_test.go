@@ -24,9 +24,10 @@ import (
 
 // 1-one -- 2-two -- 3-three
 func mktestmap() RevTree {
-	return MakeRevTree(RevSpecMap{"3-three": {ID: "3-three", Parent: "2-two", Body: []byte("{}")},
-		"2-two": {ID: "2-two", Parent: "1-one", Channels: base.SetOf("ABC", "CBS")},
-		"1-one": {ID: "1-one", Channels: base.SetOf("ABC")}})
+	return MakeRevTree(RevSpecMap{
+		"3-three": {ID: "3-three", Parent: "2-two", Body: []byte("{}")},
+		"2-two":   {ID: "2-two", Parent: "1-one", Channels: base.SetOf("ABC", "CBS")},
+		"1-one":   {ID: "1-one", Channels: base.SetOf("ABC")}})
 }
 
 //	/ 3-three
@@ -35,14 +36,16 @@ func mktestmap() RevTree {
 //
 //	\ 3-drei
 func mkbranchymap() RevTree {
-	return MakeRevTree(RevSpecMap{"3-three": {ID: "3-three", Parent: "2-two"},
-		"2-two":  {ID: "2-two", Parent: "1-one"},
-		"1-one":  {ID: "1-one"},
-		"3-drei": {ID: "3-drei", Parent: "2-two"}})
+	return MakeRevTree(RevSpecMap{
+		"3-three": {ID: "3-three", Parent: "2-two"},
+		"2-two":   {ID: "2-two", Parent: "1-one"},
+		"1-one":   {ID: "1-one"},
+		"3-drei":  {ID: "3-drei", Parent: "2-two"}})
 }
 
 func mkmultiroot() RevTree {
-	return MakeRevTree(RevSpecMap{"3-a": {ID: "3-a", Parent: "2-a"},
+	return MakeRevTree(RevSpecMap{
+		"3-a": {ID: "3-a", Parent: "2-a"},
 		"2-a": {ID: "2-a", Parent: "1-a"},
 		"1-a": {ID: "1-a"},
 		"7-b": {ID: "7-b", Parent: "6-b"},
@@ -367,25 +370,26 @@ func TestRevTreeWinningRev(t *testing.T) {
 func TestPruneRevisions(t *testing.T) {
 
 	tempmap := mktestmap()
-	tempmap.computeDepthsAndFindLeaves()
-	assert.Equal(t, uint32(1), tempmap.Get("3-three").depth)
-	assert.Equal(t, uint32(2), tempmap.Get("2-two").depth)
-	assert.Equal(t, uint32(3), tempmap.Get("1-one").depth)
+	maxDepth := tempmap.computeDepths()
+	assert.Equal(t, uint32(3), maxDepth)
+	assert.Equal(t, uint32(1), tempmap.Get("3-three").scratch)
+	assert.Equal(t, uint32(2), tempmap.Get("2-two").scratch)
+	assert.Equal(t, uint32(3), tempmap.Get("1-one").scratch)
 
 	tempmap = mkbranchymap()
-	tempmap.computeDepthsAndFindLeaves()
-	assert.Equal(t, uint32(1), tempmap.Get("3-three").depth)
-	assert.Equal(t, uint32(1), tempmap.Get("3-drei").depth)
-	assert.Equal(t, uint32(2), tempmap.Get("2-two").depth)
-	assert.Equal(t, uint32(3), tempmap.Get("1-one").depth)
+	tempmap.computeDepths()
+	assert.Equal(t, uint32(1), tempmap.Get("3-three").scratch)
+	assert.Equal(t, uint32(1), tempmap.Get("3-drei").scratch)
+	assert.Equal(t, uint32(2), tempmap.Get("2-two").scratch)
+	assert.Equal(t, uint32(3), tempmap.Get("1-one").scratch)
 
 	tempmap.insert(RevSpec{ID: "4-vier", Parent: "3-drei"})
-	tempmap.computeDepthsAndFindLeaves()
-	assert.Equal(t, uint32(1), tempmap.Get("4-vier").depth)
-	assert.Equal(t, uint32(2), tempmap.Get("3-drei").depth)
-	assert.Equal(t, uint32(1), tempmap.Get("3-three").depth)
-	assert.Equal(t, uint32(2), tempmap.Get("2-two").depth)
-	assert.Equal(t, uint32(3), tempmap.Get("1-one").depth)
+	tempmap.computeDepths()
+	assert.Equal(t, uint32(1), tempmap.Get("4-vier").scratch)
+	assert.Equal(t, uint32(2), tempmap.Get("3-drei").scratch)
+	assert.Equal(t, uint32(1), tempmap.Get("3-three").scratch)
+	assert.Equal(t, uint32(2), tempmap.Get("2-two").scratch)
+	assert.Equal(t, uint32(3), tempmap.Get("1-one").scratch)
 
 	// Prune:
 	pruned, _ := tempmap.PruneRevisions(1000, "")
@@ -539,7 +543,7 @@ func TestGenerationShortestNonTombstonedBranch(t *testing.T) {
 
 	revTree := getMultiBranchTestRevtree1(t, 3, 7, branchSpecs)
 
-	generationShortestNonTombstonedBranch, _ := revTree.FindShortestNonTombstonedBranch()
+	generationShortestNonTombstonedBranch, _ := revTree.findShortestNonTombstonedBranch()
 
 	// The "non-winning unresolved" branch has 7 revisions due to:
 	// 3 unconflictedBranchNumRevs
@@ -1069,8 +1073,8 @@ func getLargeTreeJSONOldAndNew(t testing.TB) (old []byte, new []byte) {
 func TestRevtreeUnmarshalLargeTree(t *testing.T) {
 	oldJson, newJson := getLargeTreeJSONOldAndNew(t)
 
-	t.Logf("Old size = %d; new size = %d", len(oldJson), len(newJson))
-	t.Logf("NEW JSON: %s", newJson)
+	// t.Logf("Old size = %d; new size = %d", len(oldJson), len(newJson))
+	// t.Logf("NEW JSON: %s", newJson)
 	assert.NotEqual(t, newJson, oldJson)
 	assert.LessOrEqual(t, len(newJson), len(oldJson))
 
@@ -1207,10 +1211,7 @@ func addRevs(t testing.TB, revTree *RevTree, startingParentRevId string, numRevs
 }
 
 func (tree *RevTree) GetTombstonedLeaves() []string {
-	onlyTombstonedLeavesFilter := func(revId string) bool {
-		revInfo := tree.Get(revId)
-		return revInfo.Deleted
-	}
+	onlyTombstonedLeavesFilter := func(revInfo *RevInfo) bool { return revInfo.Deleted }
 	return tree.GetLeavesFiltered(onlyTombstonedLeavesFilter)
 
 }

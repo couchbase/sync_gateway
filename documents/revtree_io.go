@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 
@@ -40,11 +41,11 @@ const (
 
 var kEmptyBody = []byte{'{', '}'}
 
-const kAverageRevIDLength = 36 // 2-digit gen, '-', 32-byte digest, ','
+const kAvgRevIDLen = 36 // 2-digit gen, '-', 32-byte digest, ','
 
 func (tree RevTree) MarshalJSON() ([]byte, error) {
 	if tree.jsonForm != nil {
-		// If I haven't been accessed yet, just return the JSON that was read
+		// If I haven't been unmarshaled yet, just return the original JSON
 		return tree.jsonForm, nil
 	}
 
@@ -58,6 +59,7 @@ func (tree RevTree) MarshalJSON() ([]byte, error) {
 	}
 
 	mkFlags := func(rev *RevInfo) extRevFlags {
+		// Computes the extRevFlags for a RevInfo.
 		var flag extRevFlags
 		if rev.Deleted {
 			flag |= extRevDeleted
@@ -81,7 +83,7 @@ func (tree RevTree) MarshalJSON() ([]byte, error) {
 	}
 
 	encodeChannels := func(channels base.Set) []ChannelID {
-		// converts Channels set into an array of indices in extRevTree.ChannelNames[]
+		// Converts RevInfo.Channels set into an array of indices in extRevTree.ChannelNames[]
 		if len(channels) == 0 {
 			return nil
 		}
@@ -92,22 +94,21 @@ func (tree RevTree) MarshalJSON() ([]byte, error) {
 		return result
 	}
 
-	revIDs := bytes.NewBuffer(make([]byte, 0, n*kAverageRevIDLength)) // Concatenated revIDs
-	index := -1                                                       // Current rev index
-	indexOf := make(map[string]int, n)                                // maps revID to index in Revs/Parents/Flags arrays
-	infos := make([]*RevInfo, n)                                      // Maps index to RevInfo
+	revIDs := bytes.NewBuffer(make([]byte, 0, n*kAvgRevIDLen)) // Concatenated revIDs
+	revIndex := -1                                             // Current rev index
+	infos := make([]*RevInfo, n)                               // Maps index to RevInfo
 
 	addRev := func(rev *RevInfo) int {
-		// adds a RevInfo to ext
-		index++
-		indexOf[rev.ID] = index
-		infos[index] = rev
-		if index > 0 {
+		// Adds a RevInfo to `ext`
+		revIndex++
+		rev.scratch = uint32(revIndex)
+		infos[revIndex] = rev
+		if revIndex > 0 {
 			revIDs.WriteByte(',')
 		}
 		revIDs.WriteString(rev.ID)
 		flags := mkFlags(rev)
-		ext.Flags[index] = flags + 32 // Convert flags to printable ASCII char
+		ext.Flags[revIndex] = flags + 32 // Convert flags to printable ASCII char
 		if (flags & extRevHasNonEmptyBody) != 0 {
 			ext.Bodies = append(ext.Bodies, rev.Body)
 		}
@@ -117,19 +118,26 @@ func (tree RevTree) MarshalJSON() ([]byte, error) {
 		if (flags & extRevHasChannels) != 0 {
 			ext.Channels = append(ext.Channels, encodeChannels(rev.Channels))
 		}
-		return index
+		return revIndex
 	}
 
 	// ---- Now the code:
 
-	// First, add the leaf revs:
-	tree.ForEachLeaf(func(rev *RevInfo) { addRev(rev) })
+	// First, add the leaf revs; addRev will initialize their `scratch` to their array index.
+	// Other revs' `scratch` will be initialized to an illegal value to show they're not added yet.
+	for _, rev := range tree.revs {
+		if rev.Leaf {
+			addRev(rev)
+		} else {
+			rev.scratch = math.MaxUint32
+		}
+	}
 
 	// Now walk through the Revs array and add each revision's parent to it:
 	for i := 0; i < n; i++ {
 		if parent := infos[i].Parent; parent != nil {
-			parentIndex, found := indexOf[parent.ID]
-			if !found {
+			parentIndex := int(parent.scratch)
+			if parentIndex >= n {
 				parentIndex = addRev(parent)
 			}
 			ext.Parents[i] = parentIndex - i
@@ -186,7 +194,14 @@ func (tree *RevTree) lazyLoadJSON() (err error) {
 	if len(revIDs) != n {
 		return fmt.Errorf("encoded RevTree has inconsistent number of revs")
 	}
+
 	tree.revs = make(RevMap, n)
+	for i := 0; i < n; i++ {
+		rev := &revArray[i]
+		rev.ID = revIDs[i]
+		tree.revs[rev.ID] = rev
+		rev.Leaf = true
+	}
 
 	bodyIndex := 0     // Next item in ext.Bodies
 	bodyKeyIndex := 0  // Next item in ext.BodyKeys
@@ -195,14 +210,13 @@ func (tree *RevTree) lazyLoadJSON() (err error) {
 	for i, flags := range ext.Flags {
 		flags -= 32 // Convert printable ASCII char back to flags
 		rev := &revArray[i]
-		rev.ID = revIDs[i]
-		tree.revs[rev.ID] = rev
 		rev.Deleted = (flags & extRevDeleted) != 0
 		rev.HasAttachments = (flags & extRevHasAttachments) != 0
 
 		if parentOffset := ext.Parents[i]; parentOffset != 0 {
 			if parent := i + parentOffset; parent >= 0 && parent < n {
 				rev.Parent = &revArray[i+parentOffset]
+				rev.Parent.Leaf = false
 			} else {
 				return fmt.Errorf("encoded RevTree has invalid parent offset")
 			}
@@ -266,6 +280,9 @@ func (tree *RevTree) oldUnmarshalJSON(inputjson []byte) (err error) {
 
 	revArray := make([]RevInfo, n) // For efficiency, allocate all the RevInfos in one array
 	tree.revs = make(RevMap, n)
+	for i := 0; i < n; i++ {
+		revArray[i].Leaf = true
+	}
 
 	for i, revid := range rep.Revs {
 		info := &revArray[i]
@@ -290,6 +307,7 @@ func (tree *RevTree) oldUnmarshalJSON(inputjson []byte) (err error) {
 		parentIndex := rep.Parents[i]
 		if parentIndex >= 0 {
 			info.Parent = &revArray[parentIndex]
+			info.Parent.Leaf = false
 		}
 		tree.revs[revid] = info
 	}
