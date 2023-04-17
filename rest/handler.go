@@ -246,25 +246,24 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 		}
 	}()
 
-	var dbContext *db.DatabaseContext
 	defer func() {
 		// Now that we know the DB, add CORS headers to the response:
 		if h.privs != adminPrivs {
 			cors := h.server.Config.API.CORS
-			if dbContext != nil && h.user != nil && !h.user.Disabled() {
-				cors = dbContext.CORS
+			if h.db != nil {
+				cors = h.db.CORS
 			}
 			if cors != nil {
 				cors.AddResponseHeaders(h.rq, h.response)
 			}
 		}
 	}()
-	var err error
 
 	switch h.rq.Header.Get("Content-Encoding") {
 	case "":
 		h.requestBody = h.rq.Body
 	case "gzip":
+		var err error
 		if h.requestBody, err = gzip.NewReader(h.rq.Body); err != nil {
 			return err
 		}
@@ -289,6 +288,7 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 	// If there is a "keyspace" path variable in the route, parse the keyspace:
 	ks := h.PathVar("keyspace")
 	if ks != "" {
+		var err error
 		keyspaceDb, keyspaceScope, keyspaceCollection, err = ParseKeyspace(ks)
 		if err != nil {
 			return err
@@ -298,9 +298,12 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 		}
 	}
 
+	var dbContext *db.DatabaseContext
+
 	// look up the database context:
 	if keyspaceDb != "" {
 		h.addDatabaseLogContext(keyspaceDb)
+		var err error
 		if dbContext, err = h.server.GetActiveDatabase(keyspaceDb); err != nil {
 			if err == base.ErrNotFound {
 
@@ -364,6 +367,7 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 
 	// Authenticate, if not on admin port:
 	if h.privs != adminPrivs {
+		var err error
 		if err = h.checkAuth(dbContext); err != nil {
 			return err
 		}
@@ -415,6 +419,7 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 		var httpClient *http.Client
 		var authScope string
 
+		var err error
 		if dbContext != nil {
 			managementEndpoints, httpClient, err = dbContext.ObtainManagementEndpointsAndHTTPClient(h.ctx())
 			authScope = dbContext.Bucket.GetName()
@@ -522,12 +527,14 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 
 	// Now set the request's Database (i.e. context + user)
 	if dbContext != nil {
+		var err error
 		h.db, err = db.GetDatabase(dbContext, h.user)
 
 		if err != nil {
 			return err
 		}
 		if ks != "" {
+			var err error
 			h.collection, err = h.db.GetDatabaseCollectionWithUser(*keyspaceScope, *keyspaceCollection)
 			if err != nil {
 				return err

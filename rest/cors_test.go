@@ -77,8 +77,13 @@ func TestCORSDynamicSet(t *testing.T) {
 	RequireStatus(t, response, http.StatusOK)
 
 	response = rt.SendRequestWithHeaders("GET", "/{{.db}}/", "", reqHeaders)
-	require.Equal(t, "", response.Header().Get("Access-Control-Allow-Origin"))
 	RequireStatus(t, response, http.StatusUnauthorized)
+	require.Equal(t, "http://example.com", response.Header().Get("Access-Control-Allow-Origin"))
+	require.Contains(t, response.Body.String(), ErrLoginRequired.Message)
+
+	response = rt.SendRequestWithHeaders("GET", "/notadb/", "", reqHeaders)
+	RequireStatus(t, response, http.StatusUnauthorized)
+	require.Equal(t, "http://example.com", response.Header().Get("Access-Control-Allow-Origin"))
 	require.Contains(t, response.Body.String(), ErrLoginRequired.Message)
 
 	response = rt.SendUserRequestWithHeaders("GET", "/{{.db}}/", "", reqHeaders, username, RestTesterDefaultUserPassword)
@@ -94,7 +99,12 @@ func TestCORSDynamicSet(t *testing.T) {
 	RequireStatus(t, response, http.StatusOK)
 
 	response = rt.SendRequestWithHeaders("GET", "/{{.db}}/", "", reqHeaders)
-	require.Equal(t, "http://example.org", response.Header().Get("Access-Control-Allow-Origin"))
+	require.Equal(t, "*", response.Header().Get("Access-Control-Allow-Origin"))
+	RequireStatus(t, response, http.StatusUnauthorized)
+	require.Contains(t, response.Body.String(), ErrLoginRequired.Message)
+
+	response = rt.SendRequestWithHeaders("GET", "/notadb/", "", reqHeaders)
+	require.Equal(t, "*", response.Header().Get("Access-Control-Allow-Origin"))
 	RequireStatus(t, response, http.StatusUnauthorized)
 	require.Contains(t, response.Body.String(), ErrLoginRequired.Message)
 
@@ -164,6 +174,86 @@ func TestCORSUserNoAccess(t *testing.T) {
 			RequireStatus(t, response, http.StatusUnauthorized)
 			require.Contains(t, response.Body.String(), ErrLoginRequired.Message)
 			assert.Equal(t, "*", response.Header().Get("Access-Control-Allow-Origin"))
+		})
+	}
+}
+
+func TestCORSOriginPerDatabase(t *testing.T) {
+	// Override the default (example.com) CORS configuration in the DbConfig for /db:
+	rt := NewRestTester(t, &RestTesterConfig{
+		DatabaseConfig: &DatabaseConfig{
+			DbConfig: DbConfig{
+				CORS: &auth.CORSConfig{
+					Origin:      []string{"http://couchbase.com", "http://staging.couchbase.com"},
+					LoginOrigin: []string{"http://couchbase.com"},
+					Headers:     []string{},
+					MaxAge:      1728000,
+				},
+			},
+		},
+		GuestEnabled: true,
+	})
+	defer rt.Close()
+
+	testCases := []struct {
+		name           string
+		endpoint       string
+		origin         string
+		headerResponse string
+		responseCode   int
+	}{
+		{
+			name:           "CORS origin allowed couchbase",
+			endpoint:       "/{{.db}}/",
+			origin:         "http://couchbase.com",
+			headerResponse: "http://couchbase.com",
+			responseCode:   http.StatusOK,
+		},
+		{
+			name:           "CORS origin allowed example.com",
+			endpoint:       "/{{.db}}/",
+			origin:         "http://example.com",
+			headerResponse: "",
+			responseCode:   http.StatusOK,
+		},
+		{
+			name:           "not allowed domain",
+			endpoint:       "/{{.db}}/",
+			origin:         "http://hack0r.com",
+			headerResponse: "",
+			responseCode:   http.StatusOK,
+		},
+		{
+			name:           "root url allow hack0r",
+			endpoint:       "/",
+			origin:         "http://hack0r.com",
+			headerResponse: "*",
+			responseCode:   http.StatusOK,
+		},
+		{
+			name:           "root url allow couchbase",
+			endpoint:       "/",
+			origin:         "http://couchbase.com",
+			headerResponse: "*",
+			responseCode:   http.StatusOK,
+		},
+		{
+			name:           "root url allow example.com",
+			endpoint:       "/",
+			origin:         "http://example.com",
+			headerResponse: "http://example.com",
+			responseCode:   http.StatusOK,
+		},
+	}
+	for _, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+			reqHeaders := map[string]string{
+				"Origin": test.origin,
+			}
+			response := rt.SendRequestWithHeaders(http.MethodGet, test.endpoint, "", reqHeaders)
+			require.Equal(t, test.responseCode, response.Code)
+			require.Equal(t, test.headerResponse, response.Header().Get("Access-Control-Allow-Origin"))
+
 		})
 	}
 }
