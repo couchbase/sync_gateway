@@ -1060,21 +1060,23 @@ func getLargeTreeJSONOldAndNew(t testing.TB) (old []byte, new []byte) {
 	assert.NoError(t, err)
 	assert.NoError(t, doc.History.Validate())
 	assert.Equal(t, 2103, doc.History.RevCount())
-
-	oldJson, err := base.JSONMarshal(doc.History)
-	assert.NoError(t, err)
-
-	doc.History.jsonForm = nil
 	newJson, err := base.JSONMarshal(doc.History)
 	assert.NoError(t, err)
+
+	var body Body
+	assert.NoError(t, base.JSONUnmarshal([]byte(largeRevTree), &body))
+	sync := body["_sync"].(map[string]any)
+	oldJson, err := base.JSONMarshal(sync["history"])
+	assert.NoError(t, err)
+
 	return oldJson, newJson
 }
 
 func TestRevtreeUnmarshalLargeTree(t *testing.T) {
 	oldJson, newJson := getLargeTreeJSONOldAndNew(t)
 
-	// t.Logf("Old size = %d; new size = %d", len(oldJson), len(newJson))
-	// t.Logf("NEW JSON: %s", newJson)
+	t.Logf("Old size = %d; new size = %d", len(oldJson), len(newJson))
+	t.Logf("NEW JSON: %s", newJson)
 	assert.NotEqual(t, newJson, oldJson)
 	assert.LessOrEqual(t, len(newJson), len(oldJson))
 
@@ -1132,7 +1134,7 @@ func BenchmarkRevtreeUnmarshal(t *testing.B) {
 
 	t.Run("old format", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			revTree := revTreeList{}
+			revTree := extRevTree{}
 			_ = base.JSONUnmarshal(oldJson, &revTree)
 		}
 	})
