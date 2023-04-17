@@ -1763,9 +1763,6 @@ Database:
           type: array
           items:
             type: string
-        max_age:
-          description: Maximum age of the CORS Options request
-          type: integer
   title: Database-config
 Event-config:
   type: object

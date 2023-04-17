@@ -248,7 +248,7 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 
 	defer func() {
 		// Now that we know the DB, add CORS headers to the response:
-		if h.privs != adminPrivs {
+		if h.privs != adminPrivs && h.privs != metricsPrivs {
 			cors := h.server.Config.API.CORS
 			if h.db != nil {
 				cors = h.db.CORS
