@@ -10,16 +10,19 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 )
 
+// A numeric channel identifier; extRevTree.ChannelNames maps them to strings.
+type ChannelID int32
+
 // used for JSON marshaling of RevTree
 type extRevTree struct {
-	Version      int           `json:"vers"`                // JSON format version
-	Revs         string        `json:"revs"`                // The revision IDs concatenated
-	Parents      []int         `json:"parents"`             // Relative index of parent (0 if none)
-	Flags        []extRevFlags `json:"flags"`               // Flags for each revision
-	Bodies       []string      `json:"bodies,omitempty"`    // Non-default bodies
-	BodyKeys     []string      `json:"bodyKeys,omitempty"`  // Body keys
-	Channels     [][]int       `json:"channels,omitempty"`  // Channel sets, as arrays of indices
-	ChannelNames []string      `json:"chanNames,omitempty"` // Unique channel names
+	Version      int                `json:"vers"`                // JSON format version
+	Revs         string             `json:"revs"`                // The revision IDs concatenated
+	Parents      []int              `json:"parents"`             // Relative index of parent (0 if none)
+	Flags        []extRevFlags      `json:"flags"`               // Flags for each revision
+	Bodies       [][]byte           `json:"bodies,omitempty"`    // Non-default bodies
+	BodyKeys     []string           `json:"bodyKeys,omitempty"`  // Body keys
+	Channels     [][]ChannelID      `json:"channels,omitempty"`  // Channel sets, as arrays of indices
+	ChannelNames NameSet[ChannelID] `json:"chanNames,omitempty"` // Unique channel names
 }
 
 const kExtRevTreeCurrentVersion = 3
@@ -29,15 +32,15 @@ type extRevFlags uint8
 const (
 	extRevDeleted         extRevFlags = 1  // rev.Deleted is true
 	extRevHasAttachments  extRevFlags = 2  // rev.HasAttachments is true
-	extRevHasBody         extRevFlags = 4  // rev.Body is not nil/empty
-	extRevHasNonEmptyBody extRevFlags = 8  // rev.Body is not nil/empty nor "{}"
-	extRevHasBodyKey      extRevFlags = 16 // rev.BodyKey is not empty
-	extRevHasChannels     extRevFlags = 32 // rev.Channels is not empty
+	extRevHasBody         extRevFlags = 4  // rev.Body exists
+	extRevHasNonEmptyBody extRevFlags = 8  // rev.Body exists and is not "{}"
+	extRevHasBodyKey      extRevFlags = 16 // rev.BodyKey exists
+	extRevHasChannels     extRevFlags = 32 // rev.Channels exists
 )
 
 var kEmptyBody = []byte{'{', '}'}
 
-const kAverageRevIDLength = 36
+const kAverageRevIDLength = 36 // 2-digit gen, '-', 32-byte digest, ','
 
 func (tree RevTree) MarshalJSON() ([]byte, error) {
 	if tree.jsonForm != nil {
@@ -53,8 +56,6 @@ func (tree RevTree) MarshalJSON() ([]byte, error) {
 		Parents: make([]int, n),
 		Flags:   make([]extRevFlags, n),
 	}
-
-	indexOfChannel := make(map[string]int) // Maps channel name to index in ChannelNames
 
 	mkFlags := func(rev *RevInfo) extRevFlags {
 		var flag extRevFlags
@@ -79,20 +80,14 @@ func (tree RevTree) MarshalJSON() ([]byte, error) {
 		return flag
 	}
 
-	encodeChannels := func(channels base.Set) []int {
+	encodeChannels := func(channels base.Set) []ChannelID {
 		// converts Channels set into an array of indices in extRevTree.ChannelNames[]
 		if len(channels) == 0 {
 			return nil
 		}
-		result := make([]int, 0, len(channels))
+		result := make([]ChannelID, 0, len(channels))
 		for ch := range channels {
-			i, found := indexOfChannel[ch]
-			if !found {
-				i = len(ext.ChannelNames)
-				ext.ChannelNames = append(ext.ChannelNames, ch)
-				indexOfChannel[ch] = i
-			}
-			result = append(result, i)
+			result = append(result, ext.ChannelNames.Add(ch))
 		}
 		return result
 	}
@@ -114,7 +109,7 @@ func (tree RevTree) MarshalJSON() ([]byte, error) {
 		flags := mkFlags(rev)
 		ext.Flags[index] = flags + 32 // Convert flags to printable ASCII char
 		if (flags & extRevHasNonEmptyBody) != 0 {
-			ext.Bodies = append(ext.Bodies, string(rev.Body))
+			ext.Bodies = append(ext.Bodies, rev.Body)
 		}
 		if (flags & extRevHasBodyKey) != 0 {
 			ext.BodyKeys = append(ext.BodyKeys, string(rev.BodyKey))
@@ -171,14 +166,16 @@ func (tree *RevTree) lazyLoadJSON() (err error) {
 		return fmt.Errorf("encoded RevTree has incompatible version number")
 	}
 
-	decodeChannels := func(indexes []int) base.Set {
+	decodeChannels := func(indexes []ChannelID) base.Set {
 		// converts an array of channel indices back into a Set
 		if len(indexes) == 0 {
 			return nil
 		}
 		channels := make(base.Set, len(indexes))
 		for _, i := range indexes {
-			channels.Add(ext.ChannelNames[i])
+			if ch, found := ext.ChannelNames.GetString(i); found {
+				channels.Add(ch)
+			}
 		}
 		return channels
 	}
@@ -215,7 +212,7 @@ func (tree *RevTree) lazyLoadJSON() (err error) {
 				if bodyIndex >= len(ext.Bodies) {
 					return fmt.Errorf("encoded RevTree has too few bodies")
 				}
-				rev.Body = []byte(ext.Bodies[bodyIndex])
+				rev.Body = ext.Bodies[bodyIndex]
 				bodyIndex++
 			} else {
 				rev.Body = kEmptyBody
