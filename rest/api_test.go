@@ -229,45 +229,65 @@ func TestFunkyDocIDs(t *testing.T) {
 func TestCORSOrigin(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
+	tests := []struct {
+		origin       string
+		headerOutput string
+	}{
+		{
+			origin:       "http://example.com",
+			headerOutput: "http://example.com",
+		},
+		{
+			origin:       "http://staging.example.com",
+			headerOutput: "http://staging.example.com",
+		},
 
-	reqHeaders := map[string]string{
-		"Origin": "http://example.com",
+		{
+			origin:       "http://hack0r.com",
+			headerOutput: "*",
+		},
 	}
-	response := rt.SendRequestWithHeaders("GET", "/{{.keyspace}}/", "", reqHeaders)
-	assert.Equal(t, "http://example.com", response.Header().Get("Access-Control-Allow-Origin"))
 
-	// now test a non-listed origin
-	// b/c * is in config we get *
-	reqHeaders = map[string]string{
-		"Origin": "http://hack0r.com",
-	}
-	response = rt.SendRequestWithHeaders("GET", "/{{.keyspace}}/", "", reqHeaders)
-	assert.Equal(t, "*", response.Header().Get("Access-Control-Allow-Origin"))
+	for _, tc := range tests {
+		t.Run(tc.origin, func(t *testing.T) {
 
-	// now test another origin in config
-	reqHeaders = map[string]string{
-		"Origin": "http://staging.example.com",
-	}
-	response = rt.SendRequestWithHeaders("GET", "/{{.keyspace}}/", "", reqHeaders)
-	assert.Equal(t, "http://staging.example.com", response.Header().Get("Access-Control-Allow-Origin"))
+			invalidDatabaseName := "invalid database name"
+			reqHeaders := map[string]string{
+				"Origin": tc.origin,
+			}
+			response := rt.SendRequestWithHeaders("GET", "/{{.keyspace}}/", "", reqHeaders)
+			assert.Equal(t, tc.headerOutput, response.Header().Get("Access-Control-Allow-Origin"))
+			RequireStatus(t, response, http.StatusBadRequest)
+			require.Contains(t, response.Body.String(), invalidDatabaseName)
 
-	// test no header on _admin apis
-	reqHeaders = map[string]string{
-		"Origin": "http://example.com",
-	}
-	response = rt.SendAdminRequestWithHeaders("GET", "/{{.keyspace}}/_all_docs", "", reqHeaders)
-	assert.Equal(t, "", response.Header().Get("Access-Control-Allow-Origin"))
+			response = rt.SendRequestWithHeaders("GET", "/{{.db}}/", "", reqHeaders)
+			assert.Equal(t, tc.headerOutput, response.Header().Get("Access-Control-Allow-Origin"))
+			RequireStatus(t, response, http.StatusUnauthorized)
+			require.Contains(t, response.Body.String(), ErrLoginRequired.Message)
 
-	// test with a config without * should reject non-matches
-	sc := rt.ServerContext()
-	sc.Config.API.CORS.Origin = []string{"http://example.com", "http://staging.example.com"}
-	// now test a non-listed origin
-	// b/c * is in config we get *
-	reqHeaders = map[string]string{
-		"Origin": "http://hack0r.com",
+			response = rt.SendRequestWithHeaders("GET", "/notadb/", "", reqHeaders)
+			assert.Equal(t, tc.headerOutput, response.Header().Get("Access-Control-Allow-Origin"))
+			RequireStatus(t, response, http.StatusUnauthorized)
+			require.Contains(t, response.Body.String(), ErrLoginRequired.Message)
+
+			// admin port doesn't have CORS
+			response = rt.SendAdminRequestWithHeaders("GET", "/{{.keyspace}}/_all_docs", "", reqHeaders)
+			assert.Equal(t, "", response.Header().Get("Access-Control-Allow-Origin"))
+			RequireStatus(t, response, http.StatusOK)
+
+			// test with a config without * should reject non-matches
+			sc := rt.ServerContext()
+			defer func() {
+				sc.Config.API.CORS.Origin = defaultTestingCORSOrigin
+			}()
+
+			sc.Config.API.CORS.Origin = []string{"http://example.com", "http://staging.example.com"}
+			if !base.StringSliceContains(sc.Config.API.CORS.Origin, tc.origin) {
+				response = rt.SendRequestWithHeaders("GET", "/{{.keyspace}}/", "", reqHeaders)
+				assert.Equal(t, "", response.Header().Get("Access-Control-Allow-Origin"))
+			}
+		})
 	}
-	response = rt.SendRequestWithHeaders("GET", "/{{.keyspace}}/", "", reqHeaders)
-	assert.Equal(t, "", response.Header().Get("Access-Control-Allow-Origin"))
 }
 
 // assertGatewayStatus is like requireStatus but with StatusGatewayTimeout error checking for temporary network failures.

@@ -121,21 +121,14 @@ type APIConfig struct {
 	CompressResponses  *bool `json:"compress_responses,omitempty"   help:"If false, disables compression of HTTP responses"`
 	HideProductVersion *bool `json:"hide_product_version,omitempty" help:"Whether product versions removed from Server headers and REST API responses"`
 
-	HTTPS HTTPSConfig `json:"https,omitempty"`
-	CORS  *CORSConfig `json:"cors,omitempty"`
+	HTTPS HTTPSConfig      `json:"https,omitempty"`
+	CORS  *auth.CORSConfig `json:"cors,omitempty"`
 }
 
 type HTTPSConfig struct {
 	TLSMinimumVersion string `json:"tls_minimum_version,omitempty" help:"The minimum allowable TLS version for the REST APIs"`
 	TLSCertPath       string `json:"tls_cert_path,omitempty"       help:"The TLS cert file to use for the REST APIs"`
 	TLSKeyPath        string `json:"tls_key_path,omitempty"        help:"The TLS key file to use for the REST APIs"`
-}
-
-type CORSConfig struct {
-	Origin      []string `json:"origin,omitempty"       help:"List of allowed origins, use ['*'] to allow access from everywhere"`
-	LoginOrigin []string `json:"login_origin,omitempty" help:"List of allowed login origins"`
-	Headers     []string `json:"headers,omitempty"      help:"List of allowed headers"`
-	MaxAge      int      `json:"max_age,omitempty"      help:"Maximum age of the CORS Options request"`
 }
 
 type AuthConfig struct {
@@ -220,7 +213,7 @@ func LoadStartupConfigFromPath(path string) (*StartupConfig, error) {
 func NewEmptyStartupConfig() StartupConfig {
 	return StartupConfig{
 		API: APIConfig{
-			CORS: &CORSConfig{},
+			CORS: &auth.CORSConfig{},
 		},
 		Logging: base.LoggingConfig{
 			Console: &base.ConsoleLoggerConfig{},
