@@ -383,6 +383,7 @@ func wrapRouter(sc *ServerContext, privs handlerPrivs, router *mux.Router) http.
 			if len(options) == 0 {
 				h.writeStatus(http.StatusNotFound, "unknown URL")
 			} else {
+				// Add CORS headers for OPTIONS request, since these are never registered by muxer.
 				response.Header().Add("Allow", strings.Join(options, ", "))
 				if privs != adminPrivs && cors != nil && len(rq.Header["Origin"]) > 0 {
 					response.Header().Add("Access-Control-Max-Age", strconv.Itoa(cors.MaxAge))

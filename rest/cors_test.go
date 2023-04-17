@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/couchbase/sync_gateway/auth"
+	"github.com/couchbase/sync_gateway/base"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -256,4 +257,49 @@ func TestCORSOriginPerDatabase(t *testing.T) {
 
 		})
 	}
+}
+
+func TestCORSValidation(t *testing.T) {
+	rt := NewRestTester(t, &RestTesterConfig{
+		PersistentConfig: true,
+	})
+	defer rt.Close()
+
+	// CORS is set to http://example.com by RestTester ServerContext
+	dbName := "corsdb"
+	dbConfig := rt.NewDbConfig()
+	dbConfig.CORS = &auth.CORSConfig{
+		MaxAge: 1000,
+	}
+	resp := rt.CreateDatabase(dbName, dbConfig)
+	// walrus doesn't set ServerContext.persistentConfig so we miss some validation
+	if base.UnitTestUrlIsWalrus() {
+		RequireStatus(t, resp, http.StatusCreated)
+	} else {
+		RequireStatus(t, resp, http.StatusBadRequest)
+		require.Contains(t, resp.Body.String(), "max_age")
+		nonCORSDbConfig := rt.NewDbConfig()
+		resp := rt.CreateDatabase(dbName, nonCORSDbConfig)
+		RequireStatus(t, resp, http.StatusCreated)
+	}
+	resp = rt.UpsertDbConfig(dbName, dbConfig)
+	RequireStatus(t, resp, http.StatusBadRequest)
+	require.Contains(t, resp.Body.String(), "max_age")
+
+	resp = rt.ReplaceDbConfig(dbName, dbConfig)
+	RequireStatus(t, resp, http.StatusBadRequest)
+	require.Contains(t, resp.Body.String(), "max_age")
+
+	// make sure you are allowed to set CORS values that aren't max_age
+	originCORSDbConfig := rt.NewDbConfig()
+	originCORSDbConfig.CORS = &auth.CORSConfig{
+		Origin: []string{"http://example.com"},
+	}
+
+	resp = rt.UpsertDbConfig(dbName, originCORSDbConfig)
+	RequireStatus(t, resp, http.StatusCreated)
+
+	resp = rt.ReplaceDbConfig(dbName, originCORSDbConfig)
+	RequireStatus(t, resp, http.StatusCreated)
+
 }
