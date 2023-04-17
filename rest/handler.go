@@ -223,6 +223,7 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 					if !authorized {
 						return ErrInvalidLogin
 					}
+					return base.HTTPErrorf(http.StatusForbidden, "")
 				} else {
 					if h.privs == regularPrivs || h.privs == publicPrivs {
 						if !h.providedAuthCredentials() {
