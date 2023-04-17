@@ -7,7 +7,6 @@
 # software will be governed by the Apache License, Version 2.0, included in
 # the file licenses/APL2.txt.
 
-
 set -eux -o pipefail
 
 function usage() {
@@ -43,8 +42,13 @@ if [ "${CBS_ROOT_DIR:-}" != "" ]; then
     DOCKER_CBS_ROOT_DIR="${CBS_ROOT_DIR}"
 fi
 
+if [[ -n "${JENKINS_URL:-}" ]]; then
+    DOCKER_COMPOSE="docker-compose" # use docker-compose v1 for Jenkins AWS Linux 2
+else
+    DOCKER_COMPOSE="docker compose"
+fi
 cd -- "${BASH_SOURCE%/*}/"
-docker-compose down || true
+${DOCKER_COMPOSE} down || true
 export SG_TEST_COUCHBASE_SERVER_DOCKER_NAME=couchbase
 # Start CBS
 docker stop ${SG_TEST_COUCHBASE_SERVER_DOCKER_NAME} || true
@@ -54,7 +58,7 @@ docker rm ${SG_TEST_COUCHBASE_SERVER_DOCKER_NAME} || true
 if [[ -z "${MULTI_NODE:-}" ]]; then
     docker run -d --name ${SG_TEST_COUCHBASE_SERVER_DOCKER_NAME} --volume "${DOCKER_CBS_ROOT_DIR}/cbs:/root" --volume "${WORKSPACE_ROOT}:/workspace" -p 8091-8096:8091-8096 -p 11207:11207 -p 11210:11210 -p 11211:11211 -p 18091-18094:18091-18094 "couchbase/server:${COUCHBASE_DOCKER_IMAGE_NAME}"
 else
-    docker-compose up -d --force-recreate --renew-anon-volumes --remove-orphans
+    ${DOCKER_COMPOSE} up -d --force-recreate --renew-anon-volumes --remove-orphans
 fi
 
 # Test to see if Couchbase Server is up

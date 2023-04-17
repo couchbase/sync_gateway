@@ -62,7 +62,7 @@ else
     go install -v github.com/AlekSi/gocov-xml@latest
 fi
 
-if [[ -n "${JENKINS_URL}" ]]; then
+if [[ -n "${JENKINS_URL:-}" ]]; then
     # last 1.x version, when updating aws linux 2 docker, docker-compose becomes docker compose
     sudo yum install -y jq
     sudo curl -L "https://github.com/docker/compose/releases/download/1.29.2/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
@@ -141,7 +141,7 @@ if [ "${SG_EDITION}" == "EE" ]; then
     GO_TEST_FLAGS="${GO_TEST_FLAGS} -tags cb_sg_enterprise"
 fi
 
-go test ${GO_TEST_FLAGS} -coverprofile=coverage_int.out -coverpkg=github.com/couchbase/sync_gateway/... github.com/couchbase/sync_gateway/${TARGET_PACKAGE} 2>&1 | stdbuf -oL tee "${INT_LOG_FILE_NAME}.out.raw" | stdbuf -oL grep -a -P '(--- (FAIL|PASS|SKIP):|github.com/couchbase/sync_gateway(/.+)?\t|TEST: |panic: )'
+go test ${GO_TEST_FLAGS} -coverprofile=coverage_int.out -coverpkg=github.com/couchbase/sync_gateway/... github.com/couchbase/sync_gateway/${TARGET_PACKAGE} 2>&1 | stdbuf -oL tee "${INT_LOG_FILE_NAME}.out.raw" | stdbuf -oL grep -a -E '(--- (FAIL|PASS|SKIP):|github.com/couchbase/sync_gateway(/.+)?\t|TEST: |panic: )'
 if [ "${PIPESTATUS[0]}" -ne "0" ]; then # If test exit code is not 0 (failed)
     echo "Go test failed! Parsing logs to find cause..."
     TEST_FAILED=true

@@ -141,7 +141,7 @@ func tbpNumBuckets() int {
 
 // tbpNumReplicasreturns the number of replicas to use in each bucket.
 func tbpNumReplicas() uint32 {
-	numReplicas := os.Getenv(tbpEnvBucketPoolSize)
+	numReplicas := os.Getenv(tbpEnvBucketNumReplicas)
 	if numReplicas == "" {
 		return 0
 	}
