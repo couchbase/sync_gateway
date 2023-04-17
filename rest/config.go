@@ -154,6 +154,7 @@ type DbConfig struct {
 	UserXattrKey                     string                           `json:"user_xattr_key,omitempty"`                       // Key of user xattr that will be accessible from the Sync Function. If empty the feature will be disabled.
 	ClientPartitionWindowSecs        *int                             `json:"client_partition_window_secs,omitempty"`         // How long clients can remain offline for without losing replication metadata. Default 30 days (in seconds)
 	Guest                            *db.PrincipalConfig              `json:"guest,omitempty"`                                // Guest user settings
+	CORS                             *auth.CORSConfig                 `json:"cors,omitempty"`
 }
 
 type DeltaSyncConfig struct {
@@ -626,6 +627,10 @@ func (dbConfig *DbConfig) validateVersion(isEnterpriseEdition, validateOIDCConfi
 		}
 	}
 
+	if dbConfig.CORS != nil && dbConfig.CORS.MaxAge != 0 {
+		multiError = multiError.Append(fmt.Errorf("cors.max_age can not be set on a database level"))
+
+	}
 	if dbConfig.DeprecatedPool != nil {
 		base.Warnf(`"pool" config option is not supported. The pool will be set to "default". The option should be removed from config file.`)
 	}
