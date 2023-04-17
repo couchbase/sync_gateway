@@ -16,7 +16,7 @@ on:
 
 jobs:
   run-bootstrap:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     steps:
       - uses: actions/cache@v1
         with:
@@ -32,7 +32,7 @@ jobs:
     needs: run-bootstrap
     env:
       GO111MODULE: off
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     steps:
       - uses: actions/cache@v1
         with:
@@ -61,7 +61,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
+          - os: ubuntu-20.04
             set-gopath: echo "GOPATH=$GITHUB_WORKSPACE/godeps" >> $GITHUB_ENV
           - os: macos-latest
             set-gopath: echo "GOPATH=$GITHUB_WORKSPACE/godeps" >> $GITHUB_ENV
@@ -85,7 +85,7 @@ jobs:
     needs: run-bootstrap
     env:
       GO111MODULE: off
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     steps:
       - uses: actions/cache@v1
         with:
