@@ -125,6 +125,12 @@ func TestDisablePublicBasicAuth(t *testing.T) {
 	assertStatus(t, response, http.StatusUnauthorized)
 	assert.NotContains(t, response.Header(), "WWW-Authenticate", "expected to not receive a WWW-Auth header when password auth is disabled")
 	require.Contains(t, response.Body.String(), ErrInvalidLogin.Message)
+
+	response = rt.Send(requestByUser(http.MethodGet, "/notadb/", "", "user1"))
+	assertStatus(t, response, http.StatusUnauthorized)
+	assert.NotContains(t, response.Header(), "WWW-Authenticate", "expected to not receive a WWW-Auth header when password auth is disabled")
+	require.Contains(t, response.Body.String(), ErrInvalidLogin.Message)
+
 	// Also check that we can't create a session through POST /db/_session
 	response = rt.SendRequest(http.MethodPost, "/db/_session", `{"name":"user1","password":"letmein"}`)
 	assertStatus(t, response, http.StatusUnauthorized)
