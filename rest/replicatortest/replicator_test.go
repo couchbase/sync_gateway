@@ -946,7 +946,7 @@ func TestReplicationConcurrentPush(t *testing.T) {
 	base.LongRunningTest(t)
 
 	base.RequireNumTestBuckets(t, 2)
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
 	// Disable sequence batching for multi-RT tests (pending CBG-1000)
 	defer db.SuspendSequenceBatching()()
@@ -956,8 +956,7 @@ func TestReplicationConcurrentPush(t *testing.T) {
 
 	activeRT, remoteRT, remoteURLString, teardown := rest.SetupSGRPeers(t)
 	defer teardown()
-	// Create push replication, wait for assigned replication (this gives time for the first replication to be created and start initializing),
-	// verify running, then create second replication, verify running and verify both replicators are initialized on sgReplicateManager
+	// Create push replications, verify running, also verify active replicators are created
 	activeRT.CreateReplication("rep_ABC", remoteURLString, db.ActiveReplicatorTypePush, []string{"ABC"}, true, db.ConflictResolverDefault)
 	activeRT.CreateReplication("rep_DEF", remoteURLString, db.ActiveReplicatorTypePush, []string{"DEF"}, true, db.ConflictResolverDefault)
 	activeRT.WaitForReplicationStatus("rep_ABC", db.ReplicationStateRunning)
