@@ -32,7 +32,7 @@ jobs:
     needs: run-bootstrap
     env:
       GO111MODULE: off
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     steps:
       - uses: actions/cache@v1
         with:
@@ -69,7 +69,7 @@ jobs:
             name: macos
           - os: windows-latest
             set-gopath: echo "GOPATH=$Env:GITHUB_WORKSPACE\godeps" >> $Env:GITHUB_ENV
-            name: macos
+            name: windows
     name: test (${{ matrix.name }})
     steps:
       - uses: actions/cache@v1
