@@ -157,7 +157,7 @@ func (tree *RevTree) UnmarshalJSON(inputjson []byte) (err error) {
 // Actually unmarshals the JSON saved in `jsonForm`
 func (tree *RevTree) lazyLoadJSON() (err error) {
 	// Quick test for old format, which doesn't have a "vers" property:
-	if len(tree.jsonForm) < 8 || string(tree.jsonForm[0:8]) != `{"vers":` {
+	if !bytes.Contains(tree.jsonForm, []byte(`"vers":`)) {
 		return tree.oldUnmarshalJSON(tree.jsonForm)
 	}
 
@@ -242,7 +242,7 @@ func (tree *RevTree) lazyLoadJSON() (err error) {
 //////// UNMARSHALING OLDER FORMAT:
 
 // The old form in which a RevTree was stored in JSON.
-type RevTreeList struct {
+type revTreeList struct {
 	Revs           []string          `json:"revs"`                 // The revision IDs
 	Parents        []int             `json:"parents"`              // Index of parent of each revision (-1 if root)
 	Deleted        []int             `json:"deleted,omitempty"`    // Indexes of revisions that are deletions
@@ -254,9 +254,10 @@ type RevTreeList struct {
 }
 
 func (tree *RevTree) oldUnmarshalJSON(inputjson []byte) (err error) {
-	var rep RevTreeList
+	var rep revTreeList
 	err = base.JSONUnmarshal(inputjson, &rep)
 	if err != nil {
+		panic(fmt.Sprintf("Couldn't unmarshal to revTreeList: %s\nerror: %s", inputjson, err)) //TEMP
 		return
 	}
 

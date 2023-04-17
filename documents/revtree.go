@@ -28,7 +28,7 @@ type RevInfo struct {
 	BodyKey        string   // Used when revision body stored externally (doc key used for external storage)
 	Body           []byte   // Used when revision body stored inline (stores bodies)
 	Channels       base.Set // Channels this revision is in
-	depth          uint32   // Depth in tree
+	depth          uint32   // Depth in tree; only set by computeDepthsAndFindLeaves()
 	Deleted        bool     // True if this is a tombstone
 	HasAttachments bool     // True if document has attachments
 }

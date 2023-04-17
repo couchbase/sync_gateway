@@ -1128,7 +1128,7 @@ func BenchmarkRevtreeUnmarshal(t *testing.B) {
 
 	t.Run("old format", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			revTree := RevTreeList{}
+			revTree := revTreeList{}
 			_ = base.JSONUnmarshal(oldJson, &revTree)
 		}
 	})
