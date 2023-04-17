@@ -61,6 +61,10 @@ func TestSgcollectOptionsValidateValid(t *testing.T) {
 			name:    "valid redact level",
 			options: &sgCollectOptions{RedactLevel: "partial"},
 		},
+		{
+			name:    "valid keep_zip option",
+			options: &sgCollectOptions{KeepZip: true},
+		},
 	}
 
 	for _, test := range tests {
@@ -162,8 +166,8 @@ func TestSgcollectOptionsArgs(t *testing.T) {
 			expectedArgs: []string{"--upload-host", defaultSGUploadHost},
 		},
 		{
-			options:      &sgCollectOptions{Upload: true, Ticket: "123456"},
-			expectedArgs: []string{"--upload-host", defaultSGUploadHost, "--ticket", "123456"},
+			options:      &sgCollectOptions{Upload: true, Ticket: "123456", KeepZip: true},
+			expectedArgs: []string{"--upload-host", defaultSGUploadHost, "--ticket", "123456", "--keep-zip"},
 		},
 		{
 			options:      &sgCollectOptions{Upload: true, RedactLevel: "partial"},
@@ -187,8 +191,8 @@ func TestSgcollectOptionsArgs(t *testing.T) {
 			expectedArgs: []string{"--upload-host", "https://example.org/custom-s3-bucket-url", "--upload-proxy", "http://proxy.example.org:8080", "--customer", "alice"},
 		},
 		{
-			// Upload false, so don't pass upload host through
-			options:      &sgCollectOptions{Upload: false, Customer: "alice", UploadHost: "example.org/custom-s3-bucket-url"},
+			// Upload false, so don't pass upload host through. same for keep zip
+			options:      &sgCollectOptions{Upload: false, Customer: "alice", UploadHost: "example.org/custom-s3-bucket-url", KeepZip: false},
 			expectedArgs: []string{"--customer", "alice"},
 		},
 		{
