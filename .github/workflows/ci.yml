@@ -63,11 +63,14 @@ jobs:
         include:
           - os: ubuntu-20.04
             set-gopath: echo "GOPATH=$GITHUB_WORKSPACE/godeps" >> $GITHUB_ENV
+            name: ubuntu
           - os: macos-latest
             set-gopath: echo "GOPATH=$GITHUB_WORKSPACE/godeps" >> $GITHUB_ENV
+            name: macos
           - os: windows-latest
             set-gopath: echo "GOPATH=$Env:GITHUB_WORKSPACE\godeps" >> $Env:GITHUB_ENV
-    name: test (${{ matrix.os }})
+            name: macos
+    name: test (${{ matrix.name }})
     steps:
       - uses: actions/cache@v1
         with:
