@@ -1744,6 +1744,25 @@ Database:
         Defaults to true when running in serverless mode otherwise defaults to false.
       type: boolean
       default: false
+    cors:
+      description: CORS configuration for this database; if present, overrides server's config.
+      type: object
+      properties:
+        origin:
+          description: 'List of allowed origins, use [''*''] to allow access from everywhere'
+          type: array
+          items:
+            type: string
+        login_origin:
+          description: List of allowed login origins
+          type: array
+          items:
+            type: string
+        headers:
+          description: List of allowed headers
+          type: array
+          items:
+            type: string
   title: Database-config
 Event-config:
   type: object

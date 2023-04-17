@@ -223,7 +223,6 @@ func ParseKeyspace(ks string) (db string, scope, collection *string, err error) 
 
 // Top-level handler call. It's passed a pointer to the specific method to run.
 func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, responsePermissions []Permission) error {
-	var err error
 	if h.server.Config.API.CompressResponses == nil || *h.server.Config.API.CompressResponses {
 		if encoded := NewEncodedResponseWriter(h.response, h.rq); encoded != nil {
 			h.response = encoded
@@ -231,6 +230,15 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 		}
 	}
 
+	err := h.validateAndWriteHeaders(method, accessPermissions, responsePermissions)
+	if err != nil {
+		return err
+	}
+	return method(h) // Call the actual handler code
+}
+
+// validateAndWriteHeaders sets up handler.db and validates the permission of the user and returns an error if there is not permission.
+func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermissions []Permission, responsePermissions []Permission) error {
 	var isRequestLogged bool
 	defer func() {
 		if !isRequestLogged {
@@ -238,10 +246,24 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 		}
 	}()
 
+	defer func() {
+		// Now that we know the DB, add CORS headers to the response:
+		if h.privs != adminPrivs && h.privs != metricsPrivs {
+			cors := h.server.Config.API.CORS
+			if h.db != nil {
+				cors = h.db.CORS
+			}
+			if cors != nil {
+				cors.AddResponseHeaders(h.rq, h.response)
+			}
+		}
+	}()
+
 	switch h.rq.Header.Get("Content-Encoding") {
 	case "":
 		h.requestBody = h.rq.Body
 	case "gzip":
+		var err error
 		if h.requestBody, err = gzip.NewReader(h.rq.Body); err != nil {
 			return err
 		}
@@ -266,6 +288,7 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 	// If there is a "keyspace" path variable in the route, parse the keyspace:
 	ks := h.PathVar("keyspace")
 	if ks != "" {
+		var err error
 		keyspaceDb, keyspaceScope, keyspaceCollection, err = ParseKeyspace(ks)
 		if err != nil {
 			return err
@@ -275,10 +298,12 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 		}
 	}
 
-	// look up the database context:
 	var dbContext *db.DatabaseContext
+
+	// look up the database context:
 	if keyspaceDb != "" {
 		h.addDatabaseLogContext(keyspaceDb)
+		var err error
 		if dbContext, err = h.server.GetActiveDatabase(keyspaceDb); err != nil {
 			if err == base.ErrNotFound {
 
@@ -342,6 +367,7 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 
 	// Authenticate, if not on admin port:
 	if h.privs != adminPrivs {
+		var err error
 		if err = h.checkAuth(dbContext); err != nil {
 			return err
 		}
@@ -393,6 +419,7 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 		var httpClient *http.Client
 		var authScope string
 
+		var err error
 		if dbContext != nil {
 			managementEndpoints, httpClient, err = dbContext.ObtainManagementEndpointsAndHTTPClient(h.ctx())
 			authScope = dbContext.Bucket.GetName()
@@ -500,19 +527,21 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 
 	// Now set the request's Database (i.e. context + user)
 	if dbContext != nil {
+		var err error
 		h.db, err = db.GetDatabase(dbContext, h.user)
+
 		if err != nil {
 			return err
 		}
 		if ks != "" {
+			var err error
 			h.collection, err = h.db.GetDatabaseCollectionWithUser(*keyspaceScope, *keyspaceCollection)
 			if err != nil {
 				return err
 			}
 		}
 	}
-
-	return method(h) // Call the actual handler code
+	return nil
 }
 
 func (h *handler) logRequestLine() {
