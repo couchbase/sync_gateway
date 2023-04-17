@@ -220,7 +220,7 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 						return err
 					}
 
-					if !authorized || h.providedAuthCredentials() {
+					if !authorized {
 						return ErrInvalidLogin
 					}
 				} else {
