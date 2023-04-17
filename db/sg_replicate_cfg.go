@@ -833,6 +833,10 @@ func (m *sgReplicateManager) SubscribeCfgChanges(ctx context.Context) error {
 		base.DebugfCtx(m.loggingCtx, base.KeyCluster, "Error subscribing to %s key changes: %v", cfgKeySGRCluster, err)
 		return err
 	}
+	err = m.RefreshReplicationCfg(ctx)
+	if err != nil {
+		base.WarnfCtx(m.loggingCtx, "Error while updating refreshing replications before subscribing to cfg: %v", err)
+	}
 	m.closeWg.Add(1)
 	go func() {
 		defer base.FatalPanicHandler()
