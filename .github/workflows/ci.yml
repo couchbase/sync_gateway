@@ -72,7 +72,7 @@ jobs:
       - name: Build
         run: go build -v "./..."
       - name: Run Tests
-        run: go test -timeout=30m -count=100 -v ./rest/adminapitest -run TestResync | tee test.json | jq -s -jr 'sort_by(.Package,.Time) | .[].Output | select (. != null )'
+        run: go test -timeout=30m -count=101 -v ./rest/adminapitest -run TestResync | tee test.json | jq -s -jr 'sort_by(.Package,.Time) | .[].Output | select (. != null )'
         shell: bash
       - name: Annotate Failures
         if: always()
