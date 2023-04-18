@@ -1520,3 +1520,61 @@ func TestPutUserCollectionAccess(t *testing.T) {
 		RequireStatus(t, putResponse, 400)
 	}
 }
+
+func TestUnauthorizedAccessForDB(t *testing.T) {
+	rt := NewRestTester(t, &RestTesterConfig{
+		PersistentConfig: true,
+	})
+	defer rt.Close()
+
+	dbConfig := rt.NewDbConfig()
+
+	dbName := "realdb"
+	rt.CreateDatabase("realdb", dbConfig)
+
+	response := rt.SendRequest(http.MethodGet, "/"+dbName+"/", "")
+	RequireStatus(t, response, http.StatusUnauthorized)
+	require.Contains(t, response.Body.String(), ErrLoginRequired.Message)
+
+	response = rt.SendRequest(http.MethodGet, "/notadb/", "")
+	RequireStatus(t, response, http.StatusUnauthorized)
+	require.Contains(t, response.Body.String(), ErrLoginRequired.Message)
+
+	// create sessions before users
+	const alice = "alice"
+	const bob = "bob"
+	response = rt.SendAdminRequest(http.MethodPut,
+		"/"+dbName+"/_user/"+alice,
+		`{"name": "`+alice+`", "password": "`+RestTesterDefaultUserPassword+`"}`)
+	RequireStatus(t, response, http.StatusCreated)
+
+	response = rt.SendRequest(http.MethodPost,
+		"/"+dbName+"/_session",
+		`{"name": "`+alice+`", "password": "`+RestTesterDefaultUserPassword+`"}`)
+	RequireStatus(t, response, http.StatusOK)
+
+	cookie := response.Header().Get("Set-Cookie")
+	aliceSessionHeaders := map[string]string{
+		"Cookie": cookie,
+	}
+
+	// alice user can see realdb
+	response = rt.SendUserRequest(http.MethodGet, "/"+dbName+"/", "", alice)
+	RequireStatus(t, response, http.StatusOK)
+
+	response = rt.SendRequestWithHeaders(http.MethodGet, "/"+dbName+"/", "", aliceSessionHeaders)
+	RequireStatus(t, response, http.StatusOK)
+
+	response = rt.SendUserRequest(http.MethodGet, "/notadb/", "", alice)
+	RequireStatus(t, response, http.StatusUnauthorized)
+	require.Contains(t, response.Body.String(), ErrInvalidLogin.Message)
+
+	response = rt.SendRequestWithHeaders(http.MethodGet, "/notadb/", "", aliceSessionHeaders)
+	RequireStatus(t, response, http.StatusUnauthorized)
+	require.Contains(t, response.Body.String(), ErrInvalidLogin.Message)
+
+	response = rt.SendUserRequest(http.MethodGet, "/"+dbName+"/", "", bob)
+	RequireStatus(t, response, http.StatusUnauthorized)
+	require.Contains(t, response.Body.String(), ErrInvalidLogin.Message)
+
+}

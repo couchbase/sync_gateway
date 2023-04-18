@@ -166,6 +166,7 @@ type DbConfig struct {
 	GraphQL                          *functions.GraphQLConfig         `json:"graphql,omitempty"`                              // GraphQL configuration & resolver fns
 	UserFunctions                    *functions.FunctionsConfig       `json:"functions,omitempty"`                            // Named JS fns for clients to call
 	Suspendable                      *bool                            `json:"suspendable,omitempty"`                          // Allow the database to be suspended
+	CORS                             *auth.CORSConfig                 `json:"cors,omitempty"`
 }
 
 type ScopesConfig map[string]ScopeConfig
@@ -681,6 +682,10 @@ func (dbConfig *DbConfig) validateVersion(ctx context.Context, isEnterpriseEditi
 		}
 	}
 
+	if dbConfig.CORS != nil && dbConfig.CORS.MaxAge != 0 {
+		multiError = multiError.Append(fmt.Errorf("cors.max_age can not be set on a database level"))
+
+	}
 	if dbConfig.DeprecatedPool != nil {
 		base.WarnfCtx(ctx, `"pool" config option is not supported. The pool will be set to "default". The option should be removed from config file.`)
 	}

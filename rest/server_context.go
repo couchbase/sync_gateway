@@ -709,6 +709,12 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	dbcontext.NoX509HTTPClient = sc.NoX509HTTPClient
 	dbcontext.RequireResync = collectionsRequiringResync
 
+	if config.CORS != nil {
+		dbcontext.CORS = config.DbConfig.CORS
+	} else {
+		dbcontext.CORS = sc.Config.API.CORS
+	}
+
 	if config.RevsLimit != nil {
 		dbcontext.RevsLimit = *config.RevsLimit
 		if dbcontext.AllowConflicts() {
