@@ -820,7 +820,7 @@ func TestSessionExtension(t *testing.T) {
 	response = rt.SendRequestWithHeaders("GET", "/db/doc1", "", reqHeaders)
 	log.Printf("GET Request: Set-Cookie: %v", response.Header().Get("Set-Cookie"))
 	assertStatus(t, response, http.StatusUnauthorized)
-	require.Contains(t, response.Body.String(), "Session invalid")
+	require.Contains(t, response.Body.String(), "Session Invalid")
 
 }
 
