@@ -734,7 +734,7 @@ func TestCORSOrigin(t *testing.T) {
 
 			sc.config.API.CORS.Origin = []string{"http://example.com", "http://staging.example.com"}
 			if !base.StringSliceContains(sc.config.API.CORS.Origin, tc.origin) {
-				response = rt.SendRequestWithHeaders("GET", "/{{.keyspace}}/", "", reqHeaders)
+				response = rt.SendRequestWithHeaders("GET", "/db/", "", reqHeaders)
 				assert.Equal(t, "", response.Header().Get("Access-Control-Allow-Origin"))
 			}
 		})
