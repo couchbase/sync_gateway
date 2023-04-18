@@ -961,7 +961,7 @@ func TestAdminAPIAuth(t *testing.T) {
 		t.Run(endPoint.Method+formattedEndpoint, func(t *testing.T) {
 			resp := rt.SendAdminRequest(endPoint.Method, formattedEndpoint, body)
 			assertStatus(t, resp, http.StatusUnauthorized)
-
+			require.Contains(t, resp.Body.String(), ErrLoginRequired.Message)
 			resp = rt.SendAdminRequestWithAuth(endPoint.Method, formattedEndpoint, body, "noaccess", "password")
 			assertStatus(t, resp, http.StatusForbidden)
 
