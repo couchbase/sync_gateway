@@ -107,6 +107,12 @@ func TestDisablePublicBasicAuth(t *testing.T) {
 
 	response := rt.SendRequest(http.MethodGet, "/db/", "")
 	assertStatus(t, response, http.StatusUnauthorized)
+	require.Contains(t, response.Body.String(), ErrLoginRequired.Message)
+	assert.NotContains(t, response.Header(), "WWW-Authenticate", "expected to not receive a WWW-Auth header when password auth is disabled")
+
+	response = rt.SendRequest(http.MethodGet, "/notadb/", "")
+	assertStatus(t, response, http.StatusUnauthorized)
+	require.Contains(t, response.Body.String(), ErrLoginRequired.Message)
 	assert.NotContains(t, response.Header(), "WWW-Authenticate", "expected to not receive a WWW-Auth header when password auth is disabled")
 
 	// Double-check that even if we provide valid credentials we still won't be let in
@@ -118,10 +124,21 @@ func TestDisablePublicBasicAuth(t *testing.T) {
 	response = rt.Send(requestByUser(http.MethodGet, "/db/", "", "user1"))
 	assertStatus(t, response, http.StatusUnauthorized)
 	assert.NotContains(t, response.Header(), "WWW-Authenticate", "expected to not receive a WWW-Auth header when password auth is disabled")
+	require.Contains(t, response.Body.String(), ErrInvalidLogin.Message)
+
+	response = rt.Send(requestByUser(http.MethodGet, "/notadb/", "", "user1"))
+	assertStatus(t, response, http.StatusUnauthorized)
+	assert.NotContains(t, response.Header(), "WWW-Authenticate", "expected to not receive a WWW-Auth header when password auth is disabled")
+	require.Contains(t, response.Body.String(), ErrInvalidLogin.Message)
 
 	// Also check that we can't create a session through POST /db/_session
 	response = rt.SendRequest(http.MethodPost, "/db/_session", `{"name":"user1","password":"letmein"}`)
 	assertStatus(t, response, http.StatusUnauthorized)
+	require.Contains(t, response.Body.String(), ErrLoginRequired.Message)
+
+	response = rt.SendRequest(http.MethodPost, "/notadb/_session", `{"name":"user1","password":"letmein"}`)
+	assertStatus(t, response, http.StatusUnauthorized)
+	require.Contains(t, response.Body.String(), ErrLoginRequired.Message)
 
 	// As a sanity check, ensure it does work when the setting is disabled
 	rt.ServerContext().Database("db").Options.DisablePasswordAuthentication = false

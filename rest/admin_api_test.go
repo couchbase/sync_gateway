@@ -820,6 +820,7 @@ func TestSessionExtension(t *testing.T) {
 	response = rt.SendRequestWithHeaders("GET", "/db/doc1", "", reqHeaders)
 	log.Printf("GET Request: Set-Cookie: %v", response.Header().Get("Set-Cookie"))
 	assertStatus(t, response, http.StatusUnauthorized)
+	require.Contains(t, response.Body.String(), "Session Invalid")
 
 }
 
@@ -3640,6 +3641,7 @@ func TestNotExistentDBRequest(t *testing.T) {
 	// Request to non-existent db with invalid credentials
 	resp = rt.SendAdminRequestWithAuth("PUT", "/dbx/_config", "", "random", "passwordx")
 	assertStatus(t, resp, http.StatusUnauthorized)
+	require.Contains(t, resp.Body.String(), ErrInvalidLogin.Message)
 }
 
 func TestConfigsIncludeDefaults(t *testing.T) {

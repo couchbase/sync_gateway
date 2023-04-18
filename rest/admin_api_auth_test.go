@@ -508,6 +508,7 @@ func TestAdminAuthWithX509(t *testing.T) {
 	_, statusCode, err = checkAdminAuth("", "invalidUser", "invalidPassword", "", httpClient, managementEndpoints, true, []Permission{{"!admin", false}}, nil)
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusUnauthorized, statusCode)
+	require.Contains(t, err.Error(), ErrInvalidLogin.Message)
 }
 
 func TestAdminAPIAuth(t *testing.T) {
@@ -960,7 +961,7 @@ func TestAdminAPIAuth(t *testing.T) {
 		t.Run(endPoint.Method+formattedEndpoint, func(t *testing.T) {
 			resp := rt.SendAdminRequest(endPoint.Method, formattedEndpoint, body)
 			assertStatus(t, resp, http.StatusUnauthorized)
-
+			require.Contains(t, resp.Body.String(), ErrLoginRequired.Message)
 			resp = rt.SendAdminRequestWithAuth(endPoint.Method, formattedEndpoint, body, "noaccess", "password")
 			assertStatus(t, resp, http.StatusForbidden)
 
@@ -1555,4 +1556,28 @@ func TestCreateDBSpecificBucketPerm(t *testing.T) {
 
 	resp := rt.SendAdminRequestWithAuth("PUT", "/db2/", `{"bucket": "`+tb.GetName()+`", "username": "`+base.TestClusterUsername()+`", "password": "`+base.TestClusterPassword()+`", "num_index_replicas": 0, "use_views": `+strconv.FormatBool(base.TestsDisableGSI())+`}`, mobileSyncGateway, "password")
 	assertStatus(t, resp, http.StatusCreated)
+}
+
+// Tests to make sure login required is returned when admin auth is enabled
+func TestLoginRequiredForAdmin(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("Hits CBS rest endpoint for permission check")
+	}
+
+	rt := NewRestTester(t, &RestTesterConfig{
+		adminInterfaceAuthentication: true,
+	})
+	defer rt.Close()
+
+	username := "nonexistent"
+	password := "nope"
+
+	response := rt.SendAdminRequestWithAuth(http.MethodGet, "/db/", "", username, password)
+
+	assertStatus(t, response, http.StatusUnauthorized)
+	require.Contains(t, response.Body.String(), ErrInvalidLogin.Message)
+
+	response = rt.SendAdminRequestWithAuth(http.MethodGet, "/notadb/", "", username, password)
+	assertStatus(t, response, http.StatusUnauthorized)
+	require.Contains(t, response.Body.String(), ErrInvalidLogin.Message)
 }

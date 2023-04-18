@@ -41,6 +41,10 @@ const (
 	minCompressibleJSONSize = 1000
 )
 
+var ErrInvalidLogin = base.HTTPErrorf(http.StatusUnauthorized, "Invalid login")
+var ErrLoginRequired = base.HTTPErrorf(http.StatusUnauthorized, "Login required")
+var errPasswordAuthenticationDisabled = base.HTTPErrorf(http.StatusUnauthorized, "Password authentication is disabled")
+
 // If set to true, JSON output will be pretty-printed.
 var PrettyPrint bool = false
 
@@ -209,17 +213,25 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 		if dbContext, err = h.server.GetDatabase(dbname); err != nil {
 			base.Infof(base.KeyHTTP, "Error trying to get db %s: %v", base.MD(dbname), err)
 
-			if shouldCheckAdminAuth {
-				if httpError, ok := err.(*base.HTTPError); ok && httpError.Status == http.StatusNotFound {
+			if httpError, ok := err.(*base.HTTPError); ok && httpError.Status == http.StatusNotFound {
+				if shouldCheckAdminAuth {
 					authorized, err := h.checkAdminAuthenticationOnly()
 					if err != nil {
 						return err
 					}
 
-					if authorized {
-						return base.HTTPErrorf(http.StatusForbidden, "")
+					if !authorized {
+						return ErrInvalidLogin
 					}
-					return base.HTTPErrorf(http.StatusUnauthorized, "")
+					return base.HTTPErrorf(http.StatusForbidden, "")
+				} else {
+					if h.privs == regularPrivs || h.privs == publicPrivs {
+						if !h.providedAuthCredentials() {
+
+							return ErrLoginRequired
+						}
+						return ErrInvalidLogin
+					}
 				}
 			}
 
@@ -280,7 +292,7 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 			if dbContext == nil || dbContext.Options.SendWWWAuthenticateHeader == nil || *dbContext.Options.SendWWWAuthenticateHeader {
 				h.response.Header().Set("WWW-Authenticate", wwwAuthenticateHeader)
 			}
-			return base.HTTPErrorf(http.StatusUnauthorized, "Login required")
+			return ErrLoginRequired
 		}
 
 		var managementEndpoints []string
@@ -326,6 +338,9 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 
 		if statusCode != http.StatusOK {
 			base.Infof(base.KeyAuth, "%s: User %s failed to auth as an admin statusCode: %d", h.formatSerialNumber(), base.UD(username), statusCode)
+			if statusCode == http.StatusUnauthorized {
+				return ErrInvalidLogin
+			}
 			return base.HTTPErrorf(statusCode, "")
 		}
 
@@ -439,7 +454,7 @@ func (h *handler) checkAuth(context *db.DatabaseContext) (err error) {
 			var authJwtErr error
 			h.user, authJwtErr = context.Authenticator().AuthenticateUntrustedJWT(token, context.OIDCProviders, h.getOIDCCallbackURL)
 			if h.user == nil || authJwtErr != nil {
-				return base.HTTPErrorf(http.StatusUnauthorized, "Invalid login")
+				return ErrInvalidLogin
 			}
 			return nil
 		}
@@ -472,7 +487,7 @@ func (h *handler) checkAuth(context *db.DatabaseContext) (err error) {
 				if context.Options.SendWWWAuthenticateHeader == nil || *context.Options.SendWWWAuthenticateHeader {
 					h.response.Header().Set("WWW-Authenticate", wwwAuthenticateHeader)
 				}
-				return base.HTTPErrorf(http.StatusUnauthorized, "Invalid login")
+				return ErrInvalidLogin
 			}
 			return nil
 		}
@@ -494,7 +509,10 @@ func (h *handler) checkAuth(context *db.DatabaseContext) (err error) {
 		if context.Options.SendWWWAuthenticateHeader == nil || *context.Options.SendWWWAuthenticateHeader {
 			h.response.Header().Set("WWW-Authenticate", wwwAuthenticateHeader)
 		}
-		return base.HTTPErrorf(http.StatusUnauthorized, "Login required")
+		if h.providedAuthCredentials() {
+			return ErrInvalidLogin
+		}
+		return ErrLoginRequired
 	}
 
 	return nil
@@ -511,8 +529,7 @@ func (h *handler) checkAdminAuthenticationOnly() (bool, error) {
 	username, password := h.getBasicAuth()
 	if username == "" {
 		h.response.Header().Set("WWW-Authenticate", wwwAuthenticateHeader)
-
-		return false, base.HTTPErrorf(http.StatusUnauthorized, "Login required")
+		return false, ErrLoginRequired
 	}
 
 	statusCode, _, err := doHTTPAuthRequest(httpClient, username, password, "POST", "/pools/default/checkPermissions", managementEndpoints, nil)
@@ -825,6 +842,25 @@ func (h *handler) getBearerToken() string {
 		return token
 	}
 	return ""
+}
+
+// providedAuthCredentials returns true if basic auth or session auth is enabled
+func (h *handler) providedAuthCredentials() bool {
+	username, _ := h.getBasicAuth()
+	if username != "" {
+		return true
+	}
+	token := h.getBearerToken()
+	if token != "" {
+		return true
+	}
+	cookieName := auth.DefaultCookieName
+	if h.db != nil {
+		authenticator := h.db.Authenticator()
+		cookieName = authenticator.SessionCookieName
+	}
+	cookie, _ := h.rq.Cookie(cookieName)
+	return cookie != nil
 }
 
 // taggedEffectiveUserName returns the tagged effective name of the user for the request.

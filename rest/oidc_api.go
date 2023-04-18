@@ -84,7 +84,7 @@ func (h *handler) handleOIDCChallenge() error {
 
 	authHeader := fmt.Sprintf("OIDC login=%q", redirectURL)
 	h.setHeader("WWW-Authenticate", authHeader)
-	return base.HTTPErrorf(http.StatusUnauthorized, "Login Required")
+	return ErrLoginRequired
 }
 
 func (h *handler) handleOIDCCommon() (redirectURLString string, err error) {
@@ -266,7 +266,7 @@ func (h *handler) createSessionForTrustedIdToken(rawIDToken string, provider *au
 		return "", "", err
 	}
 	if user == nil {
-		return "", "", base.HTTPErrorf(http.StatusUnauthorized, "Invalid login")
+		return "", "", ErrInvalidLogin
 	}
 
 	if !provider.DisableSession {
