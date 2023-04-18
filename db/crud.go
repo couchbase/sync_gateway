@@ -479,9 +479,9 @@ func (db *DatabaseCollectionWithUser) Get1xRevAndChannels(ctx context.Context, d
 	if err != nil {
 		return
 	}
-	channels = doc.Channels
-	access = doc.Access
-	roleAccess = doc.RoleAccess
+	channels = doc.GetChannels()
+	access = doc.GetAccess()
+	roleAccess = doc.GetRoleAccess()
 	sequence = doc.Sequence
 	flags = doc.Flags
 	if revID == "" {
@@ -528,7 +528,7 @@ func (c *DatabaseCollection) GetRevision(ctx context.Context, doc *Document, rev
 	}
 
 	if doc.CurrentRev == revid {
-		attachments = doc.Attachments
+		attachments = doc.GetAttachments()
 	}
 
 	// handle backup revision inline attachments, or pre-2.5 meta
@@ -737,7 +737,7 @@ func (db *DatabaseCollectionWithUser) backupAncestorRevs(ctx context.Context, do
 	for {
 		if ancestorRevId = doc.History.GetParent(ancestorRevId); ancestorRevId == "" {
 			// No ancestors with JSON found.  Check if we need to back up current rev for delta sync, then return
-			db.backupRevisionJSON(ctx, doc.ID, newDoc.RevID, "", newBodyBytes, nil, doc.Attachments)
+			db.backupRevisionJSON(ctx, doc.ID, newDoc.RevID, "", newBodyBytes, nil, doc.GetAttachments())
 			return
 		} else if json = doc.GetRevisionBodyJSON(ctx, ancestorRevId, db.RevisionBodyLoader); json != nil {
 			break
@@ -745,7 +745,7 @@ func (db *DatabaseCollectionWithUser) backupAncestorRevs(ctx context.Context, do
 	}
 
 	// Back up the revision JSON as a separate doc in the bucket:
-	db.backupRevisionJSON(ctx, doc.ID, newDoc.RevID, ancestorRevId, newBodyBytes, json, doc.Attachments)
+	db.backupRevisionJSON(ctx, doc.ID, newDoc.RevID, ancestorRevId, newBodyBytes, json, doc.GetAttachments())
 
 	// Nil out the ancestor rev's body in the document struct:
 	if ancestorRevId == doc.CurrentRev {
@@ -1093,7 +1093,7 @@ func (db *DatabaseCollectionWithUser) resolveConflict(ctx context.Context, local
 	// Local doc (localDoc) is persisted in the bucket unlike the incoming remote doc (remoteDoc).
 	// Internal properties of the localDoc can be accessed from syc metadata.
 	localRevID := localDoc.SyncData.CurrentRev
-	localAttachments := localDoc.SyncData.Attachments
+	localAttachments := localDoc.SyncData.GetAttachments()
 	localExpiry := localDoc.SyncData.Expiry
 
 	remoteRevID := remoteDoc.RevID
@@ -1217,7 +1217,7 @@ func (db *DatabaseCollectionWithUser) resolveDocLocalWins(ctx context.Context, l
 	// Note: not setting expiry, as syncData.expiry is reference only and isn't guaranteed to match the bucket doc expiry
 	remoteDoc.RemoveBody()
 	remoteDoc.Deleted = localDoc.IsDeleted()
-	remoteDoc.DocAttachments = localDoc.SyncData.Attachments.ShallowCopy()
+	remoteDoc.DocAttachments = localDoc.SyncData.GetAttachments().ShallowCopy()
 
 	// If the local doc had attachments, any with revpos more recent than the common ancestor will need
 	// to have their revpos updated when we rewrite the rev as a child of the remote branch.
@@ -1357,10 +1357,10 @@ func (db *DatabaseCollectionWithUser) storeOldBodyInRevTreeAndUpdateCurrent(ctx 
 
 		// Stamp _attachments into the old body we're about to backup
 		// We need to do a revpos check here because doc actually contains the new attachments
-		if len(doc.SyncData.Attachments) > 0 {
+		if len(doc.SyncData.GetAttachments()) > 0 {
 			prevCurrentRevGen, _ := ParseRevID(prevCurrentRev)
 			bodyAtts := make(AttachmentsMeta)
-			for attName, attMeta := range doc.SyncData.Attachments {
+			for attName, attMeta := range doc.SyncData.GetAttachments() {
 				if attMeta.Revpos <= prevCurrentRevGen {
 					bodyAtts[attName] = attMeta
 				}
@@ -1386,7 +1386,7 @@ func (db *DatabaseCollectionWithUser) storeOldBodyInRevTreeAndUpdateCurrent(ctx 
 	}
 	// Store the new revision body into the doc:
 	doc.SetRevisionBody(newRevID, newDoc, db.AllowExternalRevBodyStorage(), newDocHasAttachments)
-	doc.SyncData.Attachments = newDoc.DocAttachments
+	doc.SyncData.SetAttachments(newDoc.DocAttachments)
 
 	if doc.CurrentRev == newRevID {
 		doc.NewestRev = ""
@@ -1700,8 +1700,8 @@ func (col *DatabaseCollectionWithUser) documentUpdateFunc(ctx context.Context, d
 		if err != nil {
 			return
 		}
-		changedAccessPrincipals = doc.Access.UpdateAccess(doc, access)
-		changedRoleAccessUsers = doc.RoleAccess.UpdateAccess(doc, roles)
+		changedAccessPrincipals = doc.UpdateAccess(access)
+		changedRoleAccessUsers = doc.UpdateRoleAccess(roles)
 	} else {
 
 		base.DebugfCtx(ctx, base.KeyCRUD, "updateDoc(%q): Rev %q leaves %q still current",
@@ -1917,7 +1917,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 			RevID:       newRevID,
 			History:     documents.EncodeRevisions(docid, history),
 			Channels:    revChannels,
-			Attachments: doc.Attachments,
+			Attachments: doc.GetAttachments(),
 			Expiry:      doc.Expiry,
 			Deleted:     doc.History.Get(newRevID).Deleted,
 		}
@@ -1986,7 +1986,7 @@ func (db *DatabaseCollectionWithUser) updateAndReturnDoc(ctx context.Context, do
 func getAttachmentIDsForLeafRevisions(ctx context.Context, db *DatabaseCollectionWithUser, doc *Document, newRevID string) (map[string]struct{}, error) {
 	leafAttachments := make(map[string]struct{})
 
-	currentAttachments, err := retrieveV2AttachmentKeys(doc.ID, doc.Attachments)
+	currentAttachments, err := retrieveV2AttachmentKeys(doc.ID, doc.GetAttachments())
 	if err != nil {
 		return nil, err
 	}

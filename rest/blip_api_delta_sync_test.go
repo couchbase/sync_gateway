@@ -63,8 +63,8 @@ func TestBlipDeltaSyncPushAttachment(t *testing.T) {
 	syncData, err := rt.GetSingleTestDatabaseCollection().GetDocSyncData(base.TestCtx(t), docID)
 	require.NoError(t, err)
 
-	assert.Len(t, syncData.Attachments, 1)
-	_, found := syncData.Attachments["myAttachment"]
+	assert.Len(t, syncData.GetAttachments(), 1)
+	_, found := syncData.GetAttachments()["myAttachment"]
 	assert.True(t, found)
 
 	// Turn deltas on
@@ -83,8 +83,8 @@ func TestBlipDeltaSyncPushAttachment(t *testing.T) {
 	syncData, err = rt.GetSingleTestDatabaseCollection().GetDocSyncData(base.TestCtx(t), docID)
 	require.NoError(t, err)
 
-	assert.Len(t, syncData.Attachments, 1)
-	_, found = syncData.Attachments["myAttachment"]
+	assert.Len(t, syncData.GetAttachments(), 1)
+	_, found = syncData.GetAttachments()["myAttachment"]
 	assert.True(t, found)
 }
 

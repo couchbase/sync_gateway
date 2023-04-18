@@ -1076,7 +1076,7 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 			currentDigests = make(map[string]string, len(bodyAtts))
 			for name, incomingAttachmentMeta := range bodyAtts {
 				// Check if we have this attachment name already, if we do, continue check
-				currentAttachmentMeta, ok := currentBucketDoc.Attachments[name]
+				currentAttachmentMeta, ok := currentBucketDoc.GetAttachments()[name]
 				if !ok {
 					// If we don't have this attachment already, ensure incoming revpos is greater than minRevPos, otherwise
 					// update to ensure it's fetched and uploaded

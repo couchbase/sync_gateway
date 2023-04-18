@@ -348,7 +348,7 @@ func (col *DatabaseCollectionWithUser) wasDocInChannelPriorToRevocation(ctx cont
 	// Iterate over the channel history information on the document and find any periods where the doc was in the
 	// channel and the channel was accessible by the user
 	isStarChan := chanName == channels.UserStarChannel
-	for _, docHistoryEntry := range append(syncData.ChannelSet, syncData.ChannelSetHistory...) {
+	for _, docHistoryEntry := range append(syncData.GetChannelSet(), syncData.GetChannelSetHistory()...) {
 		if !isStarChan && docHistoryEntry.Name != chanName {
 			continue
 		}
@@ -1278,11 +1278,11 @@ func createChangesEntry(ctx context.Context, docid string, db *DatabaseCollectio
 	// If admin, or the user has the star channel, include it in the results
 	if db.user == nil || db.user.CollectionChannels(db.ScopeName, db.Name).Contains(channels.UserStarChannel) {
 		userCanSeeDocChannel = true
-	} else if len(populatedDoc.Channels) > 0 {
+	} else if len(populatedDoc.GetChannels()) > 0 {
 		// Iterate over the doc's channels, including in the results:
 		//   - the active revision is in a channel the user can see (removal==nil)
 		//   - the doc has been removed from a user's channel later the requested since value (removal.Seq > options.Since.Seq).  In this case, we need to send removal:true changes entry
-		for channel, removal := range populatedDoc.Channels {
+		for channel, removal := range populatedDoc.GetChannels() {
 			if db.user.CanSeeCollectionChannel(db.ScopeName, db.Name, channel) && (removal == nil || removal.Seq > options.Since.Seq) {
 				userCanSeeDocChannel = true
 				// If removal, update removed channels and deleted flag.

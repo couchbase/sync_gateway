@@ -163,8 +163,8 @@ func TestHasAttachmentsFlag(t *testing.T) {
 	log.Printf("Retrieve doc 2-a...")
 	gotDoc, err := collection.GetDocument(ctx, "doc1", DocUnmarshalSync)
 	assert.NoError(t, err)
-	require.Contains(t, gotDoc.Attachments, "hello.txt")
-	attachmentData, ok := gotDoc.Attachments["hello.txt"]
+	require.Contains(t, gotDoc.GetAttachments(), "hello.txt")
+	attachmentData, ok := gotDoc.GetAttachments()["hello.txt"]
 	require.True(t, ok)
 	assert.Equal(t, "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=", attachmentData.Digest)
 	assert.Equal(t, 11, attachmentData.Length)
@@ -189,8 +189,8 @@ func TestHasAttachmentsFlag(t *testing.T) {
 	log.Printf("Retrieve doc, verify rev 2-b")
 	gotDoc, err = collection.GetDocument(ctx, "doc1", DocUnmarshalSync)
 	assert.NoError(t, err)
-	require.Contains(t, gotDoc.Attachments, "hello.txt")
-	attachmentData, ok = gotDoc.Attachments["hello.txt"]
+	require.Contains(t, gotDoc.GetAttachments(), "hello.txt")
+	attachmentData, ok = gotDoc.GetAttachments()["hello.txt"]
 	require.True(t, ok)
 	assert.Equal(t, "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=", attachmentData.Digest)
 	assert.Equal(t, 11, attachmentData.Length)

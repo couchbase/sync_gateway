@@ -132,8 +132,8 @@ func (doc *Document) BodyWithSpecialProperties() ([]byte, error) {
 		kvPairs = append(kvPairs, base.KVPair{Key: BodyDeleted, Val: true})
 	}
 
-	if len(doc.Attachments) > 0 {
-		kvPairs = append(kvPairs, base.KVPair{Key: BodyAttachments, Val: doc.Attachments})
+	if len(doc.GetAttachments()) > 0 {
+		kvPairs = append(kvPairs, base.KVPair{Key: BodyAttachments, Val: doc.GetAttachments()})
 	}
 
 	bodyBytes, err = base.InjectJSONProperties(bodyBytes, kvPairs...)
@@ -619,7 +619,8 @@ func (doc *Document) UpdateExpiry(expiry uint32) {
 
 func (doc *Document) updateChannelHistory(channelName string, seq uint64, addition bool) {
 	// Check if we already have an entry for this channel
-	for idx, historyEntry := range doc.ChannelSet {
+	cs := doc.GetChannelSet()
+	for idx, historyEntry := range cs {
 		if historyEntry.Name == channelName {
 			// If we are here there is an existing entry for this channel
 			// If addition we need to:
@@ -631,13 +632,13 @@ func (doc *Document) updateChannelHistory(channelName string, seq uint64, additi
 				// If there is no end for the current entry we're in an unexpected state as you can't have an addition
 				// of the same channel twice without a removal in between. If we're somehow in this state we don't know
 				// when the removal happened so best we can do is skip this addition work and keep the existing start.
-				if doc.ChannelSet[idx].End == 0 {
+				if cs[idx].End == 0 {
 					return
 				}
 				doc.addToChannelSetHistory(channelName, historyEntry)
-				doc.ChannelSet[idx] = ChannelSetEntry{Name: channelName, Start: seq}
+				cs[idx] = ChannelSetEntry{Name: channelName, Start: seq}
 			} else {
-				doc.ChannelSet[idx].End = seq
+				cs[idx].End = seq
 			}
 			return
 		}
@@ -648,18 +649,18 @@ func (doc *Document) updateChannelHistory(channelName string, seq uint64, additi
 	// If its a removal / not addition then its a legacy document. Start seq is 1 because we don't know when legacy
 	// channels were added
 	if addition {
-		doc.ChannelSet = append(doc.ChannelSet, ChannelSetEntry{
+		cs = append(cs, ChannelSetEntry{
 			Name:  channelName,
 			Start: seq,
 		})
 	} else {
-		doc.ChannelSet = append(doc.ChannelSet, ChannelSetEntry{
+		cs = append(cs, ChannelSetEntry{
 			Name:  channelName,
 			Start: 1,
 			End:   seq,
 		})
 	}
-
+	doc.LazyChannelSet.Set(&cs)
 }
 
 func (doc *Document) addToChannelSetHistory(channelName string, historyEntry ChannelSetEntry) {
@@ -677,7 +678,8 @@ func (doc *Document) addToChannelSetHistory(channelName string, historyEntry Cha
 
 	entryCount := 0
 
-	for entryIdx, entry := range doc.ChannelSetHistory {
+	csHistory := doc.GetChannelSetHistory()
+	for entryIdx, entry := range csHistory {
 		if entry.Name == channelName {
 			entryCount++
 
@@ -698,21 +700,22 @@ func (doc *Document) addToChannelSetHistory(channelName string, historyEntry Cha
 	}
 
 	if entryCount >= DocumentHistoryMaxEntriesPerChannel {
-		doc.ChannelSetHistory[secondOldestEntryIdx].Start = oldestEntryStartSeq
-		doc.ChannelSetHistory = append(doc.ChannelSetHistory[:oldestEntryIdx], doc.ChannelSetHistory[oldestEntryIdx+1:]...)
+		csHistory[secondOldestEntryIdx].Start = oldestEntryStartSeq
+		csHistory = append(csHistory[:oldestEntryIdx], csHistory[oldestEntryIdx+1:]...)
 	}
 
-	doc.ChannelSetHistory = append(doc.ChannelSetHistory, historyEntry)
+	csHistory = append(csHistory, historyEntry)
+	doc.LazyChannelSetHistory.Set(&csHistory)
 }
 
 // Updates the Channels property of a document object with current & past channels.
 // Returns the set of channels that have changed (document joined or left in this revision)
 func (doc *Document) UpdateChannels(ctx context.Context, newChannels base.Set) (changedChannels base.Set, err error) {
 	var changed []string
-	oldChannels := doc.Channels
+	oldChannels := doc.GetChannels()
 	if oldChannels == nil {
 		oldChannels = channels.ChannelMap{}
-		doc.Channels = oldChannels
+		doc.PokeChannels(oldChannels)
 	} else {
 		// Mark every no-longer-current channel as unsubscribed:
 		curSequence := doc.Sequence
@@ -751,7 +754,7 @@ func (doc *Document) IsChannelRemoval(revID string) (bodyBytes []byte, history R
 	removedChannels := make(base.Set)
 
 	// Iterate over the document's channel history, looking for channels that were removed at revID.  If found, also identify whether the removal was a tombstone.
-	for channel, removal := range doc.Channels {
+	for channel, removal := range doc.GetChannels() {
 		if removal != nil && removal.RevID == revID {
 			removedChannels[channel] = struct{}{}
 			if removal.Deleted == true {
@@ -791,36 +794,52 @@ func (doc *Document) IsChannelRemoval(revID string) (bodyBytes []byte, history R
 	return bodyBytes, history, activeChannels, true, isDelete, nil
 }
 
-// Updates a document's channel/role UserAccessMap with new access settings from an AccessMap.
-// Returns an array of the user/role names whose access has changed as a result.
-func (accessMap *UserAccessMap) UpdateAccess(doc *Document, newAccess channels.AccessMap) (changedUsers []string) {
-	// Update users already appearing in doc.Access:
+// Updates a document's channel UserAccessMap with new access settings from an AccessMap.
+// Returns an array of the user names whose access has changed as a result.
+func (doc *Document) UpdateAccess(newAccess channels.AccessMap) (changedUsers []string) {
+	access := doc.GetAccess()
+	changed := doc.updateAccess(&access, newAccess, "channel")
+	if changed != nil {
+		doc.LazyAccess.Set(access)
+	}
+	return changed
+}
+
+// Updates a document's role UserAccessMap with new access settings from an AccessMap.
+// Returns an array of the role names whose access has changed as a result.
+func (doc *Document) UpdateRoleAccess(newAccess channels.AccessMap) (changedRoles []string) {
+	access := doc.GetRoleAccess()
+	changed := doc.updateAccess(&access, newAccess, "role")
+	if changed != nil {
+		doc.LazyRoleAccess.Set(access)
+	}
+	return changed
+}
+
+func (doc *Document) updateAccess(accessMap *UserAccessMap, newAccess channels.AccessMap, what string) (changed []string) {
+	// Update principals already appearing in accessMap:
 	for name, access := range *accessMap {
 		if access.UpdateAtSequence(newAccess[name], doc.Sequence) {
 			if len(access) == 0 {
 				delete(*accessMap, name)
 			}
-			changedUsers = append(changedUsers, name)
+			changed = append(changed, name)
 		}
 	}
-	// Add new users who are in newAccess but not accessMap:
+	// Add new principals who are in newAccess but not accessMap:
 	for name, access := range newAccess {
 		if _, existed := (*accessMap)[name]; !existed {
 			if *accessMap == nil {
 				*accessMap = UserAccessMap{}
 			}
 			(*accessMap)[name] = channels.AtSequence(access, doc.Sequence)
-			changedUsers = append(changedUsers, name)
+			changed = append(changed, name)
 		}
 	}
-	if changedUsers != nil {
-		what := "channel"
-		if accessMap == &doc.RoleAccess {
-			what = "role"
-		}
+	if changed != nil {
 		base.InfofCtx(context.TODO(), base.KeyAccess, "Doc %q grants %s access: %v", base.UD(doc.ID), what, base.UD(*accessMap))
 	}
-	return changedUsers
+	return changed
 }
 
 // ////// MARSHALING ////////
@@ -877,7 +896,7 @@ func (doc *Document) UnmarshalWithXattr(data []byte, xdata []byte, unmarshalLeve
 	}
 
 	switch unmarshalLevel {
-	case DocUnmarshalAll, DocUnmarshalSync:
+	case DocUnmarshalAll, DocUnmarshalSync, DocUnmarshalNoHistory:
 		// Unmarshal all sync metadata (we don't unmarshal the body anymore)
 		doc.SyncData = SyncData{}
 		unmarshalErr := base.JSONUnmarshal(xdata, &doc.SyncData)
@@ -885,25 +904,17 @@ func (doc *Document) UnmarshalWithXattr(data []byte, xdata []byte, unmarshalLeve
 			return pkgerrors.WithStack(base.RedactErrorf("Failed to UnmarshalWithXattr() doc with id: %s (DocUnmarshalAll/Sync).  Error: %v", base.UD(doc.ID), unmarshalErr))
 		}
 		doc._rawBody = data
-
-	case DocUnmarshalNoHistory:
-		// Unmarshal sync metadata only, excluding history
-		doc.SyncData = SyncData{}
-		unmarshalErr := base.JSONUnmarshal(xdata, &doc.SyncData)
-		if unmarshalErr != nil {
-			return pkgerrors.WithStack(base.RedactErrorf("Failed to UnmarshalWithXattr() doc with id: %s (DocUnmarshalNoHistory).  Error: %v", base.UD(doc.ID), unmarshalErr))
-		}
-		doc._rawBody = data
 	case DocUnmarshalHistory:
-		historyOnlyMeta := historyOnlySyncData{}
+		// Unmarshal only history, rev and cas from sync metadata
+		var historyOnlyMeta historyOnlySyncData
 		unmarshalErr := base.JSONUnmarshal(xdata, &historyOnlyMeta)
 		if unmarshalErr != nil {
 			return pkgerrors.WithStack(base.RedactErrorf("Failed to UnmarshalWithXattr() doc with id: %s (DocUnmarshalHistory).  Error: %v", base.UD(doc.ID), unmarshalErr))
 		}
 		doc.SyncData = SyncData{
 			CurrentRev: historyOnlyMeta.CurrentRev,
-			History:    historyOnlyMeta.History,
 			Cas:        historyOnlyMeta.Cas,
+			History:    historyOnlyMeta.History,
 		}
 		doc._rawBody = data
 	case DocUnmarshalRev:

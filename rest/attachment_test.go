@@ -2689,7 +2689,7 @@ func TestUpdateExistingAttachment(t *testing.T) {
 	doc1, err := rt.GetSingleTestDatabaseCollection().GetDocument(base.TestCtx(t), "doc1", db.DocUnmarshalAll)
 	assert.NoError(t, err)
 
-	assert.Equal(t, "sha1-SKk0IV40XSHW37d3H0xpv2+z9Ck=", doc1.Attachments["attachment"].Digest)
+	assert.Equal(t, "sha1-SKk0IV40XSHW37d3H0xpv2+z9Ck=", doc1.GetAttachments()["attachment"].Digest)
 
 	req = rt.SendAdminRequest("GET", "/{{.keyspace}}/doc1/attachment", "")
 	assert.Equal(t, "attachmentB", string(req.BodyBytes()))

@@ -1942,8 +1942,8 @@ func (db *DatabaseCollectionWithUser) getResyncedDocument(ctx context.Context, d
 			}
 
 			changedChannels, err := doc.UpdateChannels(ctx, channels)
-			changed = len(doc.Access.UpdateAccess(doc, access)) +
-				len(doc.RoleAccess.UpdateAccess(doc, roles)) +
+			changed = len(doc.UpdateAccess(access)) +
+				len(doc.UpdateRoleAccess(roles)) +
 				len(changedChannels)
 			if err != nil {
 				return

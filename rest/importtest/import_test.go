@@ -2549,7 +2549,7 @@ func TestUserXattrAutoImport(t *testing.T) {
 	_, err = subdocXattrStore.SubdocGetXattr(docKey, base.SyncXattrName, &syncData)
 	assert.NoError(t, err)
 
-	assert.Equal(t, []string{channelName}, syncData.Channels.KeySet())
+	assert.Equal(t, []string{channelName}, syncData.GetChannels().KeySet())
 
 	// Update xattr again but same value and ensure it isn't imported again (crc32 hash should match)
 	_, err = userXattrStore.WriteUserXattr(docKey, xattrKey, channelName)
@@ -2690,7 +2690,7 @@ func TestUserXattrOnDemandImportGET(t *testing.T) {
 	_, err = subdocXattrStore.SubdocGetXattr(docKey, base.SyncXattrName, &syncData)
 	assert.NoError(t, err)
 
-	assert.Equal(t, []string{channelName}, syncData.Channels.KeySet())
+	assert.Equal(t, []string{channelName}, syncData.GetChannels().KeySet())
 
 	// Write same xattr value
 	_, err = userXattrStore.WriteUserXattr(docKey, xattrKey, channelName)
@@ -2795,7 +2795,7 @@ func TestUserXattrOnDemandImportWrite(t *testing.T) {
 	_, err = subdocXattrStore.SubdocGetXattr(docKey, base.SyncXattrName, &syncData)
 	assert.NoError(t, err)
 
-	assert.Equal(t, []string{channelName}, syncData.Channels.KeySet())
+	assert.Equal(t, []string{channelName}, syncData.GetChannels().KeySet())
 }
 
 func TestImportFilterTimeout(t *testing.T) {

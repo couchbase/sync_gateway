@@ -113,6 +113,25 @@ var doc_meta = `{
     "time_saved": "2017-10-25T12:45:29.622450174-07:00"
   }`
 
+func TestDocMarshalChannels(t *testing.T) {
+	doc1k_body := []byte(doc_1k)
+	doc1k_meta := []byte(doc_meta)
+	doc, err := UnmarshalDocumentWithXattr("doc_1k", doc1k_body, doc1k_meta, nil, 1, DocUnmarshalAll)
+	assert.NoError(t, err)
+	assert.NotNil(t, doc)
+
+	assert.NotNil(t, doc.GetChannels())
+
+	data, err := doc.MarshalBodyAndSync()
+	assert.NoError(t, err)
+
+	doc2, err := UnmarshalDocument("doc_1k", data)
+	assert.NoError(t, err)
+	assert.NotNil(t, doc)
+
+	assert.Equal(t, doc.GetChannels(), doc2.GetChannels())
+}
+
 func BenchmarkDocUnmarshal(b *testing.B) {
 
 	doc1k_body := []byte(doc_1k)

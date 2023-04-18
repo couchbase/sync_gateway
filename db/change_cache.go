@@ -470,7 +470,7 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 
 				// if the doc was removed from one or more channels at this sequence
 				// Set the removed flag and removed channel set on the LogEntry
-				if channelRemovals, atRevId := syncData.Channels.ChannelsRemovedAtSequence(seq); len(channelRemovals) > 0 {
+				if channelRemovals, atRevId := syncData.GetChannels().ChannelsRemovedAtSequence(seq); len(channelRemovals) > 0 {
 					change.DocID = docID
 					change.RevID = atRevId
 					change.Channels = channelRemovals
@@ -490,7 +490,7 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 		Flags:        syncData.Flags,
 		TimeReceived: event.TimeReceived,
 		TimeSaved:    syncData.TimeSaved,
-		Channels:     syncData.Channels,
+		Channels:     syncData.GetChannels(),
 		CollectionID: event.CollectionID,
 	}
 

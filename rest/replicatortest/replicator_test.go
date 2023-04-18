@@ -2638,8 +2638,8 @@ func TestActiveReplicatorPullMergeConflictingAttachments(t *testing.T) {
 
 			assert.Nil(t, doc.UnmarshalBody()[db.BodyAttachments], "_attachments property should not be in resolved doc body")
 
-			assert.Len(t, doc.SyncData.Attachments, test.expectedAttachments, "mismatch in expected number of attachments in sync data of resolved doc")
-			for attName, attMap := range doc.SyncData.Attachments {
+			assert.Len(t, doc.SyncData.GetAttachments(), test.expectedAttachments, "mismatch in expected number of attachments in sync data of resolved doc")
+			for attName, attMap := range doc.SyncData.GetAttachments() {
 				assert.Equal(t, true, attMap.Stub, "attachment %q should be a stub", attName)
 				assert.NotEmpty(t, attMap.Digest, "attachment %q should have digest", attName)
 				assert.True(t, attMap.Revpos >= 1, "attachment %q revpos should be at least 1", attName)
@@ -4327,7 +4327,7 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 			assert.Equal(t, test.expectedRevID, doc.SyncData.CurrentRev)
 			assert.Equal(t, db.Body(expectedLocalBody), doc.UnmarshalBody())
 			log.Printf("Doc %s is %+v", docID, doc)
-			log.Printf("Doc %s attachments are %+v", docID, doc.Attachments)
+			log.Printf("Doc %s attachments are %+v", docID, doc.GetAttachments())
 			for revID, revInfo := range doc.SyncData.History.Revs() {
 				log.Printf("doc revision [%s]: %+v", revID, revInfo)
 			}
@@ -4365,7 +4365,7 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 			assert.Equal(t, test.expectedRevID, doc.SyncData.CurrentRev)
 			assert.Equal(t, db.Body(expectedLocalBody), doc.UnmarshalBody())
 			log.Printf("Remote Doc %s is %+v", docID, doc)
-			log.Printf("Remote Doc %s attachments are %+v", docID, doc.Attachments)
+			log.Printf("Remote Doc %s attachments are %+v", docID, doc.GetAttachments())
 			for revID, revInfo := range doc.SyncData.History.Revs() {
 				log.Printf("doc revision [%s]: %+v", revID, revInfo)
 			}

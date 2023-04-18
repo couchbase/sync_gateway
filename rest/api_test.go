@@ -2470,9 +2470,9 @@ func TestDocumentChannelHistory(t *testing.T) {
 	syncData, err := rt.GetSingleTestDatabaseCollection().GetDocSyncData(base.TestCtx(t), "doc")
 	assert.NoError(t, err)
 
-	require.Len(t, syncData.ChannelSet, 1)
-	assert.Equal(t, syncData.ChannelSet[0], db.ChannelSetEntry{Name: "test", Start: 1, End: 0})
-	assert.Len(t, syncData.ChannelSetHistory, 0)
+	require.Len(t, syncData.GetChannelSet(), 1)
+	assert.Equal(t, syncData.GetChannelSet()[0], db.ChannelSetEntry{Name: "test", Start: 1, End: 0})
+	assert.Len(t, syncData.GetChannelSetHistory(), 0)
 
 	// Update doc to remove from channel and ensure a single channel history entry with both start and end sequences
 	// and no old channel history entries
@@ -2483,9 +2483,9 @@ func TestDocumentChannelHistory(t *testing.T) {
 	syncData, err = rt.GetSingleTestDatabaseCollection().GetDocSyncData(base.TestCtx(t), "doc")
 	assert.NoError(t, err)
 
-	require.Len(t, syncData.ChannelSet, 1)
-	assert.Equal(t, syncData.ChannelSet[0], db.ChannelSetEntry{Name: "test", Start: 1, End: 2})
-	assert.Len(t, syncData.ChannelSetHistory, 0)
+	require.Len(t, syncData.GetChannelSet(), 1)
+	assert.Equal(t, syncData.GetChannelSet()[0], db.ChannelSetEntry{Name: "test", Start: 1, End: 2})
+	assert.Len(t, syncData.GetChannelSetHistory(), 0)
 
 	// Update doc to add to channels test and test2 and ensure a single channel history entry for both test and test2
 	// both with start sequences only and ensure old test entry was moved to old
@@ -2496,11 +2496,11 @@ func TestDocumentChannelHistory(t *testing.T) {
 	syncData, err = rt.GetSingleTestDatabaseCollection().GetDocSyncData(base.TestCtx(t), "doc")
 	assert.NoError(t, err)
 
-	require.Len(t, syncData.ChannelSet, 2)
-	assert.Contains(t, syncData.ChannelSet, db.ChannelSetEntry{Name: "test", Start: 3, End: 0})
-	assert.Contains(t, syncData.ChannelSet, db.ChannelSetEntry{Name: "test2", Start: 3, End: 0})
-	require.Len(t, syncData.ChannelSetHistory, 1)
-	assert.Equal(t, syncData.ChannelSetHistory[0], db.ChannelSetEntry{Name: "test", Start: 1, End: 2})
+	require.Len(t, syncData.GetChannelSet(), 2)
+	assert.Contains(t, syncData.GetChannelSet(), db.ChannelSetEntry{Name: "test", Start: 3, End: 0})
+	assert.Contains(t, syncData.GetChannelSet(), db.ChannelSetEntry{Name: "test2", Start: 3, End: 0})
+	require.Len(t, syncData.GetChannelSetHistory(), 1)
+	assert.Equal(t, syncData.GetChannelSetHistory()[0], db.ChannelSetEntry{Name: "test", Start: 1, End: 2})
 }
 
 func TestChannelHistoryLegacyDoc(t *testing.T) {
@@ -2560,13 +2560,13 @@ func TestChannelHistoryLegacyDoc(t *testing.T) {
 	assert.NoError(t, err)
 	syncData, err := rt.GetSingleTestDatabaseCollection().GetDocSyncData(base.TestCtx(t), "doc1")
 	assert.NoError(t, err)
-	require.Len(t, syncData.ChannelSet, 1)
-	assert.Contains(t, syncData.ChannelSet, db.ChannelSetEntry{
+	require.Len(t, syncData.GetChannelSet(), 1)
+	assert.Contains(t, syncData.GetChannelSet(), db.ChannelSetEntry{
 		Name:  "test",
 		Start: 1,
 		End:   2,
 	})
-	assert.Len(t, syncData.ChannelSetHistory, 0)
+	assert.Len(t, syncData.GetChannelSetHistory(), 0)
 }
 
 type ChannelsTemp struct {
@@ -2673,10 +2673,10 @@ func TestDocChannelSetPruning(t *testing.T) {
 	syncData, err := rt.GetSingleTestDatabaseCollection().GetDocSyncData(base.TestCtx(t), "doc")
 	assert.NoError(t, err)
 
-	require.Len(t, syncData.ChannelSetHistory, documents.DocumentHistoryMaxEntriesPerChannel)
-	assert.Equal(t, "a", syncData.ChannelSetHistory[0].Name)
-	assert.Equal(t, uint64(1), syncData.ChannelSetHistory[0].Start)
-	assert.Equal(t, uint64(12), syncData.ChannelSetHistory[0].End)
+	require.Len(t, syncData.GetChannelSetHistory(), documents.DocumentHistoryMaxEntriesPerChannel)
+	assert.Equal(t, "a", syncData.GetChannelSetHistory()[0].Name)
+	assert.Equal(t, uint64(1), syncData.GetChannelSetHistory()[0].Start)
+	assert.Equal(t, uint64(12), syncData.GetChannelSetHistory()[0].End)
 }
 
 func TestTombstoneCompactionAPI(t *testing.T) {

@@ -9,6 +9,7 @@
 package documents
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -26,23 +27,23 @@ type ChannelSetEntry struct {
 
 // The sync-gateway metadata stored in the "_sync" property of a Couchbase document.
 type SyncData struct {
-	CurrentRev        string              `json:"rev"`
-	NewestRev         string              `json:"new_rev,omitempty"` // Newest rev, if different from CurrentRev
-	Flags             uint8               `json:"flags,omitempty"`
-	Sequence          uint64              `json:"sequence,omitempty"`
-	UnusedSequences   []uint64            `json:"unused_sequences,omitempty"` // unused sequences due to update conflicts/CAS retry
-	RecentSequences   []uint64            `json:"recent_sequences,omitempty"` // recent sequences for this doc - used in server dedup handling
-	Channels          channels.ChannelMap `json:"channels,omitempty"`
-	Access            UserAccessMap       `json:"access,omitempty"`
-	RoleAccess        UserAccessMap       `json:"role_access,omitempty"`
-	Expiry            *time.Time          `json:"exp,omitempty"`                     // Document expiry.  Information only - actual expiry/delete handling is done by bucket storage.  Needs to be pointer for omitempty to work (see https://github.com/golang/go/issues/4357)
-	Cas               string              `json:"cas"`                               // String representation of a cas value, populated via macro expansion
-	Crc32c            string              `json:"value_crc32c"`                      // String representation of crc32c hash of doc body, populated via macro expansion
-	Crc32cUserXattr   string              `json:"user_xattr_value_crc32c,omitempty"` // String representation of crc32c hash of user xattr
-	TombstonedAt      int64               `json:"tombstoned_at,omitempty"`           // Time the document was tombstoned.  Used for view compaction
-	Attachments       AttachmentsMeta     `json:"attachments,omitempty"`
-	ChannelSet        []ChannelSetEntry   `json:"channel_set"`
-	ChannelSetHistory []ChannelSetEntry   `json:"channel_set_history"`
+	CurrentRev            string          `json:"rev"`
+	NewestRev             string          `json:"new_rev,omitempty"` // Newest rev, if different from CurrentRev
+	Flags                 uint8           `json:"flags,omitempty"`
+	Sequence              uint64          `json:"sequence,omitempty"`
+	UnusedSequences       []uint64        `json:"unused_sequences,omitempty"` // unused sequences due to update conflicts/CAS retry
+	RecentSequences       []uint64        `json:"recent_sequences,omitempty"` // recent sequences for this doc - used in server dedup handling
+	LazyChannels          lazyChannelMap  `json:"channels,omitempty"`
+	LazyAccess            lazyAccessMap   `json:"access,omitempty"`
+	LazyRoleAccess        lazyAccessMap   `json:"role_access,omitempty"`
+	Expiry                *time.Time      `json:"exp,omitempty"`                     // Document expiry.  Information only - actual expiry/delete handling is done by bucket storage.  Needs to be pointer for omitempty to work (see https://github.com/golang/go/issues/4357)
+	Cas                   string          `json:"cas"`                               // String representation of a cas value, populated via macro expansion
+	Crc32c                string          `json:"value_crc32c"`                      // String representation of crc32c hash of doc body, populated via macro expansion
+	Crc32cUserXattr       string          `json:"user_xattr_value_crc32c,omitempty"` // String representation of crc32c hash of user xattr
+	TombstonedAt          int64           `json:"tombstoned_at,omitempty"`           // Time the document was tombstoned.  Used for view compaction
+	LazyAttachments       lazyAttachments `json:"attachments,omitempty"`
+	LazyChannelSet        lazyChannelSet  `json:"channel_set"`
+	LazyChannelSetHistory lazyChannelSet  `json:"channel_set_history"`
 
 	// Only used for performance metrics:
 	TimeSaved time.Time `json:"time_saved,omitempty"` // Timestamp of save.
@@ -58,6 +59,84 @@ type SyncData struct {
 	removedRevisionBodyKeys map[string]string // keys of non-winning revisions that have been removed (and so may require deletion), indexed by revID
 }
 
+type lazyAccessMap = base.LazyUnmarshalingMap[channels.TimedSet]
+type lazyChannelMap = base.LazyUnmarshalingMap[*channels.ChannelRemoval]
+type lazyAttachments = base.LazyUnmarshalingMap[*DocAttachment]
+type lazyChannelSet = base.LazyUnmarshaling[[]ChannelSetEntry]
+
+func (sd *SyncData) GetChannels() channels.ChannelMap {
+	c, err := sd.LazyChannels.Get()
+	if err != nil {
+		panic(fmt.Sprintf("Couldn't unmarshal _sync.channels: %s", err)) // TODO: Change to warning
+	} else if c != nil {
+		return c
+	} else {
+		newMap := channels.ChannelMap{}
+		sd.LazyChannels.Set(newMap)
+		return newMap
+	}
+}
+
+// Replaces the `channels` set. For tests only.
+func (sd *SyncData) PokeChannels(c channels.ChannelMap) {
+	sd.LazyChannels.Set(c)
+}
+
+func (sd *SyncData) GetAccess() UserAccessMap {
+	access, err := sd.LazyAccess.Get()
+	if err != nil {
+		panic(fmt.Sprintf("Couldn't unmarshal _sync.access: %s", err)) // TODO: Change to warning
+	}
+	return access
+}
+
+// Replaces the `access` map. For tests only.
+func (sd *SyncData) PokeAccess(access UserAccessMap) {
+	sd.LazyAccess.Set(access)
+}
+
+func (sd *SyncData) GetRoleAccess() UserAccessMap {
+	access, err := sd.LazyRoleAccess.Get()
+	if err != nil {
+		panic(fmt.Sprintf("Couldn't unmarshal _sync.role_access: %s", err)) // TODO: Change to warning
+	}
+	return access
+}
+
+func (sd *SyncData) GetAttachments() AttachmentsMeta {
+	atts, err := sd.LazyAttachments.Get()
+	if err != nil {
+		panic(fmt.Sprintf("Couldn't unmarshal _sync.attachments: %s", err)) // TODO: Change to warning
+	}
+	return atts
+}
+
+func (sd *SyncData) SetAttachments(atts AttachmentsMeta) {
+	sd.LazyAttachments.Set(atts)
+}
+
+func (sd *SyncData) GetChannelSet() []ChannelSetEntry {
+	c, err := sd.LazyChannelSet.Get()
+	if err != nil {
+		panic(fmt.Sprintf("Couldn't unmarshal _sync.channel_set: %s", err)) // TODO: Change to warning
+	} else if c != nil {
+		return *c
+	} else {
+		return nil
+	}
+}
+
+func (sd *SyncData) GetChannelSetHistory() []ChannelSetEntry {
+	c, err := sd.LazyChannelSetHistory.Get()
+	if err != nil {
+		panic(fmt.Sprintf("Couldn't unmarshal _sync.channel_set_history: %s", err)) // TODO: Change to warning
+	} else if c != nil {
+		return *c
+	} else {
+		return nil
+	}
+}
+
 func (sd *SyncData) HashRedact(salt string) SyncData {
 
 	// Creating a new SyncData with the redacted info. We copy all the information which stays the same and create new
@@ -69,47 +148,51 @@ func (sd *SyncData) HashRedact(salt string) SyncData {
 		Sequence:        sd.Sequence,
 		UnusedSequences: sd.UnusedSequences,
 		RecentSequences: sd.RecentSequences,
-		Channels:        channels.ChannelMap{},
-		Access:          UserAccessMap{},
-		RoleAccess:      UserAccessMap{},
 		Expiry:          sd.Expiry,
 		Cas:             sd.Cas,
 		Crc32c:          sd.Crc32c,
 		TombstonedAt:    sd.TombstonedAt,
-		Attachments:     AttachmentsMeta{},
-		History:         sd.History.copy(),
 	}
 
 	// Populate and redact channels
-	for k, v := range sd.Channels {
-		redactedSyncData.Channels[base.Sha1HashString(k, salt)] = v
+	chans := channels.ChannelMap{}
+	for k, v := range sd.GetChannels() {
+		chans[base.Sha1HashString(k, salt)] = v
 	}
+	redactedSyncData.LazyChannels.Set(chans)
 
 	// Redact history. This is done as it also includes channel names
+	redactedSyncData.History = sd.History.copy()
 	redactedSyncData.History.redact(salt)
 
 	// Populate and redact user access
-	for k, v := range sd.Access {
+	access := UserAccessMap{}
+	for k, v := range sd.GetAccess() {
 		accessTimerSet := map[string]channels.VbSequence{}
 		for channelName, vbStats := range v {
 			accessTimerSet[base.Sha1HashString(channelName, salt)] = vbStats
 		}
-		redactedSyncData.Access[base.Sha1HashString(k, salt)] = accessTimerSet
+		access[base.Sha1HashString(k, salt)] = accessTimerSet
 	}
+	redactedSyncData.LazyAccess.Set(access)
 
 	// Populate and redact user role access
-	for k, v := range sd.RoleAccess {
+	access = UserAccessMap{}
+	for k, v := range sd.GetRoleAccess() {
 		accessTimerSet := map[string]channels.VbSequence{}
 		for channelName, vbStats := range v {
 			accessTimerSet[base.Sha1HashString(channelName, salt)] = vbStats
 		}
-		redactedSyncData.RoleAccess[base.Sha1HashString(k, salt)] = accessTimerSet
+		access[base.Sha1HashString(k, salt)] = accessTimerSet
 	}
+	redactedSyncData.LazyRoleAccess.Set(access)
 
 	// Populate and redact attachment names
-	for k, v := range sd.Attachments {
-		redactedSyncData.Attachments[base.Sha1HashString(k, salt)] = v
+	atts := AttachmentsMeta{}
+	for k, v := range sd.GetAttachments() {
+		atts[base.Sha1HashString(k, salt)] = v
 	}
+	redactedSyncData.LazyAttachments.Set(atts)
 
 	return redactedSyncData
 }

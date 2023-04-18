@@ -1227,7 +1227,7 @@ func TestRemovingUserXattr(t *testing.T) {
 			_, err = subdocStore.SubdocGetXattr(docKey, base.SyncXattrName, &syncData)
 			assert.NoError(t, err)
 
-			assert.Equal(t, []string{channelName}, syncData.Channels.KeySet())
+			assert.Equal(t, []string{channelName}, syncData.GetChannels().KeySet())
 
 			// Delete user xattr
 			_, err = gocbBucket.DeleteUserXattr(docKey, xattrKey)
@@ -1245,7 +1245,7 @@ func TestRemovingUserXattr(t *testing.T) {
 			_, err = subdocStore.SubdocGetXattr(docKey, base.SyncXattrName, &syncData2)
 			assert.NoError(t, err)
 
-			assert.Equal(t, uint64(3), syncData2.Channels[channelName].Seq)
+			assert.Equal(t, uint64(3), syncData2.GetChannels()[channelName].Seq)
 		})
 	}
 }
@@ -1331,8 +1331,8 @@ func TestUserXattrAvoidRevisionIDGeneration(t *testing.T) {
 
 	assert.Equal(t, syncData.CurrentRev, syncData2.CurrentRev)
 	assert.True(t, syncData2.Sequence > syncData.Sequence)
-	assert.Equal(t, []string{channelName}, syncData2.Channels.KeySet())
-	assert.Equal(t, syncData2.Channels.KeySet(), docRev2.Channels.ToArray())
+	assert.Equal(t, []string{channelName}, syncData2.GetChannels().KeySet())
+	assert.Equal(t, syncData2.GetChannels().KeySet(), docRev2.Channels.ToArray())
 
 	err = rt.GetSingleDataStore().Set(docKey, 0, nil, []byte(`{"update": "update"}`))
 	assert.NoError(t, err)

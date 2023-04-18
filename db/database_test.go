@@ -1136,10 +1136,10 @@ func TestConflicts(t *testing.T) {
 
 	// Verify channel assignments are correct for channels defined by 2-a:
 	doc, _ := collection.GetDocument(ctx, "doc", DocUnmarshalAll)
-	chan2a, found := doc.Channels["2a"]
+	chan2a, found := doc.GetChannels()["2a"]
 	assert.True(t, found)
-	assert.True(t, chan2a == nil)             // currently in 2a
-	assert.True(t, doc.Channels["2b"] != nil) // has been removed from 2b
+	assert.True(t, chan2a == nil)                  // currently in 2a
+	assert.True(t, doc.GetChannels()["2b"] != nil) // has been removed from 2b
 
 	// Wait for delete mutation to arrive over feed
 	cacheWaiter.AddAndWait(1)
@@ -1447,7 +1447,7 @@ func TestSyncFnOnPush(t *testing.T) {
 	assert.Equal(t, channels.ChannelMap{
 		"clibup": nil,
 		"public": &channels.ChannelRemoval{Seq: 2, RevID: "4-four"},
-	}, doc.Channels)
+	}, doc.GetChannels())
 
 	assert.Equal(t, base.SetOf("clibup"), doc.History.Get("4-four").Channels)
 }
@@ -2881,11 +2881,11 @@ func Test_resyncDocument(t *testing.T) {
 			syncData, err := collection.GetDocSyncData(ctx, docID)
 			assert.NoError(t, err)
 
-			assert.Len(t, syncData.ChannelSet, 2)
-			assert.Len(t, syncData.Channels, 2)
+			assert.Len(t, syncData.GetChannelSet(), 2)
+			assert.Len(t, syncData.GetChannels(), 2)
 			found := false
 
-			for _, chSet := range syncData.ChannelSet {
+			for _, chSet := range syncData.GetChannelSet() {
 				if chSet.Name == "channel.ABC12332423234" {
 					found = true
 					break

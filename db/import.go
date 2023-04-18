@@ -322,9 +322,9 @@ func (db *DatabaseCollectionWithUser) importDoc(ctx context.Context, docid strin
 		// attachments through anything but SG. When importing a "delete" mutation, existing attachments are removed
 		// to ensure obsolete attachments are removed from the bucket.
 		if isDelete {
-			doc.SyncData.Attachments = nil
+			doc.SyncData.SetAttachments(nil)
 		} else {
-			newDoc.DocAttachments = doc.SyncData.Attachments
+			newDoc.DocAttachments = doc.SyncData.GetAttachments()
 		}
 
 		return newDoc, nil, !shouldGenerateNewRev, updatedExpiry, nil
