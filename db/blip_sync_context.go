@@ -115,8 +115,6 @@ type BlipSyncContext struct {
 	readOnly bool
 
 	collections *blipCollections // all collections handled by blipSyncContext, implicit or via GetCollections
-
-	pendingInsertions map[string]struct{} // DocIDs from handleProposeChanges that aren't in the db
 }
 
 // AllowedAttachment contains the metadata for handling allowed attachments
@@ -656,25 +654,4 @@ func toHistory(revisions Revisions, knownRevs map[string]bool, maxHistory int) [
 		}
 	}
 	return history
-}
-
-// Remembers a docID that doesn't exist in the bucket at the time handleProposeChanges ran.
-func (bsc *BlipSyncContext) notePendingInsertion(docID string) {
-	bsc.allowedAttachmentsLock.Lock() // TODO: Rename this lock?
-	defer bsc.allowedAttachmentsLock.Unlock()
-	if bsc.pendingInsertions == nil {
-		bsc.pendingInsertions = map[string]struct{}{}
-	}
-	bsc.pendingInsertions[docID] = struct{}{}
-}
-
-// Returns true if this docID was known not to exist in the bucket when handleProposeChanges ran.
-// (If so, this fn also forgets the docID, so any subsequent call will return false.)
-func (bsc *BlipSyncContext) checkPendingInsertion(docID string) (found bool) {
-	bsc.allowedAttachmentsLock.Lock()
-	defer bsc.allowedAttachmentsLock.Unlock()
-	if _, found = bsc.pendingInsertions[docID]; found {
-		delete(bsc.pendingInsertions, docID)
-	}
-	return
 }
