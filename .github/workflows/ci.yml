@@ -60,10 +60,17 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, windows-latest, ubuntu-latest]
+        include:
+          - os: macos-latest
+            name: macos
+          - os: windows-latest
+            name: windows
+          - os: ubuntu-latest
+            name: ubuntu
     env:
       GOPRIVATE: github.com/couchbaselabs
       MallocNanoZone: 0
+    name: test (${{ matrix.name }})
     steps:
       - uses: actions/setup-go@v3
         with:
