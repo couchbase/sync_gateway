@@ -70,7 +70,7 @@ jobs:
     env:
       GOPRIVATE: github.com/couchbaselabs
       MallocNanoZone: 0
-    name: test (${{ matrix.os }})
+    name: test (${{ matrix.name }})
     steps:
       - uses: actions/setup-go@v3
         with:
