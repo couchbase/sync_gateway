@@ -187,6 +187,7 @@ func (tree *RevTree) GetLeaves() []string {
 // Returns the leaf revision IDs (those that have no children.)
 // If the callback is non-nil, it's called for each leaf; if it returns false that leaf is skipped.
 func (tree *RevTree) GetLeavesFiltered(filter func(*RevInfo) bool) []string {
+	tree.init()
 	leaves := []string{}
 	for revid, rev := range tree.revs {
 		if rev.Leaf {
@@ -256,6 +257,7 @@ func (tree *RevTree) FindAncestorFromSet(revid string, ancestors []string) strin
 
 // Records a revision in a RevTree.
 func (tree *RevTree) AddRevision(docid string, parentID string, info RevInfo) (err error) {
+	tree.init()
 	revid := info.ID
 	if revid == "" {
 		err = fmt.Errorf("doc: %v, RevTree AddRevision, empty revid is illegal", docid)
@@ -391,6 +393,7 @@ func (tree *RevTree) redact(salt string) {
 //	prunedTombstoneBodyKeys: set of tombstones with external body storage that were pruned, as map[revid]bodyKey
 func (tree *RevTree) PruneRevisions(maxDepth uint32, keepRev string) (pruned int, prunedTombstoneBodyKeys map[string]string) {
 	// Note: This method sets `scratch`
+	tree.init()
 	if tree.RevCount() <= int(maxDepth) {
 		return
 	}
@@ -456,6 +459,7 @@ func (tree *RevTree) PruneRevisions(maxDepth uint32, keepRev string) (pruned int
 // Sets each RevInfo's `scratch` field to its depth in the tree, where leaves are at 1.
 // Performance is somewhere between O(n) and O(n^2), depending on the branchiness of the tree.
 func (tree *RevTree) computeDepths() (maxDepth uint32) {
+	tree.init()
 	for _, rev := range tree.revs {
 		rev.scratch = math.MaxUint32
 	}
@@ -598,6 +602,7 @@ func (tree *RevTree) RenderGraphvizDot() string {
 // Returns the history of a revid as an array of revids in reverse chronological order.
 // Returns error if detects cycle(s) in rev tree
 func (tree *RevTree) GetHistory(revid string) ([]string, error) {
+	tree.init()
 	maxHistory := tree.RevCount()
 
 	history := make([]string, 0, 5)
