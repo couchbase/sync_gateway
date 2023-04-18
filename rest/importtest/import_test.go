@@ -845,8 +845,8 @@ type treeMeta struct {
 	Sequence   uint64      `json:"sequence,omitempty"`
 }
 type treeHistory struct {
-	BodyMap    map[string]string `json:"bodymap"`
-	BodyKeyMap map[string]string `json:"bodyKeyMap"`
+	Bodies   []string `json:"bodies3,omitempty"`  // Non-default bodies
+	BodyKeys []string `json:"bodyKeys,omitempty"` // Body keys
 }
 
 // Test migration of a 1.4 doc with large inline revisions.  Validate they get migrated out of the body
@@ -912,8 +912,8 @@ func TestMigrateLargeInlineRevisions(t *testing.T) {
 	assert.Equal(t, 200, rawResponse.Code)
 	var doc treeDoc
 	assert.NoError(t, base.JSONUnmarshal(rawResponse.Body.Bytes(), &doc))
-	assert.Equal(t, 3, len(doc.Meta.RevTree.BodyKeyMap))
-	assert.Equal(t, 0, len(doc.Meta.RevTree.BodyMap))
+	assert.Equal(t, 3, len(doc.Meta.RevTree.BodyKeys))
+	assert.Equal(t, 0, len(doc.Meta.RevTree.Bodies))
 
 }
 
@@ -1050,8 +1050,8 @@ func TestMigrateWithExternalRevisions(t *testing.T) {
 	assert.Equal(t, 200, rawResponse.Code)
 	var doc treeDoc
 	assert.NoError(t, base.JSONUnmarshal(rawResponse.Body.Bytes(), &doc))
-	assert.Equal(t, 1, len(doc.Meta.RevTree.BodyKeyMap))
-	assert.Equal(t, 2, len(doc.Meta.RevTree.BodyMap))
+	assert.Equal(t, 1, len(doc.Meta.RevTree.BodyKeys))
+	assert.Equal(t, 2, len(doc.Meta.RevTree.Bodies))
 }
 
 // Test retrieval of a document stored w/ xattrs when running in non-xattr mode (upgrade handling).

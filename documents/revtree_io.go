@@ -2,9 +2,9 @@ package documents
 
 import (
 	"bytes"
-	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"math"
 	"strconv"
 	"strings"
@@ -94,11 +94,10 @@ type extRevTree struct {
 	Revs         string             `json:"revs3"`               // The revision IDs concatenated
 	Parents      []int              `json:"parents"`             // Relative index of parent (0 if none)
 	Flags        string             `json:"flags"`               // Revision flags (really []extRevFlags)
-	Bodies       []json.RawMessage  `json:"bodies3,omitempty"`   // Non-default bodies
+	Bodies       []string           `json:"bodies3,omitempty"`   // Non-default bodies
 	BodyKeys     []string           `json:"bodyKeys,omitempty"`  // Body keys
 	Channels     [][]ChannelID      `json:"channels3,omitempty"` // Channel sets, as arrays of indices
 	ChannelNames NameSet[ChannelID] `json:"chanNames,omitempty"` // Unique channel names
-
 }
 
 // Older format (Version implicitly 2):
@@ -119,12 +118,18 @@ const kExtRevTreeCurrentVersion = 3
 type extRevFlags uint8
 
 const (
-	extRevDeleted         extRevFlags = 1  // rev.Deleted is true
-	extRevHasAttachments  extRevFlags = 2  // rev.HasAttachments is true
-	extRevHasBody         extRevFlags = 4  // rev.Body exists
-	extRevHasNonEmptyBody extRevFlags = 8  // rev.Body exists and is not "{}"
-	extRevHasBodyKey      extRevFlags = 16 // rev.BodyKey exists
-	extRevHasChannels     extRevFlags = 32 // rev.Channels exists
+	extRevDeleted        extRevFlags = 0x01 // rev.Deleted is true
+	extRevHasAttachments extRevFlags = 0x02 // rev.HasAttachments is true
+	extRevHasChannels    extRevFlags = 0x04 // rev.Channels exists
+	extRevBodyTypeMask   extRevFlags = 0x18 // rev.Body or rev.BodyKey exist -- see below
+)
+
+// Values for (flags & extRevBodyTypeMask)
+const (
+	extRevBodyNone   extRevFlags = 0x00 // No Body or BodyKey
+	extRevBodyEmpty  extRevFlags = 0x08 // Body is `{}`
+	extRevBodyInline extRevFlags = 0x10 // Body is stored inline, in `bodies3` array
+	extRevBodyKey    extRevFlags = 0x18 // BodyKey is in `bodyKeys` array; no Body
 )
 
 var kEmptyBody = []byte{'{', '}'}
@@ -155,14 +160,14 @@ func (tree RevTree) MarshalJSON() ([]byte, error) {
 		if rev.HasAttachments {
 			flag |= extRevHasAttachments
 		}
-		if len(rev.Body) > 0 {
-			flag |= extRevHasBody
-			if len(rev.Body) > 2 { // i.e. body is not "{}"
-				flag |= extRevHasNonEmptyBody
-			}
-		}
 		if len(rev.BodyKey) > 0 {
-			flag |= extRevHasBodyKey
+			flag |= extRevBodyKey
+		} else if len(rev.Body) > 0 {
+			if len(rev.Body) > 2 { // i.e. body is not "{}"
+				flag |= extRevBodyInline
+			} else {
+				flag |= extRevBodyEmpty
+			}
 		}
 		if len(rev.Channels) > 0 {
 			flag |= extRevHasChannels
@@ -198,16 +203,16 @@ func (tree RevTree) MarshalJSON() ([]byte, error) {
 		revIDs.WriteString(rev.ID)
 
 		revFlags := mkFlags(rev)
-		flags[revIndex] = revFlags + kFlagsToASCII
-		if (revFlags & extRevHasNonEmptyBody) != 0 {
-			ext.Bodies = append(ext.Bodies, json.RawMessage(rev.Body))
-		}
-		if (revFlags & extRevHasBodyKey) != 0 {
+		switch revFlags & extRevBodyTypeMask {
+		case extRevBodyKey:
 			ext.BodyKeys = append(ext.BodyKeys, string(rev.BodyKey))
+		case extRevBodyInline:
+			ext.Bodies = append(ext.Bodies, string(rev.Body))
 		}
 		if (revFlags & extRevHasChannels) != 0 {
 			ext.Channels = append(ext.Channels, encodeChannels(rev.Channels))
 		}
+		flags[revIndex] = revFlags + kFlagsToASCII
 		return revIndex
 	}
 
@@ -277,10 +282,13 @@ func (tree *RevTree) lazyLoadJSON() (err error) {
 		return channels
 	}
 
-	n := len(ext.Parents)                  // Number of revs
-	revIDs := strings.Split(ext.Revs, ",") // Array of revIDs
+	n := len(ext.Parents) // Number of revs
+	var revIDs []string   // Array of revIDs
+	if len(ext.Revs) > 0 {
+		revIDs = strings.Split(ext.Revs, ",")
+	}
 	if len(revIDs) != n || len(ext.Flags) != n {
-		return fmt.Errorf("encoded RevTree has inconsistent number of revs")
+		return fmt.Errorf("encoded RevTree has inconsistent number of revs: revIDs=%d, parents=%d, flags=%d ... %s", len(revIDs), n, len(ext.Flags), tree.jsonForm)
 	}
 
 	revArray := make([]RevInfo, n) // For efficiency, allocate all the RevInfos in one array
@@ -298,11 +306,7 @@ func (tree *RevTree) lazyLoadJSON() (err error) {
 	lastParent := 0
 
 	for i, flagChar := range ext.Flags {
-		flags := extRevFlags(flagChar - kFlagsToASCII)
 		rev := &revArray[i]
-		rev.Deleted = (flags & extRevDeleted) != 0
-		rev.HasAttachments = (flags & extRevHasAttachments) != 0
-
 		if parentIndex := lastParent + ext.Parents[i]; parentIndex != i {
 			if parentIndex < 0 || parentIndex >= n {
 				return fmt.Errorf("encoded RevTree has invalid parent index")
@@ -311,25 +315,29 @@ func (tree *RevTree) lazyLoadJSON() (err error) {
 			rev.Parent.Leaf = false
 			lastParent = parentIndex
 		}
-		if (flags & extRevHasBody) != 0 {
-			if (flags & extRevHasNonEmptyBody) != 0 {
-				if bodyIndex >= len(ext.Bodies) {
-					return fmt.Errorf("encoded RevTree has too few bodies")
-				}
-				rev.Body = []byte(ext.Bodies[bodyIndex])
-				bodyIndex++
-			} else {
-				rev.Body = kEmptyBody
-			}
-		}
-		if (flags & extRevHasBodyKey) != 0 {
+
+		revFlags := extRevFlags(flagChar - kFlagsToASCII)
+		rev.Deleted = (revFlags & extRevDeleted) != 0
+		rev.HasAttachments = (revFlags & extRevHasAttachments) != 0
+
+		switch revFlags & extRevBodyTypeMask {
+		case extRevBodyKey:
 			if bodyKeyIndex >= len(ext.BodyKeys) {
 				return fmt.Errorf("encoded RevTree has too few bodyKeys")
 			}
 			rev.BodyKey = ext.BodyKeys[bodyKeyIndex]
 			bodyKeyIndex++
+		case extRevBodyInline:
+			if bodyIndex >= len(ext.Bodies) {
+				return fmt.Errorf("encoded RevTree has too few bodies")
+			}
+			rev.Body = []byte(ext.Bodies[bodyIndex])
+			bodyIndex++
+		case extRevBodyEmpty:
+			rev.Body = kEmptyBody
 		}
-		if (flags & extRevHasChannels) != 0 {
+
+		if (revFlags & extRevHasChannels) != 0 {
 			if channelsIndex >= len(ext.Channels) {
 				return fmt.Errorf("encoded RevTree has too few channels")
 			}
