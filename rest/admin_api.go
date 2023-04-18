@@ -45,7 +45,6 @@ func (h *handler) handleCreateDB() error {
 		return err
 	}
 	config.Name = dbName
-
 	if h.server.persistentConfig {
 		if err := config.validatePersistentDbConfig(); err != nil {
 			return base.HTTPErrorf(http.StatusBadRequest, err.Error())

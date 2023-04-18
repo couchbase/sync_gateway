@@ -120,6 +120,7 @@ type DatabaseContext struct {
 	ServeInsecureAttachmentTypes bool                     // Attachment content type will bypass the content-disposition handling, default false
 	NoX509HTTPClient             *http.Client             // A HTTP Client from gocb to use the management endpoints
 	ServerContextHasStarted      chan struct{}            // Closed via PostStartup once the server has fully started
+	CORS                         *auth.CORSConfig         // CORS configuration
 }
 
 type DatabaseContextOptions struct {

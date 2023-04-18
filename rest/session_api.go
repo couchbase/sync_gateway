@@ -41,7 +41,7 @@ func (h *handler) handleSessionPOST() error {
 	if len(originHeader) > 0 {
 		matched := ""
 		if h.server.config.API.CORS != nil {
-			matched = matchedOrigin(h.server.config.API.CORS.LoginOrigin, originHeader)
+			matched = auth.MatchedOrigin(h.server.config.API.CORS.LoginOrigin, originHeader)
 		}
 		if matched == "" {
 			return base.HTTPErrorf(http.StatusBadRequest, "No CORS")
@@ -97,7 +97,7 @@ func (h *handler) handleSessionDELETE() error {
 	if len(originHeader) > 0 {
 		matched := ""
 		if h.server.config.API.CORS != nil {
-			matched = matchedOrigin(h.server.config.API.CORS.LoginOrigin, originHeader)
+			matched = auth.MatchedOrigin(h.server.config.API.CORS.LoginOrigin, originHeader)
 		}
 		if matched == "" {
 			return base.HTTPErrorf(http.StatusBadRequest, "No CORS")

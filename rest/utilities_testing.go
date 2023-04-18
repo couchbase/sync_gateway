@@ -61,6 +61,8 @@ type RestTesterConfig struct {
 	groupID                         *string
 }
 
+var defaultTestingCORSOrigin = []string{"http://example.com", "*", "http://staging.example.com"}
+
 type RestTester struct {
 	*RestTesterConfig
 	tb                      testing.TB
@@ -76,6 +78,9 @@ type RestTester struct {
 	metricsHandlerOnce      sync.Once
 	closed                  bool
 }
+
+// restTesterDefaultUserPassword is usable as a default password for SendUserRequest
+const RestTesterDefaultUserPassword = "letmein"
 
 func NewRestTester(tb testing.TB, restConfig *RestTesterConfig) *RestTester {
 	var rt RestTester
@@ -118,7 +123,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 		}
 	}
 
-	corsConfig := &CORSConfig{
+	corsConfig := &auth.CORSConfig{
 		Origin:      []string{"http://example.com", "*", "http://staging.example.com"},
 		LoginOrigin: []string{"http://example.com"},
 		Headers:     []string{},
@@ -287,6 +292,12 @@ func (rt *RestTester) GetDatabase() *db.DatabaseContext {
 		return database
 	}
 	return nil
+}
+
+// CreateUser creates a user with the default password and channels scoped to a single test collection.
+func (rt *RestTester) CreateUser(username string, channels []string) {
+	response := rt.SendAdminRequest(http.MethodPut, "/db/_user/"+username, GetUserPayload(rt.tb, "", RestTesterDefaultUserPassword, "", channels, nil))
+	assertStatus(rt.tb, response, http.StatusCreated)
 }
 
 func (rt *RestTester) MustWaitForDoc(docid string, t testing.TB) {
@@ -1075,6 +1086,23 @@ func (bt *BlipTester) SendRev(docId, docRev string, body []byte, properties blip
 
 }
 
+// GetUserPayload will take username, password, email, channels and roles you want to assign a user and create the appropriate payload for the _user endpoint
+func GetUserPayload(t testing.TB, username, password, email string, chans, roles []string) string {
+	config := db.PrincipalConfig{}
+	if username != "" {
+		config.Name = &username
+	}
+	if password != "" {
+		config.Password = &password
+	}
+	config.Email = email
+	config.ExplicitRoleNames = roles
+	config.ExplicitChannels = base.SetOf(chans...)
+	payload, err := json.Marshal(config)
+	require.NoError(t, err)
+	return string(payload)
+}
+
 // Get a doc at a particular revision from Sync Gateway.
 //
 // Warning: this can only be called from a single goroutine, given the fact it registers profile handlers.
@@ -1707,4 +1735,20 @@ func NewHTTPTestServerOnListener(h http.Handler, l net.Listener) *httptest.Serve
 	}
 	s.Start()
 	return s
+}
+
+func (rt *RestTester) NewDbConfig() DbConfig {
+	config := DbConfig{
+		BucketConfig: BucketConfig{
+			Bucket: base.StringPtr(rt.Bucket().GetName()),
+		},
+		NumIndexReplicas: base.UintPtr(0),
+		EnableXattrs:     base.BoolPtr(base.TestUseXattrs()),
+	}
+	// Walrus is peculiar in that it needs to run with views, but can run most GSI tests, including collections
+	if !base.UnitTestUrlIsWalrus() {
+		config.UseViews = base.BoolPtr(base.TestsDisableGSI())
+	}
+
+	return config
 }

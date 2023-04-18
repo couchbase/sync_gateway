@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -84,15 +85,15 @@ func TestStartupConfigMerge(t *testing.T) {
 		},
 		{
 			name:     "Keep original *CORSconfig",
-			config:   StartupConfig{API: APIConfig{CORS: &CORSConfig{MaxAge: 5, Origin: []string{"Test"}}}},
-			override: StartupConfig{API: APIConfig{CORS: &CORSConfig{}}},
-			expected: StartupConfig{API: APIConfig{CORS: &CORSConfig{MaxAge: 5, Origin: []string{"Test"}}}},
+			config:   StartupConfig{API: APIConfig{CORS: &auth.CORSConfig{MaxAge: 5, Origin: []string{"Test"}}}},
+			override: StartupConfig{API: APIConfig{CORS: &auth.CORSConfig{}}},
+			expected: StartupConfig{API: APIConfig{CORS: &auth.CORSConfig{MaxAge: 5, Origin: []string{"Test"}}}},
 		},
 		{
-			name:     "Keep original *CORSConfig from override nil value",
-			config:   StartupConfig{API: APIConfig{CORS: &CORSConfig{MaxAge: 5, Origin: []string{"Test"}}}},
+			name:     "Keep original *auth.CORSConfig from override nil value",
+			config:   StartupConfig{API: APIConfig{CORS: &auth.CORSConfig{MaxAge: 5, Origin: []string{"Test"}}}},
 			override: StartupConfig{},
-			expected: StartupConfig{API: APIConfig{CORS: &CORSConfig{MaxAge: 5, Origin: []string{"Test"}}}},
+			expected: StartupConfig{API: APIConfig{CORS: &auth.CORSConfig{MaxAge: 5, Origin: []string{"Test"}}}},
 		},
 		{
 			name:     "Override unset ConfigDuration",

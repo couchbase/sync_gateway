@@ -515,6 +515,12 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config DatabaseConfig, useE
 		return nil, err
 	}
 
+	if config.CORS != nil {
+		dbcontext.CORS = config.DbConfig.CORS
+	} else {
+		dbcontext.CORS = sc.config.API.CORS
+	}
+
 	if config.RevsLimit != nil {
 		dbcontext.RevsLimit = *config.RevsLimit
 		if dbcontext.AllowConflicts() {

@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/url"
 
+	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 )
 
@@ -28,7 +29,8 @@ func (h *handler) handleFacebookPOST() error {
 	// CORS not allowed for login #115 #762
 	originHeader := h.rq.Header["Origin"]
 	if len(originHeader) > 0 {
-		matched := matchedOrigin(h.server.config.API.CORS.LoginOrigin, originHeader)
+		matched := auth.MatchedOrigin(h.server.config.API.CORS.LoginOrigin, originHeader)
+
 		if matched == "" {
 			return base.HTTPErrorf(http.StatusBadRequest, "No CORS")
 		}

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/couchbase/gocbcore/v10/connstr"
+	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 	pkgerrors "github.com/pkg/errors"
@@ -209,7 +210,7 @@ func (lc *LegacyServerConfig) ToStartupConfig() (*StartupConfig, DbConfigMap, er
 	}
 
 	if lc.CORS != nil {
-		sc.API.CORS = &CORSConfig{
+		sc.API.CORS = &auth.CORSConfig{
 			Origin:      lc.CORS.Origin,
 			LoginOrigin: lc.CORS.LoginOrigin,
 			Headers:     lc.CORS.Headers,

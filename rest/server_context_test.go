@@ -21,8 +21,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/couchbase/gocbcore/v10/connstr"
+	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
+
+	"github.com/couchbase/gocbcore/v10/connstr"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -112,7 +114,7 @@ func TestAllDatabaseNames(t *testing.T) {
 
 	serverConfig := &StartupConfig{
 		Bootstrap: BootstrapConfig{UseTLSServer: base.BoolPtr(base.ServerIsTLS(base.UnitTestUrl())), ServerTLSSkipVerify: base.BoolPtr(base.TestTLSSkipVerify())},
-		API:       APIConfig{CORS: &CORSConfig{}, AdminInterface: DefaultAdminInterface}}
+		API:       APIConfig{CORS: &auth.CORSConfig{}, AdminInterface: DefaultAdminInterface}}
 	serverContext := NewServerContext(serverConfig, false)
 	defer serverContext.Close()
 
@@ -153,7 +155,7 @@ func TestAllDatabaseNames(t *testing.T) {
 }
 
 func TestGetOrAddDatabaseFromConfig(t *testing.T) {
-	serverConfig := &StartupConfig{API: APIConfig{CORS: &CORSConfig{}, AdminInterface: DefaultAdminInterface}}
+	serverConfig := &StartupConfig{API: APIConfig{CORS: &auth.CORSConfig{}, AdminInterface: DefaultAdminInterface}}
 	serverContext := NewServerContext(serverConfig, false)
 	defer serverContext.Close()
 
