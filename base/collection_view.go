@@ -186,7 +186,21 @@ func (c *Collection) DeleteDDoc(docname string) error {
 		return fmt.Errorf("views not supported for non-default collection")
 	}
 
-	return c.Collection.Bucket().ViewIndexes().DropDesignDocument(docname, gocb.DesignDocumentNamespaceProduction, nil)
+	manager := c.Collection.Bucket().ViewIndexes()
+	err := manager.DropDesignDocument(docname, gocb.DesignDocumentNamespaceProduction, nil)
+	if err != nil {
+		return err
+	}
+	var worker RetryWorker = func() (bool, error, interface{}) {
+		_, err := c.GetDDoc(docname)
+		if err == ErrNotFound {
+			return false, nil, nil
+		}
+		return true, err, nil
+	}
+
+	err, _ = RetryLoop("WaitForDesignDocRemoval", worker, CreateSleeperFunc(5, 100))
+	return err
 }
 
 func (c *Collection) View(ddoc, name string, params map[string]interface{}) (sgbucket.ViewResult, error) {
