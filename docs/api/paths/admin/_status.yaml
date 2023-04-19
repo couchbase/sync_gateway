@@ -5,13 +5,13 @@
 # in that file, in accordance with the Business Source License, use of this
 # software will be governed by the Apache License, Version 2.0, included in
 # the file licenses/APL2.txt.
-
 get:
   summary: Get the server status
   description: |-
     This will retrieve the status of each database and the overall server status.
 
     Required Sync Gateway RBAC roles:
+
     * Sync Gateway Dev Ops
   responses:
     '200':
@@ -23,5 +23,5 @@ get:
     '400':
       $ref: ../../components/responses.yaml#/request-problem
   tags:
-    - Admin only endpoints
     - Server
+  operationId: get__status

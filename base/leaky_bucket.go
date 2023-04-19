@@ -104,10 +104,6 @@ type LeakyBucketConfig struct {
 	DDocDeleteErrorCount int
 	DDocGetErrorCount    int
 
-	// Allows us to force a specific index to be deleted. We will always error when attempting to delete an index if its
-	// name is specified in this slice
-	DropIndexErrorNames []string
-
 	// Emulate TAP/DCP feed de-dupliation behavior, such that within a
 	// window of # of mutations or a timeout, mutations for a given document
 	// will be filtered such that only the _latest_ mutation will make it through.
@@ -267,7 +263,6 @@ func (b *LeakyBucket) wrapFeedForDeduplication(args sgbucket.FeedArguments, dbSt
 					// channel closed, goroutine is done
 					// dedupe and send what we currently have
 					dedupeAndForward(deDupeBuffer, channel)
-					deDupeBuffer = []sgbucket.FeedEvent{}
 					return
 				}
 				deDupeBuffer = append(deDupeBuffer, tapEvent)

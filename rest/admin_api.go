@@ -54,7 +54,6 @@ func (h *handler) handleCreateDB() error {
 	}
 
 	config.Name = dbName
-
 	if h.server.persistentConfig {
 		if err := config.validatePersistentDbConfig(); err != nil {
 			return base.HTTPErrorf(http.StatusBadRequest, err.Error())
@@ -74,6 +73,12 @@ func (h *handler) handleCreateDB() error {
 			bucket = *config.Bucket
 		}
 
+		metadataID, metadataIDError := h.server.BootstrapContext.ComputeMetadataIDForDbConfig(h.ctx(), config)
+		if metadataIDError != nil {
+			base.WarnfCtx(h.ctx(), "Unable to compute metadata ID - using standard metadataID.  Error: %v", metadataIDError)
+			metadataID = h.server.BootstrapContext.standardMetadataID(config.Name)
+		}
+
 		// copy config before setup to persist the raw config the user supplied
 		var persistedDbConfig DbConfig
 		if err := base.DeepCopyInefficient(&persistedDbConfig, config); err != nil {
@@ -86,9 +91,17 @@ func (h *handler) handleCreateDB() error {
 			return err
 		}
 
-		loadedConfig := DatabaseConfig{Version: version, DbConfig: *config}
+		loadedConfig := DatabaseConfig{
+			Version:    version,
+			MetadataID: metadataID,
+			DbConfig:   *config}
 
-		persistedConfig := DatabaseConfig{Version: version, DbConfig: persistedDbConfig, SGVersion: base.ProductVersion.String()}
+		persistedConfig := DatabaseConfig{
+			Version:    version,
+			MetadataID: metadataID,
+			DbConfig:   persistedDbConfig,
+			SGVersion:  base.ProductVersion.String(),
+		}
 
 		h.server.lock.Lock()
 		defer h.server.lock.Unlock()
@@ -114,11 +127,15 @@ func (h *handler) handleCreateDB() error {
 		}
 
 		// now we've started the db successfully, we can persist it to the cluster
-		cas, err := h.server.BootstrapContext.Connection.InsertConfig(bucket, h.server.Config.Bootstrap.ConfigGroupID, persistedConfig)
+		cas, err := h.server.BootstrapContext.InsertConfig(contextNoCancel.Ctx, bucket, h.server.Config.Bootstrap.ConfigGroupID, &persistedConfig)
 		if err != nil {
 			// unload the requested database config to prevent the cluster being in an inconsistent state
 			h.server._removeDatabase(contextNoCancel.Ctx, dbName)
-			if errors.Is(err, base.ErrAuthError) {
+			var httpError *base.HTTPError
+			if errors.As(err, &httpError) {
+				// Collection conflict returned as http error with conflict details
+				return err
+			} else if errors.Is(err, base.ErrAuthError) {
 				return base.HTTPErrorf(http.StatusForbidden, "auth failure accessing provided bucket using bootstrap credentials: %s", bucket)
 			} else if errors.Is(err, base.ErrAlreadyExists) {
 				// on-demand config load if someone else beat us to db creation
@@ -156,11 +173,11 @@ func getAuthScopeHandleCreateDB(bodyJSON []byte) (string, error) {
 	var body struct {
 		Bucket string `json:"bucket"`
 	}
-	err := base.JSONUnmarshal(bodyJSON, &body)
+	reader := bytes.NewReader(bodyJSON)
+	err := DecodeAndSanitiseConfig(reader, &body, false)
 	if err != nil {
 		return "", err
 	}
-
 	if body.Bucket == "" {
 		return "", nil
 	}
@@ -514,7 +531,13 @@ func (h *handler) handlePutDbConfig() (err error) {
 
 	if !h.server.persistentConfig {
 		updatedDbConfig := &DatabaseConfig{DbConfig: *dbConfig}
-		err = updatedDbConfig.validate(h.ctx(), validateOIDC)
+		err := updatedDbConfig.validate(h.ctx(), validateOIDC)
+		if err != nil {
+			return base.HTTPErrorf(http.StatusBadRequest, err.Error())
+		}
+		oldDBConfig := h.server.GetDatabaseConfig(h.db.Name).DatabaseConfig.DbConfig
+		err = updatedDbConfig.validateConfigUpdate(h.ctx(), oldDBConfig,
+			validateOIDC)
 		if err != nil {
 			return base.HTTPErrorf(http.StatusBadRequest, err.Error())
 		}
@@ -530,68 +553,56 @@ func (h *handler) handlePutDbConfig() (err error) {
 	}
 
 	var updatedDbConfig *DatabaseConfig
-	cas, err := h.server.BootstrapContext.Connection.UpdateConfig(
-		bucket, h.server.Config.Bootstrap.ConfigGroupID,
-		func(rawBucketConfig []byte, rawBucketConfigCas uint64) (newConfig []byte, err error) {
-			var bucketDbConfig DatabaseConfig
-			if err := base.JSONUnmarshal(rawBucketConfig, &bucketDbConfig); err != nil {
+	cas, err := h.server.BootstrapContext.UpdateConfig(h.ctx(), bucket, h.server.Config.Bootstrap.ConfigGroupID, dbConfig.Name, func(bucketDbConfig *DatabaseConfig) (updatedConfig *DatabaseConfig, err error) {
+		if h.headerDoesNotMatchEtag(bucketDbConfig.Version) {
+			return nil, base.HTTPErrorf(http.StatusPreconditionFailed, "Provided If-Match header does not match current config version")
+		}
+		oldBucketDbConfig := bucketDbConfig.DbConfig
+
+		if h.rq.Method == http.MethodPost {
+			base.TracefCtx(h.ctx(), base.KeyConfig, "merging upserted config into bucket config")
+			if err := base.ConfigMerge(&bucketDbConfig.DbConfig, dbConfig); err != nil {
 				return nil, err
 			}
+		} else {
+			base.TracefCtx(h.ctx(), base.KeyConfig, "using config as-is without merge")
+			bucketDbConfig.DbConfig = *dbConfig
+		}
 
-			if h.headerDoesNotMatchEtag(bucketDbConfig.Version) {
-				return nil, base.HTTPErrorf(http.StatusPreconditionFailed, "Provided If-Match header does not match current config version")
-			}
+		if err := dbConfig.validatePersistentDbConfig(); err != nil {
+			return nil, base.HTTPErrorf(http.StatusBadRequest, err.Error())
+		}
+		if err := bucketDbConfig.validateConfigUpdate(h.ctx(), oldBucketDbConfig, validateOIDC); err != nil {
+			return nil, base.HTTPErrorf(http.StatusBadRequest, err.Error())
+		}
 
-			bucketDbConfig.cfgCas = rawBucketConfigCas
+		bucketDbConfig.Version, err = GenerateDatabaseConfigVersionID(bucketDbConfig.Version, &bucketDbConfig.DbConfig)
+		if err != nil {
+			return nil, err
+		}
 
-			oldBucketDbConfig := bucketDbConfig.DbConfig
+		bucketDbConfig.SGVersion = base.ProductVersion.String()
+		updatedDbConfig = bucketDbConfig
 
-			if h.rq.Method == http.MethodPost {
-				base.TracefCtx(h.ctx(), base.KeyConfig, "merging upserted config into bucket config")
-				if err := base.ConfigMerge(&bucketDbConfig.DbConfig, dbConfig); err != nil {
-					return nil, err
-				}
-			} else {
-				base.TracefCtx(h.ctx(), base.KeyConfig, "using config as-is without merge")
-				bucketDbConfig.DbConfig = *dbConfig
-			}
+		// take a copy to stamp credentials and load before we persist
+		var tmpConfig DatabaseConfig
+		if err = base.DeepCopyInefficient(&tmpConfig, bucketDbConfig); err != nil {
+			return nil, err
+		}
+		tmpConfig.cfgCas = bucketDbConfig.cfgCas
+		dbCreds, _ := h.server.Config.DatabaseCredentials[dbName]
+		bucketCreds, _ := h.server.Config.BucketCredentials[bucket]
+		if err := tmpConfig.setup(dbName, h.server.Config.Bootstrap, dbCreds, bucketCreds, h.server.Config.IsServerless()); err != nil {
+			return nil, err
+		}
 
-			if err := dbConfig.validatePersistentDbConfig(); err != nil {
-				return nil, base.HTTPErrorf(http.StatusBadRequest, err.Error())
-			}
-			if err := bucketDbConfig.validateConfigUpdate(h.ctx(), oldBucketDbConfig, validateOIDC); err != nil {
-				return nil, base.HTTPErrorf(http.StatusBadRequest, err.Error())
-			}
-
-			bucketDbConfig.Version, err = GenerateDatabaseConfigVersionID(bucketDbConfig.Version, &bucketDbConfig.DbConfig)
-			if err != nil {
-				return nil, err
-			}
-
-			bucketDbConfig.SGVersion = base.ProductVersion.String()
-
-			updatedDbConfig = &bucketDbConfig
-
-			// take a copy to stamp credentials and load before we persist
-			var tmpConfig DatabaseConfig
-			if err = base.DeepCopyInefficient(&tmpConfig, bucketDbConfig); err != nil {
-				return nil, err
-			}
-			tmpConfig.cfgCas = rawBucketConfigCas
-			dbCreds, _ := h.server.Config.DatabaseCredentials[dbName]
-			bucketCreds, _ := h.server.Config.BucketCredentials[bucket]
-			if err := tmpConfig.setup(dbName, h.server.Config.Bootstrap, dbCreds, bucketCreds, h.server.Config.IsServerless()); err != nil {
-				return nil, err
-			}
-
-			// Load the new dbConfig before we persist the update.
-			err = h.server.ReloadDatabaseWithConfig(contextNoCancel, tmpConfig)
-			if err != nil {
-				return nil, err
-			}
-
-			return base.JSONMarshal(bucketDbConfig)
-		})
+		// Load the new dbConfig before we persist the update.
+		err = h.server.ReloadDatabaseWithConfig(contextNoCancel, tmpConfig)
+		if err != nil {
+			return nil, err
+		}
+		return bucketDbConfig, nil
+	})
 	if err != nil {
 		base.WarnfCtx(h.ctx(), "Couldn't update config for database - rolling back: %v", err)
 		// failed to start the new database config - rollback and return the original error for the user
@@ -658,37 +669,29 @@ func (h *handler) handleDeleteCollectionConfigSync() error {
 	}
 
 	bucket := h.db.Bucket.GetName()
-
 	var updatedDbConfig *DatabaseConfig
-	cas, err := h.server.BootstrapContext.Connection.UpdateConfig(
-		bucket, h.server.Config.Bootstrap.ConfigGroupID,
-		func(rawBucketConfig []byte, rawBucketConfigCas uint64) (newConfig []byte, err error) {
-			var bucketDbConfig DatabaseConfig
-			if err := base.JSONUnmarshal(rawBucketConfig, &bucketDbConfig); err != nil {
-				return nil, err
-			}
+	cas, err := h.server.BootstrapContext.UpdateConfig(h.ctx(), bucket, h.server.Config.Bootstrap.ConfigGroupID, h.db.Name, func(bucketDbConfig *DatabaseConfig) (updatedConfig *DatabaseConfig, err error) {
+		if h.headerDoesNotMatchEtag(bucketDbConfig.Version) {
+			return nil, base.HTTPErrorf(http.StatusPreconditionFailed, "Provided If-Match header does not match current config version")
+		}
+		if bucketDbConfig.Scopes != nil {
+			config := bucketDbConfig.Scopes[h.collection.ScopeName].Collections[h.collection.Name]
+			config.SyncFn = nil
+			bucketDbConfig.Scopes[h.collection.ScopeName].Collections[h.collection.Name] = config
+		} else if base.IsDefaultCollection(h.collection.ScopeName, h.collection.Name) {
+			bucketDbConfig.Sync = nil
+		}
 
-			if h.headerDoesNotMatchEtag(bucketDbConfig.Version) {
-				return nil, base.HTTPErrorf(http.StatusPreconditionFailed, "Provided If-Match header does not match current config version")
-			}
-			if bucketDbConfig.Scopes != nil {
-				config := bucketDbConfig.Scopes[h.collection.ScopeName].Collections[h.collection.Name]
-				config.SyncFn = nil
-				bucketDbConfig.Scopes[h.collection.ScopeName].Collections[h.collection.Name] = config
-			} else if base.IsDefaultCollection(h.collection.ScopeName, h.collection.Name) {
-				bucketDbConfig.Sync = nil
-			}
+		bucketDbConfig.Version, err = GenerateDatabaseConfigVersionID(bucketDbConfig.Version, &bucketDbConfig.DbConfig)
+		if err != nil {
+			return nil, err
+		}
 
-			bucketDbConfig.Version, err = GenerateDatabaseConfigVersionID(bucketDbConfig.Version, &bucketDbConfig.DbConfig)
-			if err != nil {
-				return nil, err
-			}
+		bucketDbConfig.SGVersion = base.ProductVersion.String()
+		updatedDbConfig = bucketDbConfig
 
-			bucketDbConfig.SGVersion = base.ProductVersion.String()
-
-			updatedDbConfig = &bucketDbConfig
-			return base.JSONMarshal(bucketDbConfig)
-		})
+		return bucketDbConfig, nil
+	})
 	if err != nil {
 		return err
 	}
@@ -725,48 +728,40 @@ func (h *handler) handlePutCollectionConfigSync() error {
 	}
 
 	bucket := h.db.Bucket.GetName()
+	dbName := h.db.Name
 
 	var updatedDbConfig *DatabaseConfig
-	cas, err := h.server.BootstrapContext.Connection.UpdateConfig(
-		bucket, h.server.Config.Bootstrap.ConfigGroupID,
-		func(rawBucketConfig []byte, rawBucketConfigCas uint64) (newConfig []byte, err error) {
-			var bucketDbConfig DatabaseConfig
-			if err := base.JSONUnmarshal(rawBucketConfig, &bucketDbConfig); err != nil {
-				return nil, err
-			}
+	cas, err := h.server.BootstrapContext.UpdateConfig(h.ctx(), bucket, h.server.Config.Bootstrap.ConfigGroupID, dbName, func(bucketDbConfig *DatabaseConfig) (updatedConfig *DatabaseConfig, err error) {
+		if h.headerDoesNotMatchEtag(bucketDbConfig.Version) {
+			return nil, base.HTTPErrorf(http.StatusPreconditionFailed, "Provided If-Match header does not match current config version")
+		}
 
-			if h.headerDoesNotMatchEtag(bucketDbConfig.Version) {
-				return nil, base.HTTPErrorf(http.StatusPreconditionFailed, "Provided If-Match header does not match current config version")
-			}
+		if bucketDbConfig.Scopes != nil {
+			config := bucketDbConfig.Scopes[h.collection.ScopeName].Collections[h.collection.Name]
+			config.SyncFn = &js
+			bucketDbConfig.Scopes[h.collection.ScopeName].Collections[h.collection.Name] = config
+		} else if base.IsDefaultCollection(h.collection.ScopeName, h.collection.Name) {
+			bucketDbConfig.Sync = &js
+		}
 
-			if bucketDbConfig.Scopes != nil {
-				config := bucketDbConfig.Scopes[h.collection.ScopeName].Collections[h.collection.Name]
-				config.SyncFn = &js
-				bucketDbConfig.Scopes[h.collection.ScopeName].Collections[h.collection.Name] = config
-			} else if base.IsDefaultCollection(h.collection.ScopeName, h.collection.Name) {
-				bucketDbConfig.Sync = &js
-			}
+		if err := bucketDbConfig.validate(h.ctx(), !h.getBoolQuery(paramDisableOIDCValidation)); err != nil {
+			return nil, base.HTTPErrorf(http.StatusBadRequest, err.Error())
+		}
 
-			if err := bucketDbConfig.validate(h.ctx(), !h.getBoolQuery(paramDisableOIDCValidation)); err != nil {
-				return nil, base.HTTPErrorf(http.StatusBadRequest, err.Error())
-			}
+		bucketDbConfig.Version, err = GenerateDatabaseConfigVersionID(bucketDbConfig.Version, &bucketDbConfig.DbConfig)
+		if err != nil {
+			return nil, err
+		}
 
-			bucketDbConfig.Version, err = GenerateDatabaseConfigVersionID(bucketDbConfig.Version, &bucketDbConfig.DbConfig)
-			if err != nil {
-				return nil, err
-			}
-
-			bucketDbConfig.SGVersion = base.ProductVersion.String()
-
-			updatedDbConfig = &bucketDbConfig
-			return base.JSONMarshal(bucketDbConfig)
-		})
+		bucketDbConfig.SGVersion = base.ProductVersion.String()
+		updatedDbConfig = bucketDbConfig
+		return bucketDbConfig, nil
+	})
 	if err != nil {
 		return err
 	}
 	updatedDbConfig.cfgCas = cas
 
-	dbName := h.db.Name
 	dbCreds, _ := h.server.Config.DatabaseCredentials[dbName]
 	bucketCreds, _ := h.server.Config.BucketCredentials[bucket]
 	if err := updatedDbConfig.setup(dbName, h.server.Config.Bootstrap, dbCreds, bucketCreds, h.server.Config.IsServerless()); err != nil {
@@ -831,44 +826,37 @@ func (h *handler) handleDeleteCollectionConfigImportFilter() error {
 	}
 
 	bucket := h.db.Bucket.GetName()
+	dbName := h.db.Name
 
 	var updatedDbConfig *DatabaseConfig
-	cas, err := h.server.BootstrapContext.Connection.UpdateConfig(
-		bucket, h.server.Config.Bootstrap.ConfigGroupID,
-		func(rawBucketConfig []byte, rawBucketConfigCas uint64) (newConfig []byte, err error) {
-			var bucketDbConfig DatabaseConfig
-			if err := base.JSONUnmarshal(rawBucketConfig, &bucketDbConfig); err != nil {
-				return nil, err
-			}
+	cas, err := h.server.BootstrapContext.UpdateConfig(h.ctx(), bucket, h.server.Config.Bootstrap.ConfigGroupID, dbName, func(bucketDbConfig *DatabaseConfig) (updatedConfig *DatabaseConfig, err error) {
 
-			if h.headerDoesNotMatchEtag(bucketDbConfig.Version) {
-				return nil, base.HTTPErrorf(http.StatusPreconditionFailed, "Provided If-Match header does not match current config version")
-			}
+		if h.headerDoesNotMatchEtag(bucketDbConfig.Version) {
+			return nil, base.HTTPErrorf(http.StatusPreconditionFailed, "Provided If-Match header does not match current config version")
+		}
 
-			if bucketDbConfig.Scopes != nil {
-				config := bucketDbConfig.Scopes[h.collection.ScopeName].Collections[h.collection.Name]
-				config.ImportFilter = nil
-				bucketDbConfig.Scopes[h.collection.ScopeName].Collections[h.collection.Name] = config
-			} else if base.IsDefaultCollection(h.collection.ScopeName, h.collection.Name) {
-				bucketDbConfig.ImportFilter = nil
-			}
+		if bucketDbConfig.Scopes != nil {
+			config := bucketDbConfig.Scopes[h.collection.ScopeName].Collections[h.collection.Name]
+			config.ImportFilter = nil
+			bucketDbConfig.Scopes[h.collection.ScopeName].Collections[h.collection.Name] = config
+		} else if base.IsDefaultCollection(h.collection.ScopeName, h.collection.Name) {
+			bucketDbConfig.ImportFilter = nil
+		}
 
-			bucketDbConfig.Version, err = GenerateDatabaseConfigVersionID(bucketDbConfig.Version, &bucketDbConfig.DbConfig)
-			if err != nil {
-				return nil, err
-			}
+		bucketDbConfig.Version, err = GenerateDatabaseConfigVersionID(bucketDbConfig.Version, &bucketDbConfig.DbConfig)
+		if err != nil {
+			return nil, err
+		}
 
-			bucketDbConfig.SGVersion = base.ProductVersion.String()
-
-			updatedDbConfig = &bucketDbConfig
-			return base.JSONMarshal(bucketDbConfig)
-		})
+		bucketDbConfig.SGVersion = base.ProductVersion.String()
+		updatedDbConfig = bucketDbConfig
+		return bucketDbConfig, nil
+	})
 	if err != nil {
 		return err
 	}
 	updatedDbConfig.cfgCas = cas
 
-	dbName := h.db.Name
 	dbCreds, _ := h.server.Config.DatabaseCredentials[dbName]
 	bucketCreds, _ := h.server.Config.BucketCredentials[bucket]
 	if err := updatedDbConfig.setup(dbName, h.server.Config.Bootstrap, dbCreds, bucketCreds, h.server.Config.IsServerless()); err != nil {
@@ -899,48 +887,41 @@ func (h *handler) handlePutCollectionConfigImportFilter() error {
 		return err
 	}
 	bucket := h.db.Bucket.GetName()
+	dbName := h.db.Name
 
 	var updatedDbConfig *DatabaseConfig
-	cas, err := h.server.BootstrapContext.Connection.UpdateConfig(
-		bucket, h.server.Config.Bootstrap.ConfigGroupID,
-		func(rawBucketConfig []byte, rawBucketConfigCas uint64) (newConfig []byte, err error) {
-			var bucketDbConfig DatabaseConfig
-			if err := base.JSONUnmarshal(rawBucketConfig, &bucketDbConfig); err != nil {
-				return nil, err
-			}
+	cas, err := h.server.BootstrapContext.UpdateConfig(h.ctx(), bucket, h.server.Config.Bootstrap.ConfigGroupID, dbName, func(bucketDbConfig *DatabaseConfig) (updatedConfig *DatabaseConfig, err error) {
 
-			if h.headerDoesNotMatchEtag(bucketDbConfig.Version) {
-				return nil, base.HTTPErrorf(http.StatusPreconditionFailed, "Provided If-Match header does not match current config version")
-			}
+		if h.headerDoesNotMatchEtag(bucketDbConfig.Version) {
+			return nil, base.HTTPErrorf(http.StatusPreconditionFailed, "Provided If-Match header does not match current config version")
+		}
 
-			if bucketDbConfig.Scopes != nil {
-				config := bucketDbConfig.Scopes[h.collection.ScopeName].Collections[h.collection.Name]
-				config.ImportFilter = &js
-				bucketDbConfig.Scopes[h.collection.ScopeName].Collections[h.collection.Name] = config
-			} else if base.IsDefaultCollection(h.collection.ScopeName, h.collection.Name) {
-				bucketDbConfig.ImportFilter = &js
-			}
+		if bucketDbConfig.Scopes != nil {
+			config := bucketDbConfig.Scopes[h.collection.ScopeName].Collections[h.collection.Name]
+			config.ImportFilter = &js
+			bucketDbConfig.Scopes[h.collection.ScopeName].Collections[h.collection.Name] = config
+		} else if base.IsDefaultCollection(h.collection.ScopeName, h.collection.Name) {
+			bucketDbConfig.ImportFilter = &js
+		}
 
-			if err := bucketDbConfig.validate(h.ctx(), !h.getBoolQuery(paramDisableOIDCValidation)); err != nil {
-				return nil, base.HTTPErrorf(http.StatusBadRequest, err.Error())
-			}
+		if err := bucketDbConfig.validate(h.ctx(), !h.getBoolQuery(paramDisableOIDCValidation)); err != nil {
+			return nil, base.HTTPErrorf(http.StatusBadRequest, err.Error())
+		}
 
-			bucketDbConfig.Version, err = GenerateDatabaseConfigVersionID(bucketDbConfig.Version, &bucketDbConfig.DbConfig)
-			if err != nil {
-				return nil, err
-			}
+		bucketDbConfig.Version, err = GenerateDatabaseConfigVersionID(bucketDbConfig.Version, &bucketDbConfig.DbConfig)
+		if err != nil {
+			return nil, err
+		}
 
-			bucketDbConfig.SGVersion = base.ProductVersion.String()
-
-			updatedDbConfig = &bucketDbConfig
-			return base.JSONMarshal(bucketDbConfig)
-		})
+		bucketDbConfig.SGVersion = base.ProductVersion.String()
+		updatedDbConfig = bucketDbConfig
+		return bucketDbConfig, nil
+	})
 	if err != nil {
 		return err
 	}
 	updatedDbConfig.cfgCas = cas
 
-	dbName := h.db.Name
 	dbCreds, _ := h.server.Config.DatabaseCredentials[dbName]
 	bucketCreds, _ := h.server.Config.BucketCredentials[bucket]
 	if err := updatedDbConfig.setup(dbName, h.server.Config.Bootstrap, dbCreds, bucketCreds, h.server.Config.IsServerless()); err != nil {
@@ -962,15 +943,13 @@ func (h *handler) handlePutCollectionConfigImportFilter() error {
 // In non-persistent mode, the endpoint just removes the database from the node.
 func (h *handler) handleDeleteDB() error {
 	h.assertAdminOnly()
-	dbName := h.PathVar("olddb")
+	dbName := h.PathVar("db")
 
 	var bucket string
 
 	if h.server.persistentConfig {
 		bucket, _ = h.server.bucketNameFromDbName(dbName)
-		_, err := h.server.BootstrapContext.Connection.UpdateConfig(bucket, h.server.Config.Bootstrap.ConfigGroupID, func(rawBucketConfig []byte, rawBucketConfigCas uint64) (updatedConfig []byte, err error) {
-			return nil, nil
-		})
+		err := h.server.BootstrapContext.DeleteConfig(h.ctx(), bucket, h.server.Config.Bootstrap.ConfigGroupID, dbName)
 		if err != nil {
 			return base.HTTPErrorf(http.StatusInternalServerError, "couldn't remove database %q from bucket %q: %s", base.MD(dbName), base.MD(bucket), err.Error())
 		}
@@ -1075,6 +1054,7 @@ type DatabaseStatus struct {
 	SequenceNumber    uint64                  `json:"seq"`
 	ServerUUID        string                  `json:"server_uuid"`
 	State             string                  `json:"state"`
+	RequireResync     []string                `json:"require_resync"`
 	ReplicationStatus []*db.ReplicationStatus `json:"replication_status"`
 	SGRCluster        *db.SGRCluster          `json:"cluster"`
 }
@@ -1125,6 +1105,7 @@ func (h *handler) handleGetStatus() error {
 			ServerUUID:        database.ServerUUID,
 			ReplicationStatus: replicationsStatus,
 			SGRCluster:        cluster,
+			RequireResync:     database.RequireResync.ScopeAndCollectionNames(),
 		}
 	}
 
@@ -1256,7 +1237,8 @@ func externalUserName(name string) string {
 	return name
 }
 
-func marshalPrincipal(princ auth.Principal, includeDynamicGrantInfo bool) auth.PrincipalConfig {
+// marshalPrincipal outputs a PrincipalConfig in a format for REST API endpoints.
+func marshalPrincipal(database *db.Database, princ auth.Principal, includeDynamicGrantInfo bool) auth.PrincipalConfig {
 	name := externalUserName(princ.Name())
 	info := auth.PrincipalConfig{
 		Name:             &name,
@@ -1264,11 +1246,16 @@ func marshalPrincipal(princ auth.Principal, includeDynamicGrantInfo bool) auth.P
 	}
 
 	collectionAccess := princ.GetCollectionsAccess()
-	if collectionAccess != nil {
+	if collectionAccess != nil && !database.OnlyDefaultCollection() {
 		info.CollectionAccess = make(map[string]map[string]*auth.CollectionAccessConfig)
 		for scopeName, scope := range collectionAccess {
 			scopeAccessConfig := make(map[string]*auth.CollectionAccessConfig)
 			for collectionName, collection := range scope {
+				_, err := database.GetDatabaseCollection(scopeName, collectionName)
+				// collection doesn't exist anymore, but did at some point
+				if err != nil {
+					continue
+				}
 				collectionAccessConfig := &auth.CollectionAccessConfig{
 					ExplicitChannels_: collection.ExplicitChannels().AsSet(),
 				}
@@ -1411,7 +1398,7 @@ func (h *handler) getUserInfo() error {
 	}
 	// If not specified will default to false
 	includeDynamicGrantInfo := h.permissionsResults[PermReadPrincipalAppData.PermissionName]
-	info := marshalPrincipal(user, includeDynamicGrantInfo)
+	info := marshalPrincipal(h.db, user, includeDynamicGrantInfo)
 	// If the user's OIDC issuer is no longer valid, remove the OIDC information to avoid confusing users
 	// (it'll get removed permanently the next time the user signs in)
 	if info.JWTIssuer != nil {
@@ -1445,7 +1432,7 @@ func (h *handler) getRoleInfo() error {
 	}
 	// If not specified will default to false
 	includeDynamicGrantInfo := h.permissionsResults[PermReadPrincipalAppData.PermissionName]
-	info := marshalPrincipal(role, includeDynamicGrantInfo)
+	info := marshalPrincipal(h.db, role, includeDynamicGrantInfo)
 	bytes, err := base.JSONMarshal(info)
 	_, _ = h.response.Write(bytes)
 	return err
@@ -1696,5 +1683,53 @@ func (h *handler) putReplicationStatus() error {
 		return err
 	}
 	h.writeJSON(updatedStatus)
+	return nil
+}
+
+// Cluster information, returned by _cluster_info API request
+type ClusterInfo struct {
+	LegacyConfig bool                  `json:"legacy_config,omitempty"`
+	Buckets      map[string]BucketInfo `json:"buckets,omitempty"`
+}
+
+type BucketInfo struct {
+	Registry GatewayRegistry `json:"registry,omitempty"`
+}
+
+// Get SG cluster information.  Iterates over all buckets associated with the server, and returns cluster
+// information (registry) for each
+func (h *handler) handleGetClusterInfo() error {
+
+	// If not using persistent config, returns legacy_config:true
+	if h.server.persistentConfig == false {
+		clusterInfo := ClusterInfo{
+			LegacyConfig: true,
+		}
+		h.writeJSON(clusterInfo)
+		return nil
+	}
+
+	clusterInfo := ClusterInfo{
+		Buckets: make(map[string]BucketInfo),
+	}
+
+	bucketNames, err := h.server.GetBucketNames()
+	if err != nil {
+		return err
+	}
+
+	for _, bucketName := range bucketNames {
+		registry, err := h.server.BootstrapContext.getGatewayRegistry(h.ctx(), bucketName)
+		if err != nil {
+			base.InfofCtx(h.ctx(), base.KeyAll, "Unable to retrieve registry for bucket %s during getClusterInfo: %v", base.MD(bucketName), err)
+			continue
+		}
+
+		bucketInfo := BucketInfo{
+			Registry: *registry,
+		}
+		clusterInfo.Buckets[bucketName] = bucketInfo
+	}
+	h.writeJSON(clusterInfo)
 	return nil
 }

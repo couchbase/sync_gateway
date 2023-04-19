@@ -91,40 +91,42 @@ func ParsePlainSequenceID(str string) (s SequenceID, err error) {
 	return parseIntegerSequenceID(str)
 }
 
-func parseIntegerSequenceID(str string) (s SequenceID, err error) {
+func parseIntegerSequenceID(str string) (SequenceID, error) {
 	if str == "" {
 		return SequenceID{}, nil
 	}
+	s := SequenceID{}
 	components := strings.Split(str, ":")
+	var err error
 	if len(components) == 1 {
 		// Just the internal sequence
 		s.Seq, err = ParseIntSequenceComponent(components[0], false)
 	} else if len(components) == 2 {
 		// TriggeredBy and InternalSequence
 		if s.TriggeredBy, err = ParseIntSequenceComponent(components[0], false); err != nil {
-			return
+			return SequenceID{}, err
 		}
 		if s.Seq, err = ParseIntSequenceComponent(components[1], false); err != nil {
-			return
+			return SequenceID{}, err
 		}
 	} else if len(components) == 3 {
 		if s.LowSeq, err = ParseIntSequenceComponent(components[0], false); err != nil {
-			return
+			return SequenceID{}, err
 		}
 		if s.TriggeredBy, err = ParseIntSequenceComponent(components[1], true); err != nil {
-			return
+			return SequenceID{}, err
 		}
 		if s.Seq, err = ParseIntSequenceComponent(components[2], false); err != nil {
-			return
+			return SequenceID{}, err
 		}
 	} else {
-		err = base.HTTPErrorf(400, "Invalid sequence")
+		return SequenceID{}, base.HTTPErrorf(400, "Invalid sequence")
 	}
 
 	if err != nil {
-		err = base.HTTPErrorf(400, "Invalid sequence")
+		return SequenceID{}, base.HTTPErrorf(400, "Invalid sequence")
 	}
-	return
+	return s, nil
 }
 
 func ParseIntSequenceComponent(component string, allowEmpty bool) (uint64, error) {

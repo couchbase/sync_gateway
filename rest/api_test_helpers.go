@@ -25,7 +25,7 @@ func (rt *RestTester) RequireDocNotFound(docID string) {
 }
 
 func (rt *RestTester) TombstoneDoc(docID string, revID string) {
-	rawResponse := rt.SendAdminRequest("DELETE", "/db/"+docID+"?rev="+revID, "")
+	rawResponse := rt.SendAdminRequest("DELETE", "/{{.keyspace}}/"+docID+"?rev="+revID, "")
 	RequireStatus(rt.TB, rawResponse, 200)
 }
 

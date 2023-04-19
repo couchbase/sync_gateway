@@ -12,8 +12,10 @@ package base
 
 import (
 	"context"
+	"crypto/sha256"
 	"crypto/tls"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -73,7 +75,7 @@ func StartShardedDCPFeed(ctx context.Context, dbName string, configGroup string,
 	}
 
 	// Add logging info before passing ctx down
-	ctx = cbgtContext.AddLogContext(ctx, spec.BucketName)
+	ctx = CorrelationIDLogCtx(ctx, DCPImportFeedID)
 
 	// Start Manager.  Registers this node in the cfg
 	err = cbgtContext.StartManager(ctx, dbName, configGroup, bucket, spec, scope, collections, numPartitions)
@@ -124,7 +126,7 @@ func createCBGTIndex(ctx context.Context, c *CbgtContext, dbName string, configG
 		return err
 	}
 
-	indexParams, err := cbgtIndexParams(ImportDestKey(dbName))
+	indexParams, err := cbgtIndexParams(ImportDestKey(dbName, scope, collections))
 	if err != nil {
 		return err
 	}
@@ -377,13 +379,6 @@ func initCBGTManager(ctx context.Context, bucket Bucket, spec BucketSpec, cfgSG 
 	return cbgtContext, nil
 }
 
-func (c *CbgtContext) AddLogContext(parent context.Context, bucketName string) context.Context {
-	if c != nil && bucketName != "" {
-		return LogContextWith(parent, &LogContext{CorrelationID: MD(bucketName).Redact() + "-" + DCPImportFeedID})
-	}
-	return parent
-}
-
 // StartManager registers this node with cbgt, and the janitor will start feeds on this node.
 func (c *CbgtContext) StartManager(ctx context.Context, dbName string, configGroup string, bucket Bucket, spec BucketSpec, scope string, collections []string, numPartitions uint16) (err error) {
 	// TODO: Clarify the functional difference between registering the manager as 'wanted' vs 'known'.
@@ -462,8 +457,21 @@ func (c *CbgtContext) RemoveFeedCredentials(dbName string) {
 }
 
 // Format of dest key for retrieval of import dest from cbgtDestFactories
-func ImportDestKey(dbName string) string {
-	return dbName + "_import"
+func ImportDestKey(dbName string, scope string, collections []string) string {
+	sort.Strings(collections)
+	collectionString := ""
+	onlyDefault := true
+	for _, collection := range collections {
+		if collection != DefaultCollection {
+			onlyDefault = false
+		}
+		collectionString += fmt.Sprintf("%s.%s:", scope, collection)
+	}
+	// format for _default._default
+	if collectionString == "" || (scope == DefaultScope && onlyDefault) {
+		return fmt.Sprintf("%s_import", dbName)
+	}
+	return fmt.Sprintf("%s_import_%x", dbName, sha256.Sum256([]byte(collectionString)))
 }
 
 func initCfgCB(bucket Bucket, spec BucketSpec) (*cbgt.CfgCB, error) {

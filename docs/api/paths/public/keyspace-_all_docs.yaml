@@ -1,0 +1,90 @@
+# Copyright 2022-Present Couchbase, Inc.
+#
+# Use of this software is governed by the Business Source License included
+# in the file licenses/BSL-Couchbase.txt.  As of the Change Date specified
+# in that file, in accordance with the Business Source License, use of this
+# software will be governed by the Apache License, Version 2.0, included in
+# the file licenses/APL2.txt.
+parameters:
+  - $ref: ../../components/parameters.yaml#/keyspace
+get:
+  summary: Gets all the documents in the database with the given parameters
+  description: Returns all documents in the databased based on the specified parameters.
+  parameters:
+    - $ref: ../../components/parameters.yaml#/include_docs
+    - $ref: ../../components/parameters.yaml#/Include-channels
+    - $ref: ../../components/parameters.yaml#/include-access
+    - $ref: ../../components/parameters.yaml#/include-revs
+    - $ref: ../../components/parameters.yaml#/include-seqs
+    - $ref: ../../components/parameters.yaml#/keys
+    - $ref: ../../components/parameters.yaml#/startkey
+    - $ref: ../../components/parameters.yaml#/endkey
+    - $ref: ../../components/parameters.yaml#/limit-result-rows
+  responses:
+    '200':
+      $ref: ../../components/responses.yaml#/all-docs
+    '400':
+      $ref: ../../components/responses.yaml#/request-problem
+    '404':
+      $ref: ../../components/responses.yaml#/Not-found
+  tags:
+    - Document
+  operationId: get_keyspace-_all_docs
+post:
+  summary: Get all the documents in the database using a built-in view
+  description: Get a built-in view of all the documents in the database.
+  parameters:
+    - $ref: ../../components/parameters.yaml#/include_docs
+    - $ref: ../../components/parameters.yaml#/Include-channels
+    - $ref: ../../components/parameters.yaml#/include-access
+    - $ref: ../../components/parameters.yaml#/include-revs
+    - $ref: ../../components/parameters.yaml#/include-seqs
+    - $ref: ../../components/parameters.yaml#/startkey
+    - $ref: ../../components/parameters.yaml#/endkey
+    - $ref: ../../components/parameters.yaml#/limit-result-rows
+  requestBody:
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            keys:
+              description: List of the documents to retrieve.
+              type: array
+              items:
+                type: string
+          required:
+            - keys
+  responses:
+    '200':
+      $ref: ../../components/responses.yaml#/all-docs
+    '400':
+      $ref: ../../components/responses.yaml#/request-problem
+    '404':
+      $ref: ../../components/responses.yaml#/Not-found
+  tags:
+    - Document
+  operationId: post_keyspace-_all_docs
+head:
+  summary: /{db}/_all_docs
+  responses:
+    '200':
+      description: OK
+    '400':
+      $ref: ../../components/responses.yaml#/request-problem
+    '404':
+      $ref: ../../components/responses.yaml#/Not-found
+  tags:
+    - Document
+  parameters:
+    - $ref: ../../components/parameters.yaml#/include_docs
+    - $ref: ../../components/parameters.yaml#/Include-channels
+    - $ref: ../../components/parameters.yaml#/include-access
+    - $ref: ../../components/parameters.yaml#/include-revs
+    - $ref: ../../components/parameters.yaml#/include-seqs
+    - $ref: ../../components/parameters.yaml#/keys
+    - $ref: ../../components/parameters.yaml#/startkey
+    - $ref: ../../components/parameters.yaml#/endkey
+    - $ref: ../../components/parameters.yaml#/limit-result-rows
+  description: ''
+  operationId: head_keyspace-_all_docs

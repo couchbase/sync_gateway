@@ -191,7 +191,7 @@ var (
 	ErrUnknownField = errors.New("unrecognized JSON field")
 
 	// MaxPrincipalNameLen is the maximum length for user and role names, accounting for internal prefixes, and is used to validate CRUD
-	MaxPrincipalNameLen = 250 - Max(len(UserPrefix), len(RolePrefix))
+	MaxPrincipalNameLen = 250 - Max(len(UserPrefixRoot), len(RolePrefixRoot))
 )
 
 // UnitTestUrl returns the configured test URL.

@@ -544,8 +544,6 @@ func TestUserFunctionsMaxCodeSize(t *testing.T) {
 
 //////// UTILITY FUNCTIONS:
 
-//////// UTILITY FUNCTIONS:
-
 // If certain environment variables are set, for example to turn on XATTR support, then update
 // the DatabaseContextOptions accordingly
 func AddOptionsFromEnvironmentVariables(dbcOptions *db.DatabaseContextOptions) {

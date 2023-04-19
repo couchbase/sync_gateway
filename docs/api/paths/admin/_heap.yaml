@@ -5,13 +5,13 @@
 # in that file, in accordance with the Business Source License, use of this
 # software will be governed by the Apache License, Version 2.0, included in
 # the file licenses/APL2.txt.
-
 post:
   summary: Dump heap profile
   description: |-
     This endpoint will dump a pprof heap profile.
 
     Required Sync Gateway RBAC roles:
+
     * Sync Gateway Dev Ops
   requestBody:
     $ref: ../../components/requestBodies.yaml#/Profile
@@ -21,5 +21,5 @@ post:
     '400':
       $ref: ../../components/responses.yaml#/request-problem
   tags:
-    - Admin only endpoints
     - Profiling
+  operationId: post__heap

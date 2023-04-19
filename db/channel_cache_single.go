@@ -306,7 +306,9 @@ func (c *singleChannelCacheImpl) pruneCacheAge(ctx context.Context) {
 		c.logs = c.logs[1:]
 		pruned++
 	}
-	base.DebugfCtx(ctx, base.KeyCache, "Pruned %d old entries from channel %q", pruned, base.UD(c.channelID))
+	if pruned > 0 {
+		base.DebugfCtx(ctx, base.KeyCache, "Pruned %d old entries from channel %q", pruned, base.UD(c.channelID))
+	}
 
 }
 

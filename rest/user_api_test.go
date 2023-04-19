@@ -276,6 +276,7 @@ func TestUserAPI(t *testing.T) {
 
 	user, err := rt.ServerContext().Database(ctx, "db").Authenticator(ctx).GetUser("snej")
 	require.NoError(t, err)
+	require.NotNil(t, user)
 	// GET the user and make sure the result is OK
 	response = rt.SendAdminRequest("GET", "/db/_user/snej", "")
 	RequireStatus(t, response, 200)
@@ -487,7 +488,7 @@ func TestUserAndRoleResponseContentType(t *testing.T) {
 	assert.Equal(t, "application/json", response.Header().Get("Content-Type"))
 
 	// Create a new user and save to database to create user session.
-	authenticator := auth.NewAuthenticator(rt.MetadataStore(), nil, auth.DefaultAuthenticatorOptions())
+	authenticator := auth.NewAuthenticator(rt.MetadataStore(), nil, rt.GetDatabase().AuthenticatorOptions())
 	user, err := authenticator.NewUser("eve", "cGFzc3dvcmQ=", channels.BaseSetOf(t, "*"))
 	assert.NoError(t, err, "Couldn't create new user")
 	assert.NoError(t, authenticator.Save(user), "Couldn't save new user")
@@ -587,6 +588,7 @@ func TestUserXattrsRawGet(t *testing.T) {
 	err = rt.WaitForCondition(func() bool {
 		return rt.GetDatabase().DbStats.SharedBucketImportStats.ImportCount.Value() == 1
 	})
+	require.NoError(t, err)
 
 	resp = rt.SendAdminRequest("GET", "/{{.keyspace}}/_raw/"+docKey, "")
 	RequireStatus(t, resp, http.StatusOK)
@@ -598,6 +600,7 @@ func TestUserXattrsRawGet(t *testing.T) {
 	}
 
 	err = json.Unmarshal(resp.BodyBytes(), &RawReturn)
+	require.NoError(t, err)
 
 	assert.Equal(t, "val", RawReturn.Meta.Xattrs[xattrKey])
 }
@@ -883,6 +886,7 @@ function(doc, oldDoc) {
 	}
 	input = input + `]}`
 	response = rt.SendAdminRequest("POST", "/{{.keyspace}}/_bulk_docs", input)
+	RequireStatus(t, response, http.StatusCreated)
 
 	// Start changes feed
 	var wg sync.WaitGroup
@@ -955,6 +959,7 @@ function(doc, oldDoc) {
 
 		log.Printf("Sending 2nd round of _bulk_docs")
 		response = rt.SendUserRequest("POST", "/{{.keyspace}}/_bulk_docs", input, "bernard")
+		RequireStatus(t, response, http.StatusCreated)
 		log.Printf("Sent 2nd round of _bulk_docs")
 
 	}
@@ -1010,6 +1015,7 @@ func TestUserDeleteDuringChangesWithAccess(t *testing.T) {
 	for i := 0; i <= 5; i++ {
 		docId := fmt.Sprintf("/{{.keyspace}}/bernard_doc%d", i+3)
 		response = rt.SendAdminRequest("PUT", docId, `{"type":"setaccess", "owner":"bernard", "channel":"foo"}`)
+		RequireStatus(t, response, http.StatusCreated)
 	}
 
 	wg.Wait()
@@ -1299,7 +1305,7 @@ func TestUserXattrAvoidRevisionIDGeneration(t *testing.T) {
 	_, err := subdocXattrStore.SubdocGetXattr(docKey, base.SyncXattrName, &syncData)
 	assert.NoError(t, err)
 
-	docRev, err := rt.GetDatabase().GetSingleDatabaseCollection().GetRevisionCacheForTest().Get(base.TestCtx(t), docKey, syncData.CurrentRev, true, false)
+	docRev, err := rt.GetSingleTestDatabaseCollection().GetRevisionCacheForTest().Get(base.TestCtx(t), docKey, syncData.CurrentRev, true, false)
 	assert.NoError(t, err)
 	assert.Equal(t, 0, len(docRev.Channels.ToArray()))
 	assert.Equal(t, syncData.CurrentRev, docRev.RevID)
@@ -1319,7 +1325,7 @@ func TestUserXattrAvoidRevisionIDGeneration(t *testing.T) {
 	_, err = subdocXattrStore.SubdocGetXattr(docKey, base.SyncXattrName, &syncData2)
 	assert.NoError(t, err)
 
-	docRev2, err := rt.GetDatabase().GetSingleDatabaseCollection().GetRevisionCacheForTest().Get(base.TestCtx(t), docKey, syncData.CurrentRev, true, false)
+	docRev2, err := rt.GetSingleTestDatabaseCollection().GetRevisionCacheForTest().Get(base.TestCtx(t), docKey, syncData.CurrentRev, true, false)
 	assert.NoError(t, err)
 	assert.Equal(t, syncData2.CurrentRev, docRev2.RevID)
 
@@ -1345,57 +1351,230 @@ func TestUserXattrAvoidRevisionIDGeneration(t *testing.T) {
 }
 
 func TestGetUserCollectionAccess(t *testing.T) {
+	numCollections := 2
+	base.RequireNumTestDataStores(t, numCollections)
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
-	rt := NewRestTester(t, nil)
+	testBucket := base.GetPersistentTestBucket(t)
+	defer testBucket.Close()
+	scopesConfig := GetCollectionsConfig(t, testBucket, 2)
+
+	rtConfig := &RestTesterConfig{
+		CustomTestBucket: testBucket,
+		SyncFn:           `function(doc) {channel(doc.channel); access(doc.accessUser, doc.accessChannel);}`,
+	}
+
+	rt := NewRestTesterMultipleCollections(t, rtConfig, 2)
 	defer rt.Close()
 
+	scope1Name := rt.GetDbCollections()[0].ScopeName
+	collection1Name := rt.GetDbCollections()[0].Name
+	collection2Name := rt.GetDbCollections()[1].Name
+	scopesConfig[scope1Name].Collections[collection1Name] = CollectionConfig{}
+
+	collectionPayload := fmt.Sprintf(`,"%s": {
+					"admin_channels":["foo", "bar1"]
+				}`, collection2Name)
+
 	// Create a user with collection metadata
-	userPayload := `{
-		"email":"alice@couchbase.com", 
-		"password":"letmein", 
+	userRolePayload := `{
+		%s
 		"admin_channels":["foo", "bar"],
 		"collection_access": {
-			"scope1": {
-				"collection1": {
+			"%s": {
+				"%s": {
 					"admin_channels":["foo", "bar1"]
 				}
+				%s
 			}
 		}
 	}`
 
-	putResponse := rt.SendAdminRequest("PUT", "/db/_user/alice", userPayload)
+	putResponse := rt.SendAdminRequest("PUT", "/db/_user/alice", fmt.Sprintf(userRolePayload, `"email":"alice@couchbase.com","password":"letmein",`, scope1Name, collection1Name, ""))
+	RequireStatus(t, putResponse, 201)
+	putResponse = rt.SendAdminRequest("PUT", "/db/_user/bob", fmt.Sprintf(userRolePayload, `"email":"bob@couchbase.com","password":"letmein",`, scope1Name, collection1Name, collectionPayload))
+	RequireStatus(t, putResponse, 201)
+	putResponse = rt.SendAdminRequest("PUT", "/db/_role/role1", fmt.Sprintf(userRolePayload, ``, scope1Name, collection1Name, collectionPayload))
 	RequireStatus(t, putResponse, 201)
 
-	getResponse := rt.SendAdminRequest("GET", "/db/_user/alice", "")
+	getResponse := rt.SendAdminRequest("GET", "/db/_user/bob", "")
 	RequireStatus(t, getResponse, 200)
 	log.Printf("response:%s", getResponse.Body.Bytes())
 	var responseConfig auth.PrincipalConfig
 	err := json.Unmarshal(getResponse.Body.Bytes(), &responseConfig)
 	require.NoError(t, err)
-	collectionAccess, ok := responseConfig.CollectionAccess["scope1"]["collection1"]
+	collectionAccess, ok := responseConfig.CollectionAccess[scope1Name][collection1Name]
 	require.True(t, ok)
+
 	assert.Equal(t, channels.BaseSetOf(t, "foo", "bar1"), collectionAccess.ExplicitChannels_)
-	// TODO: computed channels requires authenticator populated with collection set, pending CBG-2266
-	//assert.Equal(t, channels.BaseSetOf(t), collectionAccess.Channels_)
+	assert.Equal(t, channels.BaseSetOf(t, "foo", "bar1", "!"), collectionAccess.Channels_)
 	assert.Nil(t, collectionAccess.JWTChannels_)
 	assert.Nil(t, collectionAccess.JWTLastUpdated)
 
-	// TODO: Additional test cases still required:
-	//  GET _user
-	//  1. Hide entries for collections that are no longer part of the database
-	//
-	//  GET _role
-	//  1. Standard get
-	//  2. Hide entries for collections that are no longer part of the database
-	//
-	//  INSERT _user
-	//  1. Attempt to write read-only properties (error)
-	//  2. Attempt to write collections that aren't defined for the database (error)
-	//  INSERT _role
-	//  1. Attempt to write read-only properties (error)
-	//  2. Attempt to write collections that aren't defined for the database (error)
-	//  UPDATE _user
-	//  0. Upsert of single collection (preserve existing)
-	//  1. Delete collection admin channels
-	//  2. Delete scope
+	scopesConfig = GetCollectionsConfig(t, testBucket, 1)
+	scopesConfigString, err := json.Marshal(scopesConfig)
+	require.NoError(t, err)
+
+	resp := rt.SendAdminRequest("PUT", "/db/_config", fmt.Sprintf(
+		`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "scopes":%s}`,
+		testBucket.GetName(), base.TestUseXattrs(), string(scopesConfigString)))
+	RequireStatus(t, resp, http.StatusCreated)
+
+	//  Hide entries for collections that are no longer part of the database for GET /_user and /_role
+	userResponse := rt.SendAdminRequest("GET", "/db/_user/bob", "")
+	RequireStatus(t, userResponse, 200)
+	assert.NotContains(t, userResponse.Body.Bytes(), collection2Name)
+
+	userResponse = rt.SendAdminRequest("GET", "/db/_role/role1", "")
+	RequireStatus(t, userResponse, 200)
+	assert.NotContains(t, userResponse.Body.Bytes(), collection2Name)
+
+	// Attempt to write collections that aren't defined for the database for PUT /_user and /_role
+	putResponse = rt.SendAdminRequest("PUT", "/db/_user/alice2", fmt.Sprintf(userRolePayload, `"email":"alice@couchbase.com","password":"@232dfdg",`, scope1Name, collection1Name, `,"rgergeggrenhnnh": {
+					"admin_channels":["foo", "bar1"]
+				}`))
+	RequireStatus(t, putResponse, 404)
+	putResponse = rt.SendAdminRequest("PUT", "/db/_role/role1", fmt.Sprintf(userRolePayload, ``, scope1Name, collection1Name, collectionPayload))
+	RequireStatus(t, putResponse, 404)
+}
+
+func TestPutUserCollectionAccess(t *testing.T) {
+	base.RequireNumTestDataStores(t, 2)
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
+	testBucket := base.GetPersistentTestBucket(t)
+
+	scopesConfig := GetCollectionsConfig(t, testBucket, 2)
+	rtConfig := &RestTesterConfig{
+		CustomTestBucket: testBucket,
+		SyncFn:           `function(doc) {channel(doc.channel); access(doc.accessUser, doc.accessChannel);}`,
+	}
+
+	rt := NewRestTesterMultipleCollections(t, rtConfig, 2)
+	defer rt.Close()
+
+	scopeName := rt.GetDbCollections()[0].ScopeName
+	collection1Name := rt.GetDbCollections()[0].Name
+	collection2Name := rt.GetDbCollections()[1].Name
+	scopesConfig[scopeName].Collections[collection1Name] = CollectionConfig{}
+
+	collectionPayload := fmt.Sprintf(`,"%s": {
+					"admin_channels":["a"]
+				}`, collection2Name)
+	userPayload := `{
+		%s
+		"admin_channels":["foo", "bar"],
+		"collection_access": {
+			"%s": {
+				"%s": {
+					"admin_channels":[%s]
+				}
+				%s
+			}
+		}
+	}`
+
+	putResponse := rt.SendAdminRequest("PUT", "/db/_user/bob", fmt.Sprintf(userPayload, `"email":"bob@couchbase.com","password":"letmein",`,
+		scopeName, collection1Name, `"foo"`, collectionPayload))
+	RequireStatus(t, putResponse, 201)
+
+	// Upsert one collection and preserve existing
+	putResponse = rt.SendAdminRequest("PUT", "/db/_user/bob", fmt.Sprintf(userPayload, `"email":"bob@couchbase.com",`,
+		scopeName, collection1Name, `"foo", "bar"`, ""))
+	RequireStatus(t, putResponse, 200)
+	getResponse := rt.SendAdminRequest("GET", "/db/_user/bob", "")
+	RequireStatus(t, getResponse, 200)
+	assert.Contains(t, getResponse.ResponseRecorder.Body.String(), collection2Name)
+
+	// Delete collection admin channels
+	putResponse = rt.SendAdminRequest("PUT", "/db/_user/bob", fmt.Sprintf(userPayload, `"email":"bob@couchbase.com",`,
+		scopeName, collection1Name, ``, ""))
+	RequireStatus(t, putResponse, 200)
+
+	getResponse = rt.SendAdminRequest("GET", "/db/_user/bob", "")
+	RequireStatus(t, getResponse, 200)
+	assert.Contains(t, getResponse.ResponseRecorder.Body.String(), `"all_channels":["!"]`)
+
+	dbConfig := rt.NewDbConfig()
+	dbConfig.Scopes = GetCollectionsConfigWithSyncFn(rt.TB, rt.TestBucket, nil, 1)
+	resp := rt.ReplaceDbConfig(rt.GetDatabase().Name, dbConfig)
+	RequireStatus(t, resp, http.StatusCreated)
+
+	//  Hide entries for collections that are no longer part of the database for GET /_user and /_role
+	userResponse := rt.SendAdminRequest("GET", "/db/_user/bob", "")
+	RequireStatus(t, userResponse, http.StatusOK)
+	assert.NotContains(t, userResponse.ResponseRecorder.Body.String(), collection2Name)
+
+	// Attempt to write read-only properties for PUT /_user and /_role
+	readOnlyProperties := []string{"all_channels", "jwt_channels", "jwt_last_updated"}
+	for _, property := range readOnlyProperties {
+		rdOnlyValue := `["ABC"]`
+		if property == "jwt_last_updated" {
+			rdOnlyValue = "22:55:44"
+		}
+		readOnlyCollectionPayload := fmt.Sprintf(`,"%s": {
+					"%s":%s
+				}`, collection2Name, property, rdOnlyValue)
+		putResponse = rt.SendAdminRequest("PUT", "/db/_user/bob2", fmt.Sprintf(userPayload, `"email":"bob@couchbase.com","password":"letmein",`, scopeName, collection2Name, `["ABC"]`, readOnlyCollectionPayload))
+		RequireStatus(t, putResponse, 400)
+		putResponse = rt.SendAdminRequest("PUT", "/db/_role/role12", fmt.Sprintf(userPayload, ``, scopeName, collection2Name, `["ABC"]`, readOnlyCollectionPayload))
+		RequireStatus(t, putResponse, 400)
+	}
+}
+
+func TestUnauthorizedAccessForDB(t *testing.T) {
+	rt := NewRestTester(t, &RestTesterConfig{
+		PersistentConfig: true,
+	})
+	defer rt.Close()
+
+	dbConfig := rt.NewDbConfig()
+
+	dbName := "realdb"
+	rt.CreateDatabase("realdb", dbConfig)
+
+	response := rt.SendRequest(http.MethodGet, "/"+dbName+"/", "")
+	RequireStatus(t, response, http.StatusUnauthorized)
+	require.Contains(t, response.Body.String(), ErrLoginRequired.Message)
+
+	response = rt.SendRequest(http.MethodGet, "/notadb/", "")
+	RequireStatus(t, response, http.StatusUnauthorized)
+	require.Contains(t, response.Body.String(), ErrLoginRequired.Message)
+
+	// create sessions before users
+	const alice = "alice"
+	const bob = "bob"
+	response = rt.SendAdminRequest(http.MethodPut,
+		"/"+dbName+"/_user/"+alice,
+		`{"name": "`+alice+`", "password": "`+RestTesterDefaultUserPassword+`"}`)
+	RequireStatus(t, response, http.StatusCreated)
+
+	response = rt.SendRequest(http.MethodPost,
+		"/"+dbName+"/_session",
+		`{"name": "`+alice+`", "password": "`+RestTesterDefaultUserPassword+`"}`)
+	RequireStatus(t, response, http.StatusOK)
+
+	cookie := response.Header().Get("Set-Cookie")
+	aliceSessionHeaders := map[string]string{
+		"Cookie": cookie,
+	}
+
+	// alice user can see realdb
+	response = rt.SendUserRequest(http.MethodGet, "/"+dbName+"/", "", alice)
+	RequireStatus(t, response, http.StatusOK)
+
+	response = rt.SendRequestWithHeaders(http.MethodGet, "/"+dbName+"/", "", aliceSessionHeaders)
+	RequireStatus(t, response, http.StatusOK)
+
+	response = rt.SendUserRequest(http.MethodGet, "/notadb/", "", alice)
+	RequireStatus(t, response, http.StatusUnauthorized)
+	require.Contains(t, response.Body.String(), ErrInvalidLogin.Message)
+
+	response = rt.SendRequestWithHeaders(http.MethodGet, "/notadb/", "", aliceSessionHeaders)
+	RequireStatus(t, response, http.StatusUnauthorized)
+	require.Contains(t, response.Body.String(), ErrInvalidLogin.Message)
+
+	response = rt.SendUserRequest(http.MethodGet, "/"+dbName+"/", "", bob)
+	RequireStatus(t, response, http.StatusUnauthorized)
+	require.Contains(t, response.Body.String(), ErrInvalidLogin.Message)
+
 }

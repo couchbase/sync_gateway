@@ -1268,6 +1268,7 @@ func TestGetPrincipal(t *testing.T) {
 	// Create a new user with new set of channels and assign user role to the user.
 	user, err := auth.NewUser(username, password, ch.BaseSetOf(
 		t, channelCreate, channelRead, channelUpdate, channelDelete))
+	require.NoError(t, err)
 	user.(*userImpl).setRolesSince(ch.TimedSet{roleUser: ch.NewVbSimpleSequence(0x3)})
 	require.NoError(t, auth.Save(user))
 
@@ -1510,7 +1511,7 @@ func getPrincipals(t *testing.T, auth *Authenticator) (*userImpl, Principal) {
 }
 
 // Initializes principals and returns them for scenarios
-func initializeScenario(t *testing.T, auth *Authenticator) (*userImpl, Principal) {
+func initializeScenario(t *testing.T, auth *Authenticator) {
 	user, err := auth.NewUser("alice", "password", nil)
 	assert.NoError(t, err)
 	err = auth.Save(user)
@@ -1522,7 +1523,7 @@ func initializeScenario(t *testing.T, auth *Authenticator) (*userImpl, Principal
 	assert.NoError(t, err)
 
 	// Get principals to do initial ops on
-	return getPrincipals(t, auth)
+	_, _ = getPrincipals(t, auth)
 }
 
 // =======================================================================================================
@@ -1554,13 +1555,13 @@ func TestRevocationScenario1(t *testing.T) {
 	}
 
 	auth := NewAuthenticator(dataStore, &testMockComputer, DefaultAuthenticatorOptions())
-	aliceUserPrincipal, fooPrincipal := initializeScenario(t, auth)
+	initializeScenario(t, auth)
 
 	testMockComputer.addRoleChannels(t, auth, "foo", "ch1", 5)
 	testMockComputer.addRole(t, auth, "alice", "foo", 20)
 
 	// Get Principals / Rebuild Seq 25
-	aliceUserPrincipal, fooPrincipal = getPrincipals(t, auth)
+	aliceUserPrincipal, fooPrincipal := getPrincipals(t, auth)
 
 	// Ensure user can see ch1 (via role)
 	// Verify history
@@ -1648,13 +1649,13 @@ func TestRevocationScenario2(t *testing.T) {
 	}
 
 	auth := NewAuthenticator(dataStore, &testMockComputer, DefaultAuthenticatorOptions())
-	aliceUserPrincipal, fooPrincipal := initializeScenario(t, auth)
+	initializeScenario(t, auth)
 
 	testMockComputer.addRoleChannels(t, auth, "foo", "ch1", 5)
 	testMockComputer.addRole(t, auth, "alice", "foo", 20)
 
 	// Get Principals / Rebuild Seq 25
-	aliceUserPrincipal, fooPrincipal = getPrincipals(t, auth)
+	aliceUserPrincipal, fooPrincipal := getPrincipals(t, auth)
 
 	// Ensure user can see ch1 (via role)
 	// Verify history
@@ -1748,13 +1749,13 @@ func TestRevocationScenario3(t *testing.T) {
 	}
 
 	auth := NewAuthenticator(dataStore, &testMockComputer, DefaultAuthenticatorOptions())
-	aliceUserPrincipal, fooPrincipal := initializeScenario(t, auth)
+	initializeScenario(t, auth)
 
 	testMockComputer.addRoleChannels(t, auth, "foo", "ch1", 5)
 	testMockComputer.addRole(t, auth, "alice", "foo", 20)
 
 	// Get Principals / Rebuild Seq 25
-	aliceUserPrincipal, fooPrincipal = getPrincipals(t, auth)
+	aliceUserPrincipal, fooPrincipal := getPrincipals(t, auth)
 
 	// Ensure user can see ch1 (via role)
 	// Verify history
@@ -1857,13 +1858,13 @@ func TestRevocationScenario4(t *testing.T) {
 	}
 
 	auth := NewAuthenticator(dataStore, &testMockComputer, DefaultAuthenticatorOptions())
-	aliceUserPrincipal, fooPrincipal := initializeScenario(t, auth)
+	initializeScenario(t, auth)
 
 	testMockComputer.addRoleChannels(t, auth, "foo", "ch1", 5)
 	testMockComputer.addRole(t, auth, "alice", "foo", 20)
 
 	// Get Principals / Rebuild Seq 25
-	aliceUserPrincipal, fooPrincipal = getPrincipals(t, auth)
+	aliceUserPrincipal, fooPrincipal := getPrincipals(t, auth)
 
 	// Ensure user can see ch1 (via role)
 	// Verify history
@@ -1953,13 +1954,13 @@ func TestRevocationScenario5(t *testing.T) {
 	}
 
 	auth := NewAuthenticator(dataStore, &testMockComputer, DefaultAuthenticatorOptions())
-	aliceUserPrincipal, fooPrincipal := initializeScenario(t, auth)
+	initializeScenario(t, auth)
 
 	testMockComputer.addRoleChannels(t, auth, "foo", "ch1", 5)
 	testMockComputer.addRole(t, auth, "alice", "foo", 20)
 
 	// Get Principals / Rebuild Seq 25
-	aliceUserPrincipal, fooPrincipal = getPrincipals(t, auth)
+	aliceUserPrincipal, fooPrincipal := getPrincipals(t, auth)
 
 	// Ensure user can see ch1 (via role)
 	// Verify history
@@ -2033,13 +2034,13 @@ func TestRevocationScenario6(t *testing.T) {
 	}
 
 	auth := NewAuthenticator(dataStore, &testMockComputer, DefaultAuthenticatorOptions())
-	aliceUserPrincipal, fooPrincipal := initializeScenario(t, auth)
+	initializeScenario(t, auth)
 
 	testMockComputer.addRoleChannels(t, auth, "foo", "ch1", 5)
 	testMockComputer.addRole(t, auth, "alice", "foo", 20)
 
 	// Get Principals / Rebuild Seq 25
-	aliceUserPrincipal, fooPrincipal = getPrincipals(t, auth)
+	aliceUserPrincipal, fooPrincipal := getPrincipals(t, auth)
 
 	// Ensure user can see ch1 (via role)
 	// Verify history
@@ -2117,13 +2118,13 @@ func TestRevocationScenario7(t *testing.T) {
 	}
 
 	auth := NewAuthenticator(dataStore, &testMockComputer, DefaultAuthenticatorOptions())
-	aliceUserPrincipal, fooPrincipal := initializeScenario(t, auth)
+	initializeScenario(t, auth)
 
 	testMockComputer.addRoleChannels(t, auth, "foo", "ch1", 5)
 	testMockComputer.addRole(t, auth, "alice", "foo", 20)
 
 	// Get Principals / Rebuild Seq 25
-	aliceUserPrincipal, fooPrincipal = getPrincipals(t, auth)
+	aliceUserPrincipal, fooPrincipal := getPrincipals(t, auth)
 
 	// Ensure user can see ch1 (via role)
 	// Verify history
@@ -2198,7 +2199,7 @@ func TestRevocationScenario8(t *testing.T) {
 	}
 
 	auth := NewAuthenticator(dataStore, &testMockComputer, DefaultAuthenticatorOptions())
-	aliceUserPrincipal, fooPrincipal := initializeScenario(t, auth)
+	initializeScenario(t, auth)
 
 	testMockComputer.addRoleChannels(t, auth, "foo", "ch1", 5)
 	testMockComputer.addRole(t, auth, "alice", "foo", 20)
@@ -2206,7 +2207,7 @@ func TestRevocationScenario8(t *testing.T) {
 	testMockComputer.removeRole(t, auth, "alice", "foo", 45)
 
 	// Get Principals / Rebuild Seq 50
-	aliceUserPrincipal, fooPrincipal = getPrincipals(t, auth)
+	aliceUserPrincipal, fooPrincipal := getPrincipals(t, auth)
 
 	// Ensure user cannot see ch1 (via role)
 	// Verify history
@@ -2260,7 +2261,7 @@ func TestRevocationScenario9(t *testing.T) {
 	}
 
 	auth := NewAuthenticator(dataStore, &testMockComputer, DefaultAuthenticatorOptions())
-	aliceUserPrincipal, fooPrincipal := initializeScenario(t, auth)
+	initializeScenario(t, auth)
 
 	testMockComputer.addRoleChannels(t, auth, "foo", "ch1", 5)
 	testMockComputer.addRole(t, auth, "alice", "foo", 20)
@@ -2269,7 +2270,7 @@ func TestRevocationScenario9(t *testing.T) {
 	testMockComputer.removeRoleChannel(t, auth, "foo", "ch1", 55)
 
 	// Get Principals / Rebuild Seq 60
-	aliceUserPrincipal, fooPrincipal = getPrincipals(t, auth)
+	aliceUserPrincipal, fooPrincipal := getPrincipals(t, auth)
 
 	// Ensure user cannot see ch1 (via role)
 	// Verify history
@@ -2319,7 +2320,7 @@ func TestRevocationScenario10(t *testing.T) {
 	}
 
 	auth := NewAuthenticator(dataStore, &testMockComputer, DefaultAuthenticatorOptions())
-	aliceUserPrincipal, fooPrincipal := initializeScenario(t, auth)
+	initializeScenario(t, auth)
 
 	testMockComputer.addRoleChannels(t, auth, "foo", "ch1", 5)
 	testMockComputer.addRole(t, auth, "alice", "foo", 20)
@@ -2330,7 +2331,7 @@ func TestRevocationScenario10(t *testing.T) {
 	testMockComputer.addRole(t, auth, "alice", "foo", 65)
 
 	// Get Principals / Rebuild Seq 70
-	aliceUserPrincipal, fooPrincipal = getPrincipals(t, auth)
+	aliceUserPrincipal, fooPrincipal := getPrincipals(t, auth)
 
 	// Ensure user cannot see ch1 (via role)
 	// Verify history
@@ -2381,7 +2382,7 @@ func TestRevocationScenario11(t *testing.T) {
 	}
 
 	auth := NewAuthenticator(dataStore, &testMockComputer, DefaultAuthenticatorOptions())
-	aliceUserPrincipal, fooPrincipal := initializeScenario(t, auth)
+	initializeScenario(t, auth)
 
 	testMockComputer.addRoleChannels(t, auth, "foo", "ch1", 5)
 	testMockComputer.addRole(t, auth, "alice", "foo", 20)
@@ -2393,7 +2394,7 @@ func TestRevocationScenario11(t *testing.T) {
 	testMockComputer.addRoleChannels(t, auth, "foo", "ch1", 75)
 
 	// Get Principals / Rebuild Seq 80
-	aliceUserPrincipal, fooPrincipal = getPrincipals(t, auth)
+	aliceUserPrincipal, fooPrincipal := getPrincipals(t, auth)
 
 	// Ensure user can see ch1 (via role)
 	// Verify history
@@ -2449,7 +2450,7 @@ func TestRevocationScenario12(t *testing.T) {
 	}
 
 	auth := NewAuthenticator(dataStore, &testMockComputer, DefaultAuthenticatorOptions())
-	aliceUserPrincipal, fooPrincipal := initializeScenario(t, auth)
+	initializeScenario(t, auth)
 
 	testMockComputer.addRoleChannels(t, auth, "foo", "ch1", 5)
 	testMockComputer.addRole(t, auth, "alice", "foo", 20)
@@ -2463,7 +2464,7 @@ func TestRevocationScenario12(t *testing.T) {
 	testMockComputer.removeRoleChannel(t, auth, "foo", "ch1", 85)
 
 	// Get Principals / Rebuild Seq 90
-	aliceUserPrincipal, fooPrincipal = getPrincipals(t, auth)
+	aliceUserPrincipal, fooPrincipal := getPrincipals(t, auth)
 
 	// Ensure user cannot see ch1 (via role)
 	// Verify history
@@ -2511,7 +2512,7 @@ func TestRevocationScenario13(t *testing.T) {
 	}
 
 	auth := NewAuthenticator(dataStore, &testMockComputer, DefaultAuthenticatorOptions())
-	aliceUserPrincipal, fooPrincipal := initializeScenario(t, auth)
+	initializeScenario(t, auth)
 
 	testMockComputer.addRoleChannels(t, auth, "foo", "ch1", 5)
 	testMockComputer.addRole(t, auth, "alice", "foo", 20)
@@ -2526,7 +2527,7 @@ func TestRevocationScenario13(t *testing.T) {
 	testMockComputer.removeRole(t, auth, "alice", "foo", 95)
 
 	// Get Principals / Rebuild Seq 100
-	aliceUserPrincipal, fooPrincipal = getPrincipals(t, auth)
+	aliceUserPrincipal, fooPrincipal := getPrincipals(t, auth)
 
 	// Ensure user cannot see ch1 (via role)
 	// Verify history
@@ -2571,18 +2572,18 @@ func TestRevocationScenario14(t *testing.T) {
 	}
 
 	auth := NewAuthenticator(dataStore, &testMockComputer, DefaultAuthenticatorOptions())
-	aliceUserPrincipal, _ := initializeScenario(t, auth)
+	initializeScenario(t, auth)
 
 	testMockComputer.addRoleChannels(t, auth, "foo", "ch1", 5)
 	testMockComputer.addRole(t, auth, "alice", "foo", 20)
 
 	// Get Principals / Rebuild Seq 25
-	aliceUserPrincipal, _ = getPrincipals(t, auth)
+	_, _ = getPrincipals(t, auth)
 
 	testMockComputer.removeRole(t, auth, "alice", "foo", 45)
 
 	// Get Principals / Rebuild Seq 45
-	aliceUserPrincipal, _ = getPrincipals(t, auth)
+	aliceUserPrincipal, _ := getPrincipals(t, auth)
 	userRoleHistory, ok := aliceUserPrincipal.RoleHistory()["foo"]
 	require.True(t, ok)
 	assert.Equal(t, GrantHistorySequencePair{StartSeq: 20, EndSeq: 45}, userRoleHistory.Entries[0])
@@ -2787,7 +2788,7 @@ func TestInvalidateRoles(t *testing.T) {
 
 	// Ensure the inval seq was set to 5 (raw get to avoid rebuild)
 	var userOut userImpl
-	_, err = leakyDataStore.Get(docIDForUser("user"), &userOut)
+	_, err = leakyDataStore.Get(auth.DocIDForUser("user"), &userOut)
 	assert.NoError(t, err)
 
 	var expectedValue uint64
@@ -2803,7 +2804,7 @@ func TestInvalidateRoles(t *testing.T) {
 	err = auth.InvalidateRoles("user", 20)
 	assert.NoError(t, err)
 
-	_, err = leakyDataStore.Get(docIDForUser("user"), &userOut)
+	_, err = leakyDataStore.Get(auth.DocIDForUser("user"), &userOut)
 	assert.NoError(t, err)
 	assert.Equal(t, expectedValue, userOut.GetRoleInvalSeq())
 }
@@ -2876,11 +2877,18 @@ func TestInvalidateChannels(t *testing.T) {
 			var princCheck Principal
 			var docID string
 			if testCase.isUser {
-				princCheck = &userImpl{}
-				docID = docIDForUser(testCase.name)
+				docID = auth.DocIDForUser(testCase.name)
+				princCheck = &userImpl{
+					roleImpl: roleImpl{
+						docID: docID,
+					},
+				}
+
 			} else {
-				princCheck = &roleImpl{}
-				docID = docIDForRole(testCase.name)
+				docID = auth.DocIDForRole(testCase.name)
+				princCheck = &roleImpl{
+					docID: docID,
+				}
 			}
 			_, err = leakyDataStore.Get(docID, &princCheck)
 			assert.NoError(t, err)

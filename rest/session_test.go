@@ -221,7 +221,7 @@ func TestLogin(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
-	a := auth.NewAuthenticator(rt.MetadataStore(), nil, auth.DefaultAuthenticatorOptions())
+	a := auth.NewAuthenticator(rt.MetadataStore(), nil, rt.GetDatabase().AuthenticatorOptions())
 	user, err := a.GetUser("")
 	assert.NoError(t, err)
 	user.SetDisabled(true)
@@ -236,6 +236,7 @@ func TestLogin(t *testing.T) {
 	RequireStatus(t, response, 401)
 
 	user, err = a.NewUser("pupshaw", "letmein", channels.BaseSetOf(t, "*"))
+	require.NoError(t, err)
 	assert.NoError(t, a.Save(user))
 
 	RequireStatus(t, rt.SendRequest("GET", "/db/_session", ""), 200)
@@ -263,7 +264,7 @@ func TestCustomCookieName(t *testing.T) {
 	defer rt.Close()
 
 	// Disable guest user
-	a := auth.NewAuthenticator(rt.MetadataStore(), nil, auth.DefaultAuthenticatorOptions())
+	a := auth.NewAuthenticator(rt.MetadataStore(), nil, rt.GetDatabase().AuthenticatorOptions())
 	user, err := a.GetUser("")
 	assert.NoError(t, err)
 	user.SetDisabled(true)
@@ -305,7 +306,7 @@ func TestSessionTtlGreaterThan30Days(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
-	a := auth.NewAuthenticator(rt.MetadataStore(), nil, auth.DefaultAuthenticatorOptions())
+	a := auth.NewAuthenticator(rt.MetadataStore(), nil, rt.GetDatabase().AuthenticatorOptions())
 	user, err := a.GetUser("")
 	assert.NoError(t, err)
 	user.SetDisabled(true)
@@ -320,6 +321,7 @@ func TestSessionTtlGreaterThan30Days(t *testing.T) {
 	RequireStatus(t, response, 401)
 
 	user, err = a.NewUser("pupshaw", "letmein", channels.BaseSetOf(t, "*"))
+	require.NoError(t, err)
 	assert.NoError(t, a.Save(user))
 
 	// create a session with the maximum offset ttl value (30days) 2592000 seconds
@@ -378,7 +380,7 @@ func TestSessionExtension(t *testing.T) {
 		SessionUUID: user.GetSessionUUID(),
 	}
 
-	assert.NoError(t, rt.MetadataStore().Set(auth.DocIDForSession(fakeSession.ID), 0, nil, fakeSession))
+	assert.NoError(t, rt.MetadataStore().Set(authenticator.DocIDForSession(fakeSession.ID), 0, nil, fakeSession))
 	reqHeaders := map[string]string{
 		"Cookie": auth.DefaultCookieName + "=" + fakeSession.ID,
 	}
@@ -397,12 +399,12 @@ func TestSessionExtension(t *testing.T) {
 	// scenario for expired session. In reality, Sync Gateway rely on Couchbase
 	// Server to nuke the expired document based on TTL. Couchbase Server periodically
 	// removes all items with expiration times that have passed.
-	assert.NoError(t, rt.MetadataStore().Delete(auth.DocIDForSession(fakeSession.ID)))
+	assert.NoError(t, rt.MetadataStore().Delete(authenticator.DocIDForSession(fakeSession.ID)))
 
 	response = rt.SendRequestWithHeaders("GET", "/{{.keyspace}}/doc1", "", reqHeaders)
 	log.Printf("GET Request: Set-Cookie: %v", response.Header().Get("Set-Cookie"))
 	RequireStatus(t, response, http.StatusUnauthorized)
-
+	require.Contains(t, response.Body.String(), "Session Invalid")
 }
 
 func TestSessionAPI(t *testing.T) {
@@ -537,6 +539,7 @@ func TestSessionPasswordInvalidation(t *testing.T) {
 			// make sure session is invalid
 			response = rt.SendRequestWithHeaders(http.MethodGet, "/{{.keyspace}}/doc1", "", cookieHeaders)
 			RequireStatus(t, response, http.StatusUnauthorized)
+			require.Contains(t, response.Body.String(), "Session no longer valid")
 
 			// make sure doc is valid for password
 			altPasswordHeaders := map[string]string{
@@ -557,7 +560,7 @@ func TestAllSessionDeleteInvalidation(t *testing.T) {
 	const username = "user1"
 
 	// create session test user
-	response := rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_user/", GetUserPayload(t, username, restTesterDefaultUserPassword, "", rt.GetSingleTestDatabaseCollection(), []string{"*"}, nil))
+	response := rt.SendAdminRequest(http.MethodPost, "/{{.db}}/_user/", GetUserPayload(t, username, RestTesterDefaultUserPassword, "", rt.GetSingleTestDatabaseCollection(), []string{"*"}, nil))
 	RequireStatus(t, response, http.StatusCreated)
 
 	const numSessions = 3
@@ -602,6 +605,7 @@ func TestAllSessionDeleteInvalidation(t *testing.T) {
 
 		response = rt.SendRequestWithHeaders(http.MethodGet, "/{{.keyspace}}/doc1", "", cookieHeaders)
 		RequireStatus(t, response, http.StatusUnauthorized)
+		require.Contains(t, response.Body.String(), "Session no longer valid")
 	}
 
 	// make sure password still works
@@ -618,13 +622,13 @@ func TestUserWithoutSessionUUID(t *testing.T) {
 	const username = "user1"
 
 	authenticator := rt.GetDatabase().Authenticator(base.TestCtx(t))
-	user, err := authenticator.NewUser(username, restTesterDefaultUserPassword, base.SetOf("*"))
+	user, err := authenticator.NewUser(username, RestTesterDefaultUserPassword, base.SetOf("*"))
 	require.NoError(t, err)
 	require.NotNil(t, user)
 	require.NoError(t, authenticator.Save(user))
 
 	var rawUser map[string]interface{}
-	_, err = rt.MetadataStore().Get(user.DocID(), &rawUser)
+	_, err = rt.MetadataStore().Get(authenticator.DocIDForUser(user.Name()), &rawUser)
 	require.NoError(t, err)
 
 	sessionUUIDKey := "session_uuid"
@@ -632,7 +636,7 @@ func TestUserWithoutSessionUUID(t *testing.T) {
 	require.True(t, exists)
 	delete(rawUser, sessionUUIDKey)
 
-	err = rt.MetadataStore().Set(user.DocID(), 0, nil, rawUser)
+	err = rt.MetadataStore().Set(authenticator.DocIDForUser(user.Name()), 0, nil, rawUser)
 	require.NoError(t, err)
 
 	response := rt.SendUserRequest(http.MethodPost, "/{{.db}}/_session", "", username)
@@ -658,6 +662,7 @@ func TestUserWithoutSessionUUID(t *testing.T) {
 
 	response = rt.SendRequestWithHeaders(http.MethodGet, "/{{.keyspace}}/doc1", "", cookieHeaders)
 	RequireStatus(t, response, http.StatusUnauthorized)
+	require.Contains(t, response.Body.String(), "Session no longer valid")
 }
 
 func createSession(t *testing.T, rt *RestTester, username string) string {
@@ -676,7 +681,7 @@ func TestSessionExpirationDateTimeFormat(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
-	authenticator := auth.NewAuthenticator(rt.MetadataStore(), nil, auth.DefaultAuthenticatorOptions())
+	authenticator := auth.NewAuthenticator(rt.MetadataStore(), nil, rt.GetDatabase().AuthenticatorOptions())
 	user, err := authenticator.NewUser("alice", "letMe!n", channels.BaseSetOf(t, "*"))
 	assert.NoError(t, err, "Couldn't create new user")
 	assert.NoError(t, authenticator.Save(user), "Couldn't save new user")

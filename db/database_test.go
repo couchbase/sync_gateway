@@ -78,6 +78,7 @@ func setupTestDBWithViewsEnabled(t testing.TB) (*Database, context.Context) {
 	}
 	dbcOptions := DatabaseContextOptions{
 		UseViews: true,
+		Scopes:   GetScopesOptionsDefaultCollectionOnly(t),
 	}
 	return SetupTestDBWithOptions(t, dbcOptions)
 }
@@ -95,11 +96,11 @@ func setupTestDBWithCustomSyncSeq(t testing.TB, customSeq uint64) (*Database, co
 	AddOptionsFromEnvironmentVariables(&dbcOptions)
 
 	// This may need to change when we move to a non-default metadata collection...
-	metadataStore := tBucket.DefaultDataStore()
+	metadataStore := tBucket.GetMetadataStore()
 
-	log.Printf("Initializing test %s to %d", base.SyncSeqKey, customSeq)
-	_, incrErr := metadataStore.Incr(base.SyncSeqKey, customSeq, customSeq, 0)
-	assert.NoError(t, incrErr, fmt.Sprintf("Couldn't increment %s by %d", base.SyncSeqKey, customSeq))
+	log.Printf("Initializing test %s to %d", base.DefaultMetadataKeys.SyncSeqKey(), customSeq)
+	_, incrErr := metadataStore.Incr(base.DefaultMetadataKeys.SyncSeqKey(), customSeq, customSeq, 0)
+	assert.NoError(t, incrErr, fmt.Sprintf("Couldn't increment %s by %d", base.DefaultMetadataKeys.SyncSeqKey(), customSeq))
 
 	dbCtx, err := NewDatabaseContext(ctx, "db", tBucket, false, dbcOptions)
 	assert.NoError(t, err, "Couldn't create context for database 'db'")
@@ -203,10 +204,12 @@ func TestDatabase(t *testing.T) {
 	gotbody, err = collection.Get1xRevBody(ctx, "doc1", "bogusrev", false, nil)
 	status, _ := base.ErrorAsHTTPStatus(err)
 	assert.Equal(t, 404, status)
+	require.Nil(t, gotbody)
 
 	// Test the _revisions property:
 	log.Printf("Check _revisions...")
 	gotbody, err = collection.Get1xRevBody(ctx, "doc1", rev2id, true, nil)
+	require.NoError(t, err)
 	revisions := gotbody[BodyRevisions].(Revisions)
 	assert.Equal(t, 2, revisions[RevisionsStart])
 	assert.Equal(t, []string{"488724414d0ed6b398d6d2aeb228d797",
@@ -284,7 +287,7 @@ func TestGetDeleted(t *testing.T) {
 	assert.Equal(t, rev2id, doc.SyncData.CurrentRev)
 
 	// Try again but with a user who doesn't have access to this revision (see #179)
-	authenticator := auth.NewAuthenticator(db.MetadataStore, db, auth.DefaultAuthenticatorOptions())
+	authenticator := auth.NewAuthenticator(db.MetadataStore, db, db.AuthenticatorOptions())
 	collection.user, err = authenticator.GetUser("")
 	assert.NoError(t, err, "GetUser")
 	collection.user.SetExplicitChannels(nil, 1)
@@ -351,7 +354,7 @@ func TestGetRemovedAsUser(t *testing.T) {
 	assert.NoError(t, err, "Purge old revision JSON")
 
 	// Try again with a user who doesn't have access to this revision
-	authenticator := auth.NewAuthenticator(db.MetadataStore, db, auth.DefaultAuthenticatorOptions())
+	authenticator := auth.NewAuthenticator(db.MetadataStore, db, db.AuthenticatorOptions())
 	collection.user, err = authenticator.GetUser("")
 	assert.NoError(t, err, "GetUser")
 
@@ -492,6 +495,7 @@ func TestGetRemovalMultiChannel(t *testing.T) {
 	collection.user = userAlice
 	body, err = collection.Get1xRevBody(ctx, "doc1", rev2ID, true, nil)
 	assertHTTPError(t, err, 404)
+	require.Nil(t, body)
 
 	// Get rev2 of the doc as a user who doesn't have access to this revision.
 	collection.user = userBob
@@ -700,6 +704,7 @@ func TestGetRemoved(t *testing.T) {
 	// Get the removal revision with its history; equivalent to GET with ?revs=true
 	body, err = collection.Get1xRevBody(ctx, "doc1", rev2id, true, nil)
 	assertHTTPError(t, err, 404)
+	require.Nil(t, body)
 
 	// Ensure revision is unavailable for a non-leaf revision that isn't available via the rev cache, and wasn't a channel removal
 	err = collection.PurgeOldRevisionJSON(ctx, "doc1", rev1id)
@@ -767,6 +772,7 @@ func TestGetRemovedAndDeleted(t *testing.T) {
 	// Get the deleted doc with its history; equivalent to GET with ?revs=true
 	body, err = collection.Get1xRevBody(ctx, "doc1", rev2id, true, nil)
 	assertHTTPError(t, err, 404)
+	require.Nil(t, body)
 
 	// Ensure revision is unavailable for a non-leaf revision that isn't available via the rev cache, and wasn't a channel removal
 	err = collection.PurgeOldRevisionJSON(ctx, "doc1", rev1id)
@@ -928,25 +934,30 @@ func TestUpdatePrincipal(t *testing.T) {
 
 	// Create a user with access to channel ABC
 	authenticator := db.Authenticator(ctx)
-	user, _ := authenticator.NewUser("naomi", "letmein", channels.BaseSetOf(t, "ABC"))
+	user, err := authenticator.NewUser("naomi", "letmein", channels.BaseSetOf(t, "ABC"))
+	require.NoError(t, err)
 	assert.NoError(t, authenticator.Save(user))
 
 	// Validate that a call to UpdatePrincipals with no changes to the user doesn't allocate a sequence
 	userInfo, err := db.GetPrincipalForTest(t, "naomi", true)
+	require.NoError(t, err)
 	userInfo.ExplicitChannels = base.SetOf("ABC")
 	_, err = db.UpdatePrincipal(ctx, userInfo, true, true)
 	assert.NoError(t, err, "Unable to update principal")
 
 	nextSeq, err := db.sequences.nextSequence()
+	require.NoError(t, err)
 	assert.Equal(t, uint64(1), nextSeq)
 
 	// Validate that a call to UpdatePrincipals with changes to the user does allocate a sequence
 	userInfo, err = db.GetPrincipalForTest(t, "naomi", true)
+	require.NoError(t, err)
 	userInfo.ExplicitChannels = base.SetOf("ABC", "PBS")
 	_, err = db.UpdatePrincipal(ctx, userInfo, true, true)
 	assert.NoError(t, err, "Unable to update principal")
 
 	nextSeq, err = db.sequences.nextSequence()
+	require.NoError(t, err)
 	assert.Equal(t, uint64(3), nextSeq)
 }
 
@@ -1035,14 +1046,17 @@ func TestConflicts(t *testing.T) {
 
 	// Verify the change with the higher revid won:
 	gotBody, err := collection.Get1xBody(ctx, "doc")
+	require.NoError(t, err)
 	expectedResult := Body{BodyId: "doc", BodyRev: "2-b", "n": 2, "channels": []string{"all", "2b"}}
 	AssertEqualBodies(t, expectedResult, gotBody)
 
 	// Verify we can still get the other two revisions:
 	gotBody, err = collection.Get1xRevBody(ctx, "doc", "1-a", false, nil)
+	require.NoError(t, err)
 	expectedResult = Body{BodyId: "doc", BodyRev: "1-a", "n": 1, "channels": []string{"all", "1"}}
 	AssertEqualBodies(t, expectedResult, gotBody)
 	gotBody, err = collection.Get1xRevBody(ctx, "doc", "2-a", false, nil)
+	require.NoError(t, err)
 	expectedResult = Body{BodyId: "doc", BodyRev: "2-a", "n": 3, "channels": []string{"all", "2a"}}
 	AssertEqualBodies(t, expectedResult, gotBody)
 
@@ -1081,6 +1095,7 @@ func TestConflicts(t *testing.T) {
 	log.Printf("post-delete, got raw body: %s", rawBody)
 
 	gotBody, err = collection.Get1xBody(ctx, "doc")
+	require.NoError(t, err)
 	expectedResult = Body{BodyId: "doc", BodyRev: "2-a", "n": 3, "channels": []string{"all", "2a"}}
 	AssertEqualBodies(t, expectedResult, gotBody)
 
@@ -1224,27 +1239,27 @@ func TestAllowConflictsFalseTombstoneExistingConflict(t *testing.T) {
 	// Create documents with multiple non-deleted branches
 	log.Printf("Creating docs")
 	body := Body{"n": 1}
-	doc, _, err := collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"1-a"}, false)
+	_, _, err := collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"1-a"}, false)
 	assert.NoError(t, err, "add 1-a")
-	doc, _, err = collection.PutExistingRevWithBody(ctx, "doc2", body, []string{"1-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc2", body, []string{"1-a"}, false)
 	assert.NoError(t, err, "add 1-a")
-	doc, _, err = collection.PutExistingRevWithBody(ctx, "doc3", body, []string{"1-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc3", body, []string{"1-a"}, false)
 	assert.NoError(t, err, "add 1-a")
 
 	// Create two conflicting changes:
 	body["n"] = 2
-	doc, _, err = collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"2-b", "1-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"2-b", "1-a"}, false)
 	assert.NoError(t, err, "add 2-b")
-	doc, _, err = collection.PutExistingRevWithBody(ctx, "doc2", body, []string{"2-b", "1-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc2", body, []string{"2-b", "1-a"}, false)
 	assert.NoError(t, err, "add 2-b")
-	doc, _, err = collection.PutExistingRevWithBody(ctx, "doc3", body, []string{"2-b", "1-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc3", body, []string{"2-b", "1-a"}, false)
 	assert.NoError(t, err, "add 2-b")
 	body["n"] = 3
-	doc, _, err = collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"2-a", "1-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc1", body, []string{"2-a", "1-a"}, false)
 	assert.NoError(t, err, "add 2-a")
-	doc, _, err = collection.PutExistingRevWithBody(ctx, "doc2", body, []string{"2-a", "1-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc2", body, []string{"2-a", "1-a"}, false)
 	assert.NoError(t, err, "add 2-a")
-	doc, _, err = collection.PutExistingRevWithBody(ctx, "doc3", body, []string{"2-a", "1-a"}, false)
+	_, _, err = collection.PutExistingRevWithBody(ctx, "doc3", body, []string{"2-a", "1-a"}, false)
 	assert.NoError(t, err, "add 2-a")
 
 	// Set AllowConflicts to false
@@ -1259,7 +1274,7 @@ func TestAllowConflictsFalseTombstoneExistingConflict(t *testing.T) {
 	body[BodyDeleted] = true
 	tombstoneRev, _, putErr := collection.Put(ctx, "doc1", body)
 	assert.NoError(t, putErr, "tombstone 2-a")
-	doc, err = collection.GetDocument(ctx, "doc1", DocUnmarshalAll)
+	doc, err := collection.GetDocument(ctx, "doc1", DocUnmarshalAll)
 	assert.NoError(t, err, "Retrieve doc post-tombstone")
 	assert.Equal(t, "2-b", doc.CurrentRev)
 
@@ -1393,6 +1408,7 @@ func TestSyncFnOnPush(t *testing.T) {
 
 	// Check that the doc has the correct channel (test for issue #300)
 	doc, err := collection.GetDocument(ctx, "doc1", DocUnmarshalAll)
+	require.NoError(t, err)
 	assert.Equal(t, channels.ChannelMap{
 		"clibup": nil,
 		"public": &channels.ChannelRemoval{Seq: 2, RevID: "4-four"},
@@ -1550,7 +1566,7 @@ func TestUpdateDesignDoc(t *testing.T) {
 	assert.True(t, strings.Contains(retrievedView.Map, "emit()"))
 	assert.NotEqual(t, mapFunction, retrievedView.Map) // SG should wrap the map function, so they shouldn't be equal
 
-	authenticator := auth.NewAuthenticator(db.MetadataStore, db, auth.DefaultAuthenticatorOptions())
+	authenticator := auth.NewAuthenticator(db.MetadataStore, db, db.AuthenticatorOptions())
 	db.user, _ = authenticator.NewUser("naomi", "letmein", channels.BaseSetOf(t, "Netflix"))
 	err = db.PutDesignDoc("_design/pwn3d", sgbucket.DesignDoc{})
 	assertHTTPError(t, err, 403)
@@ -1653,6 +1669,7 @@ func TestRecentSequenceHistory(t *testing.T) {
 	// Validate recent sequence is written
 	body := Body{"val": "one"}
 	revid, doc, err := collection.Put(ctx, "doc1", body)
+	require.NoError(t, err)
 	body[BodyId] = doc.ID
 	body[BodyRev] = revid
 	seqTracker++
@@ -1667,6 +1684,7 @@ func TestRecentSequenceHistory(t *testing.T) {
 	// Add up to kMaxRecentSequences revisions - validate they are retained when total is less than max
 	for i := 1; i < kMaxRecentSequences; i++ {
 		revid, doc, err = collection.Put(ctx, "doc1", body)
+		require.NoError(t, err)
 		body[BodyId] = doc.ID
 		body[BodyRev] = revid
 		seqTracker++
@@ -1685,6 +1703,7 @@ func TestRecentSequenceHistory(t *testing.T) {
 
 	// Add another sequence to validate pruning when past max (20)
 	revid, doc, err = collection.Put(ctx, "doc1", body)
+	require.NoError(t, err)
 	body[BodyId] = doc.ID
 	body[BodyRev] = revid
 	seqTracker++
@@ -1697,10 +1716,12 @@ func TestRecentSequenceHistory(t *testing.T) {
 	doc2Body := Body{"val": "two"}
 	for i := 0; i < kMaxRecentSequences; i++ {
 		revid, doc, err = collection.Put(ctx, "doc1", body)
+		require.NoError(t, err)
 		body[BodyId] = doc.ID
 		body[BodyRev] = revid
 		seqTracker++
 		revid, doc, err = collection.Put(ctx, "doc2", doc2Body)
+		require.NoError(t, err)
 		doc2Body[BodyId] = doc.ID
 		doc2Body[BodyRev] = revid
 		seqTracker++
@@ -1709,9 +1730,9 @@ func TestRecentSequenceHistory(t *testing.T) {
 	err = db.changeCache.waitForSequence(ctx, seqTracker, base.DefaultWaitForSequence) //
 	require.NoError(t, err)
 	revid, doc, err = collection.Put(ctx, "doc1", body)
+	require.NoError(t, err)
 	body[BodyId] = doc.ID
 	body[BodyRev] = revid
-	seqTracker++
 	doc, err = collection.GetDocument(ctx, "doc1", DocUnmarshalAll)
 	assert.True(t, err == nil)
 	log.Printf("Recent sequences: %v (shouldn't exceed %v)", len(doc.RecentSequences), kMaxRecentSequences)
@@ -1721,10 +1742,10 @@ func TestRecentSequenceHistory(t *testing.T) {
 
 func TestChannelView(t *testing.T) {
 
-	db, ctx := setupTestDB(t)
+	db, ctx := setupTestDBWithViewsEnabled(t)
 	defer db.Close(ctx)
-	collection := GetSingleDatabaseCollectionWithUser(t, db)
-	collectionID := collection.GetCollectionID()
+	collection, err := db.GetDefaultDatabaseCollectionWithUser()
+	require.NoError(t, err)
 
 	// Create doc
 	log.Printf("Create doc 1...")
@@ -1737,7 +1758,7 @@ func TestChannelView(t *testing.T) {
 	// Query view (retry loop to wait for indexing)
 	for i := 0; i < 10; i++ {
 		var err error
-		entries, err = db.getChangesInChannelFromQuery(ctx, channels.ID{Name: "*", CollectionID: collectionID}, 0, 100, 0, false)
+		entries, err = collection.getChangesInChannelFromQuery(ctx, "*", 0, 100, 0, false)
 
 		assert.NoError(t, err, "Couldn't create document")
 		if len(entries) >= 1 {
@@ -2009,12 +2030,14 @@ func TestGetOIDCProvider(t *testing.T) {
 
 	// Lookup default provider by empty name, which exists in database context
 	provider, err := context.GetOIDCProvider("")
+	require.NoError(t, err)
 	assert.Equal(t, defaultProvider, provider.Name)
 	assert.Equal(t, defaultProvider, *options.OIDCOptions.DefaultProvider)
 	log.Printf("%v", provider)
 
 	// Lookup a provider by name which exists in database context.
 	provider, err = context.GetOIDCProvider(defaultProvider)
+	require.NoError(t, err)
 	assert.Equal(t, defaultProvider, provider.Name)
 	assert.Equal(t, defaultProvider, *options.OIDCOptions.DefaultProvider)
 	log.Printf("%v", provider)
@@ -2045,6 +2068,7 @@ func TestSyncFnMutateBody(t *testing.T) {
 	assert.NoError(t, err, "Couldn't create document")
 
 	rev, err := collection.GetRev(ctx, "doc1", rev1id, false, nil)
+	require.NoError(t, err)
 	revBody, err := rev.Body()
 	require.NoError(t, err, "Couldn't get mutable body")
 	assert.Equal(t, "value1", revBody["key1"])
@@ -2569,6 +2593,7 @@ func TestGetAllUsers(t *testing.T) {
 	assert.Equal(t, 4, len(users))
 	log.Printf("THE USERS: %+v", users)
 	marshalled, err := json.Marshal(users)
+	require.NoError(t, err)
 	log.Printf("THE USERS MARSHALLED: %s", marshalled)
 
 	limitedUsers, err := db.GetUsers(ctx, 2)
@@ -2633,7 +2658,7 @@ func Test_updateAllPrincipalsSequences(t *testing.T) {
 	roleSequences := [5]uint64{}
 	userSequences := [5]uint64{}
 
-	collection := db.GetSingleDatabaseCollection()
+	collection := GetSingleDatabaseCollection(t, db.DatabaseContext)
 
 	for i := 0; i < 5; i++ {
 		role, err := auth.NewRole(fmt.Sprintf("role%d", i), base.SetOf("ABC"))
@@ -2672,13 +2697,13 @@ func Test_invalidateAllPrincipalsCache(t *testing.T) {
 	defer db.Close(ctx)
 	db.Options.QueryPaginationLimit = 100
 
-	sequenceAllocator, err := newSequenceAllocator(db.MetadataStore, db.DbStats.DatabaseStats)
+	sequenceAllocator, err := newSequenceAllocator(db.MetadataStore, db.DbStats.DatabaseStats, db.MetadataKeys)
 	assert.NoError(t, err)
 
 	db.sequences = sequenceAllocator
 
 	auth := db.Authenticator(ctx)
-	collection := db.GetSingleDatabaseCollection()
+	collection := GetSingleDatabaseCollection(t, db.DatabaseContext)
 
 	for i := 0; i < 5; i++ {
 		role, err := auth.NewRole(fmt.Sprintf("role%d", i), base.SetOf("ABC"))
@@ -2728,14 +2753,14 @@ func Test_invalidateAllPrincipalsCache(t *testing.T) {
 
 		var invalPrinc invalPric
 		for i := 0; i < 1; i++ {
-			raw, _, err := db.MetadataStore.GetRaw(fmt.Sprintf("_sync:role:role%d", i))
+			raw, _, err := db.MetadataStore.GetRaw(db.MetadataKeys.RoleKey(fmt.Sprintf("role%d", i)))
 			assert.NoError(t, err)
 			err = json.Unmarshal(raw, &invalPrinc)
 			assert.NoError(t, err)
 			assert.Equal(t, endSeq, invalPrinc.CollectionAccess[scopeName][collectionName].ChannelInvalSeq)
 			assert.Equal(t, fmt.Sprintf("role%d", i), invalPrinc.Name)
 
-			raw, _, err = db.MetadataStore.GetRaw(fmt.Sprintf("_sync:user:user%d", i))
+			raw, _, err = db.MetadataStore.GetRaw(db.MetadataKeys.UserKey(fmt.Sprintf("user%d", i)))
 			assert.NoError(t, err)
 			err = json.Unmarshal(raw, &invalPrinc)
 			assert.NoError(t, err)
@@ -2752,14 +2777,14 @@ func Test_invalidateAllPrincipalsCache(t *testing.T) {
 
 		var invalPrinc invalPric
 		for i := 0; i < 1; i++ {
-			raw, _, err := db.MetadataStore.GetRaw(fmt.Sprintf("_sync:role:role%d", i))
+			raw, _, err := db.MetadataStore.GetRaw(db.MetadataKeys.RoleKey(fmt.Sprintf("role%d", i)))
 			assert.NoError(t, err)
 			err = json.Unmarshal(raw, &invalPrinc)
 			assert.NoError(t, err)
 			assert.Equal(t, endSeq, invalPrinc.ChannelInvalSeq)
 			assert.Equal(t, fmt.Sprintf("role%d", i), invalPrinc.Name)
 
-			raw, _, err = db.MetadataStore.GetRaw(fmt.Sprintf("_sync:user:user%d", i))
+			raw, _, err = db.MetadataStore.GetRaw(db.MetadataKeys.UserKey(fmt.Sprintf("user%d", i)))
 			assert.NoError(t, err)
 			err = json.Unmarshal(raw, &invalPrinc)
 			assert.NoError(t, err)
@@ -3145,6 +3170,7 @@ func Test_stopBackgroundManagers(t *testing.T) {
 }
 
 func Test_waitForBackgroundManagersToStop(t *testing.T) {
+	base.LongRunningTest(t)
 	t.Run("single unstoppable process", func(t *testing.T) {
 		bgMngr := &BackgroundManager{
 			name:    "test_unstoppable_runner",

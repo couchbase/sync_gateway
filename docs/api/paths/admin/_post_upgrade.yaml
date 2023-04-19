@@ -5,13 +5,13 @@
 # in that file, in accordance with the Business Source License, use of this
 # software will be governed by the Apache License, Version 2.0, included in
 # the file licenses/APL2.txt.
-
 post:
   summary: Run the post upgrade process on all databases
   description: |-
     The post upgrade process involves removing obsolete design documents and indexes when they are no longer needed.
 
     Required Sync Gateway RBAC roles:
+
     * Sync Gateway Dev Ops
   parameters:
     - name: preview
@@ -54,5 +54,5 @@ post:
             required:
               - post_upgrade_results
   tags:
-    - Admin only endpoints
     - Server
+  operationId: post__post_upgrade

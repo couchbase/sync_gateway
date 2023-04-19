@@ -26,7 +26,6 @@ import (
 // TestCollectionsPutDocInKeyspace creates a collection and starts up a RestTester instance on it.
 // Ensures that various keyspaces can or can't be used to insert a doc in the collection.
 func TestCollectionsPutDocInKeyspace(t *testing.T) {
-	base.TestRequiresCollections(t)
 	const (
 		username = "alice"
 		password = "pass"
@@ -48,9 +47,10 @@ func TestCollectionsPutDocInKeyspace(t *testing.T) {
 	dataStoreName, ok := base.AsDataStoreName(ds)
 	require.True(t, ok)
 	tests := []struct {
-		name           string
-		keyspace       string
-		expectedStatus int
+		name               string
+		keyspace           string
+		expectedStatus     int
+		requireCollections bool
 	}{
 		{
 			name:           "fully qualified",
@@ -72,16 +72,30 @@ func TestCollectionsPutDocInKeyspace(t *testing.T) {
 			keyspace:       strings.Join([]string{dbName, "buzz", dataStoreName.CollectionName()}, base.ScopeCollectionSeparator),
 			expectedStatus: http.StatusNotFound,
 		},
+		{
+			name:               "no default db",
+			keyspace:           dbName,
+			expectedStatus:     http.StatusNotFound,
+			requireCollections: true,
+		},
 	}
 
 	for i, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-
+			if test.requireCollections {
+				base.TestRequiresCollections(t)
+			}
 			docID := fmt.Sprintf("doc%d", i)
 			path := fmt.Sprintf("/%s/%s", test.keyspace, docID)
 			resp := rt.SendUserRequestWithHeaders(http.MethodPut, path, `{"test":true}`, nil, username, password)
 			RequireStatus(t, resp, test.expectedStatus)
-
+			if test.expectedStatus == http.StatusNotFound {
+				require.Contains(t, resp.Body.String(), test.keyspace)
+				// assert special case where /db/docID returns db._default._default
+				if test.keyspace == dbName {
+					require.Contains(t, resp.Body.String(), strings.Join([]string{dbName, base.DefaultScope, base.DefaultCollection}, base.ScopeCollectionSeparator))
+				}
+			}
 			if test.expectedStatus == http.StatusCreated {
 				// go and check that the doc didn't just end up in the default collection of the test bucket
 				docBody, _, err := ds.GetRaw(docID)
@@ -90,7 +104,11 @@ func TestCollectionsPutDocInKeyspace(t *testing.T) {
 
 				defaultDataStore := rt.Bucket().DefaultDataStore()
 				_, err = defaultDataStore.Get(docID, &gocb.GetOptions{})
-				assert.Error(t, err)
+				if rt.GetDatabase().OnlyDefaultCollection() {
+					assert.NoError(t, err)
+				} else {
+					assert.Error(t, err)
+				}
 			}
 		})
 	}
@@ -380,7 +398,6 @@ func TestMultiCollectionChannelAccess(t *testing.T) {
 
 	// Remove collection and update the db config
 	scopesConfig = GetCollectionsConfig(t, tb, 2)
-	dataStoreNames = GetDataStoreNamesFromScopesConfig(scopesConfig)
 
 	//collection3 := dataStoreNames[2].CollectionName()
 	scopesConfig[scope].Collections[collection1] = CollectionConfig{SyncFn: &c1SyncFunction}
@@ -440,11 +457,11 @@ func TestMultiCollectionDynamicChannelAccess(t *testing.T) {
       }
    }`
 	// Create a few users without any channel access
-	resp := rt.SendAdminRequest("PUT", "/db/_user/alice", fmt.Sprintf(userPayload, dataStoreNames[0].ScopeName(), dataStoreNames[0], `[]`))
+	resp := rt.SendAdminRequest("PUT", "/db/_user/alice", fmt.Sprintf(userPayload, dataStoreNames[0].ScopeName(), dataStoreNames[0].CollectionName(), `[]`))
 	RequireStatus(t, resp, http.StatusCreated)
-	resp = rt.SendAdminRequest("PUT", "/db/_user/bob", fmt.Sprintf(userPayload, dataStoreNames[0].ScopeName(), dataStoreNames[0], `[]`))
+	resp = rt.SendAdminRequest("PUT", "/db/_user/bob", fmt.Sprintf(userPayload, dataStoreNames[0].ScopeName(), dataStoreNames[0].CollectionName(), `[]`))
 	RequireStatus(t, resp, http.StatusCreated)
-	resp = rt.SendAdminRequest("PUT", "/db/_user/abby", fmt.Sprintf(userPayload, dataStoreNames[0].ScopeName(), dataStoreNames[0], `[]`))
+	resp = rt.SendAdminRequest("PUT", "/db/_user/abby", fmt.Sprintf(userPayload, dataStoreNames[0].ScopeName(), dataStoreNames[0].CollectionName(), `[]`))
 	RequireStatus(t, resp, http.StatusCreated)
 
 	// Write docs in each collection that runs the per-collection sync functions that grant users access to various channels

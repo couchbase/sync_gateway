@@ -1,3 +1,4 @@
+#
 # Copyright 2022-Present Couchbase, Inc.
 #
 # Use of this software is governed by the Business Source License included
@@ -5,7 +6,6 @@
 # in that file, in accordance with the Business Source License, use of this
 # software will be governed by the Apache License, Version 2.0, included in
 # the file licenses/APL2.txt.
-
 get:
   summary: Get all Sync Gateway statistics
   description: |-
@@ -14,6 +14,7 @@ get:
     This includes per database stats, replication stats, and server stats.
 
     Required Sync Gateway RBAC roles:
+
     * Sync Gateway Architect
     * Sync Gateway Dev Ops
     * External Stats Reader
@@ -24,3 +25,4 @@ get:
         application/javascript:
           schema:
             $ref: ../../components/schemas.yaml#/ExpVars
+  operationId: get__expvar

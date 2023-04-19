@@ -1,0 +1,51 @@
+# Copyright 2022-Present Couchbase, Inc.
+#
+# Use of this software is governed by the Business Source License included
+# in the file licenses/BSL-Couchbase.txt.  As of the Change Date specified
+# in that file, in accordance with the Business Source License, use of this
+# software will be governed by the Apache License, Version 2.0, included in
+# the file licenses/APL2.txt.
+parameters:
+  - $ref: ../../components/parameters.yaml#/keyspace
+post:
+  summary: Create a new document
+  description: |-
+    Create a new document in the keyspace.
+
+    This will generate a random document ID unless specified in the body.
+
+    A document can have a maximum size of 20MB.
+  parameters:
+    - $ref: ../../components/parameters.yaml#/roundtrip
+  requestBody:
+    content:
+      application/json:
+        schema:
+          $ref: ../../components/schemas.yaml#/Document
+  responses:
+    '200':
+      description: New document revision created successfully.
+      headers:
+        Etag:
+          schema:
+            type: string
+          description: The revision ID of the newly created document.
+        Location:
+          schema:
+            type: string
+          description: The document ID of the newly created document.
+      content:
+        application/json:
+          schema:
+            $ref: ../../components/schemas.yaml#/New-revision
+    '400':
+      $ref: ../../components/responses.yaml#/request-problem
+    '404':
+      $ref: ../../components/responses.yaml#/Not-found
+    '409':
+      $ref: ../../components/responses.yaml#/Conflict
+    '415':
+      $ref: ../../components/responses.yaml#/Invalid-content-type
+  tags:
+    - Document
+  operationId: post_keyspace-

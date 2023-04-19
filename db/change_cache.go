@@ -67,6 +67,7 @@ type changeCache struct {
 	internalStats      changeCacheStats        // Running stats for the change cache.  Only applied to expvars on a call to changeCache.updateStats
 	cfgEventCallback   base.CfgEventNotifyFunc // Callback for Cfg updates recieved over the caching feed
 	sgCfgPrefix        string                  // Prefix for SG Cfg doc keys
+	metaKeys           *base.MetadataKeys      // Metadata key formatter
 }
 
 type changeCacheStats struct {
@@ -155,7 +156,8 @@ func DefaultCacheOptions() CacheOptions {
 // notifyChange is an optional function that will be called to notify of channel changes.
 // After calling Init(), you must call .Start() to start useing the cache, otherwise it will be in a locked state
 // and callers will block on trying to obtain the lock.
-func (c *changeCache) Init(logCtx context.Context, dbContext *DatabaseContext, channelCache ChannelCache, notifyChange func(channels.Set), options *CacheOptions) error {
+
+func (c *changeCache) Init(logCtx context.Context, dbContext *DatabaseContext, channelCache ChannelCache, notifyChange func(channels.Set), options *CacheOptions, metaKeys *base.MetadataKeys) error {
 	c.db = dbContext
 	c.logCtx = logCtx
 
@@ -165,7 +167,8 @@ func (c *changeCache) Init(logCtx context.Context, dbContext *DatabaseContext, c
 	c.initTime = time.Now()
 	c.skippedSeqs = NewSkippedSequenceList()
 	c.lastAddPendingTime = time.Now().UnixNano()
-	c.sgCfgPrefix = base.SGCfgPrefixWithGroupID(c.db.Options.GroupID)
+	c.sgCfgPrefix = dbContext.MetadataKeys.SGCfgPrefix(c.db.Options.GroupID)
+	c.metaKeys = metaKeys
 
 	// init cache options
 	if options != nil {
@@ -181,13 +184,13 @@ func (c *changeCache) Init(logCtx context.Context, dbContext *DatabaseContext, c
 	heap.Init(&c.pendingLogs)
 
 	// background tasks that perform housekeeping duties on the cache
-	bgt, err := NewBackgroundTask("InsertPendingEntries", c.db.Name, c.InsertPendingEntries, c.options.CachePendingSeqMaxWait/2, c.terminator)
+	bgt, err := NewBackgroundTask(c.logCtx, "InsertPendingEntries", c.InsertPendingEntries, c.options.CachePendingSeqMaxWait/2, c.terminator)
 	if err != nil {
 		return err
 	}
 	c.backgroundTasks = append(c.backgroundTasks, bgt)
 
-	bgt, err = NewBackgroundTask("CleanSkippedSequenceQueue", c.db.Name, c.CleanSkippedSequenceQueue, c.options.CacheSkippedSeqMaxWait/2, c.terminator)
+	bgt, err = NewBackgroundTask(c.logCtx, "CleanSkippedSequenceQueue", c.CleanSkippedSequenceQueue, c.options.CacheSkippedSeqMaxWait/2, c.terminator)
 	if err != nil {
 		return err
 	}
@@ -315,7 +318,6 @@ func (c *changeCache) CleanSkippedSequenceQueue(ctx context.Context) error {
 	c.db.DbStats.Cache().AbandonedSeqs.Add(numRemoved)
 
 	base.InfofCtx(ctx, base.KeyCache, "CleanSkippedSequenceQueue complete.  Not Found:%d for database %s.", len(oldSkippedSequences), base.MD(c.db.Name))
-	oldSkippedSequences = nil
 	return nil
 }
 
@@ -331,21 +333,21 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 	changedChannelsCombined := channels.Set{}
 
 	// ** This method does not directly access any state of c, so it doesn't lock.
-	// Is this a user/role doc?
-	if strings.HasPrefix(docID, base.UserPrefix) {
+	// Is this a user/role doc for this database?
+	if strings.HasPrefix(docID, c.metaKeys.UserKeyPrefix()) {
 		c.processPrincipalDoc(docID, docJSON, true, event.TimeReceived)
 		return
-	} else if strings.HasPrefix(docID, base.RolePrefix) {
+	} else if strings.HasPrefix(docID, c.metaKeys.RoleKeyPrefix()) {
 		c.processPrincipalDoc(docID, docJSON, false, event.TimeReceived)
 		return
 	}
 
 	// Is this an unused sequence notification?
-	if strings.HasPrefix(docID, base.UnusedSeqPrefix) {
+	if strings.HasPrefix(docID, c.metaKeys.UnusedSeqPrefix()) {
 		c.processUnusedSequence(docID, event.TimeReceived)
 		return
 	}
-	if strings.HasPrefix(docID, base.UnusedSeqRangePrefix) {
+	if strings.HasPrefix(docID, c.metaKeys.UnusedSeqRangePrefix()) {
 		c.processUnusedSequenceRange(docID)
 		return
 	}
@@ -529,7 +531,7 @@ func (c *changeCache) unmarshalCachePrincipal(docJSON []byte) (cachePrincipal, e
 
 // Process unused sequence notification.  Extracts sequence from docID and sends to cache for buffering
 func (c *changeCache) processUnusedSequence(docID string, timeReceived time.Time) {
-	sequenceStr := strings.TrimPrefix(docID, base.UnusedSeqPrefix)
+	sequenceStr := strings.TrimPrefix(docID, c.metaKeys.UnusedSeqPrefix())
 	sequence, err := strconv.ParseUint(sequenceStr, 10, 64)
 	if err != nil {
 		base.WarnfCtx(c.logCtx, "Unable to identify sequence number for unused sequence notification with key: %s, error: %v", base.UD(docID), err)
@@ -557,17 +559,18 @@ func (c *changeCache) releaseUnusedSequence(sequence uint64, timeReceived time.T
 // Process unused sequence notification.  Extracts sequence from docID and sends to cache for buffering
 func (c *changeCache) processUnusedSequenceRange(docID string) {
 	// _sync:unusedSequences:fromSeq:toSeq
-	sequences := strings.Split(docID, ":")
-	if len(sequences) != 4 {
+	sequencesStr := strings.TrimPrefix(docID, c.metaKeys.UnusedSeqRangePrefix())
+	sequences := strings.Split(sequencesStr, ":")
+	if len(sequences) != 2 {
 		return
 	}
 
-	fromSequence, err := strconv.ParseUint(sequences[2], 10, 64)
+	fromSequence, err := strconv.ParseUint(sequences[0], 10, 64)
 	if err != nil {
 		base.WarnfCtx(c.logCtx, "Unable to identify from sequence number for unused sequences notification with key: %s, error:", base.UD(docID), err)
 		return
 	}
-	toSequence, err := strconv.ParseUint(sequences[3], 10, 64)
+	toSequence, err := strconv.ParseUint(sequences[1], 10, 64)
 	if err != nil {
 		base.WarnfCtx(c.logCtx, "Unable to identify to sequence number for unused sequence notification with key: %s, error:", base.UD(docID), err)
 		return

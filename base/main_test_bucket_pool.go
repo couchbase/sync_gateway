@@ -61,10 +61,22 @@ type TestBucketPool struct {
 	// skipCollections may be true for older Couchbase Server versions that do not support collections.
 	skipCollections   bool
 	useExistingBucket bool
+
+	// when useDefaultScope is set, named collections are created in the default scope
+	useDefaultScope bool
+}
+
+type TestBucketPoolOptions struct {
+	MemWatermarkThresholdMB uint64
+	UseDefaultScope         bool
+}
+
+func NewTestBucketPool(bucketReadierFunc TBPBucketReadierFunc, bucketInitFunc TBPBucketInitFunc) *TestBucketPool {
+	return NewTestBucketPoolWithOptions(bucketReadierFunc, bucketInitFunc, TestBucketPoolOptions{})
 }
 
 // NewTestBucketPool initializes a new TestBucketPool. To be called from TestMain for packages requiring test buckets.
-func NewTestBucketPool(bucketReadierFunc TBPBucketReadierFunc, bucketInitFunc TBPBucketInitFunc) *TestBucketPool {
+func NewTestBucketPoolWithOptions(bucketReadierFunc TBPBucketReadierFunc, bucketInitFunc TBPBucketInitFunc, options TestBucketPoolOptions) *TestBucketPool {
 	// We can safely skip setup when we want Walrus buckets to be used.
 	// They'll be created on-demand via GetTestBucketAndSpec,
 	// which is fast enough for Walrus that we don't need to prepare buckets ahead of time.
@@ -74,6 +86,7 @@ func NewTestBucketPool(bucketReadierFunc TBPBucketReadierFunc, bucketInitFunc TB
 			unclosedBuckets:   make(map[string]map[string]struct{}),
 			integrationMode:   TestUseCouchbaseServer(),
 			useExistingBucket: TestUseExistingBucket(),
+			useDefaultScope:   options.UseDefaultScope,
 		}
 		tbp.verbose.Set(tbpVerbose())
 		return &tbp
@@ -101,6 +114,7 @@ func NewTestBucketPool(bucketReadierFunc TBPBucketReadierFunc, bucketInitFunc TB
 		bucketInitFunc:         bucketInitFunc,
 		unclosedBuckets:        make(map[string]map[string]struct{}),
 		useExistingBucket:      TestUseExistingBucket(),
+		useDefaultScope:        options.UseDefaultScope,
 	}
 
 	tbp.cluster = newTestCluster(UnitTestUrl(), tbp.Logf)
@@ -425,9 +439,9 @@ func (tbp *TestBucketPool) createCollections(ctx context.Context, bucket Bucket)
 	}
 
 	for i := 0; i < tbpNumCollectionsPerBucket(); i++ {
-		scopeName := fmt.Sprintf("%s%d", tbpScopePrefix, 0)
+		scopeName := tbp.testScopeName()
 		collectionName := fmt.Sprintf("%s%d", tbpCollectionPrefix, i)
-		ctx := testKeyspaceNameCtx(ctx, bucket.GetName(), scopeName, collectionName)
+		ctx := KeyspaceLogCtx(ctx, bucket.GetName(), scopeName, collectionName)
 
 		tbp.Logf(ctx, "Creating new collection: %s.%s", scopeName, collectionName)
 		dataStoreName := ScopeAndCollectionName{Scope: scopeName, Collection: collectionName}
@@ -500,7 +514,7 @@ func (tbp *TestBucketPool) createTestBuckets(numBuckets, bucketQuotaMB int, buck
 		itemName := "bucket"
 		if err, _ := RetryLoop(b.GetName()+"bucketInitRetry", func() (bool, error, interface{}) {
 			tbp.Logf(ctx, "Running %s through init function", itemName)
-			ctx = testKeyspaceNameCtx(ctx, b.GetName(), "", "")
+			ctx = KeyspaceLogCtx(ctx, b.GetName(), "", "")
 			err := bucketInitFunc(ctx, b, tbp)
 			if err != nil {
 				tbp.Logf(ctx, "Couldn't init %s, got error: %v - Retrying", itemName, err)
@@ -543,7 +557,7 @@ loop:
 
 				start := time.Now()
 				b, err := tbp.cluster.openTestBucket(testBucketName, waitForReadyBucketTimeout)
-				ctx = testKeyspaceNameCtx(ctx, b.GetName(), "", "")
+				ctx = KeyspaceLogCtx(ctx, b.GetName(), "", "")
 				if err != nil {
 					tbp.Logf(ctx, "Couldn't open bucket to get ready, got error: %v", err)
 					return
@@ -572,6 +586,14 @@ loop:
 	}
 
 	tbp.Logf(context.Background(), "Stopped bucketReadier")
+}
+
+func (tbp *TestBucketPool) testScopeName() string {
+	if tbp.useDefaultScope {
+		return DefaultScope
+	} else {
+		return fmt.Sprintf("%s%d", tbpScopePrefix, 0)
+	}
 }
 
 // TBPBucketInitFunc is a function that is run once (synchronously) when creating/opening a bucket.
@@ -642,16 +664,16 @@ type tbpBucketName string
 
 // TestBucketPoolMain is used as TestMain in main_test.go packages
 func TestBucketPoolMain(m *testing.M, bucketReadierFunc TBPBucketReadierFunc, bucketInitFunc TBPBucketInitFunc,
-	memWatermarkThresholdMB uint64) {
+	options TestBucketPoolOptions) {
 	// can't use defer because of os.Exit
 	teardownFuncs := make([]func(), 0)
 	teardownFuncs = append(teardownFuncs, SetUpGlobalTestLogging(m))
 	teardownFuncs = append(teardownFuncs, SetUpGlobalTestProfiling(m))
-	teardownFuncs = append(teardownFuncs, SetUpGlobalTestMemoryWatermark(m, memWatermarkThresholdMB))
+	teardownFuncs = append(teardownFuncs, SetUpGlobalTestMemoryWatermark(m, options.MemWatermarkThresholdMB))
 
 	SkipPrometheusStatsRegistration = true
 
-	GTestBucketPool = NewTestBucketPool(bucketReadierFunc, bucketInitFunc)
+	GTestBucketPool = NewTestBucketPoolWithOptions(bucketReadierFunc, bucketInitFunc, options)
 	teardownFuncs = append(teardownFuncs, GTestBucketPool.Close)
 
 	// must be the last teardown function added to the list to correctly detect leaked goroutines
@@ -668,6 +690,6 @@ func TestBucketPoolMain(m *testing.M, bucketReadierFunc TBPBucketReadierFunc, bu
 }
 
 // TestBucketPoolNoIndexes runs a TestMain for packages that do not require creation of indexes
-func TestBucketPoolNoIndexes(m *testing.M, memWatermarkThresholdMB uint64) {
-	TestBucketPoolMain(m, FlushBucketEmptierFunc, NoopInitFunc, memWatermarkThresholdMB)
+func TestBucketPoolNoIndexes(m *testing.M, options TestBucketPoolOptions) {
+	TestBucketPoolMain(m, FlushBucketEmptierFunc, NoopInitFunc, options)
 }

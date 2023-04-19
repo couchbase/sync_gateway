@@ -747,6 +747,35 @@ Retrieved-replication:
     run_as:
       description: This is used if you want to specify a user to run the replication as. This means that the replication will only be able to replicate what the user  access to what the user has access to.
       type: string
+    collections_enabled:
+      description: |-
+        If true, the replicator will run with collections, and will replicate all collections, unless otherwise limited by `keyspace_map`.
+
+        If false, the replicator will only replicate the default collection.
+      type: boolean
+      default: false
+    collections_local:
+      description: |-
+        Limits the set of collections replicated to those listed in this array.
+
+        The replication will use all collections defined on the database if this list is empty.
+      type: array
+      items:
+        type: string
+      example: ["scope1.collection1", "scope1.collection3", "scope1.collection6"]
+      default: []
+    collections_remote:
+      description: |-
+        Remaps the local collection name to the one specified in this array when replicating with the remote.
+
+        If only a subset of collections need remapping, elements in this array can be specified as `null` to preserve the local collection name.
+
+        The same index is used for both `collections_remote` and `collections_local`, and both arrays must be the same length.
+      type: array
+      items:
+        type: string
+      example: ["scope1.collectionA", null, "scope1.collectionF"]
+      default: []
     assigned_node:
       description: The unique ID of the node assigned to the replication.
       type: string
@@ -946,6 +975,35 @@ Replication:
     run_as:
       description: This is used if you want to specify a user to run the replication as. This means that the replication will only be able to replicate what the user  access to what the user has access to.
       type: string
+    collections_enabled:
+      description: |-
+        If true, the replicator will run with collections, and will replicate all collections, unless otherwise limited by `keyspace_map`.
+
+        If false, the replicator will only replicate the default collection.
+      type: boolean
+      default: false
+    collections_local:
+      description: |-
+        Limits the set of collections replicated to those listed in this array.
+
+        The replication will use all collections defined on the database if this list is empty.
+      type: array
+      items:
+        type: string
+      example: ["scope1.collection1", "scope1.collection3", "scope1.collection6"]
+      default: []
+    collections_remote:
+      description: |-
+        Remaps the local collection name to the one specified in this array when replicating with the remote.
+
+        If only a subset of collections need remapping, elements in this array can be specified as `null` to preserve the local collection name.
+
+        The same index is used for both `collections_remote` and `collections_local`, and both arrays must be the same length.
+      type: array
+      items:
+        type: string
+      example: ["scope1.collectionA", null, "scope1.collectionF"]
+      default: []
   required:
     - direction
   title: User configurable replication properties
@@ -1686,6 +1744,25 @@ Database:
         Defaults to true when running in serverless mode otherwise defaults to false.
       type: boolean
       default: false
+    cors:
+      description: CORS configuration for this database; if present, overrides server's config.
+      type: object
+      properties:
+        origin:
+          description: 'List of allowed origins, use [''*''] to allow access from everywhere'
+          type: array
+          items:
+            type: string
+        login_origin:
+          description: List of allowed login origins
+          type: array
+          items:
+            type: string
+        headers:
+          description: List of allowed headers
+          type: array
+          items:
+            type: string
   title: Database-config
 Event-config:
   type: object

@@ -230,7 +230,7 @@ func (lc *LegacyServerConfig) ToStartupConfig() (*StartupConfig, DbConfigMap, er
 	}
 
 	if lc.CORS != nil {
-		sc.API.CORS = &CORSConfig{
+		sc.API.CORS = &auth.CORSConfig{
 			Origin:      lc.CORS.Origin,
 			LoginOrigin: lc.CORS.LoginOrigin,
 			Headers:     lc.CORS.Headers,
@@ -369,7 +369,7 @@ func LoadLegacyServerConfig(path string) (config *LegacyServerConfig, err error)
 
 // readLegacyServerConfig returns a validated LegacyServerConfig from an io.Reader
 func readLegacyServerConfig(r io.Reader) (config *LegacyServerConfig, err error) {
-	err = DecodeAndSanitiseConfig(r, &config)
+	err = DecodeAndSanitiseConfig(r, &config, true)
 	if err != nil {
 		return config, err
 	}

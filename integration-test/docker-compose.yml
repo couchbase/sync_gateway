@@ -1,0 +1,35 @@
+# Copyright 2023-Present Couchbase, Inc.
+#
+# Use of this software is governed by the Business Source License included
+# in the file licenses/BSL-Couchbase.txt.  As of the Change Date specified
+# in that file, in accordance with the Business Source License, use of this
+# software will be governed by the Apache License, Version 2.0, included in
+# the file licenses/APL2.txt.
+
+services:
+  couchbase:
+    container_name: couchbase
+    image: "couchbase/server:${COUCHBASE_DOCKER_IMAGE_NAME:-enterprise-7.1.4}"
+    ports:
+      - 8091:8091
+      - 8092:8092
+      - 8093:8093
+      - 8094:8094
+      - 8095:8095
+      - 8096:8096
+      - 11207:11207
+      - 11210:11210
+      - 11211:11211
+      - 18091:18091
+      - 18092:18092
+      - 18093:18093
+      - 18094:18094
+    volumes:
+      - "${DOCKER_CBS_ROOT_DIR:-.}/cbs:/root"
+      - "${WORKSPACE_ROOT:-.}:/workspace"
+  couchbase-replica1:
+    container_name: couchbase-replica1
+    image: "couchbase/${COUCHBASE_DOCKER_IMAGE_NAME:-server:enterprise-7.1.4}"
+  couchbase-replica2:
+    container_name: couchbase-replica2
+    image: "couchbase/server:${COUCHBASE_DOCKER_IMAGE_NAME:-enterprise-7.1.4}"

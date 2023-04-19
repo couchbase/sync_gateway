@@ -144,7 +144,7 @@ func TestCoveringQueries(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 
-	collection := db.GetSingleDatabaseCollection()
+	collection := GetSingleDatabaseCollection(t, db.DatabaseContext)
 	n1QLStore, ok := base.AsN1QLStore(collection.dataStore)
 	if !ok {
 		t.Errorf("Unable to get n1QLStore for testBucket")
@@ -177,16 +177,16 @@ func TestCoveringQueries(t *testing.T) {
 	covered = IsCovered(plan)
 	planJSON, err = base.JSONMarshal(plan)
 	assert.NoError(t, err)
-	// assert.True(t, covered, "Access query isn't covered by index: %s", planJSON)
+	require.False(t, covered, "Access query isn't covered by index: %s", planJSON)
 
 	// roleAccess
-	roleAccessStatement := db.buildRoleAccessQuery("user1")
+	roleAccessStatement := collection.buildRoleAccessQuery("user1")
 	plan, explainErr = n1QLStore.ExplainQuery(roleAccessStatement, nil)
 	assert.NoError(t, explainErr, "Error generating explain for roleAccess query")
 	covered = IsCovered(plan)
 	planJSON, err = base.JSONMarshal(plan)
 	assert.NoError(t, err)
-	// assert.True(t, !covered, "RoleAccess query isn't covered by index: %s", planJSON)
+	require.False(t, covered, "RoleAccess query isn't covered by index: %s", planJSON)
 
 }
 
@@ -404,12 +404,12 @@ func TestQueryChannelsActiveOnlyWithLimit(t *testing.T) {
 	// Create 10 deleted documents
 	for i := 1; i <= 10; i++ {
 		id := "deleted" + strconv.Itoa(i)
-		doc, revId, err := collection.PutExistingRevWithBody(ctx, id, body, []string{"1-a"}, false)
+		_, revId, err := collection.PutExistingRevWithBody(ctx, id, body, []string{"1-a"}, false)
 		require.NoError(t, err, "Couldn't create document")
 		require.Equal(t, "1-a", revId)
 
 		body[BodyDeleted] = true
-		doc, revId, err = collection.PutExistingRevWithBody(ctx, id, body, []string{"2-a", "1-a"}, false)
+		doc, revId, err := collection.PutExistingRevWithBody(ctx, id, body, []string{"2-a", "1-a"}, false)
 		require.NoError(t, err, "Couldn't create document")
 		require.Equal(t, "2-a", revId, "Couldn't create tombstone revision")
 
@@ -421,22 +421,22 @@ func TestQueryChannelsActiveOnlyWithLimit(t *testing.T) {
 	for i := 1; i <= 10; i++ {
 		body["sound"] = "meow"
 		id := "branched" + strconv.Itoa(i)
-		doc, revId, err := collection.PutExistingRevWithBody(ctx, id, body, []string{"1-a"}, false)
+		_, revId, err := collection.PutExistingRevWithBody(ctx, id, body, []string{"1-a"}, false)
 		require.NoError(t, err, "Couldn't create document revision 1-a")
 		require.Equal(t, "1-a", revId)
 
 		body["sound"] = "bark"
-		doc, revId, err = collection.PutExistingRevWithBody(ctx, id, body, []string{"2-b", "1-a"}, false)
+		_, revId, err = collection.PutExistingRevWithBody(ctx, id, body, []string{"2-b", "1-a"}, false)
 		require.NoError(t, err, "Couldn't create revision 2-b")
 		require.Equal(t, "2-b", revId)
 
 		body["sound"] = "bleat"
-		doc, revId, err = collection.PutExistingRevWithBody(ctx, id, body, []string{"2-a", "1-a"}, false)
+		_, revId, err = collection.PutExistingRevWithBody(ctx, id, body, []string{"2-a", "1-a"}, false)
 		require.NoError(t, err, "Couldn't create revision 2-a")
 		require.Equal(t, "2-a", revId)
 
 		body[BodyDeleted] = true
-		doc, revId, err = collection.PutExistingRevWithBody(ctx, id, body, []string{"3-a", "2-a"}, false)
+		doc, revId, err := collection.PutExistingRevWithBody(ctx, id, body, []string{"3-a", "2-a"}, false)
 		require.NoError(t, err, "Couldn't create document")
 		require.Equal(t, "3-a", revId, "Couldn't create tombstone revision")
 
@@ -448,27 +448,27 @@ func TestQueryChannelsActiveOnlyWithLimit(t *testing.T) {
 	for i := 1; i <= 10; i++ {
 		body["sound"] = "meow"
 		id := "branched|deleted" + strconv.Itoa(i)
-		doc, revId, err := collection.PutExistingRevWithBody(ctx, id, body, []string{"1-a"}, false)
+		_, revId, err := collection.PutExistingRevWithBody(ctx, id, body, []string{"1-a"}, false)
 		require.NoError(t, err, "Couldn't create document revision 1-a")
 		require.Equal(t, "1-a", revId)
 
 		body["sound"] = "bark"
-		doc, revId, err = collection.PutExistingRevWithBody(ctx, id, body, []string{"2-b", "1-a"}, false)
+		_, revId, err = collection.PutExistingRevWithBody(ctx, id, body, []string{"2-b", "1-a"}, false)
 		require.NoError(t, err, "Couldn't create revision 2-b")
 		require.Equal(t, "2-b", revId)
 
 		body["sound"] = "bleat"
-		doc, revId, err = collection.PutExistingRevWithBody(ctx, id, body, []string{"2-a", "1-a"}, false)
+		_, revId, err = collection.PutExistingRevWithBody(ctx, id, body, []string{"2-a", "1-a"}, false)
 		require.NoError(t, err, "Couldn't create revision 2-a")
 		require.Equal(t, "2-a", revId)
 
 		body[BodyDeleted] = true
-		doc, revId, err = collection.PutExistingRevWithBody(ctx, id, body, []string{"3-a", "2-a"}, false)
+		_, revId, err = collection.PutExistingRevWithBody(ctx, id, body, []string{"3-a", "2-a"}, false)
 		require.NoError(t, err, "Couldn't create document")
 		require.Equal(t, "3-a", revId, "Couldn't create tombstone revision")
 
 		body[BodyDeleted] = true
-		doc, revId, err = collection.PutExistingRevWithBody(ctx, id, body, []string{"3-b", "2-b"}, false)
+		doc, revId, err := collection.PutExistingRevWithBody(ctx, id, body, []string{"3-b", "2-b"}, false)
 		require.NoError(t, err, "Couldn't create document")
 		require.Equal(t, "3-b", revId, "Couldn't create tombstone revision")
 
@@ -480,17 +480,17 @@ func TestQueryChannelsActiveOnlyWithLimit(t *testing.T) {
 	for i := 1; i <= 10; i++ {
 		body["sound"] = "meow"
 		id := "branched|conflict" + strconv.Itoa(i)
-		doc, revId, err := collection.PutExistingRevWithBody(ctx, id, body, []string{"1-a"}, false)
+		_, revId, err := collection.PutExistingRevWithBody(ctx, id, body, []string{"1-a"}, false)
 		require.NoError(t, err, "Couldn't create document revision 1-a")
 		require.Equal(t, "1-a", revId)
 
 		body["sound"] = "bark"
-		doc, revId, err = collection.PutExistingRevWithBody(ctx, id, body, []string{"2-b", "1-a"}, false)
+		_, revId, err = collection.PutExistingRevWithBody(ctx, id, body, []string{"2-b", "1-a"}, false)
 		require.NoError(t, err, "Couldn't create revision 2-b")
 		require.Equal(t, "2-b", revId)
 
 		body["sound"] = "bleat"
-		doc, revId, err = collection.PutExistingRevWithBody(ctx, id, body, []string{"2-a", "1-a"}, false)
+		doc, revId, err := collection.PutExistingRevWithBody(ctx, id, body, []string{"2-a", "1-a"}, false)
 		require.NoError(t, err, "Couldn't create revision 2-a")
 		require.Equal(t, "2-a", revId)
 
@@ -505,50 +505,49 @@ func TestQueryChannelsActiveOnlyWithLimit(t *testing.T) {
 
 	// Get changes from channel "ABC" with limit and activeOnly true
 
-	collectionID := collection.GetCollectionID()
-	entries, err := db.getChangesInChannelFromQuery(base.TestCtx(t), channels.ID{Name: "ABC", CollectionID: collectionID}, startSeq, endSeq, 25, true)
+	entries, err := collection.getChangesInChannelFromQuery(base.TestCtx(t), "ABC", startSeq, endSeq, 25, true)
 	require.NoError(t, err, "Couldn't query active docs from channel ABC with limit")
 	require.Len(t, entries, 25)
 	checkFlags(entries)
 
 	// Get changes from channel "*" with limit and activeOnly true
-	entries, err = db.getChangesInChannelFromQuery(base.TestCtx(t), channels.ID{Name: "*", CollectionID: collectionID}, startSeq, endSeq, 25, true)
+	entries, err = collection.getChangesInChannelFromQuery(base.TestCtx(t), "*", startSeq, endSeq, 25, true)
 	require.NoError(t, err, "Couldn't query active docs from channel * with limit")
 	require.Len(t, entries, 25)
 	checkFlags(entries)
 
 	// Get changes from channel "ABC" without limit and activeOnly true
-	entries, err = db.getChangesInChannelFromQuery(base.TestCtx(t), channels.ID{Name: "ABC", CollectionID: collectionID}, startSeq, endSeq, 0, true)
+	entries, err = collection.getChangesInChannelFromQuery(base.TestCtx(t), "ABC", startSeq, endSeq, 0, true)
 	require.NoError(t, err, "Couldn't query active docs from channel ABC with limit")
 	require.Len(t, entries, 30)
 	checkFlags(entries)
 
 	// Get changes from channel "*" without limit and activeOnly true
-	entries, err = db.getChangesInChannelFromQuery(base.TestCtx(t), channels.ID{Name: "*", CollectionID: collectionID}, startSeq, endSeq, 0, true)
+	entries, err = collection.getChangesInChannelFromQuery(base.TestCtx(t), "*", startSeq, endSeq, 0, true)
 	require.NoError(t, err, "Couldn't query active docs from channel * with limit")
 	require.Len(t, entries, 30)
 	checkFlags(entries)
 
 	// Get changes from channel "ABC" with limit and activeOnly false
-	entries, err = db.getChangesInChannelFromQuery(base.TestCtx(t), channels.ID{Name: "ABC", CollectionID: collectionID}, startSeq, endSeq, 45, false)
+	entries, err = collection.getChangesInChannelFromQuery(base.TestCtx(t), "ABC", startSeq, endSeq, 45, false)
 	require.NoError(t, err, "Couldn't query active docs from channel ABC with limit")
 	require.Len(t, entries, 45)
 	checkFlags(entries)
 
 	// Get changes from channel "*" with limit and activeOnly false
-	entries, err = db.getChangesInChannelFromQuery(base.TestCtx(t), channels.ID{Name: "*", CollectionID: collectionID}, startSeq, endSeq, 45, false)
+	entries, err = collection.getChangesInChannelFromQuery(base.TestCtx(t), "*", startSeq, endSeq, 45, false)
 	require.NoError(t, err, "Couldn't query active docs from channel * with limit")
 	require.Len(t, entries, 45)
 	checkFlags(entries)
 
 	// Get changes from channel "ABC" without limit and activeOnly false
-	entries, err = db.getChangesInChannelFromQuery(base.TestCtx(t), channels.ID{Name: "ABC", CollectionID: collectionID}, startSeq, endSeq, 0, false)
+	entries, err = collection.getChangesInChannelFromQuery(base.TestCtx(t), "ABC", startSeq, endSeq, 0, false)
 	require.NoError(t, err, "Couldn't query active docs from channel ABC with limit")
 	require.Len(t, entries, 50)
 	checkFlags(entries)
 
 	// Get changes from channel "*" without limit and activeOnly true
-	entries, err = db.getChangesInChannelFromQuery(base.TestCtx(t), channels.ID{Name: "*", CollectionID: collectionID}, startSeq, endSeq, 0, false)
+	entries, err = collection.getChangesInChannelFromQuery(base.TestCtx(t), "*", startSeq, endSeq, 0, false)
 	require.NoError(t, err, "Couldn't query active docs from channel * with limit")
 	require.Len(t, entries, 50)
 	checkFlags(entries)

@@ -595,11 +595,13 @@ func (b *GocbV2Bucket) DropDataStore(name sgbucket.DataStoreName) error {
 
 func (b *GocbV2Bucket) CreateDataStore(name sgbucket.DataStoreName) error {
 	// create scope first (if it doesn't already exist)
-	err := b.bucket.Collections().CreateScope(name.ScopeName(), nil)
-	if err != nil && !errors.Is(err, gocb.ErrScopeExists) {
-		return err
+	if name.ScopeName() != DefaultScope {
+		err := b.bucket.Collections().CreateScope(name.ScopeName(), nil)
+		if err != nil && !errors.Is(err, gocb.ErrScopeExists) {
+			return err
+		}
 	}
-	err = b.bucket.Collections().CreateCollection(gocb.CollectionSpec{Name: name.CollectionName(), ScopeName: name.ScopeName()}, nil)
+	err := b.bucket.Collections().CreateCollection(gocb.CollectionSpec{Name: name.CollectionName(), ScopeName: name.ScopeName()}, nil)
 	if err != nil {
 		return err
 	}

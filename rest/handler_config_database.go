@@ -47,35 +47,28 @@ func (h *handler) mutateDbConfig(mutator func(*DbConfig) error) error {
 		// Update persistently-stored config:
 		bucket := h.db.Bucket.GetName()
 		var updatedDbConfig *DatabaseConfig
-		cas, err := h.server.BootstrapContext.Connection.UpdateConfig(
-			bucket, h.server.Config.Bootstrap.ConfigGroupID,
-			func(rawBucketConfig []byte, rawBucketConfigCas uint64) (newConfig []byte, err error) {
-				var bucketDbConfig DatabaseConfig
-				if err := base.JSONUnmarshal(rawBucketConfig, &bucketDbConfig); err != nil {
-					return nil, err
-				}
+		cas, err := h.server.BootstrapContext.UpdateConfig(h.ctx(), bucket, h.server.Config.Bootstrap.ConfigGroupID, dbName, func(bucketDbConfig *DatabaseConfig) (updatedConfig *DatabaseConfig, err error) {
 
-				if h.headerDoesNotMatchEtag(bucketDbConfig.Version) {
-					return nil, base.HTTPErrorf(http.StatusPreconditionFailed, "Provided If-Match header does not match current config version")
-				}
+			if h.headerDoesNotMatchEtag(bucketDbConfig.Version) {
+				return nil, base.HTTPErrorf(http.StatusPreconditionFailed, "Provided If-Match header does not match current config version")
+			}
 
-				// Now call the mutator function:
-				if err := mutator(&bucketDbConfig.DbConfig); err != nil {
-					return nil, err
-				}
+			// Now call the mutator function:
+			if err := mutator(&bucketDbConfig.DbConfig); err != nil {
+				return nil, err
+			}
 
-				if err := bucketDbConfig.validate(h.ctx(), validateOIDC); err != nil {
-					return nil, base.HTTPErrorf(http.StatusBadRequest, err.Error())
-				}
+			if err := bucketDbConfig.validate(h.ctx(), validateOIDC); err != nil {
+				return nil, base.HTTPErrorf(http.StatusBadRequest, err.Error())
+			}
 
-				bucketDbConfig.Version, err = GenerateDatabaseConfigVersionID(bucketDbConfig.Version, &bucketDbConfig.DbConfig)
-				if err != nil {
-					return nil, err
-				}
-
-				updatedDbConfig = &bucketDbConfig
-				return base.JSONMarshal(bucketDbConfig)
-			})
+			bucketDbConfig.Version, err = GenerateDatabaseConfigVersionID(bucketDbConfig.Version, &bucketDbConfig.DbConfig)
+			if err != nil {
+				return nil, err
+			}
+			updatedDbConfig = bucketDbConfig
+			return bucketDbConfig, nil
+		})
 		if err != nil {
 			return err
 		}

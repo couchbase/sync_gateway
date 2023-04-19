@@ -28,12 +28,13 @@ type ResyncManager struct {
 
 var _ BackgroundManagerProcessI = &ResyncManager{}
 
-func NewResyncManager(metadataStore base.DataStore) *BackgroundManager {
+func NewResyncManager(metadataStore base.DataStore, metaKeys *base.MetadataKeys) *BackgroundManager {
 	return &BackgroundManager{
 		name:    "resync",
 		Process: &ResyncManager{},
 		clusterAwareOptions: &ClusterAwareBackgroundManagerOptions{
 			metadataStore: metadataStore,
+			metaKeys:      metaKeys,
 			processSuffix: "resync",
 		},
 		terminator: base.NewSafeTerminator(),
@@ -74,11 +75,18 @@ func (r *ResyncManager) Run(ctx context.Context, options map[string]interface{},
 	}
 
 	for _, collectionID := range collectionIDs {
-		_, err := (&DatabaseCollectionWithUser{
+		dbc := &DatabaseCollectionWithUser{
 			DatabaseCollection: database.CollectionByID[collectionID],
-		}).UpdateAllDocChannels(ctx, regenerateSequences, callback, terminator)
+		}
+		_, err := dbc.UpdateAllDocChannels(ctx, regenerateSequences, callback, terminator)
 		if err != nil {
 			return err
+		}
+		if regenerateSequences {
+			err := base.SetSyncInfo(dbc.dataStore, dbc.dbCtx.Options.MetadataID)
+			if err != nil {
+				base.InfofCtx(ctx, base.KeyAll, "Failed to updateSyncInfo after resync: %v", err)
+			}
 		}
 	}
 

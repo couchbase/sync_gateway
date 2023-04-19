@@ -258,6 +258,10 @@ func (s *SubChangesParams) String() string {
 	buffer := bytes.NewBufferString("")
 	buffer.WriteString(fmt.Sprintf("Since:%v ", s.Since()))
 
+	if coll, ok := getBlipMessageCollection(s.rq); ok {
+		buffer.WriteString(fmt.Sprintf("Collection:%v ", coll))
+	}
+
 	continuous := s.continuous()
 	if continuous {
 		buffer.WriteString(fmt.Sprintf("Continuous:%v ", continuous))
@@ -404,15 +408,7 @@ func (rm *RevMessage) SetNoConflicts(noConflicts bool) {
 }
 
 func (rm *RevMessage) Collection() (int, bool) {
-	val, ok := rm.Properties[BlipCollection]
-	if !ok {
-		return 0, false
-	}
-	intVal, err := strconv.Atoi(val)
-	if err != nil {
-		panic(fmt.Errorf("rev message has invalid %q %q: %w", BlipCollection, val, err))
-	}
-	return intVal, true
+	return getBlipMessageCollection(rm.Message)
 }
 
 func (rm *RevMessage) SetCollection(val *int) {
@@ -550,4 +546,16 @@ func NewGetCollectionsMessage(body GetCollectionsRequestBody) (*blip.Message, er
 		return nil, err
 	}
 	return msg, nil
+}
+
+func getBlipMessageCollection(bm *blip.Message) (int, bool) {
+	val, ok := bm.Properties[BlipCollection]
+	if !ok {
+		return 0, false
+	}
+	intVal, err := strconv.Atoi(val)
+	if err != nil {
+		panic(fmt.Errorf("message has invalid %q %q: %w", BlipCollection, val, err))
+	}
+	return intVal, true
 }

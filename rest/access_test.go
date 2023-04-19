@@ -92,7 +92,7 @@ func TestStarAccess(t *testing.T) {
 	rt := NewRestTester(t, &RestTesterConfig{SyncFn: channels.DocChannelsSyncFunction})
 	defer rt.Close()
 
-	a := auth.NewAuthenticator(rt.MetadataStore(), nil, auth.DefaultAuthenticatorOptions())
+	a := auth.NewAuthenticator(rt.MetadataStore(), nil, rt.GetDatabase().AuthenticatorOptions())
 	a.Collections = rt.GetDatabase().CollectionNames
 	var changes struct {
 		Results []db.ChangeEntry
@@ -243,9 +243,9 @@ func TestStarAccess(t *testing.T) {
 
 	//
 	// Part 3 - Tests for user with no user channel access
-	//
 	// Create a user:
 	manny, err := a.NewUser("manny", "letmein", nil)
+	require.NoError(t, err)
 	assert.NoError(t, a.Save(manny))
 
 	// GET /db/docid - basic test for doc that has channel
@@ -335,6 +335,7 @@ func TestUserHasDocAccessDocNotFound(t *testing.T) {
 
 	// Purge the document from the bucket to force 'not found'
 	err = collection.Purge(ctx, "doc")
+	require.NoError(t, err)
 
 	userHasDocAccess, err = db.UserHasDocAccess(ctx, collection, "doc")
 	assert.NoError(t, err)
@@ -601,7 +602,7 @@ func TestAllDocsAccessControl(t *testing.T) {
 	}
 
 	// Create some docs:
-	a := auth.NewAuthenticator(rt.MetadataStore(), nil, auth.DefaultAuthenticatorOptions())
+	a := auth.NewAuthenticator(rt.MetadataStore(), nil, rt.GetDatabase().AuthenticatorOptions())
 	a.Collections = rt.GetDatabase().CollectionNames
 	guest, err := a.GetUser("")
 	assert.NoError(t, err)
@@ -623,6 +624,7 @@ func TestAllDocsAccessControl(t *testing.T) {
 
 	// Create a user:
 	alice, err := a.NewUser("alice", "letmein", channels.BaseSetOf(t, "Cinemax"))
+	require.NoError(t, err)
 	assert.NoError(t, a.Save(alice))
 
 	// Get a single doc the user has access to:
@@ -811,8 +813,10 @@ func TestChannelAccessChanges(t *testing.T) {
 
 	// Create users:
 	alice, err := a.NewUser("alice", "letmein", channels.BaseSetOf(t, "zero"))
+	require.NoError(t, err)
 	assert.NoError(t, a.Save(alice))
 	zegpold, err := a.NewUser("zegpold", "letmein", channels.BaseSetOf(t, "zero"))
+	require.NoError(t, err)
 	assert.NoError(t, a.Save(zegpold))
 
 	// Create some docs that give users access:
@@ -1002,6 +1006,7 @@ func TestAccessOnTombstone(t *testing.T) {
 
 	// Create user:
 	bernard, err := a.NewUser("bernard", "letmein", channels.BaseSetOf(t, "zero"))
+	require.NoError(t, err)
 	assert.NoError(t, a.Save(bernard))
 
 	// Create doc that gives user access to its channel
@@ -1120,7 +1125,7 @@ func TestRoleChannelGrantInheritance(t *testing.T) {
 	ctx := rt.Context()
 	a := rt.ServerContext().Database(ctx, "db").Authenticator(ctx)
 
-	collection := rt.GetDatabase().GetSingleDatabaseCollection()
+	collection := rt.GetSingleTestDatabaseCollection()
 	scopeName := collection.ScopeName
 	collectionName := collection.Name
 

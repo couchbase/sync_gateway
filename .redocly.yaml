@@ -22,7 +22,6 @@ lint:
   rules:
     # disable unnecessary/invalid warnings
     operation-2xx-response: off # _blipsync 101 Upgrade ...
-    operation-operationId: off  # Optional (mostly used for generating code)
     operation-summary: off      # Optional field
     no-ambiguous-paths: off     # /{db}/{doc} != /_debug/expvar
     no-identical-paths: off     # /{db} != /{targetdb}

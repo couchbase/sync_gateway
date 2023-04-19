@@ -74,6 +74,7 @@ type DCPClientOptions struct {
 	DbStats                    *expvar.Map               // Optional stats
 	AgentPriority              gocbcore.DcpAgentPriority // agentPriority specifies the priority level for a dcp stream
 	CollectionIDs              []uint32                  // CollectionIDs used by gocbcore, if empty, uses default collections
+	CheckpointPrefix           string
 }
 
 func NewDCPClient(ID string, callback sgbucket.FeedEventCallbackFunc, options DCPClientOptions, bucket *GocbV2Bucket) (*DCPClient, error) {
@@ -91,6 +92,12 @@ func NewDCPClient(ID string, callback sgbucket.FeedEventCallbackFunc, options DC
 	if options.AgentPriority == gocbcore.DcpAgentPriorityHigh {
 		return nil, fmt.Errorf("sync gateway should not set high priority for DCP feeds")
 	}
+
+	if options.CheckpointPrefix == "" {
+		if options.MetadataStoreType == DCPMetadataStoreCS {
+			return nil, fmt.Errorf("callers must specify a checkpoint prefix when persisting metadata")
+		}
+	}
 	client := &DCPClient{
 		workers:             make([]*DCPWorker, numWorkers),
 		numVbuckets:         numVbuckets,
@@ -101,7 +108,7 @@ func NewDCPClient(ID string, callback sgbucket.FeedEventCallbackFunc, options DC
 		terminator:          make(chan bool),
 		doneChannel:         make(chan error, 1),
 		failOnRollback:      options.FailOnRollback,
-		checkpointPrefix:    DCPCheckpointPrefixWithGroupID(options.GroupID),
+		checkpointPrefix:    options.CheckpointPrefix,
 		dbStats:             options.DbStats,
 		agentPriority:       options.AgentPriority,
 		collectionIDs:       options.CollectionIDs,
@@ -129,6 +136,9 @@ func NewDCPClient(ID string, callback sgbucket.FeedEventCallbackFunc, options DC
 			client.metadata.SetMeta(uint16(vbID), meta)
 		}
 	}
+	if len(client.collectionIDs) == 0 {
+		client.collectionIDs = []uint32{DefaultCollectionID}
+	}
 
 	client.oneShot = options.OneShot
 
@@ -137,10 +147,9 @@ func NewDCPClient(ID string, callback sgbucket.FeedEventCallbackFunc, options DC
 
 // getCollectionHighSeqNo returns the highSeqNo for a given KV collection ID.
 func (dc *DCPClient) getCollectionHighSeqNos(collectionID uint32) ([]uint64, error) {
-	vbucketSeqnoOptions := gocbcore.GetVbucketSeqnoOptions{
-		FilterOptions: &gocbcore.GetVbucketSeqnoFilterOptions{
-			CollectionID: collectionID,
-		},
+	vbucketSeqnoOptions := gocbcore.GetVbucketSeqnoOptions{}
+	if dc.supportsCollections {
+		vbucketSeqnoOptions.FilterOptions = &gocbcore.GetVbucketSeqnoFilterOptions{CollectionID: collectionID}
 	}
 	configSnapshot, err := dc.agent.ConfigSnapshot()
 	if err != nil {
@@ -409,6 +418,7 @@ func (dc *DCPClient) openStream(vbID uint16, maxRetries uint32) (err error) {
 	for {
 		// Cancel open for stopped client
 		select {
+
 		case <-dc.terminator:
 			return nil
 		default:
@@ -419,17 +429,20 @@ func (dc *DCPClient) openStream(vbID uint16, maxRetries uint32) (err error) {
 			return nil
 		}
 
+		var rollbackErr gocbcore.DCPRollbackError
 		switch {
-		case (errors.Is(openStreamErr, gocbcore.ErrMemdRollback) || errors.Is(openStreamErr, gocbcore.ErrMemdRangeError)):
+		case errors.As(openStreamErr, &rollbackErr):
 			if dc.failOnRollback {
 				InfofCtx(logCtx, KeyDCP, "Open stream for vbID %d failed due to rollback or range error, closing client based on failOnRollback=true", vbID)
 				return fmt.Errorf("%s, failOnRollback requested", openStreamErr)
 			}
 			InfofCtx(logCtx, KeyDCP, "Open stream for vbID %d failed due to rollback or range error, will roll back metadata and retry: %v", vbID, openStreamErr)
-			err := dc.rollback(vbID)
-			if err != nil {
-				return fmt.Errorf("metadata rollback failed for vb %d: %v", vbID, err)
-			}
+
+			dc.rollback(logCtx, vbID, rollbackErr.SeqNo)
+		case errors.Is(openStreamErr, gocbcore.ErrMemdRangeError):
+			err := fmt.Errorf("Invalid metadata out of range for vbID %d, err: %v metadata %+v, shutting down agent", vbID, openStreamErr, dc.metadata.GetMeta(vbID))
+			WarnfCtx(logCtx, "%s", err)
+			return err
 		case errors.Is(openStreamErr, gocbcore.ErrShutdown):
 			WarnfCtx(logCtx, "Closing stream for vbID %d, agent has been shut down", vbID)
 			return openStreamErr
@@ -450,12 +463,11 @@ func (dc *DCPClient) openStream(vbID uint16, maxRetries uint32) (err error) {
 	return fmt.Errorf("openStream failed to complete after %d attempts, last error: %w", openRetryCount, openStreamErr)
 }
 
-func (dc *DCPClient) rollback(vbID uint16) (err error) {
+func (dc *DCPClient) rollback(ctx context.Context, vbID uint16, seqNo gocbcore.SeqNo) {
 	if dc.dbStats != nil {
 		dc.dbStats.Add("dcp_rollback_count", 1)
 	}
-	dc.metadata.Rollback(vbID)
-	return nil
+	dc.metadata.Rollback(ctx, vbID, seqNo)
 }
 
 // openStreamRequest issues the OpenStream request, but doesn't perform any error handling.  Callers
@@ -467,12 +479,7 @@ func (dc *DCPClient) openStreamRequest(vbID uint16) error {
 	options := gocbcore.OpenStreamOptions{}
 	// Always use a collection-aware feed if supported
 	if dc.supportsCollections {
-		// If no collection IDs specified, filter to the default collection
-		collIds := dc.collectionIDs
-		if len(collIds) == 0 {
-			collIds = []uint32{DefaultCollectionID}
-		}
-		options.FilterOptions = &gocbcore.OpenStreamFilterOptions{CollectionIDs: collIds}
+		options.FilterOptions = &gocbcore.OpenStreamFilterOptions{CollectionIDs: dc.collectionIDs}
 	}
 	openStreamError := make(chan error)
 	openStreamCallback := func(f []gocbcore.FailoverEntry, err error) {

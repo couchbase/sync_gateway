@@ -46,7 +46,7 @@ type ActiveReplicatorConfig struct {
 	ID string
 	// Filter is a predetermined filter name (e.g. sync_gateway/bychannel)
 	Filter string
-	// FilterChannels are a set of channels to be used by the sync_gateway/bychannel filter.
+	// FilterChannels are a set of channels to be used by the sync_gateway/bychannel filter. Access via getFilteredChannels.
 	FilterChannels []string
 	// DocIDs limits the changes to only those doc IDs specified.
 	DocIDs []string
@@ -80,8 +80,19 @@ type ActiveReplicatorConfig struct {
 	InitialReconnectInterval time.Duration
 	// MaxReconnectInterval is the maximum amount of time to wait between exponential backoff reconnect attempts.
 	MaxReconnectInterval time.Duration
-	// TotalReconnectTimeout, if non-zero, is the amount of time to wait before giving up trying to reconnect.
+	// TotalReconnectTimeout, if non-zero, is the amount of time to wait before giving up trying to reconnect. Zero disables reconnect entirely.
 	TotalReconnectTimeout time.Duration
+
+	// CollectionsEnabled can be set to replicate one or more named collections, rather than just the default collection.
+	CollectionsEnabled bool
+	// CollectionsLocal represents a list of dot-separated scope/collections that will be replicated.
+	// This slice can be empty to replicate all scopes/collections for the database when CollectionsEnabled is set to true.
+	CollectionsLocal []string // list of local/active "scope.collection"
+	// CollectionsRemote represents an equivalent list of dot-separated scope/collections that the local collections will be remapped to on the remote/passive side.
+	// This slice can be empty to replicate all scopes/collections for the database when CollectionsEnabled is set to true.
+	CollectionsRemote []string // list of remote/passive "scope.collection"
+	// CollectionsChannelFilter represents a list of channels to be replicated for each collection. Access via getFilteredChannels.
+	CollectionsChannelFilter [][]string // list of channels to replicate for each collection.
 
 	// Delta sync enabled
 	DeltasEnabled bool
@@ -112,9 +123,9 @@ func (arc *ActiveReplicatorConfig) SetCheckpointPrefix(_ testing.TB, s string) {
 
 type OnCompleteFunc func(replicationID string)
 
-// CheckpointHash returns a deterministic hash of the given config to be used as a checkpoint ID.
-// TODO: Might be a way of caching this value? But need to be sure no config values wil change without clearing the cached hash.
-func (arc ActiveReplicatorConfig) CheckpointHash() (string, error) {
+// CheckpointHash returns a deterministic hash of the given config to be used as part of a checkpoint's validity.
+// TODO: Might be a way of caching this value? But need to be sure no config values will change without clearing the cached hash.
+func (arc ActiveReplicatorConfig) CheckpointHash(collectionIdx *int) (string, error) {
 	hash := sha1.New()
 
 	// For each field in the config that affects replication result, append its value to the hasher.
@@ -129,9 +140,11 @@ func (arc ActiveReplicatorConfig) CheckpointHash() (string, error) {
 	if _, err := hash.Write([]byte(arc.Filter)); err != nil {
 		return "", err
 	}
-	if _, err := hash.Write([]byte(strings.Join(arc.FilterChannels, ","))); err != nil {
+
+	if _, err := hash.Write([]byte(strings.Join(arc.getFilteredChannels(collectionIdx), ","))); err != nil {
 		return "", err
 	}
+
 	if _, err := hash.Write([]byte(strings.Join(arc.DocIDs, ","))); err != nil {
 		return "", err
 	}
@@ -158,6 +171,7 @@ func (arc ActiveReplicatorConfig) CheckpointHash() (string, error) {
 	return fmt.Sprintf("%x", hash.Sum(nil)), nil
 }
 
+// Equals returns true if the given config is equal to the receiver. Used to detect when a replication config has changed via isCfgChanged
 func (arc *ActiveReplicatorConfig) Equals(other *ActiveReplicatorConfig) bool {
 
 	if arc.ID != other.ID {
@@ -229,6 +243,22 @@ func (arc *ActiveReplicatorConfig) Equals(other *ActiveReplicatorConfig) bool {
 	}
 
 	if arc.DeltasEnabled != other.DeltasEnabled {
+		return false
+	}
+
+	if arc.CollectionsEnabled != other.CollectionsEnabled {
+		return false
+	}
+
+	if !reflect.DeepEqual(arc.CollectionsLocal, other.CollectionsLocal) {
+		return false
+	}
+
+	if !reflect.DeepEqual(arc.CollectionsRemote, other.CollectionsRemote) {
+		return false
+	}
+
+	if !reflect.DeepEqual(arc.CollectionsChannelFilter, other.CollectionsChannelFilter) {
 		return false
 	}
 

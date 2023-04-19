@@ -2,11 +2,11 @@
     "product": "sync_gateway",
     "manifests": {
         "manifest/default.xml": {
-            "release": "3.1.0",
+            "release": "3.2.0",
             "release_name": "Couchbase Sync Gateway",
             "production": true,
             "interval": 30,
-            "go_version": "1.19.5",
+            "go_version": "1.20.3",
             "trigger_blackduck": true,
             "start_build": 1
         },
@@ -380,14 +380,33 @@
             "trigger_blackduck": true,
             "start_build": 2
         },
-        "manifest/3.0.xml": {
+        "manifest/3.0/3.0.5.xml": {
+            "do-build": false,
             "release": "3.0.5",
             "release_name": "Couchbase Sync Gateway 3.0.5",
+            "production": true,
+            "interval": 1440,
+            "go_version": "1.16.15",
+            "trigger_blackduck": true,
+            "start_build": 9
+        },
+        "manifest/3.0.xml": {
+            "release": "3.0.6",
+            "release_name": "Couchbase Sync Gateway 3.0.6",
             "production": true,
             "interval": 120,
             "go_version": "1.16.15",
             "trigger_blackduck": true,
             "start_build": 1
+        },
+        "manifest/3.1.xml": {
+            "release": "3.1.0",
+            "release_name": "Couchbase Sync Gateway 3.1.0",
+            "production": true,
+            "interval": 120,
+            "go_version": "1.19.5",
+            "trigger_blackduck": true,
+            "start_build": 586
         },
         "manifest/dev.xml": {
             "release": "dev",

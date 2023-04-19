@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/rest"
 	"github.com/couchbaselabs/walrus"
@@ -33,13 +34,19 @@ func reduceTestCheckpointInterval(interval time.Duration) func() {
 }
 
 // AddActiveRT returns a new RestTester backed by a no-close clone of TestBucket
-func addActiveRT(t *testing.T, testBucket *base.TestBucket) (activeRT *rest.RestTester) {
+func addActiveRT(t *testing.T, dbName string, testBucket *base.TestBucket) (activeRT *rest.RestTester) {
 
 	// Create a new rest tester, using a NoCloseClone of testBucket, which disables the TestBucketPool teardown
-	activeRT = rest.NewRestTesterDefaultCollection(t, // CBG-2319: replicator currently requires default collection
+	activeRT = rest.NewRestTester(t,
 		&rest.RestTesterConfig{
 			CustomTestBucket:   testBucket.NoCloseClone(),
 			SgReplicateEnabled: true,
+			SyncFn:             channels.DocChannelsSyncFunction,
+			DatabaseConfig: &rest.DatabaseConfig{
+				DbConfig: rest.DbConfig{
+					Name: dbName,
+				},
+			},
 		})
 
 	// If this is a walrus bucket, we need to jump through some hoops to ensure the shared in-memory walrus bucket isn't
@@ -67,7 +74,7 @@ func addActiveRT(t *testing.T, testBucket *base.TestBucket) (activeRT *rest.Rest
 // requireRevID asserts that the specified document revision is written to the
 // underlying bucket backed by the given RestTester instance.
 func requireRevID(t *testing.T, rt *rest.RestTester, docID, revID string) {
-	doc, err := rt.GetDatabase().GetSingleDatabaseCollection().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalAll)
+	doc, err := rt.GetSingleTestDatabaseCollection().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalAll)
 	require.NoError(t, err, "Error reading document from bucket")
 	require.Equal(t, revID, doc.SyncData.CurrentRev)
 }
@@ -83,7 +90,7 @@ func requireErrorKeyNotFound(t *testing.T, rt *rest.RestTester, docID string) {
 func waitForTombstone(t *testing.T, rt *rest.RestTester, docID string) {
 	require.NoError(t, rt.WaitForPendingChanges())
 	require.NoError(t, rt.WaitForCondition(func() bool {
-		doc, _ := rt.GetDatabase().GetSingleDatabaseCollection().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalAll)
+		doc, _ := rt.GetSingleTestDatabaseCollection().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalAll)
 		return doc.IsDeleted() && len(doc.Body()) == 0
 	}))
 }
@@ -92,9 +99,9 @@ func waitForTombstone(t *testing.T, rt *rest.RestTester, docID string) {
 // specified document id, revision id and body value in a channel named "alice".
 func createOrUpdateDoc(t *testing.T, rt *rest.RestTester, docID, revID, bodyValue string) string {
 	body := fmt.Sprintf(`{"key":%q,"channels":["alice"]}`, bodyValue)
-	dbURL := "/db/" + docID
+	dbURL := "/{{.keyspace}}/" + docID
 	if revID != "" {
-		dbURL = "/db/" + docID + "?rev=" + revID
+		dbURL = "/{{.keyspace}}/" + docID + "?rev=" + revID
 	}
 	resp := rt.SendAdminRequest(http.MethodPut, dbURL, body)
 	rest.RequireStatus(t, resp, http.StatusCreated)

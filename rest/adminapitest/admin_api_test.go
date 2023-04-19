@@ -760,7 +760,7 @@ func TestResync(t *testing.T) {
 
 			_, ok := (rt.GetDatabase().ResyncManager.Process).(*db.ResyncManager)
 			if !ok {
-				rt.GetDatabase().ResyncManager = db.NewResyncManager(rt.GetSingleDataStore())
+				rt.GetDatabase().ResyncManager = db.NewResyncManager(rt.GetSingleDataStore(), rt.GetDatabase().MetadataKeys)
 			}
 
 			for i := 0; i < testCase.docsCreated; i++ {
@@ -845,7 +845,7 @@ func TestResyncUsingDCPStream(t *testing.T) {
 
 			_, ok := (rt.GetDatabase().ResyncManager.Process).(*db.ResyncManagerDCP)
 			if !ok {
-				rt.GetDatabase().ResyncManager = db.NewResyncManagerDCP(rt.GetSingleDataStore())
+				rt.GetDatabase().ResyncManager = db.NewResyncManagerDCP(rt.GetSingleDataStore(), base.TestUseXattrs(), rt.GetDatabase().MetadataKeys)
 			}
 
 			for i := 0; i < testCase.docsCreated; i++ {
@@ -1190,7 +1190,7 @@ func TestResyncErrorScenarios(t *testing.T) {
 
 	_, ok := (rt.GetDatabase().ResyncManager.Process).(*db.ResyncManager)
 	if !ok {
-		rt.GetDatabase().ResyncManager = db.NewResyncManager(rt.GetSingleDataStore())
+		rt.GetDatabase().ResyncManager = db.NewResyncManager(rt.GetSingleDataStore(), rt.GetDatabase().MetadataKeys)
 	}
 
 	leakyDataStore, ok := base.AsLeakyDataStore(rt.TestBucket.GetSingleDataStore())
@@ -1293,7 +1293,7 @@ func TestResyncErrorScenariosUsingDCPStream(t *testing.T) {
 
 	_, ok := (rt.GetDatabase().ResyncManager.Process).(*db.ResyncManagerDCP)
 	if !ok {
-		rt.GetDatabase().ResyncManager = db.NewResyncManagerDCP(rt.GetSingleDataStore())
+		rt.GetDatabase().ResyncManager = db.NewResyncManagerDCP(rt.GetSingleDataStore(), base.TestUseXattrs(), rt.GetDatabase().MetadataKeys)
 	}
 
 	numOfDocs := 1000
@@ -1380,7 +1380,7 @@ func TestResyncStop(t *testing.T) {
 
 	_, ok := (rt.GetDatabase().ResyncManager.Process).(*db.ResyncManager)
 	if !ok {
-		rt.GetDatabase().ResyncManager = db.NewResyncManager(rt.GetSingleDataStore())
+		rt.GetDatabase().ResyncManager = db.NewResyncManager(rt.GetSingleDataStore(), rt.GetDatabase().MetadataKeys)
 	}
 
 	leakyDataStore, ok := base.AsLeakyDataStore(rt.TestBucket.GetSingleDataStore())
@@ -1467,7 +1467,7 @@ func TestResyncStopUsingDCPStream(t *testing.T) {
 
 	_, ok := (rt.GetDatabase().ResyncManager.Process).(*db.ResyncManagerDCP)
 	if !ok {
-		rt.GetDatabase().ResyncManager = db.NewResyncManagerDCP(rt.GetSingleDataStore())
+		rt.GetDatabase().ResyncManager = db.NewResyncManagerDCP(rt.GetSingleDataStore(), base.TestUseXattrs(), rt.GetDatabase().MetadataKeys)
 	}
 
 	numOfDocs := 1000
@@ -2114,7 +2114,7 @@ func TestHandleDBConfig(t *testing.T) {
 	defer rt.Close()
 
 	bucket := tb.GetName()
-	dbname := "db"
+	dbname := rt.GetDatabase().Name
 	resource := fmt.Sprintf("/%s/", dbname)
 
 	// Get database config before putting any config.
@@ -2130,21 +2130,14 @@ func TestHandleDBConfig(t *testing.T) {
 	resource = resource + "_config"
 
 	// change cache size so we can see the update being reflected in the API response
-	dbConfig := &rest.DbConfig{
-		BucketConfig: rest.BucketConfig{Bucket: &bucket},
-		CacheConfig: &rest.CacheConfig{
-			RevCacheConfig: &rest.RevCacheConfig{
-				Size: base.Uint32Ptr(1337), ShardCount: base.Uint16Ptr(7),
-			},
+	dbConfig := rt.NewDbConfig()
+	dbConfig.CacheConfig = &rest.CacheConfig{
+		RevCacheConfig: &rest.RevCacheConfig{
+			Size: base.Uint32Ptr(1337), ShardCount: base.Uint16Ptr(7),
 		},
-		NumIndexReplicas:   base.UintPtr(0),
-		EnableXattrs:       base.BoolPtr(base.TestUseXattrs()),
-		UseViews:           base.BoolPtr(base.TestsDisableGSI()),
-		SGReplicateEnabled: base.BoolPtr(false),
 	}
-	reqBody, err := base.JSONMarshal(dbConfig)
-	assert.NoError(t, err, "Error unmarshalling changes response")
-	resp = rt.SendAdminRequest(http.MethodPut, resource, string(reqBody))
+
+	resp = rt.ReplaceDbConfig(rt.GetDatabase().Name, dbConfig)
 	rest.RequireStatus(t, resp, http.StatusCreated)
 	assert.Empty(t, resp.Body.String())
 
@@ -2823,7 +2816,7 @@ func TestPersistentConfigConcurrency(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP, base.KeyDCP)
 
 	serverErr := make(chan error, 0)
 
@@ -3264,6 +3257,7 @@ func TestNotExistentDBRequest(t *testing.T) {
 	// Request to non-existent db with invalid credentials
 	resp = rt.SendAdminRequestWithAuth("PUT", "/dbx/_config", "", "random", "passwordx")
 	rest.RequireStatus(t, resp, http.StatusUnauthorized)
+	require.Contains(t, resp.Body.String(), rest.ErrInvalidLogin.Message)
 }
 
 func TestConfigsIncludeDefaults(t *testing.T) {
@@ -3410,22 +3404,13 @@ func TestLegacyCredentialInheritance(t *testing.T) {
 
 func TestDbOfflineConfigLegacy(t *testing.T) {
 	rt := rest.NewRestTester(t, nil)
-	bucket := rt.Bucket()
 	defer rt.Close()
 
-	dbConfig := `{
-	"bucket": "` + bucket.GetName() + `",
-	"name": "db",
-	"sync": "function(doc){ channel(doc.channels); }",
-	"import_filter": "function(doc) { return true }",
-	"import_docs": false,
-	"offline": false,
-	"enable_shared_bucket_access": ` + strconv.FormatBool(base.TestUseXattrs()) + `,
-	"use_views": ` + strconv.FormatBool(base.TestsDisableGSI()) + `,
-	"num_index_replicas": 0 }`
+	dbConfig := rt.NewDbConfig()
+	dbConfig.StartOffline = base.BoolPtr(true)
 
 	// Persist config
-	resp := rt.SendAdminRequest("PUT", "/db/_config", dbConfig)
+	resp := rt.UpsertDbConfig(rt.GetDatabase().Name, dbConfig)
 	require.Equal(t, http.StatusCreated, resp.Code)
 
 	// Get config values before taking db offline
@@ -3546,13 +3531,14 @@ func TestDbConfigPersistentSGVersions(t *testing.T) {
 	tb := base.GetTestBucket(t)
 	defer func() { tb.Close() }()
 
+	dbName := "db"
 	dbConfig := rest.DatabaseConfig{
 		SGVersion: "", // leave empty to emulate what 3.0.0 would've written to the bucket
 		DbConfig: rest.DbConfig{
 			BucketConfig: rest.BucketConfig{
 				Bucket: base.StringPtr(tb.GetName()),
 			},
-			Name:             "db",
+			Name:             dbName,
 			EnableXattrs:     base.BoolPtr(base.TestUseXattrs()),
 			UseViews:         base.BoolPtr(base.TestsDisableGSI()),
 			NumIndexReplicas: base.UintPtr(0),
@@ -3563,12 +3549,12 @@ func TestDbConfigPersistentSGVersions(t *testing.T) {
 	require.NoError(t, err)
 
 	// initialise with db config
-	_, err = sc.BootstrapContext.Connection.InsertConfig(tb.GetName(), t.Name(), dbConfig)
+	_, err = sc.BootstrapContext.InsertConfig(ctx, tb.GetName(), t.Name(), &dbConfig)
 	require.NoError(t, err)
 
 	assertRevsLimit := func(sc *rest.ServerContext, revsLimit uint32) {
 		rest.WaitAndAssertCondition(t, func() bool {
-			dbc, err := sc.GetDatabase(ctx, "db")
+			dbc, err := sc.GetDatabase(ctx, dbName)
 			if err != nil {
 				t.Logf("expected database with RevsLimit=%v but got err=%v", revsLimit, err)
 				return false
@@ -3584,18 +3570,15 @@ func TestDbConfigPersistentSGVersions(t *testing.T) {
 	assertRevsLimit(sc, 123)
 
 	writeRevsLimitConfigWithVersion := func(sc *rest.ServerContext, version string, revsLimit uint32) error {
-		_, err = sc.BootstrapContext.Connection.UpdateConfig(tb.GetName(), t.Name(), func(rawBucketConfig []byte, rawBucketConfigCas uint64) (updatedConfig []byte, err error) {
-			var db rest.DatabaseConfig
-			if err := base.JSONUnmarshal(rawBucketConfig, &db); err != nil {
-				return nil, err
-			}
+		_, err = sc.BootstrapContext.UpdateConfig(base.TestCtx(t), tb.GetName(), t.Name(), dbName, func(db *rest.DatabaseConfig) (updatedConfig *rest.DatabaseConfig, err error) {
+
 			db.SGVersion = version
 			db.DbConfig.RevsLimit = base.Uint32Ptr(revsLimit)
 			db.Version, err = rest.GenerateDatabaseConfigVersionID(db.Version, &db.DbConfig)
 			if err != nil {
 				return nil, err
 			}
-			return base.JSONMarshal(db)
+			return db, nil
 		})
 		return err
 	}
@@ -3794,6 +3777,51 @@ func TestSetFunctionsWhileDbOffline(t *testing.T) {
 	resp.RequireResponse(http.StatusOK, syncFunc)
 }
 
+func TestCollectionSyncFnWithBackticks(t *testing.T) {
+	base.TestRequiresCollections(t)
+
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyHTTP)
+
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{PersistentConfig: true})
+	_ = rt.Bucket()
+	defer rt.Close()
+
+	scopesConfig := rest.GetCollectionsConfig(t, rt.TestBucket, 1)
+	dataStoreNames := rest.GetDataStoreNamesFromScopesConfig(scopesConfig)
+	scopeName, collectionName := dataStoreNames[0].ScopeName(), dataStoreNames[0].CollectionName()
+	// Initial DB config
+	dbConfig := fmt.Sprintf(`{
+    "num_index_replicas": 0,
+    	"bucket": "%s",
+    		"scopes": {
+			  	"%s": {
+					"collections": {
+            			"%s": {
+				   		"sync":`, rt.Bucket().GetName(), scopeName, collectionName) + "`" +
+		`function(doc, oldDoc, meta) {
+							var owner = doc._deleted ? oldDoc.owner : doc.owner;
+							requireUser(owner);
+							var listChannel = 'lists.' + doc._id;
+							var contributorRole = 'role:' + listChannel + '.contributor';
+							role(owner, contributorRole);
+							access(contributorRole, listChannel);
+							channel(listChannel);
+						}` + "`" + `
+         			}
+				}
+      		}
+		}
+ 	}`
+
+	// Create initial database
+	resp := rt.SendAdminRequest(http.MethodPut, "/db/", dbConfig)
+	assert.Equal(t, resp.Code, http.StatusCreated)
+
+	// Update database config
+	resp = rt.SendAdminRequest(http.MethodPut, "/db/_config", dbConfig)
+	assert.Equal(t, resp.Code, http.StatusCreated)
+}
+
 func TestEmptyStringJavascriptFunctions(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
@@ -3854,14 +3882,22 @@ func TestEmptyStringJavascriptFunctions(t *testing.T) {
 
 // Regression test for CBG-2119 - ensure that the disable_password_auth bool field is handled correctly both when set as true and as false
 func TestDisablePasswordAuthThroughAdminAPI(t *testing.T) {
-	rt := rest.NewRestTester(t, &rest.RestTesterConfig{})
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{PersistentConfig: true})
 	defer rt.Close()
 
-	res := rt.SendAdminRequest(http.MethodPost, "/db/_config", `{"bucket":"`+rt.Bucket().GetName()+`","num_index_replicas":0,"disable_password_auth": true}`)
+	// Create a database
+	config := rt.NewDbConfig()
+	dbName := "db"
+	res := rt.CreateDatabase(dbName, config)
+	rest.RequireStatus(t, res, http.StatusCreated)
+
+	config.DisablePasswordAuth = base.BoolPtr(true)
+	res = rt.UpsertDbConfig(dbName, config)
 	rest.RequireStatus(t, res, http.StatusCreated)
 	assert.True(t, rt.GetDatabase().Options.DisablePasswordAuthentication)
 
-	res = rt.SendAdminRequest(http.MethodPost, "/db/_config", `{"bucket":"`+rt.Bucket().GetName()+`","num_index_replicas":0,"disable_password_auth": false}`)
+	config.DisablePasswordAuth = base.BoolPtr(false)
+	res = rt.UpsertDbConfig(dbName, config)
 	rest.RequireStatus(t, res, http.StatusCreated)
 	assert.False(t, rt.GetDatabase().Options.DisablePasswordAuthentication)
 }
@@ -3885,6 +3921,7 @@ func TestDeleteDatabasePointingAtSameBucket(t *testing.T) {
 		"use_views": %t,
 		"num_index_replicas": 0
 	}`, tb.GetName(), base.TestClusterUsername(), base.TestClusterPassword(), base.TestsDisableGSI()))
+	rest.RequireStatus(t, resp, http.StatusCreated)
 }
 
 func TestDeleteDatabasePointingAtSameBucketPersistent(t *testing.T) {
@@ -3931,10 +3968,12 @@ func TestDeleteDatabasePointingAtSameBucketPersistent(t *testing.T) {
 	resp = rest.BootstrapAdminRequest(t, http.MethodPut, "/db2/", fmt.Sprintf(dbConfig, "db2"))
 	resp.RequireStatus(http.StatusCreated)
 
+	scopeName := ""
+	collectionNames := []string{}
 	// Validate that deleted database is no longer in dest factory set
-	_, fetchDb1DestErr := base.FetchDestFactory(base.ImportDestKey("db1"))
+	_, fetchDb1DestErr := base.FetchDestFactory(base.ImportDestKey("db1", scopeName, collectionNames))
 	assert.Equal(t, base.ErrNotFound, fetchDb1DestErr)
-	_, fetchDb2DestErr := base.FetchDestFactory(base.ImportDestKey("db2"))
+	_, fetchDb2DestErr := base.FetchDestFactory(base.ImportDestKey("db2", scopeName, collectionNames))
 	assert.NoError(t, fetchDb2DestErr)
 }
 

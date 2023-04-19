@@ -37,6 +37,7 @@ func TestReplicateManagerReplications(t *testing.T) {
 
 	replication1_id := "replication1"
 	err = manager.AddReplication(testReplicationCfg(replication1_id, ""))
+	require.NoError(t, err)
 
 	r, err := manager.GetReplication(replication1_id)
 	require.NoError(t, err)
@@ -400,7 +401,7 @@ func TestRebalanceReplications(t *testing.T) {
 		t.Run(fmt.Sprintf("%s", testCase.name), func(t *testing.T) {
 
 			cluster := NewSGRCluster()
-			cluster.loggingCtx = base.LogContextWith(base.TestCtx(t), &base.LogContext{CorrelationID: sgrClusterMgrContextID + "test"})
+			cluster.loggingCtx = base.CorrelationIDLogCtx(base.TestCtx(t), sgrClusterMgrContextID+"test")
 			cluster.Nodes = testCase.nodes
 			cluster.Replications = testCase.replications
 			cluster.RebalanceReplications()
@@ -562,6 +563,7 @@ func TestIsCfgChanged(t *testing.T) {
 				QueryParams:            []interface{}{"ABC"},
 				Username:               "alice",
 				Password:               "password",
+				CollectionsLocal:       []string{"foo.bar"},
 			},
 		}
 	}
@@ -608,10 +610,32 @@ func TestIsCfgChanged(t *testing.T) {
 			expectedChanged: true,
 		},
 		{
+			name: "collections enabled",
+			updatedConfig: &ReplicationUpsertConfig{
+				CollectionsEnabled: base.BoolPtr(true),
+			},
+			expectedChanged: true,
+		},
+		{
+			name: "collections local",
+			updatedConfig: &ReplicationUpsertConfig{
+				CollectionsLocal: []string{"foo.bar", "bar.buzz"},
+			},
+			expectedChanged: true,
+		},
+		{
+			name: "collections local",
+			updatedConfig: &ReplicationUpsertConfig{
+				CollectionsLocal: []string{"foo.bar", "bar.buzz"},
+			},
+			expectedChanged: true,
+		},
+		{
 			name: "unchanged",
 			updatedConfig: &ReplicationUpsertConfig{
 				Remote:               base.StringPtr("a"),
 				ConflictResolutionFn: base.StringPtr("a"),
+				CollectionsLocal:     []string{"foo.bar"},
 			},
 			expectedChanged: false,
 		},

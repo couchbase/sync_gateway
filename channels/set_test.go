@@ -11,6 +11,7 @@ package channels
 import (
 	"testing"
 
+	"github.com/couchbase/sync_gateway/base"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -322,6 +323,70 @@ func TestSetContains(t *testing.T) {
 	for _, test := range testCases {
 		t.Run(test.name, func(t *testing.T) {
 			require.Equal(t, test.contains, test.inputSet.Contains(test.inputID))
+		})
+	}
+}
+
+func TestSetString(t *testing.T) {
+	testCases := []struct {
+		name           string
+		input          Set
+		output         string
+		redactedOutput []string
+	}{
+		{
+			name:           "empty,emptyID",
+			input:          Set{},
+			output:         "{}",
+			redactedOutput: []string{"{}"},
+		},
+		{
+			name: "two collections",
+			input: Set{
+				NewID("A", 1): present{},
+				NewID("B", 2): present{},
+				NewID("C", 1): present{},
+			},
+			output: "{1.<ud>A</ud>, 1.<ud>C</ud>, 2.<ud>B</ud>}",
+			redactedOutput: []string{
+				"{1.<ud>A</ud>, 1.<ud>C</ud>, 2.<ud>B</ud>}",
+				"{1.<ud>A</ud>, 2.<ud>B</ud>, 1.<ud>C</ud>}",
+				"{1.<ud>C</ud>, 1.<ud>A</ud>, 2.<ud>B</ud>}",
+				"{1.<ud>C</ud>, 2.<ud>B</ud>, 1.<ud>A</ud>}",
+				"{2.<ud>B</ud>, 1.<ud>A</ud>, 1.<ud>C</ud>}",
+				"{2.<ud>B</ud>, 1.<ud>C</ud>, 1.<ud>A</ud>}",
+			},
+		},
+		{
+			name: "two collections, collection2",
+			input: Set{
+				NewID("A", 2): present{},
+				NewID("B", 2): present{},
+				NewID("C", 1): present{},
+			},
+			output: "{1.<ud>C</ud>, 2.<ud>A</ud>, 2.<ud>B</ud>}",
+			redactedOutput: []string{
+				"{2.<ud>A</ud>, 1.<ud>C</ud>, 2.<ud>B</ud>}",
+				"{2.<ud>A</ud>, 2.<ud>B</ud>, 1.<ud>C</ud>}",
+				"{1.<ud>C</ud>, 2.<ud>A</ud>, 2.<ud>B</ud>}",
+				"{1.<ud>C</ud>, 2.<ud>B</ud>, 2.<ud>A</ud>}",
+				"{2.<ud>B</ud>, 2.<ud>A</ud>, 1.<ud>C</ud>}",
+				"{2.<ud>B</ud>, 1.<ud>C</ud>, 2.<ud>A</ud>}",
+			},
+		},
+		{
+			name: "one collection",
+			input: Set{
+				NewID("A", 1): present{},
+			},
+			output:         "{1.<ud>A</ud>}",
+			redactedOutput: []string{"{1.<ud>A</ud>}"},
+		},
+	}
+	for _, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+			require.Equal(t, test.output, test.input.String())
+			require.Contains(t, test.redactedOutput, base.UD(test.input).Redact())
 		})
 	}
 }

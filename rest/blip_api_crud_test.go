@@ -179,6 +179,7 @@ func TestContinuousChangesSubscription(t *testing.T) {
 	bt.blipContext.HandlerForProfile["changes"] = func(request *blip.Message) {
 
 		body, err := request.Body()
+		require.NoError(t, err)
 		log.Printf("got change with body %s, count %d", body, changeCount)
 		if string(body) != "null" {
 
@@ -297,6 +298,7 @@ func TestBlipOneShotChangesSubscription(t *testing.T) {
 	bt.blipContext.HandlerForProfile["changes"] = func(request *blip.Message) {
 
 		body, err := request.Body()
+		require.NoError(t, err)
 
 		if string(body) != "null" {
 
@@ -461,6 +463,7 @@ func TestBlipSubChangesDocIDFilter(t *testing.T) {
 	bt.blipContext.HandlerForProfile["changes"] = func(request *blip.Message) {
 
 		body, err := request.Body()
+		require.NoError(t, err)
 
 		if string(body) != "null" {
 
@@ -916,6 +919,7 @@ function(doc, oldDoc) {
 	bt.blipContext.HandlerForProfile["changes"] = func(request *blip.Message) {
 
 		body, err := request.Body()
+		require.NoError(t, err)
 		responseVal := [][]interface{}{}
 		if string(body) != "null" {
 
@@ -964,6 +968,7 @@ function(doc, oldDoc) {
 	bt.blipContext.HandlerForProfile["rev"] = func(request *blip.Message) {
 		defer revsFinishedWg.Done()
 		body, err := request.Body()
+		require.NoError(t, err)
 
 		var doc RestDocument
 		err = base.JSONUnmarshal(body, &doc)
@@ -1041,6 +1046,7 @@ function(doc, oldDoc) {
 	bt.blipContext.HandlerForProfile["changes"] = func(request *blip.Message) {
 
 		body, err := request.Body()
+		require.NoError(t, err)
 		responseVal := [][]interface{}{}
 		if string(body) != "null" {
 
@@ -1092,6 +1098,7 @@ function(doc, oldDoc) {
 	bt.blipContext.HandlerForProfile["rev"] = func(request *blip.Message) {
 		defer revsFinishedWg.Done()
 		body, err := request.Body()
+		require.NoError(t, err)
 
 		var doc RestDocument
 		err = base.JSONUnmarshal(body, &doc)
@@ -1277,6 +1284,7 @@ func TestBlipSetCheckpoint(t *testing.T) {
 	RequireStatus(t, response, 200)
 	var responseBody map[string]interface{}
 	err = base.JSONUnmarshal(response.Body.Bytes(), &responseBody)
+	require.NoError(t, err)
 	assert.Equal(t, "1000", responseBody["client_seq"])
 
 	// Attempt to update the checkpoint with previous rev
@@ -1722,7 +1730,7 @@ func TestGetRemovedDoc(t *testing.T) {
 	require.NoError(t, err)                        // no error
 	assert.Empty(t, resp.Properties["Error-Code"]) // no error
 
-	require.NoError(t, rt.GetDatabase().GetSingleDatabaseCollection().WaitForPendingChanges(base.TestCtx(t)))
+	require.NoError(t, rt.WaitForPendingChanges())
 
 	// Try to get rev 2 via BLIP API and assert that _removed == false
 	resultDoc, err := bt.GetDocAtRev("foo", "2-bcd")
@@ -1743,10 +1751,10 @@ func TestGetRemovedDoc(t *testing.T) {
 	assert.NoError(t, err)                         // no error
 	assert.Empty(t, resp.Properties["Error-Code"]) // no error
 
-	require.NoError(t, rt.GetDatabase().GetSingleDatabaseCollection().WaitForPendingChanges(base.TestCtx(t)))
+	require.NoError(t, rt.WaitForPendingChanges())
 
 	// Flush rev cache in case this prevents the bug from showing up (didn't make a difference)
-	rt.GetDatabase().GetSingleDatabaseCollection().FlushRevisionCacheForTest()
+	rt.GetSingleTestDatabaseCollection().FlushRevisionCacheForTest()
 
 	// Delete any temp revisions in case this prevents the bug from showing up (didn't make a difference)
 	tempRevisionDocID := base.RevPrefix + "foo:5:3-cde"
@@ -1797,12 +1805,6 @@ func TestMissingNoRev(t *testing.T) {
 		require.NoError(t, err, "resp is %s", resp)
 	}
 
-	// Get a reference to the database
-	targetDbContext, err := rt.ServerContext().GetDatabase(ctx, "db")
-	assert.NoError(t, err, "failed")
-	targetDb, err := db.GetDatabase(targetDbContext, nil)
-	assert.NoError(t, err, "failed")
-
 	// Pull docs, expect to pull 5 docs since none of them has purged yet.
 	docs, ok := bt.WaitForNumDocsViaChanges(5)
 	require.True(t, ok)
@@ -1814,7 +1816,7 @@ func TestMissingNoRev(t *testing.T) {
 	assert.NoError(t, err, "failed")
 
 	// Flush rev cache
-	targetDb.GetSingleDatabaseCollection().FlushRevisionCacheForTest()
+	rt.GetSingleTestDatabaseCollection().FlushRevisionCacheForTest()
 
 	// Pull docs, expect to pull 4 since one was purged.  (also expect to NOT get stuck)
 	docs, ok = bt.WaitForNumDocsViaChanges(4)
@@ -2426,14 +2428,17 @@ func TestProcessRevIncrementsStat(t *testing.T) {
 	dbstats, err := stats.DBReplicatorStats(t.Name())
 	require.NoError(t, err)
 
-	ar := db.NewActiveReplicator(activeCtx, &db.ActiveReplicatorConfig{
+	ar, err := db.NewActiveReplicator(activeCtx, &db.ActiveReplicatorConfig{
 		ID:                  t.Name(),
 		Direction:           db.ActiveReplicatorTypePull,
 		ActiveDB:            &db.Database{DatabaseContext: activeRT.GetDatabase()},
 		RemoteDBURL:         remoteURL,
 		Continuous:          true,
 		ReplicationStatsMap: dbstats,
+		CollectionsEnabled:  !activeRT.GetDatabase().OnlyDefaultCollection(),
 	})
+	require.NoError(t, err)
+
 	// Confirm all stats starting on 0
 	require.NotNil(t, ar.Pull)
 	pullStats := ar.Pull.GetStats()
@@ -2488,6 +2493,7 @@ func TestSendRevAsReadOnlyGuest(t *testing.T) {
 	require.Equal(t, errorCode, "")
 
 	body, err := revResponse.Body()
+	require.NoError(t, err)
 	log.Printf("response body: %s", body)
 
 	// Send rev as guest with read-only=true
@@ -2510,6 +2516,7 @@ func TestSendRevAsReadOnlyGuest(t *testing.T) {
 	assert.Equal(t, "403", errorCode)
 
 	body, err = revResponse.Body()
+	require.NoError(t, err)
 	log.Printf("response body: %s", body)
 
 }
@@ -2568,7 +2575,7 @@ func TestSendRevisionNoRevHandling(t *testing.T) {
 			})
 
 			// Flush cache so document has to be retrieved from the leaky bucket
-			rt.GetDatabase().GetSingleDatabaseCollection().FlushRevisionCacheForTest()
+			rt.GetSingleTestDatabaseCollection().FlushRevisionCacheForTest()
 
 			err = btc.StartPull()
 			require.NoError(t, err)

@@ -420,9 +420,7 @@ func TestCheckAccess(t *testing.T) {
 // Test the userCtx.channels parameter with a list
 func TestCheckAccessArray(t *testing.T) {
 	js.TestWithVMs(t, func(t *testing.T, vm js.VM) {
-		mapper := NewChannelMapper(vm, `function(doc, oldDoc) {
-		requireAccess(doc.channels)
-	}`, 0)
+		mapper := NewChannelMapper(vm, `function(doc, oldDoc) { requireAccess(doc.channels) }`, 0)
 		var sally = map[string]interface{}{"name": "sally", "roles": []string{"girl", "5yo"}, "channels": []string{"party", "school"}}
 		res, err := mapper.MapToChannelsAndAccess(parse(`{"channels": ["swim","party"]}`), `{}`, emptyMetaMap(), sally)
 		assert.NoError(t, err, "MapToChannelsAndAccess failed")
@@ -436,6 +434,21 @@ func TestCheckAccessArray(t *testing.T) {
 		res, err = mapper.MapToChannelsAndAccess(parse(`{"channels": ["magic"]}`), `{}`, emptyMetaMap(), nil)
 		assert.NoError(t, err, "MapToChannelsAndAccess failed")
 		assert.Equal(t, nil, res.Rejection)
+	})
+}
+
+// Test changing the function
+func TestSetFunction(t *testing.T) {
+	js.TestWithVMs(t, func(t *testing.T, vm js.VM) {
+		mapper := NewChannelMapper(vm, `function(doc) {channel(doc.channels);}`, 0)
+		output, err := mapper.MapToChannelsAndAccess(parse(`{"channels": ["foo", "bar", "baz"]}`), `{}`, emptyMetaMap(), noUser)
+		assert.NoError(t, err, "MapToChannelsAndAccess failed")
+		require.Equal(t, BaseSetOf(t, "foo", "baz", "bar"), output.Channels)
+		err = mapper.SetFunction(`function(doc) {channel("all");}`)
+		assert.NoError(t, err, "SetFunction failed")
+		output, err = mapper.MapToChannelsAndAccess(parse(`{"channels": ["foo", "bar", "baz"]}`), `{}`, emptyMetaMap(), noUser)
+		assert.NoError(t, err, "MapToChannelsAndAccess failed")
+		assert.Equal(t, BaseSetOf(t, "all"), output.Channels)
 	})
 }
 

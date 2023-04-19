@@ -353,6 +353,7 @@ func mockCertificatesAndKeys(t *testing.T) (clientCertPath, clientKeyPath, rootC
 	}
 
 	clientKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.NoError(t, err)
 	saveAsKeyFile(t, clientKeyPath, clientKey)
 	certBytes, err = x509.CreateCertificate(rand.Reader, &clientTemplate, &rootTemplate, &clientKey.PublicKey, rootKey)
 	require.NoError(t, err, "Client certificate should be generated")
@@ -510,4 +511,16 @@ func TestBucketSpecIsWalrusBucket(t *testing.T) {
 		})
 	}
 
+}
+
+func TestKeyNotFound(t *testing.T) {
+	bucket := GetTestBucket(t)
+	defer bucket.Close()
+	ds := bucket.GetSingleDataStore()
+	var body []byte
+	_, getErr := ds.Get("nonexistentKey", &body)
+	require.True(t, IsKeyNotFoundError(ds, getErr))
+
+	_, _, getRawErr := ds.GetRaw("nonexistentKey")
+	require.True(t, IsKeyNotFoundError(ds, getRawErr))
 }

@@ -80,7 +80,10 @@ func (h *handler) getFunctionArgs(maxSize *int) (string, map[string]interface{},
 		err = decoder.Decode(&args)
 		_ = input.Close()
 		if err == nil {
-			err = db.CheckRequestSize(decoder.InputOffset(), maxSize)
+			err := db.CheckRequestSize(decoder.InputOffset(), maxSize)
+			if err != nil {
+				return "", nil, err
+			}
 		}
 	} else {
 		// GET: Params come from the URL queries (`?key=value`):

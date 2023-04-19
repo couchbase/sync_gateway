@@ -62,7 +62,7 @@ func TestMigrateMetadata(t *testing.T) {
 
 	// Get the existing bucket doc
 	_, existingBucketDoc, err := collection.GetDocWithXattr(key, DocUnmarshalAll)
-
+	require.NoError(t, err)
 	// Set the expiry value to a stale value (it's about to be stale, since below it will get updated to a later value)
 	existingBucketDoc.Expiry = uint32(syncMetaExpiry.Unix())
 

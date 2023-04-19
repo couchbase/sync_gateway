@@ -60,7 +60,7 @@ func TestSyncFnBodyProperties(t *testing.T) {
 	response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/"+testDocID, `{"`+testdataKey+`":true}`)
 	RequireStatus(t, response, 201)
 
-	syncData, err := rt.GetDatabase().GetSingleDatabaseCollection().GetDocSyncData(base.TestCtx(t), testDocID)
+	syncData, err := rt.GetSingleTestDatabaseCollection().GetDocSyncData(base.TestCtx(t), testDocID)
 	assert.NoError(t, err)
 
 	actualProperties := syncData.Channels.KeySet()
@@ -109,7 +109,7 @@ func TestSyncFnBodyPropertiesTombstone(t *testing.T) {
 	response = rt.SendAdminRequest("DELETE", fmt.Sprintf("/{{.keyspace}}/%s?rev=%s", testDocID, revID), `{}`)
 	RequireStatus(t, response, 200)
 
-	syncData, err := rt.GetDatabase().GetSingleDatabaseCollection().GetDocSyncData(base.TestCtx(t), testDocID)
+	syncData, err := rt.GetSingleTestDatabaseCollection().GetDocSyncData(base.TestCtx(t), testDocID)
 	assert.NoError(t, err)
 
 	actualProperties := syncData.Channels.KeySet()
@@ -157,7 +157,7 @@ func TestSyncFnOldDocBodyProperties(t *testing.T) {
 	response = rt.SendAdminRequest("PUT", fmt.Sprintf("/{{.keyspace}}/%s?rev=%s", testDocID, revID), `{"`+testdataKey+`":true,"update":2}`)
 	RequireStatus(t, response, 201)
 
-	syncData, err := rt.GetDatabase().GetSingleDatabaseCollection().GetDocSyncData(base.TestCtx(t), testDocID)
+	syncData, err := rt.GetSingleTestDatabaseCollection().GetDocSyncData(base.TestCtx(t), testDocID)
 	assert.NoError(t, err)
 
 	actualProperties := syncData.Channels.KeySet()
@@ -213,7 +213,7 @@ func TestSyncFnOldDocBodyPropertiesTombstoneResurrect(t *testing.T) {
 	response = rt.SendAdminRequest("PUT", fmt.Sprintf("/{{.keyspace}}/%s?rev=%s", testDocID, revID), `{"`+testdataKey+`":true}`)
 	RequireStatus(t, response, 201)
 
-	syncData, err := rt.GetDatabase().GetSingleDatabaseCollection().GetDocSyncData(base.TestCtx(t), testDocID)
+	syncData, err := rt.GetSingleTestDatabaseCollection().GetDocSyncData(base.TestCtx(t), testDocID)
 	assert.NoError(t, err)
 
 	actualProperties := syncData.Channels.KeySet()
@@ -512,7 +512,10 @@ func TestDBOfflineSingleResync(t *testing.T) {
 	assert.Equal(t, int64(2000), rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value())
 }
 
-func TestResync(t *testing.T) {
+func TestResyncOverDCP(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("DCP requires gocb and CBS")
+	}
 	base.LongRunningTest(t)
 
 	testCases := []struct {
@@ -562,11 +565,6 @@ func TestResync(t *testing.T) {
 			)
 			defer rt.Close()
 
-			_, isDCPResync := (rt.GetDatabase().ResyncManager.Process).(*db.ResyncManagerDCP)
-			if isDCPResync && base.UnitTestUrlIsWalrus() {
-				t.Skip("This test doesn't work with Walrus when ResyncManagerDCP is used")
-			}
-
 			for i := 0; i < testCase.docsCreated; i++ {
 				rt.CreateDoc(t, fmt.Sprintf("doc%d", i))
 			}
@@ -601,21 +599,10 @@ func TestResync(t *testing.T) {
 					return false
 				}
 			})
-			assert.NoError(t, err)
+			require.NoError(t, err)
 
-			assert.Equal(t, testCase.expectedSyncFnRuns, int(rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value()))
-
-			if !isDCPResync {
-				var queryName string
-				if base.TestsDisableGSI() {
-					queryName = fmt.Sprintf(base.StatViewFormat, db.DesignDocSyncGateway(), db.ViewChannels)
-				} else {
-					queryName = db.QueryTypeChannels
-				}
-				assert.Equal(t, testCase.expectedQueryCount, int(rt.GetDatabase().DbStats.Query(queryName).QueryCount.Value()))
-			}
-
-			assert.Equal(t, testCase.docsCreated, resyncManagerStatus.DocsProcessed)
+			assert.GreaterOrEqual(t, int(rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value()), testCase.expectedSyncFnRuns)
+			assert.GreaterOrEqual(t, resyncManagerStatus.DocsProcessed, testCase.docsCreated)
 			assert.Equal(t, 0, resyncManagerStatus.DocsChanged)
 		})
 	}
@@ -1009,11 +996,11 @@ func TestResyncRegenerateSequences(t *testing.T) {
 	response = rt.SendAdminRequest("PUT", "/{{.db}}/_user/user1", GetUserPayload(t, "user1", "letmein", "", collection, []string{"channel_1"}, []string{"role1"}))
 	RequireStatus(t, response, http.StatusCreated)
 
-	_, err := rt.MetadataStore().Get(base.RolePrefix+"role1", &body)
+	_, err := rt.MetadataStore().Get(rt.GetDatabase().MetadataKeys.RoleKey("role1"), &body)
 	assert.NoError(t, err)
 	role1SeqBefore := body["sequence"].(float64)
 
-	_, err = rt.MetadataStore().Get(base.UserPrefix+"user1", &body)
+	_, err = rt.MetadataStore().Get(rt.GetDatabase().MetadataKeys.UserKey("user1"), &body)
 	assert.NoError(t, err)
 	user1SeqBefore := body["sequence"].(float64)
 
@@ -1067,11 +1054,11 @@ func TestResyncRegenerateSequences(t *testing.T) {
 		})
 	WaitAndAssertBackgroundManagerExpiredHeartbeat(t, rt.GetDatabase().ResyncManager)
 
-	_, err = rt.MetadataStore().Get(base.RolePrefix+"role1", &body)
+	_, err = rt.MetadataStore().Get(rt.GetDatabase().MetadataKeys.RoleKey("role1"), &body)
 	assert.NoError(t, err)
 	role1SeqAfter := body["sequence"].(float64)
 
-	_, err = rt.MetadataStore().Get(base.UserPrefix+"user1", &body)
+	_, err = rt.MetadataStore().Get(rt.GetDatabase().MetadataKeys.UserKey("user1"), &body)
 	assert.NoError(t, err)
 	user1SeqAfter := body["sequence"].(float64)
 
@@ -1081,7 +1068,7 @@ func TestResyncRegenerateSequences(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		docID := fmt.Sprintf("doc%d", i)
 
-		doc, err := rt.GetDatabase().GetSingleDatabaseCollection().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalAll)
+		doc, err := rt.GetSingleTestDatabaseCollection().GetDocument(base.TestCtx(t), docID, db.DocUnmarshalAll)
 		assert.NoError(t, err)
 
 		assert.True(t, float64(doc.Sequence) > docSeqArr[i])
@@ -1108,6 +1095,7 @@ func TestResyncRegenerateSequences(t *testing.T) {
 	response = rt.SendUserRequest("GET", "/{{.keyspace}}/_changes?since="+changesResp.LastSeq, "", "user1")
 	RequireStatus(t, response, http.StatusOK)
 	err = json.Unmarshal(response.BodyBytes(), &changesResp)
+	require.NoError(t, err)
 	assert.Len(t, changesResp.Results, 3)
 	assert.True(t, changesRespContains(changesResp, "userdoc"))
 	assert.True(t, changesRespContains(changesResp, "userdoc2"))

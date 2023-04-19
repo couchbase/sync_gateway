@@ -69,6 +69,7 @@ type DCPCommon struct {
 	m                      sync.Mutex
 	couchbaseStore         CouchbaseBucketStore
 	metaStore              DataStore                      // For metadata persistence/retrieval
+	metaKeys               *MetadataKeys                  // Metadata key generator for filtering and checkpoints
 	maxVbNo                uint16                         // Number of vbuckets being used for this feed
 	persistCheckpoints     bool                           // Whether this DCPReceiver should persist metadata to the bucket
 	seqs                   []uint64                       // To track max seq #'s we received per vbucketId.
@@ -83,8 +84,11 @@ type DCPCommon struct {
 	checkpointPrefix       string                         // DCP checkpoint key prefix
 }
 
-func NewDCPCommon(ctx context.Context, callback sgbucket.FeedEventCallbackFunc, bucket Bucket, metaStore DataStore, maxVbNo uint16, persistCheckpoints bool, dbStats *expvar.Map, feedID, checkpointPrefix string) (*DCPCommon, error) {
-	newBackfillStatus := backfillStatus{}
+func NewDCPCommon(ctx context.Context, callback sgbucket.FeedEventCallbackFunc, bucket Bucket, metaStore DataStore,
+	maxVbNo uint16, persistCheckpoints bool, dbStats *expvar.Map, feedID, checkpointPrefix string, metaKeys *MetadataKeys) (*DCPCommon, error) {
+	newBackfillStatus := backfillStatus{
+		metaKeys: metaKeys,
+	}
 
 	couchbaseStore, ok := AsCouchbaseBucketStore(bucket)
 	if !ok {
@@ -95,6 +99,7 @@ func NewDCPCommon(ctx context.Context, callback sgbucket.FeedEventCallbackFunc, 
 		dbStatsExpvars:         dbStats,
 		couchbaseStore:         couchbaseStore,
 		metaStore:              metaStore,
+		metaKeys:               metaKeys,
 		maxVbNo:                maxVbNo,
 		persistCheckpoints:     persistCheckpoints,
 		seqs:                   make([]uint64, maxVbNo),
@@ -108,8 +113,7 @@ func NewDCPCommon(ctx context.Context, callback sgbucket.FeedEventCallbackFunc, 
 		checkpointPrefix:       checkpointPrefix,
 	}
 
-	dcpContextID := fmt.Sprintf("%s-%s", MD(couchbaseStore.GetName()).Redact(), feedID)
-	c.loggingCtx = LogContextWith(ctx, &LogContext{CorrelationID: dcpContextID})
+	c.loggingCtx = CorrelationIDLogCtx(ctx, feedID)
 
 	return c, nil
 }
@@ -379,15 +383,16 @@ func (c *DCPCommon) seedSeqnos(uuids map[uint16]uint64, seqs map[uint16]uint64) 
 
 // BackfillStatus manages tracking of DCP backfill progress, to provide diagnostics and mid-snapshot restart capability
 type backfillStatus struct {
-	active            bool        // Whether this DCP feed is in backfill
-	vbActive          []bool      // Whether a vbucket is in backfill
-	receivedSequences uint64      // Number of backfill sequences received
-	expectedSequences uint64      // Expected number of sequences in backfill
-	endSeqs           []uint64    // Backfill complete sequences, indexed by vbno
-	snapStart         []uint64    // Start sequence of current backfill snapshot
-	snapEnd           []uint64    // End sequence of current backfill snapshot
-	lastPersistTime   time.Time   // The last time backfill stats were emitted (log, expvar)
-	statsMap          *expvar.Map // Stats map for backfill
+	active            bool          // Whether this DCP feed is in backfill
+	vbActive          []bool        // Whether a vbucket is in backfill
+	receivedSequences uint64        // Number of backfill sequences received
+	expectedSequences uint64        // Expected number of sequences in backfill
+	endSeqs           []uint64      // Backfill complete sequences, indexed by vbno
+	snapStart         []uint64      // Start sequence of current backfill snapshot
+	snapEnd           []uint64      // End sequence of current backfill snapshot
+	lastPersistTime   time.Time     // The last time backfill stats were emitted (log, expvar)
+	statsMap          *expvar.Map   // Stats map for backfill
+	metaKeys          *MetadataKeys // MetadataKeys for backfill
 }
 
 func (b *backfillStatus) init(start []uint64, end map[uint16]uint64, maxVbNo uint16, statsMap *expvar.Map) {
@@ -498,12 +503,12 @@ func (b *backfillStatus) persistBackfillSequences(datastore DataStore, currentSe
 		SnapStart: b.snapStart,
 		SnapEnd:   b.snapEnd,
 	}
-	return datastore.Set(DCPBackfillSeqKey, 0, nil, backfillSeqs)
+	return datastore.Set(b.metaKeys.DCPBackfillKey(), 0, nil, backfillSeqs)
 }
 
 func (b *backfillStatus) loadBackfillSequences(datastore DataStore) (*BackfillSequences, error) {
 	var backfillSeqs BackfillSequences
-	_, err := datastore.Get(DCPBackfillSeqKey, &backfillSeqs)
+	_, err := datastore.Get(b.metaKeys.DCPBackfillKey(), &backfillSeqs)
 	if err != nil {
 		return nil, err
 	}
@@ -512,7 +517,7 @@ func (b *backfillStatus) loadBackfillSequences(datastore DataStore) (*BackfillSe
 }
 
 func (b *backfillStatus) purgeBackfillSequences(datastore DataStore) error {
-	return datastore.Delete(DCPBackfillSeqKey)
+	return datastore.Delete(b.metaKeys.DCPBackfillKey())
 }
 
 // DCP-related utilities
@@ -521,7 +526,7 @@ func (b *backfillStatus) purgeBackfillSequences(datastore DataStore) error {
 // unused sequence documents.  Any other documents with the leading '_sync' prefix can be ignored.
 // dcpKeyFilter returns true for documents that should be processed, false for those that do not need processing.
 // c is used to get the SG Cfg prefix
-func dcpKeyFilter(key []byte) bool {
+func dcpKeyFilter(key []byte, metaKeys *MetadataKeys) bool {
 
 	// If it's a _txn doc, don't process
 	if bytes.HasPrefix(key, []byte(TxnPrefix)) {
@@ -534,11 +539,11 @@ func dcpKeyFilter(key []byte) bool {
 	}
 
 	// User, role, unused sequence markers and cbgt cfg (regardless of group ID) docs should be processed
-	if bytes.HasPrefix(key, []byte(UnusedSeqPrefix)) ||
-		bytes.HasPrefix(key, []byte(UnusedSeqRangePrefix)) ||
-		bytes.HasPrefix(key, []byte(UserPrefix)) ||
-		bytes.HasPrefix(key, []byte(RolePrefix)) ||
-		bytes.HasPrefix(key, []byte(SGCfgPrefixWithoutGroupID)) {
+	if bytes.HasPrefix(key, []byte(metaKeys.unusedSeqPrefix)) ||
+		bytes.HasPrefix(key, []byte(metaKeys.unusedSeqRangePrefix)) ||
+		bytes.HasPrefix(key, []byte(UserPrefixRoot)) ||
+		bytes.HasPrefix(key, []byte(RolePrefixRoot)) ||
+		bytes.HasPrefix(key, []byte(metaKeys.sgCfgPrefix)) {
 		return true
 	}
 

@@ -1,0 +1,40 @@
+# Copyright 2022-Present Couchbase, Inc.
+#
+# Use of this software is governed by the Business Source License included
+# in the file licenses/BSL-Couchbase.txt.  As of the Change Date specified
+# in that file, in accordance with the Business Source License, use of this
+# software will be governed by the Apache License, Version 2.0, included in
+# the file licenses/APL2.txt.
+parameters:
+  - name: profilename
+    in: path
+    description: The handler to use for profiling.
+    required: true
+    schema:
+      type: string
+      enum:
+        - heap
+        - block
+        - threadcreate
+        - mutex
+        - goroutine
+post:
+  summary: Create point-in-time profile
+  description: |-
+    This endpoint allows you to create a pprof snapshot of the given type.
+
+    Required Sync Gateway RBAC roles:
+
+    * Sync Gateway Dev Ops
+  requestBody:
+    $ref: ../../components/requestBodies.yaml#/Profile
+  responses:
+    '200':
+      description: Successfully created profile
+    '400':
+      $ref: ../../components/responses.yaml#/request-problem
+    '404':
+      $ref: ../../components/responses.yaml#/Not-found
+  tags:
+    - Profiling
+  operationId: post__profile-profilename

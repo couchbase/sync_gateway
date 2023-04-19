@@ -27,7 +27,7 @@ jobs:
     steps:
       - uses: actions/setup-go@v3
         with:
-          go-version: 1.19.5
+          go-version: 1.20.3
       - uses: actions/checkout@v3
       - name: go-build
         run: go build "./..."
@@ -38,7 +38,7 @@ jobs:
     steps:
       - uses: actions/setup-go@v3
         with:
-          go-version: 1.19.5
+          go-version: 1.20.3
       - run: go install github.com/google/addlicense@latest
       - uses: actions/checkout@v3
       - run: addlicense -check -f licenses/addlicense.tmpl -ignore 'js/underscore*.js' .
@@ -49,26 +49,33 @@ jobs:
     steps:
       - uses: actions/setup-go@v3
         with:
-          go-version: 1.19.5
+          go-version: 1.20.3
       - uses: actions/checkout@v3
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v3
         with:
-          version: v1.49.0
+          version: v1.52.0
           args: --config=.golangci-strict.yml --timeout=3m
   test:
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, windows-latest, ubuntu-latest]
+        include:
+          - os: macos-latest
+            name: macos
+          - os: windows-latest
+            name: windows
+          - os: ubuntu-latest
+            name: ubuntu
     env:
       GOPRIVATE: github.com/couchbaselabs
       MallocNanoZone: 0
+    name: test (${{ matrix.name }})
     steps:
       - uses: actions/setup-go@v3
         with:
-          go-version: 1.19.5
+          go-version: 1.20.3
       - uses: actions/checkout@v3
       - name: Build
         run: go build -v "./..."
@@ -88,7 +95,7 @@ jobs:
     steps:
       - uses: actions/setup-go@v3
         with:
-          go-version: 1.19.5
+          go-version: 1.20.3
       - uses: actions/checkout@v3
       - name: Run Tests
         run: go test -race -timeout=30m -count=1 -json -v "./..." | tee test.json | jq -s -jr 'sort_by(.Package,.Time) | .[].Output | select (. != null )'
@@ -98,3 +105,22 @@ jobs:
         uses: guyarb/golang-test-annotations@v0.6.0
         with:
           test-results: test.json
+  test-sgcollect:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest, ubuntu-latest]
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up python
+        uses: actions/setup-python@v4
+        with:
+          python-version: 3.9
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest pytest-github-actions-annotate-failures
+      - name: Run test
+        run: |
+          pytest

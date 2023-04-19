@@ -210,7 +210,7 @@ func TestXattrSGTombstone(t *testing.T) {
 	log.Printf("delete response: %s", response.Body.Bytes())
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.Equal(t, true, body["ok"])
-	revId = body["rev"].(string)
+	require.NotEqual(t, "", body["rev"].(string))
 
 	// 3. Attempt to retrieve the doc through the SDK
 	deletedValue := make(map[string]interface{})
@@ -439,7 +439,7 @@ func TestXattrDoubleDelete(t *testing.T) {
 	log.Printf("delete response: %s", response.Body.Bytes())
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.Equal(t, true, body["ok"])
-	revId = body["rev"].(string)
+	require.NotEqual(t, "", body["rev"].(string))
 
 }
 
@@ -505,7 +505,7 @@ func TestViewQueryTombstoneRetrieval(t *testing.T) {
 	log.Printf("delete response: %s", response.Body.Bytes())
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	assert.Equal(t, true, body["ok"])
-	revId = body["rev"].(string)
+	require.NotEqual(t, "", body["rev"].(string))
 
 	log.Printf("TestXattrDeleteDCPMutation done")
 
@@ -1848,7 +1848,7 @@ func TestImportRevisionCopy(t *testing.T) {
 
 	// 5. Flush the rev cache (simulates attempted retrieval by a different SG node, since testing framework isn't great
 	//    at simulating multiple SG instances)
-	rt.GetDatabase().GetSingleDatabaseCollection().FlushRevisionCacheForTest()
+	rt.GetSingleTestDatabaseCollection().FlushRevisionCacheForTest()
 
 	// 6. Attempt to retrieve previous revision body
 	response = rt.SendAdminRequest("GET", fmt.Sprintf("/{{.keyspace}}/%s?rev=%s", key, rev1id), "")
@@ -1896,7 +1896,7 @@ func TestImportRevisionCopyUnavailable(t *testing.T) {
 
 	// 3. Flush the rev cache (simulates attempted retrieval by a different SG node, since testing framework isn't great
 	//    at simulating multiple SG instances)
-	rt.GetDatabase().GetSingleDatabaseCollection().FlushRevisionCacheForTest()
+	rt.GetSingleTestDatabaseCollection().FlushRevisionCacheForTest()
 
 	// 4. Update via SDK
 	updatedBody := make(map[string]interface{})
@@ -1970,7 +1970,7 @@ func TestImportRevisionCopyDisabled(t *testing.T) {
 
 	// 5. Flush the rev cache (simulates attempted retrieval by a different SG node, since testing framework isn't great
 	//    at simulating multiple SG instances)
-	rt.GetDatabase().GetSingleDatabaseCollection().FlushRevisionCacheForTest()
+	rt.GetSingleTestDatabaseCollection().FlushRevisionCacheForTest()
 
 	// 6. Attempt to retrieve previous revision body.  Should fail, as backup wasn't persisted
 	response = rt.SendAdminRequest("GET", fmt.Sprintf("/{{.keyspace}}/%s?rev=%s", key, rev1id), "")
@@ -2071,6 +2071,7 @@ func TestUnexpectedBodyOnTombstone(t *testing.T) {
 	// Delete the document via the SDK
 	getBody := make(map[string]interface{})
 	cas, err := dataStore.Get(mobileKey, &getBody)
+	require.NoError(t, err)
 
 	// Attempt to get the document via Sync Gateway.  Will trigger on-demand import, tombstone creation
 	response = rt.SendAdminRequest("GET", "/{{.keyspace}}/"+mobileKey, "")

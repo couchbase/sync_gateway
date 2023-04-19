@@ -45,7 +45,6 @@ func NewBlipSyncContext(ctx context.Context, bc *blip.Context, db *Database, con
 		inFlightChangesThrottle: make(chan struct{}, maxInFlightChangesBatches),
 		collections:             &blipCollections{},
 	}
-	bsc.changesCtx, bsc.changesCtxCancel = context.WithCancel(context.Background()) // TODO: re-eval, using ctx here breaks TestGroupIDReplications
 	if bsc.replicationStats == nil {
 		bsc.replicationStats = NewBlipSyncStats()
 	}
@@ -82,33 +81,23 @@ func NewBlipSyncContext(ctx context.Context, bc *blip.Context, db *Database, con
 // BlipSyncContext represents one BLIP connection (socket) opened by a client.
 // This connection remains open until the client closes it, and can receive any number of requests.
 type BlipSyncContext struct {
-	blipContext                      *blip.Context
-	blipContextDb                    *Database       // 'master' database instance for the replication, used as source when creating handler-specific databases
-	loggingCtx                       context.Context // logging context for connection
-	dbUserLock                       sync.RWMutex    // Must be held when refreshing the db user
-	allowedAttachments               map[string]AllowedAttachment
-	allowedAttachmentsLock           sync.Mutex
-	handlerSerialNumber              uint64                                         // Each handler within a context gets a unique serial number for logging
-	terminatorOnce                   sync.Once                                      // Used to ensure the terminator channel below is only ever closed once.
-	terminator                       chan bool                                      // Closed during BlipSyncContext.close(). Ensures termination of async goroutines.
-	useDeltas                        bool                                           // Whether deltas can be used for this connection - This should be set via setUseDeltas()
-	sgCanUseDeltas                   bool                                           // Whether deltas can be used by Sync Gateway for this connection
-	userChangeWaiter                 *ChangeWaiter                                  // Tracks whether the users/roles associated with the replication have changed
-	userName                         string                                         // Avoid contention on db.user during userChangeWaiter user lookup
-	sgr2PullAddExpectedSeqsCallback  func(expectedSeqs map[IDAndRev]SequenceID)     // sgr2PullAddExpectedSeqsCallback is called after successfully handling an incoming changes message
-	sgr2PullProcessedSeqCallback     func(remoteSeq *SequenceID, idAndRev IDAndRev) // sgr2PullProcessedSeqCallback is called after successfully handling an incoming rev message
-	sgr2PullAlreadyKnownSeqsCallback func(alreadyKnownSeqs ...SequenceID)           // sgr2PullAlreadyKnownSeqsCallback is called to mark the sequences as being immediately processed
-	sgr2PushAddExpectedSeqsCallback  func(expectedSeqs ...SequenceID)               // sgr2PushAddExpectedSeqsCallback is called after sync gateway has sent a revision, but is still awaiting an acknowledgement
-	sgr2PushProcessedSeqCallback     func(remoteSeq SequenceID)                     // sgr2PushProcessedSeqCallback is called after receiving acknowledgement of a sent revision
-	sgr2PushAlreadyKnownSeqsCallback func(alreadyKnownSeqs ...SequenceID)           // sgr2PushAlreadyKnownSeqsCallback is called to mark the sequence as being immediately processed
-	emptyChangesMessageCallback      func()                                         // emptyChangesMessageCallback is called when an empty changes message is received
-	replicationStats                 *BlipSyncStats                                 // Replication stats
-	purgeOnRemoval                   bool                                           // Purges the document when we pull a _removed:true revision.
-	conflictResolver                 *ConflictResolver                              // Conflict resolver for active replications
-	changesCtxLock                   sync.Mutex
-	changesCtx                       context.Context    // Used for the unsub changes Blip message to check if the subChanges feed should stop
-	changesCtxCancel                 context.CancelFunc // Cancel function for changesCtx to cancel subChanges being sent
-	changesPendingResponseCount      int64              // Number of changes messages pending changesResponse
+	blipContext                 *blip.Context
+	blipContextDb               *Database       // 'master' database instance for the replication, used as source when creating handler-specific databases
+	loggingCtx                  context.Context // logging context for connection
+	dbUserLock                  sync.RWMutex    // Must be held when refreshing the db user
+	allowedAttachments          map[string]AllowedAttachment
+	allowedAttachmentsLock      sync.Mutex
+	handlerSerialNumber         uint64            // Each handler within a context gets a unique serial number for logging
+	terminatorOnce              sync.Once         // Used to ensure the terminator channel below is only ever closed once.
+	terminator                  chan bool         // Closed during BlipSyncContext.close(). Ensures termination of async goroutines.
+	useDeltas                   bool              // Whether deltas can be used for this connection - This should be set via setUseDeltas()
+	sgCanUseDeltas              bool              // Whether deltas can be used by Sync Gateway for this connection
+	userChangeWaiter            *ChangeWaiter     // Tracks whether the users/roles associated with the replication have changed
+	userName                    string            // Avoid contention on db.user during userChangeWaiter user lookup
+	replicationStats            *BlipSyncStats    // Replication stats
+	purgeOnRemoval              bool              // Purges the document when we pull a _removed:true revision.
+	conflictResolver            *ConflictResolver // Conflict resolver for active replications
+	changesPendingResponseCount int64             // Number of changes messages pending changesResponse
 	// TODO: For review, whether sendRevAllConflicts needs to be per sendChanges invocation
 	sendRevNoConflicts bool                      // Whether to set noconflicts=true when sending revisions
 	clientType         BLIPSyncContextClientType // Can perform client-specific replication behaviour based on this field
@@ -214,11 +203,17 @@ func (bsc *BlipSyncContext) register(profile string, handlerFn func(*blipHandler
 
 func (bsc *BlipSyncContext) Close() {
 	bsc.terminatorOnce.Do(func() {
-		// Lock so that we don't close the changesCtx at the same time as handleSubChanges is creating it
-		bsc.changesCtxLock.Lock()
-		defer bsc.changesCtxLock.Unlock()
+		for _, collection := range bsc.collections.getAll() {
+			// if initial GetCollections returned an invalid collections, this will be nil
+			if collection == nil {
+				continue
+			}
+			// Lock so that we don't close the changesCtx at the same time as handleSubChanges is creating it
+			collection.changesCtxLock.Lock()
+			defer collection.changesCtxLock.Unlock()
 
-		bsc.changesCtxCancel()
+			collection.changesCtxCancel()
+		}
 		close(bsc.terminator)
 	})
 }
@@ -254,7 +249,7 @@ func (bsc *BlipSyncContext) _copyContextDatabase() *Database {
 }
 
 // Handles the response to a pushed "changes" message, i.e. the list of revisions the client wants
-func (bsc *BlipSyncContext) handleChangesResponse(sender *blip.Sender, response *blip.Message, changeArray [][]interface{}, requestSent time.Time, handleChangesResponseDbCollection *DatabaseCollectionWithUser) error {
+func (bsc *BlipSyncContext) handleChangesResponse(sender *blip.Sender, response *blip.Message, changeArray [][]interface{}, requestSent time.Time, handleChangesResponseDbCollection *DatabaseCollectionWithUser, collectionIdx *int) error {
 	defer func() {
 		if panicked := recover(); panicked != nil {
 			bsc.replicationStats.NumHandlersPanicked.Add(1)
@@ -308,6 +303,11 @@ func (bsc *BlipSyncContext) handleChangesResponse(sender *blip.Sender, response 
 	sentSeqs := make([]SequenceID, 0)
 	alreadyKnownSeqs := make([]SequenceID, 0)
 
+	collectionCtx, err := bsc.collections.get(collectionIdx)
+	if err != nil {
+		return err
+	}
+
 	for i, knownRevsArrayInterface := range answer {
 		seq := changeArray[i][0].(SequenceID)
 		docID := changeArray[i][1].(string)
@@ -339,9 +339,9 @@ func (bsc *BlipSyncContext) handleChangesResponse(sender *blip.Sender, response 
 
 			var err error
 			if deltaSrcRevID != "" {
-				err = bsc.sendRevAsDelta(sender, docID, revID, deltaSrcRevID, seq, knownRevs, maxHistory, handleChangesResponseDbCollection)
+				err = bsc.sendRevAsDelta(sender, docID, revID, deltaSrcRevID, seq, knownRevs, maxHistory, handleChangesResponseDbCollection, collectionIdx)
 			} else {
-				err = bsc.sendRevision(sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseDbCollection)
+				err = bsc.sendRevision(sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseDbCollection, collectionIdx)
 			}
 			if err != nil {
 				return err
@@ -350,24 +350,24 @@ func (bsc *BlipSyncContext) handleChangesResponse(sender *blip.Sender, response 
 			revSendTimeLatency += time.Since(changesResponseReceived).Nanoseconds()
 			revSendCount++
 
-			if bsc.sgr2PushAddExpectedSeqsCallback != nil {
+			if collectionCtx.sgr2PushAddExpectedSeqsCallback != nil {
 				sentSeqs = append(sentSeqs, seq)
 			}
 		} else {
 			base.DebugfCtx(bsc.loggingCtx, base.KeySync, "Peer didn't want revision %s / %s (seq:%v)", base.UD(docID), revID, seq)
-			if bsc.sgr2PushAlreadyKnownSeqsCallback != nil {
+			if collectionCtx.sgr2PushAlreadyKnownSeqsCallback != nil {
 				alreadyKnownSeqs = append(alreadyKnownSeqs, seq)
 			}
 		}
 	}
 
-	if bsc.sgr2PushAlreadyKnownSeqsCallback != nil {
-		bsc.sgr2PushAlreadyKnownSeqsCallback(alreadyKnownSeqs...)
+	if collectionCtx.sgr2PushAlreadyKnownSeqsCallback != nil {
+		collectionCtx.sgr2PushAlreadyKnownSeqsCallback(alreadyKnownSeqs...)
 	}
 
 	if revSendCount > 0 {
-		if bsc.sgr2PushAddExpectedSeqsCallback != nil {
-			bsc.sgr2PushAddExpectedSeqsCallback(sentSeqs...)
+		if collectionCtx.sgr2PushAddExpectedSeqsCallback != nil {
+			collectionCtx.sgr2PushAddExpectedSeqsCallback(sentSeqs...)
 		}
 
 		bsc.replicationStats.HandleChangesSendRevCount.Add(revSendCount)
@@ -402,8 +402,12 @@ func (bsc *BlipSyncContext) sendRevisionWithProperties(sender *blip.Sender, docI
 
 	base.TracefCtx(bsc.loggingCtx, base.KeySync, "Sending revision %s/%s, body:%s, properties: %v, attDigests: %v", base.UD(docID), revID, base.UD(string(bodyBytes)), base.UD(properties), attMeta)
 
+	collectionCtx, err := bsc.collections.get(collectionIdx)
+	if err != nil {
+		return err
+	}
 	// asynchronously wait for a response if we have attachment digests to verify, if we sent a delta and want to error check, or if we have a registered callback.
-	awaitResponse := len(attMeta) > 0 || properties[RevMessageDeltaSrc] != "" || bsc.sgr2PushProcessedSeqCallback != nil
+	awaitResponse := len(attMeta) > 0 || properties[RevMessageDeltaSrc] != "" || collectionCtx.sgr2PushProcessedSeqCallback != nil
 
 	activeSubprotocol := bsc.blipContext.ActiveSubprotocol()
 	if awaitResponse {
@@ -472,8 +476,8 @@ func (bsc *BlipSyncContext) sendRevisionWithProperties(sender *blip.Sender, docI
 
 			bsc.removeAllowedAttachments(docID, attMeta, activeSubprotocol)
 
-			if bsc.sgr2PushProcessedSeqCallback != nil {
-				bsc.sgr2PushProcessedSeqCallback(seq)
+			if collectionCtx.sgr2PushProcessedSeqCallback != nil {
+				collectionCtx.sgr2PushProcessedSeqCallback(seq)
 			}
 		}(activeSubprotocol)
 	}
@@ -568,20 +572,20 @@ func (bsc *BlipSyncContext) sendNoRev(sender *blip.Sender, docID, revID string, 
 		return ErrClosedBLIPSender
 	}
 
-	if bsc.sgr2PushProcessedSeqCallback != nil {
-		bsc.sgr2PushProcessedSeqCallback(seq)
+	collectionCtx, err := bsc.collections.get(collectionIdx)
+	if err != nil {
+		return err
+	}
+
+	if collectionCtx.sgr2PushProcessedSeqCallback != nil {
+		collectionCtx.sgr2PushProcessedSeqCallback(seq)
 	}
 
 	return nil
 }
 
 // Pushes a revision body to the client
-func (bsc *BlipSyncContext) sendRevision(sender *blip.Sender, docID, revID string, seq SequenceID, knownRevs map[string]bool, maxHistory int, handleChangesResponseCollection *DatabaseCollectionWithUser) error {
-	var collectionIdx *int
-	if coll, ok := bsc.collections.getIndexForDB(handleChangesResponseCollection); ok {
-		collectionIdx = &coll
-	}
-
+func (bsc *BlipSyncContext) sendRevision(sender *blip.Sender, docID, revID string, seq SequenceID, knownRevs map[string]bool, maxHistory int, handleChangesResponseCollection *DatabaseCollectionWithUser, collectionIdx *int) error {
 	rev, err := handleChangesResponseCollection.GetRev(bsc.loggingCtx, docID, revID, true, nil)
 	if base.IsDocNotFoundError(err) {
 		return bsc.sendNoRev(sender, docID, revID, collectionIdx, seq, err)

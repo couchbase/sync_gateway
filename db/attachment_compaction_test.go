@@ -90,7 +90,7 @@ func TestAttachmentSweep(t *testing.T) {
 	testDb, ctx := setupTestDB(t)
 	defer testDb.Close(ctx)
 	dataStore := testDb.Bucket.DefaultDataStore()
-	collectionID := testDb.GetSingleDatabaseCollection().GetCollectionID()
+	collectionID := GetSingleDatabaseCollection(t, testDb.DatabaseContext).GetCollectionID()
 
 	makeMarkedDoc := func(docid string, compactID string) {
 		err := dataStore.SetRaw(docid, 0, nil, []byte("{}"))
@@ -135,7 +135,7 @@ func TestAttachmentCleanup(t *testing.T) {
 	}
 	testDb, ctx := setupTestDB(t)
 	defer testDb.Close(ctx)
-	collection := testDb.GetSingleDatabaseCollection()
+	collection := GetSingleDatabaseCollection(t, testDb.DatabaseContext)
 	dataStore := collection.dataStore
 	collectionID := collection.GetCollectionID()
 
@@ -616,7 +616,7 @@ func TestAttachmentDifferentVBUUIDsBetweenPhases(t *testing.T) {
 	testDB, ctx := setupTestDB(t)
 	defer testDB.Close(ctx)
 	dataStore := testDB.Bucket.DefaultDataStore()
-	collectionID := testDB.GetSingleDatabaseCollection().GetCollectionID()
+	collectionID := GetSingleDatabaseCollection(t, testDB.DatabaseContext).GetCollectionID()
 
 	// Run mark phase as usual
 	terminator := base.NewSafeTerminator()

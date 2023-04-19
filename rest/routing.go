@@ -257,6 +257,9 @@ func CreateAdminRouter(sc *ServerContext) *mux.Router {
 	r.Handle("/_config",
 		makeHandler(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handlePutConfig)).Methods("PUT")
 
+	r.Handle("/_cluster_info",
+		makeHandler(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handleGetClusterInfo)).Methods("GET")
+
 	r.Handle("/_status",
 		makeHandler(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handleGetStatus)).Methods("GET")
 
@@ -323,7 +326,7 @@ func CreateAdminRouter(sc *ServerContext) *mux.Router {
 	// so the handlers are moved to the admin port.
 	r.Handle("/{newdb:"+dbRegex+"}/",
 		makeHandlerSpecificAuthScope(sc, adminPrivs, []Permission{PermCreateDb}, nil, (*handler).handleCreateDB, getAuthScopeHandleCreateDB)).Methods("PUT")
-	r.Handle("/{olddb:"+dbRegex+"}/",
+	r.Handle("/{db:"+dbRegex+"}/",
 		makeOfflineHandler(sc, adminPrivs, []Permission{PermDeleteDb}, nil, (*handler).handleDeleteDB)).Methods("DELETE")
 
 	r.Handle("/_all_dbs",
@@ -357,22 +360,18 @@ func wrapRouter(sc *ServerContext, privs handlerPrivs, router *mux.Router) http.
 	return http.HandlerFunc(func(response http.ResponseWriter, rq *http.Request) {
 		FixQuotedSlashes(rq)
 		var match mux.RouteMatch
-
-		// Inject CORS if enabled and requested and not admin port
-		originHeader := rq.Header["Origin"]
-		if privs != adminPrivs && sc.Config.API.CORS != nil && len(originHeader) > 0 {
-			origin := matchedOrigin(sc.Config.API.CORS.Origin, originHeader)
-			response.Header().Add("Access-Control-Allow-Origin", origin)
-			response.Header().Add("Access-Control-Allow-Credentials", "true")
-			response.Header().Add("Access-Control-Allow-Headers", strings.Join(sc.Config.API.CORS.Headers, ", "))
-		}
-
 		if router.Match(rq, &match) {
 			router.ServeHTTP(response, rq)
 		} else {
 			// Log the request
 			h := newHandler(sc, privs, response, rq, false)
 			h.logRequestLine()
+
+			// Inject CORS if enabled and requested and not admin port
+			cors := sc.Config.API.CORS
+			if privs != adminPrivs && cors != nil {
+				cors.AddResponseHeaders(rq, response)
+			}
 
 			// What methods would have matched?
 			var options []string
@@ -384,9 +383,10 @@ func wrapRouter(sc *ServerContext, privs handlerPrivs, router *mux.Router) http.
 			if len(options) == 0 {
 				h.writeStatus(http.StatusNotFound, "unknown URL")
 			} else {
+				// Add CORS headers for OPTIONS request, since these are never registered by muxer.
 				response.Header().Add("Allow", strings.Join(options, ", "))
-				if privs != adminPrivs && sc.Config.API.CORS != nil && len(originHeader) > 0 {
-					response.Header().Add("Access-Control-Max-Age", strconv.Itoa(sc.Config.API.CORS.MaxAge))
+				if privs != adminPrivs && cors != nil && len(rq.Header["Origin"]) > 0 {
+					response.Header().Add("Access-Control-Max-Age", strconv.Itoa(cors.MaxAge))
 					response.Header().Add("Access-Control-Allow-Methods", strings.Join(options, ", "))
 				}
 				if rq.Method != "OPTIONS" {
@@ -398,22 +398,6 @@ func wrapRouter(sc *ServerContext, privs handlerPrivs, router *mux.Router) http.
 			h.logDuration(true)
 		}
 	})
-}
-
-func matchedOrigin(allowOrigins []string, rqOrigins []string) string {
-	for _, rv := range rqOrigins {
-		for _, av := range allowOrigins {
-			if rv == av {
-				return av
-			}
-		}
-	}
-	for _, av := range allowOrigins {
-		if av == "*" {
-			return "*"
-		}
-	}
-	return ""
 }
 
 func FixQuotedSlashes(rq *http.Request) {

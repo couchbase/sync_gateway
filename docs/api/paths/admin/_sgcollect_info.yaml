@@ -5,13 +5,13 @@
 # in that file, in accordance with the Business Source License, use of this
 # software will be governed by the Apache License, Version 2.0, included in
 # the file licenses/APL2.txt.
-
 get:
   summary: Get the status of the Sync Gateway Collect Info
   description: |-
     This will return the status of whether Sync Gateway Collect Info (sgcollect_info) is currently running or not.
 
     Required Sync Gateway RBAC roles:
+
     * Sync Gateway Dev Ops
   responses:
     '200':
@@ -30,14 +30,15 @@ get:
             required:
               - status
   tags:
-    - Admin only endpoints
     - Server
+  operationId: get__sgcollect_info
 post:
   summary: Start Sync Gateway Collect Info
   description: |-
     This endpoint is used to start a Sync Gateway Collect Info (sgcollect_info) job so that Sync Gateway diagnostic data can be outputted to a file.
 
     Required Sync Gateway RBAC roles:
+
     * Sync Gateway Dev Ops
   requestBody:
     description: sgcollect_info options
@@ -105,14 +106,15 @@ post:
           schema:
             $ref: ../../components/schemas.yaml#/HTTP-Error
   tags:
-    - Admin only endpoints
     - Server
+  operationId: post__sgcollect_info
 delete:
   summary: Cancel the Sync Gateway Collect Info job
   description: |-
     This endpoint is used to cancel a current Sync Gateway Collect Info (sgcollect_info) job that is running.
 
     Required Sync Gateway RBAC roles:
+
     * Sync Gateway Dev Ops
   responses:
     '200':
@@ -129,5 +131,5 @@ delete:
     '400':
       $ref: ../../components/responses.yaml#/request-problem
   tags:
-    - Admin only endpoints
     - Server
+  operationId: delete__sgcollect_info

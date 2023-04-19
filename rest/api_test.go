@@ -99,6 +99,12 @@ func TestDisablePublicBasicAuth(t *testing.T) {
 
 	response := rt.SendRequest(http.MethodGet, "/{{.db}}/", "")
 	RequireStatus(t, response, http.StatusUnauthorized)
+	require.Contains(t, response.Body.String(), ErrLoginRequired.Message)
+	assert.NotContains(t, response.Header(), "WWW-Authenticate", "expected to not receive a WWW-Auth header when password auth is disabled")
+
+	response = rt.SendRequest(http.MethodGet, "/notadb/", "")
+	RequireStatus(t, response, http.StatusUnauthorized)
+	require.Contains(t, response.Body.String(), ErrLoginRequired.Message)
 	assert.NotContains(t, response.Header(), "WWW-Authenticate", "expected to not receive a WWW-Auth header when password auth is disabled")
 
 	// Double-check that even if we provide valid credentials we still won't be let in
@@ -109,11 +115,22 @@ func TestDisablePublicBasicAuth(t *testing.T) {
 
 	response = rt.SendUserRequest(http.MethodGet, "/{{.db}}/", "", "user1")
 	RequireStatus(t, response, http.StatusUnauthorized)
+	require.Contains(t, response.Body.String(), ErrInvalidLogin.Message)
+	assert.NotContains(t, response.Header(), "WWW-Authenticate", "expected to not receive a WWW-Auth header when password auth is disabled")
+
+	response = rt.SendUserRequest(http.MethodGet, "/notadb/", "", "user1")
+	RequireStatus(t, response, http.StatusUnauthorized)
+	require.Contains(t, response.Body.String(), ErrInvalidLogin.Message)
 	assert.NotContains(t, response.Header(), "WWW-Authenticate", "expected to not receive a WWW-Auth header when password auth is disabled")
 
 	// Also check that we can't create a session through POST /db/_session
 	response = rt.SendRequest(http.MethodPost, "/{{.db}}/_session", `{"name":"user1","password":"letmein"}`)
 	RequireStatus(t, response, http.StatusUnauthorized)
+	require.Contains(t, response.Body.String(), ErrLoginRequired.Message)
+
+	response = rt.SendRequest(http.MethodPost, "/notadb/_session", `{"name":"user1","password":"letmein"}`)
+	RequireStatus(t, response, http.StatusUnauthorized)
+	require.Contains(t, response.Body.String(), ErrLoginRequired.Message)
 
 	// As a sanity check, ensure it does work when the setting is disabled
 	rt.ServerContext().Database(ctx, "db").Options.DisablePasswordAuthentication = false
@@ -149,6 +166,7 @@ func TestDocumentUpdateWithNullBody(t *testing.T) {
 
 	// Create a test user
 	user, err = a.NewUser("user1", "letmein", channels.BaseSetOf(t, "foo"))
+	require.NoError(t, err)
 	assert.NoError(t, a.Save(user))
 
 	// Create document
@@ -207,45 +225,65 @@ func TestFunkyDocIDs(t *testing.T) {
 func TestCORSOrigin(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
+	tests := []struct {
+		origin       string
+		headerOutput string
+	}{
+		{
+			origin:       "http://example.com",
+			headerOutput: "http://example.com",
+		},
+		{
+			origin:       "http://staging.example.com",
+			headerOutput: "http://staging.example.com",
+		},
 
-	reqHeaders := map[string]string{
-		"Origin": "http://example.com",
+		{
+			origin:       "http://hack0r.com",
+			headerOutput: "*",
+		},
 	}
-	response := rt.SendRequestWithHeaders("GET", "/{{.keyspace}}/", "", reqHeaders)
-	assert.Equal(t, "http://example.com", response.Header().Get("Access-Control-Allow-Origin"))
 
-	// now test a non-listed origin
-	// b/c * is in config we get *
-	reqHeaders = map[string]string{
-		"Origin": "http://hack0r.com",
-	}
-	response = rt.SendRequestWithHeaders("GET", "/{{.keyspace}}/", "", reqHeaders)
-	assert.Equal(t, "*", response.Header().Get("Access-Control-Allow-Origin"))
+	for _, tc := range tests {
+		t.Run(tc.origin, func(t *testing.T) {
 
-	// now test another origin in config
-	reqHeaders = map[string]string{
-		"Origin": "http://staging.example.com",
-	}
-	response = rt.SendRequestWithHeaders("GET", "/{{.keyspace}}/", "", reqHeaders)
-	assert.Equal(t, "http://staging.example.com", response.Header().Get("Access-Control-Allow-Origin"))
+			invalidDatabaseName := "invalid database name"
+			reqHeaders := map[string]string{
+				"Origin": tc.origin,
+			}
+			response := rt.SendRequestWithHeaders("GET", "/{{.keyspace}}/", "", reqHeaders)
+			assert.Equal(t, tc.headerOutput, response.Header().Get("Access-Control-Allow-Origin"))
+			RequireStatus(t, response, http.StatusBadRequest)
+			require.Contains(t, response.Body.String(), invalidDatabaseName)
 
-	// test no header on _admin apis
-	reqHeaders = map[string]string{
-		"Origin": "http://example.com",
-	}
-	response = rt.SendAdminRequestWithHeaders("GET", "/{{.keyspace}}/_all_docs", "", reqHeaders)
-	assert.Equal(t, "", response.Header().Get("Access-Control-Allow-Origin"))
+			response = rt.SendRequestWithHeaders("GET", "/{{.db}}/", "", reqHeaders)
+			assert.Equal(t, tc.headerOutput, response.Header().Get("Access-Control-Allow-Origin"))
+			RequireStatus(t, response, http.StatusUnauthorized)
+			require.Contains(t, response.Body.String(), ErrLoginRequired.Message)
 
-	// test with a config without * should reject non-matches
-	sc := rt.ServerContext()
-	sc.Config.API.CORS.Origin = []string{"http://example.com", "http://staging.example.com"}
-	// now test a non-listed origin
-	// b/c * is in config we get *
-	reqHeaders = map[string]string{
-		"Origin": "http://hack0r.com",
+			response = rt.SendRequestWithHeaders("GET", "/notadb/", "", reqHeaders)
+			assert.Equal(t, tc.headerOutput, response.Header().Get("Access-Control-Allow-Origin"))
+			RequireStatus(t, response, http.StatusUnauthorized)
+			require.Contains(t, response.Body.String(), ErrLoginRequired.Message)
+
+			// admin port doesn't have CORS
+			response = rt.SendAdminRequestWithHeaders("GET", "/{{.keyspace}}/_all_docs", "", reqHeaders)
+			assert.Equal(t, "", response.Header().Get("Access-Control-Allow-Origin"))
+			RequireStatus(t, response, http.StatusOK)
+
+			// test with a config without * should reject non-matches
+			sc := rt.ServerContext()
+			defer func() {
+				sc.Config.API.CORS.Origin = defaultTestingCORSOrigin
+			}()
+
+			sc.Config.API.CORS.Origin = []string{"http://example.com", "http://staging.example.com"}
+			if !base.StringSliceContains(sc.Config.API.CORS.Origin, tc.origin) {
+				response = rt.SendRequestWithHeaders("GET", "/{{.keyspace}}/", "", reqHeaders)
+				assert.Equal(t, "", response.Header().Get("Access-Control-Allow-Origin"))
+			}
+		})
 	}
-	response = rt.SendRequestWithHeaders("GET", "/{{.keyspace}}/", "", reqHeaders)
-	assert.Equal(t, "", response.Header().Get("Access-Control-Allow-Origin"))
 }
 
 // assertGatewayStatus is like requireStatus but with StatusGatewayTimeout error checking for temporary network failures.
@@ -1224,6 +1262,7 @@ func TestOldDocHandling(t *testing.T) {
 
 	// Create user:
 	frank, err := a.NewUser("charles", "1234", nil)
+	require.NoError(t, err)
 	assert.NoError(t, a.Save(frank))
 
 	// Create a doc:
@@ -1308,7 +1347,7 @@ func TestEventConfigValidationInvalid(t *testing.T) {
 
 	buf := bytes.NewBufferString(dbConfigJSON)
 	var dbConfig DbConfig
-	err := DecodeAndSanitiseConfig(buf, &dbConfig)
+	err := DecodeAndSanitiseConfig(buf, &dbConfig, true)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "document_scribbled_on")
 }
@@ -1591,6 +1630,7 @@ func TestLongpollWithWildcard(t *testing.T) {
 	// Send a doc that will properly close the longpoll response
 	time.Sleep(1 * time.Second)
 	response = rt.Send(Request("PUT", "/{{.keyspace}}/sherlock", `{"channel":["PBS"]}`))
+	RequireStatus(t, response, http.StatusOK)
 	wg.Wait()
 }
 
@@ -2395,7 +2435,7 @@ func TestDocumentChannelHistory(t *testing.T) {
 	RequireStatus(t, resp, http.StatusCreated)
 	err := json.Unmarshal(resp.BodyBytes(), &body)
 	assert.NoError(t, err)
-	syncData, err := rt.GetDatabase().GetSingleDatabaseCollection().GetDocSyncData(base.TestCtx(t), "doc")
+	syncData, err := rt.GetSingleTestDatabaseCollection().GetDocSyncData(base.TestCtx(t), "doc")
 	assert.NoError(t, err)
 
 	require.Len(t, syncData.ChannelSet, 1)
@@ -2408,7 +2448,7 @@ func TestDocumentChannelHistory(t *testing.T) {
 	RequireStatus(t, resp, http.StatusCreated)
 	err = json.Unmarshal(resp.BodyBytes(), &body)
 	assert.NoError(t, err)
-	syncData, err = rt.GetDatabase().GetSingleDatabaseCollection().GetDocSyncData(base.TestCtx(t), "doc")
+	syncData, err = rt.GetSingleTestDatabaseCollection().GetDocSyncData(base.TestCtx(t), "doc")
 	assert.NoError(t, err)
 
 	require.Len(t, syncData.ChannelSet, 1)
@@ -2421,7 +2461,7 @@ func TestDocumentChannelHistory(t *testing.T) {
 	RequireStatus(t, resp, http.StatusCreated)
 	err = json.Unmarshal(resp.BodyBytes(), &body)
 	assert.NoError(t, err)
-	syncData, err = rt.GetDatabase().GetSingleDatabaseCollection().GetDocSyncData(base.TestCtx(t), "doc")
+	syncData, err = rt.GetSingleTestDatabaseCollection().GetDocSyncData(base.TestCtx(t), "doc")
 	assert.NoError(t, err)
 
 	require.Len(t, syncData.ChannelSet, 2)
@@ -2486,7 +2526,7 @@ func TestChannelHistoryLegacyDoc(t *testing.T) {
 	RequireStatus(t, resp, http.StatusCreated)
 	err = json.Unmarshal(resp.BodyBytes(), &body)
 	assert.NoError(t, err)
-	syncData, err := rt.GetDatabase().GetSingleDatabaseCollection().GetDocSyncData(base.TestCtx(t), "doc1")
+	syncData, err := rt.GetSingleTestDatabaseCollection().GetDocSyncData(base.TestCtx(t), "doc1")
 	assert.NoError(t, err)
 	require.Len(t, syncData.ChannelSet, 1)
 	assert.Contains(t, syncData.ChannelSet, db.ChannelSetEntry{
@@ -2598,7 +2638,7 @@ func TestDocChannelSetPruning(t *testing.T) {
 		revID = rt.CreateDocReturnRev(t, "doc", revID, map[string]interface{}{"channels": []string{"a"}})
 	}
 
-	syncData, err := rt.GetDatabase().GetSingleDatabaseCollection().GetDocSyncData(base.TestCtx(t), "doc")
+	syncData, err := rt.GetSingleTestDatabaseCollection().GetDocSyncData(base.TestCtx(t), "doc")
 	assert.NoError(t, err)
 
 	require.Len(t, syncData.ChannelSetHistory, db.DocumentHistoryMaxEntriesPerChannel)

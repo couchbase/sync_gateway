@@ -24,37 +24,43 @@ import (
 
 // ActiveReplicator is a wrapper to encapsulate separate push and pull active replicators.
 type ActiveReplicator struct {
-	ID        string
-	Push      *ActivePushReplicator
-	Pull      *ActivePullReplicator
-	config    *ActiveReplicatorConfig
-	statusKey string // key used when persisting replication status
+	ID     string
+	Push   *ActivePushReplicator
+	Pull   *ActivePullReplicator
+	config *ActiveReplicatorConfig
 }
 
 // NewActiveReplicator returns a bidirectional active replicator for the given config.
-func NewActiveReplicator(ctx context.Context, config *ActiveReplicatorConfig) *ActiveReplicator {
+func NewActiveReplicator(ctx context.Context, config *ActiveReplicatorConfig) (*ActiveReplicator, error) {
 	ar := &ActiveReplicator{
-		ID:        config.ID,
-		config:    config,
-		statusKey: replicationStatusKey(config.ID),
+		ID:     config.ID,
+		config: config,
 	}
 
 	if pushReplication := config.Direction == ActiveReplicatorTypePush || config.Direction == ActiveReplicatorTypePushAndPull; pushReplication {
-		ar.Push = NewPushReplicator(config)
+		var err error
+		ar.Push, err = NewPushReplicator(ctx, config)
+		if err != nil {
+			return nil, err
+		}
 		if ar.config.onComplete != nil {
 			ar.Push.onReplicatorComplete = ar._onReplicationComplete
 		}
 	}
 
 	if pullReplication := config.Direction == ActiveReplicatorTypePull || config.Direction == ActiveReplicatorTypePushAndPull; pullReplication {
-		ar.Pull = NewPullReplicator(config)
+		var err error
+		ar.Pull, err = NewPullReplicator(ctx, config)
+		if err != nil {
+			return nil, err
+		}
 		if ar.config.onComplete != nil {
 			ar.Pull.onReplicatorComplete = ar._onReplicationComplete
 		}
 	}
 
-	base.InfofCtx(ctx, base.KeyReplicate, "Created active replicator ID:%s statusKey: %s", config.ID, ar.statusKey)
-	return ar
+	base.InfofCtx(ctx, base.KeyReplicate, "Created active replicator ID:%s", config.ID)
+	return ar, nil
 }
 
 func (ar *ActiveReplicator) Start(ctx context.Context) error {
@@ -208,13 +214,13 @@ func connect(arc *activeReplicatorCommon, idSuffix string) (blipSender *blip.Sen
 	blipContext.WebsocketPingInterval = arc.config.WebsocketPingInterval
 	blipContext.OnExitCallback = func() {
 		// fall into a reconnect loop only if the connection is unexpectedly closed.
-		if arc.ctx.Err() == nil {
+		if arc.ctx.Err() == nil && arc.config.TotalReconnectTimeout != 0 {
 			go arc.reconnectLoop()
 		}
 	}
 
 	bsc = NewBlipSyncContext(arc.ctx, blipContext, arc.config.ActiveDB, blipContext.ID, arc.replicationStats)
-	bsc.loggingCtx = base.LogContextWith(context.Background(), &base.LogContext{CorrelationID: arc.config.ID + idSuffix})
+	bsc.loggingCtx = base.CorrelationIDLogCtx(context.Background(), arc.config.ID+idSuffix)
 
 	// NewBlipSyncContext has already set deltas as disabled/enabled based on config.ActiveDB.
 	// If deltas have been disabled in the replication config, override this value
@@ -263,7 +269,11 @@ func blipSync(target url.URL, blipContext *blip.Context, insecureSkipVerify bool
 	var basicAuthCreds *url.Userinfo
 	if target.User != nil {
 		// take a copy
-		basicAuthCreds = &*target.User
+		if password, hasPassword := target.User.Password(); hasPassword {
+			basicAuthCreds = url.UserPassword(target.User.Username(), password)
+		} else {
+			basicAuthCreds = url.User(target.User.Username())
+		}
 		target.User = nil
 	}
 
@@ -332,53 +342,35 @@ func (ar *ActiveReplicator) purgeCheckpoints() {
 }
 
 // LoadReplicationStatus attempts to load both push and pull replication checkpoints, and constructs the combined status
-func LoadReplicationStatus(dbContext *DatabaseContext, replicationID string) (status *ReplicationStatus, err error) {
+func LoadReplicationStatus(ctx context.Context, dbContext *DatabaseContext, replicationID string) (status *ReplicationStatus, err error) {
 
 	status = &ReplicationStatus{
 		ID: replicationID,
 	}
 
-	pullCheckpoint, _ := getLocalCheckpoint(dbContext, PullCheckpointID(replicationID))
-	if pullCheckpoint != nil {
-		if pullCheckpoint.Status != nil {
-			status.PullReplicationStatus = pullCheckpoint.Status.PullReplicationStatus
-			status.Status = pullCheckpoint.Status.Status
-			status.ErrorMessage = pullCheckpoint.Status.ErrorMessage
-			status.LastSeqPull = pullCheckpoint.Status.LastSeqPull
-		} else {
-			status.LastSeqPull = pullCheckpoint.LastSeq
-		}
+	pullStatusKey := dbContext.MetadataKeys.ReplicationStatusKey(PullCheckpointID(replicationID))
+	pullStatus, _ := getLocalStatus(ctx, dbContext.MetadataStore, pullStatusKey)
+	if pullStatus != nil {
+		status.PullReplicationStatus = pullStatus.PullReplicationStatus
+		status.Status = pullStatus.Status
+		status.ErrorMessage = pullStatus.ErrorMessage
+		status.LastSeqPull = pullStatus.LastSeqPull
 	}
 
-	pushCheckpoint, _ := getLocalCheckpoint(dbContext, PushCheckpointID(replicationID))
-	if pushCheckpoint != nil {
-		if pushCheckpoint.Status != nil {
-			status.PushReplicationStatus = pushCheckpoint.Status.PushReplicationStatus
-			status.Status = pushCheckpoint.Status.Status
-			status.ErrorMessage = pushCheckpoint.Status.ErrorMessage
-			status.LastSeqPush = pushCheckpoint.Status.LastSeqPush
-		} else {
-			status.LastSeqPush = pushCheckpoint.LastSeq
-		}
+	pushStatusKey := dbContext.MetadataKeys.ReplicationStatusKey(PushCheckpointID(replicationID))
+	pushStatus, _ := getLocalStatus(ctx, dbContext.MetadataStore, pushStatusKey)
+	if pushStatus != nil {
+		status.PushReplicationStatus = pushStatus.PushReplicationStatus
+		status.Status = pushStatus.Status
+		status.ErrorMessage = pushStatus.ErrorMessage
+		status.LastSeqPush = pushStatus.LastSeqPush
 	}
 
-	if (pullCheckpoint == nil || pullCheckpoint.Status == nil) && (pushCheckpoint == nil || pushCheckpoint.Status == nil) {
+	if pullStatus == nil && pushStatus == nil {
 		return nil, errors.New("Replication status not found")
 	}
 
 	return status, nil
-}
-
-// replicationStatusKey generates the key used to store status information for the given replicationID.  If replicationID
-// is 40 characters or longer, a SHA-1 hash of the replicationID is used in the status key.
-// If the replicationID is less than 40 characters, the ID can be used directly without worrying about final key length
-// or collision with other sha-1 hashes.
-func replicationStatusKey(replicationID string) string {
-	statusKeyID := replicationID
-	if len(statusKeyID) >= 40 {
-		statusKeyID = base.Sha1HashString(replicationID, "")
-	}
-	return fmt.Sprintf("%s%s", base.SGRStatusPrefix, statusKeyID)
 }
 
 func PushCheckpointID(replicationID string) string {

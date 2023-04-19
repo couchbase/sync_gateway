@@ -54,6 +54,9 @@ const (
 
 	// wait this long when requesting a test bucket from the pool before giving up and failing the test.
 	waitForReadyBucketTimeout = time.Minute
+
+	// Creates buckets with a specific number of number of replicas
+	tbpEnvBucketNumReplicas = "SG_TEST_BUCKET_NUM_REPLICAS"
 )
 
 var tbpDefaultBucketSpec = BucketSpec{
@@ -134,6 +137,19 @@ func tbpNumBuckets() int {
 		}
 	}
 	return numBuckets
+}
+
+// tbpNumReplicasreturns the number of replicas to use in each bucket.
+func tbpNumReplicas() uint32 {
+	numReplicas := os.Getenv(tbpEnvBucketNumReplicas)
+	if numReplicas == "" {
+		return 0
+	}
+	replicas, err := strconv.Atoi(numReplicas)
+	if err != nil {
+		FatalfCtx(context.TODO(), "Couldn't parse %s: %v", tbpEnvBucketPoolSize, err)
+	}
+	return uint32(replicas)
 }
 
 // tbpNumCollectionsPerBucket returns the configured number of collections prepared in a bucket.

@@ -41,7 +41,7 @@ func (h *handler) handleSessionPOST() error {
 	if len(originHeader) > 0 {
 		matched := ""
 		if h.server.Config.API.CORS != nil {
-			matched = matchedOrigin(h.server.Config.API.CORS.LoginOrigin, originHeader)
+			matched = auth.MatchedOrigin(h.server.Config.API.CORS.LoginOrigin, originHeader)
 		}
 		if matched == "" {
 			return base.HTTPErrorf(http.StatusBadRequest, "No CORS")
@@ -51,7 +51,7 @@ func (h *handler) handleSessionPOST() error {
 	// NOTE: handleSessionPOST doesn't handle creating users from OIDC - checkAuth calls out into AuthenticateUntrustedJWT.
 	// Therefore, if by this point `h.user` is guest, this isn't creating a session from OIDC.
 	if h.db.Options.DisablePasswordAuthentication && (h.user == nil || h.user.Name() == "") {
-		return base.HTTPErrorf(http.StatusUnauthorized, "Password authentication is disabled")
+		return ErrLoginRequired
 	}
 	user, err := h.getUserFromSessionRequestBody()
 
@@ -97,7 +97,7 @@ func (h *handler) handleSessionDELETE() error {
 	if len(originHeader) > 0 {
 		matched := ""
 		if h.server.Config.API.CORS != nil {
-			matched = matchedOrigin(h.server.Config.API.CORS.LoginOrigin, originHeader)
+			matched = auth.MatchedOrigin(h.server.Config.API.CORS.LoginOrigin, originHeader)
 		}
 		if matched == "" {
 			return base.HTTPErrorf(http.StatusBadRequest, "No CORS")
@@ -124,7 +124,7 @@ func (h *handler) makeSession(user auth.User) error {
 // Creates a session with TTL and adds to the response.  Does NOT return the session info response.
 func (h *handler) makeSessionWithTTL(user auth.User, expiry time.Duration) (sessionID string, err error) {
 	if user == nil {
-		return "", base.HTTPErrorf(http.StatusUnauthorized, "Invalid login")
+		return "", ErrInvalidLogin
 	}
 	h.user = user
 	auth := h.db.Authenticator(h.ctx())

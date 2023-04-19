@@ -50,30 +50,37 @@ var ErrSuspendingDisallowed = errors.New("database does not allow suspending")
 // This struct is accessed from HTTP handlers running on multiple goroutines, so it needs to
 // be thread-safe.
 type ServerContext struct {
-	Config                 *StartupConfig // The current runtime configuration of the node
-	initialStartupConfig   *StartupConfig // The configuration at startup of the node. Built from config file + flags
-	persistentConfig       bool
-	bucketDbName           map[string]string                 // bucketDbName is a map of bucket to database name
-	dbConfigs              map[string]*RuntimeDatabaseConfig // dbConfigs is a map of db name to the RuntimeDatabaseConfig
-	databases_             map[string]*db.DatabaseContext    // databases_ is a map of dbname to db.DatabaseContext
-	lock                   sync.RWMutex
-	statsContext           *statsContext
-	BootstrapContext       *bootstrapContext
-	HTTPClient             *http.Client
-	cpuPprofFileMutex      sync.Mutex      // Protect cpuPprofFile from concurrent Start and Stop CPU profiling requests
-	cpuPprofFile           *os.File        // An open file descriptor holds the reference during CPU profiling
-	_httpServers           []*http.Server  // A list of HTTP servers running under the ServerContext
-	GoCBAgent              *gocbcore.Agent // GoCB Agent to use when obtaining management endpoints
-	NoX509HTTPClient       *http.Client    // httpClient for the cluster that doesn't include x509 credentials, even if they are configured for the cluster
-	hasStarted             chan struct{}   // A channel that is closed via PostStartup once the ServerContext has fully started
-	LogContextID           string          // ID to differentiate log messages from different server context
-	fetchConfigsLastUpdate time.Time       // The last time fetchConfigsWithTTL() updated dbConfigs
+	Config                        *StartupConfig // The current runtime configuration of the node
+	initialStartupConfig          *StartupConfig // The configuration at startup of the node. Built from config file + flags
+	persistentConfig              bool
+	dbRegistry                    map[string]struct{}               // registry of dbNames, used to ensure uniqueness even when db isn't active
+	collectionRegistry            map[string]string                 // map of fully qualified collection name to db name, used for local uniqueness checks
+	dbConfigs                     map[string]*RuntimeDatabaseConfig // dbConfigs is a map of db name to the RuntimeDatabaseConfig
+	databases_                    map[string]*db.DatabaseContext    // databases_ is a map of dbname to db.DatabaseContext
+	lock                          sync.RWMutex
+	statsContext                  *statsContext
+	BootstrapContext              *bootstrapContext
+	HTTPClient                    *http.Client
+	cpuPprofFileMutex             sync.Mutex      // Protect cpuPprofFile from concurrent Start and Stop CPU profiling requests
+	cpuPprofFile                  *os.File        // An open file descriptor holds the reference during CPU profiling
+	_httpServers                  []*http.Server  // A list of HTTP servers running under the ServerContext
+	GoCBAgent                     *gocbcore.Agent // GoCB Agent to use when obtaining management endpoints
+	NoX509HTTPClient              *http.Client    // httpClient for the cluster that doesn't include x509 credentials, even if they are configured for the cluster
+	hasStarted                    chan struct{}   // A channel that is closed via PostStartup once the ServerContext has fully started
+	LogContextID                  string          // ID to differentiate log messages from different server context
+	fetchConfigsLastUpdate        time.Time       // The last time fetchConfigsWithTTL() updated dbConfigs
+	allowScopesInPersistentConfig bool            // Test only backdoor to allow scopes in persistent config, not supported for multiple databases with different collections targeting the same bucket
 }
 
+// defaultConfigRetryTimeout is the total retry time when waiting for in-flight config updates.  Set as a multiple of kv op timeout,
+// based on the maximum of 3 kv ops for a successful config update
+const defaultConfigRetryTimeout = 3 * base.DefaultGocbV2OperationTimeout
+
 type bootstrapContext struct {
-	Connection base.BootstrapConnection
-	terminator chan struct{} // Used to stop the goroutine handling the stats logging
-	doneChan   chan struct{} // doneChan is closed when the stats logger goroutine finishes.
+	Connection         base.BootstrapConnection
+	configRetryTimeout time.Duration // configRetryTimeout defines the total amount of time to retry on a registry/config mismatch
+	terminator         chan struct{} // Used to stop the goroutine handling the stats logging
+	doneChan           chan struct{} // doneChan is closed when the stats logger goroutine finishes.
 }
 
 func (sc *ServerContext) CreateLocalDatabase(ctx context.Context, dbs DbConfigMap) error {
@@ -104,15 +111,16 @@ func (sc *ServerContext) CloseCpuPprofFile(ctx context.Context) {
 
 func NewServerContext(ctx context.Context, config *StartupConfig, persistentConfig bool) *ServerContext {
 	sc := &ServerContext{
-		Config:           config,
-		persistentConfig: persistentConfig,
-		bucketDbName:     map[string]string{},
-		dbConfigs:        map[string]*RuntimeDatabaseConfig{},
-		databases_:       map[string]*db.DatabaseContext{},
-		HTTPClient:       http.DefaultClient,
-		statsContext:     &statsContext{},
-		BootstrapContext: &bootstrapContext{},
-		hasStarted:       make(chan struct{}),
+		Config:             config,
+		persistentConfig:   persistentConfig,
+		dbRegistry:         map[string]struct{}{},
+		collectionRegistry: map[string]string{},
+		dbConfigs:          map[string]*RuntimeDatabaseConfig{},
+		databases_:         map[string]*db.DatabaseContext{},
+		HTTPClient:         http.DefaultClient,
+		statsContext:       &statsContext{},
+		BootstrapContext:   &bootstrapContext{},
+		hasStarted:         make(chan struct{}),
 	}
 
 	if base.ServerIsWalrus(sc.Config.Bootstrap.Server) {
@@ -234,10 +242,10 @@ func (sc *ServerContext) GetInactiveDatabase(ctx context.Context, name string) (
 	if sc.BootstrapContext.Connection != nil {
 		var found bool
 		if sc.Config.IsServerless() {
-			found, err = sc.fetchAndLoadDatabaseSince(ctx, name, sc.Config.Unsupported.Serverless.MinConfigFetchInterval)
+			found, _ = sc.fetchAndLoadDatabaseSince(ctx, name, sc.Config.Unsupported.Serverless.MinConfigFetchInterval)
 
 		} else {
-			found, err = sc.fetchAndLoadDatabase(base.NewNonCancelCtx(), name)
+			found, _ = sc.fetchAndLoadDatabase(base.NewNonCancelCtx(), name)
 		}
 		if found {
 			sc.lock.RLock()
@@ -468,14 +476,27 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	}
 
 	// initDataStore is a function to initialize Views or GSI indexes for a datastore
-	initDataStore := func(ds base.DataStore) error {
+	initDataStore := func(ds base.DataStore, metadataIndexes db.CollectionIndexesType, verifySyncInfo bool) (resyncRequired bool, err error) {
+
+		// If this collection uses syncInfo, verify the collection isn't associated with a different database's metadataID
+		if verifySyncInfo {
+			resyncRequired, err = base.InitSyncInfo(ds, config.MetadataID)
+			if err != nil {
+				return true, err
+			}
+		}
+
 		if useViews {
-			return db.InitializeViews(ctx, ds)
+			viewErr := db.InitializeViews(ctx, ds)
+			if viewErr != nil {
+				return false, viewErr
+			}
+			return resyncRequired, nil
 		}
 
 		gsiSupported := bucket.IsSupported(sgbucket.BucketStoreFeatureN1ql)
 		if !gsiSupported {
-			return errors.New("Sync Gateway was unable to connect to a query node on the provided Couchbase Server cluster.  Ensure a query node is accessible, or set 'use_views':true in Sync Gateway's database config.")
+			return false, errors.New("Sync Gateway was unable to connect to a query node on the provided Couchbase Server cluster.  Ensure a query node is accessible, or set 'use_views':true in Sync Gateway's database config.")
 		}
 
 		numReplicas := DefaultNumIndexReplicas
@@ -484,22 +505,36 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		}
 		n1qlStore, ok := base.AsN1QLStore(ds)
 		if !ok {
-			return errors.New("Cannot create indexes on non-Couchbase data store.")
+			return false, errors.New("Cannot create indexes on non-Couchbase data store.")
 
 		}
-		indexErr := db.InitializeIndexes(n1qlStore, config.UseXattrs(), numReplicas, false, sc.Config.IsServerless())
+		options := db.InitializeIndexOptions{
+			FailFast:        false,
+			NumReplicas:     numReplicas,
+			Serverless:      sc.Config.IsServerless(),
+			MetadataIndexes: metadataIndexes,
+			UseXattrs:       config.UseXattrs(),
+		}
+		dsName, ok := base.AsDataStoreName(ds)
+		if !ok {
+			return false, fmt.Errorf("Could not get datastore name from %s", base.MD(ds.GetName()))
+		}
+		ctx := base.KeyspaceLogCtx(ctx, bucket.GetName(), dsName.ScopeName(), dsName.CollectionName())
+		indexErr := db.InitializeIndexes(ctx, n1qlStore, options)
 		if indexErr != nil {
-			return indexErr
+			return false, indexErr
 		}
 
-		return nil
+		return resyncRequired, nil
 	}
 
+	collectionsRequiringResync := make([]base.ScopeAndCollectionName, 0)
 	if len(config.Scopes) > 0 {
 		if !bucket.IsSupported(sgbucket.BucketStoreFeatureCollections) {
 			return nil, errCollectionsUnsupported
 		}
 
+		hasDefaultCollection := false
 		for scopeName, scopeConfig := range config.Scopes {
 			for collectionName, _ := range scopeConfig.Collections {
 				var dataStore sgbucket.DataStore
@@ -514,16 +549,33 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 				if err := base.WaitUntilDataStoreExists(dataStore); err != nil {
 					return nil, fmt.Errorf("attempting to create/update database with a scope/collection that is not found")
 				}
-
-				if err := initDataStore(dataStore); err != nil {
+				metadataIndexOption := db.IndexesWithoutMetadata
+				if base.IsDefaultCollection(scopeName, collectionName) {
+					hasDefaultCollection = true
+					metadataIndexOption = db.IndexesAll
+				}
+				requiresResync, err := initDataStore(dataStore, metadataIndexOption, true)
+				if err != nil {
 					return nil, err
 				}
+				if requiresResync {
+					collectionsRequiringResync = append(collectionsRequiringResync, base.ScopeAndCollectionName{Scope: scopeName, Collection: collectionName})
+				}
+			}
+		}
+		if !hasDefaultCollection {
+			if _, err := initDataStore(bucket.DefaultDataStore(), db.IndexesMetadataOnly, false); err != nil {
+				return nil, err
 			}
 		}
 	} else {
 		// no scopes configured - init the default data store
-		if err := initDataStore(bucket.DefaultDataStore()); err != nil {
+		requiresResync, err := initDataStore(bucket.DefaultDataStore(), db.IndexesAll, true)
+		if err != nil {
 			return nil, err
+		}
+		if requiresResync {
+			collectionsRequiringResync = append(collectionsRequiringResync, base.ScopeAndCollectionName{Scope: base.DefaultScope, Collection: base.DefaultCollection})
 		}
 	}
 
@@ -585,7 +637,11 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	}
 	contextOptions.UseViews = useViews
 
+	fqCollections := make([]string, 0)
 	if len(config.Scopes) > 0 {
+		if !sc.persistentConfig && !sc.allowScopesInPersistentConfig {
+			return nil, base.HTTPErrorf(http.StatusBadRequest, "scopes are not allowed with legacy config")
+		}
 		contextOptions.Scopes = make(db.ScopesOptions, len(config.Scopes))
 		for scopeName, scopeCfg := range config.Scopes {
 			contextOptions.Scopes[scopeName] = db.ScopeOptions{
@@ -596,7 +652,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 					Sync:         collCfg.SyncFn,
 					ImportFilter: collCfg.ImportFilter,
 				}
-
+				fqCollections = append(fqCollections, base.FullyQualifiedCollectionName(spec.BucketName, scopeName, collName))
 			}
 		}
 	} else {
@@ -630,6 +686,11 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		return nil, err
 	}
 
+	// If identified as default database, use metadataID of "" so legacy non namespaced docs are used
+	if config.MetadataID != defaultMetadataID {
+		contextOptions.MetadataID = config.MetadataID
+	}
+
 	// Create the DB Context
 	dbcontext, err := db.NewDatabaseContext(ctx, dbName, bucket, autoImport, contextOptions)
 	if err != nil {
@@ -638,6 +699,13 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	dbcontext.BucketSpec = spec
 	dbcontext.ServerContextHasStarted = sc.hasStarted
 	dbcontext.NoX509HTTPClient = sc.NoX509HTTPClient
+	dbcontext.RequireResync = collectionsRequiringResync
+
+	if config.CORS != nil {
+		dbcontext.CORS = config.DbConfig.CORS
+	} else {
+		dbcontext.CORS = sc.Config.API.CORS
+	}
 
 	if config.RevsLimit != nil {
 		dbcontext.RevsLimit = *config.RevsLimit
@@ -688,11 +756,17 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	// Register it so HTTP handlers can find it:
 	sc.databases_[dbcontext.Name] = dbcontext
 	sc.dbConfigs[dbcontext.Name] = &RuntimeDatabaseConfig{DatabaseConfig: config}
-	sc.bucketDbName[spec.BucketName] = dbName
+	sc.dbRegistry[dbName] = struct{}{}
+	for _, name := range fqCollections {
+		sc.collectionRegistry[name] = dbName
+	}
 
 	if base.BoolDefault(config.StartOffline, false) {
 		atomic.StoreUint32(&dbcontext.State, db.DBOffline)
 		_ = dbcontext.EventMgr.RaiseDBStateChangeEvent(dbName, "offline", "DB loaded from config", &sc.Config.API.AdminInterface)
+	} else if len(dbcontext.RequireResync) > 0 {
+		atomic.StoreUint32(&dbcontext.State, db.DBOffline)
+		_ = dbcontext.EventMgr.RaiseDBStateChangeEvent(dbName, "offline", "Resync required for collections", &sc.Config.API.AdminInterface)
 	} else {
 		atomic.StoreUint32(&dbcontext.State, db.DBOnline)
 		_ = dbcontext.EventMgr.RaiseDBStateChangeEvent(dbName, "online", "DB loaded from config", &sc.Config.API.AdminInterface)
@@ -980,6 +1054,10 @@ func (sc *ServerContext) TakeDbOnline(nonContextStruct base.NonCancellableContex
 			return
 		}
 
+		if len(reloadedDb.RequireResync) > 0 {
+			base.ErrorfCtx(nonContextStruct.Ctx, "Database has collections that require resync before it can go online: %v", reloadedDb.RequireResync)
+			return
+		}
 		// Reloaded DB should already be online in most cases, but force state to online to handle cases
 		// where config specifies offline startup
 		atomic.StoreUint32(&reloadedDb.State, db.DBOnline)
@@ -1074,6 +1152,9 @@ func (sc *ServerContext) initEventHandlers(ctx context.Context, dbcontext *db.Da
 				}
 			}
 			conf.Filter = filter
+			if conf.Filter == "" {
+				base.InfofCtx(ctx, base.KeyEvents, "No filter function defined for event handler %s - everything will be processed", eventType.String())
+			}
 		}
 
 		// Register event handlers
@@ -1152,12 +1233,16 @@ func (sc *ServerContext) _removeDatabase(ctx context.Context, dbName string) boo
 	if dbCtx == nil {
 		return false
 	}
-	bucket := dbCtx.Bucket.GetName()
 	if ok := sc._unloadDatabase(ctx, dbName); !ok {
 		return ok
 	}
 	delete(sc.dbConfigs, dbName)
-	delete(sc.bucketDbName, bucket)
+	delete(sc.dbRegistry, dbName)
+	for fqCollection, registryDbName := range sc.collectionRegistry {
+		if dbName == registryDbName {
+			delete(sc.collectionRegistry, fqCollection)
+		}
+	}
 	return true
 }
 
@@ -1216,7 +1301,8 @@ func (sc *ServerContext) _unsuspendDatabase(ctx context.Context, dbName string) 
 		if dbConfig.Bucket != nil {
 			bucket = *dbConfig.Bucket
 		}
-		cas, err := sc.BootstrapContext.Connection.GetConfig(bucket, sc.Config.Bootstrap.ConfigGroupID, dbConfig)
+
+		cas, err := sc.BootstrapContext.GetConfig(bucket, sc.Config.Bootstrap.ConfigGroupID, dbName, &dbConfig.DatabaseConfig)
 		if err == base.ErrNotFound {
 			// Database no longer exists, so clean up dbConfigs
 			base.InfofCtx(ctx, base.KeyConfig, "Database %q has been removed while suspended from bucket %q", base.MD(dbName), base.MD(bucket))
@@ -1714,6 +1800,10 @@ func (sc *ServerContext) Database(ctx context.Context, name string) *db.Database
 }
 
 func (sc *ServerContext) initializeCouchbaseServerConnections(ctx context.Context) error {
+	base.InfofCtx(ctx, base.KeyAll, "initializing server connections")
+	defer func() {
+		base.InfofCtx(ctx, base.KeyAll, "finished initializing server connections")
+	}()
 	goCBAgent, err := sc.initializeGoCBAgent(ctx)
 	if err != nil {
 		return err
@@ -1728,7 +1818,6 @@ func (sc *ServerContext) initializeCouchbaseServerConnections(ctx context.Contex
 	// Fetch database configs from bucket and start polling for new buckets and config updates.
 	if sc.persistentConfig {
 		couchbaseCluster, err := CreateCouchbaseClusterFromStartupConfig(sc.Config, base.CachedClusterConnections)
-		// couchbaseCluster, err := CreateCouchbaseClusterFromStartupConfig(sc.Config, base.PerUseClusterConnections)
 		if err != nil {
 			return err
 		}
@@ -1740,6 +1829,12 @@ func (sc *ServerContext) initializeCouchbaseServerConnections(ctx context.Contex
 		}
 
 		sc.BootstrapContext.Connection = couchbaseCluster
+
+		// Check for v3.0 persisted configs, migrate to registry format if found
+		err = sc.migrateV30Configs(ctx)
+		if err != nil {
+			base.InfofCtx(ctx, base.KeyConfig, "Unable to migrate v3.0 config to registry - will not be migrated: %v", err)
+		}
 
 		count, err := sc.fetchAndLoadConfigs(ctx, true)
 		if err != nil {
@@ -1788,6 +1883,7 @@ func (sc *ServerContext) initializeCouchbaseServerConnections(ctx context.Contex
 }
 
 func (sc *ServerContext) AddServerLogContext(parent context.Context) context.Context {
+	// ServerLogContext is separate from standard LogContext, so this does not reset the log context
 	if sc != nil && sc.LogContextID != "" {
 		return base.LogContextWith(parent, &base.ServerLogContext{LogContextID: sc.LogContextID})
 	}
@@ -1797,6 +1893,7 @@ func (sc *ServerContext) AddServerLogContext(parent context.Context) context.Con
 func (sc *ServerContext) SetContextLogID(parent context.Context, id string) context.Context {
 	if sc != nil {
 		sc.LogContextID = id
+		// ServerLogContext is separate from standard LogContext, so this does not reset the log context
 		return base.LogContextWith(parent, &base.ServerLogContext{LogContextID: sc.LogContextID})
 	}
 	return parent

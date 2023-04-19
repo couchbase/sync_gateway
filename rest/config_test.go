@@ -2621,3 +2621,17 @@ func requireErrorWithX509UnknownAuthority(t testing.TB, actual, expected error) 
 
 	require.ErrorContains(t, actual, expectedErrorString)
 }
+
+func TestDatabaseConfigDropScopes(t *testing.T) {
+	base.RequireNumTestDataStores(t, 2)
+
+	rt := NewRestTesterMultipleCollections(t, nil, 2)
+	defer rt.Close()
+
+	resp := rt.SendAdminRequest("PUT", "/db/_config", fmt.Sprintf(
+		`{"bucket": "%s", "num_index_replicas": 0, "enable_shared_bucket_access": %t, "scopes":{}}`,
+		rt.Bucket().GetName(), base.TestUseXattrs()))
+	RequireStatus(t, resp, http.StatusBadRequest)
+	require.Contains(t, resp.Body.String(), "cannot change scope")
+
+}

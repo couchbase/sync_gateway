@@ -27,12 +27,13 @@ const defaultExpectedSeqCompactionThreshold = 100
 // Checkpointer implements replicator checkpointing, by keeping two lists of sequences. Those which we expect to be processing revs for (either push or pull), and a map for those which we have done so on.
 // Periodically (based on a time interval), these two lists are used to calculate the highest sequence number which we've not had a gap for yet, and send a SetCheckpoint message for this sequence.
 type Checkpointer struct {
-	clientID           string
-	configHash         string
-	blipSender         *blip.Sender
-	activeDB           *Database
-	checkpointInterval time.Duration
-	statusCallback     statusFunc // callback to retrieve status for associated replication
+	clientID            string
+	configHash          string
+	blipSender          *blip.Sender
+	metadataStore       base.DataStore // metadataStore is where non-collection specific metadata is stored (e.g. replication status documents)
+	collectionDataStore base.DataStore // collectionDataStore is where the checkpoints are stored for the collection
+	localDocExpirySecs  int
+	checkpointInterval  time.Duration
 	// lock guards the expectedSeqs slice, and processedSeqs map
 	lock sync.Mutex
 	// expectedSeqs is an ordered list of sequence IDs we expect to process revs for
@@ -50,6 +51,8 @@ type Checkpointer struct {
 	lastLocalCheckpointRevID string
 	// lastCheckpointSeq is the last checkpointed sequence
 	lastCheckpointSeq SequenceID
+	// collectionIdx is the GetCollections index of the collection we're checkpointing for
+	collectionIdx *int
 
 	// expectedSeqCompactionThreshold is the number of expected sequences that we'll tolerate before considering compacting away already processed sequences
 	// time vs. space complexity tradeoff, since we need to iterate over the expectedSeqs slice to compact it
@@ -60,8 +63,6 @@ type Checkpointer struct {
 	// closeWg waits for the time-based checkpointer goroutine to finish.
 	closeWg sync.WaitGroup
 }
-
-type statusFunc func(lastSeq string) *ReplicationStatus
 
 type CheckpointerStats struct {
 	ExpectedSequenceCount           int64
@@ -76,25 +77,27 @@ type CheckpointerStats struct {
 	GetCheckpointMissCount          int64
 }
 
-func NewCheckpointer(ctx context.Context, clientID string, configHash string, blipSender *blip.Sender, replicatorConfig *ActiveReplicatorConfig, statusCallback statusFunc) *Checkpointer {
+func NewCheckpointer(ctx context.Context, metadataStore, collectionDataStore base.DataStore, clientID string, configHash string, blipSender *blip.Sender, replicatorConfig *ActiveReplicatorConfig, collectionIdx *int) *Checkpointer {
 	return &Checkpointer{
-		clientID:           clientID,
-		configHash:         configHash,
-		blipSender:         blipSender,
-		activeDB:           replicatorConfig.ActiveDB,
-		expectedSeqs:       make([]SequenceID, 0),
-		processedSeqs:      make(map[SequenceID]struct{}),
-		idAndRevLookup:     make(map[IDAndRev]SequenceID),
-		checkpointInterval: replicatorConfig.CheckpointInterval,
-		ctx:                ctx,
+		clientID:            clientID,
+		configHash:          configHash,
+		blipSender:          blipSender,
+		metadataStore:       metadataStore,
+		collectionDataStore: collectionDataStore,
+		localDocExpirySecs:  int(replicatorConfig.ActiveDB.Options.LocalDocExpirySecs),
+		expectedSeqs:        make([]SequenceID, 0),
+		processedSeqs:       make(map[SequenceID]struct{}),
+		idAndRevLookup:      make(map[IDAndRev]SequenceID),
+		checkpointInterval:  replicatorConfig.CheckpointInterval,
+		ctx:                 ctx,
 		stats: CheckpointerStats{
 			ProcessedSequenceLen:            replicatorConfig.ReplicationStatsMap.ProcessedSequenceLen,
 			ProcessedSequenceLenPostCleanup: replicatorConfig.ReplicationStatsMap.ProcessedSequenceLenPostCleanup,
 			ExpectedSequenceLen:             replicatorConfig.ReplicationStatsMap.ExpectedSequenceLen,
 			ExpectedSequenceLenPostCleanup:  replicatorConfig.ReplicationStatsMap.ExpectedSequenceLenPostCleanup,
 		},
-		statusCallback:                 statusCallback,
 		expectedSeqCompactionThreshold: defaultExpectedSeqCompactionThreshold,
+		collectionIdx:                  collectionIdx,
 	}
 }
 
@@ -232,9 +235,6 @@ func (c *Checkpointer) CheckpointNow() {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
-	// Retrieve status after obtaining the lock to ensure
-	status := c.statusCallback(c._calculateSafeProcessedSeq().String())
-
 	base.TracefCtx(c.ctx, base.KeyReplicate, "checkpointer: running")
 
 	seq := c._updateCheckpointLists()
@@ -243,7 +243,7 @@ func (c *Checkpointer) CheckpointNow() {
 	}
 
 	base.InfofCtx(c.ctx, base.KeyReplicate, "checkpointer: calculated seq: %v", seq)
-	err := c._setCheckpoints(seq, status)
+	err := c._setCheckpoints(seq)
 	if err != nil {
 		base.WarnfCtx(c.ctx, "couldn't set checkpoints: %v", err)
 	}
@@ -344,14 +344,13 @@ const (
 	checkpointBodyRev     = "_rev"
 	checkpointBodyLastSeq = "last_sequence"
 	checkpointBodyHash    = "config_hash"
-	checkpointBodyStatus  = "status"
 )
 
+// replicationCheckpoint stores the config and latest sequence of the replication.
 type replicationCheckpoint struct {
-	Rev        string             `json:"_rev"`
-	ConfigHash string             `json:"config_hash"`
-	LastSeq    string             `json:"last_sequence"`
-	Status     *ReplicationStatus `json:"status,omitempty"`
+	Rev        string `json:"_rev"`
+	ConfigHash string `json:"config_hash"`
+	LastSeq    string `json:"last_sequence"`
 }
 
 // AsBody returns a Body representation of replicationCheckpoint for use with putSpecial
@@ -360,7 +359,6 @@ func (r *replicationCheckpoint) AsBody() Body {
 		checkpointBodyRev:     r.Rev,
 		checkpointBodyLastSeq: r.LastSeq,
 		checkpointBodyHash:    r.ConfigHash,
-		checkpointBodyStatus:  r.Status,
 	}
 }
 
@@ -383,29 +381,34 @@ func (r *replicationCheckpoint) Copy() *replicationCheckpoint {
 	}
 }
 
-// fetchCheckpoints sets lastCheckpointSeq for the given Checkpointer by requesting various checkpoints on the local and remote.
+// fetchDefaultCollectionCheckpoints gets remote checkpoint for the default collection and determines the lastCheckpointSeq.
+func (c *Checkpointer) fetchDefaultCollectionCheckpoints() error {
+	base.TracefCtx(c.ctx, base.KeyReplicate, "fetchDefaultCollectionCheckpoints()")
+	remoteCheckpoint, err := c.getRemoteCheckpoint()
+	if err != nil {
+		return err
+	}
+	base.DebugfCtx(c.ctx, base.KeyReplicate, "got remote checkpoint: %v", remoteCheckpoint)
+	return c.setLastCheckpointSeq(remoteCheckpoint)
+}
+
+// setLastCheckpointCheckpoints sets lastCheckpointSeq for the given Checkpointer by comparing local and remote checkpoints.
 // Various scenarios this function handles:
 // - Matching checkpoints from local and remote. Use that sequence.
 // - Both SGR2 checkpoints are missing, we'll start the replication from zero.
 // - Mismatched config hashes, use a zero value for sequence, so the replication can restart.
 // - Mismatched sequences, we'll pick the lower of the two, and attempt to roll back the higher checkpoint to that point.
-func (c *Checkpointer) fetchCheckpoints() (*ReplicationStatus, error) {
-	base.TracefCtx(c.ctx, base.KeyReplicate, "fetchCheckpoints()")
+func (c *Checkpointer) setLastCheckpointSeq(remoteCheckpoint *replicationCheckpoint) error {
+	base.TracefCtx(c.ctx, base.KeyReplicate, "fetchDefaultCollectionCheckpoints()")
 
 	localCheckpoint, err := c.getLocalCheckpoint()
 	if err != nil {
-		return nil, err
+		return err
 	}
-	status := localCheckpoint.Status
 
 	base.DebugfCtx(c.ctx, base.KeyReplicate, "got local checkpoint: %v", localCheckpoint)
 	c.lastLocalCheckpointRevID = localCheckpoint.Rev
 
-	remoteCheckpoint, err := c.getRemoteCheckpoint()
-	if err != nil {
-		return nil, err
-	}
-	base.DebugfCtx(c.ctx, base.KeyReplicate, "got remote checkpoint: %v", remoteCheckpoint)
 	c.lastRemoteCheckpointRevID = remoteCheckpoint.Rev
 
 	localSeq := localCheckpoint.LastSeq
@@ -419,12 +422,12 @@ func (c *Checkpointer) fetchCheckpoints() (*ReplicationStatus, error) {
 		base.DebugfCtx(c.ctx, base.KeyReplicate, "sequences mismatched, finding lowest of %q %q", localSeq, remoteSeq)
 		localSeqVal, err := parseIntegerSequenceID(localSeq)
 		if err != nil {
-			return nil, err
+			return err
 		}
 
 		remoteSeqVal, err := parseIntegerSequenceID(remoteSeq)
 		if err != nil {
-			return nil, err
+			return err
 		}
 
 		// roll local/remote checkpoint back to lowest of the two
@@ -432,7 +435,6 @@ func (c *Checkpointer) fetchCheckpoints() (*ReplicationStatus, error) {
 			checkpointSeq = remoteSeq
 			newLocalCheckpoint := remoteCheckpoint.Copy()
 			newLocalCheckpoint.Rev = c.lastLocalCheckpointRevID
-			status = newLocalCheckpoint.Status
 			c.lastLocalCheckpointRevID, err = c.setLocalCheckpoint(newLocalCheckpoint)
 			if err != nil {
 				base.WarnfCtx(c.ctx, "Unable to roll back local checkpoint: %v", err)
@@ -475,10 +477,10 @@ func (c *Checkpointer) fetchCheckpoints() (*ReplicationStatus, error) {
 	base.InfofCtx(c.ctx, base.KeyReplicate, "using checkpointed seq: %q", parsedCheckpointSeq.String())
 	c.lastCheckpointSeq = parsedCheckpointSeq
 
-	return status, nil
+	return nil
 }
 
-func (c *Checkpointer) _setCheckpoints(seq *SequenceID, status *ReplicationStatus) (err error) {
+func (c *Checkpointer) _setCheckpoints(seq *SequenceID) (err error) {
 	seqStr := seq.String()
 	base.TracefCtx(c.ctx, base.KeyReplicate, "setCheckpoints(%v)", seqStr)
 	c.lastLocalCheckpointRevID, err = c.setLocalCheckpointWithRetry(
@@ -486,7 +488,6 @@ func (c *Checkpointer) _setCheckpoints(seq *SequenceID, status *ReplicationStatu
 			LastSeq:    seqStr,
 			Rev:        c.lastLocalCheckpointRevID,
 			ConfigHash: c.configHash,
-			Status:     status,
 		})
 	if err != nil {
 		return err
@@ -513,11 +514,9 @@ func (c *Checkpointer) _setCheckpoints(seq *SequenceID, status *ReplicationStatu
 func (c *Checkpointer) getLocalCheckpoint() (checkpoint *replicationCheckpoint, err error) {
 	base.TracefCtx(c.ctx, base.KeyReplicate, "getLocalCheckpoint")
 
-	// TODO: Checkpointer should be scoped to a collection
-	collection := c.activeDB.GetSingleDatabaseCollection()
-	checkpointBytes, err := collection.GetSpecialBytes(DocTypeLocal, CheckpointDocIDPrefix+c.clientID)
+	checkpointBytes, err := getSpecialBytes(c.collectionDataStore, DocTypeLocal, CheckpointDocIDPrefix+c.clientID, c.localDocExpirySecs)
 	if err != nil {
-		if !base.IsKeyNotFoundError(collection.dataStore, err) {
+		if !base.IsKeyNotFoundError(c.collectionDataStore, err) {
 			return &replicationCheckpoint{}, err
 		}
 		base.DebugfCtx(c.ctx, base.KeyReplicate, "couldn't find existing local checkpoint for client %q", c.clientID)
@@ -529,9 +528,7 @@ func (c *Checkpointer) getLocalCheckpoint() (checkpoint *replicationCheckpoint, 
 }
 
 func (c *Checkpointer) setLocalCheckpoint(checkpoint *replicationCheckpoint) (newRev string, err error) {
-	// TODO: Checkpointer should be scoped to a collection - storing checkpoints in the relevant collection. NOT the metadata collection!
-	collection := c.activeDB.GetSingleDatabaseCollection()
-	newRev, err = collection.putSpecial(DocTypeLocal, CheckpointDocIDPrefix+c.clientID, checkpoint.Rev, checkpoint.AsBody())
+	newRev, err = putSpecial(c.collectionDataStore, DocTypeLocal, CheckpointDocIDPrefix+c.clientID, checkpoint.Rev, checkpoint.AsBody(), c.localDocExpirySecs)
 	if err != nil {
 		base.TracefCtx(c.ctx, base.KeyReplicate, "Error setting local checkpoint(%v): %v", checkpoint, err)
 		return "", err
@@ -563,7 +560,8 @@ func (c *Checkpointer) getRemoteCheckpoint() (checkpoint *replicationCheckpoint,
 	base.TracefCtx(c.ctx, base.KeyReplicate, "getRemoteCheckpoint")
 
 	rq := GetSGR2CheckpointRequest{
-		Client: c.clientID,
+		Client:        c.clientID,
+		CollectionIdx: c.collectionIdx,
 	}
 
 	if err := rq.Send(c.blipSender); err != nil {
@@ -584,12 +582,14 @@ func (c *Checkpointer) getRemoteCheckpoint() (checkpoint *replicationCheckpoint,
 }
 
 func (c *Checkpointer) setRemoteCheckpoint(checkpoint *replicationCheckpoint) (newRev string, err error) {
+
 	base.TracefCtx(c.ctx, base.KeyReplicate, "setRemoteCheckpoint(%v)", checkpoint)
 
 	checkpointBody := checkpoint.AsBody()
 	rq := SetSGR2CheckpointRequest{
-		Client:     c.clientID,
-		Checkpoint: checkpoint.AsBody(),
+		Client:        c.clientID,
+		Checkpoint:    checkpoint.AsBody(),
+		CollectionIdx: c.collectionIdx,
 	}
 
 	parentRev, ok := checkpointBody[BodyRev].(string)
@@ -682,84 +682,4 @@ func (c *Checkpointer) setRetry(checkpoint *replicationCheckpoint, setFn setChec
 		return newRevID, nil
 	}
 	return "", errors.New("failed to write checkpoint after 10 attempts")
-}
-
-// setLocalCheckpointStatus updates status in a replication checkpoint without a checkpointer.  Increments existing
-// rev, preserves non-status fields (seq).  Requires lock to update checkpoint
-func (c *Checkpointer) setLocalCheckpointStatus(status string, errorMessage string) {
-
-	// getCheckpoint to obtain the current status
-	checkpoint, err := c.getLocalCheckpoint()
-	if err != nil {
-		base.InfofCtx(c.ctx, base.KeyReplicate, "Unable to persist status update to checkpoint: %v", err)
-	}
-	if checkpoint == nil {
-		checkpoint = &replicationCheckpoint{}
-	}
-
-	if checkpoint.Status == nil {
-		checkpoint.Status = &ReplicationStatus{}
-	}
-
-	checkpoint.Status.Status = status
-	checkpoint.Status.ErrorMessage = errorMessage
-	base.TracefCtx(c.ctx, base.KeyReplicate, "setLocalCheckpoint(%v)", checkpoint)
-	newRev, setErr := c.setLocalCheckpoint(checkpoint)
-	if setErr != nil {
-		base.WarnfCtx(c.ctx, "Unable to persist status in local checkpoint for %s, status not updated: %v", c.clientID, setErr)
-	} else {
-		base.TracefCtx(c.ctx, base.KeyReplicate, "setLocalCheckpointStatus successful for %s, newRev: %s: %+v %+v", c.clientID, newRev, checkpoint, checkpoint.Status)
-	}
-	c.lock.Lock()
-	c.lastLocalCheckpointRevID = newRev
-	c.lock.Unlock()
-	return
-}
-
-func getLocalCheckpoint(db *DatabaseContext, clientID string) (*replicationCheckpoint, error) {
-	base.TracefCtx(context.TODO(), base.KeyReplicate, "getLocalCheckpoint for %s", clientID)
-
-	collection := db.GetSingleDatabaseCollection()
-	checkpointBytes, err := collection.GetSpecialBytes(DocTypeLocal, CheckpointDocIDPrefix+clientID)
-	if err != nil {
-		if !base.IsKeyNotFoundError(collection.dataStore, err) {
-			return nil, err
-		}
-		base.DebugfCtx(context.TODO(), base.KeyReplicate, "couldn't find existing local checkpoint for ID %q", clientID)
-		return nil, nil
-	}
-	var checkpoint *replicationCheckpoint
-	err = base.JSONUnmarshal(checkpointBytes, &checkpoint)
-	return checkpoint, err
-}
-
-// setLocalCheckpointStatus updates status in a replication checkpoint without a checkpointer.  Increments existing
-// rev, preserves non-status fields (seq)
-func setLocalCheckpointStatus(ctx context.Context, db *Database, clientID string, status string, errorMessage string) {
-
-	// getCheckpoint to obtain the current rev
-	checkpoint, err := getLocalCheckpoint(db.DatabaseContext, clientID)
-	if err != nil {
-		base.WarnfCtx(ctx, "Unable to retrieve local checkpoint for %s, status not updated", clientID)
-		return
-	}
-	if checkpoint == nil {
-		checkpoint = &replicationCheckpoint{}
-	}
-
-	if checkpoint.Status == nil {
-		checkpoint.Status = &ReplicationStatus{}
-	}
-
-	checkpoint.Status.Status = status
-	checkpoint.Status.ErrorMessage = errorMessage
-	base.TracefCtx(ctx, base.KeyReplicate, "setLocalCheckpoint(%v)", checkpoint)
-	collection := db.GetSingleDatabaseCollection()
-	newRev, putErr := collection.putSpecial(DocTypeLocal, CheckpointDocIDPrefix+clientID, checkpoint.Rev, checkpoint.AsBody())
-	if putErr != nil {
-		base.WarnfCtx(ctx, "Unable to persist status in local checkpoint for %s, status not updated: %v", clientID, putErr)
-	} else {
-		base.TracefCtx(ctx, base.KeyReplicate, "setLocalCheckpointStatus successful for %s, newRev: %s: %+v %+v", clientID, newRev, checkpoint, checkpoint.Status)
-	}
-	return
 }

@@ -32,3 +32,23 @@ func (s ScopeAndCollectionName) ScopeName() string {
 func (s ScopeAndCollectionName) CollectionName() string {
 	return s.Collection
 }
+
+// String returns a dot-separated formatted scope and collection name.
+func (s ScopeAndCollectionName) String() string {
+	return s.Scope + ScopeCollectionSeparator + s.Collection
+}
+
+type ScopeAndCollectionNames []ScopeAndCollectionName
+
+// ScopeAndCollectionNames returns a dot-separated formatted slice of scope and collection names.
+func (s ScopeAndCollectionNames) ScopeAndCollectionNames() []string {
+	scopes := make([]string, 0, len(s))
+	for _, scopeAndCollection := range s {
+		scopes = append(scopes, scopeAndCollection.String())
+	}
+	return scopes
+}
+
+func FullyQualifiedCollectionName(bucketName, scopeName, collectionName string) string {
+	return bucketName + "." + scopeName + "." + collectionName
+}

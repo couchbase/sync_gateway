@@ -52,9 +52,10 @@ type sequenceAllocator struct {
 	sequenceBatchSize       uint64              // Current sequence allocation batch size
 	lastSequenceReserveTime time.Time           // Time of most recent sequence reserve
 	releaseSequenceWait     time.Duration       // Supports test customization
+	metaKeys                *base.MetadataKeys  // Key generator for sequence and unused sequence documents
 }
 
-func newSequenceAllocator(datastore base.DataStore, dbStatsMap *base.DatabaseStats) (*sequenceAllocator, error) {
+func newSequenceAllocator(datastore base.DataStore, dbStatsMap *base.DatabaseStats, metaKeys *base.MetadataKeys) (*sequenceAllocator, error) {
 	if dbStatsMap == nil {
 		return nil, fmt.Errorf("dbStatsMap parameter must be non-nil")
 	}
@@ -62,6 +63,7 @@ func newSequenceAllocator(datastore base.DataStore, dbStatsMap *base.DatabaseSta
 	s := &sequenceAllocator{
 		datastore: datastore,
 		dbStats:   dbStatsMap,
+		metaKeys:  metaKeys,
 	}
 	s.terminator = make(chan struct{})
 	s.sequenceBatchSize = idleBatchSize
@@ -215,12 +217,12 @@ func (s *sequenceAllocator) _reserveSequenceRange() error {
 
 // Gets the _sync:seq document value.  Retry handling provided by bucket.Get.
 func (s *sequenceAllocator) getSequence() (max uint64, err error) {
-	return base.GetCounter(s.datastore, base.SyncSeqKey)
+	return base.GetCounter(s.datastore, s.metaKeys.SyncSeqKey())
 }
 
 // Increments the _sync:seq document.  Retry handling provided by bucket.Incr.
 func (s *sequenceAllocator) incrementSequence(numToReserve uint64) (max uint64, err error) {
-	value, err := s.datastore.Incr(base.SyncSeqKey, numToReserve, numToReserve, 0)
+	value, err := s.datastore.Incr(s.metaKeys.SyncSeqKey(), numToReserve, numToReserve, 0)
 	if err == nil {
 		s.dbStats.SequenceIncrCount.Add(1)
 	}
@@ -230,7 +232,7 @@ func (s *sequenceAllocator) incrementSequence(numToReserve uint64) (max uint64, 
 // ReleaseSequence writes an unused sequence document, used to notify sequence buffering that a sequence has been allocated and not used.
 // Sequence is stored as the document body to avoid null doc issues.
 func (s *sequenceAllocator) releaseSequence(sequence uint64) error {
-	key := fmt.Sprintf("%s%d", base.UnusedSeqPrefix, sequence)
+	key := fmt.Sprintf("%s%d", s.metaKeys.UnusedSeqPrefix(), sequence)
 	body := make([]byte, 8)
 	binary.LittleEndian.PutUint64(body, sequence)
 	_, err := s.datastore.AddRaw(key, UnusedSequenceTTL, body)
@@ -246,7 +248,7 @@ func (s *sequenceAllocator) releaseSequence(sequence uint64) error {
 // fromSeq and toSeq are inclusive (i.e. both fromSeq and toSeq are unused).
 // From and to seq are stored as the document contents to avoid null doc issues.
 func (s *sequenceAllocator) releaseSequenceRange(fromSequence, toSequence uint64) error {
-	key := fmt.Sprintf("%s%d:%d", base.UnusedSeqRangePrefix, fromSequence, toSequence)
+	key := s.metaKeys.UnusedSeqRangeKey(fromSequence, toSequence)
 	body := make([]byte, 16)
 	binary.LittleEndian.PutUint64(body[:8], fromSequence)
 	binary.LittleEndian.PutUint64(body[8:16], toSequence)

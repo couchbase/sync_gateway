@@ -1,0 +1,77 @@
+# Copyright 2022-Present Couchbase, Inc.
+#
+# Use of this software is governed by the Business Source License included
+# in the file licenses/BSL-Couchbase.txt.  As of the Change Date specified
+# in that file, in accordance with the Business Source License, use of this
+# software will be governed by the Apache License, Version 2.0, included in
+# the file licenses/APL2.txt.
+parameters:
+  - $ref: ../../components/parameters.yaml#/db
+get:
+  summary: Get all the names of the users
+  description: |-
+    Retrieves all the names of the users that are in the database.
+
+    Required Sync Gateway RBAC roles:
+
+    * Sync Gateway Architect
+    * Sync Gateway Application
+    * Sync Gateway Application Read Only
+  parameters:
+    - $ref: ../../components/parameters.yaml#/usersNameOnly
+    - $ref: ../../components/parameters.yaml#/usersLimit
+  responses:
+    '200':
+      description: Users retrieved successfully
+      content:
+        application/json:
+          schema:
+            description: List of users
+            type: array
+            items:
+              type: string
+          example:
+            - Alice
+            - Bob
+    '404':
+      $ref: ../../components/responses.yaml#/Not-found
+  tags:
+    - Database Security
+  operationId: get_db-_user-
+post:
+  summary: Create a new user
+  description: |-
+    Create a new user using the request body to specify the properties on the user.
+
+    Required Sync Gateway RBAC roles:
+
+    * Sync Gateway Architect
+    * Sync Gateway Application
+  requestBody:
+    $ref: ../../components/requestBodies.yaml#/User
+  responses:
+    '201':
+      description: New user created successfully
+    '404':
+      $ref: ../../components/responses.yaml#/Not-found
+    '409':
+      $ref: ../../components/responses.yaml#/Conflict
+  tags:
+    - Database Security
+  operationId: post_db-_user-
+head:
+  summary: /{db}/_user/
+  responses:
+    '200':
+      description: OK
+    '404':
+      $ref: ../../components/responses.yaml#/Not-found
+  tags:
+    - Database Security
+  description: |-
+    Required Sync Gateway RBAC roles:
+
+    * Sync Gateway Architect
+    * Sync Gateway Application
+    * Sync Gateway Application Read Only
+  operationId: head_db-_user-

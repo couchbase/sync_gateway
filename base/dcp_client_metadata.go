@@ -35,8 +35,8 @@ type DCPMetadata struct {
 }
 
 type DCPMetadataStore interface {
-	// Rollback resets vbucket metadata, but preserves endSeqNo
-	Rollback(vbID uint16)
+	// Rollback resets vBucket metadata to the vBucket UUID and sequence number provided
+	Rollback(ctx context.Context, vbID uint16, startSeqNo gocbcore.SeqNo)
 
 	// SetMeta updates the DCPMetadata for a vbucket
 	SetMeta(vbID uint16, meta DCPMetadata)
@@ -64,15 +64,25 @@ type DCPMetadataStore interface {
 	Purge(numWorkers int)
 }
 
-type DCPMetadataMem struct {
-	metadata  []DCPMetadata
-	endSeqNos []gocbcore.SeqNo
+type dcpMetadataBase struct {
+	metadata []DCPMetadata
 }
+
+type DCPMetadataMem struct {
+	dcpMetadataBase
+}
+
+// verify these types match the interface
+var (
+	_ DCPMetadataStore = &DCPMetadataCS{}
+	_ DCPMetadataStore = &DCPMetadataMem{}
+)
 
 func NewDCPMetadataMem(numVbuckets uint16) *DCPMetadataMem {
 	m := &DCPMetadataMem{
-		metadata:  make([]DCPMetadata, numVbuckets),
-		endSeqNos: make([]gocbcore.SeqNo, numVbuckets),
+		dcpMetadataBase: dcpMetadataBase{
+			metadata: make([]DCPMetadata, numVbuckets),
+		},
 	}
 	for vbNo := uint16(0); vbNo < numVbuckets; vbNo++ {
 		m.metadata[vbNo] = DCPMetadata{
@@ -83,47 +93,55 @@ func NewDCPMetadataMem(numVbuckets uint16) *DCPMetadataMem {
 	return m
 }
 
-// Rollback resets the metadata, preserving EndSeqNo if set
-func (m *DCPMetadataMem) Rollback(vbID uint16) {
-	m.metadata[vbID] = DCPMetadata{
-		VbUUID:          0,
-		StartSeqNo:      0,
-		EndSeqNo:        m.endSeqNos[vbID],
-		SnapStartSeqNo:  0,
-		SnapEndSeqNo:    0,
-		FailoverEntries: make([]gocbcore.FailoverEntry, 0),
+// Rollback resets vBucket metadata to the vBucket UUID and sequence number provided
+func (m *dcpMetadataBase) Rollback(ctx context.Context, vbID uint16, startSeqNo gocbcore.SeqNo) {
+	var rollbackVbuuid gocbcore.VbUUID
+	for _, failoverLog := range m.metadata[vbID].FailoverEntries {
+		if failoverLog.SeqNo <= startSeqNo {
+			rollbackVbuuid = failoverLog.VbUUID
+			break
+		}
 	}
+	// use the lower value of the start sequence number that we last saved, or the value that was provided from KV as the rollback point
+	newStartSeqNo := m.metadata[vbID].StartSeqNo
+	if startSeqNo < m.metadata[vbID].StartSeqNo {
+		newStartSeqNo = startSeqNo
+	}
+	m.metadata[vbID].VbUUID = rollbackVbuuid
+	m.metadata[vbID].StartSeqNo = newStartSeqNo
+	m.metadata[vbID].SnapStartSeqNo = newStartSeqNo
+	m.metadata[vbID].SnapEndSeqNo = newStartSeqNo
+	TracefCtx(ctx, KeyDCP, "rolling back vb:%d with metadata set to %+v", vbID, m.metadata[vbID])
 }
 
-func (m *DCPMetadataMem) SetMeta(vbID uint16, meta DCPMetadata) {
+func (m *dcpMetadataBase) SetMeta(vbID uint16, meta DCPMetadata) {
 	m.metadata[vbID] = meta
 }
 
-func (m *DCPMetadataMem) GetMeta(vbID uint16) DCPMetadata {
+func (m *dcpMetadataBase) GetMeta(vbID uint16) DCPMetadata {
 	return m.metadata[vbID]
 }
 
-func (m *DCPMetadataMem) SetSnapshot(e snapshotEvent) {
+func (m *dcpMetadataBase) SetSnapshot(e snapshotEvent) {
 	m.metadata[e.vbID].SnapStartSeqNo = gocbcore.SeqNo(e.startSeq)
 	m.metadata[e.vbID].SnapEndSeqNo = gocbcore.SeqNo(e.endSeq)
 }
 
-func (m *DCPMetadataMem) UpdateSeq(vbID uint16, seq uint64) {
+func (m *dcpMetadataBase) UpdateSeq(vbID uint16, seq uint64) {
 	m.metadata[vbID].StartSeqNo = gocbcore.SeqNo(seq)
 }
 
-func (m *DCPMetadataMem) SetFailoverEntries(vbID uint16, fe []gocbcore.FailoverEntry) {
+func (m *dcpMetadataBase) SetFailoverEntries(vbID uint16, fe []gocbcore.FailoverEntry) {
 	m.metadata[vbID].FailoverEntries = fe
 	m.metadata[vbID].VbUUID = getVbUUID(fe, m.metadata[vbID].StartSeqNo)
 }
 
 // SetEndSeqNos will update the metadata endSeqNos to the values provided.  Vbuckets not
 // present in the endSeqNos map will have their EndSeqNo set to zero.
-func (m *DCPMetadataMem) SetEndSeqNos(endSeqNos map[uint16]uint64) {
+func (m *dcpMetadataBase) SetEndSeqNos(endSeqNos map[uint16]uint64) {
 	for i := 0; i < len(m.metadata); i++ {
 		endSeqNo, _ := endSeqNos[uint16(i)]
 		m.metadata[i].EndSeqNo = gocbcore.SeqNo(endSeqNo)
-		m.endSeqNos[i] = gocbcore.SeqNo(endSeqNo)
 	}
 }
 
@@ -169,8 +187,7 @@ func BuildDCPMetadataSliceFromVBUUIDs(vbUUIDS []uint64) []DCPMetadata {
 type DCPMetadataCS struct {
 	dataStore DataStore
 	keyPrefix string
-	metadata  []DCPMetadata
-	endSeqNos []gocbcore.SeqNo
+	dcpMetadataBase
 }
 
 func NewDCPMetadataCS(store DataStore, numVbuckets uint16, numWorkers int, keyPrefix string) *DCPMetadataCS {
@@ -178,8 +195,9 @@ func NewDCPMetadataCS(store DataStore, numVbuckets uint16, numWorkers int, keyPr
 	m := &DCPMetadataCS{
 		dataStore: store,
 		keyPrefix: keyPrefix,
-		metadata:  make([]DCPMetadata, numVbuckets),
-		endSeqNos: make([]gocbcore.SeqNo, numVbuckets),
+		dcpMetadataBase: dcpMetadataBase{
+			metadata: make([]DCPMetadata, numVbuckets),
+		},
 	}
 	for vbNo := uint16(0); vbNo < numVbuckets; vbNo++ {
 		m.metadata[vbNo] = DCPMetadata{
@@ -194,50 +212,6 @@ func NewDCPMetadataCS(store DataStore, numVbuckets uint16, numWorkers int, keyPr
 	}
 
 	return m
-}
-
-func (m *DCPMetadataCS) Rollback(vbID uint16) {
-	// Preserve endSeqNo on rollback
-	endSeqNo := m.metadata[vbID].EndSeqNo
-	m.metadata[vbID] = DCPMetadata{
-		VbUUID:          0,
-		StartSeqNo:      0,
-		EndSeqNo:        endSeqNo,
-		SnapStartSeqNo:  0,
-		SnapEndSeqNo:    0,
-		FailoverEntries: make([]gocbcore.FailoverEntry, 0),
-	}
-}
-
-func (m *DCPMetadataCS) SetMeta(vbNo uint16, metadata DCPMetadata) {
-	m.metadata[vbNo] = metadata
-}
-
-func (m *DCPMetadataCS) GetMeta(vbNo uint16) DCPMetadata {
-	return m.metadata[vbNo]
-}
-
-func (m *DCPMetadataCS) SetSnapshot(e snapshotEvent) {
-	m.metadata[e.vbID].SnapStartSeqNo = gocbcore.SeqNo(e.startSeq)
-	m.metadata[e.vbID].SnapEndSeqNo = gocbcore.SeqNo(e.endSeq)
-}
-
-func (m *DCPMetadataCS) UpdateSeq(vbNo uint16, seq uint64) {
-	m.metadata[vbNo].StartSeqNo = gocbcore.SeqNo(seq)
-}
-
-func (m *DCPMetadataCS) SetFailoverEntries(vbID uint16, fe []gocbcore.FailoverEntry) {
-	m.metadata[vbID].FailoverEntries = fe
-	m.metadata[vbID].VbUUID = getVbUUID(fe, m.metadata[vbID].StartSeqNo)
-}
-
-// SetEndSeqNos will update the metadata endSeqNos to the values provided.  Vbuckets not
-// present in the endSeqNos map will have their EndSeqNo set to zero.
-func (m *DCPMetadataCS) SetEndSeqNos(endSeqNos map[uint16]uint64) {
-	for i := 0; i < len(m.metadata); i++ {
-		endSeqNo, _ := endSeqNos[uint16(i)]
-		m.metadata[i].EndSeqNo = gocbcore.SeqNo(endSeqNo)
-	}
 }
 
 // Persist is called by worker.  Triggers persistence of metadata for all listed vbuckets.  This set must be the same

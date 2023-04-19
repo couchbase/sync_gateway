@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"net/http"
 	"regexp"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -133,9 +134,11 @@ type DatabaseContext struct {
 	GraphQL                      GraphQL                        // GraphQL query interface
 	JS                           js.VMPool                      // A pool of preconfigured V8 instances
 	Scopes                       map[string]Scope               // A map keyed by scope name containing a set of scopes/collections. Nil if running with only _default._default
-	singleCollection             *DatabaseCollection            // Temporary collection
 	CollectionByID               map[uint32]*DatabaseCollection // A map keyed by collection ID to Collection
 	CollectionNames              map[string]map[string]struct{} // Map of scope, collection names
+	MetadataKeys                 *base.MetadataKeys             // Factory to generate metadata document keys
+	RequireResync                base.ScopeAndCollectionNames   // Collections requiring resync before database can go online
+	CORS                         *auth.CORSConfig               // CORS configuration
 }
 
 type Scope struct {
@@ -177,6 +180,7 @@ type DatabaseContextOptions struct {
 	Scopes                        ScopesOptions
 	skipRegisterImportPIndex      bool           // if set, skips the global gocb PIndex registration
 	MetadataStore                 base.DataStore // If set, use this location/connection for SG metadata storage - if not set, metadata is stored using the same location/connection as the bucket used for data storage.
+	MetadataID                    string         // MetadataID used for metadata storage
 }
 
 type ScopesOptions map[string]ScopeOptions
@@ -188,6 +192,22 @@ type ScopeOptions struct {
 type CollectionOptions struct {
 	Sync         *string // Collection sync function
 	ImportFilter *string // Source code of filter fn for document import
+}
+
+// Check whether the specified ScopesOptions only defines the default collection
+func (so ScopesOptions) onlyDefaultCollection() bool {
+	if so == nil || len(so) == 0 {
+		return true
+	}
+	if len(so) > 1 {
+		return false
+	}
+	defaultScope, ok := so[base.DefaultScope]
+	if !ok || len(defaultScope.Collections) > 1 {
+		return false
+	}
+	_, ok = defaultScope.Collections[base.DefaultCollection]
+	return ok
 }
 
 type SGReplicateOptions struct {
@@ -373,7 +393,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 
 	// add db info to ctx before having a DatabaseContext (cannot call AddDatabaseLogContext),
 	// in order to pass it to RegisterImportPindexImpl
-	ctx = base.LogContextWith(ctx, &base.DatabaseLogContext{DatabaseName: dbName})
+	ctx = base.DatabaseLogCtx(ctx, dbName)
 
 	// options.MetadataStore is always passed via rest._getOrAddDatabase...
 	// but in db package tests this is unlikely to be set. In this case we'll use the existing bucket connection to store metadata.
@@ -408,6 +428,10 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 		ServerUUID:     serverUUID,
 	}
 
+	// Initialize metadata ID and keys
+	metaKeys := base.NewMetadataKeys(options.MetadataID)
+	dbContext.MetadataKeys = metaKeys
+
 	// Initialize JavaScript VMPool:
 	jsEngineName := DefaultJavaScriptEngine
 	if options.JavaScriptEngine != nil {
@@ -434,7 +458,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 
 	dbContext.EventMgr = NewEventManager(dbContext.terminator)
 
-	dbContext.sequences, err = newSequenceAllocator(metadataStore, dbContext.DbStats.Database())
+	dbContext.sequences, err = newSequenceAllocator(metadataStore, dbContext.DbStats.Database(), metaKeys)
 	if err != nil {
 		return nil, err
 	}
@@ -458,7 +482,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 		defaultOpts := DefaultCacheOptions()
 		cacheOptions = &defaultOpts
 	}
-	channelCache, err := NewChannelCacheForContext(cacheOptions.ChannelCacheOptions, dbContext)
+	channelCache, err := NewChannelCacheForContext(ctx, cacheOptions.ChannelCacheOptions, dbContext)
 	if err != nil {
 		return nil, err
 	}
@@ -467,17 +491,21 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 	// Initialize sg cluster config.  Required even if import and sgreplicate are disabled
 	// on this node, to support replication REST API calls
 	if base.IsEnterpriseEdition() {
-		sgCfg, err := base.NewCfgSG(metadataStore, dbContext.Options.GroupID)
+		sgCfg, err := base.NewCfgSG(metadataStore, metaKeys.SGCfgPrefix(dbContext.Options.GroupID))
 		if err != nil {
 			return nil, err
 		}
 		dbContext.CfgSG = sgCfg
 	} else {
-		dbContext.CfgSG = cbgt.NewCfgMem()
+		sgCfg, err := base.NewCbgtCfgMem()
+		if err != nil {
+			return nil, err
+		}
+		dbContext.CfgSG = sgCfg
 	}
 
 	// Initialize the tap Listener for notify handling
-	dbContext.mutationListener.Init(bucket.GetName(), options.GroupID)
+	dbContext.mutationListener.Init(bucket.GetName(), options.GroupID, dbContext.MetadataKeys)
 
 	if len(options.Scopes) == 0 {
 		return nil, fmt.Errorf("Setting scopes to be zero is invalid")
@@ -492,7 +520,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 		}
 		collectionNameMap := make(map[string]struct{}, len(scope.Collections))
 		for collName, collOpts := range scope.Collections {
-			ctx := base.CollectionCtx(ctx, collName)
+			ctx := base.CollectionLogCtx(ctx, collName)
 			dataStore, err := bucket.NamedDataStore(base.ScopeAndCollectionName{Scope: scopeName, Collection: collName})
 			if err != nil {
 				return nil, err
@@ -527,7 +555,6 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 
 			collectionID := dbCollection.GetCollectionID()
 			dbContext.CollectionByID[collectionID] = dbCollection
-			dbContext.singleCollection = dbCollection
 			collectionNameMap[collName] = struct{}{}
 		}
 		dbContext.CollectionNames[scopeName] = collectionNameMap
@@ -549,6 +576,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 		dbContext.channelCache,
 		notifyChange,
 		dbContext.Options.CacheOptions,
+		metaKeys,
 	)
 	if err != nil {
 		base.DebugfCtx(ctx, base.KeyDCP, "Error initializing the change cache", err)
@@ -577,7 +605,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 	// sending heartbeats before registering itself to the cfg, to avoid triggering immediate removal by other active nodes.
 	if base.IsEnterpriseEdition() && (importEnabled || sgReplicateEnabled) {
 		// Create heartbeater
-		heartbeaterPrefix := base.HeartbeaterPrefixWithGroupID(dbContext.Options.GroupID)
+		heartbeaterPrefix := metaKeys.HeartbeaterPrefix(dbContext.Options.GroupID)
 		heartbeater, err := base.NewCouchbaseHeartbeater(dbContext.MetadataStore, heartbeaterPrefix, dbContext.UUID)
 		if err != nil {
 			return nil, pkgerrors.Wrapf(err, "Error starting heartbeater for bucket %s", base.MD(bucket.GetName()).Redact())
@@ -637,8 +665,8 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 	// If this is an xattr import node, start import feed.  Must be started after the caching DCP feed, as import cfg
 	// subscription relies on the caching feed.
 	if importEnabled {
-		dbContext.ImportListener = NewImportListener(dbContext.Options.GroupID)
-		if importFeedErr := dbContext.ImportListener.StartImportFeed(ctx, bucket, dbContext.DbStats, dbContext); importFeedErr != nil {
+		dbContext.ImportListener = NewImportListener(ctx, metaKeys.DCPCheckpointPrefix(dbContext.Options.GroupID), dbContext)
+		if importFeedErr := dbContext.ImportListener.StartImportFeed(dbContext); importFeedErr != nil {
 			return nil, importFeedErr
 		}
 
@@ -711,7 +739,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 					<-dbContext.terminator
 					bgtTerminator.Close()
 				}()
-				bgt, err := NewBackgroundTask("Compact", dbContext.Name, func(ctx context.Context) error {
+				bgt, err := NewBackgroundTask(ctx, "Compact", func(ctx context.Context) error {
 					_, err := db.Compact(ctx, false, func(purgedDocCount *int) {}, bgtTerminator)
 					if err != nil {
 						base.WarnfCtx(ctx, "Error trying to compact tombstoned documents for %q with error: %v", dbContext.Name, err)
@@ -754,12 +782,12 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 	}
 
 	if dbContext.UseQueryBasedResyncManager() {
-		dbContext.ResyncManager = NewResyncManager(metadataStore)
+		dbContext.ResyncManager = NewResyncManager(metadataStore, metaKeys)
 	} else {
-		dbContext.ResyncManager = NewResyncManagerDCP(metadataStore)
+		dbContext.ResyncManager = NewResyncManagerDCP(metadataStore, dbContext.UseXattrs(), metaKeys)
 	}
 	dbContext.TombstoneCompactionManager = NewTombstoneCompactionManager()
-	dbContext.AttachmentCompactionManager = NewAttachmentCompactionManager(metadataStore)
+	dbContext.AttachmentCompactionManager = NewAttachmentCompactionManager(metadataStore, metaKeys)
 
 	if dbContext.Options.FunctionsConfig != nil {
 		dbContext.UserFunctions, dbContext.GraphQL, err = dbContext.Options.FunctionsConfig.Compile(&dbContext.JS)
@@ -928,7 +956,7 @@ func (context *DatabaseContext) RestartListener() error {
 	context.mutationListener.Stop()
 	// Delay needed to properly stop
 	time.Sleep(2 * time.Second)
-	context.mutationListener.Init(context.Bucket.GetName(), context.Options.GroupID)
+	context.mutationListener.Init(context.Bucket.GetName(), context.Options.GroupID, context.MetadataKeys)
 	cacheFeedStatsMap := context.DbStats.Database().CacheFeedMapStats
 	if err := context.mutationListener.Start(context.Bucket, cacheFeedStatsMap.Map, context.Scopes, context.MetadataStore); err != nil {
 		return err
@@ -1006,7 +1034,7 @@ func (dbCtx *DatabaseContext) RemoveObsoleteIndexes(ctx context.Context, preview
 //
 //	to remove
 func (context *DatabaseContext) NotifyTerminatedChanges(username string) {
-	context.mutationListener.NotifyCheckForTermination(base.SetOf(base.UserPrefix + username))
+	context.mutationListener.NotifyCheckForTermination(base.SetOf(base.UserPrefixRoot + username))
 }
 
 func (dc *DatabaseContext) TakeDbOffline(ctx context.Context, reason string) error {
@@ -1072,6 +1100,7 @@ func (context *DatabaseContext) Authenticator(ctx context.Context) *auth.Authent
 		BcryptCost:               context.Options.BcryptCost,
 		LogCtx:                   ctx,
 		Collections:              context.CollectionNames,
+		MetaKeys:                 context.MetadataKeys,
 	})
 
 	return authenticator
@@ -1142,14 +1171,14 @@ type ForEachDocIDOptions struct {
 type ForEachDocIDFunc func(id IDRevAndSequence, channels []string) (bool, error)
 
 // Iterates over all documents in the database, calling the callback function on each
-func (db *DatabaseCollection) ForEachDocID(ctx context.Context, callback ForEachDocIDFunc, resultsOpts ForEachDocIDOptions) error {
+func (c *DatabaseCollection) ForEachDocID(ctx context.Context, callback ForEachDocIDFunc, resultsOpts ForEachDocIDOptions) error {
 
-	results, err := db.QueryAllDocs(ctx, resultsOpts.Startkey, resultsOpts.Endkey)
+	results, err := c.QueryAllDocs(ctx, resultsOpts.Startkey, resultsOpts.Endkey)
 	if err != nil {
 		return err
 	}
 
-	err = db.processForEachDocIDResults(callback, resultsOpts.Limit, results)
+	err = c.processForEachDocIDResults(callback, resultsOpts.Limit, results)
 	if err != nil {
 		return err
 	}
@@ -1157,7 +1186,7 @@ func (db *DatabaseCollection) ForEachDocID(ctx context.Context, callback ForEach
 }
 
 // Iterate over the results of an AllDocs query, performing ForEachDocID handling for each row
-func (db *DatabaseCollection) processForEachDocIDResults(callback ForEachDocIDFunc, limit uint64, results sgbucket.QueryResultIterator) error {
+func (c *DatabaseCollection) processForEachDocIDResults(callback ForEachDocIDFunc, limit uint64, results sgbucket.QueryResultIterator) error {
 
 	count := uint64(0)
 	for {
@@ -1166,7 +1195,7 @@ func (db *DatabaseCollection) processForEachDocIDResults(callback ForEachDocIDFu
 		var docid, revid string
 		var seq uint64
 		var channels []string
-		if db.useViews() {
+		if c.useViews() {
 			var viewRow AllDocsViewQueryRow
 			found = results.Next(&viewRow)
 			if found {
@@ -1270,7 +1299,8 @@ func (db *DatabaseContext) getRoleIDsInBackground(ctx context.Context) <-chan da
 
 // Returns the Names of all users
 func (db *DatabaseContext) GetUserNames(ctx context.Context) (users []string, err error) {
-	startKey := base.UserPrefix
+	dbUserPrefix := db.MetadataKeys.UserKeyPrefix()
+	startKey := dbUserPrefix
 	limit := db.Options.QueryPaginationLimit
 
 	users = []string{}
@@ -1289,7 +1319,7 @@ outerLoop:
 		for {
 			// startKey is inclusive for views, so need to skip first result if using non-empty startKey, as this results in an overlapping result
 			var skipAddition bool
-			if resultCount == 0 && startKey != base.UserPrefix {
+			if resultCount == 0 && startKey != dbUserPrefix {
 				skipAddition = true
 			}
 
@@ -1298,8 +1328,13 @@ outerLoop:
 			if !found {
 				break
 			}
+
+			if !strings.HasPrefix(queryRow.ID, dbUserPrefix) {
+				break
+			}
+
 			principalName = queryRow.Name
-			startKey = base.UserPrefix + queryRow.Name
+			startKey = queryRow.ID
 
 			resultCount++
 
@@ -1318,7 +1353,6 @@ outerLoop:
 		}
 
 	}
-
 	return users, nil
 }
 
@@ -1327,6 +1361,11 @@ func (db *DatabaseContext) getAllPrincipalIDsSyncDocs(ctx context.Context) (user
 
 	startKey := ""
 	limit := db.Options.QueryPaginationLimit
+
+	dbUserPrefix := db.MetadataKeys.UserKeyPrefix()
+	dbRolePrefix := db.MetadataKeys.RoleKeyPrefix()
+	lenDbUserPrefix := len(dbUserPrefix)
+	lenDbRolePrefix := len(dbRolePrefix)
 
 	users = []string{}
 	roles = []string{}
@@ -1338,9 +1377,8 @@ outerLoop:
 			return nil, nil, err
 		}
 
-		var isUser bool
+		var isDbUser, isDbRole bool
 		var principalName string
-		lenUserKeyPrefix := len(base.UserPrefix)
 
 		resultCount := 0
 
@@ -1351,32 +1389,47 @@ outerLoop:
 				skipAddition = true
 			}
 
+			var rowID string
 			if db.Options.UseViews {
 				var viewRow principalsViewRow
 				found := results.Next(&viewRow)
 				if !found {
 					break
 				}
-				isUser = viewRow.Value
-				principalName = viewRow.Key
-				startKey = principalName
+				rowID = viewRow.ID
+				//isUser = viewRow.Value
+				//principalName = viewRow.Key
+				startKey = viewRow.Key
 			} else {
-				var queryRow QueryIdRow
+				var queryRow principalRow
 				found := results.Next(&queryRow)
 				if !found {
 					break
 				}
-				if len(queryRow.Id) < lenUserKeyPrefix {
-					continue
-				}
-				isUser = queryRow.Id[0:lenUserKeyPrefix] == base.UserPrefix
-				principalName = queryRow.Id[lenUserKeyPrefix:]
-				startKey = queryRow.Id
+				rowID = queryRow.Id
+				startKey = queryRow.Name
+			}
+			if len(rowID) < lenDbUserPrefix && len(rowID) < lenDbRolePrefix {
+				continue
+			}
+
+			isDbUser = strings.HasPrefix(rowID, dbUserPrefix)
+			isDbRole = strings.HasPrefix(rowID, dbRolePrefix)
+			if !isDbUser && !isDbRole {
+				continue
+			}
+			if !db.Options.UseViews {
+				principalName = startKey
+			} else if isDbUser {
+				principalName = rowID[lenDbUserPrefix:]
+			} else {
+				principalName = rowID[lenDbRolePrefix:]
+
 			}
 			resultCount++
 
 			if principalName != "" && !skipAddition {
-				if isUser {
+				if isDbUser {
 					users = append(users, principalName)
 				} else {
 					roles = append(roles, principalName)
@@ -1409,7 +1462,8 @@ func (db *DatabaseContext) GetUsers(ctx context.Context, limit int) (users []aut
 	// limit handling and startKey (non-user _sync: prefixed documents being included in the query limit evaluation).
 	// This doesn't happen for AllPrincipalIDs, I believe because the role check forces query to not assume
 	// a contiguous set of results
-	startKey := base.UserPrefix
+	dbUserKeyPrefix := db.MetadataKeys.UserKeyPrefix()
+	startKey := dbUserKeyPrefix
 	paginationLimit := db.Options.QueryPaginationLimit
 	if paginationLimit == 0 {
 		paginationLimit = DefaultQueryPaginationLimit
@@ -1435,7 +1489,7 @@ outerLoop:
 		for {
 			// startKey is inclusive, so need to skip first result if using non-empty startKey, as this results in an overlapping result
 			var skipAddition bool
-			if resultCount == 0 && startKey != base.UserPrefix {
+			if resultCount == 0 && startKey != dbUserKeyPrefix {
 				skipAddition = true
 			}
 
@@ -1444,7 +1498,11 @@ outerLoop:
 			if !found {
 				break
 			}
-			startKey = base.UserPrefix + queryRow.Name
+			if !strings.HasPrefix(queryRow.ID, dbUserKeyPrefix) {
+				break
+			}
+
+			startKey = queryRow.ID
 			resultCount++
 			if queryRow.Name != "" && !skipAddition {
 				principal := auth.PrincipalConfig{
@@ -1480,7 +1538,8 @@ outerLoop:
 
 func (db *DatabaseContext) getRoleIDsUsingIndex(ctx context.Context, includeDeleted bool) (roles []string, err error) {
 
-	startKey := ""
+	dbRoleIDPrefix := db.MetadataKeys.RoleKeyPrefix()
+	startKey := dbRoleIDPrefix
 	limit := db.Options.QueryPaginationLimit
 
 	roles = []string{}
@@ -1499,18 +1558,18 @@ outerLoop:
 		}
 
 		var roleName string
-		lenRoleKeyPrefix := len(base.RolePrefix)
+		lenRoleKeyPrefix := len(dbRoleIDPrefix)
 
 		resultCount := 0
 
 		for {
 			// startKey is inclusive for views, so need to skip first result if using non-empty startKey, as this results in an overlapping result
 			var skipAddition bool
-			if resultCount == 0 && startKey != "" {
+			if resultCount == 0 && startKey != dbRoleIDPrefix {
 				skipAddition = true
 			}
 
-			var queryRow QueryIdRow
+			var queryRow principalRow
 			found := results.Next(&queryRow)
 			if !found {
 				break
@@ -1518,7 +1577,15 @@ outerLoop:
 			if len(queryRow.Id) < lenRoleKeyPrefix {
 				continue
 			}
-			roleName = queryRow.Id[lenRoleKeyPrefix:]
+			if !strings.HasPrefix(queryRow.Id, dbRoleIDPrefix) {
+				break
+			}
+			if !db.UseViews() {
+				roleName = queryRow.Name
+			} else {
+				roleName = queryRow.Id[lenRoleKeyPrefix:]
+
+			}
 			startKey = queryRow.Id
 
 			resultCount++
@@ -1611,7 +1678,7 @@ func (db *Database) Compact(ctx context.Context, skipRunningStateCheck bool, cal
 	purgeBody := Body{"_purged": true}
 	for _, c := range db.CollectionByID {
 		// shadow ctx, sot that we can't misuse the parent's inside the loop
-		ctx := base.CollectionCtx(ctx, c.Name)
+		ctx := base.CollectionLogCtx(ctx, c.Name)
 
 		// create admin collection interface
 		collection, err := db.GetDatabaseCollectionWithUser(c.ScopeName, c.Name)
@@ -1782,31 +1849,31 @@ func (db *DatabaseCollectionWithUser) UpdateAllDocChannels(ctx context.Context, 
 }
 
 // invalidate channel cache of all users/roles:
-func (db *DatabaseCollection) invalidateAllPrincipalsCache(ctx context.Context, endSeq uint64) {
+func (c *DatabaseCollection) invalidateAllPrincipalsCache(ctx context.Context, endSeq uint64) {
 	base.InfofCtx(ctx, base.KeyAll, "Invalidating channel caches of users/roles...")
-	users, roles, _ := db.allPrincipalIDs(ctx)
+	users, roles, _ := c.allPrincipalIDs(ctx)
 	for _, name := range users {
-		db.invalUserChannels(ctx, name, endSeq)
+		c.invalUserChannels(ctx, name, endSeq)
 	}
 	for _, name := range roles {
-		db.invalRoleChannels(ctx, name, endSeq)
+		c.invalRoleChannels(ctx, name, endSeq)
 	}
 }
 
-func (db *DatabaseCollection) updateAllPrincipalsSequences(ctx context.Context) error {
-	users, roles, err := db.allPrincipalIDs(ctx)
+func (c *DatabaseCollection) updateAllPrincipalsSequences(ctx context.Context) error {
+	users, roles, err := c.allPrincipalIDs(ctx)
 	if err != nil {
 		return err
 	}
 
-	authr := db.Authenticator(ctx)
+	authr := c.Authenticator(ctx)
 
 	for _, role := range roles {
 		role, err := authr.GetRole(role)
 		if err != nil {
 			return err
 		}
-		err = db.regeneratePrincipalSequences(authr, role)
+		err = c.regeneratePrincipalSequences(authr, role)
 		if err != nil {
 			return err
 		}
@@ -1817,7 +1884,7 @@ func (db *DatabaseCollection) updateAllPrincipalsSequences(ctx context.Context) 
 		if err != nil {
 			return err
 		}
-		err = db.regeneratePrincipalSequences(authr, user)
+		err = c.regeneratePrincipalSequences(authr, user)
 		if err != nil {
 			return err
 		}
@@ -1825,8 +1892,8 @@ func (db *DatabaseCollection) updateAllPrincipalsSequences(ctx context.Context) 
 	return nil
 }
 
-func (db *DatabaseCollection) regeneratePrincipalSequences(authr *auth.Authenticator, princ auth.Principal) error {
-	nextSeq, err := db.sequences().nextSequence()
+func (c *DatabaseCollection) regeneratePrincipalSequences(authr *auth.Authenticator, princ auth.Principal) error {
+	nextSeq, err := c.sequences().nextSequence()
 	if err != nil {
 		return err
 	}
@@ -1839,9 +1906,9 @@ func (db *DatabaseCollection) regeneratePrincipalSequences(authr *auth.Authentic
 	return nil
 }
 
-func (db *DatabaseCollection) releaseSequences(ctx context.Context, sequences []uint64) {
+func (c *DatabaseCollection) releaseSequences(ctx context.Context, sequences []uint64) {
 	for _, sequence := range sequences {
-		err := db.sequences().releaseSequence(sequence)
+		err := c.sequences().releaseSequence(sequence)
 		if err != nil {
 			base.WarnfCtx(ctx, "Error attempting to release sequence %d. Error %v", sequence, err)
 		}
@@ -1969,34 +2036,34 @@ func (db *DatabaseCollectionWithUser) resyncDocument(ctx context.Context, docid,
 	return updatedHighSeq, unusedSequences, err
 }
 
-func (col *DatabaseCollection) invalUserRoles(ctx context.Context, username string, invalSeq uint64) {
-	authr := col.Authenticator(ctx)
+func (c *DatabaseCollection) invalUserRoles(ctx context.Context, username string, invalSeq uint64) {
+	authr := c.Authenticator(ctx)
 	if err := authr.InvalidateRoles(username, invalSeq); err != nil {
 		base.WarnfCtx(ctx, "Error invalidating roles for user %s: %v", base.UD(username), err)
 	}
 }
 
-func (col *DatabaseCollection) invalUserChannels(ctx context.Context, username string, invalSeq uint64) {
-	authr := col.Authenticator(ctx)
-	if err := authr.InvalidateChannels(username, true, col.ScopeName, col.Name, invalSeq); err != nil {
+func (c *DatabaseCollection) invalUserChannels(ctx context.Context, username string, invalSeq uint64) {
+	authr := c.Authenticator(ctx)
+	if err := authr.InvalidateChannels(username, true, c.ScopeName, c.Name, invalSeq); err != nil {
 		base.WarnfCtx(ctx, "Error invalidating channels for user %s: %v", base.UD(username), err)
 	}
 }
 
-func (col *DatabaseCollection) invalRoleChannels(ctx context.Context, rolename string, invalSeq uint64) {
-	authr := col.Authenticator(ctx)
-	if err := authr.InvalidateChannels(rolename, false, col.ScopeName, col.Name, invalSeq); err != nil {
+func (c *DatabaseCollection) invalRoleChannels(ctx context.Context, rolename string, invalSeq uint64) {
+	authr := c.Authenticator(ctx)
+	if err := authr.InvalidateChannels(rolename, false, c.ScopeName, c.Name, invalSeq); err != nil {
 		base.WarnfCtx(ctx, "Error invalidating channels for role %s: %v", base.UD(rolename), err)
 	}
 }
 
-func (db *DatabaseCollection) invalUserOrRoleChannels(ctx context.Context, name string, invalSeq uint64) {
+func (c *DatabaseCollection) invalUserOrRoleChannels(ctx context.Context, name string, invalSeq uint64) {
 
 	principalName, isRole := channels.AccessNameToPrincipalName(name)
 	if isRole {
-		db.invalRoleChannels(ctx, principalName, invalSeq)
+		c.invalRoleChannels(ctx, principalName, invalSeq)
 	} else {
-		db.invalUserChannels(ctx, principalName, invalSeq)
+		c.invalUserChannels(ctx, principalName, invalSeq)
 	}
 }
 
@@ -2058,13 +2125,13 @@ func (context *DatabaseContext) DeltaSyncEnabled() bool {
 	return context.Options.DeltaSyncOptions.Enabled
 }
 
-func (context *DatabaseCollection) AllowExternalRevBodyStorage() bool {
+func (c *DatabaseCollection) AllowExternalRevBodyStorage() bool {
 
 	// Support unit testing w/out xattrs enabled
 	if base.TestExternalRevStorage {
 		return false
 	}
-	return !context.UseXattrs()
+	return !c.UseXattrs()
 }
 
 func (context *DatabaseContext) SetUserViewsEnabled(value bool) {
@@ -2190,7 +2257,7 @@ func CheckTimeout(ctx context.Context) error {
 // AddDatabaseLogContext adds database name to the parent context for logging
 func (dbCtx *DatabaseContext) AddDatabaseLogContext(ctx context.Context) context.Context {
 	if dbCtx != nil && dbCtx.Name != "" {
-		return base.LogContextWith(ctx, &base.DatabaseLogContext{DatabaseName: dbCtx.Name})
+		return base.DatabaseLogCtx(ctx, dbCtx.Name)
 	}
 	return ctx
 }
@@ -2228,15 +2295,15 @@ func (dbc *DatabaseContext) GetDatabaseCollection(scopeName, collectionName stri
 		return dbc.GetDefaultDatabaseCollection()
 	}
 	if dbc.Scopes == nil {
-		return nil, fmt.Errorf("scope %s does not exist on this database", base.UD(scopeName))
+		return nil, fmt.Errorf("scope %q does not exist on this database", base.UD(scopeName))
 	}
 	collections, exists := dbc.Scopes[scopeName]
 	if !exists {
-		return nil, fmt.Errorf("scope %s does not exist on this database", base.UD(scopeName))
+		return nil, fmt.Errorf("scope %q does not exist on this database", base.UD(scopeName))
 	}
 	collection, exists := collections.Collections[collectionName]
 	if !exists {
-		return nil, fmt.Errorf("collection %s.%s is not configured on this database", base.UD(scopeName), base.UD(collectionName))
+		return nil, fmt.Errorf("collection \"%s.%s\" does not exist on this database", base.UD(scopeName), base.UD(collectionName))
 	}
 	return collection, nil
 }
@@ -2261,7 +2328,8 @@ func (dbc *Database) GetDefaultDatabaseCollectionWithUser() (*DatabaseCollection
 	}, nil
 }
 
-// GetSingleDatabaseCollection is a temporary function to return a single collection. This should be a temporary function while collection work is ongoing.
-func (dbc *DatabaseContext) GetSingleDatabaseCollection() *DatabaseCollection {
-	return dbc.singleCollection
+func (dbc *DatabaseContext) AuthenticatorOptions() auth.AuthenticatorOptions {
+	defaultOptions := auth.DefaultAuthenticatorOptions()
+	defaultOptions.MetaKeys = dbc.MetadataKeys
+	return defaultOptions
 }

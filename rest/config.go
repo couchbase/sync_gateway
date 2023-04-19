@@ -166,6 +166,7 @@ type DbConfig struct {
 	GraphQL                          *functions.GraphQLConfig         `json:"graphql,omitempty"`                              // GraphQL configuration & resolver fns
 	UserFunctions                    *functions.FunctionsConfig       `json:"functions,omitempty"`                            // Named JS fns for clients to call
 	Suspendable                      *bool                            `json:"suspendable,omitempty"`                          // Allow the database to be suspended
+	CORS                             *auth.CORSConfig                 `json:"cors,omitempty"`
 }
 
 type ScopesConfig map[string]ScopeConfig
@@ -681,6 +682,10 @@ func (dbConfig *DbConfig) validateVersion(ctx context.Context, isEnterpriseEditi
 		}
 	}
 
+	if dbConfig.CORS != nil && dbConfig.CORS.MaxAge != 0 {
+		multiError = multiError.Append(fmt.Errorf("cors.max_age can not be set on a database level"))
+
+	}
 	if dbConfig.DeprecatedPool != nil {
 		base.WarnfCtx(ctx, `"pool" config option is not supported. The pool will be set to "default". The option should be removed from config file.`)
 	}
@@ -1041,7 +1046,7 @@ func (config *DbConfig) redactInPlace() error {
 }
 
 // DecodeAndSanitiseConfig will sanitise a config from an io.Reader and unmarshal it into the given config parameter.
-func DecodeAndSanitiseConfig(r io.Reader, config interface{}) (err error) {
+func DecodeAndSanitiseConfig(r io.Reader, config interface{}, disallowUnknownFields bool) (err error) {
 	b, err := io.ReadAll(r)
 	if err != nil {
 		return err
@@ -1055,7 +1060,9 @@ func DecodeAndSanitiseConfig(r io.Reader, config interface{}) (err error) {
 	b = base.ConvertBackQuotedStrings(b)
 
 	d := base.JSONDecoder(bytes.NewBuffer(b))
-	d.DisallowUnknownFields()
+	if disallowUnknownFields {
+		d.DisallowUnknownFields()
+	}
 	err = d.Decode(config)
 	return base.WrapJSONUnknownFieldErr(err)
 }
@@ -1296,7 +1303,7 @@ func (sc *ServerContext) fetchAndLoadConfigs(ctx context.Context, isInitialStart
 	var deletedDatabases []string
 	if !isInitialStartup {
 		sc.lock.RLock()
-		for _, dbName := range sc.bucketDbName {
+		for dbName, _ := range sc.dbRegistry {
 			if _, foundMatchingDb := fetchedConfigs[dbName]; !foundMatchingDb {
 				deletedDatabases = append(deletedDatabases, dbName)
 				delete(fetchedConfigs, dbName)
@@ -1368,6 +1375,40 @@ func (sc *ServerContext) _fetchAndLoadDatabase(nonContextStruct base.NonCancella
 	return true, nil
 }
 
+// migrateV30Configs checks for configs stored in the 3.0 location, and migrates them to the db registry
+func (sc *ServerContext) migrateV30Configs(ctx context.Context) error {
+	groupID := sc.Config.Bootstrap.ConfigGroupID
+	buckets, err := sc.BootstrapContext.Connection.GetConfigBuckets()
+	if err != nil {
+		return err
+	}
+
+	for _, bucketName := range buckets {
+		var dbConfig DatabaseConfig
+		legacyCas, getErr := sc.BootstrapContext.Connection.GetMetadataDocument(bucketName, PersistentConfigKey30(groupID), &dbConfig)
+		if getErr == base.ErrNotFound {
+			continue
+		} else if getErr != nil {
+			return fmt.Errorf("Error retrieving 3.0 config for bucket: %s, groupID: %s: %w", bucketName, groupID, err)
+		}
+
+		base.InfofCtx(ctx, base.KeyConfig, "Found legacy persisted config for database %s - migrating to db registry.", base.MD(dbConfig.Name))
+		_, insertErr := sc.BootstrapContext.InsertConfig(ctx, bucketName, groupID, &dbConfig)
+		if insertErr != nil {
+			if insertErr == base.ErrAlreadyExists {
+				base.DebugfCtx(ctx, base.KeyConfig, "Found legacy config for database %s, but already exists in registry.", base.MD(dbConfig.Name))
+				continue
+			}
+			return fmt.Errorf("Error migrating v3.0 config for bucket %s groupID %s: %w", base.MD(bucketName), base.MD(groupID), insertErr)
+		}
+		removeErr := sc.BootstrapContext.Connection.DeleteMetadataDocument(bucketName, PersistentConfigKey30(groupID), legacyCas)
+		if removeErr != nil {
+			base.InfofCtx(ctx, base.KeyConfig, "Failed to remove legacy config for database %s.", base.MD(dbConfig.Name))
+		}
+	}
+	return nil
+}
+
 func (sc *ServerContext) findBucketWithCallback(callback func(bucket string) (exit bool, err error)) (err error) {
 	// rewritten loop from FetchDatabase as part of CBG-2420 PR review
 	var buckets []string
@@ -1396,7 +1437,7 @@ func (sc *ServerContext) fetchDatabase(ctx context.Context, dbName string) (foun
 	// loop code moved to foreachDbConfig
 	var cnf DatabaseConfig
 	callback := func(bucket string) (exit bool, err error) {
-		cas, err := sc.BootstrapContext.Connection.GetConfig(bucket, sc.Config.Bootstrap.ConfigGroupID, &cnf)
+		cas, err := sc.BootstrapContext.GetConfig(bucket, sc.Config.Bootstrap.ConfigGroupID, dbName, &cnf)
 		if err == base.ErrNotFound {
 			base.DebugfCtx(ctx, base.KeyConfig, "%q did not contain config in group %q", bucket, sc.Config.Bootstrap.ConfigGroupID)
 			return false, err
@@ -1455,11 +1496,14 @@ func (sc *ServerContext) bucketNameFromDbName(dbName string) (bucketName string,
 	if ok {
 		return dbc.Bucket.GetName(), true
 	}
-	var cfgDbName struct {
-		Name string `json:"name"`
-	}
+
+	// To search for database with the specified name, need to iterate over all buckets:
+	//   - look for dbName-scoped config file
+	//   - fetch default config file (backward compatibility, check internal DB name)
+
+	cfgDbName := &dbConfigNameOnly{}
 	callback := func(bucket string) (exit bool, err error) {
-		_, err = sc.BootstrapContext.Connection.GetConfig(bucket, sc.Config.Bootstrap.ConfigGroupID, &cfgDbName)
+		_, err = sc.BootstrapContext.GetConfigName(bucket, sc.Config.Bootstrap.ConfigGroupID, dbName, cfgDbName)
 		if err != nil && err != base.ErrNotFound {
 			return true, err
 		}
@@ -1498,9 +1542,8 @@ func (sc *ServerContext) fetchConfigsSince(ctx context.Context, refreshInterval 
 	return sc.dbConfigs, nil
 }
 
-// FetchConfigs retrieves all database configs from the ServerContext's bootstrapConnection.
-func (sc *ServerContext) FetchConfigs(ctx context.Context, isInitialStartup bool) (dbNameConfigs map[string]DatabaseConfig, err error) {
-	var buckets []string
+// GetBucketNames returns a slice of the bucket names associated with the server context
+func (sc *ServerContext) GetBucketNames() (buckets []string, err error) {
 	if sc.Config.IsServerless() {
 		buckets = make([]string, len(sc.Config.BucketCredentials))
 		for bucket, _ := range sc.Config.BucketCredentials {
@@ -1522,19 +1565,24 @@ func (sc *ServerContext) FetchConfigs(ctx context.Context, isInitialStartup bool
 			return nil, fmt.Errorf("couldn't get buckets from cluster: %w", err)
 		}
 	}
+	return buckets, nil
+}
+
+// FetchConfigs retrieves all database configs from the ServerContext's bootstrapConnection.
+func (sc *ServerContext) FetchConfigs(ctx context.Context, isInitialStartup bool) (dbNameConfigs map[string]DatabaseConfig, err error) {
+
+	buckets, err := sc.GetBucketNames()
+	if err != nil {
+		return nil, err
+	}
 
 	fetchedConfigs := make(map[string]DatabaseConfig, len(buckets))
-
 	for _, bucket := range buckets {
-		base.TracefCtx(ctx, base.KeyConfig, "Checking for config for group %q from bucket %q", sc.Config.Bootstrap.ConfigGroupID, bucket)
-		var cnf DatabaseConfig
-		cas, err := sc.BootstrapContext.Connection.GetConfig(bucket, sc.Config.Bootstrap.ConfigGroupID, &cnf)
-		if err == base.ErrNotFound {
-			base.DebugfCtx(ctx, base.KeyConfig, "Bucket %q did not contain config for group %q", bucket, sc.Config.Bootstrap.ConfigGroupID)
-			continue
-		}
+
+		base.TracefCtx(ctx, base.KeyConfig, "Checking for configs for group %q from bucket %q", sc.Config.Bootstrap.ConfigGroupID, bucket)
+		configs, err := sc.BootstrapContext.GetDatabaseConfigs(ctx, bucket, sc.Config.Bootstrap.ConfigGroupID)
 		if err != nil {
-			// Unexpected error fetching config - SDK has already performed retries, so we'll treat it as a database removal
+			// Unexpected error fetching config - SDK has already performed retries, so we'll treat it as a registry removal
 			// this could be due to invalid JSON or some other non-recoverable error.
 			if isInitialStartup {
 				base.WarnfCtx(ctx, "Unable to fetch config for group %q from bucket %q on startup: %v", sc.Config.Bootstrap.ConfigGroupID, bucket, err)
@@ -1543,30 +1591,34 @@ func (sc *ServerContext) FetchConfigs(ctx context.Context, isInitialStartup bool
 			}
 			continue
 		}
-
-		cnf.cfgCas = cas
-
-		// inherit properties the bootstrap config
-		cnf.CACertPath = sc.Config.Bootstrap.CACertPath
-
-		bucketCopy := bucket
-		cnf.Bucket = &bucketCopy
-
-		// stamp per-database credentials if set
-		if dbCredentials, ok := sc.Config.DatabaseCredentials[cnf.Name]; ok && dbCredentials != nil {
-			cnf.setDatabaseCredentials(*dbCredentials)
+		if len(configs) == 0 {
+			base.DebugfCtx(ctx, base.KeyConfig, "Bucket %q did not contain config for group %q", bucket, sc.Config.Bootstrap.ConfigGroupID)
+			continue
 		}
+		for _, cnf := range configs {
 
-		// any authentication fields defined on the dbconfig take precedence over any in the bootstrap config
-		if cnf.Username == "" && cnf.Password == "" && cnf.CertPath == "" && cnf.KeyPath == "" {
-			cnf.Username = sc.Config.Bootstrap.Username
-			cnf.Password = sc.Config.Bootstrap.Password
-			cnf.CertPath = sc.Config.Bootstrap.X509CertPath
-			cnf.KeyPath = sc.Config.Bootstrap.X509KeyPath
+			// inherit properties the bootstrap config
+			cnf.CACertPath = sc.Config.Bootstrap.CACertPath
+
+			bucketCopy := bucket
+			cnf.Bucket = &bucketCopy
+
+			// stamp per-database credentials if set
+			if dbCredentials, ok := sc.Config.DatabaseCredentials[cnf.Name]; ok && dbCredentials != nil {
+				cnf.setDatabaseCredentials(*dbCredentials)
+			}
+
+			// any authentication fields defined on the dbconfig take precedence over any in the bootstrap config
+			if cnf.Username == "" && cnf.Password == "" && cnf.CertPath == "" && cnf.KeyPath == "" {
+				cnf.Username = sc.Config.Bootstrap.Username
+				cnf.Password = sc.Config.Bootstrap.Password
+				cnf.CertPath = sc.Config.Bootstrap.X509CertPath
+				cnf.KeyPath = sc.Config.Bootstrap.X509KeyPath
+			}
+
+			base.DebugfCtx(ctx, base.KeyConfig, "Got config for group %q from bucket %q with cas %d", sc.Config.Bootstrap.ConfigGroupID, bucket, cnf.cfgCas)
+			fetchedConfigs[cnf.Name] = *cnf
 		}
-
-		base.DebugfCtx(ctx, base.KeyConfig, "Got config for group %q from bucket %q with cas %d", sc.Config.Bootstrap.ConfigGroupID, bucket, cas)
-		fetchedConfigs[cnf.Name] = cnf
 	}
 
 	return fetchedConfigs, nil
@@ -1616,31 +1668,24 @@ func (sc *ServerContext) _applyConfig(nonContextStruct base.NonCancellableContex
 		}
 	}
 
-	// skip if we already have this config loaded, and we've got a cas value to compare with
-	foundDbName, exists := sc.bucketDbName[*cnf.Bucket]
-	if exists {
-		// Somebody is trying to create a new database with a duplicate bucket. Changing db name is not supported and is rejected earlier in the update handler.
-		if foundDbName != cnf.Name {
-			return false, fmt.Errorf("%w: Bucket %q already in use by database %q", base.ErrAlreadyExists, *cnf.Bucket, foundDbName)
-		}
+	// Check for collections already in use by other databases
+	duplicateCollections := sc._findDuplicateCollections(cnf)
+	if len(duplicateCollections) > 0 {
+		return false, fmt.Errorf("%w: Collection(s) %v already in use by other database(s)", base.ErrAlreadyExists, duplicateCollections)
+	}
 
+	// skip if we already have this config loaded, and we've got a cas value to compare with
+	_, exists := sc.dbRegistry[cnf.Name]
+	if exists {
 		if cnf.cfgCas == 0 {
 			// force an update when the new config's cas was set to zero prior to load
 			base.InfofCtx(nonContextStruct.Ctx, base.KeyConfig, "Forcing update of config for database %q bucket %q", cnf.Name, *cnf.Bucket)
 		} else {
-			if sc.dbConfigs[foundDbName].cfgCas >= cnf.cfgCas {
+			if sc.dbConfigs[cnf.Name].cfgCas >= cnf.cfgCas {
 				base.DebugfCtx(nonContextStruct.Ctx, base.KeyConfig, "Database %q bucket %q config has not changed since last update", cnf.Name, *cnf.Bucket)
 				return false, nil
 			}
 			base.InfofCtx(nonContextStruct.Ctx, base.KeyConfig, "Updating database %q for bucket %q with new config from bucket", cnf.Name, *cnf.Bucket)
-		}
-	}
-
-	// ensure we're not loading a database from multiple buckets
-	if dbc := sc.databases_[cnf.Name]; dbc != nil {
-		runningBucket := dbc.Bucket.GetName()
-		if runningBucket != *cnf.Bucket {
-			return false, fmt.Errorf("database %q bucket %q cannot be added - already running %q using bucket %q", cnf.Name, *cnf.Bucket, cnf.Name, runningBucket)
 		}
 	}
 
@@ -1772,6 +1817,55 @@ func sharedBuckets(dbContextMap map[string][]*db.DatabaseContext) (sharedBuckets
 		}
 	}
 	return sharedBuckets
+}
+
+// _findDuplicateCollections checks whether any of the collections defined in the specified DatabaseConfig are already
+// in use by different databases running on this node.  The persisted collection registry (_sync:registry) is the final
+// source of truth (as we need to check across config groups), but checking the serverContext's collectionRegistry
+// is useful to catch conflicts earlier (before reloading/rolling back the database)
+func (sc *ServerContext) _findDuplicateCollections(cnf DatabaseConfig) []string {
+	duplicatedCollections := make([]string, 0)
+	// If scopes aren't defined, check the default collection
+	if cnf.Scopes == nil {
+		defaultFQName := base.FullyQualifiedCollectionName(*cnf.Bucket, base.DefaultScope, base.DefaultCollection)
+		existingDbName, ok := sc.collectionRegistry[defaultFQName]
+		if ok && existingDbName != cnf.Name {
+			duplicatedCollections = append(duplicatedCollections, defaultFQName)
+		}
+	} else {
+		for scopeName, scope := range cnf.Scopes {
+			for collectionName, _ := range scope.Collections {
+				fqName := base.FullyQualifiedCollectionName(*cnf.Bucket, scopeName, collectionName)
+				existingDbName, ok := sc.collectionRegistry[fqName]
+				if ok && existingDbName != cnf.Name {
+					duplicatedCollections = append(duplicatedCollections, fqName)
+				}
+			}
+		}
+	}
+	return duplicatedCollections
+}
+
+// PersistentConfigKey returns a document key to use to store database configs
+func PersistentConfigKey(groupID string, metadataID string) string {
+	if groupID == "" {
+		base.WarnfCtx(context.TODO(), "Empty group ID specified for PersistentConfigKey - using %v", PersistentConfigDefaultGroupID)
+		groupID = PersistentConfigDefaultGroupID
+	}
+	if metadataID == "" {
+		return base.PersistentConfigPrefixWithoutGroupID + groupID
+	} else {
+		return base.PersistentConfigPrefixWithoutGroupID + metadataID + ":" + groupID
+	}
+}
+
+// Return the persistent config key for a legacy 3.0 persistent config (single database per bucket model)
+func PersistentConfigKey30(groupID string) string {
+	if groupID == "" {
+		base.WarnfCtx(context.TODO(), "Empty group ID specified for PersistentConfigKey - using %v", PersistentConfigDefaultGroupID)
+		groupID = PersistentConfigDefaultGroupID
+	}
+	return base.PersistentConfigPrefixWithoutGroupID + groupID
 }
 
 func HandleSighup() {

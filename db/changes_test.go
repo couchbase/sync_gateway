@@ -118,6 +118,7 @@ func TestChangesAfterChannelAdded(t *testing.T) {
 
 	// Modify user to have access to both channels (sequence 2):
 	userInfo, err := db.GetPrincipalForTest(t, "naomi", true)
+	require.NoError(t, err)
 	assert.True(t, userInfo != nil)
 	userInfo.ExplicitChannels = base.SetOf("ABC", "PBS")
 
@@ -265,6 +266,7 @@ func TestDocDeletionFromChannelCoalescedRemoved(t *testing.T) {
 
 	// Marshall back to JSON
 	b, err := base.JSONMarshal(x)
+	require.NoError(t, err)
 
 	// Update raw document in the bucket
 	assert.NoError(t, collection.dataStore.SetRaw("alpha", 0, nil, b))
@@ -348,6 +350,7 @@ func TestDocDeletionFromChannelCoalesced(t *testing.T) {
 
 	// Marshall back to JSON
 	b, err := base.JSONMarshal(x)
+	require.NoError(t, err)
 
 	// Update raw document in the bucket
 	require.NoError(t, collection.dataStore.SetRaw("alpha", 0, nil, b))

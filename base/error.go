@@ -58,6 +58,15 @@ var (
 	// ErrDeltaSourceIsTombstone is returned to indicate delta sync should do a full body replication due to the
 	// delta source being a tombstone (therefore having an empty body)
 	ErrDeltaSourceIsTombstone = &sgError{"From rev is a tombstone"}
+
+	// ErrConfigVersionMismatch is returned when the db config document doesn't match the requested version
+	ErrConfigVersionMismatch = &sgError{"Config version mismatch"}
+
+	// ErrConfigRegistryRollback is returned when a db config fetch triggered a registry rollback based on version mismatch (config is older)
+	ErrConfigRegistryRollback = &sgError{"Config registry rollback"}
+
+	// ErrConfigRegistryReloadRequired is returned when a db config fetch requires a registry reload based on version mismatch (config is newer)
+	ErrConfigRegistryReloadRequired = &sgError{"Config registry reload required"}
 )
 
 func (e *sgError) Error() string {

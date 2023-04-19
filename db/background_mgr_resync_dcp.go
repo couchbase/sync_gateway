@@ -29,6 +29,7 @@ type ResyncManagerDCP struct {
 	DocsChanged   base.AtomicInt
 	ResyncID      string
 	VBUUIDs       []uint64
+	useXattrs     bool
 	lock          sync.RWMutex
 }
 
@@ -37,12 +38,13 @@ type ResyncCollections map[string][]string
 
 var _ BackgroundManagerProcessI = &ResyncManagerDCP{}
 
-func NewResyncManagerDCP(metadataStore base.DataStore) *BackgroundManager {
+func NewResyncManagerDCP(metadataStore base.DataStore, useXattrs bool, metaKeys *base.MetadataKeys) *BackgroundManager {
 	return &BackgroundManager{
 		name:    "resync",
-		Process: &ResyncManagerDCP{},
+		Process: &ResyncManagerDCP{useXattrs: useXattrs},
 		clusterAwareOptions: &ClusterAwareBackgroundManagerOptions{
 			metadataStore: metadataStore,
+			metaKeys:      metaKeys,
 			processSuffix: "resync",
 		},
 		terminator: base.NewSafeTerminator(),
@@ -108,8 +110,8 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]interface
 		key := realDocID(docID)
 		base.TracefCtx(ctx, base.KeyAll, "[%s] Received DCP event %d for doc %v", resyncLoggingID, event.Opcode, base.UD(docID))
 
-		// Ignore documents without Xattrs
-		if event.DataType&base.MemcachedDataTypeXattr == 0 {
+		// Ignore documents without xattrs if possible, to avoid processing unnecessary documents
+		if r.useXattrs && event.DataType&base.MemcachedDataTypeXattr == 0 {
 			return true
 		}
 		// Don't want to process raw binary docs
@@ -155,7 +157,7 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]interface
 		base.InfofCtx(ctx, base.KeyAll, "[%s] running resync against specified collections", resyncLoggingID)
 	}
 
-	clientOptions := getReSyncDCPClientOptions(collectionIDs, db.Options.GroupID)
+	clientOptions := getReSyncDCPClientOptions(collectionIDs, db.Options.GroupID, db.MetadataKeys.DCPCheckpointPrefix(db.Options.GroupID))
 
 	dcpFeedKey := generateResyncDCPStreamName(r.ResyncID)
 	dcpClient, err := base.NewDCPClient(dcpFeedKey, callback, *clientOptions, bucket)
@@ -206,6 +208,20 @@ func (r *ResyncManagerDCP) Run(ctx context.Context, options map[string]interface
 				databaseCollection.invalidateAllPrincipalsCache(ctx, endSeq)
 			}
 
+		}
+
+		// If we regenerated sequences, update syncInfo for all collections affected
+		if regenerateSequences {
+			for _, collectionID := range collectionIDs {
+				dbc, ok := db.CollectionByID[collectionID]
+				if !ok {
+					base.WarnfCtx(ctx, "[%s] Completed resync, but unable to update syncInfo for collection %v (not found)", resyncLoggingID, collectionID)
+				}
+				if err := base.SetSyncInfo(dbc.dataStore, db.DatabaseContext.Options.MetadataID); err != nil {
+					base.WarnfCtx(ctx, "[%s] Completed resync, but unable to update syncInfo for collection %v: %v", resyncLoggingID, collectionID, err)
+				}
+
+			}
 		}
 	case <-terminator.Done():
 		base.DebugfCtx(ctx, base.KeyAll, "[%s] Terminator closed. Ending Resync process.", resyncLoggingID)
@@ -311,13 +327,14 @@ type ResyncManagerStatusDocDCP struct {
 }
 
 // getReSyncDCPClientOptions returns the default set of DCPClientOptions suitable for resync
-func getReSyncDCPClientOptions(collectionIDs []uint32, groupID string) *base.DCPClientOptions {
+func getReSyncDCPClientOptions(collectionIDs []uint32, groupID string, prefix string) *base.DCPClientOptions {
 	return &base.DCPClientOptions{
 		OneShot:           true,
 		FailOnRollback:    true,
 		MetadataStoreType: base.DCPMetadataStoreCS,
 		GroupID:           groupID,
 		CollectionIDs:     collectionIDs,
+		CheckpointPrefix:  prefix,
 	}
 }
 

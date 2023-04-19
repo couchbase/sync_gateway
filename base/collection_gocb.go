@@ -73,7 +73,7 @@ func (c *Collection) GetName() string {
 		return c.Collection.Bucket().Name()
 	}
 	// An unescaped variant of c.EscapedKeyspace()
-	return fmt.Sprintf("%s.%s.%s", c.BucketName(), c.ScopeName(), c.CollectionName())
+	return FullyQualifiedCollectionName(c.BucketName(), c.ScopeName(), c.CollectionName())
 }
 
 // KV store

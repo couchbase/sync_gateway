@@ -51,27 +51,27 @@ func TestReadChangesOptionsFromJSON(t *testing.T) {
 
 	// Attempt to set heartbeat, timeout to valid values
 	optStr = `{"feed":"longpoll", "since": "1", "heartbeat":30000, "timeout":60000}`
-	feed, options, filter, channelsArray, _, _, err = h.readChangesOptionsFromJSON([]byte(optStr))
+	_, options, _, _, _, _, err = h.readChangesOptionsFromJSON([]byte(optStr))
 	assert.NoError(t, err)
 	assert.Equal(t, uint64(30000), options.HeartbeatMs)
 	assert.Equal(t, uint64(60000), options.TimeoutMs)
 
 	// Attempt to set valid timeout, no heartbeat
 	optStr = `{"feed":"longpoll", "since": "1", "timeout":2000}`
-	feed, options, filter, channelsArray, _, _, err = h.readChangesOptionsFromJSON([]byte(optStr))
+	_, options, _, _, _, _, err = h.readChangesOptionsFromJSON([]byte(optStr))
 	assert.NoError(t, err)
 	assert.Equal(t, uint64(2000), options.TimeoutMs)
 
 	// Disable heartbeat, timeout by explicitly setting to zero
 	optStr = `{"feed":"longpoll", "since": "1", "heartbeat":0, "timeout":0}`
-	feed, options, filter, channelsArray, _, _, err = h.readChangesOptionsFromJSON([]byte(optStr))
+	_, options, _, _, _, _, err = h.readChangesOptionsFromJSON([]byte(optStr))
 	assert.NoError(t, err)
 	assert.Equal(t, uint64(0), options.HeartbeatMs)
 	assert.Equal(t, uint64(0), options.TimeoutMs)
 
 	// Attempt to set heartbeat less than minimum heartbeat, timeout greater than max timeout
 	optStr = `{"feed":"longpoll", "since": "1", "heartbeat":1000, "timeout":1000000}`
-	feed, options, filter, channelsArray, _, _, err = h.readChangesOptionsFromJSON([]byte(optStr))
+	_, options, _, _, _, _, err = h.readChangesOptionsFromJSON([]byte(optStr))
 	assert.NoError(t, err)
 	assert.Equal(t, uint64(kMinHeartbeatMS), options.HeartbeatMs)
 	assert.Equal(t, uint64(kMaxTimeoutMS), options.TimeoutMs)
@@ -79,7 +79,7 @@ func TestReadChangesOptionsFromJSON(t *testing.T) {
 	// Set max heartbeat in server context, attempt to set heartbeat greater than max
 	h.server.Config.Replicator.MaxHeartbeat = base.NewConfigDuration(time.Minute)
 	optStr = `{"feed":"longpoll", "since": "1", "heartbeat":90000}`
-	feed, options, filter, channelsArray, _, _, err = h.readChangesOptionsFromJSON([]byte(optStr))
+	_, options, _, _, _, _, err = h.readChangesOptionsFromJSON([]byte(optStr))
 	assert.NoError(t, err)
 	assert.Equal(t, uint64(60000), options.HeartbeatMs)
 }
@@ -124,7 +124,6 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 	changesResults, err = rt.WaitForChanges(50, fmt.Sprintf("/{{.keyspace}}/_changes?since=\"%s\"&limit=%d", since, limit), "user1", false)
 	assert.NoError(t, err, "Unexpected error")
 	require.Len(t, changesResults.Results, 50)
-	since = changesResults.Results[49].Seq
 	assert.Equal(t, "doc98", changesResults.Results[49].ID)
 
 	// Create user2

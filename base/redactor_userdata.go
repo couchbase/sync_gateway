@@ -16,8 +16,8 @@ import (
 )
 
 const (
-	userDataPrefix = "<ud>"
-	userDataSuffix = "</ud>"
+	UserDataPrefix = "<ud>"
+	UserDataSuffix = "</ud>"
 )
 
 // RedactUserData is a global toggle for user data redaction.
@@ -43,7 +43,7 @@ func (ud UserData) Redact() string {
 	if !RedactUserData {
 		return string(ud)
 	}
-	return userDataPrefix + string(ud) + userDataSuffix
+	return UserDataPrefix + string(ud) + UserDataSuffix
 }
 
 // Compile-time interface check.
@@ -56,9 +56,9 @@ func UD(i interface{}) RedactorFunc {
 		return func() Redactor {
 			return UserData(v)
 		}
-	case Set:
+	case RedactorBuilder:
 		return func() Redactor {
-			return v.buildRedactorSet(UD)
+			return v.BuildRedactor(UD)
 		}
 	case fmt.Stringer:
 		return func() Redactor {
