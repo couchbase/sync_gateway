@@ -124,6 +124,7 @@ type DatabaseContext struct {
 	NoX509HTTPClient             *http.Client                   // A HTTP Client from gocb to use the management endpoints
 	ServerContextHasStarted      chan struct{}                  // Closed via PostStartup once the server has fully started
 	userFunctions                *UserFunctions                 // client-callable JavaScript functions
+	UserFunctionTimeout          time.Duration                  // Default timeout for N1QL, JavaScript and GraphQL queries. (Applies to REST and BLIP requests.)
 	graphQL                      *GraphQL                       // GraphQL query evaluator
 	Scopes                       map[string]Scope               // A map keyed by scope name containing a set of scopes/collections. Nil if running with only _default._default
 	CollectionByID               map[uint32]*DatabaseCollection // A map keyed by collection ID to Collection
@@ -408,16 +409,17 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 		return nil, err
 	}
 	dbContext := &DatabaseContext{
-		Name:           dbName,
-		UUID:           cbgt.NewUUID(),
-		MetadataStore:  metadataStore,
-		Bucket:         bucket,
-		StartTime:      time.Now(),
-		autoImport:     autoImport,
-		Options:        options,
-		DbStats:        dbStats,
-		CollectionByID: make(map[uint32]*DatabaseCollection),
-		ServerUUID:     serverUUID,
+		Name:                dbName,
+		UUID:                cbgt.NewUUID(),
+		MetadataStore:       metadataStore,
+		Bucket:              bucket,
+		StartTime:           time.Now(),
+		autoImport:          autoImport,
+		Options:             options,
+		DbStats:             dbStats,
+		CollectionByID:      make(map[uint32]*DatabaseCollection),
+		ServerUUID:          serverUUID,
+		UserFunctionTimeout: 60 * time.Second,
 	}
 
 	// Initialize metadata ID and keys
