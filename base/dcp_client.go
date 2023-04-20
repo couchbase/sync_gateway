@@ -565,12 +565,10 @@ func (dc *DCPClient) onStreamEnd(e endStreamEvent) {
 
 	if errors.Is(e.err, gocbcore.ErrDCPStreamClosed) {
 		DebugfCtx(logCtx, KeyDCP, "Stream (vb:%d) closed by DCPClient", e.vbID)
+		dc.fatalError(fmt.Errorf("Stream (vb:%d) closed by DCPClient", e.vbID))
 		return
 	}
 
-	if errors.Is(e.err, gocbcore.ErrDCPStreamClosed) {
-		DebugfCtx(logCtx, KeyDCP, "Stream (vb:%d) closed by DCPClient", e.vbID)
-	}
 	if errors.Is(e.err, gocbcore.ErrDCPStreamStateChanged) || errors.Is(e.err, gocbcore.ErrDCPStreamTooSlow) || errors.Is(e.err, gocbcore.ErrDCPStreamDisconnected) {
 		DebugfCtx(logCtx, KeyDCP, "Stream (vb:%d) ended with a known error: %w", e.vbID, e.err)
 	} else {
