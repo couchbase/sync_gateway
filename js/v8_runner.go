@@ -1,3 +1,6 @@
+//go:build cb_sg_v8
+// +build cb_sg_v8
+
 /*
 Copyright 2022-Present Couchbase, Inc.
 
@@ -231,10 +234,6 @@ func (r *V8Runner) NewValue(val any) (v8Val *v8.Value, err error) {
 	}
 	return v8Val, err
 }
-
-// A string type that v8Runner.NewValue will treat specially, by parsing it as JSON and converting
-// it to a JavaScript object.
-type JSONString string
 
 // Creates a JavaScript number value.
 func (r *V8Runner) NewInt(i int) *v8.Value { return mustSucceed(r.ctx.NewValue(i)) }

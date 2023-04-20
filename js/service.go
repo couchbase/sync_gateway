@@ -37,6 +37,15 @@ type ServiceHost interface {
 	withRunner(*Service, func(Runner) (any, error)) (any, error)
 }
 
+// A factory/initialization function for Services that need to add JS globals or callbacks or
+// otherwise extend their runtime environment. They do this by operating on its Template.
+//
+// The function's parameter is a BasicTemplate that doesn't have a script yet.
+// The function MUST call its SetScript method.
+// The function may return the Template it was given, or it may instantiate its own struct that
+// implements Template (which presumably includes a pointer to the BasicTemplate) and return that.
+type TemplateFactory func(base *V8BasicTemplate) (V8Template, error)
+
 // Creates a new Service in a ServiceHost (a VM or VMPool.)
 // The name is primarily for logging; it does not need to be unique.
 // The source code should be of the form `function(arg1,arg2…) {…body…; return result;}`.
@@ -60,15 +69,6 @@ func NewCustomService(host ServiceHost, name string, factory TemplateFactory) *S
 	service.v8Init = factory
 	return service
 }
-
-// A factory/initialization function for Services that need to add JS globals or callbacks or
-// otherwise extend their runtime environment. They do this by operating on its Template.
-//
-// The function's parameter is a BasicTemplate that doesn't have a script yet.
-// The function MUST call its SetScript method.
-// The function may return the Template it was given, or it may instantiate its own struct that
-// implements Template (which presumably includes a pointer to the BasicTemplate) and return that.
-type TemplateFactory func(base *V8BasicTemplate) (V8Template, error)
 
 // The Service's name, given when it was created.
 func (service *Service) Name() string { return service.name }

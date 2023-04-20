@@ -1,3 +1,6 @@
+//go:build cb_sg_v8
+// +build cb_sg_v8
+
 /*
 Copyright 2022-Present Couchbase, Inc.
 
@@ -115,13 +118,6 @@ type evaluatorDelegate interface {
 	save(doc map[string]any, docID string, collection string, asAdmin bool) (saved bool, err error)
 	// Delete a document.
 	delete(docID string, revID string, collection string, asAdmin bool) (ok bool, err error)
-}
-
-// Name and capabilities of the current user. (Admin is represented by a nil `*userCredentials`.)
-type userCredentials struct {
-	Name     string
-	Roles    []string
-	Channels []string
 }
 
 // Returns an evaluator for use with a Service.

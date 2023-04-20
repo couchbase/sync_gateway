@@ -15,6 +15,8 @@ import (
 	"time"
 )
 
+const v8VMName = "V8"
+
 //////// ENGINE
 
 // An opaque object identifying a JavaScript engine (V8 or Otto)
@@ -22,19 +24,6 @@ type Engine struct {
 	name            string
 	languageVersion int
 	factory         func(*Engine, *servicesConfiguration) VM
-}
-
-// Returns the Engine with the given name, else nil.
-// Valid names are "V8" and "Otto", which map to the instances `V8` and `Otto`.
-func EngineNamed(name string) *Engine {
-	switch name {
-	case v8VMName:
-		return V8
-	case ottoVMName:
-		return Otto
-	default:
-		return nil
-	}
 }
 
 // The name identifying this engine ("V8" or "Otto")

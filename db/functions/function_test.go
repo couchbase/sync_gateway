@@ -1,3 +1,6 @@
+//go:build cb_sg_enterprise
+// +build cb_sg_enterprise
+
 /*
 Copyright 2022-Present Couchbase, Inc.
 
