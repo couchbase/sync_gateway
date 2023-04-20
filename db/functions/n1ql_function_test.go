@@ -1,5 +1,4 @@
 //go:build cb_sg_v8
-// +build cb_sg_v8
 
 /*
 Copyright 2020-Present Couchbase, Inc.

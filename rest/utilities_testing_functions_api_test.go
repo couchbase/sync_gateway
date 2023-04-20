@@ -7,7 +7,6 @@
 // the file licenses/APL2.txt.
 
 //go:build cb_sg_v8
-// +build cb_sg_v8
 
 package rest
 

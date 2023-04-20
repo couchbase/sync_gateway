@@ -6,6 +6,8 @@
 // software will be governed by the Apache License, Version 2.0, included in
 // the file licenses/APL2.txt.
 
+//go:build !cb_sg_v8
+
 package functions
 
 import (
@@ -15,8 +17,6 @@ import (
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/js"
 )
-
-// -build cb_sg_v8
 
 // Validates a FunctionsConfig & GraphQLConfig.
 func ValidateFunctions(ctx context.Context, vm js.ServiceHost, fnConfig *FunctionsConfig, gqConfig *GraphQLConfig) error {

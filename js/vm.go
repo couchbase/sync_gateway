@@ -15,8 +15,6 @@ import (
 	"time"
 )
 
-const v8VMName = "V8"
-
 //////// ENGINE
 
 // An opaque object identifying a JavaScript engine (V8 or Otto)
