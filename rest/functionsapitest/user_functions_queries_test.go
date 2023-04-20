@@ -453,7 +453,7 @@ func TestFunctionTimeout(t *testing.T) {
 		return
 	}
 	defer rt.Close()
-	timeout := 2 * time.Second
+	timeout := 500 * time.Millisecond
 	rt.GetDatabase().UserFunctionTimeout = timeout
 	// positive case:
 	t.Run("under time limit", func(t *testing.T) {

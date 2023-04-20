@@ -419,7 +419,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 		DbStats:             dbStats,
 		CollectionByID:      make(map[uint32]*DatabaseCollection),
 		ServerUUID:          serverUUID,
-		UserFunctionTimeout: 60 * time.Second,
+		UserFunctionTimeout: defaultUserFunctionTimeout,
 	}
 
 	// Initialize metadata ID and keys

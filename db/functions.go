@@ -15,6 +15,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"time"
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"
@@ -23,6 +24,9 @@ import (
 )
 
 /* This is the interface to the functions and GraphQL APIs implemented in the functions package. */
+
+// Timeout for N1QL, JavaScript and GraphQL queries. (Applies to REST and BLIP requests.)
+const defaultUserFunctionTimeout = 60 * time.Second
 
 //////// USER FUNCTIONS
 

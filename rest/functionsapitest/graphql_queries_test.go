@@ -284,7 +284,7 @@ func TestContextDeadline(t *testing.T) {
 		return
 	}
 	defer rt.Close()
-	timeout := 2 * time.Second
+	timeout := 500 * time.Millisecond
 	rt.GetDatabase().UserFunctionTimeout = timeout
 	t.Run("AsAdmin - exceedContextDeadline", func(t *testing.T) {
 		requestQuery := fmt.Sprintf(`{"query": "query{ checkContextDeadline(Timeout:%d) }"}`, timeout.Milliseconds()*2)
