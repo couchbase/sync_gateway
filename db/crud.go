@@ -198,10 +198,9 @@ func (db *DatabaseCollection) GetDocSyncDataNoImport(ctx context.Context, docid 
 			var doc *Document
 			doc, err = unmarshalDocumentWithXattr(docid, nil, xattrValue, nil, cas, level)
 			if err == nil {
-				return doc.SyncData, nil
+				syncData = doc.SyncData
 			}
 		}
-		return
 	} else {
 		if level == DocUnmarshalAll || level == DocUnmarshalSync || level == DocUnmarshalHistory {
 			syncData.History = make(RevTree)
@@ -210,20 +209,23 @@ func (db *DatabaseCollection) GetDocSyncDataNoImport(ctx context.Context, docid 
 			SyncData: &syncData,
 		}
 		var rawDocBytes []byte
-		rawDocBytes, _, err = db.dataStore.GetRaw(docid)
-		if err != nil {
-			return
-		} else if err = base.JSONUnmarshal(rawDocBytes, &docRoot); err != nil {
-			return
-		} else if syncData.HasValidSyncData() {
-			return syncData, nil
-		} else if upgradeDoc, _ := db.checkForUpgrade(docid, level); upgradeDoc != nil {
-			// No valid sync data in doc, but doc has been upgraded to use xattrs
-			return upgradeDoc.SyncData, nil
-		} else {
-			return syncData, base.HTTPErrorf(404, "Not imported")
+		if rawDocBytes, _, err = db.dataStore.GetRaw(docid); err == nil {
+			if err = base.JSONUnmarshal(rawDocBytes, &docRoot); err == nil {
+				// (unmarshaling populates `syncData` since `docRoot` points to it.)
+				if !syncData.HasValidSyncData() {
+					base.InfofCtx(ctx, base.KeyCRUD, "No valid sync data in doc %q; checking for xattrs", base.UD(docid))
+					if upgradeDoc, _ := db.checkForUpgrade(docid, level); upgradeDoc != nil {
+						// No valid sync data in doc, but doc has been upgraded to use xattrs
+						syncData = upgradeDoc.SyncData
+					} else {
+						base.WarnfCtx(ctx, "No valid sync data nor xattrs in doc %q", base.UD(docid))
+						err = base.HTTPErrorf(404, "Not imported")
+					}
+				}
+			}
 		}
 	}
+	return
 }
 
 // OnDemandImportForGet.  Attempts to import the doc based on the provided id, contents and cas.  ImportDocRaw does cas retry handling
@@ -2471,7 +2473,7 @@ func (db *DatabaseCollectionWithUser) RevDiff(ctx context.Context, docid string,
 
 	doc, err := db.GetDocSyncDataNoImport(ctx, docid, DocUnmarshalHistory)
 	if err != nil {
-		if !base.IsDocNotFoundError(err) {
+		if !base.IsDocNotFoundError(err) && err != base.ErrXattrNotFound {
 			base.WarnfCtx(ctx, "RevDiff(%q) --> %T %v", base.UD(docid), err, err)
 		}
 		missing = revids
@@ -2533,7 +2535,7 @@ func (db *DatabaseCollectionWithUser) CheckProposedRev(ctx context.Context, doci
 	}
 	doc, err := db.GetDocSyncDataNoImport(ctx, docid, level)
 	if err != nil {
-		if !base.IsDocNotFoundError(err) {
+		if !base.IsDocNotFoundError(err) && err != base.ErrXattrNotFound {
 			base.WarnfCtx(ctx, "CheckProposedRev(%q) --> %T %v", base.UD(docid), err, err)
 			return ProposedRev_Error, ""
 		}
