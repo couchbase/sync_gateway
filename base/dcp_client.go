@@ -446,7 +446,7 @@ func (dc *DCPClient) openStream(vbID uint16, maxRetries uint32) error {
 			WarnfCtx(logCtx, "%s", err)
 			return err
 		case errors.Is(openStreamErr, errVbUUIDMismatch):
-			WarnfCtx(logCtx, "%s", openStreamErr)
+			WarnfCtx(logCtx, "Closing Stream for vbID: %d, %s", vbID, openStreamErr)
 			return openStreamErr
 		case errors.Is(openStreamErr, gocbcore.ErrShutdown):
 			WarnfCtx(logCtx, "Closing stream for vbID %d, agent has been shut down", vbID)
@@ -575,9 +575,9 @@ func (dc *DCPClient) onStreamEnd(e endStreamEvent) {
 	}
 
 	if errors.Is(e.err, gocbcore.ErrDCPStreamStateChanged) || errors.Is(e.err, gocbcore.ErrDCPStreamTooSlow) || errors.Is(e.err, gocbcore.ErrDCPStreamDisconnected) {
-		DebugfCtx(logCtx, KeyDCP, "Stream (vb:%d) ended with a known error: %w", e.vbID, e.err)
+		DebugfCtx(logCtx, KeyDCP, "Stream (vb:%d) ended with a known error, will reconnect. Reason: %s", e.vbID, e.err)
 	} else {
-		InfofCtx(logCtx, KeyDCP, "Stream (vb:%d) ended with an unknown error: %w", e.vbID, e.err)
+		InfofCtx(logCtx, KeyDCP, "Stream (vb:%d) ended with an unknown error, will reconnect. Reason: %s", e.vbID, e.err)
 	}
 	retries := infiniteOpenStreamRetries
 	if dc.oneShot {
