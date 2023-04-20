@@ -51,7 +51,8 @@ const kMaxPendingInsertions = 1000
 // newBlipSyncCollection constructs a context to hold all blip data for a given collection.
 func newBlipSyncCollectionContext(dbCollection *DatabaseCollection) *blipSyncCollectionContext {
 	c := &blipSyncCollectionContext{
-		dbCollection: dbCollection,
+		dbCollection:      dbCollection,
+		pendingInsertions: base.Set{},
 	}
 	c.changesCtx, c.changesCtxCancel = context.WithCancel(context.Background())
 	return c
@@ -61,9 +62,6 @@ func newBlipSyncCollectionContext(dbCollection *DatabaseCollection) *blipSyncCol
 func (bsc *blipSyncCollectionContext) notePendingInsertion(docID string) {
 	bsc.pendingInsertionsLock.Lock()
 	defer bsc.pendingInsertionsLock.Unlock()
-	if bsc.pendingInsertions == nil {
-		bsc.pendingInsertions = base.Set{}
-	}
 	if len(bsc.pendingInsertions) < kMaxPendingInsertions {
 		bsc.pendingInsertions.Add(docID)
 	} else {
