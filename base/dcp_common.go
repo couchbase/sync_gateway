@@ -298,6 +298,24 @@ type checkpointData struct {
     value []byte
 }
 
+// DCPCommon is a struct that contains common fields and methods for DCP streams.
+type DCPCommon struct {
+    // checkpointPrefix is the prefix to use when persisting checkpoints to the metaStore.
+    checkpointPrefix string
+
+    // metaStore is the store used to persist metadata.
+    metaStore Store
+
+    // checkpointBatch is a slice that accumulates checkpoint data for batching.
+    checkpointBatch []checkpointData
+
+    // checkpointMutex is a mutex used to protect the checkpointBatch slice.
+    checkpointMutex sync.Mutex
+
+    // loggingCtx is the logging context.
+    loggingCtx context.Context
+}
+
 // persistCheckpointAsync is responsible for appending the checkpoint data to a batch and checking whether the batch has reached the threshold. 
 // If the batch reaches the threshold, it will call persistBatchedCheckpoints to launch a goroutine to persist the batched checkpoints.
 func (c *DCPCommon) persistCheckpointAsync(vbNo uint16, value []byte) {
