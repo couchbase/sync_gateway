@@ -126,6 +126,14 @@ func (rt *RestTester) WaitForCheckpointLastSequence(expectedName string) (string
 	return lastSeq, rt.WaitForCondition(successFunc)
 }
 
+func (rt *RestTester) WaitForActiveReplicatorInitialization(count int) {
+	successFunc := func() bool {
+		ar := rt.GetDatabase().SGReplicateMgr.GetNumberActiveReplicators()
+		return ar == count
+	}
+	require.NoError(rt.TB, rt.WaitForCondition(successFunc), "mismatch on number of active replicators")
+}
+
 // createReplication creates a replication via the REST API with the specified ID, remoteURL, direction and channel filter
 func (rt *RestTester) CreateReplication(replicationID string, remoteURLString string, direction db.ActiveReplicatorDirection, channels []string, continuous bool, conflictResolver db.ConflictResolverType) {
 	rt.CreateReplicationForDB("{{.db}}", replicationID, remoteURLString, direction, channels, continuous, conflictResolver)
