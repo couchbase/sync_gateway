@@ -208,8 +208,6 @@ func WriteUpdateWithXattr(store SubdocXattrStore, k string, xattrKey string, use
 				xattrValue = previous.Xattr
 				cas = previous.Cas
 				userXattrValue = previous.UserXattr
-			} else if previous.Body != nil || previous.Xattr != nil {
-				panic("WriteUpdateWithXattr: previous doc has zero Cas but is not empty")
 			}
 			previous = nil // a retry will get value from bucket, as below
 		} else {
