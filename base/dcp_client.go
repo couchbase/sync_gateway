@@ -449,8 +449,7 @@ func (dc *DCPClient) openStream(vbID uint16, maxRetries uint32) (err error) {
 		case errors.Is(openStreamErr, ErrTimeout):
 			DebugfCtx(logCtx, KeyDCP, "Timeout attempting to open stream for vb %d, will retry", vbID)
 		default:
-			WarnfCtx(logCtx, "Error opening stream for vbID %d: %v", vbID, openStreamErr)
-			return openStreamErr
+			WarnfCtx(logCtx, "Unknown error opening stream for vbID %d: %v", vbID, openStreamErr)
 		}
 		if maxRetries == infiniteOpenStreamRetries {
 			continue
@@ -558,7 +557,6 @@ func (dc *DCPClient) deactivateVbucket(vbID uint16) {
 
 func (dc *DCPClient) onStreamEnd(e endStreamEvent) {
 	logCtx := context.TODO()
-
 	if e.err == nil {
 		DebugfCtx(logCtx, KeyDCP, "Stream (vb:%d) closed, all items streamed", e.vbID)
 		dc.deactivateVbucket(e.vbID)
@@ -567,23 +565,25 @@ func (dc *DCPClient) onStreamEnd(e endStreamEvent) {
 
 	if errors.Is(e.err, gocbcore.ErrDCPStreamClosed) {
 		DebugfCtx(logCtx, KeyDCP, "Stream (vb:%d) closed by DCPClient", e.vbID)
-	}
-
-	if errors.Is(e.err, gocbcore.ErrDCPStreamStateChanged) || errors.Is(e.err, gocbcore.ErrDCPStreamTooSlow) ||
-		errors.Is(e.err, gocbcore.ErrDCPStreamDisconnected) {
-		InfofCtx(logCtx, KeyDCP, "Stream (vb:%d) closed by server, will reconnect.  Reason: %v", e.vbID, e.err)
-		retries := infiniteOpenStreamRetries
-		if dc.oneShot {
-			retries = openRetryCount
-		}
-		err := dc.openStream(e.vbID, retries)
-		if err != nil {
-			dc.fatalError(fmt.Errorf("Stream (vb:%d) failed to reopen: %w", e.vbID, err))
-		}
 		return
 	}
 
-	dc.fatalError(fmt.Errorf("Stream (vb:%d) ended with unknown error: %w", e.vbID, e.err))
+	if errors.Is(e.err, gocbcore.ErrDCPStreamClosed) {
+		DebugfCtx(logCtx, KeyDCP, "Stream (vb:%d) closed by DCPClient", e.vbID)
+	}
+	if errors.Is(e.err, gocbcore.ErrDCPStreamStateChanged) || errors.Is(e.err, gocbcore.ErrDCPStreamTooSlow) || errors.Is(e.err, gocbcore.ErrDCPStreamDisconnected) {
+		DebugfCtx(logCtx, KeyDCP, "Stream (vb:%d) ended with a known error: %w", e.vbID, e.err)
+	} else {
+		InfofCtx(logCtx, KeyDCP, "Stream (vb:%d) ended with an unknown error: %w", e.vbID, e.err)
+	}
+	retries := infiniteOpenStreamRetries
+	if dc.oneShot {
+		retries = openRetryCount
+	}
+	err := dc.openStream(e.vbID, retries)
+	if err != nil {
+		dc.fatalError(fmt.Errorf("Stream (vb:%d) failed to reopen: %w", e.vbID, err))
+	}
 }
 
 func (dc *DCPClient) fatalError(err error) {
