@@ -37,6 +37,8 @@ const infiniteOpenStreamRetries = uint32(math.MaxUint32)
 
 type endStreamCallbackFunc func(e endStreamEvent)
 
+var errVbUUIDMismatch = errors.New("VbUUID mismatch when failOnRollback set")
+
 type DCPClient struct {
 	ID                         string                         // unique ID for DCPClient - used for DCP stream name, must be unique
 	agent                      *gocbcore.DCPAgent             // SDK DCP agent, manages connections and calls back to DCPClient stream observer implementation
@@ -410,7 +412,7 @@ func (dc *DCPClient) startWorkers() {
 	}
 }
 
-func (dc *DCPClient) openStream(vbID uint16, maxRetries uint32) (err error) {
+func (dc *DCPClient) openStream(vbID uint16, maxRetries uint32) error {
 
 	logCtx := context.TODO()
 	var openStreamErr error
@@ -443,6 +445,9 @@ func (dc *DCPClient) openStream(vbID uint16, maxRetries uint32) (err error) {
 			err := fmt.Errorf("Invalid metadata out of range for vbID %d, err: %v metadata %+v, shutting down agent", vbID, openStreamErr, dc.metadata.GetMeta(vbID))
 			WarnfCtx(logCtx, "%s", err)
 			return err
+		case errors.Is(openStreamErr, errVbUUIDMismatch):
+			WarnfCtx(logCtx, "%s", openStreamErr)
+			return openStreamErr
 		case errors.Is(openStreamErr, gocbcore.ErrShutdown):
 			WarnfCtx(logCtx, "Closing stream for vbID %d, agent has been shut down", vbID)
 			return openStreamErr
@@ -535,7 +540,7 @@ func (dc *DCPClient) verifyFailoverLog(vbID uint16, f []gocbcore.FailoverEntry) 
 		currentVbUUID := getLatestVbUUID(f)
 		// if previousVbUUID hasn't been set yet (is zero), don't treat as rollback.
 		if previousMeta.VbUUID != currentVbUUID {
-			return errors.New("VbUUID mismatch when failOnRollback set")
+			return errVbUUIDMismatch
 		}
 	}
 	return nil
