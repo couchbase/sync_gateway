@@ -288,82 +288,45 @@ func (c *DCPCommon) initMetadata(maxVbNo uint16) {
 
 }
 
-// Implements asynchronous batched checkpoint persistence by accumulating checkpoint data into a slice until a threshold is reached. 
-// When the threshold is reached, a goroutine is launched to persist the batched checkpoints concurrently. 
-// This approach minimizes the number of times the metaStore is accessed and handles repeated entry processing. 
-
-// checkpointData is a struct that contains the vbNo and value of a checkpoint.
-type checkpointData struct {
-    vbNo  uint16
-    value []byte
-}
-
-// DCPCommon is a struct that contains common fields and methods for DCP streams.
-type DCPCommon struct {
-    // checkpointPrefix is the prefix to use when persisting checkpoints to the metaStore.
-    checkpointPrefix string
-
-    // metaStore is the store used to persist metadata.
-    metaStore Store
-
-    // checkpointBatch is a slice that accumulates checkpoint data for batching.
-    checkpointBatch []checkpointData
-
-    // checkpointMutex is a mutex used to protect the checkpointBatch slice.
-    checkpointMutex sync.Mutex
-
-    // loggingCtx is the logging context.
-    loggingCtx context.Context
-}
-
-// persistCheckpointAsync is responsible for appending the checkpoint data to a batch and checking whether the batch has reached the threshold. 
-// If the batch reaches the threshold, it will call persistBatchedCheckpoints to launch a goroutine to persist the batched checkpoints.
+// TODO: Convert checkpoint persistence to an asynchronous batched process, since
+//
+//	restarting w/ an older checkpoint:
+//	  - Would only result in some repeated entry processing, which is already handled by the indexer
+//	  - Is a relatively infrequent operation
 func (c *DCPCommon) persistCheckpointAsync(vbNo uint16, value []byte) {
-    c.checkpointMutex.Lock()
-    defer c.checkpointMutex.Unlock()
-
-    // Append the checkpoint data to the batch.
-    c.checkpointBatch = append(c.checkpointBatch, checkpointData{vbNo, value})
-
-    // Check if the batch has reached the threshold.
-    if len(c.checkpointBatch) >= 1000 {
-        // Launch a goroutine to persist the batched checkpoints.
-        c.persistBatchedCheckpoints()
-    }
+    c.checkpointQueue <- &checkpoint{vbNo, value}
 }
 
-// persistBatchedCheckpoints is responsible for launching a goroutine to concurrently persist each checkpoint data in the batch.
-// It will create a wait group and spawn a goroutine for each checkpoint data. Once all the goroutines have finished persisting the checkpoints, the function returns.
-func (c *DCPCommon) persistBatchedCheckpoints() {
-    // Copy the batched checkpoint data to a new slice.
-    checkpointBatch := c.checkpointBatch
-    // Clear the checkpoint batch.
-    c.checkpointBatch = nil
+func (c *DCPCommon) checkpointPersistence() {
+    var checkpoints []*checkpoint
 
-    go func() {
-        var wg sync.WaitGroup
-        for _, data := range checkpointBatch {
-            wg.Add(1)
-            go func(vbNo uint16, value []byte) {
-                defer wg.Done()
-
-                // Persist the checkpoint data to the metaStore.
-                TracefCtx(c.loggingCtx, KeyDCP, "Persisting checkpoint for vbno %d", vbNo)
-                if err := c.metaStore.SetRaw(fmt.Sprintf("%s%d", c.checkpointPrefix, vbNo), 0, nil, value); err != nil {
-                    ErrorfCtx(c.loggingCtx, KeyDCP, "Error persisting checkpoint for vbno %d: %v", vbNo, err)
+    for {
+        select {
+        case checkpoint := <-c.checkpointQueue:
+            TracefCtx(c.loggingCtx, KeyDCP, "Persisting checkpoint for vbno %d", checkpoint.vbNo)
+            err := c.metaStore.SetRaw(fmt.Sprintf("%s%d", c.checkpointPrefix, checkpoint.vbNo), 0, nil, checkpoint.value)
+            if err != nil {
+                ErrorfCtx(c.loggingCtx, KeyDCP, "Error persisting checkpoint: %v", err)
+            }
+            checkpoints = append(checkpoints, checkpoint)
+        case <-time.After(time.Second):
+            if len(checkpoints) > 0 {
+                // Batch checkpoints
+                batch := make([]kvstore.KVStoreRawBatch, len(checkpoints))
+                for i, checkpoint := range checkpoints {
+                    batch[i] = kvstore.KVStoreRawBatch{
+                        Key:   fmt.Sprintf("%s%d", c.checkpointPrefix, checkpoint.vbNo),
+                        Value: checkpoint.value,
+                    }
                 }
-            }(data.vbNo, data.value)
+                err := c.metaStore.BatchSetRaw(batch)
+                if err != nil {
+                    ErrorfCtx(c.loggingCtx, KeyDCP, "Error persisting batch of checkpoints: %v", err)
+                }
+                checkpoints = []*checkpoint{}
+            }
         }
-        // Wait for all the goroutines to finish persisting the checkpoints.
-        wg.Wait()
-    }()
-}
-
-// persistCheckpoint is responsible for persisting a checkpoint asynchronously.
-func (c *DCPCommon) persistCheckpoint(vbNo uint16, value []byte) error {
-    // Call persistCheckpointAsync to append the checkpoint data to the batch and check whether the batch has reached the threshold.
-    c.persistCheckpointAsync(vbNo, value)
-    return nil
+    }
 }
 
 // This updates the value stored in r.seqs with the given seq number for the given partition
