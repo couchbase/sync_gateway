@@ -43,6 +43,11 @@ type blipCollections struct {
 	sync.RWMutex
 }
 
+// Max number of docIDs to keep in pendingInsertions. (Normally items added to this set are
+// removed soon thereafter when the client sends the `rev` message; this limit is just to cover
+// failure cases where a client never sends the revs, to keep the set from growing w/o bound.)
+const kMaxPendingInsertions = 1000
+
 // newBlipSyncCollection constructs a context to hold all blip data for a given collection.
 func newBlipSyncCollectionContext(dbCollection *DatabaseCollection) *blipSyncCollectionContext {
 	c := &blipSyncCollectionContext{
@@ -54,12 +59,16 @@ func newBlipSyncCollectionContext(dbCollection *DatabaseCollection) *blipSyncCol
 
 // Remembers a docID that doesn't exist in the collection at the time handleProposeChanges ran.
 func (bsc *blipSyncCollectionContext) notePendingInsertion(docID string) {
-	bsc.pendingInsertionsLock.Lock() // TODO: Rename this lock?
+	bsc.pendingInsertionsLock.Lock()
 	defer bsc.pendingInsertionsLock.Unlock()
 	if bsc.pendingInsertions == nil {
 		bsc.pendingInsertions = base.Set{}
 	}
-	bsc.pendingInsertions.Add(docID)
+	if len(bsc.pendingInsertions) < kMaxPendingInsertions {
+		bsc.pendingInsertions.Add(docID)
+	} else {
+		base.WarnfCtx(bsc.changesCtx, "Sync client has more than %d pending doc insertions in collection %q", kMaxPendingInsertions, base.UD(bsc.dbCollection.Name))
+	}
 }
 
 // True if this docID was known not to exist in the collection when handleProposeChanges ran.

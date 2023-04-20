@@ -190,25 +190,39 @@ func (c *DatabaseCollection) GetDocSyncData(ctx context.Context, docid string) (
 // This gets *just* the Sync Metadata (_sync field) rather than the entire doc, for efficiency
 // reasons. Unlike GetDocSyncData it does not check for on-demand import; this means it does not
 // need to read the doc body from the bucket.
-func (db *DatabaseCollection) GetDocSyncDataNoImport(ctx context.Context, docid string, level DocumentUnmarshalLevel) (SyncData, error) {
+func (db *DatabaseCollection) GetDocSyncDataNoImport(ctx context.Context, docid string, level DocumentUnmarshalLevel) (syncData SyncData, err error) {
 	if db.UseXattrs() {
-		var err error
-		if key := realDocID(docid); key == "" {
-			err = base.HTTPErrorf(400, "Invalid doc ID")
-		} else {
-			var cas uint64
-			var xattrValue []byte
-			if cas, err = db.dataStore.GetXattr(key, base.SyncXattrName, &xattrValue); err == nil {
-				var doc *Document
-				doc, err = unmarshalDocumentWithXattr(key, nil, xattrValue, nil, cas, level)
-				if err == nil {
-					return doc.SyncData, nil
-				}
+		var cas uint64
+		var xattrValue []byte
+		if cas, err = db.dataStore.GetXattr(docid, base.SyncXattrName, &xattrValue); err == nil {
+			var doc *Document
+			doc, err = unmarshalDocumentWithXattr(docid, nil, xattrValue, nil, cas, level)
+			if err == nil {
+				return doc.SyncData, nil
 			}
 		}
-		return SyncData{}, err
+		return
 	} else {
-		return db.GetDocSyncData(ctx, docid)
+		if level == DocUnmarshalAll || level == DocUnmarshalSync || level == DocUnmarshalHistory {
+			syncData.History = make(RevTree)
+		}
+		docRoot := documentRoot{
+			SyncData: &syncData,
+		}
+		var rawDocBytes []byte
+		rawDocBytes, _, err = db.dataStore.GetRaw(docid)
+		if err != nil {
+			return
+		} else if err = base.JSONUnmarshal(rawDocBytes, &docRoot); err != nil {
+			return
+		} else if syncData.HasValidSyncData() {
+			return syncData, nil
+		} else if upgradeDoc, _ := db.checkForUpgrade(docid, level); upgradeDoc != nil {
+			// No valid sync data in doc, but doc has been upgraded to use xattrs
+			return upgradeDoc.SyncData, nil
+		} else {
+			return syncData, base.HTTPErrorf(404, "Not imported")
+		}
 	}
 }
 
