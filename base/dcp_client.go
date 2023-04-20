@@ -37,6 +37,8 @@ const infiniteOpenStreamRetries = uint32(math.MaxUint32)
 
 type endStreamCallbackFunc func(e endStreamEvent)
 
+var errVbUUIDMismatch = errors.New("VbUUID mismatch when failOnRollback set")
+
 type DCPClient struct {
 	ID                         string                         // unique ID for DCPClient - used for DCP stream name, must be unique
 	agent                      *gocbcore.DCPAgent             // SDK DCP agent, manages connections and calls back to DCPClient stream observer implementation
@@ -410,7 +412,7 @@ func (dc *DCPClient) startWorkers() {
 	}
 }
 
-func (dc *DCPClient) openStream(vbID uint16, maxRetries uint32) (err error) {
+func (dc *DCPClient) openStream(vbID uint16, maxRetries uint32) error {
 
 	logCtx := context.TODO()
 	var openStreamErr error
@@ -443,14 +445,16 @@ func (dc *DCPClient) openStream(vbID uint16, maxRetries uint32) (err error) {
 			err := fmt.Errorf("Invalid metadata out of range for vbID %d, err: %v metadata %+v, shutting down agent", vbID, openStreamErr, dc.metadata.GetMeta(vbID))
 			WarnfCtx(logCtx, "%s", err)
 			return err
+		case errors.Is(openStreamErr, errVbUUIDMismatch):
+			WarnfCtx(logCtx, "Closing Stream for vbID: %d, %s", vbID, openStreamErr)
+			return openStreamErr
 		case errors.Is(openStreamErr, gocbcore.ErrShutdown):
 			WarnfCtx(logCtx, "Closing stream for vbID %d, agent has been shut down", vbID)
 			return openStreamErr
 		case errors.Is(openStreamErr, ErrTimeout):
 			DebugfCtx(logCtx, KeyDCP, "Timeout attempting to open stream for vb %d, will retry", vbID)
 		default:
-			WarnfCtx(logCtx, "Error opening stream for vbID %d: %v", vbID, openStreamErr)
-			return openStreamErr
+			WarnfCtx(logCtx, "Unknown error opening stream for vbID %d: %v", vbID, openStreamErr)
 		}
 		if maxRetries == infiniteOpenStreamRetries {
 			continue
@@ -536,7 +540,7 @@ func (dc *DCPClient) verifyFailoverLog(vbID uint16, f []gocbcore.FailoverEntry) 
 		currentVbUUID := getLatestVbUUID(f)
 		// if previousVbUUID hasn't been set yet (is zero), don't treat as rollback.
 		if previousMeta.VbUUID != currentVbUUID {
-			return errors.New("VbUUID mismatch when failOnRollback set")
+			return errVbUUIDMismatch
 		}
 	}
 	return nil
@@ -558,7 +562,6 @@ func (dc *DCPClient) deactivateVbucket(vbID uint16) {
 
 func (dc *DCPClient) onStreamEnd(e endStreamEvent) {
 	logCtx := context.TODO()
-
 	if e.err == nil {
 		DebugfCtx(logCtx, KeyDCP, "Stream (vb:%d) closed, all items streamed", e.vbID)
 		dc.deactivateVbucket(e.vbID)
@@ -567,23 +570,23 @@ func (dc *DCPClient) onStreamEnd(e endStreamEvent) {
 
 	if errors.Is(e.err, gocbcore.ErrDCPStreamClosed) {
 		DebugfCtx(logCtx, KeyDCP, "Stream (vb:%d) closed by DCPClient", e.vbID)
-	}
-
-	if errors.Is(e.err, gocbcore.ErrDCPStreamStateChanged) || errors.Is(e.err, gocbcore.ErrDCPStreamTooSlow) ||
-		errors.Is(e.err, gocbcore.ErrDCPStreamDisconnected) {
-		InfofCtx(logCtx, KeyDCP, "Stream (vb:%d) closed by server, will reconnect.  Reason: %v", e.vbID, e.err)
-		retries := infiniteOpenStreamRetries
-		if dc.oneShot {
-			retries = openRetryCount
-		}
-		err := dc.openStream(e.vbID, retries)
-		if err != nil {
-			dc.fatalError(fmt.Errorf("Stream (vb:%d) failed to reopen: %w", e.vbID, err))
-		}
+		dc.fatalError(fmt.Errorf("Stream (vb:%d) closed by DCPClient", e.vbID))
 		return
 	}
 
-	dc.fatalError(fmt.Errorf("Stream (vb:%d) ended with unknown error: %w", e.vbID, e.err))
+	if errors.Is(e.err, gocbcore.ErrDCPStreamStateChanged) || errors.Is(e.err, gocbcore.ErrDCPStreamTooSlow) || errors.Is(e.err, gocbcore.ErrDCPStreamDisconnected) {
+		DebugfCtx(logCtx, KeyDCP, "Stream (vb:%d) ended with a known error, will reconnect. Reason: %s", e.vbID, e.err)
+	} else {
+		InfofCtx(logCtx, KeyDCP, "Stream (vb:%d) ended with an unknown error, will reconnect. Reason: %s", e.vbID, e.err)
+	}
+	retries := infiniteOpenStreamRetries
+	if dc.oneShot {
+		retries = openRetryCount
+	}
+	err := dc.openStream(e.vbID, retries)
+	if err != nil {
+		dc.fatalError(fmt.Errorf("Stream (vb:%d) failed to reopen: %w", e.vbID, err))
+	}
 }
 
 func (dc *DCPClient) fatalError(err error) {
