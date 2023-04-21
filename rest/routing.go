@@ -9,6 +9,7 @@
 package rest
 
 import (
+	"fmt"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -368,17 +369,27 @@ func wrapRouter(sc *ServerContext, privs handlerPrivs, router *mux.Router) http.
 			h.logRequestLine()
 
 			// Inject CORS if enabled and requested and not admin port
-			cors := sc.Config.API.CORS
-			if privs != adminPrivs && cors != nil {
-				cors.AddResponseHeaders(rq, response)
-			}
-
 			// What methods would have matched?
 			var options []string
 			for _, method := range []string{"GET", "HEAD", "POST", "PUT", "DELETE"} {
 				if wouldMatch(router, rq, method) {
 					options = append(options, method)
 				}
+			}
+
+			cors := sc.Config.API.CORS
+			firstElement, _, _ := strings.Cut(strings.TrimPrefix(rq.URL.Path, "/"), "/")
+			fmt.Println("firstElement: ", firstElement)
+			dbName, _, _, _ := ParseKeyspace(firstElement)
+			fmt.Println("dbName: ", dbName)
+			if dbName != "" {
+				db, err := h.server.GetActiveDatabase(dbName)
+				if err == nil {
+					cors = db.CORS
+				}
+			}
+			if cors != nil && privs != adminPrivs && privs != metricsPrivs {
+				cors.AddResponseHeaders(rq, response)
 			}
 			if len(options) == 0 {
 				h.writeStatus(http.StatusNotFound, "unknown URL")
