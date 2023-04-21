@@ -583,10 +583,18 @@ func (dc *DCPClient) onStreamEnd(e endStreamEvent) {
 	if dc.oneShot {
 		retries = openRetryCount
 	}
-	err := dc.openStream(e.vbID, retries)
-	if err != nil {
-		dc.fatalError(fmt.Errorf("Stream (vb:%d) failed to reopen: %w", e.vbID, err))
-	}
+
+	// Re-opening the stream needs to be asynchronous, due to the way the DCPAgent performs locking while
+	// reconfiguring memdclients - the old client can't be closed while it has pending StreamObserver.End calls,
+	// and our openStream request won't succeed until the old client is closed.
+	// Since we've got a relatively small event buffer for processing observer events (10 x 8 workers), a
+	// synchronous openStream request will create a deadlock whenever more than 80 vbuckets need to be closed.
+	go func(vb uint16, maxRetries uint32) {
+		err := dc.openStream(vb, maxRetries)
+		if err != nil {
+			dc.fatalError(fmt.Errorf("Stream (vb:%d) failed to reopen: %w", vb, err))
+		}
+	}(e.vbID, retries)
 }
 
 func (dc *DCPClient) fatalError(err error) {
