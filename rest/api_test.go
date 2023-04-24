@@ -710,32 +710,62 @@ func TestCORSOrigin(t *testing.T) {
 			reqHeaders := map[string]string{
 				"Origin": tc.origin,
 			}
+			for _, method := range []string{http.MethodGet, http.MethodOptions} {
+				response := rt.SendRequestWithHeaders(method, "/db/", "", reqHeaders)
+				assert.Equal(t, tc.headerOutput, response.Header().Get("Access-Control-Allow-Origin"))
+				if method == http.MethodGet {
+					assertStatus(t, response, http.StatusBadRequest)
+					require.Contains(t, response.Body.String(), invalidDatabaseName)
+				} else {
+					assertStatus(t, response, http.StatusNoContent)
 
-			response := rt.SendRequestWithHeaders("GET", "/db/", "", reqHeaders)
-			assert.Equal(t, tc.headerOutput, response.Header().Get("Access-Control-Allow-Origin"))
-			assertStatus(t, response, http.StatusUnauthorized)
-			require.Contains(t, response.Body.String(), ErrLoginRequired.Message)
+				}
+			}
+			for _, method := range []string{http.MethodGet, http.MethodOptions} {
+				response := rt.SendRequestWithHeaders(method, "/db/", "", reqHeaders)
+				assert.Equal(t, tc.headerOutput, response.Header().Get("Access-Control-Allow-Origin"))
+				if method == http.MethodGet {
+					assertStatus(t, response, http.StatusUnauthorized)
+					require.Contains(t, response.Body.String(), ErrLoginRequired.Message)
+				} else {
+					assertStatus(t, response, http.StatusNoContent)
 
-			response = rt.SendRequestWithHeaders("GET", "/notadb/", "", reqHeaders)
-			assert.Equal(t, tc.headerOutput, response.Header().Get("Access-Control-Allow-Origin"))
-			assertStatus(t, response, http.StatusUnauthorized)
-			require.Contains(t, response.Body.String(), ErrLoginRequired.Message)
+				}
+			}
+			for _, method := range []string{http.MethodGet, http.MethodOptions} {
+				response := rt.SendRequestWithHeaders(method, "/notadb/", "", reqHeaders)
+				assert.Equal(t, tc.headerOutput, response.Header().Get("Access-Control-Allow-Origin"))
+				if method == http.MethodGet {
+					assertStatus(t, response, http.StatusUnauthorized)
+					require.Contains(t, response.Body.String(), ErrLoginRequired.Message)
+				} else {
+					assertStatus(t, response, http.StatusNoContent)
 
-			// admin port doesn't have CORS
-			response = rt.SendAdminRequestWithHeaders("GET", "/db/_all_docs", "", reqHeaders)
-			assert.Equal(t, "", response.Header().Get("Access-Control-Allow-Origin"))
-			assertStatus(t, response, http.StatusOK)
+				}
+			}
 
+			for _, method := range []string{http.MethodGet, http.MethodOptions} {
+				// admin port doesn't have CORS
+				response := rt.SendAdminRequestWithHeaders(method, "/db/_all_docs", "", reqHeaders)
+				assert.Equal(t, "", response.Header().Get("Access-Control-Allow-Origin"))
+				if method == http.MethodGet {
+					assertStatus(t, response, http.StatusOK)
+				} else {
+					assertStatus(t, response, http.StatusNoContent)
+				}
+			}
 			// test with a config without * should reject non-matches
 			sc := rt.ServerContext()
 			defer func() {
 				sc.config.API.CORS.Origin = defaultTestingCORSOrigin
 			}()
 
-			sc.config.API.CORS.Origin = []string{"http://example.com", "http://staging.example.com"}
-			if !base.StringSliceContains(sc.config.API.CORS.Origin, tc.origin) {
-				response = rt.SendRequestWithHeaders("GET", "/db/", "", reqHeaders)
-				assert.Equal(t, "", response.Header().Get("Access-Control-Allow-Origin"))
+			sc.Config.API.CORS.Origin = []string{"http://example.com", "http://staging.example.com"}
+			if !base.StringSliceContains(sc.Config.API.CORS.Origin, tc.origin) {
+				for _, method := range []string{http.MethodGet, http.MethodOptions} {
+					response := rt.SendRequestWithHeaders(method, "/db/", "", reqHeaders)
+					assert.Equal(t, "", response.Header().Get("Access-Control-Allow-Origin"))
+				}
 			}
 		})
 	}

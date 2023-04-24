@@ -42,25 +42,46 @@ func TestCORSDynamicSet(t *testing.T) {
 	reqHeaders := map[string]string{
 		"Origin": "http://example.com",
 	}
-	response := rt.SendRequestWithHeaders("GET", "/db/", "", reqHeaders)
-	require.Equal(t, "http://example.com", response.Header().Get("Access-Control-Allow-Origin"))
-	assertStatus(t, response, http.StatusUnauthorized)
-	require.Contains(t, response.Body.String(), ErrLoginRequired.Message)
 
+	for _, method := range []string{http.MethodGet, http.MethodOptions} {
+		response := rt.SendRequestWithHeaders(method, "/db/", "", reqHeaders)
+		require.Equal(t, "http://example.com", response.Header().Get("Access-Control-Allow-Origin"))
+		if method == http.MethodGet {
+			assertStatus(t, response, http.StatusBadRequest)
+			require.Contains(t, response.Body.String(), invalidDatabaseName)
+		} else {
+			assertStatus(t, response, http.StatusNoContent)
+		}
+	}
 	// successful request
-	response = rt.SendUserRequestWithHeaders("GET", "/db/_all_docs", "", reqHeaders, username, RestTesterDefaultUserPassword)
-	require.Equal(t, "http://example.com", response.Header().Get("Access-Control-Allow-Origin"))
-	assertStatus(t, response, http.StatusOK)
-
-	response = rt.SendRequestWithHeaders("GET", "/db/", "", reqHeaders)
-	require.Equal(t, "http://example.com", response.Header().Get("Access-Control-Allow-Origin"))
-	assertStatus(t, response, http.StatusUnauthorized)
-	require.Contains(t, response.Body.String(), ErrLoginRequired.Message)
-
-	response = rt.SendUserRequestWithHeaders("GET", "/db/", "", reqHeaders, username, RestTesterDefaultUserPassword)
-	require.Equal(t, "http://example.com", response.Header().Get("Access-Control-Allow-Origin"))
-	assertStatus(t, response, http.StatusOK)
-
+	for _, method := range []string{http.MethodGet, http.MethodOptions} {
+		response := rt.SendUserRequestWithHeaders(method, "/db/_all_docs", "", reqHeaders, username, RestTesterDefaultUserPassword)
+		require.Equal(t, "http://example.com", response.Header().Get("Access-Control-Allow-Origin"))
+		if method == http.MethodGet {
+			assertStatus(t, response, http.StatusOK)
+		} else {
+			assertStatus(t, response, http.StatusNoContent)
+		}
+	}
+	for _, method := range []string{http.MethodGet, http.MethodOptions} {
+		response := rt.SendRequestWithHeaders(method, "/db/", "", reqHeaders)
+		require.Equal(t, "http://example.com", response.Header().Get("Access-Control-Allow-Origin"))
+		if method == http.MethodGet {
+			assertStatus(t, response, http.StatusUnauthorized)
+			require.Contains(t, response.Body.String(), ErrLoginRequired.Message)
+		} else {
+			assertStatus(t, response, http.StatusNoContent)
+		}
+	}
+	for _, method := range []string{http.MethodGet, http.MethodOptions} {
+		response := rt.SendUserRequestWithHeaders(method, "/db/", "", reqHeaders, username, RestTesterDefaultUserPassword)
+		require.Equal(t, "http://example.com", response.Header().Get("Access-Control-Allow-Origin"))
+		if method == http.MethodGet {
+			assertStatus(t, response, http.StatusOK)
+		} else {
+			assertStatus(t, response, http.StatusNoContent)
+		}
+	}
 	dbConfig = rt.NewDbConfig()
 	dbConfig.CORS = &auth.CORSConfig{
 		Origin: []string{"http://example.org"},
@@ -71,52 +92,109 @@ func TestCORSDynamicSet(t *testing.T) {
 	assertStatus(t, resp, http.StatusCreated)
 
 	// this falls back to the server config CORS without the user being authenticated
-	response = rt.SendRequestWithHeaders("GET", "/db/", "", reqHeaders)
-	require.Equal(t, "http://example.com", response.Header().Get("Access-Control-Allow-Origin"))
-	assertStatus(t, response, http.StatusUnauthorized)
-	require.Contains(t, response.Body.String(), ErrLoginRequired.Message)
+	for _, method := range []string{http.MethodGet, http.MethodOptions} {
+		response := rt.SendRequestWithHeaders(method, "/db/", "", reqHeaders)
+		if method == http.MethodGet {
+			require.Equal(t, "http://example.com", response.Header().Get("Access-Control-Allow-Origin"))
+			assertStatus(t, response, http.StatusBadRequest)
+			require.Contains(t, response.Body.String(), invalidDatabaseName)
+		} else {
+			// information leak: the options request knows about the database and knows it doesn't match
+			require.Equal(t, "", response.Header().Get("Access-Control-Allow-Origin"))
+			assertStatus(t, response, http.StatusNoContent)
+		}
+	}
 
 	// successful request - mismatched headers
-	response = rt.SendUserRequestWithHeaders("GET", "/db/_all_docs", "", reqHeaders, username, RestTesterDefaultUserPassword)
-	assertStatus(t, response, http.StatusOK)
-	require.Equal(t, "", response.Header().Get("Access-Control-Allow-Origin"))
+	for _, method := range []string{http.MethodGet, http.MethodOptions} {
+		response := rt.SendUserRequestWithHeaders(method, "/db/_all_docs", "", reqHeaders, username, RestTesterDefaultUserPassword)
+		require.Equal(t, "", response.Header().Get("Access-Control-Allow-Origin"))
+		if method == http.MethodGet {
+			assertStatus(t, response, http.StatusOK)
+		} else {
+			assertStatus(t, response, http.StatusNoContent)
+		}
+	}
 
-	response = rt.SendRequestWithHeaders("GET", "/db/", "", reqHeaders)
-	assertStatus(t, response, http.StatusUnauthorized)
-	require.Equal(t, "http://example.com", response.Header().Get("Access-Control-Allow-Origin"))
-	require.Contains(t, response.Body.String(), ErrLoginRequired.Message)
-
-	response = rt.SendRequestWithHeaders("GET", "/notadb/", "", reqHeaders)
-	assertStatus(t, response, http.StatusUnauthorized)
-	require.Equal(t, "http://example.com", response.Header().Get("Access-Control-Allow-Origin"))
-	require.Contains(t, response.Body.String(), ErrLoginRequired.Message)
-
-	response = rt.SendUserRequestWithHeaders("GET", "/db/", "", reqHeaders, username, RestTesterDefaultUserPassword)
-	require.Equal(t, "", response.Header().Get("Access-Control-Allow-Origin"))
-	assertStatus(t, response, http.StatusOK)
+	for _, method := range []string{http.MethodGet, http.MethodOptions} {
+		response := rt.SendRequestWithHeaders(method, "/db/", "", reqHeaders)
+		if method == http.MethodGet {
+			assertStatus(t, response, http.StatusUnauthorized)
+			require.Contains(t, response.Body.String(), ErrLoginRequired.Message)
+			require.Equal(t, "http://example.com", response.Header().Get("Access-Control-Allow-Origin"))
+		} else {
+			assertStatus(t, response, http.StatusNoContent)
+			// information leak: the options request knows about the database and knows it doesn't match
+			require.Equal(t, "", response.Header().Get("Access-Control-Allow-Origin"))
+		}
+	}
+	for _, method := range []string{http.MethodGet, http.MethodOptions} {
+		response := rt.SendRequestWithHeaders(method, "/notadb/", "", reqHeaders)
+		require.Equal(t, "http://example.com", response.Header().Get("Access-Control-Allow-Origin"))
+		if method == http.MethodGet {
+			assertStatus(t, response, http.StatusUnauthorized)
+			require.Contains(t, response.Body.String(), ErrLoginRequired.Message)
+		} else {
+			assertStatus(t, response, http.StatusNoContent)
+		}
+	}
+	for _, method := range []string{http.MethodGet, http.MethodOptions} {
+		response := rt.SendUserRequestWithHeaders(method, "/db/", "", reqHeaders, username, RestTesterDefaultUserPassword)
+		require.Equal(t, "", response.Header().Get("Access-Control-Allow-Origin"))
+		if method == http.MethodGet {
+			assertStatus(t, response, http.StatusOK)
+		} else {
+			assertStatus(t, response, http.StatusNoContent)
+		}
+	}
 
 	// successful request - matched headers
 	reqHeaders = map[string]string{
 		"Origin": "http://example.org",
 	}
-	response = rt.SendUserRequestWithHeaders("GET", "/db/_all_docs", "", reqHeaders, username, RestTesterDefaultUserPassword)
-	require.Equal(t, "http://example.org", response.Header().Get("Access-Control-Allow-Origin"))
-	assertStatus(t, response, http.StatusOK)
 
-	response = rt.SendRequestWithHeaders("GET", "/db/", "", reqHeaders)
-	require.Equal(t, "*", response.Header().Get("Access-Control-Allow-Origin"))
-	assertStatus(t, response, http.StatusUnauthorized)
-	require.Contains(t, response.Body.String(), ErrLoginRequired.Message)
+	for _, method := range []string{http.MethodGet, http.MethodOptions} {
+		response := rt.SendUserRequestWithHeaders(method, "/db/_all_docs", "", reqHeaders, username, RestTesterDefaultUserPassword)
+		require.Equal(t, "http://example.org", response.Header().Get("Access-Control-Allow-Origin"))
+		if method == http.MethodGet {
+			assertStatus(t, response, http.StatusOK)
+		} else {
+			assertStatus(t, response, http.StatusNoContent)
+		}
+	}
 
-	response = rt.SendRequestWithHeaders("GET", "/notadb/", "", reqHeaders)
-	require.Equal(t, "*", response.Header().Get("Access-Control-Allow-Origin"))
-	assertStatus(t, response, http.StatusUnauthorized)
-	require.Contains(t, response.Body.String(), ErrLoginRequired.Message)
+	for _, method := range []string{http.MethodGet, http.MethodOptions} {
+		response := rt.SendRequestWithHeaders(method, "/db/", "", reqHeaders)
+		if method == http.MethodGet {
+			require.Equal(t, "*", response.Header().Get("Access-Control-Allow-Origin"))
+			assertStatus(t, response, http.StatusUnauthorized)
+			require.Contains(t, response.Body.String(), ErrLoginRequired.Message)
+		} else {
+			// information leak: the options request knows about the database and knows it doesn't match
+			require.Equal(t, "http://example.org", response.Header().Get("Access-Control-Allow-Origin"))
+			assertStatus(t, response, http.StatusNoContent)
+		}
+	}
+	for _, method := range []string{http.MethodGet, http.MethodOptions} {
+		response := rt.SendRequestWithHeaders(method, "/notadb/", "", reqHeaders)
+		require.Equal(t, "*", response.Header().Get("Access-Control-Allow-Origin"))
+		if method == http.MethodGet {
+			assertStatus(t, response, http.StatusUnauthorized)
+			require.Contains(t, response.Body.String(), ErrLoginRequired.Message)
+		} else {
+			assertStatus(t, response, http.StatusNoContent)
 
-	response = rt.SendUserRequestWithHeaders("GET", "/db/", "", reqHeaders, username, RestTesterDefaultUserPassword)
-	require.Equal(t, "http://example.org", response.Header().Get("Access-Control-Allow-Origin"))
-	assertStatus(t, response, http.StatusOK)
-
+		}
+	}
+	for _, method := range []string{http.MethodGet, http.MethodOptions} {
+		response := rt.SendUserRequestWithHeaders(method, "/db/", "", reqHeaders, username, RestTesterDefaultUserPassword)
+		require.Equal(t, "http://example.org", response.Header().Get("Access-Control-Allow-Origin"))
+		if method == http.MethodGet {
+			assertStatus(t, response, http.StatusOK)
+		} else {
+			assertStatus(t, response, http.StatusNoContent)
+		}
+	}
 }
 
 func TestCORSNoMux(t *testing.T) {
@@ -127,30 +205,43 @@ func TestCORSNoMux(t *testing.T) {
 		"Origin": "http://example.com",
 	}
 	// this method doesn't exist
-	response := rt.SendRequestWithHeaders("GET", "/_notanendpoint/", "", reqHeaders)
-	require.Equal(t, "http://example.com", response.Header().Get("Access-Control-Allow-Origin"))
-	assertStatus(t, response, http.StatusNotFound)
-	require.Contains(t, response.Body.String(), "unknown URL")
+	for _, method := range []string{http.MethodGet, http.MethodOptions} {
+		response := rt.SendRequestWithHeaders(method, "/_notanendpoint/", "", reqHeaders)
+		require.Equal(t, "http://example.com", response.Header().Get("Access-Control-Allow-Origin"))
+		assertStatus(t, response, http.StatusNotFound)
+		require.Contains(t, response.Body.String(), "unknown URL")
+	}
 
 	// admin port shouldn't populate CORS
-	response = rt.SendAdminRequestWithHeaders("GET", "/_notanendpoint/", "", reqHeaders)
-	require.Equal(t, "", response.Header().Get("Access-Control-Allow-Origin"))
-	assertStatus(t, response, http.StatusNotFound)
-	require.Contains(t, response.Body.String(), "unknown URL")
-
+	for _, method := range []string{http.MethodGet, http.MethodOptions} {
+		response := rt.SendAdminRequestWithHeaders(method, "/_notanendpoint/", "", reqHeaders)
+		require.Equal(t, "", response.Header().Get("Access-Control-Allow-Origin"))
+		assertStatus(t, response, http.StatusNotFound)
+		require.Contains(t, response.Body.String(), "unknown URL")
+	}
 	// this method doesn't exist
-	response = rt.SendRequestWithHeaders(http.MethodDelete, "/notadb/", "", reqHeaders)
-	require.Equal(t, "http://example.com", response.Header().Get("Access-Control-Allow-Origin"))
-	assertStatus(t, response, http.StatusMethodNotAllowed)
-	require.Equal(t, strconv.Itoa(rt.ServerContext().config.API.CORS.MaxAge), response.Header().Get("Access-Control-Max-Age"))
-	require.Equal(t, "GET, HEAD, POST, PUT", response.Header().Get("Access-Control-Allow-Methods"))
+	for _, method := range []string{http.MethodDelete, http.MethodOptions} {
+		response := rt.SendRequestWithHeaders(method, "/notadb/", "", reqHeaders)
+		require.Equal(t, "http://example.com", response.Header().Get("Access-Control-Allow-Origin"))
+		if method == http.MethodDelete {
+			assertStatus(t, response, http.StatusMethodNotAllowed)
+		} else {
+			assertStatus(t, response, http.StatusNoContent)
+		}
+		require.Equal(t, strconv.Itoa(rt.ServerContext().Config.API.CORS.MaxAge), response.Header().Get("Access-Control-Max-Age"))
+		require.Equal(t, "GET, HEAD, POST, PUT", response.Header().Get("Access-Control-Allow-Methods"))
+	}
 
-	response = rt.SendAdminRequestWithHeaders(http.MethodDelete, "/_stats/", "", reqHeaders)
-	assertStatus(t, response, http.StatusMethodNotAllowed)
-	require.Equal(t, "", response.Header().Get("Access-Control-Allow-Origin"))
-	require.Equal(t, "", response.Header().Get("Access-Control-Max-Age"))
-	require.Equal(t, "", response.Header().Get("Access-Control-Allow-Methods"))
+	for _, method := range []string{http.MethodDelete, http.MethodOptions} {
+		response := rt.SendAdminRequestWithHeaders(method, "/_stats/", "", reqHeaders)
+		if method == http.MethodGet {
+			assertStatus(t, response, http.StatusMethodNotAllowed)
+		}
 
+		require.Equal(t, "", response.Header().Get("Access-Control-Allow-Origin"))
+		require.Equal(t, "", response.Header().Get("Access-Control-Max-Age"))
+		require.Equal(t, "", response.Header().Get("Access-Control-Allow-Methods"))
+	}
 }
 
 func TestCORSUserNoAccess(t *testing.T) {
@@ -169,16 +260,30 @@ func TestCORSUserNoAccess(t *testing.T) {
 	response := rt.SendAdminRequest(http.MethodPut,
 		"/"+rt.GetDatabase().Name+"/_user/"+alice,
 		`{"name": "`+alice+`", "password": "`+RestTesterDefaultUserPassword+`"}`)
+	assertStatus(t, response, http.StatusCreated)
 
 	for _, endpoint := range []string{"/db/", "/notadb/"} {
 		t.Run(endpoint, func(t *testing.T) {
 			reqHeaders := map[string]string{
 				"Origin": "http://couchbase.com",
 			}
-			response = rt.SendRequestWithHeaders(http.MethodGet, endpoint, "", reqHeaders)
-			assertStatus(t, response, http.StatusUnauthorized)
-			require.Contains(t, response.Body.String(), ErrLoginRequired.Message)
-			assert.Equal(t, "*", response.Header().Get("Access-Control-Allow-Origin"))
+			for _, method := range []string{http.MethodGet, http.MethodOptions} {
+				response := rt.SendRequestWithHeaders(method, endpoint, "", reqHeaders)
+				if method == http.MethodOptions && endpoint == "/db/" {
+					// information leak: the options request knows about the database and knows it doesn't match
+					assert.Equal(t, "http://couchbase.com", response.Header().Get("Access-Control-Allow-Origin"))
+				} else {
+					assert.Equal(t, "*", response.Header().Get("Access-Control-Allow-Origin"))
+				}
+
+				if method == http.MethodGet {
+					assertStatus(t, response, http.StatusUnauthorized)
+					require.Contains(t, response.Body.String(), ErrLoginRequired.Message)
+
+				} else {
+					assertStatus(t, response, http.StatusNoContent)
+				}
+			}
 		})
 	}
 }
@@ -201,18 +306,20 @@ func TestCORSOriginPerDatabase(t *testing.T) {
 	defer rt.Close()
 
 	testCases := []struct {
-		name           string
-		endpoint       string
-		origin         string
-		headerResponse string
-		responseCode   int
+		name                  string
+		endpoint              string
+		origin                string
+		headerResponse        string
+		headerResponseOptions string
+		responseCode          int
 	}{
 		{
-			name:           "CORS origin allowed couchbase",
-			endpoint:       "/db/",
-			origin:         "http://couchbase.com",
-			headerResponse: "http://couchbase.com",
-			responseCode:   http.StatusOK,
+			name:                  "CORS origin allowed couchbase",
+			endpoint:              "/db/",
+			origin:                "http://couchbase.com",
+			headerResponse:        "http://couchbase.com",
+			headerResponseOptions: "http://couchbase.com",
+			responseCode:          http.StatusOK,
 		},
 		{
 			name:           "CORS origin allowed example.com",
@@ -236,18 +343,20 @@ func TestCORSOriginPerDatabase(t *testing.T) {
 			responseCode:   http.StatusOK,
 		},
 		{
-			name:           "root url allow couchbase",
-			endpoint:       "/",
-			origin:         "http://couchbase.com",
-			headerResponse: "*",
-			responseCode:   http.StatusOK,
+			name:                  "root url allow couchbase",
+			endpoint:              "/",
+			origin:                "http://couchbase.com",
+			headerResponse:        "*",
+			headerResponseOptions: "*",
+			responseCode:          http.StatusOK,
 		},
 		{
-			name:           "root url allow example.com",
-			endpoint:       "/",
-			origin:         "http://example.com",
-			headerResponse: "http://example.com",
-			responseCode:   http.StatusOK,
+			name:                  "root url allow example.com",
+			endpoint:              "/",
+			origin:                "http://example.com",
+			headerResponse:        "http://example.com",
+			headerResponseOptions: "http://example.com",
+			responseCode:          http.StatusOK,
 		},
 	}
 	for _, test := range testCases {
@@ -255,9 +364,15 @@ func TestCORSOriginPerDatabase(t *testing.T) {
 			reqHeaders := map[string]string{
 				"Origin": test.origin,
 			}
-			response := rt.SendRequestWithHeaders(http.MethodGet, test.endpoint, "", reqHeaders)
-			require.Equal(t, test.responseCode, response.Code)
-			require.Equal(t, test.headerResponse, response.Header().Get("Access-Control-Allow-Origin"))
+			for _, method := range []string{http.MethodGet, http.MethodOptions} {
+				response := rt.SendRequestWithHeaders(method, test.endpoint, "", reqHeaders)
+				if method == http.MethodGet {
+					require.Equal(t, test.responseCode, response.Code)
+				} else {
+					require.Equal(t, http.StatusNoContent, response.Code)
+				}
+				require.Equal(t, test.headerResponse, response.Header().Get("Access-Control-Allow-Origin"))
+			}
 
 		})
 	}
