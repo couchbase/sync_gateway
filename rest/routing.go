@@ -9,7 +9,6 @@
 package rest
 
 import (
-	"fmt"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -371,17 +370,19 @@ func wrapRouter(sc *ServerContext, privs handlerPrivs, router *mux.Router) http.
 			// Inject CORS if enabled and requested and not admin port
 			// What methods would have matched?
 			var options []string
+			var keyspace string
 			for _, method := range []string{"GET", "HEAD", "POST", "PUT", "DELETE"} {
-				if wouldMatch(router, rq, method) {
+				found, matchedKeyspace := wouldMatch(router, rq, method)
+				if found {
 					options = append(options, method)
+					if keyspace == "" && matchedKeyspace != "" {
+						keyspace = matchedKeyspace
+					}
 				}
 			}
 
 			cors := sc.Config.API.CORS
-			firstElement, _, _ := strings.Cut(strings.TrimPrefix(rq.URL.Path, "/"), "/")
-			fmt.Println("firstElement: ", firstElement)
-			dbName, _, _, _ := ParseKeyspace(firstElement)
-			fmt.Println("dbName: ", dbName)
+			dbName, _, _, _ := ParseKeyspace(keyspace)
 			if dbName != "" {
 				db, err := h.server.GetActiveDatabase(dbName)
 				if err == nil {
@@ -421,10 +422,25 @@ func FixQuotedSlashes(rq *http.Request) {
 	}
 }
 
-func wouldMatch(router *mux.Router, rq *http.Request, method string) bool {
+func wouldMatch(router *mux.Router, rq *http.Request, method string) (found bool, keyspace string) {
 	savedMethod := rq.Method
 	rq.Method = method
 	defer func() { rq.Method = savedMethod }()
 	var matchInfo mux.RouteMatch
-	return router.Match(rq, &matchInfo)
+	found = router.Match(rq, &matchInfo)
+	// If a match is found, check for any db/keyspace path variable in the resolved match.  Some paths may
+	// match routes with different path variables depending on the method.
+	if found {
+		matchVars := matchInfo.Vars
+		if dbName, ok := matchVars["db"]; ok {
+			keyspace = dbName
+		} else if keyspaceName, ok := matchVars["keyspace"]; ok {
+			keyspace = keyspaceName
+		} else if targetDbName, ok := matchVars["targetdb"]; ok {
+			keyspace = targetDbName
+		} else if newDbName, ok := matchVars["newdb"]; ok {
+			keyspace = newDbName
+		}
+	}
+	return found, keyspace
 }
