@@ -20,6 +20,7 @@ on:
     branches:
       - 'master'
       - 'release/*'
+      - 'feature*'
 
 jobs:
   build:
@@ -87,6 +88,38 @@ jobs:
         uses: guyarb/golang-test-annotations@v0.6.0
         with:
           test-results: test.json
+  test-v8:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            name: macos
+          - os: windows-latest
+            name: windows
+          - os: ubuntu-latest
+            name: ubuntu
+    env:
+      GOPRIVATE: github.com/couchbaselabs
+      MallocNanoZone: 0
+    name: test v8 (${{ matrix.name }})
+    steps:
+      - uses: actions/setup-go@v3
+        with:
+          go-version: 1.20.3
+      - uses: actions/checkout@v3
+      - name: Build
+        run: go build -tags cb_sg_v8 -v "./..."
+      - name: Run Tests
+        run: go test -tags cb_sg_v8 -timeout=30m -count=1 -json -v "./..." | tee test.json | jq -s -jr 'sort_by(.Package,.Time) | .[].Output | select (. != null )'
+        shell: bash
+      - name: Annotate Failures
+        if: always()
+        uses: guyarb/golang-test-annotations@v0.6.0
+        with:
+          test-results: test.json
+
 
   test-race:
     runs-on: ubuntu-latest

@@ -32,8 +32,12 @@ doTest () {
     buildTags=""
     if [ "$1" = "EE" ]; then
         buildTags="-tags cb_sg_enterprise"
+	if [ -n "${SG_V8:-}" ]; then
+		buildTags="${buildTags},cb_sg_v8"
+        fi
+    elif [ -n "${SG_V8:-}" ]; then
+	buildTags="-tags cb_sg_v8"
     fi
-
     EXTRA_FLAGS=""
     if [ "$SG_TEST_BACKING_STORE" == "Couchbase" ] || [ "$SG_TEST_BACKING_STORE" == "couchbase" ]; then
         ./test-integration-init.sh
@@ -64,6 +68,16 @@ doTest () {
 }
 
 for edition in "${build_editions[@]}"; do
-    echo "  Testing edition: ${edition}"
-    doTest $edition "$@"
+    if [[ -z "${SG_V8:-}" ]]; then
+        echo "  Testing edition: ${edition} without V8"
+    else
+        echo "  Testing edition: ${edition} with V8"
+    fi
+    (doTest $edition "$@")
+    if [[ -z "${SG_V8:-}" ]]; then
+        echo "  Testing edition: ${edition} with V8"
+        SG_V8=1
+        (doTest $edition "$@")
+        unset SG_V8
+    fi
 done

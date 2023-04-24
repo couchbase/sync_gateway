@@ -24,19 +24,6 @@ type Engine struct {
 	factory         func(*Engine, *servicesConfiguration) VM
 }
 
-// Returns the Engine with the given name, else nil.
-// Valid names are "V8" and "Otto", which map to the instances `V8` and `Otto`.
-func EngineNamed(name string) *Engine {
-	switch name {
-	case v8VMName:
-		return V8
-	case ottoVMName:
-		return Otto
-	default:
-		return nil
-	}
-}
-
 // The name identifying this engine ("V8" or "Otto")
 func (engine *Engine) String() string { return engine.name }
 

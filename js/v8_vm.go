@@ -1,3 +1,5 @@
+//go:build cb_sg_v8
+
 /*
 Copyright 2022-Present Couchbase, Inc.
 
@@ -47,6 +49,19 @@ var V8MaxHeap uint64 = 32 * 1024 * 1024
 var V8StackSizeLimit = 400 * 1024
 
 const v8VMName = "V8"
+
+// Returns the Engine with the given name, else nil.
+// Valid names are "V8" and "Otto", which map to the instances `V8` and `Otto`.
+func EngineNamed(name string) *Engine {
+	switch name {
+	case v8VMName:
+		return V8
+	case ottoVMName:
+		return Otto
+	default:
+		return nil
+	}
+}
 
 // A VMType for instantiating V8-based VMs and VMPools.
 var V8 = &Engine{
