@@ -711,17 +711,7 @@ func TestCORSOrigin(t *testing.T) {
 			reqHeaders := map[string]string{
 				"Origin": tc.origin,
 			}
-			for _, method := range []string{http.MethodGet, http.MethodOptions} {
-				response := rt.SendRequestWithHeaders(method, "/db/", "", reqHeaders)
-				assert.Equal(t, tc.headerOutput, response.Header().Get("Access-Control-Allow-Origin"))
-				if method == http.MethodGet {
-					assertStatus(t, response, http.StatusBadRequest)
-					require.Contains(t, response.Body.String(), invalidDatabaseName)
-				} else {
-					assertStatus(t, response, http.StatusNoContent)
 
-				}
-			}
 			for _, method := range []string{http.MethodGet, http.MethodOptions} {
 				response := rt.SendRequestWithHeaders(method, "/db/", "", reqHeaders)
 				assert.Equal(t, tc.headerOutput, response.Header().Get("Access-Control-Allow-Origin"))
