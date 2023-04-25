@@ -39,6 +39,7 @@ func TestCORSDynamicSet(t *testing.T) {
 	const username = "alice"
 	rt.CreateUser(username, nil)
 
+	invalidDatabaseName := "invalid database name"
 	reqHeaders := map[string]string{
 		"Origin": "http://example.com",
 	}
