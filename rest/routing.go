@@ -341,17 +341,28 @@ func wrapRouter(sc *ServerContext, privs handlerPrivs, router *mux.Router) http.
 			h.logRequestLine()
 
 			// Inject CORS if enabled and requested and not admin port
-			cors := sc.config.API.CORS
-			if privs != adminPrivs && cors != nil {
-				cors.AddResponseHeaders(rq, response)
-			}
-
 			// What methods would have matched?
 			var options []string
+			var dbName string
 			for _, method := range []string{"GET", "HEAD", "POST", "PUT", "DELETE"} {
-				if wouldMatch(router, rq, method) {
+				found, matchedDbName := wouldMatch(router, rq, method)
+				if found {
 					options = append(options, method)
+					if dbName == "" && matchedDbName != "" {
+						dbName = matchedDbName
+					}
 				}
+			}
+
+			cors := sc.config.API.CORS
+			if dbName != "" {
+				db, err := h.server.GetActiveDatabase(dbName)
+				if err == nil {
+					cors = db.CORS
+				}
+			}
+			if cors != nil && privs != adminPrivs && privs != metricsPrivs {
+				cors.AddResponseHeaders(rq, response)
 			}
 			if len(options) == 0 {
 				h.writeStatus(http.StatusNotFound, "unknown URL")
@@ -383,10 +394,23 @@ func FixQuotedSlashes(rq *http.Request) {
 	}
 }
 
-func wouldMatch(router *mux.Router, rq *http.Request, method string) bool {
+func wouldMatch(router *mux.Router, rq *http.Request, method string) (found bool, dbName string) {
 	savedMethod := rq.Method
 	rq.Method = method
 	defer func() { rq.Method = savedMethod }()
 	var matchInfo mux.RouteMatch
-	return router.Match(rq, &matchInfo)
+	found = router.Match(rq, &matchInfo)
+	// If a match is found, check for any db/keyspace path variable in the resolved match.  Some paths may
+	// match routes with different path variables depending on the method.
+	if found {
+		matchVars := matchInfo.Vars
+		if db, ok := matchVars["db"]; ok {
+			dbName = db
+		} else if targetDbName, ok := matchVars["targetdb"]; ok {
+			dbName = targetDbName
+		} else if newDbName, ok := matchVars["newdb"]; ok {
+			dbName = newDbName
+		}
+	}
+	return found, dbName
 }
