@@ -15,7 +15,7 @@ type tbpCluster interface {
 	getBucketNames() ([]string, error)
 	insertBucket(name string, quotaMB int) error
 	removeBucket(name string) error
-	openTestBucket(name tbpBucketName, waitUntilReadySeconds int) (Bucket, error)
+	openTestBucket(name tbpBucketName, waitUntilReady time.Duration) (Bucket, error)
 	close() error
 }
 
@@ -110,9 +110,9 @@ func (c *tbpClusterV1) removeBucket(name string) error {
 }
 
 // openTestBucket opens the bucket of the given name for the gocb cluster in the given TestBucketPool.
-func (c *tbpClusterV1) openTestBucket(testBucketName tbpBucketName, waitUntilReadySeconds int) (Bucket, error) {
+func (c *tbpClusterV1) openTestBucket(testBucketName tbpBucketName, waitUntilReady time.Duration) (Bucket, error) {
 
-	sleeper := CreateSleeperFunc(waitUntilReadySeconds, 1000)
+	sleeper := CreateSleeperFunc(int(waitUntilReady.Seconds()), 1000)
 	ctx := bucketNameCtx(context.Background(), string(testBucketName))
 
 	bucketSpec := getBucketSpec(testBucketName)
@@ -253,12 +253,12 @@ func (c *tbpClusterV2) removeBucket(name string) error {
 }
 
 // openTestBucket opens the bucket of the given name for the gocb cluster in the given TestBucketPool.
-func (c *tbpClusterV2) openTestBucket(testBucketName tbpBucketName, waitUntilReadySeconds int) (Bucket, error) {
+func (c *tbpClusterV2) openTestBucket(testBucketName tbpBucketName, waitUntilReady time.Duration) (Bucket, error) {
 
 	cluster := getCluster(c.server)
 	bucketSpec := getBucketSpec(testBucketName)
 
-	return GetCollectionFromCluster(cluster, bucketSpec, waitUntilReadySeconds)
+	return GetCollectionFromCluster(cluster, bucketSpec, waitUntilReady, false)
 }
 
 func (c *tbpClusterV2) close() error {
