@@ -26,10 +26,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/couchbase/sync_gateway/auth"
-
 	"github.com/couchbase/gocbcore/v10"
 	sgbucket "github.com/couchbase/sg-bucket"
+	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 )
@@ -186,6 +185,20 @@ func (sc *ServerContext) Close() {
 			base.Warnf("Error closing agent connection: %v", err)
 		}
 	}
+}
+
+// Returns the DatabaseContext with the given name from the active set.  Does not
+// attempt to retrieve via bootstrap if not found.
+func (sc *ServerContext) GetActiveDatabase(name string) (*db.DatabaseContext, error) {
+	sc.lock.RLock()
+	dbc := sc.databases_[name]
+	sc.lock.RUnlock()
+	if dbc != nil {
+		return dbc, nil
+	} else if db.ValidateDatabaseName(name) != nil {
+		return nil, base.HTTPErrorf(http.StatusBadRequest, "invalid database name %q", name)
+	}
+	return nil, base.HTTPErrorf(http.StatusNotFound, "no such database %q", name)
 }
 
 // Returns the DatabaseContext with the given name

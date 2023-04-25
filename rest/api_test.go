@@ -707,6 +707,7 @@ func TestCORSOrigin(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.origin, func(t *testing.T) {
 
+			invalidDatabaseName := "invalid database name"
 			reqHeaders := map[string]string{
 				"Origin": tc.origin,
 			}
@@ -760,8 +761,8 @@ func TestCORSOrigin(t *testing.T) {
 				sc.config.API.CORS.Origin = defaultTestingCORSOrigin
 			}()
 
-			sc.Config.API.CORS.Origin = []string{"http://example.com", "http://staging.example.com"}
-			if !base.StringSliceContains(sc.Config.API.CORS.Origin, tc.origin) {
+			sc.config.API.CORS.Origin = []string{"http://example.com", "http://staging.example.com"}
+			if !base.StringSliceContains(sc.config.API.CORS.Origin, tc.origin) {
 				for _, method := range []string{http.MethodGet, http.MethodOptions} {
 					response := rt.SendRequestWithHeaders(method, "/db/", "", reqHeaders)
 					assert.Equal(t, "", response.Header().Get("Access-Control-Allow-Origin"))

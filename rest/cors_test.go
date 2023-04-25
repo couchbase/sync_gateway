@@ -228,7 +228,7 @@ func TestCORSNoMux(t *testing.T) {
 		} else {
 			assertStatus(t, response, http.StatusNoContent)
 		}
-		require.Equal(t, strconv.Itoa(rt.ServerContext().Config.API.CORS.MaxAge), response.Header().Get("Access-Control-Max-Age"))
+		require.Equal(t, strconv.Itoa(rt.ServerContext().config.API.CORS.MaxAge), response.Header().Get("Access-Control-Max-Age"))
 		require.Equal(t, "GET, HEAD, POST, PUT", response.Header().Get("Access-Control-Allow-Methods"))
 	}
 
