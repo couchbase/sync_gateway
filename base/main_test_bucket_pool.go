@@ -464,7 +464,7 @@ func (tbp *TestBucketPool) createTestBuckets(numBuckets int, bucketQuotaMB int, 
 				FatalfCtx(ctx, "Couldn't create test bucket: %v", err)
 			}
 
-			b, err := tbp.cluster.openTestBucket(tbpBucketName(bucketName), 10*numBuckets)
+			b, err := tbp.cluster.openTestBucket(tbpBucketName(bucketName), waitForReadyBucketTimeout)
 			if err != nil {
 				FatalfCtx(ctx, "Timed out trying to open new bucket: %v", err)
 			}
@@ -544,7 +544,7 @@ loop:
 				defer tbp.bucketReadierWaitGroup.Done()
 
 				start := time.Now()
-				b, err := tbp.cluster.openTestBucket(testBucketName, 5)
+				b, err := tbp.cluster.openTestBucket(testBucketName, waitForReadyBucketTimeout)
 				if err != nil {
 					tbp.Logf(ctx, "Couldn't open bucket to get ready, got error: %v", err)
 					return

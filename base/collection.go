@@ -60,7 +60,7 @@ func GetCouchbaseCollection(spec BucketSpec) (*Collection, error) {
 		Authenticator:  authenticator,
 		SecurityConfig: securityConfig,
 		TimeoutsConfig: timeoutsConfig,
-		RetryStrategy:  &goCBv2FailFastRetryStrategy{},
+		RetryStrategy:  gocb.NewBestEffortRetryStrategy(nil),
 	}
 
 	if spec.KvPoolSize > 0 {
@@ -87,15 +87,24 @@ func GetCouchbaseCollection(spec BucketSpec) (*Collection, error) {
 		return nil, err
 	}
 
-	return GetCollectionFromCluster(cluster, spec, 30)
+	return GetCollectionFromCluster(cluster, spec, time.Second*30, true)
 
 }
 
-func GetCollectionFromCluster(cluster *gocb.Cluster, spec BucketSpec, waitUntilReadySeconds int) (*Collection, error) {
+func GetCollectionFromCluster(cluster *gocb.Cluster, spec BucketSpec, waitUntilReady time.Duration, failFast bool) (*Collection, error) {
 
 	// Connect to bucket
 	bucket := cluster.Bucket(spec.BucketName)
-	err := bucket.WaitUntilReady(time.Duration(waitUntilReadySeconds)*time.Second, nil)
+
+	var retryStrategy gocb.RetryStrategy
+	if failFast {
+		retryStrategy = &goCBv2FailFastRetryStrategy{}
+	} else {
+		retryStrategy = gocb.NewBestEffortRetryStrategy(nil)
+	}
+	err := bucket.WaitUntilReady(waitUntilReady, &gocb.WaitUntilReadyOptions{
+		RetryStrategy: retryStrategy,
+	})
 	if err != nil {
 		_ = cluster.Close(&gocb.ClusterCloseOptions{})
 		if errors.Is(err, gocb.ErrAuthenticationFailure) {
