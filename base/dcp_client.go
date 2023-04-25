@@ -168,7 +168,9 @@ func (dc *DCPClient) getCollectionHighSeqNos(collectionID uint32) ([]uint64, err
 	// serverIdx start at 1 (-1 in gocbcore), 0 refers to the master node
 	for serverIdx := 1; serverIdx <= numServers; serverIdx++ {
 
-		highSeqNoError := make(chan error)
+		// This has to be buffered so that Cancel() below doesn't lead to blocking in the callback.
+		// (If Cancel succeeds then it will lead to directly calling the callback).
+		highSeqNoError := make(chan error, 1)
 		highSeqNoCallback := func(entries []gocbcore.VbSeqNoEntry, err error) {
 			if err == nil {
 				for _, entry := range entries {
@@ -179,7 +181,7 @@ func (dc *DCPClient) getCollectionHighSeqNos(collectionID uint32) ([]uint64, err
 			}
 			highSeqNoError <- err
 		}
-		_, seqErr := dc.agent.GetVbucketSeqnos(
+		op, seqErr := dc.agent.GetVbucketSeqnos(
 			serverIdx,
 			memd.VbucketStateActive, // active vbuckets only
 			vbucketSeqnoOptions,     // contains collectionID
@@ -195,6 +197,8 @@ func (dc *DCPClient) getCollectionHighSeqNos(collectionID uint32) ([]uint64, err
 				return nil, err
 			}
 		case <-time.After(getVbSeqnoTimeout):
+			op.Cancel()
+			<-highSeqNoError
 			return nil, ErrTimeout
 		}
 	}
@@ -485,7 +489,10 @@ func (dc *DCPClient) openStreamRequest(vbID uint16) error {
 	if dc.supportsCollections {
 		options.FilterOptions = &gocbcore.OpenStreamFilterOptions{CollectionIDs: dc.collectionIDs}
 	}
-	openStreamError := make(chan error)
+
+	// This has to be buffered so that Cancel() below doesn't lead to blocking in the callback.
+	// (If Cancel succeeds then it will lead to directly calling the callback).
+	openStreamError := make(chan error, 1)
 	openStreamCallback := func(f []gocbcore.FailoverEntry, err error) {
 		if err == nil {
 			err = dc.verifyFailoverLog(vbID, f)
@@ -502,7 +509,7 @@ func (dc *DCPClient) openStreamRequest(vbID uint16) error {
 		openStreamError <- err
 	}
 
-	_, openErr := dc.agent.OpenStream(vbID,
+	op, openErr := dc.agent.OpenStream(vbID,
 		memd.DcpStreamAddFlagActiveOnly,
 		vbMeta.VbUUID,
 		vbMeta.StartSeqNo,
@@ -521,6 +528,8 @@ func (dc *DCPClient) openStreamRequest(vbID uint16) error {
 	case err := <-openStreamError:
 		return err
 	case <-time.After(openStreamTimeout):
+		op.Cancel()
+		<-openStreamError
 		return ErrTimeout
 	}
 }
