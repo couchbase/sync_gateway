@@ -181,13 +181,13 @@ func (sc *ServerContext) Close(ctx context.Context) {
 		base.InfofCtx(ctx, base.KeyAll, "Couldn't stop background config update worker: %v", err)
 	}
 
+	sc.lock.Lock()
+	defer sc.lock.Unlock()
+
 	// close cached bootstrap bucket connections
 	if sc.BootstrapContext != nil && sc.BootstrapContext.Connection != nil {
 		sc.BootstrapContext.Connection.Close()
 	}
-
-	sc.lock.Lock()
-	defer sc.lock.Unlock()
 
 	for _, db := range sc.databases_ {
 		db.Close(ctx)
