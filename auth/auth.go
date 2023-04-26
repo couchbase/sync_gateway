@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -28,15 +29,17 @@ type Authenticator struct {
 	datastore       base.DataStore
 	channelComputer ChannelComputer
 	AuthenticatorOptions
-	bcryptCostChanged bool
+	bcryptCostChanged     bool
+	warnChanThresholdOnce sync.Once
 }
 
 type AuthenticatorOptions struct {
-	ClientPartitionWindow    time.Duration
-	ChannelsWarningThreshold *uint32
-	SessionCookieName        string
-	BcryptCost               int
-	LogCtx                   context.Context
+	ClientPartitionWindow      time.Duration
+	ChannelsWarningThreshold   *uint32
+	ServerlessChannelThreshold uint32
+	SessionCookieName          string
+	BcryptCost                 int
+	LogCtx                     context.Context
 
 	// Collections defines the set of collections used by the authenticator when rebuilding channels.
 	// Channels are only recomputed for collections included in this set.
@@ -160,6 +163,44 @@ func (auth *Authenticator) GetRoleIncDeleted(name string) (Role, error) {
 	return role, err
 }
 
+func (auth *Authenticator) InheritedChannels(princ Principal) error {
+	cumulativeChannels := ch.TimedSet{}
+	user := princ.(User)
+
+	for scope, collections := range auth.Collections {
+		for collection, _ := range collections {
+			channels := princ.CollectionChannels(scope, collection).Copy()
+			for _, role := range user.GetRoles() {
+				roleSince := user.RoleNames()[role.Name()]
+				channels.AddAtSequence(role.CollectionChannels(scope, collection), roleSince.Sequence)
+			}
+			// We want to keep track of cumulative number of channels for limits across all collections
+			cumulativeChannels.Add(channels)
+		}
+	}
+	channelCount := len(cumulativeChannels)
+
+	// Warning at 50 channels
+	auth.warnChanThresholdOnce.Do(func() {
+		if channelsPerUserThreshold := auth.ChannelsWarningThreshold; channelsPerUserThreshold != nil {
+			if uint32(channelCount) >= *channelsPerUserThreshold {
+				base.WarnfCtx(auth.LogCtx, "User ID: %v channel count: %d exceeds %d for channels per user warning threshold",
+					base.UD(user.Name()), channelCount, *channelsPerUserThreshold)
+			}
+		}
+	})
+
+	// Error at >=500 channels if ServerlessChannelThreshold is set
+	if serverlessChanThreshold := auth.ServerlessChannelThreshold; serverlessChanThreshold != 0 {
+		if uint32(channelCount) >= serverlessChanThreshold {
+			base.ErrorfCtx(auth.LogCtx, "User ID: %v channel count: %d exceeds %d for channels per user threshold. Auth will be rejected until rectified",
+				base.UD(user.Name()), channelCount, serverlessChanThreshold)
+			return base.ErrMaximumChannelsForUserExceeded
+		}
+	}
+	return nil
+}
+
 // Common implementation of GetUser and GetRole. factory() parameter returns a new empty instance.
 // Returns (nil, nil) if the principal doesn't exist, or (nil, error) if getting it failed for some reason.
 func (auth *Authenticator) getPrincipal(docID string, factory func() Principal) (Principal, error) {
@@ -186,6 +227,10 @@ func (auth *Authenticator) getPrincipal(docID string, factory func() Principal) 
 			}
 			if channelsChanged {
 				changed = true
+				err = auth.InheritedChannels(princ)
+				if err != nil {
+					return nil, nil, false, err
+				}
 			}
 		}
 		if user, ok := princ.(User); ok {
