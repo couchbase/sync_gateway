@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -21,7 +22,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const kDummyGraphQLSchema = `
+const dummyGraphQLSchema = `
     type Query {
         square(n: Int!) : Int!
     }`
@@ -29,7 +30,7 @@ const kDummyGraphQLSchema = `
 var allowAll = &functions.Allow{Channels: []string{"*"}}
 
 // The GraphQL schema:
-var kTestGraphQLSchema = `
+const testGraphQLSchema = `
 	type User {
 		id: ID! #Int
 		name: String!
@@ -48,8 +49,8 @@ var kTestGraphQLSchema = `
 `
 
 // The GraphQL configuration:
-var kTestGraphQLConfig = functions.GraphQLConfig{
-	Schema: &kTestGraphQLSchema,
+var testGraphQLConfig = functions.GraphQLConfig{
+	Schema: base.StringPtr(testGraphQLSchema),
 	Resolvers: map[string]functions.GraphQLResolverConfig{
 		"Query": {
 			"getUser": {
@@ -134,7 +135,7 @@ var kTestGraphQLConfig = functions.GraphQLConfig{
 }
 
 // JS function helpers:
-var kTestGraphQLUserFunctionsConfig = functions.FunctionsConfig{
+var testGraphQLUserFunctionsConfig = functions.FunctionsConfig{
 	Definitions: functions.FunctionsDefs{
 		"all": {
 			Type: "javascript",
@@ -178,11 +179,11 @@ func TestFunctionsConfigGetWithoutFeatureFlagGraphQL(t *testing.T) {
 
 	t.Run("GraphQL, Non-Admin", func(t *testing.T) {
 		response := rt.SendRequest("GET", "/db/_config/graphql", "")
-		assert.Equal(t, 404, response.Result().StatusCode)
+		rest.AssertStatus(t, response, 404)
 	})
 	t.Run("GraphQL", func(t *testing.T) {
 		response := rt.SendAdminRequest("GET", "/db/_config/graphql", "")
-		assert.Equal(t, 404, response.Result().StatusCode)
+		rest.AssertStatus(t, response, 404)
 	})
 }
 
@@ -190,51 +191,51 @@ func TestFunctionsConfigGetWithoutFeatureFlagGraphQL(t *testing.T) {
 func runTestFunctionsConfigMVCC(t *testing.T, rt *rest.RestTester, uri string, newValue string) {
 	// Get initial etag:
 	response := rt.SendAdminRequest("GET", uri, "")
-	assert.Equal(t, 200, response.Result().StatusCode)
-	etag := response.HeaderMap.Get("Etag")
+	rest.AssertStatus(t, response, 200)
+	etag := response.Header().Get("Etag")
 	assert.Regexp(t, `"[^"]+"`, etag)
 
 	// Update config, just to change its etag:
 	response = rt.SendAdminRequest("PUT", uri, newValue)
-	assert.Equal(t, 200, response.Result().StatusCode)
-	newEtag := response.HeaderMap.Get("Etag")
+	rest.AssertStatus(t, response, 200)
+	newEtag := response.Header().Get("Etag")
 	assert.Regexp(t, `"[^"]+"`, newEtag)
 	assert.NotEqual(t, etag, newEtag)
 
 	// A GET should also return the new etag:
 	response = rt.SendAdminRequest("GET", uri, "")
-	assert.Equal(t, 200, response.Result().StatusCode)
-	assert.Equal(t, newEtag, response.HeaderMap.Get("Etag"))
+	rest.AssertStatus(t, response, 200)
+	assert.Equal(t, newEtag, response.Header().Get("Etag"))
 
 	// Try to update using If-Match with the old etag:
 	headers := map[string]string{"If-Match": etag}
 	response = rt.SendAdminRequestWithHeaders("PUT", uri, newValue, headers)
-	assert.Equal(t, 412, response.Result().StatusCode)
+	rest.AssertStatus(t, response, 412)
 
 	// Now update successfully using the current etag:
 	headers["If-Match"] = newEtag
 	response = rt.SendAdminRequestWithHeaders("PUT", uri, newValue, headers)
-	assert.Equal(t, 200, response.Result().StatusCode)
-	newestEtag := response.HeaderMap.Get("Etag")
+	rest.AssertStatus(t, response, 200)
+	newestEtag := response.Header().Get("Etag")
 	assert.Regexp(t, `"[^"]+"`, newestEtag)
 	assert.NotEqual(t, etag, newestEtag)
 	assert.NotEqual(t, newEtag, newestEtag)
 
 	// Try to delete using If-Match with the previous etag:
 	response = rt.SendAdminRequestWithHeaders("DELETE", uri, newValue, headers)
-	assert.Equal(t, 412, response.Result().StatusCode)
+	rest.AssertStatus(t, response, 412)
 
 	// Now delete successfully using the current etag:
 	headers["If-Match"] = newestEtag
 	response = rt.SendAdminRequestWithHeaders("DELETE", uri, newValue, headers)
-	assert.Equal(t, 200, response.Result().StatusCode)
+	rest.AssertStatus(t, response, 200)
 }
 
 // Test use of "Etag" and "If-Match" headers to safely update graphql config.
 func TestFunctionsConfigMVCCGraphQL(t *testing.T) {
 	rt := rest.NewRestTesterForUserQueries(t, rest.DbConfig{
 		GraphQL: &functions.GraphQLConfig{
-			Schema:    base.StringPtr(kDummyGraphQLSchema),
+			Schema:    base.StringPtr(dummyGraphQLSchema),
 			Resolvers: nil,
 		},
 	})
@@ -259,18 +260,18 @@ func TestFunctionsConfigGraphQLGetEmpty(t *testing.T) {
 
 	t.Run("Non-Admin", func(t *testing.T) {
 		response := rt.SendRequest("GET", "/db/_config/graphql", "")
-		assert.Equal(t, 404, response.Result().StatusCode)
+		rest.AssertStatus(t, response, 404)
 	})
 	t.Run("All", func(t *testing.T) {
 		response := rt.SendAdminRequest("GET", "/db/_config/graphql", "")
-		assert.Equal(t, 404, response.Result().StatusCode)
+		rest.AssertStatus(t, response, 404)
 	})
 }
 
 func TestFunctionsConfigGraphQLGet(t *testing.T) {
 	rt := rest.NewRestTesterForUserQueries(t, rest.DbConfig{
 		GraphQL: &functions.GraphQLConfig{
-			Schema:    base.StringPtr(kTestGraphQLSchema),
+			Schema:    base.StringPtr(testGraphQLSchema),
 			Resolvers: nil,
 		},
 	})
@@ -281,19 +282,19 @@ func TestFunctionsConfigGraphQLGet(t *testing.T) {
 
 	t.Run("Non-Admin", func(t *testing.T) {
 		response := rt.SendRequest("GET", "/db/_config/graphql", "")
-		assert.Equal(t, 404, response.Result().StatusCode)
+		rest.AssertStatus(t, response, 404)
 	})
 	t.Run("All", func(t *testing.T) {
 		response := rt.SendAdminRequest("GET", "/db/_config/graphql", "")
 		var body functions.GraphQLConfig
 		require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
-		assert.Equal(t, base.StringPtr(kTestGraphQLSchema), body.Schema)
+		assert.Equal(t, base.StringPtr(testGraphQLSchema), body.Schema)
 	})
 }
 func TestFunctionsConfigGraphQLPut(t *testing.T) {
 	rt := rest.NewRestTesterForUserQueries(t, rest.DbConfig{
 		GraphQL: &functions.GraphQLConfig{
-			Schema:    base.StringPtr(kTestGraphQLSchema),
+			Schema:    base.StringPtr(testGraphQLSchema),
 			Resolvers: nil,
 		},
 	})
@@ -304,15 +305,15 @@ func TestFunctionsConfigGraphQLPut(t *testing.T) {
 
 	t.Run("Non-Admin", func(t *testing.T) {
 		response := rt.SendRequest("PUT", "/db/_config/graphql", "{}")
-		assert.Equal(t, 404, response.Result().StatusCode)
+		rest.AssertStatus(t, response, 404)
 		response = rt.SendRequest("DELETE", "/db/_config/graphql", "{}")
-		assert.Equal(t, 404, response.Result().StatusCode)
+		rest.AssertStatus(t, response, 404)
 	})
 	t.Run("ReplaceBogus", func(t *testing.T) {
 		response := rt.SendAdminRequest("PUT", "/db/_config/graphql", `{
             "schema": "obviously not a valid schema ^_^"
         }`)
-		assert.Equal(t, 400, response.Result().StatusCode)
+		rest.AssertStatus(t, response, 400)
 	})
 	t.Run("Replace", func(t *testing.T) {
 		response := rt.SendAdminRequest("PUT", "/db/_config/graphql", `{
@@ -326,20 +327,20 @@ func TestFunctionsConfigGraphQLPut(t *testing.T) {
                 }
             }
         }`)
-		assert.Equal(t, 200, response.Result().StatusCode)
+		rest.AssertStatus(t, response, 200)
 
 		response = rt.SendAdminRequest("POST", "/db/_graphql", `{"query": "query{ sum(n:3) }"}`)
-		assert.Equal(t, 200, response.Result().StatusCode)
+		rest.AssertStatus(t, response, 200)
 		assert.Equal(t, `{"data":{"sum":6}}`, string(response.BodyBytes()))
 	})
 	t.Run("Delete", func(t *testing.T) {
 		response := rt.SendAdminRequest("DELETE", "/db/_config/graphql", "")
-		assert.Equal(t, 200, response.Result().StatusCode)
+		rest.AssertStatus(t, response, 200)
 
 		assert.Nil(t, rt.GetDatabase().Options.GraphQL)
 
 		response = rt.SendAdminRequest("POST", "/db/_graphql", `{"query": "query{ sum(n:3) }"}`)
-		assert.Equal(t, 503, response.Result().StatusCode)
+		rest.AssertStatus(t, response, 503)
 	})
 }
 
@@ -347,7 +348,7 @@ func TestFunctionsConfigGraphQLPut(t *testing.T) {
 func TestValidGraphQLConfigurationValues(t *testing.T) {
 	rt := rest.NewRestTesterForUserQueries(t, rest.DbConfig{
 		GraphQL: &functions.GraphQLConfig{
-			Schema:    base.StringPtr(kDummyGraphQLSchema),
+			Schema:    base.StringPtr(dummyGraphQLSchema),
 			Resolvers: nil,
 		},
 	})
@@ -356,7 +357,7 @@ func TestValidGraphQLConfigurationValues(t *testing.T) {
 	}
 	defer rt.Close()
 
-	//If max_schema_size >= given schema size then Valid
+	// If max_schema_size >= given schema size then Valid
 	t.Run("Check max_schema_size allowed", func(t *testing.T) {
 		schema := `type Query {sum(n: Int!) : Int!}`
 		response := rt.SendAdminRequest("PUT", "/db/_config/graphql", fmt.Sprintf(`{
@@ -371,15 +372,15 @@ func TestValidGraphQLConfigurationValues(t *testing.T) {
 			},
 			"max_schema_size" : %d
 		}`, len(schema)))
-		assert.Equal(t, 200, response.Result().StatusCode)
+		rest.AssertStatus(t, response, 200)
 
 		response = rt.SendAdminRequest("GET", "/db/_config/graphql", "")
-		assert.Equal(t, 200, response.Result().StatusCode)
+		rest.AssertStatus(t, response, 200)
 		assert.Contains(t, string(response.BodyBytes()), `"max_schema_size":32`)
 	})
 
-	//If max_resolver_count >= given number of resolvers then Valid
-	//here max_resolver_count allowed is 2 and total resolvers are also 2, hence it is a valid config
+	// If max_resolver_count >= given number of resolvers then Valid
+	// here max_resolver_count allowed is 2 and total resolvers are also 2, hence it is a valid config
 	t.Run("Check max_resolver_count allowed", func(t *testing.T) {
 		response := rt.SendAdminRequest("PUT", "/db/_config/graphql", `{
 			"schema": "type Query {sum(n: Int!) : Int! \n square(n: Int!) : Int!}",
@@ -397,14 +398,14 @@ func TestValidGraphQLConfigurationValues(t *testing.T) {
 			},
 			"max_resolver_count" : 2
 		}`)
-		assert.Equal(t, 200, response.Result().StatusCode)
+		rest.AssertStatus(t, response, 200)
 
 		response = rt.SendAdminRequest("GET", "/db/_config/graphql", "")
-		assert.Equal(t, 200, response.Result().StatusCode)
+		rest.AssertStatus(t, response, 200)
 		assert.Contains(t, string(response.BodyBytes()), `"max_resolver_count":2`)
 	})
 
-	//If max_request_size >= length of JSON-encoded arguments passed to a function then Valid
+	// If max_request_size >= length of JSON-encoded arguments passed to a function then Valid
 	t.Run("Check max_request_size allowed", func(t *testing.T) {
 		requestQuery := `{"query": "query($numberToBeSquared:Int!){ square(n:$numberToBeSquared) }", "variables": {"numberToBeSquared": 4}}`
 		response := rt.SendAdminRequest("PUT", "/db/_config/graphql", fmt.Sprintf(`{
@@ -419,40 +420,43 @@ func TestValidGraphQLConfigurationValues(t *testing.T) {
 			},
 			"max_request_size" : %d
 		}`, len(requestQuery)))
-		assert.Equal(t, 200, response.Result().StatusCode)
+		rest.AssertStatus(t, response, 200)
 
 		response = rt.SendAdminRequest("POST", "/db/_graphql", requestQuery)
-		assert.Equal(t, 200, response.Result().StatusCode)
+		rest.AssertStatus(t, response, 200)
 		assert.Equal(t, `{"data":{"square":16}}`, string(response.BodyBytes()))
 
 		response = rt.SendAdminRequest("GET", "/db/_config/graphql", "")
-		assert.Equal(t, 200, response.Result().StatusCode)
+		rest.AssertStatus(t, response, 200)
 		assert.Contains(t, string(response.BodyBytes()), fmt.Sprintf(`"max_request_size":%d`, len(requestQuery)))
 
 		headerMap := map[string]string{
 			"Content-type": "application/graphql",
 		}
 		response = rt.SendAdminRequestWithHeaders("POST", "/db/_graphql", `query{square(n:4)}`, headerMap)
-		assert.Equal(t, 200, response.Result().StatusCode)
+		rest.AssertStatus(t, response, 200)
 		assert.Equal(t, `{"data":{"square":16}}`, string(response.BodyBytes()))
 
 		queryParam := `query($numberToBeSquared:Int!){ square(n:$numberToBeSquared) }`
 		variableParam := `{"numberToBeSquared": 4}`
-		getRequestUrl := fmt.Sprintf("/db/_graphql?query=%s&variables=%s", queryParam, variableParam)
-		response = rt.SendAdminRequest("GET", getRequestUrl, "")
-		assert.Equal(t, 200, response.Result().StatusCode)
+		getRequestURL := fmt.Sprintf("/db/_graphql?query=%s&variables=%s", queryParam, variableParam)
+		response = rt.SendAdminRequest("GET", getRequestURL, "")
+		rest.AssertStatus(t, response, 200)
 		assert.Equal(t, `{"data":{"square":16}}`, string(response.BodyBytes()))
 
 	})
 
-	//only one out of the schema or schemaFile is allowed
-	//here only SchemaFile is provided, hence it is a valid config
+	// only one out of the schema or schemaFile is allowed
+	// here only SchemaFile is provided, hence it is a valid config
 	t.Run("Provide only schema or schema file", func(t *testing.T) {
+		const fileName = "schema.graphql"
 		validSchema := "type Query {sum(n: Int!) : Int!}"
-		err := os.WriteFile("schema.graphql", []byte(validSchema), 0666)
-		assert.NoError(t, err)
+		tmp := t.TempDir()
+		err := os.WriteFile(filepath.Join(tmp, fileName), []byte(validSchema), 0600)
+		require.NoError(t, err)
+
 		response := rt.SendAdminRequest("PUT", "/db/_config/graphql", `{
-			"schemaFile": "schema.graphql",
+			"schemaFile": "`+filepath.Join(tmp, fileName)+`",
 			"resolvers": {
 				"Query": {
 					"sum": {
@@ -462,12 +466,10 @@ func TestValidGraphQLConfigurationValues(t *testing.T) {
 				}
 			}
 		}`)
-		assert.Equal(t, 200, response.Result().StatusCode)
-		err = os.Remove("schema.graphql")
-		assert.NoError(t, err)
+		rest.AssertStatus(t, response, 200)
 
 		response = rt.SendAdminRequest("GET", "/db/_config/graphql", "")
-		assert.Equal(t, 200, response.Result().StatusCode)
+		rest.AssertStatus(t, response, 200)
 		assert.Contains(t, string(response.BodyBytes()), `"schemaFile":"schema.graphql"`)
 	})
 }
@@ -477,7 +479,7 @@ func TestValidGraphQLConfigurationValues(t *testing.T) {
 func TestInvalidGraphQLConfigurationValues(t *testing.T) {
 	rt := rest.NewRestTesterForUserQueries(t, rest.DbConfig{
 		GraphQL: &functions.GraphQLConfig{
-			Schema:    base.StringPtr(kDummyGraphQLSchema),
+			Schema:    base.StringPtr(dummyGraphQLSchema),
 			Resolvers: nil,
 		},
 	})
@@ -503,10 +505,10 @@ func TestInvalidGraphQLConfigurationValues(t *testing.T) {
 		}`)
 
 		var responseMap map[string]interface{}
-		err := json.Unmarshal([]byte(string(response.BodyBytes())), &responseMap)
+		err := json.Unmarshal(response.BodyBytes(), &responseMap)
 		assert.NoError(t, err)
 
-		assert.Equal(t, 400, response.Result().StatusCode)
+		rest.AssertStatus(t, response, 400)
 		assert.Contains(t, responseMap["reason"], "GraphQL schema too large")
 		assert.Contains(t, responseMap["error"], "Bad Request")
 	})
@@ -532,10 +534,10 @@ func TestInvalidGraphQLConfigurationValues(t *testing.T) {
 		}`)
 
 		var responseMap map[string]interface{}
-		err := json.Unmarshal([]byte(string(response.BodyBytes())), &responseMap)
+		err := json.Unmarshal(response.BodyBytes(), &responseMap)
 		assert.NoError(t, err)
 
-		assert.Equal(t, 400, response.Result().StatusCode)
+		rest.AssertStatus(t, response, 400)
 		assert.Contains(t, responseMap["reason"], "too many GraphQL resolvers")
 		assert.Contains(t, responseMap["error"], "Bad Request")
 
@@ -557,15 +559,15 @@ func TestInvalidGraphQLConfigurationValues(t *testing.T) {
 			},
 			"max_request_size" : 5
 		}`)
-		assert.Equal(t, 200, response.Result().StatusCode)
+		rest.AssertStatus(t, response, 200)
 
 		response = rt.SendAdminRequest("POST", "/db/_graphql", `{"query": "query($numberToBeSquared:Int!){ square(n:$numberToBeSquared) }", "variables": {"numberToBeSquared": 4}}`)
 
 		var responseMap map[string]interface{}
-		err := json.Unmarshal([]byte(string(response.BodyBytes())), &responseMap)
+		err := json.Unmarshal(response.BodyBytes(), &responseMap)
 		assert.NoError(t, err)
 
-		assert.Equal(t, 413, response.Result().StatusCode)
+		rest.AssertStatus(t, response, 413)
 		assert.Contains(t, responseMap["reason"], "Arguments too large")
 		assert.Contains(t, responseMap["error"], "Request Entity Too Large")
 
@@ -573,19 +575,19 @@ func TestInvalidGraphQLConfigurationValues(t *testing.T) {
 			"Content-type": "application/graphql",
 		}
 		response = rt.SendAdminRequestWithHeaders("POST", "/db/_graphql", `query{square(n:4)}`, headerMap)
-		assert.Equal(t, 413, response.Result().StatusCode)
-		err = json.Unmarshal([]byte(string(response.BodyBytes())), &responseMap)
+		rest.AssertStatus(t, response, 413)
+		err = json.Unmarshal(response.BodyBytes(), &responseMap)
 		assert.NoError(t, err)
 		assert.Contains(t, responseMap["reason"], "Arguments too large")
 		assert.Contains(t, responseMap["error"], "Request Entity Too Large")
 
 		queryParam := `query($numberToBeSquared:Int!){ square(n:$numberToBeSquared) }`
 		variableParam := `{"numberToBeSquared": 4}`
-		getRequestUrl := fmt.Sprintf("/db/_graphql?query=%s&variables=%s", queryParam, variableParam)
+		getRequestURL := fmt.Sprintf("/db/_graphql?query=%s&variables=%s", queryParam, variableParam)
 
-		response = rt.SendAdminRequest("GET", getRequestUrl, "")
-		assert.Equal(t, 200, response.Result().StatusCode)
-		err = json.Unmarshal([]byte(string(response.BodyBytes())), &responseMap)
+		response = rt.SendAdminRequest("GET", getRequestURL, "")
+		rest.AssertStatus(t, response, 200)
+		err = json.Unmarshal(response.BodyBytes(), &responseMap)
 		assert.NoError(t, err)
 		assert.Contains(t, responseMap["reason"], "Arguments too large")
 		assert.Contains(t, responseMap["error"], "Request Entity Too Large")
@@ -608,22 +610,24 @@ func TestInvalidGraphQLConfigurationValues(t *testing.T) {
 		}`)
 
 		var responseMap map[string]interface{}
-		err := json.Unmarshal([]byte(string(response.BodyBytes())), &responseMap)
+		err := json.Unmarshal(response.BodyBytes(), &responseMap)
 		assert.NoError(t, err)
 
-		assert.Equal(t, 400, response.Result().StatusCode)
+		rest.AssertStatus(t, response, 400)
 		assert.Contains(t, responseMap["reason"], "GraphQL config: only one of `schema` and `schemaFile` may be used")
 		assert.Contains(t, responseMap["error"], "Bad Request")
 	})
 
 	// Flow: Create a file with a bogus schema --> Send the request --> Capture the error --> Delete the created file
 	t.Run("Provide invalid schema file", func(t *testing.T) {
+		const fileName = "schema.graphql"
 		bogusSchema := "obviously not a valid schema ^_^"
-		err := os.WriteFile("schema.graphql", []byte(bogusSchema), 0666)
-		assert.NoError(t, err)
+		tmp := os.TempDir()
+		err := os.WriteFile(filepath.Join(tmp, fileName), []byte(bogusSchema), 0600)
+		require.NoError(t, err)
 
 		response := rt.SendAdminRequest("PUT", "/db/_config/graphql", `{
-			"schemaFile": "schema.graphql",
+			"schemaFile": "`+filepath.Join(tmp, fileName)+`",
 			"resolvers": {
 				"Query": {
 					"sum": {
@@ -634,23 +638,20 @@ func TestInvalidGraphQLConfigurationValues(t *testing.T) {
 			}
 		}`)
 		var responseMap map[string]interface{}
-		err = json.Unmarshal([]byte(string(response.BodyBytes())), &responseMap)
+		err = json.Unmarshal(response.BodyBytes(), &responseMap)
 		assert.NoError(t, err)
 
-		assert.Equal(t, 400, response.Result().StatusCode)
+		rest.AssertStatus(t, response, 400)
 		assert.Contains(t, responseMap["reason"], "Syntax Error GraphQL")
 		assert.Contains(t, responseMap["reason"], "Unexpected Name")
 		assert.Contains(t, responseMap["error"], "Bad Request")
-
-		err = os.Remove("schema.graphql")
-		assert.NoError(t, err)
 	})
 }
 
 func TestSchemaSyntax(t *testing.T) {
 	rt := rest.NewRestTesterForUserQueries(t, rest.DbConfig{
-		GraphQL:       &kTestGraphQLConfig,
-		UserFunctions: &kTestGraphQLUserFunctionsConfig,
+		GraphQL:       &testGraphQLConfig,
+		UserFunctions: &testGraphQLUserFunctionsConfig,
 	})
 	if rt == nil {
 		return
@@ -659,8 +660,8 @@ func TestSchemaSyntax(t *testing.T) {
 
 	t.Run("Non-Admin", func(t *testing.T) {
 		response := rt.SendRequest("PUT", "/db/_config/graphql", "{}")
-		assert.Equal(t, 404, response.Result().StatusCode)
+		rest.AssertStatus(t, response, 404)
 		response = rt.SendRequest("DELETE", "/db/_config/graphql", "{}")
-		assert.Equal(t, 404, response.Result().StatusCode)
+		rest.AssertStatus(t, response, 404)
 	})
 }

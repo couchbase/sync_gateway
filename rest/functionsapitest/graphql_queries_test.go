@@ -26,8 +26,8 @@ import (
 // Test for GraphQL Query Admin-Only
 func TestGraphQLQueryAdminOnly(t *testing.T) {
 	rt := rest.NewRestTesterForUserQueries(t, rest.DbConfig{
-		GraphQL:       &kTestGraphQLConfig,
-		UserFunctions: &kTestGraphQLUserFunctionsConfig,
+		GraphQL:       &testGraphQLConfig,
+		UserFunctions: &testGraphQLUserFunctionsConfig,
 	})
 	if rt == nil {
 		return
@@ -37,16 +37,16 @@ func TestGraphQLQueryAdminOnly(t *testing.T) {
 	t.Run("AsAdmin - getUser", func(t *testing.T) {
 		t.Run("POST request", func(t *testing.T) {
 			response := rt.SendAdminRequest("POST", "/db/_graphql", `{"query": "query($id:ID!){ getUser(id:$id) { id , name } }" , "variables": {"id": 1}}`)
-			assert.Equal(t, 200, response.Result().StatusCode)
+			rest.AssertStatus(t, response, 200)
 			assert.Equal(t, `{"data":{"getUser":{"id":"1","name":"user1"}}}`, string(response.BodyBytes()))
 		})
 
 		t.Run("GET request", func(t *testing.T) {
 			queryParam := `query($id:ID!){ getUser(id:$id) { id , name } }`
 			variableParam := `{"id": 1}`
-			getRequestUrl := fmt.Sprintf("/db/_graphql?query=%s&variables=%s", queryParam, variableParam)
-			response := rt.SendAdminRequest("GET", getRequestUrl, "")
-			assert.Equal(t, 200, response.Result().StatusCode)
+			getRequestURL := fmt.Sprintf("/db/_graphql?query=%s&variables=%s", queryParam, variableParam)
+			response := rt.SendAdminRequest("GET", getRequestURL, "")
+			rest.AssertStatus(t, response, 200)
 			assert.Equal(t, `{"data":{"getUser":{"id":"1","name":"user1"}}}`, string(response.BodyBytes()))
 		})
 
@@ -55,14 +55,14 @@ func TestGraphQLQueryAdminOnly(t *testing.T) {
 				"Content-type": "application/graphql",
 			}
 			response := rt.SendAdminRequestWithHeaders("POST", "/db/_graphql", `query{getUser(id:1){id,name}}`, headerMap)
-			assert.Equal(t, 200, response.Result().StatusCode)
+			rest.AssertStatus(t, response, 200)
 			assert.Equal(t, `{"data":{"getUser":{"id":"1","name":"user1"}}}`, string(response.BodyBytes()))
 		})
 	})
 
 	t.Run("AsAdmin - getAllUsers", func(t *testing.T) {
 		response := rt.SendAdminRequest("POST", "/db/_graphql", `{"query": "query{getAllUsers{name}}"}`)
-		assert.Equal(t, 200, response.Result().StatusCode)
+		rest.AssertStatus(t, response, 200)
 		assert.Equal(t, `{"data":{"getAllUsers":[{"name":"user1"},{"name":"user2"},{"name":"user3"}]}}`, string(response.BodyBytes()))
 	})
 
@@ -80,13 +80,13 @@ func TestGraphQLQueryAdminOnly(t *testing.T) {
 				"operationName": "%s"
 			}`, queryParam, variableParam, operationParam)
 			response := rt.SendAdminRequest("POST", "/db/_graphql", requestBody)
-			assert.Equal(t, 200, response.Result().StatusCode)
+			rest.AssertStatus(t, response, 200)
 			assert.Equal(t, expectedResponse, string(response.BodyBytes()))
 		})
 
 		t.Run("GET request", func(t *testing.T) {
-			getRequestUrl := fmt.Sprintf(`/db/_graphql?query=%s&variables=%s&operationName=%s`, queryParam, variableParam, operationParam)
-			response := rt.SendAdminRequest("GET", getRequestUrl, "")
+			getRequestURL := fmt.Sprintf(`/db/_graphql?query=%s&variables=%s&operationName=%s`, queryParam, variableParam, operationParam)
+			response := rt.SendAdminRequest("GET", getRequestURL, "")
 			assert.Equal(t, expectedResponse, string(response.BodyBytes()))
 		})
 	})
@@ -95,8 +95,8 @@ func TestGraphQLQueryAdminOnly(t *testing.T) {
 // Test for GraphQL Query Custom User
 func TestGraphQLQueryCustomUser(t *testing.T) {
 	rt := rest.NewRestTesterForUserQueries(t, rest.DbConfig{
-		GraphQL:       &kTestGraphQLConfig,
-		UserFunctions: &kTestGraphQLUserFunctionsConfig,
+		GraphQL:       &testGraphQLConfig,
+		UserFunctions: &testGraphQLUserFunctionsConfig,
 	})
 	if rt == nil {
 		return
@@ -105,26 +105,26 @@ func TestGraphQLQueryCustomUser(t *testing.T) {
 
 	t.Run("AsUser - getUser", func(t *testing.T) {
 		response := rt.SendAdminRequest("POST", "/db/_user/", `{"name":"janhavi", "password":"password"}`)
-		assert.Equal(t, 201, response.Result().StatusCode)
+		rest.AssertStatus(t, response, 201)
 
 		response = rt.SendUserRequestWithHeaders("POST", "/db/_graphql", `{"query": "query($id:ID!){ getUser(id:$id) { id , name } }" , "variables": {"id": 3}}`, nil, "janhavi", "password")
-		assert.Equal(t, 200, response.Result().StatusCode)
+		rest.AssertStatus(t, response, 200)
 		assert.Equal(t, `{"data":{"getUser":{"id":"3","name":"user3"}}}`, string(response.BodyBytes()))
 
 		response = rt.SendAdminRequest("DELETE", "/db/_user/janhavi", "")
-		assert.Equal(t, 200, response.Result().StatusCode)
+		rest.AssertStatus(t, response, 200)
 	})
 
 	t.Run("AsUser - getAllUsers", func(t *testing.T) {
 		response := rt.SendAdminRequest("POST", "/db/_user/", `{"name":"janhavi", "password":"password"}`)
-		assert.Equal(t, 201, response.Result().StatusCode)
+		rest.AssertStatus(t, response, 201)
 
 		response = rt.SendUserRequestWithHeaders("POST", "/db/_graphql", `{"query": "query{getAllUsers{name}}"}`, nil, "janhavi", "password")
-		assert.Equal(t, 200, response.Result().StatusCode)
+		rest.AssertStatus(t, response, 200)
 		assert.Equal(t, `{"data":{"getAllUsers":[{"name":"user1"},{"name":"user2"},{"name":"user3"}]}}`, string(response.BodyBytes()))
 
 		response = rt.SendAdminRequest("DELETE", "/db/_user/janhavi", "")
-		assert.Equal(t, 200, response.Result().StatusCode)
+		rest.AssertStatus(t, response, 200)
 	})
 
 }
@@ -138,19 +138,19 @@ func TestGraphQLQueriesGuest(t *testing.T) {
 	defer rt.Close()
 	rt.DatabaseConfig = &rest.DatabaseConfig{
 		DbConfig: rest.DbConfig{
-			GraphQL:       &kTestGraphQLConfig,
-			UserFunctions: &kTestGraphQLUserFunctionsConfig,
+			GraphQL:       &testGraphQLConfig,
+			UserFunctions: &testGraphQLUserFunctionsConfig,
 		},
 	}
 
 	t.Run("AsGuest - getUser", func(t *testing.T) {
 		response := rt.SendRequest("POST", "/db/_graphql", `{"query": "query($id:ID!){ getUser(id:$id) { id , name } }" , "variables": {"id": 1}}`)
-		assert.Equal(t, 200, response.Result().StatusCode)
+		rest.AssertStatus(t, response, 200)
 		assert.Equal(t, `{"data":{"getUser":{"id":"1","name":"user1"}}}`, string(response.BodyBytes()))
 	})
 	t.Run("AsGuest - getAllUsers", func(t *testing.T) {
 		response := rt.SendRequest("POST", "/db/_graphql", `{"query": "query{getAllUsers{name}}"}`)
-		assert.Equal(t, 200, response.Result().StatusCode)
+		rest.AssertStatus(t, response, 200)
 		assert.Equal(t, `{"data":{"getAllUsers":[{"name":"user1"},{"name":"user2"},{"name":"user3"}]}}`, string(response.BodyBytes()))
 
 	})
@@ -159,8 +159,8 @@ func TestGraphQLQueriesGuest(t *testing.T) {
 // Test for GraphQL Mutations Admin
 func TestGraphQLMutationsAdminOnly(t *testing.T) {
 	rt := rest.NewRestTesterForUserQueries(t, rest.DbConfig{
-		GraphQL:       &kTestGraphQLConfig,
-		UserFunctions: &kTestGraphQLUserFunctionsConfig,
+		GraphQL:       &testGraphQLConfig,
+		UserFunctions: &testGraphQLUserFunctionsConfig,
 	})
 	if rt == nil {
 		return
@@ -169,13 +169,13 @@ func TestGraphQLMutationsAdminOnly(t *testing.T) {
 
 	t.Run("AsAdmin - updateName", func(t *testing.T) {
 		response := rt.SendAdminRequest("POST", "/db/_graphql", `{"query":"mutation($id: ID!, $name:String!){ updateName(id:$id,name:$name) {id,name} }", "variables" : {"id":1,"name":"newUser"}}`)
-		assert.Equal(t, 200, response.Result().StatusCode)
+		rest.AssertStatus(t, response, 200)
 		assert.Equal(t, `{"data":{"updateName":{"id":"1","name":"newUser"}}}`, string(response.BodyBytes()))
 	})
 
 	t.Run("AsAdmin - addEmail", func(t *testing.T) {
 		response := rt.SendAdminRequest("POST", "/db/_graphql", `{"query": "mutation($id:ID!, $email: String!){ addEmail(id:$id, email:$email) {id,name,Emails} }" , "variables": {"id": 2, "email":"pqr@gmail.com"}}`)
-		assert.Equal(t, 200, response.Result().StatusCode)
+		rest.AssertStatus(t, response, 200)
 		assert.Equal(t, `{"data":{"addEmail":{"Emails":["xyz@gmail.com","def@gmail.com","pqr@gmail.com"],"id":"2","name":"user2"}}}`, string(response.BodyBytes()))
 	})
 
@@ -193,7 +193,7 @@ func TestGraphQLMutationsAdminOnly(t *testing.T) {
 		}`, queryParam, variableParam, operationParam)
 
 		response := rt.SendAdminRequest("POST", "/db/_graphql", requestBody)
-		assert.Equal(t, 200, response.Result().StatusCode)
+		rest.AssertStatus(t, response, 200)
 		assert.Equal(t, expectedResponse, string(response.BodyBytes()))
 	})
 }
@@ -201,8 +201,8 @@ func TestGraphQLMutationsAdminOnly(t *testing.T) {
 // Test for GraphQL mutations Custom User
 func TestGraphQLMutationsCustomUser(t *testing.T) {
 	rt := rest.NewRestTesterForUserQueries(t, rest.DbConfig{
-		GraphQL:       &kTestGraphQLConfig,
-		UserFunctions: &kTestGraphQLUserFunctionsConfig,
+		GraphQL:       &testGraphQLConfig,
+		UserFunctions: &testGraphQLUserFunctionsConfig,
 	})
 	if rt == nil {
 		return
@@ -211,26 +211,26 @@ func TestGraphQLMutationsCustomUser(t *testing.T) {
 
 	t.Run("AsUser - updateName", func(t *testing.T) {
 		response := rt.SendAdminRequest("POST", "/db/_user/", `{"name":"jinesh", "password":"password"}`)
-		assert.Equal(t, 201, response.Result().StatusCode)
+		rest.AssertStatus(t, response, 201)
 
 		response = rt.SendUserRequestWithHeaders("POST", "/db/_graphql", `{"query":"mutation($id: ID!, $name:String!){ updateName(id:$id,name:$name) {id,name} }", "variables" : {"id":1,"name":"newUser"}}`, nil, "jinesh", "password")
-		assert.Equal(t, 200, response.Result().StatusCode)
+		rest.AssertStatus(t, response, 200)
 		assert.Equal(t, `{"data":{"updateName":{"id":"1","name":"newUser"}}}`, string(response.BodyBytes()))
 
 		response = rt.SendAdminRequest("DELETE", "/db/_user/jinesh", "")
-		assert.Equal(t, 200, response.Result().StatusCode)
+		rest.AssertStatus(t, response, 200)
 	})
 
 	t.Run("AsUser - addEmail", func(t *testing.T) {
 		response := rt.SendAdminRequest("POST", "/db/_user/", `{"name":"jinesh", "password":"password"}`)
-		assert.Equal(t, 201, response.Result().StatusCode)
+		rest.AssertStatus(t, response, 201)
 
 		response = rt.SendUserRequestWithHeaders("POST", "/db/_graphql", `{"query": "mutation($id:ID!, $email: String!){ addEmail(id:$id, email:$email) {id,name,Emails} }" , "variables": {"id": 2, "email":"pqr@gmail.com"}}`, nil, "jinesh", "password")
-		assert.Equal(t, 200, response.Result().StatusCode)
+		rest.AssertStatus(t, response, 200)
 		testErrorMessage(t, response, "403 you are not allowed to call GraphQL resolver")
 
 		response = rt.SendAdminRequest("DELETE", "/db/_user/jinesh", "")
-		assert.Equal(t, 200, response.Result().StatusCode)
+		rest.AssertStatus(t, response, 200)
 	})
 }
 
@@ -243,20 +243,20 @@ func TestGraphQLMutationsGuest(t *testing.T) {
 	defer rt.Close()
 	rt.DatabaseConfig = &rest.DatabaseConfig{
 		DbConfig: rest.DbConfig{
-			GraphQL:       &kTestGraphQLConfig,
-			UserFunctions: &kTestGraphQLUserFunctionsConfig,
+			GraphQL:       &testGraphQLConfig,
+			UserFunctions: &testGraphQLUserFunctionsConfig,
 		},
 	}
 
 	t.Run("AsGuest - updateName", func(t *testing.T) {
 		response := rt.SendAdminRequest("POST", "/db/_graphql", `{"query":"mutation($id: ID!, $name:String!){ updateName(id:$id,name:$name) {id,name} }", "variables" : {"id":1,"name":"newUser"}}`)
-		assert.Equal(t, 200, response.Result().StatusCode)
+		rest.AssertStatus(t, response, 200)
 		assert.Equal(t, `{"data":{"updateName":{"id":"1","name":"newUser"}}}`, string(response.BodyBytes()))
 	})
 
 	t.Run("AsGuest - addEmail", func(t *testing.T) {
 		response := rt.SendAdminRequest("POST", "/db/_graphql", `{"query": "mutation($id:ID!, $email: String!){ addEmail(id:$id, email:$email) {id,name,Emails} }" , "variables": {"id": 2, "email":"pqr@gmail.com"}}`)
-		assert.Equal(t, 200, response.Result().StatusCode)
+		rest.AssertStatus(t, response, 200)
 		assert.Equal(t, `{"data":{"addEmail":{"Emails":["xyz@gmail.com","def@gmail.com","pqr@gmail.com"],"id":"2","name":"user2"}}}`, string(response.BodyBytes()))
 	})
 }
@@ -288,14 +288,14 @@ func TestContextDeadline(t *testing.T) {
 		requestQuery := fmt.Sprintf(`{"query": "query{ checkContextDeadline(Timeout:%d) }"}`, db.UserFunctionTimeout.Milliseconds()*2)
 		response := rt.SendAdminRequest("POST", "/db/_graphql", requestQuery)
 
-		assert.Equal(t, 200, response.Result().StatusCode)
+		rest.AssertStatus(t, response, 200)
 		testErrorMessage(t, response, "context deadline exceeded")
 	})
 	t.Run("AsAdmin - doNotExceedContextDeadline", func(t *testing.T) {
 		requestQuery := fmt.Sprintf(`{"query": "query{ checkContextDeadline(Timeout:%d) }"}`, db.UserFunctionTimeout.Milliseconds()/2)
 		response := rt.SendAdminRequest("POST", "/db/_graphql", requestQuery)
 
-		assert.Equal(t, 200, response.Result().StatusCode)
+		rest.AssertStatus(t, response, 200)
 		assert.Equal(t, `{"data":{"checkContextDeadline":0}}`, string(response.BodyBytes()))
 	})
 }

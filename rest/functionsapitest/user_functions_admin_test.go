@@ -29,15 +29,15 @@ func TestFunctionsConfigGetWithoutFeatureFlag(t *testing.T) {
 
 	t.Run("Functions, Non-Admin", func(t *testing.T) {
 		response := rt.SendRequest("GET", "/db/_config/functions", "")
-		assert.Equal(t, 404, response.Result().StatusCode)
+		rest.AssertStatus(t, response, 404)
 	})
 	t.Run("All Functions", func(t *testing.T) {
 		response := rt.SendAdminRequest("GET", "/db/_config/functions", "")
-		assert.Equal(t, 404, response.Result().StatusCode)
+		rest.AssertStatus(t, response, 404)
 	})
 	t.Run("Single Function", func(t *testing.T) {
 		response := rt.SendAdminRequest("GET", "/db/_config/functions/cube", "")
-		assert.Equal(t, 404, response.Result().StatusCode)
+		rest.AssertStatus(t, response, 404)
 	})
 }
 
@@ -99,15 +99,15 @@ func TestFunctionsConfigGetMissing(t *testing.T) {
 
 	t.Run("Non-Admin", func(t *testing.T) {
 		response := rt.SendRequest("GET", "/db/_config/functions", "")
-		assert.Equal(t, 404, response.Result().StatusCode)
+		rest.AssertStatus(t, response, 404)
 	})
 	t.Run("All", func(t *testing.T) {
 		response := rt.SendAdminRequest("GET", "/db/_config/functions", "")
-		assert.Equal(t, 404, response.Result().StatusCode)
+		rest.AssertStatus(t, response, 404)
 	})
 	t.Run("Missing", func(t *testing.T) {
 		response := rt.SendAdminRequest("GET", "/db/_config/functions/cube", "")
-		assert.Equal(t, 404, response.Result().StatusCode)
+		rest.AssertStatus(t, response, 404)
 	})
 }
 func TestFunctionsConfigGet(t *testing.T) {
@@ -130,7 +130,7 @@ func TestFunctionsConfigGet(t *testing.T) {
 
 	t.Run("Non-Admin", func(t *testing.T) {
 		response := rt.SendRequest("GET", "/db/_config/functions", "")
-		assert.Equal(t, 404, response.Result().StatusCode)
+		rest.AssertStatus(t, response, 404)
 	})
 	t.Run("All", func(t *testing.T) {
 		response := rt.SendAdminRequest("GET", "/db/_config/functions", "")
@@ -146,7 +146,7 @@ func TestFunctionsConfigGet(t *testing.T) {
 	})
 	t.Run("Missing", func(t *testing.T) {
 		response := rt.SendAdminRequest("GET", "/db/_config/functions/bogus", "")
-		assert.Equal(t, 404, response.Result().StatusCode)
+		rest.AssertStatus(t, response, 404)
 	})
 }
 
@@ -170,9 +170,9 @@ func TestFunctionsConfigPut(t *testing.T) {
 
 	t.Run("Non-Admin", func(t *testing.T) {
 		response := rt.SendRequest("PUT", "/db/_config/functions", "{}")
-		assert.Equal(t, 404, response.Result().StatusCode)
+		rest.AssertStatus(t, response, 404)
 		response = rt.SendRequest("DELETE", "/db/_config/functions", "{}")
-		assert.Equal(t, 404, response.Result().StatusCode)
+		rest.AssertStatus(t, response, 404)
 	})
 	t.Run("ReplaceAll", func(t *testing.T) {
 		response := rt.SendAdminRequest("PUT", "/db/_config/functions", `{
@@ -181,26 +181,26 @@ func TestFunctionsConfigPut(t *testing.T) {
 						"code": "function(context,args){return args.numero + args.numero;}",
 						"args": ["numero"],
 						"allow": {"channels": ["*"]}} } }`)
-		assert.Equal(t, 200, response.Result().StatusCode)
+		rest.AssertStatus(t, response, 200)
 
 		assert.NotNil(t, rt.GetDatabase().Options.UserFunctions.Definitions["sum"])
 		assert.Nil(t, rt.GetDatabase().Options.UserFunctions.Definitions["square"])
 
 		response = rt.SendAdminRequest("GET", "/db/_function/sum?numero=13", "")
-		assert.Equal(t, 200, response.Result().StatusCode)
+		rest.AssertStatus(t, response, 200)
 		assert.Equal(t, "26", string(response.BodyBytes()))
 
 		response = rt.SendAdminRequest("GET", "/db/_function/square?numero=13", "")
-		assert.Equal(t, 404, response.Result().StatusCode)
+		rest.AssertStatus(t, response, 404)
 	})
 	t.Run("DeleteAll", func(t *testing.T) {
 		response := rt.SendAdminRequest("DELETE", "/db/_config/functions", "")
-		assert.Equal(t, 200, response.Result().StatusCode)
+		rest.AssertStatus(t, response, 200)
 
 		assert.Nil(t, rt.GetDatabase().Options.UserFunctions)
 
 		response = rt.SendAdminRequest("GET", "/db/_function/square?numero=13", "")
-		assert.Equal(t, 404, response.Result().StatusCode)
+		rest.AssertStatus(t, response, 404)
 	})
 }
 
@@ -224,15 +224,15 @@ func TestFunctionsConfigPutOne(t *testing.T) {
 
 	t.Run("Non-Admin", func(t *testing.T) {
 		response := rt.SendRequest("PUT", "/db/_config/functions/square", "{}")
-		assert.Equal(t, 404, response.Result().StatusCode)
+		rest.AssertStatus(t, response, 404)
 		response = rt.SendRequest("DELETE", "/db/_config/function/square", "{}")
-		assert.Equal(t, 404, response.Result().StatusCode)
+		rest.AssertStatus(t, response, 404)
 	})
 	t.Run("Bogus", func(t *testing.T) {
 		response := rt.SendAdminRequest("PUT", "/db/_config/functions/square", `[]`)
-		assert.Equal(t, 400, response.Result().StatusCode)
+		rest.AssertStatus(t, response, 400)
 		response = rt.SendAdminRequest("PUT", "/db/_config/functions/square", `{"ruby": "foo"}`)
-		assert.Equal(t, 400, response.Result().StatusCode)
+		rest.AssertStatus(t, response, 400)
 	})
 	t.Run("Add", func(t *testing.T) {
 		response := rt.SendAdminRequest("PUT", "/db/_config/functions/sum", `{
@@ -241,7 +241,7 @@ func TestFunctionsConfigPutOne(t *testing.T) {
 			"args": ["numero"],
 			"allow": {"channels": ["*"]}
 		}`)
-		assert.Equal(t, 200, response.Result().StatusCode)
+		rest.AssertStatus(t, response, 200)
 
 		assert.NotNil(t, rt.GetDatabase().Options.UserFunctions.Definitions["sum"])
 		assert.NotNil(t, rt.GetDatabase().Options.UserFunctions.Definitions["square"])
@@ -256,7 +256,7 @@ func TestFunctionsConfigPutOne(t *testing.T) {
 			"args": ["n"],
 			"allow": {"channels": ["*"]}
 		}`)
-		assert.Equal(t, 200, response.Result().StatusCode)
+		rest.AssertStatus(t, response, 200)
 
 		assert.NotNil(t, rt.GetDatabase().Options.UserFunctions.Definitions["sum"])
 		assert.NotNil(t, rt.GetDatabase().Options.UserFunctions.Definitions["square"])
@@ -266,13 +266,13 @@ func TestFunctionsConfigPutOne(t *testing.T) {
 	})
 	t.Run("DeleteOne", func(t *testing.T) {
 		response := rt.SendAdminRequest("DELETE", "/db/_config/functions/square", "")
-		assert.Equal(t, 200, response.Result().StatusCode)
+		rest.AssertStatus(t, response, 200)
 
 		assert.Nil(t, rt.GetDatabase().Options.UserFunctions.Definitions["square"])
 		assert.Equal(t, 1, len(rt.GetDatabase().Options.UserFunctions.Definitions))
 
 		response = rt.SendAdminRequest("GET", "/db/_function/square?n=13", "")
-		assert.Equal(t, 404, response.Result().StatusCode)
+		rest.AssertStatus(t, response, 404)
 	})
 }
 
@@ -301,7 +301,7 @@ func TestMaxRequestSize(t *testing.T) {
 		assert.NoError(t, err)
 
 		response := rt.SendAdminRequest("PUT", "/db/_config/functions", string(request))
-		assert.Equal(t, 200, response.Result().StatusCode)
+		rest.AssertStatus(t, response, 200)
 
 		response = rt.SendAdminRequest("GET", "/db/_config/functions", "")
 		assert.NotNil(t, response)
@@ -320,17 +320,17 @@ func TestMaxRequestSize(t *testing.T) {
 		assert.NoError(t, err)
 
 		response := rt.SendAdminRequest("PUT", "/db/_config/functions", string(request))
-		assert.Equal(t, 200, response.Result().StatusCode)
+		rest.AssertStatus(t, response, 200)
 
 		t.Run("GET req", func(t *testing.T) {
 			response := rt.SendAdminRequest("GET", "/db/_function/multiply?first=1&second=2&third=3&fourth=4", "")
-			assert.Equal(t, 200, response.Result().StatusCode)
+			rest.AssertStatus(t, response, 200)
 			assert.Equal(t, "24", string(response.BodyBytes()))
 		})
 
 		t.Run("POST req", func(t *testing.T) {
 			response := rt.SendAdminRequest("POST", "/db/_function/multiply", `{"first":1,"second":2,"third":3,"fourth":4}`)
-			assert.Equal(t, 200, response.Result().StatusCode)
+			rest.AssertStatus(t, response, 200)
 			assert.Equal(t, "24", string(response.BodyBytes()))
 		})
 	})
@@ -343,17 +343,17 @@ func TestMaxRequestSize(t *testing.T) {
 		assert.NoError(t, err)
 
 		response := rt.SendAdminRequest("PUT", "/db/_config/functions", string(request))
-		assert.Equal(t, 200, response.Result().StatusCode)
+		rest.AssertStatus(t, response, 200)
 
 		t.Run("GET req", func(t *testing.T) {
 			response = rt.SendAdminRequest("GET", "/db/_function/multiply?first=1&second=2&third=3&fourth=4", "")
-			assert.Equal(t, 413, response.Result().StatusCode)
+			rest.AssertStatus(t, response, 413)
 			assert.Contains(t, string(response.BodyBytes()), "Arguments too large")
 		})
 
 		t.Run("POST req", func(t *testing.T) {
 			response = rt.SendAdminRequest("POST", "/db/_function/multiply", `{"first":1,"second":2,"third":3,"fourth":4}`)
-			assert.Equal(t, 413, response.Result().StatusCode)
+			rest.AssertStatus(t, response, 413)
 			assert.Contains(t, string(response.BodyBytes()), "Arguments too large")
 		})
 	})
@@ -361,7 +361,7 @@ func TestMaxRequestSize(t *testing.T) {
 
 //////// FUNCTIONS CONFIG AND EXECUTION COMBINATIONS
 
-var kUserFunctionConfig = &functions.FunctionsConfig{
+var userFunctionConfig = &functions.FunctionsConfig{
 	Definitions: functions.FunctionsDefs{
 		"square": {
 			Type:  "javascript",
@@ -389,12 +389,12 @@ func TestSaveAndGet(t *testing.T) {
 	}
 	defer rt.Close()
 
-	request, err := json.Marshal(kUserFunctionConfig)
+	request, err := json.Marshal(userFunctionConfig)
 	assert.NoError(t, err)
 
 	t.Run("Save The Functions", func(t *testing.T) {
 		response := rt.SendAdminRequest("PUT", "/db/_config/functions", string(request))
-		assert.Equal(t, 200, response.Result().StatusCode)
+		rest.AssertStatus(t, response, 200)
 	})
 
 	// Get The Function Definition and match with the one posted
@@ -405,12 +405,12 @@ func TestSaveAndGet(t *testing.T) {
 		var responseUserFunctionsConfig functions.FunctionsConfig
 		err := json.Unmarshal(response.BodyBytes(), &responseUserFunctionsConfig)
 		assert.NoError(t, err)
-		assert.Equal(t, kUserFunctionConfig, &responseUserFunctionsConfig)
+		assert.Equal(t, userFunctionConfig, &responseUserFunctionsConfig)
 
 	})
 
 	t.Run("Get and Check Schema Of A Specific Function", func(t *testing.T) {
-		for functionName, functionDefinition := range kUserFunctionConfig.Definitions {
+		for functionName, functionDefinition := range userFunctionConfig.Definitions {
 			response := rt.SendAdminRequest("GET", fmt.Sprintf("/db/_config/functions/%s", functionName), "")
 			assert.NotNil(t, response)
 
@@ -423,7 +423,7 @@ func TestSaveAndGet(t *testing.T) {
 		// Check For Non-Existent Function
 		response := rt.SendAdminRequest("GET", fmt.Sprintf("/db/_config/functions/%s", "nonExistent"), "")
 		assert.NotNil(t, response)
-		assert.Equal(t, 404, response.Result().StatusCode)
+		rest.AssertStatus(t, response, 404)
 	})
 
 	// GET: Run a Function and check the value
@@ -467,7 +467,7 @@ func TestSaveAndGet(t *testing.T) {
 
 	t.Run("Test For Able to Run Function for Non-Admin Users", func(t *testing.T) {
 		response := rt.SendAdminRequest("POST", "/db/_user/", `{"name":"ritik","email":"ritik.raj@couchbase.com", "password":"letmein", "admin_channels":["*"]}`)
-		assert.Equal(t, 201, response.Result().StatusCode)
+		rest.AssertStatus(t, response, 201)
 
 		response = rt.SendUserRequestWithHeaders("GET", fmt.Sprintf("/db/_function/%s?n=4", "square"), "", nil, "ritik", "letmein")
 		assert.NotNil(t, response)
@@ -477,14 +477,14 @@ func TestSaveAndGet(t *testing.T) {
 
 func TestSaveAndUpdateAndGet(t *testing.T) {
 	// Cloning the userFunctionConfig Map
-	var kUserFunctionConfigCopy = &functions.FunctionsConfig{
-		MaxFunctionCount: kUserFunctionConfig.MaxFunctionCount,
-		MaxCodeSize:      kUserFunctionConfig.MaxCodeSize,
-		MaxRequestSize:   kUserFunctionConfig.MaxRequestSize,
+	var userFunctionConfigCopy = &functions.FunctionsConfig{
+		MaxFunctionCount: userFunctionConfig.MaxFunctionCount,
+		MaxCodeSize:      userFunctionConfig.MaxCodeSize,
+		MaxRequestSize:   userFunctionConfig.MaxRequestSize,
 		Definitions:      map[string]*functions.FunctionConfig{},
 	}
-	for functionName, functionConfig := range kUserFunctionConfig.Definitions {
-		kUserFunctionConfigCopy.Definitions[functionName] = functionConfig
+	for functionName, functionConfig := range userFunctionConfig.Definitions {
+		userFunctionConfigCopy.Definitions[functionName] = functionConfig
 	}
 
 	// Setting up tester Config
@@ -494,13 +494,13 @@ func TestSaveAndUpdateAndGet(t *testing.T) {
 	}
 	defer rt.Close()
 
-	request, err := json.Marshal(kUserFunctionConfigCopy)
+	request, err := json.Marshal(userFunctionConfigCopy)
 	assert.NoError(t, err)
 
 	// Save The Function
 	t.Run("Save The Functions", func(t *testing.T) {
 		response := rt.SendAdminRequest("PUT", "/db/_config/functions", string(request))
-		assert.Equal(t, 200, response.Result().StatusCode)
+		rest.AssertStatus(t, response, 200)
 	})
 
 	// Get The Function Definition and match with the one posted
@@ -511,7 +511,7 @@ func TestSaveAndUpdateAndGet(t *testing.T) {
 		var responseUserFunctionsConfig functions.FunctionsConfig
 		err := json.Unmarshal(response.BodyBytes(), &responseUserFunctionsConfig)
 		assert.NoError(t, err)
-		assert.Equal(t, kUserFunctionConfigCopy, &responseUserFunctionsConfig)
+		assert.Equal(t, userFunctionConfigCopy, &responseUserFunctionsConfig)
 	})
 
 	// Update a Function
@@ -519,27 +519,27 @@ func TestSaveAndUpdateAndGet(t *testing.T) {
 		functionName := "square"
 
 		// Change multiplication sign to Addition sign
-		kUserFunctionConfigCopy.Definitions[functionName].Code = `function(context,args) {return args.n + args.n}`
-		requestBody, err := json.Marshal(kUserFunctionConfigCopy.Definitions[functionName])
+		userFunctionConfigCopy.Definitions[functionName].Code = `function(context,args) {return args.n + args.n}`
+		requestBody, err := json.Marshal(userFunctionConfigCopy.Definitions[functionName])
 		assert.NoError(t, err)
 
 		response := rt.SendAdminRequest("PUT", fmt.Sprintf("/db/_config/functions/%s", functionName), string(requestBody))
-		assert.Equal(t, 200, response.Result().StatusCode)
+		rest.AssertStatus(t, response, 200)
 
 		functionName = "squareN1QL"
 
 		// Change multiplication sign to Addition sign
-		kUserFunctionConfigCopy.Definitions[functionName].Code = `SELECT $args.n + $args.n AS square`
-		requestBody, err = json.Marshal(kUserFunctionConfigCopy.Definitions[functionName])
+		userFunctionConfigCopy.Definitions[functionName].Code = `SELECT $args.n + $args.n AS square`
+		requestBody, err = json.Marshal(userFunctionConfigCopy.Definitions[functionName])
 		assert.NoError(t, err)
 
 		response = rt.SendAdminRequest("PUT", fmt.Sprintf("/db/_config/functions/%s", functionName), string(requestBody))
-		assert.Equal(t, 200, response.Result().StatusCode)
+		rest.AssertStatus(t, response, 200)
 	})
 
 	// Get the Updated Function
 	t.Run("GET The Updated Function", func(t *testing.T) {
-		for fnName, fnBody := range kUserFunctionConfigCopy.Definitions {
+		for fnName, fnBody := range userFunctionConfigCopy.Definitions {
 			functionName := fnName
 			response := rt.SendAdminRequest("GET", fmt.Sprintf("/db/_config/functions/%s", functionName), "")
 			assert.NotNil(t, response)
@@ -578,12 +578,12 @@ func TestSaveAndDeleteAndGet(t *testing.T) {
 	}
 	defer rt.Close()
 
-	request, err := json.Marshal(kUserFunctionConfig)
+	request, err := json.Marshal(userFunctionConfig)
 	assert.NoError(t, err)
 
 	t.Run("Save The Functions", func(t *testing.T) {
 		response := rt.SendAdminRequest("PUT", "/db/_config/functions", string(request))
-		assert.Equal(t, 200, response.Result().StatusCode)
+		rest.AssertStatus(t, response, 200)
 	})
 
 	// Get The Function Definition and match with the one posted
@@ -594,7 +594,7 @@ func TestSaveAndDeleteAndGet(t *testing.T) {
 		var responseUserFunctionsConfig functions.FunctionsConfig
 		err := json.Unmarshal(response.BodyBytes(), &responseUserFunctionsConfig)
 		assert.NoError(t, err)
-		assert.Equal(t, kUserFunctionConfig, &responseUserFunctionsConfig)
+		assert.Equal(t, userFunctionConfig, &responseUserFunctionsConfig)
 
 	})
 
@@ -602,19 +602,19 @@ func TestSaveAndDeleteAndGet(t *testing.T) {
 
 	t.Run("Delete A Specific Function", func(t *testing.T) {
 		response := rt.SendAdminRequest("DELETE", fmt.Sprintf("/db/_config/functions/%s", functionNameToBeDeleted), "")
-		assert.Equal(t, 200, response.Result().StatusCode)
+		rest.AssertStatus(t, response, 200)
 	})
 
 	t.Run("Get remaining functions and check schema", func(t *testing.T) {
-		var kUserFunctionConfigCopy = &functions.FunctionsConfig{
-			MaxFunctionCount: kUserFunctionConfig.MaxFunctionCount,
-			MaxCodeSize:      kUserFunctionConfig.MaxCodeSize,
-			MaxRequestSize:   kUserFunctionConfig.MaxRequestSize,
+		var userFunctionConfigCopy = &functions.FunctionsConfig{
+			MaxFunctionCount: userFunctionConfig.MaxFunctionCount,
+			MaxCodeSize:      userFunctionConfig.MaxCodeSize,
+			MaxRequestSize:   userFunctionConfig.MaxRequestSize,
 			Definitions:      map[string]*functions.FunctionConfig{},
 		}
-		for functionName, functionConfig := range kUserFunctionConfig.Definitions {
+		for functionName, functionConfig := range userFunctionConfig.Definitions {
 			if functionName != functionNameToBeDeleted {
-				kUserFunctionConfigCopy.Definitions[functionName] = functionConfig
+				userFunctionConfigCopy.Definitions[functionName] = functionConfig
 			}
 		}
 		response := rt.SendAdminRequest("GET", "/db/_config/functions", "")
@@ -623,19 +623,19 @@ func TestSaveAndDeleteAndGet(t *testing.T) {
 		var responseUserFunctionsConfig functions.FunctionsConfig
 		err := json.Unmarshal(response.BodyBytes(), &responseUserFunctionsConfig)
 		assert.NoError(t, err)
-		assert.Equal(t, kUserFunctionConfigCopy, &responseUserFunctionsConfig)
+		assert.Equal(t, userFunctionConfigCopy, &responseUserFunctionsConfig)
 
 	})
 
 	// Delete All functions
 	t.Run("Delete all functions", func(t *testing.T) {
 		response := rt.SendAdminRequest("DELETE", "/db/_config/functions", "")
-		assert.Equal(t, 200, response.Result().StatusCode)
+		rest.AssertStatus(t, response, 200)
 	})
 
 	t.Run("Get All Non-exisitng Functions And Check HTTP Status", func(t *testing.T) {
 		response := rt.SendAdminRequest("GET", "/db/_config/functions", "")
-		assert.Equal(t, 404, response.Result().StatusCode)
+		rest.AssertStatus(t, response, 404)
 
 	})
 }
@@ -650,11 +650,11 @@ func TestDeleteNonExisting(t *testing.T) {
 	// NEGATIVE CASES
 	t.Run("Delete All Non-existing functions and check HTTP Status Code", func(t *testing.T) {
 		response := rt.SendAdminRequest("DELETE", "/db/_config/functions", "")
-		assert.Equal(t, 404, response.Result().StatusCode)
+		rest.AssertStatus(t, response, 404)
 	})
 
 	t.Run("Delete a non-existing function and check HTTP Status Code", func(t *testing.T) {
 		response := rt.SendAdminRequest("DELETE", "/db/_config/functions/foo", "")
-		assert.Equal(t, 404, response.Result().StatusCode)
+		rest.AssertStatus(t, response, 404)
 	})
 }
