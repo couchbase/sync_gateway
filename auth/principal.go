@@ -99,9 +99,6 @@ type User interface {
 	// Returns nil if invalidated
 	RoleNames() ch.TimedSet
 
-	// Returns list of roles associated with the user
-	GetRoles() []Role
-
 	// The roles the user was explicitly granted access to thru the admin API.
 	ExplicitRoles() ch.TimedSet
 
@@ -128,9 +125,6 @@ type User interface {
 	RoleHistory() TimedSetHistory
 
 	InitializeRoles()
-
-	// Adds authenticator to user
-	SetAuthenticator(auth *Authenticator)
 
 	GetWarnChanSync() *sync.Once
 

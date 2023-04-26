@@ -164,12 +164,21 @@ func (auth *Authenticator) GetRoleIncDeleted(name string) (Role, error) {
 func (auth *Authenticator) InheritedChannels(princ Principal) error {
 	cumulativeChannels := ch.TimedSet{}
 	user := princ.(User)
-	user.SetAuthenticator(auth)
+	roles := make([]Role, 0, len(user.RoleNames()))
 
 	for scope, collections := range auth.Collections {
 		for collection, _ := range collections {
 			channels := princ.CollectionChannels(scope, collection).Copy()
-			for _, role := range user.GetRoles() {
+			for name := range user.RoleNames() {
+				role, err := auth.GetRole(name)
+				if err != nil {
+					return err
+				} else if role != nil {
+					roles = append(roles, role)
+				}
+			}
+
+			for _, role := range roles {
 				roleSince := user.RoleNames()[role.Name()]
 				channels.AddAtSequence(role.CollectionChannels(scope, collection), roleSince.Sequence)
 			}
