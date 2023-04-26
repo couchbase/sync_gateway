@@ -79,8 +79,8 @@ const defaultConfigRetryTimeout = 3 * base.DefaultGocbV2OperationTimeout
 type bootstrapContext struct {
 	Connection         base.BootstrapConnection
 	configRetryTimeout time.Duration // configRetryTimeout defines the total amount of time to retry on a registry/config mismatch
-	terminator         chan struct{} // Used to stop the goroutine handling the stats logging
-	doneChan           chan struct{} // doneChan is closed when the stats logger goroutine finishes.
+	terminator         chan struct{} // Used to stop the goroutine handling the bootstrap polling
+	doneChan           chan struct{} // doneChan is closed when the bootstrap polling goroutine finishes.
 }
 
 func (sc *ServerContext) CreateLocalDatabase(ctx context.Context, dbs DbConfigMap) error {
@@ -175,9 +175,15 @@ func (sc *ServerContext) Close(ctx context.Context) {
 		base.InfofCtx(ctx, base.KeyAll, "Couldn't stop stats logger: %v", err)
 	}
 
+	// stop the config polling
 	err = base.TerminateAndWaitForClose(sc.BootstrapContext.terminator, sc.BootstrapContext.doneChan, serverContextStopMaxWait)
 	if err != nil {
 		base.InfofCtx(ctx, base.KeyAll, "Couldn't stop background config update worker: %v", err)
+	}
+
+	// close cached bootstrap bucket connections
+	if sc.BootstrapContext != nil && sc.BootstrapContext.Connection != nil {
+		sc.BootstrapContext.Connection.Close()
 	}
 
 	sc.lock.Lock()
@@ -1871,7 +1877,6 @@ func (sc *ServerContext) initializeCouchbaseServerConnections(ctx context.Contex
 			base.InfofCtx(ctx, base.KeyConfig, "Starting background polling for new configs/buckets: %s", sc.Config.Bootstrap.ConfigUpdateFrequency.Value().String())
 			go func() {
 				defer close(sc.BootstrapContext.doneChan)
-				defer sc.BootstrapContext.Connection.Close()
 				t := time.NewTicker(sc.Config.Bootstrap.ConfigUpdateFrequency.Value())
 				for {
 					select {
