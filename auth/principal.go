@@ -9,6 +9,7 @@
 package auth
 
 import (
+	"sync"
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -130,6 +131,8 @@ type User interface {
 
 	// Adds authenticator to user
 	SetAuthenticator(auth *Authenticator)
+
+	GetWarnChanSync() *sync.Once
 
 	revokedChannels(since uint64, lowSeq uint64, triggeredBy uint64) RevokedChannels
 

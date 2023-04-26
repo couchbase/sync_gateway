@@ -14,6 +14,7 @@ import (
 	"math"
 	"net/http"
 	"regexp"
+	"sync"
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
@@ -29,6 +30,10 @@ type userImpl struct {
 	userImplBody
 	auth  *Authenticator
 	roles []Role
+
+	// warnChanThresholdOnce ensures that the check for channels
+	// per user threshold is only performed exactly once.
+	warnChanThresholdOnce sync.Once
 }
 
 // Marshallable data is stored in separate struct from userImpl,
@@ -180,6 +185,10 @@ func (user *userImpl) SetEmail(email string) error {
 
 func (user *userImpl) SetAuthenticator(auth *Authenticator) {
 	user.auth = auth
+}
+
+func (user *userImpl) GetWarnChanSync() *sync.Once {
+	return &user.warnChanThresholdOnce
 }
 
 func (user *userImpl) RoleNames() ch.TimedSet {
@@ -616,7 +625,7 @@ func (user *userImpl) inheritedChannels() ch.TimedSet {
 		channels.AddAtSequence(role.Channels(), roleSince.Sequence)
 	}
 
-	user.auth.warnChanThresholdOnce.Do(func() {
+	user.warnChanThresholdOnce.Do(func() {
 		if channelsPerUserThreshold := user.auth.ChannelsWarningThreshold; channelsPerUserThreshold != nil {
 			channelCount := len(channels)
 			if uint32(channelCount) >= *channelsPerUserThreshold {

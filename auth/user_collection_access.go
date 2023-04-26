@@ -58,7 +58,7 @@ func (user *userImpl) InheritedCollectionChannels(scope, collection string) ch.T
 	}
 
 	// Warning threshold is per-collection, as we lazily load per-collection channel information
-	user.auth.warnChanThresholdOnce.Do(func() {
+	user.warnChanThresholdOnce.Do(func() {
 		if channelsPerUserThreshold := user.auth.ChannelsWarningThreshold; channelsPerUserThreshold != nil {
 			channelCount := len(channels)
 			if uint32(channelCount) >= *channelsPerUserThreshold {

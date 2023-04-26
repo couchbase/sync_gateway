@@ -13,7 +13,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"sync"
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -29,8 +28,7 @@ type Authenticator struct {
 	datastore       base.DataStore
 	channelComputer ChannelComputer
 	AuthenticatorOptions
-	bcryptCostChanged     bool
-	warnChanThresholdOnce sync.Once
+	bcryptCostChanged bool
 }
 
 type AuthenticatorOptions struct {
@@ -182,7 +180,7 @@ func (auth *Authenticator) InheritedChannels(princ Principal) error {
 	channelCount := len(cumulativeChannels)
 
 	// Warning at 50 channels
-	auth.warnChanThresholdOnce.Do(func() {
+	user.GetWarnChanSync().Do(func() {
 		if channelsPerUserThreshold := auth.ChannelsWarningThreshold; channelsPerUserThreshold != nil {
 			if uint32(channelCount) >= *channelsPerUserThreshold {
 				base.WarnfCtx(auth.LogCtx, "User ID: %v channel count: %d exceeds %d for channels per user warning threshold",
