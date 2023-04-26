@@ -248,6 +248,15 @@ func (h *handler) handleChanges() error {
 		feed = "normal"
 	}
 
+	// limit feeds that would be long-lived
+	if feed != "normal" {
+		if release, err := h.server.limitConcurrentReplications(h.rqCtx); err != nil {
+			return err
+		} else if release != nil {
+			defer release()
+		}
+	}
+
 	// Get the channels as parameters to an imaginary "bychannel" filter.
 	// The default is all channels the user can access.
 	userChannels := base.SetOf(ch.AllChannelWildcard)

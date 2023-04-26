@@ -136,8 +136,9 @@ type AuthConfig struct {
 }
 
 type ReplicatorConfig struct {
-	MaxHeartbeat    *base.ConfigDuration `json:"max_heartbeat,omitempty"    help:"Max heartbeat value for _changes request"`
-	BLIPCompression *int                 `json:"blip_compression,omitempty" help:"BLIP data compression level (0-9)"`
+	MaxConcurrentReplications *uint                `json:"max_concurrent_replications,omitempty" help:"Maximum number of concurrent replications allowed"`
+	MaxHeartbeat              *base.ConfigDuration `json:"max_heartbeat,omitempty"               help:"Max heartbeat value for _changes request"`
+	BLIPCompression           *int                 `json:"blip_compression,omitempty"            help:"BLIP data compression level (0-9)"`
 }
 
 type UnsupportedConfig struct {

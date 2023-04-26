@@ -11,6 +11,7 @@ licenses/APL2.txt.
 package rest
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 
@@ -20,8 +21,41 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 )
 
+var ErrReplicationLimitExceeded = base.HTTPErrorf(http.StatusServiceUnavailable, "Replication limit exceeded. Try again later.")
+
+func (sc *ServerContext) limitConcurrentReplications(ctx context.Context) (release func(), err error) {
+	if sc.activeReplicationLimiter == nil {
+		// allow everything
+		return nil, nil
+	}
+
+	capacity := cap(sc.activeReplicationLimiter)
+
+	select {
+	case <-ctx.Done():
+		// request was already cancelled
+		base.TracefCtx(ctx, base.KeyHTTP, "Request cancelled before replication slot acquired")
+		return nil, nil
+	case sc.activeReplicationLimiter <- struct{}{}:
+		base.TracefCtx(ctx, base.KeyHTTP, "Acquired replication slot (remaining: %d/%d)", capacity-len(sc.activeReplicationLimiter), capacity)
+		return func() {
+			<-sc.activeReplicationLimiter
+			base.TracefCtx(ctx, base.KeyHTTP, "Released replication slot (remaining: %d/%d)", capacity-len(sc.activeReplicationLimiter), capacity)
+		}, nil
+	default:
+		base.InfofCtx(ctx, base.KeyHTTP, "Replication limit exceeded (active: %d)", len(sc.activeReplicationLimiter))
+		return nil, ErrReplicationLimitExceeded
+	}
+}
+
 // HTTP handler for incoming BLIP sync WebSocket request (/db/_blipsync)
 func (h *handler) handleBLIPSync() error {
+	if release, err := h.server.limitConcurrentReplications(h.rqCtx); err != nil {
+		return err
+	} else if release != nil {
+		defer release()
+	}
+
 	// Exit early when the connection can't be switched to websocket protocol.
 	if _, ok := h.response.(http.Hijacker); !ok {
 		base.DebugfCtx(h.ctx(), base.KeyHTTP, "Non-upgradable request received for BLIP+WebSocket protocol")

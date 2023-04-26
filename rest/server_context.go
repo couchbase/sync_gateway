@@ -70,6 +70,7 @@ type ServerContext struct {
 	LogContextID                  string          // ID to differentiate log messages from different server context
 	fetchConfigsLastUpdate        time.Time       // The last time fetchConfigsWithTTL() updated dbConfigs
 	allowScopesInPersistentConfig bool            // Test only backdoor to allow scopes in persistent config, not supported for multiple databases with different collections targeting the same bucket
+	activeReplicationLimiter      chan struct{}
 }
 
 // defaultConfigRetryTimeout is the total retry time when waiting for in-flight config updates.  Set as a multiple of kv op timeout,
@@ -121,6 +122,11 @@ func NewServerContext(ctx context.Context, config *StartupConfig, persistentConf
 		statsContext:       &statsContext{},
 		BootstrapContext:   &bootstrapContext{},
 		hasStarted:         make(chan struct{}),
+	}
+
+	if config.Replicator.MaxConcurrentReplications != nil {
+		l := int(*config.Replicator.MaxConcurrentReplications)
+		sc.activeReplicationLimiter = make(chan struct{}, l)
 	}
 
 	if base.ServerIsWalrus(sc.Config.Bootstrap.Server) {
