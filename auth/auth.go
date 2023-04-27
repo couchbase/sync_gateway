@@ -161,9 +161,8 @@ func (auth *Authenticator) GetRoleIncDeleted(name string) (Role, error) {
 	return role, err
 }
 
-func (auth *Authenticator) InheritedChannels(princ Principal) error {
+func (auth *Authenticator) InheritedChannels(user User, princ Principal) error {
 	cumulativeChannels := ch.TimedSet{}
-	user := princ.(User)
 	roles := make([]Role, 0, len(user.RoleNames()))
 
 	for scope, collections := range auth.Collections {
@@ -235,8 +234,8 @@ func (auth *Authenticator) getPrincipal(docID string, factory func() Principal) 
 			}
 			if channelsChanged {
 				changed = true
-				if _, ok := princ.(User); ok {
-					err = auth.InheritedChannels(princ)
+				if user, ok := princ.(User); ok {
+					err = auth.InheritedChannels(user, princ)
 					if err != nil {
 						return nil, nil, false, err
 					}
