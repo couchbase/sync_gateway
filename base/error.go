@@ -118,6 +118,8 @@ func ErrorAsHTTPStatus(err error) (int, string) {
 		return http.StatusRequestEntityTooLarge, "Document too large!"
 	case ErrViewTimeoutError:
 		return http.StatusServiceUnavailable, unwrappedErr.Error()
+	case ErrMaximumChannelsForUserExceeded:
+		return http.StatusInternalServerError, "Maximum number of channels exceeded for this user"
 	}
 
 	// gocb V2 errors
