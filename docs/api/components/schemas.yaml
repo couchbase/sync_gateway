@@ -1294,7 +1294,7 @@ Database:
             enable_star_channel:
               description: Used to control whether Sync Gateway should use the all documents (*) channel.
               type: boolean
-              default: false
+              default: true
             max_length:
               description: The maximum number of entries to maintain in the cache per channel.
               type: integer
