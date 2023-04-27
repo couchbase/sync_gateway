@@ -197,7 +197,7 @@ func (auth *Authenticator) InheritedChannels(user User, princ Principal) error {
 		}
 	})
 
-	// Error at >=500 channels if ServerlessChannelThreshold is set
+	// Error if ServerlessChannelThreshold is set and is >= than the threshold
 	if serverlessChanThreshold := auth.ServerlessChannelThreshold; serverlessChanThreshold != 0 {
 		if uint32(channelCount) >= serverlessChanThreshold {
 			base.ErrorfCtx(auth.LogCtx, "User ID: %v channel count: %d exceeds %d for channels per user threshold. Auth will be rejected until rectified",
