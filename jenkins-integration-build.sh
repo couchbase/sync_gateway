@@ -120,7 +120,7 @@ if [ "${RUN_WALRUS}" == "true" ]; then
 fi
 
 # Run CBS
-if [ "${MULTI_NODE}" == "true" ]; then
+if [ "${MULTI_NODE:-}" == "true" ]; then
     # multi node
     ./integration-test/start_server.sh -m "${COUCHBASE_SERVER_VERSION}"
     export SG_TEST_BUCKET_NUM_REPLICAS=1
