@@ -116,7 +116,7 @@ func DefaultDbConfig(sc *StartupConfig) *DbConfig {
 				MaxWaitPending:       base.Uint32Ptr(uint32(db.DefaultCachePendingSeqMaxWait.Milliseconds())),
 				MaxNumPending:        base.IntPtr(db.DefaultCachePendingSeqMaxNum),
 				MaxWaitSkipped:       base.Uint32Ptr(uint32(db.DefaultSkippedSeqMaxWait.Milliseconds())),
-				EnableStarChannel:    base.BoolPtr(false),
+				EnableStarChannel:    base.BoolPtr(true),
 				MaxLength:            base.IntPtr(db.DefaultChannelCacheMaxLength),
 				MinLength:            base.IntPtr(db.DefaultChannelCacheMinLength),
 				ExpirySeconds:        base.IntPtr(int(db.DefaultChannelCacheAge.Seconds())),
