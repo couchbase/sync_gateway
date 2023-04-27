@@ -55,7 +55,7 @@ docker stop ${SG_TEST_COUCHBASE_SERVER_DOCKER_NAME} || true
 docker rm ${SG_TEST_COUCHBASE_SERVER_DOCKER_NAME} || true
 # --volume: Makes and mounts a CBS folder for storing a CBCollect if needed
 
-if [ "${MULTI_NODE}" == "true" ]; then
+if [ "${MULTI_NODE:-}" == "true" ]; then
     ${DOCKER_COMPOSE} up -d --force-recreate --renew-anon-volumes --remove-orphans
 else
     # single node
@@ -74,7 +74,7 @@ docker exec couchbase couchbase-cli setting-index --cluster couchbase://localhos
 curl -u Administrator:password -v -X POST http://127.0.0.1:8091/node/controller/rename -d 'hostname=127.0.0.1'
 
 
-if [ "${MULTI_NODE}" == "true" ]; then
+if [ "${MULTI_NODE:-}" == "true" ]; then
     REPLICA1_NAME=couchbase-replica1
     REPLICA2_NAME=couchbase-replica2
     CLI_ARGS=(-c couchbase://couchbase -u Administrator -p password)
