@@ -40,7 +40,7 @@ func (h *handler) handleFunctionCall() error {
 	}
 	canMutate := h.rq.Method != "GET"
 
-	return db.WithTimeout(h.ctx(), db.UserFunctionTimeout, func(ctx context.Context) error {
+	return db.WithTimeout(h.ctx(), h.db.UserFunctionTimeout, func(ctx context.Context) error {
 		fn, err := h.db.GetUserFunction(fnName, fnParams, canMutate, ctx)
 		if err != nil {
 			return err
@@ -224,7 +224,7 @@ func (h *handler) handleGraphQL() error {
 		return base.HTTPErrorf(http.StatusBadRequest, "Missing/empty `query` property")
 	}
 
-	return db.WithTimeout(h.ctx(), db.UserFunctionTimeout, func(ctx context.Context) error {
+	return db.WithTimeout(h.ctx(), h.db.UserFunctionTimeout, func(ctx context.Context) error {
 		result, err := h.db.UserGraphQLQuery(queryString, operationName, variables, canMutate, ctx)
 		if err == nil {
 			h.writeJSON(result)

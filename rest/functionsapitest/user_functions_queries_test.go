@@ -14,8 +14,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
-
-	"github.com/couchbase/sync_gateway/db"
+	"time"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db/functions"
@@ -454,17 +453,18 @@ func TestFunctionTimeout(t *testing.T) {
 		return
 	}
 	defer rt.Close()
-
+	timeout := 500 * time.Millisecond
+	rt.GetDatabase().UserFunctionTimeout = timeout
 	// positive case:
-	reqBody := fmt.Sprintf(`{"ms": %d}`, db.UserFunctionTimeout.Milliseconds()/2)
 	t.Run("under time limit", func(t *testing.T) {
+		reqBody := `{"ms": 1}`
 		response := rt.SendAdminRequest("POST", "/db/_function/sleep", reqBody)
 		assert.Equal(t, 200, response.Result().StatusCode)
 	})
 
 	// negative case:
-	reqBody = fmt.Sprintf(`{"ms": %d}`, 2*db.UserFunctionTimeout.Milliseconds())
 	t.Run("over time limit", func(t *testing.T) {
+		reqBody := fmt.Sprintf(`{"ms": %d}`, 2*timeout)
 		response := rt.SendAdminRequest("POST", "/db/_function/sleep", reqBody)
 		assert.Equal(t, 500, response.Result().StatusCode)
 	})
