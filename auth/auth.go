@@ -284,7 +284,8 @@ func (auth *Authenticator) rebuildChannels(princ Principal) (changed bool, err e
 		}
 	}
 
-	if auth.ServerlessChannelThreshold != 0 {
+	// only warn/limit if the threshold is set and if we are in this function as a "user" not a role
+	if auth.ServerlessChannelThreshold != 0 && princUser != nil {
 		// Warning at 50 channels
 		princUser.GetWarnChanSync().Do(func() {
 			if channelsPerUserThreshold := auth.ChannelsWarningThreshold; channelsPerUserThreshold != nil {
