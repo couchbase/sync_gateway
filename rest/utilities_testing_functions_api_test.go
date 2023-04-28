@@ -127,7 +127,7 @@ func TestFunctionsConcurrently(t *testing.T) {
 	})
 
 	t.Run("Query", func(t *testing.T) {
-		if base.UnitTestUrlIsWalrus() {
+		if base.TestsDisableGSI() {
 			t.Skip("Skipping query subtest")
 		} else {
 			testConcurrently(t, rt, func() bool {

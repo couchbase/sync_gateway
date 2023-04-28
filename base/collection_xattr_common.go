@@ -427,34 +427,28 @@ func deleteDocXattrOnly(store SubdocXattrStore, k string, xattrKey string, callb
 // AsSubdocXattrStore tries to return the given bucket as a SubdocXattrStore, based on underlying buckets.
 func AsSubdocXattrStore(dataStore DataStore) (SubdocXattrStore, bool) {
 
-	var underlyingDataStore DataStore
 	switch typedDataStore := dataStore.(type) {
-	case *Collection:
+	case SubdocXattrStore:
 		return typedDataStore, true
 	case *LeakyDataStore:
-		underlyingDataStore = typedDataStore.dataStore
+		return AsSubdocXattrStore(typedDataStore.dataStore)
 	default:
 		// bail out for unrecognised/unsupported buckets
 		return nil, false
 	}
-
-	return AsSubdocXattrStore(underlyingDataStore)
 }
 
 func AsUserXattrStore(dataStore DataStore) (UserXattrStore, bool) {
 
-	var underlyingDataStore DataStore
 	switch typedDataStore := dataStore.(type) {
-	case *Collection:
+	case UserXattrStore:
 		return typedDataStore, true
 	case *LeakyDataStore:
-		underlyingDataStore = typedDataStore.dataStore
+		return AsUserXattrStore(typedDataStore.dataStore)
 	default:
 		// bail out for unrecognised/unsupported buckets
 		return nil, false
 	}
-
-	return AsUserXattrStore(underlyingDataStore)
 }
 
 func xattrCasPath(xattrKey string) string {

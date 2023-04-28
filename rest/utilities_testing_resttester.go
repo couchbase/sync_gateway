@@ -29,6 +29,18 @@ type PutDocResponse struct {
 	Rev string
 }
 
+// Equivalent to testing.T.Run() but updates the RestTester's TB to the new testing.T
+// so that checks are made against the right instance (otherwise the outer test complains
+// "subtest may have called FailNow on a parent test")
+func (rt *RestTester) Run(name string, test func(*testing.T)) {
+	mainT := rt.TB.(*testing.T)
+	mainT.Run(name, func(t *testing.T) {
+		rt.TB = t
+		defer func() { rt.TB = mainT }()
+		test(t)
+	})
+}
+
 func (rt *RestTester) GetDoc(docID string) (body db.Body) {
 	rawResponse := rt.SendAdminRequest("GET", "/{{.keyspace}}/"+docID, "")
 	RequireStatus(rt.TB, rawResponse, 200)

@@ -3859,10 +3859,6 @@ func TestCacheCompactDuringChangesWait(t *testing.T) {
 func TestTombstoneCompaction(t *testing.T) {
 	base.LongRunningTest(t)
 
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("Walrus does not support Xattrs")
-	}
-
 	if !base.TestUseXattrs() {
 		t.Skip("If running with no xattrs compact acts as a no-op")
 	}

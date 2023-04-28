@@ -310,11 +310,7 @@ var viewsAndGSIBucketReadier base.TBPBucketReadierFunc = func(ctx context.Contex
 var viewsAndGSIBucketInit base.TBPBucketInitFunc = func(ctx context.Context, b base.Bucket, tbp *base.TestBucketPool) error {
 	skipGSI := false
 
-	if base.UnitTestUrlIsWalrus() {
-		// Check we're not running with an invalid combination of backing store and xattrs.
-		if base.TestUseXattrs() {
-			return fmt.Errorf("xattrs not supported when using Walrus buckets")
-		}
+	if base.TestsDisableGSI() {
 		tbp.Logf(ctx, "bucket not a gocb bucket... skipping GSI setup")
 		skipGSI = true
 	}

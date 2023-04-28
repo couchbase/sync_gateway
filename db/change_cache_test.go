@@ -1005,7 +1005,7 @@ func TestChannelQueryCancellation(t *testing.T) {
 		t.Skip("Skip test with LeakyBucket dependency test when running in integration")
 	}
 
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyCache)
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCache)
 
 	// Set up PostQueryCallback on bucket - will be invoked when changes triggers the cache backfill view query
 

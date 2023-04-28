@@ -555,7 +555,7 @@ func TestDBOfflinePostResync(t *testing.T) {
 
 func TestDBOfflinePostResyncUsingDCPStream(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test doesn't work with walrus")
+		t.Skip("This test requires gocb buckets")
 	}
 
 	rt := rest.NewRestTester(t, nil)
@@ -2088,7 +2088,7 @@ func TestHandlePutDbConfigWithBackticksCollections(t *testing.T) {
 		"scopes": {
 			"scope1": {
 			  "collections" : {
-				"collection1":{   
+				"collection1":{
         			"sync": ` + "`" + syncFunc + "`" + `
  				}
    			  }
@@ -2232,8 +2232,8 @@ func TestHandleGetRevTree(t *testing.T) {
 
 	// Create three revisions of the user foo with different status and updated_at values;
 	reqBodyJson := `{"new_edits": false, "docs": [
-    	{"_id": "foo", "type": "user", "updated_at": "2016-06-24T17:37:49.715Z", "status": "online", "_rev": "1-123"}, 
-    	{"_id": "foo", "type": "user", "updated_at": "2016-06-26T17:37:49.715Z", "status": "offline", "_rev": "1-456"}, 
+    	{"_id": "foo", "type": "user", "updated_at": "2016-06-24T17:37:49.715Z", "status": "online", "_rev": "1-123"},
+    	{"_id": "foo", "type": "user", "updated_at": "2016-06-26T17:37:49.715Z", "status": "offline", "_rev": "1-456"},
     	{"_id": "foo", "type": "user", "updated_at": "2016-06-25T17:37:49.715Z", "status": "offline", "_rev": "1-789"}]}`
 
 	resp := rt.SendAdminRequest(http.MethodPost, "/{{.keyspace}}/_bulk_docs", reqBodyJson)

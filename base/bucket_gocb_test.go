@@ -426,11 +426,7 @@ func TestGetAndTouchRaw(t *testing.T) {
 func SkipXattrTestsIfNotEnabled(t *testing.T) {
 
 	if !TestUseXattrs() {
-		t.Skip("XATTR based tests not enabled.  Enable via SG_TEST_USE_XATTRS=true environment variable")
-	}
-
-	if UnitTestUrlIsWalrus() {
-		t.Skip("This test won't work under walrus until https://github.com/couchbase/sync_gateway/issues/2390")
+		t.Skip("XATTR based tests not enabled, due to SG_TEST_USE_XATTRS=false environment variable")
 	}
 }
 
@@ -480,15 +476,16 @@ func TestXattrWriteCasSimple(t *testing.T) {
 	assert.Equal(t, xattrVal["rev"], retrievedXattr["rev"])
 	macroCasString, ok := retrievedXattr[xattrMacroCas].(string)
 	assert.True(t, ok, "Unable to retrieve xattrMacroCas as string")
-	assert.Equal(t, cas, HexCasToUint64(macroCasString))
+	assert.Equalf(t, cas, HexCasToUint64(macroCasString), "cas property is %s", macroCasString)
 	macroBodyHashString, ok := retrievedXattr[xattrMacroValueCrc32c].(string)
 	assert.True(t, ok, "Unable to retrieve xattrMacroValueCrc32c as string")
 	assert.Equal(t, Crc32cHashString(valBytes), macroBodyHashString)
 
 	// Validate against $document.value_crc32c
 	var retrievedVxattr map[string]interface{}
-	_, err = dataStore.GetWithXattr(key, "$document", "", retrievedVal, &retrievedVxattr, nil)
+	_, err = dataStore.GetWithXattr(key, "$document", "", &retrievedVal, &retrievedVxattr, nil)
 	require.NoError(t, err)
+	require.NotNil(t, retrievedVxattr, "Unable to get virtual xattr $document")
 	vxattrCrc32c, ok := retrievedVxattr["value_crc32c"].(string)
 	assert.True(t, ok, "Unable to retrieve virtual xattr crc32c as string")
 
@@ -725,7 +722,7 @@ func TestXattrWriteCasTombstoneResurrect(t *testing.T) {
 		t.Errorf("Error doing GetWithXattr: %+v", err)
 	}
 	// TODO: Cas check fails, pending xattr code to make it to gocb master
-	log.Printf("TestWriteCasXATTR retrieved: %s, %s", retrievedVal, retrievedXattr)
+	log.Printf("GetWithXattr retrieved: %s, %s, cas %d", retrievedVal, retrievedXattr, getCas)
 	assert.Equal(t, cas, getCas)
 	assert.Equal(t, val["body_field"], retrievedVal["body_field"])
 	assert.Equal(t, xattrVal["seq"], retrievedXattr["seq"])
@@ -743,15 +740,20 @@ func TestXattrWriteCasTombstoneResurrect(t *testing.T) {
 	xattrVal = make(map[string]interface{})
 	xattrVal["seq"] = float64(456)
 	xattrVal["rev"] = "2-2345"
-	_, err = dataStore.WriteCasWithXattr(key, xattrName, 0, cas, nil, val, xattrVal)
+	//??? TEMP Why does this call expect that Delete() doesn't change the CAS?
+	cas, err = dataStore.WriteCasWithXattr(key, xattrName, 0, cas, nil, val, xattrVal)
 	if err != nil {
 		t.Errorf("Error doing WriteCasWithXattr: %+v", err)
 	}
+	log.Printf("WriteCasWithXattr created cas %d", cas)
 
 	// Verify retrieval
-	_, err = dataStore.GetWithXattr(key, xattrName, "", &retrievedVal, &retrievedXattr, nil)
+	retrievedVal = nil
+	cas, err = dataStore.GetWithXattr(key, xattrName, "", &retrievedVal, &retrievedXattr, nil)
 	if err != nil {
 		t.Errorf("Error doing GetWithXattr: %+v", err)
+	} else {
+		log.Printf("GetWithXattr returned cas %d", cas)
 	}
 	// TODO: Cas check fails, pending xattr code to make it to gocb master
 	log.Printf("TestWriteCasXATTR retrieved: %s, %s", retrievedVal, retrievedXattr)
@@ -1147,6 +1149,9 @@ func TestXattrDeleteDocumentUpdate(t *testing.T) {
 func TestXattrDeleteDocumentAndUpdateXattr(t *testing.T) {
 
 	SkipXattrTestsIfNotEnabled(t)
+	if UnitTestUrlIsWalrus() {
+		t.Skip("Walrus does not yet implement SubdocXattrStore") // TODO
+	}
 
 	bucket := GetTestBucket(t)
 	defer bucket.Close()
@@ -1196,6 +1201,9 @@ func TestXattrDeleteDocumentAndUpdateXattr(t *testing.T) {
 func TestXattrTombstoneDocAndUpdateXattr(t *testing.T) {
 
 	SkipXattrTestsIfNotEnabled(t)
+	if UnitTestUrlIsWalrus() {
+		t.Skip("Walrus does not implement SubdocXattrStore")
+	}
 
 	SetUpTestLogging(t, LevelDebug, KeyCRUD)
 
@@ -1358,14 +1366,14 @@ func TestXattrDeleteDocAndXattr(t *testing.T) {
 		log.Printf("Deleting key: %v", key)
 		errDelete := dataStore.DeleteWithXattr(key, xattrName)
 		assert.NoError(t, errDelete, fmt.Sprintf("Unexpected error deleting %s", key))
-		assert.True(t, verifyDocAndXattrDeleted(dataStore, key, xattrName), "Expected doc to be deleted")
+		assert.True(t, verifyDocAndXattrDeleted(dataStore, key, xattrName), "Expected doc %q to be deleted", key)
 	}
 
 	// Now attempt to delete key4 (NoDocNoXattr), which is expected to return a Key Not Found error
 	log.Printf("Deleting key: %v", key4)
 	errDelete := dataStore.DeleteWithXattr(key4, xattrName)
 	assert.Error(t, errDelete, "Expected error when calling dataStore.DeleteWithXattr")
-	assert.Truef(t, pkgerrors.Cause(errDelete) == ErrNotFound, "Exepcted keynotfound error but got %v", errDelete)
+	assert.Truef(t, IsDocNotFoundError(errDelete), "Exepcted keynotfound error but got %v", errDelete)
 	assert.True(t, verifyDocAndXattrDeleted(dataStore, key4, xattrName), "Expected doc to be deleted")
 }
 
@@ -1374,6 +1382,9 @@ func TestXattrDeleteDocAndXattr(t *testing.T) {
 func TestDeleteWithXattrWithSimulatedRaceResurrect(t *testing.T) {
 
 	SkipXattrTestsIfNotEnabled(t)
+	if UnitTestUrlIsWalrus() {
+		t.Skip("Walrus does not implement SubdocXattrStore")
+	}
 
 	bucket := GetTestBucket(t)
 	defer bucket.Close()
@@ -1502,7 +1513,7 @@ func TestXattrRetrieveDocumentAndXattr(t *testing.T) {
 	var key4DocResult map[string]interface{}
 	var key4XattrResult map[string]interface{}
 	_, key4err := dataStore.GetWithXattr(key4, xattrName, "", &key4DocResult, &key4XattrResult, nil)
-	assert.Equal(t, ErrNotFound, pkgerrors.Cause(key4err))
+	assert.True(t, IsDocNotFoundError(key4err), "Expected not-found; got %s", key4err)
 	assert.Nil(t, key4DocResult)
 	assert.Nil(t, key4XattrResult)
 
@@ -1665,8 +1676,6 @@ func TestGetXattr(t *testing.T) {
 
 	var response map[string]interface{}
 
-	subdocStore, ok := AsSubdocXattrStore(dataStore)
-
 	// Get Xattr From Existing Doc with Existing Xattr
 	_, err = dataStore.GetXattr(key1, xattrName1, &response)
 	assert.NoError(t, err)
@@ -1677,12 +1686,12 @@ func TestGetXattr(t *testing.T) {
 	// Get Xattr From Existing Doc With Non-Existent Xattr -> ErrSubDocBadMulti
 	_, err = dataStore.GetXattr(key1, "non-exist", &response)
 	assert.Error(t, err)
-	assert.Equal(t, ErrXattrNotFound, pkgerrors.Cause(err))
+	assert.True(t, IsXattrNotFoundError(err), "Expected xattr-not-found; got %s", err)
 
 	// Get Xattr From Non-Existent Doc With Non-Existent Xattr
 	_, err = dataStore.GetXattr("non-exist", "non-exist", &response)
 	assert.Error(t, err)
-	assert.Equal(t, ErrNotFound, pkgerrors.Cause(err))
+	assert.True(t, IsDocNotFoundError(err), "Expected not-found; got %s", err)
 
 	// Get Xattr From Tombstoned Doc With Existing System Xattr (ErrSubDocSuccessDeleted)
 	cas, err = dataStore.WriteCasWithXattr(key2, SyncXattrName, 0, uint64(0), nil, val2, xattrVal2)
@@ -1695,14 +1704,13 @@ func TestGetXattr(t *testing.T) {
 	// Get Xattr From Tombstoned Doc With Non-Existent System Xattr -> SubDocMultiPathFailureDeleted
 	_, err = dataStore.GetXattr(key2, "_non-exist", &response)
 	assert.Error(t, err)
-	assert.Equal(t, ErrXattrNotFound, pkgerrors.Cause(err))
+	assert.True(t, IsXattrNotFoundError(err), "Expected xattr-not-found; got %s", err)
 
 	// Get Xattr and Body From Tombstoned Doc With Non-Existent System Xattr -> SubDocMultiPathFailureDeleted
 	var v, xv, userXv map[string]interface{}
-	require.True(t, ok)
-	_, err = subdocStore.SubdocGetBodyAndXattr(key2, "_non-exist", "", &v, &xv, &userXv)
+	_, err = dataStore.GetWithXattr(key2, "_non-exist", "", &v, &xv, &userXv)
 	assert.Error(t, err)
-	assert.Equal(t, ErrNotFound, pkgerrors.Cause(err))
+	assert.True(t, IsDocNotFoundError(err), "Expected not-found; got %s", err)
 
 	// Get Xattr From Tombstoned Doc With Deleted User Xattr
 	cas, err = dataStore.WriteCasWithXattr(key3, xattrName3, 0, uint64(0), nil, val3, xattrVal3)
@@ -1711,7 +1719,7 @@ func TestGetXattr(t *testing.T) {
 	require.NoError(t, err)
 	_, err = dataStore.GetXattr(key3, xattrName3, &response)
 	assert.Error(t, err)
-	assert.Equal(t, ErrXattrNotFound, pkgerrors.Cause(err))
+	assert.True(t, IsXattrNotFoundError(err), "Expected xattr-not-found; got %s", err)
 }
 
 func TestGetXattrAndBody(t *testing.T) {
@@ -1758,48 +1766,45 @@ func TestGetXattrAndBody(t *testing.T) {
 		t.Errorf("Error doing WriteCasWithXattr: %+v", err)
 	}
 
-	subdocStore, ok := AsSubdocXattrStore(dataStore)
-	require.True(t, ok)
-
 	// Get Xattr From Existing Doc with Existing Xattr
 	var v, xv, userXv map[string]interface{}
-	_, err = subdocStore.SubdocGetBodyAndXattr(key1, xattrName1, "", &v, &xv, &userXv)
+	_, err = dataStore.GetWithXattr(key1, xattrName1, "", &v, &xv, &userXv)
 	assert.NoError(t, err)
 
 	assert.Equal(t, xattrVal1["seq"], xv["seq"])
 	assert.Equal(t, xattrVal1["rev"], xv["rev"])
 
 	// Get body and Xattr From Existing Doc With Non-Existent Xattr -> returns body only
-	_, err = subdocStore.SubdocGetBodyAndXattr(key1, "non-exist", "", &v, &xv, &userXv)
+	_, err = dataStore.GetWithXattr(key1, "non-exist", "", &v, &xv, &userXv)
 	assert.NoError(t, err)
 	assert.Equal(t, val1["type"], v["type"])
 
 	// Get Xattr From Non-Existent Doc With Non-Existent Xattr
-	_, err = subdocStore.SubdocGetBodyAndXattr("non-exist", "non-exist", "", &v, &xv, &userXv)
+	_, err = dataStore.GetWithXattr("non-exist", "non-exist", "", &v, &xv, &userXv)
 	assert.Error(t, err)
-	assert.Equal(t, ErrNotFound, pkgerrors.Cause(err))
+	assert.True(t, IsDocNotFoundError(err), "Expected not-found; got %s", err)
 
 	// Get Xattr From Tombstoned Doc With Existing System Xattr (ErrSubDocSuccessDeleted)
 	cas, err = dataStore.WriteCasWithXattr(key2, SyncXattrName, 0, uint64(0), nil, val2, xattrVal2)
 	require.NoError(t, err)
 	_, err = dataStore.Remove(key2, cas)
 	require.NoError(t, err)
-	_, err = subdocStore.SubdocGetBodyAndXattr(key2, SyncXattrName, "", &v, &xv, &userXv)
+	_, err = dataStore.GetWithXattr(key2, SyncXattrName, "", &v, &xv, &userXv)
 	assert.NoError(t, err)
 
 	// Get Xattr From Tombstoned Doc With Non-Existent System Xattr -> returns not found
-	_, err = subdocStore.SubdocGetBodyAndXattr(key2, "_non-exist", "", &v, &xv, &userXv)
+	_, err = dataStore.GetWithXattr(key2, "_non-exist", "", &v, &xv, &userXv)
 	assert.Error(t, err)
-	assert.Equal(t, ErrNotFound, pkgerrors.Cause(err))
+	assert.True(t, IsDocNotFoundError(err), "Expected not-found; got %s", err)
 
 	// Get Xattr From Tombstoned Doc With Deleted User Xattr -> returns not found
 	cas, err = dataStore.WriteCasWithXattr(key3, xattrName3, 0, uint64(0), nil, val3, xattrVal3)
 	require.NoError(t, err)
 	_, err = dataStore.Remove(key3, cas)
 	require.NoError(t, err)
-	_, err = subdocStore.SubdocGetBodyAndXattr(key3, xattrName3, "", &v, &xv, &userXv)
+	_, err = dataStore.GetWithXattr(key3, xattrName3, "", &v, &xv, &userXv)
 	assert.Error(t, err)
-	assert.Equal(t, ErrNotFound, pkgerrors.Cause(err))
+	assert.True(t, IsDocNotFoundError(err), "Expected not-found; got %s", err)
 }
 
 func TestApplyViewQueryOptions(t *testing.T) {
@@ -2075,6 +2080,7 @@ func createTombstonedDoc(t *testing.T, dataStore sgbucket.DataStore, key, xattrN
 	require.NoError(t, err)
 
 	subdocStore, _ := AsSubdocXattrStore(dataStore)
+	require.NotNil(t, subdocStore, "dataStore %v is not a SubdocXattrStore", dataStore)
 	// Create tombstone revision which deletes doc body but preserves XATTR
 	_, mutateErr := subdocStore.SubdocDeleteBody(key, xattrName, 0, cas)
 	/*
@@ -2102,9 +2108,7 @@ func verifyDocAndXattrDeleted(store sgbucket.XattrStore, key, xattrName string) 
 	var retrievedVal map[string]interface{}
 	var retrievedXattr map[string]interface{}
 	_, err := store.GetWithXattr(key, xattrName, "", &retrievedVal, &retrievedXattr, nil)
-	notFound := pkgerrors.Cause(err) == ErrNotFound
-
-	return notFound
+	return IsDocNotFoundError(err)
 }
 
 func verifyDocDeletedXattrExists(store sgbucket.XattrStore, key, xattrName string) bool {
@@ -2121,6 +2125,9 @@ func verifyDocDeletedXattrExists(store sgbucket.XattrStore, key, xattrName strin
 
 func TestUpdateXattrWithDeleteBodyAndIsDelete(t *testing.T) {
 	SkipXattrTestsIfNotEnabled(t)
+	if UnitTestUrlIsWalrus() {
+		t.Skip("Walrus does not implement SubdocXattrStore")
+	}
 	SetUpTestLogging(t, LevelDebug, KeyCRUD)
 
 	bucket := GetTestBucket(t)
@@ -2227,6 +2234,9 @@ func TestUserXattrGetWithXattrNil(t *testing.T) {
 
 func TestInsertTombstoneWithXattr(t *testing.T) {
 	SkipXattrTestsIfNotEnabled(t)
+	if UnitTestUrlIsWalrus() {
+		t.Skip("Walrus does not implement SubdocXattrStore")
+	}
 	SetUpTestLogging(t, LevelDebug, KeyCRUD)
 
 	bucket := GetTestBucket(t)

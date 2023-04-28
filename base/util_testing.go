@@ -209,7 +209,7 @@ func GetPersistentWalrusBucket(t testing.TB) (*TestBucket, func()) {
 func TestUseXattrs() bool {
 	useXattrs, isSet := os.LookupEnv(TestEnvSyncGatewayUseXattrs)
 	if !isSet {
-		return !UnitTestUrlIsWalrus()
+		return true
 	}
 
 	val, err := strconv.ParseBool(useXattrs)
@@ -218,6 +218,11 @@ func TestUseXattrs() bool {
 	}
 
 	return val
+}
+
+// Should Sync Gateway use expiration functionality when running unit tests?
+func TestUseExpiry() bool {
+	return !UnitTestUrlIsWalrus() // Walrus does not yet support expiry
 }
 
 // Should Sync Gateway skip TLS verification. Default: DefaultTestTLSSkipVerify
@@ -751,10 +756,6 @@ func SkipImportTestsIfNotEnabled(t *testing.T) {
 
 	if !TestUseXattrs() {
 		t.Skip("XATTR based tests not enabled.  Enable via SG_TEST_USE_XATTRS=true environment variable")
-	}
-
-	if UnitTestUrlIsWalrus() {
-		t.Skip("This test won't work under walrus until https://github.com/couchbase/sync_gateway/issues/2390")
 	}
 }
 

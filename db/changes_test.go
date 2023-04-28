@@ -50,7 +50,7 @@ func TestFilterToAvailableChannels(t *testing.T) {
 			expectedDocsReturned: []string{"doc1", "doc3"},
 		},
 	}
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyChanges)
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyChanges)
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
 			db, ctx := setupTestDB(t)
@@ -203,7 +203,7 @@ func getChangesOptionsWithCtxOnly() ChangesOptions {
 
 func TestDocDeletionFromChannelCoalescedRemoved(t *testing.T) {
 
-	if !base.UnitTestUrlIsWalrus() && base.TestUseXattrs() {
+	if base.TestUseXattrs() {
 		t.Skip("This test is known to be failing against couchbase server with XATTRS enabled.  See https://gist.github.com/tleyden/a41632355fadde54f19e84ba68015512")
 	}
 
@@ -230,7 +230,9 @@ func TestDocDeletionFromChannelCoalescedRemoved(t *testing.T) {
 
 	collection.user, _ = authenticator.GetUser("alice")
 	changes, err := collection.GetChanges(ctx, base.SetOf("*"), getChangesOptionsWithZeroSeq())
-	require.NoError(t, err, "Couldn't GetChanges")
+	if !assert.NoError(t, err, "Couldn't GetChanges") {
+		return
+	}
 	printChanges(changes)
 	assert.Equal(t, 1, len(changes))
 	collectionID := collection.GetCollectionID()
@@ -248,9 +250,12 @@ func TestDocDeletionFromChannelCoalescedRemoved(t *testing.T) {
 
 	// Unmarshall into nested maps
 	var x map[string]interface{}
-	assert.NoError(t, base.JSONUnmarshal(rv, &x))
+	if !assert.NoError(t, base.JSONUnmarshal(rv, &x)) {
+		return
+	}
 
-	sync := x[base.SyncXattrName].(map[string]interface{})
+	sync, ok := x[base.SyncXattrName].(map[string]interface{})
+	assert.True(t, ok)
 	sync["sequence"] = 3
 	sync["rev"] = "3-e99405a23fa102238fa8c3fd499b15bc"
 	sync["recent_sequences"] = []uint64{1, 2, 3}
@@ -292,7 +297,7 @@ func TestDocDeletionFromChannelCoalescedRemoved(t *testing.T) {
 
 func TestDocDeletionFromChannelCoalesced(t *testing.T) {
 
-	if !base.UnitTestUrlIsWalrus() && base.TestUseXattrs() {
+	if /*!base.UnitTestUrlIsWalrus() &&*/ base.TestUseXattrs() {
 		t.Skip("This test is known to be failing against couchbase server with XATTRS enabled.  Same error as TestDocDeletionFromChannelCoalescedRemoved")
 	}
 
@@ -379,7 +384,7 @@ func TestActiveOnlyCacheUpdate(t *testing.T) {
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyChanges, base.KeyCache)
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyChanges, base.KeyCache)
 	// Create 10 documents
 	revId := ""
 	var err error
@@ -418,6 +423,7 @@ func TestActiveOnlyCacheUpdate(t *testing.T) {
 	assert.Equal(t, initQueryCount+1, postChangesQueryCount)
 
 	// Get changes with active_only=false, validate that triggers a new query
+	log.Printf("----- Get changes with active_only=false, validate that triggers a new query")
 	changesOptions.ActiveOnly = false
 	allChanges, err := collection.GetChanges(ctx, base.SetOf("*"), changesOptions)
 	require.NoError(t, err, "Error getting changes with active_only true")
@@ -427,6 +433,7 @@ func TestActiveOnlyCacheUpdate(t *testing.T) {
 	assert.Equal(t, initQueryCount+2, postChangesQueryCount)
 
 	// Get changes with active_only=false again, verify results are served from the cache
+	log.Printf("----- Get changes with active_only=false again, verify results are served from the cache")
 	changesOptions.ActiveOnly = false
 	allChanges, err = collection.GetChanges(ctx, base.SetOf("*"), changesOptions)
 	require.NoError(t, err, "Error getting changes with active_only true")

@@ -419,7 +419,12 @@ func IsCasMismatch(err error) bool {
 		return true
 	}
 
-	// GoCouchbase/Walrus handling
+	// Walrus
+	if _, ok := unwrappedErr.(walrus.CasMismatchErr); ok {
+		return true
+	}
+
+	// GoCouchbase
 	if strings.Contains(unwrappedErr.Error(), "CAS mismatch") {
 		return true
 	}

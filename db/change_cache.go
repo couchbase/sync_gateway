@@ -327,10 +327,10 @@ func (c *changeCache) CleanSkippedSequenceQueue(ctx context.Context) error {
 // originating from multiple vbuckets).  Only processEntry is locking - all other functionality needs to support
 // concurrent processing.
 func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
-
 	docID := string(event.Key)
 	docJSON := event.Value
 	changedChannelsCombined := channels.Set{}
+	base.DebugfCtx(c.logCtx, base.KeyCache, "DocChanged(%q, op=%d, dataType=%d)", docID, event.Opcode, event.DataType)
 
 	// ** This method does not directly access any state of c, so it doesn't lock.
 	// Is this a user/role doc for this database?
@@ -620,6 +620,7 @@ func (c *changeCache) processPrincipalDoc(docID string, docJSON []byte, isUser b
 
 // Handles a newly-arrived LogEntry.
 func (c *changeCache) processEntry(change *LogEntry) channels.Set {
+	base.DebugfCtx(c.logCtx, base.KeyChanges, "processEntry(%q, rev %s, flags %x, seq %d)", change.DocID, change.RevID, change.Flags, change.Sequence)
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	if c.logsDisabled {
@@ -697,6 +698,7 @@ func (c *changeCache) processEntry(change *LogEntry) channels.Set {
 // Adds an entry to the appropriate channels' caches, returning the affected channels.  lateSequence
 // flag indicates whether it was a change arriving out of sequence
 func (c *changeCache) _addToCache(change *LogEntry) []channels.ID {
+	base.DebugfCtx(c.logCtx, base.KeyChanges, "_addToCache(%q, rev %s, flags %x, seq %d)", change.DocID, change.RevID, change.Flags, change.Sequence)
 
 	if change.Sequence >= c.nextSequence {
 		c.nextSequence = change.Sequence + 1

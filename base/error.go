@@ -37,7 +37,7 @@ var (
 	ErrFatalBucketConnection = &sgError{"Fatal error connecting to bucket"}
 	ErrAuthError             = &sgError{"Authentication failure"}
 	ErrEmptyMetadata         = &sgError{"Empty Sync Gateway metadata"}
-	ErrCasFailureShouldRetry = &sgError{"CAS failure should retry"}
+	ErrCasFailureShouldRetry = sgbucket.ErrCasFailureShouldRetry
 	ErrIndexerError          = &sgError{"Indexer error"}
 	ErrAlreadyExists         = &sgError{"Already exists"}
 	ErrNotFound              = &sgError{"Not Found"}
@@ -150,7 +150,11 @@ func ErrorAsHTTPStatus(err error) (int, string) {
 		}
 	case walrus.DocTooBigErr:
 		return http.StatusRequestEntityTooLarge, "Document too large!"
+	case walrus.CasMismatchErr:
+		return http.StatusConflict, "Conflict"
 	case sgbucket.MissingError:
+		return http.StatusNotFound, "missing"
+	case sgbucket.XattrMissingError:
 		return http.StatusNotFound, "missing"
 	case *sgError:
 		switch unwrappedErr {
@@ -218,6 +222,17 @@ func IsDocNotFoundError(err error) bool {
 	default:
 		return false
 	}
+}
+
+func IsXattrNotFoundError(err error) bool {
+	if unwrappedErr := pkgerrors.Cause(err); unwrappedErr == nil {
+		return false
+	} else if unwrappedErr == ErrXattrNotFound {
+		return true
+	} else if _, ok := unwrappedErr.(sgbucket.XattrMissingError); ok {
+		return true
+	}
+	return false
 }
 
 // MultiError manages a set of errors.  Callers must use ErrorOrNil when returning MultiError to callers

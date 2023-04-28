@@ -1606,8 +1606,8 @@ func TestGetChannelsAndAccess(t *testing.T) {
 }
 
 func TestPutStampClusterUUID(t *testing.T) {
-	if !base.TestUseXattrs() {
-		t.Skip("This test only works with XATTRS enabled")
+	if base.UnitTestUrlIsWalrus() || !base.TestUseXattrs() {
+		t.Skip("This test only works on Couchbase Server and with XATTRS enabled")
 	}
 
 	db, ctx := setupTestDB(t)

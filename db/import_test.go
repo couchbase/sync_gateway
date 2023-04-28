@@ -111,6 +111,9 @@ func TestImportWithStaleBucketDocCorrectExpiry(t *testing.T) {
 	if !base.TestUseXattrs() {
 		t.Skip("This test only works with XATTRS enabled")
 	}
+	if !base.TestUseExpiry() {
+		t.Skip("This test only works with expiry enabled")
+	}
 
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyMigrate, base.KeyImport)
 
@@ -491,6 +494,9 @@ func TestEvaluateFunction(t *testing.T) {
 func TestImportStampClusterUUID(t *testing.T) {
 	if !base.TestUseXattrs() {
 		t.Skip("This test only works with XATTRS enabled")
+	}
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test requires Couchbase Server") // no cluster UUIDs in Walrus
 	}
 
 	db, ctx := setupTestDB(t)

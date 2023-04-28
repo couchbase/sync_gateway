@@ -467,10 +467,10 @@ func TestAdminGroupReduceSumQuery(t *testing.T) {
 
 // Reproduces SG #3344.  Original issue only reproducible against Couchbase server (non-walrus)
 func TestViewQueryWithKeys(t *testing.T) {
-
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("Walrus does not support the 'keys' view parameter")
-	}
+	//TEMP: Test still fails; Debug this, Jens!
+	// if base.UnitTestUrlIsWalrus() {
+	// 	t.Skip("Walrus does not support the 'keys' view parameter")
+	// }
 	if !base.TestsDisableGSI() {
 		t.Skip("views tests are not applicable under GSI")
 	}
@@ -510,9 +510,10 @@ func TestViewQueryWithKeys(t *testing.T) {
 
 func TestViewQueryWithCompositeKeys(t *testing.T) {
 
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("Walrus does not support the 'keys' view parameter")
-	}
+	//TEMP: Test still fails; Debug this, Jens!
+	// if base.UnitTestUrlIsWalrus() {
+	// 	t.Skip("Walrus does not support the 'keys' view parameter")
+	// }
 
 	if !base.TestsDisableGSI() {
 		t.Skip("views tests are not applicable under GSI")
@@ -551,9 +552,10 @@ func TestViewQueryWithCompositeKeys(t *testing.T) {
 
 func TestViewQueryWithIntKeys(t *testing.T) {
 
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("Walrus does not support the 'keys' view parameter")
-	}
+	//TEMP: Test still fails; Debug this, Jens!
+	// if base.UnitTestUrlIsWalrus() {
+	// 	t.Skip("Walrus does not support the 'keys' view parameter")
+	// }
 	if !base.TestsDisableGSI() {
 		t.Skip("views tests are not applicable under GSI")
 	}
@@ -730,10 +732,6 @@ func TestViewQueryWrappers(t *testing.T) {
 }
 
 func TestViewQueryWithXattrAndNonXattr(t *testing.T) {
-
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("Test doesn't work with Walrus")
-	}
 
 	if !base.TestUseXattrs() {
 		t.Skip("Test requires xattrs to be enabled")

@@ -288,7 +288,9 @@ func TestGetDeleted(t *testing.T) {
 
 	// Get the raw doc and make sure the sync data has the current revision
 	doc, err := collection.GetDocument(ctx, "doc1", DocUnmarshalAll)
-	assert.NoError(t, err, "Err getting doc")
+	if !assert.NoError(t, err, "Err getting doc") || !assert.NotNil(t, doc) {
+		return
+	}
 	assert.Equal(t, rev2id, doc.SyncData.CurrentRev)
 
 	// Try again but with a user who doesn't have access to this revision (see #179)

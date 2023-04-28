@@ -44,7 +44,7 @@ func TestXattrImportOldDoc(t *testing.T) {
 		SyncFn: `function(doc, oldDoc) {
 			if (oldDoc == null) {
 				channel("oldDocNil")
-			} 
+			}
 			if (doc._deleted) {
 				channel("docDeleted")
 			}
@@ -131,7 +131,7 @@ func TestXattrImportOldDocRevHistory(t *testing.T) {
 		SyncFn: `function(doc, oldDoc) {
 			if (oldDoc == null) {
 				channel("oldDocNil")
-			} 
+			}
 		}`,
 		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
 			AutoImport: false,
@@ -617,6 +617,9 @@ func TestImportFilterLogging(t *testing.T) {
 func TestXattrImportMultipleActorOnDemandGet(t *testing.T) {
 
 	base.SkipImportTestsIfNotEnabled(t)
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("Walrus doesn't provide SubdocXattrStore") //TODO
+	}
 
 	rtConfig := rest.RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
@@ -673,6 +676,9 @@ func TestXattrImportMultipleActorOnDemandGet(t *testing.T) {
 func TestXattrImportMultipleActorOnDemandPut(t *testing.T) {
 
 	base.SkipImportTestsIfNotEnabled(t)
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("Walrus doesn't provide SubdocXattrStore") //TODO
+	}
 
 	rtConfig := rest.RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
@@ -731,6 +737,9 @@ func TestXattrImportMultipleActorOnDemandPut(t *testing.T) {
 func TestXattrImportMultipleActorOnDemandFeed(t *testing.T) {
 
 	base.SkipImportTestsIfNotEnabled(t)
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("Walrus doesn't provide SubdocXattrStore") //TODO
+	}
 
 	rtConfig := rest.RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
@@ -937,32 +946,32 @@ func TestMigrateTombstone(t *testing.T) {
 	key := "TestMigrateTombstone"
 	bodyString := `
 {
-    "_deleted": true, 
+    "_deleted": true,
     "_sync": {
-        "flags": 1, 
+        "flags": 1,
         "history": {
             "channels": [
-                null, 
+                null,
                 null
-            ], 
+            ],
             "deleted": [
                 1
-            ], 
+            ],
             "parents": [
-                -1, 
+                -1,
                 0
-            ], 
+            ],
             "revs": [
-                "1-f6fa803508c40388de38c9f99729c835", 
+                "1-f6fa803508c40388de38c9f99729c835",
                 "2-6b1e1af9190829c1ceab6f1c8fb9fa3f"
             ]
-        }, 
+        },
         "recent_sequences": [
-            4, 
+            4,
             5
-        ], 
-        "rev": "2-6b1e1af9190829c1ceab6f1c8fb9fa3f", 
-        "sequence": 5, 
+        ],
+        "rev": "2-6b1e1af9190829c1ceab6f1c8fb9fa3f",
+        "sequence": 5,
         "time_saved": "2017-11-22T13:24:33.115313269-08:00"
     }
 }`
@@ -1061,9 +1070,6 @@ func TestCheckForUpgradeOnRead(t *testing.T) {
 	if base.TestUseXattrs() {
 		t.Skip("Check for upgrade test only runs w/ SG_TEST_USE_XATTRS=false")
 	}
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test won't work under walrus until https://github.com/couchbase/sync_gateway/issues/2390")
-	}
 
 	rtConfig := rest.RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
@@ -1139,9 +1145,6 @@ func TestCheckForUpgradeOnWrite(t *testing.T) {
 	// Only run when xattrs are disabled, but requires couchbase server since we're writing an xattr directly to the bucket
 	if base.TestUseXattrs() {
 		t.Skip("Check for upgrade test only runs w/ SG_TEST_USE_XATTRS=false")
-	}
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test won't work under walrus until https://github.com/couchbase/sync_gateway/issues/2390")
 	}
 
 	rtConfig := rest.RestTesterConfig{
@@ -1224,9 +1227,6 @@ func TestCheckForUpgradeFeed(t *testing.T) {
 	// Only run when xattrs are disabled, but requires couchbase server since we're writing an xattr directly to the bucket
 	if base.TestUseXattrs() {
 		t.Skip("Check for upgrade test only runs w/ SG_TEST_USE_XATTRS=false")
-	}
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test won't work under walrus until https://github.com/couchbase/sync_gateway/issues/2390")
 	}
 
 	rtConfig := rest.RestTesterConfig{
@@ -2080,9 +2080,7 @@ func TestUnexpectedBodyOnTombstone(t *testing.T) {
 	// Modify the document via the SDK to add the body back
 	xattrVal := make(map[string]interface{})
 	xattrVal["actor"] = "not mobile"
-	subdocXattrStore, ok := base.AsSubdocXattrStore(dataStore)
-	assert.True(t, ok, "Unable to cast bucket to gocb bucket")
-	_, mutateErr := subdocXattrStore.SubdocUpdateXattr(mobileKey, "_nonmobile", uint32(0), cas, xattrVal)
+	_, mutateErr := dataStore.WriteCasWithXattr(mobileKey, "_nonmobile", uint32(0), cas, nil, nil, xattrVal)
 	assert.NoError(t, mutateErr, "Error updating non-mobile xattr for multi-actor document")
 
 	// Attempt to get the document again via Sync Gateway.  Should not trigger import.
@@ -2409,10 +2407,6 @@ func TestImportTouch(t *testing.T) {
 	require.Equal(t, initialRev, rawUpdateResponse.Sync.Rev)
 }
 func TestImportingPurgedDocument(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test won't work under walrus until https://github.com/couchbase/sync_gateway/issues/2390")
-	}
-
 	if !base.TestUseXattrs() {
 		t.Skip("XATTR based tests not enabled.  Enable via SG_TEST_USE_XATTRS=true environment variable")
 	}
@@ -2438,11 +2432,6 @@ func TestImportingPurgedDocument(t *testing.T) {
 }
 
 func TestNonImportedDuplicateID(t *testing.T) {
-
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("Skip this test under walrus testing")
-	}
-
 	rt := rest.NewRestTester(t, nil)
 	defer rt.Close()
 
@@ -2457,10 +2446,6 @@ func TestNonImportedDuplicateID(t *testing.T) {
 
 func TestImportOnWriteMigration(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("Test doesn't work with Walrus")
-	}
-
 	if !base.TestUseXattrs() {
 		t.Skip("Test requires xattrs to be enabled")
 	}
@@ -2485,10 +2470,6 @@ func TestImportOnWriteMigration(t *testing.T) {
 }
 
 func TestUserXattrAutoImport(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server")
-	}
-
 	if !base.TestUseXattrs() {
 		t.Skip("This test only works with XATTRS enabled")
 	}
@@ -2544,9 +2525,7 @@ func TestUserXattrAutoImport(t *testing.T) {
 
 	// Get Xattr and ensure channel value set correctly
 	var syncData db.SyncData
-	subdocXattrStore, ok := base.AsSubdocXattrStore(dataStore)
-	require.True(t, ok)
-	_, err = subdocXattrStore.SubdocGetXattr(docKey, base.SyncXattrName, &syncData)
+	_, err = dataStore.GetXattr(docKey, base.SyncXattrName, &syncData)
 	assert.NoError(t, err)
 
 	assert.Equal(t, []string{channelName}, syncData.Channels.KeySet())
@@ -2561,7 +2540,7 @@ func TestUserXattrAutoImport(t *testing.T) {
 	assert.NoError(t, err)
 
 	var syncData2 db.SyncData
-	_, err = subdocXattrStore.SubdocGetXattr(docKey, base.SyncXattrName, &syncData2)
+	_, err = dataStore.GetXattr(docKey, base.SyncXattrName, &syncData2)
 	assert.NoError(t, err)
 
 	assert.Equal(t, syncData.Crc32c, syncData2.Crc32c)
@@ -2579,7 +2558,7 @@ func TestUserXattrAutoImport(t *testing.T) {
 	assert.NoError(t, err)
 
 	var syncData3 db.SyncData
-	_, err = subdocXattrStore.SubdocGetXattr(docKey, base.SyncXattrName, &syncData3)
+	_, err = dataStore.GetXattr(docKey, base.SyncXattrName, &syncData3)
 	assert.NoError(t, err)
 
 	assert.Equal(t, syncData2.Crc32c, syncData3.Crc32c)
@@ -2600,7 +2579,7 @@ func TestUserXattrAutoImport(t *testing.T) {
 	assert.Equal(t, int64(3), rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value())
 
 	var syncData4 db.SyncData
-	_, err = subdocXattrStore.SubdocGetXattr(docKey, base.SyncXattrName, &syncData4)
+	_, err = dataStore.GetXattr(docKey, base.SyncXattrName, &syncData4)
 	assert.NoError(t, err)
 
 	assert.Equal(t, base.Crc32cHashString(updateVal), syncData4.Crc32c)
@@ -2608,10 +2587,6 @@ func TestUserXattrAutoImport(t *testing.T) {
 }
 
 func TestUserXattrOnDemandImportGET(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server")
-	}
-
 	if !base.TestUseXattrs() {
 		t.Skip("This test only works with XATTRS enabled")
 	}
@@ -2648,8 +2623,6 @@ func TestUserXattrOnDemandImportGET(t *testing.T) {
 	if !ok {
 		t.Skip("Test requires Couchbase Bucket")
 	}
-	subdocXattrStore, ok := base.AsSubdocXattrStore(dataStore)
-	require.True(t, ok)
 
 	// Add doc with SDK
 	err := dataStore.Set(docKey, 0, nil, []byte(`{}`))
@@ -2687,7 +2660,7 @@ func TestUserXattrOnDemandImportGET(t *testing.T) {
 
 	// Get sync data for doc and ensure user xattr has been used correctly to set channel
 	var syncData db.SyncData
-	_, err = subdocXattrStore.SubdocGetXattr(docKey, base.SyncXattrName, &syncData)
+	_, err = dataStore.GetXattr(docKey, base.SyncXattrName, &syncData)
 	assert.NoError(t, err)
 
 	assert.Equal(t, []string{channelName}, syncData.Channels.KeySet())
@@ -2701,7 +2674,7 @@ func TestUserXattrOnDemandImportGET(t *testing.T) {
 	rest.RequireStatus(t, resp, http.StatusOK)
 
 	var syncData2 db.SyncData
-	_, err = subdocXattrStore.SubdocGetXattr(docKey, base.SyncXattrName, &syncData2)
+	_, err = dataStore.GetXattr(docKey, base.SyncXattrName, &syncData2)
 	assert.NoError(t, err)
 
 	assert.Equal(t, syncData.Crc32c, syncData2.Crc32c)
@@ -2710,10 +2683,6 @@ func TestUserXattrOnDemandImportGET(t *testing.T) {
 }
 
 func TestUserXattrOnDemandImportWrite(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server")
-	}
-
 	if !base.TestUseXattrs() {
 		t.Skip("This test only works with XATTRS enabled")
 	}
@@ -2721,7 +2690,6 @@ func TestUserXattrOnDemandImportWrite(t *testing.T) {
 	if !base.IsEnterpriseEdition() {
 		t.Skipf("test is EE only - user xattrs")
 	}
-
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	docKey := t.Name()
@@ -2789,20 +2757,15 @@ func TestUserXattrOnDemandImportWrite(t *testing.T) {
 	// Ensure sync function has ran on import
 	assert.Equal(t, int64(3), rt.GetDatabase().DbStats.Database().SyncFunctionCount.Value())
 
-	subdocXattrStore, ok := base.AsSubdocXattrStore(dataStore)
 	require.True(t, ok)
 	var syncData db.SyncData
-	_, err = subdocXattrStore.SubdocGetXattr(docKey, base.SyncXattrName, &syncData)
+	_, err = dataStore.GetXattr(docKey, base.SyncXattrName, &syncData)
 	assert.NoError(t, err)
 
 	assert.Equal(t, []string{channelName}, syncData.Channels.KeySet())
 }
 
 func TestImportFilterTimeout(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("Import not supported by Walrus")
-	}
-
 	importFilter := `function(doc) { while(true) { } }`
 
 	rtConfig := rest.RestTesterConfig{DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{ImportFilter: &importFilter, AutoImport: false, JavascriptTimeoutSecs: base.Uint32Ptr(1)}}}
