@@ -94,7 +94,7 @@ func TestCollectionsPutDocInKeyspace(t *testing.T) {
 				require.Contains(t, resp.Body.String(), test.keyspace)
 				// assert special case where /db/docID returns db._default._default
 				if test.keyspace == dbName {
-					require.Contains(t, resp.Body.String(), strings.Join([]string{dbName, base.DefaultScope, base.DefaultCollection}, base.ScopeCollectionSeparator))
+					require.Contains(t, resp.Body.String(), "keyspace db not found")
 				}
 			}
 			if test.expectedStatus == http.StatusCreated {
@@ -400,7 +400,6 @@ func TestMultiCollectionChannelAccess(t *testing.T) {
 	// Remove collection and update the db config
 	scopesConfig = GetCollectionsConfig(t, tb, 2)
 
-	//collection3 := dataStoreNames[2].CollectionName()
 	scopesConfig[scope].Collections[collection1] = CollectionConfig{SyncFn: &c1SyncFunction}
 	scopesConfig[scope].Collections[collection2] = CollectionConfig{SyncFn: &c1SyncFunction}
 	scopesConfigString, err = json.Marshal(scopesConfig)
@@ -639,9 +638,6 @@ func TestCollectionsPutDBInexistentCollection(t *testing.T) {
 }
 
 func TestCollectionsPutDocInDefaultCollectionWithNamedCollections(t *testing.T) {
-	// FIXME: CBG-2911 - PUT /db/doc1 should route to the default collection
-	t.Skip("CBG-2911 - This test reproduces CBG-2911 - PUT /db/doc1 should route to the default collection")
-
 	base.TestRequiresCollections(t)
 
 	if base.UnitTestUrlIsWalrus() {
