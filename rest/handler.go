@@ -482,9 +482,9 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 	if ks != "" {
 		ksNotFound := base.HTTPErrorf(http.StatusNotFound, "keyspace %s not found", ks)
 		if dbContext.Scopes != nil {
-			// If scopes are defined on the database but not in th an empty scope to refer to the one SG is running with, rather than falling back to _default
 			if keyspaceScope == nil && keyspaceCollection == nil {
-				ksNotFound = base.HTTPErrorf(http.StatusNotFound, "keyspace %s.%s.%s not found", ks, base.DefaultScope, base.DefaultCollection)
+				keyspaceScope = base.StringPtr(base.DefaultScope)
+				keyspaceCollection = base.StringPtr(base.DefaultCollection)
 			}
 			if keyspaceScope == nil {
 				if len(dbContext.Scopes) == 1 {
