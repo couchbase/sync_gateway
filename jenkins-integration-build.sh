@@ -33,6 +33,7 @@ if [ "${1:-}" == "-m" ]; then
     TLS_SKIP_VERIFY="false"
     SG_CBCOLLECT_ALWAYS="false"
 fi
+SG_V8="true"
 
 set -e # Abort on errors
 set -x # Output all executed shell commands
