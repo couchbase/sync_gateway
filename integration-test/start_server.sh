@@ -42,6 +42,7 @@ if [ "${CBS_ROOT_DIR:-}" != "" ]; then
     DOCKER_CBS_ROOT_DIR="${CBS_ROOT_DIR}"
 fi
 
+docker --version
 if [[ -n "${JENKINS_URL:-}" ]]; then
     DOCKER_COMPOSE="docker-compose" # use docker-compose v1 for Jenkins AWS Linux 2
 else
