@@ -80,6 +80,12 @@ func TestsUseServerCE() bool {
 	return err == nil && ok
 }
 
+// TestsSupportCreatingRBAC returns true if the server can create RBAC users.
+func TestsSupportCreatingRBAC() bool {
+	ok, err := GTestBucketPool.cluster.supportsSettingRBAC()
+	return err == nil && ok
+}
+
 // canUseNamedCollections returns true if the cluster supports named collections, and they are also requested
 func (tbp *TestBucketPool) canUseNamedCollections() (bool, error) {
 	// walrus supports collections, but we need to query the server's version for capability check

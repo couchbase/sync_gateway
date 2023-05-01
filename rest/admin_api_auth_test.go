@@ -972,7 +972,7 @@ func TestDisablePermissionCheck(t *testing.T) {
 			if testCase.CreateUserRole.DatabaseScoped {
 				MakeUser(t, httpClient, eps[0], testCase.CreateUser, "password", []string{fmt.Sprintf("%s[%s]", testCase.CreateUserRole.RoleName, rt.Bucket().GetName())})
 			} else {
-				MakeUser(t, httpClient, eps[0], testCase.CreateUser, "password", []string{fmt.Sprintf("%s", testCase.CreateUserRole.RoleName)})
+				MakeUser(t, httpClient, eps[0], testCase.CreateUser, "password", []string{testCase.CreateUserRole.RoleName})
 			}
 			defer DeleteUser(t, httpClient, eps[0], testCase.CreateUser)
 
@@ -985,12 +985,12 @@ func TestDisablePermissionCheck(t *testing.T) {
 }
 
 func TestNewlyCreateSGWPermissions(t *testing.T) {
-	t.Skip("Requires DP 7.0.1")
-
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
 	}
-
+	if !base.TestsSupportCreatingRBAC() {
+		t.Skip("This test needs >= server 7.1 to work")
+	}
 	mobileSyncGateway := "mobile_sync_gateway"
 	syncGatewayDevOps := "sync_gateway_dev_ops"
 	syncGatewayApp := "sync_gateway_app"
@@ -1004,12 +1004,14 @@ func TestNewlyCreateSGWPermissions(t *testing.T) {
 	})
 	defer rt.Close()
 
+	bucketName := rt.Bucket().GetName()
+
 	eps, httpClient, err := rt.ServerContext().ObtainManagementEndpointsAndHTTPClient()
 	require.NoError(t, err)
 
 	MakeUser(t, httpClient, eps[0], mobileSyncGateway, "password", []string{fmt.Sprintf("%s[*]", mobileSyncGateway)})
 	defer DeleteUser(t, httpClient, eps[0], mobileSyncGateway)
-	MakeUser(t, httpClient, eps[0], syncGatewayDevOps, "password", []string{fmt.Sprintf("%s", syncGatewayDevOps)})
+	MakeUser(t, httpClient, eps[0], syncGatewayDevOps, "password", []string{syncGatewayDevOps})
 	defer DeleteUser(t, httpClient, eps[0], syncGatewayDevOps)
 	MakeUser(t, httpClient, eps[0], syncGatewayApp, "password", []string{fmt.Sprintf("%s[*]", syncGatewayApp)})
 	defer DeleteUser(t, httpClient, eps[0], syncGatewayApp)
@@ -1084,47 +1086,47 @@ func TestNewlyCreateSGWPermissions(t *testing.T) {
 		},
 		{
 			Method:   "POST",
-			Endpoint: "/db/_revs_diff",
+			Endpoint: "/{{.keyspace}}/_revs_diff",
 			Users:    []string{syncGatewayApp},
 		},
 		{
 			Method:   "GET",
-			Endpoint: "/db/_local/doc",
+			Endpoint: "/{{.keyspace}}/_local/doc",
 			Users:    []string{syncGatewayApp, syncGatewayAppRo},
 		},
 		{
 			Method:   "PUT",
-			Endpoint: "/db/_local/doc",
+			Endpoint: "/{{.keyspace}}/_local/doc",
 			Users:    []string{syncGatewayApp},
 		},
 		{
 			Method:   "DELETE",
-			Endpoint: "/db/_local/doc",
+			Endpoint: "/{{.keyspace}}/_local/doc",
 			Users:    []string{syncGatewayApp},
 		},
 		{
 			Method:   "GET",
-			Endpoint: "/db/doc",
+			Endpoint: "/{{.keyspace}}/doc",
 			Users:    []string{syncGatewayApp, syncGatewayAppRo},
 		},
 		{
 			Method:   "PUT",
-			Endpoint: "/db/doc",
+			Endpoint: "/{{.keyspace}}/doc",
 			Users:    []string{syncGatewayApp},
 		},
 		{
 			Method:   "DELETE",
-			Endpoint: "/db/doc",
+			Endpoint: "/{{.keyspace}}/doc",
 			Users:    []string{syncGatewayApp},
 		},
 		{
 			Method:   "GET",
-			Endpoint: "/db/doc/attach",
+			Endpoint: "/{{.keyspace}}/doc/attach",
 			Users:    []string{syncGatewayApp, syncGatewayAppRo},
 		},
 		{
 			Method:   "PUT",
-			Endpoint: "/db/doc/attach",
+			Endpoint: "/{{.keyspace}}/doc/attach",
 			Users:    []string{syncGatewayApp},
 		},
 		{
@@ -1154,12 +1156,12 @@ func TestNewlyCreateSGWPermissions(t *testing.T) {
 		},
 		{
 			Method:   "GET",
-			Endpoint: "/db/_raw/doc",
+			Endpoint: "/{{.keyspace}}/_raw/doc",
 			Users:    []string{syncGatewayApp, syncGatewayAppRo},
 		},
 		{
 			Method:   "GET",
-			Endpoint: "/db/_revtree/doc",
+			Endpoint: "/{{.keyspace}}/_revtree/doc",
 			Users:    []string{syncGatewayApp, syncGatewayAppRo},
 		},
 		{
@@ -1265,12 +1267,12 @@ func TestNewlyCreateSGWPermissions(t *testing.T) {
 		{
 			Method:   "GET",
 			Endpoint: "/_stats",
-			Users:    []string{syncGatewayDevOps},
+			Users:    []string{syncGatewayConfigurator, syncGatewayDevOps},
 		},
 		{
 			Method:   "GET",
 			Endpoint: "/_expvar",
-			Users:    []string{syncGatewayDevOps},
+			Users:    []string{syncGatewayConfigurator, syncGatewayDevOps},
 		},
 		{
 			Method:   "GET",
@@ -1403,11 +1405,6 @@ func TestNewlyCreateSGWPermissions(t *testing.T) {
 			Users:    []string{syncGatewayApp, syncGatewayAppRo},
 		},
 		{
-			Method:   "POST",
-			Endpoint: "/db/_repair",
-			Users:    []string{syncGatewayConfigurator},
-		},
-		{
 			Method:   "PUT",
 			Endpoint: "/db/",
 			Users:    []string{syncGatewayConfigurator},
@@ -1445,7 +1442,7 @@ func TestNewlyCreateSGWPermissions(t *testing.T) {
 				}
 
 				if !isAllowedUser {
-					resp := rt.SendAdminRequestWithAuth(endpoint.Method, endpoint.Endpoint, "", testUser, "password")
+					resp := rt.SendAdminRequestWithAuth(endpoint.Method, endpoint.Endpoint, fmt.Sprintf(`{"bucket":"%s"}`, bucketName), testUser, "password")
 					RequireStatus(t, resp, http.StatusForbidden)
 				}
 			})
