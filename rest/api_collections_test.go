@@ -16,6 +16,7 @@ import (
 	"testing"
 
 	"github.com/couchbase/gocb/v2"
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
@@ -93,7 +94,7 @@ func TestCollectionsPutDocInKeyspace(t *testing.T) {
 				require.Contains(t, resp.Body.String(), test.keyspace)
 				// assert special case where /db/docID returns db._default._default
 				if test.keyspace == dbName {
-					require.Contains(t, resp.Body.String(), strings.Join([]string{dbName, base.DefaultScope, base.DefaultCollection}, base.ScopeCollectionSeparator))
+					require.Contains(t, resp.Body.String(), "keyspace db not found")
 				}
 			}
 			if test.expectedStatus == http.StatusCreated {
@@ -400,7 +401,6 @@ func TestMultiCollectionChannelAccess(t *testing.T) {
 	scopesConfig = GetCollectionsConfig(t, tb, 2)
 	dataStoreNames = GetDataStoreNamesFromScopesConfig(scopesConfig)
 
-	//collection3 := dataStoreNames[2].CollectionName()
 	scopesConfig[scope].Collections[collection1] = CollectionConfig{SyncFn: &c1SyncFunction}
 	scopesConfig[scope].Collections[collection2] = CollectionConfig{SyncFn: &c1SyncFunction}
 	scopesConfigString, err = json.Marshal(scopesConfig)
@@ -615,6 +615,7 @@ func TestCollectionsSGIndexQuery(t *testing.T) {
 	_, err := rt.WaitForChanges(1, "/{{.keyspace}}/_changes", username, false)
 	require.NoError(t, err)
 }
+
 func TestCollectionsPutDBInexistentCollection(t *testing.T) {
 	base.TestRequiresCollections(t)
 
@@ -635,6 +636,45 @@ func TestCollectionsPutDBInexistentCollection(t *testing.T) {
 
 	resp := rt.SendAdminRequest("PUT", "/db2/", fmt.Sprintf(`{"bucket": "%s", "num_index_replicas":0, "scopes": {"_default": {"collections": {"new_collection": {}}}}}`, tb.GetName()))
 	RequireStatus(t, resp, http.StatusForbidden)
+}
+
+func TestCollectionsPutDocInDefaultCollectionWithNamedCollections(t *testing.T) {
+	base.TestRequiresCollections(t)
+
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server")
+	}
+
+	tb := base.GetTestBucket(t)
+	defer tb.Close()
+
+	// create named collection in the default scope
+	const customCollectionName = "new_collection"
+	dBucket := tb.GetUnderlyingBucket().(sgbucket.DynamicDataStoreBucket)
+	require.NoError(t, dBucket.CreateDataStore(base.ScopeAndCollectionName{Scope: base.DefaultScope, Collection: customCollectionName}))
+	defer func() {
+		assert.NoError(t, dBucket.DropDataStore(base.ScopeAndCollectionName{Scope: base.DefaultScope, Collection: customCollectionName}))
+	}()
+
+	rtConfig := &RestTesterConfig{
+		CustomTestBucket: tb,
+		PersistentConfig: true,
+	}
+
+	rt := NewRestTester(t, rtConfig)
+	defer rt.Close()
+
+	resp := rt.SendAdminRequest("PUT", "/db1/", fmt.Sprintf(`{"bucket": "%s", "num_index_replicas":0, "scopes": {"_default": {"collections": {"_default": {}, "%s": {}}}}}`, tb.GetName(), customCollectionName))
+	RequireStatus(t, resp, http.StatusCreated)
+
+	resp = rt.SendAdminRequest("PUT", "/db1/doc1", `{"test": true}`)
+	AssertStatus(t, resp, http.StatusCreated)
+
+	resp = rt.SendAdminRequest("PUT", "/db1._default._default/doc2", `{"test": true}`)
+	AssertStatus(t, resp, http.StatusCreated)
+
+	resp = rt.SendAdminRequest("PUT", fmt.Sprintf("/db1._default.%s/doc3", customCollectionName), `{"test": true}`)
+	AssertStatus(t, resp, http.StatusCreated)
 }
 
 func TestCollectionsChangeConfigScope(t *testing.T) {
