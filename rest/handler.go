@@ -482,10 +482,13 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 	if ks != "" {
 		ksNotFound := base.HTTPErrorf(http.StatusNotFound, "keyspace %s not found", ks)
 		if dbContext.Scopes != nil {
-			// If scopes are defined on the database but not in th an empty scope to refer to the one SG is running with, rather than falling back to _default
+			// endpoint like /db/doc where this matches /db._default._default/
+			// the check whether the _default._default actually exists on this database is performed below
 			if keyspaceScope == nil && keyspaceCollection == nil {
-				ksNotFound = base.HTTPErrorf(http.StatusNotFound, "keyspace %s.%s.%s not found", ks, base.DefaultScope, base.DefaultCollection)
+				keyspaceScope = base.StringPtr(base.DefaultScope)
+				keyspaceCollection = base.StringPtr(base.DefaultCollection)
 			}
+			// endpoint like /db.collectionName/doc where this matches /db.scopeName.collectionName/doc because there's a single scope defined
 			if keyspaceScope == nil {
 				if len(dbContext.Scopes) == 1 {
 					for scopeName, _ := range dbContext.Scopes {
@@ -493,7 +496,8 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 					}
 
 				} else {
-					keyspaceScope = base.StringPtr(base.DefaultScope)
+					// There are multiple scopes on a DatabaseContext. This isn't allowed in Sync Gateway but if the feature becomes available, it will be ambiguous which scope to match.
+					return ksNotFound
 				}
 			}
 			scope, foundScope := dbContext.Scopes[*keyspaceScope]
@@ -501,12 +505,6 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 				return ksNotFound
 			}
 
-			if keyspaceCollection == nil {
-				if len(scope.Collections) > 1 {
-					return ksNotFound
-				}
-				keyspaceCollection = base.StringPtr(base.DefaultCollection)
-			}
 			_, foundCollection := scope.Collections[*keyspaceCollection]
 			if !foundCollection {
 				return ksNotFound
