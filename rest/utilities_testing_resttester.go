@@ -168,6 +168,8 @@ func (rt *RestTester) WaitForAssignedReplications(count int) {
 }
 
 func (rt *RestTester) GetActiveReplicatorCount() int {
+	rt.ServerContext().lock.Lock()
+	defer rt.ServerContext().lock.Unlock()
 	return rt.ServerContext().activeReplicatorCount
 }
 
