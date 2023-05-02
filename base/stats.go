@@ -1459,6 +1459,7 @@ func (d *DbStats) unregisterDatabaseStats() {
 	prometheus.Unregister(d.DatabaseStats.SyncFunctionCount)
 	prometheus.Unregister(d.DatabaseStats.SyncFunctionTime)
 	prometheus.Unregister(d.DatabaseStats.SyncFunctionExceptionCount)
+	prometheus.Unregister(d.DatabaseStats.NumReplicationsRejected)
 }
 
 func (d *DbStats) CollectionStat(scopeName, collectionName string) (*CollectionStats, error) {
