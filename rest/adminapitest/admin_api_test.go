@@ -241,6 +241,39 @@ func TestLoggingKeys(t *testing.T) {
 	assert.Equal(t, map[string]interface{}{}, noLogKeys)
 }
 
+func TestServerlessChangesEndpointLimit(t *testing.T) {
+	base.RequireNumTestBuckets(t, 2)
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)
+	rt := rest.NewRestTester(t, nil)
+	defer rt.Close()
+
+	resp := rt.SendAdminRequest(http.MethodPut, "/_config", `{"max_concurrent_connections" : 2}`)
+	rest.RequireStatus(t, resp, http.StatusOK)
+
+	for i := 0; i < 200; i++ {
+		_ = rt.PutDoc(fmt.Sprint(i), `{"source":"rt","channels":["alice"]}`)
+	}
+
+	// send some changes requests in go routines to run concurrently along with test
+	go func() {
+		resp = rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/_changes?feed=longpoll&since=999999&timeout=100000", "")
+		rest.RequireStatus(t, resp, http.StatusOK)
+	}()
+
+	go func() {
+		resp = rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/_changes?feed=longpoll&since=999999&timeout=100000", "")
+		rest.RequireStatus(t, resp, http.StatusOK)
+	}()
+
+	// assert count for replicators is correct according to changes request made above
+	rt.WaitForActiveReplicatorCount(2)
+
+	// assert this request is rejected due to this request taking us over the limit
+	resp = rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/_changes?feed=longpoll&since=999999&timeout=100000", "")
+	rest.RequireStatus(t, resp, http.StatusServiceUnavailable)
+
+}
+
 func TestLoggingLevels(t *testing.T) {
 	if base.GlobalTestLoggingSet.IsTrue() {
 		t.Skip("Test does not work when a global test log level is set")

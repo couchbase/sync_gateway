@@ -11,6 +11,7 @@ licenses/APL2.txt.
 package rest
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 
@@ -22,6 +23,13 @@ import (
 
 // HTTP handler for incoming BLIP sync WebSocket request (/db/_blipsync)
 func (h *handler) handleBLIPSync() error {
+	if release, err := h.server.limitConcurrentReplications(h.rqCtx); err != nil {
+		h.db.DbStats.Database().NumReplicationsRejected.Add(1)
+		return err
+	} else if release != nil {
+		defer release(h.server)
+	}
+
 	// Exit early when the connection can't be switched to websocket protocol.
 	if _, ok := h.response.(http.Hijacker); !ok {
 		base.DebugfCtx(h.ctx(), base.KeyHTTP, "Non-upgradable request received for BLIP+WebSocket protocol")
@@ -70,4 +78,33 @@ func (h *handler) handleBLIPSync() error {
 	middleware(server).ServeHTTP(h.response, h.rq)
 
 	return nil
+}
+
+func (sc *ServerContext) limitConcurrentReplications(ctx context.Context) (func(sc *ServerContext), error) {
+	if sc.Config.Replicator.MaxConcurrentConnections == 0 {
+		return nil, nil
+	}
+	sc.lock.Lock()
+	defer sc.lock.Unlock()
+
+	capacity := sc.Config.Replicator.MaxConcurrentConnections
+	count := sc.activeReplicatorCount
+	//base.InfofCtx(ctx, base.KeyHTTP, "count %v + capacity %v", count, capacity)
+
+	release := func(sc *ServerContext) {
+		sc.lock.Lock()
+		defer sc.lock.Unlock()
+		connections := sc.Config.Replicator.MaxConcurrentConnections
+		sc.activeReplicatorCount--
+		base.TracefCtx(ctx, base.KeyHTTP, "Released replication slot (remaining: %d/%d)", connections-sc.activeReplicatorCount, connections)
+	}
+
+	if count >= capacity {
+		base.InfofCtx(ctx, base.KeyHTTP, "Replication limit exceeded (active: %d)", count)
+		return nil, base.ErrReplicationLimitExceeded
+	} else if count < capacity {
+		sc.activeReplicatorCount++
+		base.TracefCtx(ctx, base.KeyHTTP, "Acquired replication slot (remaining: %d/%d)", capacity-sc.activeReplicatorCount, capacity)
+	}
+	return release, nil
 }

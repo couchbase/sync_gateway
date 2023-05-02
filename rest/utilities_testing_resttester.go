@@ -167,6 +167,19 @@ func (rt *RestTester) WaitForAssignedReplications(count int) {
 	require.NoError(rt.TB, rt.WaitForCondition(successFunc))
 }
 
+func (rt *RestTester) GetActiveReplicatorCount() int {
+	return rt.ServerContext().activeReplicatorCount
+}
+
+func (rt *RestTester) WaitForActiveReplicatorCount(expCount int) {
+	var count int
+	successFunc := func() bool {
+		count = rt.GetActiveReplicatorCount()
+		return count == expCount
+	}
+	require.NoError(rt.TB, rt.WaitForCondition(successFunc), "Mismatch in active replicator count, expected count %d actual %d", expCount, count)
+}
+
 func (rt *RestTester) WaitForReplicationStatusForDB(dbName string, replicationID string, targetStatus string) {
 	var status db.ReplicationStatus
 	successFunc := func() bool {
