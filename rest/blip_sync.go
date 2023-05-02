@@ -89,7 +89,6 @@ func (sc *ServerContext) limitConcurrentReplications(ctx context.Context) (func(
 
 	capacity := sc.Config.Replicator.MaxConcurrentConnections
 	count := sc.activeReplicatorCount
-	//base.InfofCtx(ctx, base.KeyHTTP, "count %v + capacity %v", count, capacity)
 
 	release := func(sc *ServerContext) {
 		sc.lock.Lock()
