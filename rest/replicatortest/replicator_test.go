@@ -569,7 +569,6 @@ func TestServerlessConnectionLimitingOneshotFeed(t *testing.T) {
 
 	rt1.WaitForActiveReplicatorInitialization(2)
 	// assert the active replicator count has increased by 2
-	//assert.Equal(t, 2, rt2.GetActiveReplicatorCount())
 	rt2.WaitForActiveReplicatorCount(2)
 	replicationID = t.Name()
 	rt1.WaitForReplicationStatus(replicationID, db.ReplicationStateStopped)
@@ -577,7 +576,6 @@ func TestServerlessConnectionLimitingOneshotFeed(t *testing.T) {
 	rt1.WaitForReplicationStatus(replicationID, db.ReplicationStateStopped)
 
 	// assert that the count for active replicators has decreased by 2 as both replications have finished
-	//assert.Equal(t, 0, rt2.GetActiveReplicatorCount())
 	rt2.WaitForActiveReplicatorCount(0)
 
 	// assert we can create a new replication as count has decreased below threshold
@@ -626,7 +624,6 @@ func TestServerlessConnectionLimitingContinuous(t *testing.T) {
 	rest.RequireStatus(t, resp, http.StatusOK)
 
 	// assert the replications aren't killed as result of change in limit
-	//assert.Equal(t, 2, rt2.GetActiveReplicatorCount())
 	rt2.WaitForActiveReplicatorCount(2)
 	// assert we still can't create a new replication
 	replicationID = t.Name() + "3"
@@ -638,7 +635,6 @@ func TestServerlessConnectionLimitingContinuous(t *testing.T) {
 	rest.RequireStatus(t, resp, http.StatusOK)
 	rt1.WaitForReplicationStatus(t.Name()+"1", db.ReplicationStateStopped)
 	// assert the count has been decremented
-	//assert.Equal(t, 1, rt2.GetActiveReplicatorCount())
 	rt2.WaitForActiveReplicatorCount(1)
 
 	// assert we still can't create new replication (new limit is 1)
