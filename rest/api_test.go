@@ -2598,7 +2598,6 @@ func (rt *RestTester) CreateDocReturnRev(t *testing.T, docID string, revID strin
 
 func TestMetricsHandler(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	base.SkipPrometheusStatsRegistration = false
 	defer func() {
