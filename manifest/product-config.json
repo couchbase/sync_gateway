@@ -416,7 +416,7 @@
             "interval": 120,
             "go_version": "1.19.5",
             "trigger_blackduck": true,
-            "start_build": 593
+            "start_build": 1
         },
         "manifest/3.1.0.xml": {
             "do-build": false,
