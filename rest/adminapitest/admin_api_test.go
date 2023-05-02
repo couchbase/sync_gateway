@@ -256,13 +256,13 @@ func TestServerlessChangesEndpointLimit(t *testing.T) {
 
 	// send some changes requests in go routines to run concurrently along with test
 	go func() {
-		resp = rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/_changes?feed=longpoll&since=999999&timeout=100000", "")
-		rest.RequireStatus(t, resp, http.StatusOK)
+		resp1 := rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/_changes?feed=longpoll&since=999999&timeout=100000", "")
+		rest.RequireStatus(t, resp1, http.StatusOK)
 	}()
 
 	go func() {
-		resp = rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/_changes?feed=longpoll&since=999999&timeout=100000", "")
-		rest.RequireStatus(t, resp, http.StatusOK)
+		resp2 := rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/_changes?feed=longpoll&since=999999&timeout=100000", "")
+		rest.RequireStatus(t, resp2, http.StatusOK)
 	}()
 
 	// assert count for replicators is correct according to changes request made above
