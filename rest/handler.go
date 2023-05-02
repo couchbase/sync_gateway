@@ -483,6 +483,7 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 		ksNotFound := base.HTTPErrorf(http.StatusNotFound, "keyspace %s not found", ks)
 		if dbContext.Scopes != nil {
 			// endpoint like /db/doc where this matches /db._default._default/
+			// the check whether the _default._default actually exists on this database is performed below
 			if keyspaceScope == nil && keyspaceCollection == nil {
 				keyspaceScope = base.StringPtr(base.DefaultScope)
 				keyspaceCollection = base.StringPtr(base.DefaultCollection)
