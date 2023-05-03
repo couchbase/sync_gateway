@@ -988,9 +988,7 @@ func TestNewlyCreateSGWPermissions(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
 	}
-	if !base.TestsSupportCreatingRBAC() {
-		t.Skip("This test needs >= server 7.1 to work")
-	}
+	base.TestsRequireMobileRBAC(t)
 	mobileSyncGateway := "mobile_sync_gateway"
 	syncGatewayDevOps := "sync_gateway_dev_ops"
 	syncGatewayApp := "sync_gateway_app"

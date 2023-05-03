@@ -24,7 +24,7 @@ type tbpCluster interface {
 	removeBucket(name string) error
 	openTestBucket(name tbpBucketName, waitUntilReady time.Duration) (Bucket, error)
 	supportsCollections() (bool, error)
-	supportsSettingRBAC() (bool, error)
+	supportsMobileRBAC() (bool, error)
 	isServerEnterprise() (bool, error)
 	close() error
 }
@@ -198,7 +198,8 @@ func (c *tbpClusterV2) supportsCollections() (bool, error) {
 	return major >= 7, nil
 }
 
-func (c *tbpClusterV2) supportsSettingRBAC() (bool, error) {
+// supportsMobileRBAC is true if running couchbase server with all Sync Gateway roles
+func (c *tbpClusterV2) supportsMobileRBAC() (bool, error) {
 	major, minor, err := getClusterVersion(c.cluster)
 	if err != nil {
 		return false, err
