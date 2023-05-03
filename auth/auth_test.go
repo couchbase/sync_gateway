@@ -2784,19 +2784,19 @@ func TestServerlessChannelLimits(t *testing.T) {
 			user1, err := auth.NewUser("user1", "pass", ch.BaseSetOf(t, "ABC"))
 			require.NoError(t, err)
 			err = auth.Save(user1)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			_, err = auth.AuthenticateUser("user1", "pass")
-			assert.NoError(t, err)
+			require.NoError(t, err)
 
 			if !testCase.Collection {
 				user1.SetCollectionExplicitChannels("_default", "_default", ch.AtSequence(ch.BaseSetOf(t, "ABC", "DEF", "GHI", "JKL", "MNO", "PQR"), 1), 1)
 				err = auth.Save(user1)
-				assert.NoError(t, err)
+				require.NoError(t, err)
 			} else {
 				user1.SetCollectionExplicitChannels("scope1", "collection1", ch.AtSequence(ch.BaseSetOf(t, "ABC", "DEF", "GHI", "JKL"), 1), 1)
 				user1.SetCollectionExplicitChannels("scope1", "collection2", ch.AtSequence(ch.BaseSetOf(t, "MNO", "PQR"), 1), 1)
 				err = auth.Save(user1)
-				assert.NoError(t, err)
+				require.NoError(t, err)
 			}
 			_, err = auth.AuthenticateUser("user1", "pass")
 			require.Error(t, err)

@@ -224,19 +224,21 @@ func (auth *Authenticator) getPrincipal(docID string, factory func() Principal) 
 	return princ, nil
 }
 
-func (auth *Authenticator) channelCount(princ Principal, user User, roles []Role, scope, collection string) int {
+// channelCount will count the number of channels user has in a scope and collection then return this count
+func (auth *Authenticator) channelCount(princ Principal, user User, roles []Role, scope, collection string) uint32 {
 	cumulativeChannels := 0
 
-	channels := princ.CollectionChannels(scope, collection).Copy()
+	channels := princ.CollectionChannels(scope, collection)
 	for _, role := range roles {
 		roleSince := user.RoleNames()[role.Name()]
 		channels.AddAtSequence(role.CollectionChannels(scope, collection), roleSince.Sequence)
 	}
 	// We want to keep track of cumulative number of channels for limits across all collections
 	cumulativeChannels += len(channels)
-	return cumulativeChannels
+	return uint32(cumulativeChannels)
 }
 
+// getUserRoles gets all roles a user has been granted
 func (auth *Authenticator) getUserRoles(user User) ([]Role, error) {
 	roles := make([]Role, 0, len(user.RoleNames()))
 	for name := range user.RoleNames() {
@@ -257,11 +259,10 @@ func (auth *Authenticator) getUserRoles(user User) ([]Role, error) {
 func (auth *Authenticator) rebuildChannels(princ Principal) (changed bool, err error) {
 
 	changed = false
-	cumulativeChannels := 0
+	var cumulativeChannels uint32
 	var roles []Role
 	var princUser User
 	if user, ok := princ.(User); ok {
-		roles, _ = auth.getUserRoles(user)
 		princUser = user
 	}
 
@@ -276,6 +277,12 @@ func (auth *Authenticator) rebuildChannels(princ Principal) (changed bool, err e
 				changed = true
 				if auth.ServerlessChannelThreshold != 0 {
 					if user, ok := princ.(User); ok {
+						if roles == nil {
+							roles, err = auth.getUserRoles(user)
+							if err != nil {
+								return changed, err
+							}
+						}
 						channelCount := auth.channelCount(princ, user, roles, scope, collection)
 						cumulativeChannels += channelCount
 					}
@@ -289,7 +296,7 @@ func (auth *Authenticator) rebuildChannels(princ Principal) (changed bool, err e
 		// Warning at 50 channels
 		princUser.GetWarnChanSync().Do(func() {
 			if channelsPerUserThreshold := auth.ChannelsWarningThreshold; channelsPerUserThreshold != nil {
-				if uint32(cumulativeChannels) >= *channelsPerUserThreshold {
+				if cumulativeChannels >= *channelsPerUserThreshold {
 					base.WarnfCtx(auth.LogCtx, "User ID: %v channel count: %d exceeds %d for channels per user warning threshold",
 						base.UD(princUser.Name()), cumulativeChannels, *channelsPerUserThreshold)
 				}
@@ -297,7 +304,7 @@ func (auth *Authenticator) rebuildChannels(princ Principal) (changed bool, err e
 		})
 
 		// Error if ServerlessChannelThreshold is set and is >= than the threshold
-		if uint32(cumulativeChannels) >= auth.ServerlessChannelThreshold {
+		if cumulativeChannels >= auth.ServerlessChannelThreshold {
 			base.ErrorfCtx(auth.LogCtx, "User ID: %v channel count: %d exceeds %d for channels per user threshold. Auth will be rejected until rectified",
 				base.UD(princUser.Name()), cumulativeChannels, auth.ServerlessChannelThreshold)
 			return changed, base.ErrMaximumChannelsForUserExceeded

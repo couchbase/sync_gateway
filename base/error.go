@@ -69,7 +69,7 @@ var (
 	ErrConfigRegistryReloadRequired = &sgError{"Config registry reload required"}
 
 	// ErrMaximumChannelsForUserExceeded is returned when running in serverless mode and the user has more than 500 channels granted to them
-	ErrMaximumChannelsForUserExceeded = &sgError{"User has exceeded maximum of 500 channels"}
+	ErrMaximumChannelsForUserExceeded = &sgError{fmt.Sprintf("User has exceeded maximum of %d channels", ServerlessChannelLimit)}
 )
 
 func (e *sgError) Error() string {

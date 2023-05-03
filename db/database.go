@@ -48,8 +48,6 @@ const (
 	DBCompactRunning
 )
 
-const ServerlessChannelLimit = 500
-
 const (
 	DefaultRevsLimitNoConflicts = 50
 	DefaultRevsLimitConflicts   = 100
@@ -1067,7 +1065,7 @@ func (context *DatabaseContext) Authenticator(ctx context.Context) *auth.Authent
 	}
 	var channelServerlessThreshold uint32
 	if context.IsServerless() {
-		channelServerlessThreshold = ServerlessChannelLimit
+		channelServerlessThreshold = base.ServerlessChannelLimit
 	}
 
 	// Authenticators are lightweight & stateless, so it's OK to return a new one every time
