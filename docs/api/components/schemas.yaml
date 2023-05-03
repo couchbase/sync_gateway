@@ -2112,6 +2112,9 @@ Startup-config:
           type: integer
           maximum: 9
           minimum: 0
+        max_concurrent_connections:
+          description: Maximum number of concurrent replication connections allowed. If set to 0 this limit will be ignored.
+          type: integer
       readOnly: true
     unsupported:
       description: Settings that are not officially supported. It is highly recommended these are **not** used.
@@ -2162,6 +2165,46 @@ Startup-config:
       type: integer
       readOnly: true
   title: Startup-config
+Runtime-config:
+  type: object
+  properties:
+    logging:
+      description: The configuration settings for modifying Sync Gateway logging.
+      type: object
+      properties:
+        log_file_path:
+          description: Absolute or relative path on the filesystem to the log file directory. A relative path is from the directory that contains the Sync Gateway executable file.
+          type: string
+          readOnly: true
+        redaction_level:
+          description: Redaction level to apply to log output.
+          type: string
+          default: partial
+          enum:
+            - none
+            - partial
+            - full
+            - unset
+          readOnly: true
+        console:
+          $ref: '#/Console-logging-config'
+        error:
+          $ref: '#/File-logging-config'
+        warn:
+          $ref: '#/File-logging-config'
+        info:
+          $ref: '#/File-logging-config'
+        debug:
+          $ref: '#/File-logging-config'
+        trace:
+          $ref: '#/File-logging-config'
+        stats:
+          $ref: '#/File-logging-config'
+    max_concurrent_connections:
+      description: Maximum number of concurrent replication connections allowed. If set to 0 this limit will be ignored.
+      type: integer
+      default: 0
+  title: Runtime-config
 File-logging-config:
   type: object
   properties:
