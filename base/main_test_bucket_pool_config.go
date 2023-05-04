@@ -84,7 +84,7 @@ func TestsUseServerCE() bool {
 // TestsRequireMobileRBAC returns true if the server has Sync Gateway RBAC roles.
 func TestsRequireMobileRBAC(t *testing.T) {
 	ok, err := GTestBucketPool.cluster.supportsMobileRBAC()
-	if err != nil || ok {
+	if err != nil || !ok {
 		t.Skip("Mobile RBAC roles for Sync Gateway are only fully supported in CBS 7.1 or greater")
 	}
 }
