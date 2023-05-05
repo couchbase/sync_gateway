@@ -2752,6 +2752,63 @@ func TestObtainChannelsForDeletedRole(t *testing.T) {
 	}
 }
 
+func TestServerlessChannelLimitsRoles(t *testing.T) {
+	testCases := []struct {
+		Name       string
+		Collection bool
+	}{
+		{
+			Name: "Single role",
+		},
+		{
+			Name: "Muliple roles",
+		},
+	}
+	for _, testCase := range testCases {
+		t.Run(testCase.Name, func(t *testing.T) {
+			testBucket := base.GetTestBucket(t)
+			defer testBucket.Close()
+			dataStore := testBucket.GetSingleDataStore()
+			var role2 Role
+
+			opts := DefaultAuthenticatorOptions()
+			opts.ServerlessChannelThreshold = 5
+			opts.Collections = map[string]map[string]struct{}{
+				"scope1": {"collection1": struct{}{}, "collection2": struct{}{}},
+			}
+			auth := NewAuthenticator(dataStore, nil, opts)
+			user1, err := auth.NewUser("user1", "pass", ch.BaseSetOf(t, "ABC"))
+			require.NoError(t, err)
+			err = auth.Save(user1)
+			require.NoError(t, err)
+			_, err = auth.AuthenticateUser("user1", "pass")
+			require.NoError(t, err)
+
+			role1, err := auth.NewRole("role1", nil)
+			require.NoError(t, err)
+			if testCase.Name == "Single role" {
+				user1.SetExplicitRoles(ch.TimedSet{"role1": ch.NewVbSimpleSequence(1)}, 1)
+				require.NoError(t, auth.Save(user1))
+				_, err = auth.AuthenticateUser("user1", "pass")
+				require.NoError(t, err)
+
+				role1.SetCollectionExplicitChannels("scope1", "collection1", ch.AtSequence(ch.BaseSetOf(t, "ABC", "DEF", "GHI", "JKL"), 1), 1)
+				require.NoError(t, auth.Save(role1))
+			} else {
+				role2, err = auth.NewRole("role2", nil)
+				user1.SetExplicitRoles(ch.TimedSet{"role1": ch.NewVbSimpleSequence(1), "role2": ch.NewVbSimpleSequence(1)}, 1)
+				require.NoError(t, auth.Save(user1))
+				role1.SetCollectionExplicitChannels("scope1", "collection1", ch.AtSequence(ch.BaseSetOf(t, "ABC", "DEF", "GHI", "JKL"), 1), 1)
+				role2.SetCollectionExplicitChannels("scope1", "collection2", ch.AtSequence(ch.BaseSetOf(t, "MNO", "PQR"), 1), 1)
+				require.NoError(t, auth.Save(role1))
+				require.NoError(t, auth.Save(role2))
+			}
+			_, err = auth.AuthenticateUser("user1", "pass")
+			require.Error(t, err)
+		})
+	}
+}
+
 func TestServerlessChannelLimits(t *testing.T) {
 
 	testCases := []struct {
