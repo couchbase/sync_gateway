@@ -465,7 +465,7 @@ func (h *handler) handlePutConfig() error {
 
 	if config.ReplicationLimit != nil {
 		h.server.Config.Replicator.MaxConcurrentReplications = *config.ReplicationLimit
-		h.server.activeReplicatorLimit = *config.ReplicationLimit
+		h.server.ActiveReplicationsCounter.activeReplicatorLimit = *config.ReplicationLimit
 	}
 
 	return base.HTTPErrorf(http.StatusOK, "Updated")

@@ -90,19 +90,19 @@ func (sc *ServerContext) incrementConcurrentReplications(ctx context.Context) (b
 	sc.ActiveReplicationsCounter.lock.Lock()
 	defer sc.ActiveReplicationsCounter.lock.Unlock()
 	// if max concurrent replications is 0 then we don't need to keep track of concurrent replications
-	if sc.activeReplicatorLimit == 0 {
+	if sc.ActiveReplicationsCounter.activeReplicatorLimit == 0 {
 		return false, nil
 	}
 
-	capacity := sc.activeReplicatorLimit
-	count := sc.activeReplicatorCount
+	capacity := sc.ActiveReplicationsCounter.activeReplicatorLimit
+	count := sc.ActiveReplicationsCounter.activeReplicatorCount
 
 	if count >= capacity {
 		base.InfofCtx(ctx, base.KeyHTTP, "Replication limit exceeded (active: %d limit: %d)", count, capacity)
 		return false, base.ErrReplicationLimitExceeded
 	}
-	sc.activeReplicatorCount++
-	base.TracefCtx(ctx, base.KeyHTTP, "Acquired replication slot (active: %d/%d)", sc.activeReplicatorCount, capacity)
+	sc.ActiveReplicationsCounter.activeReplicatorCount++
+	base.TracefCtx(ctx, base.KeyHTTP, "Acquired replication slot (active: %d/%d)", sc.ActiveReplicationsCounter.activeReplicatorCount, capacity)
 
 	return true, nil
 }
@@ -112,7 +112,7 @@ func (sc *ServerContext) decrementConcurrentReplications(ctx context.Context) {
 	// lock replications config limit + the active replications counter
 	sc.ActiveReplicationsCounter.lock.Lock()
 	defer sc.ActiveReplicationsCounter.lock.Unlock()
-	connections := sc.activeReplicatorLimit
-	sc.activeReplicatorCount--
+	connections := sc.ActiveReplicationsCounter.activeReplicatorLimit
+	sc.ActiveReplicationsCounter.activeReplicatorCount--
 	base.TracefCtx(ctx, base.KeyHTTP, "Released replication slot (active: %d/%d)", sc.activeReplicatorCount, connections)
 }
