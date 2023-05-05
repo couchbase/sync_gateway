@@ -75,6 +75,7 @@ type ServerContext struct {
 
 type ActiveReplicationsCounter struct {
 	activeReplicatorCount int        // The count of concurrent active replicators
+	activeReplicatorLimit int        // The limit on number of active replicators allowed
 	lock                  sync.Mutex // Lock for managing access to shared memory location
 }
 
@@ -138,6 +139,9 @@ func NewServerContext(ctx context.Context, config *StartupConfig, persistentConf
 			sc.Config.API.AdminInterfaceAuthentication = base.BoolPtr(false)
 			sc.Config.API.MetricsInterfaceAuthentication = base.BoolPtr(false)
 		}
+	}
+	if config.Replicator.MaxConcurrentReplications != 0 {
+		sc.activeReplicatorLimit = config.Replicator.MaxConcurrentReplications
 	}
 
 	sc.startStatsLogger(ctx)
