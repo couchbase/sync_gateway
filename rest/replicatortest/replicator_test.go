@@ -545,6 +545,48 @@ func TestPullReplicationAPI(t *testing.T) {
 	assert.Equal(t, "rt2", doc2Body["source"])
 }
 
+func TestStopServerlessConnectionLimitingDuringReplications(t *testing.T) {
+	base.RequireNumTestBuckets(t, 2)
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)
+
+	rt1, rt2, remoteURLString, teardown := rest.SetupSGRPeers(t)
+	defer teardown()
+
+	resp := rt2.SendAdminRequest(http.MethodPut, "/_config", `{"max_concurrent_replications" : 2}`)
+	rest.RequireStatus(t, resp, http.StatusOK)
+
+	for i := 0; i < 10; i++ {
+		_ = rt2.PutDoc(fmt.Sprint(i), `{"source":"rt2","channels":["alice"]}`)
+	}
+
+	// create two replications to take us to the limit
+	replicationID := t.Name()
+	rt1.CreateReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePull, nil, true, db.ConflictResolverDefault)
+	rt1.WaitForReplicationStatus(replicationID, db.ReplicationStateRunning)
+	replicationID = t.Name() + "1"
+	rt1.CreateReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePull, nil, true, db.ConflictResolverDefault)
+	rt1.WaitForReplicationStatus(replicationID, db.ReplicationStateRunning)
+	rt1.WaitForActiveReplicatorInitialization(2)
+
+	// try create a new replication to take it beyond the threshold set by runtime config call
+	// assert it enter error state
+	replicationID = t.Name() + "2"
+	rt1.CreateReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePull, nil, true, db.ConflictResolverDefault)
+	rt1.WaitForReplicationStatus(replicationID, db.ReplicationStateError)
+
+	// change limit to 0 (turning limiting off) and assert that the replications currently running continue as normal and reject any new ones being added
+	resp = rt2.SendAdminRequest(http.MethodPut, "/_config", `{"max_concurrent_replications" : 0}`)
+	rest.RequireStatus(t, resp, http.StatusOK)
+
+	// assert the replications aren't killed as result of change in limit
+	rt2.WaitForActiveReplicatorCount(2)
+	// assert we still can create a new replication given that originally the limit was 2 replications
+	replicationID = t.Name() + "3"
+	rt1.CreateReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePull, nil, true, db.ConflictResolverDefault)
+	rt1.WaitForReplicationStatus(replicationID, db.ReplicationStateRunning)
+
+}
+
 func TestServerlessConnectionLimitingOneshotFeed(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
 	base.SetUpTestLogging(t, base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)
@@ -553,7 +595,7 @@ func TestServerlessConnectionLimitingOneshotFeed(t *testing.T) {
 	defer teardown()
 
 	// update runtime config to limit to 2 concurrent replication connections
-	resp := rt2.SendAdminRequest(http.MethodPut, "/_config", `{"max_concurrent_connections" : 2}`)
+	resp := rt2.SendAdminRequest(http.MethodPut, "/_config", `{"max_concurrent_replications" : 2}`)
 	rest.RequireStatus(t, resp, http.StatusOK)
 
 	for i := 0; i < 200; i++ {
@@ -593,7 +635,7 @@ func TestServerlessConnectionLimitingContinuous(t *testing.T) {
 	defer teardown()
 
 	// update runtime config to limit to 2 concurrent replication connections
-	resp := rt2.SendAdminRequest(http.MethodPut, "/_config", `{"max_concurrent_connections" : 2}`)
+	resp := rt2.SendAdminRequest(http.MethodPut, "/_config", `{"max_concurrent_replications" : 2}`)
 	rest.RequireStatus(t, resp, http.StatusOK)
 
 	for i := 0; i < 200; i++ {
@@ -617,10 +659,10 @@ func TestServerlessConnectionLimitingContinuous(t *testing.T) {
 
 	// assert on stats
 	dbstats := rt2.GetDatabase().DbStats
-	assert.Equal(t, int64(2), dbstats.DatabaseStats.NumReplicationsRejected.Value())
+	assert.Equal(t, int64(2), dbstats.DatabaseStats.NumReplicationsRejectedLimit.Value())
 
 	// change limit to 1 and assert that the replications currently running continue as normal and reject any new ones being added
-	resp = rt2.SendAdminRequest(http.MethodPut, "/_config", `{"max_concurrent_connections" : 1}`)
+	resp = rt2.SendAdminRequest(http.MethodPut, "/_config", `{"max_concurrent_replications" : 1}`)
 	rest.RequireStatus(t, resp, http.StatusOK)
 
 	// assert the replications aren't killed as result of change in limit

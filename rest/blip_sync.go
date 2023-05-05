@@ -23,11 +23,14 @@ import (
 
 // HTTP handler for incoming BLIP sync WebSocket request (/db/_blipsync)
 func (h *handler) handleBLIPSync() error {
-	if release, err := h.server.limitConcurrentReplications(h.rqCtx); err != nil {
-		h.db.DbStats.Database().NumReplicationsRejected.Add(1)
+	needRelease, err := h.server.incrementConcurrentReplications(h.rqCtx)
+	if err != nil {
+		h.db.DbStats.Database().NumReplicationsRejectedLimit.Add(1)
 		return err
-	} else if release != nil {
-		defer release(h.server)
+	}
+	// if we haven't incremented the active replicator due to MaxConcurrentReplications being 0, we don't need to decrement it
+	if needRelease {
+		defer h.server.decrementConcurrentReplications(h.rqCtx)
 	}
 
 	// Exit early when the connection can't be switched to websocket protocol.
@@ -80,30 +83,40 @@ func (h *handler) handleBLIPSync() error {
 	return nil
 }
 
-func (sc *ServerContext) limitConcurrentReplications(ctx context.Context) (func(sc *ServerContext), error) {
-	if sc.Config.Replicator.MaxConcurrentConnections == 0 {
-		return nil, nil
+// incrementConcurrentReplications increments the number of active replications (if there is capacity to do so)
+// and rejects calls if no capacity is available
+func (sc *ServerContext) incrementConcurrentReplications(ctx context.Context) (bool, error) {
+	// lock replications config limit + the active replications counter
+	sc.ActiveReplicationsCounter.lock.Lock()
+	defer sc.ActiveReplicationsCounter.lock.Unlock()
+	sc.Config.Replicator.lock.Lock()
+	defer sc.Config.Replicator.lock.Unlock()
+	// if max concurrent replications is 0 then we don't need to keep track of concurrent replications
+	if sc.Config.Replicator.MaxConcurrentReplications == 0 {
+		return false, nil
 	}
-	sc.lock.Lock()
-	defer sc.lock.Unlock()
 
-	capacity := sc.Config.Replicator.MaxConcurrentConnections
+	capacity := sc.Config.Replicator.MaxConcurrentReplications
 	count := sc.activeReplicatorCount
 
-	release := func(sc *ServerContext) {
-		sc.lock.Lock()
-		defer sc.lock.Unlock()
-		connections := sc.Config.Replicator.MaxConcurrentConnections
-		sc.activeReplicatorCount--
-		base.TracefCtx(ctx, base.KeyHTTP, "Released replication slot (remaining: %d/%d)", connections-sc.activeReplicatorCount, connections)
-	}
-
 	if count >= capacity {
-		base.InfofCtx(ctx, base.KeyHTTP, "Replication limit exceeded (active: %d)", count)
-		return nil, base.ErrReplicationLimitExceeded
-	} else if count < capacity {
-		sc.activeReplicatorCount++
-		base.TracefCtx(ctx, base.KeyHTTP, "Acquired replication slot (remaining: %d/%d)", capacity-sc.activeReplicatorCount, capacity)
+		base.InfofCtx(ctx, base.KeyHTTP, "Replication limit exceeded (active: %d limit: %d)", count, capacity)
+		return false, base.ErrReplicationLimitExceeded
 	}
-	return release, nil
+	sc.activeReplicatorCount++
+	base.TracefCtx(ctx, base.KeyHTTP, "Acquired replication slot (active: %d/%d)", sc.activeReplicatorCount, capacity)
+
+	return true, nil
+}
+
+// decrementConcurrentReplications decrements the number of active replications on the server context
+func (sc *ServerContext) decrementConcurrentReplications(ctx context.Context) {
+	// lock replications config limit + the active replications counter
+	sc.ActiveReplicationsCounter.lock.Lock()
+	defer sc.ActiveReplicationsCounter.lock.Unlock()
+	sc.Config.Replicator.lock.Lock()
+	defer sc.Config.Replicator.lock.Unlock()
+	connections := sc.Config.Replicator.MaxConcurrentReplications
+	sc.activeReplicatorCount--
+	base.TracefCtx(ctx, base.KeyHTTP, "Released replication slot (active: %d/%d)", sc.activeReplicatorCount, connections)
 }

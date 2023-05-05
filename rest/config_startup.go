@@ -12,6 +12,7 @@ import (
 	"context"
 	"os"
 	"runtime"
+	"sync"
 	"time"
 
 	"github.com/couchbase/go-couchbase"
@@ -136,9 +137,10 @@ type AuthConfig struct {
 }
 
 type ReplicatorConfig struct {
-	MaxHeartbeat             *base.ConfigDuration `json:"max_heartbeat,omitempty"    help:"Max heartbeat value for _changes request"`
-	BLIPCompression          *int                 `json:"blip_compression,omitempty" help:"BLIP data compression level (0-9)"`
-	MaxConcurrentConnections int                  `json:"max_concurrent_connections,omitempty" help:"Maximum number of replication connections to the node"`
+	MaxHeartbeat              *base.ConfigDuration `json:"max_heartbeat,omitempty"    help:"Max heartbeat value for _changes request"`
+	BLIPCompression           *int                 `json:"blip_compression,omitempty" help:"BLIP data compression level (0-9)"`
+	MaxConcurrentReplications int                  `json:"max_concurrent_replications,omitempty" help:"Maximum number of replication connections to the node"`
+	lock                      sync.Mutex           // Lock for evaluating maximum concurrent replications
 }
 
 type UnsupportedConfig struct {

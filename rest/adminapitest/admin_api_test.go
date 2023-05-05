@@ -243,25 +243,45 @@ func TestLoggingKeys(t *testing.T) {
 
 func TestServerlessChangesEndpointLimit(t *testing.T) {
 	base.RequireNumTestBuckets(t, 2)
-	base.SetUpTestLogging(t, base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)
-	rt := rest.NewRestTester(t, nil)
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg, base.KeyChanges)
+	rt := rest.NewRestTester(t, &rest.RestTesterConfig{
+		SyncFn: `function(doc) {channel(doc.channel);}`,
+	})
 	defer rt.Close()
 
-	resp := rt.SendAdminRequest(http.MethodPut, "/_config", `{"max_concurrent_connections" : 2}`)
+	resp := rt.SendAdminRequest(http.MethodPut, "/_config", `{"max_concurrent_replications" : 2}`)
 	rest.RequireStatus(t, resp, http.StatusOK)
+	resp = rt.SendAdminRequest("PUT", "/db/_user/alice", rest.GetUserPayload(t, "alice", "letmein", "", rt.GetSingleTestDatabaseCollection(), []string{"ABC"}, nil))
+	rest.RequireStatus(t, resp, 201)
 
-	for i := 0; i < 200; i++ {
-		_ = rt.PutDoc(fmt.Sprint(i), `{"source":"rt","channels":["alice"]}`)
-	}
+	// Put several documents in channel PBS
+	response := rt.SendAdminRequest("PUT", "/{{.keyspace}}/pbs1", `{"value":1, "channel":["PBS"]}`)
+	rest.RequireStatus(t, response, 201)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/pbs2", `{"value":2, "channel":["PBS"]}`)
+	rest.RequireStatus(t, response, 201)
+	response = rt.SendAdminRequest("PUT", "/{{.keyspace}}/pbs3", `{"value":3, "channel":["PBS"]}`)
+	rest.RequireStatus(t, response, 201)
+
+	changesJSON := `{"style":"all_docs", 
+					 "heartbeat":300000, 
+					 "feed":"longpoll", 
+					 "limit":50, 
+					 "since":"1",
+					 "filter":"` + base.ByChannelFilter + `",
+					 "channels":"ABC,PBS"}`
+	var wg sync.WaitGroup
+	wg.Add(2)
 
 	// send some changes requests in go routines to run concurrently along with test
 	go func() {
-		resp1 := rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/_changes?feed=longpoll&since=999999&timeout=100000", "")
+		defer wg.Done()
+		resp1 := rt.SendUserRequest(http.MethodPost, "/{{.keyspace}}/_changes", changesJSON, "alice")
 		rest.RequireStatus(t, resp1, http.StatusOK)
 	}()
 
 	go func() {
-		resp2 := rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/_changes?feed=longpoll&since=999999&timeout=100000", "")
+		defer wg.Done()
+		resp2 := rt.SendUserRequest(http.MethodPost, "/{{.keyspace}}/_changes", changesJSON, "alice")
 		rest.RequireStatus(t, resp2, http.StatusOK)
 	}()
 
@@ -271,7 +291,10 @@ func TestServerlessChangesEndpointLimit(t *testing.T) {
 	// assert this request is rejected due to this request taking us over the limit
 	resp = rt.SendAdminRequest(http.MethodGet, "/{{.keyspace}}/_changes?feed=longpoll&since=999999&timeout=100000", "")
 	rest.RequireStatus(t, resp, http.StatusServiceUnavailable)
-
+	// put doc to end changes feeds
+	resp = rt.SendAdminRequest("PUT", "/{{.keyspace}}/abc1", `{"value":3, "channel":["ABC"]}`)
+	rest.RequireStatus(t, resp, 201)
+	wg.Wait()
 }
 
 func TestLoggingLevels(t *testing.T) {

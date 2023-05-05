@@ -494,7 +494,7 @@ type DatabaseStats struct {
 	// The total number of times that a sync function encountered an exception (across all collections).
 	SyncFunctionExceptionCount *SgwIntStat `json:"sync_function_exception_count"`
 	// The total number of times a replication connection is rejected due ot it being over the threshold
-	NumReplicationsRejected *SgwIntStat `json:"num_replications_rejected"`
+	NumReplicationsRejectedLimit *SgwIntStat `json:"num_replications_rejected_limit"`
 
 	// These can be cleaned up in future versions of SGW, implemented as maps to reduce amount of potential risk
 	// prior to Hydrogen release. These are not exported as part of prometheus and only exposed through expvars
@@ -1414,7 +1414,7 @@ func (d *DbStats) initDatabaseStats() error {
 	if err != nil {
 		return err
 	}
-	resUtil.NumReplicationsRejected, err = NewIntStat(SubsystemDatabaseKey, "num_replications_rejected", labelKeys, labelVals, prometheus.CounterValue, 0)
+	resUtil.NumReplicationsRejectedLimit, err = NewIntStat(SubsystemDatabaseKey, "num_replications_rejected_limit", labelKeys, labelVals, prometheus.CounterValue, 0)
 	if err != nil {
 		return err
 	}
@@ -1459,7 +1459,7 @@ func (d *DbStats) unregisterDatabaseStats() {
 	prometheus.Unregister(d.DatabaseStats.SyncFunctionCount)
 	prometheus.Unregister(d.DatabaseStats.SyncFunctionTime)
 	prometheus.Unregister(d.DatabaseStats.SyncFunctionExceptionCount)
-	prometheus.Unregister(d.DatabaseStats.NumReplicationsRejected)
+	prometheus.Unregister(d.DatabaseStats.NumReplicationsRejectedLimit)
 }
 
 func (d *DbStats) CollectionStat(scopeName, collectionName string) (*CollectionStats, error) {

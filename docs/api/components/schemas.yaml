@@ -2112,7 +2112,7 @@ Startup-config:
           type: integer
           maximum: 9
           minimum: 0
-        max_concurrent_connections:
+        max_concurrent_replications:
           description: Maximum number of concurrent replication connections allowed. If set to 0 this limit will be ignored.
           type: integer
       readOnly: true
@@ -2200,7 +2200,7 @@ Runtime-config:
           $ref: '#/File-logging-config'
         stats:
           $ref: '#/File-logging-config'
-    max_concurrent_connections:
+    max_concurrent_replications:
       description: Maximum number of concurrent replication connections allowed. If set to 0 this limit will be ignored.
       type: integer
       default: 0

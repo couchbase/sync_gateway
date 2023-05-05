@@ -248,13 +248,13 @@ func (h *handler) handleChanges() error {
 		feed = "normal"
 	}
 
-	if feed != "normal" {
-		release, err := h.server.limitConcurrentReplications(h.rqCtx)
-		if err != nil {
-			return err
-		} else if release != nil {
-			defer release(h.server)
-		}
+	needRelease, concurrentReplicationsErr := h.server.incrementConcurrentReplications(h.rqCtx)
+	if concurrentReplicationsErr != nil {
+		return concurrentReplicationsErr
+	}
+	// if we haven't incremented the active replicator due to MaxConcurrentReplications being 0, we don't need to decrement it
+	if needRelease {
+		defer h.server.decrementConcurrentReplications(h.rqCtx)
 	}
 
 	// Get the channels as parameters to an imaginary "bychannel" filter.

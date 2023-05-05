@@ -70,7 +70,12 @@ type ServerContext struct {
 	LogContextID                  string          // ID to differentiate log messages from different server context
 	fetchConfigsLastUpdate        time.Time       // The last time fetchConfigsWithTTL() updated dbConfigs
 	allowScopesInPersistentConfig bool            // Test only backdoor to allow scopes in persistent config, not supported for multiple databases with different collections targeting the same bucket
-	activeReplicatorCount         int             // The count of concurrent active replicators
+	ActiveReplicationsCounter
+}
+
+type ActiveReplicationsCounter struct {
+	activeReplicatorCount int        // The count of concurrent active replicators
+	lock                  sync.Mutex // Lock for managing access to shared memory location
 }
 
 // defaultConfigRetryTimeout is the total retry time when waiting for in-flight config updates.  Set as a multiple of kv op timeout,
