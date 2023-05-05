@@ -2796,6 +2796,7 @@ func TestServerlessChannelLimitsRoles(t *testing.T) {
 				require.NoError(t, auth.Save(role1))
 			} else {
 				role2, err = auth.NewRole("role2", nil)
+				require.NoError(t, err)
 				user1.SetExplicitRoles(ch.TimedSet{"role1": ch.NewVbSimpleSequence(1), "role2": ch.NewVbSimpleSequence(1)}, 1)
 				require.NoError(t, auth.Save(user1))
 				role1.SetCollectionExplicitChannels("scope1", "collection1", ch.AtSequence(ch.BaseSetOf(t, "ABC", "DEF", "GHI", "JKL"), 1), 1)
