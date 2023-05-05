@@ -235,6 +235,7 @@ func (auth *Authenticator) getPrincipal(docID string, factory func() Principal) 
 	return princ, nil
 }
 
+// inheritedCollectionChannels returns channels for a given scope + collection
 func (auth *Authenticator) inheritedCollectionChannels(user User, scope, collection string) (ch.TimedSet, error) {
 	roles, err := auth.getUserRoles(user)
 	if err != nil {
@@ -249,10 +250,11 @@ func (auth *Authenticator) inheritedCollectionChannels(user User, scope, collect
 	return channels, nil
 }
 
+// getInheritedChannelsLength returns number of channels a user has access to across all collections
 func (auth *Authenticator) getInheritedChannelsLength(user User) (int, error) {
 	var cumulativeChannels int
 	for scope, collections := range auth.Collections {
-		for collection, _ := range collections {
+		for collection := range collections {
 			channels, err := auth.inheritedCollectionChannels(user, scope, collection)
 			if err != nil {
 				return 0, err
@@ -263,7 +265,18 @@ func (auth *Authenticator) getInheritedChannelsLength(user User) (int, error) {
 	return cumulativeChannels, nil
 }
 
+// checkChannelLimits logs a warning when the warning threshold is met and will return an error when the channel limit is met
 func (auth *Authenticator) checkChannelLimits(channels int, user User) error {
+	// Error if ServerlessChannelThreshold is set and is >= than the threshold
+	if uint32(channels) >= auth.ServerlessChannelThreshold {
+		base.ErrorfCtx(auth.LogCtx, "User ID: %v channel count: %d exceeds %d for channels per user threshold. Auth will be rejected until rectified",
+			base.UD(user.Name()), channels, auth.ServerlessChannelThreshold)
+		return base.ErrMaximumChannelsForUserExceeded
+	}
+
+	// This function is likely to be called once per session when a channel limit is applied, the sync once
+	// applied here ensures we don't fill logs with warnings about being over warning threshold. We may want
+	// to revisit this implementation around the warning threshold in future
 	user.GetWarnChanSync().Do(func() {
 		if channelsPerUserThreshold := auth.ChannelsWarningThreshold; channelsPerUserThreshold != nil {
 			if uint32(channels) >= *channelsPerUserThreshold {
@@ -272,13 +285,6 @@ func (auth *Authenticator) checkChannelLimits(channels int, user User) error {
 			}
 		}
 	})
-
-	// Error if ServerlessChannelThreshold is set and is >= than the threshold
-	if uint32(channels) >= auth.ServerlessChannelThreshold {
-		base.ErrorfCtx(auth.LogCtx, "User ID: %v channel count: %d exceeds %d for channels per user threshold. Auth will be rejected until rectified",
-			base.UD(user.Name()), channels, auth.ServerlessChannelThreshold)
-		return base.ErrMaximumChannelsForUserExceeded
-	}
 	return nil
 }
 
