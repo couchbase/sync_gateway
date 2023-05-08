@@ -117,9 +117,15 @@ type BlipSyncContext struct {
 
 	collections *blipCollections // all collections handled by blipSyncContext, implicit or via GetCollections
 
-	bytesSent           atomic.Uint64 // Total bytes sent to client
-	bytesReceived       atomic.Uint64 // Total bytes received from client
-	lastStatsReportTime atomic.Int64  // last time reported by time.Time     // Last time blip stats were reported
+	stats blipSyncStats // internal structure to store stats
+}
+
+// blipSyncStats has support structures to support reporting stats at regular interval
+type blipSyncStats struct {
+	bytesSent      atomic.Uint64 // Total bytes sent to client
+	bytesReceived  atomic.Uint64 // Total bytes received from client
+	lastReportTime atomic.Int64  // last time reported by time.Time     // Last time blip stats were reported
+	lock           sync.Mutex
 }
 
 // AllowedAttachment contains the metadata for handling allowed attachments
@@ -201,13 +207,7 @@ func (bsc *BlipSyncContext) register(profile string, handlerFn func(*blipHandler
 			base.TracefCtx(bsc.ctx, base.KeySyncMsg, "Recv Rsp %s: Body: '%s' Properties: %v", resp, base.UD(respBody), base.UD(resp.Properties))
 		}
 
-		// report stats if needed
-		currentTime := time.Now().UnixMilli()
-		if (currentTime - bsc.lastStatsReportTime.Load()) > bsc.blipContextDb.BlipStatsReportingInterval {
-			bsc.reportStats()
-			bsc.lastStatsReportTime.Store(currentTime)
-
-		}
+		bsc.stats.reportIfTimeElapsed(bsc)
 	}
 
 	bsc.blipContext.HandlerForProfile[profile] = handlerFnWrapper
@@ -227,7 +227,7 @@ func (bsc *BlipSyncContext) Close() {
 
 			collection.changesCtxCancel()
 		}
-		bsc.reportStats()
+		bsc.stats.report(bsc)
 		close(bsc.terminator)
 	})
 }
@@ -670,7 +670,18 @@ func toHistory(revisions Revisions, knownRevs map[string]bool, maxHistory int) [
 	return history
 }
 
-func (bsc *BlipSyncContext) reportStats() {
+// reportIfTimeElapsed will report stats if enough time has passed since the previous report.
+func (s *blipSyncStats) reportIfTimeElapsed(bsc *BlipSyncContext) {
+	currentTime := time.Now().UnixMilli()
+	if (currentTime - s.lastReportTime.Load()) > bsc.blipContextDb.BlipStatsReportingInterval {
+		s.lastReportTime.Store(currentTime)
+		s.report(bsc)
+
+	}
+}
+
+// report will update the stats on a database immediately
+func (s *blipSyncStats) report(bsc *BlipSyncContext) {
 	if bsc.blipContextDb == nil || bsc.blipContext == nil {
 		return
 	}
@@ -678,14 +689,14 @@ func (bsc *BlipSyncContext) reportStats() {
 	if dbStats == nil {
 		return
 	}
+	s.lock.Lock()
+	defer s.lock.Unlock()
 	totalBytesSent := bsc.blipContext.GetBytesSent()
-	fmt.Println("totalBytesSent", totalBytesSent)
-	newBytesSent := totalBytesSent - bsc.bytesSent.Swap(totalBytesSent)
+	newBytesSent := totalBytesSent - bsc.stats.bytesSent.Swap(totalBytesSent)
 	dbStats.BlipBytesSent.Add(int64(newBytesSent))
 
 	totalBytesReceived := bsc.blipContext.GetBytesReceived()
-	fmt.Println("totalBytesReceived", totalBytesSent)
-	newBytesReceived := totalBytesReceived - bsc.bytesReceived.Swap(totalBytesReceived)
+	newBytesReceived := totalBytesReceived - bsc.stats.bytesReceived.Swap(totalBytesReceived)
 	dbStats.BlipBytesReceived.Add(int64(newBytesReceived))
 
 }
