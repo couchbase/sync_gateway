@@ -50,7 +50,7 @@ func TestBlipSyncContextSetUseDeltas(t *testing.T) {
 				useDeltas:        tt.startingCtxDeltas,
 				sgCanUseDeltas:   tt.sgCanUseDeltas,
 				replicationStats: NewBlipSyncStats(),
-				loggingCtx:       base.TestCtx(t),
+				ctx:              base.TestCtx(t),
 			}
 
 			ctx.setUseDeltas(tt.clientCanUseDeltas)
@@ -90,7 +90,7 @@ func BenchmarkBlipSyncContextSetUseDeltas(b *testing.B) {
 			ctx := &BlipSyncContext{
 				blipContextDb:    &Database{},
 				replicationStats: NewBlipSyncStats(),
-				loggingCtx:       base.TestCtx(b),
+				ctx:              base.TestCtx(b),
 			}
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {

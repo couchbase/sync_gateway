@@ -28,7 +28,7 @@ func (bh *blipHandler) handleGetRev(rq *blip.Message) error {
 	docID := rq.Properties[GetRevMessageId]
 	ifNotRev := rq.Properties[GetRevIfNotRev]
 
-	rev, err := bh.collection.GetRev(bh.loggingCtx, docID, "", false, nil)
+	rev, err := bh.collection.GetRev(bh.ctx, docID, "", false, nil)
 	if err != nil {
 		status, reason := base.ErrorAsHTTPStatus(err)
 		return &base.HTTPError{Status: status, Message: reason}
@@ -98,7 +98,7 @@ func (bh *blipHandler) handleFunction(rq *blip.Message) error {
 	}
 
 	bh.logEndpointEntry(rq.Profile(), fmt.Sprintf("name: %s", name))
-	return WithTimeout(bh.loggingCtx, bh.db.UserFunctionTimeout, func(ctx context.Context) error {
+	return WithTimeout(bh.ctx, bh.db.UserFunctionTimeout, func(ctx context.Context) error {
 		// Call the function:
 		fn, err := bh.db.GetUserFunction(name, requestParams, true, ctx)
 		if err != nil {
@@ -169,7 +169,7 @@ func (bh *blipHandler) handleGraphQL(rq *blip.Message) error {
 	}
 
 	bh.logEndpointEntry(rq.Profile(), fmt.Sprintf("query: %s", query))
-	return WithTimeout(bh.loggingCtx, bh.db.UserFunctionTimeout, func(ctx context.Context) error {
+	return WithTimeout(bh.ctx, bh.db.UserFunctionTimeout, func(ctx context.Context) error {
 		result, err := bh.db.UserGraphQLQuery(query, operationName, variables, true, ctx)
 		if err != nil {
 			return err
