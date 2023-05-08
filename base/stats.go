@@ -430,6 +430,8 @@ type CollectionStats struct {
 }
 
 type DatabaseStats struct {
+	// Number
+	BlipBytesTransferred *SgwIntStat `json:"blip_bytes_transferred"`
 	// The compaction_attachment_start_time.
 	CompactionAttachmentStartTime *SgwIntStat `json:"compaction_attachment_start_time"`
 	// The compaction_tombstone_start_time.
@@ -1284,6 +1286,10 @@ func (d *DbStats) initDatabaseStats() error {
 	labelKeys := []string{DatabaseLabelKey}
 	labelVals := []string{d.dbName}
 
+	resUtil.BlipBytesTransferred, err = NewIntStat(SubsystemDatabaseKey, "blip_bytes_transferred", labelKeys, labelVals, prometheus.CounterValue, 0)
+	if err != nil {
+		return err
+	}
 	resUtil.CompactionAttachmentStartTime, err = NewIntStat(SubsystemDatabaseKey, "compaction_attachment_start_time", labelKeys, labelVals, prometheus.GaugeValue, 0)
 	if err != nil {
 		return err
@@ -1421,6 +1427,7 @@ func (d *DbStats) initDatabaseStats() error {
 }
 
 func (d *DbStats) unregisterDatabaseStats() {
+	prometheus.Unregister(d.DatabaseStats.BlipBytesTransferred)
 	prometheus.Unregister(d.DatabaseStats.CompactionAttachmentStartTime)
 	prometheus.Unregister(d.DatabaseStats.CompactionTombstoneStartTime)
 	prometheus.Unregister(d.DatabaseStats.ConflictWriteCount)

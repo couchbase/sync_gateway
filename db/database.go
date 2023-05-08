@@ -80,6 +80,8 @@ const (
 // completion of all background tasks and background managers before the server is stopped.
 const BGTCompletionMaxWait = 30 * time.Second
 
+const defaultBlipStatsReportingInterval = 30 * time.Second
+
 // Basic description of a database. Shared between all Database objects on the same database.
 // This object is thread-safe so it can be shared between HTTP handlers.
 type DatabaseContext struct {
@@ -132,6 +134,7 @@ type DatabaseContext struct {
 	MetadataKeys                 *base.MetadataKeys             // Factory to generate metadata document keys
 	RequireResync                base.ScopeAndCollectionNames   // Collections requiring resync before database can go online
 	CORS                         *auth.CORSConfig               // CORS configuration
+	blipStatsReportingInterval   time.Duration                  // interval to report blip stats
 }
 
 type Scope struct {
@@ -409,17 +412,18 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 		return nil, err
 	}
 	dbContext := &DatabaseContext{
-		Name:                dbName,
-		UUID:                cbgt.NewUUID(),
-		MetadataStore:       metadataStore,
-		Bucket:              bucket,
-		StartTime:           time.Now(),
-		autoImport:          autoImport,
-		Options:             options,
-		DbStats:             dbStats,
-		CollectionByID:      make(map[uint32]*DatabaseCollection),
-		ServerUUID:          serverUUID,
-		UserFunctionTimeout: defaultUserFunctionTimeout,
+		Name:                       dbName,
+		UUID:                       cbgt.NewUUID(),
+		MetadataStore:              metadataStore,
+		Bucket:                     bucket,
+		StartTime:                  time.Now(),
+		autoImport:                 autoImport,
+		Options:                    options,
+		DbStats:                    dbStats,
+		CollectionByID:             make(map[uint32]*DatabaseCollection),
+		ServerUUID:                 serverUUID,
+		UserFunctionTimeout:        defaultUserFunctionTimeout,
+		blipStatsReportingInterval: defaultBlipStatsReportingInterval,
 	}
 
 	// Initialize metadata ID and keys

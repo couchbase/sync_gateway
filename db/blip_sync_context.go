@@ -35,9 +35,9 @@ var ErrClosedBLIPSender = errors.New("use of closed BLIP sender")
 
 func NewBlipSyncContext(ctx context.Context, bc *blip.Context, db *Database, contextID string, replicationStats *BlipSyncStats) *BlipSyncContext {
 	bsc := &BlipSyncContext{
+
 		blipContext:             bc,
 		blipContextDb:           db,
-		ctx:                     ctx,
 		terminator:              make(chan bool),
 		userChangeWaiter:        db.NewUserWaiter(),
 		sgCanUseDeltas:          db.DeltaSyncEnabled(),
@@ -45,6 +45,7 @@ func NewBlipSyncContext(ctx context.Context, bc *blip.Context, db *Database, con
 		inFlightChangesThrottle: make(chan struct{}, maxInFlightChangesBatches),
 		collections:             &blipCollections{},
 	}
+	bsc.ctx, bsc.cancelFunc = context.WithCancel(ctx)
 	if bsc.replicationStats == nil {
 		bsc.replicationStats = NewBlipSyncStats()
 	}
@@ -74,7 +75,7 @@ func NewBlipSyncContext(ctx context.Context, bc *blip.Context, db *Database, con
 			bsc.register(profile, handlerFn)
 		}
 	}
-
+	go bsc.statsReporter(db.blipStatsReportingInterval)
 	return bsc
 }
 
@@ -87,9 +88,10 @@ type BlipSyncContext struct {
 	dbUserLock                  sync.RWMutex // Must be held when refreshing the db user
 	allowedAttachments          map[string]AllowedAttachment
 	allowedAttachmentsLock      sync.Mutex
-	handlerSerialNumber         uint64            // Each handler within a context gets a unique serial number for logging
-	terminatorOnce              sync.Once         // Used to ensure the terminator channel below is only ever closed once.
-	terminator                  chan bool         // Closed during BlipSyncContext.close(). Ensures termination of async goroutines.
+	handlerSerialNumber         uint64    // Each handler within a context gets a unique serial number for logging
+	terminatorOnce              sync.Once // Used to ensure the terminator channel below is only ever closed once.
+	terminator                  chan bool // Closed during BlipSyncContext.close(). Ensures termination of async goroutines.
+	cancelFunc                  context.CancelFunc
 	useDeltas                   bool              // Whether deltas can be used for this connection - This should be set via setUseDeltas()
 	sgCanUseDeltas              bool              // Whether deltas can be used by Sync Gateway for this connection
 	userChangeWaiter            *ChangeWaiter     // Tracks whether the users/roles associated with the replication have changed
@@ -214,6 +216,8 @@ func (bsc *BlipSyncContext) Close() {
 
 			collection.changesCtxCancel()
 		}
+		bsc.reportStats()
+		bsc.cancelFunc()
 		close(bsc.terminator)
 	})
 }
@@ -654,4 +658,27 @@ func toHistory(revisions Revisions, knownRevs map[string]bool, maxHistory int) [
 		}
 	}
 	return history
+}
+
+func (bsc *BlipSyncContext) reportStats() {
+	if bsc.blipContextDb != nil && bsc.blipContext != nil {
+		dbStats := bsc.blipContextDb.DbStats.Database()
+		if dbStats != nil {
+			bytes := int64(bsc.blipContext.GetLastBytesTransferred())
+			fmt.Println("HERE", bytes)
+			dbStats.BlipBytesTransferred.Add(bytes)
+		}
+	}
+}
+
+func (bsc *BlipSyncContext) statsReporter(interval time.Duration) {
+	ticker := time.NewTicker(interval)
+	for {
+		select {
+		case <-bsc.ctx.Done():
+			return
+		case <-ticker.C:
+			bsc.reportStats()
+		}
+	}
 }
