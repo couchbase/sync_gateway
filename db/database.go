@@ -134,7 +134,7 @@ type DatabaseContext struct {
 	MetadataKeys                 *base.MetadataKeys             // Factory to generate metadata document keys
 	RequireResync                base.ScopeAndCollectionNames   // Collections requiring resync before database can go online
 	CORS                         *auth.CORSConfig               // CORS configuration
-	blipStatsReportingInterval   time.Duration                  // interval to report blip stats
+	BlipStatsReportingInterval   int64                          // interval to report blip stats in milliseconds
 }
 
 type Scope struct {
@@ -423,7 +423,7 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 		CollectionByID:             make(map[uint32]*DatabaseCollection),
 		ServerUUID:                 serverUUID,
 		UserFunctionTimeout:        defaultUserFunctionTimeout,
-		blipStatsReportingInterval: defaultBlipStatsReportingInterval,
+		BlipStatsReportingInterval: int64(defaultBlipStatsReportingInterval * time.Millisecond),
 	}
 
 	// Initialize metadata ID and keys

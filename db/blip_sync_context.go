@@ -19,6 +19,7 @@ import (
 	"runtime/debug"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/couchbase/go-blip"
@@ -36,6 +37,7 @@ var ErrClosedBLIPSender = errors.New("use of closed BLIP sender")
 func NewBlipSyncContext(ctx context.Context, bc *blip.Context, db *Database, contextID string, replicationStats *BlipSyncStats) *BlipSyncContext {
 	bsc := &BlipSyncContext{
 
+		ctx:                     ctx,
 		blipContext:             bc,
 		blipContextDb:           db,
 		terminator:              make(chan bool),
@@ -45,7 +47,6 @@ func NewBlipSyncContext(ctx context.Context, bc *blip.Context, db *Database, con
 		inFlightChangesThrottle: make(chan struct{}, maxInFlightChangesBatches),
 		collections:             &blipCollections{},
 	}
-	bsc.ctx, bsc.cancelFunc = context.WithCancel(ctx)
 	if bsc.replicationStats == nil {
 		bsc.replicationStats = NewBlipSyncStats()
 	}
@@ -75,7 +76,6 @@ func NewBlipSyncContext(ctx context.Context, bc *blip.Context, db *Database, con
 			bsc.register(profile, handlerFn)
 		}
 	}
-	go bsc.statsReporter(db.blipStatsReportingInterval)
 	return bsc
 }
 
@@ -88,10 +88,9 @@ type BlipSyncContext struct {
 	dbUserLock                  sync.RWMutex // Must be held when refreshing the db user
 	allowedAttachments          map[string]AllowedAttachment
 	allowedAttachmentsLock      sync.Mutex
-	handlerSerialNumber         uint64    // Each handler within a context gets a unique serial number for logging
-	terminatorOnce              sync.Once // Used to ensure the terminator channel below is only ever closed once.
-	terminator                  chan bool // Closed during BlipSyncContext.close(). Ensures termination of async goroutines.
-	cancelFunc                  context.CancelFunc
+	handlerSerialNumber         uint64            // Each handler within a context gets a unique serial number for logging
+	terminatorOnce              sync.Once         // Used to ensure the terminator channel below is only ever closed once.
+	terminator                  chan bool         // Closed during BlipSyncContext.close(). Ensures termination of async goroutines.
 	useDeltas                   bool              // Whether deltas can be used for this connection - This should be set via setUseDeltas()
 	sgCanUseDeltas              bool              // Whether deltas can be used by Sync Gateway for this connection
 	userChangeWaiter            *ChangeWaiter     // Tracks whether the users/roles associated with the replication have changed
@@ -117,6 +116,10 @@ type BlipSyncContext struct {
 	readOnly bool
 
 	collections *blipCollections // all collections handled by blipSyncContext, implicit or via GetCollections
+
+	bytesSent           atomic.Uint64 // Total bytes sent to client
+	bytesReceived       atomic.Uint64 // Total bytes received from client
+	lastStatsReportTime atomic.Int64  // last time reported by time.Time     // Last time blip stats were reported
 }
 
 // AllowedAttachment contains the metadata for handling allowed attachments
@@ -197,6 +200,14 @@ func (bsc *BlipSyncContext) register(profile string, handlerFn func(*blipHandler
 			respBody, _ := resp.Body()
 			base.TracefCtx(bsc.ctx, base.KeySyncMsg, "Recv Rsp %s: Body: '%s' Properties: %v", resp, base.UD(respBody), base.UD(resp.Properties))
 		}
+
+		// report stats if needed
+		currentTime := time.Now().UnixMilli()
+		if (currentTime - bsc.lastStatsReportTime.Load()) > bsc.blipContextDb.BlipStatsReportingInterval {
+			bsc.reportStats()
+			bsc.lastStatsReportTime.Store(currentTime)
+
+		}
 	}
 
 	bsc.blipContext.HandlerForProfile[profile] = handlerFnWrapper
@@ -217,7 +228,6 @@ func (bsc *BlipSyncContext) Close() {
 			collection.changesCtxCancel()
 		}
 		bsc.reportStats()
-		bsc.cancelFunc()
 		close(bsc.terminator)
 	})
 }
@@ -661,24 +671,21 @@ func toHistory(revisions Revisions, knownRevs map[string]bool, maxHistory int) [
 }
 
 func (bsc *BlipSyncContext) reportStats() {
-	if bsc.blipContextDb != nil && bsc.blipContext != nil {
-		dbStats := bsc.blipContextDb.DbStats.Database()
-		if dbStats != nil {
-			bytes := int64(bsc.blipContext.GetLastBytesTransferred())
-			fmt.Println("HERE", bytes)
-			dbStats.BlipBytesTransferred.Add(bytes)
-		}
+	if bsc.blipContextDb == nil || bsc.blipContext == nil {
+		return
 	}
-}
+	dbStats := bsc.blipContextDb.DbStats.Database()
+	if dbStats == nil {
+		return
+	}
+	totalBytesSent := bsc.blipContext.GetBytesSent()
+	fmt.Println("totalBytesSent", totalBytesSent)
+	newBytesSent := totalBytesSent - bsc.bytesSent.Swap(totalBytesSent)
+	dbStats.BlipBytesSent.Add(int64(newBytesSent))
 
-func (bsc *BlipSyncContext) statsReporter(interval time.Duration) {
-	ticker := time.NewTicker(interval)
-	for {
-		select {
-		case <-bsc.ctx.Done():
-			return
-		case <-ticker.C:
-			bsc.reportStats()
-		}
-	}
+	totalBytesReceived := bsc.blipContext.GetBytesReceived()
+	fmt.Println("totalBytesReceived", totalBytesSent)
+	newBytesReceived := totalBytesReceived - bsc.bytesReceived.Swap(totalBytesReceived)
+	dbStats.BlipBytesReceived.Add(int64(newBytesReceived))
+
 }
