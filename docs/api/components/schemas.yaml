@@ -1090,7 +1090,7 @@ CollectionConfig:
     sync:
       description: The Javascript function that newly created documents in this collection are ran through.
       type: string
-      example: 'function(doc){channel(doc.channels);}'
+      example: 'function(doc){channel("collection name");}'
     import_filter:
       description: |-
         This is the function that all imported documents in this collection are ran through in order to filter out what to import and what not to import. This allows you to control what is made available to Couchbase Mobile clients. If it is not set, then no documents are filtered when imported.
@@ -1165,7 +1165,9 @@ Database:
       description: The name of the database.
       type: string
     sync:
-      description: The Javascript function that newly created documents are ran through for the _default scope and collection.
+      description: The Javascript function that newly created documents are ran through for the default scope and collection.
+
+        If `scopes` parameter is set, this is ignored.
       type: string
       default: 'function(doc){channel(doc.channels);}'
     users:
@@ -1203,9 +1205,11 @@ Database:
       default: 16
     import_filter:
       description: |-
-        This is the function that all imported documents in the _default scope and collection are ran through in order to filter out what to import and what not to import. This allows you to control what is made available to Couchbase Mobile clients. If it is not set, then no documents are filtered when imported.
+        This is the function that all imported documents in the default scope and collection are ran through in order to filter out what to import and what not to import. This allows you to control what is made available to Couchbase Mobile clients. If it is not set, then no documents are filtered when imported.
 
         `import_docs` must be true to make this field applicable.
+
+        If `scopes` parameter is set, this is ignored.
       type: string
       example: 'function(doc) { if (doc.type != ''mobile'') { return false; } return true; }'
     import_backup_old_rev:
