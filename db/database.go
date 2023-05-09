@@ -1065,16 +1065,21 @@ func (context *DatabaseContext) Authenticator(ctx context.Context) *auth.Authent
 	if context.Options.UnsupportedOptions != nil && context.Options.UnsupportedOptions.WarningThresholds != nil {
 		channelsWarningThreshold = context.Options.UnsupportedOptions.WarningThresholds.ChannelsPerUser
 	}
+	var channelServerlessThreshold uint32
+	if context.IsServerless() {
+		channelServerlessThreshold = base.ServerlessChannelLimit
+	}
 
 	// Authenticators are lightweight & stateless, so it's OK to return a new one every time
 	authenticator := auth.NewAuthenticator(context.MetadataStore, context, auth.AuthenticatorOptions{
-		ClientPartitionWindow:    context.Options.ClientPartitionWindow,
-		ChannelsWarningThreshold: channelsWarningThreshold,
-		SessionCookieName:        sessionCookieName,
-		BcryptCost:               context.Options.BcryptCost,
-		LogCtx:                   ctx,
-		Collections:              context.CollectionNames,
-		MetaKeys:                 context.MetadataKeys,
+		ClientPartitionWindow:      context.Options.ClientPartitionWindow,
+		ChannelsWarningThreshold:   channelsWarningThreshold,
+		ServerlessChannelThreshold: channelServerlessThreshold,
+		SessionCookieName:          sessionCookieName,
+		BcryptCost:                 context.Options.BcryptCost,
+		LogCtx:                     ctx,
+		Collections:                context.CollectionNames,
+		MetaKeys:                   context.MetadataKeys,
 	})
 
 	return authenticator

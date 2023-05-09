@@ -67,6 +67,9 @@ var (
 
 	// ErrConfigRegistryReloadRequired is returned when a db config fetch requires a registry reload based on version mismatch (config is newer)
 	ErrConfigRegistryReloadRequired = &sgError{"Config registry reload required"}
+
+	// ErrMaximumChannelsForUserExceeded is returned when running in serverless mode and the user has more than 500 channels granted to them
+	ErrMaximumChannelsForUserExceeded = &sgError{fmt.Sprintf("User has exceeded maximum of %d channels", ServerlessChannelLimit)}
 )
 
 func (e *sgError) Error() string {
@@ -115,6 +118,8 @@ func ErrorAsHTTPStatus(err error) (int, string) {
 		return http.StatusRequestEntityTooLarge, "Document too large!"
 	case ErrViewTimeoutError:
 		return http.StatusServiceUnavailable, unwrappedErr.Error()
+	case ErrMaximumChannelsForUserExceeded:
+		return http.StatusInternalServerError, "Maximum number of channels exceeded for this user"
 	}
 
 	// gocb V2 errors
