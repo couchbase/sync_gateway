@@ -38,6 +38,12 @@ const (
 	// Above this amount, the BLIP engine stops reading from the WebSocket, applying back-pressure
 	// to the client and keeping memory usage down.
 	BlipMaxIncomingBytesBeingDispatched = 100000 // bytes
+
+	// Max number of outgoing revisions in memory being sent
+	BlipMaxRevsSending = 50
+
+	// Max total size (bytes) of outgoing revisions in memory being sent
+	BlipMaxRevsLengthSending = 100 * 1000
 )
 
 var ErrClosedBLIPSender = errors.New("use of closed BLIP sender")
@@ -59,6 +65,7 @@ func NewBlipSyncContext(ctx context.Context, bc *blip.Context, db *Database, con
 		bsc.replicationStats = NewBlipSyncStats()
 	}
 	bsc.stats.lastReportTime.Store(time.Now().UnixMilli())
+	bsc.revSender = newBlipRevSender(bsc, BlipMaxRevsSending, BlipMaxRevsLengthSending)
 
 	if u := db.User(); u != nil {
 		bsc.userName = u.Name()
@@ -130,7 +137,7 @@ type BlipSyncContext struct {
 	readOnly bool
 
 	collections *blipCollections // all collections handled by blipSyncContext, implicit or via GetCollections
-
+	revSender         *blipRevSender // schedules sending 'rev' messages
 	stats blipSyncStats // internal structure to store stats
 }
 
@@ -290,7 +297,7 @@ func (bsc *BlipSyncContext) _copyContextDatabase() *Database {
 }
 
 // Handles the response to a pushed "changes" message, i.e. the list of revisions the client wants
-func (bsc *BlipSyncContext) handleChangesResponse(sender *blip.Sender, response *blip.Message, changeArray [][]interface{}, requestSent time.Time, handleChangesResponseDbCollection *DatabaseCollectionWithUser, collectionIdx *int) error {
+func (bsc *BlipSyncContext) handleChangesResponse(sender *blip.Sender, response *blip.Message, changeArray [][]interface{}, requestSent time.Time, collectionIdx *int) error {
 	defer func() {
 		if panicked := recover(); panicked != nil {
 			bsc.replicationStats.NumHandlersPanicked.Add(1)
@@ -334,13 +341,9 @@ func (bsc *BlipSyncContext) handleChangesResponse(sender *blip.Sender, response 
 		base.TracefCtx(bsc.loggingCtx, base.KeySync, "Client didn't specify 'deltas' property in 'changes' response. useDeltas: %v", bsc.useDeltas)
 	}
 
-	// Maps docID --> a map containing true for revIDs known to the client
-	knownRevsByDoc := make(map[string]map[string]bool, len(answer))
-
 	// `answer` is an array where each item is either an array of known rev IDs, or a non-array
 	// placeholder (probably 0). The item numbers match those of changeArray.
-	var revSendTimeLatency int64
-	var revSendCount int64
+	revsToSend := make([]*revToSend, 0, len(answer))
 	sentSeqs := make([]SequenceID, 0)
 	alreadyKnownSeqs := make([]SequenceID, 0)
 
@@ -353,49 +356,23 @@ func (bsc *BlipSyncContext) handleChangesResponse(sender *blip.Sender, response 
 		seq := changeArray[i][0].(SequenceID)
 		docID := changeArray[i][1].(string)
 		revID := changeArray[i][2].(string)
-
 		if knownRevsArray, ok := knownRevsArrayInterface.([]interface{}); ok {
-			deltaSrcRevID := ""
-			knownRevs := knownRevsByDoc[docID]
-			if knownRevs == nil {
-				knownRevs = make(map[string]bool, len(knownRevsArray))
-				knownRevsByDoc[docID] = knownRevs
-			}
-
-			// The first element of the knownRevsArray returned from CBL is the parent revision to use as deltaSrc
-			if bsc.useDeltas && len(knownRevsArray) > 0 {
-				if revID, ok := knownRevsArray[0].(string); ok {
-					deltaSrcRevID = revID
-				}
-			}
-
-			for _, rev := range knownRevsArray {
-				if revID, ok := rev.(string); ok {
-					knownRevs[revID] = true
-				} else {
-					base.ErrorfCtx(bsc.loggingCtx, "Invalid response to 'changes' message")
-					return nil
-				}
-			}
-
-			var err error
-			if deltaSrcRevID != "" {
-				err = bsc.sendRevAsDelta(sender, docID, revID, deltaSrcRevID, seq, knownRevs, maxHistory, handleChangesResponseDbCollection, collectionIdx)
-			} else {
-				err = bsc.sendRevision(sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseDbCollection, collectionIdx)
-			}
-			if err != nil {
-				return err
-			}
-
-			revSendTimeLatency += time.Since(changesResponseReceived).Nanoseconds()
-			revSendCount++
-
+			revsToSend = append(revsToSend, &revToSend{
+				seq:           seq,
+				docID:         docID,
+				revID:         revID,
+				knownRevs:     knownRevsArray,
+				maxHistory:    maxHistory,
+				useDelta:      bsc.useDeltas,
+				collectionIdx: collectionIdx,
+				sender:        sender,
+				timestamp:     changesResponseReceived,
+			})
 			if collectionCtx.sgr2PushAddExpectedSeqsCallback != nil {
 				sentSeqs = append(sentSeqs, seq)
 			}
 		} else {
-			base.DebugfCtx(bsc.loggingCtx, base.KeySync, "Peer didn't want revision %s / %s (seq:%v)", base.UD(docID), revID, seq)
+			base.DebugfCtx(bsc.loggingCtx, base.KeySync, "Peer didn't want revision %s / %s (rev.seq:%v)", base.UD(docID), revID, seq)
 			if collectionCtx.sgr2PushAlreadyKnownSeqsCallback != nil {
 				alreadyKnownSeqs = append(alreadyKnownSeqs, seq)
 			}
@@ -406,27 +383,29 @@ func (bsc *BlipSyncContext) handleChangesResponse(sender *blip.Sender, response 
 		collectionCtx.sgr2PushAlreadyKnownSeqsCallback(alreadyKnownSeqs...)
 	}
 
-	if revSendCount > 0 {
+	if len(revsToSend) > 0 {
+		bsc.revSender.addRevs(revsToSend)
 		if collectionCtx.sgr2PushAddExpectedSeqsCallback != nil {
 			collectionCtx.sgr2PushAddExpectedSeqsCallback(sentSeqs...)
 		}
-
-		bsc.replicationStats.HandleChangesSendRevCount.Add(revSendCount)
-		bsc.replicationStats.HandleChangesSendRevLatency.Add(revSendTimeLatency)
 		bsc.replicationStats.HandleChangesSendRevTime.Add(time.Since(changesResponseReceived).Nanoseconds())
 	}
 
 	return nil
 }
 
-// Pushes a revision body to the client
-func (bsc *BlipSyncContext) sendRevisionWithProperties(sender *blip.Sender, docID string, revID string, collectionIdx *int,
-	bodyBytes []byte, attMeta []AttachmentStorageMeta, properties blip.Properties, seq SequenceID, resendFullRevisionFunc func() error) error {
+// Pushes a revision body to the client. Returns length of body in bytes.
+func (bsc *BlipSyncContext) sendRevisionWithProperties(r *revToSend,
+	bodyBytes []byte, attMeta []AttachmentStorageMeta, properties blip.Properties, resendFullRevisionFunc func() error) error {
+
+	docID := r.docID
+	revID := r.revID
+	seq := r.seq
 
 	outrq := NewRevMessage()
 	outrq.SetID(docID)
 	outrq.SetRev(revID)
-	outrq.SetCollection(collectionIdx)
+	outrq.SetCollection(r.collectionIdx)
 	if bsc.sendRevNoConflicts {
 		outrq.SetNoConflicts(true)
 	}
@@ -435,7 +414,7 @@ func (bsc *BlipSyncContext) sendRevisionWithProperties(sender *blip.Sender, docI
 	outrq.SetProperties(properties)
 
 	outrq.SetJSONBodyAsBytes(bodyBytes)
-
+	r.messageLen = len(bodyBytes)
 	// Update read stats
 	if messageBody, err := outrq.Body(); err == nil {
 		bsc.replicationStats.SendRevBytes.Add(int64(len(messageBody)))
@@ -443,7 +422,7 @@ func (bsc *BlipSyncContext) sendRevisionWithProperties(sender *blip.Sender, docI
 
 	base.TracefCtx(bsc.loggingCtx, base.KeySync, "Sending revision %s/%s, body:%s, properties: %v, attDigests: %v", base.UD(docID), revID, base.UD(string(bodyBytes)), base.UD(properties), attMeta)
 
-	collectionCtx, err := bsc.collections.get(collectionIdx)
+	collectionCtx, err := bsc.collections.get(r.collectionIdx)
 	if err != nil {
 		return err
 	}
@@ -459,8 +438,10 @@ func (bsc *BlipSyncContext) sendRevisionWithProperties(sender *blip.Sender, docI
 		outrq.SetNoReply(true)
 	}
 
+	outrq.OnSent(func() { bsc.revSender.completedRev(r) })
+
 	// send the rev
-	if !bsc.sendBLIPMessage(sender, outrq.Message) {
+	if !bsc.sendBLIPMessage(r.sender, outrq.Message) {
 		bsc.removeAllowedAttachments(docID, attMeta, activeSubprotocol)
 		return ErrClosedBLIPSender
 	}
@@ -569,14 +550,14 @@ func (bsc *BlipSyncContext) setUseDeltas(clientCanUseDeltas bool) {
 	}
 }
 
-func (bsc *BlipSyncContext) sendDelta(sender *blip.Sender, docID string, collectionIdx *int, deltaSrcRevID string, revDelta *RevisionDelta, seq SequenceID, resendFullRevisionFunc func() error) error {
+func (bsc *BlipSyncContext) sendDelta(r *revToSend, deltaSrcRevID string, revDelta *RevisionDelta, resendFullRevisionFunc func() error) error {
 
-	properties := blipRevMessageProperties(revDelta.RevisionHistory, revDelta.ToDeleted, seq)
+	properties := blipRevMessageProperties(revDelta.RevisionHistory, revDelta.ToDeleted, r.seq)
 	properties[RevMessageDeltaSrc] = deltaSrcRevID
 
-	base.DebugfCtx(bsc.loggingCtx, base.KeySync, "Sending rev %q %s as delta. DeltaSrc:%s", base.UD(docID), revDelta.ToRevID, deltaSrcRevID)
-	return bsc.sendRevisionWithProperties(sender, docID, revDelta.ToRevID, collectionIdx, revDelta.DeltaBytes, revDelta.AttachmentStorageMeta,
-		properties, seq, resendFullRevisionFunc)
+	base.DebugfCtx(bsc.loggingCtx, base.KeySync, "Sending rev %q %s as delta. DeltaSrc:%s", base.UD(r.docID), revDelta.ToRevID, deltaSrcRevID)
+	return bsc.sendRevisionWithProperties(r, revDelta.DeltaBytes, revDelta.AttachmentStorageMeta,
+		properties, resendFullRevisionFunc)
 }
 
 // sendBLIPMessage is a simple wrapper around all sent BLIP messages
@@ -589,17 +570,17 @@ func (bsc *BlipSyncContext) sendBLIPMessage(sender *blip.Sender, msg *blip.Messa
 	return ok
 }
 
-func (bsc *BlipSyncContext) sendNoRev(sender *blip.Sender, docID, revID string, collectionIdx *int, seq SequenceID, err error) error {
-	base.DebugfCtx(bsc.loggingCtx, base.KeySync, "Sending norev %q %s due to unavailable revision: %v", base.UD(docID), revID, err)
+func (bsc *BlipSyncContext) sendNoRev(r *revToSend, err error) error {
+	base.DebugfCtx(bsc.loggingCtx, base.KeySync, "Sending norev %q %s due to unavailable revision: %v", base.UD(r.docID), r.revID, err)
 
 	noRevRq := NewNoRevMessage()
-	noRevRq.SetId(docID)
-	noRevRq.SetRev(revID)
-	noRevRq.SetCollection(collectionIdx)
+	noRevRq.SetId(r.docID)
+	noRevRq.SetRev(r.revID)
+	noRevRq.SetCollection(r.collectionIdx)
 	if bsc.blipContext.ActiveSubprotocol() == BlipCBMobileReplicationV2 && bsc.clientType == BLIPClientTypeSGR2 {
-		noRevRq.SetSeq(seq)
+		noRevRq.SetSeq(r.seq)
 	} else {
-		noRevRq.SetSequence(seq)
+		noRevRq.SetSequence(r.seq)
 	}
 
 	status, reason := base.ErrorAsHTTPStatus(err)
@@ -609,32 +590,34 @@ func (bsc *BlipSyncContext) sendNoRev(sender *blip.Sender, docID, revID string, 
 	noRevRq.SetReason(reason)
 
 	noRevRq.SetNoReply(true)
-	if !bsc.sendBLIPMessage(sender, noRevRq.Message) {
+	noRevRq.OnSent(func() { bsc.revSender.completedRev(r) })
+	if !bsc.sendBLIPMessage(r.sender, noRevRq.Message) {
 		return ErrClosedBLIPSender
 	}
 
-	collectionCtx, err := bsc.collections.get(collectionIdx)
+	collectionCtx, err := bsc.collections.get(r.collectionIdx)
 	if err != nil {
 		return err
 	}
 
 	if collectionCtx.sgr2PushProcessedSeqCallback != nil {
-		collectionCtx.sgr2PushProcessedSeqCallback(seq)
+		collectionCtx.sgr2PushProcessedSeqCallback(r.seq)
 	}
 
 	return nil
 }
 
 // Pushes a revision body to the client
-func (bsc *BlipSyncContext) sendRevision(sender *blip.Sender, docID, revID string, seq SequenceID, knownRevs map[string]bool, maxHistory int, handleChangesResponseCollection *DatabaseCollectionWithUser, collectionIdx *int) error {
-	rev, err := handleChangesResponseCollection.GetRev(bsc.loggingCtx, docID, revID, true, nil)
-	if base.IsDocNotFoundError(err) {
-		return bsc.sendNoRev(sender, docID, revID, collectionIdx, seq, err)
-	} else if err != nil {
-		return fmt.Errorf("failed to GetRev for doc %s with rev %s: %w", base.UD(docID).Redact(), base.MD(revID).Redact(), err)
+func (bsc *BlipSyncContext) sendRevision(collection *DatabaseCollectionWithUser, r *revToSend, knownRevs map[string]bool) error {
+	rev, err := collection.GetRev(bsc.loggingCtx, r.docID, r.revID, true, nil)
+	if err != nil {
+		if !base.IsDocNotFoundError(err) {
+			err = fmt.Errorf("failed to GetRev for doc %s with rev %s: %w", base.UD(r.docID).Redact(), base.MD(r.revID).Redact(), err)
+		}
+		return err
 	}
 
-	base.TracefCtx(bsc.loggingCtx, base.KeySync, "sendRevision, rev attachments for %s/%s are %v", base.UD(docID), revID, base.UD(rev.Attachments))
+	base.TracefCtx(bsc.loggingCtx, base.KeySync, "sendRevision, rev attachments for %s/%s are %v", base.UD(r.docID), r.revID, base.UD(rev.Attachments))
 	attachmentStorageMeta := ToAttachmentStorageMeta(rev.Attachments)
 	var bodyBytes []byte
 	if base.IsEnterpriseEdition() {
@@ -651,7 +634,7 @@ func (bsc *BlipSyncContext) sendRevision(sender *blip.Sender, docID, revID strin
 	} else {
 		body, err := rev.Body()
 		if err != nil {
-			return bsc.sendNoRev(sender, docID, revID, collectionIdx, seq, err)
+			return err
 		}
 
 		// Still need to stamp _attachments into BLIP messages
@@ -662,16 +645,16 @@ func (bsc *BlipSyncContext) sendRevision(sender *blip.Sender, docID, revID strin
 
 		bodyBytes, err = base.JSONMarshalCanonical(body)
 		if err != nil {
-			return bsc.sendNoRev(sender, docID, revID, collectionIdx, seq, err)
+			return err
 		}
 	}
 
-	history := toHistory(rev.History, knownRevs, maxHistory)
-	properties := blipRevMessageProperties(history, rev.Deleted, seq)
+	history := toHistory(rev.History, knownRevs, r.maxHistory)
+	properties := blipRevMessageProperties(history, rev.Deleted, r.seq)
 	if base.LogDebugEnabled(base.KeySync) {
-		base.DebugfCtx(bsc.loggingCtx, base.KeySync, "Sending rev %q %s based on %d known, digests: %v", base.UD(docID), revID, len(knownRevs), digests(attachmentStorageMeta))
+		base.DebugfCtx(bsc.loggingCtx, base.KeySync, "Sending rev %q %s based on %d known, digests: %v", base.UD(r.docID), r.revID, len(r.knownRevs), digests(attachmentStorageMeta))
 	}
-	return bsc.sendRevisionWithProperties(sender, docID, revID, collectionIdx, bodyBytes, attachmentStorageMeta, properties, seq, nil)
+	return bsc.sendRevisionWithProperties(r, bodyBytes, attachmentStorageMeta, properties, nil)
 }
 
 // digests returns a slice of digest extracted from the given attachment meta.
