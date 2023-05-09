@@ -41,6 +41,9 @@ const kStatsReportInterval = time.Hour
 const kDefaultSlowQueryWarningThreshold = 500 // ms
 const KDefaultNumShards = 16
 
+// defaultBlipStatsReportingInterval is the default interval when to report blip stats, at the end of a message handler.
+const defaultBlipStatsReportingInterval = 30 * time.Second
+
 var errCollectionsUnsupported = base.HTTPErrorf(http.StatusBadRequest, "Named collections specified in database config, but not supported by connected Couchbase Server.")
 
 var ErrSuspendingDisallowed = errors.New("database does not allow suspending")
@@ -704,6 +707,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		contextOptions.MetadataID = config.MetadataID
 	}
 
+	contextOptions.BlipStatsReportingInterval = defaultBlipStatsReportingInterval.Milliseconds()
 	// Create the DB Context
 	dbcontext, err := db.NewDatabaseContext(ctx, dbName, bucket, autoImport, contextOptions)
 	if err != nil {

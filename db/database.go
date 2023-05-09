@@ -80,8 +80,6 @@ const (
 // completion of all background tasks and background managers before the server is stopped.
 const BGTCompletionMaxWait = 30 * time.Second
 
-const defaultBlipStatsReportingInterval = 30 * time.Second
-
 // Basic description of a database. Shared between all Database objects on the same database.
 // This object is thread-safe so it can be shared between HTTP handlers.
 type DatabaseContext struct {
@@ -134,7 +132,6 @@ type DatabaseContext struct {
 	MetadataKeys                 *base.MetadataKeys             // Factory to generate metadata document keys
 	RequireResync                base.ScopeAndCollectionNames   // Collections requiring resync before database can go online
 	CORS                         *auth.CORSConfig               // CORS configuration
-	BlipStatsReportingInterval   int64                          // interval to report blip stats in milliseconds
 }
 
 type Scope struct {
@@ -177,6 +174,8 @@ type DatabaseContextOptions struct {
 	skipRegisterImportPIndex      bool           // if set, skips the global gocb PIndex registration
 	MetadataStore                 base.DataStore // If set, use this location/connection for SG metadata storage - if not set, metadata is stored using the same location/connection as the bucket used for data storage.
 	MetadataID                    string         // MetadataID used for metadata storage
+
+	BlipStatsReportingInterval int64 // interval to report blip stats in milliseconds
 }
 
 type ScopesOptions map[string]ScopeOptions
@@ -412,18 +411,17 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 		return nil, err
 	}
 	dbContext := &DatabaseContext{
-		Name:                       dbName,
-		UUID:                       cbgt.NewUUID(),
-		MetadataStore:              metadataStore,
-		Bucket:                     bucket,
-		StartTime:                  time.Now(),
-		autoImport:                 autoImport,
-		Options:                    options,
-		DbStats:                    dbStats,
-		CollectionByID:             make(map[uint32]*DatabaseCollection),
-		ServerUUID:                 serverUUID,
-		UserFunctionTimeout:        defaultUserFunctionTimeout,
-		BlipStatsReportingInterval: int64(defaultBlipStatsReportingInterval * time.Millisecond),
+		Name:                dbName,
+		UUID:                cbgt.NewUUID(),
+		MetadataStore:       metadataStore,
+		Bucket:              bucket,
+		StartTime:           time.Now(),
+		autoImport:          autoImport,
+		Options:             options,
+		DbStats:             dbStats,
+		CollectionByID:      make(map[uint32]*DatabaseCollection),
+		ServerUUID:          serverUUID,
+		UserFunctionTimeout: defaultUserFunctionTimeout,
 	}
 
 	// Initialize metadata ID and keys

@@ -49,20 +49,20 @@ func TestBlipStatsBasic(t *testing.T) {
 	// make sure requests have not incremented stats.
 	/// Note: there is a blip call in NewBlipTester to initialize collections
 	dbStats := bt.restTester.GetDatabase().DbStats.Database()
-	require.Equal(t, int64(0), dbStats.BlipBytesReceived.Value())
-	require.Equal(t, int64(0), dbStats.BlipBytesSent.Value())
+	require.Equal(t, int64(0), dbStats.ReplicationBytesReceived.Value())
+	require.Equal(t, int64(0), dbStats.ReplicationBytesSent.Value())
 
 	// send a request, close BlipSyncContext and make sure stats are incremented
 	sendGetCheckpointRequest(bt)
 
 	// requests shouldn't be implemented as part of handler
-	require.Equal(t, int64(0), dbStats.BlipBytesReceived.Value())
-	require.Equal(t, int64(0), dbStats.BlipBytesSent.Value())
+	require.Equal(t, int64(0), dbStats.ReplicationBytesReceived.Value())
+	require.Equal(t, int64(0), dbStats.ReplicationBytesSent.Value())
 
 	bt.sender.Close()
 
-	waitForStatGreaterThan(t, dbStats.BlipBytesReceived.Value, 1)
-	waitForStatGreaterThan(t, dbStats.BlipBytesSent.Value, 1)
+	waitForStatGreaterThan(t, dbStats.ReplicationBytesReceived.Value, 1)
+	waitForStatGreaterThan(t, dbStats.ReplicationBytesSent.Value, 1)
 
 }
 
@@ -80,17 +80,17 @@ func TestBlipStatsFastReport(t *testing.T) {
 	}
 
 	dbStats := bt.restTester.GetDatabase().DbStats.Database()
-	require.Equal(t, int64(0), dbStats.BlipBytesReceived.Value())
-	require.Equal(t, int64(0), dbStats.BlipBytesSent.Value())
+	require.Equal(t, int64(0), dbStats.ReplicationBytesReceived.Value())
+	require.Equal(t, int64(0), dbStats.ReplicationBytesSent.Value())
 
 	sendRequest()
 
-	require.Equal(t, int64(0), dbStats.BlipBytesReceived.Value())
-	require.Equal(t, int64(0), dbStats.BlipBytesSent.Value())
+	require.Equal(t, int64(0), dbStats.ReplicationBytesReceived.Value())
+	require.Equal(t, int64(0), dbStats.ReplicationBytesSent.Value())
 
 	// set reporting interval to update stats immediately
-	bt.restTester.GetDatabase().BlipStatsReportingInterval = 0
+	bt.restTester.GetDatabase().Options.BlipStatsReportingInterval = 0
 	sendRequest()
-	require.Less(t, int64(0), dbStats.BlipBytesReceived.Value())
-	require.Less(t, int64(0), dbStats.BlipBytesSent.Value())
+	require.Less(t, int64(0), dbStats.ReplicationBytesReceived.Value())
+	require.Less(t, int64(0), dbStats.ReplicationBytesSent.Value())
 }
