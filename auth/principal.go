@@ -9,6 +9,7 @@
 package auth
 
 import (
+	"sync"
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -124,6 +125,8 @@ type User interface {
 	RoleHistory() TimedSetHistory
 
 	InitializeRoles()
+
+	GetWarnChanSync() *sync.Once
 
 	revokedChannels(since uint64, lowSeq uint64, triggeredBy uint64) RevokedChannels
 

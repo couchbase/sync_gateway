@@ -76,6 +76,9 @@ var (
 	// ErrConfigRegistryReloadRequired is returned when a db config fetch requires a registry reload based on version mismatch (config is newer)
 	ErrConfigRegistryReloadRequired = &sgError{"Config registry reload required"}
 
+	// ErrMaximumChannelsForUserExceeded is returned when running in serverless mode and the user has more than 500 channels granted to them
+	ErrMaximumChannelsForUserExceeded = &sgError{fmt.Sprintf("User has exceeded maximum of %d channels", ServerlessChannelLimit)}
+
 	// ErrReplicationLimitExceeded is returned when then replication connection threshold is exceeded
 	ErrReplicationLimitExceeded = &sgError{"Replication limit exceeded. Try again later."}
 )
