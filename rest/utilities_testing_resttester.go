@@ -167,17 +167,17 @@ func (rt *RestTester) WaitForAssignedReplications(count int) {
 	require.NoError(rt.TB, rt.WaitForCondition(successFunc))
 }
 
-func (rt *RestTester) GetActiveReplicatorCount() uint {
+func (rt *RestTester) GetActiveReplicatorCount() int {
 	rt.ServerContext().ActiveReplicationsCounter.lock.Lock()
 	defer rt.ServerContext().ActiveReplicationsCounter.lock.Unlock()
 	return rt.ServerContext().ActiveReplicationsCounter.activeReplicatorCount
 }
 
 func (rt *RestTester) WaitForActiveReplicatorCount(expCount int) {
-	var count uint
+	var count int
 	successFunc := func() bool {
 		count = rt.GetActiveReplicatorCount()
-		return count == uint(expCount)
+		return count == expCount
 	}
 	require.NoError(rt.TB, rt.WaitForCondition(successFunc), "Mismatch in active replicator count, expected count %d actual %d", expCount, count)
 }

@@ -74,8 +74,8 @@ type ServerContext struct {
 }
 
 type ActiveReplicationsCounter struct {
-	activeReplicatorCount uint         // The count of concurrent active replicators
-	activeReplicatorLimit uint         // The limit on number of active replicators allowed
+	activeReplicatorCount int          // The count of concurrent active replicators
+	activeReplicatorLimit int          // The limit on number of active replicators allowed
 	lock                  sync.RWMutex // Lock for managing access to shared memory location
 }
 
