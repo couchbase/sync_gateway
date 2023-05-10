@@ -1,0 +1,38 @@
+{
+  "name": "db",
+  "bucket": "bucket",
+  "scopes" : {
+    "_default": {
+      "collections": {
+        "_default" : {
+            "sync": `
+                function(doc, oldDoc, meta) {
+                    if (doc.collection != "default") {
+                        throw({forbidden : "Rejected document"})
+                    }
+                    channel("legacy")
+                }
+            `,
+            "import_filter": `
+              function(doc) {
+                return doc.type == "mobile"
+              }
+            `
+        },
+        "collection1" : {
+          "sync": `
+            function(doc, oldDoc, meta) {
+              channel("collection1")
+            }
+          `,
+          "import_filter": `
+              function(doc) {
+                return doc.type == "mobile"
+              }
+          `
+        }
+      }
+    }
+  },
+  "num_index_replicas": 0
+}
