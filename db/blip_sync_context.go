@@ -693,7 +693,7 @@ func (bsc *BlipSyncContext) reportStats(updateImmediately bool) {
 	defer bsc.stats.lock.Unlock()
 
 	// check a second time after acquiring the lock to see stats reporting was slow enough that a waiting mutex doesn't need to run
-	if !updateImmediately && !bsc.timeElapsedForStatsReporting(currentTime) {
+	if !updateImmediately && !bsc.timeElapsedForStatsReporting(time.Now.UnixMilli()) {
 		return
 	}
 
