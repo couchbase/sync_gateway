@@ -15,7 +15,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math"
 	"net/http"
 	"runtime/debug"
 	"strconv"
@@ -208,7 +207,7 @@ func (bsc *BlipSyncContext) register(profile string, handlerFn func(*blipHandler
 			base.TracefCtx(bsc.loggingCtx, base.KeySyncMsg, "Recv Rsp %s: Body: '%s' Properties: %v", resp, base.UD(respBody), base.UD(resp.Properties))
 		}
 
-		bsc.reportStatsIfTimeElapsed()
+		bsc.reportStats(false)
 	}
 
 	bsc.blipContext.HandlerForProfile[profile] = handlerFnWrapper
@@ -228,7 +227,7 @@ func (bsc *BlipSyncContext) Close() {
 
 			collection.changesCtxCancel()
 		}
-		bsc.reportStats(math.MaxInt64)
+		bsc.reportStats(true)
 		close(bsc.terminator)
 	})
 }
@@ -671,23 +670,8 @@ func toHistory(revisions Revisions, knownRevs map[string]bool, maxHistory int) [
 	return history
 }
 
-// reportStatsIfTimeElapsed will report stats if enough time has passed since the previous report.
-func (bsc *BlipSyncContext) reportStatsIfTimeElapsed() {
-	currentTime := time.Now().UnixMilli()
-	if !bsc.timeElapsedForStatsReporting(currentTime) {
-		return
-	}
-	bsc.reportStats(currentTime)
-
-}
-
-// timeElapsedForStatsReporting will return true if enough time has passed since the previous report.
-func (bsc *BlipSyncContext) timeElapsedForStatsReporting(currentTime int64) bool {
-	return (currentTime - bsc.stats.lastReportTime.Load()) > bsc.blipContextDb.Options.BlipStatsReportingInterval
-}
-
-// reportStats will update the stats on a database immediately
-func (bsc *BlipSyncContext) reportStats(currentTime int64) {
+// reportStats will update the stats on a database immediately if updateImmediately is true, otherwise update on BlipStatsReportinInterval
+func (bsc *BlipSyncContext) reportStats(updateImmediately bool) {
 	if bsc.blipContextDb == nil || bsc.blipContext == nil {
 		return
 	}
@@ -695,13 +679,14 @@ func (bsc *BlipSyncContext) reportStats(currentTime int64) {
 	if dbStats == nil {
 		return
 	}
+	currentTime := time.Now().UnixMilli()
+	if !updateImmediately && ((currentTime - bsc.stats.lastReportTime.Load()) > bsc.blipContextDb.Options.BlipStatsReportingInterval) {
+		return
+	}
+	bsc.stats.lastReportTime.Store(currentTime)
 	bsc.stats.lock.Lock()
 	defer bsc.stats.lock.Unlock()
 
-	// a goroutine has already updated these stats
-	if !bsc.timeElapsedForStatsReporting(currentTime) {
-		return
-	}
 	totalBytesSent := bsc.blipContext.GetBytesSent()
 	newBytesSent := totalBytesSent - bsc.stats.bytesSent.Swap(totalBytesSent)
 	dbStats.ReplicationBytesSent.Add(int64(newBytesSent))
