@@ -1254,7 +1254,7 @@ type BlipTester struct {
 }
 
 // Close the bliptester
-func (bt BlipTester) Close() {
+func (bt *BlipTester) Close() {
 	bt.sender.Close()
 	if !bt.avoidRestTesterClose {
 		bt.restTester.Close()
@@ -1262,7 +1262,7 @@ func (bt BlipTester) Close() {
 }
 
 // Returns database context for blipTester (assumes underlying rest tester is based on a single db - returns first it finds)
-func (bt BlipTester) DatabaseContext() *db.DatabaseContext {
+func (bt *BlipTester) DatabaseContext() *db.DatabaseContext {
 	dbs := bt.restTester.ServerContext().AllDatabases()
 	for _, database := range dbs {
 		return database

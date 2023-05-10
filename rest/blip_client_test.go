@@ -1053,15 +1053,13 @@ func (btr *BlipTesterReplicator) GetMessage(serialNumber blip.MessageNumber) (ms
 }
 
 // GetMessages returns a copy of all messages stored in the Client keyed by serial number
-func (btr *BlipTesterReplicator) GetMessages() map[blip.MessageNumber]blip.Message {
+func (btr *BlipTesterReplicator) GetMessages() map[blip.MessageNumber]*blip.Message {
 	btr.messagesLock.RLock()
 	defer btr.messagesLock.RUnlock()
 
-	messages := make(map[blip.MessageNumber]blip.Message, len(btr.messages))
+	messages := make(map[blip.MessageNumber]*blip.Message, len(btr.messages))
 	for k, v := range btr.messages {
-		// Read the body before copying, since it might be read asynchronously
-		_, _ = v.Body()
-		messages[k] = *v
+		messages[k] = v.Clone()
 	}
 
 	return messages

@@ -2033,7 +2033,7 @@ func TestRemovedMessageWithAlternateAccess(t *testing.T) {
 	messages := btc.pullReplication.GetMessages()
 
 	var highestMsgSeq uint32
-	var highestSeqMsg blip.Message
+	var highestSeqMsg *blip.Message
 	// Grab most recent changes message
 	for _, message := range messages {
 		messageBody, err := message.Body()
@@ -2135,7 +2135,7 @@ func TestRemovedMessageWithAlternateAccessAndChannelFilteredReplication(t *testi
 	messages := btc.pullReplication.GetMessages()
 
 	var highestMsgSeq uint32
-	var highestSeqMsg blip.Message
+	var highestSeqMsg *blip.Message
 	// Grab most recent changes message
 	for _, message := range messages {
 		messageBody, err := message.Body()
