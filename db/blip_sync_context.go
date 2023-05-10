@@ -670,6 +670,11 @@ func toHistory(revisions Revisions, knownRevs map[string]bool, maxHistory int) [
 	return history
 }
 
+// timeElapsedForStatsReporting will return true if enough time has passed since the previous report.
+func (bsc *BlipSyncContext) timeElapsedForStatsReporting(currentTime int64) bool {
+	return (currentTime - bsc.stats.lastReportTime.Load()) > bsc.blipContextDb.Options.BlipStatsReportingInterval
+}
+
 // reportStats will update the stats on a database immediately if updateImmediately is true, otherwise update on BlipStatsReportinInterval
 func (bsc *BlipSyncContext) reportStats(updateImmediately bool) {
 	if bsc.blipContextDb == nil || bsc.blipContext == nil {
@@ -680,12 +685,17 @@ func (bsc *BlipSyncContext) reportStats(updateImmediately bool) {
 		return
 	}
 	currentTime := time.Now().UnixMilli()
-	if !updateImmediately && ((currentTime - bsc.stats.lastReportTime.Load()) > bsc.blipContextDb.Options.BlipStatsReportingInterval) {
+	if !updateImmediately && !bsc.timeElapsedForStatsReporting(currentTime) {
 		return
 	}
-	bsc.stats.lastReportTime.Store(currentTime)
+
 	bsc.stats.lock.Lock()
 	defer bsc.stats.lock.Unlock()
+
+	// check a second time after acquiring the lock to see stats reporting was slow enough that a waiting mutex doesn't need to run
+	if !updateImmediately && !bsc.timeElapsedForStatsReporting(currentTime) {
+		return
+	}
 
 	totalBytesSent := bsc.blipContext.GetBytesSent()
 	newBytesSent := totalBytesSent - bsc.stats.bytesSent.Swap(totalBytesSent)
