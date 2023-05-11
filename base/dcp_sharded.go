@@ -53,6 +53,8 @@ type CbgtContext struct {
 	heartbeater       Heartbeater              // Heartbeater used for failed node detection
 	heartbeatListener *importHeartbeatListener // Listener subscribed to failed node alerts from heartbeater
 	eventHandlers     *sgMgrEventHandlers      // Event handler callbacks
+	ctx               context.Context          // Log context
+	dbName            string                   // Database name
 }
 
 // StartShardedDCPFeed initializes and starts a CBGT Manager targeting the provided bucket.
@@ -352,6 +354,8 @@ func initCBGTManager(ctx context.Context, bucket Bucket, spec BucketSpec, cfgSG 
 		Manager:       mgr,
 		Cfg:           cfgSG,
 		eventHandlers: eventHandlers,
+		ctx:           ctx,
+		dbName:        dbName,
 	}
 
 	if spec.Auth != nil || (spec.Certpath != "" && spec.Keypath != "") {
@@ -452,6 +456,18 @@ func (c *CbgtContext) Stop() {
 		c.heartbeater.UnregisterListener(c.heartbeatListener.Name())
 		c.heartbeatListener.Stop()
 	}
+
+	// Close open PIndexes before stopping the manager.
+	_, pindexes := c.Manager.CurrentMaps()
+	for _, pIndex := range pindexes {
+		err := c.Manager.ClosePIndex(pIndex)
+		if err != nil {
+			DebugfCtx(c.ctx, KeyImport, "Error closing pindex: %v", err)
+		}
+	}
+	// ClosePIndex calls are synchronous, so can stop manager once they've completed
+	c.Manager.Stop()
+	c.RemoveFeedCredentials(c.dbName)
 }
 
 func (c *CbgtContext) RemoveFeedCredentials(dbName string) {
