@@ -214,7 +214,7 @@ func (il *importListener) ImportFeedEvent(event sgbucket.FeedEvent) {
 func (il *importListener) Stop() {
 	if il != nil {
 		if il.cbgtContext != nil {
-			il.cbgtContext.StopHeartbeatListener()
+			il.cbgtContext.Stop()
 
 			// Close open PIndexes before stopping the manager.
 			_, pindexes := il.cbgtContext.Manager.CurrentMaps()
