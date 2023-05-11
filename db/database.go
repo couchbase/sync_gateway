@@ -174,6 +174,8 @@ type DatabaseContextOptions struct {
 	skipRegisterImportPIndex      bool           // if set, skips the global gocb PIndex registration
 	MetadataStore                 base.DataStore // If set, use this location/connection for SG metadata storage - if not set, metadata is stored using the same location/connection as the bucket used for data storage.
 	MetadataID                    string         // MetadataID used for metadata storage
+
+	BlipStatsReportingInterval int64 // interval to report blip stats in milliseconds
 }
 
 type ScopesOptions map[string]ScopeOptions
