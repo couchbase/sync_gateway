@@ -430,6 +430,8 @@ type CollectionStats struct {
 }
 
 type DatabaseStats struct {
+	ReplicationBytesReceived *SgwIntStat `json:"replication_bytes_received"`
+	ReplicationBytesSent     *SgwIntStat `json:"replication_bytes_sent"`
 	// The compaction_attachment_start_time.
 	CompactionAttachmentStartTime *SgwIntStat `json:"compaction_attachment_start_time"`
 	// The compaction_tombstone_start_time.
@@ -1286,6 +1288,14 @@ func (d *DbStats) initDatabaseStats() error {
 	labelKeys := []string{DatabaseLabelKey}
 	labelVals := []string{d.dbName}
 
+	resUtil.ReplicationBytesReceived, err = NewIntStat(SubsystemDatabaseKey, "replication_bytes_received", labelKeys, labelVals, prometheus.CounterValue, 0)
+	if err != nil {
+		return err
+	}
+	resUtil.ReplicationBytesSent, err = NewIntStat(SubsystemDatabaseKey, "replication_bytes_sent", labelKeys, labelVals, prometheus.CounterValue, 0)
+	if err != nil {
+		return err
+	}
 	resUtil.CompactionAttachmentStartTime, err = NewIntStat(SubsystemDatabaseKey, "compaction_attachment_start_time", labelKeys, labelVals, prometheus.GaugeValue, 0)
 	if err != nil {
 		return err
@@ -1427,6 +1437,8 @@ func (d *DbStats) initDatabaseStats() error {
 }
 
 func (d *DbStats) unregisterDatabaseStats() {
+	prometheus.Unregister(d.DatabaseStats.ReplicationBytesReceived)
+	prometheus.Unregister(d.DatabaseStats.ReplicationBytesSent)
 	prometheus.Unregister(d.DatabaseStats.CompactionAttachmentStartTime)
 	prometheus.Unregister(d.DatabaseStats.CompactionTombstoneStartTime)
 	prometheus.Unregister(d.DatabaseStats.ConflictWriteCount)
