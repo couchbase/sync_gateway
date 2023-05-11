@@ -242,9 +242,11 @@ User:
       description: A set of access grants by scope and collection.
       type: object
       additionalProperties:
+        x-additionalPropertiesName: scopename
         description: An object keyed by scope, containing a set of collections.
         type: object
         additionalProperties:
+          x-additionalPropertiesName: collectionname
           $ref: '#/CollectionAccessConfig'
     email:
       description: The email address of the user.
@@ -345,9 +347,11 @@ Role:
       description: A set of access grants by scope and collection.
       type: object
       additionalProperties:
+        x-additionalPropertiesName: scopename
         description: An object keyed by scope, containing a set of collections.
         type: object
         additionalProperties:
+          x-additionalPropertiesName: collectionname
           $ref: '#/CollectionAccessConfig'
   title: Role
 User-session-information:
@@ -465,6 +469,7 @@ Document:
     _attachments:
       type: object
       additionalProperties:
+        x-additionalPropertiesName: attachmentname
         description: The name of the attachment.
         type: object
         properties:
@@ -530,6 +535,7 @@ Design-doc:
     views:
       type: object
       additionalProperties:
+        x-additionalPropertiesName: viewname
         description: The name of the view.
         type: object
         properties:
@@ -1084,6 +1090,7 @@ Scopes:
       description: An object keyed by collection name containing config for the specific collection.
       type: object
       additionalProperties:
+        x-additionalPropertiesName: collectionname
         $ref: '#/CollectionConfig'
   title: Scopes
 CollectionConfig:
@@ -1162,6 +1169,7 @@ Database:
       description: An object keyed by scope name containing config for the specific collection.
       type: object
       additionalProperties:
+        x-additionalPropertiesName: scopename
         $ref: '#/Scopes'
     name:
       description: The name of the database.
@@ -1174,9 +1182,11 @@ Database:
       default: 'function(doc){channel(doc.channels);}'
     users:
       additionalProperties:
+        x-additionalPropertiesName: username
         $ref: '#/User'
     roles:
       additionalProperties:
+        x-additionalPropertiesName: rolename
         $ref: '#/Role'
     revs_limit:
       description: |-
@@ -1237,8 +1247,8 @@ Database:
       type: string
       default: DCP
       enum:
-        - TAP
         - DCP
+        - TAP
       deprecated: true
     allow_empty_password:
       description: This controls whether users that are created can have an empty password or not.
@@ -1449,6 +1459,7 @@ Database:
       description: Configuration for Local JWT authentication.
       type: object
       additionalProperties:
+        x-additionalPropertiesName: providername
         description: The providers name.
         type: object
         required: ['issuer', 'client_id', 'algorithms', 'keys']
@@ -1535,6 +1546,7 @@ Database:
           description: List of OpenID Connect issuers.
           type: object
           additionalProperties:
+            x-additionalPropertiesName: providername
             description: The providers name.
             type: object
             properties:
@@ -1772,7 +1784,7 @@ Event-config:
       description: The options for the event.
       type: object
       additionalProperties:
-          description: The option key and value.
+        description: The option key and value.
   title: Event-config
 Resync-status:
   description: The status of a resync operation
@@ -2129,12 +2141,14 @@ Startup-config:
       description: 'A map of database name to credentials, that can be used instead of the bootstrap ones.'
       type: object
       additionalProperties:
+        x-additionalPropertiesName: databasename
         $ref: '#/CredentialsConfig'
       readOnly: true
     bucket_credentials:
       description: 'A map of bucket names to credentials, that can be used instead of the bootstrap ones.'
       type: object
       additionalProperties:
+        x-additionalPropertiesName: bucketname
         $ref: '#/CredentialsConfig'
       readOnly: true
     max_file_descriptors:
