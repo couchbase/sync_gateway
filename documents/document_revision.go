@@ -139,7 +139,7 @@ func (rev *DocumentRevision) BodyBytesWith(specialProperties ...string) ([]byte,
 			return nil, err
 		} else if value != nil {
 			if key == BodyExpiry {
-				value = rev.Expiry.Format(time.RFC3339)
+				value = rev.Expiry.UTC().Format(time.RFC3339)
 			}
 			specialKV = append(specialKV, base.KVPair{Key: key, Val: value})
 		}

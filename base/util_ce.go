@@ -143,7 +143,6 @@ func JSONExtract(input []byte, callback func(string) (any, error)) (output []byt
 				if copyFrom < keyOff {
 					out.Write(input[copyFrom:keyOff])
 				}
-				copyFrom = -1
 			}
 			// Then parse value into `valuep`
 			if err = iter.Decode(valuep); err != nil {

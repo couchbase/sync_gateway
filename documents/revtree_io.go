@@ -1,3 +1,11 @@
+//  Copyright 2023-Present Couchbase, Inc.
+//
+//  Use of this software is governed by the Business Source License included
+//  in the file licenses/BSL-Couchbase.txt.  As of the Change Date specified
+//  in that file, in accordance with the Business Source License, use of this
+//  software will be governed by the Apache License, Version 2.0, included in
+//  the file licenses/APL2.txt.
+
 package documents
 
 import (
@@ -89,14 +97,14 @@ type extRevTree struct {
 	extRevTreeV2 // Inherits older fields for compatibility; make sure not to duplicate any!
 
 	// Version 3 format:
-	Version      int                `json:"vers"`                // JSON format version
-	Revs         string             `json:"revs3"`               // The revision IDs concatenated
-	Parents      []int              `json:"parents"`             // Relative index of parent (0 if none)
-	Flags        string             `json:"flags"`               // Revision flags (really []extRevFlags)
-	Bodies       []string           `json:"bodies3,omitempty"`   // Non-default bodies
-	BodyKeys     []string           `json:"bodyKeys,omitempty"`  // Body keys
-	Channels     [][]ChannelID      `json:"channels3,omitempty"` // Channel sets, as arrays of indices
-	ChannelNames NameSet[ChannelID] `json:"chanNames,omitempty"` // Unique channel names
+	Version      int                     `json:"vers"`                // JSON format version
+	Revs         string                  `json:"revs3"`               // The revision IDs concatenated
+	Parents      []int                   `json:"parents"`             // Relative index of parent (0 if none)
+	Flags        string                  `json:"flags"`               // Revision flags (really []extRevFlags)
+	Bodies       []string                `json:"bodies3,omitempty"`   // Non-default bodies
+	BodyKeys     []string                `json:"bodyKeys,omitempty"`  // Body keys
+	Channels     [][]ChannelID           `json:"channels3,omitempty"` // Channel sets, as arrays of indices
+	ChannelNames base.NameSet[ChannelID] `json:"chanNames,omitempty"` // Unique channel names
 }
 
 // Older format (Version implicitly 2):

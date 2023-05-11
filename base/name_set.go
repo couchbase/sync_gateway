@@ -1,27 +1,30 @@
-package documents
+//  Copyright 2023-Present Couchbase, Inc.
+//
+//  Use of this software is governed by the Business Source License included
+//  in the file licenses/BSL-Couchbase.txt.  As of the Change Date specified
+//  in that file, in accordance with the Business Source License, use of this
+//  software will be governed by the Apache License, Version 2.0, included in
+//  the file licenses/APL2.txt.
 
-import (
-	"github.com/couchbase/sync_gateway/base"
-)
+package base
 
 // A set of strings, each of which is assigned a unique non-negative integer index.
+// Mapping from string->int and int->string are both efficient.
 // The type parameter `T` is the custom integer type to use.
 type NameSet[T ~int | ~int32 | ~int64] struct {
 	byName  map[string]T // names -> indexes
 	byIndex []string     // indexes -> names
 }
 
-// Integer type for an index in a NameSet.
-type T int
-
-// Initializes an empty set. This is optional, but allows you to pre-allocate the array and
-// map with a given initial capacity.
+// Initializes an empty set.
+// This is optional, but allows you to pre-allocate the array and map with a given initial capacity.
 func (set *NameSet[T]) Init(capacity int) {
 	set.byName = make(map[string]T, capacity)
 	set.byIndex = make([]string, 0, capacity)
 }
 
-// Adds a name to the set, returning its numeric index.
+// Adds a name to the set (if not already present), returning its numeric index.
+// Indices are assigned in numeric order starting at 0.
 func (set *NameSet[T]) Add(name string) T {
 	if set.byName == nil {
 		set.byName = map[string]T{}
@@ -37,6 +40,7 @@ func (set *NameSet[T]) Add(name string) T {
 	}
 }
 
+// The number of strings in the set.
 func (set *NameSet[T]) Length() int {
 	return len(set.byIndex)
 }
@@ -77,13 +81,13 @@ func (set *NameSet[T]) AsArray() []string {
 
 // Encodes to JSON (as an array of unique strings.)
 func (set NameSet[T]) MarshalJSON() ([]byte, error) {
-	return base.JSONMarshal(set.AsArray())
+	return JSONMarshal(set.byIndex)
 }
 
 // Decodes from JSON (an array of unique strings.)
 func (set *NameSet[T]) UnmarshalJSON(data []byte) error {
 	var array []string
-	err := base.JSONUnmarshal(data, &array)
+	err := JSONUnmarshal(data, &array)
 	if err == nil {
 		set.SetArray(array)
 	}
