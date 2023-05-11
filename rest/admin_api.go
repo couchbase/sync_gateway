@@ -412,6 +412,7 @@ func (h *handler) handlePutConfig() error {
 			Trace   FileLoggerPutConfig     `json:"trace,omitempty"`
 			Stats   FileLoggerPutConfig     `json:"stats,omitempty"`
 		} `json:"logging"`
+		ReplicationLimit *int `json:"max_concurrent_replications,omitempty"`
 	}
 
 	var config ServerPutConfig
@@ -461,6 +462,16 @@ func (h *handler) handlePutConfig() error {
 
 	if config.Logging.Stats.Enabled != nil {
 		base.EnableStatsLogger(*config.Logging.Stats.Enabled)
+	}
+
+	if config.ReplicationLimit != nil {
+		if *config.ReplicationLimit < 0 {
+			return base.HTTPErrorf(http.StatusBadRequest, "replication limit cannot be less than 0")
+		}
+		h.server.Config.Replicator.MaxConcurrentReplications = *config.ReplicationLimit
+		h.server.ActiveReplicationsCounter.lock.Lock()
+		h.server.ActiveReplicationsCounter.activeReplicatorLimit = *config.ReplicationLimit
+		h.server.ActiveReplicationsCounter.lock.Unlock()
 	}
 
 	return base.HTTPErrorf(http.StatusOK, "Updated")

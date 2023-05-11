@@ -1373,7 +1373,7 @@ func (sc *ServerContext) migrateV30Configs(ctx context.Context) error {
 		if getErr == base.ErrNotFound {
 			continue
 		} else if getErr != nil {
-			return fmt.Errorf("Error retrieving 3.0 config for bucket: %s, groupID: %s: %w", bucketName, groupID, err)
+			return fmt.Errorf("Error retrieving 3.0 config for bucket: %s, groupID: %s: %w", bucketName, groupID, getErr)
 		}
 
 		base.InfofCtx(ctx, base.KeyConfig, "Found legacy persisted config for database %s - migrating to db registry.", base.MD(dbConfig.Name))

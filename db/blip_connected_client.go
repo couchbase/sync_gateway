@@ -87,7 +87,7 @@ func (bh *blipHandler) handleFunction(rq *blip.Message) error {
 	}
 
 	bh.logEndpointEntry(rq.Profile(), fmt.Sprintf("name: %s", name))
-	return WithTimeout(bh.loggingCtx, UserFunctionTimeout, func(ctx context.Context) error {
+	return WithTimeout(bh.loggingCtx, bh.db.UserFunctionTimeout, func(ctx context.Context) error {
 		// Call the function:
 		fn, err := bh.db.GetUserFunction(name, requestParams, true, ctx)
 		if err != nil {
@@ -158,7 +158,7 @@ func (bh *blipHandler) handleGraphQL(rq *blip.Message) error {
 	}
 
 	bh.logEndpointEntry(rq.Profile(), fmt.Sprintf("query: %s", query))
-	return WithTimeout(bh.loggingCtx, UserFunctionTimeout, func(ctx context.Context) error {
+	return WithTimeout(bh.loggingCtx, bh.db.UserFunctionTimeout, func(ctx context.Context) error {
 		result, err := bh.db.UserGraphQLQuery(query, operationName, variables, true, ctx)
 		if err != nil {
 			return err

@@ -24,6 +24,7 @@ type tbpCluster interface {
 	removeBucket(name string) error
 	openTestBucket(name tbpBucketName, waitUntilReady time.Duration) (Bucket, error)
 	supportsCollections() (bool, error)
+	supportsMobileRBAC() (bool, error)
 	isServerEnterprise() (bool, error)
 	close() error
 }
@@ -195,6 +196,15 @@ func (c *tbpClusterV2) supportsCollections() (bool, error) {
 		return false, err
 	}
 	return major >= 7, nil
+}
+
+// supportsMobileRBAC is true if running couchbase server with all Sync Gateway roles
+func (c *tbpClusterV2) supportsMobileRBAC() (bool, error) {
+	major, minor, err := getClusterVersion(c.cluster)
+	if err != nil {
+		return false, err
+	}
+	return major >= 7 && minor >= 1, nil
 }
 
 // dropAllScopesAndCollections attempts to drop *all* non-_default scopes and collections from the bucket associated with the collection, except those used by the test bucket pool. Intended for test usage only.

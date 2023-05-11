@@ -13,6 +13,7 @@ import (
 	"errors"
 	"os"
 	"strconv"
+	"testing"
 	"time"
 )
 
@@ -78,6 +79,14 @@ func TestsUseNamedCollections() bool {
 func TestsUseServerCE() bool {
 	ok, err := GTestBucketPool.cluster.isServerEnterprise()
 	return err == nil && ok
+}
+
+// TestsRequireMobileRBAC returns true if the server has Sync Gateway RBAC roles.
+func TestsRequireMobileRBAC(t *testing.T) {
+	ok, err := GTestBucketPool.cluster.supportsMobileRBAC()
+	if err != nil || !ok {
+		t.Skip("Mobile RBAC roles for Sync Gateway are only fully supported in CBS 7.1 or greater")
+	}
 }
 
 // canUseNamedCollections returns true if the cluster supports named collections, and they are also requested

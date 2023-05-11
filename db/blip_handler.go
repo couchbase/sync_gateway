@@ -59,6 +59,7 @@ type blipHandler struct {
 	*BlipSyncContext
 	db            *Database                   // Handler-specific copy of the BlipSyncContext's blipContextDb
 	collection    *DatabaseCollectionWithUser // Handler-specific copy of the BlipSyncContext's collection specific DB
+	collectionCtx *blipSyncCollectionContext  // Sync-specific data for this collection
 	collectionIdx *int                        // index into BlipSyncContext.collectionMapping for the collection
 	loggingCtx    context.Context             // inherited from BlipSyncContext.loggingCtx with additional handler-only information (like keyspace)
 	serialNumber  uint64                      // This blip handler's serial number to differentiate logs w/ other handlers
@@ -153,7 +154,11 @@ func collectionBlipHandler(next blipHandlerFunc) blipHandlerFunc {
 			if err != nil {
 				return err
 			}
-			bh.collections.setNonCollectionAware(newBlipSyncCollectionContext(bh.collection.DatabaseCollection))
+			bh.collectionCtx, err = bh.collections.get(nil)
+			if err != nil {
+				bh.collections.setNonCollectionAware(newBlipSyncCollectionContext(bh.collection.DatabaseCollection))
+				bh.collectionCtx, _ = bh.collections.get(nil)
+			}
 			return next(bh, bm)
 		}
 		if !bh.collections.hasNamedCollections() {
@@ -166,12 +171,12 @@ func collectionBlipHandler(next blipHandlerFunc) blipHandlerFunc {
 		}
 
 		bh.collectionIdx = &collectionIndex
-		collectionCtx, err := bh.collections.get(&collectionIndex)
+		bh.collectionCtx, err = bh.collections.get(&collectionIndex)
 		if err != nil {
 			return base.HTTPErrorf(http.StatusBadRequest, fmt.Sprintf("%s", err))
 		}
 		bh.collection = &DatabaseCollectionWithUser{
-			DatabaseCollection: collectionCtx.dbCollection,
+			DatabaseCollection: bh.collectionCtx.dbCollection,
 			user:               bh.db.user,
 		}
 		bh.loggingCtx = base.CollectionLogCtx(bh.BlipSyncContext.loggingCtx, bh.collection.Name)
@@ -247,10 +252,7 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 	}
 
 	// Ensure that only _one_ subChanges subscription can be open on this blip connection at any given time.  SG #3222.
-	collectionCtx, err := bh.collections.get(bh.collectionIdx)
-	if err != nil {
-		return base.HTTPErrorf(http.StatusBadRequest, fmt.Sprintf("%s", err))
-	}
+	collectionCtx := bh.collectionCtx
 	collectionCtx.changesCtxLock.Lock()
 	defer collectionCtx.changesCtxLock.Unlock()
 	if !collectionCtx.activeSubChanges.CASRetry(false, true) {
@@ -332,10 +334,7 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 }
 
 func (bh *blipHandler) handleUnsubChanges(rq *blip.Message) error {
-	collectionCtx, err := bh.collections.get(bh.collectionIdx)
-	if err != nil {
-		return err
-	}
+	collectionCtx := bh.collectionCtx
 	collectionCtx.changesCtxLock.Lock()
 	defer collectionCtx.changesCtxLock.Unlock()
 	collectionCtx.changesCtxCancel()
@@ -604,11 +603,7 @@ func (bh *blipHandler) handleChanges(rq *blip.Message) error {
 		return err
 	}
 
-	collectionCtx, err := bh.collections.get(bh.collectionIdx)
-	if err != nil {
-		return err
-	}
-
+	collectionCtx := bh.collectionCtx
 	bh.logEndpointEntry(rq.Profile(), fmt.Sprintf("#Changes:%d", len(changeList)))
 	if len(changeList) == 0 {
 		// An empty changeList is sent when a one-shot replication sends its final changes
@@ -767,7 +762,11 @@ func (bh *blipHandler) handleProposeChanges(rq *blip.Message) error {
 			parentRevID = change[2].(string)
 		}
 		status, currentRev := bh.collection.CheckProposedRev(bh.loggingCtx, docID, revID, parentRevID)
-		if status != 0 {
+		if status == ProposedRev_OK_IsNew {
+			// Remember that the doc doesn't exist locally, in order to optimize the upcoming Put:
+			bh.collectionCtx.notePendingInsertion(docID)
+		} else if status != ProposedRev_OK {
+			// Reject the proposed change.
 			// Skip writing trailing zeroes; but if we write a number afterwards we have to catch up
 			if nWritten > 0 {
 				output.Write([]byte(","))
@@ -865,17 +864,12 @@ func (bh *blipHandler) handleNoRev(rq *blip.Message) error {
 	base.InfofCtx(bh.loggingCtx, base.KeySyncMsg, "%s: norev for doc %q / %q seq:%q - error: %q - reason: %q",
 		rq.String(), base.UD(docID), revID, seqStr, rq.Properties[NorevMessageError], rq.Properties[NorevMessageReason])
 
-	collectionCtx, err := bh.collections.get(bh.collectionIdx)
-	if err != nil {
-		return err
-	}
-
-	if collectionCtx.sgr2PullProcessedSeqCallback != nil {
+	if bh.collectionCtx.sgr2PullProcessedSeqCallback != nil {
 		seq, err := ParseJSONSequenceID(seqStr)
 		if err != nil {
 			base.WarnfCtx(bh.loggingCtx, "Unable to parse sequence %q from norev message: %v - not tracking for checkpointing", seqStr, err)
 		} else {
-			collectionCtx.sgr2PullProcessedSeqCallback(&seq, IDAndRev{DocID: docID, RevID: revID})
+			bh.collectionCtx.sgr2PullProcessedSeqCallback(&seq, IDAndRev{DocID: docID, RevID: revID})
 		}
 	}
 
@@ -947,19 +941,14 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 				return err
 			}
 
-			collectionCtx, err := bh.collections.get(bh.collectionIdx)
-			if err != nil {
-				return err
-			}
-
 			stats.docsPurgedCount.Add(1)
-			if collectionCtx.sgr2PullProcessedSeqCallback != nil {
+			if bh.collectionCtx.sgr2PullProcessedSeqCallback != nil {
 				seqStr := rq.Properties[RevMessageSequence]
 				seq, err := ParseJSONSequenceID(seqStr)
 				if err != nil {
 					base.WarnfCtx(bh.loggingCtx, "Unable to parse sequence %q from rev message: %v - not tracking for checkpointing", seqStr, err)
 				} else {
-					collectionCtx.sgr2PullProcessedSeqCallback(&seq, IDAndRev{DocID: docID, RevID: revID})
+					bh.collectionCtx.sgr2PullProcessedSeqCallback(&seq, IDAndRev{DocID: docID, RevID: revID})
 				}
 			}
 			return nil
@@ -1122,6 +1111,14 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 		}
 	}
 
+	if rawBucketDoc == nil && bh.collectionCtx.checkPendingInsertion(docID) {
+		// At the time we handled the `propseChanges` request, there was no doc with this docID
+		// in the bucket. As an optimization, tell PutExistingRev to assume the doc still doesn't
+		// exist and bypass getting it from the bucket during the save. If we're wrong, the save
+		// will fail with a CAS mismatch and the retry will fetch the existing doc.
+		rawBucketDoc = &sgbucket.BucketDocument{} // empty struct with zero CAS
+	}
+
 	// Finally, save the revision (with the new attachments inline)
 	// If a conflict resolver is defined for the handler, write with conflict resolution.
 
@@ -1138,18 +1135,13 @@ func (bh *blipHandler) processRev(rq *blip.Message, stats *processRevStats) (err
 		return err
 	}
 
-	collectionCtx, err := bh.collections.get(bh.collectionIdx)
-	if err != nil {
-		return err
-	}
-
-	if collectionCtx.sgr2PullProcessedSeqCallback != nil {
+	if bh.collectionCtx.sgr2PullProcessedSeqCallback != nil {
 		seqProperty := rq.Properties[RevMessageSequence]
 		seq, err := ParseJSONSequenceID(seqProperty)
 		if err != nil {
 			base.WarnfCtx(bh.loggingCtx, "Unable to parse sequence %q from rev message: %v - not tracking for checkpointing", seqProperty, err)
 		} else {
-			collectionCtx.sgr2PullProcessedSeqCallback(&seq, IDAndRev{DocID: docID, RevID: revID})
+			bh.collectionCtx.sgr2PullProcessedSeqCallback(&seq, IDAndRev{DocID: docID, RevID: revID})
 		}
 	}
 

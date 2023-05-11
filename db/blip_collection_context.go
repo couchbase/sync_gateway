@@ -18,11 +18,13 @@ import (
 
 // blipSyncCollectionContext stores information about a single collection for a BlipSyncContext
 type blipSyncCollectionContext struct {
-	dbCollection     *DatabaseCollection
-	activeSubChanges base.AtomicBool // Flag for whether there is a subChanges subscription currently active.  Atomic access
-	changesCtxLock   sync.Mutex
-	changesCtx       context.Context    // Used for the unsub changes Blip message to check if the subChanges feed should stop
-	changesCtxCancel context.CancelFunc // Cancel function for changesCtx to cancel subChanges being sent
+	dbCollection          *DatabaseCollection
+	activeSubChanges      base.AtomicBool // Flag for whether there is a subChanges subscription currently active.  Atomic access
+	changesCtxLock        sync.Mutex
+	changesCtx            context.Context    // Used for the unsub changes Blip message to check if the subChanges feed should stop
+	changesCtxCancel      context.CancelFunc // Cancel function for changesCtx to cancel subChanges being sent
+	pendingInsertionsLock sync.Mutex
+	pendingInsertions     base.Set // DocIDs from handleProposeChanges that aren't in the db
 
 	sgr2PullAddExpectedSeqsCallback  func(expectedSeqs map[IDAndRev]SequenceID)     // sgr2PullAddExpectedSeqsCallback is called after successfully handling an incoming changes message
 	sgr2PullProcessedSeqCallback     func(remoteSeq *SequenceID, idAndRev IDAndRev) // sgr2PullProcessedSeqCallback is called after successfully handling an incoming rev message
@@ -41,13 +43,41 @@ type blipCollections struct {
 	sync.RWMutex
 }
 
+// Max number of docIDs to keep in pendingInsertions. (Normally items added to this set are
+// removed soon thereafter when the client sends the `rev` message; this limit is just to cover
+// failure cases where a client never sends the revs, to keep the set from growing w/o bound.)
+const kMaxPendingInsertions = 1000
+
 // newBlipSyncCollection constructs a context to hold all blip data for a given collection.
 func newBlipSyncCollectionContext(dbCollection *DatabaseCollection) *blipSyncCollectionContext {
 	c := &blipSyncCollectionContext{
-		dbCollection: dbCollection,
+		dbCollection:      dbCollection,
+		pendingInsertions: base.Set{},
 	}
 	c.changesCtx, c.changesCtxCancel = context.WithCancel(context.Background())
 	return c
+}
+
+// Remembers a docID that doesn't exist in the collection at the time handleProposeChanges ran.
+func (bsc *blipSyncCollectionContext) notePendingInsertion(docID string) {
+	bsc.pendingInsertionsLock.Lock()
+	defer bsc.pendingInsertionsLock.Unlock()
+	if len(bsc.pendingInsertions) < kMaxPendingInsertions {
+		bsc.pendingInsertions.Add(docID)
+	} else {
+		base.WarnfCtx(bsc.changesCtx, "Sync client has more than %d pending doc insertions in collection %q", kMaxPendingInsertions, base.UD(bsc.dbCollection.Name))
+	}
+}
+
+// True if this docID was known not to exist in the collection when handleProposeChanges ran.
+// (If so, this fn also forgets the docID, so any subsequent call will return false.)
+func (bsc *blipSyncCollectionContext) checkPendingInsertion(docID string) (found bool) {
+	bsc.pendingInsertionsLock.Lock()
+	defer bsc.pendingInsertionsLock.Unlock()
+	if found = bsc.pendingInsertions.Contains(docID); found {
+		delete(bsc.pendingInsertions, docID)
+	}
+	return
 }
 
 // setNonCollectionAware adds a single collection matching _default._default collection, to be refered to if no Collection property is set on a blip message.

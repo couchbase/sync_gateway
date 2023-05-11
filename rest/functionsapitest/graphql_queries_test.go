@@ -13,11 +13,11 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/graphql-go/graphql"
 
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/db/functions"
 	"github.com/couchbase/sync_gateway/rest"
 	"github.com/stretchr/testify/assert"
@@ -284,18 +284,20 @@ func TestContextDeadline(t *testing.T) {
 		return
 	}
 	defer rt.Close()
+	timeout := 500 * time.Millisecond
+	rt.GetDatabase().UserFunctionTimeout = timeout
 	t.Run("AsAdmin - exceedContextDeadline", func(t *testing.T) {
-		requestQuery := fmt.Sprintf(`{"query": "query{ checkContextDeadline(Timeout:%d) }"}`, db.UserFunctionTimeout.Milliseconds()*2)
+		requestQuery := fmt.Sprintf(`{"query": "query{ checkContextDeadline(Timeout:%d) }"}`, timeout.Milliseconds()*2)
 		response := rt.SendAdminRequest("POST", "/db/_graphql", requestQuery)
 
 		assert.Equal(t, 200, response.Result().StatusCode)
 		testErrorMessage(t, response, "context deadline exceeded")
 	})
 	t.Run("AsAdmin - doNotExceedContextDeadline", func(t *testing.T) {
-		requestQuery := fmt.Sprintf(`{"query": "query{ checkContextDeadline(Timeout:%d) }"}`, db.UserFunctionTimeout.Milliseconds()/2)
+		requestQuery := `{"query": "query{ checkContextDeadline(Timeout:1) }"}`
 		response := rt.SendAdminRequest("POST", "/db/_graphql", requestQuery)
-
 		assert.Equal(t, 200, response.Result().StatusCode)
+
 		assert.Equal(t, `{"data":{"checkContextDeadline":0}}`, string(response.BodyBytes()))
 	})
 }

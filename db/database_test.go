@@ -243,6 +243,35 @@ func TestDatabase(t *testing.T) {
 
 	assert.True(t, possible == nil)
 
+	// Test CheckProposedRev:
+	log.Printf("Check CheckProposedRev...")
+	proposedStatus, current := collection.CheckProposedRev(ctx, "doc1", "3-foo",
+		"2-488724414d0ed6b398d6d2aeb228d797")
+	assert.Equal(t, ProposedRev_OK, proposedStatus)
+	assert.Equal(t, "", current)
+
+	proposedStatus, current = collection.CheckProposedRev(ctx, "doc1",
+		"2-488724414d0ed6b398d6d2aeb228d797",
+		"1-xxx")
+	assert.Equal(t, ProposedRev_Exists, proposedStatus)
+	assert.Equal(t, "", current)
+
+	proposedStatus, current = collection.CheckProposedRev(ctx, "doc1",
+		"3-foo",
+		"2-bogus")
+	assert.Equal(t, ProposedRev_Conflict, proposedStatus)
+	assert.Equal(t, "2-488724414d0ed6b398d6d2aeb228d797", current)
+
+	proposedStatus, current = collection.CheckProposedRev(ctx, "doc1",
+		"3-foo",
+		"")
+	assert.Equal(t, ProposedRev_Conflict, proposedStatus)
+	assert.Equal(t, "2-488724414d0ed6b398d6d2aeb228d797", current)
+
+	proposedStatus, current = collection.CheckProposedRev(ctx, "nosuchdoc", "3-foo", "")
+	assert.Equal(t, ProposedRev_OK_IsNew, proposedStatus)
+	assert.Equal(t, "", current)
+
 	// Test PutExistingRev:
 	log.Printf("Check PutExistingRev...")
 	body[BodyRev] = "4-four"

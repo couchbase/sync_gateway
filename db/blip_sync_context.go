@@ -19,6 +19,7 @@ import (
 	"runtime/debug"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/couchbase/go-blip"
@@ -49,6 +50,7 @@ func NewBlipSyncContext(ctx context.Context, bc *blip.Context, db *Database, con
 	if bsc.replicationStats == nil {
 		bsc.replicationStats = NewBlipSyncStats()
 	}
+	bsc.stats.lastReportTime.Store(time.Now().UnixMilli())
 
 	if u := db.User(); u != nil {
 		bsc.userName = u.Name()
@@ -75,7 +77,6 @@ func NewBlipSyncContext(ctx context.Context, bc *blip.Context, db *Database, con
 			bsc.register(profile, handlerFn)
 		}
 	}
-
 	return bsc
 }
 
@@ -116,6 +117,16 @@ type BlipSyncContext struct {
 	readOnly bool
 
 	collections *blipCollections // all collections handled by blipSyncContext, implicit or via GetCollections
+
+	stats blipSyncStats // internal structure to store stats
+}
+
+// blipSyncStats has support structures to support reporting stats at regular interval
+type blipSyncStats struct {
+	bytesSent      atomic.Uint64 // Total bytes sent to client
+	bytesReceived  atomic.Uint64 // Total bytes received from client
+	lastReportTime atomic.Int64  // last time reported by time.Time     // Last time blip stats were reported
+	lock           sync.Mutex
 }
 
 // AllowedAttachment contains the metadata for handling allowed attachments
@@ -196,6 +207,8 @@ func (bsc *BlipSyncContext) register(profile string, handlerFn func(*blipHandler
 			respBody, _ := resp.Body()
 			base.TracefCtx(bsc.loggingCtx, base.KeySyncMsg, "Recv Rsp %s: Body: '%s' Properties: %v", resp, base.UD(respBody), base.UD(resp.Properties))
 		}
+
+		bsc.reportStats(false)
 	}
 
 	bsc.blipContext.HandlerForProfile[profile] = handlerFnWrapper
@@ -215,6 +228,7 @@ func (bsc *BlipSyncContext) Close() {
 
 			collection.changesCtxCancel()
 		}
+		bsc.reportStats(true)
 		close(bsc.terminator)
 	})
 }
@@ -630,4 +644,42 @@ func toHistory(revisions Revisions, knownRevs map[string]bool, maxHistory int) [
 		}
 	}
 	return history
+}
+
+// timeElapsedForStatsReporting will return true if enough time has passed since the previous report.
+func (bsc *BlipSyncContext) timeElapsedForStatsReporting(currentTime int64) bool {
+	return (currentTime - bsc.stats.lastReportTime.Load()) > bsc.blipContextDb.Options.BlipStatsReportingInterval
+}
+
+// reportStats will update the stats on a database immediately if updateImmediately is true, otherwise update on BlipStatsReportinInterval
+func (bsc *BlipSyncContext) reportStats(updateImmediately bool) {
+	if bsc.blipContextDb == nil || bsc.blipContext == nil {
+		return
+	}
+	dbStats := bsc.blipContextDb.DbStats.Database()
+	if dbStats == nil {
+		return
+	}
+	currentTime := time.Now().UnixMilli()
+	if !updateImmediately && !bsc.timeElapsedForStatsReporting(currentTime) {
+		return
+	}
+
+	bsc.stats.lock.Lock()
+	defer bsc.stats.lock.Unlock()
+
+	// check a second time after acquiring the lock to see stats reporting was slow enough that a waiting mutex doesn't need to run
+	if !updateImmediately && !bsc.timeElapsedForStatsReporting(time.Now().UnixMilli()) {
+		return
+	}
+
+	totalBytesSent := bsc.blipContext.GetBytesSent()
+	newBytesSent := totalBytesSent - bsc.stats.bytesSent.Swap(totalBytesSent)
+	dbStats.ReplicationBytesSent.Add(int64(newBytesSent))
+
+	totalBytesReceived := bsc.blipContext.GetBytesReceived()
+	newBytesReceived := totalBytesReceived - bsc.stats.bytesReceived.Swap(totalBytesReceived)
+	dbStats.ReplicationBytesReceived.Add(int64(newBytesReceived))
+	bsc.stats.lastReportTime.Store(currentTime)
+
 }

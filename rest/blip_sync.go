@@ -11,6 +11,7 @@ licenses/APL2.txt.
 package rest
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 
@@ -22,6 +23,16 @@ import (
 
 // HTTP handler for incoming BLIP sync WebSocket request (/db/_blipsync)
 func (h *handler) handleBLIPSync() error {
+	needRelease, err := h.server.incrementConcurrentReplications(h.rqCtx)
+	if err != nil {
+		h.db.DbStats.Database().NumReplicationsRejectedLimit.Add(1)
+		return err
+	}
+	// if we haven't incremented the active replicator due to MaxConcurrentReplications being 0, we don't need to decrement it
+	if needRelease {
+		defer h.server.decrementConcurrentReplications(h.rqCtx)
+	}
+
 	// Exit early when the connection can't be switched to websocket protocol.
 	if _, ok := h.response.(http.Hijacker); !ok {
 		base.DebugfCtx(h.ctx(), base.KeyHTTP, "Non-upgradable request received for BLIP+WebSocket protocol")
@@ -70,4 +81,38 @@ func (h *handler) handleBLIPSync() error {
 	middleware(server).ServeHTTP(h.response, h.rq)
 
 	return nil
+}
+
+// incrementConcurrentReplications increments the number of active replications (if there is capacity to do so)
+// and rejects calls if no capacity is available
+func (sc *ServerContext) incrementConcurrentReplications(ctx context.Context) (bool, error) {
+	// lock replications config limit + the active replications counter
+	sc.ActiveReplicationsCounter.lock.Lock()
+	defer sc.ActiveReplicationsCounter.lock.Unlock()
+	// if max concurrent replications is 0 then we don't need to keep track of concurrent replications
+	if sc.ActiveReplicationsCounter.activeReplicatorLimit == 0 {
+		return false, nil
+	}
+
+	capacity := sc.ActiveReplicationsCounter.activeReplicatorLimit
+	count := sc.ActiveReplicationsCounter.activeReplicatorCount
+
+	if count >= capacity {
+		base.InfofCtx(ctx, base.KeyHTTP, "Replication limit exceeded (active: %d limit: %d)", count, capacity)
+		return false, base.ErrReplicationLimitExceeded
+	}
+	sc.ActiveReplicationsCounter.activeReplicatorCount++
+	base.TracefCtx(ctx, base.KeyHTTP, "Acquired replication slot (active: %d/%d)", sc.ActiveReplicationsCounter.activeReplicatorCount, capacity)
+
+	return true, nil
+}
+
+// decrementConcurrentReplications decrements the number of active replications on the server context
+func (sc *ServerContext) decrementConcurrentReplications(ctx context.Context) {
+	// lock replications config limit + the active replications counter
+	sc.ActiveReplicationsCounter.lock.Lock()
+	defer sc.ActiveReplicationsCounter.lock.Unlock()
+	connections := sc.ActiveReplicationsCounter.activeReplicatorLimit
+	sc.ActiveReplicationsCounter.activeReplicatorCount--
+	base.TracefCtx(ctx, base.KeyHTTP, "Released replication slot (active: %d/%d)", sc.activeReplicatorCount, connections)
 }

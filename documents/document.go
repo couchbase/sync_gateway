@@ -38,6 +38,7 @@ const (
 	DocUnmarshalAll       = DocumentUnmarshalLevel(iota) // (Same as DocUnmarshalSync)
 	DocUnmarshalSync                                     // Unmarshals all sync metadata
 	DocUnmarshalNoHistory                                // Unmarshals sync metadata excluding history
+	DocUnmarshalHistory                                  // Unmarshals history + rev + CAS only
 	DocUnmarshalRev                                      // Unmarshals rev + CAS only
 	DocUnmarshalCAS                                      // Unmarshals CAS (for import check) only
 	DocUnmarshalNone                                     // No unmarshalling (skips import/upgrade check)
@@ -66,6 +67,11 @@ type Document struct {
 	RevID          string
 	DocAttachments AttachmentsMeta
 	InlineSyncData bool
+}
+
+type historyOnlySyncData struct {
+	revOnlySyncData
+	History RevTree `json:"history"`
 }
 
 type revOnlySyncData struct {
@@ -886,6 +892,18 @@ func (doc *Document) UnmarshalWithXattr(data []byte, xdata []byte, unmarshalLeve
 		unmarshalErr := base.JSONUnmarshal(xdata, &doc.SyncData)
 		if unmarshalErr != nil {
 			return pkgerrors.WithStack(base.RedactErrorf("Failed to UnmarshalWithXattr() doc with id: %s (DocUnmarshalNoHistory).  Error: %v", base.UD(doc.ID), unmarshalErr))
+		}
+		doc._rawBody = data
+	case DocUnmarshalHistory:
+		historyOnlyMeta := historyOnlySyncData{History: make(RevTree)}
+		unmarshalErr := base.JSONUnmarshal(xdata, &historyOnlyMeta)
+		if unmarshalErr != nil {
+			return pkgerrors.WithStack(base.RedactErrorf("Failed to UnmarshalWithXattr() doc with id: %s (DocUnmarshalHistory).  Error: %v", base.UD(doc.ID), unmarshalErr))
+		}
+		doc.SyncData = SyncData{
+			CurrentRev: historyOnlyMeta.CurrentRev,
+			History:    historyOnlyMeta.History,
+			Cas:        historyOnlyMeta.Cas,
 		}
 		doc._rawBody = data
 	case DocUnmarshalRev:

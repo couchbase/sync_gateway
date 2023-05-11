@@ -32,11 +32,12 @@ type Authenticator struct {
 }
 
 type AuthenticatorOptions struct {
-	ClientPartitionWindow    time.Duration
-	ChannelsWarningThreshold *uint32
-	SessionCookieName        string
-	BcryptCost               int
-	LogCtx                   context.Context
+	ClientPartitionWindow      time.Duration
+	ChannelsWarningThreshold   *uint32
+	ServerlessChannelThreshold uint32
+	SessionCookieName          string
+	BcryptCost                 int
+	LogCtx                     context.Context
 
 	// Collections defines the set of collections used by the authenticator when rebuilding channels.
 	// Channels are only recomputed for collections included in this set.
@@ -196,6 +197,17 @@ func (auth *Authenticator) getPrincipal(docID string, factory func() Principal) 
 				}
 				changed = true
 			}
+			// If the channel threshold has been set we need to check the inherited channels across all scopes and collections against the limit
+			if auth.ServerlessChannelThreshold != 0 {
+				channelsLength, err := auth.getInheritedChannelsLength(user)
+				if err != nil {
+					return nil, nil, false, err
+				}
+				err = auth.checkChannelLimits(channelsLength, user)
+				if err != nil {
+					return nil, nil, false, err
+				}
+			}
 		}
 
 		if changed {
@@ -223,6 +235,73 @@ func (auth *Authenticator) getPrincipal(docID string, factory func() Principal) 
 	return princ, nil
 }
 
+// inheritedCollectionChannels returns channels for a given scope + collection
+func (auth *Authenticator) inheritedCollectionChannels(user User, scope, collection string) (ch.TimedSet, error) {
+	roles, err := auth.getUserRoles(user)
+	if err != nil {
+		return nil, err
+	}
+
+	channels := user.CollectionChannels(scope, collection)
+	for _, role := range roles {
+		roleSince := user.RoleNames()[role.Name()]
+		channels.AddAtSequence(role.CollectionChannels(scope, collection), roleSince.Sequence)
+	}
+	return channels, nil
+}
+
+// getInheritedChannelsLength returns number of channels a user has access to across all collections
+func (auth *Authenticator) getInheritedChannelsLength(user User) (int, error) {
+	var cumulativeChannels int
+	for scope, collections := range auth.Collections {
+		for collection := range collections {
+			channels, err := auth.inheritedCollectionChannels(user, scope, collection)
+			if err != nil {
+				return 0, err
+			}
+			cumulativeChannels += len(channels)
+		}
+	}
+	return cumulativeChannels, nil
+}
+
+// checkChannelLimits logs a warning when the warning threshold is met and will return an error when the channel limit is met
+func (auth *Authenticator) checkChannelLimits(channels int, user User) error {
+	// Error if ServerlessChannelThreshold is set and is >= than the threshold
+	if uint32(channels) >= auth.ServerlessChannelThreshold {
+		base.ErrorfCtx(auth.LogCtx, "User ID: %v channel count: %d exceeds %d for channels per user threshold. Auth will be rejected until rectified",
+			base.UD(user.Name()), channels, auth.ServerlessChannelThreshold)
+		return base.ErrMaximumChannelsForUserExceeded
+	}
+
+	// This function is likely to be called once per session when a channel limit is applied, the sync once
+	// applied here ensures we don't fill logs with warnings about being over warning threshold. We may want
+	// to revisit this implementation around the warning threshold in future
+	user.GetWarnChanSync().Do(func() {
+		if channelsPerUserThreshold := auth.ChannelsWarningThreshold; channelsPerUserThreshold != nil {
+			if uint32(channels) >= *channelsPerUserThreshold {
+				base.WarnfCtx(auth.LogCtx, "User ID: %v channel count: %d exceeds %d for channels per user warning threshold",
+					base.UD(user.Name()), channels, *channelsPerUserThreshold)
+			}
+		}
+	})
+	return nil
+}
+
+// getUserRoles gets all roles a user has been granted
+func (auth *Authenticator) getUserRoles(user User) ([]Role, error) {
+	roles := make([]Role, 0, len(user.RoleNames()))
+	for name := range user.RoleNames() {
+		role, err := auth.GetRole(name)
+		if err != nil {
+			return nil, err
+		} else if role != nil {
+			roles = append(roles, role)
+		}
+	}
+	return roles, nil
+}
+
 // Rebuild channels computes the full set of channels for all collections defined for the authenticator.
 // For each collection in Authenticator.collections:
 //   - if there is no CollectionAccess on the principal for the collection, rebuilds channels for that collection
@@ -230,6 +309,7 @@ func (auth *Authenticator) getPrincipal(docID string, factory func() Principal) 
 func (auth *Authenticator) rebuildChannels(princ Principal) (changed bool, err error) {
 
 	changed = false
+
 	for scope, collections := range auth.Collections {
 		for collection, _ := range collections {
 			// If collection channels are nil, they have been invalidated and must be rebuilt
@@ -242,6 +322,7 @@ func (auth *Authenticator) rebuildChannels(princ Principal) (changed bool, err e
 			}
 		}
 	}
+
 	return changed, nil
 }
 

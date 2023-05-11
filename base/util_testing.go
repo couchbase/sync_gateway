@@ -58,14 +58,12 @@ var _ Bucket = &TestBucket{}
 // DefaultDataStore is intentionally not implemented for TestBucket
 // DEPRECATED: Should use GetSingleDataStore
 func (b *TestBucket) DefaultDataStore() sgbucket.DataStore {
-	b.t.Logf("Tests directly using TestBucket should use GetSingleDataStore accessor!")
 	return b.Bucket.DefaultDataStore()
 }
 
 // NamedDataStore is intentionally not implemented for TestBucket
 // DEPRECATED: Should use GetNamedDataStore
 func (b *TestBucket) NamedDataStore(name sgbucket.DataStoreName) (sgbucket.DataStore, error) {
-	b.t.Logf("Tests directly using TestBucket should use GetNamedDataStore accessor!")
 	return b.Bucket.NamedDataStore(name)
 }
 

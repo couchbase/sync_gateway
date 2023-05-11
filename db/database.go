@@ -125,6 +125,7 @@ type DatabaseContext struct {
 	NoX509HTTPClient             *http.Client                   // A HTTP Client from gocb to use the management endpoints
 	ServerContextHasStarted      chan struct{}                  // Closed via PostStartup once the server has fully started
 	userFunctions                *UserFunctions                 // client-callable JavaScript functions
+	UserFunctionTimeout          time.Duration                  // Default timeout for N1QL, JavaScript and GraphQL queries. (Applies to REST and BLIP requests.)
 	graphQL                      *GraphQL                       // GraphQL query evaluator
 	Scopes                       map[string]Scope               // A map keyed by scope name containing a set of scopes/collections. Nil if running with only _default._default
 	CollectionByID               map[uint32]*DatabaseCollection // A map keyed by collection ID to Collection
@@ -174,6 +175,8 @@ type DatabaseContextOptions struct {
 	skipRegisterImportPIndex      bool           // if set, skips the global gocb PIndex registration
 	MetadataStore                 base.DataStore // If set, use this location/connection for SG metadata storage - if not set, metadata is stored using the same location/connection as the bucket used for data storage.
 	MetadataID                    string         // MetadataID used for metadata storage
+
+	BlipStatsReportingInterval int64 // interval to report blip stats in milliseconds
 }
 
 type ScopesOptions map[string]ScopeOptions
@@ -409,16 +412,17 @@ func NewDatabaseContext(ctx context.Context, dbName string, bucket base.Bucket, 
 		return nil, err
 	}
 	dbContext := &DatabaseContext{
-		Name:           dbName,
-		UUID:           cbgt.NewUUID(),
-		MetadataStore:  metadataStore,
-		Bucket:         bucket,
-		StartTime:      time.Now(),
-		autoImport:     autoImport,
-		Options:        options,
-		DbStats:        dbStats,
-		CollectionByID: make(map[uint32]*DatabaseCollection),
-		ServerUUID:     serverUUID,
+		Name:                dbName,
+		UUID:                cbgt.NewUUID(),
+		MetadataStore:       metadataStore,
+		Bucket:              bucket,
+		StartTime:           time.Now(),
+		autoImport:          autoImport,
+		Options:             options,
+		DbStats:             dbStats,
+		CollectionByID:      make(map[uint32]*DatabaseCollection),
+		ServerUUID:          serverUUID,
+		UserFunctionTimeout: defaultUserFunctionTimeout,
 	}
 
 	// Initialize metadata ID and keys
@@ -1064,16 +1068,21 @@ func (context *DatabaseContext) Authenticator(ctx context.Context) *auth.Authent
 	if context.Options.UnsupportedOptions != nil && context.Options.UnsupportedOptions.WarningThresholds != nil {
 		channelsWarningThreshold = context.Options.UnsupportedOptions.WarningThresholds.ChannelsPerUser
 	}
+	var channelServerlessThreshold uint32
+	if context.IsServerless() {
+		channelServerlessThreshold = base.ServerlessChannelLimit
+	}
 
 	// Authenticators are lightweight & stateless, so it's OK to return a new one every time
 	authenticator := auth.NewAuthenticator(context.MetadataStore, context, auth.AuthenticatorOptions{
-		ClientPartitionWindow:    context.Options.ClientPartitionWindow,
-		ChannelsWarningThreshold: channelsWarningThreshold,
-		SessionCookieName:        sessionCookieName,
-		BcryptCost:               context.Options.BcryptCost,
-		LogCtx:                   ctx,
-		Collections:              context.CollectionNames,
-		MetaKeys:                 context.MetadataKeys,
+		ClientPartitionWindow:      context.Options.ClientPartitionWindow,
+		ChannelsWarningThreshold:   channelsWarningThreshold,
+		ServerlessChannelThreshold: channelServerlessThreshold,
+		SessionCookieName:          sessionCookieName,
+		BcryptCost:                 context.Options.BcryptCost,
+		LogCtx:                     ctx,
+		Collections:                context.CollectionNames,
+		MetaKeys:                   context.MetadataKeys,
 	})
 
 	return authenticator

@@ -151,6 +151,9 @@ const (
 	// DefaultJavascriptTimeoutSecs is number of seconds before Javascript functions (i.e. the sync function or import filter) timeout
 	// If set to zero, timeout is disabled.
 	DefaultJavascriptTimeoutSecs = uint32(0)
+
+	// ServerlessChannelLimit is hard limit on channels allowed per user when running in serverless mode
+	ServerlessChannelLimit = 500
 )
 
 const (
