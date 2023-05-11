@@ -32,6 +32,7 @@ post:
                 description: A map of databases.
                 type: object
                 additionalProperties:
+                  x-additionalPropertiesName: db
                   description: The name of the database that was targetted.
                   type: object
                   properties:
