@@ -67,6 +67,9 @@ var (
 
 	// ErrConfigRegistryReloadRequired is returned when a db config fetch requires a registry reload based on version mismatch (config is newer)
 	ErrConfigRegistryReloadRequired = &sgError{"Config registry reload required"}
+
+	// ErrReplicationLimitExceeded is returned when then replication connection threshold is exceeded
+	ErrReplicationLimitExceeded = &sgError{"Replication limit exceeded. Try again later."}
 )
 
 func (e *sgError) Error() string {
@@ -114,6 +117,8 @@ func ErrorAsHTTPStatus(err error) (int, string) {
 	case gocb.ErrValueTooLarge:
 		return http.StatusRequestEntityTooLarge, "Document too large!"
 	case ErrViewTimeoutError:
+		return http.StatusServiceUnavailable, unwrappedErr.Error()
+	case ErrReplicationLimitExceeded:
 		return http.StatusServiceUnavailable, unwrappedErr.Error()
 	}
 

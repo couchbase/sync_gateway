@@ -70,6 +70,13 @@ type ServerContext struct {
 	LogContextID                  string          // ID to differentiate log messages from different server context
 	fetchConfigsLastUpdate        time.Time       // The last time fetchConfigsWithTTL() updated dbConfigs
 	allowScopesInPersistentConfig bool            // Test only backdoor to allow scopes in persistent config, not supported for multiple databases with different collections targeting the same bucket
+	ActiveReplicationsCounter
+}
+
+type ActiveReplicationsCounter struct {
+	activeReplicatorCount int          // The count of concurrent active replicators
+	activeReplicatorLimit int          // The limit on number of active replicators allowed
+	lock                  sync.RWMutex // Lock for managing access to shared memory location
 }
 
 // defaultConfigRetryTimeout is the total retry time when waiting for in-flight config updates.  Set as a multiple of kv op timeout,
@@ -132,6 +139,9 @@ func NewServerContext(ctx context.Context, config *StartupConfig, persistentConf
 			sc.Config.API.AdminInterfaceAuthentication = base.BoolPtr(false)
 			sc.Config.API.MetricsInterfaceAuthentication = base.BoolPtr(false)
 		}
+	}
+	if config.Replicator.MaxConcurrentReplications != 0 {
+		sc.ActiveReplicationsCounter.activeReplicatorLimit = config.Replicator.MaxConcurrentReplications
 	}
 
 	sc.startStatsLogger(ctx)
