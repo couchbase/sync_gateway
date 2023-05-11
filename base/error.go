@@ -70,6 +70,9 @@ var (
 
 	// ErrMaximumChannelsForUserExceeded is returned when running in serverless mode and the user has more than 500 channels granted to them
 	ErrMaximumChannelsForUserExceeded = &sgError{fmt.Sprintf("User has exceeded maximum of %d channels", ServerlessChannelLimit)}
+
+	// ErrReplicationLimitExceeded is returned when then replication connection threshold is exceeded
+	ErrReplicationLimitExceeded = &sgError{"Replication limit exceeded. Try agin later."}
 )
 
 func (e *sgError) Error() string {
@@ -120,6 +123,8 @@ func ErrorAsHTTPStatus(err error) (int, string) {
 		return http.StatusServiceUnavailable, unwrappedErr.Error()
 	case ErrMaximumChannelsForUserExceeded:
 		return http.StatusInternalServerError, "Maximum number of channels exceeded for this user"
+	case ErrReplicationLimitExceeded:
+		return http.StatusServiceUnavailable, unwrappedErr.Error()
 	}
 
 	// gocb V2 errors
