@@ -529,15 +529,14 @@ Design-doc:
       type: string
     views:
       type: object
-      properties:
-        additionalProperties:
-          description: The name of the view.
-          type: object
-          properties:
-            map:
-              type: string
-            reduce:
-              type: string
+      additionalProperties:
+        description: The name of the view.
+        type: object
+        properties:
+          map:
+            type: string
+          reduce:
+            type: string
     options:
       type: object
       properties:
@@ -1078,13 +1077,17 @@ Replication-status:
     - replication_id
   title: Replication-status
 Scopes:
-  description: A map of all the collections with their corresponding configs for this scope
+  description: Scope-specific configuration.
   type: object
-  additionalProperties:
-    $ref: '#/CollectionConfig'
+  properties:
+    collections:
+      description: An object keyed by collection name containing config for the specific collection.
+      type: object
+      additionalProperties:
+        $ref: '#/CollectionConfig'
   title: Scopes
 CollectionConfig:
-  description: The configuration for the individual collection
+  description: Collection-specific configuration.
   type: object
   properties:
     sync:
@@ -1156,11 +1159,10 @@ Database:
       type: integer
       default: 1000
     scopes:
-      description: Scope and collection specific config.
+      description: An object keyed by scope name containing config for the specific collection.
       type: object
-      properties:
-        additionalProperties:
-          $ref: '#/Scopes'
+      additionalProperties:
+        $ref: '#/Scopes'
     name:
       description: The name of the database.
       type: string
@@ -1788,8 +1790,7 @@ Event-config:
     options:
       description: The options for the event.
       type: object
-      properties:
-        additionalProperties:
+      additionalProperties:
           description: The option key and value.
   title: Event-config
 Resync-status:
