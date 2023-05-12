@@ -322,7 +322,10 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 					if _, found := btcr.attachments[digest]; !found {
 						missingDigests = append(missingDigests, digest)
 					} else {
-						knownDigests = append(knownDigests, digest)
+						if btr.bt.blipContext.ActiveSubprotocol() == db.BlipCBMobileReplicationV2 {
+							// only v2 clients care about proveAttachments
+							knownDigests = append(knownDigests, digest)
+						}
 					}
 				}
 				btcr.attachmentsLock.RUnlock()
