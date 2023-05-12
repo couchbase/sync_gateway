@@ -63,7 +63,7 @@ func TestSyncFnBodyProperties(t *testing.T) {
 	syncData, err := rt.GetSingleTestDatabaseCollection().GetDocSyncData(base.TestCtx(t), testDocID)
 	assert.NoError(t, err)
 
-	actualProperties := syncData.Channels.KeySet()
+	actualProperties := syncData.GetChannels().KeySet()
 	assert.ElementsMatchf(t, expectedProperties, actualProperties, "Expected sync fn body %q to match expectedProperties: %q", actualProperties, expectedProperties)
 }
 
@@ -112,7 +112,7 @@ func TestSyncFnBodyPropertiesTombstone(t *testing.T) {
 	syncData, err := rt.GetSingleTestDatabaseCollection().GetDocSyncData(base.TestCtx(t), testDocID)
 	assert.NoError(t, err)
 
-	actualProperties := syncData.Channels.KeySet()
+	actualProperties := syncData.GetChannels().KeySet()
 	assert.ElementsMatchf(t, expectedProperties, actualProperties, "Expected sync fn body %q to match expectedProperties: %q", actualProperties, expectedProperties)
 }
 
@@ -160,7 +160,7 @@ func TestSyncFnOldDocBodyProperties(t *testing.T) {
 	syncData, err := rt.GetSingleTestDatabaseCollection().GetDocSyncData(base.TestCtx(t), testDocID)
 	assert.NoError(t, err)
 
-	actualProperties := syncData.Channels.KeySet()
+	actualProperties := syncData.GetChannels().KeySet()
 	assert.ElementsMatchf(t, expectedProperties, actualProperties, "Expected sync fn oldDoc body %q to match expectedProperties: %q", actualProperties, expectedProperties)
 }
 
@@ -216,7 +216,7 @@ func TestSyncFnOldDocBodyPropertiesTombstoneResurrect(t *testing.T) {
 	syncData, err := rt.GetSingleTestDatabaseCollection().GetDocSyncData(base.TestCtx(t), testDocID)
 	assert.NoError(t, err)
 
-	actualProperties := syncData.Channels.KeySet()
+	actualProperties := syncData.GetChannels().KeySet()
 	assert.ElementsMatchf(t, expectedProperties, actualProperties, "Expected sync fn oldDoc body %q to match expectedProperties: %q", actualProperties, expectedProperties)
 }
 

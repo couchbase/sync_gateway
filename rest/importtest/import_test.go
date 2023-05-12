@@ -44,7 +44,7 @@ func TestXattrImportOldDoc(t *testing.T) {
 		SyncFn: `function(doc, oldDoc) {
 			if (oldDoc == null) {
 				channel("oldDocNil")
-			} 
+			}
 			if (doc._deleted) {
 				channel("docDeleted")
 			}
@@ -131,7 +131,7 @@ func TestXattrImportOldDocRevHistory(t *testing.T) {
 		SyncFn: `function(doc, oldDoc) {
 			if (oldDoc == null) {
 				channel("oldDocNil")
-			} 
+			}
 		}`,
 		DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{
 			AutoImport: false,
@@ -845,8 +845,8 @@ type treeMeta struct {
 	Sequence   uint64      `json:"sequence,omitempty"`
 }
 type treeHistory struct {
-	BodyMap    map[string]string `json:"bodymap"`
-	BodyKeyMap map[string]string `json:"bodyKeyMap"`
+	Bodies   []string `json:"bodies3,omitempty"`  // Non-default bodies
+	BodyKeys []string `json:"bodyKeys,omitempty"` // Body keys
 }
 
 // Test migration of a 1.4 doc with large inline revisions.  Validate they get migrated out of the body
@@ -912,8 +912,8 @@ func TestMigrateLargeInlineRevisions(t *testing.T) {
 	assert.Equal(t, 200, rawResponse.Code)
 	var doc treeDoc
 	assert.NoError(t, base.JSONUnmarshal(rawResponse.Body.Bytes(), &doc))
-	assert.Equal(t, 3, len(doc.Meta.RevTree.BodyKeyMap))
-	assert.Equal(t, 0, len(doc.Meta.RevTree.BodyMap))
+	assert.Equal(t, 3, len(doc.Meta.RevTree.BodyKeys))
+	assert.Equal(t, 0, len(doc.Meta.RevTree.Bodies))
 
 }
 
@@ -937,32 +937,32 @@ func TestMigrateTombstone(t *testing.T) {
 	key := "TestMigrateTombstone"
 	bodyString := `
 {
-    "_deleted": true, 
+    "_deleted": true,
     "_sync": {
-        "flags": 1, 
+        "flags": 1,
         "history": {
             "channels": [
-                null, 
+                null,
                 null
-            ], 
+            ],
             "deleted": [
                 1
-            ], 
+            ],
             "parents": [
-                -1, 
+                -1,
                 0
-            ], 
+            ],
             "revs": [
-                "1-f6fa803508c40388de38c9f99729c835", 
+                "1-f6fa803508c40388de38c9f99729c835",
                 "2-6b1e1af9190829c1ceab6f1c8fb9fa3f"
             ]
-        }, 
+        },
         "recent_sequences": [
-            4, 
+            4,
             5
-        ], 
-        "rev": "2-6b1e1af9190829c1ceab6f1c8fb9fa3f", 
-        "sequence": 5, 
+        ],
+        "rev": "2-6b1e1af9190829c1ceab6f1c8fb9fa3f",
+        "sequence": 5,
         "time_saved": "2017-11-22T13:24:33.115313269-08:00"
     }
 }`
@@ -1050,8 +1050,8 @@ func TestMigrateWithExternalRevisions(t *testing.T) {
 	assert.Equal(t, 200, rawResponse.Code)
 	var doc treeDoc
 	assert.NoError(t, base.JSONUnmarshal(rawResponse.Body.Bytes(), &doc))
-	assert.Equal(t, 1, len(doc.Meta.RevTree.BodyKeyMap))
-	assert.Equal(t, 2, len(doc.Meta.RevTree.BodyMap))
+	assert.Equal(t, 1, len(doc.Meta.RevTree.BodyKeys))
+	assert.Equal(t, 2, len(doc.Meta.RevTree.Bodies))
 }
 
 // Test retrieval of a document stored w/ xattrs when running in non-xattr mode (upgrade handling).
@@ -2549,7 +2549,7 @@ func TestUserXattrAutoImport(t *testing.T) {
 	_, err = subdocXattrStore.SubdocGetXattr(docKey, base.SyncXattrName, &syncData)
 	assert.NoError(t, err)
 
-	assert.Equal(t, []string{channelName}, syncData.Channels.KeySet())
+	assert.Equal(t, []string{channelName}, syncData.GetChannels().KeySet())
 
 	// Update xattr again but same value and ensure it isn't imported again (crc32 hash should match)
 	_, err = userXattrStore.WriteUserXattr(docKey, xattrKey, channelName)
@@ -2690,7 +2690,7 @@ func TestUserXattrOnDemandImportGET(t *testing.T) {
 	_, err = subdocXattrStore.SubdocGetXattr(docKey, base.SyncXattrName, &syncData)
 	assert.NoError(t, err)
 
-	assert.Equal(t, []string{channelName}, syncData.Channels.KeySet())
+	assert.Equal(t, []string{channelName}, syncData.GetChannels().KeySet())
 
 	// Write same xattr value
 	_, err = userXattrStore.WriteUserXattr(docKey, xattrKey, channelName)
@@ -2795,7 +2795,7 @@ func TestUserXattrOnDemandImportWrite(t *testing.T) {
 	_, err = subdocXattrStore.SubdocGetXattr(docKey, base.SyncXattrName, &syncData)
 	assert.NoError(t, err)
 
-	assert.Equal(t, []string{channelName}, syncData.Channels.KeySet())
+	assert.Equal(t, []string{channelName}, syncData.GetChannels().KeySet())
 }
 
 func TestImportFilterTimeout(t *testing.T) {

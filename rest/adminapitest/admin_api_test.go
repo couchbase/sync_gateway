@@ -1936,12 +1936,15 @@ func TestRawRedaction(t *testing.T) {
 
 	// Test redact being disabled by default
 	res = rt.SendAdminRequest("GET", "/{{.keyspace}}/_raw/testdoc", ``)
+	rest.RequireStatus(t, res, http.StatusOK)
 	var body map[string]interface{}
 	err := base.JSONUnmarshal(res.Body.Bytes(), &body)
 	assert.NoError(t, err)
 	syncData := body[base.SyncPropertyName]
 	assert.Equal(t, map[string]interface{}{"achannel": nil}, syncData.(map[string]interface{})["channels"])
-	assert.Equal(t, []interface{}([]interface{}{[]interface{}{"achannel"}}), syncData.(map[string]interface{})["history"].(map[string]interface{})["channels"])
+	assert.Equal(t,
+		[]interface{}{"achannel"},
+		syncData.(map[string]interface{})["history"].(map[string]interface{})["chanNames"])
 
 	// Test redacted
 	body = map[string]interface{}{}
@@ -1951,7 +1954,9 @@ func TestRawRedaction(t *testing.T) {
 	syncData = body[base.SyncPropertyName]
 	require.NotNil(t, syncData)
 	assert.NotEqual(t, map[string]interface{}{"achannel": nil}, syncData.(map[string]interface{})["channels"])
-	assert.NotEqual(t, []interface{}([]interface{}{[]interface{}{"achannel"}}), syncData.(map[string]interface{})["history"].(map[string]interface{})["channels"])
+	assert.NotEqual(t,
+		[]interface{}{"achannel"},
+		syncData.(map[string]interface{})["history"].(map[string]interface{})["chanNames"])
 
 	// Test include doc false doesn't return doc
 	body = map[string]interface{}{}
@@ -2144,7 +2149,7 @@ func TestHandlePutDbConfigWithBackticksCollections(t *testing.T) {
 		"scopes": {
 			"scope1": {
 			  "collections" : {
-				"collection1":{   
+				"collection1":{
         			"sync": ` + "`" + syncFunc + "`" + `
  				}
    			  }
@@ -2288,8 +2293,8 @@ func TestHandleGetRevTree(t *testing.T) {
 
 	// Create three revisions of the user foo with different status and updated_at values;
 	reqBodyJson := `{"new_edits": false, "docs": [
-    	{"_id": "foo", "type": "user", "updated_at": "2016-06-24T17:37:49.715Z", "status": "online", "_rev": "1-123"}, 
-    	{"_id": "foo", "type": "user", "updated_at": "2016-06-26T17:37:49.715Z", "status": "offline", "_rev": "1-456"}, 
+    	{"_id": "foo", "type": "user", "updated_at": "2016-06-24T17:37:49.715Z", "status": "online", "_rev": "1-123"},
+    	{"_id": "foo", "type": "user", "updated_at": "2016-06-26T17:37:49.715Z", "status": "offline", "_rev": "1-456"},
     	{"_id": "foo", "type": "user", "updated_at": "2016-06-25T17:37:49.715Z", "status": "offline", "_rev": "1-789"}]}`
 
 	resp := rt.SendAdminRequest(http.MethodPost, "/{{.keyspace}}/_bulk_docs", reqBodyJson)

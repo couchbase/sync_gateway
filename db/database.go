@@ -24,6 +24,7 @@ import (
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
+	"github.com/couchbase/sync_gateway/documents"
 	pkgerrors "github.com/pkg/errors"
 )
 
@@ -140,7 +141,7 @@ type Scope struct {
 
 type DatabaseContextOptions struct {
 	CacheOptions                  *CacheOptions
-	RevisionCacheOptions          *RevisionCacheOptions
+	RevisionCacheOptions          *documents.RevisionCacheOptions
 	OldRevExpirySeconds           uint32
 	AdminInterface                *string
 	UnsupportedOptions            *UnsupportedOptions
@@ -1908,7 +1909,7 @@ func (db *DatabaseCollectionWithUser) getResyncedDocument(ctx context.Context, d
 
 	// Run the sync fn over each current/leaf revision, in case there are conflicts:
 	changed := 0
-	doc.History.forEachLeaf(func(rev *RevInfo) {
+	doc.History.ForEachLeaf(func(rev *RevInfo) {
 		bodyBytes, _, err := db.get1xRevFromDoc(ctx, doc, rev.ID, false)
 		if err != nil {
 			base.WarnfCtx(ctx, "Error getting rev from doc %s/%s %s", base.UD(docid), rev.ID, err)
@@ -1940,9 +1941,9 @@ func (db *DatabaseCollectionWithUser) getResyncedDocument(ctx context.Context, d
 				forceUpdate = true
 			}
 
-			changedChannels, err := doc.updateChannels(ctx, channels)
-			changed = len(doc.Access.updateAccess(doc, access)) +
-				len(doc.RoleAccess.updateAccess(doc, roles)) +
+			changedChannels, err := doc.UpdateChannels(ctx, channels)
+			changed = len(doc.UpdateAccess(access)) +
+				len(doc.UpdateRoleAccess(roles)) +
 				len(changedChannels)
 			if err != nil {
 				return
@@ -1970,7 +1971,7 @@ func (db *DatabaseCollectionWithUser) resyncDocument(ctx context.Context, docid,
 			if currentValue == nil || len(currentValue) == 0 {
 				return nil, nil, deleteDoc, nil, base.ErrUpdateCancel
 			}
-			doc, err := unmarshalDocumentWithXattr(docid, currentValue, currentXattr, currentUserXattr, cas, DocUnmarshalAll)
+			doc, err := documents.UnmarshalDocumentWithXattr(docid, currentValue, currentXattr, currentUserXattr, cas, DocUnmarshalAll)
 			if err != nil {
 				return nil, nil, deleteDoc, nil, err
 			}
@@ -1998,7 +1999,7 @@ func (db *DatabaseCollectionWithUser) resyncDocument(ctx context.Context, docid,
 			if currentValue == nil {
 				return nil, nil, false, base.ErrUpdateCancel // someone deleted it?!
 			}
-			doc, err := unmarshalDocument(docid, currentValue)
+			doc, err := documents.UnmarshalDocument(docid, currentValue)
 			if err != nil {
 				return nil, nil, false, err
 			}

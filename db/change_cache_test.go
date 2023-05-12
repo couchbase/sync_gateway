@@ -22,6 +22,7 @@ import (
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
+	"github.com/couchbase/sync_gateway/documents"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -518,9 +519,9 @@ func WriteDirectWithKey(t *testing.T, db *Database, key string, channelArray []s
 	syncData := &SyncData{
 		CurrentRev: rev,
 		Sequence:   sequence,
-		Channels:   chanMap,
 		TimeSaved:  time.Now(),
 	}
+	syncData.PokeChannels(chanMap)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 	_, _ = collection.dataStore.Add(key, 0, Body{base.SyncPropertyName: syncData, "key": key})
 }
@@ -549,9 +550,9 @@ func WriteDirectWithChannelGrant(t *testing.T, db *Database, channelArray []stri
 	syncData := &SyncData{
 		CurrentRev: rev,
 		Sequence:   sequence,
-		Channels:   chanMap,
-		Access:     accessMap,
 	}
+	syncData.PokeChannels(chanMap)
+	syncData.PokeAccess(accessMap)
 	_, _ = GetSingleDatabaseCollectionWithUser(t, db).dataStore.Add(docId, 0, Body{base.SyncPropertyName: syncData, "key": docId})
 }
 
@@ -1629,8 +1630,8 @@ func TestLateArrivingSequenceTriggersOnChange(t *testing.T) {
 	doc2.SyncData = SyncData{
 		CurrentRev: "1-cde",
 		Sequence:   2,
-		Channels:   channelMap,
 	}
+	doc2.SyncData.PokeChannels(channelMap)
 	doc2Bytes, err := doc2.MarshalJSON()
 	assert.NoError(t, err, "Unexpected error")
 
@@ -2046,7 +2047,7 @@ func (f *testDocChangedFeed) reset() {
 	}
 }
 
-// makeFeedBytes creates a DCP mutation message w/ xattr (reverse of parseXattrStreamData)
+// makeFeedBytes creates a DCP mutation message w/ xattr (reverse of document.ParseXattrStreamData)
 func makeFeedBytes(xattrKey, xattrValue, docValue string) []byte {
 	xattrKeyBytes := []byte(xattrKey)
 	xattrValueBytes := []byte(xattrValue)
@@ -2075,7 +2076,7 @@ func TestMakeFeedBytes(t *testing.T) {
 
 	rawBytes := makeFeedBytes(base.SyncPropertyName, `{"rev":"foo"}`, `{"k":"val"}`)
 
-	body, xattr, _, err := parseXattrStreamData(base.SyncXattrName, "", rawBytes)
+	body, xattr, _, err := documents.ParseXattrStreamData(base.SyncXattrName, "", rawBytes)
 	assert.NoError(t, err)
 	require.Len(t, body, 11)
 	require.Len(t, xattr, 13)

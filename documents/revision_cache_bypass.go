@@ -8,7 +8,7 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-package db
+package documents
 
 import (
 	"context"
@@ -31,13 +31,8 @@ func NewBypassRevisionCache(backingStore RevisionCacheBackingStore, bypassStat *
 }
 
 // Get fetches the revision for the given docID and revID immediately from the bucket.
-func (rc *BypassRevisionCache) Get(ctx context.Context, docID, revID string, includeBody bool, includeDelta bool) (docRev DocumentRevision, err error) {
-
-	unmarshalLevel := DocUnmarshalSync
-	if includeBody {
-		unmarshalLevel = DocUnmarshalAll
-	}
-	doc, err := rc.backingStore.GetDocument(ctx, docID, unmarshalLevel)
+func (rc *BypassRevisionCache) Get(ctx context.Context, docID, revID string, includeDelta bool) (docRev DocumentRevision, err error) {
+	doc, err := rc.backingStore.GetDocument(ctx, docID, DocUnmarshalSync)
 	if err != nil {
 		return DocumentRevision{}, err
 	}
@@ -45,7 +40,7 @@ func (rc *BypassRevisionCache) Get(ctx context.Context, docID, revID string, inc
 	docRev = DocumentRevision{
 		RevID: revID,
 	}
-	docRev.BodyBytes, docRev._shallowCopyBody, docRev.History, docRev.Channels, docRev.Removed, docRev.Attachments, docRev.Deleted, docRev.Expiry, err = revCacheLoaderForDocument(ctx, rc.backingStore, doc, revID)
+	docRev._bodyBytes, docRev.History, docRev.Channels, docRev.Removed, docRev.Attachments, docRev.Deleted, docRev.Expiry, err = revCacheLoaderForDocument(ctx, rc.backingStore, doc, revID)
 	if err != nil {
 		return DocumentRevision{}, err
 	}
@@ -56,13 +51,8 @@ func (rc *BypassRevisionCache) Get(ctx context.Context, docID, revID string, inc
 }
 
 // GetActive fetches the active revision for the given docID immediately from the bucket.
-func (rc *BypassRevisionCache) GetActive(ctx context.Context, docID string, includeBody bool) (docRev DocumentRevision, err error) {
-
-	unmarshalLevel := DocUnmarshalSync
-	if includeBody {
-		unmarshalLevel = DocUnmarshalAll
-	}
-	doc, err := rc.backingStore.GetDocument(ctx, docID, unmarshalLevel)
+func (rc *BypassRevisionCache) GetActive(ctx context.Context, docID string) (docRev DocumentRevision, err error) {
+	doc, err := rc.backingStore.GetDocument(ctx, docID, DocUnmarshalSync)
 	if err != nil {
 		return DocumentRevision{}, err
 	}
@@ -71,7 +61,7 @@ func (rc *BypassRevisionCache) GetActive(ctx context.Context, docID string, incl
 		RevID: doc.CurrentRev,
 	}
 
-	docRev.BodyBytes, docRev._shallowCopyBody, docRev.History, docRev.Channels, docRev.Removed, docRev.Attachments, docRev.Deleted, docRev.Expiry, err = revCacheLoaderForDocument(ctx, rc.backingStore, doc, doc.SyncData.CurrentRev)
+	docRev._bodyBytes, docRev.History, docRev.Channels, docRev.Removed, docRev.Attachments, docRev.Deleted, docRev.Expiry, err = revCacheLoaderForDocument(ctx, rc.backingStore, doc, doc.SyncData.CurrentRev)
 	if err != nil {
 		return DocumentRevision{}, err
 	}

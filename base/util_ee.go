@@ -15,7 +15,9 @@ package base
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
+	"strings"
 	"time"
 
 	"github.com/couchbaselabs/go-fleecedelta"
@@ -107,4 +109,86 @@ func JSONEncoderCanonical(w io.Writer) JSONEncoderI {
 	} else {
 		return json.NewEncoder(w)
 	}
+}
+
+var extractConfig jsoniter.API = jsoniter.Config{
+	EscapeHTML:             true,
+	SortMapKeys:            true,
+	ValidateJsonRawMessage: true,
+	UseNumber:              false,
+}.Froze()
+
+// Incrementally parses a JSON object, passing each top-level key to a callback.
+// The callback can choose to unmarshal the value by returning a pointer to a destination value
+// (just like the pointer passed to `json.Unmarshal()`), it can return `nil` to skip it, or it
+// can return an error to abort the parse.
+//
+// The function returns a copy of the JSON with all of the unmarshaled key/value pairs removed,
+// i.e. containing only the skipped ones.
+//
+// For compatibility with json.Unmarshal, the input JSON `null` is allowed, and treated as an
+// empty object. The output JSON will be nil.
+//
+// For examples, see TestJSONExtract() in util_test.go.
+//
+// Note: CE and EE have different implementations of this.
+func JSONExtract(input []byte, callback func(string) (any, error)) ([]byte, error) {
+	out := jsoniter.NewStream(jsoniter.ConfigDefault, nil, len(input))
+	out.WriteObjectStart()
+	first := true
+	keys := Set{}
+
+	iter := extractConfig.BorrowIterator(input)
+	defer extractConfig.ReturnIterator(iter)
+
+	firstToken := iter.WhatIsNext()
+
+	iter.ReadObjectCB(func(iter *jsoniter.Iterator, key string) bool {
+		if keys.Contains(key) {
+			iter.ReportError("json", fmt.Sprintf("duplicate key %q", key))
+			return false
+		}
+		keys.Add(key)
+		if dst, err := callback(key); err != nil {
+			iter.ReportError("json", err.Error())
+			return false
+		} else if dst != nil {
+			iter.ReadVal(dst)
+			if iter.Error != nil {
+				iter.Error = nil
+				iter.ReportError("json", fmt.Sprintf("invalid value type for special key %q", key))
+				return false
+			}
+		} else {
+			// Non-special key: Write key and raw JSON value to stream
+			if !first {
+				out.WriteMore() // writes a ","
+			}
+			first = false
+			out.WriteObjectField(key)
+			out.SetBuffer(iter.SkipAndAppendBytes(out.Buffer()))
+		}
+		return true
+	})
+
+	if err := iter.Error; err != nil {
+		if strings.Contains(err.Error(), "but found \x00") {
+			err = io.EOF
+		} else if strings.Contains(err.Error(), "expect { or n, but found") {
+			err = fmt.Errorf("expected an object") // clearer, and compatible with CE
+		}
+		return nil, err
+	}
+	if iter.WhatIsNext() != jsoniter.InvalidValue {
+		return nil, fmt.Errorf("unexpected data after end")
+	}
+
+	if firstToken == jsoniter.NilValue {
+		// The input was `null`, which is parsed as though it were `{}`, but make sure to return
+		// `null` as the output JSON so later on the Document can tell there's no JSON body.
+		return nil, nil
+	}
+
+	out.WriteObjectEnd()
+	return out.Buffer(), nil
 }

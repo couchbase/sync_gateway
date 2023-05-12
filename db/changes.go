@@ -137,11 +137,11 @@ func (db *DatabaseCollectionWithUser) addDocToChangeEntry(ctx context.Context, e
 }
 
 func (db *DatabaseCollectionWithUser) AddDocToChangeEntryUsingRevCache(ctx context.Context, entry *ChangeEntry, revID string) (err error) {
-	rev, err := db.getRev(ctx, entry.ID, revID, 0, nil, RevCacheIncludeBody)
+	rev, err := db.getRev(ctx, entry.ID, revID, 0, nil, nil)
 	if err != nil {
 		return err
 	}
-	entry.Doc, err = rev.As1xBytes(db, nil, nil, false)
+	entry.Doc, err = rev.BodyBytesWith(BodyId, BodyRev, BodyAttachments, BodyDeleted, BodyRemoved)
 	return err
 }
 
@@ -152,7 +152,7 @@ func (db *DatabaseCollectionWithUser) AddDocInstanceToChangeEntry(ctx context.Co
 
 	revID := entry.Changes[0]["rev"]
 	if includeConflicts {
-		doc.History.forEachLeaf(func(leaf *RevInfo) {
+		doc.History.ForEachLeaf(func(leaf *RevInfo) {
 			if leaf.ID != revID {
 				if !leaf.Deleted {
 					entry.Deleted = false
@@ -321,7 +321,7 @@ func (db *DatabaseCollectionWithUser) buildRevokedFeed(ctx context.Context, ch c
 
 // UserHasDocAccess checks whether the user has access to the active revision of the document
 func UserHasDocAccess(ctx context.Context, collection *DatabaseCollectionWithUser, docID string) (bool, error) {
-	currentRev, err := collection.revisionCache.GetActive(ctx, docID, false)
+	currentRev, err := collection.revisionCache.GetActive(ctx, docID)
 	if err != nil {
 		if base.IsDocNotFoundError(err) {
 			return false, nil
@@ -348,7 +348,7 @@ func (col *DatabaseCollectionWithUser) wasDocInChannelPriorToRevocation(ctx cont
 	// Iterate over the channel history information on the document and find any periods where the doc was in the
 	// channel and the channel was accessible by the user
 	isStarChan := chanName == channels.UserStarChannel
-	for _, docHistoryEntry := range append(syncData.ChannelSet, syncData.ChannelSetHistory...) {
+	for _, docHistoryEntry := range append(syncData.GetChannelSet(), syncData.GetChannelSetHistory()...) {
 		if !isStarChan && docHistoryEntry.Name != chanName {
 			continue
 		}
@@ -1278,11 +1278,11 @@ func createChangesEntry(ctx context.Context, docid string, db *DatabaseCollectio
 	// If admin, or the user has the star channel, include it in the results
 	if db.user == nil || db.user.CollectionChannels(db.ScopeName, db.Name).Contains(channels.UserStarChannel) {
 		userCanSeeDocChannel = true
-	} else if len(populatedDoc.Channels) > 0 {
+	} else if len(populatedDoc.GetChannels()) > 0 {
 		// Iterate over the doc's channels, including in the results:
 		//   - the active revision is in a channel the user can see (removal==nil)
 		//   - the doc has been removed from a user's channel later the requested since value (removal.Seq > options.Since.Seq).  In this case, we need to send removal:true changes entry
-		for channel, removal := range populatedDoc.Channels {
+		for channel, removal := range populatedDoc.GetChannels() {
 			if db.user.CanSeeCollectionChannel(db.ScopeName, db.Name, channel) && (removal == nil || removal.Seq > options.Since.Seq) {
 				userCanSeeDocChannel = true
 				// If removal, update removed channels and deleted flag.

@@ -224,6 +224,13 @@ func ToInt64(value interface{}) (int64, bool) {
 	return 0, false
 }
 
+func ToInt(value interface{}) (int, bool) {
+	if i64, ok := ToInt64(value); ok && i64 >= math.MinInt && i64 <= math.MaxInt {
+		return int(i64), true
+	}
+	return 0, false
+}
+
 func CouchbaseUrlWithAuth(serverUrl, username, password, bucketname string) (string, error) {
 
 	// parse url and reconstruct it piece by piece
@@ -312,6 +319,16 @@ func DurationToCbsExpiry(ttl time.Duration) uint32 {
 		return uint32(ttl.Seconds())
 	} else {
 		return uint32(time.Now().Add(ttl).Unix())
+	}
+}
+
+// TimeToCbsExpiry takes a Time (or nil) and returns an int
+// formatted as required by CBS expiry processing
+func TimeToCbsExpiry(t *time.Time) uint32 {
+	if t != nil {
+		return uint32(t.Unix())
+	} else {
+		return 0
 	}
 }
 

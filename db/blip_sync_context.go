@@ -24,6 +24,7 @@ import (
 
 	"github.com/couchbase/go-blip"
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/documents"
 )
 
 const (
@@ -542,7 +543,7 @@ func (bsc *BlipSyncContext) setUseDeltas(clientCanUseDeltas bool) {
 	}
 }
 
-func (bsc *BlipSyncContext) sendDelta(sender *blip.Sender, docID string, collectionIdx *int, deltaSrcRevID string, revDelta *RevisionDelta, seq SequenceID, resendFullRevisionFunc func() error) error {
+func (bsc *BlipSyncContext) sendDelta(sender *blip.Sender, docID string, collectionIdx *int, deltaSrcRevID string, revDelta *documents.RevisionDelta, seq SequenceID, resendFullRevisionFunc func() error) error {
 
 	properties := blipRevMessageProperties(revDelta.RevisionHistory, revDelta.ToDeleted, seq)
 	properties[RevMessageDeltaSrc] = deltaSrcRevID
@@ -608,35 +609,10 @@ func (bsc *BlipSyncContext) sendRevision(sender *blip.Sender, docID, revID strin
 	}
 
 	base.TracefCtx(bsc.loggingCtx, base.KeySync, "sendRevision, rev attachments for %s/%s are %v", base.UD(docID), revID, base.UD(rev.Attachments))
-	attachmentStorageMeta := ToAttachmentStorageMeta(rev.Attachments)
-	var bodyBytes []byte
-	if base.IsEnterpriseEdition() {
-		// Still need to stamp _attachments into BLIP messages
-		if len(rev.Attachments) > 0 {
-			DeleteAttachmentVersion(rev.Attachments)
-			bodyBytes, err = base.InjectJSONProperties(rev.BodyBytes, base.KVPair{Key: BodyAttachments, Val: rev.Attachments})
-			if err != nil {
-				return err
-			}
-		} else {
-			bodyBytes = rev.BodyBytes
-		}
-	} else {
-		body, err := rev.Body()
-		if err != nil {
-			return bsc.sendNoRev(sender, docID, revID, collectionIdx, seq, err)
-		}
-
-		// Still need to stamp _attachments into BLIP messages
-		if len(rev.Attachments) > 0 {
-			DeleteAttachmentVersion(rev.Attachments)
-			body[BodyAttachments] = rev.Attachments
-		}
-
-		bodyBytes, err = base.JSONMarshalCanonical(body)
-		if err != nil {
-			return bsc.sendNoRev(sender, docID, revID, collectionIdx, seq, err)
-		}
+	attachmentStorageMeta := documents.ToAttachmentStorageMeta(rev.Attachments)
+	bodyBytes, err := rev.BodyBytesWith(BodyAttachments, BodyRemoved)
+	if err != nil {
+		return bsc.sendNoRev(sender, docID, revID, collectionIdx, seq, err)
 	}
 
 	history := toHistory(rev.History, knownRevs, maxHistory)
@@ -651,7 +627,7 @@ func (bsc *BlipSyncContext) sendRevision(sender *blip.Sender, docID, revID strin
 func digests(meta []AttachmentStorageMeta) []string {
 	digests := make([]string, len(meta))
 	for _, m := range meta {
-		digests = append(digests, m.digest)
+		digests = append(digests, m.Digest)
 	}
 	return digests
 }
