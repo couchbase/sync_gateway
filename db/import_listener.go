@@ -214,19 +214,7 @@ func (il *importListener) ImportFeedEvent(event sgbucket.FeedEvent) {
 func (il *importListener) Stop() {
 	if il != nil {
 		if il.cbgtContext != nil {
-			il.cbgtContext.StopHeartbeatListener()
-
-			// Close open PIndexes before stopping the manager.
-			_, pindexes := il.cbgtContext.Manager.CurrentMaps()
-			for _, pIndex := range pindexes {
-				err := il.cbgtContext.Manager.ClosePIndex(pIndex)
-				if err != nil {
-					base.DebugfCtx(il.loggingCtx, base.KeyImport, "Error closing pindex: %v", err)
-				}
-			}
-			// ClosePIndex calls are synchronous, so can stop manager once they've completed
-			il.cbgtContext.Manager.Stop()
-			il.cbgtContext.RemoveFeedCredentials(il.dbName)
+			il.cbgtContext.Stop()
 
 			// Remove entry from global listener directory
 			base.RemoveDestFactory(il.importDestKey)
