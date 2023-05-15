@@ -4000,7 +4000,7 @@ func TestOneShotGrantTiming(t *testing.T) {
 	// Release the slow sequence and wait for it to be processed over DCP
 	releaseErr := db.ReleaseTestSequence(database, slowSequence)
 	require.NoError(t, releaseErr)
-	rt.WaitForPendingChanges()
+	require.NoError(t, rt.WaitForPendingChanges())
 
 	// Issue normal one-shot changes request.  Expect results as granting document buffering is unblocked
 	changesResponse = rt.SendUserRequest("GET", "/{{.keyspace}}/_changes", "", "bernard")
@@ -4101,7 +4101,7 @@ func TestOneShotGrantRequestPlus(t *testing.T) {
 	// Release the slow sequence and wait for it to be processed over DCP
 	releaseErr := db.ReleaseTestSequence(database, slowSequence)
 	require.NoError(t, releaseErr)
-	rt.WaitForPendingChanges()
+	require.NoError(t, rt.WaitForPendingChanges())
 
 	oneShotComplete.Wait()
 }
@@ -4221,7 +4221,7 @@ func TestOneShotGrantRequestPlusDbConfig(t *testing.T) {
 	// Release the slow sequence and wait for it to be processed over DCP
 	releaseErr := db.ReleaseTestSequence(database, slowSequence)
 	require.NoError(t, releaseErr)
-	rt.WaitForPendingChanges()
+	require.NoError(t, rt.WaitForPendingChanges())
 
 	oneShotComplete.Wait()
 }
