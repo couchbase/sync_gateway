@@ -150,6 +150,7 @@ type DatabaseContextOptions struct {
 	ClientPartitionWindow         time.Duration
 	BcryptCost                    int
 	GroupID                       string
+	ChangesRequestPlus            bool // Sets the default value for request_plus, for non-continuous changes feeds
 }
 
 type SGReplicateOptions struct {
@@ -1710,4 +1711,11 @@ func (context *DatabaseContext) LastSequence() (uint64, error) {
 func (context *DatabaseContext) IsGuestReadOnly() bool {
 	return context.Options.UnsupportedOptions != nil && context.Options.UnsupportedOptions.GuestReadOnly
 
+}
+
+// GetRequestPlusSequence fetches the current value of the sequence counter for the database.
+// Uses getSequence (instead of lastSequence) as it's intended to be up to date with allocations
+// across all nodes, while lastSequence is just the latest allocation from this node
+func (dbc *DatabaseContext) GetRequestPlusSequence() (uint64, error) {
+	return dbc.sequences.getSequence()
 }

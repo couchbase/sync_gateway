@@ -574,19 +574,23 @@ func NewBlipTesterClientOptsWithRT(tb testing.TB, rt *RestTester, opts *BlipTest
 
 // StartPull will begin a continuous pull replication since 0 between the client and server
 func (btc *BlipTesterClient) StartPull() (err error) {
-	return btc.StartPullSince("true", "0", "false", "")
+	return btc.StartPullSince("true", "0", "false", "", "")
 }
 
 func (btc *BlipTesterClient) StartOneshotPull() (err error) {
-	return btc.StartPullSince("false", "0", "false", "")
+	return btc.StartPullSince("false", "0", "false", "", "")
 }
 
 func (btc *BlipTesterClient) StartOneshotPullFiltered(channels string) (err error) {
-	return btc.StartPullSince("false", "0", "false", channels)
+	return btc.StartPullSince("false", "0", "false", channels, "")
+}
+
+func (btc *BlipTesterClient) StartOneshotPullRequestPlus() (err error) {
+	return btc.StartPullSince("false", "0", "false", "", "true")
 }
 
 // StartPullSince will begin a pull replication between the client and server with the given params.
-func (btc *BlipTesterClient) StartPullSince(continuous, since, activeOnly string, channels string) (err error) {
+func (btc *BlipTesterClient) StartPullSince(continuous, since, activeOnly string, channels string, requestPlus string) (err error) {
 	subChangesRequest := blip.NewRequest()
 	subChangesRequest.SetProfile(db.MessageSubChanges)
 	subChangesRequest.Properties[db.SubChangesContinuous] = continuous
@@ -595,6 +599,9 @@ func (btc *BlipTesterClient) StartPullSince(continuous, since, activeOnly string
 	if channels != "" {
 		subChangesRequest.Properties[db.SubChangesFilter] = base.ByChannelFilter
 		subChangesRequest.Properties[db.SubChangesChannels] = channels
+	}
+	if requestPlus != "" {
+		subChangesRequest.Properties[db.SubChangesRequestPlus] = requestPlus
 	}
 	subChangesRequest.SetNoReply(true)
 
@@ -845,6 +852,41 @@ func (btc *BlipTesterClient) WaitForRev(docID, revID string) (data []byte, found
 			return nil, false
 		case <-ticker.C:
 			if data, found := btc.GetRev(docID, revID); found {
+				return data, found
+			}
+		}
+	}
+}
+
+// GetDoc returns a rev stored in the Client under the given docID.  (if multiple revs are present, rev body returned is non-deterministic)
+func (btc *BlipTesterClient) GetDoc(docID string) (data []byte, found bool) {
+	btc.docsLock.RLock()
+	defer btc.docsLock.RUnlock()
+
+	if rev, ok := btc.docs[docID]; ok {
+		for _, data := range rev {
+			return data.body, true
+		}
+	}
+
+	return nil, false
+}
+
+// WaitForDoc blocks until the given doc ID has been stored by the client, and returns the data when found.
+func (btc *BlipTesterClient) WaitForDoc(docID string) (data []byte, found bool) {
+
+	if data, found := btc.GetDoc(docID); found {
+		return data, found
+	}
+	ticker := time.NewTicker(50 * time.Millisecond)
+	timeout := time.After(10 * time.Second)
+	for {
+		select {
+		case <-timeout:
+			btc.rt.tb.Fatalf("BlipTesterClient timed out waiting for doc ID: %v", docID)
+			return nil, false
+		case <-ticker.C:
+			if data, found := btc.GetDoc(docID); found {
 				return data, found
 			}
 		}

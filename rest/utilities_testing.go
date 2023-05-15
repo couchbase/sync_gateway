@@ -376,6 +376,10 @@ func (rt *RestTester) SendRequest(method, resource string, body string) *TestRes
 	return rt.Send(request(method, resource, body))
 }
 
+func (rt *RestTester) SendUserRequest(method, resource string, body string, username string) *TestResponse {
+	return rt.Send(requestByUser(method, resource, body, username))
+}
+
 func (rt *RestTester) SendRequestWithHeaders(method, resource string, body string, headers map[string]string) *TestResponse {
 	req := request(method, resource, body)
 	for k, v := range headers {
