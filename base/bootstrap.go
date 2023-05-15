@@ -72,6 +72,7 @@ const (
 type cachedBucket struct {
 	bucket     *gocb.Bucket
 	teardownFn func()
+	refcount   int
 }
 
 // noopTeardown is returned by getBucket when using a cached bucket - these buckets are torn down
@@ -238,9 +239,20 @@ func (cc *CouchbaseCluster) GetConfigBuckets() ([]string, error) {
 		return nil, err
 	}
 
+	cachedBuckets := make(map[string]struct{})
 	bucketList := make([]string, 0, len(buckets))
 	for bucketName := range buckets {
 		bucketList = append(bucketList, bucketName)
+		cachedBuckets[bucketName] = struct{}{}
+	}
+
+	// remove any stale connections
+	for bucketName, _ := range cc.cachedBucketConnections {
+		_, exists := cachedBuckets[bucketName]
+		if exists {
+			continue
+		}
+		cc.removeCachedBucket(bucketName)
 	}
 
 	return bucketList, nil
@@ -439,7 +451,7 @@ func (cc *CouchbaseCluster) getBucket(bucketName string) (b *gocb.Bucket, teardo
 }
 
 // For unrecoverable errors when using cached buckets, remove the bucket from the cache to trigger a new connection on next usage
-func (cc *CouchbaseCluster) onCachedBucketError(bucketName string) {
+func (cc *CouchbaseCluster) removeCachedBucket(bucketName string) {
 
 	cc.cachedConnectionLock.Lock()
 	defer cc.cachedConnectionLock.Unlock()
