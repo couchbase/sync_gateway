@@ -782,7 +782,8 @@ func TestReplicationStatusActions(t *testing.T) {
 
 }
 
-func TestStatusAfterReplicationRebalanceFail(t *testing.T) {
+// TestReplicationRebalanceToZeroNodes checks that the replication goes into an unassigned state when there are no nodes available to run replications.
+func TestReplicationRebalanceToZeroNodes(t *testing.T) {
 	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 	activeRT, remoteRT, _, teardown := rest.SetupSGRPeers(t)
 	defer teardown()
