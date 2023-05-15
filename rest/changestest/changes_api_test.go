@@ -4190,6 +4190,10 @@ func TestOneShotGrantRequestPlusDbConfig(t *testing.T) {
 	// Issue a GET one-shot changes request in a separate goroutine.  Should run as request plus based on config
 	oneShotComplete.Add(1)
 	go func() {
+		var changes struct {
+			Results  []db.ChangeEntry
+			Last_Seq interface{}
+		}
 		defer oneShotComplete.Done()
 		changesResponse := rt.SendUserRequest("GET", "/{{.keyspace}}/_changes", "", "bernard")
 		rest.RequireStatus(t, changesResponse, 200)
@@ -4204,6 +4208,10 @@ func TestOneShotGrantRequestPlusDbConfig(t *testing.T) {
 	// Issue a POST one-shot changes request in a separate goroutine. Should run as request plus based on config
 	oneShotComplete.Add(1)
 	go func() {
+		var changes struct {
+			Results  []db.ChangeEntry
+			Last_Seq interface{}
+		}
 		defer oneShotComplete.Done()
 		changesResponse := rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", `{}`, "bernard")
 		rest.RequireStatus(t, changesResponse, 200)
