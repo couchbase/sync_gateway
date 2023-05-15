@@ -404,7 +404,7 @@ func TestDocumentRevisionBodyBytes(t *testing.T) {
 
 	j, err := rev.BodyBytesWith(BodyId, BodyDeleted, BodyRev, BodyExpiry, BodyRemoved)
 	if assert.NoError(t, err) {
-		assert.Equal(t, `{"foo":false,"_id":"wassup","_deleted":true,"_rev":"5-6789","_exp":"2038-01-18T19:14:07-08:00"}`, string(j))
+		assert.Equal(t, `{"foo":false,"_id":"wassup","_deleted":true,"_rev":"5-6789","_exp":"2038-01-19T03:14:07Z"}`, string(j))
 	}
 
 	rev.Expiry = nil
