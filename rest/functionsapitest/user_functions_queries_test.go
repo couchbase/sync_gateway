@@ -18,8 +18,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/couchbase/sync_gateway/db"
-
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db/functions"
 	"github.com/couchbase/sync_gateway/rest"
@@ -432,11 +430,6 @@ func TestFunctionMutability(t *testing.T) {
 }
 
 func TestFunctionTimeout(t *testing.T) {
-	const timeout = 5 * time.Second
-	oldTimeout := db.UserFunctionTimeout
-	db.UserFunctionTimeout = timeout
-	defer func() { db.UserFunctionTimeout = oldTimeout }()
-
 	kUserTimeoutFunctionsTestConfig := &functions.FunctionsConfig{
 		Definitions: functions.FunctionsDefs{
 			"sleep": {
@@ -461,7 +454,8 @@ func TestFunctionTimeout(t *testing.T) {
 		return
 	}
 	defer rt.Close()
-
+	timeout := 500 * time.Millisecond
+	rt.GetDatabase().UserFunctionTimeout = timeout
 	// positive case:
 	reqBody := fmt.Sprintf(`{"ms": %d}`, timeout.Milliseconds()/2)
 	t.Run("under time limit", func(t *testing.T) {

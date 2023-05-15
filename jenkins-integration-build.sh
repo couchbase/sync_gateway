@@ -127,12 +127,13 @@ if [ "${RUN_WALRUS}" == "true" ]; then
 fi
 
 # Run CBS
-if [[ -z ${MULTI_NODE:-} ]]; then
-    # Run CBS
-    ./integration-test/start_server.sh "${COUCHBASE_SERVER_VERSION}"
-else
+if [ "${MULTI_NODE:-}" == "true" ]; then
+    # multi node
     ./integration-test/start_server.sh -m "${COUCHBASE_SERVER_VERSION}"
     export SG_TEST_BUCKET_NUM_REPLICAS=1
+else
+    # single node
+    ./integration-test/start_server.sh "${COUCHBASE_SERVER_VERSION}"
 fi
 
 # Set up test environment variables for CBS runs

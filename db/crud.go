@@ -187,6 +187,47 @@ func (c *DatabaseCollection) GetDocSyncData(ctx context.Context, docid string) (
 
 }
 
+// This gets *just* the Sync Metadata (_sync field) rather than the entire doc, for efficiency
+// reasons. Unlike GetDocSyncData it does not check for on-demand import; this means it does not
+// need to read the doc body from the bucket.
+func (db *DatabaseCollection) GetDocSyncDataNoImport(ctx context.Context, docid string, level DocumentUnmarshalLevel) (syncData SyncData, err error) {
+	if db.UseXattrs() {
+		var cas uint64
+		var xattrValue []byte
+		if cas, err = db.dataStore.GetXattr(docid, base.SyncXattrName, &xattrValue); err == nil {
+			var doc *Document
+			doc, err = unmarshalDocumentWithXattr(docid, nil, xattrValue, nil, cas, level)
+			if err == nil {
+				syncData = doc.SyncData
+			}
+		}
+	} else {
+		if level == DocUnmarshalAll || level == DocUnmarshalSync || level == DocUnmarshalHistory {
+			syncData.History = make(RevTree)
+		}
+		docRoot := documentRoot{
+			SyncData: &syncData,
+		}
+		var rawDocBytes []byte
+		if rawDocBytes, _, err = db.dataStore.GetRaw(docid); err == nil {
+			if err = base.JSONUnmarshal(rawDocBytes, &docRoot); err == nil {
+				// (unmarshaling populates `syncData` since `docRoot` points to it.)
+				if !syncData.HasValidSyncData() {
+					base.InfofCtx(ctx, base.KeyCRUD, "No valid sync data in doc %q; checking for xattrs", base.UD(docid))
+					if upgradeDoc, _ := db.checkForUpgrade(docid, level); upgradeDoc != nil {
+						// No valid sync data in doc, but doc has been upgraded to use xattrs
+						syncData = upgradeDoc.SyncData
+					} else {
+						base.WarnfCtx(ctx, "No valid sync data nor xattrs in doc %q", base.UD(docid))
+						err = base.HTTPErrorf(404, "Not imported")
+					}
+				}
+			}
+		}
+	}
+	return
+}
+
 // OnDemandImportForGet.  Attempts to import the doc based on the provided id, contents and cas.  ImportDocRaw does cas retry handling
 // if the document gets updated after the initial retrieval attempt that triggered this.
 func (c *DatabaseCollection) OnDemandImportForGet(ctx context.Context, docid string, rawDoc []byte, rawXattr []byte, rawUserXattr []byte, cas uint64) (docOut *Document, err error) {
@@ -2422,47 +2463,23 @@ func (db *DatabaseCollectionWithUser) RevDiff(ctx context.Context, docid string,
 		return // Users can't upload design docs, so ignore them
 	}
 
-	var history RevTree
-
-	if db.UseXattrs() {
-		var xattrValue []byte
-		cas, err := db.dataStore.GetXattr(docid, base.SyncXattrName, &xattrValue)
-
-		if err != nil {
-			if !base.IsDocNotFoundError(err) {
-				base.WarnfCtx(ctx, "RevDiff(%q) --> %T %v", base.UD(docid), err, err)
-			}
-			missing = revids
-			return
+	doc, err := db.GetDocSyncDataNoImport(ctx, docid, DocUnmarshalHistory)
+	if err != nil {
+		if !base.IsDocNotFoundError(err) && err != base.ErrXattrNotFound {
+			base.WarnfCtx(ctx, "RevDiff(%q) --> %T %v", base.UD(docid), err, err)
 		}
-		doc, err := unmarshalDocumentWithXattr(docid, nil, xattrValue, nil, cas, DocUnmarshalSync)
-		if err != nil {
-			base.ErrorfCtx(ctx, "RevDiff(%q) Doc Unmarshal Failed: %T %v", base.UD(docid), err, err)
-		}
-		history = doc.History
-	} else {
-		doc, err := db.GetDocument(ctx, docid, DocUnmarshalSync)
-		if err != nil {
-			if !base.IsDocNotFoundError(err) {
-				base.WarnfCtx(ctx, "RevDiff(%q) --> %T %v", base.UD(docid), err, err)
-				// If something goes wrong getting the doc, treat it as though it's nonexistent.
-			}
-			missing = revids
-			return
-		}
-		history = doc.History
+		missing = revids
+		return
 	}
-
 	// Check each revid to see if it's in the doc's rev tree:
-	revtree := history
 	revidsSet := base.SetFromArray(revids)
 	possibleSet := make(map[string]bool)
 	for _, revid := range revids {
-		if !revtree.contains(revid) {
+		if !doc.History.contains(revid) {
 			missing = append(missing, revid)
 			// Look at the doc's leaves for a known possible ancestor:
 			if gen, _ := ParseRevID(revid); gen > 1 {
-				revtree.forEachLeaf(func(possible *RevInfo) {
+				doc.History.forEachLeaf(func(possible *RevInfo) {
 					if !revidsSet.Contains(possible.ID) {
 						possibleGen, _ := ParseRevID(possible.ID)
 						if possibleGen < gen && possibleGen >= gen-100 {
@@ -2490,6 +2507,7 @@ func (db *DatabaseCollectionWithUser) RevDiff(ctx context.Context, docid string,
 type ProposedRevStatus int
 
 const (
+	ProposedRev_OK_IsNew ProposedRevStatus = 201 // Rev can be added, doc does not exist locally
 	ProposedRev_OK       ProposedRevStatus = 0   // Rev can be added without conflict
 	ProposedRev_Exists   ProposedRevStatus = 304 // Rev already exists locally
 	ProposedRev_Conflict ProposedRevStatus = 409 // Rev would cause conflict
@@ -2498,15 +2516,23 @@ const (
 
 // Given a docID/revID to be pushed by a client, check whether it can be added _without conflict_.
 // This is used by the BLIP replication code in "allow_conflicts=false" mode.
-func (c *DatabaseCollection) CheckProposedRev(ctx context.Context, docid string, revid string, parentRevID string) (status ProposedRevStatus, currentRev string) {
-	doc, err := c.GetDocument(ctx, docid, DocUnmarshalAll)
+func (db *DatabaseCollectionWithUser) CheckProposedRev(ctx context.Context, docid string, revid string, parentRevID string) (status ProposedRevStatus, currentRev string) {
+	if strings.HasPrefix(docid, "_design/") && db.user != nil {
+		return ProposedRev_OK, "" // Users can't upload design docs, so ignore them
+	}
+
+	level := DocUnmarshalRev
+	if parentRevID == "" {
+		level = DocUnmarshalHistory // doc.History only needed in this case (see below)
+	}
+	doc, err := db.GetDocSyncDataNoImport(ctx, docid, level)
 	if err != nil {
-		if !base.IsDocNotFoundError(err) {
+		if !base.IsDocNotFoundError(err) && err != base.ErrXattrNotFound {
 			base.WarnfCtx(ctx, "CheckProposedRev(%q) --> %T %v", base.UD(docid), err, err)
 			return ProposedRev_Error, ""
 		}
 		// Doc doesn't exist locally; adding it is OK (even if it has a history)
-		return ProposedRev_OK, ""
+		return ProposedRev_OK_IsNew, ""
 	} else if doc.CurrentRev == revid {
 		// Proposed rev already exists here:
 		return ProposedRev_Exists, ""

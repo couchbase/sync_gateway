@@ -41,6 +41,9 @@ const kStatsReportInterval = time.Hour
 const kDefaultSlowQueryWarningThreshold = 500 // ms
 const KDefaultNumShards = 16
 
+// defaultBlipStatsReportingInterval is the default interval when to report blip stats, at the end of a message handler.
+const defaultBlipStatsReportingInterval = 30 * time.Second
+
 var errCollectionsUnsupported = base.HTTPErrorf(http.StatusBadRequest, "Named collections specified in database config, but not supported by connected Couchbase Server.")
 
 var ErrSuspendingDisallowed = errors.New("database does not allow suspending")
@@ -70,6 +73,13 @@ type ServerContext struct {
 	LogContextID                  string          // ID to differentiate log messages from different server context
 	fetchConfigsLastUpdate        time.Time       // The last time fetchConfigsWithTTL() updated dbConfigs
 	allowScopesInPersistentConfig bool            // Test only backdoor to allow scopes in persistent config, not supported for multiple databases with different collections targeting the same bucket
+	ActiveReplicationsCounter
+}
+
+type ActiveReplicationsCounter struct {
+	activeReplicatorCount int          // The count of concurrent active replicators
+	activeReplicatorLimit int          // The limit on number of active replicators allowed
+	lock                  sync.RWMutex // Lock for managing access to shared memory location
 }
 
 // defaultConfigRetryTimeout is the total retry time when waiting for in-flight config updates.  Set as a multiple of kv op timeout,
@@ -79,8 +89,8 @@ const defaultConfigRetryTimeout = 3 * base.DefaultGocbV2OperationTimeout
 type bootstrapContext struct {
 	Connection         base.BootstrapConnection
 	configRetryTimeout time.Duration // configRetryTimeout defines the total amount of time to retry on a registry/config mismatch
-	terminator         chan struct{} // Used to stop the goroutine handling the stats logging
-	doneChan           chan struct{} // doneChan is closed when the stats logger goroutine finishes.
+	terminator         chan struct{} // Used to stop the goroutine handling the bootstrap polling
+	doneChan           chan struct{} // doneChan is closed when the bootstrap polling goroutine finishes.
 }
 
 func (sc *ServerContext) CreateLocalDatabase(ctx context.Context, dbs DbConfigMap) error {
@@ -133,6 +143,9 @@ func NewServerContext(ctx context.Context, config *StartupConfig, persistentConf
 			sc.Config.API.MetricsInterfaceAuthentication = base.BoolPtr(false)
 		}
 	}
+	if config.Replicator.MaxConcurrentReplications != 0 {
+		sc.ActiveReplicationsCounter.activeReplicatorLimit = config.Replicator.MaxConcurrentReplications
+	}
 
 	sc.startStatsLogger(ctx)
 
@@ -175,6 +188,7 @@ func (sc *ServerContext) Close(ctx context.Context) {
 		base.InfofCtx(ctx, base.KeyAll, "Couldn't stop stats logger: %v", err)
 	}
 
+	// stop the config polling
 	err = base.TerminateAndWaitForClose(sc.BootstrapContext.terminator, sc.BootstrapContext.doneChan, serverContextStopMaxWait)
 	if err != nil {
 		base.InfofCtx(ctx, base.KeyAll, "Couldn't stop background config update worker: %v", err)
@@ -182,6 +196,11 @@ func (sc *ServerContext) Close(ctx context.Context) {
 
 	sc.lock.Lock()
 	defer sc.lock.Unlock()
+
+	// close cached bootstrap bucket connections
+	if sc.BootstrapContext != nil && sc.BootstrapContext.Connection != nil {
+		sc.BootstrapContext.Connection.Close()
+	}
 
 	for _, db := range sc.databases_ {
 		db.Close(ctx)
@@ -691,6 +710,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		contextOptions.MetadataID = config.MetadataID
 	}
 
+	contextOptions.BlipStatsReportingInterval = defaultBlipStatsReportingInterval.Milliseconds()
 	// Create the DB Context
 	dbcontext, err := db.NewDatabaseContext(ctx, dbName, bucket, autoImport, contextOptions)
 	if err != nil {
@@ -1024,6 +1044,7 @@ func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConf
 		JavaScriptEngine:          config.JavaScriptEngine,
 		JavascriptTimeout:         javascriptTimeout,
 		Serverless:                sc.Config.IsServerless(),
+		ChangesRequestPlus:        base.BoolDefault(config.ChangesRequestPlus, false),
 		// FunctionsConfig:            // behind feature flag (see below)
 	}
 
@@ -1854,7 +1875,6 @@ func (sc *ServerContext) initializeCouchbaseServerConnections(ctx context.Contex
 			base.InfofCtx(ctx, base.KeyConfig, "Starting background polling for new configs/buckets: %s", sc.Config.Bootstrap.ConfigUpdateFrequency.Value().String())
 			go func() {
 				defer close(sc.BootstrapContext.doneChan)
-				defer sc.BootstrapContext.Connection.Close()
 				t := time.NewTicker(sc.Config.Bootstrap.ConfigUpdateFrequency.Value())
 				for {
 					select {

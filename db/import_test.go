@@ -501,14 +501,21 @@ func TestImportStampClusterUUID(t *testing.T) {
 	_, err := collection.dataStore.Add(key, 0, bodyBytes)
 	require.NoError(t, err)
 
+	_, cas, err := collection.dataStore.GetRaw(key)
+	require.NoError(t, err)
+
+	base.SetUpTestLogging(t, base.LevelDebug, base.KeyCRUD, base.KeyMigrate, base.KeyImport)
+
 	body := Body{}
 	err = body.Unmarshal(rawDocNoMeta())
 	require.NoError(t, err)
-	existingDoc := &sgbucket.BucketDocument{Body: bodyBytes}
+	existingDoc := &sgbucket.BucketDocument{Body: bodyBytes, Cas: cas}
 
 	importedDoc, err := collection.importDoc(ctx, key, body, nil, false, existingDoc, ImportOnDemand)
 	require.NoError(t, err)
-	require.Equal(t, 32, len(importedDoc.ClusterUUID))
+	if assert.NotNil(t, importedDoc) {
+		require.Equal(t, 32, len(importedDoc.ClusterUUID))
+	}
 
 	var xattr map[string]string
 	_, err = collection.dataStore.GetWithXattr(key, base.SyncXattrName, "", &body, &xattr, nil)

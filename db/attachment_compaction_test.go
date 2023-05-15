@@ -627,7 +627,7 @@ func TestAttachmentDifferentVBUUIDsBetweenPhases(t *testing.T) {
 	vbUUIDs[0] = 1
 
 	_, err = attachmentCompactSweepPhase(ctx, dataStore, collectionID, testDB, t.Name(), vbUUIDs, false, terminator, &base.AtomicInt{})
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "error opening stream for vb 0: VbUUID mismatch when failOnRollback set")
 }
 

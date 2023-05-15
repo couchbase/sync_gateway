@@ -263,11 +263,6 @@ func TestGraphQLMutationsGuest(t *testing.T) {
 }
 
 func TestContextDeadline(t *testing.T) {
-	const timeout = 5 * time.Second
-	oldTimeout := db.UserFunctionTimeout
-	db.UserFunctionTimeout = timeout
-	defer func() { db.UserFunctionTimeout = oldTimeout }()
-
 	rt := rest.NewRestTesterForUserQueries(t, rest.DbConfig{
 		GraphQL: &functions.GraphQLConfig{
 			Schema: base.StringPtr(`type Query{checkContextDeadline(Timeout: Int!): Int}`),
@@ -290,6 +285,8 @@ func TestContextDeadline(t *testing.T) {
 		return
 	}
 	defer rt.Close()
+	timeout := 500 * time.Millisecond
+	rt.GetDatabase().UserFunctionTimeout = timeout
 	t.Run("AsAdmin - exceedContextDeadline", func(t *testing.T) {
 		requestQuery := fmt.Sprintf(`{"query": "query{ checkContextDeadline(Timeout:%d) }"}`, timeout.Milliseconds()*2)
 		response := rt.SendAdminRequest("POST", "/db/_graphql", requestQuery)
@@ -299,8 +296,8 @@ func TestContextDeadline(t *testing.T) {
 	t.Run("AsAdmin - doNotExceedContextDeadline", func(t *testing.T) {
 		requestQuery := fmt.Sprintf(`{"query": "query{ checkContextDeadline(Timeout:%d) }"}`, timeout.Milliseconds()/2)
 		response := rt.SendAdminRequest("POST", "/db/_graphql", requestQuery)
-
 		assert.Equal(t, 200, response.Result().StatusCode)
+
 		assert.Equal(t, `{"data":{"checkContextDeadline":0}}`, string(response.BodyBytes()))
 	})
 }

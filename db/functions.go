@@ -26,7 +26,7 @@ import (
 /* This is the interface to the functions and GraphQL APIs implemented in the functions package. */
 
 // Timeout for N1QL, JavaScript and GraphQL queries. (Applies to REST and BLIP requests.)
-var UserFunctionTimeout = 60 * time.Second
+const defaultUserFunctionTimeout = 60 * time.Second
 
 // Abstract interface for user-functions & GraphQL configuration. (Implemented by functions.Config)
 type IFunctionsAndGraphQLConfig interface {
@@ -185,7 +185,6 @@ func EstimateSizeOfJSON(args any) int {
 		}
 		return size
 	default:
-		//log.Printf("*** sizeOfArgs doesn't handle %T", arg)
 		return 1
 	}
 }

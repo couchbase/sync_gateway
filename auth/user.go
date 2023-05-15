@@ -183,6 +183,10 @@ func (user *userImpl) SetEmail(email string) error {
 	return nil
 }
 
+func (user *userImpl) GetWarnChanSync() *sync.Once {
+	return &user.warnChanThresholdOnce
+}
+
 func (user *userImpl) RoleNames() ch.TimedSet {
 	if user.RoleInvalSeq != 0 {
 		return nil
