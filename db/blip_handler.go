@@ -293,6 +293,19 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 
 	continuous := subChangesParams.continuous()
 
+	requestPlusSeq := uint64(0)
+	// If non-continuous, check whether requestPlus handling is set for request or via database config
+	if continuous == false {
+		useRequestPlus := subChangesParams.requestPlus(bh.db.Options.ChangesRequestPlus)
+		if useRequestPlus {
+			seq, requestPlusErr := bh.db.GetRequestPlusSequence()
+			if requestPlusErr != nil {
+				return base.HTTPErrorf(http.StatusServiceUnavailable, "Unable to retrieve current sequence for requestPlus=true: %v", requestPlusErr)
+			}
+			requestPlusSeq = seq
+		}
+	}
+
 	// Start asynchronous changes goroutine
 	go func() {
 		// Pull replication stats by type
@@ -323,6 +336,7 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 			clientType:        clientType,
 			ignoreNoConflicts: clientType == clientTypeSGR2, // force this side to accept a "changes" message, even in no conflicts mode for SGR2.
 			changesCtx:        collectionCtx.changesCtx,
+			requestPlusSeq:    requestPlusSeq,
 		})
 		base.DebugfCtx(bh.loggingCtx, base.KeySyncMsg, "#%d: Type:%s   --> Time:%v", bh.serialNumber, rq.Profile(), time.Since(startTime))
 	}()
@@ -359,6 +373,7 @@ type sendChangesOptions struct {
 	revocations       bool
 	ignoreNoConflicts bool
 	changesCtx        context.Context
+	requestPlusSeq    uint64
 }
 
 type changesDeletedFlag uint
@@ -386,14 +401,15 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions
 	base.InfofCtx(bh.loggingCtx, base.KeySync, "Sending changes since %v", opts.since)
 
 	options := ChangesOptions{
-		Since:       opts.since,
-		Conflicts:   false, // CBL 2.0/BLIP don't support branched rev trees (LiteCore #437)
-		Continuous:  opts.continuous,
-		ActiveOnly:  opts.activeOnly,
-		Revocations: opts.revocations,
-		LoggingCtx:  bh.loggingCtx,
-		clientType:  opts.clientType,
-		ChangesCtx:  opts.changesCtx,
+		Since:          opts.since,
+		Conflicts:      false, // CBL 2.0/BLIP don't support branched rev trees (LiteCore #437)
+		Continuous:     opts.continuous,
+		ActiveOnly:     opts.activeOnly,
+		Revocations:    opts.revocations,
+		LoggingCtx:     bh.loggingCtx,
+		clientType:     opts.clientType,
+		ChangesCtx:     opts.changesCtx,
+		RequestPlusSeq: opts.requestPlusSeq,
 	}
 
 	channelSet := opts.channels

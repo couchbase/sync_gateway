@@ -173,6 +173,8 @@ type DatabaseContextOptions struct {
 	skipRegisterImportPIndex      bool           // if set, skips the global gocb PIndex registration
 	MetadataStore                 base.DataStore // If set, use this location/connection for SG metadata storage - if not set, metadata is stored using the same location/connection as the bucket used for data storage.
 	MetadataID                    string         // MetadataID used for metadata storage
+	BlipStatsReportingInterval    int64          // interval to report blip stats in milliseconds
+	ChangesRequestPlus            bool           // Sets the default value for request_plus, for non-continuous changes feeds
 }
 
 type ScopesOptions map[string]ScopeOptions
@@ -2306,4 +2308,11 @@ func (dbc *DatabaseContext) AuthenticatorOptions() auth.AuthenticatorOptions {
 	defaultOptions := auth.DefaultAuthenticatorOptions()
 	defaultOptions.MetaKeys = dbc.MetadataKeys
 	return defaultOptions
+}
+
+// GetRequestPlusSequence fetches the current value of the sequence counter for the database.
+// Uses getSequence (instead of lastSequence) as it's intended to be up to date with allocations
+// across all nodes, while lastSequence is just the latest allocation from this node
+func (dbc *DatabaseContext) GetRequestPlusSequence() (uint64, error) {
+	return dbc.sequences.getSequence()
 }

@@ -1062,6 +1062,7 @@ func dbcOptionsFromConfig(ctx context.Context, sc *ServerContext, config *DbConf
 		GroupID:                   groupID,
 		JavascriptTimeout:         javascriptTimeout,
 		Serverless:                sc.Config.IsServerless(),
+		ChangesRequestPlus:        base.BoolDefault(config.ChangesRequestPlus, false),
 		// UserQueries:               config.UserQueries,   // behind feature flag (see below)
 		// UserFunctions:             config.UserFunctions, // behind feature flag (see below)
 		// GraphQL:                   config.GraphQL,       // behind feature flag (see below)

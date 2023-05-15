@@ -68,6 +68,8 @@ const (
 	SubChangesContinuous  = "continuous"
 	SubChangesBatch       = "batch"
 	SubChangesRevocations = "revocations"
+	SubChangesRequestPlus = "requestPlus"
+	SubChangesFuture      = "future"
 
 	// rev message properties
 	RevMessageID          = "id"
@@ -163,7 +165,7 @@ func NewSubChangesParams(logCtx context.Context, rq *blip.Message, zeroSeq Seque
 	// Determine incoming since and docIDs once, since there is some overhead associated with their calculation
 	sinceSequenceId := zeroSeq
 	var err error
-	if rq.Properties["future"] == trueProperty {
+	if rq.Properties[SubChangesFuture] == trueProperty {
 		sinceSequenceId, err = latestSeq()
 	} else if sinceStr, found := rq.Properties[SubChangesSince]; found {
 		if sinceSequenceId, err = sequenceIDParser(sinceStr); err != nil {
@@ -232,6 +234,14 @@ func (s *SubChangesParams) revocations() bool {
 
 func (s *SubChangesParams) activeOnly() bool {
 	return (s.rq.Properties[SubChangesActiveOnly] == trueProperty)
+}
+
+func (s *SubChangesParams) requestPlus(defaultValue bool) (value bool) {
+	propertyValue, isDefined := s.rq.Properties[SubChangesRequestPlus]
+	if !isDefined {
+		return defaultValue
+	}
+	return propertyValue == trueProperty
 }
 
 func (s *SubChangesParams) filter() string {
