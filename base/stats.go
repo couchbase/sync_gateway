@@ -393,6 +393,8 @@ type CBLReplicationPushStats struct {
 	AttachmentPushCount *SgwIntStat `json:"attachment_push_count"`
 	// The total number of documents pushed.
 	DocPushCount *SgwIntStat `json:"doc_push_count"`
+	// The total number of documents that failed to push.
+	DocPushErrorCount *SgwIntStat `json:"doc_push_error_count"`
 	// The total number of changes and-or proposeChanges messages processed since node start-up.
 	ProposeChangeCount *SgwIntStat `json:"propose_change_count"`
 	// The total time spent processing changes and/or proposeChanges messages.
@@ -1258,6 +1260,10 @@ func (d *DbStats) initCBLReplicationPushStats() error {
 	if err != nil {
 		return err
 	}
+	resUtil.DocPushErrorCount, err = NewIntStat(SubsystemReplicationPush, "doc_push_error_count", labelKeys, labelVals, prometheus.GaugeValue, 0)
+	if err != nil {
+		return err
+	}
 	resUtil.ProposeChangeCount, err = NewIntStat(SubsystemReplicationPush, "propose_change_count", labelKeys, labelVals, prometheus.CounterValue, 0)
 	if err != nil {
 		return err
@@ -1279,6 +1285,7 @@ func (d *DbStats) unregisterCBLReplicationPushStats() {
 	prometheus.Unregister(d.CBLReplicationPushStats.AttachmentPushBytes)
 	prometheus.Unregister(d.CBLReplicationPushStats.AttachmentPushCount)
 	prometheus.Unregister(d.CBLReplicationPushStats.DocPushCount)
+	prometheus.Unregister(d.CBLReplicationPushStats.DocPushErrorCount)
 	prometheus.Unregister(d.CBLReplicationPushStats.ProposeChangeCount)
 	prometheus.Unregister(d.CBLReplicationPushStats.ProposeChangeTime)
 	prometheus.Unregister(d.CBLReplicationPushStats.WriteProcessingTime)

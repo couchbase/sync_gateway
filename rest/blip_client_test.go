@@ -484,10 +484,11 @@ func (btc *BlipTesterCollectionClient) saveAttachment(_, base64data string) (dat
 
 	digest = db.Sha1DigestKey(data)
 	if _, found := btc.attachments[digest]; found {
-		return 0, "", fmt.Errorf("attachment with digest already exists")
+		base.InfofCtx(context.TODO(), base.KeySync, "attachment with digest %s already exists", digest)
+	} else {
+		btc.attachments[digest] = data
 	}
 
-	btc.attachments[digest] = data
 	return len(data), digest, nil
 }
 
