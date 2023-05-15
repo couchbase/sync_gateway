@@ -4031,11 +4031,6 @@ func TestOneShotGrantRequestPlus(t *testing.T) {
 	response = rt.SendAdminRequest("PUT", "/db/pbs-4", `{"channel":["PBS"]}`)
 	RequireStatus(t, response, 201)
 
-	var changes struct {
-		Results  []db.ChangeEntry
-		Last_Seq interface{}
-	}
-
 	// Allocate a sequence but do not write a doc for it - will block DCP buffering until sequence is skipped
 	slowSequence, seqErr := db.AllocateTestSequence(database)
 	require.NoError(t, seqErr)
@@ -4046,6 +4041,11 @@ func TestOneShotGrantRequestPlus(t *testing.T) {
 
 	caughtUpStart := database.DbStats.CBLReplicationPull().NumPullReplTotalCaughtUp.Value()
 
+	type changesResults struct {
+		Results  []db.ChangeEntry
+		Last_Seq interface{}
+	}
+
 	var oneShotComplete sync.WaitGroup
 	// Issue a GET requestPlus one-shot changes request in a separate goroutine.
 	oneShotComplete.Add(1)
@@ -4053,7 +4053,8 @@ func TestOneShotGrantRequestPlus(t *testing.T) {
 		defer oneShotComplete.Done()
 		changesResponse := rt.SendUserRequest("GET", "/db/_changes?request_plus=true", "", "bernard")
 		RequireStatus(t, changesResponse, 200)
-		err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
+		var changes changesResults
+		err := base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
 		assert.NoError(t, err, "Error unmarshalling changes response")
 		for _, entry := range changes.Results {
 			log.Printf("Entry:%+v", entry)
@@ -4066,7 +4067,7 @@ func TestOneShotGrantRequestPlus(t *testing.T) {
 	go func() {
 		defer oneShotComplete.Done()
 		changesResponse := rt.SendUserRequest("POST", "/db/_changes", `{"request_plus":true}`, "bernard")
-		RequireStatus(t, changesResponse, 200)
+		var changes changesResults
 		err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
 		assert.NoError(t, err, "Error unmarshalling changes response")
 		for _, entry := range changes.Results {
@@ -4127,11 +4128,6 @@ func TestOneShotGrantRequestPlusDbConfig(t *testing.T) {
 	response = rt.SendAdminRequest("PUT", "/db/pbs-4", `{"channel":["PBS"]}`)
 	RequireStatus(t, response, 201)
 
-	var changes struct {
-		Results  []db.ChangeEntry
-		Last_Seq interface{}
-	}
-
 	// Allocate a sequence but do not write a doc for it - will block DCP buffering until sequence is skipped
 	slowSequence, seqErr := db.AllocateTestSequence(database)
 	require.NoError(t, seqErr)
@@ -4145,6 +4141,7 @@ func TestOneShotGrantRequestPlusDbConfig(t *testing.T) {
 	// Expect no results as granting document hasn't been buffered (blocked by slowSequence)
 	changesResponse := rt.SendUserRequest("GET", "/db/_changes?request_plus=false", "", "bernard")
 	RequireStatus(t, changesResponse, 200)
+	var changes changesResults
 	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
 	assert.NoError(t, err, "Error unmarshalling changes response")
 	for _, entry := range changes.Results {
@@ -4172,7 +4169,7 @@ func TestOneShotGrantRequestPlusDbConfig(t *testing.T) {
 		defer oneShotComplete.Done()
 		changesResponse := rt.SendUserRequest("GET", "/db/_changes", "", "bernard")
 		RequireStatus(t, changesResponse, 200)
-		err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
+		err := base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
 		assert.NoError(t, err, "Error unmarshalling changes response")
 		for _, entry := range changes.Results {
 			log.Printf("Entry:%+v", entry)
@@ -4186,7 +4183,7 @@ func TestOneShotGrantRequestPlusDbConfig(t *testing.T) {
 		defer oneShotComplete.Done()
 		changesResponse := rt.SendUserRequest("POST", "/db/_changes", `{}`, "bernard")
 		RequireStatus(t, changesResponse, 200)
-		err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
+		err := base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
 		assert.NoError(t, err, "Error unmarshalling changes response")
 		for _, entry := range changes.Results {
 			log.Printf("Entry:%+v", entry)
