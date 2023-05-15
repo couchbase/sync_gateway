@@ -291,8 +291,8 @@ github.com/shirou/gopsutil v3.21.11+incompatible/go.mod h1:5b4v6he4MtMOwMlS0TUMT
 github.com/sirupsen/logrus v1.2.0/go.mod h1:LxeOpSwHxABJmUn/MG1IvRgCAasNZTLOkJPxbbu5VWo=
 github.com/sirupsen/logrus v1.4.2/go.mod h1:tLMulIdttU9McNUspp0xgXVQah82FyeX6MwdIuYE2rE=
 github.com/sirupsen/logrus v1.6.0/go.mod h1:7uNnSEd1DgxDLC74fIahvMZmmYsHGZGEOFrfsX/uA88=
-github.com/snej/v8go v1.7.3 h1:skliM+LRvRdLKwqJK4I+1BCQy4jTZs0u37R6b7aEUaU=
-github.com/snej/v8go v1.7.3/go.mod h1:s7IVrqyNoVfwYhndECq3XJ+/y0uq/JUH0/ECsC3k/UQ=
+github.com/snej/v8go v1.7.4-0.20230515215226-089c213628c9 h1:/EWbIEixlHDQmafVRf/hnlRytOea760pPKNR0epnJYg=
+github.com/snej/v8go v1.7.4-0.20230515215226-089c213628c9/go.mod h1:s7IVrqyNoVfwYhndECq3XJ+/y0uq/JUH0/ECsC3k/UQ=
 github.com/stretchr/objx v0.1.0/go.mod h1:HFkY916IF+rwdDfMAkV7OtwuqBVzrE8GR6GFx+wExME=
 github.com/stretchr/objx v0.1.1/go.mod h1:HFkY916IF+rwdDfMAkV7OtwuqBVzrE8GR6GFx+wExME=
 github.com/stretchr/objx v0.4.0/go.mod h1:YvHI0jy2hoMjB+UWwv71VJQ9isScKT/TqJzVSSt89Yw=
