@@ -819,7 +819,7 @@ func (db *DatabaseCollectionWithUser) backupAncestorRevs(ctx context.Context, do
 
 // ////// UPDATING DOCUMENTS:
 
-func (db *DatabaseCollectionWithUser) OnDemandImportForWrite(ctx context.Context, docid string, doc *Document, deleted bool) error {
+func (db *DatabaseCollectionWithUser) OnDemandImportForWrite(ctx context.Context, docid string, doc *Document, deleted bool) (*Document, error) {
 
 	// Check whether the doc requiring import is an SDK delete
 	isDelete := false
@@ -837,11 +837,9 @@ func (db *DatabaseCollectionWithUser) OnDemandImportForWrite(ctx context.Context
 		// Document exists, but existing doc wasn't imported based on import filter.  Treat write as insert
 		doc.SyncData = SyncData{History: make(RevTree)}
 	} else if importErr != nil {
-		return importErr
-	} else {
-		doc = importedDoc
+		return doc, importErr
 	}
-	return nil
+	return importedDoc, nil
 }
 
 // Updates or creates a document.
@@ -899,7 +897,8 @@ func (db *DatabaseCollectionWithUser) Put(ctx context.Context, docid string, bod
 		// (Be careful: this block can be invoked multiple times if there are races!)
 		// If the existing doc isn't an SG write, import prior to updating
 		if doc != nil && !isSgWrite && db.UseXattrs() {
-			err := db.OnDemandImportForWrite(ctx, newDoc.ID, doc, deleted)
+			var err error
+			doc, err = db.OnDemandImportForWrite(ctx, newDoc.ID, doc, deleted)
 			if err != nil {
 				if db.ForceAPIForbiddenErrors() {
 					base.InfofCtx(ctx, base.KeyCRUD, "Importing doc %q prior to write caused error", base.UD(newDoc.ID))
@@ -1025,7 +1024,8 @@ func (db *DatabaseCollectionWithUser) PutExistingRevWithConflictResolution(ctx c
 
 		// If the existing doc isn't an SG write, import prior to updating
 		if doc != nil && !isSgWrite && db.UseXattrs() {
-			err := db.OnDemandImportForWrite(ctx, newDoc.ID, doc, newDoc.Deleted)
+			var err error
+			doc, err = db.OnDemandImportForWrite(ctx, newDoc.ID, doc, newDoc.Deleted)
 			if err != nil {
 				return nil, nil, false, nil, err
 			}
