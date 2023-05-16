@@ -25,7 +25,7 @@ linters:
     #- prealloc # Finds slice declarations that could potentially be preallocated
     #- revive # Golint differs from gofmt. Gofmt reformats Go source code, whereas golint prints out style mistakes
     #- staticcheck # (megacheck) Staticcheck is a go vet on steroids, applying a ton of static analysis checks
-    #- structcheck # Finds unused struct fields
+    - structcheck # Finds unused struct fields
     - typecheck # Like the front-end of a Go compiler, parses and type-checks Go code
     #- unconvert # Remove unnecessary type conversions
     #- unparam # Reports unused function parameters
@@ -70,7 +70,6 @@ linters:
     - prealloc # Finds slice declarations that could potentially be preallocated
     - revive # Golint differs from gofmt. Gofmt reformats Go source code, whereas golint prints out style mistakes
     - staticcheck # (megacheck) Staticcheck is a go vet on steroids, applying a ton of static analysis checks
-    - structcheck # Finds unused struct fields
     - unconvert # Remove unnecessary type conversions
     - unparam # Reports unused function parameters
     - varcheck # Finds unused global variables and constants
