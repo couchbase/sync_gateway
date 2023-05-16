@@ -5,7 +5,6 @@
 # in that file, in accordance with the Business Source License, use of this
 # software will be governed by the Apache License, Version 2.0, included in
 # the file licenses/APL2.txt.
-
 parameters:
   - $ref: ../../components/parameters.yaml#/keyspace
 get:
@@ -34,6 +33,7 @@ get:
       $ref: ../../components/responses.yaml#/Not-found
   tags:
     - Database Configuration
+  operationId: get_keyspace-_config-import_filter
 put:
   summary: Set database import filter
   description: |-
@@ -62,6 +62,7 @@ put:
       $ref: ../../components/responses.yaml#/DB-config-precondition-failed
   tags:
     - Database Configuration
+  operationId: put_keyspace-_config-import_filter
 delete:
   summary: Delete import filter
   description: |-
@@ -81,3 +82,4 @@ delete:
       $ref: ../../components/responses.yaml#/DB-config-precondition-failed
   tags:
     - Database Configuration
+  operationId: delete_keyspace-_config-import_filter

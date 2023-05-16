@@ -5,7 +5,6 @@
 # in that file, in accordance with the Business Source License, use of this
 # software will be governed by the Apache License, Version 2.0, included in
 # the file licenses/APL2.txt.
-
 parameters:
   - $ref: ../../components/parameters.yaml#/keyspace
   - $ref: ../../components/parameters.yaml#/docid
@@ -65,6 +64,7 @@ get:
             $ref: ../../components/schemas.yaml#/HTTP-Error
   tags:
     - Document
+  operationId: get_keyspace-docid
 put:
   summary: Upsert a document
   description: |-
@@ -112,6 +112,7 @@ put:
       $ref: ../../components/responses.yaml#/Invalid-content-type
   tags:
     - Document
+  operationId: put_keyspace-docid
 delete:
   summary: Delete a document
   description: |-
@@ -134,6 +135,7 @@ delete:
       $ref: ../../components/responses.yaml#/Not-found
   tags:
     - Document
+  operationId: delete_keyspace-docid
 head:
   responses:
     '200':
@@ -161,3 +163,4 @@ head:
 
     * Sync Gateway Application
     * Sync Gateway Application Read Only
+  operationId: head_keyspace-docid

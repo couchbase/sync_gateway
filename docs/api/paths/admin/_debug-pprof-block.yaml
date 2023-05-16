@@ -5,7 +5,6 @@
 # in that file, in accordance with the Business Source License, use of this
 # software will be governed by the Apache License, Version 2.0, included in
 # the file licenses/APL2.txt.
-
 get:
   summary: Get block profile
   description: |-
@@ -30,6 +29,7 @@ get:
             reason: Can only run one mutex profile at a time
   tags:
     - Profiling
+  operationId: get__debug-pprof-block
 post:
   summary: Get block profile
   description: |-
@@ -54,3 +54,4 @@ post:
             reason: Can only run one mutex profile at a time
   tags:
     - Profiling
+  operationId: post__debug-pprof-block

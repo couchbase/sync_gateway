@@ -5,7 +5,6 @@
 # in that file, in accordance with the Business Source License, use of this
 # software will be governed by the Apache License, Version 2.0, included in
 # the file licenses/APL2.txt.
-
 get:
   summary: Get database configuration
   description: |-
@@ -45,6 +44,7 @@ get:
       $ref: ../../components/responses.yaml#/Not-found
   tags:
     - Database Configuration
+  operationId: get_db-_config
 put:
   summary: Replace database configuration
   description: |-
@@ -76,6 +76,7 @@ put:
       $ref: ../../components/responses.yaml#/DB-config-precondition-failed
   tags:
     - Database Configuration
+  operationId: put_db-_config
 post:
   summary: Update database configuration
   description: |-
@@ -106,5 +107,6 @@ post:
       $ref: ../../components/responses.yaml#/DB-config-precondition-failed
   tags:
     - Database Configuration
+  operationId: post_db-_config
 parameters:
   - $ref: ../../components/parameters.yaml#/db

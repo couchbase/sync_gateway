@@ -5,7 +5,6 @@
 # in that file, in accordance with the Business Source License, use of this
 # software will be governed by the Apache License, Version 2.0, included in
 # the file licenses/APL2.txt.
-
 post:
   summary: Run the post upgrade process on all databases
   description: |-
@@ -57,3 +56,4 @@ post:
               - post_upgrade_results
   tags:
     - Server
+  operationId: post__post_upgrade
