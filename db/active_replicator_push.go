@@ -44,10 +44,6 @@ func (apr *ActivePushReplicator) Start(ctx context.Context) error {
 	apr.lock.Lock()
 	defer apr.lock.Unlock()
 
-	if apr == nil {
-		return fmt.Errorf("nil ActivePushReplicator, can't start")
-	}
-
 	if apr.ctx != nil && apr.ctx.Err() == nil {
 		return fmt.Errorf("ActivePushReplicator already running")
 	}
@@ -111,10 +107,6 @@ func (apr *ActivePushReplicator) _connect() error {
 func (apr *ActivePushReplicator) Complete() {
 	base.TracefCtx(apr.ctx, base.KeyReplicate, "ActivePushReplicator.Complete()")
 	apr.lock.Lock()
-	if apr == nil {
-		apr.lock.Unlock()
-		return
-	}
 
 	// Wait for any pending changes responses to arrive and be processed
 	err := apr._waitForPendingChangesResponse()

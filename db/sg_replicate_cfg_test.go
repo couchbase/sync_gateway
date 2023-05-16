@@ -45,6 +45,7 @@ func TestReplicateManagerReplications(t *testing.T) {
 	// Request non-existent replication
 	r, err = manager.GetReplication("dne")
 	require.Error(t, err, base.ErrNotFound)
+	require.Nil(t, r)
 
 	// Attempt to add existing replication
 	err = manager.AddReplication(testReplicationCfg(replication1_id, ""))

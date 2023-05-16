@@ -461,7 +461,7 @@ func TestGetRemovalMultiChannel(t *testing.T) {
 	// Create the first revision of doc1.
 	rev1Body := Body{
 		"k1":       "v1",
-		"channels": append([]string{"ABC", "NBC"}),
+		"channels": []string{"ABC", "NBC"},
 	}
 	rev1ID, _, err := collection.Put(ctx, "doc1", rev1Body)
 	require.NoError(t, err, "Error creating doc")
@@ -556,7 +556,7 @@ func TestDeltaSyncWhenFromRevIsChannelRemoval(t *testing.T) {
 	// Create the first revision of doc1.
 	rev1Body := Body{
 		"k1":       "v1",
-		"channels": append([]string{"ABC", "NBC"}),
+		"channels": []string{"ABC", "NBC"},
 	}
 	rev1ID, _, err := collection.Put(ctx, "doc1", rev1Body)
 	require.NoError(t, err, "Error creating doc")
@@ -623,7 +623,7 @@ func TestDeltaSyncWhenToRevIsChannelRemoval(t *testing.T) {
 	// Create the first revision of doc1.
 	rev1Body := Body{
 		"k1":       "v1",
-		"channels": append([]string{"ABC", "NBC"}),
+		"channels": []string{"ABC", "NBC"},
 	}
 	rev1ID, _, err := collection.Put(ctx, "doc1", rev1Body)
 	require.NoError(t, err, "Error creating doc")
@@ -3095,8 +3095,8 @@ func TestGetDatabaseCollectionWithUserDefaultCollection(t *testing.T) {
 			require.NoError(t, err)
 
 			db, err := GetDatabase(dbCtx, nil)
-			defer db.Close(ctx)
 			require.NoError(t, err)
+			defer db.Close(ctx)
 			col, err := db.GetDatabaseCollectionWithUser(testCase.scope, testCase.collection)
 			if testCase.err {
 				require.Error(t, err)

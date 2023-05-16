@@ -803,10 +803,9 @@ func (m *sgReplicateManager) RefreshReplicationCfg(ctx context.Context) error {
 	// Check for replications newly assigned to this node
 	for replicationID, replicationCfg := range configReplications {
 		if replicationCfg.AssignedNode == m.localNodeUUID {
-			replicator, exists := m.activeReplicators[replicationID]
+			_, exists := m.activeReplicators[replicationID]
 			if !exists {
-				var initError error
-				replicator, initError = m.InitializeReplication(replicationCfg)
+				replicator, initError := m.InitializeReplication(replicationCfg)
 				if initError != nil {
 					base.WarnfCtx(m.loggingCtx, "Error initializing replication %s: %v", initError)
 					continue

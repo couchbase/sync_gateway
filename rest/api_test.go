@@ -1645,9 +1645,9 @@ func TestLongpollWithWildcard(t *testing.T) {
 	// was being initialized to 1 (the previous PUT).  Later the wildcard was resolved to actual channels (PBS, _sync:user:bernard), which
 	// has a wait counter of zero (no documents writted since the listener was restarted).
 	wg := sync.WaitGroup{}
+	wg.Add(1)
 	// start changes request
 	go func() {
-		wg.Add(1)
 		defer wg.Done()
 		changesJSON := `{"style":"all_docs", "heartbeat":300000, "feed":"longpoll", "limit":50, "since":"0"}`
 		changesResponse := rt.SendUserRequest("POST", "/{{.keyspace}}/_changes", changesJSON, "bernard")
