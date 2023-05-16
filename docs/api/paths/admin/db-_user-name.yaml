@@ -5,7 +5,6 @@
 # in that file, in accordance with the Business Source License, use of this
 # software will be governed by the Apache License, Version 2.0, included in
 # the file licenses/APL2.txt.
-
 parameters:
   - $ref: ../../components/parameters.yaml#/db
   - $ref: ../../components/parameters.yaml#/user-name
@@ -26,6 +25,7 @@ get:
       $ref: ../../components/responses.yaml#/Not-found
   tags:
     - Database Security
+  operationId: get_db-_user-name
 put:
   summary: Upsert a user
   description: |-
@@ -46,6 +46,7 @@ put:
       $ref: ../../components/responses.yaml#/Not-found
   tags:
     - Database Security
+  operationId: put_db-_user-name
 delete:
   summary: Delete a user
   description: |-
@@ -62,6 +63,7 @@ delete:
       $ref: ../../components/responses.yaml#/Not-found
   tags:
     - Database Security
+  operationId: delete_db-_user-name
 head:
   responses:
     '200':
@@ -79,3 +81,4 @@ head:
     * Sync Gateway Architect
     * Sync Gateway Application
     * Sync Gateway Application Read Only
+  operationId: head_db-_user-name
