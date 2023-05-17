@@ -13,6 +13,7 @@ package db
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -161,6 +162,9 @@ func (rev *DocumentRevision) Mutable1xBody(db *DatabaseCollectionWithUser, reque
 	b, err = rev.Body()
 	if err != nil {
 		return nil, err
+	}
+	if b == nil {
+		return nil, fmt.Errorf("null doc body for doc: %s", rev.DocID)
 	}
 
 	b[BodyId] = rev.DocID
