@@ -162,6 +162,9 @@ func (rev *DocumentRevision) Mutable1xBody(db *DatabaseCollectionWithUser, reque
 	if err != nil {
 		return nil, err
 	}
+	if b == nil {
+		return nil, base.RedactErrorf("null doc body for docID: %s revID: %s", base.UD(rev.DocID), base.UD(rev.RevID))
+	}
 
 	b[BodyId] = rev.DocID
 	b[BodyRev] = rev.RevID
