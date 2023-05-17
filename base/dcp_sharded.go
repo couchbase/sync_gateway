@@ -16,7 +16,6 @@ import (
 	"crypto/tls"
 	"fmt"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 
@@ -326,8 +325,8 @@ func initCBGTManager(ctx context.Context, bucket Bucket, spec BucketSpec, cfgSG 
 	options := make(map[string]string)
 	options[cbgt.FeedAllotmentOption] = cbgt.FeedAllotmentOnePerPIndex
 	options["managerLoadDataDir"] = "false"
-	// Ensure we always use TLS if configured - cbgt defaults to non-TLS on initial connection
-	options["feedInitialBootstrapNonTLS"] = strconv.FormatBool(!spec.IsTLS())
+	// Let gocbcore decide whether to use TLS or not from TLS handlers. This flag only applies to the initial bootstrap connection to the seed node, and we can always use TLS or not, depending on connection parameters.
+	options["feedInitialBootstrapNonTLS"] = "false"
 
 	// Disable collections if unsupported
 	if !bucket.IsSupported(sgbucket.BucketStoreFeatureCollections) {
