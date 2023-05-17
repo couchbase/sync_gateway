@@ -419,8 +419,8 @@ func IsCasMismatch(err error) bool {
 		return true
 	}
 
-	// Walrus
-	if _, ok := unwrappedErr.(walrus.CasMismatchErr); ok {
+	// sgbucket, Walrus
+	if _, ok := unwrappedErr.(sgbucket.CasMismatchErr); ok {
 		return true
 	}
 
@@ -438,14 +438,12 @@ func GetFeedType(bucket Bucket) (feedType string) {
 	switch typedBucket := bucket.(type) {
 	case *GocbV2Bucket:
 		return DcpFeedType
-	case *walrus.CollectionBucket:
-		return DcpFeedType
+	case sgbucket.MutationFeedStore2:
+		return string(typedBucket.GetFeedType())
 	case *LeakyBucket:
 		return GetFeedType(typedBucket.bucket)
 	case *TestBucket:
 		return GetFeedType(typedBucket.Bucket)
-	case *walrus.WalrusBucket:
-		return TapFeedType
 	default:
 		// unknown bucket type?
 		return TapFeedType

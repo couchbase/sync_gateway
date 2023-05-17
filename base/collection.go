@@ -25,7 +25,6 @@ import (
 	"github.com/couchbase/gocb/v2"
 	"github.com/couchbase/gocbcore/v10"
 	sgbucket "github.com/couchbase/sg-bucket"
-	"github.com/couchbaselabs/walrus"
 	pkgerrors "github.com/pkg/errors"
 )
 
@@ -637,12 +636,10 @@ func (b *GocbV2Bucket) NamedDataStore(name sgbucket.DataStoreName) (sgbucket.Dat
 
 func GetCollectionID(dataStore DataStore) uint32 {
 	switch c := dataStore.(type) {
-	case (*Collection):
-		return c.GetCollectionID()
-	case (*walrus.WalrusCollection):
-		return c.CollectionID
 	case WrappingDatastore:
 		return GetCollectionID(c.GetUnderlyingDataStore())
+	case sgbucket.Collection:
+		return c.GetCollectionID()
 	default:
 		return DefaultCollectionID
 	}

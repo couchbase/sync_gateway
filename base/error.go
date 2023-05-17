@@ -18,7 +18,6 @@ import (
 	"github.com/couchbase/gocbcore/v10/memd"
 	"github.com/couchbase/gomemcached"
 	sgbucket "github.com/couchbase/sg-bucket"
-	"github.com/couchbaselabs/walrus"
 	pkgerrors "github.com/pkg/errors"
 )
 
@@ -148,9 +147,9 @@ func ErrorAsHTTPStatus(err error) (int, string) {
 			return http.StatusBadGateway, fmt.Sprintf("%s (%s)",
 				string(unwrappedErr.Body), unwrappedErr.Status.String())
 		}
-	case walrus.DocTooBigErr:
+	case sgbucket.DocTooBigErr:
 		return http.StatusRequestEntityTooLarge, "Document too large!"
-	case walrus.CasMismatchErr:
+	case sgbucket.CasMismatchErr:
 		return http.StatusConflict, "Conflict"
 	case sgbucket.MissingError:
 		return http.StatusNotFound, "missing"

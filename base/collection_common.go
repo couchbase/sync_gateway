@@ -18,25 +18,7 @@ import (
 
 var ErrCollectionsUnsupported = errors.New("collections not supported")
 
-type ScopeAndCollectionName struct {
-	Scope      string
-	Collection string
-}
-
-var _ sgbucket.DataStoreName = &ScopeAndCollectionName{}
-
-func (s ScopeAndCollectionName) ScopeName() string {
-	return s.Scope
-}
-
-func (s ScopeAndCollectionName) CollectionName() string {
-	return s.Collection
-}
-
-// String returns a dot-separated formatted scope and collection name.
-func (s ScopeAndCollectionName) String() string {
-	return s.Scope + ScopeCollectionSeparator + s.Collection
-}
+type ScopeAndCollectionName = sgbucket.DataStoreNameImpl
 
 type ScopeAndCollectionNames []ScopeAndCollectionName
 
