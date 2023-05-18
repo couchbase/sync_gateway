@@ -789,7 +789,10 @@ func (meh *sgMgrEventHandlers) OnFeedError(srcType string, r cbgt.Feed, feedErr 
 			srcType, bucketName, bucketUUID)
 
 		if meh.manager != nil {
-			meh.manager.DeleteAllIndexFromSource(srcType, bucketName, bucketUUID)
+			deleteIndexErr := meh.manager.DeleteAllIndexFromSource(srcType, bucketName, bucketUUID)
+			if deleteIndexErr != nil {
+				InfofCtx(meh.ctx, KeyDCP, "Error closing cbgt connections after OnFeedError. err: %v", deleteIndexErr)
+			}
 		}
 	}
 
