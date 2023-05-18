@@ -349,6 +349,7 @@ func initCBGTManager(ctx context.Context, bucket Bucket, spec BucketSpec, cfgSG 
 		serverURL,
 		eventHandlers,
 		options)
+	eventHandlers.manager = mgr
 
 	cbgtContext := &CbgtContext{
 		Manager:       mgr,
@@ -720,6 +721,7 @@ func GetDefaultImportPartitions(serverless bool) uint16 {
 type sgMgrEventHandlers struct {
 	ctx       context.Context
 	ctxCancel context.CancelFunc
+	manager   *cbgt.Manager
 }
 
 func (meh *sgMgrEventHandlers) OnRefreshManagerOptions(options map[string]string) {
@@ -739,6 +741,10 @@ func (meh *sgMgrEventHandlers) OnUnregisterPIndex(pindex *cbgt.PIndex) {
 // still exists with VerifySourceNotExists, and if it exists, calls NotifyMgrOnClose.
 // This will trigger cbgt closing and then attempting to reconnect to the feed.
 func (meh *sgMgrEventHandlers) OnFeedError(srcType string, r cbgt.Feed, feedErr error) {
+
+	// cbgt always passes srcType = SOURCE_GOCBCORE, but we have a wrapped type associated with our indexes - use that instead
+	// for logging and when calling DeleteAllIndexFromSource
+	srcType = SOURCE_DCP_SG
 
 	DebugfCtx(meh.ctx, KeyDCP, "cbgt Mgr OnFeedError, srcType: %s, feed name: %s, err: %v",
 		srcType, r.Name(), feedErr)
@@ -770,6 +776,20 @@ func (meh *sgMgrEventHandlers) OnFeedError(srcType string, r cbgt.Feed, feedErr 
 				InfofCtx(meh.ctx, KeyDCP, "Handling EOF on cbgt feed - notifying manager to trigger reconnection to feed.  indexUUID: %v, err: %v", indexUUID, feedErr)
 			}
 			dcpFeed.NotifyMgrOnClose()
+		}
+	}
+
+	if len(indexUUID) == 0 {
+		bucketName, bucketUUID := dcpFeed.GetBucketDetails()
+		if bucketName == "" {
+			return
+		}
+		InfofCtx(meh.ctx, KeyDCP, "DeleteAllIndexFromSource on feed close,"+
+			" srcType: %s, bucketName: %s, bucketUUID: %s",
+			srcType, bucketName, bucketUUID)
+
+		if meh.manager != nil {
+			meh.manager.DeleteAllIndexFromSource(srcType, bucketName, bucketUUID)
 		}
 	}
 

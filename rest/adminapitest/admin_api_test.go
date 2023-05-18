@@ -4367,3 +4367,23 @@ func TestPerDBCredsOverride(t *testing.T) {
 	assert.Equal(t, "invalidUsername", configs["db"].BucketConfig.Username)
 	assert.Equal(t, "invalidPassword", configs["db"].BucketConfig.Password)
 }
+
+// Can be used to reproduce connections left open after database close.  Manually deleting the bucket used by the test
+// once the test reaches the sleep loop will log connection errors for unclosed connections.
+func TestDeleteDatabaseCBGTTeardown(t *testing.T) {
+	t.Skip("Dev-time test used to repro agent connections being left open after database close")
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server")
+	}
+	base.SetUpTestLogging(t, base.LevelTrace, base.KeyHTTP, base.KeyImport)
+
+	rtConfig := rest.RestTesterConfig{DatabaseConfig: &rest.DatabaseConfig{DbConfig: rest.DbConfig{AutoImport: false}}}
+	rt := rest.NewRestTester(t, &rtConfig)
+	defer rt.Close()
+	resp := rt.SendAdminRequest(http.MethodDelete, "/db/", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+
+	for i := 0; i < 1000; i++ {
+		time.Sleep(1 * time.Second) // some time for polling
+	}
+}
