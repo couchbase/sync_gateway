@@ -75,7 +75,11 @@ func TestBootstrapRefCounting(t *testing.T) {
 	primeBucketConnectionCache(buckets)
 	require.Len(t, cluster.cachedBucketConnections.buckets, tbpNumBuckets())
 
-	// call removeOutdatedBuckets to remove all cached buckets, call multiple times to make sure
+	// call removeOutdatedBuckets as no-op
+	cluster.cachedBucketConnections.removeOutdatedBuckets(SetOf(buckets...))
+	require.Len(t, cluster.cachedBucketConnections.buckets, tbpNumBuckets())
+
+	// call removeOutdatedBuckets to remove all cached buckets, call multiple times to make sure idempotent
 	for i := 0; i < 3; i++ {
 		cluster.cachedBucketConnections.removeOutdatedBuckets(Set{})
 		require.Len(t, cluster.cachedBucketConnections.buckets, 0)
