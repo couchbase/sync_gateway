@@ -53,11 +53,11 @@ type CouchbaseCluster struct {
 	clusterOptions          gocb.ClusterOptions
 	forcePerBucketAuth      bool // Forces perBucketAuth authenticators to be used to connect to the bucket
 	perBucketAuth           map[string]*gocb.Authenticator
-	bucketConnectionMode    BucketConnectionMode     // Whether to cache cluster connections
-	cachedClusterConnection *gocb.Cluster            // Cached cluster connection, should only be used by GetConfigBuckets
-	cachedBucketConnections map[string]*cachedBucket // Per-bucket cached connections
-	cachedConnectionLock    sync.Mutex               // mutex for access to cachedBucketConnections
-	configPersistence       ConfigPersistence        // ConfigPersistence mode
+	bucketConnectionMode    BucketConnectionMode    // Whether to cache cluster connections
+	cachedClusterConnection *gocb.Cluster           // Cached cluster connection, should only be used by GetConfigBuckets
+	cachedBucketConnections cachedBucketConnections // Per-bucket cached connections
+	cachedConnectionLock    sync.Mutex              // mutex for access to cachedBucketConnections
+	configPersistence       ConfigPersistence       // ConfigPersistence mode
 }
 
 type BucketConnectionMode int
@@ -70,10 +70,72 @@ const (
 )
 
 type cachedBucket struct {
-	bucket      *gocb.Bucket
-	teardownFn  func()
-	refcount    int
-	shouldClose bool
+	bucket      *gocb.Bucket // underlying bucket
+	teardownFn  func()       // teardown function which will close the gocb connection
+	refcount    int          // count of how many functions are using this cachedBucket
+	shouldClose bool         // mark this cachedBucket as needing to be closed
+}
+
+// cahedBucketConnections is a lockable map cached buckets containing refcounts
+type cachedBucketConnections struct {
+	buckets map[string]*cachedBucket
+	lock    sync.Mutex
+}
+
+// removeOutdatedBuckets removes any buckets that aren't active from the map and closes the cluster connection.
+func (c *cachedBucketConnections) removeOutdatedBuckets(activeBuckets Set) {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	for bucketName, bucket := range c.buckets {
+		_, exists := activeBuckets[bucketName]
+		if exists {
+			continue
+		}
+		bucket.shouldClose = true
+		c._teardown(bucketName)
+	}
+}
+
+// removeOutdatedBuckets removes any buckets that aren't active from the map and closes the cluster connection.
+func (c *cachedBucketConnections) closeAll() {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	for _, bucket := range c.buckets {
+		bucket.shouldClose = true
+		bucket.teardownFn()
+	}
+}
+
+// teardown closes the cached bucket connection while locked, suitable for CouchbaseCluster.getBucket() teardowns
+func (c *cachedBucketConnections) teardown(bucketName string) {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	c._teardown(bucketName)
+}
+
+// _teardown closes expects the lock to be acquired before calling this function
+func (c *cachedBucketConnections) _teardown(bucketName string) {
+	c.buckets[bucketName].refcount--
+	if !c.buckets[bucketName].shouldClose || c.buckets[bucketName].refcount > 0 {
+		return
+	}
+	c.buckets[bucketName].teardownFn()
+	delete(c.buckets, bucketName)
+}
+
+// get returns a cachedBucket for a given bucketName, or nil if it doesn't exist
+func (c *cachedBucketConnections) _get(bucketName string) *cachedBucket {
+	bucket, ok := c.buckets[bucketName]
+	if !ok {
+		return nil
+	}
+	c.buckets[bucketName].refcount++
+	return bucket
+}
+
+// set adds a cachedBucket for a given bucketName, or nil if it doesn't exist
+func (c *cachedBucketConnections) _set(bucketName string, bucket *cachedBucket) {
+	c.buckets[bucketName] = bucket
 }
 
 var _ BootstrapConnection = &CouchbaseCluster{}
@@ -126,7 +188,7 @@ func NewCouchbaseCluster(server, username, password,
 	}
 
 	if bucketMode == CachedClusterConnections {
-		cbCluster.cachedBucketConnections = make(map[string]*cachedBucket)
+		cbCluster.cachedBucketConnections = cachedBucketConnections{buckets: make(map[string]*cachedBucket)}
 	}
 
 	cbCluster.configPersistence = &DocumentBootstrapPersistence{}
@@ -236,21 +298,12 @@ func (cc *CouchbaseCluster) GetConfigBuckets() ([]string, error) {
 		return nil, err
 	}
 
-	cachedBuckets := make(map[string]struct{})
 	bucketList := make([]string, 0, len(buckets))
 	for bucketName := range buckets {
 		bucketList = append(bucketList, bucketName)
-		cachedBuckets[bucketName] = struct{}{}
 	}
 
-	// remove any cached buckets of buckets that no longer exist
-	for bucketName, _ := range cc.cachedBucketConnections {
-		_, exists := cachedBuckets[bucketName]
-		if exists {
-			continue
-		}
-		cc.removeCachedBucket(bucketName)
-	}
+	cc.cachedBucketConnections.removeOutdatedBuckets(SetOf(bucketList...))
 
 	return bucketList, nil
 }
@@ -408,13 +461,11 @@ func (cc *CouchbaseCluster) KeyExists(location, docID string) (exists bool, err 
 // Close calls teardown for any cached buckets and removes from cachedBucketConnections
 func (cc *CouchbaseCluster) Close() {
 
+	cc.cachedBucketConnections.closeAll()
+
 	cc.cachedConnectionLock.Lock()
 	defer cc.cachedConnectionLock.Unlock()
 
-	for bucketName, cachedBucket := range cc.cachedBucketConnections {
-		cachedBucket.teardownFn()
-		delete(cc.cachedBucketConnections, bucketName)
-	}
 	if cc.cachedClusterConnection != nil {
 		_ = cc.cachedClusterConnection.Close(nil)
 		cc.cachedClusterConnection = nil
@@ -427,21 +478,14 @@ func (cc *CouchbaseCluster) getBucket(bucketName string) (b *gocb.Bucket, teardo
 		return cc.connectToBucket(bucketName)
 	}
 
-	cc.cachedConnectionLock.Lock()
-	defer cc.cachedConnectionLock.Unlock()
-
-	cacheBucket, ok := cc.cachedBucketConnections[bucketName]
-	refcountTeardown := func() {
-		cc.cachedConnectionLock.Lock()
-		defer cc.cachedConnectionLock.Unlock()
-		cc.cachedBucketConnections[bucketName].refcount--
-		if cc.cachedBucketConnections[bucketName].shouldClose {
-			cc.cachedBucketConnections[bucketName].teardownFn()
-		}
+	teardownFn = func() {
+		cc.cachedBucketConnections.teardown(bucketName)
 	}
-	if ok {
-		cc.cachedBucketConnections[bucketName].refcount++
-		return cacheBucket.bucket, refcountTeardown, nil
+	cc.cachedBucketConnections.lock.Lock()
+	defer cc.cachedBucketConnections.lock.Unlock()
+	bucket := cc.cachedBucketConnections._get(bucketName)
+	if bucket != nil {
+		return bucket.bucket, teardownFn, nil
 	}
 
 	// cached bucket not found, connect and add
@@ -449,33 +493,13 @@ func (cc *CouchbaseCluster) getBucket(bucketName string) (b *gocb.Bucket, teardo
 	if err != nil {
 		return nil, nil, err
 	}
-	closeAndTeardown := func() {
-		refcount := cc.cachedBucketConnections[bucketName].refcount
-		if refcount <= 0 {
-			newTeardownFn()
-			return
-		}
-		// refcount is not zero because someone else is using bucket, so let's close
-		cc.cachedBucketConnections[bucketName].shouldClose = true
-	}
-	cc.cachedBucketConnections[bucketName] = &cachedBucket{
+	cc.cachedBucketConnections._set(bucketName, &cachedBucket{
 		bucket:     newBucket,
-		teardownFn: closeAndTeardown,
+		teardownFn: newTeardownFn,
 		refcount:   1,
-	}
+	})
 
-	return newBucket, refcountTeardown, nil
-}
-
-// For unrecoverable errors when using cached buckets, remove the bucket from the cache to trigger a new connection on next usage
-func (cc *CouchbaseCluster) removeCachedBucket(bucketName string) {
-	cc.cachedConnectionLock.Lock()
-	defer cc.cachedConnectionLock.Unlock()
-	cacheBucket, ok := cc.cachedBucketConnections[bucketName]
-	if ok {
-		cacheBucket.teardownFn()
-		delete(cc.cachedBucketConnections, bucketName)
-	}
+	return newBucket, teardownFn, nil
 }
 
 // connectToBucket establishes a new connection to a bucket, and returns the bucket after waiting for it to be ready.
