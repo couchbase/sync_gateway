@@ -325,7 +325,8 @@ func initCBGTManager(ctx context.Context, bucket Bucket, spec BucketSpec, cfgSG 
 	options := make(map[string]string)
 	options[cbgt.FeedAllotmentOption] = cbgt.FeedAllotmentOnePerPIndex
 	options["managerLoadDataDir"] = "false"
-	// Let gocbcore decide whether to use TLS or not from TLS handlers. This flag only applies to the initial bootstrap connection to the seed node, and we can always use TLS or not, depending on connection parameters.
+	// TLS is controlled by the connection string.
+	// cbgt uses this parameter to run in mixed mode - non-TLS for CCCP but TLS for memcached. Sync Gateway does not need to set this parameter.
 	options["feedInitialBootstrapNonTLS"] = "false"
 
 	// Disable collections if unsupported
