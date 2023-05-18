@@ -110,12 +110,12 @@ func (c *cachedBucketConnections) closeAll() {
 func (c *cachedBucketConnections) teardown(bucketName string) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
+	c.buckets[bucketName].refcount--
 	c._teardown(bucketName)
 }
 
-// _teardown closes expects the lock to be acquired before calling this function
+// _teardown closes expects the lock to be acquired before calling this function and the reference count to be up to date.
 func (c *cachedBucketConnections) _teardown(bucketName string) {
-	c.buckets[bucketName].refcount--
 	if !c.buckets[bucketName].shouldClose || c.buckets[bucketName].refcount > 0 {
 		return
 	}
