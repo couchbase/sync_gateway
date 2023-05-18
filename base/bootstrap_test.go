@@ -36,6 +36,9 @@ func TestMergeStructPointer(t *testing.T) {
 }
 
 func TestBootstrapRefCounting(t *testing.T) {
+	if UnitTestUrlIsWalrus() {
+		t.Skip("Test requires making a connection to CBS")
+	}
 	// Integration tests are configured to run in these parameters, they are used in main_test_bucket_pool.go
 	// Future enhancement would be to allow all integration tests to run with TLS
 	x509CertPath := ""
