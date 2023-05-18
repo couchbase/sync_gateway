@@ -70,10 +70,10 @@ const (
 )
 
 type cachedBucket struct {
-	bucket      *gocb.Bucket // underlying bucket
-	teardownFn  func()       // teardown function which will close the gocb connection
-	refcount    int          // count of how many functions are using this cachedBucket
-	shouldClose bool         // mark this cachedBucket as needing to be closed
+	bucket        *gocb.Bucket // underlying bucket
+	bucketCloseFn func()       // teardown function which will close the gocb connection
+	refcount      int          // count of how many functions are using this cachedBucket
+	shouldClose   bool         // mark this cachedBucket as needing to be closed with ref
 }
 
 // cahedBucketConnections is a lockable map cached buckets containing refcounts
@@ -82,7 +82,7 @@ type cachedBucketConnections struct {
 	lock    sync.Mutex
 }
 
-// removeOutdatedBuckets removes any buckets that aren't active from the map and closes the cluster connection.
+// removeOutdatedBuckets marks any active buckets for closure and removes the cached connections.
 func (c *cachedBucketConnections) removeOutdatedBuckets(activeBuckets Set) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
@@ -96,13 +96,13 @@ func (c *cachedBucketConnections) removeOutdatedBuckets(activeBuckets Set) {
 	}
 }
 
-// removeOutdatedBuckets removes any buckets that aren't active from the map and closes the cluster connection.
+// closeAll removes all cached bucekts
 func (c *cachedBucketConnections) closeAll() {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	for _, bucket := range c.buckets {
 		bucket.shouldClose = true
-		bucket.teardownFn()
+		bucket.bucketCloseFn()
 	}
 }
 
@@ -119,7 +119,7 @@ func (c *cachedBucketConnections) _teardown(bucketName string) {
 	if !c.buckets[bucketName].shouldClose || c.buckets[bucketName].refcount > 0 {
 		return
 	}
-	c.buckets[bucketName].teardownFn()
+	c.buckets[bucketName].bucketCloseFn()
 	delete(c.buckets, bucketName)
 }
 
@@ -489,14 +489,14 @@ func (cc *CouchbaseCluster) getBucket(bucketName string) (b *gocb.Bucket, teardo
 	}
 
 	// cached bucket not found, connect and add
-	newBucket, newTeardownFn, err := cc.connectToBucket(bucketName)
+	newBucket, bucketCloseFn, err := cc.connectToBucket(bucketName)
 	if err != nil {
 		return nil, nil, err
 	}
 	cc.cachedBucketConnections._set(bucketName, &cachedBucket{
-		bucket:     newBucket,
-		teardownFn: newTeardownFn,
-		refcount:   1,
+		bucket:        newBucket,
+		bucketCloseFn: bucketCloseFn,
+		refcount:      1,
 	})
 
 	return newBucket, teardownFn, nil
