@@ -41,9 +41,6 @@ const kStatsReportInterval = time.Hour
 const kDefaultSlowQueryWarningThreshold = 500 // ms
 const KDefaultNumShards = 16
 
-// fromConnStrWarningThreshold determines the amount of time it should take before we warn about parsing a connstr (mostly for DNS SRV resolution)
-const fromConnStrWarningThreshold = 10 * time.Second
-
 // defaultBlipStatsReportingInterval is the default interval when to report blip stats, at the end of a message handler.
 const defaultBlipStatsReportingInterval = 30 * time.Second
 
@@ -1532,7 +1529,7 @@ func initClusterAgent(ctx context.Context, clusterAddress, clusterUser, clusterP
 	if err != nil {
 		return nil, err
 	}
-	if d := time.Since(beforeFromConnStr); d > fromConnStrWarningThreshold {
+	if d := time.Since(beforeFromConnStr); d > base.FromConnStrWarningThreshold {
 		base.WarnfCtx(ctx, "Parsed cluster connection string %q in: %v", base.UD(clusterAddress), d)
 	} else {
 		base.DebugfCtx(ctx, base.KeyAll, "Parsed cluster connection string %q in: %v", base.UD(clusterAddress), d)
