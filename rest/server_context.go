@@ -1523,10 +1523,12 @@ func initClusterAgent(ctx context.Context, clusterAddress, clusterUser, clusterP
 		},
 	}
 
+	base.DebugfCtx(ctx, base.KeyAll, "Parsing cluster connection string: %s", base.UD(clusterAddress))
 	err = config.FromConnStr(clusterAddress)
 	if err != nil {
 		return nil, err
 	}
+	base.DebugfCtx(ctx, base.KeyAll, "Done parsing cluster connection string")
 
 	agent, err := gocbcore.CreateAgent(&config)
 	if err != nil {
