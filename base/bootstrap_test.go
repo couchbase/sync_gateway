@@ -73,15 +73,15 @@ func TestBootstrapRefCounting(t *testing.T) {
 	}
 
 	primeBucketConnectionCache(buckets)
-	// GetConfigBuckets doesn't cache connections
 	require.Len(t, cluster.cachedBucketConnections.buckets, tbpNumBuckets())
 
-	cluster.cachedBucketConnections.removeOutdatedBuckets(Set{})
-	require.Len(t, cluster.cachedBucketConnections.buckets, 0)
+	// call removeOutdatedBuckets to remove all cached buckets, call multiple times to make sure
+	for i := 0; i < 3; i++ {
+		cluster.cachedBucketConnections.removeOutdatedBuckets(Set{})
+		require.Len(t, cluster.cachedBucketConnections.buckets, 0)
+	}
 
-	// re-cache connections
 	primeBucketConnectionCache(buckets)
-	// GetConfigBuckets doesn't cache connections
 	require.Len(t, cluster.cachedBucketConnections.buckets, tbpNumBuckets())
 
 	// make sure that you can still use an active connection while the bucket has been removed
@@ -106,4 +106,8 @@ func TestBootstrapRefCounting(t *testing.T) {
 	makeConnection <- struct{}{}
 
 	wg.Wait()
+
+	// make sure you can "remove" a non existent bucket in the case that bucket removal is called multiple times
+	cluster.cachedBucketConnections.removeOutdatedBuckets(SetOf("not-a-bucket"))
+
 }
