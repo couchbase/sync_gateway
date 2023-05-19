@@ -1523,9 +1523,16 @@ func initClusterAgent(ctx context.Context, clusterAddress, clusterUser, clusterP
 		},
 	}
 
+	base.DebugfCtx(ctx, base.KeyAll, "Parsing cluster connection string %q", base.UD(clusterAddress))
+	beforeFromConnStr := time.Now()
 	err = config.FromConnStr(clusterAddress)
 	if err != nil {
 		return nil, err
+	}
+	if d := time.Since(beforeFromConnStr); d > base.FromConnStrWarningThreshold {
+		base.WarnfCtx(ctx, "Parsed cluster connection string %q in: %v", base.UD(clusterAddress), d)
+	} else {
+		base.DebugfCtx(ctx, base.KeyAll, "Parsed cluster connection string %q in: %v", base.UD(clusterAddress), d)
 	}
 
 	agent, err := gocbcore.CreateAgent(&config)
@@ -1838,9 +1845,9 @@ func (sc *ServerContext) Database(ctx context.Context, name string) *db.Database
 }
 
 func (sc *ServerContext) initializeCouchbaseServerConnections(ctx context.Context) error {
-	base.InfofCtx(ctx, base.KeyAll, "initializing server connections")
+	base.InfofCtx(ctx, base.KeyAll, "Initializing server connections")
 	defer func() {
-		base.InfofCtx(ctx, base.KeyAll, "finished initializing server connections")
+		base.InfofCtx(ctx, base.KeyAll, "Finished initializing server connections")
 	}()
 	goCBAgent, err := sc.initializeGoCBAgent(ctx)
 	if err != nil {
