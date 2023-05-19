@@ -320,9 +320,16 @@ func (dc *DCPClient) initAgent(spec BucketSpec) error {
 	}
 
 	agentConfig := gocbcore.DCPAgentConfig{}
+	DebugfCtx(context.TODO(), KeyAll, "Parsing cluster connection string %q", UD(connStr))
+	beforeFromConnStr := time.Now()
 	connStrError := agentConfig.FromConnStr(connStr)
 	if connStrError != nil {
 		return fmt.Errorf("Unable to start DCP Client - error building conn str: %v", connStrError)
+	}
+	if d := time.Since(beforeFromConnStr); d > FromConnStrWarningThreshold {
+		WarnfCtx(context.TODO(), "Parsed cluster connection string %q in: %v", UD(connStr), d)
+	} else {
+		DebugfCtx(context.TODO(), KeyAll, "Parsed cluster connection string %q in: %v", UD(connStr), d)
 	}
 
 	auth, authErr := spec.GocbcoreAuthProvider()
