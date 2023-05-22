@@ -327,7 +327,6 @@ func TestAttachmnetCompactionRollbackPersist(t *testing.T) {
 	if UnitTestUrlIsWalrus() {
 		t.Skip("This test requires DCP feed from gocb and therefore Couchbase Sever")
 	}
-	SetUpTestLogging(t, LevelDebug, KeyDCP)
 
 	var vbUUID gocbcore.VbUUID = 1234
 
@@ -425,7 +424,6 @@ func TestContinuousDCPRollback(t *testing.T) {
 	if UnitTestUrlIsWalrus() {
 		t.Skip("This test requires DCP feed from gocb and therefore Couchbase Sever")
 	}
-	SetUpTestLogging(t, LevelDebug, KeyDCP)
 
 	var vbUUID gocbcore.VbUUID = 1234
 	c := make(chan bool)
@@ -510,7 +508,7 @@ func TestContinuousDCPRollback(t *testing.T) {
 	dcpClient1.forceRollbackvBucket(vbUUID)
 
 	_, startErr = dcpClient1.Start()
-	require.NoError(t, err)
+	require.NoError(t, startErr)
 
 	// Assert that the number of vBuckets active are the same as the total number of vBuckets on the client.
 	// In continuous rollback the streams should not close after they're finished.

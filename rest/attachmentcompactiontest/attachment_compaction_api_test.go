@@ -163,7 +163,6 @@ func TestAttachmentCompactionMarkPhaseRollback(t *testing.T) {
 	}
 	var garbageVBUUID gocbcore.VbUUID = 1234
 
-	// attachment compaction has to run on default collection, we can't run on multiple scopes right now for SG_TEST_USE_DEFAULT_COLLECTION = false
 	rt := rest.NewRestTesterDefaultCollection(t, nil)
 	defer rt.Close()
 	dataStore := rt.GetSingleDataStore()
@@ -213,7 +212,7 @@ func TestAttachmentCompactionMarkPhaseRollback(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// alter persisted dcp metadata from teh first run to force a rollback
+	// alter persisted dcp metadata from the first run to force a rollback
 	name := db.GenerateCompactionDCPStreamName(response.CompactID, "mark")
 	checkpointPrefix := fmt.Sprintf("%s:%v", "_sync:dcp_ck:", name)
 
@@ -223,7 +222,7 @@ func TestAttachmentCompactionMarkPhaseRollback(t *testing.T) {
 	meta.SetMeta(0, vbMeta)
 	meta.Persist(0, []uint16{0})
 
-	// kick off a new run attempting to tysrat it again (should force into rollback handling)
+	// kick off a new run attempting to start it again (should force into rollback handling)
 	resp = rt.SendAdminRequest("POST", "/{{.db}}/_compact?type=attachment&action=start", "")
 	rest.RequireStatus(t, resp, http.StatusOK)
 	err = rt.WaitForCondition(func() bool {
