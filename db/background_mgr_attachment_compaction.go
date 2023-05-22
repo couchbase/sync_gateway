@@ -10,6 +10,7 @@ package db
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"time"
 
@@ -127,8 +128,28 @@ func (a *AttachmentCompactionManager) Run(ctx context.Context, options map[strin
 	case "mark", "":
 		a.SetPhase("mark")
 		persistClusterStatus()
-		_, a.VBUUIDs, err = attachmentCompactMarkPhase(ctx, dataStore, collectionID, database, a.CompactID, terminator, &a.MarkedAttachments)
+		worker := func() (shouldRetry bool, err error, value interface{}) {
+			_, a.VBUUIDs, err = attachmentCompactMarkPhase(ctx, dataStore, collectionID, database, a.CompactID, terminator, &a.MarkedAttachments)
+			if errors.Is(err, base.ErrAttachmentCompactionRollback) {
+				base.InfofCtx(ctx, base.KeyDCP, "rollback indicated on mark phase of attachment, resetting the task")
+				err = a.newRunRollback(ctx, options)
+				if err != nil {
+					base.WarnfCtx(ctx, "error on initialization of new run after rollback has been indicated")
+					return false, err, nil
+				}
+				// we should try again if it is rollback error
+				return true, nil, nil
+			}
+			// if error isn't rollback then assume its not recoverable
+			return false, err, nil
+		}
+		// retry loop for handling a rollback during mark phase of compaction process
+		err, _ = base.RetryLoop("attachmentCompactMarkPhase", worker, base.CreateMaxDoublingSleeperFunc(25, 100, 10000))
 		if err != nil || terminator.IsClosed() {
+			if errors.Is(err, base.ErrAttachmentCompactionRollback) {
+				// log warning to show we hit max number of retries
+				base.WarnfCtx(ctx, "maximum retry attempts reached on mark phase: %v", err)
+			}
 			return err
 		}
 		fallthrough
@@ -150,6 +171,23 @@ func (a *AttachmentCompactionManager) Run(ctx context.Context, options map[strin
 	}
 
 	a.SetPhase("")
+	return nil
+}
+
+func (a *AttachmentCompactionManager) newRunRollback(ctx context.Context, options map[string]interface{}) error {
+	uniqueUUID, err := uuid.NewRandom()
+	if err != nil {
+		return err
+	}
+
+	dryRun, _ := options["dryRun"].(bool)
+	if dryRun {
+		base.InfofCtx(ctx, base.KeyAll, "AttachmentCompactionProcess Compaction: Running as dry run. No attachments will be purged")
+	}
+
+	a.dryRun = dryRun
+	a.CompactID = uniqueUUID.String()
+	base.InfofCtx(ctx, base.KeyAll, "AttachmentCompactionProcess Compaction: Starting new compaction run with compact ID: %q", a.CompactID)
 	return nil
 }
 

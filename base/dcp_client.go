@@ -63,20 +63,22 @@ type DCPClient struct {
 	dbStats                    *expvar.Map                    // Stats for database
 	agentPriority              gocbcore.DcpAgentPriority      // agentPriority specifies the priority level for a dcp stream
 	collectionIDs              []uint32                       // collectionIDs used by gocbcore, if empty, uses default collections
+	attachmentCompactionClient bool                           // indicates if the client is for an AttachmentCompactionProcess compaction task
 }
 
 type DCPClientOptions struct {
-	NumWorkers                 int
-	OneShot                    bool
-	FailOnRollback             bool                      // When true, the DCP client will terminate on DCP rollback
-	InitialMetadata            []DCPMetadata             // When set, will be used as initial metadata for the DCP feed.  Will override any persisted metadata
-	CheckpointPersistFrequency *time.Duration            // Overrides metadata persistence frequency - intended for test use
-	MetadataStoreType          DCPMetadataStoreType      // define storage type for DCPMetadata
-	GroupID                    string                    // specify GroupID, only used when MetadataStoreType is DCPMetadataCS
-	DbStats                    *expvar.Map               // Optional stats
-	AgentPriority              gocbcore.DcpAgentPriority // agentPriority specifies the priority level for a dcp stream
-	CollectionIDs              []uint32                  // CollectionIDs used by gocbcore, if empty, uses default collections
-	CheckpointPrefix           string
+	NumWorkers                  int
+	OneShot                     bool
+	FailOnRollback              bool                      // When true, the DCP client will terminate on DCP rollback
+	InitialMetadata             []DCPMetadata             // When set, will be used as initial metadata for the DCP feed.  Will override any persisted metadata
+	CheckpointPersistFrequency  *time.Duration            // Overrides metadata persistence frequency - intended for test use
+	MetadataStoreType           DCPMetadataStoreType      // define storage type for DCPMetadata
+	GroupID                     string                    // specify GroupID, only used when MetadataStoreType is DCPMetadataCS
+	DbStats                     *expvar.Map               // Optional stats
+	AgentPriority               gocbcore.DcpAgentPriority // agentPriority specifies the priority level for a dcp stream
+	CollectionIDs               []uint32                  // CollectionIDs used by gocbcore, if empty, uses default collections
+	AttachmentCompactionProcess bool                      // Set to true of the client being created is for attachment compaction
+	CheckpointPrefix            string
 }
 
 func NewDCPClient(ID string, callback sgbucket.FeedEventCallbackFunc, options DCPClientOptions, bucket *GocbV2Bucket) (*DCPClient, error) {
@@ -101,19 +103,20 @@ func NewDCPClient(ID string, callback sgbucket.FeedEventCallbackFunc, options DC
 		}
 	}
 	client := &DCPClient{
-		workers:             make([]*DCPWorker, numWorkers),
-		numVbuckets:         numVbuckets,
-		callback:            callback,
-		ID:                  ID,
-		spec:                bucket.GetSpec(),
-		supportsCollections: bucket.IsSupported(sgbucket.BucketStoreFeatureCollections),
-		terminator:          make(chan bool),
-		doneChannel:         make(chan error, 1),
-		failOnRollback:      options.FailOnRollback,
-		checkpointPrefix:    options.CheckpointPrefix,
-		dbStats:             options.DbStats,
-		agentPriority:       options.AgentPriority,
-		collectionIDs:       options.CollectionIDs,
+		workers:                    make([]*DCPWorker, numWorkers),
+		numVbuckets:                numVbuckets,
+		callback:                   callback,
+		ID:                         ID,
+		spec:                       bucket.GetSpec(),
+		supportsCollections:        bucket.IsSupported(sgbucket.BucketStoreFeatureCollections),
+		terminator:                 make(chan bool),
+		doneChannel:                make(chan error, 1),
+		failOnRollback:             options.FailOnRollback,
+		checkpointPrefix:           options.CheckpointPrefix,
+		dbStats:                    options.DbStats,
+		agentPriority:              options.AgentPriority,
+		collectionIDs:              options.CollectionIDs,
+		attachmentCompactionClient: options.AttachmentCompactionProcess,
 	}
 
 	// Initialize active vbuckets
@@ -443,6 +446,12 @@ func (dc *DCPClient) openStream(vbID uint16, maxRetries uint32) error {
 				return fmt.Errorf("%s, failOnRollback requested", openStreamErr)
 			}
 			InfofCtx(logCtx, KeyDCP, "Open stream for vbID %d failed due to rollback or range error, will roll back metadata and retry: %v", vbID, openStreamErr)
+			if dc.attachmentCompactionClient {
+				// we want to purge the persisted metadata for the client in event of a rollback during compaction mark phase
+				InfofCtx(logCtx, KeyDCP, "rollback indicated on mark phase of attachment compaction, resetting process")
+				dc.metadata.Purge(len(dc.workers))
+				return ErrAttachmentCompactionRollback
+			}
 
 			dc.rollback(logCtx, vbID, rollbackErr.SeqNo)
 		case errors.Is(openStreamErr, gocbcore.ErrMemdRangeError):

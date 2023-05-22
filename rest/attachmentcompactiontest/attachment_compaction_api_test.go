@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/couchbase/gocbcore/v10"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/rest"
@@ -154,6 +155,114 @@ func TestAttachmentCompactionAPI(t *testing.T) {
 
 	// Wait for run to complete
 	_ = rt.WaitForAttachmentCompactionStatus(t, db.BackgroundProcessStateStopped)
+}
+
+func TestAttachmentCompactionMarkPhaseRollback(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server")
+	}
+	var garbageVBUUID gocbcore.VbUUID = 1234
+
+	// attachment compaction has to run on default collection, we can't run on multiple scopes right now for SG_TEST_USE_DEFAULT_COLLECTION = false
+	rt := rest.NewRestTesterDefaultCollection(t, nil)
+	defer rt.Close()
+	dataStore := rt.GetSingleDataStore()
+
+	// Create some 'unmarked' attachments
+	makeUnmarkedDoc := func(docid string) {
+		err := dataStore.SetRaw(docid, 0, nil, []byte("{}"))
+		require.NoError(t, err)
+	}
+
+	for i := 0; i < 1000; i++ {
+		docID := fmt.Sprintf("%s%s%d", base.AttPrefix, "unmarked", i)
+		makeUnmarkedDoc(docID)
+	}
+
+	// kick off compaction and wait for "mark" phase to begin
+	resp := rt.SendAdminRequest("POST", "/{{.db}}/_compact?type=attachment", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+
+	var response db.AttachmentManagerResponse
+	err := rt.WaitForCondition(func() bool {
+		time.Sleep(1 * time.Second)
+
+		resp := rt.SendAdminRequest("GET", "/{{.db}}/_compact?type=attachment", "")
+		rest.RequireStatus(t, resp, http.StatusOK)
+
+		err := base.JSONUnmarshal(resp.BodyBytes(), &response)
+		require.NoError(t, err)
+
+		return response.Phase == "mark"
+	})
+	require.NoError(t, err)
+
+	// stop the mark phase before completion
+	resp = rt.SendAdminRequest("POST", "/{{.db}}/_compact?type=attachment&action=stop", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+	err = rt.WaitForCondition(func() bool {
+		time.Sleep(1 * time.Second)
+
+		resp := rt.SendAdminRequest("GET", "/{{.db}}/_compact?type=attachment", "")
+		rest.RequireStatus(t, resp, http.StatusOK)
+
+		err := base.JSONUnmarshal(resp.BodyBytes(), &response)
+		require.NoError(t, err)
+
+		return response.State == db.BackgroundProcessStateStopped
+	})
+	require.NoError(t, err)
+
+	// alter persisted dcp metadata from teh first run to force a rollback
+	name := db.GenerateCompactionDCPStreamName(response.CompactID, "mark")
+	checkpointPrefix := fmt.Sprintf("%s:%v", "_sync:dcp_ck:", name)
+
+	meta := base.NewDCPMetadataCS(dataStore, 1024, 8, checkpointPrefix)
+	vbMeta := meta.GetMeta(0)
+	vbMeta.VbUUID = garbageVBUUID
+	meta.SetMeta(0, vbMeta)
+	meta.Persist(0, []uint16{0})
+
+	// kick off a new run attempting to tysrat it again (should force into rollback handling)
+	resp = rt.SendAdminRequest("POST", "/{{.db}}/_compact?type=attachment&action=start", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+	err = rt.WaitForCondition(func() bool {
+		time.Sleep(1 * time.Second)
+
+		resp := rt.SendAdminRequest("GET", "/{{.db}}/_compact?type=attachment", "")
+		rest.RequireStatus(t, resp, http.StatusOK)
+
+		err := base.JSONUnmarshal(resp.BodyBytes(), &response)
+		require.NoError(t, err)
+
+		return response.State == db.BackgroundProcessStateRunning
+	})
+	require.NoError(t, err)
+
+	err = rt.WaitForCondition(func() bool {
+		time.Sleep(1 * time.Second)
+
+		resp := rt.SendAdminRequest("GET", "/{{.db}}/_compact?type=attachment", "")
+		rest.RequireStatus(t, resp, http.StatusOK)
+
+		err = base.JSONUnmarshal(resp.BodyBytes(), &response)
+		require.NoError(t, err)
+
+		return response.State == db.BackgroundProcessStateCompleted
+	})
+	require.NoError(t, err)
+
+	// Validate results of recovered attachment compaction process
+	resp = rt.SendAdminRequest("GET", "/{{.db}}/_compact?type=attachment", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
+
+	// validate that the compaction process actually recovered from rollback by checking stats
+	err = base.JSONUnmarshal(resp.BodyBytes(), &response)
+	require.NoError(t, err)
+	require.Equal(t, db.BackgroundProcessStateCompleted, response.State)
+	require.Equal(t, int64(0), response.MarkedAttachments)
+	require.Equal(t, int64(1000), response.PurgedAttachments)
+
 }
 
 func TestAttachmentCompactionPersistence(t *testing.T) {

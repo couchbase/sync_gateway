@@ -73,6 +73,9 @@ var (
 
 	// ErrReplicationLimitExceeded is returned when then replication connection threshold is exceeded
 	ErrReplicationLimitExceeded = &sgError{"Replication limit exceeded. Try agin later."}
+
+	// ErrAttachmentCompactionRollback indicates that an rollback is required for attachment compaction process
+	ErrAttachmentCompactionRollback = &sgError{"rollback requested during compaction task, resetting task"}
 )
 
 func (e *sgError) Error() string {
