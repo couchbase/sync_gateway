@@ -353,6 +353,7 @@ Role:
         additionalProperties:
           x-additionalPropertiesName: collectionname
           $ref: '#/CollectionAccessConfig'
+      example: {"scopename": {"collection1": {"admin_channels":["channelname"]}, "collection2": {"admin_channels":["channelname"]}}}
   title: Role
 User-session-information:
   type: object
