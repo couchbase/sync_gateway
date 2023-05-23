@@ -330,8 +330,12 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 							return ErrInvalidLogin
 						}
 					}
-					base.InfofCtx(h.ctx(), base.KeyHTTP, "Error trying to get db %s: %v", base.MD(keyspaceDb), err)
-					return err
+					// look for db in config registry
+					_, ok := h.server.bucketNameFromDbName(keyspaceDb)
+					if !ok {
+						base.InfofCtx(h.ctx(), base.KeyHTTP, "Error trying to get db %s: %v", base.MD(keyspaceDb), err)
+						return err
+					}
 				}
 			} else {
 				return err

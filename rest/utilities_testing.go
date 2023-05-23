@@ -66,7 +66,7 @@ type RestTesterConfig struct {
 	enableAdminAuthPermissionsCheck bool
 	useTLSServer                    bool // If true, TLS will be required for communications with CBS. Default: false
 	PersistentConfig                bool
-	groupID                         *string
+	GroupID                         *string
 	serverless                      bool // Runs SG in serverless mode. Must be used in conjunction with persistent config
 	collectionConfig                collectionConfiguration
 	numCollections                  int
@@ -227,8 +227,8 @@ func (rt *RestTester) Bucket() base.Bucket {
 		}
 	}
 
-	if rt.RestTesterConfig.groupID != nil {
-		sc.Bootstrap.ConfigGroupID = *rt.RestTesterConfig.groupID
+	if rt.RestTesterConfig.GroupID != nil {
+		sc.Bootstrap.ConfigGroupID = *rt.RestTesterConfig.GroupID
 	} else if rt.RestTesterConfig.PersistentConfig {
 		// If running in persistent config mode, the database has to be manually created. If the db name is the same as a
 		// past tests db name, a db already exists error could happen if the past tests bucket is still flushing. Prevent this
@@ -2457,6 +2457,8 @@ func (rt *RestTester) GetChangesOneShot(t testing.TB, keyspace string, since int
 }
 
 func (rt *RestTester) NewDbConfig() DbConfig {
+	// make sure bucket has been initialized
+	_ = rt.Bucket()
 	config := DbConfig{
 		BucketConfig: BucketConfig{
 			Bucket: base.StringPtr(rt.Bucket().GetName()),
