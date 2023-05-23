@@ -1481,7 +1481,7 @@ func (sc *ServerContext) bucketNameFromDbName(dbName string) (bucketName string,
 		return dbc.Bucket.GetName(), true
 	}
 
-	if base.ServerIsWalrus(sc.Config.Bootstrap.Server) {
+	if sc.BootstrapContext.Connection == nil {
 		return "", false
 	}
 	// To search for database with the specified name, need to iterate over all buckets:
