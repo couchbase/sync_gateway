@@ -557,10 +557,16 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 		for scopeName, scopeConfig := range config.Scopes {
 			for collectionName, _ := range scopeConfig.Collections {
 				var dataStore sgbucket.DataStore
-				err := base.WaitForNoError(func() error {
+
+				waitForCollection := func() (bool, error, interface{}) {
 					dataStore, err = bucket.NamedDataStore(base.ScopeAndCollectionName{Scope: scopeName, Collection: collectionName})
-					return err
-				})
+					return err != nil, err, nil
+				}
+
+				err, _ := base.RetryLoop(
+					fmt.Sprintf("waiting for %s.%s.%s to exist", base.MD(bucket.GetName()), base.MD(scopeName), base.MD(collectionName)),
+					waitForCollection,
+					base.CreateMaxDoublingSleeperFunc(30, 10, 1000))
 				if err != nil {
 					return nil, fmt.Errorf("error attempting to create/update database: %w", err)
 				}
