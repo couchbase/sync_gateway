@@ -564,7 +564,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 				}
 
 				err, _ := base.RetryLoop(
-					fmt.Sprintf("waiting for %s.%s.%s to exist", base.MD(bucket.GetName()), base.UD(scopeName), base.MD(collectionName)),
+					fmt.Sprintf("waiting for %s.%s.%s to exist", base.MD(bucket.GetName()), base.MD(scopeName), base.MD(collectionName)),
 					waitForCollection,
 					base.CreateMaxDoublingSleeperFunc(30, 10, 1000))
 				if err != nil {
