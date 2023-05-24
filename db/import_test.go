@@ -525,3 +525,28 @@ func TestImportStampClusterUUID(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 32, len(xattr["cluster_uuid"]))
 }
+
+// TestImporNonZeroStart makes sure docs written before sync gateway start get imported
+func TestImportNonZeroStart(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("test requires import feed, which requies DCP")
+	}
+
+	bucket := base.GetTestBucket(t)
+
+	key := "doc1"
+	bodyBytes := rawDocNoMeta()
+
+	_, err := bucket.GetSingleDataStore().Add(key, 0, bodyBytes)
+	require.NoError(t, err)
+
+	db, ctx := setupTestDBWithOptionsAndImport(t, bucket, DatabaseContextOptions{})
+	defer db.Close(ctx)
+
+	collection := GetSingleDatabaseCollectionWithUser(t, db)
+	_, ok := base.WaitForStat(func() int64 {
+		return collection.collectionStats.ImportCount.Value()
+	}, 1)
+	require.True(t, ok)
+
+}
