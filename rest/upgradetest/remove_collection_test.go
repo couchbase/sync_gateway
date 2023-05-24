@@ -23,74 +23,51 @@ func TestRemoveCollection(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("test relies on boostrap connection and needs CBS")
 	}
-	base.RequireNumTestBuckets(t, 2) // test parameterize uses 2 buckets since bucket collection is on parent test
-	testCases := []struct {
-		name string
-	}{
-		{
-			name: "delete",
-		},
-		{
-			name: "upsert",
-		},
+	base.TestRequiresCollections(t)
+	numCollections := 2
+	bucket := base.GetPersistentTestBucket(t)
+	defer bucket.Close()
+	base.RequireNumTestDataStores(t, numCollections)
+	rtConfig := &rest.RestTesterConfig{
+		CustomTestBucket: bucket.NoCloseClone(),
+		PersistentConfig: true,
+		GroupID:          base.StringPtr(t.Name()),
 	}
-	for _, testCase := range testCases {
-		t.Run(testCase.name, func(t *testing.T) {
-			base.TestRequiresCollections(t)
-			numCollections := 2
-			bucket := base.GetPersistentTestBucket(t)
-			defer bucket.Close()
-			base.RequireNumTestDataStores(t, numCollections)
-			rtConfig := &rest.RestTesterConfig{
-				CustomTestBucket: bucket.NoCloseClone(),
-				PersistentConfig: true,
-				GroupID:          base.StringPtr(t.Name()),
-			}
-			rt := rest.NewRestTesterMultipleCollections(t, rtConfig, 2)
+	rt := rest.NewRestTesterMultipleCollections(t, rtConfig, 2)
 
-			dbConfig := rt.NewDbConfig()
-			dbConfig.Scopes = rest.GetCollectionsConfig(t, rt.TestBucket, numCollections)
+	dbConfig := rt.NewDbConfig()
+	dbConfig.Scopes = rest.GetCollectionsConfig(t, rt.TestBucket, numCollections)
 
-			dbName := "removecollectiondb"
-			resp := rt.CreateDatabase(dbName, dbConfig)
-			rest.RequireStatus(t, resp, http.StatusCreated)
+	dbName := "removecollectiondb"
+	resp := rt.CreateDatabase(dbName, dbConfig)
+	rest.RequireStatus(t, resp, http.StatusCreated)
 
-			dataStores := rt.TestBucket.GetNonDefaultDatastoreNames()
-			deletedDataStore := dataStores[1]
+	dataStores := rt.TestBucket.GetNonDefaultDatastoreNames()
+	deletedDataStore := dataStores[1]
 
-			defer func() {
-				assert.NoError(t, bucket.CreateDataStore(deletedDataStore))
+	defer func() {
+		assert.NoError(t, bucket.CreateDataStore(deletedDataStore))
 
-			}()
-			// drop a data store
-			require.NoError(t, rt.TestBucket.DropDataStore(deletedDataStore))
-			require.Len(t, rt.TestBucket.GetNonDefaultDatastoreNames(), len(dataStores)-1)
+	}()
+	// drop a data store
+	require.NoError(t, rt.TestBucket.DropDataStore(deletedDataStore))
+	require.Len(t, rt.TestBucket.GetNonDefaultDatastoreNames(), len(dataStores)-1)
 
-			delete(dbConfig.Scopes[deletedDataStore.ScopeName()].Collections, deletedDataStore.CollectionName())
-			resp = rt.UpsertDbConfig(dbName, dbConfig)
-			rest.RequireStatus(t, resp, http.StatusCreated)
-
-			rt.Close()
-			rtConfig = &rest.RestTesterConfig{
-				CustomTestBucket: bucket.NoCloseClone(),
-				PersistentConfig: true,
-				GroupID:          base.StringPtr(t.Name()),
-			}
-
-			rt = rest.NewRestTesterMultipleCollections(t, rtConfig, 2)
-			defer rt.Close()
-
-			switch testCase.name {
-			case "upsert":
-				delete(dbConfig.Scopes[deletedDataStore.ScopeName()].Collections, deletedDataStore.CollectionName())
-				resp = rt.UpsertDbConfig(dbName, dbConfig)
-				rest.RequireStatus(t, resp, http.StatusCreated)
-			case "delete":
-
-				resp = rt.SendAdminRequest(http.MethodDelete, "/"+dbName+"/", "")
-				rest.RequireStatus(t, resp, http.StatusOK)
-			}
-		})
+	rt.Close()
+	rtConfig = &rest.RestTesterConfig{
+		CustomTestBucket: bucket.NoCloseClone(),
+		PersistentConfig: true,
+		GroupID:          base.StringPtr(t.Name()),
 	}
+
+	rt = rest.NewRestTesterMultipleCollections(t, rtConfig, 2)
+	defer rt.Close()
+
+	delete(dbConfig.Scopes[deletedDataStore.ScopeName()].Collections, deletedDataStore.CollectionName())
+	resp = rt.UpsertDbConfig(dbName, dbConfig)
+	rest.RequireStatus(t, resp, http.StatusNotFound) // the database can't be loaded so it is not found
+
+	resp = rt.SendAdminRequest(http.MethodDelete, "/"+dbName+"/", "")
+	rest.RequireStatus(t, resp, http.StatusOK)
 
 }

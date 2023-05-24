@@ -100,7 +100,8 @@ type handler struct {
 	serialNumber          uint64
 	formattedSerialNumber string
 	loggedDuration        bool
-	runOffline            bool
+	runOffline            bool       // allows running on an offline database
+	allowMetadataDBOnly   bool       // allow acceess to a database based only on name, looking up in metadata registry
 	queryValues           url.Values // Copy of results of rq.URL.Query()
 	permissionsResults    map[string]bool
 	authScopeFunc         authScopeFunc
@@ -123,8 +124,7 @@ type handlerMethod func(*handler) error
 // Creates an http.Handler that will run a handler with the given method
 func makeHandler(server *ServerContext, privs handlerPrivs, accessPermissions []Permission, responsePermissions []Permission, method handlerMethod) http.Handler {
 	return http.HandlerFunc(func(r http.ResponseWriter, rq *http.Request) {
-		runOffline := false
-		h := newHandler(server, privs, r, rq, runOffline)
+		h := newHandler(server, privs, r, rq, handlerOptions{})
 		err := h.invoke(method, accessPermissions, responsePermissions)
 		h.writeError(err)
 		h.logDuration(true)
@@ -134,8 +134,24 @@ func makeHandler(server *ServerContext, privs handlerPrivs, accessPermissions []
 // Creates an http.Handler that will run a handler with the given method even if the target DB is offline
 func makeOfflineHandler(server *ServerContext, privs handlerPrivs, accessPermissions []Permission, responsePermissions []Permission, method handlerMethod) http.Handler {
 	return http.HandlerFunc(func(r http.ResponseWriter, rq *http.Request) {
-		runOffline := true
-		h := newHandler(server, privs, r, rq, runOffline)
+		options := handlerOptions{
+			runOffline: true,
+		}
+		h := newHandler(server, privs, r, rq, options)
+		err := h.invoke(method, accessPermissions, responsePermissions)
+		h.writeError(err)
+		h.logDuration(true)
+	})
+}
+
+// makeMetadataDBOfflineHandler creates an http.Handler that will run a handler with the given method even if the target DB is not able to be instantiated
+func makeMetadataDBOfflineHandler(server *ServerContext, privs handlerPrivs, accessPermissions []Permission, responsePermissions []Permission, method handlerMethod) http.Handler {
+	return http.HandlerFunc(func(r http.ResponseWriter, rq *http.Request) {
+		options := handlerOptions{
+			runOffline:          true,
+			allowMetadataDBOnly: true,
+		}
+		h := newHandler(server, privs, r, rq, options)
 		err := h.invoke(method, accessPermissions, responsePermissions)
 		h.writeError(err)
 		h.logDuration(true)
@@ -146,8 +162,7 @@ func makeOfflineHandler(server *ServerContext, privs handlerPrivs, accessPermiss
 // given the endpoint payload returns an auth scope.
 func makeHandlerSpecificAuthScope(server *ServerContext, privs handlerPrivs, accessPermissions []Permission, responsePermissions []Permission, method handlerMethod, dbAuthStringFunc func([]byte) (string, error)) http.Handler {
 	return http.HandlerFunc(func(r http.ResponseWriter, rq *http.Request) {
-		runOffline := false
-		h := newHandler(server, privs, r, rq, runOffline)
+		h := newHandler(server, privs, r, rq, handlerOptions{})
 		h.authScopeFunc = dbAuthStringFunc
 		err := h.invoke(method, accessPermissions, responsePermissions)
 		h.writeError(err)
@@ -155,16 +170,22 @@ func makeHandlerSpecificAuthScope(server *ServerContext, privs handlerPrivs, acc
 	})
 }
 
-func newHandler(server *ServerContext, privs handlerPrivs, r http.ResponseWriter, rq *http.Request, runOffline bool) *handler {
+type handlerOptions struct {
+	runOffline          bool // if true, allow handler to run when a database is offline
+	allowMetadataDBOnly bool // if true, allow handler to access a database without a valid dbcontext
+}
+
+func newHandler(server *ServerContext, privs handlerPrivs, r http.ResponseWriter, rq *http.Request, options handlerOptions) *handler {
 	h := &handler{
-		server:       server,
-		privs:        privs,
-		rq:           rq,
-		response:     r,
-		status:       http.StatusOK,
-		serialNumber: atomic.AddUint64(&lastSerialNum, 1),
-		startTime:    time.Now(),
-		runOffline:   runOffline,
+		server:              server,
+		privs:               privs,
+		rq:                  rq,
+		response:            r,
+		status:              http.StatusOK,
+		serialNumber:        atomic.AddUint64(&lastSerialNum, 1),
+		startTime:           time.Now(),
+		runOffline:          options.runOffline,
+		allowMetadataDBOnly: options.allowMetadataDBOnly,
 	}
 
 	// initialize h.rqCtx
@@ -330,9 +351,14 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 							return ErrInvalidLogin
 						}
 					}
-					// look for db in config registry
-					_, ok := h.server.bucketNameFromDbName(keyspaceDb)
-					if !ok {
+					if h.allowMetadataDBOnly {
+						// look for db in config registry
+						_, ok := h.server.bucketNameFromDbName(keyspaceDb)
+						if !ok {
+							base.InfofCtx(h.ctx(), base.KeyHTTP, "Error trying to get db %s: %v", base.MD(keyspaceDb), err)
+							return err
+						}
+					} else {
 						base.InfofCtx(h.ctx(), base.KeyHTTP, "Error trying to get db %s: %v", base.MD(keyspaceDb), err)
 						return err
 					}
