@@ -108,6 +108,9 @@ func (a *AttachmentCompactionManager) PurgeDCPMetadata(ctx context.Context, data
 	checkpointPrefix := fmt.Sprintf("%s:%v", "_sync:dcp_ck:", streamName)
 
 	bucket, err := base.AsGocbV2Bucket(database.Bucket)
+	if err != nil {
+		return err
+	}
 	numVbuckets, err := bucket.GetMaxVbno()
 	if err != nil {
 		return err
