@@ -461,6 +461,8 @@ type DatabaseStats struct {
 	DocWritesXattrBytes *SgwIntStat `json:"doc_writes_xattr_bytes"`
 	// Highest sequence number seen on the caching DCP feed.
 	HighSeqFeed *SgwIntStat `json:"high_seq_feed"`
+	// Number of bytes written over public interface for REST api
+	HTTPBytesWritten *SgwIntStat `json:"http_bytes_written"`
 	// The number of attachments compacted
 	NumAttachmentsCompacted *SgwIntStat `json:"num_attachments_compacted"`
 	// The total number of documents read via Couchbase Lite 2.x replication since Sync Gateway node startup.
@@ -1357,6 +1359,11 @@ func (d *DbStats) initDatabaseStats() error {
 	if err != nil {
 		return err
 	}
+	resUtil.HTTPBytesWritten, err = NewIntStat(SubsystemDatabaseKey, "http_bytes_written", labelKeys, labelVals, prometheus.CounterValue, 0)
+	if err != nil {
+		return err
+	}
+
 	resUtil.NumAttachmentsCompacted, err = NewIntStat(SubsystemDatabaseKey, "num_attachments_compacted", labelKeys, labelVals, prometheus.CounterValue, 0)
 	if err != nil {
 		return err
@@ -1464,6 +1471,7 @@ func (d *DbStats) unregisterDatabaseStats() {
 	prometheus.Unregister(d.DatabaseStats.DocWritesBytes)
 	prometheus.Unregister(d.DatabaseStats.DocWritesXattrBytes)
 	prometheus.Unregister(d.DatabaseStats.HighSeqFeed)
+	prometheus.Unregister(d.DatabaseStats.HTTPBytesWritten)
 	prometheus.Unregister(d.DatabaseStats.DocWritesBytesBlip)
 	prometheus.Unregister(d.DatabaseStats.NumAttachmentsCompacted)
 	prometheus.Unregister(d.DatabaseStats.NumDocReadsBlip)

@@ -87,7 +87,7 @@ var ClusterScopedEndpointRolesWrite = []RouteRole{ClusterAdminRole, FullAdminRol
 type handler struct {
 	server                *ServerContext
 	rq                    *http.Request
-	response              http.ResponseWriter
+	response              CountableResponseWriter
 	status                int
 	statusMessage         string
 	requestBody           io.ReadCloser
@@ -128,6 +128,7 @@ func makeHandler(server *ServerContext, privs handlerPrivs, accessPermissions []
 		err := h.invoke(method, accessPermissions, responsePermissions)
 		h.writeError(err)
 		h.logDuration(true)
+
 	})
 }
 
@@ -139,6 +140,7 @@ func makeOfflineHandler(server *ServerContext, privs handlerPrivs, accessPermiss
 		err := h.invoke(method, accessPermissions, responsePermissions)
 		h.writeError(err)
 		h.logDuration(true)
+		h.logBytesWritten()
 	})
 }
 
@@ -160,7 +162,7 @@ func newHandler(server *ServerContext, privs handlerPrivs, r http.ResponseWriter
 		server:       server,
 		privs:        privs,
 		rq:           rq,
-		response:     r,
+		response:     &CountedResponseWriter{writer: r},
 		status:       http.StatusOK,
 		serialNumber: atomic.AddUint64(&lastSerialNum, 1),
 		startTime:    time.Now(),
@@ -347,7 +349,7 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 			// any other call
 
 			// defer releasing the dbContext until after the handler method returns, unless it's a blipsync request
-			if !h.pathTemplateContains("_blipsync") {
+			if !h.isBlipSync() {
 				dbContext.AccessLock.RLock()
 				defer dbContext.AccessLock.RUnlock()
 			}
@@ -375,7 +377,7 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 			// Prevent read-only guest access to any endpoint requiring write permissions except
 			// blipsync.  Read-only guest handling for websocket replication (blipsync) is evaluated
 			// at the blip message level to support read-only pull replications.
-			if requiresWritePermission(accessPermissions) && !h.pathTemplateContains("_blipsync") {
+			if requiresWritePermission(accessPermissions) && !h.isBlipSync() {
 				return base.HTTPErrorf(http.StatusForbidden, auth.GuestUserReadOnly)
 			}
 		}
@@ -555,6 +557,20 @@ func (h *handler) logRequestLine() {
 
 	queryValues := h.getQueryValues()
 	base.InfofCtx(h.ctx(), base.KeyHTTP, "%s %s%s%s", h.rq.Method, base.SanitizeRequestURL(h.rq, &queryValues), proto, h.formattedEffectiveUserName())
+}
+
+// logBytesWritten only logs database level bytes written over the public API
+func (h *handler) logBytesWritten() {
+	if h.db == nil {
+		return
+	}
+	if h.privs != publicPrivs && h.privs != regularPrivs {
+		return
+	}
+	if h.isBlipSync() {
+		return
+	}
+	h.db.DbStats.Database().HTTPBytesWritten.Add(int64(h.response.GetBytesWritten()))
 }
 
 func (h *handler) logDuration(realTime bool) {
@@ -1484,6 +1500,10 @@ func requiresWritePermission(accessPermissions []Permission) bool {
 		}
 	}
 	return false
+}
+
+func (h *handler) isBlipSync() bool {
+	return h.pathTemplateContains("_blipsync")
 }
 
 // Checks whether the mux path template for the current route contains the specified pattern

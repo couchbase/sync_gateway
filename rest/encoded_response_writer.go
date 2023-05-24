@@ -26,6 +26,7 @@ type EncodedResponseWriter struct {
 	status        int
 	sniffDone     bool
 	headerWritten bool
+	bytesWritten  int64
 }
 
 // Creates a new EncodedResponseWriter, or returns nil if the request doesn't allow encoded responses.
@@ -66,10 +67,13 @@ func (w *EncodedResponseWriter) WriteHeader(status int) {
 func (w *EncodedResponseWriter) Write(b []byte) (int, error) {
 	w.sniff(b)
 	if w.gz != nil {
-		return w.gz.Write(b)
-	} else {
-		return w.ResponseWriter.Write(b)
+		n, err := w.gz.Write(b)
+		w.bytesWritten += int64(n)
+		return n, err
 	}
+	n, err := w.ResponseWriter.Write(b)
+	w.bytesWritten += int64(n)
+	return n, err
 }
 
 func (w *EncodedResponseWriter) disableCompression() {
@@ -119,6 +123,10 @@ func (w *EncodedResponseWriter) Close() {
 		ReturnGZipWriter(w.gz)
 		w.gz = nil
 	}
+}
+
+func (w *EncodedResponseWriter) GetBytesWritten() int64 {
+	return w.bytesWritten
 }
 
 //////// GZIP WRITER CACHE:
