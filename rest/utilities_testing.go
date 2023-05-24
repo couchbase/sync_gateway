@@ -2458,7 +2458,6 @@ func (rt *RestTester) GetChangesOneShot(t testing.TB, keyspace string, since int
 
 func (rt *RestTester) NewDbConfig() DbConfig {
 	// make sure bucket has been initialized
-	_ = rt.Bucket()
 	config := DbConfig{
 		BucketConfig: BucketConfig{
 			Bucket: base.StringPtr(rt.Bucket().GetName()),
