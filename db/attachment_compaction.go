@@ -129,7 +129,7 @@ func attachmentCompactMarkPhase(ctx context.Context, dataStore base.DataStore, c
 		return true
 	}
 
-	clientOptions, err := getCompactionDCPClientOptions(collectionID, db.Options.GroupID, db.MetadataKeys.DCPCheckpointPrefix(db.Options.GroupID), false)
+	clientOptions, err := getCompactionDCPClientOptions(collectionID, db.Options.GroupID, db.MetadataKeys.DCPCheckpointPrefix(db.Options.GroupID))
 	if err != nil {
 		return 0, nil, err
 	}
@@ -354,7 +354,7 @@ func attachmentCompactSweepPhase(ctx context.Context, dataStore base.DataStore, 
 		return true
 	}
 
-	clientOptions, err := getCompactionDCPClientOptions(collectionID, db.Options.GroupID, db.MetadataKeys.DCPCheckpointPrefix(db.Options.GroupID), true)
+	clientOptions, err := getCompactionDCPClientOptions(collectionID, db.Options.GroupID, db.MetadataKeys.DCPCheckpointPrefix(db.Options.GroupID))
 	if err != nil {
 		return 0, err
 	}
@@ -490,7 +490,7 @@ func attachmentCompactCleanupPhase(ctx context.Context, dataStore base.DataStore
 		return true
 	}
 
-	clientOptions, err := getCompactionDCPClientOptions(collectionID, db.Options.GroupID, db.MetadataKeys.DCPCheckpointPrefix(db.Options.GroupID), true)
+	clientOptions, err := getCompactionDCPClientOptions(collectionID, db.Options.GroupID, db.MetadataKeys.DCPCheckpointPrefix(db.Options.GroupID))
 	if err != nil {
 		return err
 	}
@@ -550,15 +550,14 @@ func getCompactionIDSubDocPath(compactionID string) string {
 }
 
 // getCompactionDCPClientOptions returns the default set of DCPClientOptions suitable for attachment compaction
-func getCompactionDCPClientOptions(collectionID uint32, groupID string, prefix string, rollback bool) (*base.DCPClientOptions, error) {
+func getCompactionDCPClientOptions(collectionID uint32, groupID string, prefix string) (*base.DCPClientOptions, error) {
 	clientOptions := &base.DCPClientOptions{
-		OneShot:                     true,
-		FailOnRollback:              rollback,
-		MetadataStoreType:           base.DCPMetadataStoreCS,
-		GroupID:                     groupID,
-		CollectionIDs:               []uint32{collectionID},
-		CheckpointPrefix:            prefix,
-		AttachmentCompactionProcess: true,
+		OneShot:           true,
+		FailOnRollback:    true,
+		MetadataStoreType: base.DCPMetadataStoreCS,
+		GroupID:           groupID,
+		CollectionIDs:     []uint32{collectionID},
+		CheckpointPrefix:  prefix,
 	}
 	return clientOptions, nil
 

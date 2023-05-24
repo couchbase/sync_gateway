@@ -11,9 +11,11 @@ package db
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"time"
 
+	"github.com/couchbase/gocbcore/v10"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/google/uuid"
 )
@@ -101,6 +103,22 @@ func (a *AttachmentCompactionManager) Init(ctx context.Context, options map[stri
 	return newRunInit()
 }
 
+func (a *AttachmentCompactionManager) PurgeDCPMetadata(ctx context.Context, datastore base.DataStore, database *Database) error {
+	streamName := GenerateCompactionDCPStreamName(a.CompactID, MarkPhase)
+	checkpointPrefix := fmt.Sprintf("%s:%v", "_sync:dcp_ck:", streamName)
+
+	bucket, err := base.AsGocbV2Bucket(database.Bucket)
+	numVbuckets, err := bucket.GetMaxVbno()
+	if err != nil {
+		return err
+	}
+
+	metadata := base.NewDCPMetadataCS(datastore, numVbuckets, base.DefaultNumWorkers, checkpointPrefix)
+	base.InfofCtx(ctx, base.KeyDCP, "purging persisted dcp metadata for stream %s", streamName)
+	metadata.Purge(base.DefaultNumWorkers)
+	return nil
+}
+
 func (a *AttachmentCompactionManager) Run(ctx context.Context, options map[string]interface{}, persistClusterStatusCallback updateStatusCallbackFunc, terminator *base.SafeTerminator) error {
 	database := options["database"].(*Database)
 
@@ -121,6 +139,8 @@ func (a *AttachmentCompactionManager) Run(ctx context.Context, options map[strin
 
 	defer persistClusterStatus()
 
+	var rollbackErr gocbcore.DCPRollbackError
+
 	// Need to check the current phase in the event we are resuming - No need to run mark again if we got as far as
 	// cleanup last time...
 	var err error
@@ -130,9 +150,14 @@ func (a *AttachmentCompactionManager) Run(ctx context.Context, options map[strin
 		persistClusterStatus()
 		worker := func() (shouldRetry bool, err error, value interface{}) {
 			_, a.VBUUIDs, err = attachmentCompactMarkPhase(ctx, dataStore, collectionID, database, a.CompactID, terminator, &a.MarkedAttachments)
-			if errors.Is(err, base.ErrAttachmentCompactionRollback) {
+			if errors.As(err, &rollbackErr) {
 				base.InfofCtx(ctx, base.KeyDCP, "rollback indicated on mark phase of attachment, resetting the task")
-				err = a.newRunRollback(ctx, options)
+				err = a.PurgeDCPMetadata(ctx, dataStore, database)
+				if err != nil {
+					base.WarnfCtx(ctx, "error occurred during purging of dcp metadata")
+					return false, err, nil
+				}
+				err = a.Init(ctx, options, nil)
 				if err != nil {
 					base.WarnfCtx(ctx, "error on initialization of new run after rollback has been indicated")
 					return false, err, nil
@@ -146,7 +171,7 @@ func (a *AttachmentCompactionManager) Run(ctx context.Context, options map[strin
 		// retry loop for handling a rollback during mark phase of compaction process
 		err, _ = base.RetryLoop("attachmentCompactMarkPhase", worker, base.CreateMaxDoublingSleeperFunc(25, 100, 10000))
 		if err != nil || terminator.IsClosed() {
-			if errors.Is(err, base.ErrAttachmentCompactionRollback) {
+			if errors.As(err, &rollbackErr) {
 				// log warning to show we hit max number of retries
 				base.WarnfCtx(ctx, "maximum retry attempts reached on mark phase: %v", err)
 			}
@@ -171,23 +196,6 @@ func (a *AttachmentCompactionManager) Run(ctx context.Context, options map[strin
 	}
 
 	a.SetPhase("")
-	return nil
-}
-
-func (a *AttachmentCompactionManager) newRunRollback(ctx context.Context, options map[string]interface{}) error {
-	uniqueUUID, err := uuid.NewRandom()
-	if err != nil {
-		return err
-	}
-
-	dryRun, _ := options["dryRun"].(bool)
-	if dryRun {
-		base.InfofCtx(ctx, base.KeyAll, "AttachmentCompactionProcess Compaction: Running as dry run. No attachments will be purged")
-	}
-
-	a.dryRun = dryRun
-	a.CompactID = uniqueUUID.String()
-	base.InfofCtx(ctx, base.KeyAll, "AttachmentCompactionProcess Compaction: Starting new compaction run with compact ID: %q", a.CompactID)
 	return nil
 }
 

@@ -162,6 +162,7 @@ func TestAttachmentCompactionMarkPhaseRollback(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 	var garbageVBUUID gocbcore.VbUUID = 1234
+	base.SetUpTestLogging(t, base.LevelInfo, base.KeyAll)
 
 	rt := rest.NewRestTesterDefaultCollection(t, nil)
 	defer rt.Close()
@@ -181,39 +182,16 @@ func TestAttachmentCompactionMarkPhaseRollback(t *testing.T) {
 	// kick off compaction and wait for "mark" phase to begin
 	resp := rt.SendAdminRequest("POST", "/{{.db}}/_compact?type=attachment", "")
 	rest.RequireStatus(t, resp, http.StatusOK)
+	_ = rt.WaitForAttachmentCompactionStatus(t, db.BackgroundProcessStateRunning)
 
-	var response db.AttachmentManagerResponse
-	err := rt.WaitForCondition(func() bool {
-		time.Sleep(1 * time.Second)
-
-		resp := rt.SendAdminRequest("GET", "/{{.db}}/_compact?type=attachment", "")
-		rest.RequireStatus(t, resp, http.StatusOK)
-
-		err := base.JSONUnmarshal(resp.BodyBytes(), &response)
-		require.NoError(t, err)
-
-		return response.Phase == "mark"
-	})
-	require.NoError(t, err)
-
-	// stop the mark phase before completion
+	// immediately stop the compaction process (we just need the status data to be persisted to the bucket)
 	resp = rt.SendAdminRequest("POST", "/{{.db}}/_compact?type=attachment&action=stop", "")
 	rest.RequireStatus(t, resp, http.StatusOK)
-	err = rt.WaitForCondition(func() bool {
-		time.Sleep(1 * time.Second)
-
-		resp := rt.SendAdminRequest("GET", "/{{.db}}/_compact?type=attachment", "")
-		rest.RequireStatus(t, resp, http.StatusOK)
-
-		err := base.JSONUnmarshal(resp.BodyBytes(), &response)
-		require.NoError(t, err)
-
-		return response.State == db.BackgroundProcessStateStopped
-	})
-	require.NoError(t, err)
+	stat := rt.WaitForAttachmentCompactionStatus(t, db.BackgroundProcessStateStopped)
+	require.Equal(t, db.MarkPhase, stat.Phase)
 
 	// alter persisted dcp metadata from the first run to force a rollback
-	name := db.GenerateCompactionDCPStreamName(response.CompactID, "mark")
+	name := db.GenerateCompactionDCPStreamName(stat.CompactID, "mark")
 	checkpointPrefix := fmt.Sprintf("%s:%v", "_sync:dcp_ck:", name)
 
 	meta := base.NewDCPMetadataCS(dataStore, 1024, 8, checkpointPrefix)
@@ -225,38 +203,15 @@ func TestAttachmentCompactionMarkPhaseRollback(t *testing.T) {
 	// kick off a new run attempting to start it again (should force into rollback handling)
 	resp = rt.SendAdminRequest("POST", "/{{.db}}/_compact?type=attachment&action=start", "")
 	rest.RequireStatus(t, resp, http.StatusOK)
-	err = rt.WaitForCondition(func() bool {
-		time.Sleep(1 * time.Second)
-
-		resp := rt.SendAdminRequest("GET", "/{{.db}}/_compact?type=attachment", "")
-		rest.RequireStatus(t, resp, http.StatusOK)
-
-		err := base.JSONUnmarshal(resp.BodyBytes(), &response)
-		require.NoError(t, err)
-
-		return response.State == db.BackgroundProcessStateRunning
-	})
-	require.NoError(t, err)
-
-	err = rt.WaitForCondition(func() bool {
-		time.Sleep(1 * time.Second)
-
-		resp := rt.SendAdminRequest("GET", "/{{.db}}/_compact?type=attachment", "")
-		rest.RequireStatus(t, resp, http.StatusOK)
-
-		err = base.JSONUnmarshal(resp.BodyBytes(), &response)
-		require.NoError(t, err)
-
-		return response.State == db.BackgroundProcessStateCompleted
-	})
-	require.NoError(t, err)
+	_ = rt.WaitForAttachmentCompactionStatus(t, db.BackgroundProcessStateCompleted)
 
 	// Validate results of recovered attachment compaction process
 	resp = rt.SendAdminRequest("GET", "/{{.db}}/_compact?type=attachment", "")
 	rest.RequireStatus(t, resp, http.StatusOK)
 
 	// validate that the compaction process actually recovered from rollback by checking stats
-	err = base.JSONUnmarshal(resp.BodyBytes(), &response)
+	var response db.AttachmentManagerResponse
+	err := base.JSONUnmarshal(resp.BodyBytes(), &response)
 	require.NoError(t, err)
 	require.Equal(t, db.BackgroundProcessStateCompleted, response.State)
 	require.Equal(t, int64(0), response.MarkedAttachments)
