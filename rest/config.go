@@ -1267,7 +1267,8 @@ func SetupServerContext(ctx context.Context, config *StartupConfig, persistentCo
 
 	sc := NewServerContext(ctx, config, persistentConfig)
 	if !base.ServerIsWalrus(config.Bootstrap.Server) {
-		if err := sc.initializeCouchbaseServerConnections(ctx); err != nil {
+		failFast := false
+		if err := sc.initializeCouchbaseServerConnections(ctx, failFast); err != nil {
 			return nil, err
 		}
 	}
@@ -1614,7 +1615,7 @@ func (sc *ServerContext) FetchConfigs(ctx context.Context, isInitialStartup bool
 // _applyConfigs takes a map of dbName->DatabaseConfig and loads them into the ServerContext where necessary.
 func (sc *ServerContext) _applyConfigs(ctx context.Context, dbNameConfigs map[string]DatabaseConfig, isInitialStartup bool) (count int) {
 	for dbName, cnf := range dbNameConfigs {
-		applied, err := sc._applyConfig(base.NewNonCancelCtx(), cnf, false, isInitialStartup)
+		applied, err := sc._applyConfig(base.NewNonCancelCtx(), cnf, true, isInitialStartup)
 		if err != nil {
 			base.ErrorfCtx(ctx, "Couldn't apply config for database %q: %v", base.MD(dbName), err)
 			continue

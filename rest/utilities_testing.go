@@ -270,7 +270,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 
 		rt.TestBucket.BucketSpec.TLSSkipVerify = base.TestTLSSkipVerify()
 
-		if err := rt.RestTesterServerContext.initializeCouchbaseServerConnections(ctx); err != nil {
+		if err := rt.RestTesterServerContext.initializeCouchbaseServerConnections(ctx, true); err != nil {
 			panic("Couldn't initialize Couchbase Server connection: " + err.Error())
 		}
 	}
@@ -1181,9 +1181,10 @@ func (s *SlowResponseRecorder) Write(buf []byte) (int, error) {
 // AddDatabaseFromConfigWithBucket adds a database to the ServerContext and sets a specific bucket on the database context.
 // If an existing config is found for the name, returns an error.
 func (sc *ServerContext) AddDatabaseFromConfigWithBucket(ctx context.Context, tb testing.TB, config DatabaseConfig, bucket base.Bucket) (*db.DatabaseContext, error) {
+	failFast := true
 	return sc.getOrAddDatabaseFromConfig(ctx, config, false, func(ctx context.Context, spec base.BucketSpec) (base.Bucket, error) {
 		return bucket, nil
-	})
+	}, failFast)
 }
 
 // The parameters used to create a BlipTester
