@@ -15,11 +15,13 @@ import (
 	"net/http"
 )
 
+// CountableResponseWriter is an interface that any custom http.ResponseWriter used by Sync Gateway handlers need to implement.
 type CountableResponseWriter interface {
 	http.ResponseWriter
 	GetBytesWritten() int64
 }
 
+// http.ResponseWriter wrapper that counts the number of bytes written in a response. This ignores the bytes written in headers.
 type CountedResponseWriter struct {
 	writer       http.ResponseWriter
 	bytesWritten int64
@@ -27,24 +29,29 @@ type CountedResponseWriter struct {
 
 var _ CountedResponseWriter = CountedResponseWriter{}
 
+// Header passes through to the underlying ResponseWriter
 func (w *CountedResponseWriter) Header() http.Header {
 	return w.writer.Header()
 }
 
+// Write passes through to the underlying ResponseWriter while incrementing the number of bytes.
 func (w *CountedResponseWriter) Write(b []byte) (int, error) {
 	n, err := w.writer.Write(b)
 	w.bytesWritten += int64(n)
 	return n, err
 }
 
+// WriteHeader passes through to the underlying ResponseWriter
 func (w *CountedResponseWriter) WriteHeader(statusCode int) {
 	w.writer.WriteHeader(statusCode)
 }
 
+// GetBytesWritten returns the number of bytes written by this response writer. This is not locked, so is only safe to call while no one is calling CountedResponseWriter.Write, usually after the response has been fully written.
 func (w *CountedResponseWriter) GetBytesWritten() int64 {
 	return w.bytesWritten
 }
 
+// Hijack implement http.Hijcker interface to satisfy the upgrade to websockets
 func (w *CountedResponseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 	h, ok := w.writer.(http.Hijacker)
 	if !ok {
