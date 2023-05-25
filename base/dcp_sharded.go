@@ -468,6 +468,9 @@ func (c *CbgtContext) Stop() {
 	}
 	// ClosePIndex calls are synchronous, so can stop manager once they've completed
 	c.Manager.Stop()
+	// CloseStatsClients closes the memcached connection cbgt uses for stats calls (highseqno, etc).  sourceName and
+	// sourceUUID are bucketName/bucket UUID in our usage.  cbgt has a single global stats connection per bucket,
+	// but does a refcount check before closing, so handles the case of multiple SG databases targeting the same bucket.
 	cbgt.CloseStatsClients(c.sourceName, c.sourceUUID)
 	c.RemoveFeedCredentials(c.dbName)
 }
@@ -744,7 +747,7 @@ func (meh *sgMgrEventHandlers) OnUnregisterPIndex(pindex *cbgt.PIndex) {
 func (meh *sgMgrEventHandlers) OnFeedError(srcType string, r cbgt.Feed, feedErr error) {
 
 	// cbgt always passes srcType = SOURCE_GOCBCORE, but we have a wrapped type associated with our indexes - use that instead
-	// for logging and when calling DeleteAllIndexFromSource
+	// for our logging
 	srcType = SOURCE_DCP_SG
 
 	DebugfCtx(meh.ctx, KeyDCP, "cbgt Mgr OnFeedError, srcType: %s, feed name: %s, err: %v",
