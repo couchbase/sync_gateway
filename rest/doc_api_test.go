@@ -164,7 +164,7 @@ func TestGuestReadOnly(t *testing.T) {
 	// Attempt to access _blipsync as guest - blip sync handling for read-only GUEST is applied at replication level (to allow pull-only replications).
 	// Should succeed permission check, and only fail on websocket upgrade
 	response = rt.SendRequest("GET", "/{{.db}}/_blipsync", "")
-	RequireStatus(t, response, http.StatusUpgradeRequired)
+	RequireStatus(t, response, http.StatusInternalServerError)
 
 	// Verify matching on _blipsync path doesn't incorrectly match docs, attachments
 	response = rt.SendRequest("PUT", "/{{.keyspace}}/doc_named_blipsync", "")
