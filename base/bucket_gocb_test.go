@@ -362,22 +362,22 @@ func TestIncrCounter(t *testing.T) {
 		}
 	}()
 
-	// New Counter - incr 1, default 1
-	value, err := dataStore.Incr(key, 1, 1, 0)
-	assert.NoError(t, err, "Error incrementing non-existent counter")
+	// New Counter - incr 1, default 5
+	value, err := dataStore.Incr(key, 1, 5, 0)
+	require.NoError(t, err, "Error incrementing non-existent counter")
 
-	// key did not exist - so expect the "initial" value of 1
-	assert.Equal(t, uint64(1), value)
+	// key did not exist - so expect the "initial" value of 5
+	require.Equal(t, uint64(5), value)
 
 	// Retrieve existing counter value using GetCounter
 	retrieval, err := GetCounter(dataStore, key)
-	assert.NoError(t, err, "Error retrieving value for existing counter")
-	assert.Equal(t, uint64(1), retrieval)
+	require.NoError(t, err, "Error retrieving value for existing counter")
+	require.Equal(t, uint64(5), retrieval)
 
 	// Increment existing counter
-	retrieval, err = dataStore.Incr(key, 1, 1, 0)
-	assert.NoError(t, err, "Error incrementing value for existing counter")
-	assert.Equal(t, uint64(2), retrieval)
+	retrieval, err = dataStore.Incr(key, 1, 5, 0)
+	require.NoError(t, err, "Error incrementing value for existing counter")
+	require.Equal(t, uint64(6), retrieval)
 }
 
 func TestGetAndTouchRaw(t *testing.T) {
