@@ -11,10 +11,41 @@ package base
 import (
 	"context"
 	"expvar"
+	"fmt"
 
 	"github.com/couchbase/gocbcore/v10"
 	sgbucket "github.com/couchbase/sg-bucket"
 )
+
+// getHighSeqMetadata returns metadata to feed into a DCP client based on the last sequence numbers stored in memory
+func getHighSeqMetadata(cbstore CouchbaseBucketStore) ([]DCPMetadata, error) {
+	numVbuckets, err := cbstore.GetMaxVbno()
+	if err != nil {
+		return nil, fmt.Errorf("Unable to determine maxVbNo when creating DCP client: %w", err)
+	}
+
+	vbUUIDs, highSeqNos, statsErr := cbstore.GetStatsVbSeqno(numVbuckets, true)
+	if statsErr != nil {
+		return nil, fmt.Errorf("Unable to obtain high seqnos for DCP feed: %w", statsErr)
+	}
+
+	metadata := make([]DCPMetadata, numVbuckets)
+	for vbNo := uint16(0); vbNo < numVbuckets; vbNo++ {
+		highSeqNo := gocbcore.SeqNo(highSeqNos[vbNo])
+		metadata[vbNo].VbUUID = gocbcore.VbUUID(vbUUIDs[vbNo])
+		metadata[vbNo].FailoverEntries = []gocbcore.FailoverEntry{
+			{
+				VbUUID: gocbcore.VbUUID(vbUUIDs[vbNo]),
+				SeqNo:  highSeqNo,
+			},
+		}
+		metadata[vbNo].StartSeqNo = highSeqNo
+		metadata[vbNo].EndSeqNo = gocbcore.SeqNo(uint64(0xFFFFFFFFFFFFFFFF))
+		metadata[vbNo].SnapStartSeqNo = highSeqNo
+		metadata[vbNo].SnapEndSeqNo = highSeqNo
+	}
+	return metadata, nil
+}
 
 // StartGocbDCPFeed starts a DCP Feed.
 func StartGocbDCPFeed(bucket *GocbV2Bucket, bucketName string, args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map, metadataStoreType DCPMetadataStoreType, groupID string) error {
@@ -49,18 +80,27 @@ func StartGocbDCPFeed(bucket *GocbV2Bucket, bucketName string, args sgbucket.Fee
 			}
 		}
 	}
+	options := DCPClientOptions{
+		MetadataStoreType: metadataStoreType,
+		GroupID:           groupID,
+		DbStats:           dbStats,
+		CollectionIDs:     collectionIDs,
+		AgentPriority:     gocbcore.DcpAgentPriorityMed,
+		CheckpointPrefix:  args.CheckpointPrefix,
+	}
+
+	if args.Backfill == sgbucket.FeedNoBackfill {
+		metadata, err := getHighSeqMetadata(bucket)
+		if err != nil {
+			return err
+		}
+		options.InitialMetadata = metadata
+	}
 
 	dcpClient, err := NewDCPClient(
 		feedName,
 		callback,
-		DCPClientOptions{
-			MetadataStoreType: metadataStoreType,
-			GroupID:           groupID,
-			DbStats:           dbStats,
-			CollectionIDs:     collectionIDs,
-			AgentPriority:     gocbcore.DcpAgentPriorityMed,
-			CheckpointPrefix:  args.CheckpointPrefix,
-		},
+		options,
 		bucket)
 	if err != nil {
 		return err
