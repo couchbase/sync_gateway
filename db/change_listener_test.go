@@ -133,3 +133,41 @@ func TestUserWaiterForRoleChange(t *testing.T) {
 	// Wait for user notification of updated role
 	require.True(t, WaitForUserWaiterChange(userWaiter))
 }
+
+// TestMutationStartHighSeq sure docs written before sync gateway start do not get cached
+func TestMutationStartHighSeq(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("test requires import feed, which requies DCP")
+	}
+
+	bucket := base.GetTestBucket(t)
+
+	doc1 := "doc1"
+	// this is the revID if the document were imported
+	revID1 := "1-2a9efe8178aa817f4414ae976aa032d9"
+	_, err := bucket.GetSingleDataStore().Add(doc1, 0, rawDocNoMeta())
+	require.NoError(t, err)
+
+	db, ctx := setupTestDBForBucket(t, bucket)
+
+	defer db.Close(ctx)
+
+	collection := GetSingleDatabaseCollectionWithUser(t, db)
+
+	require.Equal(t, int64(0), db.DbStats.Database().DCPReceivedCount.Value())
+
+	doc2 := "doc2"
+	revID2, _, err := collection.Put(base.TestCtx(t), doc2, Body{"key": "value"})
+	require.NoError(t, err)
+	_, ok := base.WaitForStat(func() int64 {
+		return db.DbStats.Database().DCPReceivedCount.Value()
+	}, 1)
+	require.True(t, ok)
+
+	_, exists := collection.revisionCache.Peek(base.TestCtx(t), doc2, revID2)
+	require.True(t, exists)
+
+	_, exists = collection.revisionCache.Peek(base.TestCtx(t), doc1, revID1)
+	require.False(t, exists)
+
+}

@@ -534,10 +534,10 @@ func TestImportNonZeroStart(t *testing.T) {
 
 	bucket := base.GetTestBucket(t)
 
-	key := "doc1"
-	bodyBytes := rawDocNoMeta()
+	doc1 := "doc1"
+	revID1 := "1-2a9efe8178aa817f4414ae976aa032d9"
 
-	_, err := bucket.GetSingleDataStore().Add(key, 0, bodyBytes)
+	_, err := bucket.GetSingleDataStore().Add(doc1, 0, rawDocNoMeta())
 	require.NoError(t, err)
 
 	db, ctx := setupTestDBWithOptionsAndImport(t, bucket, DatabaseContextOptions{})
@@ -548,5 +548,14 @@ func TestImportNonZeroStart(t *testing.T) {
 		return collection.collectionStats.ImportCount.Value()
 	}, 1)
 	require.True(t, ok)
+
+	_, ok = base.WaitForStat(func() int64 {
+		return db.DbStats.Database().DCPReceivedCount.Value()
+	}, 1)
+	require.True(t, ok)
+
+	doc, err := collection.GetDocument(base.TestCtx(t), doc1, DocUnmarshalAll)
+	require.NoError(t, err)
+	require.Equal(t, revID1, doc.SyncData.CurrentRev)
 
 }
