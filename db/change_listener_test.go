@@ -137,21 +137,22 @@ func TestUserWaiterForRoleChange(t *testing.T) {
 // TestMutationStartHighSeq sure docs written before sync gateway start do not get cached
 func TestMutationStartHighSeq(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
-		t.Skip("test requires import feed, which requies DCP")
+		t.Skip("test requires mutation feed, which requies DCP")
 	}
 
 	bucket := base.GetTestBucket(t)
 
 	doc1 := "doc1"
 	// this is the revID if the document were imported
-	revID1 := "1-2a9efe8178aa817f4414ae976aa032d9"
-	_, err := bucket.GetSingleDataStore().Add(doc1, 0, rawDocNoMeta())
+	revID1 := "1-ca9ad22802b66f662ff171f226211d5c"
+	_, err := bucket.GetSingleDataStore().Add(doc1, 0, rawDocWithSyncMeta())
 	require.NoError(t, err)
 
 	db, ctx := setupTestDBForBucket(t, bucket)
 
 	defer db.Close(ctx)
 
+	// This database is set up without AutoImport enabled, so there's only a mutation feed
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
 	require.Equal(t, int64(0), db.DbStats.Database().DCPReceivedCount.Value())
