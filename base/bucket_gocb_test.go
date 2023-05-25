@@ -362,15 +362,28 @@ func TestIncrCounter(t *testing.T) {
 		}
 	}()
 
+	// New Counter - incr 0, default 0 - expect zero-value counter doc to be created
+	value, err := dataStore.Incr(key, 0, 0, 0)
+	require.NoError(t, err, "Error incrementing non-existent counter")
+	require.Equal(t, uint64(0), value)
+
+	// Retrieve existing counter value using GetCounter
+	retrieval, err := GetCounter(dataStore, key)
+	require.NoError(t, err, "Error retrieving value for existing counter")
+	require.Equal(t, uint64(0), retrieval)
+
+	// remove zero value so we're able to test default below
+	require.NoError(t, dataStore.Delete(key))
+
 	// New Counter - incr 1, default 5
-	value, err := dataStore.Incr(key, 1, 5, 0)
+	value, err = dataStore.Incr(key, 1, 5, 0)
 	require.NoError(t, err, "Error incrementing non-existent counter")
 
 	// key did not exist - so expect the "initial" value of 5
 	require.Equal(t, uint64(5), value)
 
 	// Retrieve existing counter value using GetCounter
-	retrieval, err := GetCounter(dataStore, key)
+	retrieval, err = GetCounter(dataStore, key)
 	require.NoError(t, err, "Error retrieving value for existing counter")
 	require.Equal(t, uint64(5), retrieval)
 

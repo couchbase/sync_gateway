@@ -356,9 +356,6 @@ func (c *Collection) Update(k string, exp uint32, callback sgbucket.UpdateFunc) 
 func (c *Collection) Incr(k string, amt, def uint64, exp uint32) (uint64, error) {
 	c.Bucket.waitForAvailKvOp()
 	defer c.Bucket.releaseKvOp()
-	if amt == 0 {
-		return 0, errors.New("amt passed to Incr must be non-zero")
-	}
 	incrOptions := gocb.IncrementOptions{
 		Initial: int64(def),
 		Delta:   amt,
