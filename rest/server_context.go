@@ -93,11 +93,19 @@ type bootstrapContext struct {
 	doneChan           chan struct{} // doneChan is closed when the bootstrap polling goroutine finishes.
 }
 
+type getOrAddDatabaseConfigOptions struct {
+	failFast          bool            // if set, a failure to connect to a bucket of collection will immediately fail
+	useExisting       bool            //  if true, return an existing DatabaseContext vs return an error
+	connectToBucketFn db.OpenBucketFn // supply a custom function for buckets, used for testing only
+}
+
 func (sc *ServerContext) CreateLocalDatabase(ctx context.Context, dbs DbConfigMap) error {
-	failFast := false
 	for _, dbConfig := range dbs {
 		dbc := dbConfig.ToDatabaseConfig()
-		_, err := sc._getOrAddDatabaseFromConfig(ctx, *dbc, false, db.GetConnectToBucketFn(failFast), failFast)
+		_, err := sc._getOrAddDatabaseFromConfig(ctx, *dbc, getOrAddDatabaseConfigOptions{
+			useExisting: false,
+			failFast:    false,
+		})
 		if err != nil {
 			return err
 		}
@@ -357,7 +365,9 @@ func (sc *ServerContext) PostUpgrade(ctx context.Context, preview bool) (postUpg
 func (sc *ServerContext) _reloadDatabase(ctx context.Context, reloadDbName string, failFast bool) (*db.DatabaseContext, error) {
 	sc._unloadDatabase(ctx, reloadDbName)
 	config := sc.dbConfigs[reloadDbName]
-	return sc._getOrAddDatabaseFromConfig(ctx, config.DatabaseConfig, true, db.GetConnectToBucketFn(failFast), failFast)
+	return sc._getOrAddDatabaseFromConfig(ctx, config.DatabaseConfig, getOrAddDatabaseConfigOptions{
+		useExisting: true,
+		failFast:    failFast})
 }
 
 // Removes and re-adds a database to the ServerContext.
@@ -378,18 +388,21 @@ func (sc *ServerContext) ReloadDatabaseWithConfig(nonContextStruct base.NonCance
 
 func (sc *ServerContext) _reloadDatabaseWithConfig(ctx context.Context, config DatabaseConfig, failFast bool) error {
 	sc._removeDatabase(ctx, config.Name)
-	_, err := sc._getOrAddDatabaseFromConfig(ctx, config, false, db.GetConnectToBucketFn(failFast), failFast)
+	_, err := sc._getOrAddDatabaseFromConfig(ctx, config, getOrAddDatabaseConfigOptions{
+		useExisting: false,
+		failFast:    failFast,
+	})
 	return err
 }
 
 // Adds a database to the ServerContext.  Attempts a read after it gets the write
 // lock to see if it's already been added by another process. If so, returns either the
 // existing DatabaseContext or an error based on the useExisting flag.
-func (sc *ServerContext) getOrAddDatabaseFromConfig(ctx context.Context, config DatabaseConfig, useExisting bool, openBucketFn db.OpenBucketFn, failFast bool) (*db.DatabaseContext, error) {
+func (sc *ServerContext) getOrAddDatabaseFromConfig(ctx context.Context, config DatabaseConfig, options getOrAddDatabaseConfigOptions) (*db.DatabaseContext, error) {
 	// Obtain write lock during add database, to avoid race condition when creating based on ConfigServer
 	sc.lock.Lock()
 	defer sc.lock.Unlock()
-	return sc._getOrAddDatabaseFromConfig(ctx, config, useExisting, openBucketFn, failFast)
+	return sc._getOrAddDatabaseFromConfig(ctx, config, options)
 }
 
 func GetBucketSpec(ctx context.Context, config *DatabaseConfig, serverConfig *StartupConfig) (spec base.BucketSpec, err error) {
@@ -433,7 +446,7 @@ func GetBucketSpec(ctx context.Context, config *DatabaseConfig, serverConfig *St
 // lock to see if it's already been added by another process. If so, returns either the
 // existing DatabaseContext or an error based on the useExisting flag.
 // Pass in a bucketFromBucketSpecFn to replace the default ConnectToBucket function. This will cause the failFast argument to be ignored
-func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config DatabaseConfig, useExisting bool, openBucketFn db.OpenBucketFn, failFast bool) (*db.DatabaseContext, error) {
+func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config DatabaseConfig, options getOrAddDatabaseConfigOptions) (*db.DatabaseContext, error) {
 	// Generate bucket spec and validate whether db already exists
 	spec, err := GetBucketSpec(ctx, &config, sc.Config)
 	if err != nil {
@@ -467,7 +480,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	}
 
 	if sc.databases_[dbName] != nil {
-		if useExisting {
+		if options.useExisting {
 			return sc.databases_[dbName], nil
 		} else {
 			return nil, base.HTTPErrorf(http.StatusPreconditionFailed, // what CouchDB returns
@@ -482,11 +495,15 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 	// Connect to bucket
 	base.InfofCtx(ctx, base.KeyAll, "Opening db /%s as bucket %q, pool %q, server <%s>",
 		base.MD(dbName), base.MD(spec.BucketName), base.SD(base.DefaultPool), base.SD(spec.Server))
-	bucket, err := openBucketFn(ctx, spec)
+
+	// the connectToBucketFn is used for testing seam
+	if options.connectToBucketFn == nil {
+		options.connectToBucketFn = db.ConnectToBucket
+	}
+	bucket, err := options.connectToBucketFn(ctx, spec, options.failFast)
 	if err != nil {
 		return nil, err
 	}
-
 	// If using a walrus bucket, force use of views
 	useViews := base.BoolDefault(config.UseViews, false)
 	if !useViews && spec.IsWalrusBucket() {
@@ -559,7 +576,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(ctx context.Context, config
 				var dataStore sgbucket.DataStore
 
 				var err error
-				if failFast {
+				if options.failFast {
 					dataStore, err = bucket.NamedDataStore(base.ScopeAndCollectionName{Scope: scopeName, Collection: collectionName})
 				} else {
 					waitForCollection := func() (bool, error, interface{}) {
@@ -1230,14 +1247,14 @@ func (sc *ServerContext) initEventHandlers(ctx context.Context, dbcontext *db.Da
 // for the name, returns an error.
 func (sc *ServerContext) AddDatabaseFromConfig(ctx context.Context, config DatabaseConfig) (*db.DatabaseContext, error) {
 	failFast := false
-	return sc.getOrAddDatabaseFromConfig(ctx, config, false, db.GetConnectToBucketFn(failFast), failFast)
+	return sc.getOrAddDatabaseFromConfig(ctx, config, getOrAddDatabaseConfigOptions{useExisting: false, failFast: failFast})
 }
 
 // AddDatabaseFromConfigFailFast adds a database to the ServerContext given its configuration and fails fast.
 // If an existing config is found for the name, returns an error.
 func (sc *ServerContext) AddDatabaseFromConfigFailFast(nonContextStruct base.NonCancellableContext, config DatabaseConfig) (*db.DatabaseContext, error) {
 	failFast := true
-	return sc.getOrAddDatabaseFromConfig(nonContextStruct.Ctx, config, false, db.GetConnectToBucketFn(failFast), failFast)
+	return sc.getOrAddDatabaseFromConfig(nonContextStruct.Ctx, config, getOrAddDatabaseConfigOptions{useExisting: false, failFast: failFast})
 }
 
 func (sc *ServerContext) processEventHandlersForEvent(ctx context.Context, events []*EventConfig, eventType db.EventType, dbcontext *db.DatabaseContext) error {
@@ -1364,7 +1381,9 @@ func (sc *ServerContext) _unsuspendDatabase(ctx context.Context, dbName string) 
 		}
 		dbConfig.cfgCas = cas
 		failFast := false
-		dbCtx, err = sc._getOrAddDatabaseFromConfig(ctx, dbConfig.DatabaseConfig, false, db.GetConnectToBucketFn(failFast), failFast)
+		dbCtx, err = sc._getOrAddDatabaseFromConfig(ctx, dbConfig.DatabaseConfig, getOrAddDatabaseConfigOptions{
+			useExisting: false,
+			failFast:    failFast})
 		if err != nil {
 			return nil, err
 		}

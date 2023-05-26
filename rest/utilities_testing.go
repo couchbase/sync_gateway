@@ -1181,10 +1181,14 @@ func (s *SlowResponseRecorder) Write(buf []byte) (int, error) {
 // AddDatabaseFromConfigWithBucket adds a database to the ServerContext and sets a specific bucket on the database context.
 // If an existing config is found for the name, returns an error.
 func (sc *ServerContext) AddDatabaseFromConfigWithBucket(ctx context.Context, tb testing.TB, config DatabaseConfig, bucket base.Bucket) (*db.DatabaseContext, error) {
-	failFast := true
-	return sc.getOrAddDatabaseFromConfig(ctx, config, false, func(ctx context.Context, spec base.BucketSpec) (base.Bucket, error) {
-		return bucket, nil
-	}, failFast)
+	options := getOrAddDatabaseConfigOptions{
+		useExisting: false,
+		failFast:    false,
+		connectToBucketFn: func(_ context.Context, spec base.BucketSpec, _ bool) (base.Bucket, error) {
+			return bucket, nil
+		},
+	}
+	return sc.getOrAddDatabaseFromConfig(ctx, config, options)
 }
 
 // The parameters used to create a BlipTester
