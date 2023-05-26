@@ -9,6 +9,7 @@
 package upgradetest
 
 import (
+	"fmt"
 	"net/http"
 	"testing"
 
@@ -24,14 +25,16 @@ func TestRemoveCollection(t *testing.T) {
 		t.Skip("test relies on bootstrap connection and needs CBS")
 	}
 	base.TestRequiresCollections(t)
+	base.RequireNumTestBuckets(t, 2)
 	numCollections := 2
 	bucket := base.GetPersistentTestBucket(t)
 	defer bucket.Close()
 	base.RequireNumTestDataStores(t, numCollections)
 	rtConfig := &rest.RestTesterConfig{
-		CustomTestBucket: bucket.NoCloseClone(),
-		PersistentConfig: true,
-		GroupID:          base.StringPtr(t.Name()),
+		CustomTestBucket:             bucket.NoCloseClone(),
+		PersistentConfig:             true,
+		GroupID:                      base.StringPtr(t.Name()),
+		AdminInterfaceAuthentication: true,
 	}
 	rt := rest.NewRestTesterMultipleCollections(t, rtConfig, 2)
 
@@ -39,7 +42,10 @@ func TestRemoveCollection(t *testing.T) {
 	dbConfig.Scopes = rest.GetCollectionsConfig(t, rt.TestBucket, numCollections)
 
 	dbName := "removecollectiondb"
-	resp := rt.CreateDatabase(dbName, dbConfig)
+
+	dbcJSON, err := base.JSONMarshal(dbConfig)
+	require.NoError(t, err)
+	resp := rt.SendAdminRequestWithAuth(http.MethodPut, "/"+dbName+"/", string(dbcJSON), base.TestClusterUsername(), base.TestClusterPassword())
 	rest.RequireStatus(t, resp, http.StatusCreated)
 
 	dataStores := rt.TestBucket.GetNonDefaultDatastoreNames()
@@ -55,19 +61,52 @@ func TestRemoveCollection(t *testing.T) {
 
 	rt.Close()
 	rtConfig = &rest.RestTesterConfig{
-		CustomTestBucket: bucket.NoCloseClone(),
-		PersistentConfig: true,
-		GroupID:          base.StringPtr(t.Name()),
+		CustomTestBucket:             bucket.NoCloseClone(),
+		PersistentConfig:             true,
+		GroupID:                      base.StringPtr(t.Name()),
+		AdminInterfaceAuthentication: true,
 	}
 
 	rt = rest.NewRestTesterMultipleCollections(t, rtConfig, 2)
 	defer rt.Close()
 
-	delete(dbConfig.Scopes[deletedDataStore.ScopeName()].Collections, deletedDataStore.CollectionName())
-	resp = rt.UpsertDbConfig(dbName, dbConfig)
-	rest.RequireStatus(t, resp, http.StatusNotFound) // the database can't be loaded so it is not found
+	bucket2Role := rest.RouteRole{
+		RoleName:       rest.MobileSyncGatewayRole.RoleName,
+		DatabaseScoped: true,
+	}
+	if base.TestsUseServerCE() {
+		bucket2Role = rest.RouteRole{
+			RoleName:       rest.BucketFullAccessRole.RoleName,
+			DatabaseScoped: true,
+		}
+	}
 
-	resp = rt.SendAdminRequest(http.MethodDelete, "/"+dbName+"/", "")
+	eps, httpClient, err := rt.ServerContext().ObtainManagementEndpointsAndHTTPClient()
+	require.NoError(t, err)
+
+	altBucket := base.GetTestBucket(t)
+	defer altBucket.Close()
+	const password = "password2"
+	rest.MakeUser(t, httpClient, eps[0], bucket2Role.RoleName, password, []string{fmt.Sprintf("%s[%s]", bucket2Role.RoleName, altBucket.GetName())})
+	defer rest.DeleteUser(t, httpClient, eps[0], bucket2Role.RoleName)
+
+	delete(dbConfig.Scopes[deletedDataStore.ScopeName()].Collections, deletedDataStore.CollectionName())
+
+	dbcJSON, err = base.JSONMarshal(dbConfig)
+	require.NoError(t, err)
+
+	resp = rt.SendAdminRequestWithAuth(http.MethodPost, "/"+dbName+"/", string(dbcJSON), base.TestClusterUsername(), base.TestClusterPassword())
+	rest.RequireStatus(t, resp, http.StatusForbidden)
+
+	// wrong RBAC user
+	resp = rt.SendAdminRequestWithAuth(http.MethodDelete, "/"+dbName+"/", "", bucket2Role.RoleName, password)
+	rest.RequireStatus(t, resp, http.StatusForbidden)
+
+	// bad credentials
+	resp = rt.SendAdminRequestWithAuth(http.MethodDelete, "/"+dbName+"/", "", "baduser", "badpassword")
+	rest.RequireStatus(t, resp, http.StatusUnauthorized)
+
+	resp = rt.SendAdminRequestWithAuth(http.MethodDelete, "/"+dbName+"/", "", base.TestClusterUsername(), base.TestClusterPassword())
 	rest.RequireStatus(t, resp, http.StatusOK)
 
 }

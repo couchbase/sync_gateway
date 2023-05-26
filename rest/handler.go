@@ -321,13 +321,14 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 
 	var dbContext *db.DatabaseContext
 
+	var bucketName string
+
 	// look up the database context:
 	if keyspaceDb != "" {
 		h.addDatabaseLogContext(keyspaceDb)
 		var err error
 		if dbContext, err = h.server.GetActiveDatabase(keyspaceDb); err != nil {
 			if err == base.ErrNotFound {
-
 				if shouldCheckAdminAuth {
 					// Check if authenticated before attempting to get inactive database
 					authorized, err := h.checkAdminAuthenticationOnly()
@@ -342,7 +343,7 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 				dbContext, dbConfigFound, err = h.server.GetInactiveDatabase(h.ctx(), keyspaceDb)
 				if err != nil {
 					if httpError, ok := err.(*base.HTTPError); ok && httpError.Status == http.StatusNotFound {
-						if shouldCheckAdminAuth {
+						if shouldCheckAdminAuth && (!h.allowNilDBContext || !dbConfigFound) {
 							return base.HTTPErrorf(http.StatusForbidden, "")
 						} else if h.privs == regularPrivs || h.privs == publicPrivs {
 							if !h.providedAuthCredentials() {
@@ -356,6 +357,7 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 						base.InfofCtx(h.ctx(), base.KeyHTTP, "Error trying to get db %s: %v", base.MD(keyspaceDb), err)
 						return err
 					}
+					bucketName, _ = h.server.bucketNameFromDbName(keyspaceDb)
 				}
 			} else {
 				return err
@@ -422,7 +424,6 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 			}
 		}
 	}
-
 	if shouldCheckAdminAuth {
 		// If server is walrus but auth is enabled we should just kick the user out as invalid as we have nothing to
 		// validate credentials against
@@ -449,13 +450,12 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 			authScope = dbContext.Bucket.GetName()
 		} else {
 			managementEndpoints, httpClient, err = h.server.ObtainManagementEndpointsAndHTTPClient()
-			authScope = ""
+			authScope = bucketName
 		}
 		if err != nil {
 			base.WarnfCtx(h.ctx(), "An error occurred whilst obtaining management endpoints: %v", err)
 			return base.HTTPErrorf(http.StatusInternalServerError, "")
 		}
-
 		if h.authScopeFunc != nil {
 			body, err := h.readBody()
 			if err != nil {
