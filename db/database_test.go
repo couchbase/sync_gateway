@@ -49,10 +49,12 @@ func setupTestDBForBucket(t testing.TB, bucket *base.TestBucket) (*Database, con
 	return SetupTestDBForDataStoreWithOptions(t, bucket, dbcOptions)
 }
 
-func setupTestDBWithOptionsAndImport(t testing.TB, dbcOptions DatabaseContextOptions) (*Database, context.Context) {
+func setupTestDBWithOptionsAndImport(t testing.TB, tBucket *base.TestBucket, dbcOptions DatabaseContextOptions) (*Database, context.Context) {
 	ctx := base.TestCtx(t)
 	AddOptionsFromEnvironmentVariables(&dbcOptions)
-	tBucket := base.GetTestBucket(t)
+	if tBucket == nil {
+		tBucket = base.GetTestBucket(t)
+	}
 	if dbcOptions.Scopes == nil {
 		dbcOptions.Scopes = GetScopesOptions(t, tBucket, 1)
 	}
@@ -2456,7 +2458,7 @@ func TestDeleteWithNoTombstoneCreationSupport(t *testing.T) {
 		t.Skip("Xattrs required")
 	}
 
-	db, ctx := setupTestDBWithOptionsAndImport(t, DatabaseContextOptions{})
+	db, ctx := setupTestDBWithOptionsAndImport(t, nil, DatabaseContextOptions{})
 	defer db.Close(ctx)
 	collection := GetSingleDatabaseCollectionWithUser(t, db)
 
@@ -2971,7 +2973,7 @@ func TestImportCompactPanic(t *testing.T) {
 	}
 
 	// Set the compaction and purge interval unrealistically low to reproduce faster
-	db, ctx := setupTestDBWithOptionsAndImport(t, DatabaseContextOptions{
+	db, ctx := setupTestDBWithOptionsAndImport(t, nil, DatabaseContextOptions{
 		CompactInterval: 1,
 	})
 	defer db.Close(ctx)
