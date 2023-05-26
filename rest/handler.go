@@ -338,7 +338,8 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 						return ErrInvalidLogin
 					}
 				}
-				dbContext, err = h.server.GetInactiveDatabase(h.ctx(), keyspaceDb)
+				var dbConfigFound bool
+				dbContext, dbConfigFound, err = h.server.GetInactiveDatabase(h.ctx(), keyspaceDb)
 				if err != nil {
 					if httpError, ok := err.(*base.HTTPError); ok && httpError.Status == http.StatusNotFound {
 						if shouldCheckAdminAuth {
@@ -351,14 +352,7 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 							return ErrInvalidLogin
 						}
 					}
-					if h.allowNilDBContext {
-						// look for db in config registry
-						_, ok := h.server.bucketNameFromDbName(keyspaceDb)
-						if !ok {
-							base.InfofCtx(h.ctx(), base.KeyHTTP, "Error trying to get db %s: %v", base.MD(keyspaceDb), err)
-							return err
-						}
-					} else {
+					if !h.allowNilDBContext || !dbConfigFound {
 						base.InfofCtx(h.ctx(), base.KeyHTTP, "Error trying to get db %s: %v", base.MD(keyspaceDb), err)
 						return err
 					}

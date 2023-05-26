@@ -236,7 +236,8 @@ func (sc *ServerContext) Close(ctx context.Context) {
 func (sc *ServerContext) GetDatabase(ctx context.Context, name string) (*db.DatabaseContext, error) {
 	dbc, err := sc.GetActiveDatabase(name)
 	if err == base.ErrNotFound {
-		return sc.GetInactiveDatabase(ctx, name)
+		dbc, _, err := sc.GetInactiveDatabase(ctx, name)
+		return dbc, err
 	}
 	return dbc, err
 }
@@ -257,35 +258,35 @@ func (sc *ServerContext) GetActiveDatabase(name string) (*db.DatabaseContext, er
 
 // GetInactiveDatabase attempts to load the database and return it's DatabaseContext. It will first attempt to unsuspend the
 // database, and if that fails, try to load the database from the buckets.
-// This should be used if GetActiveDatabase fails.
-func (sc *ServerContext) GetInactiveDatabase(ctx context.Context, name string) (*db.DatabaseContext, error) {
+// This should be used if GetActiveDatabase fails. Turns the database context, a variable to say if the config exists, and an error.
+func (sc *ServerContext) GetInactiveDatabase(ctx context.Context, name string) (*db.DatabaseContext, bool, error) {
 	dbc, err := sc.unsuspendDatabase(ctx, name)
 	if err != nil && err != base.ErrNotFound && err != ErrSuspendingDisallowed {
-		return nil, err
+		return nil, false, err
 	} else if err == nil {
-		return dbc, nil
+		return dbc, true, nil
 	}
 
+	var dbConfigFound bool
 	// database not loaded, fallback to fetching it from cluster
 	if sc.BootstrapContext.Connection != nil {
-		var found bool
 		if sc.Config.IsServerless() {
-			found, _ = sc.fetchAndLoadDatabaseSince(ctx, name, sc.Config.Unsupported.Serverless.MinConfigFetchInterval)
+			dbConfigFound, _ = sc.fetchAndLoadDatabaseSince(ctx, name, sc.Config.Unsupported.Serverless.MinConfigFetchInterval)
 
 		} else {
-			found, _ = sc.fetchAndLoadDatabase(base.NewNonCancelCtx(), name)
+			dbConfigFound, _ = sc.fetchAndLoadDatabase(base.NewNonCancelCtx(), name)
 		}
-		if found {
+		if dbConfigFound {
 			sc.lock.RLock()
 			defer sc.lock.RUnlock()
 			dbc := sc.databases_[name]
 			if dbc != nil {
-				return dbc, nil
+				return dbc, dbConfigFound, nil
 			}
 		}
 	}
 
-	return nil, base.HTTPErrorf(http.StatusNotFound, "no such database %q", name)
+	return nil, dbConfigFound, base.HTTPErrorf(http.StatusNotFound, "no such database %q", name)
 }
 
 func (sc *ServerContext) GetDbConfig(name string) *DbConfig {
