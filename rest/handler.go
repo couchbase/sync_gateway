@@ -321,6 +321,7 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 
 	var dbContext *db.DatabaseContext
 
+	var bucketName string
 	// look up the database context:
 	if keyspaceDb != "" {
 		h.addDatabaseLogContext(keyspaceDb)
@@ -356,6 +357,7 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 						base.InfofCtx(h.ctx(), base.KeyHTTP, "Error trying to get db %s: %v", base.MD(keyspaceDb), err)
 						return err
 					}
+					bucketName, _ = h.server.bucketNameFromDbName(keyspaceDb)
 				}
 			} else {
 				return err
@@ -422,7 +424,6 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 			}
 		}
 	}
-
 	if shouldCheckAdminAuth {
 		// If server is walrus but auth is enabled we should just kick the user out as invalid as we have nothing to
 		// validate credentials against
@@ -449,13 +450,12 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 			authScope = dbContext.Bucket.GetName()
 		} else {
 			managementEndpoints, httpClient, err = h.server.ObtainManagementEndpointsAndHTTPClient()
-			authScope = ""
 		}
 		if err != nil {
 			base.WarnfCtx(h.ctx(), "An error occurred whilst obtaining management endpoints: %v", err)
 			return base.HTTPErrorf(http.StatusInternalServerError, "")
 		}
-
+		fmt.Println("bucket", bucketName)
 		if h.authScopeFunc != nil {
 			body, err := h.readBody()
 			if err != nil {
