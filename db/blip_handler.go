@@ -1070,7 +1070,9 @@ func (bh *blipHandler) handleProveAttachment(rq *blip.Message) error {
 		return base.HTTPErrorf(http.StatusBadRequest, "no digest sent with proveAttachment")
 	}
 
-	attData, err := bh.db.GetAttachment(base.AttPrefix + digest)
+	allowedAttachment := bh.allowedAttachment(digest)
+	attachmentKey := MakeAttachmentKey(allowedAttachment.version, allowedAttachment.docID, digest)
+	attData, err := bh.db.GetAttachment(attachmentKey)
 	if err != nil {
 		if bh.clientType == BLIPClientTypeSGR2 {
 			return ErrAttachmentNotFound

@@ -236,6 +236,7 @@ type CBLReplicationPullStats struct {
 	RequestChangesTime          *SgwIntStat `json:"request_changes_time"`
 	RevProcessingTime           *SgwIntStat `json:"rev_processing_time"`
 	RevSendCount                *SgwIntStat `json:"rev_send_count"`
+	RevErrorCount               *SgwIntStat `json:"rev_error_count"`
 	RevSendLatency              *SgwIntStat `json:"rev_send_latency"`
 }
 
@@ -243,6 +244,7 @@ type CBLReplicationPushStats struct {
 	AttachmentPushBytes *SgwIntStat `json:"attachment_push_bytes"`
 	AttachmentPushCount *SgwIntStat `json:"attachment_push_count"`
 	DocPushCount        *SgwIntStat `json:"doc_push_count"`
+	DocPushErrorCount   *SgwIntStat `json:"doc_push_error_count"`
 	ProposeChangeCount  *SgwIntStat `json:"propose_change_count"`
 	ProposeChangeTime   *SgwIntStat `json:"propose_change_time"`
 	WriteProcessingTime *SgwIntStat `json:"write_processing_time"`
@@ -763,6 +765,7 @@ func (d *DbStats) initCBLReplicationPullStats() {
 		RequestChangesTime:          NewIntStat(SubsystemReplicationPull, "request_changes_time", labelKeys, labelVals, prometheus.CounterValue, 0),
 		RevProcessingTime:           NewIntStat(SubsystemReplicationPull, "rev_processing_time", labelKeys, labelVals, prometheus.GaugeValue, 0),
 		RevSendCount:                NewIntStat(SubsystemReplicationPull, "rev_send_count", labelKeys, labelVals, prometheus.CounterValue, 0),
+		RevErrorCount:               NewIntStat(SubsystemReplicationPull, "rev_error_count", labelKeys, labelVals, prometheus.CounterValue, 0),
 		RevSendLatency:              NewIntStat(SubsystemReplicationPull, "rev_send_latency", labelKeys, labelVals, prometheus.CounterValue, 0),
 	}
 }
@@ -783,6 +786,7 @@ func (d *DbStats) unregisterCBLReplicationPullStats() {
 	prometheus.Unregister(d.CBLReplicationPullStats.RequestChangesTime)
 	prometheus.Unregister(d.CBLReplicationPullStats.RevProcessingTime)
 	prometheus.Unregister(d.CBLReplicationPullStats.RevSendCount)
+	prometheus.Unregister(d.CBLReplicationPullStats.RevErrorCount)
 	prometheus.Unregister(d.CBLReplicationPullStats.RevSendLatency)
 }
 
@@ -797,6 +801,7 @@ func (d *DbStats) initCBLReplicationPushStats() {
 		AttachmentPushBytes: NewIntStat(SubsystemReplicationPush, "attachment_push_bytes", labelKeys, labelVals, prometheus.CounterValue, 0),
 		AttachmentPushCount: NewIntStat(SubsystemReplicationPush, "attachment_push_count", labelKeys, labelVals, prometheus.CounterValue, 0),
 		DocPushCount:        NewIntStat(SubsystemReplicationPush, "doc_push_count", labelKeys, labelVals, prometheus.GaugeValue, 0),
+		DocPushErrorCount:   NewIntStat(SubsystemReplicationPush, "doc_push_error_count", labelKeys, labelVals, prometheus.GaugeValue, 0),
 		ProposeChangeCount:  NewIntStat(SubsystemReplicationPush, "propose_change_count", labelKeys, labelVals, prometheus.CounterValue, 0),
 		ProposeChangeTime:   NewIntStat(SubsystemReplicationPush, "propose_change_time", labelKeys, labelVals, prometheus.CounterValue, 0),
 		WriteProcessingTime: NewIntStat(SubsystemReplicationPush, "write_processing_time", labelKeys, labelVals, prometheus.GaugeValue, 0),
@@ -807,6 +812,7 @@ func (d *DbStats) unregisterCBLReplicationPushStats() {
 	prometheus.Unregister(d.CBLReplicationPushStats.AttachmentPushBytes)
 	prometheus.Unregister(d.CBLReplicationPushStats.AttachmentPushCount)
 	prometheus.Unregister(d.CBLReplicationPushStats.DocPushCount)
+	prometheus.Unregister(d.CBLReplicationPushStats.DocPushErrorCount)
 	prometheus.Unregister(d.CBLReplicationPushStats.ProposeChangeCount)
 	prometheus.Unregister(d.CBLReplicationPushStats.ProposeChangeTime)
 	prometheus.Unregister(d.CBLReplicationPushStats.WriteProcessingTime)

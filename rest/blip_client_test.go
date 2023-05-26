@@ -12,6 +12,7 @@ package rest
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"fmt"
 	"net/http"
@@ -291,6 +292,7 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 				}
 
 				var missingDigests []string
+				var knownDigests []string
 				btc.attachmentsLock.RLock()
 				for _, attachment := range attsMap {
 					attMap, ok := attachment.(map[string]interface{})
@@ -301,9 +303,59 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 
 					if _, found := btc.attachments[digest]; !found {
 						missingDigests = append(missingDigests, digest)
+					} else {
+						if btr.bt.blipContext.ActiveSubprotocol() == db.BlipCBMobileReplicationV2 {
+							// only v2 clients care about proveAttachments
+							knownDigests = append(knownDigests, digest)
+						}
 					}
 				}
 				btc.attachmentsLock.RUnlock()
+
+				for _, digest := range knownDigests {
+					attData, err := btc.getAttachment(digest)
+					if err != nil {
+						panic(err)
+					}
+					nonce, proof := db.GenerateProofOfAttachment(attData)
+
+					// if we already have this attachment, _we_ should ask the peer whether _they_ have the attachment
+					outrq := blip.NewRequest()
+					outrq.SetProfile(db.MessageProveAttachment)
+					outrq.Properties[db.ProveAttachmentDigest] = digest
+					outrq.SetBody(nonce)
+
+					err = btc.pullReplication.sendMsg(outrq)
+					if err != nil {
+						panic(err)
+					}
+
+					resp := outrq.Response()
+					btc.pullReplication.storeMessage(resp)
+					respBody, err := resp.Body()
+					if err != nil {
+						panic(err)
+					}
+
+					if resp.Type() == blip.ErrorType {
+						// forward error from proveAttachment response into rev response
+						if !msg.NoReply() {
+							response := msg.Response()
+							errorCode, _ := strconv.Atoi(resp.Properties["Error-Code"])
+							response.SetError(resp.Properties["Error-Code"], errorCode, string(respBody))
+						}
+						return
+					}
+
+					if string(respBody) != proof {
+						// forward error from proveAttachment response into rev response
+						if !msg.NoReply() {
+							response := msg.Response()
+							response.SetError(resp.Properties["Error-Code"], http.StatusForbidden, fmt.Sprintf("Incorrect proof for attachment %s", digest))
+						}
+						return
+					}
+				}
 
 				for _, digest := range missingDigests {
 					outrq := blip.NewRequest()
@@ -409,10 +461,11 @@ func (btc *BlipTesterClient) saveAttachment(contentType, base64data string) (dat
 
 	digest = db.Sha1DigestKey(data)
 	if _, found := btc.attachments[digest]; found {
-		return 0, "", fmt.Errorf("attachment with digest already exists")
+		base.InfofCtx(context.TODO(), base.KeySync, "attachment with digest %s already exists", digest)
+	} else {
+		btc.attachments[digest] = data
 	}
 
-	btc.attachments[digest] = data
 	return len(data), digest, nil
 }
 
