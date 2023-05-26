@@ -260,8 +260,12 @@ func TestCORSOrigin(t *testing.T) {
 				response := rt.SendRequestWithHeaders(method, "/{{.keyspace}}/", "", reqHeaders)
 				assert.Equal(t, tc.headerOutput, response.Header().Get("Access-Control-Allow-Origin"))
 				if method == http.MethodGet {
-					RequireStatus(t, response, http.StatusBadRequest)
-					require.Contains(t, response.Body.String(), invalidDatabaseName)
+					if base.TestsUseNamedCollections() {
+						RequireStatus(t, response, http.StatusBadRequest)
+						require.Contains(t, response.Body.String(), invalidDatabaseName)
+					} else { // CBG-2978, should not be different from GSI/collections
+						RequireStatus(t, response, http.StatusUnauthorized)
+					}
 				} else {
 					RequireStatus(t, response, http.StatusNoContent)
 
