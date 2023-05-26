@@ -1,4 +1,4 @@
-//  Copyright 2012-Present Couchbase, Inc.
+///  Copyright 2012-Present Couchbase, Inc.
 //
 //  Use of this software is governed by the Business Source License included
 //  in the file licenses/BSL-Couchbase.txt.  As of the Change Date specified
@@ -101,7 +101,7 @@ type handler struct {
 	formattedSerialNumber string
 	loggedDuration        bool
 	runOffline            bool       // allows running on an offline database
-	allowMetadataDBOnly   bool       // allow acceess to a database based only on name, looking up in metadata registry
+	allowNilDBContext     bool       // allow acceess to a database based only on name, looking up in metadata registry
 	queryValues           url.Values // Copy of results of rq.URL.Query()
 	permissionsResults    map[string]bool
 	authScopeFunc         authScopeFunc
@@ -148,8 +148,8 @@ func makeOfflineHandler(server *ServerContext, privs handlerPrivs, accessPermiss
 func makeMetadataDBOfflineHandler(server *ServerContext, privs handlerPrivs, accessPermissions []Permission, responsePermissions []Permission, method handlerMethod) http.Handler {
 	return http.HandlerFunc(func(r http.ResponseWriter, rq *http.Request) {
 		options := handlerOptions{
-			runOffline:          true,
-			allowMetadataDBOnly: true,
+			runOffline:        true,
+			allowNilDBContext: true,
 		}
 		h := newHandler(server, privs, r, rq, options)
 		err := h.invoke(method, accessPermissions, responsePermissions)
@@ -171,21 +171,21 @@ func makeHandlerSpecificAuthScope(server *ServerContext, privs handlerPrivs, acc
 }
 
 type handlerOptions struct {
-	runOffline          bool // if true, allow handler to run when a database is offline
-	allowMetadataDBOnly bool // if true, allow handler to access a database without a valid dbcontext
+	runOffline        bool // if true, allow handler to run when a database is offline
+	allowNilDBContext bool // if true, allow a db-scoped handler to be invoked with a nil dbContext in cases where the database config exists but has an error preventing dbContext initialization"
 }
 
 func newHandler(server *ServerContext, privs handlerPrivs, r http.ResponseWriter, rq *http.Request, options handlerOptions) *handler {
 	h := &handler{
-		server:              server,
-		privs:               privs,
-		rq:                  rq,
-		response:            r,
-		status:              http.StatusOK,
-		serialNumber:        atomic.AddUint64(&lastSerialNum, 1),
-		startTime:           time.Now(),
-		runOffline:          options.runOffline,
-		allowMetadataDBOnly: options.allowMetadataDBOnly,
+		server:            server,
+		privs:             privs,
+		rq:                rq,
+		response:          r,
+		status:            http.StatusOK,
+		serialNumber:      atomic.AddUint64(&lastSerialNum, 1),
+		startTime:         time.Now(),
+		runOffline:        options.runOffline,
+		allowNilDBContext: options.allowNilDBContext,
 	}
 
 	// initialize h.rqCtx
@@ -351,7 +351,7 @@ func (h *handler) validateAndWriteHeaders(method handlerMethod, accessPermission
 							return ErrInvalidLogin
 						}
 					}
-					if h.allowMetadataDBOnly {
+					if h.allowNilDBContext {
 						// look for db in config registry
 						_, ok := h.server.bucketNameFromDbName(keyspaceDb)
 						if !ok {

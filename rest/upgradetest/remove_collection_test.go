@@ -21,7 +21,7 @@ import (
 // TestRemoveCollection tests when a collection has been removed from CBS, and the server is restarted. We should be able to modify or delete the database.
 func TestRemoveCollection(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
-		t.Skip("test relies on boostrap connection and needs CBS")
+		t.Skip("test relies on bootstrap connection and needs CBS")
 	}
 	base.TestRequiresCollections(t)
 	numCollections := 2
