@@ -55,6 +55,8 @@ type CbgtContext struct {
 	eventHandlers     *sgMgrEventHandlers      // Event handler callbacks
 	ctx               context.Context          // Log context
 	dbName            string                   // Database name
+	sourceName        string                   // cbgt source name. Store on CbgtContext for access during teardown
+	sourceUUID        string                   // cbgt source UUID.  Store on CbgtContext for access during teardown
 }
 
 // StartShardedDCPFeed initializes and starts a CBGT Manager targeting the provided bucket.
@@ -118,11 +120,6 @@ func GenerateLegacyIndexName(dbName string) string {
 // will receive PIndexImpl callbacks (New, Open) for assigned PIndex to initiate DCP processing.
 func createCBGTIndex(ctx context.Context, c *CbgtContext, dbName string, configGroupID string, bucket Bucket, spec BucketSpec, scope string, collections []string, numPartitions uint16) error {
 	sourceType := SOURCE_DCP_SG
-
-	bucketUUID, err := bucket.UUID()
-	if err != nil {
-		return err
-	}
 
 	sourceParams, err := cbgtFeedParams(spec, scope, collections, dbName)
 	if err != nil {
@@ -194,8 +191,8 @@ func createCBGTIndex(ctx context.Context, c *CbgtContext, dbName string, configG
 	indexType := CBGTIndexTypeSyncGatewayImport + configGroupID
 	err = c.Manager.CreateIndex(
 		sourceType,        // sourceType
-		bucket.GetName(),  // sourceName
-		bucketUUID,        // sourceUUID
+		c.sourceName,      // bucket name
+		c.sourceUUID,      // bucket UUID
 		sourceParams,      // sourceParams
 		indexType,         // indexType
 		indexName,         // indexName
@@ -349,6 +346,12 @@ func initCBGTManager(ctx context.Context, bucket Bucket, spec BucketSpec, cfgSG 
 		serverURL,
 		eventHandlers,
 		options)
+	eventHandlers.manager = mgr
+
+	bucketUUID, err := bucket.UUID()
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch UUID of bucket %v: %w", MD(bucket.GetName()).Redact(), err)
+	}
 
 	cbgtContext := &CbgtContext{
 		Manager:       mgr,
@@ -356,6 +359,8 @@ func initCBGTManager(ctx context.Context, bucket Bucket, spec BucketSpec, cfgSG 
 		eventHandlers: eventHandlers,
 		ctx:           ctx,
 		dbName:        dbName,
+		sourceName:    bucket.GetName(),
+		sourceUUID:    bucketUUID,
 	}
 
 	if spec.Auth != nil || (spec.Certpath != "" && spec.Keypath != "") {
@@ -364,10 +369,6 @@ func initCBGTManager(ctx context.Context, bucket Bucket, spec BucketSpec, cfgSG 
 	}
 
 	if spec.IsTLS() {
-		bucketUUID, err := bucket.UUID()
-		if err != nil {
-			return nil, fmt.Errorf("failed to fetch UUID of bucket %v: %w", MD(bucket.GetName()).Redact(), err)
-		}
 		if spec.TLSSkipVerify {
 			setCbgtRootCertsForBucket(bucketUUID, nil)
 		} else {
@@ -467,6 +468,10 @@ func (c *CbgtContext) Stop() {
 	}
 	// ClosePIndex calls are synchronous, so can stop manager once they've completed
 	c.Manager.Stop()
+	// CloseStatsClients closes the memcached connection cbgt uses for stats calls (highseqno, etc).  sourceName and
+	// sourceUUID are bucketName/bucket UUID in our usage.  cbgt has a single global stats connection per bucket,
+	// but does a refcount check before closing, so handles the case of multiple SG databases targeting the same bucket.
+	cbgt.CloseStatsClients(c.sourceName, c.sourceUUID)
 	c.RemoveFeedCredentials(c.dbName)
 }
 
@@ -720,6 +725,7 @@ func GetDefaultImportPartitions(serverless bool) uint16 {
 type sgMgrEventHandlers struct {
 	ctx       context.Context
 	ctxCancel context.CancelFunc
+	manager   *cbgt.Manager
 }
 
 func (meh *sgMgrEventHandlers) OnRefreshManagerOptions(options map[string]string) {
@@ -739,6 +745,10 @@ func (meh *sgMgrEventHandlers) OnUnregisterPIndex(pindex *cbgt.PIndex) {
 // still exists with VerifySourceNotExists, and if it exists, calls NotifyMgrOnClose.
 // This will trigger cbgt closing and then attempting to reconnect to the feed.
 func (meh *sgMgrEventHandlers) OnFeedError(srcType string, r cbgt.Feed, feedErr error) {
+
+	// cbgt always passes srcType = SOURCE_GOCBCORE, but we have a wrapped type associated with our indexes - use that instead
+	// for our logging
+	srcType = SOURCE_DCP_SG
 
 	DebugfCtx(meh.ctx, KeyDCP, "cbgt Mgr OnFeedError, srcType: %s, feed name: %s, err: %v",
 		srcType, r.Name(), feedErr)
@@ -771,6 +781,7 @@ func (meh *sgMgrEventHandlers) OnFeedError(srcType string, r cbgt.Feed, feedErr 
 			}
 			dcpFeed.NotifyMgrOnClose()
 		}
+		return
 	}
 
 }
