@@ -543,6 +543,18 @@ func (rt *RestTester) WaitForConditionShouldRetry(conditionFunc func() (shouldRe
 	return nil
 }
 
+func (rt *RestTester) WaitForRev(docID string, revID string) error {
+	return rt.WaitForCondition(func() bool {
+		rawResponse := rt.SendAdminRequest("GET", "/db/"+docID, "")
+		if rawResponse.Code != 200 && rawResponse.Code != 201 {
+			return false
+		}
+		var body db.Body
+		require.NoError(rt.tb, base.JSONUnmarshal(rawResponse.Body.Bytes(), &body))
+		return body.ExtractRev() == revID
+	})
+}
+
 func (rt *RestTester) SendAdminRequest(method, resource string, body string) *TestResponse {
 	input := bytes.NewBufferString(body)
 	request, err := http.NewRequest(method, "http://localhost"+resource, input)
@@ -1751,4 +1763,23 @@ func (rt *RestTester) NewDbConfig() DbConfig {
 	}
 
 	return config
+}
+
+// RespRevID returns a rev ID from the given response, or fails the given test if a rev ID was not found.
+func RespRevID(t *testing.T, response *TestResponse) (revID string) {
+	var r struct {
+		RevID *string `json:"rev"`
+	}
+	require.NoError(t, json.Unmarshal(response.BodyBytes(), &r), "couldn't decode JSON from response body")
+	require.NotNil(t, r.RevID, "expecting non-nil rev ID from response: %s", string(response.BodyBytes()))
+	require.NotEqual(t, "", *r.RevID, "expecting non-empty rev ID from response: %s", string(response.BodyBytes()))
+	return *r.RevID
+}
+
+func RequireStatus(t testing.TB, response *TestResponse, expectedStatus int) {
+	require.Equalf(t, expectedStatus, response.Code,
+		"Response status %d %q (expected %d %q)\nfor %s <%s> : %s",
+		response.Code, http.StatusText(response.Code),
+		expectedStatus, http.StatusText(expectedStatus),
+		response.Req.Method, response.Req.URL, response.Body)
 }
