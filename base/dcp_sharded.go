@@ -740,48 +740,40 @@ func (meh *sgMgrEventHandlers) OnUnregisterPIndex(pindex *cbgt.PIndex) {
 	// No-op for SG
 }
 
-// OnFeedError is required to trigger reconnection to a feed on an closed connection (EOF).
-// Handling below based on cbft implementation - checks whether the underlying source (bucket)
-// still exists with VerifySourceNotExists, and if it exists, calls NotifyMgrOnClose.
-// This will trigger cbgt closing and then attempting to reconnect to the feed.
+// OnFeedError is required to trigger reconnection to a feed on a closed connection (EOF).
+// NotifyMgrOnClose will trigger cbgt closing and then attempt to reconnect to the feed, if the manager hasn't
+// been stopped.
 func (meh *sgMgrEventHandlers) OnFeedError(srcType string, r cbgt.Feed, feedErr error) {
 
 	// cbgt always passes srcType = SOURCE_GOCBCORE, but we have a wrapped type associated with our indexes - use that instead
 	// for our logging
 	srcType = SOURCE_DCP_SG
-
-	DebugfCtx(meh.ctx, KeyDCP, "cbgt Mgr OnFeedError, srcType: %s, feed name: %s, err: %v",
-		srcType, r.Name(), feedErr)
-
 	dcpFeed, ok := r.(cbgt.FeedEx)
 	if !ok {
 		return
 	}
+	bucketName, bucketUUID := dcpFeed.GetBucketDetails()
+	DebugfCtx(meh.ctx, KeyDCP, "cbgt Mgr OnFeedError, srcType: %s, feed name: %s, bucket name: %s, err: %v",
+		srcType, r.Name(), bucketName, feedErr)
 
-	gone, indexUUID, err := dcpFeed.VerifySourceNotExists()
-	DebugfCtx(meh.ctx, KeyDCP, "cbgt Mgr OnFeedError, VerifySourceNotExists,"+
-		" srcType: %s, gone: %t, indexUUID: %s, err: %v",
-		srcType, gone, indexUUID, err)
-	if !gone {
-		// If we get an EOF error from the feeds and the bucket is still alive,
-		// then there could at the least two potential error scenarios.
-		//
-		// 1. Faulty kv node is failed over.
-		// 2. Ephemeral network connection issues with the host.
-		//
-		// In either case, the current feed instance turns dangling.
-		// Hence we can close the feeds so that they get refreshed to fix
-		// the connectivity problems either during the next rebalance
-		// (new kv node after failover-recovery rebalance) or
-		// on the next janitor work cycle(ephemeral network issue to the same node).
-		if strings.Contains(feedErr.Error(), "EOF") {
-			// If this wasn't an intentional close, log about the EOF
-			if meh.ctx.Err() != context.Canceled {
-				InfofCtx(meh.ctx, KeyDCP, "Handling EOF on cbgt feed - notifying manager to trigger reconnection to feed.  indexUUID: %v, err: %v", indexUUID, feedErr)
-			}
-			dcpFeed.NotifyMgrOnClose()
+	// If we get an EOF error from the feeds and the import listener hasn't been closed,
+	// then there could at the least two potential error scenarios.
+	//
+	// 1. Faulty kv node is failed over.
+	// 2. Ephemeral network connection issues with the host.
+	//
+	// In either case, the current feed instance turns dangling.
+	// Hence we can close the feeds so that they get refreshed to fix
+	// the connectivity problems either during the next rebalance
+	// (new kv node after failover-recovery rebalance) or
+	// on the next janitor work cycle(ephemeral network issue to the same node).
+	if strings.Contains(feedErr.Error(), "EOF") {
+		// If this wasn't an intentional close, log about the EOF
+		if meh.ctx.Err() != context.Canceled {
+			InfofCtx(meh.ctx, KeyDCP, "Handling EOF on cbgt feed - notifying manager to trigger reconnection to feed for bucketName:%v, bucketUUID:%v, err: %v", bucketName, bucketUUID, feedErr)
 		}
-		return
+		dcpFeed.NotifyMgrOnClose()
 	}
-
 }
+
+
