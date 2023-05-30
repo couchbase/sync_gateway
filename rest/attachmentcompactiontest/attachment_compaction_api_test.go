@@ -28,7 +28,6 @@ func TestAttachmentCompactionAPI(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
 	}
-	base.SetUpTestLogging(t, base.LevelDebug, base.KeyAll)
 
 	// attachment compaction has to run on default collection, we can't run on multiple scopes right now for SG_TEST_USE_DEFAULT_COLLECTION = false
 	rt := rest.NewRestTesterDefaultCollection(t, nil)
